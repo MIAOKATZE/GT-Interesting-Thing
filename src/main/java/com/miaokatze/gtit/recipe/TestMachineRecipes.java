@@ -1,11 +1,5 @@
 package com.miaokatze.gtit.recipe;
 
-import static gregtech.api.enums.GTValues.RA;
-
-import com.miaokatze.gtit.common.api.enums.GTSWNItemList;
-
-import gregtech.api.recipe.RecipeMap;
-
 /**
  * 测试用多方块机器配方注册器
  * <p>
@@ -19,7 +13,7 @@ public class TestMachineRecipes {
      * 建议在 postInit 阶段调用
      */
     public static void init() {
-        // TODO: 配方系统待完善后启用
+        // 暂不启用配方注册，保留作为框架模板
         // addAssemblerRecipes();
     }
 
@@ -30,13 +24,6 @@ public class TestMachineRecipes {
      * 1. 测试硬币 -> 电子测试硬币（多方块机器测试）
      */
     private static void addAssemblerRecipes() {
-        RecipeMap<?> assemblerRecipes = gregtech.api.recipe.RecipeMap.assemblerRecipes;
-
-        RA.stdBuilder()
-            .itemInputs(GTSWNItemList.TestCoin.get(1))
-            .itemOutputs(GTSWNItemList.TestCoinE.get(1))
-            .duration(40)
-            .eut(128L)
-            .addTo(assemblerRecipes);
+        // 配方模板代码，暂不使用
     }
 }

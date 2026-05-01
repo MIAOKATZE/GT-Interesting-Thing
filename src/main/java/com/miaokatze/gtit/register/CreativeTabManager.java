@@ -3,11 +3,11 @@ package com.miaokatze.gtit.register;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
-
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 创造模式物品栏管理器
@@ -26,8 +26,8 @@ public class CreativeTabManager {
          */
         @Override
         public Item getTabIconItem() {
-            if (com.miaokatze.gtit.common.api.enums.GTSWNItemList.TestCoin.hasBeenSet()) {
-                return com.miaokatze.gtit.common.api.enums.GTSWNItemList.TestCoin.getItem();
+            if (com.miaokatze.gtit.common.api.enums.GTITItemList.TestCoin.hasBeenSet()) {
+                return com.miaokatze.gtit.common.api.enums.GTITItemList.TestCoin.getItem();
             }
             return net.minecraft.init.Items.diamond;
         }

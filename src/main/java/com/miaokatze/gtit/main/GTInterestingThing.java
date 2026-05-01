@@ -32,9 +32,7 @@ public class GTInterestingThing {
     public static final Logger LOG = LogManager.getLogger(MODID);
 
     // 代理类实例，用于处理客户端和服务端的差异化逻辑
-    @SidedProxy(
-        clientSide = "com.miaokatze.gtit.main.ClientProxy",
-        serverSide = "com.miaokatze.gtit.main.CommonProxy")
+    @SidedProxy(clientSide = "com.miaokatze.gtit.main.ClientProxy", serverSide = "com.miaokatze.gtit.main.CommonProxy")
     public static CommonProxy proxy;
 
     /**

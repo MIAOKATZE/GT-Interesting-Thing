@@ -1,12 +1,11 @@
 package com.miaokatze.gtit.main;
 
+import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.config.Config;
 import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
-import com.miaokatze.gtit.register.TextureManager;
-import com.miaokatze.gtit.Tags;
 
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
@@ -57,8 +56,7 @@ public class CommonProxy {
                 int before = GregTechAPI.sAfterGTLoad.size();
                 GregTechAPI.sAfterGTLoad.add(registerRunnable);
                 int after = GregTechAPI.sAfterGTLoad.size();
-                GTInterestingThing.LOG
-                    .info("[1/3] 已将机器注册任务加入 GregTech 加载队列 (队列大小: " + before + " -> " + after + ")");
+                GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech 加载队列 (队列大小: " + before + " -> " + after + ")");
             }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("无法将注册任务添加到 GregTech 队列", t);

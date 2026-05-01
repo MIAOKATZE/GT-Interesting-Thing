@@ -1,7 +1,5 @@
 package com.miaokatze.gtit.register;
 
-import net.minecraft.util.StatCollector;
-
 /**
  * 标准机器注册器
  * 继承自 MachineRegistrar，负责具体定义并注册 EV、IV 和 LuV 等级的单方块测试机器。

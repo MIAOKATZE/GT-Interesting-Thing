@@ -16,7 +16,7 @@ import gregtech.api.util.GTLog;
  * 实现了 IItemContainer 接口，用于在代码中安全、统一地引用模组内的物品和方块。
  * 这种设计模式可以避免因游戏加载顺序导致的空指针问题，并提供便捷的物品堆栈操作方法。
  */
-public enum GTSWNItemList implements IItemContainer {
+public enum GTITItemList implements IItemContainer {
 
     // 测试机器：EV, IV, LuV 等级
     Test_Machine_EV,
@@ -28,7 +28,7 @@ public enum GTSWNItemList implements IItemContainer {
 
     // 测试物品
     TestCoin,
-    // 电子测试硬币 (现在由 GTSWNMetaItem01 管理)
+    // 电子测试硬币 (保留作为框架参考)
     TestCoinE;
 
     // 存储对应的物品堆栈实例

@@ -1,6 +1,6 @@
 package com.miaokatze.gtit.register;
 
-import static com.miaokatze.gtit.common.api.enums.GTSWNItemList.TestCoin;
+import static com.miaokatze.gtit.common.api.enums.GTITItemList.TestCoin;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
 
