@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.register;
 
+import static com.miaokatze.gtit.common.api.enums.GTITItemList.ElectricFloatCore;
+import static com.miaokatze.gtit.common.api.enums.GTITItemList.FloatCore;
 import static com.miaokatze.gtit.common.api.enums.GTITItemList.TestCoin;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -15,7 +17,9 @@ public class ItemRegistrar {
      */
     public static void init() {
         GTInterestingThing.LOG.info("开始通过 ItemRegistrar 注册物品...");
-        registerTestCoin();
+        // registerTestCoin(); // 取消测试物品注册，源码保留
+        registerFloatCore();
+        registerElectricFloatCore();
         // registerTestCoinE(); // 取消测试物品注册，源码保留
         GTInterestingThing.LOG.info("物品注册完成。");
     }
@@ -32,5 +36,13 @@ public class ItemRegistrar {
      */
     private static void registerTestCoinE() {
         // TestCoinE.setAndRegister(com.miaokatze.gtit.common.items.TestCoinE::new); // 取消测试物品注册，源码保留
+    }
+
+    private static void registerFloatCore() {
+        FloatCore.setAndRegister(com.miaokatze.gtit.common.items.FloatCore::new);
+    }
+
+    private static void registerElectricFloatCore() {
+        ElectricFloatCore.setAndRegister(com.miaokatze.gtit.common.items.ElectricFloatCore::new);
     }
 }

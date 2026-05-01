@@ -29,7 +29,12 @@ public enum GTITItemList implements IItemContainer {
     // 测试物品
     TestCoin,
     // 电子测试硬币 (保留作为框架参考)
-    TestCoinE;
+    TestCoinE,
+
+    // 浮空核心
+    FloatCore,
+    // 电力浮空核心
+    ElectricFloatCore;
 
     // 存储对应的物品堆栈实例
     private ItemStack mStack;

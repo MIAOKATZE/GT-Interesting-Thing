@@ -17,3 +17,5 @@ gtit.recipe.multitest=Test Multiblock Machine
 # Items
 item.TestCoin_GTit.name=Test Coin
 item.TestCoin_GTit_E.name=Electronic Test Coin
+item.float_core.name=Float Core
+item.electric_float_core.name=Electric Float Core
