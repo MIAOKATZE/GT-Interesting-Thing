@@ -34,7 +34,9 @@ public enum GTITItemList implements IItemContainer {
     // 浮空核心
     FloatCore,
     // 电力浮空核心
-    ElectricFloatCore;
+    ElectricFloatCore,
+    // 念力共振探矿核心
+    TelekinesisOreScannerCore;
 
     // 存储对应的物品堆栈实例
     private ItemStack mStack;

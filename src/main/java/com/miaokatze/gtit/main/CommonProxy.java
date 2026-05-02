@@ -4,6 +4,7 @@ import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.config.Config;
 import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
+import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -83,12 +84,13 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void postInit(FMLPostInitializationEvent event) {
-        GTInterestingThing.LOG.info("[3/3] 开始注册测试配方...");
+        GTInterestingThing.LOG.info("[3/3] 开始注册配方...");
         try {
             TestMachineRecipes.init();
-            GTInterestingThing.LOG.info("[3/3] 测试配方注册完成。");
+            GTITRecipes.init();
+            GTInterestingThing.LOG.info("[3/3] 配方注册完成。");
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[3/3] 测试配方注册过程中发生错误", t);
+            GTInterestingThing.LOG.error("[3/3] 配方注册过程中发生错误", t);
         }
     }
 

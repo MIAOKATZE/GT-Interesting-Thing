@@ -5,7 +5,7 @@ import cpw.mods.fml.common.event.FMLInitializationEvent;
 /**
  * 客户端代理类
  * 继承自 CommonProxy，用于处理仅在客户端（Client Side）执行的逻辑。
- * 例如：渲染注册、按键绑定、GUI 打开等。
+ * 如：渲染注册、按键绑定等。
  */
 public class ClientProxy extends CommonProxy {
 
@@ -20,5 +20,4 @@ public class ClientProxy extends CommonProxy {
 
         GTInterestingThing.LOG.info("[2/3] 客户端初始化完成");
     }
-
 }

@@ -9,11 +9,13 @@
 
 | 功能 | Feature |
 | --- | --- |
-| **浮空核心**<br />• 装备到任意Baubles饰品栏即获得飞行能力<br />• 飞行时每tick消耗0.02饥饿值<br />• 饥饿值低于3格时自动禁用飞行 | **Float Core**<br />• Equip to any Baubles slot to gain flight<br />• Consumes 0.02 hunger per tick while flying<br />• Automatically disables flight when hunger below 3 points |
-| **电力浮空核心**<br />• 装备到任意Baubles饰品栏即获得飞行能力<br />• LV电压等级，容量32 000 000 EU<br />• 飞行时每tick消耗128 EU（20tick=2560 EU）<br />• 电力耗尽时消耗饥饿值0.01/tick<br />• 饥饿值低于3格且电力不足时自动禁用飞行 | **Electric Float Core**<br />• Equip to any Baubles slot to gain flight<br />• LV tier, 32 000 000 EU capacity<br />• Consumes 128 EU per tick while flying (20 ticks = 2560 EU)<br />• Consumes 0.01 hunger per tick when electricity depleted<br />• Automatically disables flight when both hunger below 3 and electricity insufficient |
+| **浮空核心**<br />• 装备到任意Baubles饰品栏即获得飞行能力<br />• 飞行时每tick消耗饥饿值<br />• 饥饿值低于3格时自动禁用飞行 | **Float Core**<br />• Equip to any Baubles slot to gain flight<br />• Consumes hunger per tick while flying<br />• Automatically disables flight when hunger below 3 points |
+| **电力浮空核心**<br />• 装备到任意Baubles饰品栏即获得飞行能力<br />• LV电压等级，超大容量<br />• 飞行时消耗电力<br />• 电力耗尽时消耗饥饿值，为浮空核心的一半 | **Electric Float Core**<br />• Equip to any Baubles slot to gain flight<br />• LV tier, 32,000,000 EU capacity<br />• Consumes electricity while flying (only half of Float Core)<br />• Consumes hunger when electricity depleted |
+| **念力共振探矿核心**<br />• 右击空气或方块进行19×19区块大范围探矿<br />• 每次消耗6点饥饿值进行探矿<br />• 数据自动上传至旅行地图，无法直接获取矿石信息<br />• Shift+右键切换矿石/流体探测模式 | **Telekinesis Ore Scanner Core**<br />• Right-click air or block to scan 19×19 chunks<br />• Consumes 6 hunger points per scan<br />• Data automatically uploaded to JourneyMap, cannot view ore info directly<br />• Shift+Right-click to switch Ore/Fluid detection mode |
 
 ### 更新日志
 
 |       | 更新日志 | Update log |
 |-------|---------|------------|
+| **0.1.1**<br />*(Main)* | • 添加念力共振探矿核心<br />• 支持旅行地图联动<br />• 添加合成表 | • Added Telekinesis Ore Scanner Core<br />• Consumes 6 hunger points, prioritizes saturation<br />• VisualProspecting/JourneyMap integration<br />• Added crafting recipes |
 | **0.1.0**<br />*(Main)* | • 添加浮空核心<br />• 添加电力浮空核心<br />• 支持Baubles饰品装备 | • Added Float Core<br />• Added Electric Float Core<br />• Baubles slot support |

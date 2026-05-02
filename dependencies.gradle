@@ -48,6 +48,11 @@ dependencies {
     api("com.github.GTNewHorizons:GTNHLib:0.9.41:dev") { transitive = false }
     api("com.github.GTNewHorizons:Baubles-Expanded:2.2.6-GTNH:dev") { transitive = false }
 
+    // VisualProspecting is required for JourneyMap integration (ore prospecting visualization).
+    // Used by TelekinesisOreScannerCore to display ore veins on the map.
+    // Version from GT5-Unofficial: 1.5.17
+    api('com.github.GTNewHorizons:VisualProspecting:1.5.17:dev') { transitive = false }
+
     // StructureLib is required for multiblock machine structure definitions and building.
     api("com.github.GTNewHorizons:StructureLib:1.4.20:dev") { transitive = false }
 

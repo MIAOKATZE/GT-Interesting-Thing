@@ -14,15 +14,18 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 
 /**
- * 模组主类
- * 负责模组的入口管理、生命周期事件分发以及代理类的初始化。
+ * GTInterestingThing - GTNH的趣味小物品模组
+ * <p>
+ * 包含：
+ * - 浮空核心（Baubles饰品）
+ * - 电力浮空核心（Baubles饰品+GT电源）
+ * - 念力共振探矿核心（VisualProspecting集成）
  */
 @Mod(
     modid = GTInterestingThing.MODID,
-    version = Tags.VERSION,
     name = "GTInterestingThing",
-    acceptedMinecraftVersions = "[1.7.10]",
-    dependencies = "required-after:gregtech;")
+    version = Tags.VERSION,
+    dependencies = "required-after:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting")
 public class GTInterestingThing {
 
     // 模组唯一标识符 (Mod ID)
@@ -36,8 +39,15 @@ public class GTInterestingThing {
     public static CommonProxy proxy;
 
     /**
+     * 模组实例，作为 Mod 注解的实例持有者。
+     */
+    @Mod.Instance(MODID)
+    public static GTInterestingThing instance;
+
+    /**
      * 预初始化阶段 (PreInit)
-     * 模组加载的最早阶段，通常用于读取配置、注册方块和物品。
+     *
+     * @param event FML预初始化事件
      */
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
@@ -46,7 +56,8 @@ public class GTInterestingThing {
 
     /**
      * 初始化阶段 (Init)
-     * 在此阶段进行模组的详细设置，如注册配方、初始化数据结构等。
+     *
+     * @param event FML初始化事件
      */
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
@@ -55,7 +66,8 @@ public class GTInterestingThing {
 
     /**
      * 后初始化阶段 (PostInit)
-     * 处理与其他模组的交互，确保所有模组都已加载完毕后再进行最终配置。
+     *
+     * @param event FML后初始化事件
      */
     @Mod.EventHandler
     public void postInit(FMLPostInitializationEvent event) {
@@ -64,7 +76,8 @@ public class GTInterestingThing {
 
     /**
      * 服务器启动阶段
-     * 用于注册服务器端命令或处理服务器特有的初始化逻辑。
+     *
+     * @param event 服务器启动事件
      */
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
@@ -73,16 +86,11 @@ public class GTInterestingThing {
 
     /**
      * 模组加载完成阶段
-     * 在所有模组都加载完成后调用，适合执行最终的兼容性检查或补救措施。
+     *
+     * @param event 加载完成事件
      */
     @Mod.EventHandler
     public void loadComplete(FMLLoadCompleteEvent event) {
-        if (proxy != null) {
-            try {
-                proxy.loadComplete(event);
-            } catch (Throwable t) {
-                LOG.error("在 loadComplete 阶段调用代理类时发生错误", t);
-            }
-        }
+        proxy.loadComplete(event);
     }
 }

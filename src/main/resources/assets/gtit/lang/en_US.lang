@@ -18,4 +18,19 @@ gtit.recipe.multitest=Test Multiblock Machine
 item.TestCoin_GTit.name=Test Coin
 item.TestCoin_GTit_E.name=Electronic Test Coin
 item.float_core.name=Float Core
+item.float_core.tooltip=Grants creative flight, consumes hunger while flying
 item.electric_float_core.name=Electric Float Core
+item.electric_float_core.tooltip=Grants creative flight, consumes electricity first, then hunger when depleted
+item.telekinesis_ore_scanner_core.name=Telekinesis Ore Scanner Core
+item.telekinesis_ore_scanner_core.tooltip=Right-click (air/block): 6 hunger, 19x19 chunk scan, auto-upload to JourneyMap
+
+# Telekinesis Ore Scanner Core - Mode Names
+item.gtit.telekinesis_ore_scanner_core.mode.0=Ores Detection
+item.gtit.telekinesis_ore_scanner_core.mode.1=Fluids Detection
+
+# Telekinesis Ore Scanner Core - Operation Messages
+item.gtit.telekinesis_ore_scanner_core.switch=Switched to mode:
+item.gtit.telekinesis_ore_scanner_core.visualprospecting.required=VisualProspecting required
+item.gtit.telekinesis_ore_scanner_core.hunger=Not enough hunger
+item.gtit.telekinesis_ore_scanner_core.scan.success=Scan complete! Results uploaded to JourneyMap
+item.gtit.telekinesis_ore_scanner_core.scan.error=Error occurred during scan

@@ -18,4 +18,19 @@ gtit.recipe.multitest=测试多方块机器
 item.TestCoin_GTit.name=测试硬币
 item.TestCoin_GTit_E.name=电子测试硬币
 item.float_core.name=浮空核心
+item.float_core.tooltip=获得创造飞行能力，飞行时消耗饥饿值
 item.electric_float_core.name=电力浮空核心
+item.electric_float_core.tooltip=获得创造飞行能力，优先消耗电力，电力不足时消耗饥饿值
+item.telekinesis_ore_scanner_core.name=念力共振探矿核心
+item.telekinesis_ore_scanner_core.tooltip=右击（空气/方块）消耗6饥饿值，19x19区块大范围探矿，数据自动上传至旅行地图
+
+# 念力共振探矿核心 - 模式名称
+item.gtit.telekinesis_ore_scanner_core.mode.0=矿石探测
+item.gtit.telekinesis_ore_scanner_core.mode.1=流体探测
+
+# 念力共振探矿核心 - 操作提示
+item.gtit.telekinesis_ore_scanner_core.switch=已切换至模式：
+item.gtit.telekinesis_ore_scanner_core.visualprospecting.required=需要安装 VisualProspecting
+item.gtit.telekinesis_ore_scanner_core.hunger=饥饿值不足
+item.gtit.telekinesis_ore_scanner_core.scan.success=扫描完成！结果已上传至旅行地图
+item.gtit.telekinesis_ore_scanner_core.scan.error=扫描过程中发生错误
