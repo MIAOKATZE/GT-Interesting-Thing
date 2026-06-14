@@ -6,6 +6,8 @@ import static gregtech.api.enums.HatchElement.*;
 import static gregtech.api.enums.Textures.BlockIcons.*;
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
+import java.util.List;
+
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraftforge.common.util.ForgeDirection;
@@ -26,6 +28,7 @@ import gregtech.api.recipe.RecipeMap;
 import gregtech.api.recipe.check.CheckRecipeResult;
 import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.render.TextureFactory;
+import gregtech.api.structure.error.StructureError;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.MultiblockTooltipBuilder;
 
@@ -74,7 +77,7 @@ public class MTEMultiTestMachine extends MTEEnhancedMultiBlockBase<MTEMultiTestM
                 // 指定将识别到的仓室添加到机器列表的方法引用
                 .adder(MTEMultiTestMachine::addToMachineList)
                 // 在游戏内使用软锤查看结构时，该位置的提示点编号
-                .dot(1)
+                .hint(1)
                 // 设置外壳方块的材质纹理索引（钨钢机器方块）
                 .casingIndex(GTUtility.getCasingTextureIndex(GregTechAPI.sBlockCasings4, 0))
                 // 如果不是仓室，则检查是否为指定的外壳方块，并在匹配成功时触发 onCasingAdded 计数
@@ -146,12 +149,15 @@ public class MTEMultiTestMachine extends MTEEnhancedMultiBlockBase<MTEMultiTestM
      * @return 结构是否完整且合法
      */
     @Override
-    public boolean checkMachine(IGregTechTileEntity aBaseMetaTileEntity, ItemStack aStack) {
+    public void checkMachine(IGregTechTileEntity aBaseMetaTileEntity, ItemStack aStack, List<StructureError> errors) {
         mCasingAmount = 0;
         // 检查结构并验证仓室 (偏移量 1, 1, 0 对应底层中心)
-        return checkPiece(STRUCTURE_PIECE_MAIN, 1, 1, 0) && mCasingAmount >= 8
+        boolean structureValid = checkPiece(STRUCTURE_PIECE_MAIN, 1, 1, 0) && mCasingAmount >= 8
             && mMaintenanceHatches.size() > 0
             && mEnergyHatches.size() > 0;
+        if (!structureValid && errors.isEmpty()) {
+            errors.add(gregtech.api.structure.error.StructureErrorRegistry.UNKNOWN_STRUCTURE_ERROR);
+        }
     }
 
     /**

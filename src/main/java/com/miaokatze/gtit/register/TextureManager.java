@@ -16,13 +16,13 @@ import gregtech.api.render.TextureFactory;
  */
 public class TextureManager {
 
-    public static final IIconContainer TEX_TEST_EV = new Textures.BlockIcons.CustomIcon("gtit:MTETEST_1");
-    public static final IIconContainer TEX_TEST_IV = new Textures.BlockIcons.CustomIcon("gtit:MTETEST_2");
-    public static final IIconContainer TEX_TEST_LUV = new Textures.BlockIcons.CustomIcon("gtit:MTETEST_3");
+    public static final IIconContainer TEX_TEST_EV = Textures.BlockIcons.custom("gtit:MTETEST_1");
+    public static final IIconContainer TEX_TEST_IV = Textures.BlockIcons.custom("gtit:MTETEST_2");
+    public static final IIconContainer TEX_TEST_LUV = Textures.BlockIcons.custom("gtit:MTETEST_3");
 
     private static final Map<String, ITexture> textureCache = new HashMap<>();
 
-    public static ITexture getOrCreateTexture(String name, Textures.BlockIcons icon) {
+    public static ITexture getOrCreateTexture(String name, IIconContainer icon) {
         return textureCache.computeIfAbsent(name, k -> TextureFactory.of(icon));
     }
 
