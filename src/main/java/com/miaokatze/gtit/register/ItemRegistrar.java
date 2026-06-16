@@ -5,6 +5,7 @@ import static com.miaokatze.gtit.common.api.enums.GTITItemList.*;
 import com.miaokatze.gtit.common.items.ElectricFloatCore;
 import com.miaokatze.gtit.common.items.FloatCore;
 import com.miaokatze.gtit.common.items.NekoCoin;
+import com.miaokatze.gtit.common.items.ShimmeringNekoCoin;
 import com.miaokatze.gtit.common.items.StarterGift;
 import com.miaokatze.gtit.common.items.TelekinesisOreScannerCore;
 import com.miaokatze.gtit.common.items.rings.RingDistantGrasp;
@@ -49,6 +50,9 @@ public class ItemRegistrar {
 
         // 猫猫币
         registerNekoCoin();
+
+        // 闪烁猫猫币
+        registerShimmeringNekoCoin();
 
         GTInterestingThing.LOG.info("物品注册完成。");
     }
@@ -117,5 +121,9 @@ public class ItemRegistrar {
 
     private static void registerNekoCoin() {
         NekoCoin.setAndRegister(NekoCoin::new);
+    }
+
+    private static void registerShimmeringNekoCoin() {
+        ShimmeringNekoCoin.setAndRegister(ShimmeringNekoCoin::new);
     }
 }

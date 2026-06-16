@@ -23,6 +23,11 @@ public class RingTempest extends BaseRing {
     }
 
     @Override
+    public boolean hasEffect(ItemStack stack, int pass) {
+        return true;
+    }
+
+    @Override
     public void onEquipped(ItemStack itemstack, EntityLivingBase player) {
         if (player.worldObj.isRemote) return;
         if (!(player instanceof EntityPlayer entityPlayer)) return;

@@ -64,6 +64,12 @@ public abstract class BaseRing extends Item implements IBauble {
             if (line.equals(key)) break; // 没有更多行了
             tooltip.add(EnumChatFormatting.GOLD + line);
         }
+        // 来源tooltip（灰色）
+        String sourceKey = "item." + ringName + ".source";
+        String sourceLine = StatCollector.translateToLocal(sourceKey);
+        if (!sourceLine.equals(sourceKey)) {
+            tooltip.add(EnumChatFormatting.GRAY + sourceLine);
+        }
         addStackableInfo(stack, player, tooltip);
     }
 

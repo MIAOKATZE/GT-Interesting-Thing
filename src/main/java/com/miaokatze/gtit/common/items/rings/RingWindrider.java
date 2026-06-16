@@ -24,6 +24,11 @@ public class RingWindrider extends BaseRing {
     }
 
     @Override
+    public boolean hasEffect(ItemStack stack, int pass) {
+        return true;
+    }
+
+    @Override
     public BaubleType getBaubleType(ItemStack itemstack) {
         return BaubleType.RING;
     }

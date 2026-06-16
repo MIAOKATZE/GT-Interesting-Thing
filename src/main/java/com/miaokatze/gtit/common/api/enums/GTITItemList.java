@@ -52,7 +52,9 @@ public enum GTITItemList implements IItemContainer {
     StarterGift,
 
     // 猫猫币
-    NekoCoin;
+    NekoCoin,
+    // 闪烁猫猫币
+    ShimmeringNekoCoin;
 
     // 存储对应的物品堆栈实例
     private ItemStack mStack;

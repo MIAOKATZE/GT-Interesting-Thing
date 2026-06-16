@@ -17,6 +17,7 @@ public class GTITRecipes {
         addFloatCoreRecipe();
         addElectricFloatCoreRecipe();
         addTelekinesisOreScannerCoreRecipe();
+        addRingWindriderRecipe();
     }
 
     private static void addFloatCoreRecipe() {
@@ -71,5 +72,40 @@ public class GTITRecipes {
             Blocks.cobblestone,
             'B',
             Items.cooked_beef);
+    }
+
+    /**
+     * 御风戒指合成配方
+     * 3x3工作台：7种戒指 + 2猫猫币
+     * 遥握 饕餮 凌步
+     * 猫币 磐躯 猫币
+     * 龙息 裂山 疾风
+     */
+    private static void addRingWindriderRecipe() {
+        if (GTITItemList.RingWindrider.get(1) == null) return;
+
+        GameRegistry.addShapedRecipe(
+            GTITItemList.RingWindrider.get(1),
+            "ABC",
+            "EID",
+            "FGH",
+            'A',
+            GTITItemList.RingDistantGrasp.get(1),
+            'B',
+            GTITItemList.RingGluttony.get(1),
+            'C',
+            GTITItemList.RingSkywalk.get(1),
+            'D',
+            GTITItemList.NekoCoin.get(1),
+            'E',
+            GTITItemList.NekoCoin.get(1),
+            'F',
+            GTITItemList.RingDragonBreath.get(1),
+            'G',
+            GTITItemList.RingMountainbreaker.get(1),
+            'H',
+            GTITItemList.RingTempest.get(1),
+            'I',
+            GTITItemList.RingIronheart.get(1));
     }
 }

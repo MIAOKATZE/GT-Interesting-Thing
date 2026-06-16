@@ -26,8 +26,8 @@ public class CreativeTabManager {
          */
         @Override
         public Item getTabIconItem() {
-            if (com.miaokatze.gtit.common.api.enums.GTITItemList.TestCoin.hasBeenSet()) {
-                return com.miaokatze.gtit.common.api.enums.GTITItemList.TestCoin.getItem();
+            if (com.miaokatze.gtit.common.api.enums.GTITItemList.NekoCoin.hasBeenSet()) {
+                return com.miaokatze.gtit.common.api.enums.GTITItemList.NekoCoin.getItem();
             }
             return net.minecraft.init.Items.diamond;
         }

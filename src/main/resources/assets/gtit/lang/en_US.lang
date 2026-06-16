@@ -46,28 +46,36 @@ item.gtit.telekinesis_ore_scanner_core.scan.error=Error occurred during scan
 item.ring_distant_grasp.name=Ring of Distant Grasp
 item.ring_distant_grasp.tooltip.0=Equip in ring slot to increase interaction and attack range
 item.ring_distant_grasp.tooltip.1=+2 blocks per ring, stackable
+item.ring_distant_grasp.source=Source: Chest Loot
 item.ring_skywalk.name=Ring of Skywalk
 item.ring_skywalk.tooltip.0=Equip in ring slot to auto step-up 1 block
 item.ring_skywalk.tooltip.1=Walk smoothly, no jumping needed
+item.ring_skywalk.source=Source: Chest Loot
 item.ring_windrider.name=Ring of Windrider
 item.ring_windrider.tooltip.0=Equip in ring slot to gain creative flight
 item.ring_windrider.tooltip.1=No cost, soar freely
+item.ring_windrider.source=Source: Crafting
 item.ring_gluttony.name=Ring of Gluttony
 item.ring_gluttony.tooltip.0=Equip in ring slot to continuously restore hunger
 item.ring_gluttony.tooltip.1=1 point/sec, restores saturation when full
 item.ring_gluttony.tooltip.2=Emergency fill when hunger < 5 (60s cooldown)
+item.ring_gluttony.source=Source: Chest Loot
 item.ring_ironheart.name=Ring of Ironheart
 item.ring_ironheart.tooltip.0=Equip in ring slot to increase max health
 item.ring_ironheart.tooltip.1=+20 health per ring (10 hearts), stackable
+item.ring_ironheart.source=Source: Chest Loot
 item.ring_dragon_breath.name=Ring of Dragon's Breath
 item.ring_dragon_breath.tooltip.0=Equip in ring slot to gain dragon's blessing
 item.ring_dragon_breath.tooltip.1=Fire Resistance + Night Vision + Regeneration I + Resistance I
+item.ring_dragon_breath.source=Source: Chest Loot
 item.ring_mountainbreaker.name=Ring of Mountainbreaker
 item.ring_mountainbreaker.tooltip.0=Equip in ring slot to gain mountain-breaking power
 item.ring_mountainbreaker.tooltip.1=Strength II + Haste II
+item.ring_mountainbreaker.source=Source: Chest Loot
 item.ring_tempest.name=Ring of Tempest
 item.ring_tempest.tooltip.0=Equip in ring slot to gain tempest speed
 item.ring_tempest.tooltip.1=Speed II + Jump Boost II
+item.ring_tempest.source=Source: Chest Loot
 
 # Common tooltip keys
 gtit.tooltip.reach_distance=Interaction/Attack Range
@@ -81,3 +89,8 @@ item.starter_gift.tooltip.0=Right-click to open and receive starter items
 item.neko_coin.name=Neko Coin
 item.neko_coin.tooltip.0=A shimmering cat memorial coin
 item.neko_coin.tooltip.1=Can be found in chests or caught while fishing
+
+# Shimmering Neko Coin
+item.shimmering_neko_coin.name=Shimmering Neko Coin
+item.shimmering_neko_coin.tooltip.0=A cat memorial coin radiating mysterious light
+item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fishing

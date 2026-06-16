@@ -46,28 +46,36 @@ item.gtit.telekinesis_ore_scanner_core.scan.error=扫描过程中发生错误
 item.ring_distant_grasp.name=戒指·遥握
 item.ring_distant_grasp.tooltip.0=装备于戒指栏，增加交互与攻击距离
 item.ring_distant_grasp.tooltip.1=每枚 +2 格，可叠加
+item.ring_distant_grasp.source=来源：宝箱战利品
 item.ring_skywalk.name=戒指·凌步
 item.ring_skywalk.tooltip.0=装备于戒指栏，自动走上1格方块
 item.ring_skywalk.tooltip.1=如履平地，无需跳跃
+item.ring_skywalk.source=来源：宝箱战利品
 item.ring_windrider.name=戒指·御风
 item.ring_windrider.tooltip.0=装备于戒指栏，获得创造飞行
 item.ring_windrider.tooltip.1=无消耗，自由翱翔
+item.ring_windrider.source=来源：合成获得
 item.ring_gluttony.name=戒指·饕餮
 item.ring_gluttony.tooltip.0=装备于戒指栏，持续恢复饥饿度
 item.ring_gluttony.tooltip.1=每秒恢复1点，满后恢复饱和度
 item.ring_gluttony.tooltip.2=饥饿度低于5时一次性补满（冷却60秒）
+item.ring_gluttony.source=来源：宝箱战利品
 item.ring_ironheart.name=戒指·磐躯
 item.ring_ironheart.tooltip.0=装备于戒指栏，增加生命上限
 item.ring_ironheart.tooltip.1=每枚 +20 生命值（10颗心），可叠加
+item.ring_ironheart.source=来源：宝箱战利品
 item.ring_dragon_breath.name=戒指·龙息
 item.ring_dragon_breath.tooltip.0=装备于戒指栏，获得龙之庇护
 item.ring_dragon_breath.tooltip.1=抗火 + 夜视 + 生命恢复I + 抗性提升I
+item.ring_dragon_breath.source=来源：宝箱战利品
 item.ring_mountainbreaker.name=戒指·裂山
 item.ring_mountainbreaker.tooltip.0=装备于戒指栏，获得裂山之力
 item.ring_mountainbreaker.tooltip.1=力量II + 急迫II
+item.ring_mountainbreaker.source=来源：宝箱战利品
 item.ring_tempest.name=戒指·疾风
 item.ring_tempest.tooltip.0=装备于戒指栏，获得疾风之速
 item.ring_tempest.tooltip.1=速度II + 跳跃提升II
+item.ring_tempest.source=来源：宝箱战利品
 
 # 通用tooltip
 gtit.tooltip.reach_distance=交互/攻击距离
@@ -81,3 +89,8 @@ item.starter_gift.tooltip.0=右击打开，获得新手物资
 item.neko_coin.name=猫猫币
 item.neko_coin.tooltip.0=闪耀的猫猫纪念币
 item.neko_coin.tooltip.1=可在宝箱中发现，或从鱼塘中钓起
+
+# 闪烁猫猫币
+item.shimmering_neko_coin.name=闪烁猫猫币
+item.shimmering_neko_coin.tooltip.0=散发着神秘光芒的猫猫纪念币
+item.shimmering_neko_coin.tooltip.1=极为稀有，仅能从鱼塘中钓起
