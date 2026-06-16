@@ -1,9 +1,13 @@
 package com.miaokatze.gtit.common.items;
 
+import java.util.List;
+
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
 
 import com.miaokatze.gtit.register.CreativeTabManager;
@@ -102,6 +106,16 @@ public class FloatCore extends Item implements IBauble {
     @Optional.Method(modid = "Baubles")
     public boolean canEquip(ItemStack itemstack, EntityLivingBase player) {
         return true; // 允许随时装备
+    }
+
+    @Override
+    public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        for (int i = 0;; i++) {
+            String key = "item.float_core.tooltip." + i;
+            String line = StatCollector.translateToLocal(key);
+            if (line.equals(key)) break;
+            tooltip.add(EnumChatFormatting.GOLD + line);
+        }
     }
 
     // ========== 普通物品功能（没有Baubles时也能用） ==========

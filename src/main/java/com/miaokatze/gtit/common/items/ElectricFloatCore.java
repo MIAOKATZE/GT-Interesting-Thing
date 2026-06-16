@@ -1,9 +1,13 @@
 package com.miaokatze.gtit.common.items;
 
+import java.util.List;
+
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.StatCollector;
 
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -111,6 +115,16 @@ public class ElectricFloatCore extends Item implements IBauble, IElectricItem {
     @Optional.Method(modid = "Baubles")
     public boolean canUnequip(ItemStack itemstack, EntityLivingBase player) {
         return true;
+    }
+
+    @Override
+    public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        for (int i = 0;; i++) {
+            String key = "item.electric_float_core.tooltip." + i;
+            String line = StatCollector.translateToLocal(key);
+            if (line.equals(key)) break;
+            tooltip.add(EnumChatFormatting.GOLD + line);
+        }
     }
 
     // ========== IC2电力物品实现 ==========

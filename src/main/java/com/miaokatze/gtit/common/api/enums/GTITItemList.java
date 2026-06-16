@@ -36,7 +36,23 @@ public enum GTITItemList implements IItemContainer {
     // 电力浮空核心
     ElectricFloatCore,
     // 念力共振探矿核心
-    TelekinesisOreScannerCore;
+    TelekinesisOreScannerCore,
+
+    // 戒指系列
+    RingDistantGrasp,
+    RingSkywalk,
+    RingWindrider,
+    RingGluttony,
+    RingIronheart,
+    RingDragonBreath,
+    RingMountainbreaker,
+    RingTempest,
+
+    // 新手宝箱
+    StarterGift,
+
+    // 猫猫币
+    NekoCoin;
 
     // 存储对应的物品堆栈实例
     private ItemStack mStack;

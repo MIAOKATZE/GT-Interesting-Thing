@@ -1,13 +1,18 @@
 package com.miaokatze.gtit.main;
 
 import com.miaokatze.gtit.Tags;
+import com.miaokatze.gtit.command.GTITGiftCommand;
+import com.miaokatze.gtit.common.loot.LootRegistrar;
 import com.miaokatze.gtit.config.Config;
+import com.miaokatze.gtit.config.GiftConfig;
+import com.miaokatze.gtit.event.PlayerLoginHandler;
 import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
@@ -22,12 +27,15 @@ public class CommonProxy {
 
     /**
      * 预初始化阶段 (PreInit)
-     * 在此阶段读取配置文件，并将机器注册任务添加到 GregTech 的处理队列中。
+     * 在此阶段读取配置文件，扩展Baubles戒指栏，并将机器注册任务添加到 GregTech 的处理队列中。
      */
     public void preInit(FMLPreInitializationEvent event) {
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
 
         GTInterestingThing.LOG.info("GTInterestingThing 开始初始化 (版本: " + Tags.VERSION + ")");
+
+        // 扩展 Baubles 戒指栏到 10 个
+        expandBaublesRingSlots();
 
         // 注册物品
         GTInterestingThing.LOG.info("[0/3] 开始注册物品...");
@@ -37,6 +45,14 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[0/3] 物品注册过程中发生严重错误，请检查日志", t);
         }
+
+        // 初始化新手宝箱配置
+        GiftConfig.init();
+
+        // 注册事件处理器
+        FMLCommonHandler.instance()
+            .bus()
+            .register(new PlayerLoginHandler());
 
         // 定义机器注册任务
         Runnable registerRunnable = () -> {
@@ -65,11 +81,84 @@ public class CommonProxy {
     }
 
     /**
+     * 扩展 Baubles 戒指栏到 10 个
+     * 使用 Baubles-Expanded 的 API，在 PREINIT 阶段调用
+     */
+    private void expandBaublesRingSlots() {
+        try {
+            boolean result = baubles.api.expanded.BaubleExpandedSlots.tryAssignSlotsUpToMinimum("ring", 10);
+            if (result) {
+                GTInterestingThing.LOG.info("Baubles 戒指栏已扩展到 10 个槽位");
+            } else {
+                GTInterestingThing.LOG.warn("Baubles 戒指栏扩展失败，尝试 INIT 阶段覆盖");
+            }
+        } catch (NoClassDefFoundError e) {
+            GTInterestingThing.LOG.warn("Baubles-Expanded API 不可用，戒指栏扩展已跳过");
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("扩展 Baubles 戒指栏时发生错误", e);
+        }
+    }
+
+    /**
+     * INIT 阶段：使用 overrideSlots 确保正确的槽位顺序
+     * 保留所有原有槽位类型，只将 ring 扩展到 10 个并连续排列
+     */
+    private void ensureBaublesRingSlots() {
+        try {
+            java.util.List<String> newSlots = new java.util.ArrayList<>();
+            boolean ringsAdded = false;
+
+            // 遍历当前槽位，保留非ring类型，ring位置扩展到10个
+            for (int i = 0; i < baubles.api.expanded.BaubleExpandedSlots.slotsCurrentlyUsed(); i++) {
+                String type = baubles.api.expanded.BaubleExpandedSlots.getSlotType(i);
+                if ("ring".equals(type) && !ringsAdded) {
+                    // 在第一个ring位置插入10个ring槽位
+                    for (int j = 0; j < 10; j++) {
+                        newSlots.add("ring");
+                    }
+                    ringsAdded = true;
+                } else if (!"ring".equals(type)) {
+                    newSlots.add(type);
+                }
+                // 后续的ring槽位跳过（已被10个替换）
+            }
+
+            if (!ringsAdded) {
+                // 如果没有ring槽位，在amulet后添加
+                int amuletIndex = newSlots.indexOf("amulet");
+                if (amuletIndex >= 0) {
+                    for (int j = 0; j < 10; j++) {
+                        newSlots.add(amuletIndex + 1 + j, "ring");
+                    }
+                } else {
+                    newSlots.add(0, "amulet");
+                    for (int j = 0; j < 10; j++) {
+                        newSlots.add("ring");
+                    }
+                    newSlots.add("belt");
+                }
+            }
+
+            baubles.api.expanded.BaubleExpandedSlots.overrideSlots(newSlots.toArray(new String[0]));
+            GTInterestingThing.LOG.info("Baubles 槽位已设置: " + newSlots);
+        } catch (NoClassDefFoundError e) {
+            GTInterestingThing.LOG.warn("Baubles-Expanded API 不可用，戒指栏扩展已跳过");
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("确保戒指栏扩展时发生错误", e);
+        }
+    }
+
+    /**
      * 初始化阶段 (Init)
-     * 在此阶段完成创造模式物品栏的初始化，并注册服务端 Tick 事件处理器。
      */
     @SuppressWarnings({ "unused" })
     public void init(FMLInitializationEvent event) {
+        // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
+        ensureBaublesRingSlots();
+
+        // 注册战利品（箱子/钓鱼）
+        LootRegistrar.init();
+
         GTInterestingThing.LOG.info("[2/3] 开始初始化创造模式物品栏...");
 
         CreativeTabManager.initCreativeTab();
@@ -80,7 +169,6 @@ public class CommonProxy {
 
     /**
      * 后初始化阶段 (PostInit)
-     * 处理与其他模组的交互或完成最终设置，如注册测试配方。
      */
     @SuppressWarnings({ "unused" })
     public void postInit(FMLPostInitializationEvent event) {
@@ -96,14 +184,14 @@ public class CommonProxy {
 
     /**
      * 服务器启动阶段
-     * 用于注册服务器端命令。
      */
     @SuppressWarnings({ "unused" })
-    public void serverStarting(FMLServerStartingEvent event) {}
+    public void serverStarting(FMLServerStartingEvent event) {
+        event.registerServerCommand(new GTITGiftCommand());
+    }
 
     /**
      * 模组加载完成阶段
-     * 如果之前注册失败，可以在此处进行最后的补救尝试。
      */
     public void loadComplete(cpw.mods.fml.common.event.FMLLoadCompleteEvent event) {}
 }
