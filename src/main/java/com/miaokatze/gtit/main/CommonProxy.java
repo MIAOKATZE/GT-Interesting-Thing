@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.main;
 
+import net.minecraft.server.MinecraftServer;
+
 import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.command.GTITGiftCommand;
 import com.miaokatze.gtit.common.loot.LootRegistrar;
@@ -11,11 +13,15 @@ import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
+import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.trade.NekoTradeRegistry;
+import com.miaokatze.gtit.trade.NekoWalletManager;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.event.FMLServerStartedEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import gregtech.api.GregTechAPI;
 
@@ -180,6 +186,9 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[3/3] 配方注册过程中发生错误", t);
         }
+
+        // 初始化猫猫币货币注册表（物品在此阶段已全部注册完成）
+        NekoCurrencyRegistrar.init();
     }
 
     /**
@@ -188,6 +197,20 @@ public class CommonProxy {
     @SuppressWarnings({ "unused" })
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new GTITGiftCommand());
+    }
+
+    /**
+     * 服务器启动完成阶段
+     * 在此初始化猫猫币钱包管理器（需要 World 对象）
+     */
+    @SuppressWarnings({ "unused" })
+    public void serverStarted(FMLServerStartedEvent event) {
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server != null && server.getEntityWorld() != null) {
+            NekoWalletManager.INSTANCE.init(server.getEntityWorld());
+            // 初始化猫猫币交易注册（在钱包管理器初始化之后）
+            NekoTradeRegistry.initialize();
+        }
     }
 
     /**

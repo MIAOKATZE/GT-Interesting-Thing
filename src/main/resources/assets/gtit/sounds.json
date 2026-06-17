@@ -1,0 +1,11 @@
+{
+  "track.neko_theme": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "gtit:neko_theme",
+        "stream": true
+      }
+    ]
+  }
+}

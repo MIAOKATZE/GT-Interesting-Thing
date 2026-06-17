@@ -54,7 +54,10 @@ public enum GTITItemList implements IItemContainer {
     // 猫猫币
     NekoCoin,
     // 闪烁猫猫币
-    ShimmeringNekoCoin;
+    ShimmeringNekoCoin,
+
+    // 猫猫售货机 (多方块机器，继承自 VM 模组的 MTEVendingMachine)
+    NekoVendingMachine;
 
     // 存储对应的物品堆栈实例
     private ItemStack mStack;

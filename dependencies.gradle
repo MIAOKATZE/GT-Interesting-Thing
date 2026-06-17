@@ -60,7 +60,9 @@ dependencies {
 
     // IC2 API is required for implementing IElectricItem to support charging stations.
     compileOnlyApi("net.industrial-craft:industrialcraft-2:2.2.828-experimental:api") { transitive = false }
-    
+
+    // Vending Machine mod - required dependency for Neko Vending Machine system
+    devOnlyNonPublishable(rfg.deobf(project.files("libs/vendingmachine-0.4.87.jar")))
 
 
     // UniMixins is automatically included by the GTNH build script because usesMixins = true in gradle.properties.

@@ -24,6 +24,10 @@ public enum MetaTileEntityID {
     /** HV 等级测试多方块机器 (Tier 5) */
     MTETEST_MULTIBLOCK_HV(10),
 
+    // --- 猫猫售货机 ---
+    /** 猫猫售货机 (继承自 VM 模组的 MTEVendingMachine) */
+    NEKO_VENDING_MACHINE(20),
+
     ;
 
     // 最终计算出的全局唯一 ID
