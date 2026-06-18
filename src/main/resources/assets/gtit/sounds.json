@@ -1,9 +1,17 @@
 {
-  "track.neko_theme": {
+  "track.neko_bgm": {
     "category": "record",
     "sounds": [
       {
-        "name": "gtit:neko_theme",
+        "name": "gtit:neko_bgm_1",
+        "stream": true
+      },
+      {
+        "name": "gtit:neko_bgm_2",
+        "stream": true
+      },
+      {
+        "name": "gtit:neko_bgm_3",
         "stream": true
       }
     ]

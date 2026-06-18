@@ -1,25 +1,25 @@
 package com.miaokatze.gtit.common.machine.neko;
 
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.EnumChatFormatting;
 
 import com.cleanroommc.modularui.api.GuiAxis;
 import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.layout.Flow;
-import com.cubefury.vendingmachine.gui.GuiTextures;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 /**
- * 猫猫币余额显示组件
+ * 猫猫币余额显示组件（无容器版，带弹出按钮）
  * <p>
- * 类似 VM 的 CoinDisplay，但简化为只显示猫猫币图标和余额。
- * 点击弹出按钮可以弹出该种猫猫币。
+ * 图标(22px) + 余额数字 + 弹出按钮(Shift+点击)。
+ * 无容器边框，使用 disableThemeBackground 隐藏物品槽背景。
+ * 弹出按钮在 Shift+左键点击时触发。
  */
 public class NekoCoinDisplay extends Flow {
 
@@ -37,45 +37,39 @@ public class NekoCoinDisplay extends Flow {
         this.coinSyncValue = (IntSyncValue) syncManager
             .findSyncHandler("nekoCoinAmount_" + currencyId, 0, IntSyncValue.class);
 
-        // 猫猫币图标（纯展示）
+        // 猫猫币图标（22px，使用 ItemDisplayWidget 但禁用背景）
         ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, 1);
         if (coinStack == null) {
-            // 猫猫币物品未初始化时使用安全占位
             coinStack = new net.minecraft.item.ItemStack(net.minecraft.init.Items.coal, 1, 1);
         }
         ItemDisplayWidget iconWidget = new ItemDisplayWidget().item(coinStack)
-            .size(16);
+            .size(22)
+            .background(new IDrawable[0]);
 
         // 余额数字
         TextWidget<?> amountText = IKey.dynamic(() -> getReadableString(this.coinSyncValue.getValue()))
-            .scale(0.8f)
+            .scale(0.75f)
             .asWidget()
-            .top(3)
-            .left(18)
-            .width(21);
+            .top(6)
+            .left(24)
+            .width(24);
 
         // 弹出按钮（点击弹出该种猫猫币）
-        ToggleButton ejectButton = new ToggleButton().overlay(
-            new IDrawable[] { GuiTextures.EJECT_COINS.asIcon()
-                .size(12) })
-            .size(12)
-            .left(40)
-            .syncHandler("nekoEjectCoin_" + currencyId)
-            .tooltipDynamic(builder -> {
-                builder.clearText();
-                builder.addLine(this.coinSyncValue.getValue() + " " + displayName);
-                builder.emptyLine();
-                builder.addLine(
-                    IKey.str("点击弹出该种猫猫币")
-                        .style(new EnumChatFormatting[] { IKey.GRAY, IKey.ITALIC }));
-                builder.setAutoUpdate(true);
-            });
+        ToggleButton ejectButton = new ToggleButton();
+        ejectButton.size(10);
+        ejectButton.disableThemeBackground(true);
+        ejectButton.disableHoverThemeBackground(true);
+        ejectButton.overlay(new IDrawable[] { IKey.str("▼") });
+        ejectButton.syncHandler("nekoEjectCoin_" + currencyId);
+        ejectButton.tooltipBuilder(builder -> {
+            builder.addLine(displayName + " 弹出");
+        });
 
         this.child(iconWidget)
             .child(amountText)
-            .child(ejectButton)
-            .height(16)
-            .width(54);
+            .child(ejectButton.left(48))
+            .height(22)
+            .width(58);
     }
 
     /**
