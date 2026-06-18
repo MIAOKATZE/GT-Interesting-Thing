@@ -2,6 +2,7 @@ package com.miaokatze.gtit.trade;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -275,6 +276,9 @@ public class NekoTradeRegistry {
 
     /**
      * 通过反射注入 TradeGroup 到 TradeDatabase
+     * <p>
+     * 注意：不将猫猫币交易加入 noConditionTrades，避免在原版VM贸易机中显示。
+     * 猫猫机通过 NekoVendingMachineGui.updateTradeDisplay() 手动添加猫猫币交易。
      */
     @SuppressWarnings("unchecked")
     private static void injectTradeGroup(TradeGroup tradeGroup, TradeCategory category) throws Exception {
@@ -290,10 +294,8 @@ public class NekoTradeRegistry {
         tradeCategories.get(category)
             .add(tradeGroup.getId());
 
-        // 如果没有条件，添加到 noConditionTrades
-        if (tradeGroup.hasNoConditions()) {
-            TradeDatabase.INSTANCE.noConditionTrades.add(tradeGroup);
-        }
+        // 不添加到 noConditionTrades —— 猫猫币交易不应出现在原版VM中
+        // 猫猫机通过 updateTradeDisplay() 手动构建 TradeItemDisplay
     }
 
     /**
@@ -359,6 +361,13 @@ public class NekoTradeRegistry {
      */
     public static boolean isNekoTradeGroup(UUID tradeGroupId) {
         return NEKO_TRADE_GROUP_IDS.contains(tradeGroupId);
+    }
+
+    /**
+     * 获取所有猫猫币交易组的 UUID 集合
+     */
+    public static Set<UUID> getNekoTradeGroupIds() {
+        return Collections.unmodifiableSet(NEKO_TRADE_GROUP_IDS);
     }
 
     /**

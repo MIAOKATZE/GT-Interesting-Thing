@@ -21,8 +21,6 @@ import com.cleanroommc.modularui.api.value.IIntValue;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
-import com.cleanroommc.modularui.drawable.Icon;
-import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.RichTooltip;
@@ -41,7 +39,6 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.CycleButtonWidget;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.ListWidget;
-import com.cleanroommc.modularui.widgets.PageButton;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
@@ -70,6 +67,7 @@ import com.cubefury.vendingmachine.storage.NameCache;
 import com.cubefury.vendingmachine.trade.FavouritesTracker;
 import com.cubefury.vendingmachine.trade.TradeCategory;
 import com.cubefury.vendingmachine.trade.TradeDatabase;
+import com.cubefury.vendingmachine.trade.TradeGroup;
 import com.cubefury.vendingmachine.util.Translator;
 import com.gtnewhorizon.gtnhlib.config.ConfigurationManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -201,6 +199,26 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             syncManager.isClient(),
             this.getBase() != null && this.getBase()
                 .getActive());
+
+        // 服务端日志：诊断原版VM交易是否在 TradeDatabase 中
+        if (!syncManager.isClient()) {
+            GTInterestingThing.LOG.info(
+                "[NEKO] TradeDatabase 状态: tradeGroups={}, noConditionTrades={}, totalTrades={}",
+                TradeDatabase.INSTANCE.getTradeGroupCount(),
+                TradeDatabase.INSTANCE.noConditionTrades.size(),
+                TradeDatabase.INSTANCE.getTradeCount());
+            // 检查 noConditionTrades 中有多少是猫猫币交易
+            int nekoNoCondition = 0;
+            int vmNoCondition = 0;
+            for (TradeGroup tg : TradeDatabase.INSTANCE.noConditionTrades) {
+                if (NekoTradeRegistry.isNekoTradeGroup(tg.getId())) {
+                    nekoNoCondition++;
+                } else {
+                    vmNoCondition++;
+                }
+            }
+            GTInterestingThing.LOG.info("[NEKO] noConditionTrades 分类: neko={}, vm={}", nekoNoCondition, vmNoCondition);
+        }
         try {
             this.nekoGuiData = guiData;
             // 必须先设置父类的 guiData，因为 super.registerSyncValues() 依赖它
@@ -343,7 +361,11 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     @Override
     public void restorePreviousSettings() {
         if (this.nekoTabController.isInitialised()) {
-            this.nekoTabController.setPage(lastPage);
+            // 猫猫机只有3个标签页(0-2)，而 lastPage 是静态字段，
+            // 可能保留原版VM的值(如8)，需要 clamp 到有效范围
+            int maxPage = this.nekoTradeCategories.size() - 1;
+            int page = Math.min(lastPage, maxPage);
+            this.nekoTabController.setPage(page);
         }
         this.nekoSearchBar.setText(lastSearch);
     }
@@ -354,68 +376,71 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         this.updateTradeDisplayNeko(trades, this.displayedTradesTiles);
         this.updateTradeDisplayNeko(trades, this.displayedTradesList);
 
-        // 更新猫猫币/闪烁猫猫币专用 widget 列表
-        // 按货币类型过滤交易数据
-        List<TradeItemDisplay> allTrades = trades.get(TradeCategory.ALL);
-        int allSize = allTrades != null ? allTrades.size() : 0;
-
+        // 手动构建猫猫币交易的 TradeItemDisplay
+        // 因为猫猫币交易不在 noConditionTrades 中，NetTradeDisplaySync 不会发送它们
+        // 需要从 TradeDatabase 直接获取猫猫币 TradeGroup 并构建 TradeItemDisplay
         List<TradeItemDisplay> nekoTrades = new ArrayList<>();
         List<TradeItemDisplay> shimmeringTrades = new ArrayList<>();
         List<TradeItemDisplay> otherTrades = new ArrayList<>();
 
-        GTInterestingThing.LOG
-            .info("[NEKO] updateTradeDisplay: trades map keys={}, ALL size={}", trades.keySet(), allSize);
+        // 从 trades 参数中获取原版VM交易（非猫猫币交易）
+        List<TradeItemDisplay> allVmTrades = trades.get(TradeCategory.ALL);
+        if (allVmTrades != null) {
+            for (TradeItemDisplay trade : allVmTrades) {
+                // 原版VM交易不应包含猫猫币交易（因为不在 noConditionTrades 中）
+                // 但为安全起见，仍然过滤
+                if (NekoTradeRegistry.isNekoTradeGroup(trade.tgID)) {
+                    continue;
+                }
+                otherTrades.add(trade);
+            }
+        }
 
-        if (allTrades != null) {
-            for (TradeItemDisplay trade : allTrades) {
-                NekoTradeRegistry.NekoTradeInfo info = NekoTradeRegistry.getNekoTradeInfo(trade.tgID);
-                if (info != null) {
-                    if ("neko".equals(info.currencyId)) {
-                        nekoTrades.add(trade);
-                    } else if ("shimmeringNeko".equals(info.currencyId)) {
-                        shimmeringTrades.add(trade);
-                    } else {
-                        otherTrades.add(trade);
-                    }
+        // 从 TradeDatabase 获取猫猫币 TradeGroup，手动构建 TradeItemDisplay
+        for (UUID tgId : NekoTradeRegistry.getNekoTradeGroupIds()) {
+            TradeGroup tg = TradeDatabase.INSTANCE.getTradeGroupFromId(tgId);
+            if (tg == null) continue;
+
+            NekoTradeRegistry.NekoTradeInfo info = NekoTradeRegistry.getNekoTradeInfo(tgId);
+            String currencyId = info != null ? info.currencyId : null;
+
+            for (int i = 0; i < tg.getTrades()
+                .size(); i++) {
+                com.cubefury.vendingmachine.trade.Trade trade = tg.getTrades()
+                    .get(i);
+                TradeItemDisplay display = new TradeItemDisplay(
+                    trade.fromCurrency,
+                    trade.fromItems,
+                    trade.nonConsumedItems,
+                    trade.toItems,
+                    trade.getDisplayItem(),
+                    tgId,
+                    i,
+                    -1L, // cooldown: 无冷却信息
+                    "", // cooldownText
+                    false, // hasCooldown
+                    true, // enabled
+                    true, // tradeableNowPersonal
+                    true, // tradeableNowTeam
+                    0 // cdTradeCount
+                );
+
+                if ("neko".equals(currencyId)) {
+                    nekoTrades.add(display);
+                } else if ("shimmeringNeko".equals(currencyId)) {
+                    shimmeringTrades.add(display);
                 } else {
-                    // 非猫猫币交易，尝试通过 fromItems 判断
-                    boolean isNeko = false;
-                    boolean isShimmering = false;
-                    for (com.cubefury.vendingmachine.util.BigItemStack fromItem : trade.fromItems) {
-                        String id = NekoCurrencyRegistrar.getNekoCurrencyId(fromItem.getBaseStack());
-                        if ("neko".equals(id)) isNeko = true;
-                        else if ("shimmeringNeko".equals(id)) isShimmering = true;
-                    }
-                    if (isNeko) nekoTrades.add(trade);
-                    else if (isShimmering) shimmeringTrades.add(trade);
-                    else otherTrades.add(trade);
+                    otherTrades.add(display);
                 }
             }
         }
 
         GTInterestingThing.LOG.info(
-            "[NEKO] updateTradeDisplay: all={}, neko={}, shimmering={}, other={}",
-            allSize,
+            "[NEKO] updateTradeDisplay: vmTrades={}, neko={}, shimmering={}, other={}",
+            allVmTrades != null ? allVmTrades.size() : 0,
             nekoTrades.size(),
             shimmeringTrades.size(),
             otherTrades.size());
-
-        // 调试日志：显示 otherTrades 的前5条交易信息
-        if (!otherTrades.isEmpty()) {
-            int logCount = Math.min(5, otherTrades.size());
-            for (int i = 0; i < logCount; i++) {
-                TradeItemDisplay t = otherTrades.get(i);
-                GTInterestingThing.LOG.info(
-                    "[NEKO] otherTrades[{}]: tgID={}, fromItems={}, toItems={}",
-                    i,
-                    t.tgID,
-                    t.fromItems.size(),
-                    t.toItems.size());
-            }
-            if (otherTrades.size() > 5) {
-                GTInterestingThing.LOG.info("[NEKO] otherTrades: ... and {} more", otherTrades.size() - 5);
-            }
-        }
 
         updateFilteredWidgetList(this.nekoSpecificTiles, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificTiles, shimmeringTrades);
@@ -574,7 +599,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     /**
      * 创建分类标签（猫猫币、闪烁猫猫币、其他）
      * <p>
-     * 使用 PageButton + ItemDrawable 显示 ItemStack 图标，
+     * 使用 NekoPageButton 显示 ItemStack 图标，
      * 替代 VendingPageButton 的 TradeCategory 纹理图标。
      */
     private IWidget createNekoCategoryTabs(PagedWidget.Controller tabController) {
@@ -586,32 +611,26 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             NekoCurrencyRegistrar.getItemStack("shimmeringNeko", 1), new ItemStack(Items.written_book) };
         String[] tabNames = { "猫猫币", "闪烁猫猫币", "其他" };
 
+        // 调试日志：确认图标 ItemStack 是否有效
+        for (int i = 0; i < tabIcons.length; i++) {
+            GTInterestingThing.LOG.info("[NEKO] Tab[{}] icon: {} (null={})", i, tabIcons[i], tabIcons[i] == null);
+        }
+
         for (int i = 0; i < this.nekoTradeCategories.size(); ++i) {
             final int index = i;
             final String tabName = tabNames[i];
             final ItemStack iconStack = tabIcons[i];
-            tabColumn.child((IWidget) new PageButton(index, tabController) {
-
-                @Override
-                public Interactable.Result onMousePressed(int mouseButton) {
-                    lastPage = index;
-                    return super.onMousePressed(mouseButton);
-                }
-            }.tab(GuiTextures.TAB_LEFT, -1)
-                .overlay(new IDrawable[] { new DynamicDrawable(() -> {
-                    if (NekoVendingMachineGui.this.highlightedTabs
-                        .contains(NekoVendingMachineGui.this.nekoTradeCategories.get(index))) {
-                        return GuiTextures.TAB_HIGHLIGHT.asIcon()
-                            .size(20, 20);
-                    }
-                    return IDrawable.EMPTY;
-                }), iconStack != null ? new Icon(new ItemDrawable(iconStack)).size(16)
-                    .margin(6)
-                    .center() : IDrawable.EMPTY })
-                .tooltipBuilder(builder -> {
-                    builder.clearText();
-                    builder.addLine(IKey.str(tabName));
-                }));
+            tabColumn.child(
+                (IWidget) new NekoPageButton(
+                    i,
+                    tabController,
+                    this.nekoTradeCategories.get(i),
+                    this.highlightedTabs,
+                    iconStack).tab(GuiTextures.TAB_LEFT, -1)
+                        .tooltipBuilder(builder -> {
+                            builder.clearText();
+                            builder.addLine(IKey.str(tabName));
+                        }));
         }
         return tabColumn;
     }
