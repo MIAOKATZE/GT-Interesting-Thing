@@ -72,6 +72,7 @@ import com.cubefury.vendingmachine.trade.TradeCategory;
 import com.cubefury.vendingmachine.trade.TradeDatabase;
 import com.cubefury.vendingmachine.util.Translator;
 import com.gtnewhorizon.gtnhlib.config.ConfigurationManager;
+import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
@@ -106,6 +107,27 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     private final PagedWidget.Controller nekoTabController;
     private final List<ListWidget> nekoTradeLists;
     private final SearchBar nekoSearchBar;
+
+    // 反射缓存：父类 MTEVendingMachineGui.guiData
+    private static java.lang.reflect.Field parentGuiDataField;
+
+    /**
+     * 通过反射设置父类的 private guiData 字段
+     * 父类的 registerSyncValues() 和其他方法依赖 this.guiData，
+     * 但该字段是 private 的，子类无法直接访问。
+     */
+    private void setParentGuiData(PosGuiData guiData) {
+        try {
+            if (parentGuiDataField == null) {
+                parentGuiDataField = MTEVendingMachineGui.class.getDeclaredField("guiData");
+                parentGuiDataField.setAccessible(true);
+            }
+            parentGuiDataField.set(this, guiData);
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NEKO] 反射设置父类 guiData 失败!", e);
+        }
+    }
+
     private Flow nekoWalletButtons;
     private CycleButtonWidget nekoVolumeButton;
     private IPanelHandler nekoVolumePanel;
@@ -144,65 +166,78 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
      */
     @Override
     public ModularPanel build(PosGuiData guiData, PanelSyncManager syncManager, UISettings uiSettings) {
-        this.nekoGuiData = guiData;
-        this.registerSyncValues(syncManager);
+        GTInterestingThing.LOG.info(
+            "[NEKO] NekoVendingMachineGui.build() 开始: isClient={}, baseActive={}",
+            syncManager.isClient(),
+            this.getBase() != null && this.getBase()
+                .getActive());
+        try {
+            this.nekoGuiData = guiData;
+            // 必须先设置父类的 guiData，因为 super.registerSyncValues() 依赖它
+            this.setParentGuiData(guiData);
+            this.registerSyncValues(syncManager);
 
-        // 创建主面板
-        ModularPanel panel = (ModularPanel) ((ModularPanel) new TradeMainPanel(
-            "MTEMultiBlockBase",
-            this,
-            guiData,
-            syncManager).size(178, 320)).padding(4);
+            // 创建主面板
+            ModularPanel panel = (ModularPanel) ((ModularPanel) new TradeMainPanel(
+                "MTEMultiBlockBase",
+                this,
+                guiData,
+                syncManager).size(178, 320)).padding(4);
 
-        if (syncManager.isClient()) {
-            // 标记猫猫售货机 GUI 已打开（供 BGM 系统使用）
-            isNekoGuiOpen = true;
-            panel.onCloseAction(() -> {
-                FavouritesTracker.INSTANCE.saveFavourites();
-                // 标记猫猫售货机 GUI 已关闭
-                isNekoGuiOpen = false;
-                // 不调用 VMMusicManager.stopVendingMachineMusic()
-            });
-            // 不调用 VMMusicManager.startVendingMachineMusic(true)
+            if (syncManager.isClient()) {
+                // 标记猫猫售货机 GUI 已打开（供 BGM 系统使用）
+                isNekoGuiOpen = true;
+                panel.onCloseAction(() -> {
+                    FavouritesTracker.INSTANCE.saveFavourites();
+                    // 标记猫猫售货机 GUI 已关闭
+                    isNekoGuiOpen = false;
+                    // 不调用 VMMusicManager.stopVendingMachineMusic()
+                });
+                // 不调用 VMMusicManager.startVendingMachineMusic(true)
+            }
+
+            // 分类标签（左侧）
+            panel.child(this.createNekoCategoryTabs(this.nekoTabController));
+
+            // 主列
+            Flow mainColumn = (Flow) Flow.column()
+                .width(170);
+            if (syncManager.isClient()) {
+                panel.child(this.createNekoQolButtonColumn());
+                ((Flow) ((Flow) mainColumn.child(
+                    this.createNekoTitleTextStyle(
+                        IKey.lang("gt.blockmachines.multimachine.vendingmachine.name.gui")
+                            .style(IKey.DARK_GRAY)
+                            .get()))).child((IWidget) this.nekoSearchBar))
+                                .child(this.createNekoTradeUI((TradeMainPanel) panel, this.nekoTabController));
+                // 猫猫币显示行（替代原版 CoinInventoryRow）
+                mainColumn.child(this.createNekoCoinInventoryRow((TradeMainPanel) panel, syncManager));
+            }
+
+            // 音量面板（保留原版功能，但不播放 BGM）
+            this.nekoVolumePanel = syncManager.syncedPanel(
+                "volume",
+                true,
+                (syncManager1, syncHandler) -> new VolumeControlGui()
+                    .createPanel(syncManager1, (IWidget) this.nekoVolumeButton));
+
+            // 玩家背包栏
+            mainColumn.child(this.createNekoInventoryRow());
+
+            panel.child((IWidget) mainColumn);
+            // 右侧空列
+            panel.child(
+                (IWidget) ((Flow) Flow.column()
+                    .size(20)).right(5));
+            // IO 列（猫猫币版本）
+            panel.child(this.createNekoIOColumn());
+
+            GTInterestingThing.LOG.info("[NEKO] NekoVendingMachineGui.build() 完成");
+            return panel;
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[NEKO] NekoVendingMachineGui.build() 异常!", t);
+            throw t;
         }
-
-        // 分类标签（左侧）
-        panel.child(this.createNekoCategoryTabs(this.nekoTabController));
-
-        // 主列
-        Flow mainColumn = (Flow) Flow.column()
-            .width(170);
-        if (syncManager.isClient()) {
-            panel.child(this.createNekoQolButtonColumn());
-            ((Flow) ((Flow) mainColumn.child(
-                this.createNekoTitleTextStyle(
-                    IKey.lang("gt.blockmachines.multimachine.vendingmachine.name.gui")
-                        .style(IKey.DARK_GRAY)
-                        .get()))).child((IWidget) this.nekoSearchBar))
-                            .child(this.createNekoTradeUI((TradeMainPanel) panel, this.nekoTabController));
-            // 猫猫币显示行（替代原版 CoinInventoryRow）
-            mainColumn.child(this.createNekoCoinInventoryRow((TradeMainPanel) panel, syncManager));
-        }
-
-        // 音量面板（保留原版功能，但不播放 BGM）
-        this.nekoVolumePanel = syncManager.syncedPanel(
-            "volume",
-            true,
-            (syncManager1, syncHandler) -> new VolumeControlGui()
-                .createPanel(syncManager1, (IWidget) this.nekoVolumeButton));
-
-        // 玩家背包栏
-        mainColumn.child(this.createNekoInventoryRow());
-
-        panel.child((IWidget) mainColumn);
-        // 右侧空列
-        panel.child(
-            (IWidget) ((Flow) Flow.column()
-                .size(20)).right(5));
-        // IO 列（猫猫币版本）
-        panel.child(this.createNekoIOColumn());
-
-        return panel;
     }
 
     /**

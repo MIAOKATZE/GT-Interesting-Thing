@@ -39,6 +39,10 @@ public class NekoCoinDisplay extends Flow {
 
         // 猫猫币图标（纯展示）
         ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, 1);
+        if (coinStack == null) {
+            // 猫猫币物品未初始化时使用安全占位
+            coinStack = new net.minecraft.item.ItemStack(net.minecraft.init.Items.coal, 1, 1);
+        }
         ItemDisplayWidget iconWidget = new ItemDisplayWidget().item(coinStack)
             .size(16);
 

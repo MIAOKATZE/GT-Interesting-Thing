@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.main;
 
+import net.minecraft.server.MinecraftServer;
+
 import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.command.GTITGiftCommand;
 import com.miaokatze.gtit.common.loot.LootRegistrar;
@@ -11,6 +13,9 @@ import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
+import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.trade.NekoTradeRegistry;
+import com.miaokatze.gtit.trade.NekoWalletManager;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
@@ -183,8 +188,12 @@ public class CommonProxy {
         }
 
         // 初始化猫猫币货币注册表（物品在此阶段已全部注册完成）
-        // [DEBUG] 暂时禁用以定位崩溃
-        // NekoCurrencyRegistrar.init();
+        // 原因：之前因 getTooltip() NPE 崩溃而临时禁用，现 @SkipGenerateDescription 已修复根因
+        try {
+            NekoCurrencyRegistrar.init();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
+        }
     }
 
     /**
@@ -201,15 +210,18 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStarted(FMLServerStartedEvent event) {
-        // [DEBUG] 暂时禁用以定位崩溃
-        /*
-         * MinecraftServer server = MinecraftServer.getServer();
-         * if (server != null && server.getEntityWorld() != null) {
-         * NekoWalletManager.INSTANCE.init(server.getEntityWorld());
-         * // 初始化猫猫币交易注册（在钱包管理器初始化之后）
-         * NekoTradeRegistry.initialize();
-         * }
-         */
+        // 初始化猫猫币钱包管理器和交易注册
+        // 原因：之前因 getTooltip() NPE 崩溃而临时禁用，现 @SkipGenerateDescription 已修复根因
+        try {
+            MinecraftServer server = MinecraftServer.getServer();
+            if (server != null && server.getEntityWorld() != null) {
+                NekoWalletManager.INSTANCE.init(server.getEntityWorld());
+                // 初始化猫猫币交易注册（在钱包管理器初始化之后）
+                NekoTradeRegistry.initialize();
+            }
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("猫猫币钱包/交易初始化失败", t);
+        }
     }
 
     /**
