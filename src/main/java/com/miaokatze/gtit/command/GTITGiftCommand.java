@@ -12,14 +12,19 @@ import net.minecraft.util.EnumChatFormatting;
 
 import com.miaokatze.gtit.config.GiftConfig;
 import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
+import com.miaokatze.gtit.trade.NekoTradeConfig;
+import com.miaokatze.gtit.trade.NekoTradeRegistry;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
- * /gtit gift 指令
+ * /gtit 指令
  * - /gtit gift certain: 将当前背包物品设为必中物品
  * - /gtit gift random <count>: 将当前背包物品设为随机物品，设置随机数
  * - /gtit gift reset: 恢复默认配置
+ * - /gtit nekovm reload: 热重载猫猫币交易配置
+ * - /gtit nekovm list: 列出当前所有猫猫币交易
+ * - /gtit nekovm save: 手动保存当前交易数据到配置文件
  */
 public class GTITGiftCommand extends CommandBase {
 
@@ -30,7 +35,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain|random <count>|reset";
+        return "/gtit gift certain|random <count>|reset | /gtit nekovm reload|list|save";
     }
 
     @Override
@@ -50,7 +55,20 @@ public class GTITGiftCommand extends CommandBase {
             return;
         }
 
-        if (args.length < 2 || !args[0].equals("gift")) {
+        if (args.length < 1) {
+            sendHelp(sender);
+            return;
+        }
+
+        switch (args[0]) {
+            case "gift" -> handleGift(sender, player, args);
+            case "nekovm" -> handleNekoVM(sender, player, args);
+            default -> sendHelp(sender);
+        }
+    }
+
+    private void handleGift(ICommandSender sender, EntityPlayerMP player, String[] args) {
+        if (args.length < 2) {
             sendHelp(sender);
             return;
         }
@@ -61,6 +79,46 @@ public class GTITGiftCommand extends CommandBase {
             case "reset" -> handleReset(player);
             default -> sendHelp(sender);
         }
+    }
+
+    private void handleNekoVM(ICommandSender sender, EntityPlayerMP player, String[] args) {
+        if (args.length < 2) {
+            sendHelp(sender);
+            return;
+        }
+
+        switch (args[1]) {
+            case "reload" -> handleNekoVMReload(player);
+            case "list" -> handleNekoVMList(player);
+            case "save" -> handleNekoVMSave(player);
+            default -> sendHelp(sender);
+        }
+    }
+
+    private void handleNekoVMReload(EntityPlayerMP player) {
+        boolean success = NekoTradeRegistry.reload();
+        if (success) {
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易配置已热重载"));
+        } else {
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "猫猫币交易配置热重载失败，请查看服务器日志"));
+        }
+    }
+
+    private void handleNekoVMList(EntityPlayerMP player) {
+        List<String> trades = NekoTradeRegistry.getTradeList();
+        if (trades.isEmpty()) {
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "当前没有猫猫币交易"));
+            return;
+        }
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "当前猫猫币交易列表："));
+        for (String trade : trades) {
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + trade));
+        }
+    }
+
+    private void handleNekoVMSave(EntityPlayerMP player) {
+        NekoTradeConfig.save(NekoTradeConfig.load());
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易数据已保存到配置文件"));
     }
 
     private void handleCertain(EntityPlayerMP player) {
@@ -118,6 +176,9 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit gift certain - 设置必中物品为当前背包"));
         sender.addChatMessage(new ChatComponentText("/gtit gift random <count> - 设置随机物品为当前背包"));
         sender.addChatMessage(new ChatComponentText("/gtit gift reset - 重置为默认配置"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载猫猫币交易配置"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm list - 列出当前所有猫猫币交易"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存当前交易数据到配置文件"));
     }
 
     private String getItemId(ItemStack stack) {

@@ -1,14 +1,14 @@
 package com.miaokatze.gtit.trade;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import net.minecraft.init.Items;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
 import com.cubefury.vendingmachine.trade.Trade;
@@ -24,6 +24,8 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 通过反射将猫猫币交易注入 VM 的 TradeDatabase。
  * 猫猫币花费存储在 Trade.fromItems 中（因为 CurrencyItem 不支持猫猫币），
  * checkTrade 中对猫猫币物品走 NekoWallet 逻辑而非输入槽逻辑。
+ * <p>
+ * 交易数据从 NekoTradeConfig 加载，支持热重载。
  */
 public class NekoTradeRegistry {
 
@@ -47,12 +49,14 @@ public class NekoTradeRegistry {
      */
     public static class NekoTradeInfo {
 
-        public final String currencyId; // "neko" 或 "shimmeringNeko"
+        public final String currencyId; // "neko" 或 "shimmeringNeko"，无猫猫币花费时为 null
         public final int cost; // 花费数量
+        public final String entryId; // 对应的 NekoTradeEntry.id
 
-        public NekoTradeInfo(String currencyId, int cost) {
+        public NekoTradeInfo(String currencyId, int cost, String entryId) {
             this.currencyId = currencyId;
             this.cost = cost;
+            this.entryId = entryId;
         }
     }
 
@@ -91,68 +95,120 @@ public class NekoTradeRegistry {
             return;
         }
 
-        // 注册猫猫币交易
-        registerNekoTrades();
+        // 确保配置文件存在
+        NekoTradeConfig.init();
+
+        // 从配置加载并注册交易
+        loadAndRegisterTrades();
 
         GTInterestingThing.LOG.info("猫猫币交易注册完成，共 {} 个交易组", NEKO_TRADES.size());
     }
 
     /**
-     * 注册猫猫币交易
+     * 从 NekoTradeConfig 加载交易数据并注册
      */
-    private static void registerNekoTrades() {
-        // 猫猫币交易（使用 MISC 分类）
-        // 交易1: 10 猫猫币 → 16x 铁锭
-        registerTrade("neko", 10, createBigItemStack(Items.iron_ingot, 16), TradeCategory.MISC);
-        // 交易2: 30 猫猫币 → 8x 金锭
-        registerTrade("neko", 30, createBigItemStack(Items.gold_ingot, 8), TradeCategory.MISC);
-        // 交易3: 50 猫猫币 → 4x 钻石
-        registerTrade("neko", 50, createBigItemStack(Items.diamond, 4), TradeCategory.RAW);
-        // 交易4: 100 猫猫币 → 1x 下界之星
-        registerTrade("neko", 100, createBigItemStack(Items.nether_star, 1), TradeCategory.RAW);
+    private static void loadAndRegisterTrades() {
+        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+        List<NekoTradeEntry> trades = data.getTrades();
 
-        // 闪烁猫猫币交易
-        // 交易5: 5 闪烁猫猫币 → 64x 铁锭
-        registerTrade("shimmeringNeko", 5, createBigItemStack(Items.iron_ingot, 64), TradeCategory.MISC);
-        // 交易6: 10 闪烁猫猫币 → 32x 金锭
-        registerTrade("shimmeringNeko", 10, createBigItemStack(Items.gold_ingot, 32), TradeCategory.MISC);
-        // 交易7: 20 闪烁猫猫币 → 16x 钻石
-        registerTrade("shimmeringNeko", 20, createBigItemStack(Items.diamond, 16), TradeCategory.RAW);
-        // 交易8: 50 闪烁猫猫币 → 4x 下界之星
-        registerTrade("shimmeringNeko", 50, createBigItemStack(Items.nether_star, 4), TradeCategory.RAW);
+        int successCount = 0;
+        for (NekoTradeEntry entry : trades) {
+            if (registerTradeFromEntry(entry)) {
+                successCount++;
+            }
+        }
+
+        GTInterestingThing.LOG.info("从配置加载猫猫币交易: 共 {} 条，成功注册 {} 条", trades.size(), successCount);
     }
 
     /**
-     * 注册单个猫猫币交易
-     * <p>
-     * 创建 TradeGroup（含1个Trade），注入 TradeDatabase。
-     * 猫猫币花费放入 Trade.fromItems（因为 fromCurrency 不支持猫猫币）。
+     * 根据 NekoTradeEntry 注册单个交易
+     *
+     * @return 是否注册成功
      */
-    private static void registerTrade(String currencyId, int cost, BigItemStack outputItem, TradeCategory category) {
+    private static boolean registerTradeFromEntry(NekoTradeEntry entry) {
         try {
-            // 获取猫猫币 Item 对象
-            ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, 1);
-            if (coinStack == null) {
-                GTInterestingThing.LOG.error("注册猫猫币交易失败: 无法获取猫猫币物品 [currencyId={}]", currencyId);
-                return;
+            // 解析交易组 ID
+            UUID tradeGroupId;
+            try {
+                tradeGroupId = UUID.fromString(entry.getId());
+            } catch (IllegalArgumentException e) {
+                tradeGroupId = UUID.randomUUID();
+                GTInterestingThing.LOG.warn("交易条目 id 无效 [id={}]，已生成随机 UUID: {}", entry.getId(), tradeGroupId);
             }
-            Item coinItem = coinStack.getItem();
+
+            // 确定 currencyId 和 cost
+            String currencyId = null;
+            int cost = 0;
+            if (entry.getCurrency() != null) {
+                currencyId = entry.getCurrency()
+                    .getType();
+                cost = entry.getCurrency()
+                    .getAmount();
+            }
+
+            // 确定分类
+            TradeCategory category = determineCategory(entry, currencyId);
 
             // 创建 TradeGroup
             TradeGroup tradeGroup = new TradeGroup();
-            UUID tradeGroupId = UUID.randomUUID();
             tradeGroupIdField.set(tradeGroup, tradeGroupId);
             tradeGroupCategoryField.set(tradeGroup, category);
+            tradeGroup.cooldown = entry.getCooldown();
+            tradeGroup.maxTrades = entry.getMaxTrades();
 
             // 创建 Trade
             Trade trade = new Trade();
-            // 猫猫币花费放入 fromItems（因为 fromCurrency 不支持猫猫币）
-            BigItemStack coinCost = new BigItemStack(coinItem, cost);
-            trade.fromItems.add(coinCost);
-            // 输出物品
-            trade.toItems.add(outputItem);
-            // 显示物品默认取 toItems[0]
-            trade.displayItem = outputItem.copy();
+
+            // 猫猫币花费放入 fromItems
+            if (currencyId != null && cost > 0) {
+                ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, 1);
+                if (coinStack == null) {
+                    GTInterestingThing.LOG
+                        .error("注册猫猫币交易失败: 无法获取猫猫币物品 [currencyId={}, entryId={}]", currencyId, entry.getId());
+                    return false;
+                }
+                BigItemStack coinCost = new BigItemStack(coinStack.getItem(), cost);
+                trade.fromItems.add(coinCost);
+            }
+
+            // 需求物品放入 fromItems
+            if (entry.getFromItems() != null) {
+                for (NekoTradeEntry.ItemEntry itemEntry : entry.getFromItems()) {
+                    ItemStack fromStack = itemEntry.toItemStack();
+                    if (fromStack == null) {
+                        GTInterestingThing.LOG
+                            .warn("交易条目 fromItems 物品转换失败，跳过 [item={}, entryId={}]", itemEntry.getItem(), entry.getId());
+                        continue;
+                    }
+                    BigItemStack fromBigStack = new BigItemStack(fromStack);
+                    trade.fromItems.add(fromBigStack);
+                }
+            }
+
+            // 产物放入 toItems
+            if (entry.getToItems() != null) {
+                for (NekoTradeEntry.ItemEntry itemEntry : entry.getToItems()) {
+                    ItemStack toStack = itemEntry.toItemStack();
+                    if (toStack == null) {
+                        GTInterestingThing.LOG
+                            .warn("交易条目 toItems 物品转换失败，跳过 [item={}, entryId={}]", itemEntry.getItem(), entry.getId());
+                        continue;
+                    }
+                    BigItemStack toBigStack = new BigItemStack(toStack);
+                    trade.toItems.add(toBigStack);
+                }
+            }
+
+            // 检查 toItems 是否为空
+            if (trade.toItems.isEmpty()) {
+                GTInterestingThing.LOG.error("注册猫猫币交易失败: toItems 为空 [entryId={}]", entry.getId());
+                return false;
+            }
+
+            // 显示物品取 toItems[0].copy()
+            trade.displayItem = trade.toItems.get(0)
+                .copy();
 
             // 将 Trade 添加到 TradeGroup
             tradeGroup.getTrades()
@@ -163,19 +219,58 @@ public class NekoTradeRegistry {
 
             // 记录猫猫币交易信息
             NEKO_TRADE_GROUP_IDS.add(tradeGroupId);
-            NEKO_TRADES.put(tradeGroupId, new NekoTradeInfo(currencyId, cost));
+            NEKO_TRADES.put(tradeGroupId, new NekoTradeInfo(currencyId, cost, entry.getId()));
 
             GTInterestingThing.LOG.info(
-                "注册猫猫币交易: {} {} → {}x {} [分类: {}]",
-                cost,
-                NekoCurrencyRegistrar.getDisplayName(currencyId),
-                outputItem.stackSize,
-                outputItem.getBaseStack()
-                    .getDisplayName(),
-                category.name());
+                "注册猫猫币交易: {} {} → {} [分类: {}, entryId={}]",
+                cost > 0 ? cost + " " + NekoCurrencyRegistrar.getDisplayName(currencyId) : "物品交换",
+                "",
+                trade.toItems.stream()
+                    .map(
+                        b -> b.stackSize + "x "
+                            + b.getBaseStack()
+                                .getDisplayName())
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("无"),
+                category.name(),
+                entry.getId());
+            return true;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("注册猫猫币交易失败!", e);
+            GTInterestingThing.LOG.error("注册猫猫币交易失败 [entryId={}]!", entry.getId(), e);
+            return false;
         }
+    }
+
+    /**
+     * 确定交易的 TradeCategory
+     * <p>
+     * 分类规则：
+     * - 有 currency 且 type="neko" → TradeCategory.MISC
+     * - 有 currency 且 type="shimmeringNeko" → TradeCategory.MAGIC
+     * - 无 currency 但 fromItems 含猫猫币 → 对应分类
+     * - 其他 → TradeCategory.MISC
+     */
+    private static TradeCategory determineCategory(NekoTradeEntry entry, String currencyId) {
+        if (currencyId != null) {
+            if ("neko".equals(currencyId)) return TradeCategory.MISC;
+            if ("shimmeringNeko".equals(currencyId)) return TradeCategory.MAGIC;
+        }
+
+        // 无 currency，检查 fromItems 中是否含猫猫币
+        if (entry.getFromItems() != null) {
+            for (NekoTradeEntry.ItemEntry itemEntry : entry.getFromItems()) {
+                ItemStack stack = itemEntry.toItemStack();
+                if (stack != null) {
+                    String nekoId = NekoCurrencyRegistrar.getNekoCurrencyId(stack);
+                    if (nekoId != null) {
+                        if ("neko".equals(nekoId)) return TradeCategory.MISC;
+                        if ("shimmeringNeko".equals(nekoId)) return TradeCategory.MAGIC;
+                    }
+                }
+            }
+        }
+
+        return TradeCategory.MISC;
     }
 
     /**
@@ -202,6 +297,64 @@ public class NekoTradeRegistry {
     }
 
     /**
+     * 热重载猫猫币交易
+     * <p>
+     * 先移除旧的猫猫币交易，再从配置重新加载。
+     *
+     * @return 是否重载成功
+     */
+    public static boolean reload() {
+        GTInterestingThing.LOG.info("开始热重载猫猫币交易...");
+
+        try {
+            initReflection();
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("猫猫币交易反射初始化失败!", e);
+            return false;
+        }
+
+        try {
+            unregisterAllNekoTrades();
+            loadAndRegisterTrades();
+            GTInterestingThing.LOG.info("猫猫币交易热重载完成，共 {} 个交易组", NEKO_TRADES.size());
+            return true;
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("猫猫币交易热重载失败!", e);
+            return false;
+        }
+    }
+
+    /**
+     * 移除所有猫猫币交易
+     */
+    @SuppressWarnings("unchecked")
+    private static void unregisterAllNekoTrades() throws Exception {
+        Map<UUID, TradeGroup> tradeGroups = (Map<UUID, TradeGroup>) tradeGroupsField.get(TradeDatabase.INSTANCE);
+        Map<TradeCategory, Set<UUID>> tradeCategories = (Map<TradeCategory, Set<UUID>>) tradeCategoriesField
+            .get(TradeDatabase.INSTANCE);
+
+        // 从 tradeGroups 移除
+        for (UUID id : NEKO_TRADE_GROUP_IDS) {
+            tradeGroups.remove(id);
+        }
+
+        // 从 tradeCategories 移除
+        for (Map.Entry<TradeCategory, Set<UUID>> catEntry : tradeCategories.entrySet()) {
+            catEntry.getValue()
+                .removeAll(NEKO_TRADE_GROUP_IDS);
+        }
+
+        // 从 noConditionTrades 移除
+        TradeDatabase.INSTANCE.noConditionTrades.removeIf(tg -> NEKO_TRADE_GROUP_IDS.contains(tg.getId()));
+
+        // 清空本地记录
+        NEKO_TRADES.clear();
+        NEKO_TRADE_GROUP_IDS.clear();
+
+        GTInterestingThing.LOG.info("已移除所有猫猫币交易");
+    }
+
+    /**
      * 判断 TradeGroup 是否为猫猫币交易
      */
     public static boolean isNekoTradeGroup(UUID tradeGroupId) {
@@ -216,9 +369,59 @@ public class NekoTradeRegistry {
     }
 
     /**
-     * 创建 BigItemStack 辅助方法
+     * 获取当前所有猫猫币交易的文本描述列表
+     * <p>
+     * 用于 /gtit nekovm list 命令
+     *
+     * @return 交易描述列表，每条格式：[货币类型] 花费 → 产物 x数量
      */
-    private static BigItemStack createBigItemStack(Item item, int amount) {
-        return new BigItemStack(item, amount);
+    public static List<String> getTradeList() {
+        List<String> result = new ArrayList<>();
+        for (Map.Entry<UUID, NekoTradeInfo> entry : NEKO_TRADES.entrySet()) {
+            NekoTradeInfo info = entry.getValue();
+            TradeGroup tg = TradeDatabase.INSTANCE.getTradeGroupFromId(entry.getKey());
+            if (tg == null) continue;
+
+            String currencyLabel;
+            if (info.currencyId != null) {
+                currencyLabel = NekoCurrencyRegistrar.getDisplayName(info.currencyId);
+            } else {
+                currencyLabel = "物品交换";
+            }
+
+            for (Trade trade : tg.getTrades()) {
+                // 构建花费描述
+                String costDesc;
+                if (info.currencyId != null && info.cost > 0) {
+                    costDesc = info.cost + " " + currencyLabel;
+                } else {
+                    // 从 fromItems 构建
+                    StringBuilder sb = new StringBuilder();
+                    for (BigItemStack fromItem : trade.fromItems) {
+                        if (sb.length() > 0) sb.append(", ");
+                        sb.append(fromItem.stackSize)
+                            .append("x ")
+                            .append(
+                                fromItem.getBaseStack()
+                                    .getDisplayName());
+                    }
+                    costDesc = sb.length() > 0 ? sb.toString() : "免费";
+                }
+
+                // 构建产物描述
+                StringBuilder toDesc = new StringBuilder();
+                for (BigItemStack toItem : trade.toItems) {
+                    if (toDesc.length() > 0) toDesc.append(", ");
+                    toDesc.append(toItem.stackSize)
+                        .append("x ")
+                        .append(
+                            toItem.getBaseStack()
+                                .getDisplayName());
+                }
+
+                result.add(String.format("[%s] %s → %s", currencyLabel, costDesc, toDesc.toString()));
+            }
+        }
+        return result;
     }
 }

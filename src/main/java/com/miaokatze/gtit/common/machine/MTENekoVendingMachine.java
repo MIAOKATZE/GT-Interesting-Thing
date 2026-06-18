@@ -115,7 +115,7 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
         for (BigItemStack fromItem : trade.fromItems) {
             String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(fromItem.getBaseStack());
             if (currencyId != null) {
-                return new NekoTradeRegistry.NekoTradeInfo(currencyId, fromItem.stackSize);
+                return new NekoTradeRegistry.NekoTradeInfo(currencyId, fromItem.stackSize, null);
             }
         }
         return null;

@@ -16,7 +16,6 @@ import net.minecraft.util.EnumChatFormatting;
 import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
-import com.cleanroommc.modularui.api.value.IBoolValue;
 import com.cleanroommc.modularui.api.value.IIntValue;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
@@ -26,7 +25,6 @@ import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
-import com.cleanroommc.modularui.value.BoolValue;
 import com.cleanroommc.modularui.value.IntValue;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
@@ -62,7 +60,6 @@ import com.cubefury.vendingmachine.blocks.gui.TradeMainPanel;
 import com.cubefury.vendingmachine.blocks.gui.TradeRow;
 import com.cubefury.vendingmachine.blocks.gui.VendingPageButton;
 import com.cubefury.vendingmachine.blocks.gui.VolumeControlGui;
-import com.cubefury.vendingmachine.blocks.gui.WalletMode;
 import com.cubefury.vendingmachine.blocks.gui.fallingitem.FallingItemSlotFactory;
 import com.cubefury.vendingmachine.gui.GuiTextures;
 import com.cubefury.vendingmachine.gui.WidgetThemes;
@@ -79,7 +76,6 @@ import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 
 import gregtech.api.modularui2.GTWidgetThemes;
-import gregtech.common.modularui2.widget.SelectButton;
 
 /**
  * 猫猫售货机 GUI
@@ -115,6 +111,10 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     private List<TradeItemDisplayWidget> nekoSpecificList;
     /** 闪烁猫猫币页面专用的 LIST 模式 widget 列表 */
     private List<TradeItemDisplayWidget> shimmeringSpecificList;
+    /** 其他页面专用的 TILE 模式 widget 列表 */
+    private List<TradeItemDisplayWidget> otherSpecificTiles;
+    /** 其他页面专用的 LIST 模式 widget 列表 */
+    private List<TradeItemDisplayWidget> otherSpecificList;
     private final SearchBar nekoSearchBar;
 
     // 反射缓存：父类 MTEVendingMachineGui.guiData
@@ -158,25 +158,29 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
             this.nekoEjectSingleCoin.put(currencyId, false);
         }
-        // 初始化交易分类（精简版：全部、猫猫币、闪烁猫猫币）
-        // 猫猫币复用 MISC 枚举，闪烁猫猫币复用 MAGIC 枚举
+        // 初始化交易分类（猫猫币、闪烁猫猫币、其他）
+        // 猫猫币复用 MISC 枚举，闪烁猫猫币复用 MAGIC 枚举，其他复用 COMPONENTS 枚举
         // 实际交易数据始终从 ALL 读取，过滤通过 isNekoCurrencyTrade 实现
-        this.nekoTradeCategories.add(TradeCategory.ALL);
-        this.nekoTradeCategories.add(TradeCategory.MISC);    // 代表猫猫币
-        this.nekoTradeCategories.add(TradeCategory.MAGIC);   // 代表闪烁猫猫币
+        this.nekoTradeCategories.add(TradeCategory.MISC); // 代表猫猫币
+        this.nekoTradeCategories.add(TradeCategory.MAGIC); // 代表闪烁猫猫币
+        this.nekoTradeCategories.add(TradeCategory.COMPONENTS); // 代表"其他"
         // 初始化交易列表
         this.nekoTradeLists = new ArrayList<>();
-        // 初始化猫猫币/闪烁猫猫币专用 widget 列表（客户端）
+        // 初始化猫猫币/闪烁猫猫币/其他专用 widget 列表（客户端）
         if (VendingMachine.proxy.isClient()) {
             this.nekoSpecificTiles = new ArrayList<>();
             this.shimmeringSpecificTiles = new ArrayList<>();
+            this.otherSpecificTiles = new ArrayList<>();
             this.nekoSpecificList = new ArrayList<>();
             this.shimmeringSpecificList = new ArrayList<>();
+            this.otherSpecificList = new ArrayList<>();
             for (int i = 0; i < 300; i++) {
                 this.nekoSpecificTiles.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
                 this.shimmeringSpecificTiles.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
+                this.otherSpecificTiles.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
                 this.nekoSpecificList.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
                 this.shimmeringSpecificList.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
+                this.otherSpecificList.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
             }
         }
         // 初始化标签控制器和搜索栏（客户端）
@@ -385,12 +389,17 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
 
         GTInterestingThing.LOG.info(
             "[NEKO] updateTradeDisplay: all={}, neko={}, shimmering={}, other={}",
-            allSize, nekoTrades.size(), shimmeringTrades.size(), otherTrades.size());
+            allSize,
+            nekoTrades.size(),
+            shimmeringTrades.size(),
+            otherTrades.size());
 
         updateFilteredWidgetList(this.nekoSpecificTiles, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificTiles, shimmeringTrades);
+        updateFilteredWidgetList(this.otherSpecificTiles, otherTrades);
         updateFilteredWidgetList(this.nekoSpecificList, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificList, shimmeringTrades);
+        updateFilteredWidgetList(this.otherSpecificList, otherTrades);
 
         this.updateTabHighlightingNeko(trades);
     }
@@ -402,9 +411,11 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         synchronized (widgets) {
             for (int i = 0; i < 300; i++) {
                 if (i < filteredTrades.size()) {
-                    widgets.get(i).setDisplay(filteredTrades.get(i));
+                    widgets.get(i)
+                        .setDisplay(filteredTrades.get(i));
                 } else {
-                    widgets.get(i).setDisplay(null);
+                    widgets.get(i)
+                        .setDisplay(null);
                 }
             }
         }
@@ -538,16 +549,17 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     // ==================== UI 组件创建方法 ====================
 
     /**
-     * 创建分类标签（精简版：全部、猫猫币、闪烁猫猫币）
+     * 创建分类标签（猫猫币、闪烁猫猫币、其他）
      * <p>
      * 3个标签都使用 VendingPageButton，猫猫币复用 MISC 枚举图标，
-     * 闪烁猫猫币复用 MAGIC 枚举图标。tooltip 显示猫猫币名称。
+     * 闪烁猫猫币复用 MAGIC 枚举图标，其他复用 COMPONENTS 枚举图标。
+     * tooltip 显示标签页名称。
      */
     private IWidget createNekoCategoryTabs(PagedWidget.Controller tabController) {
         Flow tabColumn = (Flow) ((Flow) ((Flow) ((Flow) ((Flow) ((Flow) Flow.column()
             .excludeAreaInRecipeViewer()).width(40)).height(300)).left(-29)).top(40)).coverChildren();
 
-        String[] tabNames = { "全部", "猫猫币", "闪烁猫猫币" };
+        String[] tabNames = { "猫猫币", "闪烁猫猫币", "其他" };
         for (int i = 0; i < this.nekoTradeCategories.size(); ++i) {
             final int index = i;
             final String tabName = tabNames[i];
@@ -576,52 +588,44 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                 Arrays.asList(
                     Arrays.asList(
                         this.nekoVolumeButton = (CycleButtonWidget) ((CycleButtonWidget) ((CycleButtonWidget) ((CycleButtonWidget) new CycleButtonWidget()
-                            .size(14)).overlay(
-                                new IDrawable[] { new DynamicDrawable(
-                                    () -> {
+                            .size(14)).overlay(new IDrawable[] { new DynamicDrawable(() -> {
+                                NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
+                                boolean isPlaying = handler != null && handler.isPlaying();
+                                return (isPlaying ? MusicTrack.LUNCH_BREAK.getTexture() : MusicTrack.NONE.getTexture())
+                                    .size(14);
+                            }) })).stateCount(2)
+                                .value((IIntValue) new IntValue.Dynamic(() -> {
+                                    NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
+                                    return handler != null && handler.isPlaying() ? 1 : 0;
+                                }, val -> {
+                                    if (Interactable.hasShiftDown()) {
+                                        this.nekoVolumePanel.togglePanel();
+                                    } else {
                                         NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                                        boolean isPlaying = handler != null && handler.isPlaying();
-                                        return (isPlaying
-                                            ? MusicTrack.LUNCH_BREAK.getTexture()
-                                            : MusicTrack.NONE.getTexture()).size(14);
-                                    }) })).stateCount(2)
-                                        .value(
-                                            (IIntValue) new IntValue.Dynamic(
-                                                () -> {
-                                                    NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                                                    return handler != null && handler.isPlaying() ? 1 : 0;
-                                                },
-                                                val -> {
-                                                    if (Interactable.hasShiftDown()) {
-                                                        this.nekoVolumePanel.togglePanel();
-                                                    } else {
-                                                        NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                                                        if (handler != null) {
-                                                            if (val == 1) {
-                                                                handler.forceStartBGM();
-                                                            } else {
-                                                                handler.forceStopBGM();
-                                                            }
-                                                        }
-                                                    }
-                                                }))
-                                        .tooltipDynamic(builder -> {
-                                            builder.clearText();
-                                            NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                                            boolean isPlaying = handler != null && handler.isPlaying();
-                                            builder.addLine(
-                                                IKey.str(isPlaying ? "BGM: 开启" : "BGM: 关闭"));
-                                            builder.addLine(
-                                                (IDrawable) IKey
-                                                    .lang(
-                                                        "vendingmachine.gui.volume.tooltip_volume_display",
-                                                        new Object[] { VolumeControlGui.getVolumeAsString() })
-                                                    .style(EnumChatFormatting.GRAY));
-                                            builder.addLine(
-                                                (IDrawable) IKey
-                                                    .lang("vendingmachine.gui.volume.tooltip_open_panel")
-                                                    .style(EnumChatFormatting.GRAY));
-                                        })).tooltipAutoUpdate(true),
+                                        if (handler != null) {
+                                            if (val == 1) {
+                                                handler.forceStartBGM();
+                                            } else {
+                                                handler.forceStopBGM();
+                                            }
+                                        }
+                                    }
+                                }))
+                                .tooltipDynamic(builder -> {
+                                    builder.clearText();
+                                    NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
+                                    boolean isPlaying = handler != null && handler.isPlaying();
+                                    builder.addLine(IKey.str(isPlaying ? "BGM: 开启" : "BGM: 关闭"));
+                                    builder.addLine(
+                                        (IDrawable) IKey
+                                            .lang(
+                                                "vendingmachine.gui.volume.tooltip_volume_display",
+                                                new Object[] { VolumeControlGui.getVolumeAsString() })
+                                            .style(EnumChatFormatting.GRAY));
+                                    builder.addLine(
+                                        (IDrawable) IKey.lang("vendingmachine.gui.volume.tooltip_open_panel")
+                                            .style(EnumChatFormatting.GRAY));
+                                })).tooltipAutoUpdate(true),
                         (CycleButtonWidget) ((CycleButtonWidget) ((CycleButtonWidget) ((CycleButtonWidget) new CycleButtonWidget()
                             .size(14)).overlay(
                                 new IDrawable[] { new DynamicDrawable(
@@ -688,9 +692,9 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     }
 
     /**
-     * 创建交易 UI（3个标签页：全部、猫猫币、闪烁猫猫币）
+     * 创建交易 UI（3个标签页：猫猫币、闪烁猫猫币、其他）
      * <p>
-     * 所有页面都使用 ALL 分类的交易数据，猫猫币/闪烁猫猫币标签页
+     * 所有页面都使用 ALL 分类的交易数据，各标签页
      * 通过交易过滤只显示对应货币的交易。
      */
     private IWidget createNekoTradeUI(TradeMainPanel rootPanel, PagedWidget.Controller tabController) {
@@ -698,20 +702,20 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             .width(162)).controller(tabController)
                 .background(new IDrawable[] { GuiTextures.TEXT_FIELD_BACKGROUND })).height(146);
 
-        // 页面0：全部交易
-        ListWidget allList = createTradeListPage(rootPanel, TradeCategory.ALL, null);
-        this.nekoTradeLists.add(allList);
-        paged.addPage((IWidget) allList);
-
-        // 页面1：猫猫币交易（复用 MISC 分类，但数据从 ALL 读取并过滤）
+        // 页面0：猫猫币交易
         ListWidget nekoList = createTradeListPage(rootPanel, TradeCategory.ALL, "neko");
         this.nekoTradeLists.add(nekoList);
         paged.addPage((IWidget) nekoList);
 
-        // 页面2：闪烁猫猫币交易（复用 MAGIC 分类，但数据从 ALL 读取并过滤）
+        // 页面1：闪烁猫猫币交易
         ListWidget shimmeringList = createTradeListPage(rootPanel, TradeCategory.ALL, "shimmeringNeko");
         this.nekoTradeLists.add(shimmeringList);
         paged.addPage((IWidget) shimmeringList);
+
+        // 页面2：其他交易（非猫猫币且非闪烁猫猫币）
+        ListWidget otherList = createTradeListPage(rootPanel, TradeCategory.ALL, "other");
+        this.nekoTradeLists.add(otherList);
+        paged.addPage((IWidget) otherList);
 
         return (IWidget) ((Flow) ((Flow) Flow.row()
             .child((IWidget) paged.top(0))).left(3)).top(24);
@@ -720,17 +724,18 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     /**
      * 获取指定货币过滤和显示模式的 widget 列表
      * <p>
-     * 全部页面使用父类的 displayedTradesTiles/displayedTradesList，
-     * 猫猫币/闪烁猫猫币页面使用独立的 widget 列表，避免共享实例。
+     * 猫猫币/闪烁猫猫币/其他页面使用独立的 widget 列表，避免共享实例。
      */
     private List<TradeItemDisplayWidget> getWidgetList(String currencyFilter, DisplayType displayType) {
         if (displayType == DisplayType.TILE) {
             if ("neko".equals(currencyFilter)) return this.nekoSpecificTiles;
             if ("shimmeringNeko".equals(currencyFilter)) return this.shimmeringSpecificTiles;
+            if ("other".equals(currencyFilter)) return this.otherSpecificTiles;
             return this.displayedTradesTiles.get(TradeCategory.ALL);
         } else {
             if ("neko".equals(currencyFilter)) return this.nekoSpecificList;
             if ("shimmeringNeko".equals(currencyFilter)) return this.shimmeringSpecificList;
+            if ("other".equals(currencyFilter)) return this.otherSpecificList;
             return this.displayedTradesList.get(TradeCategory.ALL);
         }
     }
@@ -738,24 +743,25 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     /**
      * 创建单个交易列表页面
      *
-     * @param rootPanel 根面板
-     * @param category  交易分类
-     * @param currencyFilter 货币过滤（null=不过滤，"neko"=只显示猫猫币交易，"shimmeringNeko"=只显示闪烁猫猫币交易）
+     * @param rootPanel      根面板
+     * @param category       交易分类
+     * @param currencyFilter 货币过滤（"neko"=只显示猫猫币交易，"shimmeringNeko"=只显示闪烁猫猫币交易，"other"=非猫猫币且非闪烁猫猫币的交易）
      */
     private ListWidget createTradeListPage(TradeMainPanel rootPanel, TradeCategory category, String currencyFilter) {
         List<TradeItemDisplayWidget> tileWidgets = getWidgetList(currencyFilter, DisplayType.TILE);
         List<TradeItemDisplayWidget> listWidgets = getWidgetList(currencyFilter, DisplayType.LIST);
 
-        ListWidget tradeList = ((ListWidget) ((ListWidget) ((ListWidget) ((ListWidget) new ListWidget()
-            .name("items")).width(161)).top(1)).height(144)).collapseDisabledChild(true);
+        ListWidget tradeList = ((ListWidget) ((ListWidget) ((ListWidget) ((ListWidget) new ListWidget().name("items"))
+            .width(161)).top(1)).height(144)).collapseDisabledChild(true);
         tradeList.child(
             (IWidget) Flow.row()
                 .height(2));
         Flow statusRow = (Flow) ((Flow) ((Flow) ((Flow) ((Flow) Flow.row()
             .height(10)).width(154)).marginLeft(2))
                 .child((IWidget) new TextWidget(IKey.lang("vendingmachine.gui.error.incomplete_structure"))));
-        statusRow.setEnabledIf(slot -> !this.getBase()
-            .getActive());
+        statusRow.setEnabledIf(
+            slot -> !this.getBase()
+                .getActive());
         tradeList.child((IWidget) statusRow);
         Flow row = (Flow) ((Flow) ((Flow) new TradeRow().height(29)).width(154)).marginLeft(2);
         for (int i = 0; i < 300; ++i) {
@@ -763,8 +769,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             tileWidgets.get(i)
                 .setRootPanel(rootPanel);
             row.child(
-                (IWidget) ((ItemDisplayWidget) ((ItemDisplayWidget) ((ItemDisplayWidget) tileWidgets
-                    .get(i)
+                (IWidget) ((ItemDisplayWidget) ((ItemDisplayWidget) ((ItemDisplayWidget) tileWidgets.get(i)
                     .tooltipDynamic(builder -> {
                         builder.clearText();
                         synchronized (tileWidgets) {
@@ -847,9 +852,14 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
      * <p>
      * 双重检测：先通过 NekoTradeRegistry 的 tgID 映射判断，
      * 如果没有匹配，再通过 fromItems 中的物品判断。
+     * "other" 过滤：不是 neko 也不是 shimmeringNeko 的交易。
      */
     private boolean isNekoCurrencyTrade(TradeItemDisplay display, String currencyId) {
         if (display == null) return false;
+        // "other" 过滤：不是 neko 也不是 shimmeringNeko
+        if ("other".equals(currencyId)) {
+            return !isNekoCurrencyTrade(display, "neko") && !isNekoCurrencyTrade(display, "shimmeringNeko");
+        }
         // 方法1：通过 tgID 映射
         NekoTradeRegistry.NekoTradeInfo info = NekoTradeRegistry.getNekoTradeInfo(display.tgID);
         if (info != null) {
@@ -1058,7 +1068,8 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
 
         // 猫猫币（左对齐）
         String nekoId = "neko";
-        row.child((IWidget) new NekoCoinDisplay(syncManager, nekoId, NekoCurrencyRegistrar.getDisplayName(nekoId)).left(3));
+        row.child(
+            (IWidget) new NekoCoinDisplay(syncManager, nekoId, NekoCurrencyRegistrar.getDisplayName(nekoId)).left(3));
 
         // 闪烁猫猫币（右移15px：原left=54 → left=69）
         String shimmeringId = "shimmeringNeko";
