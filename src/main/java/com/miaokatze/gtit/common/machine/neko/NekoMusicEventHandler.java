@@ -309,6 +309,10 @@ public class NekoMusicEventHandler {
         // 处理淡入淡出
         if ((this.fadingIn || this.fadingOut) && this.soundSourceName != null) {
             updateFade();
+        } else if (this.currentSound != null && this.soundSourceName != null) {
+            // BGM 正在播放但不在淡入淡出中，持续应用音量（响应用户音量调节）
+            float effectiveVolume = this.currentVolume * VMConfig.music.music_volume;
+            setSoundVolume(effectiveVolume);
         }
     }
 

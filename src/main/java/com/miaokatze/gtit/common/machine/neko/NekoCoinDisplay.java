@@ -5,21 +5,20 @@ import net.minecraft.item.ItemStack;
 import com.cleanroommc.modularui.api.GuiAxis;
 import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
-import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cubefury.vendingmachine.gui.GuiTextures;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 /**
  * 猫猫币余额显示组件（无容器版，带弹出按钮）
  * <p>
- * 图标(22px) + 余额数字 + 弹出按钮(Shift+点击)。
- * 无容器边框，使用 disableThemeBackground 隐藏物品槽背景。
- * 弹出按钮在 Shift+左键点击时触发。
+ * 图标(22px) + 余额数字 + 弹出按钮(与图标并列)。
+ * 无容器边框，使用 background(new IDrawable[0]) 隐藏物品槽背景。
  */
 public class NekoCoinDisplay extends Flow {
 
@@ -37,7 +36,7 @@ public class NekoCoinDisplay extends Flow {
         this.coinSyncValue = (IntSyncValue) syncManager
             .findSyncHandler("nekoCoinAmount_" + currencyId, 0, IntSyncValue.class);
 
-        // 猫猫币图标（22px，使用 ItemDisplayWidget 但禁用背景）
+        // 猫猫币图标（22px，无背景）
         ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, 1);
         if (coinStack == null) {
             coinStack = new net.minecraft.item.ItemStack(net.minecraft.init.Items.coal, 1, 1);
@@ -54,12 +53,13 @@ public class NekoCoinDisplay extends Flow {
             .left(24)
             .width(24);
 
-        // 弹出按钮（点击弹出该种猫猫币）
+        // 弹出按钮（与图标并列，使用原版弹出硬币图标）
         ToggleButton ejectButton = new ToggleButton();
-        ejectButton.size(10);
+        ejectButton.size(12);
         ejectButton.disableThemeBackground(true);
         ejectButton.disableHoverThemeBackground(true);
-        ejectButton.overlay(new IDrawable[] { IKey.str("▼") });
+        ejectButton.overlay(new IDrawable[] { GuiTextures.EJECT_COINS.asIcon()
+            .size(12) });
         ejectButton.syncHandler("nekoEjectCoin_" + currencyId);
         ejectButton.tooltipBuilder(builder -> {
             builder.addLine(displayName + " 弹出");
@@ -67,9 +67,10 @@ public class NekoCoinDisplay extends Flow {
 
         this.child(iconWidget)
             .child(amountText)
-            .child(ejectButton.left(48))
+            .child(ejectButton.left(48)
+                .top(5))
             .height(22)
-            .width(58);
+            .width(60);
     }
 
     /**
