@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 
@@ -20,6 +21,8 @@ import com.cleanroommc.modularui.api.value.IIntValue;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
+import com.cleanroommc.modularui.drawable.Icon;
+import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.RichTooltip;
@@ -38,6 +41,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.CycleButtonWidget;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.ListWidget;
+import com.cleanroommc.modularui.widgets.PageButton;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
@@ -58,7 +62,6 @@ import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplay;
 import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplayWidget;
 import com.cubefury.vendingmachine.blocks.gui.TradeMainPanel;
 import com.cubefury.vendingmachine.blocks.gui.TradeRow;
-import com.cubefury.vendingmachine.blocks.gui.VendingPageButton;
 import com.cubefury.vendingmachine.blocks.gui.VolumeControlGui;
 import com.cubefury.vendingmachine.blocks.gui.fallingitem.FallingItemSlotFactory;
 import com.cubefury.vendingmachine.gui.GuiTextures;
@@ -360,6 +363,9 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         List<TradeItemDisplay> shimmeringTrades = new ArrayList<>();
         List<TradeItemDisplay> otherTrades = new ArrayList<>();
 
+        GTInterestingThing.LOG
+            .info("[NEKO] updateTradeDisplay: trades map keys={}, ALL size={}", trades.keySet(), allSize);
+
         if (allTrades != null) {
             for (TradeItemDisplay trade : allTrades) {
                 NekoTradeRegistry.NekoTradeInfo info = NekoTradeRegistry.getNekoTradeInfo(trade.tgID);
@@ -393,6 +399,23 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             nekoTrades.size(),
             shimmeringTrades.size(),
             otherTrades.size());
+
+        // 调试日志：显示 otherTrades 的前5条交易信息
+        if (!otherTrades.isEmpty()) {
+            int logCount = Math.min(5, otherTrades.size());
+            for (int i = 0; i < logCount; i++) {
+                TradeItemDisplay t = otherTrades.get(i);
+                GTInterestingThing.LOG.info(
+                    "[NEKO] otherTrades[{}]: tgID={}, fromItems={}, toItems={}",
+                    i,
+                    t.tgID,
+                    t.fromItems.size(),
+                    t.toItems.size());
+            }
+            if (otherTrades.size() > 5) {
+                GTInterestingThing.LOG.info("[NEKO] otherTrades: ... and {} more", otherTrades.size() - 5);
+            }
+        }
 
         updateFilteredWidgetList(this.nekoSpecificTiles, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificTiles, shimmeringTrades);
@@ -551,25 +574,44 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     /**
      * 创建分类标签（猫猫币、闪烁猫猫币、其他）
      * <p>
-     * 3个标签都使用 VendingPageButton，猫猫币复用 MISC 枚举图标，
-     * 闪烁猫猫币复用 MAGIC 枚举图标，其他复用 COMPONENTS 枚举图标。
-     * tooltip 显示标签页名称。
+     * 使用 PageButton + ItemDrawable 显示 ItemStack 图标，
+     * 替代 VendingPageButton 的 TradeCategory 纹理图标。
      */
     private IWidget createNekoCategoryTabs(PagedWidget.Controller tabController) {
         Flow tabColumn = (Flow) ((Flow) ((Flow) ((Flow) ((Flow) ((Flow) Flow.column()
             .excludeAreaInRecipeViewer()).width(40)).height(300)).left(-29)).top(40)).coverChildren();
 
+        // 标签页图标 ItemStack
+        ItemStack[] tabIcons = new ItemStack[] { NekoCurrencyRegistrar.getItemStack("neko", 1),
+            NekoCurrencyRegistrar.getItemStack("shimmeringNeko", 1), new ItemStack(Items.written_book) };
         String[] tabNames = { "猫猫币", "闪烁猫猫币", "其他" };
+
         for (int i = 0; i < this.nekoTradeCategories.size(); ++i) {
             final int index = i;
             final String tabName = tabNames[i];
-            tabColumn.child(
-                (IWidget) new VendingPageButton(i, tabController, this.nekoTradeCategories, this.highlightedTabs)
-                    .tab(GuiTextures.TAB_LEFT, -1)
-                    .tooltipBuilder(builder -> {
-                        builder.clearText();
-                        builder.addLine(IKey.str(tabName));
-                    }));
+            final ItemStack iconStack = tabIcons[i];
+            tabColumn.child((IWidget) new PageButton(index, tabController) {
+
+                @Override
+                public Interactable.Result onMousePressed(int mouseButton) {
+                    lastPage = index;
+                    return super.onMousePressed(mouseButton);
+                }
+            }.tab(GuiTextures.TAB_LEFT, -1)
+                .overlay(new IDrawable[] { new DynamicDrawable(() -> {
+                    if (NekoVendingMachineGui.this.highlightedTabs
+                        .contains(NekoVendingMachineGui.this.nekoTradeCategories.get(index))) {
+                        return GuiTextures.TAB_HIGHLIGHT.asIcon()
+                            .size(20, 20);
+                    }
+                    return IDrawable.EMPTY;
+                }), iconStack != null ? new Icon(new ItemDrawable(iconStack)).size(16)
+                    .margin(6)
+                    .center() : IDrawable.EMPTY })
+                .tooltipBuilder(builder -> {
+                    builder.clearText();
+                    builder.addLine(IKey.str(tabName));
+                }));
         }
         return tabColumn;
     }

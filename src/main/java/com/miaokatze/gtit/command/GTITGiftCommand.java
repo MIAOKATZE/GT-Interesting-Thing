@@ -35,7 +35,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain|random <count>|reset | /gtit nekovm reload|list|save";
+        return "/gtit gift certain|random <count>|reset | /gtit nekovm reload|list|save|gui";
     }
 
     @Override
@@ -91,6 +91,7 @@ public class GTITGiftCommand extends CommandBase {
             case "reload" -> handleNekoVMReload(player);
             case "list" -> handleNekoVMList(player);
             case "save" -> handleNekoVMSave(player);
+            case "gui" -> handleNekoVMGui(player);
             default -> sendHelp(sender);
         }
     }
@@ -119,6 +120,12 @@ public class GTITGiftCommand extends CommandBase {
     private void handleNekoVMSave(EntityPlayerMP player) {
         NekoTradeConfig.save(NekoTradeConfig.load());
         player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易数据已保存到配置文件"));
+    }
+
+    private void handleNekoVMGui(EntityPlayerMP player) {
+        // NekoTradeEditorGui 尚未实现，先显示提示信息
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "猫猫币交易编辑器 GUI 尚未实现，敬请期待！"));
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "目前可使用 /gtit nekovm list 查看交易列表"));
     }
 
     private void handleCertain(EntityPlayerMP player) {
@@ -179,6 +186,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载猫猫币交易配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm list - 列出当前所有猫猫币交易"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存当前交易数据到配置文件"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm gui - 打开猫猫币交易编辑器 GUI（开发中）"));
     }
 
     private String getItemId(ItemStack stack) {
