@@ -220,8 +220,6 @@ public class NekoMusicEventHandler {
 
         // 立即将音量设为 0（开始淡入的起点）
         setSoundVolume(0.0f);
-
-        GTInterestingThing.LOG.info("[NEKO] BGM 声音已捕获: sourceName={}", sourceName);
     }
 
     // ==================== GUI 事件回调 ====================

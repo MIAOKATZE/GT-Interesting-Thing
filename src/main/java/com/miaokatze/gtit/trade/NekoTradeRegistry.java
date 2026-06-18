@@ -1,7 +1,6 @@
 package com.miaokatze.gtit.trade;
 
 import java.lang.reflect.Field;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -214,20 +213,6 @@ public class NekoTradeRegistry {
      */
     public static NekoTradeInfo getNekoTradeInfo(UUID tradeGroupId) {
         return NEKO_TRADES.get(tradeGroupId);
-    }
-
-    /**
-     * 获取所有猫猫币交易信息（用于诊断）
-     */
-    public static Collection<NekoTradeInfo> getAllTradeInfos() {
-        return NEKO_TRADES.values();
-    }
-
-    /**
-     * 获取所有猫猫币交易组 ID（用于诊断）
-     */
-    public static Set<UUID> getAllTradeGroupIds() {
-        return NEKO_TRADES.keySet();
     }
 
     /**
