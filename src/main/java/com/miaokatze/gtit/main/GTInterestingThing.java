@@ -26,7 +26,7 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
     modid = GTInterestingThing.MODID,
     name = "GTInterestingThing",
     version = Tags.VERSION,
-    dependencies = "required-after:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting")
+    dependencies = "required-after:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine")
 public class GTInterestingThing {
 
     // 模组唯一标识符 (Mod ID)

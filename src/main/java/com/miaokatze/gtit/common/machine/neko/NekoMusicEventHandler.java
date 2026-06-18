@@ -32,16 +32,16 @@ public class NekoMusicEventHandler {
     private static final ResourceLocation NEKO_BGM = new ResourceLocation("gtit", "track.neko_theme");
 
     // 当前正在播放的 BGM 声音实例（保存引用以便停止）
-    private static ISound currentSound = null;
+    private ISound currentSound = null;
 
     // 上一次 GUI 是否打开
-    private static boolean wasOpen = false;
+    private boolean wasOpen = false;
 
     // tick 计数器（避免每 tick 都检测）
-    private static int tickCounter = 0;
+    private int tickCounter = 0;
 
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
+    public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
 
         tickCounter++;
@@ -67,7 +67,7 @@ public class NekoMusicEventHandler {
     /**
      * 开始播放猫猫 BGM
      */
-    private static void startNekoBGM(Minecraft mc) {
+    private void startNekoBGM(Minecraft mc) {
         if (currentSound != null) {
             stopNekoBGM(mc);
         }
@@ -84,7 +84,7 @@ public class NekoMusicEventHandler {
     /**
      * 停止播放猫猫 BGM
      */
-    private static void stopNekoBGM(Minecraft mc) {
+    private void stopNekoBGM(Minecraft mc) {
         if (currentSound != null) {
             try {
                 mc.getSoundHandler()

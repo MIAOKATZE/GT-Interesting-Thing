@@ -9,15 +9,12 @@ import com.cubefury.vendingmachine.blocks.gui.MTEVendingMachineGui;
 import com.cubefury.vendingmachine.blocks.gui.WalletMode;
 import com.cubefury.vendingmachine.trade.Trade;
 import com.cubefury.vendingmachine.util.BigItemStack;
-import com.gtnewhorizon.structurelib.alignment.IAlignment;
-import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructable;
 import com.miaokatze.gtit.common.machine.neko.NekoVendingMachineGui;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 
-import gregtech.api.interfaces.ISecondaryDescribable;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.util.MultiblockTooltipBuilder;
@@ -26,17 +23,15 @@ import gregtech.api.util.MultiblockTooltipBuilder;
  * 猫猫售货机
  * <p>
  * 继承自 VM (VendingMachine) 模组的 {@link MTEVendingMachine}，保留原版的多方块结构、动画与交易处理逻辑，
- * 仅覆盖 GUI 与 Tooltip 显示。当前阶段：
- * <ul>
- * <li>GUI 返回自定义 {@link NekoVendingMachineGui}，完全重建 UI（仅显示猫猫币、自动入袋、不播 BGM）</li>
- * <li>交易逻辑暂时直接委托给父类 {@link #checkTrade}，后续阶段实现猫猫币交易</li>
- * <li>{@link #isBuildingNekoGui} 静态标志已废弃，BGM 由 NekoMusicEventHandler + NekoVendingMachineGui.isNekoGuiOpen 方案替代</li>
- * </ul>
+ * 仅覆盖 GUI 与 Tooltip 显示。
+ * <p>
+ * 注意：{@link MTEVendingMachine} 已实现 ISurvivalConstructable、ISecondaryDescribable、IAlignment，
+ * 无需在子类中重复声明。
  * <p>
  * 结构与父类一致：2x3x1 的 "cc", "c~", "cc" 形状，使用 Tin Item Pipe Casings 作为外壳。
  */
-public class MTENekoVendingMachine extends MTEVendingMachine
-    implements ISurvivalConstructable, ISecondaryDescribable, IAlignment {
+@IMetaTileEntity.SkipGenerateDescription
+public class MTENekoVendingMachine extends MTEVendingMachine {
 
     /**
      * BGM 构建阶段标志位（已废弃）
@@ -109,18 +104,63 @@ public class MTENekoVendingMachine extends MTEVendingMachine
      * 构建猫猫售货机的 Tooltip 信息
      * <p>
      * 在原版售货机 Tooltip 基础上，添加猫猫售货机的专属说明信息。
+     * 添加 try-catch 以捕获被 Log4j ThrowableProxy 掩盖的真实异常。
      *
      * @return 包含猫猫售货机信息的 Tooltip 构建器
      */
     @Override
     protected MultiblockTooltipBuilder getTooltip() {
-        MultiblockTooltipBuilder tooltipBuilder = super.getTooltip();
-        if (tooltipBuilder != null) {
-            // 在原版 Tooltip 之后追加猫猫售货机的专属信息
-            tooltipBuilder.addInfo("喵~ 猫猫售货机，用猫猫币购买物品！");
-            tooltipBuilder.addInfo("结构、动画与交易逻辑继承自原版 VM 售货机。");
+        try {
+            MultiblockTooltipBuilder tooltipBuilder = super.getTooltip();
+            if (tooltipBuilder != null) {
+                tooltipBuilder.addInfo("喵~ 猫猫售货机，用猫猫币购买物品！");
+                tooltipBuilder.addInfo("结构、动画与交易逻辑继承自原版 VM 售货机。");
+            }
+            return tooltipBuilder;
+        } catch (Throwable t) {
+            System.err.println(
+                "[GTIT-DEBUG] Exception in getTooltip(): " + t.getClass()
+                    .getName() + ": " + t.getMessage());
+            t.printStackTrace(System.err);
+            return new MultiblockTooltipBuilder().addMachineType("Neko Vending Machine")
+                .addInfo("喵~ 猫猫售货机");
         }
-        return tooltipBuilder;
+    }
+
+    /**
+     * 覆盖 getDescription() 添加 try-catch 以捕获真实异常
+     * <p>
+     * Log4j 的 ThrowableProxy 在格式化异常时会尝试加载 ItemBlock 类，
+     * 导致 NoClassDefFoundError 掩盖了真正的异常。
+     * 通过 System.err 输出可以绕过 Log4j 看到真实错误。
+     */
+    @Override
+    public String[] getDescription() {
+        try {
+            return super.getDescription();
+        } catch (Throwable t) {
+            System.err.println(
+                "[GTIT-DEBUG] Exception in getDescription(): " + t.getClass()
+                    .getName() + ": " + t.getMessage());
+            t.printStackTrace(System.err);
+            return new String[] { "Neko Vending Machine", "喵~ 猫猫售货机" };
+        }
+    }
+
+    /**
+     * 覆盖 getSecondaryDescription() 添加 try-catch 以捕获真实异常
+     */
+    @Override
+    public String[] getSecondaryDescription() {
+        try {
+            return super.getSecondaryDescription();
+        } catch (Throwable t) {
+            System.err.println(
+                "[GTIT-DEBUG] Exception in getSecondaryDescription(): " + t.getClass()
+                    .getName() + ": " + t.getMessage());
+            t.printStackTrace(System.err);
+            return new String[] { "Structure: 2x3x1" };
+        }
     }
 
     /**

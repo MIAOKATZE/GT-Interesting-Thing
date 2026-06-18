@@ -1,8 +1,5 @@
 package com.miaokatze.gtit.main;
 
-import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
-
-import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 
 /**
@@ -22,9 +19,10 @@ public class ClientProxy extends CommonProxy {
         super.init(event);
 
         // 注册猫猫售货机 BGM 事件处理器（客户端）
-        FMLCommonHandler.instance()
-            .bus()
-            .register(new NekoMusicEventHandler());
+        // [DEBUG] 暂时禁用以定位崩溃
+        // FMLCommonHandler.instance()
+        // .bus()
+        // .register(new NekoMusicEventHandler());
 
         GTInterestingThing.LOG.info("[2/3] 客户端初始化完成");
     }

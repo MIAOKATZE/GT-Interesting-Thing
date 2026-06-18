@@ -12,21 +12,9 @@ import com.miaokatze.gtit.config.Config;
  */
 public enum MetaTileEntityID {
 
-    // --- 单方块测试机器 ---
-    /** EV 等级测试发电机 (Tier 4) */
-    MTETEST_EV(0),
-    /** IV 等级测试发电机 (Tier 5) */
-    MTETEST_IV(1),
-    /** LuV 等级测试发电机 (Tier 6) */
-    MTETEST_LuV(2),
-
-    // --- 多方块测试机器 ---
-    /** HV 等级测试多方块机器 (Tier 5) */
-    MTETEST_MULTIBLOCK_HV(10),
-
     // --- 猫猫售货机 ---
     /** 猫猫售货机 (继承自 VM 模组的 MTEVendingMachine) */
-    NEKO_VENDING_MACHINE(20),
+    NEKO_VENDING_MACHINE(10),
 
     ;
 
