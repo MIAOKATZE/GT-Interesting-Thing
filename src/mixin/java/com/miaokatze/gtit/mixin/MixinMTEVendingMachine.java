@@ -41,6 +41,13 @@ public class MixinMTEVendingMachine {
             return;
         }
 
+        // 纯物品交换交易（currencyId=null, cost=0），走原版逻辑
+        // 只有猫猫币交易（currencyId != null）才需要特殊处理
+        if (nekoInfo.currencyId == null || nekoInfo.cost <= 0) {
+            GTInterestingThing.LOG.info("[NEKO] Mixin processTradeOnServer: 物品交换交易, 走原版逻辑, tgId={}", tgId);
+            return;
+        }
+
         // 猫猫币交易
         MTEVendingMachine self = (MTEVendingMachine) (Object) this;
         UUID playerId = tradeRequest.player.getUniqueID();
@@ -79,10 +86,13 @@ public class MixinMTEVendingMachine {
             .get(tradeRequest.tradeGroupOrder);
 
         // 检查 fromItems 中的普通物品需求（如果有）
+        // 混合交易：先扣减猫猫币，然后走原版逻辑处理 fromItems
         if (!trade.fromItems.isEmpty()) {
-            // 猫猫币交易暂不支持混合物品需求
-            GTInterestingThing.LOG.warn("[NEKO] Mixin: 猫猫币交易有 fromItems 需求，暂不支持混合交易");
-            cir.setReturnValue(false);
+            // 先扣减猫猫币
+            wallet.addCount(nekoInfo.currencyId, -nekoInfo.cost);
+            NekoWalletManager.INSTANCE.saveWallet(playerId);
+            // 然后让原版逻辑处理 fromItems（不拦截）
+            GTInterestingThing.LOG.info("[NEKO] Mixin: 混合交易, 已扣减猫猫币={}, 继续原版逻辑处理fromItems", nekoInfo.cost);
             return;
         }
 

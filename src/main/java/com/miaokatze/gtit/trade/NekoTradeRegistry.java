@@ -55,11 +55,13 @@ public class NekoTradeRegistry {
         public final String currencyId; // "neko" 或 "shimmeringNeko"，无猫猫币花费时为 null
         public final int cost; // 花费数量
         public final String entryId; // 对应的 NekoTradeEntry.id
+        public final int orderId; // 顺序ID（用于Smart排序）
 
-        public NekoTradeInfo(String currencyId, int cost, String entryId) {
+        public NekoTradeInfo(String currencyId, int cost, String entryId, int orderId) {
             this.currencyId = currencyId;
             this.cost = cost;
             this.entryId = entryId;
+            this.orderId = orderId;
         }
     }
 
@@ -243,7 +245,7 @@ public class NekoTradeRegistry {
 
             // 记录猫猫币交易信息
             NEKO_TRADE_GROUP_IDS.add(tradeGroupId);
-            NEKO_TRADES.put(tradeGroupId, new NekoTradeInfo(currencyId, cost, entry.getId()));
+            NEKO_TRADES.put(tradeGroupId, new NekoTradeInfo(currencyId, cost, entry.getId(), entry.getOrderId()));
 
             GTInterestingThing.LOG.info(
                 "注册猫猫币交易: {} {} → {} [分类: {}, entryId={}]",

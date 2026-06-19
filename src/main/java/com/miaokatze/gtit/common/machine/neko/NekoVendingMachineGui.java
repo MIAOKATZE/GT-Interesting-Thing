@@ -60,6 +60,7 @@ import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplayWidget;
 import com.cubefury.vendingmachine.blocks.gui.TradeMainPanel;
 import com.cubefury.vendingmachine.blocks.gui.TradeRow;
 import com.cubefury.vendingmachine.blocks.gui.VolumeControlGui;
+import com.cubefury.vendingmachine.blocks.gui.WalletMode;
 import com.cubefury.vendingmachine.blocks.gui.fallingitem.FallingItemSlotFactory;
 import com.cubefury.vendingmachine.gui.GuiTextures;
 import com.cubefury.vendingmachine.gui.WidgetThemes;
@@ -396,22 +397,56 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                 .size(); i++) {
                 com.cubefury.vendingmachine.trade.Trade trade = tg.getTrades()
                     .get(i);
+
+                // 修复问题1：display item 的 stackSize 设为产物总数量
+                ItemStack displayStack = trade.getDisplayItem();
+                if (displayStack != null && !trade.toItems.isEmpty()) {
+                    displayStack = displayStack.copy();
+                    // 使用第一个产物的 stackSize 作为显示数量
+                    displayStack.stackSize = trade.toItems.get(0).stackSize;
+                }
+
+                // 修复问题3：冷却时间
+                boolean hasCooldown = tg.cooldown != -1 && tg.cooldown > 0;
+                long cooldownValue = hasCooldown ? tg.cooldown : -1L;
+                String cooldownText = hasCooldown ? String.valueOf(tg.cooldown) : "";
+                int cdTradeCount = tg.maxTrades > 0 ? tg.maxTrades : 0;
+
+                // 修复问题1：tradeableNow 需要实际检查
+                // 只在服务端调用 checkTrade 模拟检查
+                boolean tradeableNowPersonal = true;
+                boolean tradeableNowTeam = true;
+                if (this.nekoGuiData != null && !this.nekoGuiData.isClient()
+                    && this.getBase() != null
+                    && this.getBase()
+                        .getActive()) {
+                    // 服务端：调用 checkTrade 模拟
+                    UUID currentPlayerId = NameCache.INSTANCE.getUUIDFromPlayer(
+                        this.getBase()
+                            .getCurrentUser());
+                    if (currentPlayerId != null) {
+                        tradeableNowPersonal = this.getBase()
+                            .checkTrade(trade, currentPlayerId, WalletMode.PERSONAL, true);
+                        tradeableNowTeam = this.getBase()
+                            .checkTrade(trade, currentPlayerId, WalletMode.TEAM, true);
+                    }
+                }
+
                 TradeItemDisplay display = new TradeItemDisplay(
                     trade.fromCurrency,
                     trade.fromItems,
                     trade.nonConsumedItems,
                     trade.toItems,
-                    trade.getDisplayItem(),
+                    displayStack,
                     tgId,
                     i,
-                    -1L, // cooldown: 无冷却信息
-                    "", // cooldownText
-                    false, // hasCooldown
+                    cooldownValue,
+                    cooldownText,
+                    hasCooldown,
                     true, // enabled
-                    true, // tradeableNowPersonal
-                    true, // tradeableNowTeam
-                    0 // cdTradeCount
-                );
+                    tradeableNowPersonal,
+                    tradeableNowTeam,
+                    cdTradeCount);
 
                 if ("neko".equals(currencyId)) {
                     nekoTrades.add(display);
@@ -423,11 +458,35 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             }
         }
 
+        // 修复问题5：排序
+        // Smart 排序 = 按 orderId 排序
+        // A-Z 排序 = 按产物名排序
+        SortMode currentSort = VMConfig.gui.sort_mode;
+        if (currentSort == SortMode.SMART) {
+            sortByOrderId(nekoTrades);
+            sortByOrderId(shimmeringTrades);
+            sortByOrderId(otherTrades);
+        } else if (currentSort == SortMode.ALPHABET) {
+            sortByDisplayName(nekoTrades);
+            sortByDisplayName(shimmeringTrades);
+            sortByDisplayName(otherTrades);
+        }
+
+        // 修复问题5：搜索过滤
+        String searchText = this.nekoSearchBar != null ? this.nekoSearchBar.getText() : "";
+        if (!searchText.isEmpty()) {
+            nekoTrades = filterBySearch(nekoTrades, searchText);
+            shimmeringTrades = filterBySearch(shimmeringTrades, searchText);
+            otherTrades = filterBySearch(otherTrades, searchText);
+        }
+
         GTInterestingThing.LOG.info(
-            "[NEKO] updateTradeDisplay: neko={}, shimmering={}, other={}",
+            "[NEKO] updateTradeDisplay: neko={}, shimmering={}, other={}, sort={}, search='{}'",
             nekoTrades.size(),
             shimmeringTrades.size(),
-            otherTrades.size());
+            otherTrades.size(),
+            currentSort,
+            searchText);
 
         updateFilteredWidgetList(this.nekoSpecificTiles, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificTiles, shimmeringTrades);
@@ -437,6 +496,90 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         updateFilteredWidgetList(this.otherSpecificList, otherTrades);
 
         this.updateTabHighlightingNeko(trades);
+    }
+
+    /**
+     * 按 orderId 排序（Smart排序模式）
+     * <p>
+     * 通过 NekoTradeInfo.orderId 获取排序键
+     */
+    private void sortByOrderId(List<TradeItemDisplay> displays) {
+        displays.sort((a, b) -> {
+            NekoTradeRegistry.NekoTradeInfo infoA = NekoTradeRegistry.getNekoTradeInfo(a.tgID);
+            NekoTradeRegistry.NekoTradeInfo infoB = NekoTradeRegistry.getNekoTradeInfo(b.tgID);
+            int orderA = infoA != null ? infoA.orderId : Integer.MAX_VALUE;
+            int orderB = infoB != null ? infoB.orderId : Integer.MAX_VALUE;
+            return Integer.compare(orderA, orderB);
+        });
+    }
+
+    /**
+     * 按产物名排序（A-Z排序模式）
+     */
+    private void sortByDisplayName(List<TradeItemDisplay> displays) {
+        displays.sort((a, b) -> {
+            String nameA = a.display != null ? a.display.getDisplayName() : "";
+            String nameB = b.display != null ? b.display.getDisplayName() : "";
+            return nameA.compareToIgnoreCase(nameB);
+        });
+    }
+
+    /**
+     * 搜索过滤
+     * <p>
+     * 匹配产物名或需求物品名
+     */
+    private List<TradeItemDisplay> filterBySearch(List<TradeItemDisplay> displays, String searchText) {
+        String searchLower = searchText.toLowerCase();
+        List<TradeItemDisplay> result = new ArrayList<>();
+        for (TradeItemDisplay display : displays) {
+            // 检查产物名
+            if (display.display != null && display.display.getDisplayName()
+                .toLowerCase()
+                .contains(searchLower)) {
+                result.add(display);
+                continue;
+            }
+            // 检查 toItems 名称
+            boolean found = false;
+            for (com.cubefury.vendingmachine.util.BigItemStack toItem : display.toItems) {
+                if (toItem.getBaseStack()
+                    .getDisplayName()
+                    .toLowerCase()
+                    .contains(searchLower)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                result.add(display);
+                continue;
+            }
+            // 检查 fromItems 名称
+            for (com.cubefury.vendingmachine.util.BigItemStack fromItem : display.fromItems) {
+                if (fromItem.getBaseStack()
+                    .getDisplayName()
+                    .toLowerCase()
+                    .contains(searchLower)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                result.add(display);
+                continue;
+            }
+            // 检查猫猫币名称
+            NekoTradeRegistry.NekoTradeInfo info = NekoTradeRegistry.getNekoTradeInfo(display.tgID);
+            if (info != null && info.currencyId != null) {
+                String currencyName = NekoCurrencyRegistrar.getDisplayName(info.currencyId);
+                if (currencyName.toLowerCase()
+                    .contains(searchLower)) {
+                    result.add(display);
+                }
+            }
+        }
+        return result;
     }
 
     /**
@@ -964,39 +1107,40 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                 builder.addLine(nameLine.toString());
             }
             builder.emptyLine();
-            if (!cur.fromCurrency.isEmpty() || !cur.fromItems.isEmpty()) {
+            // 修复问题4：需求列表需要包含猫猫币信息
+            // 因为猫猫币不在 fromItems 中，需要从 NekoTradeInfo 获取
+            NekoTradeRegistry.NekoTradeInfo nekoInfo = NekoTradeRegistry.getNekoTradeInfo(cur.tgID);
+            boolean hasNekoCurrency = nekoInfo != null && nekoInfo.currencyId != null && nekoInfo.cost > 0;
+            if (!cur.fromCurrency.isEmpty() || !cur.fromItems.isEmpty() || hasNekoCurrency) {
                 builder.addLine(
                     (IDrawable) IKey.lang("vendingmachine.gui.required_inputs")
                         .style(new EnumChatFormatting[] { IKey.DARK_GREEN, IKey.ITALIC }));
+                // 猫猫币需求（从 NekoTradeInfo 获取）
+                if (hasNekoCurrency) {
+                    builder.addLine(
+                        (IDrawable) IKey
+                            .str(nekoInfo.cost + " " + NekoCurrencyRegistrar.getDisplayName(nekoInfo.currencyId))
+                            .style(IKey.DARK_GREEN));
+                }
                 for (com.cubefury.vendingmachine.trade.CurrencyItem currencyItem : cur.fromCurrency) {
                     builder.addLine(
                         (IDrawable) IKey.str(currencyItem.value + " " + currencyItem.type.getLocalizedName())
                             .style(IKey.DARK_GREEN));
                 }
                 for (com.cubefury.vendingmachine.util.BigItemStack fromItem : cur.fromItems) {
-                    // 检查是否为猫猫币
-                    String nekoCurrencyId = NekoCurrencyRegistrar.getNekoCurrencyId(fromItem.getBaseStack());
-                    if (nekoCurrencyId != null) {
-                        // 猫猫币显示为货币样式
-                        builder.addLine(
-                            (IDrawable) IKey
-                                .str(fromItem.stackSize + " " + NekoCurrencyRegistrar.getDisplayName(nekoCurrencyId))
-                                .style(IKey.DARK_GREEN));
-                    } else {
-                        // 非猫猫币：原版显示
-                        builder.addLine(
-                            (IDrawable) IKey.str(
-                                fromItem.stackSize + " "
-                                    + fromItem.getBaseStack()
-                                        .getDisplayName()
-                                    + (fromItem.hasOreDict()
-                                        ? " (" + IKey.lang("vendingmachine.gui.alternative_oredict")
-                                            + " "
-                                            + fromItem.getOreDict()
-                                            + ")"
-                                        : ""))
-                                .style(IKey.DARK_GREEN));
-                    }
+                    // 非猫猫币物品需求
+                    builder.addLine(
+                        (IDrawable) IKey.str(
+                            fromItem.stackSize + " "
+                                + fromItem.getBaseStack()
+                                    .getDisplayName()
+                                + (fromItem.hasOreDict()
+                                    ? " (" + IKey.lang("vendingmachine.gui.alternative_oredict")
+                                        + " "
+                                        + fromItem.getOreDict()
+                                        + ")"
+                                    : ""))
+                            .style(IKey.DARK_GREEN));
                 }
                 builder.emptyLine();
             }
