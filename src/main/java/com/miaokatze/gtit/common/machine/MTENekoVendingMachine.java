@@ -125,9 +125,9 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
                 Trade tgTrade = tg.getTrades()
                     .get(i);
                 if (tgTrade == trade) {
-                    // 找到猫猫币交易
+                    // 找到猫猫机交易（猫猫币或物品交换）
                     if (nekoInfo.currencyId != null && nekoInfo.cost > 0) {
-                        // 检查 NekoWallet 余额
+                        // 猫猫币交易：检查 NekoWallet 余额
                         NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(player);
                         if (wallet == null) {
                             GTInterestingThing.LOG.info("[NEKO] checkTrade: 猫猫币交易, 无钱包, simulate={}", simulate);
@@ -145,18 +145,26 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
                         }
                     }
 
-                    // 猫猫币余额足够，继续检查 fromItems 中的普通物品
-                    // 如果 fromItems 为空（纯猫猫币交易），直接返回 true
+                    // 猫猫币余额足够（或无猫猫币需求），继续检查 fromItems
                     if (trade.fromItems.isEmpty()) {
+                        // 纯猫猫币交易，直接返回 true
                         return true;
                     }
                     // 有普通物品需求，调用 super.checkTrade 检查
-                    return super.checkTrade(trade, player, walletMode, simulate);
+                    boolean superResult = super.checkTrade(trade, player, walletMode, simulate);
+                    // [DEBUG LOG] 诊断物品交换交易失败原因
+                    GTInterestingThing.LOG.info(
+                        "[NEKO] checkTrade: 猫猫机交易(有fromItems), superResult={}, fromItems.size={}, simulate={}, currencyId={}",
+                        superResult,
+                        trade.fromItems.size(),
+                        simulate,
+                        nekoInfo.currencyId);
+                    return superResult;
                 }
             }
         }
 
-        // 非猫猫币交易：走原版逻辑
+        // 非猫猫机交易：走原版逻辑
         return super.checkTrade(trade, player, walletMode, simulate);
     }
 }

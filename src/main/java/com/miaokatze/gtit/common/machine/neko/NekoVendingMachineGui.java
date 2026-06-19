@@ -60,7 +60,6 @@ import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplayWidget;
 import com.cubefury.vendingmachine.blocks.gui.TradeMainPanel;
 import com.cubefury.vendingmachine.blocks.gui.TradeRow;
 import com.cubefury.vendingmachine.blocks.gui.VolumeControlGui;
-import com.cubefury.vendingmachine.blocks.gui.WalletMode;
 import com.cubefury.vendingmachine.blocks.gui.fallingitem.FallingItemSlotFactory;
 import com.cubefury.vendingmachine.gui.GuiTextures;
 import com.cubefury.vendingmachine.gui.WidgetThemes;
@@ -69,6 +68,7 @@ import com.cubefury.vendingmachine.trade.FavouritesTracker;
 import com.cubefury.vendingmachine.trade.TradeCategory;
 import com.cubefury.vendingmachine.trade.TradeDatabase;
 import com.cubefury.vendingmachine.trade.TradeGroup;
+import com.cubefury.vendingmachine.trade.TradeManager;
 import com.cubefury.vendingmachine.util.Translator;
 import com.gtnewhorizon.gtnhlib.config.ConfigurationManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -377,13 +377,20 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         this.updateTradeDisplayNeko(trades, this.displayedTradesTiles);
         this.updateTradeDisplayNeko(trades, this.displayedTradesList);
 
-        // 手动构建猫猫币交易的 TradeItemDisplay
-        // 因为猫猫币交易不在 noConditionTrades 中，NetTradeDisplaySync 不会发送它们
-        // 需要从 TradeDatabase 直接获取猫猫币 TradeGroup 并构建 TradeItemDisplay
-        // 注意：猫猫机的三个标签页只显示猫猫币交易，不显示原版VM交易
+        // 构建 cat coin 交易的 TradeItemDisplay
+        // 关键：从 TradeManager.tradeData 中读取服务端同步的 tradeableNow 和冷却信息
+        // NetTradeDisplaySync 在服务端对每个交易调用 checkTrade，结果存储在 tradeData 中
         List<TradeItemDisplay> nekoTrades = new ArrayList<>();
         List<TradeItemDisplay> shimmeringTrades = new ArrayList<>();
         List<TradeItemDisplay> otherTrades = new ArrayList<>();
+
+        // 构建从 tradeData 中按 tgID+order 索引的映射
+        // tradeData 包含服务端同步的 tradeableNow、cooldown 等信息
+        Map<String, TradeItemDisplay> syncedDataMap = new java.util.HashMap<>();
+        for (TradeItemDisplay td : TradeManager.INSTANCE.tradeData) {
+            String key = td.tgID.toString() + ":" + td.tradeGroupOrder;
+            syncedDataMap.put(key, td);
+        }
 
         // 从 TradeDatabase 获取猫猫币 TradeGroup，手动构建 TradeItemDisplay
         for (UUID tgId : NekoTradeRegistry.getNekoTradeGroupIds()) {
@@ -402,34 +409,39 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                 ItemStack displayStack = trade.getDisplayItem();
                 if (displayStack != null && !trade.toItems.isEmpty()) {
                     displayStack = displayStack.copy();
-                    // 使用第一个产物的 stackSize 作为显示数量
                     displayStack.stackSize = trade.toItems.get(0).stackSize;
                 }
 
-                // 修复问题3：冷却时间
-                boolean hasCooldown = tg.cooldown != -1 && tg.cooldown > 0;
-                long cooldownValue = hasCooldown ? tg.cooldown : -1L;
-                String cooldownText = hasCooldown ? String.valueOf(tg.cooldown) : "";
-                int cdTradeCount = tg.maxTrades > 0 ? tg.maxTrades : 0;
+                // 从 tradeData 中获取服务端同步的 tradeableNow 和冷却信息
+                String syncKey = tgId.toString() + ":" + i;
+                TradeItemDisplay syncedData = syncedDataMap.get(syncKey);
 
-                // 修复问题1：tradeableNow 需要实际检查
-                // 只在服务端调用 checkTrade 模拟检查
-                boolean tradeableNowPersonal = true;
-                boolean tradeableNowTeam = true;
-                if (this.nekoGuiData != null && !this.nekoGuiData.isClient()
-                    && this.getBase() != null
-                    && this.getBase()
-                        .getActive()) {
-                    // 服务端：调用 checkTrade 模拟
-                    UUID currentPlayerId = NameCache.INSTANCE.getUUIDFromPlayer(
-                        this.getBase()
-                            .getCurrentUser());
-                    if (currentPlayerId != null) {
-                        tradeableNowPersonal = this.getBase()
-                            .checkTrade(trade, currentPlayerId, WalletMode.PERSONAL, true);
-                        tradeableNowTeam = this.getBase()
-                            .checkTrade(trade, currentPlayerId, WalletMode.TEAM, true);
-                    }
+                boolean tradeableNowPersonal;
+                boolean tradeableNowTeam;
+                long cooldownValue;
+                String cooldownText;
+                boolean hasCooldown;
+                boolean enabled;
+                int cdTradeCount;
+
+                if (syncedData != null) {
+                    // 使用服务端同步的数据
+                    tradeableNowPersonal = syncedData.tradeableNowPersonal;
+                    tradeableNowTeam = syncedData.tradeableNowTeam;
+                    cooldownValue = syncedData.cooldown;
+                    cooldownText = syncedData.cooldownText;
+                    hasCooldown = syncedData.hasCooldown;
+                    enabled = syncedData.enabled;
+                    cdTradeCount = syncedData.cdTradeCount;
+                } else {
+                    // 没有同步数据（可能是首次加载），使用默认值
+                    tradeableNowPersonal = true;
+                    tradeableNowTeam = true;
+                    cooldownValue = -1L;
+                    cooldownText = "";
+                    hasCooldown = false;
+                    enabled = true;
+                    cdTradeCount = 0;
                 }
 
                 TradeItemDisplay display = new TradeItemDisplay(
@@ -443,7 +455,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     cooldownValue,
                     cooldownText,
                     hasCooldown,
-                    true, // enabled
+                    enabled,
                     tradeableNowPersonal,
                     tradeableNowTeam,
                     cdTradeCount);
@@ -459,8 +471,6 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         }
 
         // 修复问题5：排序
-        // Smart 排序 = 按 orderId 排序
-        // A-Z 排序 = 按产物名排序
         SortMode currentSort = VMConfig.gui.sort_mode;
         if (currentSort == SortMode.SMART) {
             sortByOrderId(nekoTrades);
@@ -481,12 +491,13 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         }
 
         GTInterestingThing.LOG.info(
-            "[NEKO] updateTradeDisplay: neko={}, shimmering={}, other={}, sort={}, search='{}'",
+            "[NEKO] updateTradeDisplay: neko={}, shimmering={}, other={}, sort={}, search='{}', syncedDataCount={}",
             nekoTrades.size(),
             shimmeringTrades.size(),
             otherTrades.size(),
             currentSort,
-            searchText);
+            searchText,
+            syncedDataMap.size());
 
         updateFilteredWidgetList(this.nekoSpecificTiles, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificTiles, shimmeringTrades);
