@@ -17,8 +17,8 @@ import appeng.tile.grid.AENetworkTile;
 
 public class TileLimitedInfiniteEnergyCell extends AENetworkTile implements IAEPowerStorage {
 
-    private static final double BASE_MAX_POWER = 2000000.0;
-    private static final double BASE_AUTO_CHARGE_RATE = 200.0;
+    public static final double BASE_MAX_POWER = 2000000.0;
+    private static final double BASE_AUTO_CHARGE_RATE = 1000.0;
 
     private double internalCurrentPower = 0.0;
     private byte currentMeta = -1;

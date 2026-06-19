@@ -10,6 +10,7 @@ import com.miaokatze.gtit.common.blocks.BlockLimitedInfiniteEnergyCell;
 import com.miaokatze.gtit.common.blocks.TileLimitedInfiniteEnergyCell;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
+import appeng.block.AEBaseItemBlockChargeable;
 import appeng.core.features.IStackSrc;
 import appeng.tile.AEBaseTile;
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -26,13 +27,17 @@ public class BlockRegistrar {
         GTInterestingThing.LOG.info("GTIT 方块注册完成。");
     }
 
+    @SuppressWarnings("unchecked")
     private static void registerLimitedInfiniteEnergyCell() {
         blockLimitedInfiniteEnergyCell = new BlockLimitedInfiniteEnergyCell();
 
-        GameRegistry.registerBlock(blockLimitedInfiniteEnergyCell, ItemBlock.class, "limited_infinite_energy_cell");
-        GameRegistry.registerTileEntity(TileLimitedInfiniteEnergyCell.class, "gtit:tile_limited_infinite_energy_cell");
+        // 使用 AEBaseItemBlockChargeable 作为 ItemBlock，支持 AE2 电力存储
+        GameRegistry.registerBlock(
+            blockLimitedInfiniteEnergyCell,
+            AEBaseItemBlockChargeable.class,
+            "limited_infinite_energy_cell");
 
-        // 注册 AE2 TileItem，使 AENetworkProxy 能正确获取方块对应的 ItemStack
+        // AEBaseTileBlock 会自动注册 TileEntity，但仍需注册 TileItem
         AEBaseTile.registerTileItem(TileLimitedInfiniteEnergyCell.class, new IStackSrc() {
 
             @Override
