@@ -465,7 +465,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     customTrades.get(tabId)
                         .add(display);
                 } else {
-                    // 未找到对应标签页，归入"其他"
+                    // 未找到对应标签页，归入"基础"
                     otherTrades.add(display);
                 }
             }

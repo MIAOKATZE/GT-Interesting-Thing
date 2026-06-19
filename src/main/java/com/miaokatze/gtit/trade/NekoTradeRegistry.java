@@ -415,7 +415,7 @@ public class NekoTradeRegistry {
      */
     public static int getTabIdForTradeGroup(UUID tradeGroupId) {
         NekoTradeInfo info = NEKO_TRADES.get(tradeGroupId);
-        return info != null ? info.tabId : 3; // 默认归入"其他"
+        return info != null ? info.tabId : 3; // 默认归入"基础"
     }
 
     /**

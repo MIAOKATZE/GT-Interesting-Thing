@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
@@ -88,13 +87,14 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
     /**
      * 猫猫机覆盖层偏移（3个非控制器方块）
      * <p>
-     * 控制器在右下角，3个非控制器方块：
-     * 索引0: (0, +1) 右上（控制器正上方）
-     * 索引1: (-1, +1) 左上
-     * 索引2: (-1, 0) 左下（控制器左侧）
+     * 控制器在右下角(row=1,col=1)，偏移 = (blockCol - 1, blockRow - 1)
+     * 行从上到下排列，所以上方偏移为负值
+     * 索引0: nekovm_1 右上 (0, -1)
+     * 索引1: nekovm_2 左上 (-1, -1)
+     * 索引2: nekovm_3 左下 (-1, 0)
      */
     private static final int[] NEKO_VM_X = new int[] { 0, -1, -1 };
-    private static final int[] NEKO_VM_Y = new int[] { 1, 1, 0 };
+    private static final int[] NEKO_VM_Y = new int[] { -1, -1, 0 };
 
     // 材质常量
     private static final ITexture[] NEKO_FACING_SIDE = new ITexture[] {
@@ -130,7 +130,6 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
 
     @Override
     protected MTEVendingMachineGui getGui() {
-        GTInterestingThing.LOG.info("[NEKO] getGui() called, creating NekoVendingMachineGui");
         return new NekoVendingMachineGui(this);
     }
 
@@ -224,8 +223,6 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
 
     /**
      * 猫猫机的材质渲染
-     * <p>
-     * 正面使用 VM 原版前面板材质，侧面使用 casing 材质
      */
     @Override
     public ITexture[] getTexture(IGregTechTileEntity baseMetaTileEntity, ForgeDirection side, ForgeDirection facing,
@@ -251,9 +248,17 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
             return;
         }
 
-        IIconContainer[] nekoTextures = this.getBaseMetaTileEntity()
-            .isActive() && this.usingAnimations() ? TextureManager.NEKOVM_OVERLAY_ACTIVE
-                : TextureManager.NEKOVM_OVERLAY;
+        boolean isActive = this.getBaseMetaTileEntity()
+            .isActive() && this.usingAnimations();
+        IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOVM_OVERLAY_ACTIVE : TextureManager.NEKOVM_OVERLAY;
+
+        // [NEKO LOG] 材质加载检查点
+        for (int i = 0; i < nekoTextures.length; i++) {
+            IIconContainer icon = nekoTextures[i];
+            if (icon == null || icon.getIcon() == null) {
+                GTInterestingThing.LOG.error("[NEKO] setTextureOverlay: index={} icon MISSING!", i);
+            }
+        }
 
         setNekoVMOverlay(
             tile.getWorld(),
@@ -305,18 +310,6 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
     }
 
     @Override
-    public boolean onRightclick(IGregTechTileEntity aBaseMetaTileEntity, EntityPlayer aPlayer) {
-        GTInterestingThing.LOG.info(
-            "[NEKO] onRightclick: side={}, mMachine={}, player={}",
-            aBaseMetaTileEntity.isServerSide() ? "server" : "client",
-            this.mMachine,
-            aPlayer.getCommandSenderName());
-        boolean result = super.onRightclick(aBaseMetaTileEntity, aPlayer);
-        GTInterestingThing.LOG.info("[NEKO] onRightclick result={}, getActive={}", result, this.getActive());
-        return result;
-    }
-
-    @Override
     public boolean checkTrade(Trade trade, UUID player, WalletMode walletMode, boolean simulate) {
         for (Map.Entry<UUID, NekoTradeRegistry.NekoTradeInfo> entry : NekoTradeRegistry.NEKO_TRADES.entrySet()) {
             UUID tgId = entry.getKey();
@@ -333,17 +326,10 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
                     if (nekoInfo.currencyId != null && nekoInfo.cost > 0) {
                         NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(player);
                         if (wallet == null) {
-                            GTInterestingThing.LOG.info("[NEKO] checkTrade: 猫猫币交易, 无钱包, simulate={}", simulate);
                             return false;
                         }
                         int balance = wallet.getCount(nekoInfo.currencyId);
-                        boolean canAfford = balance >= nekoInfo.cost;
-                        if (!canAfford) {
-                            GTInterestingThing.LOG.info(
-                                "[NEKO] checkTrade: 猫猫币余额不足, balance={}, cost={}, simulate={}",
-                                balance,
-                                nekoInfo.cost,
-                                simulate);
+                        if (balance < nekoInfo.cost) {
                             return false;
                         }
                     }
@@ -351,14 +337,7 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
                     if (trade.fromItems.isEmpty()) {
                         return true;
                     }
-                    boolean superResult = super.checkTrade(trade, player, walletMode, simulate);
-                    GTInterestingThing.LOG.info(
-                        "[NEKO] checkTrade: 猫猫机交易(有fromItems), superResult={}, fromItems.size={}, simulate={}, currencyId={}",
-                        superResult,
-                        trade.fromItems.size(),
-                        simulate,
-                        nekoInfo.currencyId);
-                    return superResult;
+                    return super.checkTrade(trade, player, walletMode, simulate);
                 }
             }
         }

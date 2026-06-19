@@ -301,7 +301,7 @@ public class GTITGiftCommand extends CommandBase {
             boolean isNeko = "neko".equals(currency.getType());
             boolean isShimmering = "shimmeringNeko".equals(currency.getType());
             if (tabId == 3 && (isNeko || isShimmering)) {
-                // "其他"标签页放猫猫币交易，仅提示
+                // "基础"标签页放猫猫币交易，仅提示
                 player.addChatMessage(
                     new ChatComponentText(EnumChatFormatting.YELLOW + "提示：猫猫币交易通常放在标签页1，闪烁猫猫币交易通常放在标签页2"));
             }

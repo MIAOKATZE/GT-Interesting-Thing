@@ -120,8 +120,8 @@ public class NekoPageConfig {
         NekoPageEntry page2 = new NekoPageEntry(2, "闪烁猫猫币", "gtit:shimmering_neko_coin", 0, true);
         pages.add(page2);
 
-        // 标签页3：其他
-        NekoPageEntry page3 = new NekoPageEntry(3, "其他", "minecraft:written_book", 0, true);
+        // 标签页3：基础
+        NekoPageEntry page3 = new NekoPageEntry(3, "基础", "minecraft:bed", 0, true);
         pages.add(page3);
 
         data.setPages(pages);

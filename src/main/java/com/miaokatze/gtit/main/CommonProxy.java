@@ -15,6 +15,7 @@ import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.recipe.TestMachineRecipes;
+import com.miaokatze.gtit.register.BlockRegistrar;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
@@ -64,6 +65,13 @@ public class CommonProxy {
             GTInterestingThing.LOG.info("[0/3] 物品注册完成。");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[0/3] 物品注册过程中发生严重错误，请检查日志", t);
+        }
+
+        // 注册方块
+        try {
+            BlockRegistrar.init();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("方块注册过程中发生严重错误，请检查日志", t);
         }
 
         // 初始化新手宝箱配置

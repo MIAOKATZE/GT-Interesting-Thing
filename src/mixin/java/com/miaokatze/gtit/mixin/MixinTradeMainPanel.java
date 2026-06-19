@@ -14,7 +14,6 @@ import com.cubefury.vendingmachine.blocks.gui.MTEVendingMachineGui;
 import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplay;
 import com.cubefury.vendingmachine.blocks.gui.TradeMainPanel;
 import com.cubefury.vendingmachine.trade.TradeCategory;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 
 /**
@@ -58,10 +57,6 @@ public class MixinTradeMainPanel {
                 }
             }
             entry.setValue(filteredList);
-        }
-
-        if (filtered) {
-            GTInterestingThing.LOG.info("[NEKO] MixinTradeMainPanel: 过滤了猫猫币交易显示");
         }
     }
 }

@@ -99,3 +99,6 @@ item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fis
 # Infinity Cell series (adapted from AE2Things)
 item.gtit.infinity_cell.name=ME Infinity Cell
 item.gtit.infinity_fluid_cell.name=ME Infinity Fluid Cell
+
+# Limited Infinite Energy Cell (AE2 Energy Cell)
+tile.gtit.limited_infinite_energy_cell.name=Limited Infinite Energy Cell
