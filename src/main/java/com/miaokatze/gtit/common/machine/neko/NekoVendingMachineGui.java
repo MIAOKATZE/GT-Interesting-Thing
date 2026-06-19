@@ -379,22 +379,10 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         // 手动构建猫猫币交易的 TradeItemDisplay
         // 因为猫猫币交易不在 noConditionTrades 中，NetTradeDisplaySync 不会发送它们
         // 需要从 TradeDatabase 直接获取猫猫币 TradeGroup 并构建 TradeItemDisplay
+        // 注意：猫猫机的三个标签页只显示猫猫币交易，不显示原版VM交易
         List<TradeItemDisplay> nekoTrades = new ArrayList<>();
         List<TradeItemDisplay> shimmeringTrades = new ArrayList<>();
         List<TradeItemDisplay> otherTrades = new ArrayList<>();
-
-        // 从 trades 参数中获取原版VM交易（非猫猫币交易）
-        List<TradeItemDisplay> allVmTrades = trades.get(TradeCategory.ALL);
-        if (allVmTrades != null) {
-            for (TradeItemDisplay trade : allVmTrades) {
-                // 原版VM交易不应包含猫猫币交易（因为不在 noConditionTrades 中）
-                // 但为安全起见，仍然过滤
-                if (NekoTradeRegistry.isNekoTradeGroup(trade.tgID)) {
-                    continue;
-                }
-                otherTrades.add(trade);
-            }
-        }
 
         // 从 TradeDatabase 获取猫猫币 TradeGroup，手动构建 TradeItemDisplay
         for (UUID tgId : NekoTradeRegistry.getNekoTradeGroupIds()) {
@@ -436,8 +424,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         }
 
         GTInterestingThing.LOG.info(
-            "[NEKO] updateTradeDisplay: vmTrades={}, neko={}, shimmering={}, other={}",
-            allVmTrades != null ? allVmTrades.size() : 0,
+            "[NEKO] updateTradeDisplay: neko={}, shimmering={}, other={}",
             nekoTrades.size(),
             shimmeringTrades.size(),
             otherTrades.size());

@@ -101,11 +101,8 @@ public class NekoMusicEventHandler {
             sndSystemField = SoundManager.class.getDeclaredField("field_148620_e");
             sndSystemField.setAccessible(true);
 
-            getNormalizedVolumeMethod = SoundManager.class.getDeclaredMethod(
-                "func_148594_a",
-                ISound.class,
-                SoundPoolEntry.class,
-                SoundCategory.class);
+            getNormalizedVolumeMethod = SoundManager.class
+                .getDeclaredMethod("func_148594_a", ISound.class, SoundPoolEntry.class, SoundCategory.class);
             getNormalizedVolumeMethod.setAccessible(true);
 
             GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功");
@@ -119,11 +116,8 @@ public class NekoMusicEventHandler {
                 sndSystemField = SoundManager.class.getDeclaredField("sndSystem");
                 sndSystemField.setAccessible(true);
 
-                getNormalizedVolumeMethod = SoundManager.class.getDeclaredMethod(
-                    "getNormalizedVolume",
-                    ISound.class,
-                    SoundPoolEntry.class,
-                    SoundCategory.class);
+                getNormalizedVolumeMethod = SoundManager.class
+                    .getDeclaredMethod("getNormalizedVolume", ISound.class, SoundPoolEntry.class, SoundCategory.class);
                 getNormalizedVolumeMethod.setAccessible(true);
 
                 GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功（MCP 名称回退）");

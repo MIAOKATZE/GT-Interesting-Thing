@@ -114,19 +114,19 @@ public class NekoTradeConfig {
         NekoTradeData data = new NekoTradeData();
         List<NekoTradeEntry> trades = new ArrayList<>();
 
-        // 猫猫币交易（4个）
-        trades.add(createTrade("neko", 1, "minecraft:iron_ingot", 0, 16, -1, -1, 0));
-        trades.add(createTrade("neko", 5, "minecraft:gold_ingot", 0, 4, -1, -1, 1));
-        trades.add(createTrade("neko", 20, "minecraft:diamond", 0, 1, -1, -1, 2));
-        trades.add(createTrade("neko", 10, "minecraft:emerald", 0, 2, -1, -1, 3));
+        // 猫猫币交易（4个）— tabId=1, orderId=1-4
+        trades.add(createTrade("neko", 1, "minecraft:iron_ingot", 0, 16, 0, -1, 1, 1));
+        trades.add(createTrade("neko", 5, "minecraft:gold_ingot", 0, 4, 0, -1, 1, 2));
+        trades.add(createTrade("neko", 20, "minecraft:diamond", 0, 1, 0, -1, 1, 3));
+        trades.add(createTrade("neko", 10, "minecraft:emerald", 0, 2, 0, -1, 1, 4));
 
-        // 闪烁猫猫币交易（4个）
-        trades.add(createTrade("shimmeringNeko", 1, "minecraft:ender_pearl", 0, 4, -1, -1, 4));
-        trades.add(createTrade("shimmeringNeko", 5, "minecraft:golden_apple", 1, 1, -1, -1, 5));
-        trades.add(createTrade("shimmeringNeko", 20, "minecraft:nether_star", 0, 1, -1, -1, 6));
-        trades.add(createTrade("shimmeringNeko", 50, "minecraft:dragon_egg", 0, 1, -1, -1, 7));
+        // 闪烁猫猫币交易（4个）— tabId=2, orderId=1-4
+        trades.add(createTrade("shimmeringNeko", 1, "minecraft:ender_pearl", 0, 4, 0, -1, 2, 1));
+        trades.add(createTrade("shimmeringNeko", 5, "minecraft:golden_apple", 1, 1, 0, -1, 2, 2));
+        trades.add(createTrade("shimmeringNeko", 20, "minecraft:nether_star", 0, 1, 0, -1, 2, 3));
+        trades.add(createTrade("shimmeringNeko", 50, "minecraft:dragon_egg", 0, 1, 0, -1, 2, 4));
 
-        // 其他交易（1个）
+        // 其他交易（1个）— tabId=3, orderId=1
         NekoTradeEntry wheatTrade = new NekoTradeEntry();
         wheatTrade.setCurrency(null);
         List<NekoTradeEntry.ItemEntry> fromItems = new ArrayList<>();
@@ -135,9 +135,10 @@ public class NekoTradeConfig {
         List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();
         toItems.add(new NekoTradeEntry.ItemEntry("minecraft:bread", 0, 16));
         wheatTrade.setToItems(toItems);
-        wheatTrade.setCooldown(-1);
+        wheatTrade.setCooldown(0);
         wheatTrade.setMaxTrades(-1);
-        wheatTrade.setOrder(8);
+        wheatTrade.setTabId(3);
+        wheatTrade.setOrderId(1);
         trades.add(wheatTrade);
 
         data.setTrades(trades);
@@ -150,7 +151,7 @@ public class NekoTradeConfig {
      * 创建货币交易条目（无额外需求物品）
      */
     private static NekoTradeEntry createTrade(String currencyType, int currencyAmount, String toItem, int toMeta,
-        int toAmount, int cooldown, int maxTrades, int order) {
+        int toAmount, int cooldown, int maxTrades, int tabId, int orderId) {
         NekoTradeEntry entry = new NekoTradeEntry();
         entry.setCurrency(new NekoTradeEntry.NekoCurrencyCost(currencyType, currencyAmount));
         List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();
@@ -158,7 +159,8 @@ public class NekoTradeConfig {
         entry.setToItems(toItems);
         entry.setCooldown(cooldown);
         entry.setMaxTrades(maxTrades);
-        entry.setOrder(order);
+        entry.setTabId(tabId);
+        entry.setOrderId(orderId);
         return entry;
     }
 

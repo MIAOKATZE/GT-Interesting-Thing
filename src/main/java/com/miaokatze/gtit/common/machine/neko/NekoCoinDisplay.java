@@ -58,17 +58,17 @@ public class NekoCoinDisplay extends Flow {
         ejectButton.size(12);
         ejectButton.disableThemeBackground(true);
         ejectButton.disableHoverThemeBackground(true);
-        ejectButton.overlay(new IDrawable[] { GuiTextures.EJECT_COINS.asIcon()
-            .size(12) });
+        ejectButton.overlay(
+            new IDrawable[] { GuiTextures.EJECT_COINS.asIcon()
+                .size(12) });
         ejectButton.syncHandler("nekoEjectCoin_" + currencyId);
-        ejectButton.tooltipBuilder(builder -> {
-            builder.addLine(displayName + " 弹出");
-        });
+        ejectButton.tooltipBuilder(builder -> { builder.addLine(displayName + " 弹出"); });
 
         this.child(iconWidget)
             .child(amountText)
-            .child(ejectButton.left(48)
-                .top(5))
+            .child(
+                ejectButton.left(48)
+                    .top(5))
             .height(22)
             .width(60);
     }

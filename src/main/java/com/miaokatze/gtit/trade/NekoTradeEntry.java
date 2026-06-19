@@ -25,21 +25,25 @@ import cpw.mods.fml.common.registry.GameRegistry;
 public class NekoTradeEntry {
 
     private String id;
+    private int tabId; // 标签页ID：1=猫猫币，2=闪烁猫猫币，3=其他
+    private int orderId; // 顺序ID（与tabId共同构成条目唯一身份）
     private NekoCurrencyCost currency;
     private List<ItemEntry> fromItems;
     private List<ItemEntry> toItems;
     private int cooldown;
     private int maxTrades;
-    private int order;
+    private String bqQuestId; // BQ任务绑定ID，空字符串=不需要绑定
 
     public NekoTradeEntry() {
         this.id = UUID.randomUUID()
             .toString();
+        this.tabId = 1;
+        this.orderId = 0;
         this.fromItems = new ArrayList<>();
         this.toItems = new ArrayList<>();
-        this.cooldown = -1;
+        this.cooldown = 0;
         this.maxTrades = -1;
-        this.order = 0;
+        this.bqQuestId = "";
     }
 
     public static NekoTradeEntry createDefault() {
@@ -98,12 +102,28 @@ public class NekoTradeEntry {
         this.maxTrades = maxTrades;
     }
 
-    public int getOrder() {
-        return order;
+    public int getTabId() {
+        return tabId;
     }
 
-    public void setOrder(int order) {
-        this.order = order;
+    public void setTabId(int tabId) {
+        this.tabId = tabId;
+    }
+
+    public int getOrderId() {
+        return orderId;
+    }
+
+    public void setOrderId(int orderId) {
+        this.orderId = orderId;
+    }
+
+    public String getBqQuestId() {
+        return bqQuestId;
+    }
+
+    public void setBqQuestId(String bqQuestId) {
+        this.bqQuestId = bqQuestId;
     }
 
     // --- Inner Classes ---

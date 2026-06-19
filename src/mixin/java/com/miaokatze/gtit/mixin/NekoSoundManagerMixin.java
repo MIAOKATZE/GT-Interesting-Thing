@@ -35,10 +35,8 @@ public class NekoSoundManagerMixin {
             target = "Lnet/minecraft/client/audio/SoundManager$SoundSystemStarterThread;setVolume(Ljava/lang/String;F)V",
             shift = At.Shift.AFTER,
             remap = false))
-    private static void neko$onPlaySound(ISound sound, CallbackInfo ci,
-        @Local String sourceName,
-        @Local SoundCategory category,
-        @Local SoundPoolEntry entry) {
+    private static void neko$onPlaySound(ISound sound, CallbackInfo ci, @Local String sourceName,
+        @Local SoundCategory category, @Local SoundPoolEntry entry) {
         // Only capture sounds that match our neko BGM
         if (sound instanceof PositionedSoundRecord) {
             if (sound.getPositionedSoundLocation()

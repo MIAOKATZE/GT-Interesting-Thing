@@ -31,7 +31,7 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 public class NekoTradeRegistry {
 
     // 猫猫币交易组 UUID → 猫猫币花费信息
-    private static final Map<UUID, NekoTradeInfo> NEKO_TRADES = new HashMap<>();
+    public static final Map<UUID, NekoTradeInfo> NEKO_TRADES = new HashMap<>();
 
     // 猫猫币交易组的 ID 集合（用于快速判断）
     private static final Set<UUID> NEKO_TRADE_GROUP_IDS = new HashSet<>();
@@ -40,6 +40,8 @@ public class NekoTradeRegistry {
     private static Field tradeGroupsField;
     // 反射缓存：TradeDatabase.tradeCategories
     private static Field tradeCategoriesField;
+    // 反射缓存：TradeDatabase.noConditionTrades
+    private static Field noConditionTradesField;
     // 反射缓存：TradeGroup.id
     private static Field tradeGroupIdField;
     // 反射缓存：TradeGroup.category
@@ -72,6 +74,9 @@ public class NekoTradeRegistry {
 
         tradeCategoriesField = TradeDatabase.class.getDeclaredField("tradeCategories");
         tradeCategoriesField.setAccessible(true);
+
+        noConditionTradesField = TradeDatabase.class.getDeclaredField("noConditionTrades");
+        noConditionTradesField.setAccessible(true);
 
         tradeGroupIdField = TradeGroup.class.getDeclaredField("id");
         tradeGroupIdField.setAccessible(true);
@@ -161,17 +166,10 @@ public class NekoTradeRegistry {
             // 创建 Trade
             Trade trade = new Trade();
 
-            // 猫猫币花费放入 fromItems
-            if (currencyId != null && cost > 0) {
-                ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, 1);
-                if (coinStack == null) {
-                    GTInterestingThing.LOG
-                        .error("注册猫猫币交易失败: 无法获取猫猫币物品 [currencyId={}, entryId={}]", currencyId, entry.getId());
-                    return false;
-                }
-                BigItemStack coinCost = new BigItemStack(coinStack.getItem(), cost);
-                trade.fromItems.add(coinCost);
-            }
+            // 猫猫币不再放入 trade.fromItems，只记录在 NekoTradeInfo 中
+            // 原因：checkTrade 会尝试从输入槽扣除 fromItems 中的物品，
+            // 但猫猫币在 NekoWallet 中不在输入槽，导致交易失败
+            // 猫猫币的检查和扣减在 checkTrade 覆盖和 Mixin 中处理
 
             // 需求物品放入 fromItems
             if (entry.getFromItems() != null) {
@@ -215,8 +213,33 @@ public class NekoTradeRegistry {
             tradeGroup.getTrades()
                 .add(trade);
 
+            // 调试日志：确认猫猫币不在 fromItems 中
+            GTInterestingThing.LOG.info(
+                "[NEKO] 注册交易: id={}, fromItems.size={}, toItems.size={}, currencyId={}, cost={}",
+                entry.getId(),
+                trade.fromItems.size(),
+                trade.toItems.size(),
+                currencyId,
+                cost);
+            for (BigItemStack fromItem : trade.fromItems) {
+                GTInterestingThing.LOG
+                    .info("[NEKO]   fromItem: item={}, stackSize={}", fromItem.getBaseStack(), fromItem.stackSize);
+            }
+
             // 注入到 TradeDatabase
             injectTradeGroup(tradeGroup, category);
+
+            // 注入后立即验证 Trade 对象
+            TradeGroup injectedTg = TradeDatabase.INSTANCE.getTradeGroupFromId(tradeGroupId);
+            if (injectedTg != null && !injectedTg.getTrades()
+                .isEmpty()) {
+                Trade injectedTrade = injectedTg.getTrades()
+                    .get(0);
+                GTInterestingThing.LOG.info(
+                    "[NEKO] 注入后验证: fromItems.size={}, toItems.size={}",
+                    injectedTrade.fromItems.size(),
+                    injectedTrade.toItems.size());
+            }
 
             // 记录猫猫币交易信息
             NEKO_TRADE_GROUP_IDS.add(tradeGroupId);
@@ -285,6 +308,7 @@ public class NekoTradeRegistry {
         Map<UUID, TradeGroup> tradeGroups = (Map<UUID, TradeGroup>) tradeGroupsField.get(TradeDatabase.INSTANCE);
         Map<TradeCategory, Set<UUID>> tradeCategories = (Map<TradeCategory, Set<UUID>>) tradeCategoriesField
             .get(TradeDatabase.INSTANCE);
+        List<TradeGroup> noConditionTrades = (List<TradeGroup>) noConditionTradesField.get(TradeDatabase.INSTANCE);
 
         // 添加到 tradeGroups
         tradeGroups.put(tradeGroup.getId(), tradeGroup);
@@ -294,8 +318,9 @@ public class NekoTradeRegistry {
         tradeCategories.get(category)
             .add(tradeGroup.getId());
 
-        // 不添加到 noConditionTrades —— 猫猫币交易不应出现在原版VM中
-        // 猫猫机通过 updateTradeDisplay() 手动构建 TradeItemDisplay
+        // 添加到 noConditionTrades —— 必须添加，否则 canExecuteTrade 权限检查会失败
+        // 原版VM中通过 Mixin 过滤掉猫猫币交易，不显示在原版VM中
+        noConditionTrades.add(tradeGroup);
     }
 
     /**

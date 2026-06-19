@@ -1,7 +1,6 @@
 package com.miaokatze.gtit.common.machine;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -10,10 +9,10 @@ import com.cubefury.vendingmachine.blocks.MTEVendingMachine;
 import com.cubefury.vendingmachine.blocks.gui.MTEVendingMachineGui;
 import com.cubefury.vendingmachine.blocks.gui.WalletMode;
 import com.cubefury.vendingmachine.trade.Trade;
-import com.cubefury.vendingmachine.util.BigItemStack;
+import com.cubefury.vendingmachine.trade.TradeDatabase;
+import com.cubefury.vendingmachine.trade.TradeGroup;
 import com.miaokatze.gtit.common.machine.neko.NekoVendingMachineGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
@@ -28,14 +27,10 @@ import gregtech.api.util.MultiblockTooltipBuilder;
  * 继承自 VM (VendingMachine) 模组的 {@link MTEVendingMachine}，保留原版的多方块结构、动画与交易处理逻辑，
  * 仅覆盖 GUI 与 Tooltip 显示。
  * <p>
- * 注意：{@link MTEVendingMachine} 已实现 ISurvivalConstructable、ISecondaryDescribable、IAlignment，
- * 无需在子类中重复声明。
- * <p>
- * 结构与父类一致：2x3x1 的 "cc", "c~", "cc" 形状，使用 Tin Item Pipe Casings 作为外壳。
- * <p>
- * 关键设计决策：使用 {@code @IMetaTileEntity.SkipGenerateDescription} 跳过 GregTech 的
- * MachineTooltipsLoader 描述注册，因为 MTEVendingMachine 的 getTooltip() 使用一次性构建器模式
- * （toolTipFinisher() 后 iLines 被置 null），子类在 super.getTooltip() 后再 addInfo() 会 NPE。
+ * 猫猫币交易机制：
+ * - 猫猫币不放入 Trade.fromItems，只记录在 NekoTradeInfo 中
+ * - checkTrade 覆盖：对猫猫币交易，先检查 NekoWallet 余额，再检查 fromItems 中的普通物品
+ * - processTradeOnServer 是 private 方法，通过 MixinMTEVendingMachine 拦截，扣减 NekoWallet
  */
 @IMetaTileEntity.SkipGenerateDescription
 public class MTENekoVendingMachine extends MTEVendingMachine {
@@ -102,43 +97,66 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
         return result;
     }
 
+    /**
+     * 覆盖 checkTrade，对猫猫币交易进行特殊处理
+     * <p>
+     * 猫猫币交易的检查逻辑：
+     * 1. 通过 NEKO_TRADES 遍历，用 tradeIndex 匹配猫猫币交易
+     * 2. 对猫猫币交易，先检查 NekoWallet 余额是否足够
+     * 3. 再调用 super.checkTrade 检查 fromItems 中的普通物品需求
+     * <p>
+     * 注意：Trade 对象没有 equals/hashCode，NBT 重新加载后引用会变，
+     * 所以不能使用 tg.getTrades().contains(trade)。
+     * 改用 tradeIndex（在 TradeGroup 中的索引）来匹配。
+     */
     @Override
     public boolean checkTrade(Trade trade, UUID player, WalletMode walletMode, boolean simulate) {
-        NekoTradeRegistry.NekoTradeInfo nekoInfo = findNekoTradeInfo(trade);
-        if (nekoInfo != null) {
-            return checkNekoTrade(trade, player, nekoInfo, simulate);
+        // 遍历 NEKO_TRADES，查找匹配的猫猫币交易
+        for (Map.Entry<UUID, NekoTradeRegistry.NekoTradeInfo> entry : NekoTradeRegistry.NEKO_TRADES.entrySet()) {
+            UUID tgId = entry.getKey();
+            NekoTradeRegistry.NekoTradeInfo nekoInfo = entry.getValue();
+            TradeGroup tg = TradeDatabase.INSTANCE.getTradeGroupFromId(tgId);
+
+            if (tg == null) continue;
+
+            // 通过索引遍历匹配（避免引用比较问题）
+            for (int i = 0; i < tg.getTrades()
+                .size(); i++) {
+                Trade tgTrade = tg.getTrades()
+                    .get(i);
+                if (tgTrade == trade) {
+                    // 找到猫猫币交易
+                    if (nekoInfo.currencyId != null && nekoInfo.cost > 0) {
+                        // 检查 NekoWallet 余额
+                        NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(player);
+                        if (wallet == null) {
+                            GTInterestingThing.LOG.info("[NEKO] checkTrade: 猫猫币交易, 无钱包, simulate={}", simulate);
+                            return false;
+                        }
+                        int balance = wallet.getCount(nekoInfo.currencyId);
+                        boolean canAfford = balance >= nekoInfo.cost;
+                        if (!canAfford) {
+                            GTInterestingThing.LOG.info(
+                                "[NEKO] checkTrade: 猫猫币余额不足, balance={}, cost={}, simulate={}",
+                                balance,
+                                nekoInfo.cost,
+                                simulate);
+                            return false;
+                        }
+                    }
+
+                    // 猫猫币余额足够，继续检查 fromItems 中的普通物品
+                    // 如果 fromItems 为空（纯猫猫币交易），直接返回 true
+                    if (trade.fromItems.isEmpty()) {
+                        return true;
+                    }
+                    // 有普通物品需求，调用 super.checkTrade 检查
+                    return super.checkTrade(trade, player, walletMode, simulate);
+                }
+            }
         }
+
+        // 非猫猫币交易：走原版逻辑
         return super.checkTrade(trade, player, walletMode, simulate);
-    }
-
-    private NekoTradeRegistry.NekoTradeInfo findNekoTradeInfo(Trade trade) {
-        for (BigItemStack fromItem : trade.fromItems) {
-            String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(fromItem.getBaseStack());
-            if (currencyId != null) {
-                return new NekoTradeRegistry.NekoTradeInfo(currencyId, fromItem.stackSize, null);
-            }
-        }
-        return null;
-    }
-
-    private boolean checkNekoTrade(Trade trade, UUID player, NekoTradeRegistry.NekoTradeInfo nekoInfo,
-        boolean simulate) {
-        NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(player);
-        if (wallet == null) return false;
-
-        int balance = wallet.getCount(nekoInfo.currencyId);
-        if (balance < nekoInfo.cost) return false;
-
-        if (!simulate) {
-            wallet.addCount(nekoInfo.currencyId, -nekoInfo.cost);
-            NekoWalletManager.INSTANCE.saveWallet(player);
-            List<net.minecraft.item.ItemStack> toDispense = new ArrayList<>();
-            for (BigItemStack toItem : trade.toItems) {
-                toDispense.addAll(toItem.getCombinedStacks());
-            }
-            this.dispenseItemStacks(toDispense);
-            this.playSoundEffect("vendingmachine:coin_insert");
-        }
-        return true;
     }
 }
