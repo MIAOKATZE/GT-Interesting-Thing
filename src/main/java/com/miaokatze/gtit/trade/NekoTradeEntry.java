@@ -302,7 +302,7 @@ public class NekoTradeEntry {
     /**
      * 将 NBTTagCompound 序列化为 Base64 字符串
      */
-    private static String nbtToBase64(NBTTagCompound nbt) {
+    static String nbtToBase64(NBTTagCompound nbt) {
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             DataOutputStream dos = new DataOutputStream(baos);
@@ -319,7 +319,7 @@ public class NekoTradeEntry {
     /**
      * 从 Base64 字符串反序列化 NBTTagCompound
      */
-    private static NBTTagCompound nbtFromBase64(String base64) {
+    static NBTTagCompound nbtFromBase64(String base64) {
         try {
             byte[] bytes = Base64.getDecoder()
                 .decode(base64);

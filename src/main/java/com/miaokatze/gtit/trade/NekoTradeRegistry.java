@@ -56,12 +56,14 @@ public class NekoTradeRegistry {
         public final int cost; // 花费数量
         public final String entryId; // 对应的 NekoTradeEntry.id
         public final int orderId; // 顺序ID（用于Smart排序）
+        public final int tabId; // 标签页ID
 
-        public NekoTradeInfo(String currencyId, int cost, String entryId, int orderId) {
+        public NekoTradeInfo(String currencyId, int cost, String entryId, int orderId, int tabId) {
             this.currencyId = currencyId;
             this.cost = cost;
             this.entryId = entryId;
             this.orderId = orderId;
+            this.tabId = tabId;
         }
     }
 
@@ -245,7 +247,9 @@ public class NekoTradeRegistry {
 
             // 记录猫猫币交易信息
             NEKO_TRADE_GROUP_IDS.add(tradeGroupId);
-            NEKO_TRADES.put(tradeGroupId, new NekoTradeInfo(currencyId, cost, entry.getId(), entry.getOrderId()));
+            NEKO_TRADES.put(
+                tradeGroupId,
+                new NekoTradeInfo(currencyId, cost, entry.getId(), entry.getOrderId(), entry.getTabId()));
 
             GTInterestingThing.LOG.info(
                 "注册猫猫币交易: {} {} → {} [分类: {}, entryId={}]",
@@ -343,6 +347,8 @@ public class NekoTradeRegistry {
         }
 
         try {
+            // 同时重载标签页配置
+            NekoPageRegistry.reload();
             unregisterAllNekoTrades();
             loadAndRegisterTrades();
             GTInterestingThing.LOG.info("猫猫币交易热重载完成，共 {} 个交易组", NEKO_TRADES.size());
@@ -402,6 +408,14 @@ public class NekoTradeRegistry {
      */
     public static NekoTradeInfo getNekoTradeInfo(UUID tradeGroupId) {
         return NEKO_TRADES.get(tradeGroupId);
+    }
+
+    /**
+     * 获取交易组对应的标签页ID
+     */
+    public static int getTabIdForTradeGroup(UUID tradeGroupId) {
+        NekoTradeInfo info = NEKO_TRADES.get(tradeGroupId);
+        return info != null ? info.tabId : 3; // 默认归入"其他"
     }
 
     /**

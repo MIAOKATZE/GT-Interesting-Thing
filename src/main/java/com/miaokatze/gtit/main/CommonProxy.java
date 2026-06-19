@@ -15,6 +15,7 @@ import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 
@@ -225,7 +226,9 @@ public class CommonProxy {
             MinecraftServer server = MinecraftServer.getServer();
             if (server != null && server.getEntityWorld() != null) {
                 NekoWalletManager.INSTANCE.init(server.getEntityWorld());
-                // 初始化猫猫币交易注册（在钱包管理器初始化之后）
+                // 初始化标签页注册（在交易注册之前）
+                NekoPageRegistry.initialize();
+                // 初始化猫猫币交易注册（在钱包管理器和标签页初始化之后）
                 NekoTradeRegistry.initialize();
             }
         } catch (Throwable t) {
