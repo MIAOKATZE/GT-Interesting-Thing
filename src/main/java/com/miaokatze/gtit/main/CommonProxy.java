@@ -13,6 +13,7 @@ import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
+import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWalletManager;
@@ -39,6 +40,14 @@ public class CommonProxy {
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
 
         GTInterestingThing.LOG.info("GTInterestingThing 开始初始化 (版本: " + Tags.VERSION + ")");
+
+        // 强制加载 TextureManager，确保自定义材质在纹理缝合前注册到 GregTechAPI.sGTBlockIconload
+        try {
+            Class.forName(TextureManager.class.getName());
+            GTInterestingThing.LOG.info("[0/3] TextureManager 已加载，自定义材质图标已注册");
+        } catch (ClassNotFoundException e) {
+            GTInterestingThing.LOG.error("[0/3] TextureManager 加载失败", e);
+        }
 
         // 扩展 Baubles 戒指栏到 10 个
         expandBaublesRingSlots();

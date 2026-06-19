@@ -20,6 +20,29 @@ public class TextureManager {
     public static final IIconContainer TEX_TEST_IV = Textures.BlockIcons.custom("gtit:MTETEST_2");
     public static final IIconContainer TEX_TEST_LUV = Textures.BlockIcons.custom("gtit:MTETEST_3");
 
+    // 猫猫售货机覆盖材质（非激活状态）
+    public static final IIconContainer NEKOVM_OVERLAY_1 = Textures.BlockIcons.custom("gtit:nekovm_1"); // 右上
+    public static final IIconContainer NEKOVM_OVERLAY_2 = Textures.BlockIcons.custom("gtit:nekovm_2"); // 左上
+    public static final IIconContainer NEKOVM_OVERLAY_3 = Textures.BlockIcons.custom("gtit:nekovm_3"); // 左下
+
+    // 猫猫售货机覆盖材质（激活状态）
+    public static final IIconContainer NEKOVM_OVERLAY_ACTIVE_1 = Textures.BlockIcons.custom("gtit:nekovm_active_1"); // 右上
+    public static final IIconContainer NEKOVM_OVERLAY_ACTIVE_2 = Textures.BlockIcons.custom("gtit:nekovm_active_2"); // 左上
+    public static final IIconContainer NEKOVM_OVERLAY_ACTIVE_3 = Textures.BlockIcons.custom("gtit:nekovm_active_3"); // 左下
+
+    // 猫猫售货机覆盖材质数组（与覆盖层偏移顺序对应，控制器在右下角）
+    public static final IIconContainer[] NEKOVM_OVERLAY = new IIconContainer[] { NEKOVM_OVERLAY_1, // 索引0: 右上 (0, +1)
+        NEKOVM_OVERLAY_2, // 索引1: 左上 (-1, +1)
+        NEKOVM_OVERLAY_3, // 索引2: 左下 (-1, 0)
+    };
+    public static final IIconContainer[] NEKOVM_OVERLAY_ACTIVE = new IIconContainer[] { NEKOVM_OVERLAY_ACTIVE_1, // 索引0:
+                                                                                                                 // 右上
+                                                                                                                 // (0,
+                                                                                                                 // +1)
+        NEKOVM_OVERLAY_ACTIVE_2, // 索引1: 左上 (-1, +1)
+        NEKOVM_OVERLAY_ACTIVE_3, // 索引2: 左下 (-1, 0)
+    };
+
     private static final Map<String, ITexture> textureCache = new HashMap<>();
 
     public static ITexture getOrCreateTexture(String name, IIconContainer icon) {
