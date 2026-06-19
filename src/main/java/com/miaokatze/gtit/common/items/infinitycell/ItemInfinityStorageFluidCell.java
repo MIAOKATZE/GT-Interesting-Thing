@@ -31,7 +31,7 @@ import appeng.util.Platform;
 public class ItemInfinityStorageFluidCell extends Item implements IInfinityCellItem {
 
     private final int perType = 1;
-    private final double idleDrain = 2000D;
+    private final double idleDrain = 10D;
 
     public ItemInfinityStorageFluidCell() {
         this.setMaxStackSize(1);
