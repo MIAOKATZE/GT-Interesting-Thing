@@ -1,9 +1,12 @@
 package com.miaokatze.gtit.main;
 
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.World;
 
 import com.miaokatze.gtit.Tags;
 import com.miaokatze.gtit.command.GTITGiftCommand;
+import com.miaokatze.gtit.common.items.infinitycell.InfinityCellHandler;
+import com.miaokatze.gtit.common.items.infinitycell.StorageManager;
 import com.miaokatze.gtit.common.loot.LootRegistrar;
 import com.miaokatze.gtit.config.Config;
 import com.miaokatze.gtit.config.GiftConfig;
@@ -19,6 +22,7 @@ import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 
+import appeng.api.AEApi;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
@@ -204,6 +208,17 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
         }
+
+        // 注册 AE2 Infinity Cell Handler
+        try {
+            AEApi.instance()
+                .registries()
+                .cell()
+                .addCellHandler(new InfinityCellHandler());
+            GTInterestingThing.LOG.info("[3/3] AE2 Infinity Cell Handler 注册完成。");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] AE2 Infinity Cell Handler 注册失败", t);
+        }
     }
 
     /**
@@ -233,6 +248,23 @@ public class CommonProxy {
             }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("猫猫币钱包/交易初始化失败", t);
+        }
+
+        // 初始化 Infinity Cell StorageManager (WorldSavedData)
+        try {
+            World world = MinecraftServer.getServer()
+                .getEntityWorld();
+            if (world != null) {
+                StorageManager manager = (StorageManager) world.mapStorage
+                    .loadData(StorageManager.class, "GTIT_InfinityCellStorage");
+                if (manager == null) {
+                    manager = new StorageManager("GTIT_InfinityCellStorage");
+                    world.mapStorage.setData("GTIT_InfinityCellStorage", manager);
+                }
+                GTInterestingThing.LOG.info("Infinity Cell StorageManager 初始化完成。");
+            }
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("Infinity Cell StorageManager 初始化失败", t);
         }
     }
 

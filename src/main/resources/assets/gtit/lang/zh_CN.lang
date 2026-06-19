@@ -95,3 +95,7 @@ item.neko_coin.tooltip.1=可在宝箱中发现，或从鱼塘中钓起
 item.shimmering_neko_coin.name=闪烁猫猫币
 item.shimmering_neko_coin.tooltip.0=散发着神秘光芒的猫猫纪念币
 item.shimmering_neko_coin.tooltip.1=极为稀有，仅能从鱼塘中钓起
+
+# Infinity Cell 系列 (适配自 AE2Things)
+item.gtit.infinity_cell.name=ME无限存储元件
+item.gtit.infinity_fluid_cell.name=ME无限流体存储元件

@@ -95,3 +95,7 @@ item.neko_coin.tooltip.1=Can be found in chests or caught while fishing
 item.shimmering_neko_coin.name=Shimmering Neko Coin
 item.shimmering_neko_coin.tooltip.0=A cat memorial coin radiating mysterious light
 item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fishing
+
+# Infinity Cell series (adapted from AE2Things)
+item.gtit.infinity_cell.name=ME Infinity Cell
+item.gtit.infinity_fluid_cell.name=ME Infinity Fluid Cell

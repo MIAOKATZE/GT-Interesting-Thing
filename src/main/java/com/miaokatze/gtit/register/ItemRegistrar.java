@@ -8,6 +8,8 @@ import com.miaokatze.gtit.common.items.NekoCoin;
 import com.miaokatze.gtit.common.items.ShimmeringNekoCoin;
 import com.miaokatze.gtit.common.items.StarterGift;
 import com.miaokatze.gtit.common.items.TelekinesisOreScannerCore;
+import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageCell;
+import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageFluidCell;
 import com.miaokatze.gtit.common.items.rings.RingDistantGrasp;
 import com.miaokatze.gtit.common.items.rings.RingDragonBreath;
 import com.miaokatze.gtit.common.items.rings.RingGluttony;
@@ -53,6 +55,10 @@ public class ItemRegistrar {
 
         // 闪烁猫猫币
         registerShimmeringNekoCoin();
+
+        // Infinity Cell 系列
+        registerInfinityCell();
+        registerInfinityFluidCell();
 
         GTInterestingThing.LOG.info("物品注册完成。");
     }
@@ -125,5 +131,15 @@ public class ItemRegistrar {
 
     private static void registerShimmeringNekoCoin() {
         ShimmeringNekoCoin.setAndRegister(ShimmeringNekoCoin::new);
+    }
+
+    // ========== Infinity Cell 注册 ==========
+
+    private static void registerInfinityCell() {
+        InfinityCell.setAndRegister(ItemInfinityStorageCell::new);
+    }
+
+    private static void registerInfinityFluidCell() {
+        InfinityFluidCell.setAndRegister(ItemInfinityStorageFluidCell::new);
     }
 }
