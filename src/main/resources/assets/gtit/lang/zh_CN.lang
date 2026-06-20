@@ -100,5 +100,3 @@ item.shimmering_neko_coin.tooltip.1=极为稀有，仅能从鱼塘中钓起
 item.gtit.infinity_cell.name=ME无限存储元件
 item.gtit.infinity_fluid_cell.name=ME无限流体存储元件
 
-# 限定无尽能源元件 (AE2 Energy Cell)
-tile.gtit.limited_infinite_energy_cell.name=限定无尽能源元件

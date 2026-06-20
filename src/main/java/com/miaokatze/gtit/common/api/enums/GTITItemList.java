@@ -61,10 +61,7 @@ public enum GTITItemList implements IItemContainer {
 
     // Infinity Cell 系列 (适配自 AE2Things)
     InfinityCell,
-    InfinityFluidCell,
-
-    // 限定无尽能源元件 (AE2 Energy Cell)
-    LimitedInfiniteEnergyCell;
+    InfinityFluidCell;
 
     // 存储对应的物品堆栈实例
     private ItemStack mStack;
