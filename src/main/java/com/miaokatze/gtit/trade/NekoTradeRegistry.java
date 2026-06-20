@@ -370,12 +370,11 @@ public class NekoTradeRegistry {
     /**
      * 通过反射注入 TradeGroup 到 TradeDatabase
      * <p>
-     * 注意：只有无条件交易才加入 noConditionTrades（对所有玩家全局可见）。
-     * 有 BQ 条件的交易不加入 noConditionTrades，而是通过 BqAdapter 的条件满足机制
-     * （addSatisfiedCondition → updateAvailableTrades → satisfiesTrade）进入 availableTrades，
-     * 仅对已完成任务的玩家可见。这符合 VM 原版行为：未完成任务的交易不显示。
-     * <p>
-     * 猫猫机通过 NekoVendingMachineGui.updateTradeDisplay() 手动添加猫猫币交易。
+     * 所有猫猫币交易都加入 noConditionTrades（对所有玩家全局可见）。
+     * BQ 锁定状态通过客户端 Mixin 在渲染层处理：
+     * - 锁定交易显示橙色 "LOCKED" 文字
+     * - 冷却交易显示青色冷却时间
+     * - 锁定交易排在可交易之后
      */
     @SuppressWarnings("unchecked")
     private static void injectTradeGroup(TradeGroup tradeGroup, TradeCategory category) throws Exception {
@@ -392,11 +391,9 @@ public class NekoTradeRegistry {
         tradeCategories.get(category)
             .add(tradeGroup.getId());
 
-        // 只有无条件交易才加入 noConditionTrades
-        // 有 BQ 条件的交易通过 BqAdapter 条件满足机制进入 availableTrades
-        if (tradeGroup.hasNoConditions()) {
-            noConditionTrades.add(tradeGroup);
-        }
+        // 所有猫猫币交易都加入 noConditionTrades，确保对所有玩家可见
+        // BQ 锁定状态在客户端渲染层处理
+        noConditionTrades.add(tradeGroup);
     }
 
     /**
@@ -508,6 +505,29 @@ public class NekoTradeRegistry {
         } catch (Exception e) {
             GTInterestingThing.LOG.warn("获取所有交易组ID失败", e);
             return new HashSet<>();
+        }
+    }
+
+    /**
+     * 检查指定交易组是否被 BQ 任务锁定（玩家未完成所需任务）
+     * <p>
+     * 客户端使用：通过 BqAdapter 的 playerSatisfiedCache 判断
+     * （NetSatisfiedQuestSync 会将缓存同步到客户端）
+     *
+     * @param tradeGroupId 交易组 UUID
+     * @param playerId     玩家 UUID
+     * @return true 如果交易有 BQ 条件且玩家未完成任务
+     */
+    public static boolean isTradeBqLocked(UUID tradeGroupId, UUID playerId) {
+        if (!VendingMachine.isBqLoaded) return false;
+        NekoTradeInfo info = NEKO_TRADES.get(tradeGroupId);
+        if (info == null || info.bqQuestId == null || info.bqQuestId.isEmpty()) return false;
+        UUID questId = parseBqQuestId(info.bqQuestId);
+        if (questId == null) return false;
+        try {
+            return !BqAdapter.INSTANCE.checkPlayerCompletedQuest(playerId, questId);
+        } catch (Exception e) {
+            return false;
         }
     }
 
