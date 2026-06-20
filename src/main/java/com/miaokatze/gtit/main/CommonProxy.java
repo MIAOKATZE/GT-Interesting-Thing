@@ -21,6 +21,7 @@ import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.BqEventBridge;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
+import com.miaokatze.gtit.trade.NekoTeamData;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 
@@ -184,6 +185,16 @@ public class CommonProxy {
     public void init(FMLInitializationEvent event) {
         // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
         ensureBaublesRingSlots();
+
+        // 注册猫猫币团队数据到 GTNHLib Teams
+        try {
+            com.gtnewhorizon.gtnhlib.teams.TeamDataRegistry.register(NekoTeamData.ID, NekoTeamData::new);
+            GTInterestingThing.LOG.info("[2/3] 猫猫币团队数据已注册到 GTNHLib Teams");
+        } catch (NoClassDefFoundError e) {
+            GTInterestingThing.LOG.warn("[2/3] GTNHLib Teams API 不可用，猫猫币钱包将回退到个人模式");
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[2/3] 注册猫猫币团队数据失败", e);
+        }
 
         // 注册战利品（箱子/钓鱼）
         LootRegistrar.init();

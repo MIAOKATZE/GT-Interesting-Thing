@@ -95,8 +95,16 @@ public class GTITGiftCommand extends CommandBase {
             if ("nekovm".equals(args[0])) {
                 return getListOfStringsMatchingLastWord(
                     args,
-                    "edit", "list", "edithelp", "delete", "reload",
-                    "save", "timereset", "page", "pagehelp", "help");
+                    "edit",
+                    "list",
+                    "edithelp",
+                    "delete",
+                    "reload",
+                    "save",
+                    "timereset",
+                    "page",
+                    "pagehelp",
+                    "help");
             }
         }
 

@@ -58,6 +58,7 @@ public class NekoWallet {
 
     /**
      * 从 NBT 读取
+     * 注意：getNekoCurrencyIds() 只返回字符串常量，不依赖 init() 状态，可安全在团队数据加载时调用
      */
     public void readFromNBT(NBTTagCompound nbt) {
         balances.clear();
@@ -66,6 +67,13 @@ public class NekoWallet {
                 balances.put(currencyId, nbt.getInteger(currencyId));
             }
         }
+    }
+
+    /**
+     * 获取所有货币 ID
+     */
+    public java.util.Set<String> getCurrencyIds() {
+        return balances.keySet();
     }
 
     /**

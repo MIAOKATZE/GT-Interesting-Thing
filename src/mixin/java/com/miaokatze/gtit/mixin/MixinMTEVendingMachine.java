@@ -11,6 +11,8 @@ import com.cubefury.vendingmachine.blocks.MTEVendingMachine;
 import com.cubefury.vendingmachine.trade.Trade;
 import com.cubefury.vendingmachine.trade.TradeDatabase;
 import com.cubefury.vendingmachine.trade.TradeGroup;
+import com.cubefury.vendingmachine.trade.TradeHistory;
+import com.cubefury.vendingmachine.trade.TradeManager;
 import com.cubefury.vendingmachine.trade.TradeRequest;
 import com.cubefury.vendingmachine.util.BigItemStack;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
@@ -87,6 +89,19 @@ public class MixinMTEVendingMachine {
         Trade trade = tg.getTrades()
             .get(tradeRequest.tradeGroupOrder);
 
+        // 检查冷却（冷却随在线团队成员数缩放）
+        // getMaxTradesInCooldown 返回在线团队成员数，作为冷却期内允许的最大交易次数
+        if (tg.cooldown != -1) {
+            TradeHistory history = TradeManager.INSTANCE.getTradeState(playerId, tg);
+            long currentTimestamp = System.currentTimeMillis();
+            long lastTradeTime = history.lastTrade;
+            if (lastTradeTime != -1L && (currentTimestamp - lastTradeTime) / 1000L < tg.cooldown
+                && history.cooldownTradeCount >= TradeManager.INSTANCE.getMaxTradesInCooldown(playerId)) {
+                cir.setReturnValue(false);
+                return;
+            }
+        }
+
         // 混合交易：先扣减猫猫币，然后走原版逻辑处理 fromItems
         if (!trade.fromItems.isEmpty()) {
             wallet.addCount(nekoInfo.currencyId, -nekoInfo.cost);
@@ -104,7 +119,7 @@ public class MixinMTEVendingMachine {
         }
 
         // 更新交易历史
-        com.cubefury.vendingmachine.trade.TradeManager.INSTANCE.executeTrade(playerId, tg);
+        TradeManager.INSTANCE.executeTrade(playerId, tg);
         self.sendTradeUpdate();
         self.markDirty();
 
