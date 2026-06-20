@@ -8,10 +8,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplay;
@@ -22,12 +20,19 @@ import com.miaokatze.gtit.trade.NekoTradeRegistry;
  * Mixin 拦截 TradeItemDisplayWidget.draw() 渲染
  * <p>
  * 实现 BQ 锁定交易的客户端显示：
- * - BQ 锁定交易：显示冷却遮罩 + 橙色 "LOCKED" 文字
+ * - BQ 锁定交易：显示冷却遮罩 + 金色 "LOCKED" 文字
  * - 冷却交易（猫猫币）：青色冷却时间文字
  * - 非猫猫币交易：原样渲染
+ * <p>
+ * 使用 Minecraft 颜色代码（§6=金色，§b=青色）嵌入 cooldownText，
+ * 利用 FontRenderer 对颜色代码的原生支持，无需拦截 IKey.color()。
  */
 @Mixin(TradeItemDisplayWidget.class)
 public class MixinTradeItemDisplayWidget {
+
+    static {
+        System.out.println("[NEKO-MIXIN] MixinTradeItemDisplayWidget 静态初始化器已执行（§代码方案）");
+    }
 
     @Shadow(remap = false)
     private TradeItemDisplay display;
@@ -45,48 +50,39 @@ public class MixinTradeItemDisplayWidget {
         nekoBqLocked = false;
         nekoCooldown = false;
 
-        if (display == null || display.tgID == null) return;
-        if (!NekoTradeRegistry.isNekoTradeGroup(display.tgID)) return;
+        if (display == null || display.tgID == null) {
+            return;
+        }
+        if (!NekoTradeRegistry.isNekoTradeGroup(display.tgID)) {
+            return;
+        }
 
         // 获取客户端玩家 UUID
         Minecraft mc = Minecraft.getMinecraft();
         if (mc == null || mc.thePlayer == null) return;
         UUID playerId = mc.thePlayer.getUniqueID();
 
-        // 检查 BQ 锁定状态
         if (NekoTradeRegistry.isTradeBqLocked(display.tgID, playerId)) {
-            // BQ 锁定：临时修改 display 字段以触发冷却遮罩
+            // BQ 锁定：临时修改 display 字段以触发冷却遮罩 + 金色 LOCKED
             nekoBqLocked = true;
             nekoOriginalHasCooldown = display.hasCooldown;
             nekoOriginalCooldownText = display.cooldownText;
             display.hasCooldown = true;
-            display.cooldownText = "LOCKED";
-        } else if (display.hasCooldown) {
-            // 猫猫币交易冷却中
+            display.cooldownText = "\u00A76LOCKED"; // §6 = 金色
+        } else if (display.hasCooldown && display.cooldownText != null && !display.cooldownText.isEmpty()) {
+            // 猫猫币交易冷却中：青色冷却时间
             nekoCooldown = true;
+            nekoOriginalCooldownText = display.cooldownText;
+            display.cooldownText = "\u00A7b" + display.cooldownText; // §b = 青色
         }
-    }
-
-    @Redirect(
-        method = "draw",
-        at = @At(
-            value = "INVOKE",
-            target = "Lcom/cleanroommc/modularui/api/drawable/IKey;color(I)Lcom/cleanroommc/modularui/api/drawable/IKey;"),
-        remap = false)
-    private IKey redirectNekoColor(IKey instance, int color) {
-        if (nekoBqLocked) {
-            return instance.color(0xFFFFA500); // 橙色 ARGB
-        }
-        if (nekoCooldown) {
-            return instance.color(0xFF00FFFF); // 青色 ARGB
-        }
-        return instance.color(color); // 原始颜色
     }
 
     @Inject(method = "draw", at = @At("RETURN"), remap = false)
     private void onDrawReturn(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme, CallbackInfo ci) {
         if (nekoBqLocked && display != null) {
             display.hasCooldown = nekoOriginalHasCooldown;
+            display.cooldownText = nekoOriginalCooldownText;
+        } else if (nekoCooldown && display != null) {
             display.cooldownText = nekoOriginalCooldownText;
         }
         nekoBqLocked = false;
