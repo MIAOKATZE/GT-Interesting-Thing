@@ -95,7 +95,8 @@ public class MixinMTEVendingMachine {
             TradeHistory history = TradeManager.INSTANCE.getTradeState(playerId, tg);
             long currentTimestamp = System.currentTimeMillis();
             long lastTradeTime = history.lastTrade;
-            if (lastTradeTime != -1L && (currentTimestamp - lastTradeTime) / 1000L < tg.cooldown
+            if (lastTradeTime != -1L
+                && (currentTimestamp - lastTradeTime) / 1000L < tg.cooldown
                 && history.cooldownTradeCount >= TradeManager.INSTANCE.getMaxTradesInCooldown(playerId)) {
                 cir.setReturnValue(false);
                 return;
