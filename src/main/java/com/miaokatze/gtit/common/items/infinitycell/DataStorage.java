@@ -5,7 +5,6 @@ import java.util.UUID;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
-import net.minecraftforge.fluids.FluidStack;
 
 import appeng.api.AEApi;
 import appeng.api.storage.StorageChannel;
@@ -96,12 +95,9 @@ public class DataStorage {
         }
         for (int x = 0; x < tag.tagCount(); x++) {
             final NBTTagCompound compound = tag.getCompoundTagAt(x);
-            FluidStack fluidStack = FluidStack.loadFluidStackFromNBT(compound);
-            if (fluidStack != null) {
-                IAEFluidStack ais = AEFluidStack.create(fluidStack);
-                if (ais != null) {
-                    out.add(ais);
-                }
+            IAEFluidStack ais = AEFluidStack.loadFluidStackFromNBT(compound);
+            if (ais != null) {
+                out.add(ais);
             }
         }
         return out;
