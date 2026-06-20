@@ -112,8 +112,288 @@ public class NekoTradeConfig {
      */
     public static NekoTradeData getDefaultTrades() {
         NekoTradeData data = new NekoTradeData();
-        data.setTrades(new ArrayList<NekoTradeEntry>());
+        List<NekoTradeEntry> trades = new ArrayList<>();
+
+        // 标签页3 (GTIT) 默认交易
+        trades.add(
+            createDefaultTrade(
+                "110fef48-6d6e-43d0-b0da-d4616062c086",
+                3,
+                1,
+                "shimmeringNeko",
+                8,
+                null,
+                "gtit:ring_distant_grasp",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "60189809-61fe-4c58-b7e9-6a75822a1d95",
+                3,
+                2,
+                "shimmeringNeko",
+                8,
+                null,
+                "gtit:ring_skywalk",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "626f57f4-f7a8-4fc0-8342-25a22a416600",
+                3,
+                3,
+                "shimmeringNeko",
+                12,
+                "harvestcraft:delightedmealItem:0:16",
+                "gtit:ring_gluttony",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "9b41d48a-04e1-42ff-8740-2d033058bff8",
+                3,
+                4,
+                "shimmeringNeko",
+                8,
+                null,
+                "gtit:ring_ironheart",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "c9cca16c-a897-4151-b014-7e10c27b6107",
+                3,
+                5,
+                "shimmeringNeko",
+                12,
+                null,
+                "gtit:ring_dragon_breath",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "62c2e2dd-0d43-4470-813e-05ea97c0361f",
+                3,
+                6,
+                "shimmeringNeko",
+                12,
+                null,
+                "gtit:ring_mountainbreaker",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "c49c7365-a3fd-462a-938a-e1adc8cccdab",
+                3,
+                7,
+                "shimmeringNeko",
+                12,
+                null,
+                "gtit:ring_tempest",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "549030c9-b3f4-4c9d-9a99-eed53ab851ce",
+                3,
+                8,
+                "shimmeringNeko",
+                256,
+                "appliedenergistics2:item.ItemAdvancedStorageCell.16384k:0:4",
+                "gtit:gtit.infinity_cell",
+                0,
+                1,
+                "CgAAAA==",
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "7c87fe3f-7ed6-467b-8646-5da3e5937ebe",
+                3,
+                9,
+                "shimmeringNeko",
+                256,
+                "ae2fc:multi_fluid_storage16384:0:4",
+                "gtit:gtit.infinity_fluid_cell",
+                0,
+                1,
+                "CgAAAA==",
+                0,
+                -1,
+                ""));
+
+        // 标签页1 (猫猫币) 默认交易 — 物品兑换猫猫币
+        trades.add(
+            createDefaultTrade(
+                "0deb35e7-4451-42be-a5f4-2e9654a7cd97",
+                1,
+                1,
+                null,
+                0,
+                "minecraft:cobblestone:0:512",
+                "gtit:neko_coin",
+                0,
+                1,
+                null,
+                21600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "a2b70611-2f52-4e94-bd0b-37cb3bcef55b",
+                1,
+                2,
+                null,
+                0,
+                "minecraft:iron_ingot:0:128",
+                "gtit:neko_coin",
+                0,
+                1,
+                null,
+                21600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "bf6eff9e-5251-4c7f-add6-435bcf36ba3e",
+                1,
+                3,
+                null,
+                0,
+                "gregtech:gt.metaitem.01:11035:128",
+                "gtit:neko_coin",
+                0,
+                1,
+                null,
+                21600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "d394dcd4-df58-47fc-ba23-f9a54f20ba8f",
+                1,
+                4,
+                null,
+                0,
+                "gregtech:gt.metaitem.01:11057:128",
+                "gtit:neko_coin",
+                0,
+                1,
+                null,
+                21600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "1584789d-6e9a-4551-9ef6-6317976d2c09",
+                1,
+                5,
+                null,
+                0,
+                "minecraft:wheat:0:128",
+                "gtit:neko_coin",
+                0,
+                1,
+                null,
+                21600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "ec3da15d-f7eb-4032-8357-bf57bb8a2ded",
+                1,
+                6,
+                null,
+                0,
+                "Natura:barleyFood:3:128",
+                "gtit:neko_coin",
+                0,
+                1,
+                null,
+                21600,
+                -1,
+                ""));
+
+        data.setTrades(trades);
         return data;
+    }
+
+    /**
+     * 创建默认交易条目
+     *
+     * @param id           条目ID
+     * @param tabId        标签页ID
+     * @param orderId      顺序ID
+     * @param currencyType 货币类型（null=无货币）
+     * @param currencyAmt  货币数量
+     * @param fromItemStr  需求物品（格式 "modid:item:meta:amount"，null=无需求物品）
+     * @param toItem       产物物品注册名
+     * @param toMeta       产物metadata
+     * @param toAmount     产物数量
+     * @param toNbtBase64  产物NBT Base64（null=无NBT）
+     * @param cooldown     冷却时间
+     * @param maxTrades    最大交易次数
+     * @param bqQuestId    绑定任务ID
+     */
+    private static NekoTradeEntry createDefaultTrade(String id, int tabId, int orderId, String currencyType,
+        int currencyAmt, String fromItemStr, String toItem, int toMeta, int toAmount, String toNbtBase64, int cooldown,
+        int maxTrades, String bqQuestId) {
+        NekoTradeEntry entry = new NekoTradeEntry();
+        entry.setId(id);
+        entry.setTabId(tabId);
+        entry.setOrderId(orderId);
+        if (currencyType != null) {
+            entry.setCurrency(new NekoTradeEntry.NekoCurrencyCost(currencyType, currencyAmt));
+        }
+        if (fromItemStr != null) {
+            List<NekoTradeEntry.ItemEntry> fromItems = new ArrayList<>();
+            String[] parts = fromItemStr.split(":");
+            String fromItemName = parts[0] + ":" + parts[1];
+            int fromMeta = Integer.parseInt(parts[2]);
+            int fromAmount = Integer.parseInt(parts[3]);
+            fromItems.add(new NekoTradeEntry.ItemEntry(fromItemName, fromMeta, fromAmount));
+            entry.setFromItems(fromItems);
+        }
+        List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();
+        NekoTradeEntry.ItemEntry toEntry = new NekoTradeEntry.ItemEntry(toItem, toMeta, toAmount);
+        if (toNbtBase64 != null) {
+            toEntry.setNbtBase64(toNbtBase64);
+        }
+        toItems.add(toEntry);
+        entry.setToItems(toItems);
+        entry.setCooldown(cooldown);
+        entry.setMaxTrades(maxTrades);
+        entry.setBqQuestId(bqQuestId);
+        return entry;
     }
 
     // --- 辅助方法 ---

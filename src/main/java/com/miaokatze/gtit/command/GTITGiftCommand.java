@@ -283,25 +283,16 @@ public class GTITGiftCommand extends CommandBase {
             orderId = getNextOrderId(trades, tabId);
         }
 
-        // 根据标签页和自动检测设置猫猫币信息
-        // 优先使用自动检测的猫猫币（从背包中识别），其次根据标签页设置默认值
+        // 根据自动检测设置猫猫币信息（不再根据标签页自动添加猫猫币）
         NekoTradeEntry.NekoCurrencyCost currency = detectedCurrency;
         String tabName = getTabName(tabId);
-
-        if (currency == null && tabId == 1) {
-            // 标签页1（猫猫币）但背包中没有猫猫币，默认1个猫猫币
-            currency = new NekoTradeEntry.NekoCurrencyCost("neko", 1);
-        } else if (currency == null && tabId == 2) {
-            // 标签页2（闪烁猫猫币）但背包中没有闪烁猫猫币，默认1个闪烁猫猫币
-            currency = new NekoTradeEntry.NekoCurrencyCost("shimmeringNeko", 1);
-        }
 
         // 验证：猫猫币交易的标签页提示（完全解耦，不再强制修正）
         if (currency != null) {
             boolean isNeko = "neko".equals(currency.getType());
             boolean isShimmering = "shimmeringNeko".equals(currency.getType());
             if (tabId == 3 && (isNeko || isShimmering)) {
-                // "基础"标签页放猫猫币交易，仅提示
+                // "GTIT"标签页放猫猫币交易，仅提示
                 player.addChatMessage(
                     new ChatComponentText(EnumChatFormatting.YELLOW + "提示：猫猫币交易通常放在标签页1，闪烁猫猫币交易通常放在标签页2"));
             }

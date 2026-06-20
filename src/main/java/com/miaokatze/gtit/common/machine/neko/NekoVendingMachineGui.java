@@ -107,21 +107,21 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     private final PagedWidget.Controller nekoTabController;
     private final List<ListWidget> nekoTradeLists;
     /** 猫猫币页面专用的 TILE 模式 widget 列表（独立于父类的 displayedTradesTiles） */
-    private List<TradeItemDisplayWidget> nekoSpecificTiles;
+    private List<NekoTradeItemDisplayWidget> nekoSpecificTiles;
     /** 闪烁猫猫币页面专用的 TILE 模式 widget 列表 */
-    private List<TradeItemDisplayWidget> shimmeringSpecificTiles;
+    private List<NekoTradeItemDisplayWidget> shimmeringSpecificTiles;
     /** 猫猫币页面专用的 LIST 模式 widget 列表 */
-    private List<TradeItemDisplayWidget> nekoSpecificList;
+    private List<NekoTradeItemDisplayWidget> nekoSpecificList;
     /** 闪烁猫猫币页面专用的 LIST 模式 widget 列表 */
-    private List<TradeItemDisplayWidget> shimmeringSpecificList;
+    private List<NekoTradeItemDisplayWidget> shimmeringSpecificList;
     /** 其他页面专用的 TILE 模式 widget 列表 */
-    private List<TradeItemDisplayWidget> otherSpecificTiles;
+    private List<NekoTradeItemDisplayWidget> otherSpecificTiles;
     /** 其他页面专用的 LIST 模式 widget 列表 */
-    private List<TradeItemDisplayWidget> otherSpecificList;
+    private List<NekoTradeItemDisplayWidget> otherSpecificList;
     /** 自定义标签页的 TILE 模式 widget 列表（按标签页ID索引） */
-    private final Map<Integer, List<TradeItemDisplayWidget>> customSpecificTiles = new HashMap<>();
+    private final Map<Integer, List<NekoTradeItemDisplayWidget>> customSpecificTiles = new HashMap<>();
     /** 自定义标签页的 LIST 模式 widget 列表（按标签页ID索引） */
-    private final Map<Integer, List<TradeItemDisplayWidget>> customSpecificList = new HashMap<>();
+    private final Map<Integer, List<NekoTradeItemDisplayWidget>> customSpecificList = new HashMap<>();
     private final SearchBar nekoSearchBar;
 
     // 反射缓存：父类 MTEVendingMachineGui.guiData
@@ -182,21 +182,22 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             this.shimmeringSpecificList = new ArrayList<>();
             this.otherSpecificList = new ArrayList<>();
             for (int i = 0; i < 300; i++) {
-                this.nekoSpecificTiles.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
-                this.shimmeringSpecificTiles.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
-                this.otherSpecificTiles.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
-                this.nekoSpecificList.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
-                this.shimmeringSpecificList.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
-                this.otherSpecificList.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
+                this.nekoSpecificTiles.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
+                this.shimmeringSpecificTiles
+                    .add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
+                this.otherSpecificTiles.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
+                this.nekoSpecificList.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
+                this.shimmeringSpecificList.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
+                this.otherSpecificList.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
             }
             // 为自定义标签页（ID >= 4）初始化 widget 列表
             for (NekoPageEntry page : NekoPageRegistry.getAllPages()) {
                 if (page.getId() >= 4) {
-                    List<TradeItemDisplayWidget> tiles = new ArrayList<>();
-                    List<TradeItemDisplayWidget> lists = new ArrayList<>();
-                    for (int i = 0; i < 300; i++) {
-                        tiles.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
-                        lists.add(new TradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
+                    List<NekoTradeItemDisplayWidget> tiles = new ArrayList<>();
+                    List<NekoTradeItemDisplayWidget> lists = new ArrayList<>();
+                    for (int j = 0; j < 300; j++) {
+                        tiles.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
+                        lists.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
                     }
                     customSpecificTiles.put(page.getId(), tiles);
                     customSpecificList.put(page.getId(), lists);
@@ -408,6 +409,16 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     displayStack.stackSize = trade.toItems.get(0).stackSize;
                 }
 
+                // 当产物只有猫猫币/闪烁猫猫币时，主图标改为 fromItems 第一个物品
+                // 猫猫币图标作为副图标在 widget 右下角小号显示
+                boolean isNekoCoinOnly = isToItemsOnlyNekoCoin(trade);
+                if (isNekoCoinOnly && !trade.fromItems.isEmpty()) {
+                    displayStack = trade.fromItems.get(0)
+                        .getBaseStack()
+                        .copy();
+                    displayStack.stackSize = trade.fromItems.get(0).stackSize;
+                }
+
                 String syncKey = tgId.toString() + ":" + i;
                 TradeItemDisplay syncedData = syncedDataMap.get(syncKey);
 
@@ -465,7 +476,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     customTrades.get(tabId)
                         .add(display);
                 } else {
-                    // 未找到对应标签页，归入"基础"
+                    // 未找到对应标签页，归入"GTIT"
                     otherTrades.add(display);
                 }
             }
@@ -608,15 +619,26 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     /**
      * 更新专用 widget 列表的数据（只包含过滤后的交易）
      */
-    private void updateFilteredWidgetList(List<TradeItemDisplayWidget> widgets, List<TradeItemDisplay> filteredTrades) {
+    private void updateFilteredWidgetList(List<NekoTradeItemDisplayWidget> widgets,
+        List<TradeItemDisplay> filteredTrades) {
         synchronized (widgets) {
             for (int i = 0; i < 300; i++) {
+                NekoTradeItemDisplayWidget w = widgets.get(i);
                 if (i < filteredTrades.size()) {
-                    widgets.get(i)
-                        .setDisplay(filteredTrades.get(i));
+                    TradeItemDisplay display = filteredTrades.get(i);
+                    w.setDisplay(display);
+                    // 当产物只有猫猫币时，设置副图标
+                    if (display != null && isToItemsOnlyNekoCoin(display) && !display.toItems.isEmpty()) {
+                        w.setSecondaryIcon(
+                            display.toItems.get(0)
+                                .getBaseStack()
+                                .copy());
+                    } else {
+                        w.setSecondaryIcon(null);
+                    }
                 } else {
-                    widgets.get(i)
-                        .setDisplay(null);
+                    w.setDisplay(null);
+                    w.setSecondaryIcon(null);
                 }
             }
         }
@@ -940,7 +962,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
      * <p>
      * 猫猫币/闪烁猫猫币/其他页面使用独立的 widget 列表，避免共享实例。
      */
-    private List<TradeItemDisplayWidget> getWidgetList(String currencyFilter, DisplayType displayType) {
+    private List<NekoTradeItemDisplayWidget> getWidgetList(String currencyFilter, DisplayType displayType) {
         if (displayType == DisplayType.TILE) {
             if ("neko".equals(currencyFilter)) return this.nekoSpecificTiles;
             if ("shimmeringNeko".equals(currencyFilter)) return this.shimmeringSpecificTiles;
@@ -950,7 +972,8 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                 int tabId = Integer.parseInt(currencyFilter.substring(4));
                 return this.customSpecificTiles.getOrDefault(tabId, this.otherSpecificTiles);
             }
-            return this.displayedTradesTiles.get(TradeCategory.ALL);
+            // 回退到父类 widget 列表（类型不匹配时返回空列表）
+            return new ArrayList<>();
         } else {
             if ("neko".equals(currencyFilter)) return this.nekoSpecificList;
             if ("shimmeringNeko".equals(currencyFilter)) return this.shimmeringSpecificList;
@@ -960,7 +983,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                 int tabId = Integer.parseInt(currencyFilter.substring(4));
                 return this.customSpecificList.getOrDefault(tabId, this.otherSpecificList);
             }
-            return this.displayedTradesList.get(TradeCategory.ALL);
+            return new ArrayList<>();
         }
     }
 
@@ -972,8 +995,8 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
      * @param currencyFilter 货币过滤（"neko"=只显示猫猫币交易，"shimmeringNeko"=只显示闪烁猫猫币交易，"other"=非猫猫币且非闪烁猫猫币的交易）
      */
     private ListWidget createTradeListPage(TradeMainPanel rootPanel, TradeCategory category, String currencyFilter) {
-        List<TradeItemDisplayWidget> tileWidgets = getWidgetList(currencyFilter, DisplayType.TILE);
-        List<TradeItemDisplayWidget> listWidgets = getWidgetList(currencyFilter, DisplayType.LIST);
+        List<NekoTradeItemDisplayWidget> tileWidgets = getWidgetList(currencyFilter, DisplayType.TILE);
+        List<NekoTradeItemDisplayWidget> listWidgets = getWidgetList(currencyFilter, DisplayType.LIST);
 
         ListWidget tradeList = ((ListWidget) ((ListWidget) ((ListWidget) ((ListWidget) new ListWidget().name("items"))
             .width(161)).top(1)).height(144)).collapseDisabledChild(true);
@@ -1009,7 +1032,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                             .getActive()) {
                             return false;
                         }
-                        TradeItemDisplayWidget display = (TradeItemDisplayWidget) (Object) slot;
+                        NekoTradeItemDisplayWidget display = (NekoTradeItemDisplayWidget) (Object) slot;
                         if (display.getDisplay() == null) {
                             return false;
                         }
@@ -1052,7 +1075,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                             .getActive()) {
                             return false;
                         }
-                        TradeItemDisplayWidget display = (TradeItemDisplayWidget) (Object) slot;
+                        NekoTradeItemDisplayWidget display = (NekoTradeItemDisplayWidget) (Object) slot;
                         if (VMConfig.gui.display_type != display.displayType || display.getDisplay() == null) {
                             return false;
                         }
@@ -1080,30 +1103,48 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     private boolean isNekoCurrencyTrade(TradeItemDisplay display, String currencyFilter) {
         if (display == null) return false;
 
-        // 自定义标签页过滤
-        if (currencyFilter != null && currencyFilter.startsWith("tab_")) {
-            int tabId = Integer.parseInt(currencyFilter.substring(4));
-            int displayTabId = NekoTradeRegistry.getTabIdForTradeGroup(display.tgID);
-            return displayTabId == tabId;
+        // 所有标签页统一使用 tabId 过滤（标签页与交易完全解耦）
+        int targetTabId;
+        if ("neko".equals(currencyFilter)) {
+            targetTabId = 1;
+        } else if ("shimmeringNeko".equals(currencyFilter)) {
+            targetTabId = 2;
+        } else if ("other".equals(currencyFilter)) {
+            targetTabId = 3;
+        } else if (currencyFilter != null && currencyFilter.startsWith("tab_")) {
+            targetTabId = Integer.parseInt(currencyFilter.substring(4));
+        } else {
+            return false;
         }
 
-        // "other" 过滤：不是 neko 也不是 shimmeringNeko
-        if ("other".equals(currencyFilter)) {
-            return !isNekoCurrencyTrade(display, "neko") && !isNekoCurrencyTrade(display, "shimmeringNeko");
-        }
-        // 方法1：通过 tgID 映射
-        NekoTradeRegistry.NekoTradeInfo info = NekoTradeRegistry.getNekoTradeInfo(display.tgID);
-        if (info != null) {
-            return currencyFilter.equals(info.currencyId);
-        }
-        // 方法2：通过 fromItems 物品判断
-        for (com.cubefury.vendingmachine.util.BigItemStack fromItem : display.fromItems) {
-            String id = NekoCurrencyRegistrar.getNekoCurrencyId(fromItem.getBaseStack());
-            if (currencyFilter.equals(id)) {
-                return true;
+        int displayTabId = NekoTradeRegistry.getTabIdForTradeGroup(display.tgID);
+        return displayTabId == targetTabId;
+    }
+
+    /**
+     * 判断交易的产物是否只有猫猫币/闪烁猫猫币
+     */
+    private boolean isToItemsOnlyNekoCoin(com.cubefury.vendingmachine.trade.Trade trade) {
+        if (trade.toItems == null || trade.toItems.isEmpty()) return false;
+        for (com.cubefury.vendingmachine.util.BigItemStack toItem : trade.toItems) {
+            if (NekoCurrencyRegistrar.getNekoCurrencyId(toItem.getBaseStack()) == null) {
+                return false;
             }
         }
-        return false;
+        return true;
+    }
+
+    /**
+     * 判断 TradeItemDisplay 的产物是否只有猫猫币/闪烁猫猫币
+     */
+    private boolean isToItemsOnlyNekoCoin(TradeItemDisplay display) {
+        if (display.toItems == null || display.toItems.isEmpty()) return false;
+        for (com.cubefury.vendingmachine.util.BigItemStack toItem : display.toItems) {
+            if (NekoCurrencyRegistrar.getNekoCurrencyId(toItem.getBaseStack()) == null) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
