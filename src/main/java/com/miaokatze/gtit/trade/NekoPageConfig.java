@@ -124,6 +124,10 @@ public class NekoPageConfig {
         NekoPageEntry page3 = new NekoPageEntry(3, "GTIT", "gtit:ring_distant_grasp", 0, true);
         pages.add(page3);
 
+        // 标签页4：周期领取
+        NekoPageEntry page4 = new NekoPageEntry(4, "周期领取", "minecraft:clock", 0, false);
+        pages.add(page4);
+
         data.setPages(pages);
         return data;
     }

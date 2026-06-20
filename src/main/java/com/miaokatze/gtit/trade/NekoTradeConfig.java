@@ -343,6 +343,147 @@ public class NekoTradeConfig {
                 -1,
                 ""));
 
+        // 标签页1 (猫猫币) — 多需求物品交易
+        trades.add(
+            createDefaultTrade(
+                "aa9ba48b-fad0-4b04-9fa8-92ccf4780b0a",
+                1,
+                7,
+                null,
+                0,
+                "minecraft:bone:0:64;minecraft:gunpowder:0:64;minecraft:rotten_flesh:0:64",
+                "gtit:neko_coin",
+                0,
+                3,
+                null,
+                14400,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "88cd599d-9a36-49b4-878a-24f38644074b",
+                1,
+                8,
+                null,
+                0,
+                "minecraft:blaze_rod:0:256",
+                "gtit:neko_coin",
+                0,
+                8,
+                null,
+                14400,
+                -1,
+                ""));
+
+        // 标签页2 (闪烁猫猫币) 默认交易
+        trades.add(
+            createDefaultTrade(
+                "63545a4e-28aa-4928-bf52-63ae039bf312",
+                2,
+                1,
+                "neko",
+                64,
+                null,
+                "gtit:shimmering_neko_coin",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "7c0fa8ce-9288-4408-a5f0-7e05b1c485dd",
+                2,
+                2,
+                null,
+                0,
+                "DraconicEvolution:dezilsMarshmallow:0:1",
+                "gtit:shimmering_neko_coin",
+                0,
+                1,
+                null,
+                3600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "f123df0a-5d35-4a1e-9ba5-21aff513e39d",
+                2,
+                3,
+                null,
+                0,
+                "EMT:TaintedMjolnir:0:1",
+                "gtit:shimmering_neko_coin",
+                0,
+                1,
+                null,
+                3600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "b6f3f205-bf18-47be-9c44-e4c4d0a95127",
+                2,
+                4,
+                null,
+                0,
+                "minecraft:nether_star:0:1",
+                "gtit:shimmering_neko_coin",
+                0,
+                1,
+                null,
+                3600,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "8ad43f0d-4ffa-4682-940a-cd7922613e53",
+                2,
+                5,
+                null,
+                0,
+                "Thaumcraft:ItemLootBag:2:8;Thaumcraft:ItemLootBag:1:2;Thaumcraft:ItemLootBag:0:16",
+                "gtit:shimmering_neko_coin",
+                0,
+                1,
+                null,
+                3600,
+                -1,
+                ""));
+
+        // 标签页4 (周期领取) 默认交易
+        trades.add(
+            createDefaultTrade(
+                "27d89836-e791-44cd-b8d5-4db8dcc83df0",
+                4,
+                1,
+                null,
+                0,
+                null,
+                "gtit:neko_coin",
+                0,
+                4,
+                null,
+                43200,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "ae6f275f-94f0-44e1-bd94-7f9f6edc9b0b",
+                4,
+                2,
+                null,
+                0,
+                null,
+                "gtit:shimmering_neko_coin",
+                0,
+                1,
+                null,
+                86400,
+                -1,
+                ""));
+
         data.setTrades(trades);
         return data;
     }
@@ -376,11 +517,15 @@ public class NekoTradeConfig {
         }
         if (fromItemStr != null) {
             List<NekoTradeEntry.ItemEntry> fromItems = new ArrayList<>();
-            String[] parts = fromItemStr.split(":");
-            String fromItemName = parts[0] + ":" + parts[1];
-            int fromMeta = Integer.parseInt(parts[2]);
-            int fromAmount = Integer.parseInt(parts[3]);
-            fromItems.add(new NekoTradeEntry.ItemEntry(fromItemName, fromMeta, fromAmount));
+            // 支持多 fromItems，用分号分隔：item1:meta1:amount1;item2:meta2:amount2
+            String[] itemStrs = fromItemStr.split(";");
+            for (String itemStr : itemStrs) {
+                String[] parts = itemStr.split(":");
+                String fromItemName = parts[0] + ":" + parts[1];
+                int fromMeta = Integer.parseInt(parts[2]);
+                int fromAmount = Integer.parseInt(parts[3]);
+                fromItems.add(new NekoTradeEntry.ItemEntry(fromItemName, fromMeta, fromAmount));
+            }
             entry.setFromItems(fromItems);
         }
         List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();

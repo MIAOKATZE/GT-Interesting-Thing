@@ -409,16 +409,6 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     displayStack.stackSize = trade.toItems.get(0).stackSize;
                 }
 
-                // 当产物只有猫猫币/闪烁猫猫币时，主图标改为 fromItems 第一个物品
-                // 猫猫币图标作为副图标在 widget 右下角小号显示
-                boolean isNekoCoinOnly = isToItemsOnlyNekoCoin(trade);
-                if (isNekoCoinOnly && !trade.fromItems.isEmpty()) {
-                    displayStack = trade.fromItems.get(0)
-                        .getBaseStack()
-                        .copy();
-                    displayStack.stackSize = trade.fromItems.get(0).stackSize;
-                }
-
                 String syncKey = tgId.toString() + ":" + i;
                 TradeItemDisplay syncedData = syncedDataMap.get(syncKey);
 
@@ -627,10 +617,10 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                 if (i < filteredTrades.size()) {
                     TradeItemDisplay display = filteredTrades.get(i);
                     w.setDisplay(display);
-                    // 当产物只有猫猫币时，设置副图标
-                    if (display != null && isToItemsOnlyNekoCoin(display) && !display.toItems.isEmpty()) {
+                    // 所有交易都显示双图标：副图标为 fromItems 第一个物品
+                    if (display != null && !display.fromItems.isEmpty()) {
                         w.setSecondaryIcon(
-                            display.toItems.get(0)
+                            display.fromItems.get(0)
                                 .getBaseStack()
                                 .copy());
                     } else {
@@ -1119,32 +1109,6 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
 
         int displayTabId = NekoTradeRegistry.getTabIdForTradeGroup(display.tgID);
         return displayTabId == targetTabId;
-    }
-
-    /**
-     * 判断交易的产物是否只有猫猫币/闪烁猫猫币
-     */
-    private boolean isToItemsOnlyNekoCoin(com.cubefury.vendingmachine.trade.Trade trade) {
-        if (trade.toItems == null || trade.toItems.isEmpty()) return false;
-        for (com.cubefury.vendingmachine.util.BigItemStack toItem : trade.toItems) {
-            if (NekoCurrencyRegistrar.getNekoCurrencyId(toItem.getBaseStack()) == null) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 判断 TradeItemDisplay 的产物是否只有猫猫币/闪烁猫猫币
-     */
-    private boolean isToItemsOnlyNekoCoin(TradeItemDisplay display) {
-        if (display.toItems == null || display.toItems.isEmpty()) return false;
-        for (com.cubefury.vendingmachine.util.BigItemStack toItem : display.toItems) {
-            if (NekoCurrencyRegistrar.getNekoCurrencyId(toItem.getBaseStack()) == null) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**
