@@ -2,6 +2,7 @@ package com.miaokatze.gtit.trade;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -173,9 +174,10 @@ public class NekoTradeRegistry {
             tradeGroup.maxTrades = entry.getMaxTrades();
 
             // 绑定 BetterQuesting 任务条件
-            // bqQuestId 支持两种格式：
-            // 1. UUID 格式: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            // 2. BQ high:low 格式: "questIDHigh:questIDLow" (两个 long 值)
+            // bqQuestId 支持三种格式：
+            // 1. BQ high:low 格式: "questIDHigh:questIDLow" (如 "0:0")
+            // 2. 标准 UUID 格式: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            // 3. base64 格式: 来自 BQ 任务文件名 (如 "AAAAAAAAAAAAAAAAAAAAAA==")
             if (entry.getBqQuestId() != null && !entry.getBqQuestId()
                 .isEmpty() && VendingMachine.isBqLoaded) {
                 UUID questId = parseBqQuestId(entry.getBqQuestId());
@@ -277,9 +279,11 @@ public class NekoTradeRegistry {
     /**
      * 解析 bqQuestId 为 UUID
      * <p>
-     * 支持两种格式：
-     * 1. UUID 格式: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-     * 2. BQ high:low 格式: "questIDHigh:questIDLow" (两个 long 值，对应 BQ 存档中的 questIDHigh/questIDLow)
+     * 支持三种格式：
+     * 1. BQ high:low 格式: "questIDHigh:questIDLow" (如 "0:0")
+     * 2. 标准 UUID 格式: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+     * 3. base64 格式: 来自 BQ 任务文件名 (如 "AAAAAAAAAAAAAAAAAAAAAA==")
+     * BQ 任务文件名格式为 QuestName-{Base64EncodedQuestID}.json
      */
     public static UUID parseBqQuestIdPublic(String bqQuestId) {
         return parseBqQuestId(bqQuestId);
@@ -288,7 +292,7 @@ public class NekoTradeRegistry {
     private static UUID parseBqQuestId(String bqQuestId) {
         if (bqQuestId == null || bqQuestId.isEmpty()) return null;
 
-        // 尝试 BQ high:low 格式
+        // 格式1：BQ high:low 格式 (如 "0:0")
         if (bqQuestId.contains(":")) {
             String[] parts = bqQuestId.split(":");
             if (parts.length == 2) {
@@ -302,12 +306,36 @@ public class NekoTradeRegistry {
             }
         }
 
-        // 尝试 UUID 格式
-        try {
-            return UUID.fromString(bqQuestId);
-        } catch (IllegalArgumentException e) {
-            return null;
+        // 格式2：标准 UUID 格式 (如 "550e8400-e29b-41d4-a716-446655440000")
+        if (bqQuestId.contains("-")) {
+            try {
+                return UUID.fromString(bqQuestId);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
         }
+
+        // 格式3：base64 格式 (来自 BQ 任务文件名，如 "AAAAAAAAAAAAAAAAAAAAAA==")
+        // BQ 任务文件名格式：QuestName-{Base64EncodedQuestID}.json
+        // base64 编码 16 字节 = 128 位 UUID
+        try {
+            byte[] bytes = Base64.getDecoder()
+                .decode(bqQuestId);
+            if (bytes.length == 16) {
+                long msb = 0, lsb = 0;
+                for (int i = 0; i < 8; i++) {
+                    msb = (msb << 8) | (bytes[i] & 0xff);
+                }
+                for (int i = 8; i < 16; i++) {
+                    lsb = (lsb << 8) | (bytes[i] & 0xff);
+                }
+                return new UUID(msb, lsb);
+            }
+        } catch (IllegalArgumentException e) {
+            // 不是有效的 base64
+        }
+
+        return null;
     }
 
     /**

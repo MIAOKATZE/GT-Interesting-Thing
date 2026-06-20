@@ -374,6 +374,21 @@ public class NekoTradeConfig {
                 14400,
                 -1,
                 ""));
+        trades.add(
+            createDefaultTrade(
+                "87e43fed-1cd2-43ad-a754-d2f99dc7eaa1",
+                1,
+                9,
+                null,
+                0,
+                "OpenBlocks:filledbucket:0:4",
+                "gtit:neko_coin",
+                0,
+                4,
+                null,
+                14400,
+                -1,
+                ""));
 
         // 标签页2 (闪烁猫猫币) 默认交易
         trades.add(
@@ -485,6 +500,7 @@ public class NekoTradeConfig {
                 ""));
 
         // 标签页4 (周期领取) — 战利品袋交易
+        // bqQuestId 使用 base64 格式，直接从 BQ 任务文件名复制
         trades.add(
             createDefaultTrade(
                 "55595119-1f35-49b7-84bb-d9f084877fb6",
@@ -499,7 +515,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                "0:0"));
+                "AAAAAAAAAAAAAAAAAAAADw=="));
         trades.add(
             createDefaultTrade(
                 "1942e1bb-b13b-4834-acd5-1b2744ed8ca5",
@@ -514,7 +530,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAALA=="));
         trades.add(
             createDefaultTrade(
                 "6b1d203c-919c-496d-a823-1816917c045d",
@@ -529,7 +545,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAAWA=="));
         trades.add(
             createDefaultTrade(
                 "e975c6c9-c8f0-4925-bafc-0249e146ae20",
@@ -544,7 +560,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAAfA=="));
         trades.add(
             createDefaultTrade(
                 "fdba714d-ff93-4d8d-8801-dda17b2456ef",
@@ -559,7 +575,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAAoA=="));
         trades.add(
             createDefaultTrade(
                 "988de282-d271-41d0-91ec-c46ae81c2b2d",
@@ -574,7 +590,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAAsA=="));
         trades.add(
             createDefaultTrade(
                 "969b2359-f5a5-4311-a79d-f97074e5ac86",
@@ -589,7 +605,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAA1Q=="));
         trades.add(
             createDefaultTrade(
                 "e3ac8621-6353-4598-8337-0f6be47394a8",
@@ -604,7 +620,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAF1Q=="));
         trades.add(
             createDefaultTrade(
                 "57f16b2b-1619-4337-b66a-b190d6a11e24",
@@ -619,7 +635,7 @@ public class NekoTradeConfig {
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                ""));
+                "AAAAAAAAAAAAAAAAAAAKMg=="));
         trades.add(
             createDefaultTrade(
                 "f301d0c6-58fb-4f76-ae35-89404b4cd5e3",
@@ -633,6 +649,98 @@ public class NekoTradeConfig {
                 3,
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
+                -1,
+                "AAAAAAAAAAAAAAAAAAAKNQ=="));
+
+        // 标签页5 (基础) 默认交易
+        trades.add(
+            createDefaultTrade(
+                "7bd36a81-5b1b-4bd5-9051-f35dd856d5eb",
+                5,
+                1,
+                "neko",
+                2,
+                "minecraft:iron_ingot:0:128",
+                "TConstruct:materials",
+                43,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "8dc838ed-e4f3-4437-a8ca-dd0d0972f3b5",
+                5,
+                2,
+                "neko",
+                1,
+                null,
+                "minecraft:dye",
+                15,
+                128,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "7ba241dc-1a6f-431c-ac16-91997c652ffe",
+                5,
+                3,
+                "neko",
+                1,
+                null,
+                "enhancedlootbags:lootbag",
+                29,
+                3,
+                null,
+                1200,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "960f1d6a-8941-4ca4-a4f8-6be3b3c39524",
+                5,
+                4,
+                "neko",
+                1,
+                "minecraft:chest:0:64",
+                "IronChest:BlockIronChest",
+                9,
+                8,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "d07cd29d-2105-49b1-a1d1-a16bca0ebe42",
+                5,
+                5,
+                "shimmeringNeko",
+                2,
+                null,
+                "DraconicEvolution:dezilsMarshmallow",
+                0,
+                1,
+                null,
+                0,
+                -1,
+                ""));
+        trades.add(
+            createDefaultTrade(
+                "5ebd4131-6cbe-44dc-82c2-02e3e06bb636",
+                5,
+                6,
+                "neko",
+                8,
+                null,
+                "OpenBlocks:filledbucket",
+                0,
+                4,
+                null,
+                0,
                 -1,
                 ""));
 

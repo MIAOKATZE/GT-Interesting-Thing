@@ -128,6 +128,10 @@ public class NekoPageConfig {
         NekoPageEntry page4 = new NekoPageEntry(4, "周期领取", "minecraft:clock", 0, false);
         pages.add(page4);
 
+        // 标签页5：基础
+        NekoPageEntry page5 = new NekoPageEntry(5, "基础", "minecraft:bed", 0, false);
+        pages.add(page5);
+
         data.setPages(pages);
         return data;
     }

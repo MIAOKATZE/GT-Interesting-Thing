@@ -80,6 +80,90 @@ public class GTITGiftCommand extends CommandBase {
         }
     }
 
+    // ==================== Tab 补全 ====================
+
+    @Override
+    public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
+        if (args.length == 1) {
+            return getListOfStringsMatchingLastWord(args, "gift", "nekovm");
+        }
+
+        if (args.length == 2) {
+            if ("gift".equals(args[0])) {
+                return getListOfStringsMatchingLastWord(args, "certain", "random", "reset");
+            }
+            if ("nekovm".equals(args[0])) {
+                return getListOfStringsMatchingLastWord(
+                    args,
+                    "edit",
+                    "list",
+                    "edithelp",
+                    "delete",
+                    "reload",
+                    "save",
+                    "timereset",
+                    "page",
+                    "pagehelp",
+                    "help");
+            }
+        }
+
+        if (args.length == 3 && "nekovm".equals(args[0])) {
+            if ("edit".equals(args[1]) || "list".equals(args[1]) || "delete".equals(args[1])) {
+                // 补全标签页ID
+                List<String> pageIds = new ArrayList<>();
+                try {
+                    for (int id : NekoPageRegistry.getPageIds()) {
+                        pageIds.add(String.valueOf(id));
+                    }
+                } catch (Exception e) {
+                    // NekoPageRegistry 尚未初始化
+                }
+                return getListOfStringsMatchingLastWord(args, pageIds.toArray(new String[0]));
+            }
+            if ("page".equals(args[1])) {
+                return getListOfStringsMatchingLastWord(args, "add", "delet");
+            }
+        }
+
+        if (args.length == 4 && "nekovm".equals(args[0])) {
+            if ("edit".equals(args[1]) || "delete".equals(args[1])) {
+                // 补全顺序ID（基于已有交易）
+                try {
+                    int tabId = Integer.parseInt(args[2]);
+                    if (NekoPageRegistry.hasPage(tabId)) {
+                        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+                        List<String> orderIds = new ArrayList<>();
+                        for (NekoTradeEntry entry : data.getTrades()) {
+                            if (entry.getTabId() == tabId) {
+                                orderIds.add(String.valueOf(entry.getOrderId()));
+                            }
+                        }
+                        return getListOfStringsMatchingLastWord(args, orderIds.toArray(new String[0]));
+                    }
+                } catch (Exception e) {
+                    // 忽略解析错误
+                }
+            }
+            if ("page".equals(args[1]) && "delet".equals(args[2])) {
+                // 补全可删除的自定义标签页ID
+                List<String> pageIds = new ArrayList<>();
+                try {
+                    for (com.miaokatze.gtit.trade.NekoPageEntry page : NekoPageRegistry.getAllPages()) {
+                        if (!page.isDefault()) {
+                            pageIds.add(String.valueOf(page.getId()));
+                        }
+                    }
+                } catch (Exception e) {
+                    // NekoPageRegistry 尚未初始化
+                }
+                return getListOfStringsMatchingLastWord(args, pageIds.toArray(new String[0]));
+            }
+        }
+
+        return null;
+    }
+
     // ==================== Gift 子命令 ====================
 
     private void handleGift(ICommandSender sender, EntityPlayerMP player, String[] args) {
