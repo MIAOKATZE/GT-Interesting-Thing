@@ -1,9 +1,9 @@
 <h1 align="center">GT-Interesting-Thing</h1>
 <p align="center"><strong><em>GTNH Interesting Gadgets Mod</em></strong><br><strong><em>GTNH 趣味道具模组</em></strong></p>
 
-A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores and ore scanning tools, while balancing usage costs to maintain progression integrity.
+A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, and a custom trading machine, while balancing usage costs to maintain progression integrity.
 
-一个 GregTech New Horizons 趣味道具模组，**提供增强游玩体验的有趣物品**，包括浮空核心和探矿工具，同时平衡使用代价以保持进阶完整性。
+一个 GregTech New Horizons 趣味道具模组，**提供增强游玩体验的有趣物品**，包括浮空核心、探矿工具、功能性戒指、新手宝箱系统，以及自定义交易机器，同时平衡使用代价以保持进阶完整性。
 
 > [!NOTE]
 > This is an unofficial mod. Please avoid discussing this mod in official GTNH forums.
@@ -22,7 +22,7 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 ### Float Core / 浮空核心
 
-<p align="center"><img src="images/float_core.png" width="128"><br><em>浮空核心 / Float Core</em></p>
+<p align="center"><img src="README/Float%20Core.png" width="128"><br><em>浮空核心 / Float Core</em></p>
 
 A simple yet powerful flight enabler. Equip to any Baubles slot to gain creative-like flight ability.
 
@@ -42,7 +42,7 @@ A simple yet powerful flight enabler. Equip to any Baubles slot to gain creative
 
 ### Electric Float Core / 电力浮空核心
 
-<p align="center"><img src="images/electric_float_core.png" width="128"><br><em>电力浮空核心 / Electric Float Core</em></p>
+<p align="center"><img src="README/Electric%20Float%20Core.png" width="128"><br><em>电力浮空核心 / Electric Float Core</em></p>
 
 An upgraded version of the Float Core with massive EU storage. When electricity runs out, it falls back to hunger consumption at half the rate.
 
@@ -62,7 +62,7 @@ An upgraded version of the Float Core with massive EU storage. When electricity 
 
 ### Telekinesis Ore Scanner Core / 念力共振探矿核心
 
-<p align="center"><img src="images/telekinesis_ore_scanner_core.png" width="128"><br><em>念力共振探矿核心 / Telekinesis Ore Scanner Core</em></p>
+<p align="center"><img src="README/Telekinesis%20Ore%20Scanner%20Core.png" width="128"><br><em>念力共振探矿核心 / Telekinesis Ore Scanner Core</em></p>
 
 A long-range ore and fluid prospecting tool that integrates with JourneyMap via VisualProspecting. Scan results are uploaded to the map automatically — you cannot view ore info directly, preserving the exploration challenge.
 
@@ -86,6 +86,8 @@ A long-range ore and fluid prospecting tool that integrates with JourneyMap via 
 
 ### Infinity Cell / 无限存储元件
 
+<p align="center"><img src="README/Infinity%20Cell.png" width="128"><br><em>ME无限存储元件 / ME Infinity Cell</em></p>
+
 An AE2 storage cell with virtually infinite capacity. Data is externalized to a global WorldSavedData, avoiding NBT bloat. Available in both item and fluid variants.
 
 基于 AE2 的无限容量存储元件，数据外部化存储在全局 WorldSavedData 中，避免 NBT 膨胀。提供物品版和流体版两种变体。
@@ -106,7 +108,117 @@ An AE2 storage cell with virtually infinite capacity. Data is externalized to a 
 
 ---
 
+## Rings / 戒指
+
+<p align="center"><img src="README/ring.png" width="256"><br><em>8 枚功能性戒指 / 8 Functional Rings</em></p>
+
+A set of 8 functional rings that equip to Baubles ring slots, providing various buffs and abilities. Rings are obtained from chest loot, crafting, or the starter gift.
+
+8 枚功能性戒指，装备于 Baubles 戒指栏，提供各种增益和能力。戒指可通过宝箱战利品、合成或新手宝箱获得。
+
+### Baubles Ring Slot Expansion / Baubles 戒指栏扩展
+
+The mod expands the Baubles ring slots from **2 to 10** via the Baubles-Expanded API, allowing the player to equip multiple rings simultaneously and stack effects.
+
+模组通过 Baubles-Expanded API 将戒指栏从 **2 个扩展到 10 个**，使玩家可以同时装备多枚戒指并叠加效果。
+
+- Calls `BaubleExpandedSlots.tryAssignSlotsUpToMinimum("ring", 10)` during PreInit
+- Falls back to `overrideSlots()` during Init to ensure correct slot ordering
+- Automatically compatible with other mods using `BaublesApi.getBaubles()` (dynamic `getSizeInventory()`)
+
+- 在 PreInit 阶段调用 `BaubleExpandedSlots.tryAssignSlotsUpToMinimum("ring", 10)`
+- 在 Init 阶段通过 `overrideSlots()` 兜底，确保槽位顺序正确
+- 自动兼容其他使用 `BaublesApi.getBaubles()` 遍历的模组（动态 `getSizeInventory()`）
+
+### Ring List / 戒指总览
+
+| # | Name / 名称 | Effect / 效果 | Stackable / 叠加 |
+|---|---|---|:---:|
+| 1 | Ring of Distant Grasp / 戒指·遥握 | Interaction & attack range +2 per ring / 交互与攻击距离 +2 | ✔️ |
+| 2 | Ring of Skywalk / 戒指·凌步 | Auto step-up 1 block / 自动走上 1 格方块 | ✖️ |
+| 3 | Ring of Windrider / 戒指·御风 | Creative flight / 创造飞行 | ✖️ |
+| 4 | Ring of Gluttony / 戒指·饕餮 | Continuous hunger restore + emergency fill / 持续恢复饥饿度 + 应急饱食 | ✖️ |
+| 5 | Ring of Ironheart / 戒指·磐躯 | Max health +20 per ring (10 hearts) / 生命上限 +20 | ✔️ |
+| 6 | Ring of Dragon's Breath / 戒指·龙息 | Fire Resistance + Night Vision + Regeneration I + Resistance I / 抗火 + 夜视 + 生命恢复 I + 抗性提升 I | ✖️ |
+| 7 | Ring of Mountainbreaker / 戒指·裂山 | Strength II + Haste II / 力量 II + 急迫 II | ✖️ |
+| 8 | Ring of Tempest / 戒指·疾风 | Speed II + Jump Boost II / 速度 II + 跳跃提升 II | ✖️ |
+
+### Ring Details / 戒指详情
+
+- **Ring of Distant Grasp / 戒指·遥握**: Extends block reach distance via Mixin (`MixinPlayerControllerMP`). Each ring adds +2 blocks. Stackable — multiple rings compound the bonus.
+- **Ring of Skywalk / 戒指·凌步**: Automatically steps up 1-block heights without jumping. Walks smoothly like flat ground.
+- **Ring of Windrider / 戒指·御风**: Grants creative flight with no cost. Obtained only via crafting.
+- **Ring of Gluttony / 戒指·饕餮**: Restores 1 hunger/sec; restores saturation when full. Emergency-fills hunger and saturation when below 5 (60s cooldown).
+- **Ring of Ironheart / 戒指·磐躯**: Uses `SharedMonsterAttributes.maxHealth` Attribute Modifier. Each ring adds +20 max health (10 hearts). Stackable.
+- **Ring of Dragon's Breath / 戒指·龙息**: Refreshes 30s potion effects every 20s — no flickering.
+- **Ring of Mountainbreaker / 戒指·裂山**: Refreshes 30s potion effects every 20s.
+- **Ring of Tempest / 戒指·疾风**: Refreshes 30s potion effects every 20s.
+
+- **戒指·遥握**：通过 Mixin（`MixinPlayerControllerMP`）扩展方块交互距离，每枚 +2 格，可叠加。
+- **戒指·凌步**：自动走上 1 格高方块，如履平地，无需跳跃。
+- **戒指·御风**：获得创造飞行，无消耗。仅通过合成获得。
+- **戒指·饕餮**：每秒恢复 1 点饥饿值，满后恢复饱和度；饥饿度低于 5 时一次性补满（冷却 60 秒）。
+- **戒指·磐躯**：使用 `SharedMonsterAttributes.maxHealth` 属性修饰器，每枚 +20 生命上限（10 颗心），可叠加。
+- **戒指·龙息**：每 20 秒刷新 30 秒药水效果——不会闪烁。
+- **戒指·裂山**：每 20 秒刷新 30 秒药水效果。
+- **戒指·疾风**：每 20 秒刷新 30 秒药水效果。
+
+---
+
+## Starter Gift / 新手宝箱
+
+<p align="center"><img src="README/gift.png" width="128"><br><em>新手宝箱 / Starter Gift</em></p>
+
+A gift box automatically granted to players on their **first login** to a world. Right-click to open and receive a set of starter items — guaranteed items plus randomly drawn items from a configurable pool.
+
+玩家**首次进入某个世界**时自动获得的新手宝箱。右击打开即可获得一系列新手物资——包含必中物品和从随机物品池中抽取的随机物品。
+
+- Auto-granted on first world login (tracked via persisted NBT)
+- Right-click to open: grants guaranteed items + random items
+- Items drop to the ground if inventory is full
+- Fully configurable via `config/gtit/gift_config.json`
+- Default random pool includes 6 rings (Skywalk, Gluttony, Ironheart, Dragon's Breath, Mountainbreaker, Tempest)
+
+- 首次进入世界自动发放（通过持久化 NBT 追踪）
+- 右击打开：获得必中物品 + 随机物品
+- 背包满了物品丢到地上
+- 通过 `config/gtit/gift_config.json` 完全可配置
+- 默认随机池包含 6 枚戒指（凌步、饕餮、磐躯、龙息、裂山、疾风）
+
+### Gift Config / 宝箱配置
+
+```json
+{
+  "guaranteed_items": [
+    { "item": "minecraft:bread", "amount": 16, "meta": 0 },
+    { "item": "minecraft:torch", "amount": 64, "meta": 0 }
+  ],
+  "random_items": [
+    { "item": "gtit:ring_skywalk", "amount": 1, "meta": 0 }
+  ],
+  "random_count": 2
+}
+```
+
+- `guaranteed_items`: Items always granted / 必中物品
+- `random_items`: Random item pool / 随机物品池
+- `random_count`: Number of random items drawn / 随机抽取数量
+
+### Gift Commands / 宝箱指令
+
+| Command / 指令 | Description / 说明 |
+|---|---|
+| `/gtit gift certain` | Set guaranteed items from current inventory / 将当前背包物品设为必中物品 |
+| `/gtit gift random <count>` | Set random pool from inventory + set draw count / 将背包物品设为随机池并设置抽取数 |
+| `/gtit gift reset` | Reset to default config / 恢复默认配置 |
+
+---
+
 ## Neko Vending Machine / 猫猫售货机
+
+<p align="center"><img src="README/neko%20vending%20machine.png" width="384"></p>
+<p align="center"><img src="README/neko%20vending%20machine-1.png" width="384"></p>
+<p align="center"><img src="README/neko%20vending%20machine-2.png" width="384"><br><em>猫猫售货机界面 / Neko Vending Machine GUI</em></p>
 
 A custom trading machine built on top of the VendingMachine framework, featuring an independent currency system (Neko Coin), dynamic tabbed GUI, BetterQuesting integration, and BGM. Designed as a progression-gated reward shop where players earn Neko Coins through quests and spend them on loot bags and items.
 
@@ -221,7 +333,7 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
       ├── reload                    -- Hot-reload config
       ├── save                      -- Save to config file
       ├── timereset                 -- Reset all trade cooldowns
-      ├── edithelp                  -- Edit help
+      ├── edithelp                   -- Edit help
       ├── pagehelp                  -- Tab management help
       └── help                      -- Full help
 ```
@@ -254,6 +366,7 @@ If `nekovm_trades.json` does not exist, default trades are generated from `NekoT
 | `MixinTradeMainPanel` | `TradeMainPanel` | Filter Neko Coin trades from original VM GUI |
 | `MixinTradeItemDisplayWidget` | `draw()` | Golden LOCKED text + cyan cooldown color via § codes |
 | `MixinTradeManager` | `TradeManager` | Placeholder (canExecuteTrade dependency) |
+| `MixinPlayerControllerMP` | `getBlockReachDistance` | Extend block reach distance for Ring of Distant Grasp |
 
 ---
 
@@ -269,7 +382,18 @@ A test multiblock machine (HV tier) for verifying the multiblock registration pr
 
 - Java 8 (JVM Downgrader) / Minecraft 1.7.10 / Forge 10.13.4.1614
 - ModularUI / ModularUI2 / StructureLib
-- Dependencies: GT5-Unofficial (5.09.52.594), GTNHLib, VisualProspecting, Baubles, IC2
+- Dependencies: GT5-Unofficial (5.09.52.594), GTNHLib, VisualProspecting, Baubles-Expanded, IC2
+
+---
+
+## Acknowledgments / 致谢
+
+- **[AE2Things](https://github.com/GTNewHorizons/AE2Things)** — The Infinity Cell implementation is adapted from AE2Things' storage cell code, rewritten for the GTNH 2.9.0 AE2 API.
+  无限存储元件的实现适配自 AE2Things 的存储元件代码，为 GTNH 2.9.0 AE2 API 重写。
+- **[VendingMachine](https://github.com/GTNewHorizons/VendingMachine)** — The Neko Vending Machine is built on top of the VendingMachine framework, with custom currency, GUI, and trade logic.
+  猫猫售货机基于 VendingMachine 框架构建，包含自定义货币、界面和交易逻辑。
+
+---
 
 ## License / 许可证
 
