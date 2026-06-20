@@ -12,6 +12,9 @@ import java.util.UUID;
 
 import net.minecraft.item.ItemStack;
 
+import com.cubefury.vendingmachine.VendingMachine;
+import com.cubefury.vendingmachine.integration.betterquesting.BqAdapter;
+import com.cubefury.vendingmachine.integration.betterquesting.BqCondition;
 import com.cubefury.vendingmachine.trade.Trade;
 import com.cubefury.vendingmachine.trade.TradeCategory;
 import com.cubefury.vendingmachine.trade.TradeDatabase;
@@ -57,13 +60,15 @@ public class NekoTradeRegistry {
         public final String entryId; // 对应的 NekoTradeEntry.id
         public final int orderId; // 顺序ID（用于Smart排序）
         public final int tabId; // 标签页ID
+        public final String bqQuestId; // BetterQuesting 任务绑定ID，无绑定时为空字符串
 
-        public NekoTradeInfo(String currencyId, int cost, String entryId, int orderId, int tabId) {
+        public NekoTradeInfo(String currencyId, int cost, String entryId, int orderId, int tabId, String bqQuestId) {
             this.currencyId = currencyId;
             this.cost = cost;
             this.entryId = entryId;
             this.orderId = orderId;
             this.tabId = tabId;
+            this.bqQuestId = bqQuestId != null ? bqQuestId : "";
         }
     }
 
@@ -167,6 +172,23 @@ public class NekoTradeRegistry {
             tradeGroup.cooldown = entry.getCooldown();
             tradeGroup.maxTrades = entry.getMaxTrades();
 
+            // 绑定 BetterQuesting 任务条件
+            // bqQuestId 支持两种格式：
+            // 1. UUID 格式: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            // 2. BQ high:low 格式: "questIDHigh:questIDLow" (两个 long 值)
+            if (entry.getBqQuestId() != null && !entry.getBqQuestId()
+                .isEmpty() && VendingMachine.isBqLoaded) {
+                UUID questId = parseBqQuestId(entry.getBqQuestId());
+                if (questId != null) {
+                    BqCondition bqCondition = new BqCondition(questId);
+                    tradeGroup.requirementSet.add(bqCondition);
+                    BqAdapter.INSTANCE.addQuestTrigger(questId, tradeGroup);
+                    GTInterestingThing.LOG.info("猫猫币交易绑定任务: questId={}", questId);
+                } else {
+                    GTInterestingThing.LOG.warn("bqQuestId 格式无效: {}", entry.getBqQuestId());
+                }
+            }
+
             // 创建 Trade
             Trade trade = new Trade();
 
@@ -249,7 +271,13 @@ public class NekoTradeRegistry {
             NEKO_TRADE_GROUP_IDS.add(tradeGroupId);
             NEKO_TRADES.put(
                 tradeGroupId,
-                new NekoTradeInfo(currencyId, cost, entry.getId(), entry.getOrderId(), entry.getTabId()));
+                new NekoTradeInfo(
+                    currencyId,
+                    cost,
+                    entry.getId(),
+                    entry.getOrderId(),
+                    entry.getTabId(),
+                    entry.getBqQuestId()));
 
             GTInterestingThing.LOG.info(
                 "注册猫猫币交易: {} {} → {} [分类: {}, entryId={}]",
@@ -268,6 +296,42 @@ public class NekoTradeRegistry {
         } catch (Exception e) {
             GTInterestingThing.LOG.error("注册猫猫币交易失败 [entryId={}]!", entry.getId(), e);
             return false;
+        }
+    }
+
+    /**
+     * 解析 bqQuestId 为 UUID
+     * <p>
+     * 支持两种格式：
+     * 1. UUID 格式: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+     * 2. BQ high:low 格式: "questIDHigh:questIDLow" (两个 long 值，对应 BQ 存档中的 questIDHigh/questIDLow)
+     */
+    public static UUID parseBqQuestIdPublic(String bqQuestId) {
+        return parseBqQuestId(bqQuestId);
+    }
+
+    private static UUID parseBqQuestId(String bqQuestId) {
+        if (bqQuestId == null || bqQuestId.isEmpty()) return null;
+
+        // 尝试 BQ high:low 格式
+        if (bqQuestId.contains(":")) {
+            String[] parts = bqQuestId.split(":");
+            if (parts.length == 2) {
+                try {
+                    long msb = Long.parseLong(parts[0]);
+                    long lsb = Long.parseLong(parts[1]);
+                    return new UUID(msb, lsb);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+        }
+
+        // 尝试 UUID 格式
+        try {
+            return UUID.fromString(bqQuestId);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
@@ -356,6 +420,27 @@ public class NekoTradeRegistry {
         } catch (Exception e) {
             GTInterestingThing.LOG.error("猫猫币交易热重载失败!", e);
             return false;
+        }
+    }
+
+    /**
+     * 检查玩家是否完成了指定的 BQ 任务
+     * <p>
+     * 使用反射调用 BqAdapter，避免 Mixin 中直接引用 BQ 类导致类加载崩溃。
+     *
+     * @param bqQuestId 任务ID（支持 UUID 或 high:low 格式）
+     * @param playerId  玩家 UUID
+     * @return true 如果任务已完成或 BQ 未加载或检查失败（安全回退）
+     */
+    public static boolean checkBqQuestCompleted(String bqQuestId, UUID playerId) {
+        if (!VendingMachine.isBqLoaded) return true; // BQ 未加载，不做限制
+        UUID questId = parseBqQuestId(bqQuestId);
+        if (questId == null) return true; // 格式无效，不做限制
+        try {
+            return BqAdapter.INSTANCE.checkPlayerCompletedQuest(playerId, questId);
+        } catch (Exception e) {
+            GTInterestingThing.LOG.warn("检查BQ任务完成状态失败: questId={}, player={}", questId, playerId, e);
+            return true; // 出错时安全回退
         }
     }
 

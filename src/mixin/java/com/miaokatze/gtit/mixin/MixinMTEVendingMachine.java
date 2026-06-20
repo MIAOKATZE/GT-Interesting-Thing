@@ -24,6 +24,9 @@ import com.miaokatze.gtit.trade.NekoWalletManager;
  * 通过 Mixin 在方法开头注入猫猫币交易逻辑：
  * - 如果是猫猫币交易，扣减 NekoWallet 余额，出货，返回 true
  * - 如果不是猫猫币交易，继续执行原方法
+ * <p>
+ * 注意：不直接 import BqAdapter/BqCondition，避免类加载时 BQ 未就绪导致崩溃。
+ * quest 条件检查通过反射调用。
  */
 @Mixin(MTEVendingMachine.class)
 public class MixinMTEVendingMachine {
@@ -38,6 +41,17 @@ public class MixinMTEVendingMachine {
         if (nekoInfo == null) {
             // 非猫猫币交易，继续执行原方法
             return;
+        }
+
+        // 检查 BetterQuesting 任务条件（必须在 currency 检查之前，确保对所有猫猫币交易生效）
+        // 注意：不直接 import BqAdapter/BqCondition，避免类加载时 BQ 未就绪导致崩溃。
+        // quest 条件检查通过 NekoTradeRegistry.checkBqQuestCompleted 反射调用 BqAdapter。
+        if (nekoInfo.bqQuestId != null && !nekoInfo.bqQuestId.isEmpty()) {
+            if (!NekoTradeRegistry.checkBqQuestCompleted(nekoInfo.bqQuestId, tradeRequest.player.getUniqueID())) {
+                // 玩家未完成所需任务，拒绝交易
+                cir.setReturnValue(false);
+                return;
+            }
         }
 
         // 纯物品交换交易（currencyId=null, cost=0），走原版逻辑

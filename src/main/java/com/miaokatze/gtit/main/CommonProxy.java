@@ -18,6 +18,7 @@ import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.BlockRegistrar;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.register.TextureManager;
+import com.miaokatze.gtit.trade.BqEventBridge;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
@@ -215,6 +216,14 @@ public class CommonProxy {
             NekoCurrencyRegistrar.init();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
+        }
+
+        // 注册 BQ 任务事件桥接器
+        // VM 的 BqAdapter.setQuestFinished() 从未被调用，需要 BqEventBridge 监听 QuestEvent 来更新缓存
+        try {
+            BqEventBridge.register();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] BqEventBridge 注册失败", t);
         }
 
         // 注册 AE2 Infinity Cell Handler

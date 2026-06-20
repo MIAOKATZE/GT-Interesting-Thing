@@ -64,6 +64,9 @@ dependencies {
     // Vending Machine mod - required dependency for Neko Vending Machine system
     devOnlyNonPublishable(rfg.deobf(project.files("libs/vendingmachine-0.4.87.jar")))
 
+    // BetterQuesting API - compile-only, needed for QuestEvent listener (BqEventBridge)
+    compileOnlyApi("com.github.GTNewHorizons:BetterQuesting:3.8.72-GTNH:dev") { transitive = false }
+
 
     // UniMixins is automatically included by the GTNH build script because usesMixins = true in gradle.properties.
     // No need to declare it manually.
