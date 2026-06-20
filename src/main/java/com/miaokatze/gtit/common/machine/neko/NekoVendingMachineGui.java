@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 
@@ -525,10 +526,19 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     /**
      * 按 orderId 排序（Smart排序模式）
      * <p>
+     * BQ 锁定交易排在非锁定交易之后，冷却不影响排序。
      * 通过 NekoTradeInfo.orderId 获取排序键
      */
     private void sortByOrderId(List<TradeItemDisplay> displays) {
+        UUID playerId = getClientPlayerId();
         displays.sort((a, b) -> {
+            // BQ 锁定状态作为首要排序键（锁定排在非锁定之后）
+            boolean lockedA = playerId != null && NekoTradeRegistry.isTradeBqLocked(a.tgID, playerId);
+            boolean lockedB = playerId != null && NekoTradeRegistry.isTradeBqLocked(b.tgID, playerId);
+            if (lockedA != lockedB) {
+                return Boolean.compare(lockedA, lockedB);
+            }
+            // 原有排序逻辑
             NekoTradeRegistry.NekoTradeInfo infoA = NekoTradeRegistry.getNekoTradeInfo(a.tgID);
             NekoTradeRegistry.NekoTradeInfo infoB = NekoTradeRegistry.getNekoTradeInfo(b.tgID);
             int orderA = infoA != null ? infoA.orderId : Integer.MAX_VALUE;
@@ -539,13 +549,37 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
 
     /**
      * 按产物名排序（A-Z排序模式）
+     * <p>
+     * BQ 锁定交易排在非锁定交易之后，冷却不影响排序。
      */
     private void sortByDisplayName(List<TradeItemDisplay> displays) {
+        UUID playerId = getClientPlayerId();
         displays.sort((a, b) -> {
+            // BQ 锁定状态作为首要排序键（锁定排在非锁定之后）
+            boolean lockedA = playerId != null && NekoTradeRegistry.isTradeBqLocked(a.tgID, playerId);
+            boolean lockedB = playerId != null && NekoTradeRegistry.isTradeBqLocked(b.tgID, playerId);
+            if (lockedA != lockedB) {
+                return Boolean.compare(lockedA, lockedB);
+            }
+            // 原有排序逻辑
             String nameA = a.display != null ? a.display.getDisplayName() : "";
             String nameB = b.display != null ? b.display.getDisplayName() : "";
             return nameA.compareToIgnoreCase(nameB);
         });
+    }
+
+    /**
+     * 获取客户端玩家 UUID（用于 BQ 锁定状态检查）
+     * 服务端调用时返回 null
+     */
+    private UUID getClientPlayerId() {
+        try {
+            Minecraft mc = Minecraft.getMinecraft();
+            if (mc != null && mc.thePlayer != null) {
+                return mc.thePlayer.getUniqueID();
+            }
+        } catch (Throwable ignored) {}
+        return null;
     }
 
     /**

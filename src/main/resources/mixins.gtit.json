@@ -8,6 +8,7 @@
   "mixins": ["MixinMTEVendingMachine", "MixinTradeManager", "MixinTradeMainPanel"],
   "client": [
     "MixinPlayerControllerMP",
+    "MixinTradeItemDisplayWidget",
     "NekoSoundManagerMixin"
   ],
   "server": []

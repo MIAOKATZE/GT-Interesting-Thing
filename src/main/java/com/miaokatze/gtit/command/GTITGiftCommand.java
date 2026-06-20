@@ -569,8 +569,7 @@ public class GTITGiftCommand extends CommandBase {
             }
         }
 
-        player.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.GREEN + "已重置 " + resetCount + " 个交易的冷却"));
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已重置 " + resetCount + " 个交易的冷却"));
     }
 
     // ==================== 辅助方法 ====================
