@@ -618,11 +618,21 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     TradeItemDisplay display = filteredTrades.get(i);
                     w.setDisplay(display);
                     // 所有交易都显示双图标：副图标为 fromItems 第一个物品
+                    // 当 fromItems 为空时，检查是否消耗猫猫币，用猫猫币作为小图标
                     if (display != null && !display.fromItems.isEmpty()) {
                         w.setSecondaryIcon(
                             display.fromItems.get(0)
                                 .getBaseStack()
                                 .copy());
+                    } else if (display != null) {
+                        // fromItems 为空，检查猫猫币货币
+                        NekoTradeRegistry.NekoTradeInfo nekoInfo = NekoTradeRegistry.getNekoTradeInfo(display.tgID);
+                        if (nekoInfo != null && nekoInfo.currencyId != null) {
+                            ItemStack currencyIcon = NekoCurrencyRegistrar.getItemStack(nekoInfo.currencyId, 1);
+                            w.setSecondaryIcon(currencyIcon);
+                        } else {
+                            w.setSecondaryIcon(null);
+                        }
                     } else {
                         w.setSecondaryIcon(null);
                     }
