@@ -2,10 +2,12 @@ package com.miaokatze.gtit.recipe;
 
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
+import net.minecraft.item.ItemStack;
 
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 
 import cpw.mods.fml.common.registry.GameRegistry;
+import gregtech.api.GregTechAPI;
 import gregtech.api.enums.ItemList;
 import gregtech.api.enums.Materials;
 import gregtech.api.enums.OrePrefixes;
@@ -18,6 +20,7 @@ public class GTITRecipes {
         addElectricFloatCoreRecipe();
         addTelekinesisOreScannerCoreRecipe();
         addRingWindriderRecipe();
+        addNekoVendingMachineRecipe();
     }
 
     private static void addFloatCoreRecipe() {
@@ -107,5 +110,31 @@ public class GTITRecipes {
             GTITItemList.RingTempest.get(1),
             'I',
             GTITItemList.RingIronheart.get(1));
+    }
+
+    /**
+     * 猫猫售货机合成配方
+     * 3x3工作台：中心为 VM 原版售货机，周围围一圈猫猫币
+     * 猫币 猫币 猫币
+     * 猫币 VM机 猫币
+     * 猫币 猫币 猫币
+     */
+    private static void addNekoVendingMachineRecipe() {
+        if (GTITItemList.NekoVendingMachine.get(1) == null) return;
+
+        ItemStack vmStack = GregTechAPI.METATILEENTITIES[2741] != null
+            ? GregTechAPI.METATILEENTITIES[2741].getStackForm(1L)
+            : null;
+        if (vmStack == null) return;
+
+        GameRegistry.addShapedRecipe(
+            GTITItemList.NekoVendingMachine.get(1),
+            "CCC",
+            "CVC",
+            "CCC",
+            'C',
+            GTITItemList.NekoCoin.get(1),
+            'V',
+            vmStack);
     }
 }

@@ -252,14 +252,6 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
             .isActive() && this.usingAnimations();
         IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOVM_OVERLAY_ACTIVE : TextureManager.NEKOVM_OVERLAY;
 
-        // [NEKO LOG] 材质加载检查点
-        for (int i = 0; i < nekoTextures.length; i++) {
-            IIconContainer icon = nekoTextures[i];
-            if (icon == null || icon.getIcon() == null) {
-                GTInterestingThing.LOG.error("[NEKO] setTextureOverlay: index={} icon MISSING!", i);
-            }
-        }
-
         setNekoVMOverlay(
             tile.getWorld(),
             tile.getXCoord(),

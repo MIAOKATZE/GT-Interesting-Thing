@@ -30,10 +30,6 @@ import com.miaokatze.gtit.trade.NekoTradeRegistry;
 @Mixin(TradeItemDisplayWidget.class)
 public class MixinTradeItemDisplayWidget {
 
-    static {
-        System.out.println("[NEKO-MIXIN] MixinTradeItemDisplayWidget 静态初始化器已执行（§代码方案）");
-    }
-
     @Shadow(remap = false)
     private TradeItemDisplay display;
 

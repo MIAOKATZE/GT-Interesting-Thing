@@ -239,33 +239,8 @@ public class NekoTradeRegistry {
             tradeGroup.getTrades()
                 .add(trade);
 
-            // 调试日志：确认猫猫币不在 fromItems 中
-            GTInterestingThing.LOG.info(
-                "[NEKO] 注册交易: id={}, fromItems.size={}, toItems.size={}, currencyId={}, cost={}",
-                entry.getId(),
-                trade.fromItems.size(),
-                trade.toItems.size(),
-                currencyId,
-                cost);
-            for (BigItemStack fromItem : trade.fromItems) {
-                GTInterestingThing.LOG
-                    .info("[NEKO]   fromItem: item={}, stackSize={}", fromItem.getBaseStack(), fromItem.stackSize);
-            }
-
             // 注入到 TradeDatabase
             injectTradeGroup(tradeGroup, category);
-
-            // 注入后立即验证 Trade 对象
-            TradeGroup injectedTg = TradeDatabase.INSTANCE.getTradeGroupFromId(tradeGroupId);
-            if (injectedTg != null && !injectedTg.getTrades()
-                .isEmpty()) {
-                Trade injectedTrade = injectedTg.getTrades()
-                    .get(0);
-                GTInterestingThing.LOG.info(
-                    "[NEKO] 注入后验证: fromItems.size={}, toItems.size={}",
-                    injectedTrade.fromItems.size(),
-                    injectedTrade.toItems.size());
-            }
 
             // 记录猫猫币交易信息
             NEKO_TRADE_GROUP_IDS.add(tradeGroupId);

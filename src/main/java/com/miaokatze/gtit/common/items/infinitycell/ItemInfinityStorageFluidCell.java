@@ -31,7 +31,7 @@ import appeng.util.Platform;
 public class ItemInfinityStorageFluidCell extends Item implements IInfinityCellItem {
 
     private final int perType = 1;
-    private final double idleDrain = 10D;
+    private final double idleDrain = 1D;
 
     public ItemInfinityStorageFluidCell() {
         this.setMaxStackSize(1);
@@ -43,6 +43,9 @@ public class ItemInfinityStorageFluidCell extends Item implements IInfinityCellI
     @Override
     public void addInformation(final ItemStack stack, final EntityPlayer player, final List<String> lines,
         final boolean displayMoreInfo) {
+        lines.add("\u00A7b无限流体存储 \u00A77- 无限种类/无限数量");
+        lines.add("\u00A77空闲功耗: " + (int) this.idleDrain + " AE/t");
+
         final IMEInventoryHandler<?> inventory = AEApi.instance()
             .registries()
             .cell()
