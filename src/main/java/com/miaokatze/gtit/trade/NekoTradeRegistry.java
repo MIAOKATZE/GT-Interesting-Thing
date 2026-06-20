@@ -370,7 +370,11 @@ public class NekoTradeRegistry {
     /**
      * 通过反射注入 TradeGroup 到 TradeDatabase
      * <p>
-     * 注意：不将猫猫币交易加入 noConditionTrades，避免在原版VM贸易机中显示。
+     * 注意：只有无条件交易才加入 noConditionTrades（对所有玩家全局可见）。
+     * 有 BQ 条件的交易不加入 noConditionTrades，而是通过 BqAdapter 的条件满足机制
+     * （addSatisfiedCondition → updateAvailableTrades → satisfiesTrade）进入 availableTrades，
+     * 仅对已完成任务的玩家可见。这符合 VM 原版行为：未完成任务的交易不显示。
+     * <p>
      * 猫猫机通过 NekoVendingMachineGui.updateTradeDisplay() 手动添加猫猫币交易。
      */
     @SuppressWarnings("unchecked")
@@ -388,9 +392,11 @@ public class NekoTradeRegistry {
         tradeCategories.get(category)
             .add(tradeGroup.getId());
 
-        // 添加到 noConditionTrades —— 必须添加，否则 canExecuteTrade 权限检查会失败
-        // 原版VM中通过 Mixin 过滤掉猫猫币交易，不显示在原版VM中
-        noConditionTrades.add(tradeGroup);
+        // 只有无条件交易才加入 noConditionTrades
+        // 有 BQ 条件的交易通过 BqAdapter 条件满足机制进入 availableTrades
+        if (tradeGroup.hasNoConditions()) {
+            noConditionTrades.add(tradeGroup);
+        }
     }
 
     /**
@@ -486,6 +492,23 @@ public class NekoTradeRegistry {
      */
     public static Set<UUID> getNekoTradeGroupIds() {
         return Collections.unmodifiableSet(NEKO_TRADE_GROUP_IDS);
+    }
+
+    /**
+     * 获取 TradeDatabase 中所有交易组的 UUID 集合
+     * <p>
+     * 用于 /gtit nekovm timereset 命令遍历所有交易组重置冷却
+     */
+    @SuppressWarnings("unchecked")
+    public static Set<UUID> getAllTradeGroupIds() {
+        try {
+            initReflection();
+            Map<UUID, TradeGroup> tradeGroups = (Map<UUID, TradeGroup>) tradeGroupsField.get(TradeDatabase.INSTANCE);
+            return new HashSet<>(tradeGroups.keySet());
+        } catch (Exception e) {
+            GTInterestingThing.LOG.warn("获取所有交易组ID失败", e);
+            return new HashSet<>();
+        }
     }
 
     /**

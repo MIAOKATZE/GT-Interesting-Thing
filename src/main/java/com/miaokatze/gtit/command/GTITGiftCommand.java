@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import net.minecraft.command.CommandBase;
@@ -13,6 +14,10 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
+import com.cubefury.vendingmachine.trade.TradeDatabase;
+import com.cubefury.vendingmachine.trade.TradeGroup;
+import com.cubefury.vendingmachine.trade.TradeHistory;
+import com.cubefury.vendingmachine.trade.TradeManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
@@ -32,6 +37,7 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * - /gtit nekovm delete <标签页> <顺序ID>: 删除交易条目
  * - /gtit nekovm reload: 热重载猫猫币交易配置
  * - /gtit nekovm save: 手动保存当前交易数据到配置文件
+ * - /gtit nekovm timereset: 重置当前所有交易冷却
  */
 public class GTITGiftCommand extends CommandBase {
 
@@ -42,7 +48,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain|random <count>|reset | /gtit nekovm edit|list|edithelp|delete|reload|save";
+        return "/gtit gift certain|random <count>|reset | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset";
     }
 
     @Override
@@ -163,6 +169,7 @@ public class GTITGiftCommand extends CommandBase {
             case "delete" -> handleNekoVMDelete(player, args);
             case "reload" -> handleNekoVMReload(player);
             case "save" -> handleNekoVMSave(player);
+            case "timereset" -> handleNekoVMTimeReset(player);
             case "page" -> handleNekoVMPage(player, args);
             case "pagehelp" -> handleNekoVMPageHelp(sender);
             case "help" -> handleNekoVMFullHelp(sender);
@@ -544,6 +551,28 @@ public class GTITGiftCommand extends CommandBase {
         player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易数据已保存到配置文件"));
     }
 
+    /**
+     * /gtit nekovm timereset
+     * <p>
+     * 重置当前玩家（团队）的所有交易冷却，使所有交易立即可用。
+     * 通过将每个交易组的 TradeHistory 设为 DEFAULT（等价于从未交易过）实现。
+     */
+    private void handleNekoVMTimeReset(EntityPlayerMP player) {
+        UUID playerId = player.getUniqueID();
+        int resetCount = 0;
+
+        for (UUID tgId : NekoTradeRegistry.getAllTradeGroupIds()) {
+            TradeGroup tg = TradeDatabase.INSTANCE.getTradeGroupFromId(tgId);
+            if (tg != null) {
+                TradeManager.INSTANCE.setTradeState(playerId, tg, TradeHistory.DEFAULT);
+                resetCount++;
+            }
+        }
+
+        player.addChatMessage(
+            new ChatComponentText(EnumChatFormatting.GREEN + "已重置 " + resetCount + " 个交易的冷却"));
+    }
+
     // ==================== 辅助方法 ====================
 
     /**
@@ -650,6 +679,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit nekovm list [标签页] - 列出交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载猫猫币交易配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存当前交易数据到配置文件"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
     }
 
     private void sendNekoVMHelp(ICommandSender sender) {
@@ -664,6 +694,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 完整帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存配置"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
     }
 
     // ==================== Page 子命令 ====================
@@ -808,6 +839,8 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  热重载交易和标签页配置"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm save"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  保存当前交易数据到配置文件"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm timereset"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  重置当前玩家（团队）的所有交易冷却"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- 更多帮助 ---"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edithelp - 交易编辑详细帮助"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm pagehelp - 标签页管理详细帮助"));
