@@ -229,6 +229,19 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
         }
 
+        // 初始化标签页注册表和交易映射
+        // 原因：必须在 postInit 阶段初始化，确保专用服务器客户端也能加载
+        // （FMLServerStartedEvent 不会在专用服务器客户端触发）
+        // NekoPageRegistry: 加载标签页配置（安全，不依赖 TradeDatabase）
+        // NekoTradeRegistry.initializeClient(): 仅填充静态映射，不注入 TradeDatabase
+        // （TradeDatabase 会被 VM 在 serverStarting 阶段清空重载，注入会被覆盖）
+        try {
+            NekoPageRegistry.initialize();
+            NekoTradeRegistry.initializeClient();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] 猫猫售货机标签页/交易映射初始化失败", t);
+        }
+
         // 注册 BQ 任务事件桥接器
         // VM 的 BqAdapter.setQuestFinished() 从未被调用，需要 BqEventBridge 监听 QuestEvent 来更新缓存
         try {
@@ -263,15 +276,15 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStarted(FMLServerStartedEvent event) {
-        // 初始化猫猫币钱包管理器和交易注册
-        // 原因：之前因 getTooltip() NPE 崩溃而临时禁用，现 @SkipGenerateDescription 已修复根因
+        // 初始化猫猫币钱包管理器（需要 World 对象）
+        // NekoPageRegistry 已在 postInit() 中初始化
+        // NekoTradeRegistry.initializeClient() 已在 postInit() 中调用（填充映射）
+        // NekoTradeRegistry.initialize() 在此调用（注入 TradeDatabase，必须在 VM serverStarting 之后）
         try {
             MinecraftServer server = MinecraftServer.getServer();
             if (server != null && server.getEntityWorld() != null) {
                 NekoWalletManager.INSTANCE.init(server.getEntityWorld());
-                // 初始化标签页注册（在交易注册之前）
-                NekoPageRegistry.initialize();
-                // 初始化猫猫币交易注册（在钱包管理器和标签页初始化之后）
+                // 注入猫猫币交易到 TradeDatabase（VM 在 serverStarting 阶段已加载 TradeDatabase）
                 NekoTradeRegistry.initialize();
             }
         } catch (Throwable t) {

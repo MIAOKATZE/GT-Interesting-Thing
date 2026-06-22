@@ -100,6 +100,8 @@ public class NekoTradeRegistry {
      * <p>
      * 在 CommonProxy.serverStarted() 中调用，NekoWalletManager.init() 之后。
      * 此时物品已注册完成，NekoCurrencyRegistrar 的 Item 引用可用。
+     * 必须在 VM 的 serverStarting（加载 TradeDatabase）之后调用，
+     * 否则注入的交易会被 VM 清空覆盖。
      */
     public static void initialize() {
         GTInterestingThing.LOG.info("开始注册猫猫币交易...");
@@ -118,6 +120,65 @@ public class NekoTradeRegistry {
         loadAndRegisterTrades();
 
         GTInterestingThing.LOG.info("猫猫币交易注册完成，共 {} 个交易组", NEKO_TRADES.size());
+    }
+
+    /**
+     * 客户端初始化（仅加载配置和填充静态映射，不注入 TradeDatabase）
+     * <p>
+     * 在 CommonProxy.postInit() 中调用。
+     * 专用服务器客户端不会触发 serverStarted()，因此需要在此阶段
+     * 填充 NEKO_TRADES 和 NEKO_TRADE_GROUP_IDS 映射供 GUI 显示使用。
+     * TradeDatabase 中的交易数据由服务器通过网络同步到客户端。
+     */
+    public static void initializeClient() {
+        GTInterestingThing.LOG.info("客户端初始化猫猫币交易映射...");
+
+        // 确保配置文件存在
+        NekoTradeConfig.init();
+
+        // 从配置加载交易信息（不注入 TradeDatabase）
+        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+        List<NekoTradeEntry> trades = data.getTrades();
+
+        NEKO_TRADES.clear();
+        NEKO_TRADE_GROUP_IDS.clear();
+
+        int successCount = 0;
+        for (NekoTradeEntry entry : trades) {
+            try {
+                UUID tradeGroupId;
+                try {
+                    tradeGroupId = UUID.fromString(entry.getId());
+                } catch (IllegalArgumentException e) {
+                    tradeGroupId = UUID.randomUUID();
+                }
+
+                String currencyId = null;
+                int cost = 0;
+                if (entry.getCurrency() != null) {
+                    currencyId = entry.getCurrency()
+                        .getType();
+                    cost = entry.getCurrency()
+                        .getAmount();
+                }
+
+                NEKO_TRADE_GROUP_IDS.add(tradeGroupId);
+                NEKO_TRADES.put(
+                    tradeGroupId,
+                    new NekoTradeInfo(
+                        currencyId,
+                        cost,
+                        entry.getId(),
+                        entry.getOrderId(),
+                        entry.getTabId(),
+                        entry.getBqQuestId()));
+                successCount++;
+            } catch (Exception e) {
+                GTInterestingThing.LOG.error("客户端加载猫猫币交易映射失败 [entryId={}]!", entry.getId(), e);
+            }
+        }
+
+        GTInterestingThing.LOG.info("客户端猫猫币交易映射初始化完成，共 {} 个交易组", NEKO_TRADES.size());
     }
 
     /**
