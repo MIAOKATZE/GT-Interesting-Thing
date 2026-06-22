@@ -229,6 +229,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
         }
 
+        // 初始化标签页注册表和交易注册表
+        // 原因：必须在 postInit 阶段初始化，确保专用服务器客户端也能加载
+        // （FMLServerStartedEvent 不会在专用服务器客户端触发）
+        try {
+            NekoPageRegistry.initialize();
+            NekoTradeRegistry.initialize();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] 猫猫售货机标签页/交易注册失败", t);
+        }
+
         // 注册 BQ 任务事件桥接器
         // VM 的 BqAdapter.setQuestFinished() 从未被调用，需要 BqEventBridge 监听 QuestEvent 来更新缓存
         try {
@@ -263,19 +273,15 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStarted(FMLServerStartedEvent event) {
-        // 初始化猫猫币钱包管理器和交易注册
-        // 原因：之前因 getTooltip() NPE 崩溃而临时禁用，现 @SkipGenerateDescription 已修复根因
+        // 初始化猫猫币钱包管理器（需要 World 对象）
+        // NekoPageRegistry 和 NekoTradeRegistry 已在 postInit() 中初始化
         try {
             MinecraftServer server = MinecraftServer.getServer();
             if (server != null && server.getEntityWorld() != null) {
                 NekoWalletManager.INSTANCE.init(server.getEntityWorld());
-                // 初始化标签页注册（在交易注册之前）
-                NekoPageRegistry.initialize();
-                // 初始化猫猫币交易注册（在钱包管理器和标签页初始化之后）
-                NekoTradeRegistry.initialize();
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("猫猫币钱包/交易初始化失败", t);
+            GTInterestingThing.LOG.error("猫猫币钱包初始化失败", t);
         }
 
         // 初始化 Infinity Cell StorageManager (WorldSavedData)

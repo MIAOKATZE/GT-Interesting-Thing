@@ -360,7 +360,9 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             // 猫猫机只有3个标签页(0-2)，而 lastPage 是静态字段，
             // 可能保留原版VM的值(如8)，需要 clamp 到有效范围
             int maxPage = this.nekoTradeCategories.size() - 1;
+            if (maxPage < 0) maxPage = 0; // 防御性检查：标签页列表为空时回退到0
             int page = Math.min(lastPage, maxPage);
+            if (page < 0) page = 0;
             this.nekoTabController.setPage(page);
         }
         this.nekoSearchBar.setText(lastSearch);
@@ -967,24 +969,32 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
 
         // 动态创建每个标签页的交易列表
         List<NekoPageEntry> pages = NekoPageRegistry.getAllPages();
-        for (int i = 0; i < pages.size(); i++) {
-            NekoPageEntry page = pages.get(i);
-            // currencyFilter 使用标签页ID作为过滤键
-            // 1=neko, 2=shimmeringNeko, 3=other, 4+=tabId字符串
-            String currencyFilter;
-            if (page.getId() == 1) {
-                currencyFilter = "neko";
-            } else if (page.getId() == 2) {
-                currencyFilter = "shimmeringNeko";
-            } else if (page.getId() == 3) {
-                currencyFilter = "other";
-            } else {
-                currencyFilter = "tab_" + page.getId();
-            }
+        // 防御性检查：如果页面列表为空（如初始化未完成），添加一个占位页面防止 PagedWidget 崩溃
+        if (pages.isEmpty()) {
+            GTInterestingThing.LOG.warn("[NEKO] NekoPageRegistry 未加载任何标签页，添加占位页面防止崩溃");
+            ListWidget placeholder = createTradeListPage(rootPanel, TradeCategory.ALL, "other");
+            this.nekoTradeLists.add(placeholder);
+            paged.addPage((IWidget) placeholder);
+        } else {
+            for (int i = 0; i < pages.size(); i++) {
+                NekoPageEntry page = pages.get(i);
+                // currencyFilter 使用标签页ID作为过滤键
+                // 1=neko, 2=shimmeringNeko, 3=other, 4+=tabId字符串
+                String currencyFilter;
+                if (page.getId() == 1) {
+                    currencyFilter = "neko";
+                } else if (page.getId() == 2) {
+                    currencyFilter = "shimmeringNeko";
+                } else if (page.getId() == 3) {
+                    currencyFilter = "other";
+                } else {
+                    currencyFilter = "tab_" + page.getId();
+                }
 
-            ListWidget listPage = createTradeListPage(rootPanel, TradeCategory.ALL, currencyFilter);
-            this.nekoTradeLists.add(listPage);
-            paged.addPage((IWidget) listPage);
+                ListWidget listPage = createTradeListPage(rootPanel, TradeCategory.ALL, currencyFilter);
+                this.nekoTradeLists.add(listPage);
+                paged.addPage((IWidget) listPage);
+            }
         }
 
         return (IWidget) ((Flow) ((Flow) Flow.row()
