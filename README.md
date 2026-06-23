@@ -301,17 +301,17 @@ The mod expands the Baubles ring slots from **2 to 10** via the Baubles-Expanded
 - **Ring of Windrider / 戒指·御风**: Grants creative flight with no cost. Obtained only via crafting.
 - **Ring of Gluttony / 戒指·饕餮**: Restores 1 hunger/sec; restores saturation when full. Emergency-fills hunger and saturation when below 5 (60s cooldown).
 - **Ring of Ironheart / 戒指·磐躯**: Uses `SharedMonsterAttributes.maxHealth` Attribute Modifier. Each ring adds +20 max health (10 hearts). Stackable.
-- **Ring of Dragon's Breath / 戒指·龙息**: Refreshes 30s potion effects every 20s — no flickering.
-- **Ring of Mountainbreaker / 戒指·裂山**: Refreshes 30s potion effects every 20s.
-- **Ring of Tempest / 戒指·疾风**: Refreshes 30s potion effects every 20s.
+- **Ring of Dragon's Breath / 戒指·龙息**: Refreshes 30s potion effects every 5s — no flickering.
+- **Ring of Mountainbreaker / 戒指·裂山**: Refreshes 30s potion effects every 5s.
+- **Ring of Tempest / 戒指·疾风**: Refreshes 30s potion effects every 5s.
 - **戒指·遥握**：通过 Mixin（`MixinPlayerControllerMP`）扩展方块交互距离，每枚 +2 格，可叠加。
 - **戒指·凌步**：自动走上 1 格高方块，如履平地，无需跳跃。
 - **戒指·御风**：获得创造飞行，无消耗。仅通过合成获得。
 - **戒指·饕餮**：每秒恢复 1 点饥饿值，满后恢复饱和度；饥饿度低于 5 时一次性补满（冷却 60 秒）。
 - **戒指·磐躯**：使用 `SharedMonsterAttributes.maxHealth` 属性修饰器，每枚 +20 生命上限（10 颗心），可叠加。
-- **戒指·龙息**：每 20 秒刷新 30 秒药水效果——不会闪烁。
-- **戒指·裂山**：每 20 秒刷新 30 秒药水效果。
-- **戒指·疾风**：每 20 秒刷新 30 秒药水效果。
+- **戒指·龙息**：每 5 秒刷新 30 秒药水效果——不会闪烁。
+- **戒指·裂山**：每 5 秒刷新 30 秒药水效果。
+- **戒指·疾风**：每 5 秒刷新 30 秒药水效果。
 
 ***
 

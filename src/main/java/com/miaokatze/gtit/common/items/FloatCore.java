@@ -54,7 +54,11 @@ public class FloatCore extends Item implements IBauble {
                 .getFoodLevel() >= 6;
 
             if (canFly) {
-                entityPlayer.capabilities.allowFlying = true;
+                // 饥饿恢复后重新启用飞行，需要同步到客户端
+                if (!entityPlayer.capabilities.allowFlying) {
+                    entityPlayer.capabilities.allowFlying = true;
+                    entityPlayer.sendPlayerAbilities();
+                }
 
                 // 如果玩家正在飞行，消耗饥饿值
                 if (entityPlayer.capabilities.isFlying) {

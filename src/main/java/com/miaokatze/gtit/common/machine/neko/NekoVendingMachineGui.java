@@ -119,6 +119,10 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     private List<NekoTradeItemDisplayWidget> otherSpecificTiles;
     /** 其他页面专用的 LIST 模式 widget 列表 */
     private List<NekoTradeItemDisplayWidget> otherSpecificList;
+    /** 收藏页面专用的 TILE 模式 widget 列表 */
+    private List<NekoTradeItemDisplayWidget> favouriteSpecificTiles;
+    /** 收藏页面专用的 LIST 模式 widget 列表 */
+    private List<NekoTradeItemDisplayWidget> favouriteSpecificList;
     /** 自定义标签页的 TILE 模式 widget 列表（按标签页ID索引） */
     private final Map<Integer, List<NekoTradeItemDisplayWidget>> customSpecificTiles = new HashMap<>();
     /** 自定义标签页的 LIST 模式 widget 列表（按标签页ID索引） */
@@ -182,14 +186,18 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             this.nekoSpecificList = new ArrayList<>();
             this.shimmeringSpecificList = new ArrayList<>();
             this.otherSpecificList = new ArrayList<>();
+            this.favouriteSpecificTiles = new ArrayList<>();
+            this.favouriteSpecificList = new ArrayList<>();
             for (int i = 0; i < 300; i++) {
                 this.nekoSpecificTiles.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
                 this.shimmeringSpecificTiles
                     .add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
                 this.otherSpecificTiles.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
+                this.favouriteSpecificTiles.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.TILE));
                 this.nekoSpecificList.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
                 this.shimmeringSpecificList.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
                 this.otherSpecificList.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
+                this.favouriteSpecificList.add(new NekoTradeItemDisplayWidget(null, this.getBase(), DisplayType.LIST));
             }
             // 为自定义标签页（ID >= 4）初始化 widget 列表
             for (NekoPageEntry page : NekoPageRegistry.getAllPages()) {
@@ -357,10 +365,11 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     @Override
     public void restorePreviousSettings() {
         if (this.nekoTabController.isInitialised()) {
-            // 猫猫机只有3个标签页(0-2)，而 lastPage 是静态字段，
-            // 可能保留原版VM的值(如8)，需要 clamp 到有效范围
-            int maxPage = this.nekoTradeCategories.size() - 1;
-            if (maxPage < 0) maxPage = 0; // 防御性检查：标签页列表为空时回退到0
+            // 猫猫机标签页：index 0=收藏，1=猫猫币，2=闪烁猫猫币，3=其他，4+=自定义
+            // lastPage 是静态字段，可能保留原版VM的值
+            // 需要考虑收藏标签页的偏移：原版 lastPage 对应的标签页现在在 index+1
+            int maxPage = this.nekoTradeCategories.size(); // +1 因为收藏标签页
+            if (maxPage < 1) maxPage = 1;
             int page = Math.min(lastPage, maxPage);
             if (page < 0) page = 0;
             this.nekoTabController.setPage(page);
@@ -457,6 +466,9 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     tradeableNowTeam,
                     cdTradeCount);
 
+                // 设置收藏状态
+                display.isFavourite = FavouritesTracker.INSTANCE.isFavourite(display);
+
                 // 按 tabId 分配到对应标签页
                 int tabId = NekoTradeRegistry.getTabIdForTradeGroup(tgId);
                 if (tabId == 1) {
@@ -504,12 +516,28 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             }
         }
 
+        // 构建收藏列表：从所有标签页的交易中过滤出已收藏的
+        List<TradeItemDisplay> allTrades = new ArrayList<>();
+        allTrades.addAll(nekoTrades);
+        allTrades.addAll(shimmeringTrades);
+        allTrades.addAll(otherTrades);
+        for (List<TradeItemDisplay> ct : customTrades.values()) {
+            allTrades.addAll(ct);
+        }
+        List<TradeItemDisplay> favouriteTrades = FavouritesTracker.INSTANCE.filterTrades(allTrades);
+        // 搜索过滤收藏列表
+        if (!searchText.isEmpty()) {
+            favouriteTrades = filterBySearch(favouriteTrades, searchText);
+        }
+
         updateFilteredWidgetList(this.nekoSpecificTiles, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificTiles, shimmeringTrades);
         updateFilteredWidgetList(this.otherSpecificTiles, otherTrades);
+        updateFilteredWidgetList(this.favouriteSpecificTiles, favouriteTrades);
         updateFilteredWidgetList(this.nekoSpecificList, nekoTrades);
         updateFilteredWidgetList(this.shimmeringSpecificList, shimmeringTrades);
         updateFilteredWidgetList(this.otherSpecificList, otherTrades);
+        updateFilteredWidgetList(this.favouriteSpecificList, favouriteTrades);
         // 更新自定义标签页 widget
         for (Map.Entry<Integer, List<TradeItemDisplay>> entry : customTrades.entrySet()) {
             int tabId = entry.getKey();
@@ -534,6 +562,10 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     private void sortByOrderId(List<TradeItemDisplay> displays) {
         UUID playerId = getClientPlayerId();
         displays.sort((a, b) -> {
+            // 收藏条目排在最前面
+            if (a.isFavourite != b.isFavourite) {
+                return Boolean.compare(b.isFavourite, a.isFavourite);
+            }
             // BQ 锁定状态作为首要排序键（锁定排在非锁定之后）
             boolean lockedA = playerId != null && NekoTradeRegistry.isTradeBqLocked(a.tgID, playerId);
             boolean lockedB = playerId != null && NekoTradeRegistry.isTradeBqLocked(b.tgID, playerId);
@@ -557,6 +589,10 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
     private void sortByDisplayName(List<TradeItemDisplay> displays) {
         UUID playerId = getClientPlayerId();
         displays.sort((a, b) -> {
+            // 收藏条目排在最前面
+            if (a.isFavourite != b.isFavourite) {
+                return Boolean.compare(b.isFavourite, a.isFavourite);
+            }
             // BQ 锁定状态作为首要排序键（锁定排在非锁定之后）
             boolean lockedA = playerId != null && NekoTradeRegistry.isTradeBqLocked(a.tgID, playerId);
             boolean lockedB = playerId != null && NekoTradeRegistry.isTradeBqLocked(b.tgID, playerId);
@@ -817,16 +853,25 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
         Flow tabColumn = (Flow) ((Flow) ((Flow) ((Flow) ((Flow) ((Flow) Flow.column()
             .excludeAreaInRecipeViewer()).width(40)).height(300)).left(-29)).top(40)).coverChildren();
 
-        // 动态加载标签页
+        // 收藏标签页（始终排在第一位）
+        tabColumn.child(
+            (IWidget) new NekoPageButton(0, tabController, TradeCategory.FAVOURITES, this.highlightedTabs, null)
+                .tab(GuiTextures.TAB_LEFT, -1)
+                .tooltipBuilder(builder -> {
+                    builder.clearText();
+                    builder.addLine(IKey.lang("vendingmachine.category.favourites"));
+                }));
+
+        // 动态加载其他标签页（从第2个位置开始）
         List<NekoPageEntry> pages = NekoPageRegistry.getAllPages();
         for (int i = 0; i < this.nekoTradeCategories.size() && i < pages.size(); ++i) {
-            final int index = i;
+            final int index = i + 1; // 收藏标签页占 index 0，其他标签页从 index 1 开始
             final NekoPageEntry page = pages.get(i);
             final String tabName = page.getName();
             final ItemStack iconStack = NekoPageRegistry.getPageIcon(page.getId());
             tabColumn.child(
                 (IWidget) new NekoPageButton(
-                    i,
+                    index,
                     tabController,
                     this.nekoTradeCategories.get(i),
                     this.highlightedTabs,
@@ -967,7 +1012,12 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             .width(162)).controller(tabController)
                 .background(new IDrawable[] { GuiTextures.TEXT_FIELD_BACKGROUND })).height(146);
 
-        // 动态创建每个标签页的交易列表
+        // 第一个标签页：收藏（始终排在第一位）
+        ListWidget favouritePage = createTradeListPage(rootPanel, TradeCategory.ALL, "favourite");
+        this.nekoTradeLists.add(favouritePage);
+        paged.addPage((IWidget) favouritePage);
+
+        // 动态创建其他标签页的交易列表
         List<NekoPageEntry> pages = NekoPageRegistry.getAllPages();
         // 防御性检查：如果页面列表为空（如初始化未完成），添加一个占位页面防止 PagedWidget 崩溃
         if (pages.isEmpty()) {
@@ -1008,6 +1058,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
      */
     private List<NekoTradeItemDisplayWidget> getWidgetList(String currencyFilter, DisplayType displayType) {
         if (displayType == DisplayType.TILE) {
+            if ("favourite".equals(currencyFilter)) return this.favouriteSpecificTiles;
             if ("neko".equals(currencyFilter)) return this.nekoSpecificTiles;
             if ("shimmeringNeko".equals(currencyFilter)) return this.shimmeringSpecificTiles;
             if ("other".equals(currencyFilter)) return this.otherSpecificTiles;
@@ -1019,6 +1070,7 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
             // 回退到父类 widget 列表（类型不匹配时返回空列表）
             return new ArrayList<>();
         } else {
+            if ("favourite".equals(currencyFilter)) return this.favouriteSpecificList;
             if ("neko".equals(currencyFilter)) return this.nekoSpecificList;
             if ("shimmeringNeko".equals(currencyFilter)) return this.shimmeringSpecificList;
             if ("other".equals(currencyFilter)) return this.otherSpecificList;
@@ -1146,6 +1198,11 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
      */
     private boolean isNekoCurrencyTrade(TradeItemDisplay display, String currencyFilter) {
         if (display == null) return false;
+
+        // 收藏标签页：显示所有已收藏的交易
+        if ("favourite".equals(currencyFilter)) {
+            return display.isFavourite;
+        }
 
         // 所有标签页统一使用 tabId 过滤（标签页与交易完全解耦）
         int targetTabId;

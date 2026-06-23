@@ -10,12 +10,12 @@ import cpw.mods.fml.common.Optional;
 
 /**
  * 戒指·龙息 / Ring of Dragon's Breath
- * 每20秒赋予30秒的：抗火、夜视、生命恢复I、抗性提升I
+ * 每5秒赋予30秒的：抗火、夜视、生命恢复I、抗性提升I
  */
 @Optional.Interface(iface = "baubles.api.IBauble", modid = "Baubles")
 public class RingDragonBreath extends BaseRing {
 
-    private static final int REFRESH_INTERVAL = 400; // 20秒 * 20tick
+    private static final int REFRESH_INTERVAL = 100; // 5秒 * 20tick
     private static final int EFFECT_DURATION = 600; // 30秒 * 20tick
 
     public RingDragonBreath() {

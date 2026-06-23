@@ -9,6 +9,7 @@ import com.cubefury.vendingmachine.blocks.MTEVendingMachine;
 import com.cubefury.vendingmachine.blocks.gui.DisplayType;
 import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplay;
 import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplayWidget;
+import com.cubefury.vendingmachine.gui.GuiTextures;
 
 /**
  * 猫猫售货机专用交易显示 Widget
@@ -16,6 +17,8 @@ import com.cubefury.vendingmachine.blocks.gui.TradeItemDisplayWidget;
  * 所有交易都显示双图标：
  * - 主图标（toItems 第一个物品）原大小显示，数字为获取数量
  * - 副图标（fromItems 第一个物品或猫猫币）小号显示在右下角，置于所有图层之上
+ * <p>
+ * 收藏交易显示星标图标。
  */
 public class NekoTradeItemDisplayWidget extends TradeItemDisplayWidget {
 
@@ -36,6 +39,16 @@ public class NekoTradeItemDisplayWidget extends TradeItemDisplayWidget {
     @Override
     public void draw(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
         super.draw(context, widgetTheme);
+
+        // 渲染收藏星标图标
+        TradeItemDisplay currentDisplay = this.getDisplay();
+        if (currentDisplay != null && currentDisplay.isFavourite) {
+            if (this.displayType == DisplayType.TILE) {
+                GuiTextures.FAVOURITE_SPRITE.draw(context, 4, 4, 6, 6, widgetTheme.getTheme());
+            } else if (this.displayType == DisplayType.LIST) {
+                GuiTextures.FAVOURITE_SPRITE.draw(context, 139, 2, 10, 10, widgetTheme.getTheme());
+            }
+        }
 
         // 渲染副图标，使用更高的 Z 值确保在所有 overlay 之上
         if (secondaryIcon != null && this.displayType == DisplayType.TILE) {

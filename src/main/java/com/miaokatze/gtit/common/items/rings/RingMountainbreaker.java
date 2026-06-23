@@ -10,12 +10,12 @@ import cpw.mods.fml.common.Optional;
 
 /**
  * 戒指·裂山 / Ring of Mountainbreaker
- * 每20秒赋予30秒的：力量II、急迫II
+ * 每5秒赋予30秒的：力量II、急迫II
  */
 @Optional.Interface(iface = "baubles.api.IBauble", modid = "Baubles")
 public class RingMountainbreaker extends BaseRing {
 
-    private static final int REFRESH_INTERVAL = 400;
+    private static final int REFRESH_INTERVAL = 100; // 5秒 * 20tick
     private static final int EFFECT_DURATION = 600;
 
     public RingMountainbreaker() {

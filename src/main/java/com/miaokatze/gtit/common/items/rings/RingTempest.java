@@ -10,12 +10,12 @@ import cpw.mods.fml.common.Optional;
 
 /**
  * 戒指·疾风 / Ring of Tempest
- * 每20秒赋予30秒的：速度II、跳跃提升II
+ * 每5秒赋予30秒的：速度II、跳跃提升II
  */
 @Optional.Interface(iface = "baubles.api.IBauble", modid = "Baubles")
 public class RingTempest extends BaseRing {
 
-    private static final int REFRESH_INTERVAL = 400;
+    private static final int REFRESH_INTERVAL = 100; // 5秒 * 20tick
     private static final int EFFECT_DURATION = 600;
 
     public RingTempest() {

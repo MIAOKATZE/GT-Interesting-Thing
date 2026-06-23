@@ -51,14 +51,18 @@ public class ElectricFloatCore extends Item implements IBauble, IElectricItem {
         if (player.worldObj.isRemote) return;
 
         if (player instanceof EntityPlayer entityPlayer) {
-            // 检查是否满足飞行条件：电力足够，或者电力不足但饥饿值>=3
+            // 检查是否满足飞行条件：电力足够，或者电力不足但饥饿值>=6
             boolean hasPower = ElectricItem.manager.canUse(itemstack, COST_PER_TICK);
             boolean hasFood = entityPlayer.getFoodStats()
                 .getFoodLevel() >= 6;
             boolean canFly = hasPower || hasFood;
 
             if (canFly) {
-                entityPlayer.capabilities.allowFlying = true;
+                // 条件恢复后重新启用飞行，需要同步到客户端
+                if (!entityPlayer.capabilities.allowFlying) {
+                    entityPlayer.capabilities.allowFlying = true;
+                    entityPlayer.sendPlayerAbilities();
+                }
 
                 // 检测是否正在飞行
                 if (entityPlayer.capabilities.isFlying) {
