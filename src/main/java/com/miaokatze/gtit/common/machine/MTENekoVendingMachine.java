@@ -278,11 +278,6 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
             GTInterestingThing.LOG.error("[NEKO] Failed to set uplinkHatch", e);
             return false;
         }
-        GTInterestingThing.LOG.info(
-            "[NEKO] addUplinkHatchNeko: uplink hatch added at ({},{},{})",
-            aBaseMetaTileEntity.getXCoord(),
-            aBaseMetaTileEntity.getYCoord(),
-            aBaseMetaTileEntity.getZCoord());
         return true;
     }
 
