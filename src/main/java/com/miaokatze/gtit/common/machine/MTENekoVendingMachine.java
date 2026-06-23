@@ -18,6 +18,7 @@ import com.cubefury.vendingmachine.trade.TradeGroup;
 import com.cubefury.vendingmachine.util.OverlayHelper;
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
+import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
 import com.gtnewhorizon.structurelib.structure.StructureUtility;
 import com.miaokatze.gtit.common.machine.neko.NekoVendingMachineGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -176,6 +177,70 @@ public class MTENekoVendingMachine extends MTEVendingMachine {
             1, // 垂直偏移：~ 在第2行（index 1，下层）
             0, // 深度偏移
             !this.mMachine);
+    }
+
+    /**
+     * 覆盖结构定义，返回猫猫机的 2x2x1 结构（而非父类的 2x3x1）
+     * <p>
+     * NEI 结构指示和生存建造预览使用此方法。
+     */
+    @Override
+    @SuppressWarnings("unchecked")
+    public IStructureDefinition<MTEVendingMachine> getStructureDefinition() {
+        return (IStructureDefinition<MTEVendingMachine>) (IStructureDefinition<?>) NEKO_STRUCTURE_DEFINITION;
+    }
+
+    /**
+     * 覆盖生存建造，使用猫猫机的 2x2x1 结构
+     */
+    @Override
+    public void construct(ItemStack stackSize, boolean hintsOnly) {
+        NEKO_STRUCTURE_DEFINITION.buildOrHints(
+            this,
+            stackSize,
+            "main",
+            this.getBaseMetaTileEntity()
+                .getWorld(),
+            this.getExtendedFacing(),
+            this.getBaseMetaTileEntity()
+                .getXCoord(),
+            (int) this.getBaseMetaTileEntity()
+                .getYCoord(),
+            this.getBaseMetaTileEntity()
+                .getZCoord(),
+            1,
+            1,
+            0,
+            hintsOnly);
+    }
+
+    /**
+     * 覆盖生存建造步骤，使用猫猫机的 2x2x1 结构
+     */
+    @Override
+    public int survivalConstruct(ItemStack stackSize, int elementBudget, ISurvivalBuildEnvironment env) {
+        if (this.mMachine) {
+            return -1;
+        }
+        return NEKO_STRUCTURE_DEFINITION.survivalBuild(
+            this,
+            stackSize,
+            "main",
+            this.getBaseMetaTileEntity()
+                .getWorld(),
+            this.getExtendedFacing(),
+            this.getBaseMetaTileEntity()
+                .getXCoord(),
+            (int) this.getBaseMetaTileEntity()
+                .getYCoord(),
+            this.getBaseMetaTileEntity()
+                .getZCoord(),
+            1,
+            1,
+            0,
+            elementBudget,
+            env,
+            false);
     }
 
     /**

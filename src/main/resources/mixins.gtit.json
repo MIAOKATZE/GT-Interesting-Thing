@@ -5,7 +5,7 @@
   "refmap": "mixins.gtit.refmap.json",
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
-  "mixins": ["MixinMTEVendingMachine", "MixinTradeManager", "MixinTradeMainPanel"],
+  "mixins": ["MixinMTEVendingMachine", "MixinTradeManager", "MixinTradeMainPanel", "MixinItemInWorldManager"],
   "client": [
     "MixinPlayerControllerMP",
     "MixinTradeItemDisplayWidget",
