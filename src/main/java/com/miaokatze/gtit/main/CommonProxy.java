@@ -10,6 +10,7 @@ import com.miaokatze.gtit.common.items.infinitycell.StorageManager;
 import com.miaokatze.gtit.common.loot.LootRegistrar;
 import com.miaokatze.gtit.config.Config;
 import com.miaokatze.gtit.config.GiftConfig;
+import com.miaokatze.gtit.config.MuteConfig;
 import com.miaokatze.gtit.event.PlayerLoginHandler;
 import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
@@ -78,6 +79,9 @@ public class CommonProxy {
 
         // 初始化新手宝箱配置
         GiftConfig.init();
+
+        // 初始化机器工作音效静音配置
+        MuteConfig.init();
 
         // 注册事件处理器
         FMLCommonHandler.instance()
