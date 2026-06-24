@@ -1,0 +1,20 @@
+{
+  "mappings": {
+    "com/miaokatze/gtit/mixin/MixinPlayerControllerMP": {
+      "getBlockReachDistance": "Lnet/minecraft/client/multiplayer/PlayerControllerMP;func_78757_d()F"
+    },
+    "com/miaokatze/gtit/mixin/NekoSoundManagerMixin": {
+      "playSound": "Lnet/minecraft/client/audio/SoundManager;func_148611_c(Lnet/minecraft/client/audio/ISound;)V"
+    }
+  },
+  "data": {
+    "searge": {
+      "com/miaokatze/gtit/mixin/MixinPlayerControllerMP": {
+        "getBlockReachDistance": "Lnet/minecraft/client/multiplayer/PlayerControllerMP;func_78757_d()F"
+      },
+      "com/miaokatze/gtit/mixin/NekoSoundManagerMixin": {
+        "playSound": "Lnet/minecraft/client/audio/SoundManager;func_148611_c(Lnet/minecraft/client/audio/ISound;)V"
+      }
+    }
+  }
+}
