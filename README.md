@@ -28,18 +28,6 @@ A custom trading machine built on top of the VendingMachine framework, featuring
 
 基于 VendingMachine 框架构建的自定义交易机器，拥有独立的货币系统（猫猫币）、动态标签页 GUI、BetterQuesting 任务集成和背景音乐。设计为进度门控奖励商店——玩家通过任务获取猫猫币，再消费猫猫币购买战利品袋和物品。
 
-### Structure / 结构
-
-A 2×2×1 multiblock machine (compact form of the original VendingMachine's 2×3×1). The controller must be placed at the bottom-right corner.
-
-2×2×1 多方块机器（原版 VendingMachine 2×3×1 的紧凑版）。控制器必须放置在右下角。
-
-```
-┌────┬────┐
-│ cc │ c~ │   cc = casing, c~ = controller (facing right)
-└────┴────┘
-```
-
 ### Currency System / 货币系统
 
 Two types of Neko Coins, stored in an independent wallet system (not in player inventory):
@@ -309,7 +297,7 @@ The mod expands the Baubles ring slots from **2 to 10** via the Baubles-Expanded
 - **戒指·御风**：获得创造飞行，无消耗。仅通过合成获得。
 - **戒指·饕餮**：每秒恢复 1 点饥饿值，满后恢复饱和度；饥饿度低于 5 时一次性补满（冷却 60 秒）。
 - **戒指·磐躯**：使用 `SharedMonsterAttributes.maxHealth` 属性修饰器，每枚 +20 生命上限（10 颗心），可叠加。
-- **戒指·龙息**：每 5 秒刷新 30 秒药水效果——不会闪烁。
+- **戒指·龙息**：每 5 秒刷新 30 秒药水效果。
 - **戒指·裂山**：每 5 秒刷新 30 秒药水效果。
 - **戒指·疾风**：每 5 秒刷新 30 秒药水效果。
 
@@ -381,8 +369,8 @@ A test multiblock machine (HV tier) for verifying the multiblock registration pr
 
 ## Acknowledgments / 致谢
 
-- **[AE2Things](https://github.com/GTNewHorizons/AE2Things)** — The Infinity Cell implementation is adapted from AE2Things' storage cell code, rewritten for the GTNH 2.9.0 AE2 API.
-  无限存储元件的实现适配自 AE2Things 的存储元件代码，为 GTNH 2.9.0 AE2 API 重写。
+- **[AE2Things](https://github.com/asdflj/AE2Things)** — The Infinity Cell implementation is adapted from AE2Things' storage cell code (GTNH 2.8.4 version), rewritten for the GTNH 2.9.0 AE2 API.
+  无限存储元件的实现移植自 AE2Things 的存储元件代码（GTNH 2.8.4 版本），为 GTNH 2.9.0 AE2 API 重写。
 - **[VendingMachine](https://github.com/GTNewHorizons/VendingMachine)** — The Neko Vending Machine is built on top of the VendingMachine framework, with custom currency, GUI, and trade logic.
   猫猫售货机基于 VendingMachine 框架构建，包含自定义货币、界面和交易逻辑。
 
