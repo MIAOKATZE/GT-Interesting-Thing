@@ -76,6 +76,8 @@ public class MuteConfig {
     private static String serializeConfig() {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
+        sb.append(
+            "  \"_comment\": \"mute_machine_working_sounds=true 时：新放置机器默认静音（GUI 按钮可单独取消）；锅炉蒸汽满罐排放音效（ventSteamIfTankIsFull）额外强制禁用，不受 GUI 按钮控制。\",\n");
         sb.append("  \"mute_machine_working_sounds\": ")
             .append(muteMachineWorkingSounds)
             .append("\n");

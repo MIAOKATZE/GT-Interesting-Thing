@@ -12,7 +12,8 @@
     "MixinTradeItemDisplayWidget",
     "NekoSoundManagerMixin",
     "MixinMTEBrickedBlastFurnace",
-    "MixinMTEBlackHoleCompressor"
+    "MixinMTEBlackHoleCompressor",
+    "MixinMTEBoilerVentSteam"
   ],
   "server": []
 }

@@ -351,6 +351,33 @@ A gift box automatically granted to players on their **first login** to a world.
 
 ***
 
+## Machine Sound Mute / 机器音效静音
+
+A QoL config that mutes GT5U machine working sounds by default. Config file: `config/gtit/gtit_mute.json`.
+
+GT5U 机器工作音效静音配置。配置文件：`config/gtit/gtit_mute.json`。
+
+```json
+{
+  "_comment": "mute_machine_working_sounds=true 时：新放置机器默认静音（GUI 按钮可单独取消）；锅炉蒸汽满罐排放音效（ventSteamIfTankIsFull）额外强制禁用，不受 GUI 按钮控制。",
+  "mute_machine_working_sounds": false
+}
+```
+
+- **`false` (default)**: 不干预，玩家可通过每台机器 GUI 右上角的静音按钮单独控制。
+- **`true`**: 新放置或未保存过静音状态的机器默认静音；玩家仍可通过 GUI 按钮单独取消。锅炉蒸汽满罐排放音效（`ventSteamIfTankIsFull` → `sendSound`）额外强制禁用，不受 GUI 按钮控制（粒子一并禁用）。
+- **`false`（默认）**：不干预，玩家可通过每台机器 GUI 右上角的静音按钮单独控制。
+- **`true`**：新放置或未保存过静音状态的机器默认静音；玩家仍可通过 GUI 按钮单独取消。锅炉蒸汽满罐排放音效（`ventSteamIfTankIsFull` → `sendSound`）额外强制禁用，不受 GUI 按钮控制（粒子一并禁用）。
+
+| Mixin                              | Target                              | Function / 功能                                                                                |
+| ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `MixinBaseMetaTileEntityMuffle`    | `setInitialValuesAsNBT` (TAIL)      | Default new machines to `mMuffler=true` when config enabled; GUI button still works per-machine |
+| `MixinMTEBrickedBlastFurnace`      | `updateSound` (HEAD)                | Cancel brick blast furnace flame loop sound when config enabled                                |
+| `MixinMTEBlackHoleCompressor`      | `playBlackHoleSounds` (HEAD)        | Cancel black hole compressor loop sound when config enabled                                    |
+| `MixinMTEBoilerVentSteam`          | `MTEBoiler.doSound` (HEAD)          | Force-cancel boiler steam vent sound + particle (`SOUND_EVENT_LET_OFF_EXCESS_STEAM`) when config enabled, regardless of GUI button |
+
+***
+
 ## Multiblock Test Machine / 多方块测试机器
 
 A test multiblock machine (HV tier) for verifying the multiblock registration process, structure detection logic, and recipe system integration. Uses a 3×3×3 hollow TungstenSteel structure.
