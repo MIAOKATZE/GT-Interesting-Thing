@@ -1,36 +1,46 @@
 package com.miaokatze.gtit.mixin;
 
+import net.minecraft.nbt.NBTTagCompound;
+
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import com.miaokatze.gtit.config.MuteConfig;
 
 import gregtech.api.metatileentity.BaseMetaTileEntity;
 
 /**
- * Mixin 拦截 BaseMetaTileEntity.isMuffled()
+ * Mixin 控制 BaseMetaTileEntity 的默认静音状态
  * <p>
- * isMuffled() 是 GT5 机器工作音效的专属闸门，工作音效路径（sendSound / sendLoopStart /
- * sendLoopEnd / updateSounds / doActivitySound）都会检查此方法。
- * 工具交互音效（sendSoundToPlayers）和工具右击音效（doSoundAtClient 直接调用）
- * 不检查此方法，因此不受影响。
+ * 当配置启用时，新放置或尚未保存过 muffler 状态的机器默认进入静音状态。
+ * 具体实现：在 NBT 初始化流程末尾检查，如果 NBT 中不存在 "mMuffler" 键且配置启用，
+ * 则将 mMuffler 设为 true。这样 GUI 右上角的静音按钮仍然可以正常切换单台机器的状态。
  * <p>
- * 当配置启用时，强制返回 true，使所有 GT 机器工作音效被静音：
- * - 服务端：不发 DO_SOUND / START_SOUND_LOOP / STOP_SOUND_LOOP 方块事件
- * - 客户端：不创建 GTSoundLoop 循环音效
- * <p>
- * 覆盖范围：所有单方块机器（电炉、研磨机、压缩机等）、所有标准多方块机器（EBF、组装线等）、
- * 锅炉（沸腾/加热循环音 + 蒸汽排放音）。
+ * 注意：
+ * <ul>
+ * <li>已存在且 NBT 中已保存 mMuffler 值的机器保持原状态，不会被强制修改。</li>
+ * <li>配置为 false 时完全不作为，不修改 mMuffler，玩家可通过 GUI 按钮单独控制。</li>
+ * <li>此 Mixin 不再在 isMuffled() 中强制返回 true，避免 GUI 按钮失效。</li>
+ * </ul>
  */
 @Mixin(value = BaseMetaTileEntity.class, priority = 1000)
 public class MixinBaseMetaTileEntityMuffle {
 
-    @Inject(method = "isMuffled", at = @At("HEAD"), cancellable = true, remap = false)
-    private void gtit$forceMuffled(CallbackInfoReturnable<Boolean> cir) {
-        if (MuteConfig.isMuteMachineWorkingSounds()) {
-            cir.setReturnValue(true);
+    @Shadow(remap = false)
+    private boolean mMuffler;
+
+    @Inject(method = "setInitialValuesAsNBT", at = @At("TAIL"), remap = false)
+    private void gtit$defaultMuffled(NBTTagCompound aNBT, short aID, CallbackInfo ci) {
+        if (!MuteConfig.isMuteMachineWorkingSounds()) {
+            return;
+        }
+        if (aNBT == null) {
+            mMuffler = true;
+        } else if (!aNBT.hasKey("mMuffler")) {
+            mMuffler = true;
         }
     }
 }
