@@ -353,28 +353,47 @@ A gift box automatically granted to players on their **first login** to a world.
 
 ## Machine Sound Mute / 机器音效静音
 
-A QoL config that mutes GT5U machine working sounds by default. Config file: `config/gtit/gtit_mute.json`.
+Two QoL configs controlling GT5U machine sounds. Config file: `config/gtit/gtit_mute.json`.
 
-GT5U 机器工作音效静音配置。配置文件：`config/gtit/gtit_mute.json`。
+两项 GT5U 机器音效静音配置。配置文件：`config/gtit/gtit_mute.json`。
 
 ```json
 {
-  "_comment": "mute_machine_working_sounds=true 时：新放置机器默认静音（GUI 按钮可单独取消）；锅炉蒸汽满罐排放音效（ventSteamIfTankIsFull）额外强制禁用，不受 GUI 按钮控制。",
-  "mute_machine_working_sounds": false
+  "_comment_mute": "mute_machine_working_sounds=true 时：新放置机器默认静音（有 GUI 按钮的机器可单独取消静音）。",
+  "mute_machine_working_sounds": false,
+  "_comment_extra_mute": "extra_mute=true 时：额外强制拦截无静音按钮机器的音效（锅炉蒸汽排放音/锅炉沸腾加热循环音/管道蒸汽泄漏音），不受 GUI 按钮控制。",
+  "extra_mute": false
 }
 ```
 
-- **`false` (default)**: 不干预，玩家可通过每台机器 GUI 右上角的静音按钮单独控制。
-- **`true`**: 新放置或未保存过静音状态的机器默认静音；玩家仍可通过 GUI 按钮单独取消。锅炉蒸汽满罐排放音效（`ventSteamIfTankIsFull` → `sendSound`）额外强制禁用，不受 GUI 按钮控制（粒子一并禁用）。
-- **`false`（默认）**：不干预，玩家可通过每台机器 GUI 右上角的静音按钮单独控制。
-- **`true`**：新放置或未保存过静音状态的机器默认静音；玩家仍可通过 GUI 按钮单独取消。锅炉蒸汽满罐排放音效（`ventSteamIfTankIsFull` → `sendSound`）额外强制禁用，不受 GUI 按钮控制（粒子一并禁用）。
+### `mute_machine_working_sounds`
 
-| Mixin                              | Target                              | Function / 功能                                                                                |
-| ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `MixinBaseMetaTileEntityMuffle`    | `setInitialValuesAsNBT` (TAIL)      | Default new machines to `mMuffler=true` when config enabled; GUI button still works per-machine |
-| `MixinMTEBrickedBlastFurnace`      | `updateSound` (HEAD)                | Cancel brick blast furnace flame loop sound when config enabled                                |
-| `MixinMTEBlackHoleCompressor`      | `playBlackHoleSounds` (HEAD)        | Cancel black hole compressor loop sound when config enabled                                    |
-| `MixinMTEBoilerVentSteam`          | `MTEBoiler.doSound` (HEAD)          | Force-cancel boiler steam vent sound + particle (`SOUND_EVENT_LET_OFF_EXCESS_STEAM`) when config enabled, regardless of GUI button |
+- **`false` (default)**: No intervention. Players can toggle each machine's mute button in its GUI.
+- **`true`**: Newly placed machines (or those without a saved mute state) default to muted; players can still unmute per-machine via the GUI button.
+- **`false`（默认）**：不干预，玩家可通过每台机器 GUI 右上角的静音按钮单独控制。
+- **`true`**：新放置或未保存过静音状态的机器默认静音；玩家仍可通过 GUI 按钮单独取消。
+
+### `extra_mute`
+
+For machines **without** a GUI mute button (boilers, fluid pipes). Force-cancels their sounds regardless of any state.
+
+针对**没有** GUI 静音按钮的机器（锅炉、流体管道）。无论状态如何，强制拦截其音效。
+
+- **`false` (default)**: No intervention.
+- **`true`**: Force-cancel boiler steam-vent sound (`ventSteamIfTankIsFull` → `sendSound`), boiler boiling/heating loop sounds, and fluid pipe steam-leak sound.
+- **`false`（默认）**：不干预。
+- **`true`**：强制拦截锅炉蒸汽满罐排放音（`ventSteamIfTankIsFull` → `sendSound`）、锅炉沸腾/加热循环音、流体管道蒸汽泄漏音。
+
+### Mixin Architecture / Mixin 架构
+
+| Mixin                              | Target                              | Config                | Function / 功能                                                                                |
+| ---------------------------------- | ----------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| `MixinBaseMetaTileEntityMuffle`    | `setInitialValuesAsNBT` (TAIL)      | `mute_machine_working_sounds` | Default new machines to `mMuffler=true`; GUI button still works per-machine                   |
+| `MixinMTEBrickedBlastFurnace`      | `updateSound` (HEAD)                | `mute_machine_working_sounds` | Cancel brick blast furnace flame loop sound                                                    |
+| `MixinMTEBlackHoleCompressor`      | `playBlackHoleSounds` (HEAD)        | `mute_machine_working_sounds` | Cancel black hole compressor loop sound                                                        |
+| `MixinMTEBoilerVentSteam`          | `MTEBoiler.doSound` (HEAD)          | `extra_mute`          | Cancel boiler steam vent sound + particle (`SOUND_EVENT_LET_OFF_EXCESS_STEAM`)                 |
+| `MixinMTEBoilerSoundLoops`         | `updateSoundLoops` (HEAD)           | `extra_mute`          | Cancel boiler boiling/heating loop sounds (`GTCEU_LOOP_BOILER` / `GTCEU_LOOP_FURNACE`)         |
+| `MixinMTEFluidPipeSound`           | `MTEFluidPipe.doSound` (HEAD)       | `extra_mute`          | Cancel fluid pipe steam-leak sound (`aIndex==9`, `RANDOM_FIZZ`)                                |
 
 ***
 

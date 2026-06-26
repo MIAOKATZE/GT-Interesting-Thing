@@ -13,7 +13,9 @@
     "NekoSoundManagerMixin",
     "MixinMTEBrickedBlastFurnace",
     "MixinMTEBlackHoleCompressor",
-    "MixinMTEBoilerVentSteam"
+    "MixinMTEBoilerVentSteam",
+    "MixinMTEBoilerSoundLoops",
+    "MixinMTEFluidPipeSound"
   ],
   "server": []
 }
