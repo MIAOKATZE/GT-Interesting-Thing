@@ -9,8 +9,10 @@ import java.util.List;
 
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.util.NbtBase64Util;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -126,12 +128,18 @@ public class GiftConfig {
         for (int i = 0; i < guaranteedItems.size(); i++) {
             ItemEntry e = guaranteedItems.get(i);
             sb.append("    {\"item\": \"")
-                .append(e.itemId)
+                .append(escapeJsonString(e.itemId))
                 .append("\", \"amount\": ")
                 .append(e.amount)
                 .append(", \"meta\": ")
-                .append(e.meta)
-                .append("}");
+                .append(e.meta);
+            // 若存在 NBT 数据，追加 Base64 字段，保持无 NBT 时 JSON 简洁
+            if (e.nbtBase64 != null && !e.nbtBase64.isEmpty()) {
+                sb.append(", \"nbtBase64\": \"")
+                    .append(escapeJsonString(e.nbtBase64))
+                    .append("\"");
+            }
+            sb.append("}");
             if (i < guaranteedItems.size() - 1) sb.append(",");
             sb.append("\n");
         }
@@ -140,12 +148,18 @@ public class GiftConfig {
         for (int i = 0; i < randomItems.size(); i++) {
             ItemEntry e = randomItems.get(i);
             sb.append("    {\"item\": \"")
-                .append(e.itemId)
+                .append(escapeJsonString(e.itemId))
                 .append("\", \"amount\": ")
                 .append(e.amount)
                 .append(", \"meta\": ")
-                .append(e.meta)
-                .append("}");
+                .append(e.meta);
+            // 若存在 NBT 数据，追加 Base64 字段，保持无 NBT 时 JSON 简洁
+            if (e.nbtBase64 != null && !e.nbtBase64.isEmpty()) {
+                sb.append(", \"nbtBase64\": \"")
+                    .append(escapeJsonString(e.nbtBase64))
+                    .append("\"");
+            }
+            sb.append("}");
             if (i < randomItems.size() - 1) sb.append(",");
             sb.append("\n");
         }
@@ -154,6 +168,52 @@ public class GiftConfig {
             .append(randomCount)
             .append("\n");
         sb.append("}\n");
+        return sb.toString();
+    }
+
+    /**
+     * 转义 JSON 字符串中的特殊字符（双引号、反斜杠、控制字符等）
+     *
+     * @param input 原始字符串
+     * @return 符合 JSON 字符串规范的转义后字符串
+     */
+    private static String escapeJsonString(String input) {
+        if (input == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            switch (c) {
+                case '"':
+                    sb.append("\\\"");
+                    break;
+                case '\\':
+                    sb.append("\\\\");
+                    break;
+                case '\b':
+                    sb.append("\\b");
+                    break;
+                case '\f':
+                    sb.append("\\f");
+                    break;
+                case '\n':
+                    sb.append("\\n");
+                    break;
+                case '\r':
+                    sb.append("\\r");
+                    break;
+                case '\t':
+                    sb.append("\\t");
+                    break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
         return sb.toString();
     }
 
@@ -235,11 +295,17 @@ public class GiftConfig {
             String itemId = extractStringValue(obj, "item");
             String amountStr = extractStringValue(obj, "amount");
             String metaStr = extractStringValue(obj, "meta");
+            // 向后兼容：旧配置可能不存在 nbtBase64 字段，缺失或为空时视为无 NBT
+            String nbtBase64 = extractStringValue(obj, "nbtBase64");
+            if (nbtBase64 != null && nbtBase64.isEmpty()) {
+                nbtBase64 = null;
+            }
 
             if (itemId != null) {
                 int amount = amountStr != null ? Integer.parseInt(amountStr.trim()) : 1;
                 int meta = metaStr != null ? Integer.parseInt(metaStr.trim()) : 0;
-                entries.add(new ItemEntry(itemId, amount, meta));
+                NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(nbtBase64);
+                entries.add(new ItemEntry(itemId, amount, meta, nbt));
             }
             i = objEnd + 1;
         }
@@ -272,25 +338,79 @@ public class GiftConfig {
 
     /**
      * 物品条目
+     * <p>
+     * 支持携带 NBT 数据：{@code nbtBase64} 用于 JSON 序列化/反序列化，{@code nbt} 用于运行时缓存。
+     * 无 NBT 时 {@code nbtBase64} 为 null，序列化时不输出该字段。
      */
     public static class ItemEntry {
 
         public final String itemId;
         public final int amount;
         public final int meta;
+        /** JSON 存储：Base64 编码的 NBT 二进制数据；无 NBT 时为 null */
+        private String nbtBase64;
+        /** 运行时缓存：反序列化后的 NBT 数据；由 {@link #toItemStack()} 按需应用 */
+        private transient NBTTagCompound nbt;
 
+        /**
+         * 三参数构造方法（向后兼容旧配置与默认配置）
+         *
+         * @param itemId 物品 ID（modid:name）
+         * @param amount 数量
+         * @param meta   元数据
+         */
         public ItemEntry(String itemId, int amount, int meta) {
+            this(itemId, amount, meta, null);
+        }
+
+        /**
+         * 四参数构造方法（支持 NBT）
+         *
+         * @param itemId 物品 ID（modid:name）
+         * @param amount 数量
+         * @param meta   元数据
+         * @param nbt    NBT 数据；为 null 时表示无 NBT
+         */
+        public ItemEntry(String itemId, int amount, int meta, NBTTagCompound nbt) {
             this.itemId = itemId;
             this.amount = amount;
             this.meta = meta;
+            this.nbt = nbt;
+            this.nbtBase64 = NbtBase64Util.nbtToBase64(nbt);
         }
 
+        /**
+         * 将条目转换回 ItemStack，自动应用 NBT 数据（若存在）
+         *
+         * @return 带 NBT 的 ItemStack；找不到物品或 ID 格式错误时返回 null
+         */
         public ItemStack toItemStack() {
             String[] parts = itemId.split(":");
             if (parts.length != 2) return null;
             Item item = GameRegistry.findItem(parts[0], parts[1]);
             if (item == null) return null;
-            return new ItemStack(item, amount, meta);
+            ItemStack stack = new ItemStack(item, amount, meta);
+
+            // 优先使用运行时缓存的 NBT；否则从 Base64 解析（应对刚反序列化、缓存未填充的情况）
+            NBTTagCompound tagToApply = nbt;
+            if (tagToApply == null && nbtBase64 != null && !nbtBase64.isEmpty()) {
+                tagToApply = NbtBase64Util.nbtFromBase64(nbtBase64);
+                nbt = tagToApply;
+            }
+            if (tagToApply != null) {
+                stack.setTagCompound(tagToApply);
+            }
+            return stack;
+        }
+
+        /** 获取 NBT 的 Base64 表示（JSON 用） */
+        public String getNbtBase64() {
+            return nbtBase64;
+        }
+
+        /** 获取运行时 NBT 数据 */
+        public NBTTagCompound getNbt() {
+            return nbt;
         }
     }
 }

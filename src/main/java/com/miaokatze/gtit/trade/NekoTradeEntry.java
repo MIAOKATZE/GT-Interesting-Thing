@@ -1,20 +1,15 @@
 package com.miaokatze.gtit.trade;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.util.NbtBase64Util;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -186,9 +181,19 @@ public class NekoTradeEntry {
         }
 
         /**
-         * 从 ItemStack 创建 ItemEntry（包含NBT）
+         * 从 ItemStack 创建 ItemEntry（默认包含 NBT）
          */
         public static ItemEntry fromItemStack(ItemStack stack) {
+            return fromItemStack(stack, true);
+        }
+
+        /**
+         * 从 ItemStack 创建 ItemEntry
+         *
+         * @param stack     源物品堆
+         * @param recordNbt true 时记录物品的 NBT 数据；false 时忽略 NBT
+         */
+        public static ItemEntry fromItemStack(ItemStack stack, boolean recordNbt) {
             if (stack == null) return null;
 
             Item item = stack.getItem();
@@ -201,8 +206,8 @@ public class NekoTradeEntry {
             entry.meta = stack.getItemDamage();
             entry.amount = stack.stackSize;
 
-            // 处理 NBT：序列化为 Base64
-            if (stack.hasTagCompound() && stack.getTagCompound() != null) {
+            // 处理 NBT：仅在 recordNbt 为 true 时序列化为 Base64
+            if (recordNbt && stack.hasTagCompound() && stack.getTagCompound() != null) {
                 NBTTagCompound tagCompound = stack.getTagCompound();
                 entry.nbt = (NBTTagCompound) tagCompound.copy();
                 entry.nbtBase64 = nbtToBase64(tagCompound);
@@ -301,36 +306,25 @@ public class NekoTradeEntry {
 
     /**
      * 将 NBTTagCompound 序列化为 Base64 字符串
+     * <p>
+     * 内部委托给 {@link NbtBase64Util}，保持各模块 NBT 编解码逻辑统一。
+     *
+     * @param nbt 待序列化的 NBT 数据
+     * @return Base64 编码后的字符串；失败或输入 null 时返回 null
      */
-    static String nbtToBase64(NBTTagCompound nbt) {
-        try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            DataOutputStream dos = new DataOutputStream(baos);
-            CompressedStreamTools.write(nbt, dos);
-            dos.close();
-            return Base64.getEncoder()
-                .encodeToString(baos.toByteArray());
-        } catch (Exception e) {
-            GTInterestingThing.LOG.error("NekoTradeEntry: NBT序列化为Base64失败", e);
-            return null;
-        }
+    public static String nbtToBase64(NBTTagCompound nbt) {
+        return NbtBase64Util.nbtToBase64(nbt);
     }
 
     /**
      * 从 Base64 字符串反序列化 NBTTagCompound
+     * <p>
+     * 内部委托给 {@link NbtBase64Util}，保持各模块 NBT 编解码逻辑统一。
+     *
+     * @param base64 Base64 编码的字符串
+     * @return 反序列化后的 NBT 数据；失败或输入 null/空字符串时返回 null
      */
-    static NBTTagCompound nbtFromBase64(String base64) {
-        try {
-            byte[] bytes = Base64.getDecoder()
-                .decode(base64);
-            ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
-            DataInputStream dis = new DataInputStream(bais);
-            NBTTagCompound nbt = CompressedStreamTools.read(dis);
-            dis.close();
-            return nbt;
-        } catch (Exception e) {
-            GTInterestingThing.LOG.error("NekoTradeEntry: Base64反序列化为NBT失败", e);
-            return null;
-        }
+    public static NBTTagCompound nbtFromBase64(String base64) {
+        return NbtBase64Util.nbtFromBase64(base64);
     }
 }

@@ -11,6 +11,7 @@ import net.minecraft.command.CommandBase;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
@@ -28,16 +29,18 @@ import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
  * /gtit 指令
- * - /gtit gift certain: 将当前背包物品设为必中物品
- * - /gtit gift random <count>: 将当前背包物品设为随机物品，设置随机数
+ * - /gtit gift certain [yesNBT|noNBT]: 将当前背包物品设为必中物品
+ * - /gtit gift random <count> [yesNBT|noNBT]: 将当前背包物品设为随机物品，设置随机数
  * - /gtit gift reset: 恢复默认配置
- * - /gtit nekovm edit <标签页> [顺序ID] [冷却时间] [绑定ID]: 导入交易条目
+ * - /gtit nekovm edit <标签页> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]: 导入交易条目
  * - /gtit nekovm list [标签页]: 列出交易条目
  * - /gtit nekovm edithelp: 显示编辑帮助
  * - /gtit nekovm delete <标签页> <顺序ID>: 删除交易条目
  * - /gtit nekovm reload: 热重载猫猫币交易配置
  * - /gtit nekovm save: 手动保存当前交易数据到配置文件
  * - /gtit nekovm timereset: 重置当前所有交易冷却
+ * <p>
+ * 配置类指令默认不记录 NBT；如需记录，请在指令末尾添加 {@code yesNBT}。
  */
 public class GTITGiftCommand extends CommandBase {
 
@@ -48,7 +51,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain|random <count>|reset | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset";
+        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset";
     }
 
     @Override
@@ -108,6 +111,13 @@ public class GTITGiftCommand extends CommandBase {
             }
         }
 
+        if (args.length == 3 && "gift".equals(args[0])) {
+            if ("certain".equals(args[1]) || "random".equals(args[1])) {
+                // 补全 NBT 标记：/gtit gift certain [yesNBT|noNBT] 或 /gtit gift random <count> [yesNBT|noNBT]
+                return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
+            }
+        }
+
         if (args.length == 3 && "nekovm".equals(args[0])) {
             if ("edit".equals(args[1]) || "list".equals(args[1]) || "delete".equals(args[1])) {
                 // 补全标签页ID
@@ -124,6 +134,11 @@ public class GTITGiftCommand extends CommandBase {
             if ("page".equals(args[1])) {
                 return getListOfStringsMatchingLastWord(args, "add", "delet");
             }
+        }
+
+        if (args.length == 4 && "gift".equals(args[0]) && "random".equals(args[1])) {
+            // /gtit gift random <count> [yesNBT|noNBT]
+            return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
         }
 
         if (args.length == 4 && "nekovm".equals(args[0])) {
@@ -161,7 +176,41 @@ public class GTITGiftCommand extends CommandBase {
             }
         }
 
+        if (args.length == 7 && "nekovm".equals(args[0]) && "edit".equals(args[1])) {
+            // /gtit nekovm edit <tabId> <顺序ID> <冷却> <绑定ID> [yesNBT|noNBT]
+            return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
+        }
+
         return null;
+    }
+
+    // ==================== NBT 标记解析 ====================
+
+    /**
+     * 从指令参数末尾解析 yesNBT/noNBT 标记。
+     * <p>
+     * 若最后一个参数为 {@code yesNBT} 或 {@code noNBT}，则返回对应布尔值；否则默认返回 {@code false}（不记录 NBT），
+     * 并向玩家发送提示与完整指令结构。
+     *
+     * @param args           当前指令参数数组
+     * @param player         执行指令的玩家
+     * @param commandExample 完整指令结构示例，用于提示
+     * @return true 表示记录 NBT，false 表示不记录
+     */
+    private boolean parseNbtFlagAtEnd(String[] args, EntityPlayerMP player, String commandExample) {
+        if (args.length > 0) {
+            String last = args[args.length - 1].toLowerCase();
+            if ("yesnbt".equals(last)) {
+                return true;
+            }
+            if ("nonbt".equals(last)) {
+                return false;
+            }
+        }
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "完整指令结构：" + commandExample));
+        return false;
     }
 
     // ==================== Gift 子命令 ====================
@@ -173,43 +222,74 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         switch (args[1]) {
-            case "certain" -> handleCertain(player);
+            case "certain" -> handleCertain(player, args);
             case "random" -> handleRandom(player, args);
             case "reset" -> handleReset(player);
             default -> sendHelp(sender);
         }
     }
 
-    private void handleCertain(EntityPlayerMP player) {
+    private void handleCertain(EntityPlayerMP player, String[] args) {
+        boolean recordNbt = parseNbtFlagAtEnd(args, player, "/gtit gift certain [yesNBT|noNBT]");
+
         List<com.miaokatze.gtit.config.GiftConfig.ItemEntry> entries = new ArrayList<>();
         for (int i = 0; i < player.inventory.mainInventory.length; i++) {
             ItemStack stack = player.inventory.mainInventory[i];
             if (stack != null) {
                 String itemId = getItemId(stack);
                 if (itemId != null) {
+                    NBTTagCompound nbt = recordNbt ? stack.getTagCompound() : null;
                     entries.add(
                         new com.miaokatze.gtit.config.GiftConfig.ItemEntry(
                             itemId,
                             stack.stackSize,
-                            stack.getItemDamage()));
+                            stack.getItemDamage(),
+                            nbt));
                 }
             }
         }
         com.miaokatze.gtit.config.GiftConfig.setGuaranteedItems(entries);
         com.miaokatze.gtit.config.GiftConfig.saveConfig();
         player.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.GREEN + "必中物品已更新为当前背包内容（" + entries.size() + "项）"));
+            new ChatComponentText(
+                EnumChatFormatting.GREEN + "必中物品已更新为当前背包内容（"
+                    + entries.size()
+                    + "项，NBT："
+                    + (recordNbt ? "开启" : "关闭")
+                    + "）"));
     }
 
     private void handleRandom(EntityPlayerMP player, String[] args) {
         int count = 2;
+        boolean recordNbt = false;
+
         if (args.length >= 3) {
-            try {
-                count = Integer.parseInt(args[2]);
-            } catch (NumberFormatException e) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "随机数必须是整数"));
-                return;
+            String arg2Lower = args[2].toLowerCase();
+            if ("yesnbt".equals(arg2Lower) || "nonbt".equals(arg2Lower)) {
+                // 省略了随机数，使用默认值 2，并在末尾解析 NBT 标记
+                recordNbt = "yesnbt".equals(arg2Lower);
+                if (!recordNbt) {
+                    player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
+                    player
+                        .addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
+                    player.addChatMessage(
+                        new ChatComponentText(
+                            EnumChatFormatting.WHITE + "完整指令结构：/gtit gift random <count> [yesNBT|noNBT]"));
+                }
+            } else {
+                try {
+                    count = Integer.parseInt(args[2]);
+                } catch (NumberFormatException e) {
+                    player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "随机数必须是整数"));
+                    return;
+                }
+                recordNbt = parseNbtFlagAtEnd(args, player, "/gtit gift random <count> [yesNBT|noNBT]");
             }
+        } else {
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
+            player.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.WHITE + "完整指令结构：/gtit gift random <count> [yesNBT|noNBT]"));
         }
 
         List<com.miaokatze.gtit.config.GiftConfig.ItemEntry> entries = new ArrayList<>();
@@ -218,11 +298,13 @@ public class GTITGiftCommand extends CommandBase {
             if (stack != null) {
                 String itemId = getItemId(stack);
                 if (itemId != null) {
+                    NBTTagCompound nbt = recordNbt ? stack.getTagCompound() : null;
                     entries.add(
                         new com.miaokatze.gtit.config.GiftConfig.ItemEntry(
                             itemId,
                             stack.stackSize,
-                            stack.getItemDamage()));
+                            stack.getItemDamage(),
+                            nbt));
                 }
             }
         }
@@ -230,7 +312,14 @@ public class GTITGiftCommand extends CommandBase {
         com.miaokatze.gtit.config.GiftConfig.setRandomCount(count);
         com.miaokatze.gtit.config.GiftConfig.saveConfig();
         player.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.GREEN + "随机物品已更新（" + entries.size() + "项，随机数：" + count + "）"));
+            new ChatComponentText(
+                EnumChatFormatting.GREEN + "随机物品已更新（"
+                    + entries.size()
+                    + "项，随机数："
+                    + count
+                    + "，NBT："
+                    + (recordNbt ? "开启" : "关闭")
+                    + "）"));
     }
 
     private void handleReset(EntityPlayerMP player) {
@@ -262,15 +351,32 @@ public class GTITGiftCommand extends CommandBase {
     }
 
     /**
-     * /gtit nekovm edit <标签页> [顺序ID] [冷却时间] [绑定ID]
+     * /gtit nekovm edit <标签页> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]
      * <p>
-     * 读取玩家背包前两行(需求)和工具栏前4格(产物)，导入交易条目
+     * 读取玩家背包前两行(需求)和快捷栏前 10 格(产物)，导入交易条目。
+     * 默认不记录 NBT；如需记录，请在指令末尾添加 yesNBT。
      */
     private void handleNekoVMEdit(EntityPlayerMP player, String[] args) {
         if (args.length < 3) {
             player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit nekovm edit <标签页ID> [顺序ID] [冷却时间] [绑定ID]"));
+                new ChatComponentText(
+                    EnumChatFormatting.RED + "用法: /gtit nekovm edit <标签页ID> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]"));
             return;
+        }
+
+        // 从末尾解析 yesNBT/noNBT 标记
+        int effectiveLen = args.length;
+        boolean recordNbt = false;
+        String lastArg = args[args.length - 1].toLowerCase();
+        if ("yesnbt".equals(lastArg) || "nonbt".equals(lastArg)) {
+            recordNbt = "yesnbt".equals(lastArg);
+            effectiveLen--;
+        } else {
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.WHITE + "完整指令结构：/gtit nekovm edit <标签页ID> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]"));
         }
 
         // 解析标签页ID
@@ -289,7 +395,7 @@ public class GTITGiftCommand extends CommandBase {
 
         // 解析顺序ID（可选，默认自动）
         int orderId = -1;
-        if (args.length >= 4) {
+        if (effectiveLen >= 4) {
             try {
                 orderId = Integer.parseInt(args[3]);
             } catch (NumberFormatException e) {
@@ -300,7 +406,7 @@ public class GTITGiftCommand extends CommandBase {
 
         // 解析冷却时间（可选，默认0）
         int cooldown = 0;
-        if (args.length >= 5) {
+        if (effectiveLen >= 5) {
             try {
                 cooldown = Integer.parseInt(args[4]);
             } catch (NumberFormatException e) {
@@ -311,7 +417,7 @@ public class GTITGiftCommand extends CommandBase {
 
         // 解析绑定ID（可选，默认空）
         String bqQuestId = "";
-        if (args.length >= 6) {
+        if (effectiveLen >= 6) {
             bqQuestId = args[5];
         }
 
@@ -341,27 +447,27 @@ public class GTITGiftCommand extends CommandBase {
                             return;
                         }
                 } else {
-                    // 普通物品：放入 fromItems
-                    fromItems.add(NekoTradeEntry.ItemEntry.fromItemStack(stack));
+                    // 普通物品：放入 fromItems（根据 recordNbt 决定是否记录 NBT）
+                    fromItems.add(NekoTradeEntry.ItemEntry.fromItemStack(stack, recordNbt));
                 }
             }
         }
 
-        // 读取产物物品：工具栏前4格（slot 0-3）
+        // 读取产物物品：快捷栏前 10 格（slot 0-9）
         List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();
-        for (int i = 0; i <= 3; i++) {
+        for (int i = 0; i <= 9; i++) {
             ItemStack stack = player.inventory.mainInventory[i];
             if (stack != null && stack.getItem() != null) {
-                toItems.add(NekoTradeEntry.ItemEntry.fromItemStack(stack));
+                toItems.add(NekoTradeEntry.ItemEntry.fromItemStack(stack, recordNbt));
             }
         }
 
-        // 合并同类物品
+        // 合并同类物品（NBT 不同则不合并，防止 NBT 丢失）
         fromItems = mergeItems(fromItems);
         toItems = mergeItems(toItems);
 
         if (toItems.isEmpty()) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "产物物品为空！请将产物放在工具栏前4格"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "产物物品为空！请将产物放在快捷栏前 10 格（slot 0-9）"));
             return;
         }
 
@@ -404,7 +510,14 @@ public class GTITGiftCommand extends CommandBase {
             existing.setCooldown(cooldown);
             existing.setBqQuestId(bqQuestId);
             player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.YELLOW + "已覆盖 " + tabName + " 标签页的条目 #" + orderId));
+                new ChatComponentText(
+                    EnumChatFormatting.YELLOW + "已覆盖 "
+                        + tabName
+                        + " 标签页的条目 #"
+                        + orderId
+                        + "（NBT："
+                        + (recordNbt ? "开启" : "关闭")
+                        + "）"));
         } else {
             // 新建条目
             NekoTradeEntry entry = new NekoTradeEntry();
@@ -417,7 +530,14 @@ public class GTITGiftCommand extends CommandBase {
             entry.setBqQuestId(bqQuestId);
             trades.add(entry);
             player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.GREEN + "已添加 " + tabName + " 标签页的条目 #" + orderId));
+                new ChatComponentText(
+                    EnumChatFormatting.GREEN + "已添加 "
+                        + tabName
+                        + " 标签页的条目 #"
+                        + orderId
+                        + "（NBT："
+                        + (recordNbt ? "开启" : "关闭")
+                        + "）"));
         }
 
         // 保存并重载
@@ -552,16 +672,18 @@ public class GTITGiftCommand extends CommandBase {
     private void handleNekoVMEditHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "=== 猫猫售货机交易编辑帮助 ==="));
         sender.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID]"));
+            new ChatComponentText(
+                EnumChatFormatting.YELLOW + "/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID] [yesNBT|noNBT]"));
         sender
             .addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  标签页ID: 使用 /gtit nekovm list 查看已有标签页"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  顺序ID: 排序用，不写则自动分配"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  冷却: 交易冷却秒数，不写则0"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  绑定ID: BQ任务ID，不写则不绑定"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  yesNBT/noNBT: 是否记录物品 NBT，不写则默认不记录"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "物品读取规则:"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  需求物品 = 背包前两行（共18格）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  产物物品 = 工具栏前4格（快捷栏0-3）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  同种物品自动合并数量"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  产物物品 = 快捷栏前 10 格（slot 0-9）"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  同种物品自动合并数量（NBT 不同不合并）"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + "  猫猫币/闪烁猫猫币自动识别为货币参数！"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + "  放入背包的猫猫币数量即为花费数量"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "覆盖规则:"));
@@ -572,7 +694,7 @@ public class GTITGiftCommand extends CommandBase {
             new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm delete <标签页> <顺序ID> - 删除交易"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm reload - 热重载配置"));
         sender.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.YELLOW + "示例: /gtit nekovm edit 1 5 60 quest_001"));
+            new ChatComponentText(EnumChatFormatting.YELLOW + "示例: /gtit nekovm edit 1 5 60 quest_001 yesNBT"));
     }
 
     /**
@@ -659,12 +781,16 @@ public class GTITGiftCommand extends CommandBase {
     // ==================== 辅助方法 ====================
 
     /**
-     * 合并同类物品（相同 item+meta 的合并数量）
+     * 合并同类物品（相同 item+meta+NBT 的合并数量）
+     * <p>
+     * 合并键包含 NBT 的 Base64 表示，避免相同 ID/meta 但不同 NBT 的物品被错误合并成一条并丢失 NBT。
+     * 无 NBT 时使用空字符串占位。
      */
     private List<NekoTradeEntry.ItemEntry> mergeItems(List<NekoTradeEntry.ItemEntry> items) {
         Map<String, NekoTradeEntry.ItemEntry> merged = new HashMap<>();
         for (NekoTradeEntry.ItemEntry entry : items) {
-            String key = entry.getItem() + ":" + entry.getMeta();
+            String nbtKey = entry.getNbtBase64() != null ? entry.getNbtBase64() : "";
+            String key = entry.getItem() + ":" + entry.getMeta() + ":" + nbtKey;
             if (merged.containsKey(key)) {
                 NekoTradeEntry.ItemEntry existing = merged.get(key);
                 existing.setAmount(existing.getAmount() + entry.getAmount());
@@ -709,11 +835,13 @@ public class GTITGiftCommand extends CommandBase {
 
     /**
      * 描述物品列表（简短）
+     * <p>
+     * 不再限制显示数量，以完整展示最多 10 个产物或需求物品。
      */
     private String describeItems(List<NekoTradeEntry.ItemEntry> items) {
         if (items == null || items.isEmpty()) return "无";
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < items.size() && i < 4; i++) {
+        for (int i = 0; i < items.size(); i++) {
             NekoTradeEntry.ItemEntry entry = items.get(i);
             if (i > 0) sb.append("+");
             String name = getItemShortName(entry.getItem());
@@ -721,7 +849,6 @@ public class GTITGiftCommand extends CommandBase {
                 .append("x")
                 .append(entry.getAmount());
         }
-        if (items.size() > 4) sb.append("...");
         return sb.toString();
     }
 
@@ -753,8 +880,8 @@ public class GTITGiftCommand extends CommandBase {
 
     private void sendHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "用法:"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift certain - 设置必中物品为当前背包"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift random <count> - 设置随机物品为当前背包"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift certain [yesNBT|noNBT] - 设置必中物品为当前背包"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift random <count> [yesNBT|noNBT] - 设置随机物品为当前背包"));
         sender.addChatMessage(new ChatComponentText("/gtit gift reset - 重置为默认配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 猫猫售货机完整帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm edithelp - 交易编辑帮助"));
@@ -767,7 +894,8 @@ public class GTITGiftCommand extends CommandBase {
 
     private void sendNekoVMHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "猫猫售货机命令:"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID] - 导入交易"));
+        sender.addChatMessage(
+            new ChatComponentText("/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID] [yesNBT|noNBT] - 导入交易"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm list [标签页] - 列出交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm delete <标签页ID> <顺序ID> - 删除交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm page add <ID> <名字> - 添加/覆盖标签页（手持物品作图标）"));
