@@ -110,41 +110,45 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
 
 ```
 /gtit
-  ├── gift                          -- Starter gift config / 新手宝箱配置
-  │   ├── certain                   -- Set guaranteed items from inventory
-  │   ├── random <count>            -- Set random item pool from inventory
-  │   └── reset                     -- Reset to default
+  ├── gift                                      -- Starter gift config / 新手宝箱配置
+  │   ├── certain [yesNBT|noNBT]                -- Set guaranteed items from inventory
+  │   ├── random <count> [yesNBT|noNBT]         -- Set random item pool from inventory
+  │   └── reset                                 -- Reset to default
   │
-  └── nekovm                        -- NekoVM trade management / 猫猫机交易管理
-      ├── edit <tabId> [orderId]    -- Edit/create trade (reads inventory)
-      │            [cooldown] [bqQuestId]
-      ├── list [tabId]              -- List trades
-      ├── delete <tabId> <orderId>  -- Delete trade
-      ├── page add <id> <name>      -- Add/override tab (held item = icon)
-      ├── page delet <id>           -- Delete custom tab (1-3 protected)
-      ├── reload                    -- Hot-reload config
-      ├── save                      -- Save to config file
-      ├── timereset                 -- Reset all trade cooldowns
-      ├── edithelp                   -- Edit help
-      ├── pagehelp                  -- Tab management help
-      └── help                      -- Full help
+  └── nekovm                                    -- NekoVM trade management / 猫猫机交易管理
+      ├── edit <tabId> [orderId]                -- Edit/create trade (reads inventory)
+      │            [cooldown] [bqQuestId] [yesNBT|noNBT]
+      ├── list [tabId]                          -- List trades
+      ├── delete <tabId> <orderId>              -- Delete trade
+      ├── page add <id> <name>                  -- Add/override tab (held item = icon)
+      ├── page delet <id>                       -- Delete custom tab (1-3 protected)
+      ├── reload                                -- Hot-reload config
+      ├── save                                  -- Save to config file
+      ├── timereset                             -- Reset all trade cooldowns
+      ├── edithelp                              -- Edit help
+      ├── pagehelp                              -- Tab management help
+      └── help                                  -- Full help
 ```
+
+> \[!NOTE]
+> **NBT recording / NBT 记录**：All item-config commands default to `noNBT`. Add `yesNBT` at the end of the command to record item NBT data (enchantments, custom names, GT machine configuration, etc.). If the flag is omitted, a hint with the full command structure is shown.
+> 所有配置物品的指令默认 `noNBT`。如需记录物品 NBT 数据（附魔、自定义名称、GT 机器配置等），请在指令末尾添加 `yesNBT`。未写该参数时会弹出提示并展示完整指令结构。
 
 **Edit inventory layout / 编辑物品布局**:
 
 - Rows 1-2 (slots 9-26): Required items / Neko Coins (auto-detected)
-- Hotbar slots 0-3: Reward items (slot 0 = trade icon)
+- Hotbar slots 0-9: Reward items (slot 0 = trade icon, up to 10 reward item types)
 - 背包前两行（槽位 9-26）：需求物品 / 猫猫币（自动识别）
-- 工具栏前 4 格（槽位 0-3）：产物物品（槽位 0 = 交易图标）
+- 工具栏前 10 格（槽位 0-9）：产物物品（槽位 0 = 交易图标，最多 10 种产物）
 
 ### Configuration / 配置
 
-| File / 文件     | Path / 路径                        | Description / 说明                                                                           |
-| ------------- | -------------------------------- | ------------------------------------------------------------------------------------------ |
-| Trades / 交易配置 | `config/gtit/nekovm_trades.json` | Trade entries with tabId, orderId, items, currency, cooldown, bqQuestId                    |
-| Tabs / 标签页配置  | `config/gtit/nekovm_pages.json`  | Custom tab definitions (ID, name, icon)                                                    |
-| Wallets / 钱包  | GTNHLib Teams team data          | Team-shared Neko Coin balances (v1.5.0: per-player `<world>/gtit_neko_wallets/<uuid>.dat`) |
-| Gift / 新手宝箱   | `config/gtit/gift_config.json`   | Starter gift guaranteed + random items                                                     |
+| File / 文件     | Path / 路径                        | Description / 说明                                                                                                 |
+| ------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Trades / 交易配置 | `config/gtit/nekovm_trades.json` | Trade entries with tabId, orderId, items (optionally with `nbtBase64`), currency, cooldown, bqQuestId              |
+| Tabs / 标签页配置  | `config/gtit/nekovm_pages.json`  | Custom tab definitions (ID, name, icon)                                                                          |
+| Wallets / 钱包  | GTNHLib Teams team data          | Team-shared Neko Coin balances (v1.5.0: per-player `<world>/gtit_neko_wallets/<uuid>.dat`)                       |
+| Gift / 新手宝箱   | `config/gtit/gift_config.json`   | Starter gift guaranteed + random items (optionally with `nbtBase64`)                                             |
 
 If `nekovm_trades.json` does not exist, default trades are generated from `NekoTradeConfig.getDefaultTrades()` (10 loot bag trades with BQ quest bindings).
 
@@ -331,7 +335,8 @@ A gift box automatically granted to players on their **first login** to a world.
     { "item": "minecraft:torch", "amount": 64, "meta": 0 }
   ],
   "random_items": [
-    { "item": "gtit:ring_skywalk", "amount": 1, "meta": 0 }
+    { "item": "gtit:ring_skywalk", "amount": 1, "meta": 0 },
+    { "item": "minecraft:enchanted_book", "amount": 1, "meta": 0, "nbtBase64": "..." }
   ],
   "random_count": 2
 }
@@ -340,14 +345,15 @@ A gift box automatically granted to players on their **first login** to a world.
 - `guaranteed_items`: Items always granted / 必中物品
 - `random_items`: Random item pool / 随机物品池
 - `random_count`: Number of random items drawn / 随机抽取数量
+- `nbtBase64` (optional): Base64-encoded NBT data; written automatically when using `yesNBT` / 可选，Base64 编码的 NBT 数据；使用 `yesNBT` 时自动写入
 
 ### Gift Commands / 宝箱指令
 
-| Command / 指令                | Description / 说明                                                   |
-| --------------------------- | ------------------------------------------------------------------ |
-| `/gtit gift certain`        | Set guaranteed items from current inventory / 将当前背包物品设为必中物品        |
-| `/gtit gift random <count>` | Set random pool from inventory + set draw count / 将背包物品设为随机池并设置抽取数 |
-| `/gtit gift reset`          | Reset to default config / 恢复默认配置                                   |
+| Command / 指令                            | Description / 说明                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `/gtit gift certain [yesNBT|noNBT]`     | Set guaranteed items from current inventory / 将当前背包物品设为必中物品；默认 `noNBT`                |
+| `/gtit gift random <count> [yesNBT|noNBT]` | Set random pool from inventory + set draw count / 将背包物品设为随机池并设置抽取数；默认 `noNBT`      |
+| `/gtit gift reset`                      | Reset to default config / 恢复默认配置                                                           |
 
 ***
 
