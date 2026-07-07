@@ -478,6 +478,22 @@ public class GTITGiftCommand extends CommandBase {
      */
     private boolean resetOfflinePlayerGiftFlag(File datFile) {
         try {
+            // 安全检查：操作 .dat 前再次确认玩家不在线，避免内存/文件数据冲突。
+            // 外层批量方法虽收集过 onlineUuids，但收集与写入之间存在时间窗口；
+            // 按名查找路径的二次确认也在更早时刻，无法覆盖真正落盘前的那一刻。
+            UUID fileUuid;
+            try {
+                fileUuid = UUID.fromString(
+                    datFile.getName()
+                        .replace(".dat", ""));
+            } catch (IllegalArgumentException ignored) {
+                return false;
+            }
+            if (isPlayerOnline(fileUuid)) {
+                GTInterestingThing.LOG.warn("跳过在线玩家的 .dat 文件操作，避免内存/文件数据冲突: {}", datFile.getName());
+                return false;
+            }
+
             NBTTagCompound rootNbt = CompressedStreamTools.read(datFile);
             if (rootNbt == null) return false;
 
@@ -495,6 +511,21 @@ public class GTITGiftCommand extends CommandBase {
             GTInterestingThing.LOG.error("重置离线玩家礼包标记失败: " + datFile.getName(), e);
             return false;
         }
+    }
+
+    /**
+     * 检查指定 UUID 的玩家当前是否在线
+     */
+    private boolean isPlayerOnline(UUID uuid) {
+        if (uuid == null) return false;
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server == null) return false;
+        for (EntityPlayerMP onlinePlayer : server.getConfigurationManager().playerEntityList) {
+            if (uuid.equals(onlinePlayer.getUniqueID())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

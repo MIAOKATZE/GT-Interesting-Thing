@@ -5,6 +5,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.IIcon;
 
+import com.miaokatze.gtit.main.GTInterestingThing;
+
 import appeng.api.implementations.tiles.IChestOrDrive;
 import appeng.api.storage.ICellHandler;
 import appeng.api.storage.IMEInventory;
@@ -30,7 +32,11 @@ public class InfinityCellHandler implements ICellHandler {
                     return iih.getInventoryHandler(is, container, null);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            // 不再静默吞异常：StorageManager 未初始化（客户端 tooltip、serverStarted 前）等情况
+            // 会在此抛出，记录便于诊断"元件静默失效"问题
+            GTInterestingThing.LOG.warn("获取无限元件 InventoryHandler 失败", e);
+        }
         return null;
     }
 

@@ -54,8 +54,15 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         this.data = Platform.openNbtData(this.cellItem);
         this.storedItemTypes = data.getLong(ITEM_TYPE_TAG);
         this.storedItemCount = data.getLong(ITEM_COUNT_TAG);
-        this.storage = StorageManager.getInstance()
-            .getStorage(this.cellItem);
+        // 防护：StorageManager 在 serverStarted 事件才初始化，客户端 tooltip 路径或
+        // serverStarted 抛错时 getInstance() 为 null，直接解引用会 NPE。
+        // 抛出明确异常，由 InfinityCellHandler.getCellInventory 的 catch 记录日志，
+        // 而非让 NPE 冒泡导致"元件静默失效且无任何线索"。
+        StorageManager manager = StorageManager.getInstance();
+        if (manager == null) {
+            throw new AppEngException("StorageManager 未初始化（服务器未完全启动或客户端 tooltip 路径）");
+        }
+        this.storage = manager.getStorage(this.cellItem);
     }
 
     @Override

@@ -72,12 +72,6 @@ public class MixinMTEVendingMachine {
             return;
         }
 
-        int balance = wallet.getCount(nekoInfo.currencyId);
-        if (balance < nekoInfo.cost) {
-            cir.setReturnValue(false);
-            return;
-        }
-
         // 获取 TradeGroup 和 Trade
         TradeGroup tg = TradeDatabase.INSTANCE.getTradeGroupFromId(tgId);
         if (tg == null || tradeRequest.tradeGroupOrder >= tg.getTrades()
@@ -102,15 +96,28 @@ public class MixinMTEVendingMachine {
             }
         }
 
-        // 混合交易：先扣减猫猫币，然后走原版逻辑处理 fromItems
+        // 混合交易（有 fromItems）：先校验物品可用性，避免扣币后原方法物品检查失败导致丢币
         if (!trade.fromItems.isEmpty()) {
-            wallet.addCount(nekoInfo.currencyId, -nekoInfo.cost);
+            // simulate=true 仅检查不扣减，物品不足时拒绝交易、不扣币
+            if (!self.checkTrade(trade, playerId, tradeRequest.walletMode, true)) {
+                cir.setReturnValue(false);
+                return;
+            }
+            // 物品可用 → 原子扣减猫猫币（防止团队钱包双重消费）
+            if (!wallet.tryDeduct(nekoInfo.currencyId, nekoInfo.cost)) {
+                cir.setReturnValue(false);
+                return;
+            }
             NekoWalletManager.INSTANCE.saveWallet(playerId);
+            // 不 setReturnValue，让原方法处理 fromItems 扣减 + toItems 出货 + 交易历史更新
             return;
         }
 
-        // 纯猫猫币交易：扣减猫猫币，出货
-        wallet.addCount(nekoInfo.currencyId, -nekoInfo.cost);
+        // 纯猫猫币交易：原子扣减猫猫币（防止团队钱包双重消费），出货
+        if (!wallet.tryDeduct(nekoInfo.currencyId, nekoInfo.cost)) {
+            cir.setReturnValue(false);
+            return;
+        }
         NekoWalletManager.INSTANCE.saveWallet(playerId);
 
         for (BigItemStack toItem : trade.toItems) {

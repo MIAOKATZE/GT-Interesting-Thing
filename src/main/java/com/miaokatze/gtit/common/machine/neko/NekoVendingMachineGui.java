@@ -1549,20 +1549,24 @@ public class NekoVendingMachineGui extends MTEVendingMachineGui {
                     }
                     // 检测猫猫币
                     String nekoCurrencyId = NekoCurrencyRegistrar.getNekoCurrencyId(newItem);
-                    if (nekoCurrencyId != null) {
-                        // 是猫猫币，清除槽位
-                        slot.putStack(null);
-                    }
                     if (client) {
+                        // 客户端：即时视觉清槽（数据真相以服务端为准，崩溃时物品以服务端持久化结果为最终态）
+                        if (nekoCurrencyId != null) {
+                            slot.putStack(null);
+                        }
                         return;
                     }
                     this.getBase().syncTrades = true;
                     if (nekoCurrencyId != null) {
                         // 猫猫币自动导入 NekoWallet
+                        // 顺序：先入账 → 持久化成功 → 再清槽，避免崩溃导致丢币
                         NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
                         if (wallet != null) {
-                            wallet.addCount(nekoCurrencyId, newItem.stackSize);
+                            int amount = newItem.stackSize;
+                            wallet.addCount(nekoCurrencyId, amount);
                             NekoWalletManager.INSTANCE.saveWallet(playerId);
+                            // 入账完成后再清除槽位（此前槽内物理币仍在，崩溃可由背包数据兜底）
+                            slot.putStack(null);
                             this.getBase()
                                 .playSoundEffect("vendingmachine:coin_insert");
                         }

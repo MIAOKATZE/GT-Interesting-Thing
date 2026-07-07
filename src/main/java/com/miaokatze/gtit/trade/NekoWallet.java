@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.trade;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import net.minecraft.nbt.NBTTagCompound;
@@ -12,19 +11,20 @@ import net.minecraft.nbt.NBTTagCompound;
  */
 public class NekoWallet {
 
-    private final Map<String, Integer> balances = new HashMap<>();
+    // ConcurrentHashMap：多线程（交易主线程、GUI changeListener、团队数据合并）可能并发访问同一钱包
+    private final Map<String, Integer> balances = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * 获取指定猫猫币的余额
      */
-    public int getCount(String currencyId) {
+    public synchronized int getCount(String currencyId) {
         return balances.getOrDefault(currencyId, 0);
     }
 
     /**
      * 增加猫猫币余额（amount 可为负数表示扣除）
      */
-    public void addCount(String currencyId, int amount) {
+    public synchronized void addCount(String currencyId, int amount) {
         int current = getCount(currencyId);
         int newAmount = current + amount;
         if (newAmount < 0) newAmount = 0;
@@ -32,16 +32,36 @@ public class NekoWallet {
     }
 
     /**
+     * 原子地检查余额并扣减
+     * <p>
+     * 解决团队钱包双重消费竞态：两个团队成员近乎同时下单时，
+     * "余额检查 + addCount(-cost)" 两步操作之间可能被对方插入，
+     * 导致两人都通过检查后余额被扣到 0、但两人都拿到产物。
+     * 本方法将检查与扣减合并为单个 synchronized 原子操作。
+     *
+     * @param currencyId 货币ID
+     * @param amount     扣减数量（正数）
+     * @return true=余额足够并已扣减；false=余额不足，未扣减
+     */
+    public synchronized boolean tryDeduct(String currencyId, int amount) {
+        if (amount <= 0) return true;
+        int current = getCount(currencyId);
+        if (current < amount) return false;
+        balances.put(currencyId, current - amount);
+        return true;
+    }
+
+    /**
      * 重置指定猫猫币余额为 0
      */
-    public void resetCount(String currencyId) {
+    public synchronized void resetCount(String currencyId) {
         balances.put(currencyId, 0);
     }
 
     /**
      * 重置所有余额
      */
-    public void resetAll() {
+    public synchronized void resetAll() {
         balances.clear();
     }
 

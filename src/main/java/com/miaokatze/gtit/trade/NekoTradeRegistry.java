@@ -4,7 +4,6 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,10 +34,12 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 public class NekoTradeRegistry {
 
     // 猫猫币交易组 UUID → 猫猫币花费信息
-    public static final Map<UUID, NekoTradeInfo> NEKO_TRADES = new HashMap<>();
+    // ConcurrentHashMap：reload()（指令线程）会 clear+重填，而 checkTrade（服务器主线程）、
+    // BqEventBridge（FML事件线程）、GUI（客户端线程）会并发迭代。并发容器保证弱一致视图，避免 CME。
+    public static final Map<UUID, NekoTradeInfo> NEKO_TRADES = new java.util.concurrent.ConcurrentHashMap<>();
 
     // 猫猫币交易组的 ID 集合（用于快速判断）
-    private static final Set<UUID> NEKO_TRADE_GROUP_IDS = new HashSet<>();
+    private static final Set<UUID> NEKO_TRADE_GROUP_IDS = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     // 反射缓存：TradeDatabase.tradeGroups
     private static Field tradeGroupsField;
@@ -520,6 +521,13 @@ public class NekoTradeRegistry {
         Map<TradeCategory, Set<UUID>> tradeCategories = (Map<TradeCategory, Set<UUID>>) tradeCategoriesField
             .get(TradeDatabase.INSTANCE);
 
+        // 在移除前，先收集需要清理 BQ trigger 的 questId 和对应 TradeGroup
+        // BqAdapter.addQuestTrigger 注册时把 TradeGroup 加到 questUpdateTriggers，
+        // 并把 BqCondition 加到 tradeGroup.requirementSet。reload 时若不清理：
+        // 1. questUpdateTriggers 累积旧 TradeGroup 引用 → 内存泄漏
+        // 2. 任务完成事件触发到已死 TradeGroup 的 requirementSet
+        cleanupBqTriggers(tradeGroups);
+
         // 从 tradeGroups 移除
         for (UUID id : NEKO_TRADE_GROUP_IDS) {
             tradeGroups.remove(id);
@@ -539,6 +547,57 @@ public class NekoTradeRegistry {
         NEKO_TRADE_GROUP_IDS.clear();
 
         GTInterestingThing.LOG.info("已移除所有猫猫币交易");
+    }
+
+    /**
+     * 清理 BQ 任务触发器
+     * <p>
+     * 对每个绑定了 bqQuestId 的猫猫币交易：
+     * - 调用 BqAdapter.resetQuestTriggers(questId) 清空该任务的触发器集合（移除旧 TradeGroup 引用）
+     * - 清空旧 TradeGroup.requirementSet（移除 BqCondition 引用）
+     * BQ 未加载时跳过。registerTradeFromEntry 会重新注册 trigger，覆盖安全。
+     */
+    private static void cleanupBqTriggers(Map<UUID, TradeGroup> tradeGroups) {
+        if (!VendingMachine.isBqLoaded) return;
+
+        // 收集去重后的 questId，以及需要清空 requirementSet 的 TradeGroup
+        Set<UUID> questIdsToReset = new HashSet<>();
+        Set<UUID> processedQuests = new HashSet<>();
+        for (Map.Entry<UUID, NekoTradeInfo> entry : NEKO_TRADES.entrySet()) {
+            NekoTradeInfo info = entry.getValue();
+            if (info.bqQuestId == null || info.bqQuestId.isEmpty()) continue;
+
+            UUID questId = parseBqQuestId(info.bqQuestId);
+            if (questId == null) continue;
+
+            // 该 questId 第一次见到，加入待 reset 列表
+            if (processedQuests.add(questId)) {
+                questIdsToReset.add(questId);
+            }
+
+            // 清空对应 TradeGroup 的 requirementSet（解除 BqCondition 引用）
+            TradeGroup tg = tradeGroups.get(entry.getKey());
+            if (tg != null) {
+                try {
+                    tg.requirementSet.clear();
+                } catch (Exception e) {
+                    GTInterestingThing.LOG.warn("清理 TradeGroup.requirementSet 失败: tgId={}", entry.getKey(), e);
+                }
+            }
+        }
+
+        // 调用 BqAdapter.resetQuestTriggers 移除任务触发器中的旧 TradeGroup 引用
+        for (UUID questId : questIdsToReset) {
+            try {
+                BqAdapter.INSTANCE.resetQuestTriggers(questId);
+            } catch (Exception e) {
+                GTInterestingThing.LOG.warn("清理 BQ 任务触发器失败: questId={}", questId, e);
+            }
+        }
+
+        if (!questIdsToReset.isEmpty()) {
+            GTInterestingThing.LOG.info("已清理 {} 个 BQ 任务的触发器", questIdsToReset.size());
+        }
     }
 
     /**
