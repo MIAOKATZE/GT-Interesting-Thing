@@ -1,9 +1,9 @@
 package com.miaokatze.gtit.config;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,6 +11,9 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.NbtBase64Util;
 
@@ -18,12 +21,21 @@ import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
  * 新手宝箱配置管理
+ * <p>
  * 配置文件路径: config/gtit/gift_config.json
+ * <p>
+ * v1.5.12+: 由手写 JSON 解析迁移到 Gson（参照 NekoPageConfig / NekoTradeConfig 模式），
+ * 移除 ~200 行脆弱的手写序列化/反序列化代码（escapeJsonString / extractJsonArray /
+ * parseItemEntries / extractStringValue 等）。JSON 文件格式保持向后兼容。
  */
 public class GiftConfig {
 
-    private static final String CONFIG_DIR = "config" + File.separator + "gtit";
-    private static final String CONFIG_FILE = CONFIG_DIR + File.separator + "gift_config.json";
+    private static final String CONFIG_PATH = "config/gtit/gift_config.json";
+    // 注意：不启用 serializeNulls，保持与手写序列化器一致的输出风格——
+    // 无 NBT 时 nbtBase64 字段为 null，Gson 默认不输出该字段，JSON 保持简洁。
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
+        .disableHtmlEscaping()
+        .create();
 
     private static List<ItemEntry> guaranteedItems = new ArrayList<>();
     private static List<ItemEntry> randomItems = new ArrayList<>();
@@ -65,22 +77,27 @@ public class GiftConfig {
     }
 
     public static void loadConfig() {
-        File file = new File(CONFIG_FILE);
-        if (file.exists()) {
-            try (FileReader reader = new FileReader(file)) {
-                StringBuilder sb = new StringBuilder();
-                int ch;
-                while ((ch = reader.read()) != -1) {
-                    sb.append((char) ch);
+        Path path = Paths.get(CONFIG_PATH);
+        if (Files.exists(path)) {
+            try {
+                String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+                GiftConfigData data = GSON.fromJson(json, GiftConfigData.class);
+                if (data != null) {
+                    guaranteedItems = data.guaranteedItems != null ? data.guaranteedItems : new ArrayList<>();
+                    randomItems = data.randomItems != null ? data.randomItems : new ArrayList<>();
+                    randomCount = data.randomCount;
+                    GTInterestingThing.LOG.info("新手宝箱配置已加载");
+                    // 确保默认值（空列表回退到默认，避免宝箱为空）
+                    if (guaranteedItems.isEmpty()) guaranteedItems = createDefaultGuaranteedItems();
+                    if (randomItems.isEmpty()) randomItems = createDefaultRandomItems();
+                    if (randomCount <= 0) randomCount = 2;
+                    return;
                 }
-                parseConfig(sb.toString());
-                GTInterestingThing.LOG.info("新手宝箱配置已加载");
-                return;
-            } catch (IOException e) {
+            } catch (Exception e) {
                 GTInterestingThing.LOG.error("加载新手宝箱配置失败，使用默认配置", e);
             }
         }
-        // 首次运行或加载失败，使用默认配置
+        // 首次运行或加载失败，使用默认配置并落盘
         guaranteedItems = createDefaultGuaranteedItems();
         randomItems = createDefaultRandomItems();
         randomCount = 2;
@@ -88,14 +105,17 @@ public class GiftConfig {
     }
 
     public static void saveConfig() {
-        File dir = new File(CONFIG_DIR);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-        try (FileWriter writer = new FileWriter(CONFIG_FILE)) {
-            writer.write(serializeConfig());
+        try {
+            Path path = Paths.get(CONFIG_PATH);
+            Files.createDirectories(path.getParent());
+            GiftConfigData data = new GiftConfigData();
+            data.guaranteedItems = guaranteedItems;
+            data.randomItems = randomItems;
+            data.randomCount = randomCount;
+            String json = GSON.toJson(data);
+            Files.write(path, json.getBytes(StandardCharsets.UTF_8));
             GTInterestingThing.LOG.info("新手宝箱配置已保存");
-        } catch (IOException e) {
+        } catch (Exception e) {
             GTInterestingThing.LOG.error("保存新手宝箱配置失败", e);
         }
     }
@@ -120,236 +140,51 @@ public class GiftConfig {
         return items;
     }
 
-    // 简易JSON序列化（避免引入Gson依赖）
-    private static String serializeConfig() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\n");
-        sb.append("  \"guaranteed_items\": [\n");
-        for (int i = 0; i < guaranteedItems.size(); i++) {
-            ItemEntry e = guaranteedItems.get(i);
-            sb.append("    {\"item\": \"")
-                .append(escapeJsonString(e.itemId))
-                .append("\", \"amount\": ")
-                .append(e.amount)
-                .append(", \"meta\": ")
-                .append(e.meta);
-            // 若存在 NBT 数据，追加 Base64 字段，保持无 NBT 时 JSON 简洁
-            if (e.nbtBase64 != null && !e.nbtBase64.isEmpty()) {
-                sb.append(", \"nbtBase64\": \"")
-                    .append(escapeJsonString(e.nbtBase64))
-                    .append("\"");
-            }
-            sb.append("}");
-            if (i < guaranteedItems.size() - 1) sb.append(",");
-            sb.append("\n");
-        }
-        sb.append("  ],\n");
-        sb.append("  \"random_items\": [\n");
-        for (int i = 0; i < randomItems.size(); i++) {
-            ItemEntry e = randomItems.get(i);
-            sb.append("    {\"item\": \"")
-                .append(escapeJsonString(e.itemId))
-                .append("\", \"amount\": ")
-                .append(e.amount)
-                .append(", \"meta\": ")
-                .append(e.meta);
-            // 若存在 NBT 数据，追加 Base64 字段，保持无 NBT 时 JSON 简洁
-            if (e.nbtBase64 != null && !e.nbtBase64.isEmpty()) {
-                sb.append(", \"nbtBase64\": \"")
-                    .append(escapeJsonString(e.nbtBase64))
-                    .append("\"");
-            }
-            sb.append("}");
-            if (i < randomItems.size() - 1) sb.append(",");
-            sb.append("\n");
-        }
-        sb.append("  ],\n");
-        sb.append("  \"random_count\": ")
-            .append(randomCount)
-            .append("\n");
-        sb.append("}\n");
-        return sb.toString();
-    }
-
     /**
-     * 转义 JSON 字符串中的特殊字符（双引号、反斜杠、控制字符等）
-     *
-     * @param input 原始字符串
-     * @return 符合 JSON 字符串规范的转义后字符串
+     * 顶层配置数据（对应 gift_config.json 根对象）
+     * <p>
+     * 字段名通过 @SerializedName 显式映射到 snake_case JSON 键，保持与历史配置文件兼容。
      */
-    private static String escapeJsonString(String input) {
-        if (input == null) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            switch (c) {
-                case '"':
-                    sb.append("\\\"");
-                    break;
-                case '\\':
-                    sb.append("\\\\");
-                    break;
-                case '\b':
-                    sb.append("\\b");
-                    break;
-                case '\f':
-                    sb.append("\\f");
-                    break;
-                case '\n':
-                    sb.append("\\n");
-                    break;
-                case '\r':
-                    sb.append("\\r");
-                    break;
-                case '\t':
-                    sb.append("\\t");
-                    break;
-                default:
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-            }
-        }
-        return sb.toString();
-    }
+    private static class GiftConfigData {
 
-    private static void parseConfig(String json) {
-        guaranteedItems.clear();
-        randomItems.clear();
+        @SerializedName("guaranteed_items")
+        private List<ItemEntry> guaranteedItems = new ArrayList<>();
 
-        // 简易JSON解析
-        String trimmed = json.trim();
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return;
+        @SerializedName("random_items")
+        private List<ItemEntry> randomItems = new ArrayList<>();
 
-        // 提取 guaranteed_items
-        String guaranteedStr = extractJsonArray(trimmed, "guaranteed_items");
-        if (guaranteedStr != null) {
-            guaranteedItems = parseItemEntries(guaranteedStr);
-        }
-
-        // 提取 random_items
-        String randomStr = extractJsonArray(trimmed, "random_items");
-        if (randomStr != null) {
-            randomItems = parseItemEntries(randomStr);
-        }
-
-        // 提取 random_count
-        String countStr = extractJsonValue(trimmed, "random_count");
-        if (countStr != null) {
-            try {
-                randomCount = Integer.parseInt(countStr.trim());
-            } catch (NumberFormatException e) {
-                randomCount = 2;
-            }
-        }
-
-        // 确保默认值
-        if (guaranteedItems.isEmpty()) guaranteedItems = createDefaultGuaranteedItems();
-        if (randomItems.isEmpty()) randomItems = createDefaultRandomItems();
-    }
-
-    private static String extractJsonArray(String json, String key) {
-        String searchKey = "\"" + key + "\": [";
-        int start = json.indexOf(searchKey);
-        if (start < 0) return null;
-        start += searchKey.length();
-        int bracketCount = 1;
-        int end = start;
-        while (end < json.length() && bracketCount > 0) {
-            char c = json.charAt(end);
-            if (c == '[') bracketCount++;
-            else if (c == ']') bracketCount--;
-            end++;
-        }
-        return json.substring(start, end - 1);
-    }
-
-    private static String extractJsonValue(String json, String key) {
-        String searchKey = "\"" + key + "\":";
-        int start = json.indexOf(searchKey);
-        if (start < 0) return null;
-        start += searchKey.length();
-        int end = start;
-        while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}' && json.charAt(end) != '\n') {
-            end++;
-        }
-        return json.substring(start, end)
-            .trim();
-    }
-
-    private static List<ItemEntry> parseItemEntries(String arrayStr) {
-        List<ItemEntry> entries = new ArrayList<>();
-        // 按花括号分割
-        int i = 0;
-        while (i < arrayStr.length()) {
-            int objStart = arrayStr.indexOf('{', i);
-            if (objStart < 0) break;
-            int objEnd = arrayStr.indexOf('}', objStart);
-            if (objEnd < 0) break;
-
-            String obj = arrayStr.substring(objStart + 1, objEnd);
-            String itemId = extractStringValue(obj, "item");
-            String amountStr = extractStringValue(obj, "amount");
-            String metaStr = extractStringValue(obj, "meta");
-            // 向后兼容：旧配置可能不存在 nbtBase64 字段，缺失或为空时视为无 NBT
-            String nbtBase64 = extractStringValue(obj, "nbtBase64");
-            if (nbtBase64 != null && nbtBase64.isEmpty()) {
-                nbtBase64 = null;
-            }
-
-            if (itemId != null) {
-                int amount = amountStr != null ? Integer.parseInt(amountStr.trim()) : 1;
-                int meta = metaStr != null ? Integer.parseInt(metaStr.trim()) : 0;
-                NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(nbtBase64);
-                entries.add(new ItemEntry(itemId, amount, meta, nbt));
-            }
-            i = objEnd + 1;
-        }
-        return entries;
-    }
-
-    private static String extractStringValue(String obj, String key) {
-        String searchKey = "\"" + key + "\":";
-        int start = obj.indexOf(searchKey);
-        if (start < 0) return null;
-        start += searchKey.length();
-        // 跳过空格
-        while (start < obj.length() && obj.charAt(start) == ' ') start++;
-        if (start >= obj.length()) return null;
-
-        if (obj.charAt(start) == '"') {
-            // 字符串值
-            int end = obj.indexOf('"', start + 1);
-            if (end < 0) return null;
-            return obj.substring(start + 1, end);
-        } else {
-            // 数字值
-            int end = start;
-            while (end < obj.length() && obj.charAt(end) != ',' && obj.charAt(end) != '}' && obj.charAt(end) != ' ') {
-                end++;
-            }
-            return obj.substring(start, end);
-        }
+        @SerializedName("random_count")
+        private int randomCount = 2;
     }
 
     /**
      * 物品条目
      * <p>
      * 支持携带 NBT 数据：{@code nbtBase64} 用于 JSON 序列化/反序列化，{@code nbt} 用于运行时缓存。
-     * 无 NBT 时 {@code nbtBase64} 为 null，序列化时不输出该字段。
+     * 无 NBT 时 {@code nbtBase64} 为 null，Gson 默认不输出 null（因 serializeNulls 会输出，需注意）。
+     * {@code nbt} 标记为 transient，Gson 默认不序列化 transient 字段。
+     * <p>
+     * JSON 键映射（向后兼容历史配置）：
+     * <ul>
+     * <li>{@code itemId} → JSON {@code "item"}</li>
+     * <li>{@code amount} → JSON {@code "amount"}</li>
+     * <li>{@code meta} → JSON {@code "meta"}</li>
+     * <li>{@code nbtBase64} → JSON {@code "nbtBase64"}</li>
+     * </ul>
      */
     public static class ItemEntry {
 
+        @SerializedName("item")
         public final String itemId;
         public final int amount;
         public final int meta;
         /** JSON 存储：Base64 编码的 NBT 二进制数据；无 NBT 时为 null */
+        @SerializedName("nbtBase64")
         private String nbtBase64;
-        /** 运行时缓存：反序列化后的 NBT 数据；由 {@link #toItemStack()} 按需应用 */
+        /**
+         * 运行时缓存：反序列化后的 NBT 数据；由 {@link #toItemStack()} 按需应用。
+         * transient：Gson 默认不序列化 transient 字段，确保 NBT 二进制不写入 JSON。
+         */
         private transient NBTTagCompound nbt;
 
         /**
