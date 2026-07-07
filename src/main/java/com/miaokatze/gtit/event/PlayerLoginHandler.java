@@ -8,6 +8,7 @@ import net.minecraft.nbt.NBTTagCompound;
 
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.common.items.rings.BaseRing;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 import baubles.api.BaublesApi;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -54,6 +55,9 @@ public class PlayerLoginHandler {
                     ring.onEquipped(stack, player);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            // 登录刷新指环效果失败会导致 buff/属性/飞行能力丢失（用户可见），记录便于诊断
+            GTInterestingThing.LOG.warn("[GTIT] 登录时刷新已装备指环效果失败（player={}）", player.getCommandSenderName(), e);
+        }
     }
 }

@@ -8,6 +8,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.FoodStats;
 
+import com.miaokatze.gtit.main.GTInterestingThing;
+
 import cpw.mods.fml.common.Optional;
 
 /**
@@ -72,6 +74,9 @@ public class RingGluttony extends BaseRing {
                 saturationField.setAccessible(true);
             }
             saturationField.setFloat(foodStats, value);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            // 饱和度反射失败会导致饕餮戒指的饱和度恢复静默失效，记录便于诊断
+            GTInterestingThing.LOG.warn("[GTIT] RingGluttony 设置饱和度失败（反射 foodSaturationLevel 失败）", e);
+        }
     }
 }

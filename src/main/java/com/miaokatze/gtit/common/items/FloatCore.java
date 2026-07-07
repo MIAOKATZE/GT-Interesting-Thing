@@ -67,9 +67,12 @@ public class FloatCore extends Item implements IBauble {
                 }
             } else {
                 // 饥饿值不足，禁用飞行
-                entityPlayer.capabilities.allowFlying = false;
-                entityPlayer.capabilities.isFlying = false;
-                entityPlayer.sendPlayerAbilities();
+                // 仅在状态确实变化时发包，避免每 tick 重复发送（与上方启用分支对称）
+                if (entityPlayer.capabilities.allowFlying || entityPlayer.capabilities.isFlying) {
+                    entityPlayer.capabilities.allowFlying = false;
+                    entityPlayer.capabilities.isFlying = false;
+                    entityPlayer.sendPlayerAbilities();
+                }
             }
         }
     }

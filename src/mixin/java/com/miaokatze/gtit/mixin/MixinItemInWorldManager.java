@@ -1,9 +1,6 @@
 package com.miaokatze.gtit.mixin;
 
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.inventory.IInventory;
-import net.minecraft.item.ItemStack;
 import net.minecraft.server.management.ItemInWorldManager;
 
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,9 +9,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import com.miaokatze.gtit.common.items.rings.BaseRing;
 import com.miaokatze.gtit.common.items.rings.RingDistantGrasp;
-
-import baubles.api.BaublesApi;
 
 /**
  * 服务端 Mixin：扩展 ItemInWorldManager 的方块交互距离
@@ -37,23 +33,9 @@ public class MixinItemInWorldManager {
     private void onGetBlockReachDistance(CallbackInfoReturnable<Double> cir) {
         if (thisPlayerMP == null) return;
 
-        int count = countRings(thisPlayerMP);
+        int count = BaseRing.countEquippedRings(thisPlayerMP, RingDistantGrasp.class);
         if (count > 0) {
-            cir.setReturnValue(cir.getReturnValueD() + count * 2.0);
+            cir.setReturnValue(cir.getReturnValueD() + count * RingDistantGrasp.REACH_BONUS_PER_RING);
         }
-    }
-
-    private int countRings(EntityPlayer player) {
-        int count = 0;
-        try {
-            IInventory baubles = BaublesApi.getBaubles(player);
-            for (int i = 0; i < baubles.getSizeInventory(); i++) {
-                ItemStack stack = baubles.getStackInSlot(i);
-                if (stack != null && stack.getItem() instanceof RingDistantGrasp) {
-                    count++;
-                }
-            }
-        } catch (Exception ignored) {}
-        return count;
     }
 }

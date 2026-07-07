@@ -80,8 +80,11 @@ public abstract class BaseRing extends Item implements IBauble {
 
     /**
      * 统计玩家装备的指定类型戒指数量
+     * <p>
+     * v1.5.11+: 提升为 public static，供 Mixin 层（MixinPlayerControllerMP / MixinItemInWorldManager）
+     * 复用，消除两处 byte-identical 的 countRings 复制。
      */
-    protected int countEquippedRings(EntityPlayer player, Class<? extends BaseRing> ringClass) {
+    public static int countEquippedRings(EntityPlayer player, Class<? extends BaseRing> ringClass) {
         int count = 0;
         try {
             IInventory baubles = BaublesApi.getBaubles(player);

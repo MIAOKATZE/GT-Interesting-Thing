@@ -28,13 +28,18 @@ import appeng.util.prioitylist.PrecisePriorityList;
 public class InfinityCellInventoryHandler extends MEInventoryHandler<IAEItemStack> implements ICellCacheRegistry {
 
     private static final Field fPartitionList;
+    private static final Field fInternal;
 
+    // v1.5.11+: 合并为单个 static 块（此前分两块，fInternal 声明在使用它的方法之后，
+    // 虽然 Java 静态初始化顺序能保证正确，但易误导维护者）。与 InfinityFluidCellInventoryHandler 风格统一。
     static {
         try {
             fPartitionList = MEInventoryHandler.class.getDeclaredField("myPartitionList");
             fPartitionList.setAccessible(true);
+            fInternal = MEPassThrough.class.getDeclaredField("internal");
+            fInternal.setAccessible(true);
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to reflect MEInventoryHandler.myPartitionList", e);
+            throw new IllegalStateException("Failed to reflect MEInventoryHandler/MEPassThrough fields", e);
         }
     }
 
@@ -180,17 +185,6 @@ public class InfinityCellInventoryHandler extends MEInventoryHandler<IAEItemStac
             return (IPartitionList<?>) fPartitionList.get(handler);
         } catch (Exception e) {
             return new DefaultPriorityList<>();
-        }
-    }
-
-    private static final Field fInternal;
-
-    static {
-        try {
-            fInternal = MEPassThrough.class.getDeclaredField("internal");
-            fInternal.setAccessible(true);
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to reflect MEPassThrough.internal", e);
         }
     }
 }

@@ -77,6 +77,11 @@ public class NekoMusicEventHandler {
     private static Field sndManagerField;
     private static Field sndSystemField;
     private static Method getNormalizedVolumeMethod;
+    // v1.5.11+: setVolume/playing 此前每 tick 反射查找 Method，BGM 播放期间每秒 20 次查找。
+    // 现缓存为 static 字段。运行时 sys 实际类型是 SoundManager.SoundSystemStarterThread，
+    // 它继承自 paulscode.sound.SoundSystem，setVolume/playing 声明在父类，故针对父类缓存。
+    private static Method setVolumeMethod;
+    private static Method playingMethod;
 
     public NekoMusicEventHandler() {
         instance = this;
@@ -91,6 +96,16 @@ public class NekoMusicEventHandler {
     // ==================== 反射访问 SoundSystem ====================
 
     private static void initReflectionCache() {
+        // paulscode.sound.SoundSystem 是 MC 1.7.10 内置音频库，setVolume/playing 声明在此类。
+        // SoundManager.SoundSystemStarterThread 继承自它，运行时 sys 的实际类型是后者。
+        // 此处针对父类查找方法，调用时对子类实例 invoke（多态生效）。
+        Class<?> soundSystemClass = null;
+        try {
+            soundSystemClass = Class.forName("paulscode.sound.SoundSystem");
+        } catch (ClassNotFoundException e) {
+            GTInterestingThing.LOG.warn("[NEKO] 未找到 paulscode.sound.SoundSystem 类，setVolume/playing 将回退到每次反射", e);
+        }
+
         try {
             // 运行时使用 SRG 名称（GTNH 环境中字段名已被反混淆为 SRG 格式）
             // sndManager → field_147694_f, sndSystem → field_148620_e
@@ -104,6 +119,11 @@ public class NekoMusicEventHandler {
             getNormalizedVolumeMethod = SoundManager.class
                 .getDeclaredMethod("func_148594_a", ISound.class, SoundPoolEntry.class, SoundCategory.class);
             getNormalizedVolumeMethod.setAccessible(true);
+
+            if (soundSystemClass != null) {
+                setVolumeMethod = soundSystemClass.getMethod("setVolume", String.class, float.class);
+                playingMethod = soundSystemClass.getMethod("playing", String.class);
+            }
 
             GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功");
         } catch (Exception e) {
@@ -119,6 +139,11 @@ public class NekoMusicEventHandler {
                 getNormalizedVolumeMethod = SoundManager.class
                     .getDeclaredMethod("getNormalizedVolume", ISound.class, SoundPoolEntry.class, SoundCategory.class);
                 getNormalizedVolumeMethod.setAccessible(true);
+
+                if (soundSystemClass != null) {
+                    setVolumeMethod = soundSystemClass.getMethod("setVolume", String.class, float.class);
+                    playingMethod = soundSystemClass.getMethod("playing", String.class);
+                }
 
                 GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功（MCP 名称回退）");
             } catch (Exception e2) {
@@ -178,9 +203,14 @@ public class NekoMusicEventHandler {
             float normalizedVol = getNormalizedVolume();
             float finalVolume = volume * normalizedVol;
             // 反射调用 sys.setVolume(sourceName, finalVolume)
-            Method setVolumeMethod = sys.getClass()
-                .getMethod("setVolume", String.class, float.class);
-            setVolumeMethod.invoke(sys, soundSourceName, finalVolume);
+            // 优先使用缓存的 Method（针对 paulscode.sound.SoundSystem 父类查找），
+            // 缓存缺失时回退到运行时类查找（兼容 SoundSystem 类不可用的环境）
+            Method m = setVolumeMethod;
+            if (m == null) {
+                m = sys.getClass()
+                    .getMethod("setVolume", String.class, float.class);
+            }
+            m.invoke(sys, soundSourceName, finalVolume);
         } catch (Exception e) {
             GTInterestingThing.LOG.warn("[NEKO] setSoundVolume 失败: {}", e.getMessage());
         }
@@ -326,9 +356,12 @@ public class NekoMusicEventHandler {
         Object sys = getSoundSystem();
         if (sys != null) {
             try {
-                Method playingMethod = sys.getClass()
-                    .getMethod("playing", String.class);
-                boolean isPlaying = (boolean) playingMethod.invoke(sys, this.soundSourceName);
+                Method m = playingMethod;
+                if (m == null) {
+                    m = sys.getClass()
+                        .getMethod("playing", String.class);
+                }
+                boolean isPlaying = (boolean) m.invoke(sys, this.soundSourceName);
                 if (!isPlaying) {
                     // 声音已停止（可能播放完毕），清理状态
                     this.fadingIn = false;

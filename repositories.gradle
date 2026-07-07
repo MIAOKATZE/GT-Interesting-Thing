@@ -2,20 +2,7 @@
 // Add any additional repositories for your dependencies here.
 
 repositories {
-	// TGregworks are published as plain artifacts on a custom file host; use an ivy repo layout
-	ivy {
-		url = 'https://files.vexatos.com/'
-		patternLayout {
-			artifact "[module]/[artifact]-[revision](-[classifier])(.[ext])"
-		}
-		content {
-			includeGroup("TGregworks")
-		}
-		// No POM metadata available there, only raw artifacts
-		metadataSources {
-			artifact()
-		}
-	}
+	// v1.5.11+: 移除 TGregworks ivy 仓库（dependencies.gradle 中无任何 TGregworks group 引用，是死配置）
 
 	// Allow resolving artifacts from the developer's local Maven repo if needed
 	mavenLocal()
