@@ -37,7 +37,8 @@ dependencies {
     // Minimal dependency set for current source usage.
     // Sources reference only GregTech API types (gregtech.api.*), so keep GT5-Unofficial.
     // User has an external hard backup of the original file, so this file is intentionally simplified.
-    api("com.github.GTNewHorizons:GT5-Unofficial:5.09.52.594") { transitive = false }
+    // v1.5.14: 升级 5.09.52.594 → 5.09.54.20（VM 0.4.95 依赖 ICasingTextureProvider 接口）
+    api("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.20") { transitive = false }
 
     // Some GregTech base classes reference interfaces/types from other mods (AE2, ModularUI, GTNHLib)
     // that are only needed at compile-time to satisfy types. Add them as compileOnlyApi so they
@@ -62,7 +63,8 @@ dependencies {
     compileOnlyApi("net.industrial-craft:industrialcraft-2:2.2.828-experimental:api") { transitive = false }
 
     // Vending Machine mod - required dependency for Neko Vending Machine system
-    devOnlyNonPublishable(rfg.deobf(project.files("libs/vendingmachine-0.4.87.jar")))
+    // v1.5.14: 升级 0.4.87 → 0.4.95（1.5大版本独立化前置）
+    devOnlyNonPublishable(rfg.deobf(project.files("libs/vendingmachine-0.4.95.jar")))
 
     // BetterQuesting API - compile-only, needed for QuestEvent listener (BqEventBridge)
     compileOnlyApi("com.github.GTNewHorizons:BetterQuesting:3.8.72-GTNH:dev") { transitive = false }
