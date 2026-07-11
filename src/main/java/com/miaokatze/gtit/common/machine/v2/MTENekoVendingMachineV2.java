@@ -12,6 +12,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.ForgeDirection;
 
+import com.gtnewhorizon.structurelib.StructureLibAPI;
+import com.gtnewhorizon.structurelib.alignment.IAlignmentProvider;
 import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructable;
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
@@ -382,7 +384,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return;
         }
 
-        boolean isActive = tile.isActive();
+        // 复刻 V1：尊重用户关闭动画的配置，只有 isActive 且 usingAnimations() 才使用激活态材质
+        boolean isActive = tile.isActive() && usingAnimations();
         IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOVM_OVERLAY_ACTIVE : TextureManager.NEKOVM_OVERLAY;
 
         // 清除旧的覆盖层 tickets
@@ -450,9 +453,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @Override
     public void onPostTick(IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
         super.onPostTick(aBaseMetaTileEntity, aTick);
-        // 客户端且机器成型时更新覆盖层渲染
-        if (aBaseMetaTileEntity.isClientSide() && mMachine) {
-            setTextureOverlay();
+        // 客户端：复刻 V1 父类逻辑，非激活/结构未形成时清除覆盖层
+        if (aBaseMetaTileEntity.isClientSide()) {
+            if (mMachine) {
+                setTextureOverlay();
+            } else {
+                clearOverlay();
+            }
         }
     }
 
@@ -466,10 +473,50 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @Override
     public void onValueUpdate(byte aValue) {
         super.onValueUpdate(aValue);
-        // 客户端收到状态更新时刷新覆盖层
+        // 复刻 V1：客户端收到状态更新时，根据 mMachine 决定叠加或清除覆盖层
+        // 修复：原代码无 mMachine 检查，存档加载时结构未形成也会注册覆盖层导致材质混乱
         if (getBaseMetaTileEntity() != null && getBaseMetaTileEntity().isClientSide()) {
-            setTextureOverlay();
+            if (mMachine) {
+                setTextureOverlay();
+            } else {
+                clearOverlay();
+            }
         }
+    }
+
+    /**
+     * 首次 Tick 回调
+     * <p>
+     * 复刻 V1 父类 MTEVendingMachine.java 第 706-712 行。
+     * 客户端首次 tick 时同步朝向并初始化覆盖层。
+     * <p>
+     * 修复：原 V2 未覆盖 onFirstTick，存档加载后客户端朝向可能过时导致覆盖层位置错乱。
+     *
+     * @param aBaseMetaTileEntity 机器所在的 TileEntity
+     */
+    @Override
+    public void onFirstTick(IGregTechTileEntity aBaseMetaTileEntity) {
+        super.onFirstTick(aBaseMetaTileEntity);
+        // 复刻 V1 父类：客户端首次 tick 时同步朝向并初始化覆盖层
+        if (aBaseMetaTileEntity.isClientSide()) {
+            StructureLibAPI.queryAlignment((IAlignmentProvider) aBaseMetaTileEntity);
+            if (mMachine) {
+                setTextureOverlay();
+            }
+        }
+    }
+
+    /**
+     * 是否启用动画
+     * <p>
+     * 复刻 V1 MTEVendingMachine.java 第 164-167 行。
+     * 基类 MTEEnhancedMultiBlockBase 未提供此方法，此处返回 true 表示默认启用动画。
+     * 用于 setTextureOverlay 中决定是否使用激活态材质。
+     *
+     * @return true 表示启用动画（使用激活态材质）
+     */
+    public boolean usingAnimations() {
+        return true;
     }
 
     /**
