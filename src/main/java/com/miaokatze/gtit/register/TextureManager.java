@@ -20,6 +20,12 @@ public class TextureManager {
     public static final IIconContainer TEX_TEST_IV = Textures.BlockIcons.custom("gtit:MTETEST_2");
     public static final IIconContainer TEX_TEST_LUV = Textures.BlockIcons.custom("gtit:MTETEST_3");
 
+    // 猫猫售货机正面材质（V2 独立版，从 VM 复制到本 mod）
+    public static final IIconContainer NEKOVM_FRONT_OFF = Textures.BlockIcons.custom("gtit:nekovm_front_off");
+    public static final IIconContainer NEKOVM_FRONT_ON = Textures.BlockIcons.custom("gtit:nekovm_front_on");
+    public static final IIconContainer NEKOVM_FRONT_ON_GLOW = Textures.BlockIcons.custom("gtit:nekovm_front_on_glow");
+    public static final IIconContainer NEKOVM_CASING = Textures.BlockIcons.custom("gtit:nekovm_casing");
+
     // 猫猫售货机覆盖材质（非激活状态）
     public static final IIconContainer NEKOVM_OVERLAY_1 = Textures.BlockIcons.custom("gtit:nekovm_1"); // 右上
     public static final IIconContainer NEKOVM_OVERLAY_2 = Textures.BlockIcons.custom("gtit:nekovm_2"); // 左上

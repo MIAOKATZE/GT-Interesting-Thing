@@ -25,6 +25,7 @@ import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTeamData;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWalletManager;
+import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 import appeng.api.AEApi;
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -272,6 +273,15 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] 猫猫售货机标签页/交易映射初始化失败", t);
         }
 
+        // 初始化 V2 交易注册表（客户端）
+        // V2 交易系统独立于 V1，为新版猫猫售货机 V2 提供交易数据
+        // 在 postInit 阶段调用，确保专用服务器客户端也能加载交易配置
+        try {
+            NekoTradeRegistryV2.initializeClient();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] V2 猫猫售货机交易映射客户端初始化失败", t);
+        }
+
         // 注册 BQ 任务事件桥接器
         // VM 的 BqAdapter.setQuestFinished() 从未被调用，需要 BqEventBridge 监听 QuestEvent 来更新缓存
         try {
@@ -324,6 +334,15 @@ public class CommonProxy {
                 NekoWalletManager.INSTANCE.init(server.getEntityWorld());
                 // 注入猫猫币交易到 TradeDatabase（VM 在 serverStarting 阶段已加载 TradeDatabase）
                 NekoTradeRegistry.initialize();
+
+                // 初始化 V2 交易注册表（服务端）
+                // V2 交易系统独立于 V1，为新版猫猫售货机 V2 提供交易数据
+                // 在 serverStarted 阶段调用，确保配置文件已就绪
+                NekoTradeRegistryV2.initialize();
+
+                // 初始化 V2 交易历史管理器（需要 World 对象）
+                // 负责持久化玩家交易历史到 <world>/gtit_neko_histories/<player_uuid>.dat
+                com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.init(server.getEntityWorld());
 
                 // === v1.6.0 骨架：各模块 Manager 初始化 ===
                 // TODO: v1.6.3~v1.6.5 启用

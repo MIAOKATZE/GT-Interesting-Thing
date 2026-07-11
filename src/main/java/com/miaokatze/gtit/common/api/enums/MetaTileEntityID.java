@@ -13,8 +13,10 @@ import com.miaokatze.gtit.config.Config;
 public enum MetaTileEntityID {
 
     // --- 猫猫售货机 ---
-    /** 猫猫售货机 (继承自 VM 模组的 MTEVendingMachine) */
+    /** 猫猫售货机 V1 (继承自 VM 模组的 MTEVendingMachine) */
     NEKO_VENDING_MACHINE(10),
+    /** 猫猫售货机 V2 (独立化版本，继承 GT5U 的 MTEEnhancedMultiBlockBase，完全脱离 VM 模组) */
+    NEKO_VENDING_MACHINE_V2(11),
 
     ;
 
