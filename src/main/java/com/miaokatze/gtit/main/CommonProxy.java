@@ -4,6 +4,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
 import com.miaokatze.gtit.Tags;
+import com.miaokatze.gtit.client.gui.NekoWidgetThemes;
 import com.miaokatze.gtit.command.GTITGiftCommand;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellHandler;
 import com.miaokatze.gtit.common.items.infinitycell.StorageManager;
@@ -57,6 +58,17 @@ public class CommonProxy {
             GTInterestingThing.LOG.info("[0/3] TextureManager 已加载，自定义材质图标已注册");
         } catch (ClassNotFoundException e) {
             GTInterestingThing.LOG.error("[0/3] TextureManager 加载失败", e);
+        }
+
+        // 强制加载 NekoWidgetThemes，确保 WidgetThemeKey 在 DefaultTheme.initialize() 懒加载前注册
+        // 否则 V2 GUI 首次打开时才触发 NekoWidgetThemes.<clinit>，此时 DefaultTheme 已初始化完成，
+        // 新注册的 key 不会被纳入已存在的主题映射，导致 getWidgetTheme(key) 返回 null，widgetTheme 为 null，
+        // Widget.getActiveWidgetTheme() 抛 NPE 崩溃。
+        try {
+            Class.forName(NekoWidgetThemes.class.getName());
+            GTInterestingThing.LOG.info("[0/3] NekoWidgetThemes 已加载，Widget 主题已注册");
+        } catch (ClassNotFoundException e) {
+            GTInterestingThing.LOG.error("[0/3] NekoWidgetThemes 加载失败", e);
         }
 
         // 扩展 Baubles 戒指栏到 10 个

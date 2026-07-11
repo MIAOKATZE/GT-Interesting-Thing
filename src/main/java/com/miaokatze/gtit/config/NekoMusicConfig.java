@@ -22,6 +22,7 @@ import com.gtnewhorizon.gtnhlib.config.ConfigurationManager;
 public class NekoMusicConfig {
 
     /** 日志记录器（独立于 GTInterestingThing.LOG，避免类加载顺序依赖） */
+    @Config.Ignore
     private static final Logger LOG = LogManager.getLogger("GTIT");
 
     /**
