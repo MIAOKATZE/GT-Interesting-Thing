@@ -14,18 +14,22 @@ public class NekoTradeResult {
     public enum Status {
         /** 交易成功 */
         SUCCESS,
-        /** 失败：输入物品不足 */
-        FAIL_INSUFFICIENT_ITEMS,
-        /** 失败：猫猫币不足 */
-        FAIL_INSUFFICIENT_CURRENCY,
-        /** 失败：冷却中 */
-        FAIL_COOLDOWN,
-        /** 失败：前置条件未满足 */
-        FAIL_CONDITION_NOT_MET,
-        /** 失败：无此交易 */
-        FAIL_NO_TRADE,
-        /** 失败：输出槽已满 */
-        FAIL_OUTPUT_FULL
+        /** 交易组未找到 */
+        TRADE_GROUP_NOT_FOUND,
+        /** 交易索引越界 */
+        TRADE_INDEX_OUT_OF_BOUNDS,
+        /** 冷却中 */
+        ON_COOLDOWN,
+        /** 已达最大交易次数 */
+        MAX_TRADES_REACHED,
+        /** 前置条件未满足 */
+        CONDITION_NOT_SATISFIED,
+        /** 猫猫币不足 */
+        INSUFFICIENT_CURRENCY,
+        /** 输入物品不足 */
+        INSUFFICIENT_ITEMS,
+        /** 输出槽已满 */
+        OUTPUT_FULL
     }
 
     private final Status status;

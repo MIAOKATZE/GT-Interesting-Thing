@@ -177,11 +177,11 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * v1.6.2 将委托 {@link com.miaokatze.gtit.trade.v2.NekoTradeExecutor#checkTrade} 进行交易检查。
      *
-     * @return 交易结果（骨架阶段固定返回 FAIL_NO_TRADE）
+     * @return 交易结果（骨架阶段固定返回 TRADE_GROUP_NOT_FOUND）
      */
     public NekoTradeResult checkTrade() {
         // TODO: v1.6.2 实现，委托 NekoTradeExecutor.INSTANCE.checkTrade()
-        return NekoTradeResult.fail(NekoTradeResult.Status.FAIL_NO_TRADE);
+        return NekoTradeResult.fail(NekoTradeResult.Status.TRADE_GROUP_NOT_FOUND);
     }
 
     /**
@@ -189,11 +189,11 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * v1.6.2 将委托 {@link com.miaokatze.gtit.trade.v2.NekoTradeExecutor#executeTrade} 执行交易。
      *
-     * @return 交易结果（骨架阶段固定返回 FAIL_NO_TRADE）
+     * @return 交易结果（骨架阶段固定返回 TRADE_GROUP_NOT_FOUND）
      */
     public NekoTradeResult processTrade() {
         // TODO: v1.6.2 实现，委托 NekoTradeExecutor.INSTANCE.executeTrade()
-        return NekoTradeResult.fail(NekoTradeResult.Status.FAIL_NO_TRADE);
+        return NekoTradeResult.fail(NekoTradeResult.Status.TRADE_GROUP_NOT_FOUND);
     }
 
     // === ICasingTextureProvider ===

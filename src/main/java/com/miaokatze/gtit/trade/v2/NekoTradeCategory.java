@@ -1,5 +1,8 @@
 package com.miaokatze.gtit.trade.v2;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 交易分类枚举，替代 VM 的 TradeCategory（简化版，无 UITexture）
  * <p>
@@ -8,26 +11,68 @@ package com.miaokatze.gtit.trade.v2;
 public enum NekoTradeCategory {
 
     /** 未知分类 */
-    UNKNOWN,
+    UNKNOWN("unknown", "gtit.category.unknown"),
     /** 全部分类 */
-    ALL,
+    ALL("all", "gtit.category.all"),
     /** 猫猫币交易 */
-    NEKO,
+    NEKO("neko", "gtit.category.neko"),
     /** 闪烁猫猫币交易 */
-    SHIMMERING_NEKO,
+    SHIMMERING_NEKO("shimmeringNeko", "gtit.category.shimmeringNeko"),
     /** 魔法相关交易 */
-    MAGIC,
+    MAGIC("magic", "gtit.category.magic"),
     /** 杂项交易 */
-    MISC;
+    MISC("misc", "gtit.category.misc");
+
+    /** 分类键名，用于序列化和字符串匹配 */
+    private final String key;
+
+    /** 本地化名称键，用于国际化显示 */
+    private final String unlocalizedName;
+
+    /** key -> 枚举值 的快速查找映射 */
+    private static final Map<String, NekoTradeCategory> ENUM_MAP;
+
+    static {
+        ENUM_MAP = new HashMap<>();
+        for (NekoTradeCategory category : values()) {
+            ENUM_MAP.put(category.key, category);
+        }
+    }
+
+    NekoTradeCategory(String key, String unlocalizedName) {
+        this.key = key;
+        this.unlocalizedName = unlocalizedName;
+    }
+
+    /**
+     * 获取分类键名
+     *
+     * @return 键名字符串
+     */
+    public String getKey() {
+        return key;
+    }
+
+    /**
+     * 获取本地化名称键
+     *
+     * @return 本地化键名
+     */
+    public String getUnlocalizedName() {
+        return unlocalizedName;
+    }
 
     /**
      * 从字符串解析分类
      *
-     * @param name 分类名称
+     * @param key 分类键名
      * @return 对应的枚举值，无法匹配时返回 UNKNOWN
      */
-    public static NekoTradeCategory ofString(String name) {
-        // TODO: v1.6.1 实现
-        return UNKNOWN;
+    public static NekoTradeCategory ofString(String key) {
+        if (key == null || key.isEmpty()) {
+            return UNKNOWN;
+        }
+        NekoTradeCategory category = ENUM_MAP.get(key);
+        return category != null ? category : UNKNOWN;
     }
 }

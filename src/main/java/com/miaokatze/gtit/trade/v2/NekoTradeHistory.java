@@ -14,22 +14,35 @@ import net.minecraft.nbt.NBTTagCompound;
  */
 public class NekoTradeHistory {
 
-    private long lastTradeTime;
-    private int tradeCount;
-    private int cooldownTradeCount;
+    /** 上次交易时间（系统毫秒），-1 表示从未交易 */
+    private long lastTradeTime = -1;
+    /** 累计交易次数 */
+    private long tradeCount = 0;
+    /** 当前冷却周期内的交易次数 */
+    private long cooldownTradeCount = 0;
 
-    public NekoTradeHistory() {
-        // TODO: v1.6.1 实现
-    }
+    public NekoTradeHistory() {}
 
     /**
-     * 检查是否可以进行交易（冷却是否已过）
+     * 检查是否可以进行交易
      *
-     * @param cooldown 冷却时间（秒）
+     * @param cooldown            冷却时间（秒）
+     * @param maxTradesInCooldown 冷却周期内最大交易次数
+     * @param maxTrades           总最大交易次数，-1 表示不限
      * @return 可以交易返回 true
      */
-    public boolean canTrade(int cooldown) {
-        // TODO: v1.6.1 实现
+    public boolean canTrade(int cooldown, int maxTradesInCooldown, int maxTrades) {
+        // 检查总交易次数限制
+        if (maxTrades != -1 && tradeCount >= maxTrades) {
+            return false;
+        }
+        // 检查冷却期内的交易次数限制
+        if (cooldown > 0 && lastTradeTime > 0) {
+            long elapsed = (System.currentTimeMillis() - lastTradeTime) / 1000;
+            if (elapsed < cooldown && cooldownTradeCount >= maxTradesInCooldown) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -40,15 +53,39 @@ public class NekoTradeHistory {
      * @return 剩余冷却时间（秒），已过冷却返回 0
      */
     public long getCooldownRemaining(int cooldown) {
-        // TODO: v1.6.1 实现
-        return 0;
+        if (cooldown <= 0 || lastTradeTime <= 0) {
+            return 0;
+        }
+        long elapsed = (System.currentTimeMillis() - lastTradeTime) / 1000;
+        long remaining = cooldown - elapsed;
+        return remaining > 0 ? remaining : 0;
     }
 
     /**
      * 记录一次交易
+     *
+     * @param cooldown 冷却时间（秒），用于判断是否需要重置冷却计数
      */
-    public void recordTrade() {
-        // TODO: v1.6.1 实现
+    public void recordTrade(int cooldown) {
+        // 冷却已过，重置冷却期交易计数
+        if (cooldown > 0 && lastTradeTime > 0) {
+            long elapsed = (System.currentTimeMillis() - lastTradeTime) / 1000;
+            if (elapsed >= cooldown) {
+                cooldownTradeCount = 0;
+            }
+        }
+        lastTradeTime = System.currentTimeMillis();
+        tradeCount++;
+        cooldownTradeCount++;
+    }
+
+    /**
+     * 重置所有历史记录
+     */
+    public void reset() {
+        lastTradeTime = -1;
+        tradeCount = 0;
+        cooldownTradeCount = 0;
     }
 
     /**
@@ -57,8 +94,11 @@ public class NekoTradeHistory {
      * @return NBT 标签化合物
      */
     public NBTTagCompound writeToNBT() {
-        // TODO: v1.6.1 实现
-        return null;
+        NBTTagCompound nbt = new NBTTagCompound();
+        nbt.setLong("lastTradeTime", lastTradeTime);
+        nbt.setLong("tradeCount", tradeCount);
+        nbt.setLong("cooldownTradeCount", cooldownTradeCount);
+        return nbt;
     }
 
     /**
@@ -67,18 +107,20 @@ public class NekoTradeHistory {
      * @param nbt NBT 标签化合物
      */
     public void loadFromNBT(NBTTagCompound nbt) {
-        // TODO: v1.6.1 实现
+        lastTradeTime = nbt.getLong("lastTradeTime");
+        tradeCount = nbt.getLong("tradeCount");
+        cooldownTradeCount = nbt.getLong("cooldownTradeCount");
     }
 
     public long getLastTradeTime() {
         return lastTradeTime;
     }
 
-    public int getTradeCount() {
+    public long getTradeCount() {
         return tradeCount;
     }
 
-    public int getCooldownTradeCount() {
+    public long getCooldownTradeCount() {
         return cooldownTradeCount;
     }
 }
