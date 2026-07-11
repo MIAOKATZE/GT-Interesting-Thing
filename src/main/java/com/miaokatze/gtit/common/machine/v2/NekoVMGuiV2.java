@@ -1,50 +1,60 @@
 package com.miaokatze.gtit.common.machine.v2;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.audio.ISound;
-import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 
+import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.drawable.ItemDrawable;
+import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
-import com.cleanroommc.modularui.value.sync.DynamicSyncHandler;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.cleanroommc.modularui.widgets.DynamicSyncedWidget;
-import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
+import com.cleanroommc.modularui.widgets.ListWidget;
+import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.layout.Flow;
-import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
+import com.miaokatze.gtit.client.gui.NekoDisplayType;
+import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.NekoMusicTrack;
+import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
+import com.miaokatze.gtit.client.gui.NekoSearchBar;
+import com.miaokatze.gtit.client.gui.NekoSortMode;
+import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
+import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
+import com.miaokatze.gtit.client.gui.NekoTradeMainPanel;
+import com.miaokatze.gtit.client.gui.NekoTradeRow;
+import com.miaokatze.gtit.client.gui.NekoVolumeControlGui;
+import com.miaokatze.gtit.client.gui.NekoWalletMode;
+import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
+import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
-import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
+import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
-import com.miaokatze.gtit.trade.v2.NekoTrade;
+import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
@@ -53,60 +63,72 @@ import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
 import gregtech.api.modularui2.GTGuiTextures;
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui;
-import gregtech.common.modularui2.factory.GTBaseGuiBuilder;
 
 /**
- * 猫猫售货机 V2 GUI
+ * 猫猫售货机 V2 GUI（全量复刻版）
  * <p>
- * 继承 GT5U 的 {@link MTEMultiBlockBaseGui}，复用标准多方块 GUI 框架
- * （同步值注册、电源开关、结构更新按钮等），
- * 同时实现 V2 版本的 12 项功能等价性：
+ * 继承 GT5U 的 {@link MTEMultiBlockBaseGui}，复用标准多方块 GUI 框架，
+ * 同时集成步骤3-10创建的所有本地组件，实现全量复刻 VM 猫猫机 UI 的目标。
+ * <p>
+ * <b>核心架构</b>：
  * <ul>
- * <li>动态标签页系统（按交易数据库的 tabId 自动生成标签）</li>
- * <li>猫猫币余额显示（neko + shimmeringNeko 两种货币）</li>
- * <li>猫猫币自动导入（扫描输入总线，将猫猫币导入钱包）</li>
- * <li>弹出猫猫币按钮（弹出所有猫猫币到机器旁）</li>
- * <li>交易列表显示（DynamicSyncedWidget 动态构建交易图标网格）</li>
- * <li>输入槽/输出槽（V2 使用总线 I/O，通过导入按钮替代直接输入槽）</li>
- * <li>排序功能（按 orderId 或产物名排序）</li>
- * <li>搜索功能（按产物名、需求物品名、猫猫币名称过滤）</li>
- * <li>BQ 锁定状态显示（金色 LOCKED 文字 + tooltip）</li>
- * <li>冷却时间显示（青色秒数文字 + tooltip）</li>
- * <li>BGM 播放（独立于 VM，使用 MC 原生音频系统）</li>
- * <li>可交易状态绿色边框（可交易时在物品周围绘制绿色边框）</li>
+ * <li>主面板使用 {@link NekoTradeMainPanel}，实现其 {@link NekoTradeMainPanel.PanelCallback} 接口</li>
+ * <li>交易列表使用 {@link PagedWidget} + 预分配 300 个 {@link NekoTradeItemDisplayWidget}</li>
+ * <li>搜索栏使用 {@link NekoSearchBar}，通过 SearchListener 回调解耦</li>
+ * <li>硬币显示使用 {@link NekoCoinDisplayV2}，含 serp 缓动动画</li>
+ * <li>标签页使用 {@link NekoPageButtonV2}，含高亮覆盖层和悬停动画</li>
+ * <li>BGM 使用 {@link NekoMusicEventHandler}，支持淡入淡出和音量控制</li>
+ * <li>音量控制使用 {@link NekoVolumeControlGui}，绑定 {@link NekoMusicConfig#music_volume}</li>
  * </ul>
  * <p>
- * 不依赖任何 VM mod 类（com.cubefury.vendingmachine.*），
- * 所有交易数据通过 V2 交易系统 API 获取。
+ * <b>保留的同步值系统</b>：所有原有同步值（currentTabSync、searchTextSync、sortModeSync、
+ * tradeRequestSync、tradeResultSync、bqLockStatusSync、cooldownStatusSync、coinAmountSyncs、
+ * ejectAllCoinsSync、importCoinsSync）均保留，新增 displayTypeSync 和 favouriteToggleSync。
+ * <p>
+ * 不依赖任何 VM mod 类（com.cubefury.vendingmachine.*）。
  *
- * @see MTEMultiBlockBaseGui
- * @see NekoTradeDisplayWidgetV2
- * @see NekoTradeDatabase
+ * @see NekoTradeMainPanel
+ * @see NekoTradeItemDisplayWidget
+ * @see NekoSearchBar
+ * @see NekoCoinDisplayV2
+ * @see NekoPageButtonV2
  */
-public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
+public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
+    implements NekoTradeMainPanel.PanelCallback, NekoTradeItemDisplayWidget.TradeActionCallback {
 
     // ==================== 常量 ====================
-
-    /** BGM 资源路径（对应 sounds.json 中的 track.neko_bgm） */
-    private static final ResourceLocation NEKO_BGM = new ResourceLocation("gtit", "track.neko_bgm");
 
     /** 面板宽度 */
     private static final int PANEL_WIDTH = 178;
     /** 面板高度 */
     private static final int PANEL_HEIGHT = 320;
-    /** 交易列表每行的列数 */
-    private static final int TRADE_GRID_COLUMNS = 9;
-    /** 交易图标尺寸 */
-    private static final int ICON_SIZE = 18;
+    /** 每种显示模式预分配的 Widget 数量（与 VM 的 MAX_TRADES 一致） */
+    private static final int MAX_TRADES = 300;
+    /** TILE 模式每行的 Widget 数量 */
+    private static final int TILE_ITEMS_PER_ROW = 3;
+    /** TILE 模式 Widget 宽度 */
+    private static final int TILE_ITEM_WIDTH = NekoTradeItemDisplayWidget.TILE_ITEM_WIDTH;
+    /** TILE 模式 Widget 高度 */
+    private static final int TILE_ITEM_HEIGHT = NekoTradeItemDisplayWidget.TILE_ITEM_HEIGHT;
+    /** LIST 模式 Widget 宽度 */
+    private static final int LIST_ITEM_WIDTH = NekoTradeItemDisplayWidget.LIST_ITEM_WIDTH;
+    /** LIST 模式 Widget 高度 */
+    private static final int LIST_ITEM_HEIGHT = NekoTradeItemDisplayWidget.LIST_ITEM_HEIGHT;
+    /** 交易行宽度 */
+    private static final int TRADE_ROW_WIDTH = 154;
+    /** 交易列表最小高度 */
+    private static final int TRADE_LIST_MIN_HEIGHT = 50;
 
     // ==================== 同步值字段 ====================
 
-    /** 当前标签页 ID（C2S：客户端切换标签时发送到服务端） */
+    /** 当前标签页索引（C2S：客户端切换标签时发送到服务端） */
     private IntSyncValue currentTabSync;
     /** 搜索文本（C2S：客户端输入时发送到服务端） */
     private StringSyncValue searchTextSync;
-    /** 排序模式（C2S：0=按orderId, 1=按名称） */
+    /** 排序模式（C2S：0=SMART, 1=ALPHABET） */
     private IntSyncValue sortModeSync;
+    /** 显示模式（C2S：0=TILE, 1=LIST） */
+    private IntSyncValue displayTypeSync;
     /** 交易请求（C2S：Shift+Click 时发送 "groupId:tradeIndex"） */
     private StringSyncValue tradeRequestSync;
     /** 交易结果消息（S2C：服务端处理完交易后发送结果文本） */
@@ -115,23 +137,25 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     private StringSyncValue bqLockStatusSync;
     /** 冷却状态字符串（S2C：服务端构建 "groupId:tradeIndex:seconds,..." 发送到客户端） */
     private StringSyncValue cooldownStatusSync;
+    /** 收藏切换请求（C2S：Ctrl+Click 时发送 "groupId:tradeIndex"） */
+    private StringSyncValue favouriteToggleSync;
     /** 弹出所有猫猫币（C2S：按钮点击时发送） */
     private BooleanSyncValue ejectAllCoinsSync;
     /** 导入猫猫币（C2S：按钮点击时发送） */
     private BooleanSyncValue importCoinsSync;
-    /** 交易列表动态同步处理器（通过 notifyUpdate 触发 widget 重建） */
-    private DynamicSyncHandler tradeListHandler;
     /** 各货币余额同步值映射 */
     private final Map<String, IntSyncValue> coinAmountSyncs = new HashMap<>();
 
     // ==================== UI 状态镜像（客户端+服务端共享） ====================
 
-    /** 当前标签页 ID（默认 1=猫猫币） */
+    /** 当前标签页索引（默认 1=ALL 分类） */
     private int currentTabId = 1;
     /** 搜索文本 */
     private String searchText = "";
-    /** 排序模式：0=按orderId, 1=按名称 */
+    /** 排序模式：0=SMART, 1=ALPHABET */
     private int sortMode = 0;
+    /** 显示模式：0=TILE, 1=LIST */
+    private int displayType = 0;
 
     // ==================== 客户端状态（S2C 同步填充） ====================
 
@@ -151,12 +175,34 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     /** 交易结果消息（服务端设置，通过 tradeResultSync 同步到客户端） */
     private String tradeResultMessage = "";
 
+    // ==================== 预分配 Widget ====================
+
+    /** TILE 模式预分配 Widget：分类 → Widget 列表（每分类 300 个） */
+    private final Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> displayedTradesTiles = new HashMap<>();
+    /** LIST 模式预分配 Widget：分类 → Widget 列表（每分类 300 个） */
+    private final Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> displayedTradesList = new HashMap<>();
+    /** 交易分类列表（决定标签页顺序：FAVOURITES, ALL, ...其他） */
+    private final List<NekoTradeCategory> tradeCategories = new ArrayList<>();
+    /** 高亮标签页集合（搜索匹配时高亮对应标签） */
+    private final Set<NekoTradeCategory> highlightedTabs = new HashSet<>();
+
     // ==================== 其他字段 ====================
+
+    /** V2 GUI 是否打开（客户端，供 NekoMusicEventHandler 检测 GUI 状态） */
+    public static boolean isV2GuiOpen = false;
 
     /** GUI 位置数据引用（build 时设置，供同步值 getter 使用） */
     private PosGuiData guiData;
-    /** 当前正在播放的 BGM 声音实例（仅客户端） */
-    private static ISound currentBgmSound = null;
+    /** 同步管理器引用（供 isClient() 判断和 PanelCallback 使用） */
+    private PanelSyncManager syncManagerRef;
+    /** 分页控制器（客户端，管理标签页切换） */
+    private PagedWidget.Controller tabController;
+    /** 搜索栏组件（客户端） */
+    private NekoSearchBar searchBar;
+    /** 音量面板处理器（客户端，打开/关闭音量控制面板） */
+    private IPanelHandler volumePanel;
+    /** 主面板引用（用于回调和方法调用） */
+    private NekoTradeMainPanel mainPanel;
 
     // ==================== 构造器 ====================
 
@@ -171,6 +217,19 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
             nekoEjectSingleCoin.put(currencyId, false);
         }
+        // 初始化交易分类列表：FAVOURITES 始终第一位，ALL 第二位
+        tradeCategories.add(NekoTradeCategory.FAVOURITES);
+        tradeCategories.add(NekoTradeCategory.ALL);
+        // 扫描交易数据库，添加所有使用到的分类
+        Set<NekoTradeCategory> usedCategories = new TreeSet<>();
+        for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
+            .values()) {
+            NekoTradeCategory cat = group.getCategory();
+            if (cat != null && cat != NekoTradeCategory.ALL && cat != NekoTradeCategory.FAVOURITES) {
+                usedCategories.add(cat);
+            }
+        }
+        tradeCategories.addAll(usedCategories);
     }
 
     // ==================== build 方法 ====================
@@ -178,12 +237,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     /**
      * 构建 GUI 面板
      * <p>
-     * 不调用 super.build()，而是手动调用 registerSyncValues() 注册同步值，
-     * 然后使用 GTBaseGuiBuilder 构建 178x320 的面板，
-     * 手动添加标签列、主列和 IO 列。
-     * <p>
-     * 这样做的原因：super.build() 会创建标准的 GT5U 布局（终端行+背包行），
-     * 不适合猫猫售货机的自定义布局需求。
+     * 创建 {@link NekoTradeMainPanel} 作为主面板容器，
+     * 注册同步值，添加标签列、QoL 按钮列、主内容列和 IO 列。
      *
      * @param guiData     GUI 位置数据
      * @param syncManager 面板同步管理器
@@ -193,26 +248,40 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     @Override
     public ModularPanel build(PosGuiData guiData, PanelSyncManager syncManager, UISettings uiSettings) {
         this.guiData = guiData;
+        this.syncManagerRef = syncManager;
+
         // 注册所有同步值（包含 GT5U 标准 + 猫猫机自定义）
         registerSyncValues(syncManager);
 
-        // 使用 GTBaseGuiBuilder 构建面板，禁用标题、覆盖层标签和 GT Logo
-        ModularPanel panel = new GTBaseGuiBuilder(multiblock, guiData, syncManager, uiSettings).setWidth(PANEL_WIDTH)
-            .setHeight(PANEL_HEIGHT)
-            .doesBindPlayerInventory(false)
-            .doesAddTitle(false)
-            .doesAddCoverTabs(false)
-            .doesAddGregTechLogo(false)
-            .build();
-
-        // 客户端：启动 BGM 并注册关闭回调
+        // 客户端：初始化预分配 Widget 和分页控制器
         if (syncManager.isClient()) {
-            startBgm();
-            panel.onCloseAction(() -> stopBgm());
+            initPreAllocatedWidgets();
+            tabController = new PagedWidget.Controller();
+        }
+
+        // 创建 NekoTradeMainPanel 作为主面板（实现 PanelCallback 回调）
+        NekoTradeMainPanel panel = new NekoTradeMainPanel("MTEMultiBlockBase", this, guiData, syncManager);
+        panel.size(PANEL_WIDTH, PANEL_HEIGHT);
+        panel.padding(4);
+        this.mainPanel = panel;
+
+        // 客户端：启动 BGM、注册关闭回调、设置 GUI 状态
+        if (syncManager.isClient()) {
+            isV2GuiOpen = true;
+            // 通知 NekoMusicEventHandler GUI 已打开
+            NekoMusicEventHandler.onGuiOpened();
+            panel.onCloseAction(() -> {
+                isV2GuiOpen = false;
+                // 通知 NekoMusicEventHandler GUI 已关闭
+                NekoMusicEventHandler.onGuiClosed();
+            });
         }
 
         // 左侧标签列
-        panel.child(createTabColumn());
+        if (syncManager.isClient()) {
+            panel.child(createTabColumn());
+            panel.child(createQolButtonColumn());
+        }
 
         // 主内容列
         panel.child(createMainColumn(syncManager));
@@ -228,8 +297,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     /**
      * 注册同步值
      * <p>
-     * 先调用 super.registerSyncValues() 注册 GT5U 标准同步值
-     * （机器状态、维护信息、电源开关、结构更新等），
+     * 先调用 super.registerSyncValues() 注册 GT5U 标准同步值，
      * 然后注册猫猫机 V2 的自定义同步值。
      *
      * @param syncManager 面板同步管理器
@@ -242,32 +310,25 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         // 获取玩家 UUID（服务端用于查询钱包余额、BQ 状态等）
         final UUID playerId = getPlayerId();
 
-        // --- 当前标签页（C2S）---
-        currentTabSync = new IntSyncValue(() -> currentTabId, val -> {
-            currentTabId = val;
-            // 标签切换时重建交易列表
-            notifyTradeListUpdate();
-        });
+        // --- 当前标签页索引（C2S）---
+        currentTabSync = new IntSyncValue(() -> currentTabId, val -> { currentTabId = val; });
         currentTabSync.allowC2S();
         syncManager.syncValue("nekoV2CurrentTab", currentTabSync);
 
         // --- 搜索文本（C2S）---
-        searchTextSync = new StringSyncValue(() -> searchText, val -> {
-            searchText = val == null ? "" : val;
-            // 搜索文本变化时重建交易列表
-            notifyTradeListUpdate();
-        });
+        searchTextSync = new StringSyncValue(() -> searchText, val -> { searchText = val == null ? "" : val; });
         searchTextSync.allowC2S();
         syncManager.syncValue("nekoV2SearchText", searchTextSync);
 
-        // --- 排序模式（C2S）---
-        sortModeSync = new IntSyncValue(() -> sortMode, val -> {
-            sortMode = val;
-            // 排序模式变化时重建交易列表
-            notifyTradeListUpdate();
-        });
+        // --- 排序模式（C2S：0=SMART, 1=ALPHABET）---
+        sortModeSync = new IntSyncValue(() -> sortMode, val -> { sortMode = val; });
         sortModeSync.allowC2S();
         syncManager.syncValue("nekoV2SortMode", sortModeSync);
+
+        // --- 显示模式（C2S：0=TILE, 1=LIST）---
+        displayTypeSync = new IntSyncValue(() -> displayType, val -> { displayType = val; });
+        displayTypeSync.allowC2S();
+        syncManager.syncValue("nekoV2DisplayType", displayTypeSync);
 
         // --- 交易请求（C2S，Shift+Click 触发）---
         tradeRequestSync = new StringSyncValue(() -> "", val -> {
@@ -278,42 +339,48 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         tradeRequestSync.allowC2S();
         syncManager.syncValue("nekoV2TradeRequest", tradeRequestSync);
 
+        // --- 收藏切换请求（C2S，Ctrl+Click 触发）---
+        favouriteToggleSync = new StringSyncValue(() -> "", val -> {
+            if (val != null && !val.isEmpty()) {
+                processFavouriteToggle(val, playerId);
+            }
+        });
+        favouriteToggleSync.allowC2S();
+        syncManager.syncValue("nekoV2FavouriteToggle", favouriteToggleSync);
+
         // --- 交易结果消息（S2C）---
         tradeResultSync = new StringSyncValue(
             () -> tradeResultMessage,
             val -> tradeResultMessage = val == null ? "" : val);
         syncManager.syncValue("nekoV2TradeResult", tradeResultSync);
 
-        // --- BQ 锁定状态（S2C）---
-        bqLockStatusSync = new StringSyncValue(() -> buildBqLockStatusString(playerId), val -> {
-            parseBqLockStatus(val);
-            // BQ 状态更新后重建交易列表
-            notifyTradeListUpdate();
-        });
+        // --- BQ 锁定状态（S2C，同步所有交易组的状态）---
+        bqLockStatusSync = new StringSyncValue(
+            () -> buildBqLockStatusString(playerId),
+            val -> { parseBqLockStatus(val); });
         syncManager.syncValue("nekoV2BqLockStatus", bqLockStatusSync);
 
-        // --- 冷却状态（S2C）---
-        cooldownStatusSync = new StringSyncValue(() -> buildCooldownStatusString(playerId), val -> {
-            parseCooldownStatus(val);
-            // 冷却状态更新后重建交易列表
-            notifyTradeListUpdate();
-        });
+        // --- 冷却状态（S2C，同步所有交易组的状态）---
+        cooldownStatusSync = new StringSyncValue(
+            () -> buildCooldownStatusString(playerId),
+            val -> { parseCooldownStatus(val); });
         syncManager.syncValue("nekoV2CooldownStatus", cooldownStatusSync);
 
         // --- 各货币余额（S2C）---
+        // 注意：syncHandler 名称必须与 NekoCoinDisplayV2 期望的一致
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
             final String cid = currencyId;
             IntSyncValue coinAmountSyncer = new IntSyncValue(() -> {
-                // 仅服务端查询实际余额，客户端通过同步获取
                 if (syncManager.isClient() || playerId == null) return 0;
                 NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
                 return wallet == null ? 0 : wallet.getCount(cid);
             });
-            syncManager.syncValue("nekoV2CoinAmount_" + currencyId, coinAmountSyncer);
+            syncManager.syncValue("nekoCoinAmount_" + currencyId, coinAmountSyncer);
             coinAmountSyncs.put(currencyId, coinAmountSyncer);
         }
 
         // --- 弹出单种猫猫币（C2S）---
+        // 注意：syncHandler 名称必须与 NekoCoinDisplayV2 期望的一致
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
             final String cid = currencyId;
             BooleanSyncValue ejectCoinSyncer = new BooleanSyncValue(
@@ -325,7 +392,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
                     }
                 });
             ejectCoinSyncer.allowC2S();
-            syncManager.syncValue("nekoV2EjectCoin_" + currencyId, ejectCoinSyncer);
+            syncManager.syncValue("nekoEjectCoin_" + currencyId, ejectCoinSyncer);
         }
 
         // --- 弹出所有猫猫币（C2S）---
@@ -347,21 +414,258 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         });
         importCoinsSync.allowC2S();
         syncManager.syncValue("nekoV2ImportCoins", importCoinsSync);
+    }
 
-        // --- 交易列表动态同步处理器 ---
-        // widgetProvider 在客户端被调用，构建交易图标网格
-        tradeListHandler = new DynamicSyncHandler().widgetProvider((sm, packet) -> buildTradeListContent());
+    // ==================== PanelCallback 接口实现 ====================
+
+    @Override
+    public UUID getPlayerId() {
+        if (guiData == null) return null;
+        try {
+            EntityPlayer player = guiData.getPlayer();
+            return player != null ? player.getUniqueID() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Override
+    public String getSearchText() {
+        return searchText;
+    }
+
+    @Override
+    public boolean isSearchBarFocused() {
+        return searchBar != null && searchBar.isFocused();
+    }
+
+    @Override
+    public NekoDisplayType getDisplayType() {
+        return displayType == 0 ? NekoDisplayType.TILE : NekoDisplayType.LIST;
+    }
+
+    @Override
+    public NekoSortMode getSortMode() {
+        return sortMode == 0 ? NekoSortMode.SMART : NekoSortMode.ALPHABET;
+    }
+
+    @Override
+    public NekoWalletMode getWalletMode() {
+        // V2 阶段仅支持个人钱包
+        return NekoWalletMode.PERSONAL;
+    }
+
+    @Override
+    public int getRefreshInterval() {
+        // 默认 20 tick（1秒）刷新一次
+        return 20;
+    }
+
+    @Override
+    public boolean isClient() {
+        return syncManagerRef != null && syncManagerRef.isClient();
+    }
+
+    @Override
+    public NekoTradeCategory getActiveCategory() {
+        if (currentTabId >= 0 && currentTabId < tradeCategories.size()) {
+            return tradeCategories.get(currentTabId);
+        }
+        return NekoTradeCategory.ALL;
+    }
+
+    @Override
+    public List<NekoTradeItemDisplayWidget> getDisplayedWidgets(NekoDisplayType type, NekoTradeCategory category) {
+        Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> map = (type == NekoDisplayType.TILE)
+            ? displayedTradesTiles
+            : displayedTradesList;
+        List<NekoTradeItemDisplayWidget> widgets = map.get(category);
+        return widgets != null ? widgets : new ArrayList<>();
     }
 
     /**
-     * 通知交易列表重建
+     * 交易显示数据更新回调
      * <p>
-     * 当标签页、搜索文本、排序模式、BQ 状态或冷却状态变化时调用，
-     * 触发 DynamicSyncHandler 的 widgetProvider 重新执行。
+     * 由 {@link NekoTradeMainPanel#updateGui()} 调用，
+     * 接收格式化后的交易数据并更新预分配的 Widget。
+     * <p>
+     * 同时使用同步值中的 BQ/冷却状态覆盖 formatTrades() 生成的基础状态，
+     * 确保多人游戏下客户端显示正确的锁定和冷却信息。
+     *
+     * @param trades 按分类组织的交易显示数据
      */
-    private void notifyTradeListUpdate() {
-        if (tradeListHandler != null) {
-            tradeListHandler.notifyUpdate(packet -> {});
+    @Override
+    public void onTradeDisplayUpdated(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+        if (trades == null) return;
+
+        // 使用同步值中的 BQ/冷却状态覆盖显示数据
+        for (List<NekoTradeItemDisplay> displayList : trades.values()) {
+            if (displayList == null) continue;
+            for (NekoTradeItemDisplay display : displayList) {
+                if (display == null) continue;
+
+                // 覆盖 BQ 锁定状态（来自 bqLockStatusSync）
+                boolean bqLocked = bqLockStatusMap.getOrDefault(display.getGroupId(), false);
+                display.setBqLocked(bqLocked);
+
+                // 覆盖冷却状态（来自 cooldownStatusSync）
+                String cdKey = display.getGroupId()
+                    .toString() + ":"
+                    + display.getTradeIndex();
+                long cooldown = cooldownStatusMap.getOrDefault(cdKey, 0L);
+                display.setCooldownRemaining(cooldown);
+
+                // 更新可交易状态
+                display.setTradeable(!bqLocked && cooldown <= 0);
+            }
+        }
+
+        // 更新预分配 Widget 的显示数据
+        updatePreAllocatedWidgets(trades);
+
+        // 更新标签高亮（搜索匹配时高亮对应标签）
+        updateTabHighlighting(trades);
+    }
+
+    @Override
+    public void onRestoreSettings() {
+        // 恢复上次的标签页位置
+        if (tabController != null) {
+            int maxPage = tradeCategories.size();
+            int page = Math.min(NekoPageButtonV2.lastPage, maxPage - 1);
+            if (page < 0) page = 1; // 默认 ALL 分类
+            tabController.setPage(page);
+            currentTabId = page;
+        }
+        // 恢复搜索文本
+        if (searchBar != null && !searchText.isEmpty()) {
+            searchBar.setText(searchText);
+        }
+    }
+
+    @Override
+    public void onDispose() {
+        // GUI 关闭时的清理工作（BGM 停止在 onCloseAction 中处理）
+    }
+
+    // ==================== TradeActionCallback 接口实现 ====================
+
+    /**
+     * 交易请求回调（Shift+左键点击交易时触发）
+     * <p>
+     * 通过 tradeRequestSync 发送 "groupId:tradeIndex" 到服务端。
+     *
+     * @param display 被点击的交易显示数据
+     */
+    @Override
+    public void onTradeRequested(NekoTradeItemDisplay display) {
+        if (display == null) return;
+        String request = display.getGroupId()
+            .toString() + ":"
+            + display.getTradeIndex();
+        tradeRequestSync.setValue(request);
+    }
+
+    /**
+     * 收藏切换回调（Ctrl+左键点击交易时触发）
+     * <p>
+     * 通过 favouriteToggleSync 发送 "groupId:tradeIndex" 到服务端。
+     *
+     * @param display 被点击的交易显示数据
+     */
+    @Override
+    public void onFavouriteToggled(NekoTradeItemDisplay display) {
+        if (display == null) return;
+        String request = display.getGroupId()
+            .toString() + ":"
+            + display.getTradeIndex();
+        favouriteToggleSync.setValue(request);
+    }
+
+    // ==================== 预分配 Widget 初始化 ====================
+
+    /**
+     * 初始化预分配 Widget
+     * <p>
+     * 为每个交易分类预分配 300 个 TILE 模式和 300 个 LIST 模式的
+     * {@link NekoTradeItemDisplayWidget}，并设置 TradeActionCallback。
+     */
+    private void initPreAllocatedWidgets() {
+        for (NekoTradeCategory category : tradeCategories) {
+            List<NekoTradeItemDisplayWidget> tiles = new ArrayList<>(MAX_TRADES);
+            List<NekoTradeItemDisplayWidget> lists = new ArrayList<>(MAX_TRADES);
+            for (int i = 0; i < MAX_TRADES; i++) {
+                NekoTradeItemDisplayWidget tile = new NekoTradeItemDisplayWidget(null, NekoDisplayType.TILE);
+                tile.setCallback(this);
+                tiles.add(tile);
+
+                NekoTradeItemDisplayWidget list = new NekoTradeItemDisplayWidget(null, NekoDisplayType.LIST);
+                list.setCallback(this);
+                lists.add(list);
+            }
+            displayedTradesTiles.put(category, tiles);
+            displayedTradesList.put(category, lists);
+        }
+    }
+
+    /**
+     * 更新预分配 Widget 的显示数据
+     * <p>
+     * 对每个分类，将格式化后的交易数据按顺序设置到预分配的 Widget 上。
+     * 超出数据范围的 Widget 设置为 null（禁用显示）。
+     *
+     * @param trades 按分类组织的交易显示数据
+     */
+    private void updatePreAllocatedWidgets(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+        // 更新 TILE 模式 Widget
+        updateWidgetList(trades, displayedTradesTiles);
+        // 更新 LIST 模式 Widget
+        updateWidgetList(trades, displayedTradesList);
+    }
+
+    /**
+     * 更新单个显示模式的 Widget 列表
+     *
+     * @param trades 交易显示数据
+     * @param map    Widget 映射（分类 → Widget 列表）
+     */
+    private void updateWidgetList(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades,
+        Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> map) {
+        for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> entry : map.entrySet()) {
+            NekoTradeCategory category = entry.getKey();
+            List<NekoTradeItemDisplayWidget> widgets = entry.getValue();
+            List<NekoTradeItemDisplay> displayList = trades.get(category);
+            int displaySize = displayList != null ? displayList.size() : 0;
+
+            for (int i = 0; i < widgets.size(); i++) {
+                if (i < displaySize) {
+                    widgets.get(i)
+                        .setDisplay(displayList.get(i));
+                } else {
+                    widgets.get(i)
+                        .setDisplay(null);
+                }
+            }
+        }
+    }
+
+    /**
+     * 更新标签高亮
+     * <p>
+     * 当搜索文本非空时，高亮所有包含匹配交易的分类标签。
+     *
+     * @param trades 按分类组织的交易显示数据
+     */
+    private void updateTabHighlighting(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
+        highlightedTabs.clear();
+        if (searchText == null || searchText.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplay>> entry : trades.entrySet()) {
+            if (entry.getValue() != null && !entry.getValue()
+                .isEmpty()) {
+                highlightedTabs.add(entry.getKey());
+            }
         }
     }
 
@@ -370,15 +674,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     /**
      * 创建左侧标签列
      * <p>
-     * 从交易数据库获取所有已使用的 tabId，按升序排列，
-     * 为每个 tabId 创建一个带物品图标的按钮。
-     * <p>
-     * 标签图标：
-     * <ul>
-     * <li>Tab 1：猫猫币物品</li>
-     * <li>Tab 2：闪烁猫猫币物品</li>
-     * <li>Tab 3+：默认物品</li>
-     * </ul>
+     * 为每个交易分类创建一个 {@link NekoPageButtonV2} 按钮，
+     * 使用物品图标作为标签页标识。
      *
      * @return 标签列 Widget
      */
@@ -389,28 +686,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
             .top(40)
             .childPadding(2);
 
-        // 获取所有已使用的 tabId，按升序排列
-        Set<Integer> tabIds = new TreeSet<>();
-        tabIds.addAll(NekoTradeDatabase.INSTANCE.getUsedTabIds());
-        // 确保默认标签页存在
-        tabIds.add(1);
-        tabIds.add(2);
-        tabIds.add(3);
+        for (int i = 0; i < tradeCategories.size(); i++) {
+            final int index = i;
+            NekoTradeCategory category = tradeCategories.get(i);
+            ItemStack icon = getCategoryIcon(category);
+            String name = getCategoryName(category);
 
-        for (int tabId : tabIds) {
-            final int tid = tabId;
-            ItemStack icon = getTabIcon(tabId);
-            String name = getTabName(tabId);
-
-            // 创建标签按钮，使用物品图标作为 overlay
-            ButtonWidget<?> tabButton = new ButtonWidget<>().size(ICON_SIZE, ICON_SIZE)
-                .overlay(icon != null ? new ItemDrawable(icon) : IKey.str(String.valueOf(tabId)))
-                .onMousePressed(btn -> {
-                    // 切换标签页
-                    currentTabSync.setValue(tid);
-                    return true;
-                })
-                .tooltipBuilder(t -> t.addLine(IKey.str(name)));
+            NekoPageButtonV2 tabButton = new NekoPageButtonV2(index, tabController, category, highlightedTabs, icon);
+            tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+            tabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
 
             tabColumn.child(tabButton);
         }
@@ -419,24 +703,114 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     }
 
     /**
+     * 创建 QoL 按钮列（BGM 切换、显示模式、排序模式、音量控制）
+     * <p>
+     * 位于标签列左侧，提供快速操作按钮。
+     *
+     * @return QoL 按钮列 Widget
+     */
+    private IWidget createQolButtonColumn() {
+        Flow qolColumn = Flow.column()
+            .left(-48)
+            .top(4)
+            .childPadding(1);
+
+        // --- BGM 切换按钮 ---
+        ButtonWidget<?> bgmButton = new ButtonWidget<>().size(14, 14)
+            .overlay(new DynamicDrawable(() -> {
+                NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
+                boolean isPlaying = handler != null && handler.isPlaying();
+                return (isPlaying ? NekoMusicTrack.LUNCH_BREAK.getTexture() : NekoMusicTrack.NONE.getTexture())
+                    .size(14);
+            }))
+            .onMousePressed(btn -> {
+                NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
+                if (handler != null) {
+                    if (handler.isPlaying()) {
+                        handler.forceStopBGM();
+                    } else {
+                        handler.forceStartBGM();
+                    }
+                }
+                return true;
+            })
+            .tooltipBuilder(t -> {
+                NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
+                boolean isPlaying = handler != null && handler.isPlaying();
+                t.addLine(IKey.str(isPlaying ? "BGM: 开启" : "BGM: 关闭"));
+                t.addLine(IKey.str("音量: " + NekoVolumeControlGui.getVolumeAsString() + "%"));
+            });
+        bgmButton.tooltipAutoUpdate(true);
+        qolColumn.child(bgmButton);
+
+        // --- 显示模式切换按钮 ---
+        ButtonWidget<?> displayModeButton = new ButtonWidget<>().size(14, 14)
+            .overlay(
+                new DynamicDrawable(
+                    () -> getDisplayType().getTexture()
+                        .size(14)))
+            .onMousePressed(btn -> {
+                // 切换显示模式：TILE ↔ LIST
+                displayTypeSync.setValue(displayType == 0 ? 1 : 0);
+                return true;
+            })
+            .tooltipBuilder(t -> {
+                t.addLine(IKey.str("当前: " + getDisplayType().getLocalizedName()));
+                t.addLine(IKey.str("点击切换显示模式"));
+            });
+        displayModeButton.tooltipAutoUpdate(true);
+        qolColumn.child(displayModeButton);
+
+        // --- 排序模式切换按钮 ---
+        ButtonWidget<?> sortModeButton = new ButtonWidget<>().size(14, 14)
+            .overlay(
+                new DynamicDrawable(
+                    () -> getSortMode().getTexture()
+                        .size(14)))
+            .onMousePressed(btn -> {
+                // 切换排序模式：SMART ↔ ALPHABET
+                sortModeSync.setValue(sortMode == 0 ? 1 : 0);
+                return true;
+            })
+            .tooltipBuilder(t -> {
+                t.addLine(IKey.str("当前: " + getSortMode().getLocalizedName()));
+                t.addLine(IKey.str("点击切换排序模式"));
+            });
+        sortModeButton.tooltipAutoUpdate(true);
+        qolColumn.child(sortModeButton);
+
+        // --- 音量控制按钮 ---
+        ButtonWidget<?> volumeButton = new ButtonWidget<>().size(14, 14)
+            .overlay(
+                NekoGuiTextures.AUDIO_ON.asIcon()
+                    .size(14))
+            .onMousePressed(btn -> {
+                // 切换音量控制面板的打开/关闭状态
+                if (volumePanel != null) {
+                    volumePanel.togglePanel();
+                }
+                return true;
+            })
+            .tooltipBuilder(t -> {
+                t.addLine(IKey.str("音量控制"));
+                t.addLine(IKey.str("当前: " + NekoVolumeControlGui.getVolumeAsString() + "%"));
+            });
+        volumeButton.tooltipAutoUpdate(true);
+        qolColumn.child(volumeButton);
+
+        return qolColumn;
+    }
+
+    /**
      * 创建主内容列
      * <p>
-     * 布局从上到下：
-     * <ol>
-     * <li>标题文字 "猫猫售货机"</li>
-     * <li>搜索栏 + 排序按钮</li>
-     * <li>交易列表（DynamicSyncedWidget，动态构建）</li>
-     * <li>猫猫币余额显示行</li>
-     * <li>交易结果消息</li>
-     * <li>玩家背包栏</li>
-     * </ol>
+     * 布局从上到下：标题、搜索栏、交易列表（PagedWidget）、猫猫币显示、交易结果、玩家背包。
      *
      * @param syncManager 面板同步管理器
      * @return 主列 Widget
      */
     private IWidget createMainColumn(PanelSyncManager syncManager) {
         Flow mainColumn = Flow.column()
-            .padding(4)
             .width(PANEL_WIDTH - 8);
 
         // --- 标题 ---
@@ -447,43 +821,25 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
                 .fullWidth()
                 .marginBottom(2));
 
-        // --- 搜索栏 + 排序按钮 ---
-        Flow searchRow = Flow.row()
-            .width(PANEL_WIDTH - 12)
-            .height(14)
-            .marginBottom(2);
+        if (syncManager.isClient()) {
+            // --- 搜索栏 ---
+            searchBar = new NekoSearchBar("搜索...");
+            searchBar.size(PANEL_WIDTH - 12, 14)
+                .fullWidth()
+                .marginBottom(2);
+            searchBar.setSearchListener(newText -> { searchTextSync.setValue(newText); });
+            mainColumn.child(searchBar);
 
-        // 搜索文本框
-        TextFieldWidget searchField = new TextFieldWidget().value(searchTextSync)
-            .hintText("搜索...")
-            .autoUpdateOnChange(true)
-            .size(PANEL_WIDTH - 34, 14);
-        searchRow.child(searchField);
+            // --- 交易列表（PagedWidget + 预分配 Widget）---
+            mainColumn.child(createTradePagedWidget());
 
-        // 排序切换按钮
-        ButtonWidget<?> sortButton = new ButtonWidget<>().size(14, 14)
-            .overlay(IKey.dynamic(() -> sortMode == 0 ? "O" : "A"))
-            .onMousePressed(btn -> {
-                // 切换排序模式：0=orderId, 1=名称
-                sortModeSync.setValue(sortMode == 0 ? 1 : 0);
-                return true;
-            })
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str(sortMode == 0 ? "当前: 按序号排序" : "当前: 按名称排序"));
-                t.addLine(IKey.str("点击切换排序模式"));
-            });
-        searchRow.child(sortButton);
-
-        mainColumn.child(searchRow);
-
-        // --- 交易列表（DynamicSyncedWidget 动态构建）---
-        mainColumn.child(
-            new DynamicSyncedWidget<>().widthRel(1f)
-                .height(150)
-                .syncHandler(tradeListHandler));
+            // --- 音量面板（同步子面板）---
+            volumePanel = syncManager
+                .syncedPanel("nekoV2Volume", true, (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, null));
+        }
 
         // --- 猫猫币余额显示行 ---
-        mainColumn.child(createCoinDisplayRow());
+        mainColumn.child(createCoinDisplayRow(syncManager));
 
         // --- 交易结果消息 ---
         mainColumn.child(
@@ -502,43 +858,162 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     }
 
     /**
+     * 创建交易列表分页 Widget
+     * <p>
+     * 使用 {@link PagedWidget} 为每个交易分类创建一个页面，
+     * 每页包含一个 {@link ListWidget}，内含预分配的 TILE 和 LIST 模式 Widget。
+     * <p>
+     * 通过 {@link PagedWidget.Controller} 控制页面切换，
+     * 与 {@link NekoPageButtonV2} 标签按钮联动。
+     *
+     * @return 交易列表 Widget
+     */
+    private IWidget createTradePagedWidget() {
+        PagedWidget<?> paged = new PagedWidget<>().name("nekoV2Paged")
+            .width(PANEL_WIDTH - 12)
+            .controller(tabController)
+            .background(NekoGuiTextures.TRADE_BACKGROUND);
+        paged.height(TRADE_LIST_MIN_HEIGHT + 80);
+
+        // 为每个分类创建一个页面
+        for (NekoTradeCategory category : tradeCategories) {
+            paged.addPage(createTradeListPage(category));
+        }
+
+        // 如果没有页面，添加占位页面防止崩溃
+        if (tradeCategories.isEmpty()) {
+            paged.addPage(
+                IKey.str("无可用交易")
+                    .asWidget());
+        }
+
+        return paged;
+    }
+
+    /**
+     * 创建单个分类的交易列表页面
+     * <p>
+     * 每页包含一个 {@link ListWidget}，内含：
+     * <ol>
+     * <li>顶部间距</li>
+     * <li>结构不完整提示行（机器未激活时显示）</li>
+     * <li>TILE 模式行（3个 Widget 一行，共 100 行 = 300 个）</li>
+     * <li>LIST 模式行（1个 Widget 一行，共 300 行）</li>
+     * <li>底部间距</li>
+     * </ol>
+     * <p>
+     * TILE 和 LIST 模式的 Widget 同时存在于列表中，
+     * 通过 setEnabledIf 根据当前显示模式控制可见性。
+     *
+     * @param category 交易分类
+     * @return 列表页面 Widget
+     */
+    private IWidget createTradeListPage(NekoTradeCategory category) {
+        ListWidget<IWidget, ?> tradeList = new ListWidget<>().name("items_" + category.getKey())
+            .width(PANEL_WIDTH - 14)
+            .top(1)
+            .collapseDisabledChild(true);
+        tradeList.height(TRADE_LIST_MIN_HEIGHT + 80);
+
+        // 顶部间距
+        tradeList.child(
+            Flow.row()
+                .height(2));
+
+        // 结构不完整提示行
+        Flow statusRow = Flow.row()
+            .height(10)
+            .width(TRADE_ROW_WIDTH)
+            .marginLeft(2)
+            .child(
+                IKey.str(EnumChatFormatting.RED + "结构不完整")
+                    .asWidget());
+        statusRow.setEnabledIf(w -> !baseMetaTileEntity.isActive());
+        tradeList.child(statusRow);
+
+        // --- TILE 模式行（3个 Widget 一行）---
+        List<NekoTradeItemDisplayWidget> tileWidgets = displayedTradesTiles.get(category);
+        if (tileWidgets != null) {
+            NekoTradeRow row = new NekoTradeRow();
+            row.height(TILE_ITEM_HEIGHT + 4);
+            row.width(TRADE_ROW_WIDTH);
+            row.marginLeft(2);
+
+            for (int i = 0; i < MAX_TRADES; i++) {
+                final int index = i;
+                NekoTradeItemDisplayWidget widget = tileWidgets.get(i);
+                widget.margin(2);
+                widget.setEnabledIf(w -> {
+                    if (!baseMetaTileEntity.isActive()) return false;
+                    return getDisplayType() == NekoDisplayType.TILE && widget.getDisplay() != null;
+                });
+                row.child(widget);
+
+                // 每 TILE_ITEMS_PER_ROW 个换行
+                if (i % TILE_ITEMS_PER_ROW == TILE_ITEMS_PER_ROW - 1) {
+                    tradeList.child(row);
+                    row = new NekoTradeRow();
+                    row.height(TILE_ITEM_HEIGHT + 4);
+                    row.width(TRADE_ROW_WIDTH);
+                    row.marginLeft(2);
+                }
+            }
+            // 添加最后一行（如果有剩余）
+            if (row.getChildren() != null && !row.getChildren()
+                .isEmpty()) {
+                tradeList.child(row);
+            }
+        }
+
+        // --- LIST 模式行（1个 Widget 一行）---
+        List<NekoTradeItemDisplayWidget> listWidgets = displayedTradesList.get(category);
+        if (listWidgets != null) {
+            for (int i = 0; i < MAX_TRADES; i++) {
+                NekoTradeItemDisplayWidget widget = listWidgets.get(i);
+                widget.setEnabledIf(w -> {
+                    if (!baseMetaTileEntity.isActive()) return false;
+                    return getDisplayType() == NekoDisplayType.LIST && widget.getDisplay() != null;
+                });
+
+                NekoTradeRow row = new NekoTradeRow();
+                row.height(LIST_ITEM_HEIGHT);
+                row.width(TRADE_ROW_WIDTH);
+                row.marginLeft(2);
+                row.child(widget);
+                tradeList.child(row);
+            }
+        }
+
+        // 底部间距
+        tradeList.child(
+            Flow.row()
+                .height(2));
+
+        return tradeList;
+    }
+
+    /**
      * 创建猫猫币余额显示行
      * <p>
-     * 为每种猫猫币创建一个图标 + 余额文字的组合，
-     * 余额通过 IKey.dynamic 动态更新（依赖 coinAmountSyncs 的值）。
+     * 为每种猫猫币创建一个 {@link NekoCoinDisplayV2} 组件，
+     * 含 serp 缓动动画和弹出按钮。
      *
+     * @param syncManager 面板同步管理器
      * @return 猫猫币显示行 Widget
      */
-    private IWidget createCoinDisplayRow() {
+    private IWidget createCoinDisplayRow(PanelSyncManager syncManager) {
         Flow row = Flow.row()
-            .height(ICON_SIZE + 4)
+            .height(22)
             .fullWidth()
             .marginBottom(2);
 
+        int offset = 0;
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-            final String cid = currencyId;
-            ItemStack coinIcon = NekoCurrencyRegistrar.getItemStack(cid, 1);
-            String displayName = NekoCurrencyRegistrar.getDisplayName(cid);
-            IntSyncValue amountSync = coinAmountSyncs.get(cid);
-
-            // 货币图标
-            if (coinIcon != null) {
-                row.child(
-                    new ItemDisplayWidget().item(coinIcon)
-                        .size(ICON_SIZE, ICON_SIZE)
-                        .tooltipBuilder(t -> t.addLine(IKey.str(displayName))));
-            }
-
-            // 余额数字（动态更新）
-            row.child(IKey.dynamic(() -> {
-                int amount = amountSync != null ? amountSync.getIntValue() : 0;
-                return EnumChatFormatting.WHITE + String.valueOf(amount);
-            })
-                .asWidget()
-                .height(ICON_SIZE)
-                .marginLeft(2)
-                .marginRight(8)
-                .verticalCenter());
+            String displayName = NekoCurrencyRegistrar.getDisplayName(currencyId);
+            NekoCoinDisplayV2 coinDisplay = new NekoCoinDisplayV2(syncManager, currencyId, displayName);
+            coinDisplay.left(offset);
+            row.child(coinDisplay);
+            offset += 65;
         }
 
         return row;
@@ -547,13 +1022,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     /**
      * 创建右侧 IO 列
      * <p>
-     * 包含以下按钮：
-     * <ol>
-     * <li>导入猫猫币按钮（从输入总线导入猫猫币到钱包）</li>
-     * <li>弹出所有猫猫币按钮（将钱包中的猫猫币弹出至机器旁）</li>
-     * <li>电源开关按钮（GT5U 标准）</li>
-     * <li>结构更新按钮（GT5U 标准）</li>
-     * </ol>
+     * 包含：导入猫猫币按钮、弹出所有猫猫币按钮、电源开关、结构更新。
      *
      * @return IO 列 Widget
      */
@@ -596,7 +1065,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         powerSwitch.pos(4, 48);
         ioColumn.child(powerSwitch);
 
-        // 结构更新按钮（GT5U 标准方法，返回 IWidget 实际为 ToggleButton）
+        // 结构更新按钮（GT5U 标准方法）
         IWidget structureUpdate = createStructureUpdateButton(null);
         if (structureUpdate != null) {
             ((ToggleButton) structureUpdate).pos(4, 70);
@@ -606,217 +1075,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         return ioColumn;
     }
 
-    // ==================== 交易列表构建 ====================
-
-    /**
-     * 构建交易列表内容
-     * <p>
-     * 由 DynamicSyncHandler.widgetProvider 调用，在客户端执行。
-     * 根据当前标签页、搜索文本和排序模式，
-     * 从交易数据库获取交易数据并构建交易图标网格。
-     * <p>
-     * 每个交易图标使用 {@link NekoTradeDisplayWidgetV2}，
-     * 配置 BQ 锁定状态、可交易状态、冷却时间和交易请求同步值。
-     *
-     * @return 交易列表 Widget
-     */
-    private IWidget buildTradeListContent() {
-        try {
-            // 获取过滤和排序后的交易条目列表
-            List<TradeEntry> entries = getFilteredAndSortedTrades();
-
-            if (entries.isEmpty()) {
-                // 无交易时显示提示文字
-                return IKey.str(EnumChatFormatting.GRAY + "无可用交易")
-                    .asWidget()
-                    .fullWidth()
-                    .marginBottom(4);
-            }
-
-            // 构建交易图标网格
-            Flow container = Flow.column()
-                .coverChildren()
-                .childPadding(1);
-
-            int col = 0;
-            Flow row = Flow.row()
-                .coverChildren()
-                .childPadding(1);
-
-            for (TradeEntry entry : entries) {
-                // 创建交易显示 Widget
-                NekoTradeDisplayWidgetV2 widget = new NekoTradeDisplayWidgetV2(entry.group, entry.tradeIndex);
-                widget.size(ICON_SIZE, ICON_SIZE);
-
-                // 设置 BQ 锁定状态
-                boolean bqLocked = bqLockStatusMap.getOrDefault(entry.group.getId(), false);
-                widget.setBqLocked(bqLocked);
-
-                // 设置冷却时间
-                String cdKey = entry.group.getId()
-                    .toString() + ":" + entry.tradeIndex;
-                long cooldown = cooldownStatusMap.getOrDefault(cdKey, 0L);
-                widget.setCooldownRemaining(cooldown);
-
-                // 设置可交易状态（非锁定且非冷却中）
-                widget.setTradeable(!bqLocked && cooldown <= 0);
-
-                // 设置交易请求同步值（Shift+Click 时发送）
-                widget.setTradeRequestSync(tradeRequestSync);
-
-                row.child(widget);
-                col++;
-
-                // 每 TRADE_GRID_COLUMNS 个换行
-                if (col >= TRADE_GRID_COLUMNS) {
-                    container.child(row);
-                    row = Flow.row()
-                        .coverChildren()
-                        .childPadding(1);
-                    col = 0;
-                }
-            }
-
-            // 添加最后一行（如果有剩余）
-            if (col > 0) {
-                container.child(row);
-            }
-
-            return container;
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] buildTradeListContent() 异常!", t);
-            return IKey.str(EnumChatFormatting.RED + "交易列表加载失败")
-                .asWidget()
-                .fullWidth();
-        }
-    }
-
-    /**
-     * 获取过滤和排序后的交易条目列表
-     * <p>
-     * 流程：
-     * <ol>
-     * <li>从交易数据库获取当前标签页的所有交易组</li>
-     * <li>遍历每个交易组的所有交易</li>
-     * <li>按搜索文本过滤（匹配产物名、需求物品名、货币名称）</li>
-     * <li>按排序模式排序（orderId 或产物名）</li>
-     * </ol>
-     *
-     * @return 过滤和排序后的交易条目列表
-     */
-    private List<TradeEntry> getFilteredAndSortedTrades() {
-        List<TradeEntry> entries = new ArrayList<>();
-
-        // 获取当前标签页的交易组列表
-        List<NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getTradeGroupsByTab(currentTabId);
-
-        for (NekoTradeGroup group : groups) {
-            List<NekoTrade> trades = group.getTrades();
-            for (int i = 0; i < trades.size(); i++) {
-                NekoTrade trade = trades.get(i);
-
-                // 搜索过滤
-                if (!searchText.isEmpty() && !matchesSearch(trade, searchText)) {
-                    continue;
-                }
-
-                entries.add(new TradeEntry(group, i));
-            }
-        }
-
-        // 排序
-        if (sortMode == 0) {
-            // 按 orderId 排序（BQ 锁定排在后面）
-            entries.sort(Comparator.comparingInt(e -> e.group.getOrderId()));
-        } else {
-            // 按产物名排序
-            entries.sort((a, b) -> {
-                String nameA = getTradeDisplayName(a);
-                String nameB = getTradeDisplayName(b);
-                return nameA.compareToIgnoreCase(nameB);
-            });
-        }
-
-        return entries;
-    }
-
-    /**
-     * 检查交易是否匹配搜索文本
-     * <p>
-     * 匹配范围：产物名、需求物品名、猫猫币名称
-     *
-     * @param trade      交易
-     * @param searchText 搜索文本（已转为小写）
-     * @return 匹配返回 true
-     */
-    private boolean matchesSearch(NekoTrade trade, String searchText) {
-        String searchLower = searchText.toLowerCase();
-
-        // 检查产物名
-        for (NekoBigItemStack toItem : trade.getToItems()) {
-            if (toItem.getBaseStack() != null) {
-                String name = toItem.getBaseStack()
-                    .getDisplayName();
-                if (name != null && name.toLowerCase()
-                    .contains(searchLower)) {
-                    return true;
-                }
-            }
-        }
-
-        // 检查需求物品名
-        for (NekoBigItemStack fromItem : trade.getFromItems()) {
-            if (fromItem.getBaseStack() != null) {
-                String name = fromItem.getBaseStack()
-                    .getDisplayName();
-                if (name != null && name.toLowerCase()
-                    .contains(searchLower)) {
-                    return true;
-                }
-            }
-        }
-
-        // 检查猫猫币名称
-        if (trade.hasCurrencyCost()) {
-            String currencyName = NekoCurrencyRegistrar.getDisplayName(trade.getCurrencyId());
-            if (currencyName != null && currencyName.toLowerCase()
-                .contains(searchLower)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * 获取交易的显示名称（用于排序）
-     *
-     * @param entry 交易条目
-     * @return 显示名称，无法获取时返回空字符串
-     */
-    private String getTradeDisplayName(TradeEntry entry) {
-        try {
-            List<NekoTrade> trades = entry.group.getTrades();
-            if (entry.tradeIndex >= 0 && entry.tradeIndex < trades.size()) {
-                NekoTrade trade = trades.get(entry.tradeIndex);
-                NekoBigItemStack displayItem = trade.getDisplayItem();
-                if (displayItem != null && displayItem.getBaseStack() != null) {
-                    return displayItem.getBaseStack()
-                        .getDisplayName();
-                }
-            }
-        } catch (Exception ignored) {}
-        return "";
-    }
-
-    // ==================== 猫猫币操作 ====================
+    // ==================== 猫猫币操作（保留原有逻辑） ====================
 
     /**
      * 弹出单种猫猫币
      * <p>
-     * 从钱包中取出指定货币的全部余额，
-     * 以 64 个为一组生成物品栈，在机器旁弹出。
-     * 弹出后重置钱包余额为 0。
+     * 从钱包中取出指定货币的全部余额，在机器旁弹出。
      *
      * @param currencyId 货币 ID
      * @param playerId   玩家 UUID
@@ -853,8 +1117,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
 
     /**
      * 弹出所有猫猫币
-     * <p>
-     * 遍历所有猫猫币类型，依次弹出每种货币的全部余额。
      *
      * @param playerId 玩家 UUID
      */
@@ -893,11 +1155,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     /**
      * 导入猫猫币
      * <p>
-     * 扫描所有输入总线（mInputBusses）中的物品，
-     * 将猫猫币物品导入到玩家钱包，并从总线中移除。
-     * <p>
-     * V2 使用总线 I/O 系统（而非直接 GUI 输入槽），
-     * 玩家将猫猫币放入输入总线后，点击"导入"按钮即可将其存入钱包。
+     * 扫描所有输入总线中的物品，将猫猫币导入到玩家钱包。
      *
      * @param playerId 玩家 UUID
      */
@@ -913,7 +1171,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
                 return;
             }
 
-            // 遍历所有输入总线，查找猫猫币物品
             int totalImported = 0;
             for (MTEHatchInputBus bus : multiblock.mInputBusses) {
                 if (bus == null || bus.getBaseMetaTileEntity() == null) {
@@ -926,10 +1183,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
                     }
                     String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(inv[s]);
                     if (currencyId != null) {
-                        // 是猫猫币，导入到钱包
                         wallet.addCount(currencyId, inv[s].stackSize);
                         totalImported += inv[s].stackSize;
-                        inv[s] = null; // 从总线中移除
+                        inv[s] = null;
                     }
                 }
             }
@@ -950,9 +1206,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
 
     /**
      * 在机器旁弹出物品
-     * <p>
-     * 创建 EntityItem 并在机器位置生成，
-     * 给予随机速度使物品向四周散开。
      *
      * @param stack 要弹出的物品栈
      */
@@ -972,14 +1225,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         world.spawnEntityInWorld(entity);
     }
 
-    // ==================== 交易请求处理 ====================
+    // ==================== 交易请求处理（保留原有逻辑） ====================
 
     /**
      * 处理交易请求
      * <p>
      * 解析 "groupId:tradeIndex" 格式的请求字符串，
-     * 调用机器的 processTrade 方法执行交易，
-     * 根据结果更新交易结果消息。
+     * 调用机器的 processTrade 方法执行交易。
      *
      * @param request  请求字符串 "groupId:tradeIndex"
      * @param playerId 玩家 UUID
@@ -991,7 +1243,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
                 return;
             }
 
-            // 解析请求字符串
             String[] parts = request.split(":");
             if (parts.length != 2) {
                 tradeResultMessage = "交易请求格式错误";
@@ -1008,10 +1259,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
                 return;
             }
 
-            // 调用机器执行交易
             NekoTradeResult result = multiblock.processTrade(playerId, groupId, tradeIndex);
 
-            // 根据结果设置消息
             if (result.isSuccess()) {
                 tradeResultMessage = EnumChatFormatting.GREEN + "交易成功!";
             } else {
@@ -1020,6 +1269,37 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[NekoVMV2] processTradeRequest 异常!", t);
             tradeResultMessage = "交易处理异常";
+        }
+    }
+
+    /**
+     * 处理收藏切换请求
+     * <p>
+     * 解析 "groupId:tradeIndex" 格式的请求字符串，
+     * 调用 {@link NekoFavouritesTracker#toggleFavourite} 切换收藏状态。
+     *
+     * @param request  请求字符串 "groupId:tradeIndex"
+     * @param playerId 玩家 UUID
+     */
+    private void processFavouriteToggle(String request, UUID playerId) {
+        try {
+            if (playerId == null) return;
+
+            String[] parts = request.split(":");
+            if (parts.length != 2) return;
+
+            UUID groupId;
+            int tradeIndex;
+            try {
+                groupId = UUID.fromString(parts[0]);
+                tradeIndex = Integer.parseInt(parts[1]);
+            } catch (Exception e) {
+                return;
+            }
+
+            NekoFavouritesTracker.INSTANCE.toggleFavourite(playerId, groupId, tradeIndex);
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[NekoVMV2] processFavouriteToggle 异常!", t);
         }
     }
 
@@ -1054,14 +1334,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         }
     }
 
-    // ==================== BQ 锁定状态同步 ====================
+    // ==================== BQ 锁定状态同步（保留原有逻辑，改为同步所有交易组） ====================
 
     /**
      * 构建 BQ 锁定状态字符串（服务端）
      * <p>
-     * 遍历当前标签页的所有交易组，
-     * 检查每个组的前置条件是否满足，
-     * 构建 "groupId:true/false,..." 格式的字符串。
+     * 遍历所有交易组，检查前置条件是否满足。
      *
      * @param playerId 玩家 UUID
      * @return BQ 锁定状态字符串
@@ -1069,8 +1347,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     private String buildBqLockStatusString(UUID playerId) {
         if (playerId == null) return "";
         StringBuilder sb = new StringBuilder();
-        List<NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getTradeGroupsByTab(currentTabId);
-        for (NekoTradeGroup group : groups) {
+        for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
+            .values()) {
             if (sb.length() > 0) sb.append(",");
             sb.append(
                 group.getId()
@@ -1083,9 +1361,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
 
     /**
      * 解析 BQ 锁定状态字符串（客户端）
-     * <p>
-     * 将 "groupId:true/false,..." 解析为 bqLockStatusMap。
-     * true 表示锁定（前置条件未满足）。
      *
      * @param status BQ 锁定状态字符串
      */
@@ -1105,14 +1380,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         }
     }
 
-    // ==================== 冷却状态同步 ====================
+    // ==================== 冷却状态同步（保留原有逻辑，改为同步所有交易组） ====================
 
     /**
      * 构建冷却状态字符串（服务端）
      * <p>
-     * 遍历当前标签页的所有交易组，
-     * 获取每个组内每笔交易的冷却剩余时间，
-     * 构建 "groupId:tradeIndex:seconds,..." 格式的字符串。
+     * 遍历所有交易组，获取冷却剩余时间。
      *
      * @param playerId 玩家 UUID
      * @return 冷却状态字符串
@@ -1120,16 +1393,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
     private String buildCooldownStatusString(UUID playerId) {
         if (playerId == null) return "";
         StringBuilder sb = new StringBuilder();
-        List<NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getTradeGroupsByTab(currentTabId);
-        for (NekoTradeGroup group : groups) {
+        for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
+            .values()) {
             int cooldown = group.getCooldown();
-            if (cooldown <= 0) continue; // 无冷却的交易组跳过
+            if (cooldown <= 0) continue;
 
             NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
             long remaining = history.getCooldownRemaining(cooldown);
 
             if (remaining > 0) {
-                // 为组内每笔交易记录冷却（组级别冷却，所有交易共享）
                 for (int i = 0; i < group.getTrades()
                     .size(); i++) {
                     if (sb.length() > 0) sb.append(",");
@@ -1148,8 +1420,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
 
     /**
      * 解析冷却状态字符串（客户端）
-     * <p>
-     * 将 "groupId:tradeIndex:seconds,..." 解析为 cooldownStatusMap。
      *
      * @param status 冷却状态字符串
      */
@@ -1169,144 +1439,54 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2> {
         }
     }
 
-    // ==================== BGM 播放 ====================
-
-    /**
-     * 启动 BGM
-     * <p>
-     * 使用 MC 原生音频系统播放猫猫售货机 BGM，
-     * 独立于 VM 的音乐管理器。
-     * 防止叠加播放：先停止已有 BGM 再播放新的。
-     */
-    private void startBgm() {
-        try {
-            Minecraft mc = Minecraft.getMinecraft();
-            if (mc == null || mc.getSoundHandler() == null) return;
-
-            // 停止已有 BGM（防止叠加）
-            if (currentBgmSound != null) {
-                mc.getSoundHandler()
-                    .stopSound(currentBgmSound);
-                currentBgmSound = null;
-            }
-
-            // 播放新 BGM
-            currentBgmSound = PositionedSoundRecord.func_147673_a(NEKO_BGM);
-            mc.getSoundHandler()
-                .playSound(currentBgmSound);
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.warn("[NekoVMV2] 启动 BGM 失败: {}", t.getMessage());
-        }
-    }
-
-    /**
-     * 停止 BGM
-     * <p>
-     * 停止当前正在播放的 BGM，清理引用。
-     */
-    private void stopBgm() {
-        try {
-            if (currentBgmSound != null) {
-                Minecraft mc = Minecraft.getMinecraft();
-                if (mc != null && mc.getSoundHandler() != null) {
-                    mc.getSoundHandler()
-                        .stopSound(currentBgmSound);
-                }
-                currentBgmSound = null;
-            }
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.warn("[NekoVMV2] 停止 BGM 失败: {}", t.getMessage());
-        }
-    }
-
     // ==================== 辅助方法 ====================
 
     /**
-     * 获取玩家 UUID
-     * <p>
-     * 从 guiData 获取打开 GUI 的玩家 UUID。
+     * 获取交易分类的图标 ItemStack
      *
-     * @return 玩家 UUID，无法获取时返回 null
+     * @param category 交易分类
+     * @return 图标 ItemStack，无图标时返回 null
      */
-    private UUID getPlayerId() {
-        if (guiData == null) return null;
-        try {
-            EntityPlayer player = guiData.getPlayer();
-            return player != null ? player.getUniqueID() : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * 获取标签页名称
-     * <p>
-     * 硬编码标签页名称，不依赖 NekoPageRegistry（避免 VM 依赖）。
-     * <ul>
-     * <li>Tab 1: 猫猫币</li>
-     * <li>Tab 2: 闪烁猫猫币</li>
-     * <li>Tab 3: 其他</li>
-     * <li>Tab 4+: 自定义 #id</li>
-     * </ul>
-     *
-     * @param tabId 标签页 ID
-     * @return 标签页名称
-     */
-    private String getTabName(int tabId) {
-        switch (tabId) {
-            case 1:
-                return "猫猫币";
-            case 2:
-                return "闪烁猫猫币";
-            case 3:
-                return "其他";
-            default:
-                return "自定义 #" + tabId;
-        }
-    }
-
-    /**
-     * 获取标签页图标
-     * <p>
-     * 硬编码标签页图标，不依赖 NekoPageRegistry（避免 VM 依赖）。
-     * <ul>
-     * <li>Tab 1: 猫猫币物品</li>
-     * <li>Tab 2: 闪烁猫猫币物品</li>
-     * <li>Tab 3+: null（显示数字）</li>
-     * </ul>
-     *
-     * @param tabId 标签页 ID
-     * @return 标签页图标 ItemStack，无图标时返回 null
-     */
-    private ItemStack getTabIcon(int tabId) {
-        switch (tabId) {
-            case 1:
+    private ItemStack getCategoryIcon(NekoTradeCategory category) {
+        switch (category) {
+            case FAVOURITES:
+                // 收藏分类使用金之星图标（暂用 NekoGuiTextures.FAVOURITE_SPRITE，此处返回 null 使用默认图标）
+                return null;
+            case ALL:
+                return null;
+            case NEKO:
                 return NekoCurrencyRegistrar.getItemStack(NekoCurrencyRegistrar.NEKO_ID, 1);
-            case 2:
+            case SHIMMERING_NEKO:
                 return NekoCurrencyRegistrar.getItemStack(NekoCurrencyRegistrar.SHIMMERING_NEKO_ID, 1);
             default:
                 return null;
         }
     }
 
-    // ==================== 内部类 ====================
-
     /**
-     * 交易条目
-     * <p>
-     * 封装交易组引用和交易在组内的索引，
-     * 用于交易列表的过滤、排序和 Widget 构建。
+     * 获取交易分类的显示名称
+     *
+     * @param category 交易分类
+     * @return 显示名称
      */
-    private static class TradeEntry {
-
-        /** 关联的交易组 */
-        final NekoTradeGroup group;
-        /** 交易在组内的索引（0-based） */
-        final int tradeIndex;
-
-        TradeEntry(NekoTradeGroup group, int tradeIndex) {
-            this.group = group;
-            this.tradeIndex = tradeIndex;
+    private String getCategoryName(NekoTradeCategory category) {
+        switch (category) {
+            case FAVOURITES:
+                return "收藏";
+            case ALL:
+                return "全部";
+            case NEKO:
+                return "猫猫币";
+            case SHIMMERING_NEKO:
+                return "闪烁猫猫币";
+            case MAGIC:
+                return "魔法";
+            case MISC:
+                return "杂项";
+            case UNKNOWN:
+                return "未知";
+            default:
+                return category.getKey();
         }
     }
 }

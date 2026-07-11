@@ -14,6 +14,8 @@ public enum NekoTradeCategory {
     UNKNOWN("unknown", "gtit.category.unknown"),
     /** 全部分类 */
     ALL("all", "gtit.category.all"),
+    /** 收藏分类（虚拟分类，包含所有被收藏的交易） */
+    FAVOURITES("favourites", "gtit.category.favourites"),
     /** 猫猫币交易 */
     NEKO("neko", "gtit.category.neko"),
     /** 闪烁猫猫币交易 */

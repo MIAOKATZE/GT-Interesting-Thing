@@ -344,6 +344,10 @@ public class CommonProxy {
                 // 负责持久化玩家交易历史到 <world>/gtit_neko_histories/<player_uuid>.dat
                 com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.init(server.getEntityWorld());
 
+                // 初始化 V2 收藏追踪器（需要 World 对象）
+                // 负责持久化玩家收藏到 <world>/gtit_neko_favourites/<player_uuid>.dat
+                com.miaokatze.gtit.trade.v2.NekoFavouritesTracker.INSTANCE.init(server.getEntityWorld());
+
                 // === v1.6.0 骨架：各模块 Manager 初始化 ===
                 // TODO: v1.6.3~v1.6.5 启用
                 try {

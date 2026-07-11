@@ -12,8 +12,8 @@ import net.minecraft.client.audio.SoundManager;
 import net.minecraft.client.audio.SoundPoolEntry;
 import net.minecraft.util.ResourceLocation;
 
-import com.cubefury.vendingmachine.VMConfig;
-import com.cubefury.vendingmachine.util.VMMusicManager;
+import com.miaokatze.gtit.common.machine.v2.NekoVMGuiV2;
+import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -276,9 +276,7 @@ public class NekoMusicEventHandler {
             return;
         }
 
-        // 停止 VM 原版 BGM（防止叠加）
-        VMMusicManager.stopVendingMachineMusic();
-
+        // V2 不需要停止 VM 原版 BGM（V2 独立于 VM 运行）
         // 停止已有猫猫 BGM（防止叠加）
         if (this.currentSound != null) {
             GTInterestingThing.LOG.info("[NEKO] handleGuiOpened: 停止已有猫猫 BGM（防叠加）");
@@ -323,7 +321,8 @@ public class NekoMusicEventHandler {
         if (mc.thePlayer == null) return;
 
         // 安全检查：如果 GUI 已关闭但 BGM 还在播放且没有在淡出，触发淡出
-        boolean isOpen = NekoVendingMachineGui.isNekoGuiOpen;
+        // 同时检查 V1 (NekoVendingMachineGui) 和 V2 (NekoVMGuiV2) 的 GUI 状态
+        boolean isOpen = NekoVendingMachineGui.isNekoGuiOpen || NekoVMGuiV2.isV2GuiOpen;
         if (!isOpen && this.currentSound != null && !this.fadingOut) {
             handleGuiClosed();
         }
@@ -333,7 +332,7 @@ public class NekoMusicEventHandler {
             updateFade();
         } else if (this.currentSound != null && this.soundSourceName != null) {
             // BGM 正在播放但不在淡入淡出中，持续应用音量（响应用户音量调节）
-            float effectiveVolume = this.currentVolume * VMConfig.music.music_volume;
+            float effectiveVolume = this.currentVolume * NekoMusicConfig.music_volume;
             setSoundVolume(effectiveVolume);
         }
     }
@@ -396,7 +395,7 @@ public class NekoMusicEventHandler {
         }
 
         // 应用音量（考虑用户配置的音量倍率）
-        float effectiveVolume = this.currentVolume * VMConfig.music.music_volume;
+        float effectiveVolume = this.currentVolume * NekoMusicConfig.music_volume;
         setSoundVolume(effectiveVolume);
     }
 

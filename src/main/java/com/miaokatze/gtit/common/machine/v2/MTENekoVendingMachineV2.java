@@ -21,6 +21,8 @@ import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import gregtech.api.GregTechAPI;
 import gregtech.api.interfaces.IIconContainer;
 import gregtech.api.interfaces.ITexture;
@@ -30,6 +32,7 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEEnhancedMultiBlockBase;
 import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
 import gregtech.api.metatileentity.implementations.MTEHatchOutputBus;
+import gregtech.api.render.ISBRInventoryContext;
 import gregtech.api.render.RenderOverlay;
 import gregtech.api.render.TextureFactory;
 import gregtech.api.structure.error.StructureError;
@@ -258,6 +261,32 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @Override
     public ITexture getCasingTexture() {
         return FACING_SIDE[0];
+    }
+
+    /**
+     * 物品栏渲染覆盖
+     * <p>
+     * 默认实现会调用 getTexture(igte, side, WEST, -1, true, false)，
+     * 由于 aActive=true 且 side==facing(WEST)，会返回 FACING_ACTIVE（含发光层）。
+     * 发光层在物品栏渲染上下文中可能因 OpenGL 状态不匹配导致正面材质不可见。
+     * <p>
+     * 此覆盖方法直接使用 FACING_FRONT（无发光层）渲染正面，FACING_SIDE 渲染其他面，
+     * 确保物品栏中正确显示猫猫机正面材质。
+     *
+     * @param ctx 库存渲染上下文
+     * @return true 表示已自定义渲染，跳过默认的 renderNormalInventoryMetaTileEntity
+     */
+    @Override
+    @SideOnly(Side.CLIENT)
+    public boolean renderInInventory(ISBRInventoryContext ctx) {
+        // 物品栏中正面朝向 WEST（左面），使用非激活正面材质（无发光层）
+        ctx.renderNegativeYFacing(FACING_SIDE); // DOWN
+        ctx.renderPositiveYFacing(FACING_SIDE); // UP
+        ctx.renderNegativeZFacing(FACING_SIDE); // NORTH
+        ctx.renderPositiveZFacing(FACING_SIDE); // SOUTH
+        ctx.renderNegativeXFacing(FACING_FRONT); // WEST（物品栏中的正面）
+        ctx.renderPositiveXFacing(FACING_SIDE); // EAST
+        return true;
     }
 
     // === Tooltip ===
