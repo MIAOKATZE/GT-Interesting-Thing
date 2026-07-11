@@ -1,7 +1,5 @@
 package com.miaokatze.gtit.common.machine.v2;
 
-import static com.gtnewhorizon.structurelib.structure.StructureUtility.onElementPass;
-import static gregtech.api.enums.HatchElement.*;
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
 import java.util.ArrayList;
@@ -12,33 +10,31 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.ForgeDirection;
 
+import com.cleanroommc.modularui.utils.item.ItemStackHandler;
+import com.cubefury.vendingmachine.blocks.MTEVendingUplinkHatch;
+import com.cubefury.vendingmachine.blocks.VendingMachineBlocks;
 import com.gtnewhorizon.structurelib.StructureLibAPI;
 import com.gtnewhorizon.structurelib.alignment.IAlignmentProvider;
 import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructable;
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
-import com.gtnewhorizon.structurelib.structure.StructureUtility;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
-import gregtech.api.GregTechAPI;
 import gregtech.api.interfaces.IIconContainer;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.ICasingTextureProvider;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEEnhancedMultiBlockBase;
-import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
-import gregtech.api.metatileentity.implementations.MTEHatchOutputBus;
 import gregtech.api.render.ISBRInventoryContext;
 import gregtech.api.render.RenderOverlay;
 import gregtech.api.render.TextureFactory;
 import gregtech.api.structure.error.StructureError;
-import gregtech.api.util.GTUtility;
 import gregtech.api.util.MultiblockTooltipBuilder;
 
 /**
@@ -53,7 +49,9 @@ import gregtech.api.util.MultiblockTooltipBuilder;
  * <li>下层：c~（左外壳 + 右控制器）</li>
  * </ul>
  * <p>
- * v1.6.2 功能填充：完整实现交易逻辑、材质渲染、覆盖层渲染和 GUI 接入。
+ * 本版本复刻 V1 的槽机制：使用内置的 {@link ItemStackHandler} 分别作为输入槽
+ * ({@link #inputItems}) 和输出槽 ({@link #outputItems})，并可选连接一个
+ * {@link MTEVendingUplinkHatch} 用于 ME 网络交互。
  */
 @IMetaTileEntity.SkipGenerateDescription
 public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVendingMachineV2>
@@ -67,32 +65,25 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * StructureLib shape 格式：外层数组=深度(前后), 内层数组=高度(上到下), 字符=宽度(左到右)
      * <ul>
-     * <li>{@code c}: 机器外壳或仓室位置（支持钨钢方块及各类仓室）</li>
+     * <li>{@code c}: 机器外壳或 ME Vending Uplink Hatch 位置</li>
      * <li>{@code ~}: 控制器位置（位于下层右侧）</li>
      * </ul>
-     * 使用 {@code buildHatchAdder} 模式（与 MTEMultiTestMachine 一致），
-     * 支持 InputHatch/OutputHatch/InputBus/OutputBus/Maintenance/Energy 仓室，
-     * 非仓室位置检查是否为钨钢机器方块（GregTechAPI.sBlockCasings4:0）。
+     * <p>
+     * 使用 {@link gregtech.api.util.HatchElementBuilder#hatchClass} 限定只接受
+     * {@link MTEVendingUplinkHatch}，使 NEI 多方块结构预览只显示 Uplink Hatch
+     * 物品候选，不再误显示通用 Input Bus / Input Hatch。普通位置仍可放置任意
+     * {@code VendingMachineBlocks.casingBlock} 作为外壳。
      */
     private static final IStructureDefinition<MTENekoVendingMachineV2> NEKO_STRUCTURE_DEFINITION = IStructureDefinition
         .<MTENekoVendingMachineV2>builder()
         .addShape(STRUCTURE_PIECE_MAIN, new String[][] { { "cc", "c~" } })
         .addElement(
             'c',
-            buildHatchAdder(MTENekoVendingMachineV2.class)
-                // 声明该位置至少可以是以下仓室之一，或者是普通的外壳方块
-                .atLeast(InputHatch, OutputHatch, InputBus, OutputBus, Maintenance, Energy)
-                // 指定将识别到的仓室添加到机器列表的方法引用（继承自 MTEMultiBlockBase）
-                .adder(MTENekoVendingMachineV2::addToMachineList)
-                // 在游戏内使用软锤查看结构时，该位置的提示点编号
+            buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
+                .hatchClass(MTEVendingUplinkHatch.class)
+                .casingIndex(VendingMachineBlocks.casingBlock.getTextureIndex(0))
                 .hint(1)
-                // 设置外壳方块的材质纹理索引（钨钢机器方块）
-                .casingIndex(GTUtility.getCasingTextureIndex(GregTechAPI.sBlockCasings4, 0))
-                // 如果不是仓室，则检查是否为指定的外壳方块，并在匹配成功时触发 onCasingAdded 计数
-                .buildAndChain(
-                    onElementPass(
-                        MTENekoVendingMachineV2::onCasingAdded,
-                        StructureUtility.ofBlock(GregTechAPI.sBlockCasings4, 0))))
+                .buildAndChain(VendingMachineBlocks.casingBlock, 0))
         .build();
 
     // === 材质常量 ===
@@ -130,8 +121,22 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /** 覆盖层渲染 ticket 列表，用于管理和清除已注册的覆盖层 */
     protected final List<RenderOverlay.OverlayTicket> overlayTickets = new ArrayList<>();
 
-    /** 记录结构中成功匹配的外壳数量，用于完整性校验（2x2x1 结构除去控制器后需至少 3 个外壳） */
-    private int mCasingAmount = 0;
+    // === 内置输入/输出槽 ===
+
+    /** 输入槽数量，与 V1 内置输入槽一致 */
+    public static final int INPUT_SLOTS = 8;
+
+    /** 输出槽数量，与 V1 内置输出槽一致 */
+    public static final int OUTPUT_SLOTS = 100;
+
+    /** 内置输入物品槽 */
+    public final ItemStackHandler inputItems = new ItemStackHandler(INPUT_SLOTS);
+
+    /** 内置输出物品槽 */
+    public final ItemStackHandler outputItems = new ItemStackHandler(OUTPUT_SLOTS);
+
+    /** 可选的 ME Vending Uplink Hatch，结构检查时设置，上限 1 个 */
+    private MTEVendingUplinkHatch uplinkHatch = null;
 
     // === 构造器 ===
 
@@ -188,20 +193,53 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 结构完整性检测方法
      * <p>
-     * 重置外壳计数器并调用 StructureLib 进行空间扫描。
-     * 只有当外壳数量达标（>= 3）时，机器才会被视为"已成型"。
+     * 每次检查前重置 uplinkHatch 引用，然后调用 StructureLib 进行空间扫描。
+     * <p>
+     * 完全模仿 V1 的实现思路：调用带 {@code errors} 列表的 5 参数版本
+     * {@code checkPiece(piece, x, y, z, errors)}，让 StructureChecker 自动把
+     * 具体的错误位置/描述写入 errors。基类 {@link gregtech.api.metatileentity.implementations.MTEMultiBlockBase#checkStructure}
+     * 会根据 errors 是否为空来设置 {@code mMachine}，子类无需再手动赋值或塞默认错误。
+     * <p>
+     * 旧实现调用 4 参数版（不传 errors），导致具体错误信息丢失，且手动塞入
+     * {@code UNKNOWN_STRUCTURE_ERROR} 会覆盖 StructureChecker 本应生成的定位信息。
      *
      * @param aBaseMetaTileEntity 机器所在的 TileEntity
      * @param aStack              玩家手持的物品（可用于动态结构调整，此处未使用）
-     * @param errors              结构错误列表，检测失败时添加错误信息
+     * @param errors              结构错误列表，由 StructureChecker 自动填充
      */
     @Override
     public void checkMachine(IGregTechTileEntity aBaseMetaTileEntity, ItemStack aStack, List<StructureError> errors) {
-        mCasingAmount = 0;
-        boolean structureValid = checkPiece(STRUCTURE_PIECE_MAIN, 1, 1, 0) && mCasingAmount >= 3;
-        if (!structureValid && errors.isEmpty()) {
-            errors.add(gregtech.api.structure.error.StructureErrorRegistry.UNKNOWN_STRUCTURE_ERROR);
+        uplinkHatch = null;
+        // 调用带 errors 列表的 5 参数版本，由 StructureChecker 自动写入错误
+        checkPiece(STRUCTURE_PIECE_MAIN, 1, 1, 0, errors);
+    }
+
+    /**
+     * Uplink Hatch 添加器
+     * <p>
+     * 复刻 V1 的 {@code addUplinkHatchNeko} 逻辑。每个猫猫机最多连接 1 个
+     * {@link MTEVendingUplinkHatch}，可替换任意 casing 方块。
+     *
+     * @param aBaseMetaTileEntity 待检查的 TileEntity
+     * @param aBaseCasingIndex    外壳材质索引
+     * @return 成功添加返回 true，否则 false
+     */
+    private boolean addUplinkHatch(IGregTechTileEntity aBaseMetaTileEntity, int aBaseCasingIndex) {
+        if (uplinkHatch != null) {
+            return false;
         }
+        if (aBaseMetaTileEntity == null) {
+            return false;
+        }
+        IMetaTileEntity aMetaTileEntity = aBaseMetaTileEntity.getMetaTileEntity();
+        if (aMetaTileEntity == null || !(aMetaTileEntity instanceof MTEVendingUplinkHatch)) {
+            return false;
+        }
+        MTEVendingUplinkHatch hatch = (MTEVendingUplinkHatch) aMetaTileEntity;
+        hatch.updateTexture(aBaseCasingIndex);
+        hatch.updateCraftingIcon(hatch.getMachineCraftingIcon());
+        uplinkHatch = hatch;
+        return true;
     }
 
     // === 多线程安全构造 ===
@@ -221,7 +259,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 检查交易是否可执行（不实际执行）
      * <p>
-     * 创建 {@link BusInputSlotAccessor} 适配器，委托
+     * 创建 {@link InternalInputSlotAccessor} 适配器，委托
      * {@link NekoTradeExecutor#checkTrade} 进行交易检查。
      *
      * @param playerId   玩家 UUID
@@ -230,14 +268,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * @return 交易结果（SUCCESS 或对应的失败状态）
      */
     public NekoTradeResult checkTrade(UUID playerId, UUID groupId, int tradeIndex) {
-        BusInputSlotAccessor accessor = new BusInputSlotAccessor();
-        return NekoTradeExecutor.INSTANCE.checkTrade(playerId, groupId, tradeIndex, accessor);
+        return NekoTradeExecutor.INSTANCE.checkTrade(playerId, groupId, tradeIndex, new InternalInputSlotAccessor());
     }
 
     /**
      * 执行交易
      * <p>
-     * 创建 {@link BusInputSlotAccessor} 和 {@link BusOutputSlotAccessor} 适配器，
+     * 创建 {@link InternalInputSlotAccessor} 和 {@link InternalOutputSlotAccessor} 适配器，
      * 委托 {@link NekoTradeExecutor#executeTrade} 执行交易。
      *
      * @param playerId   玩家 UUID
@@ -246,9 +283,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * @return 交易结果（SUCCESS 或对应的失败状态）
      */
     public NekoTradeResult processTrade(UUID playerId, UUID groupId, int tradeIndex) {
-        BusInputSlotAccessor inputAccessor = new BusInputSlotAccessor();
-        BusOutputSlotAccessor outputAccessor = new BusOutputSlotAccessor();
-        return NekoTradeExecutor.INSTANCE.executeTrade(playerId, groupId, tradeIndex, inputAccessor, outputAccessor);
+        return NekoTradeExecutor.INSTANCE.executeTrade(
+            playerId,
+            groupId,
+            tradeIndex,
+            new InternalInputSlotAccessor(),
+            new InternalOutputSlotAccessor());
     }
 
     // === ICasingTextureProvider ===
@@ -304,32 +344,29 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             .addInfo("喵~ 猫猫售货机V2，完全独立版！")
             .beginStructureBlock(2, 2, 1, false)
             .addController("Bottom Right")
-            .addOtherStructurePart("Input Bus", "Any casing, for trade inputs")
-            .addOtherStructurePart("Output Bus", "Any casing, for trade outputs")
+            .addOtherStructurePart("Vending Machine Casing", "Any casing block")
+            .addOtherStructurePart("ME Vending Uplink Hatch", "Optional, any casing")
             .toolTipFinisher();
-    }
-
-    // === 结构扫描回调 ===
-
-    /**
-     * 结构扫描回调：每当 StructureLib 匹配到一个外壳方块时调用
-     */
-    private void onCasingAdded() {
-        mCasingAmount++;
     }
 
     // === NBT 持久化 ===
 
     @Override
     public void saveNBTData(NBTTagCompound aNBT) {
-        // TODO: v1.6.2 如需持久化交易组绑定等状态可在此扩展
         super.saveNBTData(aNBT);
+        aNBT.setTag("inputItems", inputItems.serializeNBT());
+        aNBT.setTag("outputItems", outputItems.serializeNBT());
     }
 
     @Override
     public void loadNBTData(NBTTagCompound aNBT) {
-        // TODO: v1.6.2 如需持久化交易组绑定等状态可在此扩展
         super.loadNBTData(aNBT);
+        if (aNBT.hasKey("inputItems")) {
+            inputItems.deserializeNBT(aNBT.getCompoundTag("inputItems"));
+        }
+        if (aNBT.hasKey("outputItems")) {
+            outputItems.deserializeNBT(aNBT.getCompoundTag("outputItems"));
+        }
     }
 
     // === 材质 ===
@@ -550,167 +587,76 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     // === 输入/输出槽适配器 ===
 
     /**
-     * 输入总线槽位访问器
+     * 内置输入槽访问器
      * <p>
      * 实现 {@link NekoTradeExecutor.InputSlotAccessor} 接口，
-     * 将 GT5U 的 mInputBusses（输入总线列表）适配为交易执行器所需的输入槽抽象。
-     * <p>
-     * 工作原理：
-     * <ul>
-     * <li>getCopyOfInputs()：遍历所有输入总线的所有槽位，收集非空物品的副本，
-     * 同时记录每个物品来自哪个总线、哪个槽位（用于后续回写）</li>
-     * <li>setInputs()：按记录的映射关系，将扣减后的物品数组回写到对应的总线槽位。
-     * 如果某物品为 null，则清空对应槽位</li>
-     * </ul>
-     * 这种设计使得 NekoTradeExecutor 可以在不了解 GT5U 总线结构的情况下操作输入物品。
+     * 直接操作本机器的 {@link #inputItems}。
      */
-    private class BusInputSlotAccessor implements NekoTradeExecutor.InputSlotAccessor {
+    private class InternalInputSlotAccessor implements NekoTradeExecutor.InputSlotAccessor {
 
-        /** 记录每个收集的物品来自哪个 bus 的索引（与 getCopyOfInputs 返回的数组一一对应） */
-        private int[] busIndices;
-
-        /** 记录每个收集的物品来自哪个 slot 的索引（与 getCopyOfInputs 返回的数组一一对应） */
-        private int[] slotIndices;
-
-        /**
-         * 获取所有输入总线中非空槽位物品的副本
-         * <p>
-         * 遍历 mInputBusses 中的每个有效总线，收集其 mInventory 中所有非空槽位的物品副本。
-         * 同时记录 busIndex 和 slotIndex 映射，供 setInputs 回写使用。
-         *
-         * @return 物品数组副本
-         */
         @Override
         public ItemStack[] getCopyOfInputs() {
-            List<ItemStack> inputs = new ArrayList<>();
-            List<Integer> busIdx = new ArrayList<>();
-            List<Integer> slotIdx = new ArrayList<>();
-
-            // 遍历所有输入总线
-            for (int b = 0; b < mInputBusses.size(); b++) {
-                MTEHatchInputBus bus = mInputBusses.get(b);
-                // 跳过无效总线（已被移除或未初始化）
-                if (bus == null || bus.getBaseMetaTileEntity() == null) {
-                    continue;
-                }
-                // 遍历总线内的所有槽位
-                ItemStack[] inv = bus.mInventory;
-                for (int s = 0; s < inv.length; s++) {
-                    if (inv[s] != null) {
-                        inputs.add(inv[s].copy());
-                        busIdx.add(b);
-                        slotIdx.add(s);
-                    }
-                }
+            ItemStack[] inputs = new ItemStack[INPUT_SLOTS];
+            for (int i = 0; i < INPUT_SLOTS; i++) {
+                ItemStack stack = inputItems.getStackInSlot(i);
+                inputs[i] = stack == null ? null : stack.copy();
             }
-
-            // 将 List 转为基本类型数组，避免装箱开销
-            busIndices = new int[busIdx.size()];
-            slotIndices = new int[slotIdx.size()];
-            for (int i = 0; i < busIdx.size(); i++) {
-                busIndices[i] = busIdx.get(i);
-                slotIndices[i] = slotIdx.get(i);
-            }
-
-            return inputs.toArray(new ItemStack[0]);
+            return inputs;
         }
 
-        /**
-         * 将扣减后的物品数组回写到对应的输入总线槽位
-         * <p>
-         * 按 getCopyOfInputs 时记录的 busIndex/slotIndex 映射，
-         * 将修改后的物品写回原始槽位。如果 inputs[i] 为 null，则清空对应槽位。
-         *
-         * @param inputs 扣减后的物品数组（与 getCopyOfInputs 返回的数组一一对应）
-         */
         @Override
         public void setInputs(ItemStack[] inputs) {
-            // 如果未调用过 getCopyOfInputs，则无映射数据可回写
-            if (busIndices == null || slotIndices == null) {
-                return;
-            }
-            // 按映射关系回写每个槽位
-            for (int i = 0; i < inputs.length && i < busIndices.length; i++) {
-                int b = busIndices[i];
-                int s = slotIndices[i];
-                // 检查总线索引是否仍有效（总线可能在交易过程中被移除）
-                if (b < mInputBusses.size()) {
-                    MTEHatchInputBus bus = mInputBusses.get(b);
-                    if (bus != null) {
-                        // inputs[i] 为 null 表示该物品已被完全消耗，清空槽位
-                        bus.mInventory[s] = inputs[i];
-                    }
-                }
+            for (int i = 0; i < INPUT_SLOTS && i < inputs.length; i++) {
+                inputItems.setStackInSlot(i, inputs[i]);
             }
         }
     }
 
     /**
-     * 输出总线槽位访问器
+     * 内置输出槽访问器
      * <p>
      * 实现 {@link NekoTradeExecutor.OutputSlotAccessor} 接口，
-     * 将 GT5U 的 mOutputBusses（输出总线列表）适配为交易执行器所需的输出槽抽象。
-     * <p>
-     * 工作原理：
-     * <ul>
-     * <li>hasSpaceFor(stack)：遍历所有输出总线，使用 storePartial(stack, true) 模拟检查
-     * 是否有足够空间容纳指定物品。多个总线可分摊容纳</li>
-     * <li>insertItem(stack)：使用 addOutputPartial(stack) 将物品分发到输出总线。
-     * addOutputPartial 会尽可能弹出物品，优先填入已有同类物品的槽位</li>
-     * </ul>
+     * 直接操作本机器的 {@link #outputItems}。
      */
-    private class BusOutputSlotAccessor implements NekoTradeExecutor.OutputSlotAccessor {
+    private class InternalOutputSlotAccessor implements NekoTradeExecutor.OutputSlotAccessor {
 
-        /**
-         * 检查输出总线是否有空间容纳指定物品
-         * <p>
-         * 遍历所有有效的输出总线，使用 storePartial 的模拟模式（simulate=true）
-         * 逐步检查剩余物品是否能被全部容纳。多个总线可分摊空间。
-         * <p>
-         * 注意：storePartial 在 simulate 模式下不修改 mInventory，但会修改传入 stack
-         * 的 stackSize（逐步减少），因此传入剩余物品的副本。
-         *
-         * @param stack 待检查的物品栈
-         * @return 所有输出总线加起来有足够空间返回 true，否则 false
-         */
         @Override
         public boolean hasSpaceFor(ItemStack stack) {
-            if (stack == null) {
-                return true;
-            }
-            // 创建副本用于模拟检查（storePartial 会修改传入 stack 的 stackSize）
-            ItemStack remaining = stack.copy();
-            for (MTEHatchOutputBus bus : mOutputBusses) {
-                // 跳过无效总线
-                if (bus == null || bus.getBaseMetaTileEntity() == null) {
-                    continue;
-                }
-                // simulate=true：只检查不修改 mInventory，但会减少 remaining.stackSize
-                bus.storePartial(remaining, true);
-                // 如果剩余物品已全部能被容纳，返回 true
-                if (remaining.stackSize <= 0) {
+            if (stack == null) return true;
+            for (int i = 0; i < OUTPUT_SLOTS; i++) {
+                ItemStack existing = outputItems.getStackInSlot(i);
+                if (existing == null) return true;
+                if (existing.isItemEqual(stack) && ItemStack.areItemStackTagsEqual(existing, stack)
+                    && existing.stackSize + stack.stackSize <= existing.getMaxStackSize()) {
                     return true;
                 }
             }
-            return remaining.stackSize <= 0;
+            return false;
         }
 
-        /**
-         * 将物品插入输出总线
-         * <p>
-         * 使用 GT5U 的 addOutputPartial 方法将物品分发到 mOutputBusses。
-         * addOutputPartial 会尽可能弹出物品，优先填入已有同类物品的槽位，
-         * 无法容纳的部分会被丢弃（hasSpaceFor 已预检，正常情况下不会丢弃）。
-         *
-         * @param stack 待插入的物品栈
-         */
         @Override
         public void insertItem(ItemStack stack) {
-            if (stack == null) {
-                return;
+            if (stack == null) return;
+            for (int i = 0; i < OUTPUT_SLOTS; i++) {
+                ItemStack existing = outputItems.getStackInSlot(i);
+                if (existing != null && existing.isItemEqual(stack)
+                    && ItemStack.areItemStackTagsEqual(existing, stack)) {
+                    int space = existing.getMaxStackSize() - existing.stackSize;
+                    if (space > 0) {
+                        int toAdd = Math.min(space, stack.stackSize);
+                        existing.stackSize += toAdd;
+                        stack.stackSize -= toAdd;
+                        outputItems.setStackInSlot(i, existing);
+                        if (stack.stackSize <= 0) return;
+                    }
+                }
             }
-            // 使用 GT5U 的 addOutputPartial 分发物品到输出总线
-            addOutputPartial(stack);
+            for (int i = 0; i < OUTPUT_SLOTS; i++) {
+                if (outputItems.getStackInSlot(i) == null) {
+                    outputItems.setStackInSlot(i, stack.copy());
+                    return;
+                }
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.common.machine.v2;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -11,6 +12,9 @@ import java.util.UUID;
 
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
@@ -18,10 +22,12 @@ import net.minecraft.world.World;
 import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
@@ -31,10 +37,14 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.ToggleButton;
+import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
 import com.miaokatze.gtit.client.gui.NekoDisplayType;
+import com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.client.gui.NekoMusicTrack;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
@@ -60,8 +70,6 @@ import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
-import gregtech.api.metatileentity.implementations.MTEHatchInputBus;
-import gregtech.api.modularui2.GTGuiTextures;
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui;
 
 /**
@@ -101,7 +109,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 面板宽度 */
     private static final int PANEL_WIDTH = 178;
     /** 面板高度 */
-    private static final int PANEL_HEIGHT = 320;
+    private static final int PANEL_HEIGHT = 380;
     /** 每种显示模式预分配的 Widget 数量（与 VM 的 MAX_TRADES 一致） */
     private static final int MAX_TRADES = 300;
     /** TILE 模式每行的 Widget 数量 */
@@ -143,6 +151,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private BooleanSyncValue ejectAllCoinsSync;
     /** 导入猫猫币（C2S：按钮点击时发送） */
     private BooleanSyncValue importCoinsSync;
+    /** 货币显示开关（C2S） */
+    private BooleanSyncValue showCoinsSync;
+    /** 弹出物品（清空输出槽）开关（C2S） */
+    private BooleanSyncValue ejectItemsSync;
+    /** 是否显示猫猫币余额行 */
+    private boolean showCoins = true;
     /** 各货币余额同步值映射 */
     private final Map<String, IntSyncValue> coinAmountSyncs = new HashMap<>();
 
@@ -170,6 +184,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private boolean nekoEjectAllCoins = false;
     /** 导入猫猫币标志（服务端处理后重置为 false） */
     private boolean nekoImportCoins = false;
+    /** 弹出物品（清空输出槽）标志（服务端处理后重置为 false） */
+    private boolean nekoEjectItems = false;
     /** 弹出单种猫猫币标志映射 */
     private final Map<String, Boolean> nekoEjectSingleCoin = new HashMap<>();
     /** 交易结果消息（服务端设置，通过 tradeResultSync 同步到客户端） */
@@ -414,6 +430,21 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         importCoinsSync.allowC2S();
         syncManager.syncValue("nekoV2ImportCoins", importCoinsSync);
+
+        // --- 弹出物品（清空输出槽并掉落到机器旁，C2S）---
+        ejectItemsSync = new BooleanSyncValue(() -> nekoEjectItems, val -> {
+            nekoEjectItems = val;
+            if (val) {
+                doNekoEjectItems();
+            }
+        });
+        ejectItemsSync.allowC2S();
+        syncManager.syncValue("nekoV2EjectItems", ejectItemsSync);
+
+        // --- 货币显示开关（C2S）---
+        showCoinsSync = new BooleanSyncValue(() -> showCoins, val -> { showCoins = val; });
+        showCoinsSync.allowC2S();
+        syncManager.syncValue("nekoV2ShowCoins", showCoinsSync);
     }
 
     // ==================== PanelCallback 接口实现 ====================
@@ -703,20 +734,26 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     /**
-     * 创建 QoL 按钮列（BGM 切换、显示模式、排序模式、音量控制）
+     * 创建 QoL 按钮列（BGM/音量、显示模式、货币显示开关、排序模式）
      * <p>
-     * 位于标签列左侧，提供快速操作按钮。
+     * 位于标签列左侧，使用 2x2 Grid 布局提供快速操作按钮。
+     * <p>
+     * 按钮顺序完全模仿 V1（VM 的 MTEVendingMachineGui.createQolButtonColumn）：
+     * <ul>
+     * <li>左上：音量/BGM 按钮。单击切换 BGM 曲目播放/停止；Shift+点击打开音量控制面板。</li>
+     * <li>右上：显示模式切换按钮（TILE ↔ LIST）。</li>
+     * <li>左下：货币余额行显示/隐藏开关。</li>
+     * <li>右下：排序模式切换按钮（SMART ↔ ALPHABET）。</li>
+     * </ul>
+     * 同时在此方法内创建 {@link #volumePanel}，将本按钮作为 parent 传给
+     * {@link NekoVolumeControlGui#createPanel}，修复旧版传 null 导致 NPE 的问题。
      *
      * @return QoL 按钮列 Widget
      */
     private IWidget createQolButtonColumn() {
-        Flow qolColumn = Flow.column()
-            .left(-48)
-            .top(4)
-            .childPadding(1);
-
-        // --- BGM 切换按钮 ---
-        ButtonWidget<?> bgmButton = new ButtonWidget<>().size(14, 14)
+        // --- 音量/BGM 按钮（左上）---
+        // 单击切换 BGM 播放/停止；Shift+点击打开音量面板
+        final ButtonWidget<?> volumeButton = new ButtonWidget<>().size(14, 14)
             .overlay(new DynamicDrawable(() -> {
                 NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
                 boolean isPlaying = handler != null && handler.isPlaying();
@@ -724,12 +761,20 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     .size(14);
             }))
             .onMousePressed(btn -> {
-                NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                if (handler != null) {
-                    if (handler.isPlaying()) {
-                        handler.forceStopBGM();
-                    } else {
-                        handler.forceStartBGM();
+                if (Interactable.hasShiftDown()) {
+                    // Shift+点击：打开/关闭音量控制面板
+                    if (volumePanel != null) {
+                        volumePanel.togglePanel();
+                    }
+                } else {
+                    // 单击：切换 BGM 播放
+                    NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
+                    if (handler != null) {
+                        if (handler.isPlaying()) {
+                            handler.forceStopBGM();
+                        } else {
+                            handler.forceStartBGM();
+                        }
                     }
                 }
                 return true;
@@ -739,11 +784,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 boolean isPlaying = handler != null && handler.isPlaying();
                 t.addLine(IKey.str(isPlaying ? "BGM: 开启" : "BGM: 关闭"));
                 t.addLine(IKey.str("音量: " + NekoVolumeControlGui.getVolumeAsString() + "%"));
+                t.addLine(IKey.str("Shift+点击 打开音量控制"));
             });
-        bgmButton.tooltipAutoUpdate(true);
-        qolColumn.child(bgmButton);
+        volumeButton.tooltipAutoUpdate(true);
 
-        // --- 显示模式切换按钮 ---
+        // --- 显示模式切换按钮（右上）---
         ButtonWidget<?> displayModeButton = new ButtonWidget<>().size(14, 14)
             .overlay(
                 new DynamicDrawable(
@@ -759,9 +804,22 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 t.addLine(IKey.str("点击切换显示模式"));
             });
         displayModeButton.tooltipAutoUpdate(true);
-        qolColumn.child(displayModeButton);
 
-        // --- 排序模式切换按钮 ---
+        // --- 货币显示开关按钮（左下）---
+        ButtonWidget<?> showCoinsButton = new ButtonWidget<>().size(14, 14)
+            .overlay(
+                new DynamicDrawable(
+                    () -> (showCoins ? NekoGuiTextures.SHOW_COINS : NekoGuiTextures.HIDE_COINS).asIcon()
+                        .size(14)))
+            .onMousePressed(btn -> {
+                // 切换货币余额行的显示/隐藏
+                showCoinsSync.setValue(!showCoins);
+                return true;
+            })
+            .tooltipBuilder(t -> { t.addLine(IKey.str(showCoins ? "隐藏猫猫币" : "显示猫猫币")); });
+        showCoinsButton.tooltipAutoUpdate(true);
+
+        // --- 排序模式切换按钮（右下）---
         ButtonWidget<?> sortModeButton = new ButtonWidget<>().size(14, 14)
             .overlay(
                 new DynamicDrawable(
@@ -777,34 +835,33 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 t.addLine(IKey.str("点击切换排序模式"));
             });
         sortModeButton.tooltipAutoUpdate(true);
-        qolColumn.child(sortModeButton);
 
-        // --- 音量控制按钮 ---
-        ButtonWidget<?> volumeButton = new ButtonWidget<>().size(14, 14)
-            .overlay(
-                NekoGuiTextures.AUDIO_ON.asIcon()
-                    .size(14))
-            .onMousePressed(btn -> {
-                // 切换音量控制面板的打开/关闭状态
-                if (volumePanel != null) {
-                    volumePanel.togglePanel();
-                }
-                return true;
-            })
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str("音量控制"));
-                t.addLine(IKey.str("当前: " + NekoVolumeControlGui.getVolumeAsString() + "%"));
-            });
-        volumeButton.tooltipAutoUpdate(true);
-        qolColumn.child(volumeButton);
+        // 客户端：创建音量控制面板（以 volumeButton 为 parent，修复旧版 parent=null 的 NPE）
+        if (syncManagerRef != null && syncManagerRef.isClient()) {
+            volumePanel = syncManagerRef.syncedPanel(
+                "nekoV2Volume",
+                true,
+                (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, volumeButton));
+        }
 
-        return qolColumn;
+        // 2x2 网格：左上音量、右上显示模式、左下显示硬币、右下排序
+        return new Grid().left(-33)
+            .top(1)
+            .minElementMargin(1, 1)
+            .coverChildren()
+            .grid(
+                Arrays.asList(
+                    Arrays.asList(volumeButton, displayModeButton),
+                    Arrays.asList(showCoinsButton, sortModeButton)));
     }
 
     /**
      * 创建主内容列
      * <p>
      * 布局从上到下：标题、搜索栏、交易列表（PagedWidget）、猫猫币显示、交易结果、玩家背包。
+     * <p>
+     * 输入槽和输出槽已迁移到 {@link #createIOColumn()}（与 V1 的 IO 列布局一致），
+     * 主列不再承载 IO 元素，以保持 UI 与 V1 一致。
      *
      * @param syncManager 面板同步管理器
      * @return 主列 Widget
@@ -833,9 +890,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // --- 交易列表（PagedWidget + 预分配 Widget）---
             mainColumn.child(createTradePagedWidget());
 
-            // --- 音量面板（同步子面板）---
-            volumePanel = syncManager
-                .syncedPanel("nekoV2Volume", true, (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, null));
+            // 注：volumePanel 已在 createQolButtonColumn 内创建（以 volumeButton 为 parent）
         }
 
         // --- 猫猫币余额显示行 ---
@@ -1016,13 +1071,23 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             offset += 65;
         }
 
+        // 根据货币显示开关控制余额行的显示/隐藏
+        row.setEnabledIf(w -> showCoins);
         return row;
     }
 
     /**
      * 创建右侧 IO 列
      * <p>
-     * 包含：导入猫猫币按钮、弹出所有猫猫币按钮、电源开关、结构更新。
+     * 完全模仿 V1（VM 的 {@code MTEVendingMachineGui.createIOColumn}）的布局：
+     * <ul>
+     * <li>顶部：INPUT_SPRITE 图标 + "IN" 文字</li>
+     * <li>2x4 输入槽（带自动导入猫猫币 changeListener）</li>
+     * <li>物品弹射按钮（EJECT_SLOTS）+ 货币弹射按钮（EJECT_COINS）</li>
+     * <li>底部：出货槽（带 DISPENSER_BACKGROUND/OVERHANG + 100 个掉落动画槽）</li>
+     * </ul>
+     * 不再放置电源开关、结构更新、音量按钮，这些功能分别由 GT5U 标准交互
+     * （扳手右键等）与 QoL 按钮列承担，与 V1 行为一致。
      *
      * @return IO 列 Widget
      */
@@ -1030,49 +1095,113 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         ParentWidget<?> ioColumn = new ParentWidget<>().size(50, 214)
             .right(-48)
             .top(40)
-            .background(GTGuiTextures.BACKGROUND_STANDARD);
+            .background(NekoGuiTextures.SIDE_PANEL_BACKGROUND);
 
-        // 导入猫猫币按钮
-        ButtonWidget<?> importButton = new ButtonWidget<>().size(18, 18)
-            .pos(4, 4)
-            .overlay(IKey.str("入"))
+        // --- 顶部：INPUT_SPRITE 图标 + "IN" 文字 ---
+        ioColumn.child(
+            NekoGuiTextures.INPUT_SPRITE.asWidget()
+                .leftRel(0.5f)
+                .top(8)
+                .width(30)
+                .height(20));
+        ioColumn.child(
+            (IWidget) new TextWidget(IKey.str("IN")).textAlign(Alignment.CENTER)
+                .top(8)
+                .widthRel(1.0f));
+
+        // --- 输入槽（2x4，带自动导入猫猫币 changeListener）---
+        SlotGroupWidget inputSlots = SlotGroupWidget.builder()
+            .matrix("II", "II", "II", "II")
+            .key('I', index -> {
+                ModularSlot slot = new ModularSlot(multiblock.inputItems, index).slotGroup("inputSlotGroup");
+                // 自动导入猫猫币：仅服务端、非初始化、有物品时处理
+                slot.changeListener((newItem, onlyAmountChanged, client, init) -> {
+                    if (init || client || newItem == null) return;
+                    String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(newItem);
+                    if (currencyId == null) return;
+                    UUID playerId = getPlayerId();
+                    if (playerId == null) return;
+                    NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+                    if (wallet == null) return;
+                    // 加入钱包并清空槽位
+                    wallet.addCount(currencyId, newItem.stackSize);
+                    NekoWalletManager.INSTANCE.saveWallet(playerId);
+                    multiblock.inputItems.setStackInSlot(index, null);
+                });
+                return new ItemSlot().slot(slot);
+            })
+            .build();
+        ioColumn.child(
+            Flow.row()
+                .child(inputSlots.center())
+                .top(20)
+                .height(18 * 4));
+
+        // --- 弹射按钮行：物品弹射 + 货币弹射 ---
+        ButtonWidget<?> ejectItemsButton = new ButtonWidget<>().size(16, 16)
+            .overlay(
+                NekoGuiTextures.EJECT_SLOTS.asIcon()
+                    .size(16))
             .onMousePressed(btn -> {
-                importCoinsSync.setValue(true);
+                ejectItemsSync.setValue(true);
                 return true;
             })
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str("导入猫猫币"));
-                t.addLine(IKey.str("从输入总线提取猫猫币到钱包"));
-            });
-        ioColumn.child(importButton);
-
-        // 弹出所有猫猫币按钮
-        ButtonWidget<?> ejectAllButton = new ButtonWidget<>().size(18, 18)
-            .pos(4, 26)
-            .overlay(IKey.str("出"))
+            .tooltipBuilder(t -> t.addLine(IKey.str("弹出物品")));
+        ButtonWidget<?> ejectCoinsButton = new ButtonWidget<>().size(16, 16)
+            .overlay(
+                NekoGuiTextures.EJECT_COINS.asIcon()
+                    .size(16))
             .onMousePressed(btn -> {
                 ejectAllCoinsSync.setValue(true);
                 return true;
             })
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str("弹出所有猫猫币"));
-                t.addLine(IKey.str("将钱包中的猫猫币弹出至机器旁"));
-            });
-        ioColumn.child(ejectAllButton);
+            .tooltipBuilder(t -> t.addLine(IKey.str("弹出所有猫猫币")));
+        ioColumn.child(
+            Flow.row()
+                .child(ejectItemsButton.right(6))
+                .child(ejectCoinsButton.left(6))
+                .top(98)
+                .height(18));
 
-        // 电源开关按钮（GT5U 标准方法）
-        ToggleButton powerSwitch = createPowerSwitchButton();
-        powerSwitch.pos(4, 48);
-        ioColumn.child(powerSwitch);
-
-        // 结构更新按钮（GT5U 标准方法）
-        IWidget structureUpdate = createStructureUpdateButton(null);
-        if (structureUpdate != null) {
-            ((ToggleButton) structureUpdate).pos(4, 70);
-            ioColumn.child(structureUpdate);
+        // --- 底部：出货槽（带 dispenser 背景与悬垂 + 100 个掉落动画槽）---
+        ParentWidget<?> dispenserChute = new ParentWidget<>().fullHeight()
+            .fullWidth()
+            .marginLeft(5)
+            .marginRight(4)
+            .background(NekoGuiTextures.DISPENSER_BACKGROUND)
+            .child(getFillPlayerInventoryButton());
+        // 顶部悬垂装饰
+        dispenserChute.child(
+            NekoGuiTextures.DISPENSER_OVERHANG.asWidget()
+                .top(0)
+                .fullWidth());
+        // 100 个掉落动画槽（fallDistance=72 与 V1 一致，4 行高度）
+        NekoFallingItemSlotFactory fallingFactory = new NekoFallingItemSlotFactory(
+            multiblock.outputItems,
+            18 * 4,
+            MTENekoVendingMachineV2.OUTPUT_SLOTS);
+        for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
+            dispenserChute.child(fallingFactory.getFallingItemSlot(i));
         }
+        ioColumn.child(
+            Flow.row()
+                .child(dispenserChute)
+                .bottom(6)
+                .height(18 * 5));
 
         return ioColumn;
+    }
+
+    /**
+     * 获取"填充玩家背包"按钮（占位实现）
+     * <p>
+     * V1 中此按钮用于把出货槽的物品快速移到玩家背包。当前 V2 暂未实现该功能，
+     * 返回一个空 ParentWidget 占位以保持布局兼容。
+     *
+     * @return 占位 Widget
+     */
+    private IWidget getFillPlayerInventoryButton() {
+        return new ParentWidget<>();
     }
 
     // ==================== 猫猫币操作（保留原有逻辑） ====================
@@ -1153,9 +1282,32 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     /**
+     * 弹出物品
+     * <p>
+     * 扫描内置输出槽（{@code outputItems}），将所有非空物品以掉落物形式
+     * 弹出到机器旁，然后清空输出槽。用于玩家取走交易产物。
+     * <p>
+     * 与 V1 的 {@code ejectItems} 行为一致：不区分物品种类，全部弹出。
+     */
+    private void doNekoEjectItems() {
+        try {
+            for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
+                ItemStack stack = multiblock.outputItems.getStackInSlot(i);
+                if (stack == null) continue;
+                dropItemsNearMachine(stack);
+                multiblock.outputItems.setStackInSlot(i, null);
+            }
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[NekoVMV2] doNekoEjectItems 异常!", t);
+        } finally {
+            nekoEjectItems = false;
+        }
+    }
+
+    /**
      * 导入猫猫币
      * <p>
-     * 扫描所有输入总线中的物品，将猫猫币导入到玩家钱包。
+     * 扫描内置输入槽中的物品，将猫猫币导入到玩家钱包。
      *
      * @param playerId 玩家 UUID
      */
@@ -1172,21 +1324,14 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
 
             int totalImported = 0;
-            for (MTEHatchInputBus bus : multiblock.mInputBusses) {
-                if (bus == null || bus.getBaseMetaTileEntity() == null) {
-                    continue;
-                }
-                ItemStack[] inv = bus.mInventory;
-                for (int s = 0; s < inv.length; s++) {
-                    if (inv[s] == null) {
-                        continue;
-                    }
-                    String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(inv[s]);
-                    if (currencyId != null) {
-                        wallet.addCount(currencyId, inv[s].stackSize);
-                        totalImported += inv[s].stackSize;
-                        inv[s] = null;
-                    }
+            for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
+                ItemStack stack = multiblock.inputItems.getStackInSlot(i);
+                if (stack == null) continue;
+                String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(stack);
+                if (currencyId != null) {
+                    wallet.addCount(currencyId, stack.stackSize);
+                    totalImported += stack.stackSize;
+                    multiblock.inputItems.setStackInSlot(i, null);
                 }
             }
 
@@ -1194,7 +1339,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 NekoWalletManager.INSTANCE.saveWallet(playerId);
                 tradeResultMessage = "成功导入 " + totalImported + " 个猫猫币";
             } else {
-                tradeResultMessage = "输入总线中未找到猫猫币";
+                tradeResultMessage = "输入槽中未找到猫猫币";
             }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[NekoVMV2] doNekoImportCoins 异常!", t);
@@ -1443,23 +1588,43 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     /**
      * 获取交易分类的图标 ItemStack
+     * <p>
+     * 为每个分类返回一个直观的 ItemStack 图标，避免标签页空白：
+     * <ul>
+     * <li>FAVOURITES：书与笔（成文的书，象征收藏列表）</li>
+     * <li>ALL：纸（无具体分类，白板占位）</li>
+     * <li>NEKO：猫猫币物品</li>
+     * <li>SHIMMERING_NEKO：闪烁猫猫币物品</li>
+     * <li>MAGIC：酿造台（代表魔法类）</li>
+     * <li>MISC：箱子（代表杂项收纳）</li>
+     * <li>UNKNOWN：下界之星（占位）</li>
+     * </ul>
      *
      * @param category 交易分类
-     * @return 图标 ItemStack，无图标时返回 null
+     * @return 图标 ItemStack
      */
     private ItemStack getCategoryIcon(NekoTradeCategory category) {
         switch (category) {
             case FAVOURITES:
-                // 收藏分类使用金之星图标（暂用 NekoGuiTextures.FAVOURITE_SPRITE，此处返回 null 使用默认图标）
-                return null;
+                // 收藏分类：用成文的书作为图标
+                return new ItemStack(Items.written_book);
             case ALL:
-                return null;
+                // 全部分类：用纸作为图标（白板占位）
+                return new ItemStack(Items.paper);
             case NEKO:
                 return NekoCurrencyRegistrar.getItemStack(NekoCurrencyRegistrar.NEKO_ID, 1);
             case SHIMMERING_NEKO:
                 return NekoCurrencyRegistrar.getItemStack(NekoCurrencyRegistrar.SHIMMERING_NEKO_ID, 1);
+            case MAGIC:
+                // 魔法分类：用酿造台作为图标
+                return new ItemStack(Items.brewing_stand);
+            case MISC:
+                // 杂项分类：用箱子作为图标
+                return new ItemStack(Item.getItemFromBlock(Blocks.chest));
+            case UNKNOWN:
             default:
-                return null;
+                // 未知分类：用下界之星作为占位图标
+                return new ItemStack(Items.nether_star);
         }
     }
 
