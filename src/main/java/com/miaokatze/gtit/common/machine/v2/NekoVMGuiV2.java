@@ -353,6 +353,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 注册 GT5U 标准同步值
         super.registerSyncValues(syncManager);
 
+        // 注册槽位分组，启用 shift 快速转移（与 V1/VM 原版一致）
+        // 参数：组名、行长度(2列)、是否允许从玩家背包 shift 转移到此组
+        // 输入槽：允许 shift 转入；输出槽：禁止 shift 转入（但允许 shift 转出到背包）
+        syncManager.registerSlotGroup("inputSlotGroup", 2, true);
+        syncManager.registerSlotGroup("outputSlotGroup", 2, false);
+
         // 获取玩家 UUID（服务端用于查询钱包余额、BQ 状态等）
         final UUID playerId = getPlayerId();
 
