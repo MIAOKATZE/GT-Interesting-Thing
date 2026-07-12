@@ -872,18 +872,21 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 设置朝向回调
      * <p>
-     * 复刻 V1 MTEVendingMachine 的模式。朝向变化时重新设置覆盖层，
-     * 确保覆盖层位置与新朝向同步。
+     * 朝向变化时重新设置覆盖层，确保覆盖层位置与新朝向同步。
+     * <p>
+     * 注意：V2 继承自 MTEEnhancedMultiBlockBase，其 setExtendedFacing 默认实现（第 85-107 行）
+     * 不会调用 setFrontFacing，因此不会触发 onFacingChange 递归。
+     * V1 父类 MTEVendingMachine 继承自 MTEMultiBlockBase（无 onFacingChange），可以直接调用
+     * setFrontFacing，但 V2 不能照搬，否则会导致 setExtendedFacing → setFrontFacing →
+     * onFacingChange → toolSetDirection → setExtendedFacing 无限递归（StackOverflowError）。
+     * 正确做法是调用 super.setExtendedFacing 让基类处理朝向，再刷新覆盖层。
      *
      * @param alignment 新的朝向
      */
     @Override
     public void setExtendedFacing(ExtendedFacing alignment) {
-        boolean extendedFacingChanged = alignment != getExtendedFacing();
-        getBaseMetaTileEntity().setFrontFacing(alignment.getDirection());
-        if (extendedFacingChanged) {
-            setTextureOverlay();
-        }
+        super.setExtendedFacing(alignment);
+        setTextureOverlay();
     }
 
     /**
