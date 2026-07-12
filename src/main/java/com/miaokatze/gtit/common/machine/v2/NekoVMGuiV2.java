@@ -1378,8 +1378,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param playerId   玩家 UUID
      */
     private void doNekoEjectCoin(String currencyId, UUID playerId) {
-        // 机器未成型或未激活时不允许弹出，重置标志后返回
-        if (baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
+        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
+        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
             nekoEjectSingleCoin.put(currencyId, false);
             return;
         }
@@ -1488,8 +1488,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 已被 changeListener 自动导入钱包，不会滞留在此处）。
      */
     private void doNekoEjectItems() {
-        // 机器未成型或未激活时不允许弹出，重置标志后返回
-        if (baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
+        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
+        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
             nekoEjectItems = false;
             return;
         }
@@ -1524,7 +1524,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param playerId 玩家 UUID
      */
     private void doNekoFillPlayerInventory(UUID playerId) {
-        if (baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
+        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
+        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
             nekoFillPlayerInventory = false;
             return;
         }
@@ -1555,6 +1556,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param playerId 玩家 UUID
      */
     private void doNekoImportCoins(UUID playerId) {
+        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
+        if (isClient()) {
+            nekoImportCoins = false;
+            return;
+        }
         try {
             if (playerId == null) {
                 nekoImportCoins = false;
@@ -1700,6 +1706,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param playerId 玩家 UUID
      */
     private void processTradeRequest(String request, UUID playerId) {
+        // C2S change listener 在客户端也会触发，但交易逻辑只在服务端执行。
+        // 客户端调用 S2C 同步值的 notifyUpdate() 会抛 SecurityException，
+        // 且 multiblock.processTrade() 是服务端专属操作。
+        if (isClient()) return;
         try {
             if (playerId == null) {
                 tradeResultMessage = "无法确定玩家身份";
@@ -1764,6 +1774,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param playerId 玩家 UUID
      */
     private void processFavouriteToggle(String request, UUID playerId) {
+        // C2S change listener 在客户端也会触发，收藏切换只在服务端执行
+        if (isClient()) return;
         try {
             if (playerId == null) return;
 
