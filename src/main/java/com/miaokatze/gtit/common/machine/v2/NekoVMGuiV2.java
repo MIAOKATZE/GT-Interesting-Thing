@@ -1435,8 +1435,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param playerId 玩家 UUID
      */
     private void doNekoEjectAllCoins(UUID playerId) {
-        // 机器未成型或未激活时不允许弹出，重置标志后返回
-        if (baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
+        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
+        // 重置标志位避免客户端 UI 卡在 true 状态
+        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
             nekoEjectAllCoins = false;
             return;
         }
