@@ -291,6 +291,31 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             new InternalOutputSlotAccessor());
     }
 
+    /**
+     * 将单个物品栈弹入出货槽
+     * <p>
+     * 优先使用 {@link InternalOutputSlotAccessor} 合并到现有输出槽或放入空槽，
+     * 从而触发 {@link com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory} 的掉落动画。
+     * 若出货槽空间不足，返回未能放入的剩余物品（原栈不会被修改），调用方可自行处理（例如掉落到地面）。
+     *
+     * @param stack 要弹入的物品栈
+     * @return 未放入出货槽的剩余物品，{@code null} 表示全部放入
+     */
+    public ItemStack dispenseItemStack(ItemStack stack) {
+        if (stack == null || stack.stackSize <= 0) {
+            return null;
+        }
+        InternalOutputSlotAccessor accessor = new InternalOutputSlotAccessor();
+        // 先判断是否有任何槽位能接收该物品（完全或部分）
+        if (!accessor.hasSpaceFor(stack)) {
+            return stack.copy();
+        }
+        ItemStack toInsert = stack.copy();
+        accessor.insertItem(toInsert);
+        // insertItem 会按顺序合并到已有槽位，剩余部分放入第一个空槽
+        return toInsert.stackSize > 0 ? toInsert : null;
+    }
+
     // === ICasingTextureProvider ===
 
     /**

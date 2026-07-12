@@ -168,6 +168,18 @@ public class NekoTradeMainPanel extends ModularPanel {
         List<NekoTradeItemDisplayWidget> getDisplayedWidgets(NekoDisplayType type, NekoTradeCategory category);
 
         /**
+         * 获取指定交易的服务端同步可交易状态
+         * <p>
+         * 由服务端通过 {@code tradeableStatusSync} 同步到客户端，
+         * 若该交易尚未同步则返回 null，调用方应回退到本地 BQ+冷却 逻辑。
+         *
+         * @param groupId    交易组 UUID
+         * @param tradeIndex 交易在组内的索引
+         * @return 服务端同步的可交易状态，未同步返回 null
+         */
+        Boolean getSyncedTradeableStatus(UUID groupId, int tradeIndex);
+
+        /**
          * 通知交易显示数据已更新
          * <p>
          * GUI 控制器应在此方法中更新 Widget 的显示数据。
@@ -343,7 +355,7 @@ public class NekoTradeMainPanel extends ModularPanel {
      * <p>
      * 完美复刻 VM 的 updateTradeInformation 逻辑，但适配 GTIT V2 系统：
      * <ol>
-     * <li>从 ALL 分类筛选收藏交易，更新 FAVOURITES 分类</li>
+     * <li>从所有分类的已收藏交易中筛选，更新 FAVOURITES 分类</li>
      * <li>遍历每个分类的交易显示数据，从数据库重新查询最新状态</li>
      * <li>更新 BQ 锁定状态、冷却剩余、可交易状态、收藏状态</li>
      * </ol>
@@ -359,12 +371,14 @@ public class NekoTradeMainPanel extends ModularPanel {
             return;
         }
 
-        // 更新收藏分类（从 ALL 分类中筛选已收藏的交易）
-        List<NekoTradeItemDisplay> allTrades = currentData.get(NekoTradeCategory.ALL);
-        if (allTrades != null) {
-            List<NekoTradeItemDisplay> favouritedTrades = filterFavouritedTrades(allTrades);
-            currentData.put(NekoTradeCategory.FAVOURITES, favouritedTrades);
+        // 更新收藏分类（从所有分类的已收藏交易中筛选）
+        List<NekoTradeItemDisplay> allTrades = new ArrayList<>();
+        for (List<NekoTradeItemDisplay> list : currentData.values()) {
+            if (list != null) {
+                allTrades.addAll(list);
+            }
         }
+        currentData.put(NekoTradeCategory.FAVOURITES, filterFavouritedTrades(allTrades));
 
         // 遍历每个分类，更新交易状态
         for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplay>> entry : currentData.entrySet()) {
@@ -394,8 +408,14 @@ public class NekoTradeMainPanel extends ModularPanel {
                 }
                 display.setCooldownRemaining(cooldownRemaining);
 
-                // 更新可交易状态（综合判断：非锁定 + 非冷却）
-                display.setTradeable(!bqLocked && cooldownRemaining <= 0);
+                // 更新可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）
+                Boolean syncedTradeable = callback
+                    .getSyncedTradeableStatus(display.getGroupId(), display.getTradeIndex());
+                if (syncedTradeable != null) {
+                    display.setTradeable(syncedTradeable);
+                } else {
+                    display.setTradeable(!bqLocked && cooldownRemaining <= 0);
+                }
 
                 // 更新收藏状态
                 if (playerId != null) {
@@ -418,10 +438,10 @@ public class NekoTradeMainPanel extends ModularPanel {
      * <li>遍历所有交易组（{@link NekoTradeDatabase#getAllTradeGroups}）及其交易，
      * 创建 {@link NekoTradeItemDisplay}</li>
      * <li>设置收藏、BQ锁定、冷却、可交易状态</li>
-     * <li>按交易分类分组（同时加入 ALL 分类）</li>
+     * <li>按交易分类分组（基于交易组的 {@link NekoTradeGroup#getCategory()}）</li>
      * <li>按搜索文本过滤（{@link NekoTradeItemDisplay#satisfiesSearch}）</li>
      * <li>按排序模式排序（SMART 或 ALPHABET）</li>
-     * <li>构建 FAVOURITES 收藏分类</li>
+     * <li>构建 FAVOURITES 收藏分类（从所有分类的已收藏交易中筛选）</li>
      * </ol>
      * <p>
      * <b>VM 适配</b>：VM 从 {@code TradeManager.INSTANCE.tradeData} 遍历，
@@ -435,8 +455,6 @@ public class NekoTradeMainPanel extends ModularPanel {
      */
     public Map<NekoTradeCategory, List<NekoTradeItemDisplay>> formatTrades() {
         Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades = new HashMap<>();
-        // ALL 分类始终存在
-        trades.put(NekoTradeCategory.ALL, new ArrayList<>());
 
         NekoSortMode sortMode = callback.getSortMode();
         String searchString = callback.getSearchText();
@@ -485,13 +503,16 @@ public class NekoTradeMainPanel extends ModularPanel {
                     }
                     display.setCooldownRemaining(cooldownRemaining);
 
-                    // 设置可交易状态
-                    display.setTradeable(!bqLocked && cooldownRemaining <= 0);
+                    // 设置可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）
+                    Boolean syncedTradeable = callback.getSyncedTradeableStatus(group.getId(), i);
+                    if (syncedTradeable != null) {
+                        display.setTradeable(syncedTradeable);
+                    } else {
+                        display.setTradeable(!bqLocked && cooldownRemaining <= 0);
+                    }
 
-                    // 添加到对应分类和 ALL 分类
+                    // 添加到对应分类
                     trades.get(category)
-                        .add(display);
-                    trades.get(NekoTradeCategory.ALL)
                         .add(display);
                 }
             }
@@ -515,9 +536,12 @@ public class NekoTradeMainPanel extends ModularPanel {
             list.sort((a, b) -> compareTrades(a, b, sortMode, walletMode));
         }
 
-        // 构建 FAVOURITES 收藏分类（从 ALL 分类中筛选已收藏的交易）
-        List<NekoTradeItemDisplay> favouritedTrades = filterFavouritedTrades(trades.get(NekoTradeCategory.ALL));
-        trades.put(NekoTradeCategory.FAVOURITES, favouritedTrades);
+        // 构建 FAVOURITES 收藏分类（从所有分类的已收藏交易中筛选）
+        List<NekoTradeItemDisplay> allTrades = new ArrayList<>();
+        for (List<NekoTradeItemDisplay> list : trades.values()) {
+            allTrades.addAll(list);
+        }
+        trades.put(NekoTradeCategory.FAVOURITES, filterFavouritedTrades(allTrades));
 
         return trades;
     }

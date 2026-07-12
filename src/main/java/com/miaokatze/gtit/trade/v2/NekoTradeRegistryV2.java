@@ -192,19 +192,30 @@ public class NekoTradeRegistryV2 {
     }
 
     /**
-     * 根据货币类型确定交易分类
+     * 根据标签页 ID 确定交易分类
+     * <p>
+     * 优先使用 {@link NekoTradeEntry#getTabId()} 映射到动态分类，
+     * 与 {@link com.miaokatze.gtit.trade.NekoPageRegistry} 中的标签页配置保持一致。
+     * 若 entry 无有效 tabId（<=0），则按货币类型兜底映射到默认标签页：
+     * neko -> tabId 1，shimmeringNeko -> tabId 2，其他 -> tabId 3。
      *
      * @param entry      交易配置条目
      * @param currencyId 货币 ID（可能为 null）
      * @return 交易分类
      */
     private static NekoTradeCategory determineCategory(NekoTradeEntry entry, String currencyId) {
-        if (NekoCurrencyRegistrar.NEKO_ID.equals(currencyId)) {
-            return NekoTradeCategory.NEKO;
-        } else if (NekoCurrencyRegistrar.SHIMMERING_NEKO_ID.equals(currencyId)) {
-            return NekoTradeCategory.SHIMMERING_NEKO;
+        int tabId = entry.getTabId();
+        if (tabId > 0) {
+            return NekoTradeCategory.ofTabId(tabId);
         }
-        return NekoTradeCategory.MISC;
+
+        // 无有效 tabId 时按货币类型兜底
+        if (NekoCurrencyRegistrar.NEKO_ID.equals(currencyId)) {
+            return NekoTradeCategory.ofTabId(1);
+        } else if (NekoCurrencyRegistrar.SHIMMERING_NEKO_ID.equals(currencyId)) {
+            return NekoTradeCategory.ofTabId(2);
+        }
+        return NekoTradeCategory.ofTabId(3);
     }
 
     /**

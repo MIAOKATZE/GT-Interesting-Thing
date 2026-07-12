@@ -92,6 +92,43 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
     /** 禁用遮罩颜色（半透明黑色，ARGB） */
     private static final int COLOR_DISABLED_OVERLAY = 0xBB000000;
 
+    /**
+     * 格式化冷却剩余时间
+     * <p>
+     * 按最大单位组合显示，规则与 V1 保持一致：
+     * <ul>
+     * <li>{@code <= 0}：不显示，返回空字符串</li>
+     * <li>{@code >= 86400}：显示 "Xd Xh"（天和小时）</li>
+     * <li>{@code >= 3600}：显示 "Xh Xm"（小时和分钟）</li>
+     * <li>{@code >= 60}：显示 "Xm Xs"（分钟和秒）</li>
+     * <li>其他：显示 "Xs"（仅秒）</li>
+     * </ul>
+     *
+     * @param seconds 冷却剩余秒数
+     * @return 格式化后的冷却文字
+     */
+    private static String formatCooldown(long seconds) {
+        if (seconds <= 0) {
+            return "";
+        }
+        if (seconds >= 86400) {
+            long days = seconds / 86400;
+            long hours = (seconds % 86400) / 3600;
+            return days + "d " + hours + "h";
+        }
+        if (seconds >= 3600) {
+            long hours = seconds / 3600;
+            long minutes = (seconds % 3600) / 60;
+            return hours + "h " + minutes + "m";
+        }
+        if (seconds >= 60) {
+            long minutes = seconds / 60;
+            long secs = seconds % 60;
+            return minutes + "m " + secs + "s";
+        }
+        return seconds + "s";
+    }
+
     // ==================== 回调接口 ====================
 
     /**
@@ -327,7 +364,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
         // --- 冷却秒数文字（青色，冷却中且非锁定时）---
         if (display.getCooldownRemaining() > 0 && !display.isBqLocked()) {
-            String cdText = display.getCooldownRemaining() + "s";
+            String cdText = formatCooldown(display.getCooldownRemaining());
             drawCenteredText(cdText, 9, 1.0f, COLOR_COOLDOWN, TILE_ITEM_WIDTH);
         }
 
@@ -401,7 +438,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
         // --- 冷却秒数文字（青色，冷却中且非锁定时）---
         if (display.getCooldownRemaining() > 0 && !display.isBqLocked()) {
-            String cdText = display.getCooldownRemaining() + "s";
+            String cdText = formatCooldown(display.getCooldownRemaining());
             GuiDraw.drawText(cdText, 100, 4, 0.9f, COLOR_COOLDOWN, true);
         }
 
@@ -505,7 +542,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         // --- 冷却时间（青色）---
         if (display.getCooldownRemaining() > 0) {
             builder.emptyLine();
-            builder.addLine(EnumChatFormatting.AQUA + "冷却剩余: " + display.getCooldownRemaining() + "秒");
+            builder.addLine(EnumChatFormatting.AQUA + "冷却剩余: " + formatCooldown(display.getCooldownRemaining()));
         }
 
         // --- 操作提示（灰色）---
