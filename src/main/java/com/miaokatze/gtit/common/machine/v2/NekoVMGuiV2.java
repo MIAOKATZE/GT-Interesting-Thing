@@ -67,6 +67,7 @@ import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
+import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
@@ -149,6 +150,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private StringSyncValue cooldownStatusSync;
     /** 可交易状态字符串（S2C：服务端构建 "groupId:tradeIndex:true/false,..." 发送到客户端） */
     private StringSyncValue tradeableStatusSync;
+    /**
+     * 团队缩放状态字符串（S2C：服务端构建 "groupId:maxTrades:usedTrades,..." 发送到客户端）
+     * <p>
+     * 用于 tooltip 显示"冷却: X/Y 次（团队缩放）"信息。
+     * 仅对有冷却（{@code group.getCooldown() > 0}）的交易组输出。
+     * 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息。
+     * </p>
+     */
+    private StringSyncValue teamScaleSync;
     /** 收藏切换请求（C2S：Ctrl+Click 时发送 "groupId:tradeIndex"） */
     private StringSyncValue favouriteToggleSync;
     /** 弹出所有猫猫币（C2S：按钮点击时发送） */
@@ -185,6 +195,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private final Map<String, Long> cooldownStatusMap = new HashMap<>();
     /** 可交易状态映射："groupId:tradeIndex" → 是否可交易（true=可交易） */
     private final Map<String, Boolean> tradeableStatusMap = new HashMap<>();
+
+    /**
+     * 团队缩放状态映射：groupId → [maxTrades, usedTrades]
+     * <p>
+     * 由服务端通过 {@link #teamScaleSync} 同步到客户端。
+     * 存储每个有冷却的交易组的团队缩放信息（冷却内最大次数和已用次数），
+     * 用于 tooltip 显示"冷却: X/Y 次（团队缩放）"。
+     * </p>
+     */
+    private final Map<UUID, long[]> teamScaleMap = new HashMap<>();
 
     // ==================== 服务端状态 ====================
 
@@ -432,6 +452,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         syncManager.syncValue("nekoV2TradeableStatus", tradeableStatusSync);
 
+        // --- 团队缩放状态（S2C，同步冷却内最大次数和已用次数，用于 tooltip 展示）---
+        // 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息
+        teamScaleSync = new StringSyncValue(
+            () -> buildTeamScaleString(playerId),
+            val -> { parseTeamScaleString(val); });
+        syncManager.syncValue("nekoV2TeamScale", teamScaleSync);
+
         // --- 各货币余额（S2C）---
         // 注意：syncHandler 名称必须与 NekoCoinDisplayV2 期望的一致
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
@@ -460,6 +487,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 tradeableStatusDirty = true;
                 if (tradeableStatusSync != null) {
                     tradeableStatusSync.notifyUpdate();
+                }
+                // 冷却状态变化意味着交易已执行或冷却已重置，团队缩放信息（已用次数）也需更新
+                if (teamScaleSync != null) {
+                    teamScaleSync.notifyUpdate();
                 }
             };
             bqLockStatusSync.setChangeListener(tradeableStatusDirtyMarker);
@@ -563,7 +594,27 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     @Override
     public NekoWalletMode getWalletMode() {
-        // V2 阶段仅支持个人钱包
+        // 检测当前玩家是否在团队中，如果在团队中则返回 TEAM 模式
+        // NekoWalletManager.getWallet() 会自动路由到团队钱包（通过 GTNHLib Teams API），
+        // 因此钱包模式需要显式反映当前实际使用的钱包来源
+        UUID playerId = getPlayerId();
+        if (playerId == null) {
+            return NekoWalletMode.PERSONAL;
+        }
+        try {
+            // 通过 GTNHLib Teams API 检查玩家是否在团队中
+            com.gtnewhorizon.gtnhlib.teams.Team team = com.gtnewhorizon.gtnhlib.teams.TeamManager
+                .getTeamByPlayer(playerId);
+            if (team != null) {
+                // 玩家在团队中，NekoWalletManager 会自动使用团队共享钱包
+                return NekoWalletMode.TEAM;
+            }
+        } catch (NoClassDefFoundError e) {
+            // GTNHLib Teams API 不可用，回退到个人钱包模式
+            return NekoWalletMode.PERSONAL;
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoVMGuiV2] getWalletMode 检测团队状态异常", e);
+        }
         return NekoWalletMode.PERSONAL;
     }
 
@@ -635,6 +686,18 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     + display.getTradeIndex();
                 long cooldown = cooldownStatusMap.getOrDefault(cdKey, 0L);
                 display.setCooldownRemaining(cooldown);
+
+                // 设置团队缩放信息（来自 teamScaleSync）
+                // 客户端通过同步值获取冷却内最大次数和已用次数，用于 tooltip 展示
+                long[] scaleInfo = teamScaleMap.get(display.getGroupId());
+                if (scaleInfo != null && scaleInfo.length >= 2) {
+                    display.setMaxTradesInCooldown((int) scaleInfo[0]);
+                    display.setUsedTradesInCooldown(scaleInfo[1]);
+                } else {
+                    // 未同步到缩放信息时使用默认值（个人限制，无已用次数）
+                    display.setMaxTradesInCooldown(1);
+                    display.setUsedTradesInCooldown(0);
+                }
 
                 // 更新可交易状态（优先使用服务端同步值，无则回退 BQ+冷却）
                 String tradeableKey = cdKey;
@@ -991,6 +1054,21 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .height(12)
                 .fullWidth()
                 .marginBottom(2));
+
+        // --- 团队钱包标识（动态文本，仅 TEAM 模式时显示）---
+        // 当玩家在团队中时，在标题下方显示"[团队钱包]"标识，让玩家明确知道当前使用的是团队共享钱包
+        // 使用 IKey.dynamic 确保钱包模式变化时文本自动更新
+        mainColumn.child(IKey.dynamic(() -> {
+            NekoWalletMode mode = getWalletMode();
+            if (mode == NekoWalletMode.TEAM) {
+                return EnumChatFormatting.AQUA + "[团队钱包]";
+            }
+            return "";
+        })
+            .asWidget()
+            .height(10)
+            .fullWidth()
+            .marginBottom(2));
 
         if (syncManager.isClient()) {
             // --- 搜索栏 ---
@@ -1747,6 +1825,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 if (cooldownStatusSync != null) {
                     cooldownStatusSync.notifyUpdate();
                 }
+                // 交易成功后冷却内已用次数发生变化，需同步团队缩放信息
+                if (teamScaleSync != null) {
+                    teamScaleSync.notifyUpdate();
+                }
                 if (tradeResultSync != null) {
                     tradeResultSync.notifyUpdate();
                 }
@@ -2009,6 +2091,79 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     String key = parts[0] + ":" + parts[1];
                     boolean tradeable = Boolean.parseBoolean(parts[2]);
                     tradeableStatusMap.put(key, tradeable);
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    // ==================== 团队缩放状态同步（S2C，用于 tooltip 冷却缩放展示） ====================
+
+    /**
+     * 构建团队缩放状态字符串（服务端）
+     * <p>
+     * 遍历所有有冷却（{@code cooldown > 0}）的交易组，通过
+     * {@link NekoTradeExecutor#getTeamMaxTrades(UUID)} 获取团队缩放值（冷却内最大次数），
+     * 通过 {@link NekoTradeHistory#getCooldownTradeCount()} 获取当前冷却周期内已用次数。
+     * <p>
+     * 字符串格式：{@code "groupId:maxTrades:usedTrades,groupId:maxTrades:usedTrades,..."}
+     * <p>
+     * <b>设计说明</b>：客户端无法直接调用 GTNHLib Teams API（服务端专属），
+     * 因此通过此同步值将缩放信息传递到客户端，用于 tooltip 显示。
+     *
+     * @param playerId 玩家 UUID
+     * @return 团队缩放状态字符串，无冷却交易组时返回空字符串
+     */
+    private String buildTeamScaleString(UUID playerId) {
+        if (playerId == null) return "";
+        // 获取团队缩放值（团队成员数 = 冷却内最大交易次数）
+        // 同一玩家的所有交易组共享相同的缩放值，只需查询一次
+        int maxTrades = NekoTradeExecutor.getTeamMaxTrades(playerId);
+
+        StringBuilder sb = new StringBuilder();
+        Map<UUID, NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getAllTradeGroups();
+        if (groups != null) {
+            for (NekoTradeGroup group : groups.values()) {
+                if (group == null) continue;
+                // 仅对有冷却的交易组输出缩放信息
+                if (group.getCooldown() <= 0) continue;
+
+                // 查询该玩家对此交易组的冷却内已用次数
+                NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
+                long usedTrades = history != null ? history.getCooldownTradeCount() : 0;
+
+                if (sb.length() > 0) sb.append(",");
+                sb.append(
+                    group.getId()
+                        .toString())
+                    .append(":")
+                    .append(maxTrades)
+                    .append(":")
+                    .append(usedTrades);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 解析团队缩放状态字符串（客户端）
+     * <p>
+     * 将 {@code "groupId:maxTrades:usedTrades,..."} 解析为
+     * {@link #teamScaleMap}：groupId → [maxTrades, usedTrades]。
+     *
+     * @param status 团队缩放状态字符串
+     */
+    private void parseTeamScaleString(String status) {
+        teamScaleMap.clear();
+        if (status == null || status.isEmpty()) return;
+        String[] entries = status.split(",");
+        for (String entry : entries) {
+            String[] parts = entry.split(":");
+            if (parts.length == 3) {
+                try {
+                    UUID groupId = UUID.fromString(parts[0]);
+                    long maxTrades = Long.parseLong(parts[1]);
+                    long usedTrades = Long.parseLong(parts[2]);
+                    teamScaleMap.put(groupId, new long[] { maxTrades, usedTrades });
                 } catch (Exception ignored) {}
             }
         }

@@ -487,6 +487,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      * <li>空行（若有需求）</li>
      * <li>BQ 锁定状态（金色，仅锁定时显示）</li>
      * <li>冷却时间（青色，仅冷却中显示）</li>
+     * <li>团队缩放信息（深青色，仅团队缩放值 > 1 时显示）</li>
      * <li>空行</li>
      * <li>操作提示（灰色）</li>
      * </ol>
@@ -542,6 +543,16 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         if (display.getCooldownRemaining() > 0) {
             builder.emptyLine();
             builder.addLine(EnumChatFormatting.AQUA + "冷却剩余: " + formatCooldown(display.getCooldownRemaining()));
+        }
+
+        // --- 团队缩放信息（深青色）---
+        // 当 maxTradesInCooldown > 1 时，表示玩家在团队中，享受冷却缩放
+        // 显示"冷却次数: 已用/上限（团队缩放）"信息，参考 V1 的 teamSize tooltip
+        int maxTrades = display.getMaxTradesInCooldown();
+        if (maxTrades > 1) {
+            long usedTrades = display.getUsedTradesInCooldown();
+            long remaining = Math.max(0, maxTrades - usedTrades);
+            builder.addLine(EnumChatFormatting.DARK_AQUA + "冷却次数: " + remaining + "/" + maxTrades + " (团队缩放)");
         }
 
         // --- 操作提示（灰色）---

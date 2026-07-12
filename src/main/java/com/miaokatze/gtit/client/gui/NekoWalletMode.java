@@ -10,8 +10,11 @@ import com.cleanroommc.modularui.drawable.UITexture;
  * 完美复刻 VM mod 的 {@code com.cubefury.vendingmachine.blocks.gui.WalletMode} 枚举。
  * 用于区分个人钱包和团队钱包两种货币消费模式。
  * <p>
- * V2 阶段仅实现 PERSONAL 模式（{@link com.miaokatze.gtit.trade.NekoWalletManager} 只管理个人钱包），
- * TEAM 模式为预留项，待对接 GTNHLib Teams API 后启用。
+ * <b>TEAM 模式已启用</b>：通过 {@link com.miaokatze.gtit.trade.NekoWalletManager} 对接
+ * GTNHLib Teams API，当玩家处于团队中时，{@code NekoWalletManager.getWallet()} 会自动
+ * 路由到团队共享钱包（{@link com.miaokatze.gtit.trade.NekoTeamData}）。
+ * {@link com.miaokatze.gtit.common.machine.v2.NekoVMGuiV2#getWalletMode()} 会检测玩家
+ * 团队状态并返回对应的钱包模式，带 NoClassDefFoundError 防护（GTNHLib 不可用时降级为 PERSONAL）。
  * <p>
  * 本地化 key 从 {@code vendingmachine.gui.display_wallet_*} 迁移到 {@code gtit.gui.display_wallet_*}。
  *
@@ -20,10 +23,10 @@ import com.cleanroommc.modularui.drawable.UITexture;
  */
 public enum NekoWalletMode {
 
-    /** 个人钱包 - 仅消费玩家个人余额 */
+    /** 个人钱包 - 仅消费玩家个人余额（无团队或 GTNHLib 不可用时使用） */
     PERSONAL("personal", NekoGuiTextures.WALLET_PERSONAL),
 
-    /** 团队钱包 - 消费团队共享余额（V2 暂未实现，预留） */
+    /** 团队钱包 - 消费团队共享余额（通过 NekoWalletManager 自动路由，GTNHLib Teams API 对接） */
     TEAM("team", NekoGuiTextures.WALLET_TEAM);
 
     /** 钱包模式的内部标识名 */

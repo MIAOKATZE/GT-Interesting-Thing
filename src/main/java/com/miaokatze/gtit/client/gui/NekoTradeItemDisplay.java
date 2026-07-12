@@ -81,6 +81,27 @@ public class NekoTradeItemDisplay {
     /** 是否已收藏 */
     private boolean favourite;
 
+    /**
+     * 冷却周期内最大交易次数（团队缩放值）
+     * <p>
+     * 对接 GTNHLib Teams API，团队成员数 = 冷却内最大交易次数上限。
+     * 默认值 1 表示个人限制（无团队或 GTNHLib 不可用）。
+     * 由 GUI 层通过同步值从服务端获取并设置，客户端不能直接调用 Teams API。
+     * 用于 tooltip 显示"冷却: X/Y 次"中的 Y 值。
+     * </p>
+     */
+    private int maxTradesInCooldown = 1;
+
+    /**
+     * 当前冷却周期内已使用的交易次数
+     * <p>
+     * 对应 {@link com.miaokatze.gtit.trade.v2.NekoTradeHistory#getCooldownTradeCount()}，
+     * 由 GUI 层通过同步值从服务端获取并设置。
+     * 用于 tooltip 显示"冷却: X/Y 次"中的 X 值（已用次数）。
+     * </p>
+     */
+    private long usedTradesInCooldown = 0;
+
     // ==================== 构造器 ====================
 
     /**
@@ -359,5 +380,49 @@ public class NekoTradeItemDisplay {
 
     public void setFavourite(boolean favourite) {
         this.favourite = favourite;
+    }
+
+    /**
+     * 获取冷却周期内最大交易次数（团队缩放值）
+     * <p>
+     * 用于 tooltip 显示"冷却: X/Y 次"中的 Y 值。
+     *
+     * @return 最大交易次数，默认 1（个人限制）
+     */
+    public int getMaxTradesInCooldown() {
+        return maxTradesInCooldown;
+    }
+
+    /**
+     * 设置冷却周期内最大交易次数（团队缩放值）
+     * <p>
+     * 由 GUI 层通过同步值从服务端获取后设置。
+     *
+     * @param maxTradesInCooldown 最大交易次数（团队成员数，至少为 1）
+     */
+    public void setMaxTradesInCooldown(int maxTradesInCooldown) {
+        this.maxTradesInCooldown = Math.max(1, maxTradesInCooldown);
+    }
+
+    /**
+     * 获取当前冷却周期内已使用的交易次数
+     * <p>
+     * 用于 tooltip 显示"冷却: X/Y 次"中的 X 值。
+     *
+     * @return 已使用次数，默认 0
+     */
+    public long getUsedTradesInCooldown() {
+        return usedTradesInCooldown;
+    }
+
+    /**
+     * 设置当前冷却周期内已使用的交易次数
+     * <p>
+     * 由 GUI 层通过同步值从服务端获取后设置。
+     *
+     * @param usedTradesInCooldown 已使用次数
+     */
+    public void setUsedTradesInCooldown(long usedTradesInCooldown) {
+        this.usedTradesInCooldown = Math.max(0, usedTradesInCooldown);
     }
 }

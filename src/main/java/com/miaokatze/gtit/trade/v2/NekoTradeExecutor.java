@@ -322,4 +322,24 @@ public class NekoTradeExecutor {
             return 1;
         }
     }
+
+    /**
+     * 查询指定玩家在冷却周期内的最大交易次数（团队缩放值）
+     * <p>
+     * 静态方法，供 GUI 层（如 NekoVMGuiV2 构建同步值时）查询团队缩放信息。
+     * 内部委托给单例实例的 {@link #getMaxTradesInCooldown} 方法。
+     * <p>
+     * <b>调用方注意事项</b>：
+     * <ul>
+     * <li>此方法只能在服务端调用（GTNHLib Teams API 是服务端专属）</li>
+     * <li>客户端需要通过同步值获取该值，不能直接调用此方法</li>
+     * <li>带 NoClassDefFoundError 防护，GTNHLib 不可用时安全降级返回 1</li>
+     * </ul>
+     *
+     * @param playerId 玩家 UUID，为 null 时返回 1（个人限制）
+     * @return 冷却周期内最大交易次数（团队成员数，至少为 1）
+     */
+    public static int getTeamMaxTrades(UUID playerId) {
+        return INSTANCE.getMaxTradesInCooldown(playerId);
+    }
 }
