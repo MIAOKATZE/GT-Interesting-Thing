@@ -1362,29 +1362,20 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
 
             int count = wallet.getCount(currencyId);
-            boolean anyDispensed = false;
+            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
             while (count > 0) {
                 int stackSize = Math.min(count, 64);
                 ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, stackSize);
                 if (stack != null) {
-                    // 优先写入出货槽以触发 NekoFallingItemSlotFactory 掉落动画；
-                    // 槽满时回退到地面掉落，避免丢币
-                    int beforeSize = stack.stackSize;
-                    ItemStack overflow = multiblock.dispenseItemStack(stack);
-                    int afterSize = overflow == null ? 0 : overflow.stackSize;
-                    if (beforeSize > afterSize) {
-                        anyDispensed = true;
-                    }
-                    if (overflow != null && overflow.stackSize > 0) {
-                        dropItemsNearMachine(overflow);
-                    }
+                    toDispense.add(stack);
                 }
                 count -= stackSize;
             }
-            wallet.resetCount(currencyId);
-            NekoWalletManager.INSTANCE.saveWallet(playerId);
-            // 只要有硬币成功进入出货槽，就播放一次 coin_drop 音效
-            if (anyDispensed) {
+
+            if (!toDispense.isEmpty()) {
+                multiblock.dispenseItemStacks(toDispense);
+                wallet.resetCount(currencyId);
+                NekoWalletManager.INSTANCE.saveWallet(playerId);
                 playCoinDropSound();
             }
         } catch (Throwable t) {
@@ -1418,32 +1409,23 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 return;
             }
 
-            boolean anyDispensed = false;
+            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
             for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
                 int count = wallet.getCount(currencyId);
                 while (count > 0) {
                     int stackSize = Math.min(count, 64);
                     ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, stackSize);
                     if (stack != null) {
-                        // 优先写入出货槽以触发 NekoFallingItemSlotFactory 掉落动画；
-                        // 槽满时回退到地面掉落，避免丢币
-                        int beforeSize = stack.stackSize;
-                        ItemStack overflow = multiblock.dispenseItemStack(stack);
-                        int afterSize = overflow == null ? 0 : overflow.stackSize;
-                        if (beforeSize > afterSize) {
-                            anyDispensed = true;
-                        }
-                        if (overflow != null && overflow.stackSize > 0) {
-                            dropItemsNearMachine(overflow);
-                        }
+                        toDispense.add(stack);
                     }
                     count -= stackSize;
                 }
                 wallet.resetCount(currencyId);
             }
-            NekoWalletManager.INSTANCE.saveWallet(playerId);
-            // 只要有硬币成功进入出货槽，就播放一次 coin_drop 音效
-            if (anyDispensed) {
+
+            if (!toDispense.isEmpty()) {
+                multiblock.dispenseItemStacks(toDispense);
+                NekoWalletManager.INSTANCE.saveWallet(playerId);
                 playCoinDropSound();
             }
         } catch (Throwable t) {
@@ -1470,27 +1452,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             return;
         }
         try {
-            boolean anyEjected = false;
+            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
             for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
                 ItemStack stack = multiblock.inputItems.getStackInSlot(i);
                 if (stack == null || stack.stackSize <= 0) continue;
-
-                anyEjected = true;
-                // 复制一份用于出货；dispenseItemStack 内部还会再复制，本层复制保证源栈不被意外修改
-                ItemStack toDispense = stack.copy();
-                // 优先写入出货槽，触发 FallingItemSlot 掉落动画
-                ItemStack overflow = multiblock.dispenseItemStack(toDispense);
-                // 出货槽空间不足时，剩余物品掉落到地面（与 V1 dispenseItemStacks 的溢出行为一致）
-                if (overflow != null && overflow.stackSize > 0) {
-                    dropItemsNearMachine(overflow);
-                }
-                // 清空源输入槽
+                toDispense.add(stack.copy());
                 multiblock.inputItems.setStackInSlot(i, null);
             }
-            // 强制同步输入槽状态到客户端，使玩家立即看到槽位清空
-            forceSyncInputSlots();
-            // 只要有物品被弹出（进入出货槽或掉落地面），就在服务端播放一次 item_drop 音效
-            if (anyEjected) {
+
+            if (!toDispense.isEmpty()) {
+                multiblock.dispenseItemStacks(toDispense);
+                forceSyncInputSlots();
                 playItemDropSound();
             }
         } catch (Throwable t) {
@@ -1621,6 +1593,26 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             1.0f);
     }
 
+    /**
+     * 播放交易成功音效
+     * <p>
+     * 在服务端机器位置播放本项目内置的 {@code gtit:trade_success} 音效（3 变体随机），
+     * 会自动广播给附近所有玩家。音效资源复制自 VM mod 的 coin_insert，内置到 gtit 命名空间以减小外部依赖。
+     */
+    private void playTradeSuccessSound() {
+        if (baseMetaTileEntity == null) return;
+        World world = baseMetaTileEntity.getWorld();
+        if (world == null || world.isRemote) return;
+
+        world.playSoundEffect(
+            baseMetaTileEntity.getXCoord() + 0.5,
+            baseMetaTileEntity.getYCoord() + 0.5,
+            baseMetaTileEntity.getZCoord() + 0.5,
+            "gtit:trade_success",
+            1.0f,
+            1.0f);
+    }
+
     // ==================== 交易请求处理（保留原有逻辑） ====================
 
     /**
@@ -1659,6 +1651,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
             if (result.isSuccess()) {
                 tradeResultMessage = EnumChatFormatting.GREEN + "交易成功!";
+                playTradeSuccessSound();
             } else {
                 tradeResultMessage = EnumChatFormatting.RED + getTradeResultMessage(result);
             }

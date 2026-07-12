@@ -350,9 +350,8 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         // --- 主图标（16x16，位于按钮右侧）---
         GuiDraw.drawItem(displayStack, 26, 4, 16, 16, (int) z);
 
-        // --- 冷却覆盖层（不可交易/BQ锁定/冷却中时绘制）---
-        boolean showCooldownOverlay = !display.isTradeable() || display.isBqLocked()
-            || display.getCooldownRemaining() > 0;
+        // --- 冷却覆盖层（仅 BQ 锁定或冷却中时绘制；已解锁但不可交易保持亮色，仅缺绿色边框）---
+        boolean showCooldownOverlay = display.isBqLocked() || display.getCooldownRemaining() > 0;
         if (showCooldownOverlay) {
             NekoGuiTextures.OVERLAY_COOLDOWN.draw(0, 0, TILE_ITEM_WIDTH, TILE_ITEM_HEIGHT);
         }
@@ -388,7 +387,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      * <li>主图标（9x9，位于数量右侧）</li>
      * <li>产物名称文字（截断到21字符）</li>
      * <li>可交易指示条（左侧3px，绿色/灰色）</li>
-     * <li>禁用遮罩（不可交易/锁定/冷却时，半透明黑色覆盖）</li>
+     * <li>禁用遮罩（锁定/冷却时，半透明黑色覆盖；已解锁但不可交易保持亮色）</li>
      * <li>选中指示条（左侧2px，蓝色）</li>
      * <li>LOCKED 文字（金色，BQ 锁定时）</li>
      * <li>冷却秒数文字（青色，冷却中且非锁定时）</li>
@@ -420,8 +419,8 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         int barColor = display.isTradeable() ? COLOR_LIST_TRADEABLE : COLOR_LIST_UNTRADABLE;
         GuiDraw.drawRect(1, 1, 3, LIST_ITEM_HEIGHT - 2, barColor);
 
-        // --- 禁用遮罩（不可交易/BQ锁定/冷却中时绘制半透明黑色覆盖）---
-        boolean showDisabled = !display.isTradeable() || display.isBqLocked() || display.getCooldownRemaining() > 0;
+        // --- 禁用遮罩（仅 BQ 锁定或冷却中时绘制半透明黑色覆盖；已解锁但不可交易保持亮色）---
+        boolean showDisabled = display.isBqLocked() || display.getCooldownRemaining() > 0;
         if (showDisabled) {
             GuiDraw.drawRect(1, 1, LIST_ITEM_WIDTH - 2, LIST_ITEM_HEIGHT - 2, COLOR_DISABLED_OVERLAY);
         }

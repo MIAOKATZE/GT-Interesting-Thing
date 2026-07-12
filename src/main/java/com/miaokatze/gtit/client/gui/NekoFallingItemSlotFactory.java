@@ -109,8 +109,9 @@ public class NekoFallingItemSlotFactory {
      * @return 包装了掉落动画的 TransformWidget
      */
     public TransformWidget getFallingItemSlot(int index) {
-        final Pos fallingPosition = new Pos(this.outputSlotXPositions.get(index), this.fallDistance);
-        Animator fallingPositionAnimation = createFallingAnimation(fallingPosition);
+        // 初始位置设为顶部 (y=-1)，避免物品先出现在底部再跳到顶部
+        final Pos fallingPosition = new Pos(this.outputSlotXPositions.get(index), -1);
+        Animator fallingPositionAnimation = createFallingAnimation(fallingPosition, this.fallDistance);
         IWidget widget = createItemSlot(index, fallingPositionAnimation);
         // TransformWidget 根据动画驱动的 fallingPosition 实时平移物品槽
         return new TransformWidget(widget)
@@ -154,16 +155,22 @@ public class NekoFallingItemSlotFactory {
      * <p>
      * 注意：animatedPos 同时作为动画的可变状态对象和 TransformWidget 的位置源。
      * MutableObjectAnimator 在每帧将插值结果写入 animatedPos，TransformWidget 读取其值进行平移。
+     * <p>
+     * 重要：animatedPos 的初始值应为顶部 (y=-1)，与动画起点一致，
+     * 避免物品在动画启动前先渲染在底部位置造成视觉跳跃。
      *
-     * @param animatedPos 动画目标位置（同时作为动画的可变状态对象）
+     * @param animatedPos  动画目标位置（同时作为动画的可变状态对象，初始 y 应为 -1）
+     * @param fallDistance 掉落终点 Y 坐标（最终落点位置）
      * @return 配置好的动画控制器
      */
-    private static Animator createFallingAnimation(Pos animatedPos) {
-        // 起点在槽位上方 (y=-1)，终点为最终位置 (y=fallDistance) 的副本
-        return new MutableObjectAnimator<>(animatedPos, new Pos(animatedPos.getX(), -1), animatedPos.copyOrImmutable())
-            .bounds(0, 1)
-            .curve(Interpolation.BOUNCE_OUT)
-            .duration(FALL_ANIMATION_DURATION);
+    private static Animator createFallingAnimation(Pos animatedPos, int fallDistance) {
+        // 起点在槽位上方 (y=-1)，终点为最终位置 (y=fallDistance)
+        return new MutableObjectAnimator<>(
+            animatedPos,
+            new Pos(animatedPos.getX(), -1),
+            new Pos(animatedPos.getX(), fallDistance)).bounds(0, 1)
+                .curve(Interpolation.BOUNCE_OUT)
+                .duration(FALL_ANIMATION_DURATION);
     }
 
     /**

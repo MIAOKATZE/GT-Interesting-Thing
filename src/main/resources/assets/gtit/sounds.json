@@ -15,5 +15,22 @@
         "stream": true
       }
     ]
+  },
+  "trade_success": {
+    "category": "block",
+    "sounds": [
+      {
+        "name": "gtit:trade_success_1",
+        "stream": false
+      },
+      {
+        "name": "gtit:trade_success_2",
+        "stream": false
+      },
+      {
+        "name": "gtit:trade_success_3",
+        "stream": false
+      }
+    ]
   }
 }

@@ -4,7 +4,9 @@ import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -134,6 +136,15 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     /** 内置输出物品槽 */
     public final ItemStackHandler outputItems = new ItemStackHandler(OUTPUT_SLOTS);
+
+    /** 输出缓冲队列，物品先入队再逐 tick 投放到 outputItems，复刻 V1 的串行掉落节奏 */
+    private final Queue<ItemStack> outputBuffer = new ConcurrentLinkedQueue<>();
+
+    /** 标记有新缓冲输出待投放，触发立即投放而非等待延迟 */
+    private boolean newBufferedOutputs = false;
+
+    /** 距上次投放的 tick 计数，用于控制投放节奏 */
+    private int ticksSinceOutput = 0;
 
     /** 可选的 ME Vending Uplink Hatch，结构检查时设置，上限 1 个 */
     private MTEVendingUplinkHatch uplinkHatch = null;
@@ -292,28 +303,137 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
-     * 将单个物品栈弹入出货槽
+     * 将单个物品栈弹入出货槽（加入缓冲队列）
      * <p>
-     * 优先使用 {@link InternalOutputSlotAccessor} 合并到现有输出槽或放入空槽，
-     * 从而触发 {@link com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory} 的掉落动画。
-     * 若出货槽空间不足，返回未能放入的剩余物品（原栈不会被修改），调用方可自行处理（例如掉落到地面）。
+     * 物品加入 outputBuffer 队列，由 onPostTick 逐 tick 投放到 outputItems 的第一个空槽。
+     * 仅当 outputItems 完全无空槽时返回原栈作为溢出（调用方可掉落到地面）。
      *
      * @param stack 要弹入的物品栈
-     * @return 未放入出货槽的剩余物品，{@code null} 表示全部放入
+     * @return 未入队的剩余物品（仅在 outputItems 完全满时返回），null 表示已入队
      */
     public ItemStack dispenseItemStack(ItemStack stack) {
         if (stack == null || stack.stackSize <= 0) {
             return null;
         }
-        InternalOutputSlotAccessor accessor = new InternalOutputSlotAccessor();
-        // 先判断是否有任何槽位能接收该物品（完全或部分）
-        if (!accessor.hasSpaceFor(stack)) {
+        // 检查是否还有空槽，完全满时返回溢出
+        if (getFirstEmptyOutputSlot() == -1) {
             return stack.copy();
         }
-        ItemStack toInsert = stack.copy();
-        accessor.insertItem(toInsert);
-        // insertItem 会按顺序合并到已有槽位，剩余部分放入第一个空槽
-        return toInsert.stackSize > 0 ? toInsert : null;
+        this.outputBuffer.add(stack.copy());
+        this.newBufferedOutputs = true;
+        if (getBaseMetaTileEntity() != null) {
+            getBaseMetaTileEntity().markDirty();
+        }
+        return null;
+    }
+
+    /**
+     * 将物品列表加入输出缓冲队列
+     * <p>
+     * 复刻 V1 的 dispenseItemStacks：物品先入队，由 onPostTick 逐 tick 投放到 outputItems。
+     * 每次投放写入第一个空槽（不合并），确保 NekoFallingItemSlotFactory 的掉落动画必然触发。
+     *
+     * @param itemStacks 要弹入的物品列表
+     */
+    public void dispenseItemStacks(java.util.List<ItemStack> itemStacks) {
+        if (itemStacks == null || itemStacks.isEmpty()) return;
+        for (ItemStack stack : itemStacks) {
+            if (stack != null && stack.stackSize > 0) {
+                this.outputBuffer.add(stack.copy());
+            }
+        }
+        this.newBufferedOutputs = true;
+        if (getBaseMetaTileEntity() != null) {
+            getBaseMetaTileEntity().markDirty();
+        }
+    }
+
+    /**
+     * 逐 tick 投放缓冲队列中的物品到 outputItems
+     * <p>
+     * 复刻 V1 的 dispenseItems：每次调用最多投放一个物品到第一个空槽，
+     * 投放节奏由 getDispensingDelay() 控制（队列越长延迟越短）。
+     */
+    private void dispenseItems() {
+        if (!mMachine) return;
+        if (this.newBufferedOutputs
+            || (!this.outputBuffer.isEmpty() && this.ticksSinceOutput % getDispensingDelay() == 0)) {
+            dispenseFirstNonNullItem();
+            this.ticksSinceOutput = 0;
+        }
+        this.ticksSinceOutput = this.newBufferedOutputs ? 0 : this.ticksSinceOutput + 1;
+        this.newBufferedOutputs = false;
+        if (getBaseMetaTileEntity() != null) {
+            getBaseMetaTileEntity().markDirty();
+        }
+    }
+
+    /**
+     * 获取投放延迟（tick）
+     * <p>
+     * 队列越长延迟越短（对数加速），复刻 V1 的 getDispensingDelay。
+     */
+    private int getDispensingDelay() {
+        int baseDelay = 10;
+        int queueSize = outputBuffer.size();
+        if (queueSize <= 1) return baseDelay;
+        double acceleration = Math.log(queueSize);
+        if (acceleration < 1) return baseDelay;
+        return (int) (baseDelay / acceleration);
+    }
+
+    /**
+     * 从队列中取出第一个有效物品，投放到第一个空槽
+     */
+    private void dispenseFirstNonNullItem() {
+        ItemStack dispensable = getNextDispensable();
+        if (dispensable != null) {
+            int targetSlot = getFirstEmptyOutputSlot();
+            if (targetSlot != -1) {
+                outputIntoSlot(dispensable, targetSlot);
+                this.outputBuffer.poll();
+            }
+        }
+    }
+
+    /**
+     * 获取队列中第一个有效物品（不弹出）
+     */
+    private ItemStack getNextDispensable() {
+        while (!this.outputBuffer.isEmpty()) {
+            ItemStack next = this.outputBuffer.peek();
+            if (next != null && next.stackSize > 0) {
+                return next;
+            }
+            this.outputBuffer.poll();
+        }
+        return null;
+    }
+
+    /**
+     * 获取第一个空输出槽索引
+     *
+     * @return 空槽索引，无空槽返回 -1
+     */
+    private int getFirstEmptyOutputSlot() {
+        for (int i = 0; i < OUTPUT_SLOTS; i++) {
+            if (outputItems.getStackInSlot(i) == null) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 将物品写入指定输出槽
+     * <p>
+     * 使用 copy() 确保新对象引用，触发 ModularUI 的完整同步链。
+     */
+    private void outputIntoSlot(ItemStack stack, int slotIndex) {
+        ItemStack output = stack.copy();
+        output.stackSize = stack.stackSize;
+        stack.stackSize = 0;
+        outputItems.setStackInSlot(slotIndex, output);
     }
 
     // === ICasingTextureProvider ===
@@ -381,6 +501,18 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         super.saveNBTData(aNBT);
         aNBT.setTag("inputItems", inputItems.serializeNBT());
         aNBT.setTag("outputItems", outputItems.serializeNBT());
+        // 保存输出缓冲队列
+        if (!outputBuffer.isEmpty()) {
+            net.minecraft.nbt.NBTTagList bufferList = new net.minecraft.nbt.NBTTagList();
+            for (ItemStack stack : outputBuffer) {
+                if (stack != null && stack.stackSize > 0) {
+                    net.minecraft.nbt.NBTTagCompound tag = new net.minecraft.nbt.NBTTagCompound();
+                    stack.writeToNBT(tag);
+                    bufferList.appendTag(tag);
+                }
+            }
+            aNBT.setTag("outputBuffer", bufferList);
+        }
     }
 
     @Override
@@ -391,6 +523,19 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         }
         if (aNBT.hasKey("outputItems")) {
             outputItems.deserializeNBT(aNBT.getCompoundTag("outputItems"));
+        }
+        // 加载输出缓冲队列
+        if (aNBT.hasKey("outputBuffer")) {
+            net.minecraft.nbt.NBTTagList bufferList = aNBT.getTagList("outputBuffer", 10);
+            for (int i = 0; i < bufferList.tagCount(); i++) {
+                ItemStack stack = ItemStack.loadItemStackFromNBT(bufferList.getCompoundTagAt(i));
+                if (stack != null && stack.stackSize > 0) {
+                    outputBuffer.add(stack);
+                }
+            }
+            if (!outputBuffer.isEmpty()) {
+                newBufferedOutputs = true;
+            }
         }
     }
 
@@ -520,6 +665,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // 使正面材质/覆盖层与结构状态同步。该值会由 GT 同步到客户端。
         if (aBaseMetaTileEntity.isServerSide()) {
             aBaseMetaTileEntity.setActive(mMachine);
+            // 逐 tick 投放缓冲队列中的物品
+            if (mMachine) {
+                dispenseItems();
+            }
         }
         // 客户端：复刻 V1 父类逻辑，非激活/结构未形成时清除覆盖层
         if (aBaseMetaTileEntity.isClientSide()) {
@@ -648,17 +797,18 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * 实现 {@link NekoTradeExecutor.OutputSlotAccessor} 接口，
      * 直接操作本机器的 {@link #outputItems}。
+     * <p>
+     * V2 完整版：hasSpaceFor 仅检查空槽（不合并），insertItem 加入缓冲队列，
+     * 由 onPostTick 逐 tick 投放，确保 NekoFallingItemSlotFactory 的掉落动画必然触发。
      */
     private class InternalOutputSlotAccessor implements NekoTradeExecutor.OutputSlotAccessor {
 
         @Override
         public boolean hasSpaceFor(ItemStack stack) {
             if (stack == null) return true;
+            // 只检查是否有空槽（不合并，与 V1 一致）
             for (int i = 0; i < OUTPUT_SLOTS; i++) {
-                ItemStack existing = outputItems.getStackInSlot(i);
-                if (existing == null) return true;
-                if (existing.isItemEqual(stack) && ItemStack.areItemStackTagsEqual(existing, stack)
-                    && existing.stackSize + stack.stackSize <= existing.getMaxStackSize()) {
+                if (outputItems.getStackInSlot(i) == null) {
                     return true;
                 }
             }
@@ -668,26 +818,77 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         @Override
         public void insertItem(ItemStack stack) {
             if (stack == null) return;
-            for (int i = 0; i < OUTPUT_SLOTS; i++) {
-                ItemStack existing = outputItems.getStackInSlot(i);
-                if (existing != null && existing.isItemEqual(stack)
-                    && ItemStack.areItemStackTagsEqual(existing, stack)) {
-                    int space = existing.getMaxStackSize() - existing.stackSize;
-                    if (space > 0) {
-                        int toAdd = Math.min(space, stack.stackSize);
-                        existing.stackSize += toAdd;
-                        stack.stackSize -= toAdd;
-                        outputItems.setStackInSlot(i, existing);
-                        if (stack.stackSize <= 0) return;
-                    }
-                }
-            }
-            for (int i = 0; i < OUTPUT_SLOTS; i++) {
-                if (outputItems.getStackInSlot(i) == null) {
-                    outputItems.setStackInSlot(i, stack.copy());
-                    return;
-                }
-            }
+            // 加入缓冲队列，由 onPostTick 逐 tick 投放到空槽
+            outputBuffer.add(stack.copy());
+            newBufferedOutputs = true;
+        }
+    }
+
+    // === GT5U 基础接口重写 ===
+
+    /**
+     * 获取物品栏总大小（输入槽 + 输出槽）
+     * <p>
+     * 重写以暴露内置的 inputItems 和 outputItems，使 GT5U 的物品栏操作（如玩家取物、
+     * 自动抽出）能正确识别所有槽位。复刻 V1 MTEVendingMachine.java 的实现。
+     */
+    @Override
+    public int getSizeInventory() {
+        return INPUT_SLOTS + OUTPUT_SLOTS;
+    }
+
+    /**
+     * 获取指定槽位的物品栈
+     * <p>
+     * 索引 0~INPUT_SLOTS-1 对应输入槽，INPUT_SLOTS~INPUT_SLOTS+OUTPUT_SLOTS-1 对应输出槽。
+     * 复刻 V1 MTEVendingMachine.java 的实现。
+     */
+    @Override
+    public ItemStack getStackInSlot(int index) {
+        if (index < INPUT_SLOTS) {
+            return inputItems.getStackInSlot(index);
+        }
+        if (index < INPUT_SLOTS + OUTPUT_SLOTS) {
+            return outputItems.getStackInSlot(index - INPUT_SLOTS);
+        }
+        return null;
+    }
+
+    /**
+     * 检查槽位是否有效
+     * <p>
+     * 所有输入槽和输出槽均为有效槽位。复刻 V1 MTEVendingMachine.java 的实现。
+     */
+    @Override
+    public boolean isValidSlot(int aIndex) {
+        return aIndex < INPUT_SLOTS + OUTPUT_SLOTS;
+    }
+
+    /**
+     * 是否允许在指定槽位掉落物品
+     * <p>
+     * 所有槽位均允许掉落物品（玩家破坏机器时）。复刻 V1 MTEVendingMachine.java 的实现。
+     */
+    @Override
+    public boolean shouldDropItemAt(int index) {
+        return true;
+    }
+
+    /**
+     * 设置指定槽位的物品内容
+     * <p>
+     * 根据索引路由到 inputItems 或 outputItems，并在设置后调用 markDirty
+     * 确保数据变更被持久化。复刻 V1 MTEVendingMachine.java 的实现。
+     */
+    @Override
+    public void setInventorySlotContents(int aIndex, ItemStack aStack) {
+        if (aIndex < INPUT_SLOTS) {
+            inputItems.setStackInSlot(aIndex, aStack);
+        } else if (aIndex < INPUT_SLOTS + OUTPUT_SLOTS) {
+            outputItems.setStackInSlot(aIndex - INPUT_SLOTS, aStack);
+        }
+        if (getBaseMetaTileEntity() != null) {
+            getBaseMetaTileEntity().markDirty();
         }
     }
 }

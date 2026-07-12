@@ -67,6 +67,10 @@ public class NekoMusicEventHandler {
     private long fadeStartTime = 0;
     private float volumeAtFadeStart = 0.0f;
 
+    // 强制停止截止时间（System.currentTimeMillis()），0 表示无倒计时
+    // 淡出开始时设置为 FADE_TIME_MS + 1秒，超时后强制 stopSound，防止淡出卡死导致残留音
+    private long forceStopDeadline = 0L;
+
     // 当前音量（0.0 ~ MAX_VOLUME）
     private float currentVolume = 0.0f;
 
@@ -82,6 +86,8 @@ public class NekoMusicEventHandler {
     // 它继承自 paulscode.sound.SoundSystem，setVolume/playing 声明在父类，故针对父类缓存。
     private static Method setVolumeMethod;
     private static Method playingMethod;
+    // v1.6.9+: stop 方法缓存，用于在 stopSound 中直接停止底层音频流（双保险）
+    private static Method stopMethod;
 
     public NekoMusicEventHandler() {
         instance = this;
@@ -123,6 +129,7 @@ public class NekoMusicEventHandler {
             if (soundSystemClass != null) {
                 setVolumeMethod = soundSystemClass.getMethod("setVolume", String.class, float.class);
                 playingMethod = soundSystemClass.getMethod("playing", String.class);
+                stopMethod = soundSystemClass.getMethod("stop", String.class);
             }
 
             GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功");
@@ -143,6 +150,7 @@ public class NekoMusicEventHandler {
                 if (soundSystemClass != null) {
                     setVolumeMethod = soundSystemClass.getMethod("setVolume", String.class, float.class);
                     playingMethod = soundSystemClass.getMethod("playing", String.class);
+                    stopMethod = soundSystemClass.getMethod("stop", String.class);
                 }
 
                 GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功（MCP 名称回退）");
@@ -309,6 +317,8 @@ public class NekoMusicEventHandler {
         this.fadingOut = true;
         this.fadeStartTime = System.currentTimeMillis();
         this.volumeAtFadeStart = this.currentVolume;
+        // 设置强制停止截止时间：淡出时长 + 1 秒缓冲，超时后强制停止防止残留音
+        this.forceStopDeadline = System.currentTimeMillis() + FADE_TIME_MS + 1000L;
     }
 
     // ==================== Tick 处理 ====================
@@ -334,6 +344,13 @@ public class NekoMusicEventHandler {
             // BGM 正在播放但不在淡入淡出中，持续应用音量（响应用户音量调节）
             float effectiveVolume = this.currentVolume * NekoMusicConfig.music_volume;
             setSoundVolume(effectiveVolume);
+        }
+
+        // 强制停止倒计时保障：淡出超时后强制停止 BGM，防止淡出卡死导致关机残留音
+        if (this.forceStopDeadline > 0 && System.currentTimeMillis() >= this.forceStopDeadline
+            && this.currentSound != null) {
+            GTInterestingThing.LOG.warn("[NEKO] BGM 淡出超时，强制停止");
+            stopSound(mc);
         }
     }
 
@@ -403,8 +420,30 @@ public class NekoMusicEventHandler {
 
     /**
      * 停止声音
+     * <p>
+     * 双保险机制：
+     * 1. 先通过 SoundSystem.stop() 直接停止底层音频流（paulscode 层面）
+     * 2. 再通过 SoundHandler.stopSound() 移除 MC 播放记录
+     * 这样即使 SoundHandler.stopSound() 不能立即停止底层音频，SoundSystem.stop() 也能确保停止。
      */
     private void stopSound(Minecraft mc) {
+        // 第一保险：通过 SoundSystem.stop() 直接停止底层音频流
+        if (this.soundSourceName != null) {
+            Object sys = getSoundSystem();
+            if (sys != null) {
+                try {
+                    Method m = stopMethod;
+                    if (m == null) {
+                        m = sys.getClass()
+                            .getMethod("stop", String.class);
+                    }
+                    m.invoke(sys, this.soundSourceName);
+                } catch (Exception e) {
+                    GTInterestingThing.LOG.warn("[NEKO] SoundSystem.stop() 失败: {}", e.getMessage());
+                }
+            }
+        }
+        // 第二保险：通过 SoundHandler.stopSound() 移除 MC 播放记录
         if (this.currentSound != null) {
             try {
                 mc.getSoundHandler()
@@ -421,6 +460,7 @@ public class NekoMusicEventHandler {
         this.currentVolume = 0.0f;
         this.fadingIn = false;
         this.fadingOut = false;
+        this.forceStopDeadline = 0L;
     }
 
     /**
