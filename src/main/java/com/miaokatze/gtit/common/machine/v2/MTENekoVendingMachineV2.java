@@ -490,6 +490,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @Override
     public void onPostTick(IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
         super.onPostTick(aBaseMetaTileEntity, aTick);
+        // 服务端：基类 MTEMultiBlockBase.onPostTick 会按 mMaxProgresstime > 0 设置 active，
+        // 但猫猫机没有持续配方进度，必须按结构是否成型 (mMachine) 覆盖 active 状态，
+        // 使正面材质/覆盖层与结构状态同步。该值会由 GT 同步到客户端。
+        if (aBaseMetaTileEntity.isServerSide()) {
+            aBaseMetaTileEntity.setActive(mMachine);
+        }
         // 客户端：复刻 V1 父类逻辑，非激活/结构未形成时清除覆盖层
         if (aBaseMetaTileEntity.isClientSide()) {
             if (mMachine) {

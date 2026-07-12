@@ -7,14 +7,14 @@ import org.lwjgl.input.Keyboard;
 import com.cleanroommc.modularui.api.GuiAxis;
 import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
-import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
+import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
-import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
@@ -59,8 +59,8 @@ public class NekoCoinDisplayV2 extends Flow {
     private final IntSyncValue coinSyncValue;
     /** 余额数字文本组件（scale 会被 serp 动画动态修改） */
     private final TextWidget<?> coinAmount;
-    /** 弹出硬币按钮（需 Shift 才能点击） */
-    private final ToggleButton ejectButton;
+    /** 弹出硬币按钮（需 Shift 才能点击，使用普通 ButtonWidget 替代 ToggleButton） */
+    private final ButtonWidget<?> ejectButton;
 
     /** 上一次的余额值（用于检测变化），-1 表示未初始化 */
     private int oldCoinValue = -1;
@@ -105,14 +105,27 @@ public class NekoCoinDisplayV2 extends Flow {
 
         // ==================== 弹出按钮 ====================
         // 使用 NekoGuiTextures.EJECT_COINS 作为图标，需 Shift 才能点击（参考 VM CoinButton）
-        this.ejectButton = new ShiftEjectButton();
-        this.ejectButton.size(12);
-        this.ejectButton.disableThemeBackground(true);
-        this.ejectButton.disableHoverThemeBackground(true);
-        this.ejectButton.overlay(
-            new IDrawable[] { NekoGuiTextures.EJECT_COINS.asIcon()
-                .size(12) });
-        this.ejectButton.syncHandler("nekoEjectCoin_" + currencyId);
+        // 使用普通 ButtonWidget 替代 ToggleButton：仅在按住 Shift 时手动触发 BooleanSyncValue，
+        // 未按 Shift 时返回 false（IGNORE），保持防误触行为。
+        this.ejectButton = new ButtonWidget<>().size(12)
+            .disableThemeBackground(true)
+            .disableHoverThemeBackground(true)
+            .overlay(
+                new IDrawable[] { NekoGuiTextures.EJECT_COINS.asIcon()
+                    .size(12) })
+            .onMousePressed(btn -> {
+                // 未按住 Shift 时忽略点击（防止误触弹出硬币）
+                if (!isShiftDown()) {
+                    return false;
+                }
+                // 按住 Shift 时手动触发弹出同步值：通过 syncManager 查找对应 BooleanSyncValue 并置 true
+                BooleanSyncValue ejectCoinSync = syncManager
+                    .findSyncHandler("nekoEjectCoin_" + currencyId, 0, BooleanSyncValue.class);
+                if (ejectCoinSync != null) {
+                    ejectCoinSync.setValue(true);
+                }
+                return true;
+            });
         // tooltip 动态显示实时余额和货币名称（autoUpdate 保证每帧刷新）
         this.ejectButton.tooltipDynamic(builder -> {
             builder.clearText();
@@ -235,46 +248,17 @@ public class NekoCoinDisplayV2 extends Flow {
         return amount / 1000000 + "M";
     }
 
-    // ==================== 内部类：Shift 弹出按钮 ====================
+    // ==================== 辅助方法 ====================
 
     /**
-     * 需 Shift 才能点击的弹出按钮
+     * 检测 Shift 键是否按下
      * <p>
-     * 复刻 VM {@code CoinButton} 的 Shift 检测逻辑：
-     * <ul>
-     * <li>未按住 Shift 时返回 IGNORE，防止误触弹出硬币</li>
-     * <li>按住 Shift 时走 ToggleButton 默认流程（切换状态 + 同步 + 播放音效）</li>
-     * </ul>
-     * <p>
-     * <b>与 VM CoinButton 的差异</b>：VM 通过 {@code panel.shiftHeld} 判断（需传入 Panel 引用），
-     * V2 通过 {@link Keyboard#isKeyDown(int)} 实时检测（无需 Panel 参数，更解耦）。
-     * 实时检测与事件追踪效果一致，因为 onMousePressed 在点击瞬间调用。
+     * 通过 {@link Keyboard#isKeyDown(int)} 实时检测左 Shift 或右 Shift，
+     * 用于弹出按钮的防误触判断。
+     *
+     * @return 左 Shift 或右 Shift 任一按下返回 true
      */
-    private static class ShiftEjectButton extends ToggleButton {
-
-        /**
-         * 鼠标按下事件：仅 Shift 按下时处理点击
-         *
-         * @param mouseButton 鼠标按键（0=左键，1=右键）
-         * @return Shift 按下时返回父类处理结果（SUCCESS），否则返回 IGNORE
-         */
-        @Override
-        public Interactable.Result onMousePressed(int mouseButton) {
-            // 未按住 Shift 时忽略点击（防止误触弹出硬币）
-            if (!isShiftDown()) {
-                return Interactable.Result.IGNORE;
-            }
-            // 按住 Shift 时走 ToggleButton 默认流程（自动 next + sync + playSound）
-            return super.onMousePressed(mouseButton);
-        }
-
-        /**
-         * 检测 Shift 键是否按下
-         *
-         * @return 左 Shift 或右 Shift 任一按下返回 true
-         */
-        private static boolean isShiftDown() {
-            return Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
-        }
+    private static boolean isShiftDown() {
+        return Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
     }
 }

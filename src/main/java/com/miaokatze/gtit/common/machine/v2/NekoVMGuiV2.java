@@ -108,8 +108,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     /** 面板宽度 */
     private static final int PANEL_WIDTH = 178;
-    /** 面板高度 */
-    private static final int PANEL_HEIGHT = 380;
+    /** 面板高度（与 V1 的 size(178, 320) 保持一致） */
+    private static final int PANEL_HEIGHT = 320;
     /** 每种显示模式预分配的 Widget 数量（与 VM 的 MAX_TRADES 一致） */
     private static final int MAX_TRADES = 300;
     /** TILE 模式每行的 Widget 数量 */
@@ -287,9 +287,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // 通知 NekoMusicEventHandler GUI 已打开
             NekoMusicEventHandler.onGuiOpened();
             panel.onCloseAction(() -> {
-                isV2GuiOpen = false;
-                // 通知 NekoMusicEventHandler GUI 已关闭
-                NekoMusicEventHandler.onGuiClosed();
+                // 关闭 BGM 并清理 GUI 打开标志
+                closeNekoGuiMusic();
             });
         }
 
@@ -576,7 +575,22 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     @Override
     public void onDispose() {
-        // GUI 关闭时的清理工作（BGM 停止在 onCloseAction 中处理）
+        // 作为 panel.onCloseAction 的兜底保险：
+        // 当 ModularUI 真正关闭/释放屏幕时，确保 BGM 能正常触发淡出
+        closeNekoGuiMusic();
+    }
+
+    /**
+     * 关闭猫猫售货机 GUI 的 BGM
+     * <p>
+     * 幂等方法：仅当 GUI 仍标记为打开时才执行清理，避免 onCloseAction 与 onDispose 重复调用
+     * 导致淡出被反复重置、BGM 微弱未止的问题。
+     */
+    private void closeNekoGuiMusic() {
+        if (!isV2GuiOpen) return;
+        isV2GuiOpen = false;
+        // 通知 NekoMusicEventHandler GUI 已关闭，触发淡出
+        NekoMusicEventHandler.onGuiClosed();
     }
 
     // ==================== TradeActionCallback 接口实现 ====================
@@ -730,7 +744,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             tabColumn.child(tabButton);
         }
 
-        return tabColumn;
+        // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
+        return tabColumn.excludeAreaInRecipeViewer();
     }
 
     /**
@@ -845,6 +860,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         }
 
         // 2x2 网格：左上音量、右上显示模式、左下显示硬币、右下排序
+        // 在 NEI/HEI 中排除 QoL 按钮列区域，避免配方查看器遮挡快捷按钮
         return new Grid().left(-33)
             .top(1)
             .minElementMargin(1, 1)
@@ -852,7 +868,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .grid(
                 Arrays.asList(
                     Arrays.asList(volumeButton, displayModeButton),
-                    Arrays.asList(showCoinsButton, sortModeButton)));
+                    Arrays.asList(showCoinsButton, sortModeButton)))
+            .excludeAreaInRecipeViewer();
     }
 
     /**
@@ -928,7 +945,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .width(PANEL_WIDTH - 12)
             .controller(tabController)
             .background(NekoGuiTextures.TRADE_BACKGROUND);
-        paged.height(TRADE_LIST_MIN_HEIGHT + 80);
+        // 交易列表高度与 V1 保持一致
+        paged.height(146);
 
         // 为每个分类创建一个页面
         for (NekoTradeCategory category : tradeCategories) {
@@ -968,7 +986,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .width(PANEL_WIDTH - 14)
             .top(1)
             .collapseDisabledChild(true);
-        tradeList.height(TRADE_LIST_MIN_HEIGHT + 80);
+        // 交易列表页面高度与外层 PagedWidget 保持一致
+        tradeList.height(146);
 
         // 顶部间距
         tradeList.child(
@@ -1072,7 +1091,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         }
 
         // 根据货币显示开关控制余额行的显示/隐藏
-        row.setEnabledIf(w -> showCoins);
+        // 使用 collapseDisabledChild(true) 在 showCoins=false 时整行折叠，而非仅变灰
+        row.setEnabledIf(w -> showCoins)
+            .collapseDisabledChild(true);
         return row;
     }
 
@@ -1189,7 +1210,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .bottom(6)
                 .height(18 * 5));
 
-        return ioColumn;
+        // 在 NEI/HEI 中排除右侧 IO 列区域，避免配方查看器遮挡输入/输出槽
+        return ioColumn.excludeAreaInRecipeViewer();
     }
 
     /**
@@ -1210,11 +1232,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 弹出单种猫猫币
      * <p>
      * 从钱包中取出指定货币的全部余额，在机器旁弹出。
+     * 前提：机器必须已成型且处于 active 状态；否则直接重置标志并返回。
      *
      * @param currencyId 货币 ID
      * @param playerId   玩家 UUID
      */
     private void doNekoEjectCoin(String currencyId, UUID playerId) {
+        // 机器未成型或未激活时不允许弹出，重置标志后返回
+        if (baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
+            nekoEjectSingleCoin.put(currencyId, false);
+            return;
+        }
         try {
             if (playerId == null) {
                 nekoEjectSingleCoin.put(currencyId, false);
@@ -1246,10 +1274,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     /**
      * 弹出所有猫猫币
+     * <p>
+     * 前提：机器必须已成型且处于 active 状态；否则直接重置标志并返回。
      *
      * @param playerId 玩家 UUID
      */
     private void doNekoEjectAllCoins(UUID playerId) {
+        // 机器未成型或未激活时不允许弹出，重置标志后返回
+        if (baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
+            nekoEjectAllCoins = false;
+            return;
+        }
         try {
             if (playerId == null) {
                 nekoEjectAllCoins = false;

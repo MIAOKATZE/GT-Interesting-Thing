@@ -62,6 +62,8 @@ public class NekoTradeRegistryV2 {
      * 注册到 {@link NekoTradeDatabase#INSTANCE}。
      */
     private static void loadAndRegisterTrades() {
+        // 清空数据库，防止 initialize/initializeClient 被多次调用时重复注册交易组
+        NekoTradeDatabase.INSTANCE.clear();
         NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
         if (data == null || data.getTrades() == null) {
             GTInterestingThing.LOG.warn("V2 交易配置为空");

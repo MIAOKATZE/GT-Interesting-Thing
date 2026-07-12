@@ -32,6 +32,7 @@ import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
 import com.miaokatze.gtit.trade.NekoTradeRegistry;
+import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -1173,7 +1174,9 @@ public class GTITGiftCommand extends CommandBase {
     }
 
     private void handleNekoVMReload(EntityPlayerMP player) {
-        boolean success = NekoTradeRegistry.reload();
+        boolean v1Success = NekoTradeRegistry.reload();
+        boolean v2Success = NekoTradeRegistryV2.reload();
+        boolean success = v1Success && v2Success;
         if (success) {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易配置已热重载"));
         } else {
