@@ -774,14 +774,28 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 }
             }
         }
-        // 客户端：复刻 V1 父类逻辑，非激活/结构未形成时清除覆盖层
+        // 客户端：复刻 V1 MTEVendingMachine 逻辑
+        // 仅在非激活时清除覆盖层，不主动重注册（依赖 onTextureUpdate/onValueUpdate 事件驱动）
+        // 修复：原代码每 tick 调用 setTextureOverlay（先 clearOverlay 再注册）导致闪烁
         if (aBaseMetaTileEntity.isClientSide()) {
-            if (mMachine) {
-                setTextureOverlay();
-            } else {
+            if (!aBaseMetaTileEntity.isActive()) {
                 clearOverlay();
             }
+            return;
         }
+    }
+
+    /**
+     * 同步 mMachine 状态到客户端
+     * <p>
+     * 复刻 GT5U MTEAirFilterBase 的模式。基类默认不同步 mMachine，
+     * 导致客户端无法及时获知结构成型状态，覆盖层渲染与实际状态脱节。
+     *
+     * @return mMachine 状态编码为 byte（1=成型，0=未成型）
+     */
+    @Override
+    public byte getUpdateData() {
+        return (byte) (mMachine ? 1 : 0);
     }
 
     /**
@@ -794,8 +808,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @Override
     public void onValueUpdate(byte aValue) {
         super.onValueUpdate(aValue);
-        // 复刻 V1：客户端收到状态更新时，根据 mMachine 决定叠加或清除覆盖层
-        // 修复：原代码无 mMachine 检查，存档加载时结构未形成也会注册覆盖层导致材质混乱
+        // 从更新数据提取 mMachine 状态（复刻 MTEAirFilterBase 模式）
+        // 修复：原代码直接读取 mMachine 字段，但该字段未由 getUpdateData 同步，
+        // 客户端 mMachine 为旧值，导致覆盖层与实际结构状态脱节
+        mMachine = (aValue & 0x1) != 0;
         if (getBaseMetaTileEntity() != null && getBaseMetaTileEntity().isClientSide()) {
             if (mMachine) {
                 setTextureOverlay();
@@ -803,6 +819,18 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 clearOverlay();
             }
         }
+    }
+
+    /**
+     * 方块更新回调
+     * <p>
+     * 复刻 V1 MTEVendingMachine 和 GT5U MTEAirFilterBase 的模式。
+     * GT5U 的 handleBlockUpdateClient 会调用此方法，覆盖后让方块更新机制
+     * 驱动覆盖层刷新，避免依赖 onPostTick 每 tick 重注册。
+     */
+    @Override
+    public void onTextureUpdate() {
+        setTextureOverlay();
     }
 
     /**
@@ -818,12 +846,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @Override
     public void onFirstTick(IGregTechTileEntity aBaseMetaTileEntity) {
         super.onFirstTick(aBaseMetaTileEntity);
-        // 复刻 V1 父类：客户端首次 tick 时同步朝向并初始化覆盖层
+        // 复刻 V1 MTEVendingMachine：客户端首次 tick 时同步朝向并无条件初始化覆盖层
+        // 修复：原代码有 if (mMachine) 条件，区块重载时 mMachine=false 会跳过覆盖层设置，
+        // 导致覆盖层"时有时无"。V1 和 MTEAirFilterBase 均为无条件调用。
+        // setTextureOverlay 内部会通过 tile.isActive() 判断使用激活态还是非激活态材质。
         if (aBaseMetaTileEntity.isClientSide()) {
             StructureLibAPI.queryAlignment((IAlignmentProvider) aBaseMetaTileEntity);
-            if (mMachine) {
-                setTextureOverlay();
-            }
+            setTextureOverlay();
         }
     }
 
@@ -838,6 +867,23 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     public boolean usingAnimations() {
         return true;
+    }
+
+    /**
+     * 设置朝向回调
+     * <p>
+     * 复刻 V1 MTEVendingMachine 的模式。朝向变化时重新设置覆盖层，
+     * 确保覆盖层位置与新朝向同步。
+     *
+     * @param alignment 新的朝向
+     */
+    @Override
+    public void setExtendedFacing(ExtendedFacing alignment) {
+        boolean extendedFacingChanged = alignment != getExtendedFacing();
+        getBaseMetaTileEntity().setFrontFacing(alignment.getDirection());
+        if (extendedFacingChanged) {
+            setTextureOverlay();
+        }
     }
 
     /**
