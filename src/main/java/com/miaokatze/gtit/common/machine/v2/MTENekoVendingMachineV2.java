@@ -294,6 +294,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * @return 交易结果（SUCCESS 或对应的失败状态）
      */
     public NekoTradeResult processTrade(UUID playerId, UUID groupId, int tradeIndex) {
+        // 机器未成型时不允许交易（防止物品被扣但 onPostTick 不投放）
+        if (!mMachine) {
+            return NekoTradeResult.fail(NekoTradeResult.Status.NOT_FORMED);
+        }
         return NekoTradeExecutor.INSTANCE.executeTrade(
             playerId,
             groupId,
@@ -339,7 +343,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (itemStacks == null || itemStacks.isEmpty()) return;
         for (ItemStack stack : itemStacks) {
             if (stack != null && stack.stackSize > 0) {
-                this.outputBuffer.add(stack.copy());
+                // 溢出检查：与单个版 dispenseItemStack 一致，完全无空槽时掉落到机器旁
+                if (getFirstEmptyOutputSlot() == -1) {
+                    // 输出槽完全满，剩余物品掉落到机器旁
+                    dropItemsNearMachine(stack);
+                } else {
+                    this.outputBuffer.add(stack.copy());
+                }
             }
         }
         this.newBufferedOutputs = true;
@@ -392,6 +402,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             if (targetSlot != -1) {
                 outputIntoSlot(dispensable, targetSlot);
                 this.outputBuffer.poll();
+            } else {
+                // 槽满时掉落到机器旁并 poll 出队列，防止物品永久卡队列
+                dropItemsNearMachine(dispensable);
+                this.outputBuffer.poll();
             }
         }
     }
@@ -425,6 +439,34 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
+     * 获取输出槽的空槽数量
+     * <p>
+     * 供 GUI 层在投放前判断是否有空间（考虑 outputBuffer 堆积）。
+     *
+     * @return 空槽数量
+     */
+    public int getOutputEmptySlotCount() {
+        int count = 0;
+        for (int i = 0; i < OUTPUT_SLOTS; i++) {
+            if (outputItems.getStackInSlot(i) == null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 获取输出缓冲队列的当前大小
+     * <p>
+     * 供 GUI 层在投放前判断队列是否已堆积过多未投放物品。
+     *
+     * @return 队列大小
+     */
+    public int getOutputBufferSize() {
+        return this.outputBuffer.size();
+    }
+
+    /**
      * 将物品写入指定输出槽
      * <p>
      * 使用 copy() 确保新对象引用，触发 ModularUI 的完整同步链。
@@ -434,6 +476,36 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         output.stackSize = stack.stackSize;
         stack.stackSize = 0;
         outputItems.setStackInSlot(slotIndex, output);
+    }
+
+    /**
+     * 将物品掉落到机器旁（世界实体）
+     * <p>
+     * 当输出槽满且队列无法投放时，将物品作为 EntityItem 掉落到机器控制器方块上方，
+     * 防止物品永久卡在 outputBuffer 队列中。
+     *
+     * @param stack 要掉落的物品栈
+     */
+    private void dropItemsNearMachine(ItemStack stack) {
+        if (stack == null || stack.stackSize <= 0) return;
+        IGregTechTileEntity baseMetaTileEntity = getBaseMetaTileEntity();
+        if (baseMetaTileEntity == null) return;
+        // 在控制器方块上方中心位置生成物品实体
+        net.minecraft.world.World world = baseMetaTileEntity.getWorld();
+        int x = baseMetaTileEntity.getXCoord();
+        int y = baseMetaTileEntity.getYCoord() + 1; // 上方一格
+        int z = baseMetaTileEntity.getZCoord();
+        net.minecraft.entity.item.EntityItem entityItem = new net.minecraft.entity.item.EntityItem(
+            world,
+            x + 0.5D,
+            y + 0.5D,
+            z + 0.5D,
+            stack.copy());
+        // 给一个轻微的向上初速度，模拟"弹出"效果
+        entityItem.motionX = (world.rand.nextDouble() - 0.5D) * 0.2D;
+        entityItem.motionY = 0.2D;
+        entityItem.motionZ = (world.rand.nextDouble() - 0.5D) * 0.2D;
+        world.spawnEntityInWorld(entityItem);
     }
 
     // === ICasingTextureProvider ===
@@ -806,13 +878,17 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         @Override
         public boolean hasSpaceFor(ItemStack stack) {
             if (stack == null) return true;
-            // 只检查是否有空槽（不合并，与 V1 一致）
+            // 可用空槽 = 当前空槽数 - outputBuffer 队列已占用的虚拟槽位数
+            // 队列堆积时，空槽数会逐步被消耗（onPostTick 逐 tick 投放），
+            // hasSpaceFor 必须预留队列占位，避免超卖
+            int emptySlots = 0;
             for (int i = 0; i < OUTPUT_SLOTS; i++) {
                 if (outputItems.getStackInSlot(i) == null) {
-                    return true;
+                    emptySlots++;
                 }
             }
-            return false;
+            int available = emptySlots - outputBuffer.size();
+            return available > 0;
         }
 
         @Override
@@ -821,6 +897,35 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             // 加入缓冲队列，由 onPostTick 逐 tick 投放到空槽
             outputBuffer.add(stack.copy());
             newBufferedOutputs = true;
+            // 标记脏数据，确保队列变化持久化到存档
+            if (getBaseMetaTileEntity() != null) {
+                getBaseMetaTileEntity().markDirty();
+            }
+        }
+
+        @Override
+        public void rollback(int count) {
+            // 从队列尾部移除 count 个物品（回滚本轮已插入的）
+            // ConcurrentLinkedQueue 无 removeLast，用迭代移除最后一个
+            for (int i = 0; i < count && !outputBuffer.isEmpty(); i++) {
+                java.util.Iterator<ItemStack> it = outputBuffer.iterator();
+                ItemStack last = null;
+                while (it.hasNext()) {
+                    last = it.next();
+                }
+                if (last != null) {
+                    it = outputBuffer.iterator();
+                    while (it.hasNext()) {
+                        if (it.next() == last) {
+                            it.remove();
+                            break;
+                        }
+                    }
+                }
+            }
+            if (getBaseMetaTileEntity() != null) {
+                getBaseMetaTileEntity().markDirty();
+            }
         }
     }
 

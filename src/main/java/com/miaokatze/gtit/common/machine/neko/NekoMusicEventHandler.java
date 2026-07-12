@@ -403,7 +403,10 @@ public class NekoMusicEventHandler {
             }
         } else if (this.fadingOut) {
             this.currentVolume = (1.0f - progress) * this.volumeAtFadeStart;
-            if (progress >= 1.0f) {
+            // 早停判断：音量已低至听不见时立即停止，无需等满 2 秒
+            // 阈值 0.01：effectiveVolume = currentVolume * music_volume < 0.01 时人耳不可察觉
+            float effectiveVolume = this.currentVolume * NekoMusicConfig.music_volume;
+            if (progress >= 1.0f || effectiveVolume < 0.01f) {
                 this.fadingOut = false;
                 this.currentVolume = 0.0f;
                 stopSound(Minecraft.getMinecraft());

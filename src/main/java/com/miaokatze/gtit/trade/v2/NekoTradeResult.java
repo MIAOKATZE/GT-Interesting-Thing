@@ -29,7 +29,9 @@ public class NekoTradeResult {
         /** 输入物品不足 */
         INSUFFICIENT_ITEMS,
         /** 输出槽已满 */
-        OUTPUT_FULL
+        OUTPUT_FULL,
+        /** 机器未成型 */
+        NOT_FORMED
     }
 
     private final Status status;

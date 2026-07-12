@@ -73,6 +73,16 @@ public class NekoTradeExecutor {
          * @param stack 待插入的物品栈
          */
         void insertItem(ItemStack stack);
+
+        /**
+         * 回滚指定数量的已插入物品
+         * <p>
+         * 当交易在产出循环中途失败（OUTPUT_FULL）时，需移除本轮已通过 insertItem
+         * 加入缓冲队列的物品，防止队列残留。
+         *
+         * @param count 要回滚的物品数量
+         */
+        void rollback(int count);
     }
 
     private NekoTradeExecutor() {}
@@ -183,8 +193,10 @@ public class NekoTradeExecutor {
             }
         }
 
-        // 4. 扣减输入物品
+        // 4. 扣减输入物品（保存副本以便回滚）
+        ItemStack[] originalInputs = null;
         if (trade.hasFromItems()) {
+            originalInputs = inputSlots.getCopyOfInputs();
             ItemStack[] inputs = inputSlots.getCopyOfInputs();
             // 实际扣减，直接修改数组
             removeItems(inputs, trade.getFromItems());
@@ -192,17 +204,28 @@ public class NekoTradeExecutor {
             inputSlots.setInputs(inputs);
         }
 
-        // 5. 产出放入输出槽
+        // 5. 产出放入输出槽（记录本轮插入数量以便回滚）
+        int insertedCount = 0;
         for (NekoBigItemStack toItem : trade.getToItems()) {
             for (ItemStack stack : toItem.getCombinedStacks()) {
                 if (!outputSlots.hasSpaceFor(stack)) {
-                    // 输出槽满，回滚猫猫币
+                    // 输出槽满，完整回滚
+                    // (a) 回滚猫猫币
                     if (wallet != null) {
                         wallet.addCount(trade.getCurrencyId(), trade.getCurrencyCost());
+                    }
+                    // (b) 还原已扣减的输入物品
+                    if (originalInputs != null) {
+                        inputSlots.setInputs(originalInputs);
+                    }
+                    // (c) 移除本轮已 insertItem 到 outputBuffer 的物品
+                    if (insertedCount > 0) {
+                        outputSlots.rollback(insertedCount);
                     }
                     return NekoTradeResult.fail(NekoTradeResult.Status.OUTPUT_FULL);
                 }
                 outputSlots.insertItem(stack);
+                insertedCount++;
             }
         }
 

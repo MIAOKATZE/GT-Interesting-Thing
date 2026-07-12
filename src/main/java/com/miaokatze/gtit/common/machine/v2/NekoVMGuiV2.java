@@ -1298,11 +1298,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .marginRight(4)
             .background(NekoGuiTextures.DISPENSER_BACKGROUND)
             .child(getFillPlayerInventoryButton());
-        // 顶部悬垂装饰
-        dispenserChute.child(
-            NekoGuiTextures.DISPENSER_OVERHANG.asWidget()
-                .top(0)
-                .fullWidth());
         // 100 个掉落动画槽（fallDistance=72 与 V1 一致，4 行高度）
         NekoFallingItemSlotFactory fallingFactory = new NekoFallingItemSlotFactory(
             multiblock.outputItems,
@@ -1311,6 +1306,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
             dispenserChute.child(fallingFactory.getFallingItemSlot(i));
         }
+        // 顶部悬垂装饰：必须最后添加，覆盖掉落槽起始位置（顶部），形成"物品从悬垂后面掉落"的图层效果
+        // 与 VM 原版 MteVendingMachineGui.createDispenserChute 顺序一致（掉落槽 → OVERHANG 最后）
+        dispenserChute.child(
+            NekoGuiTextures.DISPENSER_OVERHANG.asWidget()
+                .top(0)
+                .fullWidth());
         ioColumn.child(
             Flow.row()
                 .child(dispenserChute)
@@ -1373,6 +1374,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
 
             if (!toDispense.isEmpty()) {
+                // 投放前检查：输出槽是否还有空位（考虑 outputBuffer 已堆积的情况）
+                // 可用空位数 = 当前空槽数 - 队列已占用的虚拟槽位数
+                int emptySlots = multiblock.getOutputEmptySlotCount();
+                int queuedItems = multiblock.getOutputBufferSize();
+                if (emptySlots - queuedItems <= 0) {
+                    // 输出槽已满（含队列堆积），不扣钱，提示玩家
+                    GTInterestingThing.LOG.warn("[NekoVMV2] doNekoEjectCoin 输出槽已满，取消弹出货币 {}", currencyId);
+                    return;
+                }
                 multiblock.dispenseItemStacks(toDispense);
                 wallet.resetCount(currencyId);
                 NekoWalletManager.INSTANCE.saveWallet(playerId);
