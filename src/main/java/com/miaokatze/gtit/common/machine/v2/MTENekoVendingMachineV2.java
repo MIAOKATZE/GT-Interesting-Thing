@@ -8,6 +8,7 @@ import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.ForgeDirection;
@@ -148,6 +149,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     /** 可选的 ME Vending Uplink Hatch，结构检查时设置，上限 1 个 */
     private MTEVendingUplinkHatch uplinkHatch = null;
+
+    /** UplinkHatch 缓存刷新间隔（tick），与 GUI 的 getRefreshInterval() 一致 */
+    private static final long REFRESH_CACHE_INTERVAL = 20;
 
     // === 构造器 ===
 
@@ -479,6 +483,29 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
+     * 将出货槽的物品填充到玩家背包
+     * <p>
+     * 复刻 V1/VM 父类 MTEVendingMachine.fillPlayerInventoryWithDispensedItems：
+     * 遍历 outputItems，将物品复制到玩家背包；无法放入的物品保留在槽中。
+     *
+     * @param player 目标玩家
+     */
+    public void fillPlayerInventoryWithDispensedItems(EntityPlayer player) {
+        if (player == null) return;
+        for (int i = 0; i < OUTPUT_SLOTS; i++) {
+            ItemStack stack = outputItems.getStackInSlot(i);
+            if (stack == null) continue;
+            ItemStack toAdd = stack.copy();
+            boolean fullyAdded = player.inventory.addItemStackToInventory(toAdd);
+            outputItems.setStackInSlot(i, toAdd.stackSize <= 0 ? null : toAdd);
+            if (!fullyAdded) break;
+        }
+        if (getBaseMetaTileEntity() != null) {
+            getBaseMetaTileEntity().markDirty();
+        }
+    }
+
+    /**
      * 将物品掉落到机器旁（世界实体）
      * <p>
      * 当输出槽满且队列无法投放时，将物品作为 EntityItem 掉落到机器控制器方块上方，
@@ -740,6 +767,11 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             // 逐 tick 投放缓冲队列中的物品
             if (mMachine) {
                 dispenseItems();
+                // 复刻 V1/VM 父类（第 595-603 行）：周期性通知 UplinkHatch 刷新 ME 网络缓存，
+                // 使连接的 ME 网络中的物品/货币数据保持同步。
+                if (uplinkHatch != null && aTick % REFRESH_CACHE_INTERVAL == 0) {
+                    uplinkHatch.setRefreshCache();
+                }
             }
         }
         // 客户端：复刻 V1 父类逻辑，非激活/结构未形成时清除覆盖层

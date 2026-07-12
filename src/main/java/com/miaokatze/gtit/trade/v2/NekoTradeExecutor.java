@@ -299,14 +299,27 @@ public class NekoTradeExecutor {
     /**
      * 获取冷却周期内最大交易次数
      * <p>
-     * 暂返回 1（个人限制），TODO: 对接 GTNHLib Teams API 获取团队成员数，
-     * 使团队成员可共享更高的冷却内交易次数上限。
+     * 对接 GTNHLib Teams API 获取团队成员数，团队成员可共享更高的冷却内交易次数上限。
+     * 若玩家无团队或 GTNHLib 不可用，则回退到个人限制（返回 1）。
      *
      * @param playerId 玩家 UUID
-     * @return 冷却周期内最大交易次数
+     * @return 冷却周期内最大交易次数（团队成员数，至少为 1）
      */
     private int getMaxTradesInCooldown(UUID playerId) {
-        // TODO: 对接 GTNHLib Teams API 获取团队成员数
-        return 1;
+        if (playerId == null) return 1;
+        try {
+            com.gtnewhorizon.gtnhlib.teams.Team team = com.gtnewhorizon.gtnhlib.teams.TeamManager
+                .getTeamByPlayer(playerId);
+            if (team == null) return 1;
+            int memberCount = team.getMembers()
+                .size();
+            return Math.max(1, memberCount);
+        } catch (NoClassDefFoundError e) {
+            // GTNHLib Teams API 不可用，回退到个人限制
+            return 1;
+        } catch (Exception e) {
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoTradeExecutor] getMaxTradesInCooldown 异常", e);
+            return 1;
+        }
     }
 }

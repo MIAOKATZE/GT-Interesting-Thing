@@ -159,6 +159,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private BooleanSyncValue showCoinsSync;
     /** 弹出物品（清空输出槽）开关（C2S） */
     private BooleanSyncValue ejectItemsSync;
+    /** 填充玩家背包开关（C2S，Shift+左键出货槽触发） */
+    private BooleanSyncValue fillPlayerInventorySync;
     /** 是否显示猫猫币余额行 */
     private boolean showCoins = true;
     /** 各货币余额同步值映射 */
@@ -201,6 +203,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private boolean nekoImportCoins = false;
     /** 弹出物品（清空输出槽）标志（服务端处理后重置为 false） */
     private boolean nekoEjectItems = false;
+    /** 填充玩家背包标志（服务端处理后重置为 false） */
+    private boolean nekoFillPlayerInventory = false;
     /** 弹出单种猫猫币标志映射 */
     private final Map<String, Boolean> nekoEjectSingleCoin = new HashMap<>();
     /** 交易结果消息（服务端设置，通过 tradeResultSync 同步到客户端） */
@@ -507,6 +511,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         ejectItemsSync.allowC2S();
         syncManager.syncValue("nekoV2EjectItems", ejectItemsSync);
+
+        // --- 填充玩家背包（C2S，Shift+左键出货槽时触发）---
+        fillPlayerInventorySync = new BooleanSyncValue(() -> nekoFillPlayerInventory, val -> {
+            nekoFillPlayerInventory = val;
+            if (val) {
+                doNekoFillPlayerInventory(playerId);
+            }
+        });
+        fillPlayerInventorySync.allowC2S();
+        syncManager.syncValue("nekoV2FillPlayerInventory", fillPlayerInventorySync);
 
         // --- 货币显示开关（C2S）---
         showCoinsSync = new BooleanSyncValue(() -> showCoins, val -> { showCoins = val; });
@@ -1329,15 +1343,27 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     /**
-     * 获取"填充玩家背包"按钮（占位实现）
+     * 获取"填充玩家背包"按钮
      * <p>
-     * V1 中此按钮用于把出货槽的物品快速移到玩家背包。当前 V2 暂未实现该功能，
-     * 返回一个空 ParentWidget 占位以保持布局兼容。
+     * 复刻 V1 的 getNekoFillPlayerInventoryButton：
+     * 使用一个铺满出货槽区域的不可见 ButtonWidget，
+     * Shift+左键点击时通过 fillPlayerInventorySync 触发服务端方法，
+     * 将出货槽的物品快速移到玩家背包。
      *
-     * @return 占位 Widget
+     * @return 不可见的满覆盖按钮 Widget
      */
     private IWidget getFillPlayerInventoryButton() {
-        return new ParentWidget<>();
+        return new ButtonWidget<>().fullHeight()
+            .fullWidth()
+            .invisible()
+            .playClickSound(false)
+            .onMousePressed(btn -> {
+                // 复刻 V1：仅 Shift+左键触发
+                if (Interactable.hasShiftDown()) {
+                    fillPlayerInventorySync.setValue(true);
+                }
+                return true;
+            });
     }
 
     // ==================== 猫猫币操作（保留原有逻辑） ====================
@@ -1485,6 +1511,39 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             GTInterestingThing.LOG.error("[NekoVMV2] doNekoEjectItems 异常!", t);
         } finally {
             nekoEjectItems = false;
+        }
+    }
+
+    /**
+     * 填充玩家背包
+     * <p>
+     * 复刻 V1/VM 父类的 fillPlayerInventoryWithDispensedItems：
+     * 遍历出货槽，将物品移到玩家背包；无法放入的物品保留在槽中。
+     * 前提：机器必须已成型且处于 active 状态。
+     *
+     * @param playerId 玩家 UUID
+     */
+    private void doNekoFillPlayerInventory(UUID playerId) {
+        if (baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
+            nekoFillPlayerInventory = false;
+            return;
+        }
+        try {
+            if (playerId == null) {
+                nekoFillPlayerInventory = false;
+                return;
+            }
+            EntityPlayer player = guiData.getPlayer();
+            if (player == null) {
+                nekoFillPlayerInventory = false;
+                return;
+            }
+            multiblock.fillPlayerInventoryWithDispensedItems(player);
+            forceSyncInputSlots();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[NekoVMV2] doNekoFillPlayerInventory 异常!", t);
+        } finally {
+            nekoFillPlayerInventory = false;
         }
     }
 
@@ -1668,12 +1727,30 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             if (result.isSuccess()) {
                 tradeResultMessage = EnumChatFormatting.GREEN + "交易成功!";
                 playTradeSuccessSound();
+                // 复刻 VM 父类 sendTradeUpdate：交易成功后显式触发同步，
+                // 让客户端立即收到最新的可交易状态、冷却状态和交易结果。
+                tradeableStatusDirty = true;
+                if (tradeableStatusSync != null) {
+                    tradeableStatusSync.notifyUpdate();
+                }
+                if (cooldownStatusSync != null) {
+                    cooldownStatusSync.notifyUpdate();
+                }
+                if (tradeResultSync != null) {
+                    tradeResultSync.notifyUpdate();
+                }
             } else {
                 tradeResultMessage = EnumChatFormatting.RED + getTradeResultMessage(result);
+                if (tradeResultSync != null) {
+                    tradeResultSync.notifyUpdate();
+                }
             }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[NekoVMV2] processTradeRequest 异常!", t);
             tradeResultMessage = "交易处理异常";
+            if (tradeResultSync != null) {
+                tradeResultSync.notifyUpdate();
+            }
         }
     }
 
