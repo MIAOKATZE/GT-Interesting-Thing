@@ -302,6 +302,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] BqEventBridge 注册失败", t);
         }
 
+        // 注册 V2 BQ 桥接器（V2 独立于 VM 的 BqAdapter，直接对接 BQ API）
+        // 解决两个问题：
+        // 1. NekoBqBridge.init() 从未被调用导致 bqLoaded 永远为 false，所有 BQ 检查走安全回退返回 true（不锁定）
+        // 2. V2 缺少 BQ 事件监听器导致无任务完成事件同步和玩家登录跨会话状态同步
+        try {
+            com.miaokatze.gtit.trade.v2.NekoBqBridge.register();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] V2 NekoBqBridge 注册失败", t);
+        }
+
         // 注册 AE2 Infinity Cell Handler
         try {
             AEApi.instance()
