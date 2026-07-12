@@ -9,6 +9,7 @@ import net.minecraft.item.ItemStack;
 
 import com.cubefury.vendingmachine.trade.TradeCategory;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 /**
  * 标签页注册表
@@ -120,7 +121,9 @@ public class NekoPageRegistry {
             }
         }
         NekoTradeConfig.save(tradeData);
-        NekoTradeRegistry.reload();
+        // V1 的 NekoTradeRegistry.reload() 已移除，改为调用 V2 的 reload
+        // V2 从 NekoTradeConfig 加载配置并注册到 NekoTradeDatabase（V2 独立数据库）
+        NekoTradeRegistryV2.reload();
 
         return "已删除标签页 #" + id + " (" + existing.getName() + ")，其交易已移至\"其他\"标签页";
     }

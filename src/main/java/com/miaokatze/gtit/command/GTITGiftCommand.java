@@ -22,16 +22,13 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
-import com.cubefury.vendingmachine.trade.TradeDatabase;
-import com.cubefury.vendingmachine.trade.TradeGroup;
-import com.cubefury.vendingmachine.trade.TradeHistory;
-import com.cubefury.vendingmachine.trade.TradeManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
-import com.miaokatze.gtit.trade.NekoTradeRegistry;
+import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
+import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -971,8 +968,10 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         // 保存并重载
+        // V1 的 NekoTradeRegistry.reload() 已移除，改为调用 V2 的 reload
+        // V2 从 NekoTradeConfig 加载配置并注册到 NekoTradeDatabase（V2 独立数据库）
         NekoTradeConfig.save(data);
-        NekoTradeRegistry.reload();
+        NekoTradeRegistryV2.reload();
 
         // 显示条目摘要
         String fromDesc = describeItems(fromItems);
@@ -1166,7 +1165,8 @@ public class GTITGiftCommand extends CommandBase {
 
         trades.remove(existing);
         NekoTradeConfig.save(data);
-        NekoTradeRegistry.reload();
+        // V1 的 NekoTradeRegistry.reload() 已移除，改为调用 V2 的 reload
+        NekoTradeRegistryV2.reload();
 
         player.addChatMessage(
             new ChatComponentText(
@@ -1174,9 +1174,9 @@ public class GTITGiftCommand extends CommandBase {
     }
 
     private void handleNekoVMReload(EntityPlayerMP player) {
-        boolean v1Success = NekoTradeRegistry.reload();
-        boolean v2Success = NekoTradeRegistryV2.reload();
-        boolean success = v1Success && v2Success;
+        // V1 的 NekoTradeRegistry.reload() 已移除（V1 反射注入 VM TradeDatabase 的逻辑不再需要）
+        // 仅保留 V2 的热重载：重载标签页配置、清空 BQ 触发器、重新加载交易数据
+        boolean success = NekoTradeRegistryV2.reload();
         if (success) {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易配置已热重载"));
         } else {
@@ -1193,19 +1193,17 @@ public class GTITGiftCommand extends CommandBase {
      * /gtit nekovm timereset
      * <p>
      * 重置当前玩家（团队）的所有交易冷却，使所有交易立即可用。
-     * 通过将每个交易组的 TradeHistory 设为 DEFAULT（等价于从未交易过）实现。
+     * V1 版本通过操作 VM 的 TradeManager.setTradeState 实现，已移除。
+     * V2 版本通过 NekoHistoryManager.resetAllHistory 重置玩家在所有交易组的历史记录实现。
      */
     private void handleNekoVMTimeReset(EntityPlayerMP player) {
         UUID playerId = player.getUniqueID();
-        int resetCount = 0;
-
-        for (UUID tgId : NekoTradeRegistry.getAllTradeGroupIds()) {
-            TradeGroup tg = TradeDatabase.INSTANCE.getTradeGroupFromId(tgId);
-            if (tg != null) {
-                TradeManager.INSTANCE.setTradeState(playerId, tg, TradeHistory.DEFAULT);
-                resetCount++;
-            }
-        }
+        // V2: 重置该玩家在所有交易组的交易历史（冷却）
+        // resetAllHistory 内部会遍历玩家名下所有交易组历史并逐一 reset，同时标记脏数据持久化
+        NekoHistoryManager.INSTANCE.resetAllHistory(playerId);
+        // 统计当前 V2 数据库中注册的交易组数量作为重置计数
+        int resetCount = NekoTradeDatabase.INSTANCE.getAllTradeGroupIds()
+            .size();
 
         player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已重置 " + resetCount + " 个交易的冷却"));
     }

@@ -5,11 +5,10 @@
   "refmap": "mixins.gtit.refmap.json",
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
-  "mixins": ["MixinMTEVendingMachine", "MixinTradeManager", "MixinTradeMainPanel", "MixinItemInWorldManager", "MixinBaseMetaTileEntityMuffle", "MixinBqAdapter"],
+  "mixins": ["MixinItemInWorldManager", "MixinBaseMetaTileEntityMuffle"],
   "client": [
     "MixinAEBaseGuiDrawHoveringTextFix",
     "MixinPlayerControllerMP",
-    "MixinTradeItemDisplayWidget",
     "NekoSoundManagerMixin",
     "MixinMTEBrickedBlastFurnace",
     "MixinMTEBlackHoleCompressor",

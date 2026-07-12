@@ -27,7 +27,7 @@ import cpw.mods.fml.relauncher.SideOnly;
  * 为猫猫售货机播放自定义 BGM，支持：
  * - 淡入淡出效果（2秒，原版 VM 的 2 倍）
  * - 最大音量 50%（通过 SoundSystem.setVolume 精确控制）
- * - 退出 GUI 后自动停止（通过 isNekoGuiOpen 标志 + tick 检测）
+ * - 退出 GUI 后自动停止（通过 NekoVMGuiV2.isV2GuiOpen 标志 + tick 检测）
  * - 防止叠加播放（先停止再播放）
  * - 接入 GUI 左上角的 BGM 切换按钮
  * <p>
@@ -331,8 +331,8 @@ public class NekoMusicEventHandler {
         if (mc.thePlayer == null) return;
 
         // 安全检查：如果 GUI 已关闭但 BGM 还在播放且没有在淡出，触发淡出
-        // 同时检查 V1 (NekoVendingMachineGui) 和 V2 (NekoVMGuiV2) 的 GUI 状态
-        boolean isOpen = NekoVendingMachineGui.isNekoGuiOpen || NekoVMGuiV2.isV2GuiOpen;
+        // V1 GUI (NekoVendingMachineGui) 已移除，仅检查 V2 (NekoVMGuiV2) 的 GUI 状态
+        boolean isOpen = NekoVMGuiV2.isV2GuiOpen;
         if (!isOpen && this.currentSound != null && !this.fadingOut) {
             handleGuiClosed();
         }

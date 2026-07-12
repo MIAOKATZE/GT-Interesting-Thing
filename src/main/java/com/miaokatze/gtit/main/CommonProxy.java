@@ -20,11 +20,9 @@ import com.miaokatze.gtit.recipe.TestMachineRecipes;
 import com.miaokatze.gtit.register.BlockRegistrar;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.register.TextureManager;
-import com.miaokatze.gtit.trade.BqEventBridge;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTeamData;
-import com.miaokatze.gtit.trade.NekoTradeRegistry;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
@@ -272,34 +270,25 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
         }
 
-        // 初始化标签页注册表和交易映射
+        // 初始化标签页注册表
         // 原因：必须在 postInit 阶段初始化，确保专用服务器客户端也能加载
         // （FMLServerStartedEvent 不会在专用服务器客户端触发）
-        // NekoPageRegistry: 加载标签页配置（安全，不依赖 TradeDatabase）
-        // NekoTradeRegistry.initializeClient(): 仅填充静态映射，不注入 TradeDatabase
-        // （TradeDatabase 会被 VM 在 serverStarting 阶段清空重载，注入会被覆盖）
+        // NekoPageRegistry: 加载标签页配置（V2 引用，安全）
+        // V1 的 NekoTradeRegistry.initializeClient() 已移除（V1 反射注入 VM TradeDatabase 的逻辑不再需要）
         try {
             NekoPageRegistry.initialize();
-            NekoTradeRegistry.initializeClient();
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[3/3] 猫猫售货机标签页/交易映射初始化失败", t);
+            GTInterestingThing.LOG.error("[3/3] 猫猫售货机标签页初始化失败", t);
         }
 
         // 初始化 V2 交易注册表（客户端）
-        // V2 交易系统独立于 V1，为新版猫猫售货机 V2 提供交易数据
+        // V2 交易系统是完全独立的实现，为新版猫猫售货机 V2 提供交易数据
         // 在 postInit 阶段调用，确保专用服务器客户端也能加载交易配置
+        // V1 的 NekoTradeRegistry 和 BqEventBridge 已移除，V2 使用自己的 NekoBqBridge
         try {
             NekoTradeRegistryV2.initializeClient();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[3/3] V2 猫猫售货机交易映射客户端初始化失败", t);
-        }
-
-        // 注册 BQ 任务事件桥接器
-        // VM 的 BqAdapter.setQuestFinished() 从未被调用，需要 BqEventBridge 监听 QuestEvent 来更新缓存
-        try {
-            BqEventBridge.register();
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[3/3] BqEventBridge 注册失败", t);
         }
 
         // 注册 V2 BQ 桥接器（V2 独立于 VM 的 BqAdapter，直接对接 BQ API）
@@ -348,17 +337,15 @@ public class CommonProxy {
     public void serverStarted(FMLServerStartedEvent event) {
         // 初始化猫猫币钱包管理器（需要 World 对象）
         // NekoPageRegistry 已在 postInit() 中初始化
-        // NekoTradeRegistry.initializeClient() 已在 postInit() 中调用（填充映射）
-        // NekoTradeRegistry.initialize() 在此调用（注入 TradeDatabase，必须在 VM serverStarting 之后）
+        // V1 的 NekoTradeRegistry.initialize()（反射注入 VM TradeDatabase）已移除
+        // V2 使用独立的 NekoTradeDatabase，不依赖 VM 的 TradeDatabase
         try {
             MinecraftServer server = MinecraftServer.getServer();
             if (server != null && server.getEntityWorld() != null) {
                 NekoWalletManager.INSTANCE.init(server.getEntityWorld());
-                // 注入猫猫币交易到 TradeDatabase（VM 在 serverStarting 阶段已加载 TradeDatabase）
-                NekoTradeRegistry.initialize();
 
                 // 初始化 V2 交易注册表（服务端）
-                // V2 交易系统独立于 V1，为新版猫猫售货机 V2 提供交易数据
+                // V2 交易系统是完全独立的实现，为新版猫猫售货机 V2 提供交易数据
                 // 在 serverStarted 阶段调用，确保配置文件已就绪
                 NekoTradeRegistryV2.initialize();
 
