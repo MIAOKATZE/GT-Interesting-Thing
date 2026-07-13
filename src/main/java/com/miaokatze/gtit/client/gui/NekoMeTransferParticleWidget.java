@@ -31,7 +31,7 @@ import cpw.mods.fml.relauncher.SideOnly;
  * <li>每帧根据 entry.creationTimeMs 计算动画进度 progress (0~1)</li>
  * <li>alpha = 1.0f - progress（线性渐淡）</li>
  * <li>粒子位置：基于 entry 索引 + 固定随机种子（避免每帧抖动）</li>
- * <li>紫色粒子 RGB(180, 80, 220)，白色粒子 RGB(255, 255, 255)</li>
+ * <li>紫色粒子 RGB(220, 190, 240)（偏白的紫），白色粒子 RGB(245, 240, 255)（淡紫白）</li>
  * <li>使用 GL11 透明混合 + Tessellator 绘制小方块</li>
  * </ul>
  */
@@ -54,18 +54,18 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
 
     // ==================== 紫白粒子颜色（归一化 0~1） ====================
 
-    /** 紫色粒子 R 分量（180/255） */
-    private static final float PURPLE_R = 180f / 255f;
-    /** 紫色粒子 G 分量（80/255） */
-    private static final float PURPLE_G = 80f / 255f;
-    /** 紫色粒子 B 分量（220/255） */
-    private static final float PURPLE_B = 220f / 255f;
-    /** 白色粒子 R 分量 */
-    private static final float WHITE_R = 1.0f;
-    /** 白色粒子 G 分量 */
-    private static final float WHITE_G = 1.0f;
-    /** 白色粒子 B 分量 */
-    private static final float WHITE_B = 1.0f;
+    /** 紫色粒子 R 分量（220/255，偏白的紫色） */
+    private static final float PURPLE_R = 220f / 255f;
+    /** 紫色粒子 G 分量（190/255） */
+    private static final float PURPLE_G = 190f / 255f;
+    /** 紫色粒子 B 分量（240/255） */
+    private static final float PURPLE_B = 240f / 255f;
+    /** 白色粒子 R 分量（245/255，带淡淡紫色的白） */
+    private static final float WHITE_R = 245f / 255f;
+    /** 白色粒子 G 分量（240/255） */
+    private static final float WHITE_G = 240f / 255f;
+    /** 白色粒子 B 分量（255/255） */
+    private static final float WHITE_B = 255f / 255f;
 
     // ==================== 字段 ====================
 

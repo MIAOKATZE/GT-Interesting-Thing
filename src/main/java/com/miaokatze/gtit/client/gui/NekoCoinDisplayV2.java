@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.client.gui;
 
+import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 
 import net.minecraft.item.ItemStack;
@@ -80,6 +81,15 @@ public class NekoCoinDisplayV2 extends Flow {
      */
     private IntSupplier meAmountSupplier;
 
+    /** ME 导入按钮（与弹出按钮同行，v1.6.22） */
+    private final ButtonWidget<?> importButton;
+    /** ME 余额数量查询器（用于导入按钮 tooltip 显示，v1.6.22） */
+    private IntSupplier meImportAmountSupplier;
+    /** hasUplink 查询器（控制导入按钮启用/禁用，v1.6.22） */
+    private BooleanSupplier hasUplinkSupplier;
+    /** ME 导入回调（点击导入按钮时触发，v1.6.22） */
+    private Runnable importCallback;
+
     /**
      * 构造 V2 猫猫币显示组件
      *
@@ -125,11 +135,20 @@ public class NekoCoinDisplayV2 extends Flow {
                 new IDrawable[] { NekoGuiTextures.EJECT_COINS.asIcon()
                     .size(12) })
             .onMousePressed(btn -> {
+                // Ctrl+点击：弹出一组（64个，不足则全部）
+                if (isCtrlDown()) {
+                    BooleanSyncValue ejectCoinStackSync = syncManager
+                        .findSyncHandler("nekoEjectCoinStack_" + currencyId, 0, BooleanSyncValue.class);
+                    if (ejectCoinStackSync != null) {
+                        ejectCoinStackSync.setValue(true);
+                    }
+                    return true;
+                }
                 // 未按住 Shift 时忽略点击（防止误触弹出硬币）
                 if (!isShiftDown()) {
                     return false;
                 }
-                // 按住 Shift 时手动触发弹出同步值：通过 syncManager 查找对应 BooleanSyncValue 并置 true
+                // Shift+点击：弹出全部余额
                 BooleanSyncValue ejectCoinSync = syncManager
                     .findSyncHandler("nekoEjectCoin_" + currencyId, 0, BooleanSyncValue.class);
                 if (ejectCoinSync != null) {
@@ -152,20 +171,49 @@ public class NekoCoinDisplayV2 extends Flow {
             builder.emptyLine();
             // 提示行：灰色斜体（复刻 VM 的 eject_hint 样式）
             builder.addLine(
-                IKey.str("按住 Shift 点击弹出")
+                IKey.str("Shift 点击弹出全部 / Ctrl 点击弹出一组")
                     .style(IKey.GRAY, IKey.ITALIC));
             builder.setAutoUpdate(true);
         });
 
+        // ==================== ME 导入按钮（v1.6.22，与弹出按钮同行）====================
+        // 使用 WALLET_PERSONAL 图标（与 EJECT_COINS 风格类似），点击触发 ME 货币导入
+        this.importButton = new ButtonWidget<>().size(12)
+            .disableThemeBackground(true)
+            .disableHoverThemeBackground(true)
+            .overlay(
+                new IDrawable[] { NekoGuiTextures.WALLET_PERSONAL.asIcon()
+                    .size(12) })
+            .onMouseTapped(mouse -> {
+                if (importCallback != null) {
+                    importCallback.run();
+                }
+                return true;
+            })
+            .tooltipDynamic(builder -> {
+                builder.clearText();
+                builder.addLine(IKey.str(EnumChatFormatting.LIGHT_PURPLE + "从 ME 网络导入" + displayName));
+                if (meImportAmountSupplier != null) {
+                    int meAmt = meImportAmountSupplier.getAsInt();
+                    builder.addLine(IKey.str(EnumChatFormatting.GRAY + "ME 余额: " + meAmt));
+                }
+                builder.setAutoUpdate(true);
+            });
+        // 无 uplink 时按钮禁用（灰色不可点击），有 uplink 时启用
+        this.importButton.setEnabledIf(w -> hasUplinkSupplier != null && hasUplinkSupplier.getAsBoolean());
+
         // ==================== 组装 ====================
-        // 布局：图标(22px) + 余额数字 + 弹出按钮(12px)
+        // 布局：图标(22px) + 余额数字 + 弹出按钮(12px) + ME导入按钮(12px)
         this.child(iconWidget)
             .child(this.coinAmount)
             .child(
                 this.ejectButton.left(48)
                     .top(5))
+            .child(
+                this.importButton.left(62)
+                    .top(5))
             .height(22)
-            .width(60);
+            .width(76);
     }
 
     /**
@@ -178,6 +226,23 @@ public class NekoCoinDisplayV2 extends Flow {
      */
     public void setMeAmountSupplier(IntSupplier supplier) {
         this.meAmountSupplier = supplier;
+    }
+
+    /**
+     * 设置 ME 导入相关配置（v1.6.22）
+     * <p>
+     * 由 GUI 层注入 ME 余额查询器、hasUplink 查询器和导入回调，
+     * 配置后导入按钮会显示 ME 余额并在点击时触发导入。
+     *
+     * @param meImportAmountSupplier ME 余额查询器（显示在 tooltip）
+     * @param hasUplinkSupplier      hasUplink 查询器（控制按钮启用/禁用）
+     * @param importCallback         导入回调（点击时触发）
+     */
+    public void setMeImportConfig(IntSupplier meImportAmountSupplier, BooleanSupplier hasUplinkSupplier,
+        Runnable importCallback) {
+        this.meImportAmountSupplier = meImportAmountSupplier;
+        this.hasUplinkSupplier = hasUplinkSupplier;
+        this.importCallback = importCallback;
     }
 
     /**
@@ -290,5 +355,17 @@ public class NekoCoinDisplayV2 extends Flow {
      */
     private static boolean isShiftDown() {
         return Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+    }
+
+    /**
+     * 检测 Ctrl 键是否按下
+     * <p>
+     * 通过 {@link Keyboard#isKeyDown(int)} 实时检测左 Ctrl 或右 Ctrl，
+     * 用于 Ctrl+点击弹出一组猫猫币。
+     *
+     * @return 左 Ctrl 或右 Ctrl 任一按下返回 true
+     */
+    private static boolean isCtrlDown() {
+        return Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
     }
 }

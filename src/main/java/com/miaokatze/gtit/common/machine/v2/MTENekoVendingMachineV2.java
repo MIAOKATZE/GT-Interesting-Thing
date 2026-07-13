@@ -393,14 +393,19 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
-     * 是否已连接 uplink hatch
+     * uplink 是否已连接且 ME 网络在线（设备通电+频道分配成功）
      * <p>
      * 供 GUI 判断 ME 模式切换按钮的可见性。
+     * 与 VendingMachine 源码一致，使用 {@link MTEVendingUplinkHatch#isActive()}
+     * 作为"ME 网络可用"判断标准（要求通电 AND 频道可用，因 hatch 设置了 REQUIRE_CHANNEL）。
+     * <p>
+     * 注意：{@code uplinkHatch != null} 仅表示结构中放置了 uplink hatch，
+     * 不代表 ME 网络已通电或频道已分配。
      *
-     * @return true 表示已连接 uplink
+     * @return true 表示 uplink 已连接且 ME 网络激活（可切换 ME 输出模式）
      */
     public boolean hasUplink() {
-        return uplinkHatch != null;
+        return uplinkHatch != null && uplinkHatch.isActive();
     }
 
     /**

@@ -406,7 +406,9 @@ public class NekoMusicEventHandler {
             // 早停判断：音量已低至听不见时立即停止，无需等满 2 秒
             // 阈值 0.01：effectiveVolume = currentVolume * music_volume < 0.01 时人耳不可察觉
             float effectiveVolume = this.currentVolume * NekoMusicConfig.music_volume;
-            if (progress >= 1.0f || effectiveVolume < 0.01f) {
+            // v1.6.22：增加 progress > 0.5f 条件，避免淡出刚开始就触发早停
+            // 早停时 paulscode 缓冲区音频最多，立即 stop 会导致最明显的残留音
+            if (progress >= 1.0f || (progress > 0.5f && effectiveVolume < 0.01f)) {
                 this.fadingOut = false;
                 this.currentVolume = 0.0f;
                 stopSound(Minecraft.getMinecraft());
@@ -424,16 +426,27 @@ public class NekoMusicEventHandler {
     /**
      * 停止声音
      * <p>
-     * 双保险机制：
-     * 1. 先通过 SoundSystem.stop() 直接停止底层音频流（paulscode 层面）
-     * 2. 再通过 SoundHandler.stopSound() 移除 MC 播放记录
-     * 这样即使 SoundHandler.stopSound() 不能立即停止底层音频，SoundSystem.stop() 也能确保停止。
+     * 三阶段停止机制（v1.6.22 增强）：
+     * 0. 先通过 setVolume(0) 静音，立即消除可听音量（防止 paulscode 缓冲区残留）
+     * 1. 通过 SoundSystem.stop() 请求停止底层音频流（paulscode 层面，异步）
+     * 2. 通过 SoundHandler.stopSound() 移除 MC 播放记录
+     * <p>
+     * paulscode 的 stop() 是异步操作，缓冲区可能还有 100-500ms 音频数据。
+     * 通过先静音再停止，即使 stop 尚未生效也听不见残留音。
      */
     private void stopSound(Minecraft mc) {
+        // 第零步：先将音量设为 0（静音），防止 paulscode 缓冲区残留音频继续播放
+        // paulscode 的 stop() 是异步的，缓冲区可能还有 100-500ms 音频数据
+        // 通过 setVolume(0) 立即静音，即使 stop 尚未生效也听不见残留音
+        if (this.soundSourceName != null) {
+            setSoundVolume(0.0f);
+        }
         // 第一保险：通过 SoundSystem.stop() 直接停止底层音频流
         if (this.soundSourceName != null) {
             Object sys = getSoundSystem();
-            if (sys != null) {
+            if (sys == null) {
+                GTInterestingThing.LOG.warn("[NEKO] stopSound: SoundSystem 为 null, 跳过第一保险");
+            } else {
                 try {
                     Method m = stopMethod;
                     if (m == null) {
@@ -452,7 +465,7 @@ public class NekoMusicEventHandler {
                 mc.getSoundHandler()
                     .stopSound(this.currentSound);
             } catch (Exception e) {
-                // 静默忽略
+                GTInterestingThing.LOG.warn("[NEKO] SoundHandler.stopSound() 失败: {}", e.getMessage());
             }
         }
         this.currentSound = null;
