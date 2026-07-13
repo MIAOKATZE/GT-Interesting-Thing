@@ -56,10 +56,9 @@ public enum GTITItemList implements IItemContainer {
     // 闪烁猫猫币
     ShimmeringNekoCoin,
 
-    // 猫猫售货机 V1 (多方块机器，继承自 VM 模组的 MTEVendingMachine)
+    // 猫猫售货机 (独立化多方块机器，继承 GT5U 的 MTEEnhancedMultiBlockBase)
+    // V2 接管 V1 的 ID 14610，统一使用此容器
     NekoVendingMachine,
-    // 猫猫售货机 V2 (独立化多方块机器，继承 GT5U 的 MTEEnhancedMultiBlockBase)
-    NekoVendingMachineV2,
 
     // Infinity Cell 系列 (适配自 AE2Things)
     InfinityCell,

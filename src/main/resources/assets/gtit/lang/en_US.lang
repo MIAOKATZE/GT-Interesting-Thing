@@ -7,7 +7,6 @@ gtit.machine.test.iv=Test Machine IV
 gtit.machine.test.luv=Test Machine (LuV)
 gtit.machine.multitest.hv=Test Multiblock Machine (HV)
 gtit.machine.neko_vending_machine=Neko Vending Machine
-gtit.machine.neko_vending_machine_v2=Neko Vending Machine V2
 
 # GregTech style keys used by CommonMetaTileEntity
 gt.blockmachines.gtit.mtetest.ev.name=MTETest EV

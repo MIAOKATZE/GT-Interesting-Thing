@@ -126,13 +126,14 @@ public class GiftConfig {
         items.add(new ItemEntry("minecraft:torch", 64, 0));
         items.add(new ItemEntry("minecraft:bed", 1, 0));
         items.add(new ItemEntry("minecraft:chest", 8, 0));
+        // 猫猫币：注册名为 gtit:neko_coin（miao_coin 仅为材质名）
+        items.add(new ItemEntry("gtit:neko_coin", 1, 0));
         return items;
     }
 
     private static List<ItemEntry> createDefaultRandomItems() {
         List<ItemEntry> items = new ArrayList<>();
         items.add(new ItemEntry("gtit:ring_skywalk", 1, 0));
-        items.add(new ItemEntry("gtit:ring_gluttony", 1, 0));
         items.add(new ItemEntry("gtit:ring_ironheart", 1, 0));
         items.add(new ItemEntry("gtit:ring_dragon_breath", 1, 0));
         items.add(new ItemEntry("gtit:ring_mountainbreaker", 1, 0));

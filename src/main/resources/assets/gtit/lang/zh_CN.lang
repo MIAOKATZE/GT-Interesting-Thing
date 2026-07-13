@@ -7,7 +7,6 @@ gtit.machine.test.iv=测试机器 (IV)
 gtit.machine.test.luv=测试机器 (LuV)
 gtit.machine.multitest.hv=测试多方块机器 (HV)
 gtit.machine.neko_vending_machine=猫猫售货机
-gtit.machine.neko_vending_machine_v2=猫猫售货机V2
 
 # GregTech style keys used by CommonMetaTileEntity
 gt.blockmachines.gtit.mtetest.ev.name=测试太阳能机 EV

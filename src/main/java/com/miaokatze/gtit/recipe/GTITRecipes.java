@@ -113,11 +113,9 @@ public class GTITRecipes {
     }
 
     /**
-     * 猫猫售货机合成配方
-     * 3x3工作台：中心为 VM 原版售货机，周围围一圈猫猫币
-     * 猫币 猫币 猫币
-     * 猫币 VM机 猫币
-     * 猫币 猫币 猫币
+     * 猫猫售货机合成配方（无序合成）
+     * 输入：1 VM 原版售货机 + 1 猫猫币 → 1 猫猫售货机
+     * 无序合成便于玩家合成，降低门槛
      */
     private static void addNekoVendingMachineRecipe() {
         if (GTITItemList.NekoVendingMachine.get(1) == null) return;
@@ -127,14 +125,7 @@ public class GTITRecipes {
             : null;
         if (vmStack == null) return;
 
-        GameRegistry.addShapedRecipe(
-            GTITItemList.NekoVendingMachine.get(1),
-            "CCC",
-            "CVC",
-            "CCC",
-            'C',
-            GTITItemList.NekoCoin.get(1),
-            'V',
-            vmStack);
+        // 无序合成：1 VM贸易机 + 1 猫猫币
+        GameRegistry.addShapelessRecipe(GTITItemList.NekoVendingMachine.get(1), vmStack, GTITItemList.NekoCoin.get(1));
     }
 }
