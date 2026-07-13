@@ -1,6 +1,9 @@
 package com.miaokatze.gtit.client.gui;
 
+import java.util.function.IntSupplier;
+
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.EnumChatFormatting;
 
 import org.lwjgl.input.Keyboard;
 
@@ -70,6 +73,14 @@ public class NekoCoinDisplayV2 extends Flow {
     private boolean coinIncreased;
 
     /**
+     * ME 网络货币余额查询器（阶段 6）
+     * <p>
+     * 由 GUI 层通过 {@link #setMeAmountSupplier} 注入，用于在 tooltip 中显示
+     * ME 网络中的猫猫币数量。为 null 时不显示 ME 余额行。
+     */
+    private IntSupplier meAmountSupplier;
+
+    /**
      * 构造 V2 猫猫币显示组件
      *
      * @param syncManager 同步管理器（用于查找 IntSyncValue 和注册弹出按钮 syncHandler）
@@ -131,6 +142,13 @@ public class NekoCoinDisplayV2 extends Flow {
             builder.clearText();
             // 第一行：余额 + 货币名称
             builder.addLine(this.coinSyncValue.getValue() + " " + displayName);
+            // ME 网络余额行（阶段 6）：仅当 meAmountSupplier 已注入且余额 > 0 时显示
+            if (meAmountSupplier != null) {
+                int meAmt = meAmountSupplier.getAsInt();
+                if (meAmt > 0) {
+                    builder.addLine(IKey.str(EnumChatFormatting.LIGHT_PURPLE + "ME 网络: " + meAmt));
+                }
+            }
             builder.emptyLine();
             // 提示行：灰色斜体（复刻 VM 的 eject_hint 样式）
             builder.addLine(
@@ -148,6 +166,18 @@ public class NekoCoinDisplayV2 extends Flow {
                     .top(5))
             .height(22)
             .width(60);
+    }
+
+    /**
+     * 设置 ME 网络货币余额查询器（阶段 6）
+     * <p>
+     * 由 GUI 层在创建组件后调用，注入 ME 余额查询逻辑。
+     * 注入后，弹出按钮的 tooltip 会额外显示 ME 网络中的该货币数量。
+     *
+     * @param supplier ME 余额查询器，返回 ME 网络中该货币的数量
+     */
+    public void setMeAmountSupplier(IntSupplier supplier) {
+        this.meAmountSupplier = supplier;
     }
 
     /**

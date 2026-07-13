@@ -41,9 +41,11 @@ import com.cleanroommc.modularui.widgets.layout.Grid;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
+import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDisplayType;
 import com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.NekoMeTransferParticleWidget;
 import com.miaokatze.gtit.client.gui.NekoMusicTrack;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
 import com.miaokatze.gtit.client.gui.NekoSearchBar;
@@ -175,6 +177,14 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private boolean showCoins = true;
     /** 各货币余额同步值映射 */
     private final Map<String, IntSyncValue> coinAmountSyncs = new HashMap<>();
+    /** 客户端缓存的 ME 网络货币余额（currencyId → amount，阶段 6） */
+    private final Map<String, Integer> meCoinAmounts = new HashMap<>();
+    /** ME 货币余额同步值映射（供 tooltip 查询和刷新，阶段 6） */
+    private final Map<String, IntSyncValue> meCoinAmountSyncs = new HashMap<>();
+    /** ME 货币导入请求标志（currencyId → flag，阶段 6） */
+    private final Map<String, Boolean> nekoImportMeCoin = new HashMap<>();
+    /** ME 货币导入同步值映射（供按钮调用 setValue，阶段 6） */
+    private final Map<String, BooleanSyncValue> nekoImportMeCoinSyncs = new HashMap<>();
 
     // ==================== UI 状态镜像（客户端+服务端共享） ====================
 
@@ -260,6 +270,20 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private NekoTradeMainPanel mainPanel;
     /** 输入槽 Widget 引用（服务端在弹出/入账后强制同步槽位状态到客户端） */
     private final List<ItemSlot> inputSlotRefs = new ArrayList<>();
+    /** ME 输出模式同步值（C2S+S2C：客户端切换发送到服务端，服务端状态同步到客户端） */
+    private BooleanSyncValue meOutputModeSync;
+    /** Uplink 连接状态同步值（S2C：控制 ME 模式按钮可见性） */
+    private BooleanSyncValue hasUplinkSync;
+    /** ME 模式切换确认弹框（客户端） */
+    private NekoConfirmationDialog meModeConfirmDialog;
+    /** ME 模式切换确认面板 handler（客户端） */
+    private IPanelHandler meModeConfirmPanel;
+    /** ME 传输队列同步值（S2C：服务端序列化队列发到客户端，用于粒子动画渲染） */
+    private StringSyncValue meTransferQueueSync;
+    /** 取回 ME 传输队列物品请求（C2S：客户端点击取回时发送 true） */
+    private BooleanSyncValue retrieveMeItemSync;
+    /** 客户端缓存的 ME 传输队列（从同步值解析，供粒子 Widget 渲染） */
+    private final java.util.List<MTENekoVendingMachineV2.MeTransferEntry> clientMeTransferQueue = new java.util.ArrayList<>();
 
     // ==================== 构造器 ====================
 
@@ -345,6 +369,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 // 关闭 BGM 并清理 GUI 打开标志
                 closeNekoGuiMusic();
             });
+            // 初始化 ME 模式切换确认弹框（仅客户端）
+            meModeConfirmDialog = new NekoConfirmationDialog("nekoV2:me_mode_confirm");
+            meModeConfirmPanel = IPanelHandler.simple(panel, (parent, player) -> meModeConfirmDialog, true);
         }
 
         // 左侧标签列
@@ -481,6 +508,38 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             coinAmountSyncs.put(currencyId, coinAmountSyncer);
         }
 
+        // --- ME 网络货币余额（S2C，阶段 6）---
+        // 仅在 hasUplink 时有意义，客户端缓存到 meCoinAmounts 供 tooltip 和导入按钮显示
+        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
+            final String cid = currencyId;
+            IntSyncValue meCoinSync = new IntSyncValue(() -> {
+                if (syncManager.isClient() || playerId == null || multiblock == null) return 0;
+                return multiblock.getUplinkCurrencyAmount(cid);
+            }, val -> {
+                if (syncManager != null && syncManager.isClient()) {
+                    meCoinAmounts.put(cid, val);
+                }
+            });
+            syncManager.syncValue("nekoMeCoinAmount_" + currencyId, meCoinSync);
+            meCoinAmountSyncs.put(currencyId, meCoinSync);
+        }
+
+        // --- ME 货币导入请求（C2S，阶段 6）---
+        // 客户端点击导入按钮时 setValue(true)，服务端处理提取并加到钱包
+        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
+            final String cid = currencyId;
+            nekoImportMeCoin.put(cid, false);
+            BooleanSyncValue importSync = new BooleanSyncValue(() -> nekoImportMeCoin.getOrDefault(cid, false), val -> {
+                if (val && syncManager != null && !syncManager.isClient()) {
+                    doNekoImportMeCoin(cid);
+                }
+                nekoImportMeCoin.put(cid, false);
+            });
+            importSync.allowC2S();
+            syncManager.syncValue("nekoV2ImportMeCoin_" + currencyId, importSync);
+            nekoImportMeCoinSyncs.put(currencyId, importSync);
+        }
+
         // BQ 锁定/冷却状态变化时也需要重新计算可交易状态
         if (!syncManager.isClient()) {
             Runnable tradeableStatusDirtyMarker = () -> {
@@ -552,6 +611,51 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         fillPlayerInventorySync.allowC2S();
         syncManager.syncValue("nekoV2FillPlayerInventory", fillPlayerInventorySync);
+
+        // --- ME 输出模式（C2S+S2C）---
+        // 客户端可发起切换（allowC2S），服务端持久化并同步状态
+        meOutputModeSync = new BooleanSyncValue(() -> multiblock != null && multiblock.isMeOutputMode(), val -> {
+            if (syncManager != null && !syncManager.isClient() && multiblock != null) {
+                multiblock.setMeOutputMode(val);
+            }
+        });
+        meOutputModeSync.allowC2S();
+        syncManager.syncValue("nekoV2MeOutputMode", meOutputModeSync);
+
+        // --- Uplink 连接状态（S2C）---
+        hasUplinkSync = new BooleanSyncValue(() -> multiblock != null && multiblock.hasUplink(), val -> {});
+        syncManager.syncValue("nekoV2HasUplink", hasUplinkSync);
+
+        // --- ME 传输队列（S2C：阶段 4）---
+        // 服务端序列化 meTransferQueue 发到客户端，客户端解析后用于粒子动画渲染
+        meTransferQueueSync = new StringSyncValue(
+            () -> multiblock != null ? multiblock.serializeMeTransferQueue() : "",
+            val -> {
+                if (syncManager != null && syncManager.isClient()) {
+                    parseMeTransferQueue(val);
+                }
+            });
+        syncManager.syncValue("nekoV2MeTransferQueue", meTransferQueueSync);
+
+        // --- 取回 ME 传输队列物品（C2S：阶段 4）---
+        // 客户端点击取回按钮时发送 true，服务端调用 retrieveEarliestMeTransferItem
+        retrieveMeItemSync = new BooleanSyncValue(() -> false, val -> {
+            if (val && syncManager != null && !syncManager.isClient() && multiblock != null) {
+                boolean ok = multiblock.retrieveEarliestMeTransferItem();
+                if (ok) {
+                    tradeResultMessage = "已取回 ME 传输队列中的物品";
+                    if (tradeResultSync != null) {
+                        tradeResultSync.setValue(tradeResultMessage);
+                    }
+                    // 通知队列同步值刷新，让客户端立即看到队列变化
+                    if (meTransferQueueSync != null) {
+                        meTransferQueueSync.notifyUpdate();
+                    }
+                }
+            }
+        });
+        retrieveMeItemSync.allowC2S();
+        syncManager.syncValue("nekoV2RetrieveMeItem", retrieveMeItemSync);
 
         // --- 货币显示开关（C2S）---
         showCoinsSync = new BooleanSyncValue(() -> showCoins, val -> { showCoins = val; });
@@ -1070,6 +1174,46 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .fullWidth()
             .marginBottom(2));
 
+        // --- ME 输出模式切换按钮 ---
+        // 仅在已连接 uplink 时显示。点击弹出确认弹框，确认后切换 meOutputModeSync。
+        // 显示文本：[自动输入ME: 开]（紫色）或 [自动输入ME: 关]（灰色）
+        // 外层 Flow + collapseDisabledChild(true) 实现"无 uplink 时整行折叠隐藏"
+        mainColumn.child(
+            Flow.column()
+                .child(
+                    new ButtonWidget<>().size(120, 12)
+                        .overlay(IKey.dynamic(() -> {
+                            boolean mode = meOutputModeSync != null && meOutputModeSync.getValue();
+                            return mode ? EnumChatFormatting.LIGHT_PURPLE + "[自动输入ME: 开]"
+                                : EnumChatFormatting.GRAY + "[自动输入ME: 关]";
+                        }))
+                        .tooltipBuilder(t -> {
+                            t.addLine(IKey.str("切换产出路径：本地出货槽 ↔ ME 网络"));
+                            if (hasUplinkSync != null && hasUplinkSync.getValue()) {
+                                t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击弹出确认对话框"));
+                            }
+                        })
+                        .tooltipAutoUpdate(true)
+                        .onMouseTapped(mouse -> {
+                            if (meModeConfirmDialog != null && meModeConfirmPanel != null) {
+                                boolean currentMode = meOutputModeSync != null && meOutputModeSync.getValue();
+                                String message = currentMode ? "确认关闭 ME 自动输入模式？新产出将走本地出货槽"
+                                    : "确认开启 ME 自动输入模式？新产出将通过 Uplink 发送到 ME 网络";
+                                meModeConfirmDialog.setParams(message, () -> {
+                                    if (meOutputModeSync != null) {
+                                        meOutputModeSync.setValue(!currentMode);
+                                    }
+                                });
+                                meModeConfirmPanel.openPanel();
+                            }
+                            return true;
+                        })
+                        .fullWidth()
+                        .height(12)
+                        .marginBottom(2))
+                .setEnabledIf(w -> hasUplinkSync != null && hasUplinkSync.getValue())
+                .collapseDisabledChild(true));
+
         if (syncManager.isClient()) {
             // --- 搜索栏 ---
             searchBar = new NekoSearchBar("搜索...");
@@ -1251,6 +1395,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @return 猫猫币显示行 Widget
      */
     private IWidget createCoinDisplayRow(PanelSyncManager syncManager) {
+        // 阶段 6：改造为 Flow.column() 包含余额行 + ME 导入按钮行
+        Flow column = Flow.column()
+            .fullWidth()
+            .marginBottom(2);
+
+        // === 余额行（原有逻辑）===
         Flow row = Flow.row()
             .height(22)
             .fullWidth()
@@ -1258,8 +1408,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         int offset = 0;
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
+            final String cid = currencyId;
             String displayName = NekoCurrencyRegistrar.getDisplayName(currencyId);
             NekoCoinDisplayV2 coinDisplay = new NekoCoinDisplayV2(syncManager, currencyId, displayName);
+            // 阶段 6：注入 ME 余额查询器，使弹出按钮 tooltip 显示 ME 网络余额
+            coinDisplay.setMeAmountSupplier(() -> meCoinAmounts.getOrDefault(cid, 0));
             coinDisplay.left(offset);
             row.child(coinDisplay);
             offset += 65;
@@ -1269,7 +1422,45 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 使用 collapseDisabledChild(true) 在 showCoins=false 时整行折叠，而非仅变灰
         row.setEnabledIf(w -> showCoins)
             .collapseDisabledChild(true);
-        return row;
+        column.child(row);
+
+        // === ME 导入按钮行（阶段 6，仅 hasUplink 时可见）===
+        Flow importRow = Flow.row()
+            .height(14)
+            .fullWidth()
+            .marginBottom(2);
+        int importOffset = 0;
+        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
+            final String cid = currencyId;
+            String displayName = NekoCurrencyRegistrar.getDisplayName(currencyId);
+            ButtonWidget<?> importBtn = new ButtonWidget<>().size(60, 14)
+                .overlay(IKey.dynamic(() -> {
+                    int meAmt = meCoinAmounts.getOrDefault(cid, 0);
+                    if (meAmt > 0) {
+                        return EnumChatFormatting.LIGHT_PURPLE + "ME→" + meAmt;
+                    }
+                    return EnumChatFormatting.DARK_GRAY + "ME→0";
+                }))
+                .onMouseTapped(mouse -> {
+                    // 触发 ME 导入（通过同步值 C2S 发送到服务端）
+                    BooleanSyncValue sync = nekoImportMeCoinSyncs.get(cid);
+                    if (sync != null) {
+                        sync.setValue(true);
+                    }
+                    return true;
+                })
+                .tooltipBuilder(t -> { t.addLine(IKey.str("将 ME 网络中的" + displayName + "导入钱包")); });
+            importBtn.tooltipAutoUpdate(true);
+            importBtn.left(importOffset);
+            importRow.child(importBtn);
+            importOffset += 65;
+        }
+        // 仅在已连接 uplink 时显示导入按钮行
+        importRow.setEnabledIf(w -> hasUplinkSync != null && hasUplinkSync.getValue())
+            .collapseDisabledChild(true);
+        column.child(importRow);
+
+        return column;
     }
 
     /**
@@ -1404,6 +1595,18 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
             dispenserChute.child(fallingFactory.getFallingItemSlot(i));
         }
+        // ME 传输粒子动画 Widget（覆盖在出货槽区域，仅在 meTransferQueue 非空时可见）
+        // 点击粒子区域可取回最早入队的物品（FIFO），通过 retrieveMeItemSync 通知服务端
+        NekoMeTransferParticleWidget particleWidget = new NekoMeTransferParticleWidget(clientMeTransferQueue)
+            .onRetrieve(() -> {
+                if (retrieveMeItemSync != null) {
+                    retrieveMeItemSync.setValue(true);
+                }
+            });
+        particleWidget.fullWidth()
+            .fullHeight()
+            .setEnabledIf(w -> !clientMeTransferQueue.isEmpty());
+        dispenserChute.child(particleWidget);
         // 顶部悬垂装饰：必须最后添加，覆盖掉落槽起始位置（顶部），形成"物品从悬垂后面掉落"的图层效果
         // 与 VM 原版 MteVendingMachineGui.createDispenserChute 顺序一致（掉落槽 → OVERHANG 最后）
         dispenserChute.child(
@@ -1442,6 +1645,44 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
                 return true;
             });
+    }
+
+    // ==================== ME 传输队列解析（阶段 4） ====================
+
+    /**
+     * 解析服务端发来的 ME 传输队列字符串，更新客户端缓存
+     * <p>
+     * 格式：{@code creationTimeMs:stackSize:itemNBTBase64;creationTimeMs:stackSize:itemNBTBase64;...}
+     * <p>
+     * 客户端解析后存入 {@link #clientMeTransferQueue}，供粒子 Widget 渲染
+     * （显示剩余传输时间和物品图标）。NBT 解码复用 {@link com.miaokatze.gtit.util.NbtBase64Util}。
+     *
+     * @param data 序列化字符串
+     */
+    private void parseMeTransferQueue(String data) {
+        clientMeTransferQueue.clear();
+        if (data == null || data.isEmpty()) return;
+        try {
+            String[] entries = data.split(";");
+            for (String entryStr : entries) {
+                String[] parts = entryStr.split(":", 3);
+                if (parts.length < 3) continue;
+                long creationTime = Long.parseLong(parts[0]);
+                int stackSize = Integer.parseInt(parts[1]);
+                if (parts[2].isEmpty()) continue;
+                // base64 解码 NBT（复用项目工具类）
+                net.minecraft.nbt.NBTTagCompound tag = com.miaokatze.gtit.util.NbtBase64Util.nbtFromBase64(parts[2]);
+                if (tag == null) continue;
+                ItemStack stack = ItemStack.loadItemStackFromNBT(tag);
+                if (stack != null && stack.stackSize > 0) {
+                    // 同步 stackSize（base64 中已含，但显式设置以防解码差异）
+                    stack.stackSize = stackSize;
+                    clientMeTransferQueue.add(new MTENekoVendingMachineV2.MeTransferEntry(stack, creationTime));
+                }
+            }
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoVMV2] parseMeTransferQueue 解析失败", e);
+        }
     }
 
     // ==================== 猫猫币操作（保留原有逻辑） ====================
@@ -1674,6 +1915,81 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             tradeResultMessage = "导入猫猫币失败";
         } finally {
             nekoImportCoins = false;
+        }
+    }
+
+    /**
+     * 从 ME 网络导入指定货币到玩家钱包（阶段 6）
+     * <p>
+     * 由 GUI 导入按钮触发（通过 nekoV2ImportMeCoin_ 同步值 C2S）。
+     * 查询 ME 余额，提取全部，加到玩家钱包，并刷新货币余额同步值。
+     *
+     * @param currencyId 货币 ID（如 "neko"、"shimmeringNeko"）
+     */
+    private void doNekoImportMeCoin(String currencyId) {
+        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
+        if (isClient()) {
+            nekoImportMeCoin.put(currencyId, false);
+            return;
+        }
+        try {
+            UUID playerId = getPlayerId();
+            if (playerId == null || multiblock == null || !multiblock.hasUplink()) {
+                tradeResultMessage = "未连接 Uplink，无法从 ME 导入";
+                if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
+                return;
+            }
+            // 查询 ME 余额
+            int meAmount = multiblock.getUplinkCurrencyAmount(currencyId);
+            if (meAmount <= 0) {
+                tradeResultMessage = "ME 网络中无" + NekoCurrencyRegistrar.getDisplayName(currencyId);
+                if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
+                return;
+            }
+            // 从 ME 提取（extractFromUplink 返回未满足的剩余数量）
+            ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, meAmount);
+            if (coinStack == null) {
+                tradeResultMessage = "货币物品栈创建失败";
+                if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
+                return;
+            }
+            int remain = multiblock.extractFromUplink(coinStack);
+            int extracted = meAmount - remain;
+            if (extracted > 0) {
+                // 加到玩家钱包（使用 addCount，与 doNekoImportCoins 一致）
+                NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+                if (wallet != null) {
+                    wallet.addCount(currencyId, extracted);
+                    NekoWalletManager.INSTANCE.saveWallet(playerId);
+                    // 刷新货币余额同步值，使余额显示立即更新
+                    IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
+                    if (coinSync != null) {
+                        coinSync.setValue(wallet.getCount(currencyId));
+                    }
+                    // 刷新 ME 货币余额同步值，使导入按钮显示立即更新
+                    IntSyncValue meSync = meCoinAmountSyncs.get(currencyId);
+                    if (meSync != null) {
+                        meSync.notifyUpdate();
+                    }
+                    // 标记可交易状态为脏（钱包余额变化影响可交易性）
+                    tradeableStatusDirty = true;
+                    if (tradeableStatusSync != null) {
+                        tradeableStatusSync.notifyUpdate();
+                    }
+                    tradeResultMessage = "从 ME 导入 " + extracted
+                        + " 个"
+                        + NekoCurrencyRegistrar.getDisplayName(currencyId);
+                }
+            } else {
+                tradeResultMessage = "ME 提取失败";
+            }
+            if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[NekoVMV2] doNekoImportMeCoin 异常!", t);
+            tradeResultMessage = "ME 货币导入失败";
+            if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
+        } finally {
+            nekoImportMeCoin.put(currencyId, false);
         }
     }
 
