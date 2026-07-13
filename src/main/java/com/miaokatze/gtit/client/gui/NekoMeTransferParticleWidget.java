@@ -72,6 +72,15 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
     /** 客户端缓存的队列引用（从 NekoVMGuiV2 传入，与 clientMeTransferQueue 同一引用） */
     private final List<MeTransferEntry> queueRef;
 
+    /**
+     * 掉落槽工厂引用（v1.6.23 新增）
+     * <p>
+     * 供粒子定位槽位坐标使用。通过 {@link NekoFallingItemSlotFactory#getSlotScreenPos(int)}
+     * 获取每个 entry 对应槽位的屏幕坐标，粒子围绕该坐标渲染。
+     * </p>
+     */
+    private final NekoFallingItemSlotFactory factory;
+
     /** 取回回调（点击时触发，由 NekoVMGuiV2 设置 retrieveMeItemSync.setValue(true)） */
     private Runnable retrieveCallback;
 
@@ -81,12 +90,14 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
     // ==================== 构造器 ====================
 
     /**
-     * 构造 ME 传输粒子动画 Widget
+     * 构造 ME 传输粒子动画 Widget（v1.6.23 新增 factory 参数）
      *
      * @param queueRef 客户端 ME 传输队列引用（与 NekoVMGuiV2.clientMeTransferQueue 同一引用）
+     * @param factory  掉落槽工厂，供粒子定位槽位坐标（可为 null，回退到旧网格布局）
      */
-    public NekoMeTransferParticleWidget(List<MeTransferEntry> queueRef) {
+    public NekoMeTransferParticleWidget(List<MeTransferEntry> queueRef, NekoFallingItemSlotFactory factory) {
         this.queueRef = queueRef;
+        this.factory = factory;
         // 配置动态 Tooltip（每次显示时重新构建，确保队列状态最新）
         this.tooltipDynamic(tooltip -> buildTooltip((RichTooltip) tooltip));
         this.tooltipAutoUpdate(true);
@@ -169,9 +180,20 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
             // alpha 随进度线性渐淡
             float alpha = 1.0f - progress;
 
-            // entry 的中心点基于 entryIdx 在 Widget 内网格分布（6 列）
-            float entryCenterX = centerX + (entryIdx % 6 - 2.5f) * 18f;
-            float entryCenterY = centerY + (entryIdx / 6) * 18f - 9f;
+            // v1.6.23: 粒子围绕出货槽中的物品渲染
+            // 通过 factory.getSlotScreenPos(slotIndex) 获取槽位坐标
+            // slotIndex == -1（旧存档兼容）时回退到旧网格布局
+            float entryCenterX;
+            float entryCenterY;
+            if (entry.slotIndex >= 0 && factory != null) {
+                int[] slotPos = factory.getSlotScreenPos(entry.slotIndex);
+                entryCenterX = slotPos[0];
+                entryCenterY = slotPos[1];
+            } else {
+                // 回退：旧网格布局（6 列）
+                entryCenterX = centerX + (entryIdx % 6 - 2.5f) * 18f;
+                entryCenterY = centerY + (entryIdx / 6) * 18f - 9f;
+            }
 
             // 渲染该 entry 的粒子簇
             for (int p = 0; p < PARTICLES_PER_ENTRY; p++) {
@@ -224,15 +246,17 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
      * <p>
      * 当队列非空时显示提示文字：
      * <ul>
-     * <li>紫色：点击取回提示</li>
+     * <li>紫色：提示物品正在传输中</li>
      * <li>灰色：队列剩余物品数</li>
      * </ul>
+     * v1.6.23: 不再提示"点击取回"，改为提示"直接点击物品取出"
      *
      * @param tooltip Tooltip 构建器
      */
     private void buildTooltip(RichTooltip tooltip) {
         if (queueRef != null && !queueRef.isEmpty()) {
-            tooltip.addLine(IKey.str(EnumChatFormatting.LIGHT_PURPLE + "点击此区域取回最早入队的物品"));
+            tooltip.addLine(IKey.str(EnumChatFormatting.LIGHT_PURPLE + "物品正在传输至 ME 网络..."));
+            tooltip.addLine(IKey.str(EnumChatFormatting.GRAY + "直接点击物品可取出并中断传输"));
             tooltip.addLine(IKey.str(EnumChatFormatting.GRAY + "队列中还有 " + queueRef.size() + " 个物品待传输"));
         }
     }
@@ -242,26 +266,15 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
     /**
      * 鼠标按下处理
      * <p>
-     * 左键点击时触发取回回调（FIFO 取回最早入队物品）。
+     * v1.6.23: 粒子 Widget 纯视觉，不拦截鼠标事件，返回 IGNORE 让点击穿透到出货槽。
+     * 玩家直接点击出货槽中的物品取出，取出后系统自动跳过 ME 注入（槽位为空时 processMeTransferQueue 跳过）。
      *
      * @param mouseButton 鼠标按钮（0=左键, 1=右键, 2=中键）
-     * @return SUCCESS 表示已处理，IGNORE 表示未处理
+     * @return 总是 IGNORE，让点击穿透到下层出货槽
      */
     @Override
     public Interactable.Result onMousePressed(int mouseButton) {
-        // 仅响应左键
-        if (mouseButton != 0) {
-            return Interactable.Result.IGNORE;
-        }
-        // 队列为空时不响应
-        if (queueRef == null || queueRef.isEmpty()) {
-            return Interactable.Result.IGNORE;
-        }
-        // 触发取回回调
-        if (retrieveCallback != null) {
-            retrieveCallback.run();
-            return Interactable.Result.SUCCESS;
-        }
+        // v1.6.23: 不拦截鼠标，让点击穿透到出货槽
         return Interactable.Result.IGNORE;
     }
 }

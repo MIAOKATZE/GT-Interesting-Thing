@@ -668,7 +668,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             () -> multiblock != null ? multiblock.getMeTransferQueueSize() : 0,
             val -> {});
         meQueueSizeSync.setChangeListener(() -> {
-            if (meTransferQueueSync != null) {
+            // 仅在服务端触发 meTransferQueueSync 刷新（v1.6.22 修复 SecurityException）
+            // changeListener 在客户端也会触发（收到 S2C 更新时），但 S2C 同步值在客户端
+            // 调用 notifyUpdate() 会尝试发送 packet 到服务端，导致 SecurityException
+            if (meTransferQueueSync != null && syncManager != null && !syncManager.isClient()) {
                 meTransferQueueSync.notifyUpdate();
             }
         });
@@ -1266,18 +1269,26 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // --- 猫猫币余额显示行 ---
         mainColumn.child(createCoinDisplayRow(syncManager));
 
-        // --- 交易结果消息 ---
+        // --- 交易结果消息（v1.6.23：背包栏已底部锚定，消息高度不影响布局）---
         mainColumn.child(
             IKey.dynamic(() -> tradeResultMessage.isEmpty() ? "" : EnumChatFormatting.YELLOW + tradeResultMessage)
                 .asWidget()
                 .height(12)
                 .fullWidth()
-                .marginBottom(2));
+                .marginBottom(2)
+                .setEnabledIf(w -> !tradeResultMessage.isEmpty()));
 
-        // --- 玩家背包栏 ---
+        // --- 玩家背包栏（v1.6.23 修复：V1 式底部锚定，脱离流式布局）---
+        // 复刻 V1 的 createInventoryRow：Flow.row().height(76).bottom(5)
+        // 让背包栏独立锚定到面板底部，不参与 mainColumn 流式高度累加
         mainColumn.child(
-            SlotGroupWidget.playerInventory(false)
-                .marginLeft(4));
+            Flow.row()
+                .fullWidth()
+                .height(76)
+                .bottom(5)
+                .child(
+                    SlotGroupWidget.playerInventory(false)
+                        .marginLeft(4)));
 
         return mainColumn;
     }
@@ -1602,10 +1613,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
             dispenserChute.child(fallingFactory.getFallingItemSlot(i));
         }
-        // ME 传输粒子动画 Widget（覆盖在出货槽区域，仅在 meTransferQueue 非空时可见）
-        // 点击粒子区域可取回最早入队的物品（FIFO），通过 retrieveMeItemSync 通知服务端
-        NekoMeTransferParticleWidget particleWidget = new NekoMeTransferParticleWidget(clientMeTransferQueue)
-            .onRetrieve(() -> {
+        // v1.6.23: ME 传输粒子动画 Widget（围绕出货槽中的物品渲染粒子）
+        // 传入 fallingFactory 供粒子定位槽位坐标；点击穿透到出货槽（不拦截鼠标）
+        NekoMeTransferParticleWidget particleWidget = new NekoMeTransferParticleWidget(
+            clientMeTransferQueue,
+            fallingFactory).onRetrieve(() -> {
                 if (retrieveMeItemSync != null) {
                     retrieveMeItemSync.setValue(true);
                 }
@@ -1672,19 +1684,32 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         try {
             String[] entries = data.split(";");
             for (String entryStr : entries) {
-                String[] parts = entryStr.split(":", 3);
+                // v1.6.23: 新格式 4 段 (creationTime:stackSize:slotIndex:base64)
+                // 旧格式 3 段 (creationTime:stackSize:base64)，通过 split limit 4 兼容
+                String[] parts = entryStr.split(":", 4);
                 if (parts.length < 3) continue;
                 long creationTime = Long.parseLong(parts[0]);
                 int stackSize = Integer.parseInt(parts[1]);
-                if (parts[2].isEmpty()) continue;
+                int slotIndex = -1; // 默认 -1（旧格式兼容）
+                String base64Part;
+                if (parts.length >= 4) {
+                    // 新格式：parts[2]=slotIndex, parts[3]=base64
+                    slotIndex = Integer.parseInt(parts[2]);
+                    base64Part = parts[3];
+                } else {
+                    // 旧格式：parts[2]=base64
+                    base64Part = parts[2];
+                }
+                if (base64Part.isEmpty()) continue;
                 // base64 解码 NBT（复用项目工具类）
-                net.minecraft.nbt.NBTTagCompound tag = com.miaokatze.gtit.util.NbtBase64Util.nbtFromBase64(parts[2]);
+                net.minecraft.nbt.NBTTagCompound tag = com.miaokatze.gtit.util.NbtBase64Util.nbtFromBase64(base64Part);
                 if (tag == null) continue;
                 ItemStack stack = ItemStack.loadItemStackFromNBT(tag);
                 if (stack != null && stack.stackSize > 0) {
                     // 同步 stackSize（base64 中已含，但显式设置以防解码差异）
                     stack.stackSize = stackSize;
-                    clientMeTransferQueue.add(new MTENekoVendingMachineV2.MeTransferEntry(stack, creationTime));
+                    clientMeTransferQueue
+                        .add(new MTENekoVendingMachineV2.MeTransferEntry(stack, creationTime, slotIndex));
                 }
             }
         } catch (Exception e) {

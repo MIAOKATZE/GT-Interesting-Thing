@@ -119,6 +119,27 @@ public class NekoFallingItemSlotFactory {
     }
 
     /**
+     * 获取指定槽位在 dispenserChute 内的屏幕坐标（v1.6.23 新增）
+     * <p>
+     * 供 {@link NekoMeTransferParticleWidget} 定位粒子渲染位置使用。
+     * 返回的坐标是相对于 dispenserChute ParentWidget 左上角的偏移：
+     * <ul>
+     * <li>X = outputSlotXPositions.get(index)（黄金比例分布的 X 偏移，0~23 像素）</li>
+     * <li>Y = fallDistance - 1（掉落动画终点位置，与槽位最终落点一致）</li>
+     * </ul>
+     *
+     * @param index 槽位索引（0~outputSlots-1）
+     * @return int[]{x, y}，索引无效时返回 {0, 0}
+     */
+    public int[] getSlotScreenPos(int index) {
+        if (index < 0 || index >= outputSlotXPositions.size()) {
+            return new int[] { 0, 0 };
+        }
+        // Y = fallDistance - 1（与 getFallingItemSlot 中 fallingPosition 初始 y=-1 + fallDistance 一致）
+        return new int[] { outputSlotXPositions.get(index), fallDistance - 1 };
+    }
+
+    /**
      * 创建带掉落动画监听的物品槽
      * <p>
      * 使用 {@link NekoItemSlotWithDepth} 实现深度效果。
