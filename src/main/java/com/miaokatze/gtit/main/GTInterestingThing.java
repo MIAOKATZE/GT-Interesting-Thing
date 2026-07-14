@@ -4,7 +4,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.miaokatze.gtit.Tags;
-import com.miaokatze.gtit.loader.MachineLoader;
 
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
@@ -14,7 +13,6 @@ import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartedEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
-import gregtech.api.GregTechAPI;
 
 /**
  * GTInterestingThing - GTNH的趣味小物品模组
@@ -46,37 +44,6 @@ public class GTInterestingThing {
      */
     @Mod.Instance(MODID)
     public static GTInterestingThing instance;
-
-    /**
-     * 模组构造函数
-     * <p>
-     * v1.6.31 根因 B 修复（方案 B3-修正1）：在此处将机器注册任务加入 sAfterGTPreload 队列。
-     * <p>
-     * 必须在构造函数而非 preInit 中添加，因为 GTIT @Mod dependencies = "required-after:gregtech"，
-     * gregtech 的 PreInit（含 sAfterGTPreload 队列遍历，GTMod.java 行 342-344）在 GTIT preInit 之前完成。
-     * 构造函数早于所有 mod 的 PreInit，故任务能被 gregtech PreInit 末尾正确执行。
-     * 仿照 DetravScannerMod 模式（GT5U 源码 DetravScannerMod.java 行 36-42）。
-     * <p>
-     * 时序对比：
-     * - 原 B1 方案（sAfterGTLoad）：gregtech Init 末尾执行（GTMod.java 行 402-404），时机过晚
-     * - B3 直接替换（sAfterGTLoad→sAfterGTPreload 在 preInit 添加）：任务永不执行（时序矛盾）
-     * - B3-修正1（本方案，构造函数添加 sAfterGTPreload）：gregtech PreInit 末尾执行，时机最早且安全
-     */
-    public GTInterestingThing() {
-        // 将机器注册任务加入 gregtech 的 sAfterGTPreload 队列
-        // 该队列在 gregtech PreInit 末尾执行（GTMod.java 行 342-344），紧接 LoaderMetaTileEntities.run 之后
-        // 此时 gregtech 自身机器已注册完毕，METATILEENTITIES 数组已就绪，可安全注册 GTIT 机器
-        GregTechAPI.sAfterGTPreload.add(() -> {
-            GTInterestingThing.LOG.info("[1/3] 开始执行机器注册流程...");
-            try {
-                MachineLoader.initMachines();
-                GTInterestingThing.LOG.info("[1/3] 机器注册流程执行完毕。");
-            } catch (Throwable t) {
-                GTInterestingThing.LOG.error("[1/3] 机器注册过程中发生严重错误，请检查日志", t);
-            }
-        });
-        GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech sAfterGTPreload 队列");
-    }
 
     /**
      * 预初始化阶段 (PreInit)
