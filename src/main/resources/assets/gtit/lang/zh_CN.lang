@@ -100,3 +100,15 @@ item.shimmering_neko_coin.tooltip.1=极为稀有，仅能从鱼塘中钓起
 item.gtit.infinity_cell.name=ME无限存储元件
 item.gtit.infinity_fluid_cell.name=ME无限流体存储元件
 
+# 猫猫售货机 GUI tooltip 与音量面板（v1.6.24 新增，迁移自 VM 的 vendingmachine.gui.*）
+gtit.gui.display_mode_tile=平铺
+gtit.gui.display_mode_list=列表
+gtit.gui.display_sort_smart=智能排序
+gtit.gui.display_sort_alphabet=字母排序
+gtit.gui.display_wallet_personal=个人钱包
+gtit.gui.display_wallet_team=团队钱包
+gtit.gui.display_track_none=关闭
+gtit.gui.display_track_lunch_break=午休时间
+gtit.gui.volume.title=音乐音量
+gtit.gui.volume.percent=%s%%
+

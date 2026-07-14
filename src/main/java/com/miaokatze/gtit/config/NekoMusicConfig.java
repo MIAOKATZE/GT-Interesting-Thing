@@ -28,17 +28,17 @@ public class NekoMusicConfig {
     /**
      * 音乐音量倍率
      * <p>
-     * 取值范围 0.01~1.0，默认 0.5。
+     * 取值范围 0.01~1.0，默认 0.3（v1.6.24 从 0.5 调整为 0.3，避免新用户首次进入被高音量惊吓）。
      * <p>
      * 此值作为 BGM 实际播放音量的倍率：
      * 实际音量 = 淡入淡出音量 × music_volume。
      * NekoMusicEventHandler 每 tick 读取此值，通过 SoundSystem.setVolume() 应用到正在播放的 BGM。
      */
     @Config.LangKey("gtit.config.music.volume")
-    @Config.DefaultFloat(0.5f)
+    @Config.DefaultFloat(0.3f)
     @Config.RangeFloat(min = 0.01f, max = 1.0f)
     @Config.Comment("猫猫售货机 BGM 音量倍率 (0.01~1.0)")
-    public static float music_volume = 0.5f;
+    public static float music_volume = 0.3f;
 
     /*
      * 静态初始化块：注册配置到 GTNHLib ConfigurationManager

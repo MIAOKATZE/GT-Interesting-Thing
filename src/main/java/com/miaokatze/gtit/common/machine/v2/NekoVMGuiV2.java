@@ -266,6 +266,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private PagedWidget.Controller tabController;
     /** 搜索栏组件（客户端） */
     private NekoSearchBar searchBar;
+    /** 音量/BGM 按钮（客户端，作为音量面板的 parent；v1.6.24 提升为类字段以供 build() 在 client 块外注册 syncedPanel） */
+    private ButtonWidget<?> volumeButton;
     /** 音量面板处理器（客户端，打开/关闭音量控制面板） */
     private IPanelHandler volumePanel;
     /** 主面板引用（用于回调和方法调用） */
@@ -381,6 +383,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             panel.child(createTabColumn());
             panel.child(createQolButtonColumn());
         }
+
+        // v1.6.24: 音量面板在 client 块外部注册（与 VM 原版 MTEVendingMachineGui 一致），
+        // 确保服务端也注册同步通道，否则客户端 togglePanel() 静默失败导致面板无法弹出。
+        // volumeButton 在 createQolButtonColumn 内被赋值（仅客户端），但 syncedPanel 第二参数 true
+        // 表示仅在客户端创建面板，回调中的 volumeButton 引用仅在客户端被使用，服务端不触发回调。
+        volumePanel = syncManager
+            .syncedPanel("nekoV2Volume", true, (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, volumeButton));
 
         // 主内容列
         panel.child(createMainColumn(syncManager));
@@ -1072,7 +1081,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private IWidget createQolButtonColumn() {
         // --- 音量/BGM 按钮（左上）---
         // 单击切换 BGM 播放/停止；Shift+点击打开音量面板
-        final ButtonWidget<?> volumeButton = new ButtonWidget<>().size(14, 14)
+        // v1.6.24: volumeButton 改为赋值类字段（移除 final 局部变量），以便 build() 在 client 块外部注册 syncedPanel
+        volumeButton = new ButtonWidget<>().size(14, 14)
             .overlay(new DynamicDrawable(() -> {
                 NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
                 boolean isPlaying = handler != null && handler.isPlaying();
@@ -1155,13 +1165,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             });
         sortModeButton.tooltipAutoUpdate(true);
 
-        // 客户端：创建音量控制面板（以 volumeButton 为 parent，修复旧版 parent=null 的 NPE）
-        if (syncManagerRef != null && syncManagerRef.isClient()) {
-            volumePanel = syncManagerRef.syncedPanel(
-                "nekoV2Volume",
-                true,
-                (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, volumeButton));
-        }
+        // v1.6.24: volumePanel 注册已移至 build() 的 client 块外部（与 VM 原版一致），
+        // 确保服务端也注册同步通道，否则客户端 togglePanel() 静默失败
 
         // 2x2 网格：左上音量、右上显示模式、左下显示硬币、右下排序
         // 在 NEI/HEI 中排除 QoL 按钮列区域，避免配方查看器遮挡快捷按钮
@@ -1263,7 +1268,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // --- 交易列表（PagedWidget + 预分配 Widget）---
             mainColumn.child(createTradePagedWidget());
 
-            // 注：volumePanel 已在 createQolButtonColumn 内创建（以 volumeButton 为 parent）
+            // 注：volumePanel 已在 build() 的 client 块外部创建（v1.6.24 修复，与 VM 原版一致）
         }
 
         // --- 猫猫币余额显示行 ---
@@ -1623,8 +1628,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             });
         particleWidget.fullWidth()
-            .fullHeight()
-            .setEnabledIf(w -> !clientMeTransferQueue.isEmpty());
+            .fullHeight();
+        // v1.6.24: 移除 setEnabledIf（ModularUI2 此版本中 setEnabledIf(false) 会阻止 widget 的 draw() 被调用，
+        // 导致 clientMeTransferQueue 同步到达后粒子仍不渲染）。draw() 方法内已有空队列守卫
+        // (if (queueRef.isEmpty()) return;)，无需额外控制可见性。
         dispenserChute.child(particleWidget);
         // 顶部悬垂装饰：必须最后添加，覆盖掉落槽起始位置（顶部），形成"物品从悬垂后面掉落"的图层效果
         // 与 VM 原版 MteVendingMachineGui.createDispenserChute 顺序一致（掉落槽 → OVERHANG 最后）
@@ -1680,9 +1687,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     private void parseMeTransferQueue(String data) {
         clientMeTransferQueue.clear();
-        if (data == null || data.isEmpty()) return;
+        if (data == null || data.isEmpty()) {
+            // v1.6.24 临时日志：确认空数据到达客户端
+            System.out.println("[NekoParticle] parseMeTransferQueue: empty data");
+            return;
+        }
         try {
             String[] entries = data.split(";");
+            // v1.6.24 临时日志：确认非空数据到达客户端
+            System.out.println(
+                "[NekoParticle] parseMeTransferQueue: dataLen=" + data.length() + ", entries=" + entries.length);
             for (String entryStr : entries) {
                 // v1.6.23: 新格式 4 段 (creationTime:stackSize:slotIndex:base64)
                 // 旧格式 3 段 (creationTime:stackSize:base64)，通过 split limit 4 兼容
@@ -1712,6 +1726,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                         .add(new MTENekoVendingMachineV2.MeTransferEntry(stack, creationTime, slotIndex));
                 }
             }
+            // v1.6.24 临时日志：确认解析后队列大小
+            System.out.println("[NekoParticle] parseMeTransferQueue: parsedQueueSize=" + clientMeTransferQueue.size());
         } catch (Exception e) {
             GTInterestingThing.LOG.error("[NekoVMV2] parseMeTransferQueue 解析失败", e);
         }

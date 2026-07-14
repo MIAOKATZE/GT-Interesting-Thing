@@ -140,6 +140,13 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
             return;
         }
 
+        // v1.6.24 临时日志：用于排查粒子动画未渲染根因，确认 draw 是否被调用、队列是否非空
+        System.out.println("[NekoParticle] draw called, queueSize=" + queueRef.size());
+
+        // v1.6.24: 获取当前绘制层 Z 坐标，避免被其他 widget（如 OVERHANG 装饰）的渲染覆盖
+        // 项目内 NekoTradeItemDisplayWidget 等 3 处已使用此 API
+        float drawZ = context.getCurrentDrawingZ();
+
         long now = System.currentTimeMillis();
         // Widget 内部坐标（0,0 为左上角），通过 getArea() 获取实际渲染尺寸
         int widgetW = getArea().width;
@@ -217,13 +224,16 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
                 float b = isPurple ? PURPLE_B : WHITE_B;
 
                 // 用 Tessellator 绘制小方块（GL_QUADS）
-                GL11.glColor4f(r, g, b, alpha);
+                // v1.6.24: 使用 Tessellator 标准颜色 API（与 GT5U LineChartWidget 一致），
+                // 替代 GL11.glColor4f，避免 Tessellator 内部状态覆盖全局颜色
                 Tessellator t = Tessellator.instance;
                 t.startDrawing(GL11.GL_QUADS);
-                t.addVertex(px - size, py - size, 0);
-                t.addVertex(px + size, py - size, 0);
-                t.addVertex(px + size, py + size, 0);
-                t.addVertex(px - size, py + size, 0);
+                t.setColorRGBA((int) (r * 255), (int) (g * 255), (int) (b * 255), (int) (alpha * 255));
+                // v1.6.24: 顶点 z 使用 context.getCurrentDrawingZ()，避免被后续 widget 覆盖
+                t.addVertex(px - size, py - size, drawZ);
+                t.addVertex(px + size, py - size, drawZ);
+                t.addVertex(px + size, py + size, drawZ);
+                t.addVertex(px - size, py + size, drawZ);
                 t.draw();
             }
         }

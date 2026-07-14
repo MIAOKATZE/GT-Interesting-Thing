@@ -100,3 +100,15 @@ item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fis
 item.gtit.infinity_cell.name=ME Infinity Cell
 item.gtit.infinity_fluid_cell.name=ME Infinity Fluid Cell
 
+# Neko Vending Machine GUI tooltip & volume panel (v1.6.24, migrated from VM's vendingmachine.gui.*)
+gtit.gui.display_mode_tile=Tiles
+gtit.gui.display_mode_list=List
+gtit.gui.display_sort_smart=Smart
+gtit.gui.display_sort_alphabet=Alphabetical Order
+gtit.gui.display_wallet_personal=Personal Wallet
+gtit.gui.display_wallet_team=Team Wallet
+gtit.gui.display_track_none=None
+gtit.gui.display_track_lunch_break=Lunch Break
+gtit.gui.volume.title=Music Volume
+gtit.gui.volume.percent=%s%%
+
