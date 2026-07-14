@@ -2,7 +2,6 @@ package com.miaokatze.gtit.loader;
 
 import com.miaokatze.gtit.register.MultiblockMachineRegistrar;
 import com.miaokatze.gtit.register.RegistrationManager;
-import com.miaokatze.gtit.register.StandardMachineRegistrar;
 
 /**
  * 机器加载器
@@ -17,10 +16,6 @@ public class MachineLoader {
      */
     public static void initMachines() {
         RegistrationManager manager = RegistrationManager.getInstance();
-
-        // 创建单方块机器的注册器实例
-        StandardMachineRegistrar standardMachineRegistrar = new StandardMachineRegistrar();
-        manager.addRegistrar(standardMachineRegistrar::registerAll);
 
         // 创建多方块机器的注册器实例
         MultiblockMachineRegistrar multiblockMachineRegistrar = new MultiblockMachineRegistrar();

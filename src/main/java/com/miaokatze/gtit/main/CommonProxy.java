@@ -16,8 +16,6 @@ import com.miaokatze.gtit.event.PlayerLoginHandler;
 import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
-import com.miaokatze.gtit.recipe.TestMachineRecipes;
-import com.miaokatze.gtit.register.BlockRegistrar;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
@@ -81,13 +79,6 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 物品注册过程中发生严重错误，请检查日志", t);
         }
 
-        // 注册方块
-        try {
-            BlockRegistrar.init();
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("方块注册过程中发生严重错误，请检查日志", t);
-        }
-
         // 初始化新手宝箱配置
         GiftConfig.init();
 
@@ -132,15 +123,13 @@ public class CommonProxy {
         };
 
         // 将注册任务添加到 GregTech 的 sAfterGTLoad 队列
+        // 注意：sAfterGTLoad 在 GregTechAPI 中静态初始化为 ArrayList，永不为 null，无需 null 检查
+        // B1 决策：保留 sAfterGTLoad 时序委托逻辑（GT5U 官方支持的扩展点），不调整为 PreInit 直接注册
         try {
-            if (GregTechAPI.sAfterGTLoad == null) {
-                GTInterestingThing.LOG.warn("警告: GregTechAPI.sAfterGTLoad 为空，无法添加注册任务。");
-            } else {
-                int before = GregTechAPI.sAfterGTLoad.size();
-                GregTechAPI.sAfterGTLoad.add(registerRunnable);
-                int after = GregTechAPI.sAfterGTLoad.size();
-                GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech 加载队列 (队列大小: " + before + " -> " + after + ")");
-            }
+            int before = GregTechAPI.sAfterGTLoad.size();
+            GregTechAPI.sAfterGTLoad.add(registerRunnable);
+            int after = GregTechAPI.sAfterGTLoad.size();
+            GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech 加载队列 (队列大小: " + before + " -> " + after + ")");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("无法将注册任务添加到 GregTech 队列", t);
         }
@@ -265,7 +254,6 @@ public class CommonProxy {
     public void postInit(FMLPostInitializationEvent event) {
         GTInterestingThing.LOG.info("[3/3] 开始注册配方...");
         try {
-            TestMachineRecipes.init();
             GTITRecipes.init();
             GTInterestingThing.LOG.info("[3/3] 配方注册完成。");
         } catch (Throwable t) {

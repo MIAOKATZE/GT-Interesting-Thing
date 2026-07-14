@@ -16,10 +16,6 @@ import gregtech.api.render.TextureFactory;
  */
 public class TextureManager {
 
-    public static final IIconContainer TEX_TEST_EV = Textures.BlockIcons.custom("gtit:MTETEST_1");
-    public static final IIconContainer TEX_TEST_IV = Textures.BlockIcons.custom("gtit:MTETEST_2");
-    public static final IIconContainer TEX_TEST_LUV = Textures.BlockIcons.custom("gtit:MTETEST_3");
-
     // 猫猫售货机正面材质（V2 独立版，从 VM 复制到本 mod）
     public static final IIconContainer NEKOVM_FRONT_OFF = Textures.BlockIcons.custom("gtit:nekovm_front_off");
     public static final IIconContainer NEKOVM_FRONT_ON = Textures.BlockIcons.custom("gtit:nekovm_front_on");

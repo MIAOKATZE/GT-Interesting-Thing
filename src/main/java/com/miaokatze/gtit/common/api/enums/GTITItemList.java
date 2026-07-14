@@ -18,19 +18,6 @@ import gregtech.api.util.GTLog;
  */
 public enum GTITItemList implements IItemContainer {
 
-    // 测试机器：EV, IV, LuV 等级
-    Test_Machine_EV,
-    Test_Machine_IV,
-    Test_Machine_LuV,
-
-    // 测试用多方块机器 (HV)
-    Test_Multiblock_HV,
-
-    // 测试物品
-    TestCoin,
-    // 电子测试硬币 (保留作为框架参考)
-    TestCoinE,
-
     // 浮空核心
     FloatCore,
     // 电力浮空核心

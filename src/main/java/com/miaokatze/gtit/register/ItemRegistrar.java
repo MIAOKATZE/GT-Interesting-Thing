@@ -31,11 +31,9 @@ public class ItemRegistrar {
      */
     public static void init() {
         GTInterestingThing.LOG.info("开始通过 ItemRegistrar 注册物品...");
-        // registerTestCoin(); // 取消测试物品注册，源码保留
         registerFloatCore();
         registerElectricFloatCore();
         registerTelekinesisOreScannerCore();
-        // registerTestCoinE(); // 取消测试物品注册，源码保留
 
         // 戒指系列
         registerRingDistantGrasp();
@@ -61,14 +59,6 @@ public class ItemRegistrar {
         registerInfinityFluidCell();
 
         GTInterestingThing.LOG.info("物品注册完成。");
-    }
-
-    private static void registerTestCoin() {
-        TestCoin.setAndRegister(com.miaokatze.gtit.common.items.TestCoin::new);
-    }
-
-    private static void registerTestCoinE() {
-        // TestCoinE.setAndRegister(com.miaokatze.gtit.common.items.TestCoinE::new);
     }
 
     private static void registerFloatCore() {
