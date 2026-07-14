@@ -20,6 +20,8 @@ public class NekoTradeHistory {
     private long tradeCount = 0;
     /** 当前冷却周期内的交易次数 */
     private long cooldownTradeCount = 0;
+    // v1.6.28: 冷却完毕播报标记，true 表示有待发出的冷却完毕通知
+    private boolean notificationQueued = false;
 
     public NekoTradeHistory() {}
 
@@ -86,6 +88,8 @@ public class NekoTradeHistory {
         lastTradeTime = -1;
         tradeCount = 0;
         cooldownTradeCount = 0;
+        // v1.6.28: 重置冷却完毕通知标记
+        notificationQueued = false;
     }
 
     /**
@@ -98,6 +102,8 @@ public class NekoTradeHistory {
         nbt.setLong("lastTradeTime", lastTradeTime);
         nbt.setLong("tradeCount", tradeCount);
         nbt.setLong("cooldownTradeCount", cooldownTradeCount);
+        // v1.6.28: 持久化冷却完毕通知标记
+        nbt.setBoolean("notificationQueued", notificationQueued);
         return nbt;
     }
 
@@ -110,6 +116,8 @@ public class NekoTradeHistory {
         lastTradeTime = nbt.getLong("lastTradeTime");
         tradeCount = nbt.getLong("tradeCount");
         cooldownTradeCount = nbt.getLong("cooldownTradeCount");
+        // v1.6.28: 读取冷却完毕通知标记（旧存档无此 key 时返回 false，向后兼容）
+        notificationQueued = nbt.getBoolean("notificationQueued");
     }
 
     public long getLastTradeTime() {
@@ -122,5 +130,15 @@ public class NekoTradeHistory {
 
     public long getCooldownTradeCount() {
         return cooldownTradeCount;
+    }
+
+    /** v1.6.28: 是否有待发出的冷却完毕通知 */
+    public boolean isNotificationQueued() {
+        return notificationQueued;
+    }
+
+    /** v1.6.28: 设置冷却完毕通知标记 */
+    public void setNotificationQueued(boolean queued) {
+        this.notificationQueued = queued;
     }
 }

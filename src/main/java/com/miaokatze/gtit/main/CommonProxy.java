@@ -110,6 +110,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 签到事件监听器注册失败", t);
         }
 
+        // v1.6.28: 注册冷却完毕通知调度器（服务端 tick 事件，检查冷却结束并团队播报）
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(com.miaokatze.gtit.trade.v2.NekoNotificationScheduler.INSTANCE);
+            GTInterestingThing.LOG.info("[NekoNotify] 冷却完毕通知调度器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[NekoNotify] 冷却完毕通知调度器注册失败", t);
+        }
+
         // 定义机器注册任务
         Runnable registerRunnable = () -> {
             GTInterestingThing.LOG.info("[1/3] 开始执行机器注册流程...");

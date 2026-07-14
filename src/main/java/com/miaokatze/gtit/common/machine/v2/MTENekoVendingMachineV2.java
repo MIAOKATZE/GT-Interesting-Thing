@@ -148,6 +148,18 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /** 距上次投放的 tick 计数，用于控制投放节奏 */
     private int ticksSinceOutput = 0;
 
+    // v1.6.28: 批次投放相关字段，用于按物品数量分档控制下落时序
+    /** 当前批次物品总数（一次 executeTrade 的产出物品数） */
+    private int currentBatchSize = 0;
+    /** 当前批次已投放的物品数 */
+    private int dispensedInBatch = 0;
+    /** 是否有批次正在进行（startBatch 后、所有物品投放完前为 true） */
+    private boolean batchActive = false;
+    /** 批次内投放间隔（tick，由 currentBatchSize 分档决定，带随机性） */
+    private int currentBatchDelay = 0;
+    /** 随机数生成器（用于批次延迟和每次下落数量的随机化） */
+    private final java.util.Random batchRandom = new java.util.Random();
+
     /** 可选的 ME Vending UplinkHatch，结构检查时设置，上限 1 个 */
     private MTEVendingUplinkHatch uplinkHatch = null;
 
@@ -501,6 +513,60 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
+     * v1.6.28: 标记批次开始，根据物品总数设置分档延迟
+     * <p>
+     * 分档规则：
+     * <ul>
+     * <li>1 个物品：无间隔（立即投放）</li>
+     * <li>2 个物品：间隔 0.3-0.5s（6-10 tick 随机）</li>
+     * <li>3-4 个物品：间隔 0.1-0.3s（2-6 tick 随机）</li>
+     * <li>≥5 个物品：间隔 0.1-0.3s（2-6 tick 随机），每次下落 1-2 个</li>
+     * </ul>
+     * <p>
+     * 由 NekoTradeExecutor.executeTrade（经 InternalOutputSlotAccessor.startBatch）或
+     * dispenseItemStacks（GUI 层入口）调用。批次状态在所有物品投放完成后由
+     * dispenseItems 自动清理。
+     *
+     * @param totalCount 本批次物品总数
+     */
+    public void startBatch(int totalCount) {
+        this.currentBatchSize = totalCount;
+        this.dispensedInBatch = 0;
+        this.batchActive = true;
+        this.currentBatchDelay = calculateBatchDelay(totalCount);
+    }
+
+    /**
+     * v1.6.28: 标记批次结束，清理批次状态
+     * <p>
+     * 由 dispenseItems 在所有物品投放完成后调用，或由 executeTrade 回滚路径调用。
+     */
+    public void endBatch() {
+        this.batchActive = false;
+        this.currentBatchSize = 0;
+        this.dispensedInBatch = 0;
+        this.currentBatchDelay = 0;
+    }
+
+    /**
+     * v1.6.28: 根据批次大小计算投放延迟（tick）
+     *
+     * @param count 物品总数
+     * @return 投放间隔（tick）
+     */
+    private int calculateBatchDelay(int count) {
+        if (count <= 1) {
+            return 0; // 单物品无间隔
+        }
+        if (count == 2) {
+            // 2 物品：6-10 tick（0.3-0.5s）
+            return 6 + batchRandom.nextInt(5);
+        }
+        // 3+ 物品：2-6 tick（0.1-0.3s）
+        return 2 + batchRandom.nextInt(5);
+    }
+
+    /**
      * 将物品列表加入输出缓冲队列
      * <p>
      * 复刻 V1 的 dispenseItemStacks：物品先入队，由 onPostTick 逐 tick 投放到 outputItems。
@@ -510,6 +576,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     public void dispenseItemStacks(java.util.List<ItemStack> itemStacks) {
         if (itemStacks == null || itemStacks.isEmpty()) return;
+        // v1.6.28: GUI 层入口也启动批次模式（仅对实际入队的物品计数）
+        int batchCount = 0;
         for (ItemStack stack : itemStacks) {
             if (stack != null && stack.stackSize > 0) {
                 // 溢出检查：与单个版 dispenseItemStack 一致，完全无空槽时掉落到机器旁
@@ -518,8 +586,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     dropItemsNearMachine(stack);
                 } else {
                     this.outputBuffer.add(stack.copy());
+                    batchCount++;
                 }
             }
+        }
+        // v1.6.28: 启动批次模式控制下落时序（由 dispenseItems 在投放完成后自动结束）
+        if (batchCount > 0) {
+            startBatch(batchCount);
         }
         this.newBufferedOutputs = true;
         if (getBaseMetaTileEntity() != null) {
@@ -532,16 +605,32 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * 复刻 V1 的 dispenseItems：每次调用最多投放一个物品到第一个空槽，
      * 投放节奏由 getDispensingDelay() 控制（队列越长延迟越短）。
+     * <p>
+     * v1.6.28: 批次模式下（batchActive=true）使用分档延迟；
+     * 批次≥5时每次下落 1-2 个（50% 概率额外投放一个）；
+     * 所有物品投放完成后自动调用 endBatch 清理批次状态。
      */
     private void dispenseItems() {
         if (!mMachine) return;
+        // v1.6.28: 获取投放延迟（批次模式下为分档延迟，单物品批次返回 0 表示立即投放）
+        int delay = getDispensingDelay();
         if (this.newBufferedOutputs
-            || (!this.outputBuffer.isEmpty() && this.ticksSinceOutput % getDispensingDelay() == 0)) {
+            || (!this.outputBuffer.isEmpty() && (delay <= 0 || this.ticksSinceOutput % delay == 0))) {
             dispenseFirstNonNullItem();
+            // v1.6.28: 批次>=5时每次下落1-2个（50%概率额外投放一个）
+            if (batchActive && currentBatchSize >= 5 && !this.outputBuffer.isEmpty()) {
+                if (batchRandom.nextInt(2) == 0) {
+                    dispenseFirstNonNullItem();
+                }
+            }
             this.ticksSinceOutput = 0;
         }
         this.ticksSinceOutput = this.newBufferedOutputs ? 0 : this.ticksSinceOutput + 1;
         this.newBufferedOutputs = false;
+        // v1.6.28: 批次结束判断——所有物品投放完成后清理批次状态
+        if (batchActive && dispensedInBatch >= currentBatchSize) {
+            endBatch();
+        }
         if (getBaseMetaTileEntity() != null) {
             getBaseMetaTileEntity().markDirty();
         }
@@ -550,9 +639,15 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 获取投放延迟（tick）
      * <p>
-     * 队列越长延迟越短（对数加速），复刻 V1 的 getDispensingDelay。
+     * v1.6.28: 批次模式下（batchActive=true）使用分档延迟（由 calculateBatchDelay 设置）；
+     * 非批次场景（如 GUI 弹出猫猫币等旧路径）保留原有对数加速逻辑。
      */
     private int getDispensingDelay() {
+        // v1.6.28: 批次模式下使用分档延迟
+        if (batchActive) {
+            return currentBatchDelay;
+        }
+        // 原有对数加速逻辑（向后兼容，非批次场景如 GUI 弹出猫猫币）
         int baseDelay = 10;
         int queueSize = outputBuffer.size();
         if (queueSize <= 1) return baseDelay;
@@ -563,6 +658,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     /**
      * 从队列中取出第一个有效物品，投放到第一个空槽
+     * <p>
+     * v1.6.28: 投放后递增 dispensedInBatch 计数，供 dispenseItems 判断批次是否完成。
      */
     private void dispenseFirstNonNullItem() {
         ItemStack dispensable = getNextDispensable();
@@ -575,6 +672,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 // 槽满时掉落到机器旁并 poll 出队列，防止物品永久卡队列
                 dropItemsNearMachine(dispensable);
                 this.outputBuffer.poll();
+            }
+            // v1.6.28: 递增批次已投放计数（无论成功入槽还是溢出掉落）
+            if (batchActive) {
+                dispensedInBatch++;
             }
         }
     }
@@ -639,12 +740,20 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * 将物品写入指定输出槽
      * <p>
      * 使用 copy() 确保新对象引用，触发 ModularUI 的完整同步链。
+     * <p>
+     * v1.6.28: ME 输出模式下，投放时创建 MeTransferEntry（从 InternalOutputSlotAccessor.insertItem 移至此处），
+     * 使 ME 模式也走 outputBuffer 队列分档投放。
      */
     private void outputIntoSlot(ItemStack stack, int slotIndex) {
         ItemStack output = stack.copy();
         output.stackSize = stack.stackSize;
         stack.stackSize = 0;
         outputItems.setStackInSlot(slotIndex, output);
+        // v1.6.28: ME 模式下投放时创建 MeTransferEntry（从 insertItem 移至此处）
+        // 记录 slotIndex 供粒子定位和 3 秒后清槽注入 ME
+        if (meOutputMode) {
+            meTransferQueue.add(new MeTransferEntry(output.copy(), System.currentTimeMillis(), slotIndex));
+        }
     }
 
     /**
@@ -1359,21 +1468,21 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * V2 完整版：hasSpaceFor 仅检查空槽（不合并），insertItem 加入缓冲队列，
      * 由 onPostTick 逐 tick 投放，确保 NekoFallingItemSlotFactory 的掉落动画必然触发。
      * <p>
-     * 阶段 4 改造：meOutputMode=true 时，产出进入 {@link #meTransferQueue}，
-     * 3 秒后注入 ME 网络；rollback 按当前模式从对应容器尾部移除。
+     * v1.6.28 改造：ME 模式和本地模式统一走 outputBuffer 队列分档投放。
+     * ME 模式的 MeTransferEntry 在 outputIntoSlot 时创建（不再在 insertItem 中直接写入槽位）。
+     * rollback 统一从 outputBuffer 尾部移除。
      */
     private class InternalOutputSlotAccessor implements NekoTradeExecutor.OutputSlotAccessor {
 
         @Override
         public boolean hasSpaceFor(ItemStack stack) {
             if (stack == null) return true;
+            // v1.6.28: ME 模式和本地模式统一走 outputBuffer 队列，空间检查逻辑一致
             if (meOutputMode) {
-                // v1.6.23: ME 模式同时检查队列容量和出货槽空位
-                // 物品需要同时进入出货槽（显示）和 meTransferQueue（记录传输状态）
+                // ME 模式额外检查传输队列容量（MeTransferEntry 在投放时创建）
                 if (meTransferQueue.size() >= MAX_ME_QUEUE_SIZE) return false;
-                return getFirstEmptyOutputSlot() != -1;
             }
-            // 本地模式：可用空槽 = 当前空槽数 - outputBuffer 队列已占用的虚拟槽位数
+            // 可用空槽 = 当前空槽数 - outputBuffer 队列已占用的虚拟槽位数
             // 队列堆积时，空槽数会逐步被消耗（onPostTick 逐 tick 投放），
             // hasSpaceFor 必须预留队列占位，避免超卖
             int emptySlots = 0;
@@ -1389,58 +1498,31 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         @Override
         public void insertItem(ItemStack stack) {
             if (stack == null) return;
-            if (meOutputMode) {
-                // v1.6.23: ME 模式下物品同时进入出货槽（触发掉落动画）和传输队列（记录 slotIndex）
-                int slot = getFirstEmptyOutputSlot();
-                if (slot != -1) {
-                    // 直接写入出货槽，触发 NekoFallingItemSlotFactory 的掉落动画
-                    outputItems.setStackInSlot(slot, stack.copy());
-                    // 加入传输队列，记录 slotIndex 供粒子定位和 3 秒后清槽
-                    meTransferQueue.add(new MeTransferEntry(stack.copy(), System.currentTimeMillis(), slot));
-                } else {
-                    // 无空槽回退：仅加入队列（slotIndex=-1，粒子不围绕槽位渲染）
-                    meTransferQueue.add(new MeTransferEntry(stack.copy(), System.currentTimeMillis(), -1));
-                }
-                if (getBaseMetaTileEntity() != null) {
-                    getBaseMetaTileEntity().markDirty();
-                }
-            } else {
-                // 本地模式：加入缓冲队列，由 onPostTick 逐 tick 投放到空槽
-                outputBuffer.add(stack.copy());
-                newBufferedOutputs = true;
-                if (getBaseMetaTileEntity() != null) {
-                    getBaseMetaTileEntity().markDirty();
-                }
+            // v1.6.28: ME 模式和本地模式统一走 outputBuffer 队列分档投放
+            // ME 模式的 MeTransferEntry 在 dispenseFirstNonNullItem → outputIntoSlot 时创建
+            outputBuffer.add(stack.copy());
+            newBufferedOutputs = true;
+            if (getBaseMetaTileEntity() != null) {
+                getBaseMetaTileEntity().markDirty();
             }
         }
 
         @Override
         public void rollback(int count) {
-            // 按当前输出模式从对应容器尾部移除 count 个物品（回滚本轮已插入的）
-            if (meOutputMode) {
-                // v1.6.23: ME 模式回滚时同步清空对应出货槽
-                for (int i = 0; i < count && !meTransferQueue.isEmpty(); i++) {
-                    MeTransferEntry entry = meTransferQueue.remove(meTransferQueue.size() - 1);
-                    // 清空对应出货槽（若 slotIndex 有效）
-                    if (entry.slotIndex >= 0) {
-                        outputItems.setStackInSlot(entry.slotIndex, null);
-                    }
+            // v1.6.28: ME 模式和本地模式都走 outputBuffer，统一从队列尾部移除
+            // outputBuffer 是 ConcurrentLinkedQueue，无 removeLast，用迭代移除最后一个
+            for (int i = 0; i < count && !outputBuffer.isEmpty(); i++) {
+                java.util.Iterator<ItemStack> it = outputBuffer.iterator();
+                ItemStack last = null;
+                while (it.hasNext()) {
+                    last = it.next();
                 }
-            } else {
-                // 本地模式：outputBuffer 是 ConcurrentLinkedQueue，无 removeLast，用迭代移除最后一个
-                for (int i = 0; i < count && !outputBuffer.isEmpty(); i++) {
-                    java.util.Iterator<ItemStack> it = outputBuffer.iterator();
-                    ItemStack last = null;
+                if (last != null) {
+                    it = outputBuffer.iterator();
                     while (it.hasNext()) {
-                        last = it.next();
-                    }
-                    if (last != null) {
-                        it = outputBuffer.iterator();
-                        while (it.hasNext()) {
-                            if (it.next() == last) {
-                                it.remove();
-                                break;
-                            }
+                        if (it.next() == last) {
+                            it.remove();
+                            break;
                         }
                     }
                 }
@@ -1448,6 +1530,18 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             if (getBaseMetaTileEntity() != null) {
                 getBaseMetaTileEntity().markDirty();
             }
+        }
+
+        // v1.6.28: 批次标记接口实现，委托给外部类的方法控制下落时序分档
+
+        @Override
+        public void startBatch(int count) {
+            MTENekoVendingMachineV2.this.startBatch(count);
+        }
+
+        @Override
+        public void endBatch() {
+            MTENekoVendingMachineV2.this.endBatch();
         }
     }
 

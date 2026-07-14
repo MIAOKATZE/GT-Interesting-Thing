@@ -145,6 +145,28 @@ public class NekoTradeExecutor {
          * @param count 要回滚的物品数量
          */
         void rollback(int count);
+
+        // v1.6.28: 批次标记接口，用于控制下落时序分档
+
+        /**
+         * 标记批次开始，告知实现方本批次共将投放 count 个物品
+         * <p>
+         * 由 NekoTradeExecutor.executeTrade 在产出循环之前调用，
+         * 实现方据此设置分档延迟（1个无间隔 / 2个6-10tick / 3-4个2-6tick / ≥5个2-6tick且每次1-2个）。
+         * 默认空实现，不支持的实现方无需改动。
+         *
+         * @param count 本批次物品总数
+         */
+        default void startBatch(int count) {}
+
+        /**
+         * 标记批次结束，清理批次状态
+         * <p>
+         * 仅在交易失败回滚时由 executeTrade 调用以清理残留状态；
+         * 成功路径下批次状态由机器的 dispenseItems 在所有物品投放完成后清理。
+         * 默认空实现。
+         */
+        default void endBatch() {}
     }
 
     private NekoTradeExecutor() {}
@@ -318,6 +340,18 @@ public class NekoTradeExecutor {
             }
         }
 
+        // v1.6.28: 计算本批次总产出物品数，通知 MTE 进入批次模式控制下落时序
+        // 分档规则：1个无间隔 / 2个6-10tick / 3-4个2-6tick / ≥5个2-6tick且每次1-2个
+        int totalOutputCount = 0;
+        for (NekoBigItemStack toItem : trade.getToItems()) {
+            for (ItemStack stack : toItem.getCombinedStacks()) {
+                totalOutputCount++;
+            }
+        }
+        if (totalOutputCount > 0) {
+            outputSlots.startBatch(totalOutputCount);
+        }
+
         // 5. 产出放入输出槽（记录本轮插入数量以便回滚）
         int insertedCount = 0;
         for (NekoBigItemStack toItem : trade.getToItems()) {
@@ -340,16 +374,24 @@ public class NekoTradeExecutor {
                     if (insertedCount > 0) {
                         outputSlots.rollback(insertedCount);
                     }
+                    // v1.6.28: 交易失败回滚，清理批次状态避免残留
+                    outputSlots.endBatch();
                     return NekoTradeResult.fail(NekoTradeResult.Status.OUTPUT_FULL);
                 }
                 outputSlots.insertItem(stack);
                 insertedCount++;
             }
         }
+        // v1.6.28: 批次插入完成，不调用 endBatch —— 批次状态需保留供 dispenseItems 分档控制投放时序，
+        // 由 MTENekoVendingMachineV2.dispenseItems 在所有物品投放完成后调用 endBatch 清理
 
         // 6. 记录历史
         NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, groupId);
         history.recordTrade(group.getCooldown());
+        // v1.6.28: 若有冷却，标记需要播报冷却完毕通知（由 NekoNotificationScheduler 定时检查并播报）
+        if (group.getCooldown() > 0) {
+            history.setNotificationQueued(true);
+        }
         NekoHistoryManager.INSTANCE.markDirty(playerId);
 
         // 7. 返回成功
