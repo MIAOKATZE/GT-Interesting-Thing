@@ -78,17 +78,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * 物品候选，不再误显示通用 Input Bus / Input Hatch。普通位置仍可放置任意
      * {@code VendingMachineBlocks.casingBlock} 作为外壳。
      */
-    private static final IStructureDefinition<MTENekoVendingMachineV2> NEKO_STRUCTURE_DEFINITION = IStructureDefinition
-        .<MTENekoVendingMachineV2>builder()
-        .addShape(STRUCTURE_PIECE_MAIN, new String[][] { { "cc", "c~" } })
-        .addElement(
-            'c',
-            buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
-                .hatchClass(MTEVendingUplinkHatch.class)
-                .casingIndex(VendingMachineBlocks.casingBlock.getTextureIndex(0))
-                .hint(1)
-                .buildAndChain(VendingMachineBlocks.casingBlock, 0))
-        .build();
+    // 懒加载结构定义（v1.6.33 方案 D）：
+    // 不能使用 static final 直接初始化，因为 <clinit> 会访问 VendingMachineBlocks.casingBlock（VM mod Init 产物）。
+    // 机器注册在 sAfterGTLoad（gregtech Init 末尾）执行，触发类加载 <clinit>，此时若 <clinit> 访问 casingBlock
+    // 可能因 VM.Init 未派发而 NPE。改为懒加载后，<clinit> 不再访问 casingBlock，
+    // getStructureDefinition() 首次调用时（运行时）casingBlock 必然就绪。
+    // 仿照 GTSR MTEKineticProcessingArray 的懒加载模式（避免 <clinit> 触发跨 mod 产物访问）。
+    private static IStructureDefinition<MTENekoVendingMachineV2> NEKO_STRUCTURE_DEFINITION = null;
 
     // === 材质常量 ===
 
@@ -204,6 +200,19 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     @Override
     public IStructureDefinition<MTENekoVendingMachineV2> getStructureDefinition() {
+        // 懒加载：首次调用时构建结构定义，此时 VendingMachineBlocks.casingBlock（VM mod Init 产物）必然就绪
+        if (NEKO_STRUCTURE_DEFINITION == null) {
+            NEKO_STRUCTURE_DEFINITION = IStructureDefinition.<MTENekoVendingMachineV2>builder()
+                .addShape(STRUCTURE_PIECE_MAIN, new String[][] { { "cc", "c~" } })
+                .addElement(
+                    'c',
+                    buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
+                        .hatchClass(MTEVendingUplinkHatch.class)
+                        .casingIndex(VendingMachineBlocks.casingBlock.getTextureIndex(0))
+                        .hint(1)
+                        .buildAndChain(VendingMachineBlocks.casingBlock, 0))
+                .build();
+        }
         return NEKO_STRUCTURE_DEFINITION;
     }
 

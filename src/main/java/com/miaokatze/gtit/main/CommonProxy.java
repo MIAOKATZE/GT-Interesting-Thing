@@ -122,20 +122,23 @@ public class CommonProxy {
             }
         };
 
-        // 将注册任务添加到 GregTech 的 sAfterGTPostload 队列
-        // 注意：sAfterGTPostload 在 GregTechAPI 中静态初始化为 ArrayList，永不为 null，无需 null 检查
-        // C1 决策（v1.6.32）：从 sAfterGTLoad 改为 sAfterGTPostload（gregtech PostInit 末尾执行，GTMod.java:554-556）
-        // 原因：MTENekoVendingMachineV2.<clinit> 第 88 行硬依赖 VendingMachineBlocks.casingBlock（VendingMachine mod Init 产物），
-        // - sAfterGTPreload（gregtech PreInit 末尾）：整个 Init 阶段未开始，casingBlock 必为 null（B3-修正1 失败原因）
-        // - sAfterGTLoad（gregtech Init 末尾）：VM.Init 是否已派发不确定（VM 与 gregtech 无依赖声明），依赖巧合时序
-        // - sAfterGTPostload（gregtech PostInit 末尾）：所有 mod 的 Init/PostInit 都已完成，casingBlock 必然就绪
-        // GT5U 自身（BlockSheetMetal/BlockDecorativeFrame/bartworks）也在用 sAfterGTPostload，是官方支持的扩展点
+        // 将注册任务添加到 GregTech 的 sAfterGTLoad 队列
+        // 注意：sAfterGTLoad 在 GregTechAPI 中静态初始化为 ArrayList，永不为 null，无需 null 检查
+        // 方案 D 决策（v1.6.33）：回退到 sAfterGTLoad（B1 方案），配合 MTENekoVendingMachineV2 懒加载
+        // 时序分析（三个队列的可行性）：
+        // - sAfterGTPreload（PreInit 末尾，GTMod.java:342-344）：构造函数检查通过（sPostloadStarted=false），
+        // 但 <clinit> 访问 casingBlock 必为 null（整个 Init 阶段未开始）→ v1.6.31 B3-修正1 NPE 失败
+        // - sAfterGTLoad（Init 末尾，GTMod.java:402-404）：构造函数检查通过（sPostloadStarted=false），
+        // 懒加载后 <clinit> 不再访问 casingBlock → ✓ 本方案
+        // - sAfterGTPostload（PostInit 末尾，GTMod.java:554-556）：构造函数检查失败
+        // （sPostloadStarted=true，CommonMetaTileEntity.java:85-86 抛 IllegalAccessError）→ v1.6.32 C1 方案失败
+        // 懒加载关键：MTENekoVendingMachineV2.NEKO_STRUCTURE_DEFINITION 不再 static final 直接初始化，
+        // 改为 getStructureDefinition() 首次调用时构建（运行时，casingBlock 必然就绪）
         try {
-            int before = GregTechAPI.sAfterGTPostload.size();
-            GregTechAPI.sAfterGTPostload.add(registerRunnable);
-            int after = GregTechAPI.sAfterGTPostload.size();
-            GTInterestingThing.LOG
-                .info("[1/3] 已将机器注册任务加入 GregTech PostLoad 队列 (队列大小: " + before + " -> " + after + ")");
+            int before = GregTechAPI.sAfterGTLoad.size();
+            GregTechAPI.sAfterGTLoad.add(registerRunnable);
+            int after = GregTechAPI.sAfterGTLoad.size();
+            GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech Load 队列 (队列大小: " + before + " -> " + after + ")");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("无法将注册任务添加到 GregTech 队列", t);
         }
