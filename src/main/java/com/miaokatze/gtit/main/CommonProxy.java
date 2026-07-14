@@ -14,7 +14,6 @@ import com.miaokatze.gtit.config.GiftConfig;
 import com.miaokatze.gtit.config.MuteConfig;
 import com.miaokatze.gtit.event.PlayerLoginHandler;
 import com.miaokatze.gtit.loader.ItemLoader;
-import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.register.TextureManager;
@@ -31,7 +30,6 @@ import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartedEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
-import gregtech.api.GregTechAPI;
 
 /**
  * 通用代理类
@@ -41,7 +39,8 @@ public class CommonProxy {
 
     /**
      * 预初始化阶段 (PreInit)
-     * 在此阶段读取配置文件，扩展Baubles戒指栏，并将机器注册任务添加到 GregTech 的处理队列中。
+     * 在此阶段读取配置文件，扩展Baubles戒指栏，注册物品和事件监听器。
+     * 机器注册已在主类构造函数中委托给 GregTech sAfterGTPreload 队列（v1.6.31 根因 B 修复）。
      */
     public void preInit(FMLPreInitializationEvent event) {
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
@@ -109,29 +108,6 @@ public class CommonProxy {
             GTInterestingThing.LOG.info("[NekoNotify] 冷却完毕通知调度器已注册");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[NekoNotify] 冷却完毕通知调度器注册失败", t);
-        }
-
-        // 定义机器注册任务
-        Runnable registerRunnable = () -> {
-            GTInterestingThing.LOG.info("[1/3] 开始执行机器注册流程...");
-            try {
-                MachineLoader.initMachines();
-                GTInterestingThing.LOG.info("[1/3] 机器注册流程执行完毕。");
-            } catch (Throwable t) {
-                GTInterestingThing.LOG.error("[1/3] 机器注册过程中发生严重错误，请检查日志", t);
-            }
-        };
-
-        // 将注册任务添加到 GregTech 的 sAfterGTLoad 队列
-        // 注意：sAfterGTLoad 在 GregTechAPI 中静态初始化为 ArrayList，永不为 null，无需 null 检查
-        // B1 决策：保留 sAfterGTLoad 时序委托逻辑（GT5U 官方支持的扩展点），不调整为 PreInit 直接注册
-        try {
-            int before = GregTechAPI.sAfterGTLoad.size();
-            GregTechAPI.sAfterGTLoad.add(registerRunnable);
-            int after = GregTechAPI.sAfterGTLoad.size();
-            GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech 加载队列 (队列大小: " + before + " -> " + after + ")");
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("无法将注册任务添加到 GregTech 队列", t);
         }
     }
 
