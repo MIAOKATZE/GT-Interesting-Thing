@@ -33,11 +33,12 @@ import cpw.mods.fml.relauncher.SideOnly;
  * <li>1000~3500ms：粒子动画播放（2500ms），物品已稳定在槽位</li>
  * </ul>
  * <p>
- * <b>渲染原理</b>（v1.6.28 调整）：
+ * <b>渲染原理</b>（v1.6.29 调整）：
  * <ul>
  * <li>每帧根据 entry.creationTimeMs 计算粒子动画进度 progress (0~1)，延迟 1000ms 后开始</li>
  * <li>alpha = (1.0f - progress)²（v1.6.28 平方衰减，后期更透明，越来越透明）</li>
- * <li>上升起始点为物品图标底部（v1.6.28：向下偏移 16px，标准物品图标高度）</li>
+ * <li>上升起始点为物品图标底部中心（v1.6.28：Y 向下偏移 16px；v1.6.29：X 向右偏移 8px 对齐到水平中心）</li>
+ * <li>v1.6.29 粒子起点 Y 错落：每个预设中不同粒子有不同 initialYOffset，部分粒子提前上移，避免所有粒子起点完全重合</li>
  * <li>v1.6.28 调整为 5 种简单上升类预设（无螺旋/抛物线，上升幅度均减半），每个 entry 随机选一种：
  * <ul>
  * <li>预设 0：直线上升（2 粒子，上升 12.5px，轻微摆动）</li>
@@ -274,6 +275,9 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
 
             // v1.6.28: 上升起始点改为物品图标底部（向下偏移 16 像素，标准物品图标高度）
             entryCenterY += 16f;
+            // v1.6.29: X 偏移到物品水平中心（slotPos 返回槽位左上角，+8 对齐到 16x16 物品中心）
+            // 修复用户反馈"渲染位置偏左"问题——原实现粒子绘制在物品左下角，现对齐到底部中心
+            entryCenterX += 8f;
 
             // v1.6.27: 随机选一种预设（基于 entryIdx 固定种子，避免每帧抖动）
             // 用质数 7919 作为种子乘数，避免与粒子索引冲突
@@ -354,9 +358,11 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
         int particleCount = 2;
         // v1.6.28: 2 粒子 X 偏移（-3, 3）
         float[] xOffsets = { -3f, 3f };
+        // v1.6.29: 粒子起点 Y 错落——第二个粒子提前 2px 上移，避免所有粒子起点完全重合
+        float[] initialYOffsets = { 0f, -2f };
         for (int p = 0; p < particleCount; p++) {
             // v1.6.28: 上升幅度减半 25→12.5
-            float yOffset = -progress * 12.5f;
+            float yOffset = -progress * 12.5f + initialYOffsets[p];
             // 轻微摆动（1 圈，幅度 2 像素）
             float xOffset = xOffsets[p]
                 + (float) Math.sin(progress * 2f * (float) Math.PI + p * (float) (Math.PI / 2)) * 2f;
@@ -383,13 +389,15 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
      */
     private void renderZigzagRise(int entryIdx, float centerX, float centerY, float progress, float alpha) {
         int particleCount = 3;
+        // v1.6.29: 粒子起点 Y 错落——阶梯式提前上移（0, -2, -4）
+        float[] initialYOffsets = { 0f, -2f, -4f };
         for (int p = 0; p < particleCount; p++) {
             // 初始 X 偏移（-5, 0, 5）
             float initialXOffset = (p - 1) * 5f;
             // 相位不同（0, π/2, π）
             float phase = p * (float) (Math.PI / 2);
             // v1.6.28: 向上运动幅度减半 20→10
-            float yOffset = -progress * 10f;
+            float yOffset = -progress * 10f + initialYOffsets[p];
             // 左右摆动（2 圈，幅度 6 像素）
             float xOffset = (float) Math.sin(progress * 4f * (float) Math.PI + phase) * 6f;
 
@@ -414,13 +422,15 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
      */
     private void renderScatterRise(int entryIdx, float centerX, float centerY, float progress, float alpha) {
         int particleCount = 4;
+        // v1.6.29: 粒子起点 Y 错落——阶梯式提前上移（0, -1.5, -3, -4.5）
+        float[] initialYOffsets = { 0f, -1.5f, -3f, -4.5f };
         for (int p = 0; p < particleCount; p++) {
             // 初始角度均匀分布（0°, 90°, 180°, 270°）
             float initialAngle = p * (float) (Math.PI / 2);
             // v1.6.28: 水平散开（0→8 像素）
             float scatterRadius = progress * 8f;
             // v1.6.28: 上升幅度 9px
-            float yOffset = -progress * 9f;
+            float yOffset = -progress * 9f + initialYOffsets[p];
 
             float px = centerX + (float) Math.cos(initialAngle) * scatterRadius;
             float py = centerY + (float) Math.sin(initialAngle) * scatterRadius * 0.5f + yOffset;
@@ -443,13 +453,16 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
      */
     private void renderVShapeRise(int entryIdx, float centerX, float centerY, float progress, float alpha) {
         int particleCount = 5;
+        // v1.6.29: 粒子起点 Y 错落——中间粒子起点最低，两侧递减（-1, 0, -2, 0, -1）
+        // 中间粒子提前上移 2px，两侧粒子起点稍低，形成 V 形错落起点
+        float[] initialYOffsets = { -1f, 0f, -2f, 0f, -1f };
         for (int p = 0; p < particleCount; p++) {
             // 初始 X 位置均匀分布（-8, -4, 0, 4, 8）
             float initialX = (p - 2) * 4f;
             // v1.6.28: V 形效果——向中心汇聚（progress=1 时全部到中心）
             float xOffset = initialX * (1.0f - progress);
             // v1.6.28: 上升幅度 9px
-            float yOffset = -progress * 9f;
+            float yOffset = -progress * 9f + initialYOffsets[p];
 
             float px = centerX + xOffset;
             float py = centerY + yOffset;
@@ -474,13 +487,15 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
         int particleCount = 6;
         // 扇形张角 120°，6 个粒子均匀分布
         float fanSpread = (float) (Math.PI / 3); // 60° 半张角
+        // v1.6.29: 粒子起点 Y 错落——阶梯式提前上移（0, -1, -2, -3, -4, -5）
+        float[] initialYOffsets = { 0f, -1f, -2f, -3f, -4f, -5f };
         for (int p = 0; p < particleCount; p++) {
             // 角度从 -60° 到 +60° 均匀分布
             float angle = -fanSpread + (float) p / (particleCount - 1) * 2f * fanSpread;
             // v1.6.28: 沿角度方向向外移动（0→10 像素）
             float distance = progress * 10f;
             // v1.6.28: 上升幅度 9px
-            float yOffset = -progress * 9f;
+            float yOffset = -progress * 9f + initialYOffsets[p];
 
             float px = centerX + (float) Math.cos(angle) * distance;
             float py = centerY + (float) Math.sin(angle) * distance * 0.5f + yOffset;
