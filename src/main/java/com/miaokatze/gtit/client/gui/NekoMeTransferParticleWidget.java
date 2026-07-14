@@ -14,6 +14,7 @@ import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widget.Widget;
+import com.gtnewhorizons.modularui.api.GlStateManager;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2.MeTransferEntry;
 
 import cpw.mods.fml.relauncher.Side;
@@ -127,8 +128,10 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
      * 遍历 ME 传输队列中每个条目，根据其入队时间计算动画进度，
      * 渲染紫白渐变粒子簇。粒子随时间扩散并变淡，3 秒后消失。
      * <p>
-     * <b>GL 状态管理</b>：使用 glPushAttrib/glPopAttrib + glPushMatrix/glPopMatrix
-     * 严格保护 GL 状态，确保不影响后续渲染。
+     * <b>GL 状态管理</b>（v1.6.25 重写）：
+     * 使用 GlStateManager（Forge 1.12.2 移植版，带内部状态追踪）+ 手动 save/restore。
+     * 移除了 glPushAttrib/glPopAttrib（OpenGL 3.0+ 核心配置文件已移除，
+     * Angelica GLSM 桥接层对其模拟不完整，可能导致后续 glDisable 不生效）。
      *
      * @param context     ModularUI 渲染上下文
      * @param widgetTheme Widget 主题
@@ -141,29 +144,56 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
         }
 
         // v1.6.24 临时日志：用于排查粒子动画未渲染根因，确认 draw 是否被调用、队列是否非空
-        System.out.println("[NekoParticle] draw called, queueSize=" + queueRef.size());
+        long now = System.currentTimeMillis();
+        int widgetW = getArea().width;
+        int widgetH = getArea().height;
+        System.out.println(
+            "[NekoParticle] draw called, queueSize=" + queueRef
+                .size() + ", widgetW=" + widgetW + ", widgetH=" + widgetH + ", now=" + now);
 
         // v1.6.24: 获取当前绘制层 Z 坐标，避免被其他 widget（如 OVERHANG 装饰）的渲染覆盖
         // 项目内 NekoTradeItemDisplayWidget 等 3 处已使用此 API
         float drawZ = context.getCurrentDrawingZ();
 
-        long now = System.currentTimeMillis();
         // Widget 内部坐标（0,0 为左上角），通过 getArea() 获取实际渲染尺寸
-        int widgetW = getArea().width;
-        int widgetH = getArea().height;
         int centerX = widgetW / 2;
         int centerY = widgetH / 2;
 
-        // GL 状态保护：保存所有属性位和矩阵状态
-        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
-        GL11.glPushMatrix();
+        // v1.6.25: 移除 GL11.glPushAttrib(GL_ALL_ATTRIB_BITS) 和 GL11.glPushMatrix()
+        // 原因：glPushAttrib 在 OpenGL 3.0+ 核心配置文件中已移除，Angelica GLSM 桥接层
+        // 对其模拟不完整（见 MinecraftForge issue #1637，ModularUI 1.3.4 GlStateManager
+        // 源码也将 pushAttrib/popAttrib 标注为 "Do not use"）。
+        // 后续 glDisable(GL_TEXTURE_2D) 等状态变更可能未正确生效，导致 Tessellator
+        // 顶点无 UV 坐标却采样到无效纹理，片元被丢弃 → 粒子不可见。
+        // 改用 GlStateManager + 手动 save/restore 替代。
 
-        // 启用透明混合，禁用纹理和光照（纯色粒子绘制）
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_LIGHTING);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        // --- 手动保存当前 GL 状态（替代 glPushAttrib）---
+        // 记录需要恢复的状态，draw 结束后逐一恢复，避免影响后续 widget 渲染
+        boolean wasBlendEnabled = GL11.glGetBoolean(GL11.GL_BLEND);
+        boolean wasTexture2DEnabled = GL11.glGetBoolean(GL11.GL_TEXTURE_2D);
+        boolean wasLightingEnabled = GL11.glGetBoolean(GL11.GL_LIGHTING);
+        boolean wasDepthTestEnabled = GL11.glGetBoolean(GL11.GL_DEPTH_TEST);
+        boolean wasAlphaTestEnabled = GL11.glGetBoolean(GL11.GL_ALPHA_TEST);
+        int prevBlendSrc = GL11.glGetInteger(GL11.GL_BLEND_SRC);
+        int prevBlendDst = GL11.glGetInteger(GL11.GL_BLEND_DST);
+
+        // --- 设置粒子绘制所需的 GL 状态 ---
+        // 使用 GlStateManager（Forge 1.12.2 移植版，带内部状态追踪）替代原始 GL11 调用，
+        // 与 GT5U LineChartWidget 保持一致
+        GlStateManager.enableBlend();
+        // v1.6.25: 用 tryBlendFuncSeparate 替代 glBlendFunc（与 LineChartWidget 一致），
+        // 内部调用 OpenGlHelper.glBlendFunc，兼容 Angelica 着色器管线
+        GlStateManager.tryBlendFuncSeparate(
+            GlStateManager.SourceFactor.SRC_ALPHA,
+            GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
+            GlStateManager.SourceFactor.ONE,
+            GlStateManager.DestFactor.ZERO);
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableLighting();
+        GlStateManager.disableDepth();
+        // v1.6.25: 启用 Alpha 测试（对应根因 3，与 LineChartWidget 一致）
+        // 之前缺少 enableAlpha，可能导致 alpha 测试函数异常时片元被丢弃
+        GlStateManager.enableAlpha();
 
         // 遍历队列，渲染每个 entry 的粒子簇
         int renderCount = Math.min(queueRef.size(), MAX_ENTRIES_TO_RENDER);
@@ -180,6 +210,15 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
                 progress = 0f;
             }
             if (progress >= 1f) {
+                // v1.6.24 临时日志：entry 已过期被跳过
+                System.out.println(
+                    "[NekoParticle] SKIPPED entry=" + entryIdx
+                        + ", creationTimeMs="
+                        + entry.creationTimeMs
+                        + ", elapsed="
+                        + elapsed
+                        + ", progress="
+                        + progress);
                 // 已过期，不渲染（应该已被服务端移除）
                 continue;
             }
@@ -201,6 +240,26 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
                 entryCenterX = centerX + (entryIdx % 6 - 2.5f) * 18f;
                 entryCenterY = centerY + (entryIdx / 6) * 18f - 9f;
             }
+
+            // v1.6.24 临时日志：输出渲染关键参数（只输出第一个粒子的坐标避免日志爆炸）
+            System.out.println(
+                "[NekoParticle] RENDER entry=" + entryIdx
+                    + ", slotIndex="
+                    + entry.slotIndex
+                    + ", creationTimeMs="
+                    + entry.creationTimeMs
+                    + ", elapsed="
+                    + elapsed
+                    + ", progress="
+                    + progress
+                    + ", alpha="
+                    + alpha
+                    + ", entryCenterX="
+                    + entryCenterX
+                    + ", entryCenterY="
+                    + entryCenterY
+                    + ", drawZ="
+                    + drawZ);
 
             // 渲染该 entry 的粒子簇
             for (int p = 0; p < PARTICLES_PER_ENTRY; p++) {
@@ -238,15 +297,38 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
             }
         }
 
-        // 恢复 GL 状态
-        GL11.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glEnable(GL11.GL_LIGHTING);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDisable(GL11.GL_BLEND);
-
-        GL11.glPopMatrix();
-        GL11.glPopAttrib();
+        // v1.6.25: 手动恢复 GL 状态（替代 glPopAttrib + glPopMatrix）
+        // 逐一恢复到 draw 调用前的状态，避免影响后续 widget 渲染
+        GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
+        if (wasTexture2DEnabled) {
+            GlStateManager.enableTexture2D();
+        } else {
+            GlStateManager.disableTexture2D();
+        }
+        if (wasLightingEnabled) {
+            GlStateManager.enableLighting();
+        } else {
+            GlStateManager.disableLighting();
+        }
+        if (wasDepthTestEnabled) {
+            GlStateManager.enableDepth();
+        } else {
+            GlStateManager.disableDepth();
+        }
+        if (wasAlphaTestEnabled) {
+            GlStateManager.enableAlpha();
+        } else {
+            GlStateManager.disableAlpha();
+        }
+        if (wasBlendEnabled) {
+            GlStateManager.enableBlend();
+            // 恢复原来的 blendFunc（用 tryBlendFuncSeparate 4 参数形式，
+            // 内部调用 OpenGlHelper.glBlendFunc 设置完整 4 因子）
+            // ONE=1, ZERO=0 是默认的 srcFactorAlpha/dstFactorAlpha
+            GlStateManager.tryBlendFuncSeparate(prevBlendSrc, prevBlendDst, 1, 0);
+        } else {
+            GlStateManager.disableBlend();
+        }
     }
 
     // ==================== Tooltip ====================
