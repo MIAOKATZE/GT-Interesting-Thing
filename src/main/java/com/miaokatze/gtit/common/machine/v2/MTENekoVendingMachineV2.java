@@ -1305,7 +1305,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * ME 传输队列条目：记录待发送到 ME 网络的物品及其入队时间
      * <p>
      * 当 meOutputMode=true 时，产出物品先进入 meTransferQueue，
-     * 经过 {@link #ME_TRANSFER_DELAY_MS} (3000ms) 延迟后才通过
+     * 经过 {@link #ME_TRANSFER_DELAY_MS} (3500ms) 延迟后才通过
      * {@code uplinkHatch.injectItems} 注入 ME 网络。
      * 期间玩家可通过 GUI 点击取回（移回 outputBuffer）。
      */

@@ -3,13 +3,13 @@ package com.miaokatze.gtit.client.gui;
 import java.util.List;
 import java.util.Random;
 
-import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.util.EnumChatFormatting;
 
 import org.lwjgl.opengl.GL11;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.Interactable;
+import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
@@ -24,16 +24,29 @@ import cpw.mods.fml.relauncher.SideOnly;
  * ME 传输粒子动画 Widget
  * <p>
  * 在 GUI 内渲染 ME 传输队列中物品的紫白粒子动画。
- * 每个队列条目对应一簇粒子，粒子从中心散布并逐渐变淡消失（3 秒）。
+ * 每个队列条目对应一簇粒子，粒子从槽位中心向上运动并逐渐变淡消失（2.5 秒）。
  * 点击 Widget 区域可取回最早入队的物品（FIFO）。
+ * <p>
+ * <b>渲染时序</b>（v1.6.27 调整）：
+ * <ul>
+ * <li>0~1000ms：物品下落动画（NekoFallingItemSlotFactory），不渲染粒子</li>
+ * <li>1000~3500ms：粒子动画播放（2500ms），物品已稳定在槽位</li>
+ * </ul>
  * <p>
  * <b>渲染原理</b>：
  * <ul>
- * <li>每帧根据 entry.creationTimeMs 计算动画进度 progress (0~1)</li>
+ * <li>每帧根据 entry.creationTimeMs 计算粒子动画进度 progress (0~1)，延迟 1000ms 后开始</li>
  * <li>alpha = 1.0f - progress（线性渐淡）</li>
- * <li>粒子位置：基于 entry 索引 + 固定随机种子（避免每帧抖动）</li>
+ * <li>v1.6.27 新增 4 种预设轨迹（全部向上运动类），每个 entry 随机选一种：
+ * <ul>
+ * <li>预设 0：螺旋上升（4 粒子，半径扩大+旋转+上升）</li>
+ * <li>预设 1：之字形上升（3 粒子，左右摆动+上升）</li>
+ * <li>预设 2：直线上升（4 粒子，轻微摆动+上升）</li>
+ * <li>预设 3：抛物线上升（5 粒子，先扩散后收缩+上升）</li>
+ * </ul>
+ * </li>
  * <li>紫色粒子 RGB(220, 190, 240)（偏白的紫），白色粒子 RGB(245, 240, 255)（淡紫白）</li>
- * <li>使用 GL11 透明混合 + Tessellator 绘制小方块</li>
+ * <li>使用 GL11 透明混合 + GuiDraw.drawRect 绘制小方块（v1.6.26 从 Tessellator 迁移）</li>
  * </ul>
  */
 @SideOnly(Side.CLIENT)
@@ -41,11 +54,22 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
 
     // ==================== 常量 ====================
 
-    /** 粒子动画总时长（毫秒），与服务端 ME_TRANSFER_DELAY_MS 一致 */
-    private static final long ANIMATION_DURATION_MS = 3000L;
+    /**
+     * 粒子动画时长（毫秒），v1.6.27 调整为 2500ms
+     * <p>
+     * 时序：下落动画 1000ms（FALL_ANIMATION_DURATION_MS）+ 粒子动画 2500ms = 总 3500ms（ME_TRANSFER_DELAY_MS）
+     */
+    private static final long ANIMATION_DURATION_MS = 2500L;
 
-    /** 每个队列条目渲染的粒子数 */
-    private static final int PARTICLES_PER_ENTRY = 12;
+    /**
+     * 下落动画时长（毫秒），与 NekoFallingItemSlotFactory.FALL_ANIMATION_DURATION 一致
+     * <p>
+     * v1.6.27 新增：粒子动画在下落动画完成后才开始播放（物品完全落下后再播放动画）
+     */
+    private static final long FALL_ANIMATION_DURATION_MS = 1000L;
+
+    /** 预设轨迹数量（v1.6.27 新增：4 种向上运动类预设） */
+    private static final int PRESET_COUNT = 4;
 
     /** 粒子基础大小（像素） */
     private static final float PARTICLE_SIZE = 2.5f;
@@ -126,12 +150,24 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
      * 每帧绘制粒子动画
      * <p>
      * 遍历 ME 传输队列中每个条目，根据其入队时间计算动画进度，
-     * 渲染紫白渐变粒子簇。粒子随时间扩散并变淡，3 秒后消失。
+     * 渲染紫白渐变粒子簇。粒子随时间向上运动并变淡，2.5 秒后消失。
+     * <p>
+     * <b>渲染时序</b>（v1.6.27 调整）：
+     * 下落动画 1000ms 完成后才开始粒子动画（物品完全落下后再播放）。
+     * 前 1000ms（elapsed < FALL_ANIMATION_DURATION_MS）跳过不渲染。
      * <p>
      * <b>GL 状态管理</b>（v1.6.25 重写）：
      * 使用 GlStateManager（Forge 1.12.2 移植版，带内部状态追踪）+ 手动 save/restore。
      * 移除了 glPushAttrib/glPopAttrib（OpenGL 3.0+ 核心配置文件已移除，
      * Angelica GLSM 桥接层对其模拟不完整，可能导致后续 glDisable 不生效）。
+     * <p>
+     * <b>渲染方式</b>（v1.6.26 迁移）：
+     * 从 Tessellator 迁移到 GuiDraw.drawRect（与项目其他 widget 一致）。
+     * Tessellator 的 t.draw() 内部可能重置 GL 状态导致后续粒子纹理问题，
+     * GuiDraw.drawRect 内部正确处理纹理和颜色状态，是项目认可的标准做法。
+     * <p>
+     * <b>预设轨迹</b>（v1.6.27 新增）：
+     * 4 种向上运动类预设，每个 entry 随机选一种（基于 entryIdx 固定种子）。
      *
      * @param context     ModularUI 渲染上下文
      * @param widgetTheme Widget 主题
@@ -203,23 +239,19 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
                 continue;
             }
 
-            // 计算动画进度 progress (0~1)
+            // v1.6.27: 延迟 1000ms（等下落动画完成）后才开始粒子动画
+            // 物品完全落下后再播放动画，避免下落过程中粒子已出现
             long elapsed = now - entry.creationTimeMs;
-            float progress = (float) elapsed / ANIMATION_DURATION_MS;
-            if (progress < 0f) {
-                progress = 0f;
+            if (elapsed < FALL_ANIMATION_DURATION_MS) {
+                // 下落中，不渲染粒子（物品还未完全落下）
+                continue;
             }
+
+            // 粒子动画进度（延迟后，0~1）
+            float particleElapsed = elapsed - FALL_ANIMATION_DURATION_MS;
+            float progress = particleElapsed / ANIMATION_DURATION_MS;
             if (progress >= 1f) {
-                // v1.6.24 临时日志：entry 已过期被跳过
-                System.out.println(
-                    "[NekoParticle] SKIPPED entry=" + entryIdx
-                        + ", creationTimeMs="
-                        + entry.creationTimeMs
-                        + ", elapsed="
-                        + elapsed
-                        + ", progress="
-                        + progress);
-                // 已过期，不渲染（应该已被服务端移除）
+                // 粒子动画结束（应该已被服务端移除）
                 continue;
             }
 
@@ -241,59 +273,54 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
                 entryCenterY = centerY + (entryIdx / 6) * 18f - 9f;
             }
 
-            // v1.6.24 临时日志：输出渲染关键参数（只输出第一个粒子的坐标避免日志爆炸）
-            System.out.println(
-                "[NekoParticle] RENDER entry=" + entryIdx
-                    + ", slotIndex="
-                    + entry.slotIndex
-                    + ", creationTimeMs="
-                    + entry.creationTimeMs
-                    + ", elapsed="
-                    + elapsed
-                    + ", progress="
-                    + progress
-                    + ", alpha="
-                    + alpha
-                    + ", entryCenterX="
-                    + entryCenterX
-                    + ", entryCenterY="
-                    + entryCenterY
-                    + ", drawZ="
-                    + drawZ);
+            // v1.6.27 临时日志：输出渲染关键参数（只输出第一个 entry 避免日志爆炸）
+            if (entryIdx == 0) {
+                System.out.println(
+                    "[NekoParticle] RENDER entry=0, slotIndex=" + entry.slotIndex
+                        + ", creationTimeMs="
+                        + entry.creationTimeMs
+                        + ", elapsed="
+                        + elapsed
+                        + ", particleElapsed="
+                        + particleElapsed
+                        + ", progress="
+                        + progress
+                        + ", alpha="
+                        + alpha
+                        + ", entryCenterX="
+                        + entryCenterX
+                        + ", entryCenterY="
+                        + entryCenterY
+                        + ", drawZ="
+                        + drawZ);
+            }
 
-            // 渲染该 entry 的粒子簇
-            for (int p = 0; p < PARTICLES_PER_ENTRY; p++) {
-                // 固定种子（基于 entryIdx 和粒子索引），避免每帧抖动
-                particleRng.setSeed(entryIdx * 1000L + p);
+            // v1.6.27: 随机选一种预设（基于 entryIdx 固定种子，避免每帧抖动）
+            // 用质数 7919 作为种子乘数，避免与粒子索引冲突
+            particleRng.setSeed(entryIdx * 7919L);
+            int presetIdx = particleRng.nextInt(PRESET_COUNT);
 
-                // 粒子初始角度（随机方向）
-                float angle = particleRng.nextFloat() * (float) (Math.PI * 2);
-                // 半径随时间扩大（扩散效果）
-                float radius = 5f + progress * 15f;
-                float px = entryCenterX + (float) Math.cos(angle) * radius;
-                float py = entryCenterY + (float) Math.sin(angle) * radius;
+            // v1.6.27 临时日志：输出预设选择（只输出第一个 entry）
+            if (entryIdx == 0) {
+                System.out.println("[NekoParticle] preset=" + presetIdx + " (entry=0)");
+            }
 
-                // 粒子大小随进度缩小
-                float size = PARTICLE_SIZE * (1.0f - progress * 0.5f);
-
-                // 颜色：紫色和白色交替
-                boolean isPurple = p % 2 == 0;
-                float r = isPurple ? PURPLE_R : WHITE_R;
-                float g = isPurple ? PURPLE_G : WHITE_G;
-                float b = isPurple ? PURPLE_B : WHITE_B;
-
-                // 用 Tessellator 绘制小方块（GL_QUADS）
-                // v1.6.24: 使用 Tessellator 标准颜色 API（与 GT5U LineChartWidget 一致），
-                // 替代 GL11.glColor4f，避免 Tessellator 内部状态覆盖全局颜色
-                Tessellator t = Tessellator.instance;
-                t.startDrawing(GL11.GL_QUADS);
-                t.setColorRGBA((int) (r * 255), (int) (g * 255), (int) (b * 255), (int) (alpha * 255));
-                // v1.6.24: 顶点 z 使用 context.getCurrentDrawingZ()，避免被后续 widget 覆盖
-                t.addVertex(px - size, py - size, drawZ);
-                t.addVertex(px + size, py - size, drawZ);
-                t.addVertex(px + size, py + size, drawZ);
-                t.addVertex(px - size, py + size, drawZ);
-                t.draw();
+            // 根据预设调用对应的渲染方法
+            switch (presetIdx) {
+                case 0:
+                    renderSpiralUp(entryIdx, entryCenterX, entryCenterY, progress, alpha);
+                    break;
+                case 1:
+                    renderZigzagRise(entryIdx, entryCenterX, entryCenterY, progress, alpha);
+                    break;
+                case 2:
+                    renderStraightRise(entryIdx, entryCenterX, entryCenterY, progress, alpha);
+                    break;
+                case 3:
+                    renderParabolicRise(entryIdx, entryCenterX, entryCenterY, progress, alpha);
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -328,6 +355,176 @@ public class NekoMeTransferParticleWidget extends Widget<NekoMeTransferParticleW
             GlStateManager.tryBlendFuncSeparate(prevBlendSrc, prevBlendDst, 1, 0);
         } else {
             GlStateManager.disableBlend();
+        }
+    }
+
+    // ==================== 预设轨迹渲染（v1.6.27 新增） ====================
+
+    /**
+     * 预设 0：螺旋上升（4 粒子）
+     * <p>
+     * 4 个粒子初始角度均匀分布（0°, 90°, 180°, 270°），
+     * 沿螺旋轨迹上升：半径随时间扩大，角度旋转 1 圈，整体向上偏移。
+     * 给人"螺旋传输到 ME 网络"的感觉。
+     *
+     * @param entryIdx entry 索引（用于日志）
+     * @param centerX  槽位中心 X
+     * @param centerY  槽位中心 Y
+     * @param progress 动画进度 (0~1)
+     * @param alpha    透明度 (0~1)
+     */
+    private void renderSpiralUp(int entryIdx, float centerX, float centerY, float progress, float alpha) {
+        int particleCount = 4;
+        for (int p = 0; p < particleCount; p++) {
+            // 初始角度均匀分布（0°, 90°, 180°, 270°）
+            float initialAngle = p * (float) (Math.PI / 2);
+            // 角度随时间旋转（1 圈）
+            float angle = initialAngle + progress * 2f * (float) Math.PI;
+            // 半径随时间扩大（3→11）
+            float radius = 3f + progress * 8f;
+            // 向上偏移（0→-15，即上升 15 像素）
+            float yOffset = -progress * 15f;
+
+            float px = centerX + (float) Math.cos(angle) * radius;
+            float py = centerY + (float) Math.sin(angle) * radius + yOffset;
+
+            renderParticle(entryIdx, p, px, py, progress, alpha);
+        }
+    }
+
+    /**
+     * 预设 1：之字形上升（3 粒子）
+     * <p>
+     * 3 个粒子初始 X 偏移不同（-5, 0, 5），向上运动同时左右摆动。
+     * 每个粒子相位不同，形成交错摆动效果。给人"蜿蜒传输"的感觉。
+     *
+     * @param entryIdx entry 索引（用于日志）
+     * @param centerX  槽位中心 X
+     * @param centerY  槽位中心 Y
+     * @param progress 动画进度 (0~1)
+     * @param alpha    透明度 (0~1)
+     */
+    private void renderZigzagRise(int entryIdx, float centerX, float centerY, float progress, float alpha) {
+        int particleCount = 3;
+        for (int p = 0; p < particleCount; p++) {
+            // 初始 X 偏移（-5, 0, 5）
+            float initialXOffset = (p - 1) * 5f;
+            // 相位不同（0, π/2, π）
+            float phase = p * (float) (Math.PI / 2);
+            // 向上运动（0→-20，上升 20 像素）
+            float yOffset = -progress * 20f;
+            // 左右摆动（2 圈，幅度 6 像素）
+            float xOffset = (float) Math.sin(progress * 4f * (float) Math.PI + phase) * 6f;
+
+            float px = centerX + initialXOffset + xOffset;
+            float py = centerY + yOffset;
+
+            renderParticle(entryIdx, p, px, py, progress, alpha);
+        }
+    }
+
+    /**
+     * 预设 2：直线上升（4 粒子）
+     * <p>
+     * 4 个粒子初始 X 偏移不同（-6, -2, 2, 6），向上运动，轻微摆动。
+     * 给人"直线传输"的感觉，最简洁的上升轨迹。
+     *
+     * @param entryIdx entry 索引（用于日志）
+     * @param centerX  槽位中心 X
+     * @param centerY  槽位中心 Y
+     * @param progress 动画进度 (0~1)
+     * @param alpha    透明度 (0~1)
+     */
+    private void renderStraightRise(int entryIdx, float centerX, float centerY, float progress, float alpha) {
+        int particleCount = 4;
+        // 初始 X 偏移均匀分布
+        float[] xOffsets = { -6f, -2f, 2f, 6f };
+        for (int p = 0; p < particleCount; p++) {
+            // 向上运动（0→-25，上升 25 像素）
+            float yOffset = -progress * 25f;
+            // 轻微摆动（1 圈，幅度 2 像素）
+            float xOffset = (float) Math.sin(progress * 2f * (float) Math.PI + p * (float) (Math.PI / 2)) * 2f;
+
+            float px = centerX + xOffsets[p] + xOffset;
+            float py = centerY + yOffset;
+
+            renderParticle(entryIdx, p, px, py, progress, alpha);
+        }
+    }
+
+    /**
+     * 预设 3：抛物线上升（5 粒子）
+     * <p>
+     * 5 个粒子初始角度均匀分布（0°, 72°, 144°, 216°, 288°），
+     * 先向外扩散后收缩（sin 曲线，0→1→0），同时向上偏移。
+     * 给人"爆发后收敛"的感觉。
+     *
+     * @param entryIdx entry 索引（用于日志）
+     * @param centerX  槽位中心 X
+     * @param centerY  槽位中心 Y
+     * @param progress 动画进度 (0~1)
+     * @param alpha    透明度 (0~1)
+     */
+    private void renderParabolicRise(int entryIdx, float centerX, float centerY, float progress, float alpha) {
+        int particleCount = 5;
+        for (int p = 0; p < particleCount; p++) {
+            // 初始角度均匀分布（0°, 72°, 144°, 216°, 288°）
+            float initialAngle = p * (2f * (float) Math.PI / 5f);
+            // 半径先扩大后收缩（sin 曲线，0→12→0）
+            float radius = (float) Math.sin(progress * Math.PI) * 12f;
+            // 向上偏移（0→-18，上升 18 像素）
+            float yOffset = -progress * 18f;
+
+            float px = centerX + (float) Math.cos(initialAngle) * radius;
+            float py = centerY + (float) Math.sin(initialAngle) * radius + yOffset;
+
+            renderParticle(entryIdx, p, px, py, progress, alpha);
+        }
+    }
+
+    /**
+     * 渲染单个粒子（v1.6.27 抽取公共方法）
+     * <p>
+     * 计算粒子大小、颜色、ARGB，调用 GuiDraw.drawRect 绘制。
+     * 粒子大小随进度缩小（PARTICLE_SIZE * (1 - progress * 0.5)），
+     * 颜色紫色和白色交替（基于粒子索引 p）。
+     *
+     * @param entryIdx entry 索引（用于日志）
+     * @param p        粒子索引（用于日志和颜色交替）
+     * @param px       粒子 X 坐标
+     * @param py       粒子 Y 坐标
+     * @param progress 动画进度 (0~1)，用于计算粒子大小
+     * @param alpha    透明度 (0~1)
+     */
+    private void renderParticle(int entryIdx, int p, float px, float py, float progress, float alpha) {
+        // 粒子大小随进度缩小（保留 50% 大小）
+        float size = PARTICLE_SIZE * (1.0f - progress * 0.5f);
+
+        // 颜色：紫色和白色交替
+        boolean isPurple = p % 2 == 0;
+        float r = isPurple ? PURPLE_R : WHITE_R;
+        float g = isPurple ? PURPLE_G : WHITE_G;
+        float b = isPurple ? PURPLE_B : WHITE_B;
+
+        // v1.6.26: 用 GuiDraw.drawRect 绘制（ARGB 格式颜色）
+        int argbColor = ((int) (alpha * 255) << 24) | ((int) (r * 255) << 16)
+            | ((int) (g * 255) << 8)
+            | (int) (b * 255);
+        int drawX = (int) (px - size);
+        int drawY = (int) (py - size);
+        int drawSize = Math.max(1, (int) (size * 2));
+        GuiDraw.drawRect(drawX, drawY, drawSize, drawSize, argbColor);
+
+        // v1.6.27 检查点：第一个 entry 的第一个粒子输出 drawRect 参数（便于调试）
+        if (entryIdx == 0 && p == 0) {
+            System.out.println(
+                "[NekoParticle] drawRect first: x=" + drawX
+                    + ", y="
+                    + drawY
+                    + ", size="
+                    + drawSize
+                    + ", color=0x"
+                    + Integer.toHexString(argbColor));
         }
     }
 
