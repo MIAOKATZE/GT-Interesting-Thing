@@ -26,7 +26,10 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
     modid = GTInterestingThing.MODID,
     name = "GTInterestingThing",
     version = Tags.VERSION,
-    dependencies = "required-after:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine")
+    // v1.6.34 方案 B3：required-before:gregtech 确保 GTIT 的 preInit 在 GT preInit 之前执行
+    // 这样 sAfterGTPreload 队列在 GT preInit 末尾消费时，GTIT 的机器注册 Runnable 已入队
+    // 与 GTSR/GTSWN 对齐，避免方案 D（sAfterGTLoad）导致 MTE 错过 GT5U Init 阶段统一处理
+    dependencies = "required-before:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine")
 public class GTInterestingThing {
 
     // 模组唯一标识符 (Mod ID)

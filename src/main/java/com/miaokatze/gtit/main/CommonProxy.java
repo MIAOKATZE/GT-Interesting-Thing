@@ -122,23 +122,31 @@ public class CommonProxy {
             }
         };
 
-        // 将注册任务添加到 GregTech 的 sAfterGTLoad 队列
-        // 注意：sAfterGTLoad 在 GregTechAPI 中静态初始化为 ArrayList，永不为 null，无需 null 检查
-        // 方案 D 决策（v1.6.33）：回退到 sAfterGTLoad（B1 方案），配合 MTENekoVendingMachineV2 懒加载
-        // 时序分析（三个队列的可行性）：
-        // - sAfterGTPreload（PreInit 末尾，GTMod.java:342-344）：构造函数检查通过（sPostloadStarted=false），
-        // 但 <clinit> 访问 casingBlock 必为 null（整个 Init 阶段未开始）→ v1.6.31 B3-修正1 NPE 失败
-        // - sAfterGTLoad（Init 末尾，GTMod.java:402-404）：构造函数检查通过（sPostloadStarted=false），
-        // 懒加载后 <clinit> 不再访问 casingBlock → ✓ 本方案
-        // - sAfterGTPostload（PostInit 末尾，GTMod.java:554-556）：构造函数检查失败
-        // （sPostloadStarted=true，CommonMetaTileEntity.java:85-86 抛 IllegalAccessError）→ v1.6.32 C1 方案失败
-        // 懒加载关键：MTENekoVendingMachineV2.NEKO_STRUCTURE_DEFINITION 不再 static final 直接初始化，
-        // 改为 getStructureDefinition() 首次调用时构建（运行时，casingBlock 必然就绪）
+        // v1.6.34 方案 B3：将机器注册任务添加到 GregTech 的 sAfterGTPreload 队列
+        // sAfterGTPreload 在 GregTechAPI 中静态初始化为 ArrayList，永不为 null，无需 null 检查
+        //
+        // 方案 B3 决策（v1.6.34，对齐 GTSR v1.7.22 / GTSWN v1.5.19）：
+        // @Mod 改为 required-before:gregtech，确保 GTIT preInit 在 GT preInit 之前执行
+        // 机器注册 Runnable 在 GTIT preInit 时加入 sAfterGTPreload 队列
+        // GT preInit 末尾（GTMod.java:342-344）消费队列，执行 MachineLoader.initMachines()
+        //
+        // 时序分析（三队列可行性，含 v1.6.33 方案 D 懒加载后的重新评估）：
+        // - sAfterGTPreload（PreInit 末尾）：✓ 构造函数检查通过（sPostloadStarted=false）
+        // 懒加载后 <clinit> 不再访问 casingBlock → 本方案（v1.6.34）
+        // MTE 注册时机早于 GT5U Init 阶段，GT5U Init 的 registerUnificationEntries 等会正常处理 GTIT MTE
+        // - sAfterGTLoad（Init 末尾，v1.6.33 方案 D）：构造函数检查通过，懒加载 <clinit> 安全
+        // 但 MTE 错过 GT5U Init 阶段的 registerUnificationEntries / GTItemIterator 等统一处理
+        // 导致其他 mod 依赖 OreDict 统一的配方极个别丢失 → v1.6.34 弃用
+        // - sAfterGTPostload（PostInit 末尾）：构造函数检查失败（sPostloadStarted=true）→ 不可用
+        //
+        // 懒加载关键（v1.6.33 引入，v1.6.34 保留）：MTENekoVendingMachineV2.NEKO_STRUCTURE_DEFINITION
+        // 不再 static final 直接初始化，改为 getStructureDefinition() 首次调用时构建（运行时，casingBlock 必然就绪）
+        // VM mod 的 after:vendingmachine 依赖确保 VM preInit（casingBlock 初始化）在 GTIT preInit 之前完成
         try {
-            int before = GregTechAPI.sAfterGTLoad.size();
-            GregTechAPI.sAfterGTLoad.add(registerRunnable);
-            int after = GregTechAPI.sAfterGTLoad.size();
-            GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech Load 队列 (队列大小: " + before + " -> " + after + ")");
+            int before = GregTechAPI.sAfterGTPreload.size();
+            GregTechAPI.sAfterGTPreload.add(registerRunnable);
+            int after = GregTechAPI.sAfterGTPreload.size();
+            GTInterestingThing.LOG.info("[1/3] 已将机器注册任务加入 GregTech PreInit 队列 (队列大小: " + before + " -> " + after + ")");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("无法将注册任务添加到 GregTech 队列", t);
         }
