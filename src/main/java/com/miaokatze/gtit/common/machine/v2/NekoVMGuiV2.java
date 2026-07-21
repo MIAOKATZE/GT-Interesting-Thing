@@ -59,6 +59,7 @@ import com.miaokatze.gtit.client.gui.NekoVolumeControlGui;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 import com.miaokatze.gtit.config.NekoMusicConfig;
+import com.miaokatze.gtit.lottery.LotteryGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
@@ -1298,8 +1299,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 页 1：签到（任务 D 实现）
         mainPaged.addPage(SignInCalendarGui.createSignInPage());
 
-        // 页 2：抽奖（占位，v1.7.0 目标 2 实现）
-        mainPaged.addPage(createLotteryPagePlaceholder());
+        // 页 2：抽奖（v1.7.1 目标 2 实现，轮盘 GUI；出货槽定位依赖机器坐标）
+        mainPaged.addPage(LotteryGui.createLotteryPage(baseMetaTileEntity));
 
         // 页 3：邮件（占位，v1.7.0 目标 3 实现）
         mainPaged.addPage(createMailPagePlaceholder());
@@ -2795,27 +2796,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         return category.getKey();
     }
 
-    // ==================== v1.7.0 占位页面（抽奖/邮件，由后续目标实现） ====================
+    // ==================== v1.7.x 占位页面（邮件，由后续目标实现） ====================
 
     /**
-     * 抽奖页占位（v1.7.0 目标 2 实现）
-     */
-    private IWidget createLotteryPagePlaceholder() {
-        return Flow.column()
-            .padding(8)
-            .child(
-                IKey.str(EnumChatFormatting.LIGHT_PURPLE + "猫猫扭蛋")
-                    .asWidget()
-                    .height(14))
-            .child(
-                IKey.str(EnumChatFormatting.GRAY + "抽奖系统即将上线，敬请期待...")
-                    .asWidget()
-                    .height(12)
-                    .marginTop(4));
-    }
-
-    /**
-     * 邮件页占位（v1.7.0 目标 3 实现）
+     * 邮件页占位（v1.7.x 目标 3 实现）
      */
     private IWidget createMailPagePlaceholder() {
         return Flow.column()

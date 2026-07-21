@@ -352,5 +352,87 @@ public final class NekoGuiTextures {
         .name("signin_btn_claim")
         .build();
 
+    // ==================== v1.7.1 抽奖轮盘素材 ====================
+
+    /** 抽奖槽位-普通（24x24，灰框，COMMON/RARE 稀有度底） */
+    public static final UITexture LOTTERY_SLOT_NORMAL = UITexture.builder()
+        .location("gtit", "gui/lottery/slot_normal")
+        .imageSize(24, 24)
+        .fullImage()
+        .name("lottery_slot_normal")
+        .build();
+
+    /** 抽奖槽位-金边（24x24，EPIC 稀有度底） */
+    public static final UITexture LOTTERY_SLOT_RARE = UITexture.builder()
+        .location("gtit", "gui/lottery/slot_rare")
+        .imageSize(24, 24)
+        .fullImage()
+        .name("lottery_slot_rare")
+        .build();
+
+    /** 抽奖槽位-闪角（24x24，LEGENDARY 稀有度底） */
+    public static final UITexture LOTTERY_SLOT_EPIC = UITexture.builder()
+        .location("gtit", "gui/lottery/slot_epic")
+        .imageSize(24, 24)
+        .fullImage()
+        .name("lottery_slot_epic")
+        .build();
+
+    /** 抽奖轮盘指针（16x16，橙色倒三角，指示当前点亮格） */
+    public static final UITexture LOTTERY_POINTER = UITexture.builder()
+        .location("gtit", "gui/lottery/pointer")
+        .imageSize(16, 16)
+        .fullImage()
+        .name("lottery_pointer")
+        .build();
+
+    /** 抽 1 次按钮胚（64x24，橙色长按钮，无文字） */
+    public static final UITexture LOTTERY_BTN_DRAW = UITexture.builder()
+        .location("gtit", "gui/lottery/btn_draw")
+        .imageSize(64, 24)
+        .fullImage()
+        .name("lottery_btn_draw")
+        .build();
+
+    /** 抽 10 次按钮胚（64x24，橙粉双色长按钮，无文字） */
+    public static final UITexture LOTTERY_BTN_DRAW10 = UITexture.builder()
+        .location("gtit", "gui/lottery/btn_draw10")
+        .imageSize(64, 24)
+        .fullImage()
+        .name("lottery_btn_draw10")
+        .build();
+
+    /** 猫猫币图标（16x16，金色，卡池价格/余额展示） */
+    public static final UITexture LOTTERY_COIN_NEKO = UITexture.builder()
+        .location("gtit", "gui/lottery/coin_neko")
+        .imageSize(16, 16)
+        .fullImage()
+        .name("lottery_coin_neko")
+        .build();
+
+    /** 闪烁猫猫币图标（16x16，粉色，卡池价格/余额展示） */
+    public static final UITexture LOTTERY_COIN_SHIMMER = UITexture.builder()
+        .location("gtit", "gui/lottery/coin_shimmer")
+        .imageSize(16, 16)
+        .fullImage()
+        .name("lottery_coin_shimmer")
+        .build();
+
+    /** 稀有度角标-蓝（8x8，RARE 条目右上角标） */
+    public static final UITexture LOTTERY_CORNER_BLUE = UITexture.builder()
+        .location("gtit", "gui/lottery/corner_blue")
+        .imageSize(8, 8)
+        .fullImage()
+        .name("lottery_corner_blue")
+        .build();
+
+    /** 稀有度角标-紫（8x8，EPIC/LEGENDARY 条目右上角标） */
+    public static final UITexture LOTTERY_CORNER_PURPLE = UITexture.builder()
+        .location("gtit", "gui/lottery/corner_purple")
+        .imageSize(8, 8)
+        .fullImage()
+        .name("lottery_corner_purple")
+        .build();
+
     private NekoGuiTextures() {}
 }

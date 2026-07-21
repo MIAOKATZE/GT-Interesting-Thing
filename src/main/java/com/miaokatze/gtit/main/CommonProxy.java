@@ -119,6 +119,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[NekoNotify] 冷却完毕通知调度器注册失败", t);
         }
 
+        // v1.7.1: 注册抽奖事件监听器（登录预载/登出落盘/抽奖任务队列/周期保存）
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new com.miaokatze.gtit.lottery.LotteryHandler());
+            GTInterestingThing.LOG.info("[0/3] 抽奖事件监听器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 抽奖事件监听器注册失败", t);
+        }
+
         // 定义机器注册任务
         Runnable registerRunnable = () -> {
             GTInterestingThing.LOG.info("[1/3] 开始执行机器注册流程...");
@@ -263,6 +273,13 @@ public class CommonProxy {
             GTInterestingThing.LOG.info("[2/3] 签到网络包已初始化");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 签到网络包初始化失败", t);
+        }
+        // v1.7.1: 抽奖网络包（同步/请求/结果三通道）
+        try {
+            com.miaokatze.gtit.lottery.LotteryNetworkManager.init();
+            GTInterestingThing.LOG.info("[2/3] 抽奖网络包已初始化");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 抽奖网络包初始化失败", t);
         }
         try {
             com.miaokatze.gtit.achievement.AchievementNetwork.init();

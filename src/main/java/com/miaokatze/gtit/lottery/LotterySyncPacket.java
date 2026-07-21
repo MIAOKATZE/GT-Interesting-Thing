@@ -1,0 +1,233 @@
+package com.miaokatze.gtit.lottery;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+
+import cpw.mods.fml.common.network.ByteBufUtils;
+import cpw.mods.fml.common.network.simpleimpl.IMessage;
+import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
+import cpw.mods.fml.common.network.simpleimpl.MessageContext;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
+import io.netty.buffer.ByteBuf;
+
+/**
+ * 抽奖数据同步包（服务端→客户端）
+ * <p>
+ * 携带指定玩家团队的抽奖全量状态（NBT 序列化）：
+ * <ul>
+ * <li>卡池摘要列表（id/名称/货币/价格/保底阈值/条目列表，供轮盘渲染）</li>
+ * <li>团队保底计数（poolId → 连续未出高稀有次数）</li>
+ * <li>最近抽奖历史（时间倒序，最多 {@link LotteryClientData#HISTORY_DISPLAY_LIMIT} 条）</li>
+ * </ul>
+ * 玩家登录、打开抽奖页（主标签选中页 2）、每次抽奖完成后由服务端主动推送，
+ * 客户端写入 {@link LotteryClientData} 缓存供 {@link LotteryGui} 渲染。
+ */
+public class LotterySyncPacket implements IMessage {
+
+    /** 卡池摘要/保底计数/历史的 NBT 根 */
+    private NBTTagCompound dataTag = new NBTTagCompound();
+
+    public LotterySyncPacket() {
+        // 反序列化需要无参构造
+    }
+
+    /**
+     * 构建同步包（服务端）
+     *
+     * @param pools         卡池列表（{@link LotteryManager#getAllPools()}）
+     * @param pityCounters  团队保底计数快照
+     * @param recentHistory 最近历史（时间倒序）
+     * @param balances      团队钱包余额（currencyId → 数量，仅含卡池消耗币种）
+     */
+    public LotterySyncPacket(List<LotteryPool> pools, Map<String, Integer> pityCounters,
+        List<LotteryHistory.HistoryEntry> recentHistory, Map<String, Integer> balances) {
+        NBTTagCompound root = new NBTTagCompound();
+
+        // --- 卡池摘要 ---
+        NBTTagList poolList = new NBTTagList();
+        if (pools != null) {
+            for (LotteryPool pool : pools) {
+                if (pool == null) continue;
+                NBTTagCompound poolTag = new NBTTagCompound();
+                poolTag.setString("id", pool.getId() == null ? "" : pool.getId());
+                poolTag.setString("name", pool.getName() == null ? "" : pool.getName());
+                poolTag.setString("currency", pool.getNekoCurrencyId() == null ? "" : pool.getNekoCurrencyId());
+                poolTag.setInteger("cost", pool.getCostPerDraw());
+                // 保底摘要（客户端仅展示阈值与保证稀有度）
+                PityConfig pity = pool.getPityConfig();
+                poolTag.setBoolean("pityEnabled", pity.isEnabled());
+                poolTag.setInteger("hardPity", pity.getHardPityThreshold());
+                poolTag.setString(
+                    "guaranteed",
+                    pity.getGuaranteedRarity()
+                        .name());
+                // 条目列表（顺序即轮盘槽位顺序）
+                NBTTagList entryList = new NBTTagList();
+                for (LotteryEntry entry : pool.getEntries()) {
+                    if (entry != null) {
+                        entryList.appendTag(entry.writeToNBT());
+                    }
+                }
+                poolTag.setTag("entries", entryList);
+                poolList.appendTag(poolTag);
+            }
+        }
+        root.setTag("pools", poolList);
+
+        // --- 保底计数 ---
+        NBTTagCompound pityTag = new NBTTagCompound();
+        if (pityCounters != null) {
+            for (Map.Entry<String, Integer> e : pityCounters.entrySet()) {
+                if (e.getKey() != null && e.getValue() != null) {
+                    pityTag.setInteger(e.getKey(), e.getValue());
+                }
+            }
+        }
+        root.setTag("pity", pityTag);
+
+        // --- 最近历史 ---
+        NBTTagList historyList = new NBTTagList();
+        if (recentHistory != null) {
+            for (LotteryHistory.HistoryEntry record : recentHistory) {
+                if (record == null) continue;
+                NBTTagCompound recordTag = new NBTTagCompound();
+                recordTag.setString("pool", record.poolId == null ? "" : record.poolId);
+                recordTag.setString("entry", record.entryId == null ? "" : record.entryId);
+                recordTag.setString("rarity", record.rarityName == null ? "" : record.rarityName);
+                recordTag.setInteger("amount", record.amount);
+                recordTag.setString("player", record.playerName == null ? "" : record.playerName);
+                recordTag.setLong("time", record.timestamp);
+                historyList.appendTag(recordTag);
+            }
+        }
+        root.setTag("history", historyList);
+
+        // --- 团队钱包余额（卡池消耗币种） ---
+        NBTTagCompound balanceTag = new NBTTagCompound();
+        if (balances != null) {
+            for (Map.Entry<String, Integer> e : balances.entrySet()) {
+                if (e.getKey() != null && e.getValue() != null) {
+                    balanceTag.setInteger(e.getKey(), e.getValue());
+                }
+            }
+        }
+        root.setTag("balances", balanceTag);
+
+        this.dataTag = root;
+    }
+
+    @Override
+    public void fromBytes(ByteBuf buf) {
+        this.dataTag = ByteBufUtils.readTag(buf);
+    }
+
+    @Override
+    public void toBytes(ByteBuf buf) {
+        ByteBufUtils.writeTag(buf, this.dataTag == null ? new NBTTagCompound() : this.dataTag);
+    }
+
+    public NBTTagCompound getDataTag() {
+        return dataTag;
+    }
+
+    // ==================== 客户端解析 ====================
+
+    /** 解析卡池摘要列表 */
+    public List<LotteryClientData.PoolSummary> parsePools() {
+        List<LotteryClientData.PoolSummary> result = new ArrayList<>();
+        if (dataTag == null || !dataTag.hasKey("pools")) return result;
+        NBTTagList poolList = dataTag.getTagList("pools", 10);
+        for (int i = 0; i < poolList.tagCount(); i++) {
+            NBTTagCompound poolTag = poolList.getCompoundTagAt(i);
+            LotteryClientData.PoolSummary summary = new LotteryClientData.PoolSummary();
+            summary.id = poolTag.getString("id");
+            summary.name = poolTag.getString("name");
+            summary.currencyId = poolTag.getString("currency");
+            summary.costPerDraw = poolTag.getInteger("cost");
+            summary.pityEnabled = poolTag.getBoolean("pityEnabled");
+            summary.hardPityThreshold = poolTag.getInteger("hardPity");
+            summary.guaranteedRarity = poolTag.getString("guaranteed");
+            NBTTagList entryList = poolTag.getTagList("entries", 10);
+            for (int j = 0; j < entryList.tagCount(); j++) {
+                LotteryEntry entry = LotteryEntry.fromNBT(entryList.getCompoundTagAt(j));
+                if (entry != null) {
+                    summary.entries.add(entry);
+                }
+            }
+            result.add(summary);
+        }
+        return result;
+    }
+
+    /** 解析保底计数表 */
+    public Map<String, Integer> parsePityCounters() {
+        Map<String, Integer> result = new LinkedHashMap<>();
+        if (dataTag == null || !dataTag.hasKey("pity")) return result;
+        NBTTagCompound pityTag = dataTag.getCompoundTag("pity");
+        for (String key : pityTag.func_150296_c()) { // getKeySet 的 SRG 名
+            result.put(key, pityTag.getInteger(key));
+        }
+        return result;
+    }
+
+    /** 解析团队钱包余额表（currencyId → 数量） */
+    public Map<String, Integer> parseBalances() {
+        Map<String, Integer> result = new LinkedHashMap<>();
+        if (dataTag == null || !dataTag.hasKey("balances")) return result;
+        NBTTagCompound balanceTag = dataTag.getCompoundTag("balances");
+        for (String key : balanceTag.func_150296_c()) { // getKeySet 的 SRG 名
+            result.put(key, balanceTag.getInteger(key));
+        }
+        return result;
+    }
+
+    /** 解析最近历史（时间倒序） */
+    public List<LotteryHistory.HistoryEntry> parseHistory() {
+        List<LotteryHistory.HistoryEntry> result = new ArrayList<>();
+        if (dataTag == null || !dataTag.hasKey("history")) return result;
+        NBTTagList historyList = dataTag.getTagList("history", 10);
+        for (int i = 0; i < historyList.tagCount(); i++) {
+            NBTTagCompound recordTag = historyList.getCompoundTagAt(i);
+            result.add(
+                new LotteryHistory.HistoryEntry(
+                    recordTag.getString("pool"),
+                    recordTag.getString("entry"),
+                    recordTag.getString("rarity"),
+                    recordTag.getInteger("amount"),
+                    recordTag.getString("player"),
+                    recordTag.getLong("time")));
+        }
+        return result;
+    }
+
+    public static class Handler implements IMessageHandler<LotterySyncPacket, IMessage> {
+
+        @Override
+        public IMessage onMessage(LotterySyncPacket message, MessageContext ctx) {
+            // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
+            // 需切回客户端主线程再写缓存（GUI 在主线程读取）
+            if (ctx.side == Side.CLIENT) {
+                handleClient(message);
+            }
+            return null;
+        }
+
+        @SideOnly(Side.CLIENT)
+        private void handleClient(final LotterySyncPacket message) {
+            Minecraft.getMinecraft()
+                .func_152344_a(
+                    () -> LotteryClientData.updatePools(
+                        message.parsePools(),
+                        message.parsePityCounters(),
+                        message.parseHistory(),
+                        message.parseBalances()));
+        }
+    }
+}
