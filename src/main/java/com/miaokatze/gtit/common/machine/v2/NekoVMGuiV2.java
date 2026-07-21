@@ -60,6 +60,7 @@ import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.lottery.LotteryGui;
+import com.miaokatze.gtit.mail.MailGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
@@ -1302,8 +1303,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 页 2：抽奖（v1.7.1 目标 2 实现，轮盘 GUI；出货槽定位依赖机器坐标）
         mainPaged.addPage(LotteryGui.createLotteryPage(baseMetaTileEntity));
 
-        // 页 3：邮件（占位，v1.7.0 目标 3 实现）
-        mainPaged.addPage(createMailPagePlaceholder());
+        // 页 3：邮件（v1.7.2 目标 3 实现，列表+详情+附件领取）
+        mainPaged.addPage(MailGui.createMailPage());
 
         return mainPaged;
     }
@@ -2794,24 +2795,5 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             return pageName;
         }
         return category.getKey();
-    }
-
-    // ==================== v1.7.x 占位页面（邮件，由后续目标实现） ====================
-
-    /**
-     * 邮件页占位（v1.7.x 目标 3 实现）
-     */
-    private IWidget createMailPagePlaceholder() {
-        return Flow.column()
-            .padding(8)
-            .child(
-                IKey.str(EnumChatFormatting.AQUA + "猫猫邮件")
-                    .asWidget()
-                    .height(14))
-            .child(
-                IKey.str(EnumChatFormatting.GRAY + "邮件系统即将上线，敬请期待...")
-                    .asWidget()
-                    .height(12)
-                    .marginTop(4));
     }
 }

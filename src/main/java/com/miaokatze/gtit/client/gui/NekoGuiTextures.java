@@ -434,5 +434,87 @@ public final class NekoGuiTextures {
         .name("lottery_corner_purple")
         .build();
 
+    // ==================== v1.7.2 邮件素材 ====================
+
+    /** 邮件条目底-未读（80x27，浅蓝紫灰长条+左侧未读亮点） */
+    public static final UITexture MAIL_ENTRY_UNREAD = UITexture.builder()
+        .location("gtit", "gui/mail/entry_unread")
+        .imageSize(80, 27)
+        .fullImage()
+        .name("mail_entry_unread")
+        .build();
+
+    /** 邮件条目底-已读（80x27，微暗长条，无亮点） */
+    public static final UITexture MAIL_ENTRY_READ = UITexture.builder()
+        .location("gtit", "gui/mail/entry_read")
+        .imageSize(80, 27)
+        .fullImage()
+        .name("mail_entry_read")
+        .build();
+
+    /** 未读亮点（8x8，青色菱形，列表行未读指示） */
+    public static final UITexture MAIL_DOT = UITexture.builder()
+        .location("gtit", "gui/mail/dot")
+        .imageSize(8, 8)
+        .fullImage()
+        .name("mail_dot")
+        .build();
+
+    /** 未读邮件图标（16x16，闭合信封+猫爪火漆+感叹号角标） */
+    public static final UITexture MAIL_ICON_UNREAD = UITexture.builder()
+        .location("gtit", "gui/mail/icon_unread")
+        .imageSize(16, 16)
+        .fullImage()
+        .name("mail_icon_unread")
+        .build();
+
+    /** 已读邮件图标（16x16，打开的信封，信纸露出） */
+    public static final UITexture MAIL_ICON_READ = UITexture.builder()
+        .location("gtit", "gui/mail/icon_read")
+        .imageSize(16, 16)
+        .fullImage()
+        .name("mail_icon_read")
+        .build();
+
+    /** 附件物品槽（18x18，深色内凹小方槽） */
+    public static final UITexture MAIL_SLOT = UITexture.builder()
+        .location("gtit", "gui/mail/slot")
+        .imageSize(18, 18)
+        .fullImage()
+        .name("mail_slot")
+        .build();
+
+    /** 领取附件按钮胚（48x20，金色圆角，无文字） */
+    public static final UITexture MAIL_BTN_CLAIM = UITexture.builder()
+        .location("gtit", "gui/mail/btn_claim")
+        .imageSize(48, 20)
+        .fullImage()
+        .name("mail_btn_claim")
+        .build();
+
+    /** 删除图标（14x14，金属灰小垃圾桶） */
+    public static final UITexture MAIL_TRASH = UITexture.builder()
+        .location("gtit", "gui/mail/trash")
+        .imageSize(14, 14)
+        .fullImage()
+        .name("mail_trash")
+        .build();
+
+    /** 信纸底纹（166x158，米白底+淡紫横线+猫爪水印，邮件详情背景） */
+    public static final UITexture MAIL_PAPER = UITexture.builder()
+        .location("gtit", "gui/mail/paper")
+        .imageSize(166, 158)
+        .fullImage()
+        .name("mail_paper")
+        .build();
+
+    /** 撰写/发送图标（16x16，信封+羽毛笔，标题装饰） */
+    public static final UITexture MAIL_WRITE = UITexture.builder()
+        .location("gtit", "gui/mail/write")
+        .imageSize(16, 16)
+        .fullImage()
+        .name("mail_write")
+        .build();
+
     private NekoGuiTextures() {}
 }

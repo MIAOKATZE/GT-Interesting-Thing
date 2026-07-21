@@ -22,6 +22,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
+import com.miaokatze.gtit.mail.Mail;
+import com.miaokatze.gtit.mail.MailManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInConfig;
 import com.miaokatze.gtit.signin.DailySignInData;
@@ -95,6 +97,7 @@ public class GTITGiftCommand extends CommandBase {
                 handleNekoVM(sender, player, args);
             }
             case "signin" -> handleSignIn(sender, args);
+            case "mail" -> handleMail(sender, args);
             default -> sendHelp(sender);
         }
     }
@@ -104,7 +107,7 @@ public class GTITGiftCommand extends CommandBase {
     @Override
     public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
         if (args.length == 1) {
-            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin");
+            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "mail");
         }
 
         if (args.length == 2) {
@@ -128,6 +131,19 @@ public class GTITGiftCommand extends CommandBase {
             if ("signin".equals(args[0])) {
                 return getListOfStringsMatchingLastWord(args, "info", "reload", "admin", "help");
             }
+            if ("mail".equals(args[0])) {
+                return getListOfStringsMatchingLastWord(args, "send", "first", "firstclear", "once", "help");
+            }
+        }
+
+        if (args.length == 3 && "mail".equals(args[0]) && "send".equals(args[1])) {
+            // /gtit mail send <玩家名>：补全在线玩家名
+            List<String> names = new ArrayList<>();
+            for (EntityPlayerMP player : MinecraftServer.getServer()
+                .getConfigurationManager().playerEntityList) {
+                names.add(player.getCommandSenderName());
+            }
+            return getListOfStringsMatchingLastWord(args, names.toArray(new String[0]));
         }
 
         if (args.length == 3 && "signin".equals(args[0])) {
@@ -1357,6 +1373,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
         sender.addChatMessage(new ChatComponentText("/gtit signin - 每日签到"));
         sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
+        sender.addChatMessage(new ChatComponentText("/gtit mail help - 邮件命令帮助（发送/首登/一次性奖励）"));
     }
 
     private void sendNekoVMHelp(ICommandSender sender) {
@@ -1567,6 +1584,220 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit signin reload - 热重载签到奖励配置"));
         sender.addChatMessage(new ChatComponentText("/gtit signin admin set <玩家名> <天数> - 设置连续签到天数"));
         sender.addChatMessage(new ChatComponentText("/gtit signin admin reset <玩家名> - 重置玩家签到数据"));
+    }
+
+    // ==================== v1.7.2 邮件子命令 ====================
+
+    /**
+     * /gtit mail —— 邮件系统指令入口
+     * <p>
+     * 子命令：
+     * <ul>
+     * <li>/gtit mail send &lt;玩家名&gt; &lt;标题&gt; [正文...] —— 发送邮件（支持离线玩家；
+     * 附件 = 执行者手持物品，可空手；正文中字面 {@code \n} 转换为换行）</li>
+     * <li>/gtit mail first &lt;标题&gt; [正文...] —— 设置首登奖励模板（附件 = 手持物品，
+     * 覆盖旧模板；新玩家首次登录自动投递，按玩家标记防重）</li>
+     * <li>/gtit mail firstclear —— 清除首登奖励模板</li>
+     * <li>/gtit mail once &lt;奖励ID&gt; &lt;标题&gt; [正文...] —— 发布一次性奖励
+     * （附件 = 手持物品；奖励 ID 唯一不可重复发布，全体玩家各收一次）</li>
+     * </ul>
+     */
+    private void handleMail(ICommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sendMailHelp(sender);
+            return;
+        }
+
+        switch (args[1]) {
+            case "send" -> handleMailSend(sender, args);
+            case "first" -> handleMailFirst(sender, args);
+            case "firstclear" -> {
+                boolean had = MailManager.INSTANCE.clearFirstRewardTemplate();
+                if (had) {
+                    sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已清除首登奖励模板"));
+                } else {
+                    sender.addChatMessage(
+                        new ChatComponentText(EnumChatFormatting.YELLOW + "当前没有设置首登奖励模板"));
+                }
+            }
+            case "once" -> handleMailOnce(sender, args);
+            case "help" -> sendMailHelp(sender);
+            default -> sendMailHelp(sender);
+        }
+    }
+
+    /**
+     * /gtit mail send &lt;玩家名&gt; &lt;标题&gt; [正文...]
+     * <p>
+     * 控制台可执行（发件人显示为「系统」，无附件）；
+     * 玩家执行时发件人为玩家名，手持物品作为附件（深拷贝，不消耗手中物品）。
+     */
+    private void handleMailSend(ICommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit mail send <玩家名> <标题> [正文...]"));
+            return;
+        }
+        String targetName = args[2];
+        String title = args[3];
+        String content = joinMailContent(args, 4);
+
+        // 解析目标玩家 UUID（在线优先，离线走 usercache.json）
+        UUID targetId = resolvePlayerUuid(targetName);
+        if (targetId == null) {
+            sender.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.RED + "找不到玩家: " + targetName + "（从未登录过本服务器）"));
+            return;
+        }
+
+        // 发件人显示名与附件（执行者为玩家时取手持物品）
+        String senderName = "系统";
+        List<ItemStack> attachments = new ArrayList<>();
+        if (sender instanceof EntityPlayerMP player) {
+            senderName = player.getCommandSenderName();
+            attachments = heldAttachment(player);
+        }
+
+        Mail mail = new Mail(title, content, senderName, attachments);
+        boolean ok = MailManager.INSTANCE.sendMail(targetId, mail);
+        if (ok) {
+            sender.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.GREEN + "邮件已发送给 " + targetName + "（附件 " + attachments.size() + " 组）"));
+        } else {
+            sender.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.RED + "发送失败：" + targetName + " 的邮箱已满（" + MailManager.MAX_MAILS + " 封）"));
+        }
+    }
+
+    /**
+     * /gtit mail first &lt;标题&gt; [正文...]
+     * <p>
+     * 设置首登奖励模板（仅玩家可执行，手持物品作为附件）。
+     * 已收过首登奖励的老玩家不会补发（按玩家 firstRewardReceived 标记防重）。
+     */
+    private void handleMailFirst(ICommandSender sender, String[] args) {
+        if (!(sender instanceof EntityPlayerMP player)) {
+            sender.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行（需要手持物品作为附件）"));
+            return;
+        }
+        if (args.length < 3) {
+            player.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit mail first <标题> [正文...]"));
+            return;
+        }
+        String title = args[2];
+        String content = joinMailContent(args, 3);
+        List<ItemStack> attachments = heldAttachment(player);
+
+        Mail template = new Mail(title, content, "系统", attachments);
+        boolean replacing = MailManager.INSTANCE.getFirstRewardTemplate() != null;
+        MailManager.INSTANCE.setFirstRewardTemplate(template);
+        player.addChatMessage(
+            new ChatComponentText(
+                EnumChatFormatting.GREEN + "首登奖励模板已"
+                    + (replacing ? "覆盖更新" : "设置")
+                    + "（附件 "
+                    + attachments.size()
+                    + " 组），新玩家首次登录时将自动收到"));
+        player.addChatMessage(
+            new ChatComponentText(EnumChatFormatting.GRAY + "注：已领取过首登奖励的老玩家不会补发"));
+    }
+
+    /**
+     * /gtit mail once &lt;奖励ID&gt; &lt;标题&gt; [正文...]
+     * <p>
+     * 发布一次性奖励（仅玩家可执行，手持物品作为附件）。
+     * 奖励 ID 唯一：重复 ID 拒绝发布，保证「一次性」语义不被覆盖重发破坏；
+     * 在线玩家立即投递，离线玩家登录时补投（按玩家 receivedOnceIds 集合防重）。
+     */
+    private void handleMailOnce(ICommandSender sender, String[] args) {
+        if (!(sender instanceof EntityPlayerMP player)) {
+            sender.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行（需要手持物品作为附件）"));
+            return;
+        }
+        if (args.length < 4) {
+            player.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit mail once <奖励ID> <标题> [正文...]"));
+            return;
+        }
+        String rewardId = args[2];
+        String title = args[3];
+        String content = joinMailContent(args, 4);
+        List<ItemStack> attachments = heldAttachment(player);
+
+        Mail template = new Mail(title, content, "系统", attachments);
+        boolean ok = MailManager.INSTANCE.publishOnceReward(rewardId, template);
+        if (ok) {
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.GREEN + "一次性奖励 ["
+                        + rewardId
+                        + "] 已发布（附件 "
+                        + attachments.size()
+                        + " 组），全体玩家将各收到一次"));
+        } else {
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.RED + "发布失败：奖励 ID [" + rewardId + "] 已发布过（一次性奖励不可重复发布）"));
+        }
+    }
+
+    /**
+     * 拼接邮件正文参数（从 start 起到末尾以空格连接；字面 "\n" 转换为换行符）
+     */
+    private String joinMailContent(String[] args, int start) {
+        if (args.length <= start) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = start; i < args.length; i++) {
+            if (i > start) sb.append(" ");
+            sb.append(args[i]);
+        }
+        return sb.toString()
+            .replace("\\n", "\n");
+    }
+
+    /**
+     * 取玩家手持物品作为附件列表（空手返回空列表；深拷贝，不消耗手中物品）
+     */
+    private List<ItemStack> heldAttachment(EntityPlayerMP player) {
+        List<ItemStack> attachments = new ArrayList<>();
+        ItemStack held = player.getHeldItem();
+        if (held != null && held.getItem() != null) {
+            attachments.add(held.copy());
+        }
+        return attachments;
+    }
+
+    /**
+     * 按玩家名解析 UUID（在线玩家直接取；离线玩家查 usercache.json，查不到返回 null）
+     */
+    private UUID resolvePlayerUuid(String playerName) {
+        EntityPlayerMP online = MinecraftServer.getServer()
+            .getConfigurationManager()
+            .func_152612_a(playerName);
+        if (online != null) {
+            return online.getUniqueID();
+        }
+        File worldDir = MinecraftServer.getServer()
+            .getEntityWorld()
+            .getSaveHandler()
+            .getWorldDirectory();
+        File userCache = new File(worldDir.getParentFile(), "usercache.json");
+        return findUuidFromUserCache(playerName, userCache);
+    }
+
+    private void sendMailHelp(ICommandSender sender) {
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "邮件命令:"));
+        sender.addChatMessage(new ChatComponentText("/gtit mail send <玩家名> <标题> [正文...] - 发送邮件（附件=手持物品）"));
+        sender.addChatMessage(new ChatComponentText("/gtit mail first <标题> [正文...] - 设置首登奖励模板（覆盖旧的）"));
+        sender.addChatMessage(new ChatComponentText("/gtit mail firstclear - 清除首登奖励模板"));
+        sender.addChatMessage(
+            new ChatComponentText("/gtit mail once <奖励ID> <标题> [正文...] - 发布一次性奖励（全服各收一次）"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "正文中输入 \\n 表示换行；附件取手持物品（可空手）"));
     }
 
     // ==================== Page 子命令 ====================

@@ -129,6 +129,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 抽奖事件监听器注册失败", t);
         }
 
+        // v1.7.2: 注册邮件事件监听器（登录投递奖励/登出落盘/操作任务队列/周期保存）
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new com.miaokatze.gtit.mail.MailHandler());
+            GTInterestingThing.LOG.info("[0/3] 邮件事件监听器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 邮件事件监听器注册失败", t);
+        }
+
         // 定义机器注册任务
         Runnable registerRunnable = () -> {
             GTInterestingThing.LOG.info("[1/3] 开始执行机器注册流程...");
@@ -287,6 +297,13 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 成就网络包初始化失败", t);
         }
+        // v1.7.2: 邮件网络包（同步/操作双通道）
+        try {
+            com.miaokatze.gtit.mail.MailNetworkManager.init();
+            GTInterestingThing.LOG.info("[2/3] 邮件网络包已初始化");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 邮件网络包初始化失败", t);
+        }
     }
 
     /**
@@ -416,6 +433,13 @@ public class CommonProxy {
                     GTInterestingThing.LOG.info("成就系统已初始化");
                 } catch (Throwable t2) {
                     GTInterestingThing.LOG.error("成就系统初始化失败", t2);
+                }
+                // v1.7.2: 邮件系统（个人维度，<world>/gtit_mail/）
+                try {
+                    com.miaokatze.gtit.mail.MailManager.INSTANCE.init(server.getEntityWorld());
+                    GTInterestingThing.LOG.info("邮件系统已初始化");
+                } catch (Throwable t2) {
+                    GTInterestingThing.LOG.error("邮件系统初始化失败", t2);
                 }
             }
         } catch (Throwable t) {
