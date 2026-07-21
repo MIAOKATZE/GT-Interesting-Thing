@@ -1,0 +1,182 @@
+package com.miaokatze.gtit.signin;
+
+import java.util.Calendar;
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * 客户端签到数据缓存
+ * <p>
+ * 由 {@link SignInSyncPacket} 的客户端处理器写入，{@link SignInCalendarGui} 读取。
+ * 服务端侧不会收到同步包，因此本类在服务端始终保持空数据（GUI 在服务端构建时读到的都是默认值，
+ * 不影响服务端逻辑——签到判定完全由 {@link DailySignInManager} 在服务端权威执行）。
+ * <p>
+ * <b>日期口径</b>：「今天」以服务端同步包携带的 {@link #serverToday} 为准，
+ * 避免客户端时区/系统时间错误导致日历错位；未收到同步前回退到客户端本地日期。
+ */
+public final class SignInClientData {
+
+    // ==================== 签到结果常量 ====================
+
+    /** 无结果（普通状态刷新：登录同步/跨日同步） */
+    public static final int RESULT_NONE = 0;
+    /** 签到成功 */
+    public static final int RESULT_SUCCESS = 1;
+    /** 今日已签到（重复请求） */
+    public static final int RESULT_ALREADY_SIGNED = 2;
+    /** 签到失败（数据异常） */
+    public static final int RESULT_ERROR = 3;
+
+    // ==================== 同步状态字段 ====================
+
+    /** 累计签到总天数 */
+    private static volatile int totalDays;
+    /** 当前连续签到天数 */
+    private static volatile int consecutiveDays;
+    /** 最后一次签到日期（yyyy-MM-dd） */
+    private static volatile String lastSignInDate = "";
+    /** 服务端「今天」（yyyy-MM-dd，同步包携带） */
+    private static volatile String serverToday = "";
+    /** 当月已签到日期集合（yyyy-MM-dd） */
+    private static volatile Set<String> monthlyDates = new HashSet<>();
+    /** 当月已领取的阶梯奖励天数集合 */
+    private static volatile Set<Integer> claimedTierDays = new HashSet<>();
+
+    // ==================== 最近一次签到结果（供 GUI 提示条显示） ====================
+
+    private static volatile int lastResult = RESULT_NONE;
+    private static volatile int lastResultReward = 0;
+    private static volatile int lastResultTierDays = 0;
+    /** 结果产生时间（System.currentTimeMillis），供 GUI 做限时显示 */
+    private static volatile long lastResultTimeMs = 0L;
+
+    private SignInClientData() {}
+
+    // ==================== 写入（网络包处理器调用） ====================
+
+    /**
+     * 用服务端同步的数据全量刷新客户端缓存
+     *
+     * @param data       服务端签到数据（同步包已反序列化）
+     * @param today      服务端今天日期（yyyy-MM-dd）
+     * @param result     本次同步附带的签到结果（{@link #RESULT_NONE} 表示纯状态刷新）
+     * @param baseReward 本次签到发放的基础奖励（result 为 SUCCESS 时有效）
+     * @param tierDays   本次触发的阶梯奖励天数（0 表示未触发）
+     */
+    public static synchronized void update(DailySignInData data, String today, int result, int baseReward,
+        int tierDays) {
+        if (data != null) {
+            totalDays = data.getTotalSignInDays();
+            consecutiveDays = data.getConsecutiveDays();
+            lastSignInDate = data.getLastSignInDate() == null ? "" : data.getLastSignInDate();
+            monthlyDates = new HashSet<>(data.getMonthlySignInDates());
+            // 解析已领取阶梯记录（格式 "tier_<days>_<yyyy-MM>"），仅保留当月
+            Set<Integer> claimed = new HashSet<>();
+            String yearMonth = getYearMonth(today);
+            for (String record : data.getClaimedTierRewards()) {
+                if (record != null && record.endsWith(yearMonth) && record.startsWith("tier_")) {
+                    try {
+                        String daysPart = record.substring(5, record.length() - yearMonth.length() - 1);
+                        claimed.add(Integer.parseInt(daysPart));
+                    } catch (NumberFormatException ignored) {
+                        // 跳过格式异常的记录
+                    }
+                }
+            }
+            claimedTierDays = claimed;
+        }
+        if (today != null && !today.isEmpty()) {
+            serverToday = today;
+        }
+        if (result != RESULT_NONE) {
+            lastResult = result;
+            lastResultReward = baseReward;
+            lastResultTierDays = tierDays;
+            lastResultTimeMs = System.currentTimeMillis();
+        }
+    }
+
+    /** 清除结果提示（GUI 消费后调用，避免重复展示） */
+    public static synchronized void clearResult() {
+        lastResult = RESULT_NONE;
+        lastResultReward = 0;
+        lastResultTierDays = 0;
+    }
+
+    // ==================== 读取（GUI 调用） ====================
+
+    public static int getTotalDays() {
+        return totalDays;
+    }
+
+    public static int getConsecutiveDays() {
+        return consecutiveDays;
+    }
+
+    public static String getLastSignInDate() {
+        return lastSignInDate;
+    }
+
+    /**
+     * 「今天」日期（yyyy-MM-dd）
+     * <p>
+     * 优先服务端日期；未同步时回退客户端本地日期。
+     */
+    public static String getToday() {
+        return serverToday.isEmpty() ? clientLocalToday() : serverToday;
+    }
+
+    /** 当前年月（yyyy-MM，基于「今天」口径） */
+    public static String getYearMonth() {
+        return getYearMonth(getToday());
+    }
+
+    /** 今日是否已签到 */
+    public static boolean hasSignedToday() {
+        return getToday().equals(lastSignInDate);
+    }
+
+    /** 指定日期是否已签到（当月日期格渲染用） */
+    public static boolean hasSigned(String date) {
+        return monthlyDates.contains(date);
+    }
+
+    /** 指定阶梯天数当月是否已领取 */
+    public static boolean hasClaimedTier(int days) {
+        return claimedTierDays.contains(days);
+    }
+
+    public static int getLastResult() {
+        return lastResult;
+    }
+
+    public static int getLastResultReward() {
+        return lastResultReward;
+    }
+
+    public static int getLastResultTierDays() {
+        return lastResultTierDays;
+    }
+
+    public static long getLastResultTimeMs() {
+        return lastResultTimeMs;
+    }
+
+    // ==================== 内部辅助 ====================
+
+    /** 从 yyyy-MM-dd 截取 yyyy-MM（容错：长度不足时原样返回） */
+    private static String getYearMonth(String date) {
+        if (date == null || date.length() < 7) return date == null ? "" : date;
+        return date.substring(0, 7);
+    }
+
+    /** 客户端本地今天（未收到服务端同步前的回退值） */
+    private static String clientLocalToday() {
+        Calendar cal = Calendar.getInstance();
+        return String.format(
+            "%04d-%02d-%02d",
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH) + 1,
+            cal.get(Calendar.DAY_OF_MONTH));
+    }
+}

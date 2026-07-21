@@ -45,6 +45,7 @@ import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDisplayType;
 import com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.NekoMainTabButton;
 import com.miaokatze.gtit.client.gui.NekoMeTransferParticleWidget;
 import com.miaokatze.gtit.client.gui.NekoMusicTrack;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
@@ -59,6 +60,7 @@ import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.signin.SignInCalendarGui;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
@@ -132,6 +134,19 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 交易列表最小高度 */
     private static final int TRADE_LIST_MIN_HEIGHT = 50;
 
+    // ==================== v1.7.0 主标签常量 ====================
+
+    /** 主标签-贸易（默认） */
+    public static final int MAIN_TAB_TRADE = 0;
+    /** 主标签-签到 */
+    public static final int MAIN_TAB_SIGNIN = 1;
+    /** 主标签-抽奖 */
+    public static final int MAIN_TAB_LOTTERY = 2;
+    /** 主标签-邮件 */
+    public static final int MAIN_TAB_MAIL = 3;
+    /** 主标签总数 */
+    public static final int MAIN_TAB_COUNT = 4;
+
     // ==================== 同步值字段 ====================
 
     /** 当前标签页索引（C2S：客户端切换标签时发送到服务端） */
@@ -173,6 +188,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private BooleanSyncValue ejectItemsSync;
     /** 填充玩家背包开关（C2S，Shift+左键出货槽触发） */
     private BooleanSyncValue fillPlayerInventorySync;
+    /** v1.7.0 主标签索引（C2S：客户端切换主标签时发送到服务端） */
+    private IntSyncValue mainTabSync;
     /** 是否显示猫猫币余额行 */
     private boolean showCoins = true;
     /** 各货币余额同步值映射 */
@@ -196,6 +213,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private int sortMode = 0;
     /** 显示模式：0=TILE, 1=LIST */
     private int displayType = 0;
+    /** v1.7.0 当前主标签索引（默认 0=贸易） */
+    private int mainTabId = MAIN_TAB_TRADE;
 
     // ==================== 客户端状态（S2C 同步填充） ====================
 
@@ -264,6 +283,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private PanelSyncManager syncManagerRef;
     /** 分页控制器（客户端，管理标签页切换） */
     private PagedWidget.Controller tabController;
+    /** v1.7.0 主标签分页控制器（客户端，管理贸易/签到/抽奖/邮件切换） */
+    private PagedWidget.Controller mainTabController;
     /** 搜索栏组件（客户端） */
     private NekoSearchBar searchBar;
     /** 音量/BGM 按钮（客户端，作为音量面板的 parent；v1.6.24 提升为类字段以供 build() 在 client 块外注册 syncedPanel） */
@@ -356,6 +377,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         if (syncManager.isClient()) {
             initPreAllocatedWidgets();
             tabController = new PagedWidget.Controller();
+            // v1.7.0 主标签控制器（贸易/签到/抽奖/邮件）
+            mainTabController = new PagedWidget.Controller();
         }
 
         // 创建 NekoTradeMainPanel 作为主面板（实现 PanelCallback 回调）
@@ -378,7 +401,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             meModeConfirmPanel = IPanelHandler.simple(panel, (parent, player) -> meModeConfirmDialog, true);
         }
 
-        // 左侧标签列
+        // v1.7.0 主标签列（贸易/签到/抽奖/邮件），位于贸易分类列的更左边
+        if (syncManager.isClient()) {
+            panel.child(createMainTabColumn());
+        }
+
+        // 左侧贸易分类标签列（仅主标签为贸易时显示）
         if (syncManager.isClient()) {
             panel.child(createTabColumn());
             panel.child(createQolButtonColumn());
@@ -391,10 +419,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         volumePanel = syncManager
             .syncedPanel("nekoV2Volume", true, (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, volumeButton));
 
-        // 主内容列
-        panel.child(createMainColumn(syncManager));
+        // v1.7.0 主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
+        panel.child(createMainContentPagedWidget(syncManager));
 
-        // 右侧 IO 列
+        // 右侧 IO 列（仅主标签为贸易时显示）
         panel.child(createIOColumn());
 
         return panel;
@@ -428,6 +456,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         currentTabSync = new IntSyncValue(() -> currentTabId, val -> { currentTabId = val; });
         currentTabSync.allowC2S();
         syncManager.syncValue("nekoV2CurrentTab", currentTabSync);
+
+        // --- v1.7.0 主标签索引（C2S）---
+        mainTabSync = new IntSyncValue(() -> mainTabId, val -> { mainTabId = val; });
+        mainTabSync.allowC2S();
+        syncManager.syncValue("nekoV2MainTab", mainTabSync);
 
         // --- 搜索文本（C2S）---
         searchTextSync = new StringSyncValue(() -> searchText, val -> { searchText = val == null ? "" : val; });
@@ -872,6 +905,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     @Override
     public void onRestoreSettings() {
+        // 恢复上次的主标签位置（v1.7.0）
+        if (mainTabController != null) {
+            int page = Math.min(NekoMainTabButton.lastMainTab, MAIN_TAB_COUNT - 1);
+            if (page < 0) page = MAIN_TAB_TRADE;
+            mainTabController.setPage(page);
+            mainTabId = page;
+        }
         // 恢复上次的标签页位置
         if (tabController != null) {
             int maxPage = tradeCategories.size();
@@ -1030,10 +1070,57 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     // ==================== UI 组件创建 ====================
 
     /**
+     * v1.7.0 创建主标签列（贸易/签到/抽奖/邮件）
+     * <p>
+     * 位于贸易分类标签列的更左边（left(-57)，贸易分类列在 left(-29)），
+     * 使用 {@link NekoMainTabButton} + {@link #mainTabController} 切换主内容面板。
+     * <p>
+     * 切换主标签时同时通过 {@link #mainTabSync} 同步到服务端，
+     * 便于服务端感知当前玩家查看的主标签（后续用于编辑模式权限控制）。
+     *
+     * @return 主标签列 Widget
+     */
+    private IWidget createMainTabColumn() {
+        Flow mainTabColumn = Flow.column()
+            .coverChildren()
+            .left(-57)
+            .top(40)
+            .childPadding(2);
+
+        // 主标签定义：index → (图标, 名称)
+        Object[][] mainTabs = new Object[][] { { MAIN_TAB_TRADE, NekoGuiTextures.MAIN_TAB_TRADE, "贸易" },
+            { MAIN_TAB_SIGNIN, NekoGuiTextures.MAIN_TAB_SIGNIN, "签到" },
+            { MAIN_TAB_LOTTERY, NekoGuiTextures.MAIN_TAB_LOTTERY, "抽奖" },
+            { MAIN_TAB_MAIL, NekoGuiTextures.MAIN_TAB_MAIL, "邮件" }, };
+
+        for (Object[] tabDef : mainTabs) {
+            final int index = (Integer) tabDef[0];
+            final com.cleanroommc.modularui.drawable.UITexture icon = (com.cleanroommc.modularui.drawable.UITexture) tabDef[1];
+            final String name = (String) tabDef[2];
+
+            NekoMainTabButton tabButton = new NekoMainTabButton(index, mainTabController, icon);
+            tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+            tabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
+            // 点击时同步主标签索引到服务端（使用 onSelected 钩子，避免与 PageButton.onMousePressed 冲突）
+            tabButton.onSelected(() -> {
+                if (mainTabSync != null) {
+                    mainTabSync.setValue(index);
+                }
+            });
+
+            mainTabColumn.child(tabButton);
+        }
+
+        return mainTabColumn.excludeAreaInRecipeViewer();
+    }
+
+    /**
      * 创建左侧标签列
      * <p>
      * 为每个交易分类创建一个 {@link NekoPageButtonV2} 按钮，
      * 使用物品图标作为标签页标识。
+     * <p>
+     * v1.7.0：仅在主标签为贸易时显示（{@link #mainTabId} == {@link #MAIN_TAB_TRADE}）。
      *
      * @return 标签列 Widget
      */
@@ -1056,6 +1143,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
             tabColumn.child(tabButton);
         }
+
+        // v1.7.0：仅主标签为贸易时显示
+        tabColumn.setEnabledIf(w -> mainTabId == MAIN_TAB_TRADE);
 
         // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
         return tabColumn.excludeAreaInRecipeViewer();
@@ -1170,19 +1260,55 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // 2x2 网格：左上音量、右上显示模式、左下显示硬币、右下排序
         // 在 NEI/HEI 中排除 QoL 按钮列区域，避免配方查看器遮挡快捷按钮
-        return new Grid().left(-33)
+        Grid qolGrid = new Grid().left(-33)
             .top(1)
             .minElementMargin(1, 1)
             .coverChildren()
             .grid(
                 Arrays.asList(
                     Arrays.asList(volumeButton, displayModeButton),
-                    Arrays.asList(showCoinsButton, sortModeButton)))
-            .excludeAreaInRecipeViewer();
+                    Arrays.asList(showCoinsButton, sortModeButton)));
+        // v1.7.0：仅主标签为贸易时显示（BGM 按钮在所有标签都可用，但保持简单——先只在贸易标签显示）
+        qolGrid.setEnabledIf(w -> mainTabId == MAIN_TAB_TRADE);
+        return qolGrid.excludeAreaInRecipeViewer();
     }
 
     /**
-     * 创建主内容列
+     * v1.7.0 创建主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
+     * <p>
+     * 通过 {@link #mainTabController} 控制页面切换：
+     * <ul>
+     * <li>页 0（贸易）：现有的贸易主列（标题、搜索、交易列表、钱包、结果、背包）</li>
+     * <li>页 1（签到）：签到日历 GUI（v1.7.0 目标 D 实现，先占位）</li>
+     * <li>页 2（抽奖）：抽奖轮盘 GUI（v1.7.0 目标 2 实现，先占位）</li>
+     * <li>页 3（邮件）：邮件 GUI（v1.7.0 目标 3 实现，先占位）</li>
+     * </ul>
+     *
+     * @param syncManager 面板同步管理器
+     * @return 主内容区 PagedWidget
+     */
+    private IWidget createMainContentPagedWidget(PanelSyncManager syncManager) {
+        PagedWidget<?> mainPaged = new PagedWidget<>().name("nekoV2MainPaged")
+            .size(PANEL_WIDTH - 8, PANEL_HEIGHT - 8)
+            .controller(mainTabController);
+
+        // 页 0：贸易（现有 createMainColumn 的内容）
+        mainPaged.addPage(createTradeMainColumn(syncManager));
+
+        // 页 1：签到（任务 D 实现）
+        mainPaged.addPage(SignInCalendarGui.createSignInPage());
+
+        // 页 2：抽奖（占位，v1.7.0 目标 2 实现）
+        mainPaged.addPage(createLotteryPagePlaceholder());
+
+        // 页 3：邮件（占位，v1.7.0 目标 3 实现）
+        mainPaged.addPage(createMailPagePlaceholder());
+
+        return mainPaged;
+    }
+
+    /**
+     * 创建贸易主内容列（v1.7.0 前为 createMainColumn）
      * <p>
      * 布局从上到下：标题、搜索栏、交易列表（PagedWidget）、猫猫币显示、交易结果、玩家背包。
      * <p>
@@ -1192,7 +1318,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param syncManager 面板同步管理器
      * @return 主列 Widget
      */
-    private IWidget createMainColumn(PanelSyncManager syncManager) {
+    private IWidget createTradeMainColumn(PanelSyncManager syncManager) {
         Flow mainColumn = Flow.column()
             .width(PANEL_WIDTH - 8);
 
@@ -1506,6 +1632,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .right(-48)
             .top(40)
             .background(NekoGuiTextures.SIDE_PANEL_BACKGROUND);
+
+        // v1.7.0：仅主标签为贸易时显示 IO 列
+        ioColumn.setEnabledIf(w -> mainTabId == MAIN_TAB_TRADE);
 
         // --- 顶部：INPUT_SPRITE 图标 + "IN" 文字 ---
         ioColumn.child(
@@ -2664,5 +2793,41 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             return pageName;
         }
         return category.getKey();
+    }
+
+    // ==================== v1.7.0 占位页面（抽奖/邮件，由后续目标实现） ====================
+
+    /**
+     * 抽奖页占位（v1.7.0 目标 2 实现）
+     */
+    private IWidget createLotteryPagePlaceholder() {
+        return Flow.column()
+            .padding(8)
+            .child(
+                IKey.str(EnumChatFormatting.LIGHT_PURPLE + "猫猫扭蛋")
+                    .asWidget()
+                    .height(14))
+            .child(
+                IKey.str(EnumChatFormatting.GRAY + "抽奖系统即将上线，敬请期待...")
+                    .asWidget()
+                    .height(12)
+                    .marginTop(4));
+    }
+
+    /**
+     * 邮件页占位（v1.7.0 目标 3 实现）
+     */
+    private IWidget createMailPagePlaceholder() {
+        return Flow.column()
+            .padding(8)
+            .child(
+                IKey.str(EnumChatFormatting.AQUA + "猫猫邮件")
+                    .asWidget()
+                    .height(14))
+            .child(
+                IKey.str(EnumChatFormatting.GRAY + "邮件系统即将上线，敬请期待...")
+                    .asWidget()
+                    .height(12)
+                    .marginTop(4));
     }
 }

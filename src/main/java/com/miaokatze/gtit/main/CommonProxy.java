@@ -82,6 +82,14 @@ public class CommonProxy {
         // 初始化新手宝箱配置
         GiftConfig.init();
 
+        // v1.7.0：初始化签到奖励配置（config/gtit/daily_signin.json，缺失时生成默认）
+        try {
+            com.miaokatze.gtit.signin.DailySignInConfig.init();
+            GTInterestingThing.LOG.info("[0/3] 签到奖励配置已初始化");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 签到奖励配置初始化失败", t);
+        }
+
         // 初始化机器工作音效静音配置
         MuteConfig.init();
 

@@ -236,5 +236,121 @@ public final class NekoGuiTextures {
         .nonOpaque()
         .build();
 
+    // ==================== v1.7.0 主标签图标（32x32，完整图像） ====================
+
+    /** 主标签-贸易图标 */
+    public static final UITexture MAIN_TAB_TRADE = UITexture.builder()
+        .location("gtit", "gui/main_tabs/tab_trade")
+        .imageSize(32, 32)
+        .fullImage()
+        .name("main_tab_trade")
+        .build();
+
+    /** 主标签-签到图标 */
+    public static final UITexture MAIN_TAB_SIGNIN = UITexture.builder()
+        .location("gtit", "gui/main_tabs/tab_signin")
+        .imageSize(32, 32)
+        .fullImage()
+        .name("main_tab_signin")
+        .build();
+
+    /** 主标签-抽奖图标 */
+    public static final UITexture MAIN_TAB_LOTTERY = UITexture.builder()
+        .location("gtit", "gui/main_tabs/tab_lottery")
+        .imageSize(32, 32)
+        .fullImage()
+        .name("main_tab_lottery")
+        .build();
+
+    /** 主标签-邮件图标 */
+    public static final UITexture MAIN_TAB_MAIL = UITexture.builder()
+        .location("gtit", "gui/main_tabs/tab_mail")
+        .imageSize(32, 32)
+        .fullImage()
+        .name("main_tab_mail")
+        .build();
+
+    /** 主标签-编辑模式图标（扳手） */
+    public static final UITexture MAIN_TAB_EDIT = UITexture.builder()
+        .location("gtit", "gui/main_tabs/tab_edit")
+        .imageSize(32, 32)
+        .fullImage()
+        .name("main_tab_edit")
+        .build();
+
+    // ==================== v1.7.0 签到日历素材 ====================
+
+    /** 签到日期格-普通（20x20） */
+    public static final UITexture SIGNIN_CELL_NORMAL = UITexture.builder()
+        .location("gtit", "gui/signin/cell_normal")
+        .imageSize(20, 20)
+        .fullImage()
+        .name("signin_cell_normal")
+        .build();
+
+    /** 签到日期格-已签到（20x20） */
+    public static final UITexture SIGNIN_CELL_SIGNED = UITexture.builder()
+        .location("gtit", "gui/signin/cell_signed")
+        .imageSize(20, 20)
+        .fullImage()
+        .name("signin_cell_signed")
+        .build();
+
+    /** 签到日期格-今天可签到（20x20，亮绿边） */
+    public static final UITexture SIGNIN_CELL_TODAY = UITexture.builder()
+        .location("gtit", "gui/signin/cell_today")
+        .imageSize(20, 20)
+        .fullImage()
+        .name("signin_cell_today")
+        .build();
+
+    /** 签到日期格-有奖励可领（20x20，橙边） */
+    public static final UITexture SIGNIN_CELL_REWARD = UITexture.builder()
+        .location("gtit", "gui/signin/cell_reward")
+        .imageSize(20, 20)
+        .fullImage()
+        .name("signin_cell_reward")
+        .build();
+
+    /** 签到猫爪印章（16x16，独立件） */
+    public static final UITexture SIGNIN_PAW_STAMP = UITexture.builder()
+        .location("gtit", "gui/signin/paw_stamp")
+        .imageSize(16, 16)
+        .fullImage()
+        .name("signin_paw_stamp")
+        .build();
+
+    /** 7天连续签到小宝箱（24x24） */
+    public static final UITexture SIGNIN_CHEST_7 = UITexture.builder()
+        .location("gtit", "gui/signin/chest_7")
+        .imageSize(24, 24)
+        .fullImage()
+        .name("signin_chest_7")
+        .build();
+
+    /** 14天连续签到中宝箱（24x24） */
+    public static final UITexture SIGNIN_CHEST_14 = UITexture.builder()
+        .location("gtit", "gui/signin/chest_14")
+        .imageSize(24, 24)
+        .fullImage()
+        .name("signin_chest_14")
+        .build();
+
+    /** 30天连续签到大宝箱（24x24） */
+    public static final UITexture SIGNIN_CHEST_30 = UITexture.builder()
+        .location("gtit", "gui/signin/chest_30")
+        .imageSize(24, 24)
+        .fullImage()
+        .name("signin_chest_30")
+        .build();
+
+    /** 签到领取按钮胚（48x24，绿色，无文字） */
+    public static final UITexture SIGNIN_BTN_CLAIM = UITexture.builder()
+        .location("gtit", "gui/signin/btn_claim")
+        .imageSize(48, 24)
+        .fullImage()
+        .name("signin_btn_claim")
+        .build();
+
     private NekoGuiTextures() {}
 }

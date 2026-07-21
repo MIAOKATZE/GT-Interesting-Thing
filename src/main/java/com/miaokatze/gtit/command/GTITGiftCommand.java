@@ -23,6 +23,11 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.signin.DailySignInConfig;
+import com.miaokatze.gtit.signin.DailySignInData;
+import com.miaokatze.gtit.signin.DailySignInManager;
+import com.miaokatze.gtit.signin.SignInClientData;
+import com.miaokatze.gtit.signin.SignInNetworkManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
@@ -58,7 +63,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset";
+        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset | /gtit signin [info|reload|admin|help]";
     }
 
     @Override
@@ -89,6 +94,7 @@ public class GTITGiftCommand extends CommandBase {
                 }
                 handleNekoVM(sender, player, args);
             }
+            case "signin" -> handleSignIn(sender, args);
             default -> sendHelp(sender);
         }
     }
@@ -98,7 +104,7 @@ public class GTITGiftCommand extends CommandBase {
     @Override
     public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
         if (args.length == 1) {
-            return getListOfStringsMatchingLastWord(args, "gift", "nekovm");
+            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin");
         }
 
         if (args.length == 2) {
@@ -119,6 +125,34 @@ public class GTITGiftCommand extends CommandBase {
                     "pagehelp",
                     "help");
             }
+            if ("signin".equals(args[0])) {
+                return getListOfStringsMatchingLastWord(args, "info", "reload", "admin", "help");
+            }
+        }
+
+        if (args.length == 3 && "signin".equals(args[0])) {
+            if ("admin".equals(args[1])) {
+                return getListOfStringsMatchingLastWord(args, "set", "reset");
+            }
+            if ("info".equals(args[1])) {
+                // 补全在线玩家名
+                List<String> names = new ArrayList<>();
+                for (EntityPlayerMP player : MinecraftServer.getServer()
+                    .getConfigurationManager().playerEntityList) {
+                    names.add(player.getCommandSenderName());
+                }
+                return getListOfStringsMatchingLastWord(args, names.toArray(new String[0]));
+            }
+        }
+
+        if (args.length == 4 && "signin".equals(args[0]) && "admin".equals(args[1])) {
+            // /gtit signin admin set|reset <玩家名>
+            List<String> names = new ArrayList<>();
+            for (EntityPlayerMP player : MinecraftServer.getServer()
+                .getConfigurationManager().playerEntityList) {
+                names.add(player.getCommandSenderName());
+            }
+            return getListOfStringsMatchingLastWord(args, names.toArray(new String[0]));
         }
 
         if (args.length == 3 && "gift".equals(args[0])) {
@@ -1321,6 +1355,8 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载猫猫币交易配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存当前交易数据到配置文件"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin - 每日签到"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
     }
 
     private void sendNekoVMHelp(ICommandSender sender) {
@@ -1337,6 +1373,200 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
+    }
+
+    // ==================== v1.7.0 签到子命令 ====================
+
+    /**
+     * /gtit signin —— 签到相关指令入口
+     * <p>
+     * 子命令：
+     * <ul>
+     * <li>/gtit signin —— 玩家自己签到（与 GUI 按钮等效）</li>
+     * <li>/gtit signin info [玩家名] —— 查看签到状态（默认自己）</li>
+     * <li>/gtit signin reload —— 热重载签到奖励配置</li>
+     * <li>/gtit signin admin set &lt;玩家名&gt; &lt;天数&gt; —— 设置连续签到天数</li>
+     * <li>/gtit signin admin reset &lt;玩家名&gt; —— 重置玩家签到数据</li>
+     * </ul>
+     */
+    private void handleSignIn(ICommandSender sender, String[] args) {
+        // /gtit signin —— 玩家自己签到
+        if (args.length == 1) {
+            if (!(sender instanceof EntityPlayerMP player)) {
+                sender.addChatMessage(
+                    new ChatComponentText(EnumChatFormatting.RED + "控制台请使用 /gtit signin info|admin 子命令"));
+                return;
+            }
+            doSignIn(player);
+            return;
+        }
+
+        switch (args[1]) {
+            case "info" -> handleSignInInfo(sender, args);
+            case "reload" -> {
+                DailySignInConfig.reload();
+                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "签到奖励配置已热重载"));
+            }
+            case "admin" -> handleSignInAdmin(sender, args);
+            case "help" -> sendSignInHelp(sender);
+            default -> sendSignInHelp(sender);
+        }
+    }
+
+    /**
+     * 执行签到并向玩家反馈结果（指令路径，与网络包路径逻辑一致）
+     */
+    private void doSignIn(EntityPlayerMP player) {
+        DailySignInManager manager = DailySignInManager.INSTANCE;
+        DailySignInManager.SignInResult result = manager.signIn(player.getUniqueID());
+
+        int resultCode;
+        switch (result.getStatus()) {
+            case SUCCESS -> {
+                resultCode = SignInClientData.RESULT_SUCCESS;
+                StringBuilder sb = new StringBuilder();
+                sb.append(EnumChatFormatting.GREEN)
+                    .append("签到成功！")
+                    .append(EnumChatFormatting.YELLOW)
+                    .append(" +")
+                    .append(result.getBaseReward())
+                    .append(" 猫猫币")
+                    .append(EnumChatFormatting.GRAY)
+                    .append("（连续 ")
+                    .append(result.getConsecutiveDays())
+                    .append(" 天）");
+                if (result.getTierReward() != null) {
+                    sb.append(EnumChatFormatting.GOLD)
+                        .append(" [达成")
+                        .append(
+                            result.getTierReward()
+                                .getRequiredDays())
+                        .append("天阶梯奖励]");
+                }
+                player.addChatMessage(new ChatComponentText(sb.toString()));
+            }
+            case ALREADY_SIGNED -> {
+                resultCode = SignInClientData.RESULT_ALREADY_SIGNED;
+                player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "今天已经签过到了"));
+            }
+            default -> {
+                resultCode = SignInClientData.RESULT_ERROR;
+                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "签到失败，请稍后再试"));
+            }
+        }
+
+        // 推送最新数据，使该玩家打开的签到日历同步刷新
+        DailySignInData data = manager.getSignInData(player.getUniqueID());
+        int tierDays = result.getTierReward() != null ? result.getTierReward()
+            .getRequiredDays() : 0;
+        SignInNetworkManager.sendSyncToClient(player, data, resultCode, result.getBaseReward(), tierDays);
+    }
+
+    /**
+     * /gtit signin info [玩家名] —— 查看签到状态
+     */
+    private void handleSignInInfo(ICommandSender sender, String[] args) {
+        EntityPlayerMP target;
+        if (args.length >= 3) {
+            target = MinecraftServer.getServer()
+                .getConfigurationManager()
+                .func_152612_a(args[2]);
+            if (target == null) {
+                sender
+                    .addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "玩家不在线: " + args[2] + "（仅支持在线玩家）"));
+                return;
+            }
+        } else if (sender instanceof EntityPlayerMP) {
+            target = (EntityPlayerMP) sender;
+        } else {
+            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "控制台请指定玩家: /gtit signin info <玩家名>"));
+            return;
+        }
+
+        DailySignInData data = DailySignInManager.INSTANCE.getSignInData(target.getUniqueID());
+        String name = target.getCommandSenderName();
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "===== " + name + " 的签到状态 ====="));
+        sender.addChatMessage(
+            new ChatComponentText(
+                "累计签到: " + EnumChatFormatting.GOLD + data.getTotalSignInDays() + EnumChatFormatting.RESET + " 天"));
+        sender.addChatMessage(
+            new ChatComponentText(
+                "连续签到: " + EnumChatFormatting.GOLD + data.getConsecutiveDays() + EnumChatFormatting.RESET + " 天"));
+        sender.addChatMessage(
+            new ChatComponentText(
+                "当月已签: " + EnumChatFormatting.GOLD
+                    + data.getMonthlySignInDates()
+                        .size()
+                    + EnumChatFormatting.RESET
+                    + " 天"));
+        String last = data.getLastSignInDate();
+        sender.addChatMessage(new ChatComponentText("上次签到: " + (last == null || last.isEmpty() ? "从未" : last)));
+        sender.addChatMessage(
+            new ChatComponentText(
+                "今日状态: " + (data.hasSignedToday(DailySignInManager.getToday()) ? EnumChatFormatting.GREEN + "已签到"
+                    : EnumChatFormatting.GRAY + "未签到")));
+    }
+
+    /**
+     * /gtit signin admin set|reset —— 管理员操作
+     */
+    private void handleSignInAdmin(ICommandSender sender, String[] args) {
+        if (args.length < 4) {
+            sender.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.RED + "用法: /gtit signin admin set <玩家名> <天数> 或 /gtit signin admin reset <玩家名>"));
+            return;
+        }
+
+        EntityPlayerMP target = MinecraftServer.getServer()
+            .getConfigurationManager()
+            .func_152612_a(args[3]);
+        if (target == null) {
+            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "玩家不在线: " + args[3] + "（仅支持在线玩家）"));
+            return;
+        }
+        UUID targetId = target.getUniqueID();
+
+        switch (args[2]) {
+            case "set" -> {
+                if (args.length < 5) {
+                    sender.addChatMessage(
+                        new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit signin admin set <玩家名> <天数>"));
+                    return;
+                }
+                int days;
+                try {
+                    days = Integer.parseInt(args[4]);
+                } catch (NumberFormatException e) {
+                    sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "天数必须是整数: " + args[4]));
+                    return;
+                }
+                DailySignInManager.INSTANCE.adminSetConsecutiveDays(targetId, days);
+                sender.addChatMessage(
+                    new ChatComponentText(
+                        EnumChatFormatting.GREEN + "已将 "
+                            + target.getCommandSenderName()
+                            + " 的连续签到天数设为 "
+                            + Math.max(0, days)));
+            }
+            case "reset" -> {
+                DailySignInManager.INSTANCE.adminResetData(targetId);
+                sender.addChatMessage(
+                    new ChatComponentText(
+                        EnumChatFormatting.GREEN + "已重置 " + target.getCommandSenderName() + " 的签到数据"));
+            }
+            default -> sender.addChatMessage(
+                new ChatComponentText(EnumChatFormatting.RED + "未知管理操作: " + args[2] + "，使用 set 或 reset"));
+        }
+    }
+
+    private void sendSignInHelp(ICommandSender sender) {
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "签到命令:"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin - 玩家自己签到"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin info [玩家名] - 查看签到状态"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin reload - 热重载签到奖励配置"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin admin set <玩家名> <天数> - 设置连续签到天数"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin admin reset <玩家名> - 重置玩家签到数据"));
     }
 
     // ==================== Page 子命令 ====================
