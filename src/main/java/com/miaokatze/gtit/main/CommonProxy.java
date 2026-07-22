@@ -139,6 +139,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 邮件事件监听器注册失败", t);
         }
 
+        // v1.7.0 目标 5: 注册交易配置同步监听器（登录时向客户端推送服务端交易/标签页配置）
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new com.miaokatze.gtit.trade.v2.NekoTradeSyncHandler());
+            GTInterestingThing.LOG.info("[0/3] 交易配置同步监听器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 交易配置同步监听器注册失败", t);
+        }
+
         // 定义机器注册任务
         Runnable registerRunnable = () -> {
             GTInterestingThing.LOG.info("[1/3] 开始执行机器注册流程...");
@@ -311,6 +321,13 @@ public class CommonProxy {
             GTInterestingThing.LOG.info("[2/3] 编辑模式网络包与管理器已初始化");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 编辑模式网络包初始化失败", t);
+        }
+        // v1.7.0 目标 5: 交易配置网络包（S→C 交易/标签页配置全量同步）
+        try {
+            com.miaokatze.gtit.trade.v2.NekoTradeNetworkManager.init();
+            GTInterestingThing.LOG.info("[2/3] 交易配置同步网络包已初始化");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 交易配置同步网络包初始化失败", t);
         }
     }
 

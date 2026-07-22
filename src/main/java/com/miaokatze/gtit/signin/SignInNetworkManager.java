@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.signin;
 
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.server.MinecraftServer;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.network.NetworkRegistry;
@@ -71,6 +72,23 @@ public class SignInNetworkManager {
         int tierDays) {
         if (!initialized || channel == null || player == null) return;
         channel.sendTo(new SignInSyncPacket(data, DailySignInManager.getToday(), result, baseReward, tierDays), player);
+    }
+
+    /**
+     * 服务端：向全体在线玩家广播签到数据 + 配置快照（v1.7.0 目标 5）
+     * <p>
+     * 签到数据为玩家个人维度，逐玩家取各自数据分别推送；
+     * 配置快照由 {@link SignInSyncPacket} 构造时自动附带（全服一致的服务端权威值）。
+     * 配置热重载（/gtit signin reload、/gtit nekovm reload）与编辑模式保存后调用。
+     */
+    public static void sendSyncToAll() {
+        if (!initialized || channel == null) return;
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server == null) return;
+        for (EntityPlayerMP player : server.getConfigurationManager().playerEntityList) {
+            DailySignInData data = DailySignInManager.INSTANCE.getSignInData(player.getUniqueID());
+            sendSyncToClient(player, data);
+        }
     }
 
     public static boolean isInitialized() {

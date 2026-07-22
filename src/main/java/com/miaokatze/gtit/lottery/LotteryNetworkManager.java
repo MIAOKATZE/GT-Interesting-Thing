@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.server.MinecraftServer;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.network.NetworkRegistry;
@@ -110,6 +111,22 @@ public class LotteryNetworkManager {
         }
 
         channel.sendTo(new LotterySyncPacket(pools, pityCounters, recentHistory, balances), player);
+    }
+
+    /**
+     * 服务端：向全体在线玩家广播抽奖全量同步（v1.7.0 目标 5）
+     * <p>
+     * 卡池配置全服一致，但保底计数/历史/团队钱包余额为团队维度，
+     * 载荷无法复用，故逐玩家各自构建并推送（{@link #sendSyncToClient}）。
+     * 配置编辑保存与 /gtit nekovm sync all 后调用，保证全服客户端轮盘配置即时刷新。
+     */
+    public static void sendSyncToAll() {
+        if (!initialized || channel == null) return;
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server == null) return;
+        for (EntityPlayerMP player : server.getConfigurationManager().playerEntityList) {
+            sendSyncToClient(player);
+        }
     }
 
     /**

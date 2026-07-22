@@ -207,6 +207,24 @@ public class DailySignInConfig {
     }
 
     /**
+     * 每日基础奖励（猫猫币数量）
+     * <p>
+     * v1.7.0 目标 5 新增：供配置同步包（{@link SignInSyncPacket}）读取服务端权威值。
+     */
+    public static int getBaseRewardNeko() {
+        return baseRewardNeko;
+    }
+
+    /**
+     * 连续天数奖励系数
+     * <p>
+     * v1.7.0 目标 5 新增：供配置同步包（{@link SignInSyncPacket}）读取服务端权威值。
+     */
+    public static double getConsecutiveIncrement() {
+        return consecutiveIncrement;
+    }
+
+    /**
      * 获取达到指定连续天数时触发的阶梯奖励
      *
      * @param consecutiveDays 当前连续天数

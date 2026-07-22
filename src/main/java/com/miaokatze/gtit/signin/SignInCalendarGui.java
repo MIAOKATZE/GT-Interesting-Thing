@@ -36,9 +36,10 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
  * <b>双端安全</b>：所有动态 Supplier 仅在客户端渲染时求值；服务端构建时不渲染、
  * 读取到的 {@link SignInClientData} 为默认值，不影响服务端逻辑。
  * <p>
- * <b>注意</b>：阶梯预览所需的 {@link DailySignInConfig} 为本地配置； dedicated server
- * 环境下客户端配置与服务端可能不一致（配置同步属 v1.7.0 目标 5），签到结果反馈不受影响
- * （由服务端同步包权威下发）。
+ * <b>配置口径（v1.7.0 目标 5）</b>：阶梯奖励与基础奖励预览统一读取
+ * {@link SignInClientData}（其内部优先使用服务端同步的配置快照，未同步时回退本地
+ * {@link DailySignInConfig}），专用服务器环境下客户端展示与服务端权威配置保持一致；
+ * 签到结果反馈不受影响（由服务端同步包权威下发）。
  */
 public class SignInCalendarGui {
 
@@ -281,7 +282,8 @@ public class SignInCalendarGui {
     private static IWidget createProgressLabel() {
         return new TextWidget<>(IKey.dynamic(() -> {
             int consecutive = SignInClientData.getConsecutiveDays();
-            SignInRewardTier next = DailySignInConfig.getNextTier(consecutive);
+            // 目标 5：读客户端缓存（服务端同步快照优先），不再直接读本地配置
+            SignInRewardTier next = SignInClientData.getNextTier(consecutive);
             if (next == null) {
                 return EnumChatFormatting.GOLD + "连续签到 " + consecutive + " 天 · 已达成全部阶梯奖励";
             }
@@ -308,7 +310,8 @@ public class SignInCalendarGui {
     private static IWidget createProgressBar() {
         return new IDrawable.DrawableWidget((context, x, y, w, h, theme) -> {
             int consecutive = SignInClientData.getConsecutiveDays();
-            SignInRewardTier next = DailySignInConfig.getNextTier(consecutive);
+            // 目标 5：读客户端缓存（服务端同步快照优先）
+            SignInRewardTier next = SignInClientData.getNextTier(consecutive);
             float progress = next == null ? 1f : Math.min(1f, consecutive / (float) next.getRequiredDays());
             GuiDraw.drawRect(x, y, w, h, COLOR_PROGRESS_BG);
             int fillW = Math.round((w - 2) * progress);
@@ -331,7 +334,8 @@ public class SignInCalendarGui {
     private static IWidget createTierPreview(SignInEditCallback editCallback) {
         ParentWidget<?> box = new ParentWidget<>().pos(0, TIER_Y)
             .size(PAGE_WIDTH, 50);
-        List<SignInRewardTier> tiers = DailySignInConfig.getRewardTiers();
+        // 目标 5：读客户端缓存（服务端同步快照优先，未同步回退本地配置）
+        List<SignInRewardTier> tiers = SignInClientData.getRewardTiers();
         int count = Math.min(TIER_MAX, tiers.size());
         int startX = (PAGE_WIDTH - TIER_COL_W * count) / 2;
         for (int i = 0; i < count; i++) {
@@ -457,10 +461,11 @@ public class SignInCalendarGui {
                     t.addLine(IKey.str(EnumChatFormatting.GRAY + "今日已完成签到，明天再来吧"));
                 } else {
                     int nextConsec = SignInClientData.getConsecutiveDays() + 1;
-                    int reward = DailySignInConfig.calculateBaseReward(nextConsec);
+                    // 目标 5：奖励预览读客户端缓存（服务端同步快照优先）
+                    int reward = SignInClientData.calculateBaseReward(nextConsec);
                     t.addLine(IKey.str(EnumChatFormatting.GREEN + "点击签到，领取今日奖励"));
                     t.addLine(IKey.str(EnumChatFormatting.GRAY + "基础奖励：" + reward + " 猫猫币（连续第 " + nextConsec + " 天）"));
-                    SignInRewardTier tier = DailySignInConfig.getTriggeredTier(nextConsec);
+                    SignInRewardTier tier = SignInClientData.getTriggeredTier(nextConsec);
                     if (tier != null && !SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
                         t.addLine(
                             IKey.str(EnumChatFormatting.GOLD + "今天签到可额外领取 " + tier.getRequiredDays() + " 天阶梯宝箱！"));
@@ -543,7 +548,8 @@ public class SignInCalendarGui {
         String today = SignInClientData.getToday();
         if (date.equals(today)) {
             int nextConsec = SignInClientData.getConsecutiveDays() + 1;
-            SignInRewardTier tier = DailySignInConfig.getTriggeredTier(nextConsec);
+            // 目标 5：读客户端缓存（服务端同步快照优先）
+            SignInRewardTier tier = SignInClientData.getTriggeredTier(nextConsec);
             if (tier != null && !SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
                 return NekoGuiTextures.SIGNIN_CELL_REWARD;
             }

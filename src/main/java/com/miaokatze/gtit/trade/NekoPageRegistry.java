@@ -205,6 +205,27 @@ public class NekoPageRegistry {
     }
 
     /**
+     * 应用服务端同步的标签页配置（v1.7.0 目标 5，客户端专用）
+     * <p>
+     * 用同步包携带的标签页数据整体替换内存注册表：<b>只改内存，不写盘</b>
+     * （配置修改默认只在服务端进行，客户端永不在同步路径写配置文件）。
+     * 单人存档下不会被调用（同步包处理器已跳过）——集成服务端与客户端共享
+     * 本静态注册表，服务端侧的重载已直接刷新同一份数据。
+     *
+     * @param data 服务端同步的标签页配置（{@link NekoPageConfig#fromJson} 产物）
+     */
+    public static void applySyncedPages(NekoPageConfig.NekoPageData data) {
+        if (data == null || data.getPages() == null) return;
+        PAGES.clear();
+        for (NekoPageEntry entry : data.getPages()) {
+            if (entry != null) {
+                PAGES.put(entry.getId(), entry);
+            }
+        }
+        GTInterestingThing.LOG.info("[NekoSync] 客户端已应用同步标签页配置，共 {} 个标签页", PAGES.size());
+    }
+
+    /**
      * 热重载标签页配置
      */
     public static boolean reload() {

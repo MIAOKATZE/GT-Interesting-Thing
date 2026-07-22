@@ -106,6 +106,38 @@ public class NekoPageConfig {
     }
 
     /**
+     * 将标签页数据序列化为 JSON 字符串（v1.7.0 目标 5：配置同步包载荷用）
+     *
+     * @param data 标签页数据
+     * @return JSON 字符串；data 为 null 时返回空对象串
+     */
+    public static synchronized String toJson(NekoPageData data) {
+        return GSON.toJson(data == null ? new NekoPageData() : data);
+    }
+
+    /**
+     * 从 JSON 字符串反序列化标签页数据（v1.7.0 目标 5：客户端接收同步包后解析用）
+     *
+     * @param json JSON 字符串
+     * @return 标签页数据；解析失败或为空时回退默认数据（不写盘）
+     */
+    public static synchronized NekoPageData fromJson(String json) {
+        if (json != null && !json.isEmpty()) {
+            try {
+                NekoPageData data = GSON.fromJson(json, NekoPageData.class);
+                if (data != null && data.getPages() != null
+                    && !data.getPages()
+                        .isEmpty()) {
+                    return data;
+                }
+            } catch (Exception e) {
+                GTInterestingThing.LOG.error("反序列化同步标签页配置失败，回退默认数据", e);
+            }
+        }
+        return getDefaultPages();
+    }
+
+    /**
      * 生成默认标签页数据
      */
     public static NekoPageData getDefaultPages() {

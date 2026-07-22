@@ -108,6 +108,36 @@ public class NekoTradeConfig {
     }
 
     /**
+     * 将交易数据序列化为 JSON 字符串（v1.7.0 目标 5：配置同步包载荷用）
+     *
+     * @param data 交易数据
+     * @return JSON 字符串；data 为 null 时返回空对象串
+     */
+    public static synchronized String toJson(NekoTradeData data) {
+        return GSON.toJson(data == null ? new NekoTradeData() : data);
+    }
+
+    /**
+     * 从 JSON 字符串反序列化交易数据（v1.7.0 目标 5：客户端接收同步包后解析用）
+     *
+     * @param json JSON 字符串
+     * @return 交易数据；解析失败或为空时回退默认数据（不写盘）
+     */
+    public static synchronized NekoTradeData fromJson(String json) {
+        if (json != null && !json.isEmpty()) {
+            try {
+                NekoTradeData data = GSON.fromJson(json, NekoTradeData.class);
+                if (data != null && data.getTrades() != null) {
+                    return data;
+                }
+            } catch (Exception e) {
+                GTInterestingThing.LOG.error("反序列化同步交易配置失败，回退默认数据", e);
+            }
+        }
+        return getDefaultTrades();
+    }
+
+    /**
      * 生成默认交易数据
      */
     public static NekoTradeData getDefaultTrades() {

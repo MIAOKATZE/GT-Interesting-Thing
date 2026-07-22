@@ -64,7 +64,17 @@ public class NekoTradeRegistryV2 {
     private static void loadAndRegisterTrades() {
         // 清空数据库，防止 initialize/initializeClient 被多次调用时重复注册交易组
         NekoTradeDatabase.INSTANCE.clear();
-        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+        registerTradesFromData(NekoTradeConfig.load());
+    }
+
+    /**
+     * 将配置数据中的全部交易注册到数据库
+     * <p>
+     * 磁盘加载（initialize/reload）与同步包应用（applySyncedTrades）两条路径共用的注册逻辑。
+     *
+     * @param data 交易配置数据（null 或 trades 为 null 时仅告警）
+     */
+    private static void registerTradesFromData(NekoTradeConfig.NekoTradeData data) {
         if (data == null || data.getTrades() == null) {
             GTInterestingThing.LOG.warn("V2 交易配置为空");
             return;
@@ -80,6 +90,32 @@ public class NekoTradeRegistryV2 {
             successCount,
             data.getTrades()
                 .size());
+    }
+
+    /**
+     * 应用服务端同步的交易配置（v1.7.0 目标 5，客户端专用）
+     * <p>
+     * 用同步包携带的配置数据重建内存注册表：<b>只改内存，不写盘</b>
+     * （配置修改默认只在服务端进行，客户端永不在同步路径写配置文件）。
+     * 清理范围与 {@link #reload()} 一致（清 BQ 触发器 + 清库），再从同步数据重建。
+     * <p>
+     * 单人存档下不会被调用（同步包处理器已跳过）——集成服务端与客户端共享
+     * 本静态注册表，服务端侧的 initialize/reload 已直接刷新同一份数据。
+     *
+     * @param data 服务端同步的交易配置（{@link NekoTradeConfig#fromJson} 产物）
+     */
+    public static void applySyncedTrades(NekoTradeConfig.NekoTradeData data) {
+        try {
+            NekoBqBridge.clearAllTriggers();
+            NekoTradeDatabase.INSTANCE.clear();
+            registerTradesFromData(data);
+            GTInterestingThing.LOG.info(
+                "[NekoSync] 客户端已应用同步交易配置，共 {} 个交易组，{} 笔交易",
+                NekoTradeDatabase.INSTANCE.getTradeGroupCount(),
+                NekoTradeDatabase.INSTANCE.getTradeCount());
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoSync] 客户端应用同步交易配置失败", e);
+        }
     }
 
     /**

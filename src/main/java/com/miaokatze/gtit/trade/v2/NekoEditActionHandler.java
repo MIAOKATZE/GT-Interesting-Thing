@@ -19,6 +19,7 @@ import com.miaokatze.gtit.lottery.LotteryPool;
 import com.miaokatze.gtit.lottery.LotteryRarity;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInConfig;
+import com.miaokatze.gtit.signin.SignInNetworkManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
@@ -162,6 +163,9 @@ public class NekoEditActionHandler {
             // 热重载交易注册表
             NekoTradeRegistryV2.initialize();
 
+            // v1.7.0 目标 5：向全体在线玩家广播服务端最新交易/标签页配置（S→C 只读同步，客户端不写盘）
+            NekoTradeNetworkManager.sendSyncToAll();
+
             sendSuccess(player, "交易条目已保存 (ID: " + groupIdStr + ")");
             GTInterestingThing.LOG.info(
                 "[NekoEdit] 玩家 {} 保存交易编辑: group={}, index={}",
@@ -220,6 +224,8 @@ public class NekoEditActionHandler {
                     .getAsDouble() : 0.0;
                 DailySignInConfig.setGlobalRewards(baseReward, increment);
                 DailySignInConfig.saveConfig();
+                // v1.7.0 目标 5：广播签到同步包（携带最新配置快照），刷新全服客户端配置缓存
+                SignInNetworkManager.sendSyncToAll();
                 sendSuccess(player, "签到全局配置已保存（基础奖励 " + baseReward + "，系数 " + increment + "）");
                 GTInterestingThing.LOG.info(
                     "[NekoEdit] 玩家 {} 保存签到全局配置: baseReward={}, increment={}",
@@ -254,6 +260,8 @@ public class NekoEditActionHandler {
                     return;
                 }
                 DailySignInConfig.saveConfig();
+                // v1.7.0 目标 5：广播签到同步包（携带最新配置快照），刷新全服客户端配置缓存
+                SignInNetworkManager.sendSyncToAll();
                 sendSuccess(player, "签到阶梯奖励已保存（连续 " + days + " 天）");
                 GTInterestingThing.LOG.info(
                     "[NekoEdit] 玩家 {} 保存签到阶梯: days={}, currency={}x{}, item={}x{}:{}",
@@ -389,10 +397,11 @@ public class NekoEditActionHandler {
                     json.get("rarity")
                         .getAsString()));
 
-            // 落盘 + 热重载 + 推送编辑者客户端
+            // 落盘 + 热重载 + 广播最新卡池配置（v1.7.0 目标 5：卡池全服一致，
+            // 逐玩家推送各自团队维度的保底/历史/余额，编辑者也在广播范围内）
             LotteryConfig.save(data);
             LotteryManager.INSTANCE.loadConfig();
-            LotteryNetworkManager.sendSyncToClient(player);
+            LotteryNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "抽奖条目已保存（卡池 " + poolId + "，条目 " + entryId + "）");
             if (!targetPool.validate()) {

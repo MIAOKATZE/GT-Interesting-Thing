@@ -24,6 +24,8 @@ import net.minecraft.util.EnumChatFormatting;
 
 import com.miaokatze.gtit.mail.Mail;
 import com.miaokatze.gtit.mail.MailManager;
+import com.miaokatze.gtit.lottery.LotteryManager;
+import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInConfig;
 import com.miaokatze.gtit.signin.DailySignInData;
@@ -37,6 +39,7 @@ import com.miaokatze.gtit.trade.NekoTradeEntry;
 import com.miaokatze.gtit.trade.v2.NekoEditModeManager;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
+import com.miaokatze.gtit.trade.v2.NekoTradeNetworkManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -821,6 +824,7 @@ public class GTITGiftCommand extends CommandBase {
             case "reload" -> handleNekoVMReload(player);
             case "save" -> handleNekoVMSave(player);
             case "timereset" -> handleNekoVMTimeReset(player);
+            case "sync" -> handleNekoVMSync(player, args);
             case "page" -> handleNekoVMPage(player, args);
             case "pagehelp" -> handleNekoVMPageHelp(sender);
             case "help" -> handleNekoVMFullHelp(sender);
@@ -1277,6 +1281,8 @@ public class GTITGiftCommand extends CommandBase {
         boolean success = NekoTradeRegistryV2.reload();
         if (success) {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易配置已热重载"));
+            // v1.7.0 目标 5：重载后广播服务端最新交易/标签页配置，刷新全服客户端缓存
+            NekoTradeNetworkManager.sendSyncToAll();
         } else {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "猫猫币交易配置热重载失败，请查看服务器日志"));
         }
@@ -1304,6 +1310,94 @@ public class GTITGiftCommand extends CommandBase {
             .size();
 
         player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已重置 " + resetCount + " 个交易的冷却"));
+    }
+
+    // ==================== v1.7.0 目标 5：配置同步子命令 ====================
+
+    /**
+     * /gtit nekovm sync [all|玩家名]
+     * <p>
+     * 把服务端当前生效的三套配置（交易+标签页 / 签到 / 抽奖）全量下发给客户端：
+     * <ul>
+     * <li>无参数：下发给执行者自己</li>
+     * <li>{@code all}：广播给全体在线玩家</li>
+     * <li>{@code <玩家名>}：下发给指定在线玩家</li>
+     * </ul>
+     * 下发为只读同步：客户端接收后仅刷新内存缓存/注册表，不写客户端配置文件。
+     * 单人存档下指令同样可用（集成服务端向自己推送，行为与服务器一致；
+     * 交易同步包在单人存档客户端跳过重复应用，因共享静态注册表已是最新）。
+     */
+    private void handleNekoVMSync(EntityPlayerMP player, String[] args) {
+        // 统计服务端权威配置规模（与下发载荷同源，供聊天栏反馈）
+        int tradeCount = NekoTradeConfig.load()
+            .getTrades()
+            .size();
+        int tierCount = DailySignInConfig.getRewardTiers().size();
+        int poolCount = LotteryManager.INSTANCE.getAllPools()
+            .size();
+        String summary = "交易 " + tradeCount + " 条 / 签到 " + tierCount + " 阶梯 / 抽奖 " + poolCount + " 池";
+
+        if (args.length >= 3) {
+            if ("all".equalsIgnoreCase(args[2])) {
+                // ---- 广播全体在线玩家 ----
+                NekoTradeNetworkManager.sendSyncToAll();
+                SignInNetworkManager.sendSyncToAll();
+                LotteryNetworkManager.sendSyncToAll();
+                int online = MinecraftServer.getServer()
+                    .getConfigurationManager().playerEntityList.size();
+                player.addChatMessage(
+                    new ChatComponentText(
+                        EnumChatFormatting.GREEN + "[配置同步] 已向全服 " + online + " 名玩家同步服务端配置（" + summary + "）"));
+                GTInterestingThing.LOG.info("[NekoSync] 玩家 {} 触发全服配置同步（{}）", player.getCommandSenderName(), summary);
+                return;
+            }
+            // ---- 下发给指定在线玩家 ----
+            EntityPlayerMP target = MinecraftServer.getServer()
+                .getConfigurationManager()
+                .func_152612_a(args[2]);
+            if (target == null) {
+                player.addChatMessage(
+                    new ChatComponentText(EnumChatFormatting.RED + "[配置同步] 玩家不在线: " + args[2] + "（仅支持在线玩家）"));
+                return;
+            }
+            sendConfigSyncTo(target);
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.GREEN + "[配置同步] 已向 "
+                        + target.getCommandSenderName()
+                        + " 同步服务端配置（"
+                        + summary
+                        + "）"));
+            GTInterestingThing.LOG.info(
+                "[NekoSync] 玩家 {} 向 {} 推送配置同步（{}）",
+                player.getCommandSenderName(),
+                target.getCommandSenderName(),
+                summary);
+            return;
+        }
+
+        // ---- 默认：下发给执行者自己 ----
+        sendConfigSyncTo(player);
+        player.addChatMessage(
+            new ChatComponentText(EnumChatFormatting.GREEN + "[配置同步] 已同步服务端配置（" + summary + "）"));
+        player.addChatMessage(
+            new ChatComponentText(EnumChatFormatting.GRAY + "客户端缓存已刷新（仅内存生效，不会写入本地配置文件）"));
+        GTInterestingThing.LOG.info("[NekoSync] 玩家 {} 请求配置同步（{}）", player.getCommandSenderName(), summary);
+    }
+
+    /**
+     * 向单个玩家推送三套服务端权威配置（交易+标签页 / 签到 / 抽奖）
+     * <p>
+     * 交易同步包载荷取自服务端磁盘权威配置；签到同步包携带该玩家个人签到数据
+     * + 全服一致的配置快照；抽奖同步包携带全服一致的卡池配置
+     * + 该玩家团队的保底/历史/钱包余额。
+     */
+    private void sendConfigSyncTo(EntityPlayerMP target) {
+        NekoTradeNetworkManager.sendSyncToClient(target);
+        SignInNetworkManager.sendSyncToClient(
+            target,
+            DailySignInManager.INSTANCE.getSignInData(target.getUniqueID()));
+        LotteryNetworkManager.sendSyncToClient(target);
     }
 
     // ==================== 辅助方法 ====================
