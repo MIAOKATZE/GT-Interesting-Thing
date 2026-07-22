@@ -251,4 +251,49 @@ public class LotteryEntry {
     public void setWeight(int weight) {
         this.weight = weight;
     }
+
+    /**
+     * 设置物品 ID（编辑模式用；转为货币奖品时传 null）
+     */
+    public void setItem(String item) {
+        this.item = item;
+    }
+
+    /**
+     * 设置物品 meta（编辑模式用）
+     */
+    public void setMeta(int meta) {
+        this.meta = meta;
+    }
+
+    /**
+     * 设置最小数量（编辑模式用，下限 1）
+     */
+    public void setMinAmount(int minAmount) {
+        this.minAmount = Math.max(1, minAmount);
+    }
+
+    /**
+     * 设置最大数量（编辑模式用，下限取 minAmount）
+     */
+    public void setMaxAmount(int maxAmount) {
+        this.maxAmount = Math.max(this.minAmount, maxAmount);
+    }
+
+    /**
+     * 设置货币奖品 ID（编辑模式用；转为物品奖品时传 null）
+     */
+    public void setNekoCurrencyId(String nekoCurrencyId) {
+        this.nekoCurrencyId = nekoCurrencyId;
+    }
+
+    /**
+     * 设置物品 NBT（Base64，编辑模式用）
+     * <p>
+     * 同时清理解码缓存，保证 {@link #toItemStack(int)} 使用新 NBT。
+     */
+    public void setNbtBase64(String nbtBase64) {
+        this.nbtBase64 = nbtBase64;
+        this.nbt = null;
+    }
 }

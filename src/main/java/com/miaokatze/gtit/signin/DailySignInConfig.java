@@ -139,6 +139,56 @@ public class DailySignInConfig {
         loadConfig();
     }
 
+    // ==================== 编辑模式更新（v1.7.0 目标 4，服务端权威） ====================
+
+    /**
+     * 更新全局签到参数（编辑模式）
+     * <p>
+     * 仅修改内存值，调用方负责随后 {@link #saveConfig()} 落盘。
+     *
+     * @param baseReward           每日基础奖励（猫猫币数量，≥0）
+     * @param consecutiveIncrement 连续递增系数（≥0）
+     */
+    public static void setGlobalRewards(int baseReward, double consecutiveIncrement) {
+        baseRewardNeko = Math.max(0, baseReward);
+        DailySignInConfig.consecutiveIncrement = Math.max(0, consecutiveIncrement);
+    }
+
+    /**
+     * 更新指定天数的阶梯奖励（编辑模式）
+     * <p>
+     * {@link SignInRewardTier} 字段为 final，更新以「整体替换」方式实现：
+     * 在 {@link #rewardTiers} 中找到 requiredDays 匹配的阶梯并替换为新实例。
+     * 仅修改内存值，调用方负责随后 {@link #saveConfig()} 落盘。
+     *
+     * @param days          目标阶梯的连续天数
+     * @param currencyId    货币 ID（null/空回退猫猫币）
+     * @param currencyAmount 货币数量（≥0）
+     * @param itemId        物品奖励 ID（"modid:name"，空串表示无物品奖励）
+     * @param itemAmount    物品数量（≥0）
+     * @param itemMeta      物品 meta（≥0）
+     * @return true 表示找到并替换；false 表示无该天数阶梯
+     */
+    public static boolean updateTier(int days, String currencyId, int currencyAmount, String itemId, int itemAmount,
+        int itemMeta) {
+        for (int i = 0; i < rewardTiers.size(); i++) {
+            if (rewardTiers.get(i)
+                .getRequiredDays() == days) {
+                rewardTiers.set(
+                    i,
+                    new SignInRewardTier(
+                        days,
+                        currencyId == null || currencyId.isEmpty() ? NekoCurrencyRegistrar.NEKO_ID : currencyId,
+                        Math.max(0, currencyAmount),
+                        itemId == null ? "" : itemId,
+                        Math.max(0, itemAmount),
+                        Math.max(0, itemMeta)));
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * 计算指定连续天数下的每日签到基础奖励
      * <p>

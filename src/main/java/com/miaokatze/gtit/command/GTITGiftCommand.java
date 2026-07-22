@@ -34,6 +34,7 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
+import com.miaokatze.gtit.trade.v2.NekoEditModeManager;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
@@ -829,15 +830,27 @@ public class GTITGiftCommand extends CommandBase {
 
     /**
      * /gtit nekovm edit <标签页> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]
+     * /gtit nekovm edit on|off
      * <p>
      * 读取玩家背包前两行(需求)和快捷栏前 10 格(产物)，导入交易条目。
      * 默认不记录 NBT；如需记录，请在指令末尾添加 yesNBT。
+     * <p>
+     * on|off 子命令：开启/关闭可视化配置编辑模式（OP 权限）。
      */
     private void handleNekoVMEdit(EntityPlayerMP player, String[] args) {
         if (args.length < 3) {
             player.addChatMessage(
                 new ChatComponentText(
                     EnumChatFormatting.RED + "用法: /gtit nekovm edit <标签页ID> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]"));
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.RED + "或: /gtit nekovm edit on|off （开关可视化编辑模式）"));
+            return;
+        }
+
+        // --- 编辑模式开关：/gtit nekovm edit on|off ---
+        if (args.length == 3 && ("on".equalsIgnoreCase(args[2]) || "off".equalsIgnoreCase(args[2]))) {
+            handleNekoVMEditModeToggle(player, "on".equalsIgnoreCase(args[2]));
             return;
         }
 
@@ -1076,6 +1089,41 @@ public class GTITGiftCommand extends CommandBase {
             String line = EnumChatFormatting.WHITE + "(#" + entry.getOrderId() + ") " + fromDesc + " → " + toDesc;
             player.addChatMessage(new ChatComponentText(line));
         }
+    }
+
+    /**
+     * /gtit nekovm edit on|off
+     * <p>
+     * 开启/关闭可视化配置编辑模式。
+     * 编辑模式下打开猫猫售货机 GUI 可编辑交易条目、签到奖励、抽奖配置。
+     * 仅 OP 可执行（指令本身已要求 OP 权限）。
+     *
+     * @param player 目标玩家
+     * @param enable true=开启编辑模式，false=关闭
+     */
+    private void handleNekoVMEditModeToggle(EntityPlayerMP player, boolean enable) {
+        UUID playerId = player.getUniqueID();
+        if (enable) {
+            NekoEditModeManager.INSTANCE.enterEditMode(playerId);
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.GREEN + "[编辑模式] 已开启可视化配置编辑模式"));
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.GRAY + "打开猫猫售货机 GUI，左键点击交易条目进行编辑"));
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.GRAY + "使用 /gtit nekovm edit off 退出编辑模式"));
+        } else {
+            NekoEditModeManager.INSTANCE.exitEditMode(playerId);
+            player.addChatMessage(
+                new ChatComponentText(
+                    EnumChatFormatting.YELLOW + "[编辑模式] 已关闭可视化配置编辑模式"));
+        }
+        GTInterestingThing.LOG.info(
+            "[NekoEdit] 玩家 {} {}编辑模式",
+            player.getCommandSenderName(),
+            enable ? "进入" : "退出");
     }
 
     /**
@@ -1380,6 +1428,9 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "猫猫售货机命令:"));
         sender.addChatMessage(
             new ChatComponentText("/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID] [yesNBT|noNBT] - 导入交易"));
+        sender.addChatMessage(
+            new ChatComponentText(
+                EnumChatFormatting.AQUA + "/gtit nekovm edit on|off - 开关可视化编辑模式"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm list [标签页] - 列出交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm delete <标签页ID> <顺序ID> - 删除交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm page add <ID> <名字> - 添加/覆盖标签页（手持物品作图标）"));

@@ -158,6 +158,18 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
          * @param display 被点击的交易显示数据
          */
         void onFavouriteToggled(NekoTradeItemDisplay display);
+
+        /**
+         * 编辑请求回调（编辑模式专用）
+         * <p>
+         * 当编辑模式下用户左键点击交易条目时触发。
+         * GUI 类应在此方法中打开编辑面板。
+         *
+         * @param display 被点击的交易显示数据
+         */
+        default void onEditRequested(NekoTradeItemDisplay display) {
+            // 默认空实现，非编辑模式 GUI 无需覆写
+        }
     }
 
     // ==================== 字段 ====================
@@ -182,6 +194,9 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
     /** 主图标 ItemStack（从 display.getDisplayStack() 获取，缓存避免重复计算） */
     private ItemStack displayStack;
+
+    /** 是否处于编辑模式（编辑模式下左键点击打开编辑面板，禁止交易/收藏） */
+    private boolean editMode = false;
 
     // ==================== 构造器 ====================
 
@@ -568,6 +583,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      * <p>
      * 交互逻辑（与 VM 的 TradeItemDisplayWidget 一致）：
      * <ul>
+     * <li><b>编辑模式</b>：左键点击直接触发编辑请求回调（无需 Shift/Ctrl）</li>
      * <li>Shift 和 Ctrl 同时按下或同时未按下：忽略（返回 IGNORE）</li>
      * <li>仅 Shift 按下：触发交易请求回调</li>
      * <li>仅 Ctrl 按下：触发收藏切换回调</li>
@@ -584,6 +600,15 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         }
         if (display == null) {
             return Interactable.Result.IGNORE;
+        }
+
+        // 编辑模式：左键点击直接打开编辑面板（无需修饰键）
+        if (editMode) {
+            pressed = true;
+            if (callback != null) {
+                callback.onEditRequested(display);
+            }
+            return Interactable.Result.SUCCESS;
         }
 
         // 检查修饰键状态
@@ -694,5 +719,26 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      */
     public boolean isPressed() {
         return pressed;
+    }
+
+    /**
+     * 设置编辑模式状态
+     * <p>
+     * 编辑模式下左键点击直接触发编辑请求（无需 Shift/Ctrl），
+     * 交易和收藏交互被禁用。
+     *
+     * @param editMode true 表示处于编辑模式
+     */
+    public void setEditMode(boolean editMode) {
+        this.editMode = editMode;
+    }
+
+    /**
+     * 是否处于编辑模式
+     *
+     * @return true 表示处于编辑模式
+     */
+    public boolean isEditMode() {
+        return editMode;
     }
 }

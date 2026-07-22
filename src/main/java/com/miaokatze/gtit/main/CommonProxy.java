@@ -304,6 +304,14 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 邮件网络包初始化失败", t);
         }
+        // v1.7.0 目标 4: 编辑模式网络包（C→S 编辑操作）+ 编辑模式管理器（玩家登出自动清理）
+        try {
+            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.init();
+            com.miaokatze.gtit.trade.v2.NekoEditModeManager.init();
+            GTInterestingThing.LOG.info("[2/3] 编辑模式网络包与管理器已初始化");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 编辑模式网络包初始化失败", t);
+        }
     }
 
     /**

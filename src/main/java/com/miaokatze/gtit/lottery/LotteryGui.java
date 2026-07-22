@@ -45,6 +45,37 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  */
 public class LotteryGui {
 
+    // ==================== 编辑模式回调（v1.7.0 目标 4） ====================
+
+    /**
+     * 抽奖页编辑模式回调接口
+     * <p>
+     * 由 {@code NekoVMGuiV2} 实现并传入，用于：
+     * <ul>
+     * <li>查询当前是否处于编辑模式（服务端权威，经同步值到客户端）</li>
+     * <li>编辑模式下点击轮盘槽位 → 打开条目编辑面板</li>
+     * </ul>
+     * 编辑模式下抽奖按钮的抽奖交互被拦截（禁止常规操作）。
+     */
+    public interface LotteryEditCallback {
+
+        /**
+         * 当前是否处于编辑模式
+         *
+         * @return true 表示处于编辑模式
+         */
+        boolean isEditMode();
+
+        /**
+         * 编辑模式下点击轮盘槽位时触发
+         *
+         * @param pool      条目所属卡池摘要
+         * @param entry     被点击的抽奖条目
+         * @param slotIndex 轮盘槽位序号
+         */
+        void onEditEntryRequested(LotteryClientData.PoolSummary pool, LotteryEntry entry, int slotIndex);
+    }
+
     // ==================== 布局常量 ====================
 
     /** 页面宽度（主内容区 = PANEL_WIDTH - 8） */
@@ -129,19 +160,20 @@ public class LotteryGui {
     /**
      * 构建抽奖页（供 {@code NekoVMGuiV2} 主内容 PagedWidget 添加为页 2）
      *
-     * @param machine 触发 GUI 的猫猫售货机 V2 机器（出货槽定位，抽奖请求包携带其坐标）
+     * @param machine      触发 GUI 的猫猫售货机 V2 机器（出货槽定位，抽奖请求包携带其坐标）
+     * @param editCallback 编辑模式回调（v1.7.0 目标 4）；null 表示不支持编辑模式
      * @return 抽奖页根 Widget（170x312，绝对布局）
      */
-    public static IWidget createLotteryPage(IGregTechTileEntity machine) {
+    public static IWidget createLotteryPage(IGregTechTileEntity machine, LotteryEditCallback editCallback) {
         ParentWidget<?> page = new ParentWidget<>().size(PAGE_WIDTH, PAGE_HEIGHT);
 
-        page.child(createTitle()); // 标题
+        page.child(createTitle(editCallback)); // 标题（编辑模式附加标识）
         page.child(createPoolSelector()); // 卡池切换（含价格+余额）
-        page.child(createWheelArea()); // 轮盘区（环形槽位 + 物品 + 角标 + 点亮框 + 指针）
+        page.child(createWheelArea(editCallback)); // 轮盘区（环形槽位 + 物品 + 角标 + 点亮框 + 指针；编辑模式可点击）
         page.child(createResultMessage()); // 单抽结果 / 错误提示（限时）
         page.child(createMultiResultList()); // 10 连结果格子列表
         page.child(createPityProgress()); // 保底进度（文本 + 进度条）
-        page.child(createDrawButtons(machine)); // 抽 1 次 / 抽 10 次
+        page.child(createDrawButtons(machine, editCallback)); // 抽 1 次 / 抽 10 次（编辑模式拦截）
         page.child(createHistoryDisplay()); // 最近中奖滚动摘要
 
         return page;
@@ -149,9 +181,15 @@ public class LotteryGui {
 
     // ==================== 标题与卡池切换 ====================
 
-    /** 标题行：「猫猫扭蛋」（金色，居中） */
-    private static IWidget createTitle() {
-        return new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "猫猫扭蛋")).pos(0, 2)
+    /** 标题行：「猫猫扭蛋」（金色，居中；编辑模式附加红色标识） */
+    private static IWidget createTitle(LotteryEditCallback editCallback) {
+        return new TextWidget<>(IKey.dynamic(() -> {
+            String text = EnumChatFormatting.GOLD + "猫猫扭蛋";
+            if (editCallback != null && editCallback.isEditMode()) {
+                text += EnumChatFormatting.RED + " [编辑]";
+            }
+            return text;
+        })).pos(0, 2)
             .size(PAGE_WIDTH, 12)
             .textAlign(Alignment.Center)
             .shadow(false);
@@ -248,8 +286,13 @@ public class LotteryGui {
      * 点亮格由 {@link LotteryAnimationController#getCurrentLitSlot()} 决定；
      * 本区每个动态 Supplier 求值前先 {@link #tickAnimation()} 推进动画状态并
      * 消费未处理结果（启动动画），保证同一结果只触发一次。
+     * <p>
+     * <b>编辑模式</b>（v1.7.0 目标 4）：每格追加透明点击层（仅编辑模式启用），
+     * 点击通过 {@link LotteryEditCallback#onEditEntryRequested} 打开条目编辑面板。
+     *
+     * @param editCallback 编辑模式回调；null 时不添加点击层
      */
-    private static IWidget createWheelArea() {
+    private static IWidget createWheelArea(LotteryEditCallback editCallback) {
         ParentWidget<?> wheel = new ParentWidget<>().pos(0, WHEEL_Y)
             .size(PAGE_WIDTH, WHEEL_H);
         for (int i = 0; i < MAX_SLOTS; i++) {
@@ -289,6 +332,33 @@ public class LotteryGui {
                 drawFrame(dx, dy, w, h, color);
             }).pos(x - 1, y - 1)
                 .size(SLOT_SIZE + 2, SLOT_SIZE + 2));
+
+            // 第 5 层：编辑模式透明点击层（仅编辑模式且该格有条目时启用）
+            if (editCallback != null) {
+                ButtonWidget<?> editClickLayer = new ButtonWidget<>().pos(x, y)
+                    .size(SLOT_SIZE, SLOT_SIZE)
+                    .tooltipBuilder(t -> {
+                        LotteryEntry entry = entryAt(index);
+                        if (entry != null) {
+                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此条目（" + entry.getId() + "）"));
+                        }
+                    })
+                    .tooltipAutoUpdate(true)
+                    .onMouseTapped(mouse -> {
+                        if (mouse == 0 && editCallback.isEditMode()) {
+                            LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
+                            LotteryEntry entry = entryAt(index);
+                            if (pool != null && entry != null) {
+                                editCallback.onEditEntryRequested(pool, entry, index);
+                            }
+                            return true;
+                        }
+                        return false;
+                    });
+                // 仅编辑模式且该格有条目时启用（非编辑模式完全透明不拦截）
+                editClickLayer.setEnabledIf(w -> editCallback.isEditMode() && entryAt(index) != null);
+                wheel.child(editClickLayer);
+            }
         }
 
         // 中央指针（跟随点亮格方向；仅动画期间显示）
@@ -731,32 +801,45 @@ public class LotteryGui {
      * 点击通过 {@link LotteryNetworkManager#sendLotteryRequest} 向服务端发起请求
      * （携带机器坐标定位出货槽）；余额不足时文字变红、点击仅提示不发包
      * （服务端仍兜底二次校验，双击/竞态安全）；动画旋转期间点击无效防连发。
+     * <p>
+     * <b>编辑模式</b>（v1.7.0 目标 4）：点击被拦截（禁止常规抽奖交互），
+     * tooltip 提示处于编辑模式。
+     *
+     * @param machine      触发 GUI 的机器
+     * @param editCallback 编辑模式回调；null 表示不支持编辑模式
      */
-    private static IWidget createDrawButtons(IGregTechTileEntity machine) {
+    private static IWidget createDrawButtons(IGregTechTileEntity machine, LotteryEditCallback editCallback) {
         ParentWidget<?> row = new ParentWidget<>().pos(0, DRAW_BTN_Y)
             .size(PAGE_WIDTH, DRAW_BTN_H);
         int totalW = 2 * DRAW_BTN_W + DRAW_BTN_GAP;
         int startX = (PAGE_WIDTH - totalW) / 2;
 
-        row.child(createDrawButton(machine, startX, 1, NekoGuiTextures.LOTTERY_BTN_DRAW, "抽 1 次"));
+        row.child(createDrawButton(machine, startX, 1, NekoGuiTextures.LOTTERY_BTN_DRAW, "抽 1 次", editCallback));
         row.child(
             createDrawButton(
                 machine,
                 startX + DRAW_BTN_W + DRAW_BTN_GAP,
                 10,
                 NekoGuiTextures.LOTTERY_BTN_DRAW10,
-                "抽 10 次"));
+                "抽 10 次",
+                editCallback));
         return row;
     }
 
-    /** 单个抽奖按钮（count=1 或 10） */
+    /** 单个抽奖按钮（count=1 或 10；编辑模式拦截点击） */
     private static IWidget createDrawButton(IGregTechTileEntity machine, int x, int count, UITexture texture,
-        String label) {
+        String label, LotteryEditCallback editCallback) {
         return new ButtonWidget<>().pos(x, 0)
             .size(DRAW_BTN_W, DRAW_BTN_H)
             .background(texture)
             .overlay(IKey.dynamic(() -> drawButtonText(label, count)))
             .tooltipBuilder(t -> {
+                // 编辑模式：仅提示，不展示价格/余额
+                if (editCallback != null && editCallback.isEditMode()) {
+                    t.addLine(IKey.str(EnumChatFormatting.RED + "[编辑模式] 抽奖交互已禁用"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击轮盘槽位编辑条目"));
+                    return;
+                }
                 LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
                 if (pool == null) {
                     t.addLine(IKey.str(EnumChatFormatting.RED + "暂无可用卡池"));
@@ -781,6 +864,10 @@ public class LotteryGui {
             .tooltipAutoUpdate(true)
             .onMouseTapped(mouse -> {
                 if (mouse != 0) return false;
+                // 编辑模式：拦截抽奖交互（禁止常规操作）
+                if (editCallback != null && editCallback.isEditMode()) {
+                    return true;
+                }
                 LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
                 if (pool == null) return false;
                 // 动画旋转期间禁止连发（服务端也有幂等兜底）

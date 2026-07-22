@@ -42,6 +42,41 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
  */
 public class SignInCalendarGui {
 
+    // ==================== 编辑模式回调（v1.7.0 目标 4） ====================
+
+    /**
+     * 签到页编辑模式回调接口
+     * <p>
+     * 由 {@code NekoVMGuiV2} 实现并传入，用于：
+     * <ul>
+     * <li>查询当前是否处于编辑模式（服务端权威，经同步值到客户端）</li>
+     * <li>编辑模式下点击阶梯宝箱 → 打开阶梯编辑面板</li>
+     * <li>编辑模式下点击「全局配置」按钮 → 打开全局编辑面板（基础奖励/连续系数）</li>
+     * </ul>
+     * 编辑模式下签到按钮的签到交互被拦截（禁止常规操作）。
+     */
+    public interface SignInEditCallback {
+
+        /**
+         * 当前是否处于编辑模式
+         *
+         * @return true 表示处于编辑模式
+         */
+        boolean isEditMode();
+
+        /**
+         * 编辑模式下点击阶梯宝箱时触发
+         *
+         * @param tier 被点击的阶梯奖励
+         */
+        void onEditTierRequested(SignInRewardTier tier);
+
+        /**
+         * 编辑模式下点击「全局配置」按钮时触发
+         */
+        void onEditGlobalRequested();
+    }
+
     // ==================== 布局常量 ====================
 
     /** 页面宽度（主内容区 = PANEL_WIDTH - 8） */
@@ -124,31 +159,37 @@ public class SignInCalendarGui {
     /**
      * 构建签到页（供 {@code NekoVMGuiV2} 主内容 PagedWidget 添加为页 1）
      *
+     * @param editCallback 编辑模式回调（v1.7.0 目标 4）；null 表示不支持编辑模式
      * @return 签到页根 Widget（170x312，绝对布局）
      */
-    public static IWidget createSignInPage() {
+    public static IWidget createSignInPage(SignInEditCallback editCallback) {
         ParentWidget<?> page = new ParentWidget<>().size(PAGE_WIDTH, PAGE_HEIGHT);
 
-        page.child(createTitle()); // 标题 + 当前年月
+        page.child(createTitle(editCallback)); // 标题 + 当前年月（编辑模式附加标识）
         page.child(createStatusInfo()); // 累计/连续天数
         page.child(createWeekdayHeader()); // 星期表头
         page.child(createCalendarGrid()); // 42 日期格
         page.child(createProgressLabel()); // 连续进度文本
         page.child(createProgressBar()); // 连续进度条
-        page.child(createTierPreview()); // 阶梯宝箱预览
+        page.child(createTierPreview(editCallback)); // 阶梯宝箱预览（编辑模式可点击）
         page.child(createResultMessage()); // 签到结果提示（限时）
-        page.child(createSignInButton()); // 签到按钮
+        page.child(createSignInButton(editCallback)); // 签到按钮（编辑模式拦截）
+        page.child(createGlobalEditButton(editCallback)); // 全局配置按钮（仅编辑模式显示）
 
         return page;
     }
 
     // ==================== 各区域构建 ====================
 
-    /** 标题行：「签到日历 yyyy年M月」（随服务端日期跨月自动刷新） */
-    private static IWidget createTitle() {
+    /** 标题行：「签到日历 yyyy年M月」（随服务端日期跨月自动刷新；编辑模式附加红色标识） */
+    private static IWidget createTitle(SignInEditCallback editCallback) {
         return new TextWidget<>(IKey.dynamic(() -> {
             MonthInfo mi = getMonthInfo();
-            return EnumChatFormatting.GOLD + "签到日历 " + EnumChatFormatting.YELLOW + mi.year + "年" + mi.month + "月";
+            String text = EnumChatFormatting.GOLD + "签到日历 " + EnumChatFormatting.YELLOW + mi.year + "年" + mi.month + "月";
+            if (editCallback != null && editCallback.isEditMode()) {
+                text += EnumChatFormatting.RED + " [编辑]";
+            }
+            return text;
         })).pos(0, 2)
             .size(PAGE_WIDTH, 12)
             .textAlign(Alignment.Center)
@@ -283,8 +324,11 @@ public class SignInCalendarGui {
      * <p>
      * 宝箱素材按所需天数选取（≤7 小宝箱 / ≤14 中宝箱 / 否则大宝箱）。
      * 领取状态读取 {@link SignInClientData#hasClaimedTier(int)}（服务端同步的当月领取记录）。
+     * <p>
+     * <b>编辑模式</b>（v1.7.0 目标 4）：宝箱改为 {@link ButtonWidget}，
+     * 点击通过 {@link SignInEditCallback#onEditTierRequested} 打开阶梯编辑面板。
      */
-    private static IWidget createTierPreview() {
+    private static IWidget createTierPreview(SignInEditCallback editCallback) {
         ParentWidget<?> box = new ParentWidget<>().pos(0, TIER_Y)
             .size(PAGE_WIDTH, 50);
         List<SignInRewardTier> tiers = DailySignInConfig.getRewardTiers();
@@ -294,21 +338,32 @@ public class SignInCalendarGui {
             final SignInRewardTier tier = tiers.get(i);
             int x = startX + i * TIER_COL_W;
 
-            // 宝箱图标（tooltip 详列奖励内容）
+            // 宝箱图标按钮（tooltip 详列奖励内容；编辑模式下点击打开编辑面板）
             box.child(
-                chestFor(tier.getRequiredDays()).asWidget()
+                new ButtonWidget<>()
                     .pos(x + (TIER_COL_W - 24) / 2, 0)
                     .size(24, 24)
+                    .background(chestFor(tier.getRequiredDays()))
                     .tooltipBuilder(t -> {
                         t.addLine(IKey.str(EnumChatFormatting.GOLD + "连续签到 " + tier.getRequiredDays() + " 天宝箱"));
                         t.addLine(IKey.str(buildRewardText(tier)));
-                        if (SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
+                        if (editCallback != null && editCallback.isEditMode()) {
+                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此阶梯奖励"));
+                        } else if (SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
                             t.addLine(IKey.str(EnumChatFormatting.GREEN + "本月已领取"));
                         } else {
                             t.addLine(IKey.str(EnumChatFormatting.GRAY + "达成条件后签到自动发放"));
                         }
                     })
-                    .tooltipAutoUpdate(true));
+                    .tooltipAutoUpdate(true)
+                    .onMouseTapped(mouse -> {
+                        // 编辑模式：点击宝箱打开阶梯编辑面板
+                        if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
+                            editCallback.onEditTierRequested(tier);
+                            return true;
+                        }
+                        return false;
+                    }));
 
             // 条件文本（静态，配置加载后不变化）
             box.child(
@@ -377,8 +432,13 @@ public class SignInCalendarGui {
      * 未签到时可点击：通过 {@link SignInNetworkManager#sendSignInRequest()} 向服务端发请求，
      * 结果由服务端同步包回推并刷新本页（含结果提示条）。
      * 已签到后按钮文字变灰且点击无效；tooltip 展示今日可得奖励预览。
+     * <p>
+     * <b>编辑模式</b>（v1.7.0 目标 4）：点击被拦截（禁止常规签到交互），
+     * tooltip 提示处于编辑模式。
+     *
+     * @param editCallback 编辑模式回调；null 表示不支持编辑模式
      */
-    private static IWidget createSignInButton() {
+    private static IWidget createSignInButton(SignInEditCallback editCallback) {
         return new ButtonWidget<>().pos((PAGE_WIDTH - BTN_W) / 2, BTN_Y)
             .size(BTN_W, BTN_H)
             .background(NekoGuiTextures.SIGNIN_BTN_CLAIM)
@@ -387,6 +447,12 @@ public class SignInCalendarGui {
                     () -> SignInClientData.hasSignedToday() ? EnumChatFormatting.GRAY + "已签到"
                         : EnumChatFormatting.WHITE + "签到"))
             .tooltipBuilder(t -> {
+                // 编辑模式：仅提示，不展示奖励预览
+                if (editCallback != null && editCallback.isEditMode()) {
+                    t.addLine(IKey.str(EnumChatFormatting.RED + "[编辑模式] 签到交互已禁用"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击阶梯宝箱或「全局配置」按钮进行编辑"));
+                    return;
+                }
                 if (SignInClientData.hasSignedToday()) {
                     t.addLine(IKey.str(EnumChatFormatting.GRAY + "今日已完成签到，明天再来吧"));
                 } else {
@@ -403,6 +469,10 @@ public class SignInCalendarGui {
             })
             .tooltipAutoUpdate(true)
             .onMouseTapped(mouse -> {
+                // 编辑模式：拦截签到交互（禁止常规操作）
+                if (editCallback != null && editCallback.isEditMode()) {
+                    return mouse == 0;
+                }
                 // 仅左键且今日未签到时发请求；服务端兜底重复校验，双击安全
                 if (mouse == 0 && !SignInClientData.hasSignedToday()) {
                     SignInNetworkManager.sendSignInRequest();
@@ -410,6 +480,36 @@ public class SignInCalendarGui {
                 }
                 return false;
             });
+    }
+
+    /**
+     * 「全局配置」按钮（仅编辑模式显示）
+     * <p>
+     * 点击通过 {@link SignInEditCallback#onEditGlobalRequested()} 打开全局编辑面板
+     * （每日基础奖励 / 连续递增系数）。非编辑模式下按钮隐藏（setEnabledIf 动态折叠）。
+     *
+     * @param editCallback 编辑模式回调；null 时按钮恒隐藏
+     */
+    private static IWidget createGlobalEditButton(SignInEditCallback editCallback) {
+        ButtonWidget<?> button = new ButtonWidget<>().pos((PAGE_WIDTH - BTN_W) / 2 + BTN_W + 6, BTN_Y)
+            .size(46, BTN_H)
+            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .overlay(IKey.str(EnumChatFormatting.YELLOW + "全局配置"))
+            .tooltipBuilder(t -> {
+                t.addLine(IKey.str(EnumChatFormatting.GOLD + "编辑全局签到配置"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "每日基础奖励与连续递增系数"));
+            })
+            .tooltipAutoUpdate(true)
+            .onMouseTapped(mouse -> {
+                if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
+                    editCallback.onEditGlobalRequested();
+                    return true;
+                }
+                return false;
+            });
+        // 仅编辑模式显示（非编辑模式折叠隐藏，回调为 null 时恒隐藏）
+        button.setEnabledIf(w -> editCallback != null && editCallback.isEditMode());
+        return button;
     }
 
     // ==================== 日期格状态判定 ====================
