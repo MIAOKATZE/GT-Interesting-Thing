@@ -38,6 +38,11 @@ public class DailySignInHandler {
     /** 跨日检查间隔（100 tick = 5 秒） */
     private static final int TICK_CHECK_INTERVAL = 100;
 
+    /** 在线累计 tick 计数器（v1.7.6 G2③；达到 {@link #ONLINE_TICK_INTERVAL} 时做一次在线时间累计） */
+    private int onlineTickCounter = 0;
+    /** 在线累计间隔（1200 tick = 1 分钟，v1.7.6 用户确认的统计精度） */
+    private static final int ONLINE_TICK_INTERVAL = 1200;
+
     /**
      * 将任务调度到服务器主线程执行（供网络包处理器调用）
      *
@@ -58,7 +63,10 @@ public class DailySignInHandler {
 
         // 加载（或新建）数据并做断签/跨月修正，有改动立即落盘
         DailySignInData data = manager.getSignInData(playerId);
-        if (manager.applyDateCorrections(data)) {
+        boolean dirty = manager.applyDateCorrections(data);
+        // v1.7.6 G2③：首次登录自动写入 firstJoinDate（只写一次，旧存档补记为当天）
+        dirty |= manager.ensureFirstJoinDate(data);
+        if (dirty) {
             manager.saveSignInData(playerId);
         }
         // 推送完整数据给客户端，供签到日历 GUI 渲染
@@ -93,6 +101,16 @@ public class DailySignInHandler {
                 DailySignInManager.INSTANCE.checkDailyReset();
             } catch (Throwable t) {
                 GTInterestingThing.LOG.error("签到跨日检查失败", t);
+            }
+        }
+
+        // v1.7.6 G2③：每分钟为在线玩家累计在线时长（跨日重置在累计方法内部完成）
+        if (++onlineTickCounter >= ONLINE_TICK_INTERVAL) {
+            onlineTickCounter = 0;
+            try {
+                DailySignInManager.INSTANCE.tickOnlineMinute();
+            } catch (Throwable t) {
+                GTInterestingThing.LOG.error("在线时间累计失败", t);
             }
         }
     }

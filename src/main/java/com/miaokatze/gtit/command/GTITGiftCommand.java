@@ -683,7 +683,7 @@ public class GTITGiftCommand extends CommandBase {
      * 从 usercache.json 中查找玩家名对应的 UUID
      * usercache.json 格式: [{"name":"xxx","uuid":"xxx","expiresOn":"xxx"}, ...]
      */
-    private UUID findUuidFromUserCache(String playerName, File userCacheFile) {
+    private static UUID findUuidFromUserCache(String playerName, File userCacheFile) {
         if (!userCacheFile.exists()) return null;
         try {
             String content = new String(Files.readAllBytes(userCacheFile.toPath()), "UTF-8");
@@ -697,7 +697,7 @@ public class GTITGiftCommand extends CommandBase {
     /**
      * 从 usercache.json 中查找 UUID 对应的玩家名
      */
-    private String findNameFromUserCache(UUID uuid, File userCacheFile) {
+    private static String findNameFromUserCache(UUID uuid, File userCacheFile) {
         if (!userCacheFile.exists()) return null;
         try {
             String content = new String(Files.readAllBytes(userCacheFile.toPath()), "UTF-8");
@@ -712,7 +712,7 @@ public class GTITGiftCommand extends CommandBase {
      * 从 usercache.json 内容中解析玩家名对应的 UUID
      * 简易 JSON 解析，不依赖 Gson
      */
-    private UUID parseUuidFromUserCacheJson(String json, String playerName) {
+    private static UUID parseUuidFromUserCacheJson(String json, String playerName) {
         String lowerName = playerName.toLowerCase();
         // 查找 "name":"<playerName>" 条目
         String namePattern = "\"name\"";
@@ -744,7 +744,7 @@ public class GTITGiftCommand extends CommandBase {
     /**
      * 从 usercache.json 内容中解析 UUID 对应的玩家名
      */
-    private String parseNameFromUserCacheJson(String json, String uuidStr) {
+    private static String parseNameFromUserCacheJson(String json, String uuidStr) {
         // 查找 "uuid":"<uuidStr>" 条目
         String uuidPattern = "\"uuid\"";
         int idx = 0;
@@ -770,7 +770,7 @@ public class GTITGiftCommand extends CommandBase {
     /**
      * 从 JSON 对象中提取 uuid 值（向前和向后搜索同一 {} 块内的键）
      */
-    private String extractUuidFromObject(String json, int startIdx) {
+    private static String extractUuidFromObject(String json, int startIdx) {
         // 找到包含 startIdx 的 {} 块
         int objStart = json.lastIndexOf('{', startIdx);
         int objEnd = json.indexOf('}', startIdx);
@@ -783,7 +783,7 @@ public class GTITGiftCommand extends CommandBase {
     /**
      * 从 JSON 对象中提取 name 值
      */
-    private String extractNameFromObject(String json, int startIdx) {
+    private static String extractNameFromObject(String json, int startIdx) {
         int objStart = json.lastIndexOf('{', startIdx);
         int objEnd = json.indexOf('}', startIdx);
         if (objStart < 0 || objEnd < 0) return null;
@@ -795,7 +795,7 @@ public class GTITGiftCommand extends CommandBase {
     /**
      * 从 JSON 字符串中提取指定键的值
      */
-    private String extractJsonValue(String json, String key) {
+    private static String extractJsonValue(String json, String key) {
         String pattern = "\"" + key + "\"";
         int idx = json.indexOf(pattern);
         if (idx < 0) return null;
@@ -1785,7 +1785,8 @@ public class GTITGiftCommand extends CommandBase {
             attachments = heldAttachment(player);
         }
 
-        Mail mail = new Mail(title, content, senderName, attachments);
+        // v1.7.6 G2②：指令路径发出的邮件归类为管理员邮件（类型分页用）
+        Mail mail = new Mail(title, content, senderName, attachments, Mail.TYPE_ADMIN);
         boolean ok = MailManager.INSTANCE.sendMail(targetId, mail);
         if (ok) {
             sender.addChatMessage(
@@ -1896,8 +1897,11 @@ public class GTITGiftCommand extends CommandBase {
 
     /**
      * 按玩家名解析 UUID（在线玩家直接取；离线玩家查 usercache.json，查不到返回 null）
+     * <p>
+     * v1.7.6 G2② 改为 public static：邮件玩家互寄（{@code MailManager.sendPlayerMail}）
+     * 复用同一份名解析逻辑，避免两处 JSON 解析实现漂移。
      */
-    private UUID resolvePlayerUuid(String playerName) {
+    public static UUID resolvePlayerUuid(String playerName) {
         EntityPlayerMP online = MinecraftServer.getServer()
             .getConfigurationManager()
             .func_152612_a(playerName);

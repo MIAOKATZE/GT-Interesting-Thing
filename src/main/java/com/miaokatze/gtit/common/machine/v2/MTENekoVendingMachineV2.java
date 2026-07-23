@@ -1327,6 +1327,19 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     // === 输入/输出槽适配器 ===
 
     /**
+     * 创建输入槽访问器（v1.7.6 公开入口）
+     * <p>
+     * 供抽奖扣费分流（{@link com.miaokatze.gtit.lottery.LotteryManager}）等外部系统
+     * 以「副本校验 → 写回」的原子模式消耗本机输入槽物品；
+     * 访问器携带当前 uplinkHatch 引用（可为 null，此时无 ME 能力）。
+     *
+     * @return 输入槽访问器（永不为 null）
+     */
+    public NekoTradeExecutor.InputSlotAccessor createInputSlotAccessor() {
+        return new InternalInputSlotAccessor(uplinkHatch);
+    }
+
+    /**
      * 内置输入槽访问器
      * <p>
      * 实现 {@link NekoTradeExecutor.InputSlotAccessor} 接口，

@@ -68,6 +68,22 @@ public final class SignInClientData {
     /** 服务端同步的连续天数奖励系数（{@link #cfgTiers} 同批有效） */
     private static volatile double cfgIncrement;
 
+    // ==================== v1.7.6 G2③：在线时长 / 纪念日 ====================
+
+    /** 今日已在线秒数（服务端 tick 累计同步） */
+    private static volatile int onlineSecondsToday;
+    /** 今日已领取的在线奖励档位（requiredSeconds） */
+    private static volatile Set<Integer> claimedOnlineTiers = new HashSet<>();
+    /** 生日（MM-dd，未设置为空） */
+    private static volatile String birthday = "";
+    /** 首次入服日期（yyyy-MM-dd） */
+    private static volatile String firstJoinDate = "";
+    /** 自定义纪念日列表 */
+    private static volatile List<AnniversaryEntry> anniversaries = new ArrayList<>();
+
+    /** 服务端同步的在线时长奖励档位；null 表示尚未收到同步（回退本地 {@link OnlineTimeConfig}） */
+    private static volatile List<OnlineTimeRewardTier> cfgOnlineTiers = null;
+
     private SignInClientData() {}
 
     // ==================== 写入（网络包处理器调用） ====================
@@ -102,6 +118,23 @@ public final class SignInClientData {
                 }
             }
             claimedTierDays = claimed;
+            // ===== v1.7.6 G2③：在线时长 / 生日 / 首登 / 纪念日 =====
+            onlineSecondsToday = data.getOnlineSecondsToday();
+            // 解析今日已领取的在线档位（记录含历史日期，仅保留 today 条目）
+            Set<Integer> onlineClaimed = new HashSet<>();
+            for (String record : data.getClaimedOnlineTiers()) {
+                if (record != null && record.startsWith(getTodayPrefix(today))) {
+                    try {
+                        onlineClaimed.add(Integer.parseInt(record.substring(getTodayPrefix(today).length())));
+                    } catch (NumberFormatException ignored) {
+                        // 跳过格式异常的记录
+                    }
+                }
+            }
+            claimedOnlineTiers = onlineClaimed;
+            birthday = data.getBirthday() == null ? "" : data.getBirthday();
+            firstJoinDate = data.getFirstJoinDate() == null ? "" : data.getFirstJoinDate();
+            anniversaries = new ArrayList<>(data.getAnniversaries());
         }
         if (today != null && !today.isEmpty()) {
             serverToday = today;
@@ -135,6 +168,25 @@ public final class SignInClientData {
         cfgBaseReward = Math.max(0, baseReward);
         cfgIncrement = Math.max(0, increment);
         cfgTiers = tiers == null ? null : new ArrayList<>(tiers);
+    }
+
+    /**
+     * 写入服务端在线时长配置快照（v1.7.6 G2③）
+     * <p>
+     * 由 {@link SignInSyncPacket} 客户端处理器调用；null 时清空快照回退本地 {@link OnlineTimeConfig}。
+     */
+    public static synchronized void updateOnlineConfig(List<OnlineTimeRewardTier> tiers) {
+        cfgOnlineTiers = tiers == null ? null : new ArrayList<>(tiers);
+    }
+
+    /**
+     * 当前生效的在线时长奖励档位
+     * <p>
+     * 优先返回服务端同步快照；未同步时回退本地 {@link OnlineTimeConfig#getTiers()}。
+     */
+    public static List<OnlineTimeRewardTier> getOnlineRewardTiers() {
+        List<OnlineTimeRewardTier> tiers = cfgOnlineTiers;
+        return tiers != null ? tiers : OnlineTimeConfig.getTiers();
     }
 
     // ==================== 配置读取（GUI 调用，优先服务端快照，回退本地配置） ====================
@@ -265,12 +317,44 @@ public final class SignInClientData {
         return lastResultTimeMs;
     }
 
+    // ==================== v1.7.6 G2③：在线时长 / 纪念日读取 ====================
+
+    /** 今日已在线秒数 */
+    public static int getOnlineSecondsToday() {
+        return onlineSecondsToday;
+    }
+
+    /** 指定档位的在线奖励今日是否已领取 */
+    public static boolean hasClaimedOnlineTier(int requiredSeconds) {
+        return claimedOnlineTiers.contains(requiredSeconds);
+    }
+
+    /** 生日（MM-dd，未设置返回空串） */
+    public static String getBirthday() {
+        return birthday;
+    }
+
+    /** 首次入服日期（yyyy-MM-dd，未知返回空串） */
+    public static String getFirstJoinDate() {
+        return firstJoinDate;
+    }
+
+    /** 自定义纪念日列表（防御性拷贝） */
+    public static List<AnniversaryEntry> getAnniversaries() {
+        return new ArrayList<>(anniversaries);
+    }
+
     // ==================== 内部辅助 ====================
 
     /** 从 yyyy-MM-dd 截取 yyyy-MM（容错：长度不足时原样返回） */
     private static String getYearMonth(String date) {
         if (date == null || date.length() < 7) return date == null ? "" : date;
         return date.substring(0, 7);
+    }
+
+    /** 在线档位已领取记录的今日前缀（"yyyy-MM-dd_"，null 安全） */
+    private static String getTodayPrefix(String today) {
+        return (today == null ? "" : today) + "_";
     }
 
     /** 客户端本地今天（未收到服务端同步前的回退值） */

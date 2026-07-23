@@ -1,7 +1,9 @@
 package com.miaokatze.gtit.mail;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,6 +17,8 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.command.GTITGiftCommand;
+import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
@@ -42,6 +46,21 @@ public class MailManager {
     public static final int MAX_MAILS = 50;
     /** 每封邮件附件数量上限（GUI 单行 5 槽） */
     public static final int MAX_ATTACHMENTS = 5;
+
+    // ==================== 玩家互寄结果码（v1.7.6 G2② compose 动作） ====================
+
+    /** 玩家互寄结果：投递成功 */
+    public static final int COMPOSE_SUCCESS = 0;
+    /** 玩家互寄结果：收件人不存在（从未登录过本服务器） */
+    public static final int COMPOSE_RECIPIENT_NOT_FOUND = 1;
+    /** 玩家互寄结果：收件人邮箱已满 */
+    public static final int COMPOSE_MAILBOX_FULL = 2;
+    /** 玩家互寄结果：无正文且无附件（空邮件拒绝发送） */
+    public static final int COMPOSE_EMPTY = 3;
+    /** 玩家互寄结果：收件人名为空 */
+    public static final int COMPOSE_NO_RECIPIENT = 4;
+    /** 玩家互寄结果：触发机器无效（坐标无法定位，未扣任何物品） */
+    public static final int COMPOSE_MACHINE_INVALID = 5;
 
     /** 已加载的玩家邮箱数据（仅在线玩家常驻内存） */
     private final ConcurrentHashMap<UUID, MailData> mailDataMap = new ConcurrentHashMap<>();
@@ -331,6 +350,95 @@ public class MailManager {
         data.removeMail(mailId);
         saveMailData(playerId);
         return 0;
+    }
+
+    // ==================== 玩家互寄（v1.7.6 G2② 写邮件页面） ====================
+
+    /**
+     * 玩家互寄邮件（写邮件页面 compose 动作，服务端权威）
+     * <p>
+     * 流程（任何一步失败都不扣取输入槽物品）：
+     * <ol>
+     * <li>校验收件人名非空 → {@link GTITGiftCommand#resolvePlayerUuid} 解析 UUID
+     * （在线玩家表 → usercache.json 离线缓存）</li>
+     * <li>从触发机器输入槽<b>复制</b>非空物品（≤ {@link #MAX_ATTACHMENTS} 格）作为附件候选
+     * （此时不清槽）</li>
+     * <li>正文与附件均空 → 拒绝（空邮件）</li>
+     * <li>收件人邮箱容量预检（满 → 拒绝；离线收件人多加载的数据立即卸载）</li>
+     * <li>走 {@link #sendMail} 现有路径投递（在线推送同步、离线落盘）</li>
+     * <li><b>仅投递成功后</b>才清除已取用的输入槽并 markDirty
+     * （槽位内容变更由打开中的 GUI 槽位同步器自动下发客户端）</li>
+     * </ol>
+     * 发件人显示名 = 玩家名，类型 = {@link Mail#TYPE_PLAYER}。
+     * 不给发件人回执邮件（避免刷屏），发送结果由调用方聊天提示。
+     *
+     * @param sender        发件玩家（在线）
+     * @param machine       触发机器（附件来源；null 时按无附件处理）
+     * @param recipientName 收件人名（已由调用方 trim/限长）
+     * @param title         标题（已由调用方限长/兜底）
+     * @param content       正文（已由调用方限长）
+     * @return {@link #COMPOSE_SUCCESS} 等 COMPOSE_* 结果码
+     */
+    public int sendPlayerMail(EntityPlayerMP sender, MTENekoVendingMachineV2 machine, String recipientName,
+        String title, String content) {
+        if (sender == null) return COMPOSE_MACHINE_INVALID;
+        if (recipientName == null || recipientName.isEmpty()) return COMPOSE_NO_RECIPIENT;
+
+        // 1. 解析收件人 UUID（失败不扣物品）
+        UUID targetId = GTITGiftCommand.resolvePlayerUuid(recipientName);
+        if (targetId == null) return COMPOSE_RECIPIENT_NOT_FOUND;
+
+        // 2. 复制附件候选（不清槽——投递成功前输入槽物品保持不动）
+        List<ItemStack> attachments = new ArrayList<>();
+        List<Integer> takenSlots = new ArrayList<>();
+        if (machine != null) {
+            for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS && attachments.size() < MAX_ATTACHMENTS; i++) {
+                ItemStack stack = machine.inputItems.getStackInSlot(i);
+                if (stack != null && stack.getItem() != null && stack.stackSize > 0) {
+                    attachments.add(stack.copy());
+                    takenSlots.add(i);
+                }
+            }
+        }
+
+        // 3. 空邮件拒绝（无正文且无附件）
+        if ((content == null || content.isEmpty()) && attachments.isEmpty()) {
+            return COMPOSE_EMPTY;
+        }
+
+        // 4. 邮箱容量预检（离线收件人：预检加载的数据在拒绝时立即卸载，避免常驻）
+        EntityPlayerMP recipientOnline = getPlayerByUUID(targetId);
+        MailData recipientData = getMailData(targetId);
+        if (recipientData == null) return COMPOSE_MACHINE_INVALID;
+        if (recipientData.getMails()
+            .size() >= MAX_MAILS) {
+            if (recipientOnline == null) {
+                mailDataMap.remove(targetId);
+            }
+            return COMPOSE_MAILBOX_FULL;
+        }
+
+        // 5. 构建并投递（sendMail 内部对离线收件人完成落盘后卸载；服务器主线程单线程无竞态，
+        // 预检通过后 addMail 不会失败，false 仅作兜底）
+        Mail mail = new Mail(title, content, sender.getCommandSenderName(), attachments, Mail.TYPE_PLAYER);
+        if (!sendMail(targetId, mail)) {
+            if (recipientOnline == null) {
+                mailDataMap.remove(targetId);
+            }
+            return COMPOSE_MAILBOX_FULL;
+        }
+
+        // 6. 投递成功：清除已取用的输入槽并标脏持久化
+        if (machine != null && !takenSlots.isEmpty()) {
+            for (int slot : takenSlots) {
+                machine.inputItems.setStackInSlot(slot, null);
+            }
+            if (machine.getBaseMetaTileEntity() != null) {
+                machine.getBaseMetaTileEntity()
+                    .markDirty();
+            }
+        }
+        return COMPOSE_SUCCESS;
     }
 
     // ==================== 全局数据持久化 ====================

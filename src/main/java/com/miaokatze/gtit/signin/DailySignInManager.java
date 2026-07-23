@@ -4,6 +4,7 @@ import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +18,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.mail.BlessingManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
@@ -39,6 +41,18 @@ import cpw.mods.fml.common.registry.GameRegistry;
 public class DailySignInManager {
 
     public static final DailySignInManager INSTANCE = new DailySignInManager();
+
+    /** 自定义纪念日数量上限（与「活跃」页 4 的 GUI 行数一致） */
+    public static final int MAX_ANNIVERSARIES = 5;
+
+    /** 在线奖励领取结果：成功 */
+    public static final int CLAIM_ONLINE_SUCCESS = 0;
+    /** 在线奖励领取结果：在线时长未达档位 */
+    public static final int CLAIM_ONLINE_NOT_REACHED = 1;
+    /** 在线奖励领取结果：今日已领取过该档位 */
+    public static final int CLAIM_ONLINE_ALREADY_CLAIMED = 2;
+    /** 在线奖励领取结果：数据/参数异常 */
+    public static final int CLAIM_ONLINE_ERROR = 3;
 
     /** 已加载的玩家签到数据（仅在线玩家常驻内存） */
     private final ConcurrentHashMap<UUID, DailySignInData> signInDataMap;
@@ -197,6 +211,13 @@ public class DailySignInManager {
                 SignInNetworkManager.sendSyncToClient(player, entry.getValue());
             }
         }
+        // v1.7.6 G5：跨日 tick 兜底——为挂机跨零点的在线玩家补测新一天的祝福邮件
+        // （登录检测为主；此处仅覆盖「一直在线跨零点」场景，已投递的祝福由防重键拦截）
+        try {
+            BlessingManager.INSTANCE.checkAllOnlinePlayers();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("跨日祝福检测失败", t);
+        }
     }
 
     /**
@@ -208,6 +229,160 @@ public class DailySignInManager {
                 .resetMonthly();
             saveSignInData(entry.getKey());
         }
+    }
+
+    // ==================== v1.7.6 G2③：每日在线时间 ====================
+
+    /**
+     * 在线时间累计（DailySignInHandler 服务器 tick 每 1200 tick=1 分钟调用一次）
+     * <p>
+     * 为全部已加载（=在线）玩家累计 60 秒，跨日重置由
+     * {@link DailySignInData#addOnlineSeconds} 内部完成（与 applyDateCorrections 同挂载节奏）。
+     * 累计后向各在线玩家推送一次全量同步，使 GUI「今日在线时长」每分钟自动刷新。
+     * <p>
+     * <b>落盘口径（v1.7.6 用户确认）</b>：内存驻留，登录/登出/跨日由既有路径落盘，
+     * 本方法不做磁盘 IO（每玩家每分钟一次 map 更新 + 一个小同步包，性能可忽略）。
+     */
+    public void tickOnlineMinute() {
+        String today = getToday();
+        for (Map.Entry<UUID, DailySignInData> entry : signInDataMap.entrySet()) {
+            entry.getValue()
+                .addOnlineSeconds(today, 60);
+            // 向在线玩家重发最新状态（GUI 在线时长/领取状态每分钟刷新）
+            EntityPlayerMP player = getPlayerByUUID(entry.getKey());
+            if (player != null) {
+                SignInNetworkManager.sendSyncToClient(player, entry.getValue());
+            }
+        }
+    }
+
+    /**
+     * 领取每日在线奖励（服务端权威，SignInRequestPacket type="claim_online" 触发）
+     * <p>
+     * 流程：跨日兜底修正 → 档位校验 → 时长校验 → 防重校验 → 发放（货币入钱包 + 可选物品）
+     * → 记录领取 → 落盘。
+     *
+     * @param playerId  玩家 UUID
+     * @param tierIndex 目标档位索引（{@link OnlineTimeConfig#getTiers()} 升序下标）
+     * @return 领取结果码（{@link #CLAIM_ONLINE_SUCCESS} 等）
+     */
+    public int claimOnlineReward(UUID playerId, int tierIndex) {
+        DailySignInData data = getSignInData(playerId);
+        if (data == null) return CLAIM_ONLINE_ERROR;
+        String today = getToday();
+        // 兜底：跨日未 tick 时先按今天口径修正在线计数与领取记录（+0 秒仅触发重置检查）
+        data.addOnlineSeconds(today, 0);
+
+        List<OnlineTimeRewardTier> tiers = OnlineTimeConfig.getTiers();
+        if (tierIndex < 0 || tierIndex >= tiers.size()) return CLAIM_ONLINE_ERROR;
+        OnlineTimeRewardTier tier = tiers.get(tierIndex);
+
+        if (data.getOnlineSecondsToday() < tier.getRequiredSeconds()) return CLAIM_ONLINE_NOT_REACHED;
+        if (data.hasClaimedOnlineTier(today, tier.getRequiredSeconds())) return CLAIM_ONLINE_ALREADY_CLAIMED;
+
+        // 发放：货币入钱包（复用签到奖励发放路径）；可选物品入背包（满则脚下掉落）
+        if (tier.getCurrencyAmount() > 0) {
+            grantCurrency(playerId, tier.getCurrencyId(), tier.getCurrencyAmount());
+        }
+        if (tier.hasItemReward()) {
+            grantItemStack(playerId, tier.getItemRewardId(), tier.getItemRewardAmount(), tier.getItemRewardMeta());
+        }
+        data.claimOnlineTier(today, tier.getRequiredSeconds());
+        saveSignInData(playerId);
+        return CLAIM_ONLINE_SUCCESS;
+    }
+
+    // ==================== v1.7.6 G2③：生日 / 首登 / 纪念日 ====================
+
+    /**
+     * 确保首次进入日期已记录（登录事件调用）
+     * <p>
+     * {@link DailySignInData#getFirstJoinDate()} 为空（新玩家/旧存档升级）时写入今天，
+     * 只写一次不覆盖。
+     *
+     * @param data 玩家签到数据
+     * @return true 表示数据被修改（需要保存）
+     */
+    public boolean ensureFirstJoinDate(DailySignInData data) {
+        if (data == null) return false;
+        if (!data.getFirstJoinDate()
+            .isEmpty()) {
+            return false;
+        }
+        data.setFirstJoinDate(getToday());
+        return true;
+    }
+
+    /**
+     * 设置玩家生日（服务端权威，SignInRequestPacket type="set_birthday" 触发）
+     *
+     * @param playerId 玩家 UUID
+     * @param monthDay "MM-dd"（空串=清除设置）
+     * @return true 表示设置成功（格式合法）；false 表示格式非法被拒绝
+     */
+    public boolean setBirthday(UUID playerId, String monthDay) {
+        DailySignInData data = getSignInData(playerId);
+        if (data == null) return false;
+        String normalized = monthDay == null ? "" : monthDay.trim();
+        if (!normalized.isEmpty() && !AnniversaryEntry.isValidMonthDay(normalized)) {
+            return false;
+        }
+        data.setBirthday(normalized);
+        saveSignInData(playerId);
+        return true;
+    }
+
+    /**
+     * 添加自定义纪念日（服务端权威，SignInRequestPacket type="set_anniversary" 添加载荷触发）
+     *
+     * @param playerId 玩家 UUID
+     * @param name     纪念日名称（trim 后非空，超长截断到 {@link AnniversaryEntry#MAX_NAME_LENGTH}）
+     * @param monthDay 月日（"MM-dd"，须通过 {@link AnniversaryEntry#isValidMonthDay}）
+     * @param year     年份（0=不记年份；>0 时须在 {@link AnniversaryEntry#MIN_YEAR}..{@link AnniversaryEntry#MAX_YEAR}）
+     * @return 0=成功；1=名称/日期/年份非法；2=数量已达上限（{@link #MAX_ANNIVERSARIES}）
+     */
+    public int addAnniversary(UUID playerId, String name, String monthDay, int year) {
+        DailySignInData data = getSignInData(playerId);
+        if (data == null) return 1;
+        String normalizedName = name == null ? "" : name.trim();
+        if (normalizedName.length() > AnniversaryEntry.MAX_NAME_LENGTH) {
+            normalizedName = normalizedName.substring(0, AnniversaryEntry.MAX_NAME_LENGTH);
+        }
+        String normalizedMonthDay = monthDay == null ? "" : monthDay.trim();
+        if (normalizedName.isEmpty() || !AnniversaryEntry.isValidMonthDay(normalizedMonthDay)) {
+            return 1;
+        }
+        if (year != 0 && (year < AnniversaryEntry.MIN_YEAR || year > AnniversaryEntry.MAX_YEAR)) {
+            return 1;
+        }
+        if (data.getAnniversaries()
+            .size() >= MAX_ANNIVERSARIES) {
+            return 2;
+        }
+        data.getAnniversaries()
+            .add(new AnniversaryEntry(normalizedName, normalizedMonthDay, year));
+        saveSignInData(playerId);
+        return 0;
+    }
+
+    /**
+     * 删除自定义纪念日（服务端权威，按列表索引——客户端列表为服务端全量同步镜像，索引一致）
+     *
+     * @param playerId 玩家 UUID
+     * @param index    纪念日列表索引
+     * @return true 表示删除成功；false 表示索引越界/数据异常
+     */
+    public boolean removeAnniversary(UUID playerId, int index) {
+        DailySignInData data = getSignInData(playerId);
+        if (data == null) return false;
+        if (index < 0 || index >= data.getAnniversaries()
+            .size()) {
+            return false;
+        }
+        data.getAnniversaries()
+            .remove(index);
+        saveSignInData(playerId);
+        return true;
     }
 
     // ==================== 数据存取 ====================
@@ -351,20 +526,33 @@ public class DailySignInManager {
 
     /** 发放阶梯物品奖励：入玩家背包，背包满则掉落在玩家脚下 */
     private void grantItemReward(UUID playerId, SignInRewardTier tier) {
+        grantItemStack(playerId, tier.getItemRewardId(), tier.getItemRewardAmount(), tier.getItemRewardMeta());
+    }
+
+    /**
+     * 发放物品奖励（v1.7.6 G2③ 抽取的通用路径：签到阶梯/每日在线共用）
+     * <p>
+     * 入玩家背包，背包满则掉落在玩家脚下；玩家离线时跳过物品部分（货币仍会入钱包）。
+     *
+     * @param playerId 玩家 UUID
+     * @param itemId   物品 ID（"modid:name"）
+     * @param amount   数量（<1 时按 1 发放）
+     * @param meta     物品 meta
+     */
+    private void grantItemStack(UUID playerId, String itemId, int amount, int meta) {
         EntityPlayerMP player = getPlayerByUUID(playerId);
         if (player == null) {
-            GTInterestingThing.LOG.warn("玩家 {} 不在线，阶梯物品奖励 {} 已跳过", playerId, tier.getItemRewardId());
+            GTInterestingThing.LOG.warn("玩家 {} 不在线，物品奖励 {} 已跳过", playerId, itemId);
             return;
         }
-        String[] parts = tier.getItemRewardId()
-            .split(":");
+        String[] parts = itemId.split(":");
         if (parts.length != 2) return;
         Item item = GameRegistry.findItem(parts[0], parts[1]);
         if (item == null) {
-            GTInterestingThing.LOG.warn("阶梯奖励物品不存在: {}", tier.getItemRewardId());
+            GTInterestingThing.LOG.warn("奖励物品不存在: {}", itemId);
             return;
         }
-        ItemStack stack = new ItemStack(item, Math.max(1, tier.getItemRewardAmount()), tier.getItemRewardMeta());
+        ItemStack stack = new ItemStack(item, Math.max(1, amount), meta);
         if (!player.inventory.addItemStackToInventory(stack)) {
             // 背包已满：掉落在玩家位置，避免奖励丢失
             EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, stack);

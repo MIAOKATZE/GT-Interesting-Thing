@@ -21,10 +21,27 @@ import net.minecraft.nbt.NBTTagList;
  */
 public class Mail {
 
+    // ==================== 邮件类型常量（v1.7.6 G2② 类型分页） ====================
+
+    /** 类型：系统邮件（首登/一次性奖励模板、G5 自动祝福；旧存档无 type 键的邮件默认归入此类） */
+    public static final String TYPE_SYSTEM = "SYSTEM";
+    /** 类型：玩家互寄邮件（写邮件页面 compose 路径） */
+    public static final String TYPE_PLAYER = "PLAYER";
+    /** 类型：管理员邮件（/gtit mail send 指令路径） */
+    public static final String TYPE_ADMIN = "ADMIN";
+
     // ==================== 字段定义 ====================
 
     /** 邮件唯一 ID（随机 UUID 字符串；同一玩家的邮箱内唯一） */
     private String id = "";
+
+    /**
+     * 邮件类型（{@link #TYPE_SYSTEM}/{@link #TYPE_PLAYER}/{@link #TYPE_ADMIN} 之一）
+     * <p>
+     * 持久化与同步均经 NBT 携带；旧存档无该键时 {@link #fromNBT} 回退为
+     * {@link #TYPE_SYSTEM}（用户确认：旧邮件全部归系统页）。
+     */
+    private String type = TYPE_SYSTEM;
 
     /** 标题（单行，指令参数，不含空格） */
     private String title = "";
@@ -53,7 +70,7 @@ public class Mail {
     public Mail() {}
 
     /**
-     * 构建新邮件（自动生成随机 ID，时间戳取当前时间）
+     * 构建新邮件（自动生成随机 ID，时间戳取当前时间，类型默认 {@link #TYPE_SYSTEM}）
      *
      * @param title       标题
      * @param content     正文
@@ -61,8 +78,22 @@ public class Mail {
      * @param attachments 附件物品（可为 null/空；内部深拷贝，调用方可安全复用原物品堆）
      */
     public Mail(String title, String content, String sender, List<ItemStack> attachments) {
+        this(title, content, sender, attachments, TYPE_SYSTEM);
+    }
+
+    /**
+     * 构建指定类型的新邮件（v1.7.6 G2② 类型分页）
+     *
+     * @param title       标题
+     * @param content     正文
+     * @param sender      发件人显示名
+     * @param attachments 附件物品（可为 null/空；内部深拷贝，调用方可安全复用原物品堆）
+     * @param type        邮件类型（非法值回退 {@link #TYPE_SYSTEM}）
+     */
+    public Mail(String title, String content, String sender, List<ItemStack> attachments, String type) {
         this.id = UUID.randomUUID()
             .toString();
+        this.type = normalizeType(type);
         this.title = title == null ? "" : title;
         this.content = content == null ? "" : content;
         this.sender = sender == null ? "" : sender;
@@ -92,6 +123,7 @@ public class Mail {
     public NBTTagCompound writeToNBT() {
         NBTTagCompound nbt = new NBTTagCompound();
         nbt.setString("id", id);
+        nbt.setString("type", type);
         nbt.setString("title", title);
         nbt.setString("content", content);
         nbt.setString("sender", sender);
@@ -120,6 +152,8 @@ public class Mail {
         if (nbt == null) return null;
         Mail mail = new Mail();
         mail.id = nbt.getString("id");
+        // 类型兼容：旧存档无 type 键（或值非法）时归系统邮件（v1.7.6 用户确认口径）
+        mail.type = normalizeType(nbt.hasKey("type") ? nbt.getString("type") : TYPE_SYSTEM);
         mail.title = nbt.getString("title");
         mail.content = nbt.getString("content");
         mail.sender = nbt.getString("sender");
@@ -165,6 +199,7 @@ public class Mail {
         Mail copy = new Mail();
         copy.id = UUID.randomUUID()
             .toString();
+        copy.type = this.type;
         copy.title = this.title;
         copy.content = this.content;
         copy.sender = this.sender;
@@ -184,8 +219,26 @@ public class Mail {
 
     // ==================== Getter / Setter ====================
 
+    /**
+     * 类型值归一化（仅接受三种已知类型，其余一律回退 {@link #TYPE_SYSTEM}）
+     */
+    public static String normalizeType(String type) {
+        if (TYPE_PLAYER.equals(type) || TYPE_ADMIN.equals(type) || TYPE_SYSTEM.equals(type)) {
+            return type;
+        }
+        return TYPE_SYSTEM;
+    }
+
     public String getId() {
         return id;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = normalizeType(type);
     }
 
     public String getTitle() {

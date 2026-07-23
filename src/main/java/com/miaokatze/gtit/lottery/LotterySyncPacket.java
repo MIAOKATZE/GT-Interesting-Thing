@@ -60,9 +60,23 @@ public class LotterySyncPacket implements IMessage {
                 poolTag.setString("name", pool.getName() == null ? "" : pool.getName());
                 poolTag.setString("currency", pool.getNekoCurrencyId() == null ? "" : pool.getNekoCurrencyId());
                 poolTag.setInteger("cost", pool.getCostPerDraw());
-                // 保底摘要（客户端仅展示阈值与保证稀有度）
+                // page 图标（v1.7.6）
+                poolTag.setString("iconItem", pool.getIconItem());
+                poolTag.setInteger("iconMeta", pool.getIconMeta());
+                poolTag.setString("iconNbt", pool.getIconNbt());
+                // 需求物品列表（v1.7.6 货币解绑，NekoBigItemStack NBT 列表）
+                NBTTagList costList = new NBTTagList();
+                for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.getCostItems()) {
+                    if (cost != null && cost.getBaseStack() != null) {
+                        costList.appendTag(cost.writeToNBT());
+                    }
+                }
+                poolTag.setTag("costItems", costList);
+                // 保底摘要（客户端展示 + v1.7.6 池编辑面板数值填充）
                 PityConfig pity = pool.getPityConfig();
                 poolTag.setBoolean("pityEnabled", pity.isEnabled());
+                poolTag.setInteger("softPity", pity.getSoftPityThreshold());
+                poolTag.setDouble("softPityInc", pity.getSoftPityIncrement());
                 poolTag.setInteger("hardPity", pity.getHardPityThreshold());
                 poolTag.setString(
                     "guaranteed",
@@ -151,7 +165,32 @@ public class LotterySyncPacket implements IMessage {
             summary.name = poolTag.getString("name");
             summary.currencyId = poolTag.getString("currency");
             summary.costPerDraw = poolTag.getInteger("cost");
+            // page 图标（v1.7.6）
+            summary.iconItem = poolTag.getString("iconItem");
+            summary.iconMeta = poolTag.getInteger("iconMeta");
+            summary.iconNbt = poolTag.getString("iconNbt");
+            // 需求物品列表（v1.7.6；旧包无此键时由旧字段合成，保持客户端口径一致）
+            if (poolTag.hasKey("costItems")) {
+                NBTTagList costList = poolTag.getTagList("costItems", 10);
+                for (int j = 0; j < costList.tagCount(); j++) {
+                    com.miaokatze.gtit.trade.v2.NekoBigItemStack cost = com.miaokatze.gtit.trade.v2.NekoBigItemStack
+                        .loadFromNBT(costList.getCompoundTagAt(j));
+                    if (cost != null && cost.getBaseStack() != null && cost.getStackSize() > 0) {
+                        summary.costItems.add(cost);
+                    }
+                }
+            }
+            if (summary.costItems.isEmpty() && !summary.currencyId.isEmpty() && summary.costPerDraw > 0) {
+                net.minecraft.item.ItemStack currencyStack = com.miaokatze.gtit.trade.NekoCurrencyRegistrar
+                    .getItemStack(summary.currencyId, summary.costPerDraw);
+                if (currencyStack != null) {
+                    summary.costItems.add(new com.miaokatze.gtit.trade.v2.NekoBigItemStack(currencyStack));
+                }
+            }
             summary.pityEnabled = poolTag.getBoolean("pityEnabled");
+            // 软保底（旧包无键时回退 PityConfig 默认值，与服务端默认配置口径一致）
+            summary.softPityThreshold = poolTag.hasKey("softPity") ? poolTag.getInteger("softPity") : 30;
+            summary.softPityIncrement = poolTag.hasKey("softPityInc") ? poolTag.getDouble("softPityInc") : 5.0;
             summary.hardPityThreshold = poolTag.getInteger("hardPity");
             summary.guaranteedRarity = poolTag.getString("guaranteed");
             NBTTagList entryList = poolTag.getTagList("entries", 10);

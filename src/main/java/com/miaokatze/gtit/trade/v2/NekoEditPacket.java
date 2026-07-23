@@ -32,12 +32,28 @@ public class NekoEditPacket implements IMessage {
     public static final int ACTION_SAVE_SIGNIN_REWARD = 1;
     /** 保存抽奖条目编辑 */
     public static final int ACTION_SAVE_LOTTERY_ENTRY = 2;
+    /** 保存抽奖卡池编辑（图标/名字/消耗需求/保底，v1.7.6 G2①） */
+    public static final int ACTION_SAVE_LOTTERY_POOL = 3;
+    /** 新建抽奖卡池（v1.7.6 G2①） */
+    public static final int ACTION_CREATE_LOTTERY_POOL = 4;
+    /** 删除抽奖卡池（v1.7.6 G2①） */
+    public static final int ACTION_DELETE_LOTTERY_POOL = 5;
+    /** 新建交易条目（v1.7.6 G3④，targetId=目标 page 的 tabId 字符串） */
+    public static final int ACTION_CREATE_TRADE = 6;
+    /** 新建标签页 page（v1.7.6 G3④，分配 id≥4） */
+    public static final int ACTION_CREATE_PAGE = 7;
+    /** 保存标签页 page 编辑（v1.7.6 G3④，targetId=pageId 字符串，图标/名字） */
+    public static final int ACTION_SAVE_PAGE = 8;
+    /** 删除标签页 page（v1.7.6 G3④，targetId=pageId 字符串；默认页 1-3 不可删） */
+    public static final int ACTION_DELETE_PAGE = 9;
     /** 打开交易编辑面板（请求服务端加载交易数据到编辑缓冲区） */
     public static final int ACTION_OPEN_TRADE_EDITOR = 10;
     /** 打开签到编辑面板 */
     public static final int ACTION_OPEN_SIGNIN_EDITOR = 11;
     /** 打开抽奖编辑面板 */
     public static final int ACTION_OPEN_LOTTERY_EDITOR = 12;
+    /** 保存祝福预设编辑（v1.7.6 G5，targetId="festival:<序号>"/"birthday"/"sender"） */
+    public static final int ACTION_SAVE_BLESSING = 13;
 
     // ==================== 字段 ====================
 
@@ -130,6 +146,14 @@ public class NekoEditPacket implements IMessage {
                 case ACTION_SAVE_SIGNIN_REWARD -> handleSaveSignInReward(player, message);
                 case ACTION_OPEN_LOTTERY_EDITOR -> handleOpenLotteryEditor(player, message);
                 case ACTION_SAVE_LOTTERY_ENTRY -> handleSaveLotteryEntry(player, message);
+                case ACTION_SAVE_LOTTERY_POOL -> handleSaveLotteryPool(player, message);
+                case ACTION_CREATE_LOTTERY_POOL -> handleCreateLotteryPool(player, message);
+                case ACTION_DELETE_LOTTERY_POOL -> handleDeleteLotteryPool(player, message);
+                case ACTION_CREATE_TRADE -> handleCreateTrade(player, message);
+                case ACTION_CREATE_PAGE -> handleCreatePage(player, message);
+                case ACTION_SAVE_PAGE -> handleSavePage(player, message);
+                case ACTION_DELETE_PAGE -> handleDeletePage(player, message);
+                case ACTION_SAVE_BLESSING -> handleSaveBlessing(player, message);
                 default -> {
                     // 未知操作，忽略
                 }
@@ -161,6 +185,42 @@ public class NekoEditPacket implements IMessage {
 
         private void handleSaveLotteryEntry(EntityPlayerMP player, NekoEditPacket message) {
             NekoEditActionHandler.saveLotteryEntry(player, message.getTargetId(), message.getJsonPayload());
+        }
+
+        private void handleSaveLotteryPool(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.saveLotteryPool(player, message.getTargetId(), message.getJsonPayload());
+        }
+
+        private void handleCreateLotteryPool(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.createLotteryPool(player, message.getJsonPayload());
+        }
+
+        private void handleDeleteLotteryPool(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.deleteLotteryPool(player, message.getTargetId());
+        }
+
+        // ---- v1.7.6 G3④：page 编辑与新建交易条目 ----
+
+        private void handleCreateTrade(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.createTrade(player, message.getTargetId(), message.getJsonPayload());
+        }
+
+        private void handleCreatePage(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.createPage(player, message.getJsonPayload());
+        }
+
+        private void handleSavePage(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.savePage(player, message.getTargetId(), message.getJsonPayload());
+        }
+
+        private void handleDeletePage(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.deletePage(player, message.getTargetId());
+        }
+
+        // ---- v1.7.6 G5：祝福预设编辑 ----
+
+        private void handleSaveBlessing(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.saveBlessing(player, message.getTargetId(), message.getJsonPayload());
         }
     }
 }

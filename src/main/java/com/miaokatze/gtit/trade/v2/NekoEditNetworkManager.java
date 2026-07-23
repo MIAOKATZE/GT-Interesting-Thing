@@ -111,6 +111,91 @@ public class NekoEditNetworkManager {
         sendToServer(NekoEditPacket.ACTION_SAVE_LOTTERY_ENTRY, entryKey, 0, jsonPayload);
     }
 
+    /**
+     * 客户端：发送保存抽奖卡池编辑请求（v1.7.6 G2①）
+     *
+     * @param poolId      卡池 ID（不允许改 id，仅定位用）
+     * @param jsonPayload JSON 序列化的卡池数据（名字/图标/消耗需求/保底）
+     */
+    public static void sendSaveLotteryPool(String poolId, String jsonPayload) {
+        sendToServer(NekoEditPacket.ACTION_SAVE_LOTTERY_POOL, poolId, 0, jsonPayload);
+    }
+
+    /**
+     * 客户端：发送新建抽奖卡池请求（v1.7.6 G2①）
+     *
+     * @param jsonPayload JSON 序列化的卡池数据（含新池 id）
+     */
+    public static void sendCreateLotteryPool(String jsonPayload) {
+        sendToServer(NekoEditPacket.ACTION_CREATE_LOTTERY_POOL, "", 0, jsonPayload);
+    }
+
+    /**
+     * 客户端：发送删除抽奖卡池请求（v1.7.6 G2①）
+     *
+     * @param poolId 待删除卡池 ID
+     */
+    public static void sendDeleteLotteryPool(String poolId) {
+        sendToServer(NekoEditPacket.ACTION_DELETE_LOTTERY_POOL, poolId, 0, "");
+    }
+
+    /**
+     * 客户端：发送新建交易条目请求（v1.7.6 G3④）
+     * <p>
+     * 物品数据（需求 16 格+产物 16 格）通过 PhantomItemSlot 编辑缓冲区自动同步，
+     * jsonPayload 仅携带非物品参数（冷却/次数/recordNBT 等）。
+     *
+     * @param tabId       目标 page 的 tabId 字符串（新条目挂到该 page）
+     * @param jsonPayload JSON 序列化的编辑参数
+     */
+    public static void sendCreateTrade(String tabId, String jsonPayload) {
+        sendToServer(NekoEditPacket.ACTION_CREATE_TRADE, tabId, 0, jsonPayload);
+    }
+
+    /**
+     * 客户端：发送新建标签页 page 请求（v1.7.6 G3④）
+     * <p>
+     * 图标物品通过 PhantomItemSlot 编辑缓冲区自动同步，jsonPayload 携带名字。
+     *
+     * @param jsonPayload JSON 序列化的 page 数据（name）
+     */
+    public static void sendCreatePage(String jsonPayload) {
+        sendToServer(NekoEditPacket.ACTION_CREATE_PAGE, "", 0, jsonPayload);
+    }
+
+    /**
+     * 客户端：发送保存标签页 page 编辑请求（v1.7.6 G3④）
+     * <p>
+     * 图标物品通过 PhantomItemSlot 编辑缓冲区自动同步，jsonPayload 携带名字。
+     *
+     * @param pageId      待编辑 page 的 ID 字符串
+     * @param jsonPayload JSON 序列化的 page 数据（name）
+     */
+    public static void sendSavePage(String pageId, String jsonPayload) {
+        sendToServer(NekoEditPacket.ACTION_SAVE_PAGE, pageId, 0, jsonPayload);
+    }
+
+    /**
+     * 客户端：发送删除标签页 page 请求（v1.7.6 G3④）
+     *
+     * @param pageId 待删除 page 的 ID 字符串（默认页 1-3 服务端拒绝）
+     */
+    public static void sendDeletePage(String pageId) {
+        sendToServer(NekoEditPacket.ACTION_DELETE_PAGE, pageId, 0, "");
+    }
+
+    /**
+     * 客户端：发送保存祝福预设编辑请求（v1.7.6 G5）
+     * <p>
+     * 附件物品由客户端序列化 PhantomItemSlot 缓冲区进 jsonPayload 的 items 数组。
+     *
+     * @param targetId    目标标识（"festival:&lt;序号&gt;" / "birthday" / "sender"）
+     * @param jsonPayload JSON 序列化的祝福数据
+     */
+    public static void sendSaveBlessing(String targetId, String jsonPayload) {
+        sendToServer(NekoEditPacket.ACTION_SAVE_BLESSING, targetId, 0, jsonPayload);
+    }
+
     public static boolean isInitialized() {
         return initialized;
     }

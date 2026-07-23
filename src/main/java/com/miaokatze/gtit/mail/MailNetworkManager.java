@@ -12,8 +12,8 @@ import cpw.mods.fml.relauncher.Side;
  * <p>
  * 管理邮件相关的客户端-服务端通信（FML SimpleNetworkWrapper 模式）：
  * <ul>
- * <li>{@link MailSyncPacket}（id=0，S→C）：登录/投递/已读/领取/删除后的全量数据推送</li>
- * <li>{@link MailActionPacket}（id=1，C→S）：客户端已读/领取附件/删除邮件请求</li>
+ * <li>{@link MailSyncPacket}（id=0，S→C）：登录/投递/已读/领取/删除/互寄后的全量数据推送</li>
+ * <li>{@link MailActionPacket}（id=1，C→S）：客户端已读/领取附件/删除/写邮件（compose）请求</li>
  * </ul>
  * 在 {@code CommonProxy.init()} 中调用 {@link #init()} 注册（双端都会执行，按 Side 注册方向）。
  * <p>
@@ -66,6 +66,26 @@ public class MailNetworkManager {
     public static void sendSyncToClient(EntityPlayerMP player, MailData data) {
         if (!initialized || channel == null || player == null) return;
         channel.sendTo(new MailSyncPacket(data), player);
+    }
+
+    /**
+     * 客户端：向服务端发送写邮件请求（v1.7.6 G2② 写邮件页面发送按钮点击时调用）
+     * <p>
+     * 内部做侧检查，服务端构建 GUI 时误触不会发包。
+     * 字段长度由服务端二次限长兜底（{@link MailActionPacket#MAX_RECIPIENT_LENGTH} 等），
+     * 此处仅做 null 安全处理。
+     *
+     * @param recipientName 收件人名
+     * @param title         标题（可为空，服务端有默认标题兜底）
+     * @param content       正文（可含 \n 换行）
+     * @param x/y/z/dim     触发机器坐标与维度（附件=机器输入槽物品定位）
+     */
+    public static void sendComposeToServer(String recipientName, String title, String content, int x, int y, int z,
+        int dim) {
+        if (!initialized || channel == null) return;
+        if (FMLCommonHandler.instance()
+            .getEffectiveSide() != Side.CLIENT) return;
+        channel.sendToServer(new MailActionPacket(recipientName, title, content, x, y, z, dim));
     }
 
     public static boolean isInitialized() {

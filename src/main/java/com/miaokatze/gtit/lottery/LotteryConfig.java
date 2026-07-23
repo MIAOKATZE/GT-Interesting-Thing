@@ -7,12 +7,21 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonSerializer;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
+import com.miaokatze.gtit.util.NbtBase64Util;
+
+import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
  * 抽奖配置加载（JSON）
@@ -22,17 +31,19 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
  * <p>
  * 配置结构（Gson 序列化，参照 {@link com.miaokatze.gtit.signin.DailySignInConfig} 模式）：
  * <ul>
- * <li>{@code pools[]}：卡池列表，每池含 id/name/costPerDraw/nekoCurrencyId</li>
+ * <li>{@code pools[]}：卡池列表，每池含 id/name/iconItem/costItems（旧字段 costPerDraw/nekoCurrencyId 保留兼容）</li>
+ * <li>{@code pools[].costItems[]}：需求物品（item/meta/amount/nbtBase64/oreDict，v1.7.6 货币解绑）</li>
  * <li>{@code pools[].entries[]}：奖品条目（item/meta/minAmount/maxAmount/weight/rarity/nekoCurrencyId/nbtBase64）</li>
  * <li>{@code pools[].pityConfig}：保底配置（软保底阈值/增量、硬保底阈值/保底稀有度）</li>
  * </ul>
  * rarity 字段大小写不敏感（{@code "epic"}/{@code "EPIC"} 均可），未知值回退 COMMON。
+ * 旧池（仅 nekoCurrencyId/costPerDraw）加载时自动合成 costItems 并补缺省图标（对应猫猫币物品）。
  */
 public class LotteryConfig {
 
     /** 配置文件路径（相对游戏根目录） */
     private static final String CONFIG_PATH = "config/gtit/lottery.json";
-    /** Gson 实例（rarity 枚举注册大小写不敏感适配器） */
+    /** Gson 实例（rarity 枚举大小写不敏感适配器 + NekoBigItemStack 物品适配器） */
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .disableHtmlEscaping()
         .registerTypeAdapter(
@@ -41,6 +52,51 @@ public class LotteryConfig {
         .registerTypeAdapter(
             LotteryRarity.class,
             (JsonDeserializer<LotteryRarity>) (json, typeOfT, context) -> LotteryRarity.fromString(json.getAsString()))
+        .registerTypeAdapter(NekoBigItemStack.class, (JsonSerializer<NekoBigItemStack>) (src, typeOfSrc, context) -> {
+            // 序列化为 {item, meta, amount, nbtBase64, oreDict}（与 NekoTradeEntry.ItemEntry 同风格）
+            JsonObject obj = new JsonObject();
+            ItemStack base = src.getBaseStack();
+            if (base != null && base.getItem() != null) {
+                obj.addProperty(
+                    "item",
+                    Item.itemRegistry.getNameForObject(base.getItem())
+                        .toString());
+                obj.addProperty("meta", base.getItemDamage());
+                if (base.hasTagCompound() && base.getTagCompound() != null) {
+                    obj.addProperty("nbtBase64", NbtBase64Util.nbtToBase64(base.getTagCompound()));
+                }
+            } else {
+                obj.addProperty("item", "");
+                obj.addProperty("meta", 0);
+            }
+            obj.addProperty("amount", src.getStackSize());
+            if (src.hasOreDict()) {
+                obj.addProperty("oreDict", src.getOreDict());
+            }
+            return obj;
+        })
+        .registerTypeAdapter(NekoBigItemStack.class, (JsonDeserializer<NekoBigItemStack>) (json, typeOfT, context) -> {
+            JsonObject obj = json.getAsJsonObject();
+            String itemId = obj.has("item") ? obj.get("item")
+                .getAsString() : "";
+            int meta = obj.has("meta") ? obj.get("meta")
+                .getAsInt() : 0;
+            int amount = obj.has("amount") ? obj.get("amount")
+                .getAsInt() : 1;
+            String oreDict = obj.has("oreDict") ? obj.get("oreDict")
+                .getAsString() : "";
+            String[] parts = itemId.split(":", 2);
+            Item item = parts.length == 2 ? GameRegistry.findItem(parts[0], parts[1]) : null;
+            if (item == null) return null; // 物品不存在：Gson 列表会保留 null，加载后由迁移步骤清理
+            ItemStack stack = new ItemStack(item, 1, meta);
+            if (obj.has("nbtBase64")) {
+                NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(
+                    obj.get("nbtBase64")
+                        .getAsString());
+                if (nbt != null) stack.setTagCompound(nbt);
+            }
+            return new NekoBigItemStack(Math.max(1, amount), oreDict, stack);
+        })
         .create();
 
     /** 配置根对象（对应 lottery.json 根） */
@@ -69,6 +125,10 @@ public class LotteryConfig {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
                 LotteryConfigData data = GSON.fromJson(json, LotteryConfigData.class);
                 if (data != null && data.pools != null && !data.pools.isEmpty()) {
+                    // v1.7.6 迁移：旧池合成 costItems + 补缺省图标 + 清理无效需求条目
+                    for (LotteryPool pool : data.pools) {
+                        if (pool != null) migratePool(pool);
+                    }
                     // 条目校验：过滤非法条目/卡池（记录日志提示配置错误位置）
                     if (validateAll(data)) {
                         GTInterestingThing.LOG.info("抽奖配置已加载（{} 个卡池）", data.pools.size());
@@ -157,6 +217,29 @@ public class LotteryConfig {
         return allValid && !valid.isEmpty();
     }
 
+    /**
+     * 单池迁移（加载后调用）
+     * <p>
+     * ① 清理 costItems 中的 null 条目（物品已卸载导致反序列化失败）；
+     * ② 旧字段（nekoCurrencyId × costPerDraw）合成 costItems；
+     * ③ 缺省图标回退为对应猫猫币物品。
+     */
+    private static void migratePool(LotteryPool pool) {
+        // 清理反序列化失败（物品不存在）的 null 条目
+        List<NekoBigItemStack> costs = pool.getCostItems();
+        costs.removeIf(cost -> cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0);
+        // 旧字段合成（costItems 为空时生效）
+        pool.synthesizeCostItemsFromLegacy();
+        // 缺省图标：回退对应猫猫币物品
+        if (pool.getIconItem()
+            .isEmpty()) {
+            ItemStack currencyStack = NekoCurrencyRegistrar.getItemStack(pool.getNekoCurrencyId(), 1);
+            if (currencyStack != null) {
+                pool.setIconFromItemStack(currencyStack);
+            }
+        }
+    }
+
     // ==================== 默认卡池构建 ====================
 
     /** 猫猫币池：10 格，单抽 5 猫猫币，硬保底 50 抽 EPIC */
@@ -167,6 +250,13 @@ public class LotteryConfig {
             NekoCurrencyRegistrar.NEKO_ID,
             5,
             PityConfig.createDefault());
+        // 图标 + 需求物品（5 猫猫币/抽）
+        ItemStack coin = NekoCurrencyRegistrar.getItemStack(NekoCurrencyRegistrar.NEKO_ID, 5);
+        if (coin != null) {
+            pool.setIconFromItemStack(coin);
+            pool.getCostItems()
+                .add(new NekoBigItemStack(coin));
+        }
         List<LotteryEntry> entries = pool.getEntries();
         // COMMON：食物/基础燃料/基础金属（高权重）
         entries.add(LotteryEntry.createItemPrize("bread", "minecraft:bread", 0, 2, 6, 100, LotteryRarity.COMMON));
@@ -196,6 +286,13 @@ public class LotteryConfig {
     private static LotteryPool createDefaultShimmeringPool() {
         PityConfig pity = PityConfig.createDefault();
         LotteryPool pool = new LotteryPool("shimmering", "闪烁猫猫币池", NekoCurrencyRegistrar.SHIMMERING_NEKO_ID, 1, pity);
+        // 图标 + 需求物品（1 闪烁猫猫币/抽）
+        ItemStack coin = NekoCurrencyRegistrar.getItemStack(NekoCurrencyRegistrar.SHIMMERING_NEKO_ID, 1);
+        if (coin != null) {
+            pool.setIconFromItemStack(coin);
+            pool.getCostItems()
+                .add(new NekoBigItemStack(coin));
+        }
         List<LotteryEntry> entries = pool.getEntries();
         // COMMON：金锭/石英（相对闪烁币价值仍属普通）
         entries.add(LotteryEntry.createItemPrize("gold_x", "minecraft:gold_ingot", 0, 2, 4, 60, LotteryRarity.COMMON));

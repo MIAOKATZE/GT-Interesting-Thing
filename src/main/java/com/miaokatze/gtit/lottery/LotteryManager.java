@@ -20,8 +20,11 @@ import com.gtnewhorizon.gtnhlib.teams.TeamManager;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInManager;
+import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
+import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
+import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 
 /**
  * 抽奖管理器单例（团队维度）
@@ -123,16 +126,18 @@ public class LotteryManager {
     /**
      * 执行抽奖（服务端权威）
      * <p>
-     * 流程：校验卡池与机器 → 原子扣费（cost × count，团队钱包）→ 逐抽
+     * 流程：校验卡池与机器 → 扣费分流（{@link #deductCostItems}：costItems 中猫猫币条目走
+     * 团队钱包、普通物品条目从机器输入槽扣除，校验通过才实际扣减）→ 逐抽
      * （软保底加权 + 硬保底强制替换）→ 出货（机器出货槽/钱包）→ 记历史 → 落盘。
      * <p>
-     * <b>原子性</b>：扣费一次性完成（count 连抽总价），任一抽出货失败不回滚已抽结果
+     * <b>原子性</b>：扣费一次性完成（count 连抽全部需求），任一抽出货失败不回滚已抽结果
      * （与交易 OUTPUT_FULL 回滚不同——抽奖出货溢出已退玩家背包，无丢失路径）。
      *
      * @param playerId 抽取玩家
      * @param poolId   卡池 ID
      * @param count    连抽次数（1 或 10）
-     * @param machine  触发的售货机（物品奖品出货槽；为 null 时物品直接给玩家）
+     * @param machine  触发的售货机（物品奖品出货槽 + 物品消耗来源；为 null 时物品直接给玩家，
+     *                 但含物品消耗的池会被拒）
      * @return 抽取结果列表（size == count）；失败返回空列表
      */
     public List<LotteryDrawResult> drawLottery(UUID playerId, String poolId, int count,
@@ -146,13 +151,10 @@ public class LotteryManager {
             return results;
         }
 
-        // 1. 原子扣费（团队钱包，与交易执行一致）
-        int totalCost = pool.getCostPerDraw() * count;
-        NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-        if (wallet == null || !wallet.tryDeduct(pool.getNekoCurrencyId(), totalCost)) {
-            return results; // 余额不足：空结果，由调用方提示
+        // 1. 扣费分流（v1.7.6 costItems：货币条目→团队钱包，物品条目→机器输入槽；全量校验后原子扣减）
+        if (!deductCostItems(playerId, pool, count, machine)) {
+            return results; // 余额/物品不足：空结果，由调用方提示
         }
-        NekoWalletManager.INSTANCE.saveWallet(playerId);
 
         // 2. 逐抽（保底计数按「团队 × 卡池」维度推进）
         UUID teamKey = resolveTeamKey(playerId);
@@ -170,6 +172,139 @@ public class LotteryManager {
         // 5. 落盘保底与历史
         saveTeamData(teamKey);
         return results;
+    }
+
+    // ==================== 扣费分流（v1.7.6） ====================
+
+    /**
+     * 汇总卡池 count 连抽的全部需求（货币按币种聚合、物品按条目 ×count）
+     *
+     * @param pool          卡池
+     * @param count         连抽次数
+     * @param currencyNeeds 输出：货币需求（currencyId → 总量）
+     * @param itemNeeds     输出：物品需求（NekoBigItemStack 列表）
+     */
+    private static void collectCostNeeds(LotteryPool pool, int count, Map<String, Integer> currencyNeeds,
+        List<NekoBigItemStack> itemNeeds) {
+        for (NekoBigItemStack cost : pool.getCostItems()) {
+            if (cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0) continue;
+            int total = cost.getStackSize() * Math.max(1, count);
+            String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+            if (cid != null) {
+                // 猫猫币条目：按币种聚合（同币种多条目合并扣款）
+                currencyNeeds.merge(cid, total, Integer::sum);
+            } else {
+                // 普通物品条目：从机器输入槽扣除
+                itemNeeds.add(
+                    new NekoBigItemStack(
+                        total,
+                        cost.getOreDict(),
+                        cost.getBaseStack()
+                            .copy()));
+            }
+        }
+    }
+
+    /**
+     * 消耗预校验（不实际扣减）
+     * <p>
+     * 货币条目校验团队钱包余额；物品条目在机器输入槽副本上模拟扣除。
+     * 抽奖请求包（{@link LotteryRequestPacket}）据此给出明确的失败提示。
+     *
+     * @param playerId 抽取玩家
+     * @param pool     卡池
+     * @param count    连抽次数
+     * @param machine  触发机器（含物品消耗时必需）
+     * @return true 表示全部需求可满足
+     */
+    public boolean canAfford(UUID playerId, LotteryPool pool, int count, MTENekoVendingMachineV2 machine) {
+        if (playerId == null || pool == null || count <= 0) return false;
+        Map<String, Integer> currencyNeeds = new java.util.LinkedHashMap<>();
+        List<NekoBigItemStack> itemNeeds = new ArrayList<>();
+        collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
+
+        // 货币余额校验
+        if (!currencyNeeds.isEmpty()) {
+            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+            if (wallet == null) return false;
+            for (Map.Entry<String, Integer> e : currencyNeeds.entrySet()) {
+                if (wallet.getCount(e.getKey()) < e.getValue()) return false;
+            }
+        }
+        // 物品模拟扣除（副本，不影响实际槽位）
+        if (!itemNeeds.isEmpty()) {
+            if (machine == null) return false;
+            ItemStack[] inputs = machine.createInputSlotAccessor()
+                .getCopyOfInputs();
+            if (!NekoTradeExecutor.INSTANCE.removeItems(inputs, itemNeeds)
+                .isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 扣费分流（全量校验 → 原子扣减）
+     * <p>
+     * ① 汇总 count 连抽需求；② 货币条目校验钱包余额、物品条目在输入槽副本模拟扣除，
+     * 全部满足后；③ 钱包逐币种扣款 + 输入槽写回。
+     * 钱包扣款在服务端主线程执行（与交易执行器一致），已校验余额故 tryDeduct 不会失败；
+     * 防御性回滚：极端并发下部分扣款失败时还原已扣币种。
+     *
+     * @param playerId 抽取玩家
+     * @param pool     卡池
+     * @param count    连抽次数
+     * @param machine  触发机器（含物品消耗时必需）
+     * @return true 表示扣费成功
+     */
+    private boolean deductCostItems(UUID playerId, LotteryPool pool, int count, MTENekoVendingMachineV2 machine) {
+        Map<String, Integer> currencyNeeds = new java.util.LinkedHashMap<>();
+        List<NekoBigItemStack> itemNeeds = new ArrayList<>();
+        collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
+        // 免费池（无需求条目）：直接放行
+        if (currencyNeeds.isEmpty() && itemNeeds.isEmpty()) return true;
+
+        // ---- 全量校验 ----
+        NekoWallet wallet = null;
+        if (!currencyNeeds.isEmpty()) {
+            wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+            if (wallet == null) return false;
+            for (Map.Entry<String, Integer> e : currencyNeeds.entrySet()) {
+                if (wallet.getCount(e.getKey()) < e.getValue()) return false;
+            }
+        }
+        NekoTradeExecutor.InputSlotAccessor inputAccessor = null;
+        ItemStack[] newInputs = null;
+        if (!itemNeeds.isEmpty()) {
+            if (machine == null) return false;
+            inputAccessor = machine.createInputSlotAccessor();
+            newInputs = inputAccessor.getCopyOfInputs();
+            if (!NekoTradeExecutor.INSTANCE.removeItems(newInputs, itemNeeds)
+                .isEmpty()) {
+                return false; // 输入槽物品不足（副本已被修改，未写回不影响实际槽位）
+            }
+        }
+
+        // ---- 原子扣减 ----
+        if (wallet != null) {
+            Map<String, Integer> deductedMap = new java.util.LinkedHashMap<>();
+            for (Map.Entry<String, Integer> e : currencyNeeds.entrySet()) {
+                if (!wallet.tryDeduct(e.getKey(), e.getValue())) {
+                    // 防御性回滚（理论不可达：主线程已校验余额）——还原全部已扣币种
+                    for (Map.Entry<String, Integer> d : deductedMap.entrySet()) {
+                        wallet.addCount(d.getKey(), d.getValue());
+                    }
+                    return false;
+                }
+                deductedMap.put(e.getKey(), e.getValue());
+            }
+            NekoWalletManager.INSTANCE.saveWallet(playerId);
+        }
+        if (inputAccessor != null) {
+            inputAccessor.setInputs(newInputs);
+        }
+        return true;
     }
 
     /**

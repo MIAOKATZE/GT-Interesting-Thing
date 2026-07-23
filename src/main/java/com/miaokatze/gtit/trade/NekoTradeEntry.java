@@ -28,6 +28,10 @@ public class NekoTradeEntry {
     private int cooldown;
     private int maxTrades;
     private String bqQuestId; // BQ任务绑定ID，空字符串=不需要绑定
+    // 是否严格匹配 NBT（v1.7.6 G3⑤）：true=需求按物品+NBT 精确匹配；false=仅按物品匹配。
+    // 统一默认 false（用户确认口径）：旧 JSON 无该字段时 Gson 保留默认值 false，
+    // 旧带 NBT 需求的交易匹配变宽松，属行为变更（已写入 commit 说明）。
+    private boolean recordNBT = false;
 
     public NekoTradeEntry() {
         this.id = UUID.randomUUID()
@@ -119,6 +123,19 @@ public class NekoTradeEntry {
 
     public void setBqQuestId(String bqQuestId) {
         this.bqQuestId = bqQuestId;
+    }
+
+    /**
+     * 是否严格匹配 NBT（v1.7.6 G3⑤）
+     *
+     * @return true = 需求物品按物品+NBT 精确匹配；false = 仅按物品匹配
+     */
+    public boolean isRecordNBT() {
+        return recordNBT;
+    }
+
+    public void setRecordNBT(boolean recordNBT) {
+        this.recordNBT = recordNBT;
     }
 
     // --- Inner Classes ---

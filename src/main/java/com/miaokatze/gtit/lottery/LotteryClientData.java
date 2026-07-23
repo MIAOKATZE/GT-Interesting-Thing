@@ -5,6 +5,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+
+import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
+import com.miaokatze.gtit.util.NbtBase64Util;
+
+import cpw.mods.fml.common.registry.GameRegistry;
+
 /**
  * 客户端抽奖数据缓存
  * <p>
@@ -80,22 +89,75 @@ public final class LotteryClientData {
         public String id = "";
         /** 显示名称 */
         public String name = "";
-        /** 消耗货币 ID（neko / shimmeringNeko） */
+        /** 消耗货币 ID（neko / shimmeringNeko）——旧字段，图标/消耗展示的兼容回退 */
         public String currencyId = "";
-        /** 单抽价格 */
+        /** 单抽价格——旧字段，兼容回退 */
         public int costPerDraw;
+        /** page 图标物品 ID（modid:name），空串回退货币图标 */
+        public String iconItem = "";
+        /** page 图标物品 meta */
+        public int iconMeta;
+        /** page 图标物品 NBT（Base64，可选） */
+        public String iconNbt = "";
+        /** 单抽需求物品列表（v1.7.6 货币解绑；猫猫币条目=钱包扣款，其余=输入槽扣除） */
+        public List<NekoBigItemStack> costItems = new ArrayList<>();
         /** 条目列表（顺序与轮盘槽位一一对应） */
         public List<LotteryEntry> entries = new ArrayList<>();
         /** 保底是否启用 */
         public boolean pityEnabled;
+        /** 软保底阈值（v1.7.6 池编辑面板填充用） */
+        public int softPityThreshold = 30;
+        /** 软保底每次递增的权重倍率（v1.7.6 池编辑面板填充用） */
+        public double softPityIncrement = 5.0;
         /** 硬保底阈值（0 = 无硬保底） */
         public int hardPityThreshold;
         /** 硬保底保证的最低稀有度名 */
         public String guaranteedRarity = "EPIC";
 
-        /** 单抽总价（count 连抽） */
+        /** 单抽总价（count 连抽）——旧字段口径，仅货币展示兼容用 */
         public int totalCost(int count) {
             return costPerDraw * Math.max(1, count);
+        }
+
+        /**
+         * 图标物品堆（page 标签按钮渲染用）
+         *
+         * @return 图标堆；未设置或物品无法解析时返回 null（调用方回退货币图标）
+         */
+        public ItemStack toIconItemStack() {
+            if (iconItem == null || iconItem.isEmpty()) return null;
+            String[] parts = iconItem.split(":", 2);
+            if (parts.length < 2) return null;
+            Item item = GameRegistry.findItem(parts[0], parts[1]);
+            if (item == null) return null;
+            ItemStack stack = new ItemStack(item, 1, iconMeta);
+            if (iconNbt != null && !iconNbt.isEmpty()) {
+                NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(iconNbt);
+                if (nbt != null) {
+                    stack.setTagCompound(nbt);
+                }
+            }
+            return stack;
+        }
+
+        /**
+         * 单抽指定币种货币消耗（costItems 中识别为猫猫币的条目合计）
+         *
+         * @param currencyId 货币 ID
+         * @param count      连抽次数
+         * @return 总货币消耗；无该币种条目返回 0
+         */
+        public int currencyCost(String currencyId, int count) {
+            if (currencyId == null) return 0;
+            int total = 0;
+            for (NekoBigItemStack cost : costItems) {
+                if (cost == null || cost.getBaseStack() == null) continue;
+                String cid = com.miaokatze.gtit.trade.NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+                if (currencyId.equals(cid)) {
+                    total += cost.getStackSize();
+                }
+            }
+            return total * Math.max(1, count);
         }
     }
 

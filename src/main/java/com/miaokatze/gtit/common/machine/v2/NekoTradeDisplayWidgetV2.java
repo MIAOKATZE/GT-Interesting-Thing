@@ -149,19 +149,30 @@ public class NekoTradeDisplayWidgetV2 extends ItemDisplayWidget implements Inter
         }
 
         // --- 需求列表（绿色）---
-        boolean hasRequirements = trade.hasFromItems() || trade.hasCurrencyCost();
+        // v1.7.6 G3② 货币解绑：货币需求=fromItems 中的猫猫币条目（getCurrencyEntries 逐条显示，
+        // 支持多货币混放）；物品行跳过货币条目，防止同一货币既显示货币行又显示物品行
+        java.util.List<NekoBigItemStack> currencyEntries = trade.getCurrencyEntries();
+        boolean hasRequirements = !trade.getNonCurrencyFromItems()
+            .isEmpty() || !currencyEntries.isEmpty();
         if (hasRequirements) {
             builder.emptyLine();
             builder.addLine(EnumChatFormatting.DARK_GREEN + "" + EnumChatFormatting.ITALIC + "需求:");
 
-            // 猫猫币花费
-            if (trade.hasCurrencyCost()) {
-                String currencyName = NekoCurrencyRegistrar.getDisplayName(trade.getCurrencyId());
-                builder.addLine(EnumChatFormatting.DARK_GREEN + "  " + trade.getCurrencyCost() + " " + currencyName);
+            // 猫猫币花费（逐条货币一行）
+            for (NekoBigItemStack currencyEntry : currencyEntries) {
+                String cid = NekoCurrencyRegistrar.getNekoCurrencyId(currencyEntry.getBaseStack());
+                if (cid != null) {
+                    String currencyName = NekoCurrencyRegistrar.getDisplayName(cid);
+                    builder.addLine(
+                        EnumChatFormatting.DARK_GREEN + "  " + currencyEntry.getStackSize() + " " + currencyName);
+                }
             }
 
-            // 输入物品需求
+            // 输入物品需求（跳过货币条目）
             for (NekoBigItemStack fromItem : trade.getFromItems()) {
+                if (NekoCurrencyRegistrar.getNekoCurrencyId(fromItem.getBaseStack()) != null) {
+                    continue;
+                }
                 int amount = fromItem.getStackSize();
                 String name = fromItem.getBaseStack()
                     .getDisplayName();

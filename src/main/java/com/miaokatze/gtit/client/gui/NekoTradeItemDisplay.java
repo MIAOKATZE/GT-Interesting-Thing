@@ -163,9 +163,12 @@ public class NekoTradeItemDisplay {
 
         // 拷贝产物和输入列表，避免外部修改影响显示数据
         List<NekoBigItemStack> outputs = new ArrayList<>(trade.getToItems());
-        List<NekoBigItemStack> inputs = new ArrayList<>(trade.getFromItems());
+        // v1.7.6 G3② 货币解绑：inputs 仅保留普通需求条目——猫猫币条目由 currencyId/cost
+        // 单独显示（下方扩展后的 getCurrencyId/getCurrencyCost 自动扫描货币条目），
+        // 防止 tooltip 同一货币既显示货币行又显示物品行
+        List<NekoBigItemStack> inputs = new ArrayList<>(trade.getNonCurrencyFromItems());
 
-        // 猫猫币信息
+        // 猫猫币信息（v1.7.6 G3②：NekoTrade 已扩展为实时扫描 fromItems 货币条目）
         String currencyId = trade.getCurrencyId();
         long cost = trade.getCurrencyCost();
 

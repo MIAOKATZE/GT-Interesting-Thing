@@ -52,6 +52,54 @@ public class SignInNetworkManager {
         channel.sendToServer(new SignInRequestPacket());
     }
 
+    // ==================== v1.7.6 G2③：活跃页客户端请求 ====================
+
+    /**
+     * 客户端：领取在线时长奖励（每日在线页领取按钮）
+     *
+     * @param tierIndex 档位索引（{@link SignInClientData#getOnlineRewardTiers()} 列表序）
+     */
+    public static void sendClaimOnline(int tierIndex) {
+        sendToServer(SignInRequestPacket.claimOnline(tierIndex));
+    }
+
+    /**
+     * 客户端：设置生日（纪念日页保存按钮）
+     *
+     * @param monthDay 生日（MM-dd 格式，服务端权威校验）
+     */
+    public static void sendSetBirthday(String monthDay) {
+        sendToServer(SignInRequestPacket.setBirthday(monthDay));
+    }
+
+    /**
+     * 客户端：添加自定义纪念日（纪念日页添加按钮）
+     *
+     * @param name     纪念日名称
+     * @param monthDay 日期（MM-dd 格式）
+     * @param year     年份（0 表示不记年份）
+     */
+    public static void sendAddAnniversary(String name, String monthDay, int year) {
+        sendToServer(SignInRequestPacket.addAnniversary(name, monthDay, year));
+    }
+
+    /**
+     * 客户端：删除自定义纪念日（纪念日页删除按钮）
+     *
+     * @param index 列表索引（{@link SignInClientData#getAnniversaries()} 列表序）
+     */
+    public static void sendRemoveAnniversary(int index) {
+        sendToServer(SignInRequestPacket.removeAnniversary(index));
+    }
+
+    /** 客户端发包统一入口（侧检查 + 空守卫；packet 为 null 时静默忽略） */
+    private static void sendToServer(SignInRequestPacket packet) {
+        if (packet == null || !initialized || channel == null) return;
+        if (FMLCommonHandler.instance()
+            .getEffectiveSide() != Side.CLIENT) return;
+        channel.sendToServer(packet);
+    }
+
     /**
      * 服务端：向指定玩家推送签到数据（纯状态刷新，无签到结果反馈）
      */

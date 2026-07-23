@@ -12,34 +12,47 @@ import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widget.Widget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
+import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
+import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 /**
- * 签到日历 GUI（v1.7.0 目标 D）
+ * 签到「活跃」大页 GUI（v1.7.6 G2③ 重构：4 sub-pages）
  * <p>
  * 作为 {@code NekoVMGuiV2} 主内容 {@code PagedWidget} 的「签到」页嵌入（页索引 1）。
- * 采用绝对布局（{@link ParentWidget} + pos/size），全部数据读取自客户端缓存
- * {@link SignInClientData}（服务端通过 {@link SignInSyncPacket} 推送刷新）：
+ * 页面结构（v1.7.6 重构）：
  * <ul>
- * <li>月历：42 个日期格（6 行 × 7 列，周一开头），按当月 1 号星期偏移动态分配日期</li>
- * <li>状态行：累计/连续签到天数</li>
- * <li>进度条：连续天数距下一阶梯宝箱的进度（GuiDraw 自绘矩形条）</li>
- * <li>阶梯奖励预览：最多 3 个宝箱（7/14/30 天），含条件、奖励内容、领取状态</li>
- * <li>签到按钮：点击通过 {@link SignInNetworkManager#sendSignInRequest()} 向服务端发起签到</li>
+ * <li>顶部公共标题行（「每日活跃」+ 编辑模式标识）</li>
+ * <li>内层 {@code PagedWidget}（绑定 {@code NekoVMGuiV2#signInPageController}，4 个 sub-page）：
+ * <ol>
+ * <li>每月签到：月历 6 行 7 列 + 状态行 + 签到按钮（连续奖励预览拆至页 2）</li>
+ * <li>连续签到：连续进度文本/进度条 + 阶梯宝箱预览（自 v1.7.5 日历页底部拆出，
+ * 根除原签到按钮底 296/阶梯预览底 254 被背包行遮挡的问题）</li>
+ * <li>每日在线：今日在线时长 + 档位奖励领取（{@link OnlineTimeConfig} 档位，
+ * 默认 30min/2h/5h = 5/20/50 猫猫币）</li>
+ * <li>纪念日：首次入服时间（只读）+ 生日配置 + 自定义纪念日列表（增删，最多
+ * {@value DailySignInManager#MAX_ANNIVERSARIES} 条）</li>
+ * </ol>
+ * 左侧 sub-tab 标签列由 {@code NekoVMGuiV2#createSubTabColumn} 提供（与本 PagedWidget 同控制器）。</li>
  * </ul>
  * <p>
- * <b>双端安全</b>：所有动态 Supplier 仅在客户端渲染时求值；服务端构建时不渲染、
- * 读取到的 {@link SignInClientData} 为默认值，不影响服务端逻辑。
+ * <b>布局约束</b>：背包行顶部在主内容区 Y≈231（G1 用户裁决），本页全部交互内容
+ * 收进 Y≤{@value #CONTENT_BOTTOM}（内层 PagedWidget 高 {@value #INNER_HEIGHT}），
+ * 避免被背包行遮挡拦截点击。
  * <p>
- * <b>配置口径（v1.7.0 目标 5）</b>：阶梯奖励与基础奖励预览统一读取
- * {@link SignInClientData}（其内部优先使用服务端同步的配置快照，未同步时回退本地
- * {@link DailySignInConfig}），专用服务器环境下客户端展示与服务端权威配置保持一致；
- * 签到结果反馈不受影响（由服务端同步包权威下发）。
+ * <b>双端安全</b>：本类整条调用链仅客户端构建（{@code NekoVMGuiV2} 仅客户端创建主内容
+ * PagedWidget）；所有动态 Supplier 仅在客户端渲染时求值，服务端构建时读取到的
+ * {@link SignInClientData} 为默认值，不影响服务端逻辑——签到判定/在线累计/纪念日存取
+ * 完全由 {@link DailySignInManager} 在服务端权威执行（玩家 UUID 维度）。
+ * <p>
+ * <b>配置口径</b>：阶梯奖励/在线档位预览统一读取 {@link SignInClientData}
+ * （其内部优先使用服务端同步的配置快照，未同步时回退本地配置）。
  */
 public class SignInCalendarGui {
 
@@ -85,6 +98,15 @@ public class SignInCalendarGui {
     /** 页面高度（主内容区 = PANEL_HEIGHT - 8） */
     private static final int PAGE_HEIGHT = 312;
 
+    /** 交互内容底部上限（背包行顶部 Y≈231，留 2px 余量；G1 用户裁决） */
+    private static final int CONTENT_BOTTOM = 229;
+    /** 内层 PagedWidget Y（标题行之下） */
+    private static final int INNER_Y = 16;
+    /** 内层 PagedWidget 高度（底部不超过 CONTENT_BOTTOM） */
+    private static final int INNER_HEIGHT = CONTENT_BOTTOM - INNER_Y;
+
+    // ---- 页 1「每月签到」布局（内层页面局部坐标，170 x INNER_HEIGHT） ----
+
     /** 日期格边长（与 cell_*.png 素材一致） */
     private static final int CELL_SIZE = 20;
     /** 日期格间距 */
@@ -99,27 +121,13 @@ public class SignInCalendarGui {
     private static final int CAL_WIDTH = CAL_COLS * CELL_SIZE + (CAL_COLS - 1) * CELL_GAP;
     /** 日历网格左上角 X（水平居中） */
     private static final int CAL_X = (PAGE_WIDTH - CAL_WIDTH) / 2;
-    /** 星期表头 Y */
-    private static final int WEEKDAY_Y = 30;
-    /** 日历网格 Y */
-    private static final int CAL_Y = 41;
+    /** 星期表头 Y（页内局部） */
+    private static final int WEEKDAY_Y = 24;
+    /** 日历网格 Y（页内局部；6 行结束于 35+132=167，底部为签到按钮留位） */
+    private static final int CAL_Y = 35;
 
-    /** 进度条宽度 */
-    private static final int PROGRESS_W = 150;
-    /** 进度条 X（水平居中） */
-    private static final int PROGRESS_X = (PAGE_WIDTH - PROGRESS_W) / 2;
-    /** 进度条 Y */
-    private static final int PROGRESS_Y = 190;
-
-    /** 阶梯预览区 Y */
-    private static final int TIER_Y = 204;
-    /** 阶梯预览单列宽 */
-    private static final int TIER_COL_W = 54;
-    /** 阶梯预览最大列数（对应 3 个宝箱素材） */
-    private static final int TIER_MAX = 3;
-
-    /** 签到结果提示 Y */
-    private static final int RESULT_Y = 258;
+    /** 签到结果提示 Y（页内局部） */
+    private static final int RESULT_Y = 172;
     /** 签到结果提示显示时长（毫秒） */
     private static final long RESULT_DISPLAY_MS = 5000L;
 
@@ -127,17 +135,68 @@ public class SignInCalendarGui {
     private static final int BTN_W = 48;
     /** 签到按钮高 */
     private static final int BTN_H = 24;
-    /** 签到按钮 Y */
-    private static final int BTN_Y = 272;
+    /** 签到按钮 Y（页内局部；底部 184+24=208 不超过 INNER_HEIGHT） */
+    private static final int BTN_Y = 184;
+
+    // ---- 页 2「连续签到」布局（内层页面局部坐标） ----
+
+    /** 进度条宽度 */
+    private static final int PROGRESS_W = 150;
+    /** 进度条 X（水平居中） */
+    private static final int PROGRESS_X = (PAGE_WIDTH - PROGRESS_W) / 2;
+    /** 进度文本 Y */
+    private static final int PROGRESS_LABEL_Y = 14;
+    /** 进度条 Y */
+    private static final int PROGRESS_Y = 28;
+
+    /** 阶梯预览区 Y */
+    private static final int TIER_Y = 44;
+    /** 阶梯预览单列宽 */
+    private static final int TIER_COL_W = 54;
+    /** 阶梯预览最大列数（对应 3 个宝箱素材） */
+    private static final int TIER_MAX = 3;
+
+    // ---- 页 3「每日在线」布局（内层页面局部坐标） ----
+
+    /** 在线状态行 Y */
+    private static final int ONLINE_STATUS_Y = 14;
+    /** 档位行起始 Y */
+    private static final int ONLINE_ROW_Y = 30;
+    /** 档位行行高 */
+    private static final int ONLINE_ROW_H = 26;
+    /** 档位最大显示行数（超出配置行数截断显示） */
+    private static final int ONLINE_MAX_ROWS = 5;
+    /** 档位领取按钮宽（与 mail btn_claim.png 素材一致） */
+    private static final int ONLINE_CLAIM_W = 48;
+    /** 档位领取按钮高 */
+    private static final int ONLINE_CLAIM_H = 16;
+
+    // ---- 页 4「纪念日」布局（内层页面局部坐标） ----
+
+    /** 纪念日条目最大显示行数（与 {@link DailySignInManager#MAX_ANNIVERSARIES} 一致） */
+    private static final int ANNIV_MAX_ROWS = DailySignInManager.MAX_ANNIVERSARIES;
+    /** 条目行起始 Y */
+    private static final int ANNIV_ROW_Y = 60;
+    /** 条目行行高 */
+    private static final int ANNIV_ROW_H = 18;
+    /** 添加区 Y */
+    private static final int ANNIV_ADD_Y = 156;
+    /** 输入框高 */
+    private static final int FIELD_H = 14;
+
+    /** 生日/名称/日期/年份输入限长（防恶意包，服务端同校验） */
+    private static final int MAX_BIRTHDAY_LENGTH = 5;
+    private static final int MAX_ANNIV_NAME_LENGTH = 16;
+    private static final int MAX_ANNIV_YEAR_LENGTH = 4;
 
     // ==================== 颜色常量（ARGB） ====================
 
     /** 日期数字-普通（浅色格底上的深灰） */
     private static final int COLOR_DAY_NORMAL = 0xFF3F3F3F;
-    /** 日期数字-过去未签到（暗灰） */
-    private static final int COLOR_DAY_MISSED = 0xFF777777;
-    /** 日期数字-未来（浅灰） */
-    private static final int COLOR_DAY_FUTURE = 0xFF9A9A9A;
+    /** 日期数字-过去未签到（中灰，v1.7.6 G4 自 0xFF777777 调深：格底为浅色，过浅不可读） */
+    private static final int COLOR_DAY_MISSED = 0xFF555555;
+    /** 日期数字-未来（浅灰，v1.7.6 G4 自 0xFF9A9A9A 调深；保持 NORMAL<MISSED<FUTURE 层次） */
+    private static final int COLOR_DAY_FUTURE = 0xFF707070;
     /** 日期数字-今天（深紫，与今日格高亮边框呼应） */
     private static final int COLOR_DAY_TODAY = 0xFF7A1FA2;
     /** 日期数字-已签到（深棕，压在小猫爪印章上仍可读） */
@@ -153,51 +212,100 @@ public class SignInCalendarGui {
     /** 当月信息缓存（按 yyyy-MM 缓存，跨月自动重算） */
     private static MonthInfo monthInfoCache;
 
+    // ==================== 纪念日页草稿（客户端本地状态，GUI 重开按同步数据重置生日） ====================
+
+    /** 草稿：生日输入框（MM-dd；构建页面时按同步数据初始化） */
+    private static String birthdayDraft = "";
+    /** 草稿：新纪念日名称 */
+    private static String annivNameDraft = "";
+    /** 草稿：新纪念日日期（MM-dd） */
+    private static String annivDateDraft = "";
+    /** 草稿：新纪念日年份（可选，4 位数字） */
+    private static String annivYearDraft = "";
+
     private SignInCalendarGui() {}
 
     // ==================== 页面构建入口 ====================
 
     /**
-     * 构建签到页（供 {@code NekoVMGuiV2} 主内容 PagedWidget 添加为页 1）
+     * 构建签到「活跃」大页（供 {@code NekoVMGuiV2} 主内容 PagedWidget 添加为页 1）
      *
-     * @param editCallback 编辑模式回调（v1.7.0 目标 4）；null 表示不支持编辑模式
-     * @return 签到页根 Widget（170x312，绝对布局）
+     * @param editCallback  编辑模式回调（v1.7.0 目标 4）；null 表示不支持编辑模式
+     * @param subController 活跃 sub-page 分页控制器（{@code NekoVMGuiV2#signInPageController}，
+     *                      左侧 sub-tab 标签列与本 PagedWidget 共用）
+     * @return 活跃页根 Widget（170x312，绝对布局）
      */
-    public static IWidget createSignInPage(SignInEditCallback editCallback) {
+    public static IWidget createSignInPage(SignInEditCallback editCallback, PagedWidget.Controller subController) {
         ParentWidget<?> page = new ParentWidget<>().size(PAGE_WIDTH, PAGE_HEIGHT);
 
-        page.child(createTitle(editCallback)); // 标题 + 当前年月（编辑模式附加标识）
-        page.child(createStatusInfo()); // 累计/连续天数
-        page.child(createWeekdayHeader()); // 星期表头
-        page.child(createCalendarGrid()); // 42 日期格
-        page.child(createProgressLabel()); // 连续进度文本
-        page.child(createProgressBar()); // 连续进度条
-        page.child(createTierPreview(editCallback)); // 阶梯宝箱预览（编辑模式可点击）
-        page.child(createResultMessage()); // 签到结果提示（限时）
-        page.child(createSignInButton(editCallback)); // 签到按钮（编辑模式拦截）
-        page.child(createGlobalEditButton(editCallback)); // 全局配置按钮（仅编辑模式显示）
+        page.child(createContainerTitle(editCallback)); // 公共标题（「每日活跃」+ 编辑标识）
+        page.child(createSubPagedWidget(editCallback, subController)); // 内层 4 sub-page
 
         return page;
     }
 
-    // ==================== 各区域构建 ====================
+    /**
+     * 内层 sub-page PagedWidget：页 0=每月签到，页 1=连续签到，页 2=每日在线，页 3=纪念日
+     */
+    private static IWidget createSubPagedWidget(SignInEditCallback editCallback, PagedWidget.Controller subController) {
+        PagedWidget<?> subPaged = new PagedWidget<>().name("signInSubPaged")
+            .pos(0, INNER_Y)
+            .size(PAGE_WIDTH, INNER_HEIGHT)
+            .controller(subController);
 
-    /** 标题行：「签到日历 yyyy年M月」（随服务端日期跨月自动刷新；编辑模式附加红色标识） */
-    private static IWidget createTitle(SignInEditCallback editCallback) {
+        subPaged.addPage(createCalendarPage(editCallback)); // 页 0：每月签到
+        subPaged.addPage(createConsecutivePage(editCallback)); // 页 1：连续签到
+        subPaged.addPage(createOnlinePage()); // 页 2：每日在线
+        subPaged.addPage(createAnniversaryPage()); // 页 3：纪念日
+
+        return subPaged;
+    }
+
+    // ==================== 公共标题 ====================
+
+    /** 公共标题行：「每日活跃」（金色居中；编辑模式附加红色标识） */
+    private static IWidget createContainerTitle(SignInEditCallback editCallback) {
         return new TextWidget<>(IKey.dynamic(() -> {
-            MonthInfo mi = getMonthInfo();
-            String text = EnumChatFormatting.GOLD + "签到日历 "
-                + EnumChatFormatting.YELLOW
-                + mi.year
-                + "年"
-                + mi.month
-                + "月";
+            String text = EnumChatFormatting.GOLD + "每日活跃";
             if (editCallback != null && editCallback.isEditMode()) {
                 text += EnumChatFormatting.RED + " [编辑]";
             }
             return text;
         })).pos(0, 2)
             .size(PAGE_WIDTH, 12)
+            .textAlign(Alignment.Center)
+            .shadow(false);
+    }
+
+    // ==================== 页 0：每月签到 ====================
+
+    /**
+     * 每月签到页：月历（6 行 7 列）+ 状态行 + 签到按钮 + 结果提示
+     * <p>
+     * v1.7.6 拆页后本页只保留日历与签到按钮（连续奖励预览移至页 1），
+     * 全部内容收进页内 Y≤{@link #INNER_HEIGHT}，不再被背包行遮挡。
+     */
+    private static IWidget createCalendarPage(SignInEditCallback editCallback) {
+        ParentWidget<?> view = new ParentWidget<>().size(PAGE_WIDTH, INNER_HEIGHT);
+
+        view.child(createMonthTitle()); // 月份标题（yyyy年M月）
+        view.child(createStatusInfo()); // 累计/连续天数
+        view.child(createWeekdayHeader()); // 星期表头
+        view.child(createCalendarGrid()); // 42 日期格
+        view.child(createResultMessage()); // 签到结果提示（限时）
+        view.child(createSignInButton(editCallback)); // 签到按钮（编辑模式拦截）
+        view.child(createGlobalEditButton(editCallback)); // 全局配置按钮（仅编辑模式显示）
+
+        return view;
+    }
+
+    /** 月份标题：「签到日历 yyyy年M月」（随服务端日期跨月自动刷新） */
+    private static IWidget createMonthTitle() {
+        return new TextWidget<>(IKey.dynamic(() -> {
+            MonthInfo mi = getMonthInfo();
+            return EnumChatFormatting.YELLOW + "签到日历 " + mi.year + "年" + mi.month + "月";
+        })).pos(0, 0)
+            .size(PAGE_WIDTH, 10)
             .textAlign(Alignment.Center)
             .shadow(false);
     }
@@ -214,23 +322,24 @@ public class SignInCalendarGui {
                     + EnumChatFormatting.GOLD
                     + "连续 "
                     + SignInClientData.getConsecutiveDays()
-                    + " 天")).pos(0, 16)
+                    + " 天")).pos(0, 12)
                         .size(PAGE_WIDTH, 10)
                         .textAlign(Alignment.Center)
                         .shadow(false);
     }
 
-    /** 星期表头：一~日，逐列对齐日期格 */
+    /** 星期表头：一~日，逐列对齐日期格（v1.7.6 G4：深灰替代 GRAY，浅灰面板上 GRAY 过淡不可读） */
     private static IWidget createWeekdayHeader() {
         ParentWidget<?> header = new ParentWidget<>().pos(0, WEEKDAY_Y)
             .size(PAGE_WIDTH, 9);
         for (int i = 0; i < CAL_COLS; i++) {
             int x = CAL_X + i * (CELL_SIZE + CELL_GAP);
             header.child(
-                new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + WEEKDAY_LABELS[i])).pos(x, 0)
+                new TextWidget<>(IKey.str(WEEKDAY_LABELS[i])).pos(x, 0)
                     .size(CELL_SIZE, 9)
                     .textAlign(Alignment.Center)
                     .scale(0.75f)
+                    .color(0xFF3F3F3F)
                     .shadow(false));
         }
         return header;
@@ -283,27 +392,188 @@ public class SignInCalendarGui {
         return grid;
     }
 
-    /** 连续进度文本：当前连续天数与下一阶梯差距 */
+    /** 签到结果提示（限时 {@link #RESULT_DISPLAY_MS} 毫秒，超时自动消失） */
+    private static IWidget createResultMessage() {
+        return new TextWidget<>(IKey.dynamic(() -> {
+            int result = SignInClientData.getLastResult();
+            if (result == SignInClientData.RESULT_NONE) return "";
+            if (System.currentTimeMillis() - SignInClientData.getLastResultTimeMs() > RESULT_DISPLAY_MS) {
+                return "";
+            }
+            switch (result) {
+                case SignInClientData.RESULT_SUCCESS -> {
+                    String msg = EnumChatFormatting.GREEN + "签到成功！+" + SignInClientData.getLastResultReward() + " 猫猫币";
+                    if (SignInClientData.getLastResultTierDays() > 0) {
+                        msg += EnumChatFormatting.GOLD + "（达成 " + SignInClientData.getLastResultTierDays() + " 天阶梯宝箱！）";
+                    }
+                    return msg;
+                }
+                case SignInClientData.RESULT_ALREADY_SIGNED -> {
+                    return EnumChatFormatting.YELLOW + "今日已签到，明天再来吧";
+                }
+                default -> {
+                    return EnumChatFormatting.RED + "签到失败，请稍后重试";
+                }
+            }
+        })).pos(0, RESULT_Y)
+            .size(PAGE_WIDTH, 10)
+            .textAlign(Alignment.Center)
+            .shadow(false);
+    }
+
+    /**
+     * 签到按钮
+     * <p>
+     * 未签到时可点击：通过 {@link SignInNetworkManager#sendSignInRequest()} 向服务端发请求，
+     * 结果由服务端同步包回推并刷新本页（含结果提示条）。
+     * 已签到后按钮文字变灰且点击无效；tooltip 展示今日可得奖励预览。
+     * <p>
+     * <b>编辑模式</b>（v1.7.0 目标 4）：点击被拦截（禁止常规签到交互），
+     * tooltip 提示处于编辑模式。
+     *
+     * @param editCallback 编辑模式回调；null 表示不支持编辑模式
+     */
+    private static IWidget createSignInButton(SignInEditCallback editCallback) {
+        return new ButtonWidget<>().pos((PAGE_WIDTH - BTN_W) / 2, BTN_Y)
+            .size(BTN_W, BTN_H)
+            .background(NekoGuiTextures.SIGNIN_BTN_CLAIM)
+            .overlay(
+                IKey.dynamic(
+                    () -> SignInClientData.hasSignedToday() ? EnumChatFormatting.GRAY + "已签到"
+                        : EnumChatFormatting.WHITE + "签到"))
+            .tooltipBuilder(t -> {
+                // 编辑模式：仅提示，不展示奖励预览
+                if (editCallback != null && editCallback.isEditMode()) {
+                    t.addLine(IKey.str(EnumChatFormatting.RED + "[编辑模式] 签到交互已禁用"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击阶梯宝箱或「全局配置」按钮进行编辑"));
+                    return;
+                }
+                if (SignInClientData.hasSignedToday()) {
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "今日已完成签到，明天再来吧"));
+                } else {
+                    int nextConsec = SignInClientData.getConsecutiveDays() + 1;
+                    // 奖励预览读客户端缓存（服务端同步快照优先）
+                    int reward = SignInClientData.calculateBaseReward(nextConsec);
+                    t.addLine(IKey.str(EnumChatFormatting.GREEN + "点击签到，领取今日奖励"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "基础奖励：" + reward + " 猫猫币（连续第 " + nextConsec + " 天）"));
+                    SignInRewardTier tier = SignInClientData.getTriggeredTier(nextConsec);
+                    if (tier != null && !SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
+                        t.addLine(
+                            IKey.str(EnumChatFormatting.GOLD + "今天签到可额外领取 " + tier.getRequiredDays() + " 天阶梯宝箱！"));
+                    }
+                }
+            })
+            .tooltipAutoUpdate(true)
+            .onMouseTapped(mouse -> {
+                // 编辑模式：拦截签到交互（禁止常规操作）
+                if (editCallback != null && editCallback.isEditMode()) {
+                    return mouse == 0;
+                }
+                // 仅左键且今日未签到时发请求；服务端兜底重复校验，双击安全
+                if (mouse == 0 && !SignInClientData.hasSignedToday()) {
+                    SignInNetworkManager.sendSignInRequest();
+                    return true;
+                }
+                return false;
+            });
+    }
+
+    /**
+     * 「全局配置」按钮（仅编辑模式显示）
+     * <p>
+     * 点击通过 {@link SignInEditCallback#onEditGlobalRequested()} 打开全局编辑面板
+     * （每日基础奖励 / 连续递增系数）。非编辑模式下按钮隐藏（setEnabledIf 动态折叠）。
+     *
+     * @param editCallback 编辑模式回调；null 时按钮恒隐藏
+     */
+    private static IWidget createGlobalEditButton(SignInEditCallback editCallback) {
+        ButtonWidget<?> button = new ButtonWidget<>().pos((PAGE_WIDTH - BTN_W) / 2 + BTN_W + 6, BTN_Y)
+            .size(46, BTN_H)
+            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .overlay(IKey.str(EnumChatFormatting.YELLOW + "全局配置"))
+            .tooltipBuilder(t -> {
+                t.addLine(IKey.str(EnumChatFormatting.GOLD + "编辑全局签到配置"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "每日基础奖励与连续递增系数"));
+            })
+            .tooltipAutoUpdate(true)
+            .onMouseTapped(mouse -> {
+                if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
+                    editCallback.onEditGlobalRequested();
+                    return true;
+                }
+                return false;
+            });
+        // 仅编辑模式显示（非编辑模式折叠隐藏，回调为 null 时恒隐藏）
+        button.setEnabledIf(w -> editCallback != null && editCallback.isEditMode());
+        return button;
+    }
+
+    // ==================== 页 1：连续签到 ====================
+
+    /**
+     * 连续签到页：连续进度文本/进度条 + 阶梯宝箱预览
+     * <p>
+     * v1.7.6 自日历页底部拆出独立成页（原区域底 254 被背包行遮挡），
+     * 领取逻辑不变：达成连续天数后签到自动发放，无需手动领取。
+     */
+    private static IWidget createConsecutivePage(SignInEditCallback editCallback) {
+        ParentWidget<?> view = new ParentWidget<>().size(PAGE_WIDTH, INNER_HEIGHT);
+
+        view.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "连续签到奖励")).pos(0, 0)
+                .size(PAGE_WIDTH, 10)
+                .textAlign(Alignment.Center)
+                .shadow(false));
+        view.child(createProgressLabel()); // 连续进度文本
+        view.child(createProgressBar()); // 连续进度条
+        view.child(createTierPreview(editCallback)); // 阶梯宝箱预览（编辑模式可点击）
+        // 规则说明（静态；v1.7.6 G4 自 GRAY 调深为 0xFF555555，浅灰面板上 GRAY 过淡）
+        view.child(
+            new TextWidget<>(IKey.str("达成连续天数后，次日签到自动发放")).pos(0, TIER_Y + 56)
+                .size(PAGE_WIDTH, 9)
+                .textAlign(Alignment.Center)
+                .scale(0.75f)
+                .color(0xFF555555)
+                .shadow(false));
+        view.child(
+            new TextWidget<>(IKey.str("阶梯奖励每月重置")).pos(0, TIER_Y + 66)
+                .size(PAGE_WIDTH, 9)
+                .textAlign(Alignment.Center)
+                .scale(0.75f)
+                .color(0xFF555555)
+                .shadow(false));
+
+        return view;
+    }
+
+    /**
+     * 连续进度文本：当前连续天数与下一阶梯差距
+     * <p>
+     * v1.7.6 G4：主体自 GRAY 调深（0xFF3F3F3F，浅灰面板上 GRAY 过淡不可读）；
+     * 差距天数高亮自 YELLOW 改 GOLD（亮黄在浅底上过淡）。
+     */
     private static IWidget createProgressLabel() {
         return new TextWidget<>(IKey.dynamic(() -> {
             int consecutive = SignInClientData.getConsecutiveDays();
-            // 目标 5：读客户端缓存（服务端同步快照优先），不再直接读本地配置
+            // 读客户端缓存（服务端同步快照优先），不直接读本地配置
             SignInRewardTier next = SignInClientData.getNextTier(consecutive);
             if (next == null) {
                 return EnumChatFormatting.GOLD + "连续签到 " + consecutive + " 天 · 已达成全部阶梯奖励";
             }
-            return EnumChatFormatting.GRAY + "连续签到 "
-                + consecutive
+            // 主体不带格式码（走 widget color 深灰），仅差距天数内嵌 GOLD 高亮，§r 恢复主体色
+            // （1.7.10 原版 §r→0x404040，与主体色 0xFF3F3F3F 一致；否则尾部「 天」会继承 GOLD）
+            return "连续签到 " + consecutive
                 + " 天 · 距 "
                 + next.getRequiredDays()
                 + " 天宝箱还差 "
-                + EnumChatFormatting.YELLOW
+                + EnumChatFormatting.GOLD
                 + (next.getRequiredDays() - consecutive)
-                + EnumChatFormatting.GRAY
+                + EnumChatFormatting.RESET
                 + " 天";
-        })).pos(0, 178)
+        })).pos(0, PROGRESS_LABEL_Y)
             .size(PAGE_WIDTH, 10)
             .textAlign(Alignment.Center)
+            .color(0xFF3F3F3F)
             .shadow(false);
     }
 
@@ -315,7 +585,7 @@ public class SignInCalendarGui {
     private static IWidget createProgressBar() {
         return new IDrawable.DrawableWidget((context, x, y, w, h, theme) -> {
             int consecutive = SignInClientData.getConsecutiveDays();
-            // 目标 5：读客户端缓存（服务端同步快照优先）
+            // 读客户端缓存（服务端同步快照优先）
             SignInRewardTier next = SignInClientData.getNextTier(consecutive);
             float progress = next == null ? 1f : Math.min(1f, consecutive / (float) next.getRequiredDays());
             GuiDraw.drawRect(x, y, w, h, COLOR_PROGRESS_BG);
@@ -339,7 +609,7 @@ public class SignInCalendarGui {
     private static IWidget createTierPreview(SignInEditCallback editCallback) {
         ParentWidget<?> box = new ParentWidget<>().pos(0, TIER_Y)
             .size(PAGE_WIDTH, 50);
-        // 目标 5：读客户端缓存（服务端同步快照优先，未同步回退本地配置）
+        // 读客户端缓存（服务端同步快照优先，未同步回退本地配置）
         List<SignInRewardTier> tiers = SignInClientData.getRewardTiers();
         int count = Math.min(TIER_MAX, tiers.size());
         int startX = (PAGE_WIDTH - TIER_COL_W * count) / 2;
@@ -405,120 +675,398 @@ public class SignInCalendarGui {
         return box;
     }
 
-    /** 签到结果提示（限时 {@link #RESULT_DISPLAY_MS} 毫秒，超时自动消失） */
-    private static IWidget createResultMessage() {
-        return new TextWidget<>(IKey.dynamic(() -> {
-            int result = SignInClientData.getLastResult();
-            if (result == SignInClientData.RESULT_NONE) return "";
-            if (System.currentTimeMillis() - SignInClientData.getLastResultTimeMs() > RESULT_DISPLAY_MS) {
-                return "";
-            }
-            switch (result) {
-                case SignInClientData.RESULT_SUCCESS -> {
-                    String msg = EnumChatFormatting.GREEN + "签到成功！+" + SignInClientData.getLastResultReward() + " 猫猫币";
-                    if (SignInClientData.getLastResultTierDays() > 0) {
-                        msg += EnumChatFormatting.GOLD + "（达成 " + SignInClientData.getLastResultTierDays() + " 天阶梯宝箱！）";
+    // ==================== 页 2：每日在线 ====================
+
+    /**
+     * 每日在线页：今日在线时长 + 档位奖励领取
+     * <p>
+     * 档位列表读取 {@link SignInClientData#getOnlineRewardTiers()}（服务端配置快照优先），
+     * 最多显示 {@value #ONLINE_MAX_ROWS} 行；领取动作经
+     * {@link SignInNetworkManager#sendClaimOnline(int)} 发服务端权威校验
+     * （达成校验 + 防重），结果由同步包回推刷新。
+     */
+    private static IWidget createOnlinePage() {
+        ParentWidget<?> view = new ParentWidget<>().size(PAGE_WIDTH, INNER_HEIGHT);
+
+        view.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "每日在线奖励")).pos(0, 0)
+                .size(PAGE_WIDTH, 10)
+                .textAlign(Alignment.Center)
+                .shadow(false));
+
+        // 今日在线时长（动态：服务端每分钟累计同步）
+        view.child(
+            new TextWidget<>(
+                IKey.dynamic(
+                    () -> EnumChatFormatting.AQUA + "今日已在线 "
+                        + formatDuration(SignInClientData.getOnlineSecondsToday()))).pos(0, ONLINE_STATUS_Y)
+                            .size(PAGE_WIDTH, 10)
+                            .textAlign(Alignment.Center)
+                            .shadow(false));
+
+        // 档位行（固定 ONLINE_MAX_ROWS 行，超出配置数量的行整体隐藏）
+        for (int i = 0; i < ONLINE_MAX_ROWS; i++) {
+            view.child(createOnlineTierRow(i));
+        }
+
+        // 规则说明（静态灰字）
+        view.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "在线时长每日零点重置，奖励每日可领一轮")).pos(0, INNER_HEIGHT - 12)
+                .size(PAGE_WIDTH, 9)
+                .textAlign(Alignment.Center)
+                .scale(0.75f)
+                .shadow(false));
+
+        return view;
+    }
+
+    /**
+     * 在线档位行：宝箱图标 + 条件/奖励文本 + 领取按钮
+     *
+     * @param index 档位索引（{@link SignInClientData#getOnlineRewardTiers()} 列表序）
+     */
+    private static IWidget createOnlineTierRow(final int index) {
+        ParentWidget<?> row = new ParentWidget<>().pos(0, ONLINE_ROW_Y + index * ONLINE_ROW_H)
+            .size(PAGE_WIDTH, ONLINE_ROW_H);
+
+        // 宝箱图标（按档位序选取小/中/大宝箱）
+        row.child(
+            new IDrawable.DrawableWidget(new DynamicDrawable(() -> onlineChestFor(index))).pos(10, 0)
+                .size(20, 20)
+                .setEnabledIf(w -> onlineTier(index) != null));
+
+        // 条件文本（在线 X 时间）
+        row.child(new TextWidget<>(IKey.dynamic(() -> {
+            OnlineTimeRewardTier tier = onlineTier(index);
+            return tier == null ? "" : "在线 " + formatDuration(tier.getRequiredSeconds());
+        })).pos(34, 2)
+            .size(80, 9)
+            .scale(0.8f)
+            .color(0xFF3F3F3F)
+            .shadow(false)
+            .setEnabledIf(w -> onlineTier(index) != null));
+
+        // 奖励文本（+N 猫猫币）
+        row.child(new TextWidget<>(IKey.dynamic(() -> {
+            OnlineTimeRewardTier tier = onlineTier(index);
+            return tier == null ? ""
+                : "+" + tier.getCurrencyAmount() + " " + NekoCurrencyRegistrar.getDisplayName(tier.getCurrencyId());
+        })).pos(34, 12)
+            .size(80, 8)
+            .scale(0.7f)
+            .color(0xFFB8860B)
+            .shadow(false)
+            .setEnabledIf(w -> onlineTier(index) != null));
+
+        // 领取按钮（达成且未领取时可点击；文字随状态变化）
+        row.child(
+            new ButtonWidget<>().pos(PAGE_WIDTH - ONLINE_CLAIM_W - 4, 2)
+                .size(ONLINE_CLAIM_W, ONLINE_CLAIM_H)
+                .background(NekoGuiTextures.MAIL_BTN_CLAIM)
+                .disableHoverBackground()
+                .overlay(IKey.dynamic(() -> onlineClaimButtonText(index)))
+                .tooltipBuilder(t -> {
+                    OnlineTimeRewardTier tier = onlineTier(index);
+                    if (tier == null) return;
+                    t.addLine(
+                        IKey.str(EnumChatFormatting.GOLD + "在线 " + formatDuration(tier.getRequiredSeconds()) + " 奖励"));
+                    t.addLine(
+                        IKey.str(
+                            "+" + tier.getCurrencyAmount()
+                                + " "
+                                + NekoCurrencyRegistrar.getDisplayName(tier.getCurrencyId())));
+                    if (SignInClientData.hasClaimedOnlineTier(tier.getRequiredSeconds())) {
+                        t.addLine(IKey.str(EnumChatFormatting.GREEN + "今日已领取"));
+                    } else if (SignInClientData.getOnlineSecondsToday() >= tier.getRequiredSeconds()) {
+                        t.addLine(IKey.str(EnumChatFormatting.YELLOW + "点击领取"));
+                    } else {
+                        t.addLine(IKey.str(EnumChatFormatting.GRAY + "尚未达成，继续在线即可解锁"));
                     }
-                    return msg;
-                }
-                case SignInClientData.RESULT_ALREADY_SIGNED -> {
-                    return EnumChatFormatting.YELLOW + "今日已签到，明天再来吧";
-                }
-                default -> {
-                    return EnumChatFormatting.RED + "签到失败，请稍后重试";
-                }
-            }
-        })).pos(0, RESULT_Y)
+                })
+                .tooltipAutoUpdate(true)
+                .onMouseTapped(mouse -> {
+                    OnlineTimeRewardTier tier = onlineTier(index);
+                    // 仅左键 + 达成 + 未领取时发请求；服务端兜底重复校验，双击安全
+                    if (mouse == 0 && tier != null
+                        && !SignInClientData.hasClaimedOnlineTier(tier.getRequiredSeconds())
+                        && SignInClientData.getOnlineSecondsToday() >= tier.getRequiredSeconds()) {
+                        SignInNetworkManager.sendClaimOnline(index);
+                        return true;
+                    }
+                    return false;
+                })
+                .setEnabledIf(w -> onlineTier(index) != null));
+
+        return row;
+    }
+
+    /** 领取按钮文字：已领取（灰）/ 领取（白）/ 未达成（暗灰） */
+    private static String onlineClaimButtonText(int index) {
+        OnlineTimeRewardTier tier = onlineTier(index);
+        if (tier == null) return "";
+        if (SignInClientData.hasClaimedOnlineTier(tier.getRequiredSeconds())) {
+            return EnumChatFormatting.GRAY + "已领取";
+        }
+        if (SignInClientData.getOnlineSecondsToday() >= tier.getRequiredSeconds()) {
+            return EnumChatFormatting.WHITE + "领取";
+        }
+        return EnumChatFormatting.DARK_GRAY + "未达成";
+    }
+
+    /** 按索引取在线档位（越界返回 null，供各行 setEnabledIf 折叠） */
+    private static OnlineTimeRewardTier onlineTier(int index) {
+        List<OnlineTimeRewardTier> tiers = SignInClientData.getOnlineRewardTiers();
+        return index >= 0 && index < tiers.size() ? tiers.get(index) : null;
+    }
+
+    /** 按档位序选取宝箱素材（第 1 档小宝箱 / 第 2 档中宝箱 / 其余大宝箱） */
+    private static UITexture onlineChestFor(int index) {
+        if (index <= 0) return NekoGuiTextures.SIGNIN_CHEST_7;
+        if (index == 1) return NekoGuiTextures.SIGNIN_CHEST_14;
+        return NekoGuiTextures.SIGNIN_CHEST_30;
+    }
+
+    // ==================== 页 3：纪念日 ====================
+
+    /**
+     * 纪念日页：首次入服时间（只读）+ 生日配置 + 自定义纪念日列表（增删）
+     * <p>
+     * 生日与纪念日配置均经 {@link SignInNetworkManager} 发服务端权威校验后落盘
+     * （玩家 UUID 维度），同步包回推刷新本页。生日草稿在页面构建时按同步数据初始化，
+     * 避免旧草稿覆盖服务端权威值。
+     */
+    private static IWidget createAnniversaryPage() {
+        // 页面构建时按服务端同步数据初始化生日草稿（GUI 重开即与服务端一致）
+        birthdayDraft = SignInClientData.getBirthday();
+
+        ParentWidget<?> view = new ParentWidget<>().size(PAGE_WIDTH, INNER_HEIGHT);
+
+        view.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "纪念日")).pos(0, 0)
+                .size(PAGE_WIDTH, 10)
+                .textAlign(Alignment.Center)
+                .shadow(false));
+
+        // 首次入服时间（只读，服务端首次登录自动记录）
+        view.child(new TextWidget<>(IKey.dynamic(() -> {
+            String firstJoin = SignInClientData.getFirstJoinDate();
+            return EnumChatFormatting.GRAY + "首次入服时间："
+                + EnumChatFormatting.YELLOW
+                + (firstJoin.isEmpty() ? "未知" : firstJoin);
+        })).pos(0, 14)
             .size(PAGE_WIDTH, 10)
             .textAlign(Alignment.Center)
-            .shadow(false);
+            .shadow(false));
+
+        view.child(createBirthdayRow()); // 生日配置行
+        view.child(createAnniversaryList()); // 自定义纪念日列表（5 行 + 删除）
+        view.child(createAnniversaryAddRow()); // 添加行（名称/日期/年份 + 添加按钮）
+
+        // 格式说明（静态灰字）
+        view.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "日期格式 MM-dd（如 05-20），年份可选填")).pos(0, INNER_HEIGHT - 12)
+                .size(PAGE_WIDTH, 9)
+                .textAlign(Alignment.Center)
+                .scale(0.75f)
+                .shadow(false));
+
+        return view;
     }
 
-    /**
-     * 签到按钮
-     * <p>
-     * 未签到时可点击：通过 {@link SignInNetworkManager#sendSignInRequest()} 向服务端发请求，
-     * 结果由服务端同步包回推并刷新本页（含结果提示条）。
-     * 已签到后按钮文字变灰且点击无效；tooltip 展示今日可得奖励预览。
-     * <p>
-     * <b>编辑模式</b>（v1.7.0 目标 4）：点击被拦截（禁止常规签到交互），
-     * tooltip 提示处于编辑模式。
-     *
-     * @param editCallback 编辑模式回调；null 表示不支持编辑模式
-     */
-    private static IWidget createSignInButton(SignInEditCallback editCallback) {
-        return new ButtonWidget<>().pos((PAGE_WIDTH - BTN_W) / 2, BTN_Y)
-            .size(BTN_W, BTN_H)
-            .background(NekoGuiTextures.SIGNIN_BTN_CLAIM)
-            .overlay(
-                IKey.dynamic(
-                    () -> SignInClientData.hasSignedToday() ? EnumChatFormatting.GRAY + "已签到"
-                        : EnumChatFormatting.WHITE + "签到"))
-            .tooltipBuilder(t -> {
-                // 编辑模式：仅提示，不展示奖励预览
-                if (editCallback != null && editCallback.isEditMode()) {
-                    t.addLine(IKey.str(EnumChatFormatting.RED + "[编辑模式] 签到交互已禁用"));
-                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击阶梯宝箱或「全局配置」按钮进行编辑"));
-                    return;
-                }
-                if (SignInClientData.hasSignedToday()) {
-                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "今日已完成签到，明天再来吧"));
-                } else {
-                    int nextConsec = SignInClientData.getConsecutiveDays() + 1;
-                    // 目标 5：奖励预览读客户端缓存（服务端同步快照优先）
-                    int reward = SignInClientData.calculateBaseReward(nextConsec);
-                    t.addLine(IKey.str(EnumChatFormatting.GREEN + "点击签到，领取今日奖励"));
-                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "基础奖励：" + reward + " 猫猫币（连续第 " + nextConsec + " 天）"));
-                    SignInRewardTier tier = SignInClientData.getTriggeredTier(nextConsec);
-                    if (tier != null && !SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
-                        t.addLine(
-                            IKey.str(EnumChatFormatting.GOLD + "今天签到可额外领取 " + tier.getRequiredDays() + " 天阶梯宝箱！"));
+    /** 生日配置行：标签 + 输入框（MM-dd）+ 保存按钮 */
+    private static IWidget createBirthdayRow() {
+        ParentWidget<?> row = new ParentWidget<>().pos(0, 30)
+            .size(PAGE_WIDTH, FIELD_H + 2);
+
+        row.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "我的生日:")).pos(4, 4)
+                .size(52, 9)
+                .scale(0.8f)
+                .shadow(false));
+
+        TextFieldWidget birthdayField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> birthdayDraft, val -> birthdayDraft = val))
+            .setMaxLength(MAX_BIRTHDAY_LENGTH);
+        birthdayField.pos(56, 0)
+            .size(44, FIELD_H);
+        birthdayField.tooltipBuilder(t -> {
+            t.addLine(IKey.str("生日（MM-dd 格式，如 05-20）"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "用于生日祝福，保存后次年生效"));
+        });
+        birthdayField.tooltipAutoUpdate(true);
+        row.child(birthdayField);
+
+        row.child(
+            new ButtonWidget<>().pos(106, 0)
+                .size(40, FIELD_H)
+                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .overlay(IKey.str(EnumChatFormatting.WHITE + "保存"))
+                .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.GRAY + "保存生日到服务器")))
+                .tooltipAutoUpdate(true)
+                .onMouseTapped(mouse -> {
+                    // 客户端预校验格式（服务端仍权威校验，双重防线）
+                    if (mouse == 0 && isValidMonthDay(birthdayDraft.trim())) {
+                        SignInNetworkManager.sendSetBirthday(birthdayDraft.trim());
+                        return true;
                     }
-                }
-            })
-            .tooltipAutoUpdate(true)
-            .onMouseTapped(mouse -> {
-                // 编辑模式：拦截签到交互（禁止常规操作）
-                if (editCallback != null && editCallback.isEditMode()) {
-                    return mouse == 0;
-                }
-                // 仅左键且今日未签到时发请求；服务端兜底重复校验，双击安全
-                if (mouse == 0 && !SignInClientData.hasSignedToday()) {
-                    SignInNetworkManager.sendSignInRequest();
-                    return true;
-                }
-                return false;
-            });
+                    return false;
+                }));
+
+        return row;
     }
 
     /**
-     * 「全局配置」按钮（仅编辑模式显示）
+     * 自定义纪念日列表：最多 {@value #ANNIV_MAX_ROWS} 行，每行「名称 · 日期」+ 删除按钮
      * <p>
-     * 点击通过 {@link SignInEditCallback#onEditGlobalRequested()} 打开全局编辑面板
-     * （每日基础奖励 / 连续递增系数）。非编辑模式下按钮隐藏（setEnabledIf 动态折叠）。
-     *
-     * @param editCallback 编辑模式回调；null 时按钮恒隐藏
+     * 行数据按索引动态读取 {@link SignInClientData#getAnniversaries()}，
+     * 空槽位整体隐藏（setEnabledIf 折叠）。
      */
-    private static IWidget createGlobalEditButton(SignInEditCallback editCallback) {
-        ButtonWidget<?> button = new ButtonWidget<>().pos((PAGE_WIDTH - BTN_W) / 2 + BTN_W + 6, BTN_Y)
-            .size(46, BTN_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-            .overlay(IKey.str(EnumChatFormatting.YELLOW + "全局配置"))
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str(EnumChatFormatting.GOLD + "编辑全局签到配置"));
-                t.addLine(IKey.str(EnumChatFormatting.GRAY + "每日基础奖励与连续递增系数"));
-            })
-            .tooltipAutoUpdate(true)
-            .onMouseTapped(mouse -> {
-                if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
-                    editCallback.onEditGlobalRequested();
+    private static IWidget createAnniversaryList() {
+        ParentWidget<?> list = new ParentWidget<>().pos(0, 48)
+            .size(PAGE_WIDTH, ANNIV_ROW_Y - 48 + ANNIV_MAX_ROWS * ANNIV_ROW_H);
+
+        list.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "自定义纪念日（最多 " + ANNIV_MAX_ROWS + " 条）:")).pos(4, 0)
+                .size(PAGE_WIDTH - 8, 9)
+                .scale(0.8f)
+                .shadow(false));
+
+        for (int i = 0; i < ANNIV_MAX_ROWS; i++) {
+            final int index = i;
+            int y = (ANNIV_ROW_Y - 48) + index * ANNIV_ROW_H;
+
+            // 条目文本：名称 · 日期（有年份带年份）
+            list.child(new TextWidget<>(IKey.dynamic(() -> {
+                AnniversaryEntry entry = anniversaryAt(index);
+                if (entry == null) return "";
+                String date = entry.getYear() > 0 ? entry.getYear() + "-" + entry.getMonthDay() : entry.getMonthDay();
+                return EnumChatFormatting.AQUA + entry
+                    .getName() + EnumChatFormatting.DARK_GRAY + " · " + EnumChatFormatting.GOLD + date;
+            })).pos(8, y + 3)
+                .size(140, 9)
+                .scale(0.8f)
+                .shadow(false)
+                .setEnabledIf(w -> anniversaryAt(index) != null));
+
+            // 删除按钮（垃圾桶图标，点击发服务端删除请求）
+            list.child(
+                new ButtonWidget<>().pos(PAGE_WIDTH - 18, y + 2)
+                    .size(12, 12)
+                    .background(NekoGuiTextures.MAIL_TRASH)
+                    .disableHoverBackground()
+                    .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.RED + "删除该纪念日")))
+                    .tooltipAutoUpdate(true)
+                    .onMouseTapped(mouse -> {
+                        if (mouse == 0 && anniversaryAt(index) != null) {
+                            SignInNetworkManager.sendRemoveAnniversary(index);
+                            return true;
+                        }
+                        return false;
+                    })
+                    .setEnabledIf(w -> anniversaryAt(index) != null));
+        }
+        return list;
+    }
+
+    /** 添加行：名称输入 + 日期输入（MM-dd）+ 年份输入（可选）+ 添加按钮 */
+    private static IWidget createAnniversaryAddRow() {
+        ParentWidget<?> row = new ParentWidget<>().pos(0, ANNIV_ADD_Y)
+            .size(PAGE_WIDTH, FIELD_H + 2);
+
+        // 名称输入
+        TextFieldWidget nameField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> annivNameDraft, val -> annivNameDraft = val))
+            .setMaxLength(MAX_ANNIV_NAME_LENGTH);
+        nameField.pos(4, 0)
+            .size(62, FIELD_H);
+        nameField.tooltipBuilder(t -> {
+            t.addLine(IKey.str("纪念日名称"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "最长 " + MAX_ANNIV_NAME_LENGTH + " 字符"));
+        });
+        nameField.tooltipAutoUpdate(true);
+        row.child(nameField);
+
+        // 日期输入（MM-dd）
+        TextFieldWidget dateField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> annivDateDraft, val -> annivDateDraft = val))
+            .setMaxLength(MAX_BIRTHDAY_LENGTH);
+        dateField.pos(70, 0)
+            .size(38, FIELD_H);
+        dateField.tooltipBuilder(t -> t.addLine(IKey.str("日期（MM-dd，如 05-20）")));
+        dateField.tooltipAutoUpdate(true);
+        row.child(dateField);
+
+        // 年份输入（可选，4 位数字）
+        TextFieldWidget yearField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> annivYearDraft, val -> annivYearDraft = val))
+            .setMaxLength(MAX_ANNIV_YEAR_LENGTH);
+        yearField.pos(112, 0)
+            .size(30, FIELD_H);
+        yearField.tooltipBuilder(t -> {
+            t.addLine(IKey.str("年份（可选，如 2024）"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "留空表示不记年份"));
+        });
+        yearField.tooltipAutoUpdate(true);
+        row.child(yearField);
+
+        // 添加按钮（客户端预校验 + 服务端权威校验）
+        row.child(
+            new ButtonWidget<>().pos(146, 0)
+                .size(20, FIELD_H)
+                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .overlay(IKey.str(EnumChatFormatting.GREEN + "+"))
+                .tooltipBuilder(t -> {
+                    t.addLine(IKey.str(EnumChatFormatting.GREEN + "添加纪念日"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "名称必填，日期 MM-dd，年份可选"));
+                })
+                .tooltipAutoUpdate(true)
+                .onMouseTapped(mouse -> {
+                    if (mouse != 0) return false;
+                    String name = annivNameDraft.trim();
+                    String date = annivDateDraft.trim();
+                    int year = parseYear(annivYearDraft.trim());
+                    // 客户端预校验：名称非空 + 日期合法 + 年份合法（留空=0）
+                    if (name.isEmpty() || !isValidMonthDay(date) || year < 0) {
+                        return false;
+                    }
+                    SignInNetworkManager.sendAddAnniversary(name, date, year);
+                    // 清空草稿（服务端同步回推后列表刷新；失败时服务端聊天提示，草稿已清可重输）
+                    annivNameDraft = "";
+                    annivDateDraft = "";
+                    annivYearDraft = "";
                     return true;
-                }
-                return false;
-            });
-        // 仅编辑模式显示（非编辑模式折叠隐藏，回调为 null 时恒隐藏）
-        button.setEnabledIf(w -> editCallback != null && editCallback.isEditMode());
-        return button;
+                }));
+
+        return row;
+    }
+
+    /** 按索引取纪念日（越界返回 null，供各行 setEnabledIf 折叠） */
+    private static AnniversaryEntry anniversaryAt(int index) {
+        List<AnniversaryEntry> entries = SignInClientData.getAnniversaries();
+        return index >= 0 && index < entries.size() ? entries.get(index) : null;
+    }
+
+    /** 解析年份输入（空串=0 不记年份；合法 4 位数字=年份；非法=-1 拒绝提交） */
+    private static int parseYear(String text) {
+        if (text.isEmpty()) return 0;
+        if (text.length() != 4) return -1;
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /** MM-dd 格式客户端预校验（与服务端 {@link AnniversaryEntry} 校验口径一致） */
+    private static boolean isValidMonthDay(String text) {
+        if (text == null || text.length() != 5 || text.charAt(2) != '-') return false;
+        try {
+            int month = Integer.parseInt(text.substring(0, 2));
+            int day = Integer.parseInt(text.substring(3, 5));
+            return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     // ==================== 日期格状态判定 ====================
@@ -539,6 +1087,9 @@ public class SignInCalendarGui {
     /**
      * 按格子状态选择底纹理
      * <ul>
+     * <li>不属于当月的空格位 → {@link NekoGuiTextures#SIGNIN_CELL_NORMAL}（空槽底图：
+     * v1.7.6 G4 修复——空位原不渲染底图导致日历视觉上行列散乱（首行仅 5 格），
+     * 改为 42 格恒显底图，每行恒 7 格、首行按当月 1 号星期缩进）</li>
      * <li>已签到 → {@link NekoGuiTextures#SIGNIN_CELL_SIGNED}</li>
      * <li>今天未签到且签到后触发未领取阶梯 → {@link NekoGuiTextures#SIGNIN_CELL_REWARD}（礼物格）</li>
      * <li>今天未签到 → {@link NekoGuiTextures#SIGNIN_CELL_TODAY}</li>
@@ -547,12 +1098,12 @@ public class SignInCalendarGui {
      */
     private static IDrawable cellTexture(int index) {
         String date = cellDate(index);
-        if (date.isEmpty()) return IDrawable.EMPTY;
+        if (date.isEmpty()) return NekoGuiTextures.SIGNIN_CELL_NORMAL;
         if (SignInClientData.hasSigned(date)) return NekoGuiTextures.SIGNIN_CELL_SIGNED;
         String today = SignInClientData.getToday();
         if (date.equals(today)) {
             int nextConsec = SignInClientData.getConsecutiveDays() + 1;
-            // 目标 5：读客户端缓存（服务端同步快照优先）
+            // 读客户端缓存（服务端同步快照优先）
             SignInRewardTier tier = SignInClientData.getTriggeredTier(nextConsec);
             if (tier != null && !SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
                 return NekoGuiTextures.SIGNIN_CELL_REWARD;
@@ -608,6 +1159,20 @@ public class SignInCalendarGui {
             text += " +物品";
         }
         return text;
+    }
+
+    /**
+     * 秒数时长的人性化文本（在线页状态/档位条件用）
+     * <p>
+     * 整小时→「N 小时」；不足 1 小时→「M 分钟」；其余→「N 小时 M 分钟」。
+     */
+    private static String formatDuration(int seconds) {
+        if (seconds <= 0) return "0 分钟";
+        int hours = seconds / 3600;
+        int minutes = seconds % 3600 / 60;
+        if (hours <= 0) return minutes + " 分钟";
+        if (minutes == 0) return hours + " 小时";
+        return hours + " 小时 " + minutes + " 分钟";
     }
 
     // ==================== 当月信息 ====================

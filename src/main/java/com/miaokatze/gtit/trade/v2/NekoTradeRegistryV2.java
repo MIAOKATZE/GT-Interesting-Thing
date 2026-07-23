@@ -134,7 +134,7 @@ public class NekoTradeRegistryV2 {
                 groupId = UUID.randomUUID();
             }
 
-            // 2. 解析猫猫币花费
+            // 2. 解析猫猫币花费（旧 JSON currency 字段，仅用于分类兜底与下方合成）
             String currencyId = null;
             int currencyCost = 0;
             if (entry.getCurrency() != null) {
@@ -149,10 +149,8 @@ public class NekoTradeRegistryV2 {
 
             // 4. 构建 NekoTrade
             NekoTrade trade = new NekoTrade();
-            if (currencyId != null) {
-                trade.setCurrencyId(currencyId);
-                trade.setCurrencyCost(currencyCost);
-            }
+            // v1.7.6 G3⑤ NBT 选框：传递 recordNBT（旧 JSON 无字段时 entry 缺省 false）
+            trade.setRecordNBT(entry.isRecordNBT());
 
             // 遍历 fromItems（普通物品，不含猫猫币）
             if (entry.getFromItems() != null) {
@@ -162,6 +160,19 @@ public class NekoTradeRegistryV2 {
                         trade.getFromItems()
                             .add(new NekoBigItemStack(stack));
                     }
+                }
+            }
+
+            // v1.7.6 G3② 货币解绑：旧 JSON currency 字段加载时合成为 fromItems 货币条目
+            // （追加在普通物品之后，保持普通物品相对顺序），不再写入 trade 的旧 currency 字段，
+            // 统一「货币=需求格猫猫币物品」单一路径（执行器实时识别分流）
+            if (currencyId != null && currencyCost > 0) {
+                ItemStack currencyStack = NekoCurrencyRegistrar.getItemStack(currencyId, currencyCost);
+                if (currencyStack != null) {
+                    trade.getFromItems()
+                        .add(new NekoBigItemStack(currencyStack));
+                } else {
+                    GTInterestingThing.LOG.warn("交易 {} 的货币类型 {} 无法合成物品条目，已跳过", entry.getId(), currencyId);
                 }
             }
 

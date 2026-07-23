@@ -17,6 +17,7 @@ import net.minecraft.nbt.NBTTagString;
  * <li>邮件列表（时间倒序，最新在前，上限 {@link MailManager#MAX_MAILS} 封）</li>
  * <li>首登奖励领取标记（{@code firstRewardReceived}，防重复投递）</li>
  * <li>已收一次性奖励 ID 集合（{@code receivedOnceIds}，按奖励 ID 防重复投递）</li>
+ * <li>已领祝福防重键集合（{@code claimedBlessings}，v1.7.6 G5：祝福属邮件域，防重键存本类不污染签到数据）</li>
  * </ul>
  * 通过 NBT 序列化/反序列化持久化到 {@code <world>/gtit_mail/<player_uuid>.dat}。
  * <p>
@@ -36,6 +37,15 @@ public class MailData {
 
     /** 已投递的一次性奖励 ID 集合（对应全局一次性奖励表的奖励 ID） */
     private final Set<String> receivedOnceIds = new HashSet<>();
+
+    /**
+     * 已领祝福防重键集合（v1.7.6 G5 自动祝福）
+     * <p>
+     * 键格式：生日/节日 = {@code "类型_YYYY-MM-dd"}（按日唯一），
+     * 纪念日 = {@code "anniversary_<序号>_YYYY"}（同年一次）。
+     * 缺省空表兼容旧档（旧档无该键读出空集合，首次检测正常投递）。
+     */
+    private final Set<String> claimedBlessings = new HashSet<>();
 
     // ==================== NBT 序列化 ====================
 
@@ -66,6 +76,15 @@ public class MailData {
         }
         nbt.setTag("receivedOnceIds", onceList);
 
+        // 已领祝福防重键集合（8 = NBTTagString）
+        NBTTagList blessingList = new NBTTagList();
+        for (String key : claimedBlessings) {
+            if (key != null && !key.isEmpty()) {
+                blessingList.appendTag(new NBTTagString(key));
+            }
+        }
+        nbt.setTag("claimedBlessings", blessingList);
+
         return nbt;
     }
 
@@ -93,6 +112,16 @@ public class MailData {
             String rewardId = onceList.getStringTagAt(i);
             if (rewardId != null && !rewardId.isEmpty()) {
                 this.receivedOnceIds.add(rewardId);
+            }
+        }
+
+        // 已领祝福防重键集合（缺省兼容：旧档无键 = 空集合）
+        this.claimedBlessings.clear();
+        NBTTagList blessingList = nbt.getTagList("claimedBlessings", 8);
+        for (int i = 0; i < blessingList.tagCount(); i++) {
+            String key = blessingList.getStringTagAt(i);
+            if (key != null && !key.isEmpty()) {
+                this.claimedBlessings.add(key);
             }
         }
     }
@@ -183,6 +212,27 @@ public class MailData {
         }
     }
 
+    // ==================== 祝福防重标记（v1.7.6 G5） ====================
+
+    /**
+     * 指定防重键的祝福是否已投递过
+     *
+     * @param key 防重键（生日/节日 = "类型_YYYY-MM-dd"；纪念日 = "anniversary_<序号>_YYYY"）
+     * @return true 表示已投递过，本次跳过
+     */
+    public boolean hasClaimedBlessing(String key) {
+        return key != null && claimedBlessings.contains(key);
+    }
+
+    /**
+     * 记录祝福防重键（投递成功后调用，调用方负责落盘）
+     */
+    public void markClaimedBlessing(String key) {
+        if (key != null && !key.isEmpty()) {
+            claimedBlessings.add(key);
+        }
+    }
+
     // ==================== Getter ====================
 
     /**
@@ -197,5 +247,12 @@ public class MailData {
      */
     public Set<String> getReceivedOnceIds() {
         return receivedOnceIds;
+    }
+
+    /**
+     * 已领祝福防重键集合（只读视图语义；v1.7.6 G5）
+     */
+    public Set<String> getClaimedBlessings() {
+        return claimedBlessings;
     }
 }

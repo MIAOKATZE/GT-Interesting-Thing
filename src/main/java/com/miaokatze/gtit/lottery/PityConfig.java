@@ -76,6 +76,36 @@ public class PityConfig {
         return replaceOnPity;
     }
 
+    // ==================== Setter（v1.7.6 G2① 池编辑面板写回用） ====================
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public void setSoftPityThreshold(int softPityThreshold) {
+        this.softPityThreshold = Math.max(0, softPityThreshold);
+    }
+
+    public void setSoftPityIncrement(double softPityIncrement) {
+        this.softPityIncrement = Math.max(0.0, softPityIncrement);
+    }
+
+    public void setHardPityThreshold(int hardPityThreshold) {
+        this.hardPityThreshold = Math.max(0, hardPityThreshold);
+    }
+
+    /**
+     * 设置硬保底保证的最低稀有度（名容错解析，未知回退 EPIC）
+     */
+    public void setGuaranteedRarity(String guaranteedRarity) {
+        this.guaranteedRarity = LotteryRarity.fromString(guaranteedRarity)
+            .name();
+    }
+
+    public void setReplaceOnPity(boolean replaceOnPity) {
+        this.replaceOnPity = replaceOnPity;
+    }
+
     /** 创建默认保底配置 */
     public static PityConfig createDefault() {
         return new PityConfig();

@@ -12,8 +12,6 @@ import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
-import com.miaokatze.gtit.trade.NekoWallet;
-import com.miaokatze.gtit.trade.NekoWalletManager;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
@@ -117,18 +115,18 @@ public class LotteryRequestPacket implements IMessage {
                 return;
             }
 
-            // 2. 余额预校验（团队钱包，与贸易扣费同源；失败时给出明确错误码）
-            int totalCost = pool.getCostPerDraw() * count;
-            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            if (wallet == null || wallet.getCount(pool.getNekoCurrencyId()) < totalCost) {
-                sendFailure(player, poolId, LotteryClientData.RESULT_INSUFFICIENT, "猫猫币余额不足");
+            // 2. 定位触发机器（物品奖品出货槽 + 物品消耗来源；坐标无效时退化为直接给玩家，
+            // 但含物品消耗的池会在下一步预校验被拒）
+            MTENekoVendingMachineV2 machine = findMachine(player, request);
+
+            // 3. 消耗预校验（v1.7.6 costItems 分流口径：货币条目查团队钱包余额、
+            // 物品条目在机器输入槽副本模拟扣除；失败时给出明确错误码）
+            if (!LotteryManager.INSTANCE.canAfford(playerId, pool, count, machine)) {
+                sendFailure(player, poolId, LotteryClientData.RESULT_INSUFFICIENT, "消耗不足（猫猫币或需求物品不够）");
                 return;
             }
 
-            // 3. 定位触发机器（物品奖品出货槽；坐标无效时退化为直接给玩家）
-            MTENekoVendingMachineV2 machine = findMachine(player, request);
-
-            // 4. 服务端权威抽取（扣费 → 逐抽含保底 → 出货 → 记历史 → 落盘）
+            // 4. 服务端权威抽取（扣费分流 → 逐抽含保底 → 出货 → 记历史 → 落盘）
             List<LotteryDrawResult> results = LotteryManager.INSTANCE.drawLottery(playerId, poolId, count, machine);
             if (results.isEmpty()) {
                 sendFailure(player, poolId, LotteryClientData.RESULT_ERROR, "抽奖失败，请稍后再试");

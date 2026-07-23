@@ -44,12 +44,17 @@ public class SignInSyncPacket implements IMessage {
     /** 服务端阶梯奖励列表 */
     private List<SignInRewardTier> cfgTiers = new ArrayList<>();
 
+    // ==================== 在线时长配置快照（v1.7.6 G2③） ====================
+
+    /** 服务端在线时长奖励档位列表 */
+    private List<OnlineTimeRewardTier> cfgOnlineTiers = new ArrayList<>();
+
     public SignInSyncPacket() {
         // 反序列化需要无参构造
     }
 
     /**
-     * 构造同步包（服务端调用，配置快照取自服务端权威的 {@link DailySignInConfig}）
+     * 构造同步包（服务端调用，配置快照取自服务端权威的 {@link DailySignInConfig} / {@link OnlineTimeConfig}）
      */
     public SignInSyncPacket(DailySignInData data, String serverToday, int result, int baseReward, int tierDays) {
         this.dataTag = data != null ? data.writeToNBT() : new NBTTagCompound();
@@ -61,6 +66,8 @@ public class SignInSyncPacket implements IMessage {
         this.cfgBaseReward = DailySignInConfig.getBaseRewardNeko();
         this.cfgIncrement = DailySignInConfig.getConsecutiveIncrement();
         this.cfgTiers = new ArrayList<>(DailySignInConfig.getRewardTiers());
+        // 在线时长配置快照（v1.7.6 G2③）
+        this.cfgOnlineTiers = new ArrayList<>(OnlineTimeConfig.getTiers());
     }
 
     @Override
@@ -84,6 +91,16 @@ public class SignInSyncPacket implements IMessage {
             int itemMeta = buf.readInt();
             this.cfgTiers.add(new SignInRewardTier(days, currencyId, amount, itemId, itemAmount, itemMeta));
         }
+        // 在线时长配置快照（v1.7.6 G2③）
+        int onlineCount = buf.readInt();
+        this.cfgOnlineTiers = new ArrayList<>(Math.max(0, onlineCount));
+        for (int i = 0; i < onlineCount; i++) {
+            int seconds = buf.readInt();
+            String currencyId = ByteBufUtils.readUTF8String(buf);
+            int amount = buf.readInt();
+            // 在线档位物品奖励暂未启用（占位参数：空物品 ID）
+            this.cfgOnlineTiers.add(new OnlineTimeRewardTier(seconds, currencyId, amount, "", 0, 0));
+        }
     }
 
     @Override
@@ -105,6 +122,14 @@ public class SignInSyncPacket implements IMessage {
             ByteBufUtils.writeUTF8String(buf, tier.getItemRewardId() == null ? "" : tier.getItemRewardId());
             buf.writeInt(tier.getItemRewardAmount());
             buf.writeInt(tier.getItemRewardMeta());
+        }
+        // 在线时长配置快照（v1.7.6 G2③）
+        List<OnlineTimeRewardTier> onlineTiers = this.cfgOnlineTiers == null ? new ArrayList<>() : this.cfgOnlineTiers;
+        buf.writeInt(onlineTiers.size());
+        for (OnlineTimeRewardTier tier : onlineTiers) {
+            buf.writeInt(tier.getRequiredSeconds());
+            ByteBufUtils.writeUTF8String(buf, tier.getCurrencyId() == null ? "" : tier.getCurrencyId());
+            buf.writeInt(tier.getCurrencyAmount());
         }
     }
 
@@ -140,6 +165,10 @@ public class SignInSyncPacket implements IMessage {
         return cfgTiers;
     }
 
+    public List<OnlineTimeRewardTier> getCfgOnlineTiers() {
+        return cfgOnlineTiers;
+    }
+
     public static class Handler implements IMessageHandler<SignInSyncPacket, IMessage> {
 
         @Override
@@ -167,6 +196,8 @@ public class SignInSyncPacket implements IMessage {
                     // 刷新客户端配置缓存（v1.7.0 目标 5：服务端配置同步）
                     SignInClientData
                         .updateConfig(message.getCfgBaseReward(), message.getCfgIncrement(), message.getCfgTiers());
+                    // 刷新在线时长配置缓存（v1.7.6 G2③）
+                    SignInClientData.updateOnlineConfig(message.getCfgOnlineTiers());
                 });
         }
     }

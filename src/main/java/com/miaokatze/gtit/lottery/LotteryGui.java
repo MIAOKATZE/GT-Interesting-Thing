@@ -33,7 +33,7 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  * {@link LotteryClientData}（服务端通过 {@link LotterySyncPacket} / {@link LotteryResultPacket}
  * 推送刷新）——与签到页同属「S→C 全量同步 + 客户端静态缓存 + 动态绑定」范式：
  * <ul>
- * <li>顶部：卡池切换按钮（猫猫币池/闪烁池，各显示价格与团队钱包余额）</li>
+ * <li>顶部：卡池标题（v1.7.6 起池切换迁移至左侧 sub-page 标签列，页内不再设按钮行）</li>
  * <li>中部：4 列环形边框轮盘（格子绕圈点亮 → cubic ease-out 减速 → 停在结果格，
  * 由 {@link LotteryAnimationController} 纯客户端时间驱动）</li>
  * <li>底部：抽 1 次 / 抽 10 次按钮（余额不足显示总价+提示）、保底进度、最近中奖滚动摘要</li>
@@ -83,15 +83,6 @@ public class LotteryGui {
     /** 页面高度（主内容区 = PANEL_HEIGHT - 8） */
     private static final int PAGE_HEIGHT = 312;
 
-    /** 卡池切换按钮宽 */
-    private static final int POOL_BTN_W = 84;
-    /** 卡池切换按钮高 */
-    private static final int POOL_BTN_H = 18;
-    /** 卡池切换按钮间距 */
-    private static final int POOL_BTN_GAP = 2;
-    /** 卡池切换按钮 Y */
-    private static final int POOL_BTN_Y = 16;
-
     /** 轮盘槽位边长（与 slot_*.png 素材一致） */
     private static final int SLOT_SIZE = 24;
     /** 轮盘槽位间距 */
@@ -125,19 +116,25 @@ public class LotteryGui {
     private static final int PITY_Y = 200;
     /** 抽奖按钮 Y */
     private static final int DRAW_BTN_Y = 214;
-    /** 抽奖按钮宽（与 btn_draw*.png 素材一致） */
-    private static final int DRAW_BTN_W = 64;
+    /** 抽奖按钮宽（v1.7.6 G4 自 64 加宽至 72：容纳「按钮文案+价格」防溢出；素材 fullImage 轻微拉伸） */
+    private static final int DRAW_BTN_W = 72;
     /** 抽奖按钮高 */
     private static final int DRAW_BTN_H = 24;
-    /** 抽奖按钮间距（两按钮总宽 132，居中后左钮 X=19） */
-    private static final int DRAW_BTN_GAP = 4;
+    /** 抽奖按钮间距（v1.7.6 G4 自 4 加宽至 8：两按钮总宽 152，居中后左钮 X=9，右缘 161） */
+    private static final int DRAW_BTN_GAP = 8;
+    /** 按钮文本显示列预算（全角计 2 列/半角计 1 列，72px 宽扣内边距约 14 列） */
+    private static final int DRAW_BTN_TEXT_BUDGET = 14;
 
     /** 最近中奖摘要 Y */
     private static final int HISTORY_Y = 246;
     /** 最近中奖摘要条数 */
     private static final int HISTORY_LINES = 3;
-    /** 摘要行高 */
-    private static final int HISTORY_LINE_H = 10;
+    /** 摘要行高（v1.7.6 G4 自 10 加高至 12：中文 glyph 视觉偏高，行距 10 时相邻行粘连重叠） */
+    private static final int HISTORY_LINE_H = 12;
+    /** 摘要玩家名显示列预算（scale 0.7 下整行约 54 列，玩家名份额） */
+    private static final int HISTORY_NAME_BUDGET = 12;
+    /** 摘要物品名显示列预算（超长物品名截断补「…」，防顶行/换行观感） */
+    private static final int HISTORY_ITEM_BUDGET = 20;
 
     // ==================== 颜色常量（ARGB） ====================
 
@@ -145,10 +142,10 @@ public class LotteryGui {
     private static final int COLOR_LIT_FRAME = 0xCCFFC84A;
     /** 停格后高亮框色（不透明金，闪烁相位切换） */
     private static final int COLOR_FINISH_FRAME = 0xFFFFD24A;
-    /** 保底进度条底色 */
-    private static final int COLOR_PITY_BG = 0xFF1E1E2E;
-    /** 保底进度条填充（紫，呼应 EPIC 保底稀有度） */
-    private static final int COLOR_PITY_FILL = 0xFFAA66FF;
+    /** 保底进度条底色（v1.7.6 G4 自 0xFF1E1E2E 加深，与亮紫填充拉开对比度） */
+    private static final int COLOR_PITY_BG = 0xFF101020;
+    /** 保底进度条填充（亮紫，呼应 EPIC 保底稀有度；G4 自 0xFFAA66FF 调亮提升对比度） */
+    private static final int COLOR_PITY_FILL = 0xFFC47FFF;
 
     /** 历史时间戳格式（HH:mm） */
     private static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("HH:mm", Locale.ROOT);
@@ -168,7 +165,8 @@ public class LotteryGui {
         ParentWidget<?> page = new ParentWidget<>().size(PAGE_WIDTH, PAGE_HEIGHT);
 
         page.child(createTitle(editCallback)); // 标题（编辑模式附加标识）
-        page.child(createPoolSelector()); // 卡池切换（含价格+余额）
+        // v1.7.6：顶部卡池切换按钮行已移除——池切换由左侧 sub-page 标签列承担
+        // （NekoVMGuiV2.createSubTabColumn(MAIN_TAB_LOTTERY)，数据源 LotteryClientData.getPools()）
         page.child(createWheelArea(editCallback)); // 轮盘区（环形槽位 + 物品 + 角标 + 点亮框 + 指针；编辑模式可点击）
         page.child(createResultMessage()); // 单抽结果 / 错误提示（限时）
         page.child(createMultiResultList()); // 10 连结果格子列表
@@ -179,12 +177,17 @@ public class LotteryGui {
         return page;
     }
 
-    // ==================== 标题与卡池切换 ====================
+    // ==================== 标题 ====================
 
-    /** 标题行：「猫猫扭蛋」（金色，居中；编辑模式附加红色标识） */
+    /** 标题行：「猫猫扭蛋 - 池名」（金色，居中；编辑模式附加红色标识） */
     private static IWidget createTitle(LotteryEditCallback editCallback) {
         return new TextWidget<>(IKey.dynamic(() -> {
             String text = EnumChatFormatting.GOLD + "猫猫扭蛋";
+            // v1.7.6：池切换迁至左侧标签列，标题附加当前选中池名作指示
+            LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
+            if (pool != null && pool.name != null && !pool.name.isEmpty()) {
+                text += EnumChatFormatting.YELLOW + " - " + pool.name;
+            }
             if (editCallback != null && editCallback.isEditMode()) {
                 text += EnumChatFormatting.RED + " [编辑]";
             }
@@ -195,84 +198,73 @@ public class LotteryGui {
             .shadow(false);
     }
 
-    /**
-     * 卡池切换按钮行：每池一个按钮（文本显示「池名 价格x币 ｜ 余额y」）。
-     * <p>
-     * 点击切换 {@link LotteryClientData#setSelectedPoolId}（仅客户端本地状态，
-     * 不牵涉服务端）；当前选中池文字金色高亮，未选中灰色。
-     * 池数多于按钮位时按下发顺序取前几个（默认配置恰为 2 池）。
-     */
-    private static IWidget createPoolSelector() {
-        ParentWidget<?> row = new ParentWidget<>().pos(0, POOL_BTN_Y)
-            .size(PAGE_WIDTH, POOL_BTN_H);
-        // 按钮位按 2 池布局（(170 - 2×2)/2 = 83 起位）；池数量动态由 Supplier 求值
-        for (int i = 0; i < 2; i++) {
-            final int index = i;
-            int x = (PAGE_WIDTH - 2 * POOL_BTN_W - POOL_BTN_GAP) / 2 + index * (POOL_BTN_W + POOL_BTN_GAP);
-            row.child(
-                new ButtonWidget<>().pos(x, 0)
-                    .size(POOL_BTN_W, POOL_BTN_H)
-                    .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-                    .overlay(IKey.dynamic(() -> poolButtonText(index)))
-                    .tooltipBuilder(t -> {
-                        LotteryClientData.PoolSummary pool = poolAt(index);
-                        if (pool != null) {
-                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + pool.name));
-                            t.addLine(
-                                IKey.str(
-                                    EnumChatFormatting.GRAY + "单抽消耗："
-                                        + pool.costPerDraw
-                                        + " "
-                                        + currencyName(pool.currencyId)));
-                            t.addLine(
-                                IKey.str(
-                                    EnumChatFormatting.GRAY + "团队余额：" + LotteryClientData.getBalance(pool.currencyId)));
-                            if (LotteryClientData.getSelectedPoolId()
-                                .equals(pool.id)) {
-                                t.addLine(IKey.str(EnumChatFormatting.GREEN + "当前选中"));
-                            } else {
-                                t.addLine(IKey.str(EnumChatFormatting.AQUA + "点击切换到此卡池"));
-                            }
-                        }
-                    })
-                    .tooltipAutoUpdate(true)
-                    .onMouseTapped(mouse -> {
-                        LotteryClientData.PoolSummary pool = poolAt(index);
-                        if (mouse == 0 && pool != null) {
-                            LotteryClientData.setSelectedPoolId(pool.id);
-                            // 切换卡池时重置动画（防止上个池的停格残留到新池轮盘）
-                            LotteryAnimationController.getInstance()
-                                .reset();
-                            return true;
-                        }
-                        return false;
-                    }));
-        }
-        return row;
-    }
-
-    /** 卡池按钮文本：选中池金色，未选中灰色；无该序号池时显示占位 */
-    private static String poolButtonText(int index) {
-        LotteryClientData.PoolSummary pool = poolAt(index);
-        if (pool == null) return EnumChatFormatting.DARK_GRAY + "——";
-        boolean selected = LotteryClientData.getSelectedPoolId()
-            .equals(pool.id);
-        EnumChatFormatting color = selected ? EnumChatFormatting.GOLD : EnumChatFormatting.GRAY;
-        // 压缩显示：池名 + 价格（余额在 tooltip，按钮宽度有限）
-        return color + pool.name + " " + pool.costPerDraw + "币";
-    }
-
-    /** 按序号取卡池摘要（越界返回 null） */
-    private static LotteryClientData.PoolSummary poolAt(int index) {
-        List<LotteryClientData.PoolSummary> pools = LotteryClientData.getPools();
-        return index >= 0 && index < pools.size() ? pools.get(index) : null;
-    }
-
     /** 货币显示名（neko → 猫猫币，shimmeringNeko → 闪烁猫猫币） */
     private static String currencyName(String currencyId) {
         if (currencyId == null) return "?";
         String name = NekoCurrencyRegistrar.getDisplayName(currencyId);
         return name == null || name.isEmpty() ? currencyId : name;
+    }
+
+    // ==================== 消耗展示（v1.7.6 costItems 口径） ====================
+
+    /**
+     * 客户端可校验的货币充足性（物品消耗由服务端 canAfford 二次校验，客户端不预检输入槽）
+     *
+     * @param pool  卡池摘要
+     * @param count 连抽次数
+     * @return true 表示货币需求全部满足（或无货币需求）
+     */
+    private static boolean currencyAffordable(LotteryClientData.PoolSummary pool, int count) {
+        if (pool == null) return false;
+        for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.costItems) {
+            if (cost == null || cost.getBaseStack() == null) continue;
+            String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+            if (cid != null && LotteryClientData.getBalance(cid) < cost.getStackSize() * count) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 消耗摘要文本（按钮面用，如「5币+2面包」；无消耗显示「免费」）
+     * <p>
+     * v1.7.6 G4：货币名改用单字缩写（猫猫币→币、闪烁猫猫币→闪币）防按钮文本溢出，
+     * 完整货币名见按钮 tooltip 明细。
+     */
+    private static String costSummary(LotteryClientData.PoolSummary pool, int count) {
+        if (pool == null || pool.costItems.isEmpty()) return "免费";
+        StringBuilder sb = new StringBuilder();
+        for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.costItems) {
+            if (cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0) continue;
+            if (sb.length() > 0) sb.append("+");
+            int total = cost.getStackSize() * count;
+            String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+            if (cid != null) {
+                sb.append(total)
+                    .append(shortCurrencyName(cid));
+            } else {
+                sb.append(total)
+                    .append(
+                        cost.getBaseStack()
+                            .getDisplayName());
+            }
+        }
+        return sb.length() == 0 ? "免费" : sb.toString();
+    }
+
+    /**
+     * 货币按钮面缩写（G4：防按钮文本溢出；tooltip 明细仍用 {@link #currencyName} 全名）
+     * <ul>
+     * <li>猫猫币 → 币</li>
+     * <li>闪烁猫猫币 → 闪币</li>
+     * <li>其他 → 全名（兜底）</li>
+     * </ul>
+     */
+    private static String shortCurrencyName(String currencyId) {
+        if (NekoCurrencyRegistrar.NEKO_ID.equals(currencyId)) return "币";
+        if (NekoCurrencyRegistrar.SHIMMERING_NEKO_ID.equals(currencyId)) return "闪币";
+        return currencyName(currencyId);
     }
 
     // ==================== 轮盘区 ====================
@@ -429,10 +421,16 @@ public class LotteryGui {
         return null;
     }
 
-    /** 槽位底纹理：按条目稀有度（COMMON/RARE→灰框，EPIC→金框，LEGENDARY→闪角框） */
+    /**
+     * 槽位底纹理：按条目稀有度（COMMON/RARE→灰框，EPIC→金框，LEGENDARY→闪角框）
+     * <p>
+     * v1.7.6 G4 修复：空槽位（条目数 &lt; {@link #MAX_SLOTS}）原不渲染底图（{@link IDrawable#EMPTY}），
+     * 导致轮盘视觉上游离散乱（如 4/1/3 分布）、格子大小不一的观感——
+     * 改为空槽渲染普通空槽底图，固定 10 格环形坐标表（{@link #ringPos}）恒完整成环。
+     */
     private static IDrawable slotTexture(int index) {
         LotteryEntry entry = entryAt(index);
-        if (entry == null) return IDrawable.EMPTY;
+        if (entry == null) return NekoGuiTextures.LOTTERY_SLOT_NORMAL; // 空槽底图（G4）
         switch (entry.getRarity()) {
             case LEGENDARY:
                 return NekoGuiTextures.LOTTERY_SLOT_EPIC;
@@ -569,7 +567,7 @@ public class LotteryGui {
             if (System.currentTimeMillis() - LotteryClientData.getLastResultTimeMs() > RESULT_DISPLAY_MS) return "";
             switch (code) {
                 case LotteryClientData.RESULT_INSUFFICIENT:
-                    return EnumChatFormatting.RED + "猫猫币余额不足，无法抽取";
+                    return EnumChatFormatting.RED + "消耗不足（猫猫币或需求物品不够），无法抽取";
                 case LotteryClientData.RESULT_POOL_MISSING:
                     return EnumChatFormatting.RED + "卡池不存在或暂不可用";
                 case LotteryClientData.RESULT_ERROR:
@@ -749,6 +747,10 @@ public class LotteryGui {
      * <p>
      * 保底未启用或阈值为 0 时显示「本池无保底」；计数读取
      * {@link LotteryClientData#getPityCounter}（团队共享，随同步包刷新）。
+     * <p>
+     * v1.7.6 G4：文本主体自 GRAY 调深（0xFF3F3F3F，浅灰面板上 GRAY 过淡不可读），
+     * 仅保底计数内嵌稀有度色，其后以 §r 恢复主体色（1.7.10 原版 §r→0x404040，
+     * 与主体色一致；ModularUI2 富文本管线则回 widget color）。
      */
     private static IWidget createPityProgress() {
         ParentWidget<?> box = new ParentWidget<>().pos(0, PITY_Y)
@@ -759,16 +761,16 @@ public class LotteryGui {
             LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
             if (pool == null) return "";
             if (!pool.pityEnabled || pool.hardPityThreshold <= 0) {
-                return EnumChatFormatting.DARK_GRAY + "本池无保底";
+                return "本池无保底"; // 主体走 widget color（0xFF3F3F3F）
             }
             int pity = LotteryClientData.getPityCounter(pool.id);
             LotteryRarity guaranteed = LotteryRarity.fromString(pool.guaranteedRarity);
-            return EnumChatFormatting.GRAY + "距保底 "
-                + guaranteed.getColor()
+            // 主体不带格式码（走 widget color 深灰），仅保底计数内嵌稀有度色，§r 恢复主体色
+            return "距保底 " + guaranteed.getColor()
                 + pity
                 + "/"
                 + pool.hardPityThreshold
-                + EnumChatFormatting.GRAY
+                + EnumChatFormatting.RESET
                 + "（必出"
                 + guaranteed.getDisplayName()
                 + "+）";
@@ -776,6 +778,7 @@ public class LotteryGui {
             .size(PAGE_WIDTH, 8)
             .textAlign(Alignment.Center)
             .scale(0.75f)
+            .color(0xFF3F3F3F)
             .shadow(false));
 
         // 进度条（宽 120 居中）
@@ -814,14 +817,14 @@ public class LotteryGui {
         int totalW = 2 * DRAW_BTN_W + DRAW_BTN_GAP;
         int startX = (PAGE_WIDTH - totalW) / 2;
 
-        row.child(createDrawButton(machine, startX, 1, NekoGuiTextures.LOTTERY_BTN_DRAW, "抽 1 次", editCallback));
+        row.child(createDrawButton(machine, startX, 1, NekoGuiTextures.LOTTERY_BTN_DRAW, "抽1次", editCallback));
         row.child(
             createDrawButton(
                 machine,
                 startX + DRAW_BTN_W + DRAW_BTN_GAP,
                 10,
                 NekoGuiTextures.LOTTERY_BTN_DRAW10,
-                "抽 10 次",
+                "抽10次",
                 editCallback));
         return row;
     }
@@ -845,14 +848,36 @@ public class LotteryGui {
                     t.addLine(IKey.str(EnumChatFormatting.RED + "暂无可用卡池"));
                     return;
                 }
-                int total = pool.totalCost(count);
-                int balance = LotteryClientData.getBalance(pool.currencyId);
-                t.addLine(
-                    IKey.str(EnumChatFormatting.YELLOW + label + "：" + total + " " + currencyName(pool.currencyId)));
-                if (balance < total) {
-                    t.addLine(IKey.str(EnumChatFormatting.RED + "团队余额不足（" + balance + "/" + total + "）"));
+                // v1.7.6 costItems 口径：逐条列出消耗（货币条目带团队余额）
+                t.addLine(IKey.str(EnumChatFormatting.YELLOW + label + " 消耗："));
+                boolean anyCost = false;
+                for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.costItems) {
+                    if (cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0) continue;
+                    anyCost = true;
+                    int total = cost.getStackSize() * count;
+                    String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+                    if (cid != null) {
+                        int balance = LotteryClientData.getBalance(cid);
+                        EnumChatFormatting color = balance < total ? EnumChatFormatting.RED : EnumChatFormatting.GRAY;
+                        t.addLine(IKey.str(color + "  " + total + " " + currencyName(cid) + "（钱包 " + balance + "）"));
+                    } else {
+                        t.addLine(
+                            IKey.str(
+                                EnumChatFormatting.GRAY + "  "
+                                    + total
+                                    + " "
+                                    + cost.getBaseStack()
+                                        .getDisplayName()
+                                    + EnumChatFormatting.DARK_GRAY
+                                    + "（自输入槽）"));
+                    }
+                }
+                if (!anyCost) {
+                    t.addLine(IKey.str(EnumChatFormatting.GREEN + "  免费"));
+                }
+                if (!currencyAffordable(pool, count)) {
+                    t.addLine(IKey.str(EnumChatFormatting.RED + "团队钱包余额不足"));
                 } else {
-                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "团队余额：" + balance));
                     t.addLine(IKey.str(EnumChatFormatting.GREEN + "点击抽取，奖品入出货槽"));
                 }
                 if (pool.pityEnabled && pool.hardPityThreshold > 0) {
@@ -875,9 +900,8 @@ public class LotteryGui {
                     .isSpinning()) {
                     return true;
                 }
-                int total = pool.totalCost(count);
-                if (LotteryClientData.getBalance(pool.currencyId) < total) {
-                    // 余额不足：本地拦截（服务端二次校验兜底）
+                if (!currencyAffordable(pool, count)) {
+                    // 货币不足：本地拦截（物品消耗由服务端 canAfford 二次校验兜底）
                     return true;
                 }
                 if (machine != null) {
@@ -894,14 +918,47 @@ public class LotteryGui {
             });
     }
 
-    /** 抽奖按钮文本（选中池无数据时置灰；余额不足时红色警示） */
+    /**
+     * 抽奖按钮文本（选中池无数据时置灰；货币不足时红色警示）
+     * <p>
+     * v1.7.6 G4：按钮加宽至 72 且文案缩写（label 去空格、货币名单字缩写）后，
+     * 仍按 {@link #DRAW_BTN_TEXT_BUDGET} 显示列预算截断兜底（超长加「…」），
+     * 根除价格文本溢出与相邻按钮重叠的问题。
+     */
     private static String drawButtonText(String label, int count) {
         LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
         if (pool == null) return EnumChatFormatting.DARK_GRAY + label;
-        int total = pool.totalCost(count);
-        int balance = LotteryClientData.getBalance(pool.currencyId);
-        EnumChatFormatting color = balance < total ? EnumChatFormatting.RED : EnumChatFormatting.WHITE;
-        return color + label + " " + total;
+        EnumChatFormatting color = currencyAffordable(pool, count) ? EnumChatFormatting.WHITE : EnumChatFormatting.RED;
+        return color + truncateToWidth(label + " " + costSummary(pool, count), DRAW_BTN_TEXT_BUDGET);
+    }
+
+    /**
+     * 按显示列截断文本（全角字符计 2 列，半角计 1 列；超预算时截断并补「…」）
+     * <p>
+     * MC Unicode 字体全角字约 9px、半角约 4~5px，列是估算单位（约 4.5px/列）。
+     * 输入文本不应含 § 格式码（调用方在截断后再拼接颜色码）。
+     *
+     * @param text      纯文本
+     * @param maxColumn 最大显示列数（含省略号预算）
+     * @return 截断后的文本
+     */
+    private static String truncateToWidth(String text, int maxColumn) {
+        // 第一遍：总列数未超预算则不截断（避免临界长度被过度截断）
+        int total = 0;
+        for (int i = 0; i < text.length(); i++) {
+            total += text.charAt(i) > 0xFF ? 2 : 1; // 全角（CJK 等）计 2 列，半角计 1 列
+        }
+        if (total <= maxColumn) return text;
+        // 第二遍：截到 maxColumn-2 列（为「…」预留 2 列预算）
+        int columns = 0;
+        for (int i = 0; i < text.length(); i++) {
+            int w = text.charAt(i) > 0xFF ? 2 : 1;
+            if (columns + w > maxColumn - 2) {
+                return text.substring(0, i) + "…";
+            }
+            columns += w;
+        }
+        return text; // 理论不可达（total > maxColumn 时必在循环内截断）
     }
 
     // ==================== 最近中奖摘要 ====================
@@ -935,7 +992,7 @@ public class LotteryGui {
         return box;
     }
 
-    /** 单条历史摘要文本（越界返回空串） */
+    /** 单条历史摘要文本（越界返回空串；v1.7.6 G4 玩家名/物品名按显示列截断防超长顶行） */
     private static String historyLine(int index) {
         List<LotteryHistory.HistoryEntry> history = LotteryClientData.getRecentHistory();
         if (index < 0 || index >= history.size()) return "";
@@ -945,10 +1002,10 @@ public class LotteryGui {
         return EnumChatFormatting.DARK_GRAY + time
             + " "
             + EnumChatFormatting.GRAY
-            + entry.playerName
+            + truncateToWidth(entry.playerName, HISTORY_NAME_BUDGET)
             + " 获得 "
             + rarity.getColor()
-            + historyEntryName(entry)
+            + truncateToWidth(historyEntryName(entry), HISTORY_ITEM_BUDGET)
             + EnumChatFormatting.WHITE
             + " ×"
             + entry.amount;

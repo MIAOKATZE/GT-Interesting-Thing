@@ -62,6 +62,8 @@ public class MailHandler {
 
         // 加载（或新建）数据，投递待发的首登/一次性奖励（内部有改动即落盘）
         boolean delivered = manager.deliverPendingRewards(playerId);
+        // v1.7.6 G5：登录检测当日祝福（生日/纪念日/节日），防重键拦截重复投递，投递成功内部落盘
+        delivered |= BlessingManager.INSTANCE.checkAndSend(player);
         if (delivered) {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "你收到了新邮件，请到猫猫售货机查看！"));
         }

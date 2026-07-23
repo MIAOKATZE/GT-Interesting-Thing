@@ -22,6 +22,7 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
+import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
@@ -55,6 +56,7 @@ import com.miaokatze.gtit.client.gui.NekoMusicTrack;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
 import com.miaokatze.gtit.client.gui.NekoSearchBar;
 import com.miaokatze.gtit.client.gui.NekoSortMode;
+import com.miaokatze.gtit.client.gui.NekoSubTabButton;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
 import com.miaokatze.gtit.client.gui.NekoTradeMainPanel;
@@ -67,6 +69,7 @@ import com.miaokatze.gtit.lottery.LotteryClientData;
 import com.miaokatze.gtit.lottery.LotteryEntry;
 import com.miaokatze.gtit.lottery.LotteryGui;
 import com.miaokatze.gtit.lottery.LotteryRarity;
+import com.miaokatze.gtit.mail.MailClientData;
 import com.miaokatze.gtit.mail.MailGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
@@ -295,6 +298,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private PagedWidget.Controller tabController;
     /** v1.7.0 主标签分页控制器（客户端，管理贸易/签到/抽奖/邮件切换） */
     private PagedWidget.Controller mainTabController;
+    /** v1.7.6 G1 签到「活跃」sub-page 分页控制器（客户端；G1 仅创建供标签按钮绑定，G2③ 建对应 PagedWidget 页面后接管切换） */
+    private PagedWidget.Controller signInPageController;
+    /** v1.7.6 G1 抽奖池 sub-page 分页控制器（客户端；G1 仅创建供标签按钮绑定，G2① 建对应 PagedWidget 页面后接管切换） */
+    private PagedWidget.Controller lotteryPageController;
+    /** v1.7.6 G1 邮件 sub-page 分页控制器（客户端；G1 仅创建供标签按钮绑定，G2② 建对应 PagedWidget 页面后接管切换） */
+    private PagedWidget.Controller mailPageController;
     /** 搜索栏组件（客户端） */
     private NekoSearchBar searchBar;
     /** 音量/BGM 按钮（客户端，作为音量面板的 parent；v1.6.24 提升为类字段以供 build() 在 client 块外注册 syncedPanel） */
@@ -330,10 +339,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private NekoTradeItemDisplay editingDisplay;
 
     // --- 编辑面板本地状态（客户端，保存时序列化为 JSON 发送到服务端） ---
-    /** 编辑：猫猫币类型（"neko" / "shimmeringNeko" / 空=无） */
-    private String editCurrencyType = "";
-    /** 编辑：猫猫币数量 */
-    private int editCurrencyAmount = 0;
+    // v1.7.6 G3② 货币解绑：原「猫猫币类型/数量」字段已删除——货币需求/产出统一由
+    // 需求/产物格中的猫猫币物品条目表达（执行器实时识别分流），面板不再设独立货币输入框
     /** 编辑：冷却时间（秒） */
     private int editCooldown = 0;
     /** 编辑：最大交易次数（-1=无限制） */
@@ -344,11 +351,33 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private int editTabId = 1;
     /** 编辑：顺序 ID */
     private int editOrderId = 0;
+    /** 编辑：是否严格匹配 NBT（v1.7.6 G3⑤，统一默认 false=仅按物品匹配） */
+    private boolean editRecordNBT = false;
+    /** 编辑：是否新建交易模式（v1.7.6 G3④，true=保存时走 createTrade，false=走 saveTrade） */
+    private boolean editTradeIsNew = false;
 
-    /** 编辑目标同步值（C2S：客户端设置 "groupId:tradeIndex"，服务端据此加载交易数据到编辑缓冲区） */
+    /** 编辑目标同步值特殊标记：新建交易模式（v1.7.6 G3④，服务端仅清空编辑缓冲区） */
+    private static final String TRADE_TARGET_NEW = "@new";
+    /** 编辑目标同步值（C2S：客户端设置 "groupId:tradeIndex" 或 {@link #TRADE_TARGET_NEW}，服务端据此加载交易数据到编辑缓冲区） */
     private StringSyncValue editTargetSync;
-    /** 编辑物品缓冲区（双端共享：slot 0-3=需求物品，slot 4-7=产物物品） */
-    private final ItemStackHandler editItemHandler = new ItemStackHandler(8);
+    /** 编辑物品缓冲区（双端共享：slot 0-15=需求物品两行，slot 16-31=产物物品两行，v1.7.6 G3① 8→32） */
+    private final ItemStackHandler editItemHandler = new ItemStackHandler(32);
+
+    // --- 标签页 page 编辑（v1.7.6 G3④：shift+点击 page 标签 / 列尾「+」新建 page） ---
+    /** page 编辑目标同步值特殊标记：新建 page 模式（服务端仅清空编辑缓冲区） */
+    private static final String PAGE_TARGET_NEW = "@new";
+    /** page 编辑面板处理器（客户端，打开/关闭 page 编辑面板） */
+    private IPanelHandler pageEditPanelHandler;
+    /** page 编辑目标同步值（C2S：pageId 字符串或 {@link #PAGE_TARGET_NEW}，服务端据此加载图标到编辑缓冲区） */
+    private StringSyncValue editPageTargetSync;
+    /** page 编辑物品缓冲区（双端共享：slot 0=page 图标） */
+    private final ItemStackHandler editPageItemHandler = new ItemStackHandler(1);
+    /** page 编辑：目标 pageId（新建模式下为 -1，保存时由服务端分配 id≥4） */
+    private int editPageId = -1;
+    /** page 编辑：是否新建模式（true=保存时走 createPage，false=走 savePage） */
+    private boolean editPageIsNew = false;
+    /** page 编辑：显示名称 */
+    private String editPageName = "";
 
     // --- 签到编辑（v1.7.0 目标 4：阶梯宝箱/全局配置编辑） ---
     /** 签到编辑面板处理器（客户端，打开/关闭签到编辑面板） */
@@ -367,6 +396,32 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private int editSignInBaseReward = 0;
     /** 签到编辑：连续递增系数（全局模式，字符串暂存，保存时解析） */
     private String editSignInIncrement = "1.0";
+
+    // --- 祝福预设编辑（v1.7.6 G5：节日表 + 生日模板 + 发件人编辑） ---
+    /** 祝福编辑附件槽位数（与邮件附件上限一致；猫猫币不入槽，由货币字段表达） */
+    private static final int BLESSING_ITEM_SLOTS = 5;
+    /** 祝福编辑面板处理器（客户端，打开/关闭祝福预设编辑面板） */
+    private IPanelHandler blessingEditPanelHandler;
+    /** 祝福编辑目标同步值（C2S："festival:<index>"/"birthday"，服务端据此加载附件物品到编辑缓冲区） */
+    private StringSyncValue editBlessingTargetSync;
+    /** 祝福编辑物品缓冲区（双端共享：slot 0-4=附件物品） */
+    private final ItemStackHandler editBlessingItemHandler = new ItemStackHandler(BLESSING_ITEM_SLOTS);
+    /** 祝福编辑：当前目标标识（"birthday" / "festival:<index>"） */
+    private String editBlessingTarget = "birthday";
+    /** 祝福编辑：发件人显示名（面板内随任意保存一并提交） */
+    private String editBlessingSender = "猫猫售货机";
+    /** 祝福编辑：节日名称（仅节日目标） */
+    private String editBlessingName = "";
+    /** 祝福编辑：触发日期 "MM-dd"（仅节日目标） */
+    private String editBlessingMonthDay = "";
+    /** 祝福编辑：邮件标题 */
+    private String editBlessingTitle = "";
+    /** 祝福编辑：邮件正文 */
+    private String editBlessingContent = "";
+    /** 祝福编辑：猫猫币 ID（空串 = 无币附件） */
+    private String editBlessingCurrency = "";
+    /** 祝福编辑：猫猫币数量（作为附件物品发放） */
+    private int editBlessingCurrencyAmount = 0;
 
     // --- 抽奖编辑（v1.7.0 目标 4：轮盘条目编辑） ---
     /** 抽奖编辑面板处理器（客户端，打开/关闭抽奖条目编辑面板） */
@@ -387,6 +442,34 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private int editLotteryWeight = 1;
     /** 抽奖编辑：稀有度名（COMMON/RARE/EPIC/LEGENDARY） */
     private String editLotteryRarity = "COMMON";
+
+    // --- 抽奖卡池编辑（v1.7.6 G2①：池级编辑面板 + 动态池标签列） ---
+    /** 池标签列预分配按钮上限（池数量超出后不渲染；显隐由 setEnabledIf + collapseDisabledChild 每帧驱动） */
+    private static final int MAX_POOL_TABS = 12;
+    /** 池编辑消耗需求槽位数（图标槽除外） */
+    private static final int POOL_COST_SLOTS = 4;
+    /** 池编辑目标同步值特殊标记：新建池模式（服务端清空编辑缓冲区） */
+    private static final String POOL_TARGET_NEW = "@new";
+    /** 卡池编辑面板处理器（客户端，打开/关闭池编辑面板） */
+    private IPanelHandler lotteryPoolEditPanelHandler;
+    /** 池编辑目标同步值（C2S：池 id 或 {@link #POOL_TARGET_NEW}，服务端据此加载图标/消耗物品到编辑缓冲区） */
+    private StringSyncValue editPoolTargetSync;
+    /** 池编辑物品缓冲区（双端共享：slot 0=page 图标，slot 1-4=消耗需求物品） */
+    private final ItemStackHandler editPoolItemHandler = new ItemStackHandler(1 + POOL_COST_SLOTS);
+    /** 池编辑：卡池 ID（新建模式下可编辑，保存时作新池 id；现有池仅展示不可改） */
+    private String editPoolId = "";
+    /** 池编辑：是否新建模式（true=保存时创建新池，false=保存时更新现有池） */
+    private boolean editPoolIsNew = false;
+    /** 池编辑：显示名称 */
+    private String editPoolName = "";
+    /** 池编辑：保底是否启用 */
+    private boolean editPoolPityEnabled = true;
+    /** 池编辑：软保底阈值 */
+    private int editPoolSoftPity = 30;
+    /** 池编辑：硬保底阈值 */
+    private int editPoolHardPity = 50;
+    /** 池编辑：硬保底保证稀有度名（COMMON/RARE/EPIC/LEGENDARY） */
+    private String editPoolGuaranteedRarity = "EPIC";
 
     // ==================== 构造器 ====================
 
@@ -457,6 +540,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             tabController = new PagedWidget.Controller();
             // v1.7.0 主标签控制器（贸易/签到/抽奖/邮件）
             mainTabController = new PagedWidget.Controller();
+            // v1.7.6 G1 三页 sub-page 控制器（仅客户端创建；G1 阶段不绑定 PagedWidget，
+            // 标签按钮靠 NekoSubTabButton 防崩守卫兜底，G2 建对应页面后绑定接管）
+            signInPageController = new PagedWidget.Controller();
+            lotteryPageController = new PagedWidget.Controller();
+            mailPageController = new PagedWidget.Controller();
         }
 
         // 创建 NekoTradeMainPanel 作为主面板（实现 PanelCallback 回调）
@@ -488,6 +576,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         if (syncManager.isClient()) {
             panel.child(createTabColumn());
             panel.child(createQolButtonColumn());
+            // v1.7.6 G1：签到/抽奖/邮件三页各自的 sub-page 标签列（与贸易分类列同位 left(-29)，
+            // 按主标签互斥显示；纯按钮无槽位，仅客户端创建，与 createTabColumn 挂载路径一致）
+            panel.child(createSubTabColumn(MAIN_TAB_SIGNIN));
+            panel.child(createSubTabColumn(MAIN_TAB_LOTTERY));
+            panel.child(createSubTabColumn(MAIN_TAB_MAIL));
         }
 
         // v1.6.24: 音量面板在 client 块外部注册（与 VM 原版 MTEVendingMachineGui 一致），
@@ -508,6 +601,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         lotteryEditPanelHandler = syncManager
             .syncedPanel("nekoV2LotteryEdit", true, (sm, sh) -> buildLotteryEditPanel(sm));
 
+        // v1.7.6 G2①：抽奖卡池编辑面板（编辑模式下 Shift+点击池标签 / 点击列尾「+」新建池按钮弹出）
+        lotteryPoolEditPanelHandler = syncManager
+            .syncedPanel("nekoV2LotteryPoolEdit", true, (sm, sh) -> buildLotteryPoolEditPanel(sm));
+
+        // v1.7.6 G3④：标签页 page 编辑面板（编辑模式下 Shift+点击 page 标签 / 点击列尾「+」新建 page 按钮弹出）
+        pageEditPanelHandler = syncManager.syncedPanel("nekoV2PageEdit", true, (sm, sh) -> buildPageEditPanel(sm));
+
+        // v1.7.6 G5：祝福预设编辑面板（编辑模式下点击邮件页 sub-tab 列尾「祝福预设」按钮弹出）
+        blessingEditPanelHandler = syncManager
+            .syncedPanel("nekoV2BlessingEdit", true, (sm, sh) -> buildBlessingEditPanel(sm));
+
         // v1.7.0 主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
         // v1.7.5 修复：仅客户端创建——mainTabController/tabController 仅在客户端初始化（上方 isClient 块），
         // 服务端执行到 .controller(null) 会 NPE，createPanel 中断导致右击无反应。
@@ -518,18 +622,18 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // --- 玩家背包栏（v1.7.5 从贸易列拆出，双端挂 panel）---
         // 双端创建：服务端必须注册背包槽，否则容器缺槽、shift 转移失效（与 VM 原版 createInventoryRow 一致）。
-        // setEnabledIf 仅阻止 draw 不影响槽同步（v1.6.24 已确认），保持仅贸易页可见的现有视觉。
+        // v1.7.6 G1：四页恒显示（三页物品交互需要背包，用户已确认）——移除原「仅贸易页」的 setEnabledIf；
+        // 三页底部内容暂时被背包行遮挡属已裁决的过渡态（G2 重写三页布局时根除，不发布中间态）。
         panel.child(
             Flow.row()
                 .fullWidth()
                 .height(76)
                 .bottom(5)
-                .setEnabledIf(w -> mainTabId == MAIN_TAB_TRADE)
                 .child(
                     SlotGroupWidget.playerInventory(false)
                         .marginLeft(4)));
 
-        // 右侧 IO 列（仅主标签为贸易时显示）
+        // 右侧 IO 列（v1.7.6 G1：四页恒显示）
         panel.child(createIOColumn());
 
         return panel;
@@ -888,6 +992,33 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         editLotteryTargetSync.allowC2S();
         syncManager.syncValue("nekoV2EditLotteryTarget", editLotteryTargetSync);
+
+        // --- 池编辑目标（C2S：客户端设置池 id 或 "@new"，服务端加载图标/消耗需求物品到编辑缓冲区）---
+        editPoolTargetSync = new StringSyncValue(() -> "", val -> {
+            if (syncManager != null && !syncManager.isClient() && val != null && !val.isEmpty()) {
+                loadPoolIntoEditBuffer(val);
+            }
+        });
+        editPoolTargetSync.allowC2S();
+        syncManager.syncValue("nekoV2EditPoolTarget", editPoolTargetSync);
+
+        // --- page 编辑目标（C2S：客户端设置 pageId 或 "@new"，服务端加载 page 图标到编辑缓冲区，v1.7.6 G3④）---
+        editPageTargetSync = new StringSyncValue(() -> "", val -> {
+            if (syncManager != null && !syncManager.isClient() && val != null && !val.isEmpty()) {
+                loadPageIntoEditBuffer(val);
+            }
+        });
+        editPageTargetSync.allowC2S();
+        syncManager.syncValue("nekoV2EditPageTarget", editPageTargetSync);
+
+        // --- 祝福编辑目标（C2S：客户端设置 "festival:<index>"/"birthday"，服务端加载附件物品到编辑缓冲区，v1.7.6 G5）---
+        editBlessingTargetSync = new StringSyncValue(() -> "", val -> {
+            if (syncManager != null && !syncManager.isClient() && val != null && !val.isEmpty()) {
+                loadBlessingIntoEditBuffer(val);
+            }
+        });
+        editBlessingTargetSync.allowC2S();
+        syncManager.syncValue("nekoV2EditBlessingTarget", editBlessingTargetSync);
     }
 
     /**
@@ -1162,6 +1293,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     public void onEditRequested(NekoTradeItemDisplay display) {
         if (display == null) return;
         this.editingDisplay = display;
+        this.editTradeIsNew = false;
+        // v1.7.6 G3③ 格子残留修复（重置点①）：客户端立即清空 32 槽+重置全部编辑字段，
+        // 防止连续切换编辑不同条目时 PhantomItemSlot 客户端缓存残留上一条内容
+        // （服务端缓冲区随后由 loadTradeIntoEditBuffer 重置点②覆盖并同步回客户端）
+        clearTradeEditState();
         // 填充编辑参数（从显示数据中提取）
         populateEditFields(display);
         // 通知服务端加载交易数据到编辑缓冲区
@@ -1172,6 +1308,31 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     + display.getTradeIndex());
         }
         // 打开编辑面板
+        if (editPanelHandler != null) {
+            editPanelHandler.openPanel();
+        }
+    }
+
+    /**
+     * 打开新建交易编辑面板（客户端，编辑模式下点击交易列表尾「新建交易条目」按钮触发，v1.7.6 G3④）
+     * <p>
+     * 字段全部置默认值（{@link #clearTradeEditState}），editTabId 固定为当前所在标签页
+     * （新建条目挂到该页，orderId 由服务端取页内最大+1）；
+     * 通知服务端清空编辑缓冲区（{@link #TRADE_TARGET_NEW} 标记）。
+     * 保存时走 {@code NekoEditNetworkManager.sendCreateTrade}（服务端分配 UUID 追加到该 page）。
+     *
+     * @param tabId 当前标签页 ID（新建条目挂到该页）
+     */
+    private void openNewTradeEditor(int tabId) {
+        this.editingDisplay = null;
+        this.editTradeIsNew = true;
+        // 重置点①同款：客户端立即清空 32 槽+重置全部编辑字段
+        clearTradeEditState();
+        this.editTabId = tabId;
+        // 通知服务端清空编辑缓冲区（新建模式无既有物品可加载）
+        if (editTargetSync != null) {
+            editTargetSync.setValue(TRADE_TARGET_NEW);
+        }
         if (editPanelHandler != null) {
             editPanelHandler.openPanel();
         }
@@ -1195,16 +1356,14 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * <p>
      * 将 {@link NekoTradeItemDisplay} 中的数据提取到编辑面板本地字段，
      * 供编辑面板的 TextFieldWidget 显示和编辑。
+     * <p>
+     * v1.7.6 G3② 货币解绑：不再提取货币类型/数量到独立字段（货币由需求格物品条目表达）；
+     * v1.7.6 G3⑤：从交易读取 recordNBT 填充「严格匹配NBT」开关。
      *
      * @param display 交易显示数据
      */
     private void populateEditFields(NekoTradeItemDisplay display) {
-        // 猫猫币信息
-        String currencyId = display.getCurrencyId();
-        editCurrencyType = currencyId != null ? currencyId : "";
-        editCurrencyAmount = (int) display.getCost();
-
-        // 从 NekoTradeDatabase 获取额外配置信息（冷却、BQ 绑定等）
+        // 从 NekoTradeDatabase 获取配置信息（冷却、BQ 绑定、NBT 匹配开关等）
         NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(display.getGroupId());
         if (group != null) {
             editCooldown = group.getCooldown();
@@ -1212,20 +1371,38 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             editBqQuestId = group.getBqQuestId() != null ? group.getBqQuestId() : "";
             editTabId = group.getTabId();
             editOrderId = group.getOrderId();
+            // v1.7.6 G3⑤：recordNBT 为交易级字段（非组级），按索引取当前交易
+            int tradeIndex = display.getTradeIndex();
+            if (tradeIndex >= 0 && tradeIndex < group.getTrades()
+                .size()) {
+                editRecordNBT = group.getTrades()
+                    .get(tradeIndex)
+                    .isRecordNBT();
+            }
         }
     }
 
     /**
-     * 服务端：加载交易数据到编辑缓冲区
+     * 服务端：加载交易数据到编辑缓冲区（v1.7.6 G3① 扩 32 槽）
      * <p>
      * 解析 "groupId:tradeIndex" 格式的目标标识，从 {@link NekoTradeDatabase}
-     * 查找交易，将需求物品加载到 editItemHandler 的 slot 0-3，
-     * 产物物品加载到 slot 4-7。
+     * 查找交易，将需求物品加载到 editItemHandler 的 slot 0-15（两行），
+     * 产物物品加载到 slot 16-31（两行）。
+     * <p>
+     * v1.7.6 G3③ 格子残留修复（重置点②）：每次加载前先整体清空 32 槽；
+     * {@link #TRADE_TARGET_NEW}（新建模式，G3④）或查找失败时仅清空不加载。
      *
-     * @param target "groupId:tradeIndex" 格式的目标标识
+     * @param target "groupId:tradeIndex" 格式的目标标识，或 {@link #TRADE_TARGET_NEW}
      */
     private void loadTradeIntoEditBuffer(String target) {
         try {
+            // 先整体清空 32 槽（重置点②：防上一条编辑内容残留）
+            for (int i = 0; i < editItemHandler.getSlots(); i++) {
+                editItemHandler.setStackInSlot(i, null);
+            }
+            // 新建模式：无既有交易可加载，保持空缓冲区
+            if (TRADE_TARGET_NEW.equals(target)) return;
+
             String[] parts = target.split(":");
             if (parts.length != 2) return;
             UUID groupId = UUID.fromString(parts[0]);
@@ -1241,14 +1418,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             NekoTrade trade = group.getTrades()
                 .get(tradeIndex);
 
-            // 清空缓冲区
-            for (int i = 0; i < editItemHandler.getSlots(); i++) {
-                editItemHandler.setStackInSlot(i, null);
-            }
-
-            // 加载需求物品到 slot 0-3
+            // 加载需求物品到 slot 0-15（v1.7.6 G3① 上限 4→16）
             List<NekoBigItemStack> fromItems = trade.getFromItems();
-            for (int i = 0; i < Math.min(fromItems.size(), 4); i++) {
+            for (int i = 0; i < Math.min(fromItems.size(), 16); i++) {
                 NekoBigItemStack bigStack = fromItems.get(i);
                 if (bigStack != null && bigStack.getBaseStack() != null) {
                     ItemStack stack = bigStack.getBaseStack()
@@ -1258,15 +1430,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             }
 
-            // 加载产物物品到 slot 4-7
+            // 加载产物物品到 slot 16-31（v1.7.6 G3① 上限 4→16，槽位偏移 4+i→16+i）
             List<NekoBigItemStack> toItems = trade.getToItems();
-            for (int i = 0; i < Math.min(toItems.size(), 4); i++) {
+            for (int i = 0; i < Math.min(toItems.size(), 16); i++) {
                 NekoBigItemStack bigStack = toItems.get(i);
                 if (bigStack != null && bigStack.getBaseStack() != null) {
                     ItemStack stack = bigStack.getBaseStack()
                         .copy();
                     stack.stackSize = bigStack.getStackSize();
-                    editItemHandler.setStackInSlot(4 + i, stack);
+                    editItemHandler.setStackInSlot(16 + i, stack);
                 }
             }
 
@@ -1277,89 +1449,64 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     /**
-     * 构建交易编辑面板
+     * 构建交易编辑面板（v1.7.6 G3① 重构）
      * <p>
      * 创建包含 PhantomItemSlot（物品拖放配置）和 TextFieldWidget（参数编辑）
-     * 的编辑面板。slot 0-3 为需求物品，slot 4-7 为产物物品。
+     * 的编辑面板。slot 0-15 为需求物品（两行×8），slot 16-31 为产物物品（两行×8）。
+     * <p>
+     * v1.7.6 G3② 货币解绑：面板不再设「猫猫币类型/数量」输入框——货币需求=需求格中的
+     * 猫猫币物品条目（购买时扣钱包），货币产出=产物格中的猫猫币物品条目（购买后入钱包）。
+     * v1.7.6 G3⑤：新增「严格匹配NBT」开关（recordNBT，统一默认不勾=仅按物品匹配）。
+     * v1.7.6 G3④：新建模式（{@link #editTradeIsNew}）下标题切换为「新建交易」，保存走 createTrade。
      *
      * @param sm 面板同步管理器
      * @return 编辑面板
      */
     private ModularPanel buildTradeEditPanel(PanelSyncManager sm) {
         ModularPanel editPanel = new ModularPanel("nekoV2TradeEdit");
-        editPanel.size(200, 180);
+        editPanel.size(250, 190);
 
-        // 标题
+        // 标题（新建 / 编辑动态切换，v1.7.6 G3④）
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "编辑交易")).top(5)
+            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GOLD + (editTradeIsNew ? "新建交易" : "编辑交易"))).top(5)
                 .horizontalCenter());
 
-        // --- 需求物品行（slot 0-3）---
+        // --- 需求物品区（slot 0-15，两行×8；v1.7.6 G3①）---
+        // 货币解绑提示：需求格放猫猫币物品 = 货币需求（购买时扣钱包）
         editPanel.child(
             IKey.str("需求:")
                 .asWidget()
                 .left(8)
-                .top(22));
-        for (int i = 0; i < 4; i++) {
+                .top(20));
+        for (int i = 0; i < 16; i++) {
             editPanel.child(
                 new PhantomItemSlot().slot(new ModularSlot(editItemHandler, i))
-                    .left(40 + i * 20)
-                    .top(20));
+                    .left(40 + (i % 8) * 20)
+                    .top(18 + (i / 8) * 20));
         }
 
-        // --- 产物物品行（slot 4-7）---
+        // --- 产物物品区（slot 16-31，两行×8；v1.7.6 G3①）---
+        // 货币解绑提示：产物格放猫猫币物品 = 货币产出（购买后入钱包）
         editPanel.child(
             IKey.str("产物:")
                 .asWidget()
                 .left(8)
-                .top(42));
-        for (int i = 0; i < 4; i++) {
+                .top(62));
+        for (int i = 0; i < 16; i++) {
             editPanel.child(
-                new PhantomItemSlot().slot(new ModularSlot(editItemHandler, 4 + i))
-                    .left(40 + i * 20)
-                    .top(40));
+                new PhantomItemSlot().slot(new ModularSlot(editItemHandler, 16 + i))
+                    .left(40 + (i % 8) * 20)
+                    .top(60 + (i / 8) * 20));
         }
 
-        // --- 参数编辑区 ---
-        int fieldY = 65;
+        // --- 参数编辑区（v1.7.6 G3②：原「猫猫币类型/数量」两行已删除）---
+        int fieldY = 105;
         int fieldHeight = 14;
-        int labelWidth = 65;
-        int fieldWidth = 120;
+        int labelWidth = 70;
+        int fieldWidth = 160;
         int spacing = 17;
 
-        // 猫猫币类型
-        editPanel.child(
-            IKey.str("猫猫币类型:")
-                .asWidget()
-                .left(8)
-                .top(fieldY + 2));
-        editPanel.child(
-            new TextFieldWidget().value(new StringValue.Dynamic(() -> editCurrencyType, val -> editCurrencyType = val))
-                .setMaxLength(30)
-                .left(labelWidth)
-                .top(fieldY)
-                .size(fieldWidth, fieldHeight));
-
-        // 猫猫币数量
-        fieldY += spacing;
-        editPanel.child(
-            IKey.str("猫猫币数量:")
-                .asWidget()
-                .left(8)
-                .top(fieldY + 2));
-        editPanel.child(
-            new TextFieldWidget().value(new StringValue.Dynamic(() -> String.valueOf(editCurrencyAmount), val -> {
-                try {
-                    editCurrencyAmount = Integer.parseInt(val);
-                } catch (NumberFormatException ignored) {}
-            }))
-                .setNumbers(0, Integer.MAX_VALUE)
-                .left(labelWidth)
-                .top(fieldY)
-                .size(fieldWidth, fieldHeight));
-
         // 冷却时间
-        fieldY += spacing;
         editPanel.child(
             IKey.str("冷却(秒):")
                 .asWidget()
@@ -1389,6 +1536,31 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .top(fieldY)
                 .size(fieldWidth, fieldHeight));
 
+        // 严格匹配 NBT（v1.7.6 G3⑤，点击切换；统一默认不勾=仅按物品匹配）
+        fieldY += spacing;
+        editPanel.child(
+            IKey.str("严格匹配NBT:")
+                .asWidget()
+                .left(8)
+                .top(fieldY + 2));
+        ButtonWidget<?> recordNbtToggle = new ButtonWidget<>().left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight)
+            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .overlay(
+                IKey.dynamic(() -> editRecordNBT ? EnumChatFormatting.GREEN + "启用" : EnumChatFormatting.GRAY + "停用"))
+            .onMouseTapped(mouse -> {
+                editRecordNBT = !editRecordNBT;
+                return true;
+            });
+        recordNbtToggle.tooltipBuilder(t -> {
+            t.addLine(IKey.str("点击切换需求物品的 NBT 匹配严格度"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "启用：需求物品按物品+NBT 精确匹配"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "停用：仅按物品匹配（忽略 NBT 差异）"));
+        });
+        recordNbtToggle.tooltipAutoUpdate(true);
+        editPanel.child(recordNbtToggle);
+
         // --- 保存 / 取消按钮 ---
         editPanel.child(
             new ButtonWidget<>().size(50, 16)
@@ -1414,17 +1586,52 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     return true;
                 }));
 
+        // v1.7.6 G3③ 格子残留修复（重置点③）：编辑面板关闭时清空客户端槽位缓存与字段，
+        // 防止下次打开时短暂显示上一条编辑的残留内容
+        // （面板仅客户端创建，本回调仅客户端触发；服务端缓冲区由 loadTradeIntoEditBuffer 负责重置）
+        editPanel.onCloseAction(this::clearTradeEditState);
+
         return editPanel;
+    }
+
+    /**
+     * 清空交易编辑面板客户端状态（v1.7.6 G3③ 格子残留修复）
+     * <p>
+     * 清空客户端编辑物品缓冲区 32 槽并重置全部编辑字段为默认值。
+     * 在打开编辑面板（{@link #onEditRequested}/{@link #openNewTradeEditor}，重置点①）
+     * 与面板关闭回调（重置点③）中调用，防止连续编辑不同条目时
+     * PhantomItemSlot 客户端缓存残留上一条内容。
+     * <p>
+     * 仅客户端调用：直接改客户端 handler 不发包，服务端缓冲区随后由
+     * {@link #loadTradeIntoEditBuffer}（重置点②）覆盖并经 widget 层同步回客户端。
+     */
+    private void clearTradeEditState() {
+        for (int i = 0; i < editItemHandler.getSlots(); i++) {
+            editItemHandler.setStackInSlot(i, null);
+        }
+        editCooldown = 0;
+        editMaxTrades = -1;
+        editBqQuestId = "";
+        editTabId = 1;
+        editOrderId = 0;
+        editRecordNBT = false;
     }
 
     /**
      * 保存交易编辑（客户端 → 服务端）
      * <p>
-     * 将编辑面板的物品缓冲区内容和参数字段序列化为 JSON，
-     * 通过 {@link NekoEditNetworkManager#sendSaveTrade} 发送到服务端。
+     * 将编辑面板的物品缓冲区内容（需求 slot 0-15 / 产物 slot 16-31，v1.7.6 G3①）和
+     * 参数字段序列化为 JSON，发送到服务端。
+     * <p>
+     * v1.7.6 G3② 货币解绑：不再发送 currencyType/currencyAmount——货币需求/产出由
+     * fromItems/toItems 中的猫猫币物品条目表达（服务端保存时无条件清除旧 currency 字段）。
+     * v1.7.6 G3④：新建模式（{@link #editTradeIsNew}）走
+     * {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendCreateTrade}（tabId 定位），
+     * 编辑现有交易走 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSaveTrade}。
      */
     private void saveTradeEdit() {
-        if (editingDisplay == null) return;
+        // 新建模式无 editingDisplay（无现有交易可定位）；编辑模式必须有
+        if (!editTradeIsNew && editingDisplay == null) return;
 
         try {
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
@@ -1435,12 +1642,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             json.addProperty("cooldown", editCooldown);
             json.addProperty("maxTrades", editMaxTrades);
             json.addProperty("bqQuestId", editBqQuestId);
-            json.addProperty("currencyType", editCurrencyType);
-            json.addProperty("currencyAmount", editCurrencyAmount);
+            // v1.7.6 G3⑤ NBT 选框
+            json.addProperty("recordNBT", editRecordNBT);
 
-            // 需求物品（slot 0-3）
+            // 需求物品（slot 0-15，跳过空槽；猫猫币条目 = 货币需求，G3②）
             com.google.gson.JsonArray fromItems = new com.google.gson.JsonArray();
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 16; i++) {
                 ItemStack stack = editItemHandler.getStackInSlot(i);
                 if (stack != null) {
                     fromItems.add(itemStackToEditJson(stack));
@@ -1448,9 +1655,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
             json.add("fromItems", fromItems);
 
-            // 产物物品（slot 4-7）
+            // 产物物品（slot 16-31，跳过空槽；猫猫币条目 = 产出入钱包，G3②）
             com.google.gson.JsonArray toItems = new com.google.gson.JsonArray();
-            for (int i = 4; i < 8; i++) {
+            for (int i = 16; i < 32; i++) {
                 ItemStack stack = editItemHandler.getStackInSlot(i);
                 if (stack != null) {
                     toItems.add(itemStackToEditJson(stack));
@@ -1458,12 +1665,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
             json.add("toItems", toItems);
 
-            // 发送到服务端
-            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendSaveTrade(
-                editingDisplay.getGroupId()
-                    .toString(),
-                editingDisplay.getTradeIndex(),
-                json.toString());
+            // 发送到服务端（新建 / 编辑分流，v1.7.6 G3④）
+            if (editTradeIsNew) {
+                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
+                    .sendCreateTrade(String.valueOf(editTabId), json.toString());
+            } else {
+                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendSaveTrade(
+                    editingDisplay.getGroupId()
+                        .toString(),
+                    editingDisplay.getTradeIndex(),
+                    json.toString());
+            }
 
         } catch (Exception e) {
             GTInterestingThing.LOG.error("[NekoEdit] 保存交易编辑失败", e);
@@ -1788,6 +2000,403 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
         } catch (Exception e) {
             GTInterestingThing.LOG.error("[NekoEdit] 保存签到编辑失败", e);
+        }
+    }
+
+    // ==================== 编辑模式：祝福预设编辑（v1.7.6 G5） ====================
+
+    /**
+     * 打开祝福预设编辑面板（客户端，编辑模式下点击邮件页 sub-tab 列尾「祝福预设」按钮触发）
+     * <p>
+     * 默认打开生日模板目标；面板内「< / >」按钮可循环切换
+     * 生日 → 节日 1..N → 生日。字段从本地 {@code BlessingConfig} 填充
+     * （预览口径，与签到编辑一致），附件物品经 {@link #editBlessingTargetSync}
+     * 通知服务端加载到编辑缓冲区（PhantomItemSlot 自动同步回客户端显示）。
+     *
+     * @param target 初始目标标识（"birthday" / "festival:&lt;index&gt;"）
+     */
+    private void openBlessingEditor(String target) {
+        fillBlessingFieldsFromConfig(target);
+        // 通知服务端加载该目标的附件物品到编辑缓冲区（用归一化后的目标，索引越界时已回退 birthday）
+        if (editBlessingTargetSync != null) {
+            editBlessingTargetSync.setValue(editBlessingTarget);
+        }
+        if (blessingEditPanelHandler != null) {
+            blessingEditPanelHandler.openPanel();
+        }
+    }
+
+    /**
+     * 循环切换祝福编辑目标（客户端，面板内「< / >」按钮）
+     * <p>
+     * 目标序列：birthday → festival:0 → festival:1 → … → festival:N-1 → birthday。
+     * 切换不会自动保存当前修改（与池/page 切换口径一致），tooltip 已提示先保存。
+     *
+     * @param delta +1 = 下一个，-1 = 上一个
+     */
+    private void cycleBlessingTarget(int delta) {
+        java.util.List<String> targets = new java.util.ArrayList<>();
+        targets.add("birthday");
+        int festivalCount = com.miaokatze.gtit.mail.BlessingConfig.getFestivals()
+            .size();
+        for (int i = 0; i < festivalCount; i++) {
+            targets.add("festival:" + i);
+        }
+        int index = targets.indexOf(editBlessingTarget);
+        if (index < 0) index = 0;
+        index = Math.floorMod(index + delta, targets.size());
+        openBlessingEditor(targets.get(index));
+    }
+
+    /**
+     * 从本地 {@code BlessingConfig} 填充祝福编辑字段（客户端预览口径）
+     * <p>
+     * 发件人字段每次从配置重读；节日目标额外填充名称/触发日期。
+     * 目标非法时回退生日模板，防配置热改后索引越界。
+     *
+     * @param target 目标标识（"birthday" / "festival:&lt;index&gt;"）
+     */
+    private void fillBlessingFieldsFromConfig(String target) {
+        editBlessingSender = com.miaokatze.gtit.mail.BlessingConfig.getSender();
+        if (target != null && target.startsWith("festival:")) {
+            int index;
+            try {
+                index = Integer.parseInt(target.substring("festival:".length()));
+            } catch (NumberFormatException e) {
+                index = -1;
+            }
+            java.util.List<com.miaokatze.gtit.mail.BlessingConfig.FestivalBlessing> festivals = com.miaokatze.gtit.mail.BlessingConfig
+                .getFestivals();
+            if (index >= 0 && index < festivals.size()) {
+                com.miaokatze.gtit.mail.BlessingConfig.FestivalBlessing festival = festivals.get(index);
+                editBlessingTarget = target;
+                editBlessingName = festival.name;
+                editBlessingMonthDay = festival.monthDay;
+                editBlessingTitle = festival.title;
+                editBlessingContent = festival.content;
+                editBlessingCurrency = festival.currency;
+                editBlessingCurrencyAmount = festival.currencyAmount;
+                return;
+            }
+            // 索引越界（配置被外部热改）：回退生日模板
+            target = "birthday";
+        }
+        com.miaokatze.gtit.mail.BlessingConfig.BirthdayBlessing birthday = com.miaokatze.gtit.mail.BlessingConfig
+            .getBirthday();
+        editBlessingTarget = "birthday";
+        editBlessingName = "";
+        editBlessingMonthDay = "";
+        editBlessingTitle = birthday.title;
+        editBlessingContent = birthday.content;
+        editBlessingCurrency = birthday.currency;
+        editBlessingCurrencyAmount = birthday.currencyAmount;
+    }
+
+    /**
+     * 服务端：加载祝福目标的附件物品到编辑缓冲区
+     * <p>
+     * 解析 "birthday" / "festival:&lt;index&gt;" 目标标识，从 {@code BlessingConfig}
+     * 取配置附件（不含猫猫币——币由货币字段表达）放入 slot 0-4，多余槽位清空。
+     *
+     * @param target 目标标识
+     */
+    private void loadBlessingIntoEditBuffer(String target) {
+        try {
+            // 先清空全部槽位（目标切换/物品减少时防残留）
+            for (int i = 0; i < BLESSING_ITEM_SLOTS; i++) {
+                editBlessingItemHandler.setStackInSlot(i, null);
+            }
+            java.util.List<com.miaokatze.gtit.mail.BlessingConfig.BlessingItem> specs;
+            if ("birthday".equals(target)) {
+                specs = com.miaokatze.gtit.mail.BlessingConfig.getBirthday().items;
+            } else if (target != null && target.startsWith("festival:")) {
+                int index = Integer.parseInt(target.substring("festival:".length()));
+                java.util.List<com.miaokatze.gtit.mail.BlessingConfig.FestivalBlessing> festivals = com.miaokatze.gtit.mail.BlessingConfig
+                    .getFestivals();
+                if (index < 0 || index >= festivals.size()) return;
+                specs = festivals.get(index).items;
+            } else {
+                return;
+            }
+            int slot = 0;
+            for (com.miaokatze.gtit.mail.BlessingConfig.BlessingItem spec : specs) {
+                if (spec == null || slot >= BLESSING_ITEM_SLOTS) continue;
+                ItemStack stack = spec.toItemStack();
+                if (stack != null) {
+                    editBlessingItemHandler.setStackInSlot(slot++, stack);
+                }
+            }
+            GTInterestingThing.LOG.info("[NekoEdit] 已加载祝福预设到编辑缓冲区: {}", target);
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoEdit] 加载祝福预设到编辑缓冲区失败: {}", target, e);
+        }
+    }
+
+    /**
+     * 当前祝福目标的展示名（面板标题/切换行用）
+     */
+    private String blessingTargetDisplayName() {
+        if (editBlessingTarget != null && editBlessingTarget.startsWith("festival:")) {
+            return "节日：" + editBlessingName + "（" + editBlessingMonthDay + "）";
+        }
+        return "生日模板";
+    }
+
+    /**
+     * 构建祝福预设编辑面板
+     * <p>
+     * 单面板结构：标题（含当前目标名）→ 目标切换行（< 目标 >）→ 发件人 →
+     * 名称/触发日期（仅节日目标可见）→ 标题 → 正文 → 货币类型/数量 →
+     * 附件物品槽（{@value #BLESSING_ITEM_SLOTS} 格 PhantomItemSlot）→ 保存/取消。
+     *
+     * @param sm 面板同步管理器
+     * @return 编辑面板
+     */
+    private ModularPanel buildBlessingEditPanel(PanelSyncManager sm) {
+        ModularPanel editPanel = new ModularPanel("nekoV2BlessingEdit");
+        editPanel.size(210, 205);
+
+        // 标题（随目标切换）
+        editPanel.child(
+            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GOLD + "编辑祝福预设 - " + blessingTargetDisplayName()))
+                .top(5)
+                .horizontalCenter());
+
+        // ---- 目标切换行：< 目标名 > ----
+        editPanel.child(
+            new ButtonWidget<>().size(16, 14)
+                .left(30)
+                .top(16)
+                .overlay(IKey.str("<"))
+                .tooltipBuilder(t -> {
+                    t.addLine(IKey.str("上一个预设"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "切换前请先保存当前修改"));
+                })
+                .tooltipAutoUpdate(true)
+                .onMouseTapped(mouse -> {
+                    if (mouse == 0) {
+                        cycleBlessingTarget(-1);
+                        return true;
+                    }
+                    return false;
+                }));
+        editPanel.child(
+            new TextWidget<>(IKey.dynamic(this::blessingTargetDisplayName)).left(50)
+                .top(19)
+                .size(110, 9)
+                .textAlign(com.cleanroommc.modularui.utils.Alignment.Center)
+                .scale(0.8f)
+                .shadow(false));
+        editPanel.child(
+            new ButtonWidget<>().size(16, 14)
+                .left(164)
+                .top(16)
+                .overlay(IKey.str(">"))
+                .tooltipBuilder(t -> {
+                    t.addLine(IKey.str("下一个预设"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "切换前请先保存当前修改"));
+                })
+                .tooltipAutoUpdate(true)
+                .onMouseTapped(mouse -> {
+                    if (mouse == 0) {
+                        cycleBlessingTarget(1);
+                        return true;
+                    }
+                    return false;
+                }));
+
+        int labelWidth = 58;
+        int fieldWidth = 138;
+        int fieldHeight = 14;
+        int fieldY = 34;
+        int spacing = 17;
+
+        // ---- 发件人（全目标共用，随保存一并提交）----
+        editPanel.child(
+            new TextWidget<>(IKey.str("发件人:")).left(8)
+                .top(fieldY + 2));
+        TextFieldWidget senderField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editBlessingSender, val -> editBlessingSender = val))
+            .setMaxLength(30);
+        senderField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        editPanel.child(senderField);
+
+        // ---- 节日名称（仅节日目标可见）----
+        fieldY += spacing;
+        TextWidget<?> nameLabel = new TextWidget<>(IKey.str("节日名称:"));
+        nameLabel.left(8)
+            .top(fieldY + 2);
+        nameLabel.setEnabledIf(w -> editBlessingTarget != null && editBlessingTarget.startsWith("festival:"));
+        editPanel.child(nameLabel);
+        TextFieldWidget nameField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editBlessingName, val -> editBlessingName = val))
+            .setMaxLength(20);
+        nameField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        nameField.setEnabledIf(w -> editBlessingTarget != null && editBlessingTarget.startsWith("festival:"));
+        editPanel.child(nameField);
+
+        // ---- 触发日期 MM-dd（仅节日目标可见）----
+        fieldY += spacing;
+        TextWidget<?> dateLabel = new TextWidget<>(IKey.str("触发日期:"));
+        dateLabel.left(8)
+            .top(fieldY + 2);
+        dateLabel.setEnabledIf(w -> editBlessingTarget != null && editBlessingTarget.startsWith("festival:"));
+        editPanel.child(dateLabel);
+        TextFieldWidget dateField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editBlessingMonthDay, val -> editBlessingMonthDay = val))
+            .setMaxLength(5);
+        dateField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        dateField.tooltipBuilder(t -> {
+            t.addLine(IKey.str("固定公历日期，格式 MM-dd（如 01-01）"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "农历节日请按当年农历自行换算"));
+        });
+        dateField.tooltipAutoUpdate(true);
+        dateField.setEnabledIf(w -> editBlessingTarget != null && editBlessingTarget.startsWith("festival:"));
+        editPanel.child(dateField);
+
+        // ---- 邮件标题 ----
+        fieldY += spacing;
+        editPanel.child(
+            new TextWidget<>(IKey.str("邮件标题:")).left(8)
+                .top(fieldY + 2));
+        TextFieldWidget titleField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editBlessingTitle, val -> editBlessingTitle = val))
+            .setMaxLength(60);
+        titleField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        editPanel.child(titleField);
+
+        // ---- 邮件正文 ----
+        fieldY += spacing;
+        editPanel.child(
+            new TextWidget<>(IKey.str("邮件正文:")).left(8)
+                .top(fieldY + 2));
+        TextFieldWidget contentField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editBlessingContent, val -> editBlessingContent = val))
+            .setMaxLength(200);
+        contentField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        editPanel.child(contentField);
+
+        // ---- 猫猫币类型/数量 ----
+        fieldY += spacing;
+        editPanel.child(
+            new TextWidget<>(IKey.str("猫猫币:")).left(8)
+                .top(fieldY + 2));
+        TextFieldWidget currencyField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editBlessingCurrency, val -> editBlessingCurrency = val))
+            .setMaxLength(30);
+        currencyField.left(labelWidth)
+            .top(fieldY)
+            .size(86, fieldHeight);
+        currencyField.tooltipBuilder(t -> {
+            t.addLine(IKey.str("货币 ID：neko / shimmeringNeko"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "留空 = 无猫猫币附件"));
+        });
+        currencyField.tooltipAutoUpdate(true);
+        editPanel.child(currencyField);
+        TextFieldWidget currencyAmountField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editBlessingCurrencyAmount), val -> {
+                try {
+                    editBlessingCurrencyAmount = Integer.parseInt(val);
+                } catch (NumberFormatException ignored) {}
+            }))
+            .setNumbers(0, Integer.MAX_VALUE);
+        currencyAmountField.left(labelWidth + 90)
+            .top(fieldY)
+            .size(48, fieldHeight);
+        currencyAmountField.tooltipBuilder(t -> t.addLine(IKey.str("数量（作为附件物品发放）")));
+        currencyAmountField.tooltipAutoUpdate(true);
+        editPanel.child(currencyAmountField);
+
+        // ---- 附件物品槽（PhantomItemSlot 拖入配置；留空 = 无物品附件）----
+        fieldY += spacing + 2;
+        editPanel.child(
+            new TextWidget<>(IKey.str("附件物品:")).left(8)
+                .top(fieldY + 2));
+        for (int i = 0; i < BLESSING_ITEM_SLOTS; i++) {
+            PhantomItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editBlessingItemHandler, i));
+            slot.left(labelWidth + i * 18)
+                .top(fieldY - 2);
+            editPanel.child(slot);
+        }
+
+        // ---- 保存 / 取消按钮 ----
+        editPanel.child(
+            new ButtonWidget<>().size(50, 16)
+                .left(40)
+                .bottom(8)
+                .overlay(IKey.str("保存"))
+                .onMouseTapped(mouse -> {
+                    saveBlessingEdit();
+                    if (blessingEditPanelHandler != null) {
+                        blessingEditPanelHandler.closePanel();
+                    }
+                    return true;
+                }));
+        editPanel.child(
+            new ButtonWidget<>().size(50, 16)
+                .right(40)
+                .bottom(8)
+                .overlay(IKey.str("取消"))
+                .onMouseTapped(mouse -> {
+                    if (blessingEditPanelHandler != null) {
+                        blessingEditPanelHandler.closePanel();
+                    }
+                    return true;
+                }));
+
+        return editPanel;
+    }
+
+    /**
+     * 保存祝福预设编辑（客户端 → 服务端）
+     * <p>
+     * 先提交发件人（"sender" 目标），再提交当前祝福目标（"birthday"/"festival:&lt;index&gt;"）：
+     * 附件物品取自 PhantomItemSlot 缓冲区序列化为 items 数组
+     * {@code [{"item":"modid:name","meta":0,"amount":1}]}；空槽跳过。
+     * 经 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSaveBlessing} 发送。
+     */
+    private void saveBlessingEdit() {
+        try {
+            // ---- 1. 发件人（随任意保存一并提交）----
+            com.google.gson.JsonObject senderJson = new com.google.gson.JsonObject();
+            senderJson.addProperty("sender", editBlessingSender);
+            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendSaveBlessing("sender", senderJson.toString());
+
+            // ---- 2. 当前祝福目标 ----
+            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+            if (editBlessingTarget != null && editBlessingTarget.startsWith("festival:")) {
+                json.addProperty("name", editBlessingName);
+                json.addProperty("monthDay", editBlessingMonthDay);
+            }
+            json.addProperty("title", editBlessingTitle);
+            json.addProperty("content", editBlessingContent);
+            json.addProperty("currency", editBlessingCurrency);
+            json.addProperty("currencyAmount", editBlessingCurrencyAmount);
+            com.google.gson.JsonArray items = new com.google.gson.JsonArray();
+            for (int i = 0; i < BLESSING_ITEM_SLOTS; i++) {
+                ItemStack stack = editBlessingItemHandler.getStackInSlot(i);
+                if (stack == null || stack.getItem() == null) continue;
+                com.google.gson.JsonObject itemJson = new com.google.gson.JsonObject();
+                itemJson.addProperty("item", net.minecraft.item.Item.itemRegistry.getNameForObject(stack.getItem()));
+                itemJson.addProperty("meta", stack.getItemDamage());
+                itemJson.addProperty("amount", stack.stackSize);
+                items.add(itemJson);
+            }
+            json.add("items", items);
+            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
+                .sendSaveBlessing(editBlessingTarget == null ? "birthday" : editBlessingTarget, json.toString());
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoEdit] 保存祝福预设编辑失败", e);
         }
     }
 
@@ -2117,6 +2726,650 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         }
     }
 
+    // ==================== 抽奖卡池编辑（v1.7.6 G2①） ====================
+
+    /**
+     * 按索引取客户端缓存的卡池摘要（越界返回 null）
+     * <p>
+     * 仅供池标签列按钮每帧动态求值（图标/选中态/显隐），纯客户端轻量读。
+     *
+     * @param index 池在 {@link LotteryClientData#getPools()} 中的序号
+     * @return 池摘要，不存在返回 null
+     */
+    private LotteryClientData.PoolSummary poolAt(int index) {
+        List<LotteryClientData.PoolSummary> pools = LotteryClientData.getPools();
+        return index >= 0 && index < pools.size() ? pools.get(index) : null;
+    }
+
+    /**
+     * 打开抽奖卡池编辑面板（客户端，编辑模式下 Shift+点击池标签触发）
+     * <p>
+     * 数值字段（名字/保底）从客户端缓存 {@link LotteryClientData} 的池摘要直接填充
+     * （与同步包同源）；图标与消耗需求物品经 {@link #editPoolTargetSync} 通知服务端
+     * 从权威配置加载到编辑缓冲区（PhantomItemSlot 自动同步回客户端显示，含 NBT）。
+     *
+     * @param pool 被点击的卡池摘要
+     */
+    private void openLotteryPoolEditor(LotteryClientData.PoolSummary pool) {
+        if (pool == null || pool.id == null || pool.id.isEmpty()) return;
+        editPoolIsNew = false;
+        // 卡池 ID 仅定位用，编辑面板禁止修改（防保底记录/中奖历史悬空，见计划风险点）
+        editPoolId = pool.id;
+        editPoolName = pool.name != null ? pool.name : "";
+        editPoolPityEnabled = pool.pityEnabled;
+        editPoolSoftPity = pool.softPityThreshold;
+        editPoolHardPity = pool.hardPityThreshold;
+        editPoolGuaranteedRarity = pool.guaranteedRarity != null && !pool.guaranteedRarity.isEmpty()
+            ? pool.guaranteedRarity
+            : "EPIC";
+        // 通知服务端加载该池的图标/消耗需求物品到编辑缓冲区
+        if (editPoolTargetSync != null) {
+            editPoolTargetSync.setValue(pool.id);
+        }
+        if (lotteryPoolEditPanelHandler != null) {
+            lotteryPoolEditPanelHandler.openPanel();
+        }
+    }
+
+    /**
+     * 打开新建卡池编辑面板（客户端，编辑模式下点击池标签列尾「+」按钮触发）
+     * <p>
+     * 字段全部置默认值（保底启用、软保底 30、硬保底 50、EPIC 保证）；
+     * 通知服务端清空编辑缓冲区（{@link #POOL_TARGET_NEW} 标记）。
+     * 保存时走 {@code NekoEditNetworkManager.sendCreateLotteryPool}（服务端校验 id 合法性/唯一性）。
+     */
+    private void openNewLotteryPoolEditor() {
+        editPoolIsNew = true;
+        editPoolId = "";
+        editPoolName = "";
+        editPoolPityEnabled = true;
+        editPoolSoftPity = 30;
+        editPoolHardPity = 50;
+        editPoolGuaranteedRarity = "EPIC";
+        // 通知服务端清空编辑缓冲区（新建模式无既有物品可加载）
+        if (editPoolTargetSync != null) {
+            editPoolTargetSync.setValue(POOL_TARGET_NEW);
+        }
+        if (lotteryPoolEditPanelHandler != null) {
+            lotteryPoolEditPanelHandler.openPanel();
+        }
+    }
+
+    /**
+     * 服务端：加载卡池图标/消耗需求物品到编辑缓冲区
+     * <p>
+     * slot 0 = page 图标（数量固定 1，含 NBT），slot 1-4 = 消耗需求物品（stackSize=单次抽取消耗量）。
+     * {@link #POOL_TARGET_NEW}（新建模式）或查找失败时仅清空缓冲区。
+     *
+     * @param target 池 id 或 {@link #POOL_TARGET_NEW}
+     */
+    private void loadPoolIntoEditBuffer(String target) {
+        try {
+            // 先整体清空（slot 0=图标，slot 1-4=消耗需求）
+            for (int i = 0; i < editPoolItemHandler.getSlots(); i++) {
+                editPoolItemHandler.setStackInSlot(i, null);
+            }
+            if (POOL_TARGET_NEW.equals(target)) return;
+            com.miaokatze.gtit.lottery.LotteryPool pool = com.miaokatze.gtit.lottery.LotteryManager.INSTANCE
+                .getPool(target);
+            if (pool == null) return;
+            // page 图标（数量固定 1，展示用）
+            ItemStack icon = pool.toIconItemStack();
+            if (icon != null) {
+                editPoolItemHandler.setStackInSlot(0, icon);
+            }
+            // 消耗需求物品（stackSize=单次抽取消耗量；槽位有限，超出截断）
+            int slot = 1;
+            for (NekoBigItemStack cost : pool.getCostItems()) {
+                if (slot > POOL_COST_SLOTS) break;
+                if (cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0) continue;
+                ItemStack stack = cost.getBaseStack()
+                    .copy();
+                stack.stackSize = cost.getStackSize();
+                editPoolItemHandler.setStackInSlot(slot++, stack);
+            }
+            GTInterestingThing.LOG.info("[NekoEdit] 已加载抽奖卡池到编辑缓冲区: {}", target);
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoEdit] 加载抽奖卡池到编辑缓冲区失败: {}", target, e);
+        }
+    }
+
+    /**
+     * 构建抽奖卡池编辑面板（v1.7.6 G2①）
+     * <p>
+     * 字段布局：卡池 ID（新建可编辑/现有只读）→ 名称 → page 图标 PhantomItemSlot
+     * → 消耗需求 PhantomItemSlot×4（货币物品=团队钱包扣、普通物品=机器输入槽扣）
+     * → 保底启用开关 → 软/硬保底阈值 → 保证稀有度（点击循环）。
+     * 保存时按 {@link #editPoolIsNew} 分流：新建走
+     * {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendCreateLotteryPool}，
+     * 现有池走 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSaveLotteryPool}
+     * （服务端 {@code NekoEditActionHandler} 落盘 + 热重载 + 广播 {@code LotterySyncPacket} 刷新池标签列）。
+     *
+     * @param sm 面板同步管理器
+     * @return 编辑面板
+     */
+    private ModularPanel buildLotteryPoolEditPanel(PanelSyncManager sm) {
+        ModularPanel editPanel = new ModularPanel("nekoV2LotteryPoolEdit");
+        editPanel.size(210, 205);
+
+        // 标题（新建 / 编辑 + 池 id 动态切换）
+        editPanel.child(
+            new TextWidget<>(
+                IKey.dynamic(() -> EnumChatFormatting.GOLD + (editPoolIsNew ? "新建抽奖卡池" : "编辑抽奖卡池（" + editPoolId + "）")))
+                    .top(5)
+                    .horizontalCenter());
+
+        int fieldY = 22;
+        int fieldHeight = 14;
+        int labelWidth = 62;
+        int fieldWidth = 132;
+
+        // ---- 卡池 ID（新建模式可编辑；现有池只读展示，防保底记录/中奖历史悬空）----
+        editPanel.child(
+            new TextWidget<>(IKey.str("卡池ID:")).left(8)
+                .top(fieldY + 2));
+
+        TextFieldWidget idField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editPoolId, val -> editPoolId = val.trim()))
+            .setMaxLength(30);
+        idField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        idField.tooltipBuilder(t -> {
+            t.addLine(IKey.str("卡池唯一标识（仅字母/数字/下划线/连字符）"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "保存后不可修改"));
+        });
+        idField.tooltipAutoUpdate(true);
+        // 仅新建模式显示输入框（现有池改走下方只读文本）
+        idField.setEnabledIf(w -> editPoolIsNew);
+        editPanel.child(idField);
+        // 现有池：只读文本展示 id（与输入框互斥显示）
+        editPanel.child(
+            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GRAY + editPoolId)).left(labelWidth)
+                .top(fieldY + 2)
+                .setEnabledIf(w -> !editPoolIsNew));
+
+        // ---- 名称 ----
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("名称:")).left(8)
+                .top(fieldY + 2));
+
+        TextFieldWidget nameField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editPoolName, val -> editPoolName = val))
+            .setMaxLength(40);
+        nameField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        nameField.tooltipBuilder(t -> t.addLine(IKey.str("卡池显示名称（留空则保持原名）")));
+        nameField.tooltipAutoUpdate(true);
+        editPanel.child(nameField);
+
+        // ---- page 图标（PhantomItemSlot 拖入配置，支持 NBT；空槽 = 回退货币图标）----
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("图标:")).left(8)
+                .top(fieldY + 2));
+
+        PhantomItemSlot iconSlot = new PhantomItemSlot().slot(new ModularSlot(editPoolItemHandler, 0));
+        iconSlot.left(labelWidth)
+            .top(fieldY - 2);
+        iconSlot.tooltipBuilder(t -> {
+            t.addLine(IKey.str("拖入物品作为池标签图标（支持 NBT）"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "留空 = 按池消耗货币显示缺省币图标"));
+        });
+        iconSlot.tooltipAutoUpdate(true);
+        editPanel.child(iconSlot);
+
+        // ---- 消耗需求（PhantomItemSlot×4：货币物品扣团队钱包、普通物品扣机器输入槽）----
+        fieldY += 21; // 图标槽高 18，多留间距
+        editPanel.child(
+            new TextWidget<>(IKey.str("消耗需求:")).left(8)
+                .top(fieldY + 2));
+
+        for (int i = 0; i < POOL_COST_SLOTS; i++) {
+            PhantomItemSlot costSlot = new PhantomItemSlot().slot(new ModularSlot(editPoolItemHandler, 1 + i));
+            costSlot.left(labelWidth + i * 20)
+                .top(fieldY - 2);
+            costSlot.tooltipBuilder(t -> {
+                t.addLine(IKey.str("单次抽取消耗（数量=槽内堆叠数）"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "猫猫币物品 → 团队钱包扣除"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "普通物品 → 机器输入槽扣除"));
+                t.addLine(IKey.str(EnumChatFormatting.DARK_GRAY + "留空全部 = 免费"));
+            });
+            costSlot.tooltipAutoUpdate(true);
+            editPanel.child(costSlot);
+        }
+
+        // ---- 保底启用（点击切换）----
+        fieldY += 21; // 消耗槽高 18，多留间距
+        editPanel.child(
+            new TextWidget<>(IKey.str("保底启用:")).left(8)
+                .top(fieldY + 2));
+
+        ButtonWidget<?> pityToggle = new ButtonWidget<>().left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight)
+            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .overlay(
+                IKey.dynamic(
+                    () -> editPoolPityEnabled ? EnumChatFormatting.GREEN + "启用" : EnumChatFormatting.RED + "停用"))
+            .tooltipBuilder(t -> t.addLine(IKey.str("点击切换保底机制启用/停用")))
+            .onMouseTapped(mouse -> {
+                editPoolPityEnabled = !editPoolPityEnabled;
+                return true;
+            });
+        pityToggle.tooltipAutoUpdate(true);
+        editPanel.child(pityToggle);
+
+        // ---- 软保底阈值 ----
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("软保底:")).left(8)
+                .top(fieldY + 2));
+
+        TextFieldWidget softPityField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editPoolSoftPity), val -> {
+                try {
+                    editPoolSoftPity = Integer.parseInt(val);
+                } catch (NumberFormatException ignored) {}
+            }))
+            .setNumbers(0, Integer.MAX_VALUE);
+        softPityField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        softPityField.tooltipBuilder(t -> t.addLine(IKey.str("软保底起始抽数（此后高稀有概率逐抽递增）")));
+        softPityField.tooltipAutoUpdate(true);
+        editPanel.child(softPityField);
+
+        // ---- 硬保底阈值 ----
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("硬保底:")).left(8)
+                .top(fieldY + 2));
+
+        TextFieldWidget hardPityField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editPoolHardPity), val -> {
+                try {
+                    editPoolHardPity = Integer.parseInt(val);
+                } catch (NumberFormatException ignored) {}
+            }))
+            .setNumbers(0, Integer.MAX_VALUE);
+        hardPityField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        hardPityField.tooltipBuilder(t -> t.addLine(IKey.str("硬保底抽数（达到后必出保证稀有度，0=关闭）")));
+        hardPityField.tooltipAutoUpdate(true);
+        editPanel.child(hardPityField);
+
+        // ---- 保证稀有度（点击循环切换：普通→稀有→史诗→传说）----
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("保证稀有度:")).left(8)
+                .top(fieldY + 2));
+
+        ButtonWidget<?> rarityButton = new ButtonWidget<>().left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight)
+            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .overlay(IKey.dynamic(this::poolGuaranteedRarityDisplay))
+            .tooltipBuilder(t -> t.addLine(IKey.str("硬保底触发时保证的稀有度（点击循环切换）")))
+            .onMouseTapped(mouse -> {
+                cyclePoolGuaranteedRarity();
+                return true;
+            });
+        rarityButton.tooltipAutoUpdate(true);
+        editPanel.child(rarityButton);
+
+        // ---- 保存 / 删除 / 取消按钮 ----
+        editPanel.child(
+            new ButtonWidget<>().size(50, 16)
+                .left(14)
+                .bottom(8)
+                .overlay(IKey.str("保存"))
+                .onMouseTapped(mouse -> {
+                    saveLotteryPoolEdit();
+                    if (lotteryPoolEditPanelHandler != null) {
+                        lotteryPoolEditPanelHandler.closePanel();
+                    }
+                    return true;
+                }));
+        // 删除按钮：仅编辑现有池时显示（新建模式无池可删）
+        ButtonWidget<?> deleteButton = new ButtonWidget<>().size(50, 16)
+            .left(80)
+            .bottom(8)
+            .overlay(IKey.str(EnumChatFormatting.RED + "删除"))
+            .onMouseTapped(mouse -> {
+                deleteLotteryPoolEdit();
+                if (lotteryPoolEditPanelHandler != null) {
+                    lotteryPoolEditPanelHandler.closePanel();
+                }
+                return true;
+            });
+        deleteButton.tooltipBuilder(t -> {
+            t.addLine(IKey.str(EnumChatFormatting.RED + "删除本卡池"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "至少保留一个卡池（服务端校验）"));
+        });
+        deleteButton.tooltipAutoUpdate(true);
+        deleteButton.setEnabledIf(w -> !editPoolIsNew);
+        editPanel.child(deleteButton);
+        editPanel.child(
+            new ButtonWidget<>().size(50, 16)
+                .right(14)
+                .bottom(8)
+                .overlay(IKey.str("取消"))
+                .onMouseTapped(mouse -> {
+                    if (lotteryPoolEditPanelHandler != null) {
+                        lotteryPoolEditPanelHandler.closePanel();
+                    }
+                    return true;
+                }));
+
+        return editPanel;
+    }
+
+    /**
+     * 保证稀有度循环切换（COMMON→RARE→EPIC→LEGENDARY→COMMON）
+     */
+    private void cyclePoolGuaranteedRarity() {
+        LotteryRarity[] values = LotteryRarity.values();
+        LotteryRarity current = LotteryRarity.fromString(editPoolGuaranteedRarity);
+        editPoolGuaranteedRarity = values[(current.ordinal() + 1) % values.length].name();
+    }
+
+    /**
+     * 保证稀有度按钮显示文本（带稀有度颜色）
+     */
+    private String poolGuaranteedRarityDisplay() {
+        LotteryRarity rarity = LotteryRarity.fromString(editPoolGuaranteedRarity);
+        return rarity.getColor() + rarity.getDisplayName() + EnumChatFormatting.GRAY + "（" + rarity.name() + "）";
+    }
+
+    /**
+     * 保存抽奖卡池编辑（客户端 → 服务端）
+     * <p>
+     * 序列化 {@code {id?, name, icon?, costItems[], pityEnabled, softPityThreshold,
+     * hardPityThreshold, guaranteedRarity}}（图标/消耗需求取自 PhantomItemSlot，
+     * 格式与服务端 {@code NekoEditActionHandler#applyPoolEditJson} 对应）。
+     * 新建模式附 id 走 create，现有池走 save（id 仅定位，不可改）。
+     */
+    private void saveLotteryPoolEdit() {
+        try {
+            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+            if (editPoolIsNew) {
+                String id = editPoolId.trim();
+                // 客户端提前拦截空 id（合法性/唯一性由服务端最终校验）
+                if (id.isEmpty()) return;
+                json.addProperty("id", id);
+            } else if (editPoolId.isEmpty()) {
+                return;
+            }
+            json.addProperty("name", editPoolName);
+            // page 图标（slot 0；空槽不发 icon 键 = 服务端清空图标，GUI 回退货币图标）
+            ItemStack iconStack = editPoolItemHandler.getStackInSlot(0);
+            if (iconStack != null && iconStack.getItem() != null) {
+                json.add("icon", itemStackToEditJson(iconStack));
+            }
+            // 消耗需求（slot 1-4，跳过空槽）
+            com.google.gson.JsonArray costArray = new com.google.gson.JsonArray();
+            for (int i = 1; i <= POOL_COST_SLOTS; i++) {
+                ItemStack stack = editPoolItemHandler.getStackInSlot(i);
+                if (stack != null && stack.getItem() != null && stack.stackSize > 0) {
+                    costArray.add(itemStackToEditJson(stack));
+                }
+            }
+            json.add("costItems", costArray);
+            // 保底字段
+            json.addProperty("pityEnabled", editPoolPityEnabled);
+            json.addProperty("softPityThreshold", editPoolSoftPity);
+            json.addProperty("hardPityThreshold", editPoolHardPity);
+            json.addProperty("guaranteedRarity", editPoolGuaranteedRarity);
+            if (editPoolIsNew) {
+                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendCreateLotteryPool(json.toString());
+            } else {
+                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendSaveLotteryPool(editPoolId, json.toString());
+            }
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoEdit] 保存抽奖卡池编辑失败", e);
+        }
+    }
+
+    /**
+     * 删除抽奖卡池（客户端 → 服务端）
+     * <p>
+     * 仅编辑现有池时可触发（新建模式删除按钮已隐藏）；「至少保留一池」由服务端校验。
+     */
+    private void deleteLotteryPoolEdit() {
+        if (editPoolIsNew || editPoolId.isEmpty()) return;
+        com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendDeleteLotteryPool(editPoolId);
+    }
+
+    // ==================== 标签页 page 编辑（v1.7.6 G3④） ====================
+
+    /**
+     * 打开 page 编辑面板（客户端，编辑模式下 Shift+点击 page 标签触发）
+     * <p>
+     * 名称从 {@link NekoPageRegistry} 读取（与同步包同源）；图标经 {@link #editPageTargetSync}
+     * 通知服务端从权威配置加载到编辑缓冲区（PhantomItemSlot 自动同步回客户端显示，含 NBT）。
+     *
+     * @param pageId 被点击的标签页 ID
+     */
+    private void openPageEditor(int pageId) {
+        NekoPageEntry page = NekoPageRegistry.getPage(pageId);
+        if (page == null) return;
+        editPageIsNew = false;
+        editPageId = pageId;
+        editPageName = page.getName() != null ? page.getName() : "";
+        // 客户端先清空图标槽（防上一页残留；服务端随后加载权威图标并同步回客户端）
+        editPageItemHandler.setStackInSlot(0, null);
+        if (editPageTargetSync != null) {
+            editPageTargetSync.setValue(String.valueOf(pageId));
+        }
+        if (pageEditPanelHandler != null) {
+            pageEditPanelHandler.openPanel();
+        }
+    }
+
+    /**
+     * 打开新建 page 编辑面板（客户端，编辑模式下点击标签列尾「+」按钮触发）
+     * <p>
+     * 字段全部置默认值；通知服务端清空编辑缓冲区（{@link #PAGE_TARGET_NEW} 标记）。
+     * 保存时走 {@code NekoEditNetworkManager.sendCreatePage}（服务端分配 id≥4）。
+     */
+    private void openNewPageEditor() {
+        editPageIsNew = true;
+        editPageId = -1;
+        editPageName = "";
+        editPageItemHandler.setStackInSlot(0, null);
+        if (editPageTargetSync != null) {
+            editPageTargetSync.setValue(PAGE_TARGET_NEW);
+        }
+        if (pageEditPanelHandler != null) {
+            pageEditPanelHandler.openPanel();
+        }
+    }
+
+    /**
+     * 服务端：加载 page 图标到编辑缓冲区（slot 0）
+     * <p>
+     * 每次加载前先清空（防上一页残留）；{@link #PAGE_TARGET_NEW}（新建模式）或
+     * 查找失败时仅清空不加载。图标按条目配置的 iconItem 转换（不含默认页回退图标——
+     * 编辑的是配置字段本身）。
+     *
+     * @param target pageId 字符串或 {@link #PAGE_TARGET_NEW}
+     */
+    private void loadPageIntoEditBuffer(String target) {
+        try {
+            editPageItemHandler.setStackInSlot(0, null);
+            if (PAGE_TARGET_NEW.equals(target)) return;
+            int pageId = Integer.parseInt(target);
+            NekoPageEntry page = NekoPageRegistry.getPage(pageId);
+            if (page == null) return;
+            ItemStack icon = page.toIconItemStack();
+            if (icon != null) {
+                editPageItemHandler.setStackInSlot(0, icon);
+            }
+            GTInterestingThing.LOG.info("[NekoEdit] 已加载标签页到编辑缓冲区: {}", target);
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoEdit] 加载标签页到编辑缓冲区失败: {}", target, e);
+        }
+    }
+
+    /**
+     * 构建标签页 page 编辑面板（v1.7.6 G3④）
+     * <p>
+     * 字段布局：page ID（新建=分配提示 / 现有=只读展示）→ 名称 → 图标 PhantomItemSlot×1。
+     * 保存按 {@link #editPageIsNew} 分流：新建走
+     * {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendCreatePage}（服务端分配 id≥4），
+     * 现有页走 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSavePage}；
+     * 删除按钮仅编辑现有页时显示（默认页 1-3 由服务端拦截）。
+     *
+     * @param sm 面板同步管理器
+     * @return 编辑面板
+     */
+    private ModularPanel buildPageEditPanel(PanelSyncManager sm) {
+        ModularPanel editPanel = new ModularPanel("nekoV2PageEdit");
+        editPanel.size(210, 130);
+
+        // 标题（新建 / 编辑 + pageId 动态切换）
+        editPanel.child(
+            new TextWidget<>(
+                IKey.dynamic(() -> EnumChatFormatting.GOLD + (editPageIsNew ? "新建标签页" : "编辑标签页（#" + editPageId + "）")))
+                    .top(5)
+                    .horizontalCenter());
+
+        int fieldY = 24;
+        int fieldHeight = 14;
+        int labelWidth = 62;
+        int fieldWidth = 132;
+
+        // ---- page ID（新建：服务端分配提示；现有：只读展示，id 不可改）----
+        editPanel.child(
+            new TextWidget<>(IKey.str("ID:")).left(8)
+                .top(fieldY + 2));
+        editPanel.child(
+            new TextWidget<>(
+                IKey.dynamic(
+                    () -> EnumChatFormatting.GRAY + (editPageIsNew ? "（保存时自动分配 ≥4）" : String.valueOf(editPageId))))
+                        .left(labelWidth)
+                        .top(fieldY + 2));
+
+        // ---- 名称 ----
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("名称:")).left(8)
+                .top(fieldY + 2));
+        TextFieldWidget nameField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> editPageName, val -> editPageName = val))
+            .setMaxLength(40);
+        nameField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        nameField.tooltipBuilder(t -> t.addLine(IKey.str("标签页显示名称（留空则保持原名）")));
+        nameField.tooltipAutoUpdate(true);
+        editPanel.child(nameField);
+
+        // ---- 图标（PhantomItemSlot 拖入配置，支持 NBT；空槽 = 清空图标回退默认）----
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("图标:")).left(8)
+                .top(fieldY + 2));
+        PhantomItemSlot iconSlot = new PhantomItemSlot().slot(new ModularSlot(editPageItemHandler, 0));
+        iconSlot.left(labelWidth)
+            .top(fieldY - 2);
+        iconSlot.tooltipBuilder(t -> {
+            t.addLine(IKey.str("拖入物品作为标签页图标（支持 NBT）"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "留空 = 清空图标（默认页回退默认图标）"));
+        });
+        iconSlot.tooltipAutoUpdate(true);
+        editPanel.child(iconSlot);
+
+        // ---- 保存 / 删除 / 取消按钮 ----
+        editPanel.child(
+            new ButtonWidget<>().size(50, 16)
+                .left(14)
+                .bottom(8)
+                .overlay(IKey.str("保存"))
+                .onMouseTapped(mouse -> {
+                    savePageEdit();
+                    if (pageEditPanelHandler != null) {
+                        pageEditPanelHandler.closePanel();
+                    }
+                    return true;
+                }));
+        // 删除按钮：仅编辑现有页时显示（新建模式无页可删；默认页 1-3 由服务端拦截）
+        ButtonWidget<?> deleteButton = new ButtonWidget<>().size(50, 16)
+            .left(80)
+            .bottom(8)
+            .overlay(IKey.str(EnumChatFormatting.RED + "删除"))
+            .onMouseTapped(mouse -> {
+                deletePageEdit();
+                if (pageEditPanelHandler != null) {
+                    pageEditPanelHandler.closePanel();
+                }
+                return true;
+            });
+        deleteButton.tooltipBuilder(t -> {
+            t.addLine(IKey.str(EnumChatFormatting.RED + "删除本标签页"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "页内交易移至「其他」页"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "默认页（ID 1-3）不可删除"));
+        });
+        deleteButton.tooltipAutoUpdate(true);
+        deleteButton.setEnabledIf(w -> !editPageIsNew);
+        editPanel.child(deleteButton);
+        editPanel.child(
+            new ButtonWidget<>().size(50, 16)
+                .right(14)
+                .bottom(8)
+                .overlay(IKey.str("取消"))
+                .onMouseTapped(mouse -> {
+                    if (pageEditPanelHandler != null) {
+                        pageEditPanelHandler.closePanel();
+                    }
+                    return true;
+                }));
+
+        return editPanel;
+    }
+
+    /**
+     * 保存 page 编辑（客户端 → 服务端）
+     * <p>
+     * 序列化 {@code {name, icon?}}（图标取自 PhantomItemSlot，空槽不发 icon 键 = 服务端清空图标，
+     * 格式与服务端 {@code NekoEditActionHandler#applyPageEditJson} 对应）。
+     * 新建模式走 create（服务端分配 id≥4），现有页走 save（pageId 仅定位，不可改）。
+     */
+    private void savePageEdit() {
+        try {
+            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+            json.addProperty("name", editPageName);
+            // page 图标（slot 0；空槽不发 icon 键 = 服务端清空图标）
+            ItemStack iconStack = editPageItemHandler.getStackInSlot(0);
+            if (iconStack != null && iconStack.getItem() != null) {
+                json.add("icon", itemStackToEditJson(iconStack));
+            }
+            if (editPageIsNew) {
+                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendCreatePage(json.toString());
+            } else {
+                if (editPageId < 0) return;
+                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
+                    .sendSavePage(String.valueOf(editPageId), json.toString());
+            }
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("[NekoEdit] 保存标签页编辑失败", e);
+        }
+    }
+
+    /**
+     * 删除 page（客户端 → 服务端）
+     * <p>
+     * 仅编辑现有页时可触发（新建模式删除按钮已隐藏）；「默认页 1-3 不可删」由服务端校验。
+     */
+    private void deletePageEdit() {
+        if (editPageIsNew || editPageId < 0) return;
+        com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendDeletePage(String.valueOf(editPageId));
+    }
+
     // ==================== 预分配 Widget 初始化 ====================
 
     /**
@@ -2274,18 +3527,218 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             ItemStack icon = getCategoryIcon(category);
             String name = getCategoryName(category);
 
-            NekoPageButtonV2 tabButton = new NekoPageButtonV2(index, tabController, category, highlightedTabs, icon);
+            // v1.7.6 G3④：匿名子类包一层点击拦截——编辑模式下 Shift+点击 page 标签
+            // 打开 page 编辑面板（不切页、不更新 lastPage）；普通点击维持原切页逻辑。
+            // 收藏（tabId=-1）/未知（tabId=0）为虚拟分类，无对应 page 条目，不拦截。
+            NekoPageButtonV2 tabButton = new NekoPageButtonV2(index, tabController, category, highlightedTabs, icon) {
+
+                @Override
+                public Interactable.Result onMousePressed(int mouseButton) {
+                    if (isEditModeActive() && Interactable.hasShiftDown() && category.getTabId() > 0) {
+                        openPageEditor(category.getTabId());
+                        return Interactable.Result.SUCCESS;
+                    }
+                    return super.onMousePressed(mouseButton);
+                }
+            };
             tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-            tabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
+            tabButton.tooltipBuilder(t -> {
+                t.addLine(IKey.str(name));
+                // 编辑模式下追加操作提示（随编辑模式动态刷新）
+                if (isEditModeActive() && category.getTabId() > 0) {
+                    t.addLine(IKey.str(EnumChatFormatting.YELLOW + "Shift+点击 编辑标签页"));
+                }
+            });
+            tabButton.tooltipAutoUpdate(true);
 
             tabColumn.child(tabButton);
         }
+
+        // v1.7.6 G3④：「新建 page」按钮——仅编辑模式显示（列尾），点击打开空白 page 编辑面板。
+        // 复用 NekoSubTabButton 的 externalMode（永不选中、点击走 onSelected 不切页），
+        // index 取列尾位置（externalMode 下不参与切页，仅作标识）。
+        NekoSubTabButton newPageButton = new NekoSubTabButton(
+            tradeCategories.size(),
+            tabController,
+            IKey.str(EnumChatFormatting.GREEN + "+"));
+        newPageButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+        newPageButton.externalMode(() -> false);
+        newPageButton.onSelected(this::openNewPageEditor);
+        newPageButton.tooltipBuilder(t -> {
+            t.addLine(IKey.str("新建标签页"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白标签页（保存时自动分配 ID ≥ 4）"));
+        });
+        newPageButton.setEnabledIf(w -> isEditModeActive());
+        tabColumn.child(newPageButton);
+        // 非编辑模式时「新建 page」按钮不占位（列自动收紧）
+        tabColumn.collapseDisabledChild(true);
 
         // v1.7.0：仅主标签为贸易时显示
         tabColumn.setEnabledIf(w -> mainTabId == MAIN_TAB_TRADE);
 
         // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
         return tabColumn.excludeAreaInRecipeViewer();
+    }
+
+    /**
+     * v1.7.6 G1 创建指定主标签页的 sub-page 标签列（签到/抽奖/邮件）
+     * <p>
+     * 位置与贸易分类列 {@link #createTabColumn()} 相同（left(-29)、top(40)、childPadding(2)），
+     * 通过 {@code setEnabledIf} 按主标签互斥显示，不与贸易分类列/QoL 列叠放。
+     * <p>
+     * 按钮内容（v1.7.6）：
+     * <ul>
+     * <li>签到「活跃」4 按钮：每月签到/连续签到/每日在线/纪念日</li>
+     * <li>邮件 5 按钮：全部/系统/玩家/管理员/写邮件</li>
+     * <li>抽奖（G2①）：动态池按钮列——预分配 {@link #MAX_POOL_TABS} 个按钮，数据源
+     * {@link LotteryClientData#getPools()} 每帧驱动图标/显隐（池自配图标优先，缺省按货币回退币图标），
+     * 外部模式点击写 {@code selectedPoolId}（抽奖页单页动态读选中池）；编辑模式 Shift+点击开池编辑面板，
+     * 列尾「+」按钮（仅编辑模式）开新建池面板；抽奖页顶部旧双池切换按钮行已随 G2① 移除</li>
+     * </ul>
+     * 按钮统一使用 {@link NekoSubTabButton}——G1 阶段三个 sub-page Controller 尚未绑定 PagedWidget，
+     * 按钮内置防崩守卫（未绑定时点击直接忽略），G2 建对应 PagedWidget 页面后自动接管切换。
+     * <p>
+     * 双端安全：纯按钮无槽位，仅客户端创建（与 createTabColumn 一致）。
+     *
+     * @param mainTab 主标签索引（{@link #MAIN_TAB_SIGNIN}/{@link #MAIN_TAB_LOTTERY}/{@link #MAIN_TAB_MAIL}）
+     * @return sub-page 标签列 Widget
+     */
+    private IWidget createSubTabColumn(final int mainTab) {
+        Flow subTabColumn = Flow.column()
+            .coverChildren()
+            .left(-29)
+            .top(40)
+            .childPadding(2);
+
+        if (mainTab == MAIN_TAB_LOTTERY) {
+            // --- 抽奖页：动态池按钮列（v1.7.6 G2①，每池一按钮）---
+            // 预分配 MAX_POOL_TABS 个按钮：图标/选中态/显隐全部每帧动态求值（数据源
+            // LotteryClientData.getPools()），池同步包晚于 GUI 打开到达时按钮随缓存更新自动出现，
+            // 解决 G1 过渡态「列在 build 时一次性生成、同步晚到则空列」的问题。
+            // 隐藏按钮由列尾 collapseDisabledChild 压缩占位；纯按钮无槽位，setEnabledIf 只挡绘制足够。
+            for (int i = 0; i < MAX_POOL_TABS; i++) {
+                final int index = i;
+                // 图标动态求值：池自配图标（iconItem）优先 → 缺省按池货币回退币图标
+                DynamicDrawable icon = new DynamicDrawable(() -> {
+                    LotteryClientData.PoolSummary pool = poolAt(index);
+                    if (pool != null) {
+                        ItemStack iconStack = pool.toIconItemStack();
+                        if (iconStack != null) {
+                            return new ItemDrawable(iconStack);
+                        }
+                        return NekoCurrencyRegistrar.SHIMMERING_NEKO_ID.equals(pool.currencyId)
+                            ? NekoGuiTextures.LOTTERY_COIN_SHIMMER
+                            : NekoGuiTextures.LOTTERY_COIN_NEKO;
+                    }
+                    // 隐藏态返回值（不绘制，仅占位防空指针）
+                    return NekoGuiTextures.LOTTERY_COIN_NEKO;
+                });
+                NekoSubTabButton poolButton = new NekoSubTabButton(index, lotteryPageController, icon);
+                poolButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+                // 外部模式：选中态=当前选中池（LotteryClientData.selectedPoolId），
+                // 点击=切换选中池（抽奖页单页动态读 getSelectedPool，无需每池一页 PagedWidget）；
+                // 编辑模式下 Shift+点击=打开池编辑面板
+                poolButton.externalMode(() -> {
+                    LotteryClientData.PoolSummary pool = poolAt(index);
+                    return pool != null && pool.id != null && pool.id.equals(LotteryClientData.getSelectedPoolId());
+                });
+                poolButton.onSelected(() -> {
+                    LotteryClientData.PoolSummary pool = poolAt(index);
+                    if (pool == null) return;
+                    if (isEditModeActive() && Interactable.hasShiftDown()) {
+                        openLotteryPoolEditor(pool);
+                    } else {
+                        LotteryClientData.setSelectedPoolId(pool.id);
+                    }
+                });
+                poolButton.tooltipBuilder(t -> {
+                    LotteryClientData.PoolSummary pool = poolAt(index);
+                    if (pool != null) {
+                        t.addLine(IKey.str(pool.name));
+                        if (isEditModeActive()) {
+                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "Shift+点击 编辑卡池"));
+                        }
+                    }
+                });
+                poolButton.tooltipAutoUpdate(true);
+                // 池数量不足时隐藏本按钮（不占位，列尾 collapseDisabledChild 压缩）
+                poolButton.setEnabledIf(w -> poolAt(index) != null);
+                subTabColumn.child(poolButton);
+            }
+            // --- 「新建池」按钮：仅编辑模式显示（列尾），点击打开空白池编辑面板 ---
+            NekoSubTabButton newPoolButton = new NekoSubTabButton(
+                MAX_POOL_TABS,
+                lotteryPageController,
+                IKey.str(EnumChatFormatting.GREEN + "+"));
+            newPoolButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+            // 外部模式：永不选中；点击直接打开新建池编辑面板
+            newPoolButton.externalMode(() -> false);
+            newPoolButton.onSelected(this::openNewLotteryPoolEditor);
+            newPoolButton.tooltipBuilder(t -> {
+                t.addLine(IKey.str("新建卡池"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白卡池（含 1 条种子奖品）"));
+            });
+            newPoolButton.setEnabledIf(w -> isEditModeActive());
+            subTabColumn.child(newPoolButton);
+            // 隐藏按钮不占位（池数量 < MAX_POOL_TABS / 非编辑模式时列自动收紧）
+            subTabColumn.collapseDisabledChild(true);
+        } else {
+            // --- 签到/邮件页：静态按钮定义（index → 图标, 中文名）---
+            // 图标选用 NekoGuiTextures 已注册材质中语义最接近者，不完全贴合的图标见 G1 报告的补做清单
+            final Object[][] subTabs;
+            final PagedWidget.Controller controller;
+            if (mainTab == MAIN_TAB_SIGNIN) {
+                // 签到「活跃」4 页（与 G2③ 页面顺序一致）：每月签到/连续签到/每日在线/纪念日
+                controller = signInPageController;
+                subTabs = new Object[][] { { 0, NekoGuiTextures.SIGNIN_CELL_SIGNED, "每月签到" },
+                    { 1, NekoGuiTextures.SIGNIN_CHEST_30, "连续签到" }, { 2, NekoGuiTextures.SIGNIN_CELL_REWARD, "每日在线" },
+                    { 3, NekoGuiTextures.FAVOURITE_SPRITE, "纪念日" }, };
+            } else {
+                // 邮件 5 页（与 G2② 页面顺序一致）：全部/系统/玩家/管理员 + 写邮件入口
+                controller = mailPageController;
+                subTabs = new Object[][] { { 0, NekoGuiTextures.MAIL_ICON_READ, "全部" },
+                    { 1, NekoGuiTextures.MAIL_ICON_UNREAD, "系统" }, { 2, NekoGuiTextures.WALLET_PERSONAL, "玩家" },
+                    { 3, NekoGuiTextures.MAIN_TAB_EDIT, "管理员" }, { 4, NekoGuiTextures.MAIL_WRITE, "写邮件" }, };
+            }
+            for (Object[] tabDef : subTabs) {
+                final int index = (Integer) tabDef[0];
+                final com.cleanroommc.modularui.drawable.UITexture icon = (com.cleanroommc.modularui.drawable.UITexture) tabDef[1];
+                final String name = (String) tabDef[2];
+                NekoSubTabButton subTabButton = new NekoSubTabButton(index, controller, icon);
+                subTabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+                subTabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
+                // v1.7.6 G2②：邮件页切换 sub-tab（全部/系统/玩家/管理员）时重置列表页码——
+                // 各类型过滤后总页数不同，不重置则翻页行可能短暂显示「当前页 > 总页数」。
+                // 写邮件页（index 4）无列表，同回调重置无副作用；签到页（G2③）如需同逻辑自行挂接。
+                if (mainTab == MAIN_TAB_MAIL) {
+                    subTabButton.onSelected(() -> MailClientData.setListPage(0));
+                }
+                subTabColumn.child(subTabButton);
+            }
+            // --- v1.7.6 G5：「祝福预设」入口按钮——仅邮件页 + 编辑模式显示（列尾）---
+            // 外部模式：永不选中（入口按钮不切换 sub-page，点击直接弹出祝福预设编辑面板）
+            if (mainTab == MAIN_TAB_MAIL) {
+                NekoSubTabButton blessingButton = new NekoSubTabButton(5, controller, NekoGuiTextures.MAIL_PAPER);
+                blessingButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+                blessingButton.externalMode(() -> false);
+                blessingButton.onSelected(() -> openBlessingEditor("birthday"));
+                blessingButton.tooltipBuilder(t -> {
+                    t.addLine(IKey.str("祝福预设"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "查看/编辑自动祝福邮件模板"));
+                });
+                blessingButton.tooltipAutoUpdate(true);
+                blessingButton.setEnabledIf(w -> isEditModeActive());
+                subTabColumn.child(blessingButton);
+                // 非编辑模式时入口按钮不占位（列自动收紧）
+                subTabColumn.collapseDisabledChild(true);
+            }
+        }
+
+        // 仅对应主标签页显示（与贸易分类列同位互斥）
+        subTabColumn.setEnabledIf(w -> mainTabId == mainTab);
+
+        // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
+        return subTabColumn.excludeAreaInRecipeViewer();
     }
 
     /**
@@ -2432,15 +3885,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 页 0：贸易（现有 createMainColumn 的内容）
         mainPaged.addPage(createTradeMainColumn(syncManager));
 
-        // 页 1：签到（任务 D 实现；v1.7.0 目标 4 传入编辑模式回调）
-        mainPaged.addPage(SignInCalendarGui.createSignInPage(createSignInEditCallback()));
+        // 页 1：签到「活跃」大页（v1.7.6 G2③ 重构：内层 4 sub-page——每月签到/连续签到/每日在线/纪念日；
+        // v1.7.0 目标 4 传入编辑模式回调；signInPageController 绑定内层 PagedWidget，左侧 sub-tab 标签列同控制器接管切换）
+        mainPaged.addPage(SignInCalendarGui.createSignInPage(createSignInEditCallback(), signInPageController));
 
         // 页 2：抽奖（v1.7.1 目标 2 实现，轮盘 GUI；出货槽定位依赖机器坐标；
         // v1.7.0 目标 4 传入编辑模式回调：编辑模式下点击轮盘槽位弹出条目编辑面板）
         mainPaged.addPage(LotteryGui.createLotteryPage(baseMetaTileEntity, createLotteryEditCallback()));
 
-        // 页 3：邮件（v1.7.2 目标 3 实现，列表+详情+附件领取）
-        mainPaged.addPage(MailGui.createMailPage());
+        // 页 3：邮件（v1.7.6 G2② 重构：类型分页 + 写邮件；传入机器定位=写邮件附件输入槽来源，
+        // mailPageController 绑定内层 5 sub-page，左侧 sub-tab 标签列同控制器接管切换）
+        mainPaged.addPage(MailGui.createMailPage(baseMetaTileEntity, mailPageController));
 
         return mainPaged;
     }
@@ -2689,6 +4144,27 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
         }
 
+        // --- 「新建交易条目」按钮行：仅编辑模式显示（列表尾），点击打开空白交易编辑面板（v1.7.6 G3④）---
+        // 收藏（tabId=-1）/未知（tabId=0）为虚拟分类，新建条目无处可挂，不显示按钮；
+        // 非编辑模式时由 tradeList 的 collapseDisabledChild 压缩占位。
+        NekoTradeRow newTradeRow = new NekoTradeRow();
+        newTradeRow.height(LIST_ITEM_HEIGHT);
+        newTradeRow.width(TRADE_ROW_WIDTH);
+        newTradeRow.marginLeft(2);
+        ButtonWidget<?> newTradeButton = new ButtonWidget<>().size(TRADE_ROW_WIDTH - 4, LIST_ITEM_HEIGHT - 2)
+            .overlay(IKey.str(EnumChatFormatting.GREEN + "+ 新建交易条目"))
+            .onMouseTapped(mouse -> {
+                openNewTradeEditor(category.getTabId());
+                return true;
+            });
+        newTradeButton.tooltipBuilder(t -> {
+            t.addLine(IKey.str("新建交易条目"));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "在本标签页尾部追加一条空白交易"));
+        });
+        newTradeRow.child(newTradeButton);
+        newTradeRow.setEnabledIf(w -> isEditModeActive() && category.getTabId() > 0);
+        tradeList.child(newTradeRow);
+
         // 底部间距
         tradeList.child(
             Flow.row()
@@ -2769,8 +4245,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .top(40)
             .background(NekoGuiTextures.SIDE_PANEL_BACKGROUND);
 
-        // v1.7.0：仅主标签为贸易时显示 IO 列
-        ioColumn.setEnabledIf(w -> mainTabId == MAIN_TAB_TRADE);
+        // v1.7.6 G1：IO 列四页恒显示（输入槽投币/取物、出货槽在四页均可用）——
+        // 移除原 v1.7.0「仅贸易页」的 setEnabledIf；槽位双端注册本就不受 setEnabledIf 影响，此改动仅扩大可见范围
 
         // --- 顶部：INPUT_SPRITE 图标 + "IN" 文字 ---
         ioColumn.child(

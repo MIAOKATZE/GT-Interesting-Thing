@@ -96,16 +96,26 @@ public class LotteryNetworkManager {
         List<LotteryHistory.HistoryEntry> recentHistory = manager.getHistory(teamKey)
             .getRecentRecords(LotteryClientData.HISTORY_DISPLAY_LIMIT);
 
-        // 团队钱包余额（仅各卡池消耗币种；NekoWalletManager 内部优先团队钱包，与扣费同源）
+        // 团队钱包余额（各卡池消耗币种：v1.7.6 起从 costItems 实时识别猫猫币条目，
+        // 旧字段 nekoCurrencyId 一并兜底；NekoWalletManager 内部优先团队钱包，与扣费同源）
         java.util.Map<String, Integer> balances = new java.util.HashMap<>();
         com.miaokatze.gtit.trade.NekoWallet wallet = com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE
             .getWallet(playerId);
         if (wallet != null) {
             for (LotteryPool pool : pools) {
-                if (pool == null || pool.getNekoCurrencyId() == null) continue;
-                String currencyId = pool.getNekoCurrencyId();
-                if (!balances.containsKey(currencyId)) {
-                    balances.put(currencyId, wallet.getCount(currencyId));
+                if (pool == null) continue;
+                // 旧字段兜底（兼容未迁移场景）
+                String legacyCid = pool.getNekoCurrencyId();
+                if (legacyCid != null && !legacyCid.isEmpty() && !balances.containsKey(legacyCid)) {
+                    balances.put(legacyCid, wallet.getCount(legacyCid));
+                }
+                // costItems 中的猫猫币条目
+                for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.getCostItems()) {
+                    if (cost == null || cost.getBaseStack() == null) continue;
+                    String cid = com.miaokatze.gtit.trade.NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+                    if (cid != null && !balances.containsKey(cid)) {
+                        balances.put(cid, wallet.getCount(cid));
+                    }
                 }
             }
         }

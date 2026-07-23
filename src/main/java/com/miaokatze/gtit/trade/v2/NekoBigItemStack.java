@@ -52,11 +52,28 @@ public class NekoBigItemStack {
      * 检查给定的 ItemStack 是否匹配本大物品栈
      * <p>
      * 优先按矿物词典匹配，无矿物词典时按物品和 NBT 精确匹配。
+     * <p>
+     * 等价于 {@link #matches(ItemStack, boolean)} 且 recordNBT=true（保留旧行为，
+     * 供未感知 recordNBT 的旧调用点使用）。
      *
      * @param stack 待检查的物品栈
      * @return 匹配返回 true，否则 false
      */
     public boolean matches(ItemStack stack) {
+        return matches(stack, true);
+    }
+
+    /**
+     * 检查给定的 ItemStack 是否匹配本大物品栈（v1.7.6 G3⑤ NBT 选框重载）
+     * <p>
+     * 矿物词典分支不受 recordNBT 影响（矿词匹配天然忽略 NBT）；
+     * 物品分支 recordNBT=false 时仅按物品（id+meta）匹配，忽略 NBT 差异。
+     *
+     * @param stack     待检查的物品栈
+     * @param recordNBT true = 物品+NBT 精确匹配；false = 仅物品匹配
+     * @return 匹配返回 true，否则 false
+     */
+    public boolean matches(ItemStack stack, boolean recordNBT) {
         if (stack == null) {
             return false;
         }
@@ -70,8 +87,8 @@ public class NekoBigItemStack {
             }
             return false;
         }
-        // 无矿物词典时，按物品和NBT精确匹配
-        return baseStack.isItemEqual(stack) && ItemStack.areItemStackTagsEqual(baseStack, stack);
+        // 无矿物词典时：recordNBT=true 按物品+NBT 精确匹配；false 仅按物品匹配
+        return baseStack.isItemEqual(stack) && (!recordNBT || ItemStack.areItemStackTagsEqual(baseStack, stack));
     }
 
     /**
