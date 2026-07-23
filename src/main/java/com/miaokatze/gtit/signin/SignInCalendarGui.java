@@ -186,7 +186,12 @@ public class SignInCalendarGui {
     private static IWidget createTitle(SignInEditCallback editCallback) {
         return new TextWidget<>(IKey.dynamic(() -> {
             MonthInfo mi = getMonthInfo();
-            String text = EnumChatFormatting.GOLD + "签到日历 " + EnumChatFormatting.YELLOW + mi.year + "年" + mi.month + "月";
+            String text = EnumChatFormatting.GOLD + "签到日历 "
+                + EnumChatFormatting.YELLOW
+                + mi.year
+                + "年"
+                + mi.month
+                + "月";
             if (editCallback != null && editCallback.isEditMode()) {
                 text += EnumChatFormatting.RED + " [编辑]";
             }
@@ -344,8 +349,7 @@ public class SignInCalendarGui {
 
             // 宝箱图标按钮（tooltip 详列奖励内容；编辑模式下点击打开编辑面板）
             box.child(
-                new ButtonWidget<>()
-                    .pos(x + (TIER_COL_W - 24) / 2, 0)
+                new ButtonWidget<>().pos(x + (TIER_COL_W - 24) / 2, 0)
                     .size(24, 24)
                     .background(chestFor(tier.getRequiredDays()))
                     .tooltipBuilder(t -> {

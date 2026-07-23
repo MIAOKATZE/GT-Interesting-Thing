@@ -118,8 +118,7 @@ public class NekoEditPacket implements IMessage {
         private void processAction(EntityPlayerMP player, NekoEditPacket message) {
             // 验证玩家处于编辑模式
             if (!NekoEditModeManager.INSTANCE.isInEditMode(player.getUniqueID())) {
-                player.addChatMessage(
-                    new ChatComponentText(EnumChatFormatting.RED + "你不在编辑模式中，无法执行编辑操作"));
+                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "你不在编辑模式中，无法执行编辑操作"));
                 return;
             }
 
@@ -144,7 +143,8 @@ public class NekoEditPacket implements IMessage {
         }
 
         private void handleSaveTrade(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.saveTrade(player, message.getTargetId(), message.getTargetIndex(), message.getJsonPayload());
+            NekoEditActionHandler
+                .saveTrade(player, message.getTargetId(), message.getTargetIndex(), message.getJsonPayload());
         }
 
         private void handleOpenSignInEditor(EntityPlayerMP player, NekoEditPacket message) {

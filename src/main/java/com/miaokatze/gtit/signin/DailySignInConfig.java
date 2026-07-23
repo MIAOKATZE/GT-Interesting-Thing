@@ -161,12 +161,12 @@ public class DailySignInConfig {
      * 在 {@link #rewardTiers} 中找到 requiredDays 匹配的阶梯并替换为新实例。
      * 仅修改内存值，调用方负责随后 {@link #saveConfig()} 落盘。
      *
-     * @param days          目标阶梯的连续天数
-     * @param currencyId    货币 ID（null/空回退猫猫币）
+     * @param days           目标阶梯的连续天数
+     * @param currencyId     货币 ID（null/空回退猫猫币）
      * @param currencyAmount 货币数量（≥0）
-     * @param itemId        物品奖励 ID（"modid:name"，空串表示无物品奖励）
-     * @param itemAmount    物品数量（≥0）
-     * @param itemMeta      物品 meta（≥0）
+     * @param itemId         物品奖励 ID（"modid:name"，空串表示无物品奖励）
+     * @param itemAmount     物品数量（≥0）
+     * @param itemMeta       物品 meta（≥0）
      * @return true 表示找到并替换；false 表示无该天数阶梯
      */
     public static boolean updateTier(int days, String currencyId, int currencyAmount, String itemId, int itemAmount,

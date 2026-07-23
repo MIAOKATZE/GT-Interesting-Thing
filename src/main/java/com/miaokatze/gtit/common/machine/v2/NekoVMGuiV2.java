@@ -26,6 +26,8 @@ import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.utils.item.ItemStackHandler;
+import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
@@ -38,8 +40,6 @@ import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.cleanroommc.modularui.widgets.layout.Grid;
-import com.cleanroommc.modularui.utils.item.ItemStackHandler;
-import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
@@ -72,10 +72,10 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageEntry;
-import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
+import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
@@ -498,8 +498,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .syncedPanel("nekoV2Volume", true, (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, volumeButton));
 
         // v1.7.0 目标 4：交易编辑面板（编辑模式下点击交易条目弹出）
-        editPanelHandler = syncManager
-            .syncedPanel("nekoV2TradeEdit", true, (sm, sh) -> buildTradeEditPanel(sm));
+        editPanelHandler = syncManager.syncedPanel("nekoV2TradeEdit", true, (sm, sh) -> buildTradeEditPanel(sm));
 
         // v1.7.0 目标 4：签到编辑面板（编辑模式下点击阶梯宝箱/「全局配置」按钮弹出）
         signInEditPanelHandler = syncManager
@@ -510,7 +509,25 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .syncedPanel("nekoV2LotteryEdit", true, (sm, sh) -> buildLotteryEditPanel(sm));
 
         // v1.7.0 主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
-        panel.child(createMainContentPagedWidget(syncManager));
+        // v1.7.5 修复：仅客户端创建——mainTabController/tabController 仅在客户端初始化（上方 isClient 块），
+        // 服务端执行到 .controller(null) 会 NPE，createPanel 中断导致右击无反应。
+        // 4 个页面均无槽位、无 net.minecraft.client 引用，仅客户端创建安全（与 VM 原版一致）。
+        if (syncManager.isClient()) {
+            panel.child(createMainContentPagedWidget(syncManager));
+        }
+
+        // --- 玩家背包栏（v1.7.5 从贸易列拆出，双端挂 panel）---
+        // 双端创建：服务端必须注册背包槽，否则容器缺槽、shift 转移失效（与 VM 原版 createInventoryRow 一致）。
+        // setEnabledIf 仅阻止 draw 不影响槽同步（v1.6.24 已确认），保持仅贸易页可见的现有视觉。
+        panel.child(
+            Flow.row()
+                .fullWidth()
+                .height(76)
+                .bottom(5)
+                .setEnabledIf(w -> mainTabId == MAIN_TAB_TRADE)
+                .child(
+                    SlotGroupWidget.playerInventory(false)
+                        .marginLeft(4)));
 
         // 右侧 IO 列（仅主标签为贸易时显示）
         panel.child(createIOColumn());
@@ -838,8 +855,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 服务端权威：查询 NekoEditModeManager 判断玩家是否处于编辑模式
         // 客户端收到后更新所有交易 Widget 的编辑模式标志
         editModeSync = new BooleanSyncValue(
-            () -> playerId != null
-                && com.miaokatze.gtit.trade.v2.NekoEditModeManager.INSTANCE.isInEditMode(playerId),
+            () -> playerId != null && com.miaokatze.gtit.trade.v2.NekoEditModeManager.INSTANCE.isInEditMode(playerId),
             val -> {
                 // 客户端：传播编辑模式状态到所有交易 Widget
                 propagateEditModeToWidgets(val);
@@ -1061,6 +1077,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             if (page < 0) page = MAIN_TAB_TRADE;
             mainTabController.setPage(page);
             mainTabId = page;
+            // v1.7.5 修复：同步 mainTabSync 使服务端 mainTabId 与客户端一致
+            // （否则服务端恒 0，背包行 enabled 状态双端可能不一致）
+            if (mainTabSync != null) mainTabSync.setValue(page);
         }
         // 恢复上次的标签页位置
         if (tabController != null) {
@@ -1213,8 +1232,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             int tradeIndex = Integer.parseInt(parts[1]);
 
             NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
-            if (group == null || tradeIndex < 0 || tradeIndex >= group.getTrades()
-                .size()) {
+            if (group == null || tradeIndex < 0
+                || tradeIndex >= group.getTrades()
+                    .size()) {
                 return;
             }
 
@@ -1276,7 +1296,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // --- 需求物品行（slot 0-3）---
         editPanel.child(
-            IKey.str("需求:").asWidget()
+            IKey.str("需求:")
+                .asWidget()
                 .left(8)
                 .top(22));
         for (int i = 0; i < 4; i++) {
@@ -1288,7 +1309,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // --- 产物物品行（slot 4-7）---
         editPanel.child(
-            IKey.str("产物:").asWidget()
+            IKey.str("产物:")
+                .asWidget()
                 .left(8)
                 .top(42));
         for (int i = 0; i < 4; i++) {
@@ -1307,12 +1329,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // 猫猫币类型
         editPanel.child(
-            IKey.str("猫猫币类型:").asWidget()
+            IKey.str("猫猫币类型:")
+                .asWidget()
                 .left(8)
                 .top(fieldY + 2));
         editPanel.child(
-            new TextFieldWidget().value(
-                new StringValue.Dynamic(() -> editCurrencyType, val -> editCurrencyType = val))
+            new TextFieldWidget().value(new StringValue.Dynamic(() -> editCurrencyType, val -> editCurrencyType = val))
                 .setMaxLength(30)
                 .left(labelWidth)
                 .top(fieldY)
@@ -1321,18 +1343,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 猫猫币数量
         fieldY += spacing;
         editPanel.child(
-            IKey.str("猫猫币数量:").asWidget()
+            IKey.str("猫猫币数量:")
+                .asWidget()
                 .left(8)
                 .top(fieldY + 2));
         editPanel.child(
-            new TextFieldWidget().value(
-                new StringValue.Dynamic(
-                    () -> String.valueOf(editCurrencyAmount),
-                    val -> {
-                        try {
-                            editCurrencyAmount = Integer.parseInt(val);
-                        } catch (NumberFormatException ignored) {}
-                    }))
+            new TextFieldWidget().value(new StringValue.Dynamic(() -> String.valueOf(editCurrencyAmount), val -> {
+                try {
+                    editCurrencyAmount = Integer.parseInt(val);
+                } catch (NumberFormatException ignored) {}
+            }))
                 .setNumbers(0, Integer.MAX_VALUE)
                 .left(labelWidth)
                 .top(fieldY)
@@ -1341,32 +1361,29 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 冷却时间
         fieldY += spacing;
         editPanel.child(
-            IKey.str("冷却(秒):").asWidget()
+            IKey.str("冷却(秒):")
+                .asWidget()
                 .left(8)
                 .top(fieldY + 2));
-        editPanel.child(
-            new TextFieldWidget().value(
-                new StringValue.Dynamic(
-                    () -> String.valueOf(editCooldown),
-                    val -> {
-                        try {
-                            editCooldown = Integer.parseInt(val);
-                        } catch (NumberFormatException ignored) {}
-                    }))
-                .setNumbers(-1, Integer.MAX_VALUE)
-                .left(labelWidth)
-                .top(fieldY)
-                .size(fieldWidth, fieldHeight));
+        editPanel.child(new TextFieldWidget().value(new StringValue.Dynamic(() -> String.valueOf(editCooldown), val -> {
+            try {
+                editCooldown = Integer.parseInt(val);
+            } catch (NumberFormatException ignored) {}
+        }))
+            .setNumbers(-1, Integer.MAX_VALUE)
+            .left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight));
 
         // BQ 绑定 ID
         fieldY += spacing;
         editPanel.child(
-            IKey.str("BQ绑定ID:").asWidget()
+            IKey.str("BQ绑定ID:")
+                .asWidget()
                 .left(8)
                 .top(fieldY + 2));
         editPanel.child(
-            new TextFieldWidget().value(
-                new StringValue.Dynamic(() -> editBqQuestId, val -> editBqQuestId = val))
+            new TextFieldWidget().value(new StringValue.Dynamic(() -> editBqQuestId, val -> editBqQuestId = val))
                 .setMaxLength(60)
                 .left(labelWidth)
                 .top(fieldY)
@@ -1573,7 +1590,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                         if (itemObj != null) {
                             editSignInItemHandler.setStackInSlot(
                                 0,
-                                new ItemStack(itemObj, Math.max(1, tier.getItemRewardAmount()), tier.getItemRewardMeta()));
+                                new ItemStack(
+                                    itemObj,
+                                    Math.max(1, tier.getItemRewardAmount()),
+                                    tier.getItemRewardMeta()));
                         }
                     }
                 }
@@ -1605,8 +1625,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         editPanel.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> editSignInTierDays > 0
-                        ? EnumChatFormatting.GOLD + "编辑签到阶梯（连续 " + editSignInTierDays + " 天）"
+                    () -> editSignInTierDays > 0 ? EnumChatFormatting.GOLD + "编辑签到阶梯（连续 " + editSignInTierDays + " 天）"
                         : EnumChatFormatting.GOLD + "编辑签到全局配置")).top(5)
                             .horizontalCenter());
 
@@ -1639,8 +1658,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         amountLabel.setEnabledIf(w -> editSignInTierDays > 0);
         editPanel.child(amountLabel);
 
-        TextFieldWidget amountField = new TextFieldWidget().value(
-            new StringValue.Dynamic(() -> String.valueOf(editSignInAmount), val -> {
+        TextFieldWidget amountField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editSignInAmount), val -> {
                 try {
                     editSignInAmount = Integer.parseInt(val);
                 } catch (NumberFormatException ignored) {}
@@ -1673,8 +1692,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         baseLabel.setEnabledIf(w -> editSignInTierDays <= 0);
         editPanel.child(baseLabel);
 
-        TextFieldWidget baseField = new TextFieldWidget().value(
-            new StringValue.Dynamic(() -> String.valueOf(editSignInBaseReward), val -> {
+        TextFieldWidget baseField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editSignInBaseReward), val -> {
                 try {
                     editSignInBaseReward = Integer.parseInt(val);
                 } catch (NumberFormatException ignored) {}
@@ -1878,9 +1897,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // 标题（显示条目标识 "<poolId>:<entryId>"）
         editPanel.child(
-            new TextWidget<>(
-                IKey.dynamic(() -> EnumChatFormatting.GOLD + "编辑抽奖条目（" + editLotteryEntryKey + "）")).top(5)
-                    .horizontalCenter());
+            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GOLD + "编辑抽奖条目（" + editLotteryEntryKey + "）")).top(5)
+                .horizontalCenter());
 
         int fieldY = 24;
         int fieldHeight = 14;
@@ -1936,8 +1954,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             new TextWidget<>(IKey.str("最小数量:")).left(8)
                 .top(fieldY + 2));
 
-        TextFieldWidget minField = new TextFieldWidget().value(
-            new StringValue.Dynamic(() -> String.valueOf(editLotteryMinAmount), val -> {
+        TextFieldWidget minField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editLotteryMinAmount), val -> {
                 try {
                     editLotteryMinAmount = Integer.parseInt(val);
                 } catch (NumberFormatException ignored) {}
@@ -1954,8 +1972,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             new TextWidget<>(IKey.str("最大数量:")).left(8)
                 .top(fieldY + 2));
 
-        TextFieldWidget maxField = new TextFieldWidget().value(
-            new StringValue.Dynamic(() -> String.valueOf(editLotteryMaxAmount), val -> {
+        TextFieldWidget maxField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editLotteryMaxAmount), val -> {
                 try {
                     editLotteryMaxAmount = Integer.parseInt(val);
                 } catch (NumberFormatException ignored) {}
@@ -1972,8 +1990,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             new TextWidget<>(IKey.str("权重:")).left(8)
                 .top(fieldY + 2));
 
-        TextFieldWidget weightField = new TextFieldWidget().value(
-            new StringValue.Dynamic(() -> String.valueOf(editLotteryWeight), val -> {
+        TextFieldWidget weightField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editLotteryWeight), val -> {
                 try {
                     editLotteryWeight = Integer.parseInt(val);
                 } catch (NumberFormatException ignored) {}
@@ -2069,13 +2087,19 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             ItemStack stack = editLotteryItemHandler.getStackInSlot(0);
             if (stack != null && stack.getItem() != null) {
                 com.google.gson.JsonObject itemJson = itemStackToEditJson(stack);
-                json.addProperty("item", itemJson.get("item")
-                    .getAsString());
-                json.addProperty("meta", itemJson.get("meta")
-                    .getAsInt());
-                if (itemJson.has("nbtBase64")) {
-                    json.addProperty("nbtBase64", itemJson.get("nbtBase64")
+                json.addProperty(
+                    "item",
+                    itemJson.get("item")
                         .getAsString());
+                json.addProperty(
+                    "meta",
+                    itemJson.get("meta")
+                        .getAsInt());
+                if (itemJson.has("nbtBase64")) {
+                    json.addProperty(
+                        "nbtBase64",
+                        itemJson.get("nbtBase64")
+                            .getAsString());
                 }
             } else {
                 json.addProperty("item", "");
@@ -2086,7 +2110,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             json.addProperty("maxAmount", editLotteryMaxAmount);
             json.addProperty("weight", editLotteryWeight);
             json.addProperty("rarity", editLotteryRarity);
-            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendSaveLotteryEntry(editLotteryEntryKey, json.toString());
+            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
+                .sendSaveLotteryEntry(editLotteryEntryKey, json.toString());
         } catch (Exception e) {
             GTInterestingThing.LOG.error("[NekoEdit] 保存抽奖编辑失败", e);
         }
@@ -2438,8 +2463,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // --- 标题（编辑模式下附加红色「编辑模式」标识，v1.7.0 目标 4 视觉标识）---
         mainColumn.child(
             IKey.dynamic(
-                () -> isEditModeActive() ? EnumChatFormatting.DARK_GRAY + "猫猫售货机 "
-                    + EnumChatFormatting.RED + "[编辑模式]" : EnumChatFormatting.DARK_GRAY + "猫猫售货机")
+                () -> isEditModeActive() ? EnumChatFormatting.DARK_GRAY + "猫猫售货机 " + EnumChatFormatting.RED + "[编辑模式]"
+                    : EnumChatFormatting.DARK_GRAY + "猫猫售货机")
                 .asWidget()
                 .height(12)
                 .fullWidth()
@@ -2523,18 +2548,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .fullWidth()
                 .marginBottom(2)
                 .setEnabledIf(w -> !tradeResultMessage.isEmpty()));
-
-        // --- 玩家背包栏（v1.6.23 修复：V1 式底部锚定，脱离流式布局）---
-        // 复刻 V1 的 createInventoryRow：Flow.row().height(76).bottom(5)
-        // 让背包栏独立锚定到面板底部，不参与 mainColumn 流式高度累加
-        mainColumn.child(
-            Flow.row()
-                .fullWidth()
-                .height(76)
-                .bottom(5)
-                .child(
-                    SlotGroupWidget.playerInventory(false)
-                        .marginLeft(4)));
 
         return mainColumn;
     }
@@ -2872,19 +2885,23 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         }
         // v1.6.23: ME 传输粒子动画 Widget（围绕出货槽中的物品渲染粒子）
         // 传入 fallingFactory 供粒子定位槽位坐标；点击穿透到出货槽（不拦截鼠标）
-        NekoMeTransferParticleWidget particleWidget = new NekoMeTransferParticleWidget(
-            clientMeTransferQueue,
-            fallingFactory).onRetrieve(() -> {
-                if (retrieveMeItemSync != null) {
-                    retrieveMeItemSync.setValue(true);
-                }
-            });
-        particleWidget.fullWidth()
-            .fullHeight();
-        // v1.6.24: 移除 setEnabledIf（ModularUI2 此版本中 setEnabledIf(false) 会阻止 widget 的 draw() 被调用，
-        // 导致 clientMeTransferQueue 同步到达后粒子仍不渲染）。draw() 方法内已有空队列守卫
-        // (if (queueRef.isEmpty()) return;)，无需额外控制可见性。
-        dispenserChute.child(particleWidget);
+        // v1.7.5 修复：仅客户端创建——NekoMeTransferParticleWidget 带 @SideOnly(Side.CLIENT)，
+        // 专用服务器类被剥离，双端执行会 NoClassDefFoundError（createIOColumn 双端调用）。
+        if (syncManagerRef.isClient()) {
+            NekoMeTransferParticleWidget particleWidget = new NekoMeTransferParticleWidget(
+                clientMeTransferQueue,
+                fallingFactory).onRetrieve(() -> {
+                    if (retrieveMeItemSync != null) {
+                        retrieveMeItemSync.setValue(true);
+                    }
+                });
+            particleWidget.fullWidth()
+                .fullHeight();
+            // v1.6.24: 移除 setEnabledIf（ModularUI2 此版本中 setEnabledIf(false) 会阻止 widget 的 draw() 被调用，
+            // 导致 clientMeTransferQueue 同步到达后粒子仍不渲染）。draw() 方法内已有空队列守卫
+            // (if (queueRef.isEmpty()) return;)，无需额外控制可见性。
+            dispenserChute.child(particleWidget);
+        }
         // 顶部悬垂装饰：必须最后添加，覆盖掉落槽起始位置（顶部），形成"物品从悬垂后面掉落"的图层效果
         // 与 VM 原版 MteVendingMachineGui.createDispenserChute 顺序一致（掉落槽 → OVERHANG 最后）
         dispenserChute.child(

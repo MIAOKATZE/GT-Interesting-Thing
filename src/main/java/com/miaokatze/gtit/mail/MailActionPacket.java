@@ -92,21 +92,17 @@ public class MailActionPacket implements IMessage {
                     int granted = manager.claimAttachments(playerId, mailId, player);
                     if (granted > 0) {
                         player.addChatMessage(
-                            new ChatComponentText(
-                                EnumChatFormatting.GREEN + "已领取 " + granted + " 组邮件附件"));
+                            new ChatComponentText(EnumChatFormatting.GREEN + "已领取 " + granted + " 组邮件附件"));
                     } else {
-                        player.addChatMessage(
-                            new ChatComponentText(EnumChatFormatting.GRAY + "没有可领取的附件"));
+                        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "没有可领取的附件"));
                     }
                 }
                 case ACTION_DELETE -> {
                     int result = manager.deleteMail(playerId, mailId);
                     switch (result) {
-                        case 0 -> player.addChatMessage(
-                            new ChatComponentText(EnumChatFormatting.GRAY + "邮件已删除"));
-                        case 2 -> player.addChatMessage(
-                            new ChatComponentText(
-                                EnumChatFormatting.YELLOW + "该邮件还有未领取的附件，无法删除"));
+                        case 0 -> player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "邮件已删除"));
+                        case 2 -> player
+                            .addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "该邮件还有未领取的附件，无法删除"));
                         default -> {
                             // 邮件不存在（可能刚被删除），静默处理
                         }

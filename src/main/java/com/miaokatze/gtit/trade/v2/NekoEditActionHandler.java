@@ -2,7 +2,6 @@ package com.miaokatze.gtit.trade.v2;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.ChatComponentText;
@@ -73,7 +72,9 @@ public class NekoEditActionHandler {
      * 保存配置文件并热重载交易注册表。
      * <p>
      * JSON 载荷格式：
-     * <pre>{@code
+     * 
+     * <pre>
+     * {@code
      * {
      *   "tabId": 1,
      *   "orderId": 0,
@@ -85,7 +86,8 @@ public class NekoEditActionHandler {
      *   "fromItems": [{"item":"modid:name","meta":0,"amount":1,"nbtBase64":"..."}],
      *   "toItems": [{"item":"modid:name","meta":0,"amount":1,"nbtBase64":"..."}]
      * }
-     * }</pre>
+     * }
+     * </pre>
      *
      * @param player      玩家
      * @param groupIdStr  交易组 UUID 字符串
@@ -121,16 +123,21 @@ public class NekoEditActionHandler {
             }
 
             // 更新基础字段
-            if (json.has("tabId")) targetEntry.setTabId(json.get("tabId")
-                .getAsInt());
-            if (json.has("orderId")) targetEntry.setOrderId(json.get("orderId")
-                .getAsInt());
-            if (json.has("cooldown")) targetEntry.setCooldown(json.get("cooldown")
-                .getAsInt());
-            if (json.has("maxTrades")) targetEntry.setMaxTrades(json.get("maxTrades")
-                .getAsInt());
-            if (json.has("bqQuestId")) targetEntry.setBqQuestId(json.get("bqQuestId")
-                .getAsString());
+            if (json.has("tabId")) targetEntry.setTabId(
+                json.get("tabId")
+                    .getAsInt());
+            if (json.has("orderId")) targetEntry.setOrderId(
+                json.get("orderId")
+                    .getAsInt());
+            if (json.has("cooldown")) targetEntry.setCooldown(
+                json.get("cooldown")
+                    .getAsInt());
+            if (json.has("maxTrades")) targetEntry.setMaxTrades(
+                json.get("maxTrades")
+                    .getAsInt());
+            if (json.has("bqQuestId")) targetEntry.setBqQuestId(
+                json.get("bqQuestId")
+                    .getAsString());
 
             // 更新货币花费
             if (json.has("currencyType") && json.has("currencyAmount")) {
@@ -188,10 +195,7 @@ public class NekoEditActionHandler {
      * @param dayKey 签到天数标识
      */
     public static void openSignInEditor(EntityPlayerMP player, String dayKey) {
-        GTInterestingThing.LOG.info(
-            "[NekoEdit] 玩家 {} 打开签到编辑器: day={}",
-            player.getCommandSenderName(),
-            dayKey);
+        GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 打开签到编辑器: day={}", player.getCommandSenderName(), dayKey);
     }
 
     /**
@@ -291,10 +295,7 @@ public class NekoEditActionHandler {
      * @param entryKey 抽奖条目标识
      */
     public static void openLotteryEditor(EntityPlayerMP player, String entryKey) {
-        GTInterestingThing.LOG.info(
-            "[NekoEdit] 玩家 {} 打开抽奖编辑器: entry={}",
-            player.getCommandSenderName(),
-            entryKey);
+        GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 打开抽奖编辑器: entry={}", player.getCommandSenderName(), entryKey);
     }
 
     /**
@@ -302,7 +303,9 @@ public class NekoEditActionHandler {
      * <p>
      * targetId 格式：{@code "<poolId>:<entryId>"}（按首个冒号切分）。
      * JSON 载荷：
-     * <pre>{@code
+     * 
+     * <pre>
+     * {@code
      * {
      *   "nekoCurrencyId": "",        // 非空 = 货币奖品（物品字段忽略）
      *   "item": "modid:name",        // 物品奖品（货币奖品时忽略）
@@ -313,7 +316,9 @@ public class NekoEditActionHandler {
      *   "weight": 100,
      *   "rarity": "COMMON"           // 大小写不敏感，未知回退 COMMON
      * }
-     * }</pre>
+     * }
+     * </pre>
+     * 
      * 保存后 {@link LotteryConfig#save} 落盘 → {@link LotteryManager#loadConfig()} 热重载
      * → {@link LotteryNetworkManager#sendSyncToClient} 推送最新卡池到编辑者客户端。
      *
@@ -378,20 +383,26 @@ public class NekoEditActionHandler {
                 }
                 targetEntry.setNekoCurrencyId(null);
                 targetEntry.setItem(item);
-                targetEntry.setMeta(json.has("meta") ? json.get("meta")
-                    .getAsInt() : 0);
+                targetEntry.setMeta(
+                    json.has("meta") ? json.get("meta")
+                        .getAsInt() : 0);
                 String nbt = json.has("nbtBase64") ? json.get("nbtBase64")
                     .getAsString() : null;
                 targetEntry.setNbtBase64(nbt == null || nbt.isEmpty() ? null : nbt);
             }
 
             // 数量区间 / 权重 / 稀有度
-            if (json.has("minAmount")) targetEntry.setMinAmount(json.get("minAmount")
-                .getAsInt());
-            if (json.has("maxAmount")) targetEntry.setMaxAmount(json.get("maxAmount")
-                .getAsInt());
-            if (json.has("weight")) targetEntry.setWeight(Math.max(0, json.get("weight")
-                .getAsInt()));
+            if (json.has("minAmount")) targetEntry.setMinAmount(
+                json.get("minAmount")
+                    .getAsInt());
+            if (json.has("maxAmount")) targetEntry.setMaxAmount(
+                json.get("maxAmount")
+                    .getAsInt());
+            if (json.has("weight")) targetEntry.setWeight(
+                Math.max(
+                    0,
+                    json.get("weight")
+                        .getAsInt()));
             if (json.has("rarity")) targetEntry.setRarity(
                 LotteryRarity.fromString(
                     json.get("rarity")
@@ -437,14 +448,18 @@ public class NekoEditActionHandler {
             JsonObject itemJson = array.get(i)
                 .getAsJsonObject();
             NekoTradeEntry.ItemEntry entry = new NekoTradeEntry.ItemEntry();
-            if (itemJson.has("item")) entry.setItem(itemJson.get("item")
-                .getAsString());
-            if (itemJson.has("meta")) entry.setMeta(itemJson.get("meta")
-                .getAsInt());
-            if (itemJson.has("amount")) entry.setAmount(itemJson.get("amount")
-                .getAsInt());
-            if (itemJson.has("nbtBase64")) entry.setNbtBase64(itemJson.get("nbtBase64")
-                .getAsString());
+            if (itemJson.has("item")) entry.setItem(
+                itemJson.get("item")
+                    .getAsString());
+            if (itemJson.has("meta")) entry.setMeta(
+                itemJson.get("meta")
+                    .getAsInt());
+            if (itemJson.has("amount")) entry.setAmount(
+                itemJson.get("amount")
+                    .getAsInt());
+            if (itemJson.has("nbtBase64")) entry.setNbtBase64(
+                itemJson.get("nbtBase64")
+                    .getAsString());
             items.add(entry);
         }
         return items;

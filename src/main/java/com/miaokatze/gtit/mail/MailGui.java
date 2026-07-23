@@ -314,9 +314,10 @@ public class MailGui {
             .size(PAPER_W, PAPER_H);
 
         // 信纸底纹
-        detail.child(NekoGuiTextures.MAIL_PAPER.asWidget()
-            .pos(0, 0)
-            .size(PAPER_W, PAPER_H));
+        detail.child(
+            NekoGuiTextures.MAIL_PAPER.asWidget()
+                .pos(0, 0)
+                .size(PAPER_W, PAPER_H));
 
         // 未选中提示（仅无选中邮件时显示）
         detail.child(
@@ -327,35 +328,34 @@ public class MailGui {
                 .setEnabledIf(w -> selectedMail() == null));
 
         // 详情标题（居中，深紫灰）
-        detail.child(
-            new TextWidget<>(IKey.dynamic(() -> {
-                Mail mail = selectedMail();
-                return mail == null ? "" : EnumChatFormatting.DARK_PURPLE + mail.getTitle();
-            })).pos(4, 6)
-                .size(PAPER_W - 8, 11)
-                .textAlign(Alignment.Center)
-                .shadow(false)
-                .setEnabledIf(w -> selectedMail() != null));
+        detail.child(new TextWidget<>(IKey.dynamic(() -> {
+            Mail mail = selectedMail();
+            return mail == null ? "" : EnumChatFormatting.DARK_PURPLE + mail.getTitle();
+        })).pos(4, 6)
+            .size(PAPER_W - 8, 11)
+            .textAlign(Alignment.Center)
+            .shadow(false)
+            .setEnabledIf(w -> selectedMail() != null));
 
         // 发件人 + 时间
-        detail.child(
-            new TextWidget<>(IKey.dynamic(() -> {
-                Mail mail = selectedMail();
-                if (mail == null) return "";
-                return "来自 " + mail.getSender() + " · " + TIME_FORMAT.format(new Date(mail.getTimestamp()));
-            })).pos(4, 18)
-                .size(PAPER_W - 8, 9)
-                .textAlign(Alignment.Center)
-                .scale(0.7f)
-                .color(COLOR_META)
-                .shadow(false)
-                .setEnabledIf(w -> selectedMail() != null));
+        detail.child(new TextWidget<>(IKey.dynamic(() -> {
+            Mail mail = selectedMail();
+            if (mail == null) return "";
+            return "来自 " + mail.getSender() + " · " + TIME_FORMAT.format(new Date(mail.getTimestamp()));
+        })).pos(4, 18)
+            .size(PAPER_W - 8, 9)
+            .textAlign(Alignment.Center)
+            .scale(0.7f)
+            .color(COLOR_META)
+            .shadow(false)
+            .setEnabledIf(w -> selectedMail() != null));
 
         // 正文（预建行，动态取 split 结果；越界行显示空串）
         for (int i = 0; i < CONTENT_LINES; i++) {
             final int line = i;
             detail.child(
-                new TextWidget<>(IKey.dynamic(() -> contentLine(line))).pos(10, CONTENT_Y - PAPER_Y + i * CONTENT_LINE_H)
+                new TextWidget<>(IKey.dynamic(() -> contentLine(line)))
+                    .pos(10, CONTENT_Y - PAPER_Y + i * CONTENT_LINE_H)
                     .size(PAPER_W - 20, CONTENT_LINE_H)
                     .scale(0.75f)
                     .color(COLOR_CONTENT)
@@ -526,8 +526,7 @@ public class MailGui {
         if (mail != null) {
             t.addLine(
                 IKey.str(
-                    mail.isAttachmentClaimed() ? EnumChatFormatting.GRAY + "已领取"
-                        : EnumChatFormatting.YELLOW + "待领取"));
+                    mail.isAttachmentClaimed() ? EnumChatFormatting.GRAY + "已领取" : EnumChatFormatting.YELLOW + "待领取"));
         }
     }
 

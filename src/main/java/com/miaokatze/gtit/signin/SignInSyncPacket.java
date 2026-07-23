@@ -165,10 +165,8 @@ public class SignInSyncPacket implements IMessage {
                         message.getBaseReward(),
                         message.getTierDays());
                     // 刷新客户端配置缓存（v1.7.0 目标 5：服务端配置同步）
-                    SignInClientData.updateConfig(
-                        message.getCfgBaseReward(),
-                        message.getCfgIncrement(),
-                        message.getCfgTiers());
+                    SignInClientData
+                        .updateConfig(message.getCfgBaseReward(), message.getCfgIncrement(), message.getCfgTiers());
                 });
         }
     }

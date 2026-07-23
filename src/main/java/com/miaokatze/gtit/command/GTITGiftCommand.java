@@ -22,10 +22,10 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
-import com.miaokatze.gtit.mail.Mail;
-import com.miaokatze.gtit.mail.MailManager;
 import com.miaokatze.gtit.lottery.LotteryManager;
 import com.miaokatze.gtit.lottery.LotteryNetworkManager;
+import com.miaokatze.gtit.mail.Mail;
+import com.miaokatze.gtit.mail.MailManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInConfig;
 import com.miaokatze.gtit.signin.DailySignInData;
@@ -847,8 +847,7 @@ public class GTITGiftCommand extends CommandBase {
                 new ChatComponentText(
                     EnumChatFormatting.RED + "用法: /gtit nekovm edit <标签页ID> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]"));
             player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.RED + "或: /gtit nekovm edit on|off （开关可视化编辑模式）"));
+                new ChatComponentText(EnumChatFormatting.RED + "或: /gtit nekovm edit on|off （开关可视化编辑模式）"));
             return;
         }
 
@@ -1109,25 +1108,14 @@ public class GTITGiftCommand extends CommandBase {
         UUID playerId = player.getUniqueID();
         if (enable) {
             NekoEditModeManager.INSTANCE.enterEditMode(playerId);
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.GREEN + "[编辑模式] 已开启可视化配置编辑模式"));
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.GRAY + "打开猫猫售货机 GUI，左键点击交易条目进行编辑"));
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.GRAY + "使用 /gtit nekovm edit off 退出编辑模式"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "[编辑模式] 已开启可视化配置编辑模式"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "打开猫猫售货机 GUI，左键点击交易条目进行编辑"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "使用 /gtit nekovm edit off 退出编辑模式"));
         } else {
             NekoEditModeManager.INSTANCE.exitEditMode(playerId);
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.YELLOW + "[编辑模式] 已关闭可视化配置编辑模式"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "[编辑模式] 已关闭可视化配置编辑模式"));
         }
-        GTInterestingThing.LOG.info(
-            "[NekoEdit] 玩家 {} {}编辑模式",
-            player.getCommandSenderName(),
-            enable ? "进入" : "退出");
+        GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} {}编辑模式", player.getCommandSenderName(), enable ? "进入" : "退出");
     }
 
     /**
@@ -1332,7 +1320,8 @@ public class GTITGiftCommand extends CommandBase {
         int tradeCount = NekoTradeConfig.load()
             .getTrades()
             .size();
-        int tierCount = DailySignInConfig.getRewardTiers().size();
+        int tierCount = DailySignInConfig.getRewardTiers()
+            .size();
         int poolCount = LotteryManager.INSTANCE.getAllPools()
             .size();
         String summary = "交易 " + tradeCount + " 条 / 签到 " + tierCount + " 阶梯 / 抽奖 " + poolCount + " 池";
@@ -1378,10 +1367,8 @@ public class GTITGiftCommand extends CommandBase {
 
         // ---- 默认：下发给执行者自己 ----
         sendConfigSyncTo(player);
-        player.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.GREEN + "[配置同步] 已同步服务端配置（" + summary + "）"));
-        player.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.GRAY + "客户端缓存已刷新（仅内存生效，不会写入本地配置文件）"));
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "[配置同步] 已同步服务端配置（" + summary + "）"));
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "客户端缓存已刷新（仅内存生效，不会写入本地配置文件）"));
         GTInterestingThing.LOG.info("[NekoSync] 玩家 {} 请求配置同步（{}）", player.getCommandSenderName(), summary);
     }
 
@@ -1394,9 +1381,7 @@ public class GTITGiftCommand extends CommandBase {
      */
     private void sendConfigSyncTo(EntityPlayerMP target) {
         NekoTradeNetworkManager.sendSyncToClient(target);
-        SignInNetworkManager.sendSyncToClient(
-            target,
-            DailySignInManager.INSTANCE.getSignInData(target.getUniqueID()));
+        SignInNetworkManager.sendSyncToClient(target, DailySignInManager.INSTANCE.getSignInData(target.getUniqueID()));
         LotteryNetworkManager.sendSyncToClient(target);
     }
 
@@ -1522,9 +1507,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "猫猫售货机命令:"));
         sender.addChatMessage(
             new ChatComponentText("/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID] [yesNBT|noNBT] - 导入交易"));
-        sender.addChatMessage(
-            new ChatComponentText(
-                EnumChatFormatting.AQUA + "/gtit nekovm edit on|off - 开关可视化编辑模式"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + "/gtit nekovm edit on|off - 开关可视化编辑模式"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm list [标签页] - 列出交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm delete <标签页ID> <顺序ID> - 删除交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm page add <ID> <名字> - 添加/覆盖标签页（手持物品作图标）"));
@@ -1761,8 +1744,7 @@ public class GTITGiftCommand extends CommandBase {
                 if (had) {
                     sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已清除首登奖励模板"));
                 } else {
-                    sender.addChatMessage(
-                        new ChatComponentText(EnumChatFormatting.YELLOW + "当前没有设置首登奖励模板"));
+                    sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "当前没有设置首登奖励模板"));
                 }
             }
             case "once" -> handleMailOnce(sender, args);
@@ -1790,8 +1772,8 @@ public class GTITGiftCommand extends CommandBase {
         // 解析目标玩家 UUID（在线优先，离线走 usercache.json）
         UUID targetId = resolvePlayerUuid(targetName);
         if (targetId == null) {
-            sender.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "找不到玩家: " + targetName + "（从未登录过本服务器）"));
+            sender
+                .addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "找不到玩家: " + targetName + "（从未登录过本服务器）"));
             return;
         }
 
@@ -1824,13 +1806,11 @@ public class GTITGiftCommand extends CommandBase {
      */
     private void handleMailFirst(ICommandSender sender, String[] args) {
         if (!(sender instanceof EntityPlayerMP player)) {
-            sender.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行（需要手持物品作为附件）"));
+            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行（需要手持物品作为附件）"));
             return;
         }
         if (args.length < 3) {
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit mail first <标题> [正文...]"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit mail first <标题> [正文...]"));
             return;
         }
         String title = args[2];
@@ -1847,8 +1827,7 @@ public class GTITGiftCommand extends CommandBase {
                     + "（附件 "
                     + attachments.size()
                     + " 组），新玩家首次登录时将自动收到"));
-        player.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.GRAY + "注：已领取过首登奖励的老玩家不会补发"));
+        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "注：已领取过首登奖励的老玩家不会补发"));
     }
 
     /**
@@ -1860,8 +1839,7 @@ public class GTITGiftCommand extends CommandBase {
      */
     private void handleMailOnce(ICommandSender sender, String[] args) {
         if (!(sender instanceof EntityPlayerMP player)) {
-            sender.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行（需要手持物品作为附件）"));
+            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行（需要手持物品作为附件）"));
             return;
         }
         if (args.length < 4) {
@@ -1886,8 +1864,7 @@ public class GTITGiftCommand extends CommandBase {
                         + " 组），全体玩家将各收到一次"));
         } else {
             player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.RED + "发布失败：奖励 ID [" + rewardId + "] 已发布过（一次性奖励不可重复发布）"));
+                new ChatComponentText(EnumChatFormatting.RED + "发布失败：奖励 ID [" + rewardId + "] 已发布过（一次性奖励不可重复发布）"));
         }
     }
 
@@ -1940,8 +1917,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit mail send <玩家名> <标题> [正文...] - 发送邮件（附件=手持物品）"));
         sender.addChatMessage(new ChatComponentText("/gtit mail first <标题> [正文...] - 设置首登奖励模板（覆盖旧的）"));
         sender.addChatMessage(new ChatComponentText("/gtit mail firstclear - 清除首登奖励模板"));
-        sender.addChatMessage(
-            new ChatComponentText("/gtit mail once <奖励ID> <标题> [正文...] - 发布一次性奖励（全服各收一次）"));
+        sender.addChatMessage(new ChatComponentText("/gtit mail once <奖励ID> <标题> [正文...] - 发布一次性奖励（全服各收一次）"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "正文中输入 \\n 表示换行；附件取手持物品（可空手）"));
     }
 

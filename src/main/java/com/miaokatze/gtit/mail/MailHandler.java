@@ -63,8 +63,7 @@ public class MailHandler {
         // 加载（或新建）数据，投递待发的首登/一次性奖励（内部有改动即落盘）
         boolean delivered = manager.deliverPendingRewards(playerId);
         if (delivered) {
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.GOLD + "你收到了新邮件，请到猫猫售货机查看！"));
+            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "你收到了新邮件，请到猫猫售货机查看！"));
         }
         // 推送完整数据给客户端，供邮件 GUI 渲染
         MailNetworkManager.sendSyncToClient(player, manager.getMailData(playerId));
