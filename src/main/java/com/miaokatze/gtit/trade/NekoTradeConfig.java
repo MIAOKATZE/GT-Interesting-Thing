@@ -1,23 +1,37 @@
 package com.miaokatze.gtit.trade;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
- * 猫猫售货机交易配置管理
- * 负责读写 config/gtit/nekovm_trades.json
+ * 猫猫售货机交易配置管理（v1.7.7 G4 存储结构重构）
+ * <p>
+ * 新存储：{@code config/gtit/trade/trades/tab_<id>.json}，每文件单 tab，
+ * 根结构 {@code {version:1, tabId, trades:[...]}}；加载时扫描目录合并；
+ * 保存时按 tabId 分组写回。
+ * <p>
+ * 兼容：启动时若新目录无 tab 文件且旧文件 {@code config/gtit/nekovm_trades.json}
+ * 存在，则整体迁移并按新结构拆分，旧文件重命名为 {@code .bak} 保留。
  */
 public class NekoTradeConfig {
 
-    private static final String CONFIG_SUB_PATH = "config/gtit/nekovm_trades.json";
+    /** 交易 tab 文件存放目录（相对游戏根目录） */
+    private static final String TRADES_DIR = "config/gtit/trade/trades";
+    /** 旧版单文件路径，用于兼容迁移 */
+    private static final String LEGACY_TRADES_PATH = "config/gtit/nekovm_trades.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .serializeNulls()
         .disableHtmlEscaping()
@@ -50,18 +64,61 @@ public class NekoTradeConfig {
         }
     }
 
+    /**
+     * 单个 tab 文件的数据结构（v1.7.7 G4）
+     * <p>
+     * 文件命名 {@code tab_<id>.json}，根对象含 tabId 与该 tab 的交易列表。
+     */
+    public static class TabFileData {
+
+        private int version = 1;
+        private int tabId;
+        private List<NekoTradeEntry> trades = new ArrayList<>();
+
+        public int getVersion() {
+            return version;
+        }
+
+        public void setVersion(int version) {
+            this.version = version;
+        }
+
+        public int getTabId() {
+            return tabId;
+        }
+
+        public void setTabId(int tabId) {
+            this.tabId = tabId;
+        }
+
+        public List<NekoTradeEntry> getTrades() {
+            return trades;
+        }
+
+        public void setTrades(List<NekoTradeEntry> trades) {
+            this.trades = trades;
+        }
+    }
+
     // --- 核心方法 ---
 
     /**
-     * 初始化配置，如果配置文件不存在则生成默认配置
+     * 初始化配置目录，无 tab 文件时生成默认配置或迁移旧文件
      */
     public static synchronized void init() {
         try {
-            Path path = getConfigPath();
-            if (!Files.exists(path)) {
-                Files.createDirectories(path.getParent());
-                save(getDefaultTrades());
-                GTInterestingThing.LOG.info("猫猫售货机交易配置已生成默认文件: {}", path);
+            Path dir = getTradeDirPath();
+            if (!Files.exists(dir)) {
+                Files.createDirectories(dir);
+            }
+            if (!hasAnyTabFile()) {
+                Path legacy = Paths.get(LEGACY_TRADES_PATH);
+                if (Files.exists(legacy)) {
+                    migrateFromLegacy(legacy);
+                } else {
+                    save(getDefaultTrades());
+                    GTInterestingThing.LOG.info("猫猫售货机交易配置已生成默认文件，目录: {}", dir);
+                }
             }
         } catch (Exception e) {
             GTInterestingThing.LOG.error("猫猫售货机交易配置初始化失败", e);
@@ -69,22 +126,56 @@ public class NekoTradeConfig {
     }
 
     /**
-     * 从文件加载交易数据，文件不存在时返回默认数据
+     * 从 tab 文件目录加载并合并交易数据
+     * <p>
+     * 新目录无 tab 文件时，优先迁移旧单文件；仍缺失则返回默认数据。
      */
     public static synchronized NekoTradeData load() {
         try {
-            Path path = getConfigPath();
-            if (!Files.exists(path)) {
-                GTInterestingThing.LOG.info("猫猫售货机交易配置文件不存在，返回默认数据");
-                return getDefaultTrades();
+            Path dir = getTradeDirPath();
+            if (!Files.exists(dir)) {
+                Files.createDirectories(dir);
             }
-            String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-            NekoTradeData data = GSON.fromJson(json, NekoTradeData.class);
-            if (data == null) {
-                GTInterestingThing.LOG.warn("猫猫售货机交易配置文件为空，返回默认数据");
-                return getDefaultTrades();
+            if (!hasAnyTabFile()) {
+                Path legacy = Paths.get(LEGACY_TRADES_PATH);
+                if (Files.exists(legacy)) {
+                    migrateFromLegacy(legacy);
+                    // 迁移完成后重新扫描新目录
+                } else {
+                    GTInterestingThing.LOG.info("猫猫售货机交易配置不存在，返回默认数据");
+                    return getDefaultTrades();
+                }
             }
-            GTInterestingThing.LOG.info("猫猫售货机交易配置已加载");
+
+            List<NekoTradeEntry> allTrades = new ArrayList<>();
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "tab_*.json")) {
+                for (Path file : stream) {
+                    try {
+                        String json = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+                        TabFileData tab = GSON.fromJson(json, TabFileData.class);
+                        if (tab == null || tab.getTrades() == null) continue;
+                        // 文件名是权威 tabId（防止文件内容与文件名不一致）
+                        int tabId = parseTabIdFromFileName(
+                            file.getFileName()
+                                .toString());
+                        if (tabId <= 0) {
+                            tabId = tab.getTabId();
+                        }
+                        for (NekoTradeEntry entry : tab.getTrades()) {
+                            if (entry == null) continue;
+                            if (tabId > 0) {
+                                entry.setTabId(tabId);
+                            }
+                            allTrades.add(entry);
+                        }
+                    } catch (Exception e) {
+                        GTInterestingThing.LOG.warn("猫猫售货机交易 tab 文件损坏或无法解析，已跳过: {}", file, e);
+                    }
+                }
+            }
+            NekoTradeData data = new NekoTradeData();
+            data.setTrades(allTrades);
+            GTInterestingThing.LOG.info("猫猫售货机交易配置已加载（{} 条交易）", allTrades.size());
             return data;
         } catch (Exception e) {
             GTInterestingThing.LOG.error("猫猫售货机交易配置加载失败，返回默认数据", e);
@@ -93,15 +184,48 @@ public class NekoTradeConfig {
     }
 
     /**
-     * 保存交易数据到文件
+     * 保存交易数据：按 tabId 分组写入各 tab 文件
+     * <p>
+     * 写入前清理当前已不存在交易的 tab 文件，避免删除操作后旧文件残留。
      */
     public static synchronized void save(NekoTradeData data) {
+        if (data == null) return;
         try {
-            Path path = getConfigPath();
-            Files.createDirectories(path.getParent());
-            String json = GSON.toJson(data);
-            Files.write(path, json.getBytes(StandardCharsets.UTF_8));
-            GTInterestingThing.LOG.info("猫猫售货机交易配置已保存");
+            Path dir = getTradeDirPath();
+            Files.createDirectories(dir);
+
+            Map<Integer, List<NekoTradeEntry>> groups = new HashMap<>();
+            if (data.getTrades() != null) {
+                for (NekoTradeEntry entry : data.getTrades()) {
+                    if (entry == null) continue;
+                    groups.computeIfAbsent(entry.getTabId(), k -> new ArrayList<>())
+                        .add(entry);
+                }
+            }
+
+            // 清理已经不存在的 tab 文件
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "tab_*.json")) {
+                for (Path file : stream) {
+                    int tabId = parseTabIdFromFileName(
+                        file.getFileName()
+                            .toString());
+                    if (!groups.containsKey(tabId)) {
+                        Files.deleteIfExists(file);
+                    }
+                }
+            }
+
+            for (Map.Entry<Integer, List<NekoTradeEntry>> group : groups.entrySet()) {
+                TabFileData tab = new TabFileData();
+                tab.setTabId(group.getKey());
+                tab.setTrades(group.getValue());
+                Path file = getTabFilePath(group.getKey());
+                Files.write(
+                    file,
+                    GSON.toJson(tab)
+                        .getBytes(StandardCharsets.UTF_8));
+            }
+            GTInterestingThing.LOG.info("猫猫售货机交易配置已保存（{} 个 tab 文件）", groups.size());
         } catch (Exception e) {
             GTInterestingThing.LOG.error("猫猫售货机交易配置保存失败", e);
         }
@@ -834,12 +958,72 @@ public class NekoTradeConfig {
     // --- 辅助方法 ---
 
     /**
-     * 获取配置文件路径
-     * <p>
-     * Minecraft 服务器的工作目录即为服务器根目录，
-     * 因此使用相对路径 "config/gtit/nekovm_trades.json" 即可正确定位。
+     * 获取交易 tab 文件存放目录
      */
-    private static Path getConfigPath() {
-        return Paths.get(CONFIG_SUB_PATH);
+    private static Path getTradeDirPath() {
+        return Paths.get(TRADES_DIR);
+    }
+
+    /**
+     * 获取指定 tabId 的交易文件路径
+     */
+    private static Path getTabFilePath(int tabId) {
+        return getTradeDirPath().resolve("tab_" + tabId + ".json");
+    }
+
+    /**
+     * 检查交易目录是否已存在任意 tab 文件
+     */
+    private static boolean hasAnyTabFile() {
+        Path dir = getTradeDirPath();
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+            return false;
+        }
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "tab_*.json")) {
+            return stream.iterator()
+                .hasNext();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 从文件名解析 tabId（{@code tab_<id>.json}）
+     *
+     * @return 解析成功返回正整数；失败返回 -1
+     */
+    private static int parseTabIdFromFileName(String fileName) {
+        if (fileName == null || !fileName.startsWith("tab_") || !fileName.endsWith(".json")) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(fileName.substring(4, fileName.length() - 5));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * 从旧版单文件迁移到新的 tab 拆分结构
+     * <p>
+     * 读旧文件 → 按 tabId 拆分保存 → 旧文件重命名为 {@code .bak}。
+     */
+    private static void migrateFromLegacy(Path legacyPath) {
+        try {
+            String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
+            NekoTradeData data = GSON.fromJson(json, NekoTradeData.class);
+            if (data == null || data.getTrades() == null) {
+                data = getDefaultTrades();
+            }
+            save(data);
+            Path backupPath = legacyPath.resolveSibling(
+                legacyPath.getFileName()
+                    .toString() + ".bak");
+            Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+            GTInterestingThing.LOG.info("猫猫售货机交易配置已从旧路径迁移: {} -> {}", legacyPath, getTradeDirPath());
+            GTInterestingThing.LOG.info("旧交易配置文件已重命名保留: {}", backupPath);
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("猫猫售货机交易配置从旧文件迁移失败", e);
+        }
     }
 }

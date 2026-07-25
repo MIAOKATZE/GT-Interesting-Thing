@@ -71,6 +71,8 @@ public class LotteryAnimationController {
     private long durationMs = 0L;
     /** 动画所属卡池 ID（防止跨池结果错投到当前轮盘） */
     private String animatingPoolId = "";
+    /** 当前动画所对应的抽奖结果时间戳（{@link LotteryClientData#getLastResultTimeMs()}） */
+    private long animatingResultTimeMs = 0L;
 
     private LotteryAnimationController() {}
 
@@ -179,6 +181,7 @@ public class LotteryAnimationController {
         state = AnimationState.IDLE;
         // 保留 targetSlot 作为下次起步格（startAnimation 读取）
         animatingPoolId = "";
+        animatingResultTimeMs = 0L;
     }
 
     public AnimationState getState() {
@@ -193,5 +196,23 @@ public class LotteryAnimationController {
     /** 目标格索引（FINISHED 后为中奖格） */
     public int getTargetSlot() {
         return targetSlot;
+    }
+
+    /**
+     * 当前动画所对应的结果时间戳（v1.7.7 G3：用于把 consumeDrawResult 推迟到动画完全停止后）
+     *
+     * @return 结果时间戳；未绑定结果时返回 0
+     */
+    public long getAnimatingResultTimeMs() {
+        return animatingResultTimeMs;
+    }
+
+    /**
+     * 绑定当前动画到指定结果时间戳
+     *
+     * @param timeMs {@link LotteryClientData#getLastResultTimeMs()}
+     */
+    public void setAnimatingResultTimeMs(long timeMs) {
+        this.animatingResultTimeMs = timeMs;
     }
 }

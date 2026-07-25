@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,12 +13,17 @@ import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
- * 猫猫售货机标签页配置管理
- * 负责读写 config/gtit/nekovm_pages.json
+ * 猫猫售货机标签页配置管理（v1.7.7 G4 存储结构重构）
+ * <p>
+ * 新路径：{@code config/gtit/trade/pages.json}；旧路径 {@code config/gtit/nekovm_pages.json}
+ * 存在时自动迁移，旧文件重命名为 {@code .bak} 保留。
  */
 public class NekoPageConfig {
 
-    private static final String CONFIG_SUB_PATH = "config/gtit/nekovm_pages.json";
+    /** 新路径 */
+    private static final String CONFIG_PATH = "config/gtit/trade/pages.json";
+    /** 旧路径（兼容迁移用） */
+    private static final String LEGACY_CONFIG_PATH = "config/gtit/nekovm_pages.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .serializeNulls()
         .disableHtmlEscaping()
@@ -50,15 +56,20 @@ public class NekoPageConfig {
     // --- 核心方法 ---
 
     /**
-     * 初始化配置，如果配置文件不存在则生成默认配置
+     * 初始化配置：新路径缺失时优先迁移旧文件，否则生成默认配置
      */
     public static synchronized void init() {
         try {
             Path path = getConfigPath();
             if (!Files.exists(path)) {
-                Files.createDirectories(path.getParent());
-                save(getDefaultPages());
-                GTInterestingThing.LOG.info("猫猫售货机标签页配置已生成默认文件: {}", path);
+                Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+                if (Files.exists(legacy)) {
+                    load(); // load 内部完成迁移
+                } else {
+                    Files.createDirectories(path.getParent());
+                    save(getDefaultPages());
+                    GTInterestingThing.LOG.info("猫猫售货机标签页配置已生成默认文件: {}", path);
+                }
             }
         } catch (Exception e) {
             GTInterestingThing.LOG.error("猫猫售货机标签页配置初始化失败", e);
@@ -66,15 +77,36 @@ public class NekoPageConfig {
     }
 
     /**
-     * 从文件加载标签页数据，文件不存在时返回默认数据
+     * 从文件加载标签页数据，文件不存在时尝试迁移旧文件，均失败返回默认数据
      */
     public static synchronized NekoPageData load() {
-        try {
-            Path path = getConfigPath();
-            if (!Files.exists(path)) {
-                GTInterestingThing.LOG.info("猫猫售货机标签页配置文件不存在，返回默认数据");
-                return getDefaultPages();
+        Path path = getConfigPath();
+        if (!Files.exists(path)) {
+            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+            if (Files.exists(legacy)) {
+                try {
+                    String json = new String(Files.readAllBytes(legacy), StandardCharsets.UTF_8);
+                    NekoPageData data = GSON.fromJson(json, NekoPageData.class);
+                    if (data != null && data.getPages() != null
+                        && !data.getPages()
+                            .isEmpty()) {
+                        save(data);
+                        Path backup = legacy.resolveSibling(
+                            legacy.getFileName()
+                                .toString() + ".bak");
+                        Files.move(legacy, backup, StandardCopyOption.REPLACE_EXISTING);
+                        GTInterestingThing.LOG.info("猫猫售货机标签页配置已从旧路径迁移: {} -> {}", legacy, path);
+                        GTInterestingThing.LOG.info("旧标签页配置文件已重命名保留: {}", backup);
+                        return data;
+                    }
+                } catch (Exception e) {
+                    GTInterestingThing.LOG.error("猫猫售货机标签页配置迁移失败，回退默认数据", e);
+                }
             }
+            GTInterestingThing.LOG.info("猫猫售货机标签页配置文件不存在，返回默认数据");
+            return getDefaultPages();
+        }
+        try {
             String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
             NekoPageData data = GSON.fromJson(json, NekoPageData.class);
             if (data == null || data.getPages() == null
@@ -91,7 +123,7 @@ public class NekoPageConfig {
     }
 
     /**
-     * 保存标签页数据到文件
+     * 保存标签页数据到新路径
      */
     public static synchronized void save(NekoPageData data) {
         try {
@@ -169,6 +201,6 @@ public class NekoPageConfig {
     }
 
     private static Path getConfigPath() {
-        return Paths.get(CONFIG_SUB_PATH);
+        return Paths.get(CONFIG_PATH);
     }
 }

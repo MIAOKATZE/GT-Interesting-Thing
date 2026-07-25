@@ -82,9 +82,12 @@ public class LotterySyncPacket implements IMessage {
                     "guaranteed",
                     pity.getGuaranteedRarity()
                         .name());
-                // 条目列表（顺序即轮盘槽位顺序）
+                // 条目列表（顺序即轮盘槽位顺序；v1.7.7 G3② 截断防御，防止第三端篡改导致越界）
                 NBTTagList entryList = new NBTTagList();
-                for (LotteryEntry entry : pool.getEntries()) {
+                List<LotteryEntry> entries = pool.getEntries();
+                int entryLimit = Math.min(entries.size(), LotteryPool.MAX_ENTRIES);
+                for (int i = 0; i < entryLimit; i++) {
+                    LotteryEntry entry = entries.get(i);
                     if (entry != null) {
                         entryList.appendTag(entry.writeToNBT());
                     }

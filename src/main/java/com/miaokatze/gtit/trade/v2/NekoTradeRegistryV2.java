@@ -13,9 +13,11 @@ import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
 
 /**
- * 新版注册表，管理 NekoTradeDatabase
+ * 新版注册表，管理 NekoTradeDatabase（v1.7.7 G4 适配 tab 拆分结构）
  * <p>
- * 从 NekoTradeConfig（v1 旧版配置）加载交易数据，
+ * 从 {@link NekoTradeConfig#load()} 读取已合并的交易数据（v1.7.7 G4 将交易按 tab
+ * 拆分为 {@code config/gtit/trade/trades/tab_<id>.json}，每文件单 tab；
+ * {@link NekoTradeConfig} 加载时扫描目录并合并为完整 {@link NekoTradeConfig.NekoTradeData}），
  * 转换为 v2 数据结构后注册到 {@link NekoTradeDatabase}。
  * 提供初始化和热重载能力。
  */
@@ -58,8 +60,9 @@ public class NekoTradeRegistryV2 {
     /**
      * 加载交易配置并注册到数据库
      * <p>
-     * 读取配置文件，将每条交易配置转换为 NekoTradeGroup，
-     * 注册到 {@link NekoTradeDatabase#INSTANCE}。
+     * 调用 {@link NekoTradeConfig#load()} 获取合并后的交易数据（v1.7.7 G4 已扫描
+     * {@code config/gtit/trade/trades/tab_<id>.json} 并合并），将每条交易配置转换为
+     * NekoTradeGroup，注册到 {@link NekoTradeDatabase#INSTANCE}。
      */
     private static void loadAndRegisterTrades() {
         // 清空数据库，防止 initialize/initializeClient 被多次调用时重复注册交易组
@@ -266,9 +269,10 @@ public class NekoTradeRegistryV2 {
     }
 
     /**
-     * 热重载交易配置
+     * 热重载交易配置（v1.7.7 G4 适配 tab 拆分结构）
      * <p>
-     * 清空数据库后重新加载，支持运行时更新交易配置。
+     * 清空数据库后重新调用 {@link NekoTradeConfig#load()} 扫描
+     * {@code config/gtit/trade/trades/tab_<id>.json} 并合并加载，支持运行时更新交易配置。
      *
      * @return 重载成功返回 true，失败返回 false
      */

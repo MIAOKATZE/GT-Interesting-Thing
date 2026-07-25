@@ -89,17 +89,22 @@ public class SignInSyncPacket implements IMessage {
             String itemId = ByteBufUtils.readUTF8String(buf);
             int itemAmount = buf.readInt();
             int itemMeta = buf.readInt();
-            this.cfgTiers.add(new SignInRewardTier(days, currencyId, amount, itemId, itemAmount, itemMeta));
+            String itemNbt = ByteBufUtils.readUTF8String(buf);
+            this.cfgTiers.add(new SignInRewardTier(days, currencyId, amount, itemId, itemAmount, itemMeta, itemNbt));
         }
-        // 在线时长配置快照（v1.7.6 G2③）
+        // 在线时长配置快照（v1.7.6 G2③；v1.7.7 G5② 新增物品奖励字段）
         int onlineCount = buf.readInt();
         this.cfgOnlineTiers = new ArrayList<>(Math.max(0, onlineCount));
         for (int i = 0; i < onlineCount; i++) {
             int seconds = buf.readInt();
             String currencyId = ByteBufUtils.readUTF8String(buf);
             int amount = buf.readInt();
-            // 在线档位物品奖励暂未启用（占位参数：空物品 ID）
-            this.cfgOnlineTiers.add(new OnlineTimeRewardTier(seconds, currencyId, amount, "", 0, 0));
+            String itemId = ByteBufUtils.readUTF8String(buf);
+            int itemAmount = buf.readInt();
+            int itemMeta = buf.readInt();
+            String itemNbt = ByteBufUtils.readUTF8String(buf);
+            this.cfgOnlineTiers
+                .add(new OnlineTimeRewardTier(seconds, currencyId, amount, itemId, itemAmount, itemMeta, itemNbt));
         }
     }
 
@@ -122,14 +127,19 @@ public class SignInSyncPacket implements IMessage {
             ByteBufUtils.writeUTF8String(buf, tier.getItemRewardId() == null ? "" : tier.getItemRewardId());
             buf.writeInt(tier.getItemRewardAmount());
             buf.writeInt(tier.getItemRewardMeta());
+            ByteBufUtils.writeUTF8String(buf, tier.getItemNbt() == null ? "" : tier.getItemNbt());
         }
-        // 在线时长配置快照（v1.7.6 G2③）
+        // 在线时长配置快照（v1.7.6 G2③；v1.7.7 G5② 新增物品奖励字段）
         List<OnlineTimeRewardTier> onlineTiers = this.cfgOnlineTiers == null ? new ArrayList<>() : this.cfgOnlineTiers;
         buf.writeInt(onlineTiers.size());
         for (OnlineTimeRewardTier tier : onlineTiers) {
             buf.writeInt(tier.getRequiredSeconds());
             ByteBufUtils.writeUTF8String(buf, tier.getCurrencyId() == null ? "" : tier.getCurrencyId());
             buf.writeInt(tier.getCurrencyAmount());
+            ByteBufUtils.writeUTF8String(buf, tier.getItemRewardId() == null ? "" : tier.getItemRewardId());
+            buf.writeInt(tier.getItemRewardAmount());
+            buf.writeInt(tier.getItemRewardMeta());
+            ByteBufUtils.writeUTF8String(buf, tier.getItemNbt() == null ? "" : tier.getItemNbt());
         }
     }
 

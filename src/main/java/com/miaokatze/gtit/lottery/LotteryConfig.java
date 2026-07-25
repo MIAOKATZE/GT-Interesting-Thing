@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,9 +25,12 @@ import com.miaokatze.gtit.util.NbtBase64Util;
 import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
- * 抽奖配置加载（JSON）
+ * 抽奖配置加载（JSON；v1.7.7 G4 存储结构重构）
  * <p>
- * 配置文件路径：{@code config/gtit/lottery.json}（与 daily_signin.json 同目录约定）。
+ * 配置文件路径：{@code config/gtit/lottery/lottery.json}。
+ * <p>
+ * 兼容：加载时若新路径缺失且旧文件 {@code config/gtit/lottery.json} 存在，
+ * 则整体迁移到新路径，旧文件重命名为 {@code .bak} 保留。
  * 首启写入默认配置（双卡池：猫猫币池 + 闪烁猫猫币池），支持 reload 热重载。
  * <p>
  * 配置结构（Gson 序列化，参照 {@link com.miaokatze.gtit.signin.DailySignInConfig} 模式）：
@@ -41,8 +45,10 @@ import cpw.mods.fml.common.registry.GameRegistry;
  */
 public class LotteryConfig {
 
-    /** 配置文件路径（相对游戏根目录） */
-    private static final String CONFIG_PATH = "config/gtit/lottery.json";
+    /** 新配置文件路径（相对游戏根目录） */
+    private static final String CONFIG_PATH = "config/gtit/lottery/lottery.json";
+    /** 旧配置文件路径（v1.7.7 G4 兼容迁移用） */
+    private static final String LEGACY_CONFIG_PATH = "config/gtit/lottery.json";
     /** Gson 实例（rarity 枚举大小写不敏感适配器 + NekoBigItemStack 物品适配器） */
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .disableHtmlEscaping()
@@ -115,11 +121,29 @@ public class LotteryConfig {
 
     /**
      * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * <p>
+     * v1.7.7 G4：优先读取新路径；新路径缺失且旧路径存在时，迁移旧文件到新路径，
+     * 旧文件重命名为 {@code .bak} 保留。
      *
      * @return 配置数据（永不为 null，失败回退默认）
      */
     public static LotteryConfigData load() {
         Path path = Paths.get(CONFIG_PATH);
+        if (!Files.exists(path)) {
+            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+            if (Files.exists(legacy)) {
+                try {
+                    migrateFromLegacy(legacy, path);
+                    // 迁移后继续从新路径读取
+                } catch (Exception e) {
+                    GTInterestingThing.LOG.error("抽奖配置从旧路径迁移失败，回退默认配置", e);
+                    LotteryConfigData fallback = getDefaultConfig();
+                    save(fallback);
+                    return fallback;
+                }
+            }
+        }
+
         if (Files.exists(path)) {
             try {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
@@ -148,11 +172,41 @@ public class LotteryConfig {
     }
 
     /**
+     * 从旧路径迁移配置到新路径（v1.7.7 G4）
+     *
+     * @param legacyPath 旧配置文件路径
+     * @param newPath    新配置文件路径
+     */
+    private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
+        Files.createDirectories(newPath.getParent());
+        String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
+        LotteryConfigData data = GSON.fromJson(json, LotteryConfigData.class);
+        if (data != null) {
+            Files.write(
+                newPath,
+                GSON.toJson(data)
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        Path backupPath = legacyPath.resolveSibling(
+            legacyPath.getFileName()
+                .toString() + ".bak");
+        Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+        GTInterestingThing.LOG.info("抽奖配置已从旧路径迁移: {} -> {}", legacyPath, newPath);
+        GTInterestingThing.LOG.info("旧抽奖配置文件已重命名保留: {}", backupPath);
+    }
+
+    /**
      * 将配置数据写回 JSON 文件
      */
     public static void save(LotteryConfigData data) {
         if (data == null) return;
         try {
+            // v1.7.7 G3②：保存前再次截断，防御运行期条目被动态追加到超过上限
+            if (data.pools != null) {
+                for (LotteryPool pool : data.pools) {
+                    if (pool != null) pool.truncateEntriesIfNeeded();
+                }
+            }
             Path path = Paths.get(CONFIG_PATH);
             Files.createDirectories(path.getParent());
             Files.write(
@@ -222,7 +276,8 @@ public class LotteryConfig {
      * <p>
      * ① 清理 costItems 中的 null 条目（物品已卸载导致反序列化失败）；
      * ② 旧字段（nekoCurrencyId × costPerDraw）合成 costItems；
-     * ③ 缺省图标回退为对应猫猫币物品。
+     * ③ 缺省图标回退为对应猫猫币物品；
+     * ④ 截断超过 {@link LotteryPool#MAX_ENTRIES} 的条目（v1.7.7 G3②）。
      */
     private static void migratePool(LotteryPool pool) {
         // 清理反序列化失败（物品不存在）的 null 条目
@@ -230,6 +285,8 @@ public class LotteryConfig {
         costs.removeIf(cost -> cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0);
         // 旧字段合成（costItems 为空时生效）
         pool.synthesizeCostItemsFromLegacy();
+        // v1.7.7 G3②：加载时截断超限条目，防止越界动画失效
+        pool.truncateEntriesIfNeeded();
         // 缺省图标：回退对应猫猫币物品
         if (pool.getIconItem()
             .isEmpty()) {

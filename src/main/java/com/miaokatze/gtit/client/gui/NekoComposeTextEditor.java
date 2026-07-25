@@ -42,6 +42,12 @@ public class NekoComposeTextEditor extends TextEditorWidget {
         super();
         // 限制最大行数（默认 10000 行过大，正文总量由服务端 500 字符兜底）
         this.handler.setMaxLines(MAX_LINES);
+        // ModularUI2 不变量：文本列表必须始终 >= 1 行——TextFieldRenderer.drawMeasuredLines
+        // 渲染光标时直接 handler.getText().get(cursorY)，空列表会抛 IndexOutOfBoundsException。
+        // 构造即补 1 行空行，保证任何调用顺序下不变量都成立（空行不影响 hint 显示，
+        // isTextEmpty() 对全空行仍返回 true）
+        this.handler.getText()
+            .add("");
         // 文本域背景主题（与搜索栏同款深色底）
         widgetTheme(NekoWidgetThemes.BACKGROUND_SEARCH_BAR);
     }
@@ -73,14 +79,37 @@ public class NekoComposeTextEditor extends TextEditorWidget {
                     .add(line);
             }
         }
+        // ModularUI2 不变量兜底：文本列表必须 >= 1 行（渲染光标时直接 get(cursorY)，
+        // 空列表抛 IndexOutOfBoundsException）。text 为 null/空串时补 1 行空行；
+        // 空行不影响 getComposeText() 结果（单行空串 join 后仍为 ""），草稿判空不受影响
+        if (this.handler.getText()
+            .isEmpty()) {
+            this.handler.getText()
+                .add("");
+        }
+        // 内容整体替换后光标归位 (0,0)：防止复用实例时旧光标行号超出新列表行数
+        // （与空列表同属 drawMeasuredLines 的越界诱因）
+        this.handler.setCursor(0, 0, false);
         this.previousText = getComposeText();
     }
 
     /**
      * 清空正文（发送成功后或「清空」按钮调用）
+     * <p>
+     * 先调用 {@code handler.clear()} 走 markAll + deleteMarked 的合并删除路径；
+     * 再防御性补一行空行，确保 ModularUI2「文本列表 >= 1 行」不变量成立，
+     * 避免库实现细节或未来版本变化导致清空后出现 0 行而触发 drawMeasuredLines 越界。
      */
     public void clearText() {
         this.handler.clear();
+        // 防御性兜底：handler.clear() 理论上保留 1 行空行，但直接依赖库内部行为
+        // 风险高；若出现 0 行则主动补空行，保证 TextFieldRenderer.get(cursorY) 不抛
+        // IndexOutOfBoundsException。
+        if (this.handler.getText()
+            .isEmpty()) {
+            this.handler.getText()
+                .add("");
+        }
     }
 
     /**

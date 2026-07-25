@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,10 +20,13 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
- * 自动祝福邮件配置（v1.7.6 G5）
+ * 自动祝福邮件配置（v1.7.6 G5；v1.7.7 G4 存储结构重构）
  * <p>
  * 管理节日祝福表与生日祝福模板的加载、保存与查询，
- * 配置文件路径: config/gtit/blessing_config.json。
+ * 配置文件路径: {@code config/gtit/mail/blessing_config.json}。
+ * <p>
+ * 兼容：加载时若新路径缺失且旧文件 {@code config/gtit/blessing_config.json} 存在，
+ * 则整体迁移到新路径，旧文件重命名为 {@code .bak} 保留。
  * 结构参照 {@link com.miaokatze.gtit.signin.OnlineTimeConfig}（Gson 序列化，缺省生成默认配置）：
  * <ul>
  * <li>{@code festivals}：节日祝福表（名称 / MM-dd 固定日期 / 邮件标题 / 正文 / 附件物品列表 / 猫猫币 ID+数量）</li>
@@ -46,7 +50,10 @@ import cpw.mods.fml.common.registry.GameRegistry;
  */
 public class BlessingConfig {
 
-    private static final String CONFIG_PATH = "config/gtit/blessing_config.json";
+    /** 新配置文件路径（相对游戏根目录） */
+    private static final String CONFIG_PATH = "config/gtit/mail/blessing_config.json";
+    /** 旧配置文件路径（v1.7.7 G4 兼容迁移用） */
+    private static final String LEGACY_CONFIG_PATH = "config/gtit/blessing_config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .disableHtmlEscaping()
         .create();
@@ -203,9 +210,27 @@ public class BlessingConfig {
 
     /**
      * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * <p>
+     * v1.7.7 G4：优先读取新路径；新路径缺失且旧路径存在时，迁移旧文件到新路径，
+     * 旧文件重命名为 {@code .bak} 保留。
      */
     public static void loadConfig() {
         Path path = Paths.get(CONFIG_PATH);
+        if (!Files.exists(path)) {
+            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+            if (Files.exists(legacy)) {
+                try {
+                    migrateFromLegacy(legacy, path);
+                    // 迁移后继续从新路径读取
+                } catch (Exception e) {
+                    GTInterestingThing.LOG.error("祝福邮件配置从旧路径迁移失败，回退默认配置", e);
+                    applyDefaults();
+                    saveConfig();
+                    return;
+                }
+            }
+        }
+
         if (Files.exists(path)) {
             try {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
@@ -224,6 +249,30 @@ public class BlessingConfig {
         // 首次运行或加载失败：使用默认配置并落盘
         applyDefaults();
         saveConfig();
+    }
+
+    /**
+     * 从旧路径迁移配置到新路径（v1.7.7 G4）
+     *
+     * @param legacyPath 旧配置文件路径
+     * @param newPath    新配置文件路径
+     */
+    private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
+        Files.createDirectories(newPath.getParent());
+        String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
+        ConfigData data = GSON.fromJson(json, ConfigData.class);
+        if (data != null) {
+            Files.write(
+                newPath,
+                GSON.toJson(data)
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        Path backupPath = legacyPath.resolveSibling(
+            legacyPath.getFileName()
+                .toString() + ".bak");
+        Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+        GTInterestingThing.LOG.info("祝福邮件配置已从旧路径迁移: {} -> {}", legacyPath, newPath);
+        GTInterestingThing.LOG.info("旧祝福邮件配置文件已重命名保留: {}", backupPath);
     }
 
     /**

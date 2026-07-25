@@ -3,6 +3,9 @@ package com.miaokatze.gtit.signin;
 import java.util.Calendar;
 import java.util.List;
 
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumChatFormatting;
 
 import com.cleanroommc.modularui.api.drawable.IDrawable;
@@ -11,6 +14,7 @@ import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.drawable.UITexture;
+import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
@@ -21,6 +25,7 @@ import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.util.NbtBase64Util;
 
 /**
  * 签到「活跃」大页 GUI（v1.7.6 G2③ 重构：4 sub-pages）
@@ -89,6 +94,13 @@ public class SignInCalendarGui {
          * 编辑模式下点击「全局配置」按钮时触发
          */
         void onEditGlobalRequested();
+
+        /**
+         * 编辑模式下点击每日在线档位行时触发
+         *
+         * @param tier 被点击的在线奖励档位
+         */
+        void onEditOnlineTierRequested(OnlineTimeRewardTier tier);
     }
 
     // ==================== 布局常量 ====================
@@ -151,10 +163,23 @@ public class SignInCalendarGui {
 
     /** 阶梯预览区 Y */
     private static final int TIER_Y = 44;
-    /** 阶梯预览单列宽 */
-    private static final int TIER_COL_W = 54;
-    /** 阶梯预览最大列数（对应 3 个宝箱素材） */
-    private static final int TIER_MAX = 3;
+    /** v1.7.7 G5①：阶梯预览物品槽边长 */
+    private static final int TIER_SLOT_SIZE = 18;
+    /** v1.7.7 G5①：阶梯预览每行槽位数 */
+    private static final int TIER_SLOTS_PER_ROW = 8;
+    /** v1.7.7 G5①：阶梯预览行数 */
+    private static final int TIER_ROWS = 2;
+    /** v1.7.7 G5①：阶梯预览槽间距 */
+    private static final int TIER_SLOT_GAP = 1;
+    /** v1.7.7 G5①：阶梯预览总槽位数（8×2=16） */
+    private static final int TIER_SLOT_COUNT = TIER_SLOTS_PER_ROW * TIER_ROWS;
+    /** v1.7.7 G5①：阶梯预览网格总宽 */
+    private static final int TIER_GRID_W = TIER_SLOTS_PER_ROW * TIER_SLOT_SIZE
+        + (TIER_SLOTS_PER_ROW - 1) * TIER_SLOT_GAP;
+    /** v1.7.7 G5①：阶梯预览网格左上角 X（水平居中） */
+    private static final int TIER_GRID_X = (PAGE_WIDTH - TIER_GRID_W) / 2;
+    /** v1.7.7 G5①：阶梯预览网格总高 */
+    private static final int TIER_GRID_H = TIER_ROWS * TIER_SLOT_SIZE + (TIER_ROWS - 1) * TIER_SLOT_GAP;
 
     // ---- 页 3「每日在线」布局（内层页面局部坐标） ----
 
@@ -255,7 +280,7 @@ public class SignInCalendarGui {
 
         subPaged.addPage(createCalendarPage(editCallback)); // 页 0：每月签到
         subPaged.addPage(createConsecutivePage(editCallback)); // 页 1：连续签到
-        subPaged.addPage(createOnlinePage()); // 页 2：每日在线
+        subPaged.addPage(createOnlinePage(editCallback)); // 页 2：每日在线（v1.7.7 G5② 支持编辑回调）
         subPaged.addPage(createAnniversaryPage()); // 页 3：纪念日
 
         return subPaged;
@@ -598,81 +623,156 @@ public class SignInCalendarGui {
     }
 
     /**
-     * 阶梯奖励预览：最多 3 列（宝箱 + 条件 + 奖励内容 + 领取状态）
+     * 阶梯奖励预览：8×2 共 16 个物品槽网格（v1.7.7 G5①）
      * <p>
-     * 宝箱素材按所需天数选取（≤7 小宝箱 / ≤14 中宝箱 / 否则大宝箱）。
-     * 领取状态读取 {@link SignInClientData#hasClaimedTier(int)}（服务端同步的当月领取记录）。
+     * 每个槽位实时读取 {@link SignInClientData#getRewardTiers()} 动态渲染对应阶梯的物品奖励；
+     * 无物品奖励的阶梯显示为空槽底。网格底部 = {@code TIER_Y + TIER_GRID_H = 44 + 37 = 81}，
+     * 远低于主内容区上限 {@value #CONTENT_BOTTOM}。
      * <p>
-     * <b>编辑模式</b>（v1.7.0 目标 4）：宝箱改为 {@link ButtonWidget}，
-     * 点击通过 {@link SignInEditCallback#onEditTierRequested} 打开阶梯编辑面板。
+     * <b>编辑模式</b>（v1.7.0 目标 4）：槽位可点击，
+     * 通过 {@link SignInEditCallback#onEditTierRequested} 打开阶梯编辑面板。
      */
     private static IWidget createTierPreview(SignInEditCallback editCallback) {
         ParentWidget<?> box = new ParentWidget<>().pos(0, TIER_Y)
-            .size(PAGE_WIDTH, 50);
-        // 读客户端缓存（服务端同步快照优先，未同步回退本地配置）
-        List<SignInRewardTier> tiers = SignInClientData.getRewardTiers();
-        int count = Math.min(TIER_MAX, tiers.size());
-        int startX = (PAGE_WIDTH - TIER_COL_W * count) / 2;
-        for (int i = 0; i < count; i++) {
-            final SignInRewardTier tier = tiers.get(i);
-            int x = startX + i * TIER_COL_W;
+            .size(PAGE_WIDTH, TIER_GRID_H);
 
-            // 宝箱图标按钮（tooltip 详列奖励内容；编辑模式下点击打开编辑面板）
-            box.child(
-                new ButtonWidget<>().pos(x + (TIER_COL_W - 24) / 2, 0)
-                    .size(24, 24)
-                    .background(chestFor(tier.getRequiredDays()))
-                    .tooltipBuilder(t -> {
-                        t.addLine(IKey.str(EnumChatFormatting.GOLD + "连续签到 " + tier.getRequiredDays() + " 天宝箱"));
-                        t.addLine(IKey.str(buildRewardText(tier)));
-                        if (editCallback != null && editCallback.isEditMode()) {
-                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此阶梯奖励"));
-                        } else if (SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
-                            t.addLine(IKey.str(EnumChatFormatting.GREEN + "本月已领取"));
-                        } else {
-                            t.addLine(IKey.str(EnumChatFormatting.GRAY + "达成条件后签到自动发放"));
-                        }
-                    })
-                    .tooltipAutoUpdate(true)
-                    .onMouseTapped(mouse -> {
-                        // 编辑模式：点击宝箱打开阶梯编辑面板
-                        if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
-                            editCallback.onEditTierRequested(tier);
-                            return true;
-                        }
-                        return false;
-                    }));
+        for (int i = 0; i < TIER_SLOT_COUNT; i++) {
+            final int slotIndex = i;
+            int col = slotIndex % TIER_SLOTS_PER_ROW;
+            int row = slotIndex / TIER_SLOTS_PER_ROW;
+            int x = TIER_GRID_X + col * (TIER_SLOT_SIZE + TIER_SLOT_GAP);
+            int y = row * (TIER_SLOT_SIZE + TIER_SLOT_GAP);
 
-            // 条件文本（静态，配置加载后不变化）
-            box.child(
-                new TextWidget<>(IKey.str("连续" + tier.getRequiredDays() + "天")).pos(x, 25)
-                    .size(TIER_COL_W, 8)
-                    .textAlign(Alignment.Center)
-                    .scale(0.7f)
-                    .color(0xFF444444)
-                    .shadow(false));
-
-            // 奖励内容（静态）
-            box.child(
-                new TextWidget<>(IKey.str(buildRewardText(tier))).pos(x, 33)
-                    .size(TIER_COL_W, 8)
-                    .textAlign(Alignment.Center)
-                    .scale(0.7f)
-                    .color(0xFFB8860B)
-                    .shadow(false));
-
-            // 领取状态（动态：已领取/待达成）
-            box.child(
-                new TextWidget<>(
-                    IKey.dynamic(
-                        () -> SignInClientData.hasClaimedTier(tier.getRequiredDays()) ? EnumChatFormatting.GREEN + "已领取"
-                            : EnumChatFormatting.GRAY + "未达成")).pos(x, 41)
-                                .size(TIER_COL_W, 8)
-                                .textAlign(Alignment.Center)
-                                .scale(0.7f)
-                                .shadow(false));
+            box.child(createTierSlot(x, y, slotIndex, editCallback));
         }
         return box;
+    }
+
+    /**
+     * 单个阶梯预览槽（v1.7.7 G5①）
+     * <p>
+     * 动态从 {@link SignInClientData#getRewardTiers()} 读取对应索引的阶梯，
+     * 绘制槽位底框 + 物品图标 + 数量文字；编辑模式下点击打开阶梯编辑面板。
+     *
+     * @param x            槽位在页内局部 X
+     * @param y            槽位在页内局部 Y
+     * @param slotIndex    槽位索引（对应 tiers 列表索引）
+     * @param editCallback 编辑模式回调
+     * @return 槽位 Widget
+     */
+    private static IWidget createTierSlot(int x, int y, final int slotIndex, SignInEditCallback editCallback) {
+        ParentWidget<?> slot = new ParentWidget<>().pos(x, y)
+            .size(TIER_SLOT_SIZE, TIER_SLOT_SIZE);
+
+        // 槽位底框（动态：有阶梯且未领取 = 高亮边框，否则 = 普通暗框）
+        slot.child(new IDrawable.DrawableWidget((context, sx, sy, sw, sh, theme) -> {
+            SignInRewardTier tier = tierAt(slotIndex);
+            boolean claimed = tier != null && SignInClientData.hasClaimedTier(tier.getRequiredDays());
+            // 外框
+            int borderColor = tier == null ? 0xFF555555 : (claimed ? 0xFF888888 : 0xFFFFC84A);
+            GuiDraw.drawRect(sx, sy, sw, sh, borderColor);
+            // 内底
+            GuiDraw.drawRect(sx + 1, sy + 1, sw - 2, sh - 2, 0xFF2A2A3A);
+        }).pos(0, 0)
+            .size(TIER_SLOT_SIZE, TIER_SLOT_SIZE));
+
+        // 物品图标 + 数量（动态：随配置同步实时刷新）
+        slot.child(new IDrawable.DrawableWidget((context, sx, sy, sw, sh, theme) -> {
+            SignInRewardTier tier = tierAt(slotIndex);
+            if (tier == null || !tier.hasItemReward()) return;
+            ItemStack stack = resolveTierItemStack(tier);
+            if (stack == null) return;
+            float z = context.getCurrentDrawingZ();
+            GuiDraw.drawItem(stack, sx + 1, sy + 1, 16, 16, (int) z);
+            // 数量文字（>1 时显示）
+            if (stack.stackSize > 1) {
+                GuiDraw.drawText(String.valueOf(stack.stackSize), sx + 10, sy + 9, 0.75f, 0xFFFFFFFF, true);
+            }
+        }).pos(0, 0)
+            .size(TIER_SLOT_SIZE, TIER_SLOT_SIZE));
+
+        // 条件文字（所需天数，显示在槽位底部中央，小字）
+        slot.child(new TextWidget<>(IKey.dynamic(() -> {
+            SignInRewardTier tier = tierAt(slotIndex);
+            return tier == null ? "" : String.valueOf(tier.getRequiredDays());
+        })).pos(0, TIER_SLOT_SIZE - 7)
+            .size(TIER_SLOT_SIZE, 7)
+            .textAlign(Alignment.Center)
+            .scale(0.65f)
+            .color(0xFFAAAAAA)
+            .shadow(false));
+
+        // 点击区域（编辑模式下打开阶梯编辑面板；非编辑模式仅 tooltip）
+        ButtonWidget<?> hitbox = new ButtonWidget<>().pos(0, 0)
+            .size(TIER_SLOT_SIZE, TIER_SLOT_SIZE)
+            .background(IDrawable.EMPTY)
+            .tooltipBuilder(t -> buildTierSlotTooltip(t, slotIndex, editCallback))
+            .tooltipAutoUpdate(true)
+            .onMouseTapped(mouse -> {
+                if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
+                    SignInRewardTier tier = tierAt(slotIndex);
+                    if (tier != null) {
+                        editCallback.onEditTierRequested(tier);
+                        return true;
+                    }
+                }
+                return false;
+            });
+        slot.child(hitbox);
+        return slot;
+    }
+
+    /**
+     * 构建阶梯槽位的 Tooltip（v1.7.7 G5①）
+     *
+     * @param slotIndex    槽位索引
+     * @param editCallback 编辑模式回调
+     */
+    private static void buildTierSlotTooltip(RichTooltip t, int slotIndex, SignInEditCallback editCallback) {
+        SignInRewardTier tier = tierAt(slotIndex);
+        if (tier == null) {
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "无阶梯奖励"));
+            return;
+        }
+        t.addLine(IKey.str(EnumChatFormatting.GOLD + "连续签到 " + tier.getRequiredDays() + " 天奖励"));
+        t.addLine(IKey.str(buildRewardText(tier)));
+        if (editCallback != null && editCallback.isEditMode()) {
+            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此阶梯奖励"));
+        } else if (SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
+            t.addLine(IKey.str(EnumChatFormatting.GREEN + "本月已领取"));
+        } else {
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "达成条件后签到自动发放"));
+        }
+    }
+
+    /** 按索引取阶梯奖励（越界返回 null） */
+    private static SignInRewardTier tierAt(int index) {
+        List<SignInRewardTier> tiers = SignInClientData.getRewardTiers();
+        return index >= 0 && index < tiers.size() ? tiers.get(index) : null;
+    }
+
+    /**
+     * 将阶梯物品奖励解析为显示用 ItemStack（v1.7.7 G5①）
+     * <p>
+     * 优先使用缓存的物品 ID + meta + NBT；解析失败返回 null。
+     *
+     * @param tier 阶梯奖励
+     * @return 物品栈（含 NBT），解析失败返回 null
+     */
+    private static ItemStack resolveTierItemStack(SignInRewardTier tier) {
+        if (tier == null || !tier.hasItemReward()) return null;
+        String[] parts = tier.getItemRewardId()
+            .split(":");
+        if (parts.length != 2) return null;
+        Item item = cpw.mods.fml.common.registry.GameRegistry.findItem(parts[0], parts[1]);
+        if (item == null) return null;
+        ItemStack stack = new ItemStack(item, Math.max(1, tier.getItemRewardAmount()), tier.getItemRewardMeta());
+        NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(tier.getItemNbt());
+        if (nbt != null) {
+            // v1.7.7 G5①：copy() 返回 NBTBase，需强转为 NBTTagCompound 再写入物品
+            stack.setTagCompound((NBTTagCompound) nbt.copy());
+        }
+        return stack;
     }
 
     // ==================== 页 2：每日在线 ====================
@@ -684,8 +784,13 @@ public class SignInCalendarGui {
      * 最多显示 {@value #ONLINE_MAX_ROWS} 行；领取动作经
      * {@link SignInNetworkManager#sendClaimOnline(int)} 发服务端权威校验
      * （达成校验 + 防重），结果由同步包回推刷新。
+     * <p>
+     * <b>v1.7.7 G5②</b>：编辑模式下档位行整行可点击，通过
+     * {@link SignInEditCallback#onEditOnlineTierRequested} 打开在线档位编辑面板。
+     *
+     * @param editCallback 编辑模式回调；null 表示不支持编辑模式
      */
-    private static IWidget createOnlinePage() {
+    private static IWidget createOnlinePage(SignInEditCallback editCallback) {
         ParentWidget<?> view = new ParentWidget<>().size(PAGE_WIDTH, INNER_HEIGHT);
 
         view.child(
@@ -706,7 +811,7 @@ public class SignInCalendarGui {
 
         // 档位行（固定 ONLINE_MAX_ROWS 行，超出配置数量的行整体隐藏）
         for (int i = 0; i < ONLINE_MAX_ROWS; i++) {
-            view.child(createOnlineTierRow(i));
+            view.child(createOnlineTierRow(i, editCallback));
         }
 
         // 规则说明（静态灰字）
@@ -722,10 +827,13 @@ public class SignInCalendarGui {
 
     /**
      * 在线档位行：宝箱图标 + 条件/奖励文本 + 领取按钮
+     * <p>
+     * <b>v1.7.7 G5②</b>：编辑模式下整行变为可点击编辑入口；非编辑模式下领取按钮行为不变。
      *
-     * @param index 档位索引（{@link SignInClientData#getOnlineRewardTiers()} 列表序）
+     * @param index        档位索引（{@link SignInClientData#getOnlineRewardTiers()} 列表序）
+     * @param editCallback 编辑模式回调；null 表示不支持编辑模式
      */
-    private static IWidget createOnlineTierRow(final int index) {
+    private static IWidget createOnlineTierRow(final int index, SignInEditCallback editCallback) {
         ParentWidget<?> row = new ParentWidget<>().pos(0, ONLINE_ROW_Y + index * ONLINE_ROW_H)
             .size(PAGE_WIDTH, ONLINE_ROW_H);
 
@@ -746,13 +854,12 @@ public class SignInCalendarGui {
             .shadow(false)
             .setEnabledIf(w -> onlineTier(index) != null));
 
-        // 奖励文本（+N 猫猫币）
+        // 奖励文本（+N 猫猫币 / +物品）
         row.child(new TextWidget<>(IKey.dynamic(() -> {
             OnlineTimeRewardTier tier = onlineTier(index);
-            return tier == null ? ""
-                : "+" + tier.getCurrencyAmount() + " " + NekoCurrencyRegistrar.getDisplayName(tier.getCurrencyId());
+            return tier == null ? "" : buildOnlineRewardText(tier);
         })).pos(34, 12)
-            .size(80, 8)
+            .size(100, 8)
             .scale(0.7f)
             .color(0xFFB8860B)
             .shadow(false)
@@ -765,28 +872,19 @@ public class SignInCalendarGui {
                 .background(NekoGuiTextures.MAIL_BTN_CLAIM)
                 .disableHoverBackground()
                 .overlay(IKey.dynamic(() -> onlineClaimButtonText(index)))
-                .tooltipBuilder(t -> {
-                    OnlineTimeRewardTier tier = onlineTier(index);
-                    if (tier == null) return;
-                    t.addLine(
-                        IKey.str(EnumChatFormatting.GOLD + "在线 " + formatDuration(tier.getRequiredSeconds()) + " 奖励"));
-                    t.addLine(
-                        IKey.str(
-                            "+" + tier.getCurrencyAmount()
-                                + " "
-                                + NekoCurrencyRegistrar.getDisplayName(tier.getCurrencyId())));
-                    if (SignInClientData.hasClaimedOnlineTier(tier.getRequiredSeconds())) {
-                        t.addLine(IKey.str(EnumChatFormatting.GREEN + "今日已领取"));
-                    } else if (SignInClientData.getOnlineSecondsToday() >= tier.getRequiredSeconds()) {
-                        t.addLine(IKey.str(EnumChatFormatting.YELLOW + "点击领取"));
-                    } else {
-                        t.addLine(IKey.str(EnumChatFormatting.GRAY + "尚未达成，继续在线即可解锁"));
-                    }
-                })
+                .tooltipBuilder(t -> buildOnlineTierTooltip(t, index, editCallback))
                 .tooltipAutoUpdate(true)
                 .onMouseTapped(mouse -> {
                     OnlineTimeRewardTier tier = onlineTier(index);
-                    // 仅左键 + 达成 + 未领取时发请求；服务端兜底重复校验，双击安全
+                    // 编辑模式：点击领取按钮也打开编辑面板（与整行点击口径一致）
+                    if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
+                        if (tier != null) {
+                            editCallback.onEditOnlineTierRequested(tier);
+                            return true;
+                        }
+                        return false;
+                    }
+                    // 非编辑模式：仅左键 + 达成 + 未领取时发请求；服务端兜底重复校验，双击安全
                     if (mouse == 0 && tier != null
                         && !SignInClientData.hasClaimedOnlineTier(tier.getRequiredSeconds())
                         && SignInClientData.getOnlineSecondsToday() >= tier.getRequiredSeconds()) {
@@ -797,7 +895,60 @@ public class SignInCalendarGui {
                 })
                 .setEnabledIf(w -> onlineTier(index) != null));
 
+        // 编辑模式整行点击热区（覆盖在领取按钮之外的行区域）
+        ButtonWidget<?> rowHitbox = new ButtonWidget<>().pos(0, 0)
+            .size(PAGE_WIDTH - ONLINE_CLAIM_W - 4, ONLINE_ROW_H)
+            .background(IDrawable.EMPTY)
+            .tooltipBuilder(t -> buildOnlineTierTooltip(t, index, editCallback))
+            .tooltipAutoUpdate(true)
+            .onMouseTapped(mouse -> {
+                if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
+                    OnlineTimeRewardTier tier = onlineTier(index);
+                    if (tier != null) {
+                        editCallback.onEditOnlineTierRequested(tier);
+                        return true;
+                    }
+                }
+                return false;
+            });
+        rowHitbox.setEnabledIf(w -> editCallback != null && editCallback.isEditMode() && onlineTier(index) != null);
+        row.child(rowHitbox);
+
         return row;
+    }
+
+    /**
+     * 构建在线档位行 Tooltip（v1.7.7 G5②）
+     *
+     * @param t            Tooltip 对象
+     * @param index        档位索引
+     * @param editCallback 编辑模式回调
+     */
+    private static void buildOnlineTierTooltip(RichTooltip t, int index, SignInEditCallback editCallback) {
+        OnlineTimeRewardTier tier = onlineTier(index);
+        if (tier == null) return;
+        t.addLine(IKey.str(EnumChatFormatting.GOLD + "在线 " + formatDuration(tier.getRequiredSeconds()) + " 奖励"));
+        t.addLine(IKey.str(buildOnlineRewardText(tier)));
+        if (editCallback != null && editCallback.isEditMode()) {
+            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此在线档位"));
+            return;
+        }
+        if (SignInClientData.hasClaimedOnlineTier(tier.getRequiredSeconds())) {
+            t.addLine(IKey.str(EnumChatFormatting.GREEN + "今日已领取"));
+        } else if (SignInClientData.getOnlineSecondsToday() >= tier.getRequiredSeconds()) {
+            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "点击领取"));
+        } else {
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "尚未达成，继续在线即可解锁"));
+        }
+    }
+
+    /** 构建在线档位奖励文本（货币 + 可选物品标记） */
+    private static String buildOnlineRewardText(OnlineTimeRewardTier tier) {
+        String text = "+" + tier.getCurrencyAmount() + " " + NekoCurrencyRegistrar.getDisplayName(tier.getCurrencyId());
+        if (tier.hasItemReward()) {
+            text += " +物品";
+        }
+        return text;
     }
 
     /** 领取按钮文字：已领取（灰）/ 领取（白）/ 未达成（暗灰） */
@@ -1139,15 +1290,6 @@ public class SignInCalendarGui {
             monthInfoCache = MonthInfo.compute(today, ym);
         }
         return monthInfoCache;
-    }
-
-    /**
-     * 按阶梯所需天数选取宝箱素材（≤7 小宝箱 / ≤14 中宝箱 / 否则大宝箱）
-     */
-    private static UITexture chestFor(int requiredDays) {
-        if (requiredDays <= 7) return NekoGuiTextures.SIGNIN_CHEST_7;
-        if (requiredDays <= 14) return NekoGuiTextures.SIGNIN_CHEST_14;
-        return NekoGuiTextures.SIGNIN_CHEST_30;
     }
 
     /**

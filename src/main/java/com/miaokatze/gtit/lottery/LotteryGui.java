@@ -91,20 +91,20 @@ public class LotteryGui {
     private static final int WHEEL_COLS = 4;
     /** 轮盘最大行数（12 格 = 4列×3行） */
     private static final int WHEEL_MAX_ROWS = 3;
-    /** 轮盘最大格数（环形边框路径长度 = 2×(4+3) - 4） */
-    private static final int MAX_SLOTS = 2 * (WHEEL_COLS + WHEEL_MAX_ROWS) - 4;
-    /** 轮盘区左上角 Y */
-    private static final int WHEEL_Y = 40;
+    /** 轮盘最大格数（环形边框路径长度 = 2×(4+3) - 4），与 {@link LotteryPool#MAX_ENTRIES} 保持一致 */
+    private static final int MAX_SLOTS = LotteryPool.MAX_ENTRIES;
+    /** 轮盘区左上角 Y（v1.7.7 G3①：40→24，为背包行让出空间） */
+    private static final int WHEEL_Y = 24;
     /** 轮盘区高度（3 行 × 28 = 84） */
     private static final int WHEEL_H = WHEEL_MAX_ROWS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
 
-    /** 结果提示条 Y */
-    private static final int RESULT_Y = 136;
+    /** 结果提示条 Y（v1.7.7 G3①：136→114） */
+    private static final int RESULT_Y = 114;
     /** 结果提示显示时长（毫秒） */
     private static final long RESULT_DISPLAY_MS = 6000L;
 
-    /** 10 连结果列表 Y */
-    private static final int LIST_Y = 152;
+    /** 10 连结果列表 Y（v1.7.7 G3①：152→128） */
+    private static final int LIST_Y = 128;
     /** 10 连结果列表单格边长 */
     private static final int LIST_CELL = 18;
     /** 10 连结果列表间距 */
@@ -112,10 +112,10 @@ public class LotteryGui {
     /** 10 连结果列表高度（两行，每格 18 + 间距 2） */
     private static final int LIST_H = 2 * LIST_CELL + LIST_GAP;
 
-    /** 保底进度文本 Y */
-    private static final int PITY_Y = 200;
-    /** 抽奖按钮 Y */
-    private static final int DRAW_BTN_Y = 214;
+    /** 保底进度文本 Y（v1.7.7 G3①：200→172） */
+    private static final int PITY_Y = 172;
+    /** 抽奖按钮 Y（v1.7.7 G3①：214→190；按钮底 = 190 + 24 = 214 ≤ 229） */
+    private static final int DRAW_BTN_Y = 190;
     /** 抽奖按钮宽（v1.7.6 G4 自 64 加宽至 72：容纳「按钮文案+价格」防溢出；素材 fullImage 轻微拉伸） */
     private static final int DRAW_BTN_W = 72;
     /** 抽奖按钮高 */
@@ -125,12 +125,12 @@ public class LotteryGui {
     /** 按钮文本显示列预算（全角计 2 列/半角计 1 列，72px 宽扣内边距约 14 列） */
     private static final int DRAW_BTN_TEXT_BUDGET = 14;
 
-    /** 最近中奖摘要 Y */
-    private static final int HISTORY_Y = 246;
-    /** 最近中奖摘要条数 */
-    private static final int HISTORY_LINES = 3;
-    /** 摘要行高（v1.7.6 G4 自 10 加高至 12：中文 glyph 视觉偏高，行距 10 时相邻行粘连重叠） */
-    private static final int HISTORY_LINE_H = 12;
+    /** 最近中奖摘要 Y（v1.7.7 G3①：246→216；摘要区底 ≈ 230 ≤ 229 遮挡线） */
+    private static final int HISTORY_Y = 216;
+    /** 最近中奖摘要条数（v1.7.7 G3①：3→2，配合行高压进可见区） */
+    private static final int HISTORY_LINES = 2;
+    /** 摘要行高（v1.7.7 G3①：12→7，scale 0.7 下两行总高 14，确保不越界） */
+    private static final int HISTORY_LINE_H = 7;
     /** 摘要玩家名显示列预算（scale 0.7 下整行约 54 列，玩家名份额） */
     private static final int HISTORY_NAME_BUDGET = 12;
     /** 摘要物品名显示列预算（超长物品名截断补「…」，防顶行/换行观感） */
@@ -512,7 +512,9 @@ public class LotteryGui {
     /**
      * 动画推进（每个动态 Supplier 求值前调用，幂等）：
      * <ol>
-     * <li>若 {@link LotteryClientData#hasUnconsumedResult()} 有新结果 → 消费并启动动画</li>
+     * <li>若 {@link LotteryClientData#hasUnconsumedResult()} 有新结果 → 启动动画</li>
+     * <li>动画到达 {@link LotteryAnimationController#isFinished()} 后再调用
+     * {@link LotteryClientData#consumeDrawResult()}，确保结果/物品提示在动画完全停止后输出</li>
      * <li>推进 {@link LotteryAnimationController#onUpdate()}（SPINNING 超时 → FINISHED）</li>
      * </ol>
      * 10 连停格取结果中最高稀有度条目的槽位索引（快速闪过其余，聚焦最高奖）。
@@ -526,11 +528,22 @@ public class LotteryGui {
             int slotCount = pool != null ? pool.entries.size() : 0;
             boolean quick = results.size() > 1;
             int target = quick ? highestRaritySlot(results) : (results.isEmpty() ? -1 : results.get(0).slotIndex);
-            LotteryClientData.consumeDrawResult();
-            // 结果池与当前选中池一致才播放动画（跨池结果仅刷新数据，不错投轮盘）
-            if (slotCount > 0 && poolId.equals(LotteryClientData.getSelectedPoolId())) {
-                anim.startAnimation(poolId, target, slotCount, quick);
+            long resultTimeMs = LotteryClientData.getLastResultTimeMs();
+
+            if (anim.isFinished() && anim.getAnimatingResultTimeMs() == resultTimeMs) {
+                // v1.7.7 G3：动画已完整停止，且停格对应本次结果，才消费结果
+                // 保持 FINISHED 态供结果展示区读取，consume 仅防止同一结果重复触发动画
+                LotteryClientData.consumeDrawResult();
+            } else if (!anim.isSpinning()) {
+                // IDLE 或旧动画已停格：启动新动画（跨池/槽位无效时直接消费，避免无限挂起）
+                if (slotCount > 0 && poolId.equals(LotteryClientData.getSelectedPoolId())) {
+                    anim.startAnimation(poolId, target, slotCount, quick);
+                    anim.setAnimatingResultTimeMs(resultTimeMs);
+                } else {
+                    LotteryClientData.consumeDrawResult();
+                }
             }
+            // SPINNING 期间不处理：等待动画自然结束，避免提前消费导致结果先出
         }
         anim.onUpdate();
     }

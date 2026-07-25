@@ -24,6 +24,7 @@ import com.miaokatze.gtit.mail.BlessingConfig;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.AnniversaryEntry;
 import com.miaokatze.gtit.signin.DailySignInConfig;
+import com.miaokatze.gtit.signin.OnlineTimeConfig;
 import com.miaokatze.gtit.signin.SignInNetworkManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageConfig;
@@ -587,8 +588,10 @@ public class NekoEditActionHandler {
                     .getAsInt() : 0;
                 int itemMeta = json.has("itemMeta") ? json.get("itemMeta")
                     .getAsInt() : 0;
+                String itemNbt = json.has("itemNbt") ? json.get("itemNbt")
+                    .getAsString() : "";
 
-                if (!DailySignInConfig.updateTier(days, currency, amount, item, itemAmount, itemMeta)) {
+                if (!DailySignInConfig.updateTier(days, currency, amount, item, itemAmount, itemMeta, itemNbt)) {
                     sendError(player, "未找到连续 " + days + " 天的签到阶梯");
                     return;
                 }
@@ -613,6 +616,102 @@ public class NekoEditActionHandler {
             sendError(player, "保存签到编辑失败: " + e.getMessage());
             GTInterestingThing.LOG.error("[NekoEdit] 保存签到编辑异常", e);
         }
+    }
+
+    // ==================== 每日在线奖励档位编辑（v1.7.7 G5②） ====================
+
+    /**
+     * 保存每日在线奖励档位编辑（服务端）
+     * <p>
+     * targetId 为原档位所需秒数字符串（用于定位）。JSON 载荷中 {@code operation} 字段指定动作：
+     * <ul>
+     * <li>{@code "update"}：更新现有档位，json 需含 {@code seconds/currency/amount/item/itemAmount/itemMeta/itemNbt}</li>
+     * <li>{@code "add"}：新增档位，字段同 update</li>
+     * <li>{@code "remove"}：删除 targetId 对应的档位</li>
+     * </ul>
+     * 保存后 {@link OnlineTimeConfig#saveConfig()} 落盘，并广播签到同步包刷新客户端。
+     *
+     * @param player      玩家
+     * @param targetId    目标档位秒数字符串
+     * @param jsonPayload JSON 序列化的档位数据
+     */
+    public static void saveOnlineTier(EntityPlayerMP player, String targetId, String jsonPayload) {
+        try {
+            JsonObject json = new JsonParser().parse(jsonPayload)
+                .getAsJsonObject();
+            String operation = json.has("operation") ? json.get("operation")
+                .getAsString()
+                .trim() : "update";
+
+            int originalSeconds = 0;
+            try {
+                originalSeconds = Integer.parseInt(targetId);
+            } catch (NumberFormatException ignored) {
+                // add 时 targetId 可能为空串
+            }
+
+            if ("remove".equals(operation)) {
+                if (!OnlineTimeConfig.removeTier(originalSeconds)) {
+                    sendError(player, "未找到在线档位: " + originalSeconds + " 秒");
+                    return;
+                }
+                OnlineTimeConfig.saveConfig();
+                SignInNetworkManager.sendSyncToAll();
+                sendSuccess(player, "在线档位已删除（" + formatDuration(originalSeconds) + "）");
+                GTInterestingThing.LOG
+                    .info("[NekoEdit] 玩家 {} 删除在线档位: {}s", player.getCommandSenderName(), originalSeconds);
+                return;
+            }
+
+            // update / add 公用字段解析
+            int seconds = json.has("seconds") ? json.get("seconds")
+                .getAsInt() : originalSeconds;
+            String currency = json.has("currency") ? json.get("currency")
+                .getAsString() : NekoCurrencyRegistrar.NEKO_ID;
+            int amount = json.has("amount") ? json.get("amount")
+                .getAsInt() : 0;
+            String item = json.has("item") ? json.get("item")
+                .getAsString() : "";
+            int itemAmount = json.has("itemAmount") ? json.get("itemAmount")
+                .getAsInt() : 0;
+            int itemMeta = json.has("itemMeta") ? json.get("itemMeta")
+                .getAsInt() : 0;
+            String itemNbt = json.has("itemNbt") ? json.get("itemNbt")
+                .getAsString() : "";
+
+            if ("add".equals(operation)) {
+                OnlineTimeConfig.addTier(seconds, currency, amount, item, itemAmount, itemMeta, itemNbt);
+                OnlineTimeConfig.saveConfig();
+                SignInNetworkManager.sendSyncToAll();
+                sendSuccess(player, "在线档位已新增（" + formatDuration(seconds) + "）");
+                GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 新增在线档位: {}s", player.getCommandSenderName(), seconds);
+                return;
+            }
+
+            // update
+            if (!OnlineTimeConfig
+                .updateTier(originalSeconds, seconds, currency, amount, item, itemAmount, itemMeta, itemNbt)) {
+                sendError(player, "未找到在线档位: " + originalSeconds + " 秒");
+                return;
+            }
+            OnlineTimeConfig.saveConfig();
+            SignInNetworkManager.sendSyncToAll();
+            sendSuccess(player, "在线档位已保存（" + formatDuration(seconds) + "）");
+            GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 保存在线档位: {}s", player.getCommandSenderName(), seconds);
+        } catch (Exception e) {
+            sendError(player, "保存在线档位失败: " + e.getMessage());
+            GTInterestingThing.LOG.error("[NekoEdit] 保存在线档位异常", e);
+        }
+    }
+
+    /** 将秒数格式化为 "Xh Xm" / "Xm" 等可读文本（仅用于聊天反馈） */
+    private static String formatDuration(int seconds) {
+        if (seconds <= 0) return "0 秒";
+        int hours = seconds / 3600;
+        int minutes = seconds % 3600 / 60;
+        if (hours <= 0) return minutes + " 分钟";
+        if (minutes == 0) return hours + " 小时";
+        return hours + " 小时 " + minutes + " 分钟";
     }
 
     // ==================== 抽奖编辑 ====================

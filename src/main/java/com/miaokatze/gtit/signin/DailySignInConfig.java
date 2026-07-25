@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,9 +15,12 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 /**
- * 签到配置模型
+ * 签到配置模型（v1.7.7 G4 存储结构重构）
  * <p>
- * 管理签到奖励配置的加载、保存与查询，配置文件路径: config/gtit/daily_signin.json。
+ * 管理签到奖励配置的加载、保存与查询，配置文件路径: {@code config/gtit/signin/daily_signin.json}。
+ * <p>
+ * 兼容：加载时若新路径缺失且旧文件 {@code config/gtit/daily_signin.json} 存在，
+ * 则整体迁移到新路径，旧文件重命名为 {@code .bak} 保留。
  * <p>
  * 配置结构（Gson 序列化，参照 {@link com.miaokatze.gtit.config.GiftConfig} 模式）：
  * <ul>
@@ -27,7 +31,10 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
  */
 public class DailySignInConfig {
 
-    private static final String CONFIG_PATH = "config/gtit/daily_signin.json";
+    /** 新配置文件路径（相对游戏根目录） */
+    private static final String CONFIG_PATH = "config/gtit/signin/daily_signin.json";
+    /** 旧配置文件路径（v1.7.7 G4 兼容迁移用） */
+    private static final String LEGACY_CONFIG_PATH = "config/gtit/daily_signin.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .disableHtmlEscaping()
         .create();
@@ -66,6 +73,9 @@ public class DailySignInConfig {
         public int itemAmount = 1;
         @SerializedName("item_meta")
         public int itemMeta = 0;
+        /** v1.7.7 G5①：物品奖励 NBT（Base64，缺省空串兼容旧 JSON） */
+        @SerializedName("item_nbt")
+        public String itemNbt = "";
     }
 
     public static void init() {
@@ -74,9 +84,27 @@ public class DailySignInConfig {
 
     /**
      * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * <p>
+     * v1.7.7 G4：优先读取新路径；新路径缺失且旧路径存在时，迁移旧文件到新路径，
+     * 旧文件重命名为 {@code .bak} 保留。
      */
     public static void loadConfig() {
         Path path = Paths.get(CONFIG_PATH);
+        if (!Files.exists(path)) {
+            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+            if (Files.exists(legacy)) {
+                try {
+                    migrateFromLegacy(legacy, path);
+                    // 迁移后继续从新路径读取
+                } catch (Exception e) {
+                    GTInterestingThing.LOG.error("签到奖励配置从旧路径迁移失败，回退默认配置", e);
+                    applyDefaults();
+                    saveConfig();
+                    return;
+                }
+            }
+        }
+
         if (Files.exists(path)) {
             try {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
@@ -96,10 +124,39 @@ public class DailySignInConfig {
             }
         }
         // 首次运行或加载失败：使用默认配置并落盘
+        applyDefaults();
+        saveConfig();
+    }
+
+    /**
+     * 从旧路径迁移配置到新路径（v1.7.7 G4）
+     *
+     * @param legacyPath 旧配置文件路径
+     * @param newPath    新配置文件路径
+     */
+    private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
+        Files.createDirectories(newPath.getParent());
+        String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
+        ConfigData data = GSON.fromJson(json, ConfigData.class);
+        if (data != null) {
+            Files.write(
+                newPath,
+                GSON.toJson(data)
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        Path backupPath = legacyPath.resolveSibling(
+            legacyPath.getFileName()
+                .toString() + ".bak");
+        Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+        GTInterestingThing.LOG.info("签到奖励配置已从旧路径迁移: {} -> {}", legacyPath, newPath);
+        GTInterestingThing.LOG.info("旧签到奖励配置文件已重命名保留: {}", backupPath);
+    }
+
+    /** 将内存字段恢复为默认配置值 */
+    private static void applyDefaults() {
         baseRewardNeko = 10;
         consecutiveIncrement = 1.0;
         rewardTiers = createDefaultTiers();
-        saveConfig();
     }
 
     /**
@@ -120,6 +177,7 @@ public class DailySignInConfig {
                 td.item = tier.getItemRewardId() == null ? "" : tier.getItemRewardId();
                 td.itemAmount = tier.getItemRewardAmount();
                 td.itemMeta = tier.getItemRewardMeta();
+                td.itemNbt = tier.getItemNbt() == null ? "" : tier.getItemNbt();
                 data.tiers.add(td);
             }
             Files.write(
@@ -160,6 +218,8 @@ public class DailySignInConfig {
      * {@link SignInRewardTier} 字段为 final，更新以「整体替换」方式实现：
      * 在 {@link #rewardTiers} 中找到 requiredDays 匹配的阶梯并替换为新实例。
      * 仅修改内存值，调用方负责随后 {@link #saveConfig()} 落盘。
+     * <p>
+     * <b>v1.7.7 G5①</b>：新增 {@code itemNbt} 参数，支持物品奖励 NBT（Base64，null/空 = 无 NBT）。
      *
      * @param days           目标阶梯的连续天数
      * @param currencyId     货币 ID（null/空回退猫猫币）
@@ -167,10 +227,11 @@ public class DailySignInConfig {
      * @param itemId         物品奖励 ID（"modid:name"，空串表示无物品奖励）
      * @param itemAmount     物品数量（≥0）
      * @param itemMeta       物品 meta（≥0）
+     * @param itemNbt        物品 NBT Base64 编码（null/空 = 无 NBT）
      * @return true 表示找到并替换；false 表示无该天数阶梯
      */
     public static boolean updateTier(int days, String currencyId, int currencyAmount, String itemId, int itemAmount,
-        int itemMeta) {
+        int itemMeta, String itemNbt) {
         for (int i = 0; i < rewardTiers.size(); i++) {
             if (rewardTiers.get(i)
                 .getRequiredDays() == days) {
@@ -182,7 +243,8 @@ public class DailySignInConfig {
                         Math.max(0, currencyAmount),
                         itemId == null ? "" : itemId,
                         Math.max(0, itemAmount),
-                        Math.max(0, itemMeta)));
+                        Math.max(0, itemMeta),
+                        itemNbt == null ? "" : itemNbt));
                 return true;
             }
         }
@@ -281,7 +343,8 @@ public class DailySignInConfig {
                         Math.max(0, td.amount),
                         td.item == null ? "" : td.item,
                         Math.max(0, td.itemAmount),
-                        Math.max(0, td.itemMeta)));
+                        Math.max(0, td.itemMeta),
+                        td.itemNbt == null ? "" : td.itemNbt));
             }
         }
         result.sort((a, b) -> Integer.compare(a.getRequiredDays(), b.getRequiredDays()));

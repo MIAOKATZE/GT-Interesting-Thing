@@ -35,10 +35,12 @@ public class NekoMainTabButton extends PageButton {
     private static final int ICON_MARGIN_VERTICAL = 6;
 
     /**
-     * 记录最后选中的主标签索引
+     * 记录最后选中的主标签索引（仅作跨打开记忆输入）
      * <p>
      * 0=贸易，1=签到，2=抽奖，3=邮件。
-     * GUI 重新打开时据此恢复上次的主标签位置。
+     * GUI 重新打开时据此恢复上次的主标签位置；
+     * 运行期权威源为外层 {@link com.cleanroommc.modularui.widgets.PagedWidget.Controller#getActivePageIndex()}，
+     * 恢复完成后 {@code lastMainTab} 即与 controller 对齐，不再作为实时选中态依据。
      */
     public static int lastMainTab = 0;
 

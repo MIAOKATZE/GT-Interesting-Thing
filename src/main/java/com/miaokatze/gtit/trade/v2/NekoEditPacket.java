@@ -52,8 +52,10 @@ public class NekoEditPacket implements IMessage {
     public static final int ACTION_OPEN_SIGNIN_EDITOR = 11;
     /** 打开抽奖编辑面板 */
     public static final int ACTION_OPEN_LOTTERY_EDITOR = 12;
-    /** 保存祝福预设编辑（v1.7.6 G5，targetId="festival:<序号>"/"birthday"/"sender"） */
+    /** 保存祝福预设编辑（v1.7.6 G5，targetId="festival:&lt;序号&gt;"/"birthday"/"sender"） */
     public static final int ACTION_SAVE_BLESSING = 13;
+    /** 保存每日在线奖励档位编辑（v1.7.7 G5②，targetId=原秒数字符串，jsonPayload 含 operation/update/add/remove 与字段） */
+    public static final int ACTION_SAVE_ONLINE_TIER = 14;
 
     // ==================== 字段 ====================
 
@@ -154,6 +156,7 @@ public class NekoEditPacket implements IMessage {
                 case ACTION_SAVE_PAGE -> handleSavePage(player, message);
                 case ACTION_DELETE_PAGE -> handleDeletePage(player, message);
                 case ACTION_SAVE_BLESSING -> handleSaveBlessing(player, message);
+                case ACTION_SAVE_ONLINE_TIER -> handleSaveOnlineTier(player, message);
                 default -> {
                     // 未知操作，忽略
                 }
@@ -221,6 +224,12 @@ public class NekoEditPacket implements IMessage {
 
         private void handleSaveBlessing(EntityPlayerMP player, NekoEditPacket message) {
             NekoEditActionHandler.saveBlessing(player, message.getTargetId(), message.getJsonPayload());
+        }
+
+        // ---- v1.7.7 G5②：每日在线奖励档位编辑 ----
+
+        private void handleSaveOnlineTier(EntityPlayerMP player, NekoEditPacket message) {
+            NekoEditActionHandler.saveOnlineTier(player, message.getTargetId(), message.getJsonPayload());
         }
     }
 }

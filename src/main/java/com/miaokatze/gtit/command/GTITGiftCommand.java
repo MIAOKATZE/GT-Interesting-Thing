@@ -22,6 +22,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
+import com.miaokatze.gtit.lottery.LotteryConfig;
 import com.miaokatze.gtit.lottery.LotteryManager;
 import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.mail.Mail;
@@ -30,6 +31,7 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInConfig;
 import com.miaokatze.gtit.signin.DailySignInData;
 import com.miaokatze.gtit.signin.DailySignInManager;
+import com.miaokatze.gtit.signin.OnlineTimeConfig;
 import com.miaokatze.gtit.signin.SignInClientData;
 import com.miaokatze.gtit.signin.SignInNetworkManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
@@ -69,7 +71,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset | /gtit signin [info|reload|admin|help]";
+        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
     }
 
     @Override
@@ -101,6 +103,7 @@ public class GTITGiftCommand extends CommandBase {
                 handleNekoVM(sender, player, args);
             }
             case "signin" -> handleSignIn(sender, args);
+            case "lottery" -> handleLottery(sender, args);
             case "mail" -> handleMail(sender, args);
             default -> sendHelp(sender);
         }
@@ -111,7 +114,7 @@ public class GTITGiftCommand extends CommandBase {
     @Override
     public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
         if (args.length == 1) {
-            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "mail");
+            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail");
         }
 
         if (args.length == 2) {
@@ -134,6 +137,9 @@ public class GTITGiftCommand extends CommandBase {
             }
             if ("signin".equals(args[0])) {
                 return getListOfStringsMatchingLastWord(args, "info", "reload", "admin", "help");
+            }
+            if ("lottery".equals(args[0])) {
+                return getListOfStringsMatchingLastWord(args, "reload", "help");
             }
             if ("mail".equals(args[0])) {
                 return getListOfStringsMatchingLastWord(args, "send", "first", "firstclear", "once", "help");
@@ -1500,6 +1506,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
         sender.addChatMessage(new ChatComponentText("/gtit signin - 每日签到"));
         sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
+        sender.addChatMessage(new ChatComponentText("/gtit lottery reload - 热重载抽奖配置"));
         sender.addChatMessage(new ChatComponentText("/gtit mail help - 邮件命令帮助（发送/首登/一次性奖励）"));
     }
 
@@ -1550,7 +1557,8 @@ public class GTITGiftCommand extends CommandBase {
             case "info" -> handleSignInInfo(sender, args);
             case "reload" -> {
                 DailySignInConfig.reload();
-                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "签到奖励配置已热重载"));
+                OnlineTimeConfig.reload();
+                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "签到奖励配置（含每日在线奖励）已热重载"));
             }
             case "admin" -> handleSignInAdmin(sender, args);
             case "help" -> sendSignInHelp(sender);
@@ -1709,9 +1717,42 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "签到命令:"));
         sender.addChatMessage(new ChatComponentText("/gtit signin - 玩家自己签到"));
         sender.addChatMessage(new ChatComponentText("/gtit signin info [玩家名] - 查看签到状态"));
-        sender.addChatMessage(new ChatComponentText("/gtit signin reload - 热重载签到奖励配置"));
+        sender.addChatMessage(new ChatComponentText("/gtit signin reload - 热重载签到奖励配置（含每日在线奖励）"));
         sender.addChatMessage(new ChatComponentText("/gtit signin admin set <玩家名> <天数> - 设置连续签到天数"));
         sender.addChatMessage(new ChatComponentText("/gtit signin admin reset <玩家名> - 重置玩家签到数据"));
+    }
+
+    // ==================== v1.7.7 G4 抽奖子命令 ====================
+
+    /**
+     * /gtit lottery —— 抽奖配置指令入口
+     * <p>
+     * 子命令：
+     * <ul>
+     * <li>/gtit lottery reload —— 热重载抽奖卡池配置</li>
+     * <li>/gtit lottery help —— 显示帮助</li>
+     * </ul>
+     */
+    private void handleLottery(ICommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sendLotteryHelp(sender);
+            return;
+        }
+
+        switch (args[1]) {
+            case "reload" -> {
+                LotteryConfig.reload();
+                LotteryManager.INSTANCE.loadConfig();
+                sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "抽奖配置已热重载"));
+            }
+            case "help" -> sendLotteryHelp(sender);
+            default -> sendLotteryHelp(sender);
+        }
+    }
+
+    private void sendLotteryHelp(ICommandSender sender) {
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "抽奖命令:"));
+        sender.addChatMessage(new ChatComponentText("/gtit lottery reload - 热重载抽奖卡池配置"));
     }
 
     // ==================== v1.7.2 邮件子命令 ====================

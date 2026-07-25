@@ -8,6 +8,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.util.NbtBase64Util;
@@ -27,6 +28,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * {@link LotteryConfig} 的 Gson 实例（item/meta/amount/nbtBase64/oreDict 格式）。
  */
 public class LotteryPool {
+
+    /** 单个卡池最大条目数（轮盘环形边框最多 10 格，超出会越界导致动画失效） */
+    public static final int MAX_ENTRIES = 10;
 
     /** 卡池 ID（如 "neko"/"shimmering"） */
     private String id;
@@ -124,10 +128,31 @@ public class LotteryPool {
     }
 
     /**
-     * 校验本池是否可抽取：条目非空且总权重 > 0
+     * 若条目数超过 {@link #MAX_ENTRIES}，截断为前 10 条并输出警告。
+     * <p>
+     * v1.7.7 G3②：防止条目越界导致轮盘动画停在不可见格/空白框。
+     */
+    public void truncateEntriesIfNeeded() {
+        if (entries == null) {
+            entries = new ArrayList<>();
+            return;
+        }
+        if (entries.size() > MAX_ENTRIES) {
+            GTInterestingThing.LOG
+                .warn("抽奖卡池 {} 条目数 {} 超过最大限制 {}，已截断保留前 {} 条", id, entries.size(), MAX_ENTRIES, MAX_ENTRIES);
+            entries = new ArrayList<>(entries.subList(0, MAX_ENTRIES));
+        }
+    }
+
+    /**
+     * 校验本池是否可抽取：条目非空、条目数 ≤ {@link #MAX_ENTRIES}、总权重 > 0。
+     * <p>
+     * 校验前会先执行 {@link #truncateEntriesIfNeeded()} 做容错截断，因此超限配置
+     * 默认保留前 10 条并继续可用（同时输出 warn 日志）。
      */
     public boolean validate() {
-        return entries != null && !entries.isEmpty() && getTotalWeight() > 0;
+        truncateEntriesIfNeeded();
+        return !entries.isEmpty() && getTotalWeight() > 0;
     }
 
     public String getId() {

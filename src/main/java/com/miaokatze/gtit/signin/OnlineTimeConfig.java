@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,9 +15,12 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 /**
- * 每日在线时间奖励配置（v1.7.6 G2③）
+ * 每日在线时间奖励配置（v1.7.6 G2③；v1.7.7 G4 存储结构重构）
  * <p>
- * 管理在线奖励档位的加载、保存与查询，配置文件路径: config/gtit/online_time_config.json。
+ * 管理在线奖励档位的加载、保存与查询，配置文件路径: {@code config/gtit/signin/online_time_config.json}。
+ * <p>
+ * 兼容：加载时若新路径缺失且旧文件 {@code config/gtit/online_time_config.json} 存在，
+ * 则整体迁移到新路径，旧文件重命名为 {@code .bak} 保留。
  * 结构参照 {@link DailySignInConfig}（Gson 序列化，缺省生成默认配置）：
  * <ul>
  * <li>{@code tiers}：在线奖励档位列表（当日累计在线秒数达到条件可领取一次，每日重置）</li>
@@ -29,7 +33,10 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
  */
 public class OnlineTimeConfig {
 
-    private static final String CONFIG_PATH = "config/gtit/online_time_config.json";
+    /** 新配置文件路径（相对游戏根目录） */
+    private static final String CONFIG_PATH = "config/gtit/signin/online_time_config.json";
+    /** 旧配置文件路径（v1.7.7 G4 兼容迁移用） */
+    private static final String LEGACY_CONFIG_PATH = "config/gtit/online_time_config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .disableHtmlEscaping()
         .create();
@@ -61,6 +68,9 @@ public class OnlineTimeConfig {
         public int itemAmount = 1;
         @SerializedName("item_meta")
         public int itemMeta = 0;
+        /** v1.7.7 G5②：物品奖励 NBT（Base64，缺省空串兼容旧 JSON） */
+        @SerializedName("item_nbt")
+        public String itemNbt = "";
     }
 
     public static void init() {
@@ -69,9 +79,27 @@ public class OnlineTimeConfig {
 
     /**
      * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * <p>
+     * v1.7.7 G4：优先读取新路径；新路径缺失且旧路径存在时，迁移旧文件到新路径，
+     * 旧文件重命名为 {@code .bak} 保留。
      */
     public static void loadConfig() {
         Path path = Paths.get(CONFIG_PATH);
+        if (!Files.exists(path)) {
+            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+            if (Files.exists(legacy)) {
+                try {
+                    migrateFromLegacy(legacy, path);
+                    // 迁移后继续从新路径读取
+                } catch (Exception e) {
+                    GTInterestingThing.LOG.error("每日在线奖励配置从旧路径迁移失败，回退默认配置", e);
+                    tiers = createDefaultTiers();
+                    saveConfig();
+                    return;
+                }
+            }
+        }
+
         if (Files.exists(path)) {
             try {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
@@ -94,6 +122,30 @@ public class OnlineTimeConfig {
     }
 
     /**
+     * 从旧路径迁移配置到新路径（v1.7.7 G4）
+     *
+     * @param legacyPath 旧配置文件路径
+     * @param newPath    新配置文件路径
+     */
+    private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
+        Files.createDirectories(newPath.getParent());
+        String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
+        ConfigData data = GSON.fromJson(json, ConfigData.class);
+        if (data != null) {
+            Files.write(
+                newPath,
+                GSON.toJson(data)
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        Path backupPath = legacyPath.resolveSibling(
+            legacyPath.getFileName()
+                .toString() + ".bak");
+        Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+        GTInterestingThing.LOG.info("每日在线奖励配置已从旧路径迁移: {} -> {}", legacyPath, newPath);
+        GTInterestingThing.LOG.info("旧每日在线奖励配置文件已重命名保留: {}", backupPath);
+    }
+
+    /**
      * 将当前内存配置写回 JSON 文件
      */
     public static void saveConfig() {
@@ -109,6 +161,7 @@ public class OnlineTimeConfig {
                 td.item = tier.getItemRewardId() == null ? "" : tier.getItemRewardId();
                 td.itemAmount = tier.getItemRewardAmount();
                 td.itemMeta = tier.getItemRewardMeta();
+                td.itemNbt = tier.getItemNbt() == null ? "" : tier.getItemNbt();
                 data.tiers.add(td);
             }
             Files.write(
@@ -135,6 +188,111 @@ public class OnlineTimeConfig {
         return tiers;
     }
 
+    /**
+     * 更新指定秒数的在线奖励档位（编辑模式）
+     * <p>
+     * 在 {@link #tiers} 中找到 requiredSeconds 匹配的档位并整体替换为新实例。
+     * 仅修改内存值，调用方负责随后 {@link #saveConfig()} 落盘。
+     * <p>
+     * <b>v1.7.7 G5②</b>：新增 {@code itemNbt} 参数，支持物品奖励 NBT（Base64，null/空 = 无 NBT）。
+     *
+     * @param requiredSeconds 目标档位的所需秒数（定位用）
+     * @param newSeconds      新的所需秒数（≥1）
+     * @param currencyId      货币 ID（null/空回退猫猫币）
+     * @param currencyAmount  货币数量（≥0）
+     * @param itemId          物品奖励 ID（"modid:name"，空串表示无物品奖励）
+     * @param itemAmount      物品数量（≥0）
+     * @param itemMeta        物品 meta（≥0）
+     * @param itemNbt         物品 NBT Base64 编码（null/空 = 无 NBT）
+     * @return true 表示找到并替换；false 表示无该秒数档位
+     */
+    public static boolean updateTier(int requiredSeconds, int newSeconds, String currencyId, int currencyAmount,
+        String itemId, int itemAmount, int itemMeta, String itemNbt) {
+        for (int i = 0; i < tiers.size(); i++) {
+            if (tiers.get(i)
+                .getRequiredSeconds() == requiredSeconds) {
+                tiers.set(
+                    i,
+                    new OnlineTimeRewardTier(
+                        Math.max(1, newSeconds),
+                        currencyId == null || currencyId.isEmpty() ? NekoCurrencyRegistrar.NEKO_ID : currencyId,
+                        Math.max(0, currencyAmount),
+                        itemId == null ? "" : itemId,
+                        Math.max(0, itemAmount),
+                        Math.max(0, itemMeta),
+                        itemNbt == null ? "" : itemNbt));
+                // 修改秒数后需要重新排序
+                tiers.sort((a, b) -> Integer.compare(a.getRequiredSeconds(), b.getRequiredSeconds()));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 新增在线奖励档位（编辑模式）
+     * <p>
+     * 将新档位追加到 {@link #tiers} 末尾，随后按所需秒数升序排序。
+     * 仅修改内存值，调用方负责随后 {@link #saveConfig()} 落盘。
+     *
+     * @param seconds        所需在线秒数（≥1）
+     * @param currencyId     货币 ID（null/空回退猫猫币）
+     * @param currencyAmount 货币数量（≥0）
+     * @param itemId         物品奖励 ID（"modid:name"，空串表示无物品奖励）
+     * @param itemAmount     物品数量（≥0）
+     * @param itemMeta       物品 meta（≥0）
+     * @param itemNbt        物品 NBT Base64 编码（null/空 = 无 NBT）
+     */
+    public static void addTier(int seconds, String currencyId, int currencyAmount, String itemId, int itemAmount,
+        int itemMeta, String itemNbt) {
+        tiers.add(
+            new OnlineTimeRewardTier(
+                Math.max(1, seconds),
+                currencyId == null || currencyId.isEmpty() ? NekoCurrencyRegistrar.NEKO_ID : currencyId,
+                Math.max(0, currencyAmount),
+                itemId == null ? "" : itemId,
+                Math.max(0, itemAmount),
+                Math.max(0, itemMeta),
+                itemNbt == null ? "" : itemNbt));
+        tiers.sort((a, b) -> Integer.compare(a.getRequiredSeconds(), b.getRequiredSeconds()));
+    }
+
+    /**
+     * 删除指定秒数的在线奖励档位（编辑模式）
+     *
+     * @param requiredSeconds 目标档位的所需秒数
+     * @return true 表示删除成功；false 表示未找到
+     */
+    public static boolean removeTier(int requiredSeconds) {
+        for (int i = 0; i < tiers.size(); i++) {
+            if (tiers.get(i)
+                .getRequiredSeconds() == requiredSeconds) {
+                tiers.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 替换整个在线奖励档位列表（编辑模式，用于服务端重置/全量更新）
+     * <p>
+     * 传入列表会被复制并升序排序，原列表引用不会被保留。
+     *
+     * @param newTiers 新的档位列表（null 视为空列表）
+     */
+    public static void setTiers(List<OnlineTimeRewardTier> newTiers) {
+        tiers = new ArrayList<>();
+        if (newTiers != null) {
+            for (OnlineTimeRewardTier tier : newTiers) {
+                if (tier != null && tier.getRequiredSeconds() > 0) {
+                    tiers.add(tier);
+                }
+            }
+        }
+        tiers.sort((a, b) -> Integer.compare(a.getRequiredSeconds(), b.getRequiredSeconds()));
+    }
+
     // ==================== 内部辅助 ====================
 
     /** 将 JSON 层 TierData 列表转换为运行时 OnlineTimeRewardTier 列表（按秒数升序） */
@@ -150,7 +308,8 @@ public class OnlineTimeConfig {
                         Math.max(0, td.amount),
                         td.item == null ? "" : td.item,
                         Math.max(0, td.itemAmount),
-                        Math.max(0, td.itemMeta)));
+                        Math.max(0, td.itemMeta),
+                        td.itemNbt == null ? "" : td.itemNbt));
             }
         }
         result.sort((a, b) -> Integer.compare(a.getRequiredSeconds(), b.getRequiredSeconds()));

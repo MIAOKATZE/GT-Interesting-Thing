@@ -196,6 +196,19 @@ public class NekoEditNetworkManager {
         sendToServer(NekoEditPacket.ACTION_SAVE_BLESSING, targetId, 0, jsonPayload);
     }
 
+    /**
+     * 客户端：发送保存每日在线奖励档位编辑请求（v1.7.7 G5②）
+     * <p>
+     * targetId 为原档位所需秒数字符串（用于定位），jsonPayload 中 {@code operation} 字段为
+     * update / add / remove，并携带新档位字段。
+     *
+     * @param targetId    目标档位秒数字符串（add/remove/update 均用此定位；add 时可传空串）
+     * @param jsonPayload JSON 序列化的档位数据
+     */
+    public static void sendSaveOnlineTier(String targetId, String jsonPayload) {
+        sendToServer(NekoEditPacket.ACTION_SAVE_ONLINE_TIER, targetId, 0, jsonPayload);
+    }
+
     public static boolean isInitialized() {
         return initialized;
     }

@@ -22,6 +22,7 @@ import com.miaokatze.gtit.mail.BlessingManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
+import com.miaokatze.gtit.util.NbtBase64Util;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -285,7 +286,12 @@ public class DailySignInManager {
             grantCurrency(playerId, tier.getCurrencyId(), tier.getCurrencyAmount());
         }
         if (tier.hasItemReward()) {
-            grantItemStack(playerId, tier.getItemRewardId(), tier.getItemRewardAmount(), tier.getItemRewardMeta());
+            grantItemStack(
+                playerId,
+                tier.getItemRewardId(),
+                tier.getItemRewardAmount(),
+                tier.getItemRewardMeta(),
+                NbtBase64Util.nbtFromBase64(tier.getItemNbt()));
         }
         data.claimOnlineTier(today, tier.getRequiredSeconds());
         saveSignInData(playerId);
@@ -526,20 +532,28 @@ public class DailySignInManager {
 
     /** 发放阶梯物品奖励：入玩家背包，背包满则掉落在玩家脚下 */
     private void grantItemReward(UUID playerId, SignInRewardTier tier) {
-        grantItemStack(playerId, tier.getItemRewardId(), tier.getItemRewardAmount(), tier.getItemRewardMeta());
+        grantItemStack(
+            playerId,
+            tier.getItemRewardId(),
+            tier.getItemRewardAmount(),
+            tier.getItemRewardMeta(),
+            NbtBase64Util.nbtFromBase64(tier.getItemNbt()));
     }
 
     /**
      * 发放物品奖励（v1.7.6 G2③ 抽取的通用路径：签到阶梯/每日在线共用）
      * <p>
      * 入玩家背包，背包满则掉落在玩家脚下；玩家离线时跳过物品部分（货币仍会入钱包）。
+     * <p>
+     * <b>v1.7.7 G5①</b>：新增 {@code nbt} 参数，支持还原物品 NBT。
      *
      * @param playerId 玩家 UUID
      * @param itemId   物品 ID（"modid:name"）
      * @param amount   数量（<1 时按 1 发放）
      * @param meta     物品 meta
+     * @param nbt      物品 NBT（可为 null）
      */
-    private void grantItemStack(UUID playerId, String itemId, int amount, int meta) {
+    private void grantItemStack(UUID playerId, String itemId, int amount, int meta, NBTTagCompound nbt) {
         EntityPlayerMP player = getPlayerByUUID(playerId);
         if (player == null) {
             GTInterestingThing.LOG.warn("玩家 {} 不在线，物品奖励 {} 已跳过", playerId, itemId);
@@ -553,6 +567,10 @@ public class DailySignInManager {
             return;
         }
         ItemStack stack = new ItemStack(item, Math.max(1, amount), meta);
+        if (nbt != null) {
+            // v1.7.7 G5①：copy() 返回 NBTBase，需强转为 NBTTagCompound 再写入物品
+            stack.setTagCompound((NBTTagCompound) nbt.copy());
+        }
         if (!player.inventory.addItemStackToInventory(stack)) {
             // 背包已满：掉落在玩家位置，避免奖励丢失
             EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, stack);
