@@ -18,7 +18,7 @@ import cpw.mods.fml.relauncher.Side;
  * 与 {@code SignInNetworkManager} 同范式）：
  * <ul>
  * <li>{@link LotterySyncPacket}（id=0，S→C）：登录/打开抽奖页/抽奖完成后的全量数据推送
- * （卡池摘要 + 团队保底计数 + 最近历史）</li>
+ * （卡池摘要 + 团队保底计数）</li>
  * <li>{@link LotteryRequestPacket}（id=1，C→S）：客户端点击「抽 1 次 / 抽 10 次」发起请求
  * （携带卡池 ID、连抽数、触发机器坐标）</li>
  * <li>{@link LotteryResultPacket}（id=2，S→C）：本次抽取结果下发（停格索引/稀有度/保底标记，
@@ -78,8 +78,7 @@ public class LotteryNetworkManager {
     /**
      * 服务端：向指定玩家推送抽奖全量数据（纯状态刷新）
      * <p>
-     * 携带：卡池摘要列表 + 该玩家团队的保底计数快照 + 最近
-     * {@link LotteryClientData#HISTORY_DISPLAY_LIMIT} 条历史（时间倒序）
+     * 携带：卡池摘要列表 + 该玩家团队的保底计数快照
      * + 卡池消耗币种的团队钱包余额。
      *
      * @param player 目标玩家
@@ -91,10 +90,8 @@ public class LotteryNetworkManager {
 
         LotteryManager manager = LotteryManager.INSTANCE;
         List<LotteryPool> pools = manager.getAllPools();
-        // 保底计数与历史按团队维度取（数据可能尚未加载，getHistory 内部懒加载）
+        // 保底计数按团队维度取（v1.7.9 起不再携带中奖历史）
         java.util.Map<String, Integer> pityCounters = manager.getPityCounters(teamKey);
-        List<LotteryHistory.HistoryEntry> recentHistory = manager.getHistory(teamKey)
-            .getRecentRecords(LotteryClientData.HISTORY_DISPLAY_LIMIT);
 
         // 团队钱包余额（各卡池消耗币种：v1.7.6 起从 costItems 实时识别猫猫币条目，
         // 旧字段 nekoCurrencyId 一并兜底；NekoWalletManager 内部优先团队钱包，与扣费同源）
@@ -120,13 +117,13 @@ public class LotteryNetworkManager {
             }
         }
 
-        channel.sendTo(new LotterySyncPacket(pools, pityCounters, recentHistory, balances), player);
+        channel.sendTo(new LotterySyncPacket(pools, pityCounters, balances), player);
     }
 
     /**
      * 服务端：向全体在线玩家广播抽奖全量同步（v1.7.0 目标 5）
      * <p>
-     * 卡池配置全服一致，但保底计数/历史/团队钱包余额为团队维度，
+     * 卡池配置全服一致，但保底计数/团队钱包余额为团队维度，
      * 载荷无法复用，故逐玩家各自构建并推送（{@link #sendSyncToClient}）。
      * 配置编辑保存与 /gtit nekovm sync all 后调用，保证全服客户端轮盘配置即时刷新。
      */

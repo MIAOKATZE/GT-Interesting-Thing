@@ -24,14 +24,13 @@ import io.netty.buffer.ByteBuf;
  * <ul>
  * <li>卡池摘要列表（id/名称/货币/价格/保底阈值/条目列表，供轮盘渲染）</li>
  * <li>团队保底计数（poolId → 连续未出高稀有次数）</li>
- * <li>最近抽奖历史（时间倒序，最多 {@link LotteryClientData#HISTORY_DISPLAY_LIMIT} 条）</li>
  * </ul>
  * 玩家登录、打开抽奖页（主标签选中页 2）、每次抽奖完成后由服务端主动推送，
  * 客户端写入 {@link LotteryClientData} 缓存供 {@link LotteryGui} 渲染。
  */
 public class LotterySyncPacket implements IMessage {
 
-    /** 卡池摘要/保底计数/历史的 NBT 根 */
+    /** 卡池摘要/保底计数/余额的 NBT 根 */
     private NBTTagCompound dataTag = new NBTTagCompound();
 
     public LotterySyncPacket() {
@@ -41,13 +40,12 @@ public class LotterySyncPacket implements IMessage {
     /**
      * 构建同步包（服务端）
      *
-     * @param pools         卡池列表（{@link LotteryManager#getAllPools()}）
-     * @param pityCounters  团队保底计数快照
-     * @param recentHistory 最近历史（时间倒序）
-     * @param balances      团队钱包余额（currencyId → 数量，仅含卡池消耗币种）
+     * @param pools        卡池列表（{@link LotteryManager#getAllPools()}）
+     * @param pityCounters 团队保底计数快照
+     * @param balances     团队钱包余额（currencyId → 数量，仅含卡池消耗币种）
      */
     public LotterySyncPacket(List<LotteryPool> pools, Map<String, Integer> pityCounters,
-        List<LotteryHistory.HistoryEntry> recentHistory, Map<String, Integer> balances) {
+        Map<String, Integer> balances) {
         NBTTagCompound root = new NBTTagCompound();
 
         // --- 卡池摘要 ---
@@ -109,22 +107,7 @@ public class LotterySyncPacket implements IMessage {
         }
         root.setTag("pity", pityTag);
 
-        // --- 最近历史 ---
-        NBTTagList historyList = new NBTTagList();
-        if (recentHistory != null) {
-            for (LotteryHistory.HistoryEntry record : recentHistory) {
-                if (record == null) continue;
-                NBTTagCompound recordTag = new NBTTagCompound();
-                recordTag.setString("pool", record.poolId == null ? "" : record.poolId);
-                recordTag.setString("entry", record.entryId == null ? "" : record.entryId);
-                recordTag.setString("rarity", record.rarityName == null ? "" : record.rarityName);
-                recordTag.setInteger("amount", record.amount);
-                recordTag.setString("player", record.playerName == null ? "" : record.playerName);
-                recordTag.setLong("time", record.timestamp);
-                historyList.appendTag(recordTag);
-            }
-        }
-        root.setTag("history", historyList);
+        // v1.7.9：中奖记录功能已移除，同步包不再携带历史
 
         // --- 团队钱包余额（卡池消耗币种） ---
         NBTTagCompound balanceTag = new NBTTagCompound();
@@ -230,25 +213,6 @@ public class LotterySyncPacket implements IMessage {
         return result;
     }
 
-    /** 解析最近历史（时间倒序） */
-    public List<LotteryHistory.HistoryEntry> parseHistory() {
-        List<LotteryHistory.HistoryEntry> result = new ArrayList<>();
-        if (dataTag == null || !dataTag.hasKey("history")) return result;
-        NBTTagList historyList = dataTag.getTagList("history", 10);
-        for (int i = 0; i < historyList.tagCount(); i++) {
-            NBTTagCompound recordTag = historyList.getCompoundTagAt(i);
-            result.add(
-                new LotteryHistory.HistoryEntry(
-                    recordTag.getString("pool"),
-                    recordTag.getString("entry"),
-                    recordTag.getString("rarity"),
-                    recordTag.getInteger("amount"),
-                    recordTag.getString("player"),
-                    recordTag.getLong("time")));
-        }
-        return result;
-    }
-
     public static class Handler implements IMessageHandler<LotterySyncPacket, IMessage> {
 
         @Override
@@ -265,11 +229,8 @@ public class LotterySyncPacket implements IMessage {
         private void handleClient(final LotterySyncPacket message) {
             Minecraft.getMinecraft()
                 .func_152344_a(
-                    () -> LotteryClientData.updatePools(
-                        message.parsePools(),
-                        message.parsePityCounters(),
-                        message.parseHistory(),
-                        message.parseBalances()));
+                    () -> LotteryClientData
+                        .updatePools(message.parsePools(), message.parsePityCounters(), message.parseBalances()));
         }
     }
 }

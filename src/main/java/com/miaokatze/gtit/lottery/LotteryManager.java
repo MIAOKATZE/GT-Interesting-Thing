@@ -33,9 +33,9 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 /**
  * 抽奖管理器单例（团队维度）
  * <p>
- * 管理卡池配置（{@link LotteryConfig}）、团队保底计数与抽奖历史：
+ * 管理卡池配置（{@link LotteryConfig}）与团队保底计数：
  * <ul>
- * <li><b>团队键</b>：保底计数与历史以「团队 UUID」为键存储——
+ * <li><b>团队键</b>：保底计数以「团队 UUID」为键存储——
  * 与贸易团队钱包同源（{@link TeamManager#getTeamByPlayer(UUID)} → {@link Team#getTeamId()}）；
  * GTNHLib Teams 不可用或玩家无团队时回退玩家自身 UUID（单人模式天然成立）</li>
  * <li><b>扣费</b>：走 {@link NekoWalletManager#getWallet(UUID)}（内部优先团队钱包）
@@ -55,8 +55,6 @@ public class LotteryManager {
     private final ConcurrentHashMap<String, LotteryPool> pools;
     /** 保底计数（teamKey → (poolId → 连续未出高稀有次数)） */
     private final ConcurrentHashMap<UUID, Map<String, Integer>> pityCounters;
-    /** 抽奖历史（teamKey → history） */
-    private final ConcurrentHashMap<UUID, LotteryHistory> histories;
     /** 存档目录（<world>/gtit_lottery） */
     private File saveDir;
     /** 权重随机数生成器 */
@@ -65,7 +63,6 @@ public class LotteryManager {
     private LotteryManager() {
         this.pools = new ConcurrentHashMap<>();
         this.pityCounters = new ConcurrentHashMap<>();
-        this.histories = new ConcurrentHashMap<>();
     }
 
     /**
@@ -102,7 +99,7 @@ public class LotteryManager {
     // ==================== 团队键解析 ====================
 
     /**
-     * 解析玩家的团队键（保底/历史存储键）
+     * 解析玩家的团队键（保底计数存储键）
      * <p>
      * 与贸易团队钱包同源：{@code TeamManager.getTeamByPlayer(playerId).getTeamId()}。
      * GTNHLib Teams 不可用或玩家无团队时回退玩家自身 UUID。
@@ -132,7 +129,7 @@ public class LotteryManager {
      * <p>
      * 流程：校验卡池与机器 → 扣费分流（{@link #deductCostItems}：costItems 中猫猫币条目走
      * 团队钱包、普通物品条目从机器输入槽扣除，校验通过才实际扣减）→ 逐抽
-     * （软保底加权 + 硬保底强制替换）→ 记历史 → 落盘 → 调度延迟出货
+     * （软保底加权 + 硬保底强制替换）→ 落盘保底 → 调度延迟出货
      * （{@link #scheduleDelayedDispatch}：等客户端轮盘动画播完再落槽/入钱包）。
      * <p>
      * <b>原子性</b>：扣费一次性完成（count 连抽全部需求），任一抽出货失败不回滚已抽结果
@@ -141,7 +138,7 @@ public class LotteryManager {
      * <b>延迟出货</b>（v1.7.8 起）：奖品不再立即发放——结果包先行下发驱动客户端轮盘动画，
      * 出货延迟「动画时长 + 150ms」由 {@link LotteryHandler} 延迟任务队列执行，
      * 产物落输出槽时客户端 {@code NekoFallingItemSlotFactory} 自然播下落动画，
-     * 全量同步（保底/历史/余额）也随之推迟到出货后，避免动画期间剧透。
+     * 全量同步（保底/余额）也随之推迟到出货后，避免动画期间剧透。
      *
      * @param playerId 抽取玩家
      * @param poolId   卡池 ID
@@ -167,20 +164,18 @@ public class LotteryManager {
         }
 
         // 2. 逐抽（保底计数按「团队 × 卡池」维度推进）
+        // v1.7.9：中奖记录功能已移除，不再记历史
         UUID teamKey = resolveTeamKey(playerId);
         for (int i = 0; i < count; i++) {
             LotteryDrawResult result = drawSingle(teamKey, pool);
             if (result == null) continue;
             results.add(result);
-
-            // 3. 记历史（立即：保底/历史数据落盘不等待出货）
-            recordHistory(teamKey, pool.getId(), result, getPlayerName(playerId));
         }
 
-        // 4. 落盘保底与历史
+        // 3. 落盘保底（立即：保底数据落盘不等待出货）
         saveTeamData(teamKey);
 
-        // 5. 调度延迟出货（动画时长 + 150ms 后执行 dispatchAll；奖品列表快照随任务携带）
+        // 4. 调度延迟出货（动画时长 + 150ms 后执行 dispatchAll；奖品列表快照随任务携带）
         scheduleDelayedDispatch(playerId, results, machine);
         return results;
     }
@@ -458,7 +453,7 @@ public class LotteryManager {
      * <li>货币奖品：直接入团队钱包（无动画，随本批次一并入账）</li>
      * <li>溢出：玩家在线退背包（满则掉脚下）；玩家离线且有机器坐标则在机器处生成
      * {@link EntityItem}，无坐标兜底记警告</li>
-     * <li>末尾 {@link LotteryNetworkManager#sendSyncToClient}：保底/历史/钱包余额
+     * <li>末尾 {@link LotteryNetworkManager#sendSyncToClient}：保底/钱包余额
      * 在动画停格后才刷新（不提前剧透）</li>
      * </ul>
      *
@@ -519,7 +514,7 @@ public class LotteryManager {
             }
         }
 
-        // 4. 出货完成后全量同步（保底计数/历史/钱包余额刷新与轮盘停格对齐）
+        // 4. 出货完成后全量同步（保底计数/钱包余额刷新与轮盘停格对齐）
         if (player != null) {
             LotteryNetworkManager.sendSyncToClient(player);
         }
@@ -585,25 +580,7 @@ public class LotteryManager {
         return null;
     }
 
-    // ==================== 历史与保底计数 ====================
-
-    /**
-     * 记录一条抽奖历史（团队共享）
-     */
-    public void recordHistory(UUID teamKey, String poolId, LotteryDrawResult result, String playerName) {
-        if (teamKey == null || result == null || result.getEntry() == null) return;
-        LotteryHistory history = getHistory(teamKey);
-        LotteryEntry entry = result.getEntry();
-        history.addRecord(
-            new LotteryHistory.HistoryEntry(
-                poolId,
-                entry.getId(),
-                entry.getRarity()
-                    .name(),
-                result.getAmount(),
-                playerName,
-                System.currentTimeMillis()));
-    }
+    // ==================== 保底计数 ====================
 
     /**
      * 查询团队某池的保底计数（连续未出高稀有次数）
@@ -640,23 +617,13 @@ public class LotteryManager {
             .put(poolId, value);
     }
 
-    /**
-     * 获取团队抽奖历史（懒加载：内存无则从磁盘读，均无则新建）
-     */
-    public LotteryHistory getHistory(UUID teamKey) {
-        if (teamKey == null) return new LotteryHistory();
-        LotteryHistory history = histories.get(teamKey);
-        if (history == null) {
-            loadTeamData(teamKey);
-            history = histories.computeIfAbsent(teamKey, k -> new LotteryHistory());
-        }
-        return history;
-    }
-
     // ==================== 持久化 ====================
 
     /**
-     * 保存指定团队的保底计数与历史到磁盘
+     * 保存指定团队的保底计数到磁盘
+     * <p>
+     * v1.7.9 起中奖记录功能移除，仅写保底计数；旧存档中残留的
+     * {@code history} NBT 键在下次保存时被整体覆写自然清除。
      */
     public void saveTeamData(UUID teamKey) {
         if (teamKey == null || saveDir == null) return;
@@ -672,11 +639,6 @@ public class LotteryManager {
                 }
                 nbt.setTag("pity", pityTag);
             }
-            // 历史
-            LotteryHistory history = histories.get(teamKey);
-            if (history != null) {
-                nbt.setTag("history", history.writeToNBT());
-            }
             CompressedStreamTools.safeWrite(nbt, file);
         } catch (Exception e) {
             GTInterestingThing.LOG.error("保存抽奖数据失败: " + teamKey, e);
@@ -684,7 +646,10 @@ public class LotteryManager {
     }
 
     /**
-     * 从磁盘加载指定团队的保底计数与历史（文件不存在时保持内存现状）
+     * 从磁盘加载指定团队的保底计数（文件不存在时保持内存现状）
+     * <p>
+     * v1.7.9 起不再读取旧存档中的 {@code history} 键（中奖记录功能已移除），
+     * 该键在下次 {@link #saveTeamData} 覆写时自然清除。
      */
     public void loadTeamData(UUID teamKey) {
         if (teamKey == null || saveDir == null) return;
@@ -702,19 +667,13 @@ public class LotteryManager {
                     poolCounters.put(key, pityTag.getInteger(key));
                 }
             }
-            // 历史
-            if (nbt.hasKey("history")) {
-                LotteryHistory history = new LotteryHistory();
-                history.readFromNBT(nbt.getCompoundTag("history"));
-                histories.put(teamKey, history);
-            }
         } catch (Exception e) {
             GTInterestingThing.LOG.error("加载抽奖数据失败: " + teamKey, e);
         }
     }
 
     /**
-     * 玩家登录：预加载其团队抽奖数据（含保底/历史），供同步与查询
+     * 玩家登录：预加载其团队抽奖数据（保底），供同步与查询
      */
     public void loadPlayerTeamData(UUID playerId) {
         UUID teamKey = resolveTeamKey(playerId);
@@ -724,8 +683,7 @@ public class LotteryManager {
     }
 
     /**
-     * 玩家下线卸载（团队数据由团队共享，不随个人下线清除；
-     * 此处仅落盘保底数据，历史常驻内存至服务器关闭——上限 200 条，内存可控）
+     * 玩家下线卸载（团队数据由团队共享，不随个人下线清除；此处仅落盘保底数据）
      */
     public void unloadPlayer(UUID playerId) {
         UUID teamKey = resolveTeamKey(playerId);
@@ -739,9 +697,6 @@ public class LotteryManager {
      */
     public void saveAll() {
         for (UUID teamKey : pityCounters.keySet()) {
-            saveTeamData(teamKey);
-        }
-        for (UUID teamKey : histories.keySet()) {
             saveTeamData(teamKey);
         }
     }
@@ -792,18 +747,5 @@ public class LotteryManager {
             }
         }
         return results;
-    }
-
-    // ==================== 内部辅助 ====================
-
-    /** 取玩家名（在线取真名，离线退 UUID 前 8 位） */
-    private String getPlayerName(UUID playerId) {
-        EntityPlayerMP player = DailySignInManager.getPlayerByUUID(playerId);
-        if (player != null) {
-            return player.getCommandSenderName();
-        }
-        return playerId == null ? "?"
-            : playerId.toString()
-                .substring(0, 8);
     }
 }

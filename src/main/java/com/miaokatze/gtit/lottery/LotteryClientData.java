@@ -28,7 +28,6 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * <ul>
  * <li>卡池摘要（条目/价格/保底配置，供轮盘与按钮渲染）</li>
  * <li>团队保底计数（poolId → 连续未出高稀有次数）</li>
- * <li>最近抽奖历史（时间倒序，最新在前）</li>
  * <li>最近一次抽取结果列表（驱动轮盘动画与结果展示）</li>
  * </ul>
  */
@@ -47,9 +46,6 @@ public final class LotteryClientData {
     /** 其他失败（机器无效等） */
     public static final int RESULT_ERROR = 4;
 
-    /** 历史摘要缓存条数（与同步包携带条数一致） */
-    public static final int HISTORY_DISPLAY_LIMIT = 20;
-
     // ==================== 同步状态字段 ====================
 
     /** 卡池摘要表（poolId → 摘要，LinkedHashMap 保持服务端下发顺序） */
@@ -58,8 +54,6 @@ public final class LotteryClientData {
     private static volatile Map<String, Integer> pityCounters = new LinkedHashMap<>();
     /** 团队钱包余额（currencyId → 数量，仅含卡池消耗币种，随同步包刷新） */
     private static volatile Map<String, Integer> balances = new LinkedHashMap<>();
-    /** 最近抽奖历史（时间倒序，最新在前，最多 {@link #HISTORY_DISPLAY_LIMIT} 条） */
-    private static volatile List<LotteryHistory.HistoryEntry> recentHistory = new ArrayList<>();
     /** 当前选中的卡池 ID（客户端本地状态，跨打开保持） */
     private static volatile String selectedPoolId = "";
 
@@ -188,15 +182,14 @@ public final class LotteryClientData {
     // ==================== 写入（网络包处理器调用） ====================
 
     /**
-     * 全量刷新卡池摘要/保底计数/历史（{@link LotterySyncPacket} 到达时调用）
+     * 全量刷新卡池摘要/保底计数/余额（{@link LotterySyncPacket} 到达时调用）
      *
      * @param newPools    卡池摘要（可为 null 表示不变）
      * @param newPity     保底计数
-     * @param newHistory  最近历史（时间倒序）
      * @param newBalances 团队钱包余额（currencyId → 数量）
      */
     public static synchronized void updatePools(List<PoolSummary> newPools, Map<String, Integer> newPity,
-        List<LotteryHistory.HistoryEntry> newHistory, Map<String, Integer> newBalances) {
+        Map<String, Integer> newBalances) {
         if (newPools != null) {
             Map<String, PoolSummary> map = new LinkedHashMap<>();
             for (PoolSummary pool : newPools) {
@@ -215,9 +208,6 @@ public final class LotteryClientData {
         }
         if (newPity != null) {
             pityCounters = new LinkedHashMap<>(newPity);
-        }
-        if (newHistory != null) {
-            recentHistory = new ArrayList<>(newHistory);
         }
         if (newBalances != null) {
             balances = new LinkedHashMap<>(newBalances);
@@ -301,13 +291,6 @@ public final class LotteryClientData {
         if (currencyId == null) return 0;
         Integer amount = balances.get(currencyId);
         return amount == null ? 0 : amount;
-    }
-
-    /**
-     * 最近抽奖历史（时间倒序，最新在前）
-     */
-    public static List<LotteryHistory.HistoryEntry> getRecentHistory() {
-        return recentHistory;
     }
 
     /**

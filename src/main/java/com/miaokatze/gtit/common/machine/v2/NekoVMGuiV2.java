@@ -643,6 +643,37 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             itemSelectorPanel = IPanelHandler.simple(panel, (parent, player) -> createSampleTradeGui(), true);
         }
 
+        // ==================== 双端共有子树（必须先于所有仅客户端子树添加）====================
+        // 【v1.7.9 关键修复】ModularUI2 自动同步（WidgetTree.collectSyncValues）在双端各自
+        // 按「BFS 遍历 widget 树的顺序」为 isSynced()=true 的 widget handler 分配 int ID，
+        // 双端凭 (panelName, id) 配对收发。因此双端共有的槽位（背包/输入/输出）必须在
+        // 双端 widget 树中以「相同相对顺序」出现，且不能排在任何仅客户端 ISynced 子树之后——
+        // 否则客户端 BFS 会先遇到仅客户端的 PhantomItemSlot/TextFieldWidget（编辑面板/搜索框），
+        // 使背包/输入/输出槽的 ID 整体偏移，服务端输出槽的同步包被客户端错误的 handler 接收：
+        // 输出槽永收不到数据 → changeListener 不触发 → 掉落动画不动 → 槽停在初始 y=-1 屏幕外
+        // （即 v1.7.7/1.7.8 实测「产物无掉落动画、输出槽不可见」的真根因；
+        // v1.7.7 将编辑面板从独立 syncedPanel 改为内嵌 editOverlayRoot 后引入该错位，
+        // v1.7.8 的 forceSyncOutputSlots 同样按错位 ID 发包，故未命中根因）。
+
+        // --- 玩家背包栏（v1.7.5 从贸易列拆出，双端挂 panel）---
+        // 双端创建：服务端必须注册背包槽，否则容器缺槽、shift 转移失效（与 VM 原版 createInventoryRow 一致）。
+        // v1.7.6 G1：四页恒显示（三页物品交互需要背包，用户已确认）——移除原「仅贸易页」的 setEnabledIf；
+        // 三页底部内容暂时被背包行遮挡属已裁决的过渡态（G2 重写三页布局时根除，不发布中间态）。
+        panel.child(
+            Flow.row()
+                .fullWidth()
+                .height(76)
+                .bottom(5)
+                .child(
+                    SlotGroupWidget.playerInventory(false)
+                        .marginLeft(4)));
+
+        // 右侧 IO 列（v1.7.6 G1：四页恒显示）
+        // 含全部输入/输出槽（非 phantom，ISynced），双端创建且必须先于下方仅客户端子树添加
+        panel.child(createIOColumn());
+
+        // ==================== 以下均为仅客户端子树（不得含双端需要同步的槽位）====================
+
         // v1.7.0 主标签列（贸易/签到/抽奖/邮件），位于贸易分类列的更左边
         if (syncManager.isClient()) {
             panel.child(createMainTabColumn());
@@ -663,11 +694,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 确保服务端也注册同步通道，否则客户端 togglePanel() 静默失败导致面板无法弹出。
         // volumeButton 在 createQolButtonColumn 内被赋值（仅客户端），但 syncedPanel 第二参数 true
         // 表示仅在客户端创建面板，回调中的 volumeButton 引用仅在客户端被使用，服务端不触发回调。
+        // 注：syncedPanel 走显式命名注册（PanelSyncHandler），不进主 panel widget 树，与上述 BFS 顺序无关。
         volumePanel = syncManager
             .syncedPanel("nekoV2Volume", true, (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, volumeButton));
 
         // v1.7.7 G2① 编辑面板统一改为 NekoTradeMainPanel 内嵌覆盖层，
         // 不再使用独立 syncedPanel 子窗口，避免窗口坐标系错位/被 NEI 或背包行遮挡。
+        // 【已知限制】内嵌后 PhantomItemSlot 仅存在于客户端 widget 树，其自动同步
+        // （服务端编辑缓冲区 ↔ 客户端 phantom 槽）在服务端无对应 handler，当前不生效；
+        // 编辑面板的字段保存走显式命名 sync value，不受影响。彻底修复需另案将编辑面板
+        // 恢复为独立 syncedPanel 或实现双端镜像构建。
         if (syncManager.isClient()) {
             editOverlayRoot = new ParentWidget<>();
             editOverlayRoot.relativeToScreen()
@@ -700,25 +736,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // v1.7.5 修复：仅客户端创建——mainTabController/tabController 仅在客户端初始化（上方 isClient 块），
         // 服务端执行到 .controller(null) 会 NPE，createPanel 中断导致右击无反应。
         // 4 个页面均无槽位、无 net.minecraft.client 引用，仅客户端创建安全（与 VM 原版一致）。
+        // 注：页内搜索框 TextFieldWidget 为 ISynced，必须排在双端共有槽之后（见上方关键修复注释）。
         if (syncManager.isClient()) {
             panel.child(createMainContentPagedWidget(syncManager));
         }
-
-        // --- 玩家背包栏（v1.7.5 从贸易列拆出，双端挂 panel）---
-        // 双端创建：服务端必须注册背包槽，否则容器缺槽、shift 转移失效（与 VM 原版 createInventoryRow 一致）。
-        // v1.7.6 G1：四页恒显示（三页物品交互需要背包，用户已确认）——移除原「仅贸易页」的 setEnabledIf；
-        // 三页底部内容暂时被背包行遮挡属已裁决的过渡态（G2 重写三页布局时根除，不发布中间态）。
-        panel.child(
-            Flow.row()
-                .fullWidth()
-                .height(76)
-                .bottom(5)
-                .child(
-                    SlotGroupWidget.playerInventory(false)
-                        .marginLeft(4)));
-
-        // 右侧 IO 列（v1.7.6 G1：四页恒显示）
-        panel.child(createIOColumn());
 
         return panel;
     }

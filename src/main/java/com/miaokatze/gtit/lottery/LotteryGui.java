@@ -1,7 +1,5 @@
 package com.miaokatze.gtit.lottery;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -18,7 +16,6 @@ import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.screen.viewport.GuiContext;
 import com.cleanroommc.modularui.theme.WidgetTheme;
 import com.cleanroommc.modularui.utils.Alignment;
-import com.cleanroommc.modularui.utils.GlStateManager;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
@@ -39,7 +36,7 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  * <li>顶部：卡池标题（v1.7.6 起池切换迁移至左侧 sub-page 标签列，页内不再设按钮行）</li>
  * <li>中部：4 列环形边框轮盘（格子绕圈点亮 → cubic ease-out 减速 → 停在结果格，
  * 由 {@link LotteryAnimationController} 纯客户端时间驱动）</li>
- * <li>底部：抽 1 次 / 抽 10 次按钮（余额不足显示总价+提示）、保底进度、最近中奖滚动摘要</li>
+ * <li>底部：抽 1 次 / 抽 10 次按钮（余额不足显示总价+提示）、保底进度</li>
  * </ul>
  * <p>
  * <b>双端安全</b>：所有动态 Supplier 仅在客户端渲染时求值；服务端构建时读到
@@ -96,8 +93,11 @@ public class LotteryGui {
     private static final int WHEEL_Y = 24;
     /** 轮盘区高度（最大 3 行 × 28 = 84；动态布局在区内水平/垂直居中） */
     private static final int WHEEL_H = 3 * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
-    /** 指针尖端相对槽内缘的内缩像素（尖端落点 = 槽中心沿 dirOut 回退 SLOT_SIZE/2-2） */
-    private static final int POINTER_TIP_INSET = 2;
+    /**
+     * 指针底边越过点亮格上边后的下移像素（v1.7.9 起固定朝下直绘：
+     * 指针下沿对齐格子上边中点后再往下偏一点点，观感更贴合；可调）
+     */
+    private static final int POINTER_DROP_PX = 2;
 
     /** 结果提示条 Y（v1.7.7 G3①：136→114） */
     private static final int RESULT_Y = 114;
@@ -126,17 +126,6 @@ public class LotteryGui {
     /** 按钮文本显示列预算（全角计 2 列/半角计 1 列，72px 宽扣内边距约 14 列） */
     private static final int DRAW_BTN_TEXT_BUDGET = 14;
 
-    /** 最近中奖摘要 Y（v1.7.7 G3①：246→216；摘要区底 ≈ 230 ≤ 229 遮挡线） */
-    private static final int HISTORY_Y = 216;
-    /** 最近中奖摘要条数（v1.7.7 G3①：3→2，配合行高压进可见区） */
-    private static final int HISTORY_LINES = 2;
-    /** 摘要行高（v1.7.7 G3①：12→7，scale 0.7 下两行总高 14，确保不越界） */
-    private static final int HISTORY_LINE_H = 7;
-    /** 摘要玩家名显示列预算（scale 0.7 下整行约 54 列，玩家名份额） */
-    private static final int HISTORY_NAME_BUDGET = 12;
-    /** 摘要物品名显示列预算（超长物品名截断补「…」，防顶行/换行观感） */
-    private static final int HISTORY_ITEM_BUDGET = 20;
-
     // ==================== 颜色常量（ARGB） ====================
 
     /** 点亮格高亮框色（金色，叠加在槽位底上） */
@@ -147,9 +136,6 @@ public class LotteryGui {
     private static final int COLOR_PITY_BG = 0xFF101020;
     /** 保底进度条填充（亮紫，呼应 EPIC 保底稀有度；G4 自 0xFFAA66FF 调亮提升对比度） */
     private static final int COLOR_PITY_FILL = 0xFFC47FFF;
-
-    /** 历史时间戳格式（HH:mm） */
-    private static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("HH:mm", Locale.ROOT);
 
     // ==================== 结果揭示状态（v1.7.8 客户端门控） ====================
 
@@ -225,7 +211,7 @@ public class LotteryGui {
         page.child(createMultiResultList()); // 10 连结果格子列表
         page.child(createPityProgress()); // 保底进度（文本 + 进度条）
         page.child(createDrawButtons(machine, editCallback)); // 抽 1 次 / 抽 10 次（编辑模式拦截）
-        page.child(createHistoryDisplay()); // 最近中奖滚动摘要
+        // v1.7.9：「最近中奖」滚动摘要已随中奖记录功能一并移除
 
         return page;
     }
@@ -333,7 +319,8 @@ public class LotteryGui {
      * 动态变化，ModularUI2 运行期改 pos 不可靠）：
      * <ul>
      * <li>整区自绘层：每格「槽底（按稀有度）→ 物品图标 → 稀有度角标」同帧绘制，
-     * 其上叠点亮高亮框（动画 Supplier 求值）与旋转指针（跟随点亮格方向）</li>
+     * 其上叠点亮高亮框（动画 Supplier 求值）与指针（固定朝下倒三角，
+     * 底边贴点亮格上边中点，见 {@link #drawPointer}）</li>
      * <li>整区隐形交互层：一个覆盖全区的 {@link ButtonWidget}，tooltip 与编辑点击
      * 统一经 {@link #hitSlot(IWidget)} 命中测试定位槽位（绝对鼠标坐标 − 区域绝对坐标）</li>
      * </ul>
@@ -367,7 +354,7 @@ public class LotteryGui {
             int[] litTl = slotTopLeft(lit, n);
             int color = anim.isFinished() ? COLOR_FINISH_FRAME : COLOR_LIT_FRAME;
             drawFrame(litTl[0] - 1, litTl[1] - 1, SLOT_SIZE + 2, SLOT_SIZE + 2, color);
-            // 3) 指针（尖端抵住点亮格内缘，按槽位方向旋转）
+            // 3) 指针（固定朝下倒三角，底边贴点亮格上边中点再下移 POINTER_DROP_PX）
             drawPointer(context, theme, litTl);
         }).pos(0, 0)
             .size(PAGE_WIDTH, WHEEL_H));
@@ -502,48 +489,24 @@ public class LotteryGui {
     }
 
     /**
-     * 绘制轮盘指针（16x16 固定朝下倒三角纹理，按点亮格方向旋转）。
+     * 绘制轮盘指针（16x16 固定朝下倒三角纹理，不旋转）。
      * <p>
-     * 定位（v1.7.8 修复指针偏移——原固定朝向 + 内插锚点导致指针压在格子上）：
+     * 定位（v1.7.9 恢复固定朝向——v1.7.8 的随槽位方向旋转方案观感不佳回退）：
      * <ul>
-     * <li>dirOut = normalize(槽中心 − 轮盘中心)（N=1 居中格退化为 (0,-1) 朝上）</li>
-     * <li>尖端落点 tip = 槽中心 − dirOut×({@code SLOT_SIZE/2} − {@link #POINTER_TIP_INSET})
-     * （抵住槽内缘，留 2px 内缩不压格）</li>
-     * <li>指针中心 pc = tip − dirOut×8（纹理尖端距中心 8px）</li>
-     * <li>旋转角 θ = atan2(-dirOut.x, dirOut.y)：把纹理朝向 (0,+1 下) 映射到 dirOut</li>
+     * <li>pointerX = 槽位中心x − 8（16px 宽纹理相对格心水平居中）</li>
+     * <li>pointerY = 槽位中心y − {@code SLOT_SIZE/2} − 16 + {@link #POINTER_DROP_PX}
+     * （指针底边贴着格子上边，再往下偏移一点点，观感更贴合）</li>
      * </ul>
-     * 只动矩阵栈（push/translate/rotate/pop），不触碰 blend/texture 状态。
+     * 直接按坐标绘制，不动矩阵栈与 blend/texture 状态。
      *
      * @param litTl 点亮格左上角坐标（{@link #slotTopLeft} 结果）
      */
     private static void drawPointer(GuiContext context, WidgetTheme theme, int[] litTl) {
-        float slotCx = litTl[0] + SLOT_SIZE / 2f;
-        float slotCy = litTl[1] + SLOT_SIZE / 2f;
-        float dirX = slotCx - PAGE_WIDTH / 2f;
-        float dirY = slotCy - WHEEL_H / 2f;
-        float len = (float) Math.sqrt(dirX * dirX + dirY * dirY);
-        if (len < 1e-4f) {
-            // N=1 居中格：槽中心与轮盘中心重合，方向约定朝上
-            dirX = 0;
-            dirY = -1;
-        } else {
-            dirX /= len;
-            dirY /= len;
-        }
-        // 尖端落点：槽中心沿 dirOut 反方向回退至槽内缘（内缩 POINTER_TIP_INSET 像素）
-        float tipX = slotCx - dirX * (SLOT_SIZE / 2f - POINTER_TIP_INSET);
-        float tipY = slotCy - dirY * (SLOT_SIZE / 2f - POINTER_TIP_INSET);
-        // 指针中心：尖端再沿 dirOut 反方向退 8px（纹理尖端在其中心正下方 8px）
-        float pcX = tipX - dirX * 8;
-        float pcY = tipY - dirY * 8;
-        // 旋转角：纹理尖端朝 +y（下），旋转后须指向 dirOut
-        // R(θ)·(0,1) = (-sinθ, cosθ) = (dirX, dirY) → θ = atan2(-dirX, dirY)
-        float theta = (float) Math.toDegrees(Math.atan2(-dirX, dirY));
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(pcX, pcY, 0);
-        GlStateManager.rotate(theta, 0, 0, 1);
-        NekoGuiTextures.LOTTERY_POINTER.draw(context, -8, -8, 16, 16, theme);
-        GlStateManager.popMatrix();
+        int slotCx = litTl[0] + SLOT_SIZE / 2;
+        int slotCy = litTl[1] + SLOT_SIZE / 2;
+        int pointerX = slotCx - 8;
+        int pointerY = slotCy - SLOT_SIZE / 2 - 16 + POINTER_DROP_PX;
+        NekoGuiTextures.LOTTERY_POINTER.draw(context, pointerX, pointerY, 16, 16, theme);
     }
 
     /**
@@ -1119,69 +1082,5 @@ public class LotteryGui {
             columns += w;
         }
         return text; // 理论不可达（total > maxColumn 时必在循环内截断）
-    }
-
-    // ==================== 最近中奖摘要 ====================
-
-    /**
-     * 最近中奖滚动摘要（最新 {@link #HISTORY_LINES} 条，团队共享历史）。
-     * <p>
-     * 每条格式：「HH:mm 玩家名 获得 物品名 ×数量」（稀有度色物品名）。
-     * 历史随同步包刷新（登录/打开页/每次抽取后）。
-     */
-    private static IWidget createHistoryDisplay() {
-        ParentWidget<?> box = new ParentWidget<>().pos(0, HISTORY_Y)
-            .size(PAGE_WIDTH, 10 + HISTORY_LINES * HISTORY_LINE_H);
-
-        box.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + "—— 最近中奖 ——")).pos(0, 0)
-                .size(PAGE_WIDTH, 8)
-                .textAlign(Alignment.Center)
-                .scale(0.7f)
-                .shadow(false));
-
-        for (int i = 0; i < HISTORY_LINES; i++) {
-            final int index = i;
-            box.child(
-                new TextWidget<>(IKey.dynamic(() -> historyLine(index))).pos(0, 10 + i * HISTORY_LINE_H)
-                    .size(PAGE_WIDTH, HISTORY_LINE_H)
-                    .textAlign(Alignment.Center)
-                    .scale(0.7f)
-                    .shadow(false));
-        }
-        return box;
-    }
-
-    /** 单条历史摘要文本（越界返回空串；v1.7.6 G4 玩家名/物品名按显示列截断防超长顶行） */
-    private static String historyLine(int index) {
-        List<LotteryHistory.HistoryEntry> history = LotteryClientData.getRecentHistory();
-        if (index < 0 || index >= history.size()) return "";
-        LotteryHistory.HistoryEntry entry = history.get(index);
-        String time = TIME_FORMAT.format(new Date(entry.timestamp));
-        LotteryRarity rarity = LotteryRarity.fromString(entry.rarityName);
-        return EnumChatFormatting.DARK_GRAY + time
-            + " "
-            + EnumChatFormatting.GRAY
-            + truncateToWidth(entry.playerName, HISTORY_NAME_BUDGET)
-            + " 获得 "
-            + rarity.getColor()
-            + truncateToWidth(historyEntryName(entry), HISTORY_ITEM_BUDGET)
-            + EnumChatFormatting.WHITE
-            + " ×"
-            + entry.amount;
-    }
-
-    /** 历史条目显示名（按卡池+条目 ID 查配置取物品名，查不到回退条目 ID） */
-    private static String historyEntryName(LotteryHistory.HistoryEntry entry) {
-        LotteryClientData.PoolSummary pool = LotteryClientData.getPool(entry.poolId);
-        if (pool != null) {
-            for (LotteryEntry e : pool.entries) {
-                if (e != null && entry.entryId.equals(e.getId())) {
-                    ItemStack stack = e.getDisplayStack();
-                    return stack != null ? stack.getDisplayName() : e.getId();
-                }
-            }
-        }
-        return entry.entryId;
     }
 }
