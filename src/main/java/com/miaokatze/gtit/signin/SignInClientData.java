@@ -2,8 +2,10 @@ package com.miaokatze.gtit.signin;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -16,10 +18,10 @@ import java.util.Set;
  * <b>日期口径</b>：「今天」以服务端同步包携带的 {@link #serverToday} 为准，
  * 避免客户端时区/系统时间错误导致日历错位；未收到同步前回退到客户端本地日期。
  * <p>
- * <b>配置口径（v1.7.0 目标 5）</b>：阶梯奖励/基础奖励/连续系数等配置以服务端同步包携带的
- * 配置快照为准（{@link #updateConfig} 写入）；未收到同步前回退到本地
- * {@link DailySignInConfig} 静态配置（单人存档下与服务端同源，专用服务器客户端则为本地默认值，
- * 登录同步后即被服务端权威值覆盖）。
+ * <b>配置口径（v1.7.8 任务5+6）</b>：每月块（递增开关/系数、工作日/周末默认、逐日覆盖）与
+ * 连续/累计阶梯奖励以服务端同步包携带的配置快照为准（{@link #updateConfig} 写入）；
+ * 未收到同步前回退到本地 {@link DailySignInConfig} 静态配置（单人存档下与服务端同源，
+ * 专用服务器客户端则为本地默认值，登录同步后即被服务端权威值覆盖）。
  */
 public final class SignInClientData {
 
@@ -48,6 +50,8 @@ public final class SignInClientData {
     private static volatile Set<String> monthlyDates = new HashSet<>();
     /** 当月已领取的阶梯奖励天数集合 */
     private static volatile Set<Integer> claimedTierDays = new HashSet<>();
+    /** 已领取的累计签到阶梯天数集合（v1.7.8 任务5；永久不清空） */
+    private static volatile Set<Integer> claimedCumulativeTierDays = new HashSet<>();
 
     // ==================== 最近一次签到结果（供 GUI 提示条显示） ====================
 
@@ -57,16 +61,27 @@ public final class SignInClientData {
     /** 结果产生时间（System.currentTimeMillis），供 GUI 做限时显示 */
     private static volatile long lastResultTimeMs = 0L;
 
-    // ==================== 服务端配置快照（v1.7.0 目标 5，同步包携带） ====================
+    // ==================== 服务端配置快照（同步包携带；v1.7.8 任务5+6 重构为统一奖励模型） ====================
 
     /**
-     * 服务端同步的阶梯奖励列表；null 表示尚未收到配置同步（回退本地 {@link DailySignInConfig}）
+     * 服务端同步的连续阶梯奖励列表；null 表示尚未收到配置同步（回退本地 {@link DailySignInConfig}）
+     * <p>
+     * 本字段同时作为「每月块配置快照是否已同步」的标记：非 null 时 cfgIncrementEnabled/cfgWeekday 等
+     * 同批字段均为服务端权威值。
      */
     private static volatile List<SignInRewardTier> cfgTiers = null;
-    /** 服务端同步的每日基础奖励（{@link #cfgTiers} 同批有效） */
-    private static volatile int cfgBaseReward;
-    /** 服务端同步的连续天数奖励系数（{@link #cfgTiers} 同批有效） */
+    /** 服务端同步的累计签到阶梯奖励列表（v1.7.8 任务5；{@link #cfgTiers} 同批有效） */
+    private static volatile List<SignInRewardTier> cfgCumulativeTiers = new ArrayList<>();
+    /** 服务端同步的每日默认奖励递增开关（v1.7.8 任务6） */
+    private static volatile boolean cfgIncrementEnabled;
+    /** 服务端同步的连续天数奖励系数（仅递增开关开启时生效） */
     private static volatile double cfgIncrement;
+    /** 服务端同步的工作日默认奖励（v1.7.8 任务6） */
+    private static volatile SignInReward cfgWeekday = SignInReward.EMPTY;
+    /** 服务端同步的周末默认奖励（v1.7.8 任务6） */
+    private static volatile SignInReward cfgWeekend = SignInReward.EMPTY;
+    /** 服务端同步的逐日覆盖奖励表（键=月内日号，v1.7.8 任务6） */
+    private static volatile Map<Integer, SignInReward> cfgDayOverrides = new HashMap<>();
 
     // ==================== v1.7.6 G2③：在线时长 / 纪念日 ====================
 
@@ -118,6 +133,18 @@ public final class SignInClientData {
                 }
             }
             claimedTierDays = claimed;
+            // v1.7.8 任务5：解析已领取累计阶梯记录（格式 "cum_<days>"，永久不清空）
+            Set<Integer> cumClaimed = new HashSet<>();
+            for (String record : data.getClaimedCumulativeTiers()) {
+                if (record != null && record.startsWith("cum_")) {
+                    try {
+                        cumClaimed.add(Integer.parseInt(record.substring(4)));
+                    } catch (NumberFormatException ignored) {
+                        // 跳过格式异常的记录
+                    }
+                }
+            }
+            claimedCumulativeTierDays = cumClaimed;
             // ===== v1.7.6 G2③：在线时长 / 生日 / 首登 / 纪念日 =====
             onlineSecondsToday = data.getOnlineSecondsToday();
             // 解析今日已领取的在线档位（记录含历史日期，仅保留 today 条目）
@@ -155,19 +182,29 @@ public final class SignInClientData {
     }
 
     /**
-     * 写入服务端配置快照（v1.7.0 目标 5）
+     * 写入服务端配置快照（v1.7.8 任务5+6：每月块 + 连续/累计阶梯，统一奖励模型）
      * <p>
      * 由 {@link SignInSyncPacket} 客户端处理器在收到携带配置快照的同步包时调用。
-     * 防御性拷贝列表，避免调用方后续修改影响缓存。
+     * 防御性拷贝列表/映射，避免调用方后续修改影响缓存。
      *
-     * @param baseReward 服务端每日基础奖励
-     * @param increment  服务端连续天数奖励系数
-     * @param tiers      服务端阶梯奖励列表（null 时清空快照回退本地配置）
+     * @param incrementEnabled 服务端每日默认奖励递增开关
+     * @param increment        服务端连续天数奖励系数
+     * @param weekday          服务端工作日默认奖励（null 按 {@link SignInReward#EMPTY}）
+     * @param weekend          服务端周末默认奖励（null 按 {@link SignInReward#EMPTY}）
+     * @param dayOverrides     服务端逐日覆盖奖励表（null 按空表）
+     * @param tiers            服务端连续阶梯奖励列表（null 时清空快照回退本地配置）
+     * @param cumulativeTiers  服务端累计阶梯奖励列表（null 按空表）
      */
-    public static synchronized void updateConfig(int baseReward, double increment, List<SignInRewardTier> tiers) {
-        cfgBaseReward = Math.max(0, baseReward);
+    public static synchronized void updateConfig(boolean incrementEnabled, double increment, SignInReward weekday,
+        SignInReward weekend, Map<Integer, SignInReward> dayOverrides, List<SignInRewardTier> tiers,
+        List<SignInRewardTier> cumulativeTiers) {
+        cfgIncrementEnabled = incrementEnabled;
         cfgIncrement = Math.max(0, increment);
+        cfgWeekday = weekday == null ? SignInReward.EMPTY : weekday;
+        cfgWeekend = weekend == null ? SignInReward.EMPTY : weekend;
+        cfgDayOverrides = dayOverrides == null ? new HashMap<>() : new HashMap<>(dayOverrides);
         cfgTiers = tiers == null ? null : new ArrayList<>(tiers);
+        cfgCumulativeTiers = cumulativeTiers == null ? new ArrayList<>() : new ArrayList<>(cumulativeTiers);
     }
 
     /**
@@ -235,27 +272,135 @@ public final class SignInClientData {
     }
 
     /**
-     * 计算指定连续天数下的每日签到基础奖励（服务端快照口径）
+     * 当前生效的累计签到阶梯列表（v1.7.8 任务5）
      * <p>
-     * 公式与 {@link DailySignInConfig#calculateBaseReward} 一致：
-     * base + floor((连续天数 - 1) * 系数)，最低为 base。
-     *
-     * @param consecutiveDays 签到完成后的连续天数（≥1）
-     * @return 应发放的猫猫币数量（预览值，实际以服务端发放为准）
+     * 优先返回服务端同步快照；未同步时回退本地 {@link DailySignInConfig#getCumulativeTiers()}。
      */
-    public static int calculateBaseReward(int consecutiveDays) {
-        int base;
-        double increment;
-        if (cfgTiers != null) {
-            base = cfgBaseReward;
-            increment = cfgIncrement;
-        } else {
-            // 未收到配置同步：回退本地配置（单人存档同源）
-            base = DailySignInConfig.getBaseRewardNeko();
-            increment = DailySignInConfig.getConsecutiveIncrement();
+    public static List<SignInRewardTier> getCumulativeTiers() {
+        List<SignInRewardTier> tiers = cfgTiers != null ? cfgCumulativeTiers : null;
+        return tiers != null ? tiers : DailySignInConfig.getCumulativeTiers();
+    }
+
+    /**
+     * 获取达到指定累计天数时触发的累计阶梯（服务端快照口径，逻辑同 {@link DailySignInConfig#getTriggeredCumulativeTier}）
+     *
+     * @param totalDays 累计签到天数
+     * @return 恰好要求该累计天数的阶梯；无则返回 null
+     */
+    public static SignInRewardTier getTriggeredCumulativeTier(int totalDays) {
+        for (SignInRewardTier tier : getCumulativeTiers()) {
+            if (tier.getRequiredDays() == totalDays) {
+                return tier;
+            }
         }
-        if (consecutiveDays <= 1) return base;
-        return base + (int) Math.floor((consecutiveDays - 1) * increment);
+        return null;
+    }
+
+    /**
+     * 获取下一个尚未达到的累计阶梯（服务端快照口径，逻辑同 {@link DailySignInConfig#getNextCumulativeTier}）
+     *
+     * @param totalDays 当前累计签到天数
+     * @return 所需天数大于当前累计天数的最小阶梯；全部已达返回 null
+     */
+    public static SignInRewardTier getNextCumulativeTier(int totalDays) {
+        SignInRewardTier next = null;
+        for (SignInRewardTier tier : getCumulativeTiers()) {
+            if (tier.getRequiredDays() > totalDays) {
+                if (next == null || tier.getRequiredDays() < next.getRequiredDays()) {
+                    next = tier;
+                }
+            }
+        }
+        return next;
+    }
+
+    /** 指定累计阶梯天数是否已领取（永久限领一次） */
+    public static boolean hasClaimedCumulativeTier(int days) {
+        return claimedCumulativeTierDays.contains(days);
+    }
+
+    // ==================== 每月块配置读取（v1.7.8 任务6；优先服务端快照，回退本地配置） ====================
+
+    /** 每日默认奖励是否随连续天数递增 */
+    public static boolean isIncrementEnabled() {
+        return cfgTiers != null ? cfgIncrementEnabled : DailySignInConfig.isIncrementEnabled();
+    }
+
+    /** 连续天数奖励系数（仅递增开关开启时生效） */
+    public static double getConsecutiveIncrement() {
+        return cfgTiers != null ? cfgIncrement : DailySignInConfig.getConsecutiveIncrement();
+    }
+
+    /** 工作日默认奖励 */
+    public static SignInReward getWeekdayDefault() {
+        return cfgTiers != null ? cfgWeekday : DailySignInConfig.getWeekdayDefault();
+    }
+
+    /** 周末默认奖励 */
+    public static SignInReward getWeekendDefault() {
+        return cfgTiers != null ? cfgWeekend : DailySignInConfig.getWeekendDefault();
+    }
+
+    /** 逐日覆盖奖励表（键=月内日号；防御性拷贝） */
+    public static Map<Integer, SignInReward> getDayOverrides() {
+        return cfgTiers != null ? new HashMap<>(cfgDayOverrides) : new HashMap<>(DailySignInConfig.getDayOverrides());
+    }
+
+    /**
+     * 获取指定日期生效的每日奖励（覆盖优先，否则按工作日/周末默认；服务端快照口径）
+     * <p>
+     * 货币量请以 {@link #calculateDayCurrency} 为准（含递增口径）；本方法主要用于取货币 ID 与物品列表。
+     *
+     * @param date 日期（yyyy-MM-dd）
+     * @return 生效的奖励（不会为 null）
+     */
+    public static SignInReward getEffectiveDayReward(String date) {
+        if (cfgTiers != null) {
+            int day = parseDayOfMonth(date);
+            if (day > 0) {
+                SignInReward override = cfgDayOverrides.get(day);
+                if (override != null) return override;
+            }
+            return DailySignInConfig.isWeekend(date) ? cfgWeekend : cfgWeekday;
+        }
+        return DailySignInConfig.getEffectiveDayReward(date);
+    }
+
+    /** 指定日期是否存在逐日覆盖（服务端快照口径） */
+    public static boolean hasDayOverride(String date) {
+        if (cfgTiers != null) {
+            int day = parseDayOfMonth(date);
+            return day > 0 && cfgDayOverrides.containsKey(day);
+        }
+        return DailySignInConfig.hasDayOverride(date);
+    }
+
+    /**
+     * 计算指定日期签到的每日货币量预览（服务端快照口径，公式同 {@link DailySignInConfig#calculateDayCurrency}）
+     * <p>
+     * 口径：逐日覆盖天直接取覆盖奖励货币量（<b>不递增</b>）；否则按工作日/周末默认奖励货币量，
+     * 递增开关开启时按 {@code base + floor((连续天数-1) * 系数)} 递增。
+     *
+     * @param date            日期（yyyy-MM-dd）
+     * @param consecutiveDays 签到完成后的连续天数（≥1）
+     * @return 应发放的货币数量（预览值，实际以服务端发放为准）
+     */
+    public static int calculateDayCurrency(String date, int consecutiveDays) {
+        if (cfgTiers != null) {
+            int day = parseDayOfMonth(date);
+            if (day > 0) {
+                SignInReward override = cfgDayOverrides.get(day);
+                if (override != null) {
+                    // 覆盖天：不递增
+                    return override.getCurrencyAmount();
+                }
+            }
+            SignInReward def = DailySignInConfig.isWeekend(date) ? cfgWeekend : cfgWeekday;
+            int base = def.getCurrencyAmount();
+            if (!cfgIncrementEnabled || consecutiveDays <= 1) return base;
+            return base + (int) Math.floor((consecutiveDays - 1) * cfgIncrement);
+        }
+        return DailySignInConfig.calculateDayCurrency(date, consecutiveDays);
     }
 
     // ==================== 读取（GUI 调用） ====================
@@ -350,6 +495,16 @@ public final class SignInClientData {
     private static String getYearMonth(String date) {
         if (date == null || date.length() < 7) return date == null ? "" : date;
         return date.substring(0, 7);
+    }
+
+    /** 解析 yyyy-MM-dd 的月内日号（格式异常返回 -1） */
+    private static int parseDayOfMonth(String date) {
+        try {
+            if (date == null || date.length() < 10) return -1;
+            return Integer.parseInt(date.substring(8, 10));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /** 在线档位已领取记录的今日前缀（"yyyy-MM-dd_"，null 安全） */

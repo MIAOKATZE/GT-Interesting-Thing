@@ -163,6 +163,15 @@ public class SignInRequestPacket implements IMessage {
                                     .getRequiredDays())
                             .append("天阶梯奖励]");
                     }
+                    // v1.7.8 任务5：累计签到阶梯达成反馈（永久每档限领一次）
+                    if (result.getCumulativeTierReward() != null) {
+                        sb.append(EnumChatFormatting.LIGHT_PURPLE)
+                            .append(" [累计签到")
+                            .append(
+                                result.getCumulativeTierReward()
+                                    .getRequiredDays())
+                            .append("天奖励]");
+                    }
                     player.addChatMessage(new ChatComponentText(sb.toString()));
                 }
                 case ALREADY_SIGNED -> {

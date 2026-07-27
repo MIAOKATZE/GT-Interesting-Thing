@@ -150,6 +150,21 @@ public class NekoTradeExecutor {
          */
         void rollback(int count);
 
+        /**
+         * 获取当前可用输出槽位数（v1.7.8 A2 输出空间预检）
+         * <p>
+         * 供 checkTrade 在扣款前预检普通产物所需槽数，避免 executeTrade
+         * 插入中途才发现空间不足才回滚。实现方应扣除缓冲队列已占用的虚拟槽位（防超卖）。
+         * <p>
+         * 默认返回 {@link Integer#MAX_VALUE} 表示"不统计/视为充足"，
+         * 未覆盖的实现方保持旧行为（由 executeTrade 中途回滚兜底）。
+         *
+         * @return 可用槽位数（已扣除缓冲队列占位）
+         */
+        default int getAvailableSlotCount() {
+            return Integer.MAX_VALUE;
+        }
+
         // v1.6.28: 批次标记接口，用于控制下落时序分档
 
         /**
@@ -178,15 +193,18 @@ public class NekoTradeExecutor {
     /**
      * 检查交易是否可以执行（不实际执行，纯读操作）
      * <p>
-     * 检查顺序：交易组存在性 → 交易索引有效性 → BQ 条件 → 冷却/次数 → 猫猫币余额 → 输入物品
+     * 检查顺序：交易组存在性 → 交易索引有效性 → BQ 条件 → 冷却/次数 → 猫猫币余额
+     * → 输入物品 → 输出槽空间（v1.7.8 A2）
      *
-     * @param playerId   玩家 UUID
-     * @param groupId    交易组 UUID
-     * @param tradeIndex 交易在组内的索引
-     * @param inputSlots 输入槽访问器
+     * @param playerId    玩家 UUID
+     * @param groupId     交易组 UUID
+     * @param tradeIndex  交易在组内的索引
+     * @param inputSlots  输入槽访问器
+     * @param outputSlots 输出槽访问器（v1.7.8 A2：扣款前预检输出空间）
      * @return 交易结果（SUCCESS 或对应的失败状态）
      */
-    public NekoTradeResult checkTrade(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots) {
+    public NekoTradeResult checkTrade(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots,
+        OutputSlotAccessor outputSlots) {
         // 1. 查找交易组
         NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
         if (group == null) {
@@ -257,15 +275,30 @@ public class NekoTradeExecutor {
             }
         }
 
-        // 8. 全部检查通过
+        // 8. v1.7.8 A2：预检输出槽空间（纯读操作，在扣款前失败）
+        // 每个普通产物栈固定占一个空槽（outputIntoSlot 写第一个空槽、不合并），
+        // 所需槽数 = 产物栈数；猫猫币产物直接入钱包不经输出槽，无需检查
+        int requiredOutputSlots = 0;
+        for (NekoBigItemStack toItem : trade.getNonCurrencyToItems()) {
+            for (ItemStack stack : toItem.getCombinedStacks()) {
+                if (stack != null) {
+                    requiredOutputSlots++;
+                }
+            }
+        }
+        if (requiredOutputSlots > outputSlots.getAvailableSlotCount()) {
+            return NekoTradeResult.fail(NekoTradeResult.Status.OUTPUT_FULL);
+        }
+
+        // 9. 全部检查通过
         return NekoTradeResult.success();
     }
 
     /**
      * 执行交易
      * <p>
-     * 先调用 checkTrade 预检查，通过后原子执行扣减和产出。
-     * 输出槽满时回滚猫猫币。
+     * 先调用 checkTrade 预检查（v1.7.8 A2 起含输出空间预检），通过后原子执行扣减和产出。
+     * 输出槽满时回滚猫猫币（预检后仅剩并发/队列堆积场景会走到中途回滚）。
      *
      * @param playerId    玩家 UUID
      * @param groupId     交易组 UUID
@@ -276,8 +309,8 @@ public class NekoTradeExecutor {
      */
     public NekoTradeResult executeTrade(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots,
         OutputSlotAccessor outputSlots) {
-        // 1. 预检查
-        NekoTradeResult checkResult = checkTrade(playerId, groupId, tradeIndex, inputSlots);
+        // 1. 预检查（v1.7.8 A2：传入输出槽访问器，扣款前预检输出空间）
+        NekoTradeResult checkResult = checkTrade(playerId, groupId, tradeIndex, inputSlots, outputSlots);
         if (!checkResult.isSuccess()) {
             return checkResult;
         }

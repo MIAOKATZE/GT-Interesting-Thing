@@ -39,10 +39,10 @@ public class LotteryAnimationController {
     private static final int FULL_ROUNDS_SINGLE = 3;
     /** 10 连快闪整圈数 */
     private static final int FULL_ROUNDS_QUICK = 1;
-    /** 单抽动画总时长（毫秒） */
-    private static final long DURATION_SINGLE_MS = 2800L;
-    /** 10 连快闪总时长（毫秒） */
-    private static final long DURATION_QUICK_MS = 1400L;
+    /** 单抽动画总时长（毫秒）——public：服务端延迟出货调度据此对齐「动画播完再落槽」时机 */
+    public static final long DURATION_SINGLE_MS = 2800L;
+    /** 10 连快闪总时长（毫秒）——public：同上，延迟出货按连抽数取对应时长 */
+    public static final long DURATION_QUICK_MS = 1400L;
 
     // ==================== 单例 ====================
 

@@ -94,8 +94,9 @@ public class DailySignInManager {
     /**
      * 执行签到（服务端调用）
      * <p>
-     * 流程：重复校验 → 断签/跨月修正 → 记录签到 → 发放基础奖励（猫猫币入钱包）
-     * → 检查阶梯奖励（当月每档限领一次）→ 持久化。
+     * 流程：重复校验 → 断签/跨月修正 → 记录签到 → 发放每日奖励（货币入钱包 + 物品入背包，
+     * v1.7.8 起按 {@link DailySignInConfig#getEffectiveDayReward} 区分工作日/周末/逐日覆盖）
+     * → 检查连续阶梯奖励（当月每档限领一次）→ 检查累计阶梯奖励（永久每档限领一次）→ 持久化。
      *
      * @param playerId 玩家 UUID
      * @return 签到结果（含奖励明细，供网络包/指令反馈）
@@ -117,11 +118,19 @@ public class DailySignInManager {
         int newConsecutive = calculateNewConsecutive(data.getLastSignInDate(), today, data.getConsecutiveDays());
         data.recordSignIn(today, getYesterday(), newConsecutive);
 
-        // 发放基础奖励（猫猫币入钱包，钱包自身处理团队/个人回退）
-        int baseReward = DailySignInConfig.calculateBaseReward(newConsecutive);
-        grantCurrency(playerId, com.miaokatze.gtit.trade.NekoCurrencyRegistrar.NEKO_ID, baseReward);
+        // v1.7.8 任务6：每日奖励 = 生效奖励（覆盖优先，否则工作日/周末默认）
+        // 货币量经 calculateDayCurrency 计算（递增仅作用默认奖励货币量；覆盖天不递增）
+        SignInReward dayReward = DailySignInConfig.getEffectiveDayReward(today);
+        int baseReward = DailySignInConfig.calculateDayCurrency(today, newConsecutive);
+        if (baseReward > 0 && !dayReward.getCurrencyId()
+            .isEmpty()) {
+            // 货币入钱包（钱包自身处理团队/个人回退）
+            grantCurrency(playerId, dayReward.getCurrencyId(), baseReward);
+        }
+        // 每日物品奖励：入背包（满则脚下掉落；离线跳过，与阶梯物品同口径）
+        grantRewardItems(playerId, dayReward);
 
-        // 阶梯奖励：达到配置天数且当月未领取时发放
+        // 连续阶梯奖励：达到配置天数且当月未领取时发放
         SignInRewardTier grantedTier = null;
         SignInRewardTier tier = DailySignInConfig.getTriggeredTier(newConsecutive);
         if (tier != null && !data.hasClaimedTier(tier.getRequiredDays(), getYearMonth())) {
@@ -130,8 +139,22 @@ public class DailySignInManager {
             grantedTier = tier;
         }
 
+        // v1.7.8 任务5：累计阶梯奖励——累计天数精确匹配档位且从未领取时发放（永久每档限领一次）
+        SignInRewardTier grantedCumulativeTier = null;
+        SignInRewardTier cumTier = DailySignInConfig.getTriggeredCumulativeTier(data.getTotalSignInDays());
+        if (cumTier != null && !data.hasClaimedCumulativeTier(cumTier.getRequiredDays())) {
+            grantTierReward(playerId, cumTier);
+            data.claimCumulativeTier(cumTier.getRequiredDays());
+            grantedCumulativeTier = cumTier;
+        }
+
         saveSignInData(playerId);
-        return new SignInResult(SignInResult.Status.SUCCESS, baseReward, grantedTier, newConsecutive);
+        return new SignInResult(
+            SignInResult.Status.SUCCESS,
+            baseReward,
+            grantedTier,
+            newConsecutive,
+            grantedCumulativeTier);
     }
 
     /**
@@ -151,17 +174,38 @@ public class DailySignInManager {
     }
 
     /**
-     * 发放阶梯奖励（货币 + 可选物品）
+     * 发放阶梯奖励（货币 + 物品列表，v1.7.8 统一奖励模型）
      * <p>
-     * 物品奖励需要玩家在线才能入背包；离线时跳过物品部分（货币仍会入钱包）。
+     * 连续阶梯与累计阶梯共用本方法；物品奖励需要玩家在线才能入背包，
+     * 离线时跳过物品部分（货币仍会入钱包）。
      */
     public void grantTierReward(UUID playerId, SignInRewardTier tier) {
         if (tier == null) return;
-        if (tier.getCurrencyAmount() > 0) {
-            grantCurrency(playerId, tier.getCurrencyId(), tier.getCurrencyAmount());
+        SignInReward reward = tier.getReward();
+        if (reward.hasCurrency()) {
+            grantCurrency(playerId, reward.getCurrencyId(), reward.getCurrencyAmount());
         }
-        if (tier.hasItemReward()) {
-            grantItemReward(playerId, tier);
+        grantRewardItems(playerId, reward);
+    }
+
+    /**
+     * 发放奖励中的物品列表（v1.7.8 任务6：每日奖励/阶梯奖励共用）
+     * <p>
+     * 逐条调用 {@link #grantItemStack}（入背包，满则脚下掉落；玩家离线跳过）。
+     *
+     * @param playerId 玩家 UUID
+     * @param reward   奖励（空条目已在内部过滤）
+     */
+    private void grantRewardItems(UUID playerId, SignInReward reward) {
+        if (reward == null) return;
+        for (RewardItem item : reward.getItems()) {
+            if (item == null || item.isEmpty()) continue;
+            grantItemStack(
+                playerId,
+                item.getItemId(),
+                item.getAmount(),
+                item.getMeta(),
+                NbtBase64Util.nbtFromBase64(item.getNbtBase64()));
         }
     }
 
@@ -530,16 +574,6 @@ public class DailySignInManager {
         NekoWalletManager.INSTANCE.saveWallet(playerId);
     }
 
-    /** 发放阶梯物品奖励：入玩家背包，背包满则掉落在玩家脚下 */
-    private void grantItemReward(UUID playerId, SignInRewardTier tier) {
-        grantItemStack(
-            playerId,
-            tier.getItemRewardId(),
-            tier.getItemRewardAmount(),
-            tier.getItemRewardMeta(),
-            NbtBase64Util.nbtFromBase64(tier.getItemNbt()));
-    }
-
     /**
      * 发放物品奖励（v1.7.6 G2③ 抽取的通用路径：签到阶梯/每日在线共用）
      * <p>
@@ -609,18 +643,26 @@ public class DailySignInManager {
         }
 
         private final Status status;
-        /** 本次发放的基础猫猫币数量 */
+        /** 本次发放的每日奖励货币数量 */
         private final int baseReward;
-        /** 本次触发的阶梯奖励（未触发为 null） */
+        /** 本次触发的连续阶梯奖励（未触发为 null） */
         private final SignInRewardTier tierReward;
         /** 签到后的连续天数 */
         private final int consecutiveDays;
+        /** 本次触发的累计阶梯奖励（v1.7.8 任务5；未触发为 null） */
+        private final SignInRewardTier cumulativeTierReward;
 
         public SignInResult(Status status, int baseReward, SignInRewardTier tierReward, int consecutiveDays) {
+            this(status, baseReward, tierReward, consecutiveDays, null);
+        }
+
+        public SignInResult(Status status, int baseReward, SignInRewardTier tierReward, int consecutiveDays,
+            SignInRewardTier cumulativeTierReward) {
             this.status = status;
             this.baseReward = baseReward;
             this.tierReward = tierReward;
             this.consecutiveDays = consecutiveDays;
+            this.cumulativeTierReward = cumulativeTierReward;
         }
 
         public Status getStatus() {
@@ -637,6 +679,11 @@ public class DailySignInManager {
 
         public int getConsecutiveDays() {
             return consecutiveDays;
+        }
+
+        /** 本次触发的累计阶梯奖励（未触发返回 null） */
+        public SignInRewardTier getCumulativeTierReward() {
+            return cumulativeTierReward;
         }
     }
 }

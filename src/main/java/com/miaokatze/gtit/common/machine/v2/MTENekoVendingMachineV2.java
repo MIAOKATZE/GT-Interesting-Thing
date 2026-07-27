@@ -308,8 +308,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 检查交易是否可执行（不实际执行）
      * <p>
-     * 创建 {@link InternalInputSlotAccessor} 适配器，委托
-     * {@link NekoTradeExecutor#checkTrade} 进行交易检查。
+     * 创建 {@link InternalInputSlotAccessor} 与 {@link InternalOutputSlotAccessor} 适配器，
+     * 委托 {@link NekoTradeExecutor#checkTrade} 进行交易检查。
+     * v1.7.8 A2：传入输出槽访问器，扣款前预检输出空间（不足直接 OUTPUT_FULL）。
      *
      * @param playerId   玩家 UUID
      * @param groupId    交易组 UUID
@@ -317,8 +318,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * @return 交易结果（SUCCESS 或对应的失败状态）
      */
     public NekoTradeResult checkTrade(UUID playerId, UUID groupId, int tradeIndex) {
-        return NekoTradeExecutor.INSTANCE
-            .checkTrade(playerId, groupId, tradeIndex, new InternalInputSlotAccessor(uplinkHatch));
+        return NekoTradeExecutor.INSTANCE.checkTrade(
+            playerId,
+            groupId,
+            tradeIndex,
+            new InternalInputSlotAccessor(uplinkHatch),
+            new InternalOutputSlotAccessor());
     }
 
     /**
@@ -539,6 +544,11 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * @param totalCount 本批次物品总数
      */
     public void startBatch(int totalCount) {
+        // v1.7.8 A3 防御复位：上一批次若未正常结束（回滚残留/跨批次叠加等），
+        // 先清理旧批次状态，避免旧计数污染新批次的分档延迟与结束判定
+        if (batchActive) {
+            endBatch();
+        }
         this.currentBatchSize = totalCount;
         this.dispensedInBatch = 0;
         this.batchActive = true;
@@ -637,7 +647,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         this.ticksSinceOutput = this.newBufferedOutputs ? 0 : this.ticksSinceOutput + 1;
         this.newBufferedOutputs = false;
         // v1.6.28: 批次结束判断——所有物品投放完成后清理批次状态
-        if (batchActive && dispensedInBatch >= currentBatchSize) {
+        // v1.7.8 A3 加固：追加 outputBuffer.isEmpty() 条件——跨批次叠加或溢出掉落后
+        // 计数可能先满而队列仍有物品未投放，须等队列排空才允许结束批次，
+        // 防止提前 endBatch 导致后续物品失去分档控制/批次状态错乱
+        if (batchActive && dispensedInBatch >= currentBatchSize && outputBuffer.isEmpty()) {
             endBatch();
         }
         if (getBaseMetaTileEntity() != null) {
@@ -1515,6 +1528,27 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             }
             int available = emptySlots - outputBuffer.size();
             return available > 0;
+        }
+
+        /**
+         * v1.7.8 A2：返回当前可用输出槽数，供 checkTrade 在扣款前预检输出空间
+         * <p>
+         * 口径与 {@link #hasSpaceFor} 一致：空槽数扣除 outputBuffer 队列占位（防超卖）；
+         * ME 输出模式传输队列满时视为无可用空间。
+         */
+        @Override
+        public int getAvailableSlotCount() {
+            if (meOutputMode && meTransferQueue.size() >= MAX_ME_QUEUE_SIZE) {
+                return 0;
+            }
+            int emptySlots = 0;
+            for (int i = 0; i < OUTPUT_SLOTS; i++) {
+                if (outputItems.getStackInSlot(i) == null) {
+                    emptySlots++;
+                }
+            }
+            // 扣除队列已占用的虚拟槽位，防止预检超卖（与 hasSpaceFor 同口径）
+            return Math.max(0, emptySlots - outputBuffer.size());
         }
 
         @Override

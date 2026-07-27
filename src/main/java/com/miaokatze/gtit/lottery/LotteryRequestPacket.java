@@ -4,20 +4,15 @@ import java.util.List;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
-import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
-import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -117,7 +112,8 @@ public class LotteryRequestPacket implements IMessage {
 
             // 2. 定位触发机器（物品奖品出货槽 + 物品消耗来源；坐标无效时退化为直接给玩家，
             // 但含物品消耗的池会在下一步预校验被拒）
-            MTENekoVendingMachineV2 machine = findMachine(player, request);
+            MTENekoVendingMachineV2 machine = LotteryManager
+                .findMachine(request.machineDim, request.machineX, request.machineY, request.machineZ);
 
             // 3. 消耗预校验（v1.7.6 costItems 分流口径：货币条目查团队钱包余额、
             // 物品条目在机器输入槽副本模拟扣除；失败时给出明确错误码）
@@ -126,16 +122,17 @@ public class LotteryRequestPacket implements IMessage {
                 return;
             }
 
-            // 4. 服务端权威抽取（扣费分流 → 逐抽含保底 → 出货 → 记历史 → 落盘）
+            // 4. 服务端权威抽取（扣费分流 → 逐抽含保底 → 记历史 → 落盘 → 调度延迟出货）
             List<LotteryDrawResult> results = LotteryManager.INSTANCE.drawLottery(playerId, poolId, count, machine);
             if (results.isEmpty()) {
                 sendFailure(player, poolId, LotteryClientData.RESULT_ERROR, "抽奖失败，请稍后再试");
                 return;
             }
 
-            // 5. 回发抽取结果（客户端启动轮盘动画）+ 全量同步（保底计数/历史已更新）
+            // 5. 回发抽取结果（客户端启动轮盘动画）。
+            // v1.7.8 起不再立即全量同步：保底/历史/余额刷新移入 LotteryManager.dispatchAll
+            // 末尾（延迟出货完成后），避免动画旋转期间同步包提前剧透。
             LotteryNetworkManager.sendResultToClient(player, poolId, results, LotteryClientData.RESULT_SUCCESS);
-            LotteryNetworkManager.sendSyncToClient(player);
         }
 
         /** 失败回执：结果码 + 聊天提示 + 状态同步（保底/历史未变但仍刷新卡池配置） */
@@ -143,31 +140,6 @@ public class LotteryRequestPacket implements IMessage {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "[猫猫扭蛋] " + reason));
             LotteryNetworkManager.sendResultToClient(player, poolId, java.util.Collections.emptyList(), resultCode);
             LotteryNetworkManager.sendSyncToClient(player);
-        }
-
-        /**
-         * 按请求包坐标定位猫猫售货机 V2
-         * <p>
-         * 坐标无效/机器不存在时返回 null（抽奖仍可执行，物品奖品直接退给玩家背包）。
-         *
-         * @return 机器实例；未找到返回 null
-         */
-        private MTENekoVendingMachineV2 findMachine(EntityPlayerMP player, LotteryRequestPacket request) {
-            try {
-                MinecraftServer server = MinecraftServer.getServer();
-                if (server == null) return null;
-                World world = server.worldServerForDimension(request.machineDim);
-                if (world == null) return null;
-                TileEntity te = world.getTileEntity(request.machineX, request.machineY, request.machineZ);
-                if (te instanceof IGregTechTileEntity) {
-                    if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
-                        return (MTENekoVendingMachineV2) ((IGregTechTileEntity) te).getMetaTileEntity();
-                    }
-                }
-            } catch (Exception e) {
-                GTInterestingThing.LOG.error("定位抽奖触发机器失败", e);
-            }
-            return null;
         }
     }
 }

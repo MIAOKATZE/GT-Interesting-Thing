@@ -69,8 +69,9 @@ public class SignInCalendarGui {
      * 由 {@code NekoVMGuiV2} 实现并传入，用于：
      * <ul>
      * <li>查询当前是否处于编辑模式（服务端权威，经同步值到客户端）</li>
-     * <li>编辑模式下点击阶梯宝箱 → 打开阶梯编辑面板</li>
-     * <li>编辑模式下点击「全局配置」按钮 → 打开全局编辑面板（基础奖励/连续系数）</li>
+     * <li>编辑模式下点击阶梯宝箱 → 打开阶梯编辑面板（连续/累计阶梯，null=新增槽）</li>
+     * <li>编辑模式下点击每月签到日期格 → 打开逐日奖励编辑面板（v1.7.8 任务6）</li>
+     * <li>编辑模式下点击「全局配置」按钮 → 打开每月全局编辑面板（递增开关/工作日/周末默认）</li>
      * </ul>
      * 编辑模式下签到按钮的签到交互被拦截（禁止常规操作）。
      */
@@ -84,11 +85,25 @@ public class SignInCalendarGui {
         boolean isEditMode();
 
         /**
-         * 编辑模式下点击阶梯宝箱时触发
+         * 编辑模式下点击连续阶梯槽时触发
          *
-         * @param tier 被点击的阶梯奖励
+         * @param tier 被点击的连续阶梯奖励；null 表示点击的是「+」新增槽（打开新增面板）
          */
         void onEditTierRequested(SignInRewardTier tier);
+
+        /**
+         * 编辑模式下点击累计阶梯槽时触发（v1.7.8 任务5）
+         *
+         * @param tier 被点击的累计阶梯奖励；null 表示点击的是「+」新增槽（打开新增面板）
+         */
+        void onEditCumulativeTierRequested(SignInRewardTier tier);
+
+        /**
+         * 编辑模式下点击每月签到日期格时触发（v1.7.8 任务6）
+         *
+         * @param date 被点击的日期（yyyy-MM-dd，当月有效日期）
+         */
+        void onEditDayRewardRequested(String date);
 
         /**
          * 编辑模式下点击「全局配置」按钮时触发
@@ -158,11 +173,11 @@ public class SignInCalendarGui {
     private static final int PROGRESS_X = (PAGE_WIDTH - PROGRESS_W) / 2;
     /** 进度文本 Y */
     private static final int PROGRESS_LABEL_Y = 14;
-    /** 进度条 Y */
-    private static final int PROGRESS_Y = 28;
+    /** 进度条 Y（v1.7.8 任务5：自 28 上移至 24，为下方累计签到区块腾位） */
+    private static final int PROGRESS_Y = 24;
 
-    /** 阶梯预览区 Y */
-    private static final int TIER_Y = 44;
+    /** 连续阶梯预览区 Y（v1.7.8 任务5：自 44 上移至 34，为累计区块腾位） */
+    private static final int TIER_Y = 34;
     /** v1.7.7 G5①：阶梯预览物品槽边长 */
     private static final int TIER_SLOT_SIZE = 18;
     /** v1.7.7 G5①：阶梯预览每行槽位数 */
@@ -180,6 +195,17 @@ public class SignInCalendarGui {
     private static final int TIER_GRID_X = (PAGE_WIDTH - TIER_GRID_W) / 2;
     /** v1.7.7 G5①：阶梯预览网格总高 */
     private static final int TIER_GRID_H = TIER_ROWS * TIER_SLOT_SIZE + (TIER_ROWS - 1) * TIER_SLOT_GAP;
+
+    // ---- 页 1「累计签到」区块布局（v1.7.8 任务5：连续区块下方新增） ----
+
+    /** 累计签到标题 Y（连续网格底 34+37=71 之下） */
+    private static final int CUM_TITLE_Y = 76;
+    /** 累计进度文本 Y */
+    private static final int CUM_LABEL_Y = 88;
+    /** 累计阶梯预览区 Y */
+    private static final int CUM_TIER_Y = 98;
+    /** 规则说明文字起始 Y（累计网格底 98+37=135 之下；连续/累计各一行） */
+    private static final int NOTE_Y = CUM_TIER_Y + TIER_GRID_H + 4;
 
     // ---- 页 3「每日在线」布局（内层页面局部坐标） ----
 
@@ -316,7 +342,7 @@ public class SignInCalendarGui {
         view.child(createMonthTitle()); // 月份标题（yyyy年M月）
         view.child(createStatusInfo()); // 累计/连续天数
         view.child(createWeekdayHeader()); // 星期表头
-        view.child(createCalendarGrid()); // 42 日期格
+        view.child(createCalendarGrid(editCallback)); // 42 日期格（编辑模式可点击逐日编辑）
         view.child(createResultMessage()); // 签到结果提示（限时）
         view.child(createSignInButton(editCallback)); // 签到按钮（编辑模式拦截）
         view.child(createGlobalEditButton(editCallback)); // 全局配置按钮（仅编辑模式显示）
@@ -373,11 +399,12 @@ public class SignInCalendarGui {
     /**
      * 日历网格：42 格（6 行 × 7 列）
      * <p>
-     * 每格三层（按添加顺序绘制）：格底纹理（动态）→ 猫爪印章（已签到时叠加）→ 日期数字。
+     * 每格四层（按添加顺序绘制）：格底纹理（动态）→ 猫爪印章（已签到时叠加）→ 日期数字
+     * → 交互热区（tooltip 奖励预览；v1.7.8 任务6 起编辑模式下点击打开逐日奖励编辑）。
      * 日期分配依赖当月 1 号的星期偏移（{@link MonthInfo#firstOffset}），
-     * 不属于当月的格子渲染为空（无纹理、无数字）。
+     * 不属于当月的格子渲染为空（无纹理、无数字、无热区）。
      */
-    private static IWidget createCalendarGrid() {
+    private static IWidget createCalendarGrid(SignInEditCallback editCallback) {
         ParentWidget<?> grid = new ParentWidget<>().pos(0, 0)
             .size(PAGE_WIDTH, CAL_Y + CAL_ROWS * (CELL_SIZE + CELL_GAP));
         for (int i = 0; i < CAL_CELL_COUNT; i++) {
@@ -413,8 +440,62 @@ public class SignInCalendarGui {
                 .scale(0.8f)
                 .color(() -> cellTextColor(index))
                 .shadow(false));
+
+            // 第 4 层：交互热区（tooltip 展示当日奖励预览；编辑模式点击打开逐日编辑面板）
+            ButtonWidget<?> cellHitbox = new ButtonWidget<>().pos(x, y)
+                .size(CELL_SIZE, CELL_SIZE)
+                .background(IDrawable.EMPTY)
+                .tooltipBuilder(t -> buildDayCellTooltip(t, index, editCallback))
+                .tooltipAutoUpdate(true)
+                .onMouseTapped(mouse -> {
+                    if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
+                        String date = cellDate(index);
+                        if (!date.isEmpty()) {
+                            editCallback.onEditDayRewardRequested(date);
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            // 非当月空格无交互（折叠隐藏，避免遮挡相邻格的渲染与点击）
+            cellHitbox.setEnabledIf(w -> !cellDate(index).isEmpty());
+            grid.child(cellHitbox);
         }
         return grid;
+    }
+
+    /**
+     * 构建日期格 Tooltip（v1.7.8 任务6：当日奖励预览 + 编辑提示）
+     * <p>
+     * 展示该日生效奖励（逐日覆盖优先，否则按工作日/周末默认）；
+     * 默认奖励且递增开关开启时附递增说明；编辑模式附点击编辑提示。
+     *
+     * @param t            Tooltip 对象
+     * @param index        格子索引（0..41）
+     * @param editCallback 编辑模式回调
+     */
+    private static void buildDayCellTooltip(RichTooltip t, int index, SignInEditCallback editCallback) {
+        String date = cellDate(index);
+        if (date.isEmpty()) return;
+        MonthInfo mi = getMonthInfo();
+        int day = Integer.parseInt(date.substring(8));
+        boolean weekend = DailySignInConfig.isWeekend(date);
+        t.addLine(IKey.str("" + EnumChatFormatting.GOLD + mi.month + "月" + day + "日" + (weekend ? "（周末）" : "（工作日）")));
+        // 奖励读客户端缓存（服务端同步快照优先）
+        boolean overridden = SignInClientData.hasDayOverride(date);
+        SignInReward reward = SignInClientData.getEffectiveDayReward(date);
+        if (overridden) {
+            t.addLine(IKey.str(EnumChatFormatting.AQUA + "覆盖奖励：" + buildRewardText(reward)));
+        } else {
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "默认奖励：" + buildRewardText(reward)));
+            // 递增提示：仅默认奖励参与递增（覆盖天不递增）
+            if (SignInClientData.isIncrementEnabled()) {
+                t.addLine(IKey.str(EnumChatFormatting.DARK_GRAY + "（货币量随连续天数递增）"));
+            }
+        }
+        if (editCallback != null && editCallback.isEditMode()) {
+            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此日奖励"));
+        }
     }
 
     /** 签到结果提示（限时 {@link #RESULT_DISPLAY_MS} 毫秒，超时自动消失） */
@@ -470,21 +551,36 @@ public class SignInCalendarGui {
                 // 编辑模式：仅提示，不展示奖励预览
                 if (editCallback != null && editCallback.isEditMode()) {
                     t.addLine(IKey.str(EnumChatFormatting.RED + "[编辑模式] 签到交互已禁用"));
-                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击阶梯宝箱或「全局配置」按钮进行编辑"));
+                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击日期格/阶梯槽或「全局配置」按钮进行编辑"));
                     return;
                 }
                 if (SignInClientData.hasSignedToday()) {
                     t.addLine(IKey.str(EnumChatFormatting.GRAY + "今日已完成签到，明天再来吧"));
                 } else {
                     int nextConsec = SignInClientData.getConsecutiveDays() + 1;
-                    // 奖励预览读客户端缓存（服务端同步快照优先）
-                    int reward = SignInClientData.calculateBaseReward(nextConsec);
+                    String today = SignInClientData.getToday();
+                    // v1.7.8 任务6：每日货币量预览走新口径（覆盖天不递增；默认奖励按开关递增）
+                    int reward = SignInClientData.calculateDayCurrency(today, nextConsec);
                     t.addLine(IKey.str(EnumChatFormatting.GREEN + "点击签到，领取今日奖励"));
-                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "基础奖励：" + reward + " 猫猫币（连续第 " + nextConsec + " 天）"));
+                    if (reward > 0) {
+                        t.addLine(
+                            IKey.str(EnumChatFormatting.GRAY + "每日奖励：" + reward + " 猫猫币（连续第 " + nextConsec + " 天）"));
+                    }
+                    // 当日物品奖励预览（覆盖/默认奖励中的物品列表）
+                    SignInReward dayReward = SignInClientData.getEffectiveDayReward(today);
+                    addRewardItemLines(t, dayReward);
+                    // 连续阶梯触发提示
                     SignInRewardTier tier = SignInClientData.getTriggeredTier(nextConsec);
                     if (tier != null && !SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
                         t.addLine(
-                            IKey.str(EnumChatFormatting.GOLD + "今天签到可额外领取 " + tier.getRequiredDays() + " 天阶梯宝箱！"));
+                            IKey.str(EnumChatFormatting.GOLD + "今天签到可额外领取连续 " + tier.getRequiredDays() + " 天阶梯宝箱！"));
+                    }
+                    // v1.7.8 任务5：累计阶梯触发提示（累计天数签到后 +1）
+                    SignInRewardTier cumTier = SignInClientData
+                        .getTriggeredCumulativeTier(SignInClientData.getTotalDays() + 1);
+                    if (cumTier != null && !SignInClientData.hasClaimedCumulativeTier(cumTier.getRequiredDays())) {
+                        t.addLine(
+                            IKey.str(EnumChatFormatting.GOLD + "今天签到可额外领取累计 " + cumTier.getRequiredDays() + " 天奖励！"));
                     }
                 }
             })
@@ -506,8 +602,8 @@ public class SignInCalendarGui {
     /**
      * 「全局配置」按钮（仅编辑模式显示）
      * <p>
-     * 点击通过 {@link SignInEditCallback#onEditGlobalRequested()} 打开全局编辑面板
-     * （每日基础奖励 / 连续递增系数）。非编辑模式下按钮隐藏（setEnabledIf 动态折叠）。
+     * 点击通过 {@link SignInEditCallback#onEditGlobalRequested()} 打开每月全局编辑面板
+     * （递增开关/系数 + 工作日/周末默认奖励）。非编辑模式下按钮隐藏（setEnabledIf 动态折叠）。
      *
      * @param editCallback 编辑模式回调；null 时按钮恒隐藏
      */
@@ -517,8 +613,8 @@ public class SignInCalendarGui {
             .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
             .overlay(IKey.str(EnumChatFormatting.YELLOW + "全局配置"))
             .tooltipBuilder(t -> {
-                t.addLine(IKey.str(EnumChatFormatting.GOLD + "编辑全局签到配置"));
-                t.addLine(IKey.str(EnumChatFormatting.GRAY + "每日基础奖励与连续递增系数"));
+                t.addLine(IKey.str(EnumChatFormatting.GOLD + "编辑每月签到全局配置"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "递增开关/系数与工作日/周末默认奖励"));
             })
             .tooltipAutoUpdate(true)
             .onMouseTapped(mouse -> {
@@ -536,10 +632,15 @@ public class SignInCalendarGui {
     // ==================== 页 1：连续签到 ====================
 
     /**
-     * 连续签到页：连续进度文本/进度条 + 阶梯宝箱预览
+     * 连续签到页：连续进度文本/进度条 + 连续阶梯预览 + 累计签到区块（v1.7.8 任务5）
      * <p>
      * v1.7.6 自日历页底部拆出独立成页（原区域底 254 被背包行遮挡），
-     * 领取逻辑不变：达成连续天数后签到自动发放，无需手动领取。
+     * 领取逻辑不变：达成连续/累计天数后签到自动发放，无需手动领取。
+     * <p>
+     * 布局（页内局部 Y）：连续标题 0 → 连续进度文本 {@value #PROGRESS_LABEL_Y} → 进度条
+     * {@value #PROGRESS_Y} → 连续阶梯网格 {@value #TIER_Y} → 累计标题 {@value #CUM_TITLE_Y}
+     * → 累计进度文本 {@value #CUM_LABEL_Y} → 累计阶梯网格 {@value #CUM_TIER_Y}
+     * → 规则说明 {@link #NOTE_Y} 起两行。
      */
     private static IWidget createConsecutivePage(SignInEditCallback editCallback) {
         ParentWidget<?> view = new ParentWidget<>().size(PAGE_WIDTH, INNER_HEIGHT);
@@ -551,17 +652,27 @@ public class SignInCalendarGui {
                 .shadow(false));
         view.child(createProgressLabel()); // 连续进度文本
         view.child(createProgressBar()); // 连续进度条
-        view.child(createTierPreview(editCallback)); // 阶梯宝箱预览（编辑模式可点击）
+        view.child(createTierGrid(editCallback, false)); // 连续阶梯预览（编辑模式可点击）
+
+        // ---- v1.7.8 任务5：累计签到区块（连续区块下方） ----
+        view.child(
+            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "累计签到奖励")).pos(0, CUM_TITLE_Y)
+                .size(PAGE_WIDTH, 10)
+                .textAlign(Alignment.Center)
+                .shadow(false));
+        view.child(createCumulativeProgressLabel()); // 累计进度文本
+        view.child(createTierGrid(editCallback, true)); // 累计阶梯预览（编辑模式可点击）
+
         // 规则说明（静态；v1.7.6 G4 自 GRAY 调深为 0xFF555555，浅灰面板上 GRAY 过淡）
         view.child(
-            new TextWidget<>(IKey.str("达成连续天数后，次日签到自动发放")).pos(0, TIER_Y + 56)
+            new TextWidget<>(IKey.str("连续/累计阶梯达成后，签到时自动发放")).pos(0, NOTE_Y)
                 .size(PAGE_WIDTH, 9)
                 .textAlign(Alignment.Center)
                 .scale(0.75f)
                 .color(0xFF555555)
                 .shadow(false));
         view.child(
-            new TextWidget<>(IKey.str("阶梯奖励每月重置")).pos(0, TIER_Y + 66)
+            new TextWidget<>(IKey.str("连续阶梯每月重置，累计阶梯永久限领一次")).pos(0, NOTE_Y + 10)
                 .size(PAGE_WIDTH, 9)
                 .textAlign(Alignment.Center)
                 .scale(0.75f)
@@ -569,6 +680,34 @@ public class SignInCalendarGui {
                 .shadow(false));
 
         return view;
+    }
+
+    /**
+     * 累计进度文本：当前累计天数与下一累计阶梯差距（v1.7.8 任务5）
+     * <p>
+     * 配色与 {@link #createProgressLabel()} 一致（主体深灰 + 差距天数 GOLD 高亮）。
+     */
+    private static IWidget createCumulativeProgressLabel() {
+        return new TextWidget<>(IKey.dynamic(() -> {
+            int total = SignInClientData.getTotalDays();
+            // 读客户端缓存（服务端同步快照优先）
+            SignInRewardTier next = SignInClientData.getNextCumulativeTier(total);
+            if (next == null) {
+                return EnumChatFormatting.GOLD + "累计签到 " + total + " 天 · 已达成全部累计奖励";
+            }
+            return "累计签到 " + total
+                + " 天 · 距 "
+                + next.getRequiredDays()
+                + " 天奖励还差 "
+                + EnumChatFormatting.GOLD
+                + (next.getRequiredDays() - total)
+                + EnumChatFormatting.RESET
+                + " 天";
+        })).pos(0, CUM_LABEL_Y)
+            .size(PAGE_WIDTH, 10)
+            .textAlign(Alignment.Center)
+            .color(0xFF3F3F3F)
+            .shadow(false);
     }
 
     /**
@@ -623,17 +762,19 @@ public class SignInCalendarGui {
     }
 
     /**
-     * 阶梯奖励预览：8×2 共 16 个物品槽网格（v1.7.7 G5①）
+     * 阶梯奖励预览网格：8×2 共 16 个物品槽（v1.7.8 任务5 泛化：连续/累计共用）
      * <p>
-     * 每个槽位实时读取 {@link SignInClientData#getRewardTiers()} 动态渲染对应阶梯的物品奖励；
-     * 无物品奖励的阶梯显示为空槽底。网格底部 = {@code TIER_Y + TIER_GRID_H = 44 + 37 = 81}，
-     * 远低于主内容区上限 {@value #CONTENT_BOTTOM}。
+     * 每个槽位实时读取 {@link SignInClientData#getRewardTiers()}（连续）或
+     * {@link SignInClientData#getCumulativeTiers()}（累计）动态渲染对应阶梯的第一个物品奖励；
+     * 无物品奖励的阶梯显示为空槽底（tooltip 列出全部奖励内容）。
      * <p>
-     * <b>编辑模式</b>（v1.7.0 目标 4）：槽位可点击，
-     * 通过 {@link SignInEditCallback#onEditTierRequested} 打开阶梯编辑面板。
+     * <b>编辑模式</b>：已有阶梯槽点击打开编辑面板；空槽点击打开新增面板（null 回调）。
+     *
+     * @param editCallback 编辑模式回调
+     * @param cumulative   true=累计阶梯网格（{@link #CUM_TIER_Y}）；false=连续阶梯网格（{@link #TIER_Y}）
      */
-    private static IWidget createTierPreview(SignInEditCallback editCallback) {
-        ParentWidget<?> box = new ParentWidget<>().pos(0, TIER_Y)
+    private static IWidget createTierGrid(SignInEditCallback editCallback, boolean cumulative) {
+        ParentWidget<?> box = new ParentWidget<>().pos(0, cumulative ? CUM_TIER_Y : TIER_Y)
             .size(PAGE_WIDTH, TIER_GRID_H);
 
         for (int i = 0; i < TIER_SLOT_COUNT; i++) {
@@ -643,31 +784,33 @@ public class SignInCalendarGui {
             int x = TIER_GRID_X + col * (TIER_SLOT_SIZE + TIER_SLOT_GAP);
             int y = row * (TIER_SLOT_SIZE + TIER_SLOT_GAP);
 
-            box.child(createTierSlot(x, y, slotIndex, editCallback));
+            box.child(createTierSlot(x, y, slotIndex, editCallback, cumulative));
         }
         return box;
     }
 
     /**
-     * 单个阶梯预览槽（v1.7.7 G5①）
+     * 单个阶梯预览槽（v1.7.8 任务5 泛化：连续/累计共用 + 统一奖励模型）
      * <p>
-     * 动态从 {@link SignInClientData#getRewardTiers()} 读取对应索引的阶梯，
-     * 绘制槽位底框 + 物品图标 + 数量文字；编辑模式下点击打开阶梯编辑面板。
+     * 动态读取对应索引的阶梯，绘制槽位底框 + 首个物品图标 + 数量文字；
+     * 编辑模式下点击已有阶梯打开编辑面板，点击空槽打开新增面板。
      *
      * @param x            槽位在页内局部 X
      * @param y            槽位在页内局部 Y
      * @param slotIndex    槽位索引（对应 tiers 列表索引）
      * @param editCallback 编辑模式回调
+     * @param cumulative   true=累计阶梯槽；false=连续阶梯槽
      * @return 槽位 Widget
      */
-    private static IWidget createTierSlot(int x, int y, final int slotIndex, SignInEditCallback editCallback) {
+    private static IWidget createTierSlot(int x, int y, final int slotIndex, SignInEditCallback editCallback,
+        boolean cumulative) {
         ParentWidget<?> slot = new ParentWidget<>().pos(x, y)
             .size(TIER_SLOT_SIZE, TIER_SLOT_SIZE);
 
         // 槽位底框（动态：有阶梯且未领取 = 高亮边框，否则 = 普通暗框）
         slot.child(new IDrawable.DrawableWidget((context, sx, sy, sw, sh, theme) -> {
-            SignInRewardTier tier = tierAt(slotIndex);
-            boolean claimed = tier != null && SignInClientData.hasClaimedTier(tier.getRequiredDays());
+            SignInRewardTier tier = tierAt(slotIndex, cumulative);
+            boolean claimed = tier != null && isTierClaimed(tier.getRequiredDays(), cumulative);
             // 外框
             int borderColor = tier == null ? 0xFF555555 : (claimed ? 0xFF888888 : 0xFFFFC84A);
             GuiDraw.drawRect(sx, sy, sw, sh, borderColor);
@@ -676,11 +819,11 @@ public class SignInCalendarGui {
         }).pos(0, 0)
             .size(TIER_SLOT_SIZE, TIER_SLOT_SIZE));
 
-        // 物品图标 + 数量（动态：随配置同步实时刷新）
+        // 物品图标 + 数量（动态：随配置同步实时刷新；显示奖励中的首个物品）
         slot.child(new IDrawable.DrawableWidget((context, sx, sy, sw, sh, theme) -> {
-            SignInRewardTier tier = tierAt(slotIndex);
-            if (tier == null || !tier.hasItemReward()) return;
-            ItemStack stack = resolveTierItemStack(tier);
+            SignInRewardTier tier = tierAt(slotIndex, cumulative);
+            if (tier == null) return;
+            ItemStack stack = resolveFirstItemStack(tier.getReward());
             if (stack == null) return;
             float z = context.getCurrentDrawingZ();
             GuiDraw.drawItem(stack, sx + 1, sy + 1, 16, 16, (int) z);
@@ -693,7 +836,7 @@ public class SignInCalendarGui {
 
         // 条件文字（所需天数，显示在槽位底部中央，小字）
         slot.child(new TextWidget<>(IKey.dynamic(() -> {
-            SignInRewardTier tier = tierAt(slotIndex);
+            SignInRewardTier tier = tierAt(slotIndex, cumulative);
             return tier == null ? "" : String.valueOf(tier.getRequiredDays());
         })).pos(0, TIER_SLOT_SIZE - 7)
             .size(TIER_SLOT_SIZE, 7)
@@ -702,19 +845,22 @@ public class SignInCalendarGui {
             .color(0xFFAAAAAA)
             .shadow(false));
 
-        // 点击区域（编辑模式下打开阶梯编辑面板；非编辑模式仅 tooltip）
+        // 点击区域（编辑模式：已有阶梯→编辑面板，空槽→新增面板；非编辑模式仅 tooltip）
         ButtonWidget<?> hitbox = new ButtonWidget<>().pos(0, 0)
             .size(TIER_SLOT_SIZE, TIER_SLOT_SIZE)
             .background(IDrawable.EMPTY)
-            .tooltipBuilder(t -> buildTierSlotTooltip(t, slotIndex, editCallback))
+            .tooltipBuilder(t -> buildTierSlotTooltip(t, slotIndex, editCallback, cumulative))
             .tooltipAutoUpdate(true)
             .onMouseTapped(mouse -> {
                 if (mouse == 0 && editCallback != null && editCallback.isEditMode()) {
-                    SignInRewardTier tier = tierAt(slotIndex);
-                    if (tier != null) {
+                    SignInRewardTier tier = tierAt(slotIndex, cumulative);
+                    // tier 为 null 时表示「+」新增槽（回调 null 打开新增面板）
+                    if (cumulative) {
+                        editCallback.onEditCumulativeTierRequested(tier);
+                    } else {
                         editCallback.onEditTierRequested(tier);
-                        return true;
                     }
+                    return true;
                 }
                 return false;
             });
@@ -723,51 +869,81 @@ public class SignInCalendarGui {
     }
 
     /**
-     * 构建阶梯槽位的 Tooltip（v1.7.7 G5①）
+     * 构建阶梯槽位的 Tooltip（v1.7.8 任务5 泛化：连续/累计共用 + 奖励明细逐行列出）
      *
      * @param slotIndex    槽位索引
      * @param editCallback 编辑模式回调
+     * @param cumulative   true=累计阶梯槽；false=连续阶梯槽
      */
-    private static void buildTierSlotTooltip(RichTooltip t, int slotIndex, SignInEditCallback editCallback) {
-        SignInRewardTier tier = tierAt(slotIndex);
+    private static void buildTierSlotTooltip(RichTooltip t, int slotIndex, SignInEditCallback editCallback,
+        boolean cumulative) {
+        SignInRewardTier tier = tierAt(slotIndex, cumulative);
         if (tier == null) {
-            t.addLine(IKey.str(EnumChatFormatting.GRAY + "无阶梯奖励"));
+            if (editCallback != null && editCallback.isEditMode()) {
+                t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击新增" + (cumulative ? "累计" : "连续") + "阶梯"));
+            } else {
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "无阶梯奖励"));
+            }
             return;
         }
-        t.addLine(IKey.str(EnumChatFormatting.GOLD + "连续签到 " + tier.getRequiredDays() + " 天奖励"));
-        t.addLine(IKey.str(buildRewardText(tier)));
+        t.addLine(
+            IKey.str(EnumChatFormatting.GOLD + (cumulative ? "累计签到 " : "连续签到 ") + tier.getRequiredDays() + " 天奖励"));
+        // 奖励明细：货币一行 + 物品逐行（统一奖励模型）
+        addRewardLines(t, tier.getReward());
         if (editCallback != null && editCallback.isEditMode()) {
             t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此阶梯奖励"));
-        } else if (SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
-            t.addLine(IKey.str(EnumChatFormatting.GREEN + "本月已领取"));
+        } else if (isTierClaimed(tier.getRequiredDays(), cumulative)) {
+            t.addLine(IKey.str(EnumChatFormatting.GREEN + (cumulative ? "已领取（永久限领一次）" : "本月已领取")));
         } else {
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "达成条件后签到自动发放"));
         }
     }
 
-    /** 按索引取阶梯奖励（越界返回 null） */
-    private static SignInRewardTier tierAt(int index) {
-        List<SignInRewardTier> tiers = SignInClientData.getRewardTiers();
+    /** 按索引取阶梯奖励（cumulative 选择连续/累计列表；越界返回 null） */
+    private static SignInRewardTier tierAt(int index, boolean cumulative) {
+        List<SignInRewardTier> tiers = cumulative ? SignInClientData.getCumulativeTiers()
+            : SignInClientData.getRewardTiers();
         return index >= 0 && index < tiers.size() ? tiers.get(index) : null;
     }
 
+    /** 指定阶梯天数是否已领取（连续=当月口径；累计=永久口径） */
+    private static boolean isTierClaimed(int days, boolean cumulative) {
+        return cumulative ? SignInClientData.hasClaimedCumulativeTier(days) : SignInClientData.hasClaimedTier(days);
+    }
+
     /**
-     * 将阶梯物品奖励解析为显示用 ItemStack（v1.7.7 G5①）
+     * 将奖励中的首个有效物品解析为显示用 ItemStack（v1.7.8 统一奖励模型）
      * <p>
-     * 优先使用缓存的物品 ID + meta + NBT；解析失败返回 null。
+     * 遍历 {@link SignInReward#getItems()} 取第一个非空条目解析；无有效物品或解析失败返回 null。
      *
-     * @param tier 阶梯奖励
+     * @param reward 统一奖励模型
+     * @return 物品栈（含 NBT），无物品/解析失败返回 null
+     */
+    private static ItemStack resolveFirstItemStack(SignInReward reward) {
+        if (reward == null) return null;
+        for (RewardItem item : reward.getItems()) {
+            if (item == null || item.isEmpty()) continue;
+            ItemStack stack = resolveRewardItemStack(item);
+            if (stack != null) return stack;
+        }
+        return null;
+    }
+
+    /**
+     * 将奖励物品条目解析为显示用 ItemStack（物品 ID + meta + NBT）
+     *
+     * @param rewardItem 奖励物品条目
      * @return 物品栈（含 NBT），解析失败返回 null
      */
-    private static ItemStack resolveTierItemStack(SignInRewardTier tier) {
-        if (tier == null || !tier.hasItemReward()) return null;
-        String[] parts = tier.getItemRewardId()
+    private static ItemStack resolveRewardItemStack(RewardItem rewardItem) {
+        if (rewardItem == null || rewardItem.isEmpty()) return null;
+        String[] parts = rewardItem.getItemId()
             .split(":");
         if (parts.length != 2) return null;
         Item item = cpw.mods.fml.common.registry.GameRegistry.findItem(parts[0], parts[1]);
         if (item == null) return null;
-        ItemStack stack = new ItemStack(item, Math.max(1, tier.getItemRewardAmount()), tier.getItemRewardMeta());
-        NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(tier.getItemNbt());
+        ItemStack stack = new ItemStack(item, Math.max(1, rewardItem.getAmount()), rewardItem.getMeta());
+        NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(rewardItem.getNbtBase64());
         if (nbt != null) {
             // v1.7.7 G5①：copy() 返回 NBTBase，需强转为 NBTTagCompound 再写入物品
             stack.setTagCompound((NBTTagCompound) nbt.copy());
@@ -1293,14 +1469,71 @@ public class SignInCalendarGui {
     }
 
     /**
-     * 构建阶梯奖励内容文本（货币 + 可选物品标记）
+     * 构建奖励内容的紧凑单行文本（v1.7.8 统一奖励模型：货币 + 物品条数标记）
+     * <p>
+     * 用于日期格 tooltip 等单行场景；阶梯 tooltip 需完整明细时请用 {@link #addRewardLines}。
+     *
+     * @param reward 统一奖励模型（null 按空奖励）
+     * @return 紧凑文本（如 "+10 猫猫币 +物品×2"；空奖励返回 "无奖励"）
      */
-    private static String buildRewardText(SignInRewardTier tier) {
-        String text = "+" + tier.getCurrencyAmount() + " " + NekoCurrencyRegistrar.getDisplayName(tier.getCurrencyId());
-        if (tier.hasItemReward()) {
-            text += " +物品";
+    private static String buildRewardText(SignInReward reward) {
+        if (reward == null) return "无奖励";
+        String text = "";
+        if (reward.hasCurrency()) {
+            text = "+" + reward.getCurrencyAmount()
+                + " "
+                + NekoCurrencyRegistrar.getDisplayName(reward.getCurrencyId());
         }
-        return text;
+        int itemCount = 0;
+        for (RewardItem item : reward.getItems()) {
+            if (item != null && !item.isEmpty()) itemCount++;
+        }
+        if (itemCount > 0) {
+            text += (text.isEmpty() ? "" : " ") + "+物品×" + itemCount;
+        }
+        return text.isEmpty() ? "无奖励" : text;
+    }
+
+    /**
+     * 向 Tooltip 追加奖励明细行（货币一行 + 物品逐行带显示名）
+     * <p>
+     * 用于阶梯槽 tooltip 等需要完整明细的场景；空奖励追加「无奖励」一行。
+     *
+     * @param t      Tooltip 对象
+     * @param reward 统一奖励模型（null 按空奖励）
+     */
+    private static void addRewardLines(RichTooltip t, SignInReward reward) {
+        if (reward == null || (!reward.hasCurrency() && !reward.hasItems())) {
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "无奖励"));
+            return;
+        }
+        if (reward.hasCurrency()) {
+            t.addLine(
+                IKey.str(
+                    EnumChatFormatting.GRAY + "+"
+                        + reward.getCurrencyAmount()
+                        + " "
+                        + NekoCurrencyRegistrar.getDisplayName(reward.getCurrencyId())));
+        }
+        addRewardItemLines(t, reward);
+    }
+
+    /**
+     * 向 Tooltip 追加奖励中的物品明细行（逐行 "+数量 × 物品显示名"）
+     * <p>
+     * 物品无法解析时回退显示注册名 ID。
+     *
+     * @param t      Tooltip 对象
+     * @param reward 统一奖励模型（null 或无物品时不追加任何行）
+     */
+    private static void addRewardItemLines(RichTooltip t, SignInReward reward) {
+        if (reward == null) return;
+        for (RewardItem item : reward.getItems()) {
+            if (item == null || item.isEmpty()) continue;
+            ItemStack stack = resolveRewardItemStack(item);
+            String name = stack != null ? stack.getDisplayName() : item.getItemId();
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "+" + Math.max(1, item.getAmount()) + " × " + name));
+        }
     }
 
     /**

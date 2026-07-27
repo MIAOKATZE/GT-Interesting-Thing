@@ -12,6 +12,7 @@ import com.cleanroommc.modularui.utils.Interpolation;
 import com.cleanroommc.modularui.utils.Interpolations;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cleanroommc.modularui.widgets.TransformWidget;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 
 /**
@@ -45,6 +46,9 @@ public class NekoFallingItemSlotFactory {
 
     /** 物品掉落高度（像素） */
     private final int fallDistance;
+
+    /** v1.7.8 B：已创建的物品槽组件（按创建顺序），供 GUI 层收集后强制同步输出槽 */
+    private final List<ItemSlot> createdItemSlots = new ArrayList<>();
 
     /**
      * 构造一个掉落物品槽工厂
@@ -113,9 +117,25 @@ public class NekoFallingItemSlotFactory {
         final Pos fallingPosition = new Pos(this.outputSlotXPositions.get(index), -1);
         Animator fallingPositionAnimation = createFallingAnimation(fallingPosition, this.fallDistance);
         IWidget widget = createItemSlot(index, fallingPositionAnimation);
+        // v1.7.8 B：记录内部物品槽引用，供 GUI 层（NekoVMGuiV2）强制同步输出槽使用
+        if (widget instanceof ItemSlot) {
+            createdItemSlots.add((ItemSlot) widget);
+        }
         // TransformWidget 根据动画驱动的 fallingPosition 实时平移物品槽
         return new TransformWidget(widget)
             .transform(stack -> stack.translate((float) fallingPosition.getX(), (float) fallingPosition.getY()));
+    }
+
+    /**
+     * 获取已创建的物品槽组件列表（v1.7.8 B）
+     * <p>
+     * 每次 {@link #getFallingItemSlot(int)} 创建的内部 {@link ItemSlot} 按序记录，
+     * 供 GUI 层收集引用后遍历 sync handler 调 forceSyncItem() 强制同步输出槽。
+     *
+     * @return 已创建的物品槽列表（随 getFallingItemSlot 调用增长）
+     */
+    public List<ItemSlot> getCreatedItemSlots() {
+        return createdItemSlots;
     }
 
     /**
@@ -150,6 +170,9 @@ public class NekoFallingItemSlotFactory {
      * @return 配置好的物品槽组件
      */
     private IWidget createItemSlot(int index, Animator animator) {
+        // v1.7.8 B：移除原 .setEnabledIf(slot -> slot.getSlot().getHasStack())——
+        // setEnabledIf 每 tick 重评估是首帧闪烁源（物品已入槽但首帧未启用不绘制），
+        // 且空槽本无可画内容，无需按有无物品动态启停
         return new NekoItemSlotWithDepth(index).slot(
             new ModularSlot(this.outputItems, index).accessibility(false, true)
                 .slotGroup("outputSlotGroup")
@@ -161,10 +184,7 @@ public class NekoFallingItemSlotFactory {
                     }
                 }))
             .background(IDrawable.EMPTY)
-            .disableHoverBackground()
-            .setEnabledIf(
-                slot -> slot.getSlot()
-                    .getHasStack());
+            .disableHoverBackground();
     }
 
     /**

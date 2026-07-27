@@ -34,6 +34,29 @@ public class LotteryHandler {
      */
     private static final Queue<Runnable> SERVER_TASKS = new ConcurrentLinkedQueue<>();
 
+    /**
+     * 延迟任务（到期时间 + 任务体）
+     * <p>
+     * 用于「服务端延迟出货」：抽奖结果包先行下发驱动客户端轮盘动画，
+     * 奖品（物品落出货槽/货币入钱包）延迟到动画时长 + 余量后再执行，
+     * 使产物下落动画与轮盘停格对齐，且保底/历史同步不提前剧透。
+     */
+    private static class DelayedTask {
+
+        /** 到期时间（System.currentTimeMillis） */
+        final long dueMs;
+        /** 到期后执行的任务（服务器主线程） */
+        final Runnable task;
+
+        DelayedTask(long dueMs, Runnable task) {
+            this.dueMs = dueMs;
+            this.task = task;
+        }
+    }
+
+    /** 延迟任务队列（由 {@link #onServerTick} 在主线程消费到期任务） */
+    private static final Queue<DelayedTask> DELAYED_TASKS = new ConcurrentLinkedQueue<>();
+
     /** tick 计数器（达到 {@link #SAVE_INTERVAL_TICKS} 时做一次全量保存） */
     private int tickCounter = 0;
     /** 周期保存间隔（6000 tick = 5 分钟，防崩溃丢保底/历史） */
@@ -48,6 +71,21 @@ public class LotteryHandler {
         if (task != null) {
             SERVER_TASKS.offer(task);
         }
+    }
+
+    /**
+     * 将任务调度到指定延迟后的服务器主线程执行
+     * <p>
+     * 与 {@link #scheduleServerTask} 不同，本方法按墙钟时间（毫秒）延迟，
+     * 由 {@link #onServerTick} 每 tick 检查并消费全部到期任务。
+     * 典型用途：抽奖延迟出货（动画时长 + 150ms 余量）。
+     *
+     * @param delayMs 延迟毫秒数（≤0 时下一 tick 执行）
+     * @param task    到期后执行的任务
+     */
+    public static void scheduleDelayedTask(long delayMs, Runnable task) {
+        if (task == null) return;
+        DELAYED_TASKS.offer(new DelayedTask(System.currentTimeMillis() + Math.max(0, delayMs), task));
     }
 
     @SubscribeEvent
@@ -79,6 +117,20 @@ public class LotteryHandler {
                 task.run();
             } catch (Throwable t) {
                 GTInterestingThing.LOG.error("执行抽奖任务失败", t);
+            }
+        }
+
+        // 消费到期的延迟任务（抽奖延迟出货等；单 tick 内可能到期多个，逐个消费）
+        long nowMs = System.currentTimeMillis();
+        java.util.Iterator<DelayedTask> it = DELAYED_TASKS.iterator();
+        while (it.hasNext()) {
+            DelayedTask delayed = it.next();
+            if (delayed.dueMs > nowMs) continue; // 未到期，留给后续 tick
+            it.remove();
+            try {
+                delayed.task.run();
+            } catch (Throwable t) {
+                GTInterestingThing.LOG.error("执行抽奖延迟任务失败", t);
             }
         }
 

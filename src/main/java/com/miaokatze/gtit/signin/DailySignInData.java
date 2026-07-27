@@ -36,6 +36,15 @@ public class DailySignInData {
     /** 历史已领取的阶梯奖励记录（防止重复领取），格式 "tier_<days>_<yyyy-MM>" */
     private List<String> claimedTierRewards = new ArrayList<>();
 
+    /**
+     * 已领取的累计签到阶梯奖励记录（v1.7.8 任务5），格式 "cum_<days>"
+     * <p>
+     * 与 {@link #claimedTierRewards}（连续阶梯，含年月键跨月可再领）不同，
+     * 累计阶梯永久每档限领一次，记录永不清空（月度重置/断签均不影响）。
+     * NBT 增量键，旧存档无此键时读出空表，无需迁移。
+     */
+    private List<String> claimedCumulativeTiers = new ArrayList<>();
+
     // ==================== v1.7.6 G2③：每日在线 / 纪念日 ====================
 
     /** 今日累计在线秒数（跨日重置；每分钟 +60） */
@@ -82,6 +91,13 @@ public class DailySignInData {
             claimedList.appendTag(new NBTTagString(record));
         }
         nbt.setTag("claimedTierRewards", claimedList);
+
+        // v1.7.8 任务5：已领取累计阶梯奖励记录（永久，不清空）
+        NBTTagList claimedCumList = new NBTTagList();
+        for (String record : claimedCumulativeTiers) {
+            claimedCumList.appendTag(new NBTTagString(record));
+        }
+        nbt.setTag("claimedCumulativeTiers", claimedCumList);
 
         // v1.7.6 G2③：每日在线 / 纪念日
         nbt.setInteger("onlineSecondsToday", onlineSecondsToday);
@@ -131,6 +147,13 @@ public class DailySignInData {
         NBTTagList claimedList = nbt.getTagList("claimedTierRewards", 8);
         for (int i = 0; i < claimedList.tagCount(); i++) {
             this.claimedTierRewards.add(claimedList.getStringTagAt(i));
+        }
+
+        // v1.7.8 任务5：读取已领取累计阶梯奖励记录（增量键缺省兼容：旧档无键读出空表）
+        this.claimedCumulativeTiers.clear();
+        NBTTagList claimedCumList = nbt.getTagList("claimedCumulativeTiers", 8);
+        for (int i = 0; i < claimedCumList.tagCount(); i++) {
+            this.claimedCumulativeTiers.add(claimedCumList.getStringTagAt(i));
         }
 
         // v1.7.6 G2③：每日在线 / 纪念日（全部缺省兼容：旧档无键时读出 0/空串/空表，无损加载）
@@ -229,6 +252,30 @@ public class DailySignInData {
         return claimedTierRewards.contains("tier_" + tierDays + "_" + yearMonth);
     }
 
+    // ==================== v1.7.8 任务5：累计签到阶梯领取记录 ====================
+
+    /**
+     * 记录已领取的累计签到阶梯奖励（永久，不清空）
+     *
+     * @param days 累计阶梯天数（如 30、100、365）
+     */
+    public void claimCumulativeTier(int days) {
+        String record = "cum_" + days;
+        if (!claimedCumulativeTiers.contains(record)) {
+            claimedCumulativeTiers.add(record);
+        }
+    }
+
+    /**
+     * 检查累计签到阶梯奖励是否已领取
+     *
+     * @param days 累计阶梯天数
+     * @return true 表示已领取
+     */
+    public boolean hasClaimedCumulativeTier(int days) {
+        return claimedCumulativeTiers.contains("cum_" + days);
+    }
+
     // ==================== Getter / Setter ====================
 
     public int getTotalSignInDays() {
@@ -252,6 +299,13 @@ public class DailySignInData {
      */
     public List<String> getClaimedTierRewards() {
         return claimedTierRewards;
+    }
+
+    /**
+     * 已领取累计阶梯奖励记录（格式 "cum_<days>"，只读视图由调用方自行拷贝）
+     */
+    public List<String> getClaimedCumulativeTiers() {
+        return claimedCumulativeTiers;
     }
 
     /**

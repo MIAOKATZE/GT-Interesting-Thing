@@ -13,6 +13,8 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 
 import com.gtnewhorizon.gtnhlib.teams.Team;
@@ -25,6 +27,8 @@ import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
+
+import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 
 /**
  * 抽奖管理器单例（团队维度）
@@ -128,10 +132,16 @@ public class LotteryManager {
      * <p>
      * 流程：校验卡池与机器 → 扣费分流（{@link #deductCostItems}：costItems 中猫猫币条目走
      * 团队钱包、普通物品条目从机器输入槽扣除，校验通过才实际扣减）→ 逐抽
-     * （软保底加权 + 硬保底强制替换）→ 出货（机器出货槽/钱包）→ 记历史 → 落盘。
+     * （软保底加权 + 硬保底强制替换）→ 记历史 → 落盘 → 调度延迟出货
+     * （{@link #scheduleDelayedDispatch}：等客户端轮盘动画播完再落槽/入钱包）。
      * <p>
      * <b>原子性</b>：扣费一次性完成（count 连抽全部需求），任一抽出货失败不回滚已抽结果
      * （与交易 OUTPUT_FULL 回滚不同——抽奖出货溢出已退玩家背包，无丢失路径）。
+     * <p>
+     * <b>延迟出货</b>（v1.7.8 起）：奖品不再立即发放——结果包先行下发驱动客户端轮盘动画，
+     * 出货延迟「动画时长 + 150ms」由 {@link LotteryHandler} 延迟任务队列执行，
+     * 产物落输出槽时客户端 {@code NekoFallingItemSlotFactory} 自然播下落动画，
+     * 全量同步（保底/历史/余额）也随之推迟到出货后，避免动画期间剧透。
      *
      * @param playerId 抽取玩家
      * @param poolId   卡池 ID
@@ -163,14 +173,15 @@ public class LotteryManager {
             if (result == null) continue;
             results.add(result);
 
-            // 3. 出货
-            dispatchPrize(playerId, result.getEntry(), result.getAmount(), machine);
-            // 4. 记历史
+            // 3. 记历史（立即：保底/历史数据落盘不等待出货）
             recordHistory(teamKey, pool.getId(), result, getPlayerName(playerId));
         }
 
-        // 5. 落盘保底与历史
+        // 4. 落盘保底与历史
         saveTeamData(teamKey);
+
+        // 5. 调度延迟出货（动画时长 + 150ms 后执行 dispatchAll；奖品列表快照随任务携带）
+        scheduleDelayedDispatch(playerId, results, machine);
         return results;
     }
 
@@ -388,59 +399,190 @@ public class LotteryManager {
         return weight;
     }
 
-    // ==================== 出货 ====================
+    // ==================== 出货（v1.7.8 服务端延迟出货） ====================
+
+    /** 延迟出货在动画时长之外的安全余量（毫秒）：保证客户端轮盘停格后产物才落槽 */
+    private static final long DISPATCH_DELAY_MARGIN_MS = 150L;
 
     /**
-     * 发放奖品
-     * <ul>
-     * <li>货币奖品：直接入团队钱包（{@link NekoWalletManager} 内部路由）</li>
-     * <li>物品奖品：弹入触发机器出货槽（掉落动画）→ 溢出退玩家背包 → 再满掉落脚下</li>
-     * </ul>
+     * 调度延迟出货
+     * <p>
+     * 快照机器「维度 + 坐标」（延迟期间机器可能被拆除/卸载，届时按坐标重解析，
+     * 解析失败退玩家背包），延迟 = 动画时长（单抽 {@link LotteryAnimationController#DURATION_SINGLE_MS} /
+     * 10 连快闪 {@link LotteryAnimationController#DURATION_QUICK_MS}）+ {@link #DISPATCH_DELAY_MARGIN_MS}。
+     * 到期由 {@link LotteryHandler} 延迟任务队列在服务器主线程执行 {@link #dispatchAll}。
      *
      * @param playerId 抽取玩家
-     * @param entry    中奖条目
-     * @param amount   出货数量
-     * @param machine  触发机器（可为 null，此时物品直接给玩家）
+     * @param results  抽取结果列表（奖品快照；本方法内部防御性复制）
+     * @param machine  触发机器（可为 null，此时物品直接退玩家背包）
      */
-    public void dispatchPrize(UUID playerId, LotteryEntry entry, int amount, MTENekoVendingMachineV2 machine) {
-        if (entry == null || amount <= 0) return;
+    private void scheduleDelayedDispatch(UUID playerId, List<LotteryDrawResult> results,
+        MTENekoVendingMachineV2 machine) {
+        if (results == null || results.isEmpty()) return;
 
-        // 货币奖品：入团队钱包
-        if (entry.isNekoPrize()) {
+        // 快照机器维度与坐标（延迟执行时按坐标重解析，避免持有机器引用跨 tick 失效）
+        int dim = 0;
+        int x = 0;
+        int y = 0;
+        int z = 0;
+        boolean hasMachine = machine != null && machine.getBaseMetaTileEntity() != null;
+        if (hasMachine) {
+            IGregTechTileEntity base = machine.getBaseMetaTileEntity();
+            dim = base.getWorld() != null ? base.getWorld().provider.dimensionId : 0;
+            x = base.getXCoord();
+            y = base.getYCoord();
+            z = base.getZCoord();
+        }
+        final int fDim = dim;
+        final int fX = x;
+        final int fY = y;
+        final int fZ = z;
+        final boolean fHasMachine = hasMachine;
+
+        // 延迟 = 客户端动画时长 + 余量（与轮盘停格对齐；10 连走快闪时长）
+        long animMs = results.size() > 1 ? LotteryAnimationController.DURATION_QUICK_MS
+            : LotteryAnimationController.DURATION_SINGLE_MS;
+        final List<LotteryDrawResult> snapshot = new ArrayList<>(results);
+        LotteryHandler.scheduleDelayedTask(
+            animMs + DISPATCH_DELAY_MARGIN_MS,
+            () -> dispatchAll(playerId, snapshot, fHasMachine, fDim, fX, fY, fZ));
+    }
+
+    /**
+     * 延迟出货执行（服务器主线程，{@link LotteryHandler} 延迟任务队列驱动）
+     * <ul>
+     * <li>物品奖品：按快照坐标重解析机器 → {@code startBatch(物品总数)} +
+     * {@code dispenseItemStack} 逐件落输出缓冲（onPostTick 逐 tick 投放，
+     * 客户端 {@code NekoFallingItemSlotFactory} 自然触发下落动画）；
+     * 机器失效（拆除/卸载/未找到）则全部退玩家背包</li>
+     * <li>货币奖品：直接入团队钱包（无动画，随本批次一并入账）</li>
+     * <li>溢出：玩家在线退背包（满则掉脚下）；玩家离线且有机器坐标则在机器处生成
+     * {@link EntityItem}，无坐标兜底记警告</li>
+     * <li>末尾 {@link LotteryNetworkManager#sendSyncToClient}：保底/历史/钱包余额
+     * 在动画停格后才刷新（不提前剧透）</li>
+     * </ul>
+     *
+     * @param playerId   抽取玩家
+     * @param results    奖品快照
+     * @param hasMachine 抽取时是否存在有效机器坐标快照
+     * @param dim/x/y/z  机器坐标快照（hasMachine=false 时无意义）
+     */
+    private void dispatchAll(UUID playerId, List<LotteryDrawResult> results, boolean hasMachine, int dim, int x, int y,
+        int z) {
+        if (results == null || results.isEmpty()) return;
+
+        // 重解析机器（延迟期间可能已拆除/卸载）
+        MTENekoVendingMachineV2 machine = hasMachine ? findMachine(dim, x, y, z) : null;
+        EntityPlayerMP player = DailySignInManager.getPlayerByUUID(playerId);
+
+        // 1. 汇总物品奖品（货币奖品在下一步入钱包）
+        List<ItemStack> itemPrizes = new ArrayList<>();
+        for (LotteryDrawResult result : results) {
+            if (result == null || result.getEntry() == null) continue;
+            LotteryEntry entry = result.getEntry();
+            if (entry.isNekoPrize()) continue;
+            ItemStack stack = entry.toItemStack(result.getAmount());
+            if (stack == null) {
+                GTInterestingThing.LOG.warn("抽奖奖品物品无法构建: {}", entry.getItem());
+                continue;
+            }
+            itemPrizes.add(stack);
+        }
+
+        // 2. 货币奖品入团队钱包（合并保存一次）
+        boolean walletDirty = false;
+        for (LotteryDrawResult result : results) {
+            if (result == null || result.getEntry() == null || result.getAmount() <= 0) continue;
+            LotteryEntry entry = result.getEntry();
+            if (!entry.isNekoPrize()) continue;
             NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
             if (wallet != null) {
-                wallet.addCount(entry.getNekoCurrencyId(), amount);
-                NekoWalletManager.INSTANCE.saveWallet(playerId);
+                wallet.addCount(entry.getNekoCurrencyId(), result.getAmount());
+                walletDirty = true;
             }
-            return;
+        }
+        if (walletDirty) {
+            NekoWalletManager.INSTANCE.saveWallet(playerId);
         }
 
-        // 物品奖品：优先机器出货槽
-        ItemStack stack = entry.toItemStack(amount);
-        if (stack == null) {
-            GTInterestingThing.LOG.warn("抽奖奖品物品无法构建: {}", entry.getItem());
-            return;
-        }
-        ItemStack overflow = null;
-        if (machine != null) {
-            overflow = machine.dispenseItemStack(stack);
+        // 3. 物品奖品落机器出货槽（批次模式：分档延迟逐件下落，触发客户端下落动画）；
+        // 机器失效则全部作为溢出退玩家背包
+        if (machine != null && !itemPrizes.isEmpty()) {
+            machine.startBatch(itemPrizes.size());
+            for (ItemStack stack : itemPrizes) {
+                ItemStack overflow = machine.dispenseItemStack(stack);
+                handleOverflow(overflow, player, hasMachine, dim, x, y, z);
+            }
         } else {
-            overflow = stack;
-        }
-
-        // 溢出处理：退玩家背包，背包满则掉落脚下（参照签到阶梯物品奖励）
-        if (overflow != null && overflow.stackSize > 0) {
-            EntityPlayerMP player = DailySignInManager.getPlayerByUUID(playerId);
-            if (player != null) {
-                if (!player.inventory.addItemStackToInventory(overflow)) {
-                    EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, overflow);
-                    player.worldObj.spawnEntityInWorld(drop);
-                }
-            } else if (machine != null) {
-                // 玩家离线（理论不会发生：抽奖请求来自在线玩家）：掉落机器旁
-                GTInterestingThing.LOG.warn("抽奖出货溢出但玩家离线，物品已丢弃: {}", overflow);
+            for (ItemStack stack : itemPrizes) {
+                handleOverflow(stack, player, hasMachine, dim, x, y, z);
             }
         }
+
+        // 4. 出货完成后全量同步（保底计数/历史/钱包余额刷新与轮盘停格对齐）
+        if (player != null) {
+            LotteryNetworkManager.sendSyncToClient(player);
+        }
+    }
+
+    /**
+     * 出货溢出处理：玩家在线退背包（满则掉脚下）；玩家离线且有机器坐标快照时
+     * 在机器坐标生成 {@link EntityItem}，否则记警告丢弃（防静默丢失）。
+     */
+    private void handleOverflow(ItemStack overflow, EntityPlayerMP player, boolean hasMachine, int dim, int x, int y,
+        int z) {
+        if (overflow == null || overflow.stackSize <= 0) return;
+        if (player != null) {
+            // 在线：退背包，背包满则掉落脚下（参照签到阶梯物品奖励）
+            if (!player.inventory.addItemStackToInventory(overflow)) {
+                EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, overflow);
+                player.worldObj.spawnEntityInWorld(drop);
+            }
+            return;
+        }
+        // 离线：在机器坐标生成掉落物（延迟出货期间玩家可能已下线）
+        if (hasMachine) {
+            try {
+                MinecraftServer server = MinecraftServer.getServer();
+                World world = server != null ? server.worldServerForDimension(dim) : null;
+                if (world != null) {
+                    EntityItem drop = new EntityItem(world, x + 0.5, y + 0.5, z + 0.5, overflow);
+                    world.spawnEntityInWorld(drop);
+                    return;
+                }
+            } catch (Exception e) {
+                GTInterestingThing.LOG.error("抽奖出货离线掉落失败", e);
+            }
+        }
+        GTInterestingThing.LOG.warn("抽奖出货溢出但玩家离线且无机器坐标，物品已丢弃: {}", overflow);
+    }
+
+    /**
+     * 按维度 + 坐标定位猫猫售货机 V2
+     * <p>
+     * 抽奖请求包（{@code LotteryRequestPacket}）与延迟出货（{@link #dispatchAll}）共用。
+     * 坐标无效/机器不存在/类型不符时返回 null（调用方退化为直接给玩家处理）。
+     *
+     * @param dim   维度 ID
+     * @param x/y/z 机器坐标
+     * @return 机器实例；未找到返回 null
+     */
+    public static MTENekoVendingMachineV2 findMachine(int dim, int x, int y, int z) {
+        try {
+            MinecraftServer server = MinecraftServer.getServer();
+            if (server == null) return null;
+            World world = server.worldServerForDimension(dim);
+            if (world == null) return null;
+            TileEntity te = world.getTileEntity(x, y, z);
+            if (te instanceof IGregTechTileEntity) {
+                if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
+                    return (MTENekoVendingMachineV2) ((IGregTechTileEntity) te).getMetaTileEntity();
+                }
+            }
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("定位抽奖触发机器失败", e);
+        }
+        return null;
     }
 
     // ==================== 历史与保底计数 ====================

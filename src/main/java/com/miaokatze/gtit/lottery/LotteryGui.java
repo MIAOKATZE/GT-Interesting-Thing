@@ -15,7 +15,10 @@ import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.drawable.UITexture;
+import com.cleanroommc.modularui.screen.viewport.GuiContext;
+import com.cleanroommc.modularui.theme.WidgetTheme;
 import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.utils.GlStateManager;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
@@ -87,20 +90,18 @@ public class LotteryGui {
     private static final int SLOT_SIZE = 24;
     /** 轮盘槽位间距 */
     private static final int SLOT_GAP = 4;
-    /** 轮盘列数（固定 4 列环形边框布局） */
-    private static final int WHEEL_COLS = 4;
-    /** 轮盘最大行数（12 格 = 4列×3行） */
-    private static final int WHEEL_MAX_ROWS = 3;
-    /** 轮盘最大格数（环形边框路径长度 = 2×(4+3) - 4），与 {@link LotteryPool#MAX_ENTRIES} 保持一致 */
+    /** 轮盘最大格数（槽位数 = 条目数，上限与 {@link LotteryPool#MAX_ENTRIES} 保持一致） */
     private static final int MAX_SLOTS = LotteryPool.MAX_ENTRIES;
     /** 轮盘区左上角 Y（v1.7.7 G3①：40→24，为背包行让出空间） */
     private static final int WHEEL_Y = 24;
-    /** 轮盘区高度（3 行 × 28 = 84） */
-    private static final int WHEEL_H = WHEEL_MAX_ROWS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
+    /** 轮盘区高度（最大 3 行 × 28 = 84；动态布局在区内水平/垂直居中） */
+    private static final int WHEEL_H = 3 * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
+    /** 指针尖端相对槽内缘的内缩像素（尖端落点 = 槽中心沿 dirOut 回退 SLOT_SIZE/2-2） */
+    private static final int POINTER_TIP_INSET = 2;
 
     /** 结果提示条 Y（v1.7.7 G3①：136→114） */
     private static final int RESULT_Y = 114;
-    /** 结果提示显示时长（毫秒） */
+    /** 结果提示显示时长（毫秒；成功结果自揭示时刻起算，见 {@link #resultRevealedAtMs}） */
     private static final long RESULT_DISPLAY_MS = 6000L;
 
     /** 10 连结果列表 Y（v1.7.7 G3①：152→128） */
@@ -150,7 +151,59 @@ public class LotteryGui {
     /** 历史时间戳格式（HH:mm） */
     private static final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("HH:mm", Locale.ROOT);
 
+    // ==================== 结果揭示状态（v1.7.8 客户端门控） ====================
+
+    /**
+     * 已揭示结果对应的结果时间戳（{@link LotteryClientData#getLastResultTimeMs()}）。
+     * <p>
+     * 揭示 = 动画停格对应当前结果后消费（或跨池等无动画路径直接消费）的上升沿，
+     * 由 {@link #tickAnimation()} 在消费点经 {@link #markResultRevealed(long)} 记录。
+     * 新结果到达后时间戳自动失配 → 未揭示，无需显式重置。
+     */
+    private static volatile long revealedResultTimeMs = 0L;
+    /** 揭示时刻（墙钟；{@link #RESULT_DISPLAY_MS} 展示窗口由此起算） */
+    private static volatile long resultRevealedAtMs = 0L;
+
     private LotteryGui() {}
+
+    /**
+     * 记录结果揭示（上升沿）：动画停格对应当前结果后消费、或无动画路径直接消费时，
+     * 由 {@link #tickAnimation()} 调用。
+     * <p>
+     * 幂等：同一结果时间戳重复调用不刷新揭示时刻，防止展示窗口被续期。
+     *
+     * @param resultTimeMs 被揭示结果的时间戳（{@link LotteryClientData#getLastResultTimeMs()}）
+     */
+    private static void markResultRevealed(long resultTimeMs) {
+        if (resultTimeMs <= 0 || revealedResultTimeMs == resultTimeMs) return;
+        revealedResultTimeMs = resultTimeMs;
+        resultRevealedAtMs = System.currentTimeMillis();
+    }
+
+    /**
+     * 当前抽取结果是否已揭示（v1.7.8 客户端门控：动画播完才允许展示结果，防剧透）。
+     * <p>
+     * 揭示条件（满足其一）：
+     * <ul>
+     * <li>动画已停格（FINISHED）且绑定的时间戳 = 当前结果时间戳（正常路径）</li>
+     * <li>结果已被消费（无未消费结果）且动画不在旋转中（跨池/槽位无效等
+     * 无动画直接消费路径）</li>
+     * </ul>
+     * 仅对 {@link LotteryClientData#RESULT_SUCCESS} 有意义；失败结果码不启动动画、
+     * 无剧透风险，其提示条不经过本门控（窗口自结果到达时刻起算）。
+     *
+     * @return true 表示当前成功结果可展示
+     */
+    private static boolean isResultRevealed() {
+        if (LotteryClientData.getLastResultCode() != LotteryClientData.RESULT_SUCCESS) return false;
+        long resultTimeMs = LotteryClientData.getLastResultTimeMs();
+        if (resultTimeMs <= 0) return false;
+        LotteryAnimationController anim = LotteryAnimationController.getInstance();
+        // 正常路径：动画停格且停格对应的就是当前结果
+        if (anim.isFinished() && anim.getAnimatingResultTimeMs() == resultTimeMs) return true;
+        // 无动画路径：结果已消费且不在旋转（跨池/无效槽位直接消费）
+        return !LotteryClientData.hasUnconsumedResult() && !anim.isSpinning();
+    }
 
     // ==================== 页面构建入口 ====================
 
@@ -267,170 +320,240 @@ public class LotteryGui {
         return currencyName(currencyId);
     }
 
-    // ==================== 轮盘区 ====================
+    // ==================== 轮盘区（v1.7.8 动态布局） ====================
 
     /**
-     * 轮盘区：4 列环形边框布局（槽位数 = 当前池条目数，≤{@link #MAX_SLOTS}）。
+     * 轮盘区：槽位数 = 当前池条目数（1..{@link #MAX_SLOTS}），矩形环周长等弧长采样布局。
      * <p>
-     * 每格四层绘制（按添加顺序）：槽位底（按稀有度）→ 物品图标 → 稀有度角标 →
-     * 点亮高亮框（动画 Supplier 求值）。中央空区放轮盘指针（跟随点亮格旋转指示）。
+     * 布局规格（N=条目数 → 列×行）：N=1 单格居中；N=2 2x2 对顶角；N=3/4 2x2；
+     * N=5/6 3x2；N=7/8 4x2；N=9/10 4x3（N=10 满环，与原固定布局逐格重合零回归）。
+     * 整环在轮盘区（{@link #PAGE_WIDTH} × {@link #WHEEL_H}）水平/垂直居中。
      * <p>
+     * 绘制结构（v1.7.8 起整区自绘，替代原 per-slot widget 循环——槽位数随条目数
+     * 动态变化，ModularUI2 运行期改 pos 不可靠）：
+     * <ul>
+     * <li>整区自绘层：每格「槽底（按稀有度）→ 物品图标 → 稀有度角标」同帧绘制，
+     * 其上叠点亮高亮框（动画 Supplier 求值）与旋转指针（跟随点亮格方向）</li>
+     * <li>整区隐形交互层：一个覆盖全区的 {@link ButtonWidget}，tooltip 与编辑点击
+     * 统一经 {@link #hitSlot(IWidget)} 命中测试定位槽位（绝对鼠标坐标 − 区域绝对坐标）</li>
+     * </ul>
      * 点亮格由 {@link LotteryAnimationController#getCurrentLitSlot()} 决定；
-     * 本区每个动态 Supplier 求值前先 {@link #tickAnimation()} 推进动画状态并
-     * 消费未处理结果（启动动画），保证同一结果只触发一次。
-     * <p>
-     * <b>编辑模式</b>（v1.7.0 目标 4）：每格追加透明点击层（仅编辑模式启用），
-     * 点击通过 {@link LotteryEditCallback#onEditEntryRequested} 打开条目编辑面板。
+     * 自绘层每帧求值前先 {@link #tickAnimation()} 推进动画状态并消费未处理结果
+     * （启动动画），保证同一结果只触发一次。
      *
-     * @param editCallback 编辑模式回调；null 时不添加点击层
+     * @param editCallback 编辑模式回调；null 时交互层不提供编辑点击
      */
     private static IWidget createWheelArea(LotteryEditCallback editCallback) {
         ParentWidget<?> wheel = new ParentWidget<>().pos(0, WHEEL_Y)
             .size(PAGE_WIDTH, WHEEL_H);
-        for (int i = 0; i < MAX_SLOTS; i++) {
-            final int index = i;
-            int[] pos = ringPos(index);
-            if (pos == null) continue; // 中央空区不布格
-            int x = wheelX() + pos[0];
-            int y = pos[1];
 
-            // 第 1 层：槽位底（按条目稀有度选纹理；格超出条目数时不渲染）
-            wheel.child(
-                new IDrawable.DrawableWidget(new DynamicDrawable(() -> slotTexture(index))).pos(x, y)
-                    .size(SLOT_SIZE, SLOT_SIZE));
-
-            // 第 2 层：物品图标（16x16 居中；条目无法构建物品时为空）
-            wheel.child(
-                new IDrawable.DrawableWidget(new DynamicDrawable(() -> slotItem(index))).pos(x + 4, y + 4)
-                    .size(16, 16)
-                    .tooltipBuilder(t -> slotTooltip(t, index))
-                    .tooltipAutoUpdate(true));
-
-            // 第 3 层：稀有度角标（8x8 右上角；COMMON 无角标）
-            wheel.child(
-                new IDrawable.DrawableWidget(new DynamicDrawable(() -> cornerTexture(index))).pos(x + 16, y)
-                    .size(8, 8));
-
-            // 第 4 层：点亮高亮框（动画点亮格 / 停格闪烁）
-            wheel.child(new IDrawable.DrawableWidget((context, dx, dy, w, h, theme) -> {
-                tickAnimation();
-                int lit = LotteryAnimationController.getInstance()
-                    .getCurrentLitSlot();
-                if (lit != index) return;
-                LotteryAnimationController anim = LotteryAnimationController.getInstance();
-                // 停格后按 500ms 方波闪烁；旋转中恒亮
-                if (anim.isFinished() && !anim.isFinishBlinkOn()) return;
-                int color = anim.isFinished() ? COLOR_FINISH_FRAME : COLOR_LIT_FRAME;
-                drawFrame(dx, dy, w, h, color);
-            }).pos(x - 1, y - 1)
-                .size(SLOT_SIZE + 2, SLOT_SIZE + 2));
-
-            // 第 5 层：编辑模式透明点击层（仅编辑模式且该格有条目时启用）
-            if (editCallback != null) {
-                ButtonWidget<?> editClickLayer = new ButtonWidget<>().pos(x, y)
-                    .size(SLOT_SIZE, SLOT_SIZE)
-                    .tooltipBuilder(t -> {
-                        LotteryEntry entry = entryAt(index);
-                        if (entry != null) {
-                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此条目（" + entry.getId() + "）"));
-                        }
-                    })
-                    .tooltipAutoUpdate(true)
-                    .onMouseTapped(mouse -> {
-                        if (mouse == 0 && editCallback.isEditMode()) {
-                            LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
-                            LotteryEntry entry = entryAt(index);
-                            if (pool != null && entry != null) {
-                                editCallback.onEditEntryRequested(pool, entry, index);
-                            }
-                            return true;
-                        }
-                        return false;
-                    });
-                // 仅编辑模式且该格有条目时启用（非编辑模式完全透明不拦截）
-                editClickLayer.setEnabledIf(w -> editCallback.isEditMode() && entryAt(index) != null);
-                wheel.child(editClickLayer);
-            }
-        }
-
-        // 中央指针（跟随点亮格方向；仅动画期间显示）
+        // 整区自绘层：槽底 + 物品 + 角标 + 点亮框 + 指针（同帧一次绘完）
         wheel.child(new IDrawable.DrawableWidget((context, dx, dy, w, h, theme) -> {
             tickAnimation();
+            int n = wheelSlotCount();
+            if (n <= 0) return; // 空池不渲染
+            // 1) 逐格：槽位底 → 物品图标 → 稀有度角标
+            for (int i = 0; i < n; i++) {
+                int[] tl = slotTopLeft(i, n);
+                slotTexture(i).draw(context, tl[0], tl[1], SLOT_SIZE, SLOT_SIZE, theme);
+                slotItem(i).draw(context, tl[0] + 4, tl[1] + 4, 16, 16, theme);
+                cornerTexture(i).draw(context, tl[0] + 16, tl[1], 8, 8, theme);
+            }
+            // 2) 点亮高亮框（旋转中恒亮；停格后按 500ms 方波闪烁）
             LotteryAnimationController anim = LotteryAnimationController.getInstance();
             int lit = anim.getCurrentLitSlot();
-            if (lit < 0) return;
-            int[] litPos = ringPos(lit);
-            if (litPos == null) return;
-            // 指针绘制在点亮格中心朝向轮盘中心的一侧（偏移 4px 内缩）
-            int litCx = wheelX() + litPos[0] + SLOT_SIZE / 2;
-            int litCy = litPos[1] + SLOT_SIZE / 2;
-            int centerCx = PAGE_WIDTH / 2;
-            int centerCy = WHEEL_H / 2;
-            int px = litCx + (centerCx - litCx) / 4 - 8;
-            int py = litCy + (centerCy - litCy) / 4 - 8;
-            NekoGuiTextures.LOTTERY_POINTER.draw(context, px - dx, py - dy, 16, 16, theme);
+            if (lit < 0 || lit >= n) return;
+            if (anim.isFinished() && !anim.isFinishBlinkOn()) return;
+            int[] litTl = slotTopLeft(lit, n);
+            int color = anim.isFinished() ? COLOR_FINISH_FRAME : COLOR_LIT_FRAME;
+            drawFrame(litTl[0] - 1, litTl[1] - 1, SLOT_SIZE + 2, SLOT_SIZE + 2, color);
+            // 3) 指针（尖端抵住点亮格内缘，按槽位方向旋转）
+            drawPointer(context, theme, litTl);
         }).pos(0, 0)
             .size(PAGE_WIDTH, WHEEL_H));
+
+        // 整区隐形交互层：tooltip（悬停槽位）+ 编辑点击（编辑模式命中槽位）
+        // 无背景/覆盖物 → 完全透明；空 tooltip 不渲染（RichTooltip.isEmpty 直接跳过）
+        ButtonWidget<?> hitLayer = new ButtonWidget<>().pos(0, 0)
+            .size(PAGE_WIDTH, WHEEL_H);
+        hitLayer.tooltipBuilder(t -> {
+            int index = hitSlot(hitLayer);
+            if (index < 0) return; // 未命中任何槽位：空 tooltip 不显示
+            slotTooltip(t, index);
+            LotteryEntry entry = entryAt(index);
+            if (entry != null && editCallback != null && editCallback.isEditMode()) {
+                t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此条目（" + entry.getId() + "）"));
+            }
+        })
+            .tooltipAutoUpdate(true);
+        hitLayer.onMouseTapped(mouse -> {
+            if (mouse != 0 || editCallback == null || !editCallback.isEditMode()) return false;
+            int index = hitSlot(hitLayer);
+            if (index < 0) return false; // 命中间隙：不消费，点击穿透
+            LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
+            LotteryEntry entry = entryAt(index);
+            if (pool != null && entry != null) {
+                editCallback.onEditEntryRequested(pool, entry, index);
+            }
+            return true;
+        });
+        wheel.child(hitLayer);
         return wheel;
     }
 
-    /** 轮盘左上角 X（按 4 列总宽水平居中） */
-    private static int wheelX() {
-        int gridW = WHEEL_COLS * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
-        return (PAGE_WIDTH - gridW) / 2;
+    /** 当前选中池条目数（= 轮盘槽位数，钳制到 {@link #MAX_SLOTS}；空池返回 0） */
+    private static int wheelSlotCount() {
+        LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
+        if (pool == null || pool.entries == null) return 0;
+        return Math.min(pool.entries.size(), MAX_SLOTS);
     }
 
     /**
-     * 环形边框路径坐标（槽位序号 → 网格内像素偏移）
-     * <p>
-     * 路径顺序：上行左→右 → 右列上→下（去角重复）→ 下行右→左 → 左列下→上（去角重复），
-     * 与 {@link LotteryAnimationController} 的步进方向一致（索引递增 = 顺时针绕圈）。
-     *
-     * @param index 槽位序号（0..{@link #MAX_SLOTS}-1）
-     * @return {x, y} 像素偏移；非边框位置返回 null
+     * 动态布局列数（N=条目数 1..10 查表）：
+     * N=1→1；N=2/3/4→2（2x2）；N=5/6→3（3x2）；N=7..10→4（4x2 / 4x3）
      */
-    private static int[] ringPos(int index) {
-        int stride = SLOT_SIZE + SLOT_GAP; // 28
-        int cols = WHEEL_COLS; // 4
-        int rows = WHEEL_MAX_ROWS; // 3
-        // 上行：index 0..3 → (col, 0)
-        if (index < cols) {
-            return new int[] { index * stride, 0 };
-        }
-        // 右列（去上角）：index 4..5 → (3, row)
-        int rightStart = cols;
-        int rightCount = rows - 1;
-        if (index < rightStart + rightCount) {
-            int row = index - rightStart + 1;
-            return new int[] { (cols - 1) * stride, row * stride };
-        }
-        // 下行（去右角，右→左）：index 6..8 → (col, 2)
-        int bottomStart = rightStart + rightCount;
-        int bottomCount = cols - 1;
-        if (index < bottomStart + bottomCount) {
-            int col = (cols - 2) - (index - bottomStart);
-            return new int[] { col * stride, (rows - 1) * stride };
-        }
-        // 左列（去下角与上角，下→上）：index 9 → (0, 1)
-        int leftStart = bottomStart + bottomCount;
-        int leftCount = rows - 2;
-        if (index < leftStart + leftCount) {
-            int row = (rows - 2) - (index - leftStart);
-            return new int[] { 0, row * stride };
-        }
-        return null;
+    private static int layoutCols(int n) {
+        if (n <= 1) return 1;
+        if (n <= 4) return 2;
+        if (n <= 6) return 3;
+        return 4;
+    }
+
+    /** 动态布局行数（与 {@link #layoutCols} 配套的查表）：N=1→1；N=2..8→2；N=9/10→3 */
+    private static int layoutRows(int n) {
+        if (n <= 1) return 1;
+        if (n <= 8) return 2;
+        return 3;
     }
 
     /**
-     * 槽位底纹理：按条目稀有度（COMMON/RARE→灰框，EPIC→金框，LEGENDARY→闪角框）
+     * 槽位左上角坐标（轮盘区相对像素）：矩形环周长等弧长采样。
      * <p>
-     * v1.7.6 G4 修复：空槽位（条目数 &lt; {@link #MAX_SLOTS}）原不渲染底图（{@link IDrawable#EMPTY}），
-     * 导致轮盘视觉上游离散乱（如 4/1/3 分布）、格子大小不一的观感——
-     * 改为空槽渲染普通空槽底图，固定 10 格环形坐标表（{@link #ringPos}）恒完整成环。
+     * 环宽 w=(cols-1)×28、环高 h=(rows-1)×28，周长 P=2×(w+h)；
+     * 第 index 槽弧长 d=index×P/n，从矩形左上角沿边框顺时针走 d 像素定位
+     * （上边左→右 → 右边上→下 → 下边右→左 → 左边下→上），
+     * 与 {@link LotteryAnimationController} 步进方向一致（索引递增 = 顺时针绕圈）。
+     * 整个环在轮盘区（PAGE_WIDTH × WHEEL_H）水平/垂直居中。
+     * <p>
+     * N=10（4x3 满环）时步长恰为 28px，逐格坐标与原固定 4 列环形布局重合（零回归）。
+     *
+     * @param index 槽位序号 [0, n)
+     * @param n     槽位总数（= 条目数）
+     * @return {x, y} 槽位左上角的轮盘区相对坐标
+     */
+    private static int[] slotTopLeft(int index, int n) {
+        int stride = SLOT_SIZE + SLOT_GAP; // 28
+        int cols = layoutCols(n);
+        int rows = layoutRows(n);
+        int w = (cols - 1) * stride; // 环宽（左右角槽左上角的横向距离）
+        int h = (rows - 1) * stride; // 环高
+        int perimeter = 2 * (w + h); // 环周长
+        // 等弧长采样：第 index 槽的弧长位置（N=1 时周长 0，d=0 落原点即居中格）
+        double d = perimeter == 0 ? 0 : (double) index * perimeter / n;
+        double x;
+        double y;
+        if (d < w) {
+            // 上边：左 → 右
+            x = d;
+            y = 0;
+        } else if (d < w + h) {
+            // 右边：上 → 下
+            x = w;
+            y = d - w;
+        } else if (d < 2 * w + h) {
+            // 下边：右 → 左
+            x = w - (d - w - h);
+            y = h;
+        } else {
+            // 左边：下 → 上
+            x = 0;
+            y = h - (d - 2 * w - h);
+        }
+        // 整环（含槽位自身 24px）在轮盘区居中
+        int offsetX = (PAGE_WIDTH - (w + SLOT_SIZE)) / 2;
+        int offsetY = (WHEEL_H - (h + SLOT_SIZE)) / 2;
+        return new int[] { offsetX + (int) Math.round(x), offsetY + (int) Math.round(y) };
+    }
+
+    /**
+     * 槽位命中测试：取当前鼠标所在的槽位序号（未命中/空池返回 -1）。
+     * <p>
+     * 用「绝对鼠标坐标 − 交互层区域绝对坐标」换算到轮盘区相对坐标（
+     * {@link GuiContext#getAbsMouseX()} 与 {@code Area.x/y} 同坐标系，
+     * 与框架自身 hover 判定同口径），再与各槽位矩形逐一比对。
+     *
+     * @param widget 整区交互层 widget（提供区域与上下文）
+     * @return 槽位序号；未命中返回 -1
+     */
+    private static int hitSlot(IWidget widget) {
+        int n = wheelSlotCount();
+        if (n <= 0 || widget == null || widget.getArea() == null) return -1;
+        GuiContext context = widget.getContext();
+        if (context == null) return -1;
+        int mx = context.getAbsMouseX() - widget.getArea().x;
+        int my = context.getAbsMouseY() - widget.getArea().y;
+        for (int i = 0; i < n; i++) {
+            int[] tl = slotTopLeft(i, n);
+            if (mx >= tl[0] && mx < tl[0] + SLOT_SIZE && my >= tl[1] && my < tl[1] + SLOT_SIZE) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 绘制轮盘指针（16x16 固定朝下倒三角纹理，按点亮格方向旋转）。
+     * <p>
+     * 定位（v1.7.8 修复指针偏移——原固定朝向 + 内插锚点导致指针压在格子上）：
+     * <ul>
+     * <li>dirOut = normalize(槽中心 − 轮盘中心)（N=1 居中格退化为 (0,-1) 朝上）</li>
+     * <li>尖端落点 tip = 槽中心 − dirOut×({@code SLOT_SIZE/2} − {@link #POINTER_TIP_INSET})
+     * （抵住槽内缘，留 2px 内缩不压格）</li>
+     * <li>指针中心 pc = tip − dirOut×8（纹理尖端距中心 8px）</li>
+     * <li>旋转角 θ = atan2(-dirOut.x, dirOut.y)：把纹理朝向 (0,+1 下) 映射到 dirOut</li>
+     * </ul>
+     * 只动矩阵栈（push/translate/rotate/pop），不触碰 blend/texture 状态。
+     *
+     * @param litTl 点亮格左上角坐标（{@link #slotTopLeft} 结果）
+     */
+    private static void drawPointer(GuiContext context, WidgetTheme theme, int[] litTl) {
+        float slotCx = litTl[0] + SLOT_SIZE / 2f;
+        float slotCy = litTl[1] + SLOT_SIZE / 2f;
+        float dirX = slotCx - PAGE_WIDTH / 2f;
+        float dirY = slotCy - WHEEL_H / 2f;
+        float len = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+        if (len < 1e-4f) {
+            // N=1 居中格：槽中心与轮盘中心重合，方向约定朝上
+            dirX = 0;
+            dirY = -1;
+        } else {
+            dirX /= len;
+            dirY /= len;
+        }
+        // 尖端落点：槽中心沿 dirOut 反方向回退至槽内缘（内缩 POINTER_TIP_INSET 像素）
+        float tipX = slotCx - dirX * (SLOT_SIZE / 2f - POINTER_TIP_INSET);
+        float tipY = slotCy - dirY * (SLOT_SIZE / 2f - POINTER_TIP_INSET);
+        // 指针中心：尖端再沿 dirOut 反方向退 8px（纹理尖端在其中心正下方 8px）
+        float pcX = tipX - dirX * 8;
+        float pcY = tipY - dirY * 8;
+        // 旋转角：纹理尖端朝 +y（下），旋转后须指向 dirOut
+        // R(θ)·(0,1) = (-sinθ, cosθ) = (dirX, dirY) → θ = atan2(-dirX, dirY)
+        float theta = (float) Math.toDegrees(Math.atan2(-dirX, dirY));
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(pcX, pcY, 0);
+        GlStateManager.rotate(theta, 0, 0, 1);
+        NekoGuiTextures.LOTTERY_POINTER.draw(context, -8, -8, 16, 16, theme);
+        GlStateManager.popMatrix();
+    }
+
+    /**
+     * 槽位底纹理：按条目稀有度（COMMON/RARE→灰框，EPIC→金框，LEGENDARY→闪角框）。
+     * <p>
+     * v1.7.8 动态布局后槽位数恒等于条目数，条目缺失（理论不可达）时回退普通底图兜底。
      */
     private static IDrawable slotTexture(int index) {
         LotteryEntry entry = entryAt(index);
-        if (entry == null) return NekoGuiTextures.LOTTERY_SLOT_NORMAL; // 空槽底图（G4）
+        if (entry == null) return NekoGuiTextures.LOTTERY_SLOT_NORMAL; // 防御兜底
         switch (entry.getRarity()) {
             case LEGENDARY:
                 return NekoGuiTextures.LOTTERY_SLOT_EPIC;
@@ -534,13 +657,17 @@ public class LotteryGui {
                 // v1.7.7 G3：动画已完整停止，且停格对应本次结果，才消费结果
                 // 保持 FINISHED 态供结果展示区读取，consume 仅防止同一结果重复触发动画
                 LotteryClientData.consumeDrawResult();
+                // v1.7.8 门控：停格消费即揭示（展示窗口自此上升沿起算）
+                markResultRevealed(resultTimeMs);
             } else if (!anim.isSpinning()) {
                 // IDLE 或旧动画已停格：启动新动画（跨池/槽位无效时直接消费，避免无限挂起）
                 if (slotCount > 0 && poolId.equals(LotteryClientData.getSelectedPoolId())) {
                     anim.startAnimation(poolId, target, slotCount, quick);
                     anim.setAnimatingResultTimeMs(resultTimeMs);
                 } else {
+                    // 无动画路径：直接消费并立即揭示（无剧透对象）
                     LotteryClientData.consumeDrawResult();
+                    markResultRevealed(resultTimeMs);
                 }
             }
             // SPINNING 期间不处理：等待动画自然结束，避免提前消费导致结果先出
@@ -572,11 +699,24 @@ public class LotteryGui {
      * 单抽动画停格后显示中奖条目（稀有度色 + 物品名 ×数量，保底附加标注）；
      * 失败结果码（余额不足/池缺失/错误）立即显示红色原因；
      * 10 连期间由 {@link #createMultiResultList()} 列表展示，本条显示汇总。
+     * <p>
+     * v1.7.8 门控：成功结果未揭示（动画旋转中）时显示「抽取中...」，
+     * 揭示后展示窗口自揭示时刻（{@link #resultRevealedAtMs}）起算；
+     * 失败结果码无动画，窗口自结果到达时刻起算。
      */
     private static IWidget createResultMessage() {
         return new TextWidget<>(IKey.dynamic(() -> {
             int code = LotteryClientData.getLastResultCode();
             if (code == LotteryClientData.RESULT_NONE) return "";
+            if (code == LotteryClientData.RESULT_SUCCESS) {
+                // 成功：未揭示期间显示「抽取中...」（动画期间不设窗口限制）；
+                // 揭示后窗口自揭示时刻起算
+                if (isResultRevealed() && System.currentTimeMillis() - resultRevealedAtMs > RESULT_DISPLAY_MS) {
+                    return "";
+                }
+                return successSummary();
+            }
+            // 失败码：无动画，窗口自结果到达时刻起算
             if (System.currentTimeMillis() - LotteryClientData.getLastResultTimeMs() > RESULT_DISPLAY_MS) return "";
             switch (code) {
                 case LotteryClientData.RESULT_INSUFFICIENT:
@@ -585,8 +725,6 @@ public class LotteryGui {
                     return EnumChatFormatting.RED + "卡池不存在或暂不可用";
                 case LotteryClientData.RESULT_ERROR:
                     return EnumChatFormatting.RED + "抽奖失败，请稍后再试";
-                case LotteryClientData.RESULT_SUCCESS:
-                    return successSummary();
                 default:
                     return "";
             }
@@ -596,19 +734,21 @@ public class LotteryGui {
             .shadow(false);
     }
 
-    /** 成功结果汇总文本（单抽=中奖条目，10 连=最高稀有度条目） */
+    /**
+     * 成功结果汇总文本（单抽=中奖条目，10 连=最高稀有度条目）
+     * <p>
+     * v1.7.8 门控：结果未揭示（动画旋转中）时仅显示「抽取中...」，停格揭示后才展示条目。
+     */
     private static String successSummary() {
         List<LotteryClientData.DrawResult> results = LotteryClientData.getLastResults();
         if (results.isEmpty()) return "";
-        LotteryAnimationController anim = LotteryAnimationController.getInstance();
+        if (!isResultRevealed()) return EnumChatFormatting.YELLOW + "抽取中...";
         if (results.size() > 1) {
-            // 10 连：动画停格后提示最高奖（列表区已展示全部）
-            if (!anim.isFinished()) return EnumChatFormatting.YELLOW + "抽取中...";
+            // 10 连：揭示后提示最高奖（列表区已展示全部）
             LotteryClientData.DrawResult best = bestResult(results);
             return resultText(best, EnumChatFormatting.GOLD + "10 连最高奖：");
         }
-        // 单抽：停格后展示
-        if (!anim.isFinished()) return EnumChatFormatting.YELLOW + "抽取中...";
+        // 单抽：揭示后展示
         return resultText(results.get(0), "");
     }
 
@@ -658,6 +798,9 @@ public class LotteryGui {
      * <p>
      * 仅当最近结果为 10 连（结果数 > 1）且未超时显示；动画停格后逐格点亮
      * 高稀有度（≥EPIC）结果格，聚焦大奖。
+     * <p>
+     * v1.7.8 门控：{@link #multiResultAt(int)} 在结果揭示前一律返回 null
+     * （动画旋转期间列表整体为空，修 10 连剧透），展示窗口自揭示时刻起算。
      */
     private static IWidget createMultiResultList() {
         ParentWidget<?> list = new ParentWidget<>().pos(0, LIST_Y)
@@ -684,12 +827,10 @@ public class LotteryGui {
                     .tooltipBuilder(t -> multiSlotTooltip(t, index))
                     .tooltipAutoUpdate(true));
 
-            // 高稀有度高亮框（停格后 ≥EPIC 格金色描边）
+            // 高稀有度高亮框（揭示后 ≥EPIC 格金色描边；multiResultAt 未揭示返回 null 已含门控）
             list.child(new IDrawable.DrawableWidget((context, dx, dy, w, h, theme) -> {
                 LotteryClientData.DrawResult result = multiResultAt(index);
                 if (result == null || !result.isHighRarity) return;
-                if (!LotteryAnimationController.getInstance()
-                    .isFinished()) return;
                 drawFrame(dx, dy, w, h, COLOR_FINISH_FRAME);
             }).pos(x - 1, y - 1)
                 .size(LIST_CELL + 2, LIST_CELL + 2));
@@ -697,10 +838,16 @@ public class LotteryGui {
         return list;
     }
 
-    /** 取第 index 条 10 连结果（非 10 连/越界/超时返回 null） */
+    /**
+     * 取第 index 条 10 连结果（非 10 连/越界/超时返回 null）
+     * <p>
+     * v1.7.8 门控：结果未揭示（动画旋转中）返回 null——修 10 连列表在轮盘
+     * 停格前逐格展示奖品的剧透问题；展示窗口自揭示时刻（{@link #resultRevealedAtMs}）起算。
+     */
     private static LotteryClientData.DrawResult multiResultAt(int index) {
         if (LotteryClientData.getLastResultCode() != LotteryClientData.RESULT_SUCCESS) return null;
-        if (System.currentTimeMillis() - LotteryClientData.getLastResultTimeMs() > RESULT_DISPLAY_MS) return null;
+        if (!isResultRevealed()) return null; // 未揭示：列表整体不展示（防剧透）
+        if (System.currentTimeMillis() - resultRevealedAtMs > RESULT_DISPLAY_MS) return null;
         List<LotteryClientData.DrawResult> results = LotteryClientData.getLastResults();
         if (results.size() <= 1) return null; // 单抽不走列表
         return index >= 0 && index < results.size() ? results.get(index) : null;
