@@ -233,8 +233,8 @@ public class LotteryConfig {
      * <ul>
      * <li>猫猫币池（neko）：单抽 5 猫猫币，10 格——食物/基础材料为主，含少量稀有，
      * 硬保底 50 抽必出 EPIC 及以上</li>
-     * <li>闪烁猫猫币池（shimmering）：单抽 1 闪烁猫猫币，10 格——更稀有，
-     * 硬保底 30 抽必出 EPIC 及以上</li>
+     * <li>闪烁猫猫币池（shimmering）：单抽 1 闪烁猫猫币，8 格——更稀有，
+     * 硬保底 30 抽必出 EPIC 及以上（8 格为用户确认口径，v1.7.9 曾误加至 10）</li>
      * </ul>
      * 默认条目全部使用原版物品 ID（"minecraft:" 前缀），避免 GT 物品 ID 变动导致默认配置失效；
      * GT 材料条目由目标 4 的可视化编辑添加。
@@ -339,7 +339,10 @@ public class LotteryConfig {
         return pool;
     }
 
-    /** 闪烁猫猫币池：10 格（v1.7.9 自 8 格补满，与猫猫币池格数一致），单抽 1 闪烁猫猫币，硬保底 30 抽 EPIC */
+    /**
+     * 闪烁猫猫币池：8 格（默认 8 条为用户确认口径；v1.7.9 曾误加 lapis/ender_pearl 补满至 10，
+     * v1.7.10 移除恢复 8 条），单抽 1 闪烁猫猫币，硬保底 30 抽 EPIC
+     */
     private static LotteryPool createDefaultShimmeringPool() {
         PityConfig pity = PityConfig.createDefault();
         LotteryPool pool = new LotteryPool("shimmering", "闪烁猫猫币池", NekoCurrencyRegistrar.SHIMMERING_NEKO_ID, 1, pity);
@@ -351,19 +354,12 @@ public class LotteryConfig {
                 .add(new NekoBigItemStack(coin));
         }
         List<LotteryEntry> entries = pool.getEntries();
-        // COMMON：金锭/石英/青金石（相对闪烁币价值仍属普通）
+        // COMMON：金锭/石英（相对闪烁币价值仍属普通）
         entries.add(LotteryEntry.createItemPrize("gold_x", "minecraft:gold_ingot", 0, 2, 4, 60, LotteryRarity.COMMON));
         entries.add(LotteryEntry.createItemPrize("quartz", "minecraft:quartz", 0, 4, 8, 50, LotteryRarity.COMMON));
-        // v1.7.9 补位：青金石（meta 4）——GTNH 常用（电路板/染料/管道密封），
-        // 价值与金锭/石英同档，权重 40 略低于既有 COMMON 保持梯度
-        entries.add(LotteryEntry.createItemPrize("lapis", "minecraft:dye", 4, 4, 8, 40, LotteryRarity.COMMON));
-        // RARE：钻石/绿宝石/末影珍珠/回本货币
+        // RARE：钻石/绿宝石/回本货币
         entries.add(LotteryEntry.createItemPrize("diamond_x", "minecraft:diamond", 0, 1, 2, 30, LotteryRarity.RARE));
         entries.add(LotteryEntry.createItemPrize("emerald", "minecraft:emerald", 0, 1, 2, 25, LotteryRarity.RARE));
-        // v1.7.9 补位：末影珍珠——GTNH 高频消耗品（传送/合成/流体固化），
-        // 价值与钻石/绿宝石同档，权重 25 与绿宝石齐平
-        entries
-            .add(LotteryEntry.createItemPrize("ender_pearl", "minecraft:ender_pearl", 0, 2, 4, 25, LotteryRarity.RARE));
         entries.add(
             LotteryEntry.createNekoPrize(
                 "shimmer_back",

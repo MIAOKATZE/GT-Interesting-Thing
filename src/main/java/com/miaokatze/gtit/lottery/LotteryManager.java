@@ -41,7 +41,9 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  * <li><b>扣费</b>：走 {@link NekoWalletManager#getWallet(UUID)}（内部优先团队钱包）
  * + {@link NekoWallet#tryDeduct(String, int)} 原子操作，与交易执行器一致</li>
  * <li><b>出货</b>：物品奖品弹入触发机器的出货槽（{@link MTENekoVendingMachineV2#dispenseItemStack}），
- * 溢出退给玩家背包（再满则掉落脚下）；货币奖品直接入团队钱包</li>
+ * 溢出退给玩家背包（再满则掉落脚下）；货币奖品（猫猫币/闪烁猫猫币）自 v1.7.10 起
+ * 同样构建为对应货币物品堆走出货槽（不再直接入团队钱包；货币物品未注册的极端情况
+ * 兜底入钱包防丢失）</li>
  * <li><b>保底</b>：按「团队 × 卡池」计数「连续未出高稀有（≥RARE）次数」，
  * 软保底加权重、硬保底强制替换（{@link PityConfig}）</li>
  * </ul>
@@ -130,7 +132,7 @@ public class LotteryManager {
      * 流程：校验卡池与机器 → 扣费分流（{@link #deductCostItems}：costItems 中猫猫币条目走
      * 团队钱包、普通物品条目从机器输入槽扣除，校验通过才实际扣减）→ 逐抽
      * （软保底加权 + 硬保底强制替换）→ 落盘保底 → 调度延迟出货
-     * （{@link #scheduleDelayedDispatch}：等客户端轮盘动画播完再落槽/入钱包）。
+     * （{@link #scheduleDelayedDispatch}：等客户端轮盘动画播完再落槽）。
      * <p>
      * <b>原子性</b>：扣费一次性完成（count 连抽全部需求），任一抽出货失败不回滚已抽结果
      * （与交易 OUTPUT_FULL 回滚不同——抽奖出货溢出已退玩家背包，无丢失路径）。
@@ -450,7 +452,10 @@ public class LotteryManager {
      * {@code dispenseItemStack} 逐件落输出缓冲（onPostTick 逐 tick 投放，
      * 客户端 {@code NekoFallingItemSlotFactory} 自然触发下落动画）；
      * 机器失效（拆除/卸载/未找到）则全部退玩家背包</li>
-     * <li>货币奖品：直接入团队钱包（无动画，随本批次一并入账）</li>
+     * <li>货币奖品（v1.7.10 起）：不再直接入团队钱包——构建为对应猫猫币物品堆
+     * （{@link LotteryEntry#toItemStack(int)} 内部走 {@link NekoCurrencyRegistrar#getItemStack}），
+     * 与物品奖品同路径落输出槽、共享溢出兜底；仅当货币物品未注册（构建返回 null）
+     * 的极端情况才兜底入钱包，防静默丢失</li>
      * <li>溢出：玩家在线退背包（满则掉脚下）；玩家离线且有机器坐标则在机器处生成
      * {@link EntityItem}，无坐标兜底记警告</li>
      * <li>末尾 {@link LotteryNetworkManager#sendSyncToClient}：保底/钱包余额
@@ -470,37 +475,36 @@ public class LotteryManager {
         MTENekoVendingMachineV2 machine = hasMachine ? findMachine(dim, x, y, z) : null;
         EntityPlayerMP player = DailySignInManager.getPlayerByUUID(playerId);
 
-        // 1. 汇总物品奖品（货币奖品在下一步入钱包）
+        // 1. 汇总出货物品（v1.7.10 起货币奖品同样构建为对应猫猫币物品堆，
+        // 与物品奖品同路径落输出槽；LotteryEntry.toItemStack 对货币奖品内部走
+        // NekoCurrencyRegistrar.getItemStack 完成 货币ID→物品 的映射）
         List<ItemStack> itemPrizes = new ArrayList<>();
+        boolean walletDirty = false;
         for (LotteryDrawResult result : results) {
             if (result == null || result.getEntry() == null) continue;
             LotteryEntry entry = result.getEntry();
-            if (entry.isNekoPrize()) continue;
             ItemStack stack = entry.toItemStack(result.getAmount());
             if (stack == null) {
+                // 货币奖品无物品形态（对应猫猫币物品未注册，极端情况）：
+                // 兜底入团队钱包防静默丢失（货币奖品 item 字段为空，不走下方 warn）
+                if (entry.isNekoPrize() && result.getAmount() > 0) {
+                    NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+                    if (wallet != null) {
+                        wallet.addCount(entry.getNekoCurrencyId(), result.getAmount());
+                        walletDirty = true;
+                    }
+                    continue;
+                }
                 GTInterestingThing.LOG.warn("抽奖奖品物品无法构建: {}", entry.getItem());
                 continue;
             }
             itemPrizes.add(stack);
         }
-
-        // 2. 货币奖品入团队钱包（合并保存一次）
-        boolean walletDirty = false;
-        for (LotteryDrawResult result : results) {
-            if (result == null || result.getEntry() == null || result.getAmount() <= 0) continue;
-            LotteryEntry entry = result.getEntry();
-            if (!entry.isNekoPrize()) continue;
-            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            if (wallet != null) {
-                wallet.addCount(entry.getNekoCurrencyId(), result.getAmount());
-                walletDirty = true;
-            }
-        }
         if (walletDirty) {
             NekoWalletManager.INSTANCE.saveWallet(playerId);
         }
 
-        // 3. 物品奖品落机器出货槽（批次模式：分档延迟逐件下落，触发客户端下落动画）；
+        // 2. 物品奖品落机器出货槽（批次模式：分档延迟逐件下落，触发客户端下落动画）；
         // 机器失效则全部作为溢出退玩家背包
         if (machine != null && !itemPrizes.isEmpty()) {
             machine.startBatch(itemPrizes.size());
@@ -514,7 +518,7 @@ public class LotteryManager {
             }
         }
 
-        // 4. 出货完成后全量同步（保底计数/钱包余额刷新与轮盘停格对齐）
+        // 3. 出货完成后全量同步（保底计数/钱包余额刷新与轮盘停格对齐）
         if (player != null) {
             LotteryNetworkManager.sendSyncToClient(player);
         }

@@ -8,8 +8,6 @@ import java.util.UUID;
 
 import net.minecraft.item.ItemStack;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 
@@ -276,10 +274,11 @@ public class NekoTradeExecutor {
         }
 
         // 8. v1.7.8 A2：预检输出槽空间（纯读操作，在扣款前失败）
-        // 每个普通产物栈固定占一个空槽（outputIntoSlot 写第一个空槽、不合并），
-        // 所需槽数 = 产物栈数；猫猫币产物直接入钱包不经输出槽，无需检查
+        // 每个产物栈固定占一个空槽（outputIntoSlot 写第一个空槽、不合并），
+        // 所需槽数 = 产物栈数；v1.7.10 起猫猫币产物也落入输出槽（恢复 1.6.* 行为），
+        // 预检口径为全部产物（含货币产物）
         int requiredOutputSlots = 0;
-        for (NekoBigItemStack toItem : trade.getNonCurrencyToItems()) {
+        for (NekoBigItemStack toItem : trade.getToItems()) {
             for (ItemStack stack : toItem.getCombinedStacks()) {
                 if (stack != null) {
                     requiredOutputSlots++;
@@ -402,10 +401,10 @@ public class NekoTradeExecutor {
 
         // v1.6.28: 计算本批次总产出物品数，通知 MTE 进入批次模式控制下落时序
         // 分档规则：1个无间隔 / 2个6-10tick / 3-4个2-6tick / ≥5个2-6tick且每次1-2个
-        // v1.7.6 G3② 货币解绑：批次仅统计普通产物——猫猫币产物直接入钱包，不经输出槽/下落
-        List<NekoBigItemStack> normalOutputs = trade.getNonCurrencyToItems();
+        // v1.7.10：猫猫币产物恢复落入输出槽（1.6.* 观感），批次统计全部产物（含货币产物）
+        List<NekoBigItemStack> allOutputs = trade.getToItems();
         int totalOutputCount = 0;
-        for (NekoBigItemStack toItem : normalOutputs) {
+        for (NekoBigItemStack toItem : allOutputs) {
             for (ItemStack stack : toItem.getCombinedStacks()) {
                 totalOutputCount++;
             }
@@ -414,9 +413,9 @@ public class NekoTradeExecutor {
             outputSlots.startBatch(totalOutputCount);
         }
 
-        // 5. 产出放入输出槽（记录本轮插入数量以便回滚；仅普通产物，猫猫币产物在 5b 入钱包）
+        // 5. 产出放入输出槽（记录本轮插入数量以便回滚；v1.7.10 起含猫猫币产物）
         int insertedCount = 0;
-        for (NekoBigItemStack toItem : normalOutputs) {
+        for (NekoBigItemStack toItem : allOutputs) {
             for (ItemStack stack : toItem.getCombinedStacks()) {
                 if (!outputSlots.hasSpaceFor(stack)) {
                     // 输出槽满，回滚已扣减的资源
@@ -445,26 +444,6 @@ public class NekoTradeExecutor {
         // v1.6.28: 批次插入完成，不调用 endBatch —— 批次状态需保留供 dispenseItems 分档控制投放时序，
         // 由 MTENekoVendingMachineV2.dispenseItems 在所有物品投放完成后调用 endBatch 清理
 
-        // 5b. v1.7.6 G3② 货币解绑：猫猫币产物入钱包（普通产物已全部入槽，不再触发 OUTPUT_FULL，
-        // 故入账无需回滚路径；纯物品交易 wallet 尚未获取时此处补取）
-        List<NekoBigItemStack> currencyOutputs = trade.getCurrencyToItems();
-        if (!currencyOutputs.isEmpty()) {
-            if (wallet == null) {
-                wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            }
-            if (wallet != null) {
-                for (NekoBigItemStack currencyOutput : currencyOutputs) {
-                    String cid = NekoCurrencyRegistrar.getNekoCurrencyId(currencyOutput.getBaseStack());
-                    if (cid != null) {
-                        wallet.addCount(cid, currencyOutput.getStackSize());
-                    }
-                }
-            } else {
-                // 钱包不可用时货币产物丢失——防御日志（正常流程钱包恒存在）
-                GTInterestingThing.LOG.error("[NekoTradeExecutor] 玩家 {} 钱包为空，猫猫币产物无法入账", playerId);
-            }
-        }
-
         // 6. 记录历史
         NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, groupId);
         history.recordTrade(group.getCooldown());
@@ -474,8 +453,8 @@ public class NekoTradeExecutor {
         }
         NekoHistoryManager.INSTANCE.markDirty(playerId);
 
-        // v1.7.6 G6⑤ 钱包落盘一致性：交易引起的货币扣减/产出入账后显式持久化。
-        // wallet 非空即本次交易动过钱包（第 3 步扣款或 5b 货币产物入账）；
+        // v1.7.6 G6⑤ 钱包落盘一致性：交易引起的货币扣减后显式持久化。
+        // wallet 非空即本次交易动过钱包（第 3 步扣款；v1.7.10 起货币产物落输出槽不入钱包）；
         // 个人钱包写 gtit_neko_wallets/*.dat，团队钱包 markDirty 供 GTNHLib 世界保存落盘
         // （GTNHLib TeamDataSaver.onWorldSave 仅落 DIRTY 团队，不标脏则崩溃丢账）。
         // 与投币/弹出/抽奖扣费路径的 saveWallet 口径一致；纯物品交易 wallet==null 不触发。

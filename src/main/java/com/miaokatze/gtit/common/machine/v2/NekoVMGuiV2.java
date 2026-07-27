@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -6173,9 +6172,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             NekoTradeResult result = multiblock.processTrade(playerId, groupId, tradeIndex);
 
             if (result.isSuccess()) {
-                // v1.7.8 A1 体验修复：1.7.6 货币解绑后猫猫币产物直接入钱包、不经输出槽弹出，
-                // "卖物换币"类交易无任何视觉产出，结果消息追加钱包入账提示
-                tradeResultMessage = EnumChatFormatting.GREEN + "交易成功!" + buildCurrencyOutputHint(groupId, tradeIndex);
+                // v1.7.10：猫猫币产物恢复落入输出槽（1.6.* 观感），不再直入钱包，
+                // 产物经掉落动画可见，原 v1.7.8 A1 钱包入账提示不再需要
+                tradeResultMessage = EnumChatFormatting.GREEN + "交易成功!";
                 playTradeSuccessSound();
                 // v1.7.8 B：交易成功兜底强制同步输出槽，防增量同步漏发导致客户端看不到产物
                 forceSyncOutputSlots();
@@ -6244,58 +6243,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             NekoFavouritesTracker.INSTANCE.toggleFavourite(playerId, groupId, tradeIndex);
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[NekoVMV2] processFavouriteToggle 异常!", t);
-        }
-    }
-
-    /**
-     * v1.7.8 A1：构建货币产物的钱包入账提示
-     * <p>
-     * 1.7.6 货币解绑后，产物中的猫猫币由 NekoTradeExecutor 第 5b 步直接入钱包，
-     * 不经输出槽弹出物品。本方法按 groupId/tradeIndex 查询交易的货币产物，
-     * 按货币 ID 汇总数量生成 " 猫猫币 +N 已入钱包" 形式的提示；
-     * 无货币产物或查询失败时返回空串（提示仅为体验优化，不影响交易成功消息本身）。
-     *
-     * @param groupId    交易组 UUID
-     * @param tradeIndex 交易在组内的索引
-     * @return 入账提示（含前导空格），无货币产物返回 ""
-     */
-    private String buildCurrencyOutputHint(UUID groupId, int tradeIndex) {
-        try {
-            NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
-            if (group == null || tradeIndex < 0
-                || tradeIndex >= group.getTrades()
-                    .size()) {
-                return "";
-            }
-            List<NekoBigItemStack> currencyOutputs = group.getTrades()
-                .get(tradeIndex)
-                .getCurrencyToItems();
-            if (currencyOutputs == null || currencyOutputs.isEmpty()) {
-                return "";
-            }
-            // 按货币 ID 汇总（与 executor 5b 入账口径一致），多种货币分别展示
-            Map<String, Integer> gained = new LinkedHashMap<>();
-            for (NekoBigItemStack output : currencyOutputs) {
-                if (output == null) continue;
-                String cid = NekoCurrencyRegistrar.getNekoCurrencyId(output.getBaseStack());
-                if (cid == null) continue;
-                Integer prev = gained.get(cid);
-                gained.put(cid, (prev == null ? 0 : prev) + output.getStackSize());
-            }
-            if (gained.isEmpty()) {
-                return "";
-            }
-            StringBuilder hint = new StringBuilder();
-            for (Map.Entry<String, Integer> entry : gained.entrySet()) {
-                hint.append(' ')
-                    .append(NekoCurrencyRegistrar.getDisplayName(entry.getKey()))
-                    .append(" +")
-                    .append(entry.getValue());
-            }
-            hint.append(" 已入钱包");
-            return hint.toString();
-        } catch (Throwable t) {
-            return "";
         }
     }
 

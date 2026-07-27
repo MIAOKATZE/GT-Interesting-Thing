@@ -113,8 +113,12 @@ public class NekoFallingItemSlotFactory {
      * @return 包装了掉落动画的 TransformWidget
      */
     public TransformWidget getFallingItemSlot(int index) {
-        // 初始位置设为顶部 (y=-1)，避免物品先出现在底部再跳到顶部
-        final Pos fallingPosition = new Pos(this.outputSlotXPositions.get(index), -1);
+        // 初始位置设为终点 (y=fallDistance)，与 VM 原版一致：
+        // 动画未触发时（如 GUI 重开的 init 同步不播动画）物品静止渲染在最终落点，保证可见；
+        // 新物品落入时 changeListener 触发动画，AnimatorManager 在 DrawScreenEvent.Pre
+        // 先于绘制推进首帧，位置即被插值回顶部起点 (y=-1) 再下落，
+        // 不会出现"先在底部渲染一帧再跳顶"的闪烁
+        final Pos fallingPosition = new Pos(this.outputSlotXPositions.get(index), this.fallDistance);
         Animator fallingPositionAnimation = createFallingAnimation(fallingPosition, this.fallDistance);
         IWidget widget = createItemSlot(index, fallingPositionAnimation);
         // v1.7.8 B：记录内部物品槽引用，供 GUI 层（NekoVMGuiV2）强制同步输出槽使用
@@ -155,7 +159,7 @@ public class NekoFallingItemSlotFactory {
         if (index < 0 || index >= outputSlotXPositions.size()) {
             return new int[] { 0, 0 };
         }
-        // Y = fallDistance - 1（与 getFallingItemSlot 中 fallingPosition 初始 y=-1 + fallDistance 一致）
+        // Y = fallDistance - 1（掉落动画终点/槽位静止落点区域，供粒子定位）
         return new int[] { outputSlotXPositions.get(index), fallDistance - 1 };
     }
 
@@ -197,10 +201,12 @@ public class NekoFallingItemSlotFactory {
      * 注意：animatedPos 同时作为动画的可变状态对象和 TransformWidget 的位置源。
      * MutableObjectAnimator 在每帧将插值结果写入 animatedPos，TransformWidget 读取其值进行平移。
      * <p>
-     * 重要：animatedPos 的初始值应为顶部 (y=-1)，与动画起点一致，
-     * 避免物品在动画启动前先渲染在底部位置造成视觉跳跃。
+     * 重要：animatedPos 的初始值应为终点 (y=fallDistance)，即无动画时的静止落点，
+     * 与 VM 原版一致——初始同步（init=true）按设计不触发 changeListener，
+     * 若初始值停在动画起点 y=-1，物品会一直藏在顶部悬垂装饰后不可见
+     * （v1.7.9「输出槽物品隐形但可点击」回归的根因）。
      *
-     * @param animatedPos  动画目标位置（同时作为动画的可变状态对象，初始 y 应为 -1）
+     * @param animatedPos  动画目标位置（同时作为动画的可变状态对象，初始 y 应为 fallDistance）
      * @param fallDistance 掉落终点 Y 坐标（最终落点位置）
      * @return 配置好的动画控制器
      */

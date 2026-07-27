@@ -95,9 +95,10 @@ public class LotteryGui {
     private static final int WHEEL_H = 3 * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
     /**
      * 指针底边越过点亮格上边后的下移像素（v1.7.9 起固定朝下直绘：
-     * 指针下沿对齐格子上边中点后再往下偏一点点，观感更贴合；可调）
+     * 指针下沿对齐格子上边中点后再往下偏一点点，观感更贴合；可调。
+     * v1.7.10 自 2 加至 4——用户反馈指针贴格上边仍偏高，再下移一点）
      */
-    private static final int POINTER_DROP_PX = 2;
+    private static final int POINTER_DROP_PX = 4;
 
     /** 结果提示条 Y（v1.7.7 G3①：136→114） */
     private static final int RESULT_Y = 114;

@@ -15,7 +15,8 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * 支持两类奖品：
  * <ul>
  * <li>物品奖品：{@link #item} + {@link #meta} + {@link #nbtBase64}（可选），出货时弹入机器出货槽</li>
- * <li>货币奖品：{@link #nekoCurrencyId} 非空，出货时直接入团队钱包</li>
+ * <li>货币奖品：{@link #nekoCurrencyId} 非空，v1.7.10 起出货时构建为对应猫猫币物品堆
+ * 弹入机器出货槽（不再直接入团队钱包；货币物品未注册时兜底入钱包）</li>
  * </ul>
  * 数量在 [{@link #minAmount}, {@link #maxAmount}] 区间随机。
  */
