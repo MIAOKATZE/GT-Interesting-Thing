@@ -3,6 +3,8 @@ package com.miaokatze.gtit.client.gui;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.minecraft.item.ItemStack;
+
 import com.cleanroommc.modularui.animation.Animator;
 import com.cleanroommc.modularui.animation.IAnimatable;
 import com.cleanroommc.modularui.animation.MutableObjectAnimator;
@@ -174,6 +176,17 @@ public class NekoFallingItemSlotFactory {
      * @return 配置好的物品槽组件
      */
     private IWidget createItemSlot(int index, Animator animator) {
+        // v1.7.12：用 lastItem 判断替代 v1.7.11 的 firstCall 标志。
+        // 根因：addOpenListener 的 forceSyncOutputSlots 会对已有物品的槽发送
+        // init=false + forceSync=true（putStack 正确设置物品到客户端），但 changeListener
+        // 也会收到 init=false。v1.7.11 的 firstCall 标志会被先到的 init=true 同步消耗，
+        // 导致 forceSync 时 firstCall=false 误触发动画 → MutableObjectAnimator.resume()
+        // 立即将 fallingPosition 插值到起点 (x,-1) 隐藏区 → 物品隐形+不可点击。
+        // lastItem 方案：init=true 先设置 lastItem=物品.copy()，forceSync 时
+        // areItemStacksEqual(物品, 物品)=true → 抑制动画；真实物品变化时
+        // areItemStacksEqual(新, 旧)=false → 触发下落动画。
+        // 注意：areItemStacksEqual 不比较 stackSize，同种物品不同数量也视为相等（合理）。
+        final ItemStack[] lastItem = { null };
         // v1.7.8 B：移除原 .setEnabledIf(slot -> slot.getSlot().getHasStack())——
         // setEnabledIf 每 tick 重评估是首帧闪烁源（物品已入槽但首帧未启用不绘制），
         // 且空槽本无可画内容，无需按有无物品动态启停
@@ -181,11 +194,17 @@ public class NekoFallingItemSlotFactory {
             new ModularSlot(this.outputItems, index).accessibility(false, true)
                 .slotGroup("outputSlotGroup")
                 .changeListener((newItem, onlyAmountChanged, client, init) -> {
-                    // 仅在非初始化、有新物品、非仅数量变化时触发掉落动画
-                    if (!init && newItem != null && !onlyAmountChanged) {
-                        animator.reset();
-                        animator.animate();
+                    // 仅在客户端、非初始化、有新物品、非仅数量变化时判断是否触发掉落动画
+                    if (client && !init && newItem != null && !onlyAmountChanged) {
+                        // forceSync 重发已有物品时 newItem == lastItem → 抑制动画
+                        // 真实物品变化时 newItem != lastItem → 触发动画
+                        if (!ItemStack.areItemStacksEqual(newItem, lastItem[0])) {
+                            animator.reset();
+                            animator.animate();
+                        }
                     }
+                    // lastItem 在 if 外每次更新，确保数量变化也更新 lastItem
+                    lastItem[0] = newItem != null ? newItem.copy() : null;
                 }))
             .background(IDrawable.EMPTY)
             .disableHoverBackground();

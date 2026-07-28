@@ -1133,21 +1133,18 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         editBlessingTargetSync.allowC2S();
         syncManager.syncValue("nekoV2EditBlessingTarget", editBlessingTargetSync);
 
-        // v1.7.11：批次完成检测——替代 v1.7.8 B 的 addOpenListener forceSync 方案。
-        // 旧方案在 GUI 打开时发 init=false 强制同步，触发 NekoFallingItemSlotFactory
-        // 的 changeListener → animator.animate() → 物品瞬移到 (x,-1) 隐藏区 → 隐形+不可点击。
-        // 新方案：endBatch 递增 batchCompletionCounter，detectAndSendChanges 检测到变化后
-        // 触发 changeListener，此时物品已全部落槽，forceSync 确保客户端收到产物并播放下落动画。
-        // GUI 打开时依赖 ModularUI2 初始同步（init=true），不触发动画，物品直接显示在 fallDistance。
-        IntSyncValue batchCompletionSync = new IntSyncValue(
-            () -> multiblock != null ? multiblock.getBatchCompletionCounter() : 0,
-            val -> {});
-        batchCompletionSync.changeListener(() -> {
+        // v1.7.12：恢复 addOpenListener 中的 forceSyncOutputSlots。
+        // 根因分析：ModularUI2 的 init=true 同步不调用 putStack（客户端槽位物品未设置），
+        // 必须通过 forceSyncItem（init=false + forceSync=true）的 putStack 设置物品。
+        // 但 forceSyncItem 的 init=false 会触发 changeListener → 动画误触发。
+        // 解决：NekoFallingItemSlotFactory.changeListener 用 lastItem 判断替代 firstCall 标志，
+        // init=true 先设置 lastItem，forceSync 时 areItemStacksEqual 相等 → 抑制动画，
+        // 真实物品变化时不等 → 触发下落动画。
+        syncManager.addOpenListener(player -> {
             if (!isClient()) {
                 forceSyncOutputSlots();
             }
         });
-        syncManager.syncValue("nekoV2BatchCompletion", batchCompletionSync);
     }
 
     /**
@@ -6045,9 +6042,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 照 {@link #forceSyncInputSlots()} 模式遍历输出槽 sync handler 调 forceSyncItem()
      * （forceSync=true，客户端收到后 putStack 全量覆盖）。
      * <p>
-     * 调用点：v1.7.11 起，仅由 batchCompletionSync 的 changeListener 在批次完成后触发。
-     * 旧调用点（addOpenListener / processTradeRequest）已移除——前者发 init=false 导致动画误触发，
-     * 后者在物品未落槽时同步空槽无意义。仅服务端调用（forceSyncItem 内部 syncToClient，客户端调用无意义且可能抛异常）。
+     * 调用点：v1.7.12 起，仅由 addOpenListener 在 GUI 打开时触发。
+     * processTradeRequest 中的调用已移除（物品未落槽时同步空槽无意义）。
+     * 动画误触发问题由 NekoFallingItemSlotFactory.changeListener 的 lastItem 判断解决。
+     * 仅服务端调用（forceSyncItem 内部 syncToClient，客户端调用无意义且可能抛异常）。
      */
     private void forceSyncOutputSlots() {
         for (ItemSlot slot : outputSlotRefs) {
@@ -6184,9 +6182,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 // 产物经掉落动画可见，原 v1.7.8 A1 钱包入账提示不再需要
                 tradeResultMessage = EnumChatFormatting.GREEN + "交易成功!";
                 playTradeSuccessSound();
-                // v1.7.11：移除此处的 forceSyncOutputSlots——交易成功时物品尚未落槽（仍在 outputBuffer），
-                // 同步空槽无意义。forceSync 改由 endBatch 后的 IntSyncValue changeListener 触发，
-                // 确保物品全部落槽后才强制同步。
+                // v1.7.12：移除此处的 forceSyncOutputSlots——交易成功时物品尚未落槽（仍在 outputBuffer），
+                // 同步空槽无意义。物品落槽依赖 ModularContainer.detectAndSendChanges 原生同步
+                // （ItemSlotSH.checkUpdate 检测到变化后发 SYNC_ITEM，客户端 changeListener 触发下落动画）。
                 // 复刻 VM 父类 sendTradeUpdate：交易成功后显式触发同步，
                 // 让客户端立即收到最新的可交易状态、冷却状态和交易结果。
                 tradeableStatusDirty = true;

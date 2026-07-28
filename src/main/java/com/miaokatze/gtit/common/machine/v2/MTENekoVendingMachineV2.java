@@ -156,13 +156,6 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /** 随机数生成器（用于批次延迟和每次下落数量的随机化） */
     private final java.util.Random batchRandom = new java.util.Random();
 
-    /**
-     * v1.7.11：批次完成计数器，每次 endBatch 递增。
-     * 供 GUI 层 IntSyncValue 检测批次完成，在物品全部落槽后触发 forceSyncOutputSlots，
-     * 确保客户端收到产物并播放下落动画。
-     */
-    private int batchCompletionCounter = 0;
-
     /** 可选的 ME Vending UplinkHatch，结构检查时设置，上限 1 个 */
     private MTEVendingUplinkHatch uplinkHatch = null;
 
@@ -572,18 +565,6 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         this.currentBatchSize = 0;
         this.dispensedInBatch = 0;
         this.currentBatchDelay = 0;
-        // v1.7.11：递增批次完成计数器，通知 GUI 层所有物品已落槽，
-        // 由 IntSyncValue 的 changeListener 触发 forceSyncOutputSlots
-        this.batchCompletionCounter++;
-    }
-
-    /**
-     * v1.7.11：获取批次完成计数器，供 GUI 层 IntSyncValue 检测批次完成。
-     *
-     * @return 批次完成计数器当前值（每次 endBatch 递增）
-     */
-    public int getBatchCompletionCounter() {
-        return batchCompletionCounter;
     }
 
     /**
