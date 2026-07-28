@@ -1133,18 +1133,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         editBlessingTargetSync.allowC2S();
         syncManager.syncValue("nekoV2EditBlessingTarget", editBlessingTargetSync);
 
-        // v1.7.12：恢复 addOpenListener 中的 forceSyncOutputSlots。
-        // 根因分析：ModularUI2 的 init=true 同步不调用 putStack（客户端槽位物品未设置），
-        // 必须通过 forceSyncItem（init=false + forceSync=true）的 putStack 设置物品。
-        // 但 forceSyncItem 的 init=false 会触发 changeListener → 动画误触发。
-        // 解决：NekoFallingItemSlotFactory.changeListener 用 lastItem 判断替代 firstCall 标志，
-        // init=true 先设置 lastItem，forceSync 时 areItemStacksEqual 相等 → 抑制动画，
-        // 真实物品变化时不等 → 触发下落动画。
-        syncManager.addOpenListener(player -> {
-            if (!isClient()) {
-                forceSyncOutputSlots();
-            }
-        });
+        // v1.7.13：移除 addOpenListener 中的 forceSyncOutputSlots 调用。
+        // 根因：forceSync（init=false + forceSync=true）会在 GUI 打开时对已有物品的输出槽
+        // 触发 changeListener(init=false)，导致 MutableObjectAnimator.resume() 立即将
+        // fallingPosition 插值到起点 (x,-1) 隐藏区 → 物品隐形 + 点击偏移 + 无法放回物品栏。
+        // v1.7.12 的 lastItem 判断虽可抑制同物品的动画，但增加了不必要的复杂度且存在边界问题。
+        // 正确做法（回归 VM 原版）：不对输出槽使用 forceSync，依赖原版同步机制：
+        // Container.addSlotToContainer 将 inventoryItemStacks 初始化为 null，
+        // 首次 detectAndSendChanges 检测到 null≠当前物品 → 发送 S2FPacketSetSlot →
+        // 客户端 putStack 设置物品。无需 forceSync 兜底。
     }
 
     /**
@@ -6035,17 +6032,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     /**
-     * v1.7.8 B：强制同步输出槽到客户端
+     * v1.7.8 B：强制同步输出槽到客户端（v1.7.13 起不再调用，保留备查）
      * <p>
-     * 输出槽仅有增量同步（ItemSlotSH.checkUpdate 比对 lastStoredItem），无强制同步兜底——
-     * 产物留在输出槽时关闭再打开 GUI 可能"看不见但其实还在"。
-     * 照 {@link #forceSyncInputSlots()} 模式遍历输出槽 sync handler 调 forceSyncItem()
-     * （forceSync=true，客户端收到后 putStack 全量覆盖）。
+     * v1.7.13 根因分析：forceSync（init=false + forceSync=true）会触发 changeListener(init=false)，
+     * 导致 MutableObjectAnimator.resume() 立即将 fallingPosition 插值到起点 (x,-1) 隐藏区，
+     * 造成物品隐形 + 点击偏移 + 无法放回物品栏。
+     * 原版同步（Container.addSlotToContainer 将 inventoryItemStacks 初始化为 null →
+     * 首次 detectAndSendChanges 发送 S2FPacketSetSlot → 客户端 putStack）已能正确同步物品，
+     * 无需 forceSync 兜底。回归 VM 原版：不对输出槽使用 forceSync。
      * <p>
-     * 调用点：v1.7.12 起，仅由 addOpenListener 在 GUI 打开时触发。
-     * processTradeRequest 中的调用已移除（物品未落槽时同步空槽无意义）。
-     * 动画误触发问题由 NekoFallingItemSlotFactory.changeListener 的 lastItem 判断解决。
-     * 仅服务端调用（forceSyncItem 内部 syncToClient，客户端调用无意义且可能抛异常）。
+     * 方法保留但无调用点，outputSlotRefs 仍由 createIOColumn 收集（备查）。
      */
     private void forceSyncOutputSlots() {
         for (ItemSlot slot : outputSlotRefs) {
