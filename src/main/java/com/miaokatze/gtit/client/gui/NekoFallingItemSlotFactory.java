@@ -12,7 +12,6 @@ import com.cleanroommc.modularui.utils.Interpolation;
 import com.cleanroommc.modularui.utils.Interpolations;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cleanroommc.modularui.widgets.TransformWidget;
-import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 
 /**
@@ -29,6 +28,9 @@ import com.cleanroommc.modularui.widgets.slot.ModularSlot;
  * <li>使用 {@link NekoItemSlotWithDepth} 替代 VM 的 ItemSlotWithDepth</li>
  * <li>Pos 类作为内部类包含，替代 VM 的独立 Pos.java</li>
  * </ul>
+ * <p>
+ * v1.7.14：回归 v1.6.34 的动画处理方式（初始位置 (x,-1) + setEnabledIf + 无 client 检查），
+ * 新增 init=true 时将位置设为终点 (x, fallDistance) 的逻辑，解决 v1.7.13 物品无下落动画的问题。
  */
 public class NekoFallingItemSlotFactory {
 
@@ -47,9 +49,6 @@ public class NekoFallingItemSlotFactory {
     /** 物品掉落高度（像素） */
     private final int fallDistance;
 
-    /** v1.7.8 B：已创建的物品槽组件（按创建顺序），供 GUI 层收集后强制同步输出槽 */
-    private final List<ItemSlot> createdItemSlots = new ArrayList<>();
-
     /**
      * 构造一个掉落物品槽工厂
      *
@@ -67,7 +66,7 @@ public class NekoFallingItemSlotFactory {
      * 计算输出槽的 X 轴位置列表
      * <p>
      * 使用黄金比例共轭 (golden ratio conjugate) 分布算法：
-     * 
+     *
      * <pre>
      * phi = (sqrt(5) - 1) / 2 ≈ 0.618
      * position[i] = (int) ((i * phi % 1.0) * MAX_X_POS)
@@ -79,16 +78,6 @@ public class NekoFallingItemSlotFactory {
      * <li>呈现非线性的外观，避免槽位排列过于规律</li>
      * <li>适用于任意数量的槽位，无需预设位置表</li>
      * </ul>
-     * <p>
-     * 示例（MAX_X_POS=24）：
-     * 
-     * <pre>
-     * i=0: (0 * 0.618 % 1.0) * 24 = 0
-     * i=1: (0.618 % 1.0) * 24 = 14
-     * i=2: (1.236 % 1.0) * 24 = 0.236 * 24 = 5
-     * i=3: (1.854 % 1.0) * 24 = 0.854 * 24 = 20
-     * ...形成均匀但非线性的分布
-     * </pre>
      *
      * @param outputSlots 输出槽数量
      * @return X 轴位置列表
@@ -108,38 +97,31 @@ public class NekoFallingItemSlotFactory {
      * <p>
      * 创建一个 {@link TransformWidget} 包装的物品槽，带有弹跳掉落动画。
      * 当槽位中的物品发生变化时（新物品放入），自动触发掉落动画。
+     * <p>
+     * v1.7.14：初始位置设为顶部 (y=-1)，与 v1.6.34 一致。原因：
+     * <ul>
+     * <li>空槽时 setEnabledIf=false，物品槽不渲染，初始位置不影响视觉</li>
+     * <li>新物品到达时（init=false），changeListener 触发动画，Pos 从 (x,-1) 下落到 (x,fallDistance)</li>
+     * <li>物品不会先在底部渲染一帧再跳到顶部，避免"无动画"的视觉错觉</li>
+     * </ul>
+     * <p>
+     * v1.7.14 新增：init=true 同步（GUI 重开时已有物品）通过 animator 将 Pos 设为终点 (x,fallDistance)，
+     * 使物品在重开 GUI 时可见于落点位置，而非藏在顶部悬垂装饰后。
      *
      * @param index 槽位索引
      * @return 包装了掉落动画的 TransformWidget
      */
     public TransformWidget getFallingItemSlot(int index) {
-        // 初始位置设为终点 (y=fallDistance)，与 VM 原版一致：
-        // 动画未触发时（如 GUI 重开的 init 同步不播动画）物品静止渲染在最终落点，保证可见；
-        // 新物品落入时 changeListener 触发动画，AnimatorManager 在 DrawScreenEvent.Pre
-        // 先于绘制推进首帧，位置即被插值回顶部起点 (y=-1) 再下落，
-        // 不会出现"先在底部渲染一帧再跳顶"的闪烁
-        final Pos fallingPosition = new Pos(this.outputSlotXPositions.get(index), this.fallDistance);
+        // 初始位置设为顶部 (y=-1)，与 v1.6.34 一致：
+        // - 空槽时不渲染（setEnabledIf=false），初始位置不影响视觉
+        // - 新物品到达时动画从 (x,-1) 下落到 (x,fallDistance)，用户看到完整的下落过程
+        // - init=true 重开同步时，changeListener 将 Pos 设为终点 (x,fallDistance)，物品可见
+        final Pos fallingPosition = new Pos(this.outputSlotXPositions.get(index), -1);
         Animator fallingPositionAnimation = createFallingAnimation(fallingPosition, this.fallDistance);
         IWidget widget = createItemSlot(index, fallingPositionAnimation);
-        // v1.7.8 B：记录内部物品槽引用，供 GUI 层（NekoVMGuiV2）强制同步输出槽使用
-        if (widget instanceof ItemSlot) {
-            createdItemSlots.add((ItemSlot) widget);
-        }
         // TransformWidget 根据动画驱动的 fallingPosition 实时平移物品槽
         return new TransformWidget(widget)
             .transform(stack -> stack.translate((float) fallingPosition.getX(), (float) fallingPosition.getY()));
-    }
-
-    /**
-     * 获取已创建的物品槽组件列表（v1.7.8 B）
-     * <p>
-     * 每次 {@link #getFallingItemSlot(int)} 创建的内部 {@link ItemSlot} 按序记录，
-     * 供 GUI 层收集引用后遍历 sync handler 调 forceSyncItem() 强制同步输出槽。
-     *
-     * @return 已创建的物品槽列表（随 getFallingItemSlot 调用增长）
-     */
-    public List<ItemSlot> getCreatedItemSlots() {
-        return createdItemSlots;
     }
 
     /**
@@ -167,33 +149,66 @@ public class NekoFallingItemSlotFactory {
      * 创建带掉落动画监听的物品槽
      * <p>
      * 使用 {@link NekoItemSlotWithDepth} 实现深度效果。
-     * 当槽位物品变化（非初始化、非仅数量变化、有新物品）时，触发弹跳动画。
+     * 当槽位物品变化时，根据同步类型触发不同行为：
+     * <ul>
+     * <li>init=true（GUI 重开同步）：将 Pos 设为终点 (x,fallDistance)，物品可见于落点</li>
+     * <li>init=false + 新物品（交易产出）：播放下落动画，从 (x,-1) 弹跳到 (x,fallDistance)</li>
+     * </ul>
+     * <p>
+     * v1.7.14 关键修复：重新加入 setEnabledIf(slot -> getHasStack())。
+     * <ul>
+     * <li>空槽时 setEnabledIf=false → ItemSlot.onUpdate() 将 slot.func_111238_b() 设为 false → drawSlot 跳过渲染</li>
+     * <li>这确保空槽不渲染，新物品到达时仅渲染动画中的帧（从顶部下落），而非先在底部闪一帧</li>
+     * <li>v1.7.13 移除 setEnabledIf 导致空槽始终渲染，物品到达时先在底部 (x,fallDistance) 闪现一帧，
+     * 再跳到顶部 (x,-1) 开始下落——用户感知为"没有下落动画，只有最终渲染"</li>
+     * </ul>
+     * <p>
+     * v1.7.14 移除 client 检查：与 v1.6.34 一致。服务端触发 animator 无害（AnimatorManager 仅客户端 tick），
+     * 但确保客户端 changeListener 不会被意外跳过。
      *
      * @param index    槽位索引
      * @param animator 掉落动画控制器
      * @return 配置好的物品槽组件
      */
     private IWidget createItemSlot(int index, Animator animator) {
-        // v1.7.13：回归 VM 原版 changeListener 逻辑，移除 v1.7.12 的 lastItem 判断。
-        // 根因：v1.7.8 添加的 forceSyncOutputSlots 在 GUI 打开时对输出槽发送
-        // init=false + forceSync=true，触发 changeListener(init=false) → 动画误触发 →
-        // 物品跳到隐藏区 (x,-1)。v1.7.12 的 lastItem 判断试图抑制同物品的动画，
-        // 但 v1.7.13 已移除 forceSyncOutputSlots（回归 VM 原版不对输出槽 forceSync），
-        // 故 lastItem 判断不再需要——init=true 同步不触发动画（init 守卫），
-        // 真实物品变化时 init=false + 新物品 → 自然触发动画。
-        // 保留 client 检查避免服务端无效动画（VM 原版无此检查，服务端动画无渲染意义）。
         return new NekoItemSlotWithDepth(index).slot(
             new ModularSlot(this.outputItems, index).accessibility(false, true)
                 .slotGroup("outputSlotGroup")
                 .changeListener((newItem, onlyAmountChanged, client, init) -> {
-                    // 仅客户端、非初始化、有新物品、非仅数量变化时触发掉落动画
-                    if (client && !init && newItem != null && !onlyAmountChanged) {
-                        animator.reset();
-                        animator.animate();
+                    // v1.7.14 临时调试日志（验证后移除）
+                    System.out.println(
+                        "[NekoFall] slot=" + index
+                            + " newItem="
+                            + (newItem != null ? newItem.getDisplayName() : "null")
+                            + " onlyAmount="
+                            + onlyAmountChanged
+                            + " client="
+                            + client
+                            + " init="
+                            + init);
+                    if (newItem != null && !onlyAmountChanged) {
+                        if (init) {
+                            // v1.7.14：GUI 重开时的 init 同步——物品已存在，直接设置到终点位置（可见），
+                            // 不播放下落动画（避免物品从顶部"掉"一次）
+                            // reset(true) → progress=duration；resume(false) → 插值到终点；stop(true) → 强制停止
+                            animator.reset(true);
+                            animator.resume(false);
+                            animator.stop(true);
+                            System.out
+                                .println("[NekoFall] slot=" + index + " init=true → set to end position (visible)");
+                        } else {
+                            // 正常物品变化（交易产出）——播放下落动画
+                            animator.reset();
+                            animator.animate();
+                            System.out.println("[NekoFall] slot=" + index + " init=false → play fall animation");
+                        }
                     }
                 }))
             .background(IDrawable.EMPTY)
-            .disableHoverBackground();
+            .disableHoverBackground()
+            .setEnabledIf(
+                slot -> slot.getSlot()
+                    .getHasStack());
     }
 
     /**
@@ -206,12 +221,11 @@ public class NekoFallingItemSlotFactory {
      * 注意：animatedPos 同时作为动画的可变状态对象和 TransformWidget 的位置源。
      * MutableObjectAnimator 在每帧将插值结果写入 animatedPos，TransformWidget 读取其值进行平移。
      * <p>
-     * 重要：animatedPos 的初始值应为终点 (y=fallDistance)，即无动画时的静止落点，
-     * 与 VM 原版一致——初始同步（init=true）按设计不触发 changeListener，
-     * 若初始值停在动画起点 y=-1，物品会一直藏在顶部悬垂装饰后不可见
-     * （v1.7.9「输出槽物品隐形但可点击」回归的根因）。
+     * v1.7.14：animatedPos 的初始值应为顶部 (y=-1)，与动画起点一致。
+     * 这与 v1.6.34 一致，确保动画启动前物品不在底部闪现。
+     * init=true 重开同步时由 changeListener 将 Pos 设为终点。
      *
-     * @param animatedPos  动画目标位置（同时作为动画的可变状态对象，初始 y 应为 fallDistance）
+     * @param animatedPos  动画目标位置（同时作为动画的可变状态对象，初始 y 应为 -1）
      * @param fallDistance 掉落终点 Y 坐标（最终落点位置）
      * @return 配置好的动画控制器
      */

@@ -5521,8 +5521,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
             dispenserChute.child(fallingFactory.getFallingItemSlot(i));
         }
-        // v1.7.8 B：收集输出槽 ItemSlot 引用，供 forceSyncOutputSlots() 强制同步兜底
-        outputSlotRefs.addAll(fallingFactory.getCreatedItemSlots());
+        // v1.7.14：移除 outputSlotRefs.addAll(getCreatedItemSlots())——NekoFallingItemSlotFactory
+        // 已移除 createdItemSlots（forceSyncOutputSlots 在 v1.7.13 已不再调用，列表无用途）。
+        // outputSlotRefs 字段与 forceSyncOutputSlots() 方法保留备查（方法无调用点，遍历空列表无害）。
         // v1.6.23: ME 传输粒子动画 Widget（围绕出货槽中的物品渲染粒子）
         // 传入 fallingFactory 供粒子定位槽位坐标；点击穿透到出货槽（不拦截鼠标）
         // v1.7.5 修复：仅客户端创建——NekoMeTransferParticleWidget 带 @SideOnly(Side.CLIENT)，
