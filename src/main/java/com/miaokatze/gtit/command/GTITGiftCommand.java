@@ -7,7 +7,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.ICommandSender;
@@ -22,7 +21,6 @@ import net.minecraft.util.EnumChatFormatting;
 
 import com.miaokatze.gtit.lottery.LotteryConfig;
 import com.miaokatze.gtit.lottery.LotteryManager;
-import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.mail.Mail;
 import com.miaokatze.gtit.mail.MailManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -32,9 +30,6 @@ import com.miaokatze.gtit.signin.DailySignInManager;
 import com.miaokatze.gtit.signin.OnlineTimeConfig;
 import com.miaokatze.gtit.signin.SignInClientData;
 import com.miaokatze.gtit.signin.SignInNetworkManager;
-import com.miaokatze.gtit.trade.NekoPageRegistry;
-import com.miaokatze.gtit.trade.NekoTradeConfig;
-import com.miaokatze.gtit.trade.NekoTradeEntry;
 import com.miaokatze.gtit.trade.v2.NekoEditModeManager;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
@@ -50,12 +45,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * - /gtit gift reset: 恢复默认配置
  * - /gtit gift claimreset [all|玩家名]: 重置新手礼包领取状态（支持控制台执行）
  * - /gtit nekovm edit on|off: 开关可视化配置编辑模式
- * - /gtit nekovm list [标签页]: 列出交易条目
- * - /gtit nekovm edithelp: 显示编辑帮助
- * - /gtit nekovm delete <标签页> <顺序ID>: 删除交易条目
  * - /gtit nekovm reload: 热重载猫猫币交易配置
- * - /gtit nekovm save: 手动保存当前交易数据到配置文件
  * - /gtit nekovm timereset: 重置当前所有交易冷却
+ * - /gtit nekovm help: 显示完整帮助
  * <p>
  * 配置类指令默认不记录 NBT；如需记录，请在指令末尾添加 {@code yesNBT}。
  */
@@ -68,7 +60,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit on|off|list|edithelp|delete|reload|save|timereset | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
+        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit on|off|reload|timereset|help | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
     }
 
     @Override
@@ -119,18 +111,7 @@ public class GTITGiftCommand extends CommandBase {
                 return getListOfStringsMatchingLastWord(args, "certain", "random", "reset", "claimreset");
             }
             if ("nekovm".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(
-                    args,
-                    "edit",
-                    "list",
-                    "edithelp",
-                    "delete",
-                    "reload",
-                    "save",
-                    "timereset",
-                    "page",
-                    "pagehelp",
-                    "help");
+                return getListOfStringsMatchingLastWord(args, "edit", "reload", "timereset", "help");
             }
             if ("signin".equals(args[0])) {
                 return getListOfStringsMatchingLastWord(args, "info", "reload", "admin", "help");
@@ -195,66 +176,14 @@ public class GTITGiftCommand extends CommandBase {
             }
         }
 
-        if (args.length == 3 && "nekovm".equals(args[0])) {
-            if ("edit".equals(args[1])) {
-                // /gtit nekovm edit on|off
-                return getListOfStringsMatchingLastWord(args, "on", "off");
-            }
-            if ("list".equals(args[1]) || "delete".equals(args[1])) {
-                // 补全标签页ID
-                List<String> pageIds = new ArrayList<>();
-                try {
-                    for (int id : NekoPageRegistry.getPageIds()) {
-                        pageIds.add(String.valueOf(id));
-                    }
-                } catch (Exception e) {
-                    // NekoPageRegistry 尚未初始化
-                }
-                return getListOfStringsMatchingLastWord(args, pageIds.toArray(new String[0]));
-            }
-            if ("page".equals(args[1])) {
-                return getListOfStringsMatchingLastWord(args, "add", "delet");
-            }
+        if (args.length == 3 && "nekovm".equals(args[0]) && "edit".equals(args[1])) {
+            // /gtit nekovm edit on|off
+            return getListOfStringsMatchingLastWord(args, "on", "off");
         }
 
         if (args.length == 4 && "gift".equals(args[0]) && "random".equals(args[1])) {
             // /gtit gift random <count> [yesNBT|noNBT]
             return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
-        }
-
-        if (args.length == 4 && "nekovm".equals(args[0])) {
-            if ("delete".equals(args[1])) {
-                // 补全顺序ID（基于已有交易）
-                try {
-                    int tabId = Integer.parseInt(args[2]);
-                    if (NekoPageRegistry.hasPage(tabId)) {
-                        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
-                        List<String> orderIds = new ArrayList<>();
-                        for (NekoTradeEntry entry : data.getTrades()) {
-                            if (entry.getTabId() == tabId) {
-                                orderIds.add(String.valueOf(entry.getOrderId()));
-                            }
-                        }
-                        return getListOfStringsMatchingLastWord(args, orderIds.toArray(new String[0]));
-                    }
-                } catch (Exception e) {
-                    // 忽略解析错误
-                }
-            }
-            if ("page".equals(args[1]) && "delet".equals(args[2])) {
-                // 补全可删除的自定义标签页ID
-                List<String> pageIds = new ArrayList<>();
-                try {
-                    for (com.miaokatze.gtit.trade.NekoPageEntry page : NekoPageRegistry.getAllPages()) {
-                        if (!page.isDefault()) {
-                            pageIds.add(String.valueOf(page.getId()));
-                        }
-                    }
-                } catch (Exception e) {
-                    // NekoPageRegistry 尚未初始化
-                }
-                return getListOfStringsMatchingLastWord(args, pageIds.toArray(new String[0]));
-            }
         }
 
         return null;
@@ -827,15 +756,8 @@ public class GTITGiftCommand extends CommandBase {
                         .addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit nekovm edit on|off"));
                 }
             }
-            case "list" -> handleNekoVMList(player, args);
-            case "edithelp" -> handleNekoVMEditHelp(sender);
-            case "delete" -> handleNekoVMDelete(player, args);
             case "reload" -> handleNekoVMReload(player);
-            case "save" -> handleNekoVMSave(player);
             case "timereset" -> handleNekoVMTimeReset(player);
-            case "sync" -> handleNekoVMSync(player, args);
-            case "page" -> handleNekoVMPage(player, args);
-            case "pagehelp" -> handleNekoVMPageHelp(sender);
             case "help" -> handleNekoVMFullHelp(sender);
             default -> sendNekoVMHelp(sender);
         }
@@ -865,137 +787,6 @@ public class GTITGiftCommand extends CommandBase {
         GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} {}编辑模式", player.getCommandSenderName(), enable ? "进入" : "退出");
     }
 
-    /**
-     * /gtit nekovm list [标签页]
-     */
-    private void handleNekoVMList(EntityPlayerMP player, String[] args) {
-        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
-        List<NekoTradeEntry> trades = data.getTrades();
-
-        // 过滤标签页
-        int filterTabId = -1;
-        if (args.length >= 3) {
-            try {
-                filterTabId = Integer.parseInt(args[2]);
-                if (!NekoPageRegistry.hasPage(filterTabId)) {
-                    player
-                        .addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页 #" + filterTabId + " 不存在"));
-                    return;
-                }
-            } catch (NumberFormatException e) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页ID必须是整数"));
-                return;
-            }
-        }
-
-        // 按标签页分组显示
-        for (int tabId : NekoPageRegistry.getPageIds()) {
-            if (filterTabId > 0 && filterTabId != tabId) continue;
-
-            String tabName = NekoPageRegistry.getPageName(tabId);
-            List<NekoTradeEntry> tabTrades = trades.stream()
-                .filter(t -> t.getTabId() == tabId)
-                .sorted((a, b) -> Integer.compare(a.getOrderId(), b.getOrderId()))
-                .collect(Collectors.toList());
-
-            if (tabTrades.isEmpty() && filterTabId < 1) continue;
-
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.GOLD + "=== #" + tabId + " " + tabName + " ==="));
-            if (tabTrades.isEmpty()) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "  (空)"));
-                continue;
-            }
-
-            for (NekoTradeEntry entry : tabTrades) {
-                String fromDesc = describeItems(entry.getFromItems());
-                if (entry.getCurrency() != null) {
-                    String coinName = entry.getCurrency()
-                        .getType()
-                        .equals("neko") ? "猫猫币" : "闪烁猫猫币";
-                    String coinDesc = coinName + "x"
-                        + entry.getCurrency()
-                            .getAmount();
-                    fromDesc = fromDesc.equals("无") ? coinDesc : coinDesc + "+" + fromDesc;
-                }
-                String toDesc = describeItems(entry.getToItems());
-                String line = EnumChatFormatting.WHITE + "(#" + entry.getOrderId() + ") " + fromDesc + " → " + toDesc;
-                if (entry.getCooldown() > 0) {
-                    line += EnumChatFormatting.GRAY + " 冷却:" + entry.getCooldown() + "s";
-                }
-                if (entry.getBqQuestId() != null && !entry.getBqQuestId()
-                    .isEmpty()) {
-                    line += EnumChatFormatting.AQUA + " 绑定:" + entry.getBqQuestId();
-                }
-                player.addChatMessage(new ChatComponentText(line));
-            }
-        }
-    }
-
-    /**
-     * /gtit nekovm edithelp
-     */
-    private void handleNekoVMEditHelp(ICommandSender sender) {
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "=== 猫猫售货机交易编辑帮助 ==="));
-        sender
-            .addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edit on|off - 开关可视化编辑模式"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  开启后打开猫猫售货机 GUI 可直接编辑交易条目"));
-        sender
-            .addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  编辑完成后使用 /gtit nekovm edit off 退出编辑模式"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm list [标签页] - 列出交易"));
-        sender.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm delete <标签页> <顺序ID> - 删除交易"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm reload - 热重载配置"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm save - 保存配置"));
-    }
-
-    /**
-     * /gtit nekovm delete <标签页> <顺序ID>
-     */
-    private void handleNekoVMDelete(EntityPlayerMP player, String[] args) {
-        if (args.length < 4) {
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit nekovm delete <标签页ID> <顺序ID>"));
-            return;
-        }
-
-        int tabId;
-        try {
-            tabId = Integer.parseInt(args[2]);
-        } catch (NumberFormatException e) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页ID必须是正整数"));
-            return;
-        }
-
-        int orderId;
-        try {
-            orderId = Integer.parseInt(args[3]);
-        } catch (NumberFormatException e) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "顺序ID必须是整数"));
-            return;
-        }
-
-        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
-        List<NekoTradeEntry> trades = data.getTrades();
-        NekoTradeEntry existing = findEntry(trades, tabId, orderId);
-
-        if (existing == null) {
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.RED + "找不到 " + NekoPageRegistry.getPageName(tabId) + " 标签页的条目 #" + orderId));
-            return;
-        }
-
-        trades.remove(existing);
-        NekoTradeConfig.save(data);
-        // V1 的 NekoTradeRegistry.reload() 已移除，改为调用 V2 的 reload
-        NekoTradeRegistryV2.reload();
-
-        player.addChatMessage(
-            new ChatComponentText(
-                EnumChatFormatting.GREEN + "已删除 " + NekoPageRegistry.getPageName(tabId) + " 标签页的条目 #" + orderId));
-    }
-
     private void handleNekoVMReload(EntityPlayerMP player) {
         // V1 的 NekoTradeRegistry.reload() 已移除（V1 反射注入 VM TradeDatabase 的逻辑不再需要）
         // 仅保留 V2 的热重载：重载标签页配置、清空 BQ 触发器、重新加载交易数据
@@ -1007,11 +798,6 @@ public class GTITGiftCommand extends CommandBase {
         } else {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "猫猫币交易配置热重载失败，请查看服务器日志"));
         }
-    }
-
-    private void handleNekoVMSave(EntityPlayerMP player) {
-        NekoTradeConfig.save(NekoTradeConfig.load());
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "猫猫币交易数据已保存到配置文件"));
     }
 
     /**
@@ -1033,137 +819,7 @@ public class GTITGiftCommand extends CommandBase {
         player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已重置 " + resetCount + " 个交易的冷却"));
     }
 
-    // ==================== v1.7.0 目标 5：配置同步子命令 ====================
-
-    /**
-     * /gtit nekovm sync [all|玩家名]
-     * <p>
-     * 把服务端当前生效的三套配置（交易+标签页 / 签到 / 抽奖）全量下发给客户端：
-     * <ul>
-     * <li>无参数：下发给执行者自己</li>
-     * <li>{@code all}：广播给全体在线玩家</li>
-     * <li>{@code <玩家名>}：下发给指定在线玩家</li>
-     * </ul>
-     * 下发为只读同步：客户端接收后仅刷新内存缓存/注册表，不写客户端配置文件。
-     * 单人存档下指令同样可用（集成服务端向自己推送，行为与服务器一致；
-     * 交易同步包在单人存档客户端跳过重复应用，因共享静态注册表已是最新）。
-     */
-    private void handleNekoVMSync(EntityPlayerMP player, String[] args) {
-        // 统计服务端权威配置规模（与下发载荷同源，供聊天栏反馈）
-        int tradeCount = NekoTradeConfig.load()
-            .getTrades()
-            .size();
-        int tierCount = DailySignInConfig.getRewardTiers()
-            .size();
-        int poolCount = LotteryManager.INSTANCE.getAllPools()
-            .size();
-        String summary = "交易 " + tradeCount + " 条 / 签到 " + tierCount + " 阶梯 / 抽奖 " + poolCount + " 池";
-
-        if (args.length >= 3) {
-            if ("all".equalsIgnoreCase(args[2])) {
-                // ---- 广播全体在线玩家 ----
-                NekoTradeNetworkManager.sendSyncToAll();
-                SignInNetworkManager.sendSyncToAll();
-                LotteryNetworkManager.sendSyncToAll();
-                int online = MinecraftServer.getServer()
-                    .getConfigurationManager().playerEntityList.size();
-                player.addChatMessage(
-                    new ChatComponentText(
-                        EnumChatFormatting.GREEN + "[配置同步] 已向全服 " + online + " 名玩家同步服务端配置（" + summary + "）"));
-                GTInterestingThing.LOG.info("[NekoSync] 玩家 {} 触发全服配置同步（{}）", player.getCommandSenderName(), summary);
-                return;
-            }
-            // ---- 下发给指定在线玩家 ----
-            EntityPlayerMP target = MinecraftServer.getServer()
-                .getConfigurationManager()
-                .func_152612_a(args[2]);
-            if (target == null) {
-                player.addChatMessage(
-                    new ChatComponentText(EnumChatFormatting.RED + "[配置同步] 玩家不在线: " + args[2] + "（仅支持在线玩家）"));
-                return;
-            }
-            sendConfigSyncTo(target);
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.GREEN + "[配置同步] 已向 "
-                        + target.getCommandSenderName()
-                        + " 同步服务端配置（"
-                        + summary
-                        + "）"));
-            GTInterestingThing.LOG.info(
-                "[NekoSync] 玩家 {} 向 {} 推送配置同步（{}）",
-                player.getCommandSenderName(),
-                target.getCommandSenderName(),
-                summary);
-            return;
-        }
-
-        // ---- 默认：下发给执行者自己 ----
-        sendConfigSyncTo(player);
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "[配置同步] 已同步服务端配置（" + summary + "）"));
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "客户端缓存已刷新（仅内存生效，不会写入本地配置文件）"));
-        GTInterestingThing.LOG.info("[NekoSync] 玩家 {} 请求配置同步（{}）", player.getCommandSenderName(), summary);
-    }
-
-    /**
-     * 向单个玩家推送三套服务端权威配置（交易+标签页 / 签到 / 抽奖）
-     * <p>
-     * 交易同步包载荷取自服务端磁盘权威配置；签到同步包携带该玩家个人签到数据
-     * + 全服一致的配置快照；抽奖同步包携带全服一致的卡池配置
-     * + 该玩家团队的保底/历史/钱包余额。
-     */
-    private void sendConfigSyncTo(EntityPlayerMP target) {
-        NekoTradeNetworkManager.sendSyncToClient(target);
-        SignInNetworkManager.sendSyncToClient(target, DailySignInManager.INSTANCE.getSignInData(target.getUniqueID()));
-        LotteryNetworkManager.sendSyncToClient(target);
-    }
-
     // ==================== 辅助方法 ====================
-
-    /**
-     * 查找指定 tabId+orderId 的条目
-     */
-    private NekoTradeEntry findEntry(List<NekoTradeEntry> trades, int tabId, int orderId) {
-        for (NekoTradeEntry entry : trades) {
-            if (entry.getTabId() == tabId && entry.getOrderId() == orderId) {
-                return entry;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 描述物品列表（简短）
-     * <p>
-     * 不再限制显示数量，以完整展示最多 10 个产物或需求物品。
-     */
-    private String describeItems(List<NekoTradeEntry.ItemEntry> items) {
-        if (items == null || items.isEmpty()) return "无";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < items.size(); i++) {
-            NekoTradeEntry.ItemEntry entry = items.get(i);
-            if (i > 0) sb.append("+");
-            String name = getItemShortName(entry.getItem());
-            sb.append(name)
-                .append("x")
-                .append(entry.getAmount());
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 获取物品短名称
-     */
-    private String getItemShortName(String itemId) {
-        if (itemId == null) return "?";
-        int colonIdx = itemId.indexOf(':');
-        if (colonIdx >= 0) {
-            String name = itemId.substring(colonIdx + 1);
-            // 去掉 minecraft: 前缀
-            return name.length() > 10 ? name.substring(0, 9) + "…" : name;
-        }
-        return itemId.length() > 10 ? itemId.substring(0, 9) + "…" : itemId;
-    }
 
     private String getItemId(ItemStack stack) {
         if (stack == null || stack.getItem() == null) return null;
@@ -1184,11 +840,8 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit gift reset - 重置为默认配置"));
         sender.addChatMessage(new ChatComponentText("/gtit gift claimreset [all|玩家名] - 重置新手礼包领取状态"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 猫猫售货机完整帮助"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm edithelp - 交易编辑帮助"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm pagehelp - 标签页管理帮助"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm list [标签页] - 列出交易条目"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm edit on|off - 开关可视化编辑模式"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载猫猫币交易配置"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存当前交易数据到配置文件"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
         sender.addChatMessage(new ChatComponentText("/gtit signin - 每日签到"));
         sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
@@ -1199,16 +852,9 @@ public class GTITGiftCommand extends CommandBase {
     private void sendNekoVMHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "猫猫售货机命令:"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm edit on|off - 开关可视化编辑模式"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm list [标签页] - 列出交易条目"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm delete <标签页ID> <顺序ID> - 删除交易条目"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm page add <ID> <名字> - 添加/覆盖标签页（手持物品作图标）"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm page delet <ID> - 删除自定义标签页"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm edithelp - 详细编辑帮助"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm pagehelp - 标签页管理帮助"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 完整帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载配置"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm save - 保存配置"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 完整帮助"));
     }
 
     // ==================== v1.7.0 签到子命令 ====================
@@ -1650,151 +1296,18 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "正文中输入 \\n 表示换行；附件取手持物品（可空手）"));
     }
 
-    // ==================== Page 子命令 ====================
-
-    /**
-     * /gtit nekovm page add <ID> <名字> 或 /gtit nekovm page delet <ID>
-     */
-    private void handleNekoVMPage(EntityPlayerMP player, String[] args) {
-        if (args.length < 3) {
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.RED + "用法: /gtit nekovm page add <ID> <名字> 或 /gtit nekovm page delet <ID>"));
-            return;
-        }
-
-        switch (args[2]) {
-            case "add" -> handlePageAdd(player, args);
-            case "delet" -> handlePageDelet(player, args);
-            default -> player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "未知子命令: " + args[2] + "，使用 add 或 delet"));
-        }
-    }
-
-    /**
-     * /gtit nekovm page add <ID> <名字>
-     * 使用手持物品作为标签页图标
-     */
-    private void handlePageAdd(EntityPlayerMP player, String[] args) {
-        if (args.length < 5) {
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit nekovm page add <标签页ID> <标签页名字>"));
-            return;
-        }
-
-        int pageId;
-        try {
-            pageId = Integer.parseInt(args[3]);
-        } catch (NumberFormatException e) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页ID必须是正整数"));
-            return;
-        }
-
-        if (pageId < 1) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页ID必须为正整数"));
-            return;
-        }
-
-        // 标签页名字（支持空格，从args[4]开始拼接）
-        StringBuilder nameBuilder = new StringBuilder();
-        for (int i = 4; i < args.length; i++) {
-            if (nameBuilder.length() > 0) nameBuilder.append(" ");
-            nameBuilder.append(args[i]);
-        }
-        String pageName = nameBuilder.toString();
-
-        if (pageName.isEmpty()) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页名字不能为空"));
-            return;
-        }
-
-        // 手持物品作为图标
-        ItemStack heldItem = player.getHeldItem();
-        if (heldItem == null) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "请手持一个物品作为标签页图标！"));
-            return;
-        }
-
-        String result = NekoPageRegistry.addPage(pageId, pageName, heldItem);
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + result));
-
-        // 提示需要重载
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：使用 /gtit nekovm reload 使标签页生效"));
-    }
-
-    /**
-     * /gtit nekovm page delet <ID>
-     */
-    private void handlePageDelet(EntityPlayerMP player, String[] args) {
-        if (args.length < 4) {
-            player
-                .addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit nekovm page delet <标签页ID>"));
-            return;
-        }
-
-        int pageId;
-        try {
-            pageId = Integer.parseInt(args[3]);
-        } catch (NumberFormatException e) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页ID必须是正整数"));
-            return;
-        }
-
-        String result = NekoPageRegistry.deletePage(pageId);
-        if (result.startsWith("已删除")) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + result));
-        } else {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + result));
-        }
-    }
-
-    /**
-     * /gtit nekovm pagehelp
-     */
-    private void handleNekoVMPageHelp(ICommandSender sender) {
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "=== 猫猫售货机标签页管理帮助 ==="));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm page add <ID> <名字>"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  添加或覆盖标签页，手持物品作为图标"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  ID 1-3 为默认标签页（可覆盖名称和图标，不可删除）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  ID 4+ 为自定义标签页"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  已存在的ID会覆盖（名称+图标）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm page delet <ID>"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  删除自定义标签页（ID 1-3 不可删除）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  该标签页的交易会移至\"其他\"标签页"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "当前标签页:"));
-        for (com.miaokatze.gtit.trade.NekoPageEntry page : NekoPageRegistry.getAllPages()) {
-            String tag = page.isDefault() ? " [默认]" : " [自定义]";
-            sender.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.WHITE + "  #" + page.getId() + " " + page.getName() + tag));
-        }
-    }
-
     /**
      * /gtit nekovm help
      */
     private void handleNekoVMFullHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "=== 猫猫售货机完整帮助 ==="));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- 交易管理 ---"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- 编辑模式 ---"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edit on|off"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  开关可视化编辑模式，开启后 GUI 内直接编辑交易条目"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm list [标签页ID]"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  列出交易条目，不写标签页则列出全部"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm delete <标签页ID> <顺序ID>"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  删除指定交易条目"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- 标签页管理 ---"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm page add <ID> <名字>"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  添加/覆盖标签页，手持物品作图标"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm page delet <ID>"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  删除自定义标签页（1-3不可删除）"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- 系统命令 ---"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm reload"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  热重载交易和标签页配置"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm save"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  保存当前交易数据到配置文件"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm timereset"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  重置当前玩家（团队）的所有交易冷却"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- 更多帮助 ---"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edithelp - 交易编辑详细帮助"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm pagehelp - 标签页管理详细帮助"));
     }
 }
