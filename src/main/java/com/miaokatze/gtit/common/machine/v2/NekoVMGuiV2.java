@@ -725,6 +725,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         ButtonWidget<?> overlayInterceptor = new ButtonWidget<>().relativeToScreen()
             .full()
             .background(IDrawable.EMPTY)
+            // v1.7.21 修复：禁用主题背景和悬停主题背景，防止鼠标离开编辑面板时
+            // 全屏拦截层被 hover 触发，渲染出巨大的主题背景块。
+            .disableThemeBackground(true)
+            .disableHoverThemeBackground(true)
             .onMousePressed(btn -> {
                 closeEditOverlay();
                 return true;
