@@ -455,28 +455,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 在线档位编辑：货币数量 */
     private int editOnlineAmount = 0;
 
-    // --- 双模式选物面板（v1.7.7 G5③：供签到/在线/抽奖/卡池/page 等物品奖励字段可视化选物） ---
-    /** 选物面板句柄（客户端弹窗） */
-    private IPanelHandler itemSelectorPanel;
-    /** 当前打开的选物面板实例（用于关闭） */
-    private ModularPanel itemSelectorPanelRef;
-    /** 选物结果要写入的目标物品缓冲区 */
-    private ItemStackHandler itemSelectorTargetHandler;
-    /** 选物结果要写入的目标槽位 */
-    private int itemSelectorTargetSlot = 0;
-    /** 选物搜索关键字 */
-    private String itemSelectorSearch = "";
-    /**
-     * 选物模式：0=全部注册物品，1=玩家背包
-     * <p>
-     * v1.7.7 G5③ 双模式：「全部物品」便于从模组物品库挑选；「背包」便于直接复制玩家已持有的物品（含 NBT）。
-     */
-    private int itemSelectorMode = 0;
-    /** 全部注册物品缓存（延迟构建，避免每次打开重复扫描） */
-    private final List<ItemStack> itemSelectorAllItems = new ArrayList<>();
-    /** 选物网格容器引用（动态重建列表行） */
-    private ListWidget<IWidget, ?> itemSelectorGridRef;
-
     // --- 祝福预设编辑（v1.7.6 G5：节日表 + 生日模板 + 发件人编辑） ---
     /** 祝福编辑附件槽位数（与邮件附件上限一致；猫猫币不入槽，由货币字段表达） */
     private static final int BLESSING_ITEM_SLOTS = 5;
@@ -641,8 +619,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // 初始化 ME 模式切换确认弹框（仅客户端）
             meModeConfirmDialog = new NekoConfirmationDialog("nekoV2:me_mode_confirm");
             meModeConfirmPanel = IPanelHandler.simple(panel, (parent, player) -> meModeConfirmDialog, true);
-            // v1.7.7 G5③ 初始化双模式选物弹窗（仅客户端；工厂每次打开创建新面板）
-            itemSelectorPanel = IPanelHandler.simple(panel, (parent, player) -> createSampleTradeGui(), true);
         }
 
         // ==================== 双端共有子树（必须先于所有仅客户端子树添加）====================
@@ -2346,23 +2322,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             slot.left(labelWidth + slotIndex * 20)
                 .top(114);
             editPanel.child(slot);
-
-            // v1.7.7 G5③：每槽一个可视化选物按钮（打开双模式选物面板）
-            editPanel.child(
-                new ButtonWidget<>().size(18, 12)
-                    .left(labelWidth + slotIndex * 20)
-                    .top(134)
-                    .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-                    .overlay(IKey.str(EnumChatFormatting.YELLOW + "选"))
-                    .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.GRAY + "打开双模式选物面板")))
-                    .tooltipAutoUpdate(true)
-                    .onMouseTapped(mouse -> {
-                        if (mouse == 0) {
-                            openSampleTradeSelector(editSignInItemHandler, slotIndex);
-                            return true;
-                        }
-                        return false;
-                    }));
         }
 
         // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
@@ -2604,23 +2563,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             slot.left(labelWidth + slotIndex * 20)
                 .top(60);
             editPanel.child(slot);
-
-            // v1.7.7 G5③：每槽一个可视化选物按钮（打开双模式选物面板）
-            editPanel.child(
-                new ButtonWidget<>().size(18, 12)
-                    .left(labelWidth + slotIndex * 20)
-                    .top(80)
-                    .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-                    .overlay(IKey.str(EnumChatFormatting.YELLOW + "选"))
-                    .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.GRAY + "打开双模式选物面板")))
-                    .tooltipAutoUpdate(true)
-                    .onMouseTapped(mouse -> {
-                        if (mouse == 0) {
-                            openSampleTradeSelector(editSignInDayItemHandler, slotIndex);
-                            return true;
-                        }
-                        return false;
-                    }));
         }
 
         // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
@@ -2852,23 +2794,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .top(fieldY - 2);
         editPanel.child(itemSlot);
 
-        // v1.7.7 G5③：可视化选物按钮
-        editPanel.child(
-            new ButtonWidget<>().size(32, 14)
-                .left(labelWidth + 22)
-                .top(fieldY - 2)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-                .overlay(IKey.str(EnumChatFormatting.YELLOW + "选择"))
-                .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.GRAY + "打开双模式选物面板")))
-                .tooltipAutoUpdate(true)
-                .onMouseTapped(mouse -> {
-                    if (mouse == 0) {
-                        openSampleTradeSelector(editOnlineItemHandler, 0);
-                        return true;
-                    }
-                    return false;
-                }));
-
         // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
         editPanel.child(secondsField);
         editPanel.child(currencyField);
@@ -2954,253 +2879,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .sendSaveOnlineTier(String.valueOf(editOnlineOriginalSeconds), json.toString());
         } catch (Exception e) {
             GTInterestingThing.LOG.error("[NekoEdit] 保存在线档位编辑失败", e);
-        }
-    }
-
-    // ==================== 编辑模式：双模式选物面板（v1.7.7 G5③） ====================
-
-    /**
-     * 打开双模式选物面板（客户端）
-     * <p>
-     * 将选物结果写入指定的 {@link ItemStackHandler} 槽位。打开时重置搜索关键字为空串，
-     * 默认显示「全部注册物品」模式，便于快速挑选任意模组物品。
-     *
-     * @param handler 目标物品缓冲区
-     * @param slot    目标槽位
-     */
-    private void openSampleTradeSelector(ItemStackHandler handler, int slot) {
-        if (handler == null || itemSelectorPanel == null) return;
-        this.itemSelectorTargetHandler = handler;
-        this.itemSelectorTargetSlot = slot;
-        this.itemSelectorSearch = "";
-        this.itemSelectorMode = 0;
-        itemSelectorPanel.openPanel();
-    }
-
-    /**
-     * 构建双模式选物面板（v1.7.7 G5③）
-     * <p>
-     * 面板结构：
-     * <ul>
-     * <li>顶部标题 + 双模式切换按钮（全部物品 / 背包）</li>
-     * <li>搜索输入框（按物品显示名或注册名过滤）</li>
-     * <li>可滚动物品网格（每行 8 格，点击即选中并关闭面板）</li>
-     * <li>底部关闭按钮</li>
-     * </ul>
-     * 「全部物品」模式遍历 {@link Item#itemRegistry}，便于挑选任意已注册物品；「背包」模式
-     * 读取当前玩家背包，便于直接复制含 NBT 的物品。
-     *
-     * @return 选物面板
-     */
-    private ModularPanel createSampleTradeGui() {
-        ModularPanel panel = new ModularPanel("nekoV2ItemSelector");
-        panel.size(200, 220);
-        panel.leftRel(0.5f)
-            .topRel(0.5f)
-            .anchorLeft(0.5f)
-            .anchorTop(0.5f);
-
-        ParentWidget<?> root = new ParentWidget<>();
-        root.size(200, 220);
-
-        // 标题
-        root.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "选择物品")).top(5)
-                .horizontalCenter());
-
-        // 模式切换按钮：全部物品
-        root.child(
-            new ButtonWidget<>().size(70, 14)
-                .left(15)
-                .top(22)
-                .overlay(
-                    IKey.dynamic(
-                        () -> (itemSelectorMode == 0 ? EnumChatFormatting.YELLOW : EnumChatFormatting.WHITE) + "全部物品"))
-                .onMouseTapped(mouse -> {
-                    if (itemSelectorMode != 0) {
-                        itemSelectorMode = 0;
-                        refreshSelectorItems();
-                    }
-                    return true;
-                }));
-        // 模式切换按钮：背包
-        root.child(
-            new ButtonWidget<>().size(70, 14)
-                .right(15)
-                .top(22)
-                .overlay(
-                    IKey.dynamic(
-                        () -> (itemSelectorMode == 1 ? EnumChatFormatting.YELLOW : EnumChatFormatting.WHITE) + "背包"))
-                .onMouseTapped(mouse -> {
-                    if (itemSelectorMode != 1) {
-                        itemSelectorMode = 1;
-                        refreshSelectorItems();
-                    }
-                    return true;
-                }));
-
-        // 搜索框
-        TextFieldWidget searchField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> itemSelectorSearch, val -> {
-                itemSelectorSearch = val == null ? "" : val;
-                refreshSelectorItems();
-            }))
-            .setMaxLength(40);
-        searchField.left(15)
-            .top(40)
-            .size(170, 14);
-        root.child(searchField);
-
-        // 可滚动物品网格
-        ListWidget<IWidget, ?> itemGrid = new ListWidget<>().name("itemSelectorGrid")
-            .left(8)
-            .top(58)
-            .size(184, 138);
-        itemSelectorGridRef = itemGrid;
-        root.child(itemGrid);
-
-        // 关闭按钮
-        root.child(
-            new ButtonWidget<>().size(50, 16)
-                .horizontalCenter()
-                .bottom(6)
-                .overlay(IKey.str("关闭"))
-                .onMouseTapped(mouse -> {
-                    if (itemSelectorPanelRef != null) {
-                        itemSelectorPanelRef.closeIfOpen();
-                    }
-                    return true;
-                }));
-
-        panel.child(root);
-        itemSelectorPanelRef = panel;
-        refreshSelectorItems();
-        return panel;
-    }
-
-    /**
-     * 根据当前模式与搜索关键字重建物品网格（客户端）
-     * <p>
-     * 清空 {@link #itemSelectorGridRef} 的子组件，按 8 列一行重新生成按钮。
-     * 过滤规则：关键字为空则显示全部；否则按物品显示名或注册名包含匹配（不区分大小写）。
-     */
-    private void refreshSelectorItems() {
-        if (itemSelectorGridRef == null) return;
-        itemSelectorGridRef.getChildren()
-            .clear();
-
-        List<ItemStack> source = itemSelectorMode == 0 ? buildAllRegisteredItemList() : buildPlayerInventoryItemList();
-        List<ItemStack> filtered = filterItemList(source, itemSelectorSearch);
-
-        Flow row = null;
-        int count = 0;
-        for (ItemStack stack : filtered) {
-            if (count % 8 == 0) {
-                row = Flow.row()
-                    .left(0)
-                    .width(184)
-                    .height(18);
-                itemSelectorGridRef.child(row);
-            }
-            final ItemStack displayStack = stack.copy();
-            displayStack.stackSize = 1;
-            ButtonWidget<?> btn = new ButtonWidget<>().size(18, 18)
-                .background(new ItemDrawable(displayStack))
-                .tooltipBuilder(t -> t.addLine(IKey.str(displayStack.getDisplayName())))
-                .tooltipAutoUpdate(true)
-                .onMouseTapped(mouse -> {
-                    onSelectorItemSelected(displayStack.copy());
-                    return true;
-                });
-            row.child(btn);
-            count++;
-        }
-    }
-
-    /**
-     * 构建全部注册物品列表（客户端，延迟缓存）
-     * <p>
-     * 首次调用时扫描 {@link Item#itemRegistry}，为每个物品生成数量为 1、meta 为 0 的
-     * {@link ItemStack}，并按显示名排序。结果缓存到 {@link #itemSelectorAllItems}。
-     *
-     * @return 全部注册物品列表
-     */
-    private List<ItemStack> buildAllRegisteredItemList() {
-        if (!itemSelectorAllItems.isEmpty()) return itemSelectorAllItems;
-        for (Object obj : Item.itemRegistry) {
-            if (!(obj instanceof Item)) continue;
-            Item item = (Item) obj;
-            if (item == null) continue;
-            itemSelectorAllItems.add(new ItemStack(item, 1, 0));
-        }
-        itemSelectorAllItems.sort(
-            (a, b) -> a.getDisplayName()
-                .compareToIgnoreCase(b.getDisplayName()));
-        return itemSelectorAllItems;
-    }
-
-    /**
-     * 构建玩家背包物品列表（客户端）
-     * <p>
-     * 从 {@link #guiData} 获取玩家实体，复制其主物品栏中所有非空槽位。
-     *
-     * @return 玩家背包物品副本列表
-     */
-    private List<ItemStack> buildPlayerInventoryItemList() {
-        List<ItemStack> list = new ArrayList<>();
-        if (guiData == null) return list;
-        EntityPlayer player = guiData.getPlayer();
-        if (player == null || player.inventory == null) return list;
-        for (ItemStack stack : player.inventory.mainInventory) {
-            if (stack != null && stack.getItem() != null) {
-                list.add(stack.copy());
-            }
-        }
-        return list;
-    }
-
-    /**
-     * 按搜索关键字过滤物品列表（客户端）
-     *
-     * @param source 源列表
-     * @param search 搜索关键字
-     * @return 过滤后的新列表
-     */
-    private List<ItemStack> filterItemList(List<ItemStack> source, String search) {
-        if (source == null || source.isEmpty()) return new ArrayList<>();
-        if (search == null || search.trim()
-            .isEmpty()) {
-            return new ArrayList<>(source);
-        }
-        String lower = search.toLowerCase();
-        List<ItemStack> result = new ArrayList<>();
-        for (ItemStack stack : source) {
-            if (stack == null || stack.getItem() == null) continue;
-            String display = stack.getDisplayName()
-                .toLowerCase();
-            String id = Item.itemRegistry.getNameForObject(stack.getItem())
-                .toLowerCase();
-            if (display.contains(lower) || id.contains(lower)) {
-                result.add(stack);
-            }
-        }
-        return result;
-    }
-
-    /**
-     * 选物完成回调（客户端）
-     * <p>
-     * 将选中的物品（保留 NBT）写入 {@link #itemSelectorTargetHandler} 的指定槽位，
-     * 并关闭选物面板。
-     *
-     * @param stack 选中的物品（数量为 1）
-     */
-    private void onSelectorItemSelected(ItemStack stack) {
-        if (itemSelectorTargetHandler != null && stack != null && stack.getItem() != null) {
-            itemSelectorTargetHandler.setStackInSlot(itemSelectorTargetSlot, stack);
-        }
-        if (itemSelectorPanelRef != null) {
-            itemSelectorPanelRef.closeIfOpen();
         }
     }
 

@@ -72,6 +72,8 @@ Three trade types supported:
 
 ### GUI & Tabs / 界面与标签页
 
+<p align="center"><img src="/images/trade_gui.png" width="384"><br><em>交易界面 / Trade GUI</em></p>
+
 - **Dynamic tabs / 动态标签页**: 3 default tabs + unlimited custom tabs (add via command with held item as icon)
 - **Neko Coin display / 猫猫币显示**: Real-time balance display with expandable details
 - **Coin intercept slot / 猫猫币拦截槽**: Automatically routes Neko Coins from inventory to wallet
@@ -164,6 +166,36 @@ If `nekovm_trades.json` does not exist, default trades are generated from `NekoT
 | `MixinTradeItemDisplayWidget` | `draw()`                | Golden LOCKED text + cyan cooldown color via § codes                         |
 | `MixinTradeManager`           | `TradeManager`          | Placeholder (canExecuteTrade dependency)                                     |
 | `MixinPlayerControllerMP`     | `getBlockReachDistance` | Extend block reach distance for Ring of Distant Grasp                        |
+
+***
+
+## Daily Sign-In / 每日签到
+
+<p align="center"><img src="/images/signin_gui.png" width="384"><br><em>签到界面 / Sign-In GUI</em></p>
+
+A daily reward system that grants players cumulative rewards for logging in each day, with optional online-time tier bonuses.
+
+每日签到系统，玩家每日登录可领取累积奖励，并支持按在线时长解锁额外档位奖励。
+
+***
+
+## Lottery / 抽奖
+
+<p align="center"><img src="/images/lottery_gui.png" width="384"><br><em>抽奖界面 / Lottery GUI</em></p>
+
+A gacha-style reward pool where players spend Neko Coins or items to draw random rewards.
+
+消耗猫猫币或物品进行随机抽奖的奖励池系统。
+
+***
+
+## Mail / 邮件
+
+<p align="center"><img src="/images/mail_gui.png" width="384"><br><em>邮件界面 / Mail GUI</em></p>
+
+An in-game mail system for receiving rewards, announcements, and attachments from server operators or automated events.
+
+游戏内邮件系统，用于接收管理员或自动事件发放的奖励、公告与附件。
 
 ***
 

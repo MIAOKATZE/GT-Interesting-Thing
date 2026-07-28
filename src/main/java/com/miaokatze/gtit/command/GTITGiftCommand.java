@@ -3,10 +3,8 @@ package com.miaokatze.gtit.command;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -34,7 +32,6 @@ import com.miaokatze.gtit.signin.DailySignInManager;
 import com.miaokatze.gtit.signin.OnlineTimeConfig;
 import com.miaokatze.gtit.signin.SignInClientData;
 import com.miaokatze.gtit.signin.SignInNetworkManager;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
@@ -52,7 +49,7 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * - /gtit gift random <count> [yesNBT|noNBT]: 将当前背包物品设为随机物品，设置随机数
  * - /gtit gift reset: 恢复默认配置
  * - /gtit gift claimreset [all|玩家名]: 重置新手礼包领取状态（支持控制台执行）
- * - /gtit nekovm edit <标签页> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]: 导入交易条目
+ * - /gtit nekovm edit on|off: 开关可视化配置编辑模式
  * - /gtit nekovm list [标签页]: 列出交易条目
  * - /gtit nekovm edithelp: 显示编辑帮助
  * - /gtit nekovm delete <标签页> <顺序ID>: 删除交易条目
@@ -71,7 +68,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit|list|edithelp|delete|reload|save|timereset | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
+        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit on|off|list|edithelp|delete|reload|save|timereset | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
     }
 
     @Override
@@ -199,7 +196,11 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         if (args.length == 3 && "nekovm".equals(args[0])) {
-            if ("edit".equals(args[1]) || "list".equals(args[1]) || "delete".equals(args[1])) {
+            if ("edit".equals(args[1])) {
+                // /gtit nekovm edit on|off
+                return getListOfStringsMatchingLastWord(args, "on", "off");
+            }
+            if ("list".equals(args[1]) || "delete".equals(args[1])) {
                 // 补全标签页ID
                 List<String> pageIds = new ArrayList<>();
                 try {
@@ -222,7 +223,7 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         if (args.length == 4 && "nekovm".equals(args[0])) {
-            if ("edit".equals(args[1]) || "delete".equals(args[1])) {
+            if ("delete".equals(args[1])) {
                 // 补全顺序ID（基于已有交易）
                 try {
                     int tabId = Integer.parseInt(args[2]);
@@ -254,11 +255,6 @@ public class GTITGiftCommand extends CommandBase {
                 }
                 return getListOfStringsMatchingLastWord(args, pageIds.toArray(new String[0]));
             }
-        }
-
-        if (args.length == 7 && "nekovm".equals(args[0]) && "edit".equals(args[1])) {
-            // /gtit nekovm edit <tabId> <顺序ID> <冷却> <绑定ID> [yesNBT|noNBT]
-            return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
         }
 
         return null;
@@ -823,7 +819,14 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         switch (args[1]) {
-            case "edit" -> handleNekoVMEdit(player, args);
+            case "edit" -> {
+                if (args.length >= 3 && ("on".equalsIgnoreCase(args[2]) || "off".equalsIgnoreCase(args[2]))) {
+                    handleNekoVMEditModeToggle(player, "on".equalsIgnoreCase(args[2]));
+                } else {
+                    player
+                        .addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "用法: /gtit nekovm edit on|off"));
+                }
+            }
             case "list" -> handleNekoVMList(player, args);
             case "edithelp" -> handleNekoVMEditHelp(sender);
             case "delete" -> handleNekoVMDelete(player, args);
@@ -835,268 +838,6 @@ public class GTITGiftCommand extends CommandBase {
             case "pagehelp" -> handleNekoVMPageHelp(sender);
             case "help" -> handleNekoVMFullHelp(sender);
             default -> sendNekoVMHelp(sender);
-        }
-    }
-
-    /**
-     * /gtit nekovm edit <标签页> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]
-     * /gtit nekovm edit on|off
-     * <p>
-     * 读取玩家背包前两行(需求)和快捷栏前 10 格(产物)，导入交易条目。
-     * 默认不记录 NBT；如需记录，请在指令末尾添加 yesNBT。
-     * <p>
-     * on|off 子命令：开启/关闭可视化配置编辑模式（OP 权限）。
-     */
-    private void handleNekoVMEdit(EntityPlayerMP player, String[] args) {
-        if (args.length < 3) {
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.RED + "用法: /gtit nekovm edit <标签页ID> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]"));
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "或: /gtit nekovm edit on|off （开关可视化编辑模式）"));
-            return;
-        }
-
-        // --- 编辑模式开关：/gtit nekovm edit on|off ---
-        if (args.length == 3 && ("on".equalsIgnoreCase(args[2]) || "off".equalsIgnoreCase(args[2]))) {
-            handleNekoVMEditModeToggle(player, "on".equalsIgnoreCase(args[2]));
-            return;
-        }
-
-        // 从末尾解析 yesNBT/noNBT 标记
-        int effectiveLen = args.length;
-        boolean recordNbt = false;
-        String lastArg = args[args.length - 1].toLowerCase();
-        if ("yesnbt".equals(lastArg) || "nonbt".equals(lastArg)) {
-            recordNbt = "yesnbt".equals(lastArg);
-            effectiveLen--;
-        } else {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.WHITE + "完整指令结构：/gtit nekovm edit <标签页ID> [顺序ID] [冷却时间] [绑定ID] [yesNBT|noNBT]"));
-        }
-
-        // 解析标签页ID
-        int tabId;
-        try {
-            tabId = Integer.parseInt(args[2]);
-        } catch (NumberFormatException e) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "标签页ID必须是正整数"));
-            return;
-        }
-        if (!NekoPageRegistry.hasPage(tabId)) {
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.RED + "标签页 #" + tabId + " 不存在！使用 /gtit nekovm page add 添加"));
-            return;
-        }
-
-        // 解析顺序ID（可选，默认自动）
-        int orderId = -1;
-        if (effectiveLen >= 4) {
-            try {
-                orderId = Integer.parseInt(args[3]);
-            } catch (NumberFormatException e) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "顺序ID必须是整数"));
-                return;
-            }
-        }
-
-        // 解析冷却时间（可选，默认0）
-        int cooldown = 0;
-        if (effectiveLen >= 5) {
-            try {
-                cooldown = Integer.parseInt(args[4]);
-            } catch (NumberFormatException e) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "冷却时间必须是整数（秒）"));
-                return;
-            }
-        }
-
-        // 解析绑定ID（可选，默认空）
-        String bqQuestId = "";
-        if (effectiveLen >= 6) {
-            bqQuestId = args[5];
-        }
-
-        // 读取需求物品：背包前两行（slot 9-26，即 mainInventory[9] 到 mainInventory[26]）
-        // MC 的 mainInventory 布局：0-8=快捷栏，9-35=背包主体
-        // 自动识别猫猫币/闪烁猫猫币，转化为 currency 参数而非 fromItems
-        List<NekoTradeEntry.ItemEntry> fromItems = new ArrayList<>();
-        NekoTradeEntry.NekoCurrencyCost detectedCurrency = null;
-
-        for (int i = 9; i <= 26; i++) {
-            ItemStack stack = player.inventory.mainInventory[i];
-            if (stack != null && stack.getItem() != null) {
-                // 检查是否为猫猫币/闪烁猫猫币
-                String nekoCurrencyId = NekoCurrencyRegistrar.getNekoCurrencyId(stack);
-                if (nekoCurrencyId != null) {
-                    // 猫猫币：转化为 currency 参数
-                    if (detectedCurrency == null) {
-                        detectedCurrency = new NekoTradeEntry.NekoCurrencyCost(nekoCurrencyId, stack.stackSize);
-                    } else if (detectedCurrency.getType()
-                        .equals(nekoCurrencyId)) {
-                            // 同种猫猫币，累加数量
-                            detectedCurrency.setAmount(detectedCurrency.getAmount() + stack.stackSize);
-                        } else {
-                            // 不同种猫猫币（猫猫币+闪烁猫猫币），不允许
-                            player.addChatMessage(
-                                new ChatComponentText(EnumChatFormatting.RED + "不支持同时使用猫猫币和闪烁猫猫币！请只放一种"));
-                            return;
-                        }
-                } else {
-                    // 普通物品：放入 fromItems（根据 recordNbt 决定是否记录 NBT）
-                    fromItems.add(NekoTradeEntry.ItemEntry.fromItemStack(stack, recordNbt));
-                }
-            }
-        }
-
-        // 读取产物物品：快捷栏前 10 格（slot 0-9）
-        List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();
-        for (int i = 0; i <= 9; i++) {
-            ItemStack stack = player.inventory.mainInventory[i];
-            if (stack != null && stack.getItem() != null) {
-                toItems.add(NekoTradeEntry.ItemEntry.fromItemStack(stack, recordNbt));
-            }
-        }
-
-        // 合并同类物品（NBT 不同则不合并，防止 NBT 丢失）
-        fromItems = mergeItems(fromItems);
-        toItems = mergeItems(toItems);
-
-        if (toItems.isEmpty()) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "产物物品为空！请将产物放在快捷栏前 10 格（slot 0-9）"));
-            return;
-        }
-
-        // 加载当前配置
-        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
-        List<NekoTradeEntry> trades = data.getTrades();
-
-        // 如果没有指定顺序ID，自动分配
-        if (orderId < 0) {
-            orderId = getNextOrderId(trades, tabId);
-        }
-
-        // 根据自动检测设置猫猫币信息（不再根据标签页自动添加猫猫币）
-        NekoTradeEntry.NekoCurrencyCost currency = detectedCurrency;
-        String tabName = getTabName(tabId);
-
-        // 验证：猫猫币交易的标签页提示（完全解耦，不再强制修正）
-        if (currency != null) {
-            boolean isNeko = "neko".equals(currency.getType());
-            boolean isShimmering = "shimmeringNeko".equals(currency.getType());
-            if (tabId == 3 && (isNeko || isShimmering)) {
-                // "GTIT"标签页放猫猫币交易，仅提示
-                player.addChatMessage(
-                    new ChatComponentText(EnumChatFormatting.YELLOW + "提示：猫猫币交易通常放在标签页1，闪烁猫猫币交易通常放在标签页2"));
-            }
-            if (tabId == 1 && isShimmering) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：闪烁猫猫币交易通常放在标签页2"));
-            } else if (tabId == 2 && isNeko) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：猫猫币交易通常放在标签页1"));
-            }
-        }
-
-        // 查找是否已存在相同 tabId+orderId 的条目
-        NekoTradeEntry existing = findEntry(trades, tabId, orderId);
-        if (existing != null) {
-            // 覆盖已有条目
-            existing.setCurrency(currency);
-            existing.setFromItems(fromItems);
-            existing.setToItems(toItems);
-            existing.setCooldown(cooldown);
-            existing.setBqQuestId(bqQuestId);
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.YELLOW + "已覆盖 "
-                        + tabName
-                        + " 标签页的条目 #"
-                        + orderId
-                        + "（NBT："
-                        + (recordNbt ? "开启" : "关闭")
-                        + "）"));
-        } else {
-            // 新建条目
-            NekoTradeEntry entry = new NekoTradeEntry();
-            entry.setTabId(tabId);
-            entry.setOrderId(orderId);
-            entry.setCurrency(currency);
-            entry.setFromItems(fromItems);
-            entry.setToItems(toItems);
-            entry.setCooldown(cooldown);
-            entry.setBqQuestId(bqQuestId);
-            trades.add(entry);
-            player.addChatMessage(
-                new ChatComponentText(
-                    EnumChatFormatting.GREEN + "已添加 "
-                        + tabName
-                        + " 标签页的条目 #"
-                        + orderId
-                        + "（NBT："
-                        + (recordNbt ? "开启" : "关闭")
-                        + "）"));
-        }
-
-        // 保存并重载
-        // V1 的 NekoTradeRegistry.reload() 已移除，改为调用 V2 的 reload
-        // V2 从 NekoTradeConfig 加载配置并注册到 NekoTradeDatabase（V2 独立数据库）
-        NekoTradeConfig.save(data);
-        NekoTradeRegistryV2.reload();
-
-        // 显示条目摘要
-        String fromDesc = describeItems(fromItems);
-        if (currency != null) {
-            String coinName = tabId == 1 ? "猫猫币" : "闪烁猫猫币";
-            String coinDesc = coinName + "x" + currency.getAmount();
-            fromDesc = fromDesc.equals("无") ? coinDesc : coinDesc + "+" + fromDesc;
-        }
-        String toDesc = describeItems(toItems);
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  " + fromDesc + " → " + toDesc));
-        if (cooldown > 0) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "  冷却: " + cooldown + "s"));
-        }
-        if (!bqQuestId.isEmpty()) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "  绑定: " + bqQuestId));
-        }
-
-        // 显示当前标签页最后5条交易
-        showRecentTrades(player, trades, tabId);
-    }
-
-    /**
-     * 显示当前标签页最后5条交易
-     */
-    private void showRecentTrades(EntityPlayerMP player, List<NekoTradeEntry> trades, int tabId) {
-        String tabName = getTabName(tabId);
-        List<NekoTradeEntry> tabTrades = trades.stream()
-            .filter(t -> t.getTabId() == tabId)
-            .sorted((a, b) -> Integer.compare(a.getOrderId(), b.getOrderId()))
-            .collect(Collectors.toList());
-
-        if (tabTrades.isEmpty()) {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + tabName + " 标签页暂无交易"));
-            return;
-        }
-
-        int start = Math.max(0, tabTrades.size() - 5);
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- " + tabName + " 最近交易 ---"));
-        for (int i = start; i < tabTrades.size(); i++) {
-            NekoTradeEntry entry = tabTrades.get(i);
-            String fromDesc = describeItems(entry.getFromItems());
-            if (entry.getCurrency() != null) {
-                String coinName = entry.getCurrency()
-                    .getType()
-                    .equals("neko") ? "猫猫币" : "闪烁猫猫币";
-                String coinDesc = coinName + "x"
-                    + entry.getCurrency()
-                        .getAmount();
-                fromDesc = fromDesc.equals("无") ? coinDesc : coinDesc + "+" + fromDesc;
-            }
-            String toDesc = describeItems(entry.getToItems());
-            String line = EnumChatFormatting.WHITE + "(#" + entry.getOrderId() + ") " + fromDesc + " → " + toDesc;
-            player.addChatMessage(new ChatComponentText(line));
         }
     }
 
@@ -1196,30 +937,16 @@ public class GTITGiftCommand extends CommandBase {
      */
     private void handleNekoVMEditHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "=== 猫猫售货机交易编辑帮助 ==="));
-        sender.addChatMessage(
-            new ChatComponentText(
-                EnumChatFormatting.YELLOW + "/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID] [yesNBT|noNBT]"));
         sender
-            .addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  标签页ID: 使用 /gtit nekovm list 查看已有标签页"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  顺序ID: 排序用，不写则自动分配"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  冷却: 交易冷却秒数，不写则0"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  绑定ID: BQ任务ID，不写则不绑定"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  yesNBT/noNBT: 是否记录物品 NBT，不写则默认不记录"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "物品读取规则:"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  需求物品 = 背包前两行（共18格）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  产物物品 = 快捷栏前 10 格（slot 0-9）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  同种物品自动合并数量（NBT 不同不合并）"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + "  猫猫币/闪烁猫猫币自动识别为货币参数！"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + "  放入背包的猫猫币数量即为花费数量"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "覆盖规则:"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  标签页ID+顺序ID = 条目唯一身份"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  输入已存在的组合会覆盖原条目"));
+            .addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edit on|off - 开关可视化编辑模式"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  开启后打开猫猫售货机 GUI 可直接编辑交易条目"));
+        sender
+            .addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  编辑完成后使用 /gtit nekovm edit off 退出编辑模式"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm list [标签页] - 列出交易"));
         sender.addChatMessage(
             new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm delete <标签页> <顺序ID> - 删除交易"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm reload - 热重载配置"));
-        sender.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.YELLOW + "示例: /gtit nekovm edit 1 5 60 quest_001 yesNBT"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm save - 保存配置"));
     }
 
     /**
@@ -1394,40 +1121,6 @@ public class GTITGiftCommand extends CommandBase {
     // ==================== 辅助方法 ====================
 
     /**
-     * 合并同类物品（相同 item+meta+NBT 的合并数量）
-     * <p>
-     * 合并键包含 NBT 的 Base64 表示，避免相同 ID/meta 但不同 NBT 的物品被错误合并成一条并丢失 NBT。
-     * 无 NBT 时使用空字符串占位。
-     */
-    private List<NekoTradeEntry.ItemEntry> mergeItems(List<NekoTradeEntry.ItemEntry> items) {
-        Map<String, NekoTradeEntry.ItemEntry> merged = new HashMap<>();
-        for (NekoTradeEntry.ItemEntry entry : items) {
-            String nbtKey = entry.getNbtBase64() != null ? entry.getNbtBase64() : "";
-            String key = entry.getItem() + ":" + entry.getMeta() + ":" + nbtKey;
-            if (merged.containsKey(key)) {
-                NekoTradeEntry.ItemEntry existing = merged.get(key);
-                existing.setAmount(existing.getAmount() + entry.getAmount());
-            } else {
-                merged.put(key, entry);
-            }
-        }
-        return new ArrayList<>(merged.values());
-    }
-
-    /**
-     * 获取下一个可用的顺序ID
-     */
-    private int getNextOrderId(List<NekoTradeEntry> trades, int tabId) {
-        int maxOrderId = 0;
-        for (NekoTradeEntry entry : trades) {
-            if (entry.getTabId() == tabId && entry.getOrderId() > maxOrderId) {
-                maxOrderId = entry.getOrderId();
-            }
-        }
-        return maxOrderId + 1;
-    }
-
-    /**
      * 查找指定 tabId+orderId 的条目
      */
     private NekoTradeEntry findEntry(List<NekoTradeEntry> trades, int tabId, int orderId) {
@@ -1437,13 +1130,6 @@ public class GTITGiftCommand extends CommandBase {
             }
         }
         return null;
-    }
-
-    /**
-     * 获取标签页名称
-     */
-    private String getTabName(int tabId) {
-        return NekoPageRegistry.getPageName(tabId);
     }
 
     /**
@@ -1512,9 +1198,7 @@ public class GTITGiftCommand extends CommandBase {
 
     private void sendNekoVMHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "猫猫售货机命令:"));
-        sender.addChatMessage(
-            new ChatComponentText("/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID] [yesNBT|noNBT] - 导入交易"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + "/gtit nekovm edit on|off - 开关可视化编辑模式"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm edit on|off - 开关可视化编辑模式"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm list [标签页] - 列出交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm delete <标签页ID> <顺序ID> - 删除交易条目"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm page add <ID> <名字> - 添加/覆盖标签页（手持物品作图标）"));
@@ -2091,9 +1775,8 @@ public class GTITGiftCommand extends CommandBase {
     private void handleNekoVMFullHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "=== 猫猫售货机完整帮助 ==="));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "--- 交易管理 ---"));
-        sender.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edit <标签页ID> [顺序ID] [冷却] [绑定ID]"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  导入交易条目，读取背包和工具栏物品"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm edit on|off"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  开关可视化编辑模式，开启后 GUI 内直接编辑交易条目"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm list [标签页ID]"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  列出交易条目，不写标签页则列出全部"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm delete <标签页ID> <顺序ID>"));
