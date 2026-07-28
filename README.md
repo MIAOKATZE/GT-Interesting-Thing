@@ -119,23 +119,9 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
   │   └── claimreset [all|玩家名]               -- Reset claim status (re-gift on next login)
   │
   └── nekovm                                    -- NekoVM trade management / 猫猫机交易管理
-      ├── edit <tabId> [orderId]                -- Edit/create trade (reads inventory)
-      │            [cooldown] [bqQuestId] [yesNBT|noNBT]
-      ├── list [tabId]                          -- List trades
-      ├── delete <tabId> <orderId>              -- Delete trade
-      ├── page add <id> <name>                  -- Add/override tab (held item = icon)
-      ├── page delet <id>                       -- Delete custom tab (1-3 protected)
-      ├── reload                                -- Hot-reload config
-      ├── save                                  -- Save to config file
-      ├── timereset                             -- Reset all trade cooldowns
-      ├── edithelp                              -- Edit help
-      ├── pagehelp                              -- Tab management help
+      ├── edit on/off                           -- Edit Mode
       └── help                                  -- Full help
 ```
-
-> \[!NOTE]
-> **NBT recording / NBT 记录**：All item-config commands default to `noNBT`. Add `yesNBT` at the end of the command to record item NBT data (enchantments, custom names, GT machine configuration, etc.). If the flag is omitted, a hint with the full command structure is shown.
-> 所有配置物品的指令默认 `noNBT`。如需记录物品 NBT 数据（附魔、自定义名称、GT 机器配置等），请在指令末尾添加 `yesNBT`。未写该参数时会弹出提示并展示完整指令结构。
 
 **Edit inventory layout / 编辑物品布局**:
 
