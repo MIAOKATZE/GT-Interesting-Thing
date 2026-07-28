@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Consumer;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -63,6 +64,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /** 结构定义的唯一标识符，用于在 StructureLib 中索引特定的结构片段 */
     private static final String STRUCTURE_PIECE_MAIN = "main";
 
+    /** VendingMachine ME Uplink Hatch 的 MTE ID（0.4.87 与 0.4.95 均为 2742） */
+    private static final int VM_ME_UPLINK_MTE_ID = 2742;
+
     /**
      * 猫猫机 2x2x1 多方块结构定义
      * <p>
@@ -72,9 +76,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <li>{@code ~}: 控制器位置（位于下层右侧）</li>
      * </ul>
      * <p>
-     * 使用 {@link gregtech.api.util.HatchElementBuilder#hatchClass} 限定只接受
-     * {@link MTEVendingUplinkHatch}，使 NEI 多方块结构预览只显示 Uplink Hatch
-     * 物品候选，不再误显示通用 Input Bus / Input Hatch。普通位置仍可放置任意
+     * 使用 {@link gregtech.api.util.HatchElementBuilder#hatchId} 按 MTE ID 检测
+     * VendingMachine ME Uplink Hatch（ID = {@link #VM_ME_UPLINK_MTE_ID}），避免跨版本
+     * /类加载器导致的反射兼容识别失败。普通位置仍可放置任意
      * {@code VendingMachineBlocks.casingBlock} 作为外壳。
      */
     // 懒加载结构定义（v1.6.33 方案 D）：
@@ -158,6 +162,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /** 可选的 ME Vending UplinkHatch，结构检查时设置，上限 1 个 */
     private MTEVendingUplinkHatch uplinkHatch = null;
 
+    /** 是否已经尝试为 uplink hatch 触发 AE 代理就绪，防止每 tick 重复调用 */
+    private boolean uplinkProxyReadyAttempted = false;
+
     /** ME 输出模式：true 时产出发往 ME 网络，false 时走本地出货槽 */
     private boolean meOutputMode = false;
 
@@ -206,7 +213,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 .addElement(
                     'c',
                     buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
-                        .hatchClass(MTEVendingUplinkHatch.class)
+                        .hatchId(VM_ME_UPLINK_MTE_ID)
                         .casingIndex(VendingMachineBlocks.casingBlock.getTextureIndex(0))
                         .hint(1)
                         .buildAndChain(VendingMachineBlocks.casingBlock, 0))
@@ -280,13 +287,40 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return false;
         }
         IMetaTileEntity aMetaTileEntity = aBaseMetaTileEntity.getMetaTileEntity();
-        if (aMetaTileEntity == null || !(aMetaTileEntity instanceof MTEVendingUplinkHatch)) {
+        if (aMetaTileEntity == null) {
+            return false;
+        }
+        int metaTileId = aBaseMetaTileEntity.getMetaTileID();
+        if (metaTileId != VM_ME_UPLINK_MTE_ID) {
+            if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
+                com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+                    "[NekoVMV2] addUplinkHatch rejected: metaTileID={} (expected {})",
+                    metaTileId,
+                    VM_ME_UPLINK_MTE_ID);
+            }
+            return false;
+        }
+        if (!(aMetaTileEntity instanceof MTEVendingUplinkHatch)) {
+            if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
+                com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+                    "[NekoVMV2] addUplinkHatch rejected: metaTileID matches {} but class is {} (potential reflection compat issue)",
+                    VM_ME_UPLINK_MTE_ID,
+                    aMetaTileEntity.getClass()
+                        .getName());
+            }
             return false;
         }
         MTEVendingUplinkHatch hatch = (MTEVendingUplinkHatch) aMetaTileEntity;
         hatch.updateTexture(aBaseCasingIndex);
         hatch.updateCraftingIcon(hatch.getMachineCraftingIcon());
         uplinkHatch = hatch;
+        if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+                "[NekoVMV2] addUplinkHatch succeeded at ({}, {}, {})",
+                aBaseMetaTileEntity.getXCoord(),
+                aBaseMetaTileEntity.getYCoord(),
+                aBaseMetaTileEntity.getZCoord());
+        }
         return true;
     }
 
@@ -350,6 +384,42 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
+     * 安全调用 uplink hatch 的 {@code removeItem}，捕获所有异常避免整机崩溃。
+     * <p>
+     * 当 uplink 未连接或调用抛出异常时，返回原始请求数量（表示全部未满足）。
+     *
+     * @param stack    请求的物品栈（会被 uplink 内部读取，建议传入 copy）
+     * @param simulate true 表示模拟提取
+     * @param ore      矿物词典名（可选）
+     * @param tracker  提取追踪器（可选）
+     * @return 未满足的剩余数量；异常时返回 {@code stack.stackSize}
+     */
+    private int safeRemoveItemFromUplink(ItemStack stack, boolean simulate, String ore,
+        Consumer<appeng.api.storage.data.IAEItemStack> tracker) {
+        if (uplinkHatch == null || stack == null || stack.stackSize <= 0) {
+            return stack == null ? 0 : stack.stackSize;
+        }
+        try {
+            return uplinkHatch.removeItem(stack, simulate, ore, tracker);
+        } catch (Throwable t) {
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] safeRemoveItemFromUplink 异常，视为提取失败", t);
+            return stack.stackSize;
+        }
+    }
+
+    /**
+     * 安全触发 uplink hatch 的缓存刷新，捕获异常避免整机崩溃。
+     */
+    private void safeSetRefreshCache() {
+        if (uplinkHatch == null) return;
+        try {
+            uplinkHatch.setRefreshCache();
+        } catch (Throwable t) {
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] safeSetRefreshCache 异常", t);
+        }
+    }
+
+    /**
      * 查询 uplink 连接的 ME 网络中指定货币的余额
      * <p>
      * 供 GUI 层显示"ME 网络可用货币"使用。当未连接 uplink hatch 时返回 0。
@@ -368,7 +438,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // 模拟提取大数量反推实际可用（详见 InternalInputSlotAccessor.getMECurrencyAmount）
         final int probeSize = 1_000_000_000;
         coinStack.stackSize = probeSize;
-        int remain = uplinkHatch.removeItem(coinStack, true, null, tracker -> {});
+        int remain = safeRemoveItemFromUplink(coinStack, true, null, tracker -> {});
         return probeSize - remain;
     }
 
@@ -382,11 +452,11 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * @return 未满足的剩余数量（0 = 全部提取成功，等于 stackSize = 完全失败）
      */
     public int extractFromUplink(ItemStack stack) {
-        if (uplinkHatch == null || stack == null || stack.stackSize <= 0) {
+        if (stack == null || stack.stackSize <= 0) {
             return stack == null ? 0 : stack.stackSize;
         }
         // simulate=false 实际提取，传入 copy 防止 uplink 内部修改影响调用方
-        return uplinkHatch.removeItem(stack.copy(), false, null, tracker -> {});
+        return safeRemoveItemFromUplink(stack.copy(), false, null, tracker -> {});
     }
 
     /**
@@ -1206,6 +1276,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // 使正面材质/覆盖层与结构状态同步。该值会由 GT 同步到客户端。
         if (aBaseMetaTileEntity.isServerSide()) {
             aBaseMetaTileEntity.setActive(mMachine);
+            // 当 uplink 丢失时重置代理就绪兜底标记，下次连接成功后重新尝试
+            if (uplinkHatch == null) {
+                uplinkProxyReadyAttempted = false;
+            }
             // 逐 tick 投放缓冲队列中的物品
             if (mMachine) {
                 dispenseItems();
@@ -1214,7 +1288,26 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 // 复刻 V1/VM 父类（第 595-603 行）：周期性通知 UplinkHatch 刷新 ME 网络缓存，
                 // 使连接的 ME 网络中的物品/货币数据保持同步。
                 if (uplinkHatch != null && aTick % REFRESH_CACHE_INTERVAL == 0) {
-                    uplinkHatch.setRefreshCache();
+                    safeSetRefreshCache();
+                }
+            }
+            // beta-1 兼容兜底：VM uplink hatch 的 onFirstTick 可能因加载顺序未能正确初始化 AE 代理，
+            // 在检测到已连接但代理未激活时主动触发一次 onReady()。
+            if (uplinkHatch != null && !uplinkProxyReadyAttempted && !uplinkHatch.isActive()) {
+                try {
+                    uplinkHatch.getProxy()
+                        .onReady();
+                    uplinkProxyReadyAttempted = true;
+                    if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
+                        com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+                            "[NekoVMV2] 已触发 uplink hatch AE 代理就绪兜底 at ({}, {}, {})",
+                            aBaseMetaTileEntity.getXCoord(),
+                            aBaseMetaTileEntity.getYCoord(),
+                            aBaseMetaTileEntity.getZCoord());
+                    }
+                } catch (Throwable t) {
+                    uplinkProxyReadyAttempted = true;
+                    com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] uplink hatch AE 代理就绪兜底调用失败", t);
                 }
             }
         }
@@ -1432,7 +1525,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return false;
             // simulate=true 模拟提取，返回未满足的剩余数量；0 表示全部满足
             // 传入 copy 防止 uplink 内部修改影响调用方
-            int remain = uplinkHatch.removeItem(stack.copy(), true, null, tracker -> {});
+            int remain = safeRemoveItemFromUplink(stack.copy(), true, null, tracker -> {});
             return remain == 0;
         }
 
@@ -1440,7 +1533,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         public boolean extractFromME(ItemStack stack) {
             if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return false;
             // simulate=false 实际提取
-            int remain = uplinkHatch.removeItem(stack.copy(), false, null, tracker -> {});
+            int remain = safeRemoveItemFromUplink(stack.copy(), false, null, tracker -> {});
             return remain == 0;
         }
 
@@ -1454,7 +1547,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             // probeSize 取 10 亿（足够覆盖任何合理场景，又远小于 int 上限避免溢出风险）
             final int probeSize = 1_000_000_000;
             coinStack.stackSize = probeSize;
-            int remain = uplinkHatch.removeItem(coinStack, true, null, tracker -> {});
+            int remain = safeRemoveItemFromUplink(coinStack, true, null, tracker -> {});
             return probeSize - remain;
         }
 
@@ -1464,7 +1557,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, amount);
             if (coinStack == null) return false;
             // simulate=false 实际提取指定数量的猫猫币物品
-            int remain = uplinkHatch.removeItem(coinStack, false, null, tracker -> {});
+            int remain = safeRemoveItemFromUplink(coinStack, false, null, tracker -> {});
             return remain == 0;
         }
     }
