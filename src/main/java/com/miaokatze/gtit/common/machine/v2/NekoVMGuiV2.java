@@ -46,6 +46,7 @@ import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.cleanroommc.modularui.widgets.layout.Grid;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
 import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
@@ -56,7 +57,6 @@ import com.miaokatze.gtit.client.gui.NekoMainTabButton;
 import com.miaokatze.gtit.client.gui.NekoMeTransferParticleWidget;
 import com.miaokatze.gtit.client.gui.NekoMusicTrack;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
-import com.miaokatze.gtit.client.gui.NekoPhantomItemSlot;
 import com.miaokatze.gtit.client.gui.NekoSearchBar;
 import com.miaokatze.gtit.client.gui.NekoSortMode;
 import com.miaokatze.gtit.client.gui.NekoSubTabButton;
@@ -607,18 +607,20 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 注册所有同步值（包含 GT5U 标准 + 猫猫机自定义）
         registerSyncValues(syncManager);
 
-        // 客户端：初始化预分配 Widget 和分页控制器
+        // v1.7.17 双端镜像构建：5 个分页控制器双端初始化（PagedWidget.Controller 无客户端依赖，
+        // 服务端创建后不调用 setPage，仅用于 widget 树结构一致性，使 collectSyncValues 双端分配相同 auto_sync ID）
+        // initPreAllocatedWidgets 保守保留 isClient 块内（含客户端 widget 引用初始化）
         if (syncManager.isClient()) {
             initPreAllocatedWidgets();
-            tabController = new PagedWidget.Controller();
-            // v1.7.0 主标签控制器（贸易/签到/抽奖/邮件）
-            mainTabController = new PagedWidget.Controller();
-            // v1.7.6 G1 三页 sub-page 控制器（仅客户端创建；G1 阶段不绑定 PagedWidget，
-            // 标签按钮靠 NekoSubTabButton 防崩守卫兜底，G2 建对应页面后绑定接管）
-            signInPageController = new PagedWidget.Controller();
-            lotteryPageController = new PagedWidget.Controller();
-            mailPageController = new PagedWidget.Controller();
         }
+        tabController = new PagedWidget.Controller();
+        // v1.7.0 主标签控制器（贸易/签到/抽奖/邮件）
+        mainTabController = new PagedWidget.Controller();
+        // v1.7.6 G1 三页 sub-page 控制器（v1.7.17 改为双端创建；G1 阶段不绑定 PagedWidget，
+        // 标签按钮靠 NekoSubTabButton 防崩守卫兜底，G2 建对应页面后绑定接管）
+        signInPageController = new PagedWidget.Controller();
+        lotteryPageController = new PagedWidget.Controller();
+        mailPageController = new PagedWidget.Controller();
 
         // 创建 NekoTradeMainPanel 作为主面板（实现 PanelCallback 回调）
         NekoTradeMainPanel panel = new NekoTradeMainPanel("MTEMultiBlockBase", this, guiData, syncManager);
@@ -653,11 +655,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // （即 v1.7.7/1.7.8 实测「产物无掉落动画、输出槽不可见」的真根因；
         // v1.7.7 将编辑面板从独立 syncedPanel 改为内嵌 editOverlayRoot 后引入该错位，
         // v1.7.8 的 forceSyncOutputSlots 同样按错位 ID 发包，故未命中根因）。
-        // 【v1.7.16 真正修复】v1.7.9 的"重排 panel.child 顺序"无效——BFS 按层级遍历，
+        // 【v1.7.17 根本修复：双端镜像构建】v1.7.9 的"重排 panel.child 顺序"无效——BFS 按层级遍历，
         // editOverlayRoot 内 PhantomItemSlot 在 L3，输出槽因 TransformWidget 包裹在 L5，
-        // 跨层偏移无法通过 child 顺序解决。真正修复：NekoPhantomItemSlot 覆写 isSynced()
-        // 返回 false，使 53 个 PhantomItemSlot 不进 auto_sync，客户端 ISynced widget
-        // 与服务端一致（仅输入槽+输出槽），ID 不再偏移。
+        // 跨层偏移无法通过 child 顺序解决。v1.7.16 用 NekoPhantomItemSlot 覆写 isSynced()=false
+        // 禁用 auto_sync，但导致 syncHandler 不 init → onUpdate setEnabled 崩溃。
+        // v1.7.17 改为双端镜像构建：editOverlayRoot + 8 个 buildXxxEditPanel +
+        // createMainContentPagedWidget 全部双端构建，双端 widget 树一致，auto_sync ID 不偏移，
+        // syncHandler 正常 init。回退 NekoPhantomItemSlot，恢复原版 PhantomItemSlot。
 
         // --- 玩家背包栏（v1.7.5 从贸易列拆出，双端挂 panel）---
         // 双端创建：服务端必须注册背包槽，否则容器缺槽、shift 转移失效（与 VM 原版 createInventoryRow 一致）。
@@ -704,49 +708,45 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // v1.7.7 G2① 编辑面板统一改为 NekoTradeMainPanel 内嵌覆盖层，
         // 不再使用独立 syncedPanel 子窗口，避免窗口坐标系错位/被 NEI 或背包行遮挡。
-        // 【已知限制】内嵌后 PhantomItemSlot 仅存在于客户端 widget 树，其自动同步
-        // （服务端编辑缓冲区 ↔ 客户端 phantom 槽）在服务端无对应 handler，当前不生效；
-        // 编辑面板的字段保存走显式命名 sync value，不受影响。彻底修复需另案将编辑面板
-        // 恢复为独立 syncedPanel 或实现双端镜像构建。
-        // 【v1.7.16 已修复】通过 NekoPhantomItemSlot 覆写 isSynced() 返回 false，
-        // 显式禁用 PhantomItemSlot 的 auto_sync，53 个 phantom 槽不再进入 auto_sync 通道，
-        // 客户端 ISynced widget 集合与服务端一致，syncHandler ID 偏移根因已消除。
-        if (syncManager.isClient()) {
-            editOverlayRoot = new ParentWidget<>();
-            editOverlayRoot.relativeToScreen()
-                .full();
-            editOverlayRoot.setEnabledIf(w -> currentEditOverlay != EditOverlayType.NONE);
+        // 【v1.7.17 根本修复：双端镜像构建】editOverlayRoot 及其 8 个 buildXxxEditPanel
+        // 改为双端构建，双端 widget 树完全一致，collectSyncValues 分配相同 auto_sync ID，
+        // 无偏移，syncHandler 正常 init。彻底解决 v1.7.16 NekoPhantomItemSlot.isSynced()=false
+        // 导致 syncHandler 不 init → onUpdate setEnabled 崩溃的问题，以及 v1.7.15 遗留的
+        // 物品无下落动画、点击偏移、物品放不回物品栏等所有 ID 偏移相关问题。
+        // 8 个 buildXxxEditPanel 内无客户端 API（Grep 全文件确认），双端构建安全；
+        // overlayInterceptor 的 onMousePressed 回调仅在客户端鼠标点击时触发，服务端不调用。
+        editOverlayRoot = new ParentWidget<>();
+        editOverlayRoot.relativeToScreen()
+            .full();
+        editOverlayRoot.setEnabledIf(w -> currentEditOverlay != EditOverlayType.NONE);
 
-            // 全屏透明拦截层：编辑面板打开时吞掉对主内容的点击，点击空白处关闭覆盖层
-            ButtonWidget<?> overlayInterceptor = new ButtonWidget<>().relativeToScreen()
-                .full()
-                .background(IDrawable.EMPTY)
-                .onMousePressed(btn -> {
-                    closeEditOverlay();
-                    return true;
-                });
-            editOverlayRoot.child(overlayInterceptor);
+        // 全屏透明拦截层：编辑面板打开时吞掉对主内容的点击，点击空白处关闭覆盖层
+        ButtonWidget<?> overlayInterceptor = new ButtonWidget<>().relativeToScreen()
+            .full()
+            .background(IDrawable.EMPTY)
+            .onMousePressed(btn -> {
+                closeEditOverlay();
+                return true;
+            });
+        editOverlayRoot.child(overlayInterceptor);
 
-            editOverlayRoot.child(buildTradeEditPanel());
-            editOverlayRoot.child(buildSignInEditPanel());
-            // v1.7.8 任务6：逐日覆盖编辑面板（SIGNIN_DAY 覆盖层）
-            editOverlayRoot.child(buildSignInDayEditPanel());
-            editOverlayRoot.child(buildOnlineTierEditPanel());
-            editOverlayRoot.child(buildLotteryEditPanel());
-            editOverlayRoot.child(buildLotteryPoolEditPanel());
-            editOverlayRoot.child(buildPageEditPanel());
-            editOverlayRoot.child(buildBlessingEditPanel());
-            panel.child(editOverlayRoot);
-        }
+        editOverlayRoot.child(buildTradeEditPanel());
+        editOverlayRoot.child(buildSignInEditPanel());
+        // v1.7.8 任务6：逐日覆盖编辑面板（SIGNIN_DAY 覆盖层）
+        editOverlayRoot.child(buildSignInDayEditPanel());
+        editOverlayRoot.child(buildOnlineTierEditPanel());
+        editOverlayRoot.child(buildLotteryEditPanel());
+        editOverlayRoot.child(buildLotteryPoolEditPanel());
+        editOverlayRoot.child(buildPageEditPanel());
+        editOverlayRoot.child(buildBlessingEditPanel());
+        panel.child(editOverlayRoot);
 
         // v1.7.0 主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
-        // v1.7.5 修复：仅客户端创建——mainTabController/tabController 仅在客户端初始化（上方 isClient 块），
-        // 服务端执行到 .controller(null) 会 NPE，createPanel 中断导致右击无反应。
-        // 4 个页面均无槽位、无 net.minecraft.client 引用，仅客户端创建安全（与 VM 原版一致）。
-        // 注：页内搜索框 TextFieldWidget 为 ISynced，必须排在双端共有槽之后（见上方关键修复注释）。
-        if (syncManager.isClient()) {
-            panel.child(createMainContentPagedWidget(syncManager));
-        }
+        // v1.7.17 双端镜像构建：mainTabController 等控制器已双端初始化（上方），
+        // createMainContentPagedWidget 改为双端构建。4 个页面（createTradeMainColumn/
+        // SignInCalendarGui/LotteryGui/MailGui）均无客户端 API、无 ISynced widget，
+        // 类注释明确声明"双端安全"，双端构建无副作用。
+        panel.child(createMainContentPagedWidget(syncManager));
 
         return panel;
     }
@@ -1638,7 +1638,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .top(20));
         for (int i = 0; i < 16; i++) {
             editPanel.child(
-                new NekoPhantomItemSlot().slot(new ModularSlot(editItemHandler, i))
+                new PhantomItemSlot().slot(new ModularSlot(editItemHandler, i))
                     .left(40 + (i % 8) * 20)
                     .top(18 + (i / 8) * 20));
         }
@@ -1652,7 +1652,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .top(62));
         for (int i = 0; i < 16; i++) {
             editPanel.child(
-                new NekoPhantomItemSlot().slot(new ModularSlot(editItemHandler, 16 + i))
+                new PhantomItemSlot().slot(new ModularSlot(editItemHandler, 16 + i))
                     .left(40 + (i % 8) * 20)
                     .top(60 + (i / 8) * 20));
         }
@@ -2332,8 +2332,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .top(118));
         for (int i = 0; i < 4; i++) {
             final int slotIndex = i;
-            NekoPhantomItemSlot slot = new NekoPhantomItemSlot()
-                .slot(new ModularSlot(editSignInItemHandler, slotIndex));
+            PhantomItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editSignInItemHandler, slotIndex));
             slot.left(labelWidth + slotIndex * 20)
                 .top(114);
             editPanel.child(slot);
@@ -2585,8 +2584,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .top(64));
         for (int i = 0; i < 4; i++) {
             final int slotIndex = i;
-            NekoPhantomItemSlot slot = new NekoPhantomItemSlot()
-                .slot(new ModularSlot(editSignInDayItemHandler, slotIndex));
+            PhantomItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editSignInDayItemHandler, slotIndex));
             slot.left(labelWidth + slotIndex * 20)
                 .top(60);
             editPanel.child(slot);
@@ -2829,7 +2827,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .top(fieldY + 2);
         editPanel.child(itemLabel);
 
-        NekoPhantomItemSlot itemSlot = new NekoPhantomItemSlot().slot(new ModularSlot(editOnlineItemHandler, 0));
+        PhantomItemSlot itemSlot = new PhantomItemSlot().slot(new ModularSlot(editOnlineItemHandler, 0));
         itemSlot.left(labelWidth)
             .top(fieldY - 2);
         editPanel.child(itemSlot);
@@ -3505,7 +3503,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             new TextWidget<>(IKey.str("附件物品:")).left(8)
                 .top(fieldY + 2));
         for (int i = 0; i < BLESSING_ITEM_SLOTS; i++) {
-            NekoPhantomItemSlot slot = new NekoPhantomItemSlot().slot(new ModularSlot(editBlessingItemHandler, i));
+            PhantomItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editBlessingItemHandler, i));
             slot.left(labelWidth + i * 18)
                 .top(fieldY - 2);
             editPanel.child(slot);
@@ -3721,7 +3719,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品:")).left(8)
                 .top(fieldY + 2));
 
-        NekoPhantomItemSlot itemSlot = new NekoPhantomItemSlot().slot(new ModularSlot(editLotteryItemHandler, 0));
+        PhantomItemSlot itemSlot = new PhantomItemSlot().slot(new ModularSlot(editLotteryItemHandler, 0));
         itemSlot.left(labelWidth)
             .top(fieldY - 2);
         itemSlot.tooltipBuilder(t -> {
@@ -4091,7 +4089,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             new TextWidget<>(IKey.str("图标:")).left(8)
                 .top(fieldY + 2));
 
-        NekoPhantomItemSlot iconSlot = new NekoPhantomItemSlot().slot(new ModularSlot(editPoolItemHandler, 0));
+        PhantomItemSlot iconSlot = new PhantomItemSlot().slot(new ModularSlot(editPoolItemHandler, 0));
         iconSlot.left(labelWidth)
             .top(fieldY - 2);
         iconSlot.tooltipBuilder(t -> {
@@ -4108,7 +4106,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .top(fieldY + 2));
 
         for (int i = 0; i < POOL_COST_SLOTS; i++) {
-            NekoPhantomItemSlot costSlot = new NekoPhantomItemSlot().slot(new ModularSlot(editPoolItemHandler, 1 + i));
+            PhantomItemSlot costSlot = new PhantomItemSlot().slot(new ModularSlot(editPoolItemHandler, 1 + i));
             costSlot.left(labelWidth + i * 20)
                 .top(fieldY - 2);
             costSlot.tooltipBuilder(t -> {
@@ -4450,7 +4448,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         editPanel.child(
             new TextWidget<>(IKey.str("图标:")).left(8)
                 .top(fieldY + 2));
-        NekoPhantomItemSlot iconSlot = new NekoPhantomItemSlot().slot(new ModularSlot(editPageItemHandler, 0));
+        PhantomItemSlot iconSlot = new PhantomItemSlot().slot(new ModularSlot(editPageItemHandler, 0));
         iconSlot.left(labelWidth)
             .top(fieldY - 2);
         iconSlot.tooltipBuilder(t -> {
