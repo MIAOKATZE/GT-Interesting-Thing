@@ -233,8 +233,8 @@ public class LotteryConfig {
      * <ul>
      * <li>猫猫币池（neko）：单抽 5 猫猫币，10 格——食物/基础材料为主，含少量稀有，
      * 硬保底 50 抽必出 EPIC 及以上</li>
-     * <li>闪烁猫猫币池（shimmering）：单抽 1 闪烁猫猫币，8 格——更稀有，
-     * 硬保底 30 抽必出 EPIC 及以上（8 格为用户确认口径，v1.7.9 曾误加至 10）</li>
+     * <li>闪烁猫猫币池（shimmering）：单抽 1 闪烁猫猫币，10 格——更稀有，
+     * 硬保底 30 抽必出 EPIC 及以上（v1.7.19 由 8 格扩展至 10 格，新增青金石/钻石块）</li>
      * </ul>
      * 默认条目全部使用原版物品 ID（"minecraft:" 前缀），避免 GT 物品 ID 变动导致默认配置失效；
      * GT 材料条目由目标 4 的可视化编辑添加。
@@ -340,8 +340,9 @@ public class LotteryConfig {
     }
 
     /**
-     * 闪烁猫猫币池：8 格（默认 8 条为用户确认口径；v1.7.9 曾误加 lapis/ender_pearl 补满至 10，
-     * v1.7.10 移除恢复 8 条），单抽 1 闪烁猫猫币，硬保底 30 抽 EPIC
+     * 闪烁猫猫币池：10 格（v1.7.19 由 8 条扩展至 10 条，新增青金石/钻石块；
+     * 历史：v1.7.9 曾误加 lapis/ender_pearl 至 10，v1.7.10 移除恢复 8 条），
+     * 单抽 1 闪烁猫猫币，硬保底 30 抽 EPIC
      */
     private static LotteryPool createDefaultShimmeringPool() {
         PityConfig pity = PityConfig.createDefault();
@@ -357,9 +358,11 @@ public class LotteryConfig {
         // COMMON：金锭/石英（相对闪烁币价值仍属普通）
         entries.add(LotteryEntry.createItemPrize("gold_x", "minecraft:gold_ingot", 0, 2, 4, 60, LotteryRarity.COMMON));
         entries.add(LotteryEntry.createItemPrize("quartz", "minecraft:quartz", 0, 4, 8, 50, LotteryRarity.COMMON));
-        // RARE：钻石/绿宝石/回本货币
+        // RARE：钻石/绿宝石/青金石/回本货币
         entries.add(LotteryEntry.createItemPrize("diamond_x", "minecraft:diamond", 0, 1, 2, 30, LotteryRarity.RARE));
         entries.add(LotteryEntry.createItemPrize("emerald", "minecraft:emerald", 0, 1, 2, 25, LotteryRarity.RARE));
+        // 青金石（dye meta 4 = lapis_lazuli）：附魔/装饰常用材料，补充 RARE 档位
+        entries.add(LotteryEntry.createItemPrize("lapis_lazuli", "minecraft:dye", 4, 4, 8, 22, LotteryRarity.RARE));
         entries.add(
             LotteryEntry.createNekoPrize(
                 "shimmer_back",
@@ -368,10 +371,13 @@ public class LotteryConfig {
                 2,
                 20,
                 LotteryRarity.RARE));
-        // EPIC：钻石组/附魔金苹果
+        // EPIC：钻石组/附魔金苹果/钻石块
         entries.add(LotteryEntry.createItemPrize("diamond_3", "minecraft:diamond", 0, 3, 5, 8, LotteryRarity.EPIC));
         entries
             .add(LotteryEntry.createItemPrize("gap_apple", "minecraft:golden_apple", 1, 1, 1, 6, LotteryRarity.EPIC));
+        // 钻石块：高价值压缩形态，单格出 1 个，补充 EPIC 档位
+        entries.add(
+            LotteryEntry.createItemPrize("diamond_block", "minecraft:diamond_block", 0, 1, 1, 5, LotteryRarity.EPIC));
         // LEGENDARY：下界之星（极低权重）
         entries.add(
             LotteryEntry.createItemPrize("nether_star", "minecraft:nether_star", 0, 1, 1, 2, LotteryRarity.LEGENDARY));

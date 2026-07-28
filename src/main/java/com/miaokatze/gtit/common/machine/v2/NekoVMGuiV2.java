@@ -2197,7 +2197,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .top(24)
             .size(fieldWidth, fieldHeight);
         daysField.setEnabledIf(w -> !"monthly".equals(editSignInMode));
-        editPanel.child(daysField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶，避免被物品槽覆盖）
 
         // ==================== 每月全局模式专属：递增开关 / 编辑目标 / 递增系数 ====================
 
@@ -2268,7 +2268,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .top(60)
             .size(fieldWidth, fieldHeight);
         incField.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(incField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ==================== 公共区：货币 + 4 物品槽（每月模式随子模式分支绑定） ====================
 
@@ -2296,7 +2296,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         currencyField.left(labelWidth)
             .top(78)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(currencyField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // 货币数量
         editPanel.child(
@@ -2325,7 +2325,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         amountField.left(labelWidth)
             .top(96)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(amountField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // 物品奖励（4 槽，PhantomItemSlot 拖入配置；留空 = 无物品奖励）
         editPanel.child(
@@ -2355,6 +2355,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                         return false;
                     }));
         }
+
+        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
+        editPanel.child(daysField);
+        editPanel.child(incField);
+        editPanel.child(currencyField);
+        editPanel.child(amountField);
 
         // ---- 阶梯模式：保存 / 删除 / 取消 / 新增（增删改三件套，照搬在线档位面板） ----
         ButtonWidget<?> saveBtn = new ButtonWidget<>().size(40, 16)
@@ -2561,7 +2567,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         currencyField.left(labelWidth)
             .top(24)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(currencyField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // 货币数量
         editPanel.child(
@@ -2577,7 +2583,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         amountField.left(labelWidth)
             .top(42)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(amountField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // 物品奖励（4 槽，独立缓冲区；留空 = 无物品奖励）
         editPanel.child(
@@ -2607,6 +2613,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                         return false;
                     }));
         }
+
+        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
+        editPanel.child(currencyField);
+        editPanel.child(amountField);
 
         // ---- 保存 / 清除覆盖 / 取消 ----
         editPanel.child(
@@ -2785,7 +2795,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         secondsField.left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(secondsField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // 货币类型
         fieldY += spacing;
@@ -2800,7 +2810,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         currencyField.left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(currencyField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // 货币数量
         fieldY += spacing;
@@ -2819,7 +2829,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         amountField.left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(amountField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // 物品奖励槽（PhantomItemSlot 拖入配置；留空 = 无物品奖励）
         fieldY += spacing;
@@ -2849,6 +2859,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     }
                     return false;
                 }));
+
+        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
+        editPanel.child(secondsField);
+        editPanel.child(currencyField);
+        editPanel.child(amountField);
 
         // 保存 / 删除 / 取消 / 新增按钮
         editPanel.child(
@@ -3402,7 +3417,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         senderField.left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(senderField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 节日名称（仅节日目标可见）----
         fieldY += spacing;
@@ -3418,7 +3433,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
         nameField.setEnabledIf(w -> editBlessingTarget != null && editBlessingTarget.startsWith("festival:"));
-        editPanel.child(nameField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 触发日期 MM-dd（仅节日目标可见）----
         fieldY += spacing;
@@ -3439,7 +3454,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         dateField.tooltipAutoUpdate(true);
         dateField.setEnabledIf(w -> editBlessingTarget != null && editBlessingTarget.startsWith("festival:"));
-        editPanel.child(dateField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 邮件标题 ----
         fieldY += spacing;
@@ -3452,7 +3467,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         titleField.left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(titleField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 邮件正文 ----
         fieldY += spacing;
@@ -3465,7 +3480,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         contentField.left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
-        editPanel.child(contentField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 猫猫币类型/数量 ----
         fieldY += spacing;
@@ -3483,7 +3498,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "留空 = 无猫猫币附件"));
         });
         currencyField.tooltipAutoUpdate(true);
-        editPanel.child(currencyField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
         TextFieldWidget currencyAmountField = new TextFieldWidget()
             .value(new StringValue.Dynamic(() -> String.valueOf(editBlessingCurrencyAmount), val -> {
                 try {
@@ -3496,7 +3511,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .size(48, fieldHeight);
         currencyAmountField.tooltipBuilder(t -> t.addLine(IKey.str("数量（作为附件物品发放）")));
         currencyAmountField.tooltipAutoUpdate(true);
-        editPanel.child(currencyAmountField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 附件物品槽（PhantomItemSlot 拖入配置；留空 = 无物品附件）----
         fieldY += spacing + 2;
@@ -3509,6 +3524,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .top(fieldY - 2);
             editPanel.child(slot);
         }
+
+        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
+        editPanel.child(senderField);
+        editPanel.child(nameField);
+        editPanel.child(dateField);
+        editPanel.child(titleField);
+        editPanel.child(contentField);
+        editPanel.child(currencyField);
+        editPanel.child(currencyAmountField);
 
         // ---- 保存 / 取消按钮 ----
         editPanel.child(
@@ -3712,7 +3736,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "留空 = 物品奖品（需放入物品）"));
         });
         currencyField.tooltipAutoUpdate(true);
-        editPanel.child(currencyField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 物品奖品（PhantomItemSlot 拖入配置，支持 NBT）----
         fieldY += 17;
@@ -3729,6 +3753,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         itemSlot.tooltipAutoUpdate(true);
         editPanel.child(itemSlot);
+
+        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
+        editPanel.child(currencyField);
 
         // 物品槽旁状态提示（随货币 ID 是否填写动态切换）
         editPanel.child(
@@ -4061,7 +4088,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         idField.tooltipAutoUpdate(true);
         // 仅新建模式显示输入框（现有池改走下方只读文本）
         idField.setEnabledIf(w -> editPoolIsNew);
-        editPanel.child(idField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
         // 现有池：只读文本展示 id（与输入框互斥显示）
         editPanel.child(
             new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GRAY + editPoolId)).left(labelWidth)
@@ -4082,7 +4109,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .size(fieldWidth, fieldHeight);
         nameField.tooltipBuilder(t -> t.addLine(IKey.str("卡池显示名称（留空则保持原名）")));
         nameField.tooltipAutoUpdate(true);
-        editPanel.child(nameField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- page 图标（PhantomItemSlot 拖入配置，支持 NBT；空槽 = 回退货币图标）----
         fieldY += 17;
@@ -4119,6 +4146,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             costSlot.tooltipAutoUpdate(true);
             editPanel.child(costSlot);
         }
+
+        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
+        editPanel.child(idField);
+        editPanel.child(nameField);
 
         // ---- 保底启用（点击切换）----
         fieldY += 21; // 消耗槽高 18，多留间距
@@ -4442,7 +4473,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .size(fieldWidth, fieldHeight);
         nameField.tooltipBuilder(t -> t.addLine(IKey.str("标签页显示名称（留空则保持原名）")));
         nameField.tooltipAutoUpdate(true);
-        editPanel.child(nameField);
+        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
 
         // ---- 图标（PhantomItemSlot 拖入配置，支持 NBT；空槽 = 清空图标回退默认）----
         fieldY += 17;
@@ -4458,6 +4489,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         });
         iconSlot.tooltipAutoUpdate(true);
         editPanel.child(iconSlot);
+
+        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
+        editPanel.child(nameField);
 
         // ---- 保存 / 删除 / 取消按钮 ----
         editPanel.child(

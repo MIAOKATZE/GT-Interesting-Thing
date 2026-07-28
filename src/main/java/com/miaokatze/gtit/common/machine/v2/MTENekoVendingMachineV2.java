@@ -1166,6 +1166,28 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         return false;
     }
 
+    // === 维护检查 ===
+
+    /**
+     * 猫猫机不需要维护（无维修工具槽），覆写返回 false。
+     * <p>
+     * 父类 {@link gregtech.api.metatileentity.implementations.MTEMultiBlockBase} 会在
+     * 构造器（第 269 行）和 NBT 加载（第 278、451 行）中调用此方法判断是否需要维护检查；
+     * 返回 false 时基类会调用 {@code fixAllIssues()} 自动设置所有维护字段
+     * (mWrench/mScrewdriver/mSoftMallet/mHardHammer/mSolderingTool/mCrowbar) 为 true，
+     * 使 {@code getRepairStatus()=6=getIdealStatus()}，
+     * 从而 {@code hasProblems=false}，waila 不再显示"存在问题"。
+     * <p>
+     * 同时基类 doTickUpdate 中的维护相关逻辑（如第 658 行早返回、第 1430/1436 行的
+     * 随机维护触发）也会因返回 false 而跳过，符合猫猫机无维护机制的设计。
+     *
+     * @return false 表示本机器不需要维护检查
+     */
+    @Override
+    public boolean shouldCheckMaintenance() {
+        return false;
+    }
+
     // === 生命周期回调 ===
 
     /**
