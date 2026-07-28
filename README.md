@@ -20,9 +20,8 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 ## Neko Vending Machine / 猫猫售货机
 
-<p align="center"><img src="README/neko%20vending%20machine.png" width="384"></p>
-<p align="center"><img src="README/neko%20vending%20machine-1.png" width="384"></p>
-<p align="center"><img src="README/neko%20vending%20machine-2.png" width="384"><br><em>猫猫售货机界面 / Neko Vending Machine GUI</em></p>
+<p align="center"><img src="README/neko%20vending%20machine.png" width="250"></p>
+<p align="center"><img src="README/neko%20vending%20machine-1.png" width="250"><img src="README/neko%20vending%20machine-2.png" width="250"><br><em>猫猫售货机界面 / Neko Vending Machine GUI</em></p>
 
 A custom trading machine built on top of the VendingMachine framework, featuring an independent currency system (Neko Coin), dynamic tabbed GUI, BetterQuesting integration, and BGM. Designed as a progression-gated reward shop where players earn Neko Coins through quests and spend them on loot bags and items.
 
@@ -72,7 +71,7 @@ Three trade types supported:
 
 ### GUI & Tabs / 界面与标签页
 
-<p align="center"><img src="/images/trade_gui.png" width="384"><br><em>交易界面 / Trade GUI</em></p>
+<p align="center"><img src="README/trade.png" width="300"><br><em>交易界面 / Trade GUI</em></p>
 
 - **Dynamic tabs / 动态标签页**: 3 default tabs + unlimited custom tabs (add via command with held item as icon)
 - **Neko Coin display / 猫猫币显示**: Real-time balance display with expandable details
@@ -123,12 +122,11 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
       └── help                                  -- Full help
 ```
 
-**Edit inventory layout / 编辑物品布局**:
+**visual editor / 可视化编辑**:
 
-- Rows 1-2 (slots 9-26): Required items / Neko Coins (auto-detected)
-- Hotbar slots 0-9: Reward items (slot 0 = trade icon, up to 10 reward item types)
-- 背包前两行（槽位 9-26）：需求物品 / 猫猫币（自动识别）
-- 工具栏前 10 格（槽位 0-9）：产物物品（槽位 0 = 交易图标，最多 10 种产物）
+<p align="center"><img src="README/edit1.png" width="250"><img src="README/edit2.png" width="250"></p>
+<p align="center"><img src="README/edit3.png" width="250"><img src="README/edit4.png" width="250"></p>
+
 
 ### Configuration / 配置
 
@@ -157,7 +155,7 @@ If `nekovm_trades.json` does not exist, default trades are generated from `NekoT
 
 ## Daily Sign-In / 每日签到
 
-<p align="center"><img src="/images/signin_gui.png" width="384"><br><em>签到界面 / Sign-In GUI</em></p>
+<p align="center"><img src="README/signin.png" width="384"><br><em>签到界面 / Sign-In GUI</em></p>
 
 A daily reward system that grants players cumulative rewards for logging in each day, with optional online-time tier bonuses.
 
@@ -167,7 +165,7 @@ A daily reward system that grants players cumulative rewards for logging in each
 
 ## Lottery / 抽奖
 
-<p align="center"><img src="/images/lottery_gui.png" width="384"><br><em>抽奖界面 / Lottery GUI</em></p>
+<p align="center"><img src="README/lottery.png" width="384"><br><em>抽奖界面 / Lottery GUI</em></p>
 
 A gacha-style reward pool where players spend Neko Coins or items to draw random rewards.
 
@@ -177,7 +175,7 @@ A gacha-style reward pool where players spend Neko Coins or items to draw random
 
 ## Mail / 邮件
 
-<p align="center"><img src="/images/mail_gui.png" width="384"><br><em>邮件界面 / Mail GUI</em></p>
+<p align="center"><img src="README/mail.png" width="384"><br><em>邮件界面 / Mail GUI</em></p>
 
 An in-game mail system for receiving rewards, announcements, and attachments from server operators or automated events.
 
