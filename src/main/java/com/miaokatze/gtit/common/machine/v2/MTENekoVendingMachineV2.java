@@ -32,7 +32,6 @@ import cpw.mods.fml.relauncher.SideOnly;
 import gregtech.api.interfaces.IIconContainer;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
-import gregtech.api.interfaces.tileentity.ICasingTextureProvider;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEEnhancedMultiBlockBase;
 import gregtech.api.render.ISBRInventoryContext;
@@ -59,7 +58,7 @@ import gregtech.api.util.MultiblockTooltipBuilder;
  */
 @IMetaTileEntity.SkipGenerateDescription
 public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVendingMachineV2>
-    implements ISurvivalConstructable, ICasingTextureProvider {
+    implements ISurvivalConstructable {
 
     /** 结构定义的唯一标识符，用于在 StructureLib 中索引特定的结构片段 */
     private static final String STRUCTURE_PIECE_MAIN = "main";
@@ -845,19 +844,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         world.spawnEntityInWorld(entityItem);
     }
 
-    // === ICasingTextureProvider ===
-
-    /**
-     * 获取外壳材质纹理
-     * <p>
-     * 供仓室等组件获取对应的材质索引。
-     *
-     * @return 侧面材质 FACING_SIDE[0]
-     */
-    @Override
-    public ITexture getCasingTexture() {
-        return FACING_SIDE[0];
-    }
+    // v1.7.18：删除 ICasingTextureProvider（5.09.54.20 专用接口），改用 getTexture() 覆写（5.09.52.594 + 5.09.54.20 通用）
+    // 实现 beta-1（5.09.52.594）和 beta-2（5.09.54.20）双环境兼容
 
     /**
      * 物品栏渲染覆盖

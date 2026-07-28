@@ -57,6 +57,7 @@ import com.miaokatze.gtit.client.gui.NekoMainTabButton;
 import com.miaokatze.gtit.client.gui.NekoMeTransferParticleWidget;
 import com.miaokatze.gtit.client.gui.NekoMusicTrack;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
+import com.miaokatze.gtit.client.gui.NekoPagedWidget;
 import com.miaokatze.gtit.client.gui.NekoSearchBar;
 import com.miaokatze.gtit.client.gui.NekoSortMode;
 import com.miaokatze.gtit.client.gui.NekoSubTabButton;
@@ -5048,7 +5049,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @return 主内容区 PagedWidget
      */
     private IWidget createMainContentPagedWidget(PanelSyncManager syncManager) {
-        PagedWidget<?> mainPaged = new PagedWidget<>().name("nekoV2MainPaged")
+        // v1.7.18：使用 NekoPagedWidget 替代 PagedWidget，覆写 canHover()=false 避免拦截背包栏的 hover 检测
+        NekoPagedWidget<?> mainPaged = new NekoPagedWidget<>().name("nekoV2MainPaged")
             .size(PANEL_WIDTH - 8, PANEL_HEIGHT - 8)
             .controller(mainTabController);
 
