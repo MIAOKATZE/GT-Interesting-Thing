@@ -277,7 +277,8 @@ public class LotteryConfig {
      * ① 清理 costItems 中的 null 条目（物品已卸载导致反序列化失败）；
      * ② 旧字段（nekoCurrencyId × costPerDraw）合成 costItems；
      * ③ 缺省图标回退为对应猫猫币物品；
-     * ④ 截断超过 {@link LotteryPool#MAX_ENTRIES} 的条目（v1.7.7 G3②）。
+     * ④ 截断超过 {@link LotteryPool#MAX_ENTRIES} 的条目（v1.7.7 G3②）；
+     * ⑤ v1.7.20：旧版默认"闪烁猫猫币池"条目数不足 10 时，智能补齐青金石/钻石块。
      */
     private static void migratePool(LotteryPool pool) {
         // 清理反序列化失败（物品不存在）的 null 条目
@@ -285,6 +286,13 @@ public class LotteryConfig {
         costs.removeIf(cost -> cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0);
         // 旧字段合成（costItems 为空时生效）
         pool.synthesizeCostItemsFromLegacy();
+
+        // v1.7.20：对旧版默认闪烁池进行无感升级（仅当条目与旧默认完全一致时才补齐，
+        // 避免覆盖玩家自定义的闪烁池内容）。
+        if ("shimmering".equals(pool.getId()) && pool.getEntries() != null) {
+            upgradeDefaultShimmeringPoolIfNeeded(pool.getEntries());
+        }
+
         // v1.7.7 G3②：加载时截断超限条目，防止越界动画失效
         pool.truncateEntriesIfNeeded();
         // 缺省图标：回退对应猫猫币物品
@@ -294,6 +302,62 @@ public class LotteryConfig {
             if (currencyStack != null) {
                 pool.setIconFromItemStack(currencyStack);
             }
+        }
+    }
+
+    /**
+     * 智能升级旧版默认闪烁猫猫币池
+     * <p>
+     * 若当前条目集合与 v1.7.19 之前的旧默认 8 条完全一致，
+     * 则追加青金石与钻石块两个条目，使池扩展到 10 条。
+     * 只要条目 ID 集合有任何差异（玩家自定义），就不做任何改动。
+     *
+     * @param entries 池条目列表
+     */
+    private static void upgradeDefaultShimmeringPoolIfNeeded(List<LotteryEntry> entries) {
+        // 旧默认 8 条目的 ID（v1.7.19 之前）
+        java.util.Set<String> oldDefaultIds = new java.util.HashSet<>(
+            java.util.Arrays.asList(
+                "gold_x",
+                "quartz",
+                "diamond_x",
+                "emerald",
+                "shimmer_back",
+                "diamond_3",
+                "gap_apple",
+                "nether_star"));
+        // 新默认 10 条目的 ID
+        java.util.Set<String> newDefaultIds = new java.util.HashSet<>(
+            java.util.Arrays.asList(
+                "gold_x",
+                "quartz",
+                "diamond_x",
+                "emerald",
+                "lapis_lazuli",
+                "shimmer_back",
+                "diamond_3",
+                "gap_apple",
+                "diamond_block",
+                "nether_star"));
+
+        // 当前条目 ID 集合
+        java.util.Set<String> currentIds = new java.util.HashSet<>();
+        for (LotteryEntry entry : entries) {
+            if (entry == null) continue;
+            currentIds.add(entry.getId());
+        }
+
+        // 仅当当前条目与旧默认 8 条完全一致，且尚未包含新条目时，才进行升级
+        if (currentIds.equals(oldDefaultIds) && !currentIds.contains("lapis_lazuli")
+            && !currentIds.contains("diamond_block")) {
+            entries.add(LotteryEntry.createItemPrize("lapis_lazuli", "minecraft:dye", 4, 4, 8, 22, LotteryRarity.RARE));
+            entries.add(
+                LotteryEntry
+                    .createItemPrize("diamond_block", "minecraft:diamond_block", 0, 1, 1, 5, LotteryRarity.EPIC));
+            GTInterestingThing.LOG.info("闪烁猫猫币池已由旧版默认 8 条自动升级到 10 条（新增青金石/钻石块）");
+        } else if (!currentIds.equals(newDefaultIds) && !currentIds.equals(oldDefaultIds)) {
+            // 既不是新默认也不是旧默认：玩家自定义池，不做任何改动
+            GTInterestingThing.LOG.debug("闪烁猫猫币池为玩家自定义配置，跳过默认条目升级");
         }
     }
 

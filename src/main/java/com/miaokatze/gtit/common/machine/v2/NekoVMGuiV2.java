@@ -740,7 +740,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         editOverlayRoot.child(buildLotteryPoolEditPanel());
         editOverlayRoot.child(buildPageEditPanel());
         editOverlayRoot.child(buildBlessingEditPanel());
-        panel.child(editOverlayRoot);
 
         // v1.7.0 主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
         // v1.7.17 双端镜像构建：mainTabController 等控制器已双端初始化（上方），
@@ -748,6 +747,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // SignInCalendarGui/LotteryGui/MailGui）均无客户端 API、无 ISynced widget，
         // 类注释明确声明"双端安全"，双端构建无副作用。
         panel.child(createMainContentPagedWidget(syncManager));
+
+        // v1.7.20 修复：editOverlayRoot 必须在主内容 PagedWidget 之后添加。
+        // ModularUI2 渲染顺序由 children 列表决定，后添加的 widget 在上层。
+        // 若 editOverlayRoot 在主内容之前添加，编辑面板会被主内容覆盖，
+        // 导致配方编辑界面低于各类按钮、抽卡等主内容控件。
+        panel.child(editOverlayRoot);
 
         return panel;
     }
