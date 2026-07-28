@@ -5431,25 +5431,66 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 final ItemSlot itemSlot = new ItemSlot().slot(slot);
                 // 自动导入猫猫币：识别到猫猫币后放入玩家钱包并立即同步客户端
                 slot.changeListener((newItem, onlyAmountChanged, client, init) -> {
-                    if (init || newItem == null) return;
+                    // [NekoInput] 诊断日志：lambda 入口，输出关键参数与线程信息
+                    System.out.println(
+                        "[NekoInput] changeListener 入口: slotIdx=" + index
+                            + " thread="
+                            + Thread.currentThread()
+                                .getName()
+                            + " client="
+                            + client
+                            + " init="
+                            + init
+                            + " onlyAmountChanged="
+                            + onlyAmountChanged
+                            + " newItem="
+                            + (newItem == null ? "null" : newItem.getDisplayName())
+                            + " stackSize="
+                            + (newItem == null ? 0 : newItem.stackSize));
+                    if (init || newItem == null) {
+                        System.out.println("[NekoInput] 提前返回: init=" + init + " newItemNull=" + (newItem == null));
+                        return;
+                    }
                     String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(newItem);
-                    if (currencyId == null) return;
+                    if (currencyId == null) {
+                        System.out.println("[NekoInput] 非猫猫币，跳过: slotIdx=" + index);
+                        return;
+                    }
+                    System.out.println("[NekoInput] 识别猫猫币: slotIdx=" + index + " currencyId=" + currencyId);
                     // 客户端：立即视觉清槽，真实数据以服务端同步为准
                     if (client) {
+                        System.out.println("[NekoInput] 客户端分支: 清槽前 slotIdx=" + index);
                         slot.putStack(null);
+                        System.out.println("[NekoInput] 客户端分支: 清槽后 slotIdx=" + index);
                         return;
                     }
                     UUID playerId = getPlayerId();
-                    if (playerId == null) return;
+                    if (playerId == null) {
+                        System.out.println("[NekoInput] 服务端分支: playerId 为 null, 跳过");
+                        return;
+                    }
                     NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-                    if (wallet == null) return;
+                    if (wallet == null) {
+                        System.out.println("[NekoInput] 服务端分支: wallet 为 null, 跳过");
+                        return;
+                    }
                     // 先入账并持久化，再清槽，避免异常导致丢币
                     wallet.addCount(currencyId, newItem.stackSize);
+                    int newCount = wallet.getCount(currencyId);
+                    System.out.println(
+                        "[NekoInput] 服务端分支: addCount 完成 currencyId=" + currencyId
+                            + " added="
+                            + newItem.stackSize
+                            + " newCount="
+                            + newCount);
                     NekoWalletManager.INSTANCE.saveWallet(playerId);
+                    System.out.println("[NekoInput] 服务端分支: 清槽前 slotIdx=" + index);
                     slot.putStack(null);
+                    System.out.println("[NekoInput] 服务端分支: 清槽后 slotIdx=" + index);
                     // 强制同步槽位到客户端，使玩家立即看到槽位清空
                     itemSlot.getSyncHandler()
                         .forceSyncItem();
+                    System.out.println("[NekoInput] 服务端分支: forceSyncItem 已调用 slotIdx=" + index);
                     // 强制刷新对应货币余额同步值，使余额显示立即更新
                     IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
                     if (coinSync != null) {
@@ -5900,18 +5941,27 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param playerId 玩家 UUID
      */
     private void doNekoImportCoins(UUID playerId) {
+        // [NekoImportCoins] 诊断日志：方法入口
+        System.out.println(
+            "[NekoImportCoins] 方法入口: playerId=" + playerId
+                + " thread="
+                + Thread.currentThread()
+                    .getName());
         // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
         if (isClient()) {
+            System.out.println("[NekoImportCoins] 客户端分支，提前返回");
             nekoImportCoins = false;
             return;
         }
         try {
             if (playerId == null) {
+                System.out.println("[NekoImportCoins] playerId 为 null, 提前返回");
                 nekoImportCoins = false;
                 return;
             }
             NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
             if (wallet == null) {
+                System.out.println("[NekoImportCoins] wallet 为 null, 提前返回");
                 nekoImportCoins = false;
                 return;
             }
@@ -5919,20 +5969,43 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             int totalImported = 0;
             for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
                 ItemStack stack = multiblock.inputItems.getStackInSlot(i);
-                if (stack == null) continue;
+                if (stack == null) {
+                    System.out.println("[NekoImportCoins] slotIdx=" + i + " stack=null, 跳过");
+                    continue;
+                }
                 String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(stack);
+                System.out.println(
+                    "[NekoImportCoins] slotIdx=" + i
+                        + " stack="
+                        + stack.getDisplayName()
+                        + " stackSize="
+                        + stack.stackSize
+                        + " currencyId="
+                        + currencyId);
                 if (currencyId != null) {
                     wallet.addCount(currencyId, stack.stackSize);
+                    int newCount = wallet.getCount(currencyId);
+                    System.out.println(
+                        "[NekoImportCoins] addCount 完成: slotIdx=" + i
+                            + " currencyId="
+                            + currencyId
+                            + " added="
+                            + stack.stackSize
+                            + " newCount="
+                            + newCount);
                     totalImported += stack.stackSize;
                     multiblock.inputItems.setStackInSlot(i, null);
+                    System.out.println("[NekoImportCoins] setStackInSlot(null) 完成: slotIdx=" + i);
                 }
             }
 
             if (totalImported > 0) {
                 NekoWalletManager.INSTANCE.saveWallet(playerId);
                 tradeResultMessage = "成功导入 " + totalImported + " 个猫猫币";
+                System.out.println("[NekoImportCoins] 总计导入: totalImported=" + totalImported);
             } else {
                 tradeResultMessage = "输入槽中未找到猫猫币";
+                System.out.println("[NekoImportCoins] 总计导入: totalImported=0（未找到猫猫币）");
             }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[NekoVMV2] doNekoImportCoins 异常!", t);
@@ -6024,10 +6097,21 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 确保客户端立即看到最新槽位状态。
      */
     private void forceSyncInputSlots() {
-        for (ItemSlot slot : inputSlotRefs) {
-            if (slot != null && slot.getSyncHandler() != null) {
+        // [NekoForceSync] 诊断日志：方法入口
+        System.out.println(
+            "[NekoForceSync] 方法入口: inputSlotRefs.size()=" + inputSlotRefs.size()
+                + " thread="
+                + Thread.currentThread()
+                    .getName());
+        for (int i = 0; i < inputSlotRefs.size(); i++) {
+            ItemSlot slot = inputSlotRefs.get(i);
+            boolean hasSyncHandler = (slot != null && slot.getSyncHandler() != null);
+            System.out.println(
+                "[NekoForceSync] slotIdx=" + i + " slotNull=" + (slot == null) + " hasSyncHandler=" + hasSyncHandler);
+            if (hasSyncHandler) {
                 slot.getSyncHandler()
                     .forceSyncItem();
+                System.out.println("[NekoForceSync] forceSyncItem 已调用: slotIdx=" + i);
             }
         }
     }

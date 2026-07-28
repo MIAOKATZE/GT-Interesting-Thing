@@ -22,6 +22,9 @@ public class NekoItemSlotWithDepth extends ItemSlot {
     /** Z 轴深度偏移量（正值向屏幕外，负值向屏幕内） */
     private final int depth;
 
+    /** v1.7.15 诊断日志：上次 [NekoDraw] 日志输出时间戳（限频 1000ms） */
+    private long lastDrawLogTime = 0;
+
     /**
      * 构造一个带深度偏移的物品槽
      * <p>
@@ -45,6 +48,22 @@ public class NekoItemSlotWithDepth extends ItemSlot {
      */
     @Override
     public void draw(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
+        // v1.7.15 诊断日志：限频 1000ms，仅 hasStack=true 时输出，确认 draw 调用和 slot 状态
+        // depth 字段在此类中作为槽位索引使用（见类注释：槽位的 depth 值等于其索引）
+        boolean hasStack = getSlot() != null && getSlot().getHasStack();
+        if (hasStack) {
+            long now = System.currentTimeMillis();
+            if (now - lastDrawLogTime > 1000) {
+                lastDrawLogTime = now;
+                System.out.println(
+                    "[NekoDraw] slot=" + depth
+                        + " hasStack="
+                        + hasStack
+                        + " thread="
+                        + Thread.currentThread()
+                            .getName());
+            }
+        }
         // 向 Z 轴正方向偏移，产生深度效果
         GL11.glTranslatef(0f, 0f, depth);
         super.draw(context, widgetTheme);
