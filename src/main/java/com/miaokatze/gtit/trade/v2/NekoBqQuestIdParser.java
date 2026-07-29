@@ -11,6 +11,7 @@ import java.util.UUID;
  * <li>high:low 格式（如 "123:456"）</li>
  * <li>UUID 格式（如 "550e8400-e29b-41d4-a716-446655440000"）</li>
  * <li>Base64 格式（16字节，如 "AAAAAAAAAAAAAAAAAAAADw=="）</li>
+ * <li>URL-safe Base64 格式（16字节，可无 padding，如 "AAAAAAAAAAAAAAAAAAAAAA"）</li>
  * </ul>
  * 统一输出为 UUID，供 BQ API 使用。
  */
@@ -48,12 +49,37 @@ public class NekoBqQuestIdParser {
 
             // 格式2：标准 UUID 格式（如 "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"）
             if (input.contains("-")) {
-                return UUID.fromString(input);
+                try {
+                    return UUID.fromString(input);
+                } catch (IllegalArgumentException e) {
+                    // 含 '-' 但不是合法 UUID，继续尝试 URL-safe Base64 解码
+                }
             }
 
-            // 格式3：Base64 格式（16字节）
-            byte[] bytes = Base64.getDecoder()
-                .decode(input);
+            // 格式3：Base64 格式（16字节），支持标准 Base64 与 URL-safe Base64（可无 padding）
+            String base64 = input;
+            int padding = (4 - base64.length() % 4) % 4;
+            if (padding > 0) {
+                StringBuilder sb = new StringBuilder(base64);
+                for (int i = 0; i < padding; i++) {
+                    sb.append('=');
+                }
+                base64 = sb.toString();
+            }
+
+            byte[] bytes;
+            if (base64.contains("-") || base64.contains("_")) {
+                bytes = Base64.getUrlDecoder()
+                    .decode(base64);
+            } else {
+                try {
+                    bytes = Base64.getDecoder()
+                        .decode(base64);
+                } catch (IllegalArgumentException e) {
+                    bytes = Base64.getUrlDecoder()
+                        .decode(base64);
+                }
+            }
             if (bytes.length == 16) {
                 long msb = 0;
                 long lsb = 0;

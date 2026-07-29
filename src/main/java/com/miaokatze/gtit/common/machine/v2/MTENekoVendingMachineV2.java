@@ -1156,7 +1156,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * 处理 ME 传输队列
      * <p>
      * 遍历队列，将超过 {@link #ME_TRANSFER_DELAY_MS}（3 秒）的条目通过
-     * {@code uplinkHatch.injectItems} 注入 ME 网络。
+     * {@code appeng.util.Platform.poweredInsert} 直接注入 ME 网络。
+     * <p>
+     * 若注入未完全成功（返回 remainder），将槽位更新为剩余物品并重置延迟，稍后重试。
      * <p>
      * 如果 uplink 已断开（uplinkHatch == null），将队列中所有物品回退到 outputBuffer，
      * 由本地出货槽路径投放，防止物品丢失。
@@ -1187,25 +1189,27 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     if (slotStack != null && slotStack.isItemEqual(entry.stack)
                         && ItemStack.areItemStackTagsEqual(slotStack, entry.stack)) {
                         // 物品仍在槽中，先检查 ME 网络是否能接收
-                        if (canUplinkAcceptItems(entry.stack)) {
-                            boolean success = injectItemToUplink(entry.stack);
-                            if (success) {
-                                // 注入成功，清空对应出货槽
+                        if (canUplinkAcceptItems(slotStack)) {
+                            // v1.7.33: 直接注入槽内实际物品，根据 remainder 决定是否清空或保留剩余
+                            appeng.api.storage.data.IAEItemStack remainder = injectItemToUplink(slotStack);
+                            if (remainder == null || remainder.getStackSize() <= 0) {
+                                // 全部注入成功，清空对应出货槽
                                 outputItems.setStackInSlot(entry.slotIndex, null);
                             } else {
-                                // 注入意外失败，延迟后重试
+                                // 注入未完全成功，保留剩余并重试
+                                outputItems.setStackInSlot(entry.slotIndex, remainder.getItemStack());
                                 entry.creationTimeMs = now;
                                 break;
                             }
                         } else {
-                            // ME 网络当前不能接收（无容器/无空间），保留在出货槽并延迟重试
+                            // ME 网络当前不能接收（无能量/无空间），保留在出货槽并延迟重试
                             entry.creationTimeMs = now;
                             break;
                         }
                     }
                     // 槽位为空或物品不匹配：玩家已取走，跳过注入
                 } else {
-                    // slotIndex == -1（旧存档兼容或无空槽回退）：直接注入
+                    // slotIndex == -1（旧存档兼容或无空槽回退）：直接注入，无法保留剩余
                     injectItemToUplink(entry.stack);
                 }
                 it.remove();
@@ -1222,9 +1226,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 检查 uplink 连接的 ME 网络当前能否接受指定物品栈
      * <p>
-     * 使用 AE2 的 simulate 模式向网络存储注入，若返回余量为空或数量为 0，
-     * 则认为网络可以接收全部物品。任何异常都按"不能接收"处理，避免 uplink
-     * 未就绪或网络不可用时崩溃。
+     * 使用 {@code appeng.util.Platform.poweredInsert} 的 simulate 模式直接注入网络存储，
+     * 同时验证空间与能量。任何异常都按"不能接收"处理，避免 uplink 未就绪或网络不可用时崩溃。
      *
      * @param stack 待检查的物品栈
      * @return true 表示 ME 网络可以接收该物品栈
@@ -1232,16 +1235,19 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     private boolean canUplinkAcceptItems(ItemStack stack) {
         if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return false;
         try {
+            appeng.api.networking.energy.IEnergySource energy = uplinkHatch.getProxy()
+                .getEnergy();
             appeng.api.networking.storage.IStorageGrid storage = uplinkHatch.getProxy()
                 .getStorage();
             if (storage == null) return false;
             appeng.api.storage.data.IAEItemStack aeStack = appeng.util.item.AEItemStack.create(stack);
             if (aeStack == null) return false;
-            appeng.api.storage.data.IAEItemStack remainder = storage.getItemInventory()
-                .injectItems(
-                    aeStack,
-                    appeng.api.config.Actionable.SIMULATE,
-                    new appeng.api.networking.security.MachineSource(uplinkHatch));
+            appeng.api.storage.data.IAEItemStack remainder = appeng.util.Platform.poweredInsert(
+                energy,
+                storage.getItemInventory(),
+                aeStack,
+                new appeng.api.networking.security.MachineSource(uplinkHatch),
+                appeng.api.config.Actionable.SIMULATE);
             return remainder == null || remainder.getStackSize() <= 0;
         } catch (Throwable t) {
             com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] canUplinkAcceptItems 检查失败，按不能接收处理", t);
@@ -1250,33 +1256,41 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
-     * 将物品栈注入 uplink 的 ME 网络
+     * 将物品栈直接注入 uplink 的 ME 网络
      * <p>
-     * 使用 {@code uplinkHatch.injectItems}，物品先进入 uplink 的 pendingItemInject 缓冲，
-     * 由 uplink 的 onPostTick 每 40 tick 实际插入 ME 网络。
+     * 使用 {@code appeng.util.Platform.poweredInsert} 的 modulate 模式直接注入网络存储，
+     * 绕过 VendingMachine uplink hatch 的 pendingItemInject 缓冲（该缓冲会忽略 damage/meta
+     * 错误合并同 Item 类的不同物品）。
      * <p>
-     * v1.6.23: 返回 boolean 表示注入是否成功。失败时不再回退到 outputBuffer
-     * （物品已在出货槽中，玩家可自行取走）。
+     * 若获取能量/存储失败或发生异常，返回原始 stack 的 AEItemStack，让上层保留物品并重试。
      *
      * @param stack 待注入的物品栈
-     * @return true 表示注入成功，false 表示失败（uplink 为空或异常）
+     * @return 未注入完的剩余 AEItemStack；null 或 stackSize<=0 表示全部注入成功
      */
-    private boolean injectItemToUplink(ItemStack stack) {
-        if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return false;
-        try {
-            // 转换为 IAEItemStack 列表，符合 uplinkHatch.injectItems 的参数要求
-            java.util.List<appeng.api.storage.data.IAEItemStack> aeStacks = new java.util.ArrayList<>();
-            appeng.api.storage.data.IAEItemStack aeStack = appeng.util.item.AEItemStack.create(stack);
-            if (aeStack != null) {
-                aeStacks.add(aeStack);
-                uplinkHatch.injectItems(aeStacks);
-                return true;
-            }
-        } catch (Throwable t) {
-            // v1.6.23: 注入失败时物品保留在出货槽中，玩家可自行取走
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] injectItemToUplink 失败，物品保留在出货槽中", t);
+    private appeng.api.storage.data.IAEItemStack injectItemToUplink(ItemStack stack) {
+        if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return null;
+        appeng.api.storage.data.IAEItemStack aeStack = appeng.util.item.AEItemStack.create(stack);
+        if (aeStack == null) {
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] injectItemToUplink 无法将物品转换为 AEItemStack");
+            return null;
         }
-        return false;
+        try {
+            appeng.api.networking.energy.IEnergySource energy = uplinkHatch.getProxy()
+                .getEnergy();
+            appeng.api.networking.storage.IStorageGrid storage = uplinkHatch.getProxy()
+                .getStorage();
+            if (storage == null) return aeStack;
+            return appeng.util.Platform.poweredInsert(
+                energy,
+                storage.getItemInventory(),
+                aeStack,
+                new appeng.api.networking.security.MachineSource(uplinkHatch),
+                appeng.api.config.Actionable.MODULATE);
+        } catch (Throwable t) {
+            // v1.7.33: 注入失败时返回原始 AEItemStack，物品保留在出货槽中稍后重试
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] injectItemToUplink 失败，物品保留在出货槽中", t);
+            return aeStack;
+        }
     }
 
     // === 维护检查 ===
