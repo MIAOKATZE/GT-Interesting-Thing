@@ -19,7 +19,6 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
 
 import com.cleanroommc.modularui.api.IPanelHandler;
-import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
@@ -51,6 +50,7 @@ import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
 import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDisplayType;
+import com.miaokatze.gtit.client.gui.NekoDraggableEditPanel;
 import com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.client.gui.NekoMainTabButton;
@@ -697,19 +697,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .full();
         editOverlayRoot.setEnabledIf(w -> currentEditOverlay != EditOverlayType.NONE);
 
-        // 全屏透明拦截层：编辑面板打开时吞掉对主内容的点击，点击空白处关闭覆盖层
-        ButtonWidget<?> overlayInterceptor = new ButtonWidget<>().relativeToScreen()
-            .full()
-            .background(IDrawable.EMPTY)
-            // v1.7.21 修复：禁用主题背景和悬停主题背景，防止鼠标离开编辑面板时
-            // 全屏拦截层被 hover 触发，渲染出巨大的主题背景块。
-            .disableThemeBackground(true)
-            .disableHoverThemeBackground(true)
-            .onMousePressed(btn -> {
-                closeEditOverlay();
-                return true;
-            });
-        editOverlayRoot.child(overlayInterceptor);
+        // v1.7.27 修复：移除全屏透明拦截层。原 overlayInterceptor 会在点击编辑器外部
+        // 任意位置时调用 closeEditOverlay() 并消费事件，导致编辑器意外关闭，并拦截
+        // 背包栏/NEI 的鼠标交互。现在仅 Esc、E、保存/取消按钮可关闭编辑器。
 
         editOverlayRoot.child(buildTradeEditPanel());
         editOverlayRoot.child(buildSignInEditPanel());
@@ -1475,11 +1465,22 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     /**
-     * 关闭当前编辑覆盖层（v1.7.7 G2①）
+     * 检查当前是否有编辑覆盖层处于打开状态（v1.7.27）
+     *
+     * @return true 表示任意编辑器面板正在显示
+     */
+    @Override
+    public boolean isEditOverlayOpen() {
+        return this.currentEditOverlay != EditOverlayType.NONE;
+    }
+
+    /**
+     * 关闭当前编辑覆盖层（v1.7.7 G2①，v1.7.27 提升为 public 并加入 PanelCallback）
      * <p>
      * 关闭后恢复主内容交互，并清空交易编辑面板的客户端残留状态。
      */
-    private void closeEditOverlay() {
+    @Override
+    public void closeEditOverlay() {
         EditOverlayType previous = this.currentEditOverlay;
         this.currentEditOverlay = EditOverlayType.NONE;
         if (previous == EditOverlayType.TRADE) {
@@ -1599,8 +1600,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildTradeEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildTradeEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(250, 190);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
@@ -2136,8 +2137,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildSignInEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildSignInEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(200, 180);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
@@ -2505,8 +2506,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildSignInDayEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildSignInDayEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(200, 132);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
@@ -2708,8 +2709,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildOnlineTierEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildOnlineTierEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(220, 150);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
@@ -3028,8 +3029,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildBlessingEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildBlessingEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(210, 205);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
@@ -3385,8 +3386,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildLotteryEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildLotteryEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(200, 160);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
@@ -3734,8 +3735,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildLotteryPoolEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildLotteryPoolEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(210, 205);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
@@ -4113,8 +4114,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private ParentWidget<?> buildPageEditPanel() {
-        ParentWidget<?> editPanel = new ParentWidget<>();
+    private NekoDraggableEditPanel buildPageEditPanel() {
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
         editPanel.size(210, 130);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);

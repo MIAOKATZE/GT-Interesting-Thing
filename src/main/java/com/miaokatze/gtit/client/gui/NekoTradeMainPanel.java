@@ -15,7 +15,9 @@ import org.lwjgl.input.Keyboard;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.ModularScreen;
+import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
@@ -204,6 +206,20 @@ public class NekoTradeMainPanel extends ModularPanel {
          * {@code NetResetVMUser.sendReset(base)}。
          */
         void onDispose();
+
+        /**
+         * 检查是否有编辑覆盖层处于打开状态（v1.7.27）
+         *
+         * @return true 表示任意编辑器面板正在显示
+         */
+        boolean isEditOverlayOpen();
+
+        /**
+         * 关闭当前编辑覆盖层（v1.7.27）
+         * <p>
+         * 由主面板在 Esc/E 键按下时调用，统一处理编辑器关闭逻辑。
+         */
+        void closeEditOverlay();
     }
 
     // ==================== 字段 ====================
@@ -277,6 +293,19 @@ public class NekoTradeMainPanel extends ModularPanel {
      */
     @Override
     public boolean onKeyPressed(char typedChar, int keyCode) {
+        // v1.7.27：编辑覆盖层打开时，Esc 无条件关闭，E 在无文本框聚焦时关闭。
+        // 放在最前面，确保编辑器优先消费这两个按键，避免同时触发 GUI 关闭或搜索。
+        if (callback.isEditOverlayOpen()) {
+            if (keyCode == Keyboard.KEY_ESCAPE) {
+                callback.closeEditOverlay();
+                return true;
+            }
+            if (keyCode == Keyboard.KEY_E && !isTextFieldFocused()) {
+                callback.closeEditOverlay();
+                return true;
+            }
+        }
+
         // 搜索栏聚焦时拦截可打印字符，避免影响 Shift/Ctrl 状态追踪
         if (callback.isSearchBarFocused() && typedChar >= 32 && typedChar != 127) {
             return true;
@@ -290,6 +319,22 @@ public class NekoTradeMainPanel extends ModularPanel {
             ctrlHeld = true;
         }
         return super.onKeyPressed(typedChar, keyCode);
+    }
+
+    /**
+     * 检查当前是否有文本输入框处于聚焦状态（v1.7.27）
+     * <p>
+     * 用于判断按 E 键时是否应该关闭编辑器；若玩家正在输入框中输入，
+     * 则不应响应 E 键，避免无法输入字母 e。
+     *
+     * @return true 表示有文本框聚焦
+     */
+    private boolean isTextFieldFocused() {
+        if (callback.isSearchBarFocused()) {
+            return true;
+        }
+        LocatedWidget focused = getContext().getFocusedWidget();
+        return focused != null && focused.getElement() instanceof TextFieldWidget;
     }
 
     /**
