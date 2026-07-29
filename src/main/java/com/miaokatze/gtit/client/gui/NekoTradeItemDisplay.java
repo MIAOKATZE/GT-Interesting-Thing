@@ -45,6 +45,9 @@ public class NekoTradeItemDisplay {
     /** 交易组 UUID */
     private final UUID groupId;
 
+    /** 交易组 orderId（用于 SMART 排序，值越小越靠前） */
+    private final int orderId;
+
     /** 显示物品（用于 GUI 主图标，为 null 时取 outputs 首项） */
     private NekoBigItemStack displayItem;
 
@@ -109,6 +112,7 @@ public class NekoTradeItemDisplay {
      *
      * @param tradeIndex        交易在交易组内的索引
      * @param groupId           交易组 UUID
+     * @param orderId           交易组 orderId
      * @param displayItem       显示物品（可为 null）
      * @param outputs           产物列表
      * @param inputs            输入物品列表
@@ -119,11 +123,12 @@ public class NekoTradeItemDisplay {
      * @param tradeable         是否可交易
      * @param favourite         是否已收藏
      */
-    public NekoTradeItemDisplay(int tradeIndex, UUID groupId, NekoBigItemStack displayItem,
+    public NekoTradeItemDisplay(int tradeIndex, UUID groupId, int orderId, NekoBigItemStack displayItem,
         List<NekoBigItemStack> outputs, List<NekoBigItemStack> inputs, String currencyId, long cost, boolean bqLocked,
         long cooldownRemaining, boolean tradeable, boolean favourite) {
         this.tradeIndex = tradeIndex;
         this.groupId = groupId;
+        this.orderId = orderId;
         this.displayItem = displayItem;
         this.outputs = outputs != null ? outputs : new ArrayList<>();
         this.inputs = inputs != null ? inputs : new ArrayList<>();
@@ -172,13 +177,15 @@ public class NekoTradeItemDisplay {
         String currencyId = trade.getCurrencyId();
         long cost = trade.getCurrencyCost();
 
-        // 交易组 UUID
+        // 交易组 UUID 与 orderId
         UUID groupId = group.getId();
+        int orderId = group.getOrderId();
 
         // 初始状态：默认可交易，无锁定，无冷却，未收藏
         return new NekoTradeItemDisplay(
             tradeIndex,
             groupId,
+            orderId,
             displayItem,
             outputs,
             inputs,
@@ -311,6 +318,10 @@ public class NekoTradeItemDisplay {
 
     public UUID getGroupId() {
         return groupId;
+    }
+
+    public int getOrderId() {
+        return orderId;
     }
 
     public NekoBigItemStack getDisplayItem() {

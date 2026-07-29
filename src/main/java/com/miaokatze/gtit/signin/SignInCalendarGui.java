@@ -484,15 +484,18 @@ public class SignInCalendarGui {
         // 奖励读客户端缓存（服务端同步快照优先）
         boolean overridden = SignInClientData.hasDayOverride(date);
         SignInReward reward = SignInClientData.getEffectiveDayReward(date);
+        // v1.7.29 统一文案为「奖励：」，覆盖/默认状态改用颜色区分
         if (overridden) {
-            t.addLine(IKey.str(EnumChatFormatting.AQUA + "覆盖奖励：" + buildRewardText(reward)));
+            t.addLine(IKey.str(EnumChatFormatting.AQUA + "奖励：" + buildRewardText(reward)));
         } else {
-            t.addLine(IKey.str(EnumChatFormatting.GRAY + "默认奖励：" + buildRewardText(reward)));
+            t.addLine(IKey.str(EnumChatFormatting.GRAY + "奖励：" + buildRewardText(reward)));
             // 递增提示：仅默认奖励参与递增（覆盖天不递增）
             if (SignInClientData.isIncrementEnabled()) {
                 t.addLine(IKey.str(EnumChatFormatting.DARK_GRAY + "（货币量随连续天数递增）"));
             }
         }
+        // v1.7.29 物品奖励逐行列出明细
+        addRewardItemLines(t, reward);
         if (editCallback != null && editCallback.isEditMode()) {
             t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此日奖励"));
         }

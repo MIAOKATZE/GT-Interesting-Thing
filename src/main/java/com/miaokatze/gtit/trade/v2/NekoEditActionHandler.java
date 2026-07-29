@@ -2,6 +2,7 @@ package com.miaokatze.gtit.trade.v2;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
@@ -140,6 +141,22 @@ public class NekoEditActionHandler {
                 return;
             }
 
+            // 解析输入/输出物品列表（用于保存与诊断日志）
+            List<NekoTradeEntry.ItemEntry> fromItems = new ArrayList<>();
+            List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();
+            if (json.has("fromItems")) {
+                fromItems = parseItemEntries(json.getAsJsonArray("fromItems"));
+            }
+            if (json.has("toItems")) {
+                toItems = parseItemEntries(json.getAsJsonArray("toItems"));
+            }
+
+            GTInterestingThing.LOG.info(
+                "[NekoEdit] 服务端保存交易: group={}, fromItems={}, toItems={}",
+                groupIdStr,
+                fromItems.size(),
+                toItems.size());
+
             // 更新基础字段
             if (json.has("tabId")) targetEntry.setTabId(
                 json.get("tabId")
@@ -166,13 +183,11 @@ public class NekoEditActionHandler {
 
             // 更新输入物品列表（含猫猫币条目=货币需求）
             if (json.has("fromItems")) {
-                List<NekoTradeEntry.ItemEntry> fromItems = parseItemEntries(json.getAsJsonArray("fromItems"));
                 targetEntry.setFromItems(fromItems);
             }
 
             // 更新输出物品列表（含猫猫币条目=产出入钱包）
             if (json.has("toItems")) {
-                List<NekoTradeEntry.ItemEntry> toItems = parseItemEntries(json.getAsJsonArray("toItems"));
                 targetEntry.setToItems(toItems);
             }
 
@@ -181,6 +196,10 @@ public class NekoEditActionHandler {
 
             // 热重载交易注册表
             NekoTradeRegistryV2.initialize();
+
+            // 检查该 groupId 是否重新注册成功
+            NekoTradeGroup reloaded = NekoTradeDatabase.INSTANCE.getTradeGroup(UUID.fromString(groupIdStr));
+            GTInterestingThing.LOG.info("[NekoEdit] 服务端重载交易组完成: group={}, found={}", groupIdStr, reloaded != null);
 
             // v1.7.0 目标 5：向全体在线玩家广播服务端最新交易/标签页配置（S→C 只读同步，客户端不写盘）
             NekoTradeNetworkManager.sendSyncToAll();

@@ -86,6 +86,22 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
         WidgetTree.drawTree(this, context, true, true);
     }
 
+    /**
+     * 修复拖动镜像/重影问题。
+     * <p>
+     * 处于 moving 状态时，ModularUI2 的拖拽框架已经在鼠标位置通过
+     * {@link #drawMovingState(ModularGuiContext, float)} 绘制了移动中的面板；
+     * 如果此时仍然调用 super.drawForeground，原位置会继续绘制一次 foreground，
+     * 导致拖动过程中出现镜像或重影。因此 moving 状态下直接跳过原位置的 foreground 绘制。
+     */
+    @Override
+    public void drawForeground(ModularGuiContext context) {
+        if (isMoving()) {
+            return;
+        }
+        super.drawForeground(context);
+    }
+
     @Override
     public boolean onDragStart(int mouseButton) {
         if (mouseButton == 0) {

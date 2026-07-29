@@ -647,6 +647,10 @@ public class NekoTradeMainPanel extends ModularPanel {
             int cooldownCmp = Long.compare(b.getCooldownRemaining(), a.getCooldownRemaining());
             if (cooldownCmp != 0) return cooldownCmp;
 
+            // v1.7.29 SMART 排序加入 orderId 升序
+            int orderIdCmp = Integer.compare(a.getOrderId(), b.getOrderId());
+            if (orderIdCmp != 0) return orderIdCmp;
+
             // 3. 按物品 ID 排序
             ItemStack stackA = a.getDisplayStack();
             ItemStack stackB = b.getDisplayStack();

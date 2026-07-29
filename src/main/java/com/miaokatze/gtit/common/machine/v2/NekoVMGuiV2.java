@@ -1813,6 +1813,20 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     json.toString());
             }
 
+            // 发送成功后强制刷新主面板，确保客户端显示与最新配置同步
+            if (mainPanel != null) {
+                mainPanel.setForceRefresh();
+            }
+            GTInterestingThing.LOG.info(
+                "[NekoEdit] 客户端发送保存: group={}, index={}, new={}, fromItems={}, toItems={}",
+                editTradeIsNew ? String.valueOf(editTabId)
+                    : editingDisplay.getGroupId()
+                        .toString(),
+                editTradeIsNew ? -1 : editingDisplay.getTradeIndex(),
+                editTradeIsNew,
+                fromItems.size(),
+                toItems.size());
+
         } catch (Exception e) {
             GTInterestingThing.LOG.error("[NekoEdit] 保存交易编辑失败", e);
         }
