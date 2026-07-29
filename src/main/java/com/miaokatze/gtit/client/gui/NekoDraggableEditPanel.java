@@ -7,6 +7,7 @@ import com.cleanroommc.modularui.api.layout.IViewportStack;
 import com.cleanroommc.modularui.api.widget.IDraggable;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
+import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.utils.HoveredWidgetList;
 import com.cleanroommc.modularui.widget.DragHandle;
 import com.cleanroommc.modularui.widget.ParentWidget;
@@ -38,7 +39,10 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
 
     public NekoDraggableEditPanel() {
         this.movingArea = getArea().createCopy();
-        this.contentPanel = new ParentWidget<>();
+        // 内容区容器作为面板背景的点击代理：阻止点击空白处穿透到下层物品栏/按钮。
+        // 子控件（slot、textfield、button）在 hover 列表中位于 contentPanel 之前，优先处理事件；
+        // 只有点击无子控件的空白处时，事件才会落到 contentPanel 并被阻断。
+        this.contentPanel = new NekoEditContentPanel();
         // 内容区位于标题栏下方，四边贴齐以自动填充剩余空间
         this.contentPanel.top(DRAG_HANDLE_HEIGHT)
             .left(0)
@@ -79,6 +83,25 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
         return getThis();
     }
 
+    // ==================== 启用状态：防止 setEnabledIf 覆盖 moving 禁用 ====================
+
+    /**
+     * 拒绝在 moving 状态下被重新启用。
+     * <p>
+     * 外部（如 {@code setEnabledIf}）会按 tick 重新评估启用条件，可能把拖动期间设置的
+     * {@code false} 重新覆盖为 {@code true}，导致原位置继续绘制，形成镜像/重影。
+     * 此处强制拦截：只要面板仍在拖动中，任何启用请求都被忽略。
+     *
+     * @param enabled 请求设置的启用状态
+     */
+    @Override
+    public void setEnabled(boolean enabled) {
+        if (isMoving() && enabled) {
+            return;
+        }
+        super.setEnabled(enabled);
+    }
+
     // ==================== IDraggable ====================
 
     @Override
@@ -87,12 +110,26 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
     }
 
     /**
-     * 修复拖动镜像/重影问题。
+     * 修复拖动镜像/重影问题：跳过原位置背景绘制。
      * <p>
      * 处于 moving 状态时，ModularUI2 的拖拽框架已经在鼠标位置通过
      * {@link #drawMovingState(ModularGuiContext, float)} 绘制了移动中的面板；
-     * 如果此时仍然调用 super.drawForeground，原位置会继续绘制一次 foreground，
-     * 导致拖动过程中出现镜像或重影。因此 moving 状态下直接跳过原位置的 foreground 绘制。
+     * 如果此时仍然调用 super.drawBackground，原位置会继续绘制一次背景，
+     * 导致拖动过程中出现镜像或重影。因此 moving 状态下直接跳过原位置的 background 绘制。
+     */
+    @Override
+    public void drawBackground(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
+        if (isMoving()) {
+            return;
+        }
+        super.drawBackground(context, widgetTheme);
+    }
+
+    /**
+     * 修复拖动镜像/重影问题：跳过原位置前景绘制。
+     * <p>
+     * 与 {@link #drawBackground(ModularGuiContext, WidgetThemeEntry)} 同理，
+     * moving 状态下原位置的 foreground 绘制也需要跳过，否则会在原位置留下镜像。
      */
     @Override
     public void drawForeground(ModularGuiContext context) {
@@ -175,6 +212,21 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
             // 从原始位置平移到拖动位置
             stack.translate(-this.realX, -this.realY);
             stack.translate(this.movingArea.x, this.movingArea.y);
+        }
+    }
+
+    /**
+     * 编辑面板内容区专用容器。
+     * <p>
+     * 作为面板背景的点击代理，阻止点击空白处穿透到下层物品栏/按钮。
+     * 子控件（slot、textfield、button）在 hover 列表中位于本容器之前，优先处理事件；
+     * 只有点击无子控件的空白处时，事件才会落到本容器并被阻断。
+     */
+    private static class NekoEditContentPanel extends ParentWidget<NekoEditContentPanel> {
+
+        @Override
+        public boolean canClickThrough() {
+            return false;
         }
     }
 }
