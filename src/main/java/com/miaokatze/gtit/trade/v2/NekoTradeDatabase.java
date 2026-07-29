@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 交易数据库单例，替代 VM 的 TradeDatabase
@@ -32,6 +33,13 @@ public class NekoTradeDatabase {
     private final ConcurrentHashMap<Integer, CopyOnWriteArrayList<NekoTradeGroup>> tradeGroupsByTab;
     /** 无前置条件的交易组列表（快速查询缓存） */
     private final CopyOnWriteArrayList<NekoTradeGroup> noConditionTrades;
+    /**
+     * 数据库版本计数器（v1.7.32）
+     * <p>
+     * 每次增删改交易组时递增，供 GUI 检测服务端热重载/同步包导致的配置变化，
+     * 从而自动刷新交易列表，避免保存后交易"消失"的显示延迟。
+     */
+    private final AtomicLong version = new AtomicLong(0L);
 
     private NekoTradeDatabase() {
         this.tradeGroups = new ConcurrentHashMap<>();
@@ -60,6 +68,8 @@ public class NekoTradeDatabase {
         if (group.hasNoConditions()) {
             noConditionTrades.add(group);
         }
+        // 数据发生变化，递增版本号
+        version.incrementAndGet();
     }
 
     /**
@@ -83,6 +93,8 @@ public class NekoTradeDatabase {
             }
             // 从无条件缓存中移除
             noConditionTrades.remove(group);
+            // 数据发生变化，递增版本号
+            version.incrementAndGet();
         }
     }
 
@@ -119,9 +131,14 @@ public class NekoTradeDatabase {
      * 清空所有交易组
      */
     public void clear() {
+        boolean wasEmpty = tradeGroups.isEmpty();
         tradeGroups.clear();
         tradeGroupsByTab.clear();
         noConditionTrades.clear();
+        // 数据发生变化（且避免对空库重复递增），递增版本号
+        if (!wasEmpty) {
+            version.incrementAndGet();
+        }
     }
 
     /**
@@ -181,5 +198,16 @@ public class NekoTradeDatabase {
                 .size();
         }
         return count;
+    }
+
+    /**
+     * 获取当前数据库版本号（v1.7.32）
+     * <p>
+     * 每次数据库发生增删改时该值都会递增，GUI 可通过对比版本号感知外部配置变化。
+     *
+     * @return 当前版本号
+     */
+    public long getVersion() {
+        return version.get();
     }
 }

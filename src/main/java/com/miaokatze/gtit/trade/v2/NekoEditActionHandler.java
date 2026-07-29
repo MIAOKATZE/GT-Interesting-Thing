@@ -125,6 +125,10 @@ public class NekoEditActionHandler {
                 sendError(player, "交易配置为空，无法保存");
                 return;
             }
+            GTInterestingThing.LOG.info(
+                "[NekoEdit] 加载后条目总数: {}",
+                data.getTrades()
+                    .size());
 
             // 查找目标交易条目（按 ID 匹配）
             NekoTradeEntry targetEntry = null;
@@ -138,8 +142,22 @@ public class NekoEditActionHandler {
 
             if (targetEntry == null) {
                 sendError(player, "未找到交易条目: " + groupIdStr);
+                GTInterestingThing.LOG.warn("[NekoEdit] 未找到目标交易条目: group={}", groupIdStr);
                 return;
             }
+            int oldFromSize = targetEntry.getFromItems() == null ? 0
+                : targetEntry.getFromItems()
+                    .size();
+            int oldToSize = targetEntry.getToItems() == null ? 0
+                : targetEntry.getToItems()
+                    .size();
+            GTInterestingThing.LOG.info(
+                "[NekoEdit] 找到目标条目: group={}, tabId={}, orderId={}, oldFrom={}, oldTo={}",
+                groupIdStr,
+                targetEntry.getTabId(),
+                targetEntry.getOrderId(),
+                oldFromSize,
+                oldToSize);
 
             // 解析输入/输出物品列表（用于保存与诊断日志）
             List<NekoTradeEntry.ItemEntry> fromItems = new ArrayList<>();
@@ -186,13 +204,22 @@ public class NekoEditActionHandler {
                 targetEntry.setFromItems(fromItems);
             }
 
-            // 更新输出物品列表（含猫猫币条目=产出入钱包）
+            // 更新输出物品列表（含猫猫币条目 = 产出入钱包）
             if (json.has("toItems")) {
                 targetEntry.setToItems(toItems);
             }
+            int newFromSize = targetEntry.getFromItems() == null ? 0
+                : targetEntry.getFromItems()
+                    .size();
+            int newToSize = targetEntry.getToItems() == null ? 0
+                : targetEntry.getToItems()
+                    .size();
+            GTInterestingThing.LOG
+                .info("[NekoEdit] 更新目标条目字段完成: group={}, newFrom={}, newTo={}", groupIdStr, newFromSize, newToSize);
 
             // 保存配置到文件
             NekoTradeConfig.save(data);
+            GTInterestingThing.LOG.info("[NekoEdit] 配置已落盘: group={}", groupIdStr);
 
             // 热重载交易注册表
             NekoTradeRegistryV2.initialize();

@@ -253,6 +253,12 @@ public class NekoTradeMainPanel extends ModularPanel {
 
     /** 货币更新标志（外部通知有货币变化时设置，触发强制刷新） */
     private boolean hasCurrencyUpdate = false;
+    /**
+     * 上一次感知到的交易数据库版本号（v1.7.32）
+     * <p>
+     * 用于检测服务端热重载或同步包触发的配置变化，自动刷新 GUI。
+     */
+    private long lastDbVersion = -1L;
 
     // ==================== 构造器 ====================
 
@@ -762,6 +768,16 @@ public class NekoTradeMainPanel extends ModularPanel {
         // 货币更新检测（外部通过 notifyCurrencyUpdate() 通知）
         if (hasCurrencyUpdate) {
             setForceRefresh();
+        }
+
+        // v1.7.32：检测交易数据库是否被外部（服务端热重载/同步包）修改，自动强制刷新
+        long currentDbVersion = NekoTradeDatabase.INSTANCE.getVersion();
+        if (this.lastDbVersion != currentDbVersion) {
+            if (this.lastDbVersion != -1L) {
+                // 首次初始化时不刷新，避免与 onOpen 重复；后续版本变化才刷新
+                setForceRefresh();
+            }
+            this.lastDbVersion = currentDbVersion;
         }
 
         // 刷新判断：强制刷新 或 定期刷新

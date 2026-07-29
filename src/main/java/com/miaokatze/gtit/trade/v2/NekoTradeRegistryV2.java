@@ -193,7 +193,11 @@ public class NekoTradeRegistryV2 {
             // 检查 toItems 不为空
             if (trade.getToItems()
                 .isEmpty()) {
-                GTInterestingThing.LOG.warn("交易 {} 的 toItems 为空，跳过", entry.getId());
+                GTInterestingThing.LOG.warn(
+                    "交易 {} 的 toItems 为空（fromItems={}），跳过注册",
+                    entry.getId(),
+                    trade.getFromItems()
+                        .size());
                 return false;
             }
 
