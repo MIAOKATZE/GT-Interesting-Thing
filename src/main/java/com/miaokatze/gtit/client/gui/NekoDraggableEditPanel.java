@@ -36,6 +36,8 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
     private int relativeClickX, relativeClickY;
     private int realX, realY;
     private boolean moving = false;
+    /** 标记当前是否正在 {@link #drawMovingState} 中绘制移动状态，用于区分原位置与移动位置的绘制 */
+    private boolean drawingMovingState = false;
 
     public NekoDraggableEditPanel() {
         this.movingArea = getArea().createCopy();
@@ -106,34 +108,44 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
 
     @Override
     public void drawMovingState(ModularGuiContext context, float partialTicks) {
-        WidgetTree.drawTree(this, context, true, true);
+        // 设置标志，让 drawBackground/drawForeground 知道这是移动位置的绘制，允许绘制。
+        // 原位置的 drawTree 调用不带此标志，因此仍会被跳过，避免镜像/重影。
+        this.drawingMovingState = true;
+        try {
+            WidgetTree.drawTree(this, context, true, true);
+        } finally {
+            this.drawingMovingState = false;
+        }
     }
 
     /**
-     * 修复拖动镜像/重影问题：跳过原位置背景绘制。
+     * 修复拖动镜像/重影问题：跳过原位置背景绘制，但保留移动位置背景。
      * <p>
      * 处于 moving 状态时，ModularUI2 的拖拽框架已经在鼠标位置通过
      * {@link #drawMovingState(ModularGuiContext, float)} 绘制了移动中的面板；
      * 如果此时仍然调用 super.drawBackground，原位置会继续绘制一次背景，
      * 导致拖动过程中出现镜像或重影。因此 moving 状态下直接跳过原位置的 background 绘制。
+     * <p>
+     * 通过 {@link #drawingMovingState} 标志区分：当处于 {@link #drawMovingState} 中时，
+     * 说明正在绘制移动位置，此时仍需要绘制背景，避免拖动时面板只剩子控件而底面消失。
      */
     @Override
     public void drawBackground(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
-        if (isMoving()) {
+        if (isMoving() && !this.drawingMovingState) {
             return;
         }
         super.drawBackground(context, widgetTheme);
     }
 
     /**
-     * 修复拖动镜像/重影问题：跳过原位置前景绘制。
+     * 修复拖动镜像/重影问题：跳过原位置前景绘制，但保留移动位置前景。
      * <p>
      * 与 {@link #drawBackground(ModularGuiContext, WidgetThemeEntry)} 同理，
-     * moving 状态下原位置的 foreground 绘制也需要跳过，否则会在原位置留下镜像。
+     * moving 状态下原位置的 foreground 绘制需要跳过，移动位置的 foreground 仍正常绘制。
      */
     @Override
     public void drawForeground(ModularGuiContext context) {
-        if (isMoving()) {
+        if (isMoving() && !this.drawingMovingState) {
             return;
         }
         super.drawForeground(context);
