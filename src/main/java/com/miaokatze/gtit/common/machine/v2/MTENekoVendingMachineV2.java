@@ -1186,13 +1186,22 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     ItemStack slotStack = outputItems.getStackInSlot(entry.slotIndex);
                     if (slotStack != null && slotStack.isItemEqual(entry.stack)
                         && ItemStack.areItemStackTagsEqual(slotStack, entry.stack)) {
-                        // 物品仍在槽中，注入 ME
-                        boolean success = injectItemToUplink(entry.stack);
-                        if (success) {
-                            // 注入成功，清空对应出货槽
-                            outputItems.setStackInSlot(entry.slotIndex, null);
+                        // 物品仍在槽中，先检查 ME 网络是否能接收
+                        if (canUplinkAcceptItems(entry.stack)) {
+                            boolean success = injectItemToUplink(entry.stack);
+                            if (success) {
+                                // 注入成功，清空对应出货槽
+                                outputItems.setStackInSlot(entry.slotIndex, null);
+                            } else {
+                                // 注入意外失败，延迟后重试
+                                entry.creationTimeMs = now;
+                                break;
+                            }
+                        } else {
+                            // ME 网络当前不能接收（无容器/无空间），保留在出货槽并延迟重试
+                            entry.creationTimeMs = now;
+                            break;
                         }
-                        // 注入失败：物品保留在槽中，玩家可自行取走，从队列移除不重试
                     }
                     // 槽位为空或物品不匹配：玩家已取走，跳过注入
                 } else {
@@ -1207,6 +1216,36 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 // 队列是 FIFO，遇到未到期的就停止（后续条目入队更晚，必然也未到期）
                 break;
             }
+        }
+    }
+
+    /**
+     * 检查 uplink 连接的 ME 网络当前能否接受指定物品栈
+     * <p>
+     * 使用 AE2 的 simulate 模式向网络存储注入，若返回余量为空或数量为 0，
+     * 则认为网络可以接收全部物品。任何异常都按"不能接收"处理，避免 uplink
+     * 未就绪或网络不可用时崩溃。
+     *
+     * @param stack 待检查的物品栈
+     * @return true 表示 ME 网络可以接收该物品栈
+     */
+    private boolean canUplinkAcceptItems(ItemStack stack) {
+        if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return false;
+        try {
+            appeng.api.networking.storage.IStorageGrid storage = uplinkHatch.getProxy()
+                .getStorage();
+            if (storage == null) return false;
+            appeng.api.storage.data.IAEItemStack aeStack = appeng.util.item.AEItemStack.create(stack);
+            if (aeStack == null) return false;
+            appeng.api.storage.data.IAEItemStack remainder = storage.getItemInventory()
+                .injectItems(
+                    aeStack,
+                    appeng.api.config.Actionable.SIMULATE,
+                    new appeng.api.networking.security.MachineSource(uplinkHatch));
+            return remainder == null || remainder.getStackSize() <= 0;
+        } catch (Throwable t) {
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] canUplinkAcceptItems 检查失败，按不能接收处理", t);
+            return false;
         }
     }
 
@@ -1579,8 +1618,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         /** 待传输的物品栈（已 copy，防止外部修改） */
         public final ItemStack stack;
 
-        /** 入队时间戳（System.currentTimeMillis()），用于 3 秒延迟计算 */
-        public final long creationTimeMs;
+        /** 入队时间戳（System.currentTimeMillis()），用于 3 秒延迟计算；v1.7.26 起允许延迟重试时更新 */
+        public long creationTimeMs;
 
         /**
          * 物品所在出货槽索引（v1.6.23 新增）
