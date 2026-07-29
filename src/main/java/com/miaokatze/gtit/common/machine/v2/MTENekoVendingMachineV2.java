@@ -312,7 +312,11 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         }
         MTEVendingUplinkHatch hatch = (MTEVendingUplinkHatch) aMetaTileEntity;
         hatch.updateTexture(aBaseCasingIndex);
-        hatch.updateCraftingIcon(hatch.getMachineCraftingIcon());
+        // 防御 GTNL mixin 对 null icon 调用 func_82837_s() 导致 NPE
+        ItemStack machineCraftingIcon = hatch.getMachineCraftingIcon();
+        if (machineCraftingIcon != null) {
+            hatch.updateCraftingIcon(machineCraftingIcon);
+        }
         uplinkHatch = hatch;
         if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
             com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
