@@ -139,9 +139,8 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
 
     @Override
     public void getSelfAt(IViewportStack stack, HoveredWidgetList widgets, int x, int y) {
-        if (!isMoving() && isInside(stack, x, y)) {
-            widgets.add(this, stack, getAdditionalHoverInfo(stack, x, y));
-        }
+        // v1.7.27 修正：面板背景不加入 hovered 列表，避免点击空白处触发整体拖动。
+        // 拖动仅由顶部的 DragHandle 标题栏触发；面板本身仍通过 getWidgetsAt 将事件传给子控件。
     }
 
     @Override
