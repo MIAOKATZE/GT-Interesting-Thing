@@ -175,6 +175,28 @@ public class NekoEditActionHandler {
                 fromItems.size(),
                 toItems.size());
 
+            // 防御性校验：客户端发来空 fromItems + toItems 但旧数据有物品时，拒绝保存
+            // 原因：客户端 editItemHandler 同步可能尚未完成，此时保存会覆盖清空原有数据
+            // （v1.7.33 修复交易条目保存丢失：服务端不信任客户端的空数据覆盖）
+            if (fromItems.isEmpty() && toItems.isEmpty() && (oldFromSize > 0 || oldToSize > 0)) {
+                GTInterestingThing.LOG.warn(
+                    "[NekoEdit] 拒绝保存：客户端 fromItems/toItems 均为空，但旧数据有 from={} to={}，疑似同步未完成。group={}",
+                    oldFromSize,
+                    oldToSize,
+                    groupIdStr);
+                sendError(player, "保存失败：物品数据为空（可能是同步未完成），请等待物品显示后再试");
+                return;
+            }
+
+            // 防御性校验：toItems 为空但旧数据有 toItems 时，拒绝保存
+            // 原因：toItems 为空的交易会被跳过注册，导致交易从用户视角"消失"
+            if (toItems.isEmpty() && oldToSize > 0) {
+                GTInterestingThing.LOG
+                    .warn("[NekoEdit] 拒绝保存：客户端 toItems 为空，但旧数据有 {} 条产出，疑似同步未完成。group={}", oldToSize, groupIdStr);
+                sendError(player, "保存失败：产物数据为空（可能是同步未完成），请等待物品显示后再试");
+                return;
+            }
+
             // 更新基础字段
             if (json.has("tabId")) targetEntry.setTabId(
                 json.get("tabId")

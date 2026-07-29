@@ -1801,6 +1801,26 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
             json.add("toItems", toItems);
 
+            // 客户端防御性校验：编辑现有交易时，若 toItems 为空则阻止发送
+            // 原因：toItems 为空的交易会被服务端跳过注册，导致交易"消失"
+            // （v1.7.33 修复交易条目保存丢失：客户端不发送会导致交易丢失的空数据）
+            if (!editTradeIsNew && toItems.size() == 0) {
+                GTInterestingThing.LOG
+                    .warn("[NekoEdit] 客户端阻止保存：编辑模式下 toItems 为空（fromItems={}），疑似物品同步未完成，跳过发送", fromItems.size());
+                // 向玩家显示提示（客户端本地聊天消息）
+                try {
+                    net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getMinecraft();
+                    if (mc.thePlayer != null) {
+                        mc.thePlayer.addChatMessage(
+                            new net.minecraft.util.ChatComponentText(
+                                net.minecraft.util.EnumChatFormatting.RED + "[编辑模式] 保存失败：产物数据为空，请等待物品显示后再试"));
+                    }
+                } catch (Exception ignored) {
+                    // 客户端环境异常时不阻塞
+                }
+                return;
+            }
+
             // 发送到服务端（新建 / 编辑分流，v1.7.6 G3④）
             if (editTradeIsNew) {
                 com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
