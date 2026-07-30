@@ -132,7 +132,12 @@ public class LotteryRequestPacket implements IMessage {
             // 5. 回发抽取结果（客户端启动轮盘动画）。
             // v1.7.8 起不再立即全量同步：保底/历史/余额刷新移入 LotteryManager.dispatchAll
             // 末尾（延迟出货完成后），避免动画旋转期间同步包提前剧透。
+            // v1.7.36：在动画触发后立即发一次全量同步——客户端余额显示走
+            // LotteryClientData 静态缓存，须在同步包到达后才刷新；延迟出货期间玩家切看
+            // 抽奖页不应再看到「抽完但余额未减」，此处即时刷新为正确值。延迟出货末尾的
+            // 那次 sendSyncToClient 作为冗余刷新保留无害。
             LotteryNetworkManager.sendResultToClient(player, poolId, results, LotteryClientData.RESULT_SUCCESS);
+            LotteryNetworkManager.sendSyncToClient(player);
         }
 
         /** 失败回执：结果码 + 聊天提示 + 状态同步（保底/历史未变但仍刷新卡池配置） */

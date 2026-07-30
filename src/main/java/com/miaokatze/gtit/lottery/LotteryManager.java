@@ -347,10 +347,13 @@ public class LotteryManager {
 
         int slotIndex = entries.indexOf(selected);
         int amount = selected.randomAmount();
+        LotteryRarity guaranteedRarity = pity.getGuaranteedRarity();
+        // v1.7.36：保底充值仅当抽到保底品质（guaranteedRarity，默认 EPIC）及以上才重置；
+        // 此前的 RARE 判定导致「抽到非普通即重置」，早于设计预期。
         boolean highRarity = selected.getRarity()
-            .isAtLeast(LotteryRarity.RARE);
+            .isAtLeast(guaranteedRarity);
 
-        // 推进保底计数（本抽之后）
+        // 推进保底计数（本抽之后）—— 抽到保底品质及以上则清零，否则 +1
         setPityCounter(teamKey, pool.getId(), highRarity ? 0 : currentCount + 1);
 
         return new LotteryDrawResult(selected, isPity, highRarity, slotIndex, amount);
