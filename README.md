@@ -120,6 +120,8 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
   │
   └── nekovm                                    -- NekoVM trade management / 猫猫机交易管理
       ├── edit on/off                           -- Edit Mode
+      ├── reload                                -- Hot-reload trade config
+      ├── timereset                             -- Reset own trade cooldowns
       └── help                                  -- Full help
 ```
 
