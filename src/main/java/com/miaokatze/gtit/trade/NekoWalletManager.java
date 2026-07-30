@@ -5,14 +5,20 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
 import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.gtnewhorizon.gtnhlib.teams.TeamManager;
+import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
+
+import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.relauncher.Side;
 
 /**
  * 猫猫币钱包管理器
@@ -55,6 +61,10 @@ public class NekoWalletManager {
         // 优先尝试团队钱包
         NekoWallet teamWallet = getTeamWallet(playerId);
         if (teamWallet != null) {
+            Team team = TeamManager.getTeamByPlayer(playerId);
+            if (team != null) {
+                teamWallet.setTeamId(team.getTeamId());
+            }
             return teamWallet;
         }
 
@@ -65,6 +75,7 @@ public class NekoWalletManager {
             if (wallet == null) {
                 wallet = new NekoWallet();
             }
+            wallet.setPlayerId(playerId);
             personalWallets.put(playerId, wallet);
         }
         return wallet;
@@ -147,6 +158,62 @@ public class NekoWalletManager {
         }
         return null;
     }
+
+    // ==================== 钱包余额变化通知 ====================
+
+    /**
+     * 钱包余额变化时推送抽奖全量同步（保底/钱包余额）给相关玩家。
+     * <p>
+     * 由 {@link NekoWallet} 在余额实际变化后调用。个人钱包（teamId 为 null）推送给
+     * playerId 对应玩家；团队钱包推送给团队成员全体在线玩家——保证抽奖界面
+     * {@link com.miaokatze.gtit.lottery.LotteryClientData} 的余额缓存与背包 tooltip
+     * 及时刷新。
+     *
+     * @param playerId 个人钱包玩家 UUID（团队钱包时可为 null）
+     * @param teamId   团队钱包团队 UUID（个人钱包时 null）
+     */
+    public void notifyWalletChanged(UUID playerId, UUID teamId) {
+        // 服务端检查（钱包余额变化只发生在服务端）
+        if (FMLCommonHandler.instance()
+            .getEffectiveSide() != Side.SERVER) return;
+        if (!LotteryNetworkManager.isInitialized()) return;
+
+        if (teamId != null) {
+            // 团队钱包：推送给全体在线队员
+            Team team = TeamManager.getTeamById(teamId);
+            if (team == null) return;
+            for (UUID member : team.getMembers()) {
+                EntityPlayerMP player = getPlayerByUUID(member);
+                if (player != null) {
+                    LotteryNetworkManager.sendSyncToClient(player);
+                }
+            }
+            return;
+        }
+        // 个人钱包：推送给该玩家
+        if (playerId != null) {
+            EntityPlayerMP player = getPlayerByUUID(playerId);
+            if (player != null) {
+                LotteryNetworkManager.sendSyncToClient(player);
+            }
+        }
+    }
+
+    /** 按 UUID 查找在线玩家（参照 DailySignInManager 模式） */
+    private static EntityPlayerMP getPlayerByUUID(UUID playerId) {
+        if (playerId == null) return null;
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server == null) return null;
+        for (Object obj : server.getConfigurationManager().playerEntityList) {
+            EntityPlayerMP player = (EntityPlayerMP) obj;
+            if (playerId.equals(player.getUniqueID())) {
+                return player;
+            }
+        }
+        return null;
+    }
+
+    // ==================== 生命周期 ====================
 
     /**
      * 卸载玩家个人钱包（玩家下线时调用）

@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.trade;
 
 import java.util.Map;
+import java.util.UUID;
 
 import net.minecraft.nbt.NBTTagCompound;
 
@@ -13,6 +14,37 @@ public class NekoWallet {
 
     // ConcurrentHashMap：多线程（交易主线程、GUI changeListener、团队数据合并）可能并发访问同一钱包
     private final Map<String, Integer> balances = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 钱包所属玩家 UUID（个人钱包；团队钱包每次 getWallet 时被覆盖为最近查询者，仅用作 fallback） */
+    private UUID playerId = null;
+    /** 钱包所属团队 UUID（团队钱包；个人钱包为 null） */
+    private UUID teamId = null;
+
+    // ==================== 身份标记（钱包余额变化时推送同步用）====================
+
+    /** 设置钱包所属玩家 UUID（个人钱包） */
+    public void setPlayerId(UUID playerId) {
+        this.playerId = playerId;
+    }
+
+    /** 设置钱包所属团队 UUID（团队钱包） */
+    public void setTeamId(UUID teamId) {
+        this.teamId = teamId;
+    }
+
+    /**
+     * 余额变化后通知钱包管理器向相关玩家推送同步包
+     * <p>
+     * 个人钱包走 playerId 查找单个玩家；团队钱包走 teamId 查找全体队员。
+     * 此方法由 addCount/tryDeduct/resetCount/resetAll 在余额实际变化后调用。
+     */
+    private void notifyChanged() {
+        if (this.playerId != null || this.teamId != null) {
+            NekoWalletManager.INSTANCE.notifyWalletChanged(this.playerId, this.teamId);
+        }
+    }
+
+    // ==================== 余额操作 ====================
 
     /**
      * 获取指定猫猫币的余额
@@ -28,7 +60,9 @@ public class NekoWallet {
         int current = getCount(currencyId);
         int newAmount = current + amount;
         if (newAmount < 0) newAmount = 0;
+        if (newAmount == current) return; // 余额未变，无需推送
         balances.put(currencyId, newAmount);
+        notifyChanged();
     }
 
     /**
@@ -48,6 +82,7 @@ public class NekoWallet {
         int current = getCount(currencyId);
         if (current < amount) return false;
         balances.put(currencyId, current - amount);
+        notifyChanged();
         return true;
     }
 
@@ -56,6 +91,7 @@ public class NekoWallet {
      */
     public synchronized void resetCount(String currencyId) {
         balances.put(currencyId, 0);
+        notifyChanged();
     }
 
     /**
@@ -63,6 +99,7 @@ public class NekoWallet {
      */
     public synchronized void resetAll() {
         balances.clear();
+        notifyChanged();
     }
 
     /**
