@@ -537,7 +537,7 @@ public class LotteryGui {
         return new ItemDrawable(stack);
     }
 
-    /** 稀有度角标纹理（RARE→蓝，EPIC/LEGENDARY→紫，COMMON→空） */
+    /** 稀有度角标纹理（RARE→蓝，EPIC→紫，LEGENDARY→橙，COMMON→空） */
     private static IDrawable cornerTexture(int index) {
         LotteryEntry entry = entryAt(index);
         if (entry == null) return IDrawable.EMPTY;
@@ -545,8 +545,9 @@ public class LotteryGui {
             case RARE:
                 return NekoGuiTextures.LOTTERY_CORNER_BLUE;
             case EPIC:
-            case LEGENDARY:
                 return NekoGuiTextures.LOTTERY_CORNER_PURPLE;
+            case LEGENDARY:
+                return NekoGuiTextures.LOTTERY_CORNER_ORANGE;
             default:
                 return IDrawable.EMPTY;
         }

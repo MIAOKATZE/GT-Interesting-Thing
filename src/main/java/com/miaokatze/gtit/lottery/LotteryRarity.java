@@ -13,7 +13,7 @@ import net.minecraft.util.EnumChatFormatting;
  * <li>COMMON：灰框槽位（slot_normal），无角标</li>
  * <li>RARE：灰框槽位 + 蓝角标（corner_blue）</li>
  * <li>EPIC：金框槽位（slot_rare）+ 紫角标（corner_purple）</li>
- * <li>LEGENDARY：闪角槽位（slot_epic，金=最高稀有度）+ 紫角标</li>
+ * <li>LEGENDARY：闪角槽位（slot_epic，金=最高稀有度）+ 橙角标（corner_orange）</li>
  * </ul>
  */
 public enum LotteryRarity {

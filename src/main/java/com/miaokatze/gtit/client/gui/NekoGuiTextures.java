@@ -434,6 +434,14 @@ public final class NekoGuiTextures {
         .name("lottery_corner_purple")
         .build();
 
+    /** 稀有度角标-橙（8x8，LEGENDARY 条目右上角标） */
+    public static final UITexture LOTTERY_CORNER_ORANGE = UITexture.builder()
+        .location("gtit", "gui/lottery/corner_orange")
+        .imageSize(8, 8)
+        .fullImage()
+        .name("lottery_corner_orange")
+        .build();
+
     // ==================== v1.7.2 邮件素材 ====================
 
     /** 邮件条目底-未读（80x27，浅蓝紫灰长条+左侧未读亮点） */
