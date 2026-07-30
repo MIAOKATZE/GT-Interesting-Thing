@@ -37,7 +37,12 @@ public class RingWindrider extends BaseRing {
     public void onWornTick(ItemStack itemstack, EntityLivingBase player) {
         if (player.worldObj.isRemote) return;
         if (!(player instanceof EntityPlayer entityPlayer)) return;
-        entityPlayer.capabilities.allowFlying = true;
+        // 跨维度传送时服务端重建 EntityPlayer，allowFlying 会被重置为 false。
+        // 仅在状态确实变化（false→true）时发包同步客户端，避免每 tick 重复发送（与 FloatCore 对称）。
+        if (!entityPlayer.capabilities.allowFlying) {
+            entityPlayer.capabilities.allowFlying = true;
+            entityPlayer.sendPlayerAbilities();
+        }
     }
 
     @Override

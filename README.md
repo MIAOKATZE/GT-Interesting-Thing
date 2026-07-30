@@ -115,7 +115,8 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
   │   ├── certain [yesNBT|noNBT]                -- Set guaranteed items from inventory
   │   ├── random <count> [yesNBT|noNBT]         -- Set random item pool from inventory
   │   ├── reset                                 -- Reset to default config
-  │   └── claimreset [all|玩家名]               -- Reset claim status (re-gift on next login)
+  │   ├── claimlist                            -- List players who have claimed the gift (online+offline)
+  │   └── claimreset [all|玩家名]               -- Reset claim status (re-gift on next login; offline supported)
   │
   └── nekovm                                    -- NekoVM trade management / 猫猫机交易管理
       ├── edit on/off                           -- Edit Mode
@@ -371,7 +372,8 @@ A gift box automatically granted to players on their **first login** to a world.
 | `/gtit gift certain [yesNBT|noNBT]`     | Set guaranteed items from current inventory / 将当前背包物品设为必中物品；默认 `noNBT`                |
 | `/gtit gift random <count> [yesNBT|noNBT]` | Set random pool from inventory + set draw count / 将背包物品设为随机池并设置抽取数；默认 `noNBT`      |
 | `/gtit gift reset`                      | Reset to default config / 恢复默认配置                                                           |
-| `/gtit gift claimreset [all|玩家名]`     | Reset starter gift claim status; player receives gift on next login / 重置新手礼包领取状态；玩家下次登录时自动发放 |
+| `/gtit gift claimlist`                  | List players who claimed the gift (online + offline) / 列出已领取玩家（在线+离线）                          |
+| `/gtit gift claimreset [all\|玩家名]`     | Reset starter gift claim status; player receives gift on next login / 重置新手礼包领取状态；玩家下次登录时自动发放 |
 
 ***
 

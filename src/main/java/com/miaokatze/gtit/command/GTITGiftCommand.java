@@ -43,7 +43,8 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * - /gtit gift certain [yesNBT|noNBT]: 将当前背包物品设为必中物品
  * - /gtit gift random <count> [yesNBT|noNBT]: 将当前背包物品设为随机物品，设置随机数
  * - /gtit gift reset: 恢复默认配置
- * - /gtit gift claimreset [all|玩家名]: 重置新手礼包领取状态（支持控制台执行）
+ * - /gtit gift claimlist: 列出已领取新手礼包的玩家（在线+离线，支持控制台执行）
+ * - /gtit gift claimreset [all|玩家名]: 重置新手礼包领取状态（支持在线/离线玩家，支持控制台执行）
  * - /gtit nekovm edit on|off: 开关可视化配置编辑模式
  * - /gtit nekovm reload: 热重载猫猫币交易配置
  * - /gtit nekovm timereset: 重置当前所有交易冷却
@@ -60,7 +61,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimreset [all|玩家名] | /gtit nekovm edit on|off|reload|timereset|help | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
+        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimlist|claimreset [all|玩家名] | /gtit nekovm edit on|off|reload|timereset|help | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
     }
 
     @Override
@@ -108,7 +109,7 @@ public class GTITGiftCommand extends CommandBase {
 
         if (args.length == 2) {
             if ("gift".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(args, "certain", "random", "reset", "claimreset");
+                return getListOfStringsMatchingLastWord(args, "certain", "random", "reset", "claimlist", "claimreset");
             }
             if ("nekovm".equals(args[0])) {
                 return getListOfStringsMatchingLastWord(args, "edit", "reload", "timereset", "help");
@@ -248,6 +249,7 @@ public class GTITGiftCommand extends CommandBase {
                 }
                 handleReset(player);
             }
+            case "claimlist" -> handleClaimList(sender);
             case "claimreset" -> handleClaimReset(sender, args);
             default -> sendHelp(sender);
         }
@@ -355,6 +357,131 @@ public class GTITGiftCommand extends CommandBase {
 
     /** NBT 键名：玩家已领取新手礼包的标记 */
     private static final String GIFT_CLAIMED_KEY = "gtit_received_starter_gift";
+
+    /**
+     * /gtit gift claimlist
+     * 列出所有已领取新手礼包的玩家（在线 + 离线），支持控制台执行。
+     * 在线玩家读内存 NBT；离线玩家扫描 playerdata/*.dat（ForgeData→PlayerPersisted→gtit_received_starter_gift），
+     * 通过 usercache.json 反查玩家名，查不到则显示 UUID。
+     */
+    private void handleClaimList(ICommandSender sender) {
+        List<String> onlineClaimed = new ArrayList<>();
+        List<String> offlineClaimed = new ArrayList<>();
+
+        // 在线：遍历内存 NBT
+        for (EntityPlayerMP player : MinecraftServer.getServer()
+            .getConfigurationManager().playerEntityList) {
+            if (hasGiftClaimedFlag(player.getEntityData())) {
+                onlineClaimed.add(player.getCommandSenderName());
+            }
+        }
+
+        // 离线：扫描 .dat（跳过在线玩家，避免重复）
+        Set<UUID> onlineUuids = new HashSet<>();
+        for (EntityPlayerMP player : MinecraftServer.getServer()
+            .getConfigurationManager().playerEntityList) {
+            onlineUuids.add(player.getUniqueID());
+        }
+        collectOfflineClaimedPlayers(onlineUuids, offlineClaimed);
+
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "===== 已领取新手礼包的玩家 ====="));
+        sender.addChatMessage(
+            new ChatComponentText(
+                EnumChatFormatting.GREEN + "在线 ("
+                    + onlineClaimed.size()
+                    + "): "
+                    + EnumChatFormatting.WHITE
+                    + (onlineClaimed.isEmpty() ? "无" : String.join(", ", onlineClaimed))));
+        sender.addChatMessage(
+            new ChatComponentText(
+                EnumChatFormatting.AQUA + "离线 ("
+                    + offlineClaimed.size()
+                    + "): "
+                    + EnumChatFormatting.WHITE
+                    + (offlineClaimed.isEmpty() ? "无" : String.join(", ", offlineClaimed))));
+        sender.addChatMessage(
+            new ChatComponentText(
+                EnumChatFormatting.GRAY + "合计: " + (onlineClaimed.size() + offlineClaimed.size()) + " 人"));
+    }
+
+    /**
+     * 判断玩家数据中是否含新手礼包领取标记。
+     * 接受两种输入：在线玩家的 getEntityData()（已处于 ForgeData 层级）或离线 .dat 的根 NBT。
+     */
+    private static boolean hasGiftClaimedFlag(NBTTagCompound dataTag) {
+        if (dataTag == null) return false;
+        // 在线路径：dataTag 即 ForgeData，直接取 PlayerPersisted
+        if (dataTag.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) {
+            return dataTag.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG)
+                .hasKey(GIFT_CLAIMED_KEY);
+        }
+        return false;
+    }
+
+    /**
+     * 扫描 playerdata/*.dat，收集已领取新手礼包的离线玩家，跳过当前在线玩家。
+     * 玩家名优先从 usercache.json 反查，查不到则用 UUID。
+     */
+    private void collectOfflineClaimedPlayers(Set<UUID> onlineUuids, List<String> outNames) {
+        File worldDir = MinecraftServer.getServer()
+            .getEntityWorld()
+            .getSaveHandler()
+            .getWorldDirectory();
+        File playerdataDir = new File(worldDir, "playerdata");
+        if (!playerdataDir.exists() || !playerdataDir.isDirectory()) {
+            return;
+        }
+        File userCache = new File(worldDir.getParentFile(), "usercache.json");
+
+        File[] datFiles = playerdataDir.listFiles((dir, name) -> name.endsWith(".dat"));
+        if (datFiles == null) return;
+
+        for (File datFile : datFiles) {
+            try {
+                String uuidStr = datFile.getName()
+                    .replace(".dat", "");
+                UUID fileUuid = UUID.fromString(uuidStr);
+                if (onlineUuids.contains(fileUuid)) continue;
+
+                if (offlineDatHasGiftClaimed(datFile)) {
+                    String name = findNameFromUserCache(fileUuid, userCache);
+                    outNames.add(name != null ? name : fileUuid.toString());
+                }
+            } catch (IllegalArgumentException ignored) {
+                // 文件名不是合法 UUID，跳过
+            }
+        }
+    }
+
+    /**
+     * 只读检查单个 .dat 文件中是否存在新手礼包领取标记（不修改文件）。
+     * 路径：.dat 根 → ForgeData → PlayerPersisted → gtit_received_starter_gift
+     */
+    private boolean offlineDatHasGiftClaimed(File datFile) {
+        try {
+            // 与在线玩家同侧的写操作冲突检查：再次确认不在线
+            UUID fileUuid;
+            try {
+                fileUuid = UUID.fromString(
+                    datFile.getName()
+                        .replace(".dat", ""));
+            } catch (IllegalArgumentException ignored) {
+                return false;
+            }
+            if (isPlayerOnline(fileUuid)) return false;
+
+            NBTTagCompound rootNbt = CompressedStreamTools.read(datFile);
+            if (rootNbt == null) return false;
+            if (!rootNbt.hasKey("ForgeData")) return false;
+            NBTTagCompound forgeData = rootNbt.getCompoundTag("ForgeData");
+            if (!forgeData.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) return false;
+            return forgeData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG)
+                .hasKey(GIFT_CLAIMED_KEY);
+        } catch (Exception e) {
+            GTInterestingThing.LOG.error("检查离线玩家礼包标记失败: " + datFile.getName(), e);
+            return false;
+        }
+    }
 
     /**
      * /gtit gift claimreset [all|玩家名]
@@ -480,13 +607,23 @@ public class GTITGiftCommand extends CommandBase {
             NBTTagCompound rootNbt = CompressedStreamTools.read(datFile);
             if (rootNbt == null) return false;
 
-            if (rootNbt.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) {
-                NBTTagCompound persisted = rootNbt.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
-                if (persisted.hasKey(GIFT_CLAIMED_KEY)) {
-                    persisted.removeTag(GIFT_CLAIMED_KEY);
-                    rootNbt.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
-                    CompressedStreamTools.safeWrite(rootNbt, datFile);
-                    return true;
+            // Forge 持久化自定义 entity 数据位于 .dat 根 NBT 的 "ForgeData" 子标签下，
+            // 而 EntityPlayer.PERSISTED_NBT_TAG（"PlayerPersisted"）又在 ForgeData 之内：
+            // .dat 根 → ForgeData → PlayerPersisted → gtit_received_starter_gift
+            // 在线路径 player.getEntityData() 返回的正是这个 ForgeData 子标签，故在线逻辑正确；
+            // 此前离线代码直接在根上找 PlayerPersisted，永远命中失败 → 离线重置一直无效。
+            if (rootNbt.hasKey("ForgeData")) {
+                NBTTagCompound forgeData = rootNbt.getCompoundTag("ForgeData");
+                if (forgeData.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) {
+                    NBTTagCompound persisted = forgeData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
+                    if (persisted.hasKey(GIFT_CLAIMED_KEY)) {
+                        persisted.removeTag(GIFT_CLAIMED_KEY);
+                        // getCompoundTag 不会自动把修改后的 tag 写回父节点，须逐层 setTag 回写
+                        forgeData.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
+                        rootNbt.setTag("ForgeData", forgeData);
+                        CompressedStreamTools.safeWrite(rootNbt, datFile);
+                        return true;
+                    }
                 }
             }
             return false;
@@ -838,7 +975,8 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit gift certain [yesNBT|noNBT] - 设置必中物品为当前背包"));
         sender.addChatMessage(new ChatComponentText("/gtit gift random <count> [yesNBT|noNBT] - 设置随机物品为当前背包"));
         sender.addChatMessage(new ChatComponentText("/gtit gift reset - 重置为默认配置"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift claimreset [all|玩家名] - 重置新手礼包领取状态"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift claimlist - 列出已领取新手礼包的玩家（在线+离线）"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift claimreset [all|玩家名] - 重置新手礼包领取状态（支持离线玩家）"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 猫猫售货机完整帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm edit on|off - 开关可视化编辑模式"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载猫猫币交易配置"));
