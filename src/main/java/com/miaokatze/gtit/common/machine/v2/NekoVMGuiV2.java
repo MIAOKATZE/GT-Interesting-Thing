@@ -388,6 +388,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private StringSyncValue editTargetSync;
     /** 编辑物品缓冲区（双端共享：slot 0-15=需求物品两行，slot 16-31=产物物品两行，v1.7.6 G3① 8→32） */
     private final ItemStackHandler editItemHandler = new ItemStackHandler(32);
+    /** 交易编辑 PhantomItemSlot 引用（服务端加载同一条目时强制回传槽位，避免客户端取消后的空缓存残留） */
+    private final List<ItemSlot> editTradeSlotRefs = new ArrayList<>();
 
     // --- 标签页 page 编辑（v1.7.6 G3④：shift+点击 page 标签 / 列尾「+」新建 page） ---
     /** page 编辑目标同步值特殊标记：新建 page 模式（服务端仅清空编辑缓冲区） */
@@ -1540,10 +1542,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 editItemHandler.setStackInSlot(i, null);
             }
             // 新建模式：无既有交易可加载，保持空缓冲区
-            if (TRADE_TARGET_NEW.equals(target)) return;
+            if (TRADE_TARGET_NEW.equals(target)) {
+                forceSyncTradeEditSlots();
+                return;
+            }
 
             String[] parts = target.split(":");
-            if (parts.length != 2) return;
+            if (parts.length != 2) {
+                forceSyncTradeEditSlots();
+                return;
+            }
             UUID groupId = UUID.fromString(parts[0]);
             int tradeIndex = Integer.parseInt(parts[1]);
 
@@ -1551,6 +1559,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             if (group == null || tradeIndex < 0
                 || tradeIndex >= group.getTrades()
                     .size()) {
+                forceSyncTradeEditSlots();
                 return;
             }
 
@@ -1581,9 +1590,25 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             }
 
+            // ItemSlotSH 仅在检测到服务端槽位内容变化时自动发包。
+            // 取消编辑会先清空客户端缓存；再次打开同一条目时服务端缓冲区可能未变化，
+            // 因而不会自动回传，表现为物品/猫猫币消失。每次加载后强制回传 32 槽，
+            // 让客户端缓存与服务端编辑缓冲区重新对齐。
+            forceSyncTradeEditSlots();
+
             GTInterestingThing.LOG.info("[NekoEdit] 已加载交易到编辑缓冲区: {}", target);
         } catch (Exception e) {
             GTInterestingThing.LOG.error("[NekoEdit] 加载交易到编辑缓冲区失败: {}", target, e);
+        }
+    }
+
+    /** 强制同步交易编辑 32 个 PhantomItemSlot（仅服务端加载路径调用）。 */
+    private void forceSyncTradeEditSlots() {
+        for (ItemSlot slot : editTradeSlotRefs) {
+            if (slot != null && slot.getSyncHandler() != null) {
+                slot.getSyncHandler()
+                    .forceSyncItem();
+            }
         }
     }
 
@@ -1624,10 +1649,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .left(8)
                 .top(20));
         for (int i = 0; i < 16; i++) {
-            editPanel.child(
-                new PhantomItemSlot().slot(new ModularSlot(editItemHandler, i))
-                    .left(40 + (i % 8) * 20)
-                    .top(18 + (i / 8) * 20));
+            ItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editItemHandler, i))
+                .left(40 + (i % 8) * 20)
+                .top(18 + (i / 8) * 20);
+            editTradeSlotRefs.add(slot);
+            editPanel.child(slot);
         }
 
         // --- 产物物品区（slot 16-31，两行×8；v1.7.6 G3①）---
@@ -1638,10 +1664,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .left(8)
                 .top(62));
         for (int i = 0; i < 16; i++) {
-            editPanel.child(
-                new PhantomItemSlot().slot(new ModularSlot(editItemHandler, 16 + i))
-                    .left(40 + (i % 8) * 20)
-                    .top(60 + (i / 8) * 20));
+            ItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editItemHandler, 16 + i))
+                .left(40 + (i % 8) * 20)
+                .top(60 + (i / 8) * 20);
+            editTradeSlotRefs.add(slot);
+            editPanel.child(slot);
         }
 
         // --- 参数编辑区（v1.7.6 G3②：原「猫猫币类型/数量」两行已删除）---
