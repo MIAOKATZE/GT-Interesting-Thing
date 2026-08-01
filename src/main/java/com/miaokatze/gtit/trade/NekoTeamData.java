@@ -1,13 +1,17 @@
 package com.miaokatze.gtit.trade;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 
 import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.gtnewhorizon.gtnhlib.teams.TeamDataCopyReason;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 
 /**
  * 猫猫币团队数据
@@ -21,6 +25,8 @@ public class NekoTeamData implements ITeamData {
     public static final String ID = "GTIT";
 
     private final NekoWallet wallet = new NekoWallet();
+    private final Map<UUID, NekoTradeHistory> tradeHistories = new HashMap<>();
+    private boolean legacyHistoryMigrated;
 
     /**
      * 获取团队共享钱包
@@ -29,16 +35,93 @@ public class NekoTeamData implements ITeamData {
         return wallet;
     }
 
-    @Override
-    public void writeToNBT(NBTTagCompound tag) {
-        NBTTagCompound walletTag = wallet.writeToNBT();
-        tag.setTag("wallet", walletTag);
+    public synchronized NekoTradeHistory getTradeHistory(UUID tradeGroupId) {
+        if (tradeGroupId == null) {
+            return new NekoTradeHistory();
+        }
+        return tradeHistories.computeIfAbsent(tradeGroupId, ignored -> new NekoTradeHistory());
+    }
+
+    public synchronized Map<UUID, NekoTradeHistory> getTradeHistoriesSnapshot() {
+        Map<UUID, NekoTradeHistory> snapshot = new HashMap<>();
+        for (Map.Entry<UUID, NekoTradeHistory> entry : tradeHistories.entrySet()) {
+            snapshot.put(
+                entry.getKey(),
+                entry.getValue()
+                    .copy());
+        }
+        return snapshot;
+    }
+
+    public synchronized void mergeTradeHistory(UUID tradeGroupId, NekoTradeHistory history) {
+        if (tradeGroupId == null || history == null) {
+            return;
+        }
+        getTradeHistory(tradeGroupId).mergeFrom(history);
+    }
+
+    public synchronized void resetAllTradeHistories() {
+        for (NekoTradeHistory history : tradeHistories.values()) {
+            history.reset();
+        }
+    }
+
+    public synchronized boolean isLegacyHistoryMigrated() {
+        return legacyHistoryMigrated;
+    }
+
+    public synchronized void setLegacyHistoryMigrated(boolean migrated) {
+        legacyHistoryMigrated = migrated;
     }
 
     @Override
-    public void readFromNBT(NBTTagCompound tag) {
+    public synchronized void writeToNBT(NBTTagCompound tag) {
+        NBTTagCompound walletTag = wallet.writeToNBT();
+        tag.setTag("wallet", walletTag);
+        tag.setBoolean("legacyHistoryMigrated", legacyHistoryMigrated);
+
+        NBTTagList historyList = new NBTTagList();
+        for (Map.Entry<UUID, NekoTradeHistory> entry : tradeHistories.entrySet()) {
+            NBTTagCompound historyTag = new NBTTagCompound();
+            historyTag.setString(
+                "groupId",
+                entry.getKey()
+                    .toString());
+            historyTag.setTag(
+                "history",
+                entry.getValue()
+                    .writeToNBT());
+            historyList.appendTag(historyTag);
+        }
+        tag.setTag("tradeHistory", historyList);
+    }
+
+    @Override
+    public synchronized void readFromNBT(NBTTagCompound tag) {
+        tradeHistories.clear();
+        legacyHistoryMigrated = false;
+        if (tag == null) {
+            return;
+        }
         if (tag.hasKey("wallet")) {
             wallet.readFromNBT(tag.getCompoundTag("wallet"));
+        }
+        legacyHistoryMigrated = tag.getBoolean("legacyHistoryMigrated");
+        if (!tag.hasKey("tradeHistory")) {
+            return;
+        }
+        NBTTagList historyList = tag.getTagList("tradeHistory", 10);
+        for (int i = 0; i < historyList.tagCount(); i++) {
+            NBTTagCompound historyTag = historyList.getCompoundTagAt(i);
+            try {
+                UUID groupId = UUID.fromString(historyTag.getString("groupId"));
+                NekoTradeHistory history = new NekoTradeHistory();
+                history.loadFromNBT(historyTag.getCompoundTag("history"));
+                tradeHistories.put(groupId, history);
+            } catch (IllegalArgumentException ignored) {
+                GTInterestingThing.LOG
+                    .warn("Skipping invalid Neko trade history group ID: " + historyTag.getString("groupId"));
+            }
         }
     }
 
@@ -47,8 +130,8 @@ public class NekoTeamData implements ITeamData {
      * 将被合并团队的钱包余额合并到当前团队
      */
     @Override
-    public void mergeData(Team consumed, Team surviving, ITeamData oldTeamData) {
-        if (oldTeamData instanceof NekoTeamData) {
+    public synchronized void mergeData(Team consumed, Team surviving, ITeamData oldTeamData) {
+        if (oldTeamData instanceof NekoTeamData && oldTeamData != this) {
             NekoTeamData other = (NekoTeamData) oldTeamData;
             NekoWallet otherWallet = other.getWallet();
             // 合并所有猫猫币余额
@@ -58,6 +141,13 @@ public class NekoTeamData implements ITeamData {
                     wallet.addCount(currencyId, amount);
                 }
             }
+            for (Map.Entry<UUID, NekoTradeHistory> entry : other.getTradeHistoriesSnapshot()
+                .entrySet()) {
+                mergeTradeHistory(entry.getKey(), entry.getValue());
+            }
+            // If either side still has unconsumed player files, let the next
+            // access migrate all current members after the merge.
+            legacyHistoryMigrated = legacyHistoryMigrated && other.isLegacyHistoryMigrated();
             GTInterestingThing.LOG.info("猫猫币团队钱包合并完成");
         }
     }
@@ -67,8 +157,16 @@ public class NekoTeamData implements ITeamData {
      * 仅团队钱包模式，无个人数据需要转移
      */
     @Override
-    public void copyData(Team prevTeam, Team newTeam, UUID playerId, ITeamData prevTeamData,
+    public synchronized void copyData(Team prevTeam, Team newTeam, UUID playerId, ITeamData prevTeamData,
         TeamDataCopyReason reason) {
+        if (prevTeamData instanceof NekoTeamData && prevTeamData != this) {
+            NekoTeamData previous = (NekoTeamData) prevTeamData;
+            for (Map.Entry<UUID, NekoTradeHistory> entry : previous.getTradeHistoriesSnapshot()
+                .entrySet()) {
+                mergeTradeHistory(entry.getKey(), entry.getValue());
+            }
+            legacyHistoryMigrated = legacyHistoryMigrated && previous.isLegacyHistoryMigrated();
+        }
         // 仅团队钱包，无个人数据迁移
     }
 }

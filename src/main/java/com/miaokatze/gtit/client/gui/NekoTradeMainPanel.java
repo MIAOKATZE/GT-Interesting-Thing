@@ -20,12 +20,10 @@ import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
-import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
-import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 
 /**
  * V2 猫猫机 GUI 核心容器面板
@@ -146,6 +144,17 @@ public class NekoTradeMainPanel extends ModularPanel {
          * @return true 表示客户端
          */
         boolean isClient();
+
+        /**
+         * 获取指定交易的服务端同步冷却剩余时间
+         * <p>
+         * 冷却状态由服务端通过 {@code cooldownStatusSync} 同步到客户端；未同步或参数无效时返回 0。
+         *
+         * @param groupId    交易组 UUID
+         * @param tradeIndex 交易在组内的索引
+         * @return 服务端同步的冷却剩余秒数，未同步时为 0
+         */
+        long getSyncedCooldownRemaining(UUID groupId, int tradeIndex);
 
         /**
          * 获取当前激活的交易分类
@@ -412,8 +421,7 @@ public class NekoTradeMainPanel extends ModularPanel {
      * </ol>
      * <p>
      * <b>VM 适配</b>：VM 从 {@code TradeManager.INSTANCE.tradeData} 获取最新状态，
-     * GTIT 没有 TradeManager，改为从 {@link NekoTradeDatabase} 和
-     * {@link NekoHistoryManager} 重新查询。
+     * GTIT 没有 TradeManager，改为从 {@link NekoTradeDatabase} 重新查询；冷却状态使用服务端同步值。
      *
      * @param currentData 当前显示数据（按分类组织，从 Widget 中提取）
      */
@@ -451,12 +459,9 @@ public class NekoTradeMainPanel extends ModularPanel {
                 boolean bqLocked = playerId != null && !group.isConditionsSatisfied(playerId);
                 display.setBqLocked(bqLocked);
 
-                // 更新冷却剩余时间
-                long cooldownRemaining = 0;
-                if (group.getCooldown() > 0 && playerId != null) {
-                    NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, display.getGroupId());
-                    cooldownRemaining = history.getCooldownRemaining(group.getCooldown());
-                }
+                // 更新冷却剩余时间（服务端同步值）
+                long cooldownRemaining = callback
+                    .getSyncedCooldownRemaining(display.getGroupId(), display.getTradeIndex());
                 display.setCooldownRemaining(cooldownRemaining);
 
                 // 更新可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）
@@ -546,12 +551,8 @@ public class NekoTradeMainPanel extends ModularPanel {
                     boolean bqLocked = playerId != null && !group.isConditionsSatisfied(playerId);
                     display.setBqLocked(bqLocked);
 
-                    // 设置冷却状态
-                    long cooldownRemaining = 0;
-                    if (group.getCooldown() > 0 && playerId != null) {
-                        NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
-                        cooldownRemaining = history.getCooldownRemaining(group.getCooldown());
-                    }
+                    // 设置冷却状态（服务端同步值）
+                    long cooldownRemaining = callback.getSyncedCooldownRemaining(group.getId(), i);
                     display.setCooldownRemaining(cooldownRemaining);
 
                     // 设置可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）

@@ -308,162 +308,169 @@ public class NekoTradeExecutor {
      */
     public NekoTradeResult executeTrade(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots,
         OutputSlotAccessor outputSlots) {
-        // 1. 预检查（v1.7.8 A2：传入输出槽访问器，扣款前预检输出空间）
-        NekoTradeResult checkResult = checkTrade(playerId, groupId, tradeIndex, inputSlots, outputSlots);
-        if (!checkResult.isSuccess()) {
-            return checkResult;
-        }
-
-        // 2. 获取交易组和交易
         NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
-        NekoTrade trade = group.getTrades()
-            .get(tradeIndex);
-
-        // 3. 扣减猫猫币（钱包优先，不足部分从 ME 提取）
-        // v1.7.6 G3② 货币解绑：货币需求来自 fromItems 猫猫币条目（getCurrencyCosts 按 ID 汇总），
-        // 逐种货币独立扣款；记录每种货币的钱包/ME 扣款额，
-        // 回滚时只能还原钱包部分（ME 推入下一阶段实现，已知限制）
-        NekoWallet wallet = null;
-        Map<String, Integer> walletDeducted = new LinkedHashMap<>();
-        Map<String, Integer> meCurrencyDeducted = new LinkedHashMap<>();
-        Map<String, Integer> currencyCosts = trade.getCurrencyCosts();
-        if (!currencyCosts.isEmpty()) {
-            wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            for (Map.Entry<String, Integer> costEntry : currencyCosts.entrySet()) {
-                String cid = costEntry.getKey();
-                int cost = costEntry.getValue();
-                int walletBalance = wallet.getCount(cid);
-
-                if (walletBalance >= cost) {
-                    // 钱包余额充足，直接扣（synchronized 原子操作，防并发双重消费）
-                    if (!wallet.tryDeduct(cid, cost)) {
-                        rollbackWalletCurrency(wallet, walletDeducted);
-                        return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
-                    }
-                    walletDeducted.put(cid, cost);
-                } else {
-                    // 钱包不足，需 ME 补足。checkTrade 已经验证过总额足够，此处再读一次防并发
-                    int meBalance = inputSlots.getMECurrencyAmount(cid);
-                    if (walletBalance + meBalance < cost) {
-                        rollbackWalletCurrency(wallet, walletDeducted);
-                        return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
-                    }
-                    // 先扣完钱包余额
-                    if (walletBalance > 0 && !wallet.tryDeduct(cid, walletBalance)) {
-                        rollbackWalletCurrency(wallet, walletDeducted);
-                        return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
-                    }
-                    // 再从 ME 提取剩余部分
-                    int meNeed = cost - walletBalance;
-                    if (!inputSlots.tryDeductMECurrency(cid, meNeed)) {
-                        // ME 提取失败，还原本种货币钱包扣减 + 此前已扣的其他货币
-                        if (walletBalance > 0) {
-                            wallet.addCount(cid, walletBalance);
-                        }
-                        rollbackWalletCurrency(wallet, walletDeducted);
-                        return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
-                    }
-                    if (walletBalance > 0) {
-                        walletDeducted.put(cid, walletBalance);
-                    }
-                    meCurrencyDeducted.put(cid, meNeed);
-                }
-            }
+        if (group == null || tradeIndex < 0
+            || tradeIndex >= group.getTrades()
+                .size()) {
+            return checkTrade(playerId, groupId, tradeIndex, inputSlots, outputSlots);
         }
-
-        // 4. 扣减输入物品（本地先扣，不足部分从 ME 提取）
-        // v1.7.6 G3②：仅扣普通需求条目——猫猫币条目已在第 3 步走货币路径，
-        // 防止被当普通物品从输入槽扣除；G3⑤：匹配严格度按交易 recordNBT
-        ItemStack[] originalInputs = null;
-        List<NekoBigItemStack> requiredItems = trade.getNonCurrencyFromItems();
-        if (!requiredItems.isEmpty()) {
-            originalInputs = inputSlots.getCopyOfInputs();
-            ItemStack[] inputs = inputSlots.getCopyOfInputs();
-            // 本地扣减，返回未满足的物品列表
-            List<NekoBigItemStack> remaining = removeItems(inputs, requiredItems, trade.isRecordNBT());
-            // 写回本地扣减后的物品数组
-            inputSlots.setInputs(inputs);
-            // 从 ME 提取 remaining 部分
-            if (!remaining.isEmpty()) {
-                for (NekoBigItemStack unfulfilled : remaining) {
-                    for (ItemStack meStack : unfulfilled.getCombinedStacks()) {
-                        if (!inputSlots.extractFromME(meStack)) {
-                            // ME 提取失败，回滚本地扣减并还原货币（钱包部分）
-                            inputSlots.setInputs(originalInputs);
-                            rollbackWalletCurrency(wallet, walletDeducted);
-                            // 注意：ME 扣减的货币部分无法回滚（injectItems 下一阶段实现）
-                            return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
-                        }
-                    }
-                }
-            }
-        }
-
-        // v1.6.28: 计算本批次总产出物品数，通知 MTE 进入批次模式控制下落时序
-        // 分档规则：1个无间隔 / 2个6-10tick / 3-4个2-6tick / ≥5个2-6tick且每次1-2个
-        // v1.7.10：猫猫币产物恢复落入输出槽（1.6.* 观感），批次统计全部产物（含货币产物）
-        List<NekoBigItemStack> allOutputs = trade.getToItems();
-        int totalOutputCount = 0;
-        for (NekoBigItemStack toItem : allOutputs) {
-            for (ItemStack stack : toItem.getCombinedStacks()) {
-                totalOutputCount++;
-            }
-        }
-        if (totalOutputCount > 0) {
-            outputSlots.startBatch(totalOutputCount);
-        }
-
-        // 5. 产出放入输出槽（记录本轮插入数量以便回滚；v1.7.10 起含猫猫币产物）
-        int insertedCount = 0;
-        for (NekoBigItemStack toItem : allOutputs) {
-            for (ItemStack stack : toItem.getCombinedStacks()) {
-                if (!outputSlots.hasSpaceFor(stack)) {
-                    // 输出槽满，回滚已扣减的资源
-                    // (a) 回滚猫猫币：仅还原钱包扣减部分
-                    // ME 扣减部分无法回滚（injectItems 推入 ME 是下一阶段实现），
-                    // 此为已知限制；但 checkTrade 已通过意味着产出空间足够，
-                    // OUTPUT_FULL 仅在并发或队列堆积时发生，影响范围有限
-                    rollbackWalletCurrency(wallet, walletDeducted);
-                    // (b) 还原已扣减的输入物品：本地部分可还原
-                    // ME 扣减的输入物品同样无法回滚，已知限制
-                    if (originalInputs != null) {
-                        inputSlots.setInputs(originalInputs);
-                    }
-                    // (c) 移除本轮已 insertItem 到 outputBuffer 的物品
-                    if (insertedCount > 0) {
-                        outputSlots.rollback(insertedCount);
-                    }
-                    // v1.6.28: 交易失败回滚，清理批次状态避免残留
-                    outputSlots.endBatch();
-                    return NekoTradeResult.fail(NekoTradeResult.Status.OUTPUT_FULL);
-                }
-                outputSlots.insertItem(stack);
-                insertedCount++;
-            }
-        }
-        // v1.6.28: 批次插入完成，不调用 endBatch —— 批次状态需保留供 dispenseItems 分档控制投放时序，
-        // 由 MTENekoVendingMachineV2.dispenseItems 在所有物品投放完成后调用 endBatch 清理
-
-        // 6. 记录历史
         NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, groupId);
-        history.recordTrade(group.getCooldown());
-        // v1.6.28: 若有冷却，标记需要播报冷却完毕通知（由 NekoNotificationScheduler 定时检查并播报）
-        if (group.getCooldown() > 0) {
-            history.setNotificationQueued(true);
-        }
-        NekoHistoryManager.INSTANCE.markDirty(playerId);
+        synchronized (history) {
+            // 1. 预检查（v1.7.8 A2：传入输出槽访问器，扣款前预检输出空间）
+            NekoTradeResult checkResult = checkTrade(playerId, groupId, tradeIndex, inputSlots, outputSlots);
+            if (!checkResult.isSuccess()) {
+                return checkResult;
+            }
 
-        // v1.7.6 G6⑤ 钱包落盘一致性：交易引起的货币扣减后显式持久化。
-        // wallet 非空即本次交易动过钱包（第 3 步扣款；v1.7.10 起货币产物落输出槽不入钱包）；
-        // 个人钱包写 gtit_neko_wallets/*.dat，团队钱包 markDirty 供 GTNHLib 世界保存落盘
-        // （GTNHLib TeamDataSaver.onWorldSave 仅落 DIRTY 团队，不标脏则崩溃丢账）。
-        // 与投币/弹出/抽奖扣费路径的 saveWallet 口径一致；纯物品交易 wallet==null 不触发。
-        if (wallet != null) {
-            NekoWalletManager.INSTANCE.saveWallet(playerId);
-        }
+            // 2. 获取交易组和交易
+            NekoTrade trade = group.getTrades()
+                .get(tradeIndex);
 
-        // 7. 返回成功
-        return NekoTradeResult.success();
+            // 3. 扣减猫猫币（钱包优先，不足部分从 ME 提取）
+            // v1.7.6 G3② 货币解绑：货币需求来自 fromItems 猫猫币条目（getCurrencyCosts 按 ID 汇总），
+            // 逐种货币独立扣款；记录每种货币的钱包/ME 扣款额，
+            // 回滚时只能还原钱包部分（ME 推入下一阶段实现，已知限制）
+            NekoWallet wallet = null;
+            Map<String, Integer> walletDeducted = new LinkedHashMap<>();
+            Map<String, Integer> meCurrencyDeducted = new LinkedHashMap<>();
+            Map<String, Integer> currencyCosts = trade.getCurrencyCosts();
+            if (!currencyCosts.isEmpty()) {
+                wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+                for (Map.Entry<String, Integer> costEntry : currencyCosts.entrySet()) {
+                    String cid = costEntry.getKey();
+                    int cost = costEntry.getValue();
+                    int walletBalance = wallet.getCount(cid);
+
+                    if (walletBalance >= cost) {
+                        // 钱包余额充足，直接扣（synchronized 原子操作，防并发双重消费）
+                        if (!wallet.tryDeduct(cid, cost)) {
+                            rollbackWalletCurrency(wallet, walletDeducted);
+                            return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
+                        }
+                        walletDeducted.put(cid, cost);
+                    } else {
+                        // 钱包不足，需 ME 补足。checkTrade 已经验证过总额足够，此处再读一次防并发
+                        int meBalance = inputSlots.getMECurrencyAmount(cid);
+                        if (walletBalance + meBalance < cost) {
+                            rollbackWalletCurrency(wallet, walletDeducted);
+                            return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
+                        }
+                        // 先扣完钱包余额
+                        if (walletBalance > 0 && !wallet.tryDeduct(cid, walletBalance)) {
+                            rollbackWalletCurrency(wallet, walletDeducted);
+                            return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
+                        }
+                        // 再从 ME 提取剩余部分
+                        int meNeed = cost - walletBalance;
+                        if (!inputSlots.tryDeductMECurrency(cid, meNeed)) {
+                            // ME 提取失败，还原本种货币钱包扣减 + 此前已扣的其他货币
+                            if (walletBalance > 0) {
+                                wallet.addCount(cid, walletBalance);
+                            }
+                            rollbackWalletCurrency(wallet, walletDeducted);
+                            return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_CURRENCY);
+                        }
+                        if (walletBalance > 0) {
+                            walletDeducted.put(cid, walletBalance);
+                        }
+                        meCurrencyDeducted.put(cid, meNeed);
+                    }
+                }
+            }
+
+            // 4. 扣减输入物品（本地先扣，不足部分从 ME 提取）
+            // v1.7.6 G3②：仅扣普通需求条目——猫猫币条目已在第 3 步走货币路径，
+            // 防止被当普通物品从输入槽扣除；G3⑤：匹配严格度按交易 recordNBT
+            ItemStack[] originalInputs = null;
+            List<NekoBigItemStack> requiredItems = trade.getNonCurrencyFromItems();
+            if (!requiredItems.isEmpty()) {
+                originalInputs = inputSlots.getCopyOfInputs();
+                ItemStack[] inputs = inputSlots.getCopyOfInputs();
+                // 本地扣减，返回未满足的物品列表
+                List<NekoBigItemStack> remaining = removeItems(inputs, requiredItems, trade.isRecordNBT());
+                // 写回本地扣减后的物品数组
+                inputSlots.setInputs(inputs);
+                // 从 ME 提取 remaining 部分
+                if (!remaining.isEmpty()) {
+                    for (NekoBigItemStack unfulfilled : remaining) {
+                        for (ItemStack meStack : unfulfilled.getCombinedStacks()) {
+                            if (!inputSlots.extractFromME(meStack)) {
+                                // ME 提取失败，回滚本地扣减并还原货币（钱包部分）
+                                inputSlots.setInputs(originalInputs);
+                                rollbackWalletCurrency(wallet, walletDeducted);
+                                // 注意：ME 扣减的货币部分无法回滚（injectItems 下一阶段实现）
+                                return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // v1.6.28: 计算本批次总产出物品数，通知 MTE 进入批次模式控制下落时序
+            // 分档规则：1个无间隔 / 2个6-10tick / 3-4个2-6tick / ≥5个2-6tick且每次1-2个
+            // v1.7.10：猫猫币产物恢复落入输出槽（1.6.* 观感），批次统计全部产物（含货币产物）
+            List<NekoBigItemStack> allOutputs = trade.getToItems();
+            int totalOutputCount = 0;
+            for (NekoBigItemStack toItem : allOutputs) {
+                for (ItemStack stack : toItem.getCombinedStacks()) {
+                    totalOutputCount++;
+                }
+            }
+            if (totalOutputCount > 0) {
+                outputSlots.startBatch(totalOutputCount);
+            }
+
+            // 5. 产出放入输出槽（记录本轮插入数量以便回滚；v1.7.10 起含猫猫币产物）
+            int insertedCount = 0;
+            for (NekoBigItemStack toItem : allOutputs) {
+                for (ItemStack stack : toItem.getCombinedStacks()) {
+                    if (!outputSlots.hasSpaceFor(stack)) {
+                        // 输出槽满，回滚已扣减的资源
+                        // (a) 回滚猫猫币：仅还原钱包扣减部分
+                        // ME 扣减部分无法回滚（injectItems 推入 ME 是下一阶段实现），
+                        // 此为已知限制；但 checkTrade 已通过意味着产出空间足够，
+                        // OUTPUT_FULL 仅在并发或队列堆积时发生，影响范围有限
+                        rollbackWalletCurrency(wallet, walletDeducted);
+                        // (b) 还原已扣减的输入物品：本地部分可还原
+                        // ME 扣减的输入物品同样无法回滚，已知限制
+                        if (originalInputs != null) {
+                            inputSlots.setInputs(originalInputs);
+                        }
+                        // (c) 移除本轮已 insertItem 到 outputBuffer 的物品
+                        if (insertedCount > 0) {
+                            outputSlots.rollback(insertedCount);
+                        }
+                        // v1.6.28: 交易失败回滚，清理批次状态避免残留
+                        outputSlots.endBatch();
+                        return NekoTradeResult.fail(NekoTradeResult.Status.OUTPUT_FULL);
+                    }
+                    outputSlots.insertItem(stack);
+                    insertedCount++;
+                }
+            }
+            // v1.6.28: 批次插入完成，不调用 endBatch —— 批次状态需保留供 dispenseItems 分档控制投放时序，
+            // 由 MTENekoVendingMachineV2.dispenseItems 在所有物品投放完成后调用 endBatch 清理
+
+            // 6. 记录历史
+            history.recordTrade(group.getCooldown());
+            // v1.6.28: 若有冷却，标记需要播报冷却完毕通知（由 NekoNotificationScheduler 定时检查并播报）
+            if (group.getCooldown() > 0) {
+                history.setNotificationQueued(true);
+            }
+            NekoHistoryManager.INSTANCE.markDirty(playerId);
+
+            // v1.7.6 G6⑤ 钱包落盘一致性：交易引起的货币扣减后显式持久化。
+            // wallet 非空即本次交易动过钱包（第 3 步扣款；v1.7.10 起货币产物落输出槽不入钱包）；
+            // 个人钱包写 gtit_neko_wallets/*.dat，团队钱包 markDirty 供 GTNHLib 世界保存落盘
+            // （GTNHLib TeamDataSaver.onWorldSave 仅落 DIRTY 团队，不标脏则崩溃丢账）。
+            // 与投币/弹出/抽奖扣费路径的 saveWallet 口径一致；纯物品交易 wallet==null 不触发。
+            if (wallet != null) {
+                NekoWalletManager.INSTANCE.saveWallet(playerId);
+            }
+
+            // 7. 返回成功
+            return NekoTradeResult.success();
+        }
     }
 
     // --- 辅助方法 ---

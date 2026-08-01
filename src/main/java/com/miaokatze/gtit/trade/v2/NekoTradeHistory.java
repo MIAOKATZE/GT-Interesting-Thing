@@ -33,7 +33,7 @@ public class NekoTradeHistory {
      * @param maxTrades           总最大交易次数，-1 表示不限
      * @return 可以交易返回 true
      */
-    public boolean canTrade(int cooldown, int maxTradesInCooldown, int maxTrades) {
+    public synchronized boolean canTrade(int cooldown, int maxTradesInCooldown, int maxTrades) {
         // 检查总交易次数限制
         if (maxTrades != -1 && tradeCount >= maxTrades) {
             return false;
@@ -54,7 +54,7 @@ public class NekoTradeHistory {
      * @param cooldown 冷却时间（秒）
      * @return 剩余冷却时间（秒），已过冷却返回 0
      */
-    public long getCooldownRemaining(int cooldown) {
+    public synchronized long getCooldownRemaining(int cooldown) {
         if (cooldown <= 0 || lastTradeTime <= 0) {
             return 0;
         }
@@ -68,7 +68,7 @@ public class NekoTradeHistory {
      *
      * @param cooldown 冷却时间（秒），用于判断是否需要重置冷却计数
      */
-    public void recordTrade(int cooldown) {
+    public synchronized void recordTrade(int cooldown) {
         // 冷却已过，重置冷却期交易计数
         if (cooldown > 0 && lastTradeTime > 0) {
             long elapsed = (System.currentTimeMillis() - lastTradeTime) / 1000;
@@ -84,7 +84,7 @@ public class NekoTradeHistory {
     /**
      * 重置所有历史记录
      */
-    public void reset() {
+    public synchronized void reset() {
         lastTradeTime = -1;
         tradeCount = 0;
         cooldownTradeCount = 0;
@@ -93,11 +93,65 @@ public class NekoTradeHistory {
     }
 
     /**
+     * Creates a consistent deep copy of this history.
+     */
+    public synchronized NekoTradeHistory copy() {
+        NekoTradeHistory result = new NekoTradeHistory();
+        result.lastTradeTime = lastTradeTime;
+        result.tradeCount = tradeCount;
+        result.cooldownTradeCount = cooldownTradeCount;
+        result.notificationQueued = notificationQueued;
+        return result;
+    }
+
+    /**
+     * Replaces this history with a consistent copy of another history.
+     */
+    public void copyFrom(NekoTradeHistory other) {
+        if (other == this) {
+            return;
+        }
+        if (other == null) {
+            reset();
+            return;
+        }
+
+        NekoTradeHistory snapshot = other.copy();
+        synchronized (this) {
+            lastTradeTime = snapshot.lastTradeTime;
+            tradeCount = snapshot.tradeCount;
+            cooldownTradeCount = snapshot.cooldownTradeCount;
+            notificationQueued = snapshot.notificationQueued;
+        }
+    }
+
+    /**
+     * Merges another history into this one. Counts are added, the latest
+     * timestamp wins, and a queued notification is retained if either
+     * history has one.
+     */
+    public void mergeFrom(NekoTradeHistory other) {
+        if (other == null || other == this) {
+            return;
+        }
+
+        NekoTradeHistory snapshot = other.copy();
+        synchronized (this) {
+            tradeCount += snapshot.tradeCount;
+            cooldownTradeCount += snapshot.cooldownTradeCount;
+            if (snapshot.lastTradeTime > lastTradeTime) {
+                lastTradeTime = snapshot.lastTradeTime;
+            }
+            notificationQueued = notificationQueued || snapshot.notificationQueued;
+        }
+    }
+
+    /**
      * 序列化到 NBT
      *
      * @return NBT 标签化合物
      */
-    public NBTTagCompound writeToNBT() {
+    public synchronized NBTTagCompound writeToNBT() {
         NBTTagCompound nbt = new NBTTagCompound();
         nbt.setLong("lastTradeTime", lastTradeTime);
         nbt.setLong("tradeCount", tradeCount);
@@ -112,7 +166,10 @@ public class NekoTradeHistory {
      *
      * @param nbt NBT 标签化合物
      */
-    public void loadFromNBT(NBTTagCompound nbt) {
+    public synchronized void loadFromNBT(NBTTagCompound nbt) {
+        if (nbt == null) {
+            return;
+        }
         lastTradeTime = nbt.getLong("lastTradeTime");
         tradeCount = nbt.getLong("tradeCount");
         cooldownTradeCount = nbt.getLong("cooldownTradeCount");
@@ -120,25 +177,25 @@ public class NekoTradeHistory {
         notificationQueued = nbt.getBoolean("notificationQueued");
     }
 
-    public long getLastTradeTime() {
+    public synchronized long getLastTradeTime() {
         return lastTradeTime;
     }
 
-    public long getTradeCount() {
+    public synchronized long getTradeCount() {
         return tradeCount;
     }
 
-    public long getCooldownTradeCount() {
+    public synchronized long getCooldownTradeCount() {
         return cooldownTradeCount;
     }
 
     /** v1.6.28: 是否有待发出的冷却完毕通知 */
-    public boolean isNotificationQueued() {
+    public synchronized boolean isNotificationQueued() {
         return notificationQueued;
     }
 
     /** v1.6.28: 设置冷却完毕通知标记 */
-    public void setNotificationQueued(boolean queued) {
+    public synchronized void setNotificationQueued(boolean queued) {
         this.notificationQueued = queued;
     }
 }

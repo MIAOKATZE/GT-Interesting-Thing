@@ -1222,6 +1222,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     @Override
+    public long getSyncedCooldownRemaining(UUID groupId, int tradeIndex) {
+        if (groupId == null || tradeIndex < 0) {
+            return 0L;
+        }
+        String key = groupId.toString() + ":" + tradeIndex;
+        Long remaining = cooldownStatusMap.get(key);
+        return remaining != null && remaining > 0L ? remaining : 0L;
+    }
+
+    @Override
     public NekoTradeCategory getActiveCategory() {
         if (currentTabId >= 0 && currentTabId < tradeCategories.size()) {
             return tradeCategories.get(currentTabId);

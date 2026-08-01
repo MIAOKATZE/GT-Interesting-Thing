@@ -108,19 +108,21 @@ public class NekoNotificationScheduler {
                         continue;
                     }
                     NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, entry.getKey());
-                    // 无待通知标记则跳过
-                    if (!history.isNotificationQueued()) {
-                        continue;
+                    synchronized (history) {
+                        // 无待通知标记则跳过
+                        if (!history.isNotificationQueued()) {
+                            continue;
+                        }
+                        // 冷却尚未结束则跳过
+                        if (history.getCooldownRemaining(group.getCooldown()) > 0) {
+                            continue;
+                        }
+                        // 冷却已结束且有待通知 → 团队播报
+                        notifyTeam(player, group);
+                        // 清除通知标记并持久化
+                        history.setNotificationQueued(false);
+                        NekoHistoryManager.INSTANCE.markDirty(playerId);
                     }
-                    // 冷却尚未结束则跳过
-                    if (history.getCooldownRemaining(group.getCooldown()) > 0) {
-                        continue;
-                    }
-                    // 冷却已结束且有待通知 → 团队播报
-                    notifyTeam(player, group);
-                    // 清除通知标记并持久化
-                    history.setNotificationQueued(false);
-                    NekoHistoryManager.INSTANCE.markDirty(playerId);
                 }
             }
         } catch (Throwable t) {
