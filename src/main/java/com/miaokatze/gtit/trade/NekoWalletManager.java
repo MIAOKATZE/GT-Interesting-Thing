@@ -74,6 +74,10 @@ public class NekoWalletManager {
     /**
      * 获取玩家的钱包
      * 优先返回团队共享钱包，如果团队不可用则回退到个人钱包
+     * <p>
+     * <b>团队切换语义（B2-06 文档化决策，与 O2-18(a) 同一结论）</b>：玩家入队后本方法
+     * 即路由到团队钱包，个人钱包余额在入队时刻冻结（不再读写）；退队后回到冻结前快照。
+     * 个人 .dat 文件不做删除，保留作退队恢复点——这是有意行为而非泄漏。
      */
     public NekoWallet getWallet(UUID playerId) {
         if (playerId == null) return null;
@@ -125,6 +129,9 @@ public class NekoWalletManager {
     /**
      * 保存玩家钱包
      * 如果是团队钱包，标记团队数据为脏；如果是个人钱包，保存到磁盘
+     * <p>
+     * <b>B2-06 文档化决策</b>：团队分支仅 markDirty + 清个人脏标记后直接返回——
+     * 个人 .dat 不在此路径清理（保留作退队恢复点），余额也不做合并（退队即回冻结快照）。
      */
     public void saveWallet(UUID playerId) {
         if (playerId == null) return;
