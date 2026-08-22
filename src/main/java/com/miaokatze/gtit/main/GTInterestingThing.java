@@ -13,6 +13,8 @@ import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartedEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
+import cpw.mods.fml.common.event.FMLServerStoppedEvent;
+import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 
 /**
  * GTInterestingThing - GTNH的趣味小物品模组
@@ -106,5 +108,25 @@ public class GTInterestingThing {
     @Mod.EventHandler
     public void loadComplete(FMLLoadCompleteEvent event) {
         proxy.loadComplete(event);
+    }
+
+    /**
+     * 服务器停止阶段（BUG B1 修复：钱包全量落盘钩子）
+     *
+     * @param event 服务器停止事件
+     */
+    @Mod.EventHandler
+    public void serverStopping(FMLServerStoppingEvent event) {
+        proxy.serverStopping(event);
+    }
+
+    /**
+     * 服务器已停止阶段（BUG B1 修复：钱包落盘收尾 + 清空内存缓存）
+     *
+     * @param event 服务器已停止事件
+     */
+    @Mod.EventHandler
+    public void serverStopped(FMLServerStoppedEvent event) {
+        proxy.serverStopped(event);
     }
 }

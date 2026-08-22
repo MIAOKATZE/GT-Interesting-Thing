@@ -31,6 +31,8 @@ import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartedEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
+import cpw.mods.fml.common.event.FMLServerStoppedEvent;
+import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import gregtech.api.GregTechAPI;
 
 /**
@@ -154,6 +156,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.info("[0/3] 邮件事件监听器已注册");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[0/3] 邮件事件监听器注册失败", t);
+        }
+
+        // BUG B1 修复：注册猫猫币钱包事件监听器（登出卸载/脏钱包周期落盘/余额推送节流冲刷）
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new com.miaokatze.gtit.trade.NekoWalletHandler());
+            GTInterestingThing.LOG.info("[0/3] 猫猫币钱包事件监听器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 猫猫币钱包事件监听器注册失败", t);
         }
 
         // v1.7.0 目标 5: 注册交易配置同步监听器（登录时向客户端推送服务端交易/标签页配置）
@@ -510,4 +522,35 @@ public class CommonProxy {
      * 模组加载完成阶段
      */
     public void loadComplete(cpw.mods.fml.common.event.FMLLoadCompleteEvent event) {}
+
+    /**
+     * 服务器停止阶段（BUG B1 修复：钱包全量落盘钩子）
+     * <p>
+     * 全量保存所有个人钱包，确保关服前最后一批未经过显式 saveWallet 覆盖的
+     * 余额变动不丢账（此前 saveAll 全项目零调用，关服无批量落盘）。
+     * 团队钱包由 GTNHLib Teams 随世界存档托管。
+     */
+    @SuppressWarnings({ "unused" })
+    public void serverStopping(FMLServerStoppingEvent event) {
+        try {
+            NekoWalletManager.INSTANCE.saveAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("关服保存猫猫币钱包失败", t);
+        }
+    }
+
+    /**
+     * 服务器已停止阶段（BUG B1 修复：落盘收尾 + 清空钱包内存缓存）
+     * <p>
+     * 再次全量落盘（幂等兜底）后清空个人钱包缓存与脏标记，防止单机连续切换
+     * 世界时旧世界的钱包对象驻留内存遮蔽新世界的 .dat 文件。
+     */
+    @SuppressWarnings({ "unused" })
+    public void serverStopped(FMLServerStoppedEvent event) {
+        try {
+            NekoWalletManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服收尾猫猫币钱包失败", t);
+        }
+    }
 }

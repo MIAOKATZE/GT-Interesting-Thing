@@ -17,8 +17,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
 /**
  * 客户端抽奖数据缓存
  * <p>
- * 由 {@link LotterySyncPacket}（全量刷新）与 {@link LotteryResultPacket}（抽取结果）的
- * 客户端处理器写入，{@link LotteryGui} 读取——与 {@code SignInClientData} 同属
+ * 由 {@link LotterySyncPacket}（全量刷新）、{@link LotteryBalancePacket}（余额轻量刷新）
+ * 与 {@link LotteryResultPacket}（抽取结果）的客户端处理器写入，{@link LotteryGui} 读取——
+ * 与 {@code SignInClientData} 同属
  * 「S→C 全量同步 + 客户端静态缓存 + 动态绑定」范式。
  * <p>
  * 服务端侧不会收到同步包，本类在服务端始终保持空数据（GUI 在服务端构建时读到默认值，
@@ -209,6 +210,20 @@ public final class LotteryClientData {
         if (newPity != null) {
             pityCounters = new LinkedHashMap<>(newPity);
         }
+        if (newBalances != null) {
+            balances = new LinkedHashMap<>(newBalances);
+        }
+    }
+
+    /**
+     * 仅刷新团队钱包余额（{@link LotteryBalancePacket} 到达时调用）。
+     * <p>
+     * 优化建议 三.1：钱包余额变化不再推送全量同步（卡池摘要/保底计数不变），
+     * 由余额专用轻量包经 {@code NekoWalletManager} 节流冲刷后刷新本维度。
+     *
+     * @param newBalances 团队钱包余额（currencyId → 数量）
+     */
+    public static synchronized void updateBalances(Map<String, Integer> newBalances) {
         if (newBalances != null) {
             balances = new LinkedHashMap<>(newBalances);
         }

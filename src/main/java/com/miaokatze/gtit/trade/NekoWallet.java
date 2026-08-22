@@ -32,10 +32,17 @@ public class NekoWallet {
         this.teamId = teamId;
     }
 
+    /** 是否团队钱包（teamId 非 null；余额推送冲刷时区分个人/团队归属口径） */
+    public boolean isTeamWallet() {
+        return this.teamId != null;
+    }
+
     /**
-     * 余额变化后通知钱包管理器向相关玩家推送同步包
+     * 余额变化后通知钱包管理器登记待推送/待落盘标记
      * <p>
-     * 个人钱包走 playerId 查找单个玩家；团队钱包走 teamId 查找全体队员。
+     * 个人钱包走 playerId 口径；团队钱包走 teamId（全体队员）口径。
+     * 实际推送由管理器在服务器 tick 上节流冲刷（约 100ms 合帧，只发余额轻量包，
+     * 见 NekoWalletManager.flushBalanceNotifications）。
      * 此方法由 addCount/tryDeduct/resetCount/resetAll 在余额实际变化后调用。
      */
     private void notifyChanged() {
