@@ -84,7 +84,7 @@ public class CommonProxy {
         // 初始化新手宝箱配置
         GiftConfig.init();
 
-        // v1.7.0：初始化签到奖励配置（config/gtit/daily_signin.json，缺失时生成默认）
+        // v1.7.0：初始化签到奖励配置（DailySignInConfig.CONFIG_PATH = config/gtit/signin/daily_signin.json，缺失时生成默认）
         try {
             com.miaokatze.gtit.signin.DailySignInConfig.init();
             GTInterestingThing.LOG.info("[0/3] 签到奖励配置已初始化");
@@ -92,7 +92,8 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 签到奖励配置初始化失败", t);
         }
 
-        // v1.7.6 G2③：初始化在线时长奖励配置（config/gtit/online_time_config.json，缺失时生成默认 30min/2h/5h）
+        // v1.7.6 G2③：初始化在线时长奖励配置
+        // （OnlineTimeConfig.CONFIG_PATH = config/gtit/signin/online_time_config.json，缺省 30min/2h/5h）
         try {
             com.miaokatze.gtit.signin.OnlineTimeConfig.init();
             GTInterestingThing.LOG.info("[0/3] 在线时长奖励配置已初始化");
@@ -100,7 +101,7 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 在线时长奖励配置初始化失败", t);
         }
 
-        // v1.7.6 G5：初始化自动祝福邮件配置（config/gtit/blessing_config.json，缺失时生成默认节日表+生日模板）
+        // v1.7.6 G5：初始化自动祝福邮件配置（BlessingConfig.CONFIG_PATH = config/gtit/mail/blessing_config.json，缺失时生成默认节日表+生日模板）
         // 注：默认配置仅写字币 ID 字符串，物品解析在发送时进行，故 preInit 阶段调用安全
         try {
             com.miaokatze.gtit.mail.BlessingConfig.init();
