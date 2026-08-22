@@ -3,6 +3,7 @@ package com.miaokatze.gtit.lottery;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
@@ -92,6 +93,9 @@ public class LotteryNetworkManager {
      */
     public static void sendSyncToClient(EntityPlayerMP player) {
         if (!initialized || channel == null || player == null) return;
+        // B2-05 防网络放大：per-player 250ms 冷却（高频重放的请求只触发一次全量同步，
+        // 请求本体数十字节而同步包为全部池×条目 NBT，放大数百倍）
+        if (!tryAcquireSyncSlot(player.getUniqueID())) return;
         UUID playerId = player.getUniqueID();
         UUID teamKey = LotteryManager.resolveTeamKey(playerId);
 
@@ -125,6 +129,28 @@ public class LotteryNetworkManager {
         }
 
         channel.sendTo(new LotterySyncPacket(pools, pityCounters, balances), player);
+    }
+
+    // ==================== B2-05 全量同步冷却 ====================
+
+    /** per-player 全量同步冷却窗口（毫秒）：窗口内重复全量推送跳过（防高频重放放大） */
+    private static final long SYNC_COOLDOWN_MS = 250L;
+
+    /** 玩家 → 最近一次全量同步时间戳（条目数=历史活跃玩家数，量级可忽略） */
+    private static final Map<UUID, Long> lastFullSyncMs = new ConcurrentHashMap<>();
+
+    /**
+     * B2-05：同一玩家 {@link #SYNC_COOLDOWN_MS} 内只放行一次全量同步。
+     * <p>
+     * 冷却窗从上一次<b>实际放行</b>的同步起算——成功抽奖后的首次刷新不拦，
+     * 只拦其后的高频重复；登录首推/打开抽奖页/全服广播均在冷却窗外，不受影响。
+     */
+    private static boolean tryAcquireSyncSlot(UUID playerId) {
+        long now = System.currentTimeMillis();
+        Long last = lastFullSyncMs.get(playerId);
+        if (last != null && now - last < SYNC_COOLDOWN_MS) return false;
+        lastFullSyncMs.put(playerId, now);
+        return true;
     }
 
     /**

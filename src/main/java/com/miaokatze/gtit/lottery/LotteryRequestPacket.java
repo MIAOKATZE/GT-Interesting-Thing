@@ -213,11 +213,13 @@ public class LotteryRequestPacket implements IMessage {
                 && guiData.getZ() == request.machineZ;
         }
 
-        /** 失败回执：结果码 + 聊天提示 + 状态同步（保底/历史未变但仍刷新卡池配置） */
+        /**
+         * 失败回执：结果码 + 聊天提示（B2-05：失败路径不再回发全量同步——客户端本地缓存
+         * 未变，失败无需刷新，结果码包照发驱动提示文本；防"小请求→全池 NBT"网络放大）
+         */
         private void sendFailure(EntityPlayerMP player, String poolId, int resultCode, String reason) {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "[猫猫扭蛋] " + reason));
             LotteryNetworkManager.sendResultToClient(player, poolId, java.util.Collections.emptyList(), resultCode);
-            LotteryNetworkManager.sendSyncToClient(player);
         }
     }
 }

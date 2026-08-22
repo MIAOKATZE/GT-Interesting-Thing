@@ -162,14 +162,18 @@ public class MailActionPacket implements IMessage {
             UUID playerId = player.getUniqueID();
             MailManager manager = MailManager.INSTANCE;
             String mailId = message.getMailId();
+            // B2-05：记录本次操作是否实际改变了邮箱数据——幂等重放（重复已读/领取已领/
+            // 删除不存在）不回发全量同步，压缩"小请求→50 封邮件全文+附件 NBT"的网络放大面
+            boolean changed = false;
 
             switch (message.getAction()) {
                 case ACTION_READ -> {
                     // 已读为静默操作（点开详情即触发），不打扰聊天栏
-                    manager.markRead(playerId, mailId);
+                    changed = manager.markRead(playerId, mailId);
                 }
                 case ACTION_CLAIM -> {
                     int granted = manager.claimAttachments(playerId, mailId, player);
+                    changed = granted > 0;
                     if (granted > 0) {
                         player.addChatMessage(
                             new ChatComponentText(EnumChatFormatting.GREEN + "已领取 " + granted + " 组邮件附件"));
@@ -179,6 +183,7 @@ public class MailActionPacket implements IMessage {
                 }
                 case ACTION_DELETE -> {
                     int result = manager.deleteMail(playerId, mailId);
+                    changed = result == 0;
                     switch (result) {
                         case 0 -> player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "邮件已删除"));
                         case 2 -> player
@@ -190,6 +195,8 @@ public class MailActionPacket implements IMessage {
                 }
                 case ACTION_COMPOSE -> {
                     processCompose(player, message, manager);
+                    // compose 后仍全量刷新（写邮件页复位依赖同步包）
+                    changed = true;
                 }
                 default -> {
                     // 未知操作类型，忽略
@@ -197,8 +204,10 @@ public class MailActionPacket implements IMessage {
                 }
             }
 
-            // 回发最新数据（GUI 据此刷新列表与详情）
-            MailNetworkManager.sendSyncToClient(player, manager.getMailData(playerId));
+            // 回发最新数据（GUI 据此刷新列表与详情）；B2-05：无实际变更不回发
+            if (changed) {
+                MailNetworkManager.sendSyncToClient(player, manager.getMailData(playerId));
+            }
         }
 
         /**

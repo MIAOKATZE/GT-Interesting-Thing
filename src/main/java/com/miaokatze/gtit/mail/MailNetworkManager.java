@@ -1,5 +1,9 @@
 package com.miaokatze.gtit.mail;
 
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 import net.minecraft.entity.player.EntityPlayerMP;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -59,13 +63,40 @@ public class MailNetworkManager {
 
     /**
      * 服务端：向指定玩家推送邮箱数据（全量刷新）
+     * <p>
+     * B2-05 防网络放大：入口处做 per-player 冷却限速（{@link #tryAcquireSyncSlot}），
+     * 同一玩家 250ms 内的重复全量推送直接跳过——单次操作请求仅数十字节，而全量同步包
+     * 为 50 封邮件全文+附件 NBT，高频重放可放大为 MB/s 级上行。
      *
      * @param player 目标玩家
      * @param data   最新邮箱数据
      */
     public static void sendSyncToClient(EntityPlayerMP player, MailData data) {
         if (!initialized || channel == null || player == null) return;
+        if (!tryAcquireSyncSlot(player.getUniqueID())) return;
         channel.sendTo(new MailSyncPacket(data), player);
+    }
+
+    // ==================== B2-05 全量同步冷却 ====================
+
+    /** per-player 全量同步冷却窗口（毫秒）：窗口内重复全量推送跳过（防高频重放放大） */
+    private static final long SYNC_COOLDOWN_MS = 250L;
+
+    /** 玩家 → 最近一次全量同步时间戳（条目数=历史活跃玩家数，量级可忽略） */
+    private static final Map<UUID, Long> lastFullSyncMs = new ConcurrentHashMap<>();
+
+    /**
+     * B2-05：同一玩家 {@link #SYNC_COOLDOWN_MS} 内只放行一次全量同步。
+     * <p>
+     * 冷却窗从上一次<b>实际放行</b>的同步起算——成功操作后的首次调用不拦，
+     * 只拦其后的高频重复；登录首推与正常单次操作均在冷却窗外，不受影响。
+     */
+    private static boolean tryAcquireSyncSlot(UUID playerId) {
+        long now = System.currentTimeMillis();
+        Long last = lastFullSyncMs.get(playerId);
+        if (last != null && now - last < SYNC_COOLDOWN_MS) return false;
+        lastFullSyncMs.put(playerId, now);
+        return true;
     }
 
     /**
