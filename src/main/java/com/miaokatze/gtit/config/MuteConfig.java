@@ -5,7 +5,8 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * 机器工作音效静音配置管理
@@ -16,6 +17,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * - extra_mute: 额外强制拦截无静音按钮机器的音效（锅炉蒸汽排放/沸腾加热循环音/管道蒸汽泄漏音），不受 GUI 控制
  */
 public class MuteConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     private static final String CONFIG_DIR = "config" + File.separator + "gtit";
     private static final String CONFIG_FILE = CONFIG_DIR + File.separator + "gtit_mute.json";
@@ -53,14 +57,14 @@ public class MuteConfig {
                     sb.append((char) ch);
                 }
                 parseConfig(sb.toString());
-                GTInterestingThing.LOG.info(
+                LOG.info(
                     "机器静音配置已加载 (mute_machine_working_sounds=" + muteMachineWorkingSounds
                         + ", extra_mute="
                         + extraMute
                         + ")");
                 return;
             } catch (IOException e) {
-                GTInterestingThing.LOG.error("加载机器静音配置失败，使用默认配置", e);
+                LOG.error("加载机器静音配置失败，使用默认配置", e);
             }
         }
         muteMachineWorkingSounds = false;
@@ -75,9 +79,9 @@ public class MuteConfig {
         }
         try (FileWriter writer = new FileWriter(CONFIG_FILE)) {
             writer.write(serializeConfig());
-            GTInterestingThing.LOG.info("机器静音配置已保存");
+            LOG.info("机器静音配置已保存");
         } catch (IOException e) {
-            GTInterestingThing.LOG.error("保存机器静音配置失败", e);
+            LOG.error("保存机器静音配置失败", e);
         }
     }
 

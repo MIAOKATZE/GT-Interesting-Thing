@@ -11,8 +11,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoTeamData;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 
@@ -26,6 +28,9 @@ import com.miaokatze.gtit.trade.TeamDataProvider;
  * </p>
  */
 public class NekoHistoryManager {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     public static final NekoHistoryManager INSTANCE = new NekoHistoryManager();
 
@@ -56,7 +61,7 @@ public class NekoHistoryManager {
         }
         histories.clear();
         legacyHistoryConsumed.clear();
-        GTInterestingThing.LOG.info("Neko trade history directory: {}", saveDir.getAbsolutePath());
+        LOG.info("Neko trade history directory: {}", saveDir.getAbsolutePath());
     }
 
     /** Returns the shared team record when possible, otherwise the personal record. */
@@ -296,7 +301,7 @@ public class NekoHistoryManager {
             root.setBoolean(LEGACY_CONSUMED_KEY, consumed);
             CompressedStreamTools.safeWrite(root, file);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("Unable to save Neko trade history: " + playerId, e);
+            LOG.error("Unable to save Neko trade history: " + playerId, e);
         }
     }
 
@@ -322,7 +327,7 @@ public class NekoHistoryManager {
             }
             return readHistoryList(root.getTagList("histories", 10));
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("Unable to load Neko trade history: " + playerId, e);
+            LOG.error("Unable to load Neko trade history: " + playerId, e);
             return null;
         }
     }
@@ -337,7 +342,7 @@ public class NekoHistoryManager {
                 history.loadFromNBT(historyNbt.getCompoundTag("history"));
                 result.put(groupId, history);
             } catch (IllegalArgumentException e) {
-                GTInterestingThing.LOG.warn("Skipping invalid Neko trade group ID: " + historyNbt.getString("groupId"));
+                LOG.warn("Skipping invalid Neko trade group ID: " + historyNbt.getString("groupId"));
             }
         }
         return result;

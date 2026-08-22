@@ -7,10 +7,12 @@ import java.util.UUID;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.gtnewhorizon.gtnhlib.teams.TeamDataCopyReason;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 
 /**
@@ -21,6 +23,9 @@ import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
  * 仅团队钱包模式，无个人钱包数据
  */
 public class NekoTeamData implements ITeamData {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     public static final String ID = "GTIT";
 
@@ -119,8 +124,7 @@ public class NekoTeamData implements ITeamData {
                 history.loadFromNBT(historyTag.getCompoundTag("history"));
                 tradeHistories.put(groupId, history);
             } catch (IllegalArgumentException ignored) {
-                GTInterestingThing.LOG
-                    .warn("Skipping invalid Neko trade history group ID: " + historyTag.getString("groupId"));
+                LOG.warn("Skipping invalid Neko trade history group ID: " + historyTag.getString("groupId"));
             }
         }
     }
@@ -148,7 +152,7 @@ public class NekoTeamData implements ITeamData {
             // If either side still has unconsumed player files, let the next
             // access migrate all current members after the merge.
             legacyHistoryMigrated = legacyHistoryMigrated && other.isLegacyHistoryMigrated();
-            GTInterestingThing.LOG.info("猫猫币团队钱包合并完成");
+            LOG.info("猫猫币团队钱包合并完成");
         }
     }
 

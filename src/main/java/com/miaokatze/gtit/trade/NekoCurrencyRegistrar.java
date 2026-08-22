@@ -3,8 +3,10 @@ package com.miaokatze.gtit.trade;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 猫猫币货币注册表
@@ -12,6 +14,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 完全独立于 VM 的 CurrencyType 枚举系统
  */
 public class NekoCurrencyRegistrar {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     // 猫猫币 ID 常量
     public static final String NEKO_ID = "neko";
@@ -28,7 +33,7 @@ public class NekoCurrencyRegistrar {
     public static void init() {
         nekoCoinItem = GTITItemList.NekoCoin.getItem();
         shimmeringNekoCoinItem = GTITItemList.ShimmeringNekoCoin.getItem();
-        GTInterestingThing.LOG.info("猫猫币注册完成: neko={}, shimmeringNeko={}", nekoCoinItem, shimmeringNekoCoinItem);
+        LOG.info("猫猫币注册完成: neko={}, shimmeringNeko={}", nekoCoinItem, shimmeringNekoCoinItem);
     }
 
     /**

@@ -8,7 +8,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.FoodStats;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import cpw.mods.fml.common.Optional;
 
@@ -19,6 +20,9 @@ import cpw.mods.fml.common.Optional;
  */
 @Optional.Interface(iface = "baubles.api.IBauble", modid = "Baubles")
 public class RingGluttony extends BaseRing {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     private static final int TICKS_PER_SECOND = 20;
     private static final int EMERGENCY_COOLDOWN_TICKS = 60 * TICKS_PER_SECOND;
@@ -76,7 +80,7 @@ public class RingGluttony extends BaseRing {
             saturationField.setFloat(foodStats, value);
         } catch (Exception e) {
             // 饱和度反射失败会导致饕餮戒指的饱和度恢复静默失效，记录便于诊断
-            GTInterestingThing.LOG.warn("[GTIT] RingGluttony 设置饱和度失败（反射 foodSaturationLevel 失败）", e);
+            LOG.warn("[GTIT] RingGluttony 设置饱和度失败（反射 foodSaturationLevel 失败）", e);
         }
     }
 }

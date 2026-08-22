@@ -5,10 +5,12 @@ import java.util.function.Consumer;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.gtnewhorizon.gtnhlib.teams.TeamManager;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * GTNHLib Teams 统一门面（O2-04）
@@ -32,6 +34,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  */
 public final class TeamDataProvider {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     private TeamDataProvider() {}
 
     /** Teams API 可用性缓存（null = 尚未探测；探测只做一次） */
@@ -50,7 +55,7 @@ public final class TeamDataProvider {
             Class.forName("com.gtnewhorizon.gtnhlib.teams.TeamManager", false, TeamDataProvider.class.getClassLoader());
             cached = Boolean.TRUE;
         } catch (Throwable t) {
-            GTInterestingThing.LOG.warn("[TeamDataProvider] GTNHLib Teams API 不可用，团队功能统一降级为个人模式", t);
+            LOG.warn("[TeamDataProvider] GTNHLib Teams API 不可用，团队功能统一降级为个人模式", t);
             cached = Boolean.FALSE;
         }
         available = cached;
@@ -67,7 +72,7 @@ public final class TeamDataProvider {
         try {
             return TeamManager.getTeamByPlayer(playerId);
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[TeamDataProvider] 解析玩家团队失败: " + playerId, t);
+            LOG.error("[TeamDataProvider] 解析玩家团队失败: " + playerId, t);
             return null;
         }
     }
@@ -82,7 +87,7 @@ public final class TeamDataProvider {
         try {
             return TeamManager.getTeamById(teamId);
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[TeamDataProvider] 解析团队失败: " + teamId, t);
+            LOG.error("[TeamDataProvider] 解析团队失败: " + teamId, t);
             return null;
         }
     }
@@ -98,7 +103,7 @@ public final class TeamDataProvider {
             ITeamData data = team.getData(NekoTeamData.ID);
             return data instanceof NekoTeamData ? (NekoTeamData) data : null;
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[TeamDataProvider] 解析 GTIT 团队数据失败", t);
+            LOG.error("[TeamDataProvider] 解析 GTIT 团队数据失败", t);
             return null;
         }
     }
@@ -120,7 +125,7 @@ public final class TeamDataProvider {
         try {
             TeamManager.forEachOnlineTeamMember(team, action);
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[TeamDataProvider] 遍历在线团队成员失败", t);
+            LOG.error("[TeamDataProvider] 遍历在线团队成员失败", t);
         }
     }
 
@@ -132,7 +137,7 @@ public final class TeamDataProvider {
         try {
             team.markDirty();
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[TeamDataProvider] 标记团队数据脏失败", t);
+            LOG.error("[TeamDataProvider] 标记团队数据脏失败", t);
         }
     }
 
@@ -143,14 +148,14 @@ public final class TeamDataProvider {
      */
     public static void registerTeamData() {
         if (!isAvailable()) {
-            GTInterestingThing.LOG.warn("[2/3] GTNHLib Teams API 不可用，猫猫币钱包将回退到个人模式");
+            LOG.warn("[2/3] GTNHLib Teams API 不可用，猫猫币钱包将回退到个人模式");
             return;
         }
         try {
             com.gtnewhorizon.gtnhlib.teams.TeamDataRegistry.register(NekoTeamData.ID, NekoTeamData::new);
-            GTInterestingThing.LOG.info("[2/3] 猫猫币团队数据已注册到 GTNHLib Teams");
+            LOG.info("[2/3] 猫猫币团队数据已注册到 GTNHLib Teams");
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[2/3] 注册猫猫币团队数据失败", t);
+            LOG.error("[2/3] 注册猫猫币团队数据失败", t);
         }
     }
 }

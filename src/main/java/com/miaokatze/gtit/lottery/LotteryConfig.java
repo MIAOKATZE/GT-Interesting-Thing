@@ -11,13 +11,15 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSerializer;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.util.NbtBase64Util;
@@ -44,6 +46,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * 旧池（仅 nekoCurrencyId/costPerDraw）加载时自动合成 costItems 并补缺省图标（对应猫猫币物品）。
  */
 public class LotteryConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 新配置文件路径（相对游戏根目录） */
     private static final String CONFIG_PATH = "config/gtit/lottery/lottery.json";
@@ -136,7 +141,7 @@ public class LotteryConfig {
                     migrateFromLegacy(legacy, path);
                     // 迁移后继续从新路径读取
                 } catch (Exception e) {
-                    GTInterestingThing.LOG.error("抽奖配置从旧路径迁移失败，回退默认配置", e);
+                    LOG.error("抽奖配置从旧路径迁移失败，回退默认配置", e);
                     LotteryConfigData fallback = getDefaultConfig();
                     save(fallback);
                     return fallback;
@@ -155,14 +160,14 @@ public class LotteryConfig {
                     }
                     // 条目校验：过滤非法条目/卡池（记录日志提示配置错误位置）
                     if (validateAll(data)) {
-                        GTInterestingThing.LOG.info("抽奖配置已加载（{} 个卡池）", data.pools.size());
+                        LOG.info("抽奖配置已加载（{} 个卡池）", data.pools.size());
                         return data;
                     }
-                    GTInterestingThing.LOG.warn("抽奖配置存在非法卡池/条目，已按校验结果过滤后继续加载");
+                    LOG.warn("抽奖配置存在非法卡池/条目，已按校验结果过滤后继续加载");
                     return data;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("加载抽奖配置失败，使用默认配置", e);
+                LOG.error("加载抽奖配置失败，使用默认配置", e);
             }
         }
         // 首次运行或加载失败：使用默认配置并落盘
@@ -209,9 +214,9 @@ public class LotteryConfig {
                 path,
                 GSON.toJson(data)
                     .getBytes(StandardCharsets.UTF_8));
-            GTInterestingThing.LOG.info("抽奖配置已保存（{} 个卡池）", data.pools.size());
+            LOG.info("抽奖配置已保存（{} 个卡池）", data.pools.size());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存抽奖配置失败", e);
+            LOG.error("保存抽奖配置失败", e);
         }
     }
 
@@ -257,7 +262,7 @@ public class LotteryConfig {
                 continue;
             }
             if (!pool.validate()) {
-                GTInterestingThing.LOG.warn("抽奖卡池 {} 校验失败（条目为空或总权重为 0），已跳过", pool.getId());
+                LOG.warn("抽奖卡池 {} 校验失败（条目为空或总权重为 0），已跳过", pool.getId());
                 allValid = false;
                 continue;
             }
@@ -350,10 +355,10 @@ public class LotteryConfig {
             entries.add(
                 LotteryEntry
                     .createItemPrize("diamond_block", "minecraft:diamond_block", 0, 1, 1, 5, LotteryRarity.EPIC));
-            GTInterestingThing.LOG.info("闪烁猫猫币池已由旧版默认 8 条自动升级到 10 条（新增青金石/钻石块）");
+            LOG.info("闪烁猫猫币池已由旧版默认 8 条自动升级到 10 条（新增青金石/钻石块）");
         } else if (!currentIds.equals(newDefaultIds) && !currentIds.equals(oldDefaultIds)) {
             // 既不是新默认也不是旧默认：玩家自定义池，不做任何改动
-            GTInterestingThing.LOG.debug("闪烁猫猫币池为玩家自定义配置，跳过默认条目升级");
+            LOG.debug("闪烁猫猫币池为玩家自定义配置，跳过默认条目升级");
         }
     }
 

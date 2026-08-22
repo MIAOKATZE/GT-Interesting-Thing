@@ -4,7 +4,8 @@ import java.util.UUID;
 
 import net.minecraftforge.common.MinecraftForge;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import betterquesting.api.events.QuestEvent;
 import cpw.mods.fml.common.Optional;
@@ -17,6 +18,9 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
  */
 public class BqAchievementBridge {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     private static boolean bqLoaded = false;
 
     public static void register() {
@@ -26,10 +30,10 @@ public class BqAchievementBridge {
             bqLoaded = true;
             BqAchievementBridge bridge = new BqAchievementBridge();
             MinecraftForge.EVENT_BUS.register(bridge);
-            GTInterestingThing.LOG.info("BqAchievementBridge 已注册，监听 BQ 任务事件");
+            LOG.info("BqAchievementBridge 已注册，监听 BQ 任务事件");
         } catch (ClassNotFoundException e) {
             bqLoaded = false;
-            GTInterestingThing.LOG.info("BetterQuesting 未加载，跳过 BqAchievementBridge 注册");
+            LOG.info("BetterQuesting 未加载，跳过 BqAchievementBridge 注册");
         }
     }
 

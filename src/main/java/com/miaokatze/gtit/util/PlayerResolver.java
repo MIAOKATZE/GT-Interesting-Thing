@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
  */
 public final class PlayerResolver {
 
-    /** 统一 logger（O2-B02：去中心化，名称与 GTInterestingThing.LOG 同为 "gtit"，日志过滤口径不变） */
+    /** 统一 logger（O2-B02：去中心化，名称与 LOG 同为 "gtit"，日志过滤口径不变） */
     private static final Logger LOG = LogManager.getLogger("gtit");
 
     private PlayerResolver() {}

@@ -3,6 +3,9 @@ package com.miaokatze.gtit.client.gui;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.cleanroommc.modularui.animation.Animator;
 import com.cleanroommc.modularui.animation.IAnimatable;
 import com.cleanroommc.modularui.animation.MutableObjectAnimator;
@@ -13,7 +16,6 @@ import com.cleanroommc.modularui.utils.Interpolations;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cleanroommc.modularui.widgets.TransformWidget;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 掉落物品槽工厂
@@ -44,6 +46,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * </ul>
  */
 public class NekoFallingItemSlotFactory {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 掉落动画持续时间（毫秒），与 VM 原版一致 */
     private static final int FALL_ANIMATION_DURATION = 1000;
@@ -126,7 +131,7 @@ public class NekoFallingItemSlotFactory {
      */
     public TransformWidget getFallingItemSlot(int index) {
         // v1.7.15 诊断日志：确认 widget 创建（客户端/服务端），用于排查客户端 changeListener 不触发的问题
-        GTInterestingThing.LOG.debug(
+        LOG.debug(
             "[NekoFactory] getFallingItemSlot index=" + index
                 + " thread="
                 + Thread.currentThread()
@@ -210,7 +215,7 @@ public class NekoFallingItemSlotFactory {
                 .slotGroup("outputSlotGroup")
                 .changeListener((newItem, onlyAmountChanged, client, init) -> {
                     // v1.7.15 诊断日志：保留 [NekoFall] 日志用于排查客户端 changeListener 从未触发的问题
-                    GTInterestingThing.LOG.debug(
+                    LOG.debug(
                         "[NekoFall] slot=" + index
                             + " newItem="
                             + (newItem != null ? newItem.getDisplayName() : "null")
@@ -225,7 +230,7 @@ public class NekoFallingItemSlotFactory {
                     if (!init && newItem != null && !onlyAmountChanged) {
                         animator.reset();
                         animator.animate();
-                        GTInterestingThing.LOG.debug("[NekoFall] slot=" + index + " → play fall animation");
+                        LOG.debug("[NekoFall] slot=" + index + " → play fall animation");
                     }
                 }))
             .background(IDrawable.EMPTY)
@@ -237,7 +242,7 @@ public class NekoFallingItemSlotFactory {
                 long now = System.currentTimeMillis();
                 if (now - lastEnabledLogTime > 1000) {
                     lastEnabledLogTime = now;
-                    GTInterestingThing.LOG.debug(
+                    LOG.debug(
                         "[NekoEnabled] slot=" + index
                             + " hasStack="
                             + hasStack

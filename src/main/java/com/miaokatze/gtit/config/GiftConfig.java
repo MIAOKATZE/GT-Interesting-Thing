@@ -11,10 +11,12 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.NbtBase64Util;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -29,6 +31,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * parseItemEntries / extractStringValue 等）。JSON 文件格式保持向后兼容。
  */
 public class GiftConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     private static final String CONFIG_PATH = "config/gtit/gift_config.json";
     // 注意：不启用 serializeNulls，保持与手写序列化器一致的输出风格——
@@ -86,7 +91,7 @@ public class GiftConfig {
                     guaranteedItems = data.guaranteedItems != null ? data.guaranteedItems : new ArrayList<>();
                     randomItems = data.randomItems != null ? data.randomItems : new ArrayList<>();
                     randomCount = data.randomCount;
-                    GTInterestingThing.LOG.info("新手宝箱配置已加载");
+                    LOG.info("新手宝箱配置已加载");
                     // 确保默认值（空列表回退到默认，避免宝箱为空）
                     if (guaranteedItems.isEmpty()) guaranteedItems = createDefaultGuaranteedItems();
                     if (randomItems.isEmpty()) randomItems = createDefaultRandomItems();
@@ -94,7 +99,7 @@ public class GiftConfig {
                     return;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("加载新手宝箱配置失败，使用默认配置", e);
+                LOG.error("加载新手宝箱配置失败，使用默认配置", e);
             }
         }
         // 首次运行或加载失败，使用默认配置并落盘
@@ -114,9 +119,9 @@ public class GiftConfig {
             data.randomCount = randomCount;
             String json = GSON.toJson(data);
             Files.write(path, json.getBytes(StandardCharsets.UTF_8));
-            GTInterestingThing.LOG.info("新手宝箱配置已保存");
+            LOG.info("新手宝箱配置已保存");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存新手宝箱配置失败", e);
+            LOG.error("保存新手宝箱配置失败", e);
         }
     }
 

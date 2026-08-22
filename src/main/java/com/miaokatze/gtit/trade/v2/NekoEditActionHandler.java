@@ -11,6 +11,9 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -22,7 +25,6 @@ import com.miaokatze.gtit.lottery.LotteryPool;
 import com.miaokatze.gtit.lottery.LotteryRarity;
 import com.miaokatze.gtit.lottery.PityConfig;
 import com.miaokatze.gtit.mail.BlessingConfig;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.AnniversaryEntry;
 import com.miaokatze.gtit.signin.DailySignInConfig;
 import com.miaokatze.gtit.signin.OnlineTimeConfig;
@@ -56,6 +58,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * payload 限长）。后续新增编辑动作必须同时登记 {@link NekoEditPacket} 常量与白名单范围。
  */
 public class NekoEditActionHandler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     private NekoEditActionHandler() {
         // 静态工具类，禁止实例化
@@ -97,7 +102,7 @@ public class NekoEditActionHandler {
         // 开启期间被降权/移除 OP 的玩家不能凭旧标志继续改写全域配置
         try {
             if (!player.canCommandSenderUseCommand(REQUIRED_PERMISSION_LEVEL, "gtit")) {
-                GTInterestingThing.LOG.warn(
+                LOG.warn(
                     "[NekoEdit] 拒绝编辑请求：玩家 {} 实时权限不足（需要等级 {}）",
                     player.getCommandSenderName(),
                     REQUIRED_PERMISSION_LEVEL);
@@ -105,13 +110,13 @@ public class NekoEditActionHandler {
             }
         } catch (Throwable t) {
             // 权限复核本身异常时按拒绝处理（fail-closed）
-            GTInterestingThing.LOG.error("[NekoEdit] 权限复核异常，拒绝编辑请求", t);
+            LOG.error("[NekoEdit] 权限复核异常，拒绝编辑请求", t);
             return "权限校验失败，无法执行编辑操作";
         }
         // 3. ACTION 白名单：只接受 NekoEditPacket 已定义的操作类型
         int action = message.getAction();
         if (action < NekoEditPacket.ACTION_SAVE_TRADE || action > NekoEditPacket.ACTION_SAVE_ONLINE_TIER) {
-            GTInterestingThing.LOG.warn("[NekoEdit] 拒绝未知编辑操作类型: {}（玩家 {}）", action, player.getCommandSenderName());
+            LOG.warn("[NekoEdit] 拒绝未知编辑操作类型: {}（玩家 {}）", action, player.getCommandSenderName());
             return "未知的编辑操作类型";
         }
         // 4. payload 限长
@@ -121,7 +126,7 @@ public class NekoEditActionHandler {
         }
         String jsonPayload = message.getJsonPayload();
         if (jsonPayload != null && jsonPayload.length() > MAX_JSON_PAYLOAD_LENGTH) {
-            GTInterestingThing.LOG.warn(
+            LOG.warn(
                 "[NekoEdit] 拒绝超长编辑载荷: {} 字符（玩家 {}，上限 {}）",
                 jsonPayload.length(),
                 player.getCommandSenderName(),
@@ -146,11 +151,7 @@ public class NekoEditActionHandler {
     public static void openTradeEditor(EntityPlayerMP player, String groupIdStr, int tradeIndex) {
         // 客户端已从本地 NekoTradeItemDisplay 数据构建编辑面板
         // 服务端无需额外操作（数据已通过 GUI 同步机制推送到客户端）
-        GTInterestingThing.LOG.info(
-            "[NekoEdit] 玩家 {} 打开交易编辑器: group={}, index={}",
-            player.getCommandSenderName(),
-            groupIdStr,
-            tradeIndex);
+        LOG.info("[NekoEdit] 玩家 {} 打开交易编辑器: group={}, index={}", player.getCommandSenderName(), groupIdStr, tradeIndex);
     }
 
     /**
@@ -197,7 +198,7 @@ public class NekoEditActionHandler {
                 sendError(player, "交易配置为空，无法保存");
                 return;
             }
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoEdit] 加载后条目总数: {}",
                 data.getTrades()
                     .size());
@@ -214,7 +215,7 @@ public class NekoEditActionHandler {
 
             if (targetEntry == null) {
                 sendError(player, "未找到交易条目: " + groupIdStr);
-                GTInterestingThing.LOG.warn("[NekoEdit] 未找到目标交易条目: group={}", groupIdStr);
+                LOG.warn("[NekoEdit] 未找到目标交易条目: group={}", groupIdStr);
                 return;
             }
             int oldFromSize = targetEntry.getFromItems() == null ? 0
@@ -223,7 +224,7 @@ public class NekoEditActionHandler {
             int oldToSize = targetEntry.getToItems() == null ? 0
                 : targetEntry.getToItems()
                     .size();
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoEdit] 找到目标条目: group={}, tabId={}, orderId={}, oldFrom={}, oldTo={}",
                 groupIdStr,
                 targetEntry.getTabId(),
@@ -241,7 +242,7 @@ public class NekoEditActionHandler {
                 toItems = parseItemEntries(json.getAsJsonArray("toItems"));
             }
 
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoEdit] 服务端保存交易: group={}, fromItems={}, toItems={}",
                 groupIdStr,
                 fromItems.size(),
@@ -251,7 +252,7 @@ public class NekoEditActionHandler {
             // 原因：客户端 editItemHandler 同步可能尚未完成，此时保存会覆盖清空原有数据
             // （v1.7.33 修复交易条目保存丢失：服务端不信任客户端的空数据覆盖）
             if (fromItems.isEmpty() && toItems.isEmpty() && (oldFromSize > 0 || oldToSize > 0)) {
-                GTInterestingThing.LOG.warn(
+                LOG.warn(
                     "[NekoEdit] 拒绝保存：客户端 fromItems/toItems 均为空，但旧数据有 from={} to={}，疑似同步未完成。group={}",
                     oldFromSize,
                     oldToSize,
@@ -263,8 +264,7 @@ public class NekoEditActionHandler {
             // 防御性校验：toItems 为空但旧数据有 toItems 时，拒绝保存
             // 原因：toItems 为空的交易会被跳过注册，导致交易从用户视角"消失"
             if (toItems.isEmpty() && oldToSize > 0) {
-                GTInterestingThing.LOG
-                    .warn("[NekoEdit] 拒绝保存：客户端 toItems 为空，但旧数据有 {} 条产出，疑似同步未完成。group={}", oldToSize, groupIdStr);
+                LOG.warn("[NekoEdit] 拒绝保存：客户端 toItems 为空，但旧数据有 {} 条产出，疑似同步未完成。group={}", oldToSize, groupIdStr);
                 sendError(player, "保存失败：产物数据为空（可能是同步未完成），请等待物品显示后再试");
                 return;
             }
@@ -308,25 +308,24 @@ public class NekoEditActionHandler {
             int newToSize = targetEntry.getToItems() == null ? 0
                 : targetEntry.getToItems()
                     .size();
-            GTInterestingThing.LOG
-                .info("[NekoEdit] 更新目标条目字段完成: group={}, newFrom={}, newTo={}", groupIdStr, newFromSize, newToSize);
+            LOG.info("[NekoEdit] 更新目标条目字段完成: group={}, newFrom={}, newTo={}", groupIdStr, newFromSize, newToSize);
 
             // 保存配置到文件
             NekoTradeConfig.save(data);
-            GTInterestingThing.LOG.info("[NekoEdit] 配置已落盘: group={}", groupIdStr);
+            LOG.info("[NekoEdit] 配置已落盘: group={}", groupIdStr);
 
             // 热重载交易注册表
             NekoTradeRegistryV2.initialize();
 
             // 检查该 groupId 是否重新注册成功
             NekoTradeGroup reloaded = NekoTradeDatabase.INSTANCE.getTradeGroup(UUID.fromString(groupIdStr));
-            GTInterestingThing.LOG.info("[NekoEdit] 服务端重载交易组完成: group={}, found={}", groupIdStr, reloaded != null);
+            LOG.info("[NekoEdit] 服务端重载交易组完成: group={}, found={}", groupIdStr, reloaded != null);
 
             // v1.7.0 目标 5：向全体在线玩家广播服务端最新交易/标签页配置（S→C 只读同步，客户端不写盘）
             NekoTradeNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "交易条目已保存 (ID: " + groupIdStr + ")");
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoEdit] 玩家 {} 保存交易编辑: group={}, index={}",
                 player.getCommandSenderName(),
                 groupIdStr,
@@ -334,7 +333,7 @@ public class NekoEditActionHandler {
 
         } catch (Exception e) {
             sendError(player, "保存交易编辑失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 保存交易编辑异常", e);
+            LOG.error("[NekoEdit] 保存交易编辑异常", e);
         }
     }
 
@@ -422,11 +421,10 @@ public class NekoEditActionHandler {
             NekoTradeNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "交易条目已新建（标签页 " + NekoPageRegistry.getPageName(tabId) + "）");
-            GTInterestingThing.LOG
-                .info("[NekoEdit] 玩家 {} 新建交易条目: tabId={}, id={}", player.getCommandSenderName(), tabId, entry.getId());
+            LOG.info("[NekoEdit] 玩家 {} 新建交易条目: tabId={}, id={}", player.getCommandSenderName(), tabId, entry.getId());
         } catch (Exception e) {
             sendError(player, "新建交易条目失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 新建交易条目异常", e);
+            LOG.error("[NekoEdit] 新建交易条目异常", e);
         }
     }
 
@@ -471,14 +469,14 @@ public class NekoEditActionHandler {
             NekoTradeNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "标签页已新建（#" + entry.getId() + " " + entry.getName() + "）");
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoEdit] 玩家 {} 新建标签页: id={}, name={}",
                 player.getCommandSenderName(),
                 entry.getId(),
                 entry.getName());
         } catch (Exception e) {
             sendError(player, "新建标签页失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 新建标签页异常", e);
+            LOG.error("[NekoEdit] 新建标签页异常", e);
         }
     }
 
@@ -523,14 +521,10 @@ public class NekoEditActionHandler {
             NekoTradeNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "标签页已保存（#" + pageId + " " + target.getName() + "）");
-            GTInterestingThing.LOG.info(
-                "[NekoEdit] 玩家 {} 保存标签页: id={}, name={}",
-                player.getCommandSenderName(),
-                pageId,
-                target.getName());
+            LOG.info("[NekoEdit] 玩家 {} 保存标签页: id={}, name={}", player.getCommandSenderName(), pageId, target.getName());
         } catch (Exception e) {
             sendError(player, "保存标签页失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 保存标签页异常", e);
+            LOG.error("[NekoEdit] 保存标签页异常", e);
         }
     }
 
@@ -595,10 +589,10 @@ public class NekoEditActionHandler {
             NekoTradeNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "标签页已删除（#" + pageId + " " + target.getName() + "），其交易已移至\"其他\"标签页");
-            GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 删除标签页: id={}", player.getCommandSenderName(), pageId);
+            LOG.info("[NekoEdit] 玩家 {} 删除标签页: id={}", player.getCommandSenderName(), pageId);
         } catch (Exception e) {
             sendError(player, "删除标签页失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 删除标签页异常", e);
+            LOG.error("[NekoEdit] 删除标签页异常", e);
         }
     }
 
@@ -666,7 +660,7 @@ public class NekoEditActionHandler {
      * @param dayKey 签到天数标识
      */
     public static void openSignInEditor(EntityPlayerMP player, String dayKey) {
-        GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 打开签到编辑器: day={}", player.getCommandSenderName(), dayKey);
+        LOG.info("[NekoEdit] 玩家 {} 打开签到编辑器: day={}", player.getCommandSenderName(), dayKey);
     }
 
     /**
@@ -716,7 +710,7 @@ public class NekoEditActionHandler {
             sendError(player, "未知的签到编辑目标: " + dayKey);
         } catch (Exception e) {
             sendError(player, "保存签到编辑失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 保存签到编辑异常", e);
+            LOG.error("[NekoEdit] 保存签到编辑异常", e);
         }
     }
 
@@ -739,7 +733,7 @@ public class NekoEditActionHandler {
         // 广播签到同步包（携带最新配置快照），刷新全服客户端配置缓存
         SignInNetworkManager.sendSyncToAll();
         sendSuccess(player, "每月签到全局配置已保存（递增 " + (incrementEnabled ? "开启" : "关闭") + "，系数 " + increment + "）");
-        GTInterestingThing.LOG.info(
+        LOG.info(
             "[NekoEdit] 玩家 {} 保存每月签到全局配置: incrementEnabled={}, increment={}",
             player.getCommandSenderName(),
             incrementEnabled,
@@ -781,8 +775,7 @@ public class NekoEditActionHandler {
             DailySignInConfig.saveConfig();
             SignInNetworkManager.sendSyncToAll();
             sendSuccess(player, "签到" + label + "阶梯已删除（" + originalDays + " 天）");
-            GTInterestingThing.LOG
-                .info("[NekoEdit] 玩家 {} 删除签到{}阶梯: days={}", player.getCommandSenderName(), label, originalDays);
+            LOG.info("[NekoEdit] 玩家 {} 删除签到{}阶梯: days={}", player.getCommandSenderName(), label, originalDays);
             return;
         }
 
@@ -806,8 +799,7 @@ public class NekoEditActionHandler {
             DailySignInConfig.saveConfig();
             SignInNetworkManager.sendSyncToAll();
             sendSuccess(player, "签到" + label + "阶梯已新增（" + days + " 天）");
-            GTInterestingThing.LOG
-                .info("[NekoEdit] 玩家 {} 新增签到{}阶梯: days={}", player.getCommandSenderName(), label, days);
+            LOG.info("[NekoEdit] 玩家 {} 新增签到{}阶梯: days={}", player.getCommandSenderName(), label, days);
             return;
         }
 
@@ -821,8 +813,7 @@ public class NekoEditActionHandler {
         DailySignInConfig.saveConfig();
         SignInNetworkManager.sendSyncToAll();
         sendSuccess(player, "签到" + label + "阶梯奖励已保存（" + days + " 天）");
-        GTInterestingThing.LOG
-            .info("[NekoEdit] 玩家 {} 保存签到{}阶梯: {}→{} 天", player.getCommandSenderName(), label, originalDays, days);
+        LOG.info("[NekoEdit] 玩家 {} 保存签到{}阶梯: {}→{} 天", player.getCommandSenderName(), label, originalDays, days);
     }
 
     /**
@@ -857,7 +848,7 @@ public class NekoEditActionHandler {
             DailySignInConfig.saveConfig();
             SignInNetworkManager.sendSyncToAll();
             sendSuccess(player, "每月 " + day + " 日的覆盖奖励已清除（回退默认）");
-            GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 清除逐日覆盖: day={}", player.getCommandSenderName(), day);
+            LOG.info("[NekoEdit] 玩家 {} 清除逐日覆盖: day={}", player.getCommandSenderName(), day);
             return;
         }
 
@@ -868,7 +859,7 @@ public class NekoEditActionHandler {
         DailySignInConfig.saveConfig();
         SignInNetworkManager.sendSyncToAll();
         sendSuccess(player, "每月 " + day + " 日的覆盖奖励已保存");
-        GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 保存逐日覆盖: day={}", player.getCommandSenderName(), day);
+        LOG.info("[NekoEdit] 玩家 {} 保存逐日覆盖: day={}", player.getCommandSenderName(), day);
     }
 
     /**
@@ -928,8 +919,7 @@ public class NekoEditActionHandler {
                 OnlineTimeConfig.saveConfig();
                 SignInNetworkManager.sendSyncToAll();
                 sendSuccess(player, "在线档位已删除（" + formatDuration(originalSeconds) + "）");
-                GTInterestingThing.LOG
-                    .info("[NekoEdit] 玩家 {} 删除在线档位: {}s", player.getCommandSenderName(), originalSeconds);
+                LOG.info("[NekoEdit] 玩家 {} 删除在线档位: {}s", player.getCommandSenderName(), originalSeconds);
                 return;
             }
 
@@ -954,7 +944,7 @@ public class NekoEditActionHandler {
                 OnlineTimeConfig.saveConfig();
                 SignInNetworkManager.sendSyncToAll();
                 sendSuccess(player, "在线档位已新增（" + formatDuration(seconds) + "）");
-                GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 新增在线档位: {}s", player.getCommandSenderName(), seconds);
+                LOG.info("[NekoEdit] 玩家 {} 新增在线档位: {}s", player.getCommandSenderName(), seconds);
                 return;
             }
 
@@ -967,10 +957,10 @@ public class NekoEditActionHandler {
             OnlineTimeConfig.saveConfig();
             SignInNetworkManager.sendSyncToAll();
             sendSuccess(player, "在线档位已保存（" + formatDuration(seconds) + "）");
-            GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 保存在线档位: {}s", player.getCommandSenderName(), seconds);
+            LOG.info("[NekoEdit] 玩家 {} 保存在线档位: {}s", player.getCommandSenderName(), seconds);
         } catch (Exception e) {
             sendError(player, "保存在线档位失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 保存在线档位异常", e);
+            LOG.error("[NekoEdit] 保存在线档位异常", e);
         }
     }
 
@@ -993,7 +983,7 @@ public class NekoEditActionHandler {
      * @param entryKey 抽奖条目标识
      */
     public static void openLotteryEditor(EntityPlayerMP player, String entryKey) {
-        GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 打开抽奖编辑器: entry={}", player.getCommandSenderName(), entryKey);
+        LOG.info("[NekoEdit] 玩家 {} 打开抽奖编辑器: entry={}", player.getCommandSenderName(), entryKey);
     }
 
     /**
@@ -1116,7 +1106,7 @@ public class NekoEditActionHandler {
             if (!targetPool.validate()) {
                 sendInfo(player, "警告：卡池 " + poolId + " 当前总权重为 0 或无有效条目，已暂时从抽奖中隐藏");
             }
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoEdit] 玩家 {} 保存抽奖条目: pool={}, entry={}, currency={}, weight={}",
                 player.getCommandSenderName(),
                 poolId,
@@ -1126,7 +1116,7 @@ public class NekoEditActionHandler {
 
         } catch (Exception e) {
             sendError(player, "保存抽奖编辑失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 保存抽奖编辑异常", e);
+            LOG.error("[NekoEdit] 保存抽奖编辑异常", e);
         }
     }
 
@@ -1172,10 +1162,10 @@ public class NekoEditActionHandler {
             if (!targetPool.validate()) {
                 sendInfo(player, "警告：卡池 " + poolId + " 当前无有效条目，已暂时从抽奖中隐藏");
             }
-            GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 保存抽奖卡池: pool={}", player.getCommandSenderName(), poolId);
+            LOG.info("[NekoEdit] 玩家 {} 保存抽奖卡池: pool={}", player.getCommandSenderName(), poolId);
         } catch (Exception e) {
             sendError(player, "保存抽奖卡池失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 保存抽奖卡池异常", e);
+            LOG.error("[NekoEdit] 保存抽奖卡池异常", e);
         }
     }
 
@@ -1232,10 +1222,10 @@ public class NekoEditActionHandler {
             LotteryNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "抽奖卡池已创建（" + id + "），含 1 条种子奖品条目，可点击轮盘槽位继续编辑");
-            GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 新建抽奖卡池: pool={}", player.getCommandSenderName(), id);
+            LOG.info("[NekoEdit] 玩家 {} 新建抽奖卡池: pool={}", player.getCommandSenderName(), id);
         } catch (Exception e) {
             sendError(player, "新建抽奖卡池失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 新建抽奖卡池异常", e);
+            LOG.error("[NekoEdit] 新建抽奖卡池异常", e);
         }
     }
 
@@ -1275,10 +1265,10 @@ public class NekoEditActionHandler {
             LotteryNetworkManager.sendSyncToAll();
 
             sendSuccess(player, "抽奖卡池已删除（" + poolId + "）");
-            GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 删除抽奖卡池: pool={}", player.getCommandSenderName(), poolId);
+            LOG.info("[NekoEdit] 玩家 {} 删除抽奖卡池: pool={}", player.getCommandSenderName(), poolId);
         } catch (Exception e) {
             sendError(player, "删除抽奖卡池失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 删除抽奖卡池异常", e);
+            LOG.error("[NekoEdit] 删除抽奖卡池异常", e);
         }
     }
 
@@ -1458,7 +1448,7 @@ public class NekoEditActionHandler {
                 BlessingConfig.setSender(sender);
                 BlessingConfig.saveConfig();
                 sendSuccess(player, "祝福邮件发件人已保存（" + sender + "）");
-                GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 保存祝福发件人: {}", player.getCommandSenderName(), sender);
+                LOG.info("[NekoEdit] 玩家 {} 保存祝福发件人: {}", player.getCommandSenderName(), sender);
                 return;
             }
 
@@ -1468,7 +1458,7 @@ public class NekoEditActionHandler {
                 applyBirthdayEditJson(birthday, json);
                 BlessingConfig.saveConfig();
                 sendSuccess(player, "生日祝福模板已保存");
-                GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} 保存生日祝福模板", player.getCommandSenderName());
+                LOG.info("[NekoEdit] 玩家 {} 保存生日祝福模板", player.getCommandSenderName());
                 return;
             }
 
@@ -1502,7 +1492,7 @@ public class NekoEditActionHandler {
                 applyFestivalEditJson(festival, json);
                 BlessingConfig.saveConfig();
                 sendSuccess(player, "节日祝福已保存（" + festival.name + " " + festival.monthDay + "）");
-                GTInterestingThing.LOG.info(
+                LOG.info(
                     "[NekoEdit] 玩家 {} 保存节日祝福: index={}, name={}, monthDay={}",
                     player.getCommandSenderName(),
                     index,
@@ -1514,7 +1504,7 @@ public class NekoEditActionHandler {
             sendError(player, "未知的祝福编辑目标: " + targetId);
         } catch (Exception e) {
             sendError(player, "保存祝福预设失败: " + e.getMessage());
-            GTInterestingThing.LOG.error("[NekoEdit] 保存祝福预设异常", e);
+            LOG.error("[NekoEdit] 保存祝福预设异常", e);
         }
     }
 

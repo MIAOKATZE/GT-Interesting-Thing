@@ -10,6 +10,8 @@ import java.util.stream.Collectors;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
 import com.cleanroommc.modularui.factory.PosGuiData;
@@ -18,7 +20,6 @@ import com.cleanroommc.modularui.screen.ModularScreen;
 import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
@@ -62,6 +63,9 @@ import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
  * @see PanelCallback
  */
 public class NekoTradeMainPanel extends ModularPanel {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     // ==================== 回调接口 ====================
 
@@ -569,7 +573,7 @@ public class NekoTradeMainPanel extends ModularPanel {
                 }
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoTradeMainPanel] formatTrades() 异常!", t);
+            LOG.error("[NekoTradeMainPanel] formatTrades() 异常!", t);
         }
 
         // 按搜索文本过滤每个分类

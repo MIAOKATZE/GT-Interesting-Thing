@@ -20,6 +20,9 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
@@ -77,7 +80,6 @@ import com.miaokatze.gtit.lottery.LotteryGui;
 import com.miaokatze.gtit.lottery.LotteryRarity;
 import com.miaokatze.gtit.mail.MailClientData;
 import com.miaokatze.gtit.mail.MailGui;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.RewardItem;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
 import com.miaokatze.gtit.signin.SignInClientData;
@@ -132,6 +134,9 @@ import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui;
  */
 public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     implements NekoTradeMainPanel.PanelCallback, NekoTradeItemDisplayWidget.TradeActionCallback {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     // ==================== 常量 ====================
 
@@ -1266,7 +1271,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // GTNHLib Teams API 不可用，回退到个人钱包模式
             return NekoWalletMode.PERSONAL;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoVMGuiV2] getWalletMode 检测团队状态异常", e);
+            LOG.error("[NekoVMGuiV2] getWalletMode 检测团队状态异常", e);
         }
         return NekoWalletMode.PERSONAL;
     }
@@ -1300,7 +1305,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             try {
                 action.run();
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("[NekoVMV2] 执行投递的 C2S 动作失败", t);
+                LOG.error("[NekoVMV2] 执行投递的 C2S 动作失败", t);
             }
         }
     }
@@ -1695,9 +1700,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // 让客户端缓存与服务端编辑缓冲区重新对齐。
             forceSyncTradeEditSlots();
 
-            GTInterestingThing.LOG.info("[NekoEdit] 已加载交易到编辑缓冲区: {}", target);
+            LOG.info("[NekoEdit] 已加载交易到编辑缓冲区: {}", target);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 加载交易到编辑缓冲区失败: {}", target, e);
+            LOG.error("[NekoEdit] 加载交易到编辑缓冲区失败: {}", target, e);
         }
     }
 
@@ -1931,8 +1936,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // 原因：toItems 为空的交易会被服务端跳过注册，导致交易"消失"
             // （v1.7.33 修复交易条目保存丢失：客户端不发送会导致交易丢失的空数据）
             if (!editTradeIsNew && toItems.size() == 0) {
-                GTInterestingThing.LOG
-                    .warn("[NekoEdit] 客户端阻止保存：编辑模式下 toItems 为空（fromItems={}），疑似物品同步未完成，跳过发送", fromItems.size());
+                LOG.warn("[NekoEdit] 客户端阻止保存：编辑模式下 toItems 为空（fromItems={}），疑似物品同步未完成，跳过发送", fromItems.size());
                 // 向玩家显示提示（客户端本地聊天消息）
                 try {
                     net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getMinecraft();
@@ -1963,7 +1967,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             if (mainPanel != null) {
                 mainPanel.setForceRefresh();
             }
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoEdit] 客户端发送保存: group={}, index={}, new={}, fromItems={}, toItems={}",
                 editTradeIsNew ? String.valueOf(editTabId)
                     : editingDisplay.getGroupId()
@@ -1974,7 +1978,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 toItems.size());
 
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存交易编辑失败", e);
+            LOG.error("[NekoEdit] 保存交易编辑失败", e);
         }
     }
 
@@ -2093,7 +2097,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         try {
             day = Integer.parseInt(date.substring(8));
         } catch (Exception e) {
-            GTInterestingThing.LOG.warn("[NekoEdit] 逐日覆盖日期非法: {}", date);
+            LOG.warn("[NekoEdit] 逐日覆盖日期非法: {}", date);
             return;
         }
         editSignInDayDate = date;
@@ -2165,9 +2169,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             }
             fillSignInItemBuffer(editSignInItemHandler, reward);
-            GTInterestingThing.LOG.info("[NekoEdit] 已加载签到{}阶梯到编辑缓冲区: {}", cumulative ? "累计" : "连续", target);
+            LOG.info("[NekoEdit] 已加载签到{}阶梯到编辑缓冲区: {}", cumulative ? "累计" : "连续", target);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 加载签到阶梯到编辑缓冲区失败: {}", target, e);
+            LOG.error("[NekoEdit] 加载签到阶梯到编辑缓冲区失败: {}", target, e);
         }
     }
 
@@ -2619,7 +2623,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     .sendSaveSignInReward(editSignInMode + ":" + editSignInOriginalDays, json.toString());
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存签到编辑失败", e);
+            LOG.error("[NekoEdit] 保存签到编辑失败", e);
         }
     }
 
@@ -2789,7 +2793,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
                 .sendSaveSignInReward("day:" + editSignInDay, json.toString());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存逐日覆盖编辑失败", e);
+            LOG.error("[NekoEdit] 保存逐日覆盖编辑失败", e);
         }
     }
 
@@ -2855,9 +2859,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
                 break;
             }
-            GTInterestingThing.LOG.info("[NekoEdit] 已加载在线档位到编辑缓冲区: {}s", seconds);
+            LOG.info("[NekoEdit] 已加载在线档位到编辑缓冲区: {}s", seconds);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 加载在线档位到编辑缓冲区失败: {}", target, e);
+            LOG.error("[NekoEdit] 加载在线档位到编辑缓冲区失败: {}", target, e);
         }
     }
 
@@ -3039,7 +3043,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
                 .sendSaveOnlineTier(String.valueOf(editOnlineOriginalSeconds), json.toString());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存在线档位编辑失败", e);
+            LOG.error("[NekoEdit] 保存在线档位编辑失败", e);
         }
     }
 
@@ -3164,9 +3168,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     editBlessingItemHandler.setStackInSlot(slot++, stack);
                 }
             }
-            GTInterestingThing.LOG.info("[NekoEdit] 已加载祝福预设到编辑缓冲区: {}", target);
+            LOG.info("[NekoEdit] 已加载祝福预设到编辑缓冲区: {}", target);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 加载祝福预设到编辑缓冲区失败: {}", target, e);
+            LOG.error("[NekoEdit] 加载祝福预设到编辑缓冲区失败: {}", target, e);
         }
     }
 
@@ -3445,7 +3449,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
                 .sendSaveBlessing(editBlessingTarget == null ? "birthday" : editBlessingTarget, json.toString());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存祝福预设编辑失败", e);
+            LOG.error("[NekoEdit] 保存祝福预设编辑失败", e);
         }
     }
 
@@ -3529,9 +3533,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             if (stack != null) {
                 editLotteryItemHandler.setStackInSlot(0, stack);
             }
-            GTInterestingThing.LOG.info("[NekoEdit] 已加载抽奖条目到编辑缓冲区: {}", target);
+            LOG.info("[NekoEdit] 已加载抽奖条目到编辑缓冲区: {}", target);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 加载抽奖条目到编辑缓冲区失败: {}", target, e);
+            LOG.error("[NekoEdit] 加载抽奖条目到编辑缓冲区失败: {}", target, e);
         }
     }
 
@@ -3774,7 +3778,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
                 .sendSaveLotteryEntry(editLotteryEntryKey, json.toString());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存抽奖编辑失败", e);
+            LOG.error("[NekoEdit] 保存抽奖编辑失败", e);
         }
     }
 
@@ -3876,9 +3880,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 stack.stackSize = cost.getStackSize();
                 editPoolItemHandler.setStackInSlot(slot++, stack);
             }
-            GTInterestingThing.LOG.info("[NekoEdit] 已加载抽奖卡池到编辑缓冲区: {}", target);
+            LOG.info("[NekoEdit] 已加载抽奖卡池到编辑缓冲区: {}", target);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 加载抽奖卡池到编辑缓冲区失败: {}", target, e);
+            LOG.error("[NekoEdit] 加载抽奖卡池到编辑缓冲区失败: {}", target, e);
         }
     }
 
@@ -4182,7 +4186,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendSaveLotteryPool(editPoolId, json.toString());
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存抽奖卡池编辑失败", e);
+            LOG.error("[NekoEdit] 保存抽奖卡池编辑失败", e);
         }
     }
 
@@ -4257,9 +4261,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             if (icon != null) {
                 editPageItemHandler.setStackInSlot(0, icon);
             }
-            GTInterestingThing.LOG.info("[NekoEdit] 已加载标签页到编辑缓冲区: {}", target);
+            LOG.info("[NekoEdit] 已加载标签页到编辑缓冲区: {}", target);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 加载标签页到编辑缓冲区失败: {}", target, e);
+            LOG.error("[NekoEdit] 加载标签页到编辑缓冲区失败: {}", target, e);
         }
     }
 
@@ -4407,7 +4411,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     .sendSavePage(String.valueOf(editPageId), json.toString());
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoEdit] 保存标签页编辑失败", e);
+            LOG.error("[NekoEdit] 保存标签页编辑失败", e);
         }
     }
 
@@ -5324,7 +5328,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 // 自动导入猫猫币：识别到猫猫币后放入玩家钱包并立即同步客户端
                 slot.changeListener((newItem, onlyAmountChanged, client, init) -> {
                     // [NekoInput] 诊断日志：lambda 入口，输出关键参数与线程信息
-                    GTInterestingThing.LOG.debug(
+                    LOG.debug(
                         "[NekoInput] changeListener 入口: slotIdx=" + index
                             + " thread="
                             + Thread.currentThread()
@@ -5340,49 +5344,48 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                             + " stackSize="
                             + (newItem == null ? 0 : newItem.stackSize));
                     if (init || newItem == null) {
-                        GTInterestingThing.LOG
-                            .debug("[NekoInput] 提前返回: init=" + init + " newItemNull=" + (newItem == null));
+                        LOG.debug("[NekoInput] 提前返回: init=" + init + " newItemNull=" + (newItem == null));
                         return;
                     }
                     String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(newItem);
                     if (currencyId == null) {
-                        GTInterestingThing.LOG.debug("[NekoInput] 非猫猫币，跳过: slotIdx=" + index);
+                        LOG.debug("[NekoInput] 非猫猫币，跳过: slotIdx=" + index);
                         return;
                     }
-                    GTInterestingThing.LOG.debug("[NekoInput] 识别猫猫币: slotIdx=" + index + " currencyId=" + currencyId);
+                    LOG.debug("[NekoInput] 识别猫猫币: slotIdx=" + index + " currencyId=" + currencyId);
                     // 客户端：立即视觉清槽，真实数据以服务端同步为准
                     if (client) {
-                        GTInterestingThing.LOG.debug("[NekoInput] 客户端分支: 清槽前 slotIdx=" + index);
+                        LOG.debug("[NekoInput] 客户端分支: 清槽前 slotIdx=" + index);
                         slot.putStack(null);
-                        GTInterestingThing.LOG.debug("[NekoInput] 客户端分支: 清槽后 slotIdx=" + index);
+                        LOG.debug("[NekoInput] 客户端分支: 清槽后 slotIdx=" + index);
                         return;
                     }
                     UUID playerId = getPlayerId();
                     if (playerId == null) {
-                        GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: playerId 为 null, 跳过");
+                        LOG.debug("[NekoInput] 服务端分支: playerId 为 null, 跳过");
                         return;
                     }
                     NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
                     if (wallet == null) {
-                        GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: wallet 为 null, 跳过");
+                        LOG.debug("[NekoInput] 服务端分支: wallet 为 null, 跳过");
                         return;
                     }
                     // 先入账，再清槽，避免异常导致丢币（O2-17：落盘统一走脏标记兜底）
                     wallet.addCount(currencyId, newItem.stackSize);
                     int newCount = wallet.getCount(currencyId);
-                    GTInterestingThing.LOG.debug(
+                    LOG.debug(
                         "[NekoInput] 服务端分支: addCount 完成 currencyId=" + currencyId
                             + " added="
                             + newItem.stackSize
                             + " newCount="
                             + newCount);
-                    GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: 清槽前 slotIdx=" + index);
+                    LOG.debug("[NekoInput] 服务端分支: 清槽前 slotIdx=" + index);
                     slot.putStack(null);
-                    GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: 清槽后 slotIdx=" + index);
+                    LOG.debug("[NekoInput] 服务端分支: 清槽后 slotIdx=" + index);
                     // 强制同步槽位到客户端，使玩家立即看到槽位清空
                     itemSlot.getSyncHandler()
                         .forceSyncItem();
-                    GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: forceSyncItem 已调用 slotIdx=" + index);
+                    LOG.debug("[NekoInput] 服务端分支: forceSyncItem 已调用 slotIdx=" + index);
                     // 强制刷新对应货币余额同步值，使余额显示立即更新
                     IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
                     if (coinSync != null) {
@@ -5532,14 +5535,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         clientMeTransferQueue.clear();
         if (data == null || data.isEmpty()) {
             // v1.6.24 临时日志：确认空数据到达客户端
-            GTInterestingThing.LOG.debug("[NekoParticle] parseMeTransferQueue: empty data");
+            LOG.debug("[NekoParticle] parseMeTransferQueue: empty data");
             return;
         }
         try {
             String[] entries = data.split(";");
             // v1.6.24 临时日志：确认非空数据到达客户端
-            GTInterestingThing.LOG
-                .debug("[NekoParticle] parseMeTransferQueue: dataLen=" + data.length() + ", entries=" + entries.length);
+            LOG.debug("[NekoParticle] parseMeTransferQueue: dataLen=" + data.length() + ", entries=" + entries.length);
             for (String entryStr : entries) {
                 // v1.6.23: 新格式 4 段 (creationTime:stackSize:slotIndex:base64)
                 // 旧格式 3 段 (creationTime:stackSize:base64)，通过 split limit 4 兼容
@@ -5570,10 +5572,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             }
             // v1.6.24 临时日志：确认解析后队列大小
-            GTInterestingThing.LOG
-                .debug("[NekoParticle] parseMeTransferQueue: parsedQueueSize=" + clientMeTransferQueue.size());
+            LOG.debug("[NekoParticle] parseMeTransferQueue: parsedQueueSize=" + clientMeTransferQueue.size());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoVMV2] parseMeTransferQueue 解析失败", e);
+            LOG.error("[NekoVMV2] parseMeTransferQueue 解析失败", e);
         }
     }
 
@@ -5623,7 +5624,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 int queuedItems = multiblock.getOutputBufferSize();
                 if (emptySlots - queuedItems <= 0) {
                     // 输出槽已满（含队列堆积），不扣钱，提示玩家
-                    GTInterestingThing.LOG.warn("[NekoVMV2] doNekoEjectCoin 输出槽已满，取消弹出货币 {}", currencyId);
+                    LOG.warn("[NekoVMV2] doNekoEjectCoin 输出槽已满，取消弹出货币 {}", currencyId);
                     return;
                 }
                 multiblock.dispenseItemStacks(toDispense);
@@ -5631,7 +5632,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 playCoinDropSound();
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] doNekoEjectCoin 异常!", t);
+            LOG.error("[NekoVMV2] doNekoEjectCoin 异常!", t);
         } finally {
             nekoEjectSingleCoin.put(currencyId, false);
         }
@@ -5677,7 +5678,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 int emptySlots = multiblock.getOutputEmptySlotCount();
                 int queuedItems = multiblock.getOutputBufferSize();
                 if (emptySlots - queuedItems <= 0) {
-                    GTInterestingThing.LOG.warn("[NekoVMV2] doNekoEjectCoinStack 输出槽已满，取消弹出货币 {}", currencyId);
+                    LOG.warn("[NekoVMV2] doNekoEjectCoinStack 输出槽已满，取消弹出货币 {}", currencyId);
                     return;
                 }
                 multiblock.dispenseItemStacks(toDispense);
@@ -5696,7 +5697,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] doNekoEjectCoinStack 异常!", t);
+            LOG.error("[NekoVMV2] doNekoEjectCoinStack 异常!", t);
         } finally {
             nekoEjectCoinStack.put(currencyId, false);
         }
@@ -5746,7 +5747,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 playCoinDropSound();
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] doNekoEjectAllCoins 异常!", t);
+            LOG.error("[NekoVMV2] doNekoEjectAllCoins 异常!", t);
         } finally {
             nekoEjectAllCoins = false;
         }
@@ -5783,7 +5784,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 playItemDropSound();
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] doNekoEjectItems 异常!", t);
+            LOG.error("[NekoVMV2] doNekoEjectItems 异常!", t);
         } finally {
             nekoEjectItems = false;
         }
@@ -5817,7 +5818,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             multiblock.fillPlayerInventoryWithDispensedItems(player);
             forceSyncInputSlots();
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] doNekoFillPlayerInventory 异常!", t);
+            LOG.error("[NekoVMV2] doNekoFillPlayerInventory 异常!", t);
         } finally {
             nekoFillPlayerInventory = false;
         }
@@ -5832,26 +5833,26 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     private void doNekoImportCoins(UUID playerId) {
         // [NekoImportCoins] 诊断日志：方法入口
-        GTInterestingThing.LOG.debug(
+        LOG.debug(
             "[NekoImportCoins] 方法入口: playerId=" + playerId
                 + " thread="
                 + Thread.currentThread()
                     .getName());
         // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
         if (isClient()) {
-            GTInterestingThing.LOG.debug("[NekoImportCoins] 客户端分支，提前返回");
+            LOG.debug("[NekoImportCoins] 客户端分支，提前返回");
             nekoImportCoins = false;
             return;
         }
         try {
             if (playerId == null) {
-                GTInterestingThing.LOG.debug("[NekoImportCoins] playerId 为 null, 提前返回");
+                LOG.debug("[NekoImportCoins] playerId 为 null, 提前返回");
                 nekoImportCoins = false;
                 return;
             }
             NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
             if (wallet == null) {
-                GTInterestingThing.LOG.debug("[NekoImportCoins] wallet 为 null, 提前返回");
+                LOG.debug("[NekoImportCoins] wallet 为 null, 提前返回");
                 nekoImportCoins = false;
                 return;
             }
@@ -5860,11 +5861,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
                 ItemStack stack = multiblock.inputItems.getStackInSlot(i);
                 if (stack == null) {
-                    GTInterestingThing.LOG.debug("[NekoImportCoins] slotIdx=" + i + " stack=null, 跳过");
+                    LOG.debug("[NekoImportCoins] slotIdx=" + i + " stack=null, 跳过");
                     continue;
                 }
                 String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(stack);
-                GTInterestingThing.LOG.debug(
+                LOG.debug(
                     "[NekoImportCoins] slotIdx=" + i
                         + " stack="
                         + stack.getDisplayName()
@@ -5875,7 +5876,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 if (currencyId != null) {
                     wallet.addCount(currencyId, stack.stackSize);
                     int newCount = wallet.getCount(currencyId);
-                    GTInterestingThing.LOG.debug(
+                    LOG.debug(
                         "[NekoImportCoins] addCount 完成: slotIdx=" + i
                             + " currencyId="
                             + currencyId
@@ -5885,19 +5886,19 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                             + newCount);
                     totalImported += stack.stackSize;
                     multiblock.inputItems.setStackInSlot(i, null);
-                    GTInterestingThing.LOG.debug("[NekoImportCoins] setStackInSlot(null) 完成: slotIdx=" + i);
+                    LOG.debug("[NekoImportCoins] setStackInSlot(null) 完成: slotIdx=" + i);
                 }
             }
 
             if (totalImported > 0) {
                 tradeResultMessage = "成功导入 " + totalImported + " 个猫猫币";
-                GTInterestingThing.LOG.debug("[NekoImportCoins] 总计导入: totalImported=" + totalImported);
+                LOG.debug("[NekoImportCoins] 总计导入: totalImported=" + totalImported);
             } else {
                 tradeResultMessage = "输入槽中未找到猫猫币";
-                GTInterestingThing.LOG.debug("[NekoImportCoins] 总计导入: totalImported=0（未找到猫猫币）");
+                LOG.debug("[NekoImportCoins] 总计导入: totalImported=0（未找到猫猫币）");
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] doNekoImportCoins 异常!", t);
+            LOG.error("[NekoVMV2] doNekoImportCoins 异常!", t);
             tradeResultMessage = "导入猫猫币失败";
         } finally {
             nekoImportCoins = false;
@@ -5970,7 +5971,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
             if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] doNekoImportMeCoin 异常!", t);
+            LOG.error("[NekoVMV2] doNekoImportMeCoin 异常!", t);
             tradeResultMessage = "ME 货币导入失败";
             if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
         } finally {
@@ -5986,7 +5987,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     private void forceSyncInputSlots() {
         // [NekoForceSync] 诊断日志：方法入口
-        GTInterestingThing.LOG.debug(
+        LOG.debug(
             "[NekoForceSync] 方法入口: inputSlotRefs.size()=" + inputSlotRefs.size()
                 + " thread="
                 + Thread.currentThread()
@@ -5994,12 +5995,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         for (int i = 0; i < inputSlotRefs.size(); i++) {
             ItemSlot slot = inputSlotRefs.get(i);
             boolean hasSyncHandler = (slot != null && slot.getSyncHandler() != null);
-            GTInterestingThing.LOG.debug(
+            LOG.debug(
                 "[NekoForceSync] slotIdx=" + i + " slotNull=" + (slot == null) + " hasSyncHandler=" + hasSyncHandler);
             if (hasSyncHandler) {
                 slot.getSyncHandler()
                     .forceSyncItem();
-                GTInterestingThing.LOG.debug("[NekoForceSync] forceSyncItem 已调用: slotIdx=" + i);
+                LOG.debug("[NekoForceSync] forceSyncItem 已调用: slotIdx=" + i);
             }
         }
     }
@@ -6181,7 +6182,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] processTradeRequest 异常!", t);
+            LOG.error("[NekoVMV2] processTradeRequest 异常!", t);
             tradeResultMessage = "交易处理异常";
             if (tradeResultSync != null) {
                 tradeResultSync.notifyUpdate();
@@ -6218,7 +6219,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
             NekoFavouritesTracker.INSTANCE.toggleFavourite(playerId, groupId, tradeIndex);
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoVMV2] processFavouriteToggle 异常!", t);
+            LOG.error("[NekoVMV2] processFavouriteToggle 异常!", t);
         }
     }
 

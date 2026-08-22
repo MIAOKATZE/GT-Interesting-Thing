@@ -1,6 +1,8 @@
 package com.miaokatze.gtit.loader;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.register.MultiblockMachineRegistrar;
 
 /**
@@ -12,6 +14,9 @@ import com.miaokatze.gtit.register.MultiblockMachineRegistrar;
  */
 public class MachineLoader {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     /**
      * 初始化所有机器
      * 该方法应在模组预初始化 (PreInit) 或初始化 (Init) 阶段调用
@@ -22,7 +27,7 @@ public class MachineLoader {
             new MultiblockMachineRegistrar().registerAll();
         } catch (Throwable t) {
             // 记录错误但不上抛，防止模组因局部问题完全崩溃（外层 Runnable 另有兜底 catch）
-            GTInterestingThing.LOG.error("机器注册任务执行失败", t);
+            LOG.error("机器注册任务执行失败", t);
         }
     }
 }

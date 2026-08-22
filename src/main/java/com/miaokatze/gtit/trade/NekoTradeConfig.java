@@ -11,10 +11,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 猫猫售货机交易配置管理（v1.7.7 G4 存储结构重构）
@@ -27,6 +29,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 存在，则整体迁移并按新结构拆分，旧文件重命名为 {@code .bak} 保留。
  */
 public class NekoTradeConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 交易 tab 文件存放目录（相对游戏根目录） */
     private static final String TRADES_DIR = "config/gtit/trade/trades";
@@ -117,11 +122,11 @@ public class NekoTradeConfig {
                     migrateFromLegacy(legacy);
                 } else {
                     save(getDefaultTrades());
-                    GTInterestingThing.LOG.info("猫猫售货机交易配置已生成默认文件，目录: {}", dir);
+                    LOG.info("猫猫售货机交易配置已生成默认文件，目录: {}", dir);
                 }
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机交易配置初始化失败", e);
+            LOG.error("猫猫售货机交易配置初始化失败", e);
         }
     }
 
@@ -142,7 +147,7 @@ public class NekoTradeConfig {
                     migrateFromLegacy(legacy);
                     // 迁移完成后重新扫描新目录
                 } else {
-                    GTInterestingThing.LOG.info("猫猫售货机交易配置不存在，返回默认数据");
+                    LOG.info("猫猫售货机交易配置不存在，返回默认数据");
                     return getDefaultTrades();
                 }
             }
@@ -169,16 +174,16 @@ public class NekoTradeConfig {
                             allTrades.add(entry);
                         }
                     } catch (Exception e) {
-                        GTInterestingThing.LOG.warn("猫猫售货机交易 tab 文件损坏或无法解析，已跳过: {}", file, e);
+                        LOG.warn("猫猫售货机交易 tab 文件损坏或无法解析，已跳过: {}", file, e);
                     }
                 }
             }
             NekoTradeData data = new NekoTradeData();
             data.setTrades(allTrades);
-            GTInterestingThing.LOG.info("猫猫售货机交易配置已加载（{} 条交易）", allTrades.size());
+            LOG.info("猫猫售货机交易配置已加载（{} 条交易）", allTrades.size());
             return data;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机交易配置加载失败，返回默认数据", e);
+            LOG.error("猫猫售货机交易配置加载失败，返回默认数据", e);
             return getDefaultTrades();
         }
     }
@@ -225,9 +230,9 @@ public class NekoTradeConfig {
                     GSON.toJson(tab)
                         .getBytes(StandardCharsets.UTF_8));
             }
-            GTInterestingThing.LOG.info("猫猫售货机交易配置已保存（{} 个 tab 文件）", groups.size());
+            LOG.info("猫猫售货机交易配置已保存（{} 个 tab 文件）", groups.size());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机交易配置保存失败", e);
+            LOG.error("猫猫售货机交易配置保存失败", e);
         }
     }
 
@@ -255,7 +260,7 @@ public class NekoTradeConfig {
                     return data;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("反序列化同步交易配置失败，回退默认数据", e);
+                LOG.error("反序列化同步交易配置失败，回退默认数据", e);
             }
         }
         return getDefaultTrades();
@@ -1018,7 +1023,7 @@ public class NekoTradeConfig {
             save(data);
             ConfigMigrationUtil.retireLegacyAsBak(legacyPath, getTradeDirPath(), "猫猫售货机交易配置", "交易配置文件");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机交易配置从旧文件迁移失败", e);
+            LOG.error("猫猫售货机交易配置从旧文件迁移失败", e);
         }
     }
 }

@@ -7,11 +7,13 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 /**
@@ -32,6 +34,9 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
  * （{@link SignInClientData#getOnlineTiers()} 优先快照、未同步回退本类）。
  */
 public class OnlineTimeConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 新配置文件路径（相对游戏根目录） */
     private static final String CONFIG_PATH = "config/gtit/signin/online_time_config.json";
@@ -92,7 +97,7 @@ public class OnlineTimeConfig {
                     migrateFromLegacy(legacy, path);
                     // 迁移后继续从新路径读取
                 } catch (Exception e) {
-                    GTInterestingThing.LOG.error("每日在线奖励配置从旧路径迁移失败，回退默认配置", e);
+                    LOG.error("每日在线奖励配置从旧路径迁移失败，回退默认配置", e);
                     tiers = createDefaultTiers();
                     saveConfig();
                     return;
@@ -109,11 +114,11 @@ public class OnlineTimeConfig {
                     if (tiers.isEmpty()) {
                         tiers = createDefaultTiers();
                     }
-                    GTInterestingThing.LOG.info("每日在线奖励配置已加载（{} 个档位）", tiers.size());
+                    LOG.info("每日在线奖励配置已加载（{} 个档位）", tiers.size());
                     return;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("加载每日在线奖励配置失败，使用默认配置", e);
+                LOG.error("加载每日在线奖励配置失败，使用默认配置", e);
             }
         }
         // 首次运行或加载失败：使用默认配置并落盘
@@ -163,9 +168,9 @@ public class OnlineTimeConfig {
                 path,
                 GSON.toJson(data)
                     .getBytes(StandardCharsets.UTF_8));
-            GTInterestingThing.LOG.info("每日在线奖励配置已保存");
+            LOG.info("每日在线奖励配置已保存");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存每日在线奖励配置失败", e);
+            LOG.error("保存每日在线奖励配置失败", e);
         }
     }
 

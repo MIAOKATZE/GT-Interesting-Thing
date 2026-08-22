@@ -8,8 +8,10 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.util.PlayerLookup;
 
@@ -38,6 +40,9 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * 持久化：通知标记通过 {@link NekoTradeHistory#writeToNBT()} 持久化，服务器重启后未播报的通知不会丢失。
  */
 public class NekoNotificationScheduler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 单例实例 */
     public static final NekoNotificationScheduler INSTANCE = new NekoNotificationScheduler();
@@ -122,7 +127,7 @@ public class NekoNotificationScheduler {
             });
         } catch (Throwable t) {
             // 捕获所有异常（含 NoClassDefFoundError），仅打印日志不崩溃
-            GTInterestingThing.LOG.error("[NekoNotify] 冷却完毕通知检查异常", t);
+            LOG.error("[NekoNotify] 冷却完毕通知检查异常", t);
         }
     }
 
@@ -172,7 +177,7 @@ public class NekoNotificationScheduler {
                             member.worldObj.playSoundAtEntity(member, "random.orb", 0.2F, 1.8F);
                         } catch (Throwable t) {
                             // 单个成员播报失败不影响其他成员
-                            GTInterestingThing.LOG.error("[NekoNotify] 团队成员播报失败: " + member.getCommandSenderName(), t);
+                            LOG.error("[NekoNotify] 团队成员播报失败: " + member.getCommandSenderName(), t);
                         }
                     }
                 });
@@ -182,7 +187,7 @@ public class NekoNotificationScheduler {
                 player.worldObj.playSoundAtEntity(player, "random.orb", 0.2F, 1.8F);
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[NekoNotify] notifyTeam 异常", t);
+            LOG.error("[NekoNotify] notifyTeam 异常", t);
         }
     }
 }

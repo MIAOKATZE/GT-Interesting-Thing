@@ -16,8 +16,10 @@ import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -31,6 +33,9 @@ import cpw.mods.fml.relauncher.Side;
  * 如果团队不可用，回退到个人钱包（存储在 <world>/gtit_neko_wallets/<player_uuid>.dat）
  */
 public class NekoWalletManager {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     public static final NekoWalletManager INSTANCE = new NekoWalletManager();
 
@@ -66,7 +71,7 @@ public class NekoWalletManager {
         if (!saveDir.exists()) {
             saveDir.mkdirs();
         }
-        GTInterestingThing.LOG.info("猫猫币钱包存储目录: {}", saveDir.getAbsolutePath());
+        LOG.info("猫猫币钱包存储目录: {}", saveDir.getAbsolutePath());
     }
 
     /**
@@ -144,7 +149,7 @@ public class NekoWalletManager {
             // 落盘成功后清除脏标记（保留失败时的标记，下个周期重试）
             dirtyPersonalWallets.remove(playerId);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存猫猫币钱包失败: " + playerId, e);
+            LOG.error("保存猫猫币钱包失败: " + playerId, e);
         }
     }
 
@@ -163,7 +168,7 @@ public class NekoWalletManager {
                 return wallet;
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("加载猫猫币钱包失败: " + playerId, e);
+            LOG.error("加载猫猫币钱包失败: " + playerId, e);
         }
         return null;
     }
@@ -233,7 +238,7 @@ public class NekoWalletManager {
                     flushPersonalBalance(key.substring(PLAYER_KEY_PREFIX.length()), onlineByUuid);
                 }
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("推送钱包余额失败: " + key, t);
+                LOG.error("推送钱包余额失败: " + key, t);
             }
         }
     }
@@ -262,7 +267,7 @@ public class NekoWalletManager {
                 }
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("推送团队钱包余额失败: " + teamId, t);
+            LOG.error("推送团队钱包余额失败: " + teamId, t);
         }
     }
 
@@ -344,7 +349,7 @@ public class NekoWalletManager {
             }
         }
         if (saved > 0) {
-            GTInterestingThing.LOG.info("[NekoWallet] 周期落盘脏钱包: {} 个", saved);
+            LOG.info("[NekoWallet] 周期落盘脏钱包: {} 个", saved);
         }
         return saved;
     }

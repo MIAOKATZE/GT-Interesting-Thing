@@ -2,7 +2,8 @@ package com.miaokatze.gtit.trade;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
@@ -27,6 +28,9 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  */
 public class NekoWalletHandler {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     /** tick 计数器（达到 {@link #SAVE_INTERVAL_TICKS} 时落盘脏钱包） */
     private int tickCounter = 0;
     /** 周期落盘间隔（6000 tick = 5 分钟，与邮件/抽奖周期保存口径一致） */
@@ -44,7 +48,7 @@ public class NekoWalletHandler {
                 WalletNetworkManager.sendBalanceToClient(player, NekoWalletManager.INSTANCE.snapshotBalances(wallet));
             }
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("登录推送钱包余额失败: " + event.player.getUniqueID(), t);
+            LOG.error("登录推送钱包余额失败: " + event.player.getUniqueID(), t);
         }
     }
 
@@ -55,7 +59,7 @@ public class NekoWalletHandler {
         try {
             NekoWalletManager.INSTANCE.unloadWallet(event.player.getUniqueID());
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("登出卸载猫猫币钱包失败: " + event.player.getUniqueID(), t);
+            LOG.error("登出卸载猫猫币钱包失败: " + event.player.getUniqueID(), t);
         }
     }
 
@@ -67,7 +71,7 @@ public class NekoWalletHandler {
         try {
             NekoWalletManager.INSTANCE.flushBalanceNotifications();
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("冲刷钱包余额推送失败", t);
+            LOG.error("冲刷钱包余额推送失败", t);
         }
 
         // 周期落盘脏钱包（O2-17：脏标记即落盘口径，本钩子为常规落盘通道）
@@ -76,7 +80,7 @@ public class NekoWalletHandler {
             try {
                 NekoWalletManager.INSTANCE.saveDirtyWallets();
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("猫猫币钱包周期保存失败", t);
+                LOG.error("猫猫币钱包周期保存失败", t);
             }
         }
     }

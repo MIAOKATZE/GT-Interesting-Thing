@@ -5,7 +5,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * 配置文件旧路径迁移公共工具
@@ -16,6 +17,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 本类只负责旧文件退役与日志格式统一。
  */
 public final class ConfigMigrationUtil {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     private ConfigMigrationUtil() {}
 
@@ -46,7 +50,7 @@ public final class ConfigMigrationUtil {
         throws IOException {
         Path backupPath = siblingBackupPath(legacyPath, ".bak");
         Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
-        GTInterestingThing.LOG.info("{}已从旧路径迁移: {} -> {}", configTitle, legacyPath, newLocation);
-        GTInterestingThing.LOG.info("旧{}已重命名保留: {}", legacyFileTitle, backupPath);
+        LOG.info("{}已从旧路径迁移: {} -> {}", configTitle, legacyPath, newLocation);
+        LOG.info("旧{}已重命名保留: {}", legacyFileTitle, backupPath);
     }
 }

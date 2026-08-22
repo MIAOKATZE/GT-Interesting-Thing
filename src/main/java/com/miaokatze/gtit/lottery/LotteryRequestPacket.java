@@ -10,10 +10,12 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
@@ -34,6 +36,9 @@ import io.netty.buffer.ByteBuf;
  * 抽奖判定完全在服务端权威执行（{@link LotteryManager#drawLottery}），客户端仅表现。
  */
 public class LotteryRequestPacket implements IMessage {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 单包最大连抽次数（防恶意包刷爆服务器，10 连为 GUI 上限） */
     private static final int MAX_COUNT = 10;
@@ -196,7 +201,7 @@ public class LotteryRequestPacket implements IMessage {
                     }
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("定位抽奖触发机器失败", e);
+                LOG.error("定位抽奖触发机器失败", e);
             }
             return null;
         }

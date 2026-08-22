@@ -17,8 +17,10 @@ import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.mail.BlessingManager;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.util.NbtBase64Util;
@@ -40,6 +42,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * </ul>
  */
 public class DailySignInManager {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     public static final DailySignInManager INSTANCE = new DailySignInManager();
 
@@ -78,7 +83,7 @@ public class DailySignInManager {
             saveDir.mkdirs();
         }
         lastKnownDate = getToday();
-        GTInterestingThing.LOG.info("签到数据存储目录: {}", saveDir.getAbsolutePath());
+        LOG.info("签到数据存储目录: {}", saveDir.getAbsolutePath());
     }
 
     // ==================== 签到核心逻辑 ====================
@@ -244,7 +249,7 @@ public class DailySignInManager {
         String today = getToday();
         if (today.equals(lastKnownDate)) return;
         lastKnownDate = today;
-        GTInterestingThing.LOG.info("检测到跨日，执行签到数据修正（{} 名在线玩家）", signInDataMap.size());
+        LOG.info("检测到跨日，执行签到数据修正（{} 名在线玩家）", signInDataMap.size());
         for (Map.Entry<UUID, DailySignInData> entry : signInDataMap.entrySet()) {
             UUID playerId = entry.getKey();
             if (applyDateCorrections(entry.getValue())) {
@@ -261,7 +266,7 @@ public class DailySignInManager {
         try {
             BlessingManager.INSTANCE.checkAllOnlinePlayers();
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("跨日祝福检测失败", t);
+            LOG.error("跨日祝福检测失败", t);
         }
     }
 
@@ -468,7 +473,7 @@ public class DailySignInManager {
             nbt.setTag("signin", data.writeToNBT());
             CompressedStreamTools.safeWrite(nbt, file);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存签到数据失败: " + playerId, e);
+            LOG.error("保存签到数据失败: " + playerId, e);
         }
     }
 
@@ -563,7 +568,7 @@ public class DailySignInManager {
                 return data;
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("加载签到数据失败: " + playerId, e);
+            LOG.error("加载签到数据失败: " + playerId, e);
         }
         return null;
     }
@@ -596,14 +601,14 @@ public class DailySignInManager {
     private void grantItemStack(UUID playerId, String itemId, int amount, int meta, NBTTagCompound nbt) {
         EntityPlayerMP player = getPlayerByUUID(playerId);
         if (player == null) {
-            GTInterestingThing.LOG.warn("玩家 {} 不在线，物品奖励 {} 已跳过", playerId, itemId);
+            LOG.warn("玩家 {} 不在线，物品奖励 {} 已跳过", playerId, itemId);
             return;
         }
         String[] parts = itemId.split(":");
         if (parts.length != 2) return;
         Item item = GameRegistry.findItem(parts[0], parts[1]);
         if (item == null) {
-            GTInterestingThing.LOG.warn("奖励物品不存在: {}", itemId);
+            LOG.warn("奖励物品不存在: {}", itemId);
             return;
         }
         ItemStack stack = new ItemStack(item, Math.max(1, amount), meta);

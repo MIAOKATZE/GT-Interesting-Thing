@@ -16,8 +16,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.PlayerLookup;
 import com.miaokatze.gtit.util.PlayerResolver;
 
@@ -39,6 +41,9 @@ import com.miaokatze.gtit.util.PlayerResolver;
  * {@link com.miaokatze.gtit.util.ServerTaskScheduler#scheduleServerTask} 投递）。
  */
 public class MailManager {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     public static final MailManager INSTANCE = new MailManager();
 
@@ -89,7 +94,7 @@ public class MailManager {
         }
         globalFile = new File(saveDir, "global.dat");
         loadGlobalData();
-        GTInterestingThing.LOG.info(
+        LOG.info(
             "邮件数据存储目录: {}（首登奖励模板{}，一次性奖励 {} 条）",
             saveDir.getAbsolutePath(),
             firstRewardTemplate != null ? "已设置" : "未设置",
@@ -127,7 +132,7 @@ public class MailManager {
             nbt.setTag("mail", data.writeToNBT());
             CompressedStreamTools.safeWrite(nbt, file);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存邮件数据失败: " + playerId, e);
+            LOG.error("保存邮件数据失败: " + playerId, e);
         }
     }
 
@@ -468,7 +473,7 @@ public class MailManager {
                 }
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("加载邮件全局奖励数据失败", e);
+            LOG.error("加载邮件全局奖励数据失败", e);
         }
     }
 
@@ -495,7 +500,7 @@ public class MailManager {
             nbt.setTag("onceRewards", onceList);
             CompressedStreamTools.safeWrite(nbt, globalFile);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存邮件全局奖励数据失败", e);
+            LOG.error("保存邮件全局奖励数据失败", e);
         }
     }
 
@@ -516,7 +521,7 @@ public class MailManager {
                 return data;
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("加载邮件数据失败: " + playerId, e);
+            LOG.error("加载邮件数据失败: " + playerId, e);
         }
         return null;
     }

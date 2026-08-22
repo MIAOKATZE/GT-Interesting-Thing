@@ -1,11 +1,12 @@
 package com.miaokatze.gtit.client.gui;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 带深度偏移的物品槽
@@ -19,6 +20,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 因此索引越大的槽位渲染时越靠前（Z 值越大），形成自然的深度排序。
  */
 public class NekoItemSlotWithDepth extends ItemSlot {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** Z 轴深度偏移量（正值向屏幕外，负值向屏幕内） */
     private final int depth;
@@ -56,7 +60,7 @@ public class NekoItemSlotWithDepth extends ItemSlot {
             long now = System.currentTimeMillis();
             if (now - lastDrawLogTime > 1000) {
                 lastDrawLogTime = now;
-                GTInterestingThing.LOG.debug(
+                LOG.debug(
                     "[NekoDraw] slot=" + depth
                         + " hasStack="
                         + hasStack

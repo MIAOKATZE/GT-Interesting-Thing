@@ -9,10 +9,12 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
@@ -34,6 +36,9 @@ import io.netty.buffer.ByteBuf;
  * 操作完成后服务端回发 {@link MailSyncPacket} 全量刷新客户端邮箱。
  */
 public class MailActionPacket implements IMessage {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 操作：标记已读 */
     public static final int ACTION_READ = 0;
@@ -281,7 +286,7 @@ public class MailActionPacket implements IMessage {
                     }
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("定位写邮件触发机器失败", e);
+                LOG.error("定位写邮件触发机器失败", e);
             }
             return null;
         }

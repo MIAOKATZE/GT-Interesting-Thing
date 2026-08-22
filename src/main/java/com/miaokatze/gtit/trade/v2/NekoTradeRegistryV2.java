@@ -6,7 +6,9 @@ import java.util.UUID;
 
 import net.minecraft.item.ItemStack;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
@@ -23,6 +25,9 @@ import com.miaokatze.gtit.trade.NekoTradeEntry;
  */
 public class NekoTradeRegistryV2 {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     /**
      * 初始化注册表
      * <p>
@@ -33,12 +38,12 @@ public class NekoTradeRegistryV2 {
             // 确保配置文件存在
             NekoTradeConfig.init();
             loadAndRegisterTrades();
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "猫猫币交易注册完成 (V2)，共 {} 个交易组，{} 笔交易",
                 NekoTradeDatabase.INSTANCE.getTradeGroupCount(),
                 NekoTradeDatabase.INSTANCE.getTradeCount());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("V2 交易系统初始化失败", e);
+            LOG.error("V2 交易系统初始化失败", e);
         }
     }
 
@@ -51,9 +56,9 @@ public class NekoTradeRegistryV2 {
         try {
             NekoTradeConfig.init();
             loadAndRegisterTrades();
-            GTInterestingThing.LOG.info("V2 交易系统客户端初始化完成");
+            LOG.info("V2 交易系统客户端初始化完成");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("V2 交易系统客户端初始化失败", e);
+            LOG.error("V2 交易系统客户端初始化失败", e);
         }
     }
 
@@ -79,7 +84,7 @@ public class NekoTradeRegistryV2 {
      */
     private static void registerTradesFromData(NekoTradeConfig.NekoTradeData data) {
         if (data == null || data.getTrades() == null) {
-            GTInterestingThing.LOG.warn("V2 交易配置为空");
+            LOG.warn("V2 交易配置为空");
             return;
         }
         int successCount = 0;
@@ -88,7 +93,7 @@ public class NekoTradeRegistryV2 {
                 successCount++;
             }
         }
-        GTInterestingThing.LOG.info(
+        LOG.info(
             "V2 交易加载完成：{}/{} 个交易组注册成功",
             successCount,
             data.getTrades()
@@ -112,12 +117,12 @@ public class NekoTradeRegistryV2 {
             NekoBqBridge.clearAllTriggers();
             NekoTradeDatabase.INSTANCE.clear();
             registerTradesFromData(data);
-            GTInterestingThing.LOG.info(
+            LOG.info(
                 "[NekoSync] 客户端已应用同步交易配置，共 {} 个交易组，{} 笔交易",
                 NekoTradeDatabase.INSTANCE.getTradeGroupCount(),
                 NekoTradeDatabase.INSTANCE.getTradeCount());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NekoSync] 客户端应用同步交易配置失败", e);
+            LOG.error("[NekoSync] 客户端应用同步交易配置失败", e);
         }
     }
 
@@ -175,7 +180,7 @@ public class NekoTradeRegistryV2 {
                     trade.getFromItems()
                         .add(new NekoBigItemStack(currencyStack));
                 } else {
-                    GTInterestingThing.LOG.warn("交易 {} 的货币类型 {} 无法合成物品条目，已跳过", entry.getId(), currencyId);
+                    LOG.warn("交易 {} 的货币类型 {} 无法合成物品条目，已跳过", entry.getId(), currencyId);
                 }
             }
 
@@ -193,7 +198,7 @@ public class NekoTradeRegistryV2 {
             // 检查 toItems 不为空
             if (trade.getToItems()
                 .isEmpty()) {
-                GTInterestingThing.LOG.warn(
+                LOG.warn(
                     "交易 {} 的 toItems 为空（fromItems={}），跳过注册",
                     entry.getId(),
                     trade.getFromItems()
@@ -227,7 +232,7 @@ public class NekoTradeRegistryV2 {
                     // 注册任务触发器（任务完成时刷新关联交易组）
                     NekoBqBridge.registerQuestTrigger(questId, groupId);
                 } else {
-                    GTInterestingThing.LOG.warn("交易 {} 的 BQ 任务ID格式无效: {}", entry.getId(), bqQuestId);
+                    LOG.warn("交易 {} 的 BQ 任务ID格式无效: {}", entry.getId(), bqQuestId);
                 }
             }
 
@@ -240,7 +245,7 @@ public class NekoTradeRegistryV2 {
             return true;
 
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("注册交易失败: {}", entry.getId(), e);
+            LOG.error("注册交易失败: {}", entry.getId(), e);
             return false;
         }
     }
@@ -290,10 +295,10 @@ public class NekoTradeRegistryV2 {
             NekoTradeDatabase.INSTANCE.clear();
             // 重新加载
             loadAndRegisterTrades();
-            GTInterestingThing.LOG.info("V2 交易系统热重载完成");
+            LOG.info("V2 交易系统热重载完成");
             return true;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("V2 交易系统热重载失败", e);
+            LOG.error("V2 交易系统热重载失败", e);
             return false;
         }
     }

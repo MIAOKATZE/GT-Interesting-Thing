@@ -6,7 +6,8 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
@@ -27,6 +28,9 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * 参照 {@code DailySignInHandler} 的事件分发模式。
  */
 public class MailHandler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** tick 计数器（达到 {@link #TICK_SAVE_INTERVAL} 时做一次全量保存） */
     private int tickCounter = 0;
@@ -68,7 +72,7 @@ public class MailHandler {
             try {
                 MailManager.INSTANCE.saveAll();
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("邮件周期保存失败", t);
+                LOG.error("邮件周期保存失败", t);
             }
         }
     }

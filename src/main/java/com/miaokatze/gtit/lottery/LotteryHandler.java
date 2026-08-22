@@ -6,7 +6,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
@@ -26,6 +27,9 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * 在 {@code CommonProxy.preInit()} 中注册到 FML 事件总线。
  */
 public class LotteryHandler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /**
      * 延迟任务（到期时间 + 任务体）
@@ -103,7 +107,7 @@ public class LotteryHandler {
             try {
                 delayed.task.run();
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("执行抽奖延迟任务失败", t);
+                LOG.error("执行抽奖延迟任务失败", t);
             }
         }
 
@@ -113,7 +117,7 @@ public class LotteryHandler {
             try {
                 LotteryManager.INSTANCE.saveAll();
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("抽奖周期保存失败", t);
+                LOG.error("抽奖周期保存失败", t);
             }
         }
     }

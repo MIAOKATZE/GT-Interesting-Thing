@@ -7,8 +7,10 @@ import java.util.Map;
 
 import net.minecraft.item.ItemStack;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.cubefury.vendingmachine.trade.TradeCategory;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 /**
@@ -20,6 +22,9 @@ import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
  * 默认标签页（ID 1-3）不可删除。
  */
 public class NekoPageRegistry {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 标签页ID → 标签页条目，保持插入顺序 */
     private static final Map<Integer, NekoPageEntry> PAGES = new LinkedHashMap<>();
@@ -34,10 +39,10 @@ public class NekoPageRegistry {
      * 在 CommonProxy.serverStarted() 中调用
      */
     public static void initialize() {
-        GTInterestingThing.LOG.info("开始注册猫猫售货机标签页...");
+        LOG.info("开始注册猫猫售货机标签页...");
         NekoPageConfig.init();
         loadPages();
-        GTInterestingThing.LOG.info("猫猫售货机标签页注册完成，共 {} 个标签页", PAGES.size());
+        LOG.info("猫猫售货机标签页注册完成，共 {} 个标签页", PAGES.size());
     }
 
     /**
@@ -222,7 +227,7 @@ public class NekoPageRegistry {
                 PAGES.put(entry.getId(), entry);
             }
         }
-        GTInterestingThing.LOG.info("[NekoSync] 客户端已应用同步标签页配置，共 {} 个标签页", PAGES.size());
+        LOG.info("[NekoSync] 客户端已应用同步标签页配置，共 {} 个标签页", PAGES.size());
     }
 
     /**
@@ -231,10 +236,10 @@ public class NekoPageRegistry {
     public static boolean reload() {
         try {
             loadPages();
-            GTInterestingThing.LOG.info("猫猫售货机标签页热重载完成，共 {} 个标签页", PAGES.size());
+            LOG.info("猫猫售货机标签页热重载完成，共 {} 个标签页", PAGES.size());
             return true;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机标签页热重载失败!", e);
+            LOG.error("猫猫售货机标签页热重载失败!", e);
             return false;
         }
     }

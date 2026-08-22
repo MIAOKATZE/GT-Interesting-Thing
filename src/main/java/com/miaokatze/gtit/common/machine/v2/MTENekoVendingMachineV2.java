@@ -14,6 +14,9 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.ForgeDirection;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cubefury.vendingmachine.blocks.MTEVendingUplinkHatch;
 import com.cubefury.vendingmachine.blocks.VendingMachineBlocks;
@@ -60,6 +63,9 @@ import gregtech.api.util.MultiblockTooltipBuilder;
 @IMetaTileEntity.SkipGenerateDescription
 public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVendingMachineV2>
     implements ISurvivalConstructable {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 结构定义的唯一标识符，用于在 StructureLib 中索引特定的结构片段 */
     private static final String STRUCTURE_PIECE_MAIN = "main";
@@ -292,8 +298,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         }
         int metaTileId = aBaseMetaTileEntity.getMetaTileID();
         if (metaTileId != VM_ME_UPLINK_MTE_ID) {
-            if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
-                com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(
                     "[NekoVMV2] addUplinkHatch rejected: metaTileID={} (expected {})",
                     metaTileId,
                     VM_ME_UPLINK_MTE_ID);
@@ -301,8 +307,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return false;
         }
         if (!(aMetaTileEntity instanceof MTEVendingUplinkHatch)) {
-            if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
-                com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(
                     "[NekoVMV2] addUplinkHatch rejected: metaTileID matches {} but class is {} (potential reflection compat issue)",
                     VM_ME_UPLINK_MTE_ID,
                     aMetaTileEntity.getClass()
@@ -318,8 +324,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             hatch.updateCraftingIcon(machineCraftingIcon);
         }
         uplinkHatch = hatch;
-        if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+        if (LOG.isDebugEnabled()) {
+            LOG.debug(
                 "[NekoVMV2] addUplinkHatch succeeded at ({}, {}, {})",
                 aBaseMetaTileEntity.getXCoord(),
                 aBaseMetaTileEntity.getYCoord(),
@@ -406,7 +412,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         try {
             return uplinkHatch.removeItem(stack, simulate, ore, tracker);
         } catch (Throwable t) {
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] safeRemoveItemFromUplink 异常，视为提取失败", t);
+            LOG.error("[NekoVMV2] safeRemoveItemFromUplink 异常，视为提取失败", t);
             return stack.stackSize;
         }
     }
@@ -419,7 +425,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         try {
             uplinkHatch.setRefreshCache();
         } catch (Throwable t) {
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] safeSetRefreshCache 异常", t);
+            LOG.error("[NekoVMV2] safeSetRefreshCache 异常", t);
         }
     }
 
@@ -1253,7 +1259,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 appeng.api.config.Actionable.SIMULATE);
             return remainder == null || remainder.getStackSize() <= 0;
         } catch (Throwable t) {
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] canUplinkAcceptItems 检查失败，按不能接收处理", t);
+            LOG.error("[NekoVMV2] canUplinkAcceptItems 检查失败，按不能接收处理", t);
             return false;
         }
     }
@@ -1274,7 +1280,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return null;
         appeng.api.storage.data.IAEItemStack aeStack = appeng.util.item.AEItemStack.create(stack);
         if (aeStack == null) {
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] injectItemToUplink 无法将物品转换为 AEItemStack");
+            LOG.error("[NekoVMV2] injectItemToUplink 无法将物品转换为 AEItemStack");
             return null;
         }
         try {
@@ -1291,7 +1297,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 appeng.api.config.Actionable.MODULATE);
         } catch (Throwable t) {
             // v1.7.33: 注入失败时返回原始 AEItemStack，物品保留在出货槽中稍后重试
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] injectItemToUplink 失败，物品保留在出货槽中", t);
+            LOG.error("[NekoVMV2] injectItemToUplink 失败，物品保留在出货槽中", t);
             return aeStack;
         }
     }
@@ -1361,8 +1367,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     uplinkHatch.getProxy()
                         .onReady();
                     uplinkProxyReadyAttempted = true;
-                    if (com.miaokatze.gtit.main.GTInterestingThing.LOG.isDebugEnabled()) {
-                        com.miaokatze.gtit.main.GTInterestingThing.LOG.debug(
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug(
                             "[NekoVMV2] 已触发 uplink hatch AE 代理就绪兜底 at ({}, {}, {})",
                             aBaseMetaTileEntity.getXCoord(),
                             aBaseMetaTileEntity.getYCoord(),
@@ -1370,7 +1376,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     }
                 } catch (Throwable t) {
                     uplinkProxyReadyAttempted = true;
-                    com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] uplink hatch AE 代理就绪兜底调用失败", t);
+                    LOG.error("[NekoVMV2] uplink hatch AE 代理就绪兜底调用失败", t);
                 }
             }
         }
@@ -1508,7 +1514,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 try {
                     dropItemsNearMachine(pending);
                 } catch (Throwable t) {
-                    com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] 拆机掉落排队产物失败", t);
+                    LOG.error("[NekoVMV2] 拆机掉落排队产物失败", t);
                 }
             }
         }

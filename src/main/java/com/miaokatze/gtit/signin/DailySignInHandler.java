@@ -4,7 +4,8 @@ import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
@@ -23,6 +24,9 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * 在 {@code CommonProxy.preInit()} 中注册到 FML 事件总线。
  */
 public class DailySignInHandler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** tick 计数器（达到 {@link #TICK_CHECK_INTERVAL} 时做一次跨日检查） */
     private int tickCounter = 0;
@@ -71,7 +75,7 @@ public class DailySignInHandler {
             try {
                 DailySignInManager.INSTANCE.checkDailyReset();
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("签到跨日检查失败", t);
+                LOG.error("签到跨日检查失败", t);
             }
         }
 
@@ -81,7 +85,7 @@ public class DailySignInHandler {
             try {
                 DailySignInManager.INSTANCE.tickOnlineMinute();
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("在线时间累计失败", t);
+                LOG.error("在线时间累计失败", t);
             }
         }
     }

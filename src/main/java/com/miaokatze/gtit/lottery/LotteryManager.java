@@ -17,8 +17,10 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
@@ -50,6 +52,9 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  */
 public class LotteryManager {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     public static final LotteryManager INSTANCE = new LotteryManager();
 
     /** 卡池表（poolId → pool，loadConfig 时重建） */
@@ -78,7 +83,7 @@ public class LotteryManager {
             saveDir.mkdirs();
         }
         loadConfig();
-        GTInterestingThing.LOG.info("抽奖数据存储目录: {}", saveDir.getAbsolutePath());
+        LOG.info("抽奖数据存储目录: {}", saveDir.getAbsolutePath());
     }
 
     /**
@@ -94,7 +99,7 @@ public class LotteryManager {
                 }
             }
         }
-        GTInterestingThing.LOG.info("抽奖卡池已加载: {}", pools.keySet());
+        LOG.info("抽奖卡池已加载: {}", pools.keySet());
     }
 
     // ==================== 团队键解析 ====================
@@ -144,7 +149,7 @@ public class LotteryManager {
 
         LotteryPool pool = pools.get(poolId);
         if (pool == null || !pool.validate()) {
-            GTInterestingThing.LOG.warn("抽奖失败：卡池 {} 不存在或无有效条目", poolId);
+            LOG.warn("抽奖失败：卡池 {} 不存在或无有效条目", poolId);
             return results;
         }
 
@@ -486,7 +491,7 @@ public class LotteryManager {
                     }
                     continue;
                 }
-                GTInterestingThing.LOG.warn("抽奖奖品物品无法构建: {}", entry.getItem());
+                LOG.warn("抽奖奖品物品无法构建: {}", entry.getItem());
                 continue;
             }
             itemPrizes.add(stack);
@@ -538,10 +543,10 @@ public class LotteryManager {
                     return;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("抽奖出货离线掉落失败", e);
+                LOG.error("抽奖出货离线掉落失败", e);
             }
         }
-        GTInterestingThing.LOG.warn("抽奖出货溢出但玩家离线且无机器坐标，物品已丢弃: {}", overflow);
+        LOG.warn("抽奖出货溢出但玩家离线且无机器坐标，物品已丢弃: {}", overflow);
     }
 
     /**
@@ -567,7 +572,7 @@ public class LotteryManager {
                 }
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("定位抽奖触发机器失败", e);
+            LOG.error("定位抽奖触发机器失败", e);
         }
         return null;
     }
@@ -633,7 +638,7 @@ public class LotteryManager {
             }
             CompressedStreamTools.safeWrite(nbt, file);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存抽奖数据失败: " + teamKey, e);
+            LOG.error("保存抽奖数据失败: " + teamKey, e);
         }
     }
 
@@ -660,7 +665,7 @@ public class LotteryManager {
                 }
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("加载抽奖数据失败: " + teamKey, e);
+            LOG.error("加载抽奖数据失败: " + teamKey, e);
         }
     }
 

@@ -7,10 +7,12 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 猫猫售货机标签页配置管理（v1.7.7 G4 存储结构重构）
@@ -19,6 +21,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 存在时自动迁移，旧文件重命名为 {@code .bak} 保留。
  */
 public class NekoPageConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 新路径 */
     private static final String CONFIG_PATH = "config/gtit/trade/pages.json";
@@ -68,11 +73,11 @@ public class NekoPageConfig {
                 } else {
                     Files.createDirectories(path.getParent());
                     save(getDefaultPages());
-                    GTInterestingThing.LOG.info("猫猫售货机标签页配置已生成默认文件: {}", path);
+                    LOG.info("猫猫售货机标签页配置已生成默认文件: {}", path);
                 }
             }
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机标签页配置初始化失败", e);
+            LOG.error("猫猫售货机标签页配置初始化失败", e);
         }
     }
 
@@ -95,10 +100,10 @@ public class NekoPageConfig {
                         return data;
                     }
                 } catch (Exception e) {
-                    GTInterestingThing.LOG.error("猫猫售货机标签页配置迁移失败，回退默认数据", e);
+                    LOG.error("猫猫售货机标签页配置迁移失败，回退默认数据", e);
                 }
             }
-            GTInterestingThing.LOG.info("猫猫售货机标签页配置文件不存在，返回默认数据");
+            LOG.info("猫猫售货机标签页配置文件不存在，返回默认数据");
             return getDefaultPages();
         }
         try {
@@ -107,12 +112,12 @@ public class NekoPageConfig {
             if (data == null || data.getPages() == null
                 || data.getPages()
                     .isEmpty()) {
-                GTInterestingThing.LOG.warn("猫猫售货机标签页配置文件为空，返回默认数据");
+                LOG.warn("猫猫售货机标签页配置文件为空，返回默认数据");
                 return getDefaultPages();
             }
             return data;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机标签页配置加载失败，返回默认数据", e);
+            LOG.error("猫猫售货机标签页配置加载失败，返回默认数据", e);
             return getDefaultPages();
         }
     }
@@ -126,9 +131,9 @@ public class NekoPageConfig {
             Files.createDirectories(path.getParent());
             String json = GSON.toJson(data);
             Files.write(path, json.getBytes(StandardCharsets.UTF_8));
-            GTInterestingThing.LOG.info("猫猫售货机标签页配置已保存");
+            LOG.info("猫猫售货机标签页配置已保存");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("猫猫售货机标签页配置保存失败", e);
+            LOG.error("猫猫售货机标签页配置保存失败", e);
         }
     }
 
@@ -158,7 +163,7 @@ public class NekoPageConfig {
                     return data;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("反序列化同步标签页配置失败，回退默认数据", e);
+                LOG.error("反序列化同步标签页配置失败，回退默认数据", e);
             }
         }
         return getDefaultPages();

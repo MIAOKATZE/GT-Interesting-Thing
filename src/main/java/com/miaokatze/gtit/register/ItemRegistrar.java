@@ -2,6 +2,9 @@ package com.miaokatze.gtit.register;
 
 import static com.miaokatze.gtit.common.api.enums.GTITItemList.*;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.common.items.ElectricFloatCore;
 import com.miaokatze.gtit.common.items.FloatCore;
 import com.miaokatze.gtit.common.items.NekoCoin;
@@ -18,7 +21,6 @@ import com.miaokatze.gtit.common.items.rings.RingMountainbreaker;
 import com.miaokatze.gtit.common.items.rings.RingSkywalk;
 import com.miaokatze.gtit.common.items.rings.RingTempest;
 import com.miaokatze.gtit.common.items.rings.RingWindrider;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 物品注册器
@@ -26,11 +28,14 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  */
 public class ItemRegistrar {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     /**
      * 初始化并注册所有物品
      */
     public static void init() {
-        GTInterestingThing.LOG.info("开始通过 ItemRegistrar 注册物品...");
+        LOG.info("开始通过 ItemRegistrar 注册物品...");
         registerFloatCore();
         registerElectricFloatCore();
         registerTelekinesisOreScannerCore();
@@ -58,7 +63,7 @@ public class ItemRegistrar {
         registerInfinityCell();
         registerInfinityFluidCell();
 
-        GTInterestingThing.LOG.info("物品注册完成。");
+        LOG.info("物品注册完成。");
     }
 
     private static void registerFloatCore() {

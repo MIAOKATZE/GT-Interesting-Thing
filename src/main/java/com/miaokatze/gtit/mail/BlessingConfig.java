@@ -10,11 +10,13 @@ import java.util.List;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -49,6 +51,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * 权威判定与落盘均在服务端。
  */
 public class BlessingConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 新配置文件路径（相对游戏根目录） */
     private static final String CONFIG_PATH = "config/gtit/mail/blessing_config.json";
@@ -108,7 +113,7 @@ public class BlessingConfig {
             if (parts.length != 2) return null;
             Item found = GameRegistry.findItem(parts[0], parts[1]);
             if (found == null) {
-                GTInterestingThing.LOG.warn("祝福附件物品不存在: {}", item);
+                LOG.warn("祝福附件物品不存在: {}", item);
                 return null;
             }
             return new ItemStack(found, Math.max(1, amount), Math.max(0, meta));
@@ -223,7 +228,7 @@ public class BlessingConfig {
                     migrateFromLegacy(legacy, path);
                     // 迁移后继续从新路径读取
                 } catch (Exception e) {
-                    GTInterestingThing.LOG.error("祝福邮件配置从旧路径迁移失败，回退默认配置", e);
+                    LOG.error("祝福邮件配置从旧路径迁移失败，回退默认配置", e);
                     applyDefaults();
                     saveConfig();
                     return;
@@ -239,11 +244,11 @@ public class BlessingConfig {
                     sender = data.sender == null || data.sender.isEmpty() ? "猫猫售货机" : data.sender;
                     festivals = data.festivals == null ? new ArrayList<>() : data.festivals;
                     birthday = data.birthday == null ? new BirthdayBlessing() : data.birthday;
-                    GTInterestingThing.LOG.info("祝福邮件配置已加载（{} 个节日 + 生日模板）", festivals.size());
+                    LOG.info("祝福邮件配置已加载（{} 个节日 + 生日模板）", festivals.size());
                     return;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("加载祝福邮件配置失败，使用默认配置", e);
+                LOG.error("加载祝福邮件配置失败，使用默认配置", e);
             }
         }
         // 首次运行或加载失败：使用默认配置并落盘
@@ -287,9 +292,9 @@ public class BlessingConfig {
                 path,
                 GSON.toJson(data)
                     .getBytes(StandardCharsets.UTF_8));
-            GTInterestingThing.LOG.info("祝福邮件配置已保存");
+            LOG.info("祝福邮件配置已保存");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存祝福邮件配置失败", e);
+            LOG.error("保存祝福邮件配置失败", e);
         }
     }
 

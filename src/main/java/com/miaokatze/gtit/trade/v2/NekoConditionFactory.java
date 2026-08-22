@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.trade.v2;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * 交易条件工厂，根据条件名称创建对应条件实例。
@@ -14,6 +15,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * </ul>
  */
 public class NekoConditionFactory {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** BQ 任务条件类型名称 */
     public static final String CONDITION_BQ = "betterquesting";
@@ -40,7 +44,7 @@ public class NekoConditionFactory {
             case CONDITION_BQ:
                 return new NekoBqCondition();
             default:
-                GTInterestingThing.LOG.warn("未知的交易条件类型: {}", conditionName);
+                LOG.warn("未知的交易条件类型: {}", conditionName);
                 return null;
         }
     }

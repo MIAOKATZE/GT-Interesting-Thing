@@ -5,7 +5,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.IIcon;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import appeng.api.implementations.tiles.IChestOrDrive;
 import appeng.api.storage.ICellHandler;
@@ -18,6 +19,9 @@ import appeng.core.sync.GuiBridge;
 import appeng.util.Platform;
 
 public class InfinityCellHandler implements ICellHandler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     @Override
     public boolean isCell(ItemStack is) {
@@ -35,7 +39,7 @@ public class InfinityCellHandler implements ICellHandler {
         } catch (Exception e) {
             // 不再静默吞异常：StorageManager 未初始化（客户端 tooltip、serverStarted 前）等情况
             // 会在此抛出，记录便于诊断"元件静默失效"问题
-            GTInterestingThing.LOG.warn("获取无限元件 InventoryHandler 失败", e);
+            LOG.warn("获取无限元件 InventoryHandler 失败", e);
         }
         return null;
     }

@@ -8,7 +8,9 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.util.NbtBase64Util;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -18,6 +20,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * 用于Config文件的序列化/反序列化
  */
 public class NekoTradeEntry {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     private String id;
     private int tabId; // 标签页ID：1=猫猫币，2=闪烁猫猫币，3=其他
@@ -245,7 +250,7 @@ public class NekoTradeEntry {
             // 解析 modid:name
             String[] parts = item.split(":", 2);
             if (parts.length < 2) {
-                GTInterestingThing.LOG.warn("ItemEntry.toItemStack: 物品ID格式无效 [item={}]", item);
+                LOG.warn("ItemEntry.toItemStack: 物品ID格式无效 [item={}]", item);
                 return null;
             }
 
@@ -254,7 +259,7 @@ public class NekoTradeEntry {
 
             Item foundItem = GameRegistry.findItem(modid, name);
             if (foundItem == null) {
-                GTInterestingThing.LOG.warn("ItemEntry.toItemStack: 找不到物品 [modid={}, name={}]", modid, name);
+                LOG.warn("ItemEntry.toItemStack: 找不到物品 [modid={}, name={}]", modid, name);
                 return null;
             }
 

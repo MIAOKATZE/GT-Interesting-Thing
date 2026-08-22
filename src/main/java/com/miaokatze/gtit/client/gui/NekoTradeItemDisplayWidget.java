@@ -4,6 +4,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
 import com.cleanroommc.modularui.api.widget.Interactable;
@@ -13,7 +15,6 @@ import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 
@@ -54,6 +55,9 @@ import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
  * @see NekoDisplayType
  */
 public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Interactable {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     // ==================== 尺寸常量 ====================
 
@@ -322,7 +326,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
             }
         } catch (Throwable t) {
             // 渲染异常不影响游戏运行，仅记录日志
-            GTInterestingThing.LOG.error("[NekoGUI] NekoTradeItemDisplayWidget.draw() 渲染异常!", t);
+            LOG.error("[NekoGUI] NekoTradeItemDisplayWidget.draw() 渲染异常!", t);
         }
     }
 

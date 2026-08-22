@@ -7,13 +7,17 @@ import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * 创造模式物品栏管理器
  * 负责管理模组专属的创造模式标签页，包括图标设置、名称显示以及物品列表的维护。
  */
 public class CreativeTabManager {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /**
      * 模组专属的创造模式标签页实例
@@ -64,7 +68,7 @@ public class CreativeTabManager {
     }
 
     public static void initCreativeTab() {
-        GTInterestingThing.LOG.info("正在初始化创造模式物品栏，当前包含 " + itemsToAdd.size() + " 个物品");
+        LOG.info("正在初始化创造模式物品栏，当前包含 " + itemsToAdd.size() + " 个物品");
     }
 
     public static List<ItemStack> getItemsToAdd() {

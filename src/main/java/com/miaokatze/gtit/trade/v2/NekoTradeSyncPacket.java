@@ -4,7 +4,9 @@ import java.nio.charset.StandardCharsets;
 
 import net.minecraft.client.Minecraft;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
@@ -29,6 +31,9 @@ import io.netty.buffer.ByteBuf;
  * 的 32767 字符上限（交易配置随条目增多可能超过该上限）。
  */
 public class NekoTradeSyncPacket implements IMessage {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 交易配置 JSON（{@link NekoTradeConfig#toJson} 产物） */
     private String tradesJson = "";
@@ -112,9 +117,9 @@ public class NekoTradeSyncPacket implements IMessage {
                         // 先页签后交易：交易分类按 tabId 映射，页签先就绪保证分类一致
                         NekoPageRegistry.applySyncedPages(NekoPageConfig.fromJson(message.getPagesJson()));
                         NekoTradeRegistryV2.applySyncedTrades(NekoTradeConfig.fromJson(message.getTradesJson()));
-                        GTInterestingThing.LOG.info("[NekoSync] 已应用服务端交易/标签页配置同步");
+                        LOG.info("[NekoSync] 已应用服务端交易/标签页配置同步");
                     } catch (Throwable t) {
-                        GTInterestingThing.LOG.error("[NekoSync] 应用交易配置同步失败", t);
+                        LOG.error("[NekoSync] 应用交易配置同步失败", t);
                     }
                 });
         }

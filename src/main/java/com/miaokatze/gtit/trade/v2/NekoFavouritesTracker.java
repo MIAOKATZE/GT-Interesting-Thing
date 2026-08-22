@@ -13,8 +13,8 @@ import net.minecraft.world.World;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
  * 收藏追踪器单例
@@ -35,6 +35,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 线程安全：使用 ConcurrentHashMap + CopyOnWriteArraySet 保证并发读写安全。
  */
 public class NekoFavouritesTracker {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 单例实例 */
     public static final NekoFavouritesTracker INSTANCE = new NekoFavouritesTracker();
@@ -70,7 +73,7 @@ public class NekoFavouritesTracker {
         if (!saveDir.exists()) {
             saveDir.mkdirs();
         }
-        GTInterestingThing.LOG.info("猫猫币收藏存储目录: {}", saveDir.getAbsolutePath());
+        LOG.info("猫猫币收藏存储目录: {}", saveDir.getAbsolutePath());
     }
 
     // ==================== 收藏操作 ====================
@@ -226,7 +229,7 @@ public class NekoFavouritesTracker {
             root.setTag("favourites", faveList);
             CompressedStreamTools.safeWrite(root, file);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存猫猫币收藏失败: " + playerId, e);
+            LOG.error("保存猫猫币收藏失败: " + playerId, e);
         }
     }
 
@@ -256,13 +259,13 @@ public class NekoFavouritesTracker {
                     result.add(new ImmutablePair<>(groupId, tradeIndex));
                 } catch (IllegalArgumentException e) {
                     // groupId 格式无效，跳过该条记录
-                    GTInterestingThing.LOG.warn("跳过无效的收藏记录 groupId: " + faveNbt.getString("groupId"));
+                    LOG.warn("跳过无效的收藏记录 groupId: " + faveNbt.getString("groupId"));
                 }
             }
-            GTInterestingThing.LOG.info("已加载 {} 条收藏记录: {}", result.size(), playerId);
+            LOG.info("已加载 {} 条收藏记录: {}", result.size(), playerId);
             return result;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("加载猫猫币收藏失败: " + playerId, e);
+            LOG.error("加载猫猫币收藏失败: " + playerId, e);
             return null;
         }
     }

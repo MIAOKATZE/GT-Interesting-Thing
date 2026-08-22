@@ -6,9 +6,11 @@ import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.common.items.rings.BaseRing;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 import baubles.api.BaublesApi;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -20,6 +22,9 @@ import cpw.mods.fml.common.gameevent.PlayerEvent;
  * 登录时刷新已装备指环的效果（防止断线后buff丢失）
  */
 public class PlayerLoginHandler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     @SubscribeEvent
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
@@ -61,7 +66,7 @@ public class PlayerLoginHandler {
             }
         } catch (Exception e) {
             // 登录刷新指环效果失败会导致 buff/属性/飞行能力丢失（用户可见），记录便于诊断
-            GTInterestingThing.LOG.warn("[GTIT] 登录时刷新已装备指环效果失败（player={}）", player.getCommandSenderName(), e);
+            LOG.warn("[GTIT] 登录时刷新已装备指环效果失败（player={}）", player.getCommandSenderName(), e);
         }
     }
 }

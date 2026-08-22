@@ -29,7 +29,7 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  */
 public final class ServerTaskScheduler {
 
-    /** 统一 logger（O2-B02：去中心化，名称与 GTInterestingThing.LOG 同为 "gtit"，日志过滤口径不变） */
+    /** 统一 logger（O2-B02：去中心化，名称与 LOG 同为 "gtit"，日志过滤口径不变） */
     private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 网络线程 → 服务器主线程的任务队列 */

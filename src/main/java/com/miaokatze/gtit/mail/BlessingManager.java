@@ -6,7 +6,9 @@ import java.util.UUID;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.signin.AnniversaryEntry;
 import com.miaokatze.gtit.signin.DailySignInData;
 import com.miaokatze.gtit.signin.DailySignInManager;
@@ -48,6 +50,9 @@ import com.miaokatze.gtit.util.PlayerLookup;
  * <b>线程</b>：全部方法须在服务器主线程调用（登录事件/tick 天然主线程）。
  */
 public class BlessingManager {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     public static final BlessingManager INSTANCE = new BlessingManager();
 
@@ -143,7 +148,7 @@ public class BlessingManager {
             try {
                 checkAndSend(player);
             } catch (Throwable t) {
-                GTInterestingThing.LOG.error("跨日祝福检测失败: " + player.getCommandSenderName(), t);
+                LOG.error("跨日祝福检测失败: " + player.getCommandSenderName(), t);
             }
         });
     }
@@ -172,13 +177,13 @@ public class BlessingManager {
         if (mailData.hasClaimedBlessing(key)) return false;
         Mail mail = new Mail(title, content, sender, attachments, Mail.TYPE_SYSTEM);
         if (!MailManager.INSTANCE.sendMail(playerId, mail)) {
-            GTInterestingThing.LOG.warn("祝福邮件投递失败（邮箱已满）: player={}, key={}", playerId, key);
+            LOG.warn("祝福邮件投递失败（邮箱已满）: player={}, key={}", playerId, key);
             return false;
         }
         mailData.markClaimedBlessing(key);
         // 唯一持久化联动点（IT-BUG-09）：防重键落盘依赖 MailData，崩溃窗口语义见类 javadoc
         MailManager.INSTANCE.saveMailData(playerId);
-        GTInterestingThing.LOG.info("祝福邮件已投递: player={}, key={}", playerId, key);
+        LOG.info("祝福邮件已投递: player={}, key={}", playerId, key);
         return true;
     }
 }

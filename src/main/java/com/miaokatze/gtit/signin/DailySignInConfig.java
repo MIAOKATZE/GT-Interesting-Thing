@@ -12,6 +12,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -19,7 +22,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 /**
@@ -47,6 +49,9 @@ import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
  * 则整体迁移到新路径，旧文件重命名为 {@code .bak} 保留（版本迁移随后在其上生效）。
  */
 public class DailySignInConfig {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 新配置文件路径（相对游戏根目录） */
     private static final String CONFIG_PATH = "config/gtit/signin/daily_signin.json";
@@ -132,7 +137,7 @@ public class DailySignInConfig {
                     migrateFromLegacy(legacy, path);
                     // 迁移后继续从新路径读取
                 } catch (Exception e) {
-                    GTInterestingThing.LOG.error("签到奖励配置从旧路径迁移失败，回退默认配置", e);
+                    LOG.error("签到奖励配置从旧路径迁移失败，回退默认配置", e);
                     applyDefaults();
                     saveConfig();
                     return;
@@ -155,7 +160,7 @@ public class DailySignInConfig {
                 ConfigData data = GSON.fromJson(root, ConfigData.class);
                 if (data != null) {
                     applyFromData(data);
-                    GTInterestingThing.LOG.info(
+                    LOG.info(
                         "签到奖励配置已加载（连续 {} 档 / 累计 {} 档 / 逐日覆盖 {} 项）",
                         rewardTiers.size(),
                         cumulativeTiers.size(),
@@ -163,7 +168,7 @@ public class DailySignInConfig {
                     return;
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.error("加载签到奖励配置失败，使用默认配置", e);
+                LOG.error("加载签到奖励配置失败，使用默认配置", e);
             }
         }
         // 首次运行或加载失败：使用默认配置并落盘
@@ -225,7 +230,7 @@ public class DailySignInConfig {
             // 1. 备份原文件
             Path backupPath = ConfigMigrationUtil.siblingBackupPath(path, ".v1.bak");
             Files.copy(path, backupPath, StandardCopyOption.REPLACE_EXISTING);
-            GTInterestingThing.LOG.info("签到配置 v1 已备份: {}", backupPath);
+            LOG.info("签到配置 v1 已备份: {}", backupPath);
 
             // 2. 解析旧字段
             int oldBase = oldRoot.has("base_reward") ? Math.max(
@@ -241,8 +246,7 @@ public class DailySignInConfig {
                             .getAsDouble())
                     : 1.0;
             // 递增默认关闭（用户确认口径）：原系数保留在配置中但 increment_enabled=false 使其暂不生效
-            GTInterestingThing.LOG
-                .warn("签到配置 v1→v2 迁移：每日奖励递增已默认关闭（increment_enabled=false），原系数 {} 保留但暂不生效，可在编辑模式重新开启", oldIncrement);
+            LOG.warn("签到配置 v1→v2 迁移：每日奖励递增已默认关闭（increment_enabled=false），原系数 {} 保留但暂不生效，可在编辑模式重新开启", oldIncrement);
 
             // 3. 构建 v2 结构
             ConfigData data = new ConfigData();
@@ -299,9 +303,9 @@ public class DailySignInConfig {
                 GSON.toJson(data)
                     .getBytes(StandardCharsets.UTF_8));
             applyFromData(data);
-            GTInterestingThing.LOG.info("签到配置已迁移到 v2（连续 {} 档 / 累计 {} 档）", rewardTiers.size(), cumulativeTiers.size());
+            LOG.info("签到配置已迁移到 v2（连续 {} 档 / 累计 {} 档）", rewardTiers.size(), cumulativeTiers.size());
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("签到配置 v1→v2 迁移失败，回退默认配置", e);
+            LOG.error("签到配置 v1→v2 迁移失败，回退默认配置", e);
             applyDefaults();
             saveConfig();
         }
@@ -358,9 +362,9 @@ public class DailySignInConfig {
                 path,
                 GSON.toJson(data)
                     .getBytes(StandardCharsets.UTF_8));
-            GTInterestingThing.LOG.info("签到奖励配置已保存");
+            LOG.info("签到奖励配置已保存");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存签到奖励配置失败", e);
+            LOG.error("保存签到奖励配置失败", e);
         }
     }
 

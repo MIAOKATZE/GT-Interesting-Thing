@@ -12,9 +12,11 @@ import net.minecraft.client.audio.SoundManager;
 import net.minecraft.client.audio.SoundPoolEntry;
 import net.minecraft.util.ResourceLocation;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.common.machine.v2.NekoVMGuiV2;
 import com.miaokatze.gtit.config.NekoMusicConfig;
-import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -37,6 +39,9 @@ import cpw.mods.fml.relauncher.SideOnly;
  */
 @SideOnly(Side.CLIENT)
 public class NekoMusicEventHandler {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 猫猫 BGM 资源路径（对应 sounds.json 中的 track.neko_bgm，含 3 首随机变体） */
     public static final ResourceLocation NEKO_BGM = new ResourceLocation("gtit", "track.neko_bgm");
@@ -109,7 +114,7 @@ public class NekoMusicEventHandler {
         try {
             soundSystemClass = Class.forName("paulscode.sound.SoundSystem");
         } catch (ClassNotFoundException e) {
-            GTInterestingThing.LOG.warn("[NEKO] 未找到 paulscode.sound.SoundSystem 类，setVolume/playing 将回退到每次反射", e);
+            LOG.warn("[NEKO] 未找到 paulscode.sound.SoundSystem 类，setVolume/playing 将回退到每次反射", e);
         }
 
         try {
@@ -132,9 +137,9 @@ public class NekoMusicEventHandler {
                 stopMethod = soundSystemClass.getMethod("stop", String.class);
             }
 
-            GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功");
+            LOG.info("[NEKO] 反射缓存初始化成功");
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("[NEKO] 反射缓存初始化失败! 尝试 MCP 名称...", e);
+            LOG.error("[NEKO] 反射缓存初始化失败! 尝试 MCP 名称...", e);
             // 回退到 MCP 名称（开发环境可能使用 MCP 名）
             try {
                 sndManagerField = SoundHandler.class.getDeclaredField("sndManager");
@@ -153,9 +158,9 @@ public class NekoMusicEventHandler {
                     stopMethod = soundSystemClass.getMethod("stop", String.class);
                 }
 
-                GTInterestingThing.LOG.info("[NEKO] 反射缓存初始化成功（MCP 名称回退）");
+                LOG.info("[NEKO] 反射缓存初始化成功（MCP 名称回退）");
             } catch (Exception e2) {
-                GTInterestingThing.LOG.error("[NEKO] 反射缓存初始化彻底失败! MCP 和 SRG 名称都无法找到字段", e2);
+                LOG.error("[NEKO] 反射缓存初始化彻底失败! MCP 和 SRG 名称都无法找到字段", e2);
             }
         }
     }
@@ -204,7 +209,7 @@ public class NekoMusicEventHandler {
         if (soundSourceName == null) return;
         Object sys = getSoundSystem();
         if (sys == null) {
-            GTInterestingThing.LOG.warn("[NEKO] setSoundVolume: SoundSystem 为 null, 无法设置音量");
+            LOG.warn("[NEKO] setSoundVolume: SoundSystem 为 null, 无法设置音量");
             return;
         }
         try {
@@ -220,7 +225,7 @@ public class NekoMusicEventHandler {
             }
             m.invoke(sys, soundSourceName, finalVolume);
         } catch (Exception e) {
-            GTInterestingThing.LOG.warn("[NEKO] setSoundVolume 失败: {}", e.getMessage());
+            LOG.warn("[NEKO] setSoundVolume 失败: {}", e.getMessage());
         }
     }
 
@@ -284,14 +289,14 @@ public class NekoMusicEventHandler {
 
         // 如果用户手动关闭了 BGM，不自动播放
         if (this.bgmMutedByUser) {
-            GTInterestingThing.LOG.info("[NEKO] handleGuiOpened: BGM 被用户手动关闭，跳过播放");
+            LOG.info("[NEKO] handleGuiOpened: BGM 被用户手动关闭，跳过播放");
             return;
         }
 
         // V2 不需要停止 VM 原版 BGM（V2 独立于 VM 运行）
         // 停止已有猫猫 BGM（防止叠加）
         if (this.currentSound != null) {
-            GTInterestingThing.LOG.info("[NEKO] handleGuiOpened: 停止已有猫猫 BGM（防叠加）");
+            LOG.info("[NEKO] handleGuiOpened: 停止已有猫猫 BGM（防叠加）");
             stopSound(mc);
         }
 
@@ -300,10 +305,10 @@ public class NekoMusicEventHandler {
             this.currentSound = PositionedSoundRecord.func_147673_a(NEKO_BGM);
             mc.getSoundHandler()
                 .playSound(this.currentSound);
-            GTInterestingThing.LOG.info("[NEKO] handleGuiOpened: 已请求播放猫猫 BGM，等待 Mixin 回调...");
+            LOG.info("[NEKO] handleGuiOpened: 已请求播放猫猫 BGM，等待 Mixin 回调...");
             // 淡入由 Mixin 回调 onSoundCreated 触发
         } catch (Exception e) {
-            GTInterestingThing.LOG.warn("[NEKO] 无法播放猫猫售货机 BGM: {}", e.getMessage());
+            LOG.warn("[NEKO] 无法播放猫猫售货机 BGM: {}", e.getMessage());
             this.currentSound = null;
         }
     }
@@ -353,7 +358,7 @@ public class NekoMusicEventHandler {
         // 强制停止倒计时保障：淡出超时后强制停止 BGM，防止淡出卡死导致关机残留音
         if (this.forceStopDeadline > 0 && System.currentTimeMillis() >= this.forceStopDeadline
             && this.currentSound != null) {
-            GTInterestingThing.LOG.warn("[NEKO] BGM 淡出超时，强制停止");
+            LOG.warn("[NEKO] BGM 淡出超时，强制停止");
             stopSound(mc);
         }
     }
@@ -452,7 +457,7 @@ public class NekoMusicEventHandler {
         if (this.soundSourceName != null) {
             Object sys = getSoundSystem();
             if (sys == null) {
-                GTInterestingThing.LOG.warn("[NEKO] stopSound: SoundSystem 为 null, 跳过第一保险");
+                LOG.warn("[NEKO] stopSound: SoundSystem 为 null, 跳过第一保险");
             } else {
                 try {
                     Method m = stopMethod;
@@ -462,7 +467,7 @@ public class NekoMusicEventHandler {
                     }
                     m.invoke(sys, this.soundSourceName);
                 } catch (Exception e) {
-                    GTInterestingThing.LOG.warn("[NEKO] SoundSystem.stop() 失败: {}", e.getMessage());
+                    LOG.warn("[NEKO] SoundSystem.stop() 失败: {}", e.getMessage());
                 }
             }
         }
@@ -472,7 +477,7 @@ public class NekoMusicEventHandler {
                 mc.getSoundHandler()
                     .stopSound(this.currentSound);
             } catch (Exception e) {
-                GTInterestingThing.LOG.warn("[NEKO] SoundHandler.stopSound() 失败: {}", e.getMessage());
+                LOG.warn("[NEKO] SoundHandler.stopSound() 失败: {}", e.getMessage());
             }
         }
         this.currentSound = null;

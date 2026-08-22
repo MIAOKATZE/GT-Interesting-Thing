@@ -17,11 +17,13 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.lottery.LotteryConfig;
 import com.miaokatze.gtit.lottery.LotteryManager;
 import com.miaokatze.gtit.mail.Mail;
 import com.miaokatze.gtit.mail.MailManager;
-import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInConfig;
 import com.miaokatze.gtit.signin.DailySignInData;
 import com.miaokatze.gtit.signin.DailySignInManager;
@@ -53,6 +55,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * 配置类指令默认不记录 NBT；如需记录，请在指令末尾添加 {@code yesNBT}。
  */
 public class GTITGiftCommand extends CommandBase {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     @Override
     public String getCommandName() {
@@ -464,7 +469,7 @@ public class GTITGiftCommand extends CommandBase {
             return forgeData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG)
                 .hasKey(GIFT_CLAIMED_KEY);
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("检查离线玩家礼包标记失败: " + datFile.getName(), e);
+            LOG.error("检查离线玩家礼包标记失败: " + datFile.getName(), e);
             return false;
         }
     }
@@ -586,7 +591,7 @@ public class GTITGiftCommand extends CommandBase {
                 return false;
             }
             if (isPlayerOnline(fileUuid)) {
-                GTInterestingThing.LOG.warn("跳过在线玩家的 .dat 文件操作，避免内存/文件数据冲突: {}", datFile.getName());
+                LOG.warn("跳过在线玩家的 .dat 文件操作，避免内存/文件数据冲突: {}", datFile.getName());
                 return false;
             }
 
@@ -614,7 +619,7 @@ public class GTITGiftCommand extends CommandBase {
             }
             return false;
         } catch (Exception e) {
-            GTInterestingThing.LOG.error("重置离线玩家礼包标记失败: " + datFile.getName(), e);
+            LOG.error("重置离线玩家礼包标记失败: " + datFile.getName(), e);
             return false;
         }
     }
@@ -766,7 +771,7 @@ public class GTITGiftCommand extends CommandBase {
             NekoEditModeManager.INSTANCE.exitEditMode(playerId);
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "[编辑模式] 已关闭可视化配置编辑模式"));
         }
-        GTInterestingThing.LOG.info("[NekoEdit] 玩家 {} {}编辑模式", player.getCommandSenderName(), enable ? "进入" : "退出");
+        LOG.info("[NekoEdit] 玩家 {} {}编辑模式", player.getCommandSenderName(), enable ? "进入" : "退出");
     }
 
     private void handleNekoVMReload(EntityPlayerMP player) {

@@ -8,7 +8,9 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.util.NbtBase64Util;
@@ -28,6 +30,9 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * {@link LotteryConfig} 的 Gson 实例（item/meta/amount/nbtBase64/oreDict 格式）。
  */
 public class LotteryPool {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 单个卡池最大条目数（轮盘环形边框最多 10 格，超出会越界导致动画失效） */
     public static final int MAX_ENTRIES = 10;
@@ -138,8 +143,7 @@ public class LotteryPool {
             return;
         }
         if (entries.size() > MAX_ENTRIES) {
-            GTInterestingThing.LOG
-                .warn("抽奖卡池 {} 条目数 {} 超过最大限制 {}，已截断保留前 {} 条", id, entries.size(), MAX_ENTRIES, MAX_ENTRIES);
+            LOG.warn("抽奖卡池 {} 条目数 {} 超过最大限制 {}，已截断保留前 {} 条", id, entries.size(), MAX_ENTRIES, MAX_ENTRIES);
             entries = new ArrayList<>(entries.subList(0, MAX_ENTRIES));
         }
     }

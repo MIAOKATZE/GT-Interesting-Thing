@@ -8,7 +8,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraftforge.common.MinecraftForge;
 
-import com.miaokatze.gtit.main.GTInterestingThing;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import betterquesting.api.events.QuestEvent;
 import betterquesting.api.questing.IQuest;
@@ -34,6 +35,9 @@ import cpw.mods.fml.common.gameevent.PlayerEvent;
  * </ul>
  */
 public class NekoBqBridge {
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** BQ 是否已加载 */
     private static boolean bqLoaded = false;
@@ -82,7 +86,7 @@ public class NekoBqBridge {
         // 先检测 BQ 是否加载（设置 bqLoaded 字段）
         init();
         if (!bqLoaded) {
-            GTInterestingThing.LOG.info("BetterQuesting 未加载，跳过 NekoBqBridge 事件监听器注册");
+            LOG.info("BetterQuesting 未加载，跳过 NekoBqBridge 事件监听器注册");
             return;
         }
         // 创建单例实例并注册到事件总线
@@ -92,7 +96,7 @@ public class NekoBqBridge {
         FMLCommonHandler.instance()
             .bus()
             .register(INSTANCE);
-        GTInterestingThing.LOG.info("NekoBqBridge 事件监听器已注册，监听 BQ 任务事件和玩家登录");
+        LOG.info("NekoBqBridge 事件监听器已注册，监听 BQ 任务事件和玩家登录");
     }
 
     /**
@@ -142,11 +146,11 @@ public class NekoBqBridge {
             return result;
         } catch (NoClassDefFoundError e) {
             // BQ 类缺失（版本不匹配等），安全回退
-            GTInterestingThing.LOG.warn("BQ 类加载失败，任务完成检查安全回退: {}", e.getMessage());
+            LOG.warn("BQ 类加载失败，任务完成检查安全回退: {}", e.getMessage());
             return true;
         } catch (Exception e) {
             // 其他异常，安全回退
-            GTInterestingThing.LOG.warn("BQ 任务完成检查异常，安全回退: {}", e.getMessage());
+            LOG.warn("BQ 任务完成检查异常，安全回退: {}", e.getMessage());
             return true;
         }
     }
@@ -262,14 +266,14 @@ public class NekoBqBridge {
                 // 任务完成：更新缓存，后续 isQuestCompleted 查询可直接命中缓存
                 for (UUID questId : questIds) {
                     setQuestCompleted(playerId, questId);
-                    GTInterestingThing.LOG.info("V2 BQ 任务完成: player={}, questId={}", playerId, questId);
+                    LOG.info("V2 BQ 任务完成: player={}, questId={}", playerId, questId);
                 }
                 break;
             case RESET:
                 // 任务重置：从缓存中移除，后续查询会重新调用 BQ API
                 for (UUID questId : questIds) {
                     setQuestUncompleted(playerId, questId);
-                    GTInterestingThing.LOG.info("V2 BQ 任务重置: player={}, questId={}", playerId, questId);
+                    LOG.info("V2 BQ 任务重置: player={}, questId={}", playerId, questId);
                 }
                 break;
             default:
@@ -325,15 +329,15 @@ public class NekoBqBridge {
                     // 任务已完成，更新缓存
                     setQuestCompleted(playerId, questId);
                     syncedQuests.add(questId);
-                    GTInterestingThing.LOG.info("V2 玩家登录同步 BQ 任务: player={}, questId={}", playerId, questId);
+                    LOG.info("V2 玩家登录同步 BQ 任务: player={}, questId={}", playerId, questId);
                 }
             } catch (Exception e) {
-                GTInterestingThing.LOG.warn("V2 查询 BQ 任务完成状态失败: questId={}, player={}", questId, playerId, e);
+                LOG.warn("V2 查询 BQ 任务完成状态失败: questId={}, player={}", questId, playerId, e);
             }
         }
 
         if (!syncedQuests.isEmpty()) {
-            GTInterestingThing.LOG.info("V2 玩家 {} 登录同步了 {} 个已完成的 BQ 任务", playerId, syncedQuests.size());
+            LOG.info("V2 玩家 {} 登录同步了 {} 个已完成的 BQ 任务", playerId, syncedQuests.size());
         }
     }
 }
