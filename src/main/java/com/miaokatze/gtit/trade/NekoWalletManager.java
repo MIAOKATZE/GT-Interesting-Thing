@@ -4,6 +4,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -211,9 +212,14 @@ public class NekoWalletManager {
         if (now - lastBalanceFlushMs < BALANCE_FLUSH_INTERVAL_MS) return;
         lastBalanceFlushMs = now;
 
-        // 取出本批待推送键（冲刷期间新到的键留给下一批）
-        List<String> keys = new ArrayList<>(dirtyBalanceKeys);
-        dirtyBalanceKeys.removeAll(keys);
+        // 取出本批待推送键（O2-21：迭代器单趟直取，替代"复制快照 + removeAll 双扫"；
+        // ConcurrentHashMap 弱一致迭代器下语义等价——冲刷期间新到的键留给下一批）
+        List<String> keys = new ArrayList<>(dirtyBalanceKeys.size());
+        Iterator<String> keyIterator = dirtyBalanceKeys.iterator();
+        while (keyIterator.hasNext()) {
+            keys.add(keyIterator.next());
+            keyIterator.remove();
+        }
 
         // 网络未初始化（理论上不会发生：通道在 init 阶段注册）时只处理团队脏标记
         boolean networkReady = LotteryNetworkManager.isInitialized();
