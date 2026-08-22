@@ -18,6 +18,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
+import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
@@ -205,12 +206,7 @@ public class DailySignInConfig {
     private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
         Files.createDirectories(newPath.getParent());
         Files.copy(legacyPath, newPath, StandardCopyOption.REPLACE_EXISTING);
-        Path backupPath = legacyPath.resolveSibling(
-            legacyPath.getFileName()
-                .toString() + ".bak");
-        Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
-        GTInterestingThing.LOG.info("签到奖励配置已从旧路径迁移: {} -> {}", legacyPath, newPath);
-        GTInterestingThing.LOG.info("旧签到奖励配置文件已重命名保留: {}", backupPath);
+        ConfigMigrationUtil.retireLegacyAsBak(legacyPath, newPath, "签到奖励配置", "签到奖励配置文件");
     }
 
     /**
@@ -227,9 +223,7 @@ public class DailySignInConfig {
     private static void migrateV1ToV2(Path path, JsonObject oldRoot) {
         try {
             // 1. 备份原文件
-            Path backupPath = path.resolveSibling(
-                path.getFileName()
-                    .toString() + ".v1.bak");
+            Path backupPath = ConfigMigrationUtil.siblingBackupPath(path, ".v1.bak");
             Files.copy(path, backupPath, StandardCopyOption.REPLACE_EXISTING);
             GTInterestingThing.LOG.info("签到配置 v1 已备份: {}", backupPath);
 

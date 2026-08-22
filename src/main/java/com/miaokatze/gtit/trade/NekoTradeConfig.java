@@ -6,7 +6,6 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,6 +13,7 @@ import java.util.Map;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
@@ -1016,12 +1016,7 @@ public class NekoTradeConfig {
                 data = getDefaultTrades();
             }
             save(data);
-            Path backupPath = legacyPath.resolveSibling(
-                legacyPath.getFileName()
-                    .toString() + ".bak");
-            Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
-            GTInterestingThing.LOG.info("猫猫售货机交易配置已从旧路径迁移: {} -> {}", legacyPath, getTradeDirPath());
-            GTInterestingThing.LOG.info("旧交易配置文件已重命名保留: {}", backupPath);
+            ConfigMigrationUtil.retireLegacyAsBak(legacyPath, getTradeDirPath(), "猫猫售货机交易配置", "交易配置文件");
         } catch (Exception e) {
             GTInterestingThing.LOG.error("猫猫售货机交易配置从旧文件迁移失败", e);
         }
