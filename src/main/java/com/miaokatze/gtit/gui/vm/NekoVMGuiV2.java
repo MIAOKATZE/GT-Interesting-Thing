@@ -1,4 +1,4 @@
-package com.miaokatze.gtit.common.machine.v2;
+package com.miaokatze.gtit.gui.vm;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -73,6 +73,7 @@ import com.miaokatze.gtit.client.gui.NekoTradeRow;
 import com.miaokatze.gtit.client.gui.NekoVolumeControlGui;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
+import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.lottery.LotteryClientData;

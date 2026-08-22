@@ -27,6 +27,7 @@ import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.gui.vm.NekoVMGuiV2;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
@@ -1684,7 +1685,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
          * @param creationTimeMs 入队时间戳（毫秒）
          * @param slotIndex      物品所在出货槽索引（-1 表示未占用槽位）
          */
-        MeTransferEntry(ItemStack stack, long creationTimeMs, int slotIndex) {
+        public MeTransferEntry(ItemStack stack, long creationTimeMs, int slotIndex) {
             this.stack = stack;
             this.creationTimeMs = creationTimeMs;
             this.slotIndex = slotIndex;

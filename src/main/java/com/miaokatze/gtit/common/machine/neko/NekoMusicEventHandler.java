@@ -15,8 +15,8 @@ import net.minecraft.util.ResourceLocation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.miaokatze.gtit.common.machine.v2.NekoVMGuiV2;
 import com.miaokatze.gtit.config.NekoMusicConfig;
+import com.miaokatze.gtit.gui.vm.NekoVMGuiV2;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;

@@ -13,7 +13,7 @@ import com.cleanroommc.modularui.drawable.UITexture;
  * <b>TEAM 模式已启用</b>：通过 {@link com.miaokatze.gtit.trade.NekoWalletManager} 对接
  * GTNHLib Teams API，当玩家处于团队中时，{@code NekoWalletManager.getWallet()} 会自动
  * 路由到团队共享钱包（{@link com.miaokatze.gtit.trade.NekoTeamData}）。
- * {@link com.miaokatze.gtit.common.machine.v2.NekoVMGuiV2#getWalletMode()} 会检测玩家
+ * {@link com.miaokatze.gtit.gui.vm.NekoVMGuiV2#getWalletMode()} 会检测玩家
  * 团队状态并返回对应的钱包模式，带 NoClassDefFoundError 防护（GTNHLib 不可用时降级为 PERSONAL）。
  * <p>
  * 本地化 key 从 {@code vendingmachine.gui.display_wallet_*} 迁移到 {@code gtit.gui.display_wallet_*}。
