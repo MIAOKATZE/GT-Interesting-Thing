@@ -345,8 +345,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private NekoTradeMainPanel mainPanel;
     /** 输入槽 Widget 引用（服务端在弹出/入账后强制同步槽位状态到客户端） */
     private final List<ItemSlot> inputSlotRefs = new ArrayList<>();
-    /** v1.7.8 B：输出槽 Widget 引用（输出槽仅有增量同步，服务端在 GUI 打开/交易成功时强制同步兜底） */
-    private final List<ItemSlot> outputSlotRefs = new ArrayList<>();
     /** ME 输出模式同步值（C2S+S2C：客户端切换发送到服务端，服务端状态同步到客户端） */
     private BooleanSyncValue meOutputModeSync;
     /** Uplink 连接状态同步值（S2C：控制 ME 模式按钮可见性） */
@@ -5458,9 +5456,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
             dispenserChute.child(fallingFactory.getFallingItemSlot(i));
         }
-        // v1.7.14：移除 outputSlotRefs.addAll(getCreatedItemSlots())——NekoFallingItemSlotFactory
-        // 已移除 createdItemSlots（forceSyncOutputSlots 在 v1.7.13 已不再调用，列表无用途）。
-        // outputSlotRefs 字段与 forceSyncOutputSlots() 方法保留备查（方法无调用点，遍历空列表无害）。
         // v1.6.23: ME 传输粒子动画 Widget（围绕出货槽中的物品渲染粒子）
         // 传入 fallingFactory 供粒子定位槽位坐标；点击穿透到出货槽（不拦截鼠标）
         // v1.7.5 修复：仅客户端创建——NekoMeTransferParticleWidget 带 @SideOnly(Side.CLIENT)，
@@ -6002,27 +5997,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 slot.getSyncHandler()
                     .forceSyncItem();
                 LOG.debug("[NekoForceSync] forceSyncItem 已调用: slotIdx=" + i);
-            }
-        }
-    }
-
-    /**
-     * v1.7.8 B：强制同步输出槽到客户端（v1.7.13 起不再调用，保留备查）
-     * <p>
-     * v1.7.13 根因分析：forceSync（init=false + forceSync=true）会触发 changeListener(init=false)，
-     * 导致 MutableObjectAnimator.resume() 立即将 fallingPosition 插值到起点 (x,-1) 隐藏区，
-     * 造成物品隐形 + 点击偏移 + 无法放回物品栏。
-     * 原版同步（Container.addSlotToContainer 将 inventoryItemStacks 初始化为 null →
-     * 首次 detectAndSendChanges 发送 S2FPacketSetSlot → 客户端 putStack）已能正确同步物品，
-     * 无需 forceSync 兜底。回归 VM 原版：不对输出槽使用 forceSync。
-     * <p>
-     * 方法保留但无调用点，outputSlotRefs 仍由 createIOColumn 收集（备查）。
-     */
-    private void forceSyncOutputSlots() {
-        for (ItemSlot slot : outputSlotRefs) {
-            if (slot != null && slot.getSyncHandler() != null) {
-                slot.getSyncHandler()
-                    .forceSyncItem();
             }
         }
     }
