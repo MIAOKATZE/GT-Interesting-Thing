@@ -227,10 +227,12 @@ public class LotterySyncPacket implements IMessage {
 
         @SideOnly(Side.CLIENT)
         private void handleClient(final LotterySyncPacket message) {
+            // O2-B01：余额维度写入 trade 域客户端缓存（卡池摘要/保底计数仍写 LotteryClientData）
             Minecraft.getMinecraft()
-                .func_152344_a(
-                    () -> LotteryClientData
-                        .updatePools(message.parsePools(), message.parsePityCounters(), message.parseBalances()));
+                .func_152344_a(() -> {
+                    LotteryClientData.updatePools(message.parsePools(), message.parsePityCounters());
+                    com.miaokatze.gtit.trade.NekoClientBalances.updateBalances(message.parseBalances());
+                });
         }
     }
 }

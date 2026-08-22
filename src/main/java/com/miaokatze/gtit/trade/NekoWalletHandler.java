@@ -11,8 +11,9 @@ import cpw.mods.fml.common.gameevent.TickEvent;
 /**
  * 猫猫币钱包事件处理器（BUG B1 生命周期接入）
  * <p>
- * 监听玩家登出与服务器 tick 事件（参照 {@code MailHandler} / {@code LotteryHandler} 模式）：
+ * 监听玩家登录/登出与服务器 tick 事件（参照 {@code MailHandler} / {@code LotteryHandler} 模式）：
  * <ul>
+ * <li>登录：全量补推钱包余额（O2-B01 通道自立后的首包竞态防护）</li>
  * <li>登出：保存并从内存卸载个人钱包（{@link NekoWalletManager#unloadWallet}，
  * 此前该方法全项目零调用，个人钱包下线后常驻内存）</li>
  * <li>tick：冲刷余额推送脏标记（约 100ms 合帧，见
@@ -30,6 +31,22 @@ public class NekoWalletHandler {
     private int tickCounter = 0;
     /** 周期落盘间隔（6000 tick = 5 分钟，与邮件/抽奖周期保存口径一致） */
     private static final int SAVE_INTERVAL_TICKS = 6000;
+
+    @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!(event.player instanceof EntityPlayerMP)) return;
+        // O2-B01：登录全量补推余额（通道自立后 wallet 域自给自足——
+        // 防 GUI 先于任何余额变更打开时的首包竞态，参照 LotterySyncPacket 登录推送做法）
+        try {
+            EntityPlayerMP player = (EntityPlayerMP) event.player;
+            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(player.getUniqueID());
+            if (wallet != null) {
+                WalletNetworkManager.sendBalanceToClient(player, NekoWalletManager.INSTANCE.snapshotBalances(wallet));
+            }
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("登录推送钱包余额失败: " + event.player.getUniqueID(), t);
+        }
+    }
 
     @SubscribeEvent
     public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {

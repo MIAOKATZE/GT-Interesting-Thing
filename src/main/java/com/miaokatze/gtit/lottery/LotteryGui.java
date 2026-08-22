@@ -20,6 +20,7 @@ import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.trade.NekoClientBalances;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
@@ -259,7 +260,7 @@ public class LotteryGui {
         for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.costItems) {
             if (cost == null || cost.getBaseStack() == null) continue;
             String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
-            if (cid != null && LotteryClientData.getBalance(cid) < cost.getStackSize() * count) {
+            if (cid != null && NekoClientBalances.getBalance(cid) < cost.getStackSize() * count) {
                 return false;
             }
         }
@@ -982,7 +983,7 @@ public class LotteryGui {
                     int total = cost.getStackSize() * count;
                     String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
                     if (cid != null) {
-                        int balance = LotteryClientData.getBalance(cid);
+                        int balance = NekoClientBalances.getBalance(cid);
                         EnumChatFormatting color = balance < total ? EnumChatFormatting.RED : EnumChatFormatting.GRAY;
                         t.addLine(IKey.str(color + "  " + total + " " + currencyName(cid) + "（钱包 " + balance + "）"));
                     } else {

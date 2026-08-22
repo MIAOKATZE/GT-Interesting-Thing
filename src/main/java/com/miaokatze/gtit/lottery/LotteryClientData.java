@@ -17,8 +17,8 @@ import cpw.mods.fml.common.registry.GameRegistry;
 /**
  * 客户端抽奖数据缓存
  * <p>
- * 由 {@link LotterySyncPacket}（全量刷新）、{@link LotteryBalancePacket}（余额轻量刷新）
- * 与 {@link LotteryResultPacket}（抽取结果）的客户端处理器写入，{@link LotteryGui} 读取——
+ * 由 {@link LotterySyncPacket}（全量刷新）与
+ * {@link LotteryResultPacket}（抽取结果）的客户端处理器写入，{@link LotteryGui} 读取——
  * 与 {@code SignInClientData} 同属
  * 「S→C 全量同步 + 客户端静态缓存 + 动态绑定」范式。
  * <p>
@@ -53,8 +53,6 @@ public final class LotteryClientData {
     private static volatile Map<String, PoolSummary> pools = new LinkedHashMap<>();
     /** 团队保底计数（poolId → 连续未出高稀有次数） */
     private static volatile Map<String, Integer> pityCounters = new LinkedHashMap<>();
-    /** 团队钱包余额（currencyId → 数量，仅含卡池消耗币种，随同步包刷新） */
-    private static volatile Map<String, Integer> balances = new LinkedHashMap<>();
     /** 当前选中的卡池 ID（客户端本地状态，跨打开保持） */
     private static volatile String selectedPoolId = "";
 
@@ -183,14 +181,14 @@ public final class LotteryClientData {
     // ==================== 写入（网络包处理器调用） ====================
 
     /**
-     * 全量刷新卡池摘要/保底计数/余额（{@link LotterySyncPacket} 到达时调用）
+     * 全量刷新卡池摘要/保底计数（{@link LotterySyncPacket} 到达时调用；
+     * 余额维度自 O2-B01 起由 trade 域 {@code NekoClientBalances} 承载，
+     * 同步包处理器另行写入该缓存）
      *
-     * @param newPools    卡池摘要（可为 null 表示不变）
-     * @param newPity     保底计数
-     * @param newBalances 团队钱包余额（currencyId → 数量）
+     * @param newPools 卡池摘要（可为 null 表示不变）
+     * @param newPity  保底计数
      */
-    public static synchronized void updatePools(List<PoolSummary> newPools, Map<String, Integer> newPity,
-        Map<String, Integer> newBalances) {
+    public static synchronized void updatePools(List<PoolSummary> newPools, Map<String, Integer> newPity) {
         if (newPools != null) {
             Map<String, PoolSummary> map = new LinkedHashMap<>();
             for (PoolSummary pool : newPools) {
@@ -209,23 +207,6 @@ public final class LotteryClientData {
         }
         if (newPity != null) {
             pityCounters = new LinkedHashMap<>(newPity);
-        }
-        if (newBalances != null) {
-            balances = new LinkedHashMap<>(newBalances);
-        }
-    }
-
-    /**
-     * 仅刷新团队钱包余额（{@link LotteryBalancePacket} 到达时调用）。
-     * <p>
-     * 优化建议 三.1：钱包余额变化不再推送全量同步（卡池摘要/保底计数不变），
-     * 由余额专用轻量包经 {@code NekoWalletManager} 节流冲刷后刷新本维度。
-     *
-     * @param newBalances 团队钱包余额（currencyId → 数量）
-     */
-    public static synchronized void updateBalances(Map<String, Integer> newBalances) {
-        if (newBalances != null) {
-            balances = new LinkedHashMap<>(newBalances);
         }
     }
 
@@ -297,15 +278,6 @@ public final class LotteryClientData {
         if (poolId == null) return 0;
         Integer count = pityCounters.get(poolId);
         return count == null ? 0 : count;
-    }
-
-    /**
-     * 指定货币的团队钱包余额（随同步包刷新；未同步前为 0）
-     */
-    public static int getBalance(String currencyId) {
-        if (currencyId == null) return 0;
-        Integer amount = balances.get(currencyId);
-        return amount == null ? 0 : amount;
     }
 
     /**

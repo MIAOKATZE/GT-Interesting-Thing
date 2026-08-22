@@ -1,4 +1,4 @@
-package com.miaokatze.gtit.lottery;
+package com.miaokatze.gtit.trade;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -15,23 +15,24 @@ import cpw.mods.fml.relauncher.SideOnly;
 import io.netty.buffer.ByteBuf;
 
 /**
- * 钱包余额轻量同步包（服务端→客户端，优化建议 三.1）
+ * 钱包余额轻量同步包（服务端→客户端，O2-B01 通道自立）
  * <p>
  * 只携带团队/个人钱包余额（currencyId → 数量），不带卡池摘要与保底计数——
- * 钱包余额变化（入账/扣费/投币）不再触发 {@link LotterySyncPacket} 全量推送，
- * 由 {@code NekoWalletManager} 以脏标记 + 约 100ms 节流合帧后批量下发本包，
+ * 钱包余额变化（入账/扣费/投币）不触发抽奖全量推送，由 {@link NekoWalletManager}
+ * 以脏标记 + 约 100ms 节流合帧后经 {@link WalletNetworkManager} 批量下发本包，
  * 消除批量投币/连抽场景对全队在线成员的 m×n 全量包风暴。
  * <p>
- * 客户端写入 {@link LotteryClientData} 的余额缓存（仅覆盖 balances 维度），
- * 供抽奖界面与背包 tooltip 刷新。编码格式与 {@link LotterySyncPacket} 的
- * balances 节一致（NBT tag "balances"）。
+ * 原实现寄居抽奖通道（LotteryBalancePacket，id=3），O2-B01 起自立为 trade 域
+ * 专用通道，消除钱包核心→抽奖网络的域间反向；编码格式与原包一致
+ * （NBT tag "balances"，与 LotterySyncPacket 的 balances 节同构）。
+ * 客户端写入 {@link NekoClientBalances}（仅覆盖 balances 维度）。
  */
-public class LotteryBalancePacket implements IMessage {
+public class WalletBalancePacket implements IMessage {
 
     /** 余额表的 NBT 根 */
     private NBTTagCompound dataTag = new NBTTagCompound();
 
-    public LotteryBalancePacket() {
+    public WalletBalancePacket() {
         // 反序列化需要无参构造
     }
 
@@ -40,7 +41,7 @@ public class LotteryBalancePacket implements IMessage {
      *
      * @param balances 钱包余额（currencyId → 数量）
      */
-    public LotteryBalancePacket(Map<String, Integer> balances) {
+    public WalletBalancePacket(Map<String, Integer> balances) {
         NBTTagCompound root = new NBTTagCompound();
         NBTTagCompound balanceTag = new NBTTagCompound();
         if (balances != null) {
@@ -75,10 +76,10 @@ public class LotteryBalancePacket implements IMessage {
         return result;
     }
 
-    public static class Handler implements IMessageHandler<LotteryBalancePacket, IMessage> {
+    public static class Handler implements IMessageHandler<WalletBalancePacket, IMessage> {
 
         @Override
-        public IMessage onMessage(LotteryBalancePacket message, MessageContext ctx) {
+        public IMessage onMessage(WalletBalancePacket message, MessageContext ctx) {
             // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
             // 需切回客户端主线程再写缓存（GUI 在主线程读取）
             if (ctx.side == Side.CLIENT) {
@@ -88,9 +89,9 @@ public class LotteryBalancePacket implements IMessage {
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final LotteryBalancePacket message) {
+        private void handleClient(final WalletBalancePacket message) {
             Minecraft.getMinecraft()
-                .func_152344_a(() -> LotteryClientData.updateBalances(message.parseBalances()));
+                .func_152344_a(() -> NekoClientBalances.updateBalances(message.parseBalances()));
         }
     }
 }

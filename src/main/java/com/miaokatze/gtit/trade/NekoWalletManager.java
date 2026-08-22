@@ -17,7 +17,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.PlayerLookup;
 
@@ -178,7 +177,7 @@ public class NekoWalletManager {
      * "player:&lt;uuid&gt;" 键并标记钱包脏（周期/登出/停服兜底落盘）；团队钱包登记
      * "team:&lt;uuid&gt;" 键。实际推送由 {@link #flushBalanceNotifications()} 在服务器
      * tick 上以约 100ms 间隔冲刷——只发余额轻量包
-     * （{@link LotteryNetworkManager#sendBalanceToClient}），不发卡池摘要/保底全量包，
+     * （{@link WalletNetworkManager#sendBalanceToClient}），不发卡池摘要/保底全量包，
      * 消除批量投币/连抽场景对全队在线成员的 m×n 全量包风暴（优化建议 三.1）。
      *
      * @param playerId 个人钱包玩家 UUID（团队钱包时可为 null）
@@ -222,7 +221,7 @@ public class NekoWalletManager {
         }
 
         // 网络未初始化（理论上不会发生：通道在 init 阶段注册）时只处理团队脏标记
-        boolean networkReady = LotteryNetworkManager.isInitialized();
+        boolean networkReady = WalletNetworkManager.isInitialized();
         Map<UUID, EntityPlayerMP> onlineByUuid = networkReady ? buildOnlinePlayerCache()
             : Collections.<UUID, EntityPlayerMP>emptyMap();
 
@@ -259,7 +258,7 @@ public class NekoWalletManager {
             for (UUID member : team.getMembers()) {
                 EntityPlayerMP player = onlineByUuid.get(member);
                 if (player != null) {
-                    LotteryNetworkManager.sendBalanceToClient(player, balances);
+                    WalletNetworkManager.sendBalanceToClient(player, balances);
                 }
             }
         } catch (Throwable t) {
@@ -280,11 +279,11 @@ public class NekoWalletManager {
         if (wallet == null || wallet.isTeamWallet()) return;
         EntityPlayerMP player = onlineByUuid.get(playerId);
         if (player == null) return;
-        LotteryNetworkManager.sendBalanceToClient(player, snapshotBalances(wallet));
+        WalletNetworkManager.sendBalanceToClient(player, snapshotBalances(wallet));
     }
 
     /** 钱包余额快照（currencyId → 数量；在钱包锁内取一致快照） */
-    private static Map<String, Integer> snapshotBalances(NekoWallet wallet) {
+    static Map<String, Integer> snapshotBalances(NekoWallet wallet) {
         Map<String, Integer> balances = new HashMap<>();
         // NekoWallet 的读写方法均以自身为锁，外层同步保证键集与余额的一致快照
         // noinspection SynchronizationOnLocalVariableOrMethodParameter

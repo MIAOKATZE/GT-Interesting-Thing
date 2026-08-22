@@ -352,6 +352,13 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 抽奖网络包初始化失败", t);
         }
+        // O2-B01: 钱包余额通道自立（trade 域专用通道 gtit_wallet，余额推送不再借道抽奖通道）
+        try {
+            com.miaokatze.gtit.trade.WalletNetworkManager.init();
+            GTInterestingThing.LOG.info("[2/3] 钱包余额网络包已初始化");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 钱包余额网络包初始化失败", t);
+        }
         // O2-01: 成就骨架配置开关（默认 false）——关闭时跳过初始化，不再打印误导性"已初始化"日志
         if (Config.enableAchievements) {
             try {

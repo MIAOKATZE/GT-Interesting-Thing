@@ -21,14 +21,15 @@ import cpw.mods.fml.relauncher.Side;
  * 与 {@code SignInNetworkManager} 同范式）：
  * <ul>
  * <li>{@link LotterySyncPacket}（id=0，S→C）：登录/打开抽奖页/抽奖完成后的全量数据推送
- * （卡池摘要 + 团队保底计数）</li>
+ * （卡池摘要 + 团队保底计数 + 团队钱包余额维度，余额客户端缓存自 O2-B01 起为
+ * {@code trade.NekoClientBalances}）</li>
  * <li>{@link LotteryRequestPacket}（id=1，C→S）：客户端点击「抽 1 次 / 抽 10 次」发起请求
  * （携带卡池 ID、连抽数、触发机器坐标）</li>
  * <li>{@link LotteryResultPacket}（id=2，S→C）：本次抽取结果下发（停格索引/稀有度/保底标记，
  * 驱动客户端轮盘动画）</li>
- * <li>{@link LotteryBalancePacket}（id=3，S→C）：钱包余额轻量推送（只带余额，优化建议 三.1；
- * 钱包余额变化经脏标记节流合帧后由 NekoWalletManager 冲刷下发）</li>
  * </ul>
+ * 原余额轻量包（LotteryBalancePacket，id=3）自 O2-B01 起自立为 trade 域
+ * {@code WalletNetworkManager}（通道 gtit_wallet），本通道回归纯抽奖（id=3 退役）。
  * 在 {@code CommonProxy.init()} 中调用 {@link #init()} 注册（双端都会执行，按 Side 注册方向）。
  */
 public class LotteryNetworkManager {
@@ -43,8 +44,8 @@ public class LotteryNetworkManager {
     private static final int ID_REQUEST = 1;
     /** 包 ID：抽取结果（服务端→客户端） */
     private static final int ID_RESULT = 2;
-    /** 包 ID：钱包余额轻量推送（服务端→客户端，优化建议 三.1） */
-    private static final int ID_BALANCE = 3;
+    /** 包 ID：余额轻量推送已退役（O2-B01 迁往 WalletNetworkManager，占位防误用） */
+    private static final int ID_BALANCE_RETIRED = 3;
 
     /**
      * 注册网络通道与消息（幂等）
@@ -56,8 +57,6 @@ public class LotteryNetworkManager {
         channel
             .registerMessage(LotteryRequestPacket.Handler.class, LotteryRequestPacket.class, ID_REQUEST, Side.SERVER);
         channel.registerMessage(LotteryResultPacket.Handler.class, LotteryResultPacket.class, ID_RESULT, Side.CLIENT);
-        channel
-            .registerMessage(LotteryBalancePacket.Handler.class, LotteryBalancePacket.class, ID_BALANCE, Side.CLIENT);
         initialized = true;
     }
 
@@ -155,18 +154,17 @@ public class LotteryNetworkManager {
     }
 
     /**
-     * 服务端：向指定玩家推送钱包余额轻量包（只带余额，不带卡池摘要/保底计数）。
-     * <p>
-     * 优化建议 三.1：钱包余额变化不再走全量 {@link #sendSyncToClient}，由
-     * {@code NekoWalletManager} 脏标记节流（约 100ms 合帧）后调用本方法，消除
-     * 批量投币/连抽场景对全队在线成员的 m×n 全量包风暴。
+     * 服务端：向指定玩家推送钱包余额轻量包。
      *
      * @param player   目标玩家
      * @param balances 钱包余额（currencyId → 数量）
+     * @deprecated O2-B01：余额通道自立为 trade 域
+     *             {@code WalletNetworkManager}（通道 gtit_wallet），本转发保留一个版本
+     *             兼容期后删除；调用方请改指 {@code WalletNetworkManager.sendBalanceToClient}。
      */
+    @Deprecated
     public static void sendBalanceToClient(EntityPlayerMP player, Map<String, Integer> balances) {
-        if (!initialized || channel == null || player == null) return;
-        channel.sendTo(new LotteryBalancePacket(balances), player);
+        com.miaokatze.gtit.trade.WalletNetworkManager.sendBalanceToClient(player, balances);
     }
 
     /**
