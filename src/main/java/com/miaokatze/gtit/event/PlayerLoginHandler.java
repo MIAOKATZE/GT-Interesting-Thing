@@ -29,6 +29,10 @@ public class PlayerLoginHandler {
 
         if (!persisted.getBoolean("gtit_received_starter_gift")) {
             persisted.setBoolean("gtit_received_starter_gift", true);
+            // B2-03：getCompoundTag 在 ForgeData 无该子标签时返回未挂接的临时实例，
+            // 必须显式 setTag 回写才能落盘（照 GTITGiftCommand.resetOnlinePlayerGiftFlag 写法）；
+            // 否则标志永不持久化，精简环境每次登录都重发新手礼包
+            playerData.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
             ItemStack gift = GTITItemList.StarterGift.get(1);
             if (gift != null) {
                 if (!player.inventory.addItemStackToInventory(gift)) {
