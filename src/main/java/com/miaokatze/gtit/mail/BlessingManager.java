@@ -95,18 +95,18 @@ public class BlessingManager {
         } catch (NumberFormatException e) {
             currentYear = 0;
         }
-        int anniversaryIndex = 0;
         for (AnniversaryEntry entry : signInData.getAnniversaries()) {
             if (entry == null) continue;
-            anniversaryIndex++;
             if (entry.getMonthDay() == null || entry.getMonthDay()
                 .isEmpty()
                 || !entry.getMonthDay()
                     .equals(monthDay)) {
                 continue;
             }
-            // 防重键含列表序号（玩家增删纪念日会改序号，同年同名纪念日各发一次属正常频率）
-            String key = "anniversary_" + anniversaryIndex + "_" + year;
+            // B2-14：防重键改用 名称@月日（稳定标识）——原列表序号会因增删纪念日漂移，
+            // 删除首条后其余条目序号前移，跨日 tick/重登即对同年纪念日再发一次。
+            // 同名同日两条合并为一年一封（AnniversaryEntry 无稳定 id，此为最小语义取舍）
+            String key = "anniversary_" + entry.getName() + "@" + entry.getMonthDay() + "_" + year;
             int yearsPassed = entry.getYear() > 0 ? currentYear - entry.getYear() : 0;
             String title = "纪念日：" + entry.getName();
             String content = yearsPassed >= 1 ? "今天是「" + entry.getName() + "」的第 " + yearsPassed + " 周年，猫猫售货机祝你纪念日快乐！"
