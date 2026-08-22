@@ -1497,6 +1497,17 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // 客户端移除时清除覆盖层
         if (getBaseMetaTileEntity() != null && getBaseMetaTileEntity().isClientSide()) {
             clearOverlay();
+        } else if (getBaseMetaTileEntity() != null && !getBaseMetaTileEntity().isClientSide()) {
+            // B2-08：服务端拆机时把仍在掉落动画窗口内（outputBuffer 排队中）的已付款产物
+            // 逐件掉落在机器位置，避免随 MTE 消失（NBT 路径不受影响——区块卸载走 saveNBTData）
+            ItemStack pending;
+            while ((pending = outputBuffer.poll()) != null) {
+                try {
+                    dropItemsNearMachine(pending);
+                } catch (Throwable t) {
+                    com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoVMV2] 拆机掉落排队产物失败", t);
+                }
+            }
         }
     }
 
