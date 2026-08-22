@@ -12,9 +12,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
@@ -89,13 +87,9 @@ import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
-import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
-import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
-import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
-import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui;
@@ -186,33 +180,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private StringSyncValue tradeRequestSync;
     /** 交易结果消息（S2C：服务端处理完交易后发送结果文本） */
     private StringSyncValue tradeResultSync;
-    /** BQ 锁定状态字符串（S2C：服务端构建 "groupId:true/false,..." 发送到客户端） */
-    private StringSyncValue bqLockStatusSync;
-    /** 冷却状态字符串（S2C：服务端构建 "groupId:tradeIndex:seconds,..." 发送到客户端） */
-    private StringSyncValue cooldownStatusSync;
-    /** 可交易状态字符串（S2C：服务端构建 "groupId:tradeIndex:true/false,..." 发送到客户端） */
-    private StringSyncValue tradeableStatusSync;
-    /**
-     * 团队缩放状态字符串（S2C：服务端构建 "groupId:maxTrades:usedTrades,..." 发送到客户端）
-     * <p>
-     * 用于 tooltip 显示"冷却: X/Y 次（团队缩放）"信息。
-     * 仅对有冷却（{@code group.getCooldown() > 0}）的交易组输出。
-     * 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息。
-     * </p>
-     */
-    private StringSyncValue teamScaleSync;
     /** 收藏切换请求（C2S：Ctrl+Click 时发送 "groupId:tradeIndex"） */
     private StringSyncValue favouriteToggleSync;
-    /** 弹出所有猫猫币（C2S：按钮点击时发送） */
-    private BooleanSyncValue ejectAllCoinsSync;
-    /** 导入猫猫币（C2S：按钮点击时发送） */
-    private BooleanSyncValue importCoinsSync;
     /** 货币显示开关（C2S） */
     private BooleanSyncValue showCoinsSync;
-    /** 弹出物品（清空输出槽）开关（C2S） */
-    private BooleanSyncValue ejectItemsSync;
-    /** 填充玩家背包开关（C2S，Shift+左键出货槽触发） */
-    private BooleanSyncValue fillPlayerInventorySync;
     /** v1.7.0 主标签索引（C2S：客户端切换主标签时发送到服务端） */
     private IntSyncValue mainTabSync;
     /** 是否显示猫猫币余额行 */
@@ -223,10 +194,34 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private final Map<String, Integer> meCoinAmounts = new HashMap<>();
     /** ME 货币余额同步值映射（供 tooltip 查询和刷新，阶段 6） */
     private final Map<String, IntSyncValue> meCoinAmountSyncs = new HashMap<>();
-    /** ME 货币导入请求标志（currencyId → flag，阶段 6） */
-    private final Map<String, Boolean> nekoImportMeCoin = new HashMap<>();
-    /** ME 货币导入同步值映射（供按钮调用 setValue，阶段 6） */
-    private final Map<String, BooleanSyncValue> nekoImportMeCoinSyncs = new HashMap<>();
+
+    // ==================== A01 蓝图 G5 域控制器（纯服务端域，不涉 Widget 树） ====================
+
+    /** S2C 状态字符串编解码器（BQ 锁定/冷却/可交易/团队缩放四对通道 + 分类图标/名称辅助） */
+    private final StatusCodec statusCodec = new StatusCodec(multiblock, baseMetaTileEntity, () -> {
+        if (this.mainPanel != null) {
+            this.mainPanel.notifyCurrencyUpdate();
+        }
+    });
+    /**
+     * 货币/物品操作控制器（doNeko 动作族 + 输入槽强刷/世界掉落/服务端音效 + eject/import/fill C2S 通道注册）
+     */
+    private final CoinOpsController coinOps = new CoinOpsController(
+        multiblock,
+        baseMetaTileEntity,
+        this::isClient,
+        this::getPlayerId,
+        msg -> this.tradeResultMessage = msg,
+        msg -> {
+            this.tradeResultMessage = msg;
+            if (this.tradeResultSync != null) this.tradeResultSync.setValue(this.tradeResultMessage);
+        },
+        coinAmountSyncs,
+        meCoinAmountSyncs,
+        statusCodec::markTradeableStatusDirtyAndNotify,
+        () -> this.guiData != null ? this.guiData.getPlayer() : null);
+    /** BGM 开关联动（接管 isV2GuiOpen，NekoMusicEventHandler 消费点随迁） */
+    private final GuiMusicController musicController = new GuiMusicController();
 
     // ==================== UI 状态镜像（客户端+服务端共享） ====================
 
@@ -241,48 +236,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** v1.7.0 当前主标签索引（默认 0=贸易） */
     private int mainTabId = MAIN_TAB_TRADE;
 
-    // ==================== 客户端状态（S2C 同步填充） ====================
-
-    /** BQ 锁定状态映射：groupId → 是否锁定（true=锁定） */
-    private final Map<UUID, Boolean> bqLockStatusMap = new HashMap<>();
-    /** 冷却状态映射："groupId:tradeIndex" → 剩余秒数 */
-    private final Map<String, Long> cooldownStatusMap = new HashMap<>();
-    /** 可交易状态映射："groupId:tradeIndex" → 是否可交易（true=可交易） */
-    private final Map<String, Boolean> tradeableStatusMap = new HashMap<>();
-
-    /**
-     * 团队缩放状态映射：groupId → [maxTrades, usedTrades]
-     * <p>
-     * 由服务端通过 {@link #teamScaleSync} 同步到客户端。
-     * 存储每个有冷却的交易组的团队缩放信息（冷却内最大次数和已用次数），
-     * 用于 tooltip 显示"冷却: X/Y 次（团队缩放）"。
-     * </p>
-     */
-    private final Map<UUID, long[]> teamScaleMap = new HashMap<>();
-
-    // ==================== 服务端状态 ====================
-
-    /** 可交易状态字符串缓存（服务端，减少频繁调用 checkTrade） */
-    private String cachedTradeableStatusString = "";
-    /** 可交易状态是否需要重新计算（服务端，依赖项变化时置 true） */
-    private boolean tradeableStatusDirty = true;
-    /** 上次重建可交易状态字符串时的世界 tick */
-    private long lastTradeableStatusRebuildTick = -1;
-    /** 可交易状态缓存有效 tick 数（20 tick = 1 秒） */
-    private static final long TRADEABLE_STATUS_CACHE_TICKS = 20;
-
-    /** 弹出所有猫猫币标志（服务端处理后重置为 false） */
-    private boolean nekoEjectAllCoins = false;
-    /** 导入猫猫币标志（服务端处理后重置为 false） */
-    private boolean nekoImportCoins = false;
-    /** 弹出物品（清空输出槽）标志（服务端处理后重置为 false） */
-    private boolean nekoEjectItems = false;
-    /** 填充玩家背包标志（服务端处理后重置为 false） */
-    private boolean nekoFillPlayerInventory = false;
-    /** 弹出单种猫猫币标志映射 */
-    private final Map<String, Boolean> nekoEjectSingleCoin = new HashMap<>();
-    /** 弹出一组（64个）单种猫猫币标志映射（v1.6.22：Ctrl+点击弹出 1 组） */
-    private final Map<String, Boolean> nekoEjectCoinStack = new HashMap<>();
     /** 交易结果消息（服务端设置，通过 tradeResultSync 同步到客户端） */
     private String tradeResultMessage = "";
 
@@ -315,9 +268,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     private static final Queue<Runnable> SERVER_ACTIONS = new ConcurrentLinkedQueue<>();
 
-    /** V2 GUI 是否打开（客户端，供 NekoMusicEventHandler 检测 GUI 状态） */
-    public static boolean isV2GuiOpen = false;
-
     /** GUI 位置数据引用（build 时设置，供同步值 getter 使用） */
     private PosGuiData guiData;
     /** 同步管理器引用（供 isClient() 判断和 PanelCallback 使用） */
@@ -340,8 +290,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private IPanelHandler volumePanel;
     /** 主面板引用（用于回调和方法调用） */
     private NekoTradeMainPanel mainPanel;
-    /** 输入槽 Widget 引用（服务端在弹出/入账后强制同步槽位状态到客户端） */
-    private final List<ItemSlot> inputSlotRefs = new ArrayList<>();
     /** ME 输出模式同步值（C2S+S2C：客户端切换发送到服务端，服务端状态同步到客户端） */
     private BooleanSyncValue meOutputModeSync;
     /** Uplink 连接状态同步值（S2C：控制 ME 模式按钮可见性） */
@@ -407,10 +355,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     public NekoVMGuiV2(MTENekoVendingMachineV2 machine) {
         super(machine);
-        // 初始化各货币的弹出标志
-        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-            nekoEjectSingleCoin.put(currencyId, false);
-        }
         // 初始化交易分类列表：FAVOURITES 始终第一位，其余按 NekoPageRegistry 动态生成
         tradeCategories.add(NekoTradeCategory.FAVOURITES);
 
@@ -484,12 +428,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // 客户端：启动 BGM、注册关闭回调、设置 GUI 状态
         if (syncManager.isClient()) {
-            isV2GuiOpen = true;
-            // 通知 NekoMusicEventHandler GUI 已打开
-            NekoMusicEventHandler.onGuiOpened();
+            // BGM 开关联动（A01 蓝图 G5：置打开标志 + 通知 NekoMusicEventHandler）
+            musicController.onGuiOpened();
             panel.onCloseAction(() -> {
                 // 关闭 BGM 并清理 GUI 打开标志
-                closeNekoGuiMusic();
+                musicController.close();
             });
             // 初始化 ME 模式切换确认弹框（仅客户端）
             meModeConfirmDialog = new NekoConfirmationDialog("nekoV2:me_mode_confirm");
@@ -682,34 +625,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             val -> tradeResultMessage = val == null ? "" : val);
         syncManager.syncValue("nekoV2TradeResult", tradeResultSync);
 
-        // --- BQ 锁定状态（S2C，同步所有交易组的状态）---
-        bqLockStatusSync = new StringSyncValue(
-            () -> buildBqLockStatusString(playerId),
-            val -> { parseBqLockStatus(val); });
-        syncManager.syncValue("nekoV2BqLockStatus", bqLockStatusSync);
-
-        // --- 冷却状态（S2C，同步所有交易组的状态）---
-        cooldownStatusSync = new StringSyncValue(
-            () -> buildCooldownStatusString(playerId),
-            val -> { parseCooldownStatus(val); });
-        syncManager.syncValue("nekoV2CooldownStatus", cooldownStatusSync);
-
-        // --- 可交易状态（S2C，服务端综合 BQ/冷却/钱包/输入物品计算）---
-        tradeableStatusSync = new StringSyncValue(() -> buildTradeableStatusString(playerId), val -> {
-            parseTradeableStatus(val);
-            // 服务端同步值到达后通知主面板刷新，确保客户端立即应用新的可交易状态
-            if (mainPanel != null) {
-                mainPanel.notifyCurrencyUpdate();
-            }
-        });
-        syncManager.syncValue("nekoV2TradeableStatus", tradeableStatusSync);
-
-        // --- 团队缩放状态（S2C，同步冷却内最大次数和已用次数，用于 tooltip 展示）---
-        // 客户端无法直接调用 GTNHLib Teams API，必须通过此同步值获取缩放信息
-        teamScaleSync = new StringSyncValue(
-            () -> buildTeamScaleString(playerId),
-            val -> { parseTeamScaleString(val); });
-        syncManager.syncValue("nekoV2TeamScale", teamScaleSync);
+        // --- 四类 S2C 状态通道（BQ 锁定/冷却/可交易/团队缩放，A01 蓝图 G5 下沉 StatusCodec）---
+        statusCodec.registerSyncValues(syncManager, playerId);
 
         // --- 各货币余额（S2C）---
         // 注意：syncHandler 名称必须与 NekoCoinDisplayV2 期望的一致
@@ -722,12 +639,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             });
             // 货币余额变化时标记可交易状态为脏并立即触发重新同步
             if (!syncManager.isClient()) {
-                coinAmountSyncer.setChangeListener(() -> {
-                    tradeableStatusDirty = true;
-                    if (tradeableStatusSync != null) {
-                        tradeableStatusSync.notifyUpdate();
-                    }
-                });
+                coinAmountSyncer.setChangeListener(statusCodec::markTradeableStatusDirtyAndNotify);
             }
             syncManager.syncValue("nekoCoinAmount_" + currencyId, coinAmountSyncer);
             coinAmountSyncs.put(currencyId, coinAmountSyncer);
@@ -749,140 +661,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             meCoinAmountSyncs.put(currencyId, meCoinSync);
         }
 
-        // --- ME 货币导入请求（C2S，阶段 6）---
-        // 客户端点击导入按钮时 setValue(true)，服务端处理提取并加到钱包
-        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-            final String cid = currencyId;
-            nekoImportMeCoin.put(cid, false);
-            BooleanSyncValue importSync = new BooleanSyncValue(() -> nekoImportMeCoin.getOrDefault(cid, false), val -> {
-                if (syncManager != null && !syncManager.isClient()) {
-                    // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
-                    scheduleServerAction(() -> {
-                        if (val) {
-                            doNekoImportMeCoin(cid);
-                        }
-                        nekoImportMeCoin.put(cid, false);
-                    });
-                    return;
-                }
-                // 客户端：仅本地标志维护（无服务端动作）
-                nekoImportMeCoin.put(cid, false);
-            });
-            importSync.allowC2S();
-            syncManager.syncValue("nekoV2ImportMeCoin_" + currencyId, importSync);
-            nekoImportMeCoinSyncs.put(currencyId, importSync);
-        }
-
-        // BQ 锁定/冷却状态变化时也需要重新计算可交易状态
-        if (!syncManager.isClient()) {
-            Runnable tradeableStatusDirtyMarker = () -> {
-                tradeableStatusDirty = true;
-                if (tradeableStatusSync != null) {
-                    tradeableStatusSync.notifyUpdate();
-                }
-                // 冷却状态变化意味着交易已执行或冷却已重置，团队缩放信息（已用次数）也需更新
-                if (teamScaleSync != null) {
-                    teamScaleSync.notifyUpdate();
-                }
-            };
-            bqLockStatusSync.setChangeListener(tradeableStatusDirtyMarker);
-            cooldownStatusSync.setChangeListener(tradeableStatusDirtyMarker);
-        }
-
-        // --- 弹出单种猫猫币（C2S）---
-        // 注意：syncHandler 名称必须与 NekoCoinDisplayV2 期望的一致
-        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-            final String cid = currencyId;
-            BooleanSyncValue ejectCoinSyncer = new BooleanSyncValue(
-                () -> nekoEjectSingleCoin.getOrDefault(cid, false),
-                val -> {
-                    if (syncManager != null && !syncManager.isClient()) {
-                        // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
-                        scheduleServerAction(() -> {
-                            nekoEjectSingleCoin.put(cid, val);
-                            if (val) {
-                                doNekoEjectCoin(cid, playerId);
-                            }
-                        });
-                        return;
-                    }
-                    // 客户端：仅本地标志维护（doNekoEjectCoin 内部 isClient() 守卫直接返回）
-                    nekoEjectSingleCoin.put(cid, val);
-                    if (val) {
-                        doNekoEjectCoin(cid, playerId);
-                    }
-                });
-            ejectCoinSyncer.allowC2S();
-            syncManager.syncValue("nekoEjectCoin_" + currencyId, ejectCoinSyncer);
-        }
-
-        // --- 弹出一组单种猫猫币（C2S：v1.6.22 新增，Ctrl+点击触发）---
-        // 与 nekoEjectCoin_ 区别：仅弹出 1 组（64 个，不足则全部），而非全部余额
-        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-            final String cid = currencyId;
-            BooleanSyncValue ejectCoinStackSyncer = new BooleanSyncValue(
-                () -> nekoEjectCoinStack.getOrDefault(cid, false),
-                val -> {
-                    if (syncManager != null && !syncManager.isClient()) {
-                        // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
-                        scheduleServerAction(() -> {
-                            nekoEjectCoinStack.put(cid, val);
-                            if (val) {
-                                doNekoEjectCoinStack(cid, playerId);
-                            }
-                        });
-                        return;
-                    }
-                    // 客户端：仅本地标志维护（doNekoEjectCoinStack 内部 isClient() 守卫直接返回）
-                    nekoEjectCoinStack.put(cid, val);
-                    if (val) {
-                        doNekoEjectCoinStack(cid, playerId);
-                    }
-                });
-            ejectCoinStackSyncer.allowC2S();
-            syncManager.syncValue("nekoEjectCoinStack_" + currencyId, ejectCoinStackSyncer);
-        }
-
-        // --- 弹出所有猫猫币（C2S）---
-        ejectAllCoinsSync = new BooleanSyncValue(() -> nekoEjectAllCoins, val -> {
-            nekoEjectAllCoins = val;
-            if (val) {
-                doNekoEjectAllCoins(playerId);
-            }
-        });
-        ejectAllCoinsSync.allowC2S();
-        syncManager.syncValue("nekoV2EjectAllCoins", ejectAllCoinsSync);
-
-        // --- 导入猫猫币（C2S）---
-        importCoinsSync = new BooleanSyncValue(() -> nekoImportCoins, val -> {
-            nekoImportCoins = val;
-            if (val) {
-                doNekoImportCoins(playerId);
-            }
-        });
-        importCoinsSync.allowC2S();
-        syncManager.syncValue("nekoV2ImportCoins", importCoinsSync);
-
-        // --- 弹出物品（清空输出槽并掉落到机器旁，C2S）---
-        ejectItemsSync = new BooleanSyncValue(() -> nekoEjectItems, val -> {
-            nekoEjectItems = val;
-            if (val) {
-                doNekoEjectItems();
-            }
-        });
-        ejectItemsSync.allowC2S();
-        syncManager.syncValue("nekoV2EjectItems", ejectItemsSync);
-
-        // --- 填充玩家背包（C2S，Shift+左键出货槽时触发）---
-        fillPlayerInventorySync = new BooleanSyncValue(() -> nekoFillPlayerInventory, val -> {
-            nekoFillPlayerInventory = val;
-            if (val) {
-                doNekoFillPlayerInventory(playerId);
-            }
-        });
-        fillPlayerInventorySync.allowC2S();
-        syncManager.syncValue("nekoV2FillPlayerInventory", fillPlayerInventorySync);
-
+        // --- 货币/物品操作 C2S 通道（import/eject/fill 动作类，A01 蓝图 G5 下沉 CoinOpsController）---
+        coinOps.registerSyncValues(syncManager, playerId);
         // --- ME 输出模式（C2S+S2C）---
         // 客户端可发起切换（allowC2S），服务端持久化并同步状态
         meOutputModeSync = new BooleanSyncValue(() -> multiblock != null && multiblock.isMeOutputMode(), val -> {
@@ -1094,7 +874,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * <p>
      * 仅服务端侧调用；客户端侧的 changeListener 保持原语义直跑（无服务端动作）。
      */
-    private static void scheduleServerAction(Runnable action) {
+    static void scheduleServerAction(Runnable action) {
         if (action != null) {
             SERVER_ACTIONS.offer(action);
         }
@@ -1128,8 +908,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             return 0L;
         }
         String key = groupId.toString() + ":" + tradeIndex;
-        Long remaining = cooldownStatusMap.get(key);
-        return remaining != null && remaining > 0L ? remaining : 0L;
+        return statusCodec.getCooldownRemaining(key);
     }
 
     @Override
@@ -1144,7 +923,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     public Boolean getSyncedTradeableStatus(UUID groupId, int tradeIndex) {
         if (groupId == null) return null;
         String key = groupId.toString() + ":" + tradeIndex;
-        return tradeableStatusMap.get(key);
+        return statusCodec.getTradeable(key);
     }
 
     @Override
@@ -1180,19 +959,19 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 if (display == null) continue;
 
                 // 覆盖 BQ 锁定状态（来自 bqLockStatusSync）
-                boolean bqLocked = bqLockStatusMap.getOrDefault(display.getGroupId(), false);
+                boolean bqLocked = statusCodec.getBqLocked(display.getGroupId());
                 display.setBqLocked(bqLocked);
 
                 // 覆盖冷却状态（来自 cooldownStatusSync）
                 String cdKey = display.getGroupId()
                     .toString() + ":"
                     + display.getTradeIndex();
-                long cooldown = cooldownStatusMap.getOrDefault(cdKey, 0L);
+                long cooldown = statusCodec.getCooldownRemaining(cdKey);
                 display.setCooldownRemaining(cooldown);
 
                 // 设置团队缩放信息（来自 teamScaleSync）
                 // 客户端通过同步值获取冷却内最大次数和已用次数，用于 tooltip 展示
-                long[] scaleInfo = teamScaleMap.get(display.getGroupId());
+                long[] scaleInfo = statusCodec.getTeamScale(display.getGroupId());
                 if (scaleInfo != null && scaleInfo.length >= 2) {
                     display.setMaxTradesInCooldown((int) scaleInfo[0]);
                     display.setUsedTradesInCooldown(scaleInfo[1]);
@@ -1204,7 +983,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
                 // 更新可交易状态（优先使用服务端同步值，无则回退 BQ+冷却）
                 String tradeableKey = cdKey;
-                Boolean syncedTradeable = tradeableStatusMap.get(tradeableKey);
+                Boolean syncedTradeable = statusCodec.getTradeable(tradeableKey);
                 if (syncedTradeable != null) {
                     display.setTradeable(syncedTradeable);
                 } else {
@@ -1250,20 +1029,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     public void onDispose() {
         // 作为 panel.onCloseAction 的兜底保险：
         // 当 ModularUI 真正关闭/释放屏幕时，确保 BGM 能正常触发淡出
-        closeNekoGuiMusic();
-    }
-
-    /**
-     * 关闭猫猫售货机 GUI 的 BGM
-     * <p>
-     * 幂等方法：仅当 GUI 仍标记为打开时才执行清理，避免 onCloseAction 与 onDispose 重复调用
-     * 导致淡出被反复重置、BGM 微弱未止的问题。
-     */
-    private void closeNekoGuiMusic() {
-        if (!isV2GuiOpen) return;
-        isV2GuiOpen = false;
-        // 通知 NekoMusicEventHandler GUI 已关闭，触发淡出
-        NekoMusicEventHandler.onGuiClosed();
+        musicController.close();
     }
 
     // ==================== TradeActionCallback 接口实现 ====================
@@ -2047,8 +1813,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         for (int i = 0; i < tradeCategories.size(); i++) {
             final int index = i;
             NekoTradeCategory category = tradeCategories.get(i);
-            ItemStack icon = getCategoryIcon(category);
-            String name = getCategoryName(category);
+            ItemStack icon = StatusCodec.getCategoryIcon(category);
+            String name = StatusCodec.getCategoryName(category);
 
             // v1.7.6 G3④：匿名子类包一层点击拦截——编辑模式下 Shift+点击 page 标签
             // 打开 page 编辑面板（不切页、不更新 lastPage）；普通点击维持原切页逻辑。
@@ -2732,7 +2498,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 () -> meCoinAmounts.getOrDefault(cid, 0),
                 () -> hasUplinkSync != null && hasUplinkSync.getValue(),
                 () -> {
-                    BooleanSyncValue sync = nekoImportMeCoinSyncs.get(cid);
+                    BooleanSyncValue sync = coinOps.getImportMeCoinSync(cid);
                     if (sync != null) {
                         sync.setValue(true);
                     }
@@ -2874,7 +2640,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     }
                 });
                 // 收集输入槽引用，供服务端在弹出物品等操作后强制同步
-                inputSlotRefs.add(itemSlot);
+                coinOps.getInputSlotRefs()
+                    .add(itemSlot);
                 return itemSlot;
             })
             .build();
@@ -2890,7 +2657,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 NekoGuiTextures.EJECT_SLOTS.asIcon()
                     .size(16))
             .onMousePressed(btn -> {
-                ejectItemsSync.setValue(true);
+                coinOps.getEjectItemsSync()
+                    .setValue(true);
                 return true;
             })
             .tooltipBuilder(t -> t.addLine(IKey.str("弹出物品")));
@@ -2899,7 +2667,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 NekoGuiTextures.EJECT_COINS.asIcon()
                     .size(16))
             .onMousePressed(btn -> {
-                ejectAllCoinsSync.setValue(true);
+                coinOps.getEjectAllCoinsSync()
+                    .setValue(true);
                 return true;
             })
             .tooltipBuilder(t -> t.addLine(IKey.str("弹出所有猫猫币")));
@@ -2978,7 +2747,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .onMousePressed(btn -> {
                 // 复刻 V1：仅 Shift+左键触发
                 if (Interactable.hasShiftDown()) {
-                    fillPlayerInventorySync.setValue(true);
+                    coinOps.getFillPlayerInventorySync()
+                        .setValue(true);
                 }
                 return true;
             });
@@ -3043,514 +2813,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         }
     }
 
-    // ==================== 猫猫币操作（保留原有逻辑） ====================
-
-    /**
-     * 弹出单种猫猫币
-     * <p>
-     * 从钱包中取出指定货币的全部余额，在机器旁弹出。
-     * 前提：机器必须已成型且处于 active 状态；否则直接重置标志并返回。
-     *
-     * @param currencyId 货币 ID
-     * @param playerId   玩家 UUID
-     */
-    private void doNekoEjectCoin(String currencyId, UUID playerId) {
-        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
-        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
-            nekoEjectSingleCoin.put(currencyId, false);
-            return;
-        }
-        try {
-            if (playerId == null) {
-                nekoEjectSingleCoin.put(currencyId, false);
-                return;
-            }
-            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            if (wallet == null || wallet.getCount(currencyId) <= 0) {
-                nekoEjectSingleCoin.put(currencyId, false);
-                return;
-            }
-
-            int count = wallet.getCount(currencyId);
-            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
-            while (count > 0) {
-                int stackSize = Math.min(count, 64);
-                ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, stackSize);
-                if (stack != null) {
-                    toDispense.add(stack);
-                }
-                count -= stackSize;
-            }
-
-            if (!toDispense.isEmpty()) {
-                // 投放前检查：输出槽是否还有空位（考虑 outputBuffer 已堆积的情况）
-                // 可用空位数 = 当前空槽数 - 队列已占用的虚拟槽位数
-                int emptySlots = multiblock.getOutputEmptySlotCount();
-                int queuedItems = multiblock.getOutputBufferSize();
-                if (emptySlots - queuedItems <= 0) {
-                    // 输出槽已满（含队列堆积），不扣钱，提示玩家
-                    LOG.warn("[NekoVMV2] doNekoEjectCoin 输出槽已满，取消弹出货币 {}", currencyId);
-                    return;
-                }
-                multiblock.dispenseItemStacks(toDispense);
-                wallet.resetCount(currencyId);
-                playCoinDropSound();
-            }
-        } catch (Throwable t) {
-            LOG.error("[NekoVMV2] doNekoEjectCoin 异常!", t);
-        } finally {
-            nekoEjectSingleCoin.put(currencyId, false);
-        }
-    }
-
-    /**
-     * 弹出一组（64个）单种猫猫币
-     * <p>
-     * 与 {@link #doNekoEjectCoin} 类似，但仅弹出 1 组（64 个，不足则弹出全部）。
-     * 由 Ctrl+点击弹出按钮触发（v1.6.22 新增）。
-     *
-     * @param currencyId 货币 ID
-     * @param playerId   玩家 UUID
-     */
-    private void doNekoEjectCoinStack(String currencyId, UUID playerId) {
-        // 客户端不执行服务端逻辑
-        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
-            nekoEjectCoinStack.put(currencyId, false);
-            return;
-        }
-        try {
-            if (playerId == null) {
-                nekoEjectCoinStack.put(currencyId, false);
-                return;
-            }
-            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            if (wallet == null || wallet.getCount(currencyId) <= 0) {
-                nekoEjectCoinStack.put(currencyId, false);
-                return;
-            }
-
-            // 仅弹出 1 组（64 个，不足则全部）
-            int walletBalance = wallet.getCount(currencyId);
-            int count = Math.min(walletBalance, 64);
-            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
-            ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, count);
-            if (stack != null) {
-                toDispense.add(stack);
-            }
-
-            if (!toDispense.isEmpty()) {
-                // 投放前检查输出槽容量
-                int emptySlots = multiblock.getOutputEmptySlotCount();
-                int queuedItems = multiblock.getOutputBufferSize();
-                if (emptySlots - queuedItems <= 0) {
-                    LOG.warn("[NekoVMV2] doNekoEjectCoinStack 输出槽已满，取消弹出货币 {}", currencyId);
-                    return;
-                }
-                multiblock.dispenseItemStacks(toDispense);
-                // 扣减钱包余额（而非 resetCount）
-                wallet.addCount(currencyId, -count);
-                playCoinDropSound();
-                // 通知余额同步值刷新
-                IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
-                if (coinSync != null) {
-                    coinSync.setValue(wallet.getCount(currencyId));
-                }
-                // 交易状态可能受影响，标记为脏
-                tradeableStatusDirty = true;
-                if (tradeableStatusSync != null) {
-                    tradeableStatusSync.notifyUpdate();
-                }
-            }
-        } catch (Throwable t) {
-            LOG.error("[NekoVMV2] doNekoEjectCoinStack 异常!", t);
-        } finally {
-            nekoEjectCoinStack.put(currencyId, false);
-        }
-    }
-
-    /**
-     * 弹出所有猫猫币
-     * <p>
-     * 前提：机器必须已成型且处于 active 状态；否则直接重置标志并返回。
-     *
-     * @param playerId 玩家 UUID
-     */
-    private void doNekoEjectAllCoins(UUID playerId) {
-        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
-        // 重置标志位避免客户端 UI 卡在 true 状态
-        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
-            nekoEjectAllCoins = false;
-            return;
-        }
-        try {
-            if (playerId == null) {
-                nekoEjectAllCoins = false;
-                return;
-            }
-            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            if (wallet == null) {
-                nekoEjectAllCoins = false;
-                return;
-            }
-
-            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
-            for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-                int count = wallet.getCount(currencyId);
-                while (count > 0) {
-                    int stackSize = Math.min(count, 64);
-                    ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, stackSize);
-                    if (stack != null) {
-                        toDispense.add(stack);
-                    }
-                    count -= stackSize;
-                }
-                wallet.resetCount(currencyId);
-            }
-
-            if (!toDispense.isEmpty()) {
-                multiblock.dispenseItemStacks(toDispense);
-                playCoinDropSound();
-            }
-        } catch (Throwable t) {
-            LOG.error("[NekoVMV2] doNekoEjectAllCoins 异常!", t);
-        } finally {
-            nekoEjectAllCoins = false;
-        }
-    }
-
-    /**
-     * 弹出物品
-     * <p>
-     * 扫描内置输入槽（{@code inputItems}），将所有非空物品复制后优先写入出货槽
-     * （{@code outputItems}）以触发 {@link NekoFallingItemSlotFactory} 掉落动画；
-     * 出货槽空间不足时，剩余物品掉落到机器旁。最后清空输入槽并强制同步到客户端。
-     * <p>
-     * 与 V1 的 {@code ejectItems} 行为一致：弹出的是输入槽中的物品（猫猫币通常
-     * 已被 changeListener 自动导入钱包，不会滞留在此处）。
-     */
-    private void doNekoEjectItems() {
-        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
-        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
-            nekoEjectItems = false;
-            return;
-        }
-        try {
-            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
-            for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
-                ItemStack stack = multiblock.inputItems.getStackInSlot(i);
-                if (stack == null || stack.stackSize <= 0) continue;
-                toDispense.add(stack.copy());
-                multiblock.inputItems.setStackInSlot(i, null);
-            }
-
-            if (!toDispense.isEmpty()) {
-                multiblock.dispenseItemStacks(toDispense);
-                forceSyncInputSlots();
-                playItemDropSound();
-            }
-        } catch (Throwable t) {
-            LOG.error("[NekoVMV2] doNekoEjectItems 异常!", t);
-        } finally {
-            nekoEjectItems = false;
-        }
-    }
-
-    /**
-     * 填充玩家背包
-     * <p>
-     * 复刻 V1/VM 父类的 fillPlayerInventoryWithDispensedItems：
-     * 遍历出货槽，将物品移到玩家背包；无法放入的物品保留在槽中。
-     * 前提：机器必须已成型且处于 active 状态。
-     *
-     * @param playerId 玩家 UUID
-     */
-    private void doNekoFillPlayerInventory(UUID playerId) {
-        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
-        if (isClient() || baseMetaTileEntity == null || !baseMetaTileEntity.isActive()) {
-            nekoFillPlayerInventory = false;
-            return;
-        }
-        try {
-            if (playerId == null) {
-                nekoFillPlayerInventory = false;
-                return;
-            }
-            EntityPlayer player = guiData.getPlayer();
-            if (player == null) {
-                nekoFillPlayerInventory = false;
-                return;
-            }
-            multiblock.fillPlayerInventoryWithDispensedItems(player);
-            forceSyncInputSlots();
-        } catch (Throwable t) {
-            LOG.error("[NekoVMV2] doNekoFillPlayerInventory 异常!", t);
-        } finally {
-            nekoFillPlayerInventory = false;
-        }
-    }
-
-    /**
-     * 导入猫猫币
-     * <p>
-     * 扫描内置输入槽中的物品，将猫猫币导入到玩家钱包。
-     *
-     * @param playerId 玩家 UUID
-     */
-    private void doNekoImportCoins(UUID playerId) {
-        // [NekoImportCoins] 诊断日志：方法入口
-        LOG.debug(
-            "[NekoImportCoins] 方法入口: playerId=" + playerId
-                + " thread="
-                + Thread.currentThread()
-                    .getName());
-        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
-        if (isClient()) {
-            LOG.debug("[NekoImportCoins] 客户端分支，提前返回");
-            nekoImportCoins = false;
-            return;
-        }
-        try {
-            if (playerId == null) {
-                LOG.debug("[NekoImportCoins] playerId 为 null, 提前返回");
-                nekoImportCoins = false;
-                return;
-            }
-            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-            if (wallet == null) {
-                LOG.debug("[NekoImportCoins] wallet 为 null, 提前返回");
-                nekoImportCoins = false;
-                return;
-            }
-
-            int totalImported = 0;
-            for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
-                ItemStack stack = multiblock.inputItems.getStackInSlot(i);
-                if (stack == null) {
-                    LOG.debug("[NekoImportCoins] slotIdx=" + i + " stack=null, 跳过");
-                    continue;
-                }
-                String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(stack);
-                LOG.debug(
-                    "[NekoImportCoins] slotIdx=" + i
-                        + " stack="
-                        + stack.getDisplayName()
-                        + " stackSize="
-                        + stack.stackSize
-                        + " currencyId="
-                        + currencyId);
-                if (currencyId != null) {
-                    wallet.addCount(currencyId, stack.stackSize);
-                    int newCount = wallet.getCount(currencyId);
-                    LOG.debug(
-                        "[NekoImportCoins] addCount 完成: slotIdx=" + i
-                            + " currencyId="
-                            + currencyId
-                            + " added="
-                            + stack.stackSize
-                            + " newCount="
-                            + newCount);
-                    totalImported += stack.stackSize;
-                    multiblock.inputItems.setStackInSlot(i, null);
-                    LOG.debug("[NekoImportCoins] setStackInSlot(null) 完成: slotIdx=" + i);
-                }
-            }
-
-            if (totalImported > 0) {
-                tradeResultMessage = "成功导入 " + totalImported + " 个猫猫币";
-                LOG.debug("[NekoImportCoins] 总计导入: totalImported=" + totalImported);
-            } else {
-                tradeResultMessage = "输入槽中未找到猫猫币";
-                LOG.debug("[NekoImportCoins] 总计导入: totalImported=0（未找到猫猫币）");
-            }
-        } catch (Throwable t) {
-            LOG.error("[NekoVMV2] doNekoImportCoins 异常!", t);
-            tradeResultMessage = "导入猫猫币失败";
-        } finally {
-            nekoImportCoins = false;
-        }
-    }
-
-    /**
-     * 从 ME 网络导入指定货币到玩家钱包（阶段 6）
-     * <p>
-     * 由 GUI 导入按钮触发（通过 nekoV2ImportMeCoin_ 同步值 C2S）。
-     * 查询 ME 余额，提取全部，加到玩家钱包，并刷新货币余额同步值。
-     *
-     * @param currencyId 货币 ID（如 "neko"、"shimmeringNeko"）
-     */
-    private void doNekoImportMeCoin(String currencyId) {
-        // 客户端不执行服务端逻辑（匹配 V1 的 isClient() 守卫）
-        if (isClient()) {
-            nekoImportMeCoin.put(currencyId, false);
-            return;
-        }
-        try {
-            UUID playerId = getPlayerId();
-            if (playerId == null || multiblock == null || !multiblock.hasUplink()) {
-                tradeResultMessage = "未连接 Uplink，无法从 ME 导入";
-                if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
-                return;
-            }
-            // 查询 ME 余额
-            int meAmount = multiblock.getUplinkCurrencyAmount(currencyId);
-            if (meAmount <= 0) {
-                tradeResultMessage = "ME 网络中无" + NekoCurrencyRegistrar.getDisplayName(currencyId);
-                if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
-                return;
-            }
-            // 从 ME 提取（extractFromUplink 返回未满足的剩余数量）
-            ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, meAmount);
-            if (coinStack == null) {
-                tradeResultMessage = "货币物品栈创建失败";
-                if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
-                return;
-            }
-            int remain = multiblock.extractFromUplink(coinStack);
-            int extracted = meAmount - remain;
-            if (extracted > 0) {
-                // 加到玩家钱包（使用 addCount，与 doNekoImportCoins 一致）
-                NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-                if (wallet != null) {
-                    wallet.addCount(currencyId, extracted);
-                    // 刷新货币余额同步值，使余额显示立即更新
-                    IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
-                    if (coinSync != null) {
-                        coinSync.setValue(wallet.getCount(currencyId));
-                    }
-                    // 刷新 ME 货币余额同步值，使导入按钮显示立即更新
-                    IntSyncValue meSync = meCoinAmountSyncs.get(currencyId);
-                    if (meSync != null) {
-                        meSync.notifyUpdate();
-                    }
-                    // 标记可交易状态为脏（钱包余额变化影响可交易性）
-                    tradeableStatusDirty = true;
-                    if (tradeableStatusSync != null) {
-                        tradeableStatusSync.notifyUpdate();
-                    }
-                    tradeResultMessage = "从 ME 导入 " + extracted
-                        + " 个"
-                        + NekoCurrencyRegistrar.getDisplayName(currencyId);
-                }
-            } else {
-                tradeResultMessage = "ME 提取失败";
-            }
-            if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
-        } catch (Throwable t) {
-            LOG.error("[NekoVMV2] doNekoImportMeCoin 异常!", t);
-            tradeResultMessage = "ME 货币导入失败";
-            if (tradeResultSync != null) tradeResultSync.setValue(tradeResultMessage);
-        } finally {
-            nekoImportMeCoin.put(currencyId, false);
-        }
-    }
-
-    /**
-     * 强制同步输入槽到客户端
-     * <p>
-     * 在输入槽内容发生变化后（如弹出物品、自动导入猫猫币）调用，
-     * 确保客户端立即看到最新槽位状态。
-     */
-    private void forceSyncInputSlots() {
-        // [NekoForceSync] 诊断日志：方法入口
-        LOG.debug(
-            "[NekoForceSync] 方法入口: inputSlotRefs.size()=" + inputSlotRefs.size()
-                + " thread="
-                + Thread.currentThread()
-                    .getName());
-        for (int i = 0; i < inputSlotRefs.size(); i++) {
-            ItemSlot slot = inputSlotRefs.get(i);
-            boolean hasSyncHandler = (slot != null && slot.getSyncHandler() != null);
-            LOG.debug(
-                "[NekoForceSync] slotIdx=" + i + " slotNull=" + (slot == null) + " hasSyncHandler=" + hasSyncHandler);
-            if (hasSyncHandler) {
-                slot.getSyncHandler()
-                    .forceSyncItem();
-                LOG.debug("[NekoForceSync] forceSyncItem 已调用: slotIdx=" + i);
-            }
-        }
-    }
-
-    /**
-     * 在机器旁弹出物品
-     *
-     * @param stack 要弹出的物品栈
-     */
-    private void dropItemsNearMachine(ItemStack stack) {
-        if (stack == null || baseMetaTileEntity == null) return;
-        World world = baseMetaTileEntity.getWorld();
-        if (world == null || world.isRemote) return;
-
-        double x = baseMetaTileEntity.getXCoord() + 0.5;
-        double y = baseMetaTileEntity.getYCoord() + 0.5;
-        double z = baseMetaTileEntity.getZCoord() + 0.5;
-
-        EntityItem entity = new EntityItem(world, x, y, z, stack);
-        entity.motionX = world.rand.nextDouble() * 0.2 - 0.1;
-        entity.motionY = 0.2;
-        entity.motionZ = world.rand.nextDouble() * 0.2 - 0.1;
-        world.spawnEntityInWorld(entity);
-    }
-
-    /**
-     * 播放 coin_drop 音效
-     * <p>
-     * 在服务端机器位置播放 VM mod 的 {@code vendingmachine:coin_drop} 音效，
-     * 会自动广播给附近所有玩家。
-     */
-    private void playCoinDropSound() {
-        if (baseMetaTileEntity == null) return;
-        World world = baseMetaTileEntity.getWorld();
-        if (world == null || world.isRemote) return;
-
-        world.playSoundEffect(
-            baseMetaTileEntity.getXCoord() + 0.5,
-            baseMetaTileEntity.getYCoord() + 0.5,
-            baseMetaTileEntity.getZCoord() + 0.5,
-            "vendingmachine:coin_drop",
-            1.0f,
-            1.0f);
-    }
-
-    /**
-     * 播放 item_drop 音效
-     * <p>
-     * 在服务端机器位置播放 VM mod 的 {@code vendingmachine:item_drop} 音效，
-     * 会自动广播给附近所有玩家。
-     */
-    private void playItemDropSound() {
-        if (baseMetaTileEntity == null) return;
-        World world = baseMetaTileEntity.getWorld();
-        if (world == null || world.isRemote) return;
-
-        world.playSoundEffect(
-            baseMetaTileEntity.getXCoord() + 0.5,
-            baseMetaTileEntity.getYCoord() + 0.5,
-            baseMetaTileEntity.getZCoord() + 0.5,
-            "vendingmachine:item_drop",
-            1.0f,
-            1.0f);
-    }
-
-    /**
-     * 播放交易成功音效
-     * <p>
-     * 在服务端机器位置播放本项目内置的 {@code gtit:trade_success} 音效（3 变体随机），
-     * 会自动广播给附近所有玩家。音效资源复制自 VM mod 的 coin_insert，内置到 gtit 命名空间以减小外部依赖。
-     */
-    private void playTradeSuccessSound() {
-        if (baseMetaTileEntity == null) return;
-        World world = baseMetaTileEntity.getWorld();
-        if (world == null || world.isRemote) return;
-
-        world.playSoundEffect(
-            baseMetaTileEntity.getXCoord() + 0.5,
-            baseMetaTileEntity.getYCoord() + 0.5,
-            baseMetaTileEntity.getZCoord() + 0.5,
-            "gtit:trade_success",
-            1.0f,
-            1.0f);
-    }
-
     // ==================== 交易请求处理（保留原有逻辑） ====================
 
     /**
@@ -3595,23 +2857,14 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 // v1.7.10：猫猫币产物恢复落入输出槽（1.6.* 观感），不再直入钱包，
                 // 产物经掉落动画可见，原 v1.7.8 A1 钱包入账提示不再需要
                 tradeResultMessage = EnumChatFormatting.GREEN + "交易成功!";
-                playTradeSuccessSound();
+                coinOps.playTradeSuccessSound();
                 // v1.7.12：移除此处的 forceSyncOutputSlots——交易成功时物品尚未落槽（仍在 outputBuffer），
                 // 同步空槽无意义。物品落槽依赖 ModularContainer.detectAndSendChanges 原生同步
                 // （ItemSlotSH.checkUpdate 检测到变化后发 SYNC_ITEM，客户端 changeListener 触发下落动画）。
                 // 复刻 VM 父类 sendTradeUpdate：交易成功后显式触发同步，
                 // 让客户端立即收到最新的可交易状态、冷却状态和交易结果。
-                tradeableStatusDirty = true;
-                if (tradeableStatusSync != null) {
-                    tradeableStatusSync.notifyUpdate();
-                }
-                if (cooldownStatusSync != null) {
-                    cooldownStatusSync.notifyUpdate();
-                }
-                // 交易成功后冷却内已用次数发生变化，需同步团队缩放信息
-                if (teamScaleSync != null) {
-                    teamScaleSync.notifyUpdate();
-                }
+                // 可交易置脏 + 可交易/冷却/团队缩放三通道级联（A01 蓝图 G5 收编 StatusCodec）
+                statusCodec.notifyTradeStatusChanged();
                 if (tradeResultSync != null) {
                     tradeResultSync.notifyUpdate();
                 }
@@ -3696,326 +2949,5 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             default:
                 return result.getMessage() != null ? result.getMessage() : "交易失败";
         }
-    }
-
-    // ==================== BQ 锁定状态同步（保留原有逻辑，改为同步所有交易组） ====================
-
-    /**
-     * 构建 BQ 锁定状态字符串（服务端）
-     * <p>
-     * 遍历所有交易组，检查前置条件是否满足。
-     *
-     * @param playerId 玩家 UUID
-     * @return BQ 锁定状态字符串
-     */
-    private String buildBqLockStatusString(UUID playerId) {
-        if (playerId == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
-            .values()) {
-            if (sb.length() > 0) sb.append(",");
-            sb.append(
-                group.getId()
-                    .toString())
-                .append(":")
-                .append(!group.isConditionsSatisfied(playerId));
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 解析 BQ 锁定状态字符串（客户端）
-     *
-     * @param status BQ 锁定状态字符串
-     */
-    private void parseBqLockStatus(String status) {
-        bqLockStatusMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 2) {
-                try {
-                    UUID groupId = UUID.fromString(parts[0]);
-                    boolean locked = Boolean.parseBoolean(parts[1]);
-                    bqLockStatusMap.put(groupId, locked);
-                } catch (Exception ignored) {}
-            }
-        }
-    }
-
-    // ==================== 冷却状态同步（保留原有逻辑，改为同步所有交易组） ====================
-
-    /**
-     * 构建冷却状态字符串（服务端）
-     * <p>
-     * 遍历所有交易组，获取冷却剩余时间。
-     *
-     * @param playerId 玩家 UUID
-     * @return 冷却状态字符串
-     */
-    private String buildCooldownStatusString(UUID playerId) {
-        if (playerId == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
-            .values()) {
-            int cooldown = group.getCooldown();
-            if (cooldown <= 0) continue;
-
-            NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
-            long remaining = history.getCooldownRemaining(cooldown);
-
-            if (remaining > 0) {
-                for (int i = 0; i < group.getTrades()
-                    .size(); i++) {
-                    if (sb.length() > 0) sb.append(",");
-                    sb.append(
-                        group.getId()
-                            .toString())
-                        .append(":")
-                        .append(i)
-                        .append(":")
-                        .append(remaining);
-                }
-            }
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 解析冷却状态字符串（客户端）
-     *
-     * @param status 冷却状态字符串
-     */
-    private void parseCooldownStatus(String status) {
-        cooldownStatusMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 3) {
-                try {
-                    String key = parts[0] + ":" + parts[1];
-                    long seconds = Long.parseLong(parts[2]);
-                    cooldownStatusMap.put(key, seconds);
-                } catch (Exception ignored) {}
-            }
-        }
-    }
-
-    // ==================== 可交易状态同步（服务端综合计算 BQ/冷却/钱包/输入物品） ====================
-
-    /**
-     * 构建可交易状态字符串（服务端）
-     * <p>
-     * 遍历所有交易组及其交易，调用 {@link MTENekoVendingMachineV2#checkTrade} 综合判断
-     * BQ 锁定、冷却、钱包余额和输入物品是否满足，生成格式字符串：
-     * {@code "groupId:tradeIndex:true,groupId:tradeIndex:false,..."}。
-     * <p>
-     * 为降低性能开销，使用缓存策略：仅在 {@link #tradeableStatusDirty} 为 true
-     * 或距离上次重建超过 {@link #TRADEABLE_STATUS_CACHE_TICKS} tick 时重新计算。
-     *
-     * @param playerId 玩家 UUID
-     * @return 可交易状态字符串
-     */
-    private String buildTradeableStatusString(UUID playerId) {
-        if (playerId == null) return "";
-
-        long currentTick = (baseMetaTileEntity != null && baseMetaTileEntity.getWorld() != null)
-            ? baseMetaTileEntity.getWorld()
-                .getTotalWorldTime()
-            : lastTradeableStatusRebuildTick;
-
-        // 未脏且仍在缓存有效期内，直接返回缓存值
-        if (!tradeableStatusDirty && currentTick - lastTradeableStatusRebuildTick < TRADEABLE_STATUS_CACHE_TICKS) {
-            return cachedTradeableStatusString;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        Map<UUID, NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getAllTradeGroups();
-        if (groups != null) {
-            for (NekoTradeGroup group : groups.values()) {
-                if (group == null) continue;
-                List<NekoTrade> trades = group.getTrades();
-                if (trades == null) continue;
-                for (int i = 0; i < trades.size(); i++) {
-                    NekoTradeResult result = multiblock.checkTrade(playerId, group.getId(), i);
-                    boolean tradeable = result != null && result.isSuccess();
-                    if (sb.length() > 0) sb.append(",");
-                    sb.append(
-                        group.getId()
-                            .toString())
-                        .append(":")
-                        .append(i)
-                        .append(":")
-                        .append(tradeable);
-                }
-            }
-        }
-
-        cachedTradeableStatusString = sb.toString();
-        tradeableStatusDirty = false;
-        lastTradeableStatusRebuildTick = currentTick;
-        return cachedTradeableStatusString;
-    }
-
-    /**
-     * 解析可交易状态字符串（客户端）
-     * <p>
-     * 将 {@code "groupId:tradeIndex:true/false,..."} 解析为
-     * {@link #tradeableStatusMap}："groupId:tradeIndex" → boolean。
-     *
-     * @param status 可交易状态字符串
-     */
-    private void parseTradeableStatus(String status) {
-        tradeableStatusMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 3) {
-                try {
-                    String key = parts[0] + ":" + parts[1];
-                    boolean tradeable = Boolean.parseBoolean(parts[2]);
-                    tradeableStatusMap.put(key, tradeable);
-                } catch (Exception ignored) {}
-            }
-        }
-    }
-
-    // ==================== 团队缩放状态同步（S2C，用于 tooltip 冷却缩放展示） ====================
-
-    /**
-     * 构建团队缩放状态字符串（服务端）
-     * <p>
-     * 遍历所有有冷却（{@code cooldown > 0}）的交易组，通过
-     * {@link NekoTradeExecutor#getTeamMaxTrades(UUID)} 获取团队缩放值（冷却内最大次数），
-     * 通过 {@link NekoTradeHistory#getCooldownTradeCount()} 获取当前冷却周期内已用次数。
-     * <p>
-     * 字符串格式：{@code "groupId:maxTrades:usedTrades,groupId:maxTrades:usedTrades,..."}
-     * <p>
-     * <b>设计说明</b>：客户端无法直接调用 GTNHLib Teams API（服务端专属），
-     * 因此通过此同步值将缩放信息传递到客户端，用于 tooltip 显示。
-     *
-     * @param playerId 玩家 UUID
-     * @return 团队缩放状态字符串，无冷却交易组时返回空字符串
-     */
-    private String buildTeamScaleString(UUID playerId) {
-        if (playerId == null) return "";
-        // 获取团队缩放值（团队成员数 = 冷却内最大交易次数）
-        // 同一玩家的所有交易组共享相同的缩放值，只需查询一次
-        int maxTrades = NekoTradeExecutor.getTeamMaxTrades(playerId);
-
-        StringBuilder sb = new StringBuilder();
-        Map<UUID, NekoTradeGroup> groups = NekoTradeDatabase.INSTANCE.getAllTradeGroups();
-        if (groups != null) {
-            for (NekoTradeGroup group : groups.values()) {
-                if (group == null) continue;
-                // 仅对有冷却的交易组输出缩放信息
-                if (group.getCooldown() <= 0) continue;
-
-                // 查询该玩家对此交易组的冷却内已用次数
-                NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
-                long usedTrades = history != null ? history.getCooldownTradeCount() : 0;
-
-                if (sb.length() > 0) sb.append(",");
-                sb.append(
-                    group.getId()
-                        .toString())
-                    .append(":")
-                    .append(maxTrades)
-                    .append(":")
-                    .append(usedTrades);
-            }
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 解析团队缩放状态字符串（客户端）
-     * <p>
-     * 将 {@code "groupId:maxTrades:usedTrades,..."} 解析为
-     * {@link #teamScaleMap}：groupId → [maxTrades, usedTrades]。
-     *
-     * @param status 团队缩放状态字符串
-     */
-    private void parseTeamScaleString(String status) {
-        teamScaleMap.clear();
-        if (status == null || status.isEmpty()) return;
-        String[] entries = status.split(",");
-        for (String entry : entries) {
-            String[] parts = entry.split(":");
-            if (parts.length == 3) {
-                try {
-                    UUID groupId = UUID.fromString(parts[0]);
-                    long maxTrades = Long.parseLong(parts[1]);
-                    long usedTrades = Long.parseLong(parts[2]);
-                    teamScaleMap.put(groupId, new long[] { maxTrades, usedTrades });
-                } catch (Exception ignored) {}
-            }
-        }
-    }
-
-    // ==================== 辅助方法 ====================
-
-    /**
-     * 获取交易分类的图标 ItemStack
-     * <p>
-     * 为每个分类返回一个直观的 ItemStack 图标，避免标签页空白：
-     * <ul>
-     * <li>FAVOURITES：下界之星（与 V1 星标收藏一致）</li>
-     * <li>UNKNOWN：纸（占位）</li>
-     * <li>动态标签页：从 {@link NekoPageRegistry#getPageIcon(int)} 获取配置图标</li>
-     * </ul>
-     *
-     * @param category 交易分类
-     * @return 图标 ItemStack
-     */
-    private ItemStack getCategoryIcon(NekoTradeCategory category) {
-        if (category == null) {
-            return new ItemStack(Items.paper);
-        }
-        if (category.isFavourites()) {
-            // 收藏分类：用下界之星（与 V1 星标收藏一致）
-            return new ItemStack(Items.nether_star);
-        }
-        if (category.isUnknown()) {
-            // 未知分类：用纸作为占位图标
-            return new ItemStack(Items.paper);
-        }
-
-        // 动态标签页：从 NekoPageRegistry 获取配置图标
-        ItemStack pageIcon = NekoPageRegistry.getPageIcon(category.getTabId());
-        if (pageIcon != null && pageIcon.getItem() != null) {
-            return pageIcon;
-        }
-        return new ItemStack(Items.paper);
-    }
-
-    /**
-     * 获取交易分类的显示名称
-     * <p>
-     * 特殊分类使用固定名称，动态标签页优先使用 {@link NekoPageRegistry#getPageName(int)}。
-     *
-     * @param category 交易分类
-     * @return 显示名称
-     */
-    private String getCategoryName(NekoTradeCategory category) {
-        if (category == null) {
-            return "未知";
-        }
-        if (category.isFavourites()) {
-            return "收藏";
-        }
-        if (category.isUnknown()) {
-            return "未知";
-        }
-
-        // 动态标签页：使用 NekoPageRegistry 中的配置名称
-        String pageName = NekoPageRegistry.getPageName(category.getTabId());
-        if (pageName != null && !pageName.isEmpty() && !"未知".equals(pageName)) {
-            return pageName;
-        }
-        return category.getKey();
     }
 }
