@@ -10,8 +10,8 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.gtnewhorizon.gtnhlib.teams.TeamManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.trade.TeamDataProvider;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -29,7 +29,7 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * <li>VM 模组的 {@code EventHandler.onServerTick} + {@code TradeManager.sendTradeNotifications}：
  * 定时检查 + 冷却结束判定逻辑</li>
  * <li>VM 模组的 {@code NotificationHandler}：聊天消息 + 音效播报</li>
- * <li>GTNHLib 的 {@link TeamManager#forEachOnlineTeamMember}：向团队在线成员广播</li>
+ * <li>GTNHLib 的团队在线成员遍历（O2-04 起经 {@link TeamDataProvider#forEachOnlineMember} 门面）：向团队在线成员广播</li>
  * </ul>
  * <p>
  * 与 VM 的关键差异：VM 仅通知交易者本人（客户端本地播报），本调度器向团队全体在线成员广播，
@@ -134,7 +134,7 @@ public class NekoNotificationScheduler {
     /**
      * 向玩家所在团队的全体在线成员广播冷却完毕消息 + 音效
      * <p>
-     * 若玩家有团队：通过 {@link TeamManager#forEachOnlineTeamMember} 向所有在线团队成员发送消息和音效；
+     * 若玩家有团队：通过 {@link TeamDataProvider#forEachOnlineMember} 向所有在线团队成员发送消息和音效；
      * 若玩家无团队（team == null）：仅向该玩家本人发送消息和音效。
      * <p>
      * 音效使用 {@code random.orb}（经验球音效），参数 0.2F 音量 / 1.8F 音调，与 VM 模组同款。
@@ -162,10 +162,12 @@ public class NekoNotificationScheduler {
             + EnumChatFormatting.RESET;
 
         try {
-            Team team = TeamManager.getTeamByPlayer(player.getUniqueID());
+            // O2-04：Teams 探测/降级统一走 TeamDataProvider 门面——不可用时 getTeam 返回 null，
+            // 自然落入下方"无团队"个人播报分支（与原 NCDFE 回退语义一致）
+            Team team = TeamDataProvider.getTeam(player.getUniqueID());
             if (team != null) {
                 // 有团队：向所有在线团队成员广播
-                TeamManager.forEachOnlineTeamMember(team, new Consumer<EntityPlayerMP>() {
+                TeamDataProvider.forEachOnlineMember(team, new Consumer<EntityPlayerMP>() {
 
                     @Override
                     public void accept(EntityPlayerMP member) {
@@ -183,15 +185,6 @@ public class NekoNotificationScheduler {
                 // 无团队：仅通知玩家本人
                 player.addChatComponentMessage(new ChatComponentText(message));
                 player.worldObj.playSoundAtEntity(player, "random.orb", 0.2F, 1.8F);
-            }
-        } catch (NoClassDefFoundError e) {
-            // GTNHLib Teams API 不可用，回退到仅通知玩家本人
-            GTInterestingThing.LOG.warn("[NekoNotify] GTNHLib Teams API 不可用，回退到个人播报");
-            try {
-                player.addChatComponentMessage(new ChatComponentText(message));
-                player.worldObj.playSoundAtEntity(player, "random.orb", 0.2F, 1.8F);
-            } catch (Throwable t2) {
-                GTInterestingThing.LOG.error("[NekoNotify] 个人播报失败", t2);
             }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[NekoNotify] notifyTeam 异常", t);

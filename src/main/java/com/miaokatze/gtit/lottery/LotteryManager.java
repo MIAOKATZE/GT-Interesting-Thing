@@ -17,14 +17,13 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 
-import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.gtnewhorizon.gtnhlib.teams.TeamManager;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.DailySignInManager;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
+import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 
@@ -36,7 +35,7 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  * 管理卡池配置（{@link LotteryConfig}）与团队保底计数：
  * <ul>
  * <li><b>团队键</b>：保底计数以「团队 UUID」为键存储——
- * 与贸易团队钱包同源（{@link TeamManager#getTeamByPlayer(UUID)} → {@link Team#getTeamId()}）；
+ * 与贸易团队钱包同源（{@code TeamDataProvider.getTeam(UUID)} → {@code getTeamId()}，O2-04 门面统一）；
  * GTNHLib Teams 不可用或玩家无团队时回退玩家自身 UUID（单人模式天然成立）</li>
  * <li><b>扣费</b>：走 {@link NekoWalletManager#getWallet(UUID)}（内部优先团队钱包）
  * + {@link NekoWallet#tryDeduct(String, int)} 原子操作，与交易执行器一致</li>
@@ -103,25 +102,14 @@ public class LotteryManager {
     /**
      * 解析玩家的团队键（保底计数存储键）
      * <p>
-     * 与贸易团队钱包同源：{@code TeamManager.getTeamByPlayer(playerId).getTeamId()}。
+     * 与贸易团队钱包同源：{@code TeamDataProvider.getTeam(playerId).getTeamId()}（O2-04 门面统一）。
      * GTNHLib Teams 不可用或玩家无团队时回退玩家自身 UUID。
      *
      * @param playerId 玩家 UUID
      * @return 团队 UUID（或回退的玩家 UUID）
      */
     public static UUID resolveTeamKey(UUID playerId) {
-        if (playerId == null) return null;
-        try {
-            Team team = TeamManager.getTeamByPlayer(playerId);
-            if (team != null) {
-                return team.getTeamId();
-            }
-        } catch (NoClassDefFoundError e) {
-            // GTNHLib Teams API 不可用，回退个人维度
-        } catch (Exception e) {
-            GTInterestingThing.LOG.error("解析抽奖团队键失败: " + playerId, e);
-        }
-        return playerId;
+        return TeamDataProvider.resolveTeamKey(playerId);
     }
 
     // ==================== 抽奖核心 ====================

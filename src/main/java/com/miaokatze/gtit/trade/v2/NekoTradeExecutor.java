@@ -10,6 +10,7 @@ import net.minecraft.item.ItemStack;
 
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
+import com.miaokatze.gtit.trade.TeamDataProvider;
 
 /**
  * 交易执行器单例，替代 VM 的 processTradeOnServer
@@ -587,20 +588,12 @@ public class NekoTradeExecutor {
      */
     private int getMaxTradesInCooldown(UUID playerId) {
         if (playerId == null) return 1;
-        try {
-            com.gtnewhorizon.gtnhlib.teams.Team team = com.gtnewhorizon.gtnhlib.teams.TeamManager
-                .getTeamByPlayer(playerId);
-            if (team == null) return 1;
-            int memberCount = team.getMembers()
-                .size();
-            return Math.max(1, memberCount);
-        } catch (NoClassDefFoundError e) {
-            // GTNHLib Teams API 不可用，回退到个人限制
-            return 1;
-        } catch (Exception e) {
-            com.miaokatze.gtit.main.GTInterestingThing.LOG.error("[NekoTradeExecutor] getMaxTradesInCooldown 异常", e);
-            return 1;
-        }
+        // O2-04：Teams 探测/降级统一走 TeamDataProvider 门面（不可用/无团队 → null → 回退 1）
+        com.gtnewhorizon.gtnhlib.teams.Team team = TeamDataProvider.getTeam(playerId);
+        if (team == null) return 1;
+        int memberCount = team.getMembers()
+            .size();
+        return Math.max(1, memberCount);
     }
 
     /**
@@ -613,7 +606,7 @@ public class NekoTradeExecutor {
      * <ul>
      * <li>此方法只能在服务端调用（GTNHLib Teams API 是服务端专属）</li>
      * <li>客户端需要通过同步值获取该值，不能直接调用此方法</li>
-     * <li>带 NoClassDefFoundError 防护，GTNHLib 不可用时安全降级返回 1</li>
+     * <li>经 TeamDataProvider 门面（含可用性探测），GTNHLib 不可用时安全降级返回 1</li>
      * </ul>
      *
      * @param playerId 玩家 UUID，为 null 时返回 1（个人限制）

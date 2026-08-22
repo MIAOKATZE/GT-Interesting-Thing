@@ -11,11 +11,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.world.World;
 
-import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.gtnewhorizon.gtnhlib.teams.TeamManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoTeamData;
+import com.miaokatze.gtit.trade.TeamDataProvider;
 
 /**
  * Server-authoritative trade history manager.
@@ -167,33 +166,20 @@ public class NekoHistoryManager {
         return existing == null ? playerHistories : existing;
     }
 
+    /** O2-04：Teams 探测/降级统一走 TeamDataProvider 门面（不可用时返回 null → 调用方回退个人持久化） */
     private Team findTeam(UUID playerId) {
         if (playerId == null) {
             return null;
         }
-        try {
-            return TeamManager.getTeamByPlayer(playerId);
-        } catch (NoClassDefFoundError ignored) {
-            return null;
-        } catch (Exception e) {
-            GTInterestingThing.LOG.warn("Unable to resolve team for trade history: " + playerId, e);
-            return null;
-        }
+        return TeamDataProvider.getTeam(playerId);
     }
 
+    /** O2-04：经门面取 GTIT 团队数据（未注册到该团队或不可用时返回 null） */
     private NekoTeamData getTeamData(Team team) {
         if (team == null) {
             return null;
         }
-        try {
-            ITeamData data = team.getData(NekoTeamData.ID);
-            return data instanceof NekoTeamData ? (NekoTeamData) data : null;
-        } catch (NoClassDefFoundError ignored) {
-            return null;
-        } catch (Exception e) {
-            GTInterestingThing.LOG.warn("Unable to resolve Neko team data", e);
-            return null;
-        }
+        return TeamDataProvider.getData(team);
     }
 
     /** Performs the migration while the team data monitor is held. */
@@ -357,16 +343,11 @@ public class NekoHistoryManager {
         return result;
     }
 
+    /** O2-04：经门面标记团队数据脏（不可用时 no-op，调用方回退个人持久化） */
     private void markTeamDirty(Team team) {
         if (team == null) {
             return;
         }
-        try {
-            team.markDirty();
-        } catch (NoClassDefFoundError ignored) {
-            // Team data is unavailable; the caller will use personal persistence.
-        } catch (Exception e) {
-            GTInterestingThing.LOG.warn("Unable to mark Neko team data dirty", e);
-        }
+        TeamDataProvider.markTeamDirty(team);
     }
 }

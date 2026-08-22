@@ -16,9 +16,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
-import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.gtnewhorizon.gtnhlib.teams.TeamManager;
 import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
@@ -82,10 +80,10 @@ public class NekoWalletManager {
     public NekoWallet getWallet(UUID playerId) {
         if (playerId == null) return null;
 
-        // 优先尝试团队钱包
+        // 优先尝试团队钱包（O2-04：Teams 探测/降级统一走 TeamDataProvider 门面）
         NekoWallet teamWallet = getTeamWallet(playerId);
         if (teamWallet != null) {
-            Team team = TeamManager.getTeamByPlayer(playerId);
+            Team team = TeamDataProvider.getTeam(playerId);
             if (team != null) {
                 teamWallet.setTeamId(team.getTeamId());
             }
@@ -106,24 +104,13 @@ public class NekoWalletManager {
     }
 
     /**
-     * 获取团队共享钱包
+     * 获取团队共享钱包（O2-04：Teams 不可用时 getTeam/getData 返回 null，本方法随之返回 null）
      *
      * @return 团队钱包，如果团队不可用返回 null
      */
     private NekoWallet getTeamWallet(UUID playerId) {
-        try {
-            Team team = TeamManager.getTeamByPlayer(playerId);
-            if (team == null) return null;
-            ITeamData teamData = team.getData(NekoTeamData.ID);
-            if (teamData instanceof NekoTeamData) {
-                return ((NekoTeamData) teamData).getWallet();
-            }
-        } catch (NoClassDefFoundError e) {
-            // GTNHLib Teams API 不可用
-        } catch (Exception e) {
-            GTInterestingThing.LOG.error("获取团队钱包失败: " + playerId, e);
-        }
-        return null;
+        NekoTeamData teamData = TeamDataProvider.getData(TeamDataProvider.getTeam(playerId));
+        return teamData != null ? teamData.getWallet() : null;
     }
 
     /**
@@ -136,22 +123,13 @@ public class NekoWalletManager {
     public void saveWallet(UUID playerId) {
         if (playerId == null) return;
 
-        // 检查是否使用团队钱包
-        try {
-            Team team = TeamManager.getTeamByPlayer(playerId);
-            if (team != null) {
-                ITeamData teamData = team.getData(NekoTeamData.ID);
-                if (teamData instanceof NekoTeamData) {
-                    team.markDirty();
-                    // 玩家已转入团队钱包：个人钱包不再使用，同时清掉遗留脏标记
-                    dirtyPersonalWallets.remove(playerId);
-                    return;
-                }
-            }
-        } catch (NoClassDefFoundError e) {
-            // GTNHLib Teams API 不可用，继续使用个人钱包
-        } catch (Exception e) {
-            GTInterestingThing.LOG.error("保存团队钱包失败: " + playerId, e);
+        // 检查是否使用团队钱包（O2-04：Teams 探测/降级统一走 TeamDataProvider 门面）
+        Team team = TeamDataProvider.getTeam(playerId);
+        if (TeamDataProvider.getData(team) != null) {
+            TeamDataProvider.markTeamDirty(team);
+            // 玩家已转入团队钱包：个人钱包不再使用，同时清掉遗留脏标记
+            dirtyPersonalWallets.remove(playerId);
+            return;
         }
 
         // 保存个人钱包到磁盘
@@ -255,7 +233,7 @@ public class NekoWalletManager {
         }
     }
 
-    /** 团队钱包余额冲刷：team.markDirty() + 轻量包推送给全体在线队员 */
+    /** 团队钱包余额冲刷：team.markDirty() + 轻量包推送给全体在线队员（O2-04：Teams 访问走门面） */
     private void flushTeamBalance(String teamIdStr, Map<UUID, EntityPlayerMP> onlineByUuid) {
         UUID teamId;
         try {
@@ -264,12 +242,12 @@ public class NekoWalletManager {
             return;
         }
         try {
-            Team team = TeamManager.getTeamById(teamId);
+            Team team = TeamDataProvider.getTeamById(teamId);
             if (team == null) return;
             // 团队钱包变动标记团队数据脏（GTNHLib 随世界存档落盘，与 saveWallet 团队路径同语义）
-            team.markDirty();
-            ITeamData teamData = team.getData(NekoTeamData.ID);
-            NekoWallet wallet = teamData instanceof NekoTeamData ? ((NekoTeamData) teamData).getWallet() : null;
+            TeamDataProvider.markTeamDirty(team);
+            NekoTeamData teamData = TeamDataProvider.getData(team);
+            NekoWallet wallet = teamData != null ? teamData.getWallet() : null;
             if (wallet == null) return;
             Map<String, Integer> balances = snapshotBalances(wallet);
             for (UUID member : team.getMembers()) {
@@ -278,8 +256,6 @@ public class NekoWalletManager {
                     LotteryNetworkManager.sendBalanceToClient(player, balances);
                 }
             }
-        } catch (NoClassDefFoundError e) {
-            // GTNHLib Teams API 不可用
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("推送团队钱包余额失败: " + teamId, t);
         }
