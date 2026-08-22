@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,6 +13,7 @@ import net.minecraft.item.ItemStack;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
+import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
@@ -267,12 +267,8 @@ public class BlessingConfig {
                 GSON.toJson(data)
                     .getBytes(StandardCharsets.UTF_8));
         }
-        Path backupPath = legacyPath.resolveSibling(
-            legacyPath.getFileName()
-                .toString() + ".bak");
-        Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
-        GTInterestingThing.LOG.info("祝福邮件配置已从旧路径迁移: {} -> {}", legacyPath, newPath);
-        GTInterestingThing.LOG.info("旧祝福邮件配置文件已重命名保留: {}", backupPath);
+        // O2-14: 旧文件退役收尾收编 ConfigMigrationUtil.retireLegacyAsBak（语义与日志格式不变）
+        ConfigMigrationUtil.retireLegacyAsBak(legacyPath, newPath, "祝福邮件配置", "祝福邮件配置文件");
     }
 
     /**

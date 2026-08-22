@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,6 +16,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSerializer;
+import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
@@ -187,12 +187,8 @@ public class LotteryConfig {
                 GSON.toJson(data)
                     .getBytes(StandardCharsets.UTF_8));
         }
-        Path backupPath = legacyPath.resolveSibling(
-            legacyPath.getFileName()
-                .toString() + ".bak");
-        Files.move(legacyPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
-        GTInterestingThing.LOG.info("抽奖配置已从旧路径迁移: {} -> {}", legacyPath, newPath);
-        GTInterestingThing.LOG.info("旧抽奖配置文件已重命名保留: {}", backupPath);
+        // O2-14: 旧文件退役收尾收编 ConfigMigrationUtil.retireLegacyAsBak（语义与日志格式不变）
+        ConfigMigrationUtil.retireLegacyAsBak(legacyPath, newPath, "抽奖配置", "抽奖配置文件");
     }
 
     /**
