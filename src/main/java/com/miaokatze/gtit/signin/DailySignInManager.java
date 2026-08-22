@@ -568,12 +568,16 @@ public class DailySignInManager {
         return null;
     }
 
-    /** 向玩家钱包发放货币并立即持久化 */
+    /**
+     * 向玩家钱包发放货币
+     * <p>
+     * O2-17：addCount 即登记脏标记，落盘统一由周期（5 分钟）+ 登出 + 停服三重兜底承担，
+     * 不再显式 saveWallet。
+     */
     private void grantCurrency(UUID playerId, String currencyId, int amount) {
         NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
         if (wallet == null) return;
         wallet.addCount(currencyId, amount);
-        NekoWalletManager.INSTANCE.saveWallet(playerId);
     }
 
     /**

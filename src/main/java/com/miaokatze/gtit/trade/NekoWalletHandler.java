@@ -17,7 +17,7 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * 此前该方法全项目零调用，个人钱包下线后常驻内存）</li>
  * <li>tick：冲刷余额推送脏标记（约 100ms 合帧，见
  * {@link NekoWalletManager#flushBalanceNotifications}）+ 周期落盘脏钱包
- * （兜底覆盖未走显式 saveWallet 的入账路径）</li>
+ * （O2-17 口径统一后，脏标记是全部写路径的唯一落盘触发，本钩子即常规落盘通道）</li>
  * </ul>
  * 服务器停止钩子（saveAll/unloadAll）走 FML 生命周期事件
  * （{@code CommonProxy.serverStopping/serverStopped}），不在此注册——
@@ -53,7 +53,7 @@ public class NekoWalletHandler {
             GTInterestingThing.LOG.error("冲刷钱包余额推送失败", t);
         }
 
-        // 周期落盘脏钱包（兜底：未走显式 saveWallet 的入账路径不丢账）
+        // 周期落盘脏钱包（O2-17：脏标记即落盘口径，本钩子为常规落盘通道）
         if (++tickCounter >= SAVE_INTERVAL_TICKS) {
             tickCounter = 0;
             try {

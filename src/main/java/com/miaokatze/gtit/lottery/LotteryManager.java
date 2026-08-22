@@ -283,6 +283,8 @@ public class LotteryManager {
         }
 
         // ---- 原子扣减 ----
+        // O2-17：扣减走 tryDeduct/addCount（余额变化即登记脏标记），落盘统一由
+        // 周期（5 分钟）+ 登出 + 停服三重兜底承担，不再显式 saveWallet
         if (wallet != null) {
             Map<String, Integer> deductedMap = new java.util.LinkedHashMap<>();
             for (Map.Entry<String, Integer> e : currencyNeeds.entrySet()) {
@@ -295,7 +297,6 @@ public class LotteryManager {
                 }
                 deductedMap.put(e.getKey(), e.getValue());
             }
-            NekoWalletManager.INSTANCE.saveWallet(playerId);
         }
         if (inputAccessor != null) {
             inputAccessor.setInputs(newInputs);
@@ -470,19 +471,18 @@ public class LotteryManager {
         // 与物品奖品同路径落输出槽；LotteryEntry.toItemStack 对货币奖品内部走
         // NekoCurrencyRegistrar.getItemStack 完成 货币ID→物品 的映射）
         List<ItemStack> itemPrizes = new ArrayList<>();
-        boolean walletDirty = false;
         for (LotteryDrawResult result : results) {
             if (result == null || result.getEntry() == null) continue;
             LotteryEntry entry = result.getEntry();
             ItemStack stack = entry.toItemStack(result.getAmount());
             if (stack == null) {
                 // 货币奖品无物品形态（对应猫猫币物品未注册，极端情况）：
-                // 兜底入团队钱包防静默丢失（货币奖品 item 字段为空，不走下方 warn）
+                // 兜底入团队钱包防静默丢失（货币奖品 item 字段为空，不走下方 warn）；
+                // O2-17：addCount 即登记脏标记，落盘统一走周期/登出/停服兜底
                 if (entry.isNekoPrize() && result.getAmount() > 0) {
                     NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
                     if (wallet != null) {
                         wallet.addCount(entry.getNekoCurrencyId(), result.getAmount());
-                        walletDirty = true;
                     }
                     continue;
                 }
@@ -490,9 +490,6 @@ public class LotteryManager {
                 continue;
             }
             itemPrizes.add(stack);
-        }
-        if (walletDirty) {
-            NekoWalletManager.INSTANCE.saveWallet(playerId);
         }
 
         // 2. 物品奖品落机器出货槽（批次模式：分档延迟逐件下落，触发客户端下落动画）；

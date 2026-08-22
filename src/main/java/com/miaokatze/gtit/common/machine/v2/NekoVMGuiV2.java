@@ -5367,7 +5367,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                         GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: wallet 为 null, 跳过");
                         return;
                     }
-                    // 先入账并持久化，再清槽，避免异常导致丢币
+                    // 先入账，再清槽，避免异常导致丢币（O2-17：落盘统一走脏标记兜底）
                     wallet.addCount(currencyId, newItem.stackSize);
                     int newCount = wallet.getCount(currencyId);
                     GTInterestingThing.LOG.debug(
@@ -5376,7 +5376,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                             + newItem.stackSize
                             + " newCount="
                             + newCount);
-                    NekoWalletManager.INSTANCE.saveWallet(playerId);
                     GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: 清槽前 slotIdx=" + index);
                     slot.putStack(null);
                     GTInterestingThing.LOG.debug("[NekoInput] 服务端分支: 清槽后 slotIdx=" + index);
@@ -5629,7 +5628,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 }
                 multiblock.dispenseItemStacks(toDispense);
                 wallet.resetCount(currencyId);
-                NekoWalletManager.INSTANCE.saveWallet(playerId);
                 playCoinDropSound();
             }
         } catch (Throwable t) {
@@ -5685,7 +5683,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 multiblock.dispenseItemStacks(toDispense);
                 // 扣减钱包余额（而非 resetCount）
                 wallet.addCount(currencyId, -count);
-                NekoWalletManager.INSTANCE.saveWallet(playerId);
                 playCoinDropSound();
                 // 通知余额同步值刷新
                 IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
@@ -5746,7 +5743,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
             if (!toDispense.isEmpty()) {
                 multiblock.dispenseItemStacks(toDispense);
-                NekoWalletManager.INSTANCE.saveWallet(playerId);
                 playCoinDropSound();
             }
         } catch (Throwable t) {
@@ -5894,7 +5890,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
 
             if (totalImported > 0) {
-                NekoWalletManager.INSTANCE.saveWallet(playerId);
                 tradeResultMessage = "成功导入 " + totalImported + " 个猫猫币";
                 GTInterestingThing.LOG.debug("[NekoImportCoins] 总计导入: totalImported=" + totalImported);
             } else {
@@ -5951,7 +5946,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
                 if (wallet != null) {
                     wallet.addCount(currencyId, extracted);
-                    NekoWalletManager.INSTANCE.saveWallet(playerId);
                     // 刷新货币余额同步值，使余额显示立即更新
                     IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
                     if (coinSync != null) {

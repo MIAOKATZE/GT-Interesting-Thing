@@ -322,10 +322,11 @@ public class NekoWalletManager {
     /**
      * 落盘所有脏个人钱包（周期保存兜底，由 NekoWalletHandler 每 5 分钟调用）。
      * <p>
-     * 余额变化即标记脏（{@link #notifyWalletChanged}）。本兜底覆盖未走显式
-     * saveWallet 的入账路径——未来新增路径漏调 saveWallet 时最长丢账窗口为一个
-     * 周期（5 分钟）而非无限（BUG B1）。团队钱包由 GTNHLib team.markDirty() 托管
-     * （余额冲刷时标记），无需此处处理。
+     * O2-17 口径统一后，余额变化即标记脏（{@link #notifyWalletChanged}）是全部写路径的
+     * 唯一落盘触发口径——写路径只管改余额（addCount/tryDeduct/resetCount/resetAll
+     * 均在余额实际变化后自动登记脏标记），落盘一律由本周期兜底 + 登出（unloadWallet）
+     * + 停服（saveAll）三重承担；崩溃场景最长丢账窗口为一个周期（5 分钟）。
+     * 团队钱包由 GTNHLib team.markDirty() 托管（余额冲刷时标记），无需此处处理。
      *
      * @return 本次落盘的钱包数
      */

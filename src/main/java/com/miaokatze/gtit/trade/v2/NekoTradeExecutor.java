@@ -465,14 +465,11 @@ public class NekoTradeExecutor {
             }
             NekoHistoryManager.INSTANCE.markDirty(playerId);
 
-            // v1.7.6 G6⑤ 钱包落盘一致性：交易引起的货币扣减后显式持久化。
-            // wallet 非空即本次交易动过钱包（第 3 步扣款；v1.7.10 起货币产物落输出槽不入钱包）；
-            // 个人钱包写 gtit_neko_wallets/*.dat，团队钱包 markDirty 供 GTNHLib 世界保存落盘
-            // （GTNHLib TeamDataSaver.onWorldSave 仅落 DIRTY 团队，不标脏则崩溃丢账）。
-            // 与投币/弹出/抽奖扣费路径的 saveWallet 口径一致；纯物品交易 wallet==null 不触发。
-            if (wallet != null) {
-                NekoWalletManager.INSTANCE.saveWallet(playerId);
-            }
+            // O2-17 钱包落盘口径统一：写路径只管改余额（第 3 步扣款走 tryDeduct/addCount，
+            // 余额变化即登记脏标记），落盘一律由周期（5 分钟）+ 登出 + 停服三重兜底承担。
+            // 团队钱包由余额冲刷链（flushTeamBalance，~100ms）team.markDirty() 托管，
+            // 覆盖 GTNHLib TeamDataSaver.onWorldSave 仅落 DIRTY 团队的约束；
+            // 原 v1.7.6 G6⑤ 显式 saveWallet 撤除，与投币/弹出/抽奖扣费路径口径一致。
 
             // 7. 返回成功
             return NekoTradeResult.success();
