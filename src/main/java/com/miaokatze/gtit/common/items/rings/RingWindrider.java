@@ -8,7 +8,6 @@ import net.minecraft.item.ItemStack;
 import com.miaokatze.gtit.common.items.ElectricFloatCore;
 import com.miaokatze.gtit.common.items.FloatCore;
 
-import baubles.api.BaubleType;
 import baubles.api.BaublesApi;
 import cpw.mods.fml.common.Optional;
 
@@ -28,10 +27,7 @@ public class RingWindrider extends BaseRing {
         return true;
     }
 
-    @Override
-    public BaubleType getBaubleType(ItemStack itemstack) {
-        return BaubleType.RING;
-    }
+    // O2-09 第一步：删除与 BaseRing 逐字相同的死 getBaubleType 重写（基类已返回 BaubleType.RING）
 
     @Override
     public void onWornTick(ItemStack itemstack, EntityLivingBase player) {

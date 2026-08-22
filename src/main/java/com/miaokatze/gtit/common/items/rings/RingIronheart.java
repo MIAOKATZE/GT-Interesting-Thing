@@ -12,7 +12,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
-import baubles.api.BaubleType;
 import cpw.mods.fml.common.Optional;
 
 /**
@@ -29,10 +28,7 @@ public class RingIronheart extends BaseRing {
         super("ring_ironheart");
     }
 
-    @Override
-    public BaubleType getBaubleType(ItemStack itemstack) {
-        return BaubleType.RING;
-    }
+    // O2-09 第一步：删除与 BaseRing 逐字相同的死 getBaubleType 重写（基类已返回 BaubleType.RING）
 
     @Override
     public void onWornTick(ItemStack itemstack, EntityLivingBase player) {
