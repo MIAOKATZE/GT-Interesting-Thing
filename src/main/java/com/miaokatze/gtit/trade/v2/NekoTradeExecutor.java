@@ -398,7 +398,10 @@ public class NekoTradeExecutor {
                                 // ME 提取失败，回滚本地扣减并还原货币（钱包部分）
                                 inputSlots.setInputs(originalInputs);
                                 rollbackWalletCurrency(wallet, walletDeducted);
-                                // 注意：ME 扣减的货币部分无法回滚（injectItems 下一阶段实现）
+                                // 注意：ME 扣减的货币部分无法回滚（injectItems 下一阶段实现）。
+                                // IT-BUG-05 已知限制：ME 网络扣减为单向 remove，无对账/inject 通道，
+                                // 回滚路径中已扣的 ME 货币凭空消失（玩家损失），无补偿；
+                                // ME 侧补偿（回推 injectItems 或掉落兜底）为远期规划，不在本修复范围
                                 return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
                             }
                         }
@@ -428,11 +431,13 @@ public class NekoTradeExecutor {
                         // 输出槽满，回滚已扣减的资源
                         // (a) 回滚猫猫币：仅还原钱包扣减部分
                         // ME 扣减部分无法回滚（injectItems 推入 ME 是下一阶段实现），
-                        // 此为已知限制；但 checkTrade 已通过意味着产出空间足够，
+                        // 此为已知限制（IT-BUG-05）：ME 扣减不可逆，回滚时已扣的 ME 货币/物品
+                        // 不做补偿（凭空消失=玩家损失），ME 侧补偿机制归远期规划；
+                        // 但 checkTrade 已通过意味着产出空间足够，
                         // OUTPUT_FULL 仅在并发或队列堆积时发生，影响范围有限
                         rollbackWalletCurrency(wallet, walletDeducted);
                         // (b) 还原已扣减的输入物品：本地部分可还原
-                        // ME 扣减的输入物品同样无法回滚，已知限制
+                        // ME 扣减的输入物品同样无法回滚，已知限制（IT-BUG-05，同上，无补偿）
                         if (originalInputs != null) {
                             inputSlots.setInputs(originalInputs);
                         }
