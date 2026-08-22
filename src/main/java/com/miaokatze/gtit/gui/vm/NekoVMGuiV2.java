@@ -15,7 +15,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Items;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
@@ -79,7 +78,9 @@ import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.gui.vm.edit.EditJsonCodec;
 import com.miaokatze.gtit.gui.vm.edit.EditOverlayController;
 import com.miaokatze.gtit.gui.vm.edit.EditOverlayController.EditOverlayType;
+import com.miaokatze.gtit.gui.vm.edit.OnlineTierEditor;
 import com.miaokatze.gtit.gui.vm.edit.PageEditor;
+import com.miaokatze.gtit.gui.vm.edit.SignInEditor;
 import com.miaokatze.gtit.gui.vm.edit.TradeEditor;
 import com.miaokatze.gtit.lottery.LotteryClientData;
 import com.miaokatze.gtit.lottery.LotteryEntry;
@@ -87,10 +88,7 @@ import com.miaokatze.gtit.lottery.LotteryGui;
 import com.miaokatze.gtit.lottery.LotteryRarity;
 import com.miaokatze.gtit.mail.MailClientData;
 import com.miaokatze.gtit.mail.MailGui;
-import com.miaokatze.gtit.signin.RewardItem;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
-import com.miaokatze.gtit.signin.SignInClientData;
-import com.miaokatze.gtit.signin.SignInReward;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoWallet;
@@ -384,57 +382,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 标签页编辑器（A01 蓝图 G2 抽取至 edit 子包：名称/图标缓冲/编辑目标同步值） */
     private final PageEditor pageEditor = new PageEditor(editOverlayController, this::closeEditOverlay);
 
-    // --- 签到编辑（v1.7.8 任务5+6：连续/累计阶梯增删改 + 逐日覆盖 + 每月全局配置） ---
-    /** 签到编辑目标同步值（C2S："tier:<days>"/"cumtier:<days>"，服务端据此加载阶梯物品奖励到编辑缓冲区） */
-    private StringSyncValue editSignInTargetSync;
-    /** 签到编辑物品缓冲区（双端共享：v1.7.8 任务6 由 1 槽扩为 4 槽，对应每奖励最多 4 个物品；SIGNIN 面板阶梯/每月模式共用） */
-    private final ItemStackHandler editSignInItemHandler = new ItemStackHandler(4);
-    /** 逐日覆盖编辑物品缓冲区（双端共享：4 槽；与 SIGNIN 面板缓冲区独立，避免同一 handler 槽位重复注册） */
-    private final ItemStackHandler editSignInDayItemHandler = new ItemStackHandler(4);
-    /** 签到编辑模式："tier"=连续阶梯 / "cumtier"=累计阶梯 / "monthly"=每月全局配置（逐日覆盖走 SIGNIN_DAY 覆盖层） */
-    private String editSignInMode = "tier";
-    /** 签到编辑：原阶梯天数（定位用；>0=编辑已有阶梯，-1=新增模式） */
-    private int editSignInOriginalDays = -1;
-    /** 签到编辑：当前编辑的阶梯天数（update 允许改天数；add 时即新阶梯天数） */
-    private int editSignInDays = 7;
-    /** 签到编辑：货币 ID（阶梯/逐日模式） */
-    private String editSignInCurrency = "neko";
-    /** 签到编辑：货币数量（阶梯/逐日模式） */
-    private int editSignInAmount = 0;
-    /** 签到编辑：逐日覆盖目标日期（"yyyy-MM-dd"，SIGNIN_DAY 覆盖层；日号即覆盖键） */
-    private String editSignInDayDate = "";
-    /** 签到编辑：逐日覆盖目标日号（1..31） */
-    private int editSignInDay = 1;
-    /** 签到编辑：每月全局-递增开关（v1.7.8 起默认 false=不递增） */
-    private boolean editSignInIncrementEnabled = false;
-    /** 签到编辑：每月全局-连续递增系数（字符串暂存，保存时解析） */
-    private String editSignInIncrement = "1.0";
-    /** 签到编辑：每月全局-工作日默认货币 ID */
-    private String editSignInWeekdayCurrency = "neko";
-    /** 签到编辑：每月全局-工作日默认货币数量 */
-    private int editSignInWeekdayAmount = 10;
-    /** 签到编辑：每月全局-周末默认货币 ID */
-    private String editSignInWeekendCurrency = "neko";
-    /** 签到编辑：每月全局-周末默认货币数量 */
-    private int editSignInWeekendAmount = 20;
-    /** 签到编辑：每月全局-物品子模式（false=编辑工作日默认奖励 / true=编辑周末默认奖励，共用 4 物品槽） */
-    private boolean editSignInMonthlyWeekend = false;
-    /** 签到编辑：每月全局-非激活子模式的物品暂存（4 槽；激活子模式直接读写编辑缓冲区） */
-    private final ItemStack[] editSignInMonthlyStash = new ItemStack[4];
-
-    // --- 每日在线档位编辑（v1.7.7 G5②） ---
-    /** 在线档位编辑目标同步值（C2S："<seconds>"，服务端据此加载档位物品奖励到编辑缓冲区） */
-    private StringSyncValue editOnlineTargetSync;
-    /** 在线档位编辑物品缓冲区（双端共享：slot 0=档位物品奖励） */
-    private final ItemStackHandler editOnlineItemHandler = new ItemStackHandler(1);
-    /** 在线档位编辑：原档位所需秒数（定位用，0=新建模式） */
-    private int editOnlineOriginalSeconds = 0;
-    /** 在线档位编辑：当前编辑的所需秒数 */
-    private int editOnlineSeconds = 1800;
-    /** 在线档位编辑：货币 ID */
-    private String editOnlineCurrency = "neko";
-    /** 在线档位编辑：货币数量 */
-    private int editOnlineAmount = 0;
+    /** 签到编辑器（A01 蓝图 G3 抽取至 edit 子包：tier/cumtier 阶梯 + monthly 每月全局 + 逐日覆盖子面板） */
+    private final SignInEditor signInEditor = new SignInEditor(editOverlayController, this::closeEditOverlay);
+    /** 每日在线档位编辑器（A01 蓝图 G3 抽取至 edit 子包：add/update/remove 三态） */
+    private final OnlineTierEditor onlineTierEditor = new OnlineTierEditor(
+        editOverlayController,
+        this::closeEditOverlay);
 
     // --- 祝福预设编辑（v1.7.6 G5：节日表 + 生日模板 + 发件人编辑） ---
     /** 祝福编辑附件槽位数（与邮件附件上限一致；猫猫币不入槽，由货币字段表达） */
@@ -682,10 +635,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 注册顺序冻结：TRADE → SIGNIN → SIGNIN_DAY → ONLINE_TIER → LOTTERY
         // → LOTTERY_POOL → PAGE → BLESSING（registerPanel 重复注册防御在位）。
         editOverlayController.registerPanel(EditOverlayType.TRADE, tradeEditor::buildEditPanel);
-        editOverlayController.registerPanel(EditOverlayType.SIGNIN, this::buildSignInEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.SIGNIN, signInEditor::buildEditPanel);
         // v1.7.8 任务6：逐日覆盖编辑面板（SIGNIN_DAY 覆盖层）
-        editOverlayController.registerPanel(EditOverlayType.SIGNIN_DAY, this::buildSignInDayEditPanel);
-        editOverlayController.registerPanel(EditOverlayType.ONLINE_TIER, this::buildOnlineTierEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.SIGNIN_DAY, signInEditor::buildDayEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.ONLINE_TIER, onlineTierEditor::buildEditPanel);
         editOverlayController.registerPanel(EditOverlayType.LOTTERY, this::buildLotteryEditPanel);
         editOverlayController.registerPanel(EditOverlayType.LOTTERY_POOL, this::buildLotteryPoolEditPanel);
         editOverlayController.registerPanel(EditOverlayType.PAGE, pageEditor::buildEditPanel);
@@ -1080,23 +1033,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // --- 编辑目标（C2S：交易编辑，A01 蓝图 G2 下沉至 TradeEditor）---
         tradeEditor.registerSyncValues(syncManager);
 
-        // --- 签到编辑目标（C2S：客户端设置 "tier:<days>"/"cumtier:<days>"，服务端加载连续/累计阶梯物品奖励到编辑缓冲区）---
-        editSignInTargetSync = new StringSyncValue(() -> "", val -> {
-            if (syncManager != null && !syncManager.isClient() && val != null && !val.isEmpty()) {
-                loadSignInTierIntoEditBuffer(val);
-            }
-        });
-        editSignInTargetSync.allowC2S();
-        syncManager.syncValue("nekoV2EditSignInTarget", editSignInTargetSync);
+        // --- 签到编辑目标（C2S：签到编辑，A01 蓝图 G3 下沉至 SignInEditor）---
+        signInEditor.registerSyncValues(syncManager);
 
-        // --- 在线档位编辑目标（C2S：客户端设置 "<seconds>"，服务端加载档位物品奖励到编辑缓冲区，v1.7.7 G5②）---
-        editOnlineTargetSync = new StringSyncValue(() -> "", val -> {
-            if (syncManager != null && !syncManager.isClient() && val != null && !val.isEmpty()) {
-                loadOnlineTierIntoEditBuffer(val);
-            }
-        });
-        editOnlineTargetSync.allowC2S();
-        syncManager.syncValue("nekoV2EditOnlineTarget", editOnlineTargetSync);
+        // --- 在线档位编辑目标（C2S：在线档位编辑，A01 蓝图 G3 下沉至 OnlineTierEditor）---
+        onlineTierEditor.registerSyncValues(syncManager);
 
         // --- 抽奖编辑目标（C2S：客户端设置 "<poolId>:<entryId>"，服务端加载条目物品到编辑缓冲区）---
         editLotteryTargetSync = new StringSyncValue(() -> "", val -> {
@@ -1588,27 +1529,27 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
             @Override
             public void onEditTierRequested(com.miaokatze.gtit.signin.SignInRewardTier tier) {
-                openSignInTierEditor(tier, false);
+                signInEditor.beginTier(tier, false);
             }
 
             @Override
             public void onEditCumulativeTierRequested(com.miaokatze.gtit.signin.SignInRewardTier tier) {
-                openSignInTierEditor(tier, true);
+                signInEditor.beginTier(tier, true);
             }
 
             @Override
             public void onEditDayRewardRequested(String date) {
-                openSignInDayEditor(date);
+                signInEditor.beginDay(date);
             }
 
             @Override
             public void onEditGlobalRequested() {
-                openSignInGlobalEditor();
+                signInEditor.beginGlobal();
             }
 
             @Override
             public void onEditOnlineTierRequested(com.miaokatze.gtit.signin.OnlineTimeRewardTier tier) {
-                openOnlineTierEditor(tier);
+                onlineTierEditor.beginTier(tier);
             }
         };
     }
@@ -1624,31 +1565,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param tier       被点击的阶梯奖励；null=新增模式
      * @param cumulative true=累计阶梯 / false=连续阶梯
      */
-    private void openSignInTierEditor(com.miaokatze.gtit.signin.SignInRewardTier tier, boolean cumulative) {
-        editSignInMode = cumulative ? "cumtier" : "tier";
-        if (tier != null) {
-            // 编辑模式：记录原天数（定位用）并填充货币字段
-            editSignInOriginalDays = tier.getRequiredDays();
-            editSignInDays = tier.getRequiredDays();
-            SignInReward reward = tier.getReward();
-            editSignInCurrency = reward != null && !reward.getCurrencyId()
-                .isEmpty() ? reward.getCurrencyId() : "neko";
-            editSignInAmount = reward != null ? reward.getCurrencyAmount() : 0;
-            // 通知服务端加载该阶梯的物品奖励到编辑缓冲区
-            if (editSignInTargetSync != null) {
-                editSignInTargetSync.setValue(editSignInMode + ":" + editSignInOriginalDays);
-            }
-        } else {
-            // 新增模式：清空字段与物品缓冲区（客户端清空后经 PhantomItemSlot 同步到服务端）
-            editSignInOriginalDays = -1;
-            editSignInDays = 7;
-            editSignInCurrency = "neko";
-            editSignInAmount = 0;
-            clearSignInItemBuffer(editSignInItemHandler);
-        }
-        openEditOverlay(EditOverlayType.SIGNIN);
-    }
-
     /**
      * 打开逐日覆盖编辑面板（客户端，编辑模式下点击每月签到日期格触发，v1.7.8 任务6）
      * <p>
@@ -1658,24 +1574,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param date 被点击的日期（"yyyy-MM-dd"，当月有效日期）
      */
-    private void openSignInDayEditor(String date) {
-        int day;
-        try {
-            day = Integer.parseInt(date.substring(8));
-        } catch (Exception e) {
-            LOG.warn("[NekoEdit] 逐日覆盖日期非法: {}", date);
-            return;
-        }
-        editSignInDayDate = date;
-        editSignInDay = day;
-        SignInReward effective = SignInClientData.getEffectiveDayReward(date);
-        editSignInCurrency = effective != null && !effective.getCurrencyId()
-            .isEmpty() ? effective.getCurrencyId() : "neko";
-        editSignInAmount = effective != null ? effective.getCurrencyAmount() : 0;
-        fillSignInItemBuffer(editSignInDayItemHandler, effective);
-        openEditOverlay(EditOverlayType.SIGNIN_DAY);
-    }
-
     /**
      * 打开每月签到全局配置编辑面板（客户端，编辑模式下点击「全局配置」按钮触发，v1.7.8 任务6）
      * <p>
@@ -1683,25 +1581,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 物品子模式默认工作日——周末默认物品进暂存、工作日默认物品进编辑缓冲区（客户端本地填充，
      * 快照含完整物品 ID/meta/NBT，无需服务端往返）。
      */
-    private void openSignInGlobalEditor() {
-        editSignInMode = "monthly";
-        editSignInIncrementEnabled = SignInClientData.isIncrementEnabled();
-        editSignInIncrement = String.valueOf(SignInClientData.getConsecutiveIncrement());
-        SignInReward weekday = SignInClientData.getWeekdayDefault();
-        SignInReward weekend = SignInClientData.getWeekendDefault();
-        editSignInWeekdayCurrency = weekday != null && !weekday.getCurrencyId()
-            .isEmpty() ? weekday.getCurrencyId() : "neko";
-        editSignInWeekdayAmount = weekday != null ? weekday.getCurrencyAmount() : 0;
-        editSignInWeekendCurrency = weekend != null && !weekend.getCurrencyId()
-            .isEmpty() ? weekend.getCurrencyId() : "neko";
-        editSignInWeekendAmount = weekend != null ? weekend.getCurrencyAmount() : 0;
-        // 物品子模式默认工作日：周末物品进暂存，工作日物品进编辑缓冲区
-        editSignInMonthlyWeekend = false;
-        stashSignInMonthlyItems(weekend);
-        fillSignInItemBuffer(editSignInItemHandler, weekday);
-        openEditOverlay(EditOverlayType.SIGNIN);
-    }
-
     /**
      * 服务端：加载签到阶梯物品奖励到编辑缓冲区（4 槽）
      * <p>
@@ -1710,45 +1589,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param target "tier:&lt;days&gt;" 或 "cumtier:&lt;days&gt;" 格式的目标标识
      */
-    private void loadSignInTierIntoEditBuffer(String target) {
-        try {
-            boolean cumulative;
-            String daysStr;
-            if (target.startsWith("tier:")) {
-                cumulative = false;
-                daysStr = target.substring("tier:".length());
-            } else if (target.startsWith("cumtier:")) {
-                cumulative = true;
-                daysStr = target.substring("cumtier:".length());
-            } else {
-                return;
-            }
-            int days = Integer.parseInt(daysStr);
-            List<com.miaokatze.gtit.signin.SignInRewardTier> tiers = cumulative
-                ? com.miaokatze.gtit.signin.DailySignInConfig.getCumulativeTiers()
-                : com.miaokatze.gtit.signin.DailySignInConfig.getRewardTiers();
-            SignInReward reward = null;
-            for (com.miaokatze.gtit.signin.SignInRewardTier tier : tiers) {
-                if (tier.getRequiredDays() == days) {
-                    reward = tier.getReward();
-                    break;
-                }
-            }
-            fillSignInItemBuffer(editSignInItemHandler, reward);
-            LOG.info("[NekoEdit] 已加载签到{}阶梯到编辑缓冲区: {}", cumulative ? "累计" : "连续", target);
-        } catch (Exception e) {
-            LOG.error("[NekoEdit] 加载签到阶梯到编辑缓冲区失败: {}", target, e);
-        }
-    }
-
     // ==================== 签到编辑：物品缓冲区辅助（v1.7.8 任务5+6） ====================
-
-    /** 清空签到编辑物品缓冲区（4 槽；客户端清空经 PhantomItemSlot 同步到服务端） */
-    private void clearSignInItemBuffer(ItemStackHandler handler) {
-        for (int i = 0; i < 4; i++) {
-            handler.setStackInSlot(i, null);
-        }
-    }
 
     /**
      * 将统一奖励模型中的物品（最多 4 个）填入指定签到编辑物品缓冲区
@@ -1759,43 +1600,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param handler 目标物品缓冲区（4 槽）
      * @param reward  统一奖励模型（null 时仅清空缓冲区）
      */
-    private void fillSignInItemBuffer(ItemStackHandler handler, SignInReward reward) {
-        clearSignInItemBuffer(handler);
-        if (reward == null) return;
-        int slot = 0;
-        for (RewardItem item : reward.getItems()) {
-            if (slot >= 4) break;
-            if (item == null || item.isEmpty()) continue;
-            ItemStack stack = resolveSignInRewardStack(item);
-            if (stack != null) {
-                handler.setStackInSlot(slot, stack);
-                slot++;
-            }
-        }
-    }
-
     /**
      * 将统一奖励模型中的物品（最多 4 个）解析进每月全局「非激活子模式」暂存
      *
      * @param reward 统一奖励模型（null 时清空暂存）
      */
-    private void stashSignInMonthlyItems(SignInReward reward) {
-        for (int i = 0; i < 4; i++) {
-            editSignInMonthlyStash[i] = null;
-        }
-        if (reward == null) return;
-        int slot = 0;
-        for (RewardItem item : reward.getItems()) {
-            if (slot >= 4) break;
-            if (item == null || item.isEmpty()) continue;
-            ItemStack stack = resolveSignInRewardStack(item);
-            if (stack != null) {
-                editSignInMonthlyStash[slot] = stack;
-                slot++;
-            }
-        }
-    }
-
     /**
      * 切换每月全局物品子模式（工作日 ↔ 周末）
      * <p>
@@ -1804,51 +1613,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param weekend true=切换到周末默认奖励 / false=切换到工作日默认奖励
      */
-    private void switchSignInMonthlySubMode(boolean weekend) {
-        if (editSignInMonthlyWeekend == weekend) return;
-        for (int i = 0; i < 4; i++) {
-            ItemStack bufferStack = editSignInItemHandler.getStackInSlot(i);
-            editSignInItemHandler.setStackInSlot(i, editSignInMonthlyStash[i]);
-            editSignInMonthlyStash[i] = bufferStack;
-        }
-        editSignInMonthlyWeekend = weekend;
-    }
-
     /**
      * 读取签到编辑缓冲区 4 槽快照（供每月全局保存时序列化激活子模式物品）
      *
      * @return 4 槽物品数组（空槽为 null）
      */
-    private ItemStack[] signInBufferSnapshot() {
-        ItemStack[] stacks = new ItemStack[4];
-        for (int i = 0; i < 4; i++) {
-            stacks[i] = editSignInItemHandler.getStackInSlot(i);
-        }
-        return stacks;
-    }
-
     /**
      * 将奖励物品条目解析为 ItemStack（物品 ID + meta + NBT；v1.7.7 G5① NBT 还原口径）
      *
      * @param rewardItem 奖励物品条目
      * @return 物品栈（含 NBT），解析失败返回 null
      */
-    private static ItemStack resolveSignInRewardStack(RewardItem rewardItem) {
-        String[] parts = rewardItem.getItemId()
-            .split(":");
-        if (parts.length != 2) return null;
-        Item itemObj = cpw.mods.fml.common.registry.GameRegistry.findItem(parts[0], parts[1]);
-        if (itemObj == null) return null;
-        ItemStack stack = new ItemStack(itemObj, Math.max(1, rewardItem.getAmount()), rewardItem.getMeta());
-        net.minecraft.nbt.NBTTagCompound nbt = com.miaokatze.gtit.util.NbtBase64Util
-            .nbtFromBase64(rewardItem.getNbtBase64());
-        if (nbt != null) {
-            // copy() 返回 NBTBase，需强转为 NBTTagCompound 再写入物品
-            stack.setTagCompound((net.minecraft.nbt.NBTTagCompound) nbt.copy());
-        }
-        return stack;
-    }
-
     /**
      * 构建签到编辑面板（v1.7.8 任务5+6 重构：单面板三模式）
      * <p>
@@ -1867,278 +1642,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private NekoDraggableEditPanel buildSignInEditPanel() {
-        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
-        editPanel.size(200, 180);
-        // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
-        editPanel.background(GuiTextures.MC_BACKGROUND);
-        editPanel.leftRel(0.5f)
-            .topRel(0.5f)
-            .anchorLeft(0.5f)
-            .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.SIGNIN));
-
-        int fieldHeight = 14;
-        int labelWidth = 65;
-        int fieldWidth = 120;
-
-        // 标题（随模式/新增状态切换）
-        editPanel.child(new TextWidget<>(IKey.dynamic(() -> {
-            if ("monthly".equals(editSignInMode)) {
-                return EnumChatFormatting.GOLD + "编辑每月签到全局配置";
-            }
-            String label = "cumtier".equals(editSignInMode) ? "累计" : "连续";
-            return editSignInOriginalDays > 0
-                ? EnumChatFormatting.GOLD + "编辑" + label + "阶梯（" + editSignInOriginalDays + " 天）"
-                : EnumChatFormatting.GOLD + "新增" + label + "阶梯";
-        })).top(5)
-            .horizontalCenter());
-
-        // ==================== 阶梯模式专属：所需天数 ====================
-
-        TextWidget<?> daysLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "所需天数:"));
-        daysLabel.left(8)
-            .top(26);
-        daysLabel.setEnabledIf(w -> !"monthly".equals(editSignInMode));
-        editPanel.child(daysLabel);
-
-        TextFieldWidget daysField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> String.valueOf(editSignInDays), val -> {
-                try {
-                    editSignInDays = Integer.parseInt(val);
-                } catch (NumberFormatException ignored) {}
-            }))
-            .setNumbers(1, Integer.MAX_VALUE);
-        daysField.left(labelWidth)
-            .top(24)
-            .size(fieldWidth, fieldHeight);
-        daysField.setEnabledIf(w -> !"monthly".equals(editSignInMode));
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶，避免被物品槽覆盖）
-
-        // ==================== 每月全局模式专属：递增开关 / 编辑目标 / 递增系数 ====================
-
-        // 递增开关（v1.7.8 起默认 false=不递增；递增仅作用工作日/周末默认货币量，逐日覆盖天不递增）
-        TextWidget<?> incToggleLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "递增开关:"));
-        incToggleLabel.left(8)
-            .top(26);
-        incToggleLabel.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(incToggleLabel);
-
-        ButtonWidget<?> incToggle = new ButtonWidget<>().left(labelWidth)
-            .top(24)
-            .size(fieldWidth, fieldHeight)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-            .overlay(
-                IKey.dynamic(
-                    () -> editSignInIncrementEnabled ? EnumChatFormatting.GREEN + "启用" : EnumChatFormatting.RED + "停用"))
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str("点击切换每日默认奖励是否随连续天数递增"));
-                t.addLine(IKey.str(EnumChatFormatting.GRAY + "递增仅作用工作日/周末默认货币量（逐日覆盖天不递增）"));
-            })
-            .tooltipAutoUpdate(true)
-            .onMouseTapped(mouse -> {
-                editSignInIncrementEnabled = !editSignInIncrementEnabled;
-                return true;
-            });
-        incToggle.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(incToggle);
-
-        // 编辑目标（工作日/周末默认奖励子模式切换；货币字段与 4 物品槽随之整体切换）
-        TextWidget<?> subModeLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "编辑目标:"));
-        subModeLabel.left(8)
-            .top(44);
-        subModeLabel.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(subModeLabel);
-
-        ButtonWidget<?> subModeToggle = new ButtonWidget<>().left(labelWidth)
-            .top(42)
-            .size(fieldWidth, fieldHeight)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-            .overlay(
-                IKey.dynamic(
-                    () -> editSignInMonthlyWeekend ? EnumChatFormatting.AQUA + "周末默认奖励"
-                        : EnumChatFormatting.YELLOW + "工作日默认奖励"))
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str("点击切换编辑工作日/周末默认奖励"));
-                t.addLine(IKey.str(EnumChatFormatting.GRAY + "货币字段与 4 物品槽整体切换（切换不丢失内容）"));
-            })
-            .tooltipAutoUpdate(true)
-            .onMouseTapped(mouse -> {
-                switchSignInMonthlySubMode(!editSignInMonthlyWeekend);
-                return true;
-            });
-        subModeToggle.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(subModeToggle);
-
-        // 递增系数（字符串暂存，保存时解析，非法回退 0）
-        TextWidget<?> incLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "递增系数:"));
-        incLabel.left(8)
-            .top(62);
-        incLabel.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(incLabel);
-
-        TextFieldWidget incField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> editSignInIncrement, val -> editSignInIncrement = val))
-            .setMaxLength(12);
-        incField.left(labelWidth)
-            .top(60)
-            .size(fieldWidth, fieldHeight);
-        incField.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // ==================== 公共区：货币 + 4 物品槽（每月模式随子模式分支绑定） ====================
-
-        // 货币类型
-        editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币类型:")).left(8)
-                .top(80));
-        TextFieldWidget currencyField = new TextFieldWidget().value(new StringValue.Dynamic(() -> {
-            if ("monthly".equals(editSignInMode)) {
-                return editSignInMonthlyWeekend ? editSignInWeekendCurrency : editSignInWeekdayCurrency;
-            }
-            return editSignInCurrency;
-        }, val -> {
-            if ("monthly".equals(editSignInMode)) {
-                if (editSignInMonthlyWeekend) {
-                    editSignInWeekendCurrency = val;
-                } else {
-                    editSignInWeekdayCurrency = val;
-                }
-            } else {
-                editSignInCurrency = val;
-            }
-        }))
-            .setMaxLength(30);
-        currencyField.left(labelWidth)
-            .top(78)
-            .size(fieldWidth, fieldHeight);
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // 货币数量
-        editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币数量:")).left(8)
-                .top(98));
-        TextFieldWidget amountField = new TextFieldWidget().value(new StringValue.Dynamic(() -> {
-            if ("monthly".equals(editSignInMode)) {
-                return String.valueOf(editSignInMonthlyWeekend ? editSignInWeekendAmount : editSignInWeekdayAmount);
-            }
-            return String.valueOf(editSignInAmount);
-        }, val -> {
-            try {
-                int parsed = Integer.parseInt(val);
-                if ("monthly".equals(editSignInMode)) {
-                    if (editSignInMonthlyWeekend) {
-                        editSignInWeekendAmount = parsed;
-                    } else {
-                        editSignInWeekdayAmount = parsed;
-                    }
-                } else {
-                    editSignInAmount = parsed;
-                }
-            } catch (NumberFormatException ignored) {}
-        }))
-            .setNumbers(0, Integer.MAX_VALUE);
-        amountField.left(labelWidth)
-            .top(96)
-            .size(fieldWidth, fieldHeight);
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // 物品奖励（4 槽，PhantomItemSlot 拖入配置；留空 = 无物品奖励）
-        editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品奖励:")).left(8)
-                .top(118));
-        for (int i = 0; i < 4; i++) {
-            final int slotIndex = i;
-            PhantomItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editSignInItemHandler, slotIndex));
-            slot.left(labelWidth + slotIndex * 20)
-                .top(114);
-            editPanel.child(slot);
-        }
-
-        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
-        editPanel.child(daysField);
-        editPanel.child(incField);
-        editPanel.child(currencyField);
-        editPanel.child(amountField);
-
-        // ---- 阶梯模式：保存 / 删除 / 取消 / 新增（增删改三件套，照搬在线档位面板） ----
-        ButtonWidget<?> saveBtn = new ButtonWidget<>().size(40, 16)
-            .left(14)
-            .bottom(8)
-            .overlay(IKey.str("保存"))
-            .onMouseTapped(mouse -> {
-                saveSignInEdit("update");
-                closeEditOverlay();
-                return true;
-            });
-        // 新增模式（originalDays=-1）无原档可定位，隐藏保存/删除
-        saveBtn.setEnabledIf(w -> !"monthly".equals(editSignInMode) && editSignInOriginalDays > 0);
-        editPanel.child(saveBtn);
-
-        ButtonWidget<?> deleteBtn = new ButtonWidget<>().size(40, 16)
-            .left(62)
-            .bottom(8)
-            .overlay(IKey.str(EnumChatFormatting.RED + "删除"))
-            .onMouseTapped(mouse -> {
-                saveSignInEdit("remove");
-                closeEditOverlay();
-                return true;
-            });
-        deleteBtn.setEnabledIf(w -> !"monthly".equals(editSignInMode) && editSignInOriginalDays > 0);
-        editPanel.child(deleteBtn);
-
-        ButtonWidget<?> tierCancelBtn = new ButtonWidget<>().size(40, 16)
-            .left(110)
-            .bottom(8)
-            .overlay(IKey.str("取消"))
-            .onMouseTapped(mouse -> {
-                closeEditOverlay();
-                return true;
-            });
-        tierCancelBtn.setEnabledIf(w -> !"monthly".equals(editSignInMode));
-        editPanel.child(tierCancelBtn);
-
-        ButtonWidget<?> addBtn = new ButtonWidget<>().size(40, 16)
-            .left(158)
-            .bottom(8)
-            .overlay(IKey.str(EnumChatFormatting.GREEN + "新增"))
-            .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.GRAY + "以当前天数/奖励追加为新阶梯")))
-            .tooltipAutoUpdate(true)
-            .onMouseTapped(mouse -> {
-                saveSignInEdit("add");
-                closeEditOverlay();
-                return true;
-            });
-        addBtn.setEnabledIf(w -> !"monthly".equals(editSignInMode));
-        editPanel.child(addBtn);
-
-        // ---- 每月全局模式：保存 / 取消 ----
-        ButtonWidget<?> monthlySaveBtn = new ButtonWidget<>().size(50, 16)
-            .left(30)
-            .bottom(8)
-            .overlay(IKey.str("保存"))
-            .onMouseTapped(mouse -> {
-                saveSignInEdit("update");
-                closeEditOverlay();
-                return true;
-            });
-        monthlySaveBtn.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(monthlySaveBtn);
-
-        ButtonWidget<?> monthlyCancelBtn = new ButtonWidget<>().size(50, 16)
-            .right(30)
-            .bottom(8)
-            .overlay(IKey.str("取消"))
-            .onMouseTapped(mouse -> {
-                closeEditOverlay();
-                return true;
-            });
-        monthlyCancelBtn.setEnabledIf(w -> "monthly".equals(editSignInMode));
-        editPanel.child(monthlyCancelBtn);
-
-        return editPanel;
-    }
-
     /**
      * 保存签到编辑（客户端 → 服务端，v1.7.8 任务5+6 重构）
      * <p>
@@ -2156,43 +1659,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param operation 操作类型：update / add / remove（monthly 模式忽略）
      */
-    private void saveSignInEdit(String operation) {
-        try {
-            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
-            if ("monthly".equals(editSignInMode)) {
-                // 每月全局：递增参数 + 工作日/周末默认奖励（字符串解析，非法回退 0）
-                double increment;
-                try {
-                    increment = Double.parseDouble(editSignInIncrement);
-                } catch (NumberFormatException e) {
-                    increment = 0.0;
-                }
-                json.addProperty("incrementEnabled", editSignInIncrementEnabled);
-                json.addProperty("consecutiveIncrement", increment);
-                // 激活子模式物品在编辑缓冲区，非激活子模式物品在暂存
-                ItemStack[] bufferSnap = signInBufferSnapshot();
-                ItemStack[] weekdayStacks = editSignInMonthlyWeekend ? editSignInMonthlyStash : bufferSnap;
-                ItemStack[] weekendStacks = editSignInMonthlyWeekend ? bufferSnap : editSignInMonthlyStash;
-                json.add(
-                    "weekday",
-                    buildSignInRewardJson(editSignInWeekdayCurrency, editSignInWeekdayAmount, weekdayStacks));
-                json.add(
-                    "weekend",
-                    buildSignInRewardJson(editSignInWeekendCurrency, editSignInWeekendAmount, weekendStacks));
-                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager.sendSaveSignInReward("monthly", json.toString());
-            } else {
-                // 连续/累计阶梯：增删改（days 字段携带新天数，targetId 用原天数定位）
-                json.addProperty("operation", operation);
-                json.addProperty("days", editSignInDays);
-                json.add("reward", buildSignInRewardJson(editSignInCurrency, editSignInAmount, signInBufferSnapshot()));
-                com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
-                    .sendSaveSignInReward(editSignInMode + ":" + editSignInOriginalDays, json.toString());
-            }
-        } catch (Exception e) {
-            LOG.error("[NekoEdit] 保存签到编辑失败", e);
-        }
-    }
-
     /**
      * 将货币 + 物品槽数组序列化为统一奖励模型 JSON（与 {@link SignInReward#toJson()} 同构：
      * {@code {currency, amount, items:[{item, amount, meta, nbt}]}}；空槽跳过，NBT 经 Base64 编码）
@@ -2202,28 +1668,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param stacks   物品槽数组（null 元素/空槽跳过）
      * @return 奖励 JSON 对象
      */
-    private static com.google.gson.JsonObject buildSignInRewardJson(String currency, int amount, ItemStack[] stacks) {
-        com.google.gson.JsonObject reward = new com.google.gson.JsonObject();
-        reward.addProperty("currency", currency == null ? "" : currency);
-        reward.addProperty("amount", Math.max(0, amount));
-        com.google.gson.JsonArray items = new com.google.gson.JsonArray();
-        if (stacks != null) {
-            for (ItemStack stack : stacks) {
-                if (stack == null || stack.getItem() == null) continue;
-                com.google.gson.JsonObject itemJson = new com.google.gson.JsonObject();
-                itemJson.addProperty("item", net.minecraft.item.Item.itemRegistry.getNameForObject(stack.getItem()));
-                itemJson.addProperty("amount", stack.stackSize);
-                itemJson.addProperty("meta", stack.getItemDamage());
-                // nbtToBase64 对 null 返回 null，统一归一空串防止 Gson 写出 JsonNull 导致解析异常
-                String nbt = com.miaokatze.gtit.util.NbtBase64Util.nbtToBase64(stack.getTagCompound());
-                itemJson.addProperty("nbt", nbt == null ? "" : nbt);
-                items.add(itemJson);
-            }
-        }
-        reward.add("items", items);
-        return reward;
-    }
-
     // ==================== 签到编辑：逐日覆盖面板（v1.7.8 任务6，SIGNIN_DAY 覆盖层） ====================
 
     /**
@@ -2236,106 +1680,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private NekoDraggableEditPanel buildSignInDayEditPanel() {
-        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
-        editPanel.size(200, 132);
-        // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
-        editPanel.background(GuiTextures.MC_BACKGROUND);
-        editPanel.leftRel(0.5f)
-            .topRel(0.5f)
-            .anchorLeft(0.5f)
-            .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.SIGNIN_DAY));
-
-        int fieldHeight = 14;
-        int labelWidth = 65;
-        int fieldWidth = 120;
-
-        // 标题（目标日号；覆盖按月内日号生效）
-        editPanel.child(
-            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GOLD + "编辑每日奖励（每月 " + editSignInDay + " 日）")).top(5)
-                .horizontalCenter());
-
-        // 货币类型
-        editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币类型:")).left(8)
-                .top(26));
-        TextFieldWidget currencyField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> editSignInCurrency, val -> editSignInCurrency = val))
-            .setMaxLength(30);
-        currencyField.left(labelWidth)
-            .top(24)
-            .size(fieldWidth, fieldHeight);
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // 货币数量
-        editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币数量:")).left(8)
-                .top(44));
-        TextFieldWidget amountField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> String.valueOf(editSignInAmount), val -> {
-                try {
-                    editSignInAmount = Integer.parseInt(val);
-                } catch (NumberFormatException ignored) {}
-            }))
-            .setNumbers(0, Integer.MAX_VALUE);
-        amountField.left(labelWidth)
-            .top(42)
-            .size(fieldWidth, fieldHeight);
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // 物品奖励（4 槽，独立缓冲区；留空 = 无物品奖励）
-        editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品奖励:")).left(8)
-                .top(64));
-        for (int i = 0; i < 4; i++) {
-            final int slotIndex = i;
-            PhantomItemSlot slot = new PhantomItemSlot().slot(new ModularSlot(editSignInDayItemHandler, slotIndex));
-            slot.left(labelWidth + slotIndex * 20)
-                .top(60);
-            editPanel.child(slot);
-        }
-
-        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
-        editPanel.child(currencyField);
-        editPanel.child(amountField);
-
-        // ---- 保存 / 清除覆盖 / 取消 ----
-        editPanel.child(
-            new ButtonWidget<>().size(50, 16)
-                .left(14)
-                .bottom(8)
-                .overlay(IKey.str("保存"))
-                .onMouseTapped(mouse -> {
-                    saveSignInDayEdit("update");
-                    closeEditOverlay();
-                    return true;
-                }));
-        editPanel.child(
-            new ButtonWidget<>().size(58, 16)
-                .left(71)
-                .bottom(8)
-                .overlay(IKey.str(EnumChatFormatting.RED + "清除覆盖"))
-                .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.GRAY + "删除该日号覆盖，回退工作日/周末默认")))
-                .tooltipAutoUpdate(true)
-                .onMouseTapped(mouse -> {
-                    saveSignInDayEdit("remove");
-                    closeEditOverlay();
-                    return true;
-                }));
-        editPanel.child(
-            new ButtonWidget<>().size(50, 16)
-                .right(14)
-                .bottom(8)
-                .overlay(IKey.str("取消"))
-                .onMouseTapped(mouse -> {
-                    closeEditOverlay();
-                    return true;
-                }));
-
-        return editPanel;
-    }
-
     /**
      * 保存逐日覆盖编辑（客户端 → 服务端）
      * <p>
@@ -2345,24 +1689,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param operation 操作类型：update / remove
      */
-    private void saveSignInDayEdit(String operation) {
-        try {
-            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
-            json.addProperty("operation", operation);
-            if (!"remove".equals(operation)) {
-                ItemStack[] stacks = new ItemStack[4];
-                for (int i = 0; i < 4; i++) {
-                    stacks[i] = editSignInDayItemHandler.getStackInSlot(i);
-                }
-                json.add("reward", buildSignInRewardJson(editSignInCurrency, editSignInAmount, stacks));
-            }
-            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
-                .sendSaveSignInReward("day:" + editSignInDay, json.toString());
-        } catch (Exception e) {
-            LOG.error("[NekoEdit] 保存逐日覆盖编辑失败", e);
-        }
-    }
-
     // ==================== 编辑模式：每日在线档位编辑（v1.7.7 G5②） ====================
 
     /**
@@ -2374,19 +1700,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param tier 被点击的在线奖励档位
      */
-    private void openOnlineTierEditor(com.miaokatze.gtit.signin.OnlineTimeRewardTier tier) {
-        if (tier == null) return;
-        editOnlineOriginalSeconds = tier.getRequiredSeconds();
-        editOnlineSeconds = tier.getRequiredSeconds();
-        editOnlineCurrency = tier.getCurrencyId() != null ? tier.getCurrencyId() : "neko";
-        editOnlineAmount = tier.getCurrencyAmount();
-        // 通知服务端加载该档位的物品奖励到编辑缓冲区
-        if (editOnlineTargetSync != null) {
-            editOnlineTargetSync.setValue(String.valueOf(editOnlineOriginalSeconds));
-        }
-        openEditOverlay(EditOverlayType.ONLINE_TIER);
-    }
-
     /**
      * 服务端：加载在线档位物品奖励到编辑缓冲区（v1.7.7 G5②）
      * <p>
@@ -2395,42 +1708,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param target 秒数字符串
      */
-    private void loadOnlineTierIntoEditBuffer(String target) {
-        try {
-            int seconds = Integer.parseInt(target);
-            editOnlineItemHandler.setStackInSlot(0, null);
-            for (com.miaokatze.gtit.signin.OnlineTimeRewardTier tier : com.miaokatze.gtit.signin.OnlineTimeConfig
-                .getTiers()) {
-                if (tier.getRequiredSeconds() != seconds) continue;
-                if (tier.hasItemReward()) {
-                    String[] parts = tier.getItemRewardId()
-                        .split(":");
-                    if (parts.length == 2) {
-                        net.minecraft.item.Item itemObj = cpw.mods.fml.common.registry.GameRegistry
-                            .findItem(parts[0], parts[1]);
-                        if (itemObj != null) {
-                            ItemStack stack = new ItemStack(
-                                itemObj,
-                                Math.max(1, tier.getItemRewardAmount()),
-                                tier.getItemRewardMeta());
-                            net.minecraft.nbt.NBTTagCompound nbt = com.miaokatze.gtit.util.NbtBase64Util
-                                .nbtFromBase64(tier.getItemNbt());
-                            if (nbt != null) {
-                                // v1.7.7 G5②：copy() 返回 NBTBase，需强转为 NBTTagCompound 再写入物品
-                                stack.setTagCompound((net.minecraft.nbt.NBTTagCompound) nbt.copy());
-                            }
-                            editOnlineItemHandler.setStackInSlot(0, stack);
-                        }
-                    }
-                }
-                break;
-            }
-            LOG.info("[NekoEdit] 已加载在线档位到编辑缓冲区: {}s", seconds);
-        } catch (Exception e) {
-            LOG.error("[NekoEdit] 加载在线档位到编辑缓冲区失败: {}", target, e);
-        }
-    }
-
     /**
      * 构建在线档位编辑面板（v1.7.7 G5②）
      * <p>
@@ -2439,141 +1716,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return 编辑覆盖层面板（{@link ParentWidget}）
      */
-    private NekoDraggableEditPanel buildOnlineTierEditPanel() {
-        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
-        editPanel.size(220, 150);
-        // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
-        editPanel.background(GuiTextures.MC_BACKGROUND);
-        editPanel.leftRel(0.5f)
-            .topRel(0.5f)
-            .anchorLeft(0.5f)
-            .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.ONLINE_TIER));
-
-        // 标题
-        editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "编辑在线档位")).top(5)
-                .horizontalCenter());
-
-        int fieldY = 24;
-        int fieldHeight = 14;
-        int labelWidth = 75;
-        int fieldWidth = 120;
-        int spacing = 18;
-
-        // 所需秒数
-        TextWidget<?> secondsLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "所需秒数:"));
-        secondsLabel.left(8)
-            .top(fieldY + 2);
-        editPanel.child(secondsLabel);
-
-        TextFieldWidget secondsField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> String.valueOf(editOnlineSeconds), val -> {
-                try {
-                    editOnlineSeconds = Integer.parseInt(val);
-                } catch (NumberFormatException ignored) {}
-            }))
-            .setNumbers(1, Integer.MAX_VALUE);
-        secondsField.left(labelWidth)
-            .top(fieldY)
-            .size(fieldWidth, fieldHeight);
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // 货币类型
-        fieldY += spacing;
-        TextWidget<?> currencyLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币类型:"));
-        currencyLabel.left(8)
-            .top(fieldY + 2);
-        editPanel.child(currencyLabel);
-
-        TextFieldWidget currencyField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> editOnlineCurrency, val -> editOnlineCurrency = val))
-            .setMaxLength(30);
-        currencyField.left(labelWidth)
-            .top(fieldY)
-            .size(fieldWidth, fieldHeight);
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // 货币数量
-        fieldY += spacing;
-        TextWidget<?> amountLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币数量:"));
-        amountLabel.left(8)
-            .top(fieldY + 2);
-        editPanel.child(amountLabel);
-
-        TextFieldWidget amountField = new TextFieldWidget()
-            .value(new StringValue.Dynamic(() -> String.valueOf(editOnlineAmount), val -> {
-                try {
-                    editOnlineAmount = Integer.parseInt(val);
-                } catch (NumberFormatException ignored) {}
-            }))
-            .setNumbers(0, Integer.MAX_VALUE);
-        amountField.left(labelWidth)
-            .top(fieldY)
-            .size(fieldWidth, fieldHeight);
-        // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
-
-        // 物品奖励槽（PhantomItemSlot 拖入配置；留空 = 无物品奖励）
-        fieldY += spacing;
-        TextWidget<?> itemLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品奖励:"));
-        itemLabel.left(8)
-            .top(fieldY + 2);
-        editPanel.child(itemLabel);
-
-        PhantomItemSlot itemSlot = new PhantomItemSlot().slot(new ModularSlot(editOnlineItemHandler, 0));
-        itemSlot.left(labelWidth)
-            .top(fieldY - 2);
-        editPanel.child(itemSlot);
-
-        // v1.7.19：延迟添加的 TextFieldWidget（在所有 PhantomItemSlot 之后，确保渲染层位于物品槽之上）
-        editPanel.child(secondsField);
-        editPanel.child(currencyField);
-        editPanel.child(amountField);
-
-        // 保存 / 删除 / 取消 / 新增按钮
-        editPanel.child(
-            new ButtonWidget<>().size(40, 16)
-                .left(14)
-                .bottom(8)
-                .overlay(IKey.str("保存"))
-                .onMouseTapped(mouse -> {
-                    saveOnlineTierEdit("update");
-                    closeEditOverlay();
-                    return true;
-                }));
-        editPanel.child(
-            new ButtonWidget<>().size(40, 16)
-                .left(62)
-                .bottom(8)
-                .overlay(IKey.str(EnumChatFormatting.RED + "删除"))
-                .onMouseTapped(mouse -> {
-                    saveOnlineTierEdit("remove");
-                    closeEditOverlay();
-                    return true;
-                }));
-        editPanel.child(
-            new ButtonWidget<>().size(40, 16)
-                .left(110)
-                .bottom(8)
-                .overlay(IKey.str("取消"))
-                .onMouseTapped(mouse -> {
-                    closeEditOverlay();
-                    return true;
-                }));
-        editPanel.child(
-            new ButtonWidget<>().size(40, 16)
-                .left(158)
-                .bottom(8)
-                .overlay(IKey.str(EnumChatFormatting.GREEN + "新增"))
-                .onMouseTapped(mouse -> {
-                    saveOnlineTierEdit("add");
-                    closeEditOverlay();
-                    return true;
-                }));
-
-        return editPanel;
-    }
-
     /**
      * 保存在线档位编辑（客户端 → 服务端，v1.7.7 G5②）
      * <p>
@@ -2584,35 +1726,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param operation 操作类型：update / add / remove
      */
-    private void saveOnlineTierEdit(String operation) {
-        try {
-            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
-            json.addProperty("operation", operation);
-            json.addProperty("seconds", editOnlineSeconds);
-
-            ItemStack stack = editOnlineItemHandler.getStackInSlot(0);
-            if (stack != null && stack.getItem() != null) {
-                json.addProperty("item", net.minecraft.item.Item.itemRegistry.getNameForObject(stack.getItem()));
-                json.addProperty("itemAmount", stack.stackSize);
-                json.addProperty("itemMeta", stack.getItemDamage());
-                json.addProperty("itemNbt", com.miaokatze.gtit.util.NbtBase64Util.nbtToBase64(stack.getTagCompound()));
-            } else {
-                json.addProperty("item", "");
-                json.addProperty("itemAmount", 0);
-                json.addProperty("itemMeta", 0);
-                json.addProperty("itemNbt", "");
-            }
-
-            json.addProperty("currency", editOnlineCurrency);
-            json.addProperty("amount", editOnlineAmount);
-
-            com.miaokatze.gtit.trade.v2.NekoEditNetworkManager
-                .sendSaveOnlineTier(String.valueOf(editOnlineOriginalSeconds), json.toString());
-        } catch (Exception e) {
-            LOG.error("[NekoEdit] 保存在线档位编辑失败", e);
-        }
-    }
-
     // ==================== 编辑模式：祝福预设编辑（v1.7.6 G5） ====================
 
     /**
