@@ -487,7 +487,14 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // --- 收藏切换请求（C2S，Ctrl+Click 触发）---
         favouriteToggleSync = new StringSyncValue(() -> "", val -> {
             if (val != null && !val.isEmpty()) {
-                processFavouriteToggle(val, playerId);
+                if (syncManager != null && !syncManager.isClient()) {
+                    // B2-02：服务端 C2S 回调投递服务器主线程，避免 Netty 线程直改收藏状态
+                    final String request = val;
+                    scheduleServerAction(() -> processFavouriteToggle(request, playerId));
+                } else {
+                    // 客户端本地触发：processFavouriteToggle 内部 isClient() 守卫直接返回
+                    processFavouriteToggle(val, playerId);
+                }
             }
         });
         favouriteToggleSync.allowC2S();
@@ -540,12 +547,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // --- ME 输出模式（C2S+S2C）---
         // 客户端可发起切换（allowC2S），服务端持久化并同步状态
         meOutputModeSync = new BooleanSyncValue(() -> multiblock != null && multiblock.isMeOutputMode(), val -> {
-            if (syncManager != null && !syncManager.isClient() && multiblock != null) {
-                multiblock.setMeOutputMode(val);
-                // ME 模式切换后通知队列同步值刷新，让客户端立即获知当前队列状态
-                if (meTransferQueueSync != null) {
-                    meTransferQueueSync.notifyUpdate();
-                }
+            if (syncManager != null && !syncManager.isClient()) {
+                // B2-02：服务端 C2S 回调投递服务器主线程，避免 Netty 线程直改 ME 模式
+                scheduleServerAction(() -> {
+                    if (multiblock == null) return;
+                    multiblock.setMeOutputMode(val);
+                    // ME 模式切换后通知队列同步值刷新，让客户端立即获知当前队列状态
+                    if (meTransferQueueSync != null) {
+                        meTransferQueueSync.notifyUpdate();
+                    }
+                });
             }
         });
         meOutputModeSync.allowC2S();
