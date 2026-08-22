@@ -371,9 +371,14 @@ public class MailManager {
      * </ol>
      * 发件人显示名 = 玩家名，类型 = {@link Mail#TYPE_PLAYER}。
      * 不给发件人回执邮件（避免刷屏），发送结果由调用方聊天提示。
+     * <p>
+     * <b>machine 信任链（IT-BUG-03）</b>：本方法信任调用方传入的 machine，不重复做归属校验；
+     * 网络包路径（compose）的 machine 由
+     * {@code MailActionPacket.Handler#findMachine} 完成同维度 + 距离 ≤8 格 + GUI 会话绑定
+     * 三重校验后才传入，恶意包无法借坐标指定他人机器取物（校验失败按无附件投递）。
      *
      * @param sender        发件玩家（在线）
-     * @param machine       触发机器（附件来源；null 时按无附件处理）
+     * @param machine       触发机器（附件来源；调用方须已完成归属/距离/会话校验；null 时按无附件处理）
      * @param recipientName 收件人名（已由调用方 trim/限长）
      * @param title         标题（已由调用方限长/兜底）
      * @param content       正文（已由调用方限长）

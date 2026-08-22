@@ -9,6 +9,8 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
 
+import com.cleanroommc.modularui.factory.PosGuiData;
+import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
@@ -69,6 +71,16 @@ public class MailActionPacket implements IMessage {
     private int machineZ;
     /** 触发机器维度 ID */
     private int machineDim;
+
+    // ==================== compose 附件来源机器校验（IT-BUG-03 防盗取） ====================
+
+    /**
+     * compose 附件来源机器与发送者的最大距离平方（8 格）。
+     * <p>
+     * 对齐 MUI2 {@code TileEntityGuiFactory.canInteractWith} 的交互距离规则
+     * （{@code getSquaredDistance(player) <= 64}）与 SWN 包校验范式。
+     */
+    private static final double MAX_MACHINE_DISTANCE_SQ = 64.0D;
 
     public MailActionPacket() {
         // 反序列化需要无参构造
@@ -228,15 +240,30 @@ public class MailActionPacket implements IMessage {
          * <p>
          * 坐标无效/机器不存在时返回 null（{@link MailManager#sendPlayerMail} 按无附件处理，
          * 不会扣取任何物品）。实现参照 {@code LotteryRequestPacket.Handler#findMachine}。
+         * <p>
+         * <b>防盗取校验（IT-BUG-03）</b>：坐标由客户端提供，命中机器前须依次通过：
+         * <ol>
+         * <li>同维度：请求维度必须与发送者当前世界一致（拒绝跨维度取物）</li>
+         * <li>距离上限：发送者与机器距离 ≤ 8 格
+         * （{@link #MAX_MACHINE_DISTANCE_SQ}，对齐 MUI2 容器交互距离与 SWN 校验范式）</li>
+         * <li>GUI 会话绑定：发送者当前打开的 MUI2 容器必须是这台机器的 GUI
+         * （{@link #isMachineGuiOpen}，坐标一致才视为有效会话）</li>
+         * </ol>
+         * 任一校验失败即返回 null（邮件按无附件发送，机器输入槽不动）。
          *
-         * @return 机器实例；未找到返回 null
+         * @return 机器实例；未找到或校验失败返回 null
          */
         private MTENekoVendingMachineV2 findMachine(EntityPlayerMP player, MailActionPacket message) {
             try {
                 MinecraftServer server = MinecraftServer.getServer();
                 if (server == null) return null;
                 World world = server.worldServerForDimension(message.machineDim);
-                if (world == null) return null;
+                if (world == null || world != player.worldObj) return null;
+                // 距离上限（防恶意包隔空/跨维度指定他人机器取物）
+                if (player.getDistanceSq(message.machineX + 0.5D, message.machineY + 0.5D, message.machineZ + 0.5D)
+                    > MAX_MACHINE_DISTANCE_SQ) return null;
+                // GUI 会话绑定（发送者必须正打开这台机器的 GUI，仅持坐标不允许取物）
+                if (!isMachineGuiOpen(player, message)) return null;
                 TileEntity te = world.getTileEntity(message.machineX, message.machineY, message.machineZ);
                 if (te instanceof IGregTechTileEntity) {
                     if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
@@ -247,6 +274,21 @@ public class MailActionPacket implements IMessage {
                 GTInterestingThing.LOG.error("定位写邮件触发机器失败", e);
             }
             return null;
+        }
+
+        /**
+         * GUI 会话绑定校验：发送者当前打开的容器是否为请求坐标机器的 MUI2 GUI
+         * <p>
+         * 机器 GUI 由 GT5U {@code MetaTileEntityGuiHandler.open} 以控制器 baseTE 坐标构建
+         * {@code PosGuiData} 打开，{@code MailGui} 写邮件页发送按钮携带的正是同一坐标；
+         * 因此服务端比对 {@code player.openContainer} 的 {@code PosGuiData} 与请求坐标，
+         * 即可确认"玩家真的开着这台机器的 GUI"，未开 GUI/开着其他 GUI/坐标不符一律拒绝。
+         */
+        private static boolean isMachineGuiOpen(EntityPlayerMP player, MailActionPacket message) {
+            if (!(player.openContainer instanceof ModularContainer container)) return false;
+            if (!(container.getGuiData() instanceof PosGuiData guiData)) return false;
+            return guiData.getX() == message.machineX && guiData.getY() == message.machineY
+                && guiData.getZ() == message.machineZ;
         }
 
         /** 字符串限长截断（null 安全；maxLength 内原样返回） */
