@@ -15,7 +15,7 @@ public class NekoWallet {
     // ConcurrentHashMap：多线程（交易主线程、GUI changeListener、团队数据合并）可能并发访问同一钱包
     private final Map<String, Integer> balances = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** 钱包所属玩家 UUID（个人钱包；团队钱包每次 getWallet 时被覆盖为最近查询者，仅用作 fallback） */
+    /** 钱包所属玩家 UUID（仅个人钱包设置；团队钱包不使用本字段——归属由 {@link #teamId} 表达，B2-07 勘误原失实注释） */
     private UUID playerId = null;
     /** 钱包所属团队 UUID（团队钱包；个人钱包为 null） */
     private UUID teamId = null;
