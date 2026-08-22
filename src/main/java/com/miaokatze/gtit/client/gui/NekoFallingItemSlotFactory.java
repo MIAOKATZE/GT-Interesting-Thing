@@ -13,6 +13,7 @@ import com.cleanroommc.modularui.utils.Interpolations;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cleanroommc.modularui.widgets.TransformWidget;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 掉落物品槽工厂
@@ -125,7 +126,7 @@ public class NekoFallingItemSlotFactory {
      */
     public TransformWidget getFallingItemSlot(int index) {
         // v1.7.15 诊断日志：确认 widget 创建（客户端/服务端），用于排查客户端 changeListener 不触发的问题
-        System.out.println(
+        GTInterestingThing.LOG.debug(
             "[NekoFactory] getFallingItemSlot index=" + index
                 + " thread="
                 + Thread.currentThread()
@@ -209,7 +210,7 @@ public class NekoFallingItemSlotFactory {
                 .slotGroup("outputSlotGroup")
                 .changeListener((newItem, onlyAmountChanged, client, init) -> {
                     // v1.7.15 诊断日志：保留 [NekoFall] 日志用于排查客户端 changeListener 从未触发的问题
-                    System.out.println(
+                    GTInterestingThing.LOG.debug(
                         "[NekoFall] slot=" + index
                             + " newItem="
                             + (newItem != null ? newItem.getDisplayName() : "null")
@@ -224,7 +225,7 @@ public class NekoFallingItemSlotFactory {
                     if (!init && newItem != null && !onlyAmountChanged) {
                         animator.reset();
                         animator.animate();
-                        System.out.println("[NekoFall] slot=" + index + " → play fall animation");
+                        GTInterestingThing.LOG.debug("[NekoFall] slot=" + index + " → play fall animation");
                     }
                 }))
             .background(IDrawable.EMPTY)
@@ -236,7 +237,7 @@ public class NekoFallingItemSlotFactory {
                 long now = System.currentTimeMillis();
                 if (now - lastEnabledLogTime > 1000) {
                     lastEnabledLogTime = now;
-                    System.out.println(
+                    GTInterestingThing.LOG.debug(
                         "[NekoEnabled] slot=" + index
                             + " hasStack="
                             + hasStack

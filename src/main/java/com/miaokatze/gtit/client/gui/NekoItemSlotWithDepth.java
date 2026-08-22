@@ -5,6 +5,7 @@ import org.lwjgl.opengl.GL11;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 带深度偏移的物品槽
@@ -55,7 +56,7 @@ public class NekoItemSlotWithDepth extends ItemSlot {
             long now = System.currentTimeMillis();
             if (now - lastDrawLogTime > 1000) {
                 lastDrawLogTime = now;
-                System.out.println(
+                GTInterestingThing.LOG.debug(
                     "[NekoDraw] slot=" + depth
                         + " hasStack="
                         + hasStack
