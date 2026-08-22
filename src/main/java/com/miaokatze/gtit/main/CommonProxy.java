@@ -82,7 +82,13 @@ public class CommonProxy {
         }
 
         // 初始化新手宝箱配置
-        GiftConfig.init();
+        // B2-13：对齐邻侧 DailySignInConfig 的防御写法——吞异常后 GiftConfig 静态集合
+        // 走声明期默认值，不应让配置解析失败中断整个 preInit
+        try {
+            GiftConfig.init();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 新手宝箱配置初始化失败", t);
+        }
 
         // v1.7.0：初始化签到奖励配置（DailySignInConfig.CONFIG_PATH = config/gtit/signin/daily_signin.json，缺失时生成默认）
         try {
@@ -111,12 +117,22 @@ public class CommonProxy {
         }
 
         // 初始化机器工作音效静音配置
-        MuteConfig.init();
+        // B2-13：同上防御——MuteConfig 静态布尔走默认值，不中断 preInit
+        try {
+            MuteConfig.init();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 机器工作音效静音配置初始化失败", t);
+        }
 
         // 注册事件处理器
-        FMLCommonHandler.instance()
-            .bus()
-            .register(new PlayerLoginHandler());
+        // B2-13：注册失败仅损失登录礼包+指环刷新（降级可接受），不中断 preInit
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new PlayerLoginHandler());
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 玩家登录事件处理器注册失败（首登礼包/指环刷新将不可用）", t);
+        }
 
         // === v1.6.0 骨架：签到事件监听器注册 ===
         // TODO: v1.6.3 启用
