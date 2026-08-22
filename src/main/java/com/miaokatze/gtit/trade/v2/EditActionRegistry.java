@@ -54,29 +54,28 @@ final class EditActionRegistry {
             NekoEditPacket.ACTION_SAVE_ONLINE_TIER,
             (player, targetId, targetIndex, jsonPayload) -> OnlineTierEditActions
                 .saveOnlineTier(player, targetId, jsonPayload));
-        // ---- 抽奖域 ----
+        // ---- 抽奖域（O2-05 E4 迁入 LotteryEditActions） ----
         register(
             NekoEditPacket.ACTION_OPEN_LOTTERY_EDITOR,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler.openLotteryEditor(player, targetId));
+            (player, targetId, targetIndex, jsonPayload) -> LotteryEditActions.openLotteryEditor(player, targetId));
         register(
             NekoEditPacket.ACTION_SAVE_LOTTERY_ENTRY,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
+            (player, targetId, targetIndex, jsonPayload) -> LotteryEditActions
                 .saveLotteryEntry(player, targetId, jsonPayload));
         register(
             NekoEditPacket.ACTION_SAVE_LOTTERY_POOL,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
+            (player, targetId, targetIndex, jsonPayload) -> LotteryEditActions
                 .saveLotteryPool(player, targetId, jsonPayload));
         register(
             NekoEditPacket.ACTION_CREATE_LOTTERY_POOL,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
-                .createLotteryPool(player, jsonPayload));
+            (player, targetId, targetIndex, jsonPayload) -> LotteryEditActions.createLotteryPool(player, jsonPayload));
         register(
             NekoEditPacket.ACTION_DELETE_LOTTERY_POOL,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler.deleteLotteryPool(player, targetId));
-        // ---- 祝福域 ----
+            (player, targetId, targetIndex, jsonPayload) -> LotteryEditActions.deleteLotteryPool(player, targetId));
+        // ---- 祝福域（O2-05 E4 迁入 BlessingEditActions） ----
         register(
             NekoEditPacket.ACTION_SAVE_BLESSING,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
+            (player, targetId, targetIndex, jsonPayload) -> BlessingEditActions
                 .saveBlessing(player, targetId, jsonPayload));
     }
 
