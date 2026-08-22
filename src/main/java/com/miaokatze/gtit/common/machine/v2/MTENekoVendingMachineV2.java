@@ -860,7 +860,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         }
         // v1.6.28: ME 模式下投放时创建 MeTransferEntry（从 insertItem 移至此处）
         // 记录 slotIndex 供粒子定位和 3 秒后清槽注入 ME
-        if (meOutputMode) {
+        // B2-09：入队点统一守门 MAX_ME_QUEUE_SIZE——交易路径由 hasSpaceFor/getAvailableSlotCount
+        // 预检，抽奖出货路径此前无检查（10 连可入队 10+ 条）。超限条目物品已在出货槽
+        // （上方先落槽），等价"按本地槽保留"，口径与交易路径一致
+        if (meOutputMode && meTransferQueue.size() < MAX_ME_QUEUE_SIZE) {
             meTransferQueue.add(new MeTransferEntry(output.copy(), System.currentTimeMillis(), slotIndex));
         }
     }
