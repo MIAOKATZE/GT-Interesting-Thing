@@ -36,7 +36,7 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * </ul>
  * <p>
  * <b>线程</b>：所有公开方法须在服务器主线程调用（网络包处理器经
- * {@link MailHandler#scheduleServerTask} 投递）。
+ * {@link com.miaokatze.gtit.util.ServerTaskScheduler#scheduleServerTask} 投递）。
  */
 public class MailManager {
 

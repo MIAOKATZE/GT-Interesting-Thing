@@ -134,6 +134,17 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 玩家登录事件处理器注册失败（首登礼包/指环刷新将不可用）", t);
         }
 
+        // O2-03：注册服务器主线程任务调度器（网络线程→主线程任务统一队列，
+        // 邮件/抽奖/签到/交易编辑四链路网络包处理器共用，收编三份同构队列）
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(com.miaokatze.gtit.util.ServerTaskScheduler.INSTANCE);
+            GTInterestingThing.LOG.info("[0/3] 服务器主线程任务调度器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 服务器主线程任务调度器注册失败", t);
+        }
+
         // === v1.6.0 骨架：签到事件监听器注册 ===
         // TODO: v1.6.3 启用
         try {
@@ -563,6 +574,9 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("关服保存猫猫币钱包失败", t);
         }
+        // O2-03：清空主线程任务队列（FMLServerStoppingEvent 不投递给事件总线监听器，
+        // 由本生命周期钩子代清——防止单机连续开新世界时残留任务跨世界执行）
+        com.miaokatze.gtit.util.ServerTaskScheduler.clear();
     }
 
     /**

@@ -14,6 +14,7 @@ import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
@@ -28,7 +29,7 @@ import io.netty.buffer.ByteBuf;
  * 负载：卡池 ID + 连抽次数 + 触发机器坐标/维度（物品奖品出货槽定位——
  * 奖品弹入该机器的出货槽，与贸易产出同机处理）。
  * <p>
- * 服务端收到后经 {@link LotteryHandler#scheduleServerTask} 投递到服务器主线程执行
+ * 服务端收到后经 {@link com.miaokatze.gtit.util.ServerTaskScheduler#scheduleServerTask} 投递到服务器主线程执行
  * （1.7.10 的包处理器运行在 Netty 线程，不能直接操作钱包/背包/机器）。
  * 抽奖判定完全在服务端权威执行（{@link LotteryManager#drawLottery}），客户端仅表现。
  */
@@ -104,7 +105,7 @@ public class LotteryRequestPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行抽奖逻辑（涉及钱包扣费、物品出货、NBT 持久化）
-            LotteryHandler.scheduleServerTask(() -> processLottery(player, message));
+            ServerTaskScheduler.scheduleServerTask(() -> processLottery(player, message));
             return null;
         }
 

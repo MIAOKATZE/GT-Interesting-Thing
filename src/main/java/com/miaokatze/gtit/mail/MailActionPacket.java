@@ -13,6 +13,7 @@ import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
@@ -27,7 +28,7 @@ import io.netty.buffer.ByteBuf;
  * 携带操作类型（{@link #ACTION_READ} / {@link #ACTION_CLAIM} / {@link #ACTION_DELETE} /
  * {@link #ACTION_COMPOSE}）与目标邮件 ID；compose 动作额外携带收件人名/标题/正文与
  * 触发机器坐标（附件来源=机器输入槽，坐标定位参照 {@code LotteryRequestPacket} 模式）。
- * 服务端收到后经 {@link MailHandler#scheduleServerTask} 投递到服务器
+ * 服务端收到后经 {@link com.miaokatze.gtit.util.ServerTaskScheduler#scheduleServerTask} 投递到服务器
  * 主线程执行（1.7.10 的包处理器运行在 Netty 线程，不能直接操作背包/文件）。
  * <p>
  * 操作完成后服务端回发 {@link MailSyncPacket} 全量刷新客户端邮箱。
@@ -151,7 +152,7 @@ public class MailActionPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行（涉及背包写入、NBT 持久化）
-            MailHandler.scheduleServerTask(() -> processAction(player, message));
+            ServerTaskScheduler.scheduleServerTask(() -> processAction(player, message));
             return null;
         }
 

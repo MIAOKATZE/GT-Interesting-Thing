@@ -7,6 +7,7 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
 import com.miaokatze.gtit.signin.DailySignInManager.SignInResult;
+import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
@@ -28,7 +29,7 @@ import io.netty.buffer.ByteBuf;
  * {@link #arg}=年份，0=不记年份）</li>
  * <li>{@link #ACTION_REMOVE_ANNIVERSARY}：删除纪念日（{@link #arg}=列表索引）</li>
  * </ul>
- * 服务端收到后经 {@link DailySignInHandler#scheduleServerTask} 投递到服务器主线程执行
+ * 服务端收到后经 {@link com.miaokatze.gtit.util.ServerTaskScheduler#scheduleServerTask} 投递到服务器主线程执行
  * （1.7.10 的包处理器运行在 Netty 线程，不能直接操作钱包/背包/文件）。
  * 所有写操作均由 {@link DailySignInManager} 服务端权威校验执行，完成后回发全量同步。
  */
@@ -112,7 +113,7 @@ public class SignInRequestPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行（涉及钱包写入、物品发放、NBT 持久化）
-            DailySignInHandler.scheduleServerTask(() -> processRequest(player, message));
+            ServerTaskScheduler.scheduleServerTask(() -> processRequest(player, message));
             return null;
         }
 

@@ -127,7 +127,7 @@ public class NekoEditPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行（涉及配置文件写入）
-            com.miaokatze.gtit.mail.MailHandler.scheduleServerTask(() -> processAction(player, message));
+            com.miaokatze.gtit.util.ServerTaskScheduler.scheduleServerTask(() -> processAction(player, message));
             return null;
         }
 
