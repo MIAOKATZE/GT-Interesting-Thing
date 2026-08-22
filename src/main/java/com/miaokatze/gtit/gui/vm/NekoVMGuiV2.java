@@ -76,6 +76,8 @@ import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.gui.vm.edit.EditOverlayController;
+import com.miaokatze.gtit.gui.vm.edit.EditOverlayController.EditOverlayType;
 import com.miaokatze.gtit.lottery.LotteryClientData;
 import com.miaokatze.gtit.lottery.LotteryEntry;
 import com.miaokatze.gtit.lottery.LotteryGui;
@@ -365,24 +367,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 编辑模式状态同步值（S2C：服务端权威，同步到客户端控制 GUI 行为） */
     private BooleanSyncValue editModeSync;
 
-    /** v1.7.7 G2① 当前打开的编辑覆盖层类型（NONE=未打开） */
-    private enum EditOverlayType {
-        NONE,
-        TRADE,
-        SIGNIN,
-        /** v1.7.8 任务6：逐日覆盖编辑（每月签到日期格） */
-        SIGNIN_DAY,
-        ONLINE_TIER,
-        LOTTERY,
-        LOTTERY_POOL,
-        PAGE,
-        BLESSING
-    }
-
-    /** v1.7.7 G2① 当前打开的编辑覆盖层类型（客户端状态，控制覆盖层显隐） */
-    private EditOverlayType currentEditOverlay = EditOverlayType.NONE;
-    /** v1.7.7 G2① 编辑覆盖层根节点（全屏透明拦截层 + 各编辑面板） */
-    private ParentWidget<?> editOverlayRoot;
+    /** v1.7.7 G2① 编辑覆盖层控制器（类型枚举/显隐状态/8 面板注册表；A01 蓝图 G1 抽取至 edit 子包） */
+    private final EditOverlayController editOverlayController = new EditOverlayController();
     /** 当前正在编辑的交易显示数据（客户端，打开编辑面板时设置） */
     private NekoTradeItemDisplay editingDisplay;
 
@@ -716,24 +702,23 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 物品无下落动画、点击偏移、物品放不回物品栏等所有 ID 偏移相关问题。
         // 8 个 buildXxxEditPanel 内无客户端 API（Grep 全文件确认），双端构建安全；
         // overlayInterceptor 的 onMousePressed 回调仅在客户端鼠标点击时触发，服务端不调用。
-        editOverlayRoot = new ParentWidget<>();
-        editOverlayRoot.relativeToScreen()
-            .full();
-        editOverlayRoot.setEnabledIf(w -> currentEditOverlay != EditOverlayType.NONE);
-
         // v1.7.27 修复：移除全屏透明拦截层。原 overlayInterceptor 会在点击编辑器外部
         // 任意位置时调用 closeEditOverlay() 并消费事件，导致编辑器意外关闭，并拦截
         // 背包栏/NEI 的鼠标交互。现在仅 Esc、E、保存/取消按钮可关闭编辑器。
-
-        editOverlayRoot.child(buildTradeEditPanel());
-        editOverlayRoot.child(buildSignInEditPanel());
+        //
+        // 【A01 蓝图 G1】覆盖层基础设施（根节点/显隐状态/类型枚举）已抽取至
+        // edit/EditOverlayController；8 个面板本体仍在 NekoVMGuiV2（G2-G4 分域搬出）。
+        // 注册顺序冻结：TRADE → SIGNIN → SIGNIN_DAY → ONLINE_TIER → LOTTERY
+        // → LOTTERY_POOL → PAGE → BLESSING（registerPanel 重复注册防御在位）。
+        editOverlayController.registerPanel(EditOverlayType.TRADE, this::buildTradeEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.SIGNIN, this::buildSignInEditPanel);
         // v1.7.8 任务6：逐日覆盖编辑面板（SIGNIN_DAY 覆盖层）
-        editOverlayRoot.child(buildSignInDayEditPanel());
-        editOverlayRoot.child(buildOnlineTierEditPanel());
-        editOverlayRoot.child(buildLotteryEditPanel());
-        editOverlayRoot.child(buildLotteryPoolEditPanel());
-        editOverlayRoot.child(buildPageEditPanel());
-        editOverlayRoot.child(buildBlessingEditPanel());
+        editOverlayController.registerPanel(EditOverlayType.SIGNIN_DAY, this::buildSignInDayEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.ONLINE_TIER, this::buildOnlineTierEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.LOTTERY, this::buildLotteryEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.LOTTERY_POOL, this::buildLotteryPoolEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.PAGE, this::buildPageEditPanel);
+        editOverlayController.registerPanel(EditOverlayType.BLESSING, this::buildBlessingEditPanel);
 
         // v1.7.0 主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
         // v1.7.17 双端镜像构建：mainTabController 等控制器已双端初始化（上方），
@@ -746,7 +731,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // ModularUI2 渲染顺序由 children 列表决定，后添加的 widget 在上层。
         // 若 editOverlayRoot 在主内容之前添加，编辑面板会被主内容覆盖，
         // 导致配方编辑界面低于各类按钮、抽卡等主内容控件。
-        panel.child(editOverlayRoot);
+        panel.child(editOverlayController.getRoot());
 
         return panel;
     }
@@ -1566,7 +1551,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param type 要打开的编辑覆盖层类型
      */
     private void openEditOverlay(EditOverlayType type) {
-        this.currentEditOverlay = type;
+        editOverlayController.open(type);
     }
 
     /**
@@ -1576,7 +1561,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     @Override
     public boolean isEditOverlayOpen() {
-        return this.currentEditOverlay != EditOverlayType.NONE;
+        return editOverlayController.isOpen();
     }
 
     /**
@@ -1586,8 +1571,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     @Override
     public void closeEditOverlay() {
-        EditOverlayType previous = this.currentEditOverlay;
-        this.currentEditOverlay = EditOverlayType.NONE;
+        EditOverlayType previous = editOverlayController.getCurrent();
+        editOverlayController.close();
         if (previous == EditOverlayType.TRADE) {
             clearTradeEditState();
         }
@@ -1737,7 +1722,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.TRADE);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.TRADE));
 
         // 标题（新建 / 编辑动态切换，v1.7.6 G3④）
         editPanel.child(
@@ -2309,7 +2294,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.SIGNIN);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.SIGNIN));
 
         int fieldHeight = 14;
         int labelWidth = 65;
@@ -2678,7 +2663,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.SIGNIN_DAY);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.SIGNIN_DAY));
 
         int fieldHeight = 14;
         int labelWidth = 65;
@@ -2881,7 +2866,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.ONLINE_TIER);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.ONLINE_TIER));
 
         // 标题
         editPanel.child(
@@ -3201,7 +3186,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.BLESSING);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.BLESSING));
 
         // 标题（随目标切换）
         editPanel.child(
@@ -3558,7 +3543,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.LOTTERY);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.LOTTERY));
 
         // 标题（显示条目标识 "<poolId>:<entryId>"）
         editPanel.child(
@@ -3907,7 +3892,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.LOTTERY_POOL);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.LOTTERY_POOL));
 
         // 标题（新建 / 编辑 + 池 id 动态切换）
         editPanel.child(
@@ -4286,7 +4271,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .topRel(0.5f)
             .anchorLeft(0.5f)
             .anchorTop(0.5f);
-        editPanel.setEnabledIf(w -> currentEditOverlay == EditOverlayType.PAGE);
+        editPanel.setEnabledIf(w -> editOverlayController.isCurrent(EditOverlayType.PAGE));
 
         // 标题（新建 / 编辑 + pageId 动态切换）
         editPanel.child(
