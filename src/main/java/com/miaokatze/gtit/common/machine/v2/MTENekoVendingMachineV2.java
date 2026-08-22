@@ -1332,6 +1332,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // 但猫猫机没有持续配方进度，必须按结构是否成型 (mMachine) 覆盖 active 状态，
         // 使正面材质/覆盖层与结构状态同步。该值会由 GT 同步到客户端。
         if (aBaseMetaTileEntity.isServerSide()) {
+            // B2-02：消费 GUI C2S 同步值投递的服务端动作（Netty IO 线程 → 主线程，
+            // 队列为空时仅一次 volatile 读，开销可忽略；任一台在 tick 的机器都会清空全局队列）
+            NekoVMGuiV2.drainServerActions();
             aBaseMetaTileEntity.setActive(mMachine);
             // 当 uplink 丢失时重置代理就绪兜底标记，下次连接成功后重新尝试
             if (uplinkHatch == null) {

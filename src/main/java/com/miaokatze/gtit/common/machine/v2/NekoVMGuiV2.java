@@ -6,9 +6,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
@@ -293,6 +295,22 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private final Set<NekoTradeCategory> highlightedTabs = new HashSet<>();
 
     // ==================== 其他字段 ====================
+
+    // ==================== B2-02：C2S 动作 Netty→主线程投递 ====================
+
+    /**
+     * Netty IO 线程 → 服务器主线程的 C2S 动作队列（同 {@code MailHandler}/{@code LotteryHandler} 范式）。
+     * <p>
+     * MUI2 2.3.70 网络层 C2S 同步值的 changeListener 在 Netty IO 线程直跑
+     * （{@code ModularNetworkSide.receivePacket} 无线程切换），而交易/投币链涉及
+     * 共享机器槽读写（NekoTradeExecutor 快照→扣减→整槽写回）、HashMap 标志写与
+     * meTransferQueue 写——与主线程 checkTrade（detectAndSendChanges 驱动）/
+     * onPostTick 交叉访问存在竞态。服务端动作主体整体 offer 到本队列，
+     * 由 {@link MTENekoVendingMachineV2#onPostTick} 服务端分支逐 tick 消费
+     * （操作延迟 ≤1 tick，玩家无感）。1 tick 后 GUI 可能已关：闭包内引用的
+     * multiblock/baseMetaTileEntity 生命周期独立于 GUI，各动作方法自带存活守卫。
+     */
+    private static final Queue<Runnable> SERVER_ACTIONS = new ConcurrentLinkedQueue<>();
 
     /** V2 GUI 是否打开（客户端，供 NekoMusicEventHandler 检测 GUI 状态） */
     public static boolean isV2GuiOpen = false;
@@ -781,7 +799,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // --- 交易请求（C2S，Shift+Click 触发）---
         tradeRequestSync = new StringSyncValue(() -> "", val -> {
             if (val != null && !val.isEmpty()) {
-                processTradeRequest(val, playerId);
+                if (syncManager != null && !syncManager.isClient()) {
+                    // B2-02：服务端 C2S 回调在 Netty IO 线程直跑（MUI2 2.3.70 无线程切换），
+                    // 交易链整体投递服务器主线程，下一 tick 消费（客户端本地触发不投递）
+                    final String request = val;
+                    scheduleServerAction(() -> processTradeRequest(request, playerId));
+                } else {
+                    // 客户端本地触发：processTradeRequest 内部 isClient() 守卫直接返回
+                    processTradeRequest(val, playerId);
+                }
             }
         });
         tradeRequestSync.allowC2S();
@@ -875,9 +901,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             final String cid = currencyId;
             nekoImportMeCoin.put(cid, false);
             BooleanSyncValue importSync = new BooleanSyncValue(() -> nekoImportMeCoin.getOrDefault(cid, false), val -> {
-                if (val && syncManager != null && !syncManager.isClient()) {
-                    doNekoImportMeCoin(cid);
+                if (syncManager != null && !syncManager.isClient()) {
+                    // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
+                    scheduleServerAction(() -> {
+                        if (val) {
+                            doNekoImportMeCoin(cid);
+                        }
+                        nekoImportMeCoin.put(cid, false);
+                    });
+                    return;
                 }
+                // 客户端：仅本地标志维护（无服务端动作）
                 nekoImportMeCoin.put(cid, false);
             });
             importSync.allowC2S();
@@ -908,6 +942,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             BooleanSyncValue ejectCoinSyncer = new BooleanSyncValue(
                 () -> nekoEjectSingleCoin.getOrDefault(cid, false),
                 val -> {
+                    if (syncManager != null && !syncManager.isClient()) {
+                        // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
+                        scheduleServerAction(() -> {
+                            nekoEjectSingleCoin.put(cid, val);
+                            if (val) {
+                                doNekoEjectCoin(cid, playerId);
+                            }
+                        });
+                        return;
+                    }
+                    // 客户端：仅本地标志维护（doNekoEjectCoin 内部 isClient() 守卫直接返回）
                     nekoEjectSingleCoin.put(cid, val);
                     if (val) {
                         doNekoEjectCoin(cid, playerId);
@@ -924,6 +969,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             BooleanSyncValue ejectCoinStackSyncer = new BooleanSyncValue(
                 () -> nekoEjectCoinStack.getOrDefault(cid, false),
                 val -> {
+                    if (syncManager != null && !syncManager.isClient()) {
+                        // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
+                        scheduleServerAction(() -> {
+                            nekoEjectCoinStack.put(cid, val);
+                            if (val) {
+                                doNekoEjectCoinStack(cid, playerId);
+                            }
+                        });
+                        return;
+                    }
+                    // 客户端：仅本地标志维护（doNekoEjectCoinStack 内部 isClient() 守卫直接返回）
                     nekoEjectCoinStack.put(cid, val);
                     if (val) {
                         doNekoEjectCoinStack(cid, playerId);
@@ -1023,18 +1079,23 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // --- 取回 ME 传输队列物品（C2S：阶段 4）---
         // 客户端点击取回按钮时发送 true，服务端调用 retrieveEarliestMeTransferItem
         retrieveMeItemSync = new BooleanSyncValue(() -> false, val -> {
-            if (val && syncManager != null && !syncManager.isClient() && multiblock != null) {
-                boolean ok = multiblock.retrieveEarliestMeTransferItem();
-                if (ok) {
-                    tradeResultMessage = "已取回 ME 传输队列中的物品";
-                    if (tradeResultSync != null) {
-                        tradeResultSync.setValue(tradeResultMessage);
+            if (val && syncManager != null && !syncManager.isClient()) {
+                // B2-02：取回动作（meTransferQueue remove(0)）投递服务器主线程，
+                // 与 onPostTick 的 processMeTransferQueue 串行化（B2-04 闭合）
+                scheduleServerAction(() -> {
+                    if (multiblock == null) return;
+                    boolean ok = multiblock.retrieveEarliestMeTransferItem();
+                    if (ok) {
+                        tradeResultMessage = "已取回 ME 传输队列中的物品";
+                        if (tradeResultSync != null) {
+                            tradeResultSync.setValue(tradeResultMessage);
+                        }
+                        // 通知队列同步值刷新，让客户端立即看到队列变化
+                        if (meTransferQueueSync != null) {
+                            meTransferQueueSync.notifyUpdate();
+                        }
                     }
-                    // 通知队列同步值刷新，让客户端立即看到队列变化
-                    if (meTransferQueueSync != null) {
-                        meTransferQueueSync.notifyUpdate();
-                    }
-                }
+                });
             }
         });
         retrieveMeItemSync.allowC2S();
@@ -1214,6 +1275,34 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     public int getRefreshInterval() {
         // 默认 20 tick（1秒）刷新一次
         return 20;
+    }
+
+    /**
+     * B2-02：将 C2S 同步值的服务端动作主体投递到服务器主线程（Netty 线程调用安全）。
+     * <p>
+     * 仅服务端侧调用；客户端侧的 changeListener 保持原语义直跑（无服务端动作）。
+     */
+    private static void scheduleServerAction(Runnable action) {
+        if (action != null) {
+            SERVER_ACTIONS.offer(action);
+        }
+    }
+
+    /**
+     * B2-02：服务器主线程逐 tick 消费投递的 C2S 动作。
+     * <p>
+     * 由 {@link MTENekoVendingMachineV2#onPostTick} 服务端分支调用；单任务异常仅记日志，
+     * 不中断同批其余任务（对齐 MailHandler 消费循环）。
+     */
+    public static void drainServerActions() {
+        Runnable action;
+        while ((action = SERVER_ACTIONS.poll()) != null) {
+            try {
+                action.run();
+            } catch (Throwable t) {
+                GTInterestingThing.LOG.error("[NekoVMV2] 执行投递的 C2S 动作失败", t);
+            }
+        }
     }
 
     @Override
