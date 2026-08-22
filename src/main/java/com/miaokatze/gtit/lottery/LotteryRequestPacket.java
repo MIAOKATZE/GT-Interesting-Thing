@@ -4,15 +4,22 @@ import java.util.List;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.world.World;
 
+import com.cleanroommc.modularui.factory.PosGuiData;
+import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
+import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -29,6 +36,16 @@ public class LotteryRequestPacket implements IMessage {
 
     /** 单包最大连抽次数（防恶意包刷爆服务器，10 连为 GUI 上限） */
     private static final int MAX_COUNT = 10;
+
+    // ==================== 触发机器校验（B2-01 防盗刷） ====================
+
+    /**
+     * 抽奖触发机器与请求者的最大距离平方（8 格）。
+     * <p>
+     * 对齐 {@code MailActionPacket}（IT-BUG-03）的三重校验范式
+     * （同维度/距离/GUI 会话绑定）与 MUI2 容器交互距离规则。
+     */
+    private static final double MAX_MACHINE_DISTANCE_SQ = 64.0D;
 
     private String poolId = "";
     private int count = 1;
@@ -110,10 +127,14 @@ public class LotteryRequestPacket implements IMessage {
                 return;
             }
 
-            // 2. 定位触发机器（物品奖品出货槽 + 物品消耗来源；坐标无效时退化为直接给玩家，
-            // 但含物品消耗的池会在下一步预校验被拒）
-            MTENekoVendingMachineV2 machine = LotteryManager
-                .findMachine(request.machineDim, request.machineX, request.machineY, request.machineZ);
+            // 2. 定位触发机器（B2-01：坐标客户端可控，命中前须通过同维度/距离/GUI 会话三重校验；
+            // 校验失败或机器无效时整包拒绝——不退化为"无机器直接给玩家"（该退化路径对纯货币池
+            // 保留绕过面，物品池本就被 canAfford 的 machine==null 分支拦截，正常流程无感）
+            MTENekoVendingMachineV2 machine = findMachine(player, request);
+            if (machine == null) {
+                sendFailure(player, poolId, LotteryClientData.RESULT_ERROR, "抽奖请求无效（未找到可用机器）");
+                return;
+            }
 
             // 3. 消耗预校验（v1.7.6 costItems 分流口径：货币条目查团队钱包余额、
             // 物品条目在机器输入槽副本模拟扣除；失败时给出明确错误码）
@@ -138,6 +159,58 @@ public class LotteryRequestPacket implements IMessage {
             // 那次 sendSyncToClient 作为冗余刷新保留无害。
             LotteryNetworkManager.sendResultToClient(player, poolId, results, LotteryClientData.RESULT_SUCCESS);
             LotteryNetworkManager.sendSyncToClient(player);
+        }
+
+        /**
+         * 按请求包坐标定位猫猫售货机 V2（B2-01 三重校验版，抽奖页=机器 GUI tab，
+         * 正常流程必然开着对应机器 GUI，对正常玩家无感）
+         * <p>
+         * 参照 {@code MailActionPacket.Handler#findMachine}（IT-BUG-03）范式，命中机器前须依次通过：
+         * <ol>
+         * <li>同维度：请求维度必须与请求者当前世界一致（拒绝跨维度指定他人机器）</li>
+         * <li>距离上限：请求者与机器距离 ≤ 8 格（{@link #MAX_MACHINE_DISTANCE_SQ}）</li>
+         * <li>GUI 会话绑定：请求者当前打开的 MUI2 容器必须是这台机器的 GUI
+         * （{@link #isMachineGuiOpen}）</li>
+         * </ol>
+         * 任一失败返回 null（调用方整包拒绝）。延迟出货路径（{@code LotteryManager.dispatchAll}）
+         * 仍用无校验静态版——出货时玩家可能已关 GUI/离线，此处验证过的坐标快照即可信。
+         *
+         * @return 机器实例；未找到或校验失败返回 null
+         */
+        private MTENekoVendingMachineV2 findMachine(EntityPlayerMP player, LotteryRequestPacket request) {
+            try {
+                MinecraftServer server = MinecraftServer.getServer();
+                if (server == null) return null;
+                World world = server.worldServerForDimension(request.machineDim);
+                if (world == null || world != player.worldObj) return null;
+                // 距离上限（防恶意包隔空指定他人机器扣物/塞奖）
+                if (player.getDistanceSq(request.machineX + 0.5D, request.machineY + 0.5D, request.machineZ + 0.5D)
+                    > MAX_MACHINE_DISTANCE_SQ) return null;
+                // GUI 会话绑定（请求者必须正打开这台机器的 GUI，仅持坐标不允许抽奖）
+                if (!isMachineGuiOpen(player, request)) return null;
+                TileEntity te = world.getTileEntity(request.machineX, request.machineY, request.machineZ);
+                if (te instanceof IGregTechTileEntity) {
+                    if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
+                        return (MTENekoVendingMachineV2) ((IGregTechTileEntity) te).getMetaTileEntity();
+                    }
+                }
+            } catch (Exception e) {
+                GTInterestingThing.LOG.error("定位抽奖触发机器失败", e);
+            }
+            return null;
+        }
+
+        /**
+         * GUI 会话绑定校验：请求者当前打开的容器是否为请求坐标机器的 MUI2 GUI
+         * <p>
+         * 比对 {@code player.openContainer} 携带的 {@code PosGuiData} 与请求坐标，
+         * 未开 GUI/开着其他 GUI/坐标不符一律拒绝（与 {@code MailActionPacket} 同型）。
+         */
+        private static boolean isMachineGuiOpen(EntityPlayerMP player, LotteryRequestPacket request) {
+            if (!(player.openContainer instanceof ModularContainer container)) return false;
+            if (!(container.getGuiData() instanceof PosGuiData guiData)) return false;
+            return guiData.getX() == request.machineX && guiData.getY() == request.machineY
+                && guiData.getZ() == request.machineZ;
         }
 
         /** 失败回执：结果码 + 聊天提示 + 状态同步（保底/历史未变但仍刷新卡池配置） */
