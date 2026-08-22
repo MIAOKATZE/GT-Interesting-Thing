@@ -281,7 +281,8 @@ public class DailySignInManager {
     /**
      * 在线时间累计（DailySignInHandler 服务器 tick 每 1200 tick=1 分钟调用一次）
      * <p>
-     * 为全部已加载（=在线）玩家累计 60 秒，跨日重置由
+     * 为在线玩家累计 60 秒（B2-12：仅真实在线条目——admin 指令加载的离线数据驻留
+     * 本 map 但不累计不推送），跨日重置由
      * {@link DailySignInData#addOnlineSeconds} 内部完成（与 applyDateCorrections 同挂载节奏）。
      * 累计后向各在线玩家推送一次全量同步，使 GUI「今日在线时长」每分钟自动刷新。
      * <p>
@@ -291,13 +292,14 @@ public class DailySignInManager {
     public void tickOnlineMinute() {
         String today = getToday();
         for (Map.Entry<UUID, DailySignInData> entry : signInDataMap.entrySet()) {
+            // B2-12：admin 指令加载的离线签到数据会驻留本 map（仅登出路径卸载）——
+            // 在线时长只对真实在线玩家累计，离线条目既不加分也不推送
+            EntityPlayerMP player = getPlayerByUUID(entry.getKey());
+            if (player == null) continue;
             entry.getValue()
                 .addOnlineSeconds(today, 60);
             // 向在线玩家重发最新状态（GUI 在线时长/领取状态每分钟刷新）
-            EntityPlayerMP player = getPlayerByUUID(entry.getKey());
-            if (player != null) {
-                SignInNetworkManager.sendSyncToClient(player, entry.getValue());
-            }
+            SignInNetworkManager.sendSyncToClient(player, entry.getValue());
         }
     }
 
