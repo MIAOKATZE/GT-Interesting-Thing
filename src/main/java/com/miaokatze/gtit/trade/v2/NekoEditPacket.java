@@ -132,11 +132,14 @@ public class NekoEditPacket implements IMessage {
         }
 
         /**
-         * 服务器主线程：统一校验入口通过后执行编辑操作
+         * 服务器主线程：统一校验入口通过后按策略表分发编辑操作
          * <p>
          * BUG B2 修复：编辑模式标志不再是唯一闸门——校验收口在
          * {@link NekoEditActionHandler#validateEditRequest}（编辑模式 + 实时 OP 复核 +
          * ACTION 白名单 + payload 限长），任一失败即拒绝。
+         * <p>
+         * O2-05 策略表化：原 15 case switch 与 15 个 handleXxx 转发方法收编为
+         * {@link EditActionRegistry} 注册表分发，新增 ACTION 不再改本类。
          */
         private void processAction(EntityPlayerMP player, NekoEditPacket message) {
             // 统一校验入口（编辑模式 / 实时权限复核 / ACTION 白名单 / payload 限长）
@@ -146,96 +149,13 @@ public class NekoEditPacket implements IMessage {
                 return;
             }
 
-            // 根据操作类型分发处理
-            switch (message.getAction()) {
-                case ACTION_OPEN_TRADE_EDITOR -> handleOpenTradeEditor(player, message);
-                case ACTION_SAVE_TRADE -> handleSaveTrade(player, message);
-                case ACTION_OPEN_SIGNIN_EDITOR -> handleOpenSignInEditor(player, message);
-                case ACTION_SAVE_SIGNIN_REWARD -> handleSaveSignInReward(player, message);
-                case ACTION_OPEN_LOTTERY_EDITOR -> handleOpenLotteryEditor(player, message);
-                case ACTION_SAVE_LOTTERY_ENTRY -> handleSaveLotteryEntry(player, message);
-                case ACTION_SAVE_LOTTERY_POOL -> handleSaveLotteryPool(player, message);
-                case ACTION_CREATE_LOTTERY_POOL -> handleCreateLotteryPool(player, message);
-                case ACTION_DELETE_LOTTERY_POOL -> handleDeleteLotteryPool(player, message);
-                case ACTION_CREATE_TRADE -> handleCreateTrade(player, message);
-                case ACTION_CREATE_PAGE -> handleCreatePage(player, message);
-                case ACTION_SAVE_PAGE -> handleSavePage(player, message);
-                case ACTION_DELETE_PAGE -> handleDeletePage(player, message);
-                case ACTION_SAVE_BLESSING -> handleSaveBlessing(player, message);
-                case ACTION_SAVE_ONLINE_TIER -> handleSaveOnlineTier(player, message);
-                default -> {
-                    // 未知操作，忽略
-                }
+            // 策略表分发（白名单闸按注册表存在性判定，未知 ACTION 正常流程不会到达）
+            EditAction action = EditActionRegistry.get(message.getAction());
+            if (action == null) {
+                // 未知操作，忽略
+                return;
             }
-        }
-
-        // ---- 各操作的处理方法（由 NekoEditActionHandler 委托实现） ----
-
-        private void handleOpenTradeEditor(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.openTradeEditor(player, message.getTargetId(), message.getTargetIndex());
-        }
-
-        private void handleSaveTrade(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler
-                .saveTrade(player, message.getTargetId(), message.getTargetIndex(), message.getJsonPayload());
-        }
-
-        private void handleOpenSignInEditor(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.openSignInEditor(player, message.getTargetId());
-        }
-
-        private void handleSaveSignInReward(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.saveSignInReward(player, message.getTargetId(), message.getJsonPayload());
-        }
-
-        private void handleOpenLotteryEditor(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.openLotteryEditor(player, message.getTargetId());
-        }
-
-        private void handleSaveLotteryEntry(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.saveLotteryEntry(player, message.getTargetId(), message.getJsonPayload());
-        }
-
-        private void handleSaveLotteryPool(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.saveLotteryPool(player, message.getTargetId(), message.getJsonPayload());
-        }
-
-        private void handleCreateLotteryPool(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.createLotteryPool(player, message.getJsonPayload());
-        }
-
-        private void handleDeleteLotteryPool(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.deleteLotteryPool(player, message.getTargetId());
-        }
-
-        // ---- v1.7.6 G3④：page 编辑与新建交易条目 ----
-
-        private void handleCreateTrade(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.createTrade(player, message.getTargetId(), message.getJsonPayload());
-        }
-
-        private void handleCreatePage(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.createPage(player, message.getJsonPayload());
-        }
-
-        private void handleSavePage(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.savePage(player, message.getTargetId(), message.getJsonPayload());
-        }
-
-        private void handleDeletePage(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.deletePage(player, message.getTargetId());
-        }
-
-        // ---- v1.7.6 G5：祝福预设编辑 ----
-
-        private void handleSaveBlessing(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.saveBlessing(player, message.getTargetId(), message.getJsonPayload());
-        }
-
-        // ---- v1.7.7 G5②：每日在线奖励档位编辑 ----
-
-        private void handleSaveOnlineTier(EntityPlayerMP player, NekoEditPacket message) {
-            NekoEditActionHandler.saveOnlineTier(player, message.getTargetId(), message.getJsonPayload());
+            action.execute(player, message.getTargetId(), message.getTargetIndex(), message.getJsonPayload());
         }
     }
 }

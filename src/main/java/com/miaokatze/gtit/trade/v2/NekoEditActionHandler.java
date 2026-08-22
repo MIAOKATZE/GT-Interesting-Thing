@@ -1,5 +1,10 @@
 package com.miaokatze.gtit.trade.v2;
 
+import static com.miaokatze.gtit.trade.v2.EditActionsCommon.parseItemEntries;
+import static com.miaokatze.gtit.trade.v2.EditActionsCommon.sendError;
+import static com.miaokatze.gtit.trade.v2.EditActionsCommon.sendInfo;
+import static com.miaokatze.gtit.trade.v2.EditActionsCommon.sendSuccess;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -8,8 +13,6 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.util.ChatComponentText;
-import net.minecraft.util.EnumChatFormatting;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -55,7 +58,8 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * <p>
  * <b>统一校验入口</b>：{@link NekoEditPacket.Handler#processAction} 分发任何 ACTION 前
  * 先经 {@link #validateEditRequest} 校验（编辑模式 + 实时权限复核 + ACTION 白名单 +
- * payload 限长）。后续新增编辑动作必须同时登记 {@link NekoEditPacket} 常量与白名单范围。
+ * payload 限长）。后续新增编辑动作须同时登记 {@link NekoEditPacket} 常量与
+ * {@link EditActionRegistry} 注册行（白名单闸即注册表存在性判定）。
  */
 public class NekoEditActionHandler {
 
@@ -113,9 +117,10 @@ public class NekoEditActionHandler {
             LOG.error("[NekoEdit] 权限复核异常，拒绝编辑请求", t);
             return "权限校验失败，无法执行编辑操作";
         }
-        // 3. ACTION 白名单：只接受 NekoEditPacket 已定义的操作类型
+        // 3. ACTION 白名单：只接受 EditActionRegistry 已注册的操作类型
+        // （O2-05：原 0..14 连续区间判定收编为注册表存在性判定，非连续 ACTION 号不再隐性受限）
         int action = message.getAction();
-        if (action < NekoEditPacket.ACTION_SAVE_TRADE || action > NekoEditPacket.ACTION_SAVE_ONLINE_TIER) {
+        if (EditActionRegistry.get(action) == null) {
             LOG.warn("[NekoEdit] 拒绝未知编辑操作类型: {}（玩家 {}）", action, player.getCommandSenderName());
             return "未知的编辑操作类型";
         }
@@ -1570,48 +1575,5 @@ public class NekoEditActionHandler {
         return items;
     }
 
-    // ==================== 工具方法 ====================
-
-    /**
-     * 解析 JSON 数组为 ItemEntry 列表
-     *
-     * @param array JSON 数组
-     * @return ItemEntry 列表
-     */
-    private static List<NekoTradeEntry.ItemEntry> parseItemEntries(JsonArray array) {
-        List<NekoTradeEntry.ItemEntry> items = new ArrayList<>();
-        if (array == null) return items;
-
-        for (int i = 0; i < array.size(); i++) {
-            JsonObject itemJson = array.get(i)
-                .getAsJsonObject();
-            NekoTradeEntry.ItemEntry entry = new NekoTradeEntry.ItemEntry();
-            if (itemJson.has("item")) entry.setItem(
-                itemJson.get("item")
-                    .getAsString());
-            if (itemJson.has("meta")) entry.setMeta(
-                itemJson.get("meta")
-                    .getAsInt());
-            if (itemJson.has("amount")) entry.setAmount(
-                itemJson.get("amount")
-                    .getAsInt());
-            if (itemJson.has("nbtBase64")) entry.setNbtBase64(
-                itemJson.get("nbtBase64")
-                    .getAsString());
-            items.add(entry);
-        }
-        return items;
-    }
-
-    private static void sendSuccess(EntityPlayerMP player, String message) {
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "[编辑模式] " + message));
-    }
-
-    private static void sendError(EntityPlayerMP player, String message) {
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "[编辑模式] " + message));
-    }
-
-    private static void sendInfo(EntityPlayerMP player, String message) {
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "[编辑模式] " + message));
-    }
+    // ===== 工具方法：O2-05 E1 起逐字搬移至 EditActionsCommon（本类经 static import 使用） =====
 }
