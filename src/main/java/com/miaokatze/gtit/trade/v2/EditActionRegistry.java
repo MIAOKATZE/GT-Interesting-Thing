@@ -21,27 +21,26 @@ final class EditActionRegistry {
     private static final Map<Integer, EditAction> ACTIONS = new HashMap<>();
 
     static {
-        // ---- 交易域 ----
+        // ---- 交易域（O2-05 E2 迁入 TradeEditActions） ----
         register(
             NekoEditPacket.ACTION_OPEN_TRADE_EDITOR,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
+            (player, targetId, targetIndex, jsonPayload) -> TradeEditActions
                 .openTradeEditor(player, targetId, targetIndex));
-        register(NekoEditPacket.ACTION_SAVE_TRADE, NekoEditActionHandler::saveTrade);
+        register(NekoEditPacket.ACTION_SAVE_TRADE, TradeEditActions::saveTrade);
         register(
             NekoEditPacket.ACTION_CREATE_TRADE,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
+            (player, targetId, targetIndex, jsonPayload) -> TradeEditActions
                 .createTrade(player, targetId, jsonPayload));
-        // ---- 标签页域 ----
+        // ---- 标签页域（O2-05 E2 迁入 PageEditActions） ----
         register(
             NekoEditPacket.ACTION_CREATE_PAGE,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler.createPage(player, jsonPayload));
+            (player, targetId, targetIndex, jsonPayload) -> PageEditActions.createPage(player, jsonPayload));
         register(
             NekoEditPacket.ACTION_SAVE_PAGE,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
-                .savePage(player, targetId, jsonPayload));
+            (player, targetId, targetIndex, jsonPayload) -> PageEditActions.savePage(player, targetId, jsonPayload));
         register(
             NekoEditPacket.ACTION_DELETE_PAGE,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler.deletePage(player, targetId));
+            (player, targetId, targetIndex, jsonPayload) -> PageEditActions.deletePage(player, targetId));
         // ---- 签到域 ----
         register(
             NekoEditPacket.ACTION_OPEN_SIGNIN_EDITOR,
