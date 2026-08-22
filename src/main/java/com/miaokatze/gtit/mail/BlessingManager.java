@@ -33,6 +33,13 @@ import com.miaokatze.gtit.signin.DailySignInManager;
  * 生日/节日 = {@code "类型_YYYY-MM-dd"}（按日唯一），纪念日 = {@code "anniversary_<序号>_YYYY"}（同年一次）。
  * 防重键写入邮箱 NBT（祝福属邮件域，不污染签到数据）。
  * <p>
+ * <b>持久化依赖（IT-BUG-09，已知限制）</b>：本类无自身持久化（无 File/WorldSavedData），
+ * "已发"防重键的落盘完全依赖 MailData——投递成功后立即
+ * {@link MailManager#saveMailData}（见 {@link #trySend}），并由 MailHandler 的周期
+ * saveAll/登出保存兜底；登录检测与跨日 tick 每次重查重建内存状态，幂等。
+ * 崩溃窗口：若邮件已投递但 saveMailData 前服务器崩溃，重启后可能重发祝福邮件
+ * （低概率重复奖励），此为当前设计取舍，不引入独立落盘。
+ * <p>
  * <b>不补发口径（v1.7.6 用户确认）</b>：生日/节日当天未上线则当年无祝福，次年再来；
  * 避免长期离线玩家上线时邮箱被历年祝福刷屏。
  * <p>
@@ -171,6 +178,7 @@ public class BlessingManager {
             return false;
         }
         mailData.markClaimedBlessing(key);
+        // 唯一持久化联动点（IT-BUG-09）：防重键落盘依赖 MailData，崩溃窗口语义见类 javadoc
         MailManager.INSTANCE.saveMailData(playerId);
         GTInterestingThing.LOG.info("祝福邮件已投递: player={}, key={}", playerId, key);
         return true;
