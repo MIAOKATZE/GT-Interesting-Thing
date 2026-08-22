@@ -347,11 +347,16 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 抽奖网络包初始化失败", t);
         }
-        try {
-            com.miaokatze.gtit.achievement.AchievementNetwork.init();
-            GTInterestingThing.LOG.info("[2/3] 成就网络包已初始化");
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[2/3] 成就网络包初始化失败", t);
+        // O2-01: 成就骨架配置开关（默认 false）——关闭时跳过初始化，不再打印误导性"已初始化"日志
+        if (Config.enableAchievements) {
+            try {
+                com.miaokatze.gtit.achievement.AchievementNetwork.init();
+                GTInterestingThing.LOG.info("[2/3] 成就网络包已初始化");
+            } catch (Throwable t) {
+                GTInterestingThing.LOG.error("[2/3] 成就网络包初始化失败", t);
+            }
+        } else {
+            GTInterestingThing.LOG.info("[2/3] 成就网络包已跳过（enableAchievements=false，未启用）");
         }
         // v1.7.2: 邮件网络包（同步/操作双通道）
         try {
@@ -442,10 +447,15 @@ public class CommonProxy {
 
         // === v1.6.0 骨架：BQ 成就对接桥接器注册 ===
         // TODO: v1.6.5 启用
-        try {
-            com.miaokatze.gtit.achievement.BqAchievementBridge.register();
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[3/3] BqAchievementBridge 注册失败", t);
+        // O2-01: 成就骨架配置开关（默认 false）——关闭时跳过注册
+        if (Config.enableAchievements) {
+            try {
+                com.miaokatze.gtit.achievement.BqAchievementBridge.register();
+            } catch (Throwable t) {
+                GTInterestingThing.LOG.error("[3/3] BqAchievementBridge 注册失败", t);
+            }
+        } else {
+            GTInterestingThing.LOG.info("[3/3] BqAchievementBridge 已跳过（enableAchievements=false，未启用）");
         }
     }
 
@@ -499,11 +509,16 @@ public class CommonProxy {
                 } catch (Throwable t2) {
                     GTInterestingThing.LOG.error("抽奖系统初始化失败", t2);
                 }
-                try {
-                    com.miaokatze.gtit.achievement.AchievementManager.INSTANCE.init(server.getEntityWorld());
-                    GTInterestingThing.LOG.info("成就系统已初始化");
-                } catch (Throwable t2) {
-                    GTInterestingThing.LOG.error("成就系统初始化失败", t2);
+                // O2-01: 成就骨架配置开关（默认 false）——关闭时跳过初始化
+                if (Config.enableAchievements) {
+                    try {
+                        com.miaokatze.gtit.achievement.AchievementManager.INSTANCE.init(server.getEntityWorld());
+                        GTInterestingThing.LOG.info("成就系统已初始化");
+                    } catch (Throwable t2) {
+                        GTInterestingThing.LOG.error("成就系统初始化失败", t2);
+                    }
+                } else {
+                    GTInterestingThing.LOG.info("成就系统已跳过（enableAchievements=false，未启用）");
                 }
                 // v1.7.2: 邮件系统（个人维度，<world>/gtit_mail/）
                 try {

@@ -15,6 +15,11 @@ public class Config {
     // 此配置仅用于在基准值基础上进行微调。
     public static int metaIdOffset = 0;
 
+    // O2-01: 成就系统骨架总开关（v1.6.5 未完成——网络消息未注册、Trigger 钩子零调用）。
+    // 默认 false：关闭成就网络包/BQ 桥接/成就管理器三处初始化，消除启动误导日志与误接线面；
+    // 为 LongPlan M4 决策（补全或移除成就系统）留护栏。
+    public static boolean enableAchievements = false;
+
     /**
      * 同步配置文件
      * 从磁盘读取配置并更新静态变量，如果配置有变动则自动保存
@@ -31,6 +36,12 @@ public class Config {
             -5000,
             5000,
             "应用于 MTE ID 基准值的偏移量 (用于预留 ID 区间)");
+
+        enableAchievements = configuration.getBoolean(
+            "enableAchievements",
+            Configuration.CATEGORY_GENERAL,
+            false,
+            "是否启用成就系统骨架 (v1.6.5 未完成, 默认关闭; 关闭时跳过成就网络包/BQ 桥接/成就管理器初始化)");
 
         if (configuration.hasChanged()) {
             configuration.save();
