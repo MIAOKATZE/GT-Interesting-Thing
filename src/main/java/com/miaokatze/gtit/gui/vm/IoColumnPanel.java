@@ -21,6 +21,7 @@ import com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.client.gui.NekoMeTransferParticleWidget;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.common.machine.v2.MeTransferEntry;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
@@ -46,10 +47,10 @@ public final class IoColumnPanel {
     /** 基础 TE 引用（投币音效世界坐标） */
     private final IGregTechTileEntity baseMetaTileEntity;
     /** 客户端 ME 传输队列缓存（宿主 parseMeTransferQueue 写入，粒子 Widget 消费，共享实例） */
-    private final List<MTENekoVendingMachineV2.MeTransferEntry> clientMeTransferQueue;
+    private final List<MeTransferEntry> clientMeTransferQueue;
 
     public IoColumnPanel(NekoVMGuiV2 gui, MTENekoVendingMachineV2 multiblock, IGregTechTileEntity baseMetaTileEntity,
-        List<MTENekoVendingMachineV2.MeTransferEntry> clientMeTransferQueue) {
+        List<MeTransferEntry> clientMeTransferQueue) {
         this.gui = gui;
         this.multiblock = multiblock;
         this.baseMetaTileEntity = baseMetaTileEntity;

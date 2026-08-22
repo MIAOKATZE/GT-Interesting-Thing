@@ -15,7 +15,7 @@ import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widget.Widget;
 import com.gtnewhorizons.modularui.api.GlStateManager;
-import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2.MeTransferEntry;
+import com.miaokatze.gtit.common.machine.v2.MeTransferEntry;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;

@@ -42,6 +42,7 @@ import com.miaokatze.gtit.client.gui.NekoVolumeControlGui;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.common.machine.v2.MeTransferEntry;
 import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.gui.vm.edit.BlessingEditor;
@@ -226,7 +227,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 取回 ME 传输队列物品请求（C2S：客户端点击取回时发送 true） */
     BooleanSyncValue retrieveMeItemSync;
     /** 客户端缓存的 ME 传输队列（从同步值解析，供粒子 Widget 渲染；与 IoColumnPanel 共享实例） */
-    private final java.util.List<MTENekoVendingMachineV2.MeTransferEntry> clientMeTransferQueue = new java.util.ArrayList<>();
+    private final java.util.List<MeTransferEntry> clientMeTransferQueue = new java.util.ArrayList<>();
 
     // ==================== A01 蓝图 G6 页族（TradePage/IoColumnPanel） ====================
 
@@ -1496,8 +1497,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 if (stack != null && stack.stackSize > 0) {
                     // 同步 stackSize（base64 中已含，但显式设置以防解码差异）
                     stack.stackSize = stackSize;
-                    clientMeTransferQueue
-                        .add(new MTENekoVendingMachineV2.MeTransferEntry(stack, creationTime, slotIndex));
+                    clientMeTransferQueue.add(new MeTransferEntry(stack, creationTime, slotIndex));
                 }
             }
             // v1.6.24 临时日志：确认解析后队列大小

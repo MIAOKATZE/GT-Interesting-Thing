@@ -176,13 +176,45 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     private boolean meOutputMode = false;
 
     /** ME 传输队列：meOutputMode=true 时产出进入此队列，3 秒后注入 ME 网络 */
-    private final java.util.List<MeTransferEntry> meTransferQueue = new java.util.ArrayList<>();
+    /**
+     * ME 传输队列 collaborator（A01 蓝图 M1 / O2-07 一期抽取，含 O2-19 序列化脏标记缓存）
+     */
+    private final NekoMeTransferQueue meTransferQueue = new NekoMeTransferQueue(new NekoMeTransferQueue.UplinkOps() {
+
+        @Override
+        public boolean canAccept(net.minecraft.item.ItemStack stack) {
+            return canUplinkAcceptItems(stack);
+        }
+
+        @Override
+        public appeng.api.storage.data.IAEItemStack inject(net.minecraft.item.ItemStack stack) {
+            return injectItemToUplink(stack);
+        }
+
+        @Override
+        public boolean isLost() {
+            return uplinkHatch == null;
+        }
+    }, new NekoMeTransferQueue.OutputSlots() {
+
+        @Override
+        public net.minecraft.item.ItemStack get(int slot) {
+            return outputItems.getStackInSlot(slot);
+        }
+
+        @Override
+        public void set(int slot, net.minecraft.item.ItemStack stack) {
+            outputItems.setStackInSlot(slot, stack);
+        }
+    }, () -> {
+        if (getBaseMetaTileEntity() != null) {
+            getBaseMetaTileEntity().markDirty();
+        }
+    }, () -> meOutputMode);
 
     /** ME 传输队列最大容量（独立限制，防止无限堆积） */
-    private static final int MAX_ME_QUEUE_SIZE = 18;
 
     /** ME 传输延迟（毫秒），3 秒 = 3000ms */
-    private static final long ME_TRANSFER_DELAY_MS = 3000L;
 
     /** UplinkHatch 缓存刷新间隔（tick），与 GUI 的 getRefreshInterval() 一致 */
     private static final long REFRESH_CACHE_INTERVAL = 20;
@@ -515,30 +547,16 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
-     * 取回 ME 传输队列中最早入队的物品到本地出货槽
-     * <p>
-     * 供 GUI 取回按钮调用（阶段 4）。将队列首部的物品移到 outputBuffer，
-     * 由 {@link #dispenseItems()} 逐 tick 投放到出货槽。
-     * <p>
-     * FIFO 语义：取回的是最早入队的物品（玩家可能最想立即拿到的）。
+     * 取回 ME 传输队列首部物品（A01 蓝图 M1 委托 NekoMeTransferQueue.retrieveEarliest）
      *
      * @return true 表示取回成功（队列非空且移除成功）
      */
     public boolean retrieveEarliestMeTransferItem() {
-        if (meTransferQueue.isEmpty()) return false;
-        // v1.6.23: 物品已在出货槽中，仅从队列移除（阻止 3 秒后注入 ME）
-        // 不再重新加入 outputBuffer（避免触发二次掉落动画到其他空槽）
-        meTransferQueue.remove(0);
-        if (getBaseMetaTileEntity() != null) {
-            getBaseMetaTileEntity().markDirty();
-        }
-        return true;
+        return meTransferQueue.retrieveEarliest();
     }
 
     /**
-     * 获取 ME 传输队列大小
-     * <p>
-     * 供 GUI 显示队列中待传输物品数量。
+     * 获取 ME 传输队列大小（A01 蓝图 M1 委托 NekoMeTransferQueue.size）
      *
      * @return 队列大小
      */
@@ -547,38 +565,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
-     * 序列化 ME 传输队列为字符串（供 GUI 同步值传输到客户端）
-     * <p>
-     * v1.6.23 格式：{@code creationTimeMs:stackSize:slotIndex:itemNBTBase64;...}
-     * <p>
-     * 旧格式（v1.6.22 及之前）：{@code creationTimeMs:stackSize:itemNBTBase64;...}
-     * 客户端 parseMeTransferQueue 兼容两种格式（根据 split 段数判断）。
-     * <p>
-     * 客户端解析后用于渲染粒子动画（显示剩余传输时间和物品图标）。
-     * 空队列返回空字符串。NBT 编解码复用 {@link com.miaokatze.gtit.util.NbtBase64Util}。
+     * 序列化 ME 传输队列为字符串（A01 蓝图 M1 委托 NekoMeTransferQueue.serialize，
+     * O2-19 脏标记缓存随 collaborator 内聚：GUI 打开期同步轮询命中缓存直接返回）
      *
      * @return 序列化字符串，空队列返回空字符串
      */
     public String serializeMeTransferQueue() {
-        if (meTransferQueue.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        for (MeTransferEntry entry : meTransferQueue) {
-            if (!first) sb.append(";");
-            first = false;
-            // 序列化 ItemStack 到 NBT，再转 base64
-            net.minecraft.nbt.NBTTagCompound tag = new net.minecraft.nbt.NBTTagCompound();
-            entry.stack.writeToNBT(tag);
-            String base64 = com.miaokatze.gtit.util.NbtBase64Util.nbtToBase64(tag);
-            sb.append(entry.creationTimeMs)
-                .append(":")
-                .append(entry.stack.stackSize)
-                .append(":")
-                .append(entry.slotIndex) // v1.6.23 新增
-                .append(":")
-                .append(base64 == null ? "" : base64);
-        }
-        return sb.toString();
+        return meTransferQueue.serialize();
     }
 
     /**
@@ -870,9 +863,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // B2-09：入队点统一守门 MAX_ME_QUEUE_SIZE——交易路径由 hasSpaceFor/getAvailableSlotCount
         // 预检，抽奖出货路径此前无检查（10 连可入队 10+ 条）。超限条目物品已在出货槽
         // （上方先落槽），等价"按本地槽保留"，口径与交易路径一致
-        if (meOutputMode && meTransferQueue.size() < MAX_ME_QUEUE_SIZE) {
-            meTransferQueue.add(new MeTransferEntry(output.copy(), System.currentTimeMillis(), slotIndex));
-        }
+        // A01 蓝图 M1：交汇点入队委托 NekoMeTransferQueue.enqueueIfMeMode（模式/容量守门与 copy 语义原样）
+        meTransferQueue.enqueueIfMeMode(output, slotIndex);
     }
 
     /**
@@ -996,17 +988,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         }
         // 保存 ME 输出模式状态
         aNBT.setBoolean("meOutputMode", meOutputMode);
-        // 保存 ME 传输队列（阶段 4，v1.6.23 增加 slotIndex）
+        // 保存 ME 传输队列（阶段 4，v1.6.23 增加 slotIndex；A01 蓝图 M1 片段委托，键名冻结）
         if (!meTransferQueue.isEmpty()) {
-            net.minecraft.nbt.NBTTagList meQueueList = new net.minecraft.nbt.NBTTagList();
-            for (MeTransferEntry entry : meTransferQueue) {
-                net.minecraft.nbt.NBTTagCompound entryTag = new net.minecraft.nbt.NBTTagCompound();
-                entryTag.setLong("creationTime", entry.creationTimeMs);
-                entryTag.setInteger("slotIndex", entry.slotIndex); // v1.6.23 新增
-                entry.stack.writeToNBT(entryTag);
-                meQueueList.appendTag(entryTag);
-            }
-            aNBT.setTag("meTransferQueue", meQueueList);
+            aNBT.setTag("meTransferQueue", meTransferQueue.writeToNBT());
         }
     }
 
@@ -1036,19 +1020,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (aNBT.hasKey("meOutputMode")) {
             meOutputMode = aNBT.getBoolean("meOutputMode");
         }
-        // 加载 ME 传输队列（阶段 4，v1.6.23 增加 slotIndex 兼容）
+        // 加载 ME 传输队列（阶段 4，v1.6.23 增加 slotIndex 兼容；A01 蓝图 M1 片段委托，旧档默认 -1 保留）
         if (aNBT.hasKey("meTransferQueue")) {
-            net.minecraft.nbt.NBTTagList meQueueList = aNBT.getTagList("meTransferQueue", 10);
-            for (int i = 0; i < meQueueList.tagCount(); i++) {
-                net.minecraft.nbt.NBTTagCompound entryTag = meQueueList.getCompoundTagAt(i);
-                ItemStack stack = ItemStack.loadItemStackFromNBT(entryTag);
-                long creationTime = entryTag.getLong("creationTime");
-                // v1.6.23: 读取 slotIndex，旧存档无此 key 时默认 -1
-                int slotIndex = entryTag.hasKey("slotIndex") ? entryTag.getInteger("slotIndex") : -1;
-                if (stack != null && stack.stackSize > 0) {
-                    meTransferQueue.add(new MeTransferEntry(stack, creationTime, slotIndex));
-                }
-            }
+            meTransferQueue.readFromNBT(aNBT.getTagList("meTransferQueue", 10));
         }
     }
 
@@ -1158,79 +1132,6 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             ticket.remove();
         }
         overlayTickets.clear();
-    }
-
-    // === ME 传输队列处理（阶段 4） ===
-
-    /**
-     * 处理 ME 传输队列
-     * <p>
-     * 遍历队列，将超过 {@link #ME_TRANSFER_DELAY_MS}（3 秒）的条目通过
-     * {@code appeng.util.Platform.poweredInsert} 直接注入 ME 网络。
-     * <p>
-     * 若注入未完全成功（返回 remainder），将槽位更新为剩余物品并重置延迟，稍后重试。
-     * <p>
-     * 如果 uplink 已断开（uplinkHatch == null），将队列中所有物品回退到 outputBuffer，
-     * 由本地出货槽路径投放，防止物品丢失。
-     * <p>
-     * 应在 onPostTick 服务端块内、{@link #dispenseItems()} 之后调用。
-     */
-    private void processMeTransferQueue() {
-        if (meTransferQueue.isEmpty()) return;
-        long now = System.currentTimeMillis();
-
-        // v1.6.23: uplink 丢失时，物品已在出货槽中，仅清空队列（玩家可自行取走）
-        if (uplinkHatch == null) {
-            meTransferQueue.clear();
-            if (getBaseMetaTileEntity() != null) {
-                getBaseMetaTileEntity().markDirty();
-            }
-            return;
-        }
-
-        // 处理已到期的条目（FIFO：队列头部先入队，先到期）
-        java.util.Iterator<MeTransferEntry> it = meTransferQueue.iterator();
-        while (it.hasNext()) {
-            MeTransferEntry entry = it.next();
-            if (now - entry.creationTimeMs >= ME_TRANSFER_DELAY_MS) {
-                if (entry.slotIndex >= 0) {
-                    // v1.6.23: 检查槽位中是否还有匹配的物品（玩家可能已取走）
-                    ItemStack slotStack = outputItems.getStackInSlot(entry.slotIndex);
-                    if (slotStack != null && slotStack.isItemEqual(entry.stack)
-                        && ItemStack.areItemStackTagsEqual(slotStack, entry.stack)) {
-                        // 物品仍在槽中，先检查 ME 网络是否能接收
-                        if (canUplinkAcceptItems(slotStack)) {
-                            // v1.7.33: 直接注入槽内实际物品，根据 remainder 决定是否清空或保留剩余
-                            appeng.api.storage.data.IAEItemStack remainder = injectItemToUplink(slotStack);
-                            if (remainder == null || remainder.getStackSize() <= 0) {
-                                // 全部注入成功，清空对应出货槽
-                                outputItems.setStackInSlot(entry.slotIndex, null);
-                            } else {
-                                // 注入未完全成功，保留剩余并重试
-                                outputItems.setStackInSlot(entry.slotIndex, remainder.getItemStack());
-                                entry.creationTimeMs = now;
-                                break;
-                            }
-                        } else {
-                            // ME 网络当前不能接收（无能量/无空间），保留在出货槽并延迟重试
-                            entry.creationTimeMs = now;
-                            break;
-                        }
-                    }
-                    // 槽位为空或物品不匹配：玩家已取走，跳过注入
-                } else {
-                    // slotIndex == -1（旧存档兼容或无空槽回退）：直接注入，无法保留剩余
-                    injectItemToUplink(entry.stack);
-                }
-                it.remove();
-                if (getBaseMetaTileEntity() != null) {
-                    getBaseMetaTileEntity().markDirty();
-                }
-            } else {
-                // 队列是 FIFO，遇到未到期的就停止（后续条目入队更晚，必然也未到期）
-                break;
-            }
-        }
     }
 
     /**
@@ -1353,8 +1254,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             // 逐 tick 投放缓冲队列中的物品
             if (mMachine) {
                 dispenseItems();
-                // 阶段 4：处理 ME 传输队列，将到期物品注入 ME 网络
-                processMeTransferQueue();
+                // 阶段 4：处理 ME 传输队列，将到期物品注入 ME 网络（A01 蓝图 M1 委托 collaborator.tick）
+                meTransferQueue.tick();
                 // 复刻 V1/VM 父类（第 595-603 行）：周期性通知 UplinkHatch 刷新 ME 网络缓存，
                 // 使连接的 ME 网络中的物品/货币数据保持同步。
                 if (uplinkHatch != null && aTick % REFRESH_CACHE_INTERVAL == 0) {
@@ -1644,55 +1545,6 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     }
 
     /**
-     * ME 传输队列条目：记录待发送到 ME 网络的物品及其入队时间
-     * <p>
-     * 当 meOutputMode=true 时，产出物品先进入 meTransferQueue，
-     * 经过 {@link #ME_TRANSFER_DELAY_MS} (3000ms) 延迟后才通过
-     * {@code uplinkHatch.injectItems} 注入 ME 网络。
-     * 期间玩家可通过 GUI 点击取回（移回 outputBuffer）。
-     */
-    public static class MeTransferEntry {
-
-        /** 待传输的物品栈（已 copy，防止外部修改） */
-        public final ItemStack stack;
-
-        /** 入队时间戳（System.currentTimeMillis()），用于 3 秒延迟计算；v1.7.26 起允许延迟重试时更新 */
-        public long creationTimeMs;
-
-        /**
-         * 物品所在出货槽索引（v1.6.23 新增）
-         * <p>
-         * -1 表示旧存档兼容（物品未占用槽位）或无空槽时回退。
-         * >= 0 时，粒子动画围绕该槽位坐标渲染，3 秒后注入 ME 成功则清空该槽位。
-         * </p>
-         */
-        public final int slotIndex;
-
-        /**
-         * 构造 ME 传输队列条目（旧存档兼容，slotIndex 默认 -1）
-         *
-         * @param stack          待传输的物品栈
-         * @param creationTimeMs 入队时间戳（毫秒）
-         */
-        MeTransferEntry(ItemStack stack, long creationTimeMs) {
-            this(stack, creationTimeMs, -1);
-        }
-
-        /**
-         * 构造 ME 传输队列条目（v1.6.23 新增，带 slotIndex）
-         *
-         * @param stack          待传输的物品栈
-         * @param creationTimeMs 入队时间戳（毫秒）
-         * @param slotIndex      物品所在出货槽索引（-1 表示未占用槽位）
-         */
-        public MeTransferEntry(ItemStack stack, long creationTimeMs, int slotIndex) {
-            this.stack = stack;
-            this.creationTimeMs = creationTimeMs;
-            this.slotIndex = slotIndex;
-        }
-    }
-
-    /**
      * 内置输出槽访问器
      * <p>
      * 实现 {@link NekoTradeExecutor.OutputSlotAccessor} 接口，
@@ -1712,8 +1564,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             if (stack == null) return true;
             // v1.6.28: ME 模式和本地模式统一走 outputBuffer 队列，空间检查逻辑一致
             if (meOutputMode) {
-                // ME 模式额外检查传输队列容量（MeTransferEntry 在投放时创建）
-                if (meTransferQueue.size() >= MAX_ME_QUEUE_SIZE) return false;
+                // ME 模式额外检查传输队列容量（MeTransferEntry 在投放时创建；M1 起委托 isFull）
+                if (meTransferQueue.isFull()) return false;
             }
             // 可用空槽 = 当前空槽数 - outputBuffer 队列已占用的虚拟槽位数
             // 队列堆积时，空槽数会逐步被消耗（onPostTick 逐 tick 投放），
@@ -1736,7 +1588,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
          */
         @Override
         public int getAvailableSlotCount() {
-            if (meOutputMode && meTransferQueue.size() >= MAX_ME_QUEUE_SIZE) {
+            if (meTransferQueue.isFull()) {
                 return 0;
             }
             int emptySlots = 0;
