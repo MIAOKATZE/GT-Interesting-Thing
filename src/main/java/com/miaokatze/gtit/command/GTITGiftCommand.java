@@ -3,7 +3,6 @@ package com.miaokatze.gtit.command;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -35,6 +34,7 @@ import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeNetworkManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
+import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -126,13 +126,11 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         if (args.length == 3 && "mail".equals(args[0]) && "send".equals(args[1])) {
-            // /gtit mail send <玩家名>：补全在线玩家名
-            List<String> names = new ArrayList<>();
-            for (EntityPlayerMP player : MinecraftServer.getServer()
-                .getConfigurationManager().playerEntityList) {
-                names.add(player.getCommandSenderName());
-            }
-            return getListOfStringsMatchingLastWord(args, names.toArray(new String[0]));
+            // /gtit mail send <玩家名>：补全在线玩家名（O2-12：PlayerLookup 统一收集）
+            return getListOfStringsMatchingLastWord(
+                args,
+                PlayerLookup.getOnlineNames()
+                    .toArray(new String[0]));
         }
 
         if (args.length == 3 && "signin".equals(args[0])) {
@@ -140,24 +138,20 @@ public class GTITGiftCommand extends CommandBase {
                 return getListOfStringsMatchingLastWord(args, "set", "reset");
             }
             if ("info".equals(args[1])) {
-                // 补全在线玩家名
-                List<String> names = new ArrayList<>();
-                for (EntityPlayerMP player : MinecraftServer.getServer()
-                    .getConfigurationManager().playerEntityList) {
-                    names.add(player.getCommandSenderName());
-                }
-                return getListOfStringsMatchingLastWord(args, names.toArray(new String[0]));
+                // 补全在线玩家名（O2-12）
+                return getListOfStringsMatchingLastWord(
+                    args,
+                    PlayerLookup.getOnlineNames()
+                        .toArray(new String[0]));
             }
         }
 
         if (args.length == 4 && "signin".equals(args[0]) && "admin".equals(args[1])) {
-            // /gtit signin admin set|reset <玩家名>
-            List<String> names = new ArrayList<>();
-            for (EntityPlayerMP player : MinecraftServer.getServer()
-                .getConfigurationManager().playerEntityList) {
-                names.add(player.getCommandSenderName());
-            }
-            return getListOfStringsMatchingLastWord(args, names.toArray(new String[0]));
+            // /gtit signin admin set|reset <玩家名>（O2-12）
+            return getListOfStringsMatchingLastWord(
+                args,
+                PlayerLookup.getOnlineNames()
+                    .toArray(new String[0]));
         }
 
         if (args.length == 3 && "gift".equals(args[0])) {
@@ -166,13 +160,10 @@ public class GTITGiftCommand extends CommandBase {
                 return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
             }
             if ("claimreset".equals(args[1])) {
-                // 补全 "all" + 在线玩家名
+                // 补全 "all" + 在线玩家名（O2-12）
                 List<String> options = new ArrayList<>();
                 options.add("all");
-                for (EntityPlayerMP player : MinecraftServer.getServer()
-                    .getConfigurationManager().playerEntityList) {
-                    options.add(player.getCommandSenderName());
-                }
+                options.addAll(PlayerLookup.getOnlineNames());
                 return getListOfStringsMatchingLastWord(args, options.toArray(new String[0]));
             }
         }
@@ -368,20 +359,15 @@ public class GTITGiftCommand extends CommandBase {
         List<String> onlineClaimed = new ArrayList<>();
         List<String> offlineClaimed = new ArrayList<>();
 
-        // 在线：遍历内存 NBT
-        for (EntityPlayerMP player : MinecraftServer.getServer()
-            .getConfigurationManager().playerEntityList) {
+        // 在线：遍历内存 NBT（O2-12：PlayerLookup 统一遍历）
+        PlayerLookup.forEachOnlinePlayer(player -> {
             if (hasGiftClaimedFlag(player.getEntityData())) {
                 onlineClaimed.add(player.getCommandSenderName());
             }
-        }
+        });
 
         // 离线：扫描 .dat（跳过在线玩家，避免重复）
-        Set<UUID> onlineUuids = new HashSet<>();
-        for (EntityPlayerMP player : MinecraftServer.getServer()
-            .getConfigurationManager().playerEntityList) {
-            onlineUuids.add(player.getUniqueID());
-        }
+        Set<UUID> onlineUuids = PlayerLookup.buildUuidSet();
         collectOfflineClaimedPlayers(onlineUuids, offlineClaimed);
 
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "===== 已领取新手礼包的玩家 ====="));
@@ -541,20 +527,20 @@ public class GTITGiftCommand extends CommandBase {
      * 先处理在线玩家（内存NBT），再处理离线玩家（.dat文件）
      */
     private void handleClaimResetAll(ICommandSender sender) {
-        int onlineReset = 0;
+        // lambda 内可变计数（O2-12：PlayerLookup 统一遍历）
+        int[] onlineReset = { 0 };
 
         // 处理所有在线玩家
-        for (EntityPlayerMP player : MinecraftServer.getServer()
-            .getConfigurationManager().playerEntityList) {
+        PlayerLookup.forEachOnlinePlayer(player -> {
             if (resetOnlinePlayerGiftFlag(player)) {
-                onlineReset++;
+                onlineReset[0]++;
             }
-        }
+        });
 
         // 处理所有离线玩家（扫描 playerdata 目录）
         int offlineReset = resetAllOfflinePlayerGiftFlags();
 
-        int total = onlineReset + offlineReset;
+        int total = onlineReset[0] + offlineReset;
         if (total > 0) {
             sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已重置所有玩家的新手礼包领取状态"));
             sender.addChatMessage(
@@ -634,18 +620,10 @@ public class GTITGiftCommand extends CommandBase {
     }
 
     /**
-     * 检查指定 UUID 的玩家当前是否在线
+     * 检查指定 UUID 的玩家当前是否在线（O2-12：PlayerLookup 统一查询）
      */
     private boolean isPlayerOnline(UUID uuid) {
-        if (uuid == null) return false;
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return false;
-        for (EntityPlayerMP onlinePlayer : server.getConfigurationManager().playerEntityList) {
-            if (uuid.equals(onlinePlayer.getUniqueID())) {
-                return true;
-            }
-        }
-        return false;
+        return uuid != null && PlayerLookup.getOnlinePlayerByUuid(uuid) != null;
     }
 
     /**
@@ -719,12 +697,8 @@ public class GTITGiftCommand extends CommandBase {
             return 0;
         }
 
-        // 收集在线玩家的 UUID，跳过在线玩家的 .dat 文件
-        Set<UUID> onlineUuids = new HashSet<>();
-        for (EntityPlayerMP onlinePlayer : MinecraftServer.getServer()
-            .getConfigurationManager().playerEntityList) {
-            onlineUuids.add(onlinePlayer.getUniqueID());
-        }
+        // 收集在线玩家的 UUID，跳过在线玩家的 .dat 文件（O2-12）
+        Set<UUID> onlineUuids = PlayerLookup.buildUuidSet();
 
         int count = 0;
         File[] datFiles = playerdataDir.listFiles((dir, name) -> name.endsWith(".dat"));

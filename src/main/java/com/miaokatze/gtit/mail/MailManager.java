@@ -14,12 +14,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
 import com.miaokatze.gtit.command.GTITGiftCommand;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.util.PlayerLookup;
 
 /**
  * 邮件管理器单例
@@ -265,17 +265,14 @@ public class MailManager {
         onceRewards.put(rewardId, template);
         saveGlobalData();
 
-        // 立即向在线玩家投递（deliverPendingRewards 内部按 receivedOnceIds 防重）
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server != null) {
-            for (Object obj : server.getConfigurationManager().playerEntityList) {
-                EntityPlayerMP player = (EntityPlayerMP) obj;
-                UUID playerId = player.getUniqueID();
-                if (deliverPendingRewards(playerId)) {
-                    MailNetworkManager.sendSyncToClient(player, getMailData(playerId));
-                }
+        // 立即向在线玩家投递（deliverPendingRewards 内部按 receivedOnceIds 防重；
+        // O2-12：PlayerLookup 统一遍历，服务器未启动时静默跳过）
+        PlayerLookup.forEachOnlinePlayer(player -> {
+            UUID playerId = player.getUniqueID();
+            if (deliverPendingRewards(playerId)) {
+                MailNetworkManager.sendSyncToClient(player, getMailData(playerId));
             }
-        }
+        });
         return true;
     }
 
@@ -525,18 +522,9 @@ public class MailManager {
     }
 
     /**
-     * 按 UUID 查找在线玩家（未找到返回 null）
+     * 按 UUID 查找在线玩家（未找到返回 null；O2-12 起委托 PlayerLookup 统一实现）
      */
     public static EntityPlayerMP getPlayerByUUID(UUID playerId) {
-        if (playerId == null) return null;
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return null;
-        for (Object obj : server.getConfigurationManager().playerEntityList) {
-            EntityPlayerMP player = (EntityPlayerMP) obj;
-            if (playerId.equals(player.getUniqueID())) {
-                return player;
-            }
-        }
-        return null;
+        return PlayerLookup.getOnlinePlayerByUuid(playerId);
     }
 }

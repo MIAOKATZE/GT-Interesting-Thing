@@ -5,13 +5,13 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
 import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.TeamDataProvider;
+import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -83,20 +83,15 @@ public class NekoNotificationScheduler {
      */
     private void checkAllNotifications() {
         try {
-            MinecraftServer server = MinecraftServer.getServer();
-            // 服务端不存在或当前为客户端逻辑则跳过（防御性检查）
-            if (server == null || FMLCommonHandler.instance()
+            // 防御性检查：客户端逻辑跳过（服务器未启动由 PlayerLookup 内部静默跳过）
+            if (FMLCommonHandler.instance()
                 .getSide()
                 .isClient()) {
                 return;
             }
 
-            // 遍历所有在线玩家（EntityPlayerMP 列表）
-            for (Object playerObj : server.getConfigurationManager().playerEntityList) {
-                if (!(playerObj instanceof EntityPlayerMP)) {
-                    continue;
-                }
-                EntityPlayerMP player = (EntityPlayerMP) playerObj;
+            // 遍历所有在线玩家（O2-12：PlayerLookup 统一遍历）
+            PlayerLookup.forEachOnlinePlayer(player -> {
                 UUID playerId = player.getUniqueID();
 
                 // 遍历所有交易组，检查该玩家是否有待播报的冷却完毕通知
@@ -124,7 +119,7 @@ public class NekoNotificationScheduler {
                         NekoHistoryManager.INSTANCE.markDirty(playerId);
                     }
                 }
-            }
+            });
         } catch (Throwable t) {
             // 捕获所有异常（含 NoClassDefFoundError），仅打印日志不崩溃
             GTInterestingThing.LOG.error("[NekoNotify] 冷却完毕通知检查异常", t);

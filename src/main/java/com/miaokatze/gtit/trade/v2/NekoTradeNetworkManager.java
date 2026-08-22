@@ -1,10 +1,10 @@
 package com.miaokatze.gtit.trade.v2;
 
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.MinecraftServer;
 
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
+import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.network.NetworkRegistry;
 import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
@@ -64,12 +64,9 @@ public class NekoTradeNetworkManager {
      */
     public static void sendSyncToAll() {
         if (!initialized || channel == null) return;
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return;
+        // O2-12：PlayerLookup 统一遍历（载荷只构建一次，服务器未启动时静默跳过）
         NekoTradeSyncPacket packet = buildSyncPacket();
-        for (EntityPlayerMP player : server.getConfigurationManager().playerEntityList) {
-            channel.sendTo(packet, player);
-        }
+        PlayerLookup.forEachOnlinePlayer(player -> channel.sendTo(packet, player));
     }
 
     /**

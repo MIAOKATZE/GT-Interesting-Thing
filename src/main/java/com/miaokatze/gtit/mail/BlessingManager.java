@@ -5,12 +5,12 @@ import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
-import net.minecraft.server.MinecraftServer;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.signin.AnniversaryEntry;
 import com.miaokatze.gtit.signin.DailySignInData;
 import com.miaokatze.gtit.signin.DailySignInManager;
+import com.miaokatze.gtit.util.PlayerLookup;
 
 /**
  * 自动祝福调度器（v1.7.6 G5）
@@ -138,16 +138,14 @@ public class BlessingManager {
      * 登录时已投递的祝福由防重键拦截，不会重复投递。
      */
     public void checkAllOnlinePlayers() {
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return;
-        for (Object obj : server.getConfigurationManager().playerEntityList) {
-            EntityPlayerMP player = (EntityPlayerMP) obj;
+        // O2-12：PlayerLookup 统一遍历，单个玩家异常不影响其余玩家
+        PlayerLookup.forEachOnlinePlayer(player -> {
             try {
                 checkAndSend(player);
             } catch (Throwable t) {
                 GTInterestingThing.LOG.error("跨日祝福检测失败: " + player.getCommandSenderName(), t);
             }
-        }
+        });
     }
 
     // ==================== 内部辅助 ====================

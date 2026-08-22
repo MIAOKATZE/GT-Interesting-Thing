@@ -14,12 +14,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
 import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.relauncher.Side;
@@ -298,19 +298,14 @@ public class NekoWalletManager {
         return balances;
     }
 
-    /** 单趟扫描在线玩家表构建 UUID→player 缓存（本批冲刷内复用） */
+    /** 单趟扫描在线玩家表构建 UUID→player 缓存（本批冲刷内复用；O2-12 起委托 PlayerLookup） */
     private static Map<UUID, EntityPlayerMP> buildOnlinePlayerCache() {
         Map<UUID, EntityPlayerMP> cache = new HashMap<>();
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return cache;
-        for (Object obj : server.getConfigurationManager().playerEntityList) {
-            if (obj instanceof EntityPlayerMP) {
-                EntityPlayerMP player = (EntityPlayerMP) obj;
-                if (player.getUniqueID() != null) {
-                    cache.put(player.getUniqueID(), player);
-                }
+        PlayerLookup.forEachOnlinePlayer(player -> {
+            if (player.getUniqueID() != null) {
+                cache.put(player.getUniqueID(), player);
             }
-        }
+        });
         return cache;
     }
 

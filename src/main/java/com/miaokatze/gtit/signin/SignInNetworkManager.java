@@ -1,7 +1,8 @@
 package com.miaokatze.gtit.signin;
 
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.MinecraftServer;
+
+import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.network.NetworkRegistry;
@@ -131,12 +132,11 @@ public class SignInNetworkManager {
      */
     public static void sendSyncToAll() {
         if (!initialized || channel == null) return;
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return;
-        for (EntityPlayerMP player : server.getConfigurationManager().playerEntityList) {
+        // O2-12：PlayerLookup 统一遍历（服务器未启动时静默跳过）
+        PlayerLookup.forEachOnlinePlayer(player -> {
             DailySignInData data = DailySignInManager.INSTANCE.getSignInData(player.getUniqueID());
             sendSyncToClient(player, data);
-        }
+        });
     }
 
     public static boolean isInitialized() {

@@ -15,7 +15,6 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
 import com.miaokatze.gtit.mail.BlessingManager;
@@ -23,6 +22,7 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.util.NbtBase64Util;
+import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -618,18 +618,9 @@ public class DailySignInManager {
         }
     }
 
-    /** 按 UUID 查找在线玩家（未找到返回 null） */
+    /** 按 UUID 查找在线玩家（未找到返回 null；O2-12 起委托 PlayerLookup 统一实现） */
     public static EntityPlayerMP getPlayerByUUID(UUID playerId) {
-        if (playerId == null) return null;
-        MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return null;
-        for (Object obj : server.getConfigurationManager().playerEntityList) {
-            EntityPlayerMP player = (EntityPlayerMP) obj;
-            if (playerId.equals(player.getUniqueID())) {
-                return player;
-            }
-        }
-        return null;
+        return PlayerLookup.getOnlinePlayerByUuid(playerId);
     }
 
     // ==================== 签到结果 ====================
