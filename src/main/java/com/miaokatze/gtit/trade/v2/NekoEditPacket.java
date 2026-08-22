@@ -17,8 +17,9 @@ import io.netty.buffer.ByteBuf;
  * {@code scheduleServerTask} 投递到服务器主线程执行
  * （1.7.10 的包处理器运行在 Netty 线程，不能直接操作文件/配置）。
  * <p>
- * 所有操作均验证玩家确实处于编辑模式（{@link NekoEditModeManager}），
- * 防止非编辑模式玩家伪造请求。
+ * 所有操作均经统一校验入口（{@link NekoEditActionHandler#validateEditRequest}）：
+ * 编辑模式标志（{@link NekoEditModeManager}）+ 发送者实时权限复核（OP 等级 2）+
+ * ACTION 白名单 + payload 业务层限长，防止非编辑模式或已降权玩家伪造/续用请求。
  * <p>
  * 参照 {@code MailActionPacket} 的模式。
  */
@@ -131,12 +132,17 @@ public class NekoEditPacket implements IMessage {
         }
 
         /**
-         * 服务器主线程：验证编辑模式权限并执行编辑操作
+         * 服务器主线程：统一校验入口通过后执行编辑操作
+         * <p>
+         * BUG B2 修复：编辑模式标志不再是唯一闸门——校验收口在
+         * {@link NekoEditActionHandler#validateEditRequest}（编辑模式 + 实时 OP 复核 +
+         * ACTION 白名单 + payload 限长），任一失败即拒绝。
          */
         private void processAction(EntityPlayerMP player, NekoEditPacket message) {
-            // 验证玩家处于编辑模式
-            if (!NekoEditModeManager.INSTANCE.isInEditMode(player.getUniqueID())) {
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "你不在编辑模式中，无法执行编辑操作"));
+            // 统一校验入口（编辑模式 / 实时权限复核 / ACTION 白名单 / payload 限长）
+            String error = NekoEditActionHandler.validateEditRequest(player, message);
+            if (error != null) {
+                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + error));
                 return;
             }
 
