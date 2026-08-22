@@ -16,10 +16,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.world.World;
 
-import com.miaokatze.gtit.command.GTITGiftCommand;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.PlayerLookup;
+import com.miaokatze.gtit.util.PlayerResolver;
 
 /**
  * 邮件管理器单例
@@ -356,7 +356,7 @@ public class MailManager {
      * <p>
      * 流程（任何一步失败都不扣取输入槽物品）：
      * <ol>
-     * <li>校验收件人名非空 → {@link GTITGiftCommand#resolvePlayerUuid} 解析 UUID
+     * <li>校验收件人名非空 → {@link com.miaokatze.gtit.util.PlayerResolver#resolvePlayerUuid} 解析 UUID
      * （在线玩家表 → usercache.json 离线缓存）</li>
      * <li>从触发机器输入槽<b>复制</b>非空物品（≤ {@link #MAX_ATTACHMENTS} 格）作为附件候选
      * （此时不清槽）</li>
@@ -387,7 +387,7 @@ public class MailManager {
         if (recipientName == null || recipientName.isEmpty()) return COMPOSE_NO_RECIPIENT;
 
         // 1. 解析收件人 UUID（失败不扣物品）
-        UUID targetId = GTITGiftCommand.resolvePlayerUuid(recipientName);
+        UUID targetId = PlayerResolver.resolvePlayerUuid(recipientName);
         if (targetId == null) return COMPOSE_RECIPIENT_NOT_FOUND;
 
         // 2. 复制附件候选（不清槽——投递成功前输入槽物品保持不动）

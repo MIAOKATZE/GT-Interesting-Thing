@@ -1,7 +1,6 @@
 package com.miaokatze.gtit.command;
 
 import java.io.File;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -35,6 +34,7 @@ import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeNetworkManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 import com.miaokatze.gtit.util.PlayerLookup;
+import com.miaokatze.gtit.util.PlayerResolver;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -430,7 +430,7 @@ public class GTITGiftCommand extends CommandBase {
                 if (onlineUuids.contains(fileUuid)) continue;
 
                 if (offlineDatHasGiftClaimed(datFile)) {
-                    String name = findNameFromUserCache(fileUuid, userCache);
+                    String name = PlayerResolver.findNameFromUserCache(fileUuid, userCache);
                     outNames.add(name != null ? name : fileUuid.toString());
                 }
             } catch (IllegalArgumentException ignored) {
@@ -652,7 +652,7 @@ public class GTITGiftCommand extends CommandBase {
 
         // 尝试通过 usercache.json 查找 UUID
         File userCache = new File(worldDir.getParentFile(), "usercache.json");
-        UUID targetUuid = findUuidFromUserCache(playerName, userCache);
+        UUID targetUuid = PlayerResolver.findUuidFromUserCache(playerName, userCache);
         if (targetUuid != null) {
             File datFile = new File(playerdataDir, targetUuid.toString() + ".dat");
             if (datFile.exists()) {
@@ -669,7 +669,7 @@ public class GTITGiftCommand extends CommandBase {
                 String uuidStr = datFile.getName()
                     .replace(".dat", "");
                 UUID fileUuid = UUID.fromString(uuidStr);
-                String cachedName = findNameFromUserCache(fileUuid, userCache);
+                String cachedName = PlayerResolver.findNameFromUserCache(fileUuid, userCache);
                 if (playerName.equalsIgnoreCase(cachedName)) {
                     return resetOfflinePlayerGiftFlag(datFile);
                 }
@@ -719,135 +719,6 @@ public class GTITGiftCommand extends CommandBase {
             }
         }
         return count;
-    }
-
-    /**
-     * 从 usercache.json 中查找玩家名对应的 UUID
-     * usercache.json 格式: [{"name":"xxx","uuid":"xxx","expiresOn":"xxx"}, ...]
-     */
-    private static UUID findUuidFromUserCache(String playerName, File userCacheFile) {
-        if (!userCacheFile.exists()) return null;
-        try {
-            String content = new String(Files.readAllBytes(userCacheFile.toPath()), "UTF-8");
-            return parseUuidFromUserCacheJson(content, playerName);
-        } catch (Exception e) {
-            GTInterestingThing.LOG.warn("读取 usercache.json 失败", e);
-            return null;
-        }
-    }
-
-    /**
-     * 从 usercache.json 中查找 UUID 对应的玩家名
-     */
-    private static String findNameFromUserCache(UUID uuid, File userCacheFile) {
-        if (!userCacheFile.exists()) return null;
-        try {
-            String content = new String(Files.readAllBytes(userCacheFile.toPath()), "UTF-8");
-            return parseNameFromUserCacheJson(content, uuid.toString());
-        } catch (Exception e) {
-            GTInterestingThing.LOG.warn("读取 usercache.json 失败", e);
-            return null;
-        }
-    }
-
-    /**
-     * 从 usercache.json 内容中解析玩家名对应的 UUID
-     * 简易 JSON 解析，不依赖 Gson
-     */
-    private static UUID parseUuidFromUserCacheJson(String json, String playerName) {
-        String lowerName = playerName.toLowerCase();
-        // 查找 "name":"<playerName>" 条目
-        String namePattern = "\"name\"";
-        int idx = 0;
-        while ((idx = json.indexOf(namePattern, idx)) >= 0) {
-            // 找到 name 键，提取其值
-            int colonPos = json.indexOf(':', idx + namePattern.length());
-            if (colonPos < 0) break;
-            int valueStart = json.indexOf('"', colonPos + 1);
-            if (valueStart < 0) break;
-            int valueEnd = json.indexOf('"', valueStart + 1);
-            if (valueEnd < 0) break;
-            String name = json.substring(valueStart + 1, valueEnd);
-
-            if (name.equalsIgnoreCase(lowerName)) {
-                // 找到匹配的玩家名，在同一对象中查找 uuid
-                String uuidStr = extractUuidFromObject(json, idx);
-                if (uuidStr != null) {
-                    try {
-                        return UUID.fromString(uuidStr);
-                    } catch (IllegalArgumentException ignored) {}
-                }
-            }
-            idx = valueEnd + 1;
-        }
-        return null;
-    }
-
-    /**
-     * 从 usercache.json 内容中解析 UUID 对应的玩家名
-     */
-    private static String parseNameFromUserCacheJson(String json, String uuidStr) {
-        // 查找 "uuid":"<uuidStr>" 条目
-        String uuidPattern = "\"uuid\"";
-        int idx = 0;
-        while ((idx = json.indexOf(uuidPattern, idx)) >= 0) {
-            int colonPos = json.indexOf(':', idx + uuidPattern.length());
-            if (colonPos < 0) break;
-            int valueStart = json.indexOf('"', colonPos + 1);
-            if (valueStart < 0) break;
-            int valueEnd = json.indexOf('"', valueStart + 1);
-            if (valueEnd < 0) break;
-            String foundUuid = json.substring(valueStart + 1, valueEnd);
-
-            if (foundUuid.equalsIgnoreCase(uuidStr)) {
-                // 在同一对象中查找 name
-                String name = extractNameFromObject(json, idx);
-                if (name != null) return name;
-            }
-            idx = valueEnd + 1;
-        }
-        return null;
-    }
-
-    /**
-     * 从 JSON 对象中提取 uuid 值（向前和向后搜索同一 {} 块内的键）
-     */
-    private static String extractUuidFromObject(String json, int startIdx) {
-        // 找到包含 startIdx 的 {} 块
-        int objStart = json.lastIndexOf('{', startIdx);
-        int objEnd = json.indexOf('}', startIdx);
-        if (objStart < 0 || objEnd < 0) return null;
-
-        String obj = json.substring(objStart, objEnd + 1);
-        return extractJsonValue(obj, "uuid");
-    }
-
-    /**
-     * 从 JSON 对象中提取 name 值
-     */
-    private static String extractNameFromObject(String json, int startIdx) {
-        int objStart = json.lastIndexOf('{', startIdx);
-        int objEnd = json.indexOf('}', startIdx);
-        if (objStart < 0 || objEnd < 0) return null;
-
-        String obj = json.substring(objStart, objEnd + 1);
-        return extractJsonValue(obj, "name");
-    }
-
-    /**
-     * 从 JSON 字符串中提取指定键的值
-     */
-    private static String extractJsonValue(String json, String key) {
-        String pattern = "\"" + key + "\"";
-        int idx = json.indexOf(pattern);
-        if (idx < 0) return null;
-        int colonPos = json.indexOf(':', idx + pattern.length());
-        if (colonPos < 0) return null;
-        int valueStart = json.indexOf('"', colonPos + 1);
-        if (valueStart < 0) return null;
-        int valueEnd = json.indexOf('"', valueStart + 1);
-        if (valueEnd < 0) return null;
-        return json.substring(valueStart + 1, valueEnd);
     }
 
     // ==================== NekoVM 子命令 ====================
@@ -1253,7 +1124,7 @@ public class GTITGiftCommand extends CommandBase {
         String content = joinMailContent(args, 4);
 
         // 解析目标玩家 UUID（在线优先，离线走 usercache.json）
-        UUID targetId = resolvePlayerUuid(targetName);
+        UUID targetId = PlayerResolver.resolvePlayerUuid(targetName);
         if (targetId == null) {
             sender
                 .addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "找不到玩家: " + targetName + "（从未登录过本服务器）"));
@@ -1376,27 +1247,6 @@ public class GTITGiftCommand extends CommandBase {
             attachments.add(held.copy());
         }
         return attachments;
-    }
-
-    /**
-     * 按玩家名解析 UUID（在线玩家直接取；离线玩家查 usercache.json，查不到返回 null）
-     * <p>
-     * v1.7.6 G2② 改为 public static：邮件玩家互寄（{@code MailManager.sendPlayerMail}）
-     * 复用同一份名解析逻辑，避免两处 JSON 解析实现漂移。
-     */
-    public static UUID resolvePlayerUuid(String playerName) {
-        EntityPlayerMP online = MinecraftServer.getServer()
-            .getConfigurationManager()
-            .func_152612_a(playerName);
-        if (online != null) {
-            return online.getUniqueID();
-        }
-        File worldDir = MinecraftServer.getServer()
-            .getEntityWorld()
-            .getSaveHandler()
-            .getWorldDirectory();
-        File userCache = new File(worldDir.getParentFile(), "usercache.json");
-        return findUuidFromUserCache(playerName, userCache);
     }
 
     private void sendMailHelp(ICommandSender sender) {
