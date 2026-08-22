@@ -1,66 +1,43 @@
 package com.miaokatze.gtit.gui.vm;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
-import net.minecraft.world.World;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.api.IPanelHandler;
-import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.api.widget.Interactable;
-import com.cleanroommc.modularui.drawable.DynamicDrawable;
-import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
-import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
-import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
-import com.cleanroommc.modularui.widgets.layout.Grid;
-import com.cleanroommc.modularui.widgets.slot.ItemSlot;
-import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
 import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDisplayType;
-import com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
-import com.miaokatze.gtit.client.gui.NekoMainTabButton;
-import com.miaokatze.gtit.client.gui.NekoMeTransferParticleWidget;
-import com.miaokatze.gtit.client.gui.NekoMusicTrack;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
 import com.miaokatze.gtit.client.gui.NekoPagedWidget;
 import com.miaokatze.gtit.client.gui.NekoSearchBar;
 import com.miaokatze.gtit.client.gui.NekoSortMode;
-import com.miaokatze.gtit.client.gui.NekoSubTabButton;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
 import com.miaokatze.gtit.client.gui.NekoTradeMainPanel;
-import com.miaokatze.gtit.client.gui.NekoTradeRow;
 import com.miaokatze.gtit.client.gui.NekoVolumeControlGui;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
@@ -79,17 +56,12 @@ import com.miaokatze.gtit.gui.vm.edit.TradeEditor;
 import com.miaokatze.gtit.lottery.LotteryClientData;
 import com.miaokatze.gtit.lottery.LotteryEntry;
 import com.miaokatze.gtit.lottery.LotteryGui;
-import com.miaokatze.gtit.mail.MailClientData;
 import com.miaokatze.gtit.mail.MailGui;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
-import com.miaokatze.gtit.trade.NekoPageEntry;
-import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
-import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
-import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui;
@@ -133,49 +105,28 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     // ==================== 常量 ====================
 
     /** 面板宽度 */
-    private static final int PANEL_WIDTH = 178;
+    static final int PANEL_WIDTH = 178;
     /** 面板高度（与 V1 的 size(178, 320) 保持一致） */
-    private static final int PANEL_HEIGHT = 320;
+    static final int PANEL_HEIGHT = 320;
     /** 每种显示模式预分配的 Widget 数量（与 VM 的 MAX_TRADES 一致） */
-    private static final int MAX_TRADES = 300;
+    static final int MAX_TRADES = 300;
     /** TILE 模式每行的 Widget 数量 */
-    private static final int TILE_ITEMS_PER_ROW = 3;
+    static final int TILE_ITEMS_PER_ROW = 3;
     /** TILE 模式 Widget 宽度 */
-    private static final int TILE_ITEM_WIDTH = NekoTradeItemDisplayWidget.TILE_ITEM_WIDTH;
+    static final int TILE_ITEM_WIDTH = NekoTradeItemDisplayWidget.TILE_ITEM_WIDTH;
     /** TILE 模式 Widget 高度 */
-    private static final int TILE_ITEM_HEIGHT = NekoTradeItemDisplayWidget.TILE_ITEM_HEIGHT;
+    static final int TILE_ITEM_HEIGHT = NekoTradeItemDisplayWidget.TILE_ITEM_HEIGHT;
     /** LIST 模式 Widget 宽度 */
-    private static final int LIST_ITEM_WIDTH = NekoTradeItemDisplayWidget.LIST_ITEM_WIDTH;
+    static final int LIST_ITEM_WIDTH = NekoTradeItemDisplayWidget.LIST_ITEM_WIDTH;
     /** LIST 模式 Widget 高度 */
-    private static final int LIST_ITEM_HEIGHT = NekoTradeItemDisplayWidget.LIST_ITEM_HEIGHT;
+    static final int LIST_ITEM_HEIGHT = NekoTradeItemDisplayWidget.LIST_ITEM_HEIGHT;
     /** 交易行宽度 */
-    private static final int TRADE_ROW_WIDTH = 154;
+    static final int TRADE_ROW_WIDTH = 154;
     /** 交易列表最小高度 */
     private static final int TRADE_LIST_MIN_HEIGHT = 50;
 
-    // ==================== v1.7.0 主标签常量 ====================
-
-    /** 主标签-贸易（默认） */
-    public static final int MAIN_TAB_TRADE = 0;
-    /** 主标签-签到 */
-    public static final int MAIN_TAB_SIGNIN = 1;
-    /** 主标签-抽奖 */
-    public static final int MAIN_TAB_LOTTERY = 2;
-    /** 主标签-邮件 */
-    public static final int MAIN_TAB_MAIL = 3;
-    /** 主标签总数 */
-    public static final int MAIN_TAB_COUNT = 4;
-
     // ==================== 同步值字段 ====================
 
-    /** 当前标签页索引（C2S：客户端切换标签时发送到服务端） */
-    private IntSyncValue currentTabSync;
-    /** 搜索文本（C2S：客户端输入时发送到服务端） */
-    private StringSyncValue searchTextSync;
-    /** 排序模式（C2S：0=SMART, 1=ALPHABET） */
-    private IntSyncValue sortModeSync;
-    /** 显示模式（C2S：0=TILE, 1=LIST） */
-    private IntSyncValue displayTypeSync;
     /** 交易请求（C2S：Shift+Click 时发送 "groupId:tradeIndex"） */
     private StringSyncValue tradeRequestSync;
     /** 交易结果消息（S2C：服务端处理完交易后发送结果文本） */
@@ -183,17 +134,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 收藏切换请求（C2S：Ctrl+Click 时发送 "groupId:tradeIndex"） */
     private StringSyncValue favouriteToggleSync;
     /** 货币显示开关（C2S） */
-    private BooleanSyncValue showCoinsSync;
+    BooleanSyncValue showCoinsSync;
     /** v1.7.0 主标签索引（C2S：客户端切换主标签时发送到服务端） */
     private IntSyncValue mainTabSync;
     /** 是否显示猫猫币余额行 */
-    private boolean showCoins = true;
+    boolean showCoins = true;
     /** 各货币余额同步值映射 */
-    private final Map<String, IntSyncValue> coinAmountSyncs = new HashMap<>();
+    final Map<String, IntSyncValue> coinAmountSyncs = new HashMap<>();
     /** 客户端缓存的 ME 网络货币余额（currencyId → amount，阶段 6） */
-    private final Map<String, Integer> meCoinAmounts = new HashMap<>();
+    final Map<String, Integer> meCoinAmounts = new HashMap<>();
     /** ME 货币余额同步值映射（供 tooltip 查询和刷新，阶段 6） */
-    private final Map<String, IntSyncValue> meCoinAmountSyncs = new HashMap<>();
+    final Map<String, IntSyncValue> meCoinAmountSyncs = new HashMap<>();
 
     // ==================== A01 蓝图 G5 域控制器（纯服务端域，不涉 Widget 树） ====================
 
@@ -206,7 +157,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /**
      * 货币/物品操作控制器（doNeko 动作族 + 输入槽强刷/世界掉落/服务端音效 + eject/import/fill C2S 通道注册）
      */
-    private final CoinOpsController coinOps = new CoinOpsController(
+    final CoinOpsController coinOps = new CoinOpsController(
         multiblock,
         baseMetaTileEntity,
         this::isClient,
@@ -223,32 +174,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** BGM 开关联动（接管 isV2GuiOpen，NekoMusicEventHandler 消费点随迁） */
     private final GuiMusicController musicController = new GuiMusicController();
 
-    // ==================== UI 状态镜像（客户端+服务端共享） ====================
-
-    /** 当前标签页索引（默认 0=FAVOURITES 分类） */
-    private int currentTabId = 0;
-    /** 搜索文本 */
-    private String searchText = "";
-    /** 排序模式：0=SMART, 1=ALPHABET */
-    private int sortMode = 0;
-    /** 显示模式：0=TILE, 1=LIST */
-    private int displayType = 0;
-    /** v1.7.0 当前主标签索引（默认 0=贸易） */
-    private int mainTabId = MAIN_TAB_TRADE;
-
     /** 交易结果消息（服务端设置，通过 tradeResultSync 同步到客户端） */
-    private String tradeResultMessage = "";
+    String tradeResultMessage = "";
 
     // ==================== 预分配 Widget ====================
 
     /** TILE 模式预分配 Widget：分类 → Widget 列表（每分类 300 个） */
-    private final Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> displayedTradesTiles = new HashMap<>();
+    final Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> displayedTradesTiles = new HashMap<>();
     /** LIST 模式预分配 Widget：分类 → Widget 列表（每分类 300 个） */
-    private final Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> displayedTradesList = new HashMap<>();
-    /** 交易分类列表（决定标签页顺序：FAVOURITES, ALL, ...其他） */
-    private final List<NekoTradeCategory> tradeCategories = new ArrayList<>();
+    final Map<NekoTradeCategory, List<NekoTradeItemDisplayWidget>> displayedTradesList = new HashMap<>();
     /** 高亮标签页集合（搜索匹配时高亮对应标签） */
-    private final Set<NekoTradeCategory> highlightedTabs = new HashSet<>();
 
     // ==================== 其他字段 ====================
 
@@ -272,38 +207,37 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private PosGuiData guiData;
     /** 同步管理器引用（供 isClient() 判断和 PanelCallback 使用） */
     private PanelSyncManager syncManagerRef;
-    /** 分页控制器（客户端，管理标签页切换） */
-    private PagedWidget.Controller tabController;
-    /** v1.7.0 主标签分页控制器（客户端，管理贸易/签到/抽奖/邮件切换） */
-    private PagedWidget.Controller mainTabController;
-    /** v1.7.6 G1 签到「活跃」sub-page 分页控制器（客户端；G1 仅创建供标签按钮绑定，G2③ 建对应 PagedWidget 页面后接管切换） */
-    private PagedWidget.Controller signInPageController;
-    /** v1.7.6 G1 抽奖池 sub-page 分页控制器（客户端；G1 仅创建供标签按钮绑定，G2① 建对应 PagedWidget 页面后接管切换） */
-    private PagedWidget.Controller lotteryPageController;
-    /** v1.7.6 G1 邮件 sub-page 分页控制器（客户端；G1 仅创建供标签按钮绑定，G2② 建对应 PagedWidget 页面后接管切换） */
-    private PagedWidget.Controller mailPageController;
-    /** 搜索栏组件（客户端） */
-    private NekoSearchBar searchBar;
     /** 音量/BGM 按钮（客户端，作为音量面板的 parent；v1.6.24 提升为类字段以供 build() 在 client 块外注册 syncedPanel） */
-    private ButtonWidget<?> volumeButton;
+    ButtonWidget<?> volumeButton;
     /** 音量面板处理器（客户端，打开/关闭音量控制面板） */
-    private IPanelHandler volumePanel;
+    IPanelHandler volumePanel;
     /** 主面板引用（用于回调和方法调用） */
     private NekoTradeMainPanel mainPanel;
     /** ME 输出模式同步值（C2S+S2C：客户端切换发送到服务端，服务端状态同步到客户端） */
-    private BooleanSyncValue meOutputModeSync;
+    BooleanSyncValue meOutputModeSync;
     /** Uplink 连接状态同步值（S2C：控制 ME 模式按钮可见性） */
-    private BooleanSyncValue hasUplinkSync;
+    BooleanSyncValue hasUplinkSync;
     /** ME 模式切换确认弹框（客户端） */
-    private NekoConfirmationDialog meModeConfirmDialog;
+    NekoConfirmationDialog meModeConfirmDialog;
     /** ME 模式切换确认面板 handler（客户端） */
-    private IPanelHandler meModeConfirmPanel;
+    IPanelHandler meModeConfirmPanel;
     /** ME 传输队列同步值（S2C：服务端序列化队列发到客户端，用于粒子动画渲染） */
     private StringSyncValue meTransferQueueSync;
     /** 取回 ME 传输队列物品请求（C2S：客户端点击取回时发送 true） */
-    private BooleanSyncValue retrieveMeItemSync;
-    /** 客户端缓存的 ME 传输队列（从同步值解析，供粒子 Widget 渲染） */
+    BooleanSyncValue retrieveMeItemSync;
+    /** 客户端缓存的 ME 传输队列（从同步值解析，供粒子 Widget 渲染；与 IoColumnPanel 共享实例） */
     private final java.util.List<MTENekoVendingMachineV2.MeTransferEntry> clientMeTransferQueue = new java.util.ArrayList<>();
+
+    // ==================== A01 蓝图 G6 页族（TradePage/IoColumnPanel） ====================
+
+    /** 贸易主标签页（页面状态/标签列四件套/贸易内容列/五控制器接线，G6 分域下沉） */
+    private final TradePage tradePage = new TradePage(this);
+    /** 右侧 IO 列面板（双端构建，挂载位点与顺序不变；输入/掉落槽 auto_sync 不迁移） */
+    private final IoColumnPanel ioColumnPanel = new IoColumnPanel(
+        this,
+        multiblock,
+        baseMetaTileEntity,
+        clientMeTransferQueue);
 
     // ==================== 编辑模式（v1.7.0 目标 4） ====================
 
@@ -316,13 +250,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 交易条目编辑器（A01 蓝图 G2 抽取至 edit 子包：32 槽缓冲/参数字段/编辑目标同步值）
      * 关闭请求走本类 closeEditOverlay（保留 TRADE 型残留清理钩子），保存成功后回调主面板强制刷新
      */
-    private final TradeEditor tradeEditor = new TradeEditor(editOverlayController, this::closeEditOverlay, () -> {
+    final TradeEditor tradeEditor = new TradeEditor(editOverlayController, this::closeEditOverlay, () -> {
         if (mainPanel != null) {
             mainPanel.setForceRefresh();
         }
     });
     /** 标签页编辑器（A01 蓝图 G2 抽取至 edit 子包：名称/图标缓冲/编辑目标同步值） */
-    private final PageEditor pageEditor = new PageEditor(editOverlayController, this::closeEditOverlay);
+    final PageEditor pageEditor = new PageEditor(editOverlayController, this::closeEditOverlay);
 
     /** 签到编辑器（A01 蓝图 G3 抽取至 edit 子包：tier/cumtier 阶梯 + monthly 每月全局 + 逐日覆盖子面板） */
     private final SignInEditor signInEditor = new SignInEditor(editOverlayController, this::closeEditOverlay);
@@ -332,19 +266,13 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         this::closeEditOverlay);
 
     /** 祝福预设编辑器（A01 蓝图 G4 抽取至 edit 子包：节日表/生日模板/发件人三分派） */
-    private final BlessingEditor blessingEditor = new BlessingEditor(editOverlayController, this::closeEditOverlay);
+    final BlessingEditor blessingEditor = new BlessingEditor(editOverlayController, this::closeEditOverlay);
     /** 轮盘条目编辑器（A01 蓝图 G4 抽取至 edit 子包：物品奖品/货币/权重/稀有度） */
-    private final LotteryEntryEditor lotteryEntryEditor = new LotteryEntryEditor(
-        editOverlayController,
-        this::closeEditOverlay);
+    final LotteryEntryEditor lotteryEntryEditor = new LotteryEntryEditor(editOverlayController, this::closeEditOverlay);
 
     // --- 抽奖卡池编辑（v1.7.6 G2①：池级编辑面板 + 动态池标签列） ---
-    /** 池标签列预分配按钮上限（池数量超出后不渲染；显隐由 setEnabledIf + collapseDisabledChild 每帧驱动） */
-    private static final int MAX_POOL_TABS = 12;
     /** 抽奖卡池编辑器（A01 蓝图 G4 抽取至 edit 子包：新建/更新/删除三态 + 图标/消耗槽） */
-    private final LotteryPoolEditor lotteryPoolEditor = new LotteryPoolEditor(
-        editOverlayController,
-        this::closeEditOverlay);
+    final LotteryPoolEditor lotteryPoolEditor = new LotteryPoolEditor(editOverlayController, this::closeEditOverlay);
 
     // ==================== 构造器 ====================
 
@@ -355,33 +283,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     public NekoVMGuiV2(MTENekoVendingMachineV2 machine) {
         super(machine);
-        // 初始化交易分类列表：FAVOURITES 始终第一位，其余按 NekoPageRegistry 动态生成
-        tradeCategories.add(NekoTradeCategory.FAVOURITES);
-
-        List<NekoPageEntry> pages = NekoPageRegistry.getAllPages();
-        if (pages != null && !pages.isEmpty()) {
-            // 从 NekoPageRegistry 加载标签页配置，与 V1 保持一致的标签页顺序
-            for (NekoPageEntry page : pages) {
-                if (page != null) {
-                    tradeCategories.add(NekoTradeCategory.ofTabId(page.getId()));
-                }
-            }
-        } else {
-            // 向后兼容：若 NekoPageRegistry 未初始化，则扫描交易数据库使用到的分类
-            Set<NekoTradeCategory> usedCategories = new TreeSet<>();
-            for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
-                .values()) {
-                NekoTradeCategory cat = group.getCategory();
-                if (cat != null && !cat.isFavourites() && !cat.isUnknown()) {
-                    usedCategories.add(cat);
-                }
-            }
-            tradeCategories.addAll(usedCategories);
-            // 至少保留 UNKNOWN 兜底
-            if (tradeCategories.size() <= 1) {
-                tradeCategories.add(NekoTradeCategory.UNKNOWN);
-            }
-        }
     }
 
     // ==================== build 方法 ====================
@@ -411,14 +312,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         if (syncManager.isClient()) {
             initPreAllocatedWidgets();
         }
-        tabController = new PagedWidget.Controller();
-        // v1.7.0 主标签控制器（贸易/签到/抽奖/邮件）
-        mainTabController = new PagedWidget.Controller();
-        // v1.7.6 G1 三页 sub-page 控制器（v1.7.17 改为双端创建；G1 阶段不绑定 PagedWidget，
-        // 标签按钮靠 NekoSubTabButton 防崩守卫兜底，G2 建对应页面后绑定接管）
-        signInPageController = new PagedWidget.Controller();
-        lotteryPageController = new PagedWidget.Controller();
-        mailPageController = new PagedWidget.Controller();
+        // 五个分页控制器（A01 蓝图 G6 随页下沉 TradePage，创建位点与时序不变）
+        tradePage.createControllers();
 
         // 创建 NekoTradeMainPanel 作为主面板（实现 PanelCallback 回调）
         NekoTradeMainPanel panel = new NekoTradeMainPanel("MTEMultiBlockBase", this, guiData, syncManager);
@@ -473,24 +368,24 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // 右侧 IO 列（v1.7.6 G1：四页恒显示）
         // 含全部输入/输出槽（非 phantom，ISynced），双端创建且必须先于下方仅客户端子树添加
-        panel.child(createIOColumn());
+        panel.child(ioColumnPanel.createIOColumn());
 
         // ==================== 以下均为仅客户端子树（不得含双端需要同步的槽位）====================
 
         // v1.7.0 主标签列（贸易/签到/抽奖/邮件），位于贸易分类列的更左边
         if (syncManager.isClient()) {
-            panel.child(createMainTabColumn());
+            panel.child(tradePage.createMainTabColumn());
         }
 
         // 左侧贸易分类标签列（仅主标签为贸易时显示）
         if (syncManager.isClient()) {
-            panel.child(createTabColumn());
-            panel.child(createQolButtonColumn());
+            panel.child(tradePage.createTabColumn());
+            panel.child(tradePage.createQolButtonColumn());
             // v1.7.6 G1：签到/抽奖/邮件三页各自的 sub-page 标签列（与贸易分类列同位 left(-29)，
             // 按主标签互斥显示；纯按钮无槽位，仅客户端创建，与 createTabColumn 挂载路径一致）
-            panel.child(createSubTabColumn(MAIN_TAB_SIGNIN));
-            panel.child(createSubTabColumn(MAIN_TAB_LOTTERY));
-            panel.child(createSubTabColumn(MAIN_TAB_MAIL));
+            panel.child(tradePage.createSubTabColumn(TradePage.MAIN_TAB_SIGNIN));
+            panel.child(tradePage.createSubTabColumn(TradePage.MAIN_TAB_LOTTERY));
+            panel.child(tradePage.createSubTabColumn(TradePage.MAIN_TAB_MAIL));
         }
 
         // v1.6.24: 音量面板在 client 块外部注册（与 VM 原版 MTEVendingMachineGui 一致），
@@ -568,30 +463,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 获取玩家 UUID（服务端用于查询钱包余额、BQ 状态等）
         final UUID playerId = getPlayerId();
 
-        // --- 当前标签页索引（C2S）---
-        currentTabSync = new IntSyncValue(() -> currentTabId, val -> { currentTabId = val; });
-        currentTabSync.allowC2S();
-        syncManager.syncValue("nekoV2CurrentTab", currentTabSync);
-
-        // --- v1.7.0 主标签索引（C2S）---
-        mainTabSync = new IntSyncValue(() -> mainTabId, val -> { mainTabId = val; });
-        mainTabSync.allowC2S();
-        syncManager.syncValue("nekoV2MainTab", mainTabSync);
-
-        // --- 搜索文本（C2S）---
-        searchTextSync = new StringSyncValue(() -> searchText, val -> { searchText = val == null ? "" : val; });
-        searchTextSync.allowC2S();
-        syncManager.syncValue("nekoV2SearchText", searchTextSync);
-
-        // --- 排序模式（C2S：0=SMART, 1=ALPHABET）---
-        sortModeSync = new IntSyncValue(() -> sortMode, val -> { sortMode = val; });
-        sortModeSync.allowC2S();
-        syncManager.syncValue("nekoV2SortMode", sortModeSync);
-
-        // --- 显示模式（C2S：0=TILE, 1=LIST）---
-        displayTypeSync = new IntSyncValue(() -> displayType, val -> { displayType = val; });
-        displayTypeSync.allowC2S();
-        syncManager.syncValue("nekoV2DisplayType", displayTypeSync);
+        // --- 页面状态五通道（当前/主标签/搜索/排序/显示模式，A01 蓝图 G6 下沉 TradePage）---
+        tradePage.registerSyncValues(syncManager, playerId);
 
         // --- 交易请求（C2S，Shift+Click 触发）---
         tradeRequestSync = new StringSyncValue(() -> "", val -> {
@@ -819,22 +692,22 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     @Override
     public String getSearchText() {
-        return searchText;
+        return tradePage.getSearchText();
     }
 
     @Override
     public boolean isSearchBarFocused() {
-        return searchBar != null && searchBar.isFocused();
+        return tradePage.isSearchBarFocused();
     }
 
     @Override
     public NekoDisplayType getDisplayType() {
-        return displayType == 0 ? NekoDisplayType.TILE : NekoDisplayType.LIST;
+        return tradePage.getDisplayType();
     }
 
     @Override
     public NekoSortMode getSortMode() {
-        return sortMode == 0 ? NekoSortMode.SMART : NekoSortMode.ALPHABET;
+        return tradePage.getSortMode();
     }
 
     @Override
@@ -902,6 +775,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         return syncManagerRef != null && syncManagerRef.isClient();
     }
 
+    /** 机器是否处于 active 状态（页族构建访问器，原 createTradeListPage 直引 baseMetaTileEntity） */
+    boolean isMachineActive() {
+        return baseMetaTileEntity != null && baseMetaTileEntity.isActive();
+    }
+
     @Override
     public long getSyncedCooldownRemaining(UUID groupId, int tradeIndex) {
         if (groupId == null || tradeIndex < 0) {
@@ -913,10 +791,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     @Override
     public NekoTradeCategory getActiveCategory() {
-        if (currentTabId >= 0 && currentTabId < tradeCategories.size()) {
-            return tradeCategories.get(currentTabId);
-        }
-        return NekoTradeCategory.UNKNOWN;
+        return tradePage.getActiveCategory();
     }
 
     @Override
@@ -996,33 +871,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         updatePreAllocatedWidgets(trades);
 
         // 更新标签高亮（搜索匹配时高亮对应标签）
-        updateTabHighlighting(trades);
+        tradePage.updateTabHighlighting(trades);
     }
 
     @Override
     public void onRestoreSettings() {
-        // 恢复上次的主标签位置（v1.7.0）
-        if (mainTabController != null) {
-            int page = Math.min(NekoMainTabButton.lastMainTab, MAIN_TAB_COUNT - 1);
-            if (page < 0) page = MAIN_TAB_TRADE;
-            mainTabController.setPage(page);
-            mainTabId = page;
-            // v1.7.5 修复：同步 mainTabSync 使服务端 mainTabId 与客户端一致
-            // （否则服务端恒 0，背包行 enabled 状态双端可能不一致）
-            if (mainTabSync != null) mainTabSync.setValue(page);
-        }
-        // 恢复上次的标签页位置
-        if (tabController != null) {
-            int maxPage = tradeCategories.size();
-            int page = Math.min(NekoPageButtonV2.lastPage, maxPage - 1);
-            if (page < 0) page = 0; // 默认 FAVOURITES 分类
-            tabController.setPage(page);
-            currentTabId = page;
-        }
-        // 恢复搜索文本
-        if (searchBar != null && !searchText.isEmpty()) {
-            searchBar.setText(searchText);
-        }
+        tradePage.restoreSettings();
     }
 
     @Override
@@ -1088,7 +942,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return true 表示处于编辑模式
      */
-    private boolean isEditModeActive() {
+    boolean isEditModeActive() {
         return editModeSync != null && editModeSync.getValue();
     }
 
@@ -1496,179 +1350,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         };
     }
 
-    /**
-     * 打开抽奖条目编辑面板（客户端，编辑模式下点击轮盘槽位触发）
-     * <p>
-     * 数值字段（货币/数量区间/权重/稀有度）从客户端缓存 {@link LotteryClientData} 的条目
-     * 直接填充（与轮盘展示同源）；物品奖品经 {@link #editLotteryTargetSync} 通知服务端
-     * 从权威配置加载到编辑缓冲区（PhantomItemSlot 自动同步回客户端显示，含 NBT）。
-     *
-     * @param pool      条目所属卡池摘要
-     * @param entry     被点击的抽奖条目
-     * @param slotIndex 轮盘槽位序号（仅日志/展示用，定位靠 poolId+entryId）
-     */
-    /**
-     * 服务端：加载抽奖条目物品奖品到编辑缓冲区
-     * <p>
-     * 解析 "&lt;poolId&gt;:&lt;entryId&gt;" 目标标识，从 {@code LotteryManager}（服务端权威配置）
-     * 查找条目；物品奖品构建 ItemStack（数量固定 1，含 NBT）放入 slot 0，
-     * 货币奖品或查找失败则清空。
-     *
-     * @param target "&lt;poolId&gt;:&lt;entryId&gt;" 格式的目标标识
-     */
-    /**
-     * 构建抽奖条目编辑面板
-     * <p>
-     * 字段布局：货币 ID（非空 = 货币奖品）→ 物品 PhantomItemSlot（货币 ID 留空时生效）
-     * → 最小/最大数量 → 权重 → 稀有度（点击循环切换）。
-     * 保存时经 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSaveLotteryEntry}
-     * 发送 JSON 到服务端（{@code NekoEditActionHandler#saveLotteryEntry} 落盘 + 热重载 +
-     * 推送 {@code LotterySyncPacket} 刷新轮盘）。
-     *
-     * @return 编辑覆盖层面板（{@link ParentWidget}）
-     */
-    /**
-     * 稀有度循环切换（COMMON→RARE→EPIC→LEGENDARY→COMMON）
-     */
-    /**
-     * 稀有度按钮显示文本（带稀有度颜色）
-     */
-    /**
-     * 保存抽奖编辑（客户端 → 服务端）
-     * <p>
-     * 序列化 {@code {nekoCurrencyId, item, meta, nbtBase64?, minAmount, maxAmount, weight, rarity}}
-     * （物品取自 PhantomItemSlot，物品 ID 无法解析时发空串交由服务端按货币/校验处理）。
-     * 经 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSaveLotteryEntry} 发送。
-     */
-    // ==================== 抽奖卡池编辑（v1.7.6 G2①） ====================
-
-    /**
-     * 按索引取客户端缓存的卡池摘要（越界返回 null）
-     * <p>
-     * 仅供池标签列按钮每帧动态求值（图标/选中态/显隐），纯客户端轻量读。
-     *
-     * @param index 池在 {@link LotteryClientData#getPools()} 中的序号
-     * @return 池摘要，不存在返回 null
-     */
-    private LotteryClientData.PoolSummary poolAt(int index) {
-        List<LotteryClientData.PoolSummary> pools = LotteryClientData.getPools();
-        return index >= 0 && index < pools.size() ? pools.get(index) : null;
-    }
-
-    /**
-     * 打开抽奖卡池编辑面板（客户端，编辑模式下 Shift+点击池标签触发）
-     * <p>
-     * 数值字段（名字/保底）从客户端缓存 {@link LotteryClientData} 的池摘要直接填充
-     * （与同步包同源）；图标与消耗需求物品经 {@link #editPoolTargetSync} 通知服务端
-     * 从权威配置加载到编辑缓冲区（PhantomItemSlot 自动同步回客户端显示，含 NBT）。
-     *
-     * @param pool 被点击的卡池摘要
-     */
-    /**
-     * 打开新建卡池编辑面板（客户端，编辑模式下点击池标签列尾「+」按钮触发）
-     * <p>
-     * 字段全部置默认值（保底启用、软保底 30、硬保底 50、EPIC 保证）；
-     * 通知服务端清空编辑缓冲区（{@link #POOL_TARGET_NEW} 标记）。
-     * 保存时走 {@code NekoEditNetworkManager.sendCreateLotteryPool}（服务端校验 id 合法性/唯一性）。
-     */
-    /**
-     * 服务端：加载卡池图标/消耗需求物品到编辑缓冲区
-     * <p>
-     * slot 0 = page 图标（数量固定 1，含 NBT），slot 1-4 = 消耗需求物品（stackSize=单次抽取消耗量）。
-     * {@link #POOL_TARGET_NEW}（新建模式）或查找失败时仅清空缓冲区。
-     *
-     * @param target 池 id 或 {@link #POOL_TARGET_NEW}
-     */
-    /**
-     * 构建抽奖卡池编辑面板（v1.7.6 G2①）
-     * <p>
-     * 字段布局：卡池 ID（新建可编辑/现有只读）→ 名称 → page 图标 PhantomItemSlot
-     * → 消耗需求 PhantomItemSlot×4（货币物品=团队钱包扣、普通物品=机器输入槽扣）
-     * → 保底启用开关 → 软/硬保底阈值 → 保证稀有度（点击循环）。
-     * 保存时按 {@link #editPoolIsNew} 分流：新建走
-     * {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendCreateLotteryPool}，
-     * 现有池走 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSaveLotteryPool}
-     * （服务端 {@code NekoEditActionHandler} 落盘 + 热重载 + 广播 {@code LotterySyncPacket} 刷新池标签列）。
-     *
-     * @return 编辑覆盖层面板（{@link ParentWidget}）
-     */
-    /**
-     * 保证稀有度循环切换（COMMON→RARE→EPIC→LEGENDARY→COMMON）
-     */
-    /**
-     * 保证稀有度按钮显示文本（带稀有度颜色）
-     */
-    /**
-     * 保存抽奖卡池编辑（客户端 → 服务端）
-     * <p>
-     * 序列化 {@code {id?, name, icon?, costItems[], pityEnabled, softPityThreshold,
-     * hardPityThreshold, guaranteedRarity}}（图标/消耗需求取自 PhantomItemSlot，
-     * 格式与服务端 {@code NekoEditActionHandler#applyPoolEditJson} 对应）。
-     * 新建模式附 id 走 create，现有池走 save（id 仅定位，不可改）。
-     */
-    /**
-     * 删除抽奖卡池（客户端 → 服务端）
-     * <p>
-     * 仅编辑现有池时可触发（新建模式删除按钮已隐藏）；「至少保留一池」由服务端校验。
-     */
-    // ==================== 标签页 page 编辑（v1.7.6 G3④） ====================
-
-    /**
-     * 打开 page 编辑面板（客户端，编辑模式下 Shift+点击 page 标签触发）
-     * <p>
-     * 名称从 {@link NekoPageRegistry} 读取（与同步包同源）；图标经 {@link #editPageTargetSync}
-     * 通知服务端从权威配置加载到编辑缓冲区（PhantomItemSlot 自动同步回客户端显示，含 NBT）。
-     *
-     * @param pageId 被点击的标签页 ID
-     */
-    /**
-     * 打开新建 page 编辑面板（客户端，编辑模式下点击标签列尾「+」按钮触发）
-     * <p>
-     * 字段全部置默认值；通知服务端清空编辑缓冲区（{@link #PAGE_TARGET_NEW} 标记）。
-     * 保存时走 {@code NekoEditNetworkManager.sendCreatePage}（服务端分配 id≥4）。
-     */
-    /**
-     * 服务端：加载 page 图标到编辑缓冲区（slot 0）
-     * <p>
-     * 每次加载前先清空（防上一页残留）；{@link #PAGE_TARGET_NEW}（新建模式）或
-     * 查找失败时仅清空不加载。图标按条目配置的 iconItem 转换（不含默认页回退图标——
-     * 编辑的是配置字段本身）。
-     *
-     * @param target pageId 字符串或 {@link #PAGE_TARGET_NEW}
-     */
-    /**
-     * 构建标签页 page 编辑面板（v1.7.6 G3④）
-     * <p>
-     * 字段布局：page ID（新建=分配提示 / 现有=只读展示）→ 名称 → 图标 PhantomItemSlot×1。
-     * 保存按 {@link #editPageIsNew} 分流：新建走
-     * {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendCreatePage}（服务端分配 id≥4），
-     * 现有页走 {@link com.miaokatze.gtit.trade.v2.NekoEditNetworkManager#sendSavePage}；
-     * 删除按钮仅编辑现有页时显示（默认页 1-3 由服务端拦截）。
-     *
-     * @return 编辑覆盖层面板（{@link ParentWidget}）
-     */
-    /**
-     * 保存 page 编辑（客户端 → 服务端）
-     * <p>
-     * 序列化 {@code {name, icon?}}（图标取自 PhantomItemSlot，空槽不发 icon 键 = 服务端清空图标，
-     * 格式与服务端 {@code NekoEditActionHandler#applyPageEditJson} 对应）。
-     * 新建模式走 create（服务端分配 id≥4），现有页走 save（pageId 仅定位，不可改）。
-     */
-    /**
-     * 删除 page（客户端 → 服务端）
-     * <p>
-     * 仅编辑现有页时可触发（新建模式删除按钮已隐藏）；「默认页 1-3 不可删」由服务端校验。
-     */
-    // ==================== 预分配 Widget 初始化 ====================
-
-    /**
-     * 初始化预分配 Widget
-     * <p>
-     * 为每个交易分类预分配 300 个 TILE 模式和 300 个 LIST 模式的
-     * {@link NekoTradeItemDisplayWidget}，并设置 TradeActionCallback。
-     */
     private void initPreAllocatedWidgets() {
-        for (NekoTradeCategory category : tradeCategories) {
+        for (NekoTradeCategory category : tradePage.getTradeCategories()) {
             List<NekoTradeItemDisplayWidget> tiles = new ArrayList<>(MAX_TRADES);
             List<NekoTradeItemDisplayWidget> lists = new ArrayList<>(MAX_TRADES);
             for (int i = 0; i < MAX_TRADES; i++) {
@@ -1727,434 +1410,6 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     /**
-     * 更新标签高亮
-     * <p>
-     * 当搜索文本非空时，高亮所有包含匹配交易的分类标签。
-     *
-     * @param trades 按分类组织的交易显示数据
-     */
-    private void updateTabHighlighting(Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades) {
-        highlightedTabs.clear();
-        if (searchText == null || searchText.isEmpty()) {
-            return;
-        }
-        for (Map.Entry<NekoTradeCategory, List<NekoTradeItemDisplay>> entry : trades.entrySet()) {
-            if (entry.getValue() != null && !entry.getValue()
-                .isEmpty()) {
-                highlightedTabs.add(entry.getKey());
-            }
-        }
-    }
-
-    // ==================== UI 组件创建 ====================
-
-    /**
-     * v1.7.0 创建主标签列（贸易/签到/抽奖/邮件）
-     * <p>
-     * 位于贸易分类标签列的更左边（left(-57)，贸易分类列在 left(-29)），
-     * 使用 {@link NekoMainTabButton} + {@link #mainTabController} 切换主内容面板。
-     * <p>
-     * 切换主标签时同时通过 {@link #mainTabSync} 同步到服务端，
-     * 便于服务端感知当前玩家查看的主标签（后续用于编辑模式权限控制）。
-     *
-     * @return 主标签列 Widget
-     */
-    private IWidget createMainTabColumn() {
-        Flow mainTabColumn = Flow.column()
-            .coverChildren()
-            .left(-57)
-            .top(40)
-            .childPadding(2);
-
-        // 主标签定义：index → (图标, 名称)
-        Object[][] mainTabs = new Object[][] { { MAIN_TAB_TRADE, NekoGuiTextures.MAIN_TAB_TRADE, "贸易" },
-            { MAIN_TAB_SIGNIN, NekoGuiTextures.MAIN_TAB_SIGNIN, "签到" },
-            { MAIN_TAB_LOTTERY, NekoGuiTextures.MAIN_TAB_LOTTERY, "抽奖" },
-            { MAIN_TAB_MAIL, NekoGuiTextures.MAIN_TAB_MAIL, "邮件" }, };
-
-        for (Object[] tabDef : mainTabs) {
-            final int index = (Integer) tabDef[0];
-            final com.cleanroommc.modularui.drawable.UITexture icon = (com.cleanroommc.modularui.drawable.UITexture) tabDef[1];
-            final String name = (String) tabDef[2];
-
-            NekoMainTabButton tabButton = new NekoMainTabButton(index, mainTabController, icon);
-            tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-            tabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
-            // 点击时同步主标签索引到服务端（使用 onSelected 钩子，避免与 PageButton.onMousePressed 冲突）
-            tabButton.onSelected(() -> {
-                if (mainTabSync != null) {
-                    mainTabSync.setValue(index);
-                }
-            });
-
-            mainTabColumn.child(tabButton);
-        }
-
-        return mainTabColumn.excludeAreaInRecipeViewer();
-    }
-
-    /**
-     * 创建左侧标签列
-     * <p>
-     * 为每个交易分类创建一个 {@link NekoPageButtonV2} 按钮，
-     * 使用物品图标作为标签页标识。
-     * <p>
-     * v1.7.7 G2③：仅在主标签为贸易时显示（{@link #mainTabController} 当前页 == {@link #MAIN_TAB_TRADE}）。
-     *
-     * @return 标签列 Widget
-     */
-    private IWidget createTabColumn() {
-        Flow tabColumn = Flow.column()
-            .coverChildren()
-            .left(-29)
-            .top(40)
-            .childPadding(2);
-
-        for (int i = 0; i < tradeCategories.size(); i++) {
-            final int index = i;
-            NekoTradeCategory category = tradeCategories.get(i);
-            ItemStack icon = StatusCodec.getCategoryIcon(category);
-            String name = StatusCodec.getCategoryName(category);
-
-            // v1.7.6 G3④：匿名子类包一层点击拦截——编辑模式下 Shift+点击 page 标签
-            // 打开 page 编辑面板（不切页、不更新 lastPage）；普通点击维持原切页逻辑。
-            // 收藏（tabId=-1）/未知（tabId=0）为虚拟分类，无对应 page 条目，不拦截。
-            NekoPageButtonV2 tabButton = new NekoPageButtonV2(index, tabController, category, highlightedTabs, icon) {
-
-                @Override
-                public Interactable.Result onMousePressed(int mouseButton) {
-                    if (isEditModeActive() && Interactable.hasShiftDown() && category.getTabId() > 0) {
-                        pageEditor.beginEdit(category.getTabId());
-                        return Interactable.Result.SUCCESS;
-                    }
-                    return super.onMousePressed(mouseButton);
-                }
-            };
-            tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-            tabButton.tooltipBuilder(t -> {
-                t.addLine(IKey.str(name));
-                // 编辑模式下追加操作提示（随编辑模式动态刷新）
-                if (isEditModeActive() && category.getTabId() > 0) {
-                    t.addLine(IKey.str(EnumChatFormatting.YELLOW + "Shift+点击 编辑标签页"));
-                }
-            });
-            tabButton.tooltipAutoUpdate(true);
-
-            tabColumn.child(tabButton);
-        }
-
-        // v1.7.6 G3④：「新建 page」按钮——仅编辑模式显示（列尾），点击打开空白 page 编辑面板。
-        // 复用 NekoSubTabButton 的 externalMode（永不选中、点击走 onSelected 不切页），
-        // index 取列尾位置（externalMode 下不参与切页，仅作标识）。
-        NekoSubTabButton newPageButton = new NekoSubTabButton(
-            tradeCategories.size(),
-            tabController,
-            IKey.str(EnumChatFormatting.GREEN + "+"));
-        newPageButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-        newPageButton.externalMode(() -> false);
-        newPageButton.onSelected(pageEditor::beginNew);
-        newPageButton.tooltipBuilder(t -> {
-            t.addLine(IKey.str("新建标签页"));
-            t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白标签页（保存时自动分配 ID ≥ 4）"));
-        });
-        newPageButton.setEnabledIf(w -> isEditModeActive());
-        tabColumn.child(newPageButton);
-        // 非编辑模式时「新建 page」按钮不占位（列自动收紧）
-        tabColumn.collapseDisabledChild(true);
-
-        // v1.7.7 G2③：读取处以 controller 当前页为准，避免 mainTabId 滞后
-        tabColumn
-            .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
-
-        // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
-        return tabColumn.excludeAreaInRecipeViewer();
-    }
-
-    /**
-     * v1.7.6 G1 创建指定主标签页的 sub-page 标签列（签到/抽奖/邮件）
-     * <p>
-     * 位置与贸易分类列 {@link #createTabColumn()} 相同（left(-29)、top(40)、childPadding(2)），
-     * 通过 {@code setEnabledIf} 按主标签互斥显示，不与贸易分类列/QoL 列叠放。
-     * <p>
-     * 按钮内容（v1.7.6）：
-     * <ul>
-     * <li>签到「活跃」4 按钮：每月签到/连续签到/每日在线/纪念日</li>
-     * <li>邮件 5 按钮：全部/系统/玩家/管理员/写邮件</li>
-     * <li>抽奖（G2①）：动态池按钮列——预分配 {@link #MAX_POOL_TABS} 个按钮，数据源
-     * {@link LotteryClientData#getPools()} 每帧驱动图标/显隐（池自配图标优先，缺省按货币回退币图标），
-     * 外部模式点击写 {@code selectedPoolId}（抽奖页单页动态读选中池）；编辑模式 Shift+点击开池编辑面板，
-     * 列尾「+」按钮（仅编辑模式）开新建池面板；抽奖页顶部旧双池切换按钮行已随 G2① 移除</li>
-     * </ul>
-     * 按钮统一使用 {@link NekoSubTabButton}——G1 阶段三个 sub-page Controller 尚未绑定 PagedWidget，
-     * 按钮内置防崩守卫（未绑定时点击直接忽略），G2 建对应 PagedWidget 页面后自动接管切换。
-     * <p>
-     * 双端安全：纯按钮无槽位，仅客户端创建（与 createTabColumn 一致）。
-     *
-     * @param mainTab 主标签索引（{@link #MAIN_TAB_SIGNIN}/{@link #MAIN_TAB_LOTTERY}/{@link #MAIN_TAB_MAIL}）
-     * @return sub-page 标签列 Widget
-     */
-    private IWidget createSubTabColumn(final int mainTab) {
-        Flow subTabColumn = Flow.column()
-            .coverChildren()
-            .left(-29)
-            .top(40)
-            .childPadding(2);
-
-        if (mainTab == MAIN_TAB_LOTTERY) {
-            // --- 抽奖页：动态池按钮列（v1.7.6 G2①，每池一按钮）---
-            // 预分配 MAX_POOL_TABS 个按钮：图标/选中态/显隐全部每帧动态求值（数据源
-            // LotteryClientData.getPools()），池同步包晚于 GUI 打开到达时按钮随缓存更新自动出现，
-            // 解决 G1 过渡态「列在 build 时一次性生成、同步晚到则空列」的问题。
-            // 隐藏按钮由列尾 collapseDisabledChild 压缩占位；纯按钮无槽位，setEnabledIf 只挡绘制足够。
-            for (int i = 0; i < MAX_POOL_TABS; i++) {
-                final int index = i;
-                // 图标动态求值：池自配图标（iconItem）优先 → 缺省按池货币回退币图标
-                DynamicDrawable icon = new DynamicDrawable(() -> {
-                    LotteryClientData.PoolSummary pool = poolAt(index);
-                    if (pool != null) {
-                        ItemStack iconStack = pool.toIconItemStack();
-                        if (iconStack != null) {
-                            return new ItemDrawable(iconStack);
-                        }
-                        return NekoCurrencyRegistrar.SHIMMERING_NEKO_ID.equals(pool.currencyId)
-                            ? NekoGuiTextures.LOTTERY_COIN_SHIMMER
-                            : NekoGuiTextures.LOTTERY_COIN_NEKO;
-                    }
-                    // 隐藏态返回值（不绘制，仅占位防空指针）
-                    return NekoGuiTextures.LOTTERY_COIN_NEKO;
-                });
-                NekoSubTabButton poolButton = new NekoSubTabButton(index, lotteryPageController, icon);
-                poolButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-                // 外部模式：选中态=当前选中池（LotteryClientData.selectedPoolId），
-                // 点击=切换选中池（抽奖页单页动态读 getSelectedPool，无需每池一页 PagedWidget）；
-                // 编辑模式下 Shift+点击=打开池编辑面板
-                poolButton.externalMode(() -> {
-                    LotteryClientData.PoolSummary pool = poolAt(index);
-                    return pool != null && pool.id != null && pool.id.equals(LotteryClientData.getSelectedPoolId());
-                });
-                poolButton.onSelected(() -> {
-                    LotteryClientData.PoolSummary pool = poolAt(index);
-                    if (pool == null) return;
-                    if (isEditModeActive() && Interactable.hasShiftDown()) {
-                        lotteryPoolEditor.beginEdit(pool);
-                    } else {
-                        LotteryClientData.setSelectedPoolId(pool.id);
-                    }
-                });
-                poolButton.tooltipBuilder(t -> {
-                    LotteryClientData.PoolSummary pool = poolAt(index);
-                    if (pool != null) {
-                        t.addLine(IKey.str(pool.name));
-                        if (isEditModeActive()) {
-                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "Shift+点击 编辑卡池"));
-                        }
-                    }
-                });
-                poolButton.tooltipAutoUpdate(true);
-                // 池数量不足时隐藏本按钮（不占位，列尾 collapseDisabledChild 压缩）
-                poolButton.setEnabledIf(w -> poolAt(index) != null);
-                subTabColumn.child(poolButton);
-            }
-            // --- 「新建池」按钮：仅编辑模式显示（列尾），点击打开空白池编辑面板 ---
-            NekoSubTabButton newPoolButton = new NekoSubTabButton(
-                MAX_POOL_TABS,
-                lotteryPageController,
-                IKey.str(EnumChatFormatting.GREEN + "+"));
-            newPoolButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-            // 外部模式：永不选中；点击直接打开新建池编辑面板
-            newPoolButton.externalMode(() -> false);
-            newPoolButton.onSelected(lotteryPoolEditor::beginNew);
-            newPoolButton.tooltipBuilder(t -> {
-                t.addLine(IKey.str("新建卡池"));
-                t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白卡池（含 1 条种子奖品）"));
-            });
-            newPoolButton.setEnabledIf(w -> isEditModeActive());
-            subTabColumn.child(newPoolButton);
-            // 隐藏按钮不占位（池数量 < MAX_POOL_TABS / 非编辑模式时列自动收紧）
-            subTabColumn.collapseDisabledChild(true);
-        } else {
-            // --- 签到/邮件页：静态按钮定义（index → 图标, 中文名）---
-            // 图标选用 NekoGuiTextures 已注册材质中语义最接近者，不完全贴合的图标见 G1 报告的补做清单
-            final Object[][] subTabs;
-            final PagedWidget.Controller controller;
-            if (mainTab == MAIN_TAB_SIGNIN) {
-                // 签到「活跃」4 页（与 G2③ 页面顺序一致）：每月签到/连续签到/每日在线/纪念日
-                controller = signInPageController;
-                subTabs = new Object[][] { { 0, NekoGuiTextures.SIGNIN_CELL_SIGNED, "每月签到" },
-                    { 1, NekoGuiTextures.SIGNIN_CHEST_30, "连续签到" }, { 2, NekoGuiTextures.SIGNIN_CELL_REWARD, "每日在线" },
-                    { 3, NekoGuiTextures.FAVOURITE_SPRITE, "纪念日" }, };
-            } else {
-                // 邮件 5 页（与 G2② 页面顺序一致）：全部/系统/玩家/管理员 + 写邮件入口
-                controller = mailPageController;
-                subTabs = new Object[][] { { 0, NekoGuiTextures.MAIL_ICON_READ, "全部" },
-                    { 1, NekoGuiTextures.MAIL_ICON_UNREAD, "系统" }, { 2, NekoGuiTextures.WALLET_PERSONAL, "玩家" },
-                    { 3, NekoGuiTextures.MAIN_TAB_EDIT, "管理员" }, { 4, NekoGuiTextures.MAIL_WRITE, "写邮件" }, };
-            }
-            for (Object[] tabDef : subTabs) {
-                final int index = (Integer) tabDef[0];
-                final com.cleanroommc.modularui.drawable.UITexture icon = (com.cleanroommc.modularui.drawable.UITexture) tabDef[1];
-                final String name = (String) tabDef[2];
-                NekoSubTabButton subTabButton = new NekoSubTabButton(index, controller, icon);
-                subTabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-                subTabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
-                // v1.7.6 G2②：邮件页切换 sub-tab（全部/系统/玩家/管理员）时重置列表页码——
-                // 各类型过滤后总页数不同，不重置则翻页行可能短暂显示「当前页 > 总页数」。
-                // 写邮件页（index 4）无列表，同回调重置无副作用；签到页（G2③）如需同逻辑自行挂接。
-                if (mainTab == MAIN_TAB_MAIL) {
-                    subTabButton.onSelected(() -> MailClientData.setListPage(0));
-                }
-                subTabColumn.child(subTabButton);
-            }
-            // --- v1.7.6 G5：「祝福预设」入口按钮——仅邮件页 + 编辑模式显示（列尾）---
-            // 外部模式：永不选中（入口按钮不切换 sub-page，点击直接弹出祝福预设编辑面板）
-            if (mainTab == MAIN_TAB_MAIL) {
-                NekoSubTabButton blessingButton = new NekoSubTabButton(5, controller, NekoGuiTextures.MAIL_PAPER);
-                blessingButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-                blessingButton.externalMode(() -> false);
-                blessingButton.onSelected(() -> blessingEditor.beginEdit("birthday"));
-                blessingButton.tooltipBuilder(t -> {
-                    t.addLine(IKey.str("祝福预设"));
-                    t.addLine(IKey.str(EnumChatFormatting.GRAY + "查看/编辑自动祝福邮件模板"));
-                });
-                blessingButton.tooltipAutoUpdate(true);
-                blessingButton.setEnabledIf(w -> isEditModeActive());
-                subTabColumn.child(blessingButton);
-                // 非编辑模式时入口按钮不占位（列自动收紧）
-                subTabColumn.collapseDisabledChild(true);
-            }
-        }
-
-        // v1.7.7 G2③：以 controller 当前页为权威，避免与 mainTabId 不同步
-        subTabColumn.setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == mainTab);
-
-        // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
-        return subTabColumn.excludeAreaInRecipeViewer();
-    }
-
-    /**
-     * 创建 QoL 按钮列（BGM/音量、显示模式、货币显示开关、排序模式）
-     * <p>
-     * 位于标签列左侧，使用 2x2 Grid 布局提供快速操作按钮。
-     * <p>
-     * 按钮顺序完全模仿 V1（VM 的 MTEVendingMachineGui.createQolButtonColumn）：
-     * <ul>
-     * <li>左上：音量/BGM 按钮。单击切换 BGM 曲目播放/停止；Shift+点击打开音量控制面板。</li>
-     * <li>右上：显示模式切换按钮（TILE ↔ LIST）。</li>
-     * <li>左下：货币余额行显示/隐藏开关。</li>
-     * <li>右下：排序模式切换按钮（SMART ↔ ALPHABET）。</li>
-     * </ul>
-     * 同时在此方法内创建 {@link #volumePanel}，将本按钮作为 parent 传给
-     * {@link NekoVolumeControlGui#createPanel}，修复旧版传 null 导致 NPE 的问题。
-     *
-     * @return QoL 按钮列 Widget
-     */
-    private IWidget createQolButtonColumn() {
-        // --- 音量/BGM 按钮（左上）---
-        // 单击切换 BGM 播放/停止；Shift+点击打开音量面板
-        // v1.6.24: volumeButton 改为赋值类字段（移除 final 局部变量），以便 build() 在 client 块外部注册 syncedPanel
-        volumeButton = new ButtonWidget<>().size(14, 14)
-            .overlay(new DynamicDrawable(() -> {
-                NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                boolean isPlaying = handler != null && handler.isPlaying();
-                return (isPlaying ? NekoMusicTrack.LUNCH_BREAK.getTexture() : NekoMusicTrack.NONE.getTexture())
-                    .size(14);
-            }))
-            .onMousePressed(btn -> {
-                if (Interactable.hasShiftDown()) {
-                    // Shift+点击：打开/关闭音量控制面板
-                    if (volumePanel != null) {
-                        volumePanel.togglePanel();
-                    }
-                } else {
-                    // 单击：切换 BGM 播放
-                    NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                    if (handler != null) {
-                        if (handler.isPlaying()) {
-                            handler.forceStopBGM();
-                        } else {
-                            handler.forceStartBGM();
-                        }
-                    }
-                }
-                return true;
-            })
-            .tooltipBuilder(t -> {
-                NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                boolean isPlaying = handler != null && handler.isPlaying();
-                t.addLine(IKey.str(isPlaying ? "BGM: 开启" : "BGM: 关闭"));
-                t.addLine(IKey.str("音量: " + NekoVolumeControlGui.getVolumeAsString() + "%"));
-                t.addLine(IKey.str("Shift+点击 打开音量控制"));
-            });
-        volumeButton.tooltipAutoUpdate(true);
-
-        // --- 显示模式切换按钮（右上）---
-        ButtonWidget<?> displayModeButton = new ButtonWidget<>().size(14, 14)
-            .overlay(
-                new DynamicDrawable(
-                    () -> getDisplayType().getTexture()
-                        .size(14)))
-            .onMousePressed(btn -> {
-                // 切换显示模式：TILE ↔ LIST
-                displayTypeSync.setValue(displayType == 0 ? 1 : 0);
-                return true;
-            })
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str("当前: " + getDisplayType().getLocalizedName()));
-                t.addLine(IKey.str("点击切换显示模式"));
-            });
-        displayModeButton.tooltipAutoUpdate(true);
-
-        // --- 货币显示开关按钮（左下）---
-        ButtonWidget<?> showCoinsButton = new ButtonWidget<>().size(14, 14)
-            .overlay(
-                new DynamicDrawable(
-                    () -> (showCoins ? NekoGuiTextures.SHOW_COINS : NekoGuiTextures.HIDE_COINS).asIcon()
-                        .size(14)))
-            .onMousePressed(btn -> {
-                // 切换货币余额行的显示/隐藏
-                showCoinsSync.setValue(!showCoins);
-                return true;
-            })
-            .tooltipBuilder(t -> { t.addLine(IKey.str(showCoins ? "隐藏猫猫币" : "显示猫猫币")); });
-        showCoinsButton.tooltipAutoUpdate(true);
-
-        // --- 排序模式切换按钮（右下）---
-        ButtonWidget<?> sortModeButton = new ButtonWidget<>().size(14, 14)
-            .overlay(
-                new DynamicDrawable(
-                    () -> getSortMode().getTexture()
-                        .size(14)))
-            .onMousePressed(btn -> {
-                // 切换排序模式：SMART ↔ ALPHABET
-                sortModeSync.setValue(sortMode == 0 ? 1 : 0);
-                return true;
-            })
-            .tooltipBuilder(t -> {
-                t.addLine(IKey.str("当前: " + getSortMode().getLocalizedName()));
-                t.addLine(IKey.str("点击切换排序模式"));
-            });
-        sortModeButton.tooltipAutoUpdate(true);
-
-        // v1.6.24: volumePanel 注册已移至 build() 的 client 块外部（与 VM 原版一致），
-        // 确保服务端也注册同步通道，否则客户端 togglePanel() 静默失败
-
-        // 2x2 网格：左上音量、右上显示模式、左下显示硬币、右下排序
-        // 在 NEI/HEI 中排除 QoL 按钮列区域，避免配方查看器遮挡快捷按钮
-        Grid qolGrid = new Grid().left(-33)
-            .top(1)
-            .minElementMargin(1, 1)
-            .coverChildren()
-            .grid(
-                Arrays.asList(
-                    Arrays.asList(volumeButton, displayModeButton),
-                    Arrays.asList(showCoinsButton, sortModeButton)));
-        // v1.7.7 G2③：以 controller 当前页为权威
-        qolGrid
-            .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
-        return qolGrid.excludeAreaInRecipeViewer();
-    }
-
-    /**
      * v1.7.0 创建主内容区（PagedWidget 切换贸易/签到/抽奖/邮件）
      * <p>
      * 通过 {@link #mainTabController} 控制页面切换：
@@ -2172,14 +1427,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // v1.7.18：使用 NekoPagedWidget 替代 PagedWidget，覆写 canHover()=false 避免拦截背包栏的 hover 检测
         NekoPagedWidget<?> mainPaged = new NekoPagedWidget<>().name("nekoV2MainPaged")
             .size(PANEL_WIDTH - 8, PANEL_HEIGHT - 8)
-            .controller(mainTabController);
+            .controller(tradePage.getMainTabController());
 
         // 页 0：贸易（现有 createMainColumn 的内容）
-        mainPaged.addPage(createTradeMainColumn(syncManager));
+        mainPaged.addPage(tradePage.createTradeMainColumn(syncManager));
 
         // 页 1：签到「活跃」大页（v1.7.6 G2③ 重构：内层 4 sub-page——每月签到/连续签到/每日在线/纪念日；
         // v1.7.0 目标 4 传入编辑模式回调；signInPageController 绑定内层 PagedWidget，左侧 sub-tab 标签列同控制器接管切换）
-        mainPaged.addPage(SignInCalendarGui.createSignInPage(createSignInEditCallback(), signInPageController));
+        mainPaged.addPage(
+            SignInCalendarGui.createSignInPage(createSignInEditCallback(), tradePage.getSignInPageController()));
 
         // 页 2：抽奖（v1.7.1 目标 2 实现，轮盘 GUI；出货槽定位依赖机器坐标；
         // v1.7.0 目标 4 传入编辑模式回调：编辑模式下点击轮盘槽位弹出条目编辑面板）
@@ -2187,571 +1443,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // 页 3：邮件（v1.7.6 G2② 重构：类型分页 + 写邮件；传入机器定位=写邮件附件输入槽来源，
         // mailPageController 绑定内层 5 sub-page，左侧 sub-tab 标签列同控制器接管切换）
-        mainPaged.addPage(MailGui.createMailPage(baseMetaTileEntity, mailPageController));
+        mainPaged.addPage(MailGui.createMailPage(baseMetaTileEntity, tradePage.getMailPageController()));
 
         return mainPaged;
-    }
-
-    /**
-     * 创建贸易主内容列（v1.7.0 前为 createMainColumn）
-     * <p>
-     * 布局从上到下：标题、搜索栏、交易列表（PagedWidget）、猫猫币显示、交易结果、玩家背包。
-     * <p>
-     * 输入槽和输出槽已迁移到 {@link #createIOColumn()}（与 V1 的 IO 列布局一致），
-     * 主列不再承载 IO 元素，以保持 UI 与 V1 一致。
-     *
-     * @param syncManager 面板同步管理器
-     * @return 主列 Widget
-     */
-    private IWidget createTradeMainColumn(PanelSyncManager syncManager) {
-        Flow mainColumn = Flow.column()
-            .width(PANEL_WIDTH - 8);
-
-        // --- 标题（编辑模式下附加红色「编辑模式」标识，v1.7.0 目标 4 视觉标识）---
-        mainColumn.child(
-            IKey.dynamic(
-                () -> isEditModeActive() ? EnumChatFormatting.DARK_GRAY + "猫猫售货机 " + EnumChatFormatting.RED + "[编辑模式]"
-                    : EnumChatFormatting.DARK_GRAY + "猫猫售货机")
-                .asWidget()
-                .height(12)
-                .fullWidth()
-                .marginBottom(2));
-
-        // --- 团队钱包标识 + ME 输出模式切换按钮（同一行平行显示）---
-        // [团队钱包]在左侧（仅 TEAM 模式时显示内容），[自动输入ME: 开/关]在右侧（仅 uplink 在线时显示）
-        // 两者平行排列在标题下方同一行，互不影响显示
-        mainColumn.child(
-            Flow.row()
-                .height(12)
-                .fullWidth()
-                .marginBottom(2)
-                // [团队钱包]动态文本（仅 TEAM 模式时显示，否则折叠隐藏）
-                .child(IKey.dynamic(() -> {
-                    NekoWalletMode mode = getWalletMode();
-                    if (mode == NekoWalletMode.TEAM) {
-                        return EnumChatFormatting.AQUA + "[团队钱包]";
-                    }
-                    return "";
-                })
-                    .asWidget()
-                    .height(10)
-                    .left(0)
-                    .setEnabledIf(w -> getWalletMode() == NekoWalletMode.TEAM))
-                // [自动输入ME: 开/关]切换按钮（仅 uplink 在线时显示）
-                .child(
-                    new ButtonWidget<>().size(120, 12)
-                        .overlay(IKey.dynamic(() -> {
-                            boolean mode = meOutputModeSync != null && meOutputModeSync.getValue();
-                            return mode ? EnumChatFormatting.LIGHT_PURPLE + "[自动输入ME: 开]"
-                                : EnumChatFormatting.GRAY + "[自动输入ME: 关]";
-                        }))
-                        .tooltipBuilder(t -> {
-                            t.addLine(IKey.str("切换产出路径：本地出货槽 ↔ ME 网络"));
-                            if (hasUplinkSync != null && hasUplinkSync.getValue()) {
-                                t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击弹出确认对话框"));
-                            }
-                        })
-                        .tooltipAutoUpdate(true)
-                        .onMouseTapped(mouse -> {
-                            if (meModeConfirmDialog != null && meModeConfirmPanel != null) {
-                                boolean currentMode = meOutputModeSync != null && meOutputModeSync.getValue();
-                                String message = currentMode ? "确认关闭 ME 自动输入模式？新产出将走本地出货槽"
-                                    : "确认开启 ME 自动输入模式？新产出将通过 Uplink 发送到 ME 网络";
-                                meModeConfirmDialog.setParams(message, () -> {
-                                    if (meOutputModeSync != null) {
-                                        meOutputModeSync.setValue(!currentMode);
-                                    }
-                                });
-                                meModeConfirmPanel.openPanel();
-                            }
-                            return true;
-                        })
-                        .right(0)
-                        .setEnabledIf(w -> hasUplinkSync != null && hasUplinkSync.getValue())));
-
-        if (syncManager.isClient()) {
-            // --- 搜索栏 ---
-            searchBar = new NekoSearchBar("搜索...");
-            searchBar.size(PANEL_WIDTH - 12, 14)
-                .fullWidth()
-                .marginBottom(2);
-            searchBar.setSearchListener(newText -> { searchTextSync.setValue(newText); });
-            mainColumn.child(searchBar);
-
-            // --- 交易列表（PagedWidget + 预分配 Widget）---
-            mainColumn.child(createTradePagedWidget());
-
-            // 注：volumePanel 已在 build() 的 client 块外部创建（v1.6.24 修复，与 VM 原版一致）
-        }
-
-        // --- 猫猫币余额显示行 ---
-        mainColumn.child(createCoinDisplayRow(syncManager));
-
-        // --- 交易结果消息（v1.6.23：背包栏已底部锚定，消息高度不影响布局）---
-        mainColumn.child(
-            IKey.dynamic(() -> tradeResultMessage.isEmpty() ? "" : EnumChatFormatting.YELLOW + tradeResultMessage)
-                .asWidget()
-                .height(12)
-                .fullWidth()
-                .marginBottom(2)
-                .setEnabledIf(w -> !tradeResultMessage.isEmpty()));
-
-        return mainColumn;
-    }
-
-    /**
-     * 创建交易列表分页 Widget
-     * <p>
-     * 使用 {@link PagedWidget} 为每个交易分类创建一个页面，
-     * 每页包含一个 {@link ListWidget}，内含预分配的 TILE 和 LIST 模式 Widget。
-     * <p>
-     * 通过 {@link PagedWidget.Controller} 控制页面切换，
-     * 与 {@link NekoPageButtonV2} 标签按钮联动。
-     *
-     * @return 交易列表 Widget
-     */
-    private IWidget createTradePagedWidget() {
-        PagedWidget<?> paged = new PagedWidget<>().name("nekoV2Paged")
-            .width(PANEL_WIDTH - 12)
-            .controller(tabController)
-            .background(NekoGuiTextures.TRADE_BACKGROUND);
-        // 交易列表高度与 V1 保持一致
-        paged.height(146);
-
-        // 为每个分类创建一个页面
-        for (NekoTradeCategory category : tradeCategories) {
-            paged.addPage(createTradeListPage(category));
-        }
-
-        // 如果没有页面，添加占位页面防止崩溃
-        if (tradeCategories.isEmpty()) {
-            paged.addPage(
-                IKey.str("无可用交易")
-                    .asWidget());
-        }
-
-        return paged;
-    }
-
-    /**
-     * 创建单个分类的交易列表页面
-     * <p>
-     * 每页包含一个 {@link ListWidget}，内含：
-     * <ol>
-     * <li>顶部间距</li>
-     * <li>结构不完整提示行（机器未激活时显示）</li>
-     * <li>TILE 模式行（3个 Widget 一行，共 100 行 = 300 个）</li>
-     * <li>LIST 模式行（1个 Widget 一行，共 300 行）</li>
-     * <li>底部间距</li>
-     * </ol>
-     * <p>
-     * TILE 和 LIST 模式的 Widget 同时存在于列表中，
-     * 通过 setEnabledIf 根据当前显示模式控制可见性。
-     *
-     * @param category 交易分类
-     * @return 列表页面 Widget
-     */
-    private IWidget createTradeListPage(NekoTradeCategory category) {
-        ListWidget<IWidget, ?> tradeList = new ListWidget<>().name("items_" + category.getKey())
-            .width(PANEL_WIDTH - 14)
-            .top(1)
-            .collapseDisabledChild(true);
-        // 交易列表页面高度与外层 PagedWidget 保持一致
-        tradeList.height(146);
-
-        // 顶部间距
-        tradeList.child(
-            Flow.row()
-                .height(2));
-
-        // 结构不完整提示行
-        Flow statusRow = Flow.row()
-            .height(10)
-            .width(TRADE_ROW_WIDTH)
-            .marginLeft(2)
-            .child(
-                IKey.str(EnumChatFormatting.RED + "结构不完整")
-                    .asWidget());
-        statusRow.setEnabledIf(w -> !baseMetaTileEntity.isActive());
-        tradeList.child(statusRow);
-
-        // --- TILE 模式行（3个 Widget 一行）---
-        List<NekoTradeItemDisplayWidget> tileWidgets = displayedTradesTiles.get(category);
-        if (tileWidgets != null) {
-            NekoTradeRow row = new NekoTradeRow();
-            row.height(TILE_ITEM_HEIGHT + 4);
-            row.width(TRADE_ROW_WIDTH);
-            row.marginLeft(2);
-
-            for (int i = 0; i < MAX_TRADES; i++) {
-                final int index = i;
-                NekoTradeItemDisplayWidget widget = tileWidgets.get(i);
-                widget.margin(2);
-                widget.setEnabledIf(w -> {
-                    // 编辑模式：绕过结构完整性检查，显示所有有条目的 Widget
-                    if (isEditModeActive()) {
-                        return getDisplayType() == NekoDisplayType.TILE && widget.getDisplay() != null;
-                    }
-                    if (!baseMetaTileEntity.isActive()) return false;
-                    return getDisplayType() == NekoDisplayType.TILE && widget.getDisplay() != null;
-                });
-                row.child(widget);
-
-                // 每 TILE_ITEMS_PER_ROW 个换行
-                if (i % TILE_ITEMS_PER_ROW == TILE_ITEMS_PER_ROW - 1) {
-                    tradeList.child(row);
-                    row = new NekoTradeRow();
-                    row.height(TILE_ITEM_HEIGHT + 4);
-                    row.width(TRADE_ROW_WIDTH);
-                    row.marginLeft(2);
-                }
-            }
-            // 添加最后一行（如果有剩余）
-            if (row.getChildren() != null && !row.getChildren()
-                .isEmpty()) {
-                tradeList.child(row);
-            }
-        }
-
-        // --- LIST 模式行（1个 Widget 一行）---
-        List<NekoTradeItemDisplayWidget> listWidgets = displayedTradesList.get(category);
-        if (listWidgets != null) {
-            for (int i = 0; i < MAX_TRADES; i++) {
-                NekoTradeItemDisplayWidget widget = listWidgets.get(i);
-                widget.setEnabledIf(w -> {
-                    // 编辑模式：绕过结构完整性检查，显示所有有条目的 Widget
-                    if (isEditModeActive()) {
-                        return getDisplayType() == NekoDisplayType.LIST && widget.getDisplay() != null;
-                    }
-                    if (!baseMetaTileEntity.isActive()) return false;
-                    return getDisplayType() == NekoDisplayType.LIST && widget.getDisplay() != null;
-                });
-
-                NekoTradeRow row = new NekoTradeRow();
-                row.height(LIST_ITEM_HEIGHT);
-                row.width(TRADE_ROW_WIDTH);
-                row.marginLeft(2);
-                row.child(widget);
-                tradeList.child(row);
-            }
-        }
-
-        // --- 「新建交易条目」按钮行：仅编辑模式显示（列表尾），点击打开空白交易编辑面板（v1.7.6 G3④）---
-        // 收藏（tabId=-1）/未知（tabId=0）为虚拟分类，新建条目无处可挂，不显示按钮；
-        // 非编辑模式时由 tradeList 的 collapseDisabledChild 压缩占位。
-        NekoTradeRow newTradeRow = new NekoTradeRow();
-        newTradeRow.height(LIST_ITEM_HEIGHT);
-        newTradeRow.width(TRADE_ROW_WIDTH);
-        newTradeRow.marginLeft(2);
-        ButtonWidget<?> newTradeButton = new ButtonWidget<>().size(TRADE_ROW_WIDTH - 4, LIST_ITEM_HEIGHT - 2)
-            .overlay(IKey.str(EnumChatFormatting.GREEN + "+ 新建交易条目"))
-            .onMouseTapped(mouse -> {
-                tradeEditor.beginNewTrade(category.getTabId());
-                return true;
-            });
-        newTradeButton.tooltipBuilder(t -> {
-            t.addLine(IKey.str("新建交易条目"));
-            t.addLine(IKey.str(EnumChatFormatting.GRAY + "在本标签页尾部追加一条空白交易"));
-        });
-        newTradeRow.child(newTradeButton);
-        newTradeRow.setEnabledIf(w -> isEditModeActive() && category.getTabId() > 0);
-        tradeList.child(newTradeRow);
-
-        // 底部间距
-        tradeList.child(
-            Flow.row()
-                .height(2));
-
-        return tradeList;
-    }
-
-    /**
-     * 创建猫猫币余额显示行
-     * <p>
-     * 为每种猫猫币创建一个 {@link NekoCoinDisplayV2} 组件，
-     * 含 serp 缓动动画和弹出按钮。
-     *
-     * @param syncManager 面板同步管理器
-     * @return 猫猫币显示行 Widget
-     */
-    private IWidget createCoinDisplayRow(PanelSyncManager syncManager) {
-        // v1.6.22：改造为单行布局，ME 导入按钮移入 NekoCoinDisplayV2 与弹出按钮同行
-        Flow column = Flow.column()
-            .fullWidth()
-            .marginBottom(2);
-
-        // === 余额行（含 ME 导入按钮）===
-        Flow row = Flow.row()
-            .height(22)
-            .fullWidth()
-            .marginBottom(2);
-
-        int offset = 0;
-        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-            final String cid = currencyId;
-            String displayName = NekoCurrencyRegistrar.getDisplayName(currencyId);
-            NekoCoinDisplayV2 coinDisplay = new NekoCoinDisplayV2(syncManager, currencyId, displayName);
-            // 注入 ME 余额查询器，使弹出按钮 tooltip 显示 ME 网络余额
-            coinDisplay.setMeAmountSupplier(() -> meCoinAmounts.getOrDefault(cid, 0));
-            // v1.6.22：注入 ME 导入配置（替代原 importRow 独立行）
-            coinDisplay.setMeImportConfig(
-                () -> meCoinAmounts.getOrDefault(cid, 0),
-                () -> hasUplinkSync != null && hasUplinkSync.getValue(),
-                () -> {
-                    BooleanSyncValue sync = coinOps.getImportMeCoinSync(cid);
-                    if (sync != null) {
-                        sync.setValue(true);
-                    }
-                });
-            coinDisplay.left(offset);
-            row.child(coinDisplay);
-            offset += 79; // 组件宽度 76 + 间距 3 = 79
-        }
-
-        // 根据货币显示开关控制余额行的显示/隐藏
-        row.setEnabledIf(w -> showCoins)
-            .collapseDisabledChild(true);
-        column.child(row);
-
-        return column;
-    }
-
-    /**
-     * 创建右侧 IO 列
-     * <p>
-     * 完全模仿 V1（VM 的 {@code MTEVendingMachineGui.createIOColumn}）的布局：
-     * <ul>
-     * <li>顶部：INPUT_SPRITE 图标 + "IN" 文字</li>
-     * <li>2x4 输入槽（带自动导入猫猫币 changeListener）</li>
-     * <li>物品弹射按钮（EJECT_SLOTS）+ 货币弹射按钮（EJECT_COINS）</li>
-     * <li>底部：出货槽（带 DISPENSER_BACKGROUND/OVERHANG + 100 个掉落动画槽）</li>
-     * </ul>
-     * 不再放置电源开关、结构更新、音量按钮，这些功能分别由 GT5U 标准交互
-     * （扳手右键等）与 QoL 按钮列承担，与 V1 行为一致。
-     *
-     * @return IO 列 Widget
-     */
-    private IWidget createIOColumn() {
-        ParentWidget<?> ioColumn = new ParentWidget<>().size(50, 214)
-            .right(-48)
-            .top(40)
-            .background(NekoGuiTextures.SIDE_PANEL_BACKGROUND);
-
-        // v1.7.6 G1：IO 列四页恒显示（输入槽投币/取物、出货槽在四页均可用）——
-        // 移除原 v1.7.0「仅贸易页」的 setEnabledIf；槽位双端注册本就不受 setEnabledIf 影响，此改动仅扩大可见范围
-
-        // --- 顶部：INPUT_SPRITE 图标 + "IN" 文字 ---
-        ioColumn.child(
-            NekoGuiTextures.INPUT_SPRITE.asWidget()
-                .leftRel(0.5f)
-                .top(8)
-                .width(30)
-                .height(20));
-        ioColumn.child(
-            (IWidget) new TextWidget(IKey.str("IN")).textAlign(Alignment.CENTER)
-                .top(8)
-                .widthRel(1.0f));
-
-        // --- 输入槽（2x4，带自动导入猫猫币 changeListener）---
-        SlotGroupWidget inputSlots = SlotGroupWidget.builder()
-            .matrix("II", "II", "II", "II")
-            .key('I', index -> {
-                ModularSlot slot = new ModularSlot(multiblock.inputItems, index).slotGroup("inputSlotGroup");
-                // 持有 ItemSlot 引用，便于服务端在入账后强制同步槽位状态到客户端
-                final ItemSlot itemSlot = new ItemSlot().slot(slot);
-                // 自动导入猫猫币：识别到猫猫币后放入玩家钱包并立即同步客户端
-                slot.changeListener((newItem, onlyAmountChanged, client, init) -> {
-                    // [NekoInput] 诊断日志：lambda 入口，输出关键参数与线程信息
-                    LOG.debug(
-                        "[NekoInput] changeListener 入口: slotIdx=" + index
-                            + " thread="
-                            + Thread.currentThread()
-                                .getName()
-                            + " client="
-                            + client
-                            + " init="
-                            + init
-                            + " onlyAmountChanged="
-                            + onlyAmountChanged
-                            + " newItem="
-                            + (newItem == null ? "null" : newItem.getDisplayName())
-                            + " stackSize="
-                            + (newItem == null ? 0 : newItem.stackSize));
-                    if (init || newItem == null) {
-                        LOG.debug("[NekoInput] 提前返回: init=" + init + " newItemNull=" + (newItem == null));
-                        return;
-                    }
-                    String currencyId = NekoCurrencyRegistrar.getNekoCurrencyId(newItem);
-                    if (currencyId == null) {
-                        LOG.debug("[NekoInput] 非猫猫币，跳过: slotIdx=" + index);
-                        return;
-                    }
-                    LOG.debug("[NekoInput] 识别猫猫币: slotIdx=" + index + " currencyId=" + currencyId);
-                    // 客户端：立即视觉清槽，真实数据以服务端同步为准
-                    if (client) {
-                        LOG.debug("[NekoInput] 客户端分支: 清槽前 slotIdx=" + index);
-                        slot.putStack(null);
-                        LOG.debug("[NekoInput] 客户端分支: 清槽后 slotIdx=" + index);
-                        return;
-                    }
-                    UUID playerId = getPlayerId();
-                    if (playerId == null) {
-                        LOG.debug("[NekoInput] 服务端分支: playerId 为 null, 跳过");
-                        return;
-                    }
-                    NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-                    if (wallet == null) {
-                        LOG.debug("[NekoInput] 服务端分支: wallet 为 null, 跳过");
-                        return;
-                    }
-                    // 先入账，再清槽，避免异常导致丢币（O2-17：落盘统一走脏标记兜底）
-                    wallet.addCount(currencyId, newItem.stackSize);
-                    int newCount = wallet.getCount(currencyId);
-                    LOG.debug(
-                        "[NekoInput] 服务端分支: addCount 完成 currencyId=" + currencyId
-                            + " added="
-                            + newItem.stackSize
-                            + " newCount="
-                            + newCount);
-                    LOG.debug("[NekoInput] 服务端分支: 清槽前 slotIdx=" + index);
-                    slot.putStack(null);
-                    LOG.debug("[NekoInput] 服务端分支: 清槽后 slotIdx=" + index);
-                    // 强制同步槽位到客户端，使玩家立即看到槽位清空
-                    itemSlot.getSyncHandler()
-                        .forceSyncItem();
-                    LOG.debug("[NekoInput] 服务端分支: forceSyncItem 已调用 slotIdx=" + index);
-                    // 强制刷新对应货币余额同步值，使余额显示立即更新
-                    IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
-                    if (coinSync != null) {
-                        coinSync.setValue(wallet.getCount(currencyId));
-                    }
-                    // 服务端播放投币音效，会自动广播给附近客户端
-                    if (baseMetaTileEntity != null) {
-                        World world = baseMetaTileEntity.getWorld();
-                        if (world != null && !world.isRemote) {
-                            world.playSoundEffect(
-                                baseMetaTileEntity.getXCoord() + 0.5,
-                                baseMetaTileEntity.getYCoord() + 0.5,
-                                baseMetaTileEntity.getZCoord() + 0.5,
-                                "vendingmachine:coin_insert",
-                                1.0f,
-                                1.0f);
-                        }
-                    }
-                });
-                // 收集输入槽引用，供服务端在弹出物品等操作后强制同步
-                coinOps.getInputSlotRefs()
-                    .add(itemSlot);
-                return itemSlot;
-            })
-            .build();
-        ioColumn.child(
-            Flow.row()
-                .child(inputSlots.center())
-                .top(20)
-                .height(18 * 4));
-
-        // --- 弹射按钮行：物品弹射 + 货币弹射 ---
-        ButtonWidget<?> ejectItemsButton = new ButtonWidget<>().size(16, 16)
-            .overlay(
-                NekoGuiTextures.EJECT_SLOTS.asIcon()
-                    .size(16))
-            .onMousePressed(btn -> {
-                coinOps.getEjectItemsSync()
-                    .setValue(true);
-                return true;
-            })
-            .tooltipBuilder(t -> t.addLine(IKey.str("弹出物品")));
-        ButtonWidget<?> ejectCoinsButton = new ButtonWidget<>().size(16, 16)
-            .overlay(
-                NekoGuiTextures.EJECT_COINS.asIcon()
-                    .size(16))
-            .onMousePressed(btn -> {
-                coinOps.getEjectAllCoinsSync()
-                    .setValue(true);
-                return true;
-            })
-            .tooltipBuilder(t -> t.addLine(IKey.str("弹出所有猫猫币")));
-        ioColumn.child(
-            Flow.row()
-                .child(ejectItemsButton.right(6))
-                .child(ejectCoinsButton.left(6))
-                .top(98)
-                .height(18));
-
-        // --- 底部：出货槽（带 dispenser 背景与悬垂 + 100 个掉落动画槽）---
-        ParentWidget<?> dispenserChute = new ParentWidget<>().fullHeight()
-            .fullWidth()
-            .marginLeft(5)
-            .marginRight(4)
-            .background(NekoGuiTextures.DISPENSER_BACKGROUND)
-            .child(getFillPlayerInventoryButton());
-        // 100 个掉落动画槽（fallDistance=72 与 V1 一致，4 行高度）
-        NekoFallingItemSlotFactory fallingFactory = new NekoFallingItemSlotFactory(
-            multiblock.outputItems,
-            18 * 4,
-            MTENekoVendingMachineV2.OUTPUT_SLOTS);
-        for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
-            dispenserChute.child(fallingFactory.getFallingItemSlot(i));
-        }
-        // v1.6.23: ME 传输粒子动画 Widget（围绕出货槽中的物品渲染粒子）
-        // 传入 fallingFactory 供粒子定位槽位坐标；点击穿透到出货槽（不拦截鼠标）
-        // v1.7.5 修复：仅客户端创建——NekoMeTransferParticleWidget 带 @SideOnly(Side.CLIENT)，
-        // 专用服务器类被剥离，双端执行会 NoClassDefFoundError（createIOColumn 双端调用）。
-        if (syncManagerRef.isClient()) {
-            NekoMeTransferParticleWidget particleWidget = new NekoMeTransferParticleWidget(
-                clientMeTransferQueue,
-                fallingFactory).onRetrieve(() -> {
-                    if (retrieveMeItemSync != null) {
-                        retrieveMeItemSync.setValue(true);
-                    }
-                });
-            particleWidget.fullWidth()
-                .fullHeight();
-            // v1.6.24: 移除 setEnabledIf（ModularUI2 此版本中 setEnabledIf(false) 会阻止 widget 的 draw() 被调用，
-            // 导致 clientMeTransferQueue 同步到达后粒子仍不渲染）。draw() 方法内已有空队列守卫
-            // (if (queueRef.isEmpty()) return;)，无需额外控制可见性。
-            dispenserChute.child(particleWidget);
-        }
-        // 顶部悬垂装饰：必须最后添加，覆盖掉落槽起始位置（顶部），形成"物品从悬垂后面掉落"的图层效果
-        // 与 VM 原版 MteVendingMachineGui.createDispenserChute 顺序一致（掉落槽 → OVERHANG 最后）
-        dispenserChute.child(
-            NekoGuiTextures.DISPENSER_OVERHANG.asWidget()
-                .top(0)
-                .fullWidth());
-        ioColumn.child(
-            Flow.row()
-                .child(dispenserChute)
-                .bottom(6)
-                .height(18 * 5));
-
-        // 在 NEI/HEI 中排除右侧 IO 列区域，避免配方查看器遮挡输入/输出槽
-        return ioColumn.excludeAreaInRecipeViewer();
-    }
-
-    /**
-     * 获取"填充玩家背包"按钮
-     * <p>
-     * 复刻 V1 的 getNekoFillPlayerInventoryButton：
-     * 使用一个铺满出货槽区域的不可见 ButtonWidget，
-     * Shift+左键点击时通过 fillPlayerInventorySync 触发服务端方法，
-     * 将出货槽的物品快速移到玩家背包。
-     *
-     * @return 不可见的满覆盖按钮 Widget
-     */
-    private IWidget getFillPlayerInventoryButton() {
-        return new ButtonWidget<>().fullHeight()
-            .fullWidth()
-            .invisible()
-            .playClickSound(false)
-            .onMousePressed(btn -> {
-                // 复刻 V1：仅 Shift+左键触发
-                if (Interactable.hasShiftDown()) {
-                    coinOps.getFillPlayerInventorySync()
-                        .setValue(true);
-                }
-                return true;
-            });
     }
 
     // ==================== ME 传输队列解析（阶段 4） ====================
