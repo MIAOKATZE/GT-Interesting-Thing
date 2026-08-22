@@ -244,6 +244,10 @@ public class NekoMusicEventHandler {
         this.capturedEntry = entry;
         this.capturedCategory = category;
 
+        // B2-10 防御：新声音开播即清残留强停倒计时（上一首自然结束路径若未及时清理，
+        // 旧 deadline 不得波及本曲）
+        this.forceStopDeadline = 0L;
+
         // 开始淡入
         this.fadingIn = true;
         this.fadingOut = false;
@@ -385,6 +389,9 @@ public class NekoMusicEventHandler {
                     this.currentSound = null;
                     this.soundSourceName = null;
                     this.currentVolume = 0.0f;
+                    // B2-10：曲目自然结束时一并清掉强停倒计时——否则残留 deadline
+                    // 会在到期时把 3 秒内新开的 BGM 误当"淡出超时"强停（对齐 stopSound 尾部重置）
+                    this.forceStopDeadline = 0L;
                     return;
                 }
             } catch (Exception e) {
