@@ -41,18 +41,18 @@ final class EditActionRegistry {
         register(
             NekoEditPacket.ACTION_DELETE_PAGE,
             (player, targetId, targetIndex, jsonPayload) -> PageEditActions.deletePage(player, targetId));
-        // ---- 签到域 ----
+        // ---- 签到域（O2-05 E3 迁入 SignInEditActions） ----
         register(
             NekoEditPacket.ACTION_OPEN_SIGNIN_EDITOR,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler.openSignInEditor(player, targetId));
+            (player, targetId, targetIndex, jsonPayload) -> SignInEditActions.openSignInEditor(player, targetId));
         register(
             NekoEditPacket.ACTION_SAVE_SIGNIN_REWARD,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
+            (player, targetId, targetIndex, jsonPayload) -> SignInEditActions
                 .saveSignInReward(player, targetId, jsonPayload));
-        // ---- 在线档位域 ----
+        // ---- 在线档位域（O2-05 E3 迁入 OnlineTierEditActions） ----
         register(
             NekoEditPacket.ACTION_SAVE_ONLINE_TIER,
-            (player, targetId, targetIndex, jsonPayload) -> NekoEditActionHandler
+            (player, targetId, targetIndex, jsonPayload) -> OnlineTierEditActions
                 .saveOnlineTier(player, targetId, jsonPayload));
         // ---- 抽奖域 ----
         register(
