@@ -22,7 +22,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 
 /**
  * 签到配置模型（v1.7.8 任务5+6：配置结构 v1→v2）

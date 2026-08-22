@@ -17,7 +17,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 

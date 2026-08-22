@@ -8,7 +8,7 @@ import java.util.Map;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 
 /**
  * 单笔交易，替代 VM 的 Trade

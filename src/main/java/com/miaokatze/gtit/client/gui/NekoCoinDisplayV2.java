@@ -20,7 +20,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 
 /**
  * V2 猫猫币余额显示组件（带 serp 缓动动画和弹出按钮）

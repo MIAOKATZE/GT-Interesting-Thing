@@ -20,7 +20,7 @@ import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSerializer;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.util.NbtBase64Util;
 

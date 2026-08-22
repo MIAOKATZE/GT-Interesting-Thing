@@ -11,7 +11,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.util.NbtBase64Util;
 

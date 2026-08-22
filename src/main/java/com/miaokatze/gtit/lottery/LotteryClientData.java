@@ -145,7 +145,7 @@ public final class LotteryClientData {
             int total = 0;
             for (NekoBigItemStack cost : costItems) {
                 if (cost == null || cost.getBaseStack() == null) continue;
-                String cid = com.miaokatze.gtit.trade.NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+                String cid = com.miaokatze.gtit.currency.NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
                 if (currencyId.equals(cid)) {
                     total += cost.getStackSize();
                 }

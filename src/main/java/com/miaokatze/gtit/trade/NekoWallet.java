@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+
 /**
  * 猫猫币钱包
  * 独立于 VM 的 Wallet 系统，使用 HashMap 存储猫猫币余额

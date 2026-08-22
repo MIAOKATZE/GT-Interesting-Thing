@@ -1,4 +1,4 @@
-package com.miaokatze.gtit.trade;
+package com.miaokatze.gtit.currency;
 
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -12,6 +12,10 @@ import com.miaokatze.gtit.common.api.enums.GTITItemList;
  * 猫猫币货币注册表
  * 定义猫猫币的 ID、显示名称、关联物品等
  * 完全独立于 VM 的 CurrencyType 枚举系统
+ * <p>
+ * O2-B03：自 trade 包上提共享内核——「猫猫币」是 mail/lottery/signin/machine.v2/client.gui
+ * 五域共用的全仓词汇（ID 常量/物品引用/格式化/解析），住在 trade 域会让纯消费域产生
+ * 词汇性依赖，掩盖真正的业务耦合热点；init 时机不变（CommonProxy.postInit 调用）。
  */
 public class NekoCurrencyRegistrar {
 

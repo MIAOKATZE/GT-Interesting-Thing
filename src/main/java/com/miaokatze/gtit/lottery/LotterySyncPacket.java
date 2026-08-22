@@ -167,7 +167,7 @@ public class LotterySyncPacket implements IMessage {
                 }
             }
             if (summary.costItems.isEmpty() && !summary.currencyId.isEmpty() && summary.costPerDraw > 0) {
-                net.minecraft.item.ItemStack currencyStack = com.miaokatze.gtit.trade.NekoCurrencyRegistrar
+                net.minecraft.item.ItemStack currencyStack = com.miaokatze.gtit.currency.NekoCurrencyRegistrar
                     .getItemStack(summary.currencyId, summary.costPerDraw);
                 if (currencyStack != null) {
                     summary.costItems.add(new com.miaokatze.gtit.trade.v2.NekoBigItemStack(currencyStack));

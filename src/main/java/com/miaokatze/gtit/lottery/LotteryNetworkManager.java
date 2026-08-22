@@ -120,7 +120,8 @@ public class LotteryNetworkManager {
                 // costItems 中的猫猫币条目
                 for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.getCostItems()) {
                     if (cost == null || cost.getBaseStack() == null) continue;
-                    String cid = com.miaokatze.gtit.trade.NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
+                    String cid = com.miaokatze.gtit.currency.NekoCurrencyRegistrar
+                        .getNekoCurrencyId(cost.getBaseStack());
                     if (cid != null && !balances.containsKey(cid)) {
                         balances.put(cid, wallet.getCount(cid));
                     }

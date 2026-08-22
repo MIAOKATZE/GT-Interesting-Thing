@@ -14,7 +14,7 @@ public class OnlineTimeRewardTier {
 
     /** 领取条件：当日累计在线秒数（如 1800=30 分钟） */
     private final int requiredSeconds;
-    /** 货币 ID（{@link com.miaokatze.gtit.trade.NekoCurrencyRegistrar#NEKO_ID} 等） */
+    /** 货币 ID（{@link com.miaokatze.gtit.currency.NekoCurrencyRegistrar#NEKO_ID} 等） */
     private final String currencyId;
     /** 货币数量 */
     private final int currencyAmount;

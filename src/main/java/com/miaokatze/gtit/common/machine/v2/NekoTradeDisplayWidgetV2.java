@@ -16,7 +16,7 @@ import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;

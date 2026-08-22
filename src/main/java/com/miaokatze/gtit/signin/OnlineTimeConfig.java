@@ -14,7 +14,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 
 /**
  * 每日在线时间奖励配置（v1.7.6 G2③；v1.7.7 G4 存储结构重构）

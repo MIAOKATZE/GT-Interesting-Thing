@@ -21,8 +21,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.signin.DailySignInManager;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.TeamDataProvider;

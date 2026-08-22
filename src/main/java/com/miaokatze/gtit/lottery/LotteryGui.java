@@ -20,8 +20,8 @@ import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoClientBalances;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 

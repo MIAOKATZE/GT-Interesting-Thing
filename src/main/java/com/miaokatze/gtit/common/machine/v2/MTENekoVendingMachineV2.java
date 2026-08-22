@@ -26,8 +26,8 @@ import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructa
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.register.TextureManager;
-import com.miaokatze.gtit.trade.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
