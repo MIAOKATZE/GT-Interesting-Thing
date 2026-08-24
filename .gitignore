@@ -1,5 +1,13 @@
 .blackboard
 .zcode
+/.zcode/
+/.dsh/
+/appeng/
+/assets/nei/asm/
+/codechicken/nei/
+/com/cleanroommc/modularui/
+/libs/*
+!/libs/vendingmachine-0.4.87.jar
 .dsh
 .gradle
 .settings
