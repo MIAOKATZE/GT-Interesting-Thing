@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "id": 10,
+      "name": "猫币商城",
+      "iconItem": "gtit:neko_coin",
+      "iconMeta": 0,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 11,
+      "name": "闪烁币专柜",
+      "iconItem": "gtit:shimmering_neko_coin",
+      "iconMeta": 0,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 12,
+      "name": "周期补给",
+      "iconItem": "minecraft:clock",
+      "iconMeta": 0,
+      "iconNbt": "",
+      "isDefault": false
+    }
+  ]
+}

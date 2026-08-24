@@ -1,0 +1,55 @@
+{
+  "preRequisites:9": {
+    "0:10": {
+      "questIDHigh:4": 5569054221778550784,
+      "questIDLow:4": 181
+    }
+  },
+  "properties:10": {
+    "betterquesting:10": {
+      "autoClaim:1": 0,
+      "countAsQuest:1": 1,
+      "desc:8": "The two hysteresis modes are where monitoring becomes logic. High-Hysteresis outputs above Param1 and only cancels below Param2; Low-Hysteresis mirrors it. Param1 and Param2 are typed directly — scientific notation like 1.5E6 works.\n\nThe classic build: a High-Hysteresis monitor watching wireless storage trips a steam valve at 90 percent and re-arms at 75 — no flicker, no chatter, no thrashed turbines. A long outage arms a 30 second redstone buffer so a chunk reload never false-trips the logic.\n\nBuild one hysteresis guard around your biggest consumer and report in.",
+      "globalShare:1": 0,
+      "icon:10": {
+        "Count:3": 1,
+        "Damage:2": 0,
+        "OreDict:8": "",
+        "id:8": "minecraft:redstone"
+      },
+      "isMain:1": 0,
+      "isSilent:1": 0,
+      "lockedProgress:1": 0,
+      "name:8": "Hysteresis Discipline",
+      "questLogic:8": "AND",
+      "repeatTime:3": -1,
+      "simultaneous:1": 0,
+      "snd_complete:8": "random.levelup",
+      "snd_update:8": "random.levelup",
+      "taskLogic:8": "AND",
+      "visibility:8": "NORMAL"
+    }
+  },
+  "questIDHigh:4": 5569054221778550784,
+  "questIDLow:4": 182,
+  "rewards:9": {
+    "0:10": {
+      "index:3": 0,
+      "rewardID:8": "bq_standard:item",
+      "rewards:9": {
+        "0:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:shimmering_neko_coin"
+        }
+      }
+    }
+  },
+  "tasks:9": {
+    "0:10": {
+      "index:3": 0,
+      "taskID:8": "bq_standard:checkbox"
+    }
+  }
+}

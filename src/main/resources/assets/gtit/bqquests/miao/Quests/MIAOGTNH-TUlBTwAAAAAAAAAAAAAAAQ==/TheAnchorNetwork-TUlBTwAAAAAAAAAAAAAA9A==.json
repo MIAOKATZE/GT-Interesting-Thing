@@ -1,0 +1,93 @@
+{
+  "preRequisites:9": {
+    "0:10": {
+      "questIDHigh:4": 5569054221778550784,
+      "questIDLow:4": 231
+    }
+  },
+  "properties:10": {
+    "betterquesting:10": {
+      "autoClaim:1": 0,
+      "countAsQuest:1": 1,
+      "desc:8": "The endgame infrastructure chapter opens with the travel spine: eight travel anchors mounted across your bases, witnessed by two thousand stone bricks of walkway. The old ender-charged contract paid in a full kit; this one pays better and asks you to build the network yourself.\n\nAnchors chain line-of-sight hops: base to hall to hub, each jump a heartbeat. Add the capacitor bank, the wireless chargers and the solar trim from the payout, and the whole compound becomes one walkable machine.\n\nShow the anchors and the road. The kit is yours.",
+      "globalShare:1": 0,
+      "icon:10": {
+        "Count:3": 1,
+        "Damage:2": 0,
+        "OreDict:8": "",
+        "id:8": "EnderIO:blockTravelAnchor"
+      },
+      "isMain:1": 1,
+      "isSilent:1": 0,
+      "lockedProgress:1": 0,
+      "name:8": "§9§lThe Anchor Network",
+      "questLogic:8": "AND",
+      "repeatTime:3": -1,
+      "simultaneous:1": 0,
+      "snd_complete:8": "random.levelup",
+      "snd_update:8": "random.levelup",
+      "taskLogic:8": "AND",
+      "visibility:8": "NORMAL"
+    }
+  },
+  "questIDHigh:4": 5569054221778550784,
+  "questIDLow:4": 244,
+  "rewards:9": {
+    "0:10": {
+      "index:3": 0,
+      "rewardID:8": "bq_standard:item",
+      "rewards:9": {
+        "0:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "EnderIO:itemTravelStaff"
+        },
+        "1:10": {
+          "Count:3": 2,
+          "Damage:2": 2,
+          "OreDict:8": "",
+          "id:8": "EnderIO:blockCapBank"
+        },
+        "2:10": {
+          "Count:3": 2,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "EnderIO:blockWirelessCharger"
+        },
+        "3:10": {
+          "Count:3": 4,
+          "Damage:2": 2,
+          "OreDict:8": "",
+          "id:8": "EnderIO:blockSolarPanel"
+        }
+      }
+    }
+  },
+  "tasks:9": {
+    "0:10": {
+      "autoConsume:1": 0,
+      "consume:1": 0,
+      "groupDetect:1": 0,
+      "ignoreNBT:1": 1,
+      "index:3": 0,
+      "partialMatch:1": 1,
+      "requireOnlyOneItem:1": 0,
+      "requiredItems:9": {
+        "0:10": {
+          "Count:3": 8,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "EnderIO:blockTravelAnchor"
+        },
+        "1:10": {
+          "Count:3": 2048,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "minecraft:stonebrick"
+        }
+      },
+      "taskID:8": "bq_standard:retrieval"
+    }
+  }
+}

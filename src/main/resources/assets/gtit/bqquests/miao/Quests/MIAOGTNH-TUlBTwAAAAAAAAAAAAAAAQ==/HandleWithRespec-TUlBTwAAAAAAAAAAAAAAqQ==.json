@@ -1,0 +1,69 @@
+{
+  "preRequisites:9": {
+    "0:10": {
+      "questIDHigh:4": 5569054221778550784,
+      "questIDLow:4": 168
+    }
+  },
+  "properties:10": {
+    "betterquesting:10": {
+      "autoClaim:1": 0,
+      "countAsQuest:1": 1,
+      "desc:8": "Hold the hard currency of the endgame. Critical singularities buy the biggest toys: the Cycle Overlimit Chip bills 64 of them, the reinforced hub chip is priced in stacks, DSM fuel runs lossless, and turbine singularity mode 2 multiplies output by 5.\n\nMind the fuse: 3 seconds after touching the ground a critical detonates — 50% TNT block damage, 20x TNT entity damage — and scatters 4-12 plain singularities on their own 4-10 second fuses. Plains pop after 5 seconds too, for 2x TNT entity damage.\n\nInventory or machines, never the floor.",
+      "globalShare:1": 0,
+      "icon:10": {
+        "Count:3": 1,
+        "Damage:2": 0,
+        "OreDict:8": "",
+        "id:8": "gtsr:CriticalSteamEntangledSingularity"
+      },
+      "isMain:1": 1,
+      "isSilent:1": 0,
+      "lockedProgress:1": 0,
+      "name:8": "§c§lHandle With Respect",
+      "questLogic:8": "AND",
+      "repeatTime:3": -1,
+      "simultaneous:1": 0,
+      "snd_complete:8": "random.levelup",
+      "snd_update:8": "random.levelup",
+      "taskLogic:8": "AND",
+      "visibility:8": "NORMAL"
+    }
+  },
+  "questIDHigh:4": 5569054221778550784,
+  "questIDLow:4": 169,
+  "rewards:9": {
+    "0:10": {
+      "index:3": 0,
+      "rewardID:8": "bq_standard:item",
+      "rewards:9": {
+        "0:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtsr:CriticalSteamEntangledSingularity"
+        }
+      }
+    }
+  },
+  "tasks:9": {
+    "0:10": {
+      "autoConsume:1": 0,
+      "consume:1": 0,
+      "groupDetect:1": 0,
+      "ignoreNBT:1": 1,
+      "index:3": 0,
+      "partialMatch:1": 1,
+      "requireOnlyOneItem:1": 0,
+      "requiredItems:9": {
+        "0:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtsr:CriticalSteamEntangledSingularity"
+        }
+      },
+      "taskID:8": "bq_standard:retrieval"
+    }
+  }
+}

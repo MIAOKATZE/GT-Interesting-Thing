@@ -1,0 +1,1214 @@
+{
+  "version": 1,
+  "trades": [
+    {
+      "id": "2309014e-e854-504f-8a08-9eb3e5e146b1",
+      "tabId": 10,
+      "orderId": 1,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:cobblestone",
+          "meta": 0,
+          "amount": 512,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 21600,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "d4bd4650-9a12-5817-b8f4-03e61cbf2d18",
+      "tabId": 10,
+      "orderId": 2,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:sand",
+          "meta": 0,
+          "amount": 256,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 21600,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "62d43bce-073a-5a3f-ac23-b24d49b40397",
+      "tabId": 10,
+      "orderId": 3,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:wheat",
+          "meta": 0,
+          "amount": 64,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "f92b87ca-933c-5d82-a6ba-24399e5bf1d8",
+      "tabId": 10,
+      "orderId": 4,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:rotten_flesh",
+          "meta": 0,
+          "amount": 64,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "0f47b7a5-eca5-5d12-be25-aeed8f591816",
+      "tabId": 10,
+      "orderId": 5,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:string",
+          "meta": 0,
+          "amount": 64,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 3,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "33ffeafa-ef6c-5cd0-a424-c55a9ddf392e",
+      "tabId": 10,
+      "orderId": 6,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:leather",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 3,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "d2efbb2e-0fa3-542f-932b-726038a8cec0",
+      "tabId": 10,
+      "orderId": 7,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:bone",
+          "meta": 0,
+          "amount": 64,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 3,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "7d0d2d5b-329b-5ef4-ba0e-6621e89e230d",
+      "tabId": 10,
+      "orderId": 8,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:gunpowder",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 3,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "605ce589-1587-5f35-a470-93f43a6de640",
+      "tabId": 10,
+      "orderId": 9,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:quartz",
+          "meta": 0,
+          "amount": 32,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 3,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "847b318d-b6d4-5a4a-8c42-3f941231af63",
+      "tabId": 10,
+      "orderId": 10,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:redstone",
+          "meta": 0,
+          "amount": 32,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 3,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "74ecb604-9fba-5015-a53d-230841d3105e",
+      "tabId": 10,
+      "orderId": 11,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:glowstone_dust",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 3,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "6acf524e-bd02-57e4-96ec-6c2f44fbd04f",
+      "tabId": 10,
+      "orderId": 12,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:iron_ingot",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 4,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 21600,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "cb392d39-5e2b-5edd-b81d-94bcfaf8e21b",
+      "tabId": 10,
+      "orderId": 13,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:gold_ingot",
+          "meta": 0,
+          "amount": 8,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 4,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 21600,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "e20ca924-493b-5a43-9097-37dafbd64206",
+      "tabId": 10,
+      "orderId": 14,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:ender_pearl",
+          "meta": 0,
+          "amount": 4,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 5,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "3930760c-60dc-5855-b26b-d42223c2b1aa",
+      "tabId": 10,
+      "orderId": 15,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:blaze_rod",
+          "meta": 0,
+          "amount": 4,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 5,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "cbdc5eac-5849-5551-ba94-673b08c716b9",
+      "tabId": 10,
+      "orderId": 16,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:diamond",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 6,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "447a54dc-b9d0-5285-b286-76dbbc1c14ec",
+      "tabId": 10,
+      "orderId": 17,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 17305,
+          "amount": 8,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 8,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "fecb9ab7-5598-5b3e-93e9-34f8322cfad5",
+      "tabId": 10,
+      "orderId": 18,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 32701,
+          "amount": 8,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 10,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "c277c13e-fdb9-5603-a7ac-8e100a1bba9e",
+      "tabId": 10,
+      "orderId": 19,
+      "currency": {
+        "type": "neko",
+        "amount": 4
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:bread",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "68fddfd0-4a67-5cd4-a19b-fc6f7c789cc2",
+      "tabId": 10,
+      "orderId": 20,
+      "currency": {
+        "type": "neko",
+        "amount": 4
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:torch",
+          "meta": 0,
+          "amount": 64,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "a3623ddf-348c-5b14-8065-075d0908006d",
+      "tabId": 10,
+      "orderId": 21,
+      "currency": {
+        "type": "neko",
+        "amount": 3
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:arrow",
+          "meta": 0,
+          "amount": 64,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 7200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "7000af6a-7a82-5933-b84c-75f82741ae38",
+      "tabId": 10,
+      "orderId": 22,
+      "currency": {
+        "type": "neko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:glass",
+          "meta": 0,
+          "amount": 64,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "954fbe99-0e51-5169-b4f0-ae130755ca00",
+      "tabId": 10,
+      "orderId": 23,
+      "currency": {
+        "type": "neko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:iron_ingot",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "526cfbed-d4e5-519f-aaa8-1971b81551bb",
+      "tabId": 10,
+      "orderId": 24,
+      "currency": {
+        "type": "neko",
+        "amount": 4
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:redstone",
+          "meta": 0,
+          "amount": 32,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 7200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "e1f60442-5078-55dc-a08f-fd9cfd657be5",
+      "tabId": 10,
+      "orderId": 25,
+      "currency": {
+        "type": "neko",
+        "amount": 8
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:gold_ingot",
+          "meta": 0,
+          "amount": 8,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 21600,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "b5ccc000-707f-5478-b3e1-d367283dc8a7",
+      "tabId": 10,
+      "orderId": 26,
+      "currency": {
+        "type": "neko",
+        "amount": 8
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:ender_pearl",
+          "meta": 0,
+          "amount": 4,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "7b8ce05a-52cb-529e-aaf2-c943e845c60b",
+      "tabId": 10,
+      "orderId": 27,
+      "currency": {
+        "type": "neko",
+        "amount": 10
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:diamond",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "6b475e0e-d077-5884-a3bf-41ebf1ccb622",
+      "tabId": 10,
+      "orderId": 28,
+      "currency": {
+        "type": "neko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:paper",
+          "meta": 0,
+          "amount": 32,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 7200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "f6702595-a0f0-5e12-a4fb-ebe6828b0096",
+      "tabId": 10,
+      "orderId": 29,
+      "currency": {
+        "type": "neko",
+        "amount": 5
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:fishing_rod",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 14400,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "5837ce33-8814-57c1-af47-d754c05b72d1",
+      "tabId": 10,
+      "orderId": 30,
+      "currency": {
+        "type": "neko",
+        "amount": 12
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:golden_apple",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "93ce58b1-d519-5d9d-9bae-6dde6bd88664",
+      "tabId": 10,
+      "orderId": 31,
+      "currency": {
+        "type": "neko",
+        "amount": 15
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:name_tag",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "cb5f1c0c-5fdd-5086-93cf-e6fd23b1e83d",
+      "tabId": 10,
+      "orderId": 32,
+      "currency": {
+        "type": "neko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 17305,
+          "amount": 8,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 21600,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "d57cdc92-29a2-5113-bc40-1e019d30da8d",
+      "tabId": 10,
+      "orderId": 33,
+      "currency": {
+        "type": "neko",
+        "amount": 8
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 27305,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 21600,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "85c334b3-7afd-5e43-a3d9-33b460fbc2c2",
+      "tabId": 10,
+      "orderId": 34,
+      "currency": {
+        "type": "neko",
+        "amount": 10
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 32701,
+          "amount": 8,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 28800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "6a50cd07-65c2-5782-972f-a9b3512e888d",
+      "tabId": 11,
+      "orderId": 1,
+      "currency": {
+        "type": "neko",
+        "amount": 64
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:shimmering_neko_coin",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "60b91e0d-04a2-5063-bbc9-50fd75880e49",
+      "tabId": 11,
+      "orderId": 2,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "gtit:shimmering_neko_coin",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 56,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "e41dfa7a-3139-5790-aecd-9fa9f7ed4b0d",
+      "tabId": 11,
+      "orderId": 3,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:ring_distant_grasp",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "e295486d-241d-599b-9d09-8b900b5ebb70",
+      "tabId": 11,
+      "orderId": 4,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:ring_skywalk",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "292d8415-7eb5-5008-9b4e-4ad35ea6ee70",
+      "tabId": 11,
+      "orderId": 5,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 8
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:ring_gluttony",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "8aba82bf-9c6e-5337-912a-b428152932ca",
+      "tabId": 11,
+      "orderId": 6,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:ring_ironheart",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "a7a84cb0-e269-50c0-85c3-a08702e26299",
+      "tabId": 11,
+      "orderId": 7,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 8
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:ring_dragon_breath",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "be5630b9-e865-59f0-a809-2ad0fea2f61d",
+      "tabId": 11,
+      "orderId": 8,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 8
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:ring_mountainbreaker",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "87e30580-20f7-5d81-b8d8-0103e528f7e6",
+      "tabId": 11,
+      "orderId": 9,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 6
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:ring_tempest",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "4754d52a-3c3c-5236-b823-62ef74018f87",
+      "tabId": 11,
+      "orderId": 10,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 32
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:gtit.infinity_cell",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "08f8b936-324f-55e1-94c0-f50449118aaa",
+      "tabId": 11,
+      "orderId": 11,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 32
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:gtit.infinity_fluid_cell",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "d89b90fc-14b8-51a2-81db-d6c2a7bc0f38",
+      "tabId": 12,
+      "orderId": 1,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:paper",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 5,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 79200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "f3a79ed0-a174-5290-812a-609f8cf12bf7",
+      "tabId": 12,
+      "orderId": 2,
+      "currency": {
+        "type": "neko",
+        "amount": 12
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "enhancedlootbags:lootbag",
+          "meta": 2,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 79200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "79d9a7cd-2eed-55a5-b929-58d7db2e6f78",
+      "tabId": 12,
+      "orderId": 3,
+      "currency": {
+        "type": "neko",
+        "amount": 24
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "enhancedlootbags:lootbag",
+          "meta": 3,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 79200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "a600012d-69d3-50c0-8fcf-71d52293de1d",
+      "tabId": 12,
+      "orderId": 4,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:cake",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 316800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "013fb4c0-b530-502b-9692-0d409ce018e8",
+      "tabId": 12,
+      "orderId": 5,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:golden_apple",
+          "meta": 0,
+          "amount": 2,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 20,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 316800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "022dab98-110a-5db3-827b-b41150d6f4dd",
+      "tabId": 12,
+      "orderId": 6,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:iron_ingot",
+          "meta": 0,
+          "amount": 24,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 10,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 79200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "2e58ba12-c264-51ec-a89d-4a5f7c4e7dec",
+      "tabId": 12,
+      "orderId": 7,
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:diamond",
+          "meta": 0,
+          "amount": 4,
+          "nbtBase64": null
+        }
+      ],
+      "toItems": [
+        {
+          "item": "gtit:neko_coin",
+          "meta": 0,
+          "amount": 24,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 316800,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "d29f7ee9-c3ee-5cff-99ab-7927208e4cdb",
+      "tabId": 12,
+      "orderId": 8,
+      "currency": {
+        "type": "neko",
+        "amount": 16
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "minecraft:golden_carrot",
+          "meta": 0,
+          "amount": 16,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 79200,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    }
+  ]
+}

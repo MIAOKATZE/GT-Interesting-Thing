@@ -42,6 +42,14 @@ public class NekoTradeConfig {
         .disableHtmlEscaping()
         .create();
 
+    /**
+     * E4a: 内置基础贸易组抑制标志——base 组资产可用时置 true，
+     * 旧 42 条默认（{@link #getDefaultTrades()}）不再注入（调用处门控）。
+     * {@code BundledTradeGroups.prepareDefaultSuppression} 在 postInit 设置；
+     * 方法本身保留，作为资产缺失/解析失败/配置关闭时的兜底数据源。
+     */
+    private static volatile boolean defaultTradesSuppressed = false;
+
     // --- 内部数据类 ---
 
     /**
@@ -120,6 +128,10 @@ public class NekoTradeConfig {
                 Path legacy = Paths.get(LEGACY_TRADES_PATH);
                 if (Files.exists(legacy)) {
                     migrateFromLegacy(legacy);
+                } else if (defaultTradesSuppressed) {
+                    // E4a: 内置基础贸易组就绪，旧 42 条默认不落盘——
+                    // tab 文件由 BundledTradeGroups 在 serverStarted 写入
+                    LOG.info("猫猫售货机交易配置：内置基础贸易组抑制旧默认交易生成，目录: {}", dir);
                 } else {
                     save(getDefaultTrades());
                     LOG.info("猫猫售货机交易配置已生成默认文件，目录: {}", dir);
@@ -147,8 +159,8 @@ public class NekoTradeConfig {
                     migrateFromLegacy(legacy);
                     // 迁移完成后重新扫描新目录
                 } else {
-                    LOG.info("猫猫售货机交易配置不存在，返回默认数据");
-                    return getDefaultTrades();
+                    LOG.info("猫猫售货机交易配置不存在，返回{}", defaultTradesSuppressed ? "空数据（旧默认已被内置组抑制）" : "默认数据");
+                    return suppressedFallback();
                 }
             }
 
@@ -183,8 +195,8 @@ public class NekoTradeConfig {
             LOG.info("猫猫售货机交易配置已加载（{} 条交易）", allTrades.size());
             return data;
         } catch (Exception e) {
-            LOG.error("猫猫售货机交易配置加载失败，返回默认数据", e);
-            return getDefaultTrades();
+            LOG.error("猫猫售货机交易配置加载失败，返回{}", defaultTradesSuppressed ? "空数据（旧默认已被内置组抑制）" : "默认数据", e);
+            return suppressedFallback();
         }
     }
 
@@ -963,6 +975,29 @@ public class NekoTradeConfig {
     // --- 辅助方法 ---
 
     /**
+     * E4a: 默认数据兜底分流——抑制生效时返回空数据（由内置组接管），
+     * 否则返回旧 42 条默认。仅用于 load/init 的"无配置可用"分支，
+     * 不影响 {@link #fromJson} 的客户端同步回退与 legacy 迁移路径。
+     */
+    private static NekoTradeData suppressedFallback() {
+        return defaultTradesSuppressed ? new NekoTradeData() : getDefaultTrades();
+    }
+
+    /**
+     * E4a: 置内置基础贸易组抑制标志（postInit 由 BundledTradeGroups 调用）
+     */
+    public static void setDefaultTradesSuppressed(boolean suppressed) {
+        defaultTradesSuppressed = suppressed;
+    }
+
+    /**
+     * E4a: 内置基础贸易组抑制标志是否生效
+     */
+    public static boolean isDefaultTradesSuppressed() {
+        return defaultTradesSuppressed;
+    }
+
+    /**
      * 获取交易 tab 文件存放目录
      */
     private static Path getTradeDirPath() {
@@ -1018,7 +1053,9 @@ public class NekoTradeConfig {
             String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
             NekoTradeData data = GSON.fromJson(json, NekoTradeData.class);
             if (data == null || data.getTrades() == null) {
-                data = getDefaultTrades();
+                // 内置组抑制开启时不再落盘旧 42 条默认，避免极端场景（损坏 legacy 文件）
+                // 出现"旧默认 + 内置组"并存
+                data = suppressedFallback();
             }
             save(data);
             ConfigMigrationUtil.retireLegacyAsBak(legacyPath, getTradeDirPath(), "猫猫售货机交易配置", "交易配置文件");

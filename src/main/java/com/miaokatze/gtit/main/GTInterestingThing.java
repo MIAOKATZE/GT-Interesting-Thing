@@ -31,7 +31,9 @@ import cpw.mods.fml.common.event.FMLServerStoppingEvent;
     // v1.6.34 方案 B3：required-before:gregtech 确保 GTIT 的 preInit 在 GT preInit 之前执行
     // 这样 sAfterGTPreload 队列在 GT preInit 末尾消费时，GTIT 的机器注册 Runnable 已入队
     // 与 GTSR/GTSWN 对齐，避免方案 D（sAfterGTLoad）导致 MTE 错过 GT5U Init 阶段统一处理
-    dependencies = "required-before:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine")
+    // E4a: after:betterquesting 为纯排序约束（不要求 BQ 存在）——确保 BQ 的 default load
+    // 在 GTIT serverStarting 任务注入之前同步完成，注入为幂等追加不会被清库
+    dependencies = "required-before:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine;after:betterquesting")
 public class GTInterestingThing {
 
     // 模组唯一标识符 (Mod ID)
@@ -108,6 +110,16 @@ public class GTInterestingThing {
     @Mod.EventHandler
     public void loadComplete(FMLLoadCompleteEvent event) {
         proxy.loadComplete(event);
+    }
+
+    /**
+     * IMC 消息分发阶段（E4a：外部贸易组注册通道之一）
+     *
+     * @param event FML IMC 事件（消息路由见 NekoTradeIntegrationAPI）
+     */
+    @Mod.EventHandler
+    public void processIMC(cpw.mods.fml.common.event.FMLInterModComms.IMCEvent event) {
+        proxy.processIMC(event);
     }
 
     /**

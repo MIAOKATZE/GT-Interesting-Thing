@@ -1,0 +1,1013 @@
+{
+  "questLines": [
+    {
+      "entries": [
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ClaimYourStarter-TUlBTwAAAAAAAAAAAAAAAg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ClaimYourStarter-TUlBTwAAAAAAAAAAAAAAAg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HammerTime-TUlBTwAAAAAAAAAAAAAAAw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HammerTime-TUlBTwAAAAAAAAAAAAAAAw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TinkerTime-TUlBTwAAAAAAAAAAAAAABA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TinkerTime-TUlBTwAAAAAAAAAAAAAABA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneSwingNineBloc-TUlBTwAAAAAAAAAAAAAABQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneSwingNineBloc-TUlBTwAAAAAAAAAAAAAABQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheGrandFurnace-TUlBTwAAAAAAAAAAAAAABg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheGrandFurnace-TUlBTwAAAAAAAAAAAAAABg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ObsidianPickHead-TUlBTwAAAAAAAAAAAAAABw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ObsidianPickHead-TUlBTwAAAAAAAAAAAAAABw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AnAppleaDay-TUlBTwAAAAAAAAAAAAAACA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AnAppleaDay-TUlBTwAAAAAAAAAAAAAACA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HomeIstheSpawnPo-TUlBTwAAAAAAAAAAAAAACQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HomeIstheSpawnPo-TUlBTwAAAAAAAAAAAAAACQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SleepThroughtheN-TUlBTwAAAAAAAAAAAAAACg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SleepThroughtheN-TUlBTwAAAAAAAAAAAAAACg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BegoneFoulSpawns-TUlBTwAAAAAAAAAAAAAACw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BegoneFoulSpawns-TUlBTwAAAAAAAAAAAAAACw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HungerBegone-TUlBTwAAAAAAAAAAAAAADA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HungerBegone-TUlBTwAAAAAAAAAAAAAADA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MissingKitchenwa-TUlBTwAAAAAAAAAAAAAADQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MissingKitchenwa-TUlBTwAAAAAAAAAAAAAADQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HugeHugeCapacity-TUlBTwAAAAAAAAAAAAAADg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HugeHugeCapacity-TUlBTwAAAAAAAAAAAAAADg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ChestButBigger-TUlBTwAAAAAAAAAAAAAADw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ChestButBigger-TUlBTwAAAAAAAAAAAAAADw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrawerBank-TUlBTwAAAAAAAAAAAAAAEA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrawerBank-TUlBTwAAAAAAAAAAAAAAEA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/QuickBarQuickBel-TUlBTwAAAAAAAAAAAAAAEQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/QuickBarQuickBel-TUlBTwAAAAAAAAAAAAAAEQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/NoFloatingIsland-TUlBTwAAAAAAAAAAAAAAEg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/NoFloatingIsland-TUlBTwAAAAAAAAAAAAAAEg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WaterWaterEveryw-TUlBTwAAAAAAAAAAAAAAEw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WaterWaterEveryw-TUlBTwAAAAAAAAAAAAAAEw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RushingStreams-TUlBTwAAAAAAAAAAAAAAFA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RushingStreams-TUlBTwAAAAAAAAAAAAAAFA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LetThereBeLight-TUlBTwAAAAAAAAAAAAAAFQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LetThereBeLight-TUlBTwAAAAAAAAAAAAAAFQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GravityDoestheWo-TUlBTwAAAAAAAAAAAAAAFg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GravityDoestheWo-TUlBTwAAAAAAAAAAAAAAFg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YourFirstBoiler-TUlBTwAAAAAAAAAAAAAAFw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YourFirstBoiler-TUlBTwAAAAAAAAAAAAAAFw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamCookedDinne-TUlBTwAAAAAAAAAAAAAAGA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamCookedDinne-TUlBTwAAAAAAAAAAAAAAGA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CoinsfortheCat-TUlBTwAAAAAAAAAAAAAAGQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CoinsfortheCat-TUlBTwAAAAAAAAAAAAAAGQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AFeastofFeasts-TUlBTwAAAAAAAAAAAAAAGg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AFeastofFeasts-TUlBTwAAAAAAAAAAAAAAGg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DeathInsuranceCh-TUlBTwAAAAAAAAAAAAAAGw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DeathInsuranceCh-TUlBTwAAAAAAAAAAAAAAGw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FenceItorRegretI-TUlBTwAAAAAAAAAAAAAAHA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FenceItorRegretI-TUlBTwAAAAAAAAAAAAAAHA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheCatsTipJar-TUlBTwAAAAAAAAAAAAAAHQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheCatsTipJar-TUlBTwAAAAAAAAAAAAAAHQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WrenchItDontWhac-TUlBTwAAAAAAAAAAAAAAHg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WrenchItDontWhac-TUlBTwAAAAAAAAAAAAAAHg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CharcoalEconomy-TUlBTwAAAAAAAAAAAAAAHw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CharcoalEconomy-TUlBTwAAAAAAAAAAAAAAHw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DigSafeStayAlive-TUlBTwAAAAAAAAAAAAAAIA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DigSafeStayAlive-TUlBTwAAAAAAAAAAAAAAIA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/IronIsCurrency-TUlBTwAAAAAAAAAAAAAAIQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/IronIsCurrency-TUlBTwAAAAAAAAAAAAAAIQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WarRations-TUlBTwAAAAAAAAAAAAAAIg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WarRations-TUlBTwAAAAAAAAAAAAAAIg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteadyonYourFeet-TUlBTwAAAAAAAAAAAAAAIw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteadyonYourFeet-TUlBTwAAAAAAAAAAAAAAIw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheGateofAE-TUlBTwAAAAAAAAAAAAAAJA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheGateofAE-TUlBTwAAAAAAAAAAAAAAJA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstContactFlui-TUlBTwAAAAAAAAAAAAAAJQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstContactFlui-TUlBTwAAAAAAAAAAAAAAJQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AEFallsFromtheSk-TUlBTwAAAAAAAAAAAAAAJg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AEFallsFromtheSk-TUlBTwAAAAAAAAAAAAAAJg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PoweringtheBabyN-TUlBTwAAAAAAAAAAAAAAJw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PoweringtheBabyN-TUlBTwAAAAAAAAAAAAAAJw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/Channels101-TUlBTwAAAAAAAAAAAAAAKA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/Channels101-TUlBTwAAAAAAAAAAAAAAKA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DenseBackbone-TUlBTwAAAAAAAAAAAAAAKQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DenseBackbone-TUlBTwAAAAAAAAAAAAAAKQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheTerminalFamil-TUlBTwAAAAAAAAAAAAAAKg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheTerminalFamil-TUlBTwAAAAAAAAAAAAAAKg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ItsStorageTime-TUlBTwAAAAAAAAAAAAAAKw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ItsStorageTime-TUlBTwAAAAAAAAAAAAAAKw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CellWorkbenchDay-TUlBTwAAAAAAAAAAAAAALA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CellWorkbenchDay-TUlBTwAAAAAAAAAAAAAALA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DissolveandConve-TUlBTwAAAAAAAAAAAAAALQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DissolveandConve-TUlBTwAAAAAAAAAAAAAALQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrawersJointheCl-TUlBTwAAAAAAAAAAAAAALg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrawersJointheCl-TUlBTwAAAAAAAAAAAAAALg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ImportBayOverhau-TUlBTwAAAAAAAAAAAAAALw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ImportBayOverhau-TUlBTwAAAAAAAAAAAAAALw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OutputBayOverhau-TUlBTwAAAAAAAAAAAAAAMA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OutputBayOverhau-TUlBTwAAAAAAAAAAAAAAMA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/InterfacesEveryw-TUlBTwAAAAAAAAAAAAAAMQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/InterfacesEveryw-TUlBTwAAAAAAAAAAAAAAMQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMolecularAsse-TUlBTwAAAAAAAAAAAAAAMg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMolecularAsse-TUlBTwAAAAAAAAAAAAAAMg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CraftingCPU-TUlBTwAAAAAAAAAAAAAAMw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CraftingCPU-TUlBTwAAAAAAAAAAAAAAMw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PatternsandPatte-TUlBTwAAAAAAAAAAAAAANA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PatternsandPatte-TUlBTwAAAAAAAAAAAAAANA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YourFirstAutocra-TUlBTwAAAAAAAAAAAAAANQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YourFirstAutocra-TUlBTwAAAAAAAAAAAAAANQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CraftingMonitor-TUlBTwAAAAAAAAAAAAAANg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CraftingMonitor-TUlBTwAAAAAAAAAAAAAANg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PatternSupplierK-TUlBTwAAAAAAAAAAAAAANw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PatternSupplierK-TUlBTwAAAAAAAAAAAAAANw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CompresstheChann-TUlBTwAAAAAAAAAAAAAAOA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CompresstheChann-TUlBTwAAAAAAAAAAAAAAOA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidP2P-TUlBTwAAAAAAAAAAAAAAOQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidP2P-TUlBTwAAAAAAAAAAAAAAOQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FasterThanLight-TUlBTwAAAAAAAAAAAAAAOg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FasterThanLight-TUlBTwAAAAAAAAAAAAAAOg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HyperAcceleratio-TUlBTwAAAAAAAAAAAAAAOw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HyperAcceleratio-TUlBTwAAAAAAAAAAAAAAOw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMEIOPort-TUlBTwAAAAAAAAAAAAAAPA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMEIOPort-TUlBTwAAAAAAAAAAAAAAPA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CrystalGrowthCha-TUlBTwAAAAAAAAAAAAAAPQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CrystalGrowthCha-TUlBTwAAAAAAAAAAAAAAPQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ANetworkWorldWid-TUlBTwAAAAAAAAAAAAAAPg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ANetworkWorldWid-TUlBTwAAAAAAAAAAAAAAPg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WirelessCrafting-TUlBTwAAAAAAAAAAAAAAPw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WirelessCrafting-TUlBTwAAAAAAAAAAAAAAPw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MaximumSecurity-TUlBTwAAAAAAAAAAAAAAQA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MaximumSecurity-TUlBTwAAAAAAAAAAAAAAQA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LinkEverything-TUlBTwAAAAAAAAAAAAAAQQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LinkEverything-TUlBTwAAAAAAAAAAAAAAQQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidInterfaces-TUlBTwAAAAAAAAAAAAAAQg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidInterfaces-TUlBTwAAAAAAAAAAAAAAQg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidStorageCell-TUlBTwAAAAAAAAAAAAAAQw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidStorageCell-TUlBTwAAAAAAAAAAAAAAQw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidBuses-TUlBTwAAAAAAAAAAAAAARA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FluidBuses-TUlBTwAAAAAAAAAAAAAARA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DenseEnergyBoys-TUlBTwAAAAAAAAAAAAAARQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DenseEnergyBoys-TUlBTwAAAAAAAAAAAAAARQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheLevelMaintain-TUlBTwAAAAAAAAAAAAAARg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheLevelMaintain-TUlBTwAAAAAAAAAAAAAARg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EndlessAEEnergy-TUlBTwAAAAAAAAAAAAAARw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EndlessAEEnergy-TUlBTwAAAAAAAAAAAAAARw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SpatialStorage10-TUlBTwAAAAAAAAAAAAAASA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SpatialStorage10-TUlBTwAAAAAAAAAAAAAASA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CondenseandVoid-TUlBTwAAAAAAAAAAAAAASQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CondenseandVoid-TUlBTwAAAAAAAAAAAAAASQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheCellLadder-TUlBTwAAAAAAAAAAAAAASg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheCellLadder-TUlBTwAAAAAAAAAAAAAASg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GraduationALiveN-TUlBTwAAAAAAAAAAAAAASw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GraduationALiveN-TUlBTwAAAAAAAAAAAAAASw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamAgeIgnition-TUlBTwAAAAAAAAAAAAAATA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamAgeIgnition-TUlBTwAAAAAAAAAAAAAATA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstBronzeSpin-TUlBTwAAAAAAAAAAAAAATQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstBronzeSpin-TUlBTwAAAAAAAAAAAAAATQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WaterDiscipline-TUlBTwAAAAAAAAAAAAAATg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WaterDiscipline-TUlBTwAAAAAAAAAAAAAATg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamKitchen-TUlBTwAAAAAAAAAAAAAATw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamKitchen-TUlBTwAAAAAAAAAAAAAATw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/Maceratorv10-TUlBTwAAAAAAAAAAAAAAUA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/Maceratorv10-TUlBTwAAAAAAAAAAAAAAUA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BoardsBeforeCirc-TUlBTwAAAAAAAAAAAAAAUQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BoardsBeforeCirc-TUlBTwAAAAAAAAAAAAAAUQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheSteamBackbone-TUlBTwAAAAAAAAAAAAAAUg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheSteamBackbone-TUlBTwAAAAAAAAAAAAAAUg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CacheandDrill-TUlBTwAAAAAAAAAAAAAAUw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CacheandDrill-TUlBTwAAAAAAAAAAAAAAUw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PressureRising-TUlBTwAAAAAAAAAAAAAAVA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PressureRising-TUlBTwAAAAAAAAAAAAAAVA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SunontheRoof-TUlBTwAAAAAAAAAAAAAAVQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SunontheRoof-TUlBTwAAAAAAAAAAAAAAVQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MirrorFarm-TUlBTwAAAAAAAAAAAAAAVg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MirrorFarm-TUlBTwAAAAAAAAAAAAAAVg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MagmaintoSteam-TUlBTwAAAAAAAAAAAAAAVw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MagmaintoSteam-TUlBTwAAAAAAAAAAAAAAVw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheBigMelt-TUlBTwAAAAAAAAAAAAAAWA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheBigMelt-TUlBTwAAAAAAAAAAAAAAWA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BrickbyBricktoSt-TUlBTwAAAAAAAAAAAAAAWQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BrickbyBricktoSt-TUlBTwAAAAAAAAAAAAAAWQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamAgeMileston-TUlBTwAAAAAAAAAAAAAAWg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamAgeMileston-TUlBTwAAAAAAAAAAAAAAWg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LetThereBeEU-TUlBTwAAAAAAAAAAAAAAWw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LetThereBeEU-TUlBTwAAAAAAAAAAAAAAWw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullsBeforeMachi-TUlBTwAAAAAAAAAAAAAAXA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullsBeforeMachi-TUlBTwAAAAAAAAAAAAAAXA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstElectricGri-TUlBTwAAAAAAAAAAAAAAXQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstElectricGri-TUlBTwAAAAAAAAAAAAAAXQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SmeltAssembleRep-TUlBTwAAAAAAAAAAAAAAXg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SmeltAssembleRep-TUlBTwAAAAAAAAAAAAAAXg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GoodCircuitsGrea-TUlBTwAAAAAAAAAAAAAAXw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GoodCircuitsGrea-TUlBTwAAAAAAAAAAAAAAXw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YourFirstWireles-TUlBTwAAAAAAAAAAAAAAYA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YourFirstWireles-TUlBTwAAAAAAAAAAAAAAYA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrinkingFromtheA-TUlBTwAAAAAAAAAAAAAAYQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrinkingFromtheA-TUlBTwAAAAAAAAAAAAAAYQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FeedtheGridDista-TUlBTwAAAAAAAAAAAAAAYg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FeedtheGridDista-TUlBTwAAAAAAAAAAAAAAYg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamtoEUBridged-TUlBTwAAAAAAAAAAAAAAYw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamtoEUBridged-TUlBTwAAAAAAAAAAAAAAYw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/VoltageDisciplin-TUlBTwAAAAAAAAAAAAAAZA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/VoltageDisciplin-TUlBTwAAAAAAAAAAAAAAZA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AutomationUnderg-TUlBTwAAAAAAAAAAAAAAZQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AutomationUnderg-TUlBTwAAAAAAAAAAAAAAZQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TanksFitforaFact-TUlBTwAAAAAAAAAAAAAAZg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TanksFitforaFact-TUlBTwAAAAAAAAAAAAAAZg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BoilerLVRefit-TUlBTwAAAAAAAAAAAAAAZw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BoilerLVRefit-TUlBTwAAAAAAAAAAAAAAZw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AStackofGoodCirc-TUlBTwAAAAAAAAAAAAAAaA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AStackofGoodCirc-TUlBTwAAAAAAAAAAAAAAaA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LowVoltageMilest-TUlBTwAAAAAAAAAAAAAAaQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LowVoltageMilest-TUlBTwAAAAAAAAAAAAAAaQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MediumVoltageHea-TUlBTwAAAAAAAAAAAAAAag==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MediumVoltageHea-TUlBTwAAAAAAAAAAAAAAag==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAluminiumHull-TUlBTwAAAAAAAAAAAAAAaw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAluminiumHull-TUlBTwAAAAAAAAAAAAAAaw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AluminiumtheElec-TUlBTwAAAAAAAAAAAAAAbA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AluminiumtheElec-TUlBTwAAAAAAAAAAAAAAbA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/StainlessAmbitio-TUlBTwAAAAAAAAAAAAAAbQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/StainlessAmbitio-TUlBTwAAAAAAAAAAAAAAbQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SharedWallsShare-TUlBTwAAAAAAAAAAAAAAbg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SharedWallsShare-TUlBTwAAAAAAAAAAAAAAbg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BetterGrinding-TUlBTwAAAAAAAAAAAAAAbw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BetterGrinding-TUlBTwAAAAAAAAAAAAAAbw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstDropsofDist-TUlBTwAAAAAAAAAAAAAAcA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstDropsofDist-TUlBTwAAAAAAAAAAAAAAcA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WayTwoThePyrolys-TUlBTwAAAAAAAAAAAAAAcQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WayTwoThePyrolys-TUlBTwAAAAAAAAAAAAAAcQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RareMetals-TUlBTwAAAAAAAAAAAAAAcg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RareMetals-TUlBTwAAAAAAAAAAAAAAcg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamMeetstheOil-TUlBTwAAAAAAAAAAAAAAcw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamMeetstheOil-TUlBTwAAAAAAAAAAAAAAcw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DenseSteamPrep-TUlBTwAAAAAAAAAAAAAAdA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DenseSteamPrep-TUlBTwAAAAAAAAAAAAAAdA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheOvenThatLearn-TUlBTwAAAAAAAAAAAAAAdQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheOvenThatLearn-TUlBTwAAAAAAAAAAAAAAdQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MiningWithoutWan-TUlBTwAAAAAAAAAAAAAAdg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MiningWithoutWan-TUlBTwAAAAAAAAAAAAAAdg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/KanthalbytheBund-TUlBTwAAAAAAAAAAAAAAdw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/KanthalbytheBund-TUlBTwAAAAAAAAAAAAAAdw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MediumVoltageMil-TUlBTwAAAAAAAAAAAAAAeA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MediumVoltageMil-TUlBTwAAAAAAAAAAAAAAeA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HighVoltageNewRu-TUlBTwAAAAAAAAAAAAAAeQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HighVoltageNewRu-TUlBTwAAAAAAAAAAAAAAeQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullNumberThree-TUlBTwAAAAAAAAAAAAAAeg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullNumberThree-TUlBTwAAAAAAAAAAAAAAeg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TitaniumFinally-TUlBTwAAAAAAAAAAAAAAew==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TitaniumFinally-TUlBTwAAAAAAAAAAAAAAew==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CircuitAssemblyA-TUlBTwAAAAAAAAAAAAAAfA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CircuitAssemblyA-TUlBTwAAAAAAAAAAAAAAfA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/UniversalGrindin-TUlBTwAAAAAAAAAAAAAAfQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/UniversalGrindin-TUlBTwAAAAAAAAAAAAAAfQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAEIntegration-TUlBTwAAAAAAAAAAAAAAfg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAEIntegration-TUlBTwAAAAAAAAAAAAAAfg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TrendsonaWall-TUlBTwAAAAAAAAAAAAAAfw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TrendsonaWall-TUlBTwAAAAAAAAAAAAAAfw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RedstoneMeetsthe-TUlBTwAAAAAAAAAAAAAAgA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RedstoneMeetsthe-TUlBTwAAAAAAAAAAAAAAgA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ScraptoUU-TUlBTwAAAAAAAAAAAAAAgQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ScraptoUU-TUlBTwAAAAAAAAAAAAAAgQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TowerofDrops-TUlBTwAAAAAAAAAAAAAAgg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TowerofDrops-TUlBTwAAAAAAAAAAAAAAgg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OilyAdvice-TUlBTwAAAAAAAAAAAAAAgw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OilyAdvice-TUlBTwAAAAAAAAAAAAAAgw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ConduitCascade-TUlBTwAAAAAAAAAAAAAAhA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ConduitCascade-TUlBTwAAAAAAAAAAAAAAhA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AmmoniaAlley-TUlBTwAAAAAAAAAAAAAAhQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AmmoniaAlley-TUlBTwAAAAAAAAAAAAAAhQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ABridgeofTitaniu-TUlBTwAAAAAAAAAAAAAAhg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ABridgeofTitaniu-TUlBTwAAAAAAAAAAAAAAhg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HighVoltageMiles-TUlBTwAAAAAAAAAAAAAAhw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HighVoltageMiles-TUlBTwAAAAAAAAAAAAAAhw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ExtremeVoltageBi-TUlBTwAAAAAAAAAAAAAAiA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ExtremeVoltageBi-TUlBTwAAAAAAAAAAAAAAiA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullNumberFour-TUlBTwAAAAAAAAAAAAAAiQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullNumberFour-TUlBTwAAAAAAAAAAAAAAiQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WorkstationWafer-TUlBTwAAAAAAAAAAAAAAig==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WorkstationWafer-TUlBTwAAAAAAAAAAAAAAig==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TungstensteelTid-TUlBTwAAAAAAAAAAAAAAiw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TungstensteelTid-TUlBTwAAAAAAAAAAAAAAiw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CircuitAssemblyE-TUlBTwAAAAAAAAAAAAAAjA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CircuitAssemblyE-TUlBTwAAAAAAAAAAAAAAjA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/IgnitetheSingula-TUlBTwAAAAAAAAAAAAAAjQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/IgnitetheSingula-TUlBTwAAAAAAAAAAAAAAjQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AnArrayforEveryt-TUlBTwAAAAAAAAAAAAAAjg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AnArrayforEveryt-TUlBTwAAAAAAAAAAAAAAjg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OpenHearthOpenTh-TUlBTwAAAAAAAAAAAAAAjw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OpenHearthOpenTh-TUlBTwAAAAAAAAAAAAAAjw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrillAcrossDimen-TUlBTwAAAAAAAAAAAAAAkA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DrillAcrossDimen-TUlBTwAAAAAAAAAAAAAAkA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SuperDistillatio-TUlBTwAAAAAAAAAAAAAAkQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SuperDistillatio-TUlBTwAAAAAAAAAAAAAAkQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamPoweredMini-TUlBTwAAAAAAAAAAAAAAkg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamPoweredMini-TUlBTwAAAAAAAAAAAAAAkg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WaterWorksHubEdi-TUlBTwAAAAAAAAAAAAAAkw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WaterWorksHubEdi-TUlBTwAAAAAAAAAAAAAAkw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/NanoCircuitsbyth-TUlBTwAAAAAAAAAAAAAAlA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/NanoCircuitsbyth-TUlBTwAAAAAAAAAAAAAAlA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MorePowerSir-TUlBTwAAAAAAAAAAAAAAlQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MorePowerSir-TUlBTwAAAAAAAAAAAAAAlQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ExtremeVoltageMi-TUlBTwAAAAAAAAAAAAAAlg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ExtremeVoltageMi-TUlBTwAAAAAAAAAAAAAAlg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/InsaneVoltage-TUlBTwAAAAAAAAAAAAAAlw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/InsaneVoltage-TUlBTwAAAAAAAAAAAAAAlw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullandAssembler-TUlBTwAAAAAAAAAAAAAAmA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HullandAssembler-TUlBTwAAAAAAAAAAAAAAmA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CriticalSingular-TUlBTwAAAAAAAAAAAAAAmQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CriticalSingular-TUlBTwAAAAAAAAAAAAAAmQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheOverpressureC-TUlBTwAAAAAAAAAAAAAAmg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheOverpressureC-TUlBTwAAAAAAAAAAAAAAmg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/InsaneVoltageMil-TUlBTwAAAAAAAAAAAAAAmw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/InsaneVoltageMil-TUlBTwAAAAAAAAAAAAAAmw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LuVLighttheWay-TUlBTwAAAAAAAAAAAAAAnA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LuVLighttheWay-TUlBTwAAAAAAAAAAAAAAnA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAssemblyLine-TUlBTwAAAAAAAAAAAAAAnQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAssemblyLine-TUlBTwAAAAAAAAAAAAAAnQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CrystalProcessor-TUlBTwAAAAAAAAAAAAAAng==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CrystalProcessor-TUlBTwAAAAAAAAAAAAAAng==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheRoadAhead-TUlBTwAAAAAAAAAAAAAAnw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheRoadAhead-TUlBTwAAAAAAAAAAAAAAnw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LuVMilestone-TUlBTwAAAAAAAAAAAAAAoA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/LuVMilestone-TUlBTwAAAAAAAAAAAAAAoA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GateofCrossover-TUlBTwAAAAAAAAAAAAAAoQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GateofCrossover-TUlBTwAAAAAAAAAAAAAAoQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamFeedstheLin-TUlBTwAAAAAAAAAAAAAAog==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SteamFeedstheLin-TUlBTwAAAAAAAAAAAAAAog==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ThePipeThatIsnt-TUlBTwAAAAAAAAAAAAAAow==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ThePipeThatIsnt-TUlBTwAAAAAAAAAAAAAAow==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneTicketAnywher-TUlBTwAAAAAAAAAAAAAApA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneTicketAnywher-TUlBTwAAAAAAAAAAAAAApA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstEntangler-TUlBTwAAAAAAAAAAAAAApQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FirstEntangler-TUlBTwAAAAAAAAAAAAAApQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EconomyofScale-TUlBTwAAAAAAAAAAAAAApg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EconomyofScale-TUlBTwAAAAAAAAAAAAAApg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AThousandtoOne-TUlBTwAAAAAAAAAAAAAApw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AThousandtoOne-TUlBTwAAAAAAAAAAAAAApw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CriticalMass-TUlBTwAAAAAAAAAAAAAAqA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CriticalMass-TUlBTwAAAAAAAAAAAAAAqA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HandleWithRespec-TUlBTwAAAAAAAAAAAAAAqQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HandleWithRespec-TUlBTwAAAAAAAAAAAAAAqQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WhiteGloveCourie-TUlBTwAAAAAAAAAAAAAAqg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WhiteGloveCourie-TUlBTwAAAAAAAAAAAAAAqg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OverpressureLice-TUlBTwAAAAAAAAAAAAAAqw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OverpressureLice-TUlBTwAAAAAAAAAAAAAAqw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MagmaPowered-TUlBTwAAAAAAAAAAAAAArA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MagmaPowered-TUlBTwAAAAAAAAAAAAAArA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RefillingtheFiel-TUlBTwAAAAAAAAAAAAAArQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RefillingtheFiel-TUlBTwAAAAAAAAAAAAAArQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheRemoteMine-TUlBTwAAAAAAAAAAAAAArg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheRemoteMine-TUlBTwAAAAAAAAAAAAAArg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MatterFromThinAi-TUlBTwAAAAAAAAAAAAAArw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MatterFromThinAi-TUlBTwAAAAAAAAAAAAAArw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneRoofWholeChai-TUlBTwAAAAAAAAAAAAAAsA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneRoofWholeChai-TUlBTwAAAAAAAAAAAAAAsA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CuttheFirstCable-TUlBTwAAAAAAAAAAAAAAsQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CuttheFirstCable-TUlBTwAAAAAAAAAAAAAAsQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MeterMaids-TUlBTwAAAAAAAAAAAAAAsg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MeterMaids-TUlBTwAAAAAAAAAAAAAAsg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TwoWayStreet-TUlBTwAAAAAAAAAAAAAAsw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TwoWayStreet-TUlBTwAAAAAAAAAAAAAAsw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PocketPatrol-TUlBTwAAAAAAAAAAAAAAtA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PocketPatrol-TUlBTwAAAAAAAAAAAAAAtA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WatchdogWatts-TUlBTwAAAAAAAAAAAAAAtQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WatchdogWatts-TUlBTwAAAAAAAAAAAAAAtQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HysteresisDiscip-TUlBTwAAAAAAAAAAAAAAtg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/HysteresisDiscip-TUlBTwAAAAAAAAAAAAAAtg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WallofTrends-TUlBTwAAAAAAAAAAAAAAtw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WallofTrends-TUlBTwAAAAAAAAAAAAAAtw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheBiggerPicture-TUlBTwAAAAAAAAAAAAAAuA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheBiggerPicture-TUlBTwAAAAAAAAAAAAAAuA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FeelingtheVoid-TUlBTwAAAAAAAAAAAAAAuQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FeelingtheVoid-TUlBTwAAAAAAAAAAAAAAuQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/QuantumHomestead-TUlBTwAAAAAAAAAAAAAAug==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/QuantumHomestead-TUlBTwAAAAAAAAAAAAAAug==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MassWireless-TUlBTwAAAAAAAAAAAAAAuw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MassWireless-TUlBTwAAAAAAAAAAAAAAuw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMachineLedger-TUlBTwAAAAAAAAAAAAAAvA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMachineLedger-TUlBTwAAAAAAAAAAAAAAvA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheDailyGrind-TUlBTwAAAAAAAAAAAAAAvQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheDailyGrind-TUlBTwAAAAAAAAAAAAAAvQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PaidtoWait-TUlBTwAAAAAAAAAAAAAAvg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PaidtoWait-TUlBTwAAAAAAAAAAAAAAvg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PitytheGambler-TUlBTwAAAAAAAAAAAAAAvw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PitytheGambler-TUlBTwAAAAAAAAAAAAAAvw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SixtyFourCoins-TUlBTwAAAAAAAAAAAAAAwA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SixtyFourCoins-TUlBTwAAAAAAAAAAAAAAwA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheBankRate-TUlBTwAAAAAAAAAAAAAAwQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheBankRate-TUlBTwAAAAAAAAAAAAAAwQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShoppingList-TUlBTwAAAAAAAAAAAAAAwg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShoppingList-TUlBTwAAAAAAAAAAAAAAwg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TenFingersTenRin-TUlBTwAAAAAAAAAAAAAAww==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TenFingersTenRin-TUlBTwAAAAAAAAAAAAAAww==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FireproofCommute-TUlBTwAAAAAAAAAAAAAAxA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FireproofCommute-TUlBTwAAAAAAAAAAAAAAxA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BottomlessBucket-TUlBTwAAAAAAAAAAAAAAxQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BottomlessBucket-TUlBTwAAAAAAAAAAAAAAxQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BottomlessBin-TUlBTwAAAAAAAAAAAAAAxg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BottomlessBin-TUlBTwAAAAAAAAAAAAAAxg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PayingPremium-TUlBTwAAAAAAAAAAAAAAxw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PayingPremium-TUlBTwAAAAAAAAAAAAAAxw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheLongGame-TUlBTwAAAAAAAAAAAAAAyA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheLongGame-TUlBTwAAAAAAAAAAAAAAyA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TripleRedundancy-TUlBTwAAAAAAAAAAAAAAyQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TripleRedundancy-TUlBTwAAAAAAAAAAAAAAyQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WirelessonCredit-TUlBTwAAAAAAAAAAAAAAyg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WirelessonCredit-TUlBTwAAAAAAAAAAAAAAyg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OreBoughtwithCat-TUlBTwAAAAAAAAAAAAAAyw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OreBoughtwithCat-TUlBTwAAAAAAAAAAAAAAyw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TurbinetotheGrid-TUlBTwAAAAAAAAAAAAAAzA==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TurbinetotheGrid-TUlBTwAAAAAAAAAAAAAAzA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMIAOIndustria-TUlBTwAAAAAAAAAAAAAAzQ==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheMIAOIndustria-TUlBTwAAAAAAAAAAAAAAzQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GateofTrials-TUlBTwAAAAAAAAAAAAAAzg==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GateofTrials-TUlBTwAAAAAAAAAAAAAAzg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PowerReserve-TUlBTwAAAAAAAAAAAAAAzw==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PowerReserve-TUlBTwAAAAAAAAAAAAAAzw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneRoofEveryMach-TUlBTwAAAAAAAAAAAAAA0A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/OneRoofEveryMach-TUlBTwAAAAAAAAAAAAAA0A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PastThreeHundred-TUlBTwAAAAAAAAAAAAAA0Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PastThreeHundred-TUlBTwAAAAAAAAAAAAAA0Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ThirtyTwoCritica-TUlBTwAAAAAAAAAAAAAA0g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ThirtyTwoCritica-TUlBTwAAAAAAAAAAAAAA0g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/The240KClub-TUlBTwAAAAAAAAAAAAAA0w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/The240KClub-TUlBTwAAAAAAAAAAAAAA0w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AmpIttotheCap-TUlBTwAAAAAAAAAAAAAA1A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AmpIttotheCap-TUlBTwAAAAAAAAAAAAAA1A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EveryCornerCover-TUlBTwAAAAAAAAAAAAAA1Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EveryCornerCover-TUlBTwAAAAAAAAAAAAAA1Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RingLordCellHoar-TUlBTwAAAAAAAAAAAAAA1g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RingLordCellHoar-TUlBTwAAAAAAAAAAAAAA1g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AftertheMaster-TUlBTwAAAAAAAAAAAAAA1w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AftertheMaster-TUlBTwAAAAAAAAAAAAAA1w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BeekeepersAssemb-TUlBTwAAAAAAAAAAAAAA2A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BeekeepersAssemb-TUlBTwAAAAAAAAAAAAAA2A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DOBDynasty-TUlBTwAAAAAAAAAAAAAA2Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DOBDynasty-TUlBTwAAAAAAAAAAAAAA2Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SalisMundusSupre-TUlBTwAAAAAAAAAAAAAA2g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SalisMundusSupre-TUlBTwAAAAAAAAAAAAAA2g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShadowmetalSwarm-TUlBTwAAAAAAAAAAAAAA2w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShadowmetalSwarm-TUlBTwAAAAAAAAAAAAAA2w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DividedHive-TUlBTwAAAAAAAAAAAAAA3A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DividedHive-TUlBTwAAAAAAAAAAAAAA3A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SuperBees-TUlBTwAAAAAAAAAAAAAA3Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SuperBees-TUlBTwAAAAAAAAAAAAAA3Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheApiaryMegastr-TUlBTwAAAAAAAAAAAAAA3g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheApiaryMegastr-TUlBTwAAAAAAAAAAAAAA3g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/IShallBringDeath-TUlBTwAAAAAAAAAAAAAA3w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/IShallBringDeath-TUlBTwAAAAAAAAAAAAAA3w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/NanoSkin-TUlBTwAAAAAAAAAAAAAA4A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/NanoSkin-TUlBTwAAAAAAAAAAAAAA4A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TwentyHearts-TUlBTwAAAAAAAAAAAAAA4Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TwentyHearts-TUlBTwAAAAAAAAAAAAAA4Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SpeedDemonBoots-TUlBTwAAAAAAAAAAAAAA4g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SpeedDemonBoots-TUlBTwAAAAAAAAAAAAAA4g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BlackDeckerHSSEd-TUlBTwAAAAAAAAAAAAAA4w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/BlackDeckerHSSEd-TUlBTwAAAAAAAAAAAAAA4w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DamascusForever-TUlBTwAAAAAAAAAAAAAA5A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/DamascusForever-TUlBTwAAAAAAAAAAAAAA5A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CobaltEdge-TUlBTwAAAAAAAAAAAAAA5Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CobaltEdge-TUlBTwAAAAAAAAAAAAAA5Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PowerFlood-TUlBTwAAAAAAAAAAAAAA5g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/PowerFlood-TUlBTwAAAAAAAAAAAAAA5g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GateofExchange-TUlBTwAAAAAAAAAAAAAA5w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/GateofExchange-TUlBTwAAAAAAAAAAAAAA5w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CoinstoIngots-TUlBTwAAAAAAAAAAAAAA6A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/CoinstoIngots-TUlBTwAAAAAAAAAAAAAA6A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SurplusLiquidati-TUlBTwAAAAAAAAAAAAAA6Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SurplusLiquidati-TUlBTwAAAAAAAAAAAAAA6Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShimmerBuysSingu-TUlBTwAAAAAAAAAAAAAA6g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShimmerBuysSingu-TUlBTwAAAAAAAAAAAAAA6g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SingularityBuyba-TUlBTwAAAAAAAAAAAAAA6w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/SingularityBuyba-TUlBTwAAAAAAAAAAAAAA6w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WirelessScrapDes-TUlBTwAAAAAAAAAAAAAA7A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/WirelessScrapDes-TUlBTwAAAAAAAAAAAAAA7A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShimmerBuysHubCh-TUlBTwAAAAAAAAAAAAAA7Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/ShimmerBuysHubCh-TUlBTwAAAAAAAAAAAAAA7Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EraCertificates-TUlBTwAAAAAAAAAAAAAA7g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EraCertificates-TUlBTwAAAAAAAAAAAAAA7g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YouWillWantThese-TUlBTwAAAAAAAAAAAAAA7w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/YouWillWantThese-TUlBTwAAAAAAAAAAAAAA7w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AluminaReliefSup-TUlBTwAAAAAAAAAAAAAA8A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/AluminaReliefSup-TUlBTwAAAAAAAAAAAAAA8A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/QuickTravelDepot-TUlBTwAAAAAAAAAAAAAA8Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/QuickTravelDepot-TUlBTwAAAAAAAAAAAAAA8Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EndlessPearls-TUlBTwAAAAAAAAAAAAAA8g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EndlessPearls-TUlBTwAAAAAAAAAAAAAA8g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EnderFluidCondui-TUlBTwAAAAAAAAAAAAAA8w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/EnderFluidCondui-TUlBTwAAAAAAAAAAAAAA8w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAnchorNetwork-TUlBTwAAAAAAAAAAAAAA9A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheAnchorNetwork-TUlBTwAAAAAAAAAAAAAA9A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheSunNeverSets-TUlBTwAAAAAAAAAAAAAA9Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheSunNeverSets-TUlBTwAAAAAAAAAAAAAA9Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FlightUpgraded-TUlBTwAAAAAAAAAAAAAA9g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/FlightUpgraded-TUlBTwAAAAAAAAAAAAAA9g==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheDeepVault-TUlBTwAAAAAAAAAAAAAA9w==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheDeepVault-TUlBTwAAAAAAAAAAAAAA9w==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RingBuybackCerem-TUlBTwAAAAAAAAAAAAAA-A==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/RingBuybackCerem-TUlBTwAAAAAAAAAAAAAA-A==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheGraduationAud-TUlBTwAAAAAAAAAAAAAA-Q==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/TheGraduationAud-TUlBTwAAAAAAAAAAAAAA-Q==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MIAOGTNHMaster-TUlBTwAAAAAAAAAAAAAA-g==.json",
+          "questFile": "assets/gtit/bqquests/miao/Quests/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/MIAOGTNHMaster-TUlBTwAAAAAAAAAAAAAA-g==.json"
+        }
+      ],
+      "idHigh": 5569054221778550784,
+      "idLow": 1,
+      "lineFile": "assets/gtit/bqquests/miao/QuestLines/MIAOGTNH-TUlBTwAAAAAAAAAAAAAAAQ==/QuestLine.json",
+      "orderIndex": 903
+    }
+  ],
+  "version": 1
+}

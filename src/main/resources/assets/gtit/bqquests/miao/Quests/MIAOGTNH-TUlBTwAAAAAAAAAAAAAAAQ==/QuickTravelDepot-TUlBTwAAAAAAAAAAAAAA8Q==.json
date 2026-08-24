@@ -1,0 +1,81 @@
+{
+  "preRequisites:9": {
+    "0:10": {
+      "questIDHigh:4": 5569054221778550784,
+      "questIDLow:4": 232
+    }
+  },
+  "properties:10": {
+    "betterquesting:10": {
+      "autoClaim:1": 1,
+      "countAsQuest:1": 1,
+      "desc:8": "The courier desk: sixty-four each of the old tariff metals — the mixed metal and alloy blocks the original contract asked for — become two teleport staffs, fresh off the EnderIO rack.\n\nOnce a day. The teleport staff is the point-and-shoot cousin of the travel network: no anchors, no ceremony, just a rod and a destination. Keep one in the ender pouch and the daily base tour takes ninety seconds.\n\nBlocks in, staffs out. The courier cats salute.",
+      "globalShare:1": 0,
+      "icon:10": {
+        "Count:3": 1,
+        "Damage:2": 0,
+        "OreDict:8": "",
+        "id:8": "EnderIO:itemTeleportStaff"
+      },
+      "isMain:1": 0,
+      "isSilent:1": 0,
+      "lockedProgress:1": 0,
+      "name:8": "Quick Travel Depot",
+      "questLogic:8": "AND",
+      "repeatTime:3": 1728000,
+      "simultaneous:1": 0,
+      "snd_complete:8": "random.levelup",
+      "snd_update:8": "random.levelup",
+      "taskLogic:8": "AND",
+      "visibility:8": "NORMAL"
+    }
+  },
+  "questIDHigh:4": 5569054221778550784,
+  "questIDLow:4": 241,
+  "rewards:9": {
+    "0:10": {
+      "index:3": 0,
+      "rewardID:8": "bq_standard:item",
+      "rewards:9": {
+        "0:10": {
+          "Count:3": 2,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "EnderIO:itemTeleportStaff"
+        }
+      }
+    }
+  },
+  "tasks:9": {
+    "0:10": {
+      "autoConsume:1": 0,
+      "consume:1": 1,
+      "groupDetect:1": 0,
+      "ignoreNBT:1": 1,
+      "index:3": 0,
+      "partialMatch:1": 1,
+      "requireOnlyOneItem:1": 0,
+      "requiredItems:9": {
+        "0:10": {
+          "Count:3": 64,
+          "Damage:2": 9,
+          "OreDict:8": "",
+          "id:8": "gregtech:gt.blockmetal7"
+        },
+        "1:10": {
+          "Count:3": 64,
+          "Damage:2": 12,
+          "OreDict:8": "",
+          "id:8": "gregtech:gt.blockmetal5"
+        },
+        "2:10": {
+          "Count:3": 64,
+          "Damage:2": 12,
+          "OreDict:8": "",
+          "id:8": "gregtech:gt.blockmetal7"
+        }
+      },
+      "taskID:8": "bq_standard:retrieval"
+    }
+  }
+}

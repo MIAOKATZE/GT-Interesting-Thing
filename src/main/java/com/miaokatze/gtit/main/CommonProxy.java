@@ -12,6 +12,8 @@ import com.miaokatze.gtit.common.loot.LootRegistrar;
 import com.miaokatze.gtit.config.Config;
 import com.miaokatze.gtit.config.GiftConfig;
 import com.miaokatze.gtit.config.MuteConfig;
+import com.miaokatze.gtit.crossmod.bq.BqCompat;
+import com.miaokatze.gtit.crossmod.miaogtnh.MiaoGtnhHost;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.event.PlayerLoginHandler;
 import com.miaokatze.gtit.loader.ItemLoader;
@@ -22,11 +24,14 @@ import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.TeamDataProvider;
+import com.miaokatze.gtit.trade.api.BundledTradeGroups;
+import com.miaokatze.gtit.trade.api.NekoTradeIntegrationAPI;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 import appeng.api.AEApi;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLInterModComms;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartedEvent;
@@ -47,6 +52,9 @@ public class CommonProxy {
      */
     public void preInit(FMLPreInitializationEvent event) {
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
+
+        // E4a: BQ 存在性反射探测（BqCompat 无任何 BQ 类型引用，缺席时静默降级）
+        BqCompat.detect();
 
         GTInterestingThing.LOG.info("GTInterestingThing 开始初始化 (版本: " + Tags.VERSION + ")");
 
@@ -204,6 +212,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.info("[0/3] 交易配置同步监听器已注册");
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[0/3] 交易配置同步监听器注册失败", t);
+        }
+
+        // E4a: 注册 MIAO-GTNH 宿主登录监听器（综合包注入成功后延时双语提示；注册范式同上）
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(new MiaoGtnhHost());
+            GTInterestingThing.LOG.info("[0/3] MIAO-GTNH 宿主登录监听器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] MIAO-GTNH 宿主登录监听器注册失败", t);
         }
 
         // 定义机器注册任务
@@ -415,6 +433,16 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
         }
 
+        // E4a: 内置基础贸易组预探测——base 资产可用时抑制旧 42 条默认注入。
+        // 必须先于 NekoPageRegistry/NekoTradeRegistryV2 的客户端初始化执行：
+        // 单人存档下 postInit 的 initializeClient 会触发 NekoTradeConfig.init() 的
+        // 默认文件生成（早于 serverStarted），抑制标志在此前置设置才来得及生效。
+        try {
+            BundledTradeGroups.prepareDefaultSuppression();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] 内置基础贸易组预探测失败（回落旧默认交易）", t);
+        }
+
         // 初始化标签页注册表
         // 原因：必须在 postInit 阶段初始化，确保专用服务器客户端也能加载
         // （FMLServerStartedEvent 不会在专用服务器客户端触发）
@@ -477,6 +505,15 @@ public class CommonProxy {
     @SuppressWarnings({ "unused" })
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new GTITGiftCommand());
+
+        // E4a: BQ 任务注入（GTIT 自身包 + MIAO-GTNH 综合包判定注入）。
+        // after:betterquesting 排序约束保证 BQ default load 已完成；
+        // BQ 缺席/资产未就位/判定不满足时注入器静默返回，零副作用。
+        try {
+            MiaoGtnhHost.onServerStarting();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("BQ 任务包注入失败（不影响服务器启动）", t);
+        }
     }
 
     /**
@@ -498,6 +535,15 @@ public class CommonProxy {
                 // V2 交易系统是完全独立的实现，为新版猫猫售货机 V2 提供交易数据
                 // 在 serverStarted 阶段调用，确保配置文件已就绪
                 NekoTradeRegistryV2.initialize();
+
+                // E4a: 磁盘权威装载完成后，应用内置贸易组（base / miao 替换）
+                // 与外部注册队列（IMC/直连），记账门控保证玩家文件零破坏
+                try {
+                    BundledTradeGroups.applyBundledGroups();
+                    NekoTradeIntegrationAPI.applyQueuedGroups();
+                } catch (Throwable t2) {
+                    GTInterestingThing.LOG.error("内置/外部贸易组应用失败（不影响后续模块初始化）", t2);
+                }
 
                 // 初始化 V2 交易历史管理器（需要 World 对象）
                 // 负责持久化玩家交易历史到 <world>/gtit_neko_histories/<player_uuid>.dat
@@ -566,6 +612,20 @@ public class CommonProxy {
      * 模组加载完成阶段
      */
     public void loadComplete(cpw.mods.fml.common.event.FMLLoadCompleteEvent event) {}
+
+    /**
+     * IMC 消息分发阶段（E4a：外部贸易组注册通道之一）
+     * <p>
+     * 消息路由与载荷解析见 {@code NekoTradeIntegrationAPI#handleImcMessages}；
+     * 此时服务器未启动，组定义入队等待 serverStarted 统一应用。
+     */
+    public void processIMC(FMLInterModComms.IMCEvent event) {
+        try {
+            NekoTradeIntegrationAPI.handleImcMessages(event.getMessages());
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("IMC 贸易组消息处理失败（不影响 GTIT 主功能）", t);
+        }
+    }
 
     /**
      * 服务器停止阶段（BUG B1 修复：钱包全量落盘钩子）
