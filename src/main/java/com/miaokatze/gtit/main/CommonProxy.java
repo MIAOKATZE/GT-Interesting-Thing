@@ -567,6 +567,14 @@ public class CommonProxy {
                 } catch (Throwable t2) {
                     GTInterestingThing.LOG.error("抽奖系统初始化失败", t2);
                 }
+                // E4b: 应用外部抽奖池组注册队列（IMC/jar 资产/直连，记账门控保证玩家文件零破坏）。
+                // 时序依赖：必须在 LotteryManager.init（内部 loadConfig 装载 lottery.json）之后，
+                // 否则抽奖配置装载会把刚合并的池覆盖回磁盘旧态
+                try {
+                    com.miaokatze.gtit.lottery.api.LotteryIntegrationAPI.applyQueuedPools();
+                } catch (Throwable t2) {
+                    GTInterestingThing.LOG.error("外部抽奖池组应用失败（不影响后续模块初始化）", t2);
+                }
                 // O2-01: 成就骨架配置开关（默认 false）——关闭时跳过初始化
                 if (Config.enableAchievements) {
                     try {
@@ -614,9 +622,11 @@ public class CommonProxy {
     public void loadComplete(cpw.mods.fml.common.event.FMLLoadCompleteEvent event) {}
 
     /**
-     * IMC 消息分发阶段（E4a：外部贸易组注册通道之一）
+     * IMC 消息分发阶段（E4a：外部贸易组注册通道之一；E4b：抽奖池组同构接入）
      * <p>
-     * 消息路由与载荷解析见 {@code NekoTradeIntegrationAPI#handleImcMessages}；
+     * 消息路由与载荷解析见 {@code NekoTradeIntegrationAPI#handleImcMessages}
+     * （含 {@code gtit:registerTradeGroup} 与 {@code gtit:registerTradeAsset} 两 key）
+     * 与 {@code LotteryIntegrationAPI#handleImcMessages}（{@code gtit:registerLotteryPool}）；
      * 此时服务器未启动，组定义入队等待 serverStarted 统一应用。
      */
     public void processIMC(FMLInterModComms.IMCEvent event) {
@@ -624,6 +634,11 @@ public class CommonProxy {
             NekoTradeIntegrationAPI.handleImcMessages(event.getMessages());
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("IMC 贸易组消息处理失败（不影响 GTIT 主功能）", t);
+        }
+        try {
+            com.miaokatze.gtit.lottery.api.LotteryIntegrationAPI.handleImcMessages(event.getMessages());
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("IMC 抽奖池组消息处理失败（不影响 GTIT 主功能）", t);
         }
     }
 

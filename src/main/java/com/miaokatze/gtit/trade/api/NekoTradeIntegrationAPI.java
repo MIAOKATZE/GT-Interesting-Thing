@@ -19,6 +19,7 @@ import org.apache.logging.log4j.Logger;
 import com.google.common.collect.ImmutableList;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
@@ -40,6 +41,10 @@ import cpw.mods.fml.common.event.FMLInterModComms;
  * NBT 载荷含 {@code groupJson} 字符串（{@link NekoTradeGroupDef} 的 JSON），
  * 由 mod 主类的 IMC 事件处理器路由进 {@link #handleImcMessages}</li>
  * </ul>
+ * jar 资产通道（E4b，BQ 式 index.json 清单）：{@link #registerTradeAssetsFromJar}
+ * 读 {@code assets/<ownerModId>/gtit/trade/index.json} 逐条装载组定义，
+ * 经 {@link #registerTradeAsset}（{@link TradeIntegrationAssetDef} 载荷模型）
+ * 收敛回 {@link #registerTradeGroup} 同一管线。
  * 应用规则（玩家文件尊重策略，已拍板）：
  * <ul>
  * <li>组注册状态与版本记账在 {@code config/gtit/trade/integrated/<groupId>.json}
@@ -63,11 +68,17 @@ public final class NekoTradeIntegrationAPI {
     /** IMC NBT 载荷中承载组定义 JSON 的字段名 */
     public static final String IMC_NBT_FIELD = "groupJson";
 
+    /** IMC 消息 key（外部 mod 经 jar 资产清单注册贸易组，BQ 式 index.json 通道，E4b） */
+    public static final String IMC_KEY_REGISTER_TRADE_ASSET = "gtit:registerTradeAsset";
+
+    /** IMC NBT 载荷中承载资产组定义 JSON 的字段名（内容为 NekoTradeGroupDef JSON 文本） */
+    public static final String IMC_NBT_FIELD_TRADE_ASSET_JSON = "tradeAssetJson";
+
+    /** IMC NBT 载荷中可选的资产归属 mod 字段名（缺省取 IMC 发送方） */
+    public static final String IMC_NBT_FIELD_OWNER_MOD_ID = "ownerModId";
+
     /** 记账文件目录（相对游戏根目录） */
     private static final String INTEGRATED_DIR = "config/gtit/trade/integrated";
-
-    /** groupId 白名单：小写字母/数字/连字符/点，1-64 位，禁止路径穿越序列 */
-    private static final String GROUP_ID_PATTERN = "[a-z0-9][a-z0-9.-]{0,63}";
 
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping()
         .create();
@@ -112,41 +123,187 @@ public final class NekoTradeIntegrationAPI {
         }
     }
 
+    // ==================== jar 资产通道（E4b，BQ 式 index.json 清单） ====================
+
+    /**
+     * 注册一个 jar 贸易资产（{@link TradeIntegrationAssetDef} 载荷模型）。
+     * <p>
+     * 解析 {@code groupJson} 为 {@link NekoTradeGroupDef} 后走既有
+     * {@link #registerTradeGroup} 管线（版本记账/幂等/requiresMods/同步语义全部继承）；
+     * {@code ownerModId} 仅用于日志溯源。清单声明的 groupId/version 与 groupJson 内
+     * 不一致时以资产声明为准（记 warn——清单是身份权威）。
+     *
+     * @param def 资产定义（null 或 groupJson 非法时告警丢弃）
+     */
+    public static void registerTradeAsset(TradeIntegrationAssetDef def) {
+        if (def == null) {
+            LOG.warn("[TradeAPI] 贸易资产定义为 null，已丢弃");
+            return;
+        }
+        NekoTradeGroupDef group;
+        try {
+            group = GSON.fromJson(def.getGroupJson(), NekoTradeGroupDef.class);
+        } catch (Throwable t) {
+            LOG.error(
+                "[TradeAPI] 贸易资产 " + def.getGroupId() + " 的 groupJson 解析失败（owner: " + def.getOwnerModId() + "）",
+                t);
+            return;
+        }
+        if (!isValidDef(group)) {
+            LOG.warn("[TradeAPI] 贸易资产组定义无效（groupId 缺失或不合法），已丢弃（owner: {}）", def.getOwnerModId());
+            return;
+        }
+        if (JarAssetManifest.isValidGroupId(def.getGroupId()) && !def.getGroupId()
+            .equals(group.getGroupId())) {
+            LOG.warn(
+                "[TradeAPI] 贸易资产清单 groupId（{}）与 groupJson 内 groupId（{}）不一致，以清单为准（owner: {}）",
+                def.getGroupId(),
+                group.getGroupId(),
+                def.getOwnerModId());
+            group.setGroupId(def.getGroupId());
+        }
+        if (def.getVersion() > 0 && def.getVersion() != group.getVersion()) {
+            LOG.warn(
+                "[TradeAPI] 贸易资产清单 version（{}）与 groupJson 内 version（{}）不一致，以清单为准（owner: {}）",
+                def.getVersion(),
+                group.getVersion(),
+                def.getOwnerModId());
+            group.setVersion(def.getVersion());
+        }
+        LOG.info("[TradeAPI] 收到 jar 贸易资产注册: {}（owner: {}）", group.getGroupId(), def.getOwnerModId());
+        registerTradeGroup(group);
+    }
+
+    /**
+     * 从本 mod jar 资产装载贸易组清单并逐条注册（BQ 式，E4b）。
+     * <p>
+     * 清单位于 {@code assets/<ownerModId>/gtit/trade/index.json}
+     * （{@link JarAssetManifest} schema），每条 {@code path} 指向相对资产根的
+     * NekoTradeGroupDef JSON。1.7.10 jar 目录不可枚举，故以显式清单驱动逐文件读取。
+     * <ul>
+     * <li>清单缺失：资产可选，info 静默返回</li>
+     * <li>清单无效（formatVersion != 1 / 结构损坏）：error 拒绝整清单</li>
+     * <li>单项资产损坏/缺失：error 跳过该组，不中断其余</li>
+     * </ul>
+     * 建议第三方 mod 在 {@code postInit}（物品注册完成后）调用；
+     * 服务器未就绪时自动入队，serverStarted 统一应用。
+     *
+     * @param ownerModId 资产归属 mod id（决定资产根目录，空值告警忽略）
+     */
+    public static void registerTradeAssetsFromJar(String ownerModId) {
+        if (ownerModId == null || ownerModId.isEmpty()) {
+            LOG.warn("[TradeAPI] registerTradeAssetsFromJar 需要 ownerModId，已忽略");
+            return;
+        }
+        String root = "assets/" + ownerModId + "/gtit/trade/";
+        JsonObject indexJson = JarAssetManifest.readJsonResource(root + "index.json");
+        if (indexJson == null) {
+            // jar 资产可选：清单缺失不算错误（mod 未随包分发资产时零噪音）
+            LOG.info("[TradeAPI] 未找到贸易资产清单 {}index.json（jar 资产可选），跳过", root);
+            return;
+        }
+        JarAssetManifest manifest = JarAssetManifest.parse(indexJson);
+        if (manifest == null) {
+            LOG.error(
+                "[TradeAPI] 贸易资产清单 {}index.json 无效（formatVersion 必须为 {}，条目需含合法 groupId 与安全 path），拒绝整清单",
+                root,
+                JarAssetManifest.CURRENT_FORMAT_VERSION);
+            return;
+        }
+        int applied = 0;
+        for (JarAssetManifest.GroupEntry entry : manifest.getGroups()) {
+            try {
+                JsonObject groupJson = JarAssetManifest.readJsonResource(root + entry.getPath());
+                if (groupJson == null) {
+                    LOG.error(
+                        "[TradeAPI] 贸易资产文件缺失或损坏，跳过该组: {}（owner: {}）",
+                        root + entry.getPath(),
+                        ownerModId);
+                    continue;
+                }
+                registerTradeAsset(
+                    new TradeIntegrationAssetDef(ownerModId, entry.getGroupId(), entry.getVersion(), groupJson.toString()));
+                applied++;
+            } catch (Throwable t) {
+                LOG.error(
+                    "[TradeAPI] 贸易资产 " + entry.getGroupId() + " 读取/注册失败，跳过不中断其余（owner: " + ownerModId + "）",
+                    t);
+            }
+        }
+        LOG.info("[TradeAPI] jar 贸易资产装载完成：{}/{} 组（owner: {}）", applied, manifest.getGroups()
+            .size(), ownerModId);
+    }
+
     /**
      * IMC 消息消费（由 mod 主类的 IMC 事件处理器委托）。
      * <p>
-     * 只认 {@link #IMC_KEY} 且为 NBT 载荷的消息；{@code groupJson} 字符串
-     * 按 {@link NekoTradeGroupDef} 反序列化后走 {@link #registerTradeGroup} 同一路径。
+     * 识别两种 key（E4b 扩展，旧通道行为不变）：
+     * <ul>
+     * <li>{@link #IMC_KEY}：NBT 载荷 {@code groupJson}（NekoTradeGroupDef JSON）</li>
+     * <li>{@link #IMC_KEY_REGISTER_TRADE_ASSET}：NBT 载荷 {@code tradeAssetJson}
+     * （NekoTradeGroupDef JSON）+ 可选 {@code ownerModId}，走
+     * {@link #registerTradeAsset} 同一路径</li>
+     * </ul>
      *
      * @param messages 本次 IMC 事件投递的全部消息
      */
     public static void handleImcMessages(ImmutableList<FMLInterModComms.IMCMessage> messages) {
         if (messages == null || messages.isEmpty()) return;
         for (FMLInterModComms.IMCMessage msg : messages) {
-            if (msg == null || !IMC_KEY.equals(msg.key)) continue;
+            if (msg == null) continue;
             String sender = msg.getSender();
             try {
-                if (!msg.isNBTMessage()) {
-                    LOG.warn("[TradeAPI] 忽略非 NBT 载荷的 IMC 消息（发送方: {}）", sender);
-                    continue;
+                if (IMC_KEY.equals(msg.key)) {
+                    handleTradeGroupMessage(msg, sender);
+                } else if (IMC_KEY_REGISTER_TRADE_ASSET.equals(msg.key)) {
+                    handleTradeAssetMessage(msg, sender);
                 }
-                NBTTagCompound nbt = msg.getNBTValue();
-                String json = nbt == null ? "" : nbt.getString(IMC_NBT_FIELD);
-                if (json == null || json.isEmpty()) {
-                    LOG.warn("[TradeAPI] IMC 载荷缺少 {} 字段（发送方: {}）", IMC_NBT_FIELD, sender);
-                    continue;
-                }
-                NekoTradeGroupDef def = GSON.fromJson(json, NekoTradeGroupDef.class);
-                if (!isValidDef(def)) {
-                    LOG.warn("[TradeAPI] IMC 组定义无效，已丢弃（发送方: {}）", sender);
-                    continue;
-                }
-                LOG.info("[TradeAPI] 收到 IMC 贸易组注册: {}（发送方: {}）", def.getGroupId(), sender);
-                registerTradeGroup(def);
             } catch (Throwable t) {
                 LOG.error("[TradeAPI] IMC 贸易组消息处理失败（发送方: " + sender + "）", t);
             }
         }
+    }
+
+    /** {@link #IMC_KEY} 消息处理（单条） */
+    private static void handleTradeGroupMessage(FMLInterModComms.IMCMessage msg, String sender) {
+        if (!msg.isNBTMessage()) {
+            LOG.warn("[TradeAPI] 忽略非 NBT 载荷的 IMC 消息（发送方: {}）", sender);
+            return;
+        }
+        NBTTagCompound nbt = msg.getNBTValue();
+        String json = nbt == null ? "" : nbt.getString(IMC_NBT_FIELD);
+        if (json == null || json.isEmpty()) {
+            LOG.warn("[TradeAPI] IMC 载荷缺少 {} 字段（发送方: {}）", IMC_NBT_FIELD, sender);
+            return;
+        }
+        NekoTradeGroupDef def = GSON.fromJson(json, NekoTradeGroupDef.class);
+        if (!isValidDef(def)) {
+            LOG.warn("[TradeAPI] IMC 组定义无效，已丢弃（发送方: {}）", sender);
+            return;
+        }
+        LOG.info("[TradeAPI] 收到 IMC 贸易组注册: {}（发送方: {}）", def.getGroupId(), sender);
+        registerTradeGroup(def);
+    }
+
+    /** {@link #IMC_KEY_REGISTER_TRADE_ASSET} 消息处理（单条，E4b） */
+    private static void handleTradeAssetMessage(FMLInterModComms.IMCMessage msg, String sender) {
+        if (!msg.isNBTMessage()) {
+            LOG.warn("[TradeAPI] 忽略非 NBT 载荷的资产 IMC 消息（发送方: {}）", sender);
+            return;
+        }
+        NBTTagCompound nbt = msg.getNBTValue();
+        String json = nbt == null ? "" : nbt.getString(IMC_NBT_FIELD_TRADE_ASSET_JSON);
+        if (json == null || json.isEmpty()) {
+            LOG.warn("[TradeAPI] 资产 IMC 载荷缺少 {} 字段（发送方: {}）", IMC_NBT_FIELD_TRADE_ASSET_JSON, sender);
+            return;
+        }
+        String ownerModId = nbt.getString(IMC_NBT_FIELD_OWNER_MOD_ID);
+        registerTradeAsset(
+            new TradeIntegrationAssetDef(
+                ownerModId == null || ownerModId.isEmpty() ? sender : ownerModId,
+                null,
+                0,
+                json));
     }
 
     /**
@@ -225,7 +382,7 @@ public final class NekoTradeIntegrationAPI {
      * @return true = 本次发生移除并已落库同步
      */
     public static boolean unregisterGroup(String groupId) {
-        if (groupId == null || !groupId.matches(GROUP_ID_PATTERN)) return false;
+        if (!JarAssetManifest.isValidGroupId(groupId)) return false;
         synchronized (APPLY_LOCK) {
             GroupRecord record = GroupRecord.load(groupId);
             if (record == null) {
@@ -372,11 +529,10 @@ public final class NekoTradeIntegrationAPI {
         return server != null && server.getEntityWorld() != null;
     }
 
-    /** 组定义基础校验（groupId 白名单 + 防路径穿越） */
+    /** 组定义基础校验（groupId 白名单 + 防路径穿越，规则收敛在 {@link JarAssetManifest}） */
     private static boolean isValidDef(NekoTradeGroupDef def) {
         if (def == null) return false;
-        String id = def.getGroupId();
-        return id != null && id.matches(GROUP_ID_PATTERN) && !id.contains("..");
+        return JarAssetManifest.isValidGroupId(def.getGroupId());
     }
 
     /** Gson 往返深拷贝（运行时 transient NBT 不随拷贝， toItemStack 走 nbtBase64 回退，语义不变） */
@@ -403,14 +559,16 @@ public final class NekoTradeIntegrationAPI {
      * 记录源版本与本组注入的 tradeId/pageId 清单：
      * 版本未变跳过（尊重玩家编辑）、版本变化按清单精准移除、
      * 删除文件强制重注册。
+     * <p>
+     * 包级可见（非 private）供同包单元测试直接构造与读写。
      */
-    private static final class GroupRecord {
+    static final class GroupRecord {
 
-        // 字段刻意非 final：Gson 反序列化直接反射赋值，避免依赖 Unsafe 构造
-        private String groupId;
-        private int version;
-        private final List<String> tradeIds = new ArrayList<>();
-        private final List<Integer> pageIds = new ArrayList<>();
+        // 字段刻意包级可见：Gson 反序列化直接反射赋值（不依赖 Unsafe 构造），同包单元测试亦可直接读写
+        String groupId;
+        int version;
+        final List<String> tradeIds = new ArrayList<>();
+        final List<Integer> pageIds = new ArrayList<>();
 
         GroupRecord(String groupId, int version) {
             this.groupId = groupId;

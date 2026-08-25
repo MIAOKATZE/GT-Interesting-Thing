@@ -133,16 +133,49 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
 
 ### Configuration / 配置
 
-| File / 文件     | Path / 路径                        | Description / 说明                                                                                                 |
-| ------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Trades / 交易配置 | `config/gtit/nekovm_trades.json` | Trade entries with tabId, orderId, items (optionally with `nbtBase64`), currency, cooldown, bqQuestId              |
-| Tabs / 标签页配置  | `config/gtit/nekovm_pages.json`  | Custom tab definitions (ID, name, icon)                                                                          |
-| Wallets / 钱包  | GTNHLib Teams team data          | Team-shared Neko Coin balances (v1.5.0: per-player `<world>/gtit_neko_wallets/<uuid>.dat`)                       |
-| Gift / 新手宝箱   | `config/gtit/gift_config.json`   | Starter gift guaranteed + random items (optionally with `nbtBase64`)                                             |
+| File / 文件              | Path / 路径                                | Description / 说明                                                            |
+| --------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| Trades / 交易配置         | `config/gtit/trade/trades/tab_<id>.json` | Trade entries with tabId, orderId, items (optionally with `nbtBase64`), currency, cooldown, bqQuestId |
+| Tabs / 标签页配置          | `config/gtit/trade/pages.json`          | Custom tab definitions (ID, name, icon)                                     |
+| Trade ledger / 贸易整合记账 | `config/gtit/trade/integrated/`         | Version ledger for integrated trade groups (delete a file to force re-registration) |
+| Lottery pools / 抽奖卡池   | `config/gtit/lottery/lottery.json`      | Gacha pool definitions (pools with entries, cost items, pity config)        |
+| Lottery ledger / 抽奖整合记账 | `config/gtit/lottery/integrated/`       | Version ledger for integrated lottery pool groups                           |
+| Wallets / 钱包          | GTNHLib Teams team data                 | Team-shared Neko Coin balances (v1.5.0: per-player `<world>/gtit_neko_wallets/<uuid>.dat`) |
+| Gift / 新手宝箱           | `config/gtit/gift_config.json`          | Starter gift guaranteed + random items (optionally with `nbtBase64`)        |
 
-If `nekovm_trades.json` does not exist, default trades are generated from `NekoTradeConfig.getDefaultTrades()` (10 loot bag trades with BQ quest bindings).
+If no trade config exists, default trades are generated from built-in defaults on first launch; with `enhancedDefaultTrades` enabled, the bundled base trade group from jar assets takes over instead.
 
-如果 `nekovm_trades.json` 不存在，将从 `NekoTradeConfig.getDefaultTrades()` 生成默认交易（10 个带 BQ 任务绑定的战利品袋交易）。
+如果交易配置不存在，首次启动时将生成默认交易；开启增强默认交易（`enhancedDefaultTrades`）时，由 jar 内置基础贸易组替代内置默认交易。
+
+### Third-party Integration API / 第三方整合 API
+
+Register external trade groups and lottery pool groups from your own mod via three interchangeable channels, all funnelling into the same idempotent, version-ledgered pipeline:
+
+- **Java direct call / Java 直调**: `NekoTradeIntegrationAPI.registerTradeGroup(NekoTradeGroupDef)` / `LotteryIntegrationAPI.registerLotteryPool(LotteryPoolGroupDef)` — thread-safe, queued until the server is ready.
+- **IMC**: `FMLInterModComms.sendMessage("gtit", "gtit:registerTradeGroup" | "gtit:registerTradeAsset" | "gtit:registerLotteryPool", nbt)` with the definition JSON in the NBT string field (`groupJson` / `tradeAssetJson`).
+- **jar assets / jar 资产清单（BQ 式）**: ship `assets/<your-modid>/gtit/trade/index.json` + `groups/*.json` and `assets/<your-modid>/gtit/lottery/index.json` + `pools/*.json` inside your jar (an explicit manifest — jar directories are not enumerable on 1.7.10), then call `NekoTradeIntegrationAPI.registerTradeAssetsFromJar("<your-modid>")` / `LotteryIntegrationAPI.registerLotteryPoolsFromJar("<your-modid>")` in `postInit`.
+
+Minimal example / 最小示例：
+
+```java
+// postInit（物品注册完成后）
+NekoTradeIntegrationAPI.registerTradeAssetsFromJar("mymod");
+LotteryIntegrationAPI.registerLotteryPoolsFromJar("mymod");
+
+// 或程序化直调（def JSON 模型见 NekoTradeGroupDef / LotteryPoolGroupDef）
+NekoTradeIntegrationAPI.registerTradeGroup(def);
+LotteryIntegrationAPI.registerLotteryPool(poolGroupDef);
+```
+
+Idempotence & version ledger / 幂等与版本记账：each group is recorded in `config/gtit/trade/integrated/<groupId>.json` or `config/gtit/lottery/integrated/<groupId>.json` with its source version. Same version → skipped (player edits to `tab_*.json` / `lottery.json` stay authoritative); version bump → old content is removed per the ledger and re-registered; deleting the ledger file forces re-registration. Pools/trades owned by the player's local config are never silently overwritten (WARN + skip on conflict).
+
+每个组在 `config/gtit/{trade,lottery}/integrated/<groupId>.json` 记账：版本未变跳过（玩家对 `tab_*.json` / `lottery.json` 的编辑保持权威）；版本变化按记账移除旧内容后重注册；删除记账文件即强制重注册；玩家本地配置占用的池/交易不会被静默覆盖（冲突 WARN 跳过）。
+
+Full schema, ledger semantics walkthrough and the content-author workflow: [plan/wiki/integration-assets-api.md](plan/wiki/integration-assets-api.md)
+
+完整 schema、版本记账语义图解与内容作者工作流见 [plan/wiki/integration-assets-api.md](plan/wiki/integration-assets-api.md)。
+
+
 
 ### Mixin Architecture / Mixin 架构
 
