@@ -171,9 +171,9 @@ Idempotence & version ledger / 幂等与版本记账：each group is recorded in
 
 每个组在 `config/gtit/{trade,lottery}/integrated/<groupId>.json` 记账：版本未变跳过（玩家对 `tab_*.json` / `lottery.json` 的编辑保持权威）；版本变化按记账移除旧内容后重注册；删除记账文件即强制重注册；玩家本地配置占用的池/交易不会被静默覆盖（冲突 WARN 跳过）。
 
-Full schema, ledger semantics walkthrough and the content-author workflow: [plan/wiki/integration-assets-api.md](plan/wiki/integration-assets-api.md)
+Full schema, ledger semantics walkthrough and the content-author workflow: local working notes `plan/wiki/integration-assets-api.md` (kept out of git per repo convention) and the durable entry in the MIAO GTNH wiki: `mods/gtit/integration/assets-api.md`.
 
-完整 schema、版本记账语义图解与内容作者工作流见 [plan/wiki/integration-assets-api.md](plan/wiki/integration-assets-api.md)。
+完整 schema、版本记账语义图解与内容作者工作流见本地工作树文档 `plan/wiki/integration-assets-api.md`（按仓库惯例不入库），持久版本见 MIAO GTNH wiki 条目 `mods/gtit/integration/assets-api.md` 与 `mods/gtit/lottery/lottery-draw-algorithm.md`。
 
 
 
