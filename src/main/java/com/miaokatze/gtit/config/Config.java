@@ -31,6 +31,12 @@ public class Config {
     // false 或资产缺失时沿用旧默认交易。
     public static boolean enhancedDefaultTrades = true;
 
+    // 钓鱼附赠：玩家每次成功钓到鱼后，服务端掷概率额外发放猫猫币（见 MixinEntityFishHook）。
+    // 量纲：百分比 0-100，0=禁用；两项独立配置。
+    // 语义：每次成功钓鱼先掷闪烁猫猫币概率，未中再掷普通猫猫币概率。
+    public static double fishingNekoCoinChance = 10.0;
+    public static double fishingShimmeringNekoCoinChance = 2.0;
+
     /**
      * 同步配置文件
      * 从磁盘读取配置并更新静态变量，如果配置有变动则自动保存
@@ -65,6 +71,26 @@ public class Config {
             Configuration.CATEGORY_GENERAL,
             true,
             "是否用内置基础贸易组替换旧 42 条默认交易 (资产缺失时自动回落旧默认)");
+
+        fishingNekoCoinChance = configuration
+            .get(
+                Configuration.CATEGORY_GENERAL,
+                "fishingNekoCoinChance",
+                fishingNekoCoinChance,
+                "每次成功钓到鱼后服务端额外附赠普通猫猫币的概率 (百分比 0-100, 0=禁用; 每次成功钓鱼先掷闪烁猫猫币, 未中再掷普通猫猫币)",
+                0.0D,
+                100.0D)
+            .getDouble(fishingNekoCoinChance);
+
+        fishingShimmeringNekoCoinChance = configuration
+            .get(
+                Configuration.CATEGORY_GENERAL,
+                "fishingShimmeringNekoCoinChance",
+                fishingShimmeringNekoCoinChance,
+                "每次成功钓到鱼后服务端额外附赠闪烁猫猫币的概率 (百分比 0-100, 0=禁用; 每次成功钓鱼先掷闪烁猫猫币, 未中再掷普通猫猫币)",
+                0.0D,
+                100.0D)
+            .getDouble(fishingShimmeringNekoCoinChance);
 
         if (configuration.hasChanged()) {
             configuration.save();

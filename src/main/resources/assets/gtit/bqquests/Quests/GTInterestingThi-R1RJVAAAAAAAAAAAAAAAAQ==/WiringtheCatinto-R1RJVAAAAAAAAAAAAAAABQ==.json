@@ -2,25 +2,25 @@
   "preRequisites:9": {
     "0:10": {
       "questIDHigh:4": 5139813699862659072,
-      "questIDLow:4": 1
+      "questIDLow:4": 4
     }
   },
   "properties:10": {
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The Neko Vending Machine is the heart of the ops layer: trade, sign-in, lottery and mail all run from this one machine.\n\nAssemble it into shape and the input side simply takes your materials, while prizes stack into a §2virtual chute with no visible bottom§r — the hundred-slot output column is virtual, and no windfall will ever overflow it.\n\n§c§lNote:§r as a GregTech machine block it is verified by retrieval — get one into your hands first, then claim.",
+      "desc:8": "The §dME Uplink Hatch§r replaces any casing block on the vending machine, and the whole machine takes §1at most one§r.\n\nOnce linked, produce and consume connect straight to your §dAE network§r: rewards flow into ME, materials are pulled from ME, and physical hauling becomes history.\n\nPresent the hatch for inspection — §2checked, not consumed§r — then slot it back in and keep working.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
-        "Damage:2": 14610,
+        "Damage:2": 2742,
         "OreDict:8": "",
         "id:8": "gregtech:gt.blockmachines"
       },
-      "isMain:1": 1,
+      "isMain:1": 0,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§6§lBuild the Cat Machine",
+      "name:8": "§d§lWiring the Cat into ME",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,7 +31,7 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 4,
+  "questIDLow:4": 5,
   "rewards:9": {
     "0:10": {
       "index:3": 0,
@@ -41,33 +41,9 @@
           "Count:3": 1,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
-        },
-        "1:10": {
-          "Count:3": 16,
-          "Damage:2": 0,
-          "OreDict:8": "",
           "id:8": "gtit:neko_coin"
         }
       }
-    },
-    "1:10": {
-      "choices:9": {
-        "0:10": {
-          "Count:3": 2,
-          "Damage:2": 32690,
-          "OreDict:8": "",
-          "id:8": "gregtech:gt.metaitem.01"
-        },
-        "1:10": {
-          "Count:3": 2,
-          "Damage:2": 32680,
-          "OreDict:8": "",
-          "id:8": "gregtech:gt.metaitem.01"
-        }
-      },
-      "index:3": 1,
-      "rewardID:8": "bq_standard:choice"
     }
   },
   "tasks:9": {
@@ -82,7 +58,7 @@
       "requiredItems:9": {
         "0:10": {
           "Count:3": 1,
-          "Damage:2": 14610,
+          "Damage:2": 2742,
           "OreDict:8": "",
           "id:8": "gregtech:gt.blockmachines"
         }

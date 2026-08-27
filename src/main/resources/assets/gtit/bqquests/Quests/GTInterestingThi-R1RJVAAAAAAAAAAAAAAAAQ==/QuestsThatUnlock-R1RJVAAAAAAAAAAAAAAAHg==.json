@@ -1,0 +1,42 @@
+{
+  "preRequisites:9": {
+    "0:10": {
+      "questIDHigh:4": 5139813699862659072,
+      "questIDLow:4": 15
+    }
+  },
+  "properties:10": {
+    "betterquesting:10": {
+      "autoClaim:1": 0,
+      "countAsQuest:1": 1,
+      "desc:8": "Three lines converge on the finale: shop entries can be quest-gated — §3§nhigh:low§r, UUID or Base64; unmet conditions keep the entry locked, while a missing BetterQuesting lets it pass safely.\n\nThe endgame pages rotate on §16h / 22h / 88h§r cooldowns, periodic trades read §1-1§r as unlimited, and one MIAO counter is quietly bound to a Master.\n\nTick this box, then go see what the cat stocked for you. §8§oThe cat never runs a loss-making deal — except this once.§r",
+      "globalShare:1": 0,
+      "icon:10": {
+        "Count:3": 1,
+        "Damage:2": 0,
+        "OreDict:8": "",
+        "id:8": "gtit:shimmering_neko_coin"
+      },
+      "isMain:1": 0,
+      "isSilent:1": 0,
+      "lockedProgress:1": 0,
+      "name:8": "§2§lQuests That Unlock Trades",
+      "questLogic:8": "AND",
+      "repeatTime:3": -1,
+      "simultaneous:1": 0,
+      "snd_complete:8": "random.levelup",
+      "snd_update:8": "random.levelup",
+      "taskLogic:8": "AND",
+      "visibility:8": "NORMAL"
+    }
+  },
+  "questIDHigh:4": 5139813699862659072,
+  "questIDLow:4": 30,
+  "rewards:9": {},
+  "tasks:9": {
+    "0:10": {
+      "index:3": 0,
+      "taskID:8": "bq_standard:checkbox"
+    }
+  }
+}

@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Open the calendar in the sign-in tab and click once a day: §110§r coins on weekdays, §120§r on weekends, with the streak coefficient locked at §11.0§r.\n\nStreak tiers pay once per tier each month; cumulative tiers stay §2valid forever§r — the longer your sign-in history, the deeper the wallet.\n\nCollect today's sign-in wages, then tick this box — §2a ceremonial audit, capital untouched§r.",
+      "desc:8": "Online-time rewards run three tiers, each claimable once per day: §130 minutes§r pays §15§r, §12 hours§r pays §120§r, §15 hours§r pays §150§r.\n\nTiers reset daily, and time only counts while you are actually on the server — §2idle long enough and it compounds§r.\n\n§8§oSponsored anonymously by the Cat Guild. All interpretive rights belong to the cat.§r",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -20,7 +20,7 @@
       "isMain:1": 0,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§2§lDaily Sign-In",
+      "name:8": "§8§lPaid to Idle",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,7 +31,7 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 7,
+  "questIDLow:4": 8,
   "rewards:9": {
     "0:10": {
       "index:3": 0,

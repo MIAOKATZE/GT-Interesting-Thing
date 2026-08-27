@@ -9,18 +9,18 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The Neko Vending Machine is the heart of the ops layer: trade, sign-in, lottery and mail all run from this one machine.\n\nAssemble it into shape and the input side simply takes your materials, while prizes stack into a §2virtual chute with no visible bottom§r — the hundred-slot output column is virtual, and no windfall will ever overflow it.\n\n§c§lNote:§r as a GregTech machine block it is verified by retrieval — get one into your hands first, then claim.",
+      "desc:8": "The moment you first enter the world, the cat stuffs a §2starter gift§r into your hands — a persisted flag guarantees it happens exactly once.\n\nBetter yet, this layer is §2customizable everywhere§r: what goes inside the gift, what the shelves sell, what sign-in and the lottery pay — all customizable through their own configs, and an admin can flip on a §3visual edit mode§r to reshape shop entries right inside the GUI, no code required.\n\nHand the whole gift over for inspection; §2checked, not taken§r. §8§oThe urge to open it first is your own problem.§r",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
-        "Damage:2": 14610,
+        "Damage:2": 0,
         "OreDict:8": "",
-        "id:8": "gregtech:gt.blockmachines"
+        "id:8": "gtit:starter_gift"
       },
       "isMain:1": 1,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§6§lBuild the Cat Machine",
+      "name:8": "§6§lThe Cat Ops Deck",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,20 +31,14 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 4,
+  "questIDLow:4": 2,
   "rewards:9": {
     "0:10": {
       "index:3": 0,
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
-          "Damage:2": 0,
-          "OreDict:8": "",
-          "id:8": "gtit:shimmering_neko_coin"
-        },
-        "1:10": {
-          "Count:3": 16,
+          "Count:3": 32,
           "Damage:2": 0,
           "OreDict:8": "",
           "id:8": "gtit:neko_coin"
@@ -54,16 +48,16 @@
     "1:10": {
       "choices:9": {
         "0:10": {
-          "Count:3": 2,
-          "Damage:2": 32690,
+          "Count:3": 1,
+          "Damage:2": 2,
           "OreDict:8": "",
-          "id:8": "gregtech:gt.metaitem.01"
+          "id:8": "enhancedlootbags:lootbag"
         },
         "1:10": {
-          "Count:3": 2,
-          "Damage:2": 32680,
+          "Count:3": 16,
+          "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gregtech:gt.metaitem.01"
+          "id:8": "minecraft:iron_ingot"
         }
       },
       "index:3": 1,
@@ -82,9 +76,9 @@
       "requiredItems:9": {
         "0:10": {
           "Count:3": 1,
-          "Damage:2": 14610,
+          "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gregtech:gt.blockmachines"
+          "id:8": "gtit:starter_gift"
         }
       },
       "taskID:8": "bq_standard:retrieval"

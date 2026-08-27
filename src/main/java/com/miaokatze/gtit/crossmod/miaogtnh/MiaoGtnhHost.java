@@ -28,7 +28,8 @@ import cpw.mods.fml.common.gameevent.PlayerEvent;
  * 三 mod 齐备、配置 {@code miaogtnhQuestsEnabled} 开启、且 BQ 探测通过，
  * 任一不满足即零注入零提示（探测短路矩阵）</li>
  * <li>{@link #onServerStarting()}：先注入 GTIT 自身任务包（BQ 存在时），
- * 再按判定注入 MIAO-GTNH 综合包并置会话标志</li>
+ * 再按判定注入 MIAO-GTNH 综合包并置会话标志；{@link #MIAO_PACK_SUSPENDED}
+ * 置 true 期间综合包一律静默（无视配置）</li>
  * <li>登录提示：综合包注入成功后，对登录玩家延时 10 秒播放升级音效 + 双语两行聊天提示
  * （玩家已离线时安全跳过）</li>
  * </ul>
@@ -43,6 +44,13 @@ public class MiaoGtnhHost {
     private static final String GTIT_PACK_ROOT = "assets/gtit/bqquests/";
     /** MIAO-GTNH 综合任务包资产根（jar 内，必须以 / 结尾） */
     private static final String MIAO_PACK_ROOT = "assets/gtit/bqquests/miao/";
+
+    /**
+     * MIAO-GTNH 综合任务包暂时静默开关：包内容尚未完成，为 true 期间一律不注入
+     * （无视 {@link Config#miaogtnhQuestsEnabled} 配置与 mod 齐备判定）。
+     * 包完成后改回 {@code false} 即恢复 {@link #shouldLoadMiaoPack()} 原判定注入。
+     */
+    private static final boolean MIAO_PACK_SUSPENDED = true;
 
     /** 本会话（本次服务器生命周期）是否已注入 MIAO-GTNH 综合包 */
     private static volatile boolean miaoInjectedThisSession = false;
@@ -73,8 +81,8 @@ public class MiaoGtnhHost {
         if (BqCompat.isBqLoaded()) {
             BqQuestInjector.inject(GTIT_PACK_ROOT);
         }
-        // 再按判定注入 MIAO-GTNH 综合包
-        if (shouldLoadMiaoPack()) {
+        // 再按判定注入 MIAO-GTNH 综合包（包尚未完成，静默期间一律跳过）
+        if (!MIAO_PACK_SUSPENDED && shouldLoadMiaoPack()) {
             BqQuestInjector.inject(MIAO_PACK_ROOT);
             miaoInjectedThisSession = true;
             LOG.info("[MIAO-GTNH] 综合任务包宿主已激活（betterquesting+gtsr+gtswn 齐备，配置开启）");

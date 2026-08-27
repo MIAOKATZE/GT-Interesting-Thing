@@ -2,25 +2,25 @@
   "preRequisites:9": {
     "0:10": {
       "questIDHigh:4": 5139813699862659072,
-      "questIDLow:4": 6
+      "questIDLow:4": 1
     }
   },
   "properties:10": {
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Open the calendar in the sign-in tab and click once a day: §110§r coins on weekdays, §120§r on weekends, with the streak coefficient locked at §11.0§r.\n\nStreak tiers pay once per tier each month; cumulative tiers stay §2valid forever§r — the longer your sign-in history, the deeper the wallet.\n\nCollect today's sign-in wages, then tick this box — §2a ceremonial audit, capital untouched§r.",
+      "desc:8": "From now on, you have ten fingers! Your ring slots have grown to §110§r!\n\nRings are GTIT's fashion slots: with §3Baubles-Expanded§r loaded the ring row grows to §110 slots§r; without the library it quietly falls back to §12§r.\n\nSeven functional rings scatter across §1seven kinds§r of structure chests, at most §1one§r per chest. Too slow? The built-in counter sells them for §16-8 shimmering§r each — §2identical effect, zero chest luck required§r.\n\nEvery ring in this branch has its own page below — one finger at a time, go collect the set. §8§oTen fingers, ten slots; that is no coincidence.§r",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
         "Damage:2": 0,
         "OreDict:8": "",
-        "id:8": "gtit:neko_coin"
+        "id:8": "gtit:ring_skywalk"
       },
-      "isMain:1": 0,
+      "isMain:1": 1,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§2§lDaily Sign-In",
+      "name:8": "§d§lLord of the Rings",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,7 +31,7 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 7,
+  "questIDLow:4": 24,
   "rewards:9": {
     "0:10": {
       "index:3": 0,

@@ -1,15 +1,10 @@
 {
-  "preRequisites:9": {
-    "0:10": {
-      "questIDHigh:4": 5139813699862659072,
-      "questIDLow:4": 6
-    }
-  },
+  "preRequisites:9": {},
   "properties:10": {
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Open the calendar in the sign-in tab and click once a day: §110§r coins on weekdays, §120§r on weekends, with the streak coefficient locked at §11.0§r.\n\nStreak tiers pay once per tier each month; cumulative tiers stay §2valid forever§r — the longer your sign-in history, the deeper the wallet.\n\nCollect today's sign-in wages, then tick this box — §2a ceremonial audit, capital untouched§r.",
+      "desc:8": "GTIT has two faces: the §3ops layer§r — vending machine, starter gift, sign-in, lottery and mail — and the §3tool layer§r — coins, float cores, infinite cells and eight rings.\n\nThe east branch runs the ops: build the machine, feed the wallet. The west branch runs the tools: let rings and cores work for you.\n\n§8§oThe cat has already taken over every corner of the economy. Resistance is futile.§r",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -17,10 +12,10 @@
         "OreDict:8": "",
         "id:8": "gtit:neko_coin"
       },
-      "isMain:1": 0,
+      "isMain:1": 1,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§2§lDaily Sign-In",
+      "name:8": "§6§lTwo Faces of the Cat Economy",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,17 +26,23 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 7,
+  "questIDLow:4": 1,
   "rewards:9": {
     "0:10": {
       "index:3": 0,
       "rewardID:8": "bq_standard:item",
       "rewards:9": {
         "0:10": {
-          "Count:3": 1,
+          "Count:3": 2,
           "Damage:2": 0,
           "OreDict:8": "",
           "id:8": "gtit:neko_coin"
+        },
+        "1:10": {
+          "Count:3": 8,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "minecraft:bread"
         }
       }
     }

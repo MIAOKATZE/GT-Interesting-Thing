@@ -2,25 +2,25 @@
   "preRequisites:9": {
     "0:10": {
       "questIDHigh:4": 5139813699862659072,
-      "questIDLow:4": 6
+      "questIDLow:4": 4
     }
   },
   "properties:10": {
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Open the calendar in the sign-in tab and click once a day: §110§r coins on weekdays, §120§r on weekends, with the streak coefficient locked at §11.0§r.\n\nStreak tiers pay once per tier each month; cumulative tiers stay §2valid forever§r — the longer your sign-in history, the deeper the wallet.\n\nCollect today's sign-in wages, then tick this box — §2a ceremonial audit, capital untouched§r.",
+      "desc:8": "The Mail tab is a real mailbox: §150 mails§r per player, up to §15 attachment stacks§r each, delivered even while the recipient is offline.\n\n§c§lIron rule:§r a mail with unclaimed attachments cannot be deleted — no misclick risk, no lost loot, hoard letters without fear.\n\nTick this box and wave at the post cat on your way out.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
         "Damage:2": 0,
         "OreDict:8": "",
-        "id:8": "gtit:neko_coin"
+        "id:8": "minecraft:paper"
       },
       "isMain:1": 0,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§2§lDaily Sign-In",
+      "name:8": "§3§lThe Cat Post Office",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,7 +31,7 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 7,
+  "questIDLow:4": 11,
   "rewards:9": {
     "0:10": {
       "index:3": 0,

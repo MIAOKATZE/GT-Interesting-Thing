@@ -2,25 +2,25 @@
   "preRequisites:9": {
     "0:10": {
       "questIDHigh:4": 5139813699862659072,
-      "questIDLow:4": 6
+      "questIDLow:4": 14
     }
   },
   "properties:10": {
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Open the calendar in the sign-in tab and click once a day: §110§r coins on weekdays, §120§r on weekends, with the streak coefficient locked at §11.0§r.\n\nStreak tiers pay once per tier each month; cumulative tiers stay §2valid forever§r — the longer your sign-in history, the deeper the wallet.\n\nCollect today's sign-in wages, then tick this box — §2a ceremonial audit, capital untouched§r.",
+      "desc:8": "The Telekinesis Scanner Core sweeps §119x19 chunks§r (radius §19 chunks§r, §1144 blocks§r): ore and underground-fluid dual modes, toggled with §3Shift+right-click§r.\n\nEach scan demands hunger §1at 6 or above§r plus a one-time §124-point§r exhaustion hit; results push straight through §3§nVisualProspecting into JourneyMap§r as markers.\n\nMake one, and fit an entire geological survey team into a chest.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
         "Damage:2": 0,
         "OreDict:8": "",
-        "id:8": "gtit:neko_coin"
+        "id:8": "gtit:telekinesis_ore_scanner_core"
       },
       "isMain:1": 0,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§2§lDaily Sign-In",
+      "name:8": "§3§lThe Mind's Eye",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,7 +31,7 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 7,
+  "questIDLow:4": 22,
   "rewards:9": {
     "0:10": {
       "index:3": 0,
@@ -48,8 +48,22 @@
   },
   "tasks:9": {
     "0:10": {
+      "allowAnvil:1": 0,
+      "allowCraft:1": 1,
+      "allowCraftedFromStatistics:1": 0,
+      "allowSmelt:1": 1,
+      "ignoreNBT:1": 1,
       "index:3": 0,
-      "taskID:8": "bq_standard:checkbox"
+      "partialMatch:1": 1,
+      "requiredItems:9": {
+        "0:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:telekinesis_ore_scanner_core"
+        }
+      },
+      "taskID:8": "bq_standard:crafting"
     }
   }
 }

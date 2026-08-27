@@ -3,184 +3,136 @@
     {
       "entries": [
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ACatRantheEconom-R1RJVAAAAAAAAAAAAAAAAQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ACatRantheEconom-R1RJVAAAAAAAAAAAAAAAAQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TwoFacesoftheCat-R1RJVAAAAAAAAAAAAAAAAQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TwoFacesoftheCat-R1RJVAAAAAAAAAAAAAAAAQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch1NekoCoinBasic-R1RJVAAAAAAAAAAAAAAAAg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch1NekoCoinBasic-R1RJVAAAAAAAAAAAAAAAAg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheCatOpsDeck-R1RJVAAAAAAAAAAAAAAAAg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheCatOpsDeck-R1RJVAAAAAAAAAAAAAAAAg==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ShinyCatMoney-R1RJVAAAAAAAAAAAAAAAAw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ShinyCatMoney-R1RJVAAAAAAAAAAAAAAAAw==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/UnboxingtheCatsW-R1RJVAAAAAAAAAAAAAAAAw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/UnboxingtheCatsW-R1RJVAAAAAAAAAAAAAAAAw==.json"
         },
         {
           "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BuildtheCatMachi-R1RJVAAAAAAAAAAAAAAABA==.json",
           "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BuildtheCatMachi-R1RJVAAAAAAAAAAAAAAABA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FormItUp-R1RJVAAAAAAAAAAAAAAABQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FormItUp-R1RJVAAAAAAAAAAAAAAABQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WiringtheCatinto-R1RJVAAAAAAAAAAAAAAABQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WiringtheCatinto-R1RJVAAAAAAAAAAAAAAABQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WalletNotPockets-R1RJVAAAAAAAAAAAAAAABg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WalletNotPockets-R1RJVAAAAAAAAAAAAAAABg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WalletsImportand-R1RJVAAAAAAAAAAAAAAABg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WalletsImportand-R1RJVAAAAAAAAAAAAAAABg==.json"
         },
         {
           "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DailySignIn-R1RJVAAAAAAAAAAAAAAABw==.json",
           "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DailySignIn-R1RJVAAAAAAAAAAAAAAABw==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/OnlineTimePays-R1RJVAAAAAAAAAAAAAAACA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/OnlineTimePays-R1RJVAAAAAAAAAAAAAAACA==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PaidtoIdle-R1RJVAAAAAAAAAAAAAAACA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PaidtoIdle-R1RJVAAAAAAAAAAAAAAACA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/SellYourJunk-R1RJVAAAAAAAAAAAAAAACQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/SellYourJunk-R1RJVAAAAAAAAAAAAAAACQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheRouletteandIt-R1RJVAAAAAAAAAAAAAAACQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheRouletteandIt-R1RJVAAAAAAAAAAAAAAACQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BuyinBulk-R1RJVAAAAAAAAAAAAAAACg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BuyinBulk-R1RJVAAAAAAAAAAAAAAACg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/SavingforaTenPul-R1RJVAAAAAAAAAAAAAAACg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/SavingforaTenPul-R1RJVAAAAAAAAAAAAAAACg==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/GoneFishin-R1RJVAAAAAAAAAAAAAAACw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/GoneFishin-R1RJVAAAAAAAAAAAAAAACw==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheCatPostOffice-R1RJVAAAAAAAAAAAAAAACw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheCatPostOffice-R1RJVAAAAAAAAAAAAAAACw==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FirstSpin-R1RJVAAAAAAAAAAAAAAADA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FirstSpin-R1RJVAAAAAAAAAAAAAAADA==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BirthdaysFestiva-R1RJVAAAAAAAAAAAAAAADA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BirthdaysFestiva-R1RJVAAAAAAAAAAAAAAADA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PostOfficeCat-R1RJVAAAAAAAAAAAAAAADQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PostOfficeCat-R1RJVAAAAAAAAAAAAAAADQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ServerOpsAppendi-R1RJVAAAAAAAAAAAAAAADQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ServerOpsAppendi-R1RJVAAAAAAAAAAAAAAADQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/GiftsandBlessing-R1RJVAAAAAAAAAAAAAAADg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/GiftsandBlessing-R1RJVAAAAAAAAAAAAAAADg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ThePlayersToolbo-R1RJVAAAAAAAAAAAAAAADg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ThePlayersToolbo-R1RJVAAAAAAAAAAAAAAADg==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/LoottheWorld-R1RJVAAAAAAAAAAAAAAADw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/LoottheWorld-R1RJVAAAAAAAAAAAAAAADw==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/SixtyFourtoOne-R1RJVAAAAAAAAAAAAAAADw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/SixtyFourtoOne-R1RJVAAAAAAAAAAAAAAADw==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/OneWalletperTeam-R1RJVAAAAAAAAAAAAAAAEA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/OneWalletperTeam-R1RJVAAAAAAAAAAAAAAAEA==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheFiftySixSprea-R1RJVAAAAAAAAAAAAAAAEA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheFiftySixSprea-R1RJVAAAAAAAAAAAAAAAEA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch2ShimmerRings-R1RJVAAAAAAAAAAAAAAAEQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch2ShimmerRings-R1RJVAAAAAAAAAAAAAAAEQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteCell-R1RJVAAAAAAAAAAAAAAAEQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteCell-R1RJVAAAAAAAAAAAAAAAEQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheRareCoin-R1RJVAAAAAAAAAAAAAAAEg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheRareCoin-R1RJVAAAAAAAAAAAAAAAEg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteFluid-R1RJVAAAAAAAAAAAAAAAEg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteFluid-R1RJVAAAAAAAAAAAAAAAEg==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/641attheBank-R1RJVAAAAAAAAAAAAAAAEw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/641attheBank-R1RJVAAAAAAAAAAAAAAAEw==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TakeFlightonStea-R1RJVAAAAAAAAAAAAAAAEw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TakeFlightonStea-R1RJVAAAAAAAAAAAAAAAEw==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ReachOutandGrab-R1RJVAAAAAAAAAAAAAAAFA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ReachOutandGrab-R1RJVAAAAAAAAAAAAAAAFA==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FuelforFlight-R1RJVAAAAAAAAAAAAAAAFA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FuelforFlight-R1RJVAAAAAAAAAAAAAAAFA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WalkTall-R1RJVAAAAAAAAAAAAAAAFQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WalkTall-R1RJVAAAAAAAAAAAAAAAFQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ThirtyTwoMillion-R1RJVAAAAAAAAAAAAAAAFQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ThirtyTwoMillion-R1RJVAAAAAAAAAAAAAAAFQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NeverHungryAgain-R1RJVAAAAAAAAAAAAAAAFg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NeverHungryAgain-R1RJVAAAAAAAAAAAAAAAFg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheMindsEye-R1RJVAAAAAAAAAAAAAAAFg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheMindsEye-R1RJVAAAAAAAAAAAAAAAFg==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/IronHeart-R1RJVAAAAAAAAAAAAAAAFw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/IronHeart-R1RJVAAAAAAAAAAAAAAAFw==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FollowtheMap-R1RJVAAAAAAAAAAAAAAAFw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FollowtheMap-R1RJVAAAAAAAAAAAAAAAFw==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DragonsBlessing-R1RJVAAAAAAAAAAAAAAAGA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DragonsBlessing-R1RJVAAAAAAAAAAAAAAAGA==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/LordoftheRings-R1RJVAAAAAAAAAAAAAAAGA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/LordoftheRings-R1RJVAAAAAAAAAAAAAAAGA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BreaktheMountain-R1RJVAAAAAAAAAAAAAAAGQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/BreaktheMountain-R1RJVAAAAAAAAAAAAAAAGQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DistantGrasp-R1RJVAAAAAAAAAAAAAAAGQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DistantGrasp-R1RJVAAAAAAAAAAAAAAAGQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/RidetheStorm-R1RJVAAAAAAAAAAAAAAAGg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/RidetheStorm-R1RJVAAAAAAAAAAAAAAAGg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ironheart-R1RJVAAAAAAAAAAAAAAAGg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ironheart-R1RJVAAAAAAAAAAAAAAAGg==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/RingofWindrider-R1RJVAAAAAAAAAAAAAAAGw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/RingofWindrider-R1RJVAAAAAAAAAAAAAAAGw==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DragonsBreath-R1RJVAAAAAAAAAAAAAAAGw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DragonsBreath-R1RJVAAAAAAAAAAAAAAAGw==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/InfiniteStorage-R1RJVAAAAAAAAAAAAAAAHA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/InfiniteStorage-R1RJVAAAAAAAAAAAAAAAHA==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Gluttony-R1RJVAAAAAAAAAAAAAAAHA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Gluttony-R1RJVAAAAAAAAAAAAAAAHA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch3AdvancedLotte-R1RJVAAAAAAAAAAAAAAAHQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch3AdvancedLotte-R1RJVAAAAAAAAAAAAAAAHQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WindridertheFina-R1RJVAAAAAAAAAAAAAAAHQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/WindridertheFina-R1RJVAAAAAAAAAAAAAAAHQ==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/KnowYourPools-R1RJVAAAAAAAAAAAAAAAHg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/KnowYourPools-R1RJVAAAAAAAAAAAAAAAHg==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/QuestsThatUnlock-R1RJVAAAAAAAAAAAAAAAHg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/QuestsThatUnlock-R1RJVAAAAAAAAAAAAAAAHg==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheWheelItself-R1RJVAAAAAAAAAAAAAAAHw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheWheelItself-R1RJVAAAAAAAAAAAAAAAHw==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Tempest-R1RJVAAAAAAAAAAAAAAAHw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Tempest-R1RJVAAAAAAAAAAAAAAAHw==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FourFlavorsofRar-R1RJVAAAAAAAAAAAAAAAIA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/FourFlavorsofRar-R1RJVAAAAAAAAAAAAAAAIA==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Mountainbreaker-R1RJVAAAAAAAAAAAAAAAIA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Mountainbreaker-R1RJVAAAAAAAAAAAAAAAIA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PitytheUnlucky-R1RJVAAAAAAAAAAAAAAAIQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PitytheUnlucky-R1RJVAAAAAAAAAAAAAAAIQ==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TeamDraws-R1RJVAAAAAAAAAAAAAAAIg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TeamDraws-R1RJVAAAAAAAAAAAAAAAIg==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DelayedDelivery-R1RJVAAAAAAAAAAAAAAAIw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DelayedDelivery-R1RJVAAAAAAAAAAAAAAAIw==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/StockthePool-R1RJVAAAAAAAAAAAAAAAJA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/StockthePool-R1RJVAAAAAAAAAAAAAAAJA==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PrizeEconomics-R1RJVAAAAAAAAAAAAAAAJQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PrizeEconomics-R1RJVAAAAAAAAAAAAAAAJQ==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DrawTen-R1RJVAAAAAAAAAAAAAAAJg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/DrawTen-R1RJVAAAAAAAAAAAAAAAJg==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch4ShopConfig-R1RJVAAAAAAAAAAAAAAAJw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Ch4ShopConfig-R1RJVAAAAAAAAAAAAAAAJw==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/EditorMode-R1RJVAAAAAAAAAAAAAAAKA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/EditorMode-R1RJVAAAAAAAAAAAAAAAKA==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PageManagement-R1RJVAAAAAAAAAAAAAAAKQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/PageManagement-R1RJVAAAAAAAAAAAAAAAKQ==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ThegtitCommand-R1RJVAAAAAAAAAAAAAAAKg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ThegtitCommand-R1RJVAAAAAAAAAAAAAAAKg==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/HotReloadEveryth-R1RJVAAAAAAAAAAAAAAAKw==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/HotReloadEveryth-R1RJVAAAAAAAAAAAAAAAKw==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ConfigLayout-R1RJVAAAAAAAAAAAAAAALA==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/ConfigLayout-R1RJVAAAAAAAAAAAAAAALA==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TradeGroupAPI-R1RJVAAAAAAAAAAAAAAALQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TradeGroupAPI-R1RJVAAAAAAAAAAAAAAALQ==.json"
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Skywalk-R1RJVAAAAAAAAAAAAAAAIQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Skywalk-R1RJVAAAAAAAAAAAAAAAIQ==.json"
         }
       ],
       "idHigh": 5139813699862659072,
