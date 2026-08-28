@@ -2,26 +2,74 @@
   "version": 1,
   "pages": [
     {
-      "id": 10,
-      "name": "猫币商城",
+      "id": 1,
+      "name": "猫猫币",
       "iconItem": "gtit:neko_coin",
       "iconMeta": 0,
       "iconNbt": "",
-      "isDefault": false
+      "isDefault": true
     },
     {
-      "id": 11,
-      "name": "闪烁币专柜",
+      "id": 2,
+      "name": "闪烁猫猫币",
       "iconItem": "gtit:shimmering_neko_coin",
       "iconMeta": 0,
       "iconNbt": "",
       "isDefault": false
     },
     {
-      "id": 12,
-      "name": "周期补给",
+      "id": 3,
+      "name": "GTIT",
+      "iconItem": "gtit:ring_distant_grasp",
+      "iconMeta": 0,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 4,
+      "name": "周期领取",
       "iconItem": "minecraft:clock",
       "iconMeta": 0,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 5,
+      "name": "战利品袋",
+      "iconItem": "enhancedlootbags:lootbag",
+      "iconMeta": 1,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 6,
+      "name": "基础物资",
+      "iconItem": "minecraft:bed",
+      "iconMeta": 0,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 7,
+      "name": "自动化",
+      "iconItem": "appliedenergistics2:tile.BlockController",
+      "iconMeta": 0,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 8,
+      "name": "功能",
+      "iconItem": "gregtech:gt.metaitem.01",
+      "iconMeta": 32633,
+      "iconNbt": "",
+      "isDefault": false
+    },
+    {
+      "id": 9,
+      "name": "杂项",
+      "iconItem": "gregtech:gt.blockmachines",
+      "iconMeta": 2006,
       "iconNbt": "",
       "isDefault": false
     }

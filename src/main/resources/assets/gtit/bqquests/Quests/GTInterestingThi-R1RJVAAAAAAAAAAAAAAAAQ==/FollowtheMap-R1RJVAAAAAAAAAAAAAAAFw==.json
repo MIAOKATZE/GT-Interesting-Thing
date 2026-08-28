@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The point of scanning lands on the map: ore and fluid markers spread out in clusters, §2legible at a glance§r, with not one line spammed into chat.\n\nThe correct workflow is planning your tunnels around the markers. §c§lWarning:§r copying coordinates out of the chat log line by line is so last era.\n\nSubmit thirty-two iron ore as evidence — §creally collected§r, since the ore itself is the proof.",
+      "desc:8": "The point of scanning lands on the map: ore and fluid markers spread out in clusters, §2legible at a glance§r, with not one line spammed into chat.\n\nThe correct workflow is planning your tunnels around the markers. §c§lWarning:§r copying coordinates out of the chat log line by line is so last era.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -48,22 +48,8 @@
   },
   "tasks:9": {
     "0:10": {
-      "autoConsume:1": 0,
-      "consume:1": 1,
-      "groupDetect:1": 0,
-      "ignoreNBT:1": 1,
       "index:3": 0,
-      "partialMatch:1": 1,
-      "requireOnlyOneItem:1": 0,
-      "requiredItems:9": {
-        "0:10": {
-          "Count:3": 32,
-          "Damage:2": 0,
-          "OreDict:8": "",
-          "id:8": "minecraft:iron_ore"
-        }
-      },
-      "taskID:8": "bq_standard:retrieval"
+      "taskID:8": "bq_standard:checkbox"
     }
   }
 }

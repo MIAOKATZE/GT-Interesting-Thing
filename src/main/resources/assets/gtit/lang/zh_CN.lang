@@ -150,7 +150,7 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFQ.desc=电动浮空核心内置§632M 
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFg.name=§3§l念力之眼
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFg.desc=念力扫描核心覆盖§119×19 区块§r（半径§19 区块§r、合§1144 格§r）：矿石与地下流体双模式，§3Shift+右击§r切换。%n%n每次扫描要求饥饿§1≥6§r并一次性消耗§124 点§r疲劳；结果直推§3§nVisualProspecting → JourneyMap§r落成标记。%n%n造出一枚，把整支地质队装进储物箱。
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFw.name=§2§l按图索骥
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFw.desc=扫描的意义落在地图上：矿脉与流体标记成片铺开，§2一目了然§r，聊天栏一屏都不刷。%n%n正确用法是按标记规划矿道。§c§l警告：§r对着聊天栏逐行抄坐标的，是上个纪元的你。%n%n交上足足三十二块铁矿作证——§c真收§r，毕竟矿石本身就是证据。
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFw.desc=扫描的意义落在地图上：矿脉与流体标记成片铺开，§2一目了然§r，聊天栏一屏都不刷。%n%n正确用法是按标记规划矿道。§c§l警告：§r对着聊天栏逐行抄坐标的，是上个纪元的你。
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAGA.name=§d§l指环王
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAGA.desc=现在开始，你有十根手指头了！指环槽位增加到了10个！%n%n戒指是 GTIT 的时装位：装上§3Baubles-Expanded§r后戒指栏扩到§110 格§r，缺库时安静回退§12 格§r。%n%n七枚功能戒散布在§1七类§r结构箱，每箱至多§11 枚§r；嫌慢？内置柜台§16-8 闪§r直购，§2效果分毫不差§r。%n%n本分支下每枚戒指都有独立页面——一根手指一页，去把它们集齐。§8§o十根手指十格槽，这不是巧合。§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAGQ.name=§3§l遥握
@@ -401,5 +401,6 @@ betterquesting.quest.TUlBTwAAAAAAAAAAAAAAbQ.desc=8 枚闪烁币压在掌心，�
 betterquesting.quest.TUlBTwAAAAAAAAAAAAAAbg.name=§6§l大师
 betterquesting.quest.TUlBTwAAAAAAAAAAAAAAbg.desc=你烧穿了蒸汽，点亮了 LV，把 MV、HV、EV、IV 一路甩在身后，最后连§dLuV§r也成了旧闻。三 mod 的枢纽在你身后连成一张网。%n%n现在，合上这本任务书。§6§l大师§r不是一道题，是一枚纪念币——它同时是猫猫售货机§d「终局兑换」页§r的钥匙：临界奇点、强化芯片、无限元件、下界之星，还有那颗龙蛋。%n%n§c警告：终局货架每日限量——大师也要遵守冷却。§r%n%n§8§oHAJIMI HAJIMI。旅途愉快。§r
 # BQ quests [pack=miao] END
+
 
 

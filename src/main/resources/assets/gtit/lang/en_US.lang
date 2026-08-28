@@ -150,7 +150,7 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFQ.desc=The Electric Float Core carries
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFg.name=§3§lThe Mind's Eye
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFg.desc=The Telekinesis Scanner Core sweeps §119x19 chunks§r (radius §19 chunks§r, §1144 blocks§r): ore and underground-fluid dual modes, toggled with §3Shift+right-click§r.%n%nEach scan demands hunger §1at 6 or above§r plus a one-time §124-point§r exhaustion hit; results push straight through §3§nVisualProspecting into JourneyMap§r as markers.%n%nMake one, and fit an entire geological survey team into a chest.
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFw.name=§2§lFollow the Map
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFw.desc=The point of scanning lands on the map: ore and fluid markers spread out in clusters, §2legible at a glance§r, with not one line spammed into chat.%n%nThe correct workflow is planning your tunnels around the markers. §c§lWarning:§r copying coordinates out of the chat log line by line is so last era.%n%nSubmit thirty-two iron ore as evidence — §creally collected§r, since the ore itself is the proof.
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFw.desc=The point of scanning lands on the map: ore and fluid markers spread out in clusters, §2legible at a glance§r, with not one line spammed into chat.%n%nThe correct workflow is planning your tunnels around the markers. §c§lWarning:§r copying coordinates out of the chat log line by line is so last era.
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAGA.name=§d§lLord of the Rings
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAGA.desc=From now on, you have ten fingers! Your ring slots have grown to §110§r!%n%nRings are GTIT's fashion slots: with §3Baubles-Expanded§r loaded the ring row grows to §110 slots§r; without the library it quietly falls back to §12§r.%n%nSeven functional rings scatter across §1seven kinds§r of structure chests, at most §1one§r per chest. Too slow? The built-in counter sells them for §16-8 shimmering§r each — §2identical effect, zero chest luck required§r.%n%nEvery ring in this branch has its own page below — one finger at a time, go collect the set. §8§oTen fingers, ten slots; that is no coincidence.§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAGQ.name=§3§lDistant Grasp
@@ -401,5 +401,6 @@ betterquesting.quest.TUlBTwAAAAAAAAAAAAAAbQ.desc=Eight shimmering coins pressed 
 betterquesting.quest.TUlBTwAAAAAAAAAAAAAAbg.name=§6§lThe Master
 betterquesting.quest.TUlBTwAAAAAAAAAAAAAAbg.desc=You burned through steam, lit up LV, left MV, HV, EV, IV in the dust, and finally §dLuV§r became old news. Behind you, three mod hubs have woven themselves into a single net.%n%nNow close this questbook. §6§lThe Master§r is not a quest — it is a commemorative coin, and the key to the vending machine's §d"Endgame Exchange"§r page: critical singularities, reinforced chips, infinity cells, nether stars, and that dragon egg.%n%n§cWarning: the endgame shelf is daily-limited — even masters obey the cooldown. §r%n%n§8§oHAJIMI HAJIMI. Enjoy the journey.§r
 # BQ quests [pack=miao] END
+
 
 
