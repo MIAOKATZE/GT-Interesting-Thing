@@ -46,7 +46,8 @@ public class TradeIntegrationAssetDefTest {
         SimpleAssert.eq("mymod", def.getOwnerModId(), "ownerModId");
         SimpleAssert.eq("mymod.basic", def.getGroupId(), "groupId");
         SimpleAssert.eq(3, def.getVersion(), "version");
-        SimpleAssert.eq("{\"groupId\":\"mymod.basic\",\"version\":3,\"trades\":[]}", def.getGroupJson(), "转义还原后的 groupJson");
+        SimpleAssert
+            .eq("{\"groupId\":\"mymod.basic\",\"version\":3,\"trades\":[]}", def.getGroupJson(), "转义还原后的 groupJson");
     }
 
     static void defaultsAreTolerated() {

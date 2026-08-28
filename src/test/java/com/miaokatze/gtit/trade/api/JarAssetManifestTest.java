@@ -40,11 +40,15 @@ public class JarAssetManifestTest {
 
     static void parseValidManifest() {
         JarAssetManifest m = JarAssetManifest.parse(
-            json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.basic\",\"version\":2,\"path\":\"groups/basic.json\"}]}"));
+            json(
+                "{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.basic\",\"version\":2,\"path\":\"groups/basic.json\"}]}"));
         SimpleAssert.that(m != null, "合法清单应解析成功");
         SimpleAssert.eq(1, m.getFormatVersion(), "formatVersion");
-        SimpleAssert.eq(1, m.getGroups()
-            .size(), "组条目数");
+        SimpleAssert.eq(
+            1,
+            m.getGroups()
+                .size(),
+            "组条目数");
         JarAssetManifest.GroupEntry e = m.getGroups()
             .get(0);
         SimpleAssert.eq("mymod.basic", e.getGroupId(), "条目 groupId");
@@ -62,10 +66,9 @@ public class JarAssetManifestTest {
     }
 
     static void rejectWrongFormatVersion() {
-        SimpleAssert.that(JarAssetManifest.parse(json("{\"formatVersion\":2,\"groups\":[]}")) == null, "formatVersion=2 必须拒绝");
-        SimpleAssert.that(
-            JarAssetManifest.parse(json("{\"groups\":[]}")) == null,
-            "formatVersion 缺失必须拒绝");
+        SimpleAssert
+            .that(JarAssetManifest.parse(json("{\"formatVersion\":2,\"groups\":[]}")) == null, "formatVersion=2 必须拒绝");
+        SimpleAssert.that(JarAssetManifest.parse(json("{\"groups\":[]}")) == null, "formatVersion 缺失必须拒绝");
     }
 
     static void rejectMissingGroups() {
@@ -77,22 +80,33 @@ public class JarAssetManifestTest {
 
     static void rejectEntriesWithMissingFields() {
         SimpleAssert.that(
-            JarAssetManifest.parse(json("{\"formatVersion\":1,\"groups\":[{\"version\":1,\"path\":\"groups/a.json\"}]}")) == null,
+            JarAssetManifest
+                .parse(json("{\"formatVersion\":1,\"groups\":[{\"version\":1,\"path\":\"groups/a.json\"}]}")) == null,
             "条目缺 groupId 必须整清单拒绝");
         SimpleAssert.that(
-            JarAssetManifest.parse(json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1}]}")) == null,
+            JarAssetManifest.parse(json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1}]}"))
+                == null,
             "条目缺 path 必须整清单拒绝");
     }
 
     static void rejectUnsafePaths() {
         SimpleAssert.that(
-            JarAssetManifest.parse(json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1,\"path\":\"../../escape.json\"}]}")) == null,
+            JarAssetManifest.parse(
+                json(
+                    "{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1,\"path\":\"../../escape.json\"}]}"))
+                == null,
             "相对路径穿越必须拒绝");
         SimpleAssert.that(
-            JarAssetManifest.parse(json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1,\"path\":\"/groups/a.json\"}]}")) == null,
+            JarAssetManifest.parse(
+                json(
+                    "{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1,\"path\":\"/groups/a.json\"}]}"))
+                == null,
             "绝对路径必须拒绝");
         SimpleAssert.that(
-            JarAssetManifest.parse(json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1,\"path\":\"groups\\\\a.json\"}]}")) == null,
+            JarAssetManifest.parse(
+                json(
+                    "{\"formatVersion\":1,\"groups\":[{\"groupId\":\"mymod.a\",\"version\":1,\"path\":\"groups\\\\a.json\"}]}"))
+                == null,
             "反斜杠必须拒绝");
     }
 
@@ -101,11 +115,15 @@ public class JarAssetManifestTest {
     }
 
     static void versionDefaultsToOne() {
-        JarAssetManifest m = JarAssetManifest.parse(json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"a\",\"path\":\"g/a.json\"}]}"));
+        JarAssetManifest m = JarAssetManifest
+            .parse(json("{\"formatVersion\":1,\"groups\":[{\"groupId\":\"a\",\"path\":\"g/a.json\"}]}"));
         SimpleAssert.that(m != null, "version 可缺省");
-        SimpleAssert.eq(1, m.getGroups()
-            .get(0)
-            .getVersion(), "version 缺省为 1");
+        SimpleAssert.eq(
+            1,
+            m.getGroups()
+                .get(0)
+                .getVersion(),
+            "version 缺省为 1");
     }
 
     // ==================== groupId 白名单 ====================
@@ -115,9 +133,7 @@ public class JarAssetManifestTest {
         SimpleAssert.that(JarAssetManifest.isValidGroupId("gtit-base"), "连字符合法");
         SimpleAssert.that(JarAssetManifest.isValidGroupId("mymod.trade.basic"), "点号合法");
         SimpleAssert.that(JarAssetManifest.isValidGroupId("a1-b.c"), "混合字符合法");
-        SimpleAssert.that(
-            JarAssetManifest.isValidGroupId(new String(new char[64]).replace('\0', 'a')),
-            "恰 64 位合法");
+        SimpleAssert.that(JarAssetManifest.isValidGroupId(new String(new char[64]).replace('\0', 'a')), "恰 64 位合法");
     }
 
     static void invalidGroupIds() {
@@ -128,8 +144,6 @@ public class JarAssetManifestTest {
         SimpleAssert.that(!JarAssetManifest.isValidGroupId("a/b"), "路径分隔符非法");
         SimpleAssert.that(!JarAssetManifest.isValidGroupId("a_b"), "下划线非法");
         SimpleAssert.that(!JarAssetManifest.isValidGroupId("a..b"), "连续点路径穿越非法");
-        SimpleAssert.that(
-            !JarAssetManifest.isValidGroupId(new String(new char[65]).replace('\0', 'a')),
-            "超 64 位非法");
+        SimpleAssert.that(!JarAssetManifest.isValidGroupId(new String(new char[65]).replace('\0', 'a')), "超 64 位非法");
     }
 }

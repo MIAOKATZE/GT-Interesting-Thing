@@ -314,17 +314,15 @@ public final class LotteryIntegrationAPI {
                     }
                 }
                 if (exists && !ownedByRecord && !upsertedIds.contains(poolId)) {
-                    LOG.warn(
-                        "[LotteryAPI] 卡池 {} 已被玩家本地配置占用（非本组记账所有），拒绝覆盖该池（组 {}）",
-                        poolId,
-                        def.getGroupId());
+                    LOG.warn("[LotteryAPI] 卡池 {} 已被玩家本地配置占用（非本组记账所有），拒绝覆盖该池（组 {}）", poolId, def.getGroupId());
                     continue;
                 }
                 // 写入/覆盖（记账所有或本组本轮已写入的重复 id 直接替换）
                 boolean replaced = false;
                 for (int i = 0; i < data.pools.size(); i++) {
-                    if (data.pools.get(i) != null && poolId.equals(data.pools.get(i)
-                        .getId())) {
+                    if (data.pools.get(i) != null && poolId.equals(
+                        data.pools.get(i)
+                            .getId())) {
                         data.pools.set(i, pool);
                         replaced = true;
                         break;
@@ -429,10 +427,7 @@ public final class LotteryIntegrationAPI {
             try {
                 JsonObject groupJson = JarAssetManifest.readJsonResource(root + entry.getPath());
                 if (groupJson == null) {
-                    LOG.error(
-                        "[LotteryAPI] 抽奖池资产文件缺失或损坏，跳过该组: {}（owner: {}）",
-                        root + entry.getPath(),
-                        ownerModId);
+                    LOG.error("[LotteryAPI] 抽奖池资产文件缺失或损坏，跳过该组: {}（owner: {}）", root + entry.getPath(), ownerModId);
                     continue;
                 }
                 LotteryPoolGroupDef def = GSON.fromJson(groupJson, LotteryPoolGroupDef.class);
@@ -466,8 +461,12 @@ public final class LotteryIntegrationAPI {
                     t);
             }
         }
-        LOG.info("[LotteryAPI] jar 抽奖池资产装载完成：{}/{} 组（owner: {}）", applied, manifest.getGroups()
-            .size(), ownerModId);
+        LOG.info(
+            "[LotteryAPI] jar 抽奖池资产装载完成：{}/{} 组（owner: {}）",
+            applied,
+            manifest.getGroups()
+                .size(),
+            ownerModId);
     }
 
     // ==================== 辅助 ====================

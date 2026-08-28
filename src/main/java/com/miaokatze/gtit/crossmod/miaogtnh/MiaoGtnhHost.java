@@ -50,7 +50,7 @@ public class MiaoGtnhHost {
      * （无视 {@link Config#miaogtnhQuestsEnabled} 配置与 mod 齐备判定）。
      * 包完成后改回 {@code false} 即恢复 {@link #shouldLoadMiaoPack()} 原判定注入。
      */
-    private static final boolean MIAO_PACK_SUSPENDED = true;
+    private static final boolean MIAO_PACK_SUSPENDED = false;
 
     /** 本会话（本次服务器生命周期）是否已注入 MIAO-GTNH 综合包 */
     private static volatile boolean miaoInjectedThisSession = false;

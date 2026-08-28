@@ -157,8 +157,11 @@ public final class JarAssetManifest {
      * 清单条目 path 安全校验：非空、相对路径、不含 {@code ..} 穿越、不含反斜杠/冒号。
      */
     public static boolean isSafeRelativePath(String path) {
-        return path != null && !path.isEmpty() && !path.contains("..") && !path.startsWith("/")
-            && !path.contains("\\") && !path.contains(":");
+        return path != null && !path.isEmpty()
+            && !path.contains("..")
+            && !path.startsWith("/")
+            && !path.contains("\\")
+            && !path.contains(":");
     }
 
     /**

@@ -91,9 +91,7 @@ public class PoolGroupRecordTest {
     static void mismatchedGroupIdLoadsNull() throws Exception {
         Path p = recordPath(ID);
         Files.createDirectories(p.getParent());
-        Files.write(
-            p,
-            "{\"groupId\":\"other\",\"version\":1,\"poolIds\":[]}".getBytes(StandardCharsets.UTF_8));
+        Files.write(p, "{\"groupId\":\"other\",\"version\":1,\"poolIds\":[]}".getBytes(StandardCharsets.UTF_8));
         SimpleAssert.that(PoolGroupRecord.load(ID) == null, "记账 groupId 与查询不符视为无效（防串文件）");
     }
 

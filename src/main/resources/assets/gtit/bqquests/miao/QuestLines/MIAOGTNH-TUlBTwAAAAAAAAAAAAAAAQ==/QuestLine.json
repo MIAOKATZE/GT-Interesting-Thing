@@ -3,7 +3,7 @@
     "betterquesting:10": {
       "bg_image:8": "",
       "bg_size:3": 256,
-      "desc:8": "The combined MIAO-GTNH storyline: 250 quests in six zones, from first-day survival aid and AE setup, through a seven-milestone GregTech spine (Steam to LuV), deep three-mod integration with GT Steam Reborn, GT Simple Wireless Network and GT-Interesting-Thing, late-game challenges, and a repeatable exchange counter.\n\nQuests live in sources/z1-z6.json; the construction contract is ZONES.md.",
+      "desc:8": "The combined MIAO-GTNH questline (110 quests, two directions). Direction one — the era spine: a root quest and seven era gates spread along the X axis from Steam to LuV with zero cross-gate edges, so you may enter at any era; gate wings and pain-point quests hand you tools at each era's key bottlenecks. Direction two — the three-mod integration district: GTSR's steam-economy hub, GTSWN's wireless grid, and GTIT's neko economy and rings — three subtrees, none era-gated. Plus a LuV+ open line (bee genetics and endgame manifestos) and the graduation quest \"The Master\" — also the key to the vending machine's Endgame Exchange page (gate 5569054221778550784:110).\n\nBlueprint: plan/blueprint/bq-miao.md v1; built by plan/build/build_bq_miao.py.",
       "icon:10": {
         "Count:3": 1,
         "Damage:2": 0,

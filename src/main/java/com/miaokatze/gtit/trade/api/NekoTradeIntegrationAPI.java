@@ -215,23 +215,26 @@ public final class NekoTradeIntegrationAPI {
             try {
                 JsonObject groupJson = JarAssetManifest.readJsonResource(root + entry.getPath());
                 if (groupJson == null) {
-                    LOG.error(
-                        "[TradeAPI] 贸易资产文件缺失或损坏，跳过该组: {}（owner: {}）",
-                        root + entry.getPath(),
-                        ownerModId);
+                    LOG.error("[TradeAPI] 贸易资产文件缺失或损坏，跳过该组: {}（owner: {}）", root + entry.getPath(), ownerModId);
                     continue;
                 }
                 registerTradeAsset(
-                    new TradeIntegrationAssetDef(ownerModId, entry.getGroupId(), entry.getVersion(), groupJson.toString()));
+                    new TradeIntegrationAssetDef(
+                        ownerModId,
+                        entry.getGroupId(),
+                        entry.getVersion(),
+                        groupJson.toString()));
                 applied++;
             } catch (Throwable t) {
-                LOG.error(
-                    "[TradeAPI] 贸易资产 " + entry.getGroupId() + " 读取/注册失败，跳过不中断其余（owner: " + ownerModId + "）",
-                    t);
+                LOG.error("[TradeAPI] 贸易资产 " + entry.getGroupId() + " 读取/注册失败，跳过不中断其余（owner: " + ownerModId + "）", t);
             }
         }
-        LOG.info("[TradeAPI] jar 贸易资产装载完成：{}/{} 组（owner: {}）", applied, manifest.getGroups()
-            .size(), ownerModId);
+        LOG.info(
+            "[TradeAPI] jar 贸易资产装载完成：{}/{} 组（owner: {}）",
+            applied,
+            manifest.getGroups()
+                .size(),
+            ownerModId);
     }
 
     /**

@@ -134,6 +134,56 @@ public final class TradePage {
     /** 池标签列预分配按钮上限（池数量超出后不渲染；显隐由 setEnabledIf + collapseDisabledChild 每帧驱动） */
     private static final int MAX_POOL_TABS = 12;
 
+    // ==================== v1.7.33 T2/T3（QoL 块左移 + 标签翻页） ====================
+
+    /**
+     * T2：QoL 2x2 块左锚定值 left(-60)。
+     * <p>
+     * 几何（各列均为 panel 直接 child，绝对锚点不受 panel.padding(4) 影响，MUI2
+     * {@code DimensionSizer.applyMarginAndPaddingToPos} 对 PIXEL 锚点将 padding 归零）：
+     * 块宽 29（14+1+14，minElementMargin 仅作用于元素间），left(-60) → x ∈ [-60, -31)；
+     * 贸易分类/sub-tab 标签列 left(-29)（TAB_LEFT 标签宽 32）→ x ∈ [-29, +3)，
+     * 与块右缘间隙 = -29 - (-31) = 2px，水平完全脱开且 ≥2px。
+     * 主标签列 left(-57) → x ∈ [-57, -25)：与块 x 投影虽重叠 26px，但块 y ∈ [1, 30)、
+     * 主列 y ∈ [40, 158)，y 向错开 10px，渲染像素零碰撞；若要求与主列也纯水平脱开
+     * 需 left ≤ -88（= -57 - 2 - 29），超出既定 -54~-60 区间且视觉上脱离 GUI，不取。
+     */
+    private static final int QOL_GRID_LEFT = -60;
+
+    /** T3：标签列每页最大标签数（size ≥ 此值才创建翻页行；页内为全局索引 [tabPage*PAGE_SIZE, ...)） */
+    public static final int PAGE_SIZE = 11;
+
+    /** T3：标签列起始 y（原 top(40) 为让位 QoL 块 top(1)+高29+间隙10；T2 左移后该约束解除，上移释放 32px） */
+    private static final int TAB_COLUMN_TOP = 8;
+
+    /** T3：标签列子项间距（原 2 压缩为 1，配合按钮压扁使 11 槽+翻页行落入面板可视高度） */
+    private static final int TAB_COLUMN_CHILD_PADDING = 1;
+
+    /**
+     * T3：分类标签按钮高度。
+     * <p>
+     * TAB_LEFT（{@code NekoGuiTextures#TAB_LEFT}）原生 32x28（PageButton.tab 按纹理定尺寸），
+     * 压扁至 25（纹理纵向拉伸 10.7%，4px 边框视觉约 3.6px；图标 16x16 经 Icon.center()
+     * 居中后 y ∈ [4.5, 20.5]，仍在按钮内）。依据：PANEL_HEIGHT=320（NekoVMGuiV2:111）、
+     * panel 内缘 316——11 槽 × 28 = 308 仅按钮已超 316，放不下为既定事实，压扁是最小可行调整。
+     */
+    private static final int TAB_BUTTON_HEIGHT = 25;
+
+    /** T3：标签按钮宽度（TAB_LEFT 原生值，不变） */
+    private static final int TAB_BUTTON_WIDTH = 32;
+
+    /** T3：翻页按钮边长（与 QoL 14x14 按钮习语一致） */
+    private static final int PAGER_BUTTON_SIZE = 14;
+
+    /** T3：当前标签翻页页码（0 起；本页标签为全局索引 [tabPage*PAGE_SIZE, min(tabPage*PAGE_SIZE+PAGE_SIZE, size))） */
+    private int tabPage = 0;
+
+    /** T3：翻页最大页码（=(size-1)/PAGE_SIZE，随标签集合数量在每次重建时收敛，参照 restoreSettings 钳制模式） */
+    private int maxTabPage = 0;
+
+    /** T3：标签列引用（仅客户端 build 后非 null；翻页后经 ParentWidget 公有 removeAll/child 原位重建子树） */
+    private Flow tabColumn;
+
     public TradePage(NekoVMGuiV2 gui) {
         this.gui = gui;
         // 初始化交易分类列表：FAVOURITES 始终第一位，其余按 NekoPageRegistry 动态生成
@@ -284,6 +334,12 @@ public final class TradePage {
             if (page < 0) page = 0; // 默认 FAVOURITES 分类
             tabController.setPage(page);
             currentTabId = page;
+            // v1.7.33 T3：恢复的标签可能不在第 0 页——翻页页码随恢复位置收敛并重建标签列，
+            // 否则激活标签按钮不在可见页内（onOpen 晚于 build，late 重建走 MUI2 官方路径）
+            if (tabPage != page / PAGE_SIZE) {
+                tabPage = page / PAGE_SIZE;
+                rebuildTabColumnChildren();
+            }
         }
         // 恢复搜索文本
         if (searchBar != null && !searchText.isEmpty()) {
@@ -342,10 +398,22 @@ public final class TradePage {
     /**
      * 创建左侧标签列
      * <p>
-     * 为每个交易分类创建一个 {@link NekoPageButtonV2} 按钮，
-     * 使用物品图标作为标签页标识。
+     * 为交易分类创建 {@link NekoPageButtonV2} 标签按钮，使用物品图标作为标签页标识。
      * <p>
      * v1.7.7 G2③：仅在主标签为贸易时显示（{@link #mainTabController} 当前页 == {@link #MAIN_TAB_TRADE}）。
+     * <p>
+     * v1.7.33 T3 标签翻页：本列每次只为本页标签 [tabPage*{@link #PAGE_SIZE},
+     * min(tabPage*PAGE_SIZE+PAGE_SIZE, size)) 创建按钮（全局索引传 {@link NekoPageButtonV2}，
+     * tabController/lastPage/currentTabSync 语义不变）；tradeCategories.size() ≥ {@link #PAGE_SIZE}
+     * 时在第 11 槽正下方固定一行 ◀/▶ 翻页行（短页以透明占位保持行位固定）。
+     * build 与翻页共用 {@link #rebuildTabColumnChildren()} 同一条子树填充路径
+     * （翻页重建走 MUI2 ParentWidget 公有 removeAll/child + late initialise 官方路径；
+     * 既有 setForceRefresh→updateGui 仅刷新交易显示数据、不重建 widget 树，故不可复用）。
+     * <p>
+     * 几何（T3 配套，使每页 11 槽 + 翻页行落入面板 320 可视高度）：top 40→{@link #TAB_COLUMN_TOP}
+     * （QoL 块已按 T2 左移出本列 x 带，原让位空间释放）、childPadding 2→{@link #TAB_COLUMN_CHILD_PADDING}、
+     * 标签按钮 32x28→32x{@link #TAB_BUTTON_HEIGHT}；
+     * 11 槽 + 翻页行底缘 = 8 + 11×25 + 10×1 + 1 + 14 = 308 ≤ 316（内缘）。
      *
      * @return 标签列 Widget
      */
@@ -353,10 +421,51 @@ public final class TradePage {
         Flow tabColumn = Flow.column()
             .coverChildren()
             .left(-29)
-            .top(40)
-            .childPadding(2);
+            .top(TAB_COLUMN_TOP)
+            .childPadding(TAB_COLUMN_CHILD_PADDING);
+        this.tabColumn = tabColumn;
 
-        for (int i = 0; i < tradeCategories.size(); i++) {
+        // v1.7.33 T3：build 与翻页共用同一填充路径（含数量变化时的页码收敛）
+        rebuildTabColumnChildren();
+
+        // 非编辑模式时「新建 page」按钮不占位（列自动收紧）——列属性，翻页重建不丢失
+        tabColumn.collapseDisabledChild(true);
+
+        // v1.7.7 G2③：读取处以 controller 当前页为准，避免 mainTabId 滞后
+        tabColumn
+            .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
+
+        // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
+        return tabColumn.excludeAreaInRecipeViewer();
+    }
+
+    /**
+     * v1.7.33 T3：填充/重建标签列子树（build 与翻页共用的唯一填充路径）
+     * <p>
+     * 顺序：本页标签按钮 → 短页透明占位 → 翻页行（size ≥ PAGE_SIZE 时）→「新建 page」按钮（编辑模式）。
+     * 入口先按标签集合数量收敛页码（maxTabPage=(size-1)/PAGE_SIZE，tabPage=Math.min(tabPage, maxTabPage)，
+     * 参照 {@link #restoreSettings()} 的钳制恢复模式），故标签集合数量变化后重建总是落在合法页。
+     * <p>
+     * 仅客户端调用：tabColumn 由 {@link #createTabColumn()} 在 isClient 块内赋值，服务端为 null 直接返回；
+     * 本列按钮均为非 ISynced 客户端 Widget，运行时增删不影响双端 auto_sync ID 分配。
+     */
+    private void rebuildTabColumnChildren() {
+        Flow column = this.tabColumn;
+        if (column == null) return;
+
+        // 标签集合数量变化时收敛页码（参照 restoreSettings 钳制模式）：maxTabPage=(size-1)/PAGE_SIZE
+        int size = tradeCategories.size();
+        this.maxTabPage = size > 0 ? (size - 1) / PAGE_SIZE : 0;
+        if (this.tabPage > this.maxTabPage) this.tabPage = this.maxTabPage;
+        if (this.tabPage < 0) this.tabPage = 0;
+
+        // 翻页重建：清空旧子树（MUI2 ParentWidget 公有 API；dispose 后全部新建，无复用悬空引用）
+        column.removeAll();
+
+        // 仅为本页标签创建按钮：全局索引 [tabPage*PAGE_SIZE, min(tabPage*PAGE_SIZE+PAGE_SIZE, size))
+        int start = tabPage * PAGE_SIZE;
+        int end = Math.min(start + PAGE_SIZE, size);
+        for (int i = start; i < end; i++) {
             final int index = i;
             NekoTradeCategory category = tradeCategories.get(i);
             ItemStack icon = StatusCodec.getCategoryIcon(category);
@@ -377,6 +486,8 @@ public final class TradePage {
                 }
             };
             tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+            // v1.7.33 T3：TAB_LEFT 原生 32x28，压扁至 32x25 使 11 槽+翻页行落入面板可视高度（计算见类常量注释）
+            tabButton.size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
             tabButton.tooltipBuilder(t -> {
                 t.addLine(IKey.str(name));
                 // 编辑模式下追加操作提示（随编辑模式动态刷新）
@@ -386,17 +497,43 @@ public final class TradePage {
             });
             tabButton.tooltipAutoUpdate(true);
 
-            tabColumn.child(tabButton);
+            column.child(tabButton);
+        }
+
+        // v1.7.33 T3：翻页行——仅 size >= PAGE_SIZE 时创建（=PAGE_SIZE 时按钮可见但点击原地不动，
+        // size < PAGE_SIZE 完全不创建），固定在第 11 槽正下方；短页（末页不足 11 槽）以透明占位
+        // 撑住行位，使翻页行不随页内容浮动。
+        if (size >= PAGE_SIZE) {
+            int filledSpan = (end - start) * TAB_BUTTON_HEIGHT
+                + Math.max(end - start - 1, 0) * TAB_COLUMN_CHILD_PADDING;
+            // 扣除补位块与翻页行之间的一个 childPadding：该间距在满页由第 11 槽后的列间距承担，
+            // 短页若不扣则翻页行整体比满页低 1px（如末页 1 项时 295 vs 满页 294）
+            int spacer = PAGE_SIZE * TAB_BUTTON_HEIGHT + (PAGE_SIZE - 1) * TAB_COLUMN_CHILD_PADDING
+                - TAB_COLUMN_CHILD_PADDING
+                - filledSpan;
+            if (spacer > 0) {
+                column.child(
+                    Flow.row()
+                        .height(spacer));
+            }
+            Flow pagerRow = Flow.row()
+                .coverChildren()
+                .childPadding(2);
+            pagerRow.child(createPagerButton("<", -1));
+            pagerRow.child(createPagerButton(">", 1));
+            column.child(pagerRow);
         }
 
         // v1.7.6 G3④：「新建 page」按钮——仅编辑模式显示（列尾），点击打开空白 page 编辑面板。
         // 复用 NekoSubTabButton 的 externalMode（永不选中、点击走 onSelected 不切页），
         // index 取列尾位置（externalMode 下不参与切页，仅作标识）。
+        // v1.7.33 T3：归入本重建路径（翻页 removeAll 后原位重建），按钮高度与标签槽一致。
         NekoSubTabButton newPageButton = new NekoSubTabButton(
             tradeCategories.size(),
             tabController,
             IKey.str(EnumChatFormatting.GREEN + "+"));
         newPageButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+        newPageButton.size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
         newPageButton.externalMode(() -> false);
         newPageButton.onSelected(gui.pageEditor::beginNew);
         newPageButton.tooltipBuilder(t -> {
@@ -404,22 +541,64 @@ public final class TradePage {
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白标签页（保存时自动分配 ID ≥ 4）"));
         });
         newPageButton.setEnabledIf(w -> gui.isEditModeActive());
-        tabColumn.child(newPageButton);
-        // 非编辑模式时「新建 page」按钮不占位（列自动收紧）
-        tabColumn.collapseDisabledChild(true);
+        column.child(newPageButton);
 
-        // v1.7.7 G2③：读取处以 controller 当前页为准，避免 mainTabId 滞后
-        tabColumn
-            .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
+        // 子树变更后调度重排（MUI2 官方 late-add 路径：child(...) 内部已 late-initialise，
+        // scheduleResize 确保本列 coverChildren 尺寸与子项布局下帧重算）
+        column.scheduleResize();
+    }
 
-        // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
-        return tabColumn.excludeAreaInRecipeViewer();
+    /**
+     * v1.7.33 T3：创建 ◀/▶ 翻页按钮（14x14，仓内「&lt; / &gt;」文案习语，同祝福预设编辑器目标切换行；
+     * 构造习语同 QoL 音量按钮 :608-626 ButtonWidget.size(14).overlay(...).onMouseTapped(...)）。
+     * <p>
+     * 点击 tabPage±1 后钳制 [0, maxTabPage]：到头（含 maxTabPage=0，即 size==PAGE_SIZE 时）
+     * 点击原地不动、绝不循环；翻页成功经 {@link #rebuildTabColumnChildren()} 重建标签列。
+     * 未用 NekoSubTabButton：其 .tab(TAB_LEFT) 恒定 32x28（翻页行需 ≤14 高）且携带
+     * 不必要的 Controller 语义，ButtonWidget 更贴合纯动作按钮。
+     *
+     * @param label 按钮文案（"&lt;" 上一页 / "&gt;" 下一页）
+     * @param step  翻页步进（-1 / +1）
+     * @return 翻页按钮 Widget
+     */
+    private ButtonWidget<?> createPagerButton(String label, final int step) {
+        ButtonWidget<?> button = new ButtonWidget<>().size(PAGER_BUTTON_SIZE, PAGER_BUTTON_SIZE)
+            .overlay(IKey.str(EnumChatFormatting.WHITE + label))
+            .onMouseTapped(mouse -> {
+                flipTabPage(step);
+                return true;
+            })
+            .tooltipBuilder(t -> {
+                t.addLine(IKey.str(step < 0 ? "上一页" : "下一页"));
+                t.addLine(IKey.dynamic(() -> {
+                    if (step < 0 && tabPage <= 0) return EnumChatFormatting.GRAY + "已是第一页";
+                    if (step > 0 && tabPage >= maxTabPage) return EnumChatFormatting.GRAY + "已是最后一页";
+                    return EnumChatFormatting.GRAY + "第 " + (tabPage + 1) + " / " + (maxTabPage + 1) + " 页";
+                }));
+            });
+        button.tooltipAutoUpdate(true);
+        return button;
+    }
+
+    /**
+     * v1.7.33 T3：翻页 tabPage±1，钳制 [0, maxTabPage]；越界（到头）直接无操作，绝不循环；
+     * 页码变化后经 {@link #rebuildTabColumnChildren()} 原位重建标签列（复用 build 同一填充路径）。
+     *
+     * @param step 翻页步进（-1 上一页 / +1 下一页）
+     */
+    private void flipTabPage(int step) {
+        if (tabColumn == null) return;
+        int next = tabPage + step;
+        if (next < 0 || next > maxTabPage) return; // 到头不动、绝不循环（含 size==PAGE_SIZE 时 maxTabPage=0）
+        tabPage = next;
+        rebuildTabColumnChildren();
     }
 
     /**
      * v1.7.6 G1 创建指定主标签页的 sub-page 标签列（签到/抽奖/邮件）
      * <p>
-     * 位置与贸易分类列 {@link #createTabColumn()} 相同（left(-29)、top(40)、childPadding(2)），
+     * 与贸易分类列 {@link #createTabColumn()} 同位（left(-29)；v1.7.33 T3 后分类列上移至
+     * top(8)/childPadding(1)，本列维持 top(40)/childPadding(2) 原样），
      * 通过 {@code setEnabledIf} 按主标签互斥显示，不与贸易分类列/QoL 列叠放。
      * <p>
      * 按钮内容（v1.7.6）：
@@ -582,6 +761,11 @@ public final class TradePage {
      * <p>
      * 位于标签列左侧，使用 2x2 Grid 布局提供快速操作按钮。
      * <p>
+     * v1.7.33 T2：左锚 left(-33)→left(-60)（{@link #QOL_GRID_LEFT}）——原 -33 与贸易分类
+     * 标签列（left(-29)，x ∈ [-29, +3)）的 x 投影重叠 25px；左移后块 x ∈ [-60, -31)，
+     * 与标签列水平完全脱开且间隙 2px。主标签列（left(-57)）与块 y 向错开 10px
+     * （块 y ∈ [1, 30)、主列 y ∈ [40, 158)），渲染像素零碰撞，计算式见常量注释。
+     * <p>
      * 按钮顺序完全模仿 V1（VM 的 MTEVendingMachineGui.createQolButtonColumn）：
      * <ul>
      * <li>左上：音量/BGM 按钮。单击切换 BGM 曲目播放/停止；Shift+点击打开音量控制面板。</li>
@@ -693,8 +877,9 @@ public final class TradePage {
         // 确保服务端也注册同步通道，否则客户端 togglePanel() 静默失败
 
         // 2x2 网格：左上音量、右上显示模式、左下显示硬币、右下排序
+        // v1.7.33 T2：left(-33)→left(-60)，使 QoL 块（宽 29）与标签列 x ∈ [-29, +3) 水平脱开 2px
         // 在 NEI/HEI 中排除 QoL 按钮列区域，避免配方查看器遮挡快捷按钮
-        Grid qolGrid = new Grid().left(-33)
+        Grid qolGrid = new Grid().left(QOL_GRID_LEFT)
             .top(1)
             .minElementMargin(1, 1)
             .coverChildren()

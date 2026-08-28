@@ -21,8 +21,7 @@ import com.miaokatze.gtit.testutil.TestRunner;
  */
 public class LotteryPoolGroupDefTest {
 
-    private static final String FULL_JSON = "{"
-        + "\"groupId\":\"mymod.lottery.festival\","
+    private static final String FULL_JSON = "{" + "\"groupId\":\"mymod.lottery.festival\","
         + "\"version\":2,"
         + "\"requiresMods\":[\"gtsr\",\"betterquesting\"],"
         + "\"pools\":[{"
@@ -57,24 +56,39 @@ public class LotteryPoolGroupDefTest {
         SimpleAssert.that(
             java.util.Arrays.equals(new String[] { "gtsr", "betterquesting" }, def.getRequiresMods()),
             "requiresMods round-trip");
-        SimpleAssert.eq(1, def.getPools()
-            .size(), "池数量");
+        SimpleAssert.eq(
+            1,
+            def.getPools()
+                .size(),
+            "池数量");
 
         LotteryPool pool = def.getPools()
             .get(0);
         SimpleAssert.eq("festival_basic", pool.getId(), "池 id");
         SimpleAssert.eq("节日池", pool.getName(), "池 name");
         SimpleAssert.eq("minecraft:fireworks", pool.getIconItem(), "池 iconItem");
-        SimpleAssert.eq(3, pool.getEntries()
-            .size(), "条目数量");
-        SimpleAssert.eq("diamond", pool.getEntries()
-            .get(1)
-            .getId(), "条目 id");
-        SimpleAssert.eq(LotteryRarity.EPIC, pool.getEntries()
-            .get(1)
-            .getRarity(), "条目 rarity（适配器解析）");
-        SimpleAssert.eq(30, pool.getPityConfig()
-            .getSoftPityThreshold(), "pityConfig softPityThreshold");
+        SimpleAssert.eq(
+            3,
+            pool.getEntries()
+                .size(),
+            "条目数量");
+        SimpleAssert.eq(
+            "diamond",
+            pool.getEntries()
+                .get(1)
+                .getId(),
+            "条目 id");
+        SimpleAssert.eq(
+            LotteryRarity.EPIC,
+            pool.getEntries()
+                .get(1)
+                .getRarity(),
+            "条目 rarity（适配器解析）");
+        SimpleAssert.eq(
+            30,
+            pool.getPityConfig()
+                .getSoftPityThreshold(),
+            "pityConfig softPityThreshold");
         // 池校验是纯 JVM 路径（条目非空 + 总权重 > 0，内建截断）
         SimpleAssert.that(pool.validate(), "池校验通过");
         SimpleAssert.eq(128, pool.getTotalWeight(), "总权重 100+8+20");
@@ -85,11 +99,14 @@ public class LotteryPoolGroupDefTest {
             + "{\"id\":\"e\",\"item\":\"minecraft:apple\",\"weight\":1,\"rarity\":\"epic\"}]}]}";
         LotteryPoolGroupDef def = LotteryIntegrationAPI.gson()
             .fromJson(json, LotteryPoolGroupDef.class);
-        SimpleAssert.eq(LotteryRarity.EPIC, def.getPools()
-            .get(0)
-            .getEntries()
-            .get(0)
-            .getRarity(), "小写 rarity 经大小写不敏感适配器解析");
+        SimpleAssert.eq(
+            LotteryRarity.EPIC,
+            def.getPools()
+                .get(0)
+                .getEntries()
+                .get(0)
+                .getRarity(),
+            "小写 rarity 经大小写不敏感适配器解析");
     }
 
     static void minimalJsonUsesDefaults() {
@@ -97,8 +114,10 @@ public class LotteryPoolGroupDefTest {
             .fromJson("{\"groupId\":\"a\"}", LotteryPoolGroupDef.class);
         SimpleAssert.eq("a", def.getGroupId(), "groupId");
         SimpleAssert.eq(1, def.getVersion(), "version 缺省 1");
-        SimpleAssert.that(def.getPools() != null && def.getPools()
-            .isEmpty(), "pools 缺省空列表");
+        SimpleAssert.that(
+            def.getPools() != null && def.getPools()
+                .isEmpty(),
+            "pools 缺省空列表");
         SimpleAssert.that(def.getRequiresMods() == null, "requiresMods 缺省 null");
     }
 
@@ -117,7 +136,10 @@ public class LotteryPoolGroupDefTest {
         LotteryPool pool = def.getPools()
             .get(0);
         SimpleAssert.that(pool.validate(), "超限池截断后仍可校验通过");
-        SimpleAssert.eq(LotteryPool.MAX_ENTRIES, pool.getEntries()
-            .size(), "12 条截断为 10 条");
+        SimpleAssert.eq(
+            LotteryPool.MAX_ENTRIES,
+            pool.getEntries()
+                .size(),
+            "12 条截断为 10 条");
     }
 }

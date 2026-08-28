@@ -1,9 +1,10 @@
 {
+  "preRequisites:9": {},
   "properties:10": {
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Welcome to MIAO-GTNH, a fresh coat of paint over the classic GTNH grind. This quest book walks the whole road: survival help here in Z1, an early Applied Energistics network in Z2, the steam-to-LuV main spine in Z3, and deep three-mod synergy beyond.\n\nThree MIAO mods ride along: §6GTSR§r reborn steam, §bGTSWN§r wireless EU, and §dGTIT§r the cat-coin economy. Each has its own quest line; here we focus on living through week one.\n\nOld hands: this chapter keeps the beloved starter quests of the legacy MIAO line, rebuilt item by item. Claim the gift below and get moving.",
+      "desc:8": "Welcome to §3§lMIAO-GTNH§r — where three tech lines converge: §6GTSR§r makes steam great again, §3GTSWN§r cuts every last cable, and §dGTIT§r turns the economy into a game.\n\nThis book does not replace the GTNH questline. It does two things only: hands you a tool at §1every era's§r key pain point, and weaves the three mods into your progression.\n\n§cWarning: this pack never gates an era. Skip steam and rush HV — the tool quests will wait. §r\n\n§8§oUnboxing bonus: take the cat's welcome kit, then start with the quest at your feet. HAJIMI HAJIMI.§r",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -14,7 +15,7 @@
       "isMain:1": 1,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§a§lMIAO-GTNH!",
+      "name:8": "§3§lMIAO-GTNH!",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
