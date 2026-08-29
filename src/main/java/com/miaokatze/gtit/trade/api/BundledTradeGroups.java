@@ -12,7 +12,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.config.Config;
-import com.miaokatze.gtit.crossmod.miaogtnh.MiaoGtnhHost;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
@@ -22,21 +21,10 @@ import com.miaokatze.gtit.trade.NekoTradeEntry;
  * <p>
  * 从 jar 资产 {@code assets/gtit/bqtrades/} 读取内置组（由内容编辑并行维护，
  * 代码侧只消费——资产缺失时静默降级，不报错）：
- * <ul>
- * <li>{@code base_trades.json} + {@code pages_base.json}：基础贸易组（groupId=gtit-base）。
- * {@code Config.enhancedDefaultTrades} 开启且资产可用时注册，并抑制
- * {@code NekoTradeConfig.getDefaultTrades()} 旧 42 条默认的注入
- * （资产缺失/解析失败/配置关闭时回落旧默认——方法保留为兜底）。</li>
- * <li>{@code miao_trades.json} + {@code pages_miao.json}：MIAO 综合贸易组（groupId=gtit-miao）。
- * {@code MiaoGtnhHost.shouldLoadMiaoPack()}（gtsr+gtswn+bq 齐备且配置开）且资产可用时注册，
- * 并【替换】base 组——按记账移除 base 的 trades/pages 后 miao 顶上；
- * base 从未注册时直接只注册 miao。</li>
- * </ul>
- * 应用走 {@link NekoTradeIntegrationAPI}（记账/版本/玩家文件尊重策略/落库同步全复用）。
  * <p>
- * 注意（设计决策）：miao 退出（卸载 gtsr/gtswn 或关闭配置）不自动卸载已落盘的
- * miao 交易——避免配置误操作静默销毁玩家可见内容；恢复条件后按记账幂等跳过，
- * 彻底清理可手删 {@code config/gtit/trade/integrated/gtit-miao.json} 强制重注册或直接删 tab 文件。
+ * 仅保留 base 组；启动时按记账一次性清理已落盘 gtit-miao
+ * （用户拍板取消 miao 组，覆盖原“退出不卸载”决策）。
+ * 应用走 {@link NekoTradeIntegrationAPI}（记账/版本/玩家文件尊重策略/落库同步全复用）。
  */
 public final class BundledTradeGroups {
 
@@ -45,20 +33,12 @@ public final class BundledTradeGroups {
 
     /** 内置基础组 ID（记账文件名） */
     public static final String BASE_GROUP_ID = "gtit-base";
-    /** MIAO 综合组 ID（记账文件名） */
-    public static final String MIAO_GROUP_ID = "gtit-miao";
-
     private static final String BASE_TRADES_RES = "assets/gtit/bqtrades/base_trades.json";
     private static final String BASE_PAGES_RES = "assets/gtit/bqtrades/pages_base.json";
-    private static final String MIAO_TRADES_RES = "assets/gtit/bqtrades/miao_trades.json";
-    private static final String MIAO_PAGES_RES = "assets/gtit/bqtrades/pages_miao.json";
-
     private static final Gson GSON = new Gson();
 
     /** prepare 阶段解析缓存的 base 组（null = 配置关/资产缺失/解析失败） */
     private static NekoTradeGroupDef baseDef;
-    /** 首次需要时解析缓存的 miao 组 */
-    private static NekoTradeGroupDef miaoDef;
 
     private BundledTradeGroups() {}
 
@@ -104,18 +84,8 @@ public final class BundledTradeGroups {
      */
     public static void applyBundledGroups() {
         try {
-            if (MiaoGtnhHost.shouldLoadMiaoPack()) {
-                if (miaoDef == null) {
-                    miaoDef = parseBundledGroup(MIAO_GROUP_ID, MIAO_TRADES_RES, MIAO_PAGES_RES);
-                }
-                if (miaoDef != null) {
-                    // miao 顶上：按记账移除已注册的 base（未注册过则无操作），再注册 miao
-                    NekoTradeIntegrationAPI.unregisterGroup(BASE_GROUP_ID);
-                    NekoTradeIntegrationAPI.applyGroup(miaoDef);
-                    return;
-                }
-                LOG.info("[TradeAPI] MIAO 综合贸易组资产缺失或不可用，回落基础贸易组");
-            }
+            // 一次性清理凭磁盘记账精准移除已合并交易/页并删记账文件，幂等（无记账时静默 false）；清理先于 base apply。
+            NekoTradeIntegrationAPI.unregisterGroup("gtit-miao");
             if (baseDef != null) {
                 NekoTradeIntegrationAPI.applyGroup(baseDef);
             }

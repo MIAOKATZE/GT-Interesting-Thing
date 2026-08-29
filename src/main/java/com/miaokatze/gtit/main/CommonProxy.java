@@ -214,16 +214,6 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 交易配置同步监听器注册失败", t);
         }
 
-        // E4a: 注册 MIAO-GTNH 宿主登录监听器（综合包注入成功后延时双语提示；注册范式同上）
-        try {
-            FMLCommonHandler.instance()
-                .bus()
-                .register(new MiaoGtnhHost());
-            GTInterestingThing.LOG.info("[0/3] MIAO-GTNH 宿主登录监听器已注册");
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[0/3] MIAO-GTNH 宿主登录监听器注册失败", t);
-        }
-
         // 定义机器注册任务
         Runnable registerRunnable = () -> {
             GTInterestingThing.LOG.info("[1/3] 开始执行机器注册流程...");
@@ -506,9 +496,9 @@ public class CommonProxy {
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new GTITGiftCommand());
 
-        // E4a: BQ 任务注入（GTIT 自身包 + MIAO-GTNH 综合包判定注入）。
+        // E4a: BQ 任务注入（GTIT 包注入 + MIAO 空包哨兵清理保险）。
         // after:betterquesting 排序约束保证 BQ default load 已完成；
-        // BQ 缺席/资产未就位/判定不满足时注入器静默返回，零副作用。
+        // BQ 缺席/资产未就位时注入器静默返回，零副作用。
         try {
             MiaoGtnhHost.onServerStarting();
         } catch (Throwable t) {

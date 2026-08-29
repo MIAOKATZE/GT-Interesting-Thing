@@ -56,7 +56,8 @@ import cpw.mods.fml.common.Loader;
  * 与 GTSWN 范本的差异：资产根目录参数化（{@link #inject(String)}），
  * 支持 GTIT 自身包与 MIAO-GTNH 综合包两个资产根；世界侧版本戳为
  * 单文件双键（{@value #STAMP_FILE_NAME} 的 "gtit"/"miao" 键）按包独立对账；
- * 剪枝从线内范围放宽为按包 questIDHigh 常量的数据库级范围；
+ * 剪枝从线内范围放宽为按包 questIDHigh 常量的数据库级范围，任务线本体同口径剪枝
+ * （removeQuest 只摘条目不移线，BQ 3.8.72 已核）；
  * index.json 缺失或资产不存在时 info 日志 + 静默返回
  * （并行内容编辑尚未就位资源时零报错降级）。
  * <p>
@@ -131,19 +132,23 @@ public final class BqQuestInjector {
             int questCount = 0;
             int refreshedCount = 0;
             Set<UUID> expected = new HashSet<>();
+            Set<UUID> expectedLines = new HashSet<>();
             for (int i = 0; i < lines.size(); i++) {
                 int[] r = loadQuestLine(
                     lines.get(i)
                         .getAsJsonObject(),
                     refresh,
-                    expected);
+                    expected,
+                    expectedLines);
                 questCount += r[0];
                 refreshedCount += r[1];
             }
             int prunedCount = 0;
+            int prunedLineCount = 0;
             if (pack != null) {
                 // 剪枝（无条件执行，与版本无关）：属于该包但清单中已删除的任务，摘线并移出任务数据库
                 prunedCount = pruneDeletedQuests(pack, expected);
+                prunedLineCount = pruneDeletedQuestLines(pack, expectedLines);
             }
             restoreProgress();
             if (refresh) {
@@ -155,12 +160,13 @@ public final class BqQuestInjector {
             NetChapterSync.sendSync(null, null);
             SaveLoadHandler.INSTANCE.markDirty();
             GTInterestingThing.LOG.info(
-                "[GTIT-BQ] 任务注入完成：{} 条任务线，{} 个新任务，{} 个定义刷新{}，{} 个已删除任务清理 ({})",
+                "[GTIT-BQ] 任务注入完成：{} 条任务线，{} 个新任务，{} 个定义刷新{}，{} 个已删除任务清理，{} 条任务线清理 ({})",
                 lines.size(),
                 questCount,
                 refreshedCount,
                 refresh ? "（对齐版本 " + Tags.VERSION + "）" : "",
                 prunedCount,
+                prunedLineCount,
                 assetRoot);
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[GTIT-BQ] 任务注入失败（不影响 GTIT 主功能）: " + assetRoot, t);
@@ -178,12 +184,14 @@ public final class BqQuestInjector {
      * （进度快照→readFromNBT→merge 回填，完成/领取保留），挂线坐标用
      * {@code line.put} 直接替换（UuidDatabase map 语义）。
      *
-     * @param lineSpec index.json 中该线的声明对象
-     * @param refresh  是否对已存在任务执行定义刷新
-     * @param expected 该包全部清单任务 UUID 的累积集（跨线共享，供剪枝比对）
+     * @param lineSpec      index.json 中该线的声明对象
+     * @param refresh       是否对已存在任务执行定义刷新
+     * @param expected      该包全部清单任务 UUID 的累积集（跨线共享，供剪枝比对）
+     * @param expectedLines 该包清单任务线 UUID 的累积集（跨线共享，供任务线剪枝比对）
      * @return int[]{本次新建任务数, 本次刷新定义任务数}
      */
-    private static int[] loadQuestLine(JsonObject lineSpec, boolean refresh, Set<UUID> expected) {
+    private static int[] loadQuestLine(JsonObject lineSpec, boolean refresh, Set<UUID> expected,
+        Set<UUID> expectedLines) {
         UUID lineId = new UUID(
             lineSpec.get("idHigh")
                 .getAsLong(),
@@ -191,6 +199,7 @@ public final class BqQuestInjector {
                 .getAsLong());
         int orderIndex = lineSpec.get("orderIndex")
             .getAsInt();
+        expectedLines.add(lineId);
 
         IQuestLine line = QuestLineDatabase.INSTANCE.get(lineId);
         boolean lineCreated = false;
@@ -301,6 +310,27 @@ public final class BqQuestInjector {
             GTInterestingThing.LOG.info("[GTIT-BQ] 包 {} 清理已删除任务 {} 个: {}", pack.stampKey, stale.size(), stale);
         }
         return stale.size();
+    }
+
+    /**
+     * 清理属于该包但不在清单中的任务线本体。removeQuest 只摘条目不移线，
+     * 因此需直接从任务线数据库移除，先收集再逐个 remove 避免并发修改。
+     *
+     * @return 本次剪枝删除的任务线数量
+     */
+    private static int pruneDeletedQuestLines(PackSpec pack, Set<UUID> expectedLines) {
+        List<UUID> staleLines = QuestLineDatabase.INSTANCE.orderedEntries()
+            .map(Map.Entry::getKey)
+            .filter(id -> id.getMostSignificantBits() == pack.questIdHigh && !expectedLines.contains(id))
+            .collect(Collectors.toList());
+        for (UUID lineId : staleLines) {
+            QuestLineDatabase.INSTANCE.remove(lineId);
+        }
+        if (!staleLines.isEmpty()) {
+            GTInterestingThing.LOG
+                .info("[GTIT-BQ] 包 {} 清理已删除任务线 {} 条: {}", pack.stampKey, staleLines.size(), staleLines);
+        }
+        return staleLines.size();
     }
 
     /**
