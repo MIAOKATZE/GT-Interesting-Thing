@@ -48,30 +48,6 @@
       "iconMeta": 0,
       "iconNbt": "",
       "isDefault": false
-    },
-    {
-      "id": 7,
-      "name": "自动化",
-      "iconItem": "appliedenergistics2:tile.BlockController",
-      "iconMeta": 0,
-      "iconNbt": "",
-      "isDefault": false
-    },
-    {
-      "id": 8,
-      "name": "功能",
-      "iconItem": "gregtech:gt.metaitem.01",
-      "iconMeta": 32633,
-      "iconNbt": "",
-      "isDefault": false
-    },
-    {
-      "id": 9,
-      "name": "杂项",
-      "iconItem": "gregtech:gt.blockmachines",
-      "iconMeta": 2006,
-      "iconNbt": "",
-      "isDefault": false
     }
   ]
 }
