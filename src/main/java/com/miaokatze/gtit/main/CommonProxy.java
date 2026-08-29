@@ -643,11 +643,12 @@ public class CommonProxy {
     }
 
     /**
-     * 服务器停止阶段（BUG B1 修复：钱包全量落盘钩子）
+     * 服务器停止阶段（BUG B1 修复：钱包全量落盘钩子；v1.7.48 增加签到数据全量落盘）
      * <p>
      * 全量保存所有个人钱包，确保关服前最后一批未经过显式 saveWallet 覆盖的
      * 余额变动不丢账（此前 saveAll 全项目零调用，关服无批量落盘）。
      * 团队钱包由 GTNHLib Teams 随世界存档托管。
+     * 签到模块 saveAll 此前全项目零调用，本钩子同步兜底。
      */
     @SuppressWarnings({ "unused" })
     public void serverStopping(FMLServerStoppingEvent event) {
@@ -655,6 +656,13 @@ public class CommonProxy {
             NekoWalletManager.INSTANCE.saveAll();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("关服保存猫猫币钱包失败", t);
+        }
+        // v1.7.48：签到数据全量落盘（此前 DailySignInManager.saveAll 全项目零调用，
+        // 崩溃/定时重启时在线玩家签到数据回档到上次登出点），对齐钱包 B1 修复形态
+        try {
+            com.miaokatze.gtit.signin.DailySignInManager.INSTANCE.saveAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("关服保存签到数据失败", t);
         }
         // O2-03：清空主线程任务队列（FMLServerStoppingEvent 不投递给事件总线监听器，
         // 由本生命周期钩子代清——防止单机连续开新世界时残留任务跨世界执行）
@@ -666,6 +674,7 @@ public class CommonProxy {
      * <p>
      * 再次全量落盘（幂等兜底）后清空个人钱包缓存与脏标记，防止单机连续切换
      * 世界时旧世界的钱包对象驻留内存遮蔽新世界的 .dat 文件。
+     * v1.7.48：同步对签到数据执行 unloadAll（先落盘后清空 signInDataMap）。
      */
     @SuppressWarnings({ "unused" })
     public void serverStopped(FMLServerStoppedEvent event) {
@@ -673,6 +682,13 @@ public class CommonProxy {
             NekoWalletManager.INSTANCE.unloadAll();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("停服收尾猫猫币钱包失败", t);
+        }
+        // v1.7.48：签到内存卸载（先落盘后清空 signInDataMap），防单机跨世界旧数据遮蔽，
+        // 对齐钱包 unloadAll 收尾形态
+        try {
+            com.miaokatze.gtit.signin.DailySignInManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服收尾签到数据失败", t);
         }
     }
 }

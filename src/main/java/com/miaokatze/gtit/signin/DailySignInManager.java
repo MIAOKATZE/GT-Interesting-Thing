@@ -64,6 +64,10 @@ public class DailySignInManager {
     private final ConcurrentHashMap<UUID, DailySignInData> signInDataMap;
     /** 存档目录（<world>/gtit_signin） */
     private File saveDir;
+    /** saveDir 未初始化告警一次性标记（v1.7.48 缺口C：首次触发 WARN 后静默，成功保存一次后重置） */
+    private boolean saveDirWarned = false;
+    /** tickOnlineMinute 调用计数（每 5 次≈5 分钟触发一次 saveAll 周期落盘，防崩溃/定时重启回档） */
+    private int onlineMinuteCounter = 0;
     /** 上次 tick 检查时的日期（用于跨日检测） */
     private String lastKnownDate = "";
 
@@ -291,8 +295,12 @@ public class DailySignInManager {
      * {@link DailySignInData#addOnlineSeconds} 内部完成（与 applyDateCorrections 同挂载节奏）。
      * 累计后向各在线玩家推送一次全量同步，使 GUI「今日在线时长」每分钟自动刷新。
      * <p>
-     * <b>落盘口径（v1.7.6 用户确认）</b>：内存驻留，登录/登出/跨日由既有路径落盘，
-     * 本方法不做磁盘 IO（每玩家每分钟一次 map 更新 + 一个小同步包，性能可忽略）。
+     * <b>落盘口径（v1.7.48 修订，对齐钱包 O2-17：周期 5 分钟 + 登出 + 停服三重兜底）</b>：
+     * 本方法每 5 次调用（1200 tick × 5 ≈ 5 分钟）触发一次 {@link #saveAll()} 周期落盘，
+     * 与登出落盘（unloadSignInData）、停服落盘（CommonProxy.serverStopping → saveAll /
+     * serverStopped → unloadAll）共同承担持久化；崩溃/定时重启时在线玩家的回档窗口
+     * 收敛为一个周期（最长 5 分钟）。v1.7.6 的“本方法不做磁盘 IO”口径已废止——
+     * 该口径导致服务器重启后在线时长回档到上次登出点，跨零点则整日清零。
      */
     public void tickOnlineMinute() {
         String today = getToday();
@@ -305,6 +313,12 @@ public class DailySignInManager {
                 .addOnlineSeconds(today, 60);
             // 向在线玩家重发最新状态（GUI 在线时长/领取状态每分钟刷新）
             SignInNetworkManager.sendSyncToClient(player, entry.getValue());
+        }
+        // v1.7.48 缺口A兜底：每 5 次调用（1200 tick × 5 = 5 分钟）全量落盘一次，
+        // 崩溃/定时重启场景在线时长回档窗口收敛为一个周期
+        if (++onlineMinuteCounter >= 5) {
+            onlineMinuteCounter = 0;
+            saveAll();
         }
     }
 
@@ -464,7 +478,16 @@ public class DailySignInManager {
      * 保存指定玩家数据到磁盘
      */
     public void saveSignInData(UUID playerId) {
-        if (playerId == null || saveDir == null) return;
+        if (playerId == null) return;
+        if (saveDir == null) {
+            // v1.7.48 缺口C：init 失败时此前静默丢弃全部保存（字面“退出即重置”的唯一代码机制）——
+            // 首次触发 WARN 提示，之后静默防周期落盘场景刷屏
+            if (!saveDirWarned) {
+                LOG.warn("签到存储目录未初始化（saveDir==null），签到数据保存被跳过；后续跳过不再重复告警");
+                saveDirWarned = true;
+            }
+            return;
+        }
         DailySignInData data = signInDataMap.get(playerId);
         if (data == null) return;
         File file = new File(saveDir, playerId.toString() + ".dat");
@@ -472,6 +495,7 @@ public class DailySignInManager {
             NBTTagCompound nbt = new NBTTagCompound();
             nbt.setTag("signin", data.writeToNBT());
             CompressedStreamTools.safeWrite(nbt, file);
+            saveDirWarned = false;
         } catch (Exception e) {
             LOG.error("保存签到数据失败: " + playerId, e);
         }
@@ -503,6 +527,20 @@ public class DailySignInManager {
         for (UUID playerId : signInDataMap.keySet()) {
             saveSignInData(playerId);
         }
+    }
+
+    /**
+     * 服务器停止收尾：全量落盘并清空内存缓存（CommonProxy.serverStopped 调用）。
+     * <p>
+     * 对齐 {@link NekoWalletManager#unloadAll()} 形态（先落盘后清空）：清空
+     * {@link #signInDataMap} 防止单机连续切换世界时旧世界签到数据驻留内存、
+     * 遮蔽新世界 {@code <world>/gtit_signin/<uuid>.dat}（登录加载仅在不命中
+     * 内存缓存时才读盘）。saveDir 与 lastKnownDate 由下次 serverStarted 的
+     * {@link #init} 重新赋值，无需在此复位。
+     */
+    public void unloadAll() {
+        saveAll();
+        signInDataMap.clear();
     }
 
     // ==================== 管理指令支持 ====================
