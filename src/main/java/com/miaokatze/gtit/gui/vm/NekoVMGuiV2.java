@@ -222,6 +222,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     NekoConfirmationDialog meModeConfirmDialog;
     /** ME 模式切换确认面板 handler（客户端） */
     IPanelHandler meModeConfirmPanel;
+    /** 交易条目删除确认弹框（客户端，v1.7.7 编辑模式删除交易，按钮文本"是/否"） */
+    NekoConfirmationDialog deleteTradeConfirmDialog;
+    /** 交易条目删除确认面板 handler（客户端） */
+    IPanelHandler deleteTradeConfirmPanel;
     /** ME 传输队列同步值（S2C：服务端序列化队列发到客户端，用于粒子动画渲染） */
     private StringSyncValue meTransferQueueSync;
     /** 取回 ME 传输队列物品请求（C2S：客户端点击取回时发送 true） */
@@ -333,6 +337,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             // 初始化 ME 模式切换确认弹框（仅客户端）
             meModeConfirmDialog = new NekoConfirmationDialog("nekoV2:me_mode_confirm");
             meModeConfirmPanel = IPanelHandler.simple(panel, (parent, player) -> meModeConfirmDialog, true);
+            // 初始化交易条目删除确认弹框（仅客户端），并注入 TradeEditor 供删除按钮二次确认
+            deleteTradeConfirmDialog = new NekoConfirmationDialog("nekoV2:delete_trade_confirm");
+            deleteTradeConfirmPanel = IPanelHandler.simple(panel, (parent, player) -> deleteTradeConfirmDialog, true);
+            tradeEditor.setDeleteConfirm(deleteTradeConfirmDialog, deleteTradeConfirmPanel);
         }
 
         // ==================== 双端共有子树（必须先于所有仅客户端子树添加）====================

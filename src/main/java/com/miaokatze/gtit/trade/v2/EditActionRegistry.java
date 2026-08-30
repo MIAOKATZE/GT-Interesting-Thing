@@ -31,6 +31,9 @@ final class EditActionRegistry {
             NekoEditPacket.ACTION_CREATE_TRADE,
             (player, targetId, targetIndex, jsonPayload) -> TradeEditActions
                 .createTrade(player, targetId, jsonPayload));
+        register(
+            NekoEditPacket.ACTION_DELETE_TRADE,
+            (player, targetId, targetIndex, jsonPayload) -> TradeEditActions.deleteTrade(player, targetId));
         // ---- 标签页域（O2-05 E2 迁入 PageEditActions） ----
         register(
             NekoEditPacket.ACTION_CREATE_PAGE,

@@ -57,6 +57,8 @@ public class NekoEditPacket implements IMessage {
     public static final int ACTION_SAVE_BLESSING = 13;
     /** 保存每日在线奖励档位编辑（v1.7.7 G5②，targetId=原秒数字符串，jsonPayload 含 operation/update/add/remove 与字段） */
     public static final int ACTION_SAVE_ONLINE_TIER = 14;
+    /** 删除交易条目（targetId=交易组 UUID 字符串，删除后不可恢复） */
+    public static final int ACTION_DELETE_TRADE = 15;
 
     // ==================== 字段 ====================
 

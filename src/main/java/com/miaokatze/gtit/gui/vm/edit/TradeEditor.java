@@ -10,6 +10,7 @@ import net.minecraft.util.EnumChatFormatting;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.drawable.GuiTextures;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
@@ -22,12 +23,14 @@ import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDraggableEditPanel;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.gui.vm.edit.EditOverlayController.EditOverlayType;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoEditNetworkManager;
+import com.miaokatze.gtit.trade.v2.NekoEditPacket;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
@@ -52,6 +55,10 @@ public final class TradeEditor {
     private final Runnable requestClose;
     /** 请求宿主强制刷新主面板（保存成功后） */
     private final Runnable requestMainPanelRefresh;
+    /** 删除确认弹框引用（客户端，宿主 build 客户端块经 {@link #setDeleteConfirm} 注入；服务端保持 null） */
+    private NekoConfirmationDialog deleteConfirmDialog;
+    /** 删除确认面板 handler（客户端，宿主 build 客户端块注入；服务端保持 null） */
+    private IPanelHandler deleteConfirmPanel;
 
     /** 当前正在编辑的交易显示数据（客户端，打开编辑面板时设置） */
     private NekoTradeItemDisplay editingDisplay;
@@ -395,7 +402,7 @@ public final class TradeEditor {
         recordNbtToggle.tooltipAutoUpdate(true);
         editPanel.child(recordNbtToggle);
 
-        // --- 保存 / 取消按钮 ---
+        // --- 保存 / 删除 / 取消按钮 ---
         editPanel.child(
             new ButtonWidget<>().size(50, 16)
                 .left(30)
@@ -404,6 +411,28 @@ public final class TradeEditor {
                 .onMouseTapped(mouse -> {
                     saveTradeEdit();
                     requestClose.run();
+                    return true;
+                }));
+        // 删除按钮（v1.7.7 编辑模式删除交易条目）：几何居中（面板宽 250：保存 30-80 / 删除 100-150 / 取消 170-220）；
+        // 新建模式禁用（无既有条目可删）；点击弹出宿主二次确认弹框，确认后才发 ACTION_DELETE_TRADE
+        editPanel.child(
+            new ButtonWidget<>().size(50, 16)
+                .left(100)
+                .bottom(8)
+                .overlay(IKey.str("删除"))
+                .setEnabledIf(w -> !editTradeIsNew)
+                .tooltipBuilder(t -> t.addLine(IKey.str("删除该交易条目（不可恢复）")))
+                .onMouseTapped(mouse -> {
+                    if (deleteConfirmDialog == null || deleteConfirmPanel == null || editingDisplay == null)
+                        return true;
+                    deleteConfirmDialog.setButtonText("是", "否");
+                    deleteConfirmDialog.setParams("是否确认删除该条目", () -> {
+                        sendDeleteTrade(
+                            editingDisplay.getGroupId()
+                                .toString());
+                        requestClose.run();
+                    });
+                    deleteConfirmPanel.openPanel();
                     return true;
                 }));
         editPanel.child(
@@ -417,6 +446,34 @@ public final class TradeEditor {
                 }));
 
         return editPanel;
+    }
+
+    /**
+     * 注入删除确认弹框（宿主 build 客户端块调用）
+     * <p>
+     * 与宿主 {@code meModeConfirmDialog}/{@code meModeConfirmPanel} 同批初始化；
+     * 服务端不注入（保持 null），删除按钮回调内的 null 守卫使服务端触达无效。
+     *
+     * @param dialog 删除确认弹框
+     * @param panel  删除确认面板 handler
+     */
+    public void setDeleteConfirm(NekoConfirmationDialog dialog, IPanelHandler panel) {
+        this.deleteConfirmDialog = dialog;
+        this.deleteConfirmPanel = panel;
+    }
+
+    /**
+     * 发送删除交易条目请求（客户端 → 服务端）
+     * <p>
+     * 经 {@link NekoEditNetworkManager#sendToServer} 直发
+     * {@link NekoEditPacket#ACTION_DELETE_TRADE}（targetId=交易组 UUID 字符串，
+     * 无载荷）；服务端按 groupId 定位并删除条目，走「落盘 → 热重载 → 全服广播」
+     * 同一权威链。编辑模式统一闸（processAction）之外无需额外校验。
+     *
+     * @param groupId 交易组 UUID 字符串
+     */
+    private void sendDeleteTrade(String groupId) {
+        NekoEditNetworkManager.sendToServer(NekoEditPacket.ACTION_DELETE_TRADE, groupId, 0, "");
     }
 
     /**

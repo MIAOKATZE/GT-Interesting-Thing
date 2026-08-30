@@ -324,4 +324,48 @@ final class TradeEditActions {
             LOG.error("[NekoEdit] 新建交易条目异常", e);
         }
     }
+
+    /**
+     * 删除交易条目（服务端）
+     * <p>
+     * 按 groupId（targetId）定位并从 {@link NekoTradeConfig} 中移除交易条目，
+     * 保存链与 saveTrade/createTrade 同一权威链：「配置落盘 → {@link NekoTradeRegistryV2}
+     * 热重载 → {@link NekoTradeNetworkManager#sendSyncToAll()} 全服广播」。
+     * 删除不可恢复，客户端经二次确认弹框后才发起本请求。
+     *
+     * @param player     玩家
+     * @param groupIdStr 待删除交易条目的组 UUID 字符串
+     */
+    public static void deleteTrade(EntityPlayerMP player, String groupIdStr) {
+        try {
+            NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+            if (data == null || data.getTrades() == null) {
+                sendError(player, "交易配置为空，无法删除");
+                return;
+            }
+
+            // 按 ID 匹配移除（与 saveTrade 定位口径一致）
+            boolean removed = data.getTrades()
+                .removeIf(
+                    entry -> entry.getId() != null && entry.getId()
+                        .equals(groupIdStr));
+
+            if (!removed) {
+                sendError(player, "未找到交易条目: " + groupIdStr);
+                LOG.warn("[NekoEdit] 玩家 {} 删除交易条目失败，未找到目标: group={}", player.getCommandSenderName(), groupIdStr);
+                return;
+            }
+
+            // 落盘 → 热重载 → 全服广播（与 saveTrade/createTrade 同一权威链）
+            NekoTradeConfig.save(data);
+            NekoTradeRegistryV2.initialize();
+            NekoTradeNetworkManager.sendSyncToAll();
+
+            sendSuccess(player, "交易条目已删除 (ID: " + groupIdStr + ")");
+            LOG.info("[NekoEdit] 玩家 {} 删除交易条目: group={}", player.getCommandSenderName(), groupIdStr);
+        } catch (Exception e) {
+            sendError(player, "删除交易条目失败: " + e.getMessage());
+            LOG.error("[NekoEdit] 删除交易条目异常", e);
+        }
+    }
 }

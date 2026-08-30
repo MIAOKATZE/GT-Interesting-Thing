@@ -211,6 +211,17 @@ public final class CoinOpsController {
 
         // --- 弹出所有猫猫币（C2S）---
         ejectAllCoinsSync = new BooleanSyncValue(() -> nekoEjectAllCoins, val -> {
+            if (syncManager != null && !syncManager.isClient()) {
+                // B2-02：动作主体（含标志赋值）整体投递服务器主线程
+                NekoVMGuiV2.scheduleServerAction(() -> {
+                    nekoEjectAllCoins = val;
+                    if (val) {
+                        doNekoEjectAllCoins(playerId);
+                    }
+                });
+                return;
+            }
+            // 客户端：仅本地标志维护（doNekoEjectAllCoins 内部 isClient() 守卫直接返回）
             nekoEjectAllCoins = val;
             if (val) {
                 doNekoEjectAllCoins(playerId);
@@ -221,6 +232,17 @@ public final class CoinOpsController {
 
         // --- 导入猫猫币（C2S）---
         importCoinsSync = new BooleanSyncValue(() -> nekoImportCoins, val -> {
+            if (syncManager != null && !syncManager.isClient()) {
+                // B2-02：动作主体（含标志赋值）整体投递服务器主线程
+                NekoVMGuiV2.scheduleServerAction(() -> {
+                    nekoImportCoins = val;
+                    if (val) {
+                        doNekoImportCoins(playerId);
+                    }
+                });
+                return;
+            }
+            // 客户端：仅本地标志维护（doNekoImportCoins 内部 isClient() 守卫直接返回）
             nekoImportCoins = val;
             if (val) {
                 doNekoImportCoins(playerId);
@@ -231,6 +253,17 @@ public final class CoinOpsController {
 
         // --- 弹出物品（清空输出槽并掉落到机器旁，C2S）---
         ejectItemsSync = new BooleanSyncValue(() -> nekoEjectItems, val -> {
+            if (syncManager != null && !syncManager.isClient()) {
+                // B2-02：动作主体（含标志赋值）整体投递服务器主线程
+                NekoVMGuiV2.scheduleServerAction(() -> {
+                    nekoEjectItems = val;
+                    if (val) {
+                        doNekoEjectItems();
+                    }
+                });
+                return;
+            }
+            // 客户端：仅本地标志维护（doNekoEjectItems 内部 isClient() 守卫直接返回）
             nekoEjectItems = val;
             if (val) {
                 doNekoEjectItems();
@@ -241,6 +274,17 @@ public final class CoinOpsController {
 
         // --- 填充玩家背包（C2S，Shift+左键出货槽时触发）---
         fillPlayerInventorySync = new BooleanSyncValue(() -> nekoFillPlayerInventory, val -> {
+            if (syncManager != null && !syncManager.isClient()) {
+                // B2-02：动作主体（含标志赋值）整体投递服务器主线程
+                NekoVMGuiV2.scheduleServerAction(() -> {
+                    nekoFillPlayerInventory = val;
+                    if (val) {
+                        doNekoFillPlayerInventory(playerId);
+                    }
+                });
+                return;
+            }
+            // 客户端：仅本地标志维护（doNekoFillPlayerInventory 内部 isClient() 守卫直接返回）
             nekoFillPlayerInventory = val;
             if (val) {
                 doNekoFillPlayerInventory(playerId);
@@ -338,11 +382,14 @@ public final class CoinOpsController {
                 if (emptySlots - queuedItems <= 0) {
                     // 输出槽已满（含队列堆积），不扣钱，提示玩家
                     LOG.warn("[NekoVMV2] doNekoEjectCoin 输出槽已满，取消弹出货币 {}", currencyId);
+                    tradeResultNotifier.accept("出货槽已满，无法弹出猫猫币");
                     return;
                 }
                 multiblock.dispenseItemStacks(toDispense);
                 wallet.resetCount(currencyId);
                 playCoinDropSound();
+                // 交易状态可能受影响，标记为脏
+                markTradeableStatusDirtyAndNotify.run();
             }
         } catch (Throwable t) {
             LOG.error("[NekoVMV2] doNekoEjectCoin 异常!", t);
@@ -392,6 +439,7 @@ public final class CoinOpsController {
                 int queuedItems = multiblock.getOutputBufferSize();
                 if (emptySlots - queuedItems <= 0) {
                     LOG.warn("[NekoVMV2] doNekoEjectCoinStack 输出槽已满，取消弹出货币 {}", currencyId);
+                    tradeResultNotifier.accept("出货槽已满，无法弹出猫猫币");
                     return;
                 }
                 multiblock.dispenseItemStacks(toDispense);
@@ -455,6 +503,8 @@ public final class CoinOpsController {
             if (!toDispense.isEmpty()) {
                 multiblock.dispenseItemStacks(toDispense);
                 playCoinDropSound();
+                // 交易状态可能受影响，标记为脏
+                markTradeableStatusDirtyAndNotify.run();
             }
         } catch (Throwable t) {
             LOG.error("[NekoVMV2] doNekoEjectAllCoins 异常!", t);

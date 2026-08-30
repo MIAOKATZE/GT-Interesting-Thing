@@ -23,6 +23,10 @@ public class NekoConfirmationDialog extends Dialog<Boolean> {
     private String message = "";
     /** 确认时执行的回调 */
     private Runnable runnable = () -> {};
+    /** 确认按钮文本（默认"确认"，可经 {@link #setButtonText} 覆写） */
+    private String confirmText = "确认";
+    /** 取消按钮文本（默认"取消"，可经 {@link #setButtonText} 覆写） */
+    private String cancelText = "取消";
 
     /**
      * 构造确认对话框
@@ -46,7 +50,7 @@ public class NekoConfirmationDialog extends Dialog<Boolean> {
                             .child(
                                 new ButtonWidget<>().size(45, 16)
                                     .left(5)
-                                    .overlay(IKey.str("确认"))
+                                    .overlay(IKey.dynamic(() -> this.confirmText))
                                     .onMouseTapped(mouse -> {
                                         this.closeWith(true);
                                         return true;
@@ -54,7 +58,7 @@ public class NekoConfirmationDialog extends Dialog<Boolean> {
                             .child(
                                 new ButtonWidget<>().size(45, 16)
                                     .right(5)
-                                    .overlay(IKey.str("取消"))
+                                    .overlay(IKey.dynamic(() -> this.cancelText))
                                     .onMouseTapped(mouse -> {
                                         this.closeWith(false);
                                         return true;
@@ -88,5 +92,19 @@ public class NekoConfirmationDialog extends Dialog<Boolean> {
     public void setParams(String message, Runnable runnable) {
         this.message = message;
         this.runnable = runnable;
+    }
+
+    /**
+     * 覆写按钮文本（缺省"确认"/"取消"）
+     * <p>
+     * 同一弹框实例被多处复用时，打开前按场景设置；
+     * 未设置的场景保持默认文本不变。
+     *
+     * @param confirm 确认按钮文本
+     * @param cancel  取消按钮文本
+     */
+    public void setButtonText(String confirm, String cancel) {
+        this.confirmText = confirm;
+        this.cancelText = cancel;
     }
 }
