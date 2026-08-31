@@ -1,9 +1,12 @@
 <h1 align="center">GT-Interesting-Thing</h1>
-<p align="center"><strong><em>GTNH Interesting Gadgets Mod</em></strong><br><strong><em>GTNH 趣味道具模组</em></strong></p>
+<p align="center"><strong><em>GTNH 趣味道具模组</em></strong><br><strong><em>GTNH Interesting Gadgets Mod</em></strong></p>
 
 <p align="center">
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing"><img alt="Version 1.7.44" src="https://img.shields.io/badge/version-1.7.44-blue"></a>
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/blob/master/LICENSE"><img alt="License: BSD 3-Clause" src="https://img.shields.io/badge/License-BSD_3--Clause-green"></a>
+  <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg"></a>
+  <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
+  <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
+  <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta-1&2" src="https://img.shields.io/badge/GTNH-2.9.0%20beta--1%262-orange.svg"></a>
+  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.7.53" src="https://img.shields.io/badge/Release-1.7.53-green.svg"></a>
 </p>
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, and a custom trading machine, while balancing usage costs to maintain progression integrity.
@@ -18,12 +21,12 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 | GTNH         | GTIT   | Maintenance / 维护 |
 | ------------ | ------ | :--------------: |
-| 2.9.0 beta-1 | 1.0.0+ (current: 1.7.44 / 当前：1.7.44) | ✔️ |
+| 2.9.0 beta-1&2 | 1.0.0+ (current: 1.7.53 / 当前：1.7.53) | ✔️ |
 | 2.8.4        | 0.1.x  |        ❌️        |
 
-Current version 1.7.44 comes from `gradle.properties` (`RELEASE_VERSION`); the latest workflow record is still v1.7.43 (record-side lag of one version). No external release status is claimed here.
+Current version 1.7.53 comes from `gradle.properties` (`RELEASE_VERSION`); the latest workflow record is v1.7.53. No external release status is claimed here.
 
-当前版本 1.7.44 取自 `gradle.properties` 的 `RELEASE_VERSION`；workflow 文档最新记录为 v1.7.43（记录侧滞后一版）。此处不声明对外发布状态。
+当前版本 1.7.53 取自 `gradle.properties` 的 `RELEASE_VERSION`；workflow 文档最新记录为 v1.7.53。此处不声明对外发布状态。
 
 ***
 
