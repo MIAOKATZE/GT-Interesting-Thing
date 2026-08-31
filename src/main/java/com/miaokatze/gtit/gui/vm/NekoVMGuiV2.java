@@ -776,7 +776,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /**
      * B2-02：服务器主线程逐 tick 消费投递的 C2S 动作。
      * <p>
-     * 由 {@link MTENekoVendingMachineV2#onPostTick} 服务端分支调用；单任务异常仅记日志，
+     * 由 {@link MTENekoVendingMachineV2#onPostTick} 服务端分支调用；调用点必须位于
+     * {@code setActive(mMachine)} 之后（super 链每 tick 以 mMaxProgresstime>0 重置 active，
+     * 先 drain 会使投递动作的 isActive() 前置守卫恒判 false，v1.7.52 修复）；单任务异常仅记日志，
      * 不中断同批其余任务（对齐 MailHandler 消费循环）。
      */
     public static void drainServerActions() {
