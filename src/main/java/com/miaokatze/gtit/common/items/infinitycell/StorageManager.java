@@ -3,6 +3,7 @@ package com.miaokatze.gtit.common.items.infinitycell;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -16,7 +17,9 @@ import appeng.util.Platform;
 public class StorageManager extends WorldSavedData {
 
     private static final String DATA_NAME = "GTIT_InfinityCellStorage";
-    private final Map<UUID, DataStorage> disks = new HashMap<>();
+    // ConcurrentHashMap：writeToNBT 在服务器保存时遍历本 map，而 tooltip 等
+    // 客户端线程路径会并发读，避免 CME 直接打崩服务器。
+    private final Map<UUID, DataStorage> disks = new ConcurrentHashMap<>();
     private static StorageManager instance;
 
     public StorageManager(String name) {
@@ -42,7 +45,12 @@ public class StorageManager extends WorldSavedData {
         d = disks.get(uid);
         if (d == null) {
             d = new DataStorage(uid, channel);
-            disks.put(uid, d);
+            // 仅服务器线程注册：物品 tooltip 在客户端渲染线程经 getCellInventory
+            // 构造 inventory，若在此 put 会与保存期 writeToNBT 遍历竞争（历史 CME 崩溃），
+            // 且无 UUID 新元件每次悬停都会泄漏随机 UUID 条目。客户端返回临时实例即可。
+            if (Platform.isServer()) {
+                disks.put(uid, d);
+            }
         }
         return d;
     }
