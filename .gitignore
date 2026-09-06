@@ -8,6 +8,7 @@
 /com/cleanroommc/modularui/
 /libs/*
 !/libs/vendingmachine-0.4.87.jar
+!/libs/vendingmachine-0.4.100.jar
 .dsh
 .gradle
 .settings

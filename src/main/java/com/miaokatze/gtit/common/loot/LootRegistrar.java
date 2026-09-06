@@ -3,9 +3,10 @@ package com.miaokatze.gtit.common.loot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.WeightedRandomChestContent;
 
-import com.miaokatze.gtit.common.api.enums.GTITItemList;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
-import gregtech.api.util.GTLog;
+import com.miaokatze.gtit.common.api.enums.GTITItemList;
 
 /**
  * 战利品注册
@@ -17,12 +18,15 @@ import gregtech.api.util.GTLog;
  */
 public class LootRegistrar {
 
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     /**
      * 注册所有战利品
      */
     public static void init() {
         registerChestLoot();
-        GTLog.out.println("[GTIT] 战利品注册完成");
+        LOG.info("[GTIT] 战利品注册完成");
     }
 
     /**

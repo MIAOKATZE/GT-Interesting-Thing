@@ -4,12 +4,14 @@ import net.minecraft.block.Block;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.register.IItemContainer;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
-import gregtech.api.util.GTLog;
 
 /**
  * 模组物品统一索引枚举
@@ -50,6 +52,9 @@ public enum GTITItemList implements IItemContainer {
     // Infinity Cell 系列 (适配自 AE2Things)
     InfinityCell,
     InfinityFluidCell;
+
+    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     // 存储对应的物品堆栈实例
     private ItemStack mStack;
@@ -167,7 +172,7 @@ public enum GTITItemList implements IItemContainer {
     @Override
     public void sanityCheck() {
         if (mHasNotBeenSet && !mWarned) {
-            GTLog.err.println("Warning: Item '" + name() + "' has not been set!");
+            LOG.warn("Warning: Item '" + name() + "' has not been set!");
             mWarned = true;
         }
     }

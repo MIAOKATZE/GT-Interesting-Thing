@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.gtnewhorizon.gtnhlib.teams.ITeamData;
 import com.gtnewhorizon.gtnhlib.teams.Team;
-import com.gtnewhorizon.gtnhlib.teams.TeamDataCopyReason;
+import com.gtnewhorizon.gtnhlib.teams.TeamDataTransferReason;
 import com.miaokatze.gtit.trade.v2.NekoTradeHistory;
 
 /**
@@ -160,9 +160,13 @@ public class NekoTeamData implements ITeamData {
      * 玩家转移团队时调用
      * 仅团队钱包模式，无个人数据需要转移
      */
+    // [GT-compat] beta 兼容层（beta1/beta2/beta3）：正式版发布时移除本分支并切换至最新 API
+    // GTNHLib 已将 copyData(TeamDataCopyReason) 改名 transferData(TeamDataTransferReason)：
+    // 0.10.3 仍为 copyData 形态，0.11.9（beta-1 集实测）起仅存 transferData；beta-1/2/3 三集编译矩阵均按本签名通过
+    // 0.10.3 从未随任何 beta 实例包发布（仅旧编译期 pin），三个 beta 版本运行期的调用方均为 transferData
     @Override
-    public synchronized void copyData(Team prevTeam, Team newTeam, UUID playerId, ITeamData prevTeamData,
-        TeamDataCopyReason reason) {
+    public synchronized void transferData(Team prevTeam, Team newTeam, UUID playerId, ITeamData prevTeamData,
+        TeamDataTransferReason reason) {
         if (prevTeamData instanceof NekoTeamData && prevTeamData != this) {
             NekoTeamData previous = (NekoTeamData) prevTeamData;
             for (Map.Entry<UUID, NekoTradeHistory> entry : previous.getTradeHistoriesSnapshot()

@@ -16,6 +16,7 @@ import gregtech.api.render.TextureFactory;
  */
 public class TextureManager {
 
+    // Textures.BlockIcons.custom(String) 单参在 beta-3 已弃用未删，保留以兼容 beta1/beta2，不换 beta-3-only 双参重载
     // 猫猫售货机正面材质（V2 独立版，从 VM 复制到本 mod）
     public static final IIconContainer NEKOVM_FRONT_OFF = Textures.BlockIcons.custom("gtit:nekovm_front_off");
     public static final IIconContainer NEKOVM_FRONT_ON = Textures.BlockIcons.custom("gtit:nekovm_front_on");
