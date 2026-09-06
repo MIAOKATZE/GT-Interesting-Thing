@@ -8,10 +8,8 @@ import java.util.UUID;
 
 import net.minecraft.command.CommandBase;
 import net.minecraft.command.ICommandSender;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
@@ -30,6 +28,9 @@ import com.miaokatze.gtit.signin.DailySignInManager;
 import com.miaokatze.gtit.signin.OnlineTimeConfig;
 import com.miaokatze.gtit.signin.SignInClientData;
 import com.miaokatze.gtit.signin.SignInNetworkManager;
+import com.miaokatze.gtit.terminal.StarterGiftAudit;
+import com.miaokatze.gtit.terminal.TerminalNetworkManager;
+import com.miaokatze.gtit.terminal.TerminalText;
 import com.miaokatze.gtit.trade.v2.NekoEditModeManager;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
@@ -66,7 +67,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimlist|claimreset [all|玩家名] | /gtit nekovm edit on|off|reload|timereset|help | /gtit signin [info|reload|admin|help] | /gtit lottery reload";
+        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimlist|claimreset [all|玩家名] | /gtit nekovm edit on|off|reload|timereset|help | /gtit signin [info|reload|admin|help] | /gtit lottery reload | /gtit mail [send|first|firstclear|once|help] | /gtit terminal";
     }
 
     @Override
@@ -100,6 +101,7 @@ public class GTITGiftCommand extends CommandBase {
             case "signin" -> handleSignIn(sender, args);
             case "lottery" -> handleLottery(sender, args);
             case "mail" -> handleMail(sender, args);
+            case "terminal" -> handleTerminal(sender);
             default -> sendHelp(sender);
         }
     }
@@ -109,7 +111,7 @@ public class GTITGiftCommand extends CommandBase {
     @Override
     public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
         if (args.length == 1) {
-            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail");
+            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail", "terminal");
         }
 
         if (args.length == 2) {
@@ -351,8 +353,8 @@ public class GTITGiftCommand extends CommandBase {
 
     // ==================== Gift ClaimReset 子命令 ====================
 
-    /** NBT 键名：玩家已领取新手礼包的标记 */
-    private static final String GIFT_CLAIMED_KEY = "gtit_received_starter_gift";
+    /** NBT 键名：玩家已领取新手礼包的标记（Terminal T1 迁移至 {@link StarterGiftAudit}，此处委托引用） */
+    private static final String GIFT_CLAIMED_KEY = StarterGiftAudit.GIFT_CLAIMED_KEY;
 
     /**
      * /gtit gift claimlist
@@ -400,13 +402,8 @@ public class GTITGiftCommand extends CommandBase {
      * 接受两种输入：在线玩家的 getEntityData()（已处于 ForgeData 层级）或离线 .dat 的根 NBT。
      */
     private static boolean hasGiftClaimedFlag(NBTTagCompound dataTag) {
-        if (dataTag == null) return false;
-        // 在线路径：dataTag 即 ForgeData，直接取 PlayerPersisted
-        if (dataTag.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) {
-            return dataTag.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG)
-                .hasKey(GIFT_CLAIMED_KEY);
-        }
-        return false;
+        // Terminal T1 迁移至 StarterGiftAudit（逻辑逐行保持），保留签名令既有调用点零改动
+        return StarterGiftAudit.hasGiftClaimedFlag(dataTag);
     }
 
     /**
@@ -414,34 +411,8 @@ public class GTITGiftCommand extends CommandBase {
      * 玩家名优先从 usercache.json 反查，查不到则用 UUID。
      */
     private void collectOfflineClaimedPlayers(Set<UUID> onlineUuids, List<String> outNames) {
-        File worldDir = MinecraftServer.getServer()
-            .getEntityWorld()
-            .getSaveHandler()
-            .getWorldDirectory();
-        File playerdataDir = new File(worldDir, "playerdata");
-        if (!playerdataDir.exists() || !playerdataDir.isDirectory()) {
-            return;
-        }
-        File userCache = new File(worldDir.getParentFile(), "usercache.json");
-
-        File[] datFiles = playerdataDir.listFiles((dir, name) -> name.endsWith(".dat"));
-        if (datFiles == null) return;
-
-        for (File datFile : datFiles) {
-            try {
-                String uuidStr = datFile.getName()
-                    .replace(".dat", "");
-                UUID fileUuid = UUID.fromString(uuidStr);
-                if (onlineUuids.contains(fileUuid)) continue;
-
-                if (offlineDatHasGiftClaimed(datFile)) {
-                    String name = PlayerResolver.findNameFromUserCache(fileUuid, userCache);
-                    outNames.add(name != null ? name : fileUuid.toString());
-                }
-            } catch (IllegalArgumentException ignored) {
-                // 文件名不是合法 UUID，跳过
-            }
-        }
+        // Terminal T1 迁移至 StarterGiftAudit（逻辑逐行保持），保留签名令既有调用点零改动
+        StarterGiftAudit.collectOfflineClaimedPlayers(onlineUuids, outNames);
     }
 
     /**
@@ -449,29 +420,8 @@ public class GTITGiftCommand extends CommandBase {
      * 路径：.dat 根 → ForgeData → PlayerPersisted → gtit_received_starter_gift
      */
     private boolean offlineDatHasGiftClaimed(File datFile) {
-        try {
-            // 与在线玩家同侧的写操作冲突检查：再次确认不在线
-            UUID fileUuid;
-            try {
-                fileUuid = UUID.fromString(
-                    datFile.getName()
-                        .replace(".dat", ""));
-            } catch (IllegalArgumentException ignored) {
-                return false;
-            }
-            if (isPlayerOnline(fileUuid)) return false;
-
-            NBTTagCompound rootNbt = CompressedStreamTools.read(datFile);
-            if (rootNbt == null) return false;
-            if (!rootNbt.hasKey("ForgeData")) return false;
-            NBTTagCompound forgeData = rootNbt.getCompoundTag("ForgeData");
-            if (!forgeData.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) return false;
-            return forgeData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG)
-                .hasKey(GIFT_CLAIMED_KEY);
-        } catch (Exception e) {
-            LOG.error("检查离线玩家礼包标记失败: " + datFile.getName(), e);
-            return false;
-        }
+        // Terminal T1 迁移至 StarterGiftAudit（逻辑逐行保持），保留签名令既有调用点零改动
+        return StarterGiftAudit.offlineDatHasGiftClaimed(datFile);
     }
 
     /**
@@ -548,8 +498,9 @@ public class GTITGiftCommand extends CommandBase {
         int total = onlineReset[0] + offlineReset;
         if (total > 0) {
             sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已重置所有玩家的新手礼包领取状态"));
+            // Terminal T1 修复：原误打印数组引用（[I@...），改为计数 onlineReset[0]
             sender.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.WHITE + "  在线: " + onlineReset + "  离线: " + offlineReset));
+                new ChatComponentText(EnumChatFormatting.WHITE + "  在线: " + onlineReset[0] + "  离线: " + offlineReset));
             sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "更新完毕，相关玩家下次登录时自动发放新手宝箱"));
         } else {
             sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "没有需要重置的玩家"));
@@ -562,14 +513,8 @@ public class GTITGiftCommand extends CommandBase {
      * @return true 如果标记存在且被移除；false 如果标记不存在
      */
     private boolean resetOnlinePlayerGiftFlag(EntityPlayerMP player) {
-        NBTTagCompound playerData = player.getEntityData();
-        NBTTagCompound persisted = playerData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
-        if (persisted.hasKey(GIFT_CLAIMED_KEY)) {
-            persisted.removeTag(GIFT_CLAIMED_KEY);
-            playerData.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
-            return true;
-        }
-        return false;
+        // Terminal T1 迁移至 StarterGiftAudit（逻辑逐行保持），保留签名令既有调用点零改动
+        return StarterGiftAudit.resetOnlinePlayerGiftFlag(player);
     }
 
     /**
@@ -578,57 +523,9 @@ public class GTITGiftCommand extends CommandBase {
      * @return true 成功重置；false 标记不存在或操作失败
      */
     private boolean resetOfflinePlayerGiftFlag(File datFile) {
-        try {
-            // 安全检查：操作 .dat 前再次确认玩家不在线，避免内存/文件数据冲突。
-            // 外层批量方法虽收集过 onlineUuids，但收集与写入之间存在时间窗口；
-            // 按名查找路径的二次确认也在更早时刻，无法覆盖真正落盘前的那一刻。
-            UUID fileUuid;
-            try {
-                fileUuid = UUID.fromString(
-                    datFile.getName()
-                        .replace(".dat", ""));
-            } catch (IllegalArgumentException ignored) {
-                return false;
-            }
-            if (isPlayerOnline(fileUuid)) {
-                LOG.warn("跳过在线玩家的 .dat 文件操作，避免内存/文件数据冲突: {}", datFile.getName());
-                return false;
-            }
-
-            NBTTagCompound rootNbt = CompressedStreamTools.read(datFile);
-            if (rootNbt == null) return false;
-
-            // Forge 持久化自定义 entity 数据位于 .dat 根 NBT 的 "ForgeData" 子标签下，
-            // 而 EntityPlayer.PERSISTED_NBT_TAG（"PlayerPersisted"）又在 ForgeData 之内：
-            // .dat 根 → ForgeData → PlayerPersisted → gtit_received_starter_gift
-            // 在线路径 player.getEntityData() 返回的正是这个 ForgeData 子标签，故在线逻辑正确；
-            // 此前离线代码直接在根上找 PlayerPersisted，永远命中失败 → 离线重置一直无效。
-            if (rootNbt.hasKey("ForgeData")) {
-                NBTTagCompound forgeData = rootNbt.getCompoundTag("ForgeData");
-                if (forgeData.hasKey(EntityPlayer.PERSISTED_NBT_TAG)) {
-                    NBTTagCompound persisted = forgeData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
-                    if (persisted.hasKey(GIFT_CLAIMED_KEY)) {
-                        persisted.removeTag(GIFT_CLAIMED_KEY);
-                        // getCompoundTag 不会自动把修改后的 tag 写回父节点，须逐层 setTag 回写
-                        forgeData.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
-                        rootNbt.setTag("ForgeData", forgeData);
-                        CompressedStreamTools.safeWrite(rootNbt, datFile);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        } catch (Exception e) {
-            LOG.error("重置离线玩家礼包标记失败: " + datFile.getName(), e);
-            return false;
-        }
-    }
-
-    /**
-     * 检查指定 UUID 的玩家当前是否在线（O2-12：PlayerLookup 统一查询）
-     */
-    private boolean isPlayerOnline(UUID uuid) {
-        return uuid != null && PlayerLookup.getOnlinePlayerByUuid(uuid) != null;
+        // Terminal T1 迁移至 StarterGiftAudit（逻辑逐行保持，含写前在线复查与 safeWrite 竞态保护），
+        // 保留签名令既有调用点零改动
+        return StarterGiftAudit.resetOfflinePlayerGiftFlag(datFile);
     }
 
     /**
@@ -638,52 +535,8 @@ public class GTITGiftCommand extends CommandBase {
      * @return true 成功重置；false 找不到玩家或操作失败
      */
     private boolean resetOfflinePlayerGiftFlagByName(String playerName) {
-        File worldDir = MinecraftServer.getServer()
-            .getEntityWorld()
-            .getSaveHandler()
-            .getWorldDirectory();
-        File playerdataDir = new File(worldDir, "playerdata");
-        if (!playerdataDir.exists() || !playerdataDir.isDirectory()) {
-            return false;
-        }
-
-        // 二次确认该玩家不在线
-        EntityPlayerMP onlinePlayer = MinecraftServer.getServer()
-            .getConfigurationManager()
-            .func_152612_a(playerName);
-        if (onlinePlayer != null) {
-            return resetOnlinePlayerGiftFlag(onlinePlayer);
-        }
-
-        // 尝试通过 usercache.json 查找 UUID
-        File userCache = new File(worldDir.getParentFile(), "usercache.json");
-        UUID targetUuid = PlayerResolver.findUuidFromUserCache(playerName, userCache);
-        if (targetUuid != null) {
-            File datFile = new File(playerdataDir, targetUuid.toString() + ".dat");
-            if (datFile.exists()) {
-                return resetOfflinePlayerGiftFlag(datFile);
-            }
-        }
-
-        // usercache 中找不到，扫描所有 .dat 文件（通过 usercache 反查 UUID 对应的玩家名）
-        File[] datFiles = playerdataDir.listFiles((dir, name) -> name.endsWith(".dat"));
-        if (datFiles == null) return false;
-
-        for (File datFile : datFiles) {
-            try {
-                String uuidStr = datFile.getName()
-                    .replace(".dat", "");
-                UUID fileUuid = UUID.fromString(uuidStr);
-                String cachedName = PlayerResolver.findNameFromUserCache(fileUuid, userCache);
-                if (playerName.equalsIgnoreCase(cachedName)) {
-                    return resetOfflinePlayerGiftFlag(datFile);
-                }
-            } catch (IllegalArgumentException ignored) {
-                // 文件名不是合法 UUID，跳过
-            }
-        }
-
-        return false;
+        // Terminal T1 迁移至 StarterGiftAudit（逻辑逐行保持），保留签名令既有调用点零改动
+        return StarterGiftAudit.resetOfflinePlayerGiftFlagByName(playerName);
     }
 
     /**
@@ -693,37 +546,8 @@ public class GTITGiftCommand extends CommandBase {
      * @return 成功重置的离线玩家数量
      */
     private int resetAllOfflinePlayerGiftFlags() {
-        File worldDir = MinecraftServer.getServer()
-            .getEntityWorld()
-            .getSaveHandler()
-            .getWorldDirectory();
-        File playerdataDir = new File(worldDir, "playerdata");
-        if (!playerdataDir.exists() || !playerdataDir.isDirectory()) {
-            return 0;
-        }
-
-        // 收集在线玩家的 UUID，跳过在线玩家的 .dat 文件（O2-12）
-        Set<UUID> onlineUuids = PlayerLookup.buildUuidSet();
-
-        int count = 0;
-        File[] datFiles = playerdataDir.listFiles((dir, name) -> name.endsWith(".dat"));
-        if (datFiles == null) return 0;
-
-        for (File datFile : datFiles) {
-            try {
-                String uuidStr = datFile.getName()
-                    .replace(".dat", "");
-                UUID fileUuid = UUID.fromString(uuidStr);
-                // 跳过在线玩家
-                if (onlineUuids.contains(fileUuid)) continue;
-                if (resetOfflinePlayerGiftFlag(datFile)) {
-                    count++;
-                }
-            } catch (IllegalArgumentException ignored) {
-                // 文件名不是合法 UUID，跳过
-            }
-        }
-        return count;
+        // Terminal T1 迁移至 StarterGiftAudit（逻辑逐行保持），保留签名令既有调用点零改动
+        return StarterGiftAudit.resetAllOfflinePlayerGiftFlags();
     }
 
     // ==================== NekoVM 子命令 ====================
@@ -835,6 +659,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit lottery reload - 热重载抽奖配置"));
         sender.addChatMessage(new ChatComponentText("/gtit mail help - 邮件命令帮助（发送/首登/一次性奖励）"));
+        sender.addChatMessage(new ChatComponentText("/gtit terminal - 打开服务器管理终端（仅游戏内 OP2 玩家）"));
     }
 
     private void sendNekoVMHelp(ICommandSender sender) {
@@ -1261,6 +1086,25 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit mail firstclear - 清除首登奖励模板"));
         sender.addChatMessage(new ChatComponentText("/gtit mail once <奖励ID> <标题> [正文...] - 发布一次性奖励（全服各收一次）"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "正文中输入 \\n 表示换行；附件取手持物品（可空手）"));
+    }
+
+    // ==================== Terminal 管理终端子命令（T1 骨架） ====================
+
+    /**
+     * /gtit terminal —— 打开服务器管理终端（GUI 入口）
+     * <p>
+     * 仅游戏内玩家可执行：发送 TerminalOpenPacket（S2C，含在线玩家名快照），
+     * 客户端打开 MUI2 纯客户端面板 {@code TerminalGui}；
+     * 终端内的动作请求走 TerminalActionPacket 五步校验链（实时 OP2 复核），
+     * 本命令入口的 OP2 门槛由 vanilla 指令权限（getRequiredPermissionLevel=2）保证。
+     * 控制台执行时仅回中文提示，不发包。
+     */
+    private void handleTerminal(ICommandSender sender) {
+        if (sender instanceof EntityPlayerMP player) {
+            TerminalNetworkManager.sendOpen(player);
+            return;
+        }
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + TerminalText.CONSOLE_UNAVAILABLE));
     }
 
     /**

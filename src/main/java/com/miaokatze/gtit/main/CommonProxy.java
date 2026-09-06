@@ -400,6 +400,13 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 交易配置同步网络包初始化失败", t);
         }
+        // Terminal T1: 管理终端网络包（打开/动作请求/结果回显/数据推送四通道）
+        try {
+            com.miaokatze.gtit.terminal.TerminalNetworkManager.init();
+            GTInterestingThing.LOG.info("[2/3] 管理终端网络包已初始化");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 管理终端网络包初始化失败", t);
+        }
     }
 
     /**
