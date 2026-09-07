@@ -1,3 +1,7 @@
+<p align="center">
+  <img alt="GTIT" src="README/GTIT.png">
+</p>
+
 <h1 align="center">GT-Interesting-Thing</h1>
 <p align="center"><strong><em>GTNH 趣味道具模组</em></strong><br><strong><em>GTNH Interesting Gadgets Mod</em></strong></p>
 

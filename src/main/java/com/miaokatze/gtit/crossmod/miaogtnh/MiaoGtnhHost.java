@@ -20,9 +20,10 @@ public class MiaoGtnhHost {
     private static final String MIAO_PACK_ROOT = "assets/gtit/bqquests/miao/";
 
     /**
-     * serverStarting 挂载点：BQ 任务包注入。
+     * serverStarted 挂载点：BQ 任务包注入（FMLServerStartedEvent——整波 ServerStarting 含 BQ default load
+     * 与第三方整库重载已结束、tick 循环与玩家登录之前）。
      */
-    public static void onServerStarting() {
+    public static void onServerStarted() {
         if (BqCompat.isBqLoaded()) {
             BqQuestInjector.inject(GTIT_PACK_ROOT);
             // 空包哨兵：借注入器剪枝清空老世界残留的 MIAO 任务与任务线

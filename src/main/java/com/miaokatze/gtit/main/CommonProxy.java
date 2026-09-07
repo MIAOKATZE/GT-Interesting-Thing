@@ -502,15 +502,6 @@ public class CommonProxy {
     @SuppressWarnings({ "unused" })
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new GTITGiftCommand());
-
-        // E4a: BQ 任务注入（GTIT 包注入 + MIAO 空包哨兵清理保险）。
-        // after:betterquesting 排序约束保证 BQ default load 已完成；
-        // BQ 缺席/资产未就位时注入器静默返回，零副作用。
-        try {
-            MiaoGtnhHost.onServerStarting();
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("BQ 任务包注入失败（不影响服务器启动）", t);
-        }
     }
 
     /**
@@ -519,6 +510,17 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStarted(FMLServerStartedEvent event) {
+        // E4a: BQ 任务注入（GTIT 包注入 + MIAO 空包哨兵清理保险）。
+        // 2026-09-07 迁移 ServerStarting→ServerStarted：GTNH 2.9.0-beta-3 专用服上
+        // dreamcraft 在更晚的 FMLServerStartingEvent 因 "Modpack has been updated" 整库
+        // 重载默认任务库，会覆盖同波次注入；ServerStarted 时整波已结束且无清库者
+        // （契约：BQ任务整合规范.md §6 条款 1/11）。BQ 缺席/资产未就位时注入器静默返回。
+        try {
+            MiaoGtnhHost.onServerStarted();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("BQ 任务包注入失败（不影响服务器启动）", t);
+        }
+
         // 初始化猫猫币钱包管理器（需要 World 对象）
         // NekoPageRegistry 已在 postInit() 中初始化
         // V1 的 NekoTradeRegistry.initialize()（反射注入 VM TradeDatabase）已移除

@@ -31,8 +31,9 @@ import cpw.mods.fml.common.event.FMLServerStoppingEvent;
     // v1.6.34 方案 B3：required-before:gregtech 确保 GTIT 的 preInit 在 GT preInit 之前执行
     // 这样 sAfterGTPreload 队列在 GT preInit 末尾消费时，GTIT 的机器注册 Runnable 已入队
     // 与 GTSR/GTSWN 对齐，避免方案 D（sAfterGTLoad）导致 MTE 错过 GT5U Init 阶段统一处理
-    // E4a: after:betterquesting 为纯排序约束（不要求 BQ 存在）——确保 BQ 的 default load
-    // 在 GTIT serverStarting 任务注入之前同步完成，注入为幂等追加不会被清库
+    // E4a: after:betterquesting 为纯排序约束（不要求 BQ 存在）；2026-09-07 起注入已迁移至
+    // FMLServerStartedEvent（整波 ServerStarting 含第三方整库重载结束、玩家登录之前），
+    // 同波次排序不再承担注入安全性（专用服 dreamcraft 整库重载覆盖案例）
     dependencies = "required-before:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine;after:betterquesting")
 public class GTInterestingThing {
 
