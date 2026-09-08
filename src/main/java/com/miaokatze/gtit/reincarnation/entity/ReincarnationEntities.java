@@ -3,9 +3,7 @@ package com.miaokatze.gtit.reincarnation.entity;
 import net.minecraft.entity.player.EntityPlayerMP;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
-import com.miaokatze.gtit.reincarnation.client.render.AscensionCarrierBlankRender;
 
-import cpw.mods.fml.client.registry.RenderingRegistry;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.registry.EntityRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -21,14 +19,15 @@ import cpw.mods.fml.relauncher.Side;
  * <ul>
  * <li>实体本体：{@code CommonProxy.init()} 中经 {@link #register()} 创建（双端物理侧判定，
  * 集成服物理侧为 CLIENT 正常注册）；</li>
- * <li>客户端渲染器：{@code ClientProxy.init()} 中经 {@link #registerClientRender()} 注册——
- * 1.7.10 下实体若未注册渲染器，客户端 track 到即崩溃，故必须配对调用
- * {@link AscensionCarrierBlankRender}（空渲染，载具刻意不可见）。</li>
+ * <li>客户端渲染器：{@code ClientProxy.init()} 中经
+ * {@code AscensionCarrierRenderRegistrar.register()} 注册（空渲染，载具刻意不可见）——
+ * 1.7.10 下实体若未注册渲染器，客户端 track 到即崩溃，故必须配对调用。</li>
  * </ul>
  * <p>
- * 本类 server 公共路径零 {@code net.minecraft.client} 引用：{@code RenderingRegistry} 属
- * {@code cpw.mods.fml.client.registry}，仅经 {@link #registerClientRender()} 方法体引用
- * （该方法仅由 ClientProxy 调用路径可达，物理专用服务器不会进入，类加载不触发）。
+ * 本类全类零客户端类型引用（v1.9.0 冒烟修正 20260909 R1/R2：渲染注册器已按
+ * wiki client-class-contamination 规避清单条款 2"登记与渲染分文件"拆至仅客户端可达的
+ * {@code AscensionCarrierRenderRegistrar}——原同体形态下 JVM 类校验期验证整类字节码，
+ * 专用服调用 {@link #register()} 即触发 client 类链接失败）。
  */
 public class ReincarnationEntities {
 
@@ -39,8 +38,6 @@ public class ReincarnationEntities {
 
     /** 实体本体注册幂等标志 */
     private static boolean registered = false;
-    /** 客户端渲染器注册幂等标志 */
-    private static boolean clientRenderRegistered = false;
 
     /**
      * 注册飞升载具实体（幂等）
@@ -73,19 +70,6 @@ public class ReincarnationEntities {
             true);
         registered = true;
         return true;
-    }
-
-    /**
-     * 注册飞升载具客户端渲染器（幂等，空渲染）
-     * <p>
-     * 仅由 {@code ClientProxy.init()} 调用（物理 CLIENT 路径必然可达）；物理专用服务器
-     * 不会进入本方法，{@code RenderingRegistry}（client registry）类加载不被触发。
-     */
-    public static void registerClientRender() {
-        if (clientRenderRegistered) return;
-        RenderingRegistry
-            .registerEntityRenderingHandler(EntityAscensionCarrier.class, new AscensionCarrierBlankRender());
-        clientRenderRegistered = true;
     }
 
     // ==================== 供 S4 消费的便捷生成 ====================
@@ -129,9 +113,5 @@ public class ReincarnationEntities {
 
     public static boolean isRegistered() {
         return registered;
-    }
-
-    public static boolean isClientRenderRegistered() {
-        return clientRenderRegistered;
     }
 }

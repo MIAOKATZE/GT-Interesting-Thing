@@ -413,8 +413,12 @@ public class CommonProxy {
         try {
             // v1.9.0 冒烟修正（20260909 R1/R2）：实体注册自带物理侧门控与"拒绝注册（实体）"
             // 日志，必须独立于网络门控调用——嵌在 init() 成功分支内会让专用服上实体拒绝
-            // 标记结构性不可达
+            // 标记结构性不可达。try 亦独立：单点失败不吞另一类的拒绝/初始化证据
             com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities.register();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 周目系统实体注册失败", t);
+        }
+        try {
             if (com.miaokatze.gtit.reincarnation.network.ReincarnationNetwork.init()) {
                 GTInterestingThing.LOG.info("[2/3] 周目系统网络包已初始化");
                 // v1.9.0 S4: 服务端编排器安装（登录判定/倒计时/奖励/飞升编排/确认钩子注入）。

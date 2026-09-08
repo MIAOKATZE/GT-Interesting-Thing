@@ -13,8 +13,8 @@ import net.minecraft.util.ResourceLocation;
  * 1.7.10 下未注册渲染器的实体一旦被客户端 track 将直接崩溃
  * （{@code "No renderer for entity"}），故以全空实现防崩。
  * <p>
- * 仅经 {@code ReincarnationEntities.registerClientRender()}（ClientProxy.init 调用路径）
- * 注册，物理专用服务器不会触发本类类加载。
+ * 仅经 {@code AscensionCarrierRenderRegistrar.register()}（ClientProxy.init 调用路径，
+ * v1.9.0 冒烟修正后与实体登记分文件）注册，物理专用服务器不会触发本类类加载。
  */
 public class AscensionCarrierBlankRender extends Render {
 

@@ -41,10 +41,10 @@ public class ClientProxy extends CommonProxy {
             GTInterestingThing.LOG.error("[2/3] 周目系统网络包客户端 handler 注册失败", t);
         }
 
-        // v1.9.0 S4: 周目实体客户端渲染器（空渲染）+ 客户端演出/输入封锁安装
+        // v1.9.0 S4: 周目实体客户端渲染器（空渲染，仅客户端可达的注册器）+ 客户端演出/输入封锁安装
         // （仅物理客户端路径；client/fx 与 client/render 类加载不进专用服）
         try {
-            com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities.registerClientRender();
+            com.miaokatze.gtit.reincarnation.client.render.AscensionCarrierRenderRegistrar.register();
             com.miaokatze.gtit.reincarnation.client.fx.ReincarnationClientFx.install();
             GTInterestingThing.LOG.info("[2/3] 周目系统客户端渲染与演出已安装");
         } catch (Throwable t) {
