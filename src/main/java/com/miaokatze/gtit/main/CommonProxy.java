@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.main;
 
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 
@@ -407,6 +408,21 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 管理终端网络包初始化失败", t);
         }
+        // v1.9.0: 周目系统网络通道（S→C 四包；物理专用服务器由 ReincarnationNetwork.init()
+        // 内联侧门控拒绝注册并跳过，与周目物品/配方门控同口径，返回 false 时不打"已初始化"）
+        try {
+            if (com.miaokatze.gtit.reincarnation.network.ReincarnationNetwork.init()) {
+                GTInterestingThing.LOG.info("[2/3] 周目系统网络包已初始化");
+                // v1.9.0 S4: 周目实体本体注册 + 服务端编排器安装（登录判定/倒计时/奖励/
+                // 飞升编排/确认钩子注入）。上方 init() 返回 true 即物理客户端门控通过，
+                // 专用服整块跳过；编排器内部再以 worldObj.isRemote 区分世界侧
+                com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities.register();
+                com.miaokatze.gtit.reincarnation.handler.ReincarnationHandler.install();
+                GTInterestingThing.LOG.info("[2/3] 周目系统实体与服务端编排器已接线");
+            }
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 周目系统网络包初始化失败", t);
+        }
     }
 
     /**
@@ -619,6 +635,16 @@ public class CommonProxy {
      * 模组加载完成阶段
      */
     public void loadComplete(cpw.mods.fml.common.event.FMLLoadCompleteEvent event) {}
+
+    /**
+     * v1.9.0 S4：打开周目 GUI（仅物理客户端覆盖——ClientProxy 覆写本方法调用
+     * client/gui 的 ReincarnationGuiOpener.openFor）。CommonProxy 空实现保证
+     * common 物品类（ReincarnationCrystal 右击）零 client/gui 引用（类污染红线）；
+     * 物理专用服务器上周目系统整体门控拒绝注册，本路径不可达。
+     *
+     * @param player 右击轮回水晶的玩家（调用方已保证服务端世界侧）
+     */
+    public void openReincarnationGui(EntityPlayer player) {}
 
     /**
      * IMC 消息分发阶段（E4a：外部贸易组注册通道之一；E4b：抽奖池组同构接入）

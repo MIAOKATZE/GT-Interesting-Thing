@@ -31,6 +31,35 @@ public class ClientProxy extends CommonProxy {
             GTInterestingThing.LOG.error("猫猫售货机 BGM 事件处理器注册失败", t);
         }
 
+        // v1.9.0: 周目系统网络包客户端 handler 注册（S→C 四包，discriminator 见 ReincarnationNetwork）。
+        // 通道本体已在 super.init() → CommonProxy.init() 中创建（物理专用服务器门控跳过）；
+        // handler 注册收束在 ClientProxy，保证 reincarnation.network 包内 server 公共路径零 client 引用
+        try {
+            com.miaokatze.gtit.reincarnation.network.ReincarnationNetwork.registerClientHandlers();
+            GTInterestingThing.LOG.info("[2/3] 周目系统网络包客户端 handler 已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 周目系统网络包客户端 handler 注册失败", t);
+        }
+
+        // v1.9.0 S4: 周目实体客户端渲染器（空渲染）+ 客户端演出/输入封锁安装
+        // （仅物理客户端路径；client/fx 与 client/render 类加载不进专用服）
+        try {
+            com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities.registerClientRender();
+            com.miaokatze.gtit.reincarnation.client.fx.ReincarnationClientFx.install();
+            GTInterestingThing.LOG.info("[2/3] 周目系统客户端渲染与演出已安装");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[2/3] 周目系统客户端渲染与演出安装失败", t);
+        }
+
         GTInterestingThing.LOG.info("[2/3] 客户端初始化完成");
+    }
+
+    /**
+     * v1.9.0 S4：打开周目 GUI（仅物理客户端覆盖；ClientProxy 不进专用服类加载路径，
+     * 可安全触达 client/gui 包——common 物品类仍保持零 client/gui import）
+     */
+    @Override
+    public void openReincarnationGui(net.minecraft.entity.player.EntityPlayer player) {
+        com.miaokatze.gtit.client.gui.ReincarnationGuiOpener.openFor(player);
     }
 }

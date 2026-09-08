@@ -81,6 +81,9 @@ item.shimmering_neko_coin.name=Shimmering Neko Coin
 item.shimmering_neko_coin.tooltip.0=A cat memorial coin radiating mysterious light
 item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fishing
 
+# Reincarnation Crystal
+item.reincarnation_crystal.name=Reincarnation Crystal
+
 # Infinity Cell series (adapted from AE2Things)
 item.gtit.infinity_cell.name=ME Infinity Cell
 item.gtit.infinity_fluid_cell.name=ME Infinity Fluid Cell
@@ -171,4 +174,57 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIA.desc=Mountainbreaker keeps two bless
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.name=§9§lSkywalk
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.desc=Skywalk raises your step height to §11.1 blocks§r: a full block becomes as climbable as a slab — §2no jumping required§r; stairs, walls and wrinkled terrain all read as flat ground.%n%nNo more bumpy commutes, and scaffold-climbing during builds turns oddly gentle.%n%nPresent one Skywalk — §2checked, not taken§r. §8§oStairs are now purely decorative.§r
 # BQ quests [pack=gtit] END
+
+# Reincarnation Cycle GUI (v1.9.0 S7; literal % written %% — consumed via formatted path)
+gtit.reincarnation.gui.title=§6Reincarnation Cycle
+gtit.reincarnation.gui.banner.idle=§7No cycle in progress — deposit items to start a new run
+gtit.reincarnation.gui.banner.deposited=§6Cycle deposited: adjust items or confirm reincarnation
+gtit.reincarnation.gui.banner.executed=§cCycle executed — an unclaimed reincarnation exists (read-only)
+gtit.reincarnation.gui.progress=§e%s§7/16
+gtit.reincarnation.gui.hull.tooltip=Hull slot (%s): feed matching machine hulls — %s unlocks this tier
+gtit.reincarnation.gui.hull.tooltip.done=Tier unlocked (%s)
+gtit.reincarnation.gui.item.tooltip=Cycle item slot (row %s): deposits are recorded into this run
+gtit.reincarnation.gui.ignore_nbt=Ignores NBT (enchantments/damage not kept)
+gtit.reincarnation.gui.encrypted=Obfuscated · player-bound
+gtit.reincarnation.gui.coin.tooltip=Neko coin slot: only Neko Coin / Shimmering Neko Coin
+gtit.reincarnation.gui.unlock.shimmer=§eShimmering Coin unlock (0.1%%)
+gtit.reincarnation.gui.unlock.normal=§eNeko Coin unlock (0.001%%)
+gtit.reincarnation.gui.unlock.tooltip.line=Consumes 1 matching coin from the slot above, then rolls
+gtit.reincarnation.gui.unlock.tooltip.shimmer=Success rate 0.1%% (1/1000)
+gtit.reincarnation.gui.unlock.tooltip.normal=Success rate 0.001%% (1/100000)
+gtit.reincarnation.gui.unlock.tooltip.columns=Locked tiers remain — fill each hull slot to %s/16 first
+gtit.reincarnation.gui.unlock.tooltip.done=All 3 rows unlocked — no more coins needed
+gtit.reincarnation.gui.confirm.button=§cConfirm Reincarnation
+gtit.reincarnation.gui.confirm.tooltip.state=Not in the deposited state
+gtit.reincarnation.gui.confirm.tooltip.empty=No items deposited yet
+gtit.reincarnation.gui.confirm.tooltip.nohook=Reincarnation finalizer not wired (hook missing)
+gtit.reincarnation.gui.confirm.dialog=§cConfirming triggers §4extreme mode§c and §4deletes this timeline§r§c — irreversible!
+gtit.reincarnation.column.0=Steam
+gtit.reincarnation.column.1=Electric LV
+gtit.reincarnation.column.2=Electric MV
+gtit.reincarnation.column.3=Electric HV
+gtit.reincarnation.column.4=Electric EV
+gtit.reincarnation.column.5=Electric IV
+gtit.reincarnation.column.6=Electric LuV
+gtit.reincarnation.column.7=Electric ZPM
+gtit.reincarnation.column.8=Electric UV
+gtit.reincarnation.column.9=Electric UHV
+gtit.reincarnation.column.10=Electric UEV
+gtit.reincarnation.column.11=Electric UIV
+gtit.reincarnation.column.12=Electric UXV
+gtit.reincarnation.column.13=Electric OpV
+gtit.reincarnation.column.14=Electric MAX
+gtit.reincarnation.chat.column_unlocked=§6Tier unlocked: %s (%s)
+gtit.reincarnation.chat.hull.consumed=§7Hull consumed: %s (%s)
+gtit.reincarnation.chat.unlock.success=§aRow unlocked! %s rows now open
+gtit.reincarnation.chat.unlock.fail=§7Unlock failed (chance %s); the coin was consumed
+gtit.reincarnation.chat.unlock.no_coin=§cNo matching Neko coin in the payment slot
+gtit.reincarnation.chat.readonly=§cThis cycle is read-only (an unclaimed reincarnation exists)
+gtit.reincarnation.chat.deposit.failed=§cThis item cannot be deposited: %s
+gtit.reincarnation.chat.withdraw.failed=§cFailed to remove the record — the item was returned
+
+# Reincarnation FX (v1.9.0 S4; grant celebration / already-reincarnated countdown / final mercy)
+gtit.reincarnation.celebration=Reincarnation Effective
+gtit.reincarnation.countdown_line=This timeline has already reincarnated
+gtit.reincarnation.timeline_ended=Delete the encrypted cycle file to break the loop (final mercy)
 

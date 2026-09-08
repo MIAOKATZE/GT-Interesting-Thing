@@ -81,6 +81,9 @@ item.shimmering_neko_coin.name=闪烁猫猫币
 item.shimmering_neko_coin.tooltip.0=散发着神秘光芒的猫猫纪念币
 item.shimmering_neko_coin.tooltip.1=极为稀有，仅能从鱼塘中钓起
 
+# 轮回水晶
+item.reincarnation_crystal.name=轮回水晶
+
 # Infinity Cell 系列 (适配自 AE2Things)
 item.gtit.infinity_cell.name=ME无限存储元件
 item.gtit.infinity_fluid_cell.name=ME无限流体存储元件
@@ -171,4 +174,57 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIA.desc=裂山让两道战意常驻：�
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.name=§9§l凌步
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.desc=凌步把你的抬脚高度顶到§11.1 格§r：整块方块像半砖一样直接走上去，§2无需跳跃§r——台阶、矮墙、褶皱地形，一律如履平地。%n%n赶路不再一颠一颠，盖楼时爬脚手架也变得温柔。%n%n呈上一枚凌步即可，§2只验不收§r。§8§o楼梯从此沦为装饰品。§r
 # BQ quests [pack=gtit] END
+
+# Reincarnation Cycle GUI (v1.9.0 S7; 中文字面 % 一律转义 %%，全部经格式化路径消费)
+gtit.reincarnation.gui.title=§6周目轮回
+gtit.reincarnation.gui.banner.idle=§7当前无进行中的轮回——放入物品开启新周目
+gtit.reincarnation.gui.banner.deposited=§6轮回已寄存：可调整物品或确认轮回
+gtit.reincarnation.gui.banner.executed=§c轮回已执行——存在未领取轮回（只读）
+gtit.reincarnation.gui.progress=§e%s§7/16
+gtit.reincarnation.gui.hull.tooltip=外壳累计槽（%s）：投入对应档位机械外壳，满 %s 解锁该列
+gtit.reincarnation.gui.hull.tooltip.done=该列已解锁（%s）
+gtit.reincarnation.gui.item.tooltip=轮回物品格（第 %s 行）：放入后记入本轮轮回
+gtit.reincarnation.gui.ignore_nbt=忽略 NBT（附魔/损伤等不保留）
+gtit.reincarnation.gui.encrypted=混淆加密·绑定玩家
+gtit.reincarnation.gui.coin.tooltip=猫猫币支付格：只接受猫猫币/闪烁猫猫币
+gtit.reincarnation.gui.unlock.shimmer=§e闪烁猫猫币尝试解锁(0.1%%)
+gtit.reincarnation.gui.unlock.normal=§e猫猫币尝试解锁(0.001%%)
+gtit.reincarnation.gui.unlock.tooltip.line=从上方币格扣除 1 枚对应猫猫币进行概率判定
+gtit.reincarnation.gui.unlock.tooltip.shimmer=成功率 0.1%%（1/1000）
+gtit.reincarnation.gui.unlock.tooltip.normal=成功率 0.001%%（1/100000）
+gtit.reincarnation.gui.unlock.tooltip.columns=尚有未解锁等级列——先将各列外壳投入至 %s/16
+gtit.reincarnation.gui.unlock.tooltip.done=已解锁全部 3 行——不再需要猫猫币
+gtit.reincarnation.gui.confirm.button=§c确认轮回
+gtit.reincarnation.gui.confirm.tooltip.state=未处于已寄存状态
+gtit.reincarnation.gui.confirm.tooltip.empty=尚未寄存任何物品
+gtit.reincarnation.gui.confirm.tooltip.nohook=轮回收束未接入（钩子缺失）
+gtit.reincarnation.gui.confirm.dialog=§c确认轮回将触发§4极限模式§c并§4删除当前时间线§r§c——过程不可逆！
+gtit.reincarnation.column.0=蒸汽
+gtit.reincarnation.column.1=电力LV
+gtit.reincarnation.column.2=电力MV
+gtit.reincarnation.column.3=电力HV
+gtit.reincarnation.column.4=电力EV
+gtit.reincarnation.column.5=电力IV
+gtit.reincarnation.column.6=电力LuV
+gtit.reincarnation.column.7=电力ZPM
+gtit.reincarnation.column.8=电力UV
+gtit.reincarnation.column.9=电力UHV
+gtit.reincarnation.column.10=电力UEV
+gtit.reincarnation.column.11=电力UIV
+gtit.reincarnation.column.12=电力UXV
+gtit.reincarnation.column.13=电力OpV
+gtit.reincarnation.column.14=电力MAX
+gtit.reincarnation.chat.column_unlocked=§6等级列已解锁：%s（%s）
+gtit.reincarnation.chat.hull.consumed=§7外壳消耗：%s（%s）
+gtit.reincarnation.chat.unlock.success=§a行解锁成功！已解锁 %s 行
+gtit.reincarnation.chat.unlock.fail=§7解锁未成（成功率 %s），猫猫币已消耗
+gtit.reincarnation.chat.unlock.no_coin=§c币格中没有对应的猫猫币
+gtit.reincarnation.chat.readonly=§c当前轮回处于只读状态（存在未领取轮回）
+gtit.reincarnation.chat.deposit.failed=§c该物品无法寄存：%s
+gtit.reincarnation.chat.withdraw.failed=§c记录移除失败——物品已退回
+
+# Reincarnation FX (v1.9.0 S4; 奖励庆祝 / 已轮回倒计时 / 最后仁慈)
+gtit.reincarnation.celebration=轮回已生效
+gtit.reincarnation.countdown_line=该时间线的存档已经轮回
+gtit.reincarnation.timeline_ended=删除混淆配置文件可终结轮回倒计时（最后仁慈）
 

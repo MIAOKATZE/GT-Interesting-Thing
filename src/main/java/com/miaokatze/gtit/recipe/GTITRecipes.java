@@ -5,8 +5,11 @@ import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.registry.GameRegistry;
+import cpw.mods.fml.relauncher.Side;
 import gregtech.api.GregTechAPI;
 import gregtech.api.enums.ItemList;
 import gregtech.api.enums.Materials;
@@ -21,6 +24,7 @@ public class GTITRecipes {
         addTelekinesisOreScannerCoreRecipe();
         addRingWindriderRecipe();
         addNekoVendingMachineRecipe();
+        addReincarnationCrystalRecipe();
     }
 
     private static void addFloatCoreRecipe() {
@@ -127,5 +131,33 @@ public class GTITRecipes {
 
         // 无序合成：1 VM贸易机 + 1 猫猫币
         GameRegistry.addShapelessRecipe(GTITItemList.NekoVendingMachine.get(1), vmStack, GTITItemList.NekoCoin.get(1));
+    }
+
+    /**
+     * 轮回水晶合成配方（周目系统）
+     * 3x3工作台：ABA / BCB / ABA
+     * A=闪烁猫猫币 B=猫猫币 C=钻石
+     * 物理专用服务器上周目系统整体拒绝注册
+     */
+    private static void addReincarnationCrystalRecipe() {
+        // 周目系统门控：物理专用服务器拒绝注册
+        if (FMLCommonHandler.instance()
+            .getSide() == Side.SERVER) {
+            GTInterestingThing.LOG.info("[reincarnation] 物理专用服务器：周目系统拒绝注册（物品/配方）");
+            return;
+        }
+        if (GTITItemList.ReincarnationCrystal.get(1) == null) return;
+
+        GameRegistry.addShapedRecipe(
+            GTITItemList.ReincarnationCrystal.get(1),
+            "ABA",
+            "BCB",
+            "ABA",
+            'A',
+            GTITItemList.ShimmeringNekoCoin.get(1),
+            'B',
+            GTITItemList.NekoCoin.get(1),
+            'C',
+            new ItemStack(Items.diamond));
     }
 }

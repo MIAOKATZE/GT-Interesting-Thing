@@ -8,6 +8,7 @@ import org.apache.logging.log4j.Logger;
 import com.miaokatze.gtit.common.items.ElectricFloatCore;
 import com.miaokatze.gtit.common.items.FloatCore;
 import com.miaokatze.gtit.common.items.NekoCoin;
+import com.miaokatze.gtit.common.items.ReincarnationCrystal;
 import com.miaokatze.gtit.common.items.ShimmeringNekoCoin;
 import com.miaokatze.gtit.common.items.StarterGift;
 import com.miaokatze.gtit.common.items.TelekinesisOreScannerCore;
@@ -21,6 +22,10 @@ import com.miaokatze.gtit.common.items.rings.RingMountainbreaker;
 import com.miaokatze.gtit.common.items.rings.RingSkywalk;
 import com.miaokatze.gtit.common.items.rings.RingTempest;
 import com.miaokatze.gtit.common.items.rings.RingWindrider;
+import com.miaokatze.gtit.main.GTInterestingThing;
+
+import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.relauncher.Side;
 
 /**
  * 物品注册器
@@ -58,6 +63,9 @@ public class ItemRegistrar {
 
         // 闪烁猫猫币
         registerShimmeringNekoCoin();
+
+        // 轮回水晶（周目系统）
+        registerReincarnationCrystal();
 
         // Infinity Cell 系列
         registerInfinityCell();
@@ -126,6 +134,18 @@ public class ItemRegistrar {
 
     private static void registerShimmeringNekoCoin() {
         ShimmeringNekoCoin.setAndRegister(ShimmeringNekoCoin::new);
+    }
+
+    // ========== 轮回水晶注册（周目系统） ==========
+
+    private static void registerReincarnationCrystal() {
+        // 周目系统门控：物理专用服务器拒绝注册（物品注册与创造标签页加入均在下方这一句内完成）
+        if (FMLCommonHandler.instance()
+            .getSide() == Side.SERVER) {
+            GTInterestingThing.LOG.info("[reincarnation] 物理专用服务器：周目系统拒绝注册（物品/配方）");
+            return;
+        }
+        ReincarnationCrystal.setAndRegister(ReincarnationCrystal::new);
     }
 
     // ========== Infinity Cell 注册 ==========

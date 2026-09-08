@@ -51,7 +51,10 @@ public enum GTITItemList implements IItemContainer {
 
     // Infinity Cell 系列 (适配自 AE2Things)
     InfinityCell,
-    InfinityFluidCell;
+    InfinityFluidCell,
+
+    // 轮回水晶（周目系统）
+    ReincarnationCrystal;
 
     /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
     private static final Logger LOG = LogManager.getLogger("gtit");

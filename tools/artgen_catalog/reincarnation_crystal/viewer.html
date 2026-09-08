@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<!--
+  模板使用说明（材质目录查看器模板）：
+  1) 复制本文件到目标项目 plan/<目录>/；2) 同目录放置 blocks/（与 styles/<套>/）贴图及生成器产出的 manifest.js；
+  3) 双击以 file:// 打开即可目检——无服务器、无 CDN、无任何外部依赖。
+  manifest.js 的 CATALOG schema 与字段契约见 wiki 同目录 texture-catalog-viewer.md。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>材质目录查看器模板</title>
+<style>
+/* ==================================================================
+   GTUDK 材质目录查看器（单文件 · 零外部依赖）
+   ------------------------------------------------------------------
+   结构总览：
+     #wrap   左右两栏布局（flex）
+       #side  侧栏：标题 / Tab（方块 | 风格库）/ 资产卡片列表 / 详情
+       #main  主区：#toolbar 工具栏 + #stage 视口（3D 或对比网格）
+   数据来源：同目录 manifest.js（由目录生成器产出，定义全局 CATALOG）
+   加载方式：file:// 直开，<script src="manifest.js"> 与 <img> 相对路径，
+             全程无 fetch / XHR / CDN，manifest 缺失时显示引导文案。
+   交互：拖拽旋转（CSS 3D preserve-3d）· 滚轮缩放 · 双击回正 ·
+         自动旋转 · 背景 3 档（深/浅/棋盘）· 物品平面/3D 拉伸切换 ·
+         风格并排对比（2-4 套同物品对照，本轮核心用途）
+   ================================================================== */
+
+/* ---------- 全局与布局骨架 ---------- */
+[hidden]{display:none !important}   /* 防止 flex 类覆盖 hidden 属性 */
+html,body{margin:0;height:100%}
+body{background:#eef0f3;font:14px/1.5 "Segoe UI",system-ui,"Microsoft YaHei",sans-serif;color:#2c3038;overflow:hidden}
+#wrap{display:flex;height:100%}
+
+/* ---------- 侧栏 ---------- */
+#side{width:264px;flex:0 0 264px;padding:14px;box-sizing:border-box;background:#fff;
+      border-right:1px solid #d8dce2;overflow:auto;display:flex;flex-direction:column}
+#side h1{font-size:16px;margin:0 0 2px}
+#side .sub{font-size:11px;color:#8a919c;margin-bottom:8px}
+#geninfo{font-size:11px;color:#5b6472;background:#f2f5fa;border:1px solid #e2e6ec;
+         border-radius:6px;padding:5px 8px;margin-bottom:10px;word-break:break-all}
+#geninfo:empty{display:none}
+/* 顶部 Tab：方块目录 / 风格库 */
+#tabs{display:flex;gap:6px;margin-bottom:10px}
+#tabs .tab{flex:1;padding:7px 0;font-size:13px;border:1px solid #c9cfd8;border-radius:6px;
+           background:#f7f8fa;cursor:pointer;color:#2c3038}
+#tabs .tab:hover{background:#eef2f8}
+#tabs .tab.active{background:#2f6fdb;color:#fff;border-color:#2f6fdb}
+
+/* 资产卡片：缩略图 + 名称/id/尺寸 + 形状或色相 chip */
+.card{display:flex;align-items:center;gap:8px;padding:6px 7px;margin:3px 0;border:1px solid #e2e6ec;
+      border-radius:8px;cursor:pointer;background:#fff}
+.card:hover{background:#f2f5fa;border-color:#c9cfd8}
+.card.active{background:#eef2f8;border-color:#2f6fdb}
+.card .thumb{width:38px;height:38px;flex:0 0 38px;border:1px solid #e2e6ec;border-radius:5px;
+             /* 迷你棋盘衬底，让透明贴图可辨 */
+             background:repeating-conic-gradient(#dfe3e9 0% 25%,#fbfcfe 0% 50%);background-size:12px 12px;
+             display:flex;align-items:center;justify-content:center;overflow:hidden}
+.card .thumb img{width:32px;height:32px;object-fit:contain;image-rendering:pixelated;pointer-events:none}
+.card .meta{flex:1;min-width:0}
+.card .nm{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .id{font-size:10.5px;color:#8a919c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{flex:0 0 auto;padding:0 7px;border-radius:9px;font-size:10.5px;line-height:17px;color:#fff;background:#7a8494}
+.grp-h{margin:10px 0 2px;font-size:12px;font-weight:600;color:#3a4150;cursor:pointer;user-select:none;
+       display:flex;align-items:center;gap:6px}
+.grp-h::before{content:"▸";color:#8a919c;font-size:10px;transition:transform .12s}
+.grp-h.open::before{transform:rotate(90deg)}
+.grp-h .cnt{font-weight:400;font-size:10.5px;color:#8a919c}
+.grp-h .desc{font-weight:400;font-size:10.5px;color:#8a919c;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 详情面板（当前聚焦资产） */
+#info{margin-top:12px;font-size:12px;color:#5b6472;border-top:1px solid #e2e6ec;
+      padding-top:10px;white-space:pre-line;word-break:break-all}
+
+/* 对比模式侧栏：风格复选 + 物品选择 */
+.sect{font-size:11px;color:#8a919c;font-weight:600;margin:10px 0 4px}
+.pick{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:12.5px}
+.pick:hover{background:#f2f5fa}
+.pick input{accent-color:#2f6fdb;cursor:pointer}
+.pick .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+.pick.on{background:#eef2f8}
+.side-note{font-size:11.5px;color:#8a919c;background:#f7f8fa;border:1px dashed #c9cfd8;
+           border-radius:6px;padding:8px;margin:6px 0;line-height:1.6}
+
+/* ---------- 主区 ---------- */
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* 工具栏：左侧当前资产元信息，右侧功能按钮组 */
+#toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 14px;
+         background:#fff;border-bottom:1px solid #d8dce2}
+#metaName{font-size:14px;font-weight:600}
+#metaChips{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+#metaChips .chip{line-height:17px}
+#metaSize{font-size:11.5px;color:#8a919c}
+.tspace{flex:1}
+.tgrp{display:flex;gap:0;border:1px solid #c9cfd8;border-radius:6px;overflow:hidden}
+.tbtn{padding:5px 11px;font-size:12px;border:none;background:#f7f8fa;cursor:pointer;color:#2c3038;
+      border-right:1px solid #c9cfd8}
+.tgrp .tbtn:last-child{border-right:none}
+.tbtn:hover{background:#eef2f8}
+.tbtn.on{background:#2f6fdb;color:#fff}
+#tCompare{border:1px solid #c9cfd8;border-radius:6px}
+#tCompare.on{background:#2f6fdb;color:#fff;border-color:#2f6fdb}
+.tbtn[hidden]{display:none}
+
+/* 视口：三档背景（深 / 浅 / 棋盘），检验贴图在不同底色下的观感 */
+#stage{flex:1;position:relative;overflow:auto}
+#stage.bg-dark{background:#23272e}
+#stage.bg-light{background:#f4f6f8}
+#stage.bg-checker{background:repeating-conic-gradient(#c9ced6 0% 25%,#eef0f4 0% 50%);background-size:28px 28px}
+#hint{position:absolute;left:12px;bottom:8px;font-size:12px;color:#8a919c;pointer-events:none}
+#stage.bg-dark #hint{color:#8b95a5}
+
+/* 单资产 3D 场景：.scene 提供透视，.pivot 承载旋转，面为绝对定位 div */
+.scene{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;perspective:1100px}
+.pivot{position:relative;width:0;height:0;transform-style:preserve-3d}
+.face{position:absolute;left:0;top:0;box-sizing:border-box;overflow:hidden}
+.face img{width:100%;height:100%;display:block;object-fit:fill;
+          image-rendering:pixelated;image-rendering:crisp-edges;image-rendering:pixelated;
+          pointer-events:none;user-select:none;-webkit-user-drag:none}
+.face.solid{backface-visibility:hidden}           /* 不透明立方隐藏背面，防镜像干扰 */
+.face.alpha img{opacity:.82}                       /* 半透形状：低不透明度呈现通透 */
+.face.wire-f{border:2px solid rgba(139,149,163,.95);background:transparent}
+.face.wire-f img{opacity:.12}                      /* 线框形状：贴图极低不透明度辅助 */
+.face.miss{outline:2px dashed #c0574f}
+.face.miss::after{content:"缺图";position:absolute;inset:0;display:flex;align-items:center;
+                  justify-content:center;font-size:12px;color:#c0574f;background:rgba(255,255,255,.7)}
+/* 半透形状的可开关棋盘衬底（地面），证明「能看穿」 */
+.underlay{background:repeating-conic-gradient(#c9ced6 0% 25%,#f2f4f7 0% 50%);background-size:22px 22px;
+          border:1px solid rgba(139,149,163,.5)}
+.underlay.off{display:none}
+/* 拉伸扁立体的侧面（无法从 file:// canvas 取边缘色，用中性灰阶近似） */
+.face.side-shade{background:#b9c2cc}
+.face.side-shade.top{filter:brightness(1.06)}
+.face.side-shade.bottom{filter:brightness(.72)}
+.face.side-shade.lr{filter:brightness(.86)}
+
+/* 物品平面 sprite 大图（局部棋盘衬底体现透明） */
+.sprite-box{padding:10px;border:1px solid rgba(139,149,163,.35);border-radius:8px;
+            background:repeating-conic-gradient(#d4d8de 0% 25%,#f4f6f8 0% 50%);background-size:16px 16px}
+.sprite-box img{display:block;width:240px;height:240px;object-fit:contain;
+                image-rendering:pixelated;image-rendering:crisp-edges;image-rendering:pixelated}
+.sprite-box img.miss{width:auto;height:auto;min-width:120px;color:#c0574f;font-size:12px}
+
+/* 风格并排对比网格 */
+.cmp-grid{position:absolute;inset:0;display:flex;flex-wrap:wrap;gap:18px;
+          align-content:center;justify-content:center;padding:24px}
+.cmp-col{display:flex;flex-direction:column;border:1px solid rgba(139,149,163,.35);border-radius:10px;
+         background:rgba(255,255,255,.05);min-width:250px;max-width:330px;overflow:hidden}
+.cmp-h{padding:6px 10px;font-size:12.5px;font-weight:600;text-align:center;
+       background:rgba(47,111,219,.14);border-bottom:1px solid rgba(139,149,163,.3)}
+.cmp-h .cmp-sub{display:block;font-weight:400;font-size:10.5px;color:#8a919c}
+.cmp-body{position:relative;height:280px}
+.cmp-body .scene{position:absolute}
+.cmp-miss{display:flex;align-items:center;justify-content:center;height:280px;
+          font-size:12px;color:#8a919c}
+
+/* 引导文案（manifest 缺失 / 目录为空） */
+.empty-guide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:30px}
+.empty-guide .box{max-width:560px;background:rgba(255,255,255,.92);border:1px solid #d8dce2;
+                  border-radius:10px;padding:22px 26px;font-size:13px;color:#3a4150;line-height:1.8}
+.empty-guide h2{margin:0 0 8px;font-size:15px;color:#2c3038}
+.empty-guide pre{background:#f2f5fa;border:1px solid #e2e6ec;border-radius:6px;padding:10px 12px;
+                 font-size:11.5px;overflow:auto;line-height:1.6}
+.empty-guide code{background:#f2f5fa;border-radius:4px;padding:0 4px}
+</style>
+</head>
+<body>
+<div id="wrap">
+
+  <!-- ============ 侧栏 ============ -->
+  <div id="side">
+    <h1>材质目录查看器</h1>
+    <div class="sub">plan/item-catalog · 单文件零依赖 · file:// 直开</div>
+    <div id="geninfo"></div>
+    <div id="tabs">
+      <button id="tabBlocks" class="tab active">方块目录</button>
+      <button id="tabStyles" class="tab">风格库</button>
+    </div>
+    <div id="list"></div>
+    <div id="info"></div>
+  </div>
+
+  <!-- ============ 主区 ============ -->
+  <div id="main">
+    <div id="toolbar">
+      <span id="metaName">—</span>
+      <span id="metaChips"></span>
+      <span id="metaSize"></span>
+      <span class="tspace"></span>
+      <div class="tgrp" id="gView" hidden>
+        <button id="vSprite" class="tbtn on">平面</button>
+        <button id="vExtrude" class="tbtn">3D 拉伸</button>
+      </div>
+      <button id="tUnderlay" class="tbtn" hidden style="border:1px solid #c9cfd8;border-radius:6px">衬底</button>
+      <button id="tSpin" class="tbtn" hidden style="border:1px solid #c9cfd8;border-radius:6px">自动旋转</button>
+      <button id="tReset" class="tbtn" hidden style="border:1px solid #c9cfd8;border-radius:6px">回正</button>
+      <button id="tCompare" class="tbtn" hidden>对比模式</button>
+      <div class="tgrp">
+        <button id="bgDark" class="tbtn">深</button>
+        <button id="bgLight" class="tbtn">浅</button>
+        <button id="bgChecker" class="tbtn on">棋盘</button>
+      </div>
+    </div>
+    <div id="stage" class="bg-checker">
+      <div id="hint"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 数据契约：同目录 manifest.js 由目录生成器产出，定义全局 CATALOG。
+     file:// 下脚本标签可正常加载；若文件不存在，浏览器仅报控制台错误，
+     页面逻辑会检测 CATALOG 缺失并显示引导文案。 -->
+<script src="manifest.js"></script>
+<script>
+"use strict";
+/* ==================================================================
+   一、数据加载与契约消费
+   ------------------------------------------------------------------
+   CATALOG 形如：
+   {
+     generated: "<iso 时间串>",
+     blocks: [ {id, file:"blocks/xx.png", name, shape, note}, ... ],
+     styles: [ {id, name, desc, items:[ {id, file:"styles/套/xx.png",
+               letter, hue, name} ]}, ... ]
+   }
+   容错目标：
+     - manifest.js 整个缺失（CATALOG 未定义）→ 显示引导文案
+     - blocks / styles 为空数组 → 对应分区显示空态说明
+   ================================================================== */
+var RAW    = (typeof CATALOG !== "undefined" && CATALOG) ? CATALOG : null;
+var blocks = (RAW && Array.isArray(RAW.blocks)) ? RAW.blocks : [];
+var styles = (RAW && Array.isArray(RAW.styles)) ? RAW.styles : [];
+
+/* 防御性归一化：blocks 条目可能缺 id 字段（实际生成器产物即如此），
+   此时从 file 路径派生（如 "blocks/strictAir.png" → "strictAir"），
+   保证卡片标注、详情面板与 hash 深链始终有稳定标识。 */
+for (var _bi = 0; _bi < blocks.length; _bi++){
+  if (!blocks[_bi].id){
+    blocks[_bi].id = String(blocks[_bi].file || "未命名" + _bi)
+      .split("/").pop().replace(/\.png$/i, "");
+  }
+}
+
+/* 形状库：立方 / 半透 / 线框 / 十字 / 半砖（后两种为将来预留，本轮无数据） */
+var SHAPES = {
+  cube:        {label:"立方",  color:"#2e9e4f"},
+  translucent: {label:"半透",  color:"#2f6fdb"},
+  wire:        {label:"线框",  color:"#7a8494"},
+  cross:       {label:"十字",  color:"#c47f17"},
+  slab:        {label:"半砖",  color:"#7a4fd0"}
+};
+function normShape(s){ return SHAPES[s] ? s : "cube"; }
+function chipHtml(text,color){
+  return '<span class="chip" style="background:' + (color||"#7a8494") + '">' +
+         esc(text) + "</span>";
+}
+/* 色相词 → 展示色（仅用于 chip 配色，不影响数据）。
+   同时兼容中文色相与英文色相（实际生成器 hue 为 "red"/"blue" 等）。 */
+var HUE_COLORS = {"红":"#d24b4b","橙":"#e08a2e","黄":"#c9a921","绿":"#3a9e4f","青":"#2a9a9a",
+                  "蓝":"#2f6fdb","紫":"#7a4fd0","粉":"#d46a9e","灰":"#7a8494","白":"#9aa4b0",
+                  "黑":"#3a3f46","金":"#c49422","棕":"#8a5a2e",
+                  "red":"#d24b4b","orange":"#e08a2e","yellow":"#c9a921","green":"#3a9e4f",
+                  "cyan":"#2a9a9a","blue":"#2f6fdb","purple":"#7a4fd0","violet":"#7a4fd0",
+                  "pink":"#d46a9e","gray":"#7a8494","grey":"#7a8494","white":"#9aa4b0",
+                  "black":"#3a3f46","gold":"#c49422","brown":"#8a5a2e"};
+function hueColor(h){
+  return HUE_COLORS[String(h == null ? "" : h).toLowerCase()] || "#7a8494";
+}
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+/* ==================================================================
+   二、全局状态
+   ================================================================== */
+var S = {
+  tab: "blocks",        // blocks | styles
+  curBlock: null,       // 当前聚焦方块（对象引用）
+  curItem: null,        // 当前聚焦物品 {sid, id}
+  compare: false,       // 是否处于并排对比模式
+  cmpStyles: [],        // 参与对比的风格 id（2-4 个）
+  cmpItem: null,        // 对比用的物品 id（跨套同 id 对照）
+  view: "sprite",       // sprite | extrude（物品两种视图）
+  bg: "checker",        // dark | light | checker
+  rx: -24, ry: 32,      // 俯仰 / 偏航（度）
+  zoom: 1,              // 滚轮缩放系数
+  spin: false,          // 自动旋转开关
+  underlay: true,       // 半透形状棋盘衬底开关
+  openGroups: {}        // 风格分组手风琴展开状态
+};
+var CUBE = 210;         // 立方体基准边长（px）
+var pivots = [];        // 当前视口内全部 .pivot（拖拽/旋转需同步应用）
+var spinId = 0;         // 自动旋转 requestAnimationFrame 句柄
+
+/* DOM 快捷获取 */
+function $(id){ return document.getElementById(id); }
+var stage = $("stage"), list = $("list"), info = $("info"), hint = $("hint");
+
+/* ==================================================================
+   三、通用工具
+   ================================================================== */
+/* 创建一个 3D 面：宽高 + 变换 + 负 margin 居中到 pivot 原点 */
+function mkFace(w, h, tf, cls){
+  var d = document.createElement("div");
+  d.className = "face" + (cls ? " " + cls : "");
+  d.style.width  = w + "px";
+  d.style.height = h + "px";
+  d.style.margin = (-h / 2) + "px 0 0 " + (-w / 2) + "px";
+  d.style.transform = tf;
+  return d;
+}
+/* 向面内填充贴图 <img>（相对路径，file:// 可用；缺图时标记 .miss） */
+function addImg(face, file, opacity){
+  var im = document.createElement("img");
+  im.src = file;
+  im.draggable = false;
+  im.alt = "";
+  if (opacity != null) im.style.opacity = opacity;
+  im.onerror = function(){ face.classList.add("miss"); };
+  face.appendChild(im);
+  return im;
+}
+/* 应用当前姿态（旋转 + 缩放）到所有 pivot */
+function applyPose(){
+  var t = "scale3d(" + S.zoom + "," + S.zoom + "," + S.zoom + ")" +
+          " rotateX(" + S.rx + "deg) rotateY(" + S.ry + "deg)";
+  for (var i = 0; i < pivots.length; i++) pivots[i].style.transform = t;
+}
+function collectPivots(){
+  pivots = stage.querySelectorAll(".pivot");
+  applyPose();
+}
+function resetPose(){
+  S.rx = -24; S.ry = 32; S.zoom = 1;
+  applyPose();
+}
+function setHint(t){ hint.textContent = t; }
+
+/* ==================================================================
+   四、3D 形状构建器
+   ------------------------------------------------------------------
+   每个构建器向 pivot 追加一组 .face：
+     cube        六面全贴图，不透明
+     translucent 同 cube，贴图低不透明 + 可开关棋盘衬底地面
+     wire        透明体：仅灰色边线框架 + 贴图极低不透明辅助
+     cross       两片交叉平面（Minecraft 植物语义）
+     slab        半高立方（居中放置，便于旋转观察）
+     extrude     物品 sprite 六面拉伸成扁立方（前后贴 sprite）
+   ================================================================== */
+function buildCube(p, file, shape){
+  var H = CUBE / 2, cls = "", op = null;
+  if (shape === "translucent"){ cls = "alpha"; }
+  if (shape === "wire"){ cls = "wire-f"; }
+  var defs = [
+    ["",                H],           // 前
+    ["rotateY(180deg)", H],           // 后
+    ["rotateY(90deg)",  H],           // 右
+    ["rotateY(-90deg)", H],           // 左
+    ["rotateX(90deg)",  H],           // 顶
+    ["rotateX(-90deg)", H]            // 底
+  ];
+  for (var i = 0; i < defs.length; i++){
+    var f = mkFace(CUBE, CUBE, defs[i][0] + " translateZ(" + H + "px)",
+                   cls + (shape === "cube" ? " solid" : ""));
+    addImg(f, file, op);
+    p.appendChild(f);
+  }
+  /* 半透形状：追加棋盘衬底地面（可开关），证明方块是透的 */
+  if (shape === "translucent"){
+    var u = mkFace(CUBE * 1.9, CUBE * 1.9,
+                   "rotateX(90deg) translateZ(" + (-CUBE * 0.72) + "px)", "underlay");
+    if (!S.underlay) u.classList.add("off");
+    p.appendChild(u);
+  }
+}
+function buildWire(p, file){ buildCube(p, file, "wire"); }
+function buildCross(p, file){
+  /* 十字交叉：两片互相垂直的双面平面 */
+  var a = mkFace(CUBE, CUBE, "rotateY(0deg)");
+  var b = mkFace(CUBE, CUBE, "rotateY(90deg)");
+  addImg(a, file); addImg(b, file);
+  p.appendChild(a); p.appendChild(b);
+}
+function buildSlab(p, file){
+  /* 半砖：半高立方（垂直居中放置），顶底全尺寸，侧面半高 */
+  var H = CUBE / 2, hh = CUBE / 4;   // hh = 半高偏移
+  var side = [
+    ["",                "rotateY(0deg)"],      // 后（面向 -Z）
+    ["rotateY(180deg)", ""] ,
+  ];
+  /* 前后左右 */
+  var f1 = mkFace(CUBE, CUBE / 2, "translateZ(" + H + "px)");
+  var f2 = mkFace(CUBE, CUBE / 2, "rotateY(180deg) translateZ(" + H + "px)");
+  var f3 = mkFace(CUBE, CUBE / 2, "rotateY(90deg) translateZ(" + H + "px)");
+  var f4 = mkFace(CUBE, CUBE / 2, "rotateY(-90deg) translateZ(" + H + "px)");
+  /* 顶底 */
+  var f5 = mkFace(CUBE, CUBE, "rotateX(90deg) translateZ(" + hh + "px)", "solid");
+  var f6 = mkFace(CUBE, CUBE, "rotateX(-90deg) translateZ(" + hh + "px)", "solid");
+  var all = [f1, f2, f3, f4, f5, f6];
+  for (var i = 0; i < all.length; i++){ addImg(all[i], file); p.appendChild(all[i]); }
+}
+function buildExtrude(p, file){
+  /* 物品 3D 拉伸：前后贴 sprite，四个侧面用中性灰阶近似厚度 */
+  var d = Math.round(CUBE * 0.22), H = CUBE / 2, hd = d / 2;
+  var front = mkFace(CUBE, CUBE, "translateZ(" + hd + "px)", "solid");
+  var back  = mkFace(CUBE, CUBE, "rotateY(180deg) translateZ(" + hd + "px)", "solid");
+  var left  = mkFace(d, CUBE, "rotateY(-90deg) translateZ(" + H + "px)", "side-shade lr");
+  var right = mkFace(d, CUBE, "rotateY(90deg) translateZ(" + H + "px)", "side-shade lr");
+  var top   = mkFace(CUBE, d, "rotateX(90deg) translateZ(" + H + "px)", "side-shade top");
+  var bot   = mkFace(CUBE, d, "rotateX(-90deg) translateZ(" + H + "px)", "side-shade bottom");
+  addImg(front, file); addImg(back, file);
+  var all = [front, back, left, right, top, bot];
+  for (var i = 0; i < all.length; i++) p.appendChild(all[i]);
+}
+/* 按形状分发 */
+function buildShape(p, shape, file){
+  switch (shape){
+    case "translucent": buildCube(p, file, "translucent"); break;
+    case "wire":        buildWire(p, file); break;
+    case "cross":       buildCross(p, file); break;
+    case "slab":        buildSlab(p, file); break;
+    default:            buildCube(p, file, "cube");
+  }
+}
+/* 建一个带 pivot 的场景容器 */
+function mkScene(){
+  var sc = document.createElement("div"); sc.className = "scene";
+  var pv = document.createElement("div"); pv.className = "pivot";
+  sc.appendChild(pv);
+  return {scene: sc, pivot: pv};
+}
+
+/* ==================================================================
+   五、侧栏渲染
+   ================================================================== */
+/* 方块目录：卡片列表（缩略图 + 名称 + id·尺寸 + 形状 chip） */
+function renderBlocksList(){
+  var html = "";
+  if (!blocks.length){
+    html = '<div class="side-note">方块目录为空：等待 manifest.js 的 blocks 数据。' +
+           "放置数据后刷新本页。</div>";
+  }
+  for (var i = 0; i < blocks.length; i++){
+    var b = blocks[i], sh = normShape(b.shape);
+    html += '<div class="card' + (S.curBlock === b ? " active" : "") + '" data-bi="' + i + '">' +
+            '<div class="thumb"><img src="' + esc(b.file) + '" alt=""></div>' +
+            '<div class="meta"><div class="nm">' + esc(b.name || b.id) + "</div>" +
+            '<div class="id">' + esc(b.id) + ' · <span class="sz">—</span></div></div>' +
+            chipHtml(SHAPES[sh].label, SHAPES[sh].color) +
+            "</div>";
+  }
+  list.innerHTML = html;
+  /* 缩略图加载完成后回填真实尺寸（如 16×16） */
+  var cards = list.querySelectorAll(".card");
+  for (var j = 0; j < cards.length; j++){
+    (function(card){
+      var im = card.querySelector(".thumb img");
+      var sz = card.querySelector(".sz");
+      if (im && sz && im.complete && im.naturalWidth) sz.textContent = im.naturalWidth + "×" + im.naturalHeight;
+      else if (im && sz) im.onload = function(){ sz.textContent = im.naturalWidth + "×" + im.naturalHeight; };
+    })(cards[j]);
+  }
+  /* 点击卡片 → 主视口聚焦该资产 */
+  list.querySelectorAll(".card").forEach(function(card){
+    card.addEventListener("click", function(){
+      var b = blocks[+card.getAttribute("data-bi")];
+      if (!b) return;
+      S.curBlock = b;
+      list.querySelectorAll(".card").forEach(function(c){ c.classList.remove("active"); });
+      card.classList.add("active");
+      renderStage();
+    });
+  });
+}
+
+/* 风格库 · 普通模式：按套分组的手风琴 + 物品卡片 */
+function renderStylesList(){
+  var html = "";
+  if (!styles.length){
+    html = '<div class="side-note">风格库暂无数据（styles 为空数组）——' +
+           "本轮并行生成属正常现象。生成完成后刷新本页即可看到 4 套风格与对比模式。</div>";
+  }
+  if (S.compare){
+    /* 对比模式侧栏：风格复选（2-4）+ 物品选择列表 */
+    html += '<div class="sect">选择 2-4 套参与对比</div>';
+    for (var i = 0; i < styles.length; i++){
+      var st = styles[i], on = S.cmpStyles.indexOf(st.id) >= 0;
+      html += '<label class="pick' + (on ? " on" : "") + '">' +
+              '<input type="checkbox" data-sid="' + esc(st.id) + '"' + (on ? " checked" : "") + ">" +
+              '<span class="dot" style="background:' + hueColor(st.id) + '"></span>' +
+              "<span>" + esc(st.name || st.id) + "</span></label>";
+    }
+    html += '<div class="sect">对照物品（跨套同 id）</div>';
+    var ids = unionItemIds();
+    if (!ids.length){
+      html += '<div class="side-note">风格库中暂无物品。</div>';
+    }
+    for (var k = 0; k < ids.length; k++){
+      var cur = S.cmpItem === ids[k];
+      html += '<div class="pick' + (cur ? " on" : "") + ' cmp-it" data-iid="' + esc(ids[k]) + '">' +
+              "<span>" + esc(ids[k]) + "</span></div>";
+    }
+  } else {
+    /* 普通模式：手风琴分组 */
+    for (var g = 0; g < styles.length; g++){
+      var s = styles[g], open = S.openGroups[s.id] !== false;  // 默认展开
+      html += '<div class="grp-h' + (open ? " open" : "") + '" data-gid="' + esc(s.id) + '">' +
+              esc(s.name || s.id) +
+              '<span class="cnt">' + (s.items ? s.items.length : 0) + " 件</span>" +
+              (s.desc ? '<span class="desc">' + esc(s.desc) + "</span>" : "") +
+              "</div>";
+      if (open){
+        var items = s.items || [];
+        if (!items.length) html += '<div class="side-note">该套暂无物品。</div>';
+        for (var m = 0; m < items.length; m++){
+          var it = items[m];
+          var act = S.curItem && S.curItem.sid === s.id && S.curItem.id === it.id;
+          html += '<div class="card' + (act ? " active" : "") + '" data-sid="' + esc(s.id) +
+                  '" data-iid="' + esc(it.id) + '">' +
+                  '<div class="thumb"><img src="' + esc(it.file || "") + '" alt=""></div>' +
+                  '<div class="meta"><div class="nm">' + esc(it.name || it.id) + "</div>" +
+                  '<div class="id">' + esc(it.id) + ' · <span class="sz">—</span></div></div>' +
+                  chipHtml(it.letter || "·", hueColor(it.hue)) +
+                  "</div>";
+        }
+      }
+    }
+  }
+  list.innerHTML = html;
+
+  /* --- 事件绑定 --- */
+  if (S.compare){
+    /* 风格复选：限制 2-4 套 */
+    list.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+      cb.addEventListener("change", function(){
+        var sid = cb.getAttribute("data-sid");
+        var idx = S.cmpStyles.indexOf(sid);
+        if (cb.checked){
+          if (idx < 0){
+            if (S.cmpStyles.length >= 4){ cb.checked = false; return; }  // 最多 4 套
+            S.cmpStyles.push(sid);
+          }
+        } else if (idx >= 0){ S.cmpStyles.splice(idx, 1); }
+        renderStylesList();
+        renderStage();
+      });
+    });
+    /* 物品选择 */
+    list.querySelectorAll(".cmp-it").forEach(function(el){
+      el.addEventListener("click", function(){
+        S.cmpItem = el.getAttribute("data-iid");
+        renderStylesList();
+        renderStage();
+      });
+    });
+  } else {
+    /* 分组折叠 */
+    list.querySelectorAll(".grp-h").forEach(function(h){
+      h.addEventListener("click", function(){
+        var gid = h.getAttribute("data-gid");
+        S.openGroups[gid] = S.openGroups[gid] === false ? true : false;
+        renderStylesList();
+      });
+    });
+    /* 物品卡片点击 → 聚焦 */
+    list.querySelectorAll(".card").forEach(function(card){
+      card.addEventListener("click", function(){
+        S.curItem = {sid: card.getAttribute("data-sid"), id: card.getAttribute("data-iid")};
+        list.querySelectorAll(".card").forEach(function(c){ c.classList.remove("active"); });
+        card.classList.add("active");
+        renderStage();
+      });
+    });
+    /* 缩略图尺寸回填 */
+    list.querySelectorAll(".card").forEach(function(card){
+      var im = card.querySelector(".thumb img");
+      var sz = card.querySelector(".sz");
+      if (im && sz){
+        var fill = function(){ if (im.naturalWidth) sz.textContent = im.naturalWidth + "×" + im.naturalHeight; };
+        if (im.complete) fill(); else im.onload = fill;
+      }
+    });
+  }
+}
+
+/* 所有风格中出现过的物品 id（保持首次出现顺序） */
+function unionItemIds(){
+  var seen = {}, out = [];
+  for (var i = 0; i < styles.length; i++){
+    var items = styles[i].items || [];
+    for (var j = 0; j < items.length; j++){
+      if (!seen[items[j].id]){ seen[items[j].id] = 1; out.push(items[j].id); }
+    }
+  }
+  return out;
+}
+/* 在指定风格中找同 id 物品 */
+function findItem(sid, iid){
+  for (var i = 0; i < styles.length; i++){
+    if (styles[i].id !== sid) continue;
+    var items = styles[i].items || [];
+    for (var j = 0; j < items.length; j++) if (items[j].id === iid) return items[j];
+  }
+  return null;
+}
+
+/* ==================================================================
+   六、主视口渲染
+   ================================================================== */
+function clearStage(){
+  /* 保留 #hint，清掉其余内容 */
+  var kids = [].slice.call(stage.childNodes);
+  for (var i = 0; i < kids.length; i++) if (kids[i] !== hint) stage.removeChild(kids[i]);
+}
+
+/* 引导文案（manifest 缺失 / 目录全空） */
+function renderGuide(){
+  clearStage();
+  var box = document.createElement("div");
+  box.className = "empty-guide";
+  box.innerHTML =
+    '<div class="box"><h2>数据清单未就绪</h2>' +
+    "未找到 <code>manifest.js</code> 或目录数据为空。请在本文件同目录放置生成器产出的 " +
+    "<code>manifest.js</code>（定义全局 <code>CATALOG</code>），随后刷新本页。<br>" +
+    "预期结构示例：" +
+    "<pre>const CATALOG = {\n" +
+    '  generated: "2026-09-05T00:00:00",\n' +
+    "  blocks: [ {id, file:\"blocks/xx.png\", name, shape, note}, ... ],\n" +
+    "  styles: [ {id, name, desc, items:[{id, file, letter, hue, name}]}, ... ]\n" +
+    "};</pre>" +
+    "贴图以相对路径加载（<code>blocks/</code>、<code>styles/</code> 子目录），" +
+    "file:// 直开即可，无需任何服务器。</div>";
+  stage.insertBefore(box, hint);
+  $("metaName").textContent = "—";
+  $("metaChips").innerHTML = "";
+  $("metaSize").textContent = "";
+  setHint("");
+  info.textContent = "等待 manifest.js 数据。";
+  syncToolbar();
+}
+
+/* 方块聚焦渲染 */
+function renderBlock(){
+  var b = S.curBlock || blocks[0];
+  if (!b){ renderGuide(); return; }
+  S.curBlock = b;
+  clearStage();
+  var sh = normShape(b.shape);
+  var sc = mkScene();
+  buildShape(sc.pivot, sh, b.file);
+  stage.insertBefore(sc.scene, hint);
+  collectPivots();
+  /* 顶部元信息 */
+  $("metaName").textContent = b.name || b.id;
+  $("metaChips").innerHTML = chipHtml(SHAPES[sh].label, SHAPES[sh].color);
+  $("metaSize").textContent = "";
+  var probe = new Image();
+  probe.onload = function(){
+    $("metaSize").textContent = probe.naturalWidth + "×" + probe.naturalHeight + " px";
+  };
+  probe.src = b.file;
+  setHint("拖拽旋转 · 滚轮缩放 · 双击回正" + (sh === "translucent" ? " · 衬底可开关" : ""));
+  /* 详情面板 */
+  info.textContent =
+    "名称：" + (b.name || b.id) + "\n" +
+    "id：" + b.id + "\n" +
+    "文件：" + b.file + "\n" +
+    "形状：" + SHAPES[sh].label + "（" + sh + "）" +
+    (b.note ? "\n备注：" + b.note : "");
+  syncToolbar();
+}
+
+/* 物品聚焦渲染（平面 sprite 或 3D 拉伸） */
+function renderItemScene(container, it, boxSized){
+  if (S.view === "extrude"){
+    var sc = mkScene();
+    buildExtrude(sc.pivot, it.file || "");
+    container.appendChild(sc.scene);
+  } else {
+    var box = document.createElement("div");
+    box.className = "sprite-box";
+    var im = document.createElement("img");
+    im.src = it.file || "";
+    im.draggable = false;
+    im.onerror = function(){ im.classList.add("miss"); im.alt = "缺图"; };
+    box.appendChild(im);
+    container.appendChild(box);
+    if (boxSized){
+      box.style.position = "absolute";
+      box.style.left = "50%"; box.style.top = "50%";
+      box.style.transform = "translate(-50%,-50%)";
+    }
+  }
+}
+function renderItem(){
+  /* 无风格数据则回落到引导 */
+  if (!styles.length){ renderGuide(); return; }
+  var cur = S.curItem;
+  if (!cur || !findItem(cur.sid, cur.id)){
+    var s0 = styles[0];
+    cur = S.curItem = {sid: s0.id, id: (s0.items && s0.items[0]) ? s0.items[0].id : null};
+    if (!cur.id){ renderGuide(); return; }
+  }
+  var st = null, it = findItem(cur.sid, cur.id);
+  for (var i = 0; i < styles.length; i++) if (styles[i].id === cur.sid) st = styles[i];
+  clearStage();
+  var holder = document.createElement("div");
+  holder.className = "scene";
+  var inner = document.createElement("div");
+  renderItemScene(inner, it, false);
+  holder.appendChild(inner);
+  /* 平面视图外层不需要 3D 透视，直接静态布局 */
+  if (S.view === "sprite"){
+    holder.style.position = "absolute"; holder.style.inset = "0";
+    holder.style.display = "flex"; holder.style.alignItems = "center"; holder.style.justifyContent = "center";
+    holder.style.perspective = "";
+  }
+  stage.insertBefore(holder, hint);
+  collectPivots();
+  /* 元信息 */
+  $("metaName").textContent = it.name || it.id;
+  $("metaChips").innerHTML =
+    chipHtml(st.name || st.id, hueColor(st.id)) +
+    (it.hue ? chipHtml(it.hue, hueColor(it.hue)) : "") +
+    (it.letter ? chipHtml("字母 " + it.letter, "#7a8494") : "");
+  $("metaSize").textContent = "";
+  var probe = new Image();
+  probe.onload = function(){
+    $("metaSize").textContent = probe.naturalWidth + "×" + probe.naturalHeight + " px";
+  };
+  probe.src = it.file || "";
+  setHint(S.view === "extrude" ? "拖拽旋转 · 滚轮缩放 · 双击回正" : "平面视图 · 可在工具栏切换 3D 拉伸");
+  info.textContent =
+    "风格：" + (st.name || st.id) + "（" + st.id + "）\n" +
+    "物品：" + (it.name || it.id) + "\n" +
+    "id：" + it.id + "\n" +
+    "文件：" + (it.file || "—") + "\n" +
+    "字母：" + (it.letter || "—") + " · 色相：" + (it.hue || "—");
+  syncToolbar();
+}
+
+/* 风格并排对比：2-4 套同物品对照（本轮核心用途） */
+function renderCompare(){
+  clearStage();
+  var grid = document.createElement("div");
+  grid.className = "cmp-grid";
+  var picks = [];
+  for (var i = 0; i < styles.length; i++)
+    if (S.cmpStyles.indexOf(styles[i].id) >= 0) picks.push(styles[i]);
+  if (picks.length < 2){
+    var tip = document.createElement("div");
+    tip.className = "empty-guide";
+    tip.innerHTML = '<div class="box"><h2>并排对比</h2>请在左侧勾选 2-4 套风格，' +
+                    "再于下方选择要对照的物品 id。</div>";
+    stage.insertBefore(tip, hint);
+    $("metaName").textContent = "对比模式";
+    $("metaChips").innerHTML = "";
+    $("metaSize").textContent = "";
+    setHint("侧栏：勾选风格 ≥2 套后开始对照");
+    info.textContent = "对比模式：同一物品 id 在多套风格下的并排对照。";
+    syncToolbar();
+    return;
+  }
+  for (var k = 0; k < picks.length; k++){
+    var st = picks[k];
+    var col = document.createElement("div");
+    col.className = "cmp-col";
+    var head = document.createElement("div");
+    head.className = "cmp-h";
+    head.innerHTML = esc(st.name || st.id) + '<span class="cmp-sub">' + esc(st.id) + "</span>";
+    col.appendChild(head);
+    var body = document.createElement("div");
+    body.className = "cmp-body";
+    var it = S.cmpItem ? findItem(st.id, S.cmpItem) : null;
+    if (it){
+      renderItemScene(body, it, true);
+    } else {
+      var miss = document.createElement("div");
+      miss.className = "cmp-miss";
+      miss.textContent = "该套无此物品";
+      body.appendChild(miss);
+    }
+    col.appendChild(body);
+    grid.appendChild(col);
+  }
+  stage.insertBefore(grid, hint);
+  collectPivots();
+  $("metaName").textContent = "风格对比 · " + (S.cmpItem || "（未选物品）");
+  $("metaChips").innerHTML = chipHtml(picks.length + " 套并排", "#2f6fdb") +
+                             (S.view === "extrude" ? chipHtml("3D 拉伸", "#7a8494") : chipHtml("平面", "#7a8494"));
+  $("metaSize").textContent = "";
+  setHint("物品缺失的套显示占位 · 拉伸模式下拖拽同步旋转");
+  var stDesc = picks.map(function(p){ return (p.name || p.id) + (p.desc ? "：" + p.desc : ""); });
+  info.textContent = "对照物品 id：" + (S.cmpItem || "—") + "\n" + stDesc.join("\n");
+  syncToolbar();
+}
+
+/* 总渲染入口 */
+function renderStage(){
+  if (S.compare && styles.length >= 2 && S.tab === "styles"){ renderCompare(); return; }
+  if (S.tab === "blocks"){ renderBlock(); return; }
+  renderItem();
+}
+
+/* ==================================================================
+   七、交互（拖拽 / 滚轮 / 双击回正 / 自动旋转）
+   ================================================================== */
+var dragging = false, lastX = 0, lastY = 0;
+stage.addEventListener("pointerdown", function(e){
+  if (!pivots.length) return;                       // 无 3D 内容时忽略
+  if (e.target.closest("button")) return;
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  stage.setPointerCapture(e.pointerId);
+});
+stage.addEventListener("pointermove", function(e){
+  if (!dragging) return;
+  S.ry += (e.clientX - lastX) * 0.4;
+  S.rx -= (e.clientY - lastY) * 0.4;
+  if (S.rx > 88) S.rx = 88; if (S.rx < -88) S.rx = -88;
+  lastX = e.clientX; lastY = e.clientY;
+  applyPose();
+});
+stage.addEventListener("pointerup", function(){ dragging = false; });
+stage.addEventListener("pointercancel", function(){ dragging = false; });
+/* 滚轮缩放（0.4 ~ 3.2） */
+stage.addEventListener("wheel", function(e){
+  if (!pivots.length) return;
+  e.preventDefault();
+  S.zoom *= (e.deltaY < 0 ? 1.1 : 0.9);
+  if (S.zoom < 0.4) S.zoom = 0.4;
+  if (S.zoom > 3.2) S.zoom = 3.2;
+  applyPose();
+}, {passive: false});
+/* 双击回正 */
+stage.addEventListener("dblclick", function(){ if (pivots.length) resetPose(); });
+
+/* 自动旋转（rAF 循环） */
+function setSpin(on){
+  S.spin = on;
+  $("tSpin").classList.toggle("on", on);
+  if (on){
+    var step = function(){
+      if (!S.spin) return;
+      S.ry += 0.45;
+      applyPose();
+      spinId = requestAnimationFrame(step);
+    };
+    spinId = requestAnimationFrame(step);
+  } else {
+    cancelAnimationFrame(spinId);
+  }
+}
+
+/* ==================================================================
+   八、工具栏与全局开关
+   ================================================================== */
+/* 按当前内容同步工具栏按钮显隐与状态 */
+function syncToolbar(){
+  var has3D = pivots.length > 0;
+  var isItem = (S.tab === "styles" && styles.length > 0 && !S.compare && !S.curBlock) ||
+               (S.compare && S.cmpItem);
+  /* 视图切换（平面 / 拉伸）：仅物品内容显示 */
+  $("gView").hidden = !(S.tab === "styles" && styles.length > 0);
+  $("vSprite").classList.toggle("on", S.view === "sprite");
+  $("vExtrude").classList.toggle("on", S.view === "extrude");
+  /* 衬底：仅半透方块显示 */
+  var b = S.curBlock;
+  var showUnder = S.tab === "blocks" && !S.compare && b && normShape(b.shape) === "translucent";
+  $("tUnderlay").hidden = !showUnder;
+  $("tUnderlay").classList.toggle("on", S.underlay);
+  /* 旋转 / 回正：存在 3D pivot 时显示 */
+  $("tSpin").hidden = !has3D;
+  $("tReset").hidden = !has3D;
+  $("tSpin").classList.toggle("on", S.spin);
+  /* 对比：≥2 套风格时可用 */
+  $("tCompare").hidden = styles.length < 2;
+  $("tCompare").classList.toggle("on", S.compare);
+  $("tCompare").textContent = S.compare ? "退出对比" : "对比模式";
+}
+/* 背景三档 */
+function setBg(mode){
+  S.bg = mode;
+  stage.classList.remove("bg-dark", "bg-light", "bg-checker");
+  stage.classList.add("bg-" + mode);
+  $("bgDark").classList.toggle("on", mode === "dark");
+  $("bgLight").classList.toggle("on", mode === "light");
+  $("bgChecker").classList.toggle("on", mode === "checker");
+}
+$("bgDark").addEventListener("click", function(){ setBg("dark"); });
+$("bgLight").addEventListener("click", function(){ setBg("light"); });
+$("bgChecker").addEventListener("click", function(){ setBg("checker"); });
+/* 视图切换 */
+$("vSprite").addEventListener("click", function(){ S.view = "sprite"; renderStage(); });
+$("vExtrude").addEventListener("click", function(){ S.view = "extrude"; renderStage(); });
+/* 衬底开关 */
+$("tUnderlay").addEventListener("click", function(){
+  S.underlay = !S.underlay;
+  var u = stage.querySelector(".underlay");
+  if (u) u.classList.toggle("off", !S.underlay);
+  syncToolbar();
+});
+/* 自动旋转 / 回正 */
+$("tSpin").addEventListener("click", function(){ setSpin(!S.spin); });
+$("tReset").addEventListener("click", resetPose);
+/* 对比模式开关 */
+$("tCompare").addEventListener("click", function(){
+  S.compare = !S.compare;
+  if (S.compare){
+    /* 进入对比：默认勾选前 min(4, n) 套，物品取第一个 */
+    S.tab = "styles";
+    if (!S.cmpStyles.length){
+      S.cmpStyles = styles.slice(0, 4).map(function(s){ return s.id; });
+    }
+    if (!S.cmpItem){
+      var ids = unionItemIds();
+      S.cmpItem = ids.length ? ids[0] : null;
+    }
+    renderStylesList();
+  }
+  renderStage();
+});
+/* 侧栏 Tab 切换 */
+$("tabBlocks").addEventListener("click", function(){ switchTab("blocks"); });
+$("tabStyles").addEventListener("click", function(){ switchTab("styles"); });
+function switchTab(t){
+  S.tab = t;
+  $("tabBlocks").classList.toggle("active", t === "blocks");
+  $("tabStyles").classList.toggle("active", t === "styles");
+  if (t === "blocks") renderBlocksList(); else renderStylesList();
+  renderStage();
+}
+
+/* ==================================================================
+   九、启动
+   ------------------------------------------------------------------
+   支持可选的 hash 深链（便于分享定位 / 自动化验证）：
+     #block=<方块id>            打开即聚焦某方块
+     #item=<风格id>/<物品id>    打开即聚焦某物品
+     #compare=1                 直接进入并排对比模式
+     #view=sprite|extrude       物品视图（平面 / 3D 拉伸）
+     #bg=dark|light|checker     指定背景档
+   ================================================================== */
+function applyHash(){
+  if (location.hash.length < 2) return;
+  var kv = {};
+  location.hash.substring(1).split("&").forEach(function(p){
+    var i = p.indexOf("="); if (i < 1) return;
+    kv[decodeURIComponent(p.substring(0, i))] = decodeURIComponent(p.substring(i + 1));
+  });
+  if (kv.bg && {dark:1, light:1, checker:1}[kv.bg]) S.bg = kv.bg;
+  if (kv.view === "extrude" || kv.view === "sprite") S.view = kv.view;
+  if (kv.block){
+    for (var i = 0; i < blocks.length; i++)
+      if (blocks[i].id === kv.block){ S.curBlock = blocks[i]; break; }
+  }
+  if (kv.item){
+    var p2 = kv.item.split("/");
+    if (p2.length === 2 && findItem(p2[0], p2[1])){
+      S.curItem = {sid: p2[0], id: p2[1]};
+      if (!kv.compare) S.tab = "styles";   // 单物品聚焦需切到风格库
+    }
+  }
+  if (kv.compare === "1" && styles.length >= 2){
+    S.compare = true;
+    if (!S.cmpStyles.length)
+      S.cmpStyles = styles.slice(0, 4).map(function(s){ return s.id; });
+    if (!S.cmpItem){
+      var ids = unionItemIds();
+      S.cmpItem = ids.length ? ids[0] : null;
+    }
+    S.tab = "styles";
+  }
+}
+function init(){
+  /* 数据生成时间展示 */
+  if (RAW && RAW.generated) $("geninfo").textContent = "数据生成于 " + RAW.generated;
+  /* hash 深链解析（可指定背景 / 初始聚焦 / 对比模式） */
+  applyHash();
+  /* 默认背景：棋盘格（检验透明贴图最直观） */
+  setBg(S.bg);
+  /* 初始聚焦：第一颗方块 */
+  if (!S.curBlock && blocks.length) S.curBlock = blocks[0];
+  $("tabBlocks").classList.toggle("active", S.tab === "blocks");
+  $("tabStyles").classList.toggle("active", S.tab === "styles");
+  if (S.tab === "styles") renderStylesList(); else renderBlocksList();
+  renderStage();
+}
+init();
+</script>
+</body>
+</html>
