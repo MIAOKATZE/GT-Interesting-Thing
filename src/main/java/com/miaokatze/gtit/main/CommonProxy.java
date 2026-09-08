@@ -411,14 +411,16 @@ public class CommonProxy {
         // v1.9.0: 周目系统网络通道（S→C 四包；物理专用服务器由 ReincarnationNetwork.init()
         // 内联侧门控拒绝注册并跳过，与周目物品/配方门控同口径，返回 false 时不打"已初始化"）
         try {
+            // v1.9.0 冒烟修正（20260909 R1/R2）：实体注册自带物理侧门控与"拒绝注册（实体）"
+            // 日志，必须独立于网络门控调用——嵌在 init() 成功分支内会让专用服上实体拒绝
+            // 标记结构性不可达
+            com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities.register();
             if (com.miaokatze.gtit.reincarnation.network.ReincarnationNetwork.init()) {
                 GTInterestingThing.LOG.info("[2/3] 周目系统网络包已初始化");
-                // v1.9.0 S4: 周目实体本体注册 + 服务端编排器安装（登录判定/倒计时/奖励/
-                // 飞升编排/确认钩子注入）。上方 init() 返回 true 即物理客户端门控通过，
-                // 专用服整块跳过；编排器内部再以 worldObj.isRemote 区分世界侧
-                com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities.register();
+                // v1.9.0 S4: 服务端编排器安装（登录判定/倒计时/奖励/飞升编排/确认钩子注入）。
+                // 仅功能可用（物理客户端门控通过）时装：专用服上周目物品/配方/实体均缺席
                 com.miaokatze.gtit.reincarnation.handler.ReincarnationHandler.install();
-                GTInterestingThing.LOG.info("[2/3] 周目系统实体与服务端编排器已接线");
+                GTInterestingThing.LOG.info("[2/3] 周目系统服务端编排器已接线");
             }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 周目系统网络包初始化失败", t);

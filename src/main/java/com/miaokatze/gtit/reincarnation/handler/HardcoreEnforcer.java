@@ -170,6 +170,21 @@ public final class HardcoreEnforcer {
             GTInterestingThing.LOG.info("[reincarnation] 极限强制停用：玩家死亡或世界卸载");
             return;
         }
+        if (player.getHealth() <= 0.0F) {
+            // P2（S11 审查）：伤害管线被第三方 mod 全量取消时 setHealth(0) 兜底不触发
+            // LivingDeathEvent，此处 0 血检测直启删档倒计时，防周目删档语义被静默绕过
+            MinecraftServer server = MinecraftServer.getServer();
+            if (server != null && server.isSinglePlayer()) {
+                deleteCountdownTicks = DELETE_DELAY_TICKS;
+                GTInterestingThing.LOG.warn(
+                    "[reincarnation] 被强制玩家 0 血滞留（伤害管线被拦截）：60 tick 后删除世界并停止服务器，player=" + player.getCommandSenderName());
+            } else {
+                active = false;
+                enforcedPlayer = null;
+                GTInterestingThing.LOG.warn("[reincarnation] 极限强制：非单机环境 0 血滞留不触发删档，停用强制");
+            }
+            return;
+        }
         try {
             WorldInfo info = player.worldObj.getWorldInfo();
             Field field = resolveHardcoreField();

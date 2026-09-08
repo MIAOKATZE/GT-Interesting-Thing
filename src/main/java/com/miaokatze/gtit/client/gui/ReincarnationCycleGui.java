@@ -1,8 +1,6 @@
 package com.miaokatze.gtit.client.gui;
 
 import java.io.File;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -35,6 +33,7 @@ import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
+import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.reincarnation.ReincarnationConfirmHook;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
@@ -881,28 +880,16 @@ public class ReincarnationCycleGui implements IGuiHolder<GuiData> {
     }
 
     /**
-     * S4 契约桥：{@code ReincarnationCycle#withdraw(ItemRef)}（S4 交付，IDLE/DEPOSITED 移除一件）。
+     * S4 契约直连：{@code ReincarnationCycle#withdraw(ItemRef)}（IDLE/DEPOSITED 移除一件并返回
+     * true；物品不在清单返回 false；EXECUTED 抛 IllegalStateException——只读锁已由调用方
+     * isReadonly 前置拦截，此处兜底转 false 保持原反射桥的签名语义）。
      * <p>
-     * 本切片与 S4 并行开发，此处经反射探测直连（权威语义）；方法未落地时退化为
-     * {@code deposit(remaining)}（S2 既有：整体替换 pendingItems，等价移除一件）。
-     * 剩余为空时 S2 deposit 拒绝空清单 → 返回 false（调用方退回物品）。
-     * <b>S4 合流后建议替换为直连调用</b>（待独立 reviewer 核对）。
+     * v1.9.0 S11 审查：S4 已落地 withdraw，并行期的反射探测与 deposit(remaining) 退化分支删除。
      */
     private static boolean withdrawBridge(ReincarnationCycle cycle, ReincarnationCycle.ItemRef ref) {
         try {
-            Method withdraw = ReincarnationCycle.class.getMethod("withdraw", ReincarnationCycle.ItemRef.class);
-            Object result = withdraw.invoke(cycle, ref);
-            return result instanceof Boolean && (Boolean) result;
-        } catch (NoSuchMethodException notDeliveredYet) {
-            // S4 未落地：deposit(remaining) 等价路径
-            List<ReincarnationCycle.ItemRef> remaining = new ArrayList<>(cycle.getPendingItems());
-            remaining.remove(ref);
-            if (remaining.isEmpty()) {
-                return false;
-            }
-            cycle.deposit(remaining);
-            return true;
-        } catch (ReflectiveOperationException e) {
+            return cycle.withdraw(ref);
+        } catch (IllegalStateException denied) {
             return false;
         }
     }
@@ -1042,8 +1029,8 @@ public class ReincarnationCycleGui implements IGuiHolder<GuiData> {
             try {
                 action.run();
             } catch (RuntimeException e) {
-                // 与 MailHandler 消费循环同口径：记日志不抛出（防 GUI 主线程任务拖垮 tick）
-                System.out.println("[gtit:reincarnation] 服务端会话任务执行失败: " + e);
+                // 记日志不抛出（防 GUI 主线程任务拖垮 tick）；v1.9.0 S11：stdout 残留改 logger
+                GTInterestingThing.LOG.error("[reincarnation] 服务端会话任务执行失败", e);
             }
         }
     }
