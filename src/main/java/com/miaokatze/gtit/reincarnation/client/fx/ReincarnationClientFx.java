@@ -153,6 +153,25 @@ public final class ReincarnationClientFx {
     /** 升天结束判定：锚点 ridingEntity == null 的连续 tick 宽限（容错骑乘建立延迟） */
     private static final int ASCENSION_END_GRACE_TICKS = 20;
 
+    /**
+     * 飞升渐强音效键（sounds.json 注册键 {@code ascension_ramp}，资源
+     * {@code gtit:ascension_ramp}；音频资产由音效管线另行生成，本切片仅注册+接线）。
+     */
+    private static final String ASCENSION_SOUND_KEY = "gtit:ascension_ramp";
+    /** 音效分段间隔（tick）：每段重播一次，音量按演出进度递增（1.7.10 无法调制播放中实例） */
+    private static final int ASCENSION_SOUND_SEGMENT_TICKS = 30;
+    /** 音效分段总数（演出时长 120t → 4 段；越界即停，防演出异常滞留时叠音） */
+    private static final int ASCENSION_SOUND_MAX_SEGMENTS = 4;
+    /** 音效起始音量（第 1 段） */
+    private static final float ASCENSION_SOUND_MIN_VOLUME = 0.25F;
+    /** 音效峰值音量（末段） */
+    private static final float ASCENSION_SOUND_MAX_VOLUME = 1.0F;
+
+    /** 屏幕渐变 overlay 时长基准（tick，与载具默认时长同步；超过按满值封顶） */
+    private static final float ASCENSION_GRADIENT_TICKS = 120.0F;
+    /** 屏幕渐变 overlay 亮度封顶（0..1；不遮死画面，保留世界可读性） */
+    private static final float ASCENSION_GRADIENT_MAX_ALPHA = 0.8F;
+
     /** 倒计时大数字字号（glScalef 倍率；死亡大标题式放大手法） */
     private static final float COUNTDOWN_NUMBER_SCALE = 3.0F;
     /** 庆祝大字基准字号（glScalef 倍率，随 tick 呼吸脉动） */
@@ -188,6 +207,8 @@ public final class ReincarnationClientFx {
     private static LockedMovementInput lockedMovementInput;
     /** 锚点骑乘为空的连续 tick 计数（升天结束判定） */
     private static int rideNullStreak;
+    /** 已播放的渐强音效分段号（升天期间递增；演出结束/取消/离开时复位防叠音） */
+    private static int ascensionSoundSegment = -1;
     /** 环绕水晶虚拟 EntityItem 缓存（不生成真实实体=仅图像无法拾取） */
     private static List<EntityItem> orbitItems;
     /** 缓存所属 world（换维度重建） */
@@ -302,6 +323,7 @@ public final class ReincarnationClientFx {
                 endInputLock(player, "ascension_cleared_externally");
             }
             rideNullStreak = 0;
+            ascensionSoundSegment = -1; // 演出已结束：复位分段号，防下次演出叠音
             return;
         }
 
@@ -312,11 +334,21 @@ public final class ReincarnationClientFx {
         if (mc.currentScreen != null) {
             player.closeScreen();
         }
+        // 起始 tick 主线程回填（契约同 grant：-1 = 尚未回填）；渐变 overlay 与
+        // 渐强音效共用该时长基准
+        if (ClientReincarnationFxState.getAscensionStartTick() == -1L) {
+            ClientReincarnationFxState.setAscensionStartTick(world.getTotalWorldTime());
+            ascensionSoundSegment = 0;
+            // 段 0 随回填立即起播（最低音量），此后每 SEGMENT_TICKS 重播一次音量递增
+            playAscensionSegment(world, player, 0.0F);
+        }
+        tickAscensionSound(world, player);
 
         // ---- 升天结束判定 ----
         // 玩家死亡：立即结束（死亡界面需正常弹出，GuiOpenEvent 门槛已放行死亡场景）
         if (player.isDead) {
             ClientReincarnationFxState.clearAscension();
+            ascensionSoundSegment = -1; // 播放结束清理：不再调度后续分段（防叠音）
             endInputLock(player, "player_dead");
             rideNullStreak = 0;
             return;
@@ -330,9 +362,44 @@ public final class ReincarnationClientFx {
         }
         if (rideNullStreak >= ASCENSION_END_GRACE_TICKS) {
             ClientReincarnationFxState.clearAscension();
+            ascensionSoundSegment = -1; // 演出取消/结束清理（同上）
             endInputLock(player, "carrier_gone_or_dismounted");
             rideNullStreak = 0;
         }
+    }
+
+    /**
+     * 渐强音效推进：按 {@link #ASCENSION_SOUND_SEGMENT_TICKS} 分段重播，音量由 FX 状态
+     * （起始 tick 派生的演出进度）线性驱动 0.25 → 1.0；分段号越界即停
+     * （1.7.10 无法调制播放中实例的音量，分段重播即"渐强"的最小实现；已起播的短音效
+     * 自然结束，演出结束/取消/离开仅停止调度新分段，不残留调度状态）。
+     */
+    private void tickAscensionSound(World world, EntityClientPlayerMP player) {
+        long startTick = ClientReincarnationFxState.getAscensionStartTick();
+        if (startTick < 0L || ascensionSoundSegment < 0) {
+            return;
+        }
+        long elapsed = world.getTotalWorldTime() - startTick;
+        if (elapsed < 0L) {
+            return;
+        }
+        int segment = (int) (elapsed / ASCENSION_SOUND_SEGMENT_TICKS);
+        if (segment > ascensionSoundSegment) {
+            if (segment > ASCENSION_SOUND_MAX_SEGMENTS) {
+                ascensionSoundSegment = -1; // 演出超长：停止调度，防叠音
+                return;
+            }
+            ascensionSoundSegment = segment;
+            float progress = Math.min(1.0F, (float) elapsed / ASCENSION_GRADIENT_TICKS);
+            playAscensionSegment(world, player, progress);
+        }
+    }
+
+    /** 按进度播放一段渐强音效（volume = MIN + (MAX-MIN) × progress；progress=0 即段 0 起播） */
+    private void playAscensionSegment(World world, EntityClientPlayerMP player, float progress) {
+        float volume = ASCENSION_SOUND_MIN_VOLUME
+            + (ASCENSION_SOUND_MAX_VOLUME - ASCENSION_SOUND_MIN_VOLUME) * Math.min(1.0F, Math.max(0.0F, progress));
+        world.playSound(player.posX, player.posY, player.posZ, ASCENSION_SOUND_KEY, volume, 1.0F, false);
     }
 
     /**
@@ -418,6 +485,7 @@ public final class ReincarnationClientFx {
         grantItemEntities = null;
         itemsWorld = null;
         rideNullStreak = 0;
+        ascensionSoundSegment = -1; // 登出/换维度离开：停调度防叠音（已起播短音效自然结束）
         if (touched) {
             GTInterestingThing.LOG.info("[reincarnation] 客户端 FX 状态全量清理（" + scene + "）");
         }
@@ -726,6 +794,8 @@ public final class ReincarnationClientFx {
 
     /**
      * HUD：HELMET Post 层绘制（BQ QuestNotification.java:223-240 手法）——
+     * ⓪ 飞升演出期间屏幕渐变 overlay（白色随演出进度渐起，先画渐变再画文字，
+     * 不遮同层 HUD 文本；GUI 在 overlay 之后渲染，同样不受遮盖）；
      * ① 发放演出期间中央炫彩大字（HSL 色相按 tick 循环 + glScalef 放大）；
      * ② 倒计时中央大数字 + 说明行（deadline 驱动，客户端只显示，归零由服务端处理）；
      * ③ 倒计时归零未清期间附加提示行（该时间线已轮回）。
@@ -743,6 +813,19 @@ public final class ReincarnationClientFx {
         int width = event.resolution.getScaledWidth();
         int height = event.resolution.getScaledHeight();
         FontRenderer font = mc.fontRenderer; // 本映射字段名（Minecraft.java:218）
+
+        // ⓪ 飞升屏幕渐变（FX 状态驱动：起始 tick 派生进度，smoothstep 渐起、0.8 封顶）
+        if (ClientReincarnationFxState.isAscensionActive()) {
+            long startTick = ClientReincarnationFxState.getAscensionStartTick();
+            if (startTick >= 0L) {
+                float progress = (world.getTotalWorldTime() - startTick) / ASCENSION_GRADIENT_TICKS;
+                if (progress > 0.0F) {
+                    float eased = Math.min(1.0F, progress);
+                    eased = eased * eased * (3.0F - 2.0F * eased); // smoothstep 缓入
+                    drawAscensionGradient(width, height, ASCENSION_GRADIENT_MAX_ALPHA * eased);
+                }
+            }
+        }
 
         // ① 发放庆祝大字（演出期间全程显示）
         boolean grantActive = !ClientReincarnationFxState.getPendingGrantItems()
@@ -809,6 +892,36 @@ public final class ReincarnationClientFx {
         GL11.glTranslatef(cx, cy, 0.0F);
         GL11.glScalef(scale, scale, scale);
         font.drawStringWithShadow(text, -font.getStringWidth(text) / 2, -font.FONT_HEIGHT / 2, argb);
+        GL11.glPopMatrix();
+    }
+
+    /**
+     * 屏幕渐变 overlay（飞升白化）：全屏白色矩形按 alpha 渐起。
+     * GL 状态纪律（任务包 D2/D3 冻结口径）：blend/alphatest/depth/color/矩阵
+     * 严格保存恢复——push 矩阵 + PushAttrib(ENABLE/COLOR/DEPTH)，
+     * 开 blend + 关 texture/alphatest + depthMask(false)，画完逐项还原，
+     * 不污染同层后续渲染；仅客户端路径触达。
+     */
+    private static void drawAscensionGradient(int width, int height, float alpha) {
+        if (alpha <= 0.0F) {
+            return;
+        }
+        int a = (int) (Math.min(1.0F, alpha) * 255.0F) << 24;
+        GL11.glPushMatrix();
+        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_ALPHA_TEST);
+        GL11.glDepthMask(false);
+        // Gui.drawRect（static）：left/top/right/bottom + argb（自带矩阵无关绘制）
+        net.minecraft.client.gui.Gui.drawRect(0, 0, width, height, a | 0xFFFFFF);
+        GL11.glDepthMask(true);
+        GL11.glEnable(GL11.GL_ALPHA_TEST);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GL11.glPopAttrib();
         GL11.glPopMatrix();
     }
 

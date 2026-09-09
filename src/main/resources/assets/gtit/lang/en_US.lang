@@ -175,7 +175,9 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.name=§9§lSkywalk
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.desc=Skywalk raises your step height to §11.1 blocks§r: a full block becomes as climbable as a slab — §2no jumping required§r; stairs, walls and wrinkled terrain all read as flat ground.%n%nNo more bumpy commutes, and scaffold-climbing during builds turns oddly gentle.%n%nPresent one Skywalk — §2checked, not taken§r. §8§oStairs are now purely decorative.§r
 # BQ quests [pack=gtit] END
 
-# Reincarnation Cycle GUI (v1.9.0 S7; literal % written %% — consumed via formatted path)
+# Reincarnation Cycle GUI (v1.9.0 S7; keys consumed via formatted paths keep %% escaping, button/tooltip keys read via translateToLocal use a single %)
+# v1.9.x D4: unlock button labels are read via translateToLocal (never formatted) — the literal %% leaked on screen, now a single %;
+# hull.tooltip / coin.tooltip dead keys are wired to GuiContainer hover rendering (tier name + n/16 / coin slot copy).
 gtit.reincarnation.gui.title=§6Reincarnation Cycle
 gtit.reincarnation.gui.banner.idle=§7No cycle in progress — deposit items to start a new run
 gtit.reincarnation.gui.banner.deposited=§6Cycle deposited: adjust items or confirm reincarnation
@@ -187,8 +189,8 @@ gtit.reincarnation.gui.item.tooltip=Cycle item slot (row %s): deposits are recor
 gtit.reincarnation.gui.ignore_nbt=Ignores NBT (enchantments/damage not kept)
 gtit.reincarnation.gui.encrypted=Obfuscated · player-bound
 gtit.reincarnation.gui.coin.tooltip=Neko coin slot: only Neko Coin / Shimmering Neko Coin
-gtit.reincarnation.gui.unlock.shimmer=§eShimmering Coin unlock (0.1%%)
-gtit.reincarnation.gui.unlock.normal=§eNeko Coin unlock (0.001%%)
+gtit.reincarnation.gui.unlock.shimmer=§eShimmering Coin unlock (0.1%)
+gtit.reincarnation.gui.unlock.normal=§eNeko Coin unlock (0.001%)
 gtit.reincarnation.gui.unlock.tooltip.line=Consumes 1 matching coin from the slot above, then rolls
 gtit.reincarnation.gui.unlock.tooltip.shimmer=Success rate 0.1%% (1/1000)
 gtit.reincarnation.gui.unlock.tooltip.normal=Success rate 0.001%% (1/100000)
@@ -227,6 +229,7 @@ gtit.reincarnation.chat.withdraw.failed=§cFailed to remove the record — the i
 gtit.reincarnation.celebration=Reincarnation Effective
 gtit.reincarnation.countdown_line=This timeline has already reincarnated
 gtit.reincarnation.timeline_ended=Delete the encrypted cycle file to break the loop (final mercy)
+gtit.reincarnation.grant.dropped=Some reincarnation rewards could not be resolved and were discarded: %s
 # v1.8.2 strict single-player gate (dedicated server / open LAN refusal)
 gtit.reincarnation.single_player_only=Reincarnation is available in single-player only
 

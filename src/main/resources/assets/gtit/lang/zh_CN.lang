@@ -175,7 +175,9 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.name=§9§l凌步
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.desc=凌步把你的抬脚高度顶到§11.1 格§r：整块方块像半砖一样直接走上去，§2无需跳跃§r——台阶、矮墙、褶皱地形，一律如履平地。%n%n赶路不再一颠一颠，盖楼时爬脚手架也变得温柔。%n%n呈上一枚凌步即可，§2只验不收§r。§8§o楼梯从此沦为装饰品。§r
 # BQ quests [pack=gtit] END
 
-# Reincarnation Cycle GUI (v1.9.0 S7; 中文字面 % 一律转义 %%，全部经格式化路径消费)
+# Reincarnation Cycle GUI (v1.9.0 S7; 经格式化路径消费的键保留 %% 转义，按钮/tooltip 走 translateToLocal 直读路径用单 %)
+# v1.9.x D4：unlock 按钮文案由 translateToLocal 直读（不格式化），%% 曾字面漏出，改单 %；
+# hull.tooltip / coin.tooltip 死键由 GuiContainer hover 接线（列名 + n/16 / 币槽文案）。
 gtit.reincarnation.gui.title=§6周目轮回
 gtit.reincarnation.gui.banner.idle=§7当前无进行中的轮回——放入物品开启新周目
 gtit.reincarnation.gui.banner.deposited=§6轮回已寄存：可调整物品或确认轮回
@@ -187,8 +189,8 @@ gtit.reincarnation.gui.item.tooltip=轮回物品格（第 %s 行）：放入后�
 gtit.reincarnation.gui.ignore_nbt=忽略 NBT（附魔/损伤等不保留）
 gtit.reincarnation.gui.encrypted=混淆加密·绑定玩家
 gtit.reincarnation.gui.coin.tooltip=猫猫币支付格：只接受猫猫币/闪烁猫猫币
-gtit.reincarnation.gui.unlock.shimmer=§e闪烁猫猫币尝试解锁(0.1%%)
-gtit.reincarnation.gui.unlock.normal=§e猫猫币尝试解锁(0.001%%)
+gtit.reincarnation.gui.unlock.shimmer=§e闪烁猫猫币尝试解锁(0.1%)
+gtit.reincarnation.gui.unlock.normal=§e猫猫币尝试解锁(0.001%)
 gtit.reincarnation.gui.unlock.tooltip.line=从上方币格扣除 1 枚对应猫猫币进行概率判定
 gtit.reincarnation.gui.unlock.tooltip.shimmer=成功率 0.1%%（1/1000）
 gtit.reincarnation.gui.unlock.tooltip.normal=成功率 0.001%%（1/100000）
@@ -227,6 +229,7 @@ gtit.reincarnation.chat.withdraw.failed=§c记录移除失败——物品已退�
 gtit.reincarnation.celebration=轮回已生效
 gtit.reincarnation.countdown_line=该时间线的存档已经轮回
 gtit.reincarnation.timeline_ended=删除混淆配置文件可终结轮回倒计时（最后仁慈）
+gtit.reincarnation.grant.dropped=部分轮回奖励无法解析，已隔离并清账：%s
 # v1.8.2 严格单机门控（专用服/开放 LAN 拒绝提示）
 gtit.reincarnation.single_player_only=轮回机制仅单机可用
 

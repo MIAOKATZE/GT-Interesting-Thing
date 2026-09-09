@@ -78,11 +78,12 @@ public class ReincarnationEntities {
      * 服务端：在玩家位置生成飞升载具并立即绑定玩家为骑乘者（供 S4 演出触发调用）
      * <p>
      * 生成 + mountEntity 同 tick 完成，不会触发载具的"失去骑乘者即自毁"守卫；
-     * 骑乘后载具每 tick 服务端上升 {@link EntityAscensionCarrier#RISE_SPEED_PER_TICK}，
-     * 玩家位置由原版骑乘机制自动跟随。杀玩家/后续演出由 S4/S5 切片负责。
+     * 骑乘后载具每 tick 服务端按三段式动量积分上升（D3 口径，
+     * 总升程 ≈ 0.15 × 2/3 时长），玩家位置由原版骑乘机制自动跟随。
+     * 杀玩家/后续演出由 S4/S5 切片负责。
      *
      * @param player        目标玩家（服务端玩家；客户端调用返回 null）
-     * @param durationTicks 本次飞升时长（tick），总升程 ≈ RISE_SPEED_PER_TICK × durationTicks；
+     * @param durationTicks 本次飞升时长（tick），总升程按三段式曲线由时长决定；
      *                      非正值回退 {@link EntityAscensionCarrier#DEFAULT_ASCEND_DURATION_TICKS}
      * @return 已生成并绑定的载具实体（可经 {@link EntityAscensionCarrier#isAscensionComplete()}
      *         轮询完成状态）；玩家为空或处于客户端物理侧时返回 null

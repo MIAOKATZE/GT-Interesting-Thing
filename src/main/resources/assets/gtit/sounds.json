@@ -32,5 +32,14 @@
         "stream": false
       }
     ]
+  },
+  "ascension_ramp": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "gtit:ascension_ramp",
+        "stream": false
+      }
+    ]
   }
 }

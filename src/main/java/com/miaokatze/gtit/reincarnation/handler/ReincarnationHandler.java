@@ -23,6 +23,7 @@ import com.miaokatze.gtit.reincarnation.entity.EntityAscensionCarrier;
 import com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities;
 import com.miaokatze.gtit.reincarnation.network.GrantEffectPacket;
 import com.miaokatze.gtit.reincarnation.network.ReincarnationNetwork;
+import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -43,9 +44,12 @@ import cpw.mods.fml.relauncher.Side;
  * 到点经 tick 调度执行升天（同确认路径的 {@link #beginAscension}）；<b>每次重进重置</b>
  * （deadline 按登录时刻重算下发，重登自然重发，倒计时期间退出即取消，不作持久化）。
  * 未命中且 {@code canClaimGrant()}（EXECUTED 待领取）→ 200 tick 延迟发放奖励；</li>
- * <li><b>奖励发放</b>：{@code claimGrant()}（EXECUTED→IDLE）→ save → 逐件
- * {@code addItemStackToInventory}（满则 {@code dropPlayerItemWithRandomChoice}）→
- * {@code sendGrantEffectToClient}（驱动客户端庆祝+螺旋降下演出）；</li>
+ * <li><b>奖励发放</b>（D3 时序）：启动（{@code executeGrant}：①确认可领 ②投胎信箱
+ * {@code grantInFlight} 幂等标记 ③演出包 ④服务端计时 100t）→ 收束
+ * （{@code completeGrant}：⑤再确认在线+未完成 ⑥逐件 {@code addItemStackToInventory}
+ * （满则 {@code dropPlayerItemWithRandomChoice}）⑦成功或落地后才 claimGrant 清信箱+
+ * 复位标记）；异常/掉线信箱保留，登录链路自动续跑（崩溃重进不重复发放）；
+ * 客户端只显示，结束以服务端计时为准；</li>
  * <li><b>确认轮回</b>（{@link ReincarnationConfirmHook} 实现，S7 GUI 二次确认后回调）：
  * 校验 {@code state == DEPOSITED && pendingItems 非空 && server 线程} →
  * {@code confirmReincarnation(worldSeed)}（指纹入永久集合）→ save → 升天；</li>
@@ -84,6 +88,12 @@ public final class ReincarnationHandler {
 
     /** 登录后奖励领取延迟（tick） */
     private static final int GRANT_DELAY_TICKS = 200;
+
+    /**
+     * 发放演出时长（tick）：演出包下发后经本服务端计时收束发放（D3 时序：
+     * 客户端只显示，结束以服务端计时为准；与客户端 GRANT_DESCENT_TICKS=100 同步取 100）。
+     */
+    private static final int GRANT_PERFORMANCE_TICKS = 100;
 
     /** 飞升时长（tick）：与载具 spawnFor 参数同源（120 tick = 6 秒，总升程约 12 格） */
     private static final int ASCENSION_DURATION_TICKS = 120;
@@ -201,7 +211,7 @@ public final class ReincarnationHandler {
             return;
         }
         try {
-            ReincarnationCycle cycle = store().load(
+            ReincarnationCycle cycle = loadMerged(
                 player.getUniqueID()
                     .toString());
             long seed = player.worldObj.getSeed();
@@ -343,8 +353,7 @@ public final class ReincarnationHandler {
             return;
         }
         try {
-            ReincarnationStore cycleStore = store();
-            ReincarnationCycle cycle = cycleStore.load(
+            ReincarnationCycle cycle = loadMerged(
                 mp.getUniqueID()
                     .toString());
             if (cycle.getCycleState() != CycleState.DEPOSITED || cycle.getPendingItems()
@@ -360,7 +369,9 @@ public final class ReincarnationHandler {
             }
             long seed = mp.worldObj.getSeed();
             String fingerprint = cycle.confirmReincarnation(seed);
-            cycleStore.save(cycle);
+            // D1：确认推进 EXECUTED 与投胎信箱写入同一事务（save 内同一次原子写；
+            // 失败抛出即整体未写，信箱不会半份落盘）
+            saveSplit(cycle);
             GTInterestingThing.LOG.info(
                 "[reincarnation] 轮回确认：DEPOSITED→EXECUTED，player=" + mp.getCommandSenderName()
                     + "，fingerprint="
@@ -427,46 +438,121 @@ public final class ReincarnationHandler {
 
     // ==================== 奖励发放 / 倒计时到点 ====================
 
-    /** EXECUTED → IDLE 领取奖励并发放入背包（满则随机掉落），随后下发演出包 */
+    /**
+     * 奖励发放启动（D3 时序 ①②③④；登录延迟触发与崩溃重进续跑共用）：
+     * <ol>
+     * <li>① 确认可领（EXECUTED；已完成后幂等跳过——「重复发放不复制」）；</li>
+     * <li>② 幂等标记启动未完成（投胎信箱 {@code grantInFlight}，持久化；失败不启动演出）；</li>
+     * <li>③ 起演出（客户端只显示，发放以服务端计时为准）；</li>
+     * <li>④ 服务端计时 {@link #GRANT_PERFORMANCE_TICKS} 后经 {@link #completeGrant} 收束。</li>
+     * </ol>
+     * 崩溃/登出重进：信箱仍在 → 本方法重入（标记已置位则不重复置），演出重放后发放——
+     * 信箱只在发放成功后才清空，重进不重复发放已完成的奖励。
+     */
     private void executeGrant(EntityPlayerMP player) {
         try {
             ReincarnationStore cycleStore = store();
-            ReincarnationCycle cycle = cycleStore.load(
+            ReincarnationCycle cycle = loadMerged(
                 player.getUniqueID()
                     .toString());
             if (!cycle.canClaimGrant()) {
-                // 状态漂移（如确认路径先行收束）静默跳过
+                // ① 状态漂移 / 已完成（幂等）：静默跳过，不重复发放
                 GTInterestingThing.LOG.info(
                     "[reincarnation] 奖励领取跳过（当前状态 " + cycle.getCycleState()
                         + "）：player="
                         + player.getCommandSenderName());
                 return;
             }
-            List<ReincarnationCycle.ItemRef> items = cycle.claimGrant();
-            cycleStore.save(cycle);
+            // ② 幂等标记（持久化；已在发放中则保持，续跑不重复置位）
+            cycleStore.markGrantInFlight(
+                player.getUniqueID()
+                    .toString());
+            // ③ 起演出（演出包只驱动客户端展示）
             List<GrantEffectPacket.ItemRef> fxItems = new ArrayList<>();
-            for (ReincarnationCycle.ItemRef ref : items) {
-                ItemStack stack = resolveStack(ref);
-                if (stack == null) {
-                    GTInterestingThing.LOG.warn("[reincarnation] 奖励物品无法解析 registry id，跳过发放：" + ref);
-                    continue;
-                }
-                if (!player.inventory.addItemStackToInventory(stack)) {
-                    // 背包满：原地随机掉落（发放不丢账）
-                    player.dropPlayerItemWithRandomChoice(stack, false);
-                }
+            for (ReincarnationCycle.ItemRef ref : cycle.getPendingItems()) {
                 fxItems.add(new GrantEffectPacket.ItemRef(ref.getId(), ref.getMeta()));
             }
             ReincarnationNetwork.sendGrantEffectToClient(player, fxItems);
+            // ④ 服务端计时收束
+            scheduledActions.add(new ScheduledAction(player, GRANT_PERFORMANCE_TICKS, () -> completeGrant(player)));
+            GTInterestingThing.LOG.info(
+                "[reincarnation] 轮回奖励演出启动（发放于 " + GRANT_PERFORMANCE_TICKS
+                    + " tick 后按服务端计时收束）：player="
+                    + player.getCommandSenderName()
+                    + "，items="
+                    + fxItems.size()
+                    + " 项");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[reincarnation] 轮回奖励发放启动失败（信箱保留，重进后自动续跑）", t);
+        }
+    }
+
+    /**
+     * 奖励发放收束（D3 时序 ⑤⑥⑦）：再确认在线 + 未完成 → 逐件发放
+     * {@code addItemStackToInventory}（满则按既有溢出落地）→ <b>成功或落地后</b>才
+     * {@code claimGrant+save} 清投胎信箱并完成幂等标记。异常路径不清信箱——登录链路
+     * 重新触发 {@link #executeGrant}（失败保留语义）。
+     */
+    private void completeGrant(EntityPlayerMP player) {
+        try {
+            if (player.isDead) {
+                return; // 玩家已死亡：信箱保留，死亡重生/重进后登录链路续跑
+            }
+            ReincarnationCycle cycle = loadMerged(
+                player.getUniqueID()
+                    .toString());
+            // ⑤ 再确认未完成（防计时任务与登录链路双发）
+            if (!cycle.canClaimGrant()) {
+                return;
+            }
+            // ⑥ 逐件发放（背包满则随机掉落——发放不丢账，落地即视同交付）
+            int delivered = 0;
+            List<String> droppedIds = new ArrayList<>();
+            for (ReincarnationCycle.ItemRef ref : new ArrayList<>(cycle.getPendingItems())) {
+                ItemStack stack = resolveStack(ref);
+                if (stack == null) {
+                    String id = ref.getId() + ":" + ref.getMeta();
+                    droppedIds.add(id);
+                    GTInterestingThing.LOG.warn(
+                        "[reincarnation] 奖励物品无法解析 registry id，隔离并清账：player=" + player.getCommandSenderName()
+                            + ", item="
+                            + id);
+                    continue;
+                }
+                if (!player.inventory.addItemStackToInventory(stack)) {
+                    player.dropPlayerItemWithRandomChoice(stack, false);
+                }
+                delivered++;
+            }
+            if (!droppedIds.isEmpty()) {
+                String dropped = joinIds(droppedIds);
+                player.addChatMessage(new ChatComponentTranslation("gtit.reincarnation.grant.dropped", dropped));
+                GTInterestingThing.LOG.warn(
+                    "[reincarnation] 奖励失效条目已审计隔离并收束清账：player=" + player.getCommandSenderName() + ", ids=" + dropped);
+            }
+            // ⑦ 成功/落地/失效条目审计隔离后才清信箱 + 完成幂等标记
+            cycle.claimGrant();
+            saveSplit(cycle);
             GTInterestingThing.LOG.info(
                 "[reincarnation] 轮回奖励发放完成：EXECUTED→IDLE，player=" + player.getCommandSenderName()
                     + "，items="
-                    + fxItems.size()
-                    + " 项（演出包已下发）");
+                    + delivered
+                    + " 项（投胎信箱已清空，幂等标记复位）");
             sendSyncSnapshot(player, cycle);
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[reincarnation] 轮回奖励发放失败", t);
+            GTInterestingThing.LOG.error("[reincarnation] 轮回奖励发放收束失败（信箱保留，重进后自动续跑）", t);
         }
+    }
+
+    private static String joinIds(List<String> ids) {
+        StringBuilder joined = new StringBuilder();
+        for (String id : ids) {
+            if (joined.length() > 0) {
+                joined.append(", ");
+            }
+            joined.append(id);
+        }
+        return joined.toString();
     }
 
     /** 倒计时到点：该时间线已轮回过，执行升天（同确认路径） */
@@ -527,6 +613,48 @@ public final class ReincarnationHandler {
             store = new ReincarnationStore(new File("."));
         }
         return store;
+    }
+
+    /**
+     * 每存档进度载体（懒取，幂等；overworld MapStorage，D1 每存档隔离）。
+     * 集成服未运行/世界侧异常时返回 null（调用方按"仅许可字段"降级——
+     * 进度展示空、进度保存跳过，不影响许可链路）。
+     */
+    private static ReincarnationWorldData worldData() {
+        try {
+            net.minecraft.server.MinecraftServer server = net.minecraft.server.MinecraftServer.getServer();
+            if (server == null) {
+                return null;
+            }
+            return ReincarnationWorldData.get(server.getEntityWorld());
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[reincarnation] 每存档进度载体获取失败（按仅许可字段降级）", t);
+            return null;
+        }
+    }
+
+    /**
+     * D1 合并读：全局许可（指纹/投胎信箱）+ 每存档进度（WorldData 缺失时仅许可字段）。
+     */
+    private ReincarnationCycle loadMerged(String uuid) {
+        ReincarnationCycle cycle = store().load(uuid);
+        ReincarnationWorldData data = worldData();
+        if (data != null) {
+            data.applyTo(cycle);
+        }
+        return cycle;
+    }
+
+    /**
+     * D1 拆分写：先全局许可（指纹/投胎信箱——失败抛出，确认与信箱同事务、失败不写半份），
+     * 再每存档进度（WorldData；载体缺失时跳过进度落盘）。
+     */
+    private void saveSplit(ReincarnationCycle cycle) {
+        store().save(cycle);
+        ReincarnationWorldData data = worldData();
+        if (data != null) {
+            data.saveFrom(cycle);
+        }
     }
 
     /**

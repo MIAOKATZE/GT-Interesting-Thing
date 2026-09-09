@@ -8,21 +8,29 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import net.minecraft.nbt.NBTTagCompound;
 
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle.CycleState;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle.ItemRef;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationFingerprints;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
+import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
 
 /**
- * 周目系统核心（ReincarnationCycle/ReincarnationStore/ReincarnationFingerprints）
- * 的纯 JVM 测试：加解密往返、最后仁慈路径（篡改/魔数/UUID 不匹配/删档）、
- * 单轮回状态机互斥与非法迁移、指纹稳定性、进度字段持久化、原子写。
+ * 周目系统核心（ReincarnationCycle/ReincarnationStore/ReincarnationWorldData）的
+ * 纯 JVM 测试：v2 许可格式往返（UUID/指纹/投胎信箱）、投胎信箱四语义
+ * （写/读/成功清空/失败保留）与发放幂等（重复发放不复制、grantInFlight 标记）、
+ * 最后仁慈路径（篡改/魔数/UUID 不匹配/删档）、旧全局 v1 格式的登录只读兼容视图与
+ * consume-once 迁移（一次不重复/损坏走仁慈/UUID 隔离）、每存档 WorldData NBT 往返、
+ * 单轮回状态机互斥与非法迁移、指纹稳定性、原子写。
  * <p>
  * 每用例使用独立临时目录（系统 temp，退出前尽力清理），互不串档。
  * 因 GTNH convention 未随 test source set 提供测试框架依赖（见
@@ -39,7 +47,21 @@ public class ReincarnationStoreTest {
 
     public static void main(String[] args) throws Exception {
         Map<String, Runnable> cases = new LinkedHashMap<>();
-        cases.put("roundTripPreservesFields", () -> runChecked(ReincarnationStoreTest::roundTripPreservesFields));
+        cases.put("newFormatLicenseRoundTrip", () -> runChecked(ReincarnationStoreTest::newFormatLicenseRoundTrip));
+        cases.put(
+            "globalKeepsOnlyLicenseFields",
+            () -> runChecked(ReincarnationStoreTest::globalKeepsOnlyLicenseFields));
+        cases.put("mailboxFourSemantics", () -> runChecked(ReincarnationStoreTest::mailboxFourSemantics));
+        cases.put("grantIdempotentNoDuplicate", () -> runChecked(ReincarnationStoreTest::grantIdempotentNoDuplicate));
+        cases.put("grantInFlightMarker", () -> runChecked(ReincarnationStoreTest::grantInFlightMarker));
+        cases.put("legacyLoginLicenseView", () -> runChecked(ReincarnationStoreTest::legacyLoginLicenseView));
+        cases.put("legacyMigrationConsumeOnce", () -> runChecked(ReincarnationStoreTest::legacyMigrationConsumeOnce));
+        cases.put(
+            "legacyMigrationDepositedAndMercy",
+            () -> runChecked(ReincarnationStoreTest::legacyMigrationDepositedAndMercy));
+        cases.put(
+            "legacyReadV1NonDestructiveThenConsume",
+            () -> runChecked(ReincarnationStoreTest::legacyReadV1NonDestructiveThenConsume));
         cases.put(
             "tamperedCiphertextTreatedAsAbsent",
             () -> runChecked(ReincarnationStoreTest::tamperedCiphertextTreatedAsAbsent));
@@ -54,7 +76,7 @@ public class ReincarnationStoreTest {
             "claimGrantClearsPendingKeepsFingerprints",
             () -> runChecked(ReincarnationStoreTest::claimGrantClearsPendingKeepsFingerprints));
         cases.put("deletedFileLoadsFresh", () -> runChecked(ReincarnationStoreTest::deletedFileLoadsFresh));
-        cases.put("progressFieldsRoundTrip", () -> runChecked(ReincarnationStoreTest::progressFieldsRoundTrip));
+        cases.put("worldDataNbtRoundTrip", () -> runChecked(ReincarnationStoreTest::worldDataNbtRoundTrip));
         cases.put(
             "atomicWriteNoTempLeftAndOverwriteSafe",
             () -> runChecked(ReincarnationStoreTest::atomicWriteNoTempLeftAndOverwriteSafe));
@@ -80,12 +102,18 @@ public class ReincarnationStoreTest {
         void run() throws Exception;
     }
 
-    // ==================== 用例 ====================
+    // ==================== v2 许可格式与投胎信箱 ====================
 
-    static void roundTripPreservesFields() throws Exception {
+    /**
+     * D1 新格式往返：EXECUTED（投胎信箱）+ 指纹 + 每存档进度分离——
+     * 全局文件往返保留许可字段；进度字段不再进全局文件（归 WorldData）。
+     */
+    static void newFormatLicenseRoundTrip() throws Exception {
         ReincarnationStore store = newStore();
         ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
         cycle.deposit(Arrays.asList(DIAMOND, CIRCUIT));
+        // 确认推进 EXECUTED：与写信箱同一 save 事务（容器/Handler 路径的模型等价）
+        String fingerprint = cycle.confirmReincarnation(42L);
         cycle.recordHullConsumption(2, 9);
         cycle.unlockColumn(2);
         cycle.setUnlockedRows(2);
@@ -93,33 +121,310 @@ public class ReincarnationStoreTest {
 
         ReincarnationCycle loaded = store.load(UUID_A);
         SimpleAssert.eq(cycle.getUuid(), loaded.getUuid(), "uuid round-trip");
-        SimpleAssert.eq(CycleState.DEPOSITED, loaded.getCycleState(), "cycleState round-trip");
-        SimpleAssert.eq(
-            2,
-            loaded.getPendingItems()
-                .size(),
-            "待领取物品条数 round-trip");
-        SimpleAssert.eq(
-            DIAMOND,
-            loaded.getPendingItems()
-                .get(0),
-            "待领取物品[0] round-trip");
-        SimpleAssert.eq(
-            CIRCUIT,
-            loaded.getPendingItems()
-                .get(1),
-            "待领取物品[1] round-trip");
-        SimpleAssert.eq(9, loaded.getHullProgress()[2], "外壳进度 round-trip");
-        SimpleAssert.that(loaded.isColumnUnlocked(2), "列解锁标记 round-trip");
-        SimpleAssert.eq(2, loaded.getUnlockedRows(), "行解锁数 round-trip");
+        SimpleAssert.eq(CycleState.EXECUTED, loaded.getCycleState(), "投胎信箱在档 → EXECUTED");
+        SimpleAssert.that(loaded.canClaimGrant(), "EXECUTED 可领取（信箱即待发放）");
+        assertMailbox(loaded, DIAMOND, CIRCUIT);
+        SimpleAssert.that(loaded.hasFingerprint(fingerprint), "永久指纹 round-trip");
+        // D1：进度字段不在全局文件——store 单独读回为缺省值（由 WorldData 承载，另测）
+        SimpleAssert.that(allZero(loaded.getHullProgress()), "进度不随全局文件往返（每存档隔离）");
+        SimpleAssert.eq(1, loaded.getUnlockedRows(), "行解锁不随全局文件往返");
 
-        // 回读实例可继续状态机：DEPOSITED → EXECUTED 后再次往返
-        String fingerprint = loaded.confirmReincarnation(42L);
+        // 成功清空（claimGrant + save）：信箱清空、指纹保留，可继续下一轮状态机
+        loaded.claimGrant();
         store.save(loaded);
         ReincarnationCycle reloaded = store.load(UUID_A);
-        SimpleAssert.eq(CycleState.EXECUTED, reloaded.getCycleState(), "EXECUTED 往返");
-        SimpleAssert.that(reloaded.hasFingerprint(fingerprint), "EXECUTED 往返后指纹保留");
+        SimpleAssert.eq(CycleState.IDLE, reloaded.getCycleState(), "信箱清空后回 IDLE");
+        SimpleAssert.eq(
+            0,
+            reloaded.getPendingItems()
+                .size(),
+            "信箱清空后待发放为空");
+        SimpleAssert.that(reloaded.hasFingerprint(fingerprint), "信箱清空后永久指纹保留");
     }
+
+    /** D1：IDLE/DEPOSITED 周目不向全局文件写任何待发放/进度内容 */
+    static void globalKeepsOnlyLicenseFields() throws Exception {
+        ReincarnationStore store = newStore();
+        ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
+        cycle.addFingerprint(ReincarnationFingerprints.fingerprintOf(7L));
+        cycle.deposit(Arrays.asList(DIAMOND));
+        cycle.recordHullConsumption(5, 16);
+        cycle.unlockColumn(5);
+        store.save(cycle); // DEPOSITED：寄存快照归 WorldData，全局不写
+
+        ReincarnationCycle loaded = store.load(UUID_A);
+        SimpleAssert.eq(CycleState.IDLE, loaded.getCycleState(), "全局文件无 DEPOSITED 态");
+        SimpleAssert.eq(
+            0,
+            loaded.getPendingItems()
+                .size(),
+            "全局文件无寄存物品（归每存档 WorldData）");
+        SimpleAssert.that(allZero(loaded.getHullProgress()), "全局文件无外壳进度");
+        SimpleAssert.that(noneUnlocked(loaded.getUnlockedColumns()), "全局文件无列解锁");
+        SimpleAssert.that(loaded.hasFingerprint(ReincarnationFingerprints.fingerprintOf(7L)), "许可字段（指纹）保留");
+    }
+
+    /** 投胎信箱四语义：写（确认同事务）/读/成功清空/失败保留（发放清空只能晚于成功发放） */
+    static void mailboxFourSemantics() throws Exception {
+        ReincarnationStore store = newStore();
+        ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
+
+        // —— 写：确认轮回推进 EXECUTED，同一 save 事务写入物品快照（写）——
+        cycle.deposit(Arrays.asList(DIAMOND));
+        cycle.confirmReincarnation(11L);
+        store.save(cycle);
+
+        // —— 读：load 读出信箱物品（读）——
+        ReincarnationCycle read = store.load(UUID_A);
+        assertMailbox(read, DIAMOND);
+
+        // —— 失败保留：发放收束（claimGrant）后未落盘（发放未完成/崩溃窗口），磁盘信箱仍在 ——
+        read.claimGrant(); // 仅内存清空，未 save
+        ReincarnationCycle afterFailed = store.load(UUID_A);
+        SimpleAssert.eq(CycleState.EXECUTED, afterFailed.getCycleState(), "失败保留：未落盘的发放不影响磁盘信箱");
+        assertMailbox(afterFailed, DIAMOND);
+
+        // —— 成功清空：成功发放（交付/溢出落地）后才 claimGrant + save 清空 ——
+        afterFailed.claimGrant();
+        store.save(afterFailed);
+        ReincarnationCycle afterSuccess = store.load(UUID_A);
+        SimpleAssert.eq(CycleState.IDLE, afterSuccess.getCycleState(), "成功清空：发放完成后信箱清空");
+        SimpleAssert.eq(
+            0,
+            afterSuccess.getPendingItems()
+                .size(),
+            "成功清空：信箱为空");
+    }
+
+    /** 幂等防复制：重复保存同一 EXECUTED 信箱不复制条目；发放完成后再次执行领取路径跳过 */
+    static void grantIdempotentNoDuplicate() throws Exception {
+        ReincarnationStore store = newStore();
+        ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
+        cycle.deposit(Arrays.asList(DIAMOND));
+        cycle.confirmReincarnation(21L);
+        store.save(cycle);
+        // 重复写同一信箱（模拟登录链路/续跑重复触发保存）
+        store.save(cycle);
+        store.save(store.load(UUID_A));
+        assertMailbox(store.load(UUID_A), DIAMOND); // 恰 1 条，无复制
+
+        // 发放完成（清信箱）后：可领取消失 → 发放路径 ① 确认可领 即幂等跳过，不再复制发放
+        ReincarnationCycle done = store.load(UUID_A);
+        done.claimGrant();
+        store.save(done);
+        ReincarnationCycle after = store.load(UUID_A);
+        SimpleAssert.that(!after.canClaimGrant(), "发放完成后无可领取（重复发放路径幂等跳过）");
+        SimpleAssert.eq(
+            0,
+            after.getPendingItems()
+                .size(),
+            "发放完成后信箱为空（不复制）");
+    }
+
+    /** grantInFlight 幂等标记：无信箱不可置位；有信箱可置位/查询；清信箱自动复位 */
+    static void grantInFlightMarker() throws Exception {
+        ReincarnationStore store = newStore();
+        // 无信箱（文件从未存在）：查询 false，置位无副作用
+        SimpleAssert.that(!store.isGrantInFlight(UUID_A), "无信箱时标记为 false");
+        store.markGrantInFlight(UUID_A);
+        SimpleAssert.that(!store.isGrantInFlight(UUID_A), "无信箱置位无副作用（失败不写口径）");
+
+        // 有信箱：置位 → true（幂等置位）
+        ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
+        cycle.deposit(Arrays.asList(CIRCUIT));
+        cycle.confirmReincarnation(31L);
+        store.save(cycle);
+        SimpleAssert.that(!store.isGrantInFlight(UUID_A), "刚写入的信箱未置位");
+        store.markGrantInFlight(UUID_A);
+        store.markGrantInFlight(UUID_A);
+        SimpleAssert.that(store.isGrantInFlight(UUID_A), "置位后标记为 true（幂等重复置位）");
+        // 标记置位不影响信箱物品
+        assertMailbox(store.load(UUID_A), CIRCUIT);
+
+        // 进度类保存（EXECUTED 态再 save）不丢标记
+        store.save(store.load(UUID_A));
+        SimpleAssert.that(store.isGrantInFlight(UUID_A), "发放中保存不丢幂等标记");
+
+        // 清信箱（成功发放）→ 标记复位
+        ReincarnationCycle done = store.load(UUID_A);
+        done.claimGrant();
+        store.save(done);
+        SimpleAssert.that(!store.isGrantInFlight(UUID_A), "清信箱后标记复位（完成标记）");
+    }
+
+    // ==================== 旧全局 v1：登录只读兼容 + consume-once 迁移 ====================
+
+    /**
+     * v1 登录只读兼容视图：未迁移的旧档在登录链路（load）即可读到许可字段——
+     * 指纹命中（倒计时判定）与 EXECUTED 信箱（发放判定）不依赖迁移先行完成。
+     */
+    static void legacyLoginLicenseView() throws Exception {
+        Path dir = tempDir();
+        ReincarnationStore store = new ReincarnationStore(dir.toFile());
+        String fp = ReincarnationFingerprints.fingerprintOf(63L);
+        Set<String> fps = new LinkedHashSet<>();
+        fps.add(fp);
+        ReincarnationStore.writeLegacyV1Fixture(
+            dir.toFile(),
+            UUID_A,
+            CycleState.EXECUTED,
+            Arrays.asList(DIAMOND, CIRCUIT),
+            new int[] { 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+            boolArray(0),
+            2,
+            fps);
+
+        ReincarnationCycle viewed = store.load(UUID_A); // 不消费（登录视角）
+        SimpleAssert.eq(CycleState.EXECUTED, viewed.getCycleState(), "v1 EXECUTED → 许可视图 EXECUTED");
+        assertMailbox(viewed, DIAMOND, CIRCUIT);
+        SimpleAssert.that(viewed.hasFingerprint(fp), "v1 指纹经登录视图可见（倒计时判定可用）");
+        SimpleAssert.that(allZero(viewed.getHullProgress()), "登录视图不带进度字段（进度归 WorldData/迁移）");
+        // 只读：未触发迁移，文件仍为 v1（迁移后 consume 返回非 null）
+        SimpleAssert.that(store.consumeLegacyV1(UUID_A) != null, "登录视图未消费旧档（迁移仍可一次性完成）");
+    }
+
+    /** consume-once 迁移：EXECUTED 旧档 → 进度拆出 + 信箱转入 v2；二次消费返回 null（不重复） */
+    static void legacyMigrationConsumeOnce() throws Exception {
+        Path dir = tempDir();
+        ReincarnationStore store = new ReincarnationStore(dir.toFile());
+        String fp = ReincarnationFingerprints.fingerprintOf(99L);
+        Set<String> fps = new LinkedHashSet<>();
+        fps.add(fp);
+        int[] hull = new int[15];
+        hull[3] = 16;
+        ReincarnationStore.writeLegacyV1Fixture(
+            dir.toFile(),
+            UUID_A,
+            CycleState.EXECUTED,
+            Arrays.asList(DIAMOND),
+            hull,
+            boolArray(3),
+            3,
+            fps);
+
+        // 首次消费：返回 v1 拆分视图（进度 → WorldData；EXECUTED pending → 信箱）
+        ReincarnationStore.LegacyRecord legacy = store.consumeLegacyV1(UUID_A);
+        SimpleAssert.that(legacy != null, "v1 载荷首次消费返回迁移视图");
+        SimpleAssert.that(Arrays.equals(hull, legacy.hullProgress), "迁移视图携带 15 列外壳进度");
+        SimpleAssert.that(legacy.unlockedColumns[3], "迁移视图携带列解锁");
+        SimpleAssert.eq(3, legacy.unlockedRows, "迁移视图携带行解锁数");
+        SimpleAssert.eq(0, legacy.depositedItems.size(), "EXECUTED 旧档无寄存快照（信箱转入 v2）");
+        SimpleAssert.eq(1, legacy.mailboxItems.size(), "EXECUTED pendingItems 转入投胎信箱");
+        SimpleAssert.eq(DIAMOND, legacy.mailboxItems.get(0), "信箱转入条目内容一致");
+
+        // 全局文件已改写 v2：许可字段保留（指纹/信箱），进度字段剥离
+        ReincarnationCycle after = store.load(UUID_A);
+        SimpleAssert.eq(CycleState.EXECUTED, after.getCycleState(), "迁移后信箱在档（EXECUTED）");
+        assertMailbox(after, DIAMOND);
+        SimpleAssert.that(after.hasFingerprint(fp), "迁移保留永久指纹");
+        SimpleAssert.that(allZero(after.getHullProgress()), "迁移后全局无进度字段");
+
+        // 二次消费：返回 null（consume-once，不重复合并）
+        SimpleAssert.that(store.consumeLegacyV1(UUID_A) == null, "第二次消费返回 null（consume-once）");
+        assertMailbox(store.load(UUID_A), DIAMOND); // 重复消费尝试不破坏 v2 信箱
+    }
+
+    /**
+     * 两阶段迁移的 Store 侧时序：readLegacyV1 非破坏可重复（模拟落盘前崩溃可重试），
+     * consumeLegacyV1 之后 v1 载荷不再可读、全局收敛为 v2 许可字段。
+     */
+    static void legacyReadV1NonDestructiveThenConsume() throws Exception {
+        Path dir = tempDir();
+        ReincarnationStore store = new ReincarnationStore(dir.toFile());
+        int[] hull = new int[15];
+        hull[0] = 16;
+        hull[1] = 7;
+        ReincarnationStore.writeLegacyV1Fixture(
+            dir.toFile(),
+            UUID_A,
+            CycleState.DEPOSITED,
+            Arrays.asList(DIAMOND, CIRCUIT),
+            hull,
+            boolArray(0),
+            2,
+            new LinkedHashSet<String>());
+
+        ReincarnationStore.LegacyRecord first = store.readLegacyV1(UUID_A);
+        SimpleAssert.that(first != null, "readLegacyV1 读到 v1 载荷");
+        SimpleAssert.eq(16, first.hullProgress[0], "非破坏读携带列0外壳进度");
+        SimpleAssert.eq(7, first.hullProgress[1], "非破坏读携带列1外壳进度");
+        SimpleAssert.that(first.unlockedColumns[0], "非破坏读携带列0解锁");
+        SimpleAssert.eq(2, first.depositedItems.size(), "DEPOSITED 快照进当档寄存视图");
+        SimpleAssert.eq(0, first.mailboxItems.size(), "DEPOSITED 不进信箱");
+
+        // 模拟"WorldData 落盘前崩溃"：全局文件未动，重复非破坏读仍可重试且视图一致
+        ReincarnationStore.LegacyRecord retry = store.readLegacyV1(UUID_A);
+        SimpleAssert.that(retry != null, "重复非破坏读仍返回 v1（崩溃窗口可重试）");
+        SimpleAssert.eq(2, retry.depositedItems.size(), "重试读视图与首读一致");
+        SimpleAssert.eq(16, retry.hullProgress[0], "重试读携带进度一致");
+
+        // 落盘后破坏性消费：此后 readLegacyV1 返回 null，全局只剩许可字段
+        SimpleAssert.that(store.consumeLegacyV1(UUID_A) != null, "consumeLegacyV1 正常消费");
+        SimpleAssert.that(store.readLegacyV1(UUID_A) == null, "消费后 v1 载荷不再可读");
+        ReincarnationCycle after = store.load(UUID_A);
+        SimpleAssert.eq(CycleState.IDLE, after.getCycleState(), "DEPOSITED 消费后全局不再持有寄存状态");
+        SimpleAssert.that(allZero(after.getHullProgress()), "消费后全局无进度字段");
+    }
+
+    /** 迁移的寄存拆分与仁慈边界：DEPOSITED 快照归当档；损坏/UUID 不匹配返回 null 且不改写文件 */
+    static void legacyMigrationDepositedAndMercy() throws Exception {
+        // DEPOSITED：pendingItems → 寄存快照（WorldData 侧），不进信箱
+        Path dir = tempDir();
+        ReincarnationStore store = new ReincarnationStore(dir.toFile());
+        ReincarnationStore.writeLegacyV1Fixture(
+            dir.toFile(),
+            UUID_A,
+            CycleState.DEPOSITED,
+            Arrays.asList(CIRCUIT),
+            new int[15],
+            boolArray(-1),
+            1,
+            new LinkedHashSet<String>());
+        ReincarnationStore.LegacyRecord legacy = store.consumeLegacyV1(UUID_A);
+        SimpleAssert.eq(1, legacy.depositedItems.size(), "DEPOSITED pendingItems 转入寄存快照");
+        SimpleAssert.eq(0, legacy.mailboxItems.size(), "DEPOSITED 旧档无信箱");
+        SimpleAssert.eq(
+            CycleState.IDLE,
+            store.load(UUID_A)
+                .getCycleState(),
+            "迁移后全局无 DEPOSITED 态");
+
+        // 损坏 v1（篡改密文）：最后仁慈 → null 且文件保持原样（不删除、不改写）
+        Path damagedDir = tempDir();
+        ReincarnationStore damaged = new ReincarnationStore(damagedDir.toFile());
+        ReincarnationStore.writeLegacyV1Fixture(
+            damagedDir.toFile(),
+            UUID_A,
+            CycleState.IDLE,
+            new ArrayList<ItemRef>(),
+            new int[15],
+            boolArray(-1),
+            1,
+            new LinkedHashSet<String>());
+        Path file = damaged.getFile()
+            .toPath();
+        byte[] bytes = Files.readAllBytes(file);
+        bytes[4] ^= 0x5A;
+        Files.write(file, bytes);
+        SimpleAssert.that(damaged.consumeLegacyV1(UUID_A) == null, "损坏 v1 走最后仁慈（null）");
+        SimpleAssert.that(Files.exists(file), "损坏文件不被迁移删除/改写（由下次 save 原子覆盖）");
+
+        // UUID 不匹配：按 UUID 隔离 → null（其他玩家的旧档不迁移进本档）
+        Path mismatchDir = tempDir();
+        ReincarnationStore mismatch = new ReincarnationStore(mismatchDir.toFile());
+        ReincarnationStore.writeLegacyV1Fixture(
+            mismatchDir.toFile(),
+            UUID_A,
+            CycleState.IDLE,
+            new ArrayList<ItemRef>(),
+            new int[15],
+            boolArray(-1),
+            1,
+            new LinkedHashSet<String>());
+        SimpleAssert.that(mismatch.consumeLegacyV1(UUID_B) == null, "UUID 不匹配不迁移（按 UUID 隔离）");
+    }
+
+    // ==================== 最后仁慈路径 / 原子写 ====================
 
     static void tamperedCiphertextTreatedAsAbsent() throws Exception {
         ReincarnationStore store = newStore();
@@ -159,12 +464,16 @@ public class ReincarnationStoreTest {
         ReincarnationStore store = newStore();
         ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
         cycle.deposit(Arrays.asList(CIRCUIT));
+        cycle.confirmReincarnation(5L);
         store.save(cycle);
 
         ReincarnationCycle loadedForB = store.load(UUID_B);
         assertFresh(loadedForB, "UUID 不匹配");
         SimpleAssert.eq(UUID_B, loadedForB.getUuid(), "兜底记录归属请求 UUID");
+        SimpleAssert.that(!store.isGrantInFlight(UUID_B), "UUID 不匹配时幂等标记按无信箱处理");
     }
+
+    // ==================== 状态机（红线：EXECUTED 锁语义不变） ====================
 
     static void fingerprintStableAndDistinct() {
         String fp1 = ReincarnationFingerprints.fingerprintOf(42L);
@@ -232,7 +541,7 @@ public class ReincarnationStoreTest {
             "领取后待领取清空");
         SimpleAssert.that(cycle.hasFingerprint(fingerprint), "领取后永久指纹保留（标记永久化）");
 
-        // 永久指纹持久化：再次保存加载仍在
+        // 永久指纹持久化（v2 全局仅许可字段）：再次保存加载仍在
         store.save(cycle);
         ReincarnationCycle loaded = store.load(UUID_A);
         SimpleAssert.that(loaded.hasFingerprint(fingerprint), "永久指纹跨存取保留");
@@ -264,44 +573,97 @@ public class ReincarnationStoreTest {
         // 从未存在过的文件同样返回全新记录
         ReincarnationStore neverExisted = newStore();
         assertFresh(neverExisted.load(UUID_B), "文件从未存在");
+        SimpleAssert.that(!neverExisted.isGrantInFlight(UUID_B), "文件从未存在时幂等标记为 false");
     }
 
-    static void progressFieldsRoundTrip() throws Exception {
-        ReincarnationStore store = newStore();
+    // ==================== 每存档 WorldData（NBT 往返 + 快照收敛） ====================
+
+    /**
+     * D1 每存档载体：NBT 往返（进度/列/行/寄存快照/迁移标记）+ 与 Cycle 的
+     * applyTo/saveFrom 双向搬运（含 EXECUTED 时寄存快照清空的收敛语义）。
+     */
+    static void worldDataNbtRoundTrip() throws Exception {
+        ReincarnationWorldData data = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
+        int[] hull = new int[ReincarnationCycle.COLUMN_COUNT];
+        hull[0] = 8;
+        hull[14] = 1;
+        data.setHullProgress(hull);
+        boolean[] columns = boolArray(0);
+        columns[14] = true;
+        data.setUnlockedColumns(columns);
+        data.setUnlockedRows(3);
+        data.setDepositedItems(Arrays.asList(DIAMOND, CIRCUIT));
+        SimpleAssert.that(!data.isMigrated(), "新载体迁移标记缺省 false");
+
+        NBTTagCompound tag = new NBTTagCompound();
+        data.writeToNBT(tag);
+        ReincarnationWorldData restored = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
+        restored.readFromNBT(tag);
+
+        SimpleAssert
+            .that(Arrays.equals(data.getHullProgress(), restored.getHullProgress()), "15 列外壳进度逐位 NBT round-trip");
+        SimpleAssert
+            .that(Arrays.equals(data.getUnlockedColumns(), restored.getUnlockedColumns()), "15 列解锁标记逐位 NBT round-trip");
+        SimpleAssert.eq(3, restored.getUnlockedRows(), "行解锁数 NBT round-trip");
+        SimpleAssert.eq(
+            2,
+            restored.getDepositedItems()
+                .size(),
+            "寄存快照条数 NBT round-trip");
+        SimpleAssert.eq(
+            DIAMOND,
+            restored.getDepositedItems()
+                .get(0),
+            "寄存快照[0] NBT round-trip");
+        SimpleAssert.eq(
+            CIRCUIT,
+            restored.getDepositedItems()
+                .get(1),
+            "寄存快照[1] NBT round-trip");
+        SimpleAssert.that(!restored.isMigrated(), "迁移标记 NBT round-trip");
+
+        // applyTo：进度灌入模型 + IDLE 可寄存时 deposit 快照
         ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
-        cycle.recordHullConsumption(0, 5);
-        cycle.recordHullConsumption(0, 3);
-        cycle.recordHullConsumption(14, 1);
-        cycle.unlockColumn(0);
-        cycle.unlockColumn(14);
-        cycle.setUnlockedRows(3);
-        store.save(cycle);
+        restored.applyTo(cycle);
+        SimpleAssert.that(Arrays.equals(restored.getHullProgress(), cycle.getHullProgress()), "applyTo 灌入外壳进度");
+        SimpleAssert.that(cycle.isColumnUnlocked(0) && cycle.isColumnUnlocked(14), "applyTo 灌入列解锁（0 与 14 两列）");
+        SimpleAssert.eq(3, cycle.getUnlockedRows(), "applyTo 灌入行解锁数");
+        SimpleAssert.eq(CycleState.DEPOSITED, cycle.getCycleState(), "applyTo 将寄存快照 deposit 进模型");
+        assertMailbox(cycle, DIAMOND, CIRCUIT);
 
-        ReincarnationCycle loaded = store.load(UUID_A);
+        // saveFrom：EXECUTED（信箱在全局文件）时寄存快照清空（收敛语义）
+        cycle.confirmReincarnation(17L);
+        restored.saveFrom(cycle);
+        SimpleAssert.eq(
+            0,
+            restored.getDepositedItems()
+                .size(),
+            "EXECUTED 时寄存快照清空（信箱归全局文件）");
+        SimpleAssert.that(Arrays.equals(cycle.getHullProgress(), restored.getHullProgress()), "saveFrom 回写外壳进度");
+
+        // 损坏防御：短数组按前缀吸收（余位缺省）、越界行数收敛，不越界不抛错
+        ReincarnationWorldData defensive = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
+        NBTTagCompound bad = new NBTTagCompound();
+        bad.setIntArray("HullProgress", new int[] { 1, 2, 3 });
+        bad.setByteArray("UnlockedColumns", new byte[] { 1 });
+        bad.setInteger("UnlockedRows", 99);
+        defensive.readFromNBT(bad);
+        int[] partial = defensive.getHullProgress();
         SimpleAssert.that(
-            Arrays.equals(new int[] { 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 }, loaded.getHullProgress()),
-            "15 列外壳进度逐位 round-trip");
-        boolean[] expectedColumns = new boolean[ReincarnationCycle.COLUMN_COUNT];
-        expectedColumns[0] = true;
-        expectedColumns[14] = true;
-        SimpleAssert.that(Arrays.equals(expectedColumns, loaded.getUnlockedColumns()), "15 列解锁标记逐位 round-trip");
-        SimpleAssert.eq(3, loaded.getUnlockedRows(), "行解锁数 round-trip");
-
-        // 入参边界：行数钳制 1..3，列下标越界拒绝
-        ReincarnationCycle bounds = new ReincarnationCycle(UUID_B);
-        bounds.setUnlockedRows(99);
-        SimpleAssert.eq(3, bounds.getUnlockedRows(), "行解锁数上钳 3");
-        bounds.setUnlockedRows(0);
-        SimpleAssert.eq(1, bounds.getUnlockedRows(), "行解锁数下钳 1");
-        expectIllegalArgument("列下标 15 越界", () -> bounds.recordHullConsumption(15, 1));
-        expectIllegalArgument("列下标 -1 越界", () -> bounds.unlockColumn(-1));
-        expectIllegalArgument("外壳消耗数为负", () -> bounds.recordHullConsumption(0, -1));
+            partial[0] == 1 && partial[1] == 2 && partial[2] == 3 && allZero(Arrays.copyOfRange(partial, 3, 15)),
+            "短数组按前缀吸收、余位缺省（不越界）");
+        SimpleAssert.that(defensive.getUnlockedColumns()[0], "短布尔数组按前缀吸收");
+        SimpleAssert.eq(1, defensive.getUnlockedRows(), "越界行数按缺省收敛");
     }
+
+    // ==================== 原子写 / 待领取清单调整 ====================
 
     static void atomicWriteNoTempLeftAndOverwriteSafe() throws Exception {
         ReincarnationStore store = newStore();
+        // 内容断言走 EXECUTED（信箱是 v2 全局文件唯一物品载荷）
         ReincarnationCycle first = new ReincarnationCycle(UUID_A);
         first.deposit(Arrays.asList(DIAMOND));
+        first.confirmReincarnation(101L);
         store.save(first);
 
         File parent = store.getFile()
@@ -312,27 +674,23 @@ public class ReincarnationStoreTest {
         // 覆盖写：旧档被原子替换且新内容可读
         ReincarnationCycle second = new ReincarnationCycle(UUID_A);
         second.deposit(Arrays.asList(CIRCUIT));
-        second.recordHullConsumption(7, 4);
+        second.confirmReincarnation(102L);
         store.save(second);
 
         ReincarnationCycle loaded = store.load(UUID_A);
+        assertMailbox(loaded, CIRCUIT); // 覆盖写后读到最新信箱（恰 1 条，旧档被替换）
         SimpleAssert.eq(
             1,
-            loaded.getPendingItems()
+            loaded.getExecutedFingerprints()
                 .size(),
-            "覆盖写后读取到最新内容");
-        SimpleAssert.eq(
-            CIRCUIT,
-            loaded.getPendingItems()
-                .get(0),
-            "覆盖写后内容为新档");
-        SimpleAssert.eq(4, loaded.getHullProgress()[7], "覆盖写后进度为新档");
+            "save 为整档原子替换（按模型全量写许可字段，游戏路径恒先 load 后 save）");
     }
 
     /**
      * v1.9.0 S4 契约：待领取清单逐件调整（withdraw/addPendingItem）。
-     * 调整口径"只读锁 = EXECUTED"：IDLE/DEPOSITED 可增删（DEPOSITED 由原"仅 IDLE"放宽），
-     * EXECUTED 锁定拒绝；不存在返回 false；调整不影响状态机迁移。
+     * 调整口径"只读锁 = EXECUTED"：IDLE/DEPOSITED 可增删，EXECUTED 锁定拒绝；
+     * 不存在返回 false；调整不影响状态机迁移。D1 起寄存快照经 WorldData 承载
+     * （NBT 往返见 {@link #worldDataNbtRoundTrip()}），本用例聚焦模型行为。
      */
     static void withdrawAdjustsPendingItems() throws Exception {
         ReincarnationStore store = newStore();
@@ -355,7 +713,7 @@ public class ReincarnationStoreTest {
         SimpleAssert.eq(CycleState.IDLE, cycle.getCycleState(), "withdraw 不改变状态机状态");
         expectIllegalArgument("withdraw null 拒绝", () -> cycle.withdraw(null));
 
-        // DEPOSITED：新语义——寄存收束后仍可逐件增删（原"仅 IDLE"放宽）
+        // DEPOSITED：寄存收束后仍可逐件增删（原"仅 IDLE"放宽）
         cycle.deposit(Arrays.asList(DIAMOND));
         cycle.addPendingItem(CIRCUIT);
         SimpleAssert.eq(CycleState.DEPOSITED, cycle.getCycleState(), "DEPOSITED 期间追加物品（新语义）");
@@ -376,49 +734,57 @@ public class ReincarnationStoreTest {
                 .get(0),
             "剩余物品为未移除那件");
         SimpleAssert.that(!cycle.withdraw(DIAMOND), "DEPOSITED 移除不存在物品返回 false");
-        // 调整结果可持久化往返
-        store.save(cycle);
-        ReincarnationCycle loaded = store.load(UUID_A);
-        SimpleAssert.eq(
-            1,
-            loaded.getPendingItems()
-                .size(),
-            "DEPOSITED 调整后条数 round-trip");
-        SimpleAssert.eq(
-            CIRCUIT,
-            loaded.getPendingItems()
-                .get(0),
-            "DEPOSITED 调整后内容 round-trip");
 
-        // EXECUTED：只读锁——withdraw/addPendingItem 一律拒绝
-        String fingerprint = loaded.confirmReincarnation(11L);
-        SimpleAssert.eq(CycleState.EXECUTED, loaded.getCycleState(), "确认后进入 EXECUTED");
-        expectIllegalState("EXECUTED 期间 withdraw 拒绝", () -> loaded.withdraw(CIRCUIT));
-        expectIllegalState("EXECUTED 期间 addPendingItem 拒绝", () -> loaded.addPendingItem(DIAMOND));
+        // EXECUTED：只读锁——withdraw/addPendingItem 一律拒绝（红线语义）
+        String fingerprint = cycle.confirmReincarnation(11L);
+        SimpleAssert.eq(CycleState.EXECUTED, cycle.getCycleState(), "确认后进入 EXECUTED");
+        expectIllegalState("EXECUTED 期间 withdraw 拒绝", () -> cycle.withdraw(CIRCUIT));
+        expectIllegalState("EXECUTED 期间 addPendingItem 拒绝", () -> cycle.addPendingItem(DIAMOND));
         SimpleAssert.eq(
             1,
-            loaded.getPendingItems()
+            cycle.getPendingItems()
                 .size(),
             "被拒的移除/追加不产生副作用");
-        SimpleAssert.that(loaded.hasFingerprint(fingerprint), "EXECUTED 锁定期指纹不受调整影响");
+        SimpleAssert.that(cycle.hasFingerprint(fingerprint), "EXECUTED 锁定期指纹不受调整影响");
+        store.save(cycle);
+        assertMailbox(store.load(UUID_A), CIRCUIT); // EXECUTED 锁定期清单经信箱持久化
 
         // 领取回 IDLE：清单清空，调整权限恢复（withdraw 空清单返回 false）
-        loaded.claimGrant();
-        SimpleAssert.eq(CycleState.IDLE, loaded.getCycleState(), "领取后回到 IDLE");
-        SimpleAssert.that(!loaded.withdraw(CIRCUIT), "领取回 IDLE 后 withdraw 空清单返回 false");
-        loaded.addPendingItem(DIAMOND);
-        SimpleAssert.that(loaded.withdraw(DIAMOND), "IDLE 恢复后可再次增删");
+        cycle.claimGrant();
+        SimpleAssert.eq(CycleState.IDLE, cycle.getCycleState(), "领取后回到 IDLE");
+        SimpleAssert.that(!cycle.withdraw(CIRCUIT), "领取回 IDLE 后 withdraw 空清单返回 false");
+        cycle.addPendingItem(DIAMOND);
+        SimpleAssert.that(cycle.withdraw(DIAMOND), "IDLE 恢复后可再次增删");
     }
 
     // ==================== 工具 ====================
-    /** 断言为"全新空记录"（最后仁慈路径的完整形态） */
+
+    /** 断言信箱（待发放清单）恰为期望序列（幂等防复制的核心断言） */
+    private static void assertMailbox(ReincarnationCycle cycle, ItemRef... expected) {
+        List<ItemRef> pending = cycle.getPendingItems();
+        SimpleAssert.eq(expected.length, pending.size(), "信箱条目数恰为 " + expected.length + "（不复制）");
+        for (int i = 0; i < expected.length; i++) {
+            SimpleAssert.eq(expected[i], pending.get(i), "信箱条目[" + i + "]");
+        }
+    }
+
+    /** 15 列布尔数组的快捷构造（unlockedIndex < 0 表示全 false） */
+    private static boolean[] boolArray(int unlockedIndex) {
+        boolean[] values = new boolean[ReincarnationCycle.COLUMN_COUNT];
+        if (unlockedIndex >= 0) {
+            values[unlockedIndex] = true;
+        }
+        return values;
+    }
+
+    /** 断言为"全新空记录"（最后仁慈路径的完整形态；v2 全局文件天然无进度/信箱） */
     private static void assertFresh(ReincarnationCycle cycle, String label) {
         SimpleAssert.eq(CycleState.IDLE, cycle.getCycleState(), label + " → 状态 IDLE");
         SimpleAssert.eq(
             0,
             cycle.getPendingItems()
                 .size(),
-            label + " → 待领取清空");
+            label + " → 信箱清空");
         SimpleAssert.eq(
             0,
             cycle.getExecutedFingerprints()
@@ -468,10 +834,14 @@ public class ReincarnationStoreTest {
     }
 
     /** 每用例独立临时目录，互不串档 */
-    private static ReincarnationStore newStore() throws IOException {
+    private static Path tempDir() throws IOException {
         Path dir = Files.createTempDirectory("gtit-reincarnation-test");
         TEMP_DIRS.add(dir);
-        return new ReincarnationStore(dir.toFile());
+        return dir;
+    }
+
+    private static ReincarnationStore newStore() throws IOException {
+        return new ReincarnationStore(tempDir().toFile());
     }
 
     private static void cleanup() {

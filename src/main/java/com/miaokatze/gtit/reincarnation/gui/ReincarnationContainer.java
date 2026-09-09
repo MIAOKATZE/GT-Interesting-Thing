@@ -12,6 +12,7 @@ import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.StatCollector;
 
@@ -19,6 +20,8 @@ import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.reincarnation.ReincarnationConfirmHook;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
+import com.miaokatze.gtit.reincarnation.storage.ReincarnationMigration;
+import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 /**
@@ -47,7 +50,8 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * <b>交互语义</b>（与旧 GUI 逐条对照）：
  * <ul>
  * <li>外壳累计槽（每列 1 格）：仅未解锁列接受 {@code ReincarnationHullMatcher} 匹配外壳；
- * 放入即消耗（槽位不持有物品），消耗 1 件计 1 进度，满 16 自动 unlockColumn；取物恒拒绝
+ * 放入即消耗（槽位不持有物品），单次吸收 min(放入, 16-进度) 件、按吸收量计进度
+ * （D2 堆叠口径），满 16 自动 unlockColumn；取物恒拒绝
  * （canTakeStack=false，即「放入即消耗」的字面化）；</li>
  * <li>物品格（每列 3 格 × 全局行解锁）：每格最大 1 件；放入 = {@code ItemRef(id+meta, 忽略 NBT)}
  * 记录，首件放入且 IDLE 经 {@code deposit} 过渡 IDLE→DEPOSITED，其余 {@code addPendingItem}；
@@ -100,8 +104,10 @@ public class ReincarnationContainer extends Container {
     private final EntityPlayer player;
     /** true = 服务端（权威模型）；false = 客户端镜像 */
     private final boolean server;
-    /** 持久化仓库（仅服务端；baseDir = MC 运行目录，与旧 GUI 一致） */
+    /** 持久化仓库（仅服务端；baseDir = MC 运行目录，与旧 GUI 一致；D1 起仅承载许可字段） */
     private final ReincarnationStore store;
+    /** 每存档进度载体（仅服务端；overworld MapStorage，D1 每存档隔离） */
+    private final ReincarnationWorldData worldData;
     /** 权威周目模型（服务端）/空记录（客户端） */
     private final ReincarnationCycle cycle;
 
@@ -117,6 +123,9 @@ public class ReincarnationContainer extends Container {
 
     /** 物品格 Slot 实例（按 col*3+row 索引，transferStackInSlot 复用同一套校验） */
     private final CycleItemSlot[] itemSlots = new CycleItemSlot[ReincarnationLayout.ITEM_SLOT_COUNT];
+
+    /** 外壳累计槽 Slot 实例（按列下标索引，D2 shift-click 分支复用同一套校验/容量） */
+    private final HullSlot[] hullSlots = new HullSlot[ReincarnationLayout.HULL_SLOT_COUNT];
 
     /** 确认按钮武装标记（仅服务端置位，槽位变动/关窗重置） */
     private boolean confirmArmed;
@@ -150,13 +159,25 @@ public class ReincarnationContainer extends Container {
         this.player = player;
         this.server = !player.worldObj.isRemote;
         if (server) {
-            // 服务端：加载持久化周目记录（最后仁慈路径兜底空记录，见 ReincarnationStore）
+            // 服务端：全局许可仓库 + 每存档进度（D1 拆分）。
+            // ① 每存档载体就绪 → ② 旧全局 v1 字段一次性 consume-once 迁移进当档 →
+            // ③ 读全局许可（指纹/投胎信箱，最后仁慈兜底空记录）→ ④ 每存档进度合并进模型
             this.store = new ReincarnationStore(new File("."));
+            this.worldData = ReincarnationWorldData.get(
+                MinecraftServer.getServer()
+                    .getEntityWorld());
+            ReincarnationMigration.migrateOnce(
+                this.store,
+                this.worldData,
+                player.getUniqueID()
+                    .toString());
             this.cycle = this.store.load(
                 player.getUniqueID()
                     .toString());
+            this.worldData.applyTo(this.cycle);
         } else {
             this.store = null;
+            this.worldData = null;
             this.cycle = new ReincarnationCycle(
                 player.getUniqueID()
                     .toString());
@@ -172,13 +193,14 @@ public class ReincarnationContainer extends Container {
     // ==================== 槽位构建（顺序必须与 ReincarnationLayout 全局下标一致） ====================
 
     private void addSlotsToContainer() {
-        // 外壳累计槽 0..14（放入即消耗）
+        // 外壳累计槽 0..14（放入即消耗；D2 起一次吸收多件，容量 = 16 - 已吸收）
         for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
-            addSlotToContainer(
-                new HullSlot(
-                    column,
-                    ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH,
-                    ReincarnationLayout.HULL_Y));
+            HullSlot hullSlot = new HullSlot(
+                column,
+                ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH,
+                ReincarnationLayout.HULL_Y);
+            this.hullSlots[column] = hullSlot;
+            addSlotToContainer(hullSlot);
         }
         // 物品格 15..59（15 列 × 3 行）
         for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
@@ -216,7 +238,13 @@ public class ReincarnationContainer extends Container {
         }
     }
 
-    /** 外壳累计槽：放入即服务端消耗 1 件计 1 进度（重活经调度器投递），取物恒拒绝 */
+    /**
+     * 外壳累计槽：放入即服务端按容量一次吸收（重活经调度器投递），取物恒拒绝。
+     * <p>
+     * D2 堆叠口径：容量 = {@link ReincarnationLayout#HULL_TARGET} - 已吸收（满 16 拒放）；
+     * vanilla 放置按 {@link #getSlotStackLimit()} 拆分，本槽 putStack 一次吸收
+     * {@code min(放入, 容量)}（只消费 accepted 只计 accepted，多余留在光标/原槽）。
+     */
     private final class HullSlot extends Slot {
 
         /** 该槽对应的等级列下标 */
@@ -227,11 +255,12 @@ public class ReincarnationContainer extends Container {
             this.column = column;
         }
 
-        /** 仅未解锁列 + 匹配外壳 + 空格可放入（客户端预测与服务端权威同口径） */
+        /** 仅未解锁列 + 匹配外壳 + 空格 + 容量未满可放入（客户端预测与服务端权威同口径） */
         @Override
         public boolean isItemValid(ItemStack stack) {
             return getStack() == null && !isReadonly()
                 && isColumnLocked(this.column)
+                && getColumnCount(this.column) < ReincarnationLayout.HULL_TARGET
                 && ReincarnationHullMatcher.matchesHull(stack, this.column);
         }
 
@@ -241,10 +270,10 @@ public class ReincarnationContainer extends Container {
             return false;
         }
 
-        /** 每格最大堆叠数 1（与旧 GUI FixedOneStackHandler 一致） */
+        /** 剩余容量：16 - 已吸收（满 16 → 0，拒放；sided 经进度条镜像，双端同口径） */
         @Override
         public int getSlotStackLimit() {
-            return 1;
+            return Math.max(0, ReincarnationLayout.HULL_TARGET - getColumnCount(this.column));
         }
 
         @Override
@@ -255,16 +284,26 @@ public class ReincarnationContainer extends Container {
             }
             if (server) {
                 disarmConfirm();
-                // 双重校验（isItemValid 已挡，防竞态/异常路径；拒绝时原样退回，与旧 consumeHull 前置一致）
-                if (!isReadonly() && isColumnLocked(this.column)
-                    && ReincarnationHullMatcher.matchesHull(stack, this.column)) {
-                    final int targetColumn = this.column;
-                    final ItemStack placed = stack.copy();
-                    super.putStack(null); // 槽位清空只留计数（放入即消耗）
-                    scheduleServerTask(() -> consumeHull(targetColumn, placed));
-                } else {
-                    giveBack(stack); // 校验失败（竞态）：物品退回玩家，不进槽
+                int capacity = getSlotStackLimit();
+                int accepted = Math.min(stack.stackSize, capacity);
+                if (accepted <= 0 || isReadonly()
+                    || !isColumnLocked(this.column)
+                    || !ReincarnationHullMatcher.matchesHull(stack, this.column)) {
+                    giveBack(stack); // 校验失败（竞态/已满/异常路径）：物品整份退回玩家，不进槽
+                    return;
                 }
+                // 一次吸收 min(放入, 容量)：只消费 accepted 只计 accepted；
+                // 多余（仅异常路径可达——vanilla 已按 limit 拆分）退回玩家
+                final int targetColumn = this.column;
+                final ItemStack consumed = stack.copy();
+                consumed.stackSize = accepted;
+                super.putStack(null); // 槽位清空只留计数（放入即消耗）
+                if (accepted < stack.stackSize) {
+                    ItemStack excess = stack.copy();
+                    excess.stackSize = stack.stackSize - accepted;
+                    giveBack(excess);
+                }
+                scheduleServerTask(() -> consumeHull(targetColumn, consumed));
             } else {
                 super.putStack(stack); // 客户端预测，服务端 ≤1 tick 内以空槽纠正
             }
@@ -453,16 +492,18 @@ public class ReincarnationContainer extends Container {
     // ==================== 会话语义（逐函数自旧 ReincarnationCycleGui 移植） ====================
 
     /**
-     * 外壳消耗（旧 :790 consumeHull）：消耗 1 件 → 进度 +1 → 满 {@value ReincarnationLayout#HULL_TARGET}
-     * 解锁列 → 保存
+     * 外壳消耗（旧 :790 consumeHull；D2 加数量参数）：一次吸收 {@code amount} 件 →
+     * 进度 +amount → 满 {@value ReincarnationLayout#HULL_TARGET} 解锁列 → 保存。
+     * 只计 accepted（放入量已被容量截断，进度不越 16）。
      */
-    private void consumeHull(int column, ItemStack placed) {
-        if (isReadonly() || !isColumnLocked(column) || !ReincarnationHullMatcher.matchesHull(placed, column)) {
-            giveBack(placed); // 原样退回
+    private void consumeHull(int column, ItemStack consumed) {
+        if (isReadonly() || !isColumnLocked(column) || !ReincarnationHullMatcher.matchesHull(consumed, column)) {
+            giveBack(consumed); // 原样退回
             return;
         }
+        int amount = consumed.stackSize;
         this.hullInventory.setInventorySlotContents(column, null); // 槽位清空只留计数
-        this.cycle.recordHullConsumption(column, 1);
+        this.cycle.recordHullConsumption(column, amount);
         int progress = this.cycle.getHullProgress()[column];
         if (progress >= ReincarnationLayout.HULL_TARGET && !this.cycle.isColumnUnlocked(column)) {
             this.cycle.unlockColumn(column);
@@ -883,11 +924,19 @@ public class ReincarnationContainer extends Container {
 
     // ==================== 基础设施（自旧 GUI 移植） ====================
 
-    /** 保存（服务端）；磁盘异常不阻断 GUI（记录日志语义由 store 异常消息承载） */
+    /**
+     * 保存（服务端；D1 拆分写入）：先全局许可（指纹/投胎信箱——失败抛出中断，
+     * 保证「确认推进 EXECUTED 与写信箱」同事务、失败不写半份），再每存档进度
+     * （WorldData，markDirty 由存档保存期落盘）。磁盘异常不阻断 GUI
+     * （记录日志语义由 store 异常消息承载）。
+     */
     private void saveQuietly() {
         if (this.store == null) return;
         try {
             this.store.save(this.cycle);
+            if (this.worldData != null) {
+                this.worldData.saveFrom(this.cycle);
+            }
         } catch (IllegalStateException ignored) {
             // 写入失败（磁盘等）：保持内存态，下次变更重试；不向玩家刷屏
         }
@@ -940,12 +989,15 @@ public class ReincarnationContainer extends Container {
     // ==================== shift-click 转移（QUICK_MOVE 通道） ====================
 
     /**
-     * shift-click 转移：玩家背包 → 物品格（逐槽 {@link Slot#isItemValid} 同套校验，列优先行内
-     * 自上而下；与旧 GUI 仅注册物品格 SlotGroup 的 shift 口径一致，外壳/币格不作为 shift 目标）；
-     * 物品格/币格 → 玩家背包（外壳格 canTakeStack=false 被 vanilla QUICK_MOVE 前置拦截）。
+     * shift-click 转移：玩家背包 → <b>外壳累计槽</b>（D2 新增：仅未锁定列 + 容量未满，
+     * 沿列顺序一次吸收，经 {@link HullSlot#putStack} 自动进 consumeHull 任务）
+     * → 物品格（逐槽 {@link Slot#isItemValid} 同套校验，列优先行内自上而下；与旧 GUI
+     * 仅注册物品格 SlotGroup 的 shift 口径一致）；币槽与寄存槽不作为 shift 目标
+     * （不碰币槽寄存槽）；物品格/币格 → 玩家背包（外壳格 canTakeStack=false 被 vanilla
+     * QUICK_MOVE 前置拦截）。
      * <p>
-     * 放入路径经 {@code putStack} 钩子自动进 placeItem 任务；取出路径在本方法内显式投递
-     * takeItem（vanilla QUICK_MOVE 不触发 onPickupFromSlot）。
+     * 放入路径经 {@code putStack} 钩子自动进 consumeHull/placeItem 任务；取出路径在本方法内
+     * 显式投递 takeItem（vanilla QUICK_MOVE 不触发 onPickupFromSlot）。
      */
     @Override
     public ItemStack transferStackInSlot(EntityPlayer who, int index) {
@@ -955,9 +1007,22 @@ public class ReincarnationContainer extends Container {
             return null;
         }
         if (source.inventory == who.inventory) {
-            // 玩家背包 → 物品格（逐槽同套校验；每格 1 件）
+            // 玩家背包 → 外壳累计槽（D2：仅未锁定列 + 容量未满，沿列顺序一次吸收）
             ItemStack remaining = stack.copy();
             boolean moved = false;
+            for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT && remaining.stackSize > 0; column++) {
+                HullSlot target = this.hullSlots[column];
+                if (target == null || !target.isItemValid(remaining)) {
+                    continue;
+                }
+                int capacity = target.getSlotStackLimit();
+                if (capacity <= 0) {
+                    continue;
+                }
+                target.putStack(remaining.splitStack(Math.min(remaining.stackSize, capacity)));
+                moved = true;
+            }
+            // 玩家背包 → 物品格（逐槽同套校验；每格 1 件）
             for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT && remaining.stackSize > 0; column++) {
                 for (int row = 0; row < ReincarnationCycle.MAX_UNLOCKED_ROWS && remaining.stackSize > 0; row++) {
                     CycleItemSlot target = this.itemSlots[column * ReincarnationCycle.MAX_UNLOCKED_ROWS + row];

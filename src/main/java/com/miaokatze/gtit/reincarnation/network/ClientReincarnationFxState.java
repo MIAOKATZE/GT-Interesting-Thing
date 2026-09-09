@@ -63,6 +63,8 @@ public final class ClientReincarnationFxState {
     private static volatile boolean ascensionActive = false;
     /** 飞升实体 ID（-1 = 未指定） */
     private static volatile int ascensionTargetEntityId = -1;
+    /** 飞升演出起始客户端 tick（消费方主线程回填；-1 = 尚未回填）——渐变/音效渐强的时长基准 */
+    private static volatile long ascensionStartTick = -1L;
 
     // ==================== 倒计时（CountdownPacket） ====================
 
@@ -139,9 +141,20 @@ public final class ClientReincarnationFxState {
         ascensionTargetEntityId = entityId;
     }
 
+    /** 飞升演出起始客户端 tick（消费方主线程回填；-1 = 尚未回填） */
+    public static long getAscensionStartTick() {
+        return ascensionStartTick;
+    }
+
+    /** 消费方（FX 切片）在客户端主线程回填飞升演出起始 tick（-1 表示尚未回填） */
+    public static void setAscensionStartTick(long tick) {
+        ascensionStartTick = tick;
+    }
+
     public static void clearAscension() {
         ascensionActive = false;
         ascensionTargetEntityId = -1;
+        ascensionStartTick = -1L;
     }
 
     // ==================== 倒计时 ====================
