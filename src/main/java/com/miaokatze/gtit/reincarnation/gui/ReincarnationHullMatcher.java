@@ -1,4 +1,4 @@
-package com.miaokatze.gtit.client.gui;
+package com.miaokatze.gtit.reincarnation.gui;
 
 import net.minecraft.block.Block;
 import net.minecraft.item.ItemStack;
@@ -10,6 +10,11 @@ import gregtech.common.blocks.ItemMachines;
 
 /**
  * 周目 GUI 外壳累计槽物品判定器（v1.9.0 C批 S7）
+ * <p>
+ * v1.8.3 迁移说明（唯一改动 = package 行，判定逻辑零改动）：原位于 client/gui 包
+ * （v1.9.0 旧 MUI2 GUI 同包）；改走 Forge 原版 IGuiHandler 链路后，common 的
+ * {@link ReincarnationContainer} 在服务端权威路径调用本判定，按「common 类零 client
+ * 包引用三层校验」红线迁入 reincarnation/gui。本类仍零 MC 客户端侧类型引用。
  * <p>
  * 判定「某 ItemStack 是否为指定等级列可消耗的机械外壳/外壳代材」（任务包冻结口径）：
  * <ul>
@@ -23,7 +28,7 @@ import gregtech.common.blocks.ItemMachines;
  * 或注册名 {@code miscutils.blockcasings} meta 10。</li>
  * </ul>
  * <p>
- * <b>侧与加载</b>：仅引用 common/GT 类型（无 {@code net.minecraft.client}），
+ * <b>侧与加载</b>：仅引用 common/GT 类型（无 MC 客户端侧类型），
  * 双端可加载；专用服上因周目系统整体门控永不触达。
  * 本类不持有状态，全部静态方法。
  */
