@@ -39,7 +39,9 @@ import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 import com.miaokatze.gtit.util.PlayerLookup;
 import com.miaokatze.gtit.util.PlayerResolver;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.registry.GameRegistry;
+import cpw.mods.fml.relauncher.Side;
 
 /**
  * /gtit 指令
@@ -111,7 +113,11 @@ public class GTITGiftCommand extends CommandBase {
     @Override
     public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
         if (args.length == 1) {
-            return getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail", "terminal");
+            // v1.8.2 专用服静默化：物理专用服务器不提示 terminal 子命令（执行点已拒绝）
+            return FMLCommonHandler.instance()
+                .getSide() == Side.SERVER
+                    ? getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail")
+                    : getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail", "terminal");
         }
 
         if (args.length == 2) {
@@ -1098,8 +1104,19 @@ public class GTITGiftCommand extends CommandBase {
      * 终端内的动作请求走 TerminalActionPacket 五步校验链（实时 OP2 复核），
      * 本命令入口的 OP2 门槛由 vanilla 指令权限（getRequiredPermissionLevel=2）保证。
      * 控制台执行时仅回中文提示，不发包。
+     * <p>
+     * v1.8.2 专用服静默化：gtit 为单一注册命令（gift/nekovm/signin/lottery/mail 共用），
+     * 无法单独"不注册 terminal 子命令"，故在执行点按物理侧拒绝——物理专用服务器上
+     * 管理终端静默跳过（网络通道未注册，{@link TerminalNetworkManager} 发包方法
+     * 不可达），仅打 INFO 日志 + 中文提示，不触达 sendOpen。
      */
     private void handleTerminal(ICommandSender sender) {
+        if (FMLCommonHandler.instance()
+            .getSide() == Side.SERVER) {
+            LOG.info("[terminal] 物理专用服务器：/gtit terminal 拒绝执行（管理终端仅单机可用）");
+            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "管理终端仅单机可用"));
+            return;
+        }
         if (sender instanceof EntityPlayerMP player) {
             TerminalNetworkManager.sendOpen(player);
             return;

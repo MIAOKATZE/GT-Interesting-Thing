@@ -227,4 +227,6 @@ gtit.reincarnation.chat.withdraw.failed=§cFailed to remove the record — the i
 gtit.reincarnation.celebration=Reincarnation Effective
 gtit.reincarnation.countdown_line=This timeline has already reincarnated
 gtit.reincarnation.timeline_ended=Delete the encrypted cycle file to break the loop (final mercy)
+# v1.8.2 strict single-player gate (dedicated server / open LAN refusal)
+gtit.reincarnation.single_player_only=Reincarnation is available in single-player only
 

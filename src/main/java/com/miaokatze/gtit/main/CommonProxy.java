@@ -402,9 +402,12 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[2/3] 交易配置同步网络包初始化失败", t);
         }
         // Terminal T1: 管理终端网络包（打开/动作请求/结果回显/数据推送四通道）
+        // v1.8.2 专用服静默化：init() 返回 boolean——false=物理专用服务器静默跳过注册
+        // （跳过行日志由 init 内部打），仅成功时打"已初始化"；try/catch 保留作防御
         try {
-            com.miaokatze.gtit.terminal.TerminalNetworkManager.init();
-            GTInterestingThing.LOG.info("[2/3] 管理终端网络包已初始化");
+            if (com.miaokatze.gtit.terminal.TerminalNetworkManager.init()) {
+                GTInterestingThing.LOG.info("[2/3] 管理终端网络包已初始化");
+            }
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[2/3] 管理终端网络包初始化失败", t);
         }

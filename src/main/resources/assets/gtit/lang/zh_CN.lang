@@ -227,4 +227,6 @@ gtit.reincarnation.chat.withdraw.failed=§c记录移除失败——物品已退�
 gtit.reincarnation.celebration=轮回已生效
 gtit.reincarnation.countdown_line=该时间线的存档已经轮回
 gtit.reincarnation.timeline_ended=删除混淆配置文件可终结轮回倒计时（最后仁慈）
+# v1.8.2 严格单机门控（专用服/开放 LAN 拒绝提示）
+gtit.reincarnation.single_player_only=轮回机制仅单机可用
 

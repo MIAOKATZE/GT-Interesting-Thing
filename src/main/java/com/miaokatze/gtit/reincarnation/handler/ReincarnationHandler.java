@@ -9,6 +9,8 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.DamageSource;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -62,6 +64,15 @@ import cpw.mods.fml.relauncher.Side;
  * reincarnation 门控块内，物理专用服务器整体拒绝注册不可达）；世界侧逻辑统一以
  * {@code worldObj.isRemote == false} 判定（集成服线程上运行）；确认钩子额外校验
  * server 线程（MUI2 C2S synced action 回调）。全部调度状态仅 server 线程读写，无共享锁。
+ * <p>
+ * <b>v1.8.2 严格单机门控</b>：登录判定/确认轮回/倒计时到点三触点均先过
+ * {@link #isStrictSinglePlayer()}（isSinglePlayer + 开放 LAN getPublic 反射检测——
+ * 1.7.10 {@code isSinglePlayer()} 实现为 {@code serverOwner != null}，集成服含开放
+ * LAN 恒为 true，单靠它抓不住 LAN）；非单机环境登录整体跳过、确认拒绝（chat 提示
+ * {@code gtit.reincarnation.single_player_only}）、到点拒绝升天，杜绝开放 LAN 下
+ * 宾客轮回触发删档的"半删档死锁"。{@link com.miaokatze.gtit.main.ClientProxy}
+ * openReincarnationGui 复用同判定。
+ * </p>
  * <p>
  * 飞升轮询单槽（对齐单机周目语义：同一时刻至多一名周目玩家，同 HardcoreEnforcer 口径），
  * 并附轮询硬上限防载具异常卸载导致任务滞留。
@@ -119,6 +130,52 @@ public final class ReincarnationHandler {
         GTInterestingThing.LOG.info("[reincarnation] 服务端编排器已安装（登录判定/倒计时/奖励发放/飞升编排 + 确认钩子注入）");
     }
 
+    // ==================== v1.8.2 严格单机门控 ====================
+
+    /**
+     * 严格单机判定（v1.8.2，登录/确认/倒计时三触点与 ClientProxy.openReincarnationGui 共用）。
+     * <p>
+     * 仅靠 {@code MinecraftServer.isSinglePlayer()} 不够：1.7.10 实现为
+     * {@code serverOwner != null}（本项目 build/rfg 反编译源 MinecraftServer.java:999），
+     * 集成服构造时恒置 serverOwner（IntegratedServer 构造器 47 行），开放 LAN
+     * （shareToLan 仅置 isPublic）不清除——LAN 上 isSinglePlayer() 仍返回 true。
+     * 故追加反射读取 {@code IntegratedServer.getPublic()}（dev MCP 名 / prod SRG 名
+     * {@code func_71344_c}，见 forge conf methods.csv；类名与字段名在 prod 保持混淆，
+     * 故不做类名前置判断，方法缺失即视同非 LAN）：已发布 LAN 即按非单机拒绝。
+     * 双名解析写法对齐 {@code HardcoreEnforcer.resolveHardcoreField}（SRG 在 prod 命中，
+     * dev 名在 dev 命中）。
+     * <p>
+     * 反射走字符串方法名，零 {@code IntegratedServer} 类型引用（本类仅运行于物理客户端
+     * JVM，serverOwner 非空 ⇒ server 必为 IntegratedServer）；反射失败按<b>非单机</b>
+     * 保守拒绝（fail-closed：周目含删档语义，宁可停用不可半删档）。
+     *
+     * @return true = 未发布 LAN 的集成服（真单机）
+     */
+    public static boolean isStrictSinglePlayer() {
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server == null || !server.isSinglePlayer()) {
+            return false;
+        }
+        // dev 运行时方法名 MCP（getPublic）；prod 运行时 SRG（func_71344_c）
+        for (String methodName : new String[] { "getPublic", "func_71344_c" }) {
+            try {
+                Object isPublic = server.getClass()
+                    .getMethod(methodName)
+                    .invoke(server);
+                // isPublic() 返回非 Boolean 视为异常信号，按 LAN 保守拒绝
+                return !(isPublic instanceof Boolean) || !((Boolean) isPublic);
+            } catch (NoSuchMethodException ignored) {
+                // 换下一候选名（dev MCP 名 / prod SRG 名互斥存在）
+            } catch (Throwable t) {
+                GTInterestingThing.LOG.error("[reincarnation] LAN 发布探测失败（" + methodName + "），按非单机环境保守拒绝周目机制", t);
+                return false;
+            }
+        }
+        // 双名均未命中（运行时被非常规改写）：按非单机保守拒绝
+        GTInterestingThing.LOG.error("[reincarnation] LAN 发布探测不可用（getPublic/func_71344_c 均缺失），按非单机环境保守拒绝周目机制");
+        return false;
+    }
+
     // ==================== 登录判定 ====================
 
     @SubscribeEvent
@@ -129,6 +186,12 @@ public final class ReincarnationHandler {
         EntityPlayerMP player = (EntityPlayerMP) event.player;
         // 仅服务端世界侧逻辑（集成服线程；客户端侧事件不编排）
         if (player.worldObj == null || player.worldObj.isRemote) {
+            return;
+        }
+        // v1.8.2 严格单机门控：非单机（开放 LAN / 防御纵深）登录编排整体跳过——
+        // 不检测指纹、不发倒计时、不发奖励、不下发快照
+        if (!isStrictSinglePlayer()) {
+            GTInterestingThing.LOG.info("[reincarnation] 非单机环境，周目机制停用（本次登录不检测）");
             return;
         }
         try {
@@ -266,6 +329,13 @@ public final class ReincarnationHandler {
             GTInterestingThing.LOG.warn("[reincarnation] 确认轮回回调不在 server 线程，忽略本次调用");
             return;
         }
+        // v1.8.2 严格单机门控：非单机（开放 LAN）直接拒绝确认轮回，给玩家 lang 提示，
+        // 不进入 beginAscension（杜绝 LAN 宾客轮回 → 集成服删档死锁）
+        if (!isStrictSinglePlayer()) {
+            GTInterestingThing.LOG.info("[reincarnation] 非单机环境，拒绝轮回确认：player=" + mp.getCommandSenderName());
+            mp.addChatMessage(new ChatComponentTranslation("gtit.reincarnation.single_player_only"));
+            return;
+        }
         try {
             ReincarnationStore cycleStore = store();
             ReincarnationCycle cycle = cycleStore.load(
@@ -395,6 +465,13 @@ public final class ReincarnationHandler {
 
     /** 倒计时到点：该时间线已轮回过，执行升天（同确认路径） */
     private void executeCountdownDeadline(EntityPlayerMP player) {
+        // v1.8.2 严格单机门控（防御纵深）：登录编排已在非单机环境整体跳过，本路径
+        // 理论上不可达；若因异常路径到达仍拒绝升天
+        if (!isStrictSinglePlayer()) {
+            GTInterestingThing.LOG
+                .info("[reincarnation] 非单机环境，拒绝倒计时到点升天（防御纵深）：player=" + player.getCommandSenderName());
+            return;
+        }
         if (player.isDead) {
             return;
         }

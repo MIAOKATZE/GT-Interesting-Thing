@@ -57,9 +57,22 @@ public class ClientProxy extends CommonProxy {
     /**
      * v1.9.0 S4：打开周目 GUI（仅物理客户端覆盖；ClientProxy 不进专用服类加载路径，
      * 可安全触达 client/gui 包——common 物品类仍保持零 client/gui import）
+     * <p>
+     * v1.8.2 严格单机门控：非单机（开放 LAN / 防御纵深）不开 GUI，仅回玩家
+     * {@code gtit.reincarnation.single_player_only} 提示；判定复用
+     * {@code ReincarnationHandler.isStrictSinglePlayer()}（isSinglePlayer 在 1.7.10
+     * 对开放 LAN 的集成服仍为 true，须叠加 getPublic 反射检测，详见该方法 javadoc）。
      */
     @Override
     public void openReincarnationGui(net.minecraft.entity.player.EntityPlayer player) {
+        if (!com.miaokatze.gtit.reincarnation.handler.ReincarnationHandler.isStrictSinglePlayer()) {
+            if (player != null) {
+                player.addChatMessage(
+                    new net.minecraft.util.ChatComponentTranslation("gtit.reincarnation.single_player_only"));
+            }
+            GTInterestingThing.LOG.info("[reincarnation] 非单机环境，拒绝打开周目 GUI");
+            return;
+        }
         com.miaokatze.gtit.client.gui.ReincarnationGuiOpener.openFor(player);
     }
 }

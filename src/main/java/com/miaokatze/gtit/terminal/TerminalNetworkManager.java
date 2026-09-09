@@ -5,8 +5,10 @@ import java.util.List;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.PlayerLookup;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.network.NetworkRegistry;
 import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import cpw.mods.fml.relauncher.Side;
@@ -23,7 +25,8 @@ import cpw.mods.fml.relauncher.Side;
  * </ul>
  * 注册范式照抄 {@code signin/SignInNetworkManager}（CHANNEL_NAME + initialized 守卫 +
  * newSimpleChannel + registerMessage）；在 {@code CommonProxy.init()} 中以同款
- * try/catch 调用 {@link #init()}（双端执行，按 Side 注册方向）。
+ * try/catch 调用 {@link #init()}——v1.8.2 起物理专用服务器静默跳过注册（返回
+ * false，Handler 类零类加载），仅物理客户端注册（单机集成服双端路径行为不变）。
  */
 public class TerminalNetworkManager {
 
@@ -42,9 +45,21 @@ public class TerminalNetworkManager {
 
     /**
      * 注册网络通道与消息（幂等）
+     * <p>
+     * v1.8.2 专用服静默化：返回 {@code boolean}——{@code true}=已注册（物理客户端，
+     * 双端通道照旧），{@code false}=物理专用服务器跳过注册。物理侧门控放在任何
+     * {@code registerMessage} 之前，专用服上四个 Handler 类（含触达 ModularScreen 的
+     * 客户端 Handler）零类加载，NCDFE 彻底消失（此前由 CommonProxy 守卫吞掉仅打 ERROR）。
      */
-    public static void init() {
-        if (initialized) return;
+    public static boolean init() {
+        if (initialized) return true;
+        // v1.8.2 专用服静默化：物理专用服务器管理终端静默跳过（新口径"专用服相关机制
+        // 静默掉完全不生效，仅单人生效"）；门控先于一切包/Handler 类触达
+        if (FMLCommonHandler.instance()
+            .getSide() == Side.SERVER) {
+            GTInterestingThing.LOG.info("[terminal] 物理专用服务器：管理终端仅单机可用，跳过注册");
+            return false;
+        }
         channel = NetworkRegistry.INSTANCE.newSimpleChannel(CHANNEL_NAME);
         channel.registerMessage(TerminalOpenPacket.Handler.class, TerminalOpenPacket.class, ID_OPEN, Side.CLIENT);
         channel.registerMessage(TerminalActionPacket.Handler.class, TerminalActionPacket.class, ID_ACTION, Side.SERVER);
@@ -55,6 +70,7 @@ public class TerminalNetworkManager {
             Side.CLIENT);
         channel.registerMessage(TerminalDataPacket.Handler.class, TerminalDataPacket.class, ID_DATA, Side.CLIENT);
         initialized = true;
+        return true;
     }
 
     /**
