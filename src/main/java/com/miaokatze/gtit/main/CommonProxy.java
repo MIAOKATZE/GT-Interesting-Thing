@@ -402,14 +402,22 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[2/3] 交易配置同步网络包初始化失败", t);
         }
         // Terminal T1: 管理终端网络包（打开/动作请求/结果回显/数据推送四通道）
-        // v1.8.2 专用服静默化：init() 返回 boolean——false=物理专用服务器静默跳过注册
-        // （跳过行日志由 init 内部打），仅成功时打"已初始化"；try/catch 保留作防御
-        try {
-            if (com.miaokatze.gtit.terminal.TerminalNetworkManager.init()) {
-                GTInterestingThing.LOG.info("[2/3] 管理终端网络包已初始化");
+        // v1.8.2 专用服静默化（门控在调用点，依 wiki client-class-contamination 案例 C：
+        // 类链接期解析整类方法体引用——若在专用服调用 init()，TerminalNetworkManager 类
+        // 本身的链接就会触达 Handler 链，in-method 门控来不及拦）：物理专用服务器根本
+        // 不调用 init()，TerminalNetworkManager 及其 Handler 类零类加载；init() 内部
+        // 同款门控保留为纵深防御。仅物理客户端打"已初始化"
+        if (cpw.mods.fml.common.FMLCommonHandler.instance()
+            .getSide() == cpw.mods.fml.relauncher.Side.SERVER) {
+            GTInterestingThing.LOG.info("[terminal] 物理专用服务器：管理终端仅单机可用，跳过注册");
+        } else {
+            try {
+                if (com.miaokatze.gtit.terminal.TerminalNetworkManager.init()) {
+                    GTInterestingThing.LOG.info("[2/3] 管理终端网络包已初始化");
+                }
+            } catch (Throwable t) {
+                GTInterestingThing.LOG.error("[2/3] 管理终端网络包初始化失败", t);
             }
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[2/3] 管理终端网络包初始化失败", t);
         }
         // v1.9.0: 周目系统网络通道（S→C 四包；物理专用服务器由 ReincarnationNetwork.init()
         // 内联侧门控拒绝注册并跳过，与周目物品/配方门控同口径，返回 false 时不打"已初始化"）
