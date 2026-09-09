@@ -19,6 +19,7 @@ import net.minecraft.util.StatCollector;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.reincarnation.ReincarnationConfirmHook;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
+import com.miaokatze.gtit.reincarnation.core.ReincarnationSaveGuard;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationMigration;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
@@ -108,8 +109,14 @@ public class ReincarnationContainer extends Container {
     private final ReincarnationStore store;
     /** 每存档进度载体（仅服务端；overworld MapStorage，D1 每存档隔离） */
     private final ReincarnationWorldData worldData;
-    /** 权威周目模型（服务端）/空记录（客户端） */
-    private final ReincarnationCycle cycle;
+    /**
+     * 权威周目模型（服务端）/空记录（客户端）。
+     * <p>
+     * 非 final（A4）：确认回调在权威层推进 EXECUTED 落盘后，本模型为陈旧快照，
+     * 须经 {@link #reloadIfLicenseAdvancedQuietly()} 按打开同款路径重载替换，
+     * 防关窗保存用陈旧模型全量覆写抹掉磁盘上的信箱/指纹（丢更新覆写）。
+     */
+    private ReincarnationCycle cycle;
 
     /** 外壳累计槽缓冲（每列 1 格，放入即消耗清空，服务端恒不持有） */
     private final SessionInventory hullInventory = new SessionInventory(ReincarnationLayout.HULL_SLOT_COUNT, 1);
@@ -618,6 +625,10 @@ public class ReincarnationContainer extends Container {
         }
         // S4 契约：由钩子完成 deposit 收束 → confirmReincarnation(seed) → 演出/奖励
         hook.onConfirmRequested(this.player);
+        // A4（丢更新覆写防御）：确认回调已在权威层推进 EXECUTED 并同事务落盘
+        // （EXECUTED+投胎信箱+指纹），容器内存模型此刻必为陈旧 DEPOSITED——按 GUI
+        // 打开同款路径立即重载，防关窗 saveQuietly 用陈旧模型全量覆写抹掉信箱/指纹
+        reloadIfLicenseAdvancedQuietly();
     }
 
     /**
@@ -933,12 +944,46 @@ public class ReincarnationContainer extends Container {
     private void saveQuietly() {
         if (this.store == null) return;
         try {
+            // A4 防御：磁盘许可已推进 EXECUTED 而内存漂移 → 先重载再保存（覆盖
+            // doConfirm 后重载遗漏/权威链路异步推进等残余时序，防信箱/指纹被抹）
+            reloadIfLicenseAdvancedQuietly();
             this.store.save(this.cycle);
             if (this.worldData != null) {
                 this.worldData.saveFrom(this.cycle);
             }
         } catch (IllegalStateException ignored) {
             // 写入失败（磁盘等）：保持内存态，下次变更重试；不向玩家刷屏
+        }
+    }
+
+    /**
+     * 丢更新覆写防御（A4）：保存前从磁盘新读许可，{@link ReincarnationSaveGuard}
+     * 判定"磁盘已 EXECUTED 而内存漂移为非 EXECUTED"时，按 GUI 打开同款路径重载
+     * 内存模型（{@code store.load} + {@code worldData.applyTo}，WorldData 为打开时
+     * 捕获的同一 overworld MapStorage 单例）后返回 true。
+     * <p>
+     * 只用新读实例整体替换（{@code applyTo} 进度灌入为累加语义，不可对同一实例
+     * 重复施加）；重载失败按正常保存处理（不放大磁盘异常）。
+     *
+     * @return true = 判定命中且已重载
+     */
+    private boolean reloadIfLicenseAdvancedQuietly() {
+        if (this.store == null || this.worldData == null) {
+            return false;
+        }
+        try {
+            ReincarnationCycle disk = this.store.load(
+                this.player.getUniqueID()
+                    .toString());
+            if (!ReincarnationSaveGuard.needsReloadBeforeSave(this.cycle, disk)) {
+                return false;
+            }
+            this.worldData.applyTo(disk);
+            this.cycle = disk;
+            return true;
+        } catch (RuntimeException ignored) {
+            // 磁盘读失败：按无漂移处理（原保存语义不变），不阻断 GUI
+            return false;
         }
     }
 

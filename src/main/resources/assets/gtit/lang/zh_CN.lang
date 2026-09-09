@@ -182,7 +182,6 @@ gtit.reincarnation.gui.title=§6周目轮回
 gtit.reincarnation.gui.banner.idle=§7当前无进行中的轮回——放入物品开启新周目
 gtit.reincarnation.gui.banner.deposited=§6轮回已寄存：可调整物品或确认轮回
 gtit.reincarnation.gui.banner.executed=§c轮回已执行——存在未领取轮回（只读）
-gtit.reincarnation.gui.progress=§e%s§7/16
 gtit.reincarnation.gui.hull.tooltip=外壳累计槽（%s）：投入对应档位机械外壳，满 %s 解锁该列
 gtit.reincarnation.gui.hull.tooltip.done=该列已解锁（%s）
 gtit.reincarnation.gui.item.tooltip=轮回物品格（第 %s 行）：放入后记入本轮轮回
@@ -200,7 +199,7 @@ gtit.reincarnation.gui.confirm.button=§c确认轮回
 gtit.reincarnation.gui.confirm.tooltip.state=未处于已寄存状态
 gtit.reincarnation.gui.confirm.tooltip.empty=尚未寄存任何物品
 gtit.reincarnation.gui.confirm.tooltip.nohook=轮回收束未接入（钩子缺失）
-gtit.reincarnation.gui.confirm.dialog=§c确认轮回将触发§4极限模式§c并§4删除当前时间线§r§c——过程不可逆！
+gtit.reincarnation.gui.confirm.dialog=§c确认后不可逆，本时间线将被删除！
 gtit.reincarnation.column.0=蒸汽
 gtit.reincarnation.column.1=电力LV
 gtit.reincarnation.column.2=电力MV
@@ -224,6 +223,10 @@ gtit.reincarnation.chat.unlock.no_coin=§c币格中没有对应的猫猫币
 gtit.reincarnation.chat.readonly=§c当前轮回处于只读状态（存在未领取轮回）
 gtit.reincarnation.chat.deposit.failed=§c该物品无法寄存：%s
 gtit.reincarnation.chat.withdraw.failed=§c记录移除失败——物品已退回
+
+# v1.9.x S1 契约键：确认轮回水晶校验 / 时间线终结踢出提示
+gtit.reincarnation.confirm.no_crystal=§c轮回水晶不足，无法确认轮回
+gtit.reincarnation.timeline.kick=§c时间线已终结，世界即将删除
 
 # Reincarnation FX (v1.9.0 S4; 奖励庆祝 / 已轮回倒计时 / 最后仁慈)
 gtit.reincarnation.celebration=轮回已生效

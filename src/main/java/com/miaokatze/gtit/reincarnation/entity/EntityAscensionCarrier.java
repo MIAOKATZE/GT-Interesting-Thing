@@ -19,9 +19,10 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * <li>{@code noClip = true}：与方块/实体零碰撞（Botania :191 同款）；</li>
  * <li>伤害免疫：{@link #attackEntityFrom} 恒 false（Botania :269-271 同款）+
  * {@link #isEntityInvulnerable()} 恒 true；</li>
- * <li>无重力无 AI：不使用 motionY/重力/寻路等移动逻辑，onUpdate 内服务端每 tick 按
- * 三段式动量积分推进 {@code v += ACCEL_PER_TICK}（匀加速—巡航—终点缓冲，
- * D3 口径见常量 javadoc）；骑乘者位置由原版骑乘机制自动跟随
+ * <li>无重力无 AI：不使用 motionY/重力/寻路等移动逻辑，onUpdate 内<b>双端</b>按同一
+ * 单式竖直匀加速积分推进 {@code v += RISE_ACCEL_PER_TICK}（双端同式确定性积分，见常量
+ * javadoc；客户端不再冻结等待同步包跳变，骑者相机随客户端载具平滑上行），服务端仍
+ * 独占 NBT 写/finish/自毁等裁决；骑乘者位置由原版骑乘机制自动跟随
  * （Entity#updateRidden → 本载具#updateRiderPosition，每 tick 调用，无需额外代码）；</li>
  * <li>到达时长后 {@link #finishAscension()}：骑乘者 {@code mountEntity(null)} 卸下
  * + ascensionComplete 标志位 + log 一行（杀玩家/后续演出由 S4/S5 切片负责）；</li>
@@ -35,22 +36,19 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 public class EntityAscensionCarrier extends Entity {
 
     /**
-     * 匀加速初速（方块/tick）。D3 动量积分口径：每 tick {@code v += ACCEL_PER_TICK}，
-     * 升空由静止平滑起步（旧恒速 0.10 起步突兀，替换为三段式）。
+     * 匀加速初速（方块/tick）：升空由静止平滑起步（NBT 速度键越界时的回退值）。
      */
     public static final double INITIAL_SPEED_PER_TICK = 0.0D;
 
     /**
-     * 匀加速度（方块/tick²）：加速段每 tick 递增、终点缓冲段每 tick 等量递减。
-     * 取值使默认时长（120t，加速 40t / 巡航 40t / 缓冲减速 40t）总升程 ≈ 12 方块，
-     * 峰值速度 {@link #MAX_SPEED_PER_TICK} = 0.15。
+     * 单式匀加速度（方块/tick²）：双端每 tick {@code v += RISE_ACCEL_PER_TICK}，由静止
+     * 单调加速（v1.8.5：替换旧三段式 0.00375 动量积分，双端同式确定性积分修卡顿）。
+     * 默认时长 120t 下末速 0.01×120 = 0.84 方块/tick（≈17 方块/s）、总升程
+     * Σ0.01t（t=1..120）≈ 72 方块。
      */
-    public static final double ACCEL_PER_TICK = 0.00375D;
+    public static final double RISE_ACCEL_PER_TICK = 0.01D;
 
-    /** 峰值速度（方块/tick）：加速段终点 = 巡航段速度（钳制上界，防越界加速） */
-    public static final double MAX_SPEED_PER_TICK = 0.15D;
-
-    /** 默认飞升时长（tick）：120 tick = 6 秒，总升程 ≈ 12 方块（三段式 40/40/40） */
+    /** 默认飞升时长（tick）：120 tick = 6 秒 */
     public static final int DEFAULT_ASCEND_DURATION_TICKS = 120;
 
     /** NBT 键：已上升 tick 计数 */
@@ -59,14 +57,21 @@ public class EntityAscensionCarrier extends Entity {
     private static final String TAG_DURATION = "gtitDurationTicks";
     /** NBT 键：飞升完成标志 */
     private static final String TAG_COMPLETE = "gtitAscensionComplete";
-    /** NBT 键：当前上升速度（动量积分状态，防区块卸载重置） */
+    /** NBT 键：当前上升速度（积分状态，防区块卸载重置） */
     private static final String TAG_SPEED = "gtitRiseSpeed";
 
-    /** 已上升 tick 计数（服务端推进；NBT 持久化，防区块卸载重置） */
+    /**
+     * NBT 读入速度上界（方块/tick）：旧档（恒速 0.10 / 三段式 0.15 时代）0~0.15 值直读
+     * 兼容；新单式匀加速档放宽到 2.0（否则区块卸载恢复时新速度被误钳回 0）；越界视为
+     * 损坏数据回退初速 0。
+     */
+    private static final double NBT_MAX_RISE_SPEED_PER_TICK = 2.0D;
+
+    /** 已上升 tick 计数（双端同式积分推进；NBT 仅服务端写入，防区块卸载重置） */
     private int riseTick;
     /** 本次飞升时长上限（tick），spawnFor 可按演出需要覆盖；NBT 持久化 */
     private int durationTicks = DEFAULT_ASCEND_DURATION_TICKS;
-    /** 当前上升速度（方块/tick；动量积分，NBT 持久化） */
+    /** 当前上升速度（方块/tick；单式匀加速积分状态，NBT 持久化） */
     private double riseSpeed = INITIAL_SPEED_PER_TICK;
     /** 飞升完成标志（finishAscension 置位；S4 经 {@link #isAscensionComplete()} 读取） */
     private boolean ascensionComplete;
@@ -96,10 +101,20 @@ public class EntityAscensionCarrier extends Entity {
         // updateRiderPosition 每 tick 更新骑者位置）；刻意不使用基类 motion/重力/AI 移动逻辑
         super.onUpdate();
 
-        // 服务端权威：位移与状态只在服务端推进（客户端零逻辑）
-        if (worldObj.isRemote) return;
+        if (worldObj.isRemote) {
+            // 客户端：只做与服务器同式的确定性积分（修旧版「客户端实体冻结、posY 靠
+            // 0.5s 一跳的同步包跳变」卡顿根因），并镜像服务器失骑守卫——finish 卸骑
+            // 后、销毁包到达前不再多积分（残差≤1-2 tick，由位置同步包纠偏）；不裁决
+            // 自毁/完成等状态——载具销毁由服务端 destroy 包驱动，本客户端实体无需
+            // 也不应自毁
+            if (riddenByEntity != null) {
+                integrateRise();
+            }
+            return;
+        }
 
-        // Botania :205-208 同款守卫：失去骑乘者即自毁（含 finishAscension 卸下后的下一 tick 收尾）
+        // 服务端权威裁决：Botania :205-208 同款守卫，失去骑乘者即自毁
+        // （含 finishAscension 卸下后的下一 tick 收尾）
         if (riddenByEntity == null) {
             setDead();
             return;
@@ -107,27 +122,23 @@ public class EntityAscensionCarrier extends Entity {
         // 已完成：不再上升，等待上面的骑乘者清空守卫在下一 tick 自毁
         if (ascensionComplete) return;
 
-        // D3 三段式动量积分（明确参数）：
-        // 初速 0（INITIAL_SPEED_PER_TICK），加速度 0.00375/t²（ACCEL_PER_TICK），
-        // 前 1/3 时长匀加速至峰值 0.15（MAX_SPEED_PER_TICK），中段巡航，
-        // 终点缓冲 = 后 1/3 时长反相匀减速，到达时长时速度恰好回落至 0——
-        // 速度恒被 [0, 0.15] 钳制，总升程 ≈ 0.15 × 2/3 时长（120t ≈ 12 格），不越界。
-        int accelTicks = this.durationTicks / 3;
-        int decelStartTick = this.durationTicks - accelTicks;
-        if (this.riseTick < accelTicks) {
-            this.riseSpeed += ACCEL_PER_TICK;
-        } else if (this.riseTick >= decelStartTick) {
-            this.riseSpeed -= ACCEL_PER_TICK;
-        }
-        if (this.riseSpeed < 0.0D) this.riseSpeed = 0.0D;
-        if (this.riseSpeed > MAX_SPEED_PER_TICK) this.riseSpeed = MAX_SPEED_PER_TICK;
-
-        posY += this.riseSpeed;
-        riseTick++;
+        integrateRise();
 
         if (riseTick >= durationTicks) {
             finishAscension();
         }
+    }
+
+    /**
+     * 单式竖直匀加速积分（双端同式、同参数同结果；客户端浮点漂移由原版位置同步包
+     * 自动纠偏）：{@code v += RISE_ACCEL_PER_TICK; motionY = v; posY += v}。
+     */
+    private void integrateRise() {
+        this.riseSpeed += RISE_ACCEL_PER_TICK;
+        if (this.riseSpeed < 0.0D) this.riseSpeed = 0.0D;
+        motionY = this.riseSpeed;
+        posY += this.riseSpeed;
+        this.riseTick++;
     }
 
     /**
@@ -169,9 +180,10 @@ public class EntityAscensionCarrier extends Entity {
         durationTicks = cmp.getInteger(TAG_DURATION);
         // 旧档/异常兜底：非法值回退默认时长
         if (durationTicks <= 0) durationTicks = DEFAULT_ASCEND_DURATION_TICKS;
-        // 旧档（恒速时代）无速度键：从 0 平滑重新加速，动量连续无跳变
+        // 旧档（恒速/三段式时代）速度键 0~0.15 值直读兼容；新档上界放宽到
+        // {@link #NBT_MAX_RISE_SPEED_PER_TICK}（2.0），越界视为损坏数据回退初速 0 重新加速
         riseSpeed = cmp.getDouble(TAG_SPEED);
-        if (riseSpeed < 0.0D || riseSpeed > MAX_SPEED_PER_TICK) riseSpeed = INITIAL_SPEED_PER_TICK;
+        if (riseSpeed < 0.0D || riseSpeed > NBT_MAX_RISE_SPEED_PER_TICK) riseSpeed = INITIAL_SPEED_PER_TICK;
         ascensionComplete = cmp.getBoolean(TAG_COMPLETE);
     }
 

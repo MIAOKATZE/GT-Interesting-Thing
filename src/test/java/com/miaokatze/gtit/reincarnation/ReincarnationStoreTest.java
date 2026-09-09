@@ -19,6 +19,7 @@ import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle.CycleState;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle.ItemRef;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationFingerprints;
+import com.miaokatze.gtit.reincarnation.core.ReincarnationSaveGuard;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
 import com.miaokatze.gtit.testutil.SimpleAssert;
@@ -81,6 +82,9 @@ public class ReincarnationStoreTest {
             "atomicWriteNoTempLeftAndOverwriteSafe",
             () -> runChecked(ReincarnationStoreTest::atomicWriteNoTempLeftAndOverwriteSafe));
         cases.put("withdrawAdjustsPendingItems", () -> runChecked(ReincarnationStoreTest::withdrawAdjustsPendingItems));
+        cases.put(
+            "confirmExecutedThenStaleCloseSaveKeepsLicense",
+            () -> runChecked(ReincarnationStoreTest::confirmExecutedThenStaleCloseSaveKeepsLicense));
         try {
             TestRunner.run(ReincarnationStoreTest.class, cases);
         } finally {
@@ -755,6 +759,77 @@ public class ReincarnationStoreTest {
         SimpleAssert.that(!cycle.withdraw(CIRCUIT), "领取回 IDLE 后 withdraw 空清单返回 false");
         cycle.addPendingItem(DIAMOND);
         SimpleAssert.that(cycle.withdraw(DIAMOND), "IDLE 恢复后可再次增删");
+    }
+
+    /**
+     * A4 丢更新覆写防御（container 确认后陈旧模型关窗保存）：store 先写入
+     * EXECUTED+投胎信箱（含物品）+executedFingerprints（等价 Handler.saveSplit 确认
+     * 事务），模拟容器仍持陈旧 DEPOSITED/IDLE 模型，经修复后的防御路径
+     * （{@link ReincarnationSaveGuard#needsReloadBeforeSave} 判定 → 先重载再保存）
+     * 完成关窗保存 → 断言 EXECUTED 状态、信箱物品、指纹三者全部保留且无重复；
+     * 对照组固化"陈旧全量覆写抹掉许可"的 bug 形态与反例（磁盘非 EXECUTED 不触发）。
+     */
+    static void confirmExecutedThenStaleCloseSaveKeepsLicense() throws Exception {
+        ReincarnationStore store = newStore();
+        // 权威路径：确认推进 EXECUTED + 信箱 + 指纹，同一 save 事务落盘（等价确认链路）
+        ReincarnationCycle authoritative = new ReincarnationCycle(UUID_A);
+        authoritative.deposit(Arrays.asList(DIAMOND, CIRCUIT));
+        String fingerprint = authoritative.confirmReincarnation(42L);
+        store.save(authoritative);
+
+        // 模拟容器陈旧模型（doConfirm 返回后容器仍持确认前快照）：DEPOSITED 形态
+        ReincarnationCycle stale = new ReincarnationCycle(UUID_A);
+        stale.deposit(Arrays.asList(CIRCUIT));
+        SimpleAssert.eq(CycleState.DEPOSITED, stale.getCycleState(), "前置：陈旧模型为 DEPOSITED");
+
+        // 防御判定：磁盘 EXECUTED + 内存非 EXECUTED → 先重载再保存（修复后的关窗路径）
+        SimpleAssert.that(
+            ReincarnationSaveGuard.needsReloadBeforeSave(stale, store.load(UUID_A)),
+            "防御判定：磁盘 EXECUTED、内存 DEPOSITED → 先重载");
+        stale = store.load(UUID_A); // 重载（容器按打开同款路径替换内存模型）
+        store.save(stale); // 关窗保存（saveQuietly 尾段）
+
+        // 断言：EXECUTED 状态、信箱物品（恰为原两件、无重复）、指纹三者全部保留
+        ReincarnationCycle afterClose = store.load(UUID_A);
+        SimpleAssert.eq(CycleState.EXECUTED, afterClose.getCycleState(), "关窗保存后许可仍为 EXECUTED");
+        assertMailbox(afterClose, DIAMOND, CIRCUIT);
+        SimpleAssert.eq(
+            1,
+            afterClose.getExecutedFingerprints()
+                .size(),
+            "指纹恰 1 条（无重复）");
+        SimpleAssert.that(afterClose.hasFingerprint(fingerprint), "指纹保留");
+        SimpleAssert.that(afterClose.canClaimGrant(), "EXECUTED 待领取（信箱未被陈旧覆写抹除）");
+
+        // 陈旧 IDLE 形态同样命中防御判定
+        ReincarnationCycle staleIdle = new ReincarnationCycle(UUID_A);
+        SimpleAssert.eq(CycleState.IDLE, staleIdle.getCycleState(), "前置：陈旧模型为 IDLE");
+        SimpleAssert.that(
+            ReincarnationSaveGuard.needsReloadBeforeSave(staleIdle, store.load(UUID_A)),
+            "防御判定：磁盘 EXECUTED、内存 IDLE → 先重载");
+
+        // 反例：磁盘非 EXECUTED（新档 IDLE）不触发重载，正常保存路径不受影响
+        ReincarnationStore freshStore = newStore();
+        SimpleAssert.that(
+            !ReincarnationSaveGuard.needsReloadBeforeSave(new ReincarnationCycle(UUID_A), freshStore.load(UUID_A)),
+            "反例：磁盘非 EXECUTED → 不触发重载");
+
+        // 对照组（固化 bug 形态）：陈旧模型不经防御直接全量覆写 → 信箱/指纹被抹
+        ReincarnationCycle staleDirect = new ReincarnationCycle(UUID_A);
+        staleDirect.deposit(Arrays.asList(DIAMOND));
+        store.save(staleDirect);
+        ReincarnationCycle wiped = store.load(UUID_A);
+        SimpleAssert.eq(CycleState.IDLE, wiped.getCycleState(), "对照组：陈旧覆写抹掉 EXECUTED（防御针对的 bug 形态）");
+        SimpleAssert.eq(
+            0,
+            wiped.getPendingItems()
+                .size(),
+            "对照组：陈旧覆写抹掉信箱物品");
+        SimpleAssert.eq(
+            0,
+            wiped.getExecutedFingerprints()
+                .size(),
+            "对照组：陈旧覆写抹掉指纹");
     }
 
     // ==================== 工具 ====================

@@ -709,6 +709,13 @@ public class CommonProxy {
         // O2-03：清空主线程任务队列（FMLServerStoppingEvent 不投递给事件总线监听器，
         // 由本生命周期钩子代清——防止单机连续开新世界时残留任务跨世界执行）
         com.miaokatze.gtit.util.ServerTaskScheduler.clear();
+        // v1.8.5：HardcoreEnforcer 删档倒计时复位止血（事件不走总线，经本钩子转发——
+        // 防单机连续开新世界时冻结倒计时跨档误删新存档）
+        try {
+            com.miaokatze.gtit.reincarnation.handler.HardcoreEnforcer.onServerStopping();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服复位时间线执法器失败", t);
+        }
     }
 
     /**
@@ -731,6 +738,13 @@ public class CommonProxy {
             com.miaokatze.gtit.signin.DailySignInManager.INSTANCE.unloadAll();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("停服收尾签到数据失败", t);
+        }
+        // v1.8.5：HardcoreEnforcer 兜底复位 + 待删世界目录收尾删除（停服后再删档，
+        // 消除在线删档期间的 CCL/LP 上游崩溃触发面；事件不走总线，经本钩子转发）
+        try {
+            com.miaokatze.gtit.reincarnation.handler.HardcoreEnforcer.onServerStopped();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服收尾时间线执法器失败", t);
         }
     }
 }

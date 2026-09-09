@@ -13,6 +13,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.DamageSource;
 
+import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.reincarnation.ReincarnationConfirmHook;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
@@ -210,6 +211,26 @@ public final class ReincarnationHandler {
             GTInterestingThing.LOG.info("[reincarnation] 非单机环境，周目机制停用（本次登录不检测）");
             return;
         }
+        // v1.8.5 修订轮：LogisticsPipes 1.5.35-GTNH 上游缺陷兜底——PlayerConfig.writeToFile
+        // 全程无 mkdirs（字节码实证：mkdirs 仅存在于 readFromFile，writeToFile 于 :190 直接
+        // new FileOutputStream），全新存档（logisticspipes/names 目录从未被创建，如轮回死亡
+        // 后立即退档的短会话）在 FMLServerStopping 写玩家配置即 FileNotFoundException 崩服
+        // （crash-2026-09-09_23.32.10-server 实证）。登录时幂等预建该标准目录：空目录对 LP
+        // 无副作用，目录已存在时 mkdirs 返回 false 由 isDirectory 放行。
+        try {
+            File lpNamesDir = new File(
+                player.worldObj.getSaveHandler()
+                    .getWorldDirectory(),
+                "logisticspipes/names");
+            if (lpNamesDir.mkdirs() || lpNamesDir.isDirectory()) {
+                GTInterestingThing.LOG.info("[reincarnation] LP names 目录已就绪： " + lpNamesDir.getAbsolutePath());
+            } else {
+                GTInterestingThing.LOG
+                    .warn("[reincarnation] LP names 目录创建失败（LP 停服写配置可能 FNF）： " + lpNamesDir.getAbsolutePath());
+            }
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.warn("[reincarnation] LP names 目录预建跳过（不影响登录）", t);
+        }
         try {
             ReincarnationCycle cycle = loadMerged(
                 player.getUniqueID()
@@ -277,6 +298,12 @@ public final class ReincarnationHandler {
             return;
         }
         long now = System.currentTimeMillis();
+        // v1.8.5 修订轮 CME 修复：到期任务的 run() 允许再入队（实证链路：executeGrant
+        // 运行中向本表 add completeGrant → ArrayList 迭代器 next() 抛
+        // ConcurrentModificationException，crash-2026-09-09_23.50.37 实证）。口径改为
+        // "先摘除后执行"：迭代阶段只做到期判定与摘除，run() 统一放到迭代结束后——
+        // 此时再入队的动作落入活动表尾部，下一 tick 正常驱动，不破坏本轮迭代。
+        List<ScheduledAction> dueActions = null;
         Iterator<ScheduledAction> iterator = scheduledActions.iterator();
         while (iterator.hasNext()) {
             ScheduledAction action = iterator.next();
@@ -285,15 +312,28 @@ public final class ReincarnationHandler {
                 GTInterestingThing.LOG.info("[reincarnation] 到期任务作废（玩家已死亡）");
                 continue;
             }
+            boolean dueNow;
             if (action.deadlineMillis >= 0) {
-                if (now < action.deadlineMillis) {
-                    continue;
-                }
+                dueNow = now >= action.deadlineMillis;
             } else if (action.ticksRemaining > 0) {
                 action.ticksRemaining--;
+                dueNow = false;
+            } else {
+                dueNow = true;
+            }
+            if (!dueNow) {
                 continue;
             }
             iterator.remove();
+            if (dueActions == null) {
+                dueActions = new ArrayList<>(2);
+            }
+            dueActions.add(action);
+        }
+        if (dueActions == null) {
+            return;
+        }
+        for (ScheduledAction action : dueActions) {
             try {
                 action.action.run();
             } catch (Throwable t) {
@@ -327,7 +367,8 @@ public final class ReincarnationHandler {
 
     /**
      * S7 GUI 二次确认回调（经 {@link ReincarnationConfirmHook.Holder} 注入）。
-     * 校验 DEPOSITED + 非空清单 + server 线程后收束本轮轮回并进入飞升。
+     * 校验 DEPOSITED + 非空清单 + server 线程 + 背包轮回水晶门槛（C4）后收束本轮
+     * 轮回并进入飞升。
      */
     private void onConfirmRequested(EntityPlayer player) {
         if (!(player instanceof EntityPlayerMP)) {
@@ -367,11 +408,22 @@ public final class ReincarnationHandler {
                         + mp.getCommandSenderName());
                 return;
             }
+            // C4 轮回水晶门槛：全部确认校验（EXECUTED 锁等）通过后、推进状态前，
+            // 以背包实时扫描为准（容器打开期间水晶可能已移位）检查持有 ≥1 枚；
+            // 不足 → lang 提示并拒绝（不推进、不写信箱/指纹、不 beginAscension）
+            if (countReincarnationCrystals(mp) < 1) {
+                mp.addChatMessage(new ChatComponentTranslation("gtit.reincarnation.confirm.no_crystal"));
+                GTInterestingThing.LOG.info("[reincarnation] 轮回确认被拒（背包无轮回水晶）：player=" + mp.getCommandSenderName());
+                return;
+            }
             long seed = mp.worldObj.getSeed();
             String fingerprint = cycle.confirmReincarnation(seed);
             // D1：确认推进 EXECUTED 与投胎信箱写入同一事务（save 内同一次原子写；
             // 失败抛出即整体未写，信箱不会半份落盘）
             saveSplit(cycle);
+            // C4 水晶扣除置于推进+落盘成功之后：confirm/save 异常路径不多扣（扣而不
+            // 推进的窗口已消除；执行失败 catch 分支此时无库存副作用）
+            consumeReincarnationCrystal(mp);
             GTInterestingThing.LOG.info(
                 "[reincarnation] 轮回确认：DEPOSITED→EXECUTED，player=" + mp.getCommandSenderName()
                     + "，fingerprint="
@@ -381,6 +433,32 @@ public final class ReincarnationHandler {
             beginAscension(mp);
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[reincarnation] 轮回确认执行失败", t);
+        }
+    }
+
+    /**
+     * 背包轮回水晶计数（C4；主背包 36 格含快捷栏，实时扫描为准——容器打开期间
+     * 水晶可能已移位）。物品引用与猫猫币同款 {@code GTITItemList} 容器口径
+     * （{@code isStackEqual}，与 {@code ReincarnationContainer.isNekoCoin} 一致）。
+     */
+    private static int countReincarnationCrystals(EntityPlayerMP player) {
+        int count = 0;
+        for (ItemStack stack : player.inventory.mainInventory) {
+            if (GTITItemList.ReincarnationCrystal.isStackEqual(stack)) {
+                count += stack.stackSize;
+            }
+        }
+        return count;
+    }
+
+    /** 扣除 1 枚轮回水晶（C4；多格时按首个命中格经 {@code decrStackSize} 扣减，空则清格） */
+    private static void consumeReincarnationCrystal(EntityPlayerMP player) {
+        for (int slot = 0; slot < player.inventory.mainInventory.length; slot++) {
+            if (!GTITItemList.ReincarnationCrystal.isStackEqual(player.inventory.mainInventory[slot])) {
+                continue;
+            }
+            player.inventory.decrStackSize(slot, 1);
+            return;
         }
     }
 

@@ -52,7 +52,6 @@ public class ReincarnationGuiContainer extends GuiContainer {
     private static final String KEY_BANNER_IDLE = KEY_PREFIX + "gui.banner.idle";
     private static final String KEY_BANNER_DEPOSITED = KEY_PREFIX + "gui.banner.deposited";
     private static final String KEY_BANNER_EXECUTED = KEY_PREFIX + "gui.banner.executed";
-    private static final String KEY_PROGRESS = KEY_PREFIX + "gui.progress";
     private static final String KEY_IGNORE_NBT = KEY_PREFIX + "gui.ignore_nbt";
     private static final String KEY_ENCRYPTED = KEY_PREFIX + "gui.encrypted";
     private static final String KEY_UNLOCK_SHIMMER = KEY_PREFIX + "gui.unlock.shimmer";
@@ -70,6 +69,8 @@ public class ReincarnationGuiContainer extends GuiContainer {
     private static final int COLUMN_LOCKED_COLOR = 0x555555;
     /** 已解锁列名颜色（EnumChatFormatting.GOLD 同值） */
     private static final int COLUMN_UNLOCKED_COLOR = 0xFFAA00;
+    /** n=0 档外壳虚影 alpha（vanilla ghost slot 风格的固定浅淡预览） */
+    private static final float HULL_GHOST_EMPTY_ALPHA = 0.40F;
 
     /**
      * 外壳虚影图标缓存（按列下标；{@link #HULL_GHOST_RESOLVED} 置位后 cache 为 null 即
@@ -167,13 +168,13 @@ public class ReincarnationGuiContainer extends GuiContainer {
             this.guiTop,
             this.guiLeft + ReincarnationLayout.PANEL_WIDTH,
             this.guiTop + ReincarnationLayout.PANEL_HEIGHT,
-            0xF0101010);
+            0xF01C1C22);
         drawRect(
             this.guiLeft,
             this.guiTop,
             this.guiLeft + ReincarnationLayout.PANEL_WIDTH,
             this.guiTop + 1,
-            0xFF555555);
+            0xFF6A6A6A);
         // 15 列网格：外壳槽 + 3 物品格（未解锁行/锁定列画暗化格）
         for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
             int x = ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH;
@@ -208,10 +209,10 @@ public class ReincarnationGuiContainer extends GuiContainer {
     private void drawCell(int x, int y, boolean locked) {
         int left = this.guiLeft + x;
         int top = this.guiTop + y;
-        drawRect(left, top, left + ReincarnationLayout.SLOT_SIZE, top + ReincarnationLayout.SLOT_SIZE, 0xFF8B8B8B);
-        drawRect(left + 1, top + 1, left + 17, top + 17, 0xFF373737);
+        drawRect(left, top, left + ReincarnationLayout.SLOT_SIZE, top + ReincarnationLayout.SLOT_SIZE, 0xFFADADAD);
+        drawRect(left + 1, top + 1, left + 17, top + 17, 0xFF4A4A4A);
         if (locked) {
-            drawRect(left + 1, top + 1, left + 17, top + 17, 0x66000000);
+            drawRect(left + 1, top + 1, left + 17, top + 17, 0x40000000);
         }
     }
 
@@ -238,13 +239,6 @@ public class ReincarnationGuiContainer extends GuiContainer {
         for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
             int centerX = ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH
                 + ReincarnationLayout.SLOT_SIZE / 2;
-            // 外壳进度 n/16（lang 键自带 §e/§7 配色）
-            drawScaledCentered(
-                StatCollector.translateToLocalFormatted(KEY_PROGRESS, container.getColumnCount(column)),
-                centerX,
-                ReincarnationLayout.PROGRESS_Y,
-                0xFFFFFF,
-                0.5f);
             // 列名（已解锁金 / 未解锁深灰，与旧 GUI columnText 一致）
             int color = container.isColumnLocked(column) ? COLUMN_LOCKED_COLOR : COLUMN_UNLOCKED_COLOR;
             drawScaledCentered(
@@ -281,15 +275,16 @@ public class ReincarnationGuiContainer extends GuiContainer {
             FOOTER_COLOR,
             0.55f);
 
-        // D2：外壳进度虚影（半透明叠画在外壳槽格内，n/16 透明度；无进度不画）
+        // D2：外壳进度虚影（外壳槽格内叠画：0 档 0.40 浅淡预览 / 1..15 n/16 渐进 / 16 实影）
         drawHullGhosts(container);
         // D4：hover tooltip（外壳槽 / 币槽；仅覆盖对应槽位命中区）
         drawTooltips(container, mouseX, mouseY);
     }
 
     /**
-     * 外壳进度虚影（D2）：按列进度 n 以 {@code alpha = n/16.0F} 半透明叠画该档外壳图标
-     * ——0 不画 / 1..15 半透明 / 16 实影。图标按 {@link ReincarnationHullMatcher} 同口径
+     * 外壳进度虚影（D2）：按列进度 n 半透明叠画该档外壳图标——0 固定
+     * {@link #HULL_GHOST_EMPTY_ALPHA}（vanilla ghost slot 风浅淡预览）/ 1..15 渐进
+     * {@code alpha = n/16.0F} / 16 实影。图标按 {@link ReincarnationHullMatcher} 同口径
      * 反向构造（列 0 = 镀铜砖块；列 1..14 = 对应 tier 的 {@link MTEBasicHull}，
      * 经 {@code GregTechAPI.METATILEENTITIES} 单次线性扫描 + 负缓存）。
      * GL 纪律：blend/blendFunc/color 保存恢复，itemRender zLevel 显式设定与还原，
@@ -304,15 +299,13 @@ public class ReincarnationGuiContainer extends GuiContainer {
         this.itemRender.zLevel = 150.0F;
         try {
             for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
-                int count = container.getColumnCount(column);
-                if (count <= 0) {
-                    continue; // 0 不画
-                }
                 ItemStack ghost = hullGhostIcon(column);
                 if (ghost == null) {
                     continue;
                 }
-                float alpha = Math.min(1.0F, count / (float) ReincarnationLayout.HULL_TARGET);
+                int count = container.getColumnCount(column);
+                float alpha = count <= 0 ? HULL_GHOST_EMPTY_ALPHA
+                    : Math.min(1.0F, count / (float) ReincarnationLayout.HULL_TARGET);
                 GL11.glColor4f(1.0F, 1.0F, 1.0F, alpha);
                 this.itemRender.renderItemAndEffectIntoGUI(
                     this.fontRendererObj,

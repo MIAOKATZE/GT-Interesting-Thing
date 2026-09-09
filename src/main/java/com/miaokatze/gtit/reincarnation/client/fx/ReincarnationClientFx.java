@@ -167,10 +167,12 @@ public final class ReincarnationClientFx {
     /** 音效峰值音量（末段） */
     private static final float ASCENSION_SOUND_MAX_VOLUME = 1.0F;
 
-    /** 屏幕渐变 overlay 时长基准（tick，与载具默认时长同步；超过按满值封顶） */
-    private static final float ASCENSION_GRADIENT_TICKS = 120.0F;
-    /** 屏幕渐变 overlay 亮度封顶（0..1；不遮死画面，保留世界可读性） */
-    private static final float ASCENSION_GRADIENT_MAX_ALPHA = 0.8F;
+    /**
+     * 渐强音效时长基准（tick，与载具默认时长同步；超过按满值封顶）。v1.9.1：
+     * 原同基准的屏幕渐变 overlay 已整体摘除（视野表现改由 MixinEntityRenderer
+     * 视野渐模糊承担），本基准现仅音效分段进度使用，数值不变。
+     */
+    private static final float ASCENSION_RAMP_TICKS = 120.0F;
 
     /** 倒计时大数字字号（glScalef 倍率；死亡大标题式放大手法） */
     private static final float COUNTDOWN_NUMBER_SCALE = 3.0F;
@@ -334,8 +336,8 @@ public final class ReincarnationClientFx {
         if (mc.currentScreen != null) {
             player.closeScreen();
         }
-        // 起始 tick 主线程回填（契约同 grant：-1 = 尚未回填）；渐变 overlay 与
-        // 渐强音效共用该时长基准
+        // 起始 tick 主线程回填（契约同 grant：-1 = 尚未回填）；渐强音效与
+        // MixinEntityRenderer 视野渐模糊共用该时长基准
         if (ClientReincarnationFxState.getAscensionStartTick() == -1L) {
             ClientReincarnationFxState.setAscensionStartTick(world.getTotalWorldTime());
             ascensionSoundSegment = 0;
@@ -390,7 +392,7 @@ public final class ReincarnationClientFx {
                 return;
             }
             ascensionSoundSegment = segment;
-            float progress = Math.min(1.0F, (float) elapsed / ASCENSION_GRADIENT_TICKS);
+            float progress = Math.min(1.0F, (float) elapsed / ASCENSION_RAMP_TICKS);
             playAscensionSegment(world, player, progress);
         }
     }
@@ -794,11 +796,11 @@ public final class ReincarnationClientFx {
 
     /**
      * HUD：HELMET Post 层绘制（BQ QuestNotification.java:223-240 手法）——
-     * ⓪ 飞升演出期间屏幕渐变 overlay（白色随演出进度渐起，先画渐变再画文字，
-     * 不遮同层 HUD 文本；GUI 在 overlay 之后渲染，同样不受遮盖）；
      * ① 发放演出期间中央炫彩大字（HSL 色相按 tick 循环 + glScalef 放大）；
      * ② 倒计时中央大数字 + 说明行（deadline 驱动，客户端只显示，归零由服务端处理）；
      * ③ 倒计时归零未清期间附加提示行（该时间线已轮回）。
+     * （v1.9.1：原 ⓪ 飞升屏幕渐变 overlay 已整体摘除，视野表现改由
+     * MixinEntityRenderer 视野渐模糊承担。）
      */
     @SubscribeEvent
     public void onRenderGameOverlay(RenderGameOverlayEvent.Post event) {
@@ -813,19 +815,6 @@ public final class ReincarnationClientFx {
         int width = event.resolution.getScaledWidth();
         int height = event.resolution.getScaledHeight();
         FontRenderer font = mc.fontRenderer; // 本映射字段名（Minecraft.java:218）
-
-        // ⓪ 飞升屏幕渐变（FX 状态驱动：起始 tick 派生进度，smoothstep 渐起、0.8 封顶）
-        if (ClientReincarnationFxState.isAscensionActive()) {
-            long startTick = ClientReincarnationFxState.getAscensionStartTick();
-            if (startTick >= 0L) {
-                float progress = (world.getTotalWorldTime() - startTick) / ASCENSION_GRADIENT_TICKS;
-                if (progress > 0.0F) {
-                    float eased = Math.min(1.0F, progress);
-                    eased = eased * eased * (3.0F - 2.0F * eased); // smoothstep 缓入
-                    drawAscensionGradient(width, height, ASCENSION_GRADIENT_MAX_ALPHA * eased);
-                }
-            }
-        }
 
         // ① 发放庆祝大字（演出期间全程显示）
         boolean grantActive = !ClientReincarnationFxState.getPendingGrantItems()
@@ -892,36 +881,6 @@ public final class ReincarnationClientFx {
         GL11.glTranslatef(cx, cy, 0.0F);
         GL11.glScalef(scale, scale, scale);
         font.drawStringWithShadow(text, -font.getStringWidth(text) / 2, -font.FONT_HEIGHT / 2, argb);
-        GL11.glPopMatrix();
-    }
-
-    /**
-     * 屏幕渐变 overlay（飞升白化）：全屏白色矩形按 alpha 渐起。
-     * GL 状态纪律（任务包 D2/D3 冻结口径）：blend/alphatest/depth/color/矩阵
-     * 严格保存恢复——push 矩阵 + PushAttrib(ENABLE/COLOR/DEPTH)，
-     * 开 blend + 关 texture/alphatest + depthMask(false)，画完逐项还原，
-     * 不污染同层后续渲染；仅客户端路径触达。
-     */
-    private static void drawAscensionGradient(int width, int height, float alpha) {
-        if (alpha <= 0.0F) {
-            return;
-        }
-        int a = (int) (Math.min(1.0F, alpha) * 255.0F) << 24;
-        GL11.glPushMatrix();
-        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glDisable(GL11.GL_ALPHA_TEST);
-        GL11.glDepthMask(false);
-        // Gui.drawRect（static）：left/top/right/bottom + argb（自带矩阵无关绘制）
-        net.minecraft.client.gui.Gui.drawRect(0, 0, width, height, a | 0xFFFFFF);
-        GL11.glDepthMask(true);
-        GL11.glEnable(GL11.GL_ALPHA_TEST);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        GL11.glPopAttrib();
         GL11.glPopMatrix();
     }
 

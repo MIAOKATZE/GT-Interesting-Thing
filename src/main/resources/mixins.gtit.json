@@ -9,6 +9,7 @@
   "client": [
     "MixinAEBaseGuiDrawHoveringTextFix",
     "MixinPlayerControllerMP",
+    "MixinEntityRenderer",
     "NekoSoundManagerMixin",
     "MixinMTEBrickedBlastFurnace",
     "MixinMTEBlackHoleCompressor",

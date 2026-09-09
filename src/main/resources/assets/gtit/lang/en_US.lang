@@ -182,7 +182,6 @@ gtit.reincarnation.gui.title=§6Reincarnation Cycle
 gtit.reincarnation.gui.banner.idle=§7No cycle in progress — deposit items to start a new run
 gtit.reincarnation.gui.banner.deposited=§6Cycle deposited: adjust items or confirm reincarnation
 gtit.reincarnation.gui.banner.executed=§cCycle executed — an unclaimed reincarnation exists (read-only)
-gtit.reincarnation.gui.progress=§e%s§7/16
 gtit.reincarnation.gui.hull.tooltip=Hull slot (%s): feed matching machine hulls — %s unlocks this tier
 gtit.reincarnation.gui.hull.tooltip.done=Tier unlocked (%s)
 gtit.reincarnation.gui.item.tooltip=Cycle item slot (row %s): deposits are recorded into this run
@@ -200,7 +199,7 @@ gtit.reincarnation.gui.confirm.button=§cConfirm Reincarnation
 gtit.reincarnation.gui.confirm.tooltip.state=Not in the deposited state
 gtit.reincarnation.gui.confirm.tooltip.empty=No items deposited yet
 gtit.reincarnation.gui.confirm.tooltip.nohook=Reincarnation finalizer not wired (hook missing)
-gtit.reincarnation.gui.confirm.dialog=§cConfirming triggers §4extreme mode§c and §4deletes this timeline§r§c — irreversible!
+gtit.reincarnation.gui.confirm.dialog=§cIrreversible! This timeline will be deleted.
 gtit.reincarnation.column.0=Steam
 gtit.reincarnation.column.1=Electric LV
 gtit.reincarnation.column.2=Electric MV
@@ -224,6 +223,10 @@ gtit.reincarnation.chat.unlock.no_coin=§cNo matching Neko coin in the payment s
 gtit.reincarnation.chat.readonly=§cThis cycle is read-only (an unclaimed reincarnation exists)
 gtit.reincarnation.chat.deposit.failed=§cThis item cannot be deposited: %s
 gtit.reincarnation.chat.withdraw.failed=§cFailed to remove the record — the item was returned
+
+# v1.9.x S1 contract keys: crystal check on confirm / timeline-end kick notice
+gtit.reincarnation.confirm.no_crystal=§cA Reincarnation Crystal is required to confirm
+gtit.reincarnation.timeline.kick=§cThis timeline has ended; the world will be deleted.
 
 # Reincarnation FX (v1.9.0 S4; grant celebration / already-reincarnated countdown / final mercy)
 gtit.reincarnation.celebration=Reincarnation Effective
