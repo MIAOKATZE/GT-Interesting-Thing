@@ -1113,8 +1113,10 @@ public class GTITGiftCommand extends CommandBase {
     private void handleTerminal(ICommandSender sender) {
         if (FMLCommonHandler.instance()
             .getSide() == Side.SERVER) {
-            LOG.info("[terminal] 物理专用服务器：/gtit terminal 拒绝执行（管理终端仅单机可用）");
-            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "管理终端仅单机可用"));
+            // 口径注：门控为物理侧（LAN 房主走物理客户端不受限），拒绝的是专用服，
+            // 文案与之一致（S11 复审 P3 口径修正）
+            LOG.info("[terminal] 物理专用服务器：/gtit terminal 拒绝执行（管理终端不可用于专用服务器）");
+            sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "管理终端不可用于专用服务器"));
             return;
         }
         if (sender instanceof EntityPlayerMP player) {

@@ -139,9 +139,10 @@ public final class ReincarnationHandler {
      * {@code serverOwner != null}（本项目 build/rfg 反编译源 MinecraftServer.java:999），
      * 集成服构造时恒置 serverOwner（IntegratedServer 构造器 47 行），开放 LAN
      * （shareToLan 仅置 isPublic）不清除——LAN 上 isSinglePlayer() 仍返回 true。
-     * 故追加反射读取 {@code IntegratedServer.getPublic()}（dev MCP 名 / prod SRG 名
-     * {@code func_71344_c}，见 forge conf methods.csv；类名与字段名在 prod 保持混淆，
-     * 故不做类名前置判断，方法缺失即视同非 LAN）：已发布 LAN 即按非单机拒绝。
+     * 故追加反射读取 {@code IntegratedServer.getPublic()}（dev MCP 名 / prod SRG 成员名
+     * {@code func_71344_c}，见 forge conf methods.csv；1.7.10 prod 运行时类名保持 MCP
+     * 形态、仅成员名为 SRG，故只做方法名双候选、不做类名前置判断；双名均缺失即按
+     * 非单机保守拒绝）：已发布 LAN 即按非单机拒绝。
      * 双名解析写法对齐 {@code HardcoreEnforcer.resolveHardcoreField}（SRG 在 prod 命中，
      * dev 名在 dev 命中）。
      * <p>
@@ -162,8 +163,13 @@ public final class ReincarnationHandler {
                 Object isPublic = server.getClass()
                     .getMethod(methodName)
                     .invoke(server);
-                // isPublic() 返回非 Boolean 视为异常信号，按 LAN 保守拒绝
-                return !(isPublic instanceof Boolean) || !((Boolean) isPublic);
+                if (!(isPublic instanceof Boolean)) {
+                    // invoke 对 boolean 返回类型按规范恒装箱 Boolean；非 Boolean 视为异常信号，
+                    // 按 LAN 保守拒绝（fail-closed 口径，S11 复审 P3 修正原放行写法）
+                    GTInterestingThing.LOG.error("[reincarnation] LAN 发布探测返回异常类型（非 Boolean），按非单机环境保守拒绝周目机制");
+                    return false;
+                }
+                return !((Boolean) isPublic);
             } catch (NoSuchMethodException ignored) {
                 // 换下一候选名（dev MCP 名 / prod SRG 名互斥存在）
             } catch (Throwable t) {
@@ -465,8 +471,9 @@ public final class ReincarnationHandler {
 
     /** 倒计时到点：该时间线已轮回过，执行升天（同确认路径） */
     private void executeCountdownDeadline(EntityPlayerMP player) {
-        // v1.8.2 严格单机门控（防御纵深）：登录编排已在非单机环境整体跳过，本路径
-        // 理论上不可达；若因异常路径到达仍拒绝升天
+        // v1.8.2 严格单机门控（防御纵深）：登录编排已在非单机环境整体跳过；但真单机登录
+        // 放行后、30 秒倒计时窗口内对局域网开放（shareToLan）仍会走到本路径，故保留门控，
+        // 异常路径到达亦拒绝升天
         if (!isStrictSinglePlayer()) {
             GTInterestingThing.LOG
                 .info("[reincarnation] 非单机环境，拒绝倒计时到点升天（防御纵深）：player=" + player.getCommandSenderName());
