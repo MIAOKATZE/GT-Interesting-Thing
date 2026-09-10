@@ -626,6 +626,22 @@ public class ReincarnationStoreTest {
             "寄存快照[1] NBT round-trip");
         SimpleAssert.that(!restored.isMigrated(), "迁移标记 NBT round-trip");
 
+        // v1.8.6 发放门控：已领取标记缺省 false + true/false 往返（新键，旧档缺省 false 无迁移）
+        SimpleAssert.that(!restored.isGrantClaimed(), "发放已领取标记缺省 false（新档形态）");
+        data.setGrantClaimed(true);
+        SimpleAssert.that(data.isGrantClaimed(), "setter 置位生效");
+        NBTTagCompound claimedTag = new NBTTagCompound();
+        data.writeToNBT(claimedTag);
+        ReincarnationWorldData claimed = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
+        claimed.readFromNBT(claimedTag);
+        SimpleAssert.that(claimed.isGrantClaimed(), "发放已领取标记 true NBT round-trip");
+        claimed.setGrantClaimed(false);
+        NBTTagCompound clearedTag = new NBTTagCompound();
+        claimed.writeToNBT(clearedTag);
+        ReincarnationWorldData cleared = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
+        cleared.readFromNBT(clearedTag);
+        SimpleAssert.that(!cleared.isGrantClaimed(), "发放已领取标记 false NBT round-trip");
+
         // applyTo：进度灌入模型 + IDLE 可寄存时 deposit 快照
         ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
         restored.applyTo(cycle);

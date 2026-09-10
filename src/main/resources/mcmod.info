@@ -6,7 +6,7 @@
 		"description": "An interesting mod for Minecraft 1.7.10 with Forge focused on unique items and mechanics.",
 		"version": "${modVersion}",
 		"mcversion": "${minecraftVersion}",
-		"url": "",
+		"url": "https://github.com/MIAOKATZE/GT-Interesting-Thing",
 		"updateUrl": "",
 		"authorList": ["miaokatze"],
 		"credits": "",

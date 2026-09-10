@@ -20,3 +20,13 @@ tasks.register<JavaExec>("runStoreTest") {
     mainClass = "com.miaokatze.gtit.reincarnation.ReincarnationStoreTest"
     classpath = storeTestRuntimeClasspath
 }
+
+// v1.8.6 发放门控零依赖测试套件：同 runStoreTest 模式（用例注册在
+// ReincarnationGrantGateTest.main，任一失败以非零退出码结束）。
+// 运行：gradlew runGateTest
+tasks.register<JavaExec>("runGateTest") {
+    group = "verification"
+    description = "Runs the zero-dependency reincarnation grant gate test suite (ReincarnationGrantGateTest.main)."
+    mainClass = "com.miaokatze.gtit.reincarnation.ReincarnationGrantGateTest"
+    classpath = storeTestRuntimeClasspath
+}

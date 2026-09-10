@@ -10,8 +10,10 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.stats.StatList;
 import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.DamageSource;
+import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -19,6 +21,7 @@ import com.miaokatze.gtit.reincarnation.ReincarnationConfirmHook;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle.CycleState;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationFingerprints;
+import com.miaokatze.gtit.reincarnation.core.ReincarnationGrantGate;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
 import com.miaokatze.gtit.reincarnation.entity.EntityAscensionCarrier;
 import com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities;
@@ -249,13 +252,30 @@ public final class ReincarnationHandler {
                         + deadline
                         + "）");
             } else if (cycle.canClaimGrant()) {
-                // EXECUTED 待领取：延迟 200 tick 发放（等客户端就绪后再结算与演出）
-                scheduledActions.add(new ScheduledAction(player, GRANT_DELAY_TICKS, () -> executeGrant(player)));
-                GTInterestingThing.LOG.info(
-                    "[reincarnation] 登录发现待领取轮回奖励：player=" + player.getCommandSenderName()
-                        + "，"
-                        + GRANT_DELAY_TICKS
-                        + " tick 后发放");
+                // v1.8.6 发放门控（严格单机已在上方把关）：仅"新存档首次登录 + 本档未领取"
+                // 放行调度；拦截只审计不调度、不 chat（信箱保留，待真正符合形态的存档/登录）
+                ReincarnationWorldData worldData = worldData();
+                boolean grantClaimed = worldData != null && worldData.isGrantClaimed();
+                long playTicks = readTotalPlayTicks(player);
+                long overworldTotalWorldTime = readOverworldTotalWorldTime();
+                if (ReincarnationGrantGate.shouldGrant(true, grantClaimed, playTicks, overworldTotalWorldTime)) {
+                    // EXECUTED 待领取：延迟 200 tick 发放（等客户端就绪后再结算与演出）
+                    scheduledActions.add(new ScheduledAction(player, GRANT_DELAY_TICKS, () -> executeGrant(player)));
+                    GTInterestingThing.LOG.info(
+                        "[reincarnation] 登录发现待领取轮回奖励：player=" + player.getCommandSenderName()
+                            + "，"
+                            + GRANT_DELAY_TICKS
+                            + " tick 后发放");
+                } else {
+                    GTInterestingThing.LOG.info(
+                        "[reincarnation] 奖励发放门控拦截（非新档首次登录或已领取，信箱保留）：player=" + player.getCommandSenderName()
+                            + "，playTicks="
+                            + playTicks
+                            + "，totalWorldTime="
+                            + overworldTotalWorldTime
+                            + "，grantClaimed="
+                            + grantClaimed);
+                }
             }
             sendSyncSnapshot(player, cycle);
         } catch (Throwable t) {
@@ -541,6 +561,24 @@ public final class ReincarnationHandler {
                         + player.getCommandSenderName());
                 return;
             }
+            // v1.8.6 门控复核：canClaimGrant 通过后再过一遍发放门（新档首登 + 本档未领取）。
+            // 拦截即审计并保留信箱——不置 grantInFlight、不起演出、不调度收束，
+            // 与登录链路同口径（重复登录每次都会被拦，不产生副作用）。
+            ReincarnationWorldData worldData = worldData();
+            boolean grantClaimed = worldData != null && worldData.isGrantClaimed();
+            long playTicks = readTotalPlayTicks(player);
+            long overworldTotalWorldTime = readOverworldTotalWorldTime();
+            if (!ReincarnationGrantGate.shouldGrant(true, grantClaimed, playTicks, overworldTotalWorldTime)) {
+                GTInterestingThing.LOG.info(
+                    "[reincarnation] 奖励发放门控拦截（非新档首次登录或已领取，信箱保留）：player=" + player.getCommandSenderName()
+                        + "，playTicks="
+                        + playTicks
+                        + "，totalWorldTime="
+                        + overworldTotalWorldTime
+                        + "，grantClaimed="
+                        + grantClaimed);
+                return;
+            }
             // ② 幂等标记（持久化；已在发放中则保持，续跑不重复置位）
             cycleStore.markGrantInFlight(
                 player.getUniqueID()
@@ -611,6 +649,18 @@ public final class ReincarnationHandler {
             // ⑦ 成功/落地/失效条目审计隔离后才清信箱 + 完成幂等标记
             cycle.claimGrant();
             saveSplit(cycle);
+            // v1.8.6 收束写"已领取"标记。顺序铁律：先清信箱（上方 claimGrant+saveSplit）
+            // 后写标记——两步之间崩溃时信箱已清而标记未写，下次登录 canClaimGrant=false
+            // 自然不再发放（年龄/playTicks 信号随游玩增长兜底该窗口）；反向顺序会出现
+            // "标记已写、信箱未清"，把待发奖励永久吞掉。
+            ReincarnationWorldData grantedData = worldData();
+            if (grantedData != null) {
+                World grantedOverworld = overworld();
+                if (grantedOverworld != null) {
+                    grantedData.setGrantClaimed(true);
+                    grantedData.saveImmediately(grantedOverworld);
+                }
+            }
             GTInterestingThing.LOG.info(
                 "[reincarnation] 轮回奖励发放完成：EXECUTED→IDLE，player=" + player.getCommandSenderName()
                     + "，items="
@@ -709,6 +759,51 @@ public final class ReincarnationHandler {
             GTInterestingThing.LOG.error("[reincarnation] 每存档进度载体获取失败（按仅许可字段降级）", t);
             return null;
         }
+    }
+
+    /**
+     * 玩家累计游玩 tick（v1.8.6 门控信号①）。映射名实证（本项目 build/rfg 反编译源）：
+     * 注册字段为 MCP 名 {@code StatList.minutesPlayedStat}（StatList.java:32，stat id
+     * {@code stat.playOneMinute}）；增量来源为 EntityPlayer.onUpdate 服务端每 tick
+     * {@code addStat(minutesPlayedStat, 1)}（EntityPlayer.java:390），故存储原始值为
+     * <b>累计 tick</b>。访问器取 compile classpath 实际形态 {@code EntityPlayerMP.func_147099_x()}
+     * （返回 StatisticsFile/StatFileWriter；该反编译源未映射 MCP 名 getStatFile，全源无
+     * getStatFile 符号，SRG 名 dev/prod 运行时一致）；读值用
+     * {@code StatFileWriter.writeStat(StatBase)}（StatFileWriter.java:73，条目缺失返回 0
+     * ——统计文件丢失/旧档缺统计即 0，由 overworld 时间信号互补兜底）。
+     */
+    private static long readTotalPlayTicks(EntityPlayerMP player) {
+        try {
+            return player.func_147099_x()
+                .writeStat(StatList.minutesPlayedStat);
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.warn("[reincarnation] 玩家游玩统计读取失败（按 0 兜底，由时间信号互补判定）", t);
+            return 0L;
+        }
+    }
+
+    /**
+     * 服务端 overworld（v1.8.6：门控信号②取值与已领取标记 saveImmediately 落盘共用；
+     * 与 {@link #worldData()} 同源同降级口径——server 缺失/异常即 null）。
+     */
+    private static World overworld() {
+        try {
+            net.minecraft.server.MinecraftServer server = net.minecraft.server.MinecraftServer.getServer();
+            return server == null ? null : server.getEntityWorld();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[reincarnation] overworld 获取失败（计时读取/标记落盘按降级处理）", t);
+            return null;
+        }
+    }
+
+    /**
+     * overworld 累计运行 tick（v1.8.6 门控信号②：{@code World.getTotalWorldTime()}，
+     * World.java:3949）；overworld 不可用按 0 兜底（登录编排本身要求 server 在场，
+     * 该分支仅防异常路径）。
+     */
+    private static long readOverworldTotalWorldTime() {
+        World currentOverworld = overworld();
+        return currentOverworld == null ? 0L : currentOverworld.getTotalWorldTime();
     }
 
     /**

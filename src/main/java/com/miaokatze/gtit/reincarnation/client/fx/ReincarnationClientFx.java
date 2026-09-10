@@ -6,7 +6,6 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.gui.FontRenderer;
-import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.Entity;
@@ -14,7 +13,6 @@ import net.minecraft.entity.item.EntityItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.MovementInput;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.client.event.MouseEvent;
@@ -49,13 +47,6 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * <p>
  * <b>渲染手法来源（只读复刻，零依赖零 import 跨仓）：</b>
  * <ul>
- * <li>additive 光斑：GTSR {@code GTSRBeamFX.renderParticle}（:149-257）同款——
- * {@code glBlendFunc(GL_SRC_ALPHA, GL_ONE) + glDepthMask(false) + setBrightness(0x00F000F0)
- * + glow 贴图 + 结束恢复 normal 混合/深度写入}；本类在
- * {@code RenderWorldLastEvent} 内直接 Tessellator 绘制 glow billboard
- * （任务包允许的两种手法之一；<b>择 RenderWorldLastEvent 而非 EffectRenderer/EntityFX：</b>
- * 1.7.10 粒子固定走 particles.png 贴图表，自定义 glow 贴图需 stitch 进粒子表，
- * 而 billboard 直接 bindTexture 零缝合，且水晶本体本就要在 RenderWorldLast 渲染）。</li>
  * <li>HUD 层：BetterQuesting {@code QuestNotification.onDrawScreen}（:223-240）同款——
  * {@code RenderGameOverlayEvent.Post} + {@code ElementType.HELMET} +
  * {@code event.resolution.getScaledWidth/Height()}。</li>
@@ -66,10 +57,6 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * <b>直通 doRender、不做相机坐标扣除</b>，故传相机相对坐标（相机偏移用
  * {@code lastTickPos + (pos-lastTickPos)*partialTicks} 插值，任务包草案
  * "player.lastTickEntity" 系笔误）。</li>
- * <li>billboard 朝向：原版铭牌手法 Render.java:352-353——
- * {@code glRotatef(-RenderManager.instance.playerViewY, 0,1,0);
- * glRotatef(playerViewX, 1,0,0)}（playerViewX/Y 为 RenderManager.java:115-116 公开静态字段，
- * 每帧缓存插值视角）。</li>
  * </ul>
  * <p>
  * <b>输入封锁机制（新增硬需求；全部经本地反编译源实读核实，见各处 file:line）：</b>
@@ -130,8 +117,6 @@ public final class ReincarnationClientFx {
     private static final float ASCENSION_HEAD_OFFSET = 0.4F;
     /** 水晶环高度波动幅度（格，任务包 ±1） */
     private static final float ASCENSION_HEIGHT_AMPLITUDE = 1.0F;
-    /** glow 光斑尺寸（格，billboard 半宽） */
-    private static final float ASCENSION_GLOW_SIZE = 0.55F;
 
     /** 领取降下演出总时长（tick，任务包 80~120 取 100 = 5 秒） */
     private static final int GRANT_DESCENT_TICKS = 100;
@@ -147,8 +132,6 @@ public final class ReincarnationClientFx {
     private static final float GRANT_SPIRAL_RAD_PER_TICK = 0.22F;
     /** 演出动画最多展示的物品数（防超大清单刷屏；实际发放由服务端完成，与本演出无关） */
     private static final int GRANT_MAX_ANIMATED_ITEMS = 7;
-    /** 发放 glow 光斑尺寸（格） */
-    private static final float GRANT_GLOW_SIZE = 0.45F;
 
     /** 升天结束判定：锚点 ridingEntity == null 的连续 tick 宽限（容错骑乘建立延迟） */
     private static final int ASCENSION_END_GRACE_TICKS = 20;
@@ -168,9 +151,9 @@ public final class ReincarnationClientFx {
     private static final float ASCENSION_SOUND_MAX_VOLUME = 1.0F;
 
     /**
-     * 渐强音效时长基准（tick，与载具默认时长同步；超过按满值封顶）。v1.9.1：
-     * 原同基准的屏幕渐变 overlay 已整体摘除（视野表现改由 MixinEntityRenderer
-     * 视野渐模糊承担），本基准现仅音效分段进度使用，数值不变。
+     * 渐强音效时长基准（tick，与载具默认时长同步；超过按满值封顶）。
+     * v1.9.1：原同基准的屏幕渐变 overlay 已整体摘除，本基准现仅音效分段进度使用，
+     * 数值不变。
      */
     private static final float ASCENSION_RAMP_TICKS = 120.0F;
 
@@ -189,11 +172,6 @@ public final class ReincarnationClientFx {
     private static final String LANG_COUNTDOWN_LINE = "gtit.reincarnation.countdown_line";
     /** 倒计时归零后等待服务端处理期间的附加提示行（S4 落地） */
     private static final String LANG_TIMELINE_ENDED = "gtit.reincarnation.timeline_ended";
-
-    /** glow 光斑贴图（本切片生成资产，见 tools/artgen_catalog/reincarnation_fx/gen_reincarnation_glow.py） */
-    private static final ResourceLocation GLOW_TEXTURE = new ResourceLocation(
-        "gtit",
-        "textures/misc/reincarnation_glow.png");
 
     // ==================== 运行时状态（仅客户端主线程访问） ====================
 
@@ -336,8 +314,7 @@ public final class ReincarnationClientFx {
         if (mc.currentScreen != null) {
             player.closeScreen();
         }
-        // 起始 tick 主线程回填（契约同 grant：-1 = 尚未回填）；渐强音效与
-        // MixinEntityRenderer 视野渐模糊共用该时长基准
+        // 起始 tick 主线程回填（契约同 grant：-1 = 尚未回填）
         if (ClientReincarnationFxState.getAscensionStartTick() == -1L) {
             ClientReincarnationFxState.setAscensionStartTick(world.getTotalWorldTime());
             ascensionSoundSegment = 0;
@@ -557,7 +534,7 @@ public final class ReincarnationClientFx {
     /**
      * 世界末尾渲染（相机空间）：升天环绕水晶 + 发放螺旋降下物品，均以
      * 虚拟 {@code EntityItem} 经 {@code RenderManager.instance.renderEntityWithPosYaw}
-     * 绘制（仅图像、非真实实体，无法拾取），后叠 additive glow billboard（GTSR 手法）。
+     * 绘制（仅图像、非真实实体，无法拾取）。
      */
     @SubscribeEvent
     public void onRenderWorldLast(RenderWorldLastEvent event) {
@@ -579,25 +556,19 @@ public final class ReincarnationClientFx {
         double camY = player.lastTickPosY + (player.posY - player.lastTickPosY) * pt;
         double camZ = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * pt;
 
-        List<double[]> glowSpots = new ArrayList<>();
         if (ascActive) {
-            renderAscensionOrbit(world, resolveAscensionAnchor(world, player), camX, camY, camZ, pt, glowSpots);
+            renderAscensionOrbit(world, resolveAscensionAnchor(world, player), camX, camY, camZ, pt);
         }
         if (grantActive) {
-            renderGrantDescent(world, player, camX, camY, camZ, pt, glowSpots);
-        }
-        if (!glowSpots.isEmpty()) {
-            drawGlowBillboards(mc, glowSpots, camX, camY, camZ);
+            renderGrantDescent(world, player, camX, camY, camZ, pt);
         }
     }
 
     /**
      * 升天环绕：以锚点实体为圆心，{@link #ASCENSION_CRYSTAL_COUNT} 枚轮回水晶
-     * 常角速度环绕（半径 1.5~2 正弦波动、高度头顶 ±1 正弦波动），
-     * 每枚伴一枚 glow billboard。
+     * 常角速度环绕（半径 1.5~2 正弦波动、高度头顶 ±1 正弦波动）。
      */
-    private void renderAscensionOrbit(World world, Entity anchor, double camX, double camY, double camZ, float pt,
-        List<double[]> glowSpots) {
+    private void renderAscensionOrbit(World world, Entity anchor, double camX, double camY, double camZ, float pt) {
         if (anchor == null) {
             return;
         }
@@ -624,17 +595,15 @@ public final class ReincarnationClientFx {
             applyVirtualItemFrame(item, world, x, y, z, (int) (fxTime * 2.0D), i * 0.7F);
             RenderManager.instance
                 .renderEntityWithPosYaw(item, x - camX, y - camY, z - camZ, (float) (fxTime * 2.5D + i * 47.0D), pt);
-            glowSpots.add(new double[] { x, y, z, ASCENSION_GLOW_SIZE });
         }
     }
 
     /**
      * 领取降下：物品从头顶 {@link #GRANT_START_HEIGHT} 格高处沿收拢螺旋依次降下至
-     * 玩家位置（错峰 {@link #GRANT_STAGGER_TICKS}，单件 smoothstep 缓落），
-     * 全程伴 additive glow（"期间物品发光明亮"）。
+     * 玩家位置（错峰 {@link #GRANT_STAGGER_TICKS}，单件 smoothstep 缓落）。
      */
     private void renderGrantDescent(World world, EntityClientPlayerMP player, double camX, double camY, double camZ,
-        float pt, List<double[]> glowSpots) {
+        float pt) {
         if (grantItemEntities == null) {
             return;
         }
@@ -670,9 +639,6 @@ public final class ReincarnationClientFx {
                 z - camZ,
                 (float) (world.getTotalWorldTime() * 3.0D + i * 31.0D),
                 pt);
-            // glow 强度随落定收敛（快落地时收一点，落定即演出收尾）
-            float glowScale = GRANT_GLOW_SIZE * (1.0F - 0.35F * (float) t);
-            glowSpots.add(new double[] { x, y, z, glowScale });
         }
     }
 
@@ -752,46 +718,6 @@ public final class ReincarnationClientFx {
         item.hoverStart = hoverStart;
     }
 
-    /**
-     * additive glow billboard（GTSR GTSRBeamFX 手法复刻）：
-     * {@code GL_SRC_ALPHA/GL_ONE} 混合 + 深度只读 + 全亮光值 + glow 贴图，
-     * 原版铭牌旋转法朝向相机，绘制完完整恢复混合/深度/剔除状态。
-     * 每格 double[] = {x, y, z, halfSize}。
-     */
-    private void drawGlowBillboards(Minecraft mc, List<double[]> spots, double camX, double camY, double camZ) {
-        GL11.glPushMatrix();
-        GL11.glDepthMask(false);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE); // additive（GTSR 同款）
-        mc.renderEngine.bindTexture(GLOW_TEXTURE);
-        Tessellator tess = Tessellator.instance; // 本映射为公开静态字段（Tessellator.java:72），非 getInstance()
-        tess.startDrawingQuads();
-        tess.setBrightness(0x00F000F0); // 全亮光值（GTSR 同款）
-        tess.setColorRGBA_F(0.75F, 0.95F, 1.0F, 0.85F);
-        for (double[] spot : spots) {
-            GL11.glPushMatrix();
-            GL11.glTranslated(spot[0] - camX, spot[1] - camY, spot[2] - camZ);
-            // 原版铭牌朝向法（Render.java:352-353 同款）
-            GL11.glRotatef(-RenderManager.instance.playerViewY, 0.0F, 1.0F, 0.0F);
-            GL11.glRotatef(RenderManager.instance.playerViewX, 1.0F, 0.0F, 0.0F);
-            float s = (float) spot[3];
-            tess.addVertexWithUV(-s, -s, 0.0D, 0.0D, 0.0D);
-            tess.addVertexWithUV(-s, s, 0.0D, 0.0D, 1.0D);
-            tess.addVertexWithUV(s, s, 0.0D, 1.0D, 1.0D);
-            tess.addVertexWithUV(s, -s, 0.0D, 1.0D, 0.0D);
-            GL11.glPopMatrix();
-        }
-        tess.draw();
-        // 状态完整恢复（GTSR 同款收尾），防污染同层后续渲染
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glDepthMask(true);
-        GL11.glEnable(GL11.GL_CULL_FACE);
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-        GL11.glPopMatrix();
-    }
-
     // ==================== HUD 层：HELMET Post（BQ 手法） ====================
 
     /**
@@ -799,8 +725,7 @@ public final class ReincarnationClientFx {
      * ① 发放演出期间中央炫彩大字（HSL 色相按 tick 循环 + glScalef 放大）；
      * ② 倒计时中央大数字 + 说明行（deadline 驱动，客户端只显示，归零由服务端处理）；
      * ③ 倒计时归零未清期间附加提示行（该时间线已轮回）。
-     * （v1.9.1：原 ⓪ 飞升屏幕渐变 overlay 已整体摘除，视野表现改由
-     * MixinEntityRenderer 视野渐模糊承担。）
+     * （v1.9.1：原 ⓪ 飞升屏幕渐变 overlay 已整体摘除。）
      */
     @SubscribeEvent
     public void onRenderGameOverlay(RenderGameOverlayEvent.Post event) {
