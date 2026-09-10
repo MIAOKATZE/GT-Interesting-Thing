@@ -34,6 +34,9 @@ import cpw.mods.fml.common.gameevent.TickEvent;
 /**
  * 周目系统客户端演出总成（v1.9.0 C批 / S8 切片）：升天环绕水晶、领取螺旋降下、
  * 中央炫彩大字 + 30 秒倒计时 HUD、升天期间输入封锁（仅保留鼠标视角）。
+ * 本轮补全：飞升屏幕渐白 overlay（恢复）、升天水晶/发放物品烟花拖尾粒子（tick 相位
+ * 确定性撒放）、发放演出水晶环绕组；相机 warp 由 {@code MixinEntityRenderer} 只读
+ * 同一 FX 状态现算，本类不参与。
  * <p>
  * <b>加载纪律：</b>本包（{@code reincarnation.client.fx}）全部类仅可从
  * {@code ClientProxy.init()} 调用路径可达（由 S4 在 ClientProxy 调用
@@ -126,12 +129,20 @@ public final class ReincarnationClientFx {
     private static final int GRANT_STAGGER_TICKS = 5;
     /** 降下起点高度（玩家头顶上方格数，任务包 6~8 取 7） */
     private static final float GRANT_START_HEIGHT = 7.0F;
-    /** 降下螺旋起始半径（格，随进度收拢到 0） */
-    private static final float GRANT_SPIRAL_RADIUS = 1.2F;
+    /** 降下螺旋起始半径（格，随进度收拢到 0；本轮 1.2→1.7 增大物品环绕半径） */
+    private static final float GRANT_SPIRAL_RADIUS = 1.7F;
     /** 降下螺旋角速度（弧度/tick） */
     private static final float GRANT_SPIRAL_RAD_PER_TICK = 0.22F;
     /** 演出动画最多展示的物品数（防超大清单刷屏；实际发放由服务端完成，与本演出无关） */
     private static final int GRANT_MAX_ANIMATED_ITEMS = 7;
+    /** 发放演出水晶环绕半径基准（格；恒大于 {@link #GRANT_SPIRAL_RADIUS} 物品最大半径，防穿模） */
+    private static final float GRANT_CRYSTAL_ORBIT_RADIUS = 2.6F;
+    /** 发放演出水晶环绕半径波动幅度（格） */
+    private static final float GRANT_CRYSTAL_RADIUS_AMPLITUDE = 0.15F;
+    /** 发放演出水晶环高度基准（眼高 + 此值；与升天环同值） */
+    private static final float GRANT_CRYSTAL_HEAD_OFFSET = 0.4F;
+    /** 发放演出水晶环高度波动幅度（格；比升天环收窄，减少与降下物品的交叠机会） */
+    private static final float GRANT_CRYSTAL_HEIGHT_AMPLITUDE = 0.6F;
 
     /** 升天结束判定：锚点 ridingEntity == null 的连续 tick 宽限（容错骑乘建立延迟） */
     private static final int ASCENSION_END_GRACE_TICKS = 20;
@@ -151,11 +162,13 @@ public final class ReincarnationClientFx {
     private static final float ASCENSION_SOUND_MAX_VOLUME = 1.0F;
 
     /**
-     * 渐强音效时长基准（tick，与载具默认时长同步；超过按满值封顶）。
-     * v1.9.1：原同基准的屏幕渐变 overlay 已整体摘除，本基准现仅音效分段进度使用，
-     * 数值不变。
+     * 飞升演出强度时长基准（tick，与载具默认时长同步；超过按满值封顶）。
+     * 本轮恢复屏幕渐白 overlay 并新增水晶烟花拖尾/相机 warp 后，三者的窗口与进度
+     * 与音效分段进度共用本基准，数值不变。
      */
     private static final float ASCENSION_RAMP_TICKS = 120.0F;
+    /** 渐白 overlay 峰值 alpha（0.8 封顶，保留 HUD 文字可读性；v1.8.4 先例冻结口径） */
+    private static final float ASCENSION_GRADIENT_MAX_ALPHA = 0.8F;
 
     /** 倒计时大数字字号（glScalef 倍率；死亡大标题式放大手法） */
     private static final float COUNTDOWN_NUMBER_SCALE = 3.0F;
@@ -195,6 +208,12 @@ public final class ReincarnationClientFx {
     private static World itemsWorld;
     /** 领取降下虚拟 EntityItem 缓存（演出开始时构建；null 条目=无法解析的 ItemRef，跳过渲染） */
     private static List<EntityItem> grantItemEntities;
+    /** 发放演出环绕水晶虚拟 EntityItem 缓存（复刻 ensureOrbitItems 模式；随 clearGrantEffect/全量清理释放） */
+    private static List<EntityItem> grantOrbitItems;
+    /** 上述缓存所属 world（换维度重建） */
+    private static World grantOrbitItemsWorld;
+    /** 演出几何核心的坐标输出暂存（客户端主线程单线程 scratch，非累积状态） */
+    private static final double[] TMP_POS = new double[3];
 
     private ReincarnationClientFx() {
         // 纯静态安装器，禁止实例化
@@ -253,15 +272,16 @@ public final class ReincarnationClientFx {
             return;
         }
 
-        tickGrantEffect(world);
+        tickGrantEffect(world, player);
         tickAscension(mc, world, player);
     }
 
     /**
-     * 发放演出推进：主线程回填起始 tick（契约 -1=未回填）→ 到时
-     * {@code clearGrantEffect()} 收尾。虚拟物品缓存在回填同帧构建。
+     * 发放演出推进：主线程回填起始 tick（契约 -1=未回填）→ 窗口内逐 tick 撒物品烟花拖尾 →
+     * 到时 {@code clearGrantEffect()} 收尾（环绕水晶虚拟列表一并释放）。虚拟物品缓存在
+     * 回填同帧构建。
      */
-    private void tickGrantEffect(World world) {
+    private void tickGrantEffect(World world, EntityClientPlayerMP player) {
         List<GrantEffectPacket.ItemRef> items = ClientReincarnationFxState.getPendingGrantItems();
         if (items.isEmpty()) {
             return;
@@ -283,8 +303,13 @@ public final class ReincarnationClientFx {
         if (elapsed >= GRANT_DESCENT_TICKS) {
             ClientReincarnationFxState.clearGrantEffect();
             grantItemEntities = null;
+            grantOrbitItems = null;
+            grantOrbitItemsWorld = null;
             GTInterestingThing.LOG.info("[reincarnation] 发放演出结束（客户端）：clearGrantEffect");
+            return;
         }
+        // 物品烟花拖尾：tick 相位确定性撒放（坐标与渲染螺旋同公式）
+        spawnGrantItemTrail(world, player, elapsed);
     }
 
     /**
@@ -323,6 +348,10 @@ public final class ReincarnationClientFx {
         }
         tickAscensionSound(world, player);
 
+        // 飞升水晶烟花拖尾：tick 相位确定性撒放（120t 窗口门控，驱动状态同音效/渐白/warp）
+        Entity anchor = resolveAscensionAnchor(world, player);
+        spawnAscensionCrystalTrail(world, anchor);
+
         // ---- 升天结束判定 ----
         // 玩家死亡：立即结束（死亡界面需正常弹出，GuiOpenEvent 门槛已放行死亡场景）
         if (player.isDead) {
@@ -332,8 +361,7 @@ public final class ReincarnationClientFx {
             rideNullStreak = 0;
             return;
         }
-        // 载具消失：锚点实体（targetEntityId，缺省本地玩家）骑乘为空连续计数
-        Entity anchor = resolveAscensionAnchor(world, player);
+        // 载具消失：锚点实体（targetEntityId，缺省本地玩家）骑乘为空连续计数（锚点已在拖尾处解析）
         if (anchor == null || anchor.isDead || anchor.ridingEntity == null) {
             rideNullStreak++;
         } else {
@@ -379,6 +407,99 @@ public final class ReincarnationClientFx {
         float volume = ASCENSION_SOUND_MIN_VOLUME
             + (ASCENSION_SOUND_MAX_VOLUME - ASCENSION_SOUND_MIN_VOLUME) * Math.min(1.0F, Math.max(0.0F, progress));
         world.playSound(player.posX, player.posY, player.posZ, ASCENSION_SOUND_KEY, volume, 1.0F, false);
+    }
+
+    // ==================== 演出烟花粒子（tick 相位确定性撒放，仅客户端物理层） ====================
+
+    /**
+     * 升天水晶烟花拖尾：120t 强度窗口内每 tick 为每枚环绕水晶的当前位置撒 1 枚
+     * {@code "fireworksSpark"}（{@code WorldClient.spawnParticle → RenderGlobal.doSpawnParticle
+     * → EntityFireworkSparkFX}，仅客户端物理层生效；原版拖尾先例 EntityFireworkRocket:133
+     * 每帧一枚，本实现放 tick 相位保证每 tick 确定密度、不随帧率漂移）。
+     * 坐标经 {@link #computeCrystalPos} 与渲染相位同公式现算（整 tick、锚点当前坐标），
+     * 窗口外 / 锚点缺失 / 起始 tick 未回填零撒放，clearAscension 后自动失活。
+     */
+    private void spawnAscensionCrystalTrail(World world, Entity anchor) {
+        if (anchor == null || anchor.isDead) {
+            return;
+        }
+        long startTick = ClientReincarnationFxState.getAscensionStartTick();
+        if (startTick < 0L) {
+            return;
+        }
+        long elapsed = world.getTotalWorldTime() - startTick;
+        if (elapsed < 0L || elapsed >= (long) ASCENSION_RAMP_TICKS) {
+            return; // 120t 窗口外零残留
+        }
+        double fxTime = world.getTotalWorldTime();
+        float headBase = anchor.getEyeHeight() + ASCENSION_HEAD_OFFSET;
+        for (int i = 0; i < ASCENSION_CRYSTAL_COUNT; i++) {
+            computeCrystalPos(
+                anchor.posX,
+                anchor.posY,
+                anchor.posZ,
+                fxTime,
+                i,
+                ASCENSION_CRYSTAL_COUNT,
+                ASCENSION_ORBIT_RADIUS,
+                ASCENSION_RADIUS_AMPLITUDE,
+                headBase,
+                ASCENSION_HEIGHT_AMPLITUDE,
+                TMP_POS);
+            spawnTrailSpark(
+                world,
+                TMP_POS[0],
+                TMP_POS[1],
+                TMP_POS[2],
+                TMP_POS[0] - anchor.posX,
+                TMP_POS[2] - anchor.posZ,
+                elapsed,
+                i);
+        }
+    }
+
+    /**
+     * 发放物品烟花拖尾：100t 窗口内每 tick 为每件降下中物品的当前位置撒 1 枚
+     * {@code "fireworksSpark"}（坐标经 {@link #computeGrantItemPos} 与渲染相位同公式现算；
+     * null 条目与未轮到件与渲染同规则跳过；窗口由调用方 {@link #tickGrantEffect} 门控）。
+     */
+    private void spawnGrantItemTrail(World world, EntityClientPlayerMP player, long elapsed) {
+        if (grantItemEntities == null || player == null || elapsed < 0L || elapsed >= GRANT_DESCENT_TICKS) {
+            return;
+        }
+        for (int i = 0; i < grantItemEntities.size(); i++) {
+            if (grantItemEntities.get(i) == null) {
+                continue; // 无法解析的 ItemRef：与渲染同规则跳过
+            }
+            if (!computeGrantItemPos(player.posX, player.posY, player.posZ, (double) elapsed, i, TMP_POS)) {
+                continue; // 未轮到该件（错峰未到）
+            }
+            spawnTrailSpark(
+                world,
+                TMP_POS[0],
+                TMP_POS[1],
+                TMP_POS[2],
+                TMP_POS[0] - player.posX,
+                TMP_POS[2] - player.posZ,
+                elapsed,
+                i);
+        }
+    }
+
+    /**
+     * 确定性烟花撒放：速度 = 径向朝外微小外扩 + 由 (tick, 序号) 派生的确定性微抖
+     * （0~0.01）。刻意不持有 Random：全部由输入派生 → 每 tick 密度与速度确定、
+     * 零可累加状态、无逐帧随机抖动（任务包允许的"确定性种子或固定微小值"路线）。
+     */
+    private static void spawnTrailSpark(World world, double x, double y, double z, double dirX, double dirZ, long tick,
+        int index) {
+        double len = Math.sqrt(dirX * dirX + dirZ * dirZ);
+        if (len < 1.0E-4D) {
+            len = 1.0D; // 径向长度退化（物品已收拢到圆心）时保底单位方向
+        }
+        double jitter = (((tick % 7L) * (index % 7L)) % 5L) * 0.0025D;
+        double speed = 0.02D + jitter;
+        world.spawnParticle("fireworksSpark", x, y, z, dirX / len * speed, 0.01D, dirZ / len * speed);
     }
 
     /**
@@ -462,7 +583,9 @@ public final class ReincarnationClientFx {
         }
         orbitItems = null;
         grantItemEntities = null;
+        grantOrbitItems = null;
         itemsWorld = null;
+        grantOrbitItemsWorld = null;
         rideNullStreak = 0;
         ascensionSoundSegment = -1; // 登出/换维度离开：停调度防叠音（已起播短音效自然结束）
         if (touched) {
@@ -532,7 +655,7 @@ public final class ReincarnationClientFx {
     // ==================== 世界层渲染：升天环绕 + 领取降下 ====================
 
     /**
-     * 世界末尾渲染（相机空间）：升天环绕水晶 + 发放螺旋降下物品，均以
+     * 世界末尾渲染（相机空间）：升天环绕水晶 + 发放水晶环绕组 + 发放螺旋降下物品，均以
      * 虚拟 {@code EntityItem} 经 {@code RenderManager.instance.renderEntityWithPosYaw}
      * 绘制（仅图像、非真实实体，无法拾取）。
      */
@@ -560,8 +683,53 @@ public final class ReincarnationClientFx {
             renderAscensionOrbit(world, resolveAscensionAnchor(world, player), camX, camY, camZ, pt);
         }
         if (grantActive) {
+            renderGrantCrystalOrbit(world, player, camX, camY, camZ, pt); // 水晶环绕组（先水晶后物品）
             renderGrantDescent(world, player, camX, camY, camZ, pt);
         }
+    }
+
+    // ==================== 演出几何核心（纯函数：渲染相位与 tick 粒子相位复用） ====================
+
+    /**
+     * 环绕水晶几何核心（纯函数、无状态）：给定圆心（世界绝对坐标）、时间相位（tick，
+     * 可含 partialTicks 小数）、序号与枚数、半径/高度参数，算出该枚水晶绝对坐标写入
+     * {@code out[0..2]}。升天环绕渲染、升天烟花拖尾、发放水晶环绕三处复用，保证同参数
+     * 轨迹逐点一致（角速度共用 {@link #ASCENSION_RAD_PER_TICK}；公式与原
+     * renderAscensionOrbit 内联版逐项等价）。
+     */
+    private static void computeCrystalPos(double cx, double cy, double cz, double fxTime, int index, int count,
+        float radiusBase, float radiusAmp, float headBase, float heightAmp, double[] out) {
+        float basePhase = (float) (fxTime * ASCENSION_RAD_PER_TICK);
+        float angle = (float) (basePhase + index * (Math.PI * 2.0D / count));
+        float radius = radiusBase + radiusAmp * (float) Math.sin(basePhase * 0.35D + index * 1.3D);
+        float height = headBase + heightAmp * (float) Math.sin(basePhase * 0.5D + index * 0.9D);
+        out[0] = cx + Math.cos(angle) * radius;
+        out[1] = cy + height;
+        out[2] = cz + Math.sin(angle) * radius;
+    }
+
+    /**
+     * 发放螺旋降下几何核心（纯函数）：第 index 件在时间相位 elapsed（tick，可含
+     * partialTicks 小数）的绝对坐标写入 {@code out[0..2]}。渲染（elapsed 含小数）与
+     * tick 粒子（整 tick）复用，保证粒子与物品同轨迹（公式与原 renderGrantDescent
+     * 内联版逐项等价）。
+     *
+     * @return false = 该件尚未轮到（错峰 local<=0），调用方跳过
+     */
+    private static boolean computeGrantItemPos(double px, double py, double pz, double elapsed, int index,
+        double[] out) {
+        double local = elapsed - (double) index * GRANT_STAGGER_TICKS;
+        if (local <= 0.0D) {
+            return false;
+        }
+        double t = Math.min(1.0D, local / GRANT_PER_ITEM_TICKS);
+        double ease = t * t * (3.0D - 2.0D * t); // smoothstep 缓入缓出
+        float angle = (float) (local * GRANT_SPIRAL_RAD_PER_TICK);
+        float radius = GRANT_SPIRAL_RADIUS * (1.0F - (float) t);
+        out[0] = px + Math.cos(angle) * radius;
+        out[1] = py + GRANT_START_HEIGHT * (1.0D - ease);
+        out[2] = pz + Math.sin(angle) * radius;
+        return true;
     }
 
     /**
@@ -580,17 +748,25 @@ public final class ReincarnationClientFx {
         double ay = anchor.lastTickPosY + (anchor.posY - anchor.lastTickPosY) * pt;
         double az = anchor.lastTickPosZ + (anchor.posZ - anchor.lastTickPosZ) * pt;
         double fxTime = world.getTotalWorldTime() + pt;
-        float basePhase = (float) (fxTime * ASCENSION_RAD_PER_TICK);
         float headBase = anchor.getEyeHeight() + ASCENSION_HEAD_OFFSET;
 
-        for (int i = 0; i < orbitItems.size(); i++) {
-            float angle = (float) (basePhase + i * (Math.PI * 2.0D / orbitItems.size()));
-            float radius = ASCENSION_ORBIT_RADIUS
-                + ASCENSION_RADIUS_AMPLITUDE * (float) Math.sin(basePhase * 0.35D + i * 1.3D);
-            float height = headBase + ASCENSION_HEIGHT_AMPLITUDE * (float) Math.sin(basePhase * 0.5D + i * 0.9D);
-            double x = ax + Math.cos(angle) * radius;
-            double y = ay + height;
-            double z = az + Math.sin(angle) * radius;
+        int count = orbitItems.size();
+        for (int i = 0; i < count; i++) {
+            computeCrystalPos(
+                ax,
+                ay,
+                az,
+                fxTime,
+                i,
+                count,
+                ASCENSION_ORBIT_RADIUS,
+                ASCENSION_RADIUS_AMPLITUDE,
+                headBase,
+                ASCENSION_HEIGHT_AMPLITUDE,
+                TMP_POS);
+            double x = TMP_POS[0];
+            double y = TMP_POS[1];
+            double z = TMP_POS[2];
             EntityItem item = orbitItems.get(i);
             applyVirtualItemFrame(item, world, x, y, z, (int) (fxTime * 2.0D), i * 0.7F);
             RenderManager.instance
@@ -620,17 +796,12 @@ public final class ReincarnationClientFx {
             if (item == null) {
                 continue; // 无法解析的 ItemRef（本客户端缺注册），跳过渲染
             }
-            double local = elapsed - (double) i * GRANT_STAGGER_TICKS;
-            if (local <= 0.0D) {
+            if (!computeGrantItemPos(px, py, pz, elapsed, i, TMP_POS)) {
                 continue; // 未轮到该件（"依次"）
             }
-            double t = Math.min(1.0D, local / GRANT_PER_ITEM_TICKS);
-            double ease = t * t * (3.0D - 2.0D * t); // smoothstep 缓入缓出
-            float angle = (float) (local * GRANT_SPIRAL_RAD_PER_TICK);
-            float radius = GRANT_SPIRAL_RADIUS * (1.0F - (float) t);
-            double x = px + Math.cos(angle) * radius;
-            double y = py + GRANT_START_HEIGHT * (1.0D - ease);
-            double z = pz + Math.sin(angle) * radius;
+            double x = TMP_POS[0];
+            double y = TMP_POS[1];
+            double z = TMP_POS[2];
             applyVirtualItemFrame(item, world, x, y, z, (int) ((world.getTotalWorldTime() + pt) * 2.0D), i * 0.55F);
             RenderManager.instance.renderEntityWithPosYaw(
                 item,
@@ -639,6 +810,50 @@ public final class ReincarnationClientFx {
                 z - camZ,
                 (float) (world.getTotalWorldTime() * 3.0D + i * 31.0D),
                 pt);
+        }
+    }
+
+    /**
+     * 发放演出水晶环绕组：以玩家为圆心 {@link #ASCENSION_CRYSTAL_COUNT} 枚轮回水晶环绕
+     * （几何复用 {@link #computeCrystalPos}，驱动状态换 grantEffectStartTick，与奖励物品
+     * 螺旋并存）。半径 {@link #GRANT_CRYSTAL_ORBIT_RADIUS}（2.6±0.15）恒大于物品螺旋最大
+     * 半径 {@link #GRANT_SPIRAL_RADIUS}（1.7），且物品收拢到水晶环高度带时半径已远小于
+     * 环半径，二者不相交不穿模。渲染窗口由调用方 grantActive 门控，随 clearGrantEffect
+     * 自动停止。
+     */
+    private void renderGrantCrystalOrbit(World world, EntityClientPlayerMP player, double camX, double camY,
+        double camZ, float pt) {
+        ensureGrantOrbitCrystals(world);
+        if (grantOrbitItems == null) {
+            return;
+        }
+        double px = player.lastTickPosX + (player.posX - player.lastTickPosX) * pt;
+        double py = player.lastTickPosY + (player.posY - player.lastTickPosY) * pt;
+        double pz = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * pt;
+        double fxTime = world.getTotalWorldTime() + pt;
+        float headBase = player.getEyeHeight() + GRANT_CRYSTAL_HEAD_OFFSET;
+
+        int count = grantOrbitItems.size();
+        for (int i = 0; i < count; i++) {
+            computeCrystalPos(
+                px,
+                py,
+                pz,
+                fxTime,
+                i,
+                count,
+                GRANT_CRYSTAL_ORBIT_RADIUS,
+                GRANT_CRYSTAL_RADIUS_AMPLITUDE,
+                headBase,
+                GRANT_CRYSTAL_HEIGHT_AMPLITUDE,
+                TMP_POS);
+            double x = TMP_POS[0];
+            double y = TMP_POS[1];
+            double z = TMP_POS[2];
+            EntityItem item = grantOrbitItems.get(i);
+            applyVirtualItemFrame(item, world, x, y, z, (int) (fxTime * 2.0D), i * 0.7F);
+            RenderManager.instance
+                .renderEntityWithPosYaw(item, x - camX, y - camY, z - camZ, (float) (fxTime * 2.5D + i * 47.0D), pt);
         }
     }
 
@@ -658,6 +873,27 @@ public final class ReincarnationClientFx {
                 orbitItems.add(new EntityItem(world, 0.0D, 0.0D, 0.0D, stack.copy()));
             }
             itemsWorld = world;
+        }
+    }
+
+    /**
+     * 构建/重建发放演出环绕水晶虚拟 EntityItem（模式复刻 {@link #ensureOrbitItems}：
+     * {@code GTITItemList.ReincarnationCrystal.get(1)}、不入世界=无法拾取；
+     * world 实例变化（换维度）时重建；列表随 {@code clearGrantEffect} / 全量清理释放）。
+     */
+    private void ensureGrantOrbitCrystals(World world) {
+        ItemStack stack = GTITItemList.ReincarnationCrystal.get(1);
+        if (stack == null || stack.getItem() == null) {
+            return; // 水晶物品未注册（异常场景），演出静默跳过，不崩客户端
+        }
+        if (grantOrbitItems == null || grantOrbitItemsWorld != world
+            || grantOrbitItems.size() != ASCENSION_CRYSTAL_COUNT) {
+            grantOrbitItems = new ArrayList<>(ASCENSION_CRYSTAL_COUNT);
+            for (int i = 0; i < ASCENSION_CRYSTAL_COUNT; i++) {
+                // 虚拟实体：仅本地图像载体，不入世界无 tick，无法拾取
+                grantOrbitItems.add(new EntityItem(world, 0.0D, 0.0D, 0.0D, stack.copy()));
+            }
+            grantOrbitItemsWorld = world;
         }
     }
 
@@ -722,10 +958,11 @@ public final class ReincarnationClientFx {
 
     /**
      * HUD：HELMET Post 层绘制（BQ QuestNotification.java:223-240 手法）——
+     * ⓪ 飞升演出期间屏幕渐白 overlay（白色随演出进度渐起，先画渐变再画文字，
+     * 不遮同层 HUD 文本；本轮恢复 v1.8.4 同款实现）；
      * ① 发放演出期间中央炫彩大字（HSL 色相按 tick 循环 + glScalef 放大）；
      * ② 倒计时中央大数字 + 说明行（deadline 驱动，客户端只显示，归零由服务端处理）；
      * ③ 倒计时归零未清期间附加提示行（该时间线已轮回）。
-     * （v1.9.1：原 ⓪ 飞升屏幕渐变 overlay 已整体摘除。）
      */
     @SubscribeEvent
     public void onRenderGameOverlay(RenderGameOverlayEvent.Post event) {
@@ -740,6 +977,20 @@ public final class ReincarnationClientFx {
         int width = event.resolution.getScaledWidth();
         int height = event.resolution.getScaledHeight();
         FontRenderer font = mc.fontRenderer; // 本映射字段名（Minecraft.java:218）
+
+        // ⓪ 飞升屏幕渐白（FX 状态驱动：起始 tick 派生进度，smoothstep 渐起、0.8 封顶；
+        // 先渐变后文字的既有顺序保持，不遮同层 HUD 文本）
+        if (ClientReincarnationFxState.isAscensionActive()) {
+            long startTick = ClientReincarnationFxState.getAscensionStartTick();
+            if (startTick >= 0L) {
+                float progress = (world.getTotalWorldTime() - startTick) / ASCENSION_RAMP_TICKS;
+                if (progress > 0.0F) {
+                    float eased = Math.min(1.0F, progress);
+                    eased = eased * eased * (3.0F - 2.0F * eased); // smoothstep 缓入
+                    drawAscensionGradient(width, height, ASCENSION_GRADIENT_MAX_ALPHA * eased);
+                }
+            }
+        }
 
         // ① 发放庆祝大字（演出期间全程显示）
         boolean grantActive = !ClientReincarnationFxState.getPendingGrantItems()
@@ -806,6 +1057,35 @@ public final class ReincarnationClientFx {
         GL11.glTranslatef(cx, cy, 0.0F);
         GL11.glScalef(scale, scale, scale);
         font.drawStringWithShadow(text, -font.getStringWidth(text) / 2, -font.FONT_HEIGHT / 2, argb);
+        GL11.glPopMatrix();
+    }
+
+    /**
+     * 屏幕渐白 overlay（飞升白化，v1.8.4 7c3b12c 同款恢复）：全屏白色矩形按 alpha 渐起。
+     * GL 状态纪律：blend/alphatest/depth/color/矩阵严格保存恢复——push 矩阵 +
+     * PushAttrib(ENABLE/COLOR/DEPTH)，开 blend + 关 texture/alphatest + depthMask(false)，
+     * 画完逐项还原 + PopAttrib，不污染同层后续渲染；仅客户端路径触达。
+     */
+    private static void drawAscensionGradient(int width, int height, float alpha) {
+        if (alpha <= 0.0F) {
+            return;
+        }
+        int a = (int) (Math.min(1.0F, alpha) * 255.0F) << 24;
+        GL11.glPushMatrix();
+        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_ALPHA_TEST);
+        GL11.glDepthMask(false);
+        // Gui.drawRect（static）：left/top/right/bottom + argb（自带矩阵无关绘制）
+        net.minecraft.client.gui.Gui.drawRect(0, 0, width, height, a | 0xFFFFFF);
+        GL11.glDepthMask(true);
+        GL11.glEnable(GL11.GL_ALPHA_TEST);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        GL11.glPopAttrib();
         GL11.glPopMatrix();
     }
 

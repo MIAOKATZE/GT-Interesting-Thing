@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.client.gui;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -12,6 +13,10 @@ import net.minecraft.util.StatCollector;
 
 import org.lwjgl.opengl.GL11;
 
+import com.miaokatze.gtit.client.gui.reincarnation.ReincarnationGuiButton;
+import com.miaokatze.gtit.client.gui.reincarnation.ReincarnationGuiDrawing;
+import com.miaokatze.gtit.client.gui.reincarnation.ReincarnationGuiPalette;
+import com.miaokatze.gtit.client.gui.reincarnation.ReincarnationGuiTextures;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.gui.ReincarnationContainer;
 import com.miaokatze.gtit.reincarnation.gui.ReincarnationHullMatcher;
@@ -22,18 +27,25 @@ import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.metatileentity.implementations.MTEBasicHull;
 
 /**
- * 周目轮回 GUI 渲染层（v1.8.3，MUI2 → Forge 原版 IGuiHandler 链路迁移；仅物理客户端加载）
+ * 周目轮回 GUI 渲染层（v1.8.8 贴图化接线：消费 plan/gui-texture-v19 贴图契约家族
+ * panel.png / atlas.png，几何/交互/网络零变更；仅物理客户端加载）
  * <p>
  * 布局/契约单源在 {@link ReincarnationLayout}（几何、按钮 ID、进度条映射、消息事件码），
  * 会话逻辑在 {@link ReincarnationContainer}（本类只读消费其公开访问器）。
  * <p>
- * <b>绘制</b>：GuiContainer 标准 API（{@code Gui.drawRect} + {@code FontRenderer}），
- * 不新增任何贴图；文本全走既有 {@code gtit.reincarnation.*} lang 键
- * （{@link StatCollector}，§ 格式码随键值渲染，双语由 lang 文件承载）。
+ * <b>绘制</b>：面板整幅与图集小件经 {@code client.gui.reincarnation} 消费层四类
+ * （Textures/Palette/Drawing/Button）绘制——panel.png 整幅 Tessellator 直绘、
+ * atlas 槽位格/标签条衬/按钮三态/计数角标；文本仍走 {@code FontRenderer} 与既有
+ * {@code gtit.reincarnation.*} lang 键（{@link StatCollector}，§ 格式码随键值渲染，
+ * 双语由 lang 文件承载）。1.7.10 仅用 {@code org.lwjgl.opengl.GL11}。
  * <p>
  * <b>按钮 C2S 通道</b>：vanilla {@code PlayerControllerMP.sendEnchantPacket(windowId, buttonId)}
  * → C11 → 服务端 {@code NetHandlerPlayServer.processEnchantItem} →
  * {@code ReincarnationContainer.enchantItem}（零自定义 C2S 包，任务包红线）。
+ * <p>
+ * <b>解锁连掷会话</b>：解锁按钮 = toggle 连掷会话（首按开启、再按停止；激活期间每
+ * 服务端 tick 从背包扣 1 枚对应猫猫币掷 1 次），激活位经进度条 {@code BAR_ROLL_ACTIVE}
+ * （bit0=闪烁 bit1=普通）下发，按钮文案据此切换为停止态（v1.8.8 接线）。
  * <p>
  * <b>确认轮回两步制</b>（替代旧 {@code NekoConfirmationDialog}）：第一次点击仅服务端武装
  * （按钮文案切换为 {@code gtit.reincarnation.gui.confirm.dialog} 警示语），第二次点击执行；
@@ -45,7 +57,7 @@ import gregtech.api.metatileentity.implementations.MTEBasicHull;
  */
 public class ReincarnationGuiContainer extends GuiContainer {
 
-    // ==================== lang 键（只读复用既有键，lang 文件不改） ====================
+    // ==================== lang 键（既有键 + v1.8.8 新增连掷停止/按钮悬浮键） ====================
 
     private static final String KEY_PREFIX = "gtit.reincarnation.";
     private static final String KEY_TITLE = KEY_PREFIX + "gui.title";
@@ -56,21 +68,35 @@ public class ReincarnationGuiContainer extends GuiContainer {
     private static final String KEY_ENCRYPTED = KEY_PREFIX + "gui.encrypted";
     private static final String KEY_UNLOCK_SHIMMER = KEY_PREFIX + "gui.unlock.shimmer";
     private static final String KEY_UNLOCK_NORMAL = KEY_PREFIX + "gui.unlock.normal";
+    /** v1.8.8：连掷会话激活期间的按钮停止文案（bit 驱动，见 refreshState） */
+    private static final String KEY_UNLOCK_SHIMMER_STOP = KEY_PREFIX + "gui.unlock.shimmer.stop";
+    private static final String KEY_UNLOCK_NORMAL_STOP = KEY_PREFIX + "gui.unlock.normal.stop";
     private static final String KEY_CONFIRM_BUTTON = KEY_PREFIX + "gui.confirm.button";
     private static final String KEY_CONFIRM_DIALOG = KEY_PREFIX + "gui.confirm.dialog";
     private static final String KEY_COLUMN_PREFIX = KEY_PREFIX + "column.";
     private static final String KEY_HULL_TOOLTIP = KEY_PREFIX + "gui.hull.tooltip";
     private static final String KEY_HULL_TOOLTIP_DONE = KEY_PREFIX + "gui.hull.tooltip.done";
-    private static final String KEY_COIN_TOOLTIP = KEY_PREFIX + "gui.coin.tooltip";
+    /** v1.8.8：解锁按钮悬浮三段（连掷口径说明 / 概率行 / 剩余可解锁状态行），键值已有、本切片接线 */
+    private static final String KEY_UNLOCK_TOOLTIP_LINE = KEY_PREFIX + "gui.unlock.tooltip.line";
+    private static final String KEY_UNLOCK_TOOLTIP_SHIMMER = KEY_PREFIX + "gui.unlock.tooltip.shimmer";
+    private static final String KEY_UNLOCK_TOOLTIP_NORMAL = KEY_PREFIX + "gui.unlock.tooltip.normal";
+    private static final String KEY_UNLOCK_TOOLTIP_COLUMNS = KEY_PREFIX + "gui.unlock.tooltip.columns";
+    private static final String KEY_UNLOCK_TOOLTIP_DONE = KEY_PREFIX + "gui.unlock.tooltip.done";
+    /** v1.8.8：确认按钮悬浮（按会话状态现算选行），键值已有、本切片接线 */
+    private static final String KEY_CONFIRM_TOOLTIP_STATE = KEY_PREFIX + "gui.confirm.tooltip.state";
+    private static final String KEY_CONFIRM_TOOLTIP_EMPTY = KEY_PREFIX + "gui.confirm.tooltip.empty";
 
-    /** 底部提示行颜色（与旧 GUI footer 0xFF777788 一致） */
-    private static final int FOOTER_COLOR = 0x777788;
-    /** 未解锁列名颜色（EnumChatFormatting.DARK_GRAY 同值） */
-    private static final int COLUMN_LOCKED_COLOR = 0x555555;
-    /** 已解锁列名颜色（EnumChatFormatting.GOLD 同值） */
-    private static final int COLUMN_UNLOCKED_COLOR = 0xFFAA00;
+    /** v1.8.8 连掷会话激活位掩码（bit0=闪烁 bit1=普通；编码唯一单源见 BAR_ROLL_ACTIVE javadoc） */
+    private static final int ROLL_ACTIVE_SHIMMER_BIT = 1 << 0;
+    /** v1.8.8 连掷会话激活位掩码（bit1=普通；编码唯一单源见 BAR_ROLL_ACTIVE javadoc） */
+    private static final int ROLL_ACTIVE_NORMAL_BIT = 1 << 1;
+
     /** n=0 档外壳虚影 alpha（vanilla ghost slot 风格的固定浅淡预览） */
     private static final float HULL_GHOST_EMPTY_ALPHA = 0.40F;
+    /** 外壳计数角标整体 zLevel（后画覆盖虚影 150；hover tooltip 的 300 由 drawHoveringText 自管） */
+    private static final float HULL_COUNTER_ZLEVEL = 200.0F;
+    /** 确认按钮高（布局定值 16，ReincarnationLayout 侧未单列常量；initGui 与悬浮命中区共用） */
+    private static final int CONFIRM_BUTTON_HEIGHT = 16;
 
     /**
      * 外壳虚影图标缓存（按列下标；{@link #HULL_GHOST_RESOLVED} 置位后 cache 为 null 即
@@ -102,7 +128,10 @@ public class ReincarnationGuiContainer extends GuiContainer {
                 this.guiTop + ReincarnationLayout.ACTION_Y,
                 ReincarnationLayout.UNLOCK_BUTTON_WIDTH,
                 ReincarnationLayout.SLOT_SIZE,
-                StatCollector.translateToLocal(KEY_UNLOCK_SHIMMER)));
+                StatCollector.translateToLocal(KEY_UNLOCK_SHIMMER),
+                ReincarnationGuiTextures.BTN_UNLOCK_NORMAL_V,
+                ReincarnationGuiTextures.BTN_UNLOCK_HOVER_V,
+                ReincarnationGuiTextures.BTN_UNLOCK_DISABLED_V));
         this.buttonList.add(
             new StatefulButton(
                 ReincarnationLayout.BUTTON_UNLOCK_NORMAL,
@@ -110,22 +139,33 @@ public class ReincarnationGuiContainer extends GuiContainer {
                 this.guiTop + ReincarnationLayout.ACTION_Y,
                 ReincarnationLayout.UNLOCK_BUTTON_WIDTH,
                 ReincarnationLayout.SLOT_SIZE,
-                StatCollector.translateToLocal(KEY_UNLOCK_NORMAL)));
+                StatCollector.translateToLocal(KEY_UNLOCK_NORMAL),
+                ReincarnationGuiTextures.BTN_UNLOCK_NORMAL_V,
+                ReincarnationGuiTextures.BTN_UNLOCK_HOVER_V,
+                ReincarnationGuiTextures.BTN_UNLOCK_DISABLED_V));
         this.buttonList.add(
             new StatefulButton(
                 ReincarnationLayout.BUTTON_CONFIRM,
                 this.guiLeft + ReincarnationLayout.CONFIRM_X,
                 this.guiTop + ReincarnationLayout.CONFIRM_Y,
                 ReincarnationLayout.CONFIRM_BUTTON_WIDTH,
-                16,
-                StatCollector.translateToLocal(KEY_CONFIRM_BUTTON)));
+                CONFIRM_BUTTON_HEIGHT,
+                StatCollector.translateToLocal(KEY_CONFIRM_BUTTON),
+                ReincarnationGuiTextures.BTN_CONFIRM_NORMAL_V,
+                ReincarnationGuiTextures.BTN_CONFIRM_HOVER_V,
+                ReincarnationGuiTextures.BTN_CONFIRM_DISABLED_V));
     }
 
-    /** 每帧刷新文案与置灰态的按钮（渲染消费 Container 只读访问器） */
-    private static final class StatefulButton extends GuiButton {
+    /**
+     * 每帧刷新文案与置灰态的按钮（渲染消费 Container 只读访问器）。
+     * v1.8.8：皮肤换 {@link ReincarnationGuiButton} 三态贴图（尺寸/hover 判定/点击结果
+     * /文字居中口径不变）；连掷会话激活位驱动解锁按钮停止文案。
+     */
+    private static final class StatefulButton extends ReincarnationGuiButton {
 
-        StatefulButton(int id, int x, int y, int width, int height, String label) {
-            super(id, x, y, width, height, label);
+        StatefulButton(int id, int x, int y, int width, int height, String label, int normalV, int hoverV,
+            int disabledV) {
+            super(id, x, y, width, height, label, normalV, hoverV, disabledV);
         }
 
         @Override
@@ -146,8 +186,14 @@ public class ReincarnationGuiContainer extends GuiContainer {
                     .translateToLocal(container.isConfirmArmed() ? KEY_CONFIRM_DIALOG : KEY_CONFIRM_BUTTON);
             } else {
                 this.enabled = container.isUnlockAvailable();
-                this.displayString = StatCollector.translateToLocal(
-                    this.id == ReincarnationLayout.BUTTON_UNLOCK_SHIMMER ? KEY_UNLOCK_SHIMMER : KEY_UNLOCK_NORMAL);
+                int rollBits = container.getRollActiveBits();
+                if (this.id == ReincarnationLayout.BUTTON_UNLOCK_SHIMMER) {
+                    this.displayString = StatCollector.translateToLocal(
+                        (rollBits & ROLL_ACTIVE_SHIMMER_BIT) != 0 ? KEY_UNLOCK_SHIMMER_STOP : KEY_UNLOCK_SHIMMER);
+                } else {
+                    this.displayString = StatCollector.translateToLocal(
+                        (rollBits & ROLL_ACTIVE_NORMAL_BIT) != 0 ? KEY_UNLOCK_NORMAL_STOP : KEY_UNLOCK_NORMAL);
+                }
             }
         }
     }
@@ -162,20 +208,25 @@ public class ReincarnationGuiContainer extends GuiContainer {
 
     @Override
     protected void drawGuiContainerBackgroundLayer(float partialTicks, int mouseX, int mouseY) {
-        // 面板底（GuiContainer.drawScreen 已画全屏暗化背景，此处画面板本体，无贴图）
-        drawRect(
-            this.guiLeft,
-            this.guiTop,
-            this.guiLeft + ReincarnationLayout.PANEL_WIDTH,
-            this.guiTop + ReincarnationLayout.PANEL_HEIGHT,
-            0xF01C1C22);
-        drawRect(
-            this.guiLeft,
-            this.guiTop,
-            this.guiLeft + ReincarnationLayout.PANEL_WIDTH,
-            this.guiTop + 1,
-            0xFF6A6A6A);
-        // 15 列网格：外壳槽 + 3 物品格（未解锁行/锁定列画暗化格）
+        // 面板整幅（GuiContainer.drawScreen 已画全屏暗化背景；v1.8.8 契约 §4-1：panel.png
+        // 金纹雕边框 + 烘焙猫耳/金分隔线/footer 带/爪印，Tessellator 直绘替代旧纯色底+顶描边）
+        ReincarnationGuiDrawing.drawPanel(this.guiLeft, this.guiTop);
+        // v1.8.8 装饰（契约 §4-3 / §6-A7）：列名标签条衬 nine-slice（几何取自布局常量：
+        // 宽 = 15 列 × 20 列距 - 2 间隙 = 298，与网格总宽同源；高 10 = STRIP_H）
+        ReincarnationGuiDrawing.bindTexture(ReincarnationGuiTextures.RL_ATLAS);
+        ReincarnationGuiDrawing.drawNineSlice(
+            this,
+            ReincarnationGuiTextures.STRIP_U,
+            ReincarnationGuiTextures.STRIP_V,
+            ReincarnationGuiTextures.STRIP_W,
+            ReincarnationGuiTextures.STRIP_H,
+            ReincarnationGuiTextures.STRIP_SLICE,
+            this.guiLeft + ReincarnationLayout.GRID_X,
+            this.guiTop + ReincarnationLayout.LABELS_Y,
+            ReincarnationCycle.COLUMN_COUNT * ReincarnationLayout.SLOT_PITCH - 2,
+            ReincarnationGuiTextures.STRIP_H);
+        // 15 列网格：外壳槽 + 3 物品格（未解锁行/锁定列画灰化格）；
+        // v1.8.8 契约 §4-2/§6-A5：图集 slot_frame / slot_frame_locked（几何/循环零变更）
         for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
             int x = ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH;
             drawCell(x, ReincarnationLayout.HULL_Y, container().isColumnLocked(column));
@@ -186,8 +237,7 @@ public class ReincarnationGuiContainer extends GuiContainer {
                     container().isColumnLocked(column) || row >= container().getUnlockedRows());
             }
         }
-        // 币格
-        drawCell(ReincarnationLayout.GRID_X, ReincarnationLayout.ACTION_Y, container().isReadonly());
+        // （币格绘制已随连掷重构摘除——动作行仅剩两解锁按钮，原位不动，币格位置留白不补绘）
         // 玩家背包 36 格
         for (int row = 0; row < 3; row++) {
             for (int column = 0; column < 9; column++) {
@@ -205,14 +255,30 @@ public class ReincarnationGuiContainer extends GuiContainer {
         }
     }
 
-    /** 单个槽位单元（1px 亮框 + 暗底；locked 叠加暗化罩，提示不可交互） */
+    /**
+     * 单个槽位单元（v1.8.8 契约 §4-2/§6-A5）：atlas slot_frame 金沿凹格；locked 用
+     * slot_frame_locked 灰化框承载（旧半透明叠罩随贴图化删除）。18px 槽位、命中区、
+     * Slot 坐标零变更；调用方须已 bind {@link ReincarnationGuiTextures#RL_ATLAS}。
+     */
     private void drawCell(int x, int y, boolean locked) {
         int left = this.guiLeft + x;
         int top = this.guiTop + y;
-        drawRect(left, top, left + ReincarnationLayout.SLOT_SIZE, top + ReincarnationLayout.SLOT_SIZE, 0xFFADADAD);
-        drawRect(left + 1, top + 1, left + 17, top + 17, 0xFF4A4A4A);
         if (locked) {
-            drawRect(left + 1, top + 1, left + 17, top + 17, 0x40000000);
+            this.drawTexturedModalRect(
+                left,
+                top,
+                ReincarnationGuiTextures.SLOT_LOCKED_U,
+                ReincarnationGuiTextures.SLOT_LOCKED_V,
+                ReincarnationLayout.SLOT_SIZE,
+                ReincarnationLayout.SLOT_SIZE);
+        } else {
+            this.drawTexturedModalRect(
+                left,
+                top,
+                ReincarnationGuiTextures.SLOT_FRAME_U,
+                ReincarnationGuiTextures.SLOT_FRAME_V,
+                ReincarnationLayout.SLOT_SIZE,
+                ReincarnationLayout.SLOT_SIZE);
         }
     }
 
@@ -226,21 +292,22 @@ public class ReincarnationGuiContainer extends GuiContainer {
             bannerText(container),
             ReincarnationLayout.PANEL_WIDTH / 2,
             ReincarnationLayout.BANNER_Y,
-            0xFFFFFF,
+            ReincarnationGuiPalette.TEXT_WARM,
             0.8f);
         // 标题
         drawScaledCentered(
             StatCollector.translateToLocal(KEY_TITLE),
             ReincarnationLayout.PANEL_WIDTH / 2,
             ReincarnationLayout.TITLE_Y,
-            0xFFFFFF,
+            ReincarnationGuiPalette.TEXT_WARM,
             1.0f);
 
         for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
             int centerX = ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH
                 + ReincarnationLayout.SLOT_SIZE / 2;
-            // 列名（已解锁金 / 未解锁深灰，与旧 GUI columnText 一致）
-            int color = container.isColumnLocked(column) ? COLUMN_LOCKED_COLOR : COLUMN_UNLOCKED_COLOR;
+            // 列名（已解锁猫金 / 未解锁暖灰；v1.8.8 §5 新旧色映射，色值单源 Palette）
+            int color = container.isColumnLocked(column) ? ReincarnationGuiPalette.TEXT_LOCKED_WARM
+                : ReincarnationGuiPalette.TEXT_ACCENT;
             drawScaledCentered(
                 StatCollector.translateToLocal(KEY_COLUMN_PREFIX + column),
                 centerX,
@@ -256,7 +323,7 @@ public class ReincarnationGuiContainer extends GuiContainer {
                 message,
                 ReincarnationLayout.PANEL_WIDTH / 2,
                 ReincarnationLayout.MESSAGE_Y,
-                0xFFFFFF,
+                ReincarnationGuiPalette.TEXT_WARM,
                 0.7f);
         }
 
@@ -265,19 +332,22 @@ public class ReincarnationGuiContainer extends GuiContainer {
             StatCollector.translateToLocal(KEY_IGNORE_NBT),
             4,
             ReincarnationLayout.FOOTER_Y,
-            FOOTER_COLOR,
+            ReincarnationGuiPalette.TEXT_MUTED_WARM,
             0.55f);
         String encrypted = StatCollector.translateToLocal(KEY_ENCRYPTED);
         drawScaledLeft(
             encrypted,
             ReincarnationLayout.PANEL_WIDTH - 4 - (int) (this.fontRendererObj.getStringWidth(encrypted) * 0.55f),
             ReincarnationLayout.FOOTER_Y,
-            FOOTER_COLOR,
+            ReincarnationGuiPalette.TEXT_MUTED_WARM,
             0.55f);
 
-        // D2：外壳进度虚影（外壳槽格内叠画：0 档 0.40 浅淡预览 / 1..15 n/16 渐进 / 16 实影）
+        // D2：外壳进度虚影（外壳槽格内叠画：0 档 0.40 浅淡预览 / 1..15 n/16 渐进 / 16 实影；
+        // v1.8.8 锁定列深灰乘色真灰化——未解锁=灰、解锁后=彩色）
         drawHullGhosts(container);
-        // D4：hover tooltip（外壳槽 / 币槽；仅覆盖对应槽位命中区）
+        // v1.8.8：外壳计数角标（插在虚影之后、tooltip 之前；z=200 后画覆盖虚影 150）
+        drawHullCounters(container);
+        // D4：hover tooltip（外壳槽 / 解锁与确认按钮悬浮说明；仅覆盖对应命中区）
         drawTooltips(container, mouseX, mouseY);
     }
 
@@ -287,6 +357,10 @@ public class ReincarnationGuiContainer extends GuiContainer {
      * {@code alpha = n/16.0F} / 16 实影。图标按 {@link ReincarnationHullMatcher} 同口径
      * 反向构造（列 0 = 镀铜砖块；列 1..14 = 对应 tier 的 {@link MTEBasicHull}，
      * 经 {@code GregTechAPI.METATILEENTITIES} 单次线性扫描 + 负缓存）。
+     * <p>
+     * v1.8.8 真灰化：锁定列图标渲染前深灰乘色 {@code glColor4f(g,g,g,alpha)}
+     * （g = {@link ReincarnationGuiPalette#HULL_GHOST_LOCKED_GRAY}，与虚影 alpha 叠加），
+     * 解锁列保持 {@code glColor4f(1,1,1,alpha)}。
      * GL 纪律：blend/blendFunc/color 保存恢复，itemRender zLevel 显式设定与还原，
      * 不污染同层后续渲染。
      */
@@ -306,7 +380,16 @@ public class ReincarnationGuiContainer extends GuiContainer {
                 int count = container.getColumnCount(column);
                 float alpha = count <= 0 ? HULL_GHOST_EMPTY_ALPHA
                     : Math.min(1.0F, count / (float) ReincarnationLayout.HULL_TARGET);
-                GL11.glColor4f(1.0F, 1.0F, 1.0F, alpha);
+                if (container.isColumnLocked(column)) {
+                    // v1.8.8 真灰化：深灰乘色 × 虚影 alpha（解锁帧同款路径恢复彩色）
+                    GL11.glColor4f(
+                        ReincarnationGuiPalette.HULL_GHOST_LOCKED_GRAY,
+                        ReincarnationGuiPalette.HULL_GHOST_LOCKED_GRAY,
+                        ReincarnationGuiPalette.HULL_GHOST_LOCKED_GRAY,
+                        alpha);
+                } else {
+                    GL11.glColor4f(1.0F, 1.0F, 1.0F, alpha);
+                }
                 this.itemRender.renderItemAndEffectIntoGUI(
                     this.fontRendererObj,
                     this.mc.getTextureManager(),
@@ -359,10 +442,72 @@ public class ReincarnationGuiContainer extends GuiContainer {
     }
 
     /**
-     * hover tooltip（D4 死键接线）：外壳槽 → {@code gui.hull.tooltip}（列名 + n/16）或
-     * 已解锁列 {@code gui.hull.tooltip.done}（列名）；币槽 → {@code gui.coin.tooltip}。
-     * 命中区仅覆盖对应 18px 槽位（币槽 tooltip 不外溢整行）；鼠标不在任何目标槽位时
-     * 不绘制。前台层入参即 gui 相对坐标（GuiContainer.drawScreen 已扣 guiLeft/guiTop）。
+     * 外壳计数角标（v1.8.8 新增）：每列进度 n（进度条镜像，与虚影同源 getColumnCount），
+     * {@code 0 < n < 16} 时在该列槽位右上角叠画 atlas chip_count 半透明底衬（12×10）+
+     * 计数数字（glScalef 0.5，暖白带阴影，chip 内居中写 n）。n=0 不画；满 16 列不画
+     * （服务端已解锁，灰化同帧消失）。n/16 完整口径仍由既有外壳槽 hover tooltip 承载。
+     * <p>
+     * 调用序：本方法插在 {@link #drawHullGhosts}（z=150）之后、hover tooltip 之前，
+     * 角标整体 z={@link #HULL_COUNTER_ZLEVEL}（后画即覆盖虚影）。
+     * GL 纪律：chip 含 α&lt;255 像素，显式 enable GL_BLEND SRC_ALPHA/ONE_MINUS_SRC_ALPHA，
+     * 退出经 glPopAttrib 成对恢复；文字层 push/scale/pop 逐对出现。
+     */
+    private void drawHullCounters(ReincarnationContainer container) {
+        GL11.glPushMatrix();
+        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        float savedZLevel = this.zLevel;
+        this.zLevel = HULL_COUNTER_ZLEVEL;
+        try {
+            for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
+                int count = container.getColumnCount(column);
+                if (count <= 0 || count >= ReincarnationLayout.HULL_TARGET) {
+                    continue;
+                }
+                int chipX = ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH
+                    + ReincarnationLayout.SLOT_SIZE
+                    - ReincarnationGuiTextures.CHIP_W;
+                int chipY = ReincarnationLayout.HULL_Y;
+                ReincarnationGuiDrawing.bindTexture(ReincarnationGuiTextures.RL_ATLAS);
+                ReincarnationGuiDrawing.drawAtlasRegion(
+                    this,
+                    chipX,
+                    chipY,
+                    ReincarnationGuiTextures.CHIP_U,
+                    ReincarnationGuiTextures.CHIP_V,
+                    ReincarnationGuiTextures.CHIP_W,
+                    ReincarnationGuiTextures.CHIP_H);
+                String text = String.valueOf(count);
+                GL11.glPushMatrix();
+                GL11.glTranslatef(
+                    chipX + ReincarnationGuiTextures.CHIP_W / 2.0F,
+                    chipY + ReincarnationGuiTextures.CHIP_H / 2.0F,
+                    HULL_COUNTER_ZLEVEL);
+                GL11.glScalef(0.5F, 0.5F, 1.0F);
+                this.fontRendererObj.drawStringWithShadow(
+                    text,
+                    -this.fontRendererObj.getStringWidth(text) / 2,
+                    -4,
+                    ReincarnationGuiPalette.TEXT_WARM);
+                GL11.glPopMatrix();
+            }
+        } finally {
+            this.zLevel = savedZLevel;
+            GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+            GL11.glPopAttrib();
+            GL11.glPopMatrix();
+        }
+    }
+
+    /**
+     * hover tooltip（D4 + v1.8.8 按钮悬浮增补）：外壳槽 → {@code gui.hull.tooltip}
+     * （列名 + n/16）或已解锁列 {@code gui.hull.tooltip.done}（列名）；两解锁按钮 →
+     * 连掷口径说明 + 对应币种概率行 + 剩余可解锁状态行（按列解锁态现算）；确认按钮 →
+     * {@code gui.confirm.tooltip.state / .empty}（按会话状态现算选行，可用态不画）。
+     * 命中区：外壳槽仅覆盖 18px 槽位（tooltip 不外溢整行）；按钮覆盖布局常量定值的
+     * 整钮矩形。鼠标不在任何目标内不绘制。前台层入参即 gui 相对坐标
+     * （GuiContainer.drawScreen 已扣 guiLeft/guiTop）。
      */
     private void drawTooltips(ReincarnationContainer container, int mouseX, int mouseY) {
         int hullColumn = hitHullColumn(mouseX, mouseY);
@@ -383,13 +528,83 @@ public class ReincarnationGuiContainer extends GuiContainer {
             drawHoveringText(lines, mouseX, mouseY, this.fontRendererObj);
             return;
         }
-        if (hitCoinSlot(mouseX, mouseY)) {
-            drawHoveringText(
-                Collections.singletonList(StatCollector.translateToLocal(KEY_COIN_TOOLTIP)),
-                mouseX,
-                mouseY,
-                this.fontRendererObj);
+        // v1.8.8 按钮悬浮增补：解锁按钮（整钮 136×18 命中区，布局常量取值）与确认按钮（150×16）
+        if (hitRect(
+            mouseX,
+            mouseY,
+            ReincarnationLayout.UNLOCK_SHIMMER_X,
+            ReincarnationLayout.ACTION_Y,
+            ReincarnationLayout.UNLOCK_BUTTON_WIDTH,
+            ReincarnationLayout.SLOT_SIZE)) {
+            drawHoveringText(unlockTooltipLines(container, true), mouseX, mouseY, this.fontRendererObj);
+            return;
         }
+        if (hitRect(
+            mouseX,
+            mouseY,
+            ReincarnationLayout.UNLOCK_NORMAL_X,
+            ReincarnationLayout.ACTION_Y,
+            ReincarnationLayout.UNLOCK_BUTTON_WIDTH,
+            ReincarnationLayout.SLOT_SIZE)) {
+            drawHoveringText(unlockTooltipLines(container, false), mouseX, mouseY, this.fontRendererObj);
+            return;
+        }
+        if (hitRect(
+            mouseX,
+            mouseY,
+            ReincarnationLayout.CONFIRM_X,
+            ReincarnationLayout.CONFIRM_Y,
+            ReincarnationLayout.CONFIRM_BUTTON_WIDTH,
+            CONFIRM_BUTTON_HEIGHT)) {
+            String line = confirmTooltipLine(container);
+            if (line != null) {
+                drawHoveringText(Collections.singletonList(line), mouseX, mouseY, this.fontRendererObj);
+            }
+        }
+    }
+
+    /**
+     * 解锁按钮悬浮行（v1.8.8）：连掷口径说明（translateToLocal 直读，单 % 约定）→
+     * 对应币种概率行（%% 经格式化路径转 %）→ 剩余可解锁状态行（现算：3 行全满 → done；
+     * 尚有锁定列 → columns（参数 = HULL_TARGET）；否则不追加第三行）。
+     */
+    private List<String> unlockTooltipLines(ReincarnationContainer container, boolean shimmer) {
+        List<String> lines = new ArrayList<String>(3);
+        lines.add(StatCollector.translateToLocal(KEY_UNLOCK_TOOLTIP_LINE));
+        lines.add(
+            StatCollector.translateToLocalFormatted(shimmer ? KEY_UNLOCK_TOOLTIP_SHIMMER : KEY_UNLOCK_TOOLTIP_NORMAL));
+        if (container.getUnlockedRows() >= ReincarnationCycle.MAX_UNLOCKED_ROWS) {
+            lines.add(StatCollector.translateToLocal(KEY_UNLOCK_TOOLTIP_DONE));
+        } else {
+            for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
+                if (container.isColumnLocked(column)) {
+                    lines.add(
+                        StatCollector
+                            .translateToLocalFormatted(KEY_UNLOCK_TOOLTIP_COLUMNS, ReincarnationLayout.HULL_TARGET));
+                    break;
+                }
+            }
+        }
+        return lines;
+    }
+
+    /**
+     * 确认按钮悬浮行（v1.8.8）：非 DEPOSITED → state 行；DEPOSITED 但寄存清单空 →
+     * empty 行；可用态（两条件皆过）无既定文案，返回 null 不画。
+     */
+    private String confirmTooltipLine(ReincarnationContainer container) {
+        if (container.getStateOrdinal() != ReincarnationCycle.CycleState.DEPOSITED.ordinal()) {
+            return StatCollector.translateToLocal(KEY_CONFIRM_TOOLTIP_STATE);
+        }
+        if (container.getPendingCount() <= 0) {
+            return StatCollector.translateToLocal(KEY_CONFIRM_TOOLTIP_EMPTY);
+        }
+        return null;
+    }
+
+    /** 鼠标是否命中 gui 相对矩形（左闭右开；v1.8.8 按钮悬浮命中区专用，口径与槽位命中一致） */
+    private static boolean hitRect(int mouseX, int mouseY, int x, int y, int width, int height) {
+        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
     /** 鼠标是否命中外壳槽行（返回列下标；未命中返回 -1；gui 相对坐标，仅 18px 槽位框） */
@@ -408,15 +623,6 @@ public class ReincarnationGuiContainer extends GuiContainer {
             return -1;
         }
         return column;
-    }
-
-    /** 鼠标是否命中币槽（gui 相对坐标，仅 18px 槽位框） */
-    private static boolean hitCoinSlot(int mouseX, int mouseY) {
-        int offsetX = mouseX - ReincarnationLayout.GRID_X;
-        int offsetY = mouseY - ReincarnationLayout.ACTION_Y;
-        return offsetX >= 0 && offsetX < ReincarnationLayout.SLOT_SIZE
-            && offsetY >= 0
-            && offsetY < ReincarnationLayout.SLOT_SIZE;
     }
 
     /** 横幅文本（DEPOSITED 金 / EXECUTED 红 / IDLE 灰，颜色由 lang 值承载，与旧 bannerText 同构） */

@@ -3,7 +3,8 @@ package com.miaokatze.gtit.reincarnation.gui;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 
 /**
- * 周目 GUI 契约唯一单源（v1.8.3，MUI2 → Forge 原版 IGuiHandler 链路迁移）。
+ * 周目 GUI 契约唯一单源（v1.8.3，MUI2 → Forge 原版 IGuiHandler 链路迁移；
+ * v1.9.0 连掷重构：猫猫币支付格摘除，解锁改连掷会话制）。
  * <p>
  * 本类是 {@link ReincarnationContainer}（common，双端）与 client 渲染层
  * {@code ReincarnationGuiContainer}（client/gui 包，仅客户端加载，不在 common 文件中具名引用）
@@ -44,21 +45,25 @@ public final class ReincarnationLayout {
     /** 物品格数量（15 列 × 3 行） */
     public static final int ITEM_SLOT_COUNT = ReincarnationCycle.COLUMN_COUNT * ReincarnationCycle.MAX_UNLOCKED_ROWS;
 
-    /** 猫猫币支付格：下标 {@code 60}（单格，可堆叠） */
-    public static final int SLOT_COIN = SLOT_ITEM_FIRST + ITEM_SLOT_COUNT;
+    /**
+     * 玩家背包槽区起点：下标 {@code 60..86} 主背包（inventory 9..35）+ {@code 87..95} 快捷栏
+     * （inventory 0..8）。
+     * <p>
+     * v1.9.0 连掷重构：原猫猫币支付格（下标 60）整体摘除（解锁改连掷会话制，激活位见
+     * {@link #BAR_ROLL_ACTIVE}），玩家背包下标自 60 起。
+     */
+    public static final int SLOT_PLAYER_FIRST = SLOT_ITEM_FIRST + ITEM_SLOT_COUNT;
 
-    /** 玩家背包槽区起点：下标 {@code 61..87} 主背包（inventory 9..35）+ {@code 88..96} 快捷栏（inventory 0..8） */
-    public static final int SLOT_PLAYER_FIRST = SLOT_COIN + 1;
-
-    /** 玩家背包槽位数量（vanilla InventoryPlayer：主背包 27 + 快捷栏 9 = 36，下标 61..96） */
+    /** 玩家背包槽位数量（vanilla InventoryPlayer：主背包 27 + 快捷栏 9 = 36，下标 60..95） */
     public static final int PLAYER_SLOT_COUNT = 36;
 
     /**
-     * Container 总槽位数（15 外壳 + 45 物品 + 1 币格 + 36 玩家背包 = 97）。
+     * Container 总槽位数（15 外壳 + 45 物品 + 36 玩家背包 = 96）。
      * <p>
      * v1.8.3 接续修正：原公式 {@code SLOT_PLAYER_FIRST + ITEM_SLOT_COUNT + HULL_SLOT_COUNT}
      * 把物品格与外壳格在玩家背包之后重复计入（=121），与 {@link #SLOT_PLAYER_FIRST}
-     * 的 61..96 下标映射自相矛盾，按该下标映射口径修正为 97。
+     * 的下标映射自相矛盾，按该下标映射口径修正。
+     * v1.9.0 连掷重构：猫猫币支付格（原 1 格）摘除，总数 97 → 96。
      */
     public static final int TOTAL_SLOT_COUNT = SLOT_PLAYER_FIRST + PLAYER_SLOT_COUNT;
 
@@ -115,6 +120,16 @@ public final class ReincarnationLayout {
      * 已知纯显示级差异：旧 MUI2 消息行在事件时刻冻结参数文本，本实现参数随进度条实时刷新。
      */
     public static final int BAR_MESSAGE_EVENT = 20;
+
+    /**
+     * 连掷会话激活位进度条：id {@code 21}，位打包（唯一固定编码）——bit 0 = 闪烁币连掷会话
+     * 激活（1 = 激活），bit 1 = 普通币连掷会话激活，两会话相互独立，未用位恒 0。
+     * <p>
+     * v1.9.0 连掷重构新增：解锁按钮 = toggle 连掷会话（首按开启、再按停止；激活期间每
+     * 服务端 tick 从背包扣 1 枚对应猫猫币掷 1 次），客户端按钮文案切换由本位驱动
+     * （client 树消费，另一切片）。激活态变化 ≤1 tick 经 {@code detectAndSendChanges} 送达。
+     */
+    public static final int BAR_ROLL_ACTIVE = 21;
 
     /** 消息事件码：无消息（消息行渲染为空） */
     public static final int MSG_NONE = 0;
@@ -192,16 +207,13 @@ public final class ReincarnationLayout {
     /** 外壳累计槽行 Y */
     public static final int HULL_Y = 26;
 
-    /** 外壳进度 n/16 标记行 Y */
-    public static final int PROGRESS_Y = 45;
-
     /** 物品格首行 Y（3 行，行距 {@link #SLOT_PITCH}） */
     public static final int ITEMS_Y = 53;
 
     /** 列名标签行 Y */
     public static final int LABELS_Y = 114;
 
-    /** 动作行 Y（币格 + 2 解锁按钮） */
+    /** 动作行 Y（2 解锁按钮；v1.9.0 币格摘除） */
     public static final int ACTION_Y = 124;
 
     /** 面板消息行 Y */
@@ -219,7 +231,7 @@ public final class ReincarnationLayout {
     /** 解锁按钮宽（两个解锁行按钮同宽） */
     public static final int UNLOCK_BUTTON_WIDTH = 136;
 
-    /** 闪烁币解锁按钮 X（币格右侧 2px） */
+    /** 闪烁币解锁按钮 X（网格左缘 + 1 槽位 + 2px；v1.9.0 币格摘除后几何值不变） */
     public static final int UNLOCK_SHIMMER_X = GRID_X + SLOT_SIZE + 2;
 
     /** 普通币解锁按钮 X（闪烁币按钮右侧 2px） */

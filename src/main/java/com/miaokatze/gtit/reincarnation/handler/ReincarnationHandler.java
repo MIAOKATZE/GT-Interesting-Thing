@@ -2,8 +2,12 @@ package com.miaokatze.gtit.reincarnation.handler;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -38,7 +42,7 @@ import cpw.mods.fml.relauncher.Side;
 /**
  * 周目系统服务端编排器（v1.9.0 S4 收口切片）。
  * <p>
- * 编排四条服务端世界侧链路（订阅 cpw.mods.fml.common.gameevent.PlayerEvent.PlayerLoggedInEvent /
+ * 编排五条服务端世界侧链路（订阅 cpw.mods.fml.common.gameevent.PlayerEvent.PlayerLoggedInEvent /
  * PlayerLoggedOutEvent + TickEvent.ServerTickEvent（1.7.10 三者均在 FML 总线；任务包所写
  * "Forge PlayerLoggedInEvent" 在本 Forge 构建不存在，按语义取 FML gameevent 同名事件）+
  * 注入 {@link ReincarnationConfirmHook}）：
@@ -64,6 +68,11 @@ import cpw.mods.fml.relauncher.Side;
  * {@code sendAscensionStartToClient} → tick 轮询 {@code carrier.isAscensionComplete()}
  * → 击杀玩家（{@code outOfWorld} 足量伤害 + {@code setHealth(0)} 兜底）。死亡后删档由
  * {@link HardcoreEnforcer} 自理（60 tick 延时删档，本类不感知）。</li>
+ * <li><b>解锁连掷会话</b>（v1.9.0 连掷重构）：解锁按钮 toggle 的会话注册表
+ * （{@code rollSessions}，player UUID → shimmer/normal 两独立槽，仅 server 线程读写、
+ * 不持久化）+ ServerTickEvent END 逐 tick 驱动单掷（扣币与概率判定在容器侧权威模型执行）。
+ * 停止条件：① 无剩余可解锁目标 → 静默；② 背包无该币种 → no_coin 消息（①②由单掷闭包
+ * 返回 false 表达）；③ 登出/死亡/GUI 关闭 → 静默摘除；④ 再按同按钮 → 即时摘除。</li>
  * </ol>
  * <p>
  * <b>mutextLock 口径收束</b>（快照构造与本 javadoc 双落点）：只读锁 = EXECUTED
@@ -118,6 +127,13 @@ public final class ReincarnationHandler {
 
     /** server tick 到期任务队列（登录延迟发放/倒计时到点/兜底死亡；仅 server 线程读写） */
     private final List<ScheduledAction> scheduledActions = new ArrayList<>();
+
+    /**
+     * 连掷会话注册表（player UUID → 会话槽；v1.9.0 连掷重构）。
+     * 会话形态 {coinType, active}：active 以「槽位在场」表达（{@link PlayerRollSessions}
+     * 两槽非 null 即激活）。仅 server 线程读写、不持久化（登出/GUI 关闭/死亡即弃）。
+     */
+    private final Map<UUID, PlayerRollSessions> rollSessions = new HashMap<>();
 
     /** 进行中的飞升槽位（单槽；null = 无），见类 javadoc"单槽"说明 */
     private EntityAscensionCarrier activeCarrier;
@@ -302,6 +318,7 @@ public final class ReincarnationHandler {
         }
         EntityPlayerMP player = (EntityPlayerMP) event.player;
         scheduledActions.removeIf(action -> action.player == player);
+        rollSessions.remove(player.getUniqueID()); // 连掷会话不持久化：登出即弃（停止条件③，静默）
         if (ascensionPlayer == player) {
             ascensionPlayer = null;
             activeCarrier = null;
@@ -318,6 +335,7 @@ public final class ReincarnationHandler {
         }
         tickScheduledActions();
         tickAscension();
+        tickRollSessions();
     }
 
     /** 到期任务驱动：玩家死亡/登出即作废；墙钟 deadline 与 tick 倒数两种口径 */
@@ -388,6 +406,173 @@ public final class ReincarnationHandler {
             activeCarrier = null;
             ascensionPlayer = null;
             killPlayer(player, completed ? "飞升完成" : "飞升轮询硬上限");
+        }
+    }
+
+    // ==================== 解锁连掷会话（v1.9.0 连掷重构） ====================
+
+    /**
+     * 连掷会话驱动（ServerTickEvent END 订阅内每 tick 一次）：对每个激活会话执行一次单掷闭包。
+     * 停止条件落点：③死亡（isDead，静默摘除）在此；①无剩余可解锁目标/②背包无该币种由闭包
+     * 返回 {@code false} 表达（容器侧已处理 no_coin 消息与静默语义）；④再按同按钮经
+     * {@link #stopRollSession} 即时摘除。闭包异常按停止处理（fail-safe，不阻断其余会话）。
+     */
+    private void tickRollSessions() {
+        if (rollSessions.isEmpty()) {
+            return;
+        }
+        Iterator<PlayerRollSessions> iterator = rollSessions.values()
+            .iterator();
+        while (iterator.hasNext()) {
+            PlayerRollSessions sessions = iterator.next();
+            if (sessions.player.isDead) {
+                iterator.remove(); // 停止条件③：死亡静默停止
+                continue;
+            }
+            sessions.shimmer = driveOneRoll(sessions.shimmer);
+            sessions.normal = driveOneRoll(sessions.normal);
+            if (sessions.shimmer == null && sessions.normal == null) {
+                iterator.remove();
+            }
+        }
+    }
+
+    /** 单会话单掷：空槽直通；闭包返回 false（或抛异常）即摘除该槽 */
+    private RollSession driveOneRoll(RollSession session) {
+        if (session == null) {
+            return null;
+        }
+        boolean keep;
+        try {
+            keep = session.rollTick.getAsBoolean();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[reincarnation] 连掷单掷异常（会话停止）", t);
+            keep = false;
+        }
+        return keep ? session : null;
+    }
+
+    /**
+     * 开启连掷会话（ReincarnationContainer.toggleUnlock 经 enchantItem 的
+     * {@code scheduleServerTask} 到达，恒在 server 线程）。严格单机门控（v1.8.2 同款）
+     * 在连掷入口保留：非单机 fail-closed 不建会话。会话激活期间由 {@link #tickRollSessions}
+     * 每 tick 驱动一次单掷；成功不停止，直至停止条件命中。
+     */
+    public static void startRollSession(EntityPlayer player, boolean shimmer, GTITItemList coinType,
+        BooleanSupplier rollTick) {
+        if (!(player instanceof EntityPlayerMP) || player.worldObj == null || player.worldObj.isRemote) {
+            return;
+        }
+        if (!isStrictSinglePlayer()) {
+            GTInterestingThing.LOG.info("[reincarnation] 非单机环境，拒绝开启连掷会话：player=" + player.getCommandSenderName());
+            return;
+        }
+        EntityPlayerMP mp = (EntityPlayerMP) player;
+        PlayerRollSessions sessions = INSTANCE.sessionsOf(mp, true);
+        if ((shimmer ? sessions.shimmer : sessions.normal) != null) {
+            // 防御路径（唯一调用方已先查 isRollSessionActive）：重复开启保持既有会话，不重复建
+            GTInterestingThing.LOG.warn("[reincarnation] 连掷会话重复开启（保持既有会话）：player=" + mp.getCommandSenderName());
+            return;
+        }
+        if (shimmer) {
+            sessions.shimmer = new RollSession(coinType, rollTick);
+        } else {
+            sessions.normal = new RollSession(coinType, rollTick);
+        }
+        GTInterestingThing.LOG.info(
+            "[reincarnation] 连掷会话开启：player=" + mp.getCommandSenderName()
+                + "，coin="
+                + coinType
+                + "（每 tick 扣 1 币掷 1 次，成功不停掷）");
+    }
+
+    /** 停止单币种连掷会话（停止条件④：再按同按钮立即停止；静默，幂等） */
+    public static void stopRollSession(EntityPlayer player, boolean shimmer) {
+        if (!(player instanceof EntityPlayerMP)) {
+            return;
+        }
+        PlayerRollSessions sessions = INSTANCE.rollSessions.get(player.getUniqueID());
+        if (sessions == null) {
+            return;
+        }
+        if (shimmer) {
+            sessions.shimmer = null;
+        } else {
+            sessions.normal = null;
+        }
+        if (sessions.shimmer == null && sessions.normal == null) {
+            INSTANCE.rollSessions.remove(player.getUniqueID());
+        }
+    }
+
+    /**
+     * 停止该玩家全部连掷会话（静默、幂等）：GUI 关闭（onContainerClosed 停止条件③）与
+     * 登出清扫共用；会话不持久化，登出即弃。
+     */
+    public static void stopRollSessions(EntityPlayer player) {
+        if (!(player instanceof EntityPlayerMP)) {
+            return;
+        }
+        INSTANCE.rollSessions.remove(player.getUniqueID());
+    }
+
+    /** 该玩家该币种连掷会话是否激活（服务端注册表实况；GUI 激活位推送与 toggle 方向判定经此读取） */
+    public static boolean isRollSessionActive(EntityPlayer player, boolean shimmer) {
+        if (!(player instanceof EntityPlayerMP)) {
+            return false;
+        }
+        PlayerRollSessions sessions = INSTANCE.rollSessions.get(player.getUniqueID());
+        return sessions != null && (shimmer ? sessions.shimmer : sessions.normal) != null;
+    }
+
+    /**
+     * 该玩家连掷激活位（bit 0 = 闪烁币会话，bit 1 = 普通币会话；编码唯一单源见
+     * {@code ReincarnationLayout#BAR_ROLL_ACTIVE}）。
+     */
+    public static int rollActiveBits(EntityPlayer player) {
+        if (!(player instanceof EntityPlayerMP)) {
+            return 0;
+        }
+        PlayerRollSessions sessions = INSTANCE.rollSessions.get(player.getUniqueID());
+        if (sessions == null) {
+            return 0;
+        }
+        return (sessions.shimmer != null ? 1 : 0) | (sessions.normal != null ? 2 : 0);
+    }
+
+    /** 取（或按需建）该玩家会话槽；forceCreate=false 时缺失返回 null */
+    private PlayerRollSessions sessionsOf(EntityPlayerMP player, boolean forceCreate) {
+        UUID id = player.getUniqueID();
+        PlayerRollSessions sessions = rollSessions.get(id);
+        if (sessions == null && forceCreate) {
+            sessions = new PlayerRollSessions(player);
+            rollSessions.put(id, sessions);
+        }
+        return sessions;
+    }
+
+    /** 单币种连掷会话（{coinType, active} 形态；active 以注册表槽位在场表达） */
+    private static final class RollSession {
+
+        final GTITItemList coinType;
+        /** 单掷闭包（容器侧权威模型执行扣币与概率判定）；返回 false = 停止条件①/②命中 */
+        final BooleanSupplier rollTick;
+
+        RollSession(GTITItemList coinType, BooleanSupplier rollTick) {
+            this.coinType = coinType;
+            this.rollTick = rollTick;
+        }
+    }
+
+    /** 单玩家连掷会话槽（shimmer/normal 两会话相互独立，可同时激活） */
+    private static final class PlayerRollSessions {
+
+        final EntityPlayerMP player;
+        RollSession shimmer;
+        RollSession normal;
+
+        PlayerRollSessions(EntityPlayerMP player) {
+            this.player = player;
         }
     }
 

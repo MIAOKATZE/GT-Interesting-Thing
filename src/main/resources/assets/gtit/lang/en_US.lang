@@ -175,9 +175,9 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.name=§9§lSkywalk
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.desc=Skywalk raises your step height to §11.1 blocks§r: a full block becomes as climbable as a slab — §2no jumping required§r; stairs, walls and wrinkled terrain all read as flat ground.%n%nNo more bumpy commutes, and scaffold-climbing during builds turns oddly gentle.%n%nPresent one Skywalk — §2checked, not taken§r. §8§oStairs are now purely decorative.§r
 # BQ quests [pack=gtit] END
 
-# Reincarnation Cycle GUI (v1.9.0 S7; keys consumed via formatted paths keep %% escaping, button/tooltip keys read via translateToLocal use a single %)
-# v1.9.x D4: unlock button labels are read via translateToLocal (never formatted) — the literal %% leaked on screen, now a single %;
-# hull.tooltip / coin.tooltip dead keys are wired to GuiContainer hover rendering (tier name + n/16 / coin slot copy).
+# Reincarnation Cycle GUI (v1.8.8 texture retouch; keys consumed via formatted paths keep %% escaping, button/tooltip keys read via translateToLocal use a single %)
+# Button/tooltip labels are read via translateToLocal (never formatted) — the literal %% leaked on screen, now a single %;
+# hull.tooltip is wired to GuiContainer hover rendering (tier name + n/16); the coin slot key was removed together with the coin slot.
 gtit.reincarnation.gui.title=§6Reincarnation Cycle
 gtit.reincarnation.gui.banner.idle=§7No cycle in progress — deposit items to start a new run
 gtit.reincarnation.gui.banner.deposited=§6Cycle deposited: adjust items or confirm reincarnation
@@ -187,10 +187,11 @@ gtit.reincarnation.gui.hull.tooltip.done=Tier unlocked (%s)
 gtit.reincarnation.gui.item.tooltip=Cycle item slot (row %s): deposits are recorded into this run
 gtit.reincarnation.gui.ignore_nbt=Ignores NBT (enchantments/damage not kept)
 gtit.reincarnation.gui.encrypted=Obfuscated · player-bound
-gtit.reincarnation.gui.coin.tooltip=Neko coin slot: only Neko Coin / Shimmering Neko Coin
 gtit.reincarnation.gui.unlock.shimmer=§eShimmering Coin unlock (0.1%)
 gtit.reincarnation.gui.unlock.normal=§eNeko Coin unlock (0.001%)
-gtit.reincarnation.gui.unlock.tooltip.line=Consumes 1 matching coin from the slot above, then rolls
+gtit.reincarnation.gui.unlock.shimmer.stop=§eStop Shimmering Coin rolling
+gtit.reincarnation.gui.unlock.normal.stop=§eStop Neko Coin rolling
+gtit.reincarnation.gui.unlock.tooltip.line=Press to start: consumes 1 matching coin from your inventory each tick and rolls once; press again to stop
 gtit.reincarnation.gui.unlock.tooltip.shimmer=Success rate 0.1%% (1/1000)
 gtit.reincarnation.gui.unlock.tooltip.normal=Success rate 0.001%% (1/100000)
 gtit.reincarnation.gui.unlock.tooltip.columns=Locked tiers remain — fill each hull slot to %s/16 first
@@ -219,7 +220,7 @@ gtit.reincarnation.chat.column_unlocked=§6Tier unlocked: %s (%s)
 gtit.reincarnation.chat.hull.consumed=§7Hull consumed: %s (%s)
 gtit.reincarnation.chat.unlock.success=§aRow unlocked! %s rows now open
 gtit.reincarnation.chat.unlock.fail=§7Unlock failed (chance %s); the coin was consumed
-gtit.reincarnation.chat.unlock.no_coin=§cNo matching Neko coin in the payment slot
+gtit.reincarnation.chat.unlock.no_coin=§cNo matching Neko coin in your inventory
 gtit.reincarnation.chat.readonly=§cThis cycle is read-only (an unclaimed reincarnation exists)
 gtit.reincarnation.chat.deposit.failed=§cThis item cannot be deposited: %s
 gtit.reincarnation.chat.withdraw.failed=§cFailed to remove the record — the item was returned

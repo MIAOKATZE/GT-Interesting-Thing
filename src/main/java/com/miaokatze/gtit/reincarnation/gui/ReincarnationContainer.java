@@ -21,6 +21,7 @@ import com.miaokatze.gtit.reincarnation.ReincarnationConfirmHook;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationSaveGuard;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
+import com.miaokatze.gtit.reincarnation.handler.ReincarnationHandler;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationMigration;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
@@ -37,7 +38,7 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * （空记录，展示走进度条同步值与槽位同步），与旧 GUI 双端镜像纪律一致。
  * <p>
  * <b>同步机制</b>：槽位内容由 vanilla {@code detectAndSendChanges} 槽位 diff 同步；
- * 计数/状态/锁定/武装/消息经 {@code ICrafting.sendProgressBarUpdate} 推送
+ * 计数/状态/锁定/武装/消息/连掷激活位经 {@code ICrafting.sendProgressBarUpdate} 推送
  * （id 映射见 {@link ReincarnationLayout} 进度条区，消息行仅传事件码、参数由客户端
  * 从其余进度条值与 lang 键本地派生，无需字符串同步通道——v1.8.3 裁决：消息行可用
  * 进度条表达，ReincarnationSyncPacket 不扩展）。
@@ -58,10 +59,14 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * 记录，首件放入且 IDLE 经 {@code deposit} 过渡 IDLE→DEPOSITED，其余 {@code addPendingItem}；
  * 模型拒绝时槽位清空 + 物品退回（背包满则掉落）；取出 = {@code cycle.withdraw}，失败时格位
  * 重建（防御路径）；</li>
- * <li>猫猫币支付格：只接受 NekoCoin / ShimmeringNekoCoin（可堆叠）；EXECUTED 只读态下全部
- * 槽位与按钮禁用（只读锁口径 = EXECUTED，与旧 GUI 口径说明一致）；</li>
- * <li>解锁行按钮 ×2：服务端扣 1 币 → {@link Random} 判定（闪烁 1/1000，普通 1/100000，
- * {@code nextInt(分母) == 0} 即成功）→ 成功 {@code setUnlockedRows+1}；</li>
+ * <li>解锁行按钮 ×2（v1.9.0 连掷重构，猫猫币支付格已摘除）：按下 = toggle 该币种连掷会话
+ * （首按开启、再按停止）；会话激活期间每服务端 tick 从背包扣 1 枚对应猫猫币掷 1 次
+ * （{@link Random} 判定，闪烁 1/1000，普通 1/100000，{@code nextInt(分母) == 0} 即成功）→
+ * 成功 {@code setUnlockedRows+1}（成功不停止会话；失败静默不刷屏）。停止条件：
+ * ① 无剩余可解锁目标（isUnlockAvailable 同口径）→ 静默停止；② 背包无该币种 →
+ * 沿用 chat.unlock.no_coin 消息键；③ 登出/死亡/GUI 关闭 → 静默停止；④ 再按同按钮 →
+ * 立即停止。会话注册表与 tick 驱动在 {@code ReincarnationHandler}（UUID → shimmer/normal
+ * 两独立槽，不持久化），激活位经 {@link ReincarnationLayout#BAR_ROLL_ACTIVE} 同步；</li>
  * <li>确认轮回按钮：两步制（第一次点击仅服务端武装，第二次点击执行；槽位变动/关窗重置武装），
  * 替代旧 {@code NekoConfirmationDialog}；可用性 = DEPOSITED + 待领取非空 + 钩子已注入；
  * 执行经 {@link ReincarnationConfirmHook#onConfirmRequested} 回调 S4。</li>
@@ -122,8 +127,6 @@ public class ReincarnationContainer extends Container {
     private final SessionInventory hullInventory = new SessionInventory(ReincarnationLayout.HULL_SLOT_COUNT, 1);
     /** 物品格缓冲（15 列 × 3 行，index = col*3+row，每格 1 件） */
     private final SessionInventory itemInventory = new SessionInventory(ReincarnationLayout.ITEM_SLOT_COUNT, 1);
-    /** 猫猫币支付格缓冲（可堆叠；关闭时退回） */
-    private final SessionInventory coinInventory = new SessionInventory(1, 64);
 
     /** 物品格槽位对应的权威 ItemRef 快照（服务端；取出时定位 withdraw 目标，index = col*3+row） */
     private final ReincarnationCycle.ItemRef[] itemSlotRefs = new ReincarnationCycle.ItemRef[ReincarnationLayout.ITEM_SLOT_COUNT];
@@ -149,6 +152,8 @@ public class ReincarnationContainer extends Container {
     private int lastPending = -1;
     private int lastArmed = -1;
     private int lastMessage = -1;
+    /** 连掷激活位上次推送值（bit0=闪烁 bit1=普通，映射见 {@link ReincarnationLayout#BAR_ROLL_ACTIVE}） */
+    private int lastRollActive = -1;
 
     /** 客户端镜像（updateProgressBar 写入；访问器经 sided 分发读取） */
     private final int[] clientHull = new int[ReincarnationLayout.HULL_SLOT_COUNT];
@@ -158,6 +163,8 @@ public class ReincarnationContainer extends Container {
     private int clientPending;
     private int clientArmed;
     private int clientMessage;
+    /** 客户端连掷激活位镜像（updateProgressBar 写入；bit0=闪烁 bit1=普通） */
+    private int clientRollActive;
 
     /**
      * @param player 打开 GUI 的玩家（双端各建一实例）
@@ -221,9 +228,8 @@ public class ReincarnationContainer extends Container {
                 addSlotToContainer(slot);
             }
         }
-        // 猫猫币支付格 60
-        addSlotToContainer(new CoinSlot(ReincarnationLayout.GRID_X, ReincarnationLayout.ACTION_Y));
-        // 玩家背包 61..96（主背包 inventory 9..35 + 快捷栏 inventory 0..8，vanilla 排布）
+        // 玩家背包 60..95（主背包 inventory 9..35 + 快捷栏 inventory 0..8，vanilla 排布；
+        // v1.9.0 连掷重构：原币格 60 摘除，背包下标前移）
         InventoryPlayer inventory = this.player.inventory;
         for (int row = 0; row < 3; row++) {
             for (int column = 0; column < 9; column++) {
@@ -376,40 +382,6 @@ public class ReincarnationContainer extends Container {
         }
     }
 
-    /** 猫猫币支付格：只接受两种猫猫币（可堆叠）；EXECUTED 只读态全禁；关闭 GUI 退回 */
-    private final class CoinSlot extends Slot {
-
-        CoinSlot(int x, int y) {
-            super(coinInventory, 0, x, y);
-        }
-
-        @Override
-        public boolean isItemValid(ItemStack stack) {
-            return !isReadonly() && isNekoCoin(stack);
-        }
-
-        @Override
-        public boolean canTakeStack(EntityPlayer p_82869_1_) {
-            return !isReadonly();
-        }
-
-        @Override
-        public void putStack(ItemStack stack) {
-            if (server) {
-                disarmConfirm(); // 槽位变动重置武装（币格同口径）
-            }
-            super.putStack(stack);
-        }
-
-        @Override
-        public void onPickupFromSlot(EntityPlayer who, ItemStack taken) {
-            super.onPickupFromSlot(who, taken);
-            if (server) {
-                disarmConfirm();
-            }
-        }
-    }
-
     /** 纯 GUI 会话背包（不入世界、不接自动化；markDirty 无需落盘——模型变更在任务内显式 save） */
     private final class SessionInventory implements IInventory {
 
@@ -450,7 +422,7 @@ public class ReincarnationContainer extends Container {
 
         @Override
         public ItemStack getStackInSlotOnClosing(int index) {
-            // 关闭退币在 onContainerClosed 服务端路径统一处理，槽位内容不随关窗散落
+            // 关闭收束（保存）在 onContainerClosed 服务端路径统一处理，槽位内容不随关窗散落
             return null;
         }
 
@@ -631,43 +603,71 @@ public class ReincarnationContainer extends Container {
         reloadIfLicenseAdvancedQuietly();
     }
 
+    // ==================== 解锁连掷（v1.9.0 连掷重构；会话注册表与 tick 驱动在 ReincarnationHandler） ====================
+
     /**
-     * 解锁行尝试（旧 :923 tryUnlock）：币格扣 1 币 → {@link Random} 判定 → 成功行数 +1 → 保存
+     * 解锁按钮 toggle 入口（旧 :923 tryUnlock 一次性扣币 → 连掷会话制）。
      * <p>
-     * RNG 冻结口径：{@code UNLOCK_RNG.nextInt(分母) == 0}（闪烁 1/1000=0.1%，普通 1/100000=0.001%）。
+     * EXECUTED 只读锁与 isUnlockAvailable 首行检查保留：会话未激活时不可解锁（只读/行满/
+     * 列未全解锁）则拒绝开启并沿用只读 chat 反馈；已激活会话的再按 = 立即停止（停止条件④），
+     * 不受该门控影响。经 {@code enchantItem} 的 {@code scheduleServerTask} 到达，恒在服务端线程。
      */
-    private void tryUnlock(boolean shimmer, GTITItemList coinType) {
+    private void toggleUnlock(boolean shimmer, GTITItemList coinType) {
+        if (ReincarnationHandler.isRollSessionActive(this.player, shimmer)) {
+            ReincarnationHandler.stopRollSession(this.player, shimmer); // 停止条件④：再按同按钮立即停止
+            return;
+        }
         if (!isUnlockAvailable()) {
             chat(KEY_CHAT_READONLY);
             return;
         }
-        ItemStack coin = this.coinInventory.getStackInSlot(0);
-        if (!isNekoCoin(coin, coinType)) {
-            chat(KEY_CHAT_UNLOCK_NO_COIN);
-            return;
+        ReincarnationHandler.startRollSession(this.player, shimmer, coinType, () -> rollOnce(shimmer, coinType));
+    }
+
+    /**
+     * 连掷单掷（会话激活期间每服务端 tick 一次，由 {@code ReincarnationHandler.tickRollSessions}
+     * 驱动）。返回 {@code false} = 会话终止。
+     * <p>
+     * RNG 冻结口径沿用旧 tryUnlock：{@code UNLOCK_RNG.nextInt(分母) == 0}
+     * （闪烁 1/1000=0.1%，普通 1/100000=0.001%）。成功不停止会话（继续掷至停止条件命中）；
+     * 失败静默（20 掷/秒不刷屏，不设消息事件码）。模型变更走权威会话内存模型 + saveQuietly，
+     * 与 GUI 其余路径同源，关窗收束不丢账。
+     */
+    private boolean rollOnce(boolean shimmer, GTITItemList coinType) {
+        if (!isUnlockAvailable()) {
+            return false; // 停止条件①：无剩余可解锁目标（isUnlockAvailable 同口径），静默停止
         }
-        // 扣 1 币（可堆叠：数量 -1，空则清格）
-        if (coin.stackSize <= 1) {
-            this.coinInventory.setInventorySlotContents(0, null);
-        } else {
-            ItemStack rest = coin.copy();
-            rest.stackSize--;
-            this.coinInventory.setInventorySlotContents(0, rest);
+        int coinSlot = indexOfCoin(coinType);
+        if (coinSlot < 0) {
+            chat(KEY_CHAT_UNLOCK_NO_COIN); // 停止条件②：背包无该币种，沿用现有 no_coin 消息键
+            return false;
         }
+        this.player.inventory.decrStackSize(coinSlot, 1);
         boolean success = UNLOCK_RNG.nextInt(shimmer ? SHIMMER_UNLOCK_ONE_IN : NORMAL_UNLOCK_ONE_IN) == 0;
         if (success) {
             this.cycle.setUnlockedRows(this.cycle.getUnlockedRows() + 1);
             saveQuietly();
             chat(KEY_CHAT_UNLOCK_SUCCESS, this.cycle.getUnlockedRows() + "/" + ReincarnationCycle.MAX_UNLOCKED_ROWS);
             setMessageEvent(ReincarnationLayout.MSG_UNLOCK_SUCCESS);
-        } else {
-            setMessageEvent(
-                shimmer ? ReincarnationLayout.MSG_UNLOCK_FAIL_SHIMMER : ReincarnationLayout.MSG_UNLOCK_FAIL_NORMAL);
-            chat(KEY_CHAT_UNLOCK_FAIL, shimmer ? "0.1%" : "0.001%");
         }
+        return true;
     }
 
-    /** GUI 关闭（旧 :961 onCloseSession）：币格余币退回玩家 + 收束保存（槽位内物品已记录进模型，不退回） */
+    /** 背包中该币种猫猫币首个命中格（主背包 36 格含快捷栏，实时扫描；与 Handler 水晶扫描同口径） */
+    private int indexOfCoin(GTITItemList coinType) {
+        ItemStack[] mainInventory = this.player.inventory.mainInventory;
+        for (int slot = 0; slot < mainInventory.length; slot++) {
+            if (isNekoCoin(mainInventory[slot], coinType)) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * GUI 关闭（旧 :961 onCloseSession；v1.9.0 币格摘除后退币段删除）：收束保存
+     * （槽位内物品已记录进模型，不退回）+ 停止该玩家全部连掷会话（停止条件③，静默）。
+     */
     @Override
     public void onContainerClosed(EntityPlayer who) {
         super.onContainerClosed(who);
@@ -675,11 +675,7 @@ public class ReincarnationContainer extends Container {
             return;
         }
         this.confirmArmed = false;
-        ItemStack coin = this.coinInventory.getStackInSlot(0);
-        if (coin != null) {
-            this.coinInventory.setInventorySlotContents(0, null);
-            giveBack(coin);
-        }
+        ReincarnationHandler.stopRollSessions(this.player); // 停止条件③：GUI 关闭静默停止（登出清扫由 Handler 兜底）
         saveQuietly();
     }
 
@@ -730,11 +726,11 @@ public class ReincarnationContainer extends Container {
             return true;
         }
         if (id == ReincarnationLayout.BUTTON_UNLOCK_SHIMMER) {
-            scheduleServerTask(() -> tryUnlock(true, GTITItemList.ShimmeringNekoCoin));
+            scheduleServerTask(() -> toggleUnlock(true, GTITItemList.ShimmeringNekoCoin));
             return true;
         }
         if (id == ReincarnationLayout.BUTTON_UNLOCK_NORMAL) {
-            scheduleServerTask(() -> tryUnlock(false, GTITItemList.NekoCoin));
+            scheduleServerTask(() -> toggleUnlock(false, GTITItemList.NekoCoin));
             return true;
         }
         return false;
@@ -797,6 +793,12 @@ public class ReincarnationContainer extends Container {
             this.lastMessage = this.messageEvent;
             pushProgressBar(ReincarnationLayout.BAR_MESSAGE_EVENT, this.messageEvent);
         }
+        // 连掷激活位：服务端注册表实况（ReincarnationHandler 单源），变化 ≤1 tick 送达
+        int rollActive = ReincarnationHandler.rollActiveBits(this.player);
+        if (this.lastRollActive != rollActive) {
+            this.lastRollActive = rollActive;
+            pushProgressBar(ReincarnationLayout.BAR_ROLL_ACTIVE, rollActive);
+        }
     }
 
     /** 向全部监听者推送一条进度条值（值域均已限 short 16 位，映射见 ReincarnationLayout） */
@@ -826,6 +828,8 @@ public class ReincarnationContainer extends Container {
             this.clientArmed = value;
         } else if (id == ReincarnationLayout.BAR_MESSAGE_EVENT) {
             this.clientMessage = value;
+        } else if (id == ReincarnationLayout.BAR_ROLL_ACTIVE) {
+            this.clientRollActive = value;
         }
     }
 
@@ -867,6 +871,15 @@ public class ReincarnationContainer extends Container {
     /** 确认按钮是否处于武装（二次确认）态 */
     public boolean isConfirmArmed() {
         return server ? this.confirmArmed : this.clientArmed != 0;
+    }
+
+    /**
+     * 连掷会话激活位（v1.9.0 连掷重构）：bit 0 = 闪烁币会话激活，bit 1 = 普通币会话激活
+     * （编码唯一单源见 {@link ReincarnationLayout#BAR_ROLL_ACTIVE}；sided：服务端读 Handler
+     * 注册表实况，客户端读进度条镜像）。client 渲染层据此切换解锁按钮文案。
+     */
+    public int getRollActiveBits() {
+        return server ? ReincarnationHandler.rollActiveBits(this.player) : this.clientRollActive;
     }
 
     /** 当前面板消息 lang 键（无消息返回空串；参数由渲染层从其余进度条值本地派生） */
@@ -1014,7 +1027,7 @@ public class ReincarnationContainer extends Container {
         return name == null ? null : new ReincarnationCycle.ItemRef(name.toString(), stack.getItemDamage());
     }
 
-    /** 猫猫币判定（支付格 filter：两种猫猫币均接受；旧 :705 isNekoCoin） */
+    /** 猫猫币判定（两种猫猫币均接受；旧 :705 isNekoCoin。v1.9.0 币格摘除后暂无调用点，按任务口径保留） */
     private static boolean isNekoCoin(ItemStack stack) {
         return isNekoCoin(stack, GTITItemList.NekoCoin) || isNekoCoin(stack, GTITItemList.ShimmeringNekoCoin);
     }
@@ -1037,9 +1050,9 @@ public class ReincarnationContainer extends Container {
      * shift-click 转移：玩家背包 → <b>外壳累计槽</b>（D2 新增：仅未锁定列 + 容量未满，
      * 沿列顺序一次吸收，经 {@link HullSlot#putStack} 自动进 consumeHull 任务）
      * → 物品格（逐槽 {@link Slot#isItemValid} 同套校验，列优先行内自上而下；与旧 GUI
-     * 仅注册物品格 SlotGroup 的 shift 口径一致）；币槽与寄存槽不作为 shift 目标
-     * （不碰币槽寄存槽）；物品格/币格 → 玩家背包（外壳格 canTakeStack=false 被 vanilla
-     * QUICK_MOVE 前置拦截）。
+     * 仅注册物品格 SlotGroup 的 shift 口径一致）；物品格 → 玩家背包（外壳格
+     * canTakeStack=false 被 vanilla QUICK_MOVE 前置拦截；v1.9.0 币格摘除，原币格分支删除，
+     * 猫猫币停留玩家背包由连掷会话直接扣取）。
      * <p>
      * 放入路径经 {@code putStack} 钩子自动进 consumeHull/placeItem 任务；取出路径在本方法内
      * 显式投递 takeItem（vanilla QUICK_MOVE 不触发 onPickupFromSlot）。
@@ -1095,15 +1108,6 @@ public class ReincarnationContainer extends Container {
             source.putStack(null);
             if (!who.inventory.addItemStackToInventory(moved)) {
                 who.dropPlayerItemWithRandomChoice(moved, false); // 背包满则原地掉落（giveBack 同语义）
-            }
-            return null;
-        }
-        if (source instanceof CoinSlot) {
-            ItemStack moved = source.getStack()
-                .copy();
-            source.putStack(null);
-            if (!who.inventory.addItemStackToInventory(moved)) {
-                who.dropPlayerItemWithRandomChoice(moved, false);
             }
             return null;
         }
