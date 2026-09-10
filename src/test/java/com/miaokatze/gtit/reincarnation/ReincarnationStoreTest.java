@@ -583,7 +583,7 @@ public class ReincarnationStoreTest {
     // ==================== 每存档 WorldData（NBT 往返 + 快照收敛） ====================
 
     /**
-     * D1 每存档载体：NBT 往返（进度/列/行/寄存快照/迁移标记）+ 与 Cycle 的
+     * D1 每存档载体：NBT 往返（进度/列/行/寄存快照/迁移标记/发放标记）+ 与 Cycle 的
      * applyTo/saveFrom 双向搬运（含 EXECUTED 时寄存快照清空的收敛语义）。
      */
     static void worldDataNbtRoundTrip() throws Exception {
@@ -641,6 +641,22 @@ public class ReincarnationStoreTest {
         ReincarnationWorldData cleared = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
         cleared.readFromNBT(clearedTag);
         SimpleAssert.that(!cleared.isGrantClaimed(), "发放已领取标记 false NBT round-trip");
+
+        // 发放门控修订续跑旁路：GrantStarted 缺省 false + true/false 往返（新键，旧档缺省 false 无迁移）
+        SimpleAssert.that(!restored.isGrantStarted(), "发放已启动标记缺省 false（新档形态）");
+        data.setGrantStarted(true);
+        SimpleAssert.that(data.isGrantStarted(), "setter 置位生效");
+        NBTTagCompound startedTag = new NBTTagCompound();
+        data.writeToNBT(startedTag);
+        ReincarnationWorldData started = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
+        started.readFromNBT(startedTag);
+        SimpleAssert.that(started.isGrantStarted(), "发放已启动标记 true NBT round-trip");
+        started.setGrantStarted(false);
+        NBTTagCompound unstartedTag = new NBTTagCompound();
+        started.writeToNBT(unstartedTag);
+        ReincarnationWorldData unstarted = new ReincarnationWorldData(ReincarnationWorldData.DATA_NAME);
+        unstarted.readFromNBT(unstartedTag);
+        SimpleAssert.that(!unstarted.isGrantStarted(), "发放已启动标记 false NBT round-trip");
 
         // applyTo：进度灌入模型 + IDLE 可寄存时 deposit 快照
         ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);

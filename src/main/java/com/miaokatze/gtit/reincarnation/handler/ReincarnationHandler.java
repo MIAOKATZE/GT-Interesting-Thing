@@ -48,7 +48,9 @@ import cpw.mods.fml.relauncher.Side;
  * 到点经 tick 调度执行升天（同确认路径的 {@link #beginAscension}）；<b>每次重进重置</b>
  * （deadline 按登录时刻重算下发，重登自然重发，倒计时期间退出即取消，不作持久化）。
  * 未命中且 {@code canClaimGrant()}（EXECUTED 待领取）→ 200 tick 延迟发放奖励；</li>
- * <li><b>奖励发放</b>（D3 时序）：启动（{@code executeGrant}：①确认可领 ②投胎信箱
+ * <li><b>奖励发放</b>（D3 时序）：启动（{@code executeGrant}：①确认可领 ①'不变量复核
+ * （可领取 + 本档未领取；门控形态判定在登录瞬间一次性完成，复核不重读时变信号）+
+ * 承诺点（置每存档 {@code GrantStarted} 并立即落盘，崩溃续跑旁路）②投胎信箱
  * {@code grantInFlight} 幂等标记 ③演出包 ④服务端计时 100t）→ 收束
  * （{@code completeGrant}：⑤再确认在线+未完成 ⑥逐件 {@code addItemStackToInventory}
  * （满则 {@code dropPlayerItemWithRandomChoice}）⑦成功或落地后才 claimGrant 清信箱+
@@ -252,13 +254,17 @@ public final class ReincarnationHandler {
                         + deadline
                         + "）");
             } else if (cycle.canClaimGrant()) {
-                // v1.8.6 发放门控（严格单机已在上方把关）：仅"新存档首次登录 + 本档未领取"
-                // 放行调度；拦截只审计不调度、不 chat（信箱保留，待真正符合形态的存档/登录）
+                // v1.8.6 发放门控修订（严格单机已在上方把关）：门控信号在登录瞬间一次性
+                // 读取、只判定这一次——playTicks（stat.playOneMinute）登录后每 tick 累计，
+                // 属时变信号，延迟复核点重读会漂移误拦（实测 +200t 复核读到 198）。
+                // totalWorldTime 仅作审计观测值，不参与判定；拦截只审计不调度、不 chat
+                // （信箱保留，待真正符合形态的存档/登录）
                 ReincarnationWorldData worldData = worldData();
                 boolean grantClaimed = worldData != null && worldData.isGrantClaimed();
+                boolean grantStarted = worldData != null && worldData.isGrantStarted();
                 long playTicks = readTotalPlayTicks(player);
                 long overworldTotalWorldTime = readOverworldTotalWorldTime();
-                if (ReincarnationGrantGate.shouldGrant(true, grantClaimed, playTicks, overworldTotalWorldTime)) {
+                if (ReincarnationGrantGate.shouldGrant(true, grantClaimed, grantStarted, playTicks)) {
                     // EXECUTED 待领取：延迟 200 tick 发放（等客户端就绪后再结算与演出）
                     scheduledActions.add(new ScheduledAction(player, GRANT_DELAY_TICKS, () -> executeGrant(player)));
                     GTInterestingThing.LOG.info(
@@ -268,13 +274,15 @@ public final class ReincarnationHandler {
                             + " tick 后发放");
                 } else {
                     GTInterestingThing.LOG.info(
-                        "[reincarnation] 奖励发放门控拦截（非新档首次登录或已领取，信箱保留）：player=" + player.getCommandSenderName()
+                        "[reincarnation] 奖励发放门控拦截（非新档首次登录且非续跑，或已领取，信箱保留）：player=" + player.getCommandSenderName()
                             + "，playTicks="
                             + playTicks
                             + "，totalWorldTime="
                             + overworldTotalWorldTime
                             + "，grantClaimed="
-                            + grantClaimed);
+                            + grantClaimed
+                            + "，grantStarted="
+                            + grantStarted);
                 }
             }
             sendSyncSnapshot(player, cycle);
@@ -540,6 +548,10 @@ public final class ReincarnationHandler {
      * 奖励发放启动（D3 时序 ①②③④；登录延迟触发与崩溃重进续跑共用）：
      * <ol>
      * <li>① 确认可领（EXECUTED；已完成后幂等跳过——「重复发放不复制」）；</li>
+     * <li>①' 不变量复核（可领取 + 本档未领取；门控修订后不再重读时变信号——形态判定
+     * 已在登录瞬间一次性完成，v1.8.6 的 +200t 全量门控复核因 playTicks 漂移到 198
+     * 误拦新档首登）+ 承诺点（置每存档 {@code GrantStarted} 并立即落盘——写点即承诺点，
+     * 此后同档崩溃重进经登录门控 {@code grantStartedHere} 旁路续跑）；</li>
      * <li>② 幂等标记启动未完成（投胎信箱 {@code grantInFlight}，持久化；失败不启动演出）；</li>
      * <li>③ 起演出（客户端只显示，发放以服务端计时为准）；</li>
      * <li>④ 服务端计时 {@link #GRANT_PERFORMANCE_TICKS} 后经 {@link #completeGrant} 收束。</li>
@@ -561,23 +573,25 @@ public final class ReincarnationHandler {
                         + player.getCommandSenderName());
                 return;
             }
-            // v1.8.6 门控复核：canClaimGrant 通过后再过一遍发放门（新档首登 + 本档未领取）。
-            // 拦截即审计并保留信箱——不置 grantInFlight、不起演出、不调度收束，
-            // 与登录链路同口径（重复登录每次都会被拦，不产生副作用）。
+            // ①' 不变量复核（门控修订）：只复核与"重复发放"相关的不变量（可领取 +
+            // 本档未领取），不再重读 playTicks/totalWorldTime 时变信号（形态判定已在
+            // 登录瞬间一次性完成）。拦截即审计并保留信箱——不置 GrantStarted、
+            // 不置 grantInFlight、不起演出、不调度收束。
             ReincarnationWorldData worldData = worldData();
             boolean grantClaimed = worldData != null && worldData.isGrantClaimed();
-            long playTicks = readTotalPlayTicks(player);
-            long overworldTotalWorldTime = readOverworldTotalWorldTime();
-            if (!ReincarnationGrantGate.shouldGrant(true, grantClaimed, playTicks, overworldTotalWorldTime)) {
+            if (!(cycle.canClaimGrant() && !grantClaimed)) {
                 GTInterestingThing.LOG.info(
-                    "[reincarnation] 奖励发放门控拦截（非新档首次登录或已领取，信箱保留）：player=" + player.getCommandSenderName()
-                        + "，playTicks="
-                        + playTicks
-                        + "，totalWorldTime="
-                        + overworldTotalWorldTime
-                        + "，grantClaimed="
-                        + grantClaimed);
+                    "[reincarnation] 奖励发放复核拦截（不变量复核失败：可领取=" + cycle
+                        .canClaimGrant() + "，已领取=" + grantClaimed + "，信箱保留）：player=" + player.getCommandSenderName());
                 return;
+            }
+            // 承诺点：置每存档"发放已启动"标记并立即落盘（写点即承诺点）——此后同档
+            // 崩溃重进经登录门控 grantStartedHere 旁路续跑，不再依赖时变信号。
+            // overworld 缺失时跳过标记写入（信箱未清，行为安全：最坏情形是下次登录重走门控）。
+            World grantOverworld = overworld();
+            if (worldData != null && grantOverworld != null) {
+                worldData.setGrantStarted(true);
+                worldData.saveImmediately(grantOverworld);
             }
             // ② 幂等标记（持久化；已在发放中则保持，续跑不重复置位）
             cycleStore.markGrantInFlight(
@@ -651,7 +665,8 @@ public final class ReincarnationHandler {
             saveSplit(cycle);
             // v1.8.6 收束写"已领取"标记。顺序铁律：先清信箱（上方 claimGrant+saveSplit）
             // 后写标记——两步之间崩溃时信箱已清而标记未写，下次登录 canClaimGrant=false
-            // 自然不再发放（年龄/playTicks 信号随游玩增长兜底该窗口）；反向顺序会出现
+            // 触发不变量拦截自然不再发放（GrantStarted 承诺点已在 executeGrant 置位，
+            // 该窗口无需时变信号兜底）；反向顺序会出现
             // "标记已写、信箱未清"，把待发奖励永久吞掉。
             ReincarnationWorldData grantedData = worldData();
             if (grantedData != null) {
@@ -770,21 +785,21 @@ public final class ReincarnationHandler {
      * （返回 StatisticsFile/StatFileWriter；该反编译源未映射 MCP 名 getStatFile，全源无
      * getStatFile 符号，SRG 名 dev/prod 运行时一致）；读值用
      * {@code StatFileWriter.writeStat(StatBase)}（StatFileWriter.java:73，条目缺失返回 0
-     * ——统计文件丢失/旧档缺统计即 0，由 overworld 时间信号互补兜底）。
+     * ——统计文件丢失/旧档缺统计即 0，误判形态兜底由每存档 GrantStarted 续跑标记承担）。
      */
     private static long readTotalPlayTicks(EntityPlayerMP player) {
         try {
             return player.func_147099_x()
                 .writeStat(StatList.minutesPlayedStat);
         } catch (Throwable t) {
-            GTInterestingThing.LOG.warn("[reincarnation] 玩家游玩统计读取失败（按 0 兜底，由时间信号互补判定）", t);
+            GTInterestingThing.LOG.warn("[reincarnation] 玩家游玩统计读取失败（按 0 兜底，误判形态由 GrantStarted 续跑标记兜底）", t);
             return 0L;
         }
     }
 
     /**
-     * 服务端 overworld（v1.8.6：门控信号②取值与已领取标记 saveImmediately 落盘共用；
-     * 与 {@link #worldData()} 同源同降级口径——server 缺失/异常即 null）。
+     * 服务端 overworld（发放门控修订：GrantStarted 承诺点/已领取标记 saveImmediately
+     * 落盘与审计时间观测共用；与 {@link #worldData()} 同源同降级口径——server 缺失/异常即 null）。
      */
     private static World overworld() {
         try {
@@ -797,9 +812,10 @@ public final class ReincarnationHandler {
     }
 
     /**
-     * overworld 累计运行 tick（v1.8.6 门控信号②：{@code World.getTotalWorldTime()}，
-     * World.java:3949）；overworld 不可用按 0 兜底（登录编排本身要求 server 在场，
-     * 该分支仅防异常路径）。
+     * overworld 累计运行 tick（{@code World.getTotalWorldTime()}，World.java:3949）。
+     * 门控修订后不再参与发放判定（时变信号删除：+200t 复核点重读实测 playTicks 漂移
+     * 198 误拦新档首登），仅作登录拦截审计日志的观测值；overworld 不可用按 0 兜底
+     * （登录编排本身要求 server 在场，该分支仅防异常路径）。
      */
     private static long readOverworldTotalWorldTime() {
         World currentOverworld = overworld();

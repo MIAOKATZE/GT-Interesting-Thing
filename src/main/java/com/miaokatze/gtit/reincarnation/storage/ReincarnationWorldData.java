@@ -39,6 +39,11 @@ import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
  * <li>{@code GrantClaimed}：boolean（v1.8.6 新增）——本存档轮回奖励"已领取"标记，
  * 发放门控（{@code ReincarnationGrantGate}）三信号之一；新增键、旧档读取缺省
  * false、无迁移。</li>
+ * <li>{@code GrantStarted}：boolean（门控修订新增）——本存档轮回奖励"发放已启动"
+ * 承诺标记：{@code executeGrant} 不变量复核通过后、置 {@code grantInFlight} 前置位并
+ * 立即落盘（写点即承诺点），此后同档崩溃/登出重进经发放门控的续跑旁路
+ * （{@code grantStartedHere}）放行，不再依赖时变信号；新增键、旧档读取缺省
+ * false、无迁移。</li>
  * </ul>
  * 变更一律 {@link #markDirty()}，由 vanilla 存档保存期落盘。
  */
@@ -54,6 +59,8 @@ public class ReincarnationWorldData extends WorldSavedData {
     private static final String TAG_MIGRATED = "Migrated";
     /** v1.8.6：本存档轮回奖励"已领取"标记（发放门控三信号之一） */
     private static final String TAG_GRANT_CLAIMED = "GrantClaimed";
+    /** 门控修订：本存档轮回奖励"发放已启动"承诺标记（登录门控续跑旁路信号） */
+    private static final String TAG_GRANT_STARTED = "GrantStarted";
 
     private static final String TAG_ITEM_ID = "Id";
     private static final String TAG_ITEM_META = "Meta";
@@ -70,6 +77,8 @@ public class ReincarnationWorldData extends WorldSavedData {
     private boolean migrated;
     /** v1.8.6：本存档轮回奖励已领取（completeGrant 清信箱后置位，发放门控拒绝重复发放） */
     private boolean grantClaimed;
+    /** 门控修订：本存档发放已启动（executeGrant 复核通过后置位，登录门控续跑旁路） */
+    private boolean grantStarted;
 
     /** MapStorage.loadData 反射恢复路径所需构造（name 必须与 {@link #DATA_NAME} 一致） */
     public ReincarnationWorldData(String name) {
@@ -227,6 +236,21 @@ public class ReincarnationWorldData extends WorldSavedData {
     }
 
     /**
+     * @return 本存档轮回奖励是否已启动发放（门控修订续跑旁路：executeGrant 不变量复核
+     *         通过后、置 {@code grantInFlight} 前置位并立即落盘——写点即承诺点，崩溃
+     *         重进按续跑放行，登录门控不再依赖时变信号）
+     */
+    public boolean isGrantStarted() {
+        return this.grantStarted;
+    }
+
+    /** 置/清"发放已启动"标记（executeGrant 复核通过后置位，saveImmediately 落盘） */
+    public void setGrantStarted(boolean grantStarted) {
+        this.grantStarted = grantStarted;
+        markDirty();
+    }
+
+    /**
      * Flush this data immediately through the overworld MapStorage save cycle.
      * MapStorage.saveData(WorldSavedData) is private in 1.7.10; saveAllData() is
      * the public immediate API and writes every dirty entry synchronously.
@@ -273,6 +297,8 @@ public class ReincarnationWorldData extends WorldSavedData {
         this.migrated = data.getBoolean(TAG_MIGRATED);
         // v1.8.6 新键：旧档/损坏档缺省 false（无迁移语义），历史存档首次过门控按未领取处理
         this.grantClaimed = data.getBoolean(TAG_GRANT_CLAIMED);
+        // 门控修订新键：旧档/损坏档缺省 false（无迁移语义），历史存档按"未启动发放"处理
+        this.grantStarted = data.getBoolean(TAG_GRANT_STARTED);
     }
 
     @Override
@@ -296,5 +322,6 @@ public class ReincarnationWorldData extends WorldSavedData {
 
         data.setBoolean(TAG_MIGRATED, this.migrated);
         data.setBoolean(TAG_GRANT_CLAIMED, this.grantClaimed);
+        data.setBoolean(TAG_GRANT_STARTED, this.grantStarted);
     }
 }
