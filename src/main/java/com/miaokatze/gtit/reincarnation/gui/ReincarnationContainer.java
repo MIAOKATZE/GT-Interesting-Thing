@@ -52,7 +52,8 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * <b>交互语义</b>（与旧 GUI 逐条对照）：
  * <ul>
  * <li>外壳累计槽（每列 1 格）：仅未解锁列接受 {@code ReincarnationHullMatcher} 匹配外壳；
- * 放入即消耗（槽位不持有物品），单次吸收 min(放入, 16-进度) 件、按吸收量计进度
+ * 放入即消耗（服务端暂持吸收量至 consumeHull 任务清空，经槽位 diff 纠正客户端预测），
+ * 单次吸收 min(放入, 16-进度) 件、按吸收量计进度
  * （D2 堆叠口径），满 16 自动 unlockColumn；取物恒拒绝
  * （canTakeStack=false，即「放入即消耗」的字面化）；</li>
  * <li>物品格（每列 3 格 × 全局行解锁）：每格最大 1 件；放入 = {@code ItemRef(id+meta, 忽略 NBT)}
@@ -123,7 +124,7 @@ public class ReincarnationContainer extends Container {
      */
     private ReincarnationCycle cycle;
 
-    /** 外壳累计槽缓冲（每列 1 格，放入即消耗清空，服务端恒不持有） */
+    /** 外壳累计槽缓冲（每列 1 格；服务端仅暂持本次吸收量至 consumeHull 任务消费后清空，见 HullSlot#putStack） */
     private final SessionInventory hullInventory = new SessionInventory(ReincarnationLayout.HULL_SLOT_COUNT, 1);
     /** 物品格缓冲（15 列 × 3 行，index = col*3+row，每格 1 件） */
     private final SessionInventory itemInventory = new SessionInventory(ReincarnationLayout.ITEM_SLOT_COUNT, 1);
@@ -257,6 +258,8 @@ public class ReincarnationContainer extends Container {
      * D2 堆叠口径：容量 = {@link ReincarnationLayout#HULL_TARGET} - 已吸收（满 16 拒放）；
      * vanilla 放置按 {@link #getSlotStackLimit()} 拆分，本槽 putStack 一次吸收
      * {@code min(放入, 容量)}（只消费 accepted 只计 accepted，多余留在光标/原槽）。
+     * v1.8.8a：吸收量暂持槽内（非立即清空）以驱动 vanilla 槽位 diff 纠正客户端预测，
+     * consumeHull 任务同/次 tick 消费清空——「放入即消耗」的用户观感由纠正包承载。
      */
     private final class HullSlot extends Slot {
 
@@ -283,7 +286,9 @@ public class ReincarnationContainer extends Container {
             return false;
         }
 
-        /** 剩余容量：16 - 已吸收（满 16 → 0，拒放；sided 经进度条镜像，双端同口径） */
+        /**
+         * 剩余容量：16 - 已吸收（满 16 → 0，拒放；sided 经进度条镜像，双端同口径）
+         */
         @Override
         public int getSlotStackLimit() {
             return Math.max(0, ReincarnationLayout.HULL_TARGET - getColumnCount(this.column));
@@ -297,6 +302,12 @@ public class ReincarnationContainer extends Container {
             }
             if (server) {
                 disarmConfirm();
+                // v1.8.8a 同 tick 连击防御：上一次吸收量仍在槽内等待任务消费时拒绝续投
+                // （暂持策略下槽位非空 = 任务未跑；容量按进度计尚未包含本次，防双记）
+                if (getStack() != null) {
+                    giveBack(stack);
+                    return;
+                }
                 int capacity = getSlotStackLimit();
                 int accepted = Math.min(stack.stackSize, capacity);
                 if (accepted <= 0 || isReadonly()
@@ -310,15 +321,20 @@ public class ReincarnationContainer extends Container {
                 final int targetColumn = this.column;
                 final ItemStack consumed = stack.copy();
                 consumed.stackSize = accepted;
-                super.putStack(null); // 槽位清空只留计数（放入即消耗）
                 if (accepted < stack.stackSize) {
                     ItemStack excess = stack.copy();
                     excess.stackSize = stack.stackSize - accepted;
                     giveBack(excess);
                 }
+                // v1.8.8a 实机回归修复：槽位暂持本次吸收量而非立即清空——客户端本地
+                // slotClick 预测会把同量堆放进客户端槽位，若服务端恒空则服务端槽位 diff
+                // （null vs null）永无变化、不发 set-slot 纠正包，客户端预测残留"永远卡槽"
+                // （手点无同步）。暂持（null→held→null）经 vanilla diff 下发两次纠正：
+                // 首包与预测同值无观感，次包（consumeHull 清槽）即"放入即消失"。
+                super.putStack(consumed);
                 scheduleServerTask(() -> consumeHull(targetColumn, consumed));
             } else {
-                super.putStack(stack); // 客户端预测，服务端 ≤1 tick 内以空槽纠正
+                super.putStack(stack); // 客户端预测；服务端以 held→null 两段 set-slot 纠正（见服务端分支注释）
             }
         }
     }
@@ -474,9 +490,14 @@ public class ReincarnationContainer extends Container {
      * 外壳消耗（旧 :790 consumeHull；D2 加数量参数）：一次吸收 {@code amount} 件 →
      * 进度 +amount → 满 {@value ReincarnationLayout#HULL_TARGET} 解锁列 → 保存。
      * 只计 accepted（放入量已被容量截断，进度不越 16）。
+     * <p>
+     * v1.8.8a：本方法同时负责清掉 {@code HullSlot#putStack} 暂持在槽内的吸收量
+     * （成功路径首行清槽只留计数；校验失败路径清槽后原样退回，避免槽内引用与
+     * 玩家背包实例混叠）。
      */
     private void consumeHull(int column, ItemStack consumed) {
         if (isReadonly() || !isColumnLocked(column) || !ReincarnationHullMatcher.matchesHull(consumed, column)) {
+            this.hullInventory.setInventorySlotContents(column, null); // 清暂持（失败路径不吸收）
             giveBack(consumed); // 原样退回
             return;
         }

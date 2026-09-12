@@ -93,8 +93,20 @@ public class ReincarnationGuiContainer extends GuiContainer {
 
     /** n=0 档外壳虚影 alpha（vanilla ghost slot 风格的固定浅淡预览） */
     private static final float HULL_GHOST_EMPTY_ALPHA = 0.40F;
-    /** 外壳计数角标整体 zLevel（后画覆盖虚影 150；hover tooltip 的 300 由 drawHoveringText 自管） */
-    private static final float HULL_COUNTER_ZLEVEL = 200.0F;
+    /** 虚影遮罩淡出底色（面板底色 0x1C1C22；遮罩 alpha = 1-虚影目标 alpha，复现浅淡/渐进观感） */
+    private static final int GHOST_FADE_COLOR = 0x1C1C22;
+    /** 锁定列灰化罩（半透明浅灰压饱和；真灰化承载层，满 16 服务端解锁后同帧消失） */
+    private static final int GHOST_LOCKED_VEIL = 0x99B4B4B4;
+    /**
+     * 外壳虚影遮罩 zLevel。承载原语必须是 z-aware 的 drawGradientRect（1.7.10
+     * Gui.drawRect 是 static 且四顶点 z 硬编码 0——会被前台层深度测试与面板打平
+     * 丢弃，一像素都不画）。区间取 (图标 200, 光标持物 250) 开区间中值：图标经
+     * renderItemAndEffectIntoGUI 实际绘制于 itemRender.zLevel(150)+内部 50 ≈ 200；
+     * vanilla 光标持物堆在前景层之后以 ≈250 渲染，遮罩须低于它避免等深裁切。
+     */
+    private static final float GHOST_OVERLAY_ZLEVEL = 230.0F;
+    /** 外壳计数角标整体 zLevel（高于遮罩 230、低于光标持物 250；tooltip 的 300 由 drawHoveringText 自管） */
+    private static final float HULL_COUNTER_ZLEVEL = 240.0F;
     /** 确认按钮高（布局定值 16，ReincarnationLayout 侧未单列常量；initGui 与悬浮命中区共用） */
     private static final int CONFIRM_BUTTON_HEIGHT = 16;
 
@@ -345,31 +357,37 @@ public class ReincarnationGuiContainer extends GuiContainer {
         // D2：外壳进度虚影（外壳槽格内叠画：0 档 0.40 浅淡预览 / 1..15 n/16 渐进 / 16 实影；
         // v1.8.8 锁定列深灰乘色真灰化——未解锁=灰、解锁后=彩色）
         drawHullGhosts(container);
-        // v1.8.8：外壳计数角标（插在虚影之后、tooltip 之前；z=200 后画覆盖虚影 150）
+        // v1.8.8：外壳计数角标（插在虚影之后、tooltip 之前；z=240 后画覆盖图标 ≈200 与遮罩 230）
         drawHullCounters(container);
-        // D4：hover tooltip（外壳槽 / 解锁与确认按钮悬浮说明；仅覆盖对应命中区）
-        drawTooltips(container, mouseX, mouseY);
+        // D4：hover tooltip（外壳槽 / 解锁与确认按钮悬浮说明；仅覆盖对应命中区）。
+        // 1.7.10 前台层实收屏幕绝对鼠标坐标（GuiContainer.drawScreen 于 glTranslatef(guiLeft,guiTop)
+        // 之后传入原始 mouseX/mouseY，并不扣 gui 原点）——命中判定与 tooltip 锚点统一在此
+        // 换算为面板相对坐标（tooltip 经前台层平移空间绘制，相对坐标即落在鼠标处）。
+        drawTooltips(container, mouseX - this.guiLeft, mouseY - this.guiTop);
     }
 
     /**
-     * 外壳进度虚影（D2）：按列进度 n 半透明叠画该档外壳图标——0 固定
+     * 外壳进度虚影（D2）：按列进度 n 叠画该档外壳图标——0 固定
      * {@link #HULL_GHOST_EMPTY_ALPHA}（vanilla ghost slot 风浅淡预览）/ 1..15 渐进
      * {@code alpha = n/16.0F} / 16 实影。图标按 {@link ReincarnationHullMatcher} 同口径
      * 反向构造（列 0 = 镀铜砖块；列 1..14 = 对应 tier 的 {@link MTEBasicHull}，
      * 经 {@code GregTechAPI.METATILEENTITIES} 单次线性扫描 + 负缓存）。
      * <p>
-     * v1.8.8 真灰化：锁定列图标渲染前深灰乘色 {@code glColor4f(g,g,g,alpha)}
-     * （g = {@link ReincarnationGuiPalette#HULL_GHOST_LOCKED_GRAY}，与虚影 alpha 叠加），
-     * 解锁列保持 {@code glColor4f(1,1,1,alpha)}。
-     * GL 纪律：blend/blendFunc/color 保存恢复，itemRender zLevel 显式设定与还原，
-     * 不污染同层后续渲染。
+     * v1.8.8a 修复（实机回归）：{@code RenderItem.renderItemIntoGUI} 在 renderWithColor
+     * 分支用物品自身颜色 {@code glColor4f(f3,f4,f, 1.0F)} 覆写当前 GL 色（alpha 亦强制
+     * 1.0），glColor 乘色/透明路线对本原语无效——虚影透明度与锁定灰化改由「图标上层
+     * 遮罩」承载：①面板底色遮罩 alpha=1-alpha 复现浅淡/渐进（满 16 无遮罩=实影）；
+     * ②锁定列叠加 {@link #GHOST_LOCKED_VEIL} 灰罩（真灰化，未解锁=灰、解锁后=彩色）。
+     * GL 纪律：blend/blendFunc/color 保存恢复，itemRender.zLevel 与 Gui.zLevel 显式
+     * 设定与还原，不污染同层后续渲染。
      */
     private void drawHullGhosts(ReincarnationContainer container) {
         GL11.glPushMatrix();
         GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT);
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        float savedZLevel = this.itemRender.zLevel;
+        float savedItemZ = this.itemRender.zLevel;
+        float savedGuiZ = this.zLevel;
         this.itemRender.zLevel = 150.0F;
         try {
             for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
@@ -380,25 +398,31 @@ public class ReincarnationGuiContainer extends GuiContainer {
                 int count = container.getColumnCount(column);
                 float alpha = count <= 0 ? HULL_GHOST_EMPTY_ALPHA
                     : Math.min(1.0F, count / (float) ReincarnationLayout.HULL_TARGET);
-                if (container.isColumnLocked(column)) {
-                    // v1.8.8 真灰化：深灰乘色 × 虚影 alpha（解锁帧同款路径恢复彩色）
-                    GL11.glColor4f(
-                        ReincarnationGuiPalette.HULL_GHOST_LOCKED_GRAY,
-                        ReincarnationGuiPalette.HULL_GHOST_LOCKED_GRAY,
-                        ReincarnationGuiPalette.HULL_GHOST_LOCKED_GRAY,
-                        alpha);
-                } else {
-                    GL11.glColor4f(1.0F, 1.0F, 1.0F, alpha);
+                GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+                int iconX = ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH + 1;
+                int iconY = ReincarnationLayout.HULL_Y + 1;
+                this.itemRender
+                    .renderItemAndEffectIntoGUI(this.fontRendererObj, this.mc.getTextureManager(), ghost, iconX, iconY);
+                // 图标上层遮罩：承载原语必须 z-aware——1.7.10 Gui.drawRect 为 static 且
+                // 四顶点 z 硬编码 0（深度测试下与面板打平、被图标 ≈200 压制，一像素不画），
+                // 故用 drawGradientRect（读 this.zLevel，同色两次即平面遮罩，顶点色承载 alpha）：
+                // ①透明度衰减 ②锁定灰化。drawGradientRect 退出会关 blend，补开供后续列使用。
+                this.zLevel = GHOST_OVERLAY_ZLEVEL;
+                if (alpha < 1.0F - 1.0E-3F) {
+                    int fadeAlpha = (int) ((1.0F - alpha) * 255.0F);
+                    int fade = (fadeAlpha << 24) | GHOST_FADE_COLOR;
+                    drawGradientRect(iconX, iconY, iconX + 16, iconY + 16, fade, fade);
                 }
-                this.itemRender.renderItemAndEffectIntoGUI(
-                    this.fontRendererObj,
-                    this.mc.getTextureManager(),
-                    ghost,
-                    ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH + 1,
-                    ReincarnationLayout.HULL_Y + 1);
+                if (container.isColumnLocked(column)) {
+                    drawGradientRect(iconX, iconY, iconX + 16, iconY + 16, GHOST_LOCKED_VEIL, GHOST_LOCKED_VEIL);
+                }
+                GL11.glEnable(GL11.GL_BLEND);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                this.zLevel = savedGuiZ;
             }
         } finally {
-            this.itemRender.zLevel = savedZLevel;
+            this.itemRender.zLevel = savedItemZ;
+            this.zLevel = savedGuiZ;
             GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
             GL11.glPopAttrib();
             GL11.glPopMatrix();
@@ -447,8 +471,8 @@ public class ReincarnationGuiContainer extends GuiContainer {
      * 计数数字（glScalef 0.5，暖白带阴影，chip 内居中写 n）。n=0 不画；满 16 列不画
      * （服务端已解锁，灰化同帧消失）。n/16 完整口径仍由既有外壳槽 hover tooltip 承载。
      * <p>
-     * 调用序：本方法插在 {@link #drawHullGhosts}（z=150）之后、hover tooltip 之前，
-     * 角标整体 z={@link #HULL_COUNTER_ZLEVEL}（后画即覆盖虚影）。
+     * 调用序：本方法插在 {@link #drawHullGhosts}（图标 ≈200/遮罩 230）之后、hover tooltip
+     * 之前，角标整体 z={@link #HULL_COUNTER_ZLEVEL}=240（低于光标持物 250、高于遮罩）。
      * GL 纪律：chip 含 α&lt;255 像素，显式 enable GL_BLEND SRC_ALPHA/ONE_MINUS_SRC_ALPHA，
      * 退出经 glPopAttrib 成对恢复；文字层 push/scale/pop 逐对出现。
      */
@@ -506,8 +530,9 @@ public class ReincarnationGuiContainer extends GuiContainer {
      * 连掷口径说明 + 对应币种概率行 + 剩余可解锁状态行（按列解锁态现算）；确认按钮 →
      * {@code gui.confirm.tooltip.state / .empty}（按会话状态现算选行，可用态不画）。
      * 命中区：外壳槽仅覆盖 18px 槽位（tooltip 不外溢整行）；按钮覆盖布局常量定值的
-     * 整钮矩形。鼠标不在任何目标内不绘制。前台层入参即 gui 相对坐标
-     * （GuiContainer.drawScreen 已扣 guiLeft/guiTop）。
+     * 整钮矩形。鼠标不在任何目标内不绘制。入参为面板相对坐标（v1.8.8a 修复：
+     * 1.7.10 前台层原始入参是屏幕绝对坐标，已在 drawGuiContainerForegroundLayer
+     * 入口扣 guiLeft/guiTop 换算；tooltip 绘制于前台层平移空间，相对坐标即锚定鼠标）。
      */
     private void drawTooltips(ReincarnationContainer container, int mouseX, int mouseY) {
         int hullColumn = hitHullColumn(mouseX, mouseY);

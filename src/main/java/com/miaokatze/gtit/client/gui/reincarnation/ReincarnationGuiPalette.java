@@ -24,12 +24,5 @@ public final class ReincarnationGuiPalette {
     /** 按钮 normal 文字（带阴影；契约 §4-4 提案 0xFFE0E0E0） */
     public static final int BUTTON_TEXT_NORMAL = 0xFFE0E0E0;
 
-    /**
-     * 锁定列外壳虚影深灰乘色（v1.8.8 真灰化）：未解锁列虚影绘制前
-     * {@code glColor4f(g, g, g, alpha)}，解锁列恢复 {@code glColor4f(1, 1, 1, alpha)}；
-     * 观感目标「未解锁=灰、解锁后=彩色」。g 取契约授权 0.30-0.40 灰度档中值。
-     */
-    public static final float HULL_GHOST_LOCKED_GRAY = 0.35F;
-
     private ReincarnationGuiPalette() {}
 }
