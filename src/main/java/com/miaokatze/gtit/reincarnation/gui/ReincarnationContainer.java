@@ -629,8 +629,8 @@ public class ReincarnationContainer extends Container {
     /**
      * 解锁按钮 toggle 入口（旧 :923 tryUnlock 一次性扣币 → 连掷会话制）。
      * <p>
-     * EXECUTED 只读锁与 isUnlockAvailable 首行检查保留：会话未激活时不可解锁（只读/行满/
-     * 列未全解锁）则拒绝开启并沿用只读 chat 反馈；已激活会话的再按 = 立即停止（停止条件④），
+     * EXECUTED 只读锁与 isUnlockAvailable 首行检查保留：会话未激活时不可解锁（只读/行满）
+     * 则拒绝开启并沿用只读 chat 反馈；已激活会话的再按 = 立即停止（停止条件④），
      * 不受该门控影响。经 {@code enchantItem} 的 {@code scheduleServerTask} 到达，恒在服务端线程。
      */
     private void toggleUnlock(boolean shimmer, GTITItemList coinType) {
@@ -945,19 +945,15 @@ public class ReincarnationContainer extends Container {
         this.messageEvent = eventCode;
     }
 
-    // ==================== 可用性判定（sided 分发；口径与旧 GUI 一致） ====================
+    // ==================== 可用性判定（sided 分发；开行门控口径 v1.8.10 起与旧 GUI 分叉，见 isUnlockAvailable） ====================
 
-    /** 已解锁列是否全满（行解锁前置条件） */
-    private boolean allColumnsUnlocked() {
-        for (int i = 0; i < ReincarnationCycle.COLUMN_COUNT; i++) {
-            if (isColumnLocked(i)) return false;
-        }
-        return true;
-    }
-
-    /** 解锁行按钮可用：非只读、行未满 3、15 列全部解锁（旧 :685 unlockAvailable；sided，客户端经进度条镜像判定按钮置灰） */
+    /**
+     * 解锁行按钮可用：非只读、行未满 3。v1.8.10 用户拍板：猫猫币开行与外壳开列两条线
+     * 独立——移除旧 MUI2 沿袭（旧 :685 unlockAvailable）的「15 列全部解锁」前置门控；
+     * sided，客户端经进度条镜像判定按钮置灰。
+     */
     public boolean isUnlockAvailable() {
-        return !isReadonly() && getUnlockedRows() < ReincarnationCycle.MAX_UNLOCKED_ROWS && allColumnsUnlocked();
+        return !isReadonly() && getUnlockedRows() < ReincarnationCycle.MAX_UNLOCKED_ROWS;
     }
 
     /** 确认按钮可用：DEPOSITED + 非空 + 钩子已注入（旧 :691 confirmAvailable；Holder 单机共享 JVM 双端可见） */
