@@ -107,6 +107,12 @@ public class ReincarnationGuiContainer extends GuiContainer {
     private static final float GHOST_OVERLAY_ZLEVEL = 230.0F;
     /** 外壳计数角标整体 zLevel（高于遮罩 230、低于光标持物 250；tooltip 的 300 由 drawHoveringText 自管） */
     private static final float HULL_COUNTER_ZLEVEL = 240.0F;
+    /**
+     * 角标计数文字 zLevel：必须严格高于 chip 贴图（v1.8.11 实机修复——前景层深度测试
+     * 开启（GL_LESS），文字与 chip 同 z=240 时等深 fragment 被整片裁除，chip 成"有底无字"；
+     * +1 抬升至 241 仍在光标持物 250 之下）。
+     */
+    private static final float HULL_COUNTER_TEXT_ZLEVEL = HULL_COUNTER_ZLEVEL + 1.0F;
     /** 确认按钮高（布局定值 16，ReincarnationLayout 侧未单列常量；initGui 与悬浮命中区共用） */
     private static final int CONFIRM_BUTTON_HEIGHT = 16;
 
@@ -507,7 +513,7 @@ public class ReincarnationGuiContainer extends GuiContainer {
                 GL11.glTranslatef(
                     chipX + ReincarnationGuiTextures.CHIP_W / 2.0F,
                     chipY + ReincarnationGuiTextures.CHIP_H / 2.0F,
-                    HULL_COUNTER_ZLEVEL);
+                    HULL_COUNTER_TEXT_ZLEVEL);
                 GL11.glScalef(0.5F, 0.5F, 1.0F);
                 this.fontRendererObj.drawStringWithShadow(
                     text,

@@ -361,7 +361,8 @@ public final class ReincarnationClientFx {
             rideNullStreak = 0;
             return;
         }
-        // 载具消失：锚点实体（targetEntityId，缺省本地玩家）骑乘为空连续计数（锚点已在拖尾处解析）
+        // 载具消失/卸骑：锚点=本地玩家（v1.8.11），ridingEntity 为空即未骑乘载具
+        // （S1B attach 包晚到由 grace 计数容忍；锚点已在拖尾处解析）
         if (anchor == null || anchor.isDead || anchor.ridingEntity == null) {
             rideNullStreak++;
         } else {
@@ -503,17 +504,14 @@ public final class ReincarnationClientFx {
     }
 
     /**
-     * 解析升天锚点实体：{@code AscensionStartPacket.targetEntityId}（-1=未指定）→
-     * {@code world.getEntityByID}（WorldClient.java:269 实现确认）；null/找不到回退本地玩家。
+     * 解析升天锚点实体。v1.8.11 实机修复：恒返回本地玩家——水晶环绕/烟花拖尾与玩家
+     * 相机共用同一插值坐标帧（renderAscensionOrbit 的锚点插值 = 相机偏移同源），上升段
+     * 与玩家速度构造上一致；旧实现优先取载具实体（AscensionStartPacket.targetEntityId →
+     * getEntityByID），其网络跟踪坐标帧与相机帧在加速上升段产生相对漂移（"水晶升得比玩家
+     * 慢"），且载具作锚点时 {@code anchor.ridingEntity}（它骑什么）恒 null，误触结束判定。
+     * 载具 id 仍由包下发但仅作调试信息保留，演出不再锚定。
      */
     private static Entity resolveAscensionAnchor(World world, EntityClientPlayerMP player) {
-        int id = ClientReincarnationFxState.getAscensionTargetEntityId();
-        if (id >= 0) {
-            Entity byId = world.getEntityByID(id);
-            if (byId != null) {
-                return byId;
-            }
-        }
         return player;
     }
 
