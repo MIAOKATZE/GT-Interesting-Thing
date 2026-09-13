@@ -129,14 +129,20 @@ public final class ReincarnationClientFx {
     private static final int GRANT_STAGGER_TICKS = 5;
     /** 降下起点高度（玩家头顶上方格数，任务包 6~8 取 7） */
     private static final float GRANT_START_HEIGHT = 7.0F;
-    /** 降下螺旋起始半径（格，随进度收拢到 0；本轮 1.2→1.7 增大物品环绕半径） */
-    private static final float GRANT_SPIRAL_RADIUS = 1.7F;
+    /**
+     * 降下螺旋起始半径（格，随进度收拢到 0；奖励物品环绕半径）：本轮再增大一倍
+     * （1.7 → 3.4，用户口径"物品环绕的半径增大 1 倍"）。
+     */
+    private static final float GRANT_SPIRAL_RADIUS = 3.4F;
     /** 降下螺旋角速度（弧度/tick） */
     private static final float GRANT_SPIRAL_RAD_PER_TICK = 0.22F;
     /** 演出动画最多展示的物品数（防超大清单刷屏；实际发放由服务端完成，与本演出无关） */
     private static final int GRANT_MAX_ANIMATED_ITEMS = 7;
-    /** 发放演出水晶环绕半径基准（格；恒大于 {@link #GRANT_SPIRAL_RADIUS} 物品最大半径，防穿模） */
-    private static final float GRANT_CRYSTAL_ORBIT_RADIUS = 2.6F;
+    /**
+     * 发放演出水晶环绕半径基准（格；恒大于 {@link #GRANT_SPIRAL_RADIUS} 物品最大半径，
+     * 防穿模）：随物品半径增大一倍同步外扩（2.6 → 4.3，保持原有 0.9 格安全间距）。
+     */
+    private static final float GRANT_CRYSTAL_ORBIT_RADIUS = 4.3F;
     /** 发放演出水晶环绕半径波动幅度（格） */
     private static final float GRANT_CRYSTAL_RADIUS_AMPLITUDE = 0.15F;
     /** 发放演出水晶环高度基准（眼高 + 此值；与升天环同值） */
@@ -814,8 +820,8 @@ public final class ReincarnationClientFx {
     /**
      * 发放演出水晶环绕组：以玩家为圆心 {@link #ASCENSION_CRYSTAL_COUNT} 枚轮回水晶环绕
      * （几何复用 {@link #computeCrystalPos}，驱动状态换 grantEffectStartTick，与奖励物品
-     * 螺旋并存）。半径 {@link #GRANT_CRYSTAL_ORBIT_RADIUS}（2.6±0.15）恒大于物品螺旋最大
-     * 半径 {@link #GRANT_SPIRAL_RADIUS}（1.7），且物品收拢到水晶环高度带时半径已远小于
+     * 螺旋并存）。半径 {@link #GRANT_CRYSTAL_ORBIT_RADIUS}（4.3±0.15）恒大于物品螺旋最大
+     * 半径 {@link #GRANT_SPIRAL_RADIUS}（3.4），且物品收拢到水晶环高度带时半径已远小于
      * 环半径，二者不相交不穿模。渲染窗口由调用方 grantActive 门控，随 clearGrantEffect
      * 自动停止。
      */

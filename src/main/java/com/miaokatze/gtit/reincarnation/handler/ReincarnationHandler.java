@@ -51,14 +51,17 @@ import cpw.mods.fml.relauncher.Side;
  * 记录的永久指纹集合——命中（该时间线已轮回过）→ 下发倒计时（截止 = now+30s 墙钟毫秒），
  * 到点经 tick 调度执行升天（同确认路径的 {@link #beginAscension}）；<b>每次重进重置</b>
  * （deadline 按登录时刻重算下发，重登自然重发，倒计时期间退出即取消，不作持久化）。
- * 未命中且 {@code canClaimGrant()}（EXECUTED 待领取）→ 200 tick 延迟发放奖励；</li>
+ * 未命中且 {@code canClaimGrant()}（EXECUTED 待领取）→ 100 tick 延迟发放奖励；</li>
  * <li><b>奖励发放</b>（D3 时序）：启动（{@code executeGrant}：①确认可领 ①'不变量复核
  * （可领取 + 本档未领取；门控形态判定在登录瞬间一次性完成，复核不重读时变信号）+
  * 承诺点（置每存档 {@code GrantStarted} 并立即落盘，崩溃续跑旁路）②投胎信箱
- * {@code grantInFlight} 幂等标记 ③演出包 ④服务端计时 100t）→ 收束
- * （{@code completeGrant}：⑤再确认在线+未完成 ⑥逐件 {@code addItemStackToInventory}
- * （满则 {@code dropPlayerItemWithRandomChoice}）⑦成功或落地后才 claimGrant 清信箱+
- * 复位标记）；异常/掉线信箱保留，登录链路自动续跑（崩溃重进不重复发放）；
+ * {@code grantInFlight} 幂等标记 ②'逐件发放账本（信箱 {@code delivered} 已交付前缀
+ * 计数，续跑从剩余后缀继续，不重复发放）③演出包（只发剩余后缀）④逐件调度发放）→
+ * 收束（{@code completeGrant}：⑤再确认在线+未完成 ⑥清扫未发放件
+ * {@code addItemStackToInventory}（满则 {@code dropPlayerItemWithRandomChoice}）
+ * ⑦成功或落地后才 claimGrant 清信箱+复位标记）；逐件发放按降落节奏错峰：第 i 件在
+ * {@code i*5+54} tick（降落末段接近玩家）入库并单调持久化账本；异常/掉线信箱与
+ * 账本保留，登录链路自动续跑（崩溃重进不重复发放）；
  * 客户端只显示，结束以服务端计时为准；</li>
  * <li><b>确认轮回</b>（{@link ReincarnationConfirmHook} 实现，S7 GUI 二次确认后回调）：
  * 校验 {@code state == DEPOSITED && pendingItems 非空 && server 线程} →
@@ -101,14 +104,34 @@ public final class ReincarnationHandler {
     /** 轮回倒计时时长（毫秒）：登录下发与到点判定共用同一常量 */
     private static final long COUNTDOWN_MILLIS = 30_000L;
 
-    /** 登录后奖励领取延迟（tick） */
-    private static final int GRANT_DELAY_TICKS = 200;
+    /** 登录后奖励领取延迟（tick）；v1.8.13 起由 200（10 秒）收紧为 100（5 秒） */
+    private static final int GRANT_DELAY_TICKS = 100;
 
     /**
-     * 发放演出时长（tick）：演出包下发后经本服务端计时收束发放（D3 时序：
-     * 客户端只显示，结束以服务端计时为准；与客户端 GRANT_DESCENT_TICKS=100 同步取 100）。
+     * 发放演出收束时长（tick）：演出包下发后经本服务端计时清扫未发放件并清信箱
+     * （D3 时序：客户端只显示，结束以服务端计时为准；与客户端 GRANT_DESCENT_TICKS=100
+     * 同步取 100，恒晚于末件逐件发放时点）。
      */
     private static final int GRANT_PERFORMANCE_TICKS = 100;
+
+    /** 逐件发放错峰间隔（tick）：与客户端 GRANT_STAGGER_TICKS 同步取 5（"依次"降落节奏） */
+    private static final int GRANT_STAGGER_TICKS = 5;
+
+    /** 单件自降下起点到玩家处的时长（tick）：与客户端 GRANT_PER_ITEM_TICKS 同步取 60 */
+    private static final int GRANT_PER_ITEM_TICKS = 60;
+
+    /**
+     * 单件可拾取降落末段比例（用户口径"末段 10% 即可拾取"）：第 i 件在
+     * {@code i * GRANT_STAGGER_TICKS + (int)(GRANT_PER_ITEM_TICKS * (1 - 本值))} tick
+     * 入库——此时该件距玩家约 0.4 格（smoothstep 末段），接近即得。
+     */
+    private static final float GRANT_PICKUP_LAST_FRACTION = 0.1F;
+
+    /**
+     * 演出逐件发放物品数上限：与客户端 GRANT_MAX_ANIMATED_ITEMS 同步取 7；
+     * 超出部分无演出对应件，随收束清扫一次性发放。
+     */
+    private static final int GRANT_ANIMATED_ITEM_CAP = 7;
 
     /** 飞升时长（tick）：与载具 spawnFor 参数同源（120 tick = 6 秒，总升程约 12 格） */
     private static final int ASCENSION_DURATION_TICKS = 120;
@@ -281,7 +304,7 @@ public final class ReincarnationHandler {
                 long playTicks = readTotalPlayTicks(player);
                 long overworldTotalWorldTime = readOverworldTotalWorldTime();
                 if (ReincarnationGrantGate.shouldGrant(true, grantClaimed, grantStarted, playTicks)) {
-                    // EXECUTED 待领取：延迟 200 tick 发放（等客户端就绪后再结算与演出）
+                    // EXECUTED 待领取：延迟 100 tick 发放（等客户端就绪后再结算与演出）
                     scheduledActions.add(new ScheduledAction(player, GRANT_DELAY_TICKS, () -> executeGrant(player)));
                     GTInterestingThing.LOG.info(
                         "[reincarnation] 登录发现待领取轮回奖励：player=" + player.getCommandSenderName()
@@ -737,12 +760,18 @@ public final class ReincarnationHandler {
      * 已在登录瞬间一次性完成，v1.8.6 的 +200t 全量门控复核因 playTicks 漂移到 198
      * 误拦新档首登）+ 承诺点（置每存档 {@code GrantStarted} 并立即落盘——写点即承诺点，
      * 此后同档崩溃重进经登录门控 {@code grantStartedHere} 旁路续跑）；</li>
-     * <li>② 幂等标记启动未完成（投胎信箱 {@code grantInFlight}，持久化；失败不启动演出）；</li>
-     * <li>③ 起演出（客户端只显示，发放以服务端计时为准）；</li>
-     * <li>④ 服务端计时 {@link #GRANT_PERFORMANCE_TICKS} 后经 {@link #completeGrant} 收束。</li>
+     * <li>② 幂等标记启动未完成（投胎信箱 {@code grantInFlight}，持久化；失败不启动演出）+
+     * ②' 逐件发放账本（信箱 {@code delivered} 已交付前缀计数）：读已交付数，
+     * 演出与逐件发放只覆盖剩余后缀——掉线/崩溃重进按账本续发，不重复发放已交付前缀；</li>
+     * <li>③ 起演出（客户端只显示，发放以服务端计时为准；演出包只携带剩余后缀）；</li>
+     * <li>④ 逐件发放调度：剩余第 j 件在 {@code j * GRANT_STAGGER_TICKS +
+     * (int)(GRANT_PER_ITEM_TICKS * (1 - GRANT_PICKUP_LAST_FRACTION))} tick——即该件
+     * 降落末段接近玩家时——经 {@link #grantShowItem} 入库（满包落地）并单调持久化账本；
+     * 超过 {@link #GRANT_ANIMATED_ITEM_CAP} 的件无演出对应，随收束清扫发放；</li>
+     * <li>⑤ 服务端计时 {@link #GRANT_PERFORMANCE_TICKS} 后经 {@link #completeGrant} 收束。</li>
      * </ol>
-     * 崩溃/登出重进：信箱仍在 → 本方法重入（标记已置位则不重复置），演出重放后发放——
-     * 信箱只在发放成功后才清空，重进不重复发放已完成的奖励。
+     * 崩溃/登出重进：信箱与账本仍在 → 本方法重入（标记已置位则不重复置），演出重放剩余
+     * 后缀后逐件续发——信箱只在收束成功后才清空，重进不重复发放已交付前缀。
      */
     private void executeGrant(EntityPlayerMP player) {
         try {
@@ -782,33 +811,97 @@ public final class ReincarnationHandler {
             cycleStore.markGrantInFlight(
                 player.getUniqueID()
                     .toString());
-            // ③ 起演出（演出包只驱动客户端展示）
+            // ②' 逐件发放账本：读已交付前缀计数（掉线/崩溃重进续跑从剩余后缀继续，
+            // 不重复发放已交付前缀——「重复发放不复制」不变量；计数超长按信箱长度收敛）
+            List<ReincarnationCycle.ItemRef> pendingItems = cycle.getPendingItems();
+            int deliveredBase = Math.min(
+                cycleStore.readGrantDelivered(
+                    player.getUniqueID()
+                        .toString()),
+                pendingItems.size());
+            GrantShowContext showContext = new GrantShowContext(deliveredBase);
+            // ③ 起演出（演出包只驱动客户端展示；只发剩余后缀——已交付前缀不再演出）
             List<GrantEffectPacket.ItemRef> fxItems = new ArrayList<>();
-            for (ReincarnationCycle.ItemRef ref : cycle.getPendingItems()) {
+            for (int i = deliveredBase; i < pendingItems.size(); i++) {
+                ReincarnationCycle.ItemRef ref = pendingItems.get(i);
                 fxItems.add(new GrantEffectPacket.ItemRef(ref.getId(), ref.getMeta()));
             }
-            ReincarnationNetwork.sendGrantEffectToClient(player, fxItems);
-            // ④ 服务端计时收束
-            scheduledActions.add(new ScheduledAction(player, GRANT_PERFORMANCE_TICKS, () -> completeGrant(player)));
+            if (!fxItems.isEmpty()) {
+                ReincarnationNetwork.sendGrantEffectToClient(player, fxItems);
+            }
+            // ④ 逐件发放调度：剩余第 j 件在其降落末段（接近玩家）入库并持久化账本
+            int perItemGrantDelay = (int) (GRANT_PER_ITEM_TICKS * (1.0F - GRANT_PICKUP_LAST_FRACTION));
+            int staggeredCount = Math.min(fxItems.size(), GRANT_ANIMATED_ITEM_CAP);
+            for (int j = 0; j < staggeredCount; j++) {
+                final int itemIndex = deliveredBase + j;
+                ReincarnationCycle.ItemRef ref = pendingItems.get(itemIndex);
+                scheduledActions.add(
+                    new ScheduledAction(
+                        player,
+                        j * GRANT_STAGGER_TICKS + perItemGrantDelay,
+                        () -> grantShowItem(player, showContext, itemIndex, ref)));
+            }
+            // ⑤ 服务端计时收束（清扫未发放件 + 清信箱 + 完成幂等标记）
+            scheduledActions
+                .add(new ScheduledAction(player, GRANT_PERFORMANCE_TICKS, () -> completeGrant(player, showContext)));
             GTInterestingThing.LOG.info(
-                "[reincarnation] 轮回奖励演出启动（发放于 " + GRANT_PERFORMANCE_TICKS
-                    + " tick 后按服务端计时收束）：player="
-                    + player.getCommandSenderName()
-                    + "，items="
+                "[reincarnation] 轮回奖励演出启动（逐件发放：已交付 " + deliveredBase
+                    + "/"
+                    + pendingItems.size()
+                    + "，剩余 "
                     + fxItems.size()
-                    + " 项");
+                    + " 件按降落末段依次入库（演出上限 "
+                    + staggeredCount
+                    + " 件），收束于 "
+                    + GRANT_PERFORMANCE_TICKS
+                    + " tick）：player="
+                    + player.getCommandSenderName());
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[reincarnation] 轮回奖励发放启动失败（信箱保留，重进后自动续跑）", t);
         }
     }
 
     /**
-     * 奖励发放收束（D3 时序 ⑤⑥⑦）：再确认在线 + 未完成 → 逐件发放
+     * 演出中单件发放（逐件拾取）：该件降落末段接近玩家时入库（满包按既有溢出落地），
+     * 并单调持久化信箱 {@code delivered} 已交付前缀计数——掉线/崩溃重进按账本续发剩余
+     * 后缀，不重复发放。失效 registry id 条目审计隔离（收集至收束统一 chat 清账），
+     * 随账本推进视同交付（不阻塞后续件节奏）。
+     */
+    private void grantShowItem(EntityPlayerMP player, GrantShowContext showContext, int itemIndex,
+        ReincarnationCycle.ItemRef ref) {
+        if (player.isDead) {
+            return; // 玩家已死亡：调度表已作废，账本保持，重进后登录链路续跑
+        }
+        if (itemIndex < showContext.deliveredCount) {
+            return; // 该件本轮已交付（防御重复调度）：不动账本，不重复发放
+        }
+        ItemStack stack = resolveStack(ref);
+        if (stack == null) {
+            String id = ref.getId() + ":" + ref.getMeta();
+            showContext.droppedIds.add(id);
+            GTInterestingThing.LOG.warn(
+                "[reincarnation] 奖励物品无法解析 registry id，审计隔离（收束统一清账）：player=" + player.getCommandSenderName()
+                    + ", item="
+                    + id);
+        } else if (!player.inventory.addItemStackToInventory(stack)) {
+            // 背包满：按既有溢出口径随机落地——发放不丢账，落地即视同交付
+            player.dropPlayerItemWithRandomChoice(stack, false);
+        }
+        showContext.deliveredCount = itemIndex + 1;
+        store().markGrantDelivered(
+            player.getUniqueID()
+                .toString(),
+            showContext.deliveredCount);
+    }
+
+    /**
+     * 奖励发放收束（D3 时序 ⑤⑥⑦）：再确认在线 + 未完成 → 清扫逐件发放窗口内未入库的
+     * 剩余件（超过演出上限的件、账本推进前的遗留件等）一次性发放
      * {@code addItemStackToInventory}（满则按既有溢出落地）→ <b>成功或落地后</b>才
      * {@code claimGrant+save} 清投胎信箱并完成幂等标记。异常路径不清信箱——登录链路
-     * 重新触发 {@link #executeGrant}（失败保留语义）。
+     * 重新触发 {@link #executeGrant}（失败保留语义，从持久化账本续发剩余后缀）。
      */
-    private void completeGrant(EntityPlayerMP player) {
+    private void completeGrant(EntityPlayerMP player, GrantShowContext showContext) {
         try {
             if (player.isDead) {
                 return; // 玩家已死亡：信箱保留，死亡重生/重进后登录链路续跑
@@ -820,14 +913,15 @@ public final class ReincarnationHandler {
             if (!cycle.canClaimGrant()) {
                 return;
             }
-            // ⑥ 逐件发放（背包满则随机掉落——发放不丢账，落地即视同交付）
-            int delivered = 0;
-            List<String> droppedIds = new ArrayList<>();
-            for (ReincarnationCycle.ItemRef ref : new ArrayList<>(cycle.getPendingItems())) {
+            // ⑥ 清扫发放：已交付前缀之外的剩余件一次性入库（背包满则随机掉落——
+            // 发放不丢账，落地即视同交付）
+            List<ReincarnationCycle.ItemRef> pendingItems = cycle.getPendingItems();
+            for (int i = Math.min(showContext.deliveredCount, pendingItems.size()); i < pendingItems.size(); i++) {
+                ReincarnationCycle.ItemRef ref = pendingItems.get(i);
                 ItemStack stack = resolveStack(ref);
                 if (stack == null) {
                     String id = ref.getId() + ":" + ref.getMeta();
-                    droppedIds.add(id);
+                    showContext.droppedIds.add(id);
                     GTInterestingThing.LOG.warn(
                         "[reincarnation] 奖励物品无法解析 registry id，隔离并清账：player=" + player.getCommandSenderName()
                             + ", item="
@@ -837,10 +931,9 @@ public final class ReincarnationHandler {
                 if (!player.inventory.addItemStackToInventory(stack)) {
                     player.dropPlayerItemWithRandomChoice(stack, false);
                 }
-                delivered++;
             }
-            if (!droppedIds.isEmpty()) {
-                String dropped = joinIds(droppedIds);
+            if (!showContext.droppedIds.isEmpty()) {
+                String dropped = joinIds(showContext.droppedIds);
                 player.addChatMessage(new ChatComponentTranslation("gtit.reincarnation.grant.dropped", dropped));
                 GTInterestingThing.LOG.warn(
                     "[reincarnation] 奖励失效条目已审计隔离并收束清账：player=" + player.getCommandSenderName() + ", ids=" + dropped);
@@ -864,8 +957,8 @@ public final class ReincarnationHandler {
             GTInterestingThing.LOG.info(
                 "[reincarnation] 轮回奖励发放完成：EXECUTED→IDLE，player=" + player.getCommandSenderName()
                     + "，items="
-                    + delivered
-                    + " 项（投胎信箱已清空，幂等标记复位）");
+                    + showContext.deliveredCount
+                    + " 项（逐件发放账本收束，投胎信箱已清空，幂等标记复位）");
             sendSyncSnapshot(player, cycle);
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[reincarnation] 轮回奖励发放收束失败（信箱保留，重进后自动续跑）", t);
@@ -1028,6 +1121,23 @@ public final class ReincarnationHandler {
         ReincarnationWorldData data = worldData();
         if (data != null) {
             data.saveFrom(cycle);
+        }
+    }
+
+    /**
+     * 单次奖励演出逐件发放上下文（同一次 {@code executeGrant} 调度的各到期任务共享；
+     * 仅 server 线程读写）：{@code deliveredCount} = 已交付前缀计数（信箱物品绝对下标
+     * 口径，随逐件发放推进并与持久化账本同步）；{@code droppedIds} = 失效 registry id
+     * 审计隔离清单（收束统一 chat 清账）。跨会话续跑账本以信箱持久化 {@code delivered}
+     * 为准，本上下文仅覆盖单次演出窗口。
+     */
+    private static final class GrantShowContext {
+
+        int deliveredCount;
+        final List<String> droppedIds = new ArrayList<>();
+
+        GrantShowContext(int deliveredCount) {
+            this.deliveredCount = deliveredCount;
         }
     }
 

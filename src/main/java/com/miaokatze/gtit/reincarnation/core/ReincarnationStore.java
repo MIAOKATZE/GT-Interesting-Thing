@@ -38,12 +38,16 @@ import com.google.gson.JsonPrimitive;
  * <ul>
  * <li>{@code uuid}：载荷归属玩家（防串档校验）；</li>
  * <li>{@code executedFingerprints}：已执行轮回的永久时间线指纹集合；</li>
- * <li>{@code mailbox}：<b>投胎信箱</b>（{@code items} + {@code grantInFlight} 幂等标记）。
- * 四语义：确认轮回推进 EXECUTED 的<b>同一事务</b>（同一次原子写）写入物品快照（写）；
- * 发放路径经 {@link #load} 读出（读）；发放成功（或按既有溢出落地）后才随
- * {@code claimGrant+save} 清空（成功清空）；发放未完成（掉线/异常/崩溃）则保留
- * （失败保留）。{@code grantInFlight} 在演出启动时置位、清信箱时复位——崩溃重进后
- * 发放幂等（已清空即不再发放，不复制）。</li>
+ * <li>{@code mailbox}：<b>投胎信箱</b>（{@code items} + {@code grantInFlight} 幂等标记
+ * + {@code delivered} 已交付前缀计数）。四语义：确认轮回推进 EXECUTED 的<b>同一事务</b>
+ * （同一次原子写）写入物品快照（写）；发放路径经 {@link #load} 读出（读）；发放成功
+ * （或按既有溢出落地）后才随 {@code claimGrant+save} 清空（成功清空）；发放未完成
+ * （掉线/异常/崩溃）则保留（失败保留）。{@code grantInFlight} 在演出启动时置位、
+ * 清信箱时复位——崩溃重进后发放幂等（已清空即不再发放，不复制）。
+ * {@code delivered}（v2 可选字段，旧载荷缺省 0）承担<b>逐件发放</b>的续跑账本：信箱
+ * 物品按前缀 [0, delivered) 视为已交付（演出中逐件发放的进度），掉线/崩溃重进从
+ * delivered 续发剩余后缀，配合 {@link #markGrantDelivered} 单调推进保证
+ * 「重复发放不复制、发放不丢账」；清信箱时随载荷整体复位。</li>
  * </ul>
  * <p>
  * <b>v1 只读兼容</b>：{@link #load} 对 v1 载荷提取许可字段（UUID/指纹；EXECUTED 态
@@ -127,6 +131,8 @@ public final class ReincarnationStore {
         /** v2 = mailbox.items；v1 = EXECUTED 态的 pendingItems（其余状态空） */
         final List<ReincarnationCycle.ItemRef> mailboxItems;
         final boolean grantInFlight;
+        /** v2 = mailbox.delivered（逐件发放已交付前缀计数，旧载荷缺省 0）；v1 恒 0 */
+        final int delivered;
         // —— 仅 v1 载荷填充（迁移路径）——
         final ReincarnationCycle.CycleState legacyState;
         final List<ReincarnationCycle.ItemRef> legacyPendingItems;
@@ -134,19 +140,38 @@ public final class ReincarnationStore {
         final boolean[] legacyUnlockedColumns;
         final int legacyUnlockedRows;
 
+        /** v2 载荷视图（逐件发放账本齐备） */
         RecordView(int formatVersion, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailboxItems,
-            boolean grantInFlight) {
-            this(formatVersion, fingerprints, mailboxItems, grantInFlight, null, null, null, null, 1);
+            boolean grantInFlight, int delivered) {
+            this(formatVersion, fingerprints, mailboxItems, grantInFlight, delivered, null, null, null, null, 1);
         }
 
         RecordView(int formatVersion, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailboxItems,
             boolean grantInFlight, ReincarnationCycle.CycleState legacyState,
             List<ReincarnationCycle.ItemRef> legacyPendingItems, int[] legacyHullProgress,
             boolean[] legacyUnlockedColumns, int legacyUnlockedRows) {
+            this(
+                formatVersion,
+                fingerprints,
+                mailboxItems,
+                grantInFlight,
+                0,
+                legacyState,
+                legacyPendingItems,
+                legacyHullProgress,
+                legacyUnlockedColumns,
+                legacyUnlockedRows);
+        }
+
+        RecordView(int formatVersion, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailboxItems,
+            boolean grantInFlight, int delivered, ReincarnationCycle.CycleState legacyState,
+            List<ReincarnationCycle.ItemRef> legacyPendingItems, int[] legacyHullProgress,
+            boolean[] legacyUnlockedColumns, int legacyUnlockedRows) {
             this.formatVersion = formatVersion;
             this.fingerprints = fingerprints;
             this.mailboxItems = mailboxItems;
             this.grantInFlight = grantInFlight;
+            this.delivered = delivered;
             this.legacyState = legacyState;
             this.legacyPendingItems = legacyPendingItems;
             this.legacyHullProgress = legacyHullProgress;
@@ -208,6 +233,16 @@ public final class ReincarnationStore {
     }
 
     /**
+     * @return 投胎信箱的逐件发放已交付前缀计数（信箱物品 {@code [0, delivered)} 已交付）。
+     *         无信箱/文件缺失/损坏一律 0；计数可能超过信箱长度仅在载荷被手改时出现，
+     *         调用方按 {@code min(delivered, size)} 收敛。
+     */
+    public int readGrantDelivered(String uuid) {
+        RecordView view = readView(uuid);
+        return view == null ? 0 : Math.max(0, view.delivered);
+    }
+
+    /**
      * 置投胎信箱「发放已启动未完成」幂等标记（幂等；重复置位安全）。
      * 无信箱/文件缺失/损坏时不产生任何副作用（失败不写口径）。
      */
@@ -216,7 +251,27 @@ public final class ReincarnationStore {
         if (view == null || view.mailboxItems.isEmpty() || view.grantInFlight) {
             return;
         }
-        writeLicense(uuid, view.fingerprints, view.mailboxItems, true);
+        writeLicense(uuid, view.fingerprints, view.mailboxItems, true, view.delivered);
+    }
+
+    /**
+     * 单调推进逐件发放已交付前缀计数（逐件发放进度账本，持久化）。
+     * <p>
+     * 幂等 + 单调：仅当 {@code delivered} <b>严格大于</b>当前计数且信箱在场时才写盘
+     * （回退值/等值重复推进一律无副作用，防演出重放或乱序调度把账本拨回）；
+     * 计数超过信箱长度按长度封顶（前缀语义的自然上界）。
+     * 无信箱/文件缺失/损坏时不产生任何副作用（失败不写口径）。
+     */
+    public void markGrantDelivered(String uuid, int delivered) {
+        RecordView view = readView(uuid);
+        if (view == null || view.mailboxItems.isEmpty()) {
+            return;
+        }
+        int clamped = Math.min(Math.max(0, delivered), view.mailboxItems.size());
+        if (clamped <= view.delivered) {
+            return;
+        }
+        writeLicense(uuid, view.fingerprints, view.mailboxItems, true, clamped);
     }
 
     // ==================== 迁移（consume-once） ====================
@@ -242,7 +297,7 @@ public final class ReincarnationStore {
         }
         LegacyRecord legacy = toLegacyRecord(view);
         // 改写为 v2：只留许可字段（信箱转入）；进度字段自此由每存档 WorldData 承载
-        writeLicense(uuid, view.fingerprints, legacy.mailboxItems, false);
+        writeLicense(uuid, view.fingerprints, legacy.mailboxItems, false, 0);
         return legacy;
     }
 
@@ -275,22 +330,25 @@ public final class ReincarnationStore {
     public void save(ReincarnationCycle cycle) {
         List<ReincarnationCycle.ItemRef> mailbox = new ArrayList<>();
         boolean grantInFlight = false;
+        int delivered = 0;
         if (cycle.getCycleState() == ReincarnationCycle.CycleState.EXECUTED) {
             mailbox.addAll(cycle.getPendingItems());
             if (!mailbox.isEmpty()) {
-                // 已在发放中的信箱保留幂等标记（发放路径 markGrantInFlight 后的进度保存不丢标记）
+                // 已在发放中的信箱保留幂等标记与逐件发放已交付账本（发放路径 markGrantInFlight /
+                // markGrantDelivered 后的进度保存不丢标记、不回拨账本）
                 RecordView view = readView(cycle.getUuid());
                 grantInFlight = view != null && view.grantInFlight;
+                delivered = view == null ? 0 : Math.max(0, view.delivered);
             }
         }
-        writeLicense(cycle.getUuid(), cycle.getExecutedFingerprints(), mailbox, grantInFlight);
+        writeLicense(cycle.getUuid(), cycle.getExecutedFingerprints(), mailbox, grantInFlight, delivered);
     }
 
     // ==================== JSON 载荷 ====================
 
     /** v2 许可载荷写盘（唯一写入口；原子 + 加密） */
     private void writeLicense(String uuid, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailbox,
-        boolean grantInFlight) {
+        boolean grantInFlight, int delivered) {
         JsonObject root = new JsonObject();
         root.addProperty("formatVersion", FORMAT_VERSION);
         root.addProperty("uuid", uuid);
@@ -311,6 +369,7 @@ public final class ReincarnationStore {
         }
         box.add("items", items);
         box.addProperty("grantInFlight", grantInFlight);
+        box.addProperty("delivered", Math.max(0, delivered));
         root.add("mailbox", box);
 
         writeEncrypted(
@@ -369,7 +428,12 @@ public final class ReincarnationStore {
                 List<ReincarnationCycle.ItemRef> items = readPendingItems(box.get("items"));
                 boolean inFlight = box.get("grantInFlight")
                     .getAsBoolean();
-                return new RecordView(formatVersion, fingerprints, items, inFlight);
+                // delivered 为逐件发放账本（可选字段）：旧 v2 载荷/手改缺失按 0，
+                // 类型异常并入整体"结构不可信"仁慈路径，负值收敛为 0
+                JsonElement deliveredElement = box.get("delivered");
+                int delivered = deliveredElement == null || !deliveredElement.isJsonPrimitive() ? 0
+                    : Math.max(0, deliveredElement.getAsInt());
+                return new RecordView(formatVersion, fingerprints, items, inFlight, delivered);
             }
             if (formatVersion == LEGACY_FORMAT_VERSION) {
                 // v1 只读兼容视图：许可字段提取；EXECUTED 态 pendingItems 映射为信箱

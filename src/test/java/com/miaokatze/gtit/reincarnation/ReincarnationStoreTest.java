@@ -55,6 +55,7 @@ public class ReincarnationStoreTest {
         cases.put("mailboxFourSemantics", () -> runChecked(ReincarnationStoreTest::mailboxFourSemantics));
         cases.put("grantIdempotentNoDuplicate", () -> runChecked(ReincarnationStoreTest::grantIdempotentNoDuplicate));
         cases.put("grantInFlightMarker", () -> runChecked(ReincarnationStoreTest::grantInFlightMarker));
+        cases.put("grantDeliveredProgress", () -> runChecked(ReincarnationStoreTest::grantDeliveredProgress));
         cases.put("legacyLoginLicenseView", () -> runChecked(ReincarnationStoreTest::legacyLoginLicenseView));
         cases.put("legacyMigrationConsumeOnce", () -> runChecked(ReincarnationStoreTest::legacyMigrationConsumeOnce));
         cases.put(
@@ -254,6 +255,49 @@ public class ReincarnationStoreTest {
         done.claimGrant();
         store.save(done);
         SimpleAssert.that(!store.isGrantInFlight(UUID_A), "清信箱后标记复位（完成标记）");
+    }
+
+    /**
+     * 逐件发放已交付账本（mailbox.delivered，v2 可选字段）：无信箱不可推进；推进单调
+     * 持久化（等值/回退推进无副作用）；计数按信箱长度封顶；推进不动信箱物品与
+     * grantInFlight 标记；发放中进度保存不回拨账本；清信箱随载荷整体复位。
+     * （旧 v2 载荷缺 delivered 字段的读回兼容由解析侧防御缺省 0 承担。）
+     */
+    static void grantDeliveredProgress() throws Exception {
+        ReincarnationStore store = newStore();
+        // 无信箱（文件从未存在）：读 0，推进无副作用
+        SimpleAssert.eq(0, store.readGrantDelivered(UUID_A), "无信箱时账本为 0");
+        store.markGrantDelivered(UUID_A, 2);
+        SimpleAssert.eq(0, store.readGrantDelivered(UUID_A), "无信箱推进无副作用（失败不写口径）");
+
+        // 有信箱：推进 → 持久化读回；等值/回退推进无副作用（幂等 + 单调）
+        ReincarnationCycle cycle = new ReincarnationCycle(UUID_A);
+        cycle.deposit(Arrays.asList(DIAMOND, CIRCUIT, DIAMOND));
+        cycle.confirmReincarnation(41L);
+        store.save(cycle);
+        store.markGrantInFlight(UUID_A);
+        SimpleAssert.eq(0, store.readGrantDelivered(UUID_A), "刚置位的信箱账本为 0");
+        store.markGrantDelivered(UUID_A, 1);
+        SimpleAssert.eq(1, store.readGrantDelivered(UUID_A), "推进后账本持久化读回");
+        store.markGrantDelivered(UUID_A, 1);
+        SimpleAssert.eq(1, store.readGrantDelivered(UUID_A), "等值推进无副作用（幂等）");
+        store.markGrantDelivered(UUID_A, 0);
+        SimpleAssert.eq(1, store.readGrantDelivered(UUID_A), "回退推进无副作用（单调）");
+        store.markGrantDelivered(UUID_A, 99);
+        SimpleAssert.eq(3, store.readGrantDelivered(UUID_A), "计数按信箱长度封顶（前缀语义上界）");
+        // 推进不影响信箱物品与幂等标记
+        assertMailbox(store.load(UUID_A), DIAMOND, CIRCUIT, DIAMOND);
+        SimpleAssert.that(store.isGrantInFlight(UUID_A), "推进账本不丢幂等标记");
+
+        // 发放中进度保存（EXECUTED 态再 save）不回拨账本
+        store.save(store.load(UUID_A));
+        SimpleAssert.eq(3, store.readGrantDelivered(UUID_A), "发放中保存不回拨账本");
+
+        // 清信箱（成功发放）→ 账本随载荷整体复位
+        ReincarnationCycle done = store.load(UUID_A);
+        done.claimGrant();
+        store.save(done);
+        SimpleAssert.eq(0, store.readGrantDelivered(UUID_A), "清信箱后账本复位");
     }
 
     // ==================== 旧全局 v1：登录只读兼容 + consume-once 迁移 ====================
