@@ -60,7 +60,7 @@ import cpw.mods.fml.relauncher.Side;
  * 收束（{@code completeGrant}：⑤再确认在线+未完成 ⑥清扫未发放件
  * {@code addItemStackToInventory}（满则 {@code dropPlayerItemWithRandomChoice}）
  * ⑦成功或落地后才 claimGrant 清信箱+复位标记）；逐件发放按降落节奏错峰：第 i 件在
- * {@code i*5+54} tick（降落末段接近玩家）入库并单调持久化账本；异常/掉线信箱与
+ * {@code i*5+51} tick（降落末段 15%，接近玩家）入库并单调持久化账本；异常/掉线信箱与
  * 账本保留，登录链路自动续跑（崩溃重进不重复发放）；
  * 客户端只显示，结束以服务端计时为准；</li>
  * <li><b>确认轮回</b>（{@link ReincarnationConfirmHook} 实现，S7 GUI 二次确认后回调）：
@@ -121,11 +121,11 @@ public final class ReincarnationHandler {
     private static final int GRANT_PER_ITEM_TICKS = 60;
 
     /**
-     * 单件可拾取降落末段比例（用户口径"末段 10% 即可拾取"）：第 i 件在
-     * {@code i * GRANT_STAGGER_TICKS + (int)(GRANT_PER_ITEM_TICKS * (1 - 本值))} tick
-     * 入库——此时该件距玩家约 0.4 格（smoothstep 末段），接近即得。
+     * 单件可拾取降落末段比例（用户口径"最后 15% 允许拾取"，v1.8.14 由 10% 放宽）：
+     * 第 i 件在 {@code i * GRANT_STAGGER_TICKS + (int)(GRANT_PER_ITEM_TICKS * (1 - 本值))}
+     * = i*5+51 tick 入库——该件距玩家约 0.4 格（smoothstep 末段），接近即得。
      */
-    private static final float GRANT_PICKUP_LAST_FRACTION = 0.1F;
+    private static final float GRANT_PICKUP_LAST_FRACTION = 0.15F;
 
     /**
      * 演出逐件发放物品数上限：与客户端 GRANT_MAX_ANIMATED_ITEMS 同步取 7；

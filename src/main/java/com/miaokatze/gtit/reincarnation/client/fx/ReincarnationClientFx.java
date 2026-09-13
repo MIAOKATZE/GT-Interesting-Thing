@@ -149,6 +149,12 @@ public final class ReincarnationClientFx {
     private static final float GRANT_CRYSTAL_HEAD_OFFSET = 0.4F;
     /** 发放演出水晶环高度波动幅度（格；比升天环收窄，减少与降下物品的交叠机会） */
     private static final float GRANT_CRYSTAL_HEIGHT_AMPLITUDE = 0.6F;
+    /**
+     * 单件拖尾停撒末段比例（v1.8.14，用户口径"物品接近玩家后不再撒粒子"）：单件降落
+     * 最后 20% 停撒 fireworksSpark 拖尾——物品已接近玩家，粒子糊脸挡视野；与
+     * {@link #GRANT_PER_ITEM_TICKS} 联用（local &gt; 60×0.8 = 48 tick 即停撒）。
+     */
+    private static final float GRANT_TRAIL_STOP_LAST_FRACTION = 0.2F;
 
     /** 升天结束判定：锚点 ridingEntity == null 的连续 tick 宽限（容错骑乘建立延迟） */
     private static final int ASCENSION_END_GRACE_TICKS = 20;
@@ -469,6 +475,8 @@ public final class ReincarnationClientFx {
      * 发放物品烟花拖尾：100t 窗口内每 tick 为每件降下中物品的当前位置撒 1 枚
      * {@code "fireworksSpark"}（坐标经 {@link #computeGrantItemPos} 与渲染相位同公式现算；
      * null 条目与未轮到件与渲染同规则跳过；窗口由调用方 {@link #tickGrantEffect} 门控）。
+     * v1.8.14：单件降落末段（最后 {@link #GRANT_TRAIL_STOP_LAST_FRACTION}，接近玩家）
+     * 停撒——粒子糊脸挡视野。
      */
     private void spawnGrantItemTrail(World world, EntityClientPlayerMP player, long elapsed) {
         if (grantItemEntities == null || player == null || elapsed < 0L || elapsed >= GRANT_DESCENT_TICKS) {
@@ -477,6 +485,11 @@ public final class ReincarnationClientFx {
         for (int i = 0; i < grantItemEntities.size(); i++) {
             if (grantItemEntities.get(i) == null) {
                 continue; // 无法解析的 ItemRef：与渲染同规则跳过
+            }
+            // 末段停撒（v1.8.14）：local 与 computeGrantItemPos 同式，单件最后 20% 不再撒拖尾
+            double local = elapsed - (double) i * GRANT_STAGGER_TICKS;
+            if (local > GRANT_PER_ITEM_TICKS * (1.0D - GRANT_TRAIL_STOP_LAST_FRACTION)) {
+                continue;
             }
             if (!computeGrantItemPos(player.posX, player.posY, player.posZ, (double) elapsed, i, TMP_POS)) {
                 continue; // 未轮到该件（错峰未到）
