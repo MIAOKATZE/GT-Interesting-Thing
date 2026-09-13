@@ -74,6 +74,12 @@ public class ReincarnationGuiContainer extends GuiContainer {
     private static final String KEY_CONFIRM_BUTTON = KEY_PREFIX + "gui.confirm.button";
     private static final String KEY_CONFIRM_DIALOG = KEY_PREFIX + "gui.confirm.dialog";
     private static final String KEY_COLUMN_PREFIX = KEY_PREFIX + "column.";
+    /**
+     * GUI 列头短标签键（v1.8.12：无「电力」前缀，列距 20px 下 0.75 倍字号可容纳；
+     * tier 名以 GT5U 电压序列为准，12=UMV 13=UXV）。完整列名键（column.0..14，带前缀）
+     * 仍由 tooltip 与 chat 消息消费。
+     */
+    private static final String KEY_COLUMN_SHORT_PREFIX = KEY_PREFIX + "column.short.";
     private static final String KEY_HULL_TOOLTIP = KEY_PREFIX + "gui.hull.tooltip";
     private static final String KEY_HULL_TOOLTIP_DONE = KEY_PREFIX + "gui.hull.tooltip.done";
     /** v1.8.8：解锁按钮悬浮三段（连掷口径说明 / 概率行 / 剩余可解锁状态行），键值已有、本切片接线 */
@@ -323,15 +329,16 @@ public class ReincarnationGuiContainer extends GuiContainer {
         for (int column = 0; column < ReincarnationCycle.COLUMN_COUNT; column++) {
             int centerX = ReincarnationLayout.GRID_X + column * ReincarnationLayout.SLOT_PITCH
                 + ReincarnationLayout.SLOT_SIZE / 2;
-            // 列名（已解锁猫金 / 未解锁暖灰；v1.8.8 §5 新旧色映射，色值单源 Palette）
-            int color = container.isColumnLocked(column) ? ReincarnationGuiPalette.TEXT_LOCKED_WARM
+            // 列头（v1.8.12 实机反馈：旧 0.5 倍 0x6E6860 暗淡难读——短标签 0.75 倍 + 锁定列
+            // 提亮至暖灰 + 阴影；已解锁列保持猫金）
+            int color = container.isColumnLocked(column) ? ReincarnationGuiPalette.TEXT_MUTED_WARM
                 : ReincarnationGuiPalette.TEXT_ACCENT;
-            drawScaledCentered(
-                StatCollector.translateToLocal(KEY_COLUMN_PREFIX + column),
+            drawScaledCenteredShadow(
+                StatCollector.translateToLocal(KEY_COLUMN_SHORT_PREFIX + column),
                 centerX,
                 ReincarnationLayout.LABELS_Y,
                 color,
-                0.5f);
+                0.75f);
         }
 
         // 面板消息行（事件码 + 进度条参数本地派生）
@@ -706,6 +713,19 @@ public class ReincarnationGuiContainer extends GuiContainer {
         GL11.glScalef(scale, scale, 1.0F);
         int width = this.fontRendererObj.getStringWidth(text);
         this.fontRendererObj.drawString(text, -width / 2, 0, color);
+        GL11.glPopMatrix();
+    }
+
+    /** 带阴影居中缩放文本（v1.8.12 列头增亮配套；其余调用点保持无阴影口径不变） */
+    private void drawScaledCenteredShadow(String text, int centerX, int y, int color, float scale) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        GL11.glPushMatrix();
+        GL11.glTranslatef(centerX, y, this.zLevel);
+        GL11.glScalef(scale, scale, 1.0F);
+        int width = this.fontRendererObj.getStringWidth(text);
+        this.fontRendererObj.drawStringWithShadow(text, -width / 2, 0, color);
         GL11.glPopMatrix();
     }
 
