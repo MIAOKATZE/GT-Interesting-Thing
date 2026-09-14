@@ -9,7 +9,7 @@
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg"></a>
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
-  <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta-1&2&3" src="https://img.shields.io/badge/GTNH-2.9.0%20beta--1%262-orange.svg"></a>
+  <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta-1&2&3" src="https://img.shields.io/badge/GTNH-2.9.0%20beta--1%262%263-orange.svg"></a>
   <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.14" src="https://img.shields.io/badge/Release-1.8.14-green.svg"></a>
 </p>
 
@@ -122,9 +122,9 @@ Trades can be locked behind BQ quest completion:
 
 ### Visual Editor / 可视化编辑
 
-Enable with `/gtit nekovm edit on` (see [Administrator Commands](#administrator-commands--管理员命令)), then click trade entries in the machine GUI to edit them visually.
+Enable with `/gtit nekovm edit on` (see [Administrator Commands](#administrator-commands--管理员命令)), then click trade entries in the machine GUI to edit them visually. The editing surface covers seven domains: trades, tab pages, lottery entries, lottery pools, sign-in rewards, online-time tiers, and blessings.
 
-通过 `/gtit nekovm edit on` 开启（见[管理员命令](#administrator-commands--管理员命令)），在售货机 GUI 内点击交易条目即可进行可视化编辑。
+通过 `/gtit nekovm edit on` 开启（见[管理员命令](#administrator-commands--管理员命令)），在售货机 GUI 内点击交易条目即可进行可视化编辑。编辑面现覆盖七个域：交易条目、标签页、抽奖条目、抽奖卡池、签到奖励、在线时长档位与祝福。
 
 <p align="center"><img src="README/edit1.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"><img src="README/edit2.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"></p>
 <p align="center"><img src="README/edit3.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"><img src="README/edit4.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"></p>
@@ -178,9 +178,9 @@ Full schema, ledger semantics walkthrough and the content-author workflow: local
 
 ### Mixin Architecture / Mixin 架构
 
-Since V2, trade logic (currency deduction, BQ locks, cooldowns) is handled natively by the mod's own machine and trade-executor classes instead of Mixins. The remaining Mixins cover rings, neko BGM, and compatibility:
+Since V2, trade logic (currency deduction, BQ locks, cooldowns) is handled natively by the mod's own machine and trade-executor classes instead of Mixins. The remaining Mixins cover rings, neko BGM, fishing coins, reincarnation ascension, and compatibility:
 
-自 V2 起交易逻辑（货币扣减、BQ 锁定、冷却）由模组自身的机器与交易执行类原生处理，不再经由 Mixin。现存 Mixin 覆盖戒指、猫猫 BGM 与兼容性：
+自 V2 起交易逻辑（货币扣减、BQ 锁定、冷却）由模组自身的机器与交易执行类原生处理，不再经由 Mixin。现存 Mixin 覆盖戒指、猫猫 BGM、钓鱼猫猫币、周目升天与兼容性：
 
 | Mixin                              | Target                                     | Function / 功能                                             |
 | ---------------------------------- | ------------------------------------------ | ----------------------------------------------------------- |
@@ -188,6 +188,8 @@ Since V2, trade logic (currency deduction, BQ locks, cooldowns) is handled nativ
 | `MixinItemInWorldManager`           | `ItemInWorldManager.getBlockReachDistance` | Server-side block reach extension for Ring of Distant Grasp |
 | `NekoSoundManagerMixin`             | `SoundManager.playSound`                   | Capture neko BGM sound source for per-frame volume control  |
 | `MixinAEBaseGuiDrawHoveringTextFix` | `GuiScreen.drawHoveringText`               | Fix AE2 tooltip `AbstractMethodError` under Angelica         |
+| `MixinEntityFishHook`               | `EntityFishHook` fish-catching roll        | Server-side bonus Neko Coin / Shimmering Neko Coin on each successful player catch (default 10% / 2%, config-tunable; machine fish farms get nothing — anti-farm) / 玩家每次成功钓鱼服务端掷概率附赠猫猫币/闪烁猫猫币（默认 10%/2%，Config 可调；机器渔场不产，防刷币） |
+| `MixinEntityRenderer`               | `EntityRenderer.setupCameraTransform`      | Reincarnation ascension camera warp (read-only replica of vanilla portal dizziness, hard-gated to the 120t cutscene window) / 周目升天相机 warp（只读复刻原版传送门眩晕，120t 演出窗口硬门控） |
 
 Sound-mute Mixins are listed in the [Machine Sound Mute](#machine-sound-mute--机器音效静音) section.
 
@@ -297,13 +299,13 @@ An AE2 storage cell with virtually infinite capacity. Data is externalized to a 
 基于 AE2 的无限容量存储元件，数据外部化存储在全局 WorldSavedData 中，避免 NBT 膨胀。提供物品版和流体版两种变体。
 
 - **Capacity / 容量**: Integer.MAX\_VALUE types, 1 byte per type (effectively unlimited)
-- **Idle drain / 空闲功耗**: 2000 AE/tick
+- **Idle drain / 空闲功耗**: 1 AE/tick
 - **Item variant / 物品版**: 2 upgrade card slots, supports partition editing
 - **Fluid variant / 流体版**: 0 upgrade card slots, supports partition editing
 - **Data storage / 数据存储**: Externalized via `StorageManager` (WorldSavedData), linked by UUID
 - **Adapted from / 适配自**: AE2Things (GTNH 2.8.4), rewritten for GTNH 2.9.0 AE2 API
 - 容量：Integer.MAX\_VALUE 种类型，每类型 1 字节（实际无限）
-- 空闲功耗：2000 AE/tick
+- 空闲功耗：1 AE/tick
 - 物品版：2 个升级卡槽，支持分区编辑
 - 流体版：0 个升级卡槽，支持分区编辑
 - 数据存储：通过 `StorageManager`（WorldSavedData）外部化，以 UUID 关联
@@ -544,15 +546,21 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
 
 A literal `\n` in mail bodies is converted to a line break. / 邮件正文中字面 `\n` 会被转换为换行。
 
+### Server Management Terminal / 服务器管理终端
+
+| Command / 指令    | Description / 说明                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------- |
+| `/gtit terminal` | Open the server management terminal (mail / sign-in / trade-cooldown / gift-audit panels); in-game OP2 players only — unavailable and unlisted on physical dedicated servers / 打开服务器管理终端（邮件/签到/交易冷却/礼包审计四页面板）；仅游戏内 OP2 玩家可用，物理专用服务器上不可用且 Tab 补全不提示 |
+
 ***
 
 ## Tech Stack / 技术栈
 
 - Jabel (modern Java syntax, Java 8 bytecode) / Minecraft 1.7.10 / Forge 10.13.4.1614
 - ModularUI / ModularUI2 / StructureLib
-- Dependencies: GT5-Unofficial (5.09.52.594), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.87 (dev local jar; the V2 multiblock's structure casing and uplink hatch are still provided by VendingMachine at runtime), BetterQuesting 3.8.72 (compileOnly)
+- Dependencies: GT5-Unofficial (5.09.54.133), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.100 (dev local jar; the V2 multiblock's structure casing and uplink hatch are still provided by VendingMachine at runtime), BetterQuesting 3.8.72 (compileOnly)
 - Jabel（现代 Java 语法，编译为 Java 8 字节码）/ Minecraft 1.7.10 / Forge 10.13.4.1614
-- 依赖：GT5-Unofficial（5.09.52.594）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.87（dev 本地 jar；V2 多方块的结构外壳与上行仓仍由 VendingMachine 提供运行时支持）、BetterQuesting 3.8.72（compileOnly）
+- 依赖：GT5-Unofficial（5.09.54.133）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.100（dev 本地 jar；V2 多方块的结构外壳与上行仓仍由 VendingMachine 提供运行时支持）、BetterQuesting 3.8.72（compileOnly）
 
 ***
 
