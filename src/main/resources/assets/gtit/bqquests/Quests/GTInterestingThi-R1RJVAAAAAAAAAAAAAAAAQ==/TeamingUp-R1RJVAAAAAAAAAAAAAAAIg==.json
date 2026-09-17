@@ -1,0 +1,55 @@
+{
+  "preRequisites:9": {
+    "0:10": {
+      "questIDHigh:4": 5139813699862659072,
+      "questIDLow:4": 6
+    }
+  },
+  "properties:10": {
+    "betterquesting:10": {
+      "autoClaim:1": 0,
+      "countAsQuest:1": 1,
+      "desc:8": "This lesson skips the machines and covers how to band together: GTNHLib ships the §3§n/gtnhteam§r command — type it to open the team GUI, where you can create a team, invite teammates, or accept an invitation to join one.\n\nA team is more than a name tag: the GTIT wallet supports a §2TEAM shared-wallet§r mode — once enabled, the team's funds are pooled; your teammate's money is everybody's money, and saving up for big-ticket items no longer turns into debt collecting.\n\nForm the party first, then start the work — splits and dividends both go smoother.\n\n§8§oA lone wolf is romance; a team is productivity.§r",
+      "globalShare:1": 0,
+      "icon:10": {
+        "Count:3": 1,
+        "Damage:2": 3,
+        "OreDict:8": "",
+        "id:8": "minecraft:skull"
+      },
+      "isMain:1": 0,
+      "isSilent:1": 0,
+      "lockedProgress:1": 0,
+      "name:8": "§b§lTeaming Up",
+      "questLogic:8": "AND",
+      "repeatTime:3": -1,
+      "simultaneous:1": 0,
+      "snd_complete:8": "random.levelup",
+      "snd_update:8": "random.levelup",
+      "taskLogic:8": "AND",
+      "visibility:8": "NORMAL"
+    }
+  },
+  "questIDHigh:4": 5139813699862659072,
+  "questIDLow:4": 34,
+  "rewards:9": {
+    "0:10": {
+      "index:3": 0,
+      "rewardID:8": "bq_standard:item",
+      "rewards:9": {
+        "0:10": {
+          "Count:3": 1,
+          "Damage:2": 0,
+          "OreDict:8": "",
+          "id:8": "gtit:neko_coin"
+        }
+      }
+    }
+  },
+  "tasks:9": {
+    "0:10": {
+      "index:3": 0,
+      "taskID:8": "bq_standard:checkbox"
+    }
+  }
+}

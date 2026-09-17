@@ -117,8 +117,8 @@ public class MailGui {
 
     /** 领取按钮宽（与 btn_claim.png 素材一致） */
     private static final int CLAIM_W = 48;
-    /** 领取按钮高 */
-    private static final int CLAIM_H = 16;
+    /** 领取按钮高（v1.7.8 由 16 修正为素材原始 20——原 48x16 拉伸绘制导致底图模糊） */
+    private static final int CLAIM_H = 20;
     /** 按钮行 Y（详情区内） */
     private static final int BTN_ROW_Y = 86;
 
@@ -152,6 +152,15 @@ public class MailGui {
     private static final int COLOR_CONTENT = 0xFF4A3F55;
     /** 详情次要信息颜色（发件人/时间） */
     private static final int COLOR_META = 0xFF777788;
+
+    /** 列表标题色：未读（纯白，保持醒目） */
+    private static final int COLOR_ENTRY_TITLE_UNREAD = 0xFFFFFFFF;
+    /** 列表标题色：已读（提亮灰——原 GRAY 0xFFAAAAAA 过暗，提亮一档仍与未读 WHITE 可辨） */
+    private static final int COLOR_ENTRY_TITLE_READ = 0xFFC8C8C8;
+    /** 列表次行色（发件人/日期；原 0xFF666677 过暗，提亮一档保持"暗淡可辨"） */
+    private static final int COLOR_ENTRY_META = 0xFFA0A0B8;
+    /** 领取按钮亮色描边（1px 外圈，压住金色圆角底图轮廓） */
+    private static final int COLOR_CLAIM_FRAME = 0xFFFFE28A;
 
     /** 列表过滤：全部（不过滤） */
     private static final String FILTER_ALL = null;
@@ -304,20 +313,21 @@ public class MailGui {
                     .size(16, 16)
                     .setEnabledIf(w -> entryMail(filterType, index) != null));
 
-            // 标题（第一行，未读加粗白字，已读灰字）
+            // 标题（第一行，未读纯白、已读提亮灰——颜色由动态 supplier 提供）
             list.child(
                 new TextWidget<>(IKey.dynamic(() -> entryTitle(filterType, index))).pos(ENTRY_X + 24, y + 4)
                     .size(ENTRY_W - 44, 10)
                     .scale(0.8f)
+                    .color(() -> entryTitleColor(filterType, index))
                     .shadow(false)
                     .setEnabledIf(w -> entryMail(filterType, index) != null));
 
-            // 发件人 + 日期（第二行，灰色小字）
+            // 发件人 + 日期（第二行，提亮灰小字）
             list.child(
                 new TextWidget<>(IKey.dynamic(() -> entryMeta(filterType, index))).pos(ENTRY_X + 24, y + 16)
                     .size(ENTRY_W - 44, 9)
                     .scale(0.7f)
-                    .color(0xFF666677)
+                    .color(COLOR_ENTRY_META)
                     .shadow(false)
                     .setEnabledIf(w -> entryMail(filterType, index) != null));
 
@@ -520,6 +530,18 @@ public class MailGui {
                     Mail mail = selectedMail();
                     return mail != null && mail.hasUnclaimedAttachments();
                 }));
+
+        // 领取按钮亮色描边（复用 drawFrame 画 1px 外圈；选中金框同款先例，
+        // 与按钮同启停——仅有待领取附件时显示）
+        detail.child(
+            new IDrawable.DrawableWidget(
+                (context, dx, dy, w, h, theme) -> { drawFrame(dx, dy, w, h, COLOR_CLAIM_FRAME); })
+                    .pos((DETAIL_W - CLAIM_W) / 2 - 13, BTN_ROW_Y - 1)
+                    .size(CLAIM_W + 2, CLAIM_H + 2)
+                    .setEnabledIf(w -> {
+                        Mail mail = selectedMail();
+                        return mail != null && mail.hasUnclaimedAttachments();
+                    }));
 
         // 删除按钮（选中邮件即显示；有未领取附件时服务端会拒绝并提示）
         detail.child(
@@ -762,12 +784,17 @@ public class MailGui {
         return mail.isRead() ? NekoGuiTextures.MAIL_ICON_READ : NekoGuiTextures.MAIL_ICON_UNREAD;
     }
 
-    /** 条目标题文本：未读白色，已读灰色 */
+    /** 条目标题文本（纯文本，颜色由 {@link #entryTitleColor} 动态提供） */
     private static String entryTitle(String filterType, int index) {
         Mail mail = entryMail(filterType, index);
-        if (mail == null) return "";
-        EnumChatFormatting color = mail.isRead() ? EnumChatFormatting.GRAY : EnumChatFormatting.WHITE;
-        return color + mail.getTitle();
+        return mail == null ? "" : mail.getTitle();
+    }
+
+    /** 条目标题颜色（ARGB）：未读纯白 / 已读提亮灰（v1.7.8 列表提亮） */
+    private static int entryTitleColor(String filterType, int index) {
+        Mail mail = entryMail(filterType, index);
+        if (mail == null) return COLOR_ENTRY_TITLE_READ;
+        return mail.isRead() ? COLOR_ENTRY_TITLE_READ : COLOR_ENTRY_TITLE_UNREAD;
     }
 
     /** 条目次行文本：发件人 + 日期 */

@@ -133,6 +133,14 @@
         {
           "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Skywalk-R1RJVAAAAAAAAAAAAAAAIQ==.json",
           "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Skywalk-R1RJVAAAAAAAAAAAAAAAIQ==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TeamingUp-R1RJVAAAAAAAAAAAAAAAIg==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TeamingUp-R1RJVAAAAAAAAAAAAAAAIg==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Reincarnation101-R1RJVAAAAAAAAAAAAAAAIw==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Reincarnation101-R1RJVAAAAAAAAAAAAAAAIw==.json"
         }
       ],
       "idHigh": 5139813699862659072,

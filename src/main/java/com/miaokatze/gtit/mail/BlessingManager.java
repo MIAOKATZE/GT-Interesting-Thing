@@ -1,14 +1,21 @@
 package com.miaokatze.gtit.mail;
 
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.miaokatze.gtit.mail.lunar.LunarCalendar;
+import com.miaokatze.gtit.mail.lunar.SolarTerms;
 import com.miaokatze.gtit.signin.AnniversaryEntry;
 import com.miaokatze.gtit.signin.DailySignInData;
 import com.miaokatze.gtit.signin.DailySignInManager;
@@ -28,11 +35,16 @@ import com.miaokatze.gtit.util.PlayerLookup;
  * <li>当日 = 玩家自配生日（{@link DailySignInData#getBirthday()}，"MM-dd"）→ 生日模板（蛋糕附件）</li>
  * <li>当日 = 玩家某自定义纪念日（{@link DailySignInData#getAnniversaries()} 的 monthDay；
  * 条目带 year 时正文附「第 N 周年」）→ 纯文本祝福（无配置附件）</li>
- * <li>当日 = 节日表日期（{@link BlessingConfig#getFestivals()} 的 month_day）→ 节日模板（食物 + 猫猫币附件）</li>
+ * <li>当日 = 节日表日期（{@link BlessingConfig#getFestivals()}：lunar 字段非空时
+ * 经 {@code lunar.LunarCalendar} 换算今天农历比对（"12-L" = 腊月最后一天，闰月不触发），
+ * 否则按 month_day 公历比对，旧配置缺 lunar 字段完全兼容）→ 节日模板（食物 + 猫猫币附件）</li>
+ * <li>当日恰为 11 个关键节气之一（立春/春分/清明/谷雨/立夏/夏至/立秋/秋分/霜降/立冬/冬至，
+ * 经 {@code lunar.SolarTerms} 寿星公式判定）→ 时令作物邮件（作物按季）</li>
  * </ol>
  * <p>
  * <b>防重</b>：投递成功后在 {@link MailData#getClaimedBlessings()} 记录防重键——
- * 生日/节日 = {@code "类型_YYYY-MM-dd"}（按日唯一），纪念日 = {@code "anniversary_<序号>_YYYY"}（同年一次）。
+ * 生日/节日 = {@code "类型_YYYY-MM-dd"}（按日唯一），纪念日 = {@code "anniversary_<序号>_YYYY"}（同年一次），
+ * 节气 = {@code "solarterm_<节气名>_YYYY"}（同年一次）。
  * 防重键写入邮箱 NBT（祝福属邮件域，不污染签到数据）。
  * <p>
  * <b>持久化依赖（IT-BUG-09，已知限制）</b>：本类无自身持久化（无 File/WorldSavedData），
@@ -55,6 +67,25 @@ public class BlessingManager {
     private static final Logger LOG = LogManager.getLogger("gtit");
 
     public static final BlessingManager INSTANCE = new BlessingManager();
+
+    /**
+     * 发时令作物邮件的关键节气（v1.7.8 用户确认口径：24 节气全计算，
+     * 仅这 11 个投递时令邮件；春 4 + 夏 2 + 秋 3 + 冬 2）
+     */
+    private static final Set<String> SOLAR_TERM_MAIL_TERMS = new LinkedHashSet<>(
+        Arrays.asList(
+            "立春",
+            "春分",
+            "清明",
+            "谷雨", // 春
+            "立夏",
+            "夏至", // 夏
+            "立秋",
+            "秋分",
+            "霜降", // 秋
+            "立冬",
+            "冬至" // 冬
+        ));
 
     private BlessingManager() {}
 
@@ -120,10 +151,19 @@ public class BlessingManager {
             sentAny |= trySend(playerId, mailData, key, title, content, null, sender);
         }
 
-        // ---- 3. 节日表（配置固定公历日期）----
+        // ---- 3. 节日表（lunar 非空 = 农历换算比对；否则按 month_day 公历比对，旧配置兼容）----
+        LunarCalendar.LunarDate todayLunar = null; // 懒换算（同一天只算一次）
         for (BlessingConfig.FestivalBlessing festival : BlessingConfig.getFestivals()) {
-            if (festival == null || festival.monthDay == null || festival.monthDay.isEmpty()) continue;
-            if (!festival.monthDay.equals(monthDay)) continue;
+            if (festival == null) continue;
+            if (festival.lunar != null && !festival.lunar.isEmpty()) {
+                // 农历节日：先把今天公历换算农历再比对
+                if (todayLunar == null) todayLunar = toLunarToday(year, monthDay);
+                if (todayLunar == null) continue;
+                if (!matchesLunarDate(festival.lunar, todayLunar)) continue;
+            } else {
+                if (festival.monthDay == null || festival.monthDay.isEmpty()) continue;
+                if (!festival.monthDay.equals(monthDay)) continue;
+            }
             sentAny |= trySend(
                 playerId,
                 mailData,
@@ -133,6 +173,9 @@ public class BlessingManager {
                 festival.buildAttachments(),
                 sender);
         }
+
+        // ---- 4. 节气时令邮件（11 个关键节气，防重键按公历年）----
+        sentAny |= trySendSolarTermMail(playerId, mailData, year, monthDay, sender);
 
         return sentAny;
     }
@@ -154,6 +197,102 @@ public class BlessingManager {
     }
 
     // ==================== 内部辅助 ====================
+
+    /**
+     * 今天公历（yyyy 与 MM-dd）换算农历；格式异常或超出支持范围返回 null（调用方跳过农历节日）
+     */
+    private LunarCalendar.LunarDate toLunarToday(String year, String monthDay) {
+        try {
+            int y = Integer.parseInt(year);
+            String[] md = monthDay.split("-", 2);
+            return LunarCalendar.solarToLunar(y, Integer.parseInt(md[0]), Integer.parseInt(md[1]));
+        } catch (RuntimeException e) {
+            LOG.warn("祝福农历换算失败: year={}, monthDay={}", year, monthDay);
+            return null;
+        }
+    }
+
+    /**
+     * 农历触发规格（"月-日"；日位 {@code L} = 该农历月最后一天）与今天农历比对
+     * <p>
+     * 闰月日一律不触发（如闰六月的初六不算端午/七夕等正常月节日）。
+     */
+    private boolean matchesLunarDate(String lunarSpec, LunarCalendar.LunarDate today) {
+        String[] parts = lunarSpec.split("-", 2);
+        if (parts.length != 2) return false;
+        if (today.leapMonth) return false;
+        int month;
+        try {
+            month = Integer.parseInt(parts[0].trim());
+        } catch (NumberFormatException e) {
+            LOG.warn("祝福农历规格非法: {}", lunarSpec);
+            return false;
+        }
+        if (month < 1 || month > 12 || month != today.month) return false;
+        String daySpec = parts[1].trim();
+        if ("L".equalsIgnoreCase(daySpec)) {
+            // 岁末日（除夕 = 腊月最后一天）：天数控表取该月天数
+            return today.day == LunarCalendar.monthDays(today.year, today.month);
+        }
+        try {
+            return Integer.parseInt(daySpec) == today.day;
+        } catch (NumberFormatException e) {
+            LOG.warn("祝福农历规格非法: {}", lunarSpec);
+            return false;
+        }
+    }
+
+    /**
+     * 今天恰为 {@link #SOLAR_TERM_MAIL_TERMS} 之一时投递一封时令作物邮件
+     * <p>
+     * 作物按季：春=小麦+胡萝卜，夏=西瓜片+甘蔗，秋=南瓜+苹果，冬=马铃薯+烤马铃薯
+     * （全部 Vanilla 物品/方块）。防重键 {@code solarterm_<节气名>_<年份>}——
+     * 同一节气每公历年只发一次（key 复用 {@link MailData#getClaimedBlessings()} 现有机制）。
+     */
+    private boolean trySendSolarTermMail(UUID playerId, MailData mailData, String year, String monthDay,
+        String sender) {
+        int y, m, d;
+        try {
+            y = Integer.parseInt(year);
+            String[] md = monthDay.split("-", 2);
+            m = Integer.parseInt(md[0]);
+            d = Integer.parseInt(md[1]);
+        } catch (RuntimeException e) {
+            LOG.warn("节气判定日期解析失败: year={}, monthDay={}", year, monthDay);
+            return false;
+        }
+        String term = SolarTerms.getTermName(y, m, d);
+        if (term == null || !SOLAR_TERM_MAIL_TERMS.contains(term)) return false;
+
+        // 按季取作物 + 文案
+        List<ItemStack> crops;
+        String content;
+        switch (term) {
+            case "立春":
+            case "春分":
+            case "清明":
+            case "谷雨":
+                crops = Arrays.asList(new ItemStack(Items.wheat, 2), new ItemStack(Items.carrot, 2));
+                content = "今日" + term + "，万物生长！猫猫售货机送上应季的小麦和胡萝卜，快去播种春天的希望吧！";
+                break;
+            case "立夏":
+            case "夏至":
+                crops = Arrays.asList(new ItemStack(Items.melon, 2), new ItemStack(Items.reeds, 2));
+                content = "今日" + term + "，暑气渐盛！猫猫售货机送上清甜的西瓜和甘蔗，记得消暑补水哦！";
+                break;
+            case "立秋":
+            case "秋分":
+            case "霜降":
+                crops = Arrays.asList(new ItemStack(Blocks.pumpkin, 2), new ItemStack(Items.apple, 2));
+                content = "今日" + term + "，秋高气爽！猫猫售货机送上金黄的南瓜和苹果，祝你收获满满！";
+                break;
+            default: // 立冬 / 冬至
+                crops = Arrays.asList(new ItemStack(Items.potato, 2), new ItemStack(Items.baked_potato, 2));
+                content = "今日" + term + "，天寒地冻！猫猫售货机送上热乎乎的马铃薯和烤马铃薯，注意保暖多吃饭！";
+                break;
+        }
+        return trySend(playerId, mailData, "solarterm_" + term + "_" + year, "今日" + term, content, crops, sender);
+    }
 
     /**
      * 构建并投递一封祝福邮件（带防重）

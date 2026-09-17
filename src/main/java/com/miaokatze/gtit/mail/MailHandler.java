@@ -9,6 +9,9 @@ import net.minecraft.util.EnumChatFormatting;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.miaokatze.gtit.lottery.LotteryHandler;
+import com.miaokatze.gtit.util.PlayerLookup;
+
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -37,6 +40,9 @@ public class MailHandler {
     /** 周期保存间隔（6000 tick = 5 分钟，防异常退出丢数据） */
     private static final int TICK_SAVE_INTERVAL = 6000;
 
+    /** 登录未读邮件提醒延迟（毫秒，v1.7.8 用户确认：延迟 3 秒聊天框提醒 + 经验叮当声） */
+    private static final long UNREAD_REMIND_DELAY_MS = 3000L;
+
     @SubscribeEvent
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.player instanceof EntityPlayerMP)) return;
@@ -46,13 +52,47 @@ public class MailHandler {
 
         // 加载（或新建）数据，投递待发的首登/一次性奖励（内部有改动即落盘）
         boolean delivered = manager.deliverPendingRewards(playerId);
-        // v1.7.6 G5：登录检测当日祝福（生日/纪念日/节日），防重键拦截重复投递，投递成功内部落盘
+        // v1.7.6 G5：登录检测当日祝福（生日/纪念日/节日/节气），防重键拦截重复投递，投递成功内部落盘
         delivered |= BlessingManager.INSTANCE.checkAndSend(player);
         if (delivered) {
             player.addChatMessage(new ChatComponentText(EnumChatFormatting.GOLD + "你收到了新邮件，请到猫猫售货机查看！"));
         }
         // 推送完整数据给客户端，供邮件 GUI 渲染
         MailNetworkManager.sendSyncToClient(player, manager.getMailData(playerId));
+
+        // v1.7.8：有未读邮件则延迟 3 秒聊天框提醒 + 经验叮当声（每次登录有未读都提醒）
+        scheduleUnreadReminder(playerId);
+    }
+
+    /**
+     * 延迟提醒未读邮件：复用 {@link LotteryHandler#scheduleDelayedTask}（主线程消费），
+     * 延迟 {@link #UNREAD_REMIND_DELAY_MS} 后检查未读数（{@link MailData#getUnreadCount()}），
+     * 有未读才提醒（与上方「本次新投递」提示互不影响）。
+     * <p>
+     * 延迟窗口内玩家可能已登出：按 UUID 重取在线实体，不在线静默跳过（不触碰离线数据）。
+     */
+    private void scheduleUnreadReminder(final UUID playerId) {
+        LotteryHandler.scheduleDelayedTask(UNREAD_REMIND_DELAY_MS, () -> {
+            try {
+                EntityPlayerMP current = PlayerLookup.getOnlinePlayerByUuid(playerId);
+                if (current == null) return;
+                int unread = MailManager.INSTANCE.getMailData(playerId)
+                    .getUnreadCount();
+                if (unread <= 0) return;
+                current.addChatMessage(
+                    new ChatComponentText(
+                        EnumChatFormatting.GOLD + "[猫猫邮件]"
+                            + EnumChatFormatting.RESET
+                            + EnumChatFormatting.YELLOW
+                            + " 你有 "
+                            + unread
+                            + " 封未读邮件，去猫猫售货机看看吧"));
+                // 经验叮当声（先例 trade/v2/NekoNotificationScheduler）
+                current.worldObj.playSoundAtEntity(current, "random.orb", 0.2F, 1.8F);
+            } catch (Throwable t) {
+                LOG.error("登录未读邮件提醒失败: {}", playerId, t);
+            }
+        });
     }
 
     @SubscribeEvent

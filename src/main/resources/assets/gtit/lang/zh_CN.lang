@@ -173,6 +173,10 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIA.name=§6§l裂山
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIA.desc=裂山让两道战意常驻：§1力量 II§r与§1急迫 II§r，同样每§15 秒§r续上一轮§130 秒§r。%n%n一枚戒指，双份答案：一镐下去矿脉开花，一剑下去战场开门。%n%n呈上一枚裂山即可，§2只验不收§r。§8§o山，只是还没被你裂开而已。§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.name=§9§l凌步
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIQ.desc=凌步把你的抬脚高度顶到§11.1 格§r：整块方块像半砖一样直接走上去，§2无需跳跃§r——台阶、矮墙、褶皱地形，一律如履平地。%n%n赶路不再一颠一颠，盖楼时爬脚手架也变得温柔。%n%n呈上一枚凌步即可，§2只验不收§r。§8§o楼梯从此沦为装饰品。§r
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIg.name=§b§l组队方法
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIg.desc=这一课不讲机器，讲怎么把人凑成一队：GTNHLib 自带 §3§n/gtnhteam§r 指令，输入即可打开队伍 GUI——创建自己的队伍、向好友发出邀请，或接受别人的邀请入队，组队一步到位。%n%n队伍也不只是个名头：GTIT 钱包支持 §2TEAM 共享钱包§r 模式，开启后队伍资金共用——队友的钱就是大家的钱，攒大件再也不用互相催账。%n%n先组队，后开工，分工与分红都顺手。%n%n§8§o独狼是浪漫，搭子是生产力。§r
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIw.name=§b§l轮回介绍
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIw.desc=这一课讲本包的元玩法——周目轮回：打开轮回 GUI，把贵重物品§3存入§r（deposit），点下"确认轮回"，便进入新周目——世界重生、进度清空，但时间线与奖励持续累积，走过的路不会作废。%n%n新周目中再开轮回 GUI，即可按累积领取轮回奖励（claimGrant）——§2周目数越多，奖励越丰厚§r。%n%n放心点确认：轮回自带确认保护，误触不会直接送你开新周目。%n%n注意：轮回仅在单机世界生效，专业服务器（dedicated server）中不生效。%n%n随身带着一枚轮回水晶即可完成本任务的检索——仅查验，不会被消耗。%n%n§8§o结局不是终点，是下一周目的存档点。§r
 # BQ quests [pack=gtit] END
 
 # Reincarnation Cycle GUI (v1.8.8 贴图化接线；经格式化路径消费的键保留 %% 转义，按钮/tooltip 走 translateToLocal 直读路径用单 %)
@@ -252,4 +256,3 @@ gtit.reincarnation.timeline_ended=删除混淆配置文件可终结轮回倒计�
 gtit.reincarnation.grant.dropped=部分轮回奖励无法解析，已隔离并清账：%s
 # v1.8.2 严格单机门控（专用服/开放 LAN 拒绝提示）
 gtit.reincarnation.single_player_only=轮回机制仅单机可用
-

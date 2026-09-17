@@ -35,10 +35,13 @@ import cpw.mods.fml.common.registry.GameRegistry;
  * <li>{@code birthday}：生日祝福模板（标题 / 正文 / 附件物品列表 / 猫猫币；日期来自玩家自配生日）</li>
  * <li>{@code sender}：祝福邮件发件人显示名（默认「猫猫售货机」）</li>
  * </ul>
- * 默认节日（v1.7.6 用户确认口径）：元旦 / 春节 / 元宵 / 中秋 / 圣诞——
- * 春节、元宵、中秋为农历节日，本系统不做农历换算，按配置中的固定公历日期触发
- * （服务器管理员可按当年农历自行改日期）；每节 = 食物附件 + 少量猫猫币；
- * 生日 = minecraft:cake×1。
+ * 默认节日（v1.7.8 用户确认口径）：公历节日 = 元旦 / 情人节 / 妇女节 / 愚人节 /
+ * 劳动节 / 儿童节 / 教师节 / 国庆 / 万圣节前夜 / 圣诞；农历节日 = 春节 / 元宵 /
+ * 端午 / 七夕 / 中秋 / 重阳 / 腊八 / 除夕——农历节日由 {@code lunar} 字段
+ * （"月-日"，除夕 = "12-L" 腊月最后一天）表达，触发时经
+ * {@code lunar.LunarCalendar} 换算当天农历后比对，无需管理员逐年改日期；
+ * 旧配置（无 {@code lunar} 字段）仍按 {@code month_day} 固定公历触发，完全兼容。
+ * 每节 = 食物附件 + 少量猫猫币；生日 = minecraft:cake×1。
  * <p>
  * <b>发放形式（v1.7.6 用户确认）</b>：猫猫币以附件<b>物品</b>形式随邮件发放
  * （玩家领取后自行投币入钱包），不直接写入钱包。
@@ -120,15 +123,23 @@ public class BlessingConfig {
         }
     }
 
-    /** 节日祝福条目（MM-dd 固定公历日期触发） */
+    /** 节日祝福条目（lunar 非空按农历触发，否则按 MM-dd 固定公历日期触发） */
     public static class FestivalBlessing {
 
         /** 节日名称（展示/防重键用） */
         @SerializedName("name")
         public String name = "";
-        /** 触发日期（"MM-dd" 固定公历；农历节日由管理员按当年自行调整） */
+        /** 触发日期（"MM-dd" 固定公历；lunar 非空时不参与比对，供编辑面板展示） */
         @SerializedName("month_day")
         public String monthDay = "";
+        /**
+         * 农历触发日期（"月-日"，如 {@code "1-1"} = 正月初一、{@code "8-15"} = 八月十五；
+         * {@code "12-L"} = 腊月最后一天（除夕），L 由换算表取腊月天数判定）。
+         * 空串 = 按公历 {@code month_day} 触发；非空时优先于公历字段。
+         * 闰月日（如闰六月）不触发，等正常月。
+         */
+        @SerializedName("lunar")
+        public String lunar = "";
         @SerializedName("title")
         public String title = "";
         @SerializedName("content")
@@ -147,8 +158,15 @@ public class BlessingConfig {
 
         public FestivalBlessing(String name, String monthDay, String title, String content, List<BlessingItem> items,
             String currency, int currencyAmount) {
+            this(name, monthDay, "", title, content, items, currency, currencyAmount);
+        }
+
+        /** 带农历触发日期的完整构造（lunar 传空串 = 纯公历节日） */
+        public FestivalBlessing(String name, String monthDay, String lunar, String title, String content,
+            List<BlessingItem> items, String currency, int currencyAmount) {
             this.name = name == null ? "" : name;
             this.monthDay = monthDay == null ? "" : monthDay;
+            this.lunar = lunar == null ? "" : lunar;
             this.title = title == null ? "" : title;
             this.content = content == null ? "" : content;
             if (items != null) this.items = items;
@@ -284,7 +302,8 @@ public class BlessingConfig {
             Path path = Paths.get(CONFIG_PATH);
             Files.createDirectories(path.getParent());
             ConfigData data = new ConfigData();
-            data.comment = "春节/元宵/中秋为农历节日，此处按固定公历日期触发，管理员可按当年农历自行修改 month_day";
+            data.comment = "节日祝福表：lunar 非空（\"月-日\"，\"12-L\"=除夕腊月末日）按农历自动换算触发，"
+                + "否则按 month_day 固定公历触发；旧配置缺 lunar 字段按公历，完全兼容";
             data.sender = sender;
             data.festivals = festivals;
             data.birthday = birthday;
@@ -332,12 +351,21 @@ public class BlessingConfig {
     // ==================== 内部辅助 ====================
 
     /**
-     * 默认配置（v1.7.6 用户确认口径）：元旦/春节/元宵/中秋/圣诞，
-     * 每节 = 食物附件 + 少量猫猫币；生日 = minecraft:cake×1。
+     * 默认配置（v1.7.8 用户确认口径）：
+     * <ul>
+     * <li>公历节日（month_day）= 元旦 / 情人节 / 妇女节 / 愚人节 / 劳动节 / 儿童节 /
+     * 教师节 / 国庆 / 万圣节前夜 / 圣诞（外国节日仅加用户拍板的三个）</li>
+     * <li>农历节日（lunar，自动换算）= 春节 1-1 / 元宵 1-15 / 端午 5-5 / 七夕 7-7 /
+     * 中秋 8-15 / 重阳 9-9 / 腊八 12-8 / 除夕 12-L（腊月最后一天）</li>
+     * </ul>
+     * 每节 = 食物附件（1-2 件 Vanilla 物品）+ 少量猫猫币；生日 = minecraft:cake×1。
      */
     private static void applyDefaults() {
         sender = "猫猫售货机";
         festivals = new ArrayList<>();
+
+        // ---- 公历节日 ----
+
         List<BlessingItem> newYearItems = new ArrayList<>();
         newYearItems.add(new BlessingItem("minecraft:bread", 0, 2));
         festivals.add(
@@ -350,41 +378,101 @@ public class BlessingConfig {
                 NekoCurrencyRegistrar.NEKO_ID,
                 5));
 
-        List<BlessingItem> springItems = new ArrayList<>();
-        springItems.add(new BlessingItem("minecraft:cooked_beef", 0, 2));
+        List<BlessingItem> valentineItems = new ArrayList<>();
+        valentineItems.add(new BlessingItem("minecraft:golden_carrot", 0, 1));
         festivals.add(
             new FestivalBlessing(
-                "春节",
-                "02-10",
-                "春节快乐！",
-                "爆竹声中一岁除！猫猫售货机祝你新春大吉，万事如意！",
-                springItems,
-                NekoCurrencyRegistrar.NEKO_ID,
-                8));
-
-        List<BlessingItem> lanternItems = new ArrayList<>();
-        lanternItems.add(new BlessingItem("minecraft:cookie", 0, 2));
-        festivals.add(
-            new FestivalBlessing(
-                "元宵",
-                "02-24",
-                "元宵快乐！",
-                "花好月圆夜，甜甜糯糯过元宵。祝元宵快乐！",
-                lanternItems,
+                "情人节",
+                "02-14",
+                "情人节快乐！",
+                "金萝卜甜甜的，像今天的空气一样！猫猫售货机祝你情人节快乐～",
+                valentineItems,
                 NekoCurrencyRegistrar.NEKO_ID,
                 5));
 
-        List<BlessingItem> midAutumnItems = new ArrayList<>();
-        midAutumnItems.add(new BlessingItem("minecraft:pumpkin_pie", 0, 2));
+        List<BlessingItem> womenDayItems = new ArrayList<>();
+        womenDayItems.add(new BlessingItem("minecraft:red_flower", 0, 1));
         festivals.add(
             new FestivalBlessing(
-                "中秋",
-                "09-17",
-                "中秋快乐！",
-                "但愿人长久，千里共婵娟。祝中秋快乐，阖家团圆！",
-                midAutumnItems,
+                "妇女节",
+                "03-08",
+                "妇女节快乐！",
+                "一朵小红花，送给了不起的你！猫猫售货机祝你妇女节快乐！",
+                womenDayItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                3));
+
+        List<BlessingItem> foolDayItems = new ArrayList<>();
+        foolDayItems.add(new BlessingItem("minecraft:poisonous_potato", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "愚人节",
+                "04-01",
+                "愚人节快乐！",
+                "这份礼物是真是假？嘿嘿，猫猫才不告诉你！愚人节快乐（这封邮件是真的）！",
+                foolDayItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                3));
+
+        List<BlessingItem> laborDayItems = new ArrayList<>();
+        laborDayItems.add(new BlessingItem("minecraft:iron_pickaxe", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "劳动节",
+                "05-01",
+                "劳动节快乐！",
+                "劳动最光荣！猫猫售货机向每一位挥动镐子的冒险者致敬，劳动节快乐！",
+                laborDayItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                5));
+
+        List<BlessingItem> childrenDayItems = new ArrayList<>();
+        childrenDayItems.add(new BlessingItem("minecraft:slime_ball", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "儿童节",
+                "06-01",
+                "儿童节快乐！",
+                "蹦蹦跳跳史莱姆！猫猫售货机祝所有大朋友小朋友儿童节快乐！",
+                childrenDayItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                5));
+
+        List<BlessingItem> teacherDayItems = new ArrayList<>();
+        teacherDayItems.add(new BlessingItem("minecraft:book", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "教师节",
+                "09-10",
+                "教师节快乐！",
+                "谢谢每一位传授知识的老师！猫猫售货机祝你教师节快乐！",
+                teacherDayItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                5));
+
+        List<BlessingItem> nationalDayItems = new ArrayList<>();
+        nationalDayItems.add(new BlessingItem("minecraft:fireworks", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "国庆",
+                "10-01",
+                "国庆快乐！",
+                "烟花贺华诞！猫猫售货机祝你国庆假期玩得开心！",
+                nationalDayItems,
                 NekoCurrencyRegistrar.NEKO_ID,
                 8));
+
+        List<BlessingItem> halloweenItems = new ArrayList<>();
+        halloweenItems.add(new BlessingItem("minecraft:rotten_flesh", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "万圣节前夜",
+                "10-31",
+                "万圣夜快乐！",
+                "不给糖就捣蛋！……猫猫翻遍了仓库只有这个，不要嫌弃喵！万圣夜快乐！",
+                halloweenItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                3));
 
         List<BlessingItem> christmasItems = new ArrayList<>();
         christmasItems.add(new BlessingItem("minecraft:cooked_chicken", 0, 2));
@@ -397,6 +485,112 @@ public class BlessingConfig {
                 christmasItems,
                 NekoCurrencyRegistrar.NEKO_ID,
                 5));
+
+        // ---- 农历节日（lunar 字段自动换算，无需逐年改日期）----
+
+        List<BlessingItem> springItems = new ArrayList<>();
+        springItems.add(new BlessingItem("minecraft:cooked_beef", 0, 2));
+        festivals.add(
+            new FestivalBlessing(
+                "春节",
+                "",
+                "1-1",
+                "春节快乐！",
+                "爆竹声中一岁除！猫猫售货机祝你新春大吉，万事如意！",
+                springItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                8));
+
+        List<BlessingItem> lanternItems = new ArrayList<>();
+        lanternItems.add(new BlessingItem("minecraft:cookie", 0, 2));
+        festivals.add(
+            new FestivalBlessing(
+                "元宵",
+                "",
+                "1-15",
+                "元宵快乐！",
+                "花好月圆夜，甜甜糯糯过元宵。祝元宵快乐！",
+                lanternItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                5));
+
+        List<BlessingItem> dragonBoatItems = new ArrayList<>();
+        dragonBoatItems.add(new BlessingItem("minecraft:fish", 0, 2));
+        festivals.add(
+            new FestivalBlessing(
+                "端午",
+                "",
+                "5-5",
+                "端午安康！",
+                "粽叶飘香，龙舟竞渡！猫猫售货机祝你端午安康！",
+                dragonBoatItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                5));
+
+        List<BlessingItem> qixiItems = new ArrayList<>();
+        qixiItems.add(new BlessingItem("minecraft:emerald", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "七夕",
+                "",
+                "7-7",
+                "七夕快乐！",
+                "鹊桥相会夜，星光都变得温柔。猫猫售货机祝你七夕快乐！",
+                qixiItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                8));
+
+        List<BlessingItem> midAutumnItems = new ArrayList<>();
+        midAutumnItems.add(new BlessingItem("minecraft:pumpkin_pie", 0, 2));
+        festivals.add(
+            new FestivalBlessing(
+                "中秋",
+                "",
+                "8-15",
+                "中秋快乐！",
+                "但愿人长久，千里共婵娟。祝中秋快乐，阖家团圆！",
+                midAutumnItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                8));
+
+        List<BlessingItem> doubleNinthItems = new ArrayList<>();
+        doubleNinthItems.add(new BlessingItem("minecraft:apple", 0, 2));
+        festivals.add(
+            new FestivalBlessing(
+                "重阳",
+                "",
+                "9-9",
+                "重阳安康！",
+                "登高望远，秋色正好！猫猫售货机送你平安果，祝你重阳安康！",
+                doubleNinthItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                5));
+
+        List<BlessingItem> labaItems = new ArrayList<>();
+        labaItems.add(new BlessingItem("minecraft:mushroom_stew", 0, 1));
+        festivals.add(
+            new FestivalBlessing(
+                "腊八",
+                "",
+                "12-8",
+                "腊八快乐！",
+                "过了腊八就是年！喝碗热粥暖暖的，猫猫售货机祝你腊八快乐！",
+                labaItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                5));
+
+        List<BlessingItem> newYearsEveItems = new ArrayList<>();
+        newYearsEveItems.add(new BlessingItem("minecraft:cooked_porkchop", 0, 2));
+        festivals.add(
+            new FestivalBlessing(
+                "除夕",
+                "",
+                "12-L",
+                "除夕快乐！",
+                "辞旧岁，迎新春！年夜饭开饭啦，猫猫售货机祝你阖家团圆，年年有余！",
+                newYearsEveItems,
+                NekoCurrencyRegistrar.NEKO_ID,
+                8));
 
         birthday = new BirthdayBlessing();
         birthday.items.add(new BlessingItem("minecraft:cake", 0, 1));
