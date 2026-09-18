@@ -110,7 +110,7 @@ betterquesting.questline.R1RJVAAAAAAAAAAAAAAAAQ.desc=GTIT 给 GregTech 叠上一
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAQ.name=§6§l猫猫经济双子星
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAQ.desc=GTIT 有两张面孔：§3运营层§r——售货机、新手宝箱、签到、抽奖与邮件；§3工具层§r——猫币、浮空核心、无限元件与八枚戒指。%n%n东支走运营：把机器造起来、把钱包喂起来；西支走工具：让戒指与核心替你干活。%n%n§8§o猫猫已经接管了经济的每一个角落，抵抗是无效的。§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAg.name=§6§l猫猫运营层
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAg.desc=第一次踏进世界，猫猫会自动塞给你一只§2新手宝箱§r——防重发标志保证它只来一次，绝不补发。%n%n更妙的是，这一层§2处处可自定义§r：宝箱里装什么、货架上卖什么、签到与抽奖给什么，全都能靠各自的配置文件自定义；管理员打开§3可视化编辑模式§r，还能直接在 GUI 里自定义商店条目，一行代码都不用碰。%n%n把整只宝箱呈上即可，§2只验不收§r。§8§o开箱的冲动请自行管理。§r
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAg.desc=第一次踏进世界，猫猫会自动塞给你一只§2新手宝箱§r——防重发标志保证它只来一次，绝不补发。%n%n更妙的是，这一层§2处处可自定义§r：宝箱里装什么、货架上卖什么、签到与抽奖给什么，全都能靠各自的配置文件自定义；管理员打开§3可视化编辑模式§r，还能直接在 GUI 里自定义商店条目，一行代码都不用碰。%n%n没有新手礼包的老玩家：勾一下下面的§2勾选格§r即可——呈验或勾选，任一即过。%n%n把整只宝箱呈上即可，§2只验不收§r。§8§o开箱的冲动请自行管理。§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.name=§2§l开箱！猫猫的见面礼
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.desc=新手宝箱必中清单：§1面包×16§r、§1火把×64§r、一张床、§1八只箱子§r与§1一枚猫币§r；在此之外还会随机加抽两枚戒指：凌步、磐躯、龙息、裂山、疾风皆有可能。%n%n先讲机制：礼包在§2首次登录时自动发放§r，持久化标志保证只发一次。自定义只需一条指令——§3/gtit gift certain§r把当前背包定为必中清单，§3/gtit gift random <数量>§r定为随机池，§3/gtit gift reset§r一键恢复默认。%n%n想让人再领一次？§3/gtit gift claimreset <all|玩家名>§r清掉领取记录（§3/gtit gift claimlist§r可查名单），下次登录宝箱自动补发。%n%n交出一张床和一整组火把作回执，§2物品照旧归你所有§r。§8§o第二顿白食，猫猫亲手送上。§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAABA.name=§6§l组装猫猫售货机
@@ -256,3 +256,4 @@ gtit.reincarnation.timeline_ended=删除混淆配置文件可终结轮回倒计�
 gtit.reincarnation.grant.dropped=部分轮回奖励无法解析，已隔离并清账：%s
 # v1.8.2 严格单机门控（专用服/开放 LAN 拒绝提示）
 gtit.reincarnation.single_player_only=轮回机制仅单机可用
+

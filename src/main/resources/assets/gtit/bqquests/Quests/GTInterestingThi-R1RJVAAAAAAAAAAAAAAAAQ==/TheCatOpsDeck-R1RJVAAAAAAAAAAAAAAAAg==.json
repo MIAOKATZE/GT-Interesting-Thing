@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The moment you first enter the world, the cat stuffs a §2starter gift§r into your hands — a persisted flag guarantees it happens exactly once.\n\nBetter yet, this layer is §2customizable everywhere§r: what goes inside the gift, what the shelves sell, what sign-in and the lottery pay — all customizable through their own configs, and an admin can flip on a §3visual edit mode§r to reshape shop entries right inside the GUI, no code required.\n\nHand the whole gift over for inspection; §2checked, not taken§r. §8§oThe urge to open it first is your own problem.§r",
+      "desc:8": "The moment you first enter the world, the cat stuffs a §2starter gift§r into your hands — a persisted flag guarantees it happens exactly once.\n\nBetter yet, this layer is §2customizable everywhere§r: what goes inside the gift, what the shelves sell, what sign-in and the lottery pay — all customizable through their own configs, and an admin can flip on a §3visual edit mode§r to reshape shop entries right inside the GUI, no code required.\n\nVeterans who no longer hold a starter gift: just tick the §2checkbox§r below — the inspection or the tick, either one completes this quest.\n\nHand the whole gift over for inspection; §2checked, not taken§r. §8§oThe urge to open it first is your own problem.§r",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
@@ -26,7 +26,7 @@
       "simultaneous:1": 0,
       "snd_complete:8": "random.levelup",
       "snd_update:8": "random.levelup",
-      "taskLogic:8": "AND",
+      "taskLogic:8": "OR",
       "visibility:8": "NORMAL"
     }
   },
@@ -82,6 +82,10 @@
         }
       },
       "taskID:8": "bq_standard:retrieval"
+    },
+    "1:10": {
+      "index:3": 1,
+      "taskID:8": "bq_standard:checkbox"
     }
   }
 }
