@@ -233,6 +233,14 @@ public class NekoTradeMainPanel extends ModularPanel {
          * 由主面板在 Esc/E 键按下时调用，统一处理编辑器关闭逻辑。
          */
         void closeEditOverlay();
+
+        /**
+         * 主面板每 tick 客户端更新回调（v1.8.17）
+         * <p>
+         * 在 {@code onUpdate()} 末尾（客户端分支）调用，供 GUI 控制器执行
+         * 客户端轮询逻辑（如默认贸易组同步询问弹框的延迟打开——等同步值就绪）。
+         */
+        void onMainPanelUpdate();
     }
 
     // ==================== 字段 ====================
@@ -816,6 +824,9 @@ public class NekoTradeMainPanel extends ModularPanel {
 
         // 递增 tick 计数器
         this.ticksOpen += 1;
+
+        // GUI 控制器客户端轮询回调（v1.8.17：默认贸易组同步询问等延迟弹框）
+        callback.onMainPanelUpdate();
     }
 
     // ==================== 生命周期 ====================

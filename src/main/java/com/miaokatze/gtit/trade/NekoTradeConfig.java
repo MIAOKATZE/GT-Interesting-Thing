@@ -258,6 +258,100 @@ public class NekoTradeConfig {
         return GSON.toJson(data == null ? new NekoTradeData() : data);
     }
 
+    // --- orderId 高水位分配（v1.8.17 默认贸易体系） ---
+
+    /** orderId 高水位文件（相对游戏根目录）：tabId → 该页已分配过的最大 orderId，删除不复用 */
+    private static final String ORDER_WATERMARK_PATH = "config/gtit/trade/order_watermark.json";
+
+    /** 高水位文件数据结构 */
+    public static class OrderWatermarkData {
+
+        private int version = 1;
+        private Map<Integer, Integer> watermarks = new HashMap<>();
+
+        public int getVersion() {
+            return version;
+        }
+
+        public void setVersion(int version) {
+            this.version = version;
+        }
+
+        public Map<Integer, Integer> getWatermarks() {
+            return watermarks;
+        }
+
+        public void setWatermarks(Map<Integer, Integer> watermarks) {
+            this.watermarks = watermarks;
+        }
+    }
+
+    /**
+     * 为指定标签页分配下一个 orderId（新建条目用，v1.8.17）
+     * <p>
+     * 取「现有最大 orderId」与「高水位记录」的较大者 +1 并回写高水位：
+     * 条目删除后其 ID 位置永不复用，页中保持空位。
+     *
+     * @param tabId      标签页 ID
+     * @param currentMax 该页现有条目的最大 orderId（无条目时传 -1）
+     * @return 分配的 orderId
+     */
+    public static synchronized int allocateOrderId(int tabId, int currentMax) {
+        int order = Math.max(
+            currentMax,
+            loadOrderWatermarks().getWatermarks()
+                .getOrDefault(tabId, -1))
+            + 1;
+        raiseOrderWatermark(tabId, order);
+        return order;
+    }
+
+    /**
+     * 抬高指定标签页的 orderId 高水位（仅升高不降低，落盘）
+     * <p>
+     * 贸易组应用（{@code registerToDisk}）时对组内各页调用，
+     * 保证被删除的默认条目 ID 位置在复原之外不被新建条目占用。
+     *
+     * @param tabId   标签页 ID
+     * @param orderId 本页条目 orderId（仅当大于现有水位时生效）
+     */
+    public static synchronized void raiseOrderWatermark(int tabId, int orderId) {
+        if (tabId <= 0 || orderId < 0) return;
+        try {
+            OrderWatermarkData data = loadOrderWatermarks();
+            Integer current = data.getWatermarks()
+                .get(tabId);
+            if (current != null && current >= orderId) return;
+            data.getWatermarks()
+                .put(tabId, orderId);
+            Path path = Paths.get(ORDER_WATERMARK_PATH);
+            Files.createDirectories(path.getParent());
+            Files.write(
+                path,
+                GSON.toJson(data)
+                    .getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            LOG.error("orderId 高水位写入失败（tab={}，order={}）", tabId, orderId, e);
+        }
+    }
+
+    /** 读取 orderId 高水位（文件缺失/损坏时返回空记录） */
+    private static OrderWatermarkData loadOrderWatermarks() {
+        try {
+            Path path = Paths.get(ORDER_WATERMARK_PATH);
+            if (Files.exists(path)) {
+                String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+                OrderWatermarkData data = GSON.fromJson(json, OrderWatermarkData.class);
+                if (data != null && data.getWatermarks() != null) {
+                    return data;
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("orderId 高水位读取失败，按空记录处理", e);
+        }
+        return new OrderWatermarkData();
+    }
+
     /**
      * 从 JSON 字符串反序列化交易数据（v1.7.0 目标 5：客户端接收同步包后解析用）
      *
@@ -679,7 +773,7 @@ public class NekoTradeConfig {
                 3,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11032:1",
                 "enhancedlootbags:lootbag",
                 1,
                 3,
@@ -694,7 +788,7 @@ public class NekoTradeConfig {
                 4,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11300:1",
                 "enhancedlootbags:lootbag",
                 2,
                 3,
@@ -709,7 +803,7 @@ public class NekoTradeConfig {
                 5,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11305:1",
                 "enhancedlootbags:lootbag",
                 4,
                 3,
@@ -724,14 +818,14 @@ public class NekoTradeConfig {
                 6,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11019:1",
                 "enhancedlootbags:lootbag",
                 5,
                 3,
                 "CgAACQAEZW5jaAoAAAABAgACaWQAIwIAA2x2bAADAAA=",
                 79200,
                 -1,
-                "AAAAAAAAAAAAAAAAAAAAfA=="));
+                "AAAAAAAAAAAAAAAAAAAEfA=="));
         trades.add(
             createDefaultTrade(
                 "fdba714d-ff93-4d8d-8801-dda17b2456ef",
@@ -739,7 +833,7 @@ public class NekoTradeConfig {
                 7,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11306:1",
                 "enhancedlootbags:lootbag",
                 6,
                 3,
@@ -754,7 +848,7 @@ public class NekoTradeConfig {
                 8,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11028:1",
                 "enhancedlootbags:lootbag",
                 7,
                 3,
@@ -769,7 +863,7 @@ public class NekoTradeConfig {
                 9,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11316:1",
                 "enhancedlootbags:lootbag",
                 8,
                 3,
@@ -784,7 +878,7 @@ public class NekoTradeConfig {
                 10,
                 null,
                 0,
-                null,
+                "bartworks:bwMetaGeneratedingot:88:1",
                 "enhancedlootbags:lootbag",
                 41,
                 3,
@@ -799,7 +893,7 @@ public class NekoTradeConfig {
                 11,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11084:1",
                 "enhancedlootbags:lootbag",
                 42,
                 3,
@@ -814,7 +908,7 @@ public class NekoTradeConfig {
                 12,
                 null,
                 0,
-                null,
+                "gregtech:gt.metaitem.01:11083:1",
                 "enhancedlootbags:lootbag",
                 43,
                 3,
@@ -859,14 +953,14 @@ public class NekoTradeConfig {
                 "7ba241dc-1a6f-431c-ac16-91997c652ffe",
                 5,
                 3,
-                "neko",
-                1,
                 null,
+                0,
+                "minecraft:bread:0:1",
                 "enhancedlootbags:lootbag",
                 29,
                 3,
                 null,
-                1200,
+                79200,
                 -1,
                 ""));
         trades.add(

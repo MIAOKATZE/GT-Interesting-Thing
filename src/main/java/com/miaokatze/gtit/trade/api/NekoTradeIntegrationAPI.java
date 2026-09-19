@@ -4,9 +4,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -405,6 +409,10 @@ public final class NekoTradeIntegrationAPI {
      * 交易按 id 去重（同 id 旧条目视为本组残留，移除后以新定义覆盖——
      * 记账文件被删除时的强制重注册语义）。条目深拷贝后合入，调用方后续
      * 修改 def 不影响已落盘内容。组级 bqQuestId 作为条目级缺省继承。
+     * <p>
+     * v1.8.17 默认贸易体系：默认贸易组条目打 {@code defaultEntry} 标记；
+     * 组内各页 orderId 抬升高水位（删除不复用）；注册完成后计算内容哈希存入记账，
+     * 供版本更新时判定玩家是否改过默认条目。
      *
      * @return 新记账（失败返回 null）
      */
@@ -421,6 +429,7 @@ public final class NekoTradeIntegrationAPI {
         if (data.getTrades() == null) {
             data.setTrades(new ArrayList<>());
         }
+        Map<Integer, Integer> tabMaxOrder = new HashMap<>();
         for (NekoTradeEntry src : def.getTrades()) {
             if (src == null) continue;
             NekoTradeEntry entry = deepCopy(src, NekoTradeEntry.class);
@@ -437,12 +446,21 @@ public final class NekoTradeIntegrationAPI {
                     .isEmpty()) {
                 entry.setBqQuestId(def.getBqQuestId());
             }
+            // 默认贸易组条目标记（随 tab 文件持久化并同步客户端，GUI 据此弹修改/删除警告）
+            if (def.isDefaultGroup()) {
+                entry.setDefaultEntry(true);
+            }
             removeTradeById(data, entry.getId());
             data.getTrades()
                 .add(entry);
             record.tradeIds.add(entry.getId());
+            tabMaxOrder.merge(entry.getTabId(), entry.getOrderId(), Math::max);
         }
         NekoTradeConfig.save(data);
+        // 各页 orderId 抬升高水位：删除后的 ID 位置不复用（含被删除的默认条目）
+        for (Map.Entry<Integer, Integer> tabMax : tabMaxOrder.entrySet()) {
+            NekoTradeConfig.raiseOrderWatermark(tabMax.getKey(), tabMax.getValue());
+        }
 
         // 2. 页面合并：按 id upsert（默认页 1-3 的定义覆盖同样允许，仅删除受限）
         if (def.getPages() != null && !def.getPages()
@@ -479,7 +497,56 @@ public final class NekoTradeIntegrationAPI {
             }
             NekoPageConfig.save(pageData);
         }
+
+        // 3. 内容哈希入账（版本更新时比对玩家是否改动过本组条目）
+        record.contentHash = computeContentHash(record, data);
         return record;
+    }
+
+    /**
+     * 计算组内容哈希（注册入账与更新校验共用同一序列化口径）
+     * <p>
+     * 按记账 tradeIds 顺序取磁盘数据中对应条目，逐条 GSON 序列化后拼接，
+     * SHA-256 转 hex。任一条目缺失视为内容已变（返回 null）。
+     *
+     * @param record 组记账（提供 tradeIds 顺序）
+     * @param data   磁盘交易数据
+     * @return 哈希 hex；条目缺失或参数无效返回 null
+     */
+    static String computeContentHash(GroupRecord record, NekoTradeConfig.NekoTradeData data) {
+        if (record == null || data == null || data.getTrades() == null || record.tradeIds.isEmpty()) {
+            return null;
+        }
+        Map<String, NekoTradeEntry> byId = new HashMap<>();
+        for (NekoTradeEntry entry : data.getTrades()) {
+            if (entry != null && entry.getId() != null) {
+                byId.put(entry.getId(), entry);
+            }
+        }
+        StringBuilder canonical = new StringBuilder();
+        for (String tradeId : record.tradeIds) {
+            NekoTradeEntry entry = byId.get(tradeId);
+            if (entry == null) {
+                return null;
+            }
+            canonical.append(GSON.toJson(entry, NekoTradeEntry.class))
+                .append('\n');
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(
+                canonical.toString()
+                    .getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16))
+                    .append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            LOG.error("[TradeAPI] SHA-256 不可用，内容哈希计算失败", e);
+            return null;
+        }
     }
 
     /**
@@ -563,6 +630,12 @@ public final class NekoTradeIntegrationAPI {
      * 版本未变跳过（尊重玩家编辑）、版本变化按清单精准移除、
      * 删除文件强制重注册。
      * <p>
+     * v1.8.17 默认贸易体系扩展字段（仅默认贸易组消费，其余组为中性默认值）：
+     * {@code contentHash} 注册时的组内容哈希（更新时比对玩家是否改过默认条目）；
+     * {@code dismissedVersion} 玩家对"是否复原"选否的版本（该版本不再打扰）；
+     * {@code neverAsk} "不再提醒"标志（后续版本也不再弹默认组同步询问）；
+     * {@code handledUpdateTag} 已处理的更新标签版本（低于 {@code UPDATE_TAG} 时强制弹同步询问）。
+     * <p>
      * 包级可见（非 private）供同包单元测试直接构造与读写。
      */
     static final class GroupRecord {
@@ -572,10 +645,20 @@ public final class NekoTradeIntegrationAPI {
         int version;
         final List<String> tradeIds = new ArrayList<>();
         final List<Integer> pageIds = new ArrayList<>();
+        /** 注册时的组内容哈希（hex）；旧记账无此字段为 null，视为"已修改" */
+        String contentHash;
+        /** 玩家选"否"跳过的默认组版本；0=无 */
+        int dismissedVersion;
+        /** "不再提醒"标志：后续默认组版本更新不再弹询问 */
+        boolean neverAsk;
+        /** 已处理的更新标签版本；null=旧记账（升自 1.8.17 之前，视为未处理） */
+        String handledUpdateTag;
 
         GroupRecord(String groupId, int version) {
             this.groupId = groupId;
             this.version = version;
+            // 新记账视为已处理当前更新标签（老存档记账无该字段 → 强制同步询问一次）
+            this.handledUpdateTag = BundledTradeGroups.UPDATE_TAG;
         }
 
         Path path() {

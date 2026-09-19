@@ -37,6 +37,10 @@ public class NekoTradeEntry {
     // 统一默认 false（用户确认口径）：旧 JSON 无该字段时 Gson 保留默认值 false，
     // 旧带 NBT 需求的交易匹配变宽松，属行为变更（已写入 commit 说明）。
     private boolean recordNBT = false;
+    // 默认贸易组条目标记（v1.8.17）：true=由内置基础贸易组（gtit-base）注入。
+    // 持久化于 tab 文件并随同步包下发，编辑/保存不丢失；玩家删除后随条目消失，
+    // 复原（重注册）时由 applyGroup 重新打标。旧 JSON 无该字段时 Gson 保留默认 false。
+    private boolean defaultEntry = false;
 
     public NekoTradeEntry() {
         this.id = UUID.randomUUID()
@@ -141,6 +145,14 @@ public class NekoTradeEntry {
 
     public void setRecordNBT(boolean recordNBT) {
         this.recordNBT = recordNBT;
+    }
+
+    public boolean isDefaultEntry() {
+        return defaultEntry;
+    }
+
+    public void setDefaultEntry(boolean defaultEntry) {
+        this.defaultEntry = defaultEntry;
     }
 
     // --- Inner Classes ---

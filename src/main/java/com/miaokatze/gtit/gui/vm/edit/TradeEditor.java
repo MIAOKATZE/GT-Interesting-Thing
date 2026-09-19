@@ -59,6 +59,13 @@ public final class TradeEditor {
     private NekoConfirmationDialog deleteConfirmDialog;
     /** 删除确认面板 handler（客户端，宿主 build 客户端块注入；服务端保持 null） */
     private IPanelHandler deleteConfirmPanel;
+    /**
+     * 默认贸易条目保存警告弹框引用（客户端，v1.8.17，宿主 build 客户端块经
+     * {@link #setDefaultSaveConfirm} 注入；服务端保持 null）
+     */
+    private NekoConfirmationDialog defaultSaveConfirmDialog;
+    /** 默认贸易条目保存警告面板 handler（客户端，服务端保持 null） */
+    private IPanelHandler defaultSaveConfirmPanel;
 
     /** 当前正在编辑的交易显示数据（客户端，打开编辑面板时设置） */
     private NekoTradeItemDisplay editingDisplay;
@@ -403,18 +410,30 @@ public final class TradeEditor {
         editPanel.child(recordNbtToggle);
 
         // --- 保存 / 删除 / 取消按钮 ---
+        // 保存（v1.8.17：默认贸易条目先弹警告弹框，确认"仍要保存"后才真正保存）
         editPanel.child(
             new ButtonWidget<>().size(50, 16)
                 .left(30)
                 .bottom(8)
                 .overlay(IKey.str("保存"))
                 .onMouseTapped(mouse -> {
-                    saveTradeEdit();
-                    requestClose.run();
+                    if (isEditingDefaultTrade() && defaultSaveConfirmDialog != null
+                        && defaultSaveConfirmPanel != null) {
+                        defaultSaveConfirmDialog.setButtonText("仍要保存", "取消");
+                        defaultSaveConfirmDialog.setParams("你正在修改默认贸易条目，不推荐修改其作为个人自定义贸易组，如有需求，可以删除", () -> {
+                            saveTradeEdit();
+                            requestClose.run();
+                        });
+                        defaultSaveConfirmPanel.openPanel();
+                    } else {
+                        saveTradeEdit();
+                        requestClose.run();
+                    }
                     return true;
                 }));
         // 删除按钮（v1.7.7 编辑模式删除交易条目）：几何居中（面板宽 250：保存 30-80 / 删除 100-150 / 取消 170-220）；
-        // 新建模式禁用（无既有条目可删）；点击弹出宿主二次确认弹框，确认后才发 ACTION_DELETE_TRADE
+        // 新建模式禁用（无既有条目可删）；点击弹出宿主二次确认弹框，确认后才发 ACTION_DELETE_TRADE。
+        // v1.8.17：默认贸易条目的确认文案切换为默认贸易组删除警告
         editPanel.child(
             new ButtonWidget<>().size(50, 16)
                 .left(100)
@@ -426,7 +445,7 @@ public final class TradeEditor {
                     if (deleteConfirmDialog == null || deleteConfirmPanel == null || editingDisplay == null)
                         return true;
                     deleteConfirmDialog.setButtonText("是", "否");
-                    deleteConfirmDialog.setParams("是否确认删除该条目", () -> {
+                    deleteConfirmDialog.setParams(isEditingDefaultTrade() ? "你正在删除默认贸易条目" : "是否确认删除该条目", () -> {
                         sendDeleteTrade(
                             editingDisplay.getGroupId()
                                 .toString());
@@ -460,6 +479,35 @@ public final class TradeEditor {
     public void setDeleteConfirm(NekoConfirmationDialog dialog, IPanelHandler panel) {
         this.deleteConfirmDialog = dialog;
         this.deleteConfirmPanel = panel;
+    }
+
+    /**
+     * 注入默认贸易条目保存警告弹框（v1.8.17，宿主 build 客户端块调用）
+     * <p>
+     * 服务端不注入（保持 null），保存按钮回调内的 null 守卫使服务端触达无效
+     * （服务端直接走普通保存分支）。
+     *
+     * @param dialog 保存警告弹框
+     * @param panel  保存警告面板 handler
+     */
+    public void setDefaultSaveConfirm(NekoConfirmationDialog dialog, IPanelHandler panel) {
+        this.defaultSaveConfirmDialog = dialog;
+        this.defaultSaveConfirmPanel = panel;
+    }
+
+    /**
+     * 当前编辑目标是否为默认贸易条目（v1.8.17）
+     * <p>
+     * 仅编辑模式（非新建）且有编辑目标时，从交易数据库查询组级
+     * {@code defaultEntry} 标记判定；服务端同样可判（服务端保存分支不弹框，
+     * 判定结果仅用于客户端警告流程）。
+     *
+     * @return true=默认贸易条目
+     */
+    private boolean isEditingDefaultTrade() {
+        if (editTradeIsNew || editingDisplay == null) return false;
+        NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(editingDisplay.getGroupId());
+        return group != null && group.isDefaultEntry();
     }
 
     /**

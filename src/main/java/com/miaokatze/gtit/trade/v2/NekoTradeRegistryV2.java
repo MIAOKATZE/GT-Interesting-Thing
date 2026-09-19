@@ -219,6 +219,8 @@ public class NekoTradeRegistryV2 {
             group.setMaxTrades(entry.getMaxTrades());
             group.setTabId(entry.getTabId());
             group.setOrderId(entry.getOrderId());
+            // 默认贸易组条目标记（v1.8.17）：随配置同步到客户端，GUI 编辑/删除警告依据
+            group.setDefaultEntry(entry.isDefaultEntry());
 
             // BQ 绑定
             String bqQuestId = entry.getBqQuestId();

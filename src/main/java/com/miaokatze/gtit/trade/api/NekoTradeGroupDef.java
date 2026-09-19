@@ -47,6 +47,9 @@ public class NekoTradeGroupDef {
     /** 前置 mod 列表（可选）：任一缺席时整组跳过 */
     private String[] requiresMods;
 
+    /** 默认贸易组标记（v1.8.17）：true=本组为系统默认贸易组（条目打 defaultEntry 标记，参与默认组同步） */
+    private boolean defaultGroup = false;
+
     public NekoTradeGroupDef() {}
 
     public NekoTradeGroupDef(String groupId, int version) {
@@ -102,5 +105,13 @@ public class NekoTradeGroupDef {
 
     public void setRequiresMods(String[] requiresMods) {
         this.requiresMods = requiresMods;
+    }
+
+    public boolean isDefaultGroup() {
+        return defaultGroup;
+    }
+
+    public void setDefaultGroup(boolean defaultGroup) {
+        this.defaultGroup = defaultGroup;
     }
 }

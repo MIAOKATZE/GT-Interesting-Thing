@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "trades": [
     {
       "id": "4728ee10-da8f-45ad-b2c4-0ec1fd1e1f33",
@@ -1139,7 +1139,14 @@
       "tabId": 5,
       "orderId": 0,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11032,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1150,14 +1157,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:4"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAADw=="
     },
     {
       "id": "fad91d11-9cdf-468e-ad35-d6db92719b83",
       "tabId": 5,
       "orderId": 1,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11300,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1168,14 +1182,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAALA=="
     },
     {
       "id": "6d925bd3-3cc3-497e-86b3-8cf264605099",
       "tabId": 5,
       "orderId": 2,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11305,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1186,14 +1207,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAAWA=="
     },
     {
       "id": "4e481d75-53e8-4c37-93a4-ea975650e96d",
       "tabId": 5,
       "orderId": 3,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11019,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1204,14 +1232,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAEfA=="
     },
     {
       "id": "2a432df1-f6e5-40b8-90a2-412a867be687",
       "tabId": 5,
       "orderId": 4,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11306,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1222,14 +1257,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAAoA=="
     },
     {
       "id": "ad7938f7-b18f-4c8c-be2b-e7f25980f122",
       "tabId": 5,
       "orderId": 5,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11028,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1240,14 +1282,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAAsA=="
     },
     {
       "id": "a553ebda-5ed3-46c9-a542-fbc654a111d1",
       "tabId": 5,
       "orderId": 6,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11316,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1258,14 +1307,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAA1Q=="
     },
     {
       "id": "97be5bf3-b07f-470d-8225-88e4ea740fd3",
       "tabId": 5,
       "orderId": 7,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "bartworks:bwMetaGeneratedingot",
+          "meta": 88,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1276,14 +1332,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAF1Q=="
     },
     {
       "id": "9c16b3fe-7719-4826-abac-1d94b01a19d8",
       "tabId": 5,
       "orderId": 8,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11084,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1294,14 +1357,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAKMg=="
     },
     {
       "id": "c11c69eb-c772-4783-bc30-ed86e26e6e62",
       "tabId": 5,
       "orderId": 9,
       "currency": null,
-      "fromItems": [],
+      "fromItems": [
+        {
+          "item": "gregtech:gt.metaitem.01",
+          "meta": 11083,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1312,17 +1382,21 @@
       ],
       "cooldown": 79200,
       "maxTrades": -1,
-      "bqQuestId": "5139813699862659072:15"
+      "bqQuestId": "AAAAAAAAAAAAAAAAAAAKNQ=="
     },
     {
       "id": "34b07cea-59f2-4d6d-b47c-d5129ade7153",
       "tabId": 5,
       "orderId": 10,
-      "currency": {
-        "type": "neko",
-        "amount": 1
-      },
-      "fromItems": [],
+      "currency": null,
+      "fromItems": [
+        {
+          "item": "minecraft:bread",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
       "toItems": [
         {
           "item": "enhancedlootbags:lootbag",
@@ -1331,7 +1405,7 @@
           "nbtBase64": null
         }
       ],
-      "cooldown": 1200,
+      "cooldown": 79200,
       "maxTrades": -1,
       "bqQuestId": ""
     },

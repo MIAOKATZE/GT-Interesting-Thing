@@ -30,3 +30,13 @@ tasks.register<JavaExec>("runGateTest") {
     mainClass = "com.miaokatze.gtit.reincarnation.ReincarnationGrantGateTest"
     classpath = storeTestRuntimeClasspath
 }
+
+// v1.8.17 默认贸易体系零依赖测试套件：同 runStoreTest 模式（用例注册在
+// DefaultTradeSyncTest.main，任一失败以非零退出码结束）。
+// 运行：gradlew runTradeSyncTest
+tasks.register<JavaExec>("runTradeSyncTest") {
+    group = "verification"
+    description = "Runs the zero-dependency default trade sync test suite (DefaultTradeSyncTest.main)."
+    mainClass = "com.miaokatze.gtit.trade.api.DefaultTradeSyncTest"
+    classpath = storeTestRuntimeClasspath
+}

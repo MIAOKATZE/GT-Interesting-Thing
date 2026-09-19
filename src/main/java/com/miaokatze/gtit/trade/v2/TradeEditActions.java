@@ -277,14 +277,15 @@ final class TradeEditActions {
             // 新建条目（构造器自动分配 UUID），挂到指定标签页
             NekoTradeEntry entry = new NekoTradeEntry();
             entry.setTabId(tabId);
-            // orderId 取该标签页现有最大值 + 1
+            // orderId 高水位分配（v1.8.17）：取「页内现有最大 orderId」与「历史高水位」的
+            // 较大者 +1 并回写水位——条目删除后其 ID 位置永不复用，页中保持空位
             int maxOrder = -1;
             for (NekoTradeEntry e : data.getTrades()) {
                 if (e.getTabId() == tabId && e.getOrderId() > maxOrder) {
                     maxOrder = e.getOrderId();
                 }
             }
-            entry.setOrderId(maxOrder + 1);
+            entry.setOrderId(NekoTradeConfig.allocateOrderId(tabId, maxOrder));
 
             // 基础参数（缺省值沿用 NekoTradeEntry 构造器默认）
             if (json.has("cooldown")) entry.setCooldown(

@@ -36,6 +36,8 @@ public class NekoTradeGroup {
     private int orderId;
     /** 关联的 BQ 任务 UUID */
     private String bqQuestId;
+    /** 默认贸易组条目标记（v1.8.17）：true=由内置基础贸易组注入（GUI 编辑/删除需弹警告） */
+    private volatile boolean defaultEntry = false;
     /** 前置条件集合（线程安全，final 保证引用不变） */
     private final Set<NekoTradeCondition> requirementSet = ConcurrentHashMap.newKeySet();
 
@@ -251,6 +253,14 @@ public class NekoTradeGroup {
 
     public void setBqQuestId(String bqQuestId) {
         this.bqQuestId = bqQuestId;
+    }
+
+    public boolean isDefaultEntry() {
+        return defaultEntry;
+    }
+
+    public void setDefaultEntry(boolean defaultEntry) {
+        this.defaultEntry = defaultEntry;
     }
 
     public void setCooldown(int cooldown) {

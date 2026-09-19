@@ -30,6 +30,7 @@ import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
 import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
+import com.miaokatze.gtit.client.gui.NekoDefaultTradeSyncDialog;
 import com.miaokatze.gtit.client.gui.NekoDisplayType;
 import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
 import com.miaokatze.gtit.client.gui.NekoPagedWidget;
@@ -61,6 +62,7 @@ import com.miaokatze.gtit.mail.MailGui;
 import com.miaokatze.gtit.signin.SignInCalendarGui;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
+import com.miaokatze.gtit.trade.api.BundledTradeGroups;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
@@ -226,6 +228,28 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     NekoConfirmationDialog deleteTradeConfirmDialog;
     /** 交易条目删除确认面板 handler（客户端） */
     IPanelHandler deleteTradeConfirmPanel;
+    /** 默认贸易组保存警告弹框（客户端，v1.8.17：编辑默认条目保存前警告） */
+    NekoConfirmationDialog defaultTradeSaveConfirmDialog;
+    /** 默认贸易组保存警告面板 handler（客户端） */
+    IPanelHandler defaultTradeSaveConfirmPanel;
+    /** 默认贸易组同步询问弹框（客户端，v1.8.17：打开贸易机时强制选择） */
+    NekoDefaultTradeSyncDialog defaultTradeSyncDialog;
+    /** 默认贸易组同步询问面板 handler（客户端） */
+    IPanelHandler defaultTradeSyncPanel;
+    /** 默认贸易组同步询问状态（S2C："" 无 / "ASK" 普通 / "FORCE" 强制，服务端权威） */
+    private StringSyncValue defaultTradeSyncPromptSync;
+    /**
+     * 默认贸易组同步询问状态客户端缓存（v1.8.17）
+     * <p>
+     * MUI2 单 getter 同步值惯用法：客户端 getter 读本字段、setter 写本字段——
+     * 若客户端 getter 返回常量，每同步 tick 的 updateCacheFromSource 会把服务端
+     * 推送值覆盖回常量，弹框永不触发。
+     */
+    private String defaultTradeSyncPromptCached = "";
+    /** 默认贸易组同步动作（C2S：RESTORE/DISMISS/NEVER/FORCE_RESTORE/FORCE_DISMISS） */
+    private StringSyncValue defaultTradeSyncActionSync;
+    /** 本次 GUI 打开期间同步询问弹框是否已打开过（防重复弹） */
+    private boolean defaultTradeSyncDialogShown = false;
     /** ME 传输队列同步值（S2C：服务端序列化队列发到客户端，用于粒子动画渲染） */
     private StringSyncValue meTransferQueueSync;
     /** 取回 ME 传输队列物品请求（C2S：客户端点击取回时发送 true） */
@@ -341,6 +365,15 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             deleteTradeConfirmDialog = new NekoConfirmationDialog("nekoV2:delete_trade_confirm");
             deleteTradeConfirmPanel = IPanelHandler.simple(panel, (parent, player) -> deleteTradeConfirmDialog, true);
             tradeEditor.setDeleteConfirm(deleteTradeConfirmDialog, deleteTradeConfirmPanel);
+            // v1.8.17：默认贸易条目保存警告弹框（编辑默认条目点保存时先警告再确认保存）
+            defaultTradeSaveConfirmDialog = new NekoConfirmationDialog("nekoV2:default_trade_save_confirm");
+            defaultTradeSaveConfirmPanel = IPanelHandler
+                .simple(panel, (parent, player) -> defaultTradeSaveConfirmDialog, true);
+            tradeEditor.setDefaultSaveConfirm(defaultTradeSaveConfirmDialog, defaultTradeSaveConfirmPanel);
+            // v1.8.17：默认贸易组同步询问弹框（打开贸易机时必须选择，onMainPanelUpdate 检测后打开）
+            defaultTradeSyncDialog = new NekoDefaultTradeSyncDialog("nekoV2:default_trade_sync");
+            defaultTradeSyncDialog.setActionHandler(this::sendDefaultTradeSyncAction);
+            defaultTradeSyncPanel = IPanelHandler.simple(panel, (parent, player) -> defaultTradeSyncDialog, true);
         }
 
         // ==================== 双端共有子树（必须先于所有仅客户端子树添加）====================
@@ -513,6 +546,30 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             () -> tradeResultMessage,
             val -> tradeResultMessage = val == null ? "" : val);
         syncManager.syncValue("nekoV2TradeResult", tradeResultSync);
+
+        // --- 默认贸易组同步询问状态（S2C，v1.8.17）---
+        // 服务端权威：打开 GUI 时同步 "" / "ASK" / "FORCE"（BundledTradeGroups.getPromptState()，
+        // 纯内存缓存）。客户端 getter/setter 读写 defaultTradeSyncPromptCached（MUI2 单 getter
+        // 同步值惯用法：客户端缓存由 setter 回写，否则 updateCacheFromSource 每 tick 覆盖推送值）。
+        defaultTradeSyncPromptSync = new StringSyncValue(() -> {
+            if (syncManager != null && syncManager.isClient()) return defaultTradeSyncPromptCached;
+            return BundledTradeGroups.getPromptState();
+        }, val -> {
+            if (syncManager != null && syncManager.isClient()) {
+                defaultTradeSyncPromptCached = val == null ? "" : val;
+            }
+        });
+        syncManager.syncValue("nekoV2DefaultTradeSyncPrompt", defaultTradeSyncPromptSync);
+
+        // --- 默认贸易组同步动作（C2S，v1.8.17）---
+        // B2-02：服务端 C2S 回调投递服务器主线程（复原涉及磁盘读写与全服同步）
+        defaultTradeSyncActionSync = new StringSyncValue(() -> "", val -> {
+            if (val != null && !val.isEmpty() && syncManager != null && !syncManager.isClient()) {
+                scheduleServerAction(() -> handleDefaultTradeSyncAction(val));
+            }
+        });
+        defaultTradeSyncActionSync.allowC2S();
+        syncManager.syncValue("nekoV2DefaultTradeSyncAction", defaultTradeSyncActionSync);
 
         // --- 四类 S2C 状态通道（BQ 锁定/冷却/可交易/团队缩放，A01 蓝图 G5 下沉 StatusCodec）---
         statusCodec.registerSyncValues(syncManager, playerId);
@@ -899,6 +956,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     @Override
     public void onRestoreSettings() {
         tradePage.restoreSettings();
+        // v1.8.17：每次打开 GUI 重置同步询问弹框标记（询问状态由服务端随同步值重新下发）
+        defaultTradeSyncDialogShown = false;
     }
 
     @Override
@@ -906,6 +965,76 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 作为 panel.onCloseAction 的兜底保险：
         // 当 ModularUI 真正关闭/释放屏幕时，确保 BGM 能正常触发淡出
         musicController.close();
+    }
+
+    // ==================== 默认贸易组同步（v1.8.17） ====================
+
+    /**
+     * 主面板每 tick 客户端更新回调（PanelCallback 实现）
+     * <p>
+     * 检测默认贸易组同步询问状态（服务端经同步值下发）：非空且本 GUI 打开期间
+     * 尚未弹过时打开询问弹框——必须选择一个按钮才能继续使用贸易机。
+     * 延迟到 tick 回调而非 onOpen 时机，确保同步值已完成首次同步。
+     */
+    @Override
+    public void onMainPanelUpdate() {
+        if (defaultTradeSyncDialogShown || defaultTradeSyncPromptSync == null || defaultTradeSyncPanel == null) {
+            return;
+        }
+        String prompt = defaultTradeSyncPromptSync.getValue();
+        if (prompt == null || prompt.isEmpty()) {
+            return;
+        }
+        if (defaultTradeSyncDialog != null) {
+            defaultTradeSyncDialog.setForceMode(BundledTradeGroups.PROMPT_FORCE.equals(prompt));
+        }
+        defaultTradeSyncPanel.openPanel();
+        defaultTradeSyncDialogShown = true;
+    }
+
+    /**
+     * 发送默认贸易组同步动作（客户端弹框按钮回调）
+     * <p>
+     * 按弹框模式映射动作码（强制模式选是否后一律标记更新标签已处理），
+     * 经 C2S 同步值发往服务端执行。
+     *
+     * @param result 弹框按钮结果（{@code NekoDefaultTradeSyncDialog.RESULT_*}）
+     */
+    private void sendDefaultTradeSyncAction(int result) {
+        if (defaultTradeSyncActionSync == null) return;
+        boolean force = defaultTradeSyncDialog != null && defaultTradeSyncDialog.isForceMode();
+        String action;
+        if (result == NekoDefaultTradeSyncDialog.RESULT_RESTORE) {
+            action = force ? "FORCE_RESTORE" : "RESTORE";
+        } else if (result == NekoDefaultTradeSyncDialog.RESULT_DISMISS) {
+            action = force ? "FORCE_DISMISS" : "DISMISS";
+        } else {
+            action = "NEVER";
+        }
+        defaultTradeSyncActionSync.setValue(action);
+    }
+
+    /**
+     * 服务端：执行默认贸易组同步动作（C2S 同步值回调，已投递服务器主线程）
+     * <p>
+     * RESTORE=按记账移除后重注册当前资产内容（玩家改动被覆盖）；DISMISS=本版本不再询问；
+     * NEVER=后续版本也不再询问；FORCE_RESTORE/FORCE_DISMISS 在上述语义上额外标记更新标签已处理。
+     * 动作完成后询问状态随同步值自动刷新为空，并经 reloadAndSync 推送最新交易配置。
+     *
+     * @param action 动作码
+     */
+    private static void handleDefaultTradeSyncAction(String action) {
+        switch (action) {
+            case "RESTORE" -> BundledTradeGroups.restoreDefaultGroup();
+            case "DISMISS" -> BundledTradeGroups.dismissDefaultGroupUpdate();
+            case "NEVER" -> BundledTradeGroups.neverAskDefaultGroup();
+            case "FORCE_RESTORE" -> {
+                BundledTradeGroups.restoreDefaultGroup();
+                BundledTradeGroups.markUpdateTagHandled();
+            }
+            case "FORCE_DISMISS" -> BundledTradeGroups.markUpdateTagHandled();
+            default -> LOG.warn("[NekoVM] 未知默认贸易组同步动作: {}", action);
+        }
     }
 
     // ==================== TradeActionCallback 接口实现 ====================
