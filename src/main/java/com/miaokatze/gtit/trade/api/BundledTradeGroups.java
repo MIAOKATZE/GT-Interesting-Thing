@@ -43,10 +43,10 @@ public final class BundledTradeGroups {
     private static final Gson GSON = new Gson();
 
     /**
-     * 更新标签（v1.8.18）：升自该版本之前的存档，打开猫猫贸易机时强制弹
+     * 更新标签（v1.8.19）：升自该版本之前的存档，打开猫猫贸易机时强制弹
      * "默认贸易组已更新，请同步。"（配置不可关闭）。发布推荐更新时由作者手动递改。
      */
-    public static final String UPDATE_TAG = "1.8.18";
+    public static final String UPDATE_TAG = "1.8.19";
 
     /** GUI 询问状态：无 */
     public static final String PROMPT_NONE = "";

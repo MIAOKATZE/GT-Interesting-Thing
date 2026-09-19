@@ -1316,7 +1316,7 @@
       "currency": null,
       "fromItems": [
         {
-          "item": "bartworks:bwMetaGeneratedingot",
+          "item": "bartworks:gt.bwMetaGeneratedingot",
           "meta": 88,
           "amount": 1,
           "nbtBase64": null

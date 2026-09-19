@@ -878,7 +878,7 @@ public class NekoTradeConfig {
                 10,
                 null,
                 0,
-                "bartworks:bwMetaGeneratedingot:88:1",
+                "bartworks:gt.bwMetaGeneratedingot:88:1",
                 "enhancedlootbags:lootbag",
                 41,
                 3,
