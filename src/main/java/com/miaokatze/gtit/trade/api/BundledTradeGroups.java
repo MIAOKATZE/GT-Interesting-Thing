@@ -15,6 +15,7 @@ import com.miaokatze.gtit.config.Config;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
+import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 /**
  * 内置贸易组加载器（E4a）。
@@ -26,10 +27,14 @@ import com.miaokatze.gtit.trade.NekoTradeEntry;
  * （用户拍板取消 miao 组，覆盖原“退出不卸载”决策）。
  * 应用走 {@link NekoTradeIntegrationAPI}（记账/版本/玩家文件尊重策略/落库同步全复用）。
  * <p>
- * v1.8.17 默认贸易体系：gtit-base 即"默认贸易组"，条目带 {@code defaultEntry} 标记，
- * 由本类管理版本同步——版本更新时玩家未改动默认条目则静默校准；已改动则保持现状，
- * 玩家打开猫猫贸易机时弹框询问是否复原（GUI 经 {@link #getPromptState()} 询问、
- * {@link #restoreDefaultGroup()} 等动作回调）。升自更新标签之前的存档强制询问。
+ * v1.8.17 默认贸易体系：gtit-base 即"默认贸易组"，条目带 {@code defaultEntry} 标记。
+ * <p>
+ * v1.8.20 ID 隔离 + 启动自动覆盖：默认条目 id 为 {@code MIAO<序号>} 语义 ID
+ * （{@link NekoTradeRegistryV2#parseTradeGroupId} 确定性派生运行时 UUID，与玩家
+ * 自定义条目的随机 UUID 天然隔离）。默认组版本变化（或记账仍是旧 UUID 机制）时
+ * 启动自动覆盖——按记账移除旧默认条目 + MIAO 前缀兜底清扫 + 注入当前资产版本，
+ * 无条件执行、绝不触碰玩家自定义条目；弹框降级为"已自动更新"通知（配置可关）
+ * 与更新标签强制告知，GUI 的"复原"保留为手动重新注入的修复入口。
  */
 public final class BundledTradeGroups {
 
@@ -43,10 +48,10 @@ public final class BundledTradeGroups {
     private static final Gson GSON = new Gson();
 
     /**
-     * 更新标签（v1.8.19）：升自该版本之前的存档，打开猫猫贸易机时强制弹
+     * 更新标签（v1.8.20）：升自该版本之前的存档，打开猫猫贸易机时强制弹
      * "默认贸易组已更新，请同步。"（配置不可关闭）。发布推荐更新时由作者手动递改。
      */
-    public static final String UPDATE_TAG = "1.8.19";
+    public static final String UPDATE_TAG = "1.8.20";
 
     /** GUI 询问状态：无 */
     public static final String PROMPT_NONE = "";
@@ -57,6 +62,12 @@ public final class BundledTradeGroups {
 
     /** prepare 阶段解析缓存的 base 组（null = 配置关/资产缺失/解析失败） */
     private static NekoTradeGroupDef baseDef;
+
+    /**
+     * 本启动是否执行过默认贸易组自动覆盖（v1.8.20）——PROMPT_ASK 更新通知的
+     * 触发依据。纯内存状态（每次启动由应用门控重算），不落盘。
+     */
+    private static volatile boolean miaoJustUpdated = false;
 
     /**
      * 同步询问状态缓存（{@link #PROMPT_NONE}/{@link #PROMPT_ASK}/{@link #PROMPT_FORCE}）。
@@ -108,11 +119,11 @@ public final class BundledTradeGroups {
      * 应用内置组（serverStarted，NekoTradeRegistryV2.initialize 磁盘加载之后）。
      * <p>
      * 时序：initialize 先完成玩家磁盘配置的权威装载，本方法再做内置组的
-     * 记账门控合并——已注册且版本未变的组直接跳过，不触碰玩家文件。
+     * 记账门控合并——记账为 MIAO 语义 ID 且版本未变的组直接跳过，不触碰玩家文件。
      * <p>
-     * v1.8.17 默认贸易体系门控：版本未变保持现状；版本变化时若玩家未改动
-     * 默认条目（内容哈希一致）则静默校准重注册，已改动则保持现状，改由
-     * GUI 在玩家打开猫猫贸易机时询问是否复原（{@link #getPromptState()}）。
+     * v1.8.20 启动自动覆盖：默认组版本变化（或记账仍是旧 UUID 机制）时无条件
+     * 移除旧默认条目并注入当前资产版本——玩家自定义条目（随机 UUID，不在记账、
+     * 不匹配 MIAO 前缀）绝不误伤。
      */
     public static void applyBundledGroups() {
         try {
@@ -122,15 +133,10 @@ public final class BundledTradeGroups {
                 NekoTradeIntegrationAPI.GroupRecord record = NekoTradeIntegrationAPI.GroupRecord.load(BASE_GROUP_ID);
                 if (record == null) {
                     applyBase("首次注册默认贸易组");
-                } else if (record.version == baseDef.getVersion()) {
-                    // 版本未变：玩家对 tab 文件的编辑保持权威
-                } else if (isDefaultContentModified(record)) {
-                    LOG.info(
-                        "[TradeAPI] 默认贸易组版本变化（{} -> {}）且玩家已改动默认条目，保持现状，待玩家在贸易机 GUI 中选择",
-                        record.version,
-                        baseDef.getVersion());
+                } else if (record.version == baseDef.getVersion() && !recordHasLegacyIds(record)) {
+                    // 版本未变且记账已全部为 MIAO 语义 ID：玩家对 tab 文件的编辑保持权威
                 } else {
-                    applyBase("版本变化且玩家未改动默认条目，静默校准");
+                    overwriteBase(record);
                 }
             }
         } catch (Throwable t) {
@@ -147,30 +153,43 @@ public final class BundledTradeGroups {
     }
 
     /**
-     * 判定玩家是否改动过默认贸易组条目
-     * <p>
-     * 旧记账无内容哈希（1.8.17 之前创建）按已改动处理——本版本起所有升旧存档
-     * 均走 GUI 询问，不静默覆盖；此后哈希随每次注册入账。
+     * 启动自动覆盖（v1.8.20 ID 隔离核心路径）：默认组版本变化（或记账为旧
+     * UUID 机制）时无条件执行——按记账移除旧默认条目 → MIAO 前缀兜底清扫
+     * （覆盖记账缺失/损坏/手动复制残留）→ 注入当前资产版本。
      */
-    private static boolean isDefaultContentModified(NekoTradeIntegrationAPI.GroupRecord record) {
-        if (record.contentHash == null || record.contentHash.isEmpty()) {
-            return true;
+    private static void overwriteBase(NekoTradeIntegrationAPI.GroupRecord record) {
+        LOG.info("[TradeAPI] 默认贸易组版本变化（{} -> {}），启动自动覆盖", record.version, baseDef.getVersion());
+        NekoTradeIntegrationAPI.unregisterGroup(BASE_GROUP_ID);
+        NekoTradeIntegrationAPI.removeDefaultEntriesByMiaoPrefix();
+        boolean applied = NekoTradeIntegrationAPI.applyGroup(baseDef);
+        miaoJustUpdated = applied;
+        LOG.info("[TradeAPI] 默认贸易组自动覆盖完成：applied={}", applied);
+    }
+
+    /**
+     * 记账是否仍为旧机制形态（v1.8.20 之前的随机 UUID tradeIds）——升旧存档时
+     * 触发一次性迁移覆盖，即使资产版本号恰好未变。包级可见供同包单元测试。
+     */
+    static boolean recordHasLegacyIds(NekoTradeIntegrationAPI.GroupRecord record) {
+        for (String id : record.tradeIds) {
+            if (id != null && !id.matches(NekoTradeRegistryV2.MIAO_ID_PATTERN)) {
+                return true;
+            }
         }
-        String hash = NekoTradeIntegrationAPI.computeContentHash(record, NekoTradeConfig.load());
-        return hash == null || !hash.equals(record.contentHash);
+        return false;
     }
 
     // ==================== 默认贸易组同步（v1.8.17，GUI 同步值调用） ====================
 
     /**
-     * 当前是否需要弹默认贸易组同步询问（猫猫贸易机 GUI 打开时经同步值调用，服务端执行）
+     * 当前是否需要弹默认贸易组同步提示（猫猫贸易机 GUI 打开时经同步值调用，服务端执行）
      * <p>
      * 返回缓存状态（纯内存，getter 每同步 tick 被求值）：
      * <ul>
      * <li>升自更新标签之前（记账 {@code handledUpdateTag} 低于 {@link #UPDATE_TAG}）→
      * {@link #PROMPT_FORCE}，配置不可关闭</li>
-     * <li>默认组版本未同步、配置允许询问、未选"不再提醒"、本版本未选过"否" →
-     * {@link #PROMPT_ASK}</li>
+     * <li>本启动执行过自动覆盖（数据已同步至最新版，弹框为更新通知 + 手动复原入口）、
+     * 配置允许、未选"不再提醒"、本版本未选过"否" → {@link #PROMPT_ASK}</li>
      * <li>其余 → {@link #PROMPT_NONE}</li>
      * </ul>
      */
@@ -199,21 +218,26 @@ public final class BundledTradeGroups {
         if (!Config.defaultTradeUpdateNotice) {
             return PROMPT_NONE;
         }
-        if (record.version == baseDef.getVersion() || record.dismissedVersion == baseDef.getVersion()) {
+        // v1.8.20：ASK = 本启动执行过自动覆盖（数据已同步至最新版，弹框为更新通知 + 复原修复入口）
+        if (!miaoJustUpdated || record.dismissedVersion == baseDef.getVersion()) {
             return PROMPT_NONE;
         }
         return PROMPT_ASK;
     }
 
     /**
-     * 复原默认贸易组（玩家在同步询问中选"是"）：按记账移除现组后重注册当前资产内容
+     * 复原默认贸易组（GUI 同步提示/强制提示中玩家选择）：MIAO 前缀兜底清扫后
+     * 重注册当前资产内容——手动重新注入的修复入口（自动覆盖已常态执行，此路径
+     * 用于玩家改坏/删除默认条目后的主动恢复）。
      *
      * @return true = 重注册完成
      */
     public static boolean restoreDefaultGroup() {
         if (baseDef == null) return false;
         NekoTradeIntegrationAPI.unregisterGroup(BASE_GROUP_ID);
+        NekoTradeIntegrationAPI.removeDefaultEntriesByMiaoPrefix();
         boolean applied = NekoTradeIntegrationAPI.applyGroup(baseDef);
+        miaoJustUpdated = false;
         refreshPromptStateCache();
         LOG.info("[TradeAPI] 玩家确认复原默认贸易组：applied={}", applied);
         return applied;

@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.trade.v2;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -27,6 +28,30 @@ public class NekoTradeRegistryV2 {
 
     /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
     private static final Logger LOG = LogManager.getLogger("gtit");
+
+    /**
+     * 默认贸易条目语义 ID 形态（v1.8.20 ID 隔离）：{@code MIAO<序号>}（如 {@code MIAO1}）。
+     * 仅默认贸易组的条目使用（资产/tab 文件/记账字面存在）；玩家自定义条目恒为随机 UUID
+     * 字符串（36 字符含连字符），形态不重叠，清理/覆盖按此前缀判定绝不误伤自定义条目。
+     */
+    public static final String MIAO_ID_PATTERN = "MIAO\\d+";
+
+    /**
+     * 交易组 ID 解析：默认贸易条目的 {@code MIAO<序号>} 语义 ID 确定性派生为运行时
+     * UUID 主键（同号恒同 UUID——收藏/冷却跨版本保持）；其余按标准 UUID 字符串解析。
+     *
+     * @throws IllegalArgumentException id 为空或既非 MIAO 形态也非合法 UUID
+     */
+    public static UUID parseTradeGroupId(String id) {
+        if (id != null && id.matches(MIAO_ID_PATTERN)) {
+            return UUID.nameUUIDFromBytes(("gtit:miao-trade:" + id).getBytes(StandardCharsets.UTF_8));
+        }
+        // null/空串显式转 IllegalArgumentException（UUID.fromString 对 null 抛 NPE，注册链路兜底 catch 接不住）
+        if (id == null || id.isEmpty()) {
+            throw new IllegalArgumentException("交易组 id 为空");
+        }
+        return UUID.fromString(id);
+    }
 
     /**
      * 初始化注册表
@@ -134,10 +159,10 @@ public class NekoTradeRegistryV2 {
      */
     private static boolean registerTradeFromEntry(NekoTradeEntry entry) {
         try {
-            // 1. 解析交易组ID（无效时生成随机 UUID）
+            // 1. 解析交易组ID（MIAO<n> 语义 ID 确定性派生；其余非法时生成随机 UUID）
             UUID groupId;
             try {
-                groupId = UUID.fromString(entry.getId());
+                groupId = parseTradeGroupId(entry.getId());
             } catch (IllegalArgumentException e) {
                 groupId = UUID.randomUUID();
             }

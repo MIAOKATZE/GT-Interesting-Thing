@@ -111,9 +111,12 @@ public class NekoTradeDatabase {
         if (list == null || list.isEmpty()) {
             return new ArrayList<>();
         }
-        // 创建副本并按 orderId 排序
+        // 创建副本排序：默认贸易条目（v1.8.20 ID 隔离）置顶于每个 Tab 前段，其余按 orderId
         List<NekoTradeGroup> sorted = new ArrayList<>(list);
-        Collections.sort(sorted, Comparator.comparingInt(NekoTradeGroup::getOrderId));
+        Collections.sort(
+            sorted,
+            Comparator.comparing((NekoTradeGroup g) -> !g.isDefaultEntry())
+                .thenComparingInt(NekoTradeGroup::getOrderId));
         return sorted;
     }
 

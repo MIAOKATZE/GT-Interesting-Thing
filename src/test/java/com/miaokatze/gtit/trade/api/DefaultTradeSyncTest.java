@@ -6,25 +6,27 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
-import com.google.gson.Gson;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
-import com.miaokatze.gtit.trade.NekoTradeConfig;
-import com.miaokatze.gtit.trade.NekoTradeEntry;
 import com.miaokatze.gtit.trade.api.NekoTradeIntegrationAPI.GroupRecord;
+import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 /**
- * 默认贸易体系（v1.8.17）纯 JVM 测试：更新标签版本比较、记账同步字段 round-trip、
- * 组内容哈希稳定性与变化敏感度。
+ * 默认贸易体系（v1.8.17 引入，v1.8.20 ID 隔离重构）纯 JVM 测试：更新标签版本比较、
+ * 记账同步字段 round-trip、MIAO 语义 ID 确定性派生与旧机制记账识别。
  * <p>
  * 覆盖目标：
  * <ul>
  * <li>{@code BundledTradeGroups#compareVersions}——升自更新标签之前判定（旧记账 null/空 = 最低）</li>
- * <li>{@code GroupRecord} 新字段（contentHash/dismissedVersion/handledUpdateTag）
- * 序列化 round-trip 与旧 JSON 缺字段缺省</li>
- * <li>{@code NekoTradeIntegrationAPI#computeContentHash}——同内容同哈希、改动变哈希、
- * 条目缺失返回 null（视为已改动）</li>
+ * <li>{@code GroupRecord} 同步字段（dismissedVersion/handledUpdateTag）
+ * 序列化 round-trip 与旧 JSON 缺字段缺省（v1.8.20 起 contentHash 字段已废弃）</li>
+ * <li>{@code NekoTradeRegistryV2#parseTradeGroupId}——MIAO&lt;序号&gt; 确定性派生
+ * （同号恒同 UUID、异号异 UUID、合法 UUID 形态）；非 MIAO 非法串抛
+ * {@link IllegalArgumentException}（注册链路按随机 UUID 兜底）</li>
+ * <li>{@code BundledTradeGroups#recordHasLegacyIds}——旧机制 UUID 记账识别
+ * （升旧存档触发一次性迁移覆盖，即使资产版本号未变）</li>
  * <li>新构造记账默认已处理当前更新标签（全新安装不触发强制同步询问）</li>
  * </ul>
  * 零依赖断言套件，入口为 {@code main}（与 {@code GroupRecordTest} 同模式）。
@@ -32,7 +34,6 @@ import com.miaokatze.gtit.trade.api.NekoTradeIntegrationAPI.GroupRecord;
 public class DefaultTradeSyncTest {
 
     private static final String ID = "unit-test-default-sync";
-    private static final Gson GSON = new Gson();
 
     public static void main(String[] args) throws Exception {
         cleanup();
@@ -43,10 +44,9 @@ public class DefaultTradeSyncTest {
             "groupRecordSyncFieldsRoundTrip",
             () -> runChecked(DefaultTradeSyncTest::groupRecordSyncFieldsRoundTrip));
         cases.put("legacyRecordJsonDefaults", () -> runChecked(DefaultTradeSyncTest::legacyRecordJsonDefaults));
-        cases.put("contentHashStableForSameContent", DefaultTradeSyncTest::contentHashStableForSameContent);
-        cases.put("contentHashChangesWithContent", DefaultTradeSyncTest::contentHashChangesWithContent);
-        cases.put("contentHashNullOnMissingEntry", DefaultTradeSyncTest::contentHashNullOnMissingEntry);
-        cases.put("contentHashFollowsRecordOrder", DefaultTradeSyncTest::contentHashFollowsRecordOrder);
+        cases.put("miaoIdDerivesDeterministicUuid", DefaultTradeSyncTest::miaoIdDerivesDeterministicUuid);
+        cases.put("miaoIdRejectsNonMiaoNonUuid", DefaultTradeSyncTest::miaoIdRejectsNonMiaoNonUuid);
+        cases.put("recordHasLegacyIdsDetection", DefaultTradeSyncTest::recordHasLegacyIdsDetection);
         try {
             TestRunner.run(DefaultTradeSyncTest.class, cases);
         } finally {
@@ -81,124 +81,108 @@ public class DefaultTradeSyncTest {
         SimpleAssert.that(BundledTradeGroups.compareVersions("2.0", "1.10.3") > 0, "2.0 > 1.10.3（数值段比较）");
     }
 
-    // ==================== GroupRecord 新字段 ====================
+    // ==================== GroupRecord 同步字段 ====================
 
     static void freshRecordHandlesCurrentUpdateTag() {
         GroupRecord rec = new GroupRecord(ID, 1);
         SimpleAssert.eq(BundledTradeGroups.UPDATE_TAG, rec.handledUpdateTag, "新记账默认已处理当前更新标签（全新安装不弹强制询问）");
         SimpleAssert.eq(0, rec.dismissedVersion, "新记账 dismissedVersion 默认 0");
-        SimpleAssert.that(rec.contentHash == null, "新记账 contentHash 初始 null（注册后入账）");
     }
 
     static void groupRecordSyncFieldsRoundTrip() throws Exception {
-        GroupRecord rec = new GroupRecord(ID, 4);
-        rec.tradeIds.add("t1");
-        rec.tradeIds.add("t2");
+        GroupRecord rec = new GroupRecord(ID, 5);
+        rec.tradeIds.add("MIAO1");
+        rec.tradeIds.add("MIAO2");
         rec.pageIds.add(5);
-        rec.contentHash = "abcdef0123456789";
         rec.dismissedVersion = 3;
-        rec.handledUpdateTag = "1.8.18";
+        rec.handledUpdateTag = "1.8.19";
         rec.save();
 
         GroupRecord loaded = GroupRecord.load(ID);
         SimpleAssert.that(loaded != null, "记账回读非 null");
-        SimpleAssert.eq("abcdef0123456789", loaded.contentHash, "contentHash round-trip");
+        SimpleAssert.eq("MIAO1", loaded.tradeIds.get(0), "MIAO 语义 id round-trip");
+        SimpleAssert.eq("MIAO2", loaded.tradeIds.get(1), "MIAO 语义 id round-trip (2)");
         SimpleAssert.eq(3, loaded.dismissedVersion, "dismissedVersion round-trip");
-        SimpleAssert.eq("1.8.18", loaded.handledUpdateTag, "handledUpdateTag round-trip");
+        SimpleAssert.eq("1.8.19", loaded.handledUpdateTag, "handledUpdateTag round-trip");
     }
 
     static void legacyRecordJsonDefaults() throws Exception {
         Path p = Paths.get("config/gtit/trade/integrated", ID + ".json");
         Files.createDirectories(p.getParent());
-        // 1.8.17 之前的记账：无同步扩展字段
+        // 1.8.19 时代的记账：UUID tradeIds + 已废弃的 contentHash 残留键
         Files.write(
             p,
-            ("{\"groupId\":\"" + ID + "\",\"version\":3,\"tradeIds\":[\"t1\"],\"pageIds\":[]}")
-                .getBytes(StandardCharsets.UTF_8));
+            ("{\"groupId\":\"" + ID
+                + "\",\"version\":4,\"tradeIds\":[\"0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a\"],\"pageIds\":[],"
+                + "\"contentHash\":\"deadbeef\",\"dismissedVersion\":0,\"handledUpdateTag\":\"1.8.19\"}")
+                    .getBytes(StandardCharsets.UTF_8));
         GroupRecord loaded = GroupRecord.load(ID);
         SimpleAssert.that(loaded != null, "旧 JSON 记账回读非 null（关键字段齐全）");
-        SimpleAssert.that(loaded.contentHash == null, "旧记账 contentHash 缺省 null（视为已改动，走 GUI 询问）");
         SimpleAssert.eq(0, loaded.dismissedVersion, "旧记账 dismissedVersion 缺省 0");
-        SimpleAssert.that(loaded.handledUpdateTag == null, "旧记账 handledUpdateTag 缺省 null（升自更新标签之前 → 强制询问）");
-        SimpleAssert.that(
-            BundledTradeGroups.compareVersions(loaded.handledUpdateTag, BundledTradeGroups.UPDATE_TAG) < 0,
-            "旧记账低于更新标签");
+        SimpleAssert.eq("1.8.19", loaded.handledUpdateTag, "旧记账 handledUpdateTag 回读");
+        // v1.8.20：contentHash 字段已删，旧记账残留键由 Gson 宽容忽略（不再参与任何判定）
+        SimpleAssert.that(BundledTradeGroups.recordHasLegacyIds(loaded), "旧 UUID tradeIds 识别为旧机制记账（触发迁移覆盖）");
     }
 
-    // ==================== computeContentHash ====================
+    // ==================== MIAO 语义 ID 派生 ====================
 
-    /** 构造两条测试条目（id 指定，内容可辨） */
-    private static NekoTradeConfig.NekoTradeData twoEntryData() {
-        NekoTradeEntry a = new NekoTradeEntry();
-        a.setId("hash-entry-a");
-        a.setTabId(5);
-        a.setOrderId(0);
-        a.setCooldown(79200);
-        NekoTradeEntry b = new NekoTradeEntry();
-        b.setId("hash-entry-b");
-        b.setTabId(5);
-        b.setOrderId(1);
-        b.setCooldown(3600);
-        NekoTradeConfig.NekoTradeData data = new NekoTradeConfig.NekoTradeData();
-        data.getTrades()
-            .add(a);
-        data.getTrades()
-            .add(b);
-        return data;
+    static void miaoIdDerivesDeterministicUuid() {
+        UUID a1 = NekoTradeRegistryV2.parseTradeGroupId("MIAO1");
+        UUID a2 = NekoTradeRegistryV2.parseTradeGroupId("MIAO1");
+        SimpleAssert.eq(a1, a2, "MIAO1 两次派生同一 UUID（确定性，收藏/冷却跨版本保持）");
+        UUID b = NekoTradeRegistryV2.parseTradeGroupId("MIAO2");
+        SimpleAssert.that(!a1.equals(b), "不同序号派生不同 UUID");
+        // 派生值是合法 v3（nameUUIDFromBytes）UUID 形态
+        SimpleAssert.eq(3, a1.version(), "派生 UUID 为 v3（nameUUIDFromBytes）");
+        // 标准 UUID 字符串原样解析（玩家自定义条目不受影响）
+        UUID custom = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+        SimpleAssert.eq(
+            custom,
+            NekoTradeRegistryV2.parseTradeGroupId("123e4567-e89b-12d3-a456-426614174000"),
+            "合法 UUID 字符串原样解析");
+        // MIAO 前缀但非纯数字序号 → 不按 MIAO 形态处理（交由 UUID 解析抛错，注册链路随机兜底）
+        try {
+            NekoTradeRegistryV2.parseTradeGroupId("MIAOx");
+            throw new AssertionError("MIAOx（非数字序号）不应按 MIAO 形态派生");
+        } catch (IllegalArgumentException expected) {
+            // 预期路径
+        }
     }
 
-    private static GroupRecord twoEntryRecord() {
-        GroupRecord rec = new GroupRecord(ID, 4);
-        rec.tradeIds.add("hash-entry-a");
-        rec.tradeIds.add("hash-entry-b");
-        return rec;
+    static void miaoIdRejectsNonMiaoNonUuid() {
+        try {
+            NekoTradeRegistryV2.parseTradeGroupId("not-a-uuid");
+            throw new AssertionError("非法串应抛 IllegalArgumentException（注册链路按随机 UUID 兜底）");
+        } catch (IllegalArgumentException expected) {
+            // 预期路径
+        }
+        try {
+            NekoTradeRegistryV2.parseTradeGroupId(null);
+            throw new AssertionError("null 应抛 IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            // 预期路径
+        }
     }
 
-    static void contentHashStableForSameContent() {
-        GroupRecord rec = twoEntryRecord();
-        NekoTradeConfig.NekoTradeData data = twoEntryData();
-        String h1 = NekoTradeIntegrationAPI.computeContentHash(rec, data);
-        String h2 = NekoTradeIntegrationAPI.computeContentHash(rec, data);
-        SimpleAssert.that(h1 != null && !h1.isEmpty(), "内容哈希非空");
-        SimpleAssert.eq(h1, h2, "同内容两次计算哈希一致（确定性）");
-        // 条目在 data 中的存放顺序不影响哈希（按 tradeIds 顺序序列化）
-        java.util.Collections.reverse(data.getTrades());
-        SimpleAssert.eq(h1, NekoTradeIntegrationAPI.computeContentHash(rec, data), "data 顺序变化不影响哈希");
-    }
+    // ==================== recordHasLegacyIds（v1.8.20 迁移判定） ====================
 
-    static void contentHashChangesWithContent() {
-        GroupRecord rec = twoEntryRecord();
-        NekoTradeConfig.NekoTradeData data = twoEntryData();
-        String baseline = NekoTradeIntegrationAPI.computeContentHash(rec, data);
-        data.getTrades()
-            .get(0)
-            .setCooldown(12345);
-        String changed = NekoTradeIntegrationAPI.computeContentHash(rec, data);
-        SimpleAssert.that(!baseline.equals(changed), "条目内容变化 → 哈希变化（玩家改过默认条目判定依据）");
-    }
+    static void recordHasLegacyIdsDetection() {
+        GroupRecord miao = new GroupRecord(ID, 5);
+        miao.tradeIds.add("MIAO1");
+        miao.tradeIds.add("MIAO88");
+        SimpleAssert.that(!BundledTradeGroups.recordHasLegacyIds(miao), "全 MIAO 记账 = 新机制（不触发迁移）");
 
-    static void contentHashNullOnMissingEntry() {
-        GroupRecord rec = twoEntryRecord();
-        NekoTradeConfig.NekoTradeData data = twoEntryData();
-        // 玩家删除了一条默认条目 → 缺失 → null（视为已改动）
-        data.getTrades()
-            .remove(1);
-        SimpleAssert.that(NekoTradeIntegrationAPI.computeContentHash(rec, data) == null, "记账条目缺失返回 null");
-    }
+        GroupRecord mixed = new GroupRecord(ID, 4);
+        mixed.tradeIds.add("MIAO1");
+        mixed.tradeIds.add("97be5bf3-b07f-470d-8225-88e4ea740fd3");
+        SimpleAssert.that(BundledTradeGroups.recordHasLegacyIds(mixed), "混入 UUID 记账 = 旧机制（触发一次性迁移覆盖）");
 
-    static void contentHashFollowsRecordOrder() {
-        GroupRecord rec = twoEntryRecord();
-        NekoTradeConfig.NekoTradeData data = twoEntryData();
-        String baseline = NekoTradeIntegrationAPI.computeContentHash(rec, data);
-        // 换一组 tradeIds 顺序 → 序列化顺序变化 → 哈希变化
-        GroupRecord reordered = twoEntryRecord();
-        java.util.Collections.reverse(reordered.tradeIds);
-        String reorderedHash = NekoTradeIntegrationAPI.computeContentHash(reordered, data);
-        SimpleAssert.that(!baseline.equals(reorderedHash), "tradeIds 顺序参与哈希（口径稳定）");
-        // GSON 往返 round-trip 后哈希不变（等价于注册→落盘→重载链路）
-        NekoTradeConfig.NekoTradeData roundTripped = GSON
-            .fromJson(GSON.toJson(data, NekoTradeConfig.NekoTradeData.class), NekoTradeConfig.NekoTradeData.class);
-        SimpleAssert.eq(baseline, NekoTradeIntegrationAPI.computeContentHash(rec, roundTripped), "GSON 往返后哈希不变");
+        GroupRecord legacy = new GroupRecord(ID, 4);
+        legacy.tradeIds.add("97be5bf3-b07f-470d-8225-88e4ea740fd3");
+        SimpleAssert.that(BundledTradeGroups.recordHasLegacyIds(legacy), "纯 UUID 记账 = 旧机制");
+
+        GroupRecord empty = new GroupRecord(ID, 4);
+        SimpleAssert.that(!BundledTradeGroups.recordHasLegacyIds(empty), "空 tradeIds 不触发迁移（交由版本门控）");
     }
 
     private static void cleanup() {

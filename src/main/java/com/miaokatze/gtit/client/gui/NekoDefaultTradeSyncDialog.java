@@ -13,12 +13,14 @@ import com.cleanroommc.modularui.widgets.layout.Flow;
 /**
  * 默认贸易组同步询问弹框（v1.8.17，本地实现；v1.8.18 修复按钮行布局）
  * <p>
- * 玩家打开猫猫贸易机时，若服务端判定需要同步默认贸易组（见
+ * 玩家打开猫猫贸易机时，若服务端判定需要提示默认贸易组状态（见
  * {@code BundledTradeGroups#getPromptState()}），由宿主打开本弹框，
  * 玩家必须选择一个按钮才能继续使用贸易机：
  * <ul>
- * <li><b>普通询问</b>（版本更新且玩家改动过默认条目）："检测到默认贸易组变动，是否复原？"，
- * 按钮 复原 / 否 / 不再提醒（"否"=该版本不再打扰，"不再提醒"=后续版本也不再问）</li>
+ * <li><b>普通提示</b>（v1.8.20 启动自动覆盖已执行：数据已同步至最新版）：
+ * "默认贸易组已自动更新，如有异常可点"复原"重新注入。"，
+ * 按钮 复原 / 否 / 不再提醒（复原=手动重新注入的修复入口，
+ * "否"=该版本不再打扰，"不再提醒"=后续版本也不再问）</li>
  * <li><b>强制询问</b>（升自更新标签之前的存档）："默认贸易组已更新，请同步。"，
  * 按钮 是 / 否（配置不可关闭，无"不再提醒"）</li>
  * </ul>
@@ -66,14 +68,15 @@ public class NekoDefaultTradeSyncDialog extends Dialog<Integer> {
             .setDraggable(false);
     }
 
-    /** 提示文案（按模式取文案） */
+    /** 提示文案（按模式取文案；v1.8.20 普通模式改为"已自动更新"通知 + 复原修复入口） */
     private TextWidget<?> buildMessage() {
         return new TextWidget<>(
-            IKey.dynamic(() -> EnumChatFormatting.WHITE + (this.forceMode ? "默认贸易组已更新，请同步。" : "检测到默认贸易组变动，是否复原？")))
-                .top(12)
-                .widthRel(0.9f)
-                .height(20)
-                .horizontalCenter();
+            IKey.dynamic(
+                () -> EnumChatFormatting.WHITE + (this.forceMode ? "默认贸易组已更新，请同步。" : "默认贸易组已自动更新，如有异常可点\"复原\"重新注入。")))
+                    .top(12)
+                    .widthRel(0.9f)
+                    .height(24)
+                    .horizontalCenter();
     }
 
     /**

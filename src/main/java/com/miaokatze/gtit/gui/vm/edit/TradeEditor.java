@@ -419,11 +419,14 @@ public final class TradeEditor {
                 .onMouseTapped(mouse -> {
                     if (isEditingDefaultTrade() && defaultSaveConfirmDialog != null
                         && defaultSaveConfirmPanel != null) {
+                        // v1.8.20 ID 隔离：修改默认条目 = 原位覆盖（MIAO 语义 ID 保持），提示明确"这是默认任务"——
+                        // 下次默认贸易组更新时启动会自动覆盖回新版
                         defaultSaveConfirmDialog.setButtonText("仍要保存", "取消");
-                        defaultSaveConfirmDialog.setParams("你正在修改默认贸易条目，不推荐修改其作为个人自定义贸易组，如有需求，可以删除", () -> {
-                            saveTradeEdit();
-                            requestClose.run();
-                        });
+                        defaultSaveConfirmDialog
+                            .setParams("这是默认任务（系统内置条目）：修改将原位覆盖默认条目本身，下次默认贸易组更新时会自动覆盖回新版。仍要保存吗？", () -> {
+                                saveTradeEdit();
+                                requestClose.run();
+                            });
                         defaultSaveConfirmPanel.openPanel();
                     } else {
                         saveTradeEdit();
@@ -445,12 +448,14 @@ public final class TradeEditor {
                     if (deleteConfirmDialog == null || deleteConfirmPanel == null || editingDisplay == null)
                         return true;
                     deleteConfirmDialog.setButtonText("是", "否");
-                    deleteConfirmDialog.setParams(isEditingDefaultTrade() ? "你正在删除默认贸易条目" : "是否确认删除该条目", () -> {
-                        sendDeleteTrade(
-                            editingDisplay.getGroupId()
-                                .toString());
-                        requestClose.run();
-                    });
+                    // v1.8.20：默认条目删除提示明确"更新时会自动恢复"（启动自动覆盖按 MIAO 语义 ID 重新注入）
+                    deleteConfirmDialog
+                        .setParams(isEditingDefaultTrade() ? "这是默认任务（系统内置条目）：删除后下次默认贸易组更新时会自动恢复。" : "是否确认删除该条目", () -> {
+                            sendDeleteTrade(
+                                editingDisplay.getGroupId()
+                                    .toString());
+                            requestClose.run();
+                        });
                     deleteConfirmPanel.openPanel();
                     return true;
                 }));

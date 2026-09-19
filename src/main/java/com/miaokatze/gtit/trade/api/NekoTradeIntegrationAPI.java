@@ -4,8 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -411,8 +409,10 @@ public final class NekoTradeIntegrationAPI {
      * 修改 def 不影响已落盘内容。组级 bqQuestId 作为条目级缺省继承。
      * <p>
      * v1.8.17 默认贸易体系：默认贸易组条目打 {@code defaultEntry} 标记；
-     * 组内各页 orderId 抬升高水位（删除不复用）；注册完成后计算内容哈希存入记账，
-     * 供版本更新时判定玩家是否改过默认条目。
+     * 组内各页 orderId 抬升高水位（删除不复用）。
+     * v1.8.20 ID 隔离：默认条目 id 为 {@code MIAO<序号>} 语义 ID（确定性派生运行时
+     * UUID），版本更新由启动自动覆盖（记账移除 + MIAO 前缀兜底清扫 + 重注入），
+     * 不再有"玩家是否改过"的内容哈希判定。
      *
      * @return 新记账（失败返回 null）
      */
@@ -498,55 +498,30 @@ public final class NekoTradeIntegrationAPI {
             NekoPageConfig.save(pageData);
         }
 
-        // 3. 内容哈希入账（版本更新时比对玩家是否改动过本组条目）
-        record.contentHash = computeContentHash(record, data);
         return record;
     }
 
     /**
-     * 计算组内容哈希（注册入账与更新校验共用同一序列化口径）
-     * <p>
-     * 按记账 tradeIds 顺序取磁盘数据中对应条目，逐条 GSON 序列化后拼接，
-     * SHA-256 转 hex。任一条目缺失视为内容已变（返回 null）。
+     * MIAO 前缀兜底清扫（v1.8.20 启动自动覆盖）：移除磁盘数据中所有
+     * {@code MIAO<序号>} 形态 id 的交易条目（默认贸易条目语义 ID，形态见
+     * {@link NekoTradeRegistryV2#MIAO_ID_PATTERN}）——覆盖记账缺失/损坏、
+     * 玩家手动复制默认条目等残留场景；玩家自定义条目恒为随机 UUID，永不命中。
      *
-     * @param record 组记账（提供 tradeIds 顺序）
-     * @param data   磁盘交易数据
-     * @return 哈希 hex；条目缺失或参数无效返回 null
+     * @return true = 发生移除并已落盘
      */
-    static String computeContentHash(GroupRecord record, NekoTradeConfig.NekoTradeData data) {
-        if (record == null || data == null || data.getTrades() == null || record.tradeIds.isEmpty()) {
-            return null;
+    static boolean removeDefaultEntriesByMiaoPrefix() {
+        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+        if (data.getTrades() == null) return false;
+        boolean removed = data.getTrades()
+            .removeIf(
+                entry -> entry != null && entry.getId() != null
+                    && entry.getId()
+                        .matches(NekoTradeRegistryV2.MIAO_ID_PATTERN));
+        if (removed) {
+            NekoTradeConfig.save(data);
+            LOG.info("[TradeAPI] MIAO 前缀兜底清扫完成");
         }
-        Map<String, NekoTradeEntry> byId = new HashMap<>();
-        for (NekoTradeEntry entry : data.getTrades()) {
-            if (entry != null && entry.getId() != null) {
-                byId.put(entry.getId(), entry);
-            }
-        }
-        StringBuilder canonical = new StringBuilder();
-        for (String tradeId : record.tradeIds) {
-            NekoTradeEntry entry = byId.get(tradeId);
-            if (entry == null) {
-                return null;
-            }
-            canonical.append(GSON.toJson(entry, NekoTradeEntry.class))
-                .append('\n');
-        }
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(
-                canonical.toString()
-                    .getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                hex.append(Character.forDigit((b >> 4) & 0xF, 16))
-                    .append(Character.forDigit(b & 0xF, 16));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            LOG.error("[TradeAPI] SHA-256 不可用，内容哈希计算失败", e);
-            return null;
-        }
+        return removed;
     }
 
     /**
@@ -631,11 +606,13 @@ public final class NekoTradeIntegrationAPI {
      * 删除文件强制重注册。
      * <p>
      * v1.8.17 默认贸易体系扩展字段（仅默认贸易组消费，其余组为中性默认值）：
-     * {@code contentHash} 注册时的组内容哈希（更新时比对玩家是否改过默认条目）；
      * {@code dismissedVersion} 玩家对"是否复原"选否的版本（该版本不再打扰）；
      * {@code handledUpdateTag} 已处理的更新标签版本（低于 {@code UPDATE_TAG} 时强制弹同步询问）。
      * v1.8.18："不再提醒"改经配置文件 {@code defaultTradeUpdateNotice=false} 持久化
      * （用户口径：普通的不再提醒就是配置关闭更新通知），记账不再承载该标志。
+     * v1.8.20：tradeIds 记录默认条目的 {@code MIAO<序号>} 语义 ID（与 tab 文件字面
+     * 一致）；原 contentHash 字段废弃（启动自动覆盖取代"玩家是否改过"判定，旧记账
+     * 中残留的该键由 Gson 宽容忽略）。
      * <p>
      * 包级可见（非 private）供同包单元测试直接构造与读写。
      */
@@ -646,8 +623,6 @@ public final class NekoTradeIntegrationAPI {
         int version;
         final List<String> tradeIds = new ArrayList<>();
         final List<Integer> pageIds = new ArrayList<>();
-        /** 注册时的组内容哈希（hex）；旧记账无此字段为 null，视为"已修改" */
-        String contentHash;
         /** 玩家选"否"跳过的默认组版本；0=无 */
         int dismissedVersion;
         /** 已处理的更新标签版本；null=旧记账（升自 1.8.17 之前，视为未处理） */
