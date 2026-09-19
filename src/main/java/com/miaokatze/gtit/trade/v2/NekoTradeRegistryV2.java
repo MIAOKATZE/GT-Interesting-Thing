@@ -54,6 +54,28 @@ public class NekoTradeRegistryV2 {
     }
 
     /**
+     * 磁盘条目 id 与运行时组 UUID 匹配（v1.8.21 审查修复）：游戏内编辑/删除请求携带的
+     * 是运行时派生 UUID 字符串，而默认条目在 tab 文件/磁盘的 id 字面为 {@code MIAO<n>}，
+     * 直接字符串比较恒不匹配（v1.8.20 之前资产 id 即 UUID、两侧字面相同故从未暴露）——
+     * 本方法对 MIAO 语义 ID 先经 {@link #parseTradeGroupId} 派生再比较；玩家自定义
+     * UUID 条目解析结果等于自身（零回归）。
+     *
+     * @param entryId     磁盘条目 id 字面（{@code MIAO<n>} 或 UUID 字符串）
+     * @param runtimeUuid 客户端运行时组 UUID 字符串
+     * @return true = 该条目即目标条目；任一侧缺失或解析失败返回 false（不抛出）
+     */
+    public static boolean idMatchesRuntimeUuid(String entryId, String runtimeUuid) {
+        if (entryId == null || runtimeUuid == null) {
+            return false;
+        }
+        try {
+            return parseTradeGroupId(entryId).equals(UUID.fromString(runtimeUuid));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /**
      * 初始化注册表
      * <p>
      * 在模组加载阶段调用，加载交易配置并注册到数据库。

@@ -252,7 +252,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * 推送值覆盖回常量，弹框永不触发。
      */
     private String defaultTradeSyncPromptCached = "";
-    /** 默认贸易组同步动作（C2S：RESTORE/DISMISS/NEVER/FORCE_RESTORE/FORCE_DISMISS） */
+    /** 默认贸易组同步动作（C2S：ACK/RESTORE/DISMISS/NEVER，v1.8.21 两场景弹框） */
     private StringSyncValue defaultTradeSyncActionSync;
     /** 本次 GUI 打开期间同步询问弹框是否已打开过（防重复弹） */
     private boolean defaultTradeSyncDialogShown = false;
@@ -1007,19 +1007,20 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /**
      * 发送默认贸易组同步动作（客户端弹框按钮回调）
      * <p>
-     * 按弹框模式映射动作码（强制模式选是否后一律标记更新标签已处理），
-     * 经 C2S 同步值发往服务端执行。
+     * 按弹框按钮结果映射动作码（v1.8.21：ACK=知道了收束覆盖通知；RESTORE/DISMISS/NEVER
+     * 为例行更新询问三按钮），经 C2S 同步值发往服务端执行。
      *
      * @param result 弹框按钮结果（{@code NekoDefaultTradeSyncDialog.RESULT_*}）
      */
     private void sendDefaultTradeSyncAction(int result) {
         if (defaultTradeSyncActionSync == null) return;
-        boolean force = defaultTradeSyncDialog != null && defaultTradeSyncDialog.isForceMode();
         String action;
-        if (result == NekoDefaultTradeSyncDialog.RESULT_RESTORE) {
-            action = force ? "FORCE_RESTORE" : "RESTORE";
+        if (result == NekoDefaultTradeSyncDialog.RESULT_ACK) {
+            action = "ACK";
+        } else if (result == NekoDefaultTradeSyncDialog.RESULT_RESTORE) {
+            action = "RESTORE";
         } else if (result == NekoDefaultTradeSyncDialog.RESULT_DISMISS) {
-            action = force ? "FORCE_DISMISS" : "DISMISS";
+            action = "DISMISS";
         } else {
             action = "NEVER";
         }
@@ -1029,22 +1030,19 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /**
      * 服务端：执行默认贸易组同步动作（C2S 同步值回调，已投递服务器主线程）
      * <p>
-     * RESTORE=按记账移除后重注册当前资产内容（玩家改动被覆盖）；DISMISS=本版本不再询问；
-     * NEVER=后续版本也不再询问；FORCE_RESTORE/FORCE_DISMISS 在上述语义上额外标记更新标签已处理。
-     * 动作完成后询问状态随同步值自动刷新为空，并经 reloadAndSync 推送最新交易配置。
+     * v1.8.21：ACK=标记更新标签已处理（强制覆盖通知"知道了"）；RESTORE=覆盖同步当前资产
+     * 内容（记账移除+清扫+重注册，玩家对默认条目的修改被新版覆盖）；DISMISS=本版本不再询问；
+     * NEVER=写配置 defaultTradeUpdateNotice=false（例行更新不再询问，更新标签强制覆盖不受影响）。
+     * 动作完成后询问状态随同步值自动刷新，并经 reloadAndSync 推送最新交易配置。
      *
      * @param action 动作码
      */
     private static void handleDefaultTradeSyncAction(String action) {
         switch (action) {
+            case "ACK" -> BundledTradeGroups.markUpdateTagHandled();
             case "RESTORE" -> BundledTradeGroups.restoreDefaultGroup();
             case "DISMISS" -> BundledTradeGroups.dismissDefaultGroupUpdate();
             case "NEVER" -> BundledTradeGroups.neverAskDefaultGroup();
-            case "FORCE_RESTORE" -> {
-                BundledTradeGroups.restoreDefaultGroup();
-                BundledTradeGroups.markUpdateTagHandled();
-            }
-            case "FORCE_DISMISS" -> BundledTradeGroups.markUpdateTagHandled();
             default -> LOG.warn("[NekoVM] 未知默认贸易组同步动作: {}", action);
         }
     }

@@ -10,12 +10,14 @@ import java.util.UUID;
 
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
+import com.miaokatze.gtit.trade.NekoTradeEntry;
 import com.miaokatze.gtit.trade.api.NekoTradeIntegrationAPI.GroupRecord;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 /**
- * 默认贸易体系（v1.8.17 引入，v1.8.20 ID 隔离重构）纯 JVM 测试：更新标签版本比较、
- * 记账同步字段 round-trip、MIAO 语义 ID 确定性派生与旧机制记账识别。
+ * 默认贸易体系（v1.8.17 引入，v1.8.20 ID 隔离，v1.8.21 两场景弹框）纯 JVM 测试：
+ * 更新标签版本比较、记账同步字段 round-trip、MIAO 语义 ID 确定性派生与
+ * 例行更新内容比对。
  * <p>
  * 覆盖目标：
  * <ul>
@@ -25,9 +27,9 @@ import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
  * <li>{@code NekoTradeRegistryV2#parseTradeGroupId}——MIAO&lt;序号&gt; 确定性派生
  * （同号恒同 UUID、异号异 UUID、合法 UUID 形态）；非 MIAO 非法串抛
  * {@link IllegalArgumentException}（注册链路按随机 UUID 兜底）</li>
- * <li>{@code BundledTradeGroups#recordHasLegacyIds}——旧机制 UUID 记账识别
- * （升旧存档触发一次性迁移覆盖，即使资产版本号未变）</li>
- * <li>新构造记账默认已处理当前更新标签（全新安装不触发强制同步询问）</li>
+ * <li>{@code NekoTradeIntegrationAPI#defaultEntryContentMatches}——例行更新内容比对
+ * （defaultEntry 标记归一、字段差异检出）</li>
+ * <li>新构造记账默认已处理当前更新标签（全新安装不触发强制覆盖通知）</li>
  * </ul>
  * 零依赖断言套件，入口为 {@code main}（与 {@code GroupRecordTest} 同模式）。
  */
@@ -46,7 +48,8 @@ public class DefaultTradeSyncTest {
         cases.put("legacyRecordJsonDefaults", () -> runChecked(DefaultTradeSyncTest::legacyRecordJsonDefaults));
         cases.put("miaoIdDerivesDeterministicUuid", DefaultTradeSyncTest::miaoIdDerivesDeterministicUuid);
         cases.put("miaoIdRejectsNonMiaoNonUuid", DefaultTradeSyncTest::miaoIdRejectsNonMiaoNonUuid);
-        cases.put("recordHasLegacyIdsDetection", DefaultTradeSyncTest::recordHasLegacyIdsDetection);
+        cases.put("idMatchesRuntimeUuidSemantics", DefaultTradeSyncTest::idMatchesRuntimeUuidSemantics);
+        cases.put("defaultEntryContentComparison", DefaultTradeSyncTest::defaultEntryContentComparison);
         try {
             TestRunner.run(DefaultTradeSyncTest.class, cases);
         } finally {
@@ -120,8 +123,11 @@ public class DefaultTradeSyncTest {
         SimpleAssert.that(loaded != null, "旧 JSON 记账回读非 null（关键字段齐全）");
         SimpleAssert.eq(0, loaded.dismissedVersion, "旧记账 dismissedVersion 缺省 0");
         SimpleAssert.eq("1.8.19", loaded.handledUpdateTag, "旧记账 handledUpdateTag 回读");
-        // v1.8.20：contentHash 字段已删，旧记账残留键由 Gson 宽容忽略（不再参与任何判定）
-        SimpleAssert.that(BundledTradeGroups.recordHasLegacyIds(loaded), "旧 UUID tradeIds 识别为旧机制记账（触发迁移覆盖）");
+        // v1.8.20：contentHash 字段已删，旧记账残留键由 Gson 宽容忽略（不再参与任何判定）；
+        // v1.8.21：旧记账 handledUpdateTag 低于当前更新标签 → 走强制覆盖分支（recordHasLegacyIds 已并入该判定）
+        SimpleAssert.that(
+            BundledTradeGroups.compareVersions(loaded.handledUpdateTag, BundledTradeGroups.UPDATE_TAG) < 0,
+            "旧记账低于更新标签（v1.8.21 强制覆盖分支捕获，无需独立 legacy 判定）");
     }
 
     // ==================== MIAO 语义 ID 派生 ====================
@@ -164,25 +170,64 @@ public class DefaultTradeSyncTest {
         }
     }
 
-    // ==================== recordHasLegacyIds（v1.8.20 迁移判定） ====================
+    // ==================== idMatchesRuntimeUuid（v1.8.21 审查修复：编辑/删除定位） ====================
 
-    static void recordHasLegacyIdsDetection() {
-        GroupRecord miao = new GroupRecord(ID, 5);
-        miao.tradeIds.add("MIAO1");
-        miao.tradeIds.add("MIAO88");
-        SimpleAssert.that(!BundledTradeGroups.recordHasLegacyIds(miao), "全 MIAO 记账 = 新机制（不触发迁移）");
+    static void idMatchesRuntimeUuidSemantics() {
+        // MIAO 字面 id ↔ 派生 UUID 匹配（游戏内编辑/删除请求携带派生 UUID，磁盘字面为 MIAO<n>）
+        UUID miao1 = NekoTradeRegistryV2.parseTradeGroupId("MIAO1");
+        SimpleAssert.that(
+            NekoTradeRegistryV2.idMatchesRuntimeUuid("MIAO1", miao1.toString()),
+            "MIAO 字面 id 与派生 UUID 匹配（saveTrade/deleteTrade 定位链）");
+        SimpleAssert.that(!NekoTradeRegistryV2.idMatchesRuntimeUuid("MIAO2", miao1.toString()), "不同序号的 MIAO 条目不匹配");
+        // 玩家自定义 UUID 条目字面透传自匹配（零回归）
+        SimpleAssert.that(
+            NekoTradeRegistryV2
+                .idMatchesRuntimeUuid("123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000"),
+            "玩家自定义 UUID 字面自匹配");
+        // 非法输入不抛出、返回 false（lambda 内安全）
+        SimpleAssert.that(!NekoTradeRegistryV2.idMatchesRuntimeUuid("garbage", "not-a-uuid"), "非法输入返回 false 不抛出");
+        SimpleAssert.that(!NekoTradeRegistryV2.idMatchesRuntimeUuid(null, miao1.toString()), "null entryId 返回 false");
+        SimpleAssert.that(!NekoTradeRegistryV2.idMatchesRuntimeUuid("MIAO1", null), "null runtimeUuid 返回 false");
+    }
 
-        GroupRecord mixed = new GroupRecord(ID, 4);
-        mixed.tradeIds.add("MIAO1");
-        mixed.tradeIds.add("97be5bf3-b07f-470d-8225-88e4ea740fd3");
-        SimpleAssert.that(BundledTradeGroups.recordHasLegacyIds(mixed), "混入 UUID 记账 = 旧机制（触发一次性迁移覆盖）");
+    // ==================== defaultEntryContentMatches（v1.8.21 例行更新内容比对） ====================
 
-        GroupRecord legacy = new GroupRecord(ID, 4);
-        legacy.tradeIds.add("97be5bf3-b07f-470d-8225-88e4ea740fd3");
-        SimpleAssert.that(BundledTradeGroups.recordHasLegacyIds(legacy), "纯 UUID 记账 = 旧机制");
+    /** 构造基础测试条目 */
+    private static NekoTradeEntry entry(String id, int tabId, int orderId, int cooldown) {
+        NekoTradeEntry e = new NekoTradeEntry();
+        e.setId(id);
+        e.setTabId(tabId);
+        e.setOrderId(orderId);
+        e.setCooldown(cooldown);
+        return e;
+    }
 
-        GroupRecord empty = new GroupRecord(ID, 4);
-        SimpleAssert.that(!BundledTradeGroups.recordHasLegacyIds(empty), "空 tradeIds 不触发迁移（交由版本门控）");
+    static void defaultEntryContentComparison() {
+        // 资产条目（defaultEntry=false）vs 磁盘条目（注册入盘统一 true）：标记差异应被归一
+        NekoTradeEntry asset = entry("MIAO1", 5, 0, 79200);
+        NekoTradeEntry disk = entry("MIAO1", 5, 0, 79200);
+        disk.setDefaultEntry(true);
+        SimpleAssert.that(
+            NekoTradeIntegrationAPI.defaultEntryContentMatches(asset, disk),
+            "defaultEntry 标记差异归一后内容一致（玩家未改动 → 无变化）");
+
+        // cooldown 差异（玩家改过默认条目）→ 有变化
+        NekoTradeEntry modified = entry("MIAO1", 5, 0, 3600);
+        modified.setDefaultEntry(true);
+        SimpleAssert.that(!NekoTradeIntegrationAPI.defaultEntryContentMatches(asset, modified), "cooldown 差异检出（玩家改动）");
+
+        // 物品清单差异 → 有变化
+        NekoTradeEntry itemsChanged = entry("MIAO1", 5, 0, 79200);
+        itemsChanged.setDefaultEntry(true);
+        itemsChanged.setFromItems(new java.util.ArrayList<>());
+        itemsChanged.getFromItems()
+            .add(new NekoTradeEntry.ItemEntry("minecraft:bread", 0, 1));
+        SimpleAssert.that(!NekoTradeIntegrationAPI.defaultEntryContentMatches(asset, itemsChanged), "fromItems 差异检出");
+
+        // id 不同 → 不匹配（bundledContentDiffers 的缺失路径）
+        NekoTradeEntry otherId = entry("MIAO2", 5, 0, 79200);
+        otherId.setDefaultEntry(true);
+        SimpleAssert.that(!NekoTradeIntegrationAPI.defaultEntryContentMatches(asset, otherId), "id 不同不匹配（按 id 匹配后再比对）");
     }
 
     private static void cleanup() {

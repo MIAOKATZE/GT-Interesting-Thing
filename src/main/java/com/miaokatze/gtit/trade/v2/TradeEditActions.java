@@ -102,11 +102,11 @@ final class TradeEditActions {
                 data.getTrades()
                     .size());
 
-            // 查找目标交易条目（按 ID 匹配）
+            // 查找目标交易条目（v1.8.21 审查修复：按运行时组 UUID 派生匹配——默认条目磁盘
+            // id 字面为 MIAO<n>，与客户端派生 UUID 字符串不相等，直接 equals 恒失配）
             NekoTradeEntry targetEntry = null;
             for (NekoTradeEntry entry : data.getTrades()) {
-                if (entry.getId() != null && entry.getId()
-                    .equals(groupIdStr)) {
+                if (NekoTradeRegistryV2.idMatchesRuntimeUuid(entry.getId(), groupIdStr)) {
                     targetEntry = entry;
                     break;
                 }
@@ -345,11 +345,9 @@ final class TradeEditActions {
                 return;
             }
 
-            // 按 ID 匹配移除（与 saveTrade 定位口径一致）
+            // 按 ID 匹配移除（与 saveTrade 定位口径一致；v1.8.21 审查修复：运行时 UUID 派生匹配）
             boolean removed = data.getTrades()
-                .removeIf(
-                    entry -> entry.getId() != null && entry.getId()
-                        .equals(groupIdStr));
+                .removeIf(entry -> NekoTradeRegistryV2.idMatchesRuntimeUuid(entry.getId(), groupIdStr));
 
             if (!removed) {
                 sendError(player, "未找到交易条目: " + groupIdStr);

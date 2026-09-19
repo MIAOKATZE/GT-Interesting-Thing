@@ -11,37 +11,38 @@ import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
 
 /**
- * 默认贸易组同步询问弹框（v1.8.17，本地实现；v1.8.18 修复按钮行布局）
+ * 默认贸易组同步弹框（v1.8.17 引入；v1.8.18 修复按钮行布局；v1.8.21 两场景定型）
  * <p>
  * 玩家打开猫猫贸易机时，若服务端判定需要提示默认贸易组状态（见
  * {@code BundledTradeGroups#getPromptState()}），由宿主打开本弹框，
  * 玩家必须选择一个按钮才能继续使用贸易机：
  * <ul>
- * <li><b>普通提示</b>（v1.8.20 启动自动覆盖已执行：数据已同步至最新版）：
- * "默认贸易组已自动更新，如有异常可点"复原"重新注入。"，
- * 按钮 复原 / 否 / 不再提醒（复原=手动重新注入的修复入口，
- * "否"=该版本不再打扰，"不再提醒"=后续版本也不再问）</li>
- * <li><b>强制询问</b>（升自更新标签之前的存档）："默认贸易组已更新，请同步。"，
- * 按钮 是 / 否（配置不可关闭，无"不再提醒"）</li>
+ * <li><b>强制覆盖通知</b>（升自更新标签之前的存档，启动已无条件强制覆盖）：
+ * "默认贸易组已更新。"，单按钮 知道了（标记更新标签已处理，配置不可关闭）</li>
+ * <li><b>例行更新询问</b>（资产版本变化且内容有变化）：
+ * "检测到默认贸易组更新，是否同步？"，按钮 是 / 否 / 否且不再通知
+ * （是=覆盖同步；否=该版本不再打扰；否且不再通知=写配置永久关闭此类询问）</li>
  * </ul>
  * <p>
  * 模式在构造时确定（MUI2 2.3.88 无 widget 可见性 API，两种模式按钮组合不同，
  * 宿主经 {@code IPanelHandler} 的 provider 按模式现场构建实例）。
  * 按钮结果经 {@link #setActionHandler} 注入的回调发往宿主
- * （宿主经 C2S 同步值通知服务端执行复原/跳过/不再提醒/标记已处理）。
+ * （宿主经 C2S 同步值通知服务端执行覆盖同步/跳过/不再通知/标记已处理）。
  * <p>
  * v1.8.18 布局修复：{@code Flow.row()} 内子元素的 {@code left(n)} 是相对行的
- * 绝对钉位（非流式 margin）——原实现三按钮 left(0)/left(4)/left(4) 全部叠在行首；
- * 现按固定行宽 + 显式互斥 x 钉位（{@code NekoConfirmationDialog} left/right 同模式）。
+ * 绝对钉位（非流式 margin）——按钮按固定行宽 + 显式互斥 x 钉位排布
+ * （{@code NekoConfirmationDialog} left/right 同模式）。
  */
 public class NekoDefaultTradeSyncDialog extends Dialog<Integer> {
 
-    /** 结果：复原/同步（"是"） */
-    public static final int RESULT_RESTORE = 0;
+    /** 结果：知道了（强制覆盖通知收束，标记更新标签已处理） */
+    public static final int RESULT_ACK = 0;
+    /** 结果：是（覆盖同步当前资产内容） */
+    public static final int RESULT_RESTORE = 1;
     /** 结果：否（该版本不再打扰） */
-    public static final int RESULT_DISMISS = 1;
-    /** 结果：不再提醒（后续版本也不再问，仅普通询问有此按钮） */
-    public static final int RESULT_NEVER = 2;
+    public static final int RESULT_DISMISS = 2;
+    /** 结果：否且不再通知（写配置 defaultTradeUpdateNotice=false，仅例行更新询问有此按钮） */
+    public static final int RESULT_NEVER = 3;
 
     /** 按钮行宽（面板宽 200，行居中） */
     private static final int ROW_WIDTH = 190;
@@ -52,10 +53,10 @@ public class NekoDefaultTradeSyncDialog extends Dialog<Integer> {
     private IntConsumer actionHandler = r -> {};
 
     /**
-     * 构造同步询问弹框（模式在构建时确定）
+     * 构造同步弹框（模式在构建时确定）
      *
      * @param name      面板名称（用于同步标识）
-     * @param forceMode true=强制同步询问（"是/否"两按钮）
+     * @param forceMode true=强制覆盖通知（单按钮"知道了"）；false=例行更新三按钮询问
      */
     public NekoDefaultTradeSyncDialog(String name, boolean forceMode) {
         super(name, _unused -> {});
@@ -68,22 +69,20 @@ public class NekoDefaultTradeSyncDialog extends Dialog<Integer> {
             .setDraggable(false);
     }
 
-    /** 提示文案（按模式取文案；v1.8.20 普通模式改为"已自动更新"通知 + 复原修复入口） */
+    /** 提示文案（按模式取文案） */
     private TextWidget<?> buildMessage() {
         return new TextWidget<>(
-            IKey.dynamic(
-                () -> EnumChatFormatting.WHITE + (this.forceMode ? "默认贸易组已更新，请同步。" : "默认贸易组已自动更新，如有异常可点\"复原\"重新注入。")))
-                    .top(12)
-                    .widthRel(0.9f)
-                    .height(24)
-                    .horizontalCenter();
+            IKey.dynamic(() -> EnumChatFormatting.WHITE + (this.forceMode ? "默认贸易组已更新。" : "检测到默认贸易组更新，是否同步？"))).top(12)
+                .widthRel(0.9f)
+                .height(24)
+                .horizontalCenter();
     }
 
     /**
      * 按钮行（固定行宽 + 显式互斥 x 钉位，防重叠）
      * <p>
-     * 普通模式三按钮：复原(54) x2-56 / 否(36) x64-100 / 不再提醒(84) x104-188；
-     * 强制模式两按钮居中：是(60) x24-84 / 否(60) x106-166。
+     * 强制模式单按钮居中：知道了(60) x65-125；
+     * 询问模式三按钮居中：是(36) x7-43 / 否(36) x47-83 / 否且不再通知(96) x87-183。
      */
     private Flow buildButtonRow() {
         Flow row = Flow.row()
@@ -93,42 +92,34 @@ public class NekoDefaultTradeSyncDialog extends Dialog<Integer> {
         if (this.forceMode) {
             return row.child(
                 new ButtonWidget<>().size(60, 16)
-                    .left(24)
-                    .overlay(IKey.str("是"))
+                    .left(65)
+                    .overlay(IKey.str("知道了"))
                     .onMouseTapped(mouse -> {
-                        this.closeWith(RESULT_RESTORE);
+                        this.closeWith(RESULT_ACK);
                         return true;
-                    }))
-                .child(
-                    new ButtonWidget<>().size(60, 16)
-                        .left(106)
-                        .overlay(IKey.str("否"))
-                        .onMouseTapped(mouse -> {
-                            this.closeWith(RESULT_DISMISS);
-                            return true;
-                        }));
+                    }));
         }
         return row.child(
-            new ButtonWidget<>().size(54, 16)
-                .left(2)
-                .overlay(IKey.str("复原"))
+            new ButtonWidget<>().size(36, 16)
+                .left(7)
+                .overlay(IKey.str("是"))
                 .onMouseTapped(mouse -> {
                     this.closeWith(RESULT_RESTORE);
                     return true;
                 }))
             .child(
                 new ButtonWidget<>().size(36, 16)
-                    .left(64)
+                    .left(47)
                     .overlay(IKey.str("否"))
                     .onMouseTapped(mouse -> {
                         this.closeWith(RESULT_DISMISS);
                         return true;
                     }))
             .child(
-                new ButtonWidget<>().size(84, 16)
-                    .left(104)
-                    .overlay(IKey.str("不再提醒"))
-                    .tooltipBuilder(t -> t.addLine(IKey.str("后续默认贸易组版本更新不再弹此询问")))
+                new ButtonWidget<>().size(96, 16)
+                    .left(87)
+                    .overlay(IKey.str("否且不再通知"))
+                    .tooltipBuilder(t -> t.addLine(IKey.str("保持现状，且后续默认贸易组例行更新不再询问（更新标签强制覆盖不受影响）")))
                     .onMouseTapped(mouse -> {
                         this.closeWith(RESULT_NEVER);
                         return true;
@@ -138,7 +129,8 @@ public class NekoDefaultTradeSyncDialog extends Dialog<Integer> {
     /**
      * 关闭弹框并执行按钮结果回调
      *
-     * @param result {@link #RESULT_RESTORE} / {@link #RESULT_DISMISS} / {@link #RESULT_NEVER}
+     * @param result {@link #RESULT_ACK} / {@link #RESULT_RESTORE} / {@link #RESULT_DISMISS} /
+     *               {@link #RESULT_NEVER}
      */
     @Override
     public void closeWith(Integer result) {
@@ -151,7 +143,7 @@ public class NekoDefaultTradeSyncDialog extends Dialog<Integer> {
     /**
      * 是否处于强制模式
      *
-     * @return true=强制同步询问
+     * @return true=强制覆盖通知
      */
     public boolean isForceMode() {
         return this.forceMode;

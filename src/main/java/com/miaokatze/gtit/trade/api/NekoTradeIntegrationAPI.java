@@ -502,7 +502,7 @@ public final class NekoTradeIntegrationAPI {
     }
 
     /**
-     * MIAO 前缀兜底清扫（v1.8.20 启动自动覆盖）：移除磁盘数据中所有
+     * MIAO 前缀兜底清扫（v1.8.20）：移除磁盘数据中所有
      * {@code MIAO<序号>} 形态 id 的交易条目（默认贸易条目语义 ID，形态见
      * {@link NekoTradeRegistryV2#MIAO_ID_PATTERN}）——覆盖记账缺失/损坏、
      * 玩家手动复制默认条目等残留场景；玩家自定义条目恒为随机 UUID，永不命中。
@@ -522,6 +522,47 @@ public final class NekoTradeIntegrationAPI {
             LOG.info("[TradeAPI] MIAO 前缀兜底清扫完成");
         }
         return removed;
+    }
+
+    /**
+     * 例行更新内容比对（v1.8.21）：资产条目与磁盘上同 id 的 MIAO 条目逐条比较——
+     * 资产条目经 GSON 往返拷贝并归一 {@code defaultEntry=true}（注册入盘时的统一标记）
+     * 后序列化与磁盘条目比对，任何字段差异（含玩家对默认条目的原位修改、条目被删除）
+     * 视为内容有变化。
+     *
+     * @param assetTrades 资产条目清单（{@code NekoTradeGroupDef#getTrades()}）
+     * @return true = 内容有变化（或资产条目在磁盘缺失）
+     */
+    static boolean bundledContentDiffers(List<NekoTradeEntry> assetTrades) {
+        NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+        if (data.getTrades() == null) return true;
+        Map<String, NekoTradeEntry> diskMiao = new HashMap<>();
+        for (NekoTradeEntry entry : data.getTrades()) {
+            if (entry != null && entry.getId() != null
+                && entry.getId()
+                    .matches(NekoTradeRegistryV2.MIAO_ID_PATTERN)) {
+                diskMiao.put(entry.getId(), entry);
+            }
+        }
+        for (NekoTradeEntry asset : assetTrades) {
+            if (asset == null) continue;
+            NekoTradeEntry disk = diskMiao.get(asset.getId());
+            if (disk == null || !defaultEntryContentMatches(asset, disk)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 单条默认条目内容比对（{@code bundledContentDiffers} 的纯函数核心，包级可见供测试）：
+     * 资产侧深拷贝并归一 {@code defaultEntry=true} 后与磁盘条目按 GSON 序列化字符串比较。
+     */
+    static boolean defaultEntryContentMatches(NekoTradeEntry asset, NekoTradeEntry disk) {
+        NekoTradeEntry normalized = deepCopy(asset, NekoTradeEntry.class);
+        normalized.setDefaultEntry(true);
+        return GSON.toJson(normalized, NekoTradeEntry.class)
+            .equals(GSON.toJson(disk, NekoTradeEntry.class));
     }
 
     /**
