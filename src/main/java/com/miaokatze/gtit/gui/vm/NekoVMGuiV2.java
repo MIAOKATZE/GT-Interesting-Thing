@@ -232,10 +232,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     NekoConfirmationDialog defaultTradeSaveConfirmDialog;
     /** 默认贸易组保存警告面板 handler（客户端） */
     IPanelHandler defaultTradeSaveConfirmPanel;
-    /** 默认贸易组同步询问弹框（客户端，v1.8.17：打开贸易机时强制选择） */
+    /** 默认贸易组同步询问弹框（客户端，v1.8.17：打开贸易机时强制选择；v1.8.18 改为按模式现场构建） */
     NekoDefaultTradeSyncDialog defaultTradeSyncDialog;
     /** 默认贸易组同步询问面板 handler（客户端） */
     IPanelHandler defaultTradeSyncPanel;
+    /**
+     * 待打开的同步询问模式（客户端，v1.8.18）：{@code BundledTradeGroups.PROMPT_FORCE}=强制，
+     * 其余=普通。MUI2 2.3.88 无 widget 可见性 API 且弹框面板有构建缓存，两种模式按钮组合
+     * 不同——由 provider 现场构建实例时读取本字段（{@code onMainPanelUpdate} 在 openPanel 前设置）。
+     */
+    private boolean defaultTradeSyncForceMode = false;
     /** 默认贸易组同步询问状态（S2C："" 无 / "ASK" 普通 / "FORCE" 强制，服务端权威） */
     private StringSyncValue defaultTradeSyncPromptSync;
     /**
@@ -370,10 +376,17 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             defaultTradeSaveConfirmPanel = IPanelHandler
                 .simple(panel, (parent, player) -> defaultTradeSaveConfirmDialog, true);
             tradeEditor.setDefaultSaveConfirm(defaultTradeSaveConfirmDialog, defaultTradeSaveConfirmPanel);
-            // v1.8.17：默认贸易组同步询问弹框（打开贸易机时必须选择，onMainPanelUpdate 检测后打开）
-            defaultTradeSyncDialog = new NekoDefaultTradeSyncDialog("nekoV2:default_trade_sync");
-            defaultTradeSyncDialog.setActionHandler(this::sendDefaultTradeSyncAction);
-            defaultTradeSyncPanel = IPanelHandler.simple(panel, (parent, player) -> defaultTradeSyncDialog, true);
+            // v1.8.17：默认贸易组同步询问弹框（打开贸易机时必须选择，onMainPanelUpdate 检测后打开）。
+            // v1.8.18：provider 现场构建（面板无预建缓存可复用——MUI2 2.3.88 无 widget 可见性
+            // API，普通/强制两模式按钮组合不同，实例按 defaultTradeSyncForceMode 构建时定型）。
+            defaultTradeSyncPanel = IPanelHandler.simple(panel, (parent, player) -> {
+                NekoDefaultTradeSyncDialog dialog = new NekoDefaultTradeSyncDialog(
+                    "nekoV2:default_trade_sync",
+                    defaultTradeSyncForceMode);
+                dialog.setActionHandler(this::sendDefaultTradeSyncAction);
+                this.defaultTradeSyncDialog = dialog;
+                return dialog;
+            }, true);
         }
 
         // ==================== 双端共有子树（必须先于所有仅客户端子树添加）====================
@@ -985,9 +998,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         if (prompt == null || prompt.isEmpty()) {
             return;
         }
-        if (defaultTradeSyncDialog != null) {
-            defaultTradeSyncDialog.setForceMode(BundledTradeGroups.PROMPT_FORCE.equals(prompt));
-        }
+        // 模式先于 openPanel 定型：provider 首次构建实例时读取（v1.8.18）
+        this.defaultTradeSyncForceMode = BundledTradeGroups.PROMPT_FORCE.equals(prompt);
         defaultTradeSyncPanel.openPanel();
         defaultTradeSyncDialogShown = true;
     }

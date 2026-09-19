@@ -21,7 +21,7 @@ import com.miaokatze.gtit.trade.api.NekoTradeIntegrationAPI.GroupRecord;
  * 覆盖目标：
  * <ul>
  * <li>{@code BundledTradeGroups#compareVersions}——升自更新标签之前判定（旧记账 null/空 = 最低）</li>
- * <li>{@code GroupRecord} 新字段（contentHash/dismissedVersion/neverAsk/handledUpdateTag）
+ * <li>{@code GroupRecord} 新字段（contentHash/dismissedVersion/handledUpdateTag）
  * 序列化 round-trip 与旧 JSON 缺字段缺省</li>
  * <li>{@code NekoTradeIntegrationAPI#computeContentHash}——同内容同哈希、改动变哈希、
  * 条目缺失返回 null（视为已改动）</li>
@@ -86,7 +86,6 @@ public class DefaultTradeSyncTest {
     static void freshRecordHandlesCurrentUpdateTag() {
         GroupRecord rec = new GroupRecord(ID, 1);
         SimpleAssert.eq(BundledTradeGroups.UPDATE_TAG, rec.handledUpdateTag, "新记账默认已处理当前更新标签（全新安装不弹强制询问）");
-        SimpleAssert.that(!rec.neverAsk, "新记账 neverAsk 默认 false");
         SimpleAssert.eq(0, rec.dismissedVersion, "新记账 dismissedVersion 默认 0");
         SimpleAssert.that(rec.contentHash == null, "新记账 contentHash 初始 null（注册后入账）");
     }
@@ -98,16 +97,14 @@ public class DefaultTradeSyncTest {
         rec.pageIds.add(5);
         rec.contentHash = "abcdef0123456789";
         rec.dismissedVersion = 3;
-        rec.neverAsk = true;
-        rec.handledUpdateTag = "1.8.17";
+        rec.handledUpdateTag = "1.8.18";
         rec.save();
 
         GroupRecord loaded = GroupRecord.load(ID);
         SimpleAssert.that(loaded != null, "记账回读非 null");
         SimpleAssert.eq("abcdef0123456789", loaded.contentHash, "contentHash round-trip");
         SimpleAssert.eq(3, loaded.dismissedVersion, "dismissedVersion round-trip");
-        SimpleAssert.that(loaded.neverAsk, "neverAsk round-trip");
-        SimpleAssert.eq("1.8.17", loaded.handledUpdateTag, "handledUpdateTag round-trip");
+        SimpleAssert.eq("1.8.18", loaded.handledUpdateTag, "handledUpdateTag round-trip");
     }
 
     static void legacyRecordJsonDefaults() throws Exception {
@@ -122,9 +119,10 @@ public class DefaultTradeSyncTest {
         SimpleAssert.that(loaded != null, "旧 JSON 记账回读非 null（关键字段齐全）");
         SimpleAssert.that(loaded.contentHash == null, "旧记账 contentHash 缺省 null（视为已改动，走 GUI 询问）");
         SimpleAssert.eq(0, loaded.dismissedVersion, "旧记账 dismissedVersion 缺省 0");
-        SimpleAssert.that(!loaded.neverAsk, "旧记账 neverAsk 缺省 false");
         SimpleAssert.that(loaded.handledUpdateTag == null, "旧记账 handledUpdateTag 缺省 null（升自更新标签之前 → 强制询问）");
-        SimpleAssert.that(BundledTradeGroups.compareVersions(loaded.handledUpdateTag, "1.8.17") < 0, "旧记账低于更新标签");
+        SimpleAssert.that(
+            BundledTradeGroups.compareVersions(loaded.handledUpdateTag, BundledTradeGroups.UPDATE_TAG) < 0,
+            "旧记账低于更新标签");
     }
 
     // ==================== computeContentHash ====================

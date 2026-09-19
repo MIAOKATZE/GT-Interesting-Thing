@@ -633,8 +633,9 @@ public final class NekoTradeIntegrationAPI {
      * v1.8.17 默认贸易体系扩展字段（仅默认贸易组消费，其余组为中性默认值）：
      * {@code contentHash} 注册时的组内容哈希（更新时比对玩家是否改过默认条目）；
      * {@code dismissedVersion} 玩家对"是否复原"选否的版本（该版本不再打扰）；
-     * {@code neverAsk} "不再提醒"标志（后续版本也不再弹默认组同步询问）；
      * {@code handledUpdateTag} 已处理的更新标签版本（低于 {@code UPDATE_TAG} 时强制弹同步询问）。
+     * v1.8.18："不再提醒"改经配置文件 {@code defaultTradeUpdateNotice=false} 持久化
+     * （用户口径：普通的不再提醒就是配置关闭更新通知），记账不再承载该标志。
      * <p>
      * 包级可见（非 private）供同包单元测试直接构造与读写。
      */
@@ -649,8 +650,6 @@ public final class NekoTradeIntegrationAPI {
         String contentHash;
         /** 玩家选"否"跳过的默认组版本；0=无 */
         int dismissedVersion;
-        /** "不再提醒"标志：后续默认组版本更新不再弹询问 */
-        boolean neverAsk;
         /** 已处理的更新标签版本；null=旧记账（升自 1.8.17 之前，视为未处理） */
         String handledUpdateTag;
 

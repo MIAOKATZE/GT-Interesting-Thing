@@ -26,6 +26,9 @@ public class Config {
     // false 或资产缺失时沿用旧默认交易。
     public static boolean enhancedDefaultTrades = true;
 
+    /** 配置文件引用（synchronizeConfiguration 时保存，供运行期写回配置项） */
+    private static File configFileRef;
+
     /** 默认贸易组同步询问（v1.8.17）：true=版本更新且玩家改过默认条目时弹"是否复原"；升自更新标签之前的强制询问不受此项控制 */
     public static boolean defaultTradeUpdateNotice = true;
 
@@ -43,6 +46,7 @@ public class Config {
      */
     public static void synchronizeConfiguration(File configFile) {
         Configuration configuration = new Configuration(configFile);
+        configFileRef = configFile;
 
         metaIdOffset = configuration.getInt(
             "metaIdOffset",
@@ -92,6 +96,31 @@ public class Config {
 
         if (configuration.hasChanged()) {
             configuration.save();
+        }
+    }
+
+    /**
+     * 关闭默认贸易组更新通知并写回配置文件（v1.8.18）
+     * <p>
+     * "不再提醒"按钮的持久化路径（用户口径：普通的不再提醒就是配置关闭更新通知）——
+     * 与配置文件中 defaultTradeUpdateNotice=false 完全等效，玩家选择后跨版本生效。
+     * 仅服务端调用（弹框动作在服务端执行，写的是本端配置文件）。
+     */
+    public static synchronized void disableDefaultTradeUpdateNoticeAndSave() {
+        defaultTradeUpdateNotice = false;
+        try {
+            if (configFileRef == null) return;
+            Configuration configuration = new Configuration(configFileRef);
+            configuration
+                .get(
+                    Configuration.CATEGORY_GENERAL,
+                    "defaultTradeUpdateNotice",
+                    false,
+                    "默认贸易组更新通知 (v1.8.17): 版本更新且玩家改动过默认贸易条目时, 打开猫猫贸易机弹框询问是否复原; false=不弹框保持现状。升自更新标签之前的强制同步询问不受此项控制")
+                .set(false);
+            configuration.save();
+        } catch (Exception e) {
+            // 写回失败不阻断弹框流程：内存值已生效，重启后恢复配置原值
         }
     }
 }

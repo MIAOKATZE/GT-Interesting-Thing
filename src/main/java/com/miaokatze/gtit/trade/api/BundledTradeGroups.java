@@ -43,10 +43,10 @@ public final class BundledTradeGroups {
     private static final Gson GSON = new Gson();
 
     /**
-     * 更新标签（v1.8.17）：升自该版本之前的存档，打开猫猫贸易机时强制弹
+     * 更新标签（v1.8.18）：升自该版本之前的存档，打开猫猫贸易机时强制弹
      * "默认贸易组已更新，请同步。"（配置不可关闭）。发布推荐更新时由作者手动递改。
      */
-    public static final String UPDATE_TAG = "1.8.17";
+    public static final String UPDATE_TAG = "1.8.18";
 
     /** GUI 询问状态：无 */
     public static final String PROMPT_NONE = "";
@@ -196,7 +196,7 @@ public final class BundledTradeGroups {
         if (compareVersions(record.handledUpdateTag, UPDATE_TAG) < 0) {
             return PROMPT_FORCE;
         }
-        if (!Config.defaultTradeUpdateNotice || record.neverAsk) {
+        if (!Config.defaultTradeUpdateNotice) {
             return PROMPT_NONE;
         }
         if (record.version == baseDef.getVersion() || record.dismissedVersion == baseDef.getVersion()) {
@@ -229,14 +229,15 @@ public final class BundledTradeGroups {
         LOG.info("[TradeAPI] 玩家跳过默认贸易组版本 {} 的复原询问", record.dismissedVersion);
     }
 
-    /** 玩家选"不再提醒"：后续默认组版本更新不再弹同步询问（强制询问不受此标志影响） */
+    /**
+     * 玩家选"不再提醒"（v1.8.18 语义修正）：持久化等效于配置关闭更新通知——
+     * 直接把 {@code defaultTradeUpdateNotice} 写为 false 并落配置文件，
+     * 后续默认组版本更新不再弹普通同步询问（强制询问不受影响）。
+     */
     public static void neverAskDefaultGroup() {
-        NekoTradeIntegrationAPI.GroupRecord record = NekoTradeIntegrationAPI.GroupRecord.load(BASE_GROUP_ID);
-        if (record == null) return;
-        record.neverAsk = true;
-        record.save();
+        Config.disableDefaultTradeUpdateNoticeAndSave();
         refreshPromptStateCache();
-        LOG.info("[TradeAPI] 玩家选择不再提醒默认贸易组同步");
+        LOG.info("[TradeAPI] 玩家选择不再提醒默认贸易组同步（配置 defaultTradeUpdateNotice=false 已写回）");
     }
 
     /** 标记当前更新标签已处理（强制同步询问收束） */
