@@ -1,14 +1,16 @@
 package com.miaokatze.gtit.common.items.infinitycell;
 
-import static appeng.util.item.AEItemStackType.ITEM_STACK_TYPE;
-
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import appeng.api.AEApi;
 import appeng.api.config.Actionable;
@@ -17,17 +19,20 @@ import appeng.api.exceptions.AppEngException;
 import appeng.api.implementations.items.IStorageCell;
 import appeng.api.implementations.tiles.IChestOrDrive;
 import appeng.api.networking.security.BaseActionSource;
-import appeng.api.storage.IMEInventory;
 import appeng.api.storage.IMEInventoryHandler;
 import appeng.api.storage.ISaveProvider;
 import appeng.api.storage.StorageChannel;
 import appeng.api.storage.data.IAEItemStack;
+import appeng.api.storage.data.IAEStack;
+import appeng.api.storage.data.IAEStackType;
 import appeng.api.storage.data.IItemList;
-import appeng.me.storage.CellInventory;
 import appeng.util.Platform;
 import appeng.util.item.AEItemStack;
 
 public class InfinityItemStorageCellInventory implements ITCellInventory {
+
+    /** 统一 logger（与同包 InfinityCellHandler 共用 "gtit" 名，日志过滤口径不变） */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     private static final String ITEM_TYPE_TAG = "it";
     private static final String ITEM_COUNT_TAG = "ic";
@@ -210,6 +215,75 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         return false;
     }
 
+    /**
+     * 嵌套元件 handler 的供给口，把 AE2 registry 查询（需要已引导的运行环境）与「非空判定」隔离，
+     * 使判定 + 探测可在纯 JVM 单测里用接口 stub 覆盖。按元件自己的通道参数化，探测侧无需强转。
+     */
+    interface NestedCellLookup<T extends IAEStack> {
+
+        IMEInventoryHandler<T> get(IAEStackType<T> type);
+    }
+
+    /** 取嵌套元件自己声明的通道；取不到（非 IStorageCell、返回 null、连 {@code getItem()} 都抛错）返回 null 表示不可判定。 */
+    private static IAEStackType<?> nestedStackType(final ItemStack nested) {
+        try {
+            final Item item = nested.getItem();
+            if (item instanceof IStorageCell) {
+                return ((IStorageCell) item).getStackType();
+            }
+        } catch (final Throwable err) {
+            LOG.warn("读取嵌套元件通道失败，按放行处理（fail-open）", err);
+        }
+        return null;
+    }
+
+    /** AE2 的 {@code ICellRegistry} 该重载自身返回原始 {@code IMEInventoryHandler}，unchecked 来源仅此一处。 */
+    @SuppressWarnings("unchecked")
+    private static <T extends IAEStack> IMEInventoryHandler<T> nestedCellHandler(final ItemStack nested,
+        final IAEStackType<T> type) {
+        return (IMEInventoryHandler<T>) AEApi.instance()
+            .registries()
+            .cell()
+            .getCellInventory(nested, null, type);
+    }
+
+    private static <T extends IAEStack> NestedCellLookup<T> nestedCellLookup(final ItemStack nested) {
+        return type -> nestedCellHandler(nested, type);
+    }
+
+    /**
+     * 「非空则拒收」判定的可测内核：探测列表由元件自己的通道给出，判定只读返回列表的 {@code isEmpty()}。
+     * 不可判定一律放行（返回 false）：handler 为 null（registry 缺失或元件的通道守卫拒绝错配）、
+     * 或探测抛出任何 Throwable（含第三方 handler 对元素类型的盲转）。
+     */
+    static <T extends IAEStack> boolean handlerHasContent(final IMEInventoryHandler<T> handler,
+        final Supplier<IItemList<T>> probeList) {
+        if (handler == null || probeList == null) {
+            return false;
+        }
+        try {
+            return !handler.getAvailableItems(probeList.get())
+                .isEmpty();
+        } catch (final Throwable err) {
+            LOG.warn("探测嵌套元件内容失败，按放行处理（fail-open）", err);
+            return false;
+        }
+    }
+
+    /** 通道或供给口取不到即不可判定 → 放行，且不向 registry 发问。 */
+    static <T extends IAEStack> boolean nestedCellHasContent(final IAEStackType<T> type,
+        final NestedCellLookup<T> handlerSource) {
+        if (type == null || handlerSource == null) {
+            return false;
+        }
+        try {
+            return handlerHasContent(handlerSource.get(type), type::createList);
+        } catch (final Throwable err) {
+            LOG.warn("查询嵌套元件 handler 失败，按放行处理（fail-open）", err);
+            return false;
+        }
+    }
+
     @Override
     public IAEItemStack injectItems(IAEItemStack input, Actionable mode, BaseActionSource src) {
         if (input == null) {
@@ -223,8 +297,9 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         }
         final ItemStack sharedItemStack = input.getItemStack();
         if (isStorageCell(sharedItemStack)) {
-            final IMEInventoryHandler<?> meInventory = CellInventory.getCell(sharedItemStack, null, ITEM_STACK_TYPE);
-            if (meInventory != null && !this.isEmpty(meInventory)) {
+            // 固定 ITEM_STACK_TYPE 会绕过 AE2 handler 自己的通道守卫（BasicCellHandler 以
+            // cell.getStackType() == type 拒绝错配），通道必须取元件自己的 getStackType()（Issue #16）。
+            if (nestedCellHasContent(nestedStackType(sharedItemStack), nestedCellLookup(sharedItemStack))) {
                 return input;
             }
         }
@@ -273,15 +348,6 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
             }
         }
         return input;
-    }
-
-    @SuppressWarnings("unchecked")
-    private boolean isEmpty(IMEInventoryHandler<?> meInventory) {
-        return ((IMEInventory<IAEItemStack>) meInventory).getAvailableItems(
-            AEApi.instance()
-                .storage()
-                .createItemList())
-            .isEmpty();
     }
 
     @Override

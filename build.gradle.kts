@@ -40,3 +40,13 @@ tasks.register<JavaExec>("runTradeSyncTest") {
     mainClass = "com.miaokatze.gtit.trade.api.DefaultTradeSyncTest"
     classpath = storeTestRuntimeClasspath
 }
+
+// v1.8.22 无限元件嵌套通道探测零依赖测试套件（Issue #16 回归）：同 runStoreTest 模式。
+// 运行：gradlew runNestedCellProbeTest
+tasks.register<JavaExec>("runNestedCellProbeTest") {
+    group = "verification"
+    description = "Runs the zero-dependency nested-cell probe test suite (InfinityNestedCellProbeTest.main)."
+    mainClass = "com.miaokatze.gtit.common.items.infinitycell.InfinityNestedCellProbeTest"
+    classpath = storeTestRuntimeClasspath
+}
+
