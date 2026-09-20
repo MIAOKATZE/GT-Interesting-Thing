@@ -54,11 +54,21 @@ public class GtitLateMixinLoader implements ILateMixinLoader {
     /**
      * 仅在 AE2 存在时施加的 mixin 列表（相对 json 的 {@code package} 的点号子包名）。
      * <p>
-     * 驱动器与 ME 箱两枚解决「登记侧」——让一个元件的<b>每个</b>已注册 {@code IAEStackType}
-     * 都各自持有一份独立 handler 进入网格。搬运侧（ME-IO 端口）本提交尚未覆盖。
+     * 驱动器、ME 箱与 IO 端口三枚。前两枚解决「登记侧」——让一个元件的<b>每个</b>已注册 {@code IAEStackType}
+     * 都各自持有一份独立 handler 进入网格；第三枚 {@code ae2.MixinTileIOPort} 解决「搬运侧」——
+     * {@code TileIOPort#getInv}（:488-502）原本用单值 {@code cachedInventory} 只缓存第一个命中的通道，
+     * 现按该元件命中的全部通道做每 tick 轮转。
+     * <p>
+     * 之所以轮转是安全的：{@code tickingRequest} 的槽位循环里<b>没有</b>按 type 的外层循环，
+     * 每槽每轮只在 :406 调一次 {@code getInv}，随后 :412 的 {@code getMEMonitor(inv.getStackType())}、
+     * :414-415 的 {@code amountPerUnit}/{@code transferBudget}、:433 的 {@code shouldMove(inv, ...)}
+     * 全部由这同一个 {@code inv} 派生；而 {@code transferContents} 的 {@code src}/{@code destination}
+     * 是 :418/:420 传入的形参，:528 的 SIMULATE 与 :538 的 MODULATE 读的就是这对形参，中途不再查任何缓存。
+     * 故「一次 {@code getInv} 返回一个自洽 handler」即足以杜绝跨通道错投，无需重写 tick 循环。
+     * 任何解析异常都不取消原生实现，直接退回原生单通道行为。
      */
     private static final List<String> AE2_MIXINS = Collections
-        .unmodifiableList(Arrays.asList("ae2.MixinTileDrive", "ae2.MixinTileChest"));
+        .unmodifiableList(Arrays.asList("ae2.MixinTileDrive", "ae2.MixinTileChest", "ae2.MixinTileIOPort"));
 
     @Override
     public String getMixinConfig() {
