@@ -9,18 +9,18 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The fluid twin of the infinite cell: same §1INT_MAX§r-class capacity, same §132 shimmering§r price at the built-in counter.\n\nThe structural difference is §1zero upgrade slots§r — no partitioning, no expansions; every slot serves the fluid itself, and simplicity is justice.\n\nSlot it in — §8§oyour lava ocean finally has a registered address.§r",
+      "desc:8": "GTIT's own answer to unlimited ME storage: §1one cell, every registered channel§r — items, fluids and, when the pack ships an essentia channel, essentia too, each kept in its own bucket while sharing a single drive slot.\n\n§cthe counter is the only source§r — the built-in group sells it at §1512 shimmering§r plus §14× 16384k item cells§r and §14× 16384k fluid cells§r.\n\nAlready holding a pair of §9[OLD]§r legacy cells? Empty them through an §bME-IO Port§r (cell → network), then throw one of each into a crafting grid: §2the new unit walks out§r — but empty them first: whatever is still inside burns with the shell.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
         "Damage:2": 0,
         "OreDict:8": "",
-        "id:8": "gtit:gtit.infinity_fluid_cell"
+        "id:8": "gtit:gtit.neko_infinity_unit"
       },
       "isMain:1": 0,
       "isSilent:1": 0,
       "lockedProgress:1": 0,
-      "name:8": "§d§lThe Infinite Fluid Cell",
+      "name:8": "§d§lNeko Infinity Storage Unit",
       "questLogic:8": "AND",
       "repeatTime:3": -1,
       "simultaneous:1": 0,
@@ -31,7 +31,7 @@
     }
   },
   "questIDHigh:4": 5139813699862659072,
-  "questIDLow:4": 18,
+  "questIDLow:4": 36,
   "rewards:9": {
     "0:10": {
       "index:3": 0,
@@ -60,7 +60,7 @@
           "Count:3": 1,
           "Damage:2": 0,
           "OreDict:8": "",
-          "id:8": "gtit:gtit.infinity_fluid_cell"
+          "id:8": "gtit:gtit.neko_infinity_unit"
         }
       },
       "taskID:8": "bq_standard:retrieval"

@@ -49,9 +49,12 @@ public enum GTITItemList implements IItemContainer {
     // V2 接管 V1 的 ID 14610，统一使用此容器
     NekoVendingMachine,
 
-    // Infinity Cell 系列 (适配自 AE2Things)
+    // Infinity Cell 系列 (适配自 AE2Things，已被下面的自有单元取代)
     InfinityCell,
     InfinityFluidCell,
+
+    // 猫猫无限存储单元（自有，单槽多通道：物品/流体/已注册第三方通道）
+    NekoInfinityStorageUnit,
 
     // 轮回水晶（周目系统）
     ReincarnationCrystal;

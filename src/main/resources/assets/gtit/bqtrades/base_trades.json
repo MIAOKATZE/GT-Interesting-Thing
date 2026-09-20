@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "trades": [
     {
       "id": "MIAO1",
@@ -935,12 +935,12 @@
       "bqQuestId": ""
     },
     {
-      "id": "MIAO39",
+      "id": "MIAO89",
       "tabId": 3,
       "orderId": 7,
       "currency": {
         "type": "shimmeringNeko",
-        "amount": 256
+        "amount": 512
       },
       "fromItems": [
         {
@@ -948,29 +948,7 @@
           "meta": 0,
           "amount": 4,
           "nbtBase64": null
-        }
-      ],
-      "toItems": [
-        {
-          "item": "gtit:gtit.infinity_cell",
-          "meta": 0,
-          "amount": 1,
-          "nbtBase64": "CgAAAA=="
-        }
-      ],
-      "cooldown": 0,
-      "maxTrades": -1,
-      "bqQuestId": ""
-    },
-    {
-      "id": "MIAO40",
-      "tabId": 3,
-      "orderId": 8,
-      "currency": {
-        "type": "shimmeringNeko",
-        "amount": 256
-      },
-      "fromItems": [
+        },
         {
           "item": "ae2fc:multi_fluid_storage16384",
           "meta": 0,
@@ -980,7 +958,7 @@
       ],
       "toItems": [
         {
-          "item": "gtit:gtit.infinity_fluid_cell",
+          "item": "gtit:gtit.neko_infinity_unit",
           "meta": 0,
           "amount": 1,
           "nbtBase64": "CgAAAA=="

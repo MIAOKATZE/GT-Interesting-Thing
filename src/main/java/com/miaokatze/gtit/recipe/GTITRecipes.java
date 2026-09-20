@@ -24,7 +24,24 @@ public class GTITRecipes {
         addTelekinesisOreScannerCoreRecipe();
         addRingWindriderRecipe();
         addNekoVendingMachineRecipe();
+        addNekoInfinityStorageUnitRecipe();
         addReincarnationCrystalRecipe();
+    }
+
+    /**
+     * 猫猫无限存储单元合成配方（无序合成，迁移用）
+     * 输入：1 旧无限物品元件 + 1 旧无限流体元件 → 1 猫猫无限存储单元
+     * 无序 + 通配元数据让配方只看物品种类，元件内已存内容不参与匹配；
+     * 旧元件内容外置在存档里按 UUID 定位，随合成一起丢弃（Tooltip 已提示先转空）。
+     */
+    private static void addNekoInfinityStorageUnitRecipe() {
+        if (GTITItemList.NekoInfinityStorageUnit.get(1) == null) return;
+
+        ItemStack legacyItemCell = GTITItemList.InfinityCell.getWildcard(1);
+        ItemStack legacyFluidCell = GTITItemList.InfinityFluidCell.getWildcard(1);
+        if (legacyItemCell == null || legacyFluidCell == null) return;
+
+        GameRegistry.addShapelessRecipe(GTITItemList.NekoInfinityStorageUnit.get(1), legacyItemCell, legacyFluidCell);
     }
 
     private static void addFloatCoreRecipe() {

@@ -85,8 +85,20 @@ item.shimmering_neko_coin.tooltip.1=Extremely rare, can only be caught while fis
 item.reincarnation_crystal.name=Reincarnation Crystal
 
 # Infinity Cell series (adapted from AE2Things)
-item.gtit.infinity_cell.name=ME Infinity Cell
-item.gtit.infinity_fluid_cell.name=ME Infinity Fluid Cell
+item.gtit.infinity_cell.name=[OLD] ME Infinity Cell
+item.gtit.infinity_fluid_cell.name=[OLD] ME Infinity Fluid Cell
+item.gtit.infinity_cell.tooltip.1=§bInfinity Storage §7- unlimited types / unlimited amounts
+item.gtit.infinity_cell.tooltip.2=§7Idle draw: %s AE/t
+item.gtit.infinity_fluid_cell.tooltip.1=§bInfinity Fluid Storage §7- unlimited types / unlimited amounts
+item.gtit.infinity_fluid_cell.tooltip.2=§7Idle draw: %s AE/t
+# Deprecation notice shared by both legacy infinity cells (probed as notice.N until a key is missing)
+item.gtit.old_cell.notice.1=§c[OLD] Deprecated — switch to the Neko Infinity Storage Unit
+item.gtit.old_cell.notice.2=§7Send this cell's contents back to the ME network with a §bME-IO Port§7 (cell → network direction)
+item.gtit.old_cell.notice.3=§7Craft the two legacy cells (this one and its other-channel twin) in a crafting grid to get the new unit, no matter how much they still hold
+item.gtit.old_cell.notice.4=§7Empty them before crafting — anything left inside is destroyed with them
+# Neko Infinity Storage Unit (own cell, serves every registered channel from one slot)
+item.gtit.neko_infinity_unit.name=Neko Infinity Storage Unit
+item.gtit.neko_infinity_unit.tooltip.channel=§bThree channels in one §7- items / fluids / essentia, each kept separate per registered channel
 
 # Neko Vending Machine GUI tooltip & volume panel (v1.6.24, migrated from VM's vendingmachine.gui.*)
 gtit.gui.display_mode_tile=Tiles
@@ -139,10 +151,6 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAADw.name=§6§lSixty-Four to One
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAADw.desc=This counter belongs to the §3built-in trade group§r: exchange §164 coins§r for §11 shimmering§r and walk your savings straight into the hard-currency club.%n%nCareful: the bare mod ships §cno exchange at all§r — the counter exists only through the built-in trade group, so do not go digging through the vanilla trade pages.%n%nPresent one shimmering coin for the check — §2display-verified, returned to the owner§r.
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEA.name=§6§lThe Fifty-Six Spread
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEA.desc=The reverse counter sits in the same §3built-in trade group§r: §11 shimmering§r buys back §156 coins§r; 64 in, 56 out, and §18 coins§r quietly evaporate per round trip.%n%nThat eight-coin spread is §cseigniorage§r — the cat charges no fee, but the spread keeps both markets honest.%n%nTick the box and salute the arithmetic.
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEQ.name=§d§lThe Infinite Cell
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEQ.desc=The infinite cell, registry name wearing its §ddouble gtit prefix§r: bytes pinned at §1INT_MAX§r, idle draw of a mere §61 AE/t§r.%n%nIt takes §1two§r upgrade cards plus partitioning; §cthe counter is the only source§r — the built-in group sells it at §132 shimmering§r apiece.%n%nSlot it into an ME drive and watch the capacity bar §2refuse to move§r, along with your storage anxiety.
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEg.name=§d§lThe Infinite Fluid Cell
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEg.desc=The fluid twin of the infinite cell: same §1INT_MAX§r-class capacity, same §132 shimmering§r price at the built-in counter.%n%nThe structural difference is §1zero upgrade slots§r — no partitioning, no expansions; every slot serves the fluid itself, and simplicity is justice.%n%nSlot it in — §8§oyour lava ocean finally has a registered address.§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEw.name=§2§lTake Flight on Steak
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAEw.desc=Slot the Float Core into §3any accessory slot§r (Baubles universal) and §2creative flight§r is yours, at a cost of §10.02§r hunger per tick.%n%nDip below §16§r hunger and flight cuts out, dropping you back to earth. §c§lPilot's discipline:§r eat first, fly second.%n%nMake your first one by hand, then claim — §8§owings are earned one meal at a time.§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAFA.name=§6§lFuel for Flight
@@ -177,6 +185,8 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIg.name=§b§lTeaming Up
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIg.desc=This lesson skips the machines and covers how to band together: GTNHLib ships the §3§n/gtnhteam§r command — type it to open the team GUI, where you can create a team, invite teammates, or accept an invitation to join one.%n%nA team is more than a name tag: the GTIT wallet supports a §2TEAM shared-wallet§r mode — once enabled, the team's funds are pooled; your teammate's money is everybody's money, and saving up for big-ticket items no longer turns into debt collecting.%n%nForm the party first, then start the work — splits and dividends both go smoother.%n%n§8§oA lone wolf is romance; a team is productivity.§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIw.name=§b§lReincarnation 101
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAIw.desc=This lesson covers the pack's meta-gameplay — reincarnation: open the reincarnation GUI, §3deposit§r your valuables, then press "Confirm Reincarnation" to enter a new cycle — the world is reborn and progress resets, while your deposited items travel to the next world as the reincarnation reward; your unlocked deposit rows and columns carry over too — nothing you walked is wasted.%n%nAbout 5 seconds after your first login in the new cycle, the reincarnation reward is §2granted automatically§r — items spiral down one by one, walk close to pick them up, and anything beyond a full inventory drops to the ground. No manual claiming needed.%n%nThe reward is exactly what you deposited this cycle — §cgrants never accumulate across cycles§r; to carry more next time, deposit more this time.%n%nConfirm without fear: reincarnation carries a confirmation guard, so a slip of the finger won't throw you into a new world.%n%nNote: reincarnation only takes effect in singleplayer worlds — it does nothing on dedicated servers.%n%nCarry a Reincarnation Crystal with you to complete this quest's retrieval — it is only inspected, never consumed.%n%n§8§oAn ending is not the end — it is the next cycle's checkpoint.§r
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAJA.name=§d§lNeko Infinity Storage Unit
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAJA.desc=GTIT's own answer to unlimited ME storage: §1one cell, every registered channel§r — items, fluids and, when the pack ships an essentia channel, essentia too, each kept in its own bucket while sharing a single drive slot.%n%n§cthe counter is the only source§r — the built-in group sells it at §1512 shimmering§r plus §14× 16384k item cells§r and §14× 16384k fluid cells§r.%n%nAlready holding a pair of §9[OLD]§r legacy cells? Empty them through an §bME-IO Port§r (cell → network), then throw one of each into a crafting grid: §2the new unit walks out§r — but empty them first: whatever is still inside burns with the shell.
 # BQ quests [pack=gtit] END
 
 # Reincarnation Cycle GUI (v1.8.8 texture retouch; keys consumed via formatted paths keep %% escaping, button/tooltip keys read via translateToLocal use a single %)

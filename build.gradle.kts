@@ -50,3 +50,11 @@ tasks.register<JavaExec>("runNestedCellProbeTest") {
     classpath = storeTestRuntimeClasspath
 }
 
+// v1.8.22 无限元件通道分桶与旧档兼容零依赖测试套件：同 runStoreTest 模式。
+// 运行：gradlew runStorageTypeKeyTest
+tasks.register<JavaExec>("runStorageTypeKeyTest") {
+    group = "verification"
+    description = "Runs the zero-dependency infinity-cell channel bucket test suite (InfinityStorageTypeKeyTest.main)."
+    mainClass = "com.miaokatze.gtit.common.items.infinitycell.InfinityStorageTypeKeyTest"
+    classpath = storeTestRuntimeClasspath
+}

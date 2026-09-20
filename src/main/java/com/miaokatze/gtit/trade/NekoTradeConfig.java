@@ -485,30 +485,17 @@ public class NekoTradeConfig {
                 0,
                 -1,
                 ""));
+        // 与内置资产 base_trades.json 的 MIAO89 语义一致（原 infinity_cell / infinity_fluid_cell
+        // 两条兜底合并为一条"猫猫无限存储单元"；fromItems 用分号承载两组元件）
         trades.add(
             createDefaultTrade(
                 "549030c9-b3f4-4c9d-9a99-eed53ab851ce",
                 3,
                 8,
                 "shimmeringNeko",
-                256,
-                "appliedenergistics2:item.ItemAdvancedStorageCell.16384k:0:4",
-                "gtit:gtit.infinity_cell",
-                0,
-                1,
-                "CgAAAA==",
-                0,
-                -1,
-                ""));
-        trades.add(
-            createDefaultTrade(
-                "7c87fe3f-7ed6-467b-8646-5da3e5937ebe",
-                3,
-                9,
-                "shimmeringNeko",
-                256,
-                "ae2fc:multi_fluid_storage16384:0:4",
-                "gtit:gtit.infinity_fluid_cell",
+                512,
+                "appliedenergistics2:item.ItemAdvancedStorageCell.16384k:0:4;ae2fc:multi_fluid_storage16384:0:4",
+                "gtit:gtit.neko_infinity_unit",
                 0,
                 1,
                 "CgAAAA==",

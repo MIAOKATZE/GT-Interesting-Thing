@@ -10,6 +10,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.StatCollector;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
 
@@ -43,8 +44,16 @@ public class ItemInfinityStorageFluidCell extends Item implements IInfinityCellI
     @Override
     public void addInformation(final ItemStack stack, final EntityPlayer player, final List<String> lines,
         final boolean displayMoreInfo) {
-        lines.add("\u00A7b无限流体存储 \u00A77- 无限种类/无限数量");
-        lines.add("\u00A77空闲功耗: " + (int) this.idleDrain + " AE/t");
+        // 旧无限元件共用的废弃提示（item.gtit.old_cell.notice.N），逐键探测直到缺键
+        for (int i = 1;; i++) {
+            final String noticeKey = "item.gtit.old_cell.notice." + i;
+            final String notice = StatCollector.translateToLocal(noticeKey);
+            if (notice.equals(noticeKey)) break;
+            lines.add(notice);
+        }
+        lines.add(StatCollector.translateToLocal("item.gtit.infinity_fluid_cell.tooltip.1"));
+        lines.add(
+            StatCollector.translateToLocalFormatted("item.gtit.infinity_fluid_cell.tooltip.2", (int) this.idleDrain));
 
         final IMEInventoryHandler<?> inventory = AEApi.instance()
             .registries()

@@ -67,14 +67,6 @@
           "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheFiftySixSprea-R1RJVAAAAAAAAAAAAAAAEA==.json"
         },
         {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteCell-R1RJVAAAAAAAAAAAAAAAEQ==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteCell-R1RJVAAAAAAAAAAAAAAAEQ==.json"
-        },
-        {
-          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteFluid-R1RJVAAAAAAAAAAAAAAAEg==.json",
-          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TheInfiniteFluid-R1RJVAAAAAAAAAAAAAAAEg==.json"
-        },
-        {
           "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TakeFlightonStea-R1RJVAAAAAAAAAAAAAAAEw==.json",
           "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/TakeFlightonStea-R1RJVAAAAAAAAAAAAAAAEw==.json"
         },
@@ -141,6 +133,10 @@
         {
           "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Reincarnation101-R1RJVAAAAAAAAAAAAAAAIw==.json",
           "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/Reincarnation101-R1RJVAAAAAAAAAAAAAAAIw==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NekoInfinityStor-R1RJVAAAAAAAAAAAAAAAJA==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NekoInfinityStor-R1RJVAAAAAAAAAAAAAAAJA==.json"
         }
       ],
       "idHigh": 5139813699862659072,

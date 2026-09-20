@@ -175,6 +175,18 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[NekoNotify] 冷却完毕通知调度器注册失败", t);
         }
 
+        // v1.8.22: 旧无限元件迁移提醒（AE2 非 @Mod 必需依赖，缺席时整块跳过）
+        try {
+            if (cpw.mods.fml.common.Loader.isModLoaded("appliedenergistics2")) {
+                FMLCommonHandler.instance()
+                    .bus()
+                    .register(com.miaokatze.gtit.common.items.infinitycell.LegacyCellReminderScheduler.INSTANCE);
+                GTInterestingThing.LOG.info("[LegacyCellRemind] 旧无限元件迁移提醒已注册");
+            }
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[LegacyCellRemind] 旧无限元件迁移提醒注册失败", t);
+        }
+
         // v1.7.1: 注册抽奖事件监听器（登录预载/登出落盘/抽奖任务队列/周期保存）
         try {
             FMLCommonHandler.instance()
@@ -715,6 +727,13 @@ public class CommonProxy {
             com.miaokatze.gtit.reincarnation.handler.HardcoreEnforcer.onServerStopping();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("停服复位时间线执法器失败", t);
+        }
+        // v1.8.22：旧无限元件坐标登记表复位（FMLServerStoppingEvent 不投递总线，
+        // 防单机连续开新世界时把上一个存档的仓库坐标带进新档播报）
+        try {
+            com.miaokatze.gtit.common.items.infinitycell.LegacyCellReminderScheduler.reset();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服复位旧无限元件坐标登记失败", t);
         }
     }
 
