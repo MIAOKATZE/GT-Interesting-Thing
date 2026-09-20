@@ -292,24 +292,23 @@ A long-range ore and fluid prospecting tool that integrates with JourneyMap via 
 
 ### Infinity Cell / 无限存储元件
 
-<p align="center"><img src="README/Infinity%20Cell.png" width="128" alt="ME无限存储元件 / ME Infinity Cell"><br><em>ME无限存储元件 / ME Infinity Cell</em></p>
+<p align="center"><img src="README/Neko%20Infinity%20Unit.png" width="128" alt="猫猫无限存储单元 / Neko Infinity Storage Unit"><br><em>猫猫无限存储单元 / Neko Infinity Storage Unit（动画材质首帧）</em></p>
 
-An AE2 storage cell with virtually infinite capacity. Data is externalized to a global WorldSavedData, avoiding NBT bloat. Available in both item and fluid variants.
+<p align="center"><img src="README/Infinity%20Cell.png" width="128" alt="[OLD] ME 无限存储元件 / [OLD] ME Infinity Cell"><br><em>[OLD] 移植版两枚 / the two AE2Things-derived legacy cells (still usable, deprecated)</em></p>
 
-基于 AE2 的无限容量存储元件，数据外部化存储在全局 WorldSavedData 中，避免 NBT 膨胀。提供物品版和流体版两种变体。
+GTIT 自有的**多通道**无限容量存储元件：同一枚元件在同一个驱动器槽位里同时向物品、流体以及整合包已注册的第三方通道（源质等）贡献无限容量，各通道内容独立分桶存放。数据外部化存储在全局 WorldSavedData 中，避免 NBT 膨胀。从 AE2Things 移植来的物品版与流体版已降级为 `[OLD]`，仍可正常使用。
 
-- **Capacity / 容量**: Integer.MAX\_VALUE types, 1 byte per type (effectively unlimited)
-- **Idle drain / 空闲功耗**: 1 AE/tick
-- **Item variant / 物品版**: 2 upgrade card slots, supports partition editing
-- **Fluid variant / 流体版**: 0 upgrade card slots, supports partition editing
-- **Data storage / 数据存储**: Externalized via `StorageManager` (WorldSavedData), linked by UUID
-- **Adapted from / 适配自**: AE2Things (GTNH 2.8.4), rewritten for GTNH 2.9.0 AE2 API
-- 容量：Integer.MAX\_VALUE 种类型，每类型 1 字节（实际无限）
-- 空闲功耗：1 AE/tick
-- 物品版：2 个升级卡槽，支持分区编辑
-- 流体版：0 个升级卡槽，支持分区编辑
-- 数据存储：通过 `StorageManager`（WorldSavedData）外部化，以 UUID 关联
-- 适配自：AE2Things（GTNH 2.8.4），为 GTNH 2.9.0 AE2 API 重写
+An AE2 storage cell of GTIT's own design: **one cell serves every registered channel** — items, fluids and, when the pack registers one, essentia — all from a single drive slot, each kept in its own bucket. Data is externalized to a global WorldSavedData, avoiding NBT bloat. The AE2Things-derived item and fluid cells are now `[OLD]` but still work.
+
+- **Channels / 通道**: 物品 + 流体 + 运行时已注册通道 / items, fluids and registered third-party types
+- **Capacity / 容量**: Integer.MAX\_VALUE 种类型，每类型 1 字节（实际无限）
+- **Idle drain / 空闲功耗**: 1 AE/tick（多通道仍只按原生首通道计一次）
+- **Upgrade slots / 升级卡槽**: 2（物品通道保留分区、模糊、分类卡行为）
+- **Data storage / 数据存储**: `StorageManager`（WorldSavedData）按 `uuid#typeId` 分桶，元件 NBT 只存 UUID
+- **Icon / 图标**: 8 帧动画材质（16×128，`frametime:4`，整环 1.6 s）
+- **Migration / 迁移**: 两枚 `[OLD]` 旧元件（物品版 + 流体版）可在工作台**无序合成**为 1 枚新单元，合成匹配不比较 NBT；旧元件内存量请先用 ME-IO 端口转空
+- **Requires / 前置**: 三枚条件施加 mixin 补齐 AE2「同一元件槽只登记第一个非 null 通道」的限制（`@LateMixin`，仅 AE2 在场时生效）
+- **Legacy `[OLD]`**: 物品版 2 升级卡槽、流体版 0 卡槽；两者每 10 分钟向归属玩家播报所在容器坐标以提示迁移
 
 ***
 
@@ -575,6 +574,6 @@ Released under the AGPL-3.0 License. See the LICENSE file for details.
 ## Acknowledgments / 致谢
 
 - **[AE2Things](https://github.com/asdflj/AE2Things)** — The Infinity Cell implementation is adapted from AE2Things' storage cell code (GTNH 2.8.4 version), rewritten for the GTNH 2.9.0 AE2 API.
-  无限存储元件的实现移植自 AE2Things 的存储元件代码（GTNH 2.8.4 版本），为 GTNH 2.9.0 AE2 API 重写。
+  无限存储元件的最初实现移植自 AE2Things 的存储元件代码（GTNH 2.8.4 版本），为 GTNH 2.9.0 AE2 API 重写；v1.8.22 起已被 GTIT 自有的多通道「猫猫无限存储单元」取代，移植版两枚降级为 `[OLD]` 保留。
 - **[VendingMachine](https://github.com/GTNewHorizons/VendingMachine)** — The Neko Vending Machine originated on top of the VendingMachine framework, with custom currency, GUI, and trade logic, before being rebuilt as the independent V2 multiblock on GT5U.
   猫猫售货机最初基于 VendingMachine 框架构建（自定义货币、界面与交易逻辑），后重构为基于 GT5U 的独立 V2 多方块机器。
