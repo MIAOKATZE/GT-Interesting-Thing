@@ -1,0 +1,453 @@
+{
+ "assertions_passed": [
+  "基准/现役图前后 SHA256 不变（三张基准 + 现役 png + mcmeta）",
+  "轮廓集（4 邻域最外一圈 32px）逐位含色重合 100%，且每一帧都不改轮廓",
+  "剪影 alpha 逐位一致（偏离 0 px，门限 <=2）",
+  "猫脸只覆盖基准暗腔/高光像素，唯一例外 = 耳尖 2px 顶破内圈青带（已登记）",
+  "明度层级链 cavity<shell<outline<bevel<band<face_mid<face_hi 严格递增",
+  "角标亮/暗态明度差 >=25；三色并存方案三枚通道色两两 RGB 距离 >=24",
+  "循环接缝位变 <= 环内最大相邻位变",
+  "MAD(缩小 2x/4x 回原 + 相邻明度差) 不劣于基准图 1.15 倍以上",
+  "alpha 二值（0/255）；不透明像素数 = 基准 138",
+  "全部颜色 = 实图钉点 x 亮度系数(k<=1)，无包外色相、脚本无字面 RGB"
+ ],
+ "frames": 8,
+ "frametime_ticks": 4,
+ "gate_contour_overlap_pct": 90.0,
+ "gates": {
+  "contour_overlap_min_pct": 90.0,
+  "ear_break_through_max_px": 2,
+  "hier_pair_min_rgb_dist_s3": 24.0,
+  "layer_chain_luma_strictly_increasing": [
+   "cavity",
+   "shell",
+   "outline",
+   "bevel",
+   "band",
+   "face_mid",
+   "face_hi"
+  ],
+  "mad_max_ratio_vs_base": 1.15,
+  "marker_blink_min_dl": 25.0,
+  "silhouette_deviation_max_px": 2
+ },
+ "loop_seconds": 1.6,
+ "mcmeta": {
+  "animation": {
+   "frametime": 4
+  }
+ },
+ "reference_metrics": {
+  "infinity_cell": {
+   "mad_detail": 46.19,
+   "mad_min2": 20.08,
+   "mad_min4": 26.64
+  },
+  "shipped_v2_frame0": {
+   "mad_detail": 25.33,
+   "mad_min2": 18.77,
+   "mad_min4": 31.0
+  }
+ },
+ "schemes": [
+  {
+   "changed_px_inside_center8": 40,
+   "changed_px_outside_center8_frame0": 13,
+   "changed_px_outside_center8_max_over_frames": 13,
+   "contour_mismatch_8nb": [
+    [
+     [
+      10,
+      12
+     ],
+     [
+      25,
+      255,
+      0
+     ],
+     [
+      35,
+      11,
+      0
+     ]
+    ]
+   ],
+   "contour_overlap_pct_4nb": 100.0,
+   "contour_overlap_pct_8nb": 98.1,
+   "contour_px": 32,
+   "distinct_colors_frame0": 10,
+   "ear_break_through_coords": [
+    [
+     6,
+     3
+    ],
+    [
+     9,
+     3
+    ]
+   ],
+   "ear_break_through_px": 2,
+   "face_bbox_x_y_w_h": [
+    5,
+    3,
+    6,
+    6
+   ],
+   "face_px": 24,
+   "frame_diff_steps": [
+    20,
+    28,
+    20,
+    9,
+    20,
+    25,
+    20,
+    4
+   ],
+   "id": "r6_s1_family_gold",
+   "label": "方案1 家族金暖调",
+   "layer_luma": {
+    "band": 85.8,
+    "bevel": 64.0,
+    "cavity": 0.0,
+    "face_hi": 215.9,
+    "face_mid": 167.3,
+    "outline": 40.0,
+    "shell": 31.9
+   },
+   "mad": {
+    "mad_detail": 42.11,
+    "mad_min2": 18.33,
+    "mad_min4": 25.41
+   },
+   "mad_ref": {
+    "mad_detail": 46.19,
+    "mad_min2": 20.08,
+    "mad_min4": 26.64
+   },
+   "marker_luma": [
+    [
+     "item",
+     67.3,
+     30.3
+    ],
+    [
+     "fluid",
+     55.1,
+     25.0
+    ],
+    [
+     "essen",
+     42.2,
+     16.9
+    ]
+   ],
+   "note": "灰阶外壳 / 倒角 / 暗壳 / 纯黑暗腔逐字保留；青带整体换成 miao_coin 琥珀，角标压到最低饱和的深棕，全图唯一亮部 = 中心暖金猫脸。",
+   "opaque_px": 138,
+   "palette_provenance": {
+    "B0_hi": "miao_coin.png #fee04a",
+    "B0_mid": "miao_coin.png #f39d16",
+    "B1_hi": "miao_coin.png #fee04a x0.96",
+    "B1_mid": "miao_coin.png #f39d16 x0.96",
+    "B2_hi": "miao_coin.png #fee04a x0.92",
+    "B2_mid": "miao_coin.png #f39d16 x0.92",
+    "B3_hi": "miao_coin.png #fee04a x0.88",
+    "B3_mid": "miao_coin.png #f39d16 x0.88",
+    "F_eye": "infinity_cell.png #000000",
+    "F_hi": "miao_coin.png #fee04a",
+    "F_mid": "miao_coin.png #f39d16",
+    "F_nose": "miao_coin.png #842e07",
+    "L_band": "miao_coin.png #a63d03",
+    "L_bevel": "cell_bevel = 基准值（边缘层锁死）",
+    "L_cavity": "infinity_cell.png #000000",
+    "L_outline": "cell_outline = 基准值（边缘层锁死）",
+    "L_shell": "cell_shell = 基准值（边缘层锁死）",
+    "M_essen_dim": "miao_coin.png #581b00 x0.40",
+    "M_essen_lit": "miao_coin.png #581b00",
+    "M_fluid_dim": "miao_coin.png #6f2502 x0.45",
+    "M_fluid_lit": "miao_coin.png #6f2502",
+    "M_item_dim": "miao_coin.png #842e07 x0.45",
+    "M_item_lit": "miao_coin.png #842e07"
+   },
+   "seam_vs_max_adjacent": [
+    4,
+    28
+   ],
+   "sha256_frame0_static": "037fff093f1c2335115d756ab6a173003c85114572daeab7ca7e7e43fd24a0fb",
+   "sha256_strip": "41b04e2319125a49e3530fd15733660e6579c79b1e7f1e38bbecfeef64056e11",
+   "silhouette_deviation_px": 0,
+   "size": [
+    16,
+    128
+   ]
+  },
+  {
+   "changed_px_inside_center8": 26,
+   "changed_px_outside_center8_frame0": 11,
+   "changed_px_outside_center8_max_over_frames": 11,
+   "contour_mismatch_8nb": [
+    [
+     [
+      10,
+      12
+     ],
+     [
+      25,
+      255,
+      0
+     ],
+     [
+      0,
+      40,
+      58
+     ]
+    ]
+   ],
+   "contour_overlap_pct_4nb": 100.0,
+   "contour_overlap_pct_8nb": 98.1,
+   "contour_px": 32,
+   "distinct_colors_frame0": 11,
+   "ear_break_through_coords": [
+    [
+     6,
+     3
+    ],
+    [
+     9,
+     3
+    ]
+   ],
+   "ear_break_through_px": 2,
+   "face_bbox_x_y_w_h": [
+    5,
+    3,
+    6,
+    6
+   ],
+   "face_px": 24,
+   "frame_diff_steps": [
+    20,
+    28,
+    20,
+    9,
+    20,
+    25,
+    20,
+    4
+   ],
+   "id": "r6_s2_cool_channel",
+   "label": "方案2 通道冷调",
+   "layer_luma": {
+    "band": 121.5,
+    "bevel": 64.0,
+    "cavity": 0.0,
+    "face_hi": 233.9,
+    "face_mid": 204.0,
+    "outline": 40.0,
+    "shell": 31.9
+   },
+   "mad": {
+    "mad_detail": 51.87,
+    "mad_min2": 21.1,
+    "mad_min4": 28.98
+   },
+   "mad_ref": {
+    "mad_detail": 46.19,
+    "mad_min2": 20.08,
+    "mad_min4": 26.64
+   },
+   "marker_luma": [
+    [
+     "item",
+     103.5,
+     42.7
+    ],
+    [
+     "fluid",
+     84.8,
+     36.7
+    ],
+    [
+     "essen",
+     66.8,
+     30.1
+    ]
+   ],
+   "note": "主体完全走基准图的冷青读法（青带 / 灰阶 / 暗壳原值），三枚角标只用青带同色相分三档明度，家族淡金只落在中心猫脸这一个对比点上。",
+   "opaque_px": 138,
+   "palette_provenance": {
+    "B0_hi": "miao_coin.png #fef57c",
+    "B0_mid": "miao_coin.png #fdd037",
+    "B1_hi": "miao_coin.png #fef57c x0.96",
+    "B1_mid": "miao_coin.png #fdd037 x0.96",
+    "B2_hi": "miao_coin.png #fef57c x0.92",
+    "B2_mid": "miao_coin.png #fdd037 x0.92",
+    "B3_hi": "miao_coin.png #fef57c x0.88",
+    "B3_mid": "miao_coin.png #fdd037 x0.88",
+    "F_eye": "infinity_cell.png #000000",
+    "F_hi": "miao_coin.png #fef57c",
+    "F_mid": "miao_coin.png #fdd037",
+    "F_nose": "miao_coin.png #842e07",
+    "L_band": "infinity_cell.png #00a2e8",
+    "L_bevel": "cell_bevel = 基准值（边缘层锁死）",
+    "L_cavity": "infinity_cell.png #000000",
+    "L_outline": "cell_outline = 基准值（边缘层锁死）",
+    "L_shell": "cell_shell = 基准值（边缘层锁死）",
+    "M_essen_dim": "infinity_cell.png #00a2e8 x0.25",
+    "M_essen_lit": "infinity_cell.png #00a2e8 x0.55",
+    "M_fluid_dim": "infinity_cell.png #00a2e8 x0.30",
+    "M_fluid_lit": "infinity_cell.png #00a2e8 x0.70",
+    "M_item_dim": "infinity_cell.png #00a2e8 x0.35",
+    "M_item_lit": "infinity_cell.png #00a2e8 x0.85"
+   },
+   "seam_vs_max_adjacent": [
+    4,
+    28
+   ],
+   "sha256_frame0_static": "20e2b121d39f6938345284a279851896c2b81eb381d6e7a4bec0dcc51e405a2f",
+   "sha256_strip": "bec27c6c6c89f3bafed80240fd219d38fb066525afd41176743e9567a2fbf4ed",
+   "silhouette_deviation_px": 0,
+   "size": [
+    16,
+    128
+   ]
+  },
+  {
+   "changed_px_inside_center8": 22,
+   "changed_px_outside_center8_frame0": 11,
+   "changed_px_outside_center8_max_over_frames": 11,
+   "contour_mismatch_8nb": [
+    [
+     [
+      10,
+      12
+     ],
+     [
+      25,
+      255,
+      0
+     ],
+     [
+      9,
+      89,
+      0
+     ]
+    ]
+   ],
+   "contour_overlap_pct_4nb": 100.0,
+   "contour_overlap_pct_8nb": 98.1,
+   "contour_px": 32,
+   "distinct_colors_frame0": 11,
+   "ear_break_through_coords": [
+    [
+     6,
+     3
+    ],
+    [
+     9,
+     3
+    ]
+   ],
+   "ear_break_through_px": 2,
+   "face_bbox_x_y_w_h": [
+    5,
+    3,
+    6,
+    6
+   ],
+   "face_px": 24,
+   "frame_diff_steps": [
+    20,
+    28,
+    20,
+    9,
+    20,
+    25,
+    20,
+    4
+   ],
+   "id": "r6_s3_three_channel",
+   "label": "方案3 三色并存",
+   "layer_luma": {
+    "band": 121.5,
+    "bevel": 64.0,
+    "cavity": 0.0,
+    "face_hi": 218.3,
+    "face_mid": 204.0,
+    "outline": 40.0,
+    "shell": 31.9
+   },
+   "mad": {
+    "mad_detail": 52.36,
+    "mad_min2": 21.22,
+    "mad_min4": 28.69
+   },
+   "mad_ref": {
+    "mad_detail": 46.19,
+    "mad_min2": 20.08,
+    "mad_min4": 26.64
+   },
+   "marker_luma": [
+    [
+     "item",
+     109.5,
+     48.8
+    ],
+    [
+     "fluid",
+     147.8,
+     58.9
+    ],
+    [
+     "essen",
+     149.2,
+     54.9
+    ]
+   ],
+   "note": "主体走基准读法（青带 / 灰阶 / 暗壳原值 + 基准家族黄做猫脸），三枚 >=4px 短条各占一条通道色：物品青、流体品红（取自 infinity_fluid_cell）、源质绿。",
+   "opaque_px": 138,
+   "palette_provenance": {
+    "B0_hi": "infinity_cell.png #fff200",
+    "B0_mid": "miao_coin.png #fdd037",
+    "B1_hi": "infinity_cell.png #fff200 x0.96",
+    "B1_mid": "miao_coin.png #fdd037 x0.96",
+    "B2_hi": "infinity_cell.png #fff200 x0.92",
+    "B2_mid": "miao_coin.png #fdd037 x0.92",
+    "B3_hi": "infinity_cell.png #fff200 x0.88",
+    "B3_mid": "miao_coin.png #fdd037 x0.88",
+    "F_eye": "infinity_cell.png #000000",
+    "F_hi": "infinity_cell.png #fff200",
+    "F_mid": "miao_coin.png #fdd037",
+    "F_nose": "miao_coin.png #842e07",
+    "L_band": "infinity_cell.png #00a2e8",
+    "L_bevel": "cell_bevel = 基准值（边缘层锁死）",
+    "L_cavity": "infinity_cell.png #000000",
+    "L_outline": "cell_outline = 基准值（边缘层锁死）",
+    "L_shell": "cell_shell = 基准值（边缘层锁死）",
+    "M_essen_dim": "infinity_cell.png #19ff00 x0.35",
+    "M_essen_lit": "infinity_cell.png #19ff00 x0.95",
+    "M_fluid_dim": "infinity_fluid_cell.png #c86fc8 x0.40",
+    "M_fluid_lit": "infinity_fluid_cell.png #c86fc8",
+    "M_item_dim": "infinity_cell.png #00a2e8 x0.40",
+    "M_item_lit": "infinity_cell.png #00a2e8 x0.90"
+   },
+   "seam_vs_max_adjacent": [
+    4,
+    28
+   ],
+   "sha256_frame0_static": "4a8b0e578da1a8f29b4f790376789dd32ea4dcdae8eecf064b6d4d59f4cfc829",
+   "sha256_strip": "4f4a4d09fdb7ef25e4781b292c000b04e3c60bfe9b968ceaad123d22949ee877",
+   "silhouette_deviation_px": 0,
+   "size": [
+    16,
+    128
+   ]
+  }
+ ],
+ "unverified": [
+  "游戏内实机渲染（1.7.10 物品图集 + mcmeta 动画）未采集：需主代理在挑定并落地后实机核验",
+  "NEI/GUI 槽内与 infinity_cell / infinity_fluid_cell 同框观感仅在预览板确认，未在游戏内确认",
+  "frametime=4 tick 的动画速度是否合意，需用户在实机或 GIF 上判定（板面为静态逐帧排布）",
+  "候选未落地：src 下现役 neko_infinity_unit.png 与其 mcmeta 字节保持原 SHA 未动"
+ ]
+}

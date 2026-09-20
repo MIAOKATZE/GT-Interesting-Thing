@@ -1,0 +1,131 @@
+{
+ "changed_px_inside_center8": 22,
+ "changed_px_outside_center8_frame0": 11,
+ "changed_px_outside_center8_max_over_frames": 11,
+ "contour_mismatch_8nb": [
+  [
+   [
+    10,
+    12
+   ],
+   [
+    25,
+    255,
+    0
+   ],
+   [
+    9,
+    89,
+    0
+   ]
+  ]
+ ],
+ "contour_overlap_pct_4nb": 100.0,
+ "contour_overlap_pct_8nb": 98.1,
+ "contour_px": 32,
+ "distinct_colors_frame0": 11,
+ "ear_break_through_coords": [
+  [
+   6,
+   3
+  ],
+  [
+   9,
+   3
+  ]
+ ],
+ "ear_break_through_px": 2,
+ "face_bbox_x_y_w_h": [
+  5,
+  3,
+  6,
+  6
+ ],
+ "face_px": 24,
+ "frame_diff_steps": [
+  20,
+  28,
+  20,
+  9,
+  20,
+  25,
+  20,
+  4
+ ],
+ "id": "r6_s3_three_channel",
+ "label": "方案3 三色并存",
+ "layer_luma": {
+  "band": 121.5,
+  "bevel": 64.0,
+  "cavity": 0.0,
+  "face_hi": 218.3,
+  "face_mid": 204.0,
+  "outline": 40.0,
+  "shell": 31.9
+ },
+ "mad": {
+  "mad_detail": 52.36,
+  "mad_min2": 21.22,
+  "mad_min4": 28.69
+ },
+ "mad_ref": {
+  "mad_detail": 46.19,
+  "mad_min2": 20.08,
+  "mad_min4": 26.64
+ },
+ "marker_luma": [
+  [
+   "item",
+   109.5,
+   48.8
+  ],
+  [
+   "fluid",
+   147.8,
+   58.9
+  ],
+  [
+   "essen",
+   149.2,
+   54.9
+  ]
+ ],
+ "note": "主体走基准读法（青带 / 灰阶 / 暗壳原值 + 基准家族黄做猫脸），三枚 >=4px 短条各占一条通道色：物品青、流体品红（取自 infinity_fluid_cell）、源质绿。",
+ "opaque_px": 138,
+ "palette_provenance": {
+  "B0_hi": "infinity_cell.png #fff200",
+  "B0_mid": "miao_coin.png #fdd037",
+  "B1_hi": "infinity_cell.png #fff200 x0.96",
+  "B1_mid": "miao_coin.png #fdd037 x0.96",
+  "B2_hi": "infinity_cell.png #fff200 x0.92",
+  "B2_mid": "miao_coin.png #fdd037 x0.92",
+  "B3_hi": "infinity_cell.png #fff200 x0.88",
+  "B3_mid": "miao_coin.png #fdd037 x0.88",
+  "F_eye": "infinity_cell.png #000000",
+  "F_hi": "infinity_cell.png #fff200",
+  "F_mid": "miao_coin.png #fdd037",
+  "F_nose": "miao_coin.png #842e07",
+  "L_band": "infinity_cell.png #00a2e8",
+  "L_bevel": "cell_bevel = 基准值（边缘层锁死）",
+  "L_cavity": "infinity_cell.png #000000",
+  "L_outline": "cell_outline = 基准值（边缘层锁死）",
+  "L_shell": "cell_shell = 基准值（边缘层锁死）",
+  "M_essen_dim": "infinity_cell.png #19ff00 x0.35",
+  "M_essen_lit": "infinity_cell.png #19ff00 x0.95",
+  "M_fluid_dim": "infinity_fluid_cell.png #c86fc8 x0.40",
+  "M_fluid_lit": "infinity_fluid_cell.png #c86fc8",
+  "M_item_dim": "infinity_cell.png #00a2e8 x0.40",
+  "M_item_lit": "infinity_cell.png #00a2e8 x0.90"
+ },
+ "seam_vs_max_adjacent": [
+  4,
+  28
+ ],
+ "sha256_frame0_static": "4a8b0e578da1a8f29b4f790376789dd32ea4dcdae8eecf064b6d4d59f4cfc829",
+ "sha256_strip": "4f4a4d09fdb7ef25e4781b292c000b04e3c60bfe9b968ceaad123d22949ee877",
+ "silhouette_deviation_px": 0,
+ "size": [
+  16,
+  128
+ ]
+}

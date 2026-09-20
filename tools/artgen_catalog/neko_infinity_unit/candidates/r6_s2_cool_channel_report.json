@@ -1,0 +1,131 @@
+{
+ "changed_px_inside_center8": 26,
+ "changed_px_outside_center8_frame0": 11,
+ "changed_px_outside_center8_max_over_frames": 11,
+ "contour_mismatch_8nb": [
+  [
+   [
+    10,
+    12
+   ],
+   [
+    25,
+    255,
+    0
+   ],
+   [
+    0,
+    40,
+    58
+   ]
+  ]
+ ],
+ "contour_overlap_pct_4nb": 100.0,
+ "contour_overlap_pct_8nb": 98.1,
+ "contour_px": 32,
+ "distinct_colors_frame0": 11,
+ "ear_break_through_coords": [
+  [
+   6,
+   3
+  ],
+  [
+   9,
+   3
+  ]
+ ],
+ "ear_break_through_px": 2,
+ "face_bbox_x_y_w_h": [
+  5,
+  3,
+  6,
+  6
+ ],
+ "face_px": 24,
+ "frame_diff_steps": [
+  20,
+  28,
+  20,
+  9,
+  20,
+  25,
+  20,
+  4
+ ],
+ "id": "r6_s2_cool_channel",
+ "label": "方案2 通道冷调",
+ "layer_luma": {
+  "band": 121.5,
+  "bevel": 64.0,
+  "cavity": 0.0,
+  "face_hi": 233.9,
+  "face_mid": 204.0,
+  "outline": 40.0,
+  "shell": 31.9
+ },
+ "mad": {
+  "mad_detail": 51.87,
+  "mad_min2": 21.1,
+  "mad_min4": 28.98
+ },
+ "mad_ref": {
+  "mad_detail": 46.19,
+  "mad_min2": 20.08,
+  "mad_min4": 26.64
+ },
+ "marker_luma": [
+  [
+   "item",
+   103.5,
+   42.7
+  ],
+  [
+   "fluid",
+   84.8,
+   36.7
+  ],
+  [
+   "essen",
+   66.8,
+   30.1
+  ]
+ ],
+ "note": "主体完全走基准图的冷青读法（青带 / 灰阶 / 暗壳原值），三枚角标只用青带同色相分三档明度，家族淡金只落在中心猫脸这一个对比点上。",
+ "opaque_px": 138,
+ "palette_provenance": {
+  "B0_hi": "miao_coin.png #fef57c",
+  "B0_mid": "miao_coin.png #fdd037",
+  "B1_hi": "miao_coin.png #fef57c x0.96",
+  "B1_mid": "miao_coin.png #fdd037 x0.96",
+  "B2_hi": "miao_coin.png #fef57c x0.92",
+  "B2_mid": "miao_coin.png #fdd037 x0.92",
+  "B3_hi": "miao_coin.png #fef57c x0.88",
+  "B3_mid": "miao_coin.png #fdd037 x0.88",
+  "F_eye": "infinity_cell.png #000000",
+  "F_hi": "miao_coin.png #fef57c",
+  "F_mid": "miao_coin.png #fdd037",
+  "F_nose": "miao_coin.png #842e07",
+  "L_band": "infinity_cell.png #00a2e8",
+  "L_bevel": "cell_bevel = 基准值（边缘层锁死）",
+  "L_cavity": "infinity_cell.png #000000",
+  "L_outline": "cell_outline = 基准值（边缘层锁死）",
+  "L_shell": "cell_shell = 基准值（边缘层锁死）",
+  "M_essen_dim": "infinity_cell.png #00a2e8 x0.25",
+  "M_essen_lit": "infinity_cell.png #00a2e8 x0.55",
+  "M_fluid_dim": "infinity_cell.png #00a2e8 x0.30",
+  "M_fluid_lit": "infinity_cell.png #00a2e8 x0.70",
+  "M_item_dim": "infinity_cell.png #00a2e8 x0.35",
+  "M_item_lit": "infinity_cell.png #00a2e8 x0.85"
+ },
+ "seam_vs_max_adjacent": [
+  4,
+  28
+ ],
+ "sha256_frame0_static": "20e2b121d39f6938345284a279851896c2b81eb381d6e7a4bec0dcc51e405a2f",
+ "sha256_strip": "bec27c6c6c89f3bafed80240fd219d38fb066525afd41176743e9567a2fbf4ed",
+ "silhouette_deviation_px": 0,
+ "size": [
+  16,
+  128
+ ]
+}

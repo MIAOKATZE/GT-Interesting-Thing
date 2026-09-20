@@ -1,0 +1,131 @@
+{
+ "changed_px_inside_center8": 40,
+ "changed_px_outside_center8_frame0": 13,
+ "changed_px_outside_center8_max_over_frames": 13,
+ "contour_mismatch_8nb": [
+  [
+   [
+    10,
+    12
+   ],
+   [
+    25,
+    255,
+    0
+   ],
+   [
+    35,
+    11,
+    0
+   ]
+  ]
+ ],
+ "contour_overlap_pct_4nb": 100.0,
+ "contour_overlap_pct_8nb": 98.1,
+ "contour_px": 32,
+ "distinct_colors_frame0": 10,
+ "ear_break_through_coords": [
+  [
+   6,
+   3
+  ],
+  [
+   9,
+   3
+  ]
+ ],
+ "ear_break_through_px": 2,
+ "face_bbox_x_y_w_h": [
+  5,
+  3,
+  6,
+  6
+ ],
+ "face_px": 24,
+ "frame_diff_steps": [
+  20,
+  28,
+  20,
+  9,
+  20,
+  25,
+  20,
+  4
+ ],
+ "id": "r6_s1_family_gold",
+ "label": "方案1 家族金暖调",
+ "layer_luma": {
+  "band": 85.8,
+  "bevel": 64.0,
+  "cavity": 0.0,
+  "face_hi": 215.9,
+  "face_mid": 167.3,
+  "outline": 40.0,
+  "shell": 31.9
+ },
+ "mad": {
+  "mad_detail": 42.11,
+  "mad_min2": 18.33,
+  "mad_min4": 25.41
+ },
+ "mad_ref": {
+  "mad_detail": 46.19,
+  "mad_min2": 20.08,
+  "mad_min4": 26.64
+ },
+ "marker_luma": [
+  [
+   "item",
+   67.3,
+   30.3
+  ],
+  [
+   "fluid",
+   55.1,
+   25.0
+  ],
+  [
+   "essen",
+   42.2,
+   16.9
+  ]
+ ],
+ "note": "灰阶外壳 / 倒角 / 暗壳 / 纯黑暗腔逐字保留；青带整体换成 miao_coin 琥珀，角标压到最低饱和的深棕，全图唯一亮部 = 中心暖金猫脸。",
+ "opaque_px": 138,
+ "palette_provenance": {
+  "B0_hi": "miao_coin.png #fee04a",
+  "B0_mid": "miao_coin.png #f39d16",
+  "B1_hi": "miao_coin.png #fee04a x0.96",
+  "B1_mid": "miao_coin.png #f39d16 x0.96",
+  "B2_hi": "miao_coin.png #fee04a x0.92",
+  "B2_mid": "miao_coin.png #f39d16 x0.92",
+  "B3_hi": "miao_coin.png #fee04a x0.88",
+  "B3_mid": "miao_coin.png #f39d16 x0.88",
+  "F_eye": "infinity_cell.png #000000",
+  "F_hi": "miao_coin.png #fee04a",
+  "F_mid": "miao_coin.png #f39d16",
+  "F_nose": "miao_coin.png #842e07",
+  "L_band": "miao_coin.png #a63d03",
+  "L_bevel": "cell_bevel = 基准值（边缘层锁死）",
+  "L_cavity": "infinity_cell.png #000000",
+  "L_outline": "cell_outline = 基准值（边缘层锁死）",
+  "L_shell": "cell_shell = 基准值（边缘层锁死）",
+  "M_essen_dim": "miao_coin.png #581b00 x0.40",
+  "M_essen_lit": "miao_coin.png #581b00",
+  "M_fluid_dim": "miao_coin.png #6f2502 x0.45",
+  "M_fluid_lit": "miao_coin.png #6f2502",
+  "M_item_dim": "miao_coin.png #842e07 x0.45",
+  "M_item_lit": "miao_coin.png #842e07"
+ },
+ "seam_vs_max_adjacent": [
+  4,
+  28
+ ],
+ "sha256_frame0_static": "037fff093f1c2335115d756ab6a173003c85114572daeab7ca7e7e43fd24a0fb",
+ "sha256_strip": "41b04e2319125a49e3530fd15733660e6579c79b1e7f1e38bbecfeef64056e11",
+ "silhouette_deviation_px": 0,
+ "size": [
+  16,
+  128
+ ]
+}
