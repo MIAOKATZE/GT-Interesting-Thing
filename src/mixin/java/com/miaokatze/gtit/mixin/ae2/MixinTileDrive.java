@@ -65,6 +65,10 @@ public class MixinTileDrive {
     @Unique
     private boolean gtit$warned;
 
+    /** 一次性取证日志：证明本槽确实补登记了额外通道，也顺带给出补到的 type id。 */
+    @Unique
+    private boolean gtit$logged;
+
     @Shadow(remap = false)
     private boolean isCached;
 
@@ -132,6 +136,10 @@ public class MixinTileDrive {
                     final MEInventoryHandler ih = new MEInventoryHandler(cell, cell.getStackType());
                     ih.setPriority(this.priority);
                     list.add(ih);
+                    if (!this.gtit$logged) {
+                        this.gtit$logged = true;
+                        gtit$LOG.info("[gtit] 驱动器多通道补登记命中：原生主通道={}，本次补={}（槽位 {}）", occupied.getId(), type.getId(), x);
+                    }
                 }
             }
         } catch (Throwable t) {

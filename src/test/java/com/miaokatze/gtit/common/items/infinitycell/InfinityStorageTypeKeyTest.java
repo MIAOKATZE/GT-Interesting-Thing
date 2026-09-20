@@ -36,7 +36,28 @@ public class InfinityStorageTypeKeyTest {
         cases.put("写出同时携带三个外层键", InfinityStorageTypeKeyTest::writesAllThreeOuterKeys);
         cases.put("未注册通道原样保留", InfinityStorageTypeKeyTest::keepsUnresolvedTypedBucket);
         cases.put("旧档键名字面量未被改动", InfinityStorageTypeKeyTest::legacyKeyLiteralsUnchanged);
+        cases.put("元件身份只分配一次", InfinityStorageTypeKeyTest::uuidAllocatedOnceThenStable);
+        cases.put("客户端不写身份", InfinityStorageTypeKeyTest::clientNeverPersistsUuid);
         TestRunner.run(InfinityStorageTypeKeyTest.class, cases);
+    }
+
+    /**
+     * 「流体存不进去」的根因回归：空 diskuuid 若不在首次服务端取用时固定下来，
+     * 每次构造 handler 都会换一个随机空桶，写入的内容随即成孤儿。
+     */
+    private static void uuidAllocatedOnceThenStable() {
+        final NBTTagCompound data = new NBTTagCompound();
+        final String first = StorageManager.allocateOrReadUuid(data, true);
+        SimpleAssert.that(!first.isEmpty(), "服务端首次取用必须分配出身份");
+        SimpleAssert.eq(first, data.getString(InfinityCellConstants.DISKUUID), "分配结果必须落进元件 NBT");
+        SimpleAssert.eq(first, StorageManager.allocateOrReadUuid(data, true), "第二次取用必须拿到同一个身份");
+        SimpleAssert.eq(first, StorageManager.allocateOrReadUuid(data, false), "客户端读到的也是同一身份");
+    }
+
+    private static void clientNeverPersistsUuid() {
+        final NBTTagCompound data = new NBTTagCompound();
+        SimpleAssert.eq("", StorageManager.allocateOrReadUuid(data, false), "客户端不得分配");
+        SimpleAssert.that(!data.hasKey(InfinityCellConstants.DISKUUID), "客户端不得写元件 NBT（会与保存期遍历竞争）");
     }
 
     private static void channelKeysAreDistinct() {

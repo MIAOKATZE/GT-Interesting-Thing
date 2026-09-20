@@ -96,10 +96,25 @@ public class StorageManager extends WorldSavedData {
 
     public DataStorage getStorage(ItemStack item, IAEStackType<?> type) {
         if (item.getItem() instanceof IInfinityCellItem) {
-            NBTTagCompound data = Platform.openNbtData(item);
-            return this.getStorage(data.getString(InfinityCellConstants.DISKUUID), type);
+            return this.getStorage(allocateOrReadUuid(Platform.openNbtData(item), Platform.isServer()), type);
         }
         return null;
+    }
+
+    /**
+     * 元件身份只在首次服务端取用时分配一次并留在 NBT 里。不这么做就会：NBT 无 diskuuid →
+     * 每次构造 handler 换一个随机空桶 → 写入的内容落在孤儿桶，表现即「流体/源质存不进去」。
+     * 客户端一律不写：既会与保存期 writeToNBT 遍历竞争，其临时桶也只用于只读展示。
+     */
+    static String allocateOrReadUuid(NBTTagCompound data, boolean mayPersist) {
+        String uuid = data.getString(InfinityCellConstants.DISKUUID);
+        if (!uuid.isEmpty() || !mayPersist) {
+            return uuid;
+        }
+        uuid = UUID.randomUUID()
+            .toString();
+        data.setString(InfinityCellConstants.DISKUUID, uuid);
+        return uuid;
     }
 
     public DataStorage getStorage(ItemStack item, EntityPlayer player) {

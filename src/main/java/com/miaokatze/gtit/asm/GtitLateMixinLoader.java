@@ -5,6 +5,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.gtnewhorizon.gtnhmixins.ILateMixinLoader;
 import com.gtnewhorizon.gtnhmixins.LateMixin;
 
@@ -33,20 +36,26 @@ import com.gtnewhorizon.gtnhmixins.LateMixin;
 @LateMixin
 public class GtitLateMixinLoader implements ILateMixinLoader {
 
+    private static final Logger LOGGER = LogManager.getLogger("gtit");
+
     /** 与 {@code src/main/resources/mixins.gtit.ae2.json} 一一对应；该 json 有意不写 mixins/client 数组。 */
     private static final String AE2_MIXIN_CONFIG = "mixins.gtit.ae2.json";
 
-    /** AE2 的 modId，用于判断是否已加载。 */
-    private static final String AE2_MOD_ID = "appeng";
+    /**
+     * AE2 的 FML modId。
+     * <p>
+     * ⚠ 这里必须是 {@code appliedenergistics2} 而不是包名 {@code appeng}：{@link #getMixins(Set)} 拿到的是
+     * modId 集合（实机日志实证：写成 appeng 时 ae2Present 恒为 false，两枚 mixin 从未被施加，
+     * 多通道静默退回 AE2 原生「一槽只登记第一个命中通道」的行为）。包名 {@code appeng} 只在
+     * {@code @Mod} 依赖串与类路径里出现。
+     */
+    private static final String AE2_MOD_ID = "appliedenergistics2";
 
     /**
      * 仅在 AE2 存在时施加的 mixin 列表（相对 json 的 {@code package} 的点号子包名）。
      * <p>
-     * 只含驱动器与 ME 箱两枚：IO 端口的 {@code TileIOPort#getInv} 用单值 {@code cachedInventory}
-     * 缓存「一槽一份」handler，且随后的 {@code transferContents}/{@code shouldMove}/{@code moveSlot}
-     * 与共享的 {@code amountToMove} 预算全部以该唯一 handler 的 {@code getStackType()} 为准；
-     * 在不重写整个 tick 循环的前提下改成按 type 缓存会造成跨通道错投（先 SIMULATE 插入、再 MODULATE
-     * 抽取）从而真丢内容，故本切片有意不覆盖 IO 端口。
+     * 驱动器与 ME 箱两枚解决「登记侧」——让一个元件的<b>每个</b>已注册 {@code IAEStackType}
+     * 都各自持有一份独立 handler 进入网格。搬运侧（ME-IO 端口）本提交尚未覆盖。
      */
     private static final List<String> AE2_MIXINS = Collections
         .unmodifiableList(Arrays.asList("ae2.MixinTileDrive", "ae2.MixinTileChest"));
@@ -58,7 +67,15 @@ public class GtitLateMixinLoader implements ILateMixinLoader {
 
     @Override
     public List<String> getMixins(Set<String> loadedMods) {
-        if (loadedMods != null && loadedMods.contains(AE2_MOD_ID)) {
+        final boolean ae2Present = loadedMods != null && loadedMods.contains(AE2_MOD_ID);
+        // 一次性取证日志：这行是否出现即判别 LateMixin 引导链是否跑通（缺席=unimixins 没扫到 @LateMixin，
+        // 多通道会静默退回 AE2 原生单通道行为，而不是报错）
+        LOGGER.info(
+            "[gtit] LateMixin 引导命中：ae2Present={}，施加 {}（config={}）",
+            ae2Present,
+            ae2Present ? AE2_MIXINS : "无",
+            AE2_MIXIN_CONFIG);
+        if (ae2Present) {
             return AE2_MIXINS;
         }
         return Collections.emptyList();
