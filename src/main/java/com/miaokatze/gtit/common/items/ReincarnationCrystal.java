@@ -20,10 +20,16 @@ import com.miaokatze.gtit.register.CreativeTabManager;
  * client/gui import（类污染红线），GUI 打开仅在 ClientProxy 的
  * {@code openReincarnationGui} 覆写内触达。
  * <p>
- * v1.8.2→v1.8.3 迁移说明：原 v1.9.0 MUI2 链路在集成服环境 onItemRightClick 双线程
- * 各执行一次，服务端线程第二次执行 MUI2 工厂注册（"gtit:reincarnation_gui"）
- * 抛 IllegalArgumentException 崩溃；改 Forge 原版 IGuiHandler 链路后注册收束在
- * {@code ClientProxy.init} 单线程单侧执行，根因消除。
+ * v1.8.2→v1.8.3 迁移说明：原 MUI2 链路在集成服环境抛 IllegalArgumentException 崩溃，
+ * 改 Forge 原版 IGuiHandler 链路后注册收束在 {@code ClientProxy.init} 单线程单侧执行。
+ * <p>
+ * 更正（本仓 v1.9 复查）：此处曾记录的根因「onItemRightClick 双线程各执行一次、服务端线程
+ * 第二次执行 MUI2 工厂注册」是误诊。真实机制是单线程内对同一工厂实例注册两次——
+ * {@code GuiFactories.createSimple} 的构造器已自注册，旧 ReincarnationGuiOpener 又手写了一次
+ * {@code registerFactory}，首次右击即抛 GuiManager 的 dup-IAE（客户端线程从未触达注册代码）。
+ * 证据：plan/_taskpack/ultra-07-mui2-open-crash.md §1.2、§2.1-§2.2。
+ * MUI2 本身对物品 GUI 可用，故本类的 IGuiHandler 形态是「可用的历史选择」而非「MUI2 不可用的结论」；
+ * 新物品 GUI 的选型见 plan/_taskpack/decision-ledger.md R20/R21。
  */
 public class ReincarnationCrystal extends Item {
 

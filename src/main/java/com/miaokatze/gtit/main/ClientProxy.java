@@ -51,11 +51,17 @@ public class ClientProxy extends CommonProxy {
             GTInterestingThing.LOG.error("[2/3] 周目系统客户端渲染与演出安装失败", t);
         }
 
-        // v1.8.3: 周目 GUI 打开链路弃 MUI2（MUI2 工厂注册在集成服双线程重复执行
-        // 抛 IllegalArgumentException 崩溃），改 Forge 原版 IGuiHandler + EntityPlayer.openGui：
+        // v1.8.3: 周目 GUI 打开链路弃 MUI2，改 Forge 原版 IGuiHandler + EntityPlayer.openGui：
         // 先注入客户端工厂回调（common 的 ReincarnationGuiHandler 三层零 client 引用，
         // 客户端 GuiContainer 仅经本回调触达），再注册 handler（NetworkRegistry 每 mod 单 handler）。
         // 物理专用服务器不加载 ClientProxy，注册路径不可达（周目系统整体门控）。
+        //
+        // 更正（本仓 v1.9 复查）：当年弃用 MUI2 时记录的根因「MUI2 工厂注册在集成服双线程重复执行」
+        // 是误诊。真实机制是单线程内对同一工厂实例注册两次——GuiFactories.createSimple 的构造器
+        // 已经自注册，旧 ReincarnationGuiOpener 又手写了一次 registerFactory，首次右击即抛
+        // GuiManager 的 dup-IAE；注册本身没有阶段或线程检查。MUI2 因此并未不可用于物品 GUI。
+        // 证据：plan/_taskpack/ultra-07-mui2-open-crash.md §1.2（dev jar 字节码）与 §2.1-§2.2（被删源码）。
+        // 本链路不回迁：现状稳定服役，且换载体的功能收益已兑现。
         try {
             com.miaokatze.gtit.reincarnation.gui.ReincarnationGuiHandler
                 .setClientFactory(player -> new com.miaokatze.gtit.client.gui.ReincarnationGuiContainer(player));

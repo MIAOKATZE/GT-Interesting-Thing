@@ -58,3 +58,13 @@ tasks.register<JavaExec>("runStorageTypeKeyTest") {
     mainClass = "com.miaokatze.gtit.common.items.infinitycell.InfinityStorageTypeKeyTest"
     classpath = storeTestRuntimeClasspath
 }
+
+// 猫猫次元口袋数据模型与通道状态机零依赖测试套件：同 runStoreTest 模式（用例注册在
+// NekoPocketModelTest.main，任一失败以非零退出码结束）。纯 JVM 件，不触达 AE2 实现类。
+// 运行：gradlew runPocketTest
+tasks.register<JavaExec>("runPocketTest") {
+    group = "verification"
+    description = "Runs the zero-dependency dimensional pocket model test suite (NekoPocketModelTest.main)."
+    mainClass = "com.miaokatze.gtit.common.items.pocket.NekoPocketModelTest"
+    classpath = storeTestRuntimeClasspath
+}

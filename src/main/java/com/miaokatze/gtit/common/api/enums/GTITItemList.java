@@ -57,7 +57,10 @@ public enum GTITItemList implements IItemContainer {
     NekoInfinityStorageUnit,
 
     // 轮回水晶（周目系统）
-    ReincarnationCrystal;
+    ReincarnationCrystal,
+
+    // 猫猫次元口袋（128 格随身容器 + 流体条 + 源质蒸馏 + 次元通道绑定，需求 1–5）
+    NekoDimensionPocket;
 
     /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
     private static final Logger LOG = LogManager.getLogger("gtit");

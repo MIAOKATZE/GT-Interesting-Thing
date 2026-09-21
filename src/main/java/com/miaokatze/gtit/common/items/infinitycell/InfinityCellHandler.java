@@ -9,6 +9,8 @@ import net.minecraft.util.IIcon;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.miaokatze.gtit.common.items.pocket.PocketCellProbe;
+
 import appeng.api.implementations.tiles.IChestOrDrive;
 import appeng.api.storage.ICellHandler;
 import appeng.api.storage.IMEInventory;
@@ -36,6 +38,9 @@ public class InfinityCellHandler implements ICellHandler {
             if (is.getItem() instanceof IInfinityCellItem iih) {
                 if (iih.getChannel() == channel) {
                     LegacyCellReminderScheduler.INSTANCE.observe(is, container);
+                    // 口袋探针：与上一行并排但语义不同（那是旧元件迁移提醒，不得合并/删除）。
+                    // 槽号 handler 参数拿不到，由 probe 侧在容器的 IInventory 里扫槽比对 diskuuid 得出
+                    PocketCellProbe.INSTANCE.observe(is, container, PocketCellProbe.SLOT_UNKNOWN);
                     return iih.getInventoryHandler(is, container, null);
                 }
             }
@@ -58,6 +63,10 @@ public class InfinityCellHandler implements ICellHandler {
                 && iih.getSupportedStackTypes()
                     .contains(type)) {
                 LegacyCellReminderScheduler.INSTANCE.observe(is, container);
+                // ★ 承重点：新单元 ItemNekoInfinityStorageUnit 是多通道件，getSupportedStackTypes() 由它
+                // 自己覆写，只有这条 typed 路径保证对它触发；与上一行并排但语义不同（旧元件迁移提醒，
+                // 不得合并、不得删除）。槽号由 probe 侧扫容器的 IInventory 比对 diskuuid 得出
+                PocketCellProbe.INSTANCE.observe(is, container, PocketCellProbe.SLOT_UNKNOWN);
                 return iih.getInventoryHandler(is, container, null, type);
             }
         } catch (Exception e) {

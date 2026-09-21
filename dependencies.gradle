@@ -49,6 +49,15 @@ dependencies {
     api("com.github.GTNewHorizons:GTNHLib:0.11.46:dev") { transitive = false }
     api("com.github.GTNewHorizons:Baubles-Expanded:2.2.6-GTNH:dev") { transitive = false }
 
+    // [S0-PROBE → 已定稿] 神秘时代桥接层（crossmod/taum）。
+    // 必须用 compileOnly 而非 compileOnlyApi：本文件 :31 原文写明
+    // "compileOnlyApi and runtimeOnly both get published as dependencies in Maven, but compileOnly does not"
+    // —— 闭源 TC 一旦进发布 POM 会逼下游解析。坐标与 GT5U dependencies.gradle:89 逐字同款。
+    // ThaumicTinkerer 不加编译依赖：其 dev jar 2.12.22/27/32 全量解包后 `grep -rli vessel` 零命中，
+    // 该 fork 内不存在 ItemVessel 类，写成 import 必编译失败；源质容器改由 GameRegistry 字符串探测
+    // + IEssentiaContainerItem 校验承担（见 crossmod/taum/TaumBridge），任何第三方容器按接口自动兼容。
+    compileOnly("thaumcraft:Thaumcraft:1.7.10-4.2.3.5:dev") { transitive = false }
+
     // VisualProspecting is required for JourneyMap integration (ore prospecting visualization).
     // Used by TelekinesisOreScannerCore to display ore veins on the map.
     api('com.github.GTNewHorizons:VisualProspecting:1.5.39:dev') { transitive = false }

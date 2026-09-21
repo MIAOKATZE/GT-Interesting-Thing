@@ -38,6 +38,11 @@ public class Config {
     public static double fishingNekoCoinChance = 10.0;
     public static double fishingShimmeringNekoCoinChance = 2.0;
 
+    // 猫猫次元口袋「短效通道」每批可穿的「(元件, 通道) 对」数（R9 的"一次"窄口径）。
+    // 语义与 ME-IO 端口的轮转一致：外层绑定序、内层 typeId 轮转，一秒一拍、共 30 拍；
+    // 1 = 每拍只服务一对（最公平），调大即换吞吐。瞬时通道不受此项约束（一次穿完）。
+    public static int pocketChannelPairsPerSecond = 1;
+
     /**
      * 同步配置文件
      * 从磁盘读取配置并更新静态变量，如果配置有变动则自动保存
@@ -93,6 +98,14 @@ public class Config {
                 0.0D,
                 100.0D)
             .getDouble(fishingShimmeringNekoCoinChance);
+
+        pocketChannelPairsPerSecond = configuration.getInt(
+            "pocketChannelPairsPerSecond",
+            Configuration.CATEGORY_GENERAL,
+            pocketChannelPairsPerSecond,
+            1,
+            64,
+            "猫猫次元口袋「短效通道」每批可穿的 (元件, 通道) 对数 (1=每拍只服务一对最公平, 调大换吞吐; 瞬时通道一次穿完不受此项约束)");
 
         if (configuration.hasChanged()) {
             configuration.save();

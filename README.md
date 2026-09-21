@@ -310,6 +310,31 @@ An AE2 storage cell of GTIT's own design: **one cell serves every registered cha
 - **Requires / 前置**: 三枚条件施加 mixin 补齐 AE2「同一元件槽只登记第一个非 null 通道」的限制（`@LateMixin`，仅 AE2 在场时生效）
 - **Legacy `[OLD]`**: 物品版 2 升级卡槽、流体版 0 卡槽；两者每 10 分钟向归属玩家播报所在容器坐标以提示迁移
 
+### Neko Dimensional Pocket / 猫猫次元口袋
+
+一枚**束口袋**形态的随身容器（袋面带猫脸）：右手持物右键打开 400×300 面板，把「随身库存 + 元素蒸馏 + 跨维度灌仓」收在一件物品里。内容全部存在物品 NBT 上，不占世界数据。
+
+A pouch-shaped portable container with a cat face on the drawstring: right-click while held to open a 400×300 panel that combines a portable inventory, Thaumcraft distillation and cross-dimensional ME filing — all stored in the item's own NBT, no world data.
+
+- **Storage / 随身库存**: 中栏 8×16 = 128 格真实存储 / 128 real slots
+- **Fluid side / 左栏**: 16000 mB 流体条 + 上下两排各 4 格，交互口径与 GT5U 流体仓一致（手持直接灌/排、组合键与 tooltip 同款），两排同权、方向由放入的储罐当前有无流体决定
+- **Distillation / 右栏**: 下 3 格输入 → 按 TC4 源质原量蒸馏（5 秒一轮，无物品或无源质即无进度，判据同炼金炉 `canSmelt`），上 12×4 = 48 格显示盘，单 tag 上限 64 点；取出即晶化，结晶可不经蒸馏直接回注；**源质罐子可直接放入/取出**（按 `IEssentiaContainerItem` 接口探测，任何 mod 的容器自动兼容）
+- **Binding / 绑定**: 右下绑定格 + 绑定键，一枚口袋可绑至多 64 枚 GTIT 无限元件（元件只提供 ID）；第四列显示每枚元件所在维度与坐标及状态位
+- **Instant channel / 瞬时通道**: 8 猫猫币，一次穿完全部绑定，图标动画显示 5 秒，冷却 10 秒（玩家维 + 设备维双校验，重启不重置）
+- **Timed channel / 短效通道**: 2 闪烁猫猫币，持续 30 秒、每秒一批，每批搬运的「元件×通道」对数由 `pocketChannelPairsPerSecond` 决定（默认 1）
+- **Channel precondition / 前置**: 绑定元件必须处于**带电**的驱动器或 ME 箱子内，否则通道不开
+- **NEI ghost / 就地虚化**: 从 NEI 把物品 / 流体 / 源质拖到格上即把**该格**配成 ghost（禁玩家放置与流体输入），右键解绑；通道打开时按声明从元件里补齐，源质以结晶形式抽出
+- **Icon / 图标**: 四态动画材质（静态 / 打开 / 工作 / 打开且工作，`frametime` 4/3/3/2），工作位扫光只在通道或蒸馏活跃时出现
+- **Recipe / 配方**: `PEP / LCL / LLL`（末影珍珠 + 末影之眼 + 皮革 + 猫猫无限存储单元）；合成匹配不比较元件 NBT
+- **Requires / 前置**: ModularUI2、AE2、GT5U；Thaumcraft 4 为**可选**（缺席时蒸馏栏整栏灰显而非隐藏，面板宽度不变）
+
+**口径代价 / Documented trade-offs**（设计选择，不是缺陷）：
+
+1. **口袋只在主手工作**：通道与蒸馏的 tick 宿主是 `Item#onUpdate`，而 1.7.10 只有当前手持的那一格会被 tick ⇒ 塞进副手或背包深处即停摆（面板与 tooltip 均已声明）。
+2. **ghost 声明会占掉一格真实存储**：中栏声明与真实格共用同一 128 格索引空间（左栏流体条与右栏源质格不占真实槽）。
+3. **内容随物品一起丢**：128 格物品与 48 格源质都存在口袋 NBT 里，口袋丢失/销毁即同时失去其中所有内容。
+4. **16000 mB 流体条容量是超规格自选值**：需求只说「像 GT5U 流体仓」而未给数字，此值取自常见单块储罐尺度，不是规格出处。
+
 ***
 
 ## Rings / 戒指

@@ -217,6 +217,17 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 猫猫币钱包事件监听器注册失败", t);
         }
 
+        // 猫猫次元口袋：服务端内存状态的生命周期挂钩（玩家离线 → 会话落盘 + 通道条目摘除；
+        // 停服复位见 serverStopping）。缺它则 PocketChannelManager 承诺的"防跨存档残留通道"落空（R57c④）。
+        try {
+            FMLCommonHandler.instance()
+                .bus()
+                .register(com.miaokatze.gtit.common.items.pocket.PocketLifecycleHandler.INSTANCE);
+            GTInterestingThing.LOG.info("[0/3] 猫猫次元口袋生命周期监听器已注册");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 猫猫次元口袋生命周期监听器注册失败（通道状态可能跨存档残留）", t);
+        }
+
         // v1.7.0 目标 5: 注册交易配置同步监听器（登录时向客户端推送服务端交易/标签页配置）
         try {
             FMLCommonHandler.instance()
@@ -734,6 +745,13 @@ public class CommonProxy {
             com.miaokatze.gtit.common.items.infinitycell.LegacyCellReminderScheduler.reset();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("停服复位旧无限元件坐标登记失败", t);
+        }
+        // 猫猫次元口袋：会话落盘 + 通道/蒸馏/探针复位（FMLServerStoppingEvent 不投递总线，
+        // 由本钩子转发，与上面两条同形；漏掉则单机连续开新世界会把上一档的 30 秒通道带进来）
+        try {
+            com.miaokatze.gtit.common.items.pocket.PocketLifecycleHandler.onServerStopping();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服复位猫猫次元口袋通道状态失败", t);
         }
     }
 

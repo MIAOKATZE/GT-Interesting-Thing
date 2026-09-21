@@ -1,0 +1,71 @@
+package com.miaokatze.gtit.common.items.pocket;
+
+/**
+ * 一次元件写入的回执码。
+ * <p>
+ * <b>R10 的硬要求</b>：「被分区 WHITELIST 拒收」与「元件已满」必须分开发码。
+ * 前者在 AE2 侧的表现是注入<b>原样返回 input</b>（{@code MEInventoryHandler.java:98-101,212-226}
+ * 先查 {@code canAccept}，分区非空且 WHITELIST 时直接拒收未列出的物品），
+ * 后者是 {@code canAccept} 通过但内部装不下；两者都让 remainder 等于请求量，
+ * 只看返回值无法区分，必须把 {@code canAccept} 与写权限一起作为入参分类。
+ * 混用的后果是玩家体验为「通道开了但东西不见了」。
+ */
+public enum PocketReceipt {
+
+    /** 全部写入。 */
+    OK,
+    /** 部分写入（元件剩余容量不足，余量留在源槽）。 */
+    PARTIAL,
+    /** 分区 WHITELIST 未列出 / BLACKLIST 命中 ⇒ 原样退回，与"元件满"必须分开（R10）。 */
+    FILTER_REJECTED,
+    /** 元件已满：可接受但装不下。 */
+    FULL,
+    /** 抽取方向的落点（玩家背包/口袋真实栏）没有空位，与"元件已满"是两回事。 */
+    TARGET_FULL,
+    /** 无写权限（元件被锁、只读卡、驱动器掉电导致 handler 不可写）。 */
+    NO_ACCESS,
+    /** 元件失联：区块未加载、被搬走、已销毁或不再处于带电容器内。 */
+    LOST,
+    /** 该元件没有可用通道（typeId 候选为空）。 */
+    NO_CHANNEL;
+
+    /** 是否有任何内容真的进了元件（决定是否计入"已传输"与网络通知）。 */
+    public boolean moved() {
+        return this == OK || this == PARTIAL;
+    }
+
+    /** 是否属于"本轮就此打住、余量顺延下一轮"（R11 的 remainder 即 break）。 */
+    public boolean stopsBatch() {
+        return this != OK;
+    }
+
+    /**
+     * 把 AE 侧的原始结论分类成回执码。
+     * <p>
+     * 判定顺序即优先级：失联 &gt; 无请求量 &gt; 全量入仓 &gt; 无写权限 &gt; 分区拒收 &gt; 满 &gt; 部分。
+     * "无写权限"排在"分区拒收"之前，是因为 {@code MEInventoryHandler.canAccept} 对
+     * {@code !hasWriteAccess} 同样返回 false，不先拆出来会把锁仓元件误报成分区问题。
+     *
+     * @param resolved       元件与通道 handler 是否解析成功
+     * @param hasWriteAccess handler 的 {@code getAccess()} 是否含写权限
+     * @param acceptable     handler 的 {@code canAccept(stack)} 结论
+     * @param requested      请求写入的点数
+     * @param leftover       {@code injectItems} 返回的余量（null 记为 0）
+     */
+    public static PocketReceipt classify(boolean resolved, boolean hasWriteAccess, boolean acceptable, long requested,
+        long leftover) {
+        if (!resolved) {
+            return LOST;
+        }
+        if (requested <= 0L || leftover <= 0L) {
+            return OK;
+        }
+        if (!hasWriteAccess) {
+            return NO_ACCESS;
+        }
+        if (!acceptable) {
+            return FILTER_REJECTED;
+        }
+        return leftover >= requested ? FULL : PARTIAL;
+    }
+}

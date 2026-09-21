@@ -15,6 +15,7 @@ import com.miaokatze.gtit.common.items.TelekinesisOreScannerCore;
 import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageCell;
 import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageFluidCell;
 import com.miaokatze.gtit.common.items.infinitycell.ItemNekoInfinityStorageUnit;
+import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.rings.RingDistantGrasp;
 import com.miaokatze.gtit.common.items.rings.RingDragonBreath;
 import com.miaokatze.gtit.common.items.rings.RingGluttony;
@@ -72,6 +73,9 @@ public class ItemRegistrar {
         registerInfinityCell();
         registerInfinityFluidCell();
         registerNekoInfinityStorageUnit();
+
+        // 猫猫次元口袋
+        registerNekoDimensionPocket();
 
         LOG.info("物品注册完成。");
     }
@@ -162,5 +166,11 @@ public class ItemRegistrar {
 
     private static void registerNekoInfinityStorageUnit() {
         NekoInfinityStorageUnit.setAndRegister(ItemNekoInfinityStorageUnit::new);
+    }
+
+    // ========== 猫猫次元口袋注册 ==========
+
+    private static void registerNekoDimensionPocket() {
+        NekoDimensionPocket.setAndRegister(ItemNekoDimensionPocket::new);
     }
 }

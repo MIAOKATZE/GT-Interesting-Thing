@@ -26,6 +26,44 @@ public class GTITRecipes {
         addNekoVendingMachineRecipe();
         addNekoInfinityStorageUnitRecipe();
         addReincarnationCrystalRecipe();
+        addNekoDimensionPocketRecipe();
+    }
+
+    /**
+     * 猫猫次元口袋合成配方（束口袋语义 = 皮革 + 无限元件 + 末影珍珠系）
+     * <p>
+     * 3x3 工作台：
+     * 
+     * <pre>
+     * PEP     P = 末影珍珠、E = 末影之眼（束口的绳扣与扣珠）
+     * LCL     C = 猫猫无限存储单元（"能装东西"的语义核心）
+     * LLL     L = 皮革（袋身）
+     * </pre>
+     * 
+     * 元件取 {@code getWildcard(1)} ⇒ 只看物品与元数据，<b>不看元件内已存内容</b>（与
+     * {@link #addNekoInfinityStorageUnitRecipe()} 同口径）。⚠ 已知代价：元件内容外置在存档里按
+     * {@code diskuuid} 定位，被合成消耗后那份桶即成孤儿 ⇒ 与既有迁移配方同族风险，已回报主代理，
+     * 收口时在 README/tooltip 侧提示"先转空再入配方"。
+     */
+    private static void addNekoDimensionPocketRecipe() {
+        if (GTITItemList.NekoDimensionPocket.get(1) == null) return;
+
+        ItemStack storageUnit = GTITItemList.NekoInfinityStorageUnit.getWildcard(1);
+        if (storageUnit == null) return;
+
+        GameRegistry.addShapedRecipe(
+            GTITItemList.NekoDimensionPocket.get(1),
+            "PEP",
+            "LCL",
+            "LLL",
+            'P',
+            Items.ender_pearl,
+            'E',
+            Items.ender_eye,
+            'L',
+            Items.leather,
+            'C',
+            storageUnit);
     }
 
     /**
