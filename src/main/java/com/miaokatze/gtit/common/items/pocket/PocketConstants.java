@@ -86,7 +86,7 @@ public final class PocketConstants {
      * ghost 声明条目：<b>被就地转换的那个既有槽的索引</b>（R38 第 1 条）。
      * <p>
      * 语义是「就地把既有槽转 ghost」，所以每条声明必须记住自己占的是哪一格；索引空间由
-     * {@code kind} 决定（物品 = 中栏 150 格、流体 = {@link #FLUID_TANK_TOTAL} 个流体槽/tank、
+     * {@code kind} 决定（物品 = 中栏 {@link #GHOST_ITEM_SLOT_LIMIT} 格、流体 = {@link #FLUID_TANK_TOTAL} 个流体槽/tank、
      * 源质 = {@link #ESSENCE_DISPLAY_GRID} 格，当前一一对应）。
      * 0 是合法索引，故「未设置」用 {@link #FILTER_SLOT_UNSET} 而不是 0。
      */
@@ -169,25 +169,42 @@ public final class PocketConstants {
      * <p>
      * ★<b>代价（R78① 点名，不得静默）</b>：E4 风险回归——首开同步 36 格 + vanilla
      * {@code Container#detectAndSendChanges} 每 tick 对 36 格做 {@code ItemStack} 相等比较
-     * （<b>含整份 NBT 深比较</b>），内容一变就把整枚口袋连同 199 格一起重发。
+     * （<b>含整份 NBT 深比较</b>），内容一变就把整枚口袋连同 184 格一起重发。
      * 这是用户为"要玩家背包"明确换回来的代价，README 与交付说明同处点名。
      */
     public static final int PLAYER_BACKPACK_SLOTS = PLAYER_BACKPACK_COLUMNS * PLAYER_BACKPACK_ROWS;
 
     // ---------------------------------------------------------- ghost 可占索引白名单（R38 第 4 条）
     /**
-     * 物品支可被就地转 ghost 的索引上界 = 中栏 <b>15 行 × 10 列 = 150</b>（R75 的真实槽口径，
-     * 覆盖 R43b/R74 的 128 与 160；R78 只动流体/源质/背包，<b>中栏 15 行一行不删</b>）。
+     * 中栏<b>列数</b>（R80 用户定稿：10 → <b>9</b>）。
+     * <p>
+     * ★与 {@link #STORAGE_ROWS} 一起是"矩阵列宽 / {@code SlotGroup.rowSize} / ghost 索引上界 /
+     * 面板横向加总"四者的<b>唯一</b>来源：本轮的失败形态是"矩阵改成 9 字符、Container 仍按 10 列算
+     * rowSize"（排序与 shift 落点会错位到看不见的格），故 {@code PocketSlots} 只做<b>转发</b>、
+     * 不另立字面量，乘积关系由 {@code PocketSlots} 的静态断言与 {@code NekoPocketModelTest} 双向把守。
+     */
+    public static final int STORAGE_COLUMNS = 9;
+    /** 中栏<b>行数</b>（R75 的"选项 A"：16 → 15，本轮 R80 <b>未动</b>；★纵向 360 是硬天花板）。 */
+    public static final int STORAGE_ROWS = 15;
+    /**
+     * 物品支可被就地转 ghost 的索引上界 = 中栏 <b>15 行 × 9 列 = 135</b>（R80 的用户定稿，
+     * 覆盖 R75 的 150、R43b/R74 的 128 与 160；R78 只动流体/源质/背包未动中栏，本轮把列数由 10 收到 <b>9</b>）。
      * <p>
      * 这三个上界就是「允许被拖的索引集合」白名单本体：R38 第 4 条的可逆开关（X「独立配置槽区」
      * 与 Y「就地转换」两种读法）只改这里的区间，不改数据结构与抽取逻辑。
      * <p>
      * ★它同时是 {@code PocketInventory.STORAGE_SLOTS} 的单源（格数 = ghost 索引空间，一一对应），
-     * 所以"128→150"这一改必然连带中栏矩阵、Container 槽数与写档形状；由
-     * {@code NekoPocketModelTest} 的加总用例钉住（150 = 15 × 10，且
-     * <b>235 = 150 + 36 + 12 + 1 + 36</b>，R78 的口径）。
+     * 所以"10 列→9 列"这一改必然连带中栏矩阵、Container 槽数与写档形状；由
+     * {@code NekoPocketModelTest} 的加总用例钉住（<b>135 = 15 × 9</b>，且
+     * <b>220 = 135 + 36 + 12 + 1 + 36</b>，R80 的口径）。
+     * <p>
+     * ★<b>本轮与前几轮的方向相反：这次是收缩</b>。128→150 是"新形状更大"，旧档读进来永远不越界；
+     * 150→135 是"新形状更小"，旧档的 135…149 号槽条目<b>必然</b>越界 ⇒
+     * {@code PocketInventory#loadGroup} 的既有口径（忽略 {@code Size} + 越界条目<b>丢弃并一次性 WARN</b>）
+     * 是本轮唯一的兼容落点：既不静默丢件（WARN 报出条数与现有格数），也不炸容器
+     * （handler 格数由构造期定为 135，Container 那 135 个 {@code ModularSlot} 永远点在合法区间内）。
      */
-    public static final int GHOST_ITEM_SLOT_LIMIT = 150;
+    public static final int GHOST_ITEM_SLOT_LIMIT = STORAGE_ROWS * STORAGE_COLUMNS;
     /** 流体支：一个流体列一个 ghost 索引位（0…{@link #FLUID_TANK_TOTAL}−1；R78② 由 6 变 <b>18</b>）。 */
     public static final int GHOST_FLUID_SLOT_LIMIT = FLUID_TANK_TOTAL;
     /**
@@ -200,8 +217,37 @@ public final class PocketConstants {
     public static final int GHOST_ESSENCE_SLOT_LIMIT = ESSENCE_DISPLAY_GRID;
     /** 短效通道持续秒数。 */
     public static final int SHORT_CHANNEL_SECONDS = 30;
-    /** 短效通道节拍：每 20 tick 一批（= 每秒一批，共 {@value #SHORT_CHANNEL_SECONDS} 批）。 */
-    public static final int CHANNEL_TICK_PERIOD = 20;
+    /**
+     * ★<b>R80③ 收单源</b>：游戏刻 → 秒的换算基数（Minecraft 固定 20 tick / 秒，不可配）。
+     * <p>
+     * 存在的理由：本轮实测到 tick→秒的换算在<b>三个文件里各写了一遍字面量 20</b>
+     * （物品 tooltip 的蒸馏间隔、蒸馏驱动的"还剩几秒"、面板状态行的剩余秒数）。
+     * 这类"三处看起来一样的算式"只要有一处忘了进位规则（向下取整 vs 向上取整）就会给玩家
+     * 三个不同的读数 ⇒ 换算本体收进 {@link #ticksToSecondsCeil(int)}，字面量只活在下面这一行与它里面。
+     */
+    public static final int TICKS_PER_SECOND = 20;
+    /** 一个游戏刻的毫秒数 = {@code 1000 / }{@link #TICKS_PER_SECOND}（★同样不得在别处写 50）。 */
+    public static final int MILLISECONDS_PER_TICK = 1000 / TICKS_PER_SECOND;
+
+    /**
+     * tick → 秒，<b>向上取整</b>（{@code 0 tick → 0 秒}、{@code 1 tick → 1 秒}）。
+     * <p>
+     * 为什么统一取"上"而不是"四舍五入/向下"：这三处读数都是"<b>还要多久才发生</b>"
+     * （蒸馏还剩几轮、短效通道还剩几秒），向下取整会在只剩 19 tick 时显示 0 秒 ⇒
+     * 玩家读到"已经结束"但实际还在跑（R10 的"失败与状态不得说谎"同一族）。
+     * 取整的进位表达式（{@link #TICKS_PER_SECOND} − 1）也只存在于此一处。
+     *
+     * @param ticks 剩余 tick 数；{@code <= 0} 一律给 0 秒（不把"没有剩余"显示成"还剩 1 秒"）
+     */
+    public static int ticksToSecondsCeil(int ticks) {
+        if (ticks <= 0) {
+            return 0;
+        }
+        return (ticks + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND;
+    }
+
+    /** 短效通道节拍：每 {@link #TICKS_PER_SECOND} tick 一批（= 每秒一批，共 {@value #SHORT_CHANNEL_SECONDS} 批）。 */
+    public static final int CHANNEL_TICK_PERIOD = TICKS_PER_SECOND;
     /** 短效通道批次数上限 = 秒数（一批一秒）。 */
     public static final int SHORT_CHANNEL_BATCHES = SHORT_CHANNEL_SECONDS;
     /** 瞬时通道冷却秒数（墙钟口径）。 */
@@ -214,8 +260,10 @@ public final class PocketConstants {
      * ★<b>与格子数无关，也不是格数</b>（R75 点名的批量替换豁免项）：中栏由 128 变 150 时
      * 这一行<b>必须保持 128</b>，它是"游标表条目数上限"，与 {@link #GHOST_ITEM_SLOT_LIMIT}
      * 只是数值巧合。任何"128→150"的批量替换波及到这里，都会静默改变轮转清理的节拍。
-     * ★<b>R78 再点名一次</b>：本轮把源质 48→72、流体 6→18、真实槽 175→<b>235</b>，
+     * ★<b>R78 再点名一次</b>：本轮把源质 48→72、流体 6→18、真实槽 175→235，
      * 235 与 128 无关、72 与 128 也无关，本行<b>仍不得</b>被任何"顺手一起改"波及。
+     * ★<b>R80 第三次点名</b>：本轮把中栏 150→<b>135</b>、真实槽 235→<b>220</b>，
+     * 135 与 128 无关、220 与 128 也无关 ⇒ "150→135"或"235→220"的批量替换<b>一律不得</b>命中本行。
      */
     public static final int MAX_ROTATION_ENTRIES = 128;
 
@@ -226,7 +274,7 @@ public final class PocketConstants {
     // 不可改，且 GUI 侧禁止再写字面量（slice-s4-brief §1.1「PocketConstants：全部 NBT 键名单源」）。
     // S6（通道写栏位）与 S7（蒸馏产出落格）读同一批键，不再另立第二份名单。
 
-    /** 中栏 150 格内容（R53a/R53b：有界随身容器存物品 NBT；读写口径见 {@link #UI_WORK_TICKS} 的 R53c）。 */
+    /** 中栏 {@link #GHOST_ITEM_SLOT_LIMIT} 格内容（R53a/R53b：有界随身容器存物品 NBT；读写口径见 {@link #UI_WORK_TICKS} 的 R53c）。 */
     public static final String ITEM_CONTENTS = "contents";
     /**
      * 流体列的交互格（R78②：{@link #FLUID_GROUP_COUNT} 组 × {@link #FLUID_COLUMN_COUNT} 列 ×
@@ -298,8 +346,8 @@ public final class PocketConstants {
     public static final String UI_BURST_SHOW_TICKS = "burstShowTicks";
     /** GUI 打开期标记（R37 的 {@code open} 位）：字节 0/1，关屏清（落点 {@code onModularContainerClosed}，R35）。 */
     public static final String UI_OPEN = "uiOpen";
-    /** burst 动画显示窗口的 tick 数 = {@link PocketConstants#BURST_ANIMATION_MS} / 50。 */
-    public static final int BURST_SHOW_TICKS = (int) (BURST_ANIMATION_MS / 50L);
+    /** burst 动画显示窗口的 tick 数 = {@link PocketConstants#BURST_ANIMATION_MS} / {@link #MILLISECONDS_PER_TICK}。 */
+    public static final int BURST_SHOW_TICKS = (int) (BURST_ANIMATION_MS / MILLISECONDS_PER_TICK);
 
     // ------------------------------------------------------ 通道成本（R58b 命名化，禁内联）
     //

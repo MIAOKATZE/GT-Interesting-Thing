@@ -38,7 +38,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * 不再有"恒为 0"的特例，
  * 列号由 {@link #bindBar(NekoPocketPanel, int)} 在装配期注入 ⇒
  * "这一列要拉哪种流体"与"拉进哪个 tank"共用同一个数，没有第二份映射。
- * {@code Kind.FLUID} 的索引空间与中栏 0…149、源质 0…71 各自独立，这正是 CLR 必须带区域字母的理由。
+ * {@code Kind.FLUID} 的索引空间与中栏 0…134、源质 0…71 各自独立，这正是 CLR 必须带区域字母的理由。
  */
 public class NekoPocketFluidSlot extends FluidSlot {
 
@@ -318,6 +318,8 @@ public class NekoPocketFluidSlot extends FluidSlot {
     protected void addToolTip(RichTooltip tooltip) {
         super.addToolTip(tooltip);
         tooltip.addLine(IKey.lang("gtit.pocket.legend.tank"));
+        // ★R80②：随 18 条"列标题边条"撤下来的组号/列号落点（不删信息，R36）
+        tooltip.addLine(IKey.dynamic(() -> owner == null ? "" : owner.tankOwnLabelText(slotIndex)));
         tooltip.addLine(IKey.dynamic(() -> owner == null ? "" : owner.capacityReadoutText()));
         if (!ghost) {
             return;

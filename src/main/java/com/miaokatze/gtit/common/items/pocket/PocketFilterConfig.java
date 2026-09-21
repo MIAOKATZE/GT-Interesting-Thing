@@ -157,7 +157,7 @@ public final class PocketFilterConfig {
      * (区域, 槽索引) → 声明；插入序即补满顺序，同一区域内同一槽二次写入即覆盖。
      * <p>
      * 键是 {@code kind + ':' + slotIndex} 的复合键而不是裸 {@code Integer}：三类的槽索引各在自己的
-     * 区域里计数（中栏 0…149 / 流体槽 0…17 / 源质格 0…71，R78②③），用裸索引会让「中栏第 0 格」与
+     * 区域里计数（中栏 0…134 / 流体槽 0…17 / 源质格 0…71，R78②③），用裸索引会让「中栏第 0 格」与
      * 「流体槽第 0 格」互相覆盖——那是结构缺陷，不是省事。
      */
     private final Map<String, Filter> byKindSlot = new LinkedHashMap<>();

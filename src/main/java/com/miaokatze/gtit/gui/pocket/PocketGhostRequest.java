@@ -20,7 +20,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * CLR|&lt;slot&gt;|&lt;kind 字母&gt;      I/F/E，见 {@link PocketConstants#GHOST_KIND_ITEM} 等
  * </pre>
  * 
- * ★CLR 必须带 kind：三个区域的槽索引<b>各自从 0 起</b>（中栏 0…149 / 流体槽 0…17 / 源质格 0…71，
+ * ★CLR 必须带 kind：三个区域的槽索引<b>各自从 0 起</b>（中栏 0…134 / 流体槽 0…17 / 源质格 0…71，
  * R78②③ 把后两个上界放开到 18 与 72，但"同一数字分属三个区域"这件事一个字都没变），
  * 裸 {@code CLR|0} 分不清"清中栏第 0 格"还是"清流体槽第 0 格"——那正是
  * {@code PocketFilterConfig} 把键做成 {@code (kind, slotIndex)} 复合键的同一条结构约束

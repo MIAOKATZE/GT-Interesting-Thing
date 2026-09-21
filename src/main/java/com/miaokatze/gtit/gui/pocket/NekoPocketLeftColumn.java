@@ -34,9 +34,28 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
  * 252   整理按钮 + 一行状态回显                                 高 18
  * </pre>
  *
- * 即 {@code 3×72 + 2×18 = 252} 给流体块、余 {@code 270-252 = 18} 给末行（R78 的加总表原式）。
+ * 即 {@code 3×72 + 2×18 = 252} 给流体块、余 {@code 270-252 = 18} 给末行（R78 的加总表原式，
+ * ★R80② 撤边条后<b>逐字不变</b>，见下一段）。
  * ★每组中间的流体槽<b>拉长为 18×36</b>（用户："流体槽应该拉长一点"）⇒ 矩阵里那两行空行
  * 就是它的位置（空格只推进坐标、不产出 widget，{@code SlotGroupWidget.java:243-245}）。
+ * <p>
+ * <b>★R80②：上一轮展示稿那 18 条"流体列标题边条"已撤，本列不实现它们</b>。
+ * 展示稿（{@code plan/assest/pocket-ui-live-2.html} 的 {@code chead} / {@code TANK_HEAD_H}）给
+ * 每组 6 个流体槽各画了一条 9px 高的标题条（{@code 3 组 × 6 列 = 18} 条），用来把
+ * {@code legend.tank_of}（第几组第几列）与 {@code ghost.fluid_bar} 挂成真实悬停区；用户裁定
+ * 「我觉得要撤」⇒ 本列的纵向分段<b>保持 R78 的原式</b>：
+ * 
+ * <pre>
+ *   每组 = 输入行 18 + 拉长流体槽 36 + 输出行 18 = 72   （★不出现 72 + 9 = 81）
+ *   三组 + 两个 18 组间距 = 252 ;  末行(整理按钮 + 状态回显) = 18 ;  合计 = 270 = 列高
+ * </pre>
+ * 
+ * ⇒ <b>零富余、零无主空白</b>（那条 9px 是画在流体槽<b>上半部之上的覆盖件</b>，本来就不占纵向，
+ * 所以撤掉它不会留下缝；本类 {@code static} 块把 {@code 252 + 18 == 270} 变成装配期断言，
+ * 一旦有人给组内加高度就会红）。撤下来的<b>信息</b>另有落点（R36「不删信息」）：
+ * 组号/列号进 {@link NekoPocketFluidSlot} 自己的 tooltip（{@code NekoPocketPanel#tankOwnLabelText}），
+ * 图例与"两格同权"仍在 36 个交互格的 tooltip 里（{@link #interactionSlot}），
+ * {@code ghost.fluid_bar} 仍由 ghost 态的同一条加行（{@code NekoPocketFluidSlot#addToolTip}）。
  * <p>
  * <b>★R78 D-2（上一片交付不实，本片必修）：本列不再常驻任何"说明文字"</b>。R74② 要求"说明改
  * tooltip"，旧实现却仍留 7 段（上/中/下三行图例、推送方向、主手限制、每槽容量、用法摘要）。
@@ -126,7 +145,7 @@ public final class NekoPocketLeftColumn {
      * {@code Char2IntMap.get/put}）——<b>每个字符各自从 0 起计</b>。因此把输入位与输出位
      * 写成两个字符（{@code 'I'} / {@code 'O'}）会让两行都拿到索引 0…5：
      * 只产出 18 个槽、且两行写同一段 handler ——{@code assertTotalRealSlots()} 会在首次开屏
-     * 当场报 181 != 199（双端同抛，不会静默，但整块流体区不能用）。
+     * 当场报 166 != 184（双端同抛，不会静默，但整块流体区不能用）。
      * 单字符 + 行主序才能让"组 0 第一行 0…5、组 0 第二行 6…11、组 1 第一行 12…17"成立。
      */
     public static int layoutSlotCount() {
@@ -163,8 +182,20 @@ public final class NekoPocketLeftColumn {
             != PocketConstants.FLUID_GROUP_COUNT * ROWS_PER_GROUP + (PocketConstants.FLUID_GROUP_COUNT - 1)) {
             throw new IllegalStateException("[pocket] 流体矩阵行数与" + PocketConstants.FLUID_GROUP_COUNT + " 组的排法不符");
         }
-        if (FLUID_AREA_HEIGHT + CELL > HEIGHT) {
-            throw new IllegalStateException("[pocket] 流体块加末行超出列高（R78 的 252 + 18 = 270 被破坏）");
+        if (FLUID_AREA_HEIGHT + STATUS_HEIGHT != HEIGHT) {
+            throw new IllegalStateException(
+                "[pocket] 左栏纵向加总不闭合: 流体块 " + FLUID_AREA_HEIGHT
+                    + " + 末行 "
+                    + STATUS_HEIGHT
+                    + " != 列高 "
+                    + HEIGHT
+                    + "（R78 的 252 + 18 = 270；★R80② 撤边条后必须逐字不变，富余/缺口都算无主空白）");
+        }
+        if (STATUS_Y != FLUID_AREA_HEIGHT) {
+            throw new IllegalStateException("[pocket] 末行起点不等于流体块底部（纵向出现缝）");
+        }
+        if (TANK_HEIGHT != 2 * CELL) {
+            throw new IllegalStateException("[pocket] 流体槽拉长倍数被改（R78② 是 2 倍格高 = 36）");
         }
         for (String row : INTERACTION_MATRIX) {
             for (int index = 0; index < row.length(); index++) {
@@ -264,7 +295,7 @@ public final class NekoPocketLeftColumn {
     }
 
     /**
-     * 一键整理中栏 150 格（计划 §6 第 4 条的<b>语义①</b>）——R78 后落在末行左侧：流体块吃满了列高，
+     * 一键整理中栏 135 格（计划 §6 第 4 条的<b>语义①</b>）——R78 后落在末行左侧：流体块吃满了列高，
      * 原来那条"按钮 + 容量读数"行已经不存在（容量读数进 tooltip，按钮进末行）。
      * <p>
      * <b>为什么自造按钮</b>（R41c 的后备分支）：R41c 让优先复用

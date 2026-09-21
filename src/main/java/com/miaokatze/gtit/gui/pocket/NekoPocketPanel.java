@@ -64,7 +64,7 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * <b>只能</b>横向挤（底部带拆三段），中栏 15 行一行不删。
  * <p>
  * <b>Container 口径 = 恰好 {@value PocketSlots#TOTAL_REAL_SLOTS}</b>（R78，覆盖 R75 的 175、
- * R74 的 185、§14.3/R43b 的 149）：中栏 150 + 流体交互 <b>36</b>（3 组 × 6 列 × 进/出）
+ * R74 的 185、§14.3/R43b 的 149）：中栏 <b>135</b> + 流体交互 <b>36</b>（3 组 × 6 列 × 进/出）
  * + 蒸馏 12 + 绑定 1 + <b>玩家背包 36</b>；72 源质格、18 个流体槽本体与全部 ghost 走显示侧，
  * <b>不进 Container</b>（R35）。
  * <p>
@@ -78,7 +78,7 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * <li><b>首开同步 36 格</b>；</li>
  * <li>vanilla {@code Container#detectAndSendChanges} <b>每 tick</b> 对这 36 格做 {@code ItemStack}
  * 相等比较（<b>含整份 NBT 深比较</b>，见 {@code ItemStack#isItemStackEqual}），内容一变就把整枚
- * 口袋连同 150 格一起重发 —— 这正是 R53c 点名的包放大面（E4）。</li>
+ * 口袋连同 135 格一起重发 —— 这正是 R53c 点名的包放大面（E4）。</li>
  * </ol>
  * 这条代价是<b>用户为"要玩家背包"明确换回来的</b>，不是实现走形；若日后要收回背包，
  * 收回的就是这两条。
@@ -113,13 +113,35 @@ public final class NekoPocketPanel implements PocketSession {
     public static final int COLUMN_GAP = 4;
     /** 底部带高（R75 钉死 72）。 */
     public static final int BAND_HEIGHT = NekoPocketBottomBand.HEIGHT;
-    /** R75：面板宽 = 6+108+4+180+4+108+6 = 416（由三列常量派生，不是手抄）。 */
-    public static final int WIDTH = MARGIN + NekoPocketLeftColumn.WIDTH
+    /**
+     * R75：三列实占 {@code 6+108+4+180+4+108+6 = 416}；R80 中栏收到 9 列后同一式子给
+     * {@code 6+108+4+162+4+108+6 =} <b>398</b>（★派生自各列常量，不手抄）。
+     */
+    public static final int MAIN_OCCUPIED_WIDTH = MARGIN + NekoPocketLeftColumn.WIDTH
         + COLUMN_GAP
         + NekoPocketStorageColumn.WIDTH
         + COLUMN_GAP
         + NekoPocketEssenceColumn.WIDTH
         + MARGIN;
+    /**
+     * ★<b>R80①：面板宽保留 416</b>——中栏 10 列→9 列腾出的那 <b>18px</b>（恰一格 {@link #GRID}）
+     * <b>不用来收窄面板</b>，而是全数让给底部带右段（三段因此是 {@code 左 112 | 背包 162 | 右 130}，
+     * 见 {@link NekoPocketBottomBand#BIND_WIDTH}）。
+     * <p>
+     * 为什么要"保留 416"而不是顺手把面板也收窄：面板宽同时是 C2 贴图 9-slice 与四角包角的
+     * 落点（{@link NekoPocketDecoration}）与实机检查表里的观感基准；用户本轮只裁"格子数"，
+     * 没有裁"面板尺寸" ⇒ 收窄面板属于未授权的观感变更。让位量由 {@link #MAIN_RIGHT_SLACK} 具名，
+     * <b>不是无主空白</b>。
+     */
+    public static final int WIDTH = 416;
+    /**
+     * 主区右侧的让位量 = {@link #WIDTH} − {@link #MAIN_OCCUPIED_WIDTH}（R80 定稿下恒为 <b>18</b>）。
+     * <p>
+     * ★把它具名而不是让右外边距"看起来变宽"：这 18px 已经在 §1.1 的裁决里被指派给底部带右段，
+     * 由 {@code NekoPocketModelTest} 断言它恰为<b>一格</b>（{@link #GRID}）⇒ 中栏再改列数就会红，
+     * 不会出现"面板宽与列宽各自漂"。
+     */
+    public static final int MAIN_RIGHT_SLACK = WIDTH - MAIN_OCCUPIED_WIDTH;
     /** R75：面板高 = 6+270+6+72+6 = 360（★360 = 1080p / GUI Scale 3 的逻辑高度上限）。 */
     public static final int HEIGHT = MARGIN + NekoPocketStorageColumn.HEIGHT + MARGIN + BAND_HEIGHT + MARGIN;
 
@@ -138,7 +160,7 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_GHOST_REQUEST = "pocket.ghost.request";
     /** C2S：所有按钮/选中动作走这一个键，值 = {@code code * ACTION_ARG_BASE + arg}（单包原子，无两值竞态）。 */
     private static final String SYNC_ACTION = "pocket.action";
-    /** 动作参数基数（当前最大 arg = 149 格 / 71 格+Shift 位）。 */
+    /** 动作参数基数（当前最大 arg = 134 格 / 71 格+Shift 位）。 */
     private static final int ACTION_ARG_BASE = 1024;
 
     /**
@@ -179,7 +201,7 @@ public final class NekoPocketPanel implements PocketSession {
     private ItemStack pocket;
     private final int carrierSlotIndex;
     /**
-     * 中栏 150 个槽位 widget 的双端登记表（下标 = 槽号）。
+     * 中栏 {@code STORAGE_SLOTS} 个槽位 widget 的双端登记表（下标 = 槽号）。
      * <p>
      * ghost 是"原位改属性"（R41b/R46d），所以必须能按槽号找到<b>那一个</b> widget 实例；
      * 装配时由 {@link NekoPocketStorageColumn} 逐格登记，长度与格序恒定 ⇒ 不引入任何数据驱动的树变化。
@@ -296,7 +318,7 @@ public final class NekoPocketPanel implements PocketSession {
             panel.child(band);
         }
 
-        // 4) 槽数口径断言（R78：工厂产出 199 + 框架背包 36 = 235；多 = 重复接入，少 = 漏接，双端同抛）
+        // 4) 槽数口径断言（R80：工厂产出 184 + 框架背包 36 = 220；多 = 重复接入，少 = 漏接，双端同抛）
         slots.assertTotalRealSlots();
 
         // 4b) ghost 虚化：客户端先按自己从 NBT 读到的那份声明表原位刷一遍（服务端那份是权威，
@@ -419,7 +441,7 @@ public final class NekoPocketPanel implements PocketSession {
         return sendAction(ACTION_TAKE_OUT, 0);
     }
 
-    /** 语义①「整理中栏 150 格」。 */
+    /** 语义①「整理中栏 135 格」。 */
     boolean requestSort() {
         return sendAction(ACTION_SORT, 0);
     }
@@ -567,7 +589,7 @@ public final class NekoPocketPanel implements PocketSession {
         }
     }
 
-    /** 语义①「整理中栏 150 格」：合并同类 + 前移紧凑。 */
+    /** 语义①「整理中栏 135 格」：合并同类 + 前移紧凑。 */
     private void performSort() {
         final int size = inventory.storage()
             .getSlots();
@@ -908,7 +930,7 @@ public final class NekoPocketPanel implements PocketSession {
     // ------------------------------------------------------------------ S5 · ghost 就地转换（NEI 拖入 / 右键解绑）
 
     /**
-     * 中栏槽位 widget 的登记（装配期由 {@link NekoPocketStorageColumn} 逐格调用，双端各 150 次）。
+     * 中栏槽位 widget 的登记（装配期由 {@link NekoPocketStorageColumn} 逐格调用，双端各 135 次）。
      * <p>
      * ghost 切换是"原位改属性"（R41b/R46d），所以必须能按槽号取到<b>那一个</b>实例；
      * 登记表长度与格序恒定 ⇒ 不引入任何数据驱动的 widget 树变化，128 格的
@@ -1058,7 +1080,7 @@ public final class NekoPocketPanel implements PocketSession {
         applyEssenceGhosts();
     }
 
-    /** 中栏 150 格（{@code Kind.ITEM}）：唯一需要"搬空"的一支。 */
+    /** 中栏 135 格（{@code Kind.ITEM}）：唯一需要"搬空"的一支。 */
     private void applyItemGhosts() {
         for (int index = 0; index < itemSlots.length; index++) {
             final NekoFilterSlot widget = itemSlots[index];
@@ -1512,7 +1534,7 @@ public final class NekoPocketPanel implements PocketSession {
             nowMs,
             PocketConstants.BURST_COOLDOWN_SECONDS);
         final int workTicks = root == null ? 0 : root.getInteger(PocketConstants.UI_WORK_TICKS);
-        return instant + "|" + (workTicks + 19) / 20;
+        return instant + "|" + PocketConstants.ticksToSecondsCeil(workTicks);
     }
 
     private void applyRemainState(String text) {
@@ -2005,6 +2027,25 @@ public final class NekoPocketPanel implements PocketSession {
             PocketInventory.groupOfInteractionSlot(interactionIndex) + 1,
             interactionIndex % PocketConstants.FLUID_COLUMN_COUNT + 1,
             PocketInventory.tankOfInteractionSlot(interactionIndex) + 1);
+    }
+
+    /**
+     * <b>流体槽本体</b>的"第几组第几列（=第几个槽）"读数（★R80② 的新落点）。
+     * <p>
+     * 存在的理由：上一轮展示稿给 18 个流体槽各画了一条"列标题边条"来挂这句组号，用户裁定
+     * <b>撤</b>（"我觉得要撤"）⇒ 撤下来的信息必须有落点（R36「不删信息」），于是它进<b>本槽自己的
+     * tooltip</b>（见 {@code NekoPocketFluidSlot#addToolTip}）。
+     * <p>
+     * ★与 {@link #tankHintText(int)} 是<b>同一个 lang 键、两个索引空间</b>：那句按"交互格号"反解
+     * tank，这句直接按 tank 号算组/列；两者对同一个 tank 必须给出同一串文本（回归用例
+     * {@code pocket_fluid_tank_label_single_source} 钉的就是这条，否则两处文案会各自漂）。
+     */
+    String tankOwnLabelText(int tank) {
+        return String.format(
+            StatCollector.translateToLocal("gtit.pocket.legend.tank_of"),
+            tank / PocketConstants.FLUID_COLUMN_COUNT + 1,
+            tank % PocketConstants.FLUID_COLUMN_COUNT + 1,
+            tank + 1);
     }
 
     /**

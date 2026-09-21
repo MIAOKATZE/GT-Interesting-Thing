@@ -27,7 +27,7 @@ import cpw.mods.fml.relauncher.SideOnly;
  * 因此 ghost 只动两件东西（R41b/R46a）：
  * <ol>
  * <li>{@link ModularSlot#accessibility(boolean, boolean)}（{@code ModularSlot.java:179}）——
- * 真实槽仍在、槽号不变（235 恒定，R78），但"禁放置禁取出"（需求 4「不允许玩家放置」）；</li>
+ * 真实槽仍在、槽号不变（★R80 的 220 恒定，与 R78 的 235 一样不受 ghost 影响），但"禁放置禁取出"（需求 4「不允许玩家放置」）；</li>
  * <li>渲染层：{@link #getItemStackForRendering(ItemStack, boolean)}（{@code ItemSlot.java:230}）
  * 返回<b>样本栈</b>（底层真实槽保持为空），{@link #drawOverlay()} 叠 {@code 0x80FFFFFF} 虚化遮罩。
  * 两者是正交覆写点（R46a），<b>混用</b>会让 ghost 格的显示与真实栈分叉。</li>
@@ -88,7 +88,7 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      * 原位切换 ghost 态（S5 的唯一入口，R41b）。
      * <p>
      * 真实槽<b>不会被本方法清空</b>：转 ghost 前 S5 必须先把格内物品挪走（R38 第 2 条：产物不能进自己），
-     * 本方法只负责属性与渲染 ⇒ 槽号恒定，235 的 Container 口径不受影响（R78）。
+     * 本方法只负责属性与渲染 ⇒ 槽号恒定，220 的 Container 口径不受影响（R78）。
      *
      * @param ghost  true = 虚化配置格（禁放置禁取出）
      * @param sample 声明样本；{@code null} 视为清空

@@ -390,7 +390,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * 单槽容量与<b>总容量</b>（R78②）、源质盘格数（R78②）、面板内背包格数（R78①）、蒸馏节拍
      * 全部由 {@link #tooltipArgs()} 从常量填进 {@code %1$d…%11$d} 的<b>带位置下标</b>的占位。
      * 用下标而不是裸 {@code %d} 的理由：所有行走同一个实参数组，裸 {@code %d} 会一律取第 1 个实参
-     * ⇒ "每槽 16,000,000" 会被填成"150"，而且不报错。
+     * ⇒ "每槽 16,000,000" 会被填成"135"，而且不报错。
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
@@ -426,8 +426,8 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             Integer.valueOf(PocketConstants.FLUID_COLUMN_COUNT),
             // %5$d 单槽容量 mB（★规格外自立项，见 PocketConstants#FLUID_BAR_CAPACITY_ML）
             Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
-            // %6$d 蒸馏一轮秒数
-            Integer.valueOf(TaumDistillRules.DISTILL_INTERVAL_TICKS / 20),
+            // %6$d 蒸馏一轮秒数（★tick→秒的换算走 PocketConstants 单源，不再内联 20）
+            Integer.valueOf(PocketConstants.ticksToSecondsCeil(TaumDistillRules.DISTILL_INTERVAL_TICKS)),
             // %7$d 流体组数（R78②）
             Integer.valueOf(PocketConstants.FLUID_GROUP_COUNT),
             // %8$d 独立流体 tank 总数（= 组数 × 每组列数 = 18）

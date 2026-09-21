@@ -9,6 +9,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
@@ -314,7 +315,7 @@ public final class PocketDistillDriver {
         if (clock == null || !clock.distillable || clock.stalledFull) {
             return 0;
         }
-        return (clock.ticksLeft + 19) / 20;
+        return PocketConstants.ticksToSecondsCeil(clock.ticksLeft);
     }
 
     /** 12 格里是否还有东西（会话回收判据用）。 */

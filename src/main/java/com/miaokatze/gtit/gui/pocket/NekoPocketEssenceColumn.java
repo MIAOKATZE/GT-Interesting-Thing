@@ -26,14 +26,14 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
  * ⇒ {@code 216 + 18 + 36 = 270} <b>与中栏同高</b>（R78 的"12 行 + 空 1 行 + 蒸馏 2 行 = 15 行"）。
  * <p>
  * <b>★那一个"空行"里为什么还画了进度条（本片如实记的读法）</b>：R78 的加总表把这一行记作
- * <b>空行</b>，判据是"它不产任何槽"（15 行 / 235 槽两条加总都只数槽）；进度条同样<b>不产槽</b>，
+ * <b>空行</b>，判据是"它不产任何槽"（15 行 / 220 槽两条加总都只数槽）；进度条同样<b>不产槽</b>，
  * 放进这一行不破任何一条数字。反之若把进度条撤掉，蒸馏的可见进度就没有任何落点
  * （R77 已裁定它不挂 C2 贴图、只走主题底，"腾不出位置"不是撤它的理由）。
  * ⇒ 裁定取"槽位意义上的空行 + 进度条住这里"；常驻的<b>蒸馏状态文字</b>则按 R74②/R78 D-2
  * 撤进 tooltip（旧那 72px 摘要段随 12 行盘一起退场）。若主代理要的是"字面全空"，
  * 唯一出路是把进度条也撤成 tooltip-only —— 那是产品决定，本文件不改数、只把这个分叉写清。
  * <p>
- * <b>72 格是纯显示件</b>（R35：源质格全部 phantom 侧，<b>不进 Container</b>，不计入 235）：
+ * <b>72 格是纯显示件</b>（R35：源质格全部 phantom 侧，<b>不进 Container</b>，不计入 220）：
  * 每格 = {@code UITexture(location=TaumCompat.aspectTexturePath(tag)).fullImage().nonOpaque()}
  * + {@code colorOverride=colorOf(tag)}（R30：<b>{@code nonOpaque} 必给</b>，否则
  * {@code withBlend=false} 走 {@code disableBlend}，把带 alpha 的 aspect 图标画成<b>黑块</b>）。
@@ -61,7 +61,7 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
  * 蒸馏判定；{@code IEssentiaContainerItem} 且有内容 → 注入支（{@code TaumCompat.drainAll →
  * canAcceptAll → putAll}，全有全无 R29，容器按 R40a 同法<b>非消耗</b>地以排空状态退回）。
  * ⇒ R44c 要关的危害照旧关闭（<b>容器根本不抵达蒸馏判定路径</b>），而需求 2 末句
- * 「源质罐子可取/放」也有了落点（R63a：不加格子 ⇒ 235 口径零冲击）。
+ * 「源质罐子可取/放」也有了落点（R63a：不加格子 ⇒ 220 口径零冲击）。
  */
 public final class NekoPocketEssenceColumn {
 
@@ -186,7 +186,7 @@ public final class NekoPocketEssenceColumn {
      * 游戏内零入口）。NEI 左键拖入一个<b>确实含本格 tag</b>的物品或容器 ⇒ 就地声明
      * {@code (Kind.ESSENCE, 本格格号)}；不含该 tag ⇒ 返回 false、不吃栈。右键在声明态发
      * {@code CLR|<格号>|E}。索引空间上界 = {@code PocketConstants.GHOST_ESSENCE_SLOT_LIMIT}（72），
-     * 与中栏 0…149、流体 tank 0…17 各自独立（R59b 偏离④的复合键）。
+     * 与中栏 0…134、流体 tank 0…17 各自独立（R59b 偏离④的复合键）。
      * ★<b>ghost 声明按格号索引，所以"撤空不回收格位"是它正确性的前提</b>（R78③）：一旦回收，
      * 已声明的格就会指向别的 tag 并拉错东西。
      * <p>

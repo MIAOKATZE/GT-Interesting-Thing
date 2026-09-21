@@ -28,6 +28,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig.Kind;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
+import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.NekoEssenceGhostCell;
 import com.miaokatze.gtit.gui.pocket.NekoPocketBottomBand;
 import com.miaokatze.gtit.gui.pocket.NekoPocketEssenceColumn;
@@ -59,7 +60,7 @@ import appeng.api.storage.StorageChannel;
  * <li>remainder 顺延、分区拒收与元件满分开发码、批尾一次网络通知与 delta 合并</li>
  * <li>{@code ess} 表 64 点截断与「0 值不落 NBT」</li>
  * <li>配置过滤器键往返不含通道索引</li>
- * <li>★S-E：ghost 请求文法（CLR 带区域字母、SET 按载荷前缀分派 kind、分区域越界 150/6/48 各一个负例，R75）与流体条、源质格两个 NEI 拖入入口的纯判定面（探针链顺序与兜底、tag
+ * <li>★S-E：ghost 请求文法（CLR 带区域字母、SET 按载荷前缀分派 kind、分区域越界 135/18/72 各一个负例，R75）与流体条、源质格两个 NEI 拖入入口的纯判定面（探针链顺序与兜底、tag
  * 匹配、ESSENCE
  * 空间落点）</li>
  * </ul>
@@ -142,10 +143,10 @@ public class NekoPocketModelTest {
         cases.put("essence_cell_tag_match_required", NekoPocketModelTest::essenceCellTagMatchRequired);
         cases.put("essence_ghost_drag_lands_essence_space", NekoPocketModelTest::essenceGhostDragLandsEssenceSpace);
         cases.put("essence_key_survives_namespaced_typeid", NekoPocketModelTest::essenceKeySurvivesNamespacedTypeId);
-        // ---- S-U3（R75）/ S-U4（R78）：235 槽口径、三组流体、存档兼容、解绑新语义、C2 契约与几何闭合
-        cases.put("slot_math_235_and_row_column_products", NekoPocketModelTest::slotMathAndProducts);
+        // ---- S-U3（R75）/ S-U4（R78）：220 槽口径、三组流体、存档兼容、解绑新语义、C2 契约与几何闭合
+        cases.put("slot_math_220_and_row_column_products", NekoPocketModelTest::slotMathAndProducts);
         cases.put(
-            "real_slot_count_assertion_accepts_235_rejects_234_and_236",
+            "real_slot_count_assertion_accepts_220_rejects_219_and_221",
             NekoPocketModelTest::realSlotCountAssertion);
         cases.put(
             "fluid_ghost_index_space_is_eighteen_tanks_with_zero_still_valid",
@@ -170,7 +171,450 @@ public class NekoPocketModelTest {
             "essence_blob_carries_cell_order_round_trip",
             NekoPocketModelTest::essenceBlobCarriesCellOrderRoundTrip);
         cases.put("backpack_slot_mapping_is_bijection", NekoPocketModelTest::backpackSlotMappingIsBijection);
+        // ---- S-U7（R80）：中栏 9 列 / 220 槽 / 撤流体列标题边条 / tick→秒单源 / 双元件绑定复现
+        cases.put(
+            "slot_math_220_positive_with_219_and_221_negative_controls",
+            NekoPocketModelTest::slotMath220WithNegativeControls);
+        cases.put(
+            "storage_matrix_is_fifteen_rows_of_nine_single_char",
+            NekoPocketModelTest::storageMatrixIsNineColumnsSingleChar);
+        cases.put("backpack_band_shares_storage_x_and_width", NekoPocketModelTest::backpackBandSharesStorageXAndWidth);
+        cases.put(
+            "left_column_vertical_sum_closes_without_title_strips",
+            NekoPocketModelTest::leftColumnVerticalSumWithoutStrips);
+        cases.put(
+            "legacy_150_slot_save_shrinks_to_135_dropping_only_out_of_range",
+            NekoPocketModelTest::legacyFiftySlotSaveShrinksTo135);
+        cases.put("ticks_per_second_is_single_source_and_ceils", NekoPocketModelTest::ticksPerSecondSingleSource);
+        cases.put(
+            "bind_two_distinct_uuids_keeps_two_rows_in_memory_nbt_and_blob",
+            NekoPocketModelTest::bindTwoDistinctUuidsKeepsTwoRows);
         TestRunner.run(NekoPocketModelTest.class, cases);
+    }
+
+    // ================================================================== S-U7（R80）批次
+    //
+    // 这一批是"9 列定稿"那一轮的验收面（任务包 §1.3 点名的就是下面七个用例名）：
+    // 220 加总与 219/221 双负控、中栏矩阵的"15 行 × 9 列 + 单布局字符"、背包段与中栏**同 x 同宽**、
+    // 撤掉 18 条流体列标题边条后的左栏纵向加总、旧档 150 格**收缩**到 135 的兼容、
+    // tick→秒的 TICKS_PER_SECOND 单源，以及★用户点名的「绑定只能绑定一个」JVM 复现用例。
+
+    /** ★R80① 的 220 加总正例 + 219 / 221 两个负控必抛（判据本体是 {@code assertTotalRealSlots(int,int)}）。 */
+    private static void slotMath220WithNegativeControls() {
+        // ---- 正例：五块加总 = 220，且每一块都能单独归因 ----
+        final int storage = PocketInventory.STORAGE_SLOTS;
+        final int fluid = PocketInventory.FLUID_INTERACTION_SLOTS;
+        final int distill = PocketInventory.DISTILL_INPUT_SLOTS;
+        final int bind = PocketInventory.BIND_SLOTS;
+        final int backpack = PocketConstants.PLAYER_BACKPACK_SLOTS;
+        SimpleAssert.eq(135, storage, "中栏 = 15 行 × 9 列 = 135（R80①）");
+        SimpleAssert.eq(36, fluid, "流体交互 = 3 组 × 6 列 × 进/出 = 36");
+        SimpleAssert.eq(12, distill, "蒸馏输入 = 2 行 × 6 列 = 12");
+        SimpleAssert.eq(1, bind, "绑定格 = 1");
+        SimpleAssert.eq(36, backpack, "玩家背包 = 9 × 4 = 36（框架造，不经工厂）");
+        SimpleAssert.eq(220, storage + fluid + distill + bind + backpack, "★五块加总 = 135+36+12+1+36 = 220");
+        SimpleAssert.eq(184, storage + fluid + distill + bind, "工厂四块 = 184");
+        SimpleAssert.eq(220, PocketSlots.TOTAL_REAL_SLOTS, "容器口径常量必须等于上面的加总");
+        // ---- 负控：219 与 221 都必须抛（★两条各测两个入参形态，不只测合计）----
+        SimpleAssert.eq(Boolean.FALSE, throwsIllegalState(184, 36), "184 + 36 = 220 ⇒ 不抛");
+        SimpleAssert.that(throwsIllegalState(183, 36), "★219 必抛：工厂少一格（中栏少接一列就是这个形态）");
+        SimpleAssert.that(throwsIllegalState(185, 36), "★221 必抛：工厂多一格");
+        SimpleAssert.that(throwsIllegalState(184, 35), "★219 的另一半：背包少一格（隐形槽）");
+        SimpleAssert.that(throwsIllegalState(184, 37), "★221 的另一半：背包多一格");
+        SimpleAssert.that(throwsIllegalState(183, 37), "★合计仍 220 但两项各自都错 ⇒ 必须抛");
+    }
+
+    /**
+     * ★R80① 中栏矩阵：15 行、每行 9 格、<b>只有一个布局字符</b>。
+     * <p>
+     * "只有一个布局字符"这一条在这里是<b>反证</b>：{@code SlotGroupWidget$Builder} 按字符各自从 0
+     * 计数（R77 实测），第二种字符会把 135 格劈成两段重叠索引 ⇒ 装配期静态块直接抛，
+     * 类根本初始化不完工 ⇒ 本用例连读都读不到数。所以这里钉的是"行数 / 行宽 / 总数三者和常量同源"，
+     * 静态块钉的是"不许有第二个字符"（两边都是必抛形态，见 {@code NekoPocketStorageColumn} 的 static 块）。
+     */
+    private static void storageMatrixIsNineColumnsSingleChar() {
+        SimpleAssert.eq(15, NekoPocketStorageColumn.layoutRowCount(), "矩阵必须正好 15 行（★纵向 360 未动）");
+        SimpleAssert.eq(9, NekoPocketStorageColumn.layoutMinRowWidth(), "★每行必须正好 9 格（旧口径是 10）");
+        SimpleAssert
+            .eq(135, NekoPocketStorageColumn.layoutSlotCount(), "矩阵产出 135 格 = 15 × 9（★数量与形状都要判：只数总数会放过「第 7 行少画一格」）");
+        SimpleAssert.eq(
+            PocketConstants.STORAGE_ROWS * PocketConstants.STORAGE_COLUMNS,
+            NekoPocketStorageColumn.layoutSlotCount(),
+            "矩阵格数 = 行数常量 × 列数常量（改矩阵忘改 {@code GHOST_ITEM_SLOT_LIMIT} 就红）");
+        SimpleAssert.eq(9, NekoPocketStorageColumn.COLUMNS, "列数单源 = SlotGroup.rowSize = 矩阵行宽");
+        SimpleAssert.eq(15, NekoPocketStorageColumn.ROWS, "行数 = 格数 / 列数（派生，不写第二个字面量）");
+        SimpleAssert.eq(
+            NekoPocketStorageColumn.HEIGHT,
+            NekoPocketStorageColumn.ROWS * NekoPocketPanel.GRID,
+            "列高等于行数 × 栅格（矩阵行数与像素高不得各说各话）");
+    }
+
+    /** ★R80① 用户新增的硬判据：底部带背包段与中栏<b>同 x 同宽</b>；三段必须铺满可用宽。 */
+    private static void backpackBandSharesStorageXAndWidth() {
+        SimpleAssert.eq(
+            NekoPocketStorageColumn.X,
+            NekoPocketBottomBand.BACKPACK_X,
+            "★同 x：背包段左沿 = 中栏左沿（118）——不等就说明背包画歪了，而两端都不会报错");
+        SimpleAssert
+            .eq(NekoPocketStorageColumn.WIDTH, NekoPocketBottomBand.BACKPACK_WIDTH, "★同宽：背包段宽 = 中栏宽（162 = 9 列 × 18）");
+        SimpleAssert.eq(118, NekoPocketBottomBand.BACKPACK_X, "数值钉住：118 = 6 + 112（左段）");
+        SimpleAssert.eq(162, NekoPocketBottomBand.BACKPACK_WIDTH, "数值钉住：162 = 9 × 18");
+        SimpleAssert.eq(112, NekoPocketBottomBand.COIN_WIDTH, "R80①：左段 112（= 中栏左沿 - 外边距）");
+        SimpleAssert.eq(130, NekoPocketBottomBand.BIND_WIDTH, "R80①：右段 130（中栏让出的那 18px 的去处）");
+        SimpleAssert.eq(0, NekoPocketBottomBand.BIND_SLACK, "★段间余量必须为 0（不是 0 = 无主空白）");
+        SimpleAssert.eq(
+            112 + 162 + 130,
+            NekoPocketPanel.WIDTH - 2 * NekoPocketPanel.MARGIN,
+            "三段之和 = 416 - 12 = 404（★加总算式，回执要复算的就是这条）");
+        SimpleAssert.eq(
+            NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
+            NekoPocketBottomBand.BIND_X + NekoPocketBottomBand.BIND_WIDTH,
+            "右段右边贴到 416-6 ⇒ 带子横向闭合");
+    }
+
+    /**
+     * ★R80②：撤掉上一轮那 18 条"流体列标题边条"后的<b>左栏纵向加总</b>。
+     * <p>
+     * 展示稿给每组 6 个流体槽各画一条 9px 高的标题条（{@code 3 组 × 6 列 = 18} 条，
+     * 覆盖在 18×36 流体槽的上半部）。用户裁定"我觉得要撤"⇒ 本列纵向必须<b>逐字回到 R78 的原式</b>
+     * {@code 每组 18+36+18 = 72 ; 3×72 + 2×18 = 252 ; 252 + 末行 18 = 270 = 列高}，
+     * ★既不给那 9px 留缝（撤完出现无主空白），也不把它挪去别处。
+     */
+    private static void leftColumnVerticalSumWithoutStrips() {
+        SimpleAssert.eq(18, NekoPocketLeftColumn.CELL, "一个交互格 = 一格栅格");
+        SimpleAssert.eq(36, NekoPocketLeftColumn.TANK_HEIGHT, "流体槽拉长为 36（R78② 未动）");
+        SimpleAssert.eq(
+            NekoPocketLeftColumn.CELL + NekoPocketLeftColumn.TANK_HEIGHT + NekoPocketLeftColumn.CELL,
+            NekoPocketLeftColumn.GROUP_HEIGHT,
+            "★一组只有三段：进 18 + 槽 36 + 出 18 = 72（撤边条后不得出现第四段，也不得变成 72+9）");
+        SimpleAssert.eq(72, NekoPocketLeftColumn.GROUP_HEIGHT, "一组 = 72（★不是 81）");
+        SimpleAssert.eq(18, NekoPocketLeftColumn.GROUP_GAP, "组间距 = 空一行");
+        SimpleAssert.eq(3 * 72 + 2 * 18, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块 = 3×72 + 2×18 = 252");
+        SimpleAssert.eq(252, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "数值钉住：252");
+        SimpleAssert.eq(18, NekoPocketLeftColumn.STATUS_HEIGHT, "末行（按钮 + 状态回显）= 18");
+        SimpleAssert.eq(
+            NekoPocketStorageColumn.HEIGHT,
+            NekoPocketLeftColumn.FLUID_AREA_HEIGHT + NekoPocketLeftColumn.STATUS_HEIGHT,
+            "★纵向恰闭合：252 + 18 = 270 = 列高 ⇒ 撤边条没留缝、也没挤掉任何一行");
+        SimpleAssert.eq(
+            NekoPocketLeftColumn.FLUID_AREA_HEIGHT,
+            NekoPocketLeftColumn.STATUS_Y,
+            "末行起点紧接流体块底部（★缝长只能等于组间距，不得给标题条留位）");
+        SimpleAssert.eq(0, NekoPocketLeftColumn.groupTop(0), "第 1 组从列顶开始");
+        SimpleAssert.eq(90, NekoPocketLeftColumn.groupTop(1), "第 2 组 y = 72 + 18");
+        SimpleAssert.eq(180, NekoPocketLeftColumn.groupTop(2), "第 3 组 y = 2×90");
+        SimpleAssert.eq(
+            NekoPocketLeftColumn.FLUID_AREA_HEIGHT - NekoPocketLeftColumn.GROUP_HEIGHT,
+            NekoPocketLeftColumn.groupTop(2),
+            "最后一组底边正好贴到末行（不重叠、不留缝）");
+        // ---- 源码半边：撤下来的边条不得在 Java 侧留形状，撤下来的信息必须有落点 ----
+        assertNoFluidColumnTitleStripInSource();
+    }
+
+    /**
+     * ★R80① 的旧档收缩兼容：一份"中栏 150 格"时代写的档读进 135 格的形状。
+     * <p>
+     * 三条判据一一对应用户那句"越界槽号丢弃 + 一次性 WARN，既不静默丢件也不炸容器"：
+     * ① 读档<b>不抛</b>（面板打不开是比丢件更重的失败）；② handler 仍是构造期的 135 格
+     * （档里的 {@code Size=150} <b>不得</b>把形状带大，正如 {@code Size=128} 不得把它带小）；
+     * ③ 0…134 原样落位、135…149 这 15 条越界条目被丢弃且不挪到别的格上。
+     * "一次性 WARN" 本身是日志面，纯 JVM 里不重跑（{@code GTInterestingThing.LOG} 不可用）⇒
+     * 归【实机/日志核验项】，本用例只钉"丢的范围正确"。
+     */
+    private static void legacyFiftySlotSaveShrinksTo135() {
+        final int legacySlots = 150;
+        final NBTTagCompound legacyRoot = new NBTTagCompound();
+        final NBTTagCompound group = new NBTTagCompound();
+        group.setInteger("Size", legacySlots);
+        final NBTTagList items = new NBTTagList();
+        for (int index = 0; index < legacySlots; index++) {
+            final NBTTagCompound entry = new NBTTagCompound();
+            entry.setInteger("Slot", index);
+            entry.setInteger("id", 1);
+            entry.setInteger("Count", 1);
+            items.appendTag(entry);
+        }
+        group.setTag("Items", items);
+        legacyRoot.setTag(PocketConstants.ITEM_CONTENTS, group);
+
+        // ① 读档不得抛（越界条目走丢弃分支）
+        final PocketInventory shrunk = PocketInventory.readFrom(legacyRoot);
+        SimpleAssert.eq(
+            135,
+            shrunk.storage()
+                .getSlots(),
+            "★旧档的 Size=150 不得把 handler 带大：格数永远由构造期决定");
+        int kept = 0;
+        for (int index = 0; index < 135; index++) {
+            if (shrunk.storageStack(index) != null) {
+                kept++;
+            }
+        }
+        if (itemNbtUsable()) {
+            SimpleAssert.eq(135, kept, "0…134 条目原样落位，一件不多一件不少");
+        } else {
+            System.out.println("[NOTE] 本 JVM 里 ItemStack 的 NBT 往返解不出物品 ⇒ 「0…134 一件不少」这一半属【实机项】；此处仍验形状与格数");
+        }
+        // ② 越界那 15 条不得"挪回来"：末格只可能是第 134 格有货，且再往后不存在格子
+        SimpleAssert.that(shrunk.storageStack(134) != null || !itemNbtUsable(), "末格（134）必须还在合法索引内");
+        boolean outOfRangeThrows = false;
+        try {
+            shrunk.storageStack(135);
+        } catch (RuntimeException expected) {
+            outOfRangeThrows = true;
+        }
+        SimpleAssert.that(outOfRangeThrows, "★135 号已不是合法槽位：读它必须越界抛（说明形状真的收成了 135，没被旧档带大）");
+        // ③ 写档一律按新形状（旧档的 150 号条目不会复活，Size 也不得写回 150）
+        final NBTTagCompound rewritten = new NBTTagCompound();
+        shrunk.writeTo(rewritten);
+        final NBTTagCompound written = rewritten.getCompoundTag(PocketConstants.ITEM_CONTENTS);
+        if (itemNbtUsable()) {
+            SimpleAssert.eq(135, written.getInteger("Size"), "★写档按新形状 Size=135（旧档的 150 不得被写回去）");
+            SimpleAssert.eq(
+                kept,
+                written.getTagList("Items", 10)
+                    .tagCount(),
+                "写回的条目数 = 读到的条目数（越界条目已丢弃，不得被写档复活）");
+        } else {
+            // 本 JVM 里物品解不出来 ⇒ handler 全空 ⇒ saveGroup 的"空区不留壳"把整个键 removeTag。
+            // 这一半（Size/条目数）因此属【实机项】，此处只钉"绝不复活出 150 格形状"。
+            System.out.println("[NOTE] 物品 NBT 在本 JVM 解不出 ⇒ 写回的 Size/条目数属【实机项】；此处只验空区不留壳与形状");
+            SimpleAssert.eq(
+                Boolean.FALSE,
+                rewritten.hasKey(PocketConstants.ITEM_CONTENTS),
+                "空区不留壳：读回 0 件时不得写出 contents 壳，更不得写出 Size=150");
+            SimpleAssert.eq(
+                135,
+                shrunk.storage()
+                    .getSlots(),
+                "★形状仍由构造期决定（写档往返不影响 handler 格数）");
+        }
+    }
+
+    /**
+     * ★R80③ tick→秒收成 {@code PocketConstants.TICKS_PER_SECOND} 单源。
+     * <p>
+     * 两半：① 语义半边纯 JVM 可测（基数、派生量、向上取整表的每个边界）；
+     * ② "除定义处外不得再出现 {@code / 20} 与 {@code + 19}"是<b>源码文本</b>判据 ⇒
+     * 走 {@link #countPocketSourceLinesMatching}：仓库根找不到（在别的目录跑测试）就打 NOTE 并跳过，
+     * <b>不把"没测"写成"测过"</b>。
+     */
+    private static void ticksPerSecondSingleSource() {
+        SimpleAssert.eq(20, PocketConstants.TICKS_PER_SECOND, "Minecraft 固定 20 tick / 秒（★不可配，也不可在别处写 20）");
+        SimpleAssert.eq(50, PocketConstants.MILLISECONDS_PER_TICK, "一刻 = 1000/20 = 50 ms（★同理不得在别处写 50）");
+        SimpleAssert.eq(
+            PocketConstants.TICKS_PER_SECOND,
+            PocketConstants.CHANNEL_TICK_PERIOD,
+            "短效通道节拍 = 每 tick→秒基数一批（旧实现里这里是第二个字面量 20）");
+        SimpleAssert.eq(
+            100,
+            PocketConstants.BURST_SHOW_TICKS,
+            "burst 显示窗口 = 5000ms / 50ms = 100 tick（★派生自 TICKS_PER_SECOND，不写 50）");
+        SimpleAssert.eq(
+            600,
+            PocketConstants.SHORT_CHANNEL_SECONDS * PocketConstants.TICKS_PER_SECOND,
+            "短效通道 30 秒 = 600 tick（★秒↔tick 只走 TICKS_PER_SECOND 这一个基数）");
+        SimpleAssert.eq(
+            (int) (PocketConstants.BURST_ANIMATION_MS / PocketConstants.MILLISECONDS_PER_TICK),
+            PocketConstants.BURST_SHOW_TICKS,
+            "burst 显示窗口的 tick 数必须由 MILLISECONDS_PER_TICK 派生（不得再写 50）");
+        // ---- 向上取整的每一个边界 ----
+        SimpleAssert.eq(0, PocketConstants.ticksToSecondsCeil(0), "没有剩余 ⇒ 0 秒（不得显示成「还剩 1 秒」）");
+        SimpleAssert.eq(0, PocketConstants.ticksToSecondsCeil(-5), "负数按 0 处理（倒计时键被外来的档写坏也不炸）");
+        SimpleAssert.eq(1, PocketConstants.ticksToSecondsCeil(1), "1 tick ⇒ 1 秒");
+        SimpleAssert.eq(1, PocketConstants.ticksToSecondsCeil(19), "19 tick ⇒ 1 秒（★向下取整会给 0 秒 = 骗玩家说已结束）");
+        SimpleAssert.eq(1, PocketConstants.ticksToSecondsCeil(20), "20 tick ⇒ 1 秒（整除边界）");
+        SimpleAssert.eq(2, PocketConstants.ticksToSecondsCeil(21), "21 tick ⇒ 2 秒");
+        SimpleAssert.eq(5, PocketConstants.ticksToSecondsCeil(100), "100 tick ⇒ 5 秒（蒸馏一轮的间隔）");
+        SimpleAssert.eq(6, PocketConstants.ticksToSecondsCeil(101), "101 tick ⇒ 6 秒");
+        SimpleAssert.eq(
+            5,
+            PocketConstants.ticksToSecondsCeil(TaumDistillRules.DISTILL_INTERVAL_TICKS),
+            "★tooltip 的「蒸馏一轮几秒」必须走同一个换算函数（旧实现是内联 / 20）");
+        // ---- 源码文本半边 ----
+        final int inlineDivide20 = countPocketSourceLinesMatching("/\\s*20\\b", true);
+        final int inlinePlus19 = countPocketSourceLinesMatching("\\+\\s*19\\b", true);
+        final int helperUses = countPocketSourceLinesMatching("ticksToSecondsCeil\\(", false);
+        if (inlineDivide20 < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ TICKS_PER_SECOND 的「源码内联」半边未验（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(0, inlineDivide20, "★pocket 源码里（注释行除外）不得再有内联的 / 20（全部走 ticksToSecondsCeil）");
+        SimpleAssert.eq(0, inlinePlus19, "★向上取整的 + 19 也只能活在 PocketConstants 那一处（注释行除外）");
+        SimpleAssert.that(helperUses >= 3, "三处换算点必须都改走 ticksToSecondsCeil（读到 " + helperUses + " 处）");
+    }
+
+    /**
+     * ★R80④「绑定只能绑定一个」的 JVM 复现用例（与只读的 S-E3 并行；代码归本片）。
+     * <p>
+     * 三条断言按用户给的三环逐条证真/证伪：
+     * ① 数据面：连续绑两枚<b>不同 uuid</b> ⇒ {@code size()} 必须是 2；
+     * ② 持久面：{@code writeTo} → {@code readFrom} 往返后仍是 2（NBT 是列表形状、条目键不撞）；
+     * ③ 显示面：绑定行 blob（{@code SYNC_BIND_ROWS} 的线格式）编出来再解码后仍是 2 行。
+     * <p>
+     * ★本用例<b>不许</b>因为"现状如此"被改掉或删掉：三条都绿 ⇒ 缺陷不在 JVM 可证的这三环，
+     * 结论只能往显示面/实机面（元件 uuid 是否真的不同、归还是否成功、tooltip 是否被截断）去追。
+     */
+    private static void bindTwoDistinctUuidsKeepsTwoRows() {
+        final PocketCellBindings bindings = new PocketCellBindings();
+        SimpleAssert.that(bindings.bind(CELL_A, PocketConstants.MODE_DISK_UUID), "第一枚（CELL_A）绑定应新增条目");
+        SimpleAssert.that(
+            bindings.bind(CELL_B, PocketConstants.MODE_DISK_UUID),
+            "★第二枚（CELL_B，不同 uuid）绑定也必须新增条目 —— 复现点就在这一步的返回值");
+        SimpleAssert.eq(2, bindings.size(), "★环①：连续绑两枚不同 uuid 后 size() 必须是 2");
+        SimpleAssert.eq(
+            2,
+            bindings.entries()
+                .size(),
+            "entries() 也必须是两条（顺序即轮转外层序）");
+        SimpleAssert.eq(
+            CELL_A,
+            bindings.entries()
+                .get(0).id,
+            "第一条是先到的那枚（★不得被后一条挤掉）");
+        SimpleAssert.eq(
+            CELL_B,
+            bindings.entries()
+                .get(1).id,
+            "第二条是后到那枚");
+        SimpleAssert.that(bindings.contains(CELL_A), "contains 认得第一枚");
+        SimpleAssert.that(bindings.contains(CELL_B), "contains 认得第二枚");
+        SimpleAssert.that(bindings.hasRoom(), "两枚远未到 MAX_BOUND_CELLS=64 ⇒ 仍应有空位");
+
+        // ---- 环②：NBT 往返 ----
+        final NBTTagCompound root = new NBTTagCompound();
+        bindings.writeTo(root);
+        final PocketCellBindings back = PocketCellBindings.readFrom(root);
+        SimpleAssert.eq(2, back.size(), "★环②：NBT 往返后仍必须是 2 条（塌回 1 = 写侧覆盖或读侧键撞）");
+        SimpleAssert.eq(
+            CELL_A,
+            back.entries()
+                .get(0).id,
+            "往返后第一条身份不变");
+        SimpleAssert.eq(
+            CELL_B,
+            back.entries()
+                .get(1).id,
+            "往返后第二条身份不变");
+
+        // ---- 环③：绑定行 blob（显示面的线格式）----
+        final List<NekoPocketBottomBand.Row> rows = new ArrayList<>();
+        for (PocketCellBindings.Entry entry : back.entries()) {
+            rows.add(
+                new NekoPocketBottomBand.Row(
+                    entry.id,
+                    NekoPocketBottomBand.Row.STATUS_UNLOCATED,
+                    PocketConstants.UNLOCATED,
+                    PocketConstants.UNLOCATED,
+                    PocketConstants.UNLOCATED,
+                    PocketConstants.UNLOCATED,
+                    PocketConstants.UNLOCATED));
+        }
+        final String blob = NekoPocketBottomBand.Row.compose(rows);
+        SimpleAssert.eq(
+            2,
+            NekoPocketBottomBand.Row.parse(blob)
+                .size(),
+            "★环③：绑定行 blob 解码后必须仍是 2 行（只解出 1 行 = 玩家「只能看到一个」的直接根因）");
+        // 生产写侧（NekoPocketPanel#composeBindRows 的未定位分支）逐字同形的第二种取法：
+        // 手写串，钉住"|分隔 7 段、; 分隔多行"这一线格式本身
+        final String unlocated = "|" + PocketConstants.UNLOCATED
+            + "|"
+            + PocketConstants.UNLOCATED
+            + "|"
+            + PocketConstants.UNLOCATED
+            + "|"
+            + PocketConstants.UNLOCATED
+            + "|"
+            + PocketConstants.UNLOCATED;
+        final String productionShape = CELL_A + "|"
+            + NekoPocketBottomBand.Row.STATUS_UNLOCATED
+            + unlocated
+            + ";"
+            + CELL_B
+            + "|"
+            + NekoPocketBottomBand.Row.STATUS_UNLOCATED
+            + unlocated;
+        final List<NekoPocketBottomBand.Row> parsed = NekoPocketBottomBand.Row.parse(productionShape);
+        SimpleAssert.eq(2, parsed.size(), "★生产形状的 blob（两枚未定位）也必须解出 2 行");
+        SimpleAssert.eq(CELL_A, parsed.get(0).id, "生产形状解出的第一枚身份");
+        SimpleAssert.eq(CELL_B, parsed.get(1).id, "生产形状解出的第二枚身份");
+        SimpleAssert
+            .that(parsed.get(0).status != NekoPocketBottomBand.Row.STATUS_LOCATED, "未定位行不得被解成已定位（bind.unlocated 是正常态）");
+    }
+
+    /**
+     * 数 pocket 两个源码目录下匹配某正则的<b>行</b>数（注释行除外）。
+     *
+     * @param skipComments true = 跳过 {@code //} 与 javadoc 续行（历史叙述里出现"150/20"是合法的）
+     * @return 命中行数；{@code -1} = 找不到仓库根（在别的目录跑测试）⇒ 调用方必须打 NOTE，不得当 0 用
+     */
+    private static int countPocketSourceLinesMatching(String regex, boolean skipComments) {
+        final java.nio.file.Path root = repoRootOrNull();
+        if (root == null) {
+            return -1;
+        }
+        final java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(regex);
+        int hits = 0;
+        for (String relative : new String[] { "src/main/java/com/miaokatze/gtit/common/items/pocket",
+            "src/main/java/com/miaokatze/gtit/gui/pocket" }) {
+            final java.nio.file.Path base = root.resolve(relative);
+            if (!java.nio.file.Files.isDirectory(base)) {
+                return -1;
+            }
+            try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(base)) {
+                final java.util.Iterator<java.nio.file.Path> it = walk.iterator();
+                while (it.hasNext()) {
+                    final java.nio.file.Path file = it.next();
+                    final String name = file.getFileName()
+                        .toString();
+                    if (!name.endsWith(".java")) {
+                        continue;
+                    }
+                    for (String line : java.nio.file.Files
+                        .readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
+                        final String trimmed = line.trim();
+                        if (skipComments
+                            && (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*"))) {
+                            continue;
+                        }
+                        if (pattern.matcher(line)
+                            .find()) {
+                            hits++;
+                        }
+                    }
+                }
+            } catch (java.io.IOException ioFailure) {
+                return -1;
+            }
+        }
+        return hits;
+    }
+
+    /** 从当前工作目录逐级上溯找仓库根（认 {@code settings.gradle.kts} 或 {@code build.gradle.kts}）。 */
+    private static java.nio.file.Path repoRootOrNull() {
+        java.nio.file.Path dir = java.nio.file.Paths.get("")
+            .toAbsolutePath();
+        for (int up = 0; up < 8 && dir != null; up++) {
+            if (java.nio.file.Files.exists(dir.resolve("settings.gradle.kts"))
+                || java.nio.file.Files.exists(dir.resolve("build.gradle.kts"))) {
+                return dir;
+            }
+            dir = dir.getParent();
+        }
+        return null;
+    }
+
+    /** 撤边条的源码半边：pocket 源码里不得再出现「列标题边条」的任何形状（展示稿用的那几个名字）。 */
+    private static void assertNoFluidColumnTitleStripInSource() {
+        final int stripHits = countPocketSourceLinesMatching("TANK_HEAD|chead|HEAD_H|GRID / 2", true);
+        if (stripHits < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ 「无流体列标题边条」的源码半边未验（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(0, stripHits, "★R80②：撤下来的 18 条列标题边条不得在 Java 侧留形状（9px 条 / chead / TANK_HEAD）");
+        final int tankLabelHits = countPocketSourceLinesMatching("legend\\.tank_of", true);
+        SimpleAssert.that(tankLabelHits >= 2, "★组号的落点必须≥两处（交互格 tooltip + 流体槽本体 tooltip），撤边条不等于删信息：读到 " + tankLabelHits);
     }
 
     // ------------------------------------------------------------------ 绑定表
@@ -966,7 +1410,7 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(
             Boolean.FALSE,
             config.add(PocketConstants.GHOST_ITEM_SLOT_LIMIT, item(PocketConstants.GHOST_ITEM_SLOT_LIMIT, 1, 0, "")),
-            "★越界槽索引（150）必须拒收：上界随 R75 一起放开，但越界仍越界");
+            "★越界槽索引（= 上界常量本身，R80① 后是 135）必须拒收：上界随轮次改，越界仍越界");
         SimpleAssert.eq(
             Boolean.FALSE,
             config.add(
@@ -1262,7 +1706,7 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(
             Boolean.FALSE,
             backAgain.add(PocketConstants.GHOST_ITEM_SLOT_LIMIT, item(PocketConstants.GHOST_ITEM_SLOT_LIMIT, 1, 0, "")),
-            "中栏越界槽位（150）拒收");
+            "中栏越界槽位（= 上界常量本身，R80① 后是 135）拒收");
         SimpleAssert.eq(3, backAgain.size(), "拒收不改变条数");
         // 外来/损坏条目丢弃而不炸（面板不得因一条坏 blob 崩掉）
         SimpleAssert.eq(
@@ -1676,7 +2120,16 @@ public class NekoPocketModelTest {
         SimpleAssert.eq((byte) 0, PocketConstants.MODE_DISK_UUID, "diskuuid 模式为 0（MODE_POSITION 只预留不实现）");
         SimpleAssert.eq(5_000L, PocketConstants.BURST_ANIMATION_MS, "瞬时动画显示窗口 5 秒");
         SimpleAssert.eq(10, PocketConstants.BURST_COOLDOWN_SECONDS, "瞬时通道冷却 10 秒");
-        SimpleAssert.eq(150, PocketConstants.GHOST_ITEM_SLOT_LIMIT, "中栏 ghost 白名单上界 = 15 行 × 10 列（R75）");
+        SimpleAssert.eq(
+            135,
+            PocketConstants.GHOST_ITEM_SLOT_LIMIT,
+            "中栏 ghost 白名单上界 = 15 行 × 9 列 = 135（★R80① 定稿，覆盖 R75 的 10 列 = 150）");
+        SimpleAssert.eq(9, PocketConstants.STORAGE_COLUMNS, "中栏列数（R80①：10 → 9）");
+        SimpleAssert.eq(15, PocketConstants.STORAGE_ROWS, "中栏行数（R80① 未动，纵向 360 是硬天花板）");
+        SimpleAssert.eq(
+            PocketConstants.STORAGE_ROWS * PocketConstants.STORAGE_COLUMNS,
+            PocketConstants.GHOST_ITEM_SLOT_LIMIT,
+            "★ghost 上界由行列常量派生（改列数忘改上界 = 这一条红）");
         // ---- R78 的白名单上界（★全部断言读常量，不抄面板字面量）----
         SimpleAssert.eq(18, PocketConstants.GHOST_FLUID_SLOT_LIMIT, "流体槽 ghost 白名单上界 = tank 总数（R78②：3 组 × 6 列）");
         SimpleAssert.eq(18, PocketConstants.FLUID_TANK_TOTAL, "tank 总数 = 组数 × 每组列数（派生自常量，不得各写一个 18）");
@@ -1696,25 +2149,25 @@ public class NekoPocketModelTest {
 
     // ================================================================== S-U3（R75）/ S-U4（R78）批次
     //
-    // 这一批是"128/149 → 150/175 → R78 的 235"这次批量口径重做的验收面。
+    // 这一批是"128/149 → 150/175 → R78 的 235 → R80 的 220"这次批量口径重做的验收面。
     // 每条都刻意写成"改坏了就一定红"的形式：加总用字面量、行列用乘积、兼容用两代形状各自断言。
 
-    /** R78 的 235 加总自证 + 全部行列乘积（★数字来自任务包 §2，逐条按加算式核对）。 */
+    /** R78→R80 的 220 加总自证 + 全部行列乘积（★数字来自任务包 §1.1，逐条按加算式核对）。 */
     private static void slotMathAndProducts() {
-        // ★加总（R78）：中栏 150（10×15）+ 流体交互 36（3 组 × 6 列 × 进/出）+ 蒸馏 12 + 绑定 1
-        // + 玩家背包 36（框架绑的 9×4） = 235
-        SimpleAssert.eq(235, PocketSlots.TOTAL_REAL_SLOTS, "真实 Container 槽总数（R78：199 工厂 + 36 背包）");
-        SimpleAssert.eq(199, PocketSlots.FACTORY_REAL_SLOTS, "本工厂产出口径 = 150 + 36 + 12 + 1 = 199（★回执要求的 199 加总自证就是这一条）");
+        // ★加总（R80①）：中栏 135（15×9）+ 流体交互 36（3 组 × 6 列 × 进/出）+ 蒸馏 12 + 绑定 1
+        // + 玩家背包 36（框架绑的 9×4） = 220
+        SimpleAssert.eq(220, PocketSlots.TOTAL_REAL_SLOTS, "真实 Container 槽总数（R80：184 工厂 + 36 背包）");
+        SimpleAssert.eq(184, PocketSlots.FACTORY_REAL_SLOTS, "本工厂产出口径 = 135 + 36 + 12 + 1 = 184（★回执要求的 184 加总自证就是这一条）");
         SimpleAssert.eq(
-            150 + 36 + 12 + 1 + 36,
+            135 + 36 + 12 + 1 + 36,
             PocketInventory.STORAGE_SLOTS + PocketInventory.FLUID_INTERACTION_SLOTS
                 + PocketInventory.DISTILL_INPUT_SLOTS
                 + PocketInventory.BIND_SLOTS
                 + PocketConstants.PLAYER_BACKPACK_SLOTS,
-            "五块加总必须等于 235（175 / 185 / 149 都是被覆盖的旧口径）");
-        SimpleAssert.eq(150, PocketInventory.STORAGE_SLOTS, "中栏格数 = GHOST_ITEM_SLOT_LIMIT 单源（R78 未动）");
-        SimpleAssert.eq(15, PocketSlots.STORAGE_ROWS, "中栏 15 行（★R78① 中栏 15 行一行不删）");
-        SimpleAssert.eq(10, PocketSlots.STORAGE_COLUMNS, "中栏 10 列");
+            "五块加总必须等于 220（235 / 175 / 185 / 149 都是被覆盖的旧口径）");
+        SimpleAssert.eq(135, PocketInventory.STORAGE_SLOTS, "中栏格数 = GHOST_ITEM_SLOT_LIMIT 单源（R80①：150 → 135）");
+        SimpleAssert.eq(15, PocketSlots.STORAGE_ROWS, "中栏 15 行（★R80① 纵向一行不删：360 是 GUI Scale 3 上限）");
+        SimpleAssert.eq(9, PocketSlots.STORAGE_COLUMNS, "★中栏 9 列（R80① 定稿，旧 10 列）");
         SimpleAssert.eq(
             PocketInventory.STORAGE_SLOTS,
             PocketSlots.STORAGE_ROWS * PocketSlots.STORAGE_COLUMNS,
@@ -1793,7 +2246,7 @@ public class NekoPocketModelTest {
         // ★布局字符的出现总数必须等于 handler 格数：MUI2 的 builder 是<b>按字符</b>各自从 0 计数
         // （Char2IntOpenHashMap，字节码实证）⇒ 一块矩阵出现第二个布局字符就会把索引空间劈成
         // 两条重叠的 0…n（本仓真踩到过一次，R77 记实）
-        SimpleAssert.eq(150, NekoPocketStorageColumn.layoutSlotCount(), "中栏矩阵产出 150 格");
+        SimpleAssert.eq(135, NekoPocketStorageColumn.layoutSlotCount(), "中栏矩阵产出 135 格（15 × 9）");
         SimpleAssert.eq(36, NekoPocketLeftColumn.layoutSlotCount(), "流体交互矩阵产出 36 格（单一布局字符）");
         SimpleAssert
             .eq(14, NekoPocketLeftColumn.layoutRowCount(), "流体矩阵 14 行 = 3 组 × 4 行 + 2 个组间空行（R78② 的 252 = 14×18）");
@@ -1808,20 +2261,20 @@ public class NekoPocketModelTest {
             NekoPocketStorageColumn.layoutSlotCount() + NekoPocketLeftColumn.layoutSlotCount()
                 + NekoPocketEssenceColumn.layoutSlotCount()
                 + NekoPocketBottomBand.layoutSlotCount(),
-            "四块矩阵的产出之和必须恰好等于工厂口径 199");
+            "四块矩阵的产出之和必须恰好等于工厂口径 184（R80①）");
         SimpleAssert.eq(
             PocketSlots.TOTAL_REAL_SLOTS,
             PocketSlots.FACTORY_REAL_SLOTS + NekoPocketBottomBand.backpackLayoutSlotCount(),
-            "工厂四块 + 背包 = 容器口径 235（★背包不经工厂，所以必须单列一项）");
+            "工厂四块 + 背包 = 容器口径 220（★背包不经工厂，所以必须单列一项）");
     }
 
     /**
-     * 装配计数断言的正反两面（R78）：199 + 36 = 235 必须过、<b>234 与 236 必须抛</b>。
+     * 装配计数断言的正反两面（R80①）：184 + 36 = <b>220</b> 必须过、<b>219 与 221 必须抛</b>。
      * <p>
      * ★三条判据都要（见 {@code PocketSlots#assertTotalRealSlots(int, int)} 的注释）：
-     * 只判合计的话"工厂少一格 + 背包多一格"会抵消成 235 而静默放过。
-     * 异常文本也必须带上新口径，否则读到"应为 175 个 (150 + 12 + 12 + 1)"就是被指向
-     * 一个已经不存在的形状。
+     * 只判合计的话"工厂少一格 + 背包多一格"会抵消成 220 而静默放过。
+     * 异常文本也必须带上新口径（且由常量拼出而不是再抄一份数），否则读到"应为 199 个 (150 …)"
+     * 就是把玩家指向一个已经不存在的形状。
      */
     private static void realSlotCountAssertion() {
         final PocketInventory inventory = PocketInventory.readFrom(null);
@@ -1837,16 +2290,16 @@ public class NekoPocketModelTest {
             full.distillInput(inventory, index);
         }
         full.bind(inventory);
-        SimpleAssert.eq(199, full.createdRealSlots(), "四类槽工厂各按格数接完正好 199（★背包不经这里）");
+        SimpleAssert.eq(184, full.createdRealSlots(), "四类槽工厂各按格数接完正好 184（★背包不经这里）");
         full.assertTotalRealSlots();
 
-        // ---- 负控 234 / 236：直接喂静态判据（不必真造两百个槽）----
-        SimpleAssert.eq(Boolean.FALSE, throwsIllegalState(199, 36), "199 + 36 = 235 ⇒ 不抛（正例基线）");
-        SimpleAssert.that(throwsIllegalState(198, 36), "★234 必须抛（工厂少一格 = 有区域漏接）");
-        SimpleAssert.that(throwsIllegalState(200, 36), "★236 必须抛（工厂多一格 = 有区域重复接入）");
-        SimpleAssert.that(throwsIllegalState(199, 35), "★234 的另一半：背包少一格也必须抛（隐形槽不算过关）");
-        SimpleAssert.that(throwsIllegalState(199, 37), "★236 的另一半：背包多一格同样抛");
-        SimpleAssert.that(throwsIllegalState(198, 37), "★合计恰好 235 但两项各自都错 ⇒ 仍必须抛（只判合计就会放过这一类）");
+        // ---- 负控 219 / 221：直接喂静态判据（不必真造两百个槽）----
+        SimpleAssert.eq(Boolean.FALSE, throwsIllegalState(184, 36), "184 + 36 = 220 ⇒ 不抛（正例基线）");
+        SimpleAssert.that(throwsIllegalState(183, 36), "★219 必须抛（工厂少一格 = 有区域漏接）");
+        SimpleAssert.that(throwsIllegalState(185, 36), "★221 必须抛（工厂多一格 = 有区域重复接入）");
+        SimpleAssert.that(throwsIllegalState(184, 35), "★219 的另一半：背包少一格也必须抛（隐形槽不算过关）");
+        SimpleAssert.that(throwsIllegalState(184, 37), "★221 的另一半：背包多一格同样抛");
+        SimpleAssert.that(throwsIllegalState(183, 37), "★合计恰好 220 但两项各自都错 ⇒ 仍必须抛（只判合计就会放过这一类）");
 
         // ---- 少接一格的实例路径（装配里真少造一个槽）----
         final PocketSlots shortByOne = new PocketSlots();
@@ -1860,24 +2313,29 @@ public class NekoPocketModelTest {
             shortByOne.distillInput(inventory, index);
         }
         shortByOne.bind(inventory);
-        SimpleAssert.eq(198, shortByOne.createdRealSlots(), "故意少接一格 ⇒ 198");
+        SimpleAssert.eq(183, shortByOne.createdRealSlots(), "故意少接一格 ⇒ 183");
         SimpleAssert.that(throwsIllegalState(shortByOne), "★实例路径也要抛");
         SimpleAssert
             .eq(Boolean.FALSE, messageOf(shortByOne).contains("175"), "异常文本不得再引用旧口径 175：" + messageOf(shortByOne));
         SimpleAssert
             .eq(Boolean.FALSE, messageOf(shortByOne).contains("12 流体交互"), "异常文本不得再引用 12 流体交互：" + messageOf(shortByOne));
-        SimpleAssert.that(messageOf(shortByOne).contains("199"), "异常文本必须给出新的工厂口径 199");
+        SimpleAssert.that(messageOf(shortByOne).contains("184"), "异常文本必须给出新的工厂口径 184：" + messageOf(shortByOne));
         SimpleAssert.that(messageOf(shortByOne).contains("36"), "异常文本必须给出流体交互 36（3 组×6×2）");
-        SimpleAssert.that(messageOf(shortByOne).contains("150"), "异常文本必须给出中栏 150");
+        SimpleAssert.that(messageOf(shortByOne).contains("135"), "异常文本必须给出中栏 135：" + messageOf(shortByOne));
+        // ★异常文本本身也得是派生式：把旧口径钉成"不得出现"，否则改常量不改文案会静默指错形状
+        SimpleAssert
+            .eq(Boolean.FALSE, messageOf(shortByOne).contains("150"), "异常文本不得再出现旧口径 150：" + messageOf(shortByOne));
+        SimpleAssert
+            .eq(Boolean.FALSE, messageOf(shortByOne).contains("199"), "异常文本不得再出现旧口径 199：" + messageOf(shortByOne));
 
         final PocketSlots extra = new PocketSlots();
         for (int index = 0; index < PocketInventory.STORAGE_SLOTS + 1; index++) {
             extra.storage(inventory, index % PocketInventory.STORAGE_SLOTS);
         }
-        SimpleAssert.that(throwsIllegalState(reseed(extra, inventory)), "★200 也要抛（重复接入同样炸）");
+        SimpleAssert.that(throwsIllegalState(reseed(extra, inventory)), "★185 也要抛（重复接入同样炸）");
     }
 
-    /** 再补三类槽，使计数恰好 200（多接一格）。 */
+    /** 再补三类槽，使计数恰好 185（多接一格）。 */
     private static PocketSlots reseed(PocketSlots slots, PocketInventory inventory) {
         for (int index = 0; index < PocketInventory.FLUID_INTERACTION_SLOTS; index++) {
             slots.fluidInteraction(inventory, index);
@@ -1990,7 +2448,7 @@ public class NekoPocketModelTest {
             PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1,
             back.at(Kind.ITEM, PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1)
                 .slotIndex(),
-            "中栏末格（149）能声明也能同步回来");
+            "中栏末格（R80① 后是 134）能声明也能同步回来");
         SimpleAssert.eq(
             PocketConstants.GHOST_ESSENCE_SLOT_LIMIT - 1,
             back.at(Kind.ESSENCE, PocketConstants.GHOST_ESSENCE_SLOT_LIMIT - 1)
@@ -2003,17 +2461,21 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * 中栏读档形状的两条硬性质：<b>只增不减</b> + <b>越界键丢弃</b>，并顺手把上游
-     * {@code ItemStackHandler} 的形状键钉住（{@code PocketInventory#loadGroup} 要绕开
-     * {@code deserializeNBT}，绕开就得知道形状）。
+     * 中栏读档形状的两条硬性质：<b>格数永远由构造期决定</b>（档里的 {@code Size} 既不放大也不缩小
+     * handler）+ <b>越界键丢弃</b>，并顺手把上游 {@code ItemStackHandler} 的形状键钉住
+     * （{@code PocketInventory#loadGroup} 要绕开 {@code deserializeNBT}，绕开就得知道形状）。
+     * <p>
+     * ★R80①：本轮形状是<b>收缩</b>（150 → 135），所以"旧档比新形状大"这一支从"理论可能"变成
+     * <b>必然发生</b>：135…149 号条目一定越界。收缩场景的独立用例在
+     * {@code legacy_150_slot_save_shrinks_to_135_dropping_only_out_of_range}。
      */
     private static void storageGroupShapeRoundTripPinsLibraryKeys() {
         final PocketInventory source = PocketInventory.readFrom(null);
         SimpleAssert.eq(
-            150,
+            135,
             source.storage()
                 .getSlots(),
-            "新形状是 150 格");
+            "新形状是 135 格（R80①）");
         for (int index = 0; index < 128; index++) {
             source.storage()
                 .setStackInSlot(index, stackOf(1, index + 1));
@@ -2022,21 +2484,21 @@ public class NekoPocketModelTest {
         source.writeTo(root);
         final NBTTagCompound group = root.getCompoundTag(PocketConstants.ITEM_CONTENTS);
         SimpleAssert.that(group != null, "有货的中栏必须落档");
-        SimpleAssert.eq(150, group.getInteger("Size"), "★写档一律按新形状（Size=150），旧档的 Size=128 只出现在读侧");
+        SimpleAssert.eq(135, group.getInteger("Size"), "★写档一律按新形状（Size=135），旧档的 Size=128/150 只出现在读侧");
         SimpleAssert.eq(
             128,
             group.getTagList("Items", 10)
                 .tagCount(),
             "只写有货的格（128 件）");
 
-        // ① 模拟"旧档 128 格"（Size 被写回 128）⇒ 读进来仍必须是 150 格，且 128 件一件不少
+        // ① 模拟"旧档 128 格"（Size 被写回 128）⇒ 读进来仍必须是 135 格，且 128 件一件不少
         group.setInteger("Size", 128);
         final PocketInventory grown = PocketInventory.readFrom(root);
         SimpleAssert.eq(
-            150,
+            135,
             grown.storage()
                 .getSlots(),
-            "★读旧档只增不减：handler 仍必须是 150 格");
+            "★读旧档不跟着缩：handler 仍必须是构造期的 135 格（Size=128 不得把形状带小）");
         int kept = 0;
         for (int index = 0; index < 128; index++) {
             if (grown.storageStack(index) != null) {
@@ -2048,7 +2510,7 @@ public class NekoPocketModelTest {
         } else {
             System.out.println("[NOTE] 本 JVM 里 ItemStack 的 NBT 往返解不出物品（未走 Forge 注册）⇒" + "「件数一件不少」这一半属【实机项】；此处仍验形状与格数");
         }
-        SimpleAssert.eq(null, grown.storageStack(149), "新增的格子是空的（不是垃圾）");
+        SimpleAssert.eq(null, grown.storageStack(134), "新增的格子是空的（不是垃圾）");
 
         // ② 越界槽号：外来/未来档 ⇒ 丢弃而不是让点槽越界炸
         final NBTTagList items = group.getTagList("Items", 10);
@@ -2061,13 +2523,13 @@ public class NekoPocketModelTest {
         dirtyRoot.setTag(PocketConstants.ITEM_CONTENTS, group);
         final PocketInventory dropped = PocketInventory.readFrom(dirtyRoot);
         SimpleAssert.eq(
-            150,
+            135,
             dropped.storage()
                 .getSlots(),
             "越界条目不得把 handler 形状带坏");
-        SimpleAssert.eq(null, dropped.storageStack(149), "越界条目不会挪到末格上");
+        SimpleAssert.eq(null, dropped.storageStack(134), "越界条目不会挪到末格上");
         int still = 0;
-        for (int index = 0; index < 150; index++) {
+        for (int index = 0; index < 135; index++) {
             if (dropped.storageStack(index) != null) {
                 still++;
             }
@@ -2328,25 +2790,30 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * 面板 416×360 的加总闭合（R75 钉死外框，R78 改内部三段与两列的排布；纵向仍<b>一格余量都没有</b>）。
+     * 面板 416×360 的加总闭合（R75 钉外框、R78 改内部三段与两列、★R80① 中栏收到 9 列但
+     * <b>面板宽保留 416</b>；纵向仍<b>一格余量都没有</b>）。
      * <p>
-     * ★每一条都是"加算式"而不是抄来的数：外部把 R78 的加总表算错时，这里会跟着错 ⇒
-     * 主代理只需读断言文本就能复核算式（任务包 §2 的纪律）。
+     * ★每一条都是"加算式"而不是抄来的数：外部把加总表算错时，这里会跟着错 ⇒
+     * 主代理只需读断言文本就能复核算式（任务包 §1.1 的纪律）。
      */
     private static void panelGeometryCloses() {
-        // ---- 外框（R75 钉死，R78 未动：416 宽与 360 = GUI Scale 3 硬上限）----
-        SimpleAssert.eq(416, NekoPocketPanel.WIDTH, "面板宽 = 6+108+4+180+4+108+6");
+        // ---- 外框（R75 钉死；R80① 明文"面板宽保留 416"，360 = GUI Scale 3 硬上限未动）----
+        SimpleAssert.eq(416, NekoPocketPanel.WIDTH, "★面板宽保留 416（R80①：中栏收窄不跟着收窄面板）");
         SimpleAssert.eq(360, NekoPocketPanel.HEIGHT, "★面板高 = 6+270+6+72+6 = 360 = 1080p/GUI Scale 3 上限");
         SimpleAssert.eq(108, NekoPocketLeftColumn.WIDTH, "流体块每组 6 列 × 18");
-        SimpleAssert.eq(180, NekoPocketStorageColumn.WIDTH, "中栏 10 列");
+        SimpleAssert.eq(162, NekoPocketStorageColumn.WIDTH, "★中栏 9 列 × 18 = 162（R80①，旧 10 列 = 180）");
         SimpleAssert.eq(108, NekoPocketEssenceColumn.WIDTH, "源质 6 列");
-        SimpleAssert.eq(270, NekoPocketStorageColumn.HEIGHT, "主区 15 行");
-        SimpleAssert.eq(118, NekoPocketStorageColumn.X, "中栏 x = 6+108+4");
-        SimpleAssert.eq(302, NekoPocketEssenceColumn.X, "源质列 x = 6+108+4+180+4");
+        SimpleAssert.eq(270, NekoPocketStorageColumn.HEIGHT, "主区 15 行（R80① 一行不删）");
+        SimpleAssert.eq(118, NekoPocketStorageColumn.X, "★中栏 x = 6+108+4 = 118（收窄只发生在右边界，x 未动）");
+        SimpleAssert.eq(284, NekoPocketEssenceColumn.X, "源质列 x = 6+108+4+162+4 = 284");
+        // ---- R80①：主区只占 398，那 18px 是**具名让位**而不是无主空白 ----
+        SimpleAssert.eq(398, NekoPocketPanel.MAIN_OCCUPIED_WIDTH, "主区实占 = 6+108+4+162+4+108+6 = 398");
+        SimpleAssert.eq(18, NekoPocketPanel.MAIN_RIGHT_SLACK, "★让位量 = 416-398 = 18，恰为一格 GRID（中栏少画的那一列）⇒ 全给底部带右段");
+        SimpleAssert.eq(NekoPocketPanel.GRID, NekoPocketPanel.MAIN_RIGHT_SLACK, "让位量必须恰等于一个栅格");
         SimpleAssert.eq(
-            NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
-            NekoPocketEssenceColumn.X + NekoPocketEssenceColumn.WIDTH,
-            "宽度闭合：最右列右边 + 外边距 = 面板宽");
+            NekoPocketPanel.WIDTH,
+            NekoPocketPanel.MAIN_OCCUPIED_WIDTH + NekoPocketPanel.MAIN_RIGHT_SLACK,
+            "主区实占 + 让位 = 面板宽（★没有第三笔未归因的像素）");
         // ---- 左栏（R78②：3 组 × 72 + 2 个 18 组间距 = 252，余 18 给状态行）----
         SimpleAssert.eq(36, NekoPocketLeftColumn.TANK_HEIGHT, "★流体槽拉长为 36 高（用户：流体槽应该拉长一点）");
         SimpleAssert.eq(72, NekoPocketLeftColumn.GROUP_HEIGHT, "一组 = 18 + 36 + 18 = 72");
@@ -2390,20 +2857,23 @@ public class NekoPocketModelTest {
             NekoPocketBottomBand.Y + NekoPocketBottomBand.HEIGHT,
             "高度闭合：带底边 + 外边距 = 面板高（★再高就撞 360 天花板）");
         SimpleAssert.eq(6, NekoPocketBottomBand.COIN_X, "左段 x = 面板外边距");
-        SimpleAssert.eq(100, NekoPocketBottomBand.COIN_WIDTH, "★左段收窄为 100（旧 180，让位给背包）");
-        SimpleAssert.eq(110, NekoPocketBottomBand.BACKPACK_X, "背包段 x = 6+100+4");
-        SimpleAssert.eq(162, NekoPocketBottomBand.BACKPACK_WIDTH, "★背包段 9 列 × 18 = 162（R78①）");
+        SimpleAssert.eq(112, NekoPocketBottomBand.COIN_WIDTH, "★R80①：左段 100 → 112（= 中栏左沿 118 - 外边距 6）");
+        SimpleAssert.eq(118, NekoPocketBottomBand.BACKPACK_X, "★背包段 x = 6+112 = 118 = 中栏 x（R80① 同 x 判据）");
+        SimpleAssert.eq(162, NekoPocketBottomBand.BACKPACK_WIDTH, "★背包段 9 列 × 18 = 162 = 中栏宽（R80① 同宽判据）");
         SimpleAssert.eq(72, NekoPocketBottomBand.BACKPACK_HEIGHT, "背包 4 行 × 18 = 72 = 带高（★所以中栏 15 行一行都不用删）");
         SimpleAssert
             .eq(NekoPocketBottomBand.BACKPACK_HEIGHT, NekoPocketBottomBand.HEIGHT, "背包高必须正好等于带高（否则要么撑破 360 要么留缝）");
-        SimpleAssert.eq(120, NekoPocketBottomBand.BIND_WIDTH, "★右段收窄为 120（旧 220）");
-        SimpleAssert.eq(14, NekoPocketBottomBand.BIND_SLACK, "加总余量 416-12-(100+4+162+4+120) = 14，放在背包与右段之间");
-        SimpleAssert.eq(290, NekoPocketBottomBand.BIND_X, "右段 x = 110+162+4+14");
+        SimpleAssert.eq(130, NekoPocketBottomBand.BIND_WIDTH, "★R80①：右段 120 → 130（那 18px 的去处）");
+        SimpleAssert.eq(0, NekoPocketBottomBand.BIND_SLACK, "★R80①：三段之间不留间距 ⇒ 余量必须恰为 0（不是 0 = 出现没人认领的空白）");
+        SimpleAssert.eq(280, NekoPocketBottomBand.BIND_X, "右段 x = 6+112+162 = 280");
         SimpleAssert.eq(
             NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
             NekoPocketBottomBand.BIND_X + NekoPocketBottomBand.BIND_WIDTH,
-            "★底部带横向闭合：右段右边 = 416-6（余 14 已按上面那条安放，左右外边距仍各 6）");
-        SimpleAssert.that(6 + 100 + 4 + 162 + 4 + 120 + 6 <= NekoPocketPanel.WIDTH, "R78 的横向加总 402 必须不超过面板宽 416");
+            "★底部带横向闭合：右段右边 = 416-6 = 410（左右外边距仍各 6）");
+        SimpleAssert.eq(
+            6 + 112 + 162 + 130,
+            NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
+            "R80① 三段加总 112|162|130 = 404，加左右外边距正好铺满 416");
         SimpleAssert.eq(4, NekoPocketBottomBand.BACKPACK_ROWS, "背包 4 行（R78①）");
         SimpleAssert.eq(9, NekoPocketBottomBand.BACKPACK_COLUMNS, "背包 9 列（与框架那组的 rowSize 同值）");
     }
@@ -3119,7 +3589,7 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★分区域越界拒收：ITEM 上界 128、FLUID 上界 1、ESSENCE 上界 48（各一个负例 + 各一个边界正例）。
+     * ★分区域越界拒收：三个区域各一个上界负例 + 各一个边界正例（★当前上界 135 / 18 / 72 = R80① 口径，旧口径 128 / 1 / 48 已被覆盖）。
      * <p>
      * 这正是被本批改掉的旧判定（越界只按中栏 {@code storage().getSlots()} 算 ⇒ 流体条与源质格的
      * 合法索引被当成越界拒收，而 5…47 这类"中栏内合法"的索引会被误收进错误区域）。
@@ -3130,11 +3600,11 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(
             PocketGhostRequest.Outcome.APPLIED,
             set(config, PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1, PocketFilterConfig.itemKey(1, 0, "")).outcome,
-            "中栏最后一格（第 149 格）合法");
+            "中栏最后一格（R80① 后是第 134 格）合法");
         SimpleAssert.eq(
             PocketGhostRequest.Outcome.APPLIED,
             set(config, PocketConstants.GHOST_FLUID_SLOT_LIMIT - 1, PocketFilterConfig.fluidKey("water")).outcome,
-            "流体槽第 5 格合法（上界 6 ⇒ 最后一列）");
+            "流体槽最后一格合法（R78② 后上界是 18 ⇒ 第 17 格）");
         SimpleAssert.eq(
             PocketGhostRequest.Outcome.APPLIED,
             set(config, PocketConstants.GHOST_FLUID_SLOT_LIMIT - 6, PocketFilterConfig.fluidKey("lava")).outcome,
@@ -3148,11 +3618,11 @@ public class NekoPocketModelTest {
             "源质格上界前一格合法（R78② 后是 71）");
         SimpleAssert.eq(4, config.size(), "四个边界正例各占一格（流体侧多了「第 0 格仍合法」这一条）");
 
-        // 负例：各区域第一个越界索引（★一律取常量上界本身，R78 后是 150 / 18 / 72）
+        // 负例：各区域第一个越界索引（★一律取常量上界本身，R80① 后是 135 / 18 / 72）
         SimpleAssert.eq(
             PocketGhostRequest.Outcome.REJECTED,
             set(config, PocketConstants.GHOST_ITEM_SLOT_LIMIT, PocketFilterConfig.itemKey(1, 0, "")).outcome,
-            "★中栏第 150 格越界 ⇒ 拒收");
+            "★中栏第 135 格（= 上界本身）越界 ⇒ 拒收（R80①：旧口径合法到 149，本轮收到 134）");
         SimpleAssert.eq(
             PocketGhostRequest.Outcome.REJECTED,
             set(config, PocketConstants.GHOST_FLUID_SLOT_LIMIT, PocketFilterConfig.fluidKey("water")).outcome,
@@ -3167,11 +3637,11 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(4, config.size(), "越界的三条一个字节都没写进表（仍是那四条正例）");
 
         // 旧判定的另一半危害：某个索引"对本区域非法、对中栏合法"时不得退化成写到中栏去。
-        // R75① 之后流体侧合法到 5 ⇒ 换成 149：对中栏是末格（合法）、对流体是越界
+        // ★中栏末格（R80① 后是 134）对流体区域是越界：合法索引各区域独立
         SimpleAssert.eq(
             PocketGhostRequest.Outcome.REJECTED,
             set(config, PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1, PocketFilterConfig.fluidKey("water")).outcome,
-            "流体槽没有第 149 格 ⇒ 拒收（不得退化成往中栏末格写）");
+            "流体槽没有中栏末格那一个号 ⇒ 拒收（不得退化成往中栏末格写）");
         SimpleAssert.eq(
             "i:1:0:",
             config.at(Kind.ITEM, PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1)

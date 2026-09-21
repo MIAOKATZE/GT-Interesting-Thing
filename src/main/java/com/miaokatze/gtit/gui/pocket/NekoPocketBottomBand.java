@@ -22,17 +22,22 @@ import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoClientBalances;
 
 /**
- * 底部带 = <b>横向三段</b>（R78①，用户给的摆法）：
- * <b>左段 100</b>（两条币值条 + 两个通道按钮，纵向 4×18 = 72）
- * ｜ <b>中间【玩家背包 9 列 × 4 行 = 162×72】</b>
- * ｜ <b>右段 120</b>（绑定条 + 绑定格 + 状态行 + 帮助按钮）。
+ * 底部带 = <b>横向三段</b>（R78① 定形状、R80① 定宽度）：
+ * <b>左段 112</b>（两条币值条 + 两个通道按钮，纵向 4×18 = 72）
+ * ｜ <b>中间【玩家背包 9 列 × 4 行 = 162×72，★与中栏同 x 同宽】</b>
+ * ｜ <b>右段 130</b>（绑定条 + 绑定格 + 状态行 + 帮助按钮）。
  * <p>
- * <b>几何（R78 钉死）</b>：带 {@code y = 6+270+6 = 282}、高 72；背包 4 行 = 72 <b>正好等于带高</b>
- * ⇒ 中栏 15 行<b>一行不删</b>、面板总高仍 {@code 282+72+6 = 360} = 1080p / GUI Scale 3 的
- * 逻辑高度上限（R75 的硬天花板，一格都不能再加）。
- * 横向加总 {@code 6 + 100 + 4 + 162 + 4 + 120 + 6 = 402 ≤ 416}（★余 14）⇒ 那 14px 全部落在
- * "背包与右段之间"（{@link #BIND_SLACK}），于是右段右边正好贴到 {@code 416-6}，
- * 带的左右外边距仍都是 6。三段宽度与两个 4 的间距是 R78 加总表里的数，<b>不得</b>自己挪。
+ * <b>几何（R78 定 y / 高，R80 定三段宽）</b>：带 {@code y = 6+270+6 = 282}、高 72；背包 4 行 = 72
+ * <b>正好等于带高</b> ⇒ 中栏 15 行<b>一行不删</b>、面板总高仍 {@code 282+72+6 = 360} = 1080p /
+ * GUI Scale 3 的逻辑高度上限（R75 的硬天花板，R80 一格都没动）。
+ * <p>
+ * 横向加总（R80① 定稿）：主区三列在 9 列口径下只占
+ * {@code 6+108+4+162+4+108+6 = 398}，而<b>面板宽保留 416</b>
+ * （{@link NekoPocketPanel#MAIN_RIGHT_SLACK} 就是那具名的 18px = 恰一格）⇒ 这 18px 的去处是本带的
+ * 右段（120 → <b>130</b>）与左段（100 → <b>112</b>）共 +22，同时 R78 的两条 4px 段间距与"余 14"
+ * 一起被并进段宽（−22+8 = 旧余量 14 的来路），账仍然闭合：
+ * {@code 6 + 112 + 162 + 130 = 410 = 416 - 6}，左右外边距都是 6，<b>段间无未认领空白</b>。
+ * ★三段宽与"背包段与中栏同 x 同宽"这两条都由本类的 {@code static} 块现场断言，不靠注释。
  * <p>
  * <b>★R78①：玩家背包是"加回来"的，代价是 E4 风险回归（不得静默）</b>。旧实现（R69-D2）预注册
  * 一个<b>空</b> {@code PlayerSlotGroup} 让 MUI2 的默认分支跳过 36 格绑定（见
@@ -42,7 +47,7 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
  * {@link PocketSlots#PLAYER_BACKPACK_SLOTS}）；</li>
  * <li>连带代价 = <b>E4</b>：首开要同步 36 格，且 vanilla {@code Container#detectAndSendChanges}
  * 每 tick 对这 36 格做 {@code ItemStack} 相等比较（<b>含整份 NBT 深比较</b>），
- * 玩家背包内容一变就把整枚口袋连同 199 格一起重发（R53c 点名的包放大面）；</li>
+ * 玩家背包内容一变就把整枚口袋连同 184 格一起重发（R53c 点名的包放大面）；</li>
  * <li>这条代价是用户为"要玩家背包"<b>明确换回来</b>的，README 第 5 条与本注释同处点名。</li>
  * </ul>
  * ★本文件<b>不</b>自造那 36 个 {@code ModularSlot}：只把 widget 绑到框架注册的同步键上
@@ -109,47 +114,68 @@ public final class NekoPocketBottomBand {
 
     /** 左段 x（= 面板外边距）。 */
     public static final int COIN_X = NekoPocketPanel.MARGIN;
-    /** ★R78①：左段宽由 180 <b>收窄为 100</b>（腾出来的横向空间给中间段的背包）。 */
-    public static final int COIN_WIDTH = 100;
+    /**
+     * ★R80①：左段宽 <b>112</b>（R78 的 100 → 112）。
+     * <p>
+     * 派生式不是"随手 +12"，而是<b>由"背包段必须与中栏同 x"倒推</b>：背包段左沿被钉成
+     * {@link NekoPocketStorageColumn#X}（= 6+108+4 = 118），左段就只能是 {@code 118 − 6 = 112}
+     * （R80 后三段之间<b>不再留 4px 列间距</b>，间距并进了段宽 ⇒ 三段恰好铺满 {@code 416−12}）。
+     */
+    public static final int COIN_WIDTH = NekoPocketStorageColumn.X - COIN_X;
     /** 单条币值条宽（{@code POCKET_C2_coinbar} 的原生宽度，取自契约表；几何不读贴图类）。 */
     private static final int COIN_BAR_WIDTH = PocketGuiTextureContract.widthOf("POCKET_C2_coinbar");
     /** 币值条/按钮的原生高度（{@code POCKET_C2_coinbar} 与 {@code POCKET_C2_btn} 同为 18）。 */
     private static final int COIN_BAR_HEIGHT = PocketGuiTextureContract.heightOf("POCKET_C2_coinbar");
     /** 通道按钮宽（{@code POCKET_C2_btn} 的原生宽度，取自契约表）。 */
     private static final int BUTTON_WIDTH = PocketGuiTextureContract.widthOf("POCKET_C2_btn");
-    /** 币值条在 100 宽段内的左偏移（{@code (100-88)/2}，纯派生）。 */
+    /** 币值条在左段宽内的左偏移（{@code (段宽 - 88)/2}，纯派生：R80① 后段宽 112 ⇒ 左偏移 12）。 */
     private static final int COIN_BAR_X = (COIN_WIDTH - COIN_BAR_WIDTH) / 2;
     /** ★币图标的边长（VM 用 22，本处必须塞进 18 高的币值条 ⇒ 取 16，其余比例照旧）。 */
     private static final int COIN_ICON_SIZE = 16;
     /** 快捷小图标的边长（与 {@code NekoCoinDisplayV2} 的两枚 12×12 同值）。 */
     private static final int QUICK_ICON_SIZE = 12;
 
-    /** 中间段 x（背包左沿 = 左段右边 + 列间距）。 */
-    public static final int BACKPACK_X = COIN_X + COIN_WIDTH + NekoPocketPanel.COLUMN_GAP;
-    /** 背包宽（9 列 × 18 = 162）。 */
-    public static final int BACKPACK_WIDTH = BACKPACK_COLUMNS * NekoPocketPanel.GRID;
-    /** 背包高（4 行 × 18 = 72 = 带高，R78① 的"正好等于"）。 */
-    public static final int BACKPACK_HEIGHT = BACKPACK_ROWS * NekoPocketPanel.GRID;
-    /** ★R78①：右段宽由 220 <b>收窄为 120</b>（绑定条 106 + 绑定格与状态行）。 */
-    public static final int BIND_WIDTH = 120;
     /**
-     * R78 加总表剩下的余量（{@code 416 - 12 - (100+4+162+4+120) = 14}）。
+     * 中间段 x（★R80① 的<b>硬判据</b>之一：与中栏同 x。
+     * 它由 {@link #COIN_X} + {@link #COIN_WIDTH} 得出，而左段宽本身就是"中栏左沿 − 外边距"的倒推，
+     * 故同 x 是<b>构造保证</b>的；{@code BACKPACK_X == NekoPocketStorageColumn.X} 另有装配期断言
+     * 与 {@code NekoPocketModelTest} 双重机检，不靠这句注释）。
+     */
+    public static final int BACKPACK_X = COIN_X + COIN_WIDTH;
+    /**
+     * 背包宽（★本段的权威是"框架那 36 格的列数 × 栅格"，<b>不是</b>抄中栏宽：
+     * {@code SlotGroup("player_inventory")} 的 rowSize 固定是 9，中栏列数再变也不该改背包宽。
+     * 与 {@link NekoPocketStorageColumn#WIDTH} 的相等关系是<b>判据</b>而非定义，见 {@code static} 块）。
+     */
+    public static final int BACKPACK_WIDTH = BACKPACK_COLUMNS * NekoPocketPanel.GRID;
+    /** 背包高（4 行 × 18 = 72 = 带高，R78① 的"正好等于"；R80 未动）。 */
+    public static final int BACKPACK_HEIGHT = BACKPACK_ROWS * NekoPocketPanel.GRID;
+    /**
+     * ★R80①：右段宽 <b>130</b>（R78 的 120 → 130，用户定稿的三段 {@code 112 | 162 | 130} 里的末段）。
      * <p>
-     * ★本常量的存在就是那条"余 14"的账：<b>三段宽度与两个 4 间距都是钉死的数</b>，
-     * 唯一可自由安放余量的地方是"背包与右段之间"；把它放这里，右段的右边就正好贴到
-     * {@code 面板宽 - 外边距}（左右外边距都是 6，见 {@link #BIND_X} 的闭合断言）。
+     * 这一格增量就是中栏 10→9 列腾出的那 <b>18px</b> 的去处（面板宽保留 416）。
+     * 本值<b>故意写成定稿字面量而不是"总可用宽减去前两段"的派生式</b>：派生会让 {@link #BIND_SLACK}
+     * 恒等于 0 而失去判据力，字面量则把"三段之和 = 416 − 2×6 = 404"变成一条<b>真会红</b>的账
+     * （任何一段被改宽而另一段没跟着改，{@code BIND_SLACK != 0} 或 {@code BIND_X + BIND_WIDTH} 的
+     * 闭合断言就会在装配期炸出来 ⇒ 不留无主空白）。
+     */
+    public static final int BIND_WIDTH = 130;
+    /**
+     * R78 时代"三段之间各留 4px 列间距 ⇒ 余 14px 塞在背包与右段之间"的余量（R80① 后必须为 0）。
+     * <p>
+     * ★R80① 后它<b>恒为 0</b>：三段改为彼此紧挨（那 8px 间距并进了左右两段的段宽），
+     * 本常量保留在 {@link #BIND_X} 的式子里是为了让"面板宽 − 三段宽"这笔账留一个<b>具名</b>落点：
+     * 它一旦不是 0，就说明有人又往段间塞间距或改了面板宽 ⇒ 装配期断言当场红，不留无主空白。
      */
     public static final int BIND_SLACK = NekoPocketPanel.WIDTH - 2 * NekoPocketPanel.MARGIN
         - COIN_WIDTH
-        - NekoPocketPanel.COLUMN_GAP
         - BACKPACK_WIDTH
-        - NekoPocketPanel.COLUMN_GAP
         - BIND_WIDTH;
-    /** 右段 x（背包右边 + 列间距 + 余量）。 */
-    public static final int BIND_X = BACKPACK_X + BACKPACK_WIDTH + NekoPocketPanel.COLUMN_GAP + BIND_SLACK;
-    /** 绑定按钮的可视宽（= {@code POCKET_C2_bindbtn} 原生宽 106；★小于段宽 120）。 */
+    /** 右段 x（左段右边 + 背包段宽 + 余量 ⇒ R80 定稿下 = {@code 6+112+162 = 280}）。 */
+    public static final int BIND_X = COIN_X + COIN_WIDTH + BACKPACK_WIDTH + BIND_SLACK;
+    /** 绑定按钮的可视宽（= {@code POCKET_C2_bindbtn} 原生宽 106；★小于 R80① 的段宽 130）。 */
     private static final int BIND_BUTTON_WIDTH = PocketGuiTextureContract.widthOf("POCKET_C2_bindbtn");
-    /** 绑定格 x（段内局部；★106 + 4 + 18 = 128 &gt; 120 ⇒ 绑定格挪到第二行，不再与按钮并排）。 */
+    /** 绑定格 x（段内局部；★106 + 4 + 18 = 128 &gt; 段宽 ⇒ 绑定格挪到第二行，不再与按钮并排）。 */
     private static final int BIND_SLOT_X = 0;
     /** 绑定格 y（第二行）。 */
     private static final int BIND_SLOT_Y = 20;
@@ -192,6 +218,20 @@ public final class NekoPocketBottomBand {
         }
         if (BACKPACK_HEIGHT != HEIGHT) {
             throw new IllegalStateException("[pocket] 背包高度不等于带高（R78① 的 4×18 = 72 被破坏）");
+        }
+        // ★R80① 新增的两条硬判据：背包段与中栏**同 x 同宽**（用户在 §1.1 点名"这是本轮新增的硬判据"）。
+        // 同 x 由 COIN_WIDTH 的倒推式给出、同宽由两侧各自的权威算出 ⇒ 这里只是把它们变成会炸的断言：
+        // 不等 = 中栏与背包在面板上读成"两块没对齐的格子"，而 MUI2 两端都不会报任何错。
+        if (BACKPACK_X != NekoPocketStorageColumn.X) {
+            throw new IllegalStateException("[pocket] 背包段与中栏不同 x: " + BACKPACK_X + " != " + NekoPocketStorageColumn.X);
+        }
+        if (BACKPACK_WIDTH != NekoPocketStorageColumn.WIDTH) {
+            throw new IllegalStateException(
+                "[pocket] 背包段与中栏不同宽: " + BACKPACK_WIDTH + " != " + NekoPocketStorageColumn.WIDTH);
+        }
+        // ★R80①：三段之间不再塞列间距 ⇒ 余量必须恰为 0（不是 0 就是"有一块没人认领的空白"）。
+        if (BIND_SLACK != 0) {
+            throw new IllegalStateException("[pocket] 底部带三段没铺满可用宽，余量 " + BIND_SLACK + "（R80① 定稿：112+162+130 = 404）");
         }
         if (BIND_X + BIND_WIDTH != NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN) {
             throw new IllegalStateException(
@@ -253,7 +293,7 @@ public final class NekoPocketBottomBand {
     // ------------------------------------------------------------------ 左段：币值（猫猫机形态）+ 两个通道按钮
 
     /**
-     * 左段（100×72）：两条币值条（各 88×18）+ 两个通道按钮（各 88×18），纵向 4×18 = 72。
+     * 左段（112×72）：两条币值条（各 88×18）+ 两个通道按钮（各 88×18），纵向 4×18 = 72。
      * <p>
      * R78① 的"收窄"：旧口径这一段是 180 宽（两条币值条并排 + 两个通道按钮并排 + 一段说明文字），
      * 现在两条并排改纵向，且★说明文字（{@code note.channel}）撤进各自 tooltip（R74② / R78 D-2）。
@@ -463,7 +503,7 @@ public final class NekoPocketBottomBand {
     // ------------------------------------------------------------------ 右段：绑定 / 解绑 + 帮助
 
     /**
-     * 绑定段（120×72）：绑定按钮（左键绑定 / 右键解绑末条 / Shift 右键清空）+ 绑定格 +
+     * 绑定段（130×72，R80① 由 120 加宽）：绑定按钮（左键绑定 / 右键解绑末条 / Shift 右键清空）+ 绑定格 +
      * 一行状态 + 帮助按钮（★R78 D-2 撤下来的说明的可见入口）。
      */
     private static ParentWidget<?> bindBlock(NekoPocketPanel ui) {
@@ -540,24 +580,24 @@ public final class NekoPocketBottomBand {
      * 服务端行的解析结果（客户端只负责格式化，<b>不按 ghost 表或内存表推断</b>，R39b/R19）。
      * 行的机读形状见 {@link NekoPocketPanel#composeBindRows()}。
      */
-    static final class Row {
+    public static final class Row {
 
-        /** 未定位（正常态，R40b）。 */
-        static final char STATUS_UNLOCATED = 'N';
+        /** 未定位（正常态，R40b）。★R80④ 连同下面两个状态码一起放开可见性，回归套件才能构造/核对绑定行 blob。 */
+        public static final char STATUS_UNLOCATED = 'N';
         /** 已定位。 */
-        static final char STATUS_LOCATED = 'L';
+        public static final char STATUS_LOCATED = 'L';
         /** 位置已失效（需重新绑定）。 */
-        static final char STATUS_STALE = 'S';
+        public static final char STATUS_STALE = 'S';
 
-        final String id;
-        final char status;
-        final int dim;
-        final int x;
-        final int y;
-        final int z;
-        final int slot;
+        public final String id;
+        public final char status;
+        public final int dim;
+        public final int x;
+        public final int y;
+        public final int z;
+        public final int slot;
 
-        Row(String id, char status, int dim, int x, int y, int z, int slot) {
+        public Row(String id, char status, int dim, int x, int y, int z, int slot) {
             this.id = id;
             this.status = status;
             this.dim = dim;
@@ -597,7 +637,7 @@ public final class NekoPocketBottomBand {
          * 分隔符是 {@code '|'} 与 {@code ';'}，都来自 {@link #compose(List)} 的自有形状
          * （<b>不是</b> NBT 键名，故不落 {@code PocketConstants}），解析失败一律回落空行。
          */
-        static List<Row> parse(String blob) {
+        public static List<Row> parse(String blob) {
             final List<Row> rows = new ArrayList<>();
             if (blob == null || blob.isEmpty()) {
                 return rows;
@@ -625,7 +665,7 @@ public final class NekoPocketBottomBand {
         }
 
         /** 与 {@link #parse} 对称的写出（服务端侧使用）。 */
-        static String compose(List<Row> rows) {
+        public static String compose(List<Row> rows) {
             final StringBuilder builder = new StringBuilder();
             for (Row row : rows) {
                 if (builder.length() > 0) {

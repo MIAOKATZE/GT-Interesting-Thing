@@ -30,20 +30,29 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * （R53c 的包放大面）。</li>
  * </ol>
  * <p>
- * 本对象<b>双端各持一份</b>（面板树双端同构构建）。中栏 150 格的<b>内容</b>由 vanilla 的
+ * 本对象<b>双端各持一份</b>（面板树双端同构构建）。中栏 135 格的<b>内容</b>由 vanilla 的
  * {@code Packet103SetSlot} → {@code Slot.putStack} 喂给客户端那份 handler，
  * 因此客户端只负责显示；序列化只从服务端那份发生（关屏钩子按 mixin 只跑在 {@code EntityPlayerMP}）。
  * <p>
- * <b>形状变更（R75）与旧档兼容</b>：中栏 128→150、流体 1 tank→{@link #FLUID_TANK_COUNT} tank。
- * 读侧<b>只增不减</b>（{@link #loadGroup}）且旧单 tank 内容落到 0 号（{@link #loadTanks}），
- * 写侧一律新形状 ⇒ 旧档不会炸、也不会静默少件；越界槽号丢弃时<b>一次性 WARN</b>。
+ * <b>形状变更与旧档兼容</b>：中栏 128→150（R75）→<b>135</b>（R80①，★方向相反：<b>收缩</b>）、
+ * 流体 1 tank→{@link #FLUID_TANK_COUNT} tank。读侧<b>格数永远由构造期决定</b>（{@link #loadGroup}
+ * 忽略档里的 {@code Size} ⇒ "只增不减"那条老话在收缩场景下的正确表述是
+ * <b>"handler 绝不跟着档缩小，也绝不跟着档变大"</b>），且旧单 tank 内容落到 0 号（{@link #loadTanks}），
+ * 写侧一律新形状。
+ * <p>
+ * ★<b>R80① 收缩兼容的三个后果（本轮新增，逐条有回归用例）</b>：
+ * ① 150 格时代写的档，其 135…149 号条目<b>槽号越界</b> ⇒ ② 越界条目<b>丢弃 + 一次性 WARN</b>
+ * （报出条数与现有格数；既不静默丢件，也不像上游 {@code deserializeNBT} 那样把 handler 缩成 150 格
+ * 再去点越界槽号炸容器）⇒ ③ 0…134 号条目<b>原样落位</b>（同一批槽号在收缩前后指的是同一格，
+ * 不重排、不搬移），玩家侧表现为"最后 15 格的东西不见了 + 日志一条 WARN"，
+ * <b>不是</b>面板打不开、也<b>不是</b>整档清零。
  * <p>
  * 纯数据件：不持 {@code EntityPlayer}、不持 {@code World}，也不做任何搬运决策
  * （流体搬运在 {@link PocketSlots}，通道与蒸馏归 S6/S7）。
  */
 public final class PocketInventory {
 
-    /** 中栏格数 = 10 列 × 15 行 = 150（R75；单源取 {@link PocketConstants#GHOST_ITEM_SLOT_LIMIT}）。 */
+    /** 中栏格数 = 9 列 × 15 行 = 135（R80①；单源取 {@link PocketConstants#GHOST_ITEM_SLOT_LIMIT}）。 */
     public static final int STORAGE_SLOTS = PocketConstants.GHOST_ITEM_SLOT_LIMIT;
     /**
      * 流体交互格数 = {@link PocketConstants#FLUID_TANK_TOTAL} 个 tank ×
@@ -154,7 +163,7 @@ public final class PocketInventory {
      * 空区一律 {@code removeTag} 而不是写空 compound：口袋会跟着玩家到处走，留空壳档会让
      * {@code detectAndSendChanges} 的 NBT 比较与存档体积都白付一遍。
      * <p>
-     * ★写档<b>一律按新形状</b>（R75 的存档兼容口径）：中栏写出 150 格的 {@code Size}，
+     * ★写档<b>一律按新形状</b>（R75 的存档兼容口径）：中栏写出 135 格的 {@code Size}，
      * 流体写出 {@link PocketConstants#FLUID_BAR_TANK} 编号的列表；读侧的旧形状兼容只在
      * {@link #readFrom} 那一边。
      */
@@ -177,8 +186,8 @@ public final class PocketInventory {
      * <p>
      * 上游那份实现开头就 {@code setSize(nbt.getInteger("Size"))}，而 {@code setSize} 会把整个
      * {@code stacks} 列表<b>换成一个新数组</b>（字节码实证：{@code Arrays.fill} + {@code Arrays.asList}
-     * 后 {@code putfield}）⇒ 拿旧档（{@code Size=128}）读进 150 格的 handler，会把 handler <b>缩成 128 格</b>，
-     * 而 Container 那边 150 个 {@code ModularSlot} 仍会去点 128…149 号 ⇒
+     * 后 {@code putfield}）⇒ 拿旧档（{@code Size=128}）读进 135 格的 handler，会把 handler <b>缩成 128 格</b>，
+     * 而 Container 那边 150 个 {@code ModularSlot} 仍会去点 128…149 号（★R80 后同理：旧档 135…149 号会点到只有 135 格的 handler） ⇒
      * {@code validateSlotIndex} 抛越界，玩家侧表现为"点后面几格没反应 / 面板炸"。
      * 本方法因此：① 忽略 {@code Size}（格数永远由构造期决定 ⇒ <b>只增不减</b>）；
      * ② 越出当前格数的条目<b>丢弃并一次性 WARN</b>（旧实现是静默跳过 = 丢件无痕）。
@@ -217,24 +226,25 @@ public final class PocketInventory {
     /**
      * "越界槽号被丢弃"的一次性 WARN（R75：不许静默丢件）。
      * <p>
-     * 静态闩的理由：一次会话会读 4 个组，且面板可能反复开关；只在<b>首次</b>遇到时敲一次，
-     * 既不留"每 tick 一条"的日志洪水，也不至于完全无声。
+     * ★R80① 将闩从"整进程一次"改为"<b>每个槽组键一次</b>"：收缩场景（150 → 135）下同一枚口袋
+     * 一次读档就可能让 {@code contents}、{@code interactionSlots} 两个区各自丢条目，
+     * 整进程只报一次就等于第二个区<b>静默丢件</b>（用户那句"不许静默丢件"不许）。
+     * 仍然不会成为日志洪水：键集合是固定的四个区 + 流体 tank，面板反复开关也只各报一次。
      */
     private static void warnOutOfRangeOnce(String label, String key, int slots, int dropped) {
-        if (outOfRangeWarned) {
+        if (!outOfRangeWarnedKeys.add(key)) {
             return;
         }
-        outOfRangeWarned = true;
         GTInterestingThing.LOG.warn(
-            "[pocket] 存档里 {}（键 {}）有 {} 条槽号越出当前形状（现有 {} 格），已丢弃这些条目" + "（面板形状变更后的旧/外来档；本条只报一次）",
+            "[pocket] 存档里 {}（键 {}）有 {} 条槽号越出当前形状（现有 {} 格），已丢弃这些条目" + "（面板形状变更后的旧/外来档；本条按区只报一次）",
             label,
             key,
             dropped,
             slots);
     }
 
-    /** 越界槽号的一次性 WARN 闩。 */
-    private static boolean outOfRangeWarned;
+    /** 越界槽号 WARN 的"每个区一次"闩（★R80①；用 LinkedHashSet 保首次出现的顺序，日志可读）。 */
+    private static final java.util.Set<String> outOfRangeWarnedKeys = new java.util.LinkedHashSet<>();
 
     /**
      * 读 {@link PocketConstants#FLUID_BAR}：两代形状都在这里分流（见该键的 javadoc）。
@@ -347,7 +357,7 @@ public final class PocketInventory {
         this.dirty = false;
     }
 
-    /** 中栏 150 格（行主序 0..149，与 {@code SlotGroupWidget} 矩阵的字符序天然一致）。 */
+    /** 中栏 135 格（行主序 0..134，与 {@code SlotGroupWidget} 矩阵的字符序天然一致）。 */
     public ItemStackHandler storage() {
         return storage;
     }

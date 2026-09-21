@@ -46,7 +46,7 @@ import appeng.api.storage.data.IAEStackType;
  * <b>★ghost 只原位改属性</b>（R41b）：实例从装配到关屏不换，声明态只影响遮罩与 tooltip；
  * 内容层同样走 {@link #setCellContent(String, int)} 原位切换 ⇒ 格数恒定 72、widget 树不因
  * 数据变化（R32 双端同树的前提）。72 格本就是显示侧、<b>不进 Container</b>（R35），
- * 因此既不占 235 也不动槽号。
+ * 因此既不占 220 也不动槽号。
  * <p>
  * <b>TC 不在场时一律不收</b>（R31 的整栏灰显由 {@code setEnabledIf} 给出，本类用
  * {@code IWidget#areAncestorsEnabled()} 读它，与 {@link NekoFilterSlot} 同一口径）。
