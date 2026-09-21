@@ -22,7 +22,6 @@ import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
-import com.cleanroommc.modularui.widgets.slot.PlayerSlotGroup;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
@@ -46,41 +45,52 @@ import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 /**
- * 猫猫次元口袋主面板（<b>416×360</b>，<b>不显示玩家背包</b> = L2 档）。
+ * 猫猫次元口袋主面板（<b>416×360</b>，<b>★R78① 起带玩家背包</b> = 底部带中间段 9×4）。
  * <p>
  * <b>R32（本任务最高风险）的结构性处置</b>：{@link #assemble()} 是<b>一条线性装配</b>——双端同调用点、
  * 同一批列类、同一顺序 add，没有任何远程分支改变子节点的顺序或数量（同步键全部显式命名）。
  * 槽位布局由各列类的 {@code SlotGroupWidget.matrix(String...)} 字面量描述（R41a）⇒
  * 「双端 widget 树失序」不是靠纪律避免，而是结构上不可能发生。
+ * ★R78③ 的"格序按首次入账顺序"确实是一次<b>数据驱动的显示变化</b>，它的落点被严格限制成
+ * "恒定 72 个 widget 的内容层原位换图标"（{@link NekoEssenceGhostCell#setCellContent(String, int)}），
+ * 映射由服务端算、随现有源质 blob 同步 ⇒ 两端各算各的这件事在结构上就不成立。
  * <p>
- * <b>R75 宽度闭合（逐字照加总表，无富余）</b>：
+ * <b>宽度闭合（R75 钉死，逐字照加总表，无富余）</b>：
  * {@code 6 + 108(流体 6 列) + 4 + 180(中栏 10 列) + 4 + 108(源质 6 列) + 6 = 416} ⇒
  * 三列 root 固定 {@code x/宽 = 6/108 · 118/180 · 302/108}，不得再给任何列加宽。
  * <b>高度闭合</b>：{@code 6 + 270(15 行) + 6 + 72(底部带) + 6 = 360}，而 360 正是
  * <b>1080p / GUI Scale 3 的逻辑高度上限</b>（R75"为什么是 15 行"的全部理由）⇒
- * <b>任何加高方案都必须先重算这条账</b>，纵向已经没有一格余量。
+ * <b>任何加高方案都必须先重算这条账</b>，纵向已经没有一格余量。R78① 要的背包因此
+ * <b>只能</b>横向挤（底部带拆三段），中栏 15 行一行不删。
  * <p>
- * <b>Container 口径 = 恰好 {@value PocketSlots#TOTAL_REAL_SLOTS}</b>（R75，覆盖 §14.3/R43b 的 149
- * 与 R74 一度算出的 185）：中栏 150 + 流体交互 12（6 列 × 输入/输出）+ 蒸馏 12 + 绑定 1；
- * 48 源质格、6 个流体槽本体与全部 ghost 走显示侧，<b>不进 Container</b>（R35）。
- * 为此预注册一个<b>空的</b> {@code PlayerSlotGroup}，让框架的
- * {@code ModularSyncManager#construct} 跳过它默认的 36 格玩家绑定（{@code ISyncRegistrar#bindPlayerInventory}
- * 的"已注册即跳过"分支是该入口的既有语义，不是绕行）。两条理由：
+ * <b>Container 口径 = 恰好 {@value PocketSlots#TOTAL_REAL_SLOTS}</b>（R78，覆盖 R75 的 175、
+ * R74 的 185、§14.3/R43b 的 149）：中栏 150 + 流体交互 <b>36</b>（3 组 × 6 列 × 进/出）
+ * + 蒸馏 12 + 绑定 1 + <b>玩家背包 36</b>；72 源质格、18 个流体槽本体与全部 ghost 走显示侧，
+ * <b>不进 Container</b>（R35）。
+ * <p>
+ * <b>★玩家背包那 36 格（R78① 撤销 R69-D2，代价 = E4 包放大风险回归，不得静默）</b>：
+ * 旧实现预注册一个<b>空</b> {@code PlayerSlotGroup}，让框架的
+ * {@code ModularSyncManager#construct} 跳过它默认的 36 格绑定（{@code ISyncRegistrar#bindPlayerInventory}
+ * 的"已注册即跳过"分支）⇒ 面板不显示背包、Container 恰好等于本工厂产出。R78① 按用户裁决
+ * <b>撤销</b>那一招：背包真实显示、可交互、可 shift。
+ * 换回来的代价（README 第 5 条与本处同点名）：
  * <ol>
- * <li>175 必须可机检——多 36 格就断言不出"有区域被重复接入"；</li>
- * <li>L2 档不显示背包，但那 36 格仍会被 vanilla 每 tick 做 {@code ItemStack} 相等比较
- * （<b>含整份 NBT 深比较</b>，见 {@code Container#detectAndSendChanges} 与
- * {@code ItemStack#isItemStackEqual}），内容一变就整枚口袋连 150 格一起重发——正是 R53c 点名的包放大面。</li>
+ * <li><b>首开同步 36 格</b>；</li>
+ * <li>vanilla {@code Container#detectAndSendChanges} <b>每 tick</b> 对这 36 格做 {@code ItemStack}
+ * 相等比较（<b>含整份 NBT 深比较</b>，见 {@code ItemStack#isItemStackEqual}），内容一变就把整枚
+ * 口袋连同 150 格一起重发 —— 这正是 R53c 点名的包放大面（E4）。</li>
  * </ol>
- * 跳过后 {@code open}/{@code work} 位不再随栈同步到客户端 ⇒ 由 {@code network/PocketStateNetwork}
- * 定向推送同一份状态。
+ * 这条代价是<b>用户为"要玩家背包"明确换回来的</b>，不是实现走形；若日后要收回背包，
+ * 收回的就是这两条。
  * <p>
  * <b>关屏写状态</b>：{@link NekoPocketContainer#onModularContainerClosed()}（R35，NEI 顶屏不误触发）。
  * <p>
- * <b>绑定信息的可见面（R74②/R75）</b>：第四列退役后，全部绑定条目由<b>绑定按钮的 tooltip</b>
+ * <b>绑定信息的可见面（R74②/R75/R78 D-2）</b>：全部绑定条目由<b>绑定按钮的 tooltip</b>
  * 承载（{@link #bindTooltipText()}，超出 {@code NekoPocketBottomBand.TOOLTIP_ROWS} 条时
  * <b>显式</b>提示还有几条没列），解绑入口改为该按钮的<b>右键 = 解绑最后一条</b> /
  * <b>Shift 右键 = 清空全部</b>（{@link #dispatchBindButtonClick(int)}）。
+ * 左栏那 7 段常驻说明同样撤进 tooltip（{@link #notesText()} 与其两个可见入口：
+ * 左栏末行的 tooltip 与底部带右段的帮助按钮）。
  * <p>
  * <b>本类同时是 S6/S7 的活会话</b>（{@link PocketSession}）：通道一拍与蒸馏节拍的宿主是
  * {@code Item.onUpdate}，它读的就是这里持有的那一份内存对象（R53c 的"一次读一次写"因此不被打破）。
@@ -128,8 +138,18 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_GHOST_REQUEST = "pocket.ghost.request";
     /** C2S：所有按钮/选中动作走这一个键，值 = {@code code * ACTION_ARG_BASE + arg}（单包原子，无两值竞态）。 */
     private static final String SYNC_ACTION = "pocket.action";
-    /** 动作参数基数（当前最大 arg = 149 格 / 95 格+Shift 位）。 */
+    /** 动作参数基数（当前最大 arg = 149 格 / 71 格+Shift 位）。 */
     private static final int ACTION_ARG_BASE = 1024;
+
+    /**
+     * 源质 blob 的<b>段</b>间分隔符（{@code ';'}，与绑定行/ghost blob 同字符但只在源质那一根通道上用）。
+     * ★不能与 {@link #BLOB_CELL_SEPARATOR} 同字符，否则"无主格的空串"会把段切歪。
+     */
+    private static final char BLOB_SECTION_SEPARATOR = ';';
+    /** 源质 blob 的<b>格</b>间分隔符（{@code ','}）。 */
+    private static final String BLOB_CELL_SEPARATOR = ",";
+    /** {@link #BLOB_CELL_SEPARATOR} 的正则形态（{@code String.split} 用；逗号不是元字符，无需转义）。 */
+    private static final String BLOB_CELL_SEPARATOR_REGEX = ",";
 
     /** C2S 动作码（<b>互不相同</b>：R64c 判据「各自绑定的动作码不同」）。 */
     private static final int ACTION_TAKE_OUT = 1;
@@ -167,19 +187,31 @@ public final class NekoPocketPanel implements PocketSession {
     private final NekoFilterSlot[] itemSlots = new NekoFilterSlot[PocketInventory.STORAGE_SLOTS];
 
     /**
-     * 6 个流体槽与 48 源质格的登记表（与 {@link #itemSlots} 同一机制，S-E 补的两个拖入入口）。
+     * 18 个流体槽与 72 源质格的登记表（与 {@link #itemSlots} 同一机制，S-E 补的两个拖入入口）。
      * <p>
-     * 长度恒定（{@code GHOST_FLUID_SLOT_LIMIT} 与 {@code GHOST_ESSENCE_SLOT_LIMIT}）、装配序固定
-     * ⇒ ghost 声明再多也不会改变 widget 树（R41b/R32）；{@link #applyGhosts()} 按
-     * {@code (kind, slot)} 取到那一个实例原位切属性。R75① 之前这里只有一个 {@code fluidBar}
-     * 字段（"流体侧只有一格"的特例），现在数组下标 = 列号 = tank 号 = 该列的 ghost 槽号。
+     * 长度恒定（{@code GHOST_FLUID_SLOT_LIMIT}=18 与 {@code GHOST_ESSENCE_SLOT_LIMIT}=72）、装配序固定
+     * ⇒ ghost 声明与"格位归属换了 tag"再多也不会改变 widget 树（R41b/R32）；{@link #applyGhosts()} 按
+     * {@code (kind, slot)} 取到那一个实例原位切属性，{@link #applyEssenceBlob(String)} 按同一套下标
+     * 原位换内容层。R75① 之前这里只有一个 {@code fluidBar} 字段（"流体侧只有一格"的特例），
+     * 现在数组下标 = tank 号 = 该流体列的 ghost 槽号（组内列号由 {@code PocketInventory} 单源映射）。
      */
     private final NekoPocketFluidSlot[] fluidSlots = new NekoPocketFluidSlot[PocketConstants.GHOST_FLUID_SLOT_LIMIT];
     private final NekoEssenceGhostCell[] essenceCells = new NekoEssenceGhostCell[PocketConstants.GHOST_ESSENCE_SLOT_LIMIT];
 
     // ---- 客户端显示缓存（S2C 写入；服务端不读）----
-    private final int[] essenceCache = new int[TaumCompat.DISPLAY_CELLS];
-    private final String[] essenceTags = TaumCompat.aspectOrder();
+    //
+    // ★R78③：这两张表的下标都是<b>格号</b>（0…71），不再是 aspectOrder() 的位置。
+    // 服务端权威值住在 PocketEssenceStore 的格位归属表里（并落 NBT essCellOrder），
+    // 客户端这两张表只是它的<b>同步镜像</b>——两端不各算各的格序，这是 R32 的头号风险的落点。
+    private final int[] essenceCache = new int[PocketConstants.ESSENCE_DISPLAY_GRID];
+    private final String[] essenceCellTags = new String[PocketConstants.ESSENCE_DISPLAY_GRID];
+    /**
+     * 有货但没有格位的 tag 数（★同步 blob 的第三段；驱动 {@code aspect.overflow_note}）。
+     * <p>
+     * 必须是服务端算出来的读数而不是客户端"注册数 &gt; 格数"的推断：格位归属是数据驱动的，
+     * 客户端无从知道服务端一共见过几个 tag（R19/R39b 的"客户端不得推断"口径）。
+     */
+    private int essenceUnplaced;
     private String bindRowsBlob = "";
     private boolean pullMode;
     private int filterCount;
@@ -203,6 +235,19 @@ public final class NekoPocketPanel implements PocketSession {
         this.pocket = data.getUsedItemStack();
         this.carrierSlotIndex = data.getSlotIndex();
         this.inventory = PocketInventory.readFrom(this.pocket == null ? null : this.pocket.getTagCompound());
+        // ★R78③：把"格位归属 + 现有点数"当作两份镜像的<b>起点</b>。双端读的都是同一份口袋 NBT
+        // （客户端那一份是 vanilla 同步过来的物品 tag），所以起点天然一致；之后的每一次变化
+        // 都由服务端 composeEssenceBlob 覆盖客户端那份 ⇒ 不存在"两端各算各的格序"。
+        for (int cell = 0; cell < essenceCellTags.length; cell++) {
+            final String tag = inventory.essence()
+                .tagAtCell(cell);
+            essenceCellTags[cell] = tag;
+            essenceCache[cell] = tag == null ? 0
+                : inventory.essence()
+                    .get(tag);
+        }
+        essenceUnplaced = inventory.essence()
+            .unplacedTagCount();
     }
 
     /**
@@ -219,14 +264,21 @@ public final class NekoPocketPanel implements PocketSession {
         final ModularPanel panel = ModularPanel.defaultPanel(PANEL_NAME, WIDTH, HEIGHT);
 
         // 1) 槽组注册：矩阵侧与 Container 侧同名，否则 MUI2 直接 IllegalArgumentException（R41d）。
-        // allowShiftTransfer 一律 false —— L2 档没有玩家背包 ⇒ 没有 shift 落点（§6 第 11 条）
+        // allowShiftTransfer 对<b>本仓四组</b>仍为 false：shift 的落点是玩家背包那一组，
+        // 而那一组由框架自己注册（rowSize 9、allowShiftTransfer=true）⇒ 双向搬运由它单边发起即可，
+        // 四组都开会出现"同一次 shift 被两组各抢一次"的分叉。
         syncManager
             .registerSlotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, NekoPocketStorageColumn.COLUMNS, 100, false));
         syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_FLUID, PocketSlots.FLUID_COLUMNS, 100, false));
         syncManager.registerSlotGroup(
             new SlotGroup(PocketSlots.GROUP_DISTILL, NekoPocketEssenceColumn.DISTILL_COLUMNS, 100, false));
         syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_BIND, 1, 100, false));
-        syncManager.registerSlotGroup(new PlayerSlotGroup(PlayerSlotGroup.NAME));
+        // ★R78① 撤销 R69-D2：<b>不再</b>预注册空 PlayerSlotGroup。
+        // 旧那一行（syncManager.registerSlotGroup(new PlayerSlotGroup(PlayerSlotGroup.NAME))）的作用是
+        // 让 ModularSyncManager#construct 的"已注册即跳过"分支生效，从而不绑那 36 格背包。
+        // 撤掉之后框架自己会注册 player_inventory 组与 36 个 handler（键 "player:0"…"player:35"），
+        // 由 NekoPocketBottomBand 的中间段画出来。连带代价 = E4 包放大风险回归，
+        // 逐字写在类 javadoc 与 README 第 5 条（用户为"要背包"明确换回来的）。
 
         // 2) 同步值（显式键，双端同一顺序注册）
         registerSyncValues();
@@ -235,16 +287,16 @@ public final class NekoPocketPanel implements PocketSession {
         // 位置在槽组/同步值之后、三列之前，且双端同一顺序（R32）
         panel.child(NekoPocketDecoration.build());
 
-        // 3) 三列 + 底部带（R74② 删掉第四列；顺序固定 = 双端同树）
+        // 3) 三列 + 底部带三段（R74② 删掉第四列；R78① 底部带横向拆成"币值｜背包｜绑定"三段；
+        // 顺序固定 = 双端同树）
         panel.child(NekoPocketLeftColumn.build(this));
         panel.child(NekoPocketStorageColumn.build(this));
         panel.child(NekoPocketEssenceColumn.build(this));
-        // 底部带两块（币值/通道按钮 与 绑定块）按"左块、右块"的固定顺序加入
         for (ParentWidget<?> band : NekoPocketBottomBand.build(this)) {
             panel.child(band);
         }
 
-        // 4) 槽数口径断言（R75：==175；多 = 重复接入，少 = 漏接，双端同抛）
+        // 4) 槽数口径断言（R78：工厂产出 199 + 框架背包 36 = 235；多 = 重复接入，少 = 漏接，双端同抛）
         slots.assertTotalRealSlots();
 
         // 4b) ghost 虚化：客户端先按自己从 NBT 读到的那份声明表原位刷一遍（服务端那份是权威，
@@ -349,9 +401,15 @@ public final class NekoPocketPanel implements PocketSession {
         return inventory.essence();
     }
 
-    /** 派生出的 aspect 序（双端同序，客户端格式化用）。 */
+    /**
+     * 派生出的 aspect 序（双端同 mod 集 ⇒ 同序）。
+     * <p>
+     * ★R78③ 之后这<b>不再是格序</b>：格序改由服务端算的格位归属表决定（见
+     * {@link #essenceTagAtCell(int)}）。本序只剩一个用处——{@code TaumCompat} 那边的
+     * 注册数日志与"这个包一共认识几个 aspect"的参考，GUI 不得再拿它排格子。
+     */
     String[] essenceOrder() {
-        return essenceTags;
+        return TaumCompat.aspectOrder();
     }
 
     // ------------------------------------------------------------------ C2S 请求（客户端只发码）
@@ -813,6 +871,10 @@ public final class NekoPocketPanel implements PocketSession {
      * 换算 1 点 = 1 晶、Shift 一次取满一格（{@link PocketConstants#ESSENCE_OUT_SHIFT_POINTS}，
      * R44e③）。<b>先扣点、后物化、放不下就退点</b>：三步任何一步失败都不会凭空造晶，也不会
      * 把点数值吞掉（TC 缺席 ⇒ {@code newCrystalStack} 返回 null ⇒ 点数原样退回）。
+     * <p>
+     * ★R78③：arg 是<b>格号</b>，tag 由服务端的格位归属表（{@code PocketEssenceStore#tagAtCell}）
+     * 反查——<b>不吃</b>客户端可能送来的 tag（R18/R19：客户端字符串一律不可信），也不再是
+     * {@code aspectOrder()[格号]} 那个固定派生序。空格位（该格从未被占过）一律不动并给"无事发生"回执。
      */
     private void performEssenceOut(int packedArg) {
         if (!serverGuardOk()) {
@@ -820,12 +882,13 @@ public final class NekoPocketPanel implements PocketSession {
         }
         final boolean shift = packedArg >= PocketConstants.ESSENCE_OUT_SHIFT_FLAG;
         final int cell = shift ? packedArg - PocketConstants.ESSENCE_OUT_SHIFT_FLAG : packedArg;
-        final String[] order = TaumCompat.aspectOrder();
-        if (cell < 0 || cell >= order.length) {
+        final PocketEssenceStore store = inventory.essence();
+        final String tag = store.tagAtCell(cell);
+        if (tag == null) {
+            // 该格没有归属（从未入过账）⇒ 没东西可取；给一条可读回执而不是静默（R10）
+            putReceipt("gtit.pocket.still.idle", 0);
             return;
         }
-        final String tag = order[cell];
-        final PocketEssenceStore store = inventory.essence();
         final int wanted = shift ? PocketConstants.ESSENCE_OUT_SHIFT_POINTS : PocketConstants.ESSENCE_OUT_UNIT_POINTS;
         final int points = store.extract(tag, wanted);
         if (points <= 0) {
@@ -869,7 +932,7 @@ public final class NekoPocketPanel implements PocketSession {
         }
     }
 
-    /** 源质格的登记（装配期逐格调，双端各 48 次；下标 = {@code Kind.ESSENCE} 的槽号）。 */
+    /** 源质格的登记（装配期逐格调，双端各 72 次；下标 = {@code Kind.ESSENCE} 的<b>格号</b>，R78③）。 */
     void trackEssenceCell(int index, NekoEssenceGhostCell widget) {
         if (index >= 0 && index < essenceCells.length) {
             essenceCells[index] = widget;
@@ -985,7 +1048,7 @@ public final class NekoPocketPanel implements PocketSession {
      * 服务端这一份对中栏的作用是 {@code ModularSlot.accessibility(false, false)} ——
      * 那才是"禁放置禁取出"的执法点（vanilla {@code slotClick} 在服务端读 {@code isItemValid}
      * /{@code canTakeStack}，见 {@code ModularSlot.java:73-80}）；客户端那一份负责虚化渲染。
-     * 流体条与源质格<b>不进 Container</b>（R35），它们在服务端那份只更新自身状态，
+     * 流体槽与源质格<b>不进 Container</b>（R35），它们在服务端那份只更新自身状态，
      * 但走的<b>是同一条代码路径</b>（不分叉 ⇒ 两端不会因"只有客户端应用"而漂移）。
      * 转 ghost 前先把中栏格内物品搬走（R38 第 2 条：产物不能进自己）。
      */
@@ -1018,11 +1081,11 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 6 个流体槽（{@code Kind.FLUID}，索引空间 = 列号）。
+     * 18 个流体槽（{@code Kind.FLUID}，索引空间 = tank 号 = 组内列号派生，R78②）。
      * <p>
-     * 每槽只切"本列声明了哪种流体"这一个显示状态：各自的 tank、{@code alwaysShowFull}、
+     * 每槽只切"本 tank 声明了哪种流体"这一个显示状态：各自的 tank、{@code alwaysShowFull}、
      * 两格同权的灌排一个字都不动（流体 ghost 不搬空任何东西，声明本身就是"要拉这一种"）。
-     * 循环上界取登记表长度（= {@code GHOST_FLUID_SLOT_LIMIT}）⇒ 与白名单同源，不会漂移。
+     * 循环上界取登记表长度（= {@code GHOST_FLUID_SLOT_LIMIT} = 18）⇒ 与白名单同源，不会漂移。
      */
     private void applyFluidGhosts() {
         for (int index = 0; index < fluidSlots.length; index++) {
@@ -1038,7 +1101,11 @@ public final class NekoPocketPanel implements PocketSession {
         }
     }
 
-    /** 右栏 48 格（{@code Kind.ESSENCE}）：格位归属由 {@code aspectOrder()[index]} 钉死 ⇒ 只切开关。 */
+    /**
+     * 右栏 72 格（{@code Kind.ESSENCE}）：格位归属由<b>服务端的格位表</b>钉死（R78③，
+     * 不再是 {@code aspectOrder()[index]}）⇒ 本方法只切 ghost 开关，内容层由
+     * {@link #applyEssenceBlob(String)} 走另一条原位通道。
+     */
     private void applyEssenceGhosts() {
         for (int index = 0; index < essenceCells.length; index++) {
             final NekoEssenceGhostCell cell = essenceCells[index];
@@ -1217,20 +1284,102 @@ public final class NekoPocketPanel implements PocketSession {
         applyGhostView(blob);
     }
 
-    /** 48 格点数 blob（逗号分隔，顺序 = {@link TaumCompat#aspectOrder()}）。 */
+    /**
+     * 源质 blob 的<b>三段</b>机读形状（★R78③；段间 {@code ';'}，段内 {@code ','}）：
+     * 
+     * <pre>
+     *   72 个点数（下标 = 格号，无主格写 0） ';' 72 个 tag（无主格写空串） ';' 有货但无格位的 tag 数
+     * </pre>
+     * 
+     * 单函数编解码的理由与 {@link #ghostBlobOf} 同一条：编解码各一份实现就会在同步里静默变形；
+     * ★这里同时是"格序由服务端算、随现有 blob 同步"这条裁定的<b>唯一</b>落点
+     * （R32 双端同树：格数恒定 72，变的只是每格归属哪个 tag）。
+     */
+    public static String encodeEssenceBlob(int[] pointsByCell, String[] tagsByCell, int unplaced) {
+        final StringBuilder builder = new StringBuilder();
+        final int cells = pointsByCell == null ? 0 : pointsByCell.length;
+        for (int cell = 0; cell < cells; cell++) {
+            if (cell > 0) {
+                builder.append(BLOB_CELL_SEPARATOR);
+            }
+            builder.append(pointsByCell[cell]);
+        }
+        builder.append(BLOB_SECTION_SEPARATOR);
+        final int tagCount = tagsByCell == null ? 0 : tagsByCell.length;
+        for (int cell = 0; cell < tagCount; cell++) {
+            if (cell > 0) {
+                builder.append(BLOB_CELL_SEPARATOR);
+            }
+            builder.append(tagsByCell[cell] == null ? "" : tagsByCell[cell]);
+        }
+        builder.append(BLOB_SECTION_SEPARATOR)
+            .append(unplaced);
+        return builder.toString();
+    }
+
+    /**
+     * {@link #encodeEssenceBlob} 的逆操作（★容错：段数不足、条数不足、非数字一律按"该格为 0/无主"
+     * 回落，外来或陈旧 blob 不得让面板炸）。
+     */
+    public static EssenceView decodeEssenceBlob(String blob, int cells) {
+        final EssenceView view = new EssenceView(cells);
+        if (blob == null || blob.isEmpty()) {
+            return view;
+        }
+        final String[] sections = blob.split(String.valueOf(BLOB_SECTION_SEPARATOR), -1);
+        final String[] points = sections.length > 0 ? sections[0].split(BLOB_CELL_SEPARATOR_REGEX, -1) : new String[0];
+        final String[] tags = sections.length > 1 ? sections[1].split(BLOB_CELL_SEPARATOR_REGEX, -1) : new String[0];
+        for (int cell = 0; cell < cells; cell++) {
+            if (cell < points.length) {
+                try {
+                    view.points[cell] = Integer.parseInt(points[cell]);
+                } catch (NumberFormatException ignored) {
+                    view.points[cell] = 0;
+                }
+            }
+            if (cell < tags.length && !tags[cell].isEmpty()) {
+                view.tags[cell] = tags[cell];
+            }
+        }
+        if (sections.length > 2) {
+            try {
+                view.unplaced = Integer.parseInt(sections[2]);
+            } catch (NumberFormatException ignored) {
+                view.unplaced = 0;
+            }
+        }
+        return view;
+    }
+
+    /** {@link #decodeEssenceBlob} 的结果（★纯数据件，回归套件直接驱动）。 */
+    public static final class EssenceView {
+
+        /** 格号 → 点数（无主格为 0）。 */
+        public final int[] points;
+        /** 格号 → 归属 tag（无主格为 {@code null}）。 */
+        public final String[] tags;
+        /** 有货但没有格位的 tag 数（溢出兜底文案的驱动量）。 */
+        public int unplaced;
+
+        EssenceView(int cells) {
+            this.points = new int[cells];
+            this.tags = new String[cells];
+        }
+    }
+
     private String composeEssenceBlob() {
         if (syncManager.isClient()) {
             return cachedEssenceBlob;
         }
         final PocketEssenceStore store = inventory.essence();
-        final StringBuilder builder = new StringBuilder();
-        for (int index = 0; index < essenceCache.length; index++) {
-            if (index > 0) {
-                builder.append(',');
-            }
-            builder.append(index < essenceTags.length ? store.get(essenceTags[index]) : 0);
+        final int[] points = new int[essenceCache.length];
+        final String[] tags = new String[essenceCache.length];
+        for (int cell = 0; cell < essenceCache.length; cell++) {
+            final String tag = store.tagAtCell(cell);
+            tags[cell] = tag;
+            points[cell] = tag == null ? 0 : store.get(tag);
         }
-        cachedEssenceBlob = builder.toString();
+        cachedEssenceBlob = encodeEssenceBlob(points, tags, store.unplacedTagCount());
         return cachedEssenceBlob;
     }
 
@@ -1240,17 +1389,16 @@ public final class NekoPocketPanel implements PocketSession {
         if (!syncManager.isClient() || blob == null) {
             return;
         }
-        final String[] parts = blob.split(",");
-        for (int index = 0; index < essenceCache.length; index++) {
-            int value = 0;
-            if (index < parts.length) {
-                try {
-                    value = Integer.parseInt(parts[index]);
-                } catch (NumberFormatException ignored) {
-                    value = 0;
-                }
+        final EssenceView view = decodeEssenceBlob(blob, essenceCache.length);
+        System.arraycopy(view.points, 0, essenceCache, 0, essenceCache.length);
+        System.arraycopy(view.tags, 0, essenceCellTags, 0, essenceCellTags.length);
+        essenceUnplaced = view.unplaced;
+        // ★内容层原位刷新（R78 D-1）：格数与 widget 树一个字都不动，只换"这一格画什么"
+        for (int cell = 0; cell < essenceCells.length; cell++) {
+            final NekoEssenceGhostCell widget = essenceCells[cell];
+            if (widget != null) {
+                widget.setCellContent(essenceCellTags[cell], essenceCache[cell]);
             }
-            essenceCache[index] = value;
         }
     }
 
@@ -1683,10 +1831,19 @@ public final class NekoPocketPanel implements PocketSession {
 
     // ------------------------------------------------------------------ 客户端显示出口
 
-    /** 源质格数量浮层文本（空 = 不画）。 */
-    String essenceAmountText(int cell) {
-        final int amount = cell >= 0 && cell < essenceCache.length ? essenceCache[cell] : 0;
-        return amount > 0 ? String.valueOf(amount) : "";
+    /**
+     * 第 {@code cell} 格归属的 tag（★下标是<b>格号</b>，不是 aspectOrder 的位置；R78③）。
+     * <p>
+     * 服务端读权威表（{@code PocketEssenceStore#tagAtCell}），客户端读同步镜像
+     * {@link #essenceCellTags}；两份的起点都是同一枚 NBT（构造期），之后的变化只由服务端推。
+     */
+    String essenceTagAtCell(int cell) {
+        if (cell < 0 || cell >= essenceCellTags.length) {
+            return null;
+        }
+        return syncManager.isClient() ? essenceCellTags[cell]
+            : inventory.essence()
+                .tagAtCell(cell);
     }
 
     /** 源质格 tooltip 明细（{@code aspect.cell} = {@code %s：%d/%d}，上限取常量，R58b/契约 §7-5）。 */
@@ -1704,17 +1861,25 @@ public final class NekoPocketPanel implements PocketSession {
         if (tag == null) {
             return 0;
         }
-        for (int index = 0; index < essenceTags.length && index < essenceCache.length; index++) {
-            if (tag.equals(essenceTags[index])) {
+        for (int index = 0; index < essenceCellTags.length; index++) {
+            if (tag.equals(essenceCellTags[index])) {
                 return essenceCache[index];
             }
         }
         return 0;
     }
 
-    /** 派生表是否被截断（第 49 项起只存不显，R26）。 */
+    /**
+     * 是否存在"有货但没格位"的源质（R26 的只存不显；R78③ 后判据换成服务端算出来的
+     * {@code unplacedTagCount}，不再是"注册数 &gt; 格数"的客户端推断）。
+     * <p>
+     * 72 格 ≥ 实测注册数 69 ⇒ 常态为 false，但 {@code aspect.overflow_note} 的代码路径<b>保留</b>
+     * （addon 追加 aspect 时仍可能超出）。
+     */
     boolean essenceOverflow() {
-        return essenceTags.length > PocketConstants.ESSENCE_DISPLAY_GRID;
+        return syncManager.isClient() ? essenceUnplaced > 0
+            : inventory.essence()
+                .unplacedTagCount() > 0;
     }
 
     /**
@@ -1792,10 +1957,12 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 说明摘要的完整文本（R74②：原第四列的常驻说明改 tooltip，这里就是那份 tooltip）。
+     * 说明摘要的完整文本（R74②：原第四列的常驻说明改 tooltip；R78 D-2 又把左栏那 7 段里的
+     * "主手限制"并进来 ⇒ 这里就是<b>唯一</b>一份完整说明，两个可见入口是底部带的帮助按钮与
+     * 左栏末行的 tooltip）。
      * <p>
-     * 只把<b>已经在别处有权威</b>的句子拼在一起（成本常量、模式行、ghost 用法、
-     * "每格声明吃掉一格真实容量"），不新造第二条口径。
+     * 只把<b>已经在别处有权威</b>的句子拼在一起（成本常量、ghost 用法、
+     * "每格声明吃掉一格真实容量"的代价、R60/R62b 要求可观测的主手边界），不新造第二条口径。
      */
     String notesText() {
         final StringBuilder builder = new StringBuilder();
@@ -1811,21 +1978,62 @@ public final class NekoPocketPanel implements PocketSession {
                     PocketConstants.SHORT_COST_SHIMMERING_NEKO,
                     PocketConstants.SHORT_CHANNEL_SECONDS))
             .append('\n');
-        builder.append(StatCollector.translateToLocal("gtit.pocket.ghost.capacity_note"));
+        builder.append(StatCollector.translateToLocal("gtit.pocket.ghost.capacity_note"))
+            .append('\n');
+        builder.append(StatCollector.translateToLocal("gtit.pocket.note.channel"))
+            .append('\n');
+        builder.append(StatCollector.translateToLocal("gtit.pocket.held.note"))
+            .append('\n');
+        // ★背包那一条带 %d：规格数字由常量填（lang 不得写死），漏填就会把占位原样印给玩家
+        builder.append(
+            String.format(
+                StatCollector.translateToLocal("gtit.pocket.backpack.cost_note"),
+                PocketConstants.PLAYER_BACKPACK_SLOTS));
         return builder.toString();
     }
 
     /**
-     * 交互格的 tooltip 补行：说出"这一格属于第几列、那一列现在存的是什么"。
+     * 交互格的 tooltip 补行：说出"这一格属于第几组第几列、那一列的槽号是多少"。
      * <p>
-     * 列号 = {@link PocketInventory#tankOfInteractionSlot(int)} 的单源映射（客户端只读同步过来的
-     * 流体状态，不自行推断别的口径）。这里<b>不</b>报容量数字：容量已经由
-     * {@code gtit.pocket.fluid.capacity} 在列上常驻显示一次，两处都写就是两处真相。
+     * 组号与 tank 号都由 {@link PocketInventory} 的单源映射算（客户端只读同步过来的流体状态，
+     * 不自行推断别的口径）。这里<b>不</b>报容量数字：容量在槽本体自己的 tooltip 里说一次
+     * （{@link NekoPocketFluidSlot#addToolTip}），两处都写就是两处真相。
      */
     String tankHintText(int interactionIndex) {
         return String.format(
             StatCollector.translateToLocal("gtit.pocket.legend.tank_of"),
+            PocketInventory.groupOfInteractionSlot(interactionIndex) + 1,
+            interactionIndex % PocketConstants.FLUID_COLUMN_COUNT + 1,
             PocketInventory.tankOfInteractionSlot(interactionIndex) + 1);
+    }
+
+    /**
+     * 每槽容量读数（★规格外自立项的玩家可见面之一，另两处是物品 tooltip 的 {@code tooltip.9}
+     * 与 README；数字全部由 {@code PocketConstants} 填，lang 里不得写死，见契约 §7 第 5 条）。
+     * <p>
+     * R78 D-2 后它<b>不再</b>常驻在左栏（那一行只剩状态回显），改由流体槽 tooltip 与
+     * 左栏末行的 tooltip 承载。
+     */
+    String capacityReadoutText() {
+        return String.format(
+            StatCollector.translateToLocal("gtit.pocket.fluid.capacity"),
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            PocketConstants.FLUID_TANK_TOTAL,
+            PocketConstants.FLUID_TOTAL_CAPACITY_ML);
+    }
+
+    /**
+     * 左栏末行的<b>一行状态回显</b>（★R78 D-2 允许保留的那一行；为什么它算状态不算说明，
+     * 判据写在 {@code NekoPocketLeftColumn} 的类 javadoc）。
+     * <p>
+     * 内容 = 模式（R39b 服务端算）+ 冷却/剩余与最近一次回执（R16/R24/R10），两者都是
+     * <b>运行期事实</b>；宽度装不下时走 tooltip（{@link #statusHintText()} + {@link #notesText()}），
+     * 不删信息（R36）。
+     */
+    String fluidStatusLine() {
+        final String mode = modeText();
+        final String status = channelStatusText();
+        return status.isEmpty() ? mode : mode + " · " + status;
     }
 
     /** 模式行文本（R39b：不允许玩家自己猜）。 */

@@ -379,14 +379,16 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     // ------------------------------------------------------------------ 提示
 
     /**
-     * tooltip 从 0 连续（{@code pocket-lang-keys.md} §1 的 7 行，R75 后为 10 行）。
+     * tooltip 从 0 连续（{@code pocket-lang-keys.md} §1 的 7 行，R75 后为 10 行，R78 仍是 10 行；
+     * ★新增的规格读数一律走已有的 {@code %N$d} 槽位扩到 {@code %11$d}，不加新行号 ⇒ 不断号）。
      * <p>
      * 消费端是 {@code equals(key)} 即 break 的循环（先例 {@code common/items/NekoCoin.java:28-34}），
      * <b>跳号会静默截断后面的行</b>，其中 {@code tooltip.5}/{@code tooltip.6} 是 R28（5 秒是节拍不是产量）
      * 与 R39a（两排同权不是上下分流）的显式声明位，丢了就等于埋坑。
      * <p>
-     * ★<b>行里不写规格数字</b>（R75 的 lang 契约第 5 条）：格数、行列、流体列数、单槽容量、
-     * 蒸馏节拍全部由 {@link #tooltipArgs()} 从常量填进 {@code %1$d…%6$d} 的<b>带位置下标</b>的占位。
+     * ★<b>行里不写规格数字</b>（R75 的 lang 契约第 5 条）：格数、行列、流体<b>组数与 tank 总数</b>、
+     * 单槽容量与<b>总容量</b>（R78②）、源质盘格数（R78②）、面板内背包格数（R78①）、蒸馏节拍
+     * 全部由 {@link #tooltipArgs()} 从常量填进 {@code %1$d…%11$d} 的<b>带位置下标</b>的占位。
      * 用下标而不是裸 {@code %d} 的理由：所有行走同一个实参数组，裸 {@code %d} 会一律取第 1 个实参
      * ⇒ "每槽 16,000,000" 会被填成"150"，而且不报错。
      */
@@ -405,10 +407,14 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     }
 
     /**
-     * tooltip 的规格读数（<b>顺序即 {@code %1$d…%6$d}</b>，与 lang 里的下标一一对应）。
+     * tooltip 的规格读数（<b>顺序即 {@code %1$d…%11$d}</b>，与 lang 里的下标一一对应）。
      * <p>
      * 全部取自常量与面板列类的几何单源，不在这里做任何算术以外的推导；
      * 蒸馏秒数由 {@code TaumDistillRules.DISTILL_INTERVAL_TICKS} 换算（节拍权威只有那一处）。
+     * <p>
+     * ★R78 新增的四项（组数 / tank 总数 / 流体总容量 / 源质格数 / 背包格数）与它们替代的旧写法
+     * 同一条纪律：这些数字只允许出现在这里一次，lang 与 README 都只引用不重抄
+     * （R75 的"每槽 16M"双处声明 = 本方法 + README，本批把合计 288,000,000 也并进同一纪律）。
      */
     private static Object[] tooltipArgs() {
         return new Object[] {
@@ -416,11 +422,21 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             Integer.valueOf(PocketConstants.GHOST_ITEM_SLOT_LIMIT),
             // %2$d 行数 / %3$d 列数
             Integer.valueOf(NekoPocketStorageColumn.ROWS), Integer.valueOf(PocketSlots.STORAGE_COLUMNS),
-            // %4$d 流体列数（= 独立 tank 数 = 流体 ghost 索引空间）
+            // %4$d 每组流体列数（R75①；★R78② 的组数与 tank 总数在下面两项）
             Integer.valueOf(PocketConstants.FLUID_COLUMN_COUNT),
             // %5$d 单槽容量 mB（★规格外自立项，见 PocketConstants#FLUID_BAR_CAPACITY_ML）
             Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
             // %6$d 蒸馏一轮秒数
-            Integer.valueOf(TaumDistillRules.DISTILL_INTERVAL_TICKS / 20) };
+            Integer.valueOf(TaumDistillRules.DISTILL_INTERVAL_TICKS / 20),
+            // %7$d 流体组数（R78②）
+            Integer.valueOf(PocketConstants.FLUID_GROUP_COUNT),
+            // %8$d 独立流体 tank 总数（= 组数 × 每组列数 = 18）
+            Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL),
+            // %9$d 流体总容量 mB（= tank 总数 × 单槽容量，★派生不是手抄）
+            Integer.valueOf(PocketConstants.FLUID_TOTAL_CAPACITY_ML),
+            // %10$d 源质盘格数（R78②③：6×12 = 72，且 ≥ 实测 aspect 注册数）
+            Integer.valueOf(PocketConstants.ESSENCE_DISPLAY_GRID),
+            // %11$d 面板内玩家背包格数（R78①；★代价 = E4 包放大，见 PocketSlots 类注释）
+            Integer.valueOf(PocketConstants.PLAYER_BACKPACK_SLOTS) };
     }
 }

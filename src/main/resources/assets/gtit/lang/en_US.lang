@@ -271,7 +271,7 @@ gtit.reincarnation.single_player_only=Reincarnation is available in single-playe
 # ---- 猫猫次元口袋 (S3/S4) ---- keys are the single-source contract plan/_taskpack/pocket-lang-keys.md; both files must keep the same key set
 item.neko_dimension_pocket.name=Neko Dimensional Pocket
 item.neko_dimension_pocket.tooltip.0=Right-click to open the three-column panel
-item.neko_dimension_pocket.tooltip.1=Middle: %2$d rows x %3$d columns = %1$d storage slots; left: %4$d fluid columns; right: essentia grid
+item.neko_dimension_pocket.tooltip.1=Middle: %2$d rows x %3$d columns = %1$d storage slots; left: %7$d groups x %4$d fluid columns (%8$d slots); right: %10$d essentia cells
 item.neko_dimension_pocket.tooltip.2=Put a cell into the bind slot in the bottom band, then press Bind to open a dimensional channel
 item.neko_dimension_pocket.tooltip.3=Bound cells must sit in a powered ME Drive or Chest to be recognised
 item.neko_dimension_pocket.tooltip.4=Drag from NEI onto a slot to turn it into a ghost filter (right-click clears)
@@ -322,13 +322,13 @@ gtit.pocket.ghost.locked=Filter slots accept no player input
 gtit.pocket.ghost.capacity_note=Each filter slot costs one real storage slot
 gtit.pocket.ghost.fluid_bar=This fluid slot still takes and gives fluid by hand; the filter only says which fluid to pull
 gtit.pocket.held.note=Only works while held in your main hand; it stops once put away
-item.neko_dimension_pocket.tooltip.9=Each fluid column holds %5$d mB (a capacity chosen beyond the original request)
+item.neko_dimension_pocket.tooltip.9=Each fluid slot holds %5$d mB, %9$d mB in total across %8$d slots (a capacity chosen beyond the original request)
 gtit.pocket.legend.input=Top row: place a filled vessel
 gtit.pocket.legend.tank=Middle: this column's fluid slot
 gtit.pocket.legend.output=Bottom row: place an empty vessel
 gtit.pocket.legend.in_out_same=Both rows of a column behave the same
-gtit.pocket.legend.tank_of=Belongs to fluid column #%d
-gtit.pocket.fluid.capacity=%d mB per column
+gtit.pocket.legend.tank_of=Group %1$d column %2$d (fluid slot %3$d)
+gtit.pocket.fluid.capacity=%1$d mB per slot (%3$d mB in total across %2$d slots)
 gtit.pocket.sort.button=Tidy the storage grid (merge + compact; filter slots stay put)
 gtit.pocket.note.title=How this panel works
 gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket only works while held in your main hand
@@ -338,3 +338,6 @@ gtit.pocket.bind.truncated=... and %d more bound cells not listed here
 gtit.pocket.bind.unbind_hint=Right-click Bind = unbind the last cell; Shift + right-click = unbind all cells
 gtit.pocket.bind.stale_hint=Unbinding never touches the cell contents or the ME network
 gtit.pocket.bind.cleared=Cleared %d bound cells
+gtit.pocket.aspect.empty=This cell is still unused (that aspect was never credited; a claimed cell is never reclaimed)
+gtit.pocket.backpack.note=Player inventory: take and store items here; shift-click moves items between the middle grid and your bag
+gtit.pocket.backpack.cost_note=Showing the bag means the GUI compares %d stacks (NBT included) every tick and resends them with the pocket whenever it changes (the price of having the bag)

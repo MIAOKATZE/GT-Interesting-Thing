@@ -26,7 +26,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
  * 槽号 = 行主序 {@code 0..149}，与 {@code PocketInventory.storage()} 的 handler 索引天然一致
  * （{@code Builder.build()} 按字符出现次序回调 {@code IntFunction}，见 {@code SlotGroupWidget.java:228-257}）。
  * 行列乘积与格数的关系由 {@link PocketSlots} 的静态断言与
- * {@code NekoPocketModelTest#slot_math_175_and_row_column_products} 双向钉住。
+ * {@code NekoPocketModelTest#slot_math_235_and_row_column_products} 双向钉住。
  */
 public final class NekoPocketStorageColumn {
 
@@ -115,7 +115,9 @@ public final class NekoPocketStorageColumn {
             .size(WIDTH, HEIGHT)
             .name("pocket_storage_column")
             .child(grid)
-            // 语义②「口袋 → 玩家背包」：L2 档不显示背包 ⇒ shift-click 无落点，这是唯一替代出口
+            // 语义②「口袋 → 玩家背包」：★R78① 后背包已画在底部带中间段 ⇒ shift-click 已有落点，
+            // 本件因此从"唯一替代出口"降级为"整块中栏一键取出的加速快捷键"（保留的理由：
+            // 它一次搬空整栏，shift 只能逐格搬；去掉它就等于撤掉一条已交付的交互）
             .child(takeOutOverlay(ui));
         return root.excludeAreaInRecipeViewer();
     }

@@ -3,6 +3,7 @@ package com.miaokatze.gtit.gui.pocket;
 import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.drawable.GuiDraw;
+import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.integration.recipeviewer.RecipeViewerGhostIngredientSlot;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
@@ -17,21 +18,35 @@ import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
 
 /**
- * 右栏 48 格源质盘的单格（需求 4 的源质入口）：显示格 + 可被 NEI 拖入的 ghost 声明位。
+ * 右栏 72 格源质盘的单格（需求 4 的源质入口）：显示格 + 可被 NEI 拖入的 ghost 声明位。
  * <p>
- * <b>为什么必须换类而不是加东西</b>（R70）：原来这 48 格是裸 {@link ButtonWidget}，
+ * <b>为什么必须换类而不是加东西</b>（R70）：原来这些格是裸 {@link ButtonWidget}，
  * 它不实现 {@link RecipeViewerGhostIngredientSlot} ⇒ 面板的拖入分发（按 hover 列表 +
  * {@code instanceof} 判定）根本看不到它 ⇒ 「源质格拖入」在游戏内零入口。本类
  * {@code extends ButtonWidget<NekoEssenceGhostCell>} <b>并</b>实现该接口：
- * 既有的点击取晶、着色、数量浮层、tooltip 与 4×12 布局<b>一格不加不减</b>（R41b/R33）。
+ * 既有的点击取晶、着色、数量浮层、tooltip 与 6×12 布局<b>一格不加不减</b>（R41b/R78②）。
  * <p>
- * <b>声明语义 = 「确认把本格对应的 tag 声明为 ghost」</b>：格位归属由
- * {@code TaumCompat.aspectOrder()[index]} 在装配期钉死，所以拖进来的东西不需要"是什么"，
- * 但<b>必须确实含本格的 tag</b>（{@link #carriesTag}：蒸馏产出或容器内容任一命中）。
- * 不含 ⇒ 返回 false，NEI 那边继续拖着、不吃栈 ⇒ 玩家拖来的任意东西不会被当成源质声明。
+ * <b>★内容层按库存开关（R78 D-1，本片修的上一片交付不实）</b>：旧实现把 aspect 图标
+ * <b>无条件</b> {@code overlay(icon)} ⇒ 空格也画图标，与"无货不画内容"的裁定相反，
+ * 而本类旧 javadoc 又写着"无货时只撤掉图标与文本"⇒ <b>注释声明了代码没做的事</b>。
+ * 现在唯一写入口是 {@link #setCellContent(String, int)}：
+ * <ul>
+ * <li>{@code tag != null && 库存 > 0} ⇒ overlay = 该 tag 的图标（着色）、数量文本 = 点数；</li>
+ * <li>否则 ⇒ {@code overlay()} 清空（MUI2 的 {@code IDrawable.of(无元素)} 返回 {@code null}，
+ * {@link #hasContentLayer()} 读的就是这个 widget 真值而不是自报标记）、数量文本清空。</li>
+ * </ul>
+ * ★<b>槽位底与格位本体恒在</b>（R73②「空格子不显示源质，但是格子本身要显示」）：撤的是
+ * <b>内容层</b>，不是格子。
+ * <p>
+ * <b>★声明语义 = 「确认把本格对应的 tag 声明为 ghost」</b>：格位归属由服务端算好并随
+ * 同步 blob 落到本类（R78③：格序 = 该 tag 首次入账的顺序，且撤空不回收），所以拖进来的
+ * 东西不需要"是什么"，但<b>必须确实含本格的 tag</b>（{@link #carriesTag}：蒸馏产出或容器内容
+ * 任一命中）。不含 ⇒ 返回 false，NEI 那边继续拖着、不吃栈 ⇒ 玩家拖来的任意东西不会被当成源质声明。
  * <p>
  * <b>★ghost 只原位改属性</b>（R41b）：实例从装配到关屏不换，声明态只影响遮罩与 tooltip；
- * 48 格本就是显示侧、<b>不进 Container</b>（R35），因此既不占 175 也不动槽号。
+ * 内容层同样走 {@link #setCellContent(String, int)} 原位切换 ⇒ 格数恒定 72、widget 树不因
+ * 数据变化（R32 双端同树的前提）。72 格本就是显示侧、<b>不进 Container</b>（R35），
+ * 因此既不占 235 也不动槽号。
  * <p>
  * <b>TC 不在场时一律不收</b>（R31 的整栏灰显由 {@code setEnabledIf} 给出，本类用
  * {@code IWidget#areAncestorsEnabled()} 读它，与 {@link NekoFilterSlot} 同一口径）。
@@ -43,32 +58,158 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     private static final int GHOST_MASK = 0x80FFFFFF;
 
     private NekoPocketPanel owner;
-    /** 本格在 {@code Kind.ESSENCE} 索引空间里的槽号（= 装配序，0…47）。 */
+    /** 本格在 {@code Kind.ESSENCE} 索引空间里的槽号（= 格位，0…{@code ESSENCE_DISPLAY_GRID}−1）。 */
     private int cellIndex = -1;
-    /** 本格归属的 aspect tag（派生表短于 48 时可为 {@code null} ⇒ 无内容可声明）。 */
+    /**
+     * 本格归属的 aspect tag（★<b>可变</b>：R78③ 后由服务端的格位归属表算出并随同步 blob 落到这里，
+     * 不再是装配期一次定死的 {@code aspectOrder()[index]}；{@code null} = 该格从未被占过）。
+     */
     private String tag;
+    /** 本格当前的点数（★内容层的开关依据，只由 {@link #setCellContent(String, int)} 写入）。 */
+    private int stock;
+    /**
+     * 数量浮层的当前文本（由 {@link ContentSink#showAmount(String)} 写；★空态是空串，
+     * 与图标的撤除出自同一条 {@link #applyContentLayer} ⇒ 不会出现"撤了图标却留着旧数字"）。
+     */
+    private String amountText = "";
     private boolean ghost;
 
     public NekoEssenceGhostCell() {
         super();
-        // ghost 声明随时可增删 ⇒ tooltip 每次重画都重建（否则解绑后"右键取消"那行会留在屏上）
+        // ghost 声明与内容层都随时可增删 ⇒ tooltip 每次重画都重建（否则解绑后"右键取消"那行会留在屏上）
         tooltip().setAutoUpdate(true);
     }
 
     /**
-     * 装配期绑定「哪一格属于哪个会话、归属哪个 tag」（双端各一次，格序与长度恒定 ⇒ 不引入
-     * 数据驱动的 widget 树变化，与 {@link NekoFilterSlot#bindGhost} 同形）。
+     * 装配期绑定「哪一格属于哪个会话」（双端各一次，格数与格序恒定 ⇒ 不引入数据驱动的
+     * widget 树变化，与 {@link NekoFilterSlot#bindGhost} 同形）。归属 tag 与点数不在这一定死，
+     * 由 {@link #setCellContent(String, int)} 原位写入。
      */
     NekoEssenceGhostCell bindCell(NekoPocketPanel panel, int index, String aspectTag) {
         this.owner = panel;
         this.cellIndex = index;
+        return setCellContent(aspectTag, 0);
+    }
+
+    /**
+     * 内容层的<b>绘制目标</b>（★薄到能被零依赖套件用记录型实现驱动 ⇒ 用例跑的就是<b>生产那条分支</b>，
+     * 不是把判据抄第二遍）。
+     * <p>
+     * 为什么要有这一层：本 JVM 里构造任何 MUI2 widget 都会抛
+     * {@code NoClassDefFoundError: it/unimi/dsi/fastutil/objects/Object2ObjectOpenHashMap}
+     * （实测，与 {@link PocketGuiTextures} 的类注释同一条限制）⇒ "库存 0 时到底撤没撤图标"
+     * 这件事没法用真 widget 断言。把"撤/画"的选择收进 {@link #applyContentLayer} 这一条静态序列，
+     * 就能在纯 JVM 里钉住它；widget 侧（{@link #setCellContent}）只剩把三个动作翻译成
+     * {@code overlay(...)} / {@code overlay()} / 文本，那一段属实机项。
+     */
+    public interface ContentSink {
+
+        /** 画该 tag 的图标（生产实现 = {@code overlay(icon)}）。 */
+        void showIcon(String aspectTag);
+
+        /** ★撤图标（生产实现 = {@code overlay()}，MUI2 的 {@code IDrawable.of(无元素)} 返回 null）。 */
+        void clearIcon();
+
+        /** 数量文本（★空态是空串，不是"不调用"——漏调就是把旧数字留在屏上）。 */
+        void showAmount(String text);
+    }
+
+    /**
+     * ★R78 D-1 的单点：内容层到底画什么（图标 + 数量文本，或两者都撤）。
+     * <p>
+     * 判据是 {@link #drawsContentLayer}，两条出口必须<b>成对</b>：空态同时撤图标与文本，
+     * 有货同时给图标与文本。回归用例
+     * {@code essence_cell_content_layer_follows_stock} 驱动的就是本方法。
+     */
+    public static void applyContentLayer(String aspectTag, int points, ContentSink sink) {
+        if (sink == null) {
+            return;
+        }
+        if (drawsContentLayer(aspectTag, points)) {
+            sink.showIcon(aspectTag);
+            sink.showAmount(String.valueOf(points));
+        } else {
+            sink.clearIcon();
+            sink.showAmount("");
+        }
+    }
+
+    /**
+     * ★R78 D-1 的唯一写入口：按「本格归属哪个 tag + 该 tag 现在有多少点」原位刷新内容层。
+     * <p>
+     * 无货（或该格从未被占过）⇒ 只撤图标与数量文本，<b>槽位底与格位本体都还在</b>（R73②）。
+     * 选择逻辑在 {@link #applyContentLayer}（生产与测试共用同一条）。
+     *
+     * @param aspectTag 本格归属的 tag（{@code null} = 空格）
+     * @param points    该 tag 当前的点数
+     */
+    public NekoEssenceGhostCell setCellContent(String aspectTag, int points) {
         this.tag = aspectTag;
+        this.stock = Math.max(0, points);
+        applyContentLayer(this.tag, this.stock, new ContentSink() {
+
+            @Override
+            public void showIcon(String aspectTag) {
+                final UITexture icon = UITexture.builder()
+                    .location(TaumCompat.aspectTexturePath(aspectTag))
+                    .fullImage()
+                    .nonOpaque()
+                    .build();
+                final int color = TaumCompat.colorOf(aspectTag);
+                // ★图标进 overlay 而不是 background：background 已被"槽位底"占用，两者叠反会让凹槽消失
+                NekoEssenceGhostCell.this
+                    .overlay(color == TaumCompat.COLOR_UNKNOWN ? icon : icon.withColorOverride(color));
+            }
+
+            @Override
+            public void clearIcon() {
+                // IDrawable.of(无元素) 返回 null ⇒ getOverlay() 变 null，内容层真的没东西可画
+                NekoEssenceGhostCell.this.overlay();
+            }
+
+            @Override
+            public void showAmount(String text) {
+                NekoEssenceGhostCell.this.amountText = text == null ? "" : text;
+            }
+        });
+        markTooltipDirty();
         return this;
     }
 
-    /** 本格归属的 tag（{@code null} = 派生表里没有这一格）。 */
+    /**
+     * 内容层判据（★单点，装配、同步与回归套件读的都是这一条）：只有「本格有归属 tag」且
+     * 「该 tag 有点数」才画图标与数量文本。
+     * <p>
+     * 单独成静态方法而不是埋在绘制里，是为了让 R78 通则"凡注释声称某状态下不绘制 X，
+     * 必须有一条 JVM 用例钉住该状态下的内容层为空"真的可执行。
+     */
+    public static boolean drawsContentLayer(String aspectTag, int points) {
+        return aspectTag != null && !aspectTag.isEmpty() && points > 0;
+    }
+
+    /**
+     * ★机检点（钉 D-1，实机侧）：内容层当前是否在场 = 图标 drawable 是否在场。
+     * <p>
+     * 读的是 {@link #getOverlay()} 这个 widget 真值而不是自报标记；本 JVM 造不出 widget，
+     * 所以零依赖套件走 {@link #applyContentLayer} 的记录型断言，本方法留给游戏内与调试树。
+     */
+    public boolean hasContentLayer() {
+        return getOverlay() != null;
+    }
+
+    /** 本格当前的数量文本（★空态一律空串，与 {@link #hasContentLayer()} 同一开关）。 */
+    public String stockText() {
+        return amountText;
+    }
+
+    /** 本格归属的 tag（{@code null} = 该格从未被占过 ⇒ 无内容可画、也无东西可声明）。 */
     public String aspectTag() {
         return tag;
+    }
+
+    /** 本格当前的点数（客户端只读同步来的值）。 */
+    public int essenceStock() {
+        return stock;
     }
 
     /** 当前是否处于 ghost（已声明要拉取本格源质）态。 */
@@ -79,7 +220,7 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     /**
      * 原位切换 ghost 态（{@link NekoPocketPanel#applyGhosts()} 的唯一写入口，双端各一份）。
      * <p>
-     * 不重建 widget、不改 4×12 布局、不动数量浮层与着色（R41b）。
+     * 不重建 widget、不改 6×12 布局、不动内容层（R41b：ghost 遮罩与"有没有货"是两件事）。
      */
     NekoEssenceGhostCell setGhost(boolean ghost) {
         if (this.ghost == ghost) {

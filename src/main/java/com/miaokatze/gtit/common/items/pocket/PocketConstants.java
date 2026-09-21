@@ -58,6 +58,20 @@ public final class PocketConstants {
     public static final String ASPECT_KEY = "key";
     /** {@code AspectList} 条目值：点数值（{@code setShort}）。 */
     public static final String ASPECT_AMOUNT = "amount";
+    /**
+     * ★<b>R78③ 新增</b>：源质<b>格位归属表</b>（NBTTagList of String，元素 = aspect tag 字符串，
+     * 下标 = 显示格号 0…{@link #ESSENCE_DISPLAY_GRID}−1）。
+     * <p>
+     * 存在的理由是"格序 = 该 tag <b>首次入账</b>的顺序"这条用户需求：{@link #ASPECTS} 列表的
+     * 顺序<b>不能</b>承担它，因为扣到 0 的 tag 会被摘掉（0 值不落档），下次入账就会跑到列表末尾。
+     * 本键独立持久化，<b>撤空不回收格位</b>（R78③ 的用户裁定），重开面板/重进世界都不重排。
+     * <p>
+     * 三条硬口径：① 只存 tag 字符串（绝不存裸索引，同 {@link #ASPECT_KEY} 的理由）；
+     * ② 长度上界 {@link #ESSENCE_DISPLAY_GRID}，越界条目读档时丢弃；
+     * ③ 旧档缺本键 ⇒ 由 {@code PocketEssenceStore} 按 {@link #ASPECTS} 的<b>入账顺序</b>补出
+     * 格位（LinkedHashMap 的插入序即首入账序）， ⇒ 旧档不重排、不丢格。
+     */
+    public static final String ESSENCE_CELL_ORDER = "essCellOrder";
 
     // ------------------------------------------------------------------ 冷却
     /** 瞬时通道的设备维冷却起点（墙钟毫秒），随口袋物品走（R16 的设备维 + R24 的墙钟口径）。 */
@@ -72,7 +86,8 @@ public final class PocketConstants {
      * ghost 声明条目：<b>被就地转换的那个既有槽的索引</b>（R38 第 1 条）。
      * <p>
      * 语义是「就地把既有槽转 ghost」，所以每条声明必须记住自己占的是哪一格；索引空间由
-     * {@code kind} 决定（物品 = 中栏 150 格、流体 = 6 个流体槽/tank、源质 = 48 格，当前一一对应）。
+     * {@code kind} 决定（物品 = 中栏 150 格、流体 = {@link #FLUID_TANK_TOTAL} 个流体槽/tank、
+     * 源质 = {@link #ESSENCE_DISPLAY_GRID} 格，当前一一对应）。
      * 0 是合法索引，故「未设置」用 {@link #FILTER_SLOT_UNSET} 而不是 0。
      */
     public static final String FILTER_SLOT = "slotIndex";
@@ -92,41 +107,97 @@ public final class PocketConstants {
     public static final int MAX_BOUND_CELLS = 64;
     /** 每格源质上限，对齐 TC4 Warded Jar 的 {@code maxAmount=64}。 */
     public static final int ESSENCE_CAP_PER_TAG = 64;
+    // ---------------------------------------------------------- R75/R78 钉死的列数（几何与索引空间同源）
     /**
-     * 显示格数（需求 12 行 × 4 列 → R75 的 <b>6 列 × 8 行</b>，<b>总数 48 不变</b>）；
-     * <b>只用于 GUI 行序</b>，存储与显示解耦，多于 48 的 tag 仍存不显。
-     */
-    public static final int ESSENCE_DISPLAY_GRID = 48;
-
-    // ---------------------------------------------------------- R75 钉死的列数（几何与索引空间同源）
-    /**
-     * 流体<b>列数</b> = 独立 tank 数 = 每列 one 流体槽（R75①：6 列，每列纵向 输入格 / 流体槽 / 输出格）。
+     * 流体<b>组数</b>（R78②：由 1 组增至 <b>3 组</b>，每组 = 输入行 18 + 流体槽 36 + 输出行 18 = 72 高，
+     * 组间距 18 ⇒ 左栏 {@code 3×72 + 2×18 = 252 ≤ 270}，余 18 给状态行）。
      * <p>
-     * 本常量是"几个 tank""流体 ghost 索引上界""交互格格数"三者的<b>唯一</b>来源：
+     * 与 {@link #FLUID_COLUMN_COUNT} 一样是"格数 / tank 数 / ghost 索引空间"三者的唯一来源：
+     * {@link #FLUID_TANK_TOTAL}、{@link #FLUID_INTERACTION_TOTAL}、
+     * {@link #GHOST_FLUID_SLOT_LIMIT} 全部从它派生，不留字面量。
+     */
+    public static final int FLUID_GROUP_COUNT = 3;
+    /**
+     * 每组流体的<b>列数</b> = 每组一个流体槽一列 = 每组 {@code 6} 个独立 tank
+     * （R75① 定为 6 列，R78 只加组数、<b>没有</b>改列数 ⇒ 与源质盘同为 6 列，"规整"由列数对齐达成）。
+     * <p>
+     * 本常量是"每列一个 tank""流体 ghost 索引上界""交互格格数"三者的<b>唯一</b>来源：
      * {@link #GHOST_FLUID_SLOT_LIMIT} 与 {@code PocketInventory.FLUID_INTERACTION_SLOTS} 都从它派生，
      * 改列数不会出现"加了格子却忘了同步索引空间"的分叉。
      */
     public static final int FLUID_COLUMN_COUNT = 6;
     /** 每个流体列携带的交互格数（1 输入 + 1 输出；两格都仍是 {@code R39a} 的双用格）。 */
     public static final int FLUID_INTERACTION_PER_COLUMN = 2;
+    /**
+     * 独立流体 tank <b>总数</b> = {@link #FLUID_GROUP_COUNT} × {@link #FLUID_COLUMN_COUNT} = <b>18</b>
+     * （R78②）。也是 {@code Kind.FLUID} 的 ghost 索引空间与总容量口径的基数
+     * （总容量 = {@link #FLUID_TANK_TOTAL} × {@link #FLUID_BAR_CAPACITY_ML}）。
+     */
+    public static final int FLUID_TANK_TOTAL = FLUID_GROUP_COUNT * FLUID_COLUMN_COUNT;
+    /** 流体侧交互格<b>总数</b> = {@link #FLUID_TANK_TOTAL} tank × {@link #FLUID_INTERACTION_PER_COLUMN} 格 = <b>36</b>。 */
+    public static final int FLUID_INTERACTION_TOTAL = FLUID_TANK_TOTAL * FLUID_INTERACTION_PER_COLUMN;
+    /**
+     * 源质盘列数（R78：与流体块<b>同为 6 列</b>，规整由列数对齐达成；派生自
+     * {@link #FLUID_COLUMN_COUNT} ⇒ 改流体列数会连带改这里，不会出现两处真相）。
+     */
+    public static final int ESSENCE_GRID_COLUMNS = FLUID_COLUMN_COUNT;
+    /** 源质盘行数（R78②：8 → <b>12</b> 行；12 行 + 空 1 行 + 蒸馏 2 行 = 15 行 = 与中栏同高）。 */
+    public static final int ESSENCE_GRID_ROWS = 12;
+    /**
+     * 显示格数 = <b>{@link #ESSENCE_GRID_COLUMNS} 列 × {@link #ESSENCE_GRID_ROWS} 行 = 72</b>
+     * （R78② 由 48 增至 72；<b>只用于 GUI 行序与格位空间</b>，存储与显示解耦：多于 72 的 tag
+     * 仍照常入账，只是不显示，见 {@code gtit.pocket.aspect.overflow_note} 那条兜底文案）。
+     * <p>
+     * ★72 ≥ 用户实测包内的 aspect 注册数 69 ⇒ 溢出兜底在常态下不再触发，但<b>代码路径保留</b>
+     * （addon 追加条目时仍可能超出；格数恒定这一层是 R32 双端同树的前提，不随内容伸缩）。
+     */
+    public static final int ESSENCE_DISPLAY_GRID = ESSENCE_GRID_ROWS * ESSENCE_GRID_COLUMNS;
+    /** 玩家背包的<b>列数</b>（R78①：底部带中间段 9 列 × 4 行 = 162×72，正好等于带高）。 */
+    public static final int PLAYER_BACKPACK_COLUMNS = 9;
+    /** 玩家背包的<b>行数</b>（R78① 回归；★连带 E4 包放大风险，见 {@link #PLAYER_BACKPACK_SLOTS} 的说明）。 */
+    public static final int PLAYER_BACKPACK_ROWS = 4;
+    /**
+     * 玩家背包进 Container 的真实槽数 = {@link #PLAYER_BACKPACK_COLUMNS} × {@link #PLAYER_BACKPACK_ROWS}
+     * = <b>36</b>。
+     * <p>
+     * ★这 36 格<b>不由本仓的槽工厂造</b>：MUI2 的 {@code ModularSyncManager#construct} 在没有预先
+     * 注册 {@code player_inventory} 槽组时会自动 {@code bindPlayerInventory}（{@code ISyncRegistrar}
+     * 字节码：循环 {@code bipush 36} 逐格 {@code itemSlot("player", i, …)}）。R78① 撤销 R69-D2
+     * （旧实现预注册一个<b>空</b> {@code PlayerSlotGroup} 让那一支跳过）⇒ 本常量的职责是把
+     * "框架给的 36" 与"面板画的 9×4"钉成同一个数：两者一旦不等，就会有一部分背包格<b>只存在于
+     * Container 而看不见</b>（隐形槽 = shift 落点与排序都会打到看不见的格）。
+     * <p>
+     * ★<b>代价（R78① 点名，不得静默）</b>：E4 风险回归——首开同步 36 格 + vanilla
+     * {@code Container#detectAndSendChanges} 每 tick 对 36 格做 {@code ItemStack} 相等比较
+     * （<b>含整份 NBT 深比较</b>），内容一变就把整枚口袋连同 199 格一起重发。
+     * 这是用户为"要玩家背包"明确换回来的代价，README 与交付说明同处点名。
+     */
+    public static final int PLAYER_BACKPACK_SLOTS = PLAYER_BACKPACK_COLUMNS * PLAYER_BACKPACK_ROWS;
 
     // ---------------------------------------------------------- ghost 可占索引白名单（R38 第 4 条）
     /**
      * 物品支可被就地转 ghost 的索引上界 = 中栏 <b>15 行 × 10 列 = 150</b>（R75 的真实槽口径，
-     * 覆盖 R43b/R74 的 128 与 160）。
+     * 覆盖 R43b/R74 的 128 与 160；R78 只动流体/源质/背包，<b>中栏 15 行一行不删</b>）。
      * <p>
      * 这三个上界就是「允许被拖的索引集合」白名单本体：R38 第 4 条的可逆开关（X「独立配置槽区」
      * 与 Y「就地转换」两种读法）只改这里的区间，不改数据结构与抽取逻辑。
      * <p>
      * ★它同时是 {@code PocketInventory.STORAGE_SLOTS} 的单源（格数 = ghost 索引空间，一一对应），
      * 所以"128→150"这一改必然连带中栏矩阵、Container 槽数与写档形状；由
-     * {@code NekoPocketModelTest} 的加总用例钉住（150 = 15 × 10，且 175 = 150+12+12+1）。
+     * {@code NekoPocketModelTest} 的加总用例钉住（150 = 15 × 10，且
+     * <b>235 = 150 + 36 + 12 + 1 + 36</b>，R78 的口径）。
      */
     public static final int GHOST_ITEM_SLOT_LIMIT = 150;
-    /** 流体支：一个流体列一个 ghost 索引位（0…{@link #FLUID_COLUMN_COUNT}−1，R75 由 1 变 6）。 */
-    public static final int GHOST_FLUID_SLOT_LIMIT = FLUID_COLUMN_COUNT;
-    /** 源质支：48 格显示位（与 {@link #ESSENCE_DISPLAY_GRID} 同值但语义独立；R75 只换排布不换总数）。 */
-    public static final int GHOST_ESSENCE_SLOT_LIMIT = 48;
+    /** 流体支：一个流体列一个 ghost 索引位（0…{@link #FLUID_TANK_TOTAL}−1；R78② 由 6 变 <b>18</b>）。 */
+    public static final int GHOST_FLUID_SLOT_LIMIT = FLUID_TANK_TOTAL;
+    /**
+     * 源质支：72 格显示位（与 {@link #ESSENCE_DISPLAY_GRID} 同值但语义独立；R78② 由 48 变 <b>72</b>）。
+     * <p>
+     * ★索引空间的<b>格号</b>现在是"该 tag 首次入账拿到的格位"（R78③，持久化在
+     * {@link #ESSENCE_CELL_ORDER}），不再是 {@code TaumCompat.aspectOrder()} 的固定派生序；
+     * 变的是<b>哪个 tag 落在第几格</b>，格数与索引上界恒定 ⇒ R32 的双端同树前提不受影响。
+     */
+    public static final int GHOST_ESSENCE_SLOT_LIMIT = ESSENCE_DISPLAY_GRID;
     /** 短效通道持续秒数。 */
     public static final int SHORT_CHANNEL_SECONDS = 30;
     /** 短效通道节拍：每 20 tick 一批（= 每秒一批，共 {@value #SHORT_CHANNEL_SECONDS} 批）。 */
@@ -143,6 +214,8 @@ public final class PocketConstants {
      * ★<b>与格子数无关，也不是格数</b>（R75 点名的批量替换豁免项）：中栏由 128 变 150 时
      * 这一行<b>必须保持 128</b>，它是"游标表条目数上限"，与 {@link #GHOST_ITEM_SLOT_LIMIT}
      * 只是数值巧合。任何"128→150"的批量替换波及到这里，都会静默改变轮转清理的节拍。
+     * ★<b>R78 再点名一次</b>：本轮把源质 48→72、流体 6→18、真实槽 175→<b>235</b>，
+     * 235 与 128 无关、72 与 128 也无关，本行<b>仍不得</b>被任何"顺手一起改"波及。
      */
     public static final int MAX_ROTATION_ENTRIES = 128;
 
@@ -156,11 +229,14 @@ public final class PocketConstants {
     /** 中栏 150 格内容（R53a/R53b：有界随身容器存物品 NBT；读写口径见 {@link #UI_WORK_TICKS} 的 R53c）。 */
     public static final String ITEM_CONTENTS = "contents";
     /**
-     * 流体列的交互格（R75①：{@link #FLUID_COLUMN_COUNT} 列 × {@link #FLUID_INTERACTION_PER_COLUMN} 格
-     * = 12 格）；关闭界面后仍留在档内，不销毁玩家放进来的储罐。
+     * 流体列的交互格（R78②：{@link #FLUID_GROUP_COUNT} 组 × {@link #FLUID_COLUMN_COUNT} 列 ×
+     * {@link #FLUID_INTERACTION_PER_COLUMN} 格 = <b>36</b> 格）；关闭界面后仍留在档内，
+     * 不销毁玩家放进来的储罐。
      * <p>
      * ★键名沿用旧单 tank 时代的 {@code interactionSlots}，<b>形状</b>是按槽号索引的同一套
-     * {@code ItemStackHandler} 形状 ⇒ 旧档的 8 格读进新 handler 的前 8 格，不丢件（多出的 4 格为空）。
+     * {@code ItemStackHandler} 形状 ⇒ 旧档的 12 格读进新 handler 的前 12 格，不丢件
+     * （前 12 格在新排布下恰好还是"第 1 组的 6 进 + 6 出"，见
+     * {@code PocketInventory#tankOfInteractionSlot}：组数=1 时它与旧的取模式逐字同解）。
      */
     public static final String FLUID_INTERACTION_SLOTS = "interactionSlots";
     /** 源质列的蒸馏输入 2 行 × 6 列 = 12 格（R75 只换排布，格数与 §14.3 一致）；R44c 的拒容器判定发生在槽过滤，不在档形状。 */
@@ -168,9 +244,10 @@ public final class PocketConstants {
     /** 底部带绑定格（需求 5）：R40a 非消耗，绑定动作读完 ID 就把原栈放回玩家处。 */
     public static final String BIND_SLOT = "bindSlot";
     /**
-     * 流体槽内容（{@link #FLUID_COLUMN_COUNT} 个独立 tank）。
+     * 流体槽内容（{@link #FLUID_TANK_TOTAL} 个独立 tank = 18 个）。
      * <p>
-     * ★<b>形状两代并存，读侧必须分派</b>（R75 的存档兼容项）：
+     * ★<b>形状两代并存，读侧必须分派</b>（R75 的存档兼容项，R78 把 tank 数由 6 增至 18 但
+     * <b>没有</b>再换形状 ⇒ 同一套读法天然覆盖三代：单 compound、6 tank 列表、18 tank 列表）：
      * <ul>
      * <li><b>旧档</b>：本键下是一个 {@code NBTTagCompound}（tag id 10，单个 {@code FluidStack} 形状）
      * ⇒ 整份落到 <b>0 号 tank</b>，其余 tank 为空；</li>
@@ -179,19 +256,29 @@ public final class PocketConstants {
      * 全空即 {@code removeTag}（与 {@code PocketInventory#saveGroup} 的"空区不留壳"同口径）。</li>
      * </ul>
      * 用带 {@link #FLUID_BAR_TANK} 的列表而不是"按位置对齐的定长列表"，是为了让"哪个 tank 有货"
-     * 由条目自己说明 ⇒ 将来增减列数不会让后面所有 tank 的内容整体错位。
+     * 由条目自己说明 ⇒ 将来增减列数不会让后面所有 tank 的内容整体错位（R78 的 6→18 正是这一条的兑现）。
      */
     public static final String FLUID_BAR = "fluidBar";
-    /** 新档里每个流体条目的 tank 序号键（int，0…{@link #FLUID_COLUMN_COUNT}−1；缺键按 0 读并一次性 WARN）。 */
+    /** 新档里每个流体条目的 tank 序号键（int，0…{@link #FLUID_TANK_TOTAL}−1；缺键按 0 读并一次性 WARN）。 */
     public static final String FLUID_BAR_TANK = "tank";
     /**
-     * <b>单个</b>流体 tank 的容量（mB）⇒ {@link #FLUID_COLUMN_COUNT} 个 tank 的总量是它的 6 倍。
+     * <b>单个</b>流体 tank 的容量（mB）⇒ {@link #FLUID_TANK_TOTAL} 个 tank 的总量是它的 18 倍
+     * （R78②：{@code 18 × 16,000,000 = 288,000,000}，旧"六槽合计 96,000,000"口径作废）。
      * <p>
-     * ★<b>规格外自立项</b>（R75 明文，须"游戏内文案 + 交付说明"双处声明）：值由旧口径 16,000
-     * 改为 <b>每槽 16,000,000</b>（×1000），来源是用户那句「流体槽容量 16M」，<b>不是</b>需求原文数字。
-     * 玩家可见侧的容量一律由本常量填进 {@code gtit.pocket.fluid.capacity}（lang 不得写死规格数字）。
+     * ★<b>规格外自立项</b>（R75 明文，须"游戏内文案 + 交付说明"双处声明；R78 的合计变更同样双处同步）：
+     * 值由旧口径 16,000 改为 <b>每槽 16,000,000</b>（×1000），来源是用户那句「流体槽容量 16M」，
+     * <b>不是</b>需求原文数字。玩家可见侧的容量一律由本常量填进 {@code gtit.pocket.fluid.capacity}
+     * 与 {@code item.neko_dimension_pocket.tooltip.9}（lang 不得写死规格数字）。
      */
     public static final int FLUID_BAR_CAPACITY_ML = 16_000_000;
+    /**
+     * 流体侧<b>总</b>容量（mB）= {@link #FLUID_TANK_TOTAL} × {@link #FLUID_BAR_CAPACITY_ML}
+     * = {@code 18 × 16,000,000 =} <b>288,000,000</b>（R78②）。
+     * <p>
+     * ★存在的理由与 {@link #BURST_SHOW_TICKS} 同一条纪律：合计是"规格外自立项"的玩家可见读数，
+     * 一旦在 lang 或 README 里另写一个数就是两处真相；玩家侧只允许由本常量填占位。
+     */
+    public static final int FLUID_TOTAL_CAPACITY_ML = FLUID_TANK_TOTAL * FLUID_BAR_CAPACITY_ML;
 
     // ------------------------------------------------------ R24 的「剩余 tick」与 R37 的状态位
     /**
@@ -275,7 +362,7 @@ public final class PocketConstants {
      * （R58b 的"同一个值只活在一处"纪律，作用域从成本常量扩到文法字母）。
      */
     public static final String GHOST_KIND_ITEM = "I";
-    /** CLR 第三段的区域字母：流体槽（6 列各一位，R75①）。 */
+    /** CLR 第三段的区域字母：流体槽（{@link #FLUID_TANK_TOTAL} 个 tank 各一位，R75① + R78②）。 */
     public static final String GHOST_KIND_FLUID = "F";
     /** CLR 第三段的区域字母：源质格。 */
     public static final String GHOST_KIND_ESSENCE = "E";

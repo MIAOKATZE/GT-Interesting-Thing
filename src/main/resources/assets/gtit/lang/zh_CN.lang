@@ -271,7 +271,7 @@ gtit.reincarnation.single_player_only=轮回机制仅单机可用
 # ---- 猫猫次元口袋（S3/S4）---- 键集来自单源契约 plan/_taskpack/pocket-lang-keys.md，两份文件必须逐键一致
 item.neko_dimension_pocket.name=猫猫次元口袋
 item.neko_dimension_pocket.tooltip.0=右键打开三栏面板
-item.neko_dimension_pocket.tooltip.1=中栏 %2$d 行 × %3$d 列 = %1$d 格存储；左列为 %4$d 个流体列；右列为源质盘
+item.neko_dimension_pocket.tooltip.1=中栏 %2$d 行 × %3$d 列 = %1$d 格存储；左列 %7$d 组 × %4$d 列流体（共 %8$d 槽）；右列源质盘 %10$d 格
 item.neko_dimension_pocket.tooltip.2=把元件放入底部带的绑定格，再按绑定键，即可开启次元通道
 item.neko_dimension_pocket.tooltip.3=元件必须置于有电的 ME 驱动器/箱子才会被识别
 item.neko_dimension_pocket.tooltip.4=从 NEI 拖到槽位可把该格变为虚化配置格，右键取消
@@ -322,13 +322,13 @@ gtit.pocket.ghost.locked=配置格不接受玩家放入或流体输入
 gtit.pocket.ghost.capacity_note=每个配置格会占用一格真实存储
 gtit.pocket.ghost.fluid_bar=本列流体槽仍可手动灌排；配置只说明要拉哪种流体
 gtit.pocket.held.note=只有握在主手时才运作；收进背包其他格、副手、饰品栏或箱子即停
-item.neko_dimension_pocket.tooltip.9=每个流体槽容量 %5$d mB（此项为需求外的设计取值，非原始要求数字）
+item.neko_dimension_pocket.tooltip.9=每个流体槽容量 %5$d mB，%8$d 槽合计 %9$d mB（此项为需求外的设计取值，非原始要求数字）
 gtit.pocket.legend.input=上一行：放入有流体的容器
 gtit.pocket.legend.tank=中间：本列的流体槽
 gtit.pocket.legend.output=下一行：放入空容器
 gtit.pocket.legend.in_out_same=同一列的上下两行行为相同（方向看容器有无流体）
-gtit.pocket.legend.tank_of=属于第 %d 个流体列
-gtit.pocket.fluid.capacity=每槽 %d mB
+gtit.pocket.legend.tank_of=第 %1$d 组第 %2$d 列（流体槽 %3$d）
+gtit.pocket.fluid.capacity=每槽 %1$d mB（共 %2$d 槽，合计 %3$d mB）
 gtit.pocket.sort.button=整理中栏（合并同类并前移；配置格不参与整理）
 gtit.pocket.note.title=本面板的用法摘要
 gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋只在主手持有期间工作
@@ -338,3 +338,6 @@ gtit.pocket.bind.truncated=……另有 %d 条绑定未在此列出
 gtit.pocket.bind.unbind_hint=右键「绑定」= 解绑最后一条；Shift + 右键 = 解绑全部
 gtit.pocket.bind.stale_hint=解绑只摘绑定表，不动元件内容，也不动 ME 网络
 gtit.pocket.bind.cleared=已解绑 %d 条元件
+gtit.pocket.aspect.empty=这一格还空着（该源质从未入账；格位一旦被占就不会回收）
+gtit.pocket.backpack.note=玩家背包：可从这里存取物品，Shift 点击在中栏与背包之间搬运
+gtit.pocket.backpack.cost_note=背包开在面板内=面板每 tick 要对 %d 格做整栈（含 NBT）比较，背包内容一变就连同口袋一起重发（为要背包换回的代价）

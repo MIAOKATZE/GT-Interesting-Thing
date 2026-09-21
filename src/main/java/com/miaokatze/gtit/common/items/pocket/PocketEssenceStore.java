@@ -7,9 +7,10 @@ import java.util.Set;
 
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.nbt.NBTTagString;
 
 /**
- * 口袋的源质存储：{@code aspect tag → 点数} 的窄表。
+ * 口袋的源质存储：{@code aspect tag → 点数} 的窄表 + <b>格位归属表</b>（R78③）。
  * <p>
  * <b>NBT 形状 = TC {@code AspectList} 的形状</b>（逐字对齐
  * {@code thaumcraft/api/aspects/AspectList.java:231-273} 的读写实现）：
@@ -18,12 +19,28 @@ import net.minecraft.nbt.NBTTagList;
  * ② 与罐/瓶/晶化源质互译只需一次 {@code AspectList#readFromNBT}，不必逐形状适配。
  * 逐格存 <b>tag 字符串</b>，绝不存裸索引（{@code AEStackTypeRegistry} 与 aspect 注册序都会漂移）。
  * <p>
+ * <b>★R78③：格序 = 该 tag 首次入账的顺序</b>（用户需求"有之后按出现顺序排"）。第二根键
+ * {@link PocketConstants#ESSENCE_CELL_ORDER}（挂在<b>根</b>上，与 {@code ess} 平级，
+ * 这样 {@code ess} 本身仍是纯粹的 TC 形状）存"格号 → tag"的归属表，三条口径：
+ * <ol>
+ * <li><b>入账时占格</b>：{@link #add(String, int)} 真的进了点数才占格（{@link #assignCell(String)}），
+ * 占<b>最小空位</b> ⇒ 先入账的落前面的格；</li>
+ * <li><b>持久化</b>：{@link #writeTo(NBTTagCompound)} 原样写出，重开面板/重进世界不重排；</li>
+ * <li>★<b>撤空不回收</b>：{@link #extract(String, int)} 把点数扣到 0 只摘 {@code amounts} 条目，
+ * <b>不动</b>格位归属 ⇒ 再灌同一种源质回到<b>原来那一格</b>，也不会因一次灌入把全部格重排
+ * （用户裁定"保留"；且 ghost 声明是按<b>格号</b>索引的，回收格位会让已声明的格拉错东西）。</li>
+ * </ol>
+ * 旧档（无该键）由 {@link #readFrom(NBTTagCompound)} 按 {@code Aspects} 的<b>条目顺序</b>补出
+ * 归属（LinkedHashMap 的插入序即"首次入账序"，且写入端按同一顺序落档）⇒ 老档不炸、不丢格、
+ * 也不会"重开一次就换一套格序"。
+ * <p>
  * <b>0 值不落档</b>（与 TC 侧"扣到 0 即从表里摘掉"同构，避免存量档膨胀），读档逐条
  * {@code Math.min(amount, CAP)} 钳制（外来/手改档写进 70 点不能直接吃下）。
  * <p>
- * <b>刻意不 baked tag 清单与颜色</b>：GUI 的 12×4 行序取运行时 {@code Aspect.aspects} 的迭代序，
- * addon 可追加项 ⇒ 注册数不恒为 48。本类只认调用方给来的 tag 字符串，存储与显示解耦：
- * 多于 48 个 tag 仍照常入账，只是不显示（{@link PocketConstants#ESSENCE_DISPLAY_GRID}）。
+ * <b>刻意不 baked tag 清单与颜色</b>：GUI 的行序取本表的格位归属（运行期数据，addon 可追加项
+ * ⇒ 注册数不恒为 {@link PocketConstants#ESSENCE_DISPLAY_GRID}）。本类只认调用方给来的 tag 字符串，
+ * 存储与显示解耦：多于 72 个 tag 仍照常入账，只是<b>没有格位可占</b>（{@link #assignCell(String)}
+ * 返回 −1，显示侧据此走 {@code aspect.overflow_note} 兜底）。
  * <p>
  * <b>入账口径 = 全有全无</b>：一轮候选（一件物品蒸出的全部 aspect）必须<b>整体</b>放得下，
  * 任一 tag 空间不足 ⇒ 整轮零入账、上层零消耗。故走 {@link #canAcceptAll(Map)} →
@@ -39,6 +56,12 @@ public final class PocketEssenceStore {
 
     /** tag → 点数；只存在非 0 项，故表大小即"有货的格数"。 */
     private final Map<String, Integer> amounts = new LinkedHashMap<>();
+    /**
+     * 格位归属表：下标 = 显示格号 {@code 0…ESSENCE_DISPLAY_GRID−1}，值 = 该格归属的 tag
+     * （{@code null} = 该格从未被占过）。★长度<b>恒定</b>（R32 双端同树的前提），
+     * 变的只是"哪个 tag 落在第几格"。
+     */
+    private final String[] cellTags = new String[PocketConstants.ESSENCE_DISPLAY_GRID];
 
     public static PocketEssenceStore readFrom(NBTTagCompound root) {
         final PocketEssenceStore store = new PocketEssenceStore();
@@ -60,7 +83,36 @@ public final class PocketEssenceStore {
                 store.amounts.put(tag, Math.min(amount, PocketConstants.ESSENCE_CAP_PER_TAG));
             }
         }
+        store.readCellOrder(root);
         return store;
+    }
+
+    /**
+     * 读格位归属（{@link PocketConstants#ESSENCE_CELL_ORDER}）。
+     * <p>
+     * 三条回落：① 越出格数的条目丢弃；② 重复 tag 只认第一次出现的位置（后续条目忽略）；
+     * ③ ★<b>有货但无格位</b>的 tag（旧档／外来档）按 {@code amounts} 的插入序补占最小空位
+     * ——插入序就是首次入账序，所以这条回落给出的正是需求要的那个格序，不是随机序。
+     */
+    private void readCellOrder(NBTTagCompound root) {
+        if (root.hasKey(PocketConstants.ESSENCE_CELL_ORDER)) {
+            final NBTTagList order = root.getTagList(PocketConstants.ESSENCE_CELL_ORDER, TAG_STRING);
+            for (int cell = 0; cell < cellTags.length && cell < order.tagCount(); cell++) {
+                final String tag = order.getStringTagAt(cell);
+                if (tag == null || tag.isEmpty()) {
+                    continue;
+                }
+                if (cellOf(tag) >= 0) {
+                    continue;
+                }
+                cellTags[cell] = tag;
+            }
+        }
+        for (String tag : amounts.keySet()) {
+            if (cellOf(tag) < 0) {
+                assignCell(tag);
+            }
+        }
     }
 
     public void writeTo(NBTTagCompound root) {
@@ -78,12 +130,117 @@ public final class PocketEssenceStore {
         final NBTTagCompound ess = new NBTTagCompound();
         ess.setTag(PocketConstants.ASPECTS, list);
         root.setTag(PocketConstants.ESSENCE, ess);
+        writeCellOrder(root);
+    }
+
+    /**
+     * 写格位归属：定长写到最后<b>一个</b>非空格为止（尾部空位由读侧默认补 {@code null}），
+     * 完全没有任何格位时 {@code removeTag}（与"空区不留壳"同口径）。
+     * <p>
+     * ★空位写<b>空串占位</b>而不是跳过——跳过会让后面所有 tag 的格号整体前移，
+     * 那正是"重开一次就换一套格序"的形态。
+     */
+    private void writeCellOrder(NBTTagCompound root) {
+        int lastFilled = -1;
+        for (int cell = cellTags.length - 1; cell >= 0; cell--) {
+            if (cellTags[cell] != null) {
+                lastFilled = cell;
+                break;
+            }
+        }
+        if (lastFilled < 0) {
+            root.removeTag(PocketConstants.ESSENCE_CELL_ORDER);
+            return;
+        }
+        final NBTTagList order = new NBTTagList();
+        for (int cell = 0; cell <= lastFilled; cell++) {
+            order.appendTag(new NBTTagString(cellTags[cell] == null ? "" : cellTags[cell]));
+        }
+        root.setTag(PocketConstants.ESSENCE_CELL_ORDER, order);
     }
 
     /** 某 tag 当前点数，缺席为 0。 */
     public int get(String tag) {
         final Integer value = tag == null ? null : amounts.get(tag);
         return value == null ? 0 : value;
+    }
+
+    // ------------------------------------------------------------------ R78③ 格位归属（首次入账序 = 格序）
+
+    /**
+     * 该 tag 当前占用的格号。
+     *
+     * @return {@code 0…ESSENCE_DISPLAY_GRID−1}；从未占格（或入过账但格位已满）返回 −1
+     */
+    public int cellOf(String tag) {
+        if (tag == null || tag.isEmpty()) {
+            return -1;
+        }
+        for (int cell = 0; cell < cellTags.length; cell++) {
+            if (tag.equals(cellTags[cell])) {
+                return cell;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 第 {@code cell} 格归属的 tag。
+     *
+     * @return tag 字符串；空格、越界格一律 {@code null}（显示侧据此<b>不画内容</b>）
+     */
+    public String tagAtCell(int cell) {
+        return cell < 0 || cell >= cellTags.length ? null : cellTags[cell];
+    }
+
+    /**
+     * ★占格（幂等）：已占过就返回<b>原来那一格</b>，否则占<b>最小空位</b>。
+     * <p>
+     * 只在"真的进了点数"之后调用（见 {@link #add(String, int)}），所以"格序 = 首次入账顺序"
+     * 与"这格有没有货"是两件事：前者由本方法一次性钉死并持久化，后者按 {@link #get(String)} 现读。
+     *
+     * @return 该 tag 的格号；{@code −1} = 72 格已满（只存不显，走 {@code aspect.overflow_note}）
+     */
+    public int assignCell(String tag) {
+        if (tag == null || tag.isEmpty()) {
+            return -1;
+        }
+        final int existing = cellOf(tag);
+        if (existing >= 0) {
+            return existing;
+        }
+        for (int cell = 0; cell < cellTags.length; cell++) {
+            if (cellTags[cell] == null) {
+                cellTags[cell] = tag;
+                return cell;
+            }
+        }
+        return -1;
+    }
+
+    /** 已占格的数量（含"曾经占过、现在空着"的格；显示侧用它判"还有没有空格可给新 tag"）。 */
+    public int assignedCellCount() {
+        int total = 0;
+        for (String tag : cellTags) {
+            if (tag != null) {
+                total++;
+            }
+        }
+        return total;
+    }
+
+    /**
+     * 有货但<b>没有格位</b>的 tag 数（R26 的"只存不显"在 R78 下的新判据：不再是"注册数 &gt; 格数"，
+     * 而是"入账过的 tag 比格位多"）。显示侧的 {@code aspect.overflow_note} 由它驱动。
+     */
+    public int unplacedTagCount() {
+        int total = 0;
+        for (String tag : amounts.keySet()) {
+            if (cellOf(tag) < 0) {
+                total++;
+            }
+        }
+        return total;
     }
 
     /** 表里是否已有该 tag 的点数（>0 才算"含有"）。 */
@@ -105,7 +262,7 @@ public final class PocketEssenceStore {
      * 表内已登记的 tag 是否全部到顶。<b>只供 GUI 置灰</b>（"看上去满了"），
      * 不代表"收不进"。
      * <p>
-     * ⚠ <b>禁止用它参与"本轮要不要消耗物品"的判定</b>：存储与 48 格显示解耦，未登记的 tag
+     * ⚠ <b>禁止用它参与"本轮要不要消耗物品"的判定</b>：存储与 72 格显示解耦（R78②），未登记的 tag
      * 永远收得进（表为空时本方法更是恒 false），所以它是<b>偏严又偏松</b>的双重错判来源。
      * 消耗判定只走 {@link #canAcceptAll(Map)} 或逐 tag {@link #add(String, int)} 的返回值。
      */
@@ -186,11 +343,19 @@ public final class PocketEssenceStore {
             return 0;
         }
         amounts.put(tag, current + added);
+        // ★R78③：首次真的入账才占格（占格动作与"进了多少点"无关，只与"进没进"有关）；
+        // 已占过格的 tag 走 assignCell 的幂等分支，落回原来那一格
+        assignCell(tag);
         return added;
     }
 
     /**
      * 出账；扣到 0 时把该 tag 从表里摘掉（与"0 值不落档"同构）。
+     * <p>
+     * ★<b>不动格位归属</b>（R78③ 的用户裁定"撤空不回收"）：摘掉的是<b>点数条目</b>，
+     * {@code cellTags} 里那一格仍然属于这个 tag，显示侧据 {@link #get(String)} 归 0 撤掉图标与
+     * 文本（R73② 的"留格不画内容"），再灌回来还是原来那一格。回收会造成"一次灌入全部重排"，
+     * 而且会让按<b>格号</b>索引的 ghost 声明指向别的 tag。
      *
      * @return 实际取出点数（请求量超过存量时按存量给）
      */
@@ -231,7 +396,15 @@ public final class PocketEssenceStore {
         return amounts.isEmpty();
     }
 
+    /**
+     * 整表重置：点数与<b>格位归属一起清</b>。
+     * <p>
+     * ★这与 {@link #extract(String, int)} 不是一回事：extract 是"玩家拿走这一格的货"，
+     * 按 R78③ 必须<b>保留</b>格位；clear 是"这口袋的源质整表作废"（外部导入/重置一类操作），
+     * 保留一套指向空气的格位没有意义。当前生产代码零调用方（保留给"整表导入/导出"一类外部操作）。
+     */
     public void clear() {
         amounts.clear();
+        java.util.Arrays.fill(cellTags, null);
     }
 }

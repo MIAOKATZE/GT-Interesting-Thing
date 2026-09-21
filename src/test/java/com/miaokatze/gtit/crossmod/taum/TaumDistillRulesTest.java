@@ -198,7 +198,19 @@ public class TaumDistillRulesTest {
         SimpleAssert.eq(3, TaumDistillRules.DISTILL_INPUT_SLOTS, "3 个输入槽各消耗 1 个");
         SimpleAssert.eq(8, TaumDistillRules.PHIAL_CAPACITY, "源质瓶 8 点/次（ItemEssence.java:109-185）");
         SimpleAssert.eq(1, TaumDistillRules.CRYSTAL_CAPACITY, "晶化源质 1 点/个（TileEssentiaCrystalizer.java:293）");
-        SimpleAssert.eq(48, TaumCompat.DISPLAY_CELLS, "12 行 × 4 列 = 48 格（按字面）");
+        // ★R78：格数权威已从本桥层摘除（旧 DISPLAY_CELLS=48 是第二份真相）。这里成对断言
+        // "旧形状消失 + 新形状在场"（R72 的判据写法），而不是笼统禁止某个符号：
+        // 桥层不得再有格数常量，口袋侧必须有一个 ESSENCE_DISPLAY_GRID。
+        for (java.lang.reflect.Field field : TaumCompat.class.getDeclaredFields()) {
+            SimpleAssert.eq(
+                Boolean.FALSE,
+                Boolean.valueOf("DISPLAY_CELLS".equals(field.getName())),
+                "★TaumCompat 不得再有 DISPLAY_CELLS（格数单源 = PocketConstants.ESSENCE_DISPLAY_GRID，R78②）");
+        }
+        SimpleAssert.eq(
+            72,
+            com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_DISPLAY_GRID,
+            "格数权威在 PocketConstants：6 列 × 12 行 = 72（R78②，≥ 实测 aspect 注册数 69）");
         SimpleAssert.eq(-1, TaumCompat.COLOR_UNKNOWN, "颜色未知标记");
         SimpleAssert.eq(-1, TaumDistillRules.CAPACITY_UNKNOWN, "容量未知标记");
         SimpleAssert.eq(0, TaumDistillRules.CAPACITY_NOT_A_CONTAINER, "非容器标记");

@@ -20,28 +20,51 @@ import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 
 /**
- * 口袋全部<b>真实槽</b>的工厂（唯一构造点）。
+ * 口袋全部<b>真实槽</b>的工厂（本仓侧的唯一构造点）。
  * <p>
  * <b>列文件内一律不内联构造槽</b>：这是 S5 能在不改列文件的前提下接管 ghost 语义的前提
  * （slice-s4-brief §6 第 9 条），也是「Container 槽数可机检」的前提。
  * <p>
  * 每造一个真实槽都记一次数，装配末尾必须 {@link #assertTotalRealSlots()} 命中
- * <b>{@value #TOTAL_REAL_SLOTS}</b>（R75 的口径，覆盖 §14.3/R43b 的 149 与 R74 一度算出的 185）：
- * 中栏 150 + 流体交互 12（6 列 × 输入/输出）+ 蒸馏输入 12 + 绑定 1 = <b>175</b>；
- * 48 源质格、6 个流体槽本体与全部 ghost 配置<b>不进 Container</b>（R35/R46d），不计入。
+ * <b>{@value #TOTAL_REAL_SLOTS}</b>（R78 的口径，覆盖 R75 的 175、R74 的 185、§14.3/R43b 的 149）：
+ * 中栏 150 + 流体交互 <b>36</b>（3 组 × 6 列 × 进/出）+ 蒸馏输入 12 + 绑定 1
+ * = <b>199</b> 格由本工厂造，另有<b>玩家背包 36 格</b>由框架造 ⇒ 合计 235；
+ * 72 源质格、18 个流体槽本体与全部 ghost 配置<b>不进 Container</b>（R35/R46d），不计入。
  * 偏大 = 有区域被重复接入，偏小 = 有区域漏接 ⇒ 两种都当场炸出来，不留到实机。
  * <p>
- * <b>关于框架自己绑的玩家背包 36 格</b>：MUI2 的 {@code ModularSyncManager#construct} 默认会
- * {@code bindPlayerInventory}（{@code ISyncRegistrar.java:85-96}），那 36 格不在本工厂口径内；
- * {@link NekoPocketPanel} 通过预注册空 {@code PlayerSlotGroup} 让该默认分支跳过，
- * 使 Container 恰好等于本工厂的产出。
+ * <b>★关于框架自己绑的玩家背包 36 格（R78① 撤销 R69-D2）</b>：MUI2 的
+ * {@code ModularSyncManager#construct} 在<b>没有</b>人预先注册 {@code player_inventory} 槽组时会
+ * {@code bindPlayerInventory}（{@code ISyncRegistrar.java:85-96}；字节码：循环 36 次
+ * {@code itemSlot("player", i, …)} + 注册 {@link com.cleanroommc.modularui.widgets.slot.PlayerSlotGroup}）。
+ * 旧实现预注册一个<b>空</b>的 {@code PlayerSlotGroup} 让那一支跳过（R69-D2，为的是 L2 档不显示背包
+ * 并消掉包放大），R78① 按用户裁决<b>撤销</b>该招 ⇒ 那 36 格回到 Container 并由
+ * {@link NekoPocketBottomBand} 画在底部带中间段（9 列 × 4 行）。
+ * <p>
+ * ★<b>连带代价（E4，R78① 明文要求不得静默）</b>：首开要同步 36 格，且 vanilla
+ * {@code Container#detectAndSendChanges} 每 tick 对这 36 格做 {@code ItemStack} 相等比较
+ * （<b>含整份 NBT 深比较</b>），玩家背包内容一变就把整枚口袋连同 199 格一起重发
+ * （R53c 点名的包放大面）。这是用户为"要玩家背包"明确换回来的代价，README 与本注释同处点名。
+ * 框架那一支的 {@code PlayerSlotGroup} rowSize=9、{@code allowShiftTransfer=true} ⇒
+ * shift 点击在中栏与背包之间双向可用（旧 L2 档的"取出到背包"按钮因此是加速快捷键而非唯一出口）。
  */
 public final class PocketSlots {
 
-    /** R75 定稿的真实 Container 槽总数（150 + 12 + 12 + 1 = 175）。 */
-    public static final int TOTAL_REAL_SLOTS = PocketInventory.STORAGE_SLOTS + PocketInventory.FLUID_INTERACTION_SLOTS
+    /**
+     * 本工厂造出的槽总数（R78：150 + 36 + 12 + 1 = <b>199</b>）。
+     * <p>
+     * ★与 {@link #TOTAL_REAL_SLOTS} 分开是有意的：那 36 格背包<b>不</b>经本工厂
+     * （由框架造，见类 javadoc），把它们混进本计数就会变成"工厂自己数不出自己该造几个"。
+     */
+    public static final int FACTORY_REAL_SLOTS = PocketInventory.STORAGE_SLOTS + PocketInventory.FLUID_INTERACTION_SLOTS
         + PocketInventory.DISTILL_INPUT_SLOTS
         + PocketInventory.BIND_SLOTS;
+    /**
+     * 玩家背包进 Container 的槽数（★<b>转发</b> {@link PocketConstants#PLAYER_BACKPACK_SLOTS}，
+     * 本类不另立一份：可见格数 9×4 与框架注册的 36 必须是同一个数）。
+     */
+    public static final int PLAYER_BACKPACK_SLOTS = PocketConstants.PLAYER_BACKPACK_SLOTS;
+    /** R78 定稿的真实 Container 槽总数（199 + 36 = <b>235</b> = 150 + 36 + 12 + 1 + 36）。 */
+    public static final int TOTAL_REAL_SLOTS = FACTORY_REAL_SLOTS + PLAYER_BACKPACK_SLOTS;
 
     // ----------------------------- 槽组名（矩阵侧与 Container 侧必须逐字相同，R41d）
     public static final String GROUP_STORAGE = "pocket_storage";
@@ -53,18 +76,22 @@ public final class PocketSlots {
     public static final int STORAGE_COLUMNS = 10;
     /** 中栏行数（R75 的"选项 A"：16→15，1080p / GUI Scale 3 的 360 逻辑高是硬天花板）。 */
     public static final int STORAGE_ROWS = 15;
-    /** 流体列每行的格数 = 列数（6 个输入格一行、6 个输出格一行，R75①）。 */
+    /** 流体<b>每组</b>列数 = 列数（每组的输入行 6 格一行、输出行 6 格一行，R75① + R78②）。 */
     public static final int FLUID_COLUMNS = PocketConstants.FLUID_COLUMN_COUNT;
-    /** 蒸馏盘每行 6 列（R75：3 行 × 4 → 2 行 × 6，格数不变）。 */
+    /** 流体<b>组数</b>（R78②：3 组；槽组 rowSize 仍是每组的列数，不是组数×列数）。 */
+    public static final int FLUID_GROUPS = PocketConstants.FLUID_GROUP_COUNT;
+    /** 蒸馏盘每行 6 列（R75：3 行 × 4 → 2 行 × 6，格数不变；R78 未动）。 */
     public static final int DISTILL_COLUMNS = 6;
+    /** 蒸馏盘行数（R75 定稿 2 行；与 {@link NekoPocketEssenceColumn#DISTILL_ROWS} 同源判据）。 */
+    public static final int DISTILL_ROWS = 2;
 
     /**
      * 格数与行列的<b>自证算式</b>（装配一进来就算，双端同一段代码）。
      * <p>
-     * 存在的理由：R75 的"128→150"是一次跨文件的批量口径变更，最坏的失败形态不是编译不过，
-     * 而是"矩阵行数改了、常量没改"或"常量改了、Container 注册的行数没改"这类<b>各自都能编译</b>的半改。
-     * 这里把三者的乘积关系变成一条构造期就抛的断言，配套的负控在回归套件里
-     * （{@code slot_math_175_and_row_column_products}）。
+     * 存在的理由：R75 的"128→150"与 R78 的"48→72 / 6→18 / 175→235"都是跨文件的批量口径变更，
+     * 最坏的失败形态不是编译不过，而是"矩阵行数改了、常量没改"或"常量改了、Container 注册的
+     * 行数没改"这类<b>各自都能编译</b>的半改。这里把三者的乘积关系变成一条构造期就抛的断言，
+     * 配套的负控在回归套件里（{@code slot_math_235_and_row_column_products}）。
      */
     static {
         if (STORAGE_ROWS * STORAGE_COLUMNS != PocketInventory.STORAGE_SLOTS) {
@@ -75,11 +102,18 @@ public final class PocketSlots {
                     + " != "
                     + PocketInventory.STORAGE_SLOTS);
         }
-        if (FLUID_COLUMNS * PocketConstants.FLUID_INTERACTION_PER_COLUMN != PocketInventory.FLUID_INTERACTION_SLOTS) {
-            throw new IllegalStateException("[pocket] 流体列数×每列格数不等于交互格数");
+        if (FLUID_GROUPS * FLUID_COLUMNS * PocketConstants.FLUID_INTERACTION_PER_COLUMN
+            != PocketInventory.FLUID_INTERACTION_SLOTS) {
+            throw new IllegalStateException("[pocket] 流体组数×列数×每列格数不等于交互格数（R78② 的三级乘积）");
         }
-        if (DISTILL_COLUMNS * 2 != PocketInventory.DISTILL_INPUT_SLOTS) {
+        if (DISTILL_COLUMNS * DISTILL_ROWS != PocketInventory.DISTILL_INPUT_SLOTS) {
             throw new IllegalStateException("[pocket] 蒸馏盘行列乘积不等于格数");
+        }
+        if (PocketConstants.PLAYER_BACKPACK_COLUMNS * PocketConstants.PLAYER_BACKPACK_ROWS != PLAYER_BACKPACK_SLOTS) {
+            throw new IllegalStateException("[pocket] 背包行列乘积不等于背包槽数");
+        }
+        if (FACTORY_REAL_SLOTS + PLAYER_BACKPACK_SLOTS != TOTAL_REAL_SLOTS) {
+            throw new IllegalStateException("[pocket] 工厂产出 + 框架背包不等于 Container 口径");
         }
     }
 
@@ -108,12 +142,12 @@ public final class PocketSlots {
     }
 
     /**
-     * 流体列的交互格之一（R75①：6 列 × 输入/输出 = 12 格，<b>两格同权</b>：方向由放入的容器
-     * 当前有无流体决定，R39a 的口径一个字都没改）。
+     * 流体列的交互格之一（R75① + R78②：3 组 × 6 列 × 输入/输出 = <b>36</b> 格，<b>两格同权</b>：
+     * 方向由放入的容器当前有无流体决定，R39a 的口径一个字都没改）。
      * <p>
-     * ★与旧口径唯一的差别：搬运的<b>落点</b>由"整栏一根条"变成"该格所属的那一列那一格"
-     * （{@link PocketInventory#tankOfInteractionSlot(int)}）。这是 R75① 的实质——六个 tank 各拉各的、
-     * 各灌各的，不再互相挤容量。
+     * ★与旧口径唯一的差别：搬运的<b>落点</b>由"该格取模出的列"变成
+     * "该格所属那一组的那一列"（{@link PocketInventory#tankOfInteractionSlot(int)}，
+     * 组数=1 时两式同解）。这是 R78② 的实质——18 个 tank 各拉各的、各灌各的，不再互相挤容量。
      * <p>
      * 搬运触发点 = {@code ModularSlot.changeListener}（{@code ModularSlot.java:165-169}），
      * <b>只在服务端的非 init 回调里执行</b>（客户端那份 handler 由 vanilla 槽同步喂显示）。
@@ -126,7 +160,8 @@ public final class PocketSlots {
                 return;
             }
             // ★用装配期传入的 handler 索引，不用 slot.getSlotIndex()：后者是 Container 里的全局槽号，
-            // 与中栏/蒸馏格交错，拿它取模会取到别的列（这是"六列各灌各的"唯一会算错的地方）
+            // 与中栏/蒸馏格交错，拿它取模会取到别的列（这是"十八个 tank 各灌各的"唯一会算错的地方，
+            // 落点映射单源在 PocketInventory#tankOfInteractionSlot）
             moveFluidBetweenTanks(inv, index, slot);
         });
         return slot;
@@ -337,17 +372,50 @@ public final class PocketSlots {
     }
 
     /**
-     * 面板装配末尾调用：槽数口径必须是 {@link #TOTAL_REAL_SLOTS}。
+     * 面板装配末尾调用：本工厂的产出必须是 {@link #FACTORY_REAL_SLOTS}，且加上框架绑的
+     * {@link #PLAYER_BACKPACK_SLOTS} 后必须是 {@link #TOTAL_REAL_SLOTS}（R78：199 + 36 = 235）。
      *
      * @throws IllegalStateException 计数不符（双端同抛 ⇒ 首开即暴露，不会静默错位）
      */
     public void assertTotalRealSlots() {
-        if (createdRealSlots != TOTAL_REAL_SLOTS) {
+        assertTotalRealSlots(createdRealSlots, PLAYER_BACKPACK_SLOTS);
+    }
+
+    /**
+     * 加总判据的<b>本体</b>（两个入参形态 ⇒ 回归套件能直接喂 234 / 236 两个负控，
+     * 不必为了构造"少一格"去把 199 个槽真造一遍）。
+     * <p>
+     * ★两条判据都要，不能只判合计：只判合计的话"工厂少造一格 + 背包多绑一格"会互相抵消成 235
+     * 而静默放过（两种错各有独立的玩家可见症状：前者是某块区域点不动，后者是隐形槽）。
+     *
+     * @param factoryCreated 本工厂实际造出的槽数
+     * @param playerBackpack 框架那一条支实际注册进 Container 的背包槽数
+     */
+    public static void assertTotalRealSlots(int factoryCreated, int playerBackpack) {
+        if (factoryCreated != FACTORY_REAL_SLOTS) {
             throw new IllegalStateException(
-                "[pocket] 真实 Container 槽数口径被破坏: 装配出 " + createdRealSlots
+                "[pocket] 真实 Container 槽数口径被破坏: 工厂装配出 " + factoryCreated
                     + " 个, 应为 "
-                    + TOTAL_REAL_SLOTS
-                    + " 个 (150 中栏 + 12 流体交互 + 12 蒸馏输入 + 1 绑定格)");
+                    + FACTORY_REAL_SLOTS
+                    + " 个 (150 中栏 + 36 流体交互(3 组×6×2) + 12 蒸馏输入 + 1 绑定格)");
+        }
+        if (playerBackpack != PLAYER_BACKPACK_SLOTS) {
+            throw new IllegalStateException(
+                "[pocket] 玩家背包槽数不是 " + PLAYER_BACKPACK_SLOTS
+                    + " 个（读到 "
+                    + playerBackpack
+                    + "）：不等于 9×4 ⇒ 要么有一部分背包格只存在于 Container 而画不出来（隐形槽），"
+                    + "要么框架那一条支被重复接入");
+        }
+        if (factoryCreated + playerBackpack != TOTAL_REAL_SLOTS) {
+            throw new IllegalStateException(
+                "[pocket] Container 总口径被破坏: " + factoryCreated
+                    + " + "
+                    + playerBackpack
+                    + " = "
+                    + (factoryCreated + playerBackpack)
+                    + ", 应为 "
+                    + TOTAL_REAL_SLOTS);
         }
     }
 

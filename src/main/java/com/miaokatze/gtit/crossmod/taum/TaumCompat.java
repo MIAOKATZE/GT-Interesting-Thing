@@ -48,8 +48,11 @@ public final class TaumCompat {
     /** Thaumic Tinkerer modId（其 mcmod.info 的 modid 实测；本仓不静态引用其任何类型） */
     public static final String MODID_THAUMIC_TINKERER = "ThaumicTinkerer";
 
-    /** 显示格数：需求原文 12 行 × 4 列，按字面固定；注册数不足则留空、超出则不显示但仍可存 */
-    public static final int DISPLAY_CELLS = 48;
+    // ★R78 起本类不再有"显示格数"常量：口袋源质盘的格数权威只有一处 ——
+    // {@code PocketConstants.ESSENCE_DISPLAY_GRID}（6 列 × 12 行 = 72，R78②）。
+    // 旧这里的 {@code DISPLAY_CELLS = 48} 是第二份真相（改格数时它不会被编译器逼着改，
+    // 而 GUI 读常量、测试读它，一旦漂移就变成"测过的数字没人用"），故随 R78 一并摘除；
+    // 需要"这个包认识几个 aspect"时用下面的 {@link #aspectCount()}（运行时派生，本来就不恒为任何字面量）。
 
     /** 颜色未知标记 */
     public static final int COLOR_UNKNOWN = -1;
@@ -127,10 +130,13 @@ public final class TaumCompat {
     }
 
     /**
-     * 运行时派生的 aspect 显示/存储序（{@code Aspect.aspects} 的 {@code LinkedHashMap} 迭代序）。
+     * 运行时派生的 aspect 注册序（{@code Aspect.aspects} 的 {@code LinkedHashMap} 迭代序）。
      * <p>
-     * <b>不假设恰为 48</b>：addon 与 GT5U 的 {@code TCAspects} 会追加条目。
-     * 口袋 6×8 网格取前 {@link #DISPLAY_CELLS} 项铺满，其余不显示但仍可入账。
+     * <b>不假设恰为任何数</b>：addon 与 GT5U 的 {@code TCAspects} 会追加条目。
+     * ★<b>R78③ 起这一序不再是口袋源质盘的格序</b>：格序 = "该 tag 首次入账的顺序"，
+     * 由服务端算并落 NBT（{@code PocketEssenceStore} 的格位归属表），GUI 只读那份同步值；
+     * 本序现在只服务两件事：① {@link #aspectCount()} 的注册数读数，② 给"这个包一共认识
+     * 几个 aspect"一个参考。<b>不得</b>再拿它排格子（两端各算一次就是 R32 的头号风险）。
      *
      * @return tag 数组快照；不可用时空数组
      */

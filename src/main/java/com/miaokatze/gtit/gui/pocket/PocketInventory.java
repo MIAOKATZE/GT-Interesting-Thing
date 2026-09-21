@@ -46,21 +46,32 @@ public final class PocketInventory {
     /** 中栏格数 = 10 列 × 15 行 = 150（R75；单源取 {@link PocketConstants#GHOST_ITEM_SLOT_LIMIT}）。 */
     public static final int STORAGE_SLOTS = PocketConstants.GHOST_ITEM_SLOT_LIMIT;
     /**
-     * 流体交互格数 = {@link PocketConstants#FLUID_COLUMN_COUNT} 列 ×
-     * {@link PocketConstants#FLUID_INTERACTION_PER_COLUMN} 格 = 12（R75①）。
+     * 流体交互格数 = {@link PocketConstants#FLUID_TANK_TOTAL} 个 tank ×
+     * {@link PocketConstants#FLUID_INTERACTION_PER_COLUMN} 格 = <b>36</b>（R78②：3 组 × 6 列 × 进/出）。
      * <p>
-     * ★ handler 索引与 tank 的对应关系是<b>取模</b>（{@link #tankOfInteractionSlot(int)}）：
-     * 矩阵先铺完一列的"上格"再铺下一列，之后才轮到"下格"，故
-     * {@code 0…5} 是 6 个上格、{@code 6…11} 是 6 个下格，两两同属一列。
+     * ★ handler 索引与 tank 的对应关系住在 {@link #tankOfInteractionSlot(int)}（唯一映射点）：
+     * 矩阵按组产出索引，一组内"先铺满 6 个上格、再铺 6 个下格"⇒
+     * {@code 0…5} 是第 1 组的进格、{@code 6…11} 是第 1 组的出格、{@code 12…17} 第 2 组进格…
+     * 旧 12 格档读进新 handler 的前 12 格<b>恰好还是同一批 tank</b>（见该方法的兼容说明）。
      */
-    public static final int FLUID_INTERACTION_SLOTS = PocketConstants.FLUID_COLUMN_COUNT
-        * PocketConstants.FLUID_INTERACTION_PER_COLUMN;
+    public static final int FLUID_INTERACTION_SLOTS = PocketConstants.FLUID_INTERACTION_TOTAL;
     /** 蒸馏输入格数 = 2 行 × 6 列（R75 换排布不换格数；§14.3 覆盖计划 §6 的「3 个槽」旧口径）。 */
     public static final int DISTILL_INPUT_SLOTS = 12;
     /** 绑定格数（需求 5，R43a 的瞬时入口；R75 后落在底部带）。 */
     public static final int BIND_SLOTS = 1;
-    /** 独立流体 tank 数（= 流体列数 = {@code Kind.FLUID} 的 ghost 索引空间，单源同 {@link PocketConstants#FLUID_COLUMN_COUNT}）。 */
-    public static final int FLUID_TANK_COUNT = PocketConstants.FLUID_COLUMN_COUNT;
+    /**
+     * 独立流体 tank 数（= 组数 × 每组列数 = {@code 3 × 6 = 18}，R78②；
+     * 单源同 {@link PocketConstants#FLUID_TANK_TOTAL}，也是 {@code Kind.FLUID} 的 ghost 索引空间）。
+     */
+    public static final int FLUID_TANK_COUNT = PocketConstants.FLUID_TANK_TOTAL;
+    /**
+     * 每组流体侧的交互格数（= 该组的 tank 数 × 每 tank 格数 = {@code 6 × 2 = 12}）。
+     * <p>
+     * ★这一层是 R78 新增的"组"维度：旧口径（1 组）下它等于全部交互格数，
+     * 所以 {@link #tankOfInteractionSlot(int)} 的"取模"读法在旧档上与新读法<b>逐字同解</b>。
+     */
+    public static final int FLUID_INTERACTION_PER_GROUP = PocketConstants.FLUID_COLUMN_COUNT
+        * PocketConstants.FLUID_INTERACTION_PER_COLUMN;
 
     /**
      * {@code ItemStackHandler} 自己的落档形状键（{@code Items} / {@code Slot} / {@code Count} / {@code Size}）。
@@ -398,14 +409,39 @@ public final class PocketInventory {
     }
 
     /**
-     * 某个流体交互格属于哪个 tank（<b>唯一</b>映射点）。
+     * 某个流体交互格属于哪个 tank（<b>唯一</b>映射点，R78② 的"组"维度收在这一个函数里）。
      * <p>
-     * 矩阵按"先铺完 6 个上格、再铺 6 个下格"的顺序产出索引 ⇒ 取模即列号：
-     * {@code 0…5} 与 {@code 6…11} 的同一列同属一个 tank。越界入参原样返回（调用方是槽号，不该越界；
-     * 真越界了就让上层的数组访问炸出来，而不是静默映射到 0 号 tank 去动别人的液体）。
+     * 矩阵按"组"顺序产出索引，一组内先铺完 6 个上格再铺 6 个下格 ⇒
+     * 
+     * <pre>
+     *   组号   = index / FLUID_INTERACTION_PER_GROUP      （每组 12 格）
+     *   组内列 = index % FLUID_COLUMN_COUNT               （0…5）
+     *   tank   = 组号 × FLUID_COLUMN_COUNT + 组内列        （0…17）
+     * </pre>
+     * 
+     * ★<b>旧档同解</b>：组数=1 时本式退化为 {@code index % 6}，与 R75 那版取模逐字一致 ⇒
+     * 12 格老档的进/出格仍然落在同一批 tank，不需要任何迁移代码。
+     * <p>
+     * 越界入参原样返回（调用方是槽号，不该越界；真越界了就让上层的数组访问炸出来，
+     * 而不是静默映射到 0 号 tank 去动别人的液体）。
      */
     public static int tankOfInteractionSlot(int interactionIndex) {
-        return interactionIndex % FLUID_TANK_COUNT;
+        final int group = interactionIndex / FLUID_INTERACTION_PER_GROUP;
+        final int columnInGroup = interactionIndex % PocketConstants.FLUID_COLUMN_COUNT;
+        return group * PocketConstants.FLUID_COLUMN_COUNT + columnInGroup;
+    }
+
+    /** 交互格属于哪一组（0…{@link PocketConstants#FLUID_GROUP_COUNT}−1；GUI 的分组渲染与 tooltip 用）。 */
+    public static int groupOfInteractionSlot(int interactionIndex) {
+        return interactionIndex / FLUID_INTERACTION_PER_GROUP;
+    }
+
+    /**
+     * 某一组内该交互格是"上格（进）"还是"下格（出）"（★<b>不</b>改变 R39a 的双用语义，
+     * 只描述它画在流体槽的哪一侧，供 tooltip 选 {@code legend.input} / {@code legend.output}）。
+     */
+    public static boolean isLowerInteractionRow(int interactionIndex) {
+        return interactionIndex % FLUID_INTERACTION_PER_GROUP >= PocketConstants.FLUID_COLUMN_COUNT;
     }
 
     /** tank 号是否合法（GUI 与通道侧共用的这一道界）。 */
@@ -476,7 +512,7 @@ public final class PocketInventory {
      * 第 {@code tank} 号流体槽还能收这一份多少 mB（槽内已有别的流体 ⇒ 0；tank 号非法 ⇒ 0）。
      * <p>
      * ★拉取模式下的落点就是"该流体列自己那一格"：ghost 声明的 {@code slotIndex} 即 tank 号，
-     * 所以六列各拉各的，不会像旧单条那样"第一格满了后面全满"。
+     * 所以十八个 tank 各拉各的（R78②：3 组 × 6 列），不会像旧单条那样"第一格满了后面全满"。
      */
     public int fluidBarRoom(int tank, FluidStack probe) {
         if (probe == null || probe.amount <= 0 || !isValidTank(tank)) {

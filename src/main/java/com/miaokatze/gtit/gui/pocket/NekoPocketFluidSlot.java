@@ -16,7 +16,8 @@ import com.cleanroommc.modularui.widgets.slot.FluidSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 
 /**
- * 流体列的<b>流体槽本体</b>（R75①：面板左侧那 6 列之一，每列纵向 = 输入格 / <b>本槽</b> / 输出格）：
+ * 流体列的<b>流体槽本体</b>（R75① 的排法 a + R78② 的 3 组：面板左侧那 18 个槽之一，
+ * 每组的纵向 = 输入行 / <b>本槽（18 宽 × 36 高）</b> / 输出行）：
  * 真实流体槽 + 一个可被 NEI 拖入的 ghost 声明位（需求 4 的流体入口）。
  * <p>
  * <b>★不调 {@code super.handleDragAndDrop}、也★不把本槽 handler 设成 phantom</b>
@@ -27,18 +28,21 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * 只发本仓那一条 {@code SYNC_GHOST_REQUEST}（与 {@link NekoFilterSlot} 同形，R18/R19 不破）。
  * <p>
  * <b>ghost 只原位改属性</b>（R41b）：本 widget 实例从装配到关屏不换，声明态只影响
- * 渲染样本、遮罩与 tooltip；18×18 几何与 {@code alwaysShowFull(false)} 的部分填充口径
- * 都由 {@link NekoPocketLeftColumn} 原样保留 ⇒ 双端同树（R32）不受影响。
+ * 渲染样本、遮罩与 tooltip；几何（★R78② 由 18×18 拉长为 18×36）与 {@code alwaysShowFull(false)}
+ * 的部分填充口径都由 {@link NekoPocketLeftColumn} 原样保留 ⇒ 双端同树（R32）不受影响。
+ * ★拉长后的<b>液面比例</b>由库内绘制决定，纯 JVM 测不到 ⇒ 实机核验项（回执点名）。
  * <p>
- * <b>★槽号 = 列号 = tank 号</b>（R75：流体侧由 1 根竖条变 {@code PocketConstants.FLUID_COLUMN_COUNT}
- * 个独立 tank，{@code GHOST_FLUID_SLOT_LIMIT} 同值跟着变 6）：不再有"恒为 0"的特例，
+ * <b>★槽号 = tank 号 = {@code Kind.FLUID} 的 ghost 索引</b>（R75 由 1 根竖条变
+ * {@code PocketConstants.FLUID_COLUMN_COUNT} 个 tank，R78② 再变
+ * {@code PocketConstants.FLUID_TANK_TOTAL} = 18 个，{@code GHOST_FLUID_SLOT_LIMIT} 与它同源）：
+ * 不再有"恒为 0"的特例，
  * 列号由 {@link #bindBar(NekoPocketPanel, int)} 在装配期注入 ⇒
  * "这一列要拉哪种流体"与"拉进哪个 tank"共用同一个数，没有第二份映射。
- * {@code Kind.FLUID} 的索引空间与中栏 0…149、源质 0…47 各自独立，这正是 CLR 必须带区域字母的理由。
+ * {@code Kind.FLUID} 的索引空间与中栏 0…149、源质 0…71 各自独立，这正是 CLR 必须带区域字母的理由。
  */
 public class NekoPocketFluidSlot extends FluidSlot {
 
-    /** 旧的"唯一槽号"常量（R75 后流体侧有 6 个索引位，不再存在恒值）。 */
+    /** 旧的"唯一槽号"常量（流体侧有多个索引位后不再存在恒值；仅作为 0 号 tank 的可读写法）。 */
     public static final int FIRST_SLOT_INDEX = 0;
 
     /** 虚化遮罩色（与 {@link NekoFilterSlot} 同一 alpha 口径，R18）。 */
@@ -301,14 +305,20 @@ public class NekoPocketFluidSlot extends FluidSlot {
     }
 
     /**
-     * ghost 态补两条 tooltip：声明了哪种流体（+ 右键取消）与"流体条仍可手动灌排"。
+     * ★R78 D-2：本槽 tooltip 现在承担两行原本常驻在左列的文字 —— "这一格是本列的流体槽"
+     * （{@code legend.tank}）与<b>每槽容量读数</b>（{@code fluid.capacity}，数字由
+     * {@code PocketConstants} 填，见 {@link NekoPocketPanel#capacityReadoutText()}）。
+     * <p>
+     * ghost 态再补两条：声明了哪种流体（+ 右键取消）与"流体槽仍可手动灌排"。
      * <p>
      * <b>不</b>复用 {@code gtit.pocket.ghost.locked}：那条写的是"配置格不接受玩家放入<b>或流体输入</b>"，
-     * 而流体条恰恰仍然接受（需求 2 的灌排两排同权，本类一个字都没动它）⇒ 拿它贴到条上就是假话。
+     * 而流体槽恰恰仍然接受（需求 2 的灌排两格同权，本类一个字都没动它）⇒ 拿它贴到条上就是假话。
      */
     @Override
     protected void addToolTip(RichTooltip tooltip) {
         super.addToolTip(tooltip);
+        tooltip.addLine(IKey.lang("gtit.pocket.legend.tank"));
+        tooltip.addLine(IKey.dynamic(() -> owner == null ? "" : owner.capacityReadoutText()));
         if (!ghost) {
             return;
         }

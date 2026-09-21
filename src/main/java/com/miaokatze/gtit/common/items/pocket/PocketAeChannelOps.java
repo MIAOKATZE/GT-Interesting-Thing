@@ -351,7 +351,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (handler == null) {
             return new Outcome(PocketReceipt.LOST, 0);
         }
-        // ★落点 = 本条声明自己的那一列（R75①：ghost 的 slotIndex 就是 tank 号，六列各拉各的）
+        // ★落点 = 本条声明自己那一个 tank（R75①：ghost 的 slotIndex 就是 tank 号；R78② 后共 18 个 tank 各拉各的）
         final int tank = filter.slotIndex();
         final int room = session == null ? 0 : session.fluidBarRoom(tank, new FluidStack(fluid, 1));
         if (room <= 0) {
