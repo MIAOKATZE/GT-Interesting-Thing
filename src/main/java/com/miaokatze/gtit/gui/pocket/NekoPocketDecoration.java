@@ -14,7 +14,8 @@ import com.cleanroommc.modularui.widget.ParentWidget;
  * <b>四类贴法的分工</b>（契约见 {@code plan/assest/pocket-ui-mockups-2.html} 第 355–366 行，
  * 名称与尺寸一律经 {@link PocketGuiTextures} 单源取，本文件不写路径也不写字面尺寸）：
  * <ul>
- * <li>{@code cloth}（32×32）：<b>平铺</b>铺满整块面板（一张小图铺 416×360，省内存）；</li>
+ * <li>{@code cloth}（32×32）：<b>平铺</b>铺满整块面板（一张小图铺满
+ * {@code NekoPocketPanel.WIDTH × HEIGHT}，★本文件不写字面面板宽，省内存）；</li>
  * <li>{@code panel}（64×64，N=10）：<b>9-slice</b> 拉伸成木框 + 内圈铜线（面板远大于 2N+1 ⇒ 安全）；</li>
  * <li>{@code corner}（14×14）：★<b>非 9-slice ⇒ 1:1 贴</b>四角各一次，不得拉伸；</li>
  * <li>{@code rivet}（6×6）：★同样 1:1，<b>同一个图标多点位复用</b>（铆钉落两条列分隔缝的两端）。</li>
@@ -62,11 +63,16 @@ final class NekoPocketDecoration {
         root.child(rivet(secondSeamX(), NekoPocketPanel.MARGIN));
         root.child(rivet(firstSeamX(), NekoPocketPanel.MARGIN + MAIN_HEIGHT - RIVET));
         root.child(rivet(secondSeamX(), NekoPocketPanel.MARGIN + MAIN_HEIGHT - RIVET));
-        // 绳结虚线（契约里的 rope，8×8 平铺）：底部带里"币值块 / 绑定块"的分隔缝
+        // 绳结虚线（契约里的 rope，8×8 平铺）：底部带里"背包块 / 绑定块"的分隔缝。
+        // ★R81④：这条缝现在**归右段自己的账**（右段 = 绳缝 4 + 内容 108，见
+        // NekoPocketBottomBand#BIND_ROPE_WIDTH），起点因此是 BIND_X 而不是旧口径的
+        // {@code BIND_X − COLUMN_GAP}——后者在三段改紧挨之后会把 4px 画到背包段最后一列上
+        // （那一列是真实交互槽，装饰压上去读成"格子被切了一刀"）。坐标全部派生自
+        // NekoPocketPanel.WIDTH / 带段常量，★不留字面面板宽。
         root.child(
             (IWidget) PocketGuiTextures.ROPE.asWidget()
-                .pos(NekoPocketBottomBand.BIND_X - NekoPocketPanel.COLUMN_GAP, NekoPocketBottomBand.Y)
-                .size(NekoPocketPanel.COLUMN_GAP, NekoPocketBottomBand.HEIGHT)
+                .pos(NekoPocketBottomBand.BIND_X, NekoPocketBottomBand.Y)
+                .size(NekoPocketBottomBand.BIND_ROPE_WIDTH, NekoPocketBottomBand.HEIGHT)
                 .name("pocket_decoration_rope"));
         return root;
     }

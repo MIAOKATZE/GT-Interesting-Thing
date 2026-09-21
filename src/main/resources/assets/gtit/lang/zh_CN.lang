@@ -294,6 +294,9 @@ gtit.pocket.bind.stale=位置已失效，请重新按绑定键
 gtit.pocket.bind.slot_hint=把元件放入此格，再按绑定键
 gtit.pocket.bind.button=绑定
 gtit.pocket.bind.full=绑定数量已达上限
+gtit.pocket.bind.added=元件已加入绑定列表
+gtit.pocket.bind.dup=该元件已在绑定列表中，未重复添加
+gtit.pocket.bind.no_identity=元件身份未能写入，请稍后再按绑定键
 gtit.pocket.mode.push=推送中：背包 → 元件
 gtit.pocket.mode.pull=拉取中：按 %d 条配置补满
 gtit.pocket.receipt.ok=完成：已搬运 %d 项
@@ -335,6 +338,7 @@ gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声�
 gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d 闪烁猫猫币、持续 %d 秒
 gtit.pocket.bind.summary=已绑定元件：%d / %d
 gtit.pocket.bind.truncated=……另有 %d 条绑定未在此列出
+gtit.pocket.bind.rows_more=……另有 %d 条，悬停绑定按钮可见全部
 gtit.pocket.bind.unbind_hint=右键「绑定」= 解绑最后一条；Shift + 右键 = 解绑全部
 gtit.pocket.bind.stale_hint=解绑只摘绑定表，不动元件内容，也不动 ME 网络
 gtit.pocket.bind.cleared=已解绑 %d 条元件

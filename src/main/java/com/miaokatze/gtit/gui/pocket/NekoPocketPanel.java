@@ -25,6 +25,7 @@ import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
+import com.miaokatze.gtit.common.items.pocket.PocketBindFlow;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketCellProbe;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelManager;
@@ -45,7 +46,8 @@ import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 /**
- * 猫猫次元口袋主面板（<b>416×360</b>，<b>★R78① 起带玩家背包</b> = 底部带中间段 9×4）。
+ * 猫猫次元口袋主面板（<b>398×360</b>，★R81④ 由 416 收到与主区实占同宽；<b>★R78① 起带玩家背包</b> =
+ * 底部带中间段 9×4）。
  * <p>
  * <b>R32（本任务最高风险）的结构性处置</b>：{@link #assemble()} 是<b>一条线性装配</b>——双端同调用点、
  * 同一批列类、同一顺序 add，没有任何远程分支改变子节点的顺序或数量（同步键全部显式命名）。
@@ -55,9 +57,11 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * "恒定 72 个 widget 的内容层原位换图标"（{@link NekoEssenceGhostCell#setCellContent(String, int)}），
  * 映射由服务端算、随现有源质 blob 同步 ⇒ 两端各算各的这件事在结构上就不成立。
  * <p>
- * <b>宽度闭合（R75 钉死，逐字照加总表，无富余）</b>：
- * {@code 6 + 108(流体 6 列) + 4 + 180(中栏 10 列) + 4 + 108(源质 6 列) + 6 = 416} ⇒
- * 三列 root 固定 {@code x/宽 = 6/108 · 118/180 · 302/108}，不得再给任何列加宽。
+ * <b>宽度闭合（★R81④ 定稿，逐字照加总表，无富余）</b>：
+ * {@code 6 + 108(流体 6 列) + 4 + 162(中栏 9 列) + 4 + 108(源质 6 列) + 6 = 398 = 面板宽} ⇒
+ * 三列 root 固定 {@code x/宽 = 6/108 · 118/162 · 284/108}，不得再给任何列加宽
+ * （R75 那版是 10 列中栏 ⇒ 实占与面板宽都更大，中栏收窄到 9 列后<b>面板宽跟着收</b>，
+ * 见 {@link #WIDTH} 的 javadoc：右侧不留无主空白）。
  * <b>高度闭合</b>：{@code 6 + 270(15 行) + 6 + 72(底部带) + 6 = 360}，而 360 正是
  * <b>1080p / GUI Scale 3 的逻辑高度上限</b>（R75"为什么是 15 行"的全部理由）⇒
  * <b>任何加高方案都必须先重算这条账</b>，纵向已经没有一格余量。R78① 要的背包因此
@@ -114,7 +118,7 @@ public final class NekoPocketPanel implements PocketSession {
     /** 底部带高（R75 钉死 72）。 */
     public static final int BAND_HEIGHT = NekoPocketBottomBand.HEIGHT;
     /**
-     * R75：三列实占 {@code 6+108+4+180+4+108+6 = 416}；R80 中栏收到 9 列后同一式子给
+     * R75：三列实占 {@code 6+108+4+180+4+108+6}；R80 中栏收到 9 列后同一式子给
      * {@code 6+108+4+162+4+108+6 =} <b>398</b>（★派生自各列常量，不手抄）。
      */
     public static final int MAIN_OCCUPIED_WIDTH = MARGIN + NekoPocketLeftColumn.WIDTH
@@ -124,26 +128,42 @@ public final class NekoPocketPanel implements PocketSession {
         + NekoPocketEssenceColumn.WIDTH
         + MARGIN;
     /**
-     * ★<b>R80①：面板宽保留 416</b>——中栏 10 列→9 列腾出的那 <b>18px</b>（恰一格 {@link #GRID}）
-     * <b>不用来收窄面板</b>，而是全数让给底部带右段（三段因此是 {@code 左 112 | 背包 162 | 右 130}，
-     * 见 {@link NekoPocketBottomBand#BIND_WIDTH}）。
+     * ★<b>R81④：面板宽 = 主区实占 = 398 —— 上一版保留的 416 与那 18px 无主空白一起收掉</b>。
      * <p>
-     * 为什么要"保留 416"而不是顺手把面板也收窄：面板宽同时是 C2 贴图 9-slice 与四角包角的
-     * 落点（{@link NekoPocketDecoration}）与实机检查表里的观感基准；用户本轮只裁"格子数"，
-     * 没有裁"面板尺寸" ⇒ 收窄面板属于未授权的观感变更。让位量由 {@link #MAIN_RIGHT_SLACK} 具名，
-     * <b>不是无主空白</b>。
-     */
-    public static final int WIDTH = 416;
-    /**
-     * 主区右侧的让位量 = {@link #WIDTH} − {@link #MAIN_OCCUPIED_WIDTH}（R80 定稿下恒为 <b>18</b>）。
+     * R80① 当时把面板宽留在 416，并给"主区右沿与面板右沿之间"那 18px 取了个具名叫
+     * "让位量"常量（★该具名常量已随本次裁定<b>整体删除</b>，不是置 0，也不是改个数）。
+     * 留下它的后果是：
+     * 源质列右沿（392）到面板右沿（410）之间<b>没有任何 widget</b>，装饰层的布纹/木框照样画到 416 ⇒
+     * 玩家读到一条贴在右侧的空带。本仓纪律是<b>不许留无主空白</b>，而把这 18px 拿去塞新内容
+     * 属于"发明功能"，不是设计 ⇒ 唯一正确的收法是让 {@code WIDTH} 等于实占。
      * <p>
-     * ★把它具名而不是让右外边距"看起来变宽"：这 18px 已经在 §1.1 的裁决里被指派给底部带右段，
-     * 由 {@code NekoPocketModelTest} 断言它恰为<b>一格</b>（{@link #GRID}）⇒ 中栏再改列数就会红，
-     * 不会出现"面板宽与列宽各自漂"。
+     * 连带账（★三段之和与横向闭合都在 {@link NekoPocketBottomBand} 的装配期断言里）：
+     * {@code 6 + 112(左) + 162(背包) + 112(右) + 6 = 398}，右段由 130 收到 112
+     * （= {@code 6 × 18 + 4}：一格绳缝 + 六格栅格）。背包段仍与中栏<b>同 x 同宽（118..280）</b>。
+     * 纵向一格未动（{@code 6+270+6+72+6 = 360} = 1080p / GUI Scale 3 的逻辑高度上限）。
      */
-    public static final int MAIN_RIGHT_SLACK = WIDTH - MAIN_OCCUPIED_WIDTH;
+    public static final int WIDTH = MAIN_OCCUPIED_WIDTH;
     /** R75：面板高 = 6+270+6+72+6 = 360（★360 = 1080p / GUI Scale 3 的逻辑高度上限）。 */
     public static final int HEIGHT = MARGIN + NekoPocketStorageColumn.HEIGHT + MARGIN + BAND_HEIGHT + MARGIN;
+
+    static {
+        // ★R81④ 判据：面板宽必须<b>逐字等于</b>"外边距 + 三列 + 两个列间距 + 外边距"这条加算式。
+        // 写成字面量而不是只看派生式，是因为派生式在"某一列又改了宽"时会跟着漂而永不红；
+        // 这里的字面量一红，就是在要求改动方回来看 R80/R81 那两张加总表（不留无主空白的同一纪律）。
+        final int sum = 6 + 108 + 4 + 162 + 4 + 108 + 6;
+        if (WIDTH != MAIN_OCCUPIED_WIDTH || WIDTH != sum) {
+            throw new IllegalStateException(
+                "[pocket] 面板宽与主区实占分叉: WIDTH=" + WIDTH
+                    + " 实占="
+                    + MAIN_OCCUPIED_WIDTH
+                    + " 加算式="
+                    + sum
+                    + "（★R81④ 定稿 398 = 6+108+4+162+4+108+6，面板不留无主空白）");
+        }
+        if (HEIGHT != 360) {
+            throw new IllegalStateException("[pocket] 面板高不等于 360（GUI Scale 3 逻辑高度上限）: " + HEIGHT);
+        }
+    }
 
     // ------------------------------------------------------------------ 同步键
     // S2C：格数与行数恒定 ⇒ 键数恒定，不随 addon / 绑定数漂移
@@ -812,30 +832,50 @@ public final class NekoPocketPanel implements PocketSession {
      * （R40b 的正常态，文案 {@code bind.unlocated} 不得写成失败语气）。位置快照此后只由
      * {@code PocketCellProbe} 经 {@link PocketCellBindings#recordLocation} 回填
      * （S1fix 风险⑥：误用 7 参 {@code bind(...)} 回填会把已有定位抹掉）。
+     * <p>
+     * ★★<b>R81①②：「绑定只能绑定一个」的修复点就在这一小段</b>。旧实现把
+     * {@code PocketCellProbe.cellUuid()} 的 {@code null} 当成一件事读（"格子里没放元件"），
+     * 而 {@code diskuuid} 是<b>服务端首次取用时惰性分配</b>的 ⇒ 一枚从未进过驱动器的新元件
+     * 身份读出来也是 {@code null}，于是被发回一句「把元件放入此格」（格子里明明躺着元件）——
+     * 反向误导，玩家换个位置再试还是失败。现在：
+     * <ol>
+     * <li>四态判定与 {@code bind()} 的<b>返回值</b>（旧代码丢掉的就是它）一起收在
+     * {@link PocketBindFlow#bind} 里，每种结果各回一条自己的 lang 回执（含"同身份重绑"，
+     * 旧口径完全静默）；</li>
+     * <li>身份为空时由 {@link PocketCellProbe#bindIdentity} 在<b>服务端</b>调一次现成公开 API
+     * {@code StorageManager.getStorage(ItemStack)} 就地物化身份后<b>重读</b>（★不改
+     * {@code allocateOrReadUuid} 的可见性、不新增分配逻辑、客户端一个字节都不写）；</li>
+     * <li>只有真的写进表（{@code ADDED} / {@code DUPLICATE} 刷新了位置快照）才 {@code markDirty}
+     * 并把元件退回玩家；表满或无身份时<b>原栈留在格内</b>由玩家自己拿走（R40a 的"绝不吃元件"）。</li>
+     * </ol>
      */
     private void performBind() {
         if (!serverGuardOk()) {
             return;
         }
+        // serverGuardOk() 已经挡掉客户端（第一句就是 isClient），这里再取一次显式值，
+        // 好让"物化只在服务端"这一跳在代码上读得出来，而不是靠调用点的注释。
+        final boolean server = !syncManager.isClient();
         final ItemStack candidate = inventory.bindSlot()
             .getStackInSlot(0);
-        final String uuid = PocketCellProbe.cellUuid(candidate);
-        if (uuid == null) {
-            // 格子里不是元件（或没放东西）：什么都不做，原栈留在格内由玩家自己拿走
-            putReceipt("gtit.pocket.bind.slot_hint", 0);
+        final PocketBindFlow.Result result = PocketBindFlow.bind(
+            inventory.bindings(),
+            PocketCellProbe.isCell(candidate),
+            PocketCellProbe.bindIdentity(candidate, server),
+            server);
+        putReceipt(
+            PocketBindFlow.langKeyOf(result),
+            inventory.bindings()
+                .size());
+        if (result != PocketBindFlow.Result.ADDED && result != PocketBindFlow.Result.DUPLICATE) {
+            // 没写进表（非元件 / 无身份 / 表满）：什么都不动，元件留在绑定格里由玩家自己拿走
             return;
         }
-        final PocketCellBindings bindings = inventory.bindings();
-        if (!bindings.hasRoom() && !bindings.contains(uuid)) {
-            putReceipt("gtit.pocket.bind.full", PocketConstants.MAX_BOUND_CELLS);
-            return;
-        }
-        bindings.bind(uuid, PocketConstants.MODE_DISK_UUID);
         inventory.markDirty();
         returnToPlayerFromBindSlot(candidate);
-        // 绑定成功不发回执：按钮 tooltip 的行本来就是 SYNC_BIND_ROWS 推的，读数变了即是反馈
-        // （R40b：绑定时元件在手里，位置五键必然是未定位 —— bind.unlocated 是正常态不是失败，
-        // 故意不复用它当回执，免得玩家读成"绑定失败了"）。added=false 是同身份重绑，只覆盖位置快照。
+        // ★R81①：成功也发回执（bind.added）。旧口径"读数变了即是反馈"在缺陷现场不成立——
+        // 玩家就是因为看不出条数有没有在涨才报"只能绑一个"的，每一次新增都必须能读到一个词。
+        // 同身份重绑走 bind.dup（旧代码丢掉 bind() 返回值 ⇒ 完全静默，R81 点名的次因）。
     }
 
     /** R40a：绑定格里的元件原样退回（背包满则掉脚下），绝不"吃掉"元件。 */
@@ -1948,7 +1988,7 @@ public final class NekoPocketPanel implements PocketSession {
         if (row == null) {
             return "";
         }
-        final String title = String.format(StatCollector.translateToLocal("gtit.pocket.bind.entry"), row.shortId());
+        final String title = bindRowTitle(index);
         final String location;
         if (row.located()) {
             location = String.format(
@@ -1963,6 +2003,52 @@ public final class NekoPocketPanel implements PocketSession {
                 .translateToLocal(row.stale() ? "gtit.pocket.bind.stale" : "gtit.pocket.bind.unlocated");
         }
         return title + " " + location;
+    }
+
+    /**
+     * 一条绑定行的<b>标题段</b>（只有短码 ID，不带位置五键）——常驻行与 tooltip 首段共用这一条算式，
+     * ★避免"两处对同一条绑定各写一种样子"。
+     */
+    private String bindRowTitle(int index) {
+        final NekoPocketBottomBand.Row row = rowAt(index);
+        return row == null ? ""
+            : String.format(StatCollector.translateToLocal("gtit.pocket.bind.entry"), row.shortId());
+    }
+
+    /**
+     * ★R81③：底部带右段的<b>常驻</b>绑定行文本（第 {@code slot} 个行位，0 起，行位数 =
+     * {@link NekoPocketBottomBand#PERSISTENT_ROWS}）。
+     * <p>
+     * 修的是取证记录里那条"面缺失"：常驻行数从前是 <b>0</b>（右段只有一行读数「已绑定 n / 上限」，
+     * 条目全在按钮 tooltip 里），玩家不悬停就永远读不到"到底绑了几条、绑的是谁"，
+     * 与身份门禁叠起来就是"绑定只能绑定一个"的观感。
+     * <p>
+     * 规则（★条目多于常驻行位时，<b>最后一个行位让给截断提示</b>，不得静默只显示前 N 条）：
+     * <ul>
+     * <li>空表 ⇒ 行位 0 = {@code bind.none}（"尚未绑定元件"），其余行位空串（widget 常驻，几何不空转）；</li>
+     * <li>{@code size ≤ PERSISTENT_ROWS} ⇒ 逐位一条 {@code bind.entry}；</li>
+     * <li>{@code size > PERSISTENT_ROWS} ⇒ 前 {@code PERSISTENT_ROWS − 1} 位给条目，末位给
+     * {@code bind.rows_more}（含<b>未列出</b>的条数，文案点名"悬停绑定按钮"）。完整条目与位置五键照旧在按钮 tooltip
+     * （{@link #bindTooltipText()}，上限 {@code TOOLTIP_ROWS}，那里另用 {@code bind.truncated}），
+     * ★常驻面变短不等于删信息。</li>
+     * </ul>
+     * ★<b>两个键不得合成一个</b>：条目多于 {@code TOOLTIP_ROWS} 时常驻面与 tooltip 各自截断、
+     * <b>数字不同</b>（常驻面按 {@code size − 1}、tooltip 按 {@code size − 10}），
+     * 同一句「未在此列出」配两个读数会让玩家以为少了一批。键按<b>面</b>分，不按句式分。
+     * 只读客户端那份同步 blob（{@link #bindRows()}），<b>绝不</b>按内存表推断（R19/R39b）。
+     */
+    String bindPersistentText(int slot) {
+        final java.util.List<NekoPocketBottomBand.Row> rows = bindRows();
+        final int size = rows.size();
+        if (size == 0) {
+            return slot == 0 ? StatCollector.translateToLocal("gtit.pocket.bind.none") : "";
+        }
+        final int shown = size > NekoPocketBottomBand.PERSISTENT_ROWS ? NekoPocketBottomBand.PERSISTENT_ROWS - 1 : size;
+        if (slot < shown) {
+            return bindRowTitle(slot);
+        }
+        return size > shown ? String.format(StatCollector.translateToLocal("gtit.pocket.bind.rows_more"), size - shown)
+            : "";
     }
 
     /** 当前绑定行（客户端只解析服务端 blob，绝不按内存表推断，R39b/R19）。 */

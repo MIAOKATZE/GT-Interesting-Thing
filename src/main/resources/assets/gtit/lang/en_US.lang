@@ -294,6 +294,9 @@ gtit.pocket.bind.stale=Location lost, press bind again
 gtit.pocket.bind.slot_hint=Put a cell here, then press Bind
 gtit.pocket.bind.button=Bind
 gtit.pocket.bind.full=Bind list is full
+gtit.pocket.bind.added=Cell added to the bind list
+gtit.pocket.bind.dup=This cell is already bound; it was not added again
+gtit.pocket.bind.no_identity=Cell identity not written; press Bind again shortly
 gtit.pocket.mode.push=Pushing: inventory to cells
 gtit.pocket.mode.pull=Pulling: refilling %d ghost filter(s)
 gtit.pocket.receipt.ok=Done: %d moved
@@ -335,6 +338,7 @@ gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filt
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
 gtit.pocket.bind.summary=Bound cells: %d / %d
 gtit.pocket.bind.truncated=... and %d more bound cells not listed here
+gtit.pocket.bind.rows_more=... and %d more (hover the Bind button for the full list)
 gtit.pocket.bind.unbind_hint=Right-click Bind = unbind the last cell; Shift + right-click = unbind all cells
 gtit.pocket.bind.stale_hint=Unbinding never touches the cell contents or the ME network
 gtit.pocket.bind.cleared=Cleared %d bound cells

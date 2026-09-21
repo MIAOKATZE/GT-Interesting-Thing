@@ -15,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.miaokatze.gtit.common.items.infinitycell.IInfinityCellItem;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellConstants;
+import com.miaokatze.gtit.common.items.infinitycell.StorageManager;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 
@@ -307,6 +308,71 @@ public final class PocketCellProbe {
         }
         final String uuid = data.getString(InfinityCellConstants.DISKUUID);
         return uuid == null || uuid.isEmpty() ? null : uuid;
+    }
+
+    /**
+     * 格内的栈<b>是不是一枚元件</b>（★R81① 四态里的第一判）。
+     * <p>
+     * 修复前没有这个方法：{@link #cellUuid} 返回 null 同时代表"空格子/非元件"和"元件还没拿到身份"
+     * 两件事，于是两支共用一条 {@code bind.slot_hint}（「把元件放入此格，再按绑定键」）——
+     * 后者格子里明明躺着元件，玩家照字面做就永远绑不上，观感即"只能绑一个"。
+     */
+    public static boolean isCell(ItemStack stack) {
+        return stack != null && stack.getItem() instanceof IInfinityCellItem;
+    }
+
+    /**
+     * 绑定入口用的<b>身份读写面</b>（★R81②，{@link PocketBindFlow.Identity} 的生产实现）。
+     * <p>
+     * <b>读</b>＝{@link #cellUuid}（两端都可以读，纯读 NBT）。<b>物化</b>＝调一次 AE2 侧<b>现成的
+     * 公开 API</b> {@code StorageManager.getStorage(ItemStack)}，只为它的<b>副作用</b>：那条链是
+     * {@code getStorage(item) → getStorage(item, type) → allocateOrReadUuid(Platform.openNbtData(item),
+     * Platform.isServer())}（{@code StorageManager.java:89-95,109-118}），服务端那一支会把
+     * {@code diskuuid} 就地写进元件 NBT。本仓<b>不</b>另写分配逻辑，也<b>不</b>把 package-private 的
+     * {@code allocateOrReadUuid} 抬成 public（{@code common/items/infinitycell/**} 是禁改面）。
+     * <p>
+     * ★★客户端<b>绝不</b>物化，两道闸：
+     * <ol>
+     * <li>{@link PocketBindFlow#identityOrMaterialize} 只在 {@code isServer} 为真时才调
+     * {@code materialize()}（这条是 JVM 可断言的）；</li>
+     * <li>本实现自己再判一次 {@code server}——{@code StorageManager.getInstance()} 在客户端
+     * 未初始化（{@code CommonProxy:656-661} 只在服务端 {@code WorldSavedData} 装载时赋值），
+     * 取到 null 就直接返回；即使将来有人在客户端把这个面传进去，NBT 也不会被写。</li>
+     * </ol>
+     * 客户端写物品 NBT 永不到达服务端（本仓已证死），且 {@code StorageManager} 的注释点名要防
+     * "客户端每次悬停泄漏一个随机 UUID 条目"，故这一跳<b>只能</b>挂在服务端。
+     *
+     * @param server 当前是否服务端（生产调用点由 {@code !syncManager.isClient()} 给）
+     */
+    public static PocketBindFlow.Identity bindIdentity(final ItemStack stack, final boolean server) {
+        return new PocketBindFlow.Identity() {
+
+            @Override
+            public String read() {
+                return cellUuid(stack);
+            }
+
+            @Override
+            public void materialize() {
+                if (!server || !isCell(stack)) {
+                    // ★客户端 / 非元件：一个字节都不写
+                    return;
+                }
+                final StorageManager manager = StorageManager.getInstance();
+                if (manager == null) {
+                    // serverStarted 之前（或极端时序）没有 StorageManager 实例：身份读不到，
+                    // 由调用方发 bind.no_identity —— 不再退回旧的误导文案
+                    return;
+                }
+                try {
+                    // 只求副作用：把 diskuuid 写进 stack；返回值（那个临时桶）故意丢掉
+                    manager.getStorage(stack);
+                } catch (Throwable t) {
+                    // 与 InfinityCellHandler:47-51 同一口径：元件侧异常必须留痕，否则又变成"静默绑不上"
+                    LOG.warn("[pocket] 绑定前物化元件身份失败（服务端），本次绑定按无身份处理", t);
+                }
+            }
+        };
     }
 
     /** 生产实现：坐标 ↔ 真实世界的服务端维度。 */

@@ -161,7 +161,9 @@ public class NekoPocketModelTest {
         cases.put(
             "c2_texture_contract_table_matches_geometry_limits",
             NekoPocketModelTest::c2TextureContractTableMatchesGeometry);
-        cases.put("panel_geometry_closes_416x360", NekoPocketModelTest::panelGeometryCloses);
+        // ★R81④：面板宽从 416 收到主区实占 398 ⇒ 用例名跟着改（旧名 panel_geometry_closes_416x360 已在
+        // 本轮成为假话，留着一个说 416 的名字比没有名字更坏）
+        cases.put("panel_geometry_closes_398x360", NekoPocketModelTest::panelGeometryCloses);
         // ---- S-U4（R78）三条交付判据：D-1 内容层按库存、格序按首次入账且持久化不回收、背包格序映射
         cases.put("essence_cell_content_layer_follows_stock", NekoPocketModelTest::essenceCellContentLayerFollowsStock);
         cases.put(
@@ -189,6 +191,18 @@ public class NekoPocketModelTest {
         cases.put(
             "bind_two_distinct_uuids_keeps_two_rows_in_memory_nbt_and_blob",
             NekoPocketModelTest::bindTwoDistinctUuidsKeepsTwoRows);
+        // ---- S-U8（R81）：绑定入口面的身份门禁（★真正修根因的两条）+ 右段常驻绑定行与 398 收宽 ----
+        // ★护栏说明：任务包 §2.1 那条"两枚不同 uuid ⇒ size/往返/blob 三条必须为 2"的护栏用例，
+        // 磁盘上的名字是上面那条 S-U7 落的 bind_two_distinct_uuids_keeps_two_rows_in_memory_nbt_and_blob
+        // （任务包写作 bind_two_distinct_cells_persists_and_roundtrips，同一判据、两个名字）；
+        // 本轮**一格未动**它，也没为它改过绑定表（R81 的裁定：那三条本来就绿）。
+        cases.put(
+            "bind_new_cell_without_identity_materializes_and_succeeds",
+            NekoPocketModelTest::bindNewCellWithoutIdentityMaterializesAndSucceeds);
+        cases.put("bind_receipt_distinguishes_four_states", NekoPocketModelTest::bindReceiptDistinguishesFourStates);
+        cases.put(
+            "bind_persistent_rows_close_right_band_vertical_sum",
+            NekoPocketModelTest::bindPersistentRowsCloseRightBandVerticalSum);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -260,16 +274,16 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(118, NekoPocketBottomBand.BACKPACK_X, "数值钉住：118 = 6 + 112（左段）");
         SimpleAssert.eq(162, NekoPocketBottomBand.BACKPACK_WIDTH, "数值钉住：162 = 9 × 18");
         SimpleAssert.eq(112, NekoPocketBottomBand.COIN_WIDTH, "R80①：左段 112（= 中栏左沿 - 外边距）");
-        SimpleAssert.eq(130, NekoPocketBottomBand.BIND_WIDTH, "R80①：右段 130（中栏让出的那 18px 的去处）");
+        SimpleAssert.eq(112, NekoPocketBottomBand.BIND_WIDTH, "★R81④：右段 112 = 6×18+4（面板收到 398 后右段的唯一解）");
         SimpleAssert.eq(0, NekoPocketBottomBand.BIND_SLACK, "★段间余量必须为 0（不是 0 = 无主空白）");
         SimpleAssert.eq(
-            112 + 162 + 130,
+            112 + 162 + 112,
             NekoPocketPanel.WIDTH - 2 * NekoPocketPanel.MARGIN,
-            "三段之和 = 416 - 12 = 404（★加总算式，回执要复算的就是这条）");
+            "★加总算式（R81④ 定稿）：三段之和 = 398 - 12 = 386（回执要复算的就是这条）");
         SimpleAssert.eq(
             NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
             NekoPocketBottomBand.BIND_X + NekoPocketBottomBand.BIND_WIDTH,
-            "右段右边贴到 416-6 ⇒ 带子横向闭合");
+            "右段右边贴到 398-6 = 392 ⇒ 带子横向闭合");
     }
 
     /**
@@ -541,6 +555,286 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(CELL_B, parsed.get(1).id, "生产形状解出的第二枚身份");
         SimpleAssert
             .that(parsed.get(0).status != NekoPocketBottomBand.Row.STATUS_LOCATED, "未定位行不得被解成已定位（bind.unlocated 是正常态）");
+    }
+
+    // ================================================================== S-U8（R81）批次
+    //
+    // ★这一批钉的是"绑定只能绑定一个"的**根因面**（R81：入口面身份门禁 + performBind 不分态），
+    // 与上面那条 S-U7 的复现用例（任务包 §2.1 里曾用名 bind_two_distinct_cells_persists_and_roundtrips，
+    // 落盘名 = bind_two_distinct_uuids_keeps_two_rows_in_memory_nbt_and_blob）是**互补**关系：
+    // 那条证明"数据/持久/显示三面本来就支持多条"（护栏，本轮一格未动），这一批证明
+    // "新元件根本进不到数据面"这条门禁已被拆掉，且四种结果各有可见回执。
+
+    /**
+     * 假元件的<b>身份读写面</b>（★逐字照 {@code PocketCellProbe.bindIdentity} 的语义建模，
+     * 而不是照 {@code StorageManager} 的实现建模）：
+     * <ul>
+     * <li>{@link #read()} 在物化之前返回 {@code null} —— 这就是 R81 的根因形状
+     * （{@code diskuuid} 由服务端<b>首次取用时惰性分配</b>，新元件从没进过驱动器 ⇒ 读不到）；</li>
+     * <li>{@link #materialize()} 才把身份写进去，且<b>调用次数被计数</b>：客户端那一跳必须一次都不调；</li>
+     * <li>{@link #reads}/{@link #materializations} 存在就是为了机检"物化后必须<b>重读</b>"这一跳：
+     * 只调一次 read 的实现（拿 materialize 的返回值当真相）会在这里红。</li>
+     * </ul>
+     */
+    private static final class LazyIdentityCell implements PocketBindFlow.Identity {
+
+        private final String uuid;
+        /** {@code false} = 一枚"服务端也物化不出身份"的元件（StorageManager 未初始化那一族）。 */
+        private final boolean materializable;
+        private String written;
+        int reads;
+        int materializations;
+
+        LazyIdentityCell(String uuid, boolean materializable) {
+            this.uuid = uuid;
+            this.materializable = materializable;
+        }
+
+        @Override
+        public String read() {
+            reads++;
+            return written;
+        }
+
+        @Override
+        public void materialize() {
+            materializations++;
+            if (materializable && written == null) {
+                written = uuid;
+            }
+        }
+    }
+
+    /**
+     * ★R81②：新元件（NBT 里还没有 {@code diskuuid}）绑不上这条根因，修复后必须
+     * <b>在服务端物化一次身份 → 重读 → 绑定成功</b>，且客户端那一跳<b>一次都不许物化</b>。
+     * <p>
+     * 为什么这条能钉住症状：修前 {@code performBind} 只看 {@code cellUuid() == null}，新元件被发回
+     * 「把元件放入此格」这句<b>反向误导</b>文案 ⇒ 玩家换个位置再试还是失败，观感就是"只能绑一个"。
+     * 这里连着绑<b>两枚</b>新元件（都从没进过驱动器），条数必须是 2。
+     */
+    private static void bindNewCellWithoutIdentityMaterializesAndSucceeds() {
+        // ---- 前置：新元件的身份读不出来（★不是"格子里没放元件"，两者必须在四态里分得开）----
+        final LazyIdentityCell precondition = new LazyIdentityCell(CELL_A, true);
+        SimpleAssert.eq(null, precondition.read(), "★前置条件：从未进过驱动器的新元件读不到身份（R81 根因形状）");
+        SimpleAssert.eq(1, precondition.reads, "读一次就够（读侧不写 NBT，两端都能读）");
+
+        final PocketCellBindings bindings = new PocketCellBindings();
+
+        // ---- 客户端那一跳：不得物化（客户端写物品 NBT 永不到达服务端，本仓已证死）----
+        final LazyIdentityCell clientCell = new LazyIdentityCell(CELL_A, true);
+        SimpleAssert.eq(
+            PocketBindFlow.Result.NO_IDENTITY,
+            PocketBindFlow.bind(bindings, true, clientCell, false),
+            "客户端点绑定 ⇒ 无身份（★不是 slot_hint：格子里确实有元件）");
+        SimpleAssert.eq(0, clientCell.materializations, "★客户端一次都不许调用 materialize()");
+        SimpleAssert.eq(1, clientCell.reads, "客户端只读一次，读到空就收工");
+        SimpleAssert.eq(0, bindings.size(), "客户端那一跳不写表");
+
+        // ---- 服务端那一跳：物化 → **重读** → 新增 ----
+        final LazyIdentityCell serverCell = new LazyIdentityCell(CELL_A, true);
+        SimpleAssert.eq(
+            PocketBindFlow.Result.ADDED,
+            PocketBindFlow.bind(bindings, true, serverCell, true),
+            "服务端点绑定 ⇒ 物化身份后新增成功（★修前这里是误导回执）");
+        SimpleAssert.eq(1, serverCell.materializations, "服务端只物化一次（第二次点击不该再写 NBT）");
+        SimpleAssert.eq(2, serverCell.reads, "★读两次 = 物化前 1 次 + 物化后**重读** 1 次（少一次就是没重读、拿返回值当真相）");
+        SimpleAssert.eq(1, bindings.size(), "新元件绑定后 size = 1");
+        SimpleAssert.that(bindings.contains(CELL_A), "物化出来的身份就是表里那条");
+
+        // ---- 第二枚新元件（同样从没进过驱动器）⇒ 条数必须走到 2 = 用户报的那个"只能绑一个" ----
+        final LazyIdentityCell secondCell = new LazyIdentityCell(CELL_B, true);
+        SimpleAssert.eq(
+            PocketBindFlow.Result.ADDED,
+            PocketBindFlow.bind(bindings, true, secondCell, true),
+            "★第二枚新元件也必须绑定成功（这条断言直接对着用户的症状）");
+        SimpleAssert.eq(2, bindings.size(), "两枚新元件 ⇒ size = 2");
+        SimpleAssert.eq(Arrays.asList(CELL_A, CELL_B), bindings.cells(), "顺序即绑定序（第二条没挤掉第一条）");
+
+        // ---- 落档往返（★护栏：物化出来的身份必须能存能读，否则下次开面板又是 0 条）----
+        final NBTTagCompound root = new NBTTagCompound();
+        bindings.writeTo(root);
+        final PocketCellBindings back = PocketCellBindings.readFrom(root);
+        SimpleAssert.eq(2, back.size(), "物化 + 绑定后的 NBT 往返仍是 2 条");
+        SimpleAssert.eq(
+            CELL_B,
+            back.entries()
+                .get(1).id,
+            "往返后第二条身份不变");
+
+        // ---- 表满这一支不算在四态里，但也不能被物化路径绕过（★不写第二条目）----
+        final PocketCellBindings stuffed = new PocketCellBindings();
+        for (int index = 0; index < PocketConstants.MAX_BOUND_CELLS; index++) {
+            SimpleAssert.that(stuffed.bind(uuidOf(index), PocketConstants.MODE_DISK_UUID), "装满上限内每条都新增");
+        }
+        final LazyIdentityCell overflow = new LazyIdentityCell(uuidOf(900), true);
+        SimpleAssert.eq(
+            PocketBindFlow.Result.FULL,
+            PocketBindFlow.bind(stuffed, true, overflow, true),
+            "表满 ⇒ FULL（★身份照样被物化出来，但条目不涨，旧口径逐字保留）");
+        SimpleAssert.eq(PocketConstants.MAX_BOUND_CELLS, stuffed.size(), "★MAX_BOUND_CELLS 未被本次修复改动，且表满不产生第二条目");
+    }
+
+    /**
+     * ★R81①：一次绑定请求的<b>四态各回一条不同的 lang 键</b>。
+     * <p>
+     * 修前的形态是"三种结果共用一条误导文案 + 同身份重绑<b>完全静默</b>"（{@code bind()} 的返回值
+     * 被丢掉，就是 R81 点名的次因）。这条用例做两件事：
+     * <ol>
+     * <li>把 {@link PocketBindFlow.Result#FOUR_STATES} 的四条 lang 键取出来<b>两两比不等</b>，
+     * 并逐字钉住"哪一态发哪一个键"（换键名必须连同文案一起过一遍"是否反向误导"）；</li>
+     * <li>用真实的 {@link PocketCellBindings} 把四态各<b>跑出来</b>一次（不是只查枚举存在）。</li>
+     * </ol>
+     */
+    private static void bindReceiptDistinguishesFourStates() {
+        // ---- ① 四态 → 四个互不相同的键 ----
+        final Map<String, String> keys = new LinkedHashMap<>();
+        for (PocketBindFlow.Result result : PocketBindFlow.Result.FOUR_STATES) {
+            final String key = PocketBindFlow.langKeyOf(result);
+            SimpleAssert.that(key != null && key.startsWith("gtit.pocket.bind."), result + " 必须有 gtit.pocket.bind.* 键");
+            keys.put(result.name(), key);
+        }
+        SimpleAssert.eq(4, PocketBindFlow.Result.FOUR_STATES.length, "四态枚举恰好四个（表满 FULL 是第五态，沿用 R43a 的旧键）");
+        SimpleAssert.eq("gtit.pocket.bind.added", keys.get("ADDED"), "成功 → bind.added（修前静默不发回执）");
+        SimpleAssert.eq("gtit.pocket.bind.slot_hint", keys.get("NOT_A_CELL"), "非元件 → 旧键 slot_hint（★唯一措辞与事实相符的一支）");
+        SimpleAssert
+            .eq("gtit.pocket.bind.no_identity", keys.get("NO_IDENTITY"), "无身份 → 新键 no_identity（★不得复用 slot_hint）");
+        SimpleAssert.eq("gtit.pocket.bind.dup", keys.get("DUPLICATE"), "同身份重绑 → 新键 dup（修前完全静默）");
+        final Set<String> distinct = new LinkedHashSet<>(keys.values());
+        SimpleAssert.eq(4, distinct.size(), "★四态回执键必须两两不同（相同 = 玩家仍分不清这四种情况）");
+        SimpleAssert.that(
+            !distinct.contains("gtit.pocket.bind.slot_hint") || distinct.size() == 4,
+            "slot_hint 只许出现在 NOT_A_CELL 一支");
+
+        // ---- ② 四态各真跑一次 ----
+        final PocketCellBindings bindings = new PocketCellBindings();
+
+        // (a) 格内非元件：空格子 / 别的物品 ⇒ 不碰表、不物化
+        final LazyIdentityCell notCell = new LazyIdentityCell(CELL_A, true);
+        SimpleAssert.eq(
+            PocketBindFlow.Result.NOT_A_CELL,
+            PocketBindFlow.bind(bindings, false, notCell, true),
+            "格内非元件 ⇒ NOT_A_CELL");
+        SimpleAssert.eq(0, notCell.materializations, "★非元件不得触发物化（否则误导文案换了个方向）");
+        SimpleAssert.eq(0, bindings.size(), "非元件不写表");
+
+        // (b) 元件但连服务端都物化不出身份（StorageManager 未初始化那一族）⇒ NO_IDENTITY，
+        // ★措辞必须是"身份没能写入"，不得再叫玩家"把元件放入此格"
+        final LazyIdentityCell stubborn = new LazyIdentityCell(CELL_A, false);
+        SimpleAssert.eq(
+            PocketBindFlow.Result.NO_IDENTITY,
+            PocketBindFlow.bind(bindings, true, stubborn, true),
+            "物化失败 ⇒ NO_IDENTITY");
+        SimpleAssert.eq(1, stubborn.materializations, "服务端确实试过物化一次");
+        SimpleAssert.eq(0, bindings.size(), "无身份不写表");
+
+        // (c) 成功 ⇒ ADDED
+        SimpleAssert.eq(
+            PocketBindFlow.Result.ADDED,
+            PocketBindFlow.bind(bindings, true, new LazyIdentityCell(CELL_A, true), true),
+            "有身份（或物化得出）⇒ ADDED");
+
+        // (d) 同身份重绑 ⇒ DUPLICATE（★条目数不变，但玩家必须看到一条回执；位置快照仍按旧口径刷新）
+        final PocketBindFlow.Result again = PocketBindFlow
+            .bind(bindings, true, new LazyIdentityCell(CELL_A, true), true);
+        SimpleAssert.eq(PocketBindFlow.Result.DUPLICATE, again, "同身份第二次 ⇒ DUPLICATE（修前静默）");
+        SimpleAssert.eq(1, bindings.size(), "★同身份重绑不涨条目（追加语义只认不同身份，R81 无罪面①）");
+        SimpleAssert.that(
+            !keys.get("DUPLICATE")
+                .equals(keys.get("ADDED")),
+            "同身份重绑的回执必须与新增不同（修前两者都无回执）");
+    }
+
+    /**
+     * ★R81③ + R81④：底部带<b>右段</b>在面板宽收到 398 之后的横纵加总，含两条<b>常驻</b>绑定行的行位。
+     * <p>
+     * 与 S-U7 的 {@code backpack_band_shares_storage_x_and_width} 同一口径（★每条都是加算式，
+     * 不是抄来的数），只是对象从背包段换到右段：
+     * <ul>
+     * <li>横向 {@code 6 + 112 + 162 + 112 + 6 = 398 = 面板宽}（★旧口径那个"让位量"具名常量已删）；</li>
+     * <li>右段内部 {@code 4(绳缝) + 108(内容) = 112}，且内容区与<b>源质列同 x 同宽</b>；</li>
+     * <li>右段纵向 {@code 4 行 × 18 = 72 = 带高}（★零富余），常驻绑定行位 = {@code 4 − 2} = 2。</li>
+     * </ul>
+     */
+    private static void bindPersistentRowsCloseRightBandVerticalSum() {
+        final int grid = NekoPocketPanel.GRID;
+        final int margin = NekoPocketPanel.MARGIN;
+        // ---- ① 面板宽与三段（R81④）----
+        SimpleAssert.eq(398, NekoPocketPanel.WIDTH, "★R81④：面板宽 = 主区实占 = 6+108+4+162+4+108+6");
+        SimpleAssert.eq(
+            NekoPocketPanel.MAIN_OCCUPIED_WIDTH,
+            NekoPocketPanel.WIDTH,
+            "★面板宽与实占相等 ⇒ 右侧没有一像素无主空白（旧口径的 18px 让位量已随具名量一起删除）");
+        SimpleAssert.eq(6 + 108 + 4 + 162 + 4 + 108 + 6, NekoPocketPanel.WIDTH, "★加算式逐字（回执里要复算的就是这条）");
+        SimpleAssert.eq(
+            margin + NekoPocketBottomBand.COIN_WIDTH
+                + NekoPocketBottomBand.BACKPACK_WIDTH
+                + NekoPocketBottomBand.BIND_WIDTH
+                + margin,
+            NekoPocketPanel.WIDTH,
+            "三段 + 两个外边距 = 面板宽（左 112 | 背包 162 | 右 112）");
+        SimpleAssert.eq(112, NekoPocketBottomBand.BIND_WIDTH, "★R81④：右段从 130 收到 112 = 6×18 + 4");
+        SimpleAssert.eq(0, NekoPocketBottomBand.BIND_SLACK, "段间余量仍必须为 0（R80① 的具名账未破）");
+        SimpleAssert.eq(112 + 162 + 112, NekoPocketPanel.WIDTH - 2 * margin, "★加算式：三段之和 = 398 − 12 = 386");
+        SimpleAssert.eq(
+            NekoPocketPanel.WIDTH - margin,
+            NekoPocketBottomBand.BIND_X + NekoPocketBottomBand.BIND_WIDTH,
+            "右段右边贴到 398 − 6 ⇒ 带子横向闭合");
+        // ---- ② 右段内部：绳缝 + 内容（内容区与源质列同 x 同宽）----
+        SimpleAssert.eq(4, NekoPocketBottomBand.BIND_ROPE_WIDTH, "绳缝位 = 一条列间距宽");
+        SimpleAssert.eq(108, NekoPocketBottomBand.BIND_CONTENT_WIDTH, "★内容区宽 = 112 − 4 = 108");
+        SimpleAssert.eq(
+            NekoPocketEssenceColumn.X,
+            NekoPocketBottomBand.BIND_X + NekoPocketBottomBand.BIND_CONTENT_X,
+            "★右段内容区与源质列**同 x**（284）——背包段那条硬判据搬到右段");
+        SimpleAssert
+            .eq(NekoPocketEssenceColumn.WIDTH, NekoPocketBottomBand.BIND_CONTENT_WIDTH, "★右段内容区与源质列**同宽**（108）");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_CONTENT_X + NekoPocketBottomBand.BIND_CONTENT_WIDTH,
+            NekoPocketBottomBand.BIND_WIDTH,
+            "绳缝 + 内容 = 段宽（★rope 不再画到背包段的槽位上）");
+        // ---- ③ 每一行的横向归属（★每一像素都有主）----
+        final int buttonWidth = PocketGuiTextureContract.widthOf("POCKET_C2_bindbtn");
+        SimpleAssert.eq(106, buttonWidth, "绑定按钮原生宽取契约表");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_BUTTON_X + buttonWidth
+                + (NekoPocketBottomBand.BIND_BUTTON_X - NekoPocketBottomBand.BIND_CONTENT_X),
+            NekoPocketBottomBand.BIND_WIDTH,
+            "★行 0：左余 + 按钮 + 右余 = 112（按钮在 108 的内容区里居中，左右各 1px）");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_BUTTON_X - NekoPocketBottomBand.BIND_CONTENT_X,
+            NekoPocketBottomBand.BIND_CONTENT_X + NekoPocketBottomBand.BIND_CONTENT_WIDTH
+                - NekoPocketBottomBand.BIND_BUTTON_X
+                - buttonWidth,
+            "按钮左右余量必须相等（居中，不是随手偏移）");
+        SimpleAssert.eq(26, NekoPocketBottomBand.BIND_TEXT_X, "★行 1/行 3 的文字起点 = 4(绳) + 18(控件) + 4");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_TEXT_X + NekoPocketBottomBand.BIND_TEXT_WIDTH,
+            NekoPocketBottomBand.BIND_WIDTH,
+            "行 1（读数）与行 3（常驻绑定行 1）铺到段宽右沿：26 + 86 = 112");
+        SimpleAssert.eq(86, NekoPocketBottomBand.BIND_TEXT_WIDTH, "文字宽 86（★0.5 缩放下 172 逻辑像素，装得下读数与截断提示）");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_CONTENT_X + NekoPocketBottomBand.BIND_ROW_WIDTH,
+            NekoPocketBottomBand.BIND_WIDTH,
+            "★行 2（常驻绑定行 0）整幅铺到段宽右沿：4 + 108 = 112");
+        // ---- ④ 纵向：四行 × 18 = 72 = 带高，常驻行位 = 2（★修前是 0）----
+        SimpleAssert.eq(4, NekoPocketBottomBand.BIND_ROWS, "右段行位 = 带高 / 栅格 = 72 / 18 = 4");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_ROWS * grid,
+            NekoPocketBottomBand.HEIGHT,
+            "★纵向加总恰闭合（零富余 ⇒ 既没有无主空白，也不会把绑定行挤出带子）");
+        SimpleAssert.eq(2, NekoPocketBottomBand.PERSISTENT_ROWS, "★常驻绑定行位 = 4 − 按钮行 − 绑定格行 = 2（修前 = 0）");
+        SimpleAssert.that(NekoPocketBottomBand.PERSISTENT_ROWS >= 1, "常驻行位不得回到 0（取证记录 §3 点名的「面缺失」）");
+        SimpleAssert.eq(36, NekoPocketBottomBand.persistentRowY(0), "常驻行 0 的 y = 2×18 = 36");
+        SimpleAssert.eq(54, NekoPocketBottomBand.persistentRowY(1), "常驻行 1 的 y = 3×18 = 54");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.persistentRowY(NekoPocketBottomBand.PERSISTENT_ROWS - 1) + grid,
+            NekoPocketBottomBand.HEIGHT,
+            "★最后一条常驻行的下沿正好落在带底（下面没有余量，上面也没有缝）");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_HELP_Y + grid,
+            NekoPocketBottomBand.HEIGHT,
+            "帮助按钮占满最后一行（★旧口径「18+2+18+4+18 = 60，余 12」的富余已改成常驻行）");
     }
 
     /**
@@ -2790,15 +3084,15 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * 面板 416×360 的加总闭合（R75 钉外框、R78 改内部三段与两列、★R80① 中栏收到 9 列但
-     * <b>面板宽保留 416</b>；纵向仍<b>一格余量都没有</b>）。
+     * 面板 398×360 的加总闭合（R75 钉外框与纵向、R78 改内部三段与两列、R80① 中栏收到 9 列、
+     * ★R81④ 把面板宽收到主区实占 398；纵向仍<b>一格余量都没有</b>）。
      * <p>
      * ★每一条都是"加算式"而不是抄来的数：外部把加总表算错时，这里会跟着错 ⇒
      * 主代理只需读断言文本就能复核算式（任务包 §1.1 的纪律）。
      */
     private static void panelGeometryCloses() {
-        // ---- 外框（R75 钉死；R80① 明文"面板宽保留 416"，360 = GUI Scale 3 硬上限未动）----
-        SimpleAssert.eq(416, NekoPocketPanel.WIDTH, "★面板宽保留 416（R80①：中栏收窄不跟着收窄面板）");
+        // ---- 外框（★R81④：面板宽 = 主区实占，360 = GUI Scale 3 硬上限未动）----
+        SimpleAssert.eq(398, NekoPocketPanel.WIDTH, "★面板宽 = 主区实占 = 398（R81④ 收掉旧口径保留的那 18px 无主空白）");
         SimpleAssert.eq(360, NekoPocketPanel.HEIGHT, "★面板高 = 6+270+6+72+6 = 360 = 1080p/GUI Scale 3 上限");
         SimpleAssert.eq(108, NekoPocketLeftColumn.WIDTH, "流体块每组 6 列 × 18");
         SimpleAssert.eq(162, NekoPocketStorageColumn.WIDTH, "★中栏 9 列 × 18 = 162（R80①，旧 10 列 = 180）");
@@ -2806,14 +3100,13 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(270, NekoPocketStorageColumn.HEIGHT, "主区 15 行（R80① 一行不删）");
         SimpleAssert.eq(118, NekoPocketStorageColumn.X, "★中栏 x = 6+108+4 = 118（收窄只发生在右边界，x 未动）");
         SimpleAssert.eq(284, NekoPocketEssenceColumn.X, "源质列 x = 6+108+4+162+4 = 284");
-        // ---- R80①：主区只占 398，那 18px 是**具名让位**而不是无主空白 ----
+        // ---- ★R81④：主区实占 = 面板宽 ⇒ 没有"让位量"这种东西可具名 ----
         SimpleAssert.eq(398, NekoPocketPanel.MAIN_OCCUPIED_WIDTH, "主区实占 = 6+108+4+162+4+108+6 = 398");
-        SimpleAssert.eq(18, NekoPocketPanel.MAIN_RIGHT_SLACK, "★让位量 = 416-398 = 18，恰为一格 GRID（中栏少画的那一列）⇒ 全给底部带右段");
-        SimpleAssert.eq(NekoPocketPanel.GRID, NekoPocketPanel.MAIN_RIGHT_SLACK, "让位量必须恰等于一个栅格");
         SimpleAssert.eq(
+            NekoPocketPanel.MAIN_OCCUPIED_WIDTH,
             NekoPocketPanel.WIDTH,
-            NekoPocketPanel.MAIN_OCCUPIED_WIDTH + NekoPocketPanel.MAIN_RIGHT_SLACK,
-            "主区实占 + 让位 = 面板宽（★没有第三笔未归因的像素）");
+            "★实占 == 面板宽：右侧 0 像素无主空白（旧口径那个 18px 让位量常量已整体删除，不是置 0）");
+        SimpleAssert.eq(6 + 108 + 4 + 162 + 4 + 108 + 6, NekoPocketPanel.WIDTH, "★加算式逐字（任务包 §追加④ 点名的那条断言）");
         // ---- 左栏（R78②：3 组 × 72 + 2 个 18 组间距 = 252，余 18 给状态行）----
         SimpleAssert.eq(36, NekoPocketLeftColumn.TANK_HEIGHT, "★流体槽拉长为 36 高（用户：流体槽应该拉长一点）");
         SimpleAssert.eq(72, NekoPocketLeftColumn.GROUP_HEIGHT, "一组 = 18 + 36 + 18 = 72");
@@ -2863,17 +3156,17 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(72, NekoPocketBottomBand.BACKPACK_HEIGHT, "背包 4 行 × 18 = 72 = 带高（★所以中栏 15 行一行都不用删）");
         SimpleAssert
             .eq(NekoPocketBottomBand.BACKPACK_HEIGHT, NekoPocketBottomBand.HEIGHT, "背包高必须正好等于带高（否则要么撑破 360 要么留缝）");
-        SimpleAssert.eq(130, NekoPocketBottomBand.BIND_WIDTH, "★R80①：右段 120 → 130（那 18px 的去处）");
+        SimpleAssert.eq(112, NekoPocketBottomBand.BIND_WIDTH, "★R81④：右段 130 → 112 = 6×18+4（面板收到 398 后的唯一解）");
         SimpleAssert.eq(0, NekoPocketBottomBand.BIND_SLACK, "★R80①：三段之间不留间距 ⇒ 余量必须恰为 0（不是 0 = 出现没人认领的空白）");
-        SimpleAssert.eq(280, NekoPocketBottomBand.BIND_X, "右段 x = 6+112+162 = 280");
+        SimpleAssert.eq(280, NekoPocketBottomBand.BIND_X, "右段 x = 6+112+162 = 280（★R81④ 未动，动的只有右段宽）");
         SimpleAssert.eq(
             NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
             NekoPocketBottomBand.BIND_X + NekoPocketBottomBand.BIND_WIDTH,
-            "★底部带横向闭合：右段右边 = 416-6 = 410（左右外边距仍各 6）");
+            "★底部带横向闭合：右段右边 = 398-6 = 392（左右外边距仍各 6）");
         SimpleAssert.eq(
-            6 + 112 + 162 + 130,
+            6 + 112 + 162 + 112,
             NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
-            "R80① 三段加总 112|162|130 = 404，加左右外边距正好铺满 416");
+            "★R81④ 三段加总 112|162|112 = 386，加左右外边距正好铺满 398（= 主区实占）");
         SimpleAssert.eq(4, NekoPocketBottomBand.BACKPACK_ROWS, "背包 4 行（R78①）");
         SimpleAssert.eq(9, NekoPocketBottomBand.BACKPACK_COLUMNS, "背包 9 列（与框架那组的 rowSize 同值）");
     }

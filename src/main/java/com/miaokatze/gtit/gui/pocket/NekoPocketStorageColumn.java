@@ -13,8 +13,10 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
  * <p>
  * <b>几何（R80 钉死，逐字照加总表，不得改宽改高）</b>：三列实占
  * {@code 6 + 108(流体 6 列) + 4 + 162(中栏 9 列) + 4 + 108(源质 6 列) + 6 = 398}，
- * 而<b>面板宽保留 416</b>（R80：中栏收 18px 后<b>不跟着收窄面板</b>，那 18px 全数让给底部带右段，
- * 见 {@link NekoPocketBottomBand#RIGHT_WIDTH}）⇒ 本列 {@code x = 6+108+4 = 118}、
+ * 而<b>★R81④：面板宽就等于这个实占</b>（R80 曾把面板宽留在更旧的口径、让那 18px 具名为
+ * 一个"让位量"具名常量；R81④ 判定那是<b>无主空白</b>，该常量已整体删除，见
+ * {@link NekoPocketPanel#WIDTH} 与 {@link NekoPocketBottomBand#BIND_WIDTH}）⇒ 本列
+ * {@code x = 6+108+4 = 118}、
  * {@code 宽 = 9×18 = 162}，x 起点与 R75/R78 <b>完全一致</b>（收窄只发生在右边界）；
  * 高 {@code = 15×18 = 270} ⇒ {@code y} 起点只能是 6（{@code 6+270+6+72+6 = 360}，
  * 360 是 1080p / GUI Scale 3 的<b>逻辑高度硬天花板</b>，R75/R80 都未动它）。

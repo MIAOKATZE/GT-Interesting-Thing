@@ -22,22 +22,35 @@ import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoClientBalances;
 
 /**
- * 底部带 = <b>横向三段</b>（R78① 定形状、R80① 定宽度）：
+ * 底部带 = <b>横向三段</b>（R78① 定形状、★R81④ 定宽度）：
  * <b>左段 112</b>（两条币值条 + 两个通道按钮，纵向 4×18 = 72）
  * ｜ <b>中间【玩家背包 9 列 × 4 行 = 162×72，★与中栏同 x 同宽】</b>
- * ｜ <b>右段 130</b>（绑定条 + 绑定格 + 状态行 + 帮助按钮）。
+ * ｜ <b>右段 112</b>（★R81④ 由 130 收到 112 = {@code 6×18 + 4}：一格绳缝 + 六格栅格 ⇒
+ * 内容区与源质列<b>同 x 同宽</b>；绑按钮 + 绑定格 + 读数 + <b>★R81③ 两条常驻绑定行</b> + 帮助按钮）。
  * <p>
- * <b>几何（R78 定 y / 高，R80 定三段宽）</b>：带 {@code y = 6+270+6 = 282}、高 72；背包 4 行 = 72
+ * <b>几何（R78 定 y / 高，R81④ 定三段宽）</b>：带 {@code y = 6+270+6 = 282}、高 72；背包 4 行 = 72
  * <b>正好等于带高</b> ⇒ 中栏 15 行<b>一行不删</b>、面板总高仍 {@code 282+72+6 = 360} = 1080p /
- * GUI Scale 3 的逻辑高度上限（R75 的硬天花板，R80 一格都没动）。
+ * GUI Scale 3 的逻辑高度上限（R75 的硬天花板，R80/R81 一格都没动）。
  * <p>
- * 横向加总（R80① 定稿）：主区三列在 9 列口径下只占
- * {@code 6+108+4+162+4+108+6 = 398}，而<b>面板宽保留 416</b>
- * （{@link NekoPocketPanel#MAIN_RIGHT_SLACK} 就是那具名的 18px = 恰一格）⇒ 这 18px 的去处是本带的
- * 右段（120 → <b>130</b>）与左段（100 → <b>112</b>）共 +22，同时 R78 的两条 4px 段间距与"余 14"
- * 一起被并进段宽（−22+8 = 旧余量 14 的来路），账仍然闭合：
- * {@code 6 + 112 + 162 + 130 = 410 = 416 - 6}，左右外边距都是 6，<b>段间无未认领空白</b>。
- * ★三段宽与"背包段与中栏同 x 同宽"这两条都由本类的 {@code static} 块现场断言，不靠注释。
+ * 横向加总（★R81④ 定稿，与 {@link NekoPocketPanel#WIDTH} 同源）：
+ * {@code 6 + 112(左) + 162(背包) + 112(右) + 6 = 398 = 面板宽}，左右外边距都是 6、
+ * 段间紧挨（{@link #BIND_SLACK} 恒 0 ⇒ 一旦出现非 0 就是"有人又往段间塞空白"），
+ * <b>横向与纵向都没有未认领的像素</b>。右段内部再分一次：
+ * {@code 4(绳缝) + 108(内容) = 112}，那 108 <b>恰等于源质列宽</b>且左沿 x 相同（装配期断言）。
+ * ★三段宽与"背包段与中栏同 x 同宽""右段内容区与源质列同 x 同宽"这三条都由本类的 {@code static}
+ * 块现场断言，不靠注释。
+ * <p>
+ * <b>右段纵向（★R81③：常驻绑定行落在这里）</b>：四行 × 18 = 72 = 带高，★<b>零富余</b>：
+ * <ol>
+ * <li>行 0（y=0）：绑定按钮（原生 106 宽，在 108 内容区里<b>左右各余 1px</b> 居中）；</li>
+ * <li>行 1（y=18）：绑定格 18 + 4 + 读数「已绑定 n / 上限」86；</li>
+ * <li>行 2（y=36）：<b>常驻绑定行 0</b>（整幅 108）；</li>
+ * <li>行 3（y=54）：帮助按钮 18 + 4 + <b>常驻绑定行 1</b>（86，条目多于常驻行位时这一位让给
+ * {@code bind.rows_more}「另有 n 条，悬停可见全部」）。</li>
+ * </ol>
+ * 常驻行位 = {@link #PERSISTENT_ROWS} = 行数 − 按钮行 − 绑定格行 = {@code 4 − 2} = 2；
+ * 修的就是取证记录点名的"常驻行数 = 0"（旧右段只有 1 行读数，条目<b>全</b>在按钮 tooltip 里，
+ * 玩家不悬停就读不到"到底绑了几条"）。完整条目与位置五键照旧在 tooltip ⇒ ★常驻面变短不等于删信息。
  * <p>
  * <b>★R78①：玩家背包是"加回来"的，代价是 E4 风险回归（不得静默）</b>。旧实现（R69-D2）预注册
  * 一个<b>空</b> {@code PlayerSlotGroup} 让 MUI2 的默认分支跳过 36 格绑定（见
@@ -85,15 +98,19 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
  * 三者都<b>只发请求</b>，判定与写档在服务端（R18/R19 + R71 的投递），并且都过
  * {@link NekoPocketPanel#serverGuardOk()} 那一道"一个玩家一枚口袋"的会话守卫。
  * <p>
- * <b>绑定信息的可见面 = 按钮 tooltip</b>（R74 裁定）：每条含维度 / x,y,z / 状态位，
- * 上限 {@link #TOOLTIP_ROWS} 条，<b>超出即显式截断提示</b>（{@code bind.truncated}）——
+ * <b>绑定信息的可见面 = 常驻行 + 按钮 tooltip 两处</b>（R74 裁定 tooltip 那份、★R81③ 补常驻那份）：
+ * tooltip 每条含维度 / x,y,z / 状态位，上限 {@link #TOOLTIP_ROWS} 条，<b>超出即显式截断提示</b>
+ * （{@code bind.truncated}）——
  * {@link PocketConstants#MAX_BOUND_CELLS} 是 64，而 tooltip 不能滚，
  * 所以"不删信息"在这里的唯一合法形态就是"截断必须说出来"，不得静默只显示前 N 条。
+ * 常驻行（{@link #PERSISTENT_ROWS} 条）只给<b>短码身份</b>或"另有 n 条"，★它不是 tooltip 的替代，
+ * 修复前的问题恰恰是"只有 tooltip"：玩家不悬停就读不到条数，于是把身份门禁那次失败
+ * 读成"绑定只能绑定一个"（R81）。
  * 列表行的机读形状（{@code id|status|dim|x|y|z|slot}，{@code ';'} 分隔）与解析器
  * {@link Row} 一起从第四列搬进来 ⇒ 双端仍只有一份编解码。
  * <p>
  * <b>★R78 D-2 的补偿落点 = {@link #helpButton}</b>：左栏撤下来的 7 段说明里，"用法摘要 /
- * 通道成本 / 主手限制 / ghost 用法"这一族需要一个玩家找得到的可见入口，因此在右段留白行放一个
+ * 通道成本 / 主手限制 / ghost 用法"这一族需要一个玩家找得到的可见入口，因此在右段行 3 的左位放一个
  * 帮助按钮（tooltip = {@code notesText} 全量 + 绑定/解绑说明）。它不新增任何信息，只是把
  * 原本常驻的文字换成"点得到 / 悬停看得到"。
  * <p>
@@ -119,7 +136,9 @@ public final class NekoPocketBottomBand {
      * <p>
      * 派生式不是"随手 +12"，而是<b>由"背包段必须与中栏同 x"倒推</b>：背包段左沿被钉成
      * {@link NekoPocketStorageColumn#X}（= 6+108+4 = 118），左段就只能是 {@code 118 − 6 = 112}
-     * （R80 后三段之间<b>不再留 4px 列间距</b>，间距并进了段宽 ⇒ 三段恰好铺满 {@code 416−12}）。
+     * （R80 后三段之间<b>不再留 4px 列间距</b>，间距并进了段宽 ⇒ 三段恰好铺满"面板宽 − 2×外边距"，
+     * ★R81④ 定稿下那个可用宽是 {@code 398 − 12 = 386}，由本类 {@code static} 块与 {@link #BIND_SLACK}
+     * 一起对账，不留无主空白）。
      */
     public static final int COIN_WIDTH = NekoPocketStorageColumn.X - COIN_X;
     /** 单条币值条宽（{@code POCKET_C2_coinbar} 的原生宽度，取自契约表；几何不读贴图类）。 */
@@ -151,37 +170,92 @@ public final class NekoPocketBottomBand {
     /** 背包高（4 行 × 18 = 72 = 带高，R78① 的"正好等于"；R80 未动）。 */
     public static final int BACKPACK_HEIGHT = BACKPACK_ROWS * NekoPocketPanel.GRID;
     /**
-     * ★R80①：右段宽 <b>130</b>（R78 的 120 → 130，用户定稿的三段 {@code 112 | 162 | 130} 里的末段）。
+     * ★R81④：右段宽 <b>112</b>（R80① 的 130 → 112，三段定稿 {@code 左 112 | 背包 162 | 右 112}）。
      * <p>
-     * 这一格增量就是中栏 10→9 列腾出的那 <b>18px</b> 的去处（面板宽保留 416）。
-     * 本值<b>故意写成定稿字面量而不是"总可用宽减去前两段"的派生式</b>：派生会让 {@link #BIND_SLACK}
-     * 恒等于 0 而失去判据力，字面量则把"三段之和 = 416 − 2×6 = 404"变成一条<b>真会红</b>的账
-     * （任何一段被改宽而另一段没跟着改，{@code BIND_SLACK != 0} 或 {@code BIND_X + BIND_WIDTH} 的
-     * 闭合断言就会在装配期炸出来 ⇒ 不留无主空白）。
+     * 面板宽收到 398（{@link NekoPocketPanel#WIDTH} = 主区实占）后，右段<b>只能</b>是
+     * {@code 398 − 2×6 − 112 − 162 = 112}；这一式子由 {@link #BIND_SLACK} 承担，本值写成
+     * <b>具名加算式</b> {@code 6 × 18 + 4}（六格栅格 + 一条列间距宽的绳缝）并在 {@code static}
+     * 块里与"面板宽减前两段"对账 ⇒ 两条式子必须给出同一个 112，否则当场红。
+     * 旧注释里"写定稿字面量才留得住判据力"的顾虑由 {@link #BIND_CONTENT_WIDTH} 那条
+     * "与源质列同 x 同宽"的断言接管：★不再靠一个字面量看账。
      */
-    public static final int BIND_WIDTH = 130;
+    public static final int BIND_WIDTH = 6 * NekoPocketPanel.GRID + NekoPocketPanel.COLUMN_GAP;
     /**
      * R78 时代"三段之间各留 4px 列间距 ⇒ 余 14px 塞在背包与右段之间"的余量（R80① 后必须为 0）。
      * <p>
-     * ★R80① 后它<b>恒为 0</b>：三段改为彼此紧挨（那 8px 间距并进了左右两段的段宽），
-     * 本常量保留在 {@link #BIND_X} 的式子里是为了让"面板宽 − 三段宽"这笔账留一个<b>具名</b>落点：
-     * 它一旦不是 0，就说明有人又往段间塞间距或改了面板宽 ⇒ 装配期断言当场红，不留无主空白。
+     * ★R81④ 后它<b>仍然恒为 0</b>（三段紧挨），保留这个具名量的理由是：右段宽现在写成
+     * {@code 6×18+4} 的加算式，一旦面板宽或前两段被改而右段没跟着改，"面板宽 − 三段宽"这笔账
+     * 就从这里冒出来 ⇒ 装配期断言当场红，不留无主空白。
      */
     public static final int BIND_SLACK = NekoPocketPanel.WIDTH - 2 * NekoPocketPanel.MARGIN
         - COIN_WIDTH
         - BACKPACK_WIDTH
         - BIND_WIDTH;
-    /** 右段 x（左段右边 + 背包段宽 + 余量 ⇒ R80 定稿下 = {@code 6+112+162 = 280}）。 */
+    /** 右段 x（左段右边 + 背包段宽 + 余量 ⇒ R81④ 定稿下 = {@code 6+112+162 = 280}）。 */
     public static final int BIND_X = COIN_X + COIN_WIDTH + BACKPACK_WIDTH + BIND_SLACK;
-    /** 绑定按钮的可视宽（= {@code POCKET_C2_bindbtn} 原生宽 106；★小于 R80① 的段宽 130）。 */
+    /**
+     * ★R81④：右段内部的<b>绳缝位</b>宽（= 一条 {@link NekoPocketPanel#COLUMN_GAP}）。
+     * <p>
+     * R80 把三段改紧挨之后，装饰层的 rope 虚线只能画在 {@code BIND_X − 4}，也就是<b>压在背包段
+     * 最后一列的右 4px 上</b>（MUI2 按 child 顺序绘制，装饰是第一棵 ⇒ 不遮交互，但那 4px 从此
+     * 同时属于两个功能区）。现在把这条缝<b>请进右段自己的账</b>：右段 = {@code 4(绳) + 108(内容)}，
+     * 绳缝归 {@code NekoPocketDecoration} 画，内容区从 {@link #BIND_CONTENT_X} 起。
+     */
+    public static final int BIND_ROPE_WIDTH = NekoPocketPanel.COLUMN_GAP;
+    /** 右段内容区 x（段内局部，= 绳缝右边界 ⇒ 全局 x = {@code BIND_X + 4} = 284）。 */
+    public static final int BIND_CONTENT_X = BIND_ROPE_WIDTH;
+    /**
+     * 右段内容区宽（= {@code 112 − 4} = <b>108</b>）。
+     * <p>
+     * ★108 同时也是源质列宽（{@link NekoPocketEssenceColumn#WIDTH}），且内容区左沿
+     * {@code BIND_X + BIND_CONTENT_X = 284} 恰等于 {@link NekoPocketEssenceColumn#X} ⇒
+     * <b>绑定内容与它上面那一列源质盘同 x 同宽</b>（与 R80① 给背包段立的同一条硬判据，只是换到右段；
+     * 见 {@code static} 块，这条不靠注释）。
+     */
+    public static final int BIND_CONTENT_WIDTH = BIND_WIDTH - BIND_CONTENT_X;
+    /** 绑定按钮的可视宽（= {@code POCKET_C2_bindbtn} 原生宽 106；★比内容区 108 窄 2px）。 */
     private static final int BIND_BUTTON_WIDTH = PocketGuiTextureContract.widthOf("POCKET_C2_bindbtn");
-    /** 绑定格 x（段内局部；★106 + 4 + 18 = 128 &gt; 段宽 ⇒ 绑定格挪到第二行，不再与按钮并排）。 */
-    private static final int BIND_SLOT_X = 0;
-    /** 绑定格 y（第二行）。 */
-    private static final int BIND_SLOT_Y = 20;
+    /**
+     * 绑定按钮 x（段内局部）：在 {@link #BIND_CONTENT_WIDTH} 的内容区里<b>居中</b>
+     * （{@code 4 + (108 − 106)/2 = 5}，左右各余 1px，与左段币值条的居中口径同形；
+     * ★那 1px + 1px 由 {@code static} 块断言"两边相等"，不是随手偏移）。
+     */
+    public static final int BIND_BUTTON_X = BIND_CONTENT_X + (BIND_CONTENT_WIDTH - BIND_BUTTON_WIDTH) / 2;
+    /** 右段纵向<b>行位</b>数（★4 × 18 = 72 = 带高，零富余；行位从哪几行看 {@code static} 块的加总）。 */
+    public static final int BIND_ROWS = HEIGHT / NekoPocketPanel.GRID;
+    /**
+     * ★R81③：<b>常驻</b>绑定行的行位数 = {@code BIND_ROWS − 2} = <b>2</b>（减掉的是"按钮行"与
+     * "绑定格 + 读数的行"）。修复前这个数是 <b>0</b> —— 条目全在按钮 tooltip 里，玩家不悬停就
+     * 读不到"到底绑了几条"，与身份门禁叠成就成了"绑定只能绑定一个"的观感（取证记录 §3 的"面缺失"）。
+     * <p>
+     * 多于这 {@code 2} 位的部分：最后一位让给 {@code bind.rows_more} 的"另有 n 条，悬停可见"提示，
+     * 完整条目与位置五键仍在 tooltip（上限 {@link #TOOLTIP_ROWS}）——★常驻面变短不等于删信息。
+     */
+    public static final int PERSISTENT_ROWS = BIND_ROWS - 2;
+    /** 绑定格 x（段内局部，★R81④ 起与内容区左沿对齐 = 绳缝右侧第一格；★R81③ 起 public 供回归套件核加总）。 */
+    public static final int BIND_SLOT_X = BIND_CONTENT_X;
+    /** 绑定格 y（★行 1：y = 18；行 0 整行给绑定按钮，两者上下相邻不重叠）。 */
+    public static final int BIND_SLOT_Y = NekoPocketPanel.GRID;
+    /** 读数 / 常驻绑定行（与 18 宽控件并排时）的 x（= {@code 4 + 18 + 4} = 26）。 */
+    public static final int BIND_TEXT_X = BIND_CONTENT_X + NekoPocketPanel.GRID + NekoPocketPanel.COLUMN_GAP;
+    /** 与控件并排时的那段文字宽（= {@code 112 − 26} = <b>86</b>）。 */
+    public static final int BIND_TEXT_WIDTH = BIND_WIDTH - BIND_TEXT_X;
+    /** 整幅常驻绑定行的宽（行 2 = 内容区全幅 108，★只有它享受不到 18+4 的那次让位）。 */
+    public static final int BIND_ROW_WIDTH = BIND_CONTENT_WIDTH;
+    /**
+     * 帮助按钮 x（段内局部，与绑定格同列 ⇒ 纵向读成一列控件；★R81③ 起 public 供回归套件核加总）。
+     */
+    public static final int BIND_HELP_X = BIND_CONTENT_X;
+    /** 帮助按钮 y（★行 3 的左位，右边那 86px 给常驻绑定行 1）。 */
+    public static final int BIND_HELP_Y = 3 * NekoPocketPanel.GRID;
 
     /** 绑定条目的 tooltip 最多列几条（超出必须显式提示，见类 javadoc）。 */
     public static final int TOOLTIP_ROWS = 10;
+
+    /** 第 {@code slot} 个常驻绑定行的 y（行 2 起，逐行往下）。 */
+    public static int persistentRowY(int slot) {
+        return (2 + slot) * NekoPocketPanel.GRID;
+    }
 
     /**
      * 框架给的玩家背包同步键前缀（★不是本仓自造的键）。
@@ -229,13 +303,67 @@ public final class NekoPocketBottomBand {
             throw new IllegalStateException(
                 "[pocket] 背包段与中栏不同宽: " + BACKPACK_WIDTH + " != " + NekoPocketStorageColumn.WIDTH);
         }
+        // ★R81④ 新增的两条硬判据：面板宽 = 主区实占 ⇒ 三段加总必须跟着变 112|162|112。
+        // 右段宽写成加算式（6×18+4），这里把它与"面板宽 − 前两段"对账 ⇒ 两条式子给出不同的数就红。
+        if (BIND_WIDTH != 6 * NekoPocketPanel.GRID + NekoPocketPanel.COLUMN_GAP) {
+            throw new IllegalStateException("[pocket] 右段宽不是 6×18+4=112（★一格绳缝 + 六格栅格）: " + BIND_WIDTH);
+        }
+        if (COIN_WIDTH + BACKPACK_WIDTH + BIND_WIDTH + 2 * NekoPocketPanel.MARGIN != NekoPocketPanel.WIDTH) {
+            throw new IllegalStateException(
+                "[pocket] 底部带三段与面板宽不闭合: 112+162+112+12 != " + NekoPocketPanel.WIDTH + "（R81④ 定稿 398）");
+        }
         // ★R80①：三段之间不再塞列间距 ⇒ 余量必须恰为 0（不是 0 就是"有一块没人认领的空白"）。
         if (BIND_SLACK != 0) {
-            throw new IllegalStateException("[pocket] 底部带三段没铺满可用宽，余量 " + BIND_SLACK + "（R80① 定稿：112+162+130 = 404）");
+            throw new IllegalStateException(
+                "[pocket] 底部带三段没铺满可用宽，余量 " + BIND_SLACK + "（R81④ 定稿：112+162+112 = 386 = 398-12）");
         }
         if (BIND_X + BIND_WIDTH != NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN) {
             throw new IllegalStateException(
                 "[pocket] 底部带横向不闭合: " + (BIND_X + BIND_WIDTH) + " != " + (NekoPocketPanel.WIDTH - 6));
+        }
+        // ★R81④：右段内容区必须与源质列**同 x 同宽**（同一条纪律从背包段搬到右段；
+        // 同时绳缝位被请进右段自己的账 ⇒ 装饰层的 rope 不再压背包最后一列）。
+        if (BIND_CONTENT_X + BIND_CONTENT_WIDTH != BIND_WIDTH) {
+            throw new IllegalStateException("[pocket] 右段绳缝 + 内容不等于段宽: " + BIND_CONTENT_X + "+" + BIND_CONTENT_WIDTH);
+        }
+        if (BIND_X + BIND_CONTENT_X != NekoPocketEssenceColumn.X) {
+            throw new IllegalStateException(
+                "[pocket] 右段内容区与源质列不同 x: " + (BIND_X + BIND_CONTENT_X) + " != " + NekoPocketEssenceColumn.X);
+        }
+        if (BIND_CONTENT_WIDTH != NekoPocketEssenceColumn.WIDTH) {
+            throw new IllegalStateException(
+                "[pocket] 右段内容区与源质列不同宽: " + BIND_CONTENT_WIDTH + " != " + NekoPocketEssenceColumn.WIDTH);
+        }
+        // ★R81③ 纵向加总：右段四行 × 18 必须<b>恰好</b>等于带高（零富余 ⇒ 不会出现无主空白，
+        // 也不会把绑定行挤出带子）。
+        if (BIND_ROWS * NekoPocketPanel.GRID != HEIGHT) {
+            throw new IllegalStateException(
+                "[pocket] 右段纵向加总不闭合: " + BIND_ROWS + "×18 != 带高 " + HEIGHT + "（R81③：四行零富余）");
+        }
+        if (PERSISTENT_ROWS != BIND_ROWS - 2 || PERSISTENT_ROWS < 1) {
+            throw new IllegalStateException(
+                "[pocket] 常驻绑定行位数 = " + PERSISTENT_ROWS + "（★必须 = 行数 − 按钮行 − 绑定格行 且 ≥ 1，" + "取证记录 §3 点名的缺陷就是它等于 0）");
+        }
+        if (persistentRowY(PERSISTENT_ROWS - 1) + NekoPocketPanel.GRID != HEIGHT) {
+            throw new IllegalStateException(
+                "[pocket] 最后一条常驻绑定行的下沿不等于带高（★纵向出现无主空白或越界）: " + persistentRowY(PERSISTENT_ROWS - 1));
+        }
+        // 「按钮行与绑定格行不重叠」（R81 取证 §5）此前只靠"行位都是 18 的整数倍"隐式成立；
+        // 控件高来自材质契约（coinbar 88×18），那张图一旦改高四行就会互相压上一格，而且不抛错、不打日志。
+        if (COIN_BAR_HEIGHT != NekoPocketPanel.GRID) {
+            throw new IllegalStateException(
+                "[pocket] 控件高 " + COIN_BAR_HEIGHT + " != 行高 " + NekoPocketPanel.GRID + "（★右段四行会重叠）");
+        }
+        // 三条横向加总：每一行的像素都必须有归属（按钮行 / 控件+文字行 / 整幅行）
+        if (BIND_BUTTON_X - BIND_CONTENT_X != BIND_CONTENT_X + BIND_CONTENT_WIDTH - BIND_BUTTON_X - BIND_BUTTON_WIDTH) {
+            throw new IllegalStateException("[pocket] 绑定按钮在内容区里不是居中（左右余量不等）: 左 " + (BIND_BUTTON_X - BIND_CONTENT_X));
+        }
+        if (BIND_TEXT_X + BIND_TEXT_WIDTH != BIND_WIDTH) {
+            throw new IllegalStateException(
+                "[pocket] 「18 控件 + 4 + 文字」三段不等于右段宽: " + BIND_TEXT_X + "+" + BIND_TEXT_WIDTH);
+        }
+        if (BIND_ROW_WIDTH + BIND_CONTENT_X != BIND_WIDTH) {
+            throw new IllegalStateException("[pocket] 整幅常驻绑定行没有铺到段宽右沿: " + BIND_ROW_WIDTH);
         }
     }
 
@@ -503,8 +631,16 @@ public final class NekoPocketBottomBand {
     // ------------------------------------------------------------------ 右段：绑定 / 解绑 + 帮助
 
     /**
-     * 绑定段（130×72，R80① 由 120 加宽）：绑定按钮（左键绑定 / 右键解绑末条 / Shift 右键清空）+ 绑定格 +
-     * 一行状态 + 帮助按钮（★R78 D-2 撤下来的说明的可见入口）。
+     * ★R81④ 后右段 = <b>112×72 = 绳缝 4 + 内容 108</b>，纵向四行 × 18 <b>零富余</b>：
+     * <ol>
+     * <li>行 0：绑定按钮（左键绑定 / 右键解绑末条 / Shift 右键清空，R74 三条语义一字未改）；</li>
+     * <li>行 1：绑定格 18 + 4 + 读数「已绑定 n / 上限」；</li>
+     * <li>行 2：<b>常驻绑定行 0</b>（整幅 108，★修复前这一位根本不存在）；</li>
+     * <li>行 3：帮助按钮 18 + 4 + <b>常驻绑定行 1</b>（86；条目多于常驻行位时这一位是
+     * {@code bind.rows_more}「另有 n 条，悬停可见全部」）。</li>
+     * </ol>
+     * 按钮 y0..18 与绑定格 y18..36 <b>上下相邻但不重叠</b>（R81 取证 §5 用它排除"点击穿透到绑定槽"，
+     * 现在仍然成立 ⇒ 那条判据不许被后续改动破坏）。
      */
     private static ParentWidget<?> bindBlock(NekoPocketPanel ui) {
         final SlotGroupWidget bindGroup = SlotGroupWidget.builder()
@@ -529,14 +665,15 @@ public final class NekoPocketBottomBand {
             .size(BIND_WIDTH, HEIGHT)
             .name("pocket_bind_block")
             .child(
-                new ButtonWidget<>().pos(0, 0)
+                new ButtonWidget<>().pos(BIND_BUTTON_X, 0)
                     .size(BIND_BUTTON_WIDTH, COIN_BAR_HEIGHT)
                     .name("pocket_bind_button")
                     .background(PocketGuiTextures.BIND_BUTTON)
                     .child(
                         (IWidget) new TextWidget(IKey.lang("gtit.pocket.bind.button")).scale(0.5f)
                             .textAlign(Alignment.Center))
-                    // ★绑定信息的唯一可见面（R74）：全部绑定 + 超出的显式截断提示
+                    // ★绑定信息的完整可见面（R74）：全部条目 + 位置五键 + 超出的显式截断提示。
+                    // R81③ 之后它不再是<b>唯一</b>可见面（右段多了常驻行），但仍是<b>全</b>信息面 ⇒ 不得删。
                     .tooltip(tooltip -> tooltip.addLine(IKey.dynamic(ui::bindTooltipText)))
                     // 左键绑定；右键解绑最后一条；Shift+右键清空全部（R74 裁定，语义与 onServerAction 同步改）
                     .onMousePressed(button -> ui.dispatchBindButtonClick(button)))
@@ -544,21 +681,51 @@ public final class NekoPocketBottomBand {
             .child(
                 (IWidget) new TextWidget(summary).textAlign(Alignment.CenterLeft)
                     .scale(0.5f)
-                    .pos(BIND_SLOT_X + NekoPocketPanel.GRID + 4, BIND_SLOT_Y)
-                    .size(BIND_WIDTH - BIND_SLOT_X - NekoPocketPanel.GRID - 4, COIN_BAR_HEIGHT))
-            .child(helpButton(ui));
+                    .pos(BIND_TEXT_X, BIND_SLOT_Y)
+                    .size(BIND_TEXT_WIDTH, COIN_BAR_HEIGHT));
+        // ★常驻绑定行的<b>数量</b>只由 PERSISTENT_ROWS 决定（装配期断言它 = 2 且纵向恰闭合）：
+        // 写死两次 .child(...) 会让"改了行位却少画一行"变成一条查不出来的错。
+        for (int slot = 0; slot < PERSISTENT_ROWS; slot++) {
+            root.child(persistentBindRow(ui, slot));
+        }
+        root.child(helpButton(ui));
         return root.excludeAreaInRecipeViewer();
+    }
+
+    /**
+     * ★R81③：右段的一条<b>常驻</b>绑定行（不悬停就能看见）。
+     * <p>
+     * 行 0 整幅（108），行 1 起让出左边的 18+4 给帮助按钮 ⇒ 86。内容只有<b>短码身份</b>
+     * （{@code bind.entry}）或"另有 n 条，悬停可见"（{@code bind.rows_more}）：位置五键的完整行照旧在
+     * 按钮 tooltip（{@link NekoPocketPanel#bindTooltipText()}）里，★这里短一分都不是删信息，
+     * 而是把"有几条 / 绑的是谁"从悬停面搬到常驻面 —— 取证记录 §3 的"常驻行数 = 0"就是本缺陷的加重项。
+     * <p>
+     * 文本一律 {@code scale(0.5f)}（与读数同口径）：{@code 86 ÷ 0.5 = 172} 逻辑像素，装得下
+     * 「元件 + 8 位短码」与「……另有 n 条绑定未在此列出」，★装不下的完整位置行本来就不进常驻面。
+     */
+    private static IWidget persistentBindRow(NekoPocketPanel ui, int slot) {
+        final boolean fullWidth = slot == 0;
+        final TextWidget row = new TextWidget(IKey.dynamic(() -> ui.bindPersistentText(slot)));
+        // ★逐条语句设定，不做链式：TextWidget 的 pos/size 继承自 IPositioned，链式下来拿到的是接口，
+        // 上面那个 name(...) 就找不到符号（compileJava 直接红，比留一棵没名字的 widget 树好）
+        row.textAlign(Alignment.CenterLeft);
+        row.scale(0.5f);
+        row.pos(fullWidth ? BIND_CONTENT_X : BIND_TEXT_X, persistentRowY(slot));
+        row.size(fullWidth ? BIND_ROW_WIDTH : BIND_TEXT_WIDTH, COIN_BAR_HEIGHT);
+        row.name("pocket_bind_row_" + slot);
+        return row;
     }
 
     /**
      * 帮助按钮（★R78 D-2 的补偿落点）：tooltip = {@code notesText()}（用法摘要 / 通道成本 /
      * 主手限制 / ghost 用法与"每格声明吃掉一格真实容量"的代价）+ 绑定与解绑的两条说明。
      * <p>
-     * 它不新增任何信息，只是把原本常驻在左栏的文字换成"悬停看得到"；放在右段第三行的留白位
-     * （背包 4 行占满纵向 ⇒ 那里本来就没有别的落点）。
+     * 它不新增任何信息，只是把原本常驻在左栏的文字换成"悬停看得到"；★R81③ 后它占右段<b>行 3 的
+     * 左位</b>（{@code x = 4}，与绑定格同列），右边那 86px 让给常驻绑定行 1 —— 行位不再靠"留白行"
+     * 存在，纵向四行 × 18 = 72 一格都不富余。
      */
     private static IWidget helpButton(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(0, BIND_SLOT_Y + COIN_BAR_HEIGHT + 4)
+        return new ButtonWidget<>().pos(BIND_HELP_X, BIND_HELP_Y)
             .size(NekoPocketPanel.GRID, NekoPocketPanel.GRID)
             .name("pocket_help_button")
             .background(PocketGuiTextures.BUTTON)

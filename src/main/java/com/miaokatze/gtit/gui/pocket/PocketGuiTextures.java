@@ -43,7 +43,7 @@ public final class PocketGuiTextures {
     // ---- 面板与装饰骨架 ----
     /** 布纹底（32×32 平铺铺满整块面板）。 */
     public static final UITexture CLOTH = TEXTURES.get("POCKET_C2_cloth");
-    /** 面板框（64×64，9-slice N=10；中心 44 ⇒ 416×360 的面板远大于 2N+1）。 */
+    /** 面板框（64×64，9-slice N=10；中心 44 ⇒ 面板 {@code WIDTH×HEIGHT}（R81④ 后 398×360）远大于 2N+1）。 */
     public static final UITexture PANEL = TEXTURES.get("POCKET_C2_panel");
     /** 铜包角（14×14，<b>1:1 贴</b>四角各一次，不得拉伸）。 */
     public static final UITexture CORNER = TEXTURES.get("POCKET_C2_corner");
