@@ -1496,15 +1496,37 @@ public final class NekoPocketPanel implements PocketSession {
     // ------------------------------------------------------------------ 关屏（R35 四道防御）
 
     /**
-     * 承载格是否仍可交互（R35 防御②）：MUI2 每 tick 调一次，返回 false 即<b>立即自动关屏</b>
-     * （{@code UISettings.java:57-59}）。判据是"原格里还是同一枚口袋"。
+     * 承载格是否仍可交互（R35 防御②）。★<b>每 tick 被调一次，返回 false 即服务端当场关容器</b>：
+     * {@code UISettings#canPlayerInteractWithUI} → {@code ModularContainer#canInteractWith}
+     * → {@code EntityPlayerMP.java:249}（{@code ForgeHooks.canInteractWith} 为假就 {@code closeContainer}），
+     * 客户端随后用 {@code ReopenGui} 重开 ⇒ 玩家侧只看到"右键没反应"的开关死循环。
+     * <p>
+     * ★<b>判据不得用对象身份</b>：{@code PlayerInventoryGuiData#getUsedItemStack()} 是
+     * {@code InventoryType#getStackInSlot} 的<b>活查表</b>（每次现读背包），而堆叠合并、
+     * 跨维重建 {@code EntityPlayerMP} 都会让"同一枚口袋"变成<b>另一个引用 / 另一个 player 对象</b>
+     * ⇒ 用 {@code ==} 比引用或比 player 引用会把合法持有者也判成丢失。
+     * 这里改判"承载格里仍是一枚口袋物品"，并把内容写权重新钉到那一枚上（关屏与 driver 都走
+     * {@link #relocateCarrier()} 重定位，不会写到别的栈上）。
      */
     private boolean carrierStillPresent(EntityPlayer testPlayer) {
-        if (closed || testPlayer != player() || pocket == null) {
+        if (closed || testPlayer == null || pocket == null) {
+            return false;
+        }
+        final EntityPlayer owner = player();
+        if (owner != null && (owner.getUniqueID() == null || !owner.getUniqueID()
+            .equals(testPlayer.getUniqueID()))) {
             return false;
         }
         final ItemStack atCarrier = data.getUsedItemStack();
-        return atCarrier != null && atCarrier == pocket;
+        if (atCarrier == null || atCarrier.getItem() == null
+            || pocket.getItem() == null
+            || atCarrier.getItem() != pocket.getItem()) {
+            return false;
+        }
+        if (atCarrier != pocket) {
+            pocket = atCarrier;
+        }
+        return true;
     }
 
     /**
@@ -1519,6 +1541,7 @@ public final class NekoPocketPanel implements PocketSession {
         if (closed) {
             return;
         }
+        GTInterestingThing.LOG.info("[pocket][diag] 关屏钩子触发（若紧跟在 createScreen 之后 ⇒ 界面是被立刻关掉，不是没建）");
         final ItemStack carrier = relocateCarrier();
         if (carrier == null) {
             // R35 防御③：重定位失败 ⇒ 只 warn 不落盘（写到别的栈上才是事故）

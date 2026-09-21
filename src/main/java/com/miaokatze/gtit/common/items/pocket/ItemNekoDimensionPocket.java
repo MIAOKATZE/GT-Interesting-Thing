@@ -26,6 +26,7 @@ import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 
@@ -87,14 +88,49 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * 只在服务端发起（{@code openFromMainHand} 内部会 {@code verifyServerSide}）；返回值是<b>原栈本身</b>，
      * 既不消耗也不复制（1.7.10 的 {@code onItemRightClick} 语义）。副手入口按 R21 走
      * {@code openFromPlayerInventory(player, index)}，本片不做（slice-s3-brief §2.1）。
+     * <p>
+     * ★<b>失败必须可观测</b>：MUI2 的 {@code PlayerInventoryGuiFactory#getGuiHolder} 读的是
+     * {@code data.getUsedItemStack()}，拿不到时走 {@code Objects.requireNonNull} 抛出；
+     * 而在服务端 {@code openGui} 里抛出的异常会被 FML 咽进日志 ⇒ 玩家侧只看到"右键没反应"。
+     * 因此这里捕获并一次性 WARN，把链路上的三个可分辨点（是否进来了 / 手持槽号 / 异常原文）写清楚。
      */
     @Override
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
         if (!world.isRemote) {
-            GuiFactories.playerInventory()
-                .openFromMainHand(player);
+            try {
+                GuiFactories.playerInventory()
+                    .openFromMainHand(player);
+                if (!openLogged) {
+                    openLogged = true;
+                    GTInterestingThing.LOG
+                        .info("[pocket] 右键开道已走到服务端 openFromMainHand（槽号 {}）", player.inventory.currentItem);
+                }
+            } catch (Throwable t) {
+                if (!openLogged) {
+                    openLogged = true;
+                    GTInterestingThing.LOG.warn(
+                        "[pocket] 右键开面板失败（槽号 " + player.inventory.currentItem
+                            + "，物品 "
+                            + Item.getIdFromItem(stack.getItem())
+                            + "）：面板在服务端构建阶段抛错 ⇒ 界面无反应",
+                        t);
+                }
+            }
         }
         return stack;
+    }
+
+    /** 一次性日志闩：只报第一次点击的结果，成功与失败各占一次判读面。 */
+    private boolean openLogged = false;
+
+    /** ★定位"右键无反应"用的诊断计数（双端各走一遍 buildUI，故按总量限流）。 */
+    private static int diagLogged = 0;
+
+    private static void logOnce(String what) {
+        if (diagLogged < 8) {
+            diagLogged++;
+            GTInterestingThing.LOG.info("[pocket][diag] " + what);
+        }
     }
 
     /**
@@ -105,6 +141,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      */
     @Override
     public ModularPanel buildUI(PlayerInventoryGuiData data, PanelSyncManager syncManager, UISettings settings) {
+        logOnce(
+            "buildUI 到达 " + FMLCommonHandler.instance()
+                .getEffectiveSide() + "，手持槽栈 " + (data.getUsedItemStack() == null ? "null" : "非 null"));
         return NekoPocketPanel.build(data, syncManager, settings);
     }
 
@@ -115,6 +154,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     @Override
     @SideOnly(Side.CLIENT)
     public ModularScreen createScreen(PlayerInventoryGuiData data, ModularPanel mainPanel) {
+        logOnce("createScreen 到达（客户端已收到 OpenGui 并建好面板）");
         return new ModularScreen(GTInterestingThing.MODID, mainPanel);
     }
 
