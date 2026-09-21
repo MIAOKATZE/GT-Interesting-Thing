@@ -2,6 +2,7 @@ package com.miaokatze.gtit.gui.pocket;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
@@ -10,6 +11,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 一次 GUI 会话的口袋内容（内存 {@code ItemStack[]} ↔ 物品 NBT）。
@@ -28,23 +30,54 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * （R53c 的包放大面）。</li>
  * </ol>
  * <p>
- * 本对象<b>双端各持一份</b>（面板树双端同构构建）。128 格的<b>内容</b>由 vanilla 的
+ * 本对象<b>双端各持一份</b>（面板树双端同构构建）。中栏 150 格的<b>内容</b>由 vanilla 的
  * {@code Packet103SetSlot} → {@code Slot.putStack} 喂给客户端那份 handler，
  * 因此客户端只负责显示；序列化只从服务端那份发生（关屏钩子按 mixin 只跑在 {@code EntityPlayerMP}）。
  * <p>
+ * <b>形状变更（R75）与旧档兼容</b>：中栏 128→150、流体 1 tank→{@link #FLUID_TANK_COUNT} tank。
+ * 读侧<b>只增不减</b>（{@link #loadGroup}）且旧单 tank 内容落到 0 号（{@link #loadTanks}），
+ * 写侧一律新形状 ⇒ 旧档不会炸、也不会静默少件；越界槽号丢弃时<b>一次性 WARN</b>。
+ * <p>
  * 纯数据件：不持 {@code EntityPlayer}、不持 {@code World}，也不做任何搬运决策
- * （流体搬运在 {@link NekoPocketLeftColumn}，通道与蒸馏归 S6/S7）。
+ * （流体搬运在 {@link PocketSlots}，通道与蒸馏归 S6/S7）。
  */
 public final class PocketInventory {
 
-    /** 中栏格数 = 8 列 × 16 行 = 128（§14.3；单源取 {@link PocketConstants#GHOST_ITEM_SLOT_LIMIT}）。 */
+    /** 中栏格数 = 10 列 × 15 行 = 150（R75；单源取 {@link PocketConstants#GHOST_ITEM_SLOT_LIMIT}）。 */
     public static final int STORAGE_SLOTS = PocketConstants.GHOST_ITEM_SLOT_LIMIT;
-    /** 左栏流体交互格数 = 上 4 + 下 4，两排同权（R39a）。 */
-    public static final int FLUID_INTERACTION_SLOTS = 8;
-    /** 右栏蒸馏输入格数 = 3 行 × 4 列（§14.3 覆盖计划 §6 的「3 个槽」旧口径）。 */
+    /**
+     * 流体交互格数 = {@link PocketConstants#FLUID_COLUMN_COUNT} 列 ×
+     * {@link PocketConstants#FLUID_INTERACTION_PER_COLUMN} 格 = 12（R75①）。
+     * <p>
+     * ★ handler 索引与 tank 的对应关系是<b>取模</b>（{@link #tankOfInteractionSlot(int)}）：
+     * 矩阵先铺完一列的"上格"再铺下一列，之后才轮到"下格"，故
+     * {@code 0…5} 是 6 个上格、{@code 6…11} 是 6 个下格，两两同属一列。
+     */
+    public static final int FLUID_INTERACTION_SLOTS = PocketConstants.FLUID_COLUMN_COUNT
+        * PocketConstants.FLUID_INTERACTION_PER_COLUMN;
+    /** 蒸馏输入格数 = 2 行 × 6 列（R75 换排布不换格数；§14.3 覆盖计划 §6 的「3 个槽」旧口径）。 */
     public static final int DISTILL_INPUT_SLOTS = 12;
-    /** 右下绑定格数（需求 5，R43a 的瞬时入口）。 */
+    /** 绑定格数（需求 5，R43a 的瞬时入口；R75 后落在底部带）。 */
     public static final int BIND_SLOTS = 1;
+    /** 独立流体 tank 数（= 流体列数 = {@code Kind.FLUID} 的 ghost 索引空间，单源同 {@link PocketConstants#FLUID_COLUMN_COUNT}）。 */
+    public static final int FLUID_TANK_COUNT = PocketConstants.FLUID_COLUMN_COUNT;
+
+    /**
+     * {@code ItemStackHandler} 自己的落档形状键（{@code Items} / {@code Slot} / {@code Count} / {@code Size}）。
+     * <p>
+     * ★<b>不是本 mod 的 NBT 键名</b>，而是上游 handler 的内部形状；列在这里只有一个理由：
+     * {@link #loadGroup} 必须<b>绕开</b> {@code handler.deserializeNBT}（见该方法），而要绕开就得自己
+     * 读这一层。形状一旦被上游改动，{@code NekoPocketModelTest#storage_group_shape_roundtrip_pins_library_keys}
+     * 会立刻红（它用 handler 自己的 {@code serializeNBT} 产出输入，再喂回 {@link #readFrom}），
+     * 而不是留一个"越界键被静默吞掉"的哑洞。
+     */
+    private static final String LIB_ITEMS = "Items";
+    private static final String LIB_SLOT = "Slot";
+    private static final String LIB_COUNT = "Count";
+    /** NBT 的 compound / int / list tag id（与 {@code PocketCellBindings} 同一口径的字面量）。 */
+    private static final int LIB_TAG_COMPOUND = 10;
+    private static final int LIB_TAG_INT = 3;
+    private static final int LIB_TAG_LIST = 9;
 
     /** 脏标记：只有内容真的变过才序列化（R53c 第 1 条）。 */
     private boolean dirty;
@@ -54,18 +87,28 @@ public final class PocketInventory {
     private final ItemStackHandler distillInput = newSlotGroup(DISTILL_INPUT_SLOTS);
     private final ItemStackHandler bindSlot = newSlotGroup(BIND_SLOTS);
 
-    /** 流体条内容（内存 {@code FluidStack}；读写只经 {@link #barTank}，不让 {@code getFluid()} 去摸 NBT）。 */
-    private FluidStack barFluid;
-    private final FluidStackTank barTank = new FluidStackTank(() -> barFluid, fluid -> {
-        this.barFluid = fluid == null || fluid.amount <= 0 ? null : fluid;
-        this.dirty = true;
-    }, PocketConstants.FLUID_BAR_CAPACITY_ML);
+    /**
+     * {@link #FLUID_TANK_COUNT} 个<b>互相独立</b>的流体 tank（R75①：每列一个，各自 16,000,000 mB）。
+     * <p>
+     * 每个 tank 是「内存 {@code FluidStack} + {@link FluidStackTank}」的一对：
+     * 数组下标 = tank 号 = {@code Kind.FLUID} 的 ghost 槽号 = 流体列号，三者同一个数，
+     * 不再有"条子只有一格"的特例。
+     */
+    private final FluidStack[] tankFluid = new FluidStack[FLUID_TANK_COUNT];
+    private final FluidStackTank[] tanks = new FluidStackTank[FLUID_TANK_COUNT];
 
     private PocketEssenceStore essence;
     private PocketCellBindings bindings;
     private PocketFilterConfig filters;
 
     private PocketInventory() {
+        for (int index = 0; index < FLUID_TANK_COUNT; index++) {
+            final int tank = index;
+            tanks[index] = new FluidStackTank(() -> tankFluid[tank], fluid -> {
+                this.tankFluid[tank] = fluid == null || fluid.amount <= 0 ? null : fluid;
+                this.dirty = true;
+            }, PocketConstants.FLUID_BAR_CAPACITY_ML);
+        }
         this.essence = PocketEssenceStore.readFrom(new NBTTagCompound());
         this.bindings = PocketCellBindings.readFrom(new NBTTagCompound());
         this.filters = PocketFilterConfig.readFrom(new NBTTagCompound());
@@ -81,13 +124,11 @@ public final class PocketInventory {
         if (root == null) {
             return inventory;
         }
-        loadGroup(root, PocketConstants.ITEM_CONTENTS, inventory.storage);
-        loadGroup(root, PocketConstants.FLUID_INTERACTION_SLOTS, inventory.fluidInteraction);
-        loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput);
-        loadGroup(root, PocketConstants.BIND_SLOT, inventory.bindSlot);
-        if (root.hasKey(PocketConstants.FLUID_BAR)) {
-            inventory.barFluid = FluidStack.loadFluidStackFromNBT(root.getCompoundTag(PocketConstants.FLUID_BAR));
-        }
+        loadGroup(root, PocketConstants.ITEM_CONTENTS, inventory.storage, "中栏");
+        loadGroup(root, PocketConstants.FLUID_INTERACTION_SLOTS, inventory.fluidInteraction, "流体交互格");
+        loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput, "蒸馏输入");
+        loadGroup(root, PocketConstants.BIND_SLOT, inventory.bindSlot, "绑定格");
+        inventory.loadTanks(root);
         inventory.essence = PocketEssenceStore.readFrom(root);
         inventory.bindings = PocketCellBindings.readFrom(root);
         inventory.filters = PocketFilterConfig.readFrom(root);
@@ -101,6 +142,10 @@ public final class PocketInventory {
      * <p>
      * 空区一律 {@code removeTag} 而不是写空 compound：口袋会跟着玩家到处走，留空壳档会让
      * {@code detectAndSendChanges} 的 NBT 比较与存档体积都白付一遍。
+     * <p>
+     * ★写档<b>一律按新形状</b>（R75 的存档兼容口径）：中栏写出 150 格的 {@code Size}，
+     * 流体写出 {@link PocketConstants#FLUID_BAR_TANK} 编号的列表；读侧的旧形状兼容只在
+     * {@link #readFrom} 那一边。
      */
     public void writeTo(NBTTagCompound root) {
         if (root == null) {
@@ -110,26 +155,138 @@ public final class PocketInventory {
         saveGroup(root, PocketConstants.FLUID_INTERACTION_SLOTS, fluidInteraction);
         saveGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, distillInput);
         saveGroup(root, PocketConstants.BIND_SLOT, bindSlot);
-        if (barFluid == null || barFluid.amount <= 0) {
-            root.removeTag(PocketConstants.FLUID_BAR);
-        } else {
-            final NBTTagCompound bar = new NBTTagCompound();
-            barFluid.writeToNBT(bar);
-            root.setTag(PocketConstants.FLUID_BAR, bar);
-        }
+        saveTanks(root);
         essence.writeTo(root);
         bindings.writeTo(root);
         filters.writeTo(root);
     }
 
-    private static void loadGroup(NBTTagCompound root, String key, ItemStackHandler handler) {
+    /**
+     * 读一个槽组。<b>不用</b> {@code handler.deserializeNBT}，理由是硬性的（不是风格）：
+     * <p>
+     * 上游那份实现开头就 {@code setSize(nbt.getInteger("Size"))}，而 {@code setSize} 会把整个
+     * {@code stacks} 列表<b>换成一个新数组</b>（字节码实证：{@code Arrays.fill} + {@code Arrays.asList}
+     * 后 {@code putfield}）⇒ 拿旧档（{@code Size=128}）读进 150 格的 handler，会把 handler <b>缩成 128 格</b>，
+     * 而 Container 那边 150 个 {@code ModularSlot} 仍会去点 128…149 号 ⇒
+     * {@code validateSlotIndex} 抛越界，玩家侧表现为"点后面几格没反应 / 面板炸"。
+     * 本方法因此：① 忽略 {@code Size}（格数永远由构造期决定 ⇒ <b>只增不减</b>）；
+     * ② 越出当前格数的条目<b>丢弃并一次性 WARN</b>（旧实现是静默跳过 = 丢件无痕）。
+     */
+    private static void loadGroup(NBTTagCompound root, String key, ItemStackHandler handler, String label) {
         if (!root.hasKey(key)) {
             return;
         }
         final NBTTagCompound group = root.getCompoundTag(key);
-        if (group != null) {
-            handler.deserializeNBT(group);
+        if (group == null) {
+            return;
         }
+        final NBTTagList items = group.getTagList(LIB_ITEMS, LIB_TAG_COMPOUND);
+        int dropped = 0;
+        for (int i = 0; i < items.tagCount(); i++) {
+            final NBTTagCompound entry = items.getCompoundTagAt(i);
+            final int slot = entry.getInteger(LIB_SLOT);
+            if (slot < 0 || slot >= handler.getSlots()) {
+                dropped++;
+                continue;
+            }
+            final ItemStack stack = ItemStack.loadItemStackFromNBT(entry);
+            if (stack == null) {
+                continue;
+            }
+            if (entry.hasKey(LIB_COUNT, LIB_TAG_INT)) {
+                stack.stackSize = entry.getInteger(LIB_COUNT);
+            }
+            handler.setStackInSlot(slot, stack);
+        }
+        if (dropped > 0) {
+            warnOutOfRangeOnce(label, key, handler.getSlots(), dropped);
+        }
+    }
+
+    /**
+     * "越界槽号被丢弃"的一次性 WARN（R75：不许静默丢件）。
+     * <p>
+     * 静态闩的理由：一次会话会读 4 个组，且面板可能反复开关；只在<b>首次</b>遇到时敲一次，
+     * 既不留"每 tick 一条"的日志洪水，也不至于完全无声。
+     */
+    private static void warnOutOfRangeOnce(String label, String key, int slots, int dropped) {
+        if (outOfRangeWarned) {
+            return;
+        }
+        outOfRangeWarned = true;
+        GTInterestingThing.LOG.warn(
+            "[pocket] 存档里 {}（键 {}）有 {} 条槽号越出当前形状（现有 {} 格），已丢弃这些条目" + "（面板形状变更后的旧/外来档；本条只报一次）",
+            label,
+            key,
+            dropped,
+            slots);
+    }
+
+    /** 越界槽号的一次性 WARN 闩。 */
+    private static boolean outOfRangeWarned;
+
+    /**
+     * 读 {@link PocketConstants#FLUID_BAR}：两代形状都在这里分流（见该键的 javadoc）。
+     * <p>
+     * 旧档的单 compound ⇒ <b>整份落到 0 号 tank</b>；新档的列表 ⇒ 按 {@link PocketConstants#FLUID_BAR_TANK}
+     * 归位。缺 tank 键按 0 读（与旧档同义）并计入一次性 WARN；tank 号越界的条目丢弃（同一个 WARN）。
+     */
+    private void loadTanks(NBTTagCompound root) {
+        if (!root.hasKey(PocketConstants.FLUID_BAR)) {
+            return;
+        }
+        if (root.hasKey(PocketConstants.FLUID_BAR, LIB_TAG_LIST)) {
+            final NBTTagList list = root.getTagList(PocketConstants.FLUID_BAR, LIB_TAG_COMPOUND);
+            int dropped = 0;
+            for (int i = 0; i < list.tagCount(); i++) {
+                final NBTTagCompound entry = list.getCompoundTagAt(i);
+                int tank = 0;
+                if (entry.hasKey(PocketConstants.FLUID_BAR_TANK, LIB_TAG_INT)) {
+                    tank = entry.getInteger(PocketConstants.FLUID_BAR_TANK);
+                } else {
+                    dropped++;
+                }
+                if (tank < 0 || tank >= FLUID_TANK_COUNT) {
+                    dropped++;
+                    continue;
+                }
+                final FluidStack fluid = FluidStack.loadFluidStackFromNBT(entry);
+                if (fluid != null && fluid.amount > 0) {
+                    tankFluid[tank] = fluid;
+                }
+            }
+            if (dropped > 0) {
+                GTInterestingThing.LOG
+                    .warn("[pocket] 流体档里有 {} 条缺 tank 号或越出 {} 个 tank 的范围（已按 0 号 tank 或丢弃处理）", dropped, FLUID_TANK_COUNT);
+            }
+            return;
+        }
+        if (root.hasKey(PocketConstants.FLUID_BAR, LIB_TAG_COMPOUND)) {
+            final FluidStack legacy = FluidStack.loadFluidStackFromNBT(root.getCompoundTag(PocketConstants.FLUID_BAR));
+            if (legacy != null && legacy.amount > 0) {
+                tankFluid[0] = legacy;
+            }
+        }
+    }
+
+    /** 写档：只写非空 tank，每条自带 tank 号；全空即 {@code removeTag}。 */
+    private void saveTanks(NBTTagCompound root) {
+        final NBTTagList list = new NBTTagList();
+        for (int tank = 0; tank < FLUID_TANK_COUNT; tank++) {
+            final FluidStack fluid = tankFluid[tank];
+            if (fluid == null || fluid.amount <= 0) {
+                continue;
+            }
+            final NBTTagCompound entry = new NBTTagCompound();
+            fluid.writeToNBT(entry);
+            entry.setInteger(PocketConstants.FLUID_BAR_TANK, tank);
+            list.appendTag(entry);
+        }
+        if (list.tagCount() == 0) {
+            root.removeTag(PocketConstants.FLUID_BAR);
+            return;
+        }
+        root.setTag(PocketConstants.FLUID_BAR, list);
     }
 
     private static void saveGroup(NBTTagCompound root, String key, ItemStackHandler handler) {
@@ -179,12 +336,12 @@ public final class PocketInventory {
         this.dirty = false;
     }
 
-    /** 中栏 128 格（行主序 0..127，与 {@code SlotGroupWidget} 矩阵的字符序天然一致）。 */
+    /** 中栏 150 格（行主序 0..149，与 {@code SlotGroupWidget} 矩阵的字符序天然一致）。 */
     public ItemStackHandler storage() {
         return storage;
     }
 
-    /** 左栏 8 个同权流体交互格。 */
+    /** 流体列的 12 个同权交互格（6 列 × 输入/输出；tank 号见 {@link #tankOfInteractionSlot(int)}）。 */
     public ItemStackHandler fluidInteraction() {
         return fluidInteraction;
     }
@@ -194,14 +351,9 @@ public final class PocketInventory {
         return distillInput;
     }
 
-    /** 右下绑定格（1 格，瞬时入口）。 */
+    /** 底部带绑定格（1 格，瞬时入口）。 */
     public ItemStackHandler bindSlot() {
         return bindSlot;
-    }
-
-    /** 流体条（{@code FluidStackTank}：内存 FluidStack + 只报真实容量）。 */
-    public FluidStackTank barTank() {
-        return barTank;
     }
 
     public PocketEssenceStore essence() {
@@ -243,6 +395,39 @@ public final class PocketInventory {
     /** 中栏指定格当前内容（可能为 {@code null}）。 */
     public ItemStack storageStack(int index) {
         return storage.getStackInSlot(index);
+    }
+
+    /**
+     * 某个流体交互格属于哪个 tank（<b>唯一</b>映射点）。
+     * <p>
+     * 矩阵按"先铺完 6 个上格、再铺 6 个下格"的顺序产出索引 ⇒ 取模即列号：
+     * {@code 0…5} 与 {@code 6…11} 的同一列同属一个 tank。越界入参原样返回（调用方是槽号，不该越界；
+     * 真越界了就让上层的数组访问炸出来，而不是静默映射到 0 号 tank 去动别人的液体）。
+     */
+    public static int tankOfInteractionSlot(int interactionIndex) {
+        return interactionIndex % FLUID_TANK_COUNT;
+    }
+
+    /** tank 号是否合法（GUI 与通道侧共用的这一道界）。 */
+    public static boolean isValidTank(int tank) {
+        return tank >= 0 && tank < FLUID_TANK_COUNT;
+    }
+
+    /**
+     * 第 {@code tank} 号流体 tank（{@code FluidStackTank}：内存 FluidStack + 只报真实容量）。
+     * <p>
+     * ★GUI 侧的 {@code FluidSlotSyncHandler} 直接挂它 ⇒ 6 个槽各有一根同步通道，
+     * 上游那份 handler 只在<b>内容与缓存不等</b>时才发更新（{@code needsSync} 走
+     * {@code FluidStack#isFluidEqual} + 数量比较，实证自 dev jar 字节码），
+     * 不会把 {@code FluidStack} 的 NBT 塞进每 tick 包（R75 §3 的顾虑点）。
+     */
+    public FluidStackTank tankAt(int tank) {
+        return tanks[tank];
+    }
+
+    /** tank 总数（GUI 装配循环用它，别处不得内联 6）。 */
+    public static int tankCount() {
+        return FLUID_TANK_COUNT;
     }
 
     // ------------------------------------------------------------------ S6/S7 的落点出口
@@ -287,20 +472,25 @@ public final class PocketInventory {
         return moved;
     }
 
-    /** 流体条还能收这一份多少 mB（条内已有别的流体 ⇒ 0）。 */
-    public int fluidBarRoom(FluidStack probe) {
-        if (probe == null || probe.amount <= 0) {
+    /**
+     * 第 {@code tank} 号流体槽还能收这一份多少 mB（槽内已有别的流体 ⇒ 0；tank 号非法 ⇒ 0）。
+     * <p>
+     * ★拉取模式下的落点就是"该流体列自己那一格"：ghost 声明的 {@code slotIndex} 即 tank 号，
+     * 所以六列各拉各的，不会像旧单条那样"第一格满了后面全满"。
+     */
+    public int fluidBarRoom(int tank, FluidStack probe) {
+        if (probe == null || probe.amount <= 0 || !isValidTank(tank)) {
             return 0;
         }
-        return barRoom(
-            barTank.getCapacity(),
-            barFluid == null || barFluid.amount <= 0 ? 0 : barFluid.amount,
-            barFluid == null || barFluid.amount <= 0 || barFluid.getFluid() == probe.getFluid());
+        final FluidStack current = tankFluid[tank];
+        final int currentAmount = current == null || current.amount <= 0 ? 0 : current.amount;
+        final boolean compatible = currentAmount == 0 || current.getFluid() == probe.getFluid();
+        return barRoom(PocketConstants.FLUID_BAR_CAPACITY_ML, currentAmount, compatible);
     }
 
     /**
-     * 流体条空间的纯算术（<b>不碰任何 {@code Fluid} 实例</b>）：
-     * 异种流体 ⇒ 0（条子只装一种），同种/空条 ⇒ 容量减现有量。
+     * 流体槽空间的纯算术（<b>不碰任何 {@code Fluid} 实例</b>）：
+     * 异种流体 ⇒ 0（一个 tank 只装一种），同种/空槽 ⇒ 容量减现有量。
      * <p>
      * 单独成函数并由零依赖套件直接驱动的理由：Forge 的 {@code Fluid}/{@code FluidRegistry}
      * 在纯 JVM 里连类初始化都过不去（实测 {@code ExceptionInInitializerError}），
@@ -314,12 +504,12 @@ public final class PocketInventory {
         return Math.max(0, capacity - Math.max(0, currentAmount));
     }
 
-    /** 往流体条灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。 */
-    public int depositFluidIntoBar(FluidStack fluid) {
-        if (fluid == null || fluid.amount <= 0) {
+    /** 往第 {@code tank} 号流体槽灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。 */
+    public int depositFluidIntoBar(int tank, FluidStack fluid) {
+        if (fluid == null || fluid.amount <= 0 || !isValidTank(tank)) {
             return 0;
         }
-        final int moved = barTank.fill(fluid, true);
+        final int moved = tanks[tank].fill(fluid, true);
         if (moved > 0) {
             dirty = true;
         }

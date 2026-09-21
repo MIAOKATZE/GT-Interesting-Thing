@@ -312,14 +312,14 @@ An AE2 storage cell of GTIT's own design: **one cell serves every registered cha
 
 ### Neko Dimensional Pocket / 猫猫次元口袋
 
-一枚**束口袋**形态的随身容器（袋面带猫脸）：右手持物右键打开 400×300 面板，把「随身库存 + 元素蒸馏 + 跨维度灌仓」收在一件物品里。内容全部存在物品 NBT 上，不占世界数据。
+一枚**束口袋**形态的随身容器（袋面带猫脸）：右手持物右键打开 416×360 面板（C2「铜包角束口」装饰风格），把「随身库存 + 元素蒸馏 + 跨维度灌仓」收在一件物品里。内容全部存在物品 NBT 上，不占世界数据。
 
-A pouch-shaped portable container with a cat face on the drawstring: right-click while held to open a 400×300 panel that combines a portable inventory, Thaumcraft distillation and cross-dimensional ME filing — all stored in the item's own NBT, no world data.
+A pouch-shaped portable container with a cat face on the drawstring: right-click while held to open a 416×360 panel that combines a portable inventory, Thaumcraft distillation and cross-dimensional ME filing — all stored in the item's own NBT, no world data.
 
-- **Storage / 随身库存**: 中栏 8×16 = 128 格真实存储 / 128 real slots
-- **Fluid side / 左栏**: 16000 mB 流体条 + 上下两排各 4 格，交互口径与 GT5U 流体仓一致（手持直接灌/排、组合键与 tooltip 同款），两排同权、方向由放入的储罐当前有无流体决定
-- **Distillation / 右栏**: 下 3 格输入 → 按 TC4 源质原量蒸馏（5 秒一轮，无物品或无源质即无进度，判据同炼金炉 `canSmelt`），上 12×4 = 48 格显示盘，单 tag 上限 64 点；取出即晶化，结晶可不经蒸馏直接回注；**源质罐子可直接放入/取出**（按 `IEssentiaContainerItem` 接口探测，任何 mod 的容器自动兼容）
-- **Binding / 绑定**: 右下绑定格 + 绑定键，一枚口袋可绑至多 64 枚 GTIT 无限元件（元件只提供 ID）；第四列显示每枚元件所在维度与坐标及状态位
+- **Storage / 随身库存**: 中栏 10×15 = 150 格真实存储 / 150 real slots
+- **Fluid side / 左栏**: **6 列流体块**，每列 = 输入格 + 流体槽 + 输出格，**每槽自带 16,000,000 mB**（六槽合计 96,000,000）；交互口径与 GT5U 流体仓一致（手持直接灌/排、组合键与 tooltip 同款），同列两格双用、方向由放入的储罐当前有无流体决定
+- **Distillation / 右栏**: 下 6×2 = 12 格输入 → 按 TC4 源质原量蒸馏（5 秒一轮，无物品或无源质即无进度，判据同炼金炉 `canSmelt`），上 6×8 = 48 格显示盘（**空格子本身仍绘制**，只是无货时不画图标与数量），单 tag 上限 64 点；取出即晶化，结晶可不经蒸馏直接回注；**源质罐子可直接放入/取出**（按 `IEssentiaContainerItem` 接口探测，任何 mod 的容器自动兼容）
+- **Binding / 绑定**: 一枚口袋可绑至多 64 枚 GTIT 无限元件（元件只提供 ID）。**左键绑定按钮 = 绑定、右键 = 解绑最后一条、Shift 右键 = 清空全部**；绑定清单（维度 / 坐标 / 状态位）走悬浮 tooltip，超过 10 条给出"另有 N 条未列出"的显式截断提示
 - **Instant channel / 瞬时通道**: 8 猫猫币，一次穿完全部绑定，图标动画显示 5 秒，冷却 10 秒（玩家维 + 设备维双校验，重启不重置）
 - **Timed channel / 短效通道**: 2 闪烁猫猫币，持续 30 秒、每秒一批，每批搬运的「元件×通道」对数由 `pocketChannelPairsPerSecond` 决定（默认 1）
 - **Channel precondition / 前置**: 绑定元件必须处于**带电**的驱动器或 ME 箱子内，否则通道不开
@@ -331,9 +331,10 @@ A pouch-shaped portable container with a cat face on the drawstring: right-click
 **口径代价 / Documented trade-offs**（设计选择，不是缺陷）：
 
 1. **口袋只在主手工作**：通道与蒸馏的 tick 宿主是 `Item#onUpdate`，而 1.7.10 只有当前手持的那一格会被 tick ⇒ 塞进副手或背包深处即停摆（面板与 tooltip 均已声明）。
-2. **ghost 声明会占掉一格真实存储**：中栏声明与真实格共用同一 128 格索引空间（左栏流体条与右栏源质格不占真实槽）。
-3. **内容随物品一起丢**：128 格物品与 48 格源质都存在口袋 NBT 里，口袋丢失/销毁即同时失去其中所有内容。
-4. **16000 mB 流体条容量是超规格自选值**：需求只说「像 GT5U 流体仓」而未给数字，此值取自常见单块储罐尺度，不是规格出处。
+2. **ghost 声明会占掉一格真实存储**：中栏声明与真实格共用同一 150 格索引空间（流体槽与源质格各在自己的索引空间，不占中栏真实槽）。
+3. **内容随物品一起丢**：150 格物品、6 个流体槽与 48 格源质都存在口袋 NBT 里，口袋丢失/销毁即同时失去其中所有内容。
+4. **每槽 16,000,000 mB 是超规格自选值**：需求只说「像 GT5U 流体仓」而未给数字，此值取自大型储罐尺度、按六列独立计（合计 96,000,000），不是规格出处。
+5. **面板高 360 是 GUI Scale 3 的硬上限**：1080p 下 Scale 3 只有 360 逻辑像素可用，故中栏取 15 行而非 16 行；**Scale 4 会纵向溢出**，请用 Scale ≤3。
 
 ***
 

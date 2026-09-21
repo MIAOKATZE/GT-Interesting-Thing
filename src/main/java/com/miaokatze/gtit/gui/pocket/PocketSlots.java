@@ -12,7 +12,9 @@ import net.minecraftforge.fluids.FluidContainerRegistry;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidContainerItem;
 
+import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
@@ -24,9 +26,9 @@ import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
  * （slice-s4-brief §6 第 9 条），也是「Container 槽数可机检」的前提。
  * <p>
  * 每造一个真实槽都记一次数，装配末尾必须 {@link #assertTotalRealSlots()} 命中
- * <b>{@value #TOTAL_REAL_SLOTS}</b>（§14.3 与 R43b 覆盖 R35 的 160 与计划 §6 的 139）：
- * 中栏 128 + 左栏流体交互 8 + 右栏蒸馏输入 12 + 右下绑定 1 = 149；
- * 48 源质格与全部 ghost 配置<b>不进 Container</b>（R35/R46d），不计入。
+ * <b>{@value #TOTAL_REAL_SLOTS}</b>（R75 的口径，覆盖 §14.3/R43b 的 149 与 R74 一度算出的 185）：
+ * 中栏 150 + 流体交互 12（6 列 × 输入/输出）+ 蒸馏输入 12 + 绑定 1 = <b>175</b>；
+ * 48 源质格、6 个流体槽本体与全部 ghost 配置<b>不进 Container</b>（R35/R46d），不计入。
  * 偏大 = 有区域被重复接入，偏小 = 有区域漏接 ⇒ 两种都当场炸出来，不留到实机。
  * <p>
  * <b>关于框架自己绑的玩家背包 36 格</b>：MUI2 的 {@code ModularSyncManager#construct} 默认会
@@ -36,7 +38,7 @@ import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
  */
 public final class PocketSlots {
 
-    /** §14.3 定稿的真实 Container 槽总数（128 + 8 + 12 + 1）。 */
+    /** R75 定稿的真实 Container 槽总数（150 + 12 + 12 + 1 = 175）。 */
     public static final int TOTAL_REAL_SLOTS = PocketInventory.STORAGE_SLOTS + PocketInventory.FLUID_INTERACTION_SLOTS
         + PocketInventory.DISTILL_INPUT_SLOTS
         + PocketInventory.BIND_SLOTS;
@@ -47,10 +49,39 @@ public final class PocketSlots {
     public static final String GROUP_DISTILL = "pocket_distill";
     public static final String GROUP_BIND = "pocket_bind";
 
-    /** 中栏每行 8 列（矩阵列宽与 {@code SlotGroup.rowSize} 同源）。 */
-    public static final int STORAGE_COLUMNS = 8;
-    /** 左栏 / 蒸馏盘每行 4 列。 */
-    public static final int SHORT_COLUMNS = 4;
+    /** 中栏每行 10 列（R75②；矩阵列宽与 {@code SlotGroup.rowSize} 同源）。 */
+    public static final int STORAGE_COLUMNS = 10;
+    /** 中栏行数（R75 的"选项 A"：16→15，1080p / GUI Scale 3 的 360 逻辑高是硬天花板）。 */
+    public static final int STORAGE_ROWS = 15;
+    /** 流体列每行的格数 = 列数（6 个输入格一行、6 个输出格一行，R75①）。 */
+    public static final int FLUID_COLUMNS = PocketConstants.FLUID_COLUMN_COUNT;
+    /** 蒸馏盘每行 6 列（R75：3 行 × 4 → 2 行 × 6，格数不变）。 */
+    public static final int DISTILL_COLUMNS = 6;
+
+    /**
+     * 格数与行列的<b>自证算式</b>（装配一进来就算，双端同一段代码）。
+     * <p>
+     * 存在的理由：R75 的"128→150"是一次跨文件的批量口径变更，最坏的失败形态不是编译不过，
+     * 而是"矩阵行数改了、常量没改"或"常量改了、Container 注册的行数没改"这类<b>各自都能编译</b>的半改。
+     * 这里把三者的乘积关系变成一条构造期就抛的断言，配套的负控在回归套件里
+     * （{@code slot_math_175_and_row_column_products}）。
+     */
+    static {
+        if (STORAGE_ROWS * STORAGE_COLUMNS != PocketInventory.STORAGE_SLOTS) {
+            throw new IllegalStateException(
+                "[pocket] 中栏行列乘积不等于格数: " + STORAGE_ROWS
+                    + "x"
+                    + STORAGE_COLUMNS
+                    + " != "
+                    + PocketInventory.STORAGE_SLOTS);
+        }
+        if (FLUID_COLUMNS * PocketConstants.FLUID_INTERACTION_PER_COLUMN != PocketInventory.FLUID_INTERACTION_SLOTS) {
+            throw new IllegalStateException("[pocket] 流体列数×每列格数不等于交互格数");
+        }
+        if (DISTILL_COLUMNS * 2 != PocketInventory.DISTILL_INPUT_SLOTS) {
+            throw new IllegalStateException("[pocket] 蒸馏盘行列乘积不等于格数");
+        }
+    }
 
     // ----------------------------- 同步键（每组一个，避免两个组各自从 0 编号互相覆盖）
     public static final String SYNC_STORAGE = "pocket_storage_slots";
@@ -70,14 +101,19 @@ public final class PocketSlots {
 
     public PocketSlots() {}
 
-    /** 中栏 128 格之一（行主序 {@code 0..127}，与矩阵字符序一致）。 */
+    /** 中栏 150 格之一（行主序 {@code 0..149}，与矩阵字符序一致）。 */
     public ModularSlot storage(PocketInventory inv, int index) {
         createdRealSlots++;
         return new ModularSlot(inv.storage(), index).slotGroup(GROUP_STORAGE);
     }
 
     /**
-     * 左栏流体交互格之一（上 4 + 下 4，<b>两排同权</b>：方向由放入的容器当前有无流体决定，R39a）。
+     * 流体列的交互格之一（R75①：6 列 × 输入/输出 = 12 格，<b>两格同权</b>：方向由放入的容器
+     * 当前有无流体决定，R39a 的口径一个字都没改）。
+     * <p>
+     * ★与旧口径唯一的差别：搬运的<b>落点</b>由"整栏一根条"变成"该格所属的那一列那一格"
+     * （{@link PocketInventory#tankOfInteractionSlot(int)}）。这是 R75① 的实质——六个 tank 各拉各的、
+     * 各灌各的，不再互相挤容量。
      * <p>
      * 搬运触发点 = {@code ModularSlot.changeListener}（{@code ModularSlot.java:165-169}），
      * <b>只在服务端的非 init 回调里执行</b>（客户端那份 handler 由 vanilla 槽同步喂显示）。
@@ -89,13 +125,15 @@ public final class PocketSlots {
             if (client || init) {
                 return;
             }
-            moveFluidBetweenBar(inv, slot);
+            // ★用装配期传入的 handler 索引，不用 slot.getSlotIndex()：后者是 Container 里的全局槽号，
+            // 与中栏/蒸馏格交错，拿它取模会取到别的列（这是"六列各灌各的"唯一会算错的地方）
+            moveFluidBetweenTanks(inv, index, slot);
         });
         return slot;
     }
 
     /**
-     * 右栏 12 格之一：需求 2 的「蒸馏 / 注入」<b>双用</b>输入区（R63b，改写
+     * 蒸馏盘 12 格之一：需求 2 的「蒸馏 / 注入」<b>双用</b>输入区（R63b，改写
      * {@code slice-s3s4} 任务包约束 8 里那句字面的「蒸馏输入槽必须拒绝源质容器」）。
      * <p>
      * R44c 要关的危害照旧关闭，但改述为「<b>容器不得进入蒸馏判定路径</b>」而不是"不得进入这 12 格"：
@@ -287,7 +325,7 @@ public final class PocketSlots {
         }
     }
 
-    /** 右下绑定格（1 格，瞬时入口）。 */
+    /** 底部带绑定格（1 格，瞬时入口）。 */
     public ModularSlot bind(PocketInventory inv) {
         createdRealSlots++;
         return new ModularSlot(inv.bindSlot(), 0).slotGroup(GROUP_BIND);
@@ -309,26 +347,26 @@ public final class PocketSlots {
                 "[pocket] 真实 Container 槽数口径被破坏: 装配出 " + createdRealSlots
                     + " 个, 应为 "
                     + TOTAL_REAL_SLOTS
-                    + " 个 (128 中栏 + 8 左栏流体 + 12 蒸馏输入 + 1 绑定格)");
+                    + " 个 (150 中栏 + 12 流体交互 + 12 蒸馏输入 + 1 绑定格)");
         }
     }
 
-    // ------------------------------------------------------------------ 左栏流体搬运（R39a）
+    // ------------------------------------------------------------------ 流体列搬运（R39a 的两格同权 + R75 的按列落点）
 
     /**
-     * 单格单向量搬运：
+     * 单格单向量搬运（目标 = 该格所属流体列的那一个 tank）：
      * <ul>
-     * <li>格内容器<b>有流体</b> ⇒ 把流体抽进流体条（容器变空）；</li>
-     * <li>格内容器<b>是空的</b> ⇒ 从流体条灌满它。</li>
+     * <li>格内容器<b>有流体</b> ⇒ 把流体抽进该列的 tank（容器变空）；</li>
+     * <li>格内容器<b>是空的</b> ⇒ 从该列的 tank 灌满它。</li>
      * </ul>
      * 容量口径只报真实容量（{@code FluidStackTank} 未开 overflow ⇒ {@code getCapacity()} 即真容量），
      * 与 GT5U 的 {@code RealCapacityFluidTank} 同形（R46c）。
      * <p>
-     * <b>不含任何按键分支</b>：手持储罐直接点流体条的语义与 Tooltip 由 MUI2 原生
+     * <b>不含任何按键分支</b>：手持储罐点流体槽的语义与 Tooltip 由 MUI2 原生
      * {@code FluidSlot}/{@code FluidSlotSyncHandler} 与 {@code modularui2.fluid.*} 键提供
-     * （R30/R46c/L7），本方法只负责"格内容器 ↔ 流体条"这一路。
+     * （R30/R46c/L7），本方法只负责"格内容器 ↔ 本列 tank"这一路。
      */
-    private static void moveFluidBetweenBar(PocketInventory inv, ModularSlot slot) {
+    private static void moveFluidBetweenTanks(PocketInventory inv, int interactionIndex, ModularSlot slot) {
         if (transferring) {
             return;
         }
@@ -336,27 +374,28 @@ public final class PocketSlots {
         if (placed == null) {
             return;
         }
+        // 槽号 → tank 号的映射只允许住在 PocketInventory 里（两处真相的第一候选点）
+        final int tank = PocketInventory.tankOfInteractionSlot(interactionIndex);
         transferring = true;
         try {
             final ItemStack probe = placed.copy();
             probe.stackSize = 1;
             final FluidStack inContainer = FluidContainerRegistry.getFluidForFilledItem(probe);
             if (inContainer != null && inContainer.amount > 0) {
-                drainIntoBar(inv, slot, placed, inContainer);
+                drainIntoTank(inv, tank, slot, placed, inContainer);
                 return;
             }
-            fillFromBar(inv, slot, placed);
+            fillFromTank(inv, tank, slot, placed);
         } finally {
             transferring = false;
         }
     }
 
-    /** 容器 → 流体条。 */
-    private static void drainIntoBar(PocketInventory inv, ModularSlot slot, ItemStack placed, FluidStack content) {
-        final int room = inv.barTank()
-            .getCapacity()
-            - inv.barTank()
-                .getFluidAmount();
+    /** 容器 → 第 {@code tank} 号流体槽。 */
+    private static void drainIntoTank(PocketInventory inv, int tank, ModularSlot slot, ItemStack placed,
+        FluidStack content) {
+        final FluidStackTank target = inv.tankAt(tank);
+        final int room = target.getCapacity() - target.getFluidAmount();
         if (room <= 0) {
             return;
         }
@@ -367,8 +406,7 @@ public final class PocketSlots {
             if (drained == null || drained.amount <= 0) {
                 return;
             }
-            final int accepted = inv.barTank()
-                .fill(drained, true);
+            final int accepted = target.fill(drained, true);
             if (accepted > 0) {
                 container.drain(placed, accepted, true);
                 slot.putStack(placed.stackSize > 0 ? placed : null);
@@ -376,23 +414,22 @@ public final class PocketSlots {
             return;
         }
         if (content.amount > room) {
-            // 注册表型容器不支持部分倒空 ⇒ 条子装不下整份就不动，避免"扣了流体没回写容器"
+            // 注册表型容器不支持部分倒空 ⇒ 槽子装不下整份就不动，避免"扣了流体没回写容器"
             return;
         }
         final ItemStack emptied = FluidContainerRegistry.drainFluidContainer(placed.copy());
         if (emptied == null) {
             return;
         }
-        if (inv.barTank()
-            .fill(new FluidStack(content, content.amount), true) > 0) {
+        if (target.fill(new FluidStack(content, content.amount), true) > 0) {
             slot.putStack(emptied);
         }
     }
 
-    /** 流体条 → 空容器。 */
-    private static void fillFromBar(PocketInventory inv, ModularSlot slot, ItemStack placed) {
-        final FluidStack bar = inv.barTank()
-            .getFluid();
+    /** 第 {@code tank} 号流体槽 → 空容器。 */
+    private static void fillFromTank(PocketInventory inv, int tank, ModularSlot slot, ItemStack placed) {
+        final FluidStackTank source = inv.tankAt(tank);
+        final FluidStack bar = source.getFluid();
         if (bar == null || bar.amount <= 0) {
             return;
         }
@@ -407,8 +444,7 @@ public final class PocketSlots {
             if (fitting <= 0) {
                 return;
             }
-            final FluidStack drained = inv.barTank()
-                .drain(fitting, true);
+            final FluidStack drained = source.drain(fitting, true);
             if (drained != null && drained.amount > 0) {
                 container.fill(placed, drained, true);
                 slot.putStack(placed);
@@ -428,8 +464,7 @@ public final class PocketSlots {
         if (filledFluid == null || filledFluid.amount <= 0) {
             return;
         }
-        final FluidStack drained = inv.barTank()
-            .drain(filledFluid.amount, true);
+        final FluidStack drained = source.drain(filledFluid.amount, true);
         if (drained != null && drained.amount > 0) {
             // 一次只灌一件（堆叠的其余部分留在格内等下一次点击）
             filledStack.stackSize = 1;

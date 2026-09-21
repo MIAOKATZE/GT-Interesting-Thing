@@ -12,6 +12,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.StatCollector;
 import net.minecraftforge.fluids.FluidStack;
 
+import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.cleanroommc.modularui.screen.ModularPanel;
@@ -20,6 +21,7 @@ import com.cleanroommc.modularui.value.sync.DoubleSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
+import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.slot.PlayerSlotGroup;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
@@ -44,31 +46,41 @@ import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 /**
- * 猫猫次元口袋主面板（400×300，<b>不显示玩家背包</b> = L2 档）。
+ * 猫猫次元口袋主面板（<b>416×360</b>，<b>不显示玩家背包</b> = L2 档）。
  * <p>
  * <b>R32（本任务最高风险）的结构性处置</b>：{@link #assemble()} 是<b>一条线性装配</b>——双端同调用点、
  * 同一批列类、同一顺序 add，没有任何远程分支改变子节点的顺序或数量（同步键全部显式命名）。
  * 槽位布局由各列类的 {@code SlotGroupWidget.matrix(String...)} 字面量描述（R41a）⇒
- * 「双端树失序」不是靠纪律避免，而是结构上不可能发生。
+ * 「双端 widget 树失序」不是靠纪律避免，而是结构上不可能发生。
  * <p>
- * <b>§16.1 宽度闭合（逐字照核算表，无富余）</b>：{@code 6+94+4+144+4+72+4+66+6 = 400} ⇒
- * 四列 root 固定 {@code x/宽 = 6/94 · 104/144 · 252/72 · 328/66}，不得再给任何列加宽。
+ * <b>R75 宽度闭合（逐字照加总表，无富余）</b>：
+ * {@code 6 + 108(流体 6 列) + 4 + 180(中栏 10 列) + 4 + 108(源质 6 列) + 6 = 416} ⇒
+ * 三列 root 固定 {@code x/宽 = 6/108 · 118/180 · 302/108}，不得再给任何列加宽。
+ * <b>高度闭合</b>：{@code 6 + 270(15 行) + 6 + 72(底部带) + 6 = 360}，而 360 正是
+ * <b>1080p / GUI Scale 3 的逻辑高度上限</b>（R75"为什么是 15 行"的全部理由）⇒
+ * <b>任何加高方案都必须先重算这条账</b>，纵向已经没有一格余量。
  * <p>
- * <b>Container 口径 = 恰好 149</b>（§14.3 / R43b，覆盖 R35 的 160 与计划 §6 的 139）：
- * 中栏 128 + 左栏 8 + 蒸馏 12 + 绑定 1；48 源质格与全部 ghost 走显示侧，<b>不进 Container</b>（R35）。
+ * <b>Container 口径 = 恰好 {@value PocketSlots#TOTAL_REAL_SLOTS}</b>（R75，覆盖 §14.3/R43b 的 149
+ * 与 R74 一度算出的 185）：中栏 150 + 流体交互 12（6 列 × 输入/输出）+ 蒸馏 12 + 绑定 1；
+ * 48 源质格、6 个流体槽本体与全部 ghost 走显示侧，<b>不进 Container</b>（R35）。
  * 为此预注册一个<b>空的</b> {@code PlayerSlotGroup}，让框架的
  * {@code ModularSyncManager#construct} 跳过它默认的 36 格玩家绑定（{@code ISyncRegistrar#bindPlayerInventory}
  * 的"已注册即跳过"分支是该入口的既有语义，不是绕行）。两条理由：
  * <ol>
- * <li>149 必须可机检——多 36 格就断言不出"有区域被重复接入"；</li>
+ * <li>175 必须可机检——多 36 格就断言不出"有区域被重复接入"；</li>
  * <li>L2 档不显示背包，但那 36 格仍会被 vanilla 每 tick 做 {@code ItemStack} 相等比较
  * （<b>含整份 NBT 深比较</b>，见 {@code Container#detectAndSendChanges} 与
- * {@code ItemStack#isItemStackEqual}），内容一变就整枚口袋连 128 格一起重发——正是 R53c 点名的包放大面。</li>
+ * {@code ItemStack#isItemStackEqual}），内容一变就整枚口袋连 150 格一起重发——正是 R53c 点名的包放大面。</li>
  * </ol>
  * 跳过后 {@code open}/{@code work} 位不再随栈同步到客户端 ⇒ 由 {@code network/PocketStateNetwork}
  * 定向推送同一份状态。
  * <p>
  * <b>关屏写状态</b>：{@link NekoPocketContainer#onModularContainerClosed()}（R35，NEI 顶屏不误触发）。
+ * <p>
+ * <b>绑定信息的可见面（R74②/R75）</b>：第四列退役后，全部绑定条目由<b>绑定按钮的 tooltip</b>
+ * 承载（{@link #bindTooltipText()}，超出 {@code NekoPocketBottomBand.TOOLTIP_ROWS} 条时
+ * <b>显式</b>提示还有几条没列），解绑入口改为该按钮的<b>右键 = 解绑最后一条</b> /
+ * <b>Shift 右键 = 清空全部</b>（{@link #dispatchBindButtonClick(int)}）。
  * <p>
  * <b>本类同时是 S6/S7 的活会话</b>（{@link PocketSession}）：通道一拍与蒸馏节拍的宿主是
  * {@code Item.onUpdate}，它读的就是这里持有的那一份内存对象（R53c 的"一次读一次写"因此不被打破）。
@@ -81,10 +93,25 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** 面板名（同步键前缀也用它，双端同串）。 */
     public static final String PANEL_NAME = "gtit.pocket.main";
-    /** §16.1：面板宽。 */
-    public static final int WIDTH = 400;
-    /** §16.2：面板高。 */
-    public static final int HEIGHT = 300;
+
+    // ------------------------------------------------------------------ R75 几何单源（各列都从这里取，别处不得再写 6/18/4）
+    /** 面板外边距。 */
+    public static final int MARGIN = 6;
+    /** 一个格子的边长（MC GUI 栅格）。 */
+    public static final int GRID = 18;
+    /** 列间距（R75 加总表里唯一的"机动量"，加宽任何一列都会把它挤没）。 */
+    public static final int COLUMN_GAP = 4;
+    /** 底部带高（R75 钉死 72）。 */
+    public static final int BAND_HEIGHT = NekoPocketBottomBand.HEIGHT;
+    /** R75：面板宽 = 6+108+4+180+4+108+6 = 416（由三列常量派生，不是手抄）。 */
+    public static final int WIDTH = MARGIN + NekoPocketLeftColumn.WIDTH
+        + COLUMN_GAP
+        + NekoPocketStorageColumn.WIDTH
+        + COLUMN_GAP
+        + NekoPocketEssenceColumn.WIDTH
+        + MARGIN;
+    /** R75：面板高 = 6+270+6+72+6 = 360（★360 = 1080p / GUI Scale 3 的逻辑高度上限）。 */
+    public static final int HEIGHT = MARGIN + NekoPocketStorageColumn.HEIGHT + MARGIN + BAND_HEIGHT + MARGIN;
 
     // ------------------------------------------------------------------ 同步键
     // S2C：格数与行数恒定 ⇒ 键数恒定，不随 addon / 绑定数漂移
@@ -101,7 +128,7 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_GHOST_REQUEST = "pocket.ghost.request";
     /** C2S：所有按钮/选中动作走这一个键，值 = {@code code * ACTION_ARG_BASE + arg}（单包原子，无两值竞态）。 */
     private static final String SYNC_ACTION = "pocket.action";
-    /** 动作参数基数（当前最大 arg = 63 行 / 95 格+Shift 位）。 */
+    /** 动作参数基数（当前最大 arg = 149 格 / 95 格+Shift 位）。 */
     private static final int ACTION_ARG_BASE = 1024;
 
     /** C2S 动作码（<b>互不相同</b>：R64c 判据「各自绑定的动作码不同」）。 */
@@ -110,9 +137,18 @@ public final class NekoPocketPanel implements PocketSession {
     private static final int ACTION_CHANNEL_BURST = 3;
     private static final int ACTION_CHANNEL_SHORT = 4;
     private static final int ACTION_BIND = 5;
-    private static final int ACTION_UNBIND = 6;
+    /**
+     * 解绑<b>最后一条</b>（R74：第四列退役后"选中行"这个概念不存在了）。
+     * <p>
+     * ★码值 {@code 6} 沿用旧 {@code ACTION_UNBIND}，但<b>语义与 arg 都变了</b>：
+     * 旧实现是 {@code arg = 选中行 + 1}，新实现<b>不带 arg</b>（恒 0）。
+     * 把旧的 arg 解读法（{@code performUnbind(arg - 1)}）留下来，"右键按钮"就会等于
+     * "解绑第 -1 行 ⇒ 永远只发一条回执"，需求 5 的另一半仍静默失效。
+     */
+    private static final int ACTION_UNBIND_LAST = 6;
     private static final int ACTION_ESSENCE_OUT = 7;
-    private static final int ACTION_SELECT_ROW = 8;
+    /** 解绑<b>全部</b>（绑定按钮 Shift + 右键，R74）。 */
+    private static final int ACTION_UNBIND_ALL = 9;
 
     private final PlayerInventoryGuiData data;
     private final PanelSyncManager syncManager;
@@ -123,7 +159,7 @@ public final class NekoPocketPanel implements PocketSession {
     private ItemStack pocket;
     private final int carrierSlotIndex;
     /**
-     * 中栏 128 个槽位 widget 的双端登记表（下标 = 槽号）。
+     * 中栏 150 个槽位 widget 的双端登记表（下标 = 槽号）。
      * <p>
      * ghost 是"原位改属性"（R41b/R46d），所以必须能按槽号找到<b>那一个</b> widget 实例；
      * 装配时由 {@link NekoPocketStorageColumn} 逐格登记，长度与格序恒定 ⇒ 不引入任何数据驱动的树变化。
@@ -131,13 +167,14 @@ public final class NekoPocketPanel implements PocketSession {
     private final NekoFilterSlot[] itemSlots = new NekoFilterSlot[PocketInventory.STORAGE_SLOTS];
 
     /**
-     * 左栏流体条与右栏 48 源质格的登记表（与 {@link #itemSlots} 同一机制，S-E 补的两个拖入入口）。
+     * 6 个流体槽与 48 源质格的登记表（与 {@link #itemSlots} 同一机制，S-E 补的两个拖入入口）。
      * <p>
-     * 长度恒定（1 与 {@code GHOST_ESSENCE_SLOT_LIMIT}）、装配序固定 ⇒ ghost 声明再多也不会改变
-     * widget 树（R41b/R32）；{@link #applyGhosts()} 按 {@code (kind, slot)} 取到<b>那一个</b>实例
-     * 原位切属性。
+     * 长度恒定（{@code GHOST_FLUID_SLOT_LIMIT} 与 {@code GHOST_ESSENCE_SLOT_LIMIT}）、装配序固定
+     * ⇒ ghost 声明再多也不会改变 widget 树（R41b/R32）；{@link #applyGhosts()} 按
+     * {@code (kind, slot)} 取到那一个实例原位切属性。R75① 之前这里只有一个 {@code fluidBar}
+     * 字段（"流体侧只有一格"的特例），现在数组下标 = 列号 = tank 号 = 该列的 ghost 槽号。
      */
-    private NekoPocketFluidSlot fluidBar;
+    private final NekoPocketFluidSlot[] fluidSlots = new NekoPocketFluidSlot[PocketConstants.GHOST_FLUID_SLOT_LIMIT];
     private final NekoEssenceGhostCell[] essenceCells = new NekoEssenceGhostCell[PocketConstants.GHOST_ESSENCE_SLOT_LIMIT];
 
     // ---- 客户端显示缓存（S2C 写入；服务端不读）----
@@ -155,10 +192,6 @@ public final class NekoPocketPanel implements PocketSession {
     private String receiptKey;
     private int receiptMoved;
     private int receiptRefused;
-    /** 行选中（R40d：客户端高亮 + 作为解绑动作的 arg 回传）。 */
-    private int selectedRow = -1;
-    /** 服务端侧记录的行选中（解绑时用；-1 = 未选中）。 */
-    private int serverSelectedRow = -1;
     /** 关屏幂等闩。 */
     private boolean closed;
 
@@ -189,21 +222,29 @@ public final class NekoPocketPanel implements PocketSession {
         // allowShiftTransfer 一律 false —— L2 档没有玩家背包 ⇒ 没有 shift 落点（§6 第 11 条）
         syncManager
             .registerSlotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, NekoPocketStorageColumn.COLUMNS, 100, false));
-        syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_FLUID, PocketSlots.SHORT_COLUMNS, 100, false));
-        syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_DISTILL, PocketSlots.SHORT_COLUMNS, 100, false));
+        syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_FLUID, PocketSlots.FLUID_COLUMNS, 100, false));
+        syncManager.registerSlotGroup(
+            new SlotGroup(PocketSlots.GROUP_DISTILL, NekoPocketEssenceColumn.DISTILL_COLUMNS, 100, false));
         syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_BIND, 1, 100, false));
         syncManager.registerSlotGroup(new PlayerSlotGroup(PlayerSlotGroup.NAME));
 
         // 2) 同步值（显式键，双端同一顺序注册）
         registerSyncValues();
 
-        // 3) 四列（顺序固定 = 双端同树）
+        // 2b) 装饰层（C2）：★必须是第一个 child（MUI2 按 child 顺序绘制 ⇒ 底材在最下）；
+        // 位置在槽组/同步值之后、三列之前，且双端同一顺序（R32）
+        panel.child(NekoPocketDecoration.build());
+
+        // 3) 三列 + 底部带（R74② 删掉第四列；顺序固定 = 双端同树）
         panel.child(NekoPocketLeftColumn.build(this));
         panel.child(NekoPocketStorageColumn.build(this));
         panel.child(NekoPocketEssenceColumn.build(this));
-        panel.child(NekoPocketChannelColumn.build(this));
+        // 底部带两块（币值/通道按钮 与 绑定块）按"左块、右块"的固定顺序加入
+        for (ParentWidget<?> band : NekoPocketBottomBand.build(this)) {
+            panel.child(band);
+        }
 
-        // 4) 槽数口径断言（§14.3：==149；多 = 重复接入，少 = 漏接，双端同抛）
+        // 4) 槽数口径断言（R75：==175；多 = 重复接入，少 = 漏接，双端同抛）
         slots.assertTotalRealSlots();
 
         // 4b) ghost 虚化：客户端先按自己从 NBT 读到的那份声明表原位刷一遍（服务端那份是权威，
@@ -298,7 +339,7 @@ public final class NekoPocketPanel implements PocketSession {
         return pocket;
     }
 
-    /** 右栏是否可用（TC 缺席 ⇒ 整栏<b>灰显不隐藏</b>，R31）。 */
+    /** 源质列是否可用（TC 缺席 ⇒ 整栏<b>灰显不隐藏</b>，R31）。 */
     boolean essenceAvailable() {
         return TaumCompat.isAvailable();
     }
@@ -320,7 +361,7 @@ public final class NekoPocketPanel implements PocketSession {
         return sendAction(ACTION_TAKE_OUT, 0);
     }
 
-    /** 语义①「整理中栏 128 格」。 */
+    /** 语义①「整理中栏 150 格」。 */
     boolean requestSort() {
         return sendAction(ACTION_SORT, 0);
     }
@@ -346,9 +387,36 @@ public final class NekoPocketPanel implements PocketSession {
         return sendAction(ACTION_BIND, 0);
     }
 
-    /** R40d 的解绑入口（arg = 当前选中行）。 */
-    boolean requestUnbind() {
-        return sendAction(ACTION_UNBIND, selectedRow + 1);
+    /**
+     * 解绑<b>最后一条</b>（R74 的新入口：绑定按钮右键）。
+     * <p>
+     * ★不带 arg：旧口径的 arg 是"列表选中行"，而那一列已经随 R74② 删掉 ⇒
+     * 任何仍要求"先选中"的解绑实现都等于没有解绑入口（静默失效）。
+     */
+    boolean requestUnbindLast() {
+        return sendAction(ACTION_UNBIND_LAST, 0);
+    }
+
+    /** 解绑<b>全部</b>（R74 的新入口：绑定按钮 Shift + 右键）。 */
+    boolean requestUnbindAll() {
+        return sendAction(ACTION_UNBIND_ALL, 0);
+    }
+
+    /**
+     * 绑定按钮的按键分发（<b>单点</b>读 Shift，避免列文件与面板各判一次）。
+     * <p>
+     * 左键 = 绑定；右键 = 解绑最后一条；Shift + 右键 = 清空全部（R74 裁定）。
+     * ★不认识的按键一律返回 {@code true} 把点击吃掉：{@code ButtonWidget} 的
+     * {@code onMousePressed} 返回 false 也是 ACCEPT，点击会穿透到下层槽（本仓踩过）。
+     */
+    boolean dispatchBindButtonClick(int button) {
+        if (button == 0) {
+            return requestBind();
+        }
+        if (button != 1) {
+            return true;
+        }
+        return Interactable.hasShiftDown() ? requestUnbindAll() : requestUnbindLast();
     }
 
     /**
@@ -361,12 +429,6 @@ public final class NekoPocketPanel implements PocketSession {
             return false;
         }
         return sendAction(ACTION_ESSENCE_OUT, shift ? cell + PocketConstants.ESSENCE_OUT_SHIFT_FLAG : cell);
-    }
-
-    /** 列表行选中：本地立刻高亮，同时把行号回传给服务端供解绑使用。 */
-    boolean selectBindRow(int row) {
-        selectedRow = row;
-        return sendAction(ACTION_SELECT_ROW, row + 1);
     }
 
     private boolean sendAction(int code, int arg) {
@@ -406,14 +468,14 @@ public final class NekoPocketPanel implements PocketSession {
             case ACTION_BIND:
                 performBind();
                 break;
-            case ACTION_UNBIND:
-                performUnbind(arg - 1);
+            case ACTION_UNBIND_LAST:
+                performUnbindLast();
+                break;
+            case ACTION_UNBIND_ALL:
+                performUnbindAll();
                 break;
             case ACTION_ESSENCE_OUT:
                 performEssenceOut(arg);
-                break;
-            case ACTION_SELECT_ROW:
-                serverSelectedRow = arg - 1;
                 break;
             default:
                 break;
@@ -447,7 +509,7 @@ public final class NekoPocketPanel implements PocketSession {
         }
     }
 
-    /** 语义①「整理中栏 128 格」：合并同类 + 前移紧凑。 */
+    /** 语义①「整理中栏 150 格」：合并同类 + 前移紧凑。 */
     private void performSort() {
         final int size = inventory.storage()
             .getSlots();
@@ -691,7 +753,7 @@ public final class NekoPocketPanel implements PocketSession {
         bindings.bind(uuid, PocketConstants.MODE_DISK_UUID);
         inventory.markDirty();
         returnToPlayerFromBindSlot(candidate);
-        // 绑定成功不发回执：第四列的行本来就是 SYNC_BIND_ROWS 推的，新行出现即是反馈
+        // 绑定成功不发回执：按钮 tooltip 的行本来就是 SYNC_BIND_ROWS 推的，读数变了即是反馈
         // （R40b：绑定时元件在手里，位置五键必然是未定位 —— bind.unlocated 是正常态不是失败，
         // 故意不复用它当回执，免得玩家读成"绑定失败了"）。added=false 是同身份重绑，只覆盖位置快照。
     }
@@ -705,23 +767,44 @@ public final class NekoPocketPanel implements PocketSession {
         }
     }
 
-    /** 解绑键（R40d：第四列行选中 + 按钮；与 ghost 格的右键解绑是两套实现，不得合并）。 */
-    private void performUnbind(int row) {
+    /**
+     * 解绑<b>最后一条</b>（R74 裁定：绑定按钮右键）。与 ghost 格的右键解绑仍是两套实现
+     * （前者摘绑定表的元件身份、后者撤一格 ghost 声明），<b>不得合并</b>。
+     * <p>
+     * 只从绑定表摘除：元件本身一直在 AE 网络里，解绑不动它的内容，也不动 {@code PocketCellProbe}
+     * 的观测表。空表时发"尚未绑定元件"回执（玩家侧必须知道这一下点空了，R10）。
+     */
+    private void performUnbindLast() {
         if (!serverGuardOk()) {
             return;
         }
         final PocketCellBindings bindings = inventory.bindings();
-        final List<PocketCellBindings.Entry> entries = bindings.entries();
-        if (row < 0 || row >= entries.size()) {
+        if (!bindings.unbindLast()) {
             putReceipt("gtit.pocket.bind.none", 0);
             return;
         }
-        final String id = entries.get(row).id;
-        // 只从绑定表摘除；元件本身一直在 AE 网络里，解绑不动它的内容，也不动 PocketCellProbe 的观测表
-        bindings.unbind(id);
         inventory.markDirty();
-        serverSelectedRow = -1;
-        // 与 performBind 同理：行消失本身就是反馈，不再发"尚未绑定元件"这种会被读成失败的回执
+    }
+
+    /**
+     * 解绑<b>全部</b>（R74 裁定：绑定按钮 Shift + 右键）。
+     * <p>
+     * 与 {@link #performUnbindLast()} 共用同一条"只摘表、不动元件、不动观测表"的口径；
+     * 空表同样给回执，免得玩家以为"没反应 = 清空失败"。
+     */
+    private void performUnbindAll() {
+        if (!serverGuardOk()) {
+            return;
+        }
+        final PocketCellBindings bindings = inventory.bindings();
+        if (bindings.isEmpty()) {
+            putReceipt("gtit.pocket.bind.none", 0);
+            return;
+        }
+        final int cleared = bindings.size();
+        bindings.clear();
+        inventory.markDirty();
+        putReceipt("gtit.pocket.bind.cleared", cleared);
     }
 
     /**
@@ -762,7 +845,7 @@ public final class NekoPocketPanel implements PocketSession {
     // ------------------------------------------------------------------ S5 · ghost 就地转换（NEI 拖入 / 右键解绑）
 
     /**
-     * 中栏槽位 widget 的登记（装配期由 {@link NekoPocketStorageColumn} 逐格调用，双端各 128 次）。
+     * 中栏槽位 widget 的登记（装配期由 {@link NekoPocketStorageColumn} 逐格调用，双端各 150 次）。
      * <p>
      * ghost 切换是"原位改属性"（R41b/R46d），所以必须能按槽号取到<b>那一个</b>实例；
      * 登记表长度与格序恒定 ⇒ 不引入任何数据驱动的 widget 树变化，128 格的
@@ -775,15 +858,18 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 左栏流体条的登记（装配期由 {@link NekoPocketLeftColumn#fluidBar} 调一次，双端各一次）。
+     * 某个流体槽的登记（装配期由 {@link NekoPocketLeftColumn} 逐列调，双端各 6 次）。
      * <p>
-     * {@code Kind.FLUID} 的索引空间只有一格 ⇒ 单个字段就够，不需要数组。
+     * 下标 = 列号 = {@code Kind.FLUID} 的 ghost 槽号 = tank 号（R75① 的三位一体），
+     * 所以这里必须是数组而不是单个字段。
      */
-    void trackFluidBar(NekoPocketFluidSlot widget) {
-        this.fluidBar = widget;
+    void trackFluidSlot(int index, NekoPocketFluidSlot widget) {
+        if (index >= 0 && index < fluidSlots.length) {
+            fluidSlots[index] = widget;
+        }
     }
 
-    /** 右栏源质格的登记（装配期逐格调，双端各 48 次；下标 = {@code Kind.ESSENCE} 的槽号）。 */
+    /** 源质格的登记（装配期逐格调，双端各 48 次；下标 = {@code Kind.ESSENCE} 的槽号）。 */
     void trackEssenceCell(int index, NekoEssenceGhostCell widget) {
         if (index >= 0 && index < essenceCells.length) {
             essenceCells[index] = widget;
@@ -905,11 +991,11 @@ public final class NekoPocketPanel implements PocketSession {
      */
     private void applyGhosts() {
         applyItemGhosts();
-        applyFluidBarGhost();
+        applyFluidGhosts();
         applyEssenceGhosts();
     }
 
-    /** 中栏 128 格（{@code Kind.ITEM}）：唯一需要"搬空"的一支。 */
+    /** 中栏 150 格（{@code Kind.ITEM}）：唯一需要"搬空"的一支。 */
     private void applyItemGhosts() {
         for (int index = 0; index < itemSlots.length; index++) {
             final NekoFilterSlot widget = itemSlots[index];
@@ -932,20 +1018,24 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 左栏流体条（{@code Kind.FLUID}，索引空间只有一格）。
+     * 6 个流体槽（{@code Kind.FLUID}，索引空间 = 列号）。
      * <p>
-     * 只切"声明了哪种流体"这一个显示状态：tank、{@code alwaysShowFull}、两排同权的灌排
-     * 一个字都不动（流体 ghost 不搬空任何东西，声明本身就是"要拉这一种"）。
+     * 每槽只切"本列声明了哪种流体"这一个显示状态：各自的 tank、{@code alwaysShowFull}、
+     * 两格同权的灌排一个字都不动（流体 ghost 不搬空任何东西，声明本身就是"要拉这一种"）。
+     * 循环上界取登记表长度（= {@code GHOST_FLUID_SLOT_LIMIT}）⇒ 与白名单同源，不会漂移。
      */
-    private void applyFluidBarGhost() {
-        if (fluidBar == null) {
-            return;
+    private void applyFluidGhosts() {
+        for (int index = 0; index < fluidSlots.length; index++) {
+            final NekoPocketFluidSlot widget = fluidSlots[index];
+            if (widget == null) {
+                continue;
+            }
+            final PocketFilterConfig.Filter declared = inventory.filters()
+                .at(PocketFilterConfig.Kind.FLUID, index);
+            widget.setGhost(
+                declared instanceof PocketFilterConfig.FluidFilter,
+                declared instanceof PocketFilterConfig.FluidFilter fluid ? fluid.fluidName : "");
         }
-        final PocketFilterConfig.Filter declared = inventory.filters()
-            .at(PocketFilterConfig.Kind.FLUID, NekoPocketFluidSlot.BAR_SLOT_INDEX);
-        fluidBar.setGhost(
-            declared instanceof PocketFilterConfig.FluidFilter,
-            declared instanceof PocketFilterConfig.FluidFilter fluid ? fluid.fluidName : "");
     }
 
     /** 右栏 48 格（{@code Kind.ESSENCE}）：格位归属由 {@code aspectOrder()[index]} 钉死 ⇒ 只切开关。 */
@@ -1484,13 +1574,13 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     @Override
-    public int fluidBarRoom(FluidStack probe) {
-        return inventory.fluidBarRoom(probe);
+    public int fluidBarRoom(int tank, FluidStack probe) {
+        return inventory.fluidBarRoom(tank, probe);
     }
 
     @Override
-    public int depositFluid(FluidStack fluid) {
-        return inventory.depositFluidIntoBar(fluid);
+    public int depositFluid(int tank, FluidStack fluid) {
+        return inventory.depositFluidIntoBar(tank, fluid);
     }
 
     // ------------------------------------------------------------------ 关屏（R35 四道防御）
@@ -1627,61 +1717,115 @@ public final class NekoPocketPanel implements PocketSession {
         return essenceTags.length > PocketConstants.ESSENCE_DISPLAY_GRID;
     }
 
-    /** 绑定行第一行（{@code bind.entry}）。 */
-    String bindRowTitle(int index) {
-        final NekoPocketChannelColumn.Row row = rowAt(index);
-        if (row == null) {
-            return "";
+    /**
+     * 绑定按钮的 tooltip 正文（R74② 之后绑定信息的<b>唯一</b>可见面）。
+     * <p>
+     * 形状 = 标题 + 至多 {@code NekoPocketBottomBand.TOOLTIP_ROWS} 条
+     * "{@code bind.entry} 换行 {@code bind.located|unlocated|stale}"，
+     * ★条目多于上限时<b>必须</b>补一行 {@code bind.truncated}（含未列出的条数）——
+     * {@code MAX_BOUND_CELLS} 是 64 而 tooltip 不能滚，"只显示前 N 条却不说明"就是静默删信息
+     * （R36 的"宽度不够就加 tooltip，不删信息"在这里的唯一合法形态）。
+     */
+    String bindTooltipText() {
+        final java.util.List<NekoPocketBottomBand.Row> rows = bindRows();
+        final StringBuilder builder = new StringBuilder();
+        builder.append(StatCollector.translateToLocal("gtit.pocket.bind.title"))
+            .append("\n");
+        if (rows.isEmpty()) {
+            builder.append(StatCollector.translateToLocal("gtit.pocket.bind.none"));
+            return builder.toString();
         }
-        return String.format(StatCollector.translateToLocal("gtit.pocket.bind.entry"), row.shortId());
+        final int shown = Math.min(rows.size(), NekoPocketBottomBand.TOOLTIP_ROWS);
+        for (int index = 0; index < shown; index++) {
+            builder.append(bindRowLine(index))
+                .append("\n");
+        }
+        if (rows.size() > shown) {
+            builder.append(
+                String.format(StatCollector.translateToLocal("gtit.pocket.bind.truncated"), rows.size() - shown));
+        }
+        return builder.toString();
     }
 
-    /**
-     * 绑定行第二行：R43d 要求 5 参数的 {@code bind.located} 在 66px 内<b>拆两行渲染</b>
-     * ⇒ 本方法返回的串自带换行（维度一行、坐标+槽一行），不删信息迁就宽度。
-     */
-    String bindRowLocation(int index) {
-        final NekoPocketChannelColumn.Row row = rowAt(index);
+    /** 绑定块第一行的常驻读数（"已绑定 n/上限"，数字全部由服务端同步的行数与常量给出）。 */
+    String bindSummaryText() {
+        return String.format(
+            StatCollector.translateToLocal("gtit.pocket.bind.summary"),
+            bindRows().size(),
+            PocketConstants.MAX_BOUND_CELLS);
+    }
+
+    /** 一条绑定行的完整文本（短码 ID + 位置或状态，与旧第四列的两行渲染同一条算式）。 */
+    private String bindRowLine(int index) {
+        final NekoPocketBottomBand.Row row = rowAt(index);
         if (row == null) {
             return "";
         }
+        final String title = String.format(StatCollector.translateToLocal("gtit.pocket.bind.entry"), row.shortId());
+        final String location;
         if (row.located()) {
-            return String.format(
+            location = String.format(
                 StatCollector.translateToLocal("gtit.pocket.bind.located"),
                 row.dim,
                 row.x,
                 row.y,
                 row.z,
                 row.slot);
+        } else {
+            location = StatCollector
+                .translateToLocal(row.stale() ? "gtit.pocket.bind.stale" : "gtit.pocket.bind.unlocated");
         }
-        return StatCollector.translateToLocal(row.stale() ? "gtit.pocket.bind.stale" : "gtit.pocket.bind.unlocated");
+        return title + " " + location;
     }
 
-    String bindRowHint(int index) {
-        final NekoPocketChannelColumn.Row row = rowAt(index);
-        return row == null ? StatCollector.translateToLocal("gtit.pocket.bind.none") : row.id;
-    }
-
-    /** 当前选中行（-1 = 未选中）。 */
-    int selectedBindRow() {
-        return selectedRow;
-    }
-
-    int serverSelectedBindRow() {
-        return serverSelectedRow;
-    }
-
-    private NekoPocketChannelColumn.Row rowAt(int index) {
-        if (bindRowsBlob.isEmpty() || index < 0) {
-            return null;
+    /** 当前绑定行（客户端只解析服务端 blob，绝不按内存表推断，R39b/R19）。 */
+    private java.util.List<NekoPocketBottomBand.Row> bindRows() {
+        if (bindRowsBlob.isEmpty()) {
+            return java.util.Collections.emptyList();
         }
-        final java.util.List<NekoPocketChannelColumn.Row> rows = NekoPocketChannelColumn.Row.parse(bindRowsBlob);
-        return index < rows.size() ? rows.get(index) : null;
+        return NekoPocketBottomBand.Row.parse(bindRowsBlob);
     }
 
-    /** 解绑键的 tooltip。 */
-    String selectedRowHint() {
-        return selectedRow < 0 ? StatCollector.translateToLocal("gtit.pocket.bind.none") : bindRowTitle(selectedRow);
+    private NekoPocketBottomBand.Row rowAt(int index) {
+        final java.util.List<NekoPocketBottomBand.Row> rows = bindRows();
+        return index < 0 || index >= rows.size() ? null : rows.get(index);
+    }
+
+    /**
+     * 说明摘要的完整文本（R74②：原第四列的常驻说明改 tooltip，这里就是那份 tooltip）。
+     * <p>
+     * 只把<b>已经在别处有权威</b>的句子拼在一起（成本常量、模式行、ghost 用法、
+     * "每格声明吃掉一格真实容量"），不新造第二条口径。
+     */
+    String notesText() {
+        final StringBuilder builder = new StringBuilder();
+        builder.append(StatCollector.translateToLocal("gtit.pocket.note.title"))
+            .append('\n');
+        builder.append(StatCollector.translateToLocal("gtit.pocket.note.summary"))
+            .append('\n');
+        builder
+            .append(
+                String.format(
+                    StatCollector.translateToLocal("gtit.pocket.note.cost"),
+                    PocketConstants.BURST_COST_NEKO,
+                    PocketConstants.SHORT_COST_SHIMMERING_NEKO,
+                    PocketConstants.SHORT_CHANNEL_SECONDS))
+            .append('\n');
+        builder.append(StatCollector.translateToLocal("gtit.pocket.ghost.capacity_note"));
+        return builder.toString();
+    }
+
+    /**
+     * 交互格的 tooltip 补行：说出"这一格属于第几列、那一列现在存的是什么"。
+     * <p>
+     * 列号 = {@link PocketInventory#tankOfInteractionSlot(int)} 的单源映射（客户端只读同步过来的
+     * 流体状态，不自行推断别的口径）。这里<b>不</b>报容量数字：容量已经由
+     * {@code gtit.pocket.fluid.capacity} 在列上常驻显示一次，两处都写就是两处真相。
+     */
+    String tankHintText(int interactionIndex) {
+        return String.format(
+            StatCollector.translateToLocal("gtit.pocket.legend.tank_of"),
+            PocketInventory.tankOfInteractionSlot(interactionIndex) + 1);
     }
 
     /** 模式行文本（R39b：不允许玩家自己猜）。 */

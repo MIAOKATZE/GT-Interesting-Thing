@@ -21,6 +21,8 @@
 """
 from __future__ import annotations
 
+import math
+
 # ---------------------------------------------------------------- 色符 -> 钉点名
 # 位图清单里的每个字符都必须在此登记（gen_pocket.py 断言零未登记字符）。
 INK = {
@@ -77,6 +79,20 @@ INK = {
     "9": "cl0_dk",    # 派生：布囊内腔
     "0": "fam_dk",    # 派生：家族黄压暗（绳结阴影）
     "M": "gld_dk",    # 派生：币体金背光（第三档）
+    # 包裹返工轮（B 族）新增派生档
+    "E": "ivory_dk",   # 派生：纸包中调
+    "F": "ivory_dk2",  # 派生：纸包背光/纹样
+    "R": "crm_dk",     # 派生：纸包印章墨
+    "f": "crm_dk2",    # 派生：纸包下摆暗带
+    "D": "brz_lt",     # 派生：纸包斜绳
+    "W": "gld_dk2",    # 派生：金布包背光
+    "N": "cl4_lt",     # 派生：亮品红布受光面
+    "t": "cl4_dk",     # 派生：品红布下摆暗带
+    "O": "aqua_dk",    # 派生：硬壳提手五金
+    "Y": "pale_dk",    # 派生：硬壳背光彩带
+    "e": "pale_dk2",   # 派生：硬壳底沿暗带
+    # 定稿轮（b4g 金暖）新增档（全部是既有基色的派生，零新基色）
+    "c": "rim_dk",     # 派生：金暖硬壳内腔（B4 的 '9' 冷紫灰档在金暖族里的对应位）
 }
 
 SIZE16 = 16
@@ -389,6 +405,513 @@ F4_NORMAL = build_f4(False)
 F4_MOUTH = build_f4(True)
 
 # ================================================================================
+# B 族（返工轮，用户实测反馈）—— 底形一律 = 扎绳的方形包裹（bundle / parcel）
+#   否决点修复：① F1..F4 读形是「袋口收拢的水滴/梨形」⇒ B 族全部过包裹形量化门
+#   （见 PARCEL_GATE：宽顶行出现在顶部 ≤3 行内 / 宽行占比 ≥0.65 / 平底 / 长宽比 ≤1.35）；
+#   ② 颜色太深 ⇒ B 族主体走 ivory/cl4/gld 亮面链，过明度门（见 BRIGHT_GATE，
+#   口径 = 主体亮面像素均值 ≥ miao_coin 全图不透明均值，提亮走 tint/shade 派生）。
+#   猫脸仍是语义锚点（正面扎结下方阴刻 + 受光亮唇）。四族底形迥异：
+#   B1 方布包十字绳 / B2 竖纸包斜带 / B3 横折叠包+封签 / B4 硬壳方包+提手铭牌。
+# ================================================================================
+
+# ------ 包裹形量化门（gen_pocket.py 对 bundle=True 的家族逐底形断言） ------
+PARCEL_GATE = {
+    "flat_top_max": 3,     # 第一条「满宽行」距剪影顶 ≤3 行（袋口收拢式尖顶必然 >3）
+    "wide_frac_min": 0.60, # 行宽 ≥65% 最大行宽的占比
+    "bottom_min": 0.60,    # 末行宽 / 最大行宽（平底，不是圆肚收底）
+    "aspect_max": 1.45,    # 剪影包围盒 高/宽
+}
+# ------ 明度门（同文件 gen_pocket 断言；参照值运行时取自 miao_coin.png） ------
+BRIGHT_GATE = {
+    "weber_min": 0.9,      # (luma(受光主色)-luma(背光主色))/luma(背光主色) ≥0.9（受光/背光相对明度差）
+    "face_min": 120.0,     # 亮面成员色单档下限（深紫/深蓝档位的 luma 都在 95 以下）
+    "subject_min": 95.0,   # 主体色（除描边/五金/阴刻细节）下限
+    "cool_delta_max": 40,  # 且 明度<150 时 蓝-红 通道差 >40 即判「深蓝/深紫」拒绝
+}
+
+
+def parcel_metrics(rows: list[str]) -> dict:
+    """包裹形读形量化（纯字符口径，预览板与 gen 判据共用同一权威）。"""
+    def w(r): return sum(1 for c in r if c != ".")
+    widths = [w(r) for r in rows]
+    nz = [i for i, x in enumerate(widths) if x]
+    if not nz:
+        return {}
+    t, b = nz[0], nz[-1]
+    maxw = max(widths)
+    wide = [i for i in range(t, b + 1) if widths[i] >= 0.75 * maxw]
+    xs = [x for y, r in enumerate(rows) for x, c in enumerate(r) if c != "."]
+    return {
+        "flat_top": (wide[0] - t) if wide else 99,
+        "square": sum(1 for i in range(t, b + 1) if widths[i] >= 0.65 * maxw) / (b - t + 1),
+        "bottom": widths[b] / maxw,
+        "aspect": (b - t + 1) / (max(xs) - min(xs) + 1),
+    }
+
+
+# ------ 动画量化门（定稿轮 S-M2「动画更明显」的形式化；gen_pocket 对 anim=True 的家族逐态断言，
+# ------   预览板上的标注数字由同一个 anim_stats 复算 -> 判据与展示永不两张皮）------
+ANIM_GATE = {
+    "adj_min": 0.08,       # ① 相邻帧不透明像素差异率（每态给逐对**最小值**，不只均值）
+    "swing_min": 0.25,     # ② 同格整环最大明度摆幅（归一化；本体格走纯 RGB 口径）
+    "rev_min": 0.45,       # ③ 亮带净转角 ≥0.45 圈/环（= 方向性流光，非整体呼吸）
+    "samedir_min": 0.625,  # ③ 配套：逐帧角位移同向步占比 ≥5/8
+    "period_max": 1.6,     # ④ 整环周期（秒）上限，且工作态必须更快
+}
+
+
+def luma_of(rgb) -> float:
+    """明度口径（BT.601）；gen_pocket.luma 与本式同系数，两处共用一份定义即由此派生。"""
+    return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+
+
+def anim_stats(frames: list[list[tuple]], size: int) -> dict:
+    """四条动画读数的**唯一实现**，输入 = 逐帧 RGBA 像素展平列表（不读调色板）。
+
+    frames[f] 长度 = size*size，元素 (r, g, b, a)。gen_pocket 用它做断言，
+    make_preview_pocket 直接解码 out/ 帧带 PNG 后用它标注板上数字，两边口径逐字相同。
+    """
+    n = len(frames)
+    cells = size * size
+    opaque = [{i for i in range(cells) if fr[i][3] > 0} for fr in frames]
+    body = set.intersection(*opaque)                      # 所有帧都不透明 = 本体（体外星必在某些帧透明）
+    lum = [[luma_of(fr[i][:3]) if fr[i][3] > 0 else 0.0 for i in range(cells)] for fr in frames]
+
+    adj = []
+    steps = []
+    for f in range(n):
+        g = (f + 1) % n
+        u = opaque[f] | opaque[g]
+        d = sum(1 for i in u if frames[f][i] != frames[g][i])
+        adj.append(d / len(u))
+        steps.append(d)
+
+    sw_body, sw_all, amp = [], [], []
+    mn = [min(lum[f][i] for f in range(n)) for i in range(cells)]
+    mx = [max(lum[f][i] for f in range(n)) for i in range(cells)]
+    for i in range(cells):
+        if len({frames[f][i] for f in range(n)}) == 1:
+            amp.append(0.0)
+            continue
+        live = [lum[f][i] for f in range(n) if frames[f][i][3] > 0]
+        rgb_rng = (max(live) - min(live)) / 255.0
+        if i in body:
+            sw_body.append(rgb_rng)
+        sw_all.append((mx[i] - mn[i]) / 255.0)            # 含透明档（体外星 = 出现/消失的全幅）
+        amp.append(max(live) - min(live))                 # 该格在环内的发光幅度（质心权重基）
+
+    cen = (size - 1) / 2.0
+    ang = []
+    for f in range(n):
+        tot = sx = sy = 0.0
+        for i in range(cells):
+            w = lum[f][i] - mn[i]
+            if amp[i] and w > 0:
+                sx += w * (i % size - cen)
+                sy += w * (i // size - cen)
+                tot += w
+        ang.append(None if tot <= 0 else math.degrees(math.atan2(sy, sx)))
+    deltas = [None if ang[f] is None or ang[(f + 1) % n] is None
+              else ((ang[(f + 1) % n] - ang[f] + 540.0) % 360.0) - 180.0 for f in range(n)]
+    real = [d for d in deltas if d is not None]
+    rev = sum(real) / 360.0 if real else 0.0
+    samedir = (max(sum(1 for d in real if d > 0), sum(1 for d in real if d < 0)) / len(real)) if real else 0.0
+    return {
+        "adj_min": min(adj), "adj_mean": sum(adj) / n, "steps": steps, "adj": adj,
+        "swing_body_min": min(sw_body) if sw_body else 0.0,
+        "swing_all_min": min(sw_all) if sw_all else 0.0,
+        "rev": rev, "samedir": samedir,
+        "n_body": len(body), "n_spark": len(sw_all),
+        "ang": ang,
+    }
+
+
+# --------------------------------------------------------------------------- B1
+# 方形金布包·十字绳·顶部扎结：布面 n/m 亮链 + W 背光列，绳 y/0 家族黄，
+# 猫脸阴刻 k 于正面下半（受光亮唇 w），底缘整行描边收口 —— 剪影 12x15 方包。
+B1_NORMAL = [
+    "......yyyy......",
+    "....00yy00yy....",
+    "..############..",
+    "..#nnnnyymmWW#..",
+    "..#nnnnyymWWW#..",
+    "..#nnnnyyWWWW#..",
+    "..#yyyyyyyyyy#..",
+    "..#0000000000#..",
+    "..#mwkkmmkkwm#..",
+    "..#mwmmmmmmwm#..",
+    "..#mmkkmmkkmm#..",
+    "..#mmkkmmkkmm#..",
+    "..#mmmmkkmmmm#..",
+    "..#WWwwwwwwWW#..",
+    "..############..",
+    "................",
+]
+# 打开态：扎结解开、顶盖向两侧外翻（剪影仍 12 宽方包），口内暗腔 9 + 冷光。
+B1_MOUTH = [
+    "..ww........ww..",
+    "..#ww999999ww#..",
+    "..#wwwwwwwwww#..",
+    "..#nnnnyymmWW#..",
+    "..#nnnnyymWWW#..",
+    "..#nnnnyyWWWW#..",
+    "..#yyyyyyyyyy#..",
+    "..#0000000000#..",
+    "..#mwkkmmkkwm#..",
+    "..#mwmmmmmmwm#..",
+    "..#mmkkmmkkmm#..",
+    "..#mmkkmmkkmm#..",
+    "..#mmmmkkmmmm#..",
+    "..#WWwwwwwwWW#..",
+    "..############..",
+    "................",
+]
+B1_SHARED = [
+    (9, 3, 5, "0", "x"),    # 面顶亮金一闪
+    (4, 4, 1, "d", "x"),    # 受光柱跳动
+    (11, 5, 6, "d", "m"),   # 背光角呼吸
+    (7, 6, 3, "n", "x"),    # 横绳中段反光
+    (8, 7, 7, "n", "y"),    # 绳阴反光
+    (5, 11, 2, "n", "y"),   # 猫左眼亮起
+    (10, 10, 4, "n", "y"),  # 猫右眼亮起
+]
+B1_SW_IDLE = [
+    (7, 1, 6, "n", "x"),                              # 顶结反光
+    (4, 3, 2, "d", "x"), (10, 3, 2, "0", "x"),        # 面顶双反光
+]
+B1_SW_OPEN = [
+    (3, 0, 2, "Z", "z"), (12, 0, 6, "Z", "z"),        # 外翻盖内唇冷光
+    (5, 1, 0, "Z", "x"), (10, 1, 4, "j", "z"),        # 口内
+    (4, 2, 1, "Z", "z"), (11, 2, 5, "Z", "z"),        # 亮唇
+]
+B1_SW_WORK = [
+    (1, 3, 0, "n", "x"), (14, 6, 2, "n", "x"),        # 体外流光星
+    (1, 10, 4, "w", "x"), (14, 12, 6, "n", "x"),
+    (4, 13, 3, "d", "m"), (11, 13, 7, "d", "m"),      # 底缘背光列暖跳（W 档）
+    (12, 3, 5, "d", "x"), (9, 13, 5, "m", "z"),       # 背光列 + 亮唇中缝冷闪
+]
+B1_SW_WORK_O = [
+    (6, 1, 3, "B", "x"),                              # 口内加密
+    (1, 7, 1, "n", "x"), (14, 4, 5, "w", "x"),        # 体外星改沿开口两侧
+]
+# --------------------------------------------------------------------------- B2
+# 竖长方纸包·斜带·右上扎结：纸面 i/w 亮链（全案最亮）+ E/F 暖灰背光彩带，
+# 斜绳 D 从左下扫到右上结头，猫脸印记 F/R 印在正面下部。
+B2_NORMAL = [
+    ".........00.....",
+    ".......0000.....",
+    "..############..",
+    "..#iiiiiiiDDE#..",
+    "..#iiiiiiDDEE#..",
+    "..#iiiiiDDEEw#..",
+    "..#iiiiDDEEww#..",
+    "..#iiiDDEEwww#..",
+    "..#iiDDEEwwww#..",
+    "..#iDDEEwwwww#..",
+    "..#DDEEwwwwww#..",
+    "..#wwFFwwFFww#..",
+    "..#wwRRwwRRww#..",
+    "..#ffffRRffff#..",
+    "..############..",
+    "................",
+]
+B2_MOUTH = [
+    "....ii....ii....",
+    "..#9999999999#..",
+    "..#wwwwwwwwww#..",
+    "..############..",
+    "..#iiiiiiDDEE#..",
+    "..#iiiiiDDEEw#..",
+    "..#iiiiDDEEww#..",
+    "..#iiiDDEEwww#..",
+    "..#iiDDEEwwww#..",
+    "..#iDDEEwwwww#..",
+    "..#DDEEwwwwww#..",
+    "..#wwFFwwFFww#..",
+    "..#wwRRwwRRww#..",
+    "..#ffffRRffff#..",
+    "..############..",
+    "................",
+]
+B2_SHARED = [
+    (10, 4, 2, "E", "w"),   # 斜绳反光（绳在上半段）
+    (6, 7, 2, "E", "x"),    # 纸面亮闪
+    (5, 8, 4, "E", "x"),
+    (3, 11, 2, "E", "D"),   # 猫耳印呼吸（暖灰向，缩到 1x 仍可辨）
+    (9, 12, 0, "z", "x"),   # 猫眼亮斑
+    (4, 13, 5, "m", "n"),   # 下摆暗带暖跳
+]
+B2_SW_IDLE = [
+    (9, 0, 3, "y", "n"),                              # 结头反光
+    (2, 4, 7, "E", "x"),                              # 左缘亮柱一闪（1x 强信号）
+    (3, 13, 3, "F", "m"),                             # 底带缝火
+    (11, 6, 7, "E", "m"),                             # 右缘暖亮
+]
+B2_SW_OPEN = [
+    (4, 0, 3, "E", "D"), (11, 0, 7, "E", "D"),         # 外翻纸角（暖灰向压亮面）
+    (5, 1, 1, "j", "z"), (10, 1, 5, "Z", "x"),         # 口内冷光
+    (4, 3, 2, "D", "w"),                                # 盖缘绳位（描边亮一档）
+]
+B2_SW_WORK = [
+    (1, 4, 1, "w", "x"), (14, 8, 5, "w", "x"),         # 体外星光
+    (1, 12, 3, "n", "x"), (14, 2, 7, "w", "x"),
+    (8, 5, 2, "E", "w"), (7, 12, 6, "j", "z"),         # 斜绳中段 + 右脸侧
+    (12, 11, 0, "E", "D"),
+]
+B2_SW_WORK_O = [
+    (6, 1, 2, "Z", "x"),                               # 口内加密
+    (8, 2, 6, "j", "z"), (3, 10, 4, "F", "x"),         # 亮唇 + 斜绳尾
+]
+# --------------------------------------------------------------------------- B3
+# 横向折叠包·中央平结·两侧扎耳·正面上叠翻盖·下挂猫脸封签：品红亮布
+# 6/N/5 三档 + 4 缝线 + t 下摆，封签 w 牌 k 脸（受光亮唇 = w 边框）。
+B3_NORMAL = [
+    "................",
+    "....yy0000yy....",
+    "..#6666666666#..",
+    "..#NNNNNNNNN5#..",
+    "..#NNNNNNNN55#..",
+    "..#NNNNNNN555#..",
+    "..#4444444444#..",
+    "..#NNkkNNkkN5#..",
+    "..#NNNkNNkNN5#..",
+    "..#NNNkNNkNN5#..",
+    "..#NNNNkkNNN5#..",
+    "..#tttttttttt#..",
+    ".......yy.......",
+    "....##wwkkww##..",
+    "................",
+    "................",
+]
+B3_MOUTH = [
+    "................",
+    "..66........66..",
+    "..#6999999996#..",
+    "..#NNNNNNNNN5#..",
+    "..#NNNNNNNN55#..",
+    "..#NNNNNNN555#..",
+    "..#4444444444#..",
+    "..#NNkkNNkkN5#..",
+    "..#NNNkNNkNN5#..",
+    "..#NNNkNNkNN5#..",
+    "..#NNNNkkNNN5#..",
+    "..#tttttttttt#..",
+    ".......yy.......",
+    "....##wwkkww##..",
+    "................",
+    "................",
+]
+B3_SHARED = [
+    (5, 3, 2, "m", "y"),    # 亮布面呼吸（族黄一闪）
+    (10, 5, 6, "m", "x"),   # 背光棱跳亮
+    (7, 6, 3, "x", "w"),    # 缝线上星点
+    (5, 7, 4, "n", "y"),    # 翻盖猫耳印金闪
+    (10, 7, 2, "n", "y"),
+    (7, 10, 3, "Z", "z"),   # 口衔亮斑
+    (7, 13, 7, "n", "y"),   # 封签猫脸金闪
+    (4, 11, 5, "y", "6"),   # 下摆棱
+]
+B3_SW_IDLE = [(5, 1, 1, "n", "x"), (9, 1, 5, "n", "y")]   # 平结双耳绳
+B3_SW_OPEN = [
+    (2, 1, 2, "5", "d"), (13, 1, 6, "5", "d"),            # 外翻布耳内唇
+    (4, 2, 0, "Z", "x"), (9, 2, 4, "j", "z"),             # 口内冷光
+    (6, 2, 2, "B", "x"), (12, 2, 7, "5", "d"),            # 腔内 + 右唇
+]
+B3_SW_WORK = [
+    (1, 3, 0, "u", "x"), (14, 4, 2, "w", "x"),            # 体外星
+    (1, 9, 5, "v", "x"), (14, 10, 7, "u", "x"),
+    (3, 4, 3, "m", "y"), (12, 8, 1, "m", "y"),            # 布面流光
+    (9, 13, 6, "5", "6"),
+]
+# --------------------------------------------------------------------------- B4
+# 硬壳方包·顶部提手·四角铆钉·正面猫脸铭牌：壳面 u/v 亮 lilac 链 + y/e 背光棱，
+# 提手 O + 铆钉 Z 五金，铭牌 # 框 w 底 k 脸。全宽壳顶（14）一眼区别于布包。
+B4_NORMAL = [
+    "................",
+    ".....OOOOOO.....",
+    ".....O....O.....",
+    ".....O....O.....",
+    ".##############.",
+    ".#vvvZZvvvZZYY#.",
+    ".#vvuuuuuuvYYY#.",
+    ".#vuukkuukkYYY#.",
+    ".#vu########YY#.",
+    ".#vu#wwwwww#YY#.",
+    ".#vu#kkwwkk#YY#.",
+    ".#vu#wwkkww#YY#.",
+    ".#vu########YY#.",
+    ".#eeeeeeeeeeee#.",
+    ".##############.",
+    "................",
+]
+B4_MOUTH = [
+    "................",
+    ".#vvvvvvvvvvvv#.",
+    ".#999999999999#.",
+    ".##############.",
+    ".##############.",
+    ".#vvvZZvvvZZYY#.",
+    ".#vvuuuuuuvYYY#.",
+    ".#vuukkuukkYYY#.",
+    ".#vu########YY#.",
+    ".#vu#wwwwww#YY#.",
+    ".#vu#kkwwkk#YY#.",
+    ".#vu#wwkkww#YY#.",
+    ".#vu########YY#.",
+    ".#eeeeeeeeeeee#.",
+    ".##############.",
+    "................",
+]
+B4_SHARED = [
+    (5, 5, 1, "y", "x"),    # 铆钉反光
+    (10, 5, 5, "y", "x"),
+    (2, 6, 3, "y", "j"),    # 左缘亮柱冷闪
+    (10, 6, 7, "y", "j"),   # 壳面冷闪
+    (5, 10, 2, "n", "y"),   # 铭牌猫眼（暗向）
+    (9, 10, 6, "n", "y"),
+    (2, 4, 0, "h", "H"),    # 上包角亮（两态同位=顶缘 #）
+    (4, 13, 0, "y", "k"),   # 底沿暗跳
+]
+B4_SW_IDLE = [(6, 1, 4, "z", "x")]                     # 提手顶bar
+B4_SW_OPEN = [
+    (3, 1, 3, "y", "j"), (12, 1, 7, "y", "j"),   # 盖内棱
+    (4, 2, 1, "Z", "x"), (11, 2, 5, "j", "z"),   # 腔内冷光
+]
+B4_SW_WORK = [
+    (1, 7, 2, "V", "L"), (14, 6, 6, "w", "x"),   # 体外星
+    (1, 12, 4, "w", "x"), (14, 11, 0, "V", "L"),
+    (12, 8, 3, "U", "x"), (7, 11, 7, "z", "x"),  # 背光棱 + 鼻端
+]
+
+# ================================================================================
+# B4G 定稿轮（用户裁决：底形选 B4，色调改金暖，动画更明显）
+#   1) 底形几何 **逐字复用 B4**：只按 B4G_INK_MAP 换色符，不增删任何位
+#      -> 「不透明像素掩码」与 B4 必然逐位相同（remap 的构造性保证 + gen 的实测断言）。
+#   2) 色板 = 金暖族，参照同批 B1 的 brt/n -> gld/m -> gld_dk2/W（不引入第三种暖色相）；
+#      冷青五金（aqua_dk/aqua）换成暖铜/厚边棕，冷紫灰内腔换成暖暗腔。
+#   3) 动画加强 = 顺时针**角扫流光**（见 phase）：位点数从 B4 的 9/12/15/18 提到
+#      39/45/47/57，且每个位点的峰帧由「该位绕画布中心的顺时针极角秩」给出 ->
+#      亮带是一条刚性径向辐条，在整环内单一方向转过 360°（机检为质心净转角 = +1.00 圈/环），
+#      而不是同相位整体呼吸（B4 实测净转角 0.00 圈）。逐条判据见 ANIM_GATE 与 check_anim。
+# ================================================================================
+B4G_INK_MAP = {
+    "O": "b",    # 提手：冷青五金 aqua_dk -> 暖铜 brz（detail 五金档）
+    "Z": "r",    # 铆钉：aqua -> 厚边棕 rim（金壳上的铆孔读法）
+    "v": "m",    # 壳面主档：lilac -> gld 主金
+    "u": "n",    # 壳面亮档：pale_lt -> brt 亮金（同 B1 的 lit 档）
+    "Y": "W",    # 背光棱：pale_dk -> gld_dk2（同 B1 的 Weber 阴影锚）
+    "e": "M",    # 底沿暗带：pale_dk2 -> gld_dk
+    "9": "c",    # 开口内腔：cl0_dk 冷紫灰 -> rim_dk 暖暗腔
+}
+
+
+def remap(rows: list[str], cmap: dict) -> list[str]:
+    """逐字符换色符：位置一字不动 => 不透明掩码与源底形逐位相同（几何复用的证明）。"""
+    return ["".join(cmap.get(ch, ch) for ch in r) for r in rows]
+
+
+B4G_NORMAL = remap(B4_NORMAL, B4G_INK_MAP)
+B4G_MOUTH = remap(B4_MOUTH, B4G_INK_MAP)
+
+# 亮/半亮档配对（按底色分派，全部走「半亮压暗 + 满亮提白」-> 同格摆幅最大化）
+PAIR = {
+    "m": ("M", "x"),     # 主金：暗一档 gld_dk -> 纯白
+    "n": ("W", "x"),     # 亮金：压到 gld_dk2 -> 纯白
+    "W": ("k", "n"),     # 背光棱：阴刻暗棕 -> 亮金
+    "M": ("r", "x"),     # 底沿：厚边棕 -> 纯白
+    "r": ("m", "x"),     # 铆孔：主金 -> 纯白
+    "k": ("m", "y"),     # 阴刻五官：主金 -> 家族黄
+    "b": ("y", "x"),     # 暖铜五金：家族黄 -> 纯白
+    "c": ("d", "x"),     # 暖暗腔：背光金 wrm -> 纯白
+    ".": ("y", "x"),     # 体外星（底形透明处）：家族黄半亮 / 纯白满亮
+}
+
+# 画布中心（极角口径；16px 画布格心 = (15/2, 15/2)，任何位点都不与之重合）
+CX = CY = (SIZE16 - 1) / 2.0
+
+
+def cw_angle(x: int, y: int) -> float:
+    """位点绕画布中心的**顺时针**极角（0..360，屏幕 y 向下故 atan2 直接给顺时针）。"""
+    return (math.degrees(math.atan2(y - CY, x - CX)) + 360.0) % 360.0
+
+
+def angle_key(x: int, y: int) -> float:
+    """极角的分桶键（gen_pocket 的同角同峰断言用同一个键，两处永不各说各话）。"""
+    return round(cw_angle(x, y), 6)
+
+
+def phase(cells: list[tuple]) -> list[tuple]:
+    """[(x, y, 登记底色)] -> [(x, y, peak, dim, on)]：整表按顺时针极角排序后等分相位。
+
+    峰帧 = 角度名次的簇首 * FRAMES // 位点数 =>
+      * 亮带随帧号沿顺时针**单调**推进，整环恰好转过 360°（方向性流光，不是整体呼吸）；
+      * 同极角的位点（如 (5,10) 与 (2,13) 都在 135° 上）同峰 -> 亮带是一条**刚性径向辐条**；
+      * 相位直方图逐扇区误差 ≤1 -> 相邻帧变化量的最小值不被「空扇区」拖垮（§3.1 的门）。
+    登记底色同时写进 CELL_BASE，gen_pocket 逐位断言它与实际底形同档、且峰帧与角度同序
+    -> 写错不会静默过门，只会立刻炸在「底色失配 / 角扫纪律被破坏 / 动了未登记位」上。
+    """
+    order = sorted(cells, key=lambda c: (angle_key(c[0], c[1]), c[0], c[1]))
+    n = len(order)
+    peaks: dict = {}
+    cur, prev = 0, None
+    for rank, (x, y, _bch) in enumerate(order):
+        key = angle_key(x, y)
+        if key != prev:
+            cur, prev = rank * FRAMES // n, key
+        peaks[(x, y)] = cur
+    out = []
+    for (x, y, bch) in cells:
+        dim, on = PAIR[bch]
+        CELL_BASE.setdefault((x, y), set()).add(bch)
+        out.append((x, y, peaks[(x, y)], dim, on))
+    return out
+
+
+# 位点 -> 该位在各底形里被登记的底色集合（同位两态底色不同时以集合容纳，如提手/盖缘）
+CELL_BASE: dict = {}
+
+
+
+# -- 位点分组（三元组 (x, y, 登记底色)；'.' = 底形透明处，即体外金星）
+# SHARED：闭口/开口两版底形同位同色符（壳体区 rows5..13 在两版里逐位相同）
+B4G_C_RING_TOP = [(2, 5, "m"), (3, 5, "m"), (4, 5, "m"), (7, 5, "m"),
+                  (8, 5, "m"), (9, 5, "m"), (12, 5, "W"), (13, 5, "W")]
+B4G_C_RIVET = [(5, 5, "r"), (10, 5, "r")]
+B4G_C_EDGE_R = [(13, 6, "W"), (13, 7, "W"), (13, 9, "W"), (13, 11, "W"), (13, 12, "W")]
+B4G_C_EDGE_L = [(2, 6, "m"), (2, 7, "m"), (2, 9, "m"), (2, 11, "m"), (2, 12, "m")]
+B4G_C_BOTTOM = [(2, 13, "M"), (4, 13, "M"), (6, 13, "M"), (8, 13, "M"),
+                (10, 13, "M"), (12, 13, "M")]
+B4G_C_FIELD = [(3, 9, "n"), (3, 11, "n")]
+B4G_C_FACE = [(5, 10, "k"), (9, 10, "k")]        # 铭牌双眼（语义锚点；工作态再补鼻端与耳）
+B4G_G_SHARED = (B4G_C_RING_TOP + B4G_C_RIVET + B4G_C_EDGE_R + B4G_C_EDGE_L
+                + B4G_C_BOTTOM + B4G_C_FIELD + B4G_C_FACE)
+# 闭口专属：提手五金 + 内场反光 + 体外金星
+B4G_I_HANDLE = [(5, 1, "b"), (7, 1, "b"), (9, 1, "b"), (10, 2, "b")]
+B4G_I_FIELD = [(6, 6, "n")]
+B4G_I_DUST = [(3, 1, "."), (12, 1, "."), (2, 3, "."), (13, 3, ".")]
+# 开口专属：盖缘 + 口内暖光（口内位按极角排 -> 亮带扫过口内，光从一侧翻向另一侧）
+B4G_O_LID = [(2, 1, "m"), (4, 1, "m"), (7, 1, "m"), (9, 1, "m"), (12, 1, "m"),
+             (3, 1, "m"), (11, 1, "m")]
+B4G_O_MOUTH = [(3, 2, "c"), (5, 2, "c"), (7, 2, "c"), (9, 2, "c"), (11, 2, "c"), (13, 2, "c"),
+               (4, 2, "c"), (8, 2, "c")]
+# 工作态加密：五官其余位 + 铆钉另一半 + 内场反光（两版底形同位，故共用一份）
+B4G_W_EXTRA = [(6, 7, "k"), (9, 7, "k"), (7, 11, "k"), (8, 11, "k"),
+               (5, 6, "n"), (8, 6, "n"), (6, 5, "r"), (11, 5, "r")]
+# 开口工作态再加密一档（口内偶数列 + 盖右角）：保证「开口工作」仍是四态里最闪的那一张
+B4G_WO_EXTRA = [(2, 2, "c"), (6, 2, "c"), (12, 2, "c"), (13, 1, "m")]
+
+# 四态位点集合 = SHARED + 该态可见的专属组（工作态叠加非工作态的全部位点）
+B4G_STATE_CELLS = {
+    "idle": B4G_G_SHARED + B4G_I_HANDLE + B4G_I_FIELD + B4G_I_DUST,
+    "open": B4G_G_SHARED + B4G_O_LID + B4G_O_MOUTH,
+    "work": B4G_G_SHARED + B4G_I_HANDLE + B4G_I_FIELD + B4G_I_DUST + B4G_W_EXTRA,
+    "work_open": B4G_G_SHARED + B4G_O_LID + B4G_O_MOUTH + B4G_W_EXTRA + B4G_WO_EXTRA,
+}
+# 相位按「整态」分配（同一帧号在两态里亮带落在同一角位置；色档只由底色查 PAIR 故两态同位仍同档）
+B4G_SPARK = {st: phase(cs) for st, cs in B4G_STATE_CELLS.items()}
+
+
+# ================================================================================
 # 状态模型：2 个布尔位的 4 组合（闭口/开口 × 非工作/工作中），不是「三态」
 #   idle      = 闭口 + 非工作   （底形 = normal）
 #   open      = 开口 + 非工作   （底形 = open）
@@ -591,9 +1114,88 @@ FAMILIES = [
     },
 ]
 
+# ================================================================================
+# B 族登记（返工轮候选：底形全部 = 扎绳方形包裹，明度全部过提亮门）
+# ================================================================================
+FAMILIES += [
+    {
+        "id": "b1_gold_cross_bundle", "tag": "B1", "label": "方形金布包·十字绳",
+        "size": SIZE16, "bundle": True,
+        "grid": {"normal": B1_NORMAL, "open": B1_MOUTH},
+        "spark": {"idle": B1_SHARED + B1_SW_IDLE, "open": B1_SHARED + B1_SW_OPEN,
+                  "work": B1_SHARED + B1_SW_IDLE + B1_SW_WORK,
+                  "work_open": B1_SHARED + B1_SW_OPEN + B1_SW_WORK + B1_SW_WORK_O},
+        "note": "12x15 方包剪影 + 顶部扎结（结高仅 2 行）：金布亮链 n/m + W 背光列，"
+                "十字家族黄绳过包面、正面下半猫脸阴刻（亮唇 w），底缘整行收平。",
+        "axes": {"描边": "1px 黑全包络 + 平底缘", "明度层级": "brt/gld 亮链 + gld_dk2 背光（Weber 1.07）",
+                 "猫脸": "布面阴刻 k + 受光亮唇", "闪光": "绳结反光 + 体外流光星",
+                 "配色锚点": "miao_coin 金 + 家族黄"},
+        "face": "ynm", "lit": "n", "shadow": "W", "detail": "#k9",
+    },
+    {
+        "id": "b2_paper_diag_string", "tag": "B2", "label": "竖长方纸包·斜带",
+        "size": SIZE16, "bundle": True,
+        "grid": {"normal": B2_NORMAL, "open": B2_MOUTH},
+        "spark": {"idle": B2_SHARED + B2_SW_IDLE, "open": B2_SHARED + B2_SW_OPEN,
+                  "work": B2_SHARED + B2_SW_IDLE + B2_SW_WORK,
+                  "work_open": B2_SHARED + B2_SW_OPEN + B2_SW_WORK + B2_SW_WORK_O},
+        "note": "竖长方纸包：象牙纸面 i/w（全案最亮）+ 暖灰 E/F 侧彩带，斜绳 D 从左下扫到"
+                "右上结头，猫脸印记 F/R 印在正面下部，底缘 f 暗带收口。",
+        "axes": {"描边": "1px 黑全包络", "明度层级": "ivory 纸面三档 + crm_dk2 底带（Weber 1.25）",
+                 "猫脸": "印章式印记（F 形 R 眼）", "闪光": "斜绳反光 + 纸面亮闪 + 体外星",
+                 "配色锚点": "象牙白 + 暖橙绳 brz_lt"},
+        "face": "iwEDF", "lit": "i", "shadow": "f", "detail": "#9",
+    },
+    {
+        "id": "b3_folded_wrap_tag", "tag": "B3", "label": "横向折叠包·封签",
+        "size": SIZE16, "bundle": True,
+        "grid": {"normal": B3_NORMAL, "open": B3_MOUTH},
+        "spark": {"idle": B3_SHARED + B3_SW_IDLE, "open": B3_SHARED + B3_SW_OPEN,
+                  "work": B3_SHARED + B3_SW_IDLE + B3_SW_WORK,
+                  "work_open": B3_SHARED + B3_SW_OPEN + B3_SW_WORK},
+        "note": "横向折叠布包：中央平结 + 两侧扎耳，亮品红布 6/N/5 三档 + 4 缝线 + t 下摆，"
+                "正面下挂猫脸封签（w 牌 k 脸）——猫脸在签上，是全案唯一的挂牌读形。",
+        "axes": {"描边": "1px 黑全包络 + 挂牌独立描边", "明度层级": "cl4_lt/cl4 亮链 + cl4_dk 下摆（Weber 1.40）",
+                 "猫脸": "封签上小脸（挂牌语义）", "闪光": "布面呼吸 + 缝线星点 + 体外星",
+                 "配色锚点": "infinity_fluid_cell 亮品红 + 家族黄绳"},
+        "face": "N56", "lit": "6", "shadow": "t", "detail": "#k9",
+    },
+    {
+        "id": "b4_hardcase_handle", "tag": "B4", "label": "硬壳方包·提手铭牌",
+        "size": SIZE16, "bundle": True,
+        "grid": {"normal": B4_NORMAL, "open": B4_MOUTH},
+        "spark": {"idle": B4_SHARED + B4_SW_IDLE, "open": B4_SHARED + B4_SW_OPEN,
+                  "work": B4_SHARED + B4_SW_IDLE + B4_SW_WORK,
+                  "work_open": B4_SHARED + B4_SW_OPEN + B4_SW_WORK},
+        "note": "14 宽硬壳方包 + 顶部提手（无绳结的第四种「扎法」）：壳面 u/v 亮 lilac 链 + "
+                "Y/e 背光棱，四角铆钉 Z，正面 8x7 猫脸铭牌（# 框 w 底 k 脸）。",
+        "axes": {"描边": "1px 黑全包络 + 铭牌内框", "明度层级": "pale_lt/lilac 亮链 + pale_dk2 底沿（Weber 1.04）",
+                 "猫脸": "金属铭牌浮雕", "闪光": "铆钉反光 + 壳面冷闪 + 体外星",
+                 "配色锚点": "远握戒 pale/lilac + 冷青五金"},
+        "face": "vuY", "lit": "v", "shadow": "e", "detail": "#OZk9",
+    },
+    {
+        "id": "b4g_gold_hardcase", "tag": "B4G", "label": "硬壳方包·提手铭牌（金暖定稿）",
+        "size": SIZE16, "bundle": True, "anim": True, "source": "b4_hardcase_handle",
+        "cell_base": CELL_BASE, "ink_map": B4G_INK_MAP,
+        "grid": {"normal": B4G_NORMAL, "open": B4G_MOUTH},
+        "spark": B4G_SPARK,
+        "note": "底形逐字复用 B4（remap 只换色符，不透明掩码与 B4 逐位相同，gen 断言差 0 位）："
+                "壳面 lilac/pale 冷链整体换成 B1 那一族金暖 brt/n + gld/m -> gld_dk2/W 背光棱，"
+                "冷青五金换暖铜/厚边棕，内腔换暖暗腔；动画换成绕画布中心的顺时针角扫流光"
+                "（峰帧 = 极角秩），位点 9/12/15/18 -> 39/45/47/57。",
+        "axes": {"描边": "1px 黑全包络 + 铭牌内框（同 B4 逐位）",
+                 "明度层级": "brt/gld 亮链 -> gld_dk2 背光棱（Weber 1.07，同 B1 色族）",
+                 "猫脸": "金属铭牌浮雕（w/k 档与 B4 逐字相同，未动）",
+                 "闪光": "角扫流光带（顶棱→右棱→底沿→左棱一圈）+ 口内暖光 + 体外金星",
+                 "配色锚点": "miao_coin 金 + 家族黄（零新基色，仅 rim 派生一档暖暗腔）"},
+        "face": "nmw", "lit": "n", "shadow": "W", "detail": "#brkc",
+    },
+]
+
 # 实装家族 = 落地到 src 材质目录的那一套（decision-ledger R50 目视裁定）。
 # 用户改选时只改这一行，Java 侧零改动：落地名 land_name() 不含家族号。
-SELECTED_FAMILY = "f2_modernity_panel"
+SELECTED_FAMILY = "b4g_gold_hardcase"
 
 
 def family(fid_or_tag: str) -> dict:

@@ -16,27 +16,30 @@ import com.cleanroommc.modularui.widgets.slot.FluidSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 
 /**
- * 左栏的<b>竖贯流体条</b>（需求 4 的流体入口）：真实流体条 + 一个可被 NEI 拖入的 ghost 声明位。
+ * 流体列的<b>流体槽本体</b>（R75①：面板左侧那 6 列之一，每列纵向 = 输入格 / <b>本槽</b> / 输出格）：
+ * 真实流体槽 + 一个可被 NEI 拖入的 ghost 声明位（需求 4 的流体入口）。
  * <p>
- * <b>★不调 {@code super.handleDragAndDrop}、也★不把 {@code barTank()} 的 handler 设成 phantom</b>
+ * <b>★不调 {@code super.handleDragAndDrop}、也★不把本槽 handler 设成 phantom</b>
  * （R70 实测口径）：库内那一条的开头是 {@code if (!syncHandler.isPhantom()) return false} ——
- * 真实条上它恒拒；而把 handler 改成 phantom 会让<b>服务端那一支把流体写进真实槽</b>
+ * 真实槽上它恒拒；而把 handler 改成 phantom 会让<b>服务端那一支把流体写进真实槽</b>
  * （{@code FluidSlotSyncHandler#readOnServer} 的 {@code id==4} 分支直接 {@code tryClickPhantom}），
- * 需求 2 的"从手上/仓里灌排流体条、两排同权"就没了。⇒ 唯一正确做法是<b>子类在 phantom 门之前拦下</b>，
+ * 需求 2 的"从手上/仓里灌排流体、两格同权"就没了。⇒ 唯一正确做法是<b>子类在 phantom 门之前拦下</b>，
  * 只发本仓那一条 {@code SYNC_GHOST_REQUEST}（与 {@link NekoFilterSlot} 同形，R18/R19 不破）。
  * <p>
  * <b>ghost 只原位改属性</b>（R41b）：本 widget 实例从装配到关屏不换，声明态只影响
- * 渲染样本、遮罩与 tooltip；18×288 几何与 {@code alwaysShowFull(false)} 的部分填充口径
+ * 渲染样本、遮罩与 tooltip；18×18 几何与 {@code alwaysShowFull(false)} 的部分填充口径
  * 都由 {@link NekoPocketLeftColumn} 原样保留 ⇒ 双端同树（R32）不受影响。
  * <p>
- * <b>流体条只有 1 个索引位</b>（{@code PocketConstants.GHOST_FLUID_SLOT_LIMIT}），故本格槽号恒为
- * {@link #BAR_SLOT_INDEX}；{@code Kind.FLUID} 的索引空间与中栏 0…127 各自独立，
- * 这正是 CLR 必须带区域字母的理由。
+ * <b>★槽号 = 列号 = tank 号</b>（R75：流体侧由 1 根竖条变 {@code PocketConstants.FLUID_COLUMN_COUNT}
+ * 个独立 tank，{@code GHOST_FLUID_SLOT_LIMIT} 同值跟着变 6）：不再有"恒为 0"的特例，
+ * 列号由 {@link #bindBar(NekoPocketPanel, int)} 在装配期注入 ⇒
+ * "这一列要拉哪种流体"与"拉进哪个 tank"共用同一个数，没有第二份映射。
+ * {@code Kind.FLUID} 的索引空间与中栏 0…149、源质 0…47 各自独立，这正是 CLR 必须带区域字母的理由。
  */
 public class NekoPocketFluidSlot extends FluidSlot {
 
-    /** 流体条在 {@code Kind.FLUID} 索引空间里的唯一槽号（上界 1 ⇒ 只能是 0）。 */
-    public static final int BAR_SLOT_INDEX = 0;
+    /** 旧的"唯一槽号"常量（R75 后流体侧有 6 个索引位，不再存在恒值）。 */
+    public static final int FIRST_SLOT_INDEX = 0;
 
     /** 虚化遮罩色（与 {@link NekoFilterSlot} 同一 alpha 口径，R18）。 */
     private static final int GHOST_MASK = 0x80FFFFFF;
@@ -63,6 +66,8 @@ public class NekoPocketFluidSlot extends FluidSlot {
         NekoPocketFluidSlot::blockFluidName };
 
     private NekoPocketPanel owner;
+    /** 本槽所在的流体列号 = {@code Kind.FLUID} 的 ghost 槽号 = tank 号（装配期注入，-1 = 未绑定）。 */
+    private int slotIndex = FIRST_SLOT_INDEX;
     /** ghost 内部状态（与 {@link NekoFilterSlot#isGhost()} 同形：同一个 widget 的两个状态）。 */
     private boolean ghost;
     /** 声明的流体名（{@code ""} = 无声明）；只描述"要什么"，不描述"条里有什么"。 */
@@ -75,9 +80,15 @@ public class NekoPocketFluidSlot extends FluidSlot {
      * 装配期绑定面板会话（双端各一次，与 {@link NekoFilterSlot#bindGhost} 同形）。
      * 登记表长度与格序恒定 ⇒ 不引入数据驱动的 widget 树变化。
      */
-    NekoPocketFluidSlot bindBar(NekoPocketPanel panel) {
+    NekoPocketFluidSlot bindBar(NekoPocketPanel panel, int slotIndex) {
         this.owner = panel;
+        this.slotIndex = slotIndex;
         return this;
+    }
+
+    /** 本槽的列号（同时是 ghost 槽号与 tank 号）。 */
+    public int ghostSlotIndex() {
+        return slotIndex;
     }
 
     /** 当前是否处于 ghost（已声明要拉取某种流体）态。 */
@@ -128,11 +139,11 @@ public class NekoPocketFluidSlot extends FluidSlot {
             return false;
         }
         draggedStack.stackSize = 0;
-        return owner.requestGhost(BAR_SLOT_INDEX, key);
+        return owner.requestGhost(slotIndex, key);
     }
 
     /**
-     * ghost 态下的右键 = 解绑（★只发 {@code CLR|0|F}，判定与执行在服务端）。
+     * ghost 态下的右键 = 解绑（★只发本列自己的 {@code CLR|<列号>|F}，判定与执行在服务端）。
      * <p>
      * 非 ghost 态与左键一律交回 {@code super} ⇒ 手持储罐点条的按键组合与 tooltip 与 GT5U 逐字一致
      * （{@code modularui2.fluid.click_combined} / {@code _to_fill} / {@code _to_empty}，L7/R31 口径）。
@@ -140,7 +151,7 @@ public class NekoPocketFluidSlot extends FluidSlot {
     @Override
     public Result onMousePressed(int mouseButton) {
         if (ghost && mouseButton == 1 && owner != null) {
-            owner.requestGhostClear(PocketFilterConfig.Kind.FLUID, BAR_SLOT_INDEX);
+            owner.requestGhostClear(PocketFilterConfig.Kind.FLUID, slotIndex);
             return Result.SUCCESS;
         }
         return super.onMousePressed(mouseButton);

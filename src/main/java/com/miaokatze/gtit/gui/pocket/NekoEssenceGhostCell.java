@@ -31,7 +31,7 @@ import appeng.api.storage.data.IAEStackType;
  * 不含 ⇒ 返回 false，NEI 那边继续拖着、不吃栈 ⇒ 玩家拖来的任意东西不会被当成源质声明。
  * <p>
  * <b>★ghost 只原位改属性</b>（R41b）：实例从装配到关屏不换，声明态只影响遮罩与 tooltip；
- * 48 格本就是显示侧、<b>不进 Container</b>（R35），因此既不占 149 也不动槽号。
+ * 48 格本就是显示侧、<b>不进 Container</b>（R35），因此既不占 175 也不动槽号。
  * <p>
  * <b>TC 不在场时一律不收</b>（R31 的整栏灰显由 {@code setEnabledIf} 给出，本类用
  * {@code IWidget#areAncestorsEnabled()} 读它，与 {@link NekoFilterSlot} 同一口径）。

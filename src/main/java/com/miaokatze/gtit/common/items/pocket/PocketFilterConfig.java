@@ -48,11 +48,11 @@ public final class PocketFilterConfig {
 
     /** ghost 声明的种类，同时决定其槽索引所属的区域。 */
     public enum Kind {
-        /** 中栏物品槽（索引空间 0…{@link PocketConstants#GHOST_ITEM_SLOT_LIMIT}）。 */
+        /** 中栏物品槽（索引空间 0…{@link PocketConstants#GHOST_ITEM_SLOT_LIMIT}−1）。 */
         ITEM,
-        /** 左栏流体条（{@link PocketConstants#GHOST_FLUID_SLOT_LIMIT}）。 */
+        /** 流体槽（0…{@link PocketConstants#FLUID_COLUMN_COUNT}−1，{@link PocketConstants#GHOST_FLUID_SLOT_LIMIT}）。 */
         FLUID,
-        /** 右栏源质格（{@link PocketConstants#GHOST_ESSENCE_SLOT_LIMIT}）。 */
+        /** 源质格（{@link PocketConstants#GHOST_ESSENCE_SLOT_LIMIT}，排布 6 列 × 8 行、总数不变）。 */
         ESSENCE
     }
 
@@ -157,8 +157,8 @@ public final class PocketFilterConfig {
      * (区域, 槽索引) → 声明；插入序即补满顺序，同一区域内同一槽二次写入即覆盖。
      * <p>
      * 键是 {@code kind + ':' + slotIndex} 的复合键而不是裸 {@code Integer}：三类的槽索引各在自己的
-     * 区域里计数（中栏 0…127 / 流体条 0… / 源质格 0…47），用裸索引会让「中栏第 0 格」与
-     * 「流体条第 0 格」互相覆盖——那是结构缺陷，不是省事。
+     * 区域里计数（中栏 0…149 / 流体槽 0…5 / 源质格 0…47），用裸索引会让「中栏第 0 格」与
+     * 「流体槽第 0 格」互相覆盖——那是结构缺陷，不是省事。
      */
     private final Map<String, Filter> byKindSlot = new LinkedHashMap<>();
 

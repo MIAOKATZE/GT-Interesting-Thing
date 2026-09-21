@@ -11,7 +11,7 @@ import net.minecraftforge.fluids.FluidStack;
  * 一枚口袋的<b>服务端活会话</b>（S6/S7 的宿主与 GUI 之间的唯一接口）。
  * <p>
  * <b>为什么需要这一层</b>（R57c + R53c 的联立约束）：通道与蒸馏的宿主是 {@code Item.onUpdate}
- * （每 tick 一次），而口袋的全部内容（128 格物品、12 格蒸馏输入、流体条、源质表、绑定表、ghost 配置）
+ * （每 tick 一次），而口袋的全部内容（150 格物品、12 格蒸馏输入、六个流体槽、源质表、绑定表、ghost 配置）
  * 平时只活在面板会话的内存对象里，<b>关屏才写 NBT</b>（R22/R53c 的"一次读一次写"）。
  * 于是两头都不通：tick 侧要读就得每 tick 现解 NBT（明令禁止），不读就只能读会话。
  * 本接口就是"tick 侧允许读的那一个东西"，实现者是面板（{@code gui/pocket/NekoPocketPanel}），
@@ -92,13 +92,17 @@ public interface PocketSession {
     int depositItem(ItemStack stack);
 
     /**
-     * 流体条还能收这一份流体多少 mB。
+     * 第 {@code tank} 号流体槽还能收这一份流体多少 mB。
      * <p>
      * ★必须在抽取<b>之前</b>问：先抽后放会把超出部分的流体凭空抹掉（AE2 侧已经扣了）。
-     * 条里已有别的流体 ⇒ 0；{@code probe} 为 null ⇒ 0。
+     * 槽里已有别的流体 ⇒ 0；{@code probe} 为 null ⇒ 0；{@code tank} 越界 ⇒ 0。
+     * <p>
+     * tank 号就是该条 ghost 声明的 {@code slotIndex}（R75①：六个流体列 = 六个 tank =
+     * {@code Kind.FLUID} 的索引空间），所以"哪一列要拉什么"与"拉到哪儿"共用同一个数，
+     * 不存在第二份映射。
      */
-    int fluidBarRoom(FluidStack probe);
+    int fluidBarRoom(int tank, FluidStack probe);
 
-    /** 往流体条灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。 */
-    int depositFluid(FluidStack fluid);
+    /** 往第 {@code tank} 号流体槽灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。 */
+    int depositFluid(int tank, FluidStack fluid);
 }

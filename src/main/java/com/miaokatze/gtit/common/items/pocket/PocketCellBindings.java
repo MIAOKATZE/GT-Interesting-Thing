@@ -26,7 +26,7 @@ import net.minecraft.nbt.NBTTagList;
  * <li><b>条数上限</b>：{@link PocketConstants#MAX_BOUND_CELLS}，超出即拒收，避免口袋 NBT 无界膨胀。</li>
  * <li><b>位置是可选快照，不是第二真相</b>：未定位时五键整体为
  * {@link PocketConstants#UNLOCATED}；当前生效位置只由 {@code PocketCellProbe}（推送式观测）给出，
- * GUI 右栏的「维度+xyz」也只读探针。本表内的快照是跨重启缓存（R6 复验失败即视为"位置已失效"）。</li>
+ * 绑定按钮 tooltip 的「维度+xyz」也只读探针。本表内的快照是跨重启缓存（R6 复验失败即视为"位置已失效"）。</li>
  * </ul>
  * <p>
  * {@code mode} <b>不再是表级互斥枚举</b>：定位是每条都可带的可选快照，与身份载荷模式无关；
@@ -178,7 +178,7 @@ public final class PocketCellBindings {
     }
 
     /**
-     * 绑定一枚此刻无法定位的元件（右下绑定格的正常入口：只读得到身份，位置留哨兵）。
+     * 绑定一枚此刻无法定位的元件（底部带绑定格的正常入口：只读得到身份，位置留哨兵）。
      *
      * @return true 表示新增了条目
      */
@@ -223,6 +223,22 @@ public final class PocketCellBindings {
             return false;
         }
         entries.remove(existing);
+        return true;
+    }
+
+    /**
+     * 解绑<b>最后一条</b>（R74/R75 的新解绑入口：绑定按钮右键 = 摘掉最后绑上的一枚）。
+     * <p>
+     * ★为什么不再是"按行号解绑"：旧入口的 arg 来自第四列的"列表选中行"，R74② 删掉那一列后
+     * 选中面就不存在了（⇒ 解绑变成不可达操作）。"最后一条"是<b>无需选中也能唯一确定</b>的读法，
+     * 且顺序仍由 {@link #entries()} 的绑定序给出（顺序本身有轮转语义，这里只从尾部摘，
+     * 不打乱其余条目的相对顺序）。空表返回 false，调用方据此发"尚未绑定元件"回执。
+     */
+    public boolean unbindLast() {
+        if (entries.isEmpty()) {
+            return false;
+        }
+        entries.remove(entries.size() - 1);
         return true;
     }
 

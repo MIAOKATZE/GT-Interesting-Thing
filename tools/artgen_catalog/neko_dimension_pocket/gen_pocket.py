@@ -39,6 +39,7 @@ MIP1_WHOLE_MIN = {"idle": 1.0, "open": 1.0, "work": 1.6, "work_open": 1.6}
 MAD_FAMILY_UNION = 110.0   # 家族互异：只按「画到像素并集」求位移（整图口径被透明底稀释 ~6.6x，见 DESIGN.md）
 SIL_FAMILY_MIN = 0.12      # 家族互异：剪影 XOR 至少占并集面积 12%
 MAD_FAMILY_STRONG = 150.0  # 家族互异：剪影接近时（F1/F2 同轮廓不同画法）改走加重的明度结构门限
+MAD_FAMILY_TWIN = 100.0    # 家族互异：定稿轮「同底形换色板」孪生对专用（剪影被裁定钉为 0，见 DESIGN S-M2）
 MAD_FAMILY_HALF = 24.0     # 家族互异：缩小 2x 后并集位移（mip 兜底）
 
 
@@ -160,6 +161,153 @@ def load_ref_octagon() -> list[str]:
                     for x in range(16)) for y in range(16)]
 
 
+def coin_ref_luma() -> float:
+    """miao_coin.png 全图不透明像素平均明度 = 「口袋不得比金币更暗」的运行时参照值。"""
+    im = Image.open(ITEMS / "miao_coin.png").convert("RGBA")
+    vs = [luma(px[:3]) for px in im.getdata() if px[3] == 255]
+    return sum(vs) / len(vs)
+
+
+def check_geom_reuse(fam: dict, log: list[str]) -> None:
+    """定稿轮硬证：底形必须**逐字复用**源家族（只换色符），掩码差异与差异来源都可机检。"""
+    src = PM.family(fam["source"])
+    assert src["size"] == fam["size"], f"{fam['id']} 与源家族尺寸不同，谈不上复用底形"
+    cmap = fam["ink_map"]
+    diff = 0
+    mapped: set = set()
+    for key, g in fam["grid"].items():
+        o = src["grid"][key]
+        diff += len(opaque(o) ^ opaque(g))
+        for y, r in enumerate(g):
+            for x, ch in enumerate(r):
+                if ch == o[y][x]:
+                    continue
+                assert cmap.get(o[y][x]) == ch, \
+                    f"({x},{y})/{key} 出现登记外的改动 {o[y][x]!r}->{ch!r}：底形被动了不止色符"
+                mapped.add(f"{o[y][x]}->{ch}")
+    assert mapped == {f"{k}->{v}" for k, v in cmap.items()}, \
+        f"登记的换色映射 {sorted(cmap)} 与实际逐位差异 {sorted(mapped)} 不一致"
+    log.append(f"PASS 底形复用 {src['tag']}->{fam['tag']}：不透明像素掩码差异 = {diff} 位；"
+               f"逐位差异全部落在登记换色映射 {len(cmap)} 档 {sorted(mapped)}，"
+               f"未映射位逐字符相等（几何零改动，改的只是色与动画）")
+
+
+def anim_line(fid: str, s: dict) -> str:
+    return " | ".join(
+        f"{st}: 帧差min {s[st]['adj_min']:.1%} 摆幅min {s[st]['swing_body_min']:.2f}"
+        f"(全格 {s[st]['swing_all_min']:.2f}) 净转 {s[st]['rev']:+.2f}圈 同向 {s[st]['samedir']:.0%}"
+        f" 位点{s[st]['n_spark']} 周期{N * PM.FRAMETIME[st] / 20.0:.1f}s" for st in PM.STATES)
+
+
+def check_anim(fam: dict, s: dict, log: list[str]) -> None:
+    """「动画更明显」四条量化门（S-M2 任务包 §3）；读数一律走 PM.anim_stats 单一实现。"""
+    gt, fid = PM.ANIM_GATE, fam["id"]
+    for st in PM.STATES:
+        base = PM.grid_of(fam, st)
+        cells = [(x, y) for (x, y, _, _, _) in fam["spark"][st]]
+        dup = sorted({c for c in cells if cells.count(c) > 1})
+        assert not dup, f"{fid}/{st} 闪光表内有重复位 {dup}（后写覆盖前写 -> 读数会假高）"
+        for (x, y, peak, dim, on) in fam["spark"][st]:
+            assert base[y][x] in fam["cell_base"].get((x, y), set()), \
+                f"{fid}/{st} 位 ({x},{y}) 登记底色 {fam['cell_base'].get((x, y))} 与实际底形 {base[y][x]!r} 失配"
+        # 角扫纪律：峰帧必须随「顺时针极角」单调推进（整个表只允许一次环形回绕）
+        ang = [PM.angle_key(x, y) for (x, y, _, _, _) in fam["spark"][st]]
+        pk = [p for (_, _, p, _, _) in fam["spark"][st]]
+        tie: dict = {}
+        for a, p in zip(ang, pk):
+            tie.setdefault(a, set()).add(p)
+        assert all(len(v) == 1 for v in tie.values()), \
+            f"{fid}/{st} 同一极角上出现两个峰帧 -> 亮带不是刚性旋转"
+        order = sorted(range(len(ang)), key=lambda i: ang[i])
+        back = sum(1 for i, j in zip(order, order[1:]) if pk[j] < pk[i])
+        assert back <= 1, f"{fid}/{st} 峰帧随极角回绕 {back} 次（应为 0~1）：不是方向性角扫"
+        assert max(pk) - min(pk) == N - 1, f"{fid}/{st} 相位未铺满整环 {N} 格：{sorted(set(pk))}"
+        r = s[st]
+        assert r["adj_min"] >= gt["adj_min"], \
+            f"{fid}/{st} 相邻帧不透明像素差异率最小 {r['adj_min']:.1%} < {gt['adj_min']:.0%}（逐对读数 {r['steps']}）"
+        assert r["swing_body_min"] >= gt["swing_min"], \
+            f"{fid}/{st} 同格整环明度摆幅最小 {r['swing_body_min']:.2f} < {gt['swing_min']}"
+        assert r["swing_all_min"] >= gt["swing_min"], \
+            f"{fid}/{st} 含体外星的整格摆幅最小 {r['swing_all_min']:.2f} < {gt['swing_min']}"
+        assert abs(r["rev"]) >= gt["rev_min"], \
+            f"{fid}/{st} 亮带净转角 {r['rev']:+.2f} 圈/环 < {gt['rev_min']}（= 整体呼吸，非方向性流光）"
+        assert r["samedir"] >= gt["samedir_min"], \
+            f"{fid}/{st} 逐帧角位移同向步 {r['samedir']:.0%} < {gt['samedir_min']:.0%}"
+        assert N * PM.FRAMETIME[st] / 20.0 <= gt["period_max"], \
+            f"{fid}/{st} 整环周期 {N * PM.FRAMETIME[st] / 20.0:.1f}s > {gt['period_max']}s"
+    assert PM.FRAMETIME["idle"] > PM.FRAMETIME["work"], "工作态未比非工作态更快（闭口）"
+    assert PM.FRAMETIME["open"] > PM.FRAMETIME["work_open"], "工作态未比非工作态更快（开口）"
+    dirs = {("CW" if s[st]["rev"] > 0 else "CCW") for st in PM.STATES}
+    assert len(dirs) == 1, f"四态流光旋转方向不一致：{dirs}"
+    log.append(f"PASS 动画加强 {fid}（门：帧差≥{gt['adj_min']:.0%} / 摆幅≥{gt['swing_min']} / "
+               f"净转≥{gt['rev_min']}圈 / 同向≥{gt['samedir_min']:.0%} / 周期≤{gt['period_max']}s）："
+               + anim_line(fid, s))
+
+
+def check_bundle(fam: dict, coin_luma: float, log: list[str]) -> None:
+    """B 族（bundle=True）专属双门：包裹形剪影量化 + 提亮明度量化。"""
+    fid, g = fam["id"], fam["grid"]
+    # -- 包裹形门：idle 与 open 都必须读成「扎绳方包」，禁水滴/梨形/裙摆
+    stats = {}
+    for key, grid in g.items():
+        m = PM.parcel_metrics(grid)
+        gt = PM.PARCEL_GATE
+        assert m["flat_top"] <= gt["flat_top_max"], \
+            f"{fid}/{key} 顶结 {m['flat_top']} 行 > {gt['flat_top_max']}：满宽顶边太晚 = 收口水滴形"
+        assert m["square"] >= gt["wide_frac_min"], \
+            f"{fid}/{key} 宽行占比 {m['square']:.2f} < {gt['wide_frac_min']}：不是方包是梨形"
+        assert m["bottom"] >= gt["bottom_min"], \
+            f"{fid}/{key} 末行宽比 {m['bottom']:.2f} < {gt['bottom_min']}：圆底收口（裙摆）"
+        assert m["aspect"] <= gt["aspect_max"], \
+            f"{fid}/{key} 长宽比 {m['aspect']:.2f} > {gt['aspect_max']}：吊袋竖条"
+        stats[key] = m
+    log.append(f"PASS 包裹形 {fid}：idle 顶结 {stats['normal']['flat_top']} 行 / 宽行占比 "
+               f"{stats['normal']['square']:.2f} / 平底 {stats['normal']['bottom']:.2f} / 长宽比 "
+               f"{stats['normal']['aspect']:.2f}；open 同门（{stats['open']['flat_top']}/"
+               f"{stats['open']['square']:.2f}/{stats['open']['bottom']:.2f}/"
+               f"{stats['open']['aspect']:.2f}）全部在门槛内 —— 16px 剪影读形 = 扎绳方包")
+    # -- 提亮门
+    gt = PM.BRIGHT_GATE
+    face, detail = set(fam["face"]), set(fam["detail"])
+    min_face = min(luma(PAL[PM.INK[c]]) for c in face)
+    assert min_face >= gt["face_min"], \
+        f"{fid} 亮面档 {min_face:.0f} < {gt['face_min']}（受光/背光主档明度差是 Weber 门，亮面本身不许沉入暗区）"
+    avgs = {}
+    for key, grid in g.items():
+        px = [c for r in grid for c in r if c != "."]
+        fp = [c for c in px if c in face]
+        avg = sum(luma(PAL[PM.INK[c]]) for c in fp) / len(fp)
+        assert avg >= coin_luma, \
+            f"{fid}/{key} 主体亮面均值 {avg:.1f} < miao_coin 全图均值 {coin_luma:.1f}（口袋不得比金币暗）"
+        avgs[key] = avg
+        subj = {c for c in px if c not in detail and c != "#"}
+        for c in subj:
+            lv = luma(PAL[PM.INK[c]])
+            rgb = PAL[PM.INK[c]]
+            assert lv >= gt["subject_min"], f"{fid}/{key} 主体色 {c!r} 明度 {lv:.0f} < {gt['subject_min']}"
+            assert lv >= 150 or rgb[2] <= rgb[0] + gt["cool_delta_max"], \
+                f"{fid}/{key} 主体色 {c!r} 落在深蓝/深紫冷暗区（蓝-红={rgb[2] - rgb[0]}）"
+    L = luma(PAL[PM.INK[fam["lit"]]]); S = luma(PAL[PM.INK[fam["shadow"]]])
+    assert (L - S) / S >= gt["weber_min"], \
+        f"{fid} 受光/背光相对明度差 {(L - S) / S:.2f} < {gt['weber_min']}"
+    log.append(f"PASS 提亮 {fid}：亮面档 ≥{min_face:.0f}；idle 亮面均值 {avgs['normal']:.1f} ≥ 金币参照 "
+               f"{coin_luma:.1f}；受光/背光 Weber {(L - S) / S:.2f} ≥ {gt['weber_min']}；"
+               f"主体色无深紫/深蓝档（描边与五金件除外）")
+    # -- 四态互异（同族内：逐帧互异 + 四条帧带互异，非空已由构造门保证）
+    frame_sets, strips = {}, {}
+    for st in PM.STATES:
+        fr = [tuple(PM.frame_rows(fam, st, f)) for f in range(N)]
+        assert len(set(fr)) == N, f"{fid}/{st} 8 帧存在完全相同的两帧（动画没动）"
+        assert all(sum(1 for r in g2 for c in r if c != ".") > 0 for g2 in fr), \
+            f"{fid}/{st} 有空帧"
+        frame_sets[st] = fr
+        strips[st] = tuple("".join(r) for f in range(N) for r in PM.frame_rows(fam, st, f))
+    assert len(set(strips.values())) == len(PM.STATES), \
+        f"{fid} 四态帧带存在完全相同的两态：{[s for s in PM.STATES if list(strips.values()).count(strips[s]) > 1]}"
+    log.append(f"PASS 四态互异 {fid}：4 态 x 8 帧共 {4 * N} 帧逐帧互异，四条帧带两两不同"
+               f"（idle/open 底形差异另由 IoU 门将重合度压在上界内）")
+
+
 # ------------------------------------------------------------------ 判据
 def check(log: list[str]) -> None:
     # --- 0 调色板
@@ -187,10 +335,12 @@ def check(log: list[str]) -> None:
 
     octagon = load_ref_octagon()
     oct_ops, oct_ring = opaque(octagon), ring_cells(octagon)
+    coin_luma = coin_ref_luma()
 
     for fam in PM.FAMILIES:
         fid, sz = fam["id"], fam["size"]
         peak: dict[str, int] = {}
+        anim_ref: dict[str, dict] = {}
         # --- 1 构造（底形）
         for key, g in fam["grid"].items():
             assert len(g) == sz, f"{fid}/{key} 行数 {len(g)} != {sz}"
@@ -245,6 +395,7 @@ def check(log: list[str]) -> None:
                 assert dim in PM.INK or dim == ".", f"{fid}/{st} 半亮档色符非法 {dim!r}"
                 assert on in PM.INK, f"{fid}/{st} 满亮档色符非法 {on!r}"
             frames = [PM.frame_rows(fam, st, f) for f in range(N)]
+            anim_ref[st] = PM.anim_stats([_px(fr) for fr in frames], sz)
             for f, fr in enumerate(frames):
                 fo = opaque(fr)
                 assert base_ops <= fo, f"{fid}/{st} 第 {f} 帧本体被削掉位"
@@ -316,6 +467,16 @@ def check(log: list[str]) -> None:
         log.append(f"PASS {fid} 强度阶梯：同刻亮位数 闭口 {peak['idle']} -> 闭口工作 {peak['work']}，"
                    f"开口 {peak['open']} -> 开口工作 {peak['work_open']}（工作态严格更多，"
                    f"且整环更快：{N * PM.FRAMETIME['idle']} vs {N * PM.FRAMETIME['work_open']} tick）")
+        # --- B 族专属：包裹形 + 提亮 + 四态互异
+        if fam.get("bundle"):
+            check_bundle(fam, coin_luma, log)
+        # --- 定稿轮：底形复用证明 + 动画四条量化门（anim=True 才设门，其余只打印参照读数）
+        if fam.get("source"):
+            check_geom_reuse(fam, log)
+        if fam.get("anim"):
+            check_anim(fam, anim_ref, log)
+        else:
+            log.append(f"参照 {fid} 动画四条读数（本族不设门）：" + anim_line(fid, anim_ref))
 
     # --- 8 家族互异
     ids = [f["id"] for f in PM.FAMILIES]
@@ -329,8 +490,25 @@ def check(log: list[str]) -> None:
             whole = mad(_px(ra), _px(rb))
             sa, sb = opaque(ra), opaque(rb)
             sil = len(sa ^ sb) / max(1, len(sa | sb))
+            twin = fa.get("source") == fb["id"] or fb.get("source") == fa["id"]
             assert union >= MAD_FAMILY_UNION, \
                 f"家族 {ids[i]}/{ids[j]} 画到像素位移不足：并集 {union:.1f} < {MAD_FAMILY_UNION:.0f}"
+            if twin:
+                # 用户裁定「同一底形换色板」的孪生对：剪影必须逐位相同（=0），
+                # 互异性改由「明度结构位移 + 动画位集合互异」两轴承担，不放宽原门。
+                assert sil == 0.0, f"孪生对 {ids[i]}/{ids[j]} 剪影不应有差异（{sil:.2%}）：底形被改了"
+                assert union >= MAD_FAMILY_TWIN, \
+                    f"孪生对 {ids[i]}/{ids[j]} 明度结构位移 {union:.1f} < {MAD_FAMILY_TWIN:.0f}：换色不够"
+                for st in PM.STATES:
+                    ca = {(x, y) for (x, y, _, _, _) in fa["spark"][st]}
+                    cb = {(x, y) for (x, y, _, _, _) in fb["spark"][st]}
+                    assert ca != cb, f"孪生对 {ids[i]}/{ids[j]} 的 {st} 态动画位集合完全相同"
+                log.append(f"PASS 家族互异(孪生：同底形换色板) {fa['tag']} vs {fb['tag']}："
+                           f"剪影差异 0.00%（裁定要求）/ 明度结构位移 {union:.1f} ≥ {MAD_FAMILY_TWIN:.0f}"
+                           f" / 四态动画位集合对称差 "
+                           f"{[len({(x, y) for (x, y, _, _, _) in fa['spark'][s]} ^ {(x, y) for (x, y, _, _, _) in fb['spark'][s]}) for s in PM.STATES]} 位；"
+                           f"缩小后 {small:.1f} / 整图口径 {whole:.1f} 仅参考")
+                continue
             assert sil >= SIL_FAMILY_MIN or union >= MAD_FAMILY_STRONG, \
                 f"家族 {ids[i]}/{ids[j]} 既未换剪影（{sil:.2f} < {SIL_FAMILY_MIN:.2f}）" \
                 f"也未换明度结构（{union:.1f} < {MAD_FAMILY_STRONG:.0f}）—— 等于同一版"
@@ -406,9 +584,13 @@ def land(log: list[str], only_family: str | None = None) -> None:
     after = snapshot(ITEMS)
     changed = {k for k in set(after) | set(before) if after.get(k) != before.get(k)}
     assert changed <= mine, f"落地越界：{sorted(changed - mine)}"
+    # ★只要求"本次落地集之外"的既有文件逐字节不变：目标文件正是本操作要覆写的对象，
+    #   若把它们也纳入断言，则任何曾落地过的族都永远无法再次落地（与上一条守卫语义重复且自相矛盾）。
     for k, v in before.items():
+        if k in mine:
+            continue
         assert after.get(k) == v, f"既有资产 {k} 被改动"
-    log.append(f"已落地 {len(mine)} 个文件；既有 {len(before)} 文件逐字节未变")
+    log.append(f"已落地 {len(mine)} 个文件；其余 {len(before) - len(set(before) & mine)} 个既有文件逐字节未变")
 
 
 def dump(tag: str) -> int:

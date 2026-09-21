@@ -332,10 +332,10 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * <p>
      * 三步固定顺序，<b>顺序本身就是不丢件的保证</b>：
      * <ol>
-     * <li>先问落点还能收多少（{@link PocketSession#fluidBarRoom(FluidStack)}）——
+     * <li>先问落点还能收多少（{@link PocketSession#fluidBarRoom(int, FluidStack)}）——
      * 先抽后放会把超出部分凭空抹掉，AE2 侧已经扣了；</li>
      * <li>{@code SIMULATE} 出这一份，把请求量钳到"落点空间"与"元件可得"的较小值；</li>
-     * <li>{@code MODULATE} 抽出来 → 灌进流体条；<b>灌不进的部分立刻原路注回元件</b>
+     * <li>{@code MODULATE} 抽出来 → 灌进流体槽；<b>灌不进的部分立刻原路注回元件</b>
      * （同一 handler、同一 SOURCE，语义上就是"这一拍没发生过"）。落点完全不可用（会话已丢）
      * ⇒ 根本不抽，直接 {@code TARGET_FULL}。</li>
      * </ol>
@@ -351,7 +351,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (handler == null) {
             return new Outcome(PocketReceipt.LOST, 0);
         }
-        final int room = session == null ? 0 : session.fluidBarRoom(new FluidStack(fluid, 1));
+        // ★落点 = 本条声明自己的那一列（R75①：ghost 的 slotIndex 就是 tank 号，六列各拉各的）
+        final int tank = filter.slotIndex();
+        final int room = session == null ? 0 : session.fluidBarRoom(tank, new FluidStack(fluid, 1));
         if (room <= 0) {
             return new Outcome(session == null ? PocketReceipt.NO_CHANNEL : PocketReceipt.TARGET_FULL, 0);
         }
@@ -373,7 +375,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (takenAmount <= 0L) {
             return new Outcome(PocketReceipt.OK, 0);
         }
-        final int moved = session.depositFluid(new FluidStack(fluid, (int) takenAmount));
+        final int moved = session.depositFluid(tank, new FluidStack(fluid, (int) takenAmount));
         final int fallback = fluidFallback(takenAmount, moved);
         if (fallback > 0) {
             // 落点在抽取瞬间又变小了：把差额原路注回，绝不让流体凭空消失

@@ -20,8 +20,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * CLR|&lt;slot&gt;|&lt;kind 字母&gt;      I/F/E，见 {@link PocketConstants#GHOST_KIND_ITEM} 等
  * </pre>
  * 
- * ★CLR 必须带 kind：三个区域的槽索引<b>各自从 0 起</b>（中栏 0…127 / 流体条 0…0 / 源质格 0…47），
- * 裸 {@code CLR|0} 分不清"清中栏第 0 格"还是"清流条第 0 格"——那正是
+ * ★CLR 必须带 kind：三个区域的槽索引<b>各自从 0 起</b>（中栏 0…149 / 流体槽 0…5 / 源质格 0…47），
+ * 裸 {@code CLR|0} 分不清"清中栏第 0 格"还是"清流体槽第 0 格"——那正是
  * {@code PocketFilterConfig} 把键做成 {@code (kind, slotIndex)} 复合键的同一条结构约束
  * （R59b 偏离④ / R70）。载荷键自带前缀，故 SET 不需要第三段 kind。
  * <p>

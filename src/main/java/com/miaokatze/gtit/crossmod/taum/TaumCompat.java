@@ -130,7 +130,7 @@ public final class TaumCompat {
      * 运行时派生的 aspect 显示/存储序（{@code Aspect.aspects} 的 {@code LinkedHashMap} 迭代序）。
      * <p>
      * <b>不假设恰为 48</b>：addon 与 GT5U 的 {@code TCAspects} 会追加条目。
-     * 口袋 12×4 网格取前 {@link #DISPLAY_CELLS} 项铺满，其余不显示但仍可入账。
+     * 口袋 6×8 网格取前 {@link #DISPLAY_CELLS} 项铺满，其余不显示但仍可入账。
      *
      * @return tag 数组快照；不可用时空数组
      */

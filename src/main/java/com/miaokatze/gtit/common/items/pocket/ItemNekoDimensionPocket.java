@@ -22,7 +22,10 @@ import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelDriver;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
+import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
+import com.miaokatze.gtit.gui.pocket.NekoPocketStorageColumn;
+import com.miaokatze.gtit.gui.pocket.PocketSlots;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -376,19 +379,48 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     // ------------------------------------------------------------------ 提示
 
     /**
-     * tooltip 从 0 连续（{@code pocket-lang-keys.md} §1 的 7 行）。
+     * tooltip 从 0 连续（{@code pocket-lang-keys.md} §1 的 7 行，R75 后为 10 行）。
      * <p>
      * 消费端是 {@code equals(key)} 即 break 的循环（先例 {@code common/items/NekoCoin.java:28-34}），
      * <b>跳号会静默截断后面的行</b>，其中 {@code tooltip.5}/{@code tooltip.6} 是 R28（5 秒是节拍不是产量）
      * 与 R39a（两排同权不是上下分流）的显式声明位，丢了就等于埋坑。
+     * <p>
+     * ★<b>行里不写规格数字</b>（R75 的 lang 契约第 5 条）：格数、行列、流体列数、单槽容量、
+     * 蒸馏节拍全部由 {@link #tooltipArgs()} 从常量填进 {@code %1$d…%6$d} 的<b>带位置下标</b>的占位。
+     * 用下标而不是裸 {@code %d} 的理由：所有行走同一个实参数组，裸 {@code %d} 会一律取第 1 个实参
+     * ⇒ "每槽 16,000,000" 会被填成"150"，而且不报错。
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        final Object[] args = tooltipArgs();
         for (int i = 0;; i++) {
-            String key = TOOLTIP_PREFIX + i;
-            String line = StatCollector.translateToLocal(key);
-            if (line.equals(key)) break;
-            tooltip.add(EnumChatFormatting.LIGHT_PURPLE + line);
+            final String key = TOOLTIP_PREFIX + i;
+            final String template = StatCollector.translateToLocal(key);
+            if (template.equals(key)) break;
+            // 只在真的含占位时才格式化一次（口径同 NekoPocketPanel#receiptText）
+            tooltip.add(
+                EnumChatFormatting.LIGHT_PURPLE
+                    + (template.indexOf('%') < 0 ? template : String.format(template, args)));
         }
+    }
+
+    /**
+     * tooltip 的规格读数（<b>顺序即 {@code %1$d…%6$d}</b>，与 lang 里的下标一一对应）。
+     * <p>
+     * 全部取自常量与面板列类的几何单源，不在这里做任何算术以外的推导；
+     * 蒸馏秒数由 {@code TaumDistillRules.DISTILL_INTERVAL_TICKS} 换算（节拍权威只有那一处）。
+     */
+    private static Object[] tooltipArgs() {
+        return new Object[] {
+            // %1$d 中栏格数
+            Integer.valueOf(PocketConstants.GHOST_ITEM_SLOT_LIMIT),
+            // %2$d 行数 / %3$d 列数
+            Integer.valueOf(NekoPocketStorageColumn.ROWS), Integer.valueOf(PocketSlots.STORAGE_COLUMNS),
+            // %4$d 流体列数（= 独立 tank 数 = 流体 ghost 索引空间）
+            Integer.valueOf(PocketConstants.FLUID_COLUMN_COUNT),
+            // %5$d 单槽容量 mB（★规格外自立项，见 PocketConstants#FLUID_BAR_CAPACITY_ML）
+            Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
+            // %6$d 蒸馏一轮秒数
+            Integer.valueOf(TaumDistillRules.DISTILL_INTERVAL_TICKS / 20) };
     }
 }
