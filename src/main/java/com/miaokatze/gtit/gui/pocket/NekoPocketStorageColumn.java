@@ -172,14 +172,43 @@ public final class NekoPocketStorageColumn {
      * {@code false} ⇒ {@code Interactable.Result.IGNORE} ⇒ 底下真实的 135 格照常收到点击
      * （{@code Result} 的 {@code stops} 语义见 {@code Interactable.java:172-197}）。
      * 同步值本体与搬运逻辑在 {@link NekoPocketPanel}（服务端），本方法不含任何搬运判定。
+     * <p>
+     * ★<b>它必须是 {@link HoverThroughOverlayButton}</b>：本件声明在 {@code grid} 之后 ⇒ 在
+     * {@code ModularPanel.hovering} 里排首位，而 {@code IWidget.canHoverThrough()} 的接口默认值是
+     * <b>false</b>（{@code IWidget.java:179-181}），{@code ModularGuiContext.getHoveredWidgets}
+     * 在第一个不穿透的件上就 {@code break}（{@code ModularGuiContext.java:428}）⇒ 135 格的
+     * {@code isHovering()} 恒 false：无悬停高亮、无物品 tooltip、{@code setHoveredSlot(null)}
+     * 让 NEI 的悬槽识别与原版连点收集一起失效。点击链不吃这一刀（{@code canClickThrough} 是另一条闸），
+     * 所以断掉的一直只是 hover。
      */
     private static IWidget takeOutOverlay(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(0, 0)
+        return new HoverThroughOverlayButton().pos(0, 0)
             .size(WIDTH, HEIGHT)
             .invisible()
             .playClickSound(false)
             .name("pocket_take_out_overlay")
             .onMousePressed(button -> button == 0 && Interactable.hasShiftDown() && ui.requestTakeOut());
+    }
+
+    /**
+     * 只放行 hover 链的按钮件（同一个双覆写在仓内已有先例：{@code client/gui/NekoPagedWidget.java:18-26}，
+     * v1.7.18 修"物品放不回背包"用的就是它）。
+     * <p>
+     * {@code canHover()=false} 让本件不进 {@code newHovered}（它没有背景也没有 tooltip，本来就没有
+     * hover 表现），{@code canHoverThrough()=true} 让遍历继续往下走到 135 格。
+     * {@code IWidget.java:160-165} 的接口注释明写"点击与按键交互不看 canHover"⇒ 一键取出仍照旧生效。
+     */
+    private static final class HoverThroughOverlayButton extends ButtonWidget<HoverThroughOverlayButton> {
+
+        @Override
+        public boolean canHover() {
+            return false;
+        }
+
+        @Override
+        public boolean canHoverThrough() {
+            return true;
+        }
     }
 
     /** ghost 可占索引白名单的上界（中栏 = 0..134，R38 第 4 条 + R75）。 */

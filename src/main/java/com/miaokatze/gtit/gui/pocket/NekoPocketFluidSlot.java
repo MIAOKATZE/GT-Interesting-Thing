@@ -7,12 +7,15 @@ import net.minecraftforge.fluids.FluidContainerRegistry;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 
+import com.cleanroommc.modularui.api.UpOrDown;
 import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widgets.slot.FluidSlot;
+import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 
 /**
@@ -76,6 +79,12 @@ public class NekoPocketFluidSlot extends FluidSlot {
     private boolean ghost;
     /** 声明的流体名（{@code ""} = 无声明）；只描述"要什么"，不描述"条里有什么"。 */
     private String declaredName = "";
+    /**
+     * ★R83 C2：本列声明的<b>组上限原始值</b>（服务端权威值经面板的 ghost 应用落进来，见 Panel 待办 P-3；
+     * {@link PocketConstants#FILTER_CAP_UNSET} = 从没调过 ⇒ 读数与生效都回落到
+     * {@link PocketConstants#FLUID_BAR_CAPACITY_ML}，即"一拍把本 tank 填到自然满量"的现行为）。
+     */
+    private int declaredCap = PocketConstants.FILTER_CAP_UNSET;
     /** 渲染样本缓存（只在客户端渲染路径上按需解析，服务端与解不出名字时保持 null）。 */
     private String sampleName;
     private FluidStack sample;
@@ -121,9 +130,34 @@ public class NekoPocketFluidSlot extends FluidSlot {
         if (!ghost) {
             this.sample = null;
             this.sampleName = null;
+            // ★解绑即"没有这条声明了"：上限读数必须复位，否则下一次声明沿用上一列的数字
+            this.declaredCap = PocketConstants.FILTER_CAP_UNSET;
         }
         markTooltipDirty();
         return this;
+    }
+
+    /**
+     * ★R83 C2：面板把本列声明的<b>原始</b>上限刷进显示侧（与 {@link #setGhost} 同一个应用点，
+     * 见 Panel 待办 P-3）。
+     */
+    NekoPocketFluidSlot setDeclaredCap(int cap) {
+        if (this.declaredCap == cap) {
+            return this;
+        }
+        this.declaredCap = cap;
+        markTooltipDirty();
+        return this;
+    }
+
+    /** 本列声明当前<b>真正生效</b>的组上限（未调过 = {@code FLUID_BAR_CAPACITY_ML}）。 */
+    public int ghostCap() {
+        return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.FLUID, declaredCap, 0);
+    }
+
+    /** 右上角橙色读数的文本（缩写口径三类同源）。 */
+    private String capReadoutText() {
+        return ghost ? PocketGhostRequest.capReadout(ghostCap()) : "";
     }
 
     // ------------------------------------------------------------------ NEI 拖入 / 右键解绑
@@ -149,6 +183,10 @@ public class NekoPocketFluidSlot extends FluidSlot {
     /**
      * ghost 态下的右键 = 解绑（★只发本列自己的 {@code CLR|<列号>|F}，判定与执行在服务端）。
      * <p>
+     * ★R83 C2 新增 <b>alt+左键</b> = 对"这一列流体槽里<b>已有的流体</b>"直接声明需求（与 NEI 拖入
+     * 同一条 {@code requestGhost} 请求、同一套四态回执 ⇒ 零新动作码）；条里没流体 / 灰显 / 未绑定面板
+     * 时不发请求，交回 {@code super} ⇒ 手持储罐的灌排行为一个字都不改（需求 2 的两格同权原样保留）。
+     * <p>
      * 非 ghost 态与左键一律交回 {@code super} ⇒ 手持储罐点条的按键组合与 tooltip 与 GT5U 逐字一致
      * （{@code modularui2.fluid.click_combined} / {@code _to_fill} / {@code _to_empty}，L7/R31 口径）。
      */
@@ -158,7 +196,57 @@ public class NekoPocketFluidSlot extends FluidSlot {
             owner.requestGhostClear(PocketFilterConfig.Kind.FLUID, slotIndex);
             return Result.SUCCESS;
         }
+        if (mouseButton == 0 && Interactable.hasAltDown() && requestBindFromTank()) {
+            return Result.SUCCESS;
+        }
         return super.onMousePressed(mouseButton);
+    }
+
+    /**
+     * ★R83 C2（判据 3）：本列流体槽<b>现在装着</b>的那种流体 ⇒ 一条 {@code f:<fluidName>} 声明。
+     * <p>
+     * 读的是 {@code super.getFluidStack()}（真实 tank 内容），★不是 {@link #getFluidStack()} 那个
+     * 会被声明样本替换的显示值 —— 否则"条子空着但已声明水"时 alt+左键会把样本再声明一遍，
+     * 玩家看到的是"我绑了个不存在的东西"。
+     */
+    private boolean requestBindFromTank() {
+        if (owner == null || slotIndex < 0 || !areAncestorsEnabled()) {
+            return false;
+        }
+        final FluidStack real = super.getFluidStack();
+        if (real == null || real.amount <= 0 || real.getFluid() == null) {
+            return false;
+        }
+        return owner.requestGhost(
+            slotIndex,
+            PocketFilterConfig.fluidKey(
+                real.getFluid()
+                    .getName()));
+    }
+
+    /**
+     * ★R83 C2（判据 4）：<b>alt+滚轮</b>每次调 {@link PocketConstants#FILTER_CAP_STEP_FLUID}
+     * （= 单 tank 容量的 1% = 160,000 mB，D-6 的分母口径），<b>alt+ctrl+滚轮</b>把步进抬到 ×10。
+     * <p>
+     * 先问 {@code super}：库的 {@code FluidSlot.onMouseScroll} 只在 {@code isPhantom()} 为真时消费滚轮
+     * （发 {@code SYNC_SCROLL}），本槽刻意不是 phantom（见类 javadoc）⇒ 那里恒返回 false，不与我们抢；
+     * 万一将来有人把 handler 改成 phantom，那一条支路仍然优先（不静默改变库语义）。
+     */
+    @Override
+    public boolean onMouseScroll(UpOrDown scrollDirection, int amount) {
+        if (super.onMouseScroll(scrollDirection, amount)) {
+            return true;
+        }
+        if (!ghost || owner == null || slotIndex < 0 || !areAncestorsEnabled() || !Interactable.hasAltDown()) {
+            return false;
+        }
+        final int next = PocketGhostRequest
+            .nextCap(PocketFilterConfig.Kind.FLUID, declaredCap, 0, scrollDirection, Interactable.hasControlDown());
+        if (!owner.requestGhost(slotIndex, PocketGhostRequest.capDirective(PocketFilterConfig.Kind.FLUID, next))) {
+            return false;
+        }
+        setDeclaredCap(next);
+        return true;
     }
 
     // ------------------------------------------------------------------ 纯判定与纯编排（回归套件驱动这两段）
@@ -301,7 +389,28 @@ public class NekoPocketFluidSlot extends FluidSlot {
         super.drawOverlay(context, widgetTheme);
         if (ghost) {
             GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
+            drawCapReadout();
         }
+    }
+
+    /**
+     * ★R83 C2（判据 7）：声明条右上角的橙色组上限读数。
+     * <p>
+     * 缩写、色、缩放与右对齐算式三类共用一份，全在 {@link PocketGhostRequest} 里，本方法只负责"画"。
+     */
+    private void drawCapReadout() {
+        final String text = capReadoutText();
+        if (text.isEmpty()) {
+            return;
+        }
+        final float x = PocketGhostRequest.capReadoutX(getArea().w(), PocketGhostRequest.capReadoutWidth(text));
+        GuiDraw.drawText(
+            text,
+            x,
+            PocketGhostRequest.CAP_READOUT_TOP,
+            PocketGhostRequest.CAP_READOUT_SCALE,
+            PocketGhostRequest.capReadoutColor(),
+            true);
     }
 
     /**

@@ -21,6 +21,12 @@ import com.cleanroommc.modularui.drawable.UITexture;
  * {@code src/main/resources/assets/gtit/textures/gui/pocket/**}）并行，
  * 贴图暂时不存在不算缺陷。
  * <p>
+ * ★<b>{@link #PROGRESS} 那张是例外</b>：它的生成脚本住在
+ * {@code tools/artgen_catalog/neko_dimension_pocket/gen_pocket_gui_progress.py}，不在
+ * {@code pocket_gui/} 那一套里 —— 后者的 {@code contract.py} 把 tex 数组钉死在 HTML 355-366 行、
+ * {@code gui_manifest.SHEETS} 也是它自己那张表，加不进第 13 行（动它=动跨片材质单源）。
+ * 脚本仍回 HTML 契约现读颜色与尺寸，不另立色值；把它折回 {@code pocket_gui/} 属批 D 的收尾项。
+ * <p>
  * ★<b>{@link #SCROLLBAR} 目前只注册、无绘制点</b>：R74② 删掉的第四列是唯一的
  * {@code ScrollWidget} 使用者，R75 又裁定绑定列表改由 tooltip 承载（超出部分显式截断）。
  * 保留在这一张表里是因为它属于贴图片的交付面（图集必须齐），且日后真要用可滚列表时
@@ -65,6 +71,13 @@ public final class PocketGuiTextures {
     public static final UITexture BUTTON_PRESSED = TEXTURES.get("POCKET_C2_btn_pressed");
     /** 绑定按钮（106×18，N=4）。 */
     public static final UITexture BIND_BUTTON = TEXTURES.get("POCKET_C2_bindbtn");
+    /**
+     * 蒸馏横向进度条（108×36 = <b>上 18 空槽 + 下 18 满条</b>，见契约表那一行的注释）。
+     * <p>
+     * ★只按 {@code ProgressWidget.texture(单张堆叠图, imageSize)} 的口径用（widget 自己折半取 UV），
+     * 不要拿去当普通背景 1:1 贴 —— 那样会把两根条一起画出来。
+     */
+    public static final UITexture PROGRESS = TEXTURES.get("POCKET_C2_progress");
     /** ScrollWidget 的独立 scrollbar 子项（12×12，N=3）；★当前只注册未绘制，见类 javadoc。 */
     public static final UITexture SCROLLBAR = TEXTURES.get("POCKET_C2_scrollbar");
 

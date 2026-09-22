@@ -195,7 +195,10 @@ public class TaumDistillRulesTest {
     private static void literalNumbersLocked() {
         SimpleAssert.eq(64, TaumDistillRules.MAX_CELL, "每格最大 64 点（TC4 Warded Jar maxAmount 同值）");
         SimpleAssert.eq(100, TaumDistillRules.DISTILL_INTERVAL_TICKS, "每 5 秒 = 100 tick 一轮（5 秒是节拍不是产量）");
-        SimpleAssert.eq(3, TaumDistillRules.DISTILL_INPUT_SLOTS, "3 个输入槽各消耗 1 个");
+        SimpleAssert.eq(
+            12,
+            TaumDistillRules.DISTILL_INPUT_SLOTS,
+            "12 个输入格（真值单源 PocketInventory#DISTILL_INPUT_SLOTS）；同物多格聚合成一组，每轮该组只消耗 1 件");
         SimpleAssert.eq(8, TaumDistillRules.PHIAL_CAPACITY, "源质瓶 8 点/次（ItemEssence.java:109-185）");
         SimpleAssert.eq(1, TaumDistillRules.CRYSTAL_CAPACITY, "晶化源质 1 点/个（TileEssentiaCrystalizer.java:293）");
         // ★R78：格数权威已从本桥层摘除（旧 DISPLAY_CELLS=48 是第二份真相）。这里成对断言

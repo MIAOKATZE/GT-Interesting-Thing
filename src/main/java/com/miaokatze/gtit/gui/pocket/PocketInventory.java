@@ -102,7 +102,7 @@ public final class PocketInventory {
     /** 脏标记：只有内容真的变过才序列化（R53c 第 1 条）。 */
     private boolean dirty;
 
-    private final ItemStackHandler storage = newSlotGroup(STORAGE_SLOTS);
+    private final ItemStackHandler storage = newStorageGroup(STORAGE_SLOTS);
     private final ItemStackHandler fluidInteraction = newSlotGroup(FLUID_INTERACTION_SLOTS);
     private final ItemStackHandler distillInput = newSlotGroup(DISTILL_INPUT_SLOTS);
     private final ItemStackHandler bindSlot = newSlotGroup(BIND_SLOTS);
@@ -345,6 +345,40 @@ public final class PocketInventory {
         };
     }
 
+    /**
+     * 中栏那一组专用：除脏标记外，还要把"绑定格不接受玩家放入"落到<b>执法点</b>上。
+     * <p>
+     * ★为什么不复用 {@code NekoFilterSlot.setGhost} 那条（它改的是 {@code ModularSlot.canPut}）：
+     * ghost 视图只在客户端装配尾部按 blob 刷一遍（{@code NekoPocketPanel#assemble} 的
+     * {@code if (syncManager.isClient())} 分支），服务端那份 {@code applyGhosts()} 只在收到
+     * ghost 请求后才跑 ⇒ <b>重开 GUI 时存档里已有的 ghost 格在服务端仍是 canPut=true</b>，
+     * 玩家点击能直接往虚化格里放件，而"绑定格不参与整理/落位"的口径也会连带被突破。
+     * 拦在 handler 这一层则<b>开屏即生效</b>（判据现读 {@link #filters()}），且不需要面板配合。
+     * <p>
+     * 执法面为什么够用：{@code ModularSlot.isItemValid} 的最后一环就是
+     * {@code super.isItemValid} → {@code SlotItemHandler.isItemValid} →
+     * {@code itemHandler.isItemValid(index, stack)}（MUI2 {@code utils/item/SlotItemHandler.java:27-42}），
+     * 而原版 {@code Container} 的六条放入/搬运分支（点击放入、Shift 快速移动、拖拽分堆的两次扫描、
+     * 连点收集：{@code net/minecraft/inventory/Container.java:180,197,314,349,410,424,441}）
+     * 全都只看 {@code Slot.isItemValid}。程序化写入（{@code insertItem}/{@code setStackInSlot}）
+     * 不经过这里 —— 那是通道回写与 ghost 搬空自己要用的路，ghost 格的跳过判定另有
+     * {@link #depositIntoStorage(ItemStack)} 那一道显式判据。
+     */
+    private ItemStackHandler newStorageGroup(final int size) {
+        return new ItemStackHandler(size) {
+
+            @Override
+            protected void onContentsChanged(int slot) {
+                PocketInventory.this.dirty = true;
+            }
+
+            @Override
+            public boolean isItemValid(int slot, ItemStack stack) {
+                return !isGhostItemSlot(slot);
+            }
+        };
+    }
+
     public boolean isDirty() {
         return dirty;
     }
@@ -454,6 +488,34 @@ public final class PocketInventory {
         return interactionIndex % FLUID_INTERACTION_PER_GROUP >= PocketConstants.FLUID_COLUMN_COUNT;
     }
 
+    /**
+     * 同组同列里<b>配对</b>的那一格（进 ↔ 出互换）。
+     * <p>
+     * ★与 {@link #tankOfInteractionSlot(int)} 同住一个文件：一格属于哪一列、与谁配对，是同一份索引真相，
+     * 拆到 {@link PocketSlots} 里就会长出第二处"取模口径"。
+     */
+    public static int partnerInteractionSlotOf(int interactionIndex) {
+        final int groupStart = interactionIndex - interactionIndex % FLUID_INTERACTION_PER_GROUP;
+        final int columnInGroup = interactionIndex % PocketConstants.FLUID_COLUMN_COUNT;
+        return isLowerInteractionRow(interactionIndex) ? groupStart + columnInGroup
+            : groupStart + PocketConstants.FLUID_COLUMN_COUNT + columnInGroup;
+    }
+
+    /**
+     * 本列的<b>出格</b>（下行格）—— R83 D-2 的不对称落位里"处理产物"唯一的落点。
+     * <p>
+     * ★它同时是闩的作用对象：产物落进这一格后不能再被自动搬（{@code ItemSlotSH.detectAndSendChanges}
+     * 每 tick 比内容 ⇒ 只挪不闩就会被反向灌回）。
+     */
+    public static int outputInteractionSlotOf(int interactionIndex) {
+        return isLowerInteractionRow(interactionIndex) ? interactionIndex : partnerInteractionSlotOf(interactionIndex);
+    }
+
+    /** 本列的<b>进格</b>（上行格）—— R39a 的"两格同权"说的是这一格与出格<b>都可放入</b>，与落点无关。 */
+    public static int inputInteractionSlotOf(int interactionIndex) {
+        return isLowerInteractionRow(interactionIndex) ? partnerInteractionSlotOf(interactionIndex) : interactionIndex;
+    }
+
     /** tank 号是否合法（GUI 与通道侧共用的这一道界）。 */
     public static boolean isValidTank(int tank) {
         return tank >= 0 && tank < FLUID_TANK_COUNT;
@@ -493,6 +555,23 @@ public final class PocketInventory {
     }
 
     /**
+     * 从 {@code from} 起的第一个<b>非绑定</b>中栏槽号（整理与落点共用的游标；越界时返回格数本身，
+     * 调用方按 {@code == storage().getSlots()} 判"没有可用格"）。
+     * <p>
+     * ★需求 5 的"绑定物品的格子除外"在服务端只有这一个判据来源（{@link #isGhostItemSlot(int)}
+     * 读 {@link PocketFilterConfig}，不读 widget 状态）。中栏的"箱子式整理"是自研手势 + 自研算法，
+     * 不是通用箱子整理；游标算式收在这一层，面板与落点共用一份。
+     */
+    public int nextSortableStorageSlot(int from) {
+        final int size = storage.getSlots();
+        int index = Math.max(0, from);
+        while (index < size && isGhostItemSlot(index)) {
+            index++;
+        }
+        return index;
+    }
+
+    /**
      * 把一件物品尽力安置进中栏（先合并同类、再占空槽；ghost 格跳过）。
      *
      * @return 实际放下的个数（{@code 0} = 无处可放；调用方据此发 {@code TARGET_FULL} 并回滚源侧）
@@ -501,15 +580,15 @@ public final class PocketInventory {
         if (stack == null || stack.stackSize <= 0) {
             return 0;
         }
+        final int size = storage.getSlots();
         int left = stack.stackSize;
-        for (int index = 0; index < storage.getSlots() && left > 0; index++) {
-            if (isGhostItemSlot(index)) {
-                continue;
-            }
+        int index = nextSortableStorageSlot(0);
+        while (index < size && left > 0) {
             final ItemStack attempt = stack.copy();
             attempt.stackSize = left;
             final ItemStack rest = storage.insertItem(index, attempt, false);
             left = rest == null ? 0 : rest.stackSize;
+            index = nextSortableStorageSlot(index + 1);
         }
         final int moved = stack.stackSize - left;
         if (moved > 0) {

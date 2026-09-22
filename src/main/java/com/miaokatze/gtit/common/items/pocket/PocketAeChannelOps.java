@@ -311,7 +311,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (target < 0) {
             return new Outcome(PocketReceipt.TARGET_FULL, 0);
         }
-        final int wantedSize = (int) Math.min(simulated.getStackSize(), wanted.getMaxStackSize());
+        // ★每条声明的组上限全仓只在这一处被消费；未设时 resolveCap 回落 = maxStackSize ⇒ 旧档逐字不改行为
+        final int wantedSize = (int) Math
+            .min(simulated.getStackSize(), PocketFilterConfig.resolveCap(filter, wanted.getMaxStackSize()));
         request.setStackSize(wantedSize);
         final IAEItemStack taken = (IAEItemStack) handler.extractItems(request, Actionable.MODULATE, SOURCE);
         if (taken == null || taken.getStackSize() <= 0L) {
@@ -368,7 +370,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (available <= 0L) {
             return new Outcome(PocketReceipt.OK, 0);
         }
-        final int want = fluidRequestFor((int) available, room);
+        final int want = fluidRequestFor((int) available, Math.min(room, PocketFilterConfig.resolveCap(filter, 0)));
         probe.setStackSize(want);
         final IAEFluidStack taken = (IAEFluidStack) handler.extractItems(probe, Actionable.MODULATE, SOURCE);
         final long takenAmount = taken == null ? 0L : taken.getStackSize();
@@ -435,8 +437,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             // 源质支的落点是口袋真实栏（晶化源质是物品），没有活会话就没有落点 ⇒ 根本不抽
             return new Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
-        // 一次一条声明至多补满一整堆晶（= ESSENCE_CAP_PER_TAG 点），剩下的顺延下一拍
-        final int wantPoints = Math.min(count, PocketConstants.ESSENCE_CAP_PER_TAG);
+        // 一次一条声明至多补满该条声明的组上限（未设时 = ESSENCE_CAP_PER_TAG 一整堆晶），剩下的顺延下一拍
+        final int wantPoints = Math.min(count, PocketFilterConfig.resolveCap(filter, 0));
         final ItemStack single = TaumCompat.newCrystalStack(filter.tag, 1);
         final IAEStack<?> perPoint = single == null ? null : type.convertStackFromItem(single);
         if (perPoint == null || perPoint.getStackSize() <= 0L) {

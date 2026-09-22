@@ -76,7 +76,7 @@ public interface PocketSession {
     int distillInputSlots();
 
     /**
-     * 消耗某格蒸馏输入的<b>一个</b>物品（R28 的一轮 = 每格各消耗 1 个）。
+     * 消耗某格蒸馏输入的<b>一个</b>物品（★R83 β 后：一轮 = 每组各消耗 1 件，同物多格不再并行）。
      * 由 S7 在"全有全无预检通过"之后调用，本方法不做任何判定。
      */
     void consumeOneDistillInput(int index);

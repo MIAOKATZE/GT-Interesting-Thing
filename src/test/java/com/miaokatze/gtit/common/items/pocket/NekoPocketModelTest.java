@@ -22,6 +22,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 
+import com.cleanroommc.modularui.api.UpOrDown;
 import com.miaokatze.gtit.common.items.infinitycell.IInfinityCellItem;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig.Kind;
@@ -119,6 +120,11 @@ public class NekoPocketModelTest {
         cases.put("distill_no_aspect_does_not_advance", NekoPocketModelTest::distillNoAspectDoesNotAdvance);
         cases.put("distill_all_or_nothing_keeps_item_and_store", NekoPocketModelTest::distillAllOrNothingKeepsBoth);
         cases.put("distill_path_never_sees_container", NekoPocketModelTest::distillPathNeverSeesContainer);
+        // ---- R83 A2（缺陷 3 的 (2)(3)）：β 粒度与"超单格上限"的可判定出口
+        cases.put(
+            "distill_same_item_across_slots_counts_once",
+            NekoPocketModelTest::distillSameItemAcrossSlotsCountsOnce);
+        cases.put("distill_over_cap_group_leaves_reading", NekoPocketModelTest::distillOverCapGroupLeavesReading);
         cases.put("inject_vessel_drains_into_store", NekoPocketModelTest::injectVesselDrainsIntoStore);
         cases.put(
             "inject_full_store_leaves_vessel_untouched",
@@ -203,6 +209,23 @@ public class NekoPocketModelTest {
         cases.put(
             "bind_persistent_rows_close_right_band_vertical_sum",
             NekoPocketModelTest::bindPersistentRowsCloseRightBandVerticalSum);
+        // ---- R83 B1（缺陷 2 的执法点 + 需求 5 的"绑定格除外"与满覆盖件的 hover 链放行）
+        cases.put("ghost_slots_reject_placement_at_open", NekoPocketModelTest::ghostSlotsRejectPlacementAtOpen);
+        cases.put("sort_targets_skip_bound_slots", NekoPocketModelTest::sortTargetsSkipBoundSlots);
+        cases.put(
+            "take_out_overlay_declares_hover_pass_through",
+            NekoPocketModelTest::takeOutOverlayDeclaresHoverPassThrough);
+        // ---- R83 C2（缺陷 6：alt 绑定 + 每条声明的组上限滚轮）——★本批由收口片补，C2 死前零用例
+        cases.put("cap_step_table_per_kind", NekoPocketModelTest::capStepTablePerKind);
+        cases.put("cap_fast_multiplier_only_scales_the_step", NekoPocketModelTest::capFastMultiplierOnlyScalesTheStep);
+        cases.put(
+            "unset_cap_falls_back_to_today_global_amount",
+            NekoPocketModelTest::unsetCapFallsBackToTodayGlobalAmount);
+        cases.put("cap_clamped_and_unset_never_read_as_zero", NekoPocketModelTest::capClampedAndUnsetNeverReadAsZero);
+        // ★用例名 capDirectiveRoundTrip 被生产代码 PocketGhostRequest:95 的注释点名引用 ⇒ 名字不得改（改了就是第二条悬空引用）
+        cases.put("capDirectiveRoundTrip", NekoPocketModelTest::capDirectiveRoundTrip);
+        cases.put("cap_not_part_of_filter_identity", NekoPocketModelTest::capNotPartOfFilterIdentity);
+        cases.put("cap_consumers_actually_call_resolve_cap", NekoPocketModelTest::capConsumersActuallyCallResolveCap);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -2050,11 +2073,15 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(1, gate.aspectQueries.size(), "全空时不再产生新的 TC 侧调用");
     }
 
-    /** ★R29：任一 tag 放不下 ⇒ 整轮零入账、零消耗（截断后照扣 = 静默销毁价值）。 */
+    /**
+     * ★R29 + R83 A2：全有全无仍然不许"截断了还照扣物品"，但作用单位由<b>整轮</b>收到<b>一组物品</b>——
+     * 放不下的一组零入账、零消耗，放得下的组照常入账（旧实现让放得下的组陪绑 = 玩家读到"什么都不发生"）。
+     */
     private static void distillAllOrNothingKeepsBoth() {
         final StubGate gate = new StubGate();
-        final ItemStack aerItem = stack(2);
-        final ItemStack ignisItem = stack(3);
+        // 组身份 = item + damage ⇒ 要造"两组"必须换 damage（同 FakePlainItem 同 damage 在 β 下只算一组）
+        final ItemStack aerItem = stackDistill(2, 0);
+        final ItemStack ignisItem = stackDistill(3, 1);
         gate.putDistill(aerItem, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 30 }));
         gate.putDistill(ignisItem, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 40 }));
         final PocketEssenceStore store = new PocketEssenceStore();
@@ -2062,30 +2089,110 @@ public class NekoPocketModelTest {
 
         final ItemStack[] slots = new ItemStack[] { aerItem, ignisItem };
         final PocketDistillDriver.Batch batch = PocketDistillDriver.planDistillBatch(slots, gate, store);
-        SimpleAssert.that(batch.advanceable, "两格都可蒸");
-        SimpleAssert.eq(2, batch.sourceCount, "两格都参与本轮（各消耗 1 个）");
-        SimpleAssert.eq(Boolean.FALSE, batch.accepted, "ignis 放不下 ⇒ 整轮判失败");
-        SimpleAssert.that(batch.needsRoom, "回报'需要空间'⇒ 进度停在满格不重跑");
-        // 生产侧的消耗动作被 accepted 门住（见 PocketDistillDriver#runBatch）；这里按同一条判据走一遍
-        if (batch.accepted) {
-            store.putAll(batch.candidates);
-        }
-        SimpleAssert.eq(30, store.get("ignis"), "预检不过 ⇒ ignis 零变化");
-        SimpleAssert.eq(0, store.get("aer"), "aer 虽然收得进，也一律不进（全有全无）");
-        SimpleAssert.eq(2, slots[0].stackSize, "物品一件都没消耗（本用例里两格各 1 个）");
+        SimpleAssert.that(batch.advanceable, "两组都可蒸");
+        SimpleAssert.eq(1, batch.sourceCount, "★按组全有全无：只有放得下的 aer 组参与本轮");
+        SimpleAssert.eq(0, batch.sourceSlots[0], "扣件落点就是 aer 那一格");
+        SimpleAssert.eq(Boolean.TRUE, batch.accepted, "aer 组收得进 ⇒ 本轮推进");
+        SimpleAssert.eq(Boolean.FALSE, batch.needsRoom, "有组建效 ⇒ 不判'停在满格不重跑'（否则倒计时被冻住）");
+        SimpleAssert.eq(1, batch.discardedGroups, "被放弃的组要留下读数（R83 偏差 3c：不得静默）");
+        SimpleAssert.eq(40, batch.discardedPoints, "被放弃的点数 = ignis 那组的 40 点");
+        SimpleAssert.eq(Boolean.FALSE, batch.candidates.containsKey("ignis"), "★放不下的一组整份不进候选（不做截断）");
+        // 生产侧的消耗动作被 accepted 门住（见 PocketDistillDriver#runBatch 按 sourceSlots 逐组扣件）
+        store.putAll(batch.candidates);
+        SimpleAssert.eq(30, store.get("ignis"), "预检不过的那组 ⇒ ignis 零变化");
+        SimpleAssert.eq(30, store.get("aer"), "放得下的那组整份入账");
+        SimpleAssert.eq(2, slots[0].stackSize, "planDistillBatch 是纯函数：自己不吃件");
+        SimpleAssert.eq(3, slots[1].stackSize, "★被放弃的那组一件都不消耗 ⇒ 不销毁价值");
 
-        // 换成放得下的局面：整份候选一次入账 + 每格各消耗 1 个
+        // 只有一组、且它是被"存量挤满格子"挡下（40 + 40 > 64）⇒ 这才是可解卡的"停在满格不重跑"
+        final PocketEssenceStore jammed = new PocketEssenceStore();
+        jammed.add("ignis", 40);
+        final PocketDistillDriver.Batch wait = PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { ignisItem }, gate, jammed);
+        SimpleAssert.eq(Boolean.FALSE, wait.accepted, "一组都没收下");
+        SimpleAssert.eq(Boolean.TRUE, wait.needsRoom, "取走晶化源质即解卡 ⇒ 仍按 R29 停在满格");
+        SimpleAssert.eq(Boolean.FALSE, wait.overCap, "★这与'单件原量超上限'是两件事，不得混成一个状态");
+
+        // 换成放得下的局面：三格两组（中间那格无可蒸物）⇒ 两组各扣一件、一次入账
         final PocketEssenceStore room = new PocketEssenceStore();
-        final ItemStack[] two = new ItemStack[] { stack(2), stack(2), stack(2) };
+        final ItemStack[] two = new ItemStack[] { stackDistill(2, 2), stackDistill(2, 3), stackDistill(2, 4) };
         gate.putDistill(two[0], TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 20 }));
         gate.putDistill(two[2], TaumAspectAmounts.of(new String[] { "terra", "mortuus" }, new int[] { 5, 3 }));
         final PocketDistillDriver.Batch ok = PocketDistillDriver.planDistillBatch(two, gate, room);
-        SimpleAssert.that(ok.accepted, "整份候选都放得下");
-        SimpleAssert.eq(2, ok.sourceCount, "只有 2 格有产物参与（第 2 格无可蒸物不计）");
-        SimpleAssert.eq(28, ok.points, "原量合计 20+5+3=28 点（R28：不是每 aspect +1）");
+        SimpleAssert.that(ok.accepted, "两组都放得下");
+        SimpleAssert.eq(2, ok.sourceCount, "只有 2 组有产物参与（第 2 格无可蒸物不计）");
+        SimpleAssert.eq(28, ok.points, "原量合计 20+5+3=28 点（R28：不是每 aspect +1；★β：也不乘 stackSize=2）");
+        SimpleAssert.eq(2, ok.sourceSlots.length, "扣件落点数 = 组数（多出来的下标不存在 ⇒ 不会重复吃件）");
+        SimpleAssert.eq(0, ok.discardedGroups, "没有组被放弃");
         SimpleAssert.eq(28, room.putAll(ok.candidates), "putAll 一次提交");
         SimpleAssert.eq(20, room.get("aer"), "aer 原量入账");
         SimpleAssert.eq(5, room.get("terra"), "terra 原量入账（多 tag 同物也按原量）");
+    }
+
+    /**
+     * ★R83 A2 / D-3 β（玩家原话"蒸馏应该是对每组物品进行 1 次"）：同一物品散在几格都算<b>一组</b>
+     * ⇒ 一轮只产 1 次、只留 1 个扣件落点，且产出<b>不乘堆叠数</b>（乘了会撞 64 点/格 + 全有全无，
+     * 整堆永久卡死 ⇒ 见 PocketDistillDriver 类注释第 4 条）。
+     */
+    private static void distillSameItemAcrossSlotsCountsOnce() {
+        final StubGate gate = new StubGate();
+        final ItemStack first = stack(60);
+        final ItemStack second = stack(60);
+        gate.putDistill(first, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 5 }));
+        gate.putDistill(second, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 5 }));
+        final PocketDistillDriver.Batch one = PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { first, second, null }, gate, new PocketEssenceStore());
+        SimpleAssert.eq(1, one.sourceCount, "★两格同物 = 一组 ⇒ 本轮只有一个扣件落点");
+        SimpleAssert.eq(1, one.sourceSlots.length, "落点数组长度 = 组数（旧写法留 11 个 0 ⇒ 会把格 0 吃空）");
+        SimpleAssert.eq(0, one.sourceSlots[0], "落点 = 该组第一次出现的那一格");
+        SimpleAssert.eq(5, one.points, "产出 = 单件原量 5 点：既不 ×2 格，也不 ×60 堆叠");
+        SimpleAssert.eq(1, gate.aspectQueries.size(), "同组的第二格不再问一次产物（TC 递归查表只付一次）");
+        SimpleAssert.eq(0, one.discardedGroups, "没有组被放弃");
+
+        // 组身份含 damage（与 {@code NekoPocketPanel#sameSample} 同判据）⇒ 同物不同 damage 是两组
+        final ItemStack otherDamage = stackDistill(60, 9);
+        gate.putDistill(otherDamage, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 5 }));
+        final PocketDistillDriver.Batch twoGroups = PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { first, otherDamage, second }, gate, new PocketEssenceStore());
+        SimpleAssert.eq(2, twoGroups.sourceCount, "同物不同 damage 算两组，各产 1 次");
+        SimpleAssert.eq(10, twoGroups.points, "两组合并 10 点（仍未乘堆叠）");
+        SimpleAssert.eq(3, gate.aspectQueries.size(), "第三格与第一格同组 ⇒ 不再问它（总共只问三次）");
+    }
+
+    /**
+     * ★R83 偏差 3c：单件原量就超 {@code ESSENCE_CAP_PER_TAG=64} 的组，旧实现是<b>整轮永久放弃</b>
+     * （needsRoom → stalledFull → 不消耗也不倒计时 → 进度条钉死满格、什么都不说）。
+     * 现在它只作废自己那一组，并留下"放弃了几组、几点"的读数与 {@code OVER_CAP} 状态位。
+     */
+    private static void distillOverCapGroupLeavesReading() {
+        final StubGate gate = new StubGate();
+        // aer 一项就 70 点：TC 的 getBonusTags 在 capAspects(ret,64) 之后继续 add/merge（护甲/工具类）
+        final ItemStack armor = stackDistill(1, 20);
+        final ItemStack ore = stackDistill(1, 21);
+        gate.putDistill(armor, TaumAspectAmounts.of(new String[] { "aer", "terra" }, new int[] { 70, 4 }));
+        gate.putDistill(ore, TaumAspectAmounts.of(new String[] { "metallum" }, new int[] { 6 }));
+
+        final PocketDistillDriver.Batch only = PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { armor }, gate, new PocketEssenceStore());
+        SimpleAssert.that(only.advanceable, "它确实含源质（不是'没东西可蒸'）");
+        SimpleAssert.eq(Boolean.FALSE, only.accepted, "整组放不下 ⇒ 一组都不收");
+        SimpleAssert.eq(Boolean.FALSE, only.needsRoom, "★不再冒充'需要空间'⇒ 不会被永久冻在满格");
+        SimpleAssert.eq(Boolean.TRUE, only.overCap, "回报'超单格上限'这一可判定结论");
+        SimpleAssert.eq(1, only.discardedGroups, "放弃了几组");
+        SimpleAssert.eq(74, only.discardedPoints, "放弃了几点（70+4：组内一起放弃，terra 那 4 点不截断入账）");
+        SimpleAssert.eq(0, only.points, "零入账");
+        SimpleAssert.eq(0, only.sourceSlots.length, "★一件都不吃（旧实现同样不吃，但当时没人知道为什么不动）");
+
+        // 同一轮里另一组照常：超上限只作废自己那一组（旧实现里它把可蒸的 ore 一起拖成零产出）
+        final PocketDistillDriver.Batch mixed = PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { armor, ore }, gate, new PocketEssenceStore());
+        SimpleAssert.eq(1, mixed.sourceCount, "只有可蒸又可放的组参与本轮");
+        SimpleAssert.eq(6, mixed.points, "另一组按原量入账");
+        SimpleAssert.eq(Boolean.TRUE, mixed.accepted, "本轮推进");
+        SimpleAssert.eq(Boolean.FALSE, mixed.needsRoom, "有组建效 ⇒ 不停在满格");
+        SimpleAssert.eq(Boolean.TRUE, mixed.overCap, "超上限那组仍被记下来（状态位与读数分开）");
+        SimpleAssert.eq(1, mixed.discardedGroups, "读数：这轮放弃了 1 组");
+        SimpleAssert.eq(74, mixed.discardedPoints, "读数：放弃了 74 点");
     }
 
     /**
@@ -3040,7 +3147,10 @@ public class NekoPocketModelTest {
 
     /** C2 契约表（HTML 355–366 行）与几何/边距裁定的对账。 */
     private static void c2TextureContractTableMatchesGeometry() {
-        SimpleAssert.eq(12, PocketGuiTextureContract.contractSize(), "契约 11 行 + 派生的按钮按下态 1 行（★该派生行是对契约的补全，已回报主代理对账）");
+        SimpleAssert.eq(
+            13,
+            PocketGuiTextureContract.contractSize(),
+            "契约 11 行 + 派生的按钮按下态 1 行 + 进度条填充 1 行（★两条派生行都是对契约的补全，不是冗余；不得为凑数删行）");
         final int[][] expected = { { 32, 32 }, { 64, 64 }, { 14, 14 }, { 6, 6 }, { 18, 18 }, { 18, 18 }, { 88, 18 },
             { 88, 18 }, { 12, 12 }, { 106, 18 }, { 8, 8 } };
         final String[] names = { "POCKET_C2_cloth", "POCKET_C2_panel", "POCKET_C2_corner", "POCKET_C2_rivet",
@@ -3483,6 +3593,14 @@ public class NekoPocketModelTest {
     /** 普通物品栈（每枚都是<b>不同对象</b>，供桩件按身份查表；damage 固定 0）。 */
     private static ItemStack stack(int size) {
         return new ItemStack(FakePlainItem.INSTANCE, Math.max(1, size), 0);
+    }
+
+    /**
+     * 指定 damage 的普通物品栈（R83 A2 起蒸馏的<b>组身份 = item + damage</b> ⇒
+     * 一个用例里要造"两组"必须换 damage，只换对象会得到一组）。
+     */
+    private static ItemStack stackDistill(int size, int damage) {
+        return new ItemStack(FakePlainItem.INSTANCE, Math.max(1, size), damage);
     }
 
     /**
@@ -4208,6 +4326,930 @@ public class NekoPocketModelTest {
     /** 一次 SET 请求（载荷键已备好）。 */
     private static PocketGhostRequest.Decision set(PocketFilterConfig config, int slot, String payloadKey) {
         return PocketGhostRequest.apply(PocketGhostRequest.setRequest(slot, payloadKey), config);
+    }
+
+    // ================================================================== R83 B1（缺陷 2 的执法点 + 需求 5 的"绑定格除外"）
+
+    /**
+     * ★服务端<b>开屏即</b>拒绝往绑定格里放件（R83 计划 §3 B1 的那条"必须排在翻 allowShiftTransfer 之前"的判据）。
+     * <p>
+     * 判据点是 {@code PocketInventory#newStorageGroup} 里 handler 自己的 {@code isItemValid}：
+     * {@code ModularSlot.isItemValid} 的最后一环 → {@code SlotItemHandler.isItemValid}
+     * （MUI2 {@code utils/item/SlotItemHandler.java:27-42}）→ {@code itemHandler.isItemValid(index, stack)}，
+     * 而原版 {@code net/minecraft/inventory/Container.java} 的六条放入/搬运分支（:180、:197、:314、:349、
+     * :410、:424、:441）全都只看 {@code Slot.isItemValid} ⇒ 这条判据<b>不依赖</b>面板那侧有没有把 ghost
+     * 应用到 {@code ModularSlot.canPut}（现状是只有客户端应用 ⇒ 存量档的绑定格在服务端原本 canPut=true）。
+     * <p>
+     * 刻意走"写档 → 重新读档"而不是本会话刚拖出来的格：那才是"重开 GUI"的真实形状。
+     */
+    private static void ghostSlotsRejectPlacementAtOpen() {
+        final PocketInventory seed = PocketInventory.readFrom(null);
+        final PocketFilterConfig config = new PocketFilterConfig();
+        config.add(0, item(0, 2621, 7, ""));
+        config.add(5, item(5, 2621, 7, ""));
+        config.add(3, fluid(3, "water"));
+        seed.replaceFilters(config);
+        final NBTTagCompound root = new NBTTagCompound();
+        seed.writeTo(root);
+
+        final PocketInventory reopened = PocketInventory.readFrom(root);
+        SimpleAssert.that(reopened.isGhostItemSlot(0), "重开后台账里第 0 格仍是绑定格");
+        SimpleAssert.that(reopened.isGhostItemSlot(5), "重开后台账里第 5 格仍是绑定格");
+        SimpleAssert.eq(Boolean.FALSE, reopened.isGhostItemSlot(1), "没声明过的第 1 格仍是真实格");
+
+        final ItemStack probe = stack(1);
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            reopened.storage()
+                .isItemValid(0, probe),
+            "★绑定格不接受玩家放入（点击/Shift 落点/拖拽分堆共用这一道判据）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            reopened.storage()
+                .isItemValid(5, probe),
+            "第二个绑定格同样拒收");
+        SimpleAssert.that(
+            reopened.storage()
+                .isItemValid(1, probe),
+            "非绑定格仍可放（不得把整栏刷成禁放）");
+        SimpleAssert.that(
+            reopened.storage()
+                .isItemValid(3, probe),
+            "★流体侧的声明不得串到中栏第 3 格（复合键含 kind，R59b 口径）");
+        SimpleAssert.that(
+            reopened.fluidInteraction()
+                .isItemValid(0, probe),
+            "流体交互格不受本判据误伤");
+        SimpleAssert.that(
+            reopened.distillInput()
+                .isItemValid(0, probe),
+            "蒸馏输入格不受本判据误伤");
+        SimpleAssert.that(
+            reopened.bindSlot()
+                .isItemValid(0, probe),
+            "绑定格不受本判据误伤");
+
+        // 程序化写入不经过 isItemValid：ghost 搬空与通道回写用的就是这条路（否则关屏前搬不走存量件）
+        reopened.storage()
+            .setStackInSlot(0, probe.copy());
+        SimpleAssert.eq(1, reopened.storageStack(0).stackSize, "服务端自己写格仍可行（判据只拦玩家输入）");
+        // 但落点侧仍按同一份判据跳过绑定格：新来的一件必须落到别的格，而不是并进上面那次人工写入
+        SimpleAssert.eq(1, reopened.depositIntoStorage(probe.copy()), "非绑定格承接落位");
+        SimpleAssert.eq(1, reopened.storageStack(0).stackSize, "★绑定格一格都没多（depositIntoStorage 的显式跳过）");
+    }
+
+    /**
+     * 需求 5「适配中键/R 键整理（但绑定物品的格子除外）」的游标算式：
+     * 被测 {@code PocketInventory#nextSortableStorageSlot}（服务端唯一一份"跳过绑定格"的游标，
+     * {@code depositIntoStorage} 与面板的整理落位都读它）。
+     */
+    private static void sortTargetsSkipBoundSlots() {
+        final PocketInventory inventory = PocketInventory.readFrom(null);
+        final PocketFilterConfig config = new PocketFilterConfig();
+        for (int slot : new int[] { 0, 1, 4 }) {
+            config.add(slot, item(slot, 2621, 7, ""));
+        }
+        inventory.replaceFilters(config);
+
+        SimpleAssert.eq(2, inventory.nextSortableStorageSlot(0), "游标跳过开头两条连续声明");
+        SimpleAssert.eq(2, inventory.nextSortableStorageSlot(2), "落在非绑定格上就地返回（不自增）");
+        SimpleAssert.eq(3, inventory.nextSortableStorageSlot(3), "下一个可用格是 3");
+        SimpleAssert.eq(5, inventory.nextSortableStorageSlot(4), "跳过单条声明");
+        SimpleAssert.eq(2, inventory.nextSortableStorageSlot(-9), "负起点按 0 处理（不越界、不静默返回 -1）");
+        SimpleAssert.eq(
+            PocketInventory.STORAGE_SLOTS,
+            inventory.nextSortableStorageSlot(PocketInventory.STORAGE_SLOTS),
+            "★整段越界 ⇒ 返回格数本身（调用方据此判「没有可用格」）");
+
+        // 一格真实格都不剩 ⇒ 游标恒为格数（整理与落点都必须"无处可放"而不是往 ghost 格里塞）
+        final PocketInventory allBound = PocketInventory.readFrom(null);
+        final PocketFilterConfig everywhere = new PocketFilterConfig();
+        for (int index = 0; index < PocketInventory.STORAGE_SLOTS; index++) {
+            everywhere.add(index, item(index, 1, 0, ""));
+        }
+        allBound.replaceFilters(everywhere);
+        SimpleAssert.eq(PocketInventory.STORAGE_SLOTS, allBound.nextSortableStorageSlot(0), "全栏绑定 ⇒ 游标直接到底");
+        SimpleAssert.eq(0, allBound.depositIntoStorage(stack(8)), "全栏绑定 ⇒ 落点回报 0（不吃件也不塞进绑定格）");
+    }
+
+    /**
+     * ★中栏那块满覆盖件的 hover 链放行（缺陷 2 唯一可证的破坏点）。
+     * <p>
+     * {@code IWidget.canHoverThrough()} 的接口默认值是 <b>false</b>（MUI2
+     * {@code api/widget/IWidget.java:179-181}），而 {@code ModularGuiContext.getHoveredWidgets}
+     * 在第一个不穿透的件上就 {@code break}（{@code screen/viewport/ModularGuiContext.java:428}）⇒
+     * 覆盖整块中栏的"一键取出"件会把底下 135 格的 hover 整段截掉（无高亮、无 tooltip、
+     * {@code setHoveredSlot(null)} 让 NEI 悬槽与原版连点收集一起失效）。
+     * 本用例只钉"两个覆写在不在"（回归护栏：谁把覆盖件换回裸 {@code ButtonWidget} 就会红），
+     * 不实例化 widget —— 本套件的纪律是不 new GUI 件（见 {@code NekoEssenceGhostCell} 那条用例的注释）。
+     */
+    private static void takeOutOverlayDeclaresHoverPassThrough() {
+        Class<?> overlay = null;
+        try {
+            overlay = Class.forName(
+                NekoPocketStorageColumn.class.getName() + "$HoverThroughOverlayButton",
+                false,
+                NekoPocketStorageColumn.class.getClassLoader());
+        } catch (Throwable ignored) {
+            // 下面用 assert 报红，这里不吞异常就等于把断言信息换成栈
+        }
+        SimpleAssert.that(overlay != null, "中栏覆盖件类必须存在（改名/撤掉都要同步本用例）");
+        String missing = null;
+        try {
+            overlay.getDeclaredMethod("canHover");
+            overlay.getDeclaredMethod("canHoverThrough");
+        } catch (Throwable e) {
+            missing = e.getClass()
+                .getSimpleName() + ": "
+                + e.getMessage();
+        }
+        SimpleAssert.eq(null, missing, "覆盖件必须自己声明 canHover() 与 canHoverThrough() 两个覆写");
+    }
+
+    // ================================================================== R83 C2（缺陷 6：alt 绑定 + 每条声明的组上限）
+    //
+    // ★这一批用例由"实现收口片"补（r83-plan §3 C2 判据、r83-panel-todo §1 第 14 项末行的点名）：
+    // C2 那片被打断在生产代码写完、用例为零的状态 ⇒ 下面每条都对应一条"没有机检就会静默退化"的判据。
+    // 可测边界（如实记，不假装验过）：三类格件的 {@code onMouseScroll} / {@code setDeclaredCap} /
+    // {@code drawCapReadout} 都是<b>实例</b>方法，本 JVM 构造任何 MUI2 widget 都抛
+    // {@code NoClassDefFoundError: it/unimi/dsi/fastutil/.../Object2ObjectOpenHashMap}（与
+    // {@code essence_cell_content_layer_follows_stock} 同一条限制）⇒ 滚轮手势、右上角橙色像素、
+    // tooltip 那一行、AE2 {@code handler.extractItems(MODULATE)} 的真实抽到量<b>全属只能实机项</b>；
+    // 本批钉的是它们共同的<b>纯函数</b>（{@code nextCap}/{@code resolveCap}/{@code capDirective}）
+    // 与"这些纯函数确实被站点接上了"的源码半边（{@link #capConsumersActuallyCallResolveCap}）。
+
+    /**
+     * 判据 1（步进表逐类 + 首步语义）。
+     * <p>
+     * ★这条钉的是「物品 1 件／流体 1%／源质 1 点」这三个数字<em>只有 PocketConstants 一份</em>，
+     * 以及 D-6 裁定的流体分母口径：<b>单 tank 16,000,000 mB 的 1% = 160,000</b>，
+     * <em>不是</em> 18 个 tank 合计 288,000,000 的 1%（那是 2,880,000，一档就顶到 18% 的量级）。
+     * 还钉住"未设 ⇒ 第一下从现全局量起走"（否则显示 16M、滚一下变 160,000 = 把默认值当 0 读）。
+     */
+    private static void capStepTablePerKind() {
+        // ---- ① 三个步进数字只允许活在常量里，stepOf 只做分派 ----
+        SimpleAssert.eq(1, PocketConstants.FILTER_CAP_STEP_ITEM, "物品一档 = 1 件（用户原话「物品每次1个」）");
+        SimpleAssert.eq(1, PocketConstants.FILTER_CAP_STEP_ESSENCE, "源质一档 = 1 点（= 1 晶）");
+        SimpleAssert.eq(100, PocketConstants.FILTER_CAP_PERCENT_STEPS, "流体「1%」的档数分母 = 100 ⇒ 一格就是一档");
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML / PocketConstants.FILTER_CAP_PERCENT_STEPS,
+            PocketConstants.FILTER_CAP_STEP_FLUID,
+            "★流体步长必须由单 tank 容量派生（不留字面量，改 tank 容量时步进自动跟着走）");
+        SimpleAssert.eq(160_000, PocketConstants.FILTER_CAP_STEP_FLUID, "★流体一档 = 160,000 mB（交付口径要写进玩家说明的那个读数）");
+        SimpleAssert.that(
+            PocketConstants.FILTER_CAP_STEP_FLUID
+                != PocketConstants.FLUID_TOTAL_CAPACITY_ML / PocketConstants.FILTER_CAP_PERCENT_STEPS,
+            "★分母不得是 18 tank 合计（288M/100 = 2,880,000 —— 用合计就把「1%」放大了 18 倍）");
+        SimpleAssert.eq(1, PocketGhostRequest.stepOf(Kind.ITEM), "stepOf(ITEM) 只转发 FILTER_CAP_STEP_ITEM");
+        SimpleAssert.eq(1, PocketGhostRequest.stepOf(Kind.ESSENCE), "stepOf(ESSENCE) 只转发 FILTER_CAP_STEP_ESSENCE");
+        SimpleAssert.eq(160_000, PocketGhostRequest.stepOf(Kind.FLUID), "stepOf(FLUID) 只转发 FILTER_CAP_STEP_FLUID");
+        SimpleAssert.eq(PocketConstants.FILTER_CAP_MIN, PocketGhostRequest.stepOf(null), "null 区域 ⇒ 下界，不抛");
+
+        // ---- ② 首步语义：未设 ⇒ 从"这一类的现全局量"起步，再走一档 ----
+        SimpleAssert.eq(
+            63,
+            PocketGhostRequest.nextCap(Kind.ITEM, PocketConstants.FILTER_CAP_UNSET, 64, UpOrDown.DOWN, false),
+            "★物品：没滚过轮的 64 叠样本往下滚一格 = 63（不是 0、不是 1、不是 -1）");
+        SimpleAssert.eq(
+            64,
+            PocketGhostRequest.nextCap(Kind.ITEM, PocketConstants.FILTER_CAP_UNSET, 64, UpOrDown.UP, false),
+            "物品：未设往上滚仍停在该物品的 maxStackSize（上界收口，不回绕成 1）");
+        SimpleAssert.eq(
+            15_840_000,
+            PocketGhostRequest.nextCap(Kind.FLUID, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.DOWN, false),
+            "★流体：未设往下滚一格 = 16,000,000 − 160,000（与右上角那一刻的「16M」读数连续）");
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            PocketGhostRequest.nextCap(Kind.FLUID, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.UP, false),
+            "流体：未设往上滚 = 天花板本身");
+        SimpleAssert.eq(
+            63,
+            PocketGhostRequest.nextCap(Kind.ESSENCE, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.DOWN, false),
+            "源质：未设往下滚一格 = 64 − 1");
+
+        // ---- ③ 已设过 ⇒ 在原值上加减一档（不再从天花板起） ----
+        SimpleAssert.eq(21, PocketGhostRequest.nextCap(Kind.ITEM, 20, 64, UpOrDown.UP, false), "物品已设 20 ⇒ 上滚 = 21");
+        SimpleAssert.eq(19, PocketGhostRequest.nextCap(Kind.ITEM, 20, 64, UpOrDown.DOWN, false), "物品已设 20 ⇒ 下滚 = 19");
+        SimpleAssert.eq(
+            8_160_000,
+            PocketGhostRequest.nextCap(Kind.FLUID, 8_000_000, 0, UpOrDown.UP, false),
+            "流体已设 8M ⇒ 上滚 = 8,160,000");
+        SimpleAssert.eq(
+            7_840_000,
+            PocketGhostRequest.nextCap(Kind.FLUID, 8_000_000, 0, UpOrDown.DOWN, false),
+            "流体已设 8M ⇒ 下滚 = 7,840,000");
+        SimpleAssert.eq(31, PocketGhostRequest.nextCap(Kind.ESSENCE, 30, 0, UpOrDown.UP, false), "源质已设 30 ⇒ 上滚 = 31");
+
+        // ---- ④ 方向与倍率的来源：UpOrDown.modifier 的库口径（改了库就红，不靠记忆） ----
+        SimpleAssert.eq(1, UpOrDown.UP.modifier, "★库事实：UP.modifier = +1（nextCap 的方向唯一来源）");
+        SimpleAssert.eq(-1, UpOrDown.DOWN.modifier, "★库事实：DOWN.modifier = −1");
+        SimpleAssert.eq(1, PocketGhostRequest.capSteps(UpOrDown.UP, false), "alt 上滚 = 1 格");
+        SimpleAssert.eq(-1, PocketGhostRequest.capSteps(UpOrDown.DOWN, false), "alt 下滚 = −1 格");
+        SimpleAssert.eq(0, PocketGhostRequest.capSteps(null, true), "方向缺失 ⇒ 0 格（倍率乘不上去）");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_CEILING_ESSENCE,
+            PocketGhostRequest.nextCap(Kind.ESSENCE, PocketConstants.FILTER_CAP_UNSET, 0, null, false),
+            "无方向 + 未设 ⇒ 现全局量（★不是 0，也不抛）");
+
+        // ---- ⑤ 下界是硬门：滚到 1 就停，绝不滚出 0 或负数 ----
+        SimpleAssert.eq(1, PocketGhostRequest.nextCap(Kind.ITEM, 1, 64, UpOrDown.DOWN, false), "物品已到 1 再下滚 = 1");
+        SimpleAssert
+            .eq(1, PocketGhostRequest.nextCap(Kind.ESSENCE, 1, 0, UpOrDown.DOWN, true), "源质 1 点 + fast 下滚仍 = 1");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_MIN,
+            PocketGhostRequest.nextCap(Kind.FLUID, 160_000, 0, UpOrDown.DOWN, true),
+            "★流体 fast 下滚跨过 0 ⇒ 停在 1，不越界成负数");
+
+        // ---- ⑥ 物品支的上界是"该物品自己的 maxStackSize"，不是常数 64（16 格药材不能被判成 64） ----
+        SimpleAssert.eq(
+            15,
+            PocketGhostRequest.nextCap(Kind.ITEM, PocketConstants.FILTER_CAP_UNSET, 16, UpOrDown.DOWN, false),
+            "16 叠物品：未设下滚 = 15");
+        int overflow = PocketConstants.FILTER_CAP_UNSET;
+        for (int i = 0; i < 40; i++) {
+            overflow = PocketGhostRequest.nextCap(Kind.ITEM, overflow, 16, UpOrDown.UP, true);
+        }
+        SimpleAssert.eq(16, overflow, "★连按 40 次 fast 上滚也顶不过该物品的 16 叠 ⇒ 手势造不出「超一叠」的物品 cap");
+        SimpleAssert.eq(
+            998,
+            PocketGhostRequest.nextCap(Kind.ITEM, PocketConstants.FILTER_CAP_UNSET, 999, UpOrDown.DOWN, false),
+            "★999 叠（GT5U 缆线类）⇒ 天花板与该上滚一档都跟着该物品自身走，本层不硬编码 64");
+    }
+
+    /**
+     * 判据 2（D-6：alt+ctrl 的 ×10 作用在<em>步进</em>上）。
+     * <p>
+     * ★这条钉的两件事：① 同一入口下 {@code fast=true} 的位移恰为 {@code fast=false} 的 10 倍；
+     * ② ×10 这个数在 pocket 两个源码目录（含 {@code channel/**}）里<em>只有两处</em>——定义 +
+     * {@code capSteps} 的唯一消费 ⇒ 没有人拿它去乘通道节拍。再加 {@code config/Config.java} 里
+     * 不得出现任何 {@code FILTER_CAP} 字样（那是"第二处速率真值"最容易长出来的地方）。
+     * 真正"×10 之后每拍流量没变大"仍属实机项（要跑驱动器）。
+     */
+    private static void capFastMultiplierOnlyScalesTheStep() {
+        SimpleAssert.eq(10, PocketConstants.FILTER_CAP_FAST_MULTIPLIER, "×10 的字面值（用户原话）");
+        SimpleAssert.eq(10, PocketGhostRequest.capSteps(UpOrDown.UP, true), "fast 上滚 = 10 格");
+        SimpleAssert.eq(-10, PocketGhostRequest.capSteps(UpOrDown.DOWN, true), "fast 下滚 = −10 格");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_FAST_MULTIPLIER,
+            PocketGhostRequest.capSteps(UpOrDown.UP, true) / PocketGhostRequest.capSteps(UpOrDown.UP, false),
+            "★格数比值恰为倍率（×10 作用在步进，不是别处）");
+
+        // 未收口区间内逐类验位移比 = 10（收口点上比值会失真，故各取一个中间值）
+        for (Kind kind : Kind.values()) {
+            final int maxStack = kind == Kind.ITEM ? 64 : 0;
+            final int start = kind == Kind.ITEM ? 20 : kind == Kind.FLUID ? 8_000_000 : 30;
+            final int slow = PocketGhostRequest.nextCap(kind, start, maxStack, UpOrDown.UP, false);
+            final int fast = PocketGhostRequest.nextCap(kind, start, maxStack, UpOrDown.UP, true);
+            final int slowDelta = slow - start;
+            final int fastDelta = fast - start;
+            SimpleAssert.that(slowDelta > 0, "慢档必须真的走开一格：" + kind);
+            SimpleAssert
+                .that(fast < PocketGhostRequest.ceilingOf(kind) || kind == Kind.ITEM, "★取样点必须落在未收口区，否则比值无意义：" + kind);
+            SimpleAssert.eq(
+                slowDelta * PocketConstants.FILTER_CAP_FAST_MULTIPLIER,
+                fastDelta,
+                "★" + kind + "：fast 位移 = slow 位移 ×10（同一入口、只差一个布尔）");
+            SimpleAssert.eq(
+                start - slowDelta * PocketConstants.FILTER_CAP_FAST_MULTIPLIER,
+                PocketGhostRequest.nextCap(kind, start, maxStack, UpOrDown.DOWN, true),
+                "★" + kind + "：下滚方向同样只翻符号，不另立倍率");
+        }
+
+        // ---- 源码半边：×10 只有一处消费，且没有渗进通道速率配置 ----
+        final int multiplierHits = countPocketSourceLinesMatching("FILTER_CAP_FAST_MULTIPLIER", true);
+        if (multiplierHits < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ 「×10 只有一处消费」的源码半边未验（★不是通过）");
+        } else {
+            SimpleAssert.eq(
+                2,
+                multiplierHits,
+                "★FILTER_CAP_FAST_MULTIPLIER 全 pocket 面只允许两处（PocketConstants 定义 + capSteps 消费）；多一处就是造了第二处速率真值");
+        }
+        final java.util.List<String> configLines = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/config/Config.java");
+        if (configLines == null) {
+            System.out.println("[NOTE] 读不到 Config.java ⇒ 「未碰 config 上界」半边未验（★不是通过）");
+        } else {
+            int leaks = 0;
+            for (String line : configLines) {
+                if (!isCommentLine(line) && line.contains("FILTER_CAP")) {
+                    leaks++;
+                }
+            }
+            SimpleAssert.eq(0, leaks, "★Config.java 里不得出现任何 FILTER_CAP 字样（D-6：组上限不进 config 的第二处真值）");
+        }
+    }
+
+    /**
+     * 判据 3（★"未设 ⇒ 回落现全局量 ⇒ 旧档零行为变更"的唯一机检）。
+     * <p>
+     * 这条是整个 C2 的兼容面承诺：引入可调上限<em>不得</em>改变任何一个没滚过轮的玩家的现有填充行为。
+     * 三类各自等于今天的现全局量（物品 = 该件自己的 maxStackSize、流体 = FLUID_BAR_CAPACITY_ML、
+     * 源质 = ESSENCE_CAP_PER_TAG），并且 NBT 侧"没调过就不占键"⇒ 旧档读写形状逐字节不变。
+     * 若这条红了，等于"新功能顺手改了老档行为"，是本批最不可让步的判据。
+     */
+    private static void unsetCapFallsBackToTodayGlobalAmount() {
+        final int unset = PocketConstants.FILTER_CAP_UNSET;
+
+        // ---- ① 三类未设 ⇒ 各自等于今日全局量（★不是 0、不是 1、不是猜的 64） ----
+        SimpleAssert.eq(
+            64,
+            PocketFilterConfig.resolveCap(new PocketFilterConfig.ItemFilter(0, 2621, 7, "", unset), 64),
+            "★物品未设 ⇒ 该物品的 maxStackSize（64 叠样本 = 64）");
+        SimpleAssert.eq(
+            16,
+            PocketFilterConfig.resolveCap(new PocketFilterConfig.ItemFilter(0, 2621, 7, "", unset), 16),
+            "★物品回落值随物品自身变化（不是常数 64）");
+        SimpleAssert.eq(
+            960,
+            PocketFilterConfig.resolveCap(new PocketFilterConfig.ItemFilter(0, 2621, 7, "", unset), 960),
+            "GT5U 缆线类 960 叠也照自身回落");
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            PocketFilterConfig.resolveCap(new PocketFilterConfig.FluidFilter(0, "water", unset), 0),
+            "★流体未设 ⇒ FLUID_BAR_CAPACITY_ML（16M/tank，与今日的填tank行为同值）");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_CEILING_FLUID,
+            PocketFilterConfig.resolveCap(new PocketFilterConfig.FluidFilter(0, "water", unset), 0),
+            "流体回落值与上界同一个常量（★刻意同源：现行为就是填到自然满量）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_CAP_PER_TAG,
+            PocketFilterConfig.resolveCap(new PocketFilterConfig.EssenceFilter(0, "essentia", "aer", unset), 0),
+            "★源质未设 ⇒ ESSENCE_CAP_PER_TAG（64 点 = 一整堆晶）");
+
+        // ---- ② 三参形态与两参形态必须同判据（格件读的是 resolveRawCap） ----
+        for (Kind kind : Kind.values()) {
+            SimpleAssert.eq(
+                PocketFilterConfig.defaultCap(kind, 64),
+                PocketFilterConfig.resolveRawCap(kind, unset, 64),
+                "★resolveRawCap(未设) 必须逐字等于 defaultCap：" + kind);
+            SimpleAssert.eq(
+                PocketFilterConfig.resolveCap(newEssenceLike(kind, 0, unset), 64),
+                PocketFilterConfig.resolveRawCap(kind, unset, 64),
+                "两条入口在" + kind + "上不得分叉（否则显示与消费两处真相）");
+            SimpleAssert.eq(7, PocketFilterConfig.resolveRawCap(kind, 7, 64), "已设 ⇒ 原值透出，不做任何换算：" + kind);
+        }
+
+        // ---- ③ 兜底形状：拿不到样本栈 / 没有声明 ----
+        SimpleAssert.eq(unset, PocketFilterConfig.resolveCap(null, 64), "★没有声明 ⇒ 没有上限可读（返回 UNSET，不是 64）");
+        SimpleAssert.eq(unset, PocketFilterConfig.resolveRawCap(null, 64, 64), "null 区域 ⇒ UNSET");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_MIN,
+            PocketFilterConfig.defaultCap(Kind.ITEM, 0),
+            "物品拿不到 maxStackSize ⇒ 下界 1（一次一件，比「回落到 0 ⇒ 这一条永远不拉」诚实）");
+        SimpleAssert
+            .eq(PocketConstants.FILTER_CAP_MIN, PocketFilterConfig.defaultCap(Kind.ITEM, -8), "负 maxStackSize ⇒ 下界 1");
+        SimpleAssert.eq(PocketConstants.FILTER_CAP_MIN, PocketFilterConfig.defaultCap(null, 64), "null 区域 ⇒ 下界 1");
+
+        // ---- ④ NBT 半边：没调过轮的旧档形状必须一字不变（不占 cap 键） ----
+        final PocketFilterConfig legacy = new PocketFilterConfig();
+        SimpleAssert.that(set(legacy, 5, PocketFilterConfig.itemKey(2621, 7, "")).changed(), "旧档：中栏第 5 格一条声明");
+        SimpleAssert.that(set(legacy, 2, PocketFilterConfig.fluidKey("water")).changed(), "旧档：流体槽第 2 格");
+        SimpleAssert.that(set(legacy, 9, PocketFilterConfig.essenceKey("essentia", "aer")).changed(), "旧档：源质格第 9 格");
+        final NBTTagCompound legacyRoot = new NBTTagCompound();
+        legacy.writeTo(legacyRoot);
+        SimpleAssert.eq(
+            0,
+            countNbtKeysInFilterBlob(legacyRoot, PocketConstants.FILTER_CAP),
+            "★没人滚过轮 ⇒ 一条 cap 键都不许落档（旧档字节形状不变 ⇒ 新键只增不改）");
+        final PocketFilterConfig legacyBack = PocketFilterConfig.readFrom(legacyRoot);
+        SimpleAssert.eq(3, legacyBack.size(), "往返后仍三条");
+        for (Kind kind : Kind.values()) {
+            final PocketFilterConfig.Filter back = legacyBack
+                .at(kind, kind == Kind.ITEM ? 5 : kind == Kind.FLUID ? 2 : 9);
+            SimpleAssert.that(back != null, "往返后该区域的声明还在：" + kind);
+            SimpleAssert.eq(unset, back.cap(), "★缺 cap 键读回来必须是 UNSET 而不是 0：" + kind);
+            SimpleAssert.eq(payloadOf(kind), back.key(), "往返后载荷键逐字不变（cap 不进身份）：" + kind);
+        }
+        SimpleAssert.eq(64, PocketFilterConfig.resolveCap(legacyBack.at(Kind.ITEM, 5), 64), "旧档读回来再走消费 ⇒ 与今日同值");
+    }
+
+    /**
+     * 判据 4（区间收口 + "UNSET 绝不被当成 0 参与步进"）。
+     * <p>
+     * ★这条同时钉住服务端拒收线的三条腿：越界值收口、0 与负数<em>整条拒收</em>（不是"悄悄抬到 1"，
+     * 因为 0 的语义是"这一条不拉了"，而本仓口径是"不想拉就右键解绑"）、以及"那一格根本没有声明"时
+     * 绝不顺手建一条空声明。另钉段数判据（SET/CLR 恰 3 段、CAP 恰 4 段）。
+     */
+    private static void capClampedAndUnsetNeverReadAsZero() {
+        // ---- ① clampCap 纯收口：下界硬、上界照入参、不四舍五入不取模 ----
+        SimpleAssert.eq(1, PocketGhostRequest.clampCap(0, 64), "0 ⇒ 1");
+        SimpleAssert.eq(1, PocketGhostRequest.clampCap(-999, 64), "负数 ⇒ 1");
+        SimpleAssert.eq(64, PocketGhostRequest.clampCap(1000, 64), "越上界 ⇒ 天花板");
+        SimpleAssert.eq(1, PocketGhostRequest.clampCap(5, 0), "★天花板本身畸形(0) ⇒ 仍不低于下界（不返回 0）");
+        SimpleAssert.eq(64, PocketGhostRequest.clampCap(64, 64), "边界值原样通过");
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            PocketGhostRequest.ceilingOf(Kind.FLUID),
+            "★流体上界 = 单 tank 16M（不是 FLUID_TOTAL_CAPACITY_ML 288M）");
+        SimpleAssert.that(
+            PocketConstants.FLUID_TOTAL_CAPACITY_ML != PocketGhostRequest.ceilingOf(Kind.FLUID),
+            "流体上界不得等于 18 tank 合计");
+        SimpleAssert.eq(64, PocketGhostRequest.ceilingOf(Kind.ESSENCE), "源质上界 = 64 点");
+        SimpleAssert.eq(
+            Integer.MAX_VALUE,
+            PocketGhostRequest.ceilingOf(Kind.ITEM),
+            "★物品请求侧不设界（自然满量只有拿着 ItemStack 的一端解得，见 O-1）");
+
+        // ---- ② UNSET 不得被当成 0 参与步进（否则第一次下滚就"从 0 往上加"） ----
+        final PocketFilterConfig config = new PocketFilterConfig();
+        SimpleAssert.that(set(config, 5, PocketFilterConfig.itemKey(2621, 7, "")).changed(), "先建一条未设的声明");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_UNSET,
+            config.at(Kind.ITEM, 5)
+                .cap(),
+            "新声明的原始值是 UNSET（不是 0）");
+        SimpleAssert.eq(
+            63,
+            PocketGhostRequest.nextCap(
+                Kind.ITEM,
+                config.at(Kind.ITEM, 5)
+                    .cap(),
+                64,
+                UpOrDown.DOWN,
+                false),
+            "★拿原始 UNSET 去步进 ⇒ 63（若被当成 0 就是 0−1 → 收口成 1）");
+
+        // ---- ③ 服务端 CAP 的三条拒收线 ----
+        final PocketFilterConfig fluid = new PocketFilterConfig();
+        SimpleAssert.that(set(fluid, 1, PocketFilterConfig.fluidKey("lava")).changed(), "流体槽第 1 格建声明");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.capRequest(1, Kind.FLUID, 320_000), fluid).outcome,
+            "合法绝对值 ⇒ 生效");
+        SimpleAssert.eq(
+            320_000,
+            fluid.at(Kind.FLUID, 1)
+                .cap(),
+            "落档读的是绝对值本身（服务端不重算步进）");
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            PocketGhostRequest.apply(PocketGhostRequest.capRequest(1, Kind.FLUID, 999_999_999), fluid).outcome
+                == PocketGhostRequest.Outcome.APPLIED
+                    ? fluid.at(Kind.FLUID, 1)
+                        .cap()
+                    : -1,
+            "★越界值 ⇒ 收口到 16M 后落档（不是拒收、也不是原样存 999,999,999）");
+        for (String bad : new String[] { "0", "-1", "-999999" }) {
+            final PocketFilterConfig probe = new PocketFilterConfig();
+            set(probe, 1, PocketFilterConfig.fluidKey("lava"));
+            SimpleAssert.eq(
+                PocketGhostRequest.Outcome.REJECTED,
+                PocketGhostRequest.apply("CAP|1|F|" + bad, probe).outcome,
+                "★0 与负数整条拒收（不是悄悄抬到 1）：" + bad);
+            SimpleAssert.eq(
+                PocketConstants.FILTER_CAP_UNSET,
+                probe.at(Kind.FLUID, 1)
+                    .cap(),
+                "拒收不得动到原值（UNSET 保持 UNSET）：" + bad);
+        }
+        final PocketFilterConfig empty = new PocketFilterConfig();
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply(PocketGhostRequest.capRequest(3, Kind.ITEM, 12), empty).outcome,
+            "★那一格根本没有声明 ⇒ 拒收（绝不顺手建空声明）");
+        SimpleAssert.eq(0, empty.size(), "拒收后一条声明都没有被建出来");
+        final PocketFilterConfig outOfRange = new PocketFilterConfig();
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("CAP|" + PocketConstants.GHOST_ITEM_SLOT_LIMIT + "|I|10", outOfRange).outcome,
+            "★槽号越出该区域白名单 ⇒ 拒收（中栏上界 = GHOST_ITEM_SLOT_LIMIT）");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("CAP|1|F|abc", outOfRange).outcome,
+            "值解不出整数 ⇒ 拒收");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("CAP|1|X|10", outOfRange).outcome,
+            "区域字母不认识 ⇒ 拒收");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("SET|1|i:2621:7:extra|tail", outOfRange).outcome,
+            "★段数即判据：SET 只接受恰 3 段（载荷里塞出第 4 段就整条拒收）");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("CLR|1|I|9", outOfRange).outcome,
+            "★CLR 只接受恰 3 段");
+    }
+
+    /**
+     * 判据 5（指令串文法 + 与真载荷键互斥可判 + 往返闭合）。
+     * <p>
+     * ★用例名 {@code capDirectiveRoundTrip} 被生产代码 {@code PocketGhostRequest:95} 的注释点名引用，
+     * 改名就等于再留一条悬空引用。这条钉的是 C2 的"借道 requestGhost"过渡形状之所以安全的全部理由：
+     * 真载荷键只用 ':' 分段、永不含 '|'，于是带 "CAP|" 前缀的第二段<em>只可能</em>是调上限指令；
+     * 而 {@code SET|<slot>|<CAP 指令>} 拼出来的串必须与 {@code capRequest} 逐字符相同（否则客户端
+     * 发的东西服务端解不回来 = 静默失效）。
+     */
+    private static void capDirectiveRoundTrip() {
+        // ---- ① 指令形状 ----
+        SimpleAssert.eq("CAP|F|160000", PocketGhostRequest.capDirective(Kind.FLUID, 160_000), "指令 = CAP|<区域字母>|<绝对值>");
+        SimpleAssert.eq("CAP|I|10", PocketGhostRequest.capDirective(Kind.ITEM, 10), "物品支指令");
+        SimpleAssert.eq("CAP|E|64", PocketGhostRequest.capDirective(Kind.ESSENCE, 64), "源质支指令");
+        SimpleAssert.that(PocketGhostRequest.isCapDirective("CAP|F|160000"), "capDirective 造的串必须被 isCapDirective 认出来");
+        SimpleAssert.that(!PocketGhostRequest.isCapDirective("CAPF160000"), "少了分隔符就不算指令");
+        SimpleAssert.that(!PocketGhostRequest.isCapDirective("cap|F|1"), "★大小写敏感（不能把玩家物品名里的 'cap|' 当指令）");
+        SimpleAssert.that(!PocketGhostRequest.isCapDirective(null), "null ⇒ false，不抛");
+        SimpleAssert.that(!PocketGhostRequest.isCapDirective(""), "空串 ⇒ false");
+        SimpleAssert.that(!PocketGhostRequest.isCapDirective("SET|1|F|1"), "另一个操作码不算指令");
+
+        // ---- ② 与真载荷键互斥可判：三类真键（含最刁钻的形状）永不含 '|' ----
+        for (Kind kind : Kind.values()) {
+            SimpleAssert.that(!payloadOf(kind).contains("|"), "★真载荷键不得含 '|'：" + kind);
+            SimpleAssert.that(!PocketGhostRequest.isCapDirective(payloadOf(kind)), "真载荷键不算指令：" + kind);
+        }
+        final String[] nastyKeys = { PocketFilterConfig.itemKey(2621, 7, "{display:{Name:\"CAP|F|1\"}}"),
+            PocketFilterConfig.itemKey(2621, 7, "SET|0|I|9"), PocketFilterConfig.fluidKey("CAP|F|1"),
+            PocketFilterConfig.fluidKey("neko:cap|molten"), PocketFilterConfig.essenceKey("CAP|F", "ignis"),
+            PocketFilterConfig.essenceKey("thaumcraft:essentia", "CAP|E|9"), PocketFilterConfig.essenceKey("", "") };
+        for (String key : nastyKeys) {
+            SimpleAssert.that(!key.startsWith("CAP|"), "★NBT 里带 CAP| 字面串的物品名也只是载荷键内容，不是指令：" + key);
+            SimpleAssert.that(!PocketGhostRequest.isCapDirective(key), "isCapDirective 只认前缀，不做子串匹配：" + key);
+        }
+
+        // ---- ③ 往返闭合：格件发出的 SET|slot|(CAP 指令) == capRequest，且服务端解回同一个绝对值 ----
+        for (Kind kind : Kind.values()) {
+            final int slot = kind == Kind.ITEM ? 42 : kind == Kind.FLUID ? 7 : 3;
+            final int value = kind == Kind.ITEM ? 33 : kind == Kind.FLUID ? 2_560_000 : 21;
+            final String viaRequestGhostEntry = PocketGhostRequest
+                .setRequest(slot, PocketGhostRequest.capDirective(kind, value));
+            final String canonical = PocketGhostRequest.capRequest(slot, kind, value);
+            SimpleAssert.eq(viaRequestGhostEntry, canonical, "★借道 requestGhost 的产物与 capRequest 逐字符相同：" + kind);
+            SimpleAssert.eq(
+                "CAP|" + slot + "|" + PocketGhostRequest.letterOf(kind) + "|" + value,
+                canonical,
+                "完整式样 CAP|<槽号>|<区域字母>|<绝对值>：" + kind);
+
+            final PocketFilterConfig config = new PocketFilterConfig();
+            SimpleAssert.that(set(config, slot, payloadOf(kind)).changed(), "先建该区域的声明：" + kind);
+            final PocketGhostRequest.Decision applied = PocketGhostRequest.apply(canonical, config);
+            SimpleAssert.eq(PocketGhostRequest.Outcome.APPLIED, applied.outcome, "★往返必须能被服务端解回并生效：" + kind);
+            SimpleAssert.eq(kind, applied.kind, "命中的区域来自指令自带的字母：" + kind);
+            SimpleAssert.eq(slot, applied.slotIndex, "命中的槽号来自 setRequest 插进去的那一段：" + kind);
+            SimpleAssert.eq(
+                value,
+                config.at(kind, slot)
+                    .cap(),
+                "读回的绝对值 == 发出的绝对值（不被服务端重算）：" + kind);
+            SimpleAssert.eq(
+                payloadOf(kind),
+                config.at(kind, slot)
+                    .key(),
+                "★调上限不得动到载荷键（身份不变）：" + kind);
+            SimpleAssert.eq(1, config.size(), "调上限不得凭空多出一条声明：" + kind);
+            // 再走一遍同一条指令 ⇒ UNCHANGED（幂等，blob 不因为"又滚了一下"就重复落盘）
+            SimpleAssert.eq(
+                PocketGhostRequest.Outcome.UNCHANGED,
+                PocketGhostRequest.apply(canonical, config).outcome,
+                "同一绝对值重复下发 ⇒ UNCHANGED：" + kind);
+            // 载荷键走 setRequest 时仍是 SET 文法（证明分流没有误伤正常绑定）
+            final PocketFilterConfig fresh = new PocketFilterConfig();
+            SimpleAssert.eq(
+                "SET|" + slot + "|" + payloadOf(kind),
+                PocketGhostRequest.setRequest(slot, payloadOf(kind)),
+                "真载荷键的 setRequest 仍是 SET 文法：" + kind);
+            SimpleAssert.eq(
+                PocketGhostRequest.Outcome.APPLIED,
+                PocketGhostRequest.apply(PocketGhostRequest.setRequest(slot, payloadOf(kind)), fresh).outcome,
+                "SET 半边没坏：" + kind);
+            SimpleAssert.eq(
+                PocketConstants.FILTER_CAP_UNSET,
+                fresh.at(kind, slot)
+                    .cap(),
+                "新建声明的原始上限是 UNSET：" + kind);
+        }
+    }
+
+    /**
+     * 判据 7（cap 是数量、不是身份）。
+     * <p>
+     * ★这条钉的是"同键不同 cap 必须仍是同一条声明"：{@code contains()} 与 {@code parseKey} 两侧都只按
+     * 载荷键比对，一旦谁把数量拼进键里，"同一种物品两个格"就会分裂成两条身份、NEI 重复提示与
+     * {@code PocketAeChannelOps#contentKey} 的比对同时出事。另钉 {@code withCap} 的不可变性
+     * （返回新实例，正在跑的批次读到的旧实例一字不改）与 blob 读写成对（P-C2-3 的机检半边）。
+     */
+    private static void capNotPartOfFilterIdentity() {
+        final String itemKey = PocketFilterConfig.itemKey(2621, 7, "");
+        final PocketFilterConfig config = new PocketFilterConfig();
+        SimpleAssert.that(config.add(3, new PocketFilterConfig.ItemFilter(3, 2621, 7, "", 5)), "第 3 格：cap=5 的物品声明应落地");
+        SimpleAssert.that(
+            config.add(40, new PocketFilterConfig.ItemFilter(40, 2621, 7, "", 60)),
+            "★第 40 格：同载荷键、不同 cap 的声明必须也能落地（两格要同一种东西是合法读法）");
+        SimpleAssert.eq(2, config.size(), "两条声明各自占一格，没有因 cap 不同而分裂、也没因键相同而互相覆盖");
+        SimpleAssert.that(config.contains(itemKey), "contains 只按载荷键判定（不看数量）");
+        SimpleAssert
+            .that(config.contains(PocketFilterConfig.itemKey(2621, 7, "{a:1}")) == false, "★没声明过的键不得因数量不同被误判为已存在");
+        SimpleAssert.eq(
+            5,
+            config.at(Kind.ITEM, 3)
+                .cap(),
+            "第一条的数量");
+        SimpleAssert.eq(
+            60,
+            config.at(Kind.ITEM, 40)
+                .cap(),
+            "第二条的数量");
+        SimpleAssert.eq(
+            config.at(Kind.ITEM, 3)
+                .key(),
+            config.at(Kind.ITEM, 40)
+                .key(),
+            "★两条的身份串逐字相同（数量不进键）");
+        SimpleAssert.eq(
+            itemKey,
+            PocketFilterConfig.parseKey(itemKey)
+                .key(),
+            "parseKey 解出的载荷串与入参逐字相同");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_UNSET,
+            PocketFilterConfig.parseKey(itemKey)
+                .cap(),
+            "★parseKey 解出来的是纯载荷，cap 一律 UNSET（数量不从键里来）");
+        for (Kind kind : Kind.values()) {
+            SimpleAssert.eq(
+                PocketConstants.FILTER_CAP_UNSET,
+                PocketFilterConfig.parseKey(payloadOf(kind))
+                    .cap(),
+                "三类都同判据：" + kind);
+            SimpleAssert.that(
+                !payloadOf(kind).contains(String.valueOf(PocketConstants.FILTER_CAP)),
+                "★载荷键串里不得出现 cap 键名（数量没被拼进身份）：" + kind);
+        }
+
+        // ---- withCap 返回新实例：旧实例一字不改（正在跑的批次不能被滚轮事件改写） ----
+        final PocketFilterConfig.Filter original = new PocketFilterConfig.EssenceFilter(
+            11,
+            "essentia",
+            "ignis",
+            PocketConstants.FILTER_CAP_UNSET);
+        final PocketFilterConfig.Filter nudged = original.withCap(9);
+        SimpleAssert.that(original != nudged, "★withCap 必须返回新实例（原地改会让正在跑的批次读到半新半旧）");
+        SimpleAssert.eq(PocketConstants.FILTER_CAP_UNSET, original.cap(), "★原实例的 cap 一字未动");
+        SimpleAssert.eq(9, nudged.cap(), "新实例带上新值");
+        SimpleAssert.eq(original.key(), nudged.key(), "★身份串不变");
+        SimpleAssert.eq(original.slotIndex(), nudged.slotIndex(), "槽号不变");
+        SimpleAssert.eq(original.kind(), nudged.kind(), "区域不变");
+        SimpleAssert.eq(false, config.add(3, itemFilterAt(3, 41)), "同槽二次写入 = 覆盖（add 必须返回 false）");
+        SimpleAssert.eq(
+            41,
+            config.at(Kind.ITEM, 3)
+                .cap(),
+            "★覆盖后该格读到的就是新上限");
+        SimpleAssert.eq(2, config.size(), "★覆盖不增条数");
+
+        // ---- blob 读写成对（P-C2-3 的机检半边：只写不读 = 静默丢档） ----
+        final PocketFilterConfig withCaps = new PocketFilterConfig();
+        withCaps.add(7, new PocketFilterConfig.ItemFilter(7, 2621, 7, "", 41));
+        withCaps.add(3, new PocketFilterConfig.FluidFilter(3, "water", 1_120_000));
+        withCaps.add(19, new PocketFilterConfig.EssenceFilter(19, "thaumcraft:essentia", "aer", 12));
+        final NBTTagCompound root = new NBTTagCompound();
+        withCaps.writeTo(root);
+        SimpleAssert.eq(3, countNbtKeysInFilterBlob(root, PocketConstants.FILTER_CAP), "三条已设 ⇒ 恰好落三个 cap 键");
+        final PocketFilterConfig back = PocketFilterConfig.readFrom(root);
+        SimpleAssert.eq(
+            41,
+            back.at(Kind.ITEM, 7)
+                .cap(),
+            "★物品支 cap 落档后读回（写读必须成对）");
+        SimpleAssert.eq(
+            1_120_000,
+            back.at(Kind.FLUID, 3)
+                .cap(),
+            "★流体支 cap 落档后读回");
+        SimpleAssert.eq(
+            12,
+            back.at(Kind.ESSENCE, 19)
+                .cap(),
+            "★源质支 cap 落档后读回（含带命名空间的 typeId）");
+        SimpleAssert.eq(
+            withCaps.at(Kind.ITEM, 7)
+                .key(),
+            back.at(Kind.ITEM, 7)
+                .key(),
+            "往返后身份串不变");
+        SimpleAssert.eq(3, back.size(), "往返条数不变");
+    }
+
+    /**
+     * 判据 6（★消费点真的有调用方 —— 防"写入侧零调用方"型假绿）。
+     * <p>
+     * C2 被打断时的形状正是"字段、NBT、文法、步进全齐，但没有任何人读它"。这条分两半边：
+     * <ul>
+     * <li><b>接线半边（机检）</b>：直接读生产源码，逐支确认 {@code extractItem}/{@code extractFluid}/
+     * {@code extractEssence} 三个方法体内各有一行真在调 {@code PocketFilterConfig.resolveCap(}，
+     * 并确认三类格件各调一次 {@code PocketGhostRequest.nextCap(}（步进表不是死常量）。删掉任一调用点
+     * 本条即红 ⇒ 这条半边是有机检的，不是"靠注释声称"。</li>
+     * <li><b>算式半边（机检）</b>：把三站点共同的可测部件按站点原样组一次（{@code fluidRequestFor} 等），
+     * 证 {@code resolveCap} 的取值真的能改<em>拉多少</em>。</li>
+     * </ul>
+     * ★仍属<em>只能实机</em>的那一半（本条不覆盖，如实标出）：AE2 {@code handler.extractItems(…,
+     * Actionable.MODULATE)} 的返回量、玩家背包/中栏真实落库、以及下一拍是否按新上限续拉 ——
+     * 纯 JVM 拿不到真 {@code IMEInventoryHandler}（见类 javadoc 的可测边界）。
+     */
+    private static void capConsumersActuallyCallResolveCap() {
+        // ================= 半边 A：站点接线（源码机检） =================
+        final java.util.List<String> ops = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketAeChannelOps.java");
+        if (ops == null) {
+            System.out
+                .println("[NOTE] 找不到仓库根或读不到 PocketAeChannelOps.java ⇒ 「三支消费都接上 resolveCap」的接线半边【未验】（★不是通过；下面的算式半边照验）");
+        } else {
+            final int itemStart = methodStart(ops, "Outcome extractItem(");
+            final int fluidStart = methodStart(ops, "Outcome extractFluid(");
+            final int essenceStart = methodStart(ops, "Outcome extractEssence(");
+            SimpleAssert.that(
+                itemStart >= 0 && fluidStart > itemStart && essenceStart > fluidStart,
+                "★三支抽取方法的定位必须成功且按序（改名/合并即红，说明本用例的判据面漂了）");
+            assertResolveCapInside(ops, itemStart, fluidStart, "extractItem(物品支)");
+            assertResolveCapInside(ops, fluidStart, essenceStart, "extractFluid(流体支)");
+            assertResolveCapInside(ops, essenceStart, ops.size(), "extractEssence(源质支)");
+            // 物品支必须把"该物品自己的 maxStackSize"喂给 resolveCap（否则未设回落就是猜的 64）
+            SimpleAssert.that(
+                regionContainsCode(ops, itemStart, fluidStart, "wanted.getMaxStackSize()"),
+                "★物品支消费点必须传 wanted.getMaxStackSize()（未设时回落 = 该件自身堆叠上限 = 今日行为）");
+            SimpleAssert.eq(
+                3,
+                countCodeLinesIn(ops, "PocketFilterConfig.resolveCap("),
+                "★全仓 resolveCap 消费点恰 3 处（物品/流体/源质各一）；多一处就是第二处真相");
+            // ★扫描器自身的两个负控：证明上面那三条不是"恒真式"读数（C1 的教训：静态块全绿不等于判据成立）
+            SimpleAssert.that(
+                !regionContainsCode(ops, itemStart, fluidStart, "resolveCapButThisTokenDoesNotExist"),
+                "★负控：区间扫描必须对不存在的片段报 false（否则上面的接线判据是恒真式）");
+            SimpleAssert.eq(-1, methodStart(ops, "Outcome extractNothingAtAll("), "★负控：行定位必须对不存在的方法报 -1（否则区间边界是假的）");
+        }
+        // ★判据形态：spotless 会把长调用在 `PocketGhostRequest` 之后折行，把 `.nextCap(` 单独放到下一行
+        // ⇒ 认 "PocketGhostRequest\.nextCap\(" 会随机漏掉被折的两支（本轮实测只报 1/3）。
+        // 点号始终粘在方法名上，故认 "\.nextCap\(" 既跨得过折行、又不会撞上定义行（`int nextCap(`）
+        // 与 javadoc 引用（`#nextCap}`）。
+        final int nextCapHits = countPocketSourceLinesMatching("\\.nextCap\\(", true);
+        if (nextCapHits < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ 「三类格件都走同一条 nextCap」的接线半边未验（★不是通过）");
+        } else {
+            SimpleAssert.eq(
+                3,
+                nextCapHits,
+                "★nextCap 的三个调用方 = NekoFilterSlot / NekoPocketFluidSlot / NekoEssenceGhostCell 各一处（少一处即某一支滚轮是死码）");
+        }
+        final int directiveHits = countPocketSourceLinesMatching("PocketGhostRequest\\.capDirective\\(", true);
+        if (directiveHits < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ capDirective 调用方计数未验");
+        } else {
+            SimpleAssert.that(
+                directiveHits >= 3,
+                "★三类格件各自发 capDirective（与 nextCap 同数 ⇒ 没有哪一支只算不发）；读到 " + directiveHits
+                    + "。★刻意用 ≥ 而不是 ==：Panel 待办 P-C2-1 允许面板自己造指令（requestGhostCap 转发），那时恰好三处不是稳定判据");
+        }
+
+        // ================= 半边 B：算式真的能改"拉多少" =================
+        final int unset = PocketConstants.FILTER_CAP_UNSET;
+
+        // 物品支（站点算式 min(simulated, resolveCap(filter, wanted.getMaxStackSize())) 的可测部分）
+        final PocketFilterConfig.Filter itemUnset = new PocketFilterConfig.ItemFilter(0, 2621, 7, "", unset);
+        final PocketFilterConfig.Filter itemCapped = new PocketFilterConfig.ItemFilter(0, 2621, 7, "", 30);
+        SimpleAssert.eq(
+            Math.min(100, PocketFilterConfig.resolveCap(itemUnset, 64)),
+            64,
+            "★旧档（未设）：模拟可得 100 ⇒ 一次仍拉 64 = 该件一叠（今日行为，未被新功能改动）");
+        SimpleAssert.eq(
+            Math.min(100, PocketFilterConfig.resolveCap(itemCapped, 64)),
+            30,
+            "★玩家调到 30 ⇒ 一次只拉 30（cap 真的在改变拉取量，不是摆设）");
+
+        // 流体支（站点算式 fluidRequestFor(available, min(room, resolveCap(filter, 0)))，用的是生产的 fluidRequestFor）
+        final PocketFilterConfig.Filter fluidUnset = new PocketFilterConfig.FluidFilter(0, "water", unset);
+        final PocketFilterConfig.Filter fluidCapped = new PocketFilterConfig.FluidFilter(0, "water", 320_000);
+        SimpleAssert.eq(
+            PocketAeChannelOps.fluidRequestFor(
+                PocketConstants.FLUID_BAR_CAPACITY_ML,
+                Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidUnset, 0))),
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            "★旧档流体：一次仍要满整 tank（16M）= 今日行为");
+        SimpleAssert.eq(
+            PocketAeChannelOps.fluidRequestFor(
+                PocketConstants.FLUID_BAR_CAPACITY_ML,
+                Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidCapped, 0))),
+            320_000,
+            "★玩家调到两档（320,000 mB）⇒ 请求量就是 320,000（两档 × 160,000）");
+        SimpleAssert
+            .eq(PocketAeChannelOps.fluidRequestFor(7_000, 320_000), 7_000, "落点空间更小时仍按落点收口（cap 不得越过 tank 剩余空间超发）");
+
+        // 源质支（站点算式 min(count, resolveCap(filter, 0))）
+        final PocketFilterConfig.Filter essenceUnset = new PocketFilterConfig.EssenceFilter(
+            0,
+            "essentia",
+            "aer",
+            unset);
+        final PocketFilterConfig.Filter essenceCapped = new PocketFilterConfig.EssenceFilter(0, "essentia", "aer", 7);
+        SimpleAssert.eq(
+            Math.min(PocketConstants.ESSENCE_CAP_PER_TAG, PocketFilterConfig.resolveCap(essenceUnset, 0)),
+            64,
+            "★旧档源质：一批仍至多 64 点 = ESSENCE_CAP_PER_TAG（D-3 的全有全无门未被抬高）");
+        SimpleAssert.eq(
+            Math.min(PocketConstants.ESSENCE_CAP_PER_TAG, PocketFilterConfig.resolveCap(essenceCapped, 0)),
+            7,
+            "★玩家调到 7 ⇒ 一批只 7 点（不会撞 64 全有全无 ⇒ 也就不会永久 needsRoom 卡死）");
+    }
+
+    /** 造一条"区域对、载荷随意"的声明，只为拿 {@code resolveCap} 的两条入口做同判据对表。 */
+    private static PocketFilterConfig.Filter newEssenceLike(Kind kind, int slot, int cap) {
+        switch (kind) {
+            case ITEM:
+                return new PocketFilterConfig.ItemFilter(slot, 2621, 7, "", cap);
+            case FLUID:
+                return new PocketFilterConfig.FluidFilter(slot, "water", cap);
+            case ESSENCE:
+            default:
+                return new PocketFilterConfig.EssenceFilter(slot, "essentia", "aer", cap);
+        }
+    }
+
+    /** 同一格换 cap（覆盖形态），只为证"同槽 withCap 不增条数"。 */
+    private static PocketFilterConfig.Filter itemFilterAt(int slot, int cap) {
+        return new PocketFilterConfig.ItemFilter(slot, 2621, 7, "", cap);
+    }
+
+    /** 数 ghost blob 里出现了多少个某个键（★只数条目级键，用来判"cap 有没有落档/有没有多落"）。 */
+    private static int countNbtKeysInFilterBlob(NBTTagCompound root, String key) {
+        final NBTTagCompound domain = root.getCompoundTag(PocketConstants.FILTERS);
+        int hits = 0;
+        for (String listKey : new String[] { PocketConstants.FILTER_ITEMS, PocketConstants.FILTER_FLUIDS,
+            PocketConstants.FILTER_ESSENTIA }) {
+            final NBTTagList list = domain.getTagList(listKey, 10);
+            for (int i = 0; i < list.tagCount(); i++) {
+                if (list.getCompoundTagAt(i)
+                    .hasKey(key)) {
+                    hits++;
+                }
+            }
+        }
+        return hits;
+    }
+
+    /** 读仓内某个源码文件的行；找不到仓库根或读失败返回 {@code null}（调用方必须打 NOTE，不得当空用）。 */
+    private static java.util.List<String> sourceLinesOrNull(String relativePath) {
+        final java.nio.file.Path root = repoRootOrNull();
+        if (root == null) {
+            return null;
+        }
+        final java.nio.file.Path file = root.resolve(relativePath);
+        if (!java.nio.file.Files.isReadable(file)) {
+            return null;
+        }
+        try {
+            return java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException ignored) {
+            return null;
+        }
+    }
+
+    /** 某一行的代码正文（★不是注释）里是否含给定片段。 */
+    private static boolean isCommentLine(String line) {
+        final String trimmed = line.trim();
+        return trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
+    }
+
+    /** 第一个包含 {@code needle} 的代码行的下标；找不到返回 -1。 */
+    private static int methodStart(java.util.List<String> lines, String needle) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (!isCommentLine(lines.get(i)) && lines.get(i)
+                .contains(needle)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** 区间内（★注释行不算）是否有代码行含给定片段。 */
+    private static boolean regionContainsCode(java.util.List<String> lines, int from, int to, String needle) {
+        for (int i = Math.max(0, from); i < Math.min(lines.size(), to); i++) {
+            if (!isCommentLine(lines.get(i)) && lines.get(i)
+                .contains(needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 整份文件里含给定片段的代码行数（注释不算）。 */
+    private static int countCodeLinesIn(java.util.List<String> lines, String needle) {
+        int hits = 0;
+        for (String line : lines) {
+            if (!isCommentLine(line) && line.contains(needle)) {
+                hits++;
+            }
+        }
+        return hits;
+    }
+
+    /** ★判据 6 的"接线"断言：某一支抽取方法的方法体里必须真有一行在调 resolveCap。 */
+    private static void assertResolveCapInside(java.util.List<String> lines, int from, int to, String label) {
+        final int hits = countCodeLinesIn(
+            lines.subList(Math.max(0, from), Math.min(lines.size(), to)),
+            "PocketFilterConfig.resolveCap(");
+        SimpleAssert.eq(
+            1,
+            hits,
+            "★" + label + " 方法体内必须恰有一处消费 PocketFilterConfig.resolveCap(（读到 " + hits + " ⇒ 该支要么没接上、要么接了两遍）");
     }
 
     /** 各区域的一条代表性载荷键（多处复用，免得同一份字面量在断言里写三遍）。 */

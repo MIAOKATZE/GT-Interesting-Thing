@@ -42,10 +42,15 @@ import net.minecraft.nbt.NBTTagString;
  * 存储与显示解耦：多于 72 个 tag 仍照常入账，只是<b>没有格位可占</b>（{@link #assignCell(String)}
  * 返回 −1，显示侧据此走 {@code aspect.overflow_note} 兜底）。
  * <p>
- * <b>入账口径 = 全有全无</b>：一轮候选（一件物品蒸出的全部 aspect）必须<b>整体</b>放得下，
- * 任一 tag 空间不足 ⇒ 整轮零入账、上层零消耗。故走 {@link #canAcceptAll(Map)} →
- * {@link #putAll(Map)} 两段式；<b>不得</b>拿 {@link #add(String, int)} 的逐 tag 截断结果
+ * <b>入账口径 = 全有全无，作用单位是「一组物品」</b>（R83 A2 / D-3 β）：一组（同一 item + 同一 damage
+ * 散在多格也算<b>一组</b>）蒸出的全部 aspect 必须<b>整体</b>放得下，任一 tag 空间不足 ⇒ <b>该组</b>零入账、
+ * 上层对该组零消耗，其它组照常入账。故走 {@link #canAcceptAll(Map, Map)}（第二参是本轮已排给其它组的
+ * 预留量）→ {@link #putAll(Map)} 两段式；<b>不得</b>拿 {@link #add(String, int)} 的逐 tag 截断结果
  * 去决定"本轮要不要消耗物品"（截断后照扣 = 静默销毁价值）。
+ * <p>
+ * ★两种"放不下"必须分开（R83 偏差 3c）：{@link #exceedsCellCap(Map)} 为真 = 单件原量本身就超
+ * {@link PocketConstants#ESSENCE_CAP_PER_TAG} ⇒ <b>再怎么腾格也放不下</b>，只能放弃该组并留下读数；
+ * 只有"当前存量 + 预留量装得下与否"这一种才是可解卡的"需要空间"（停在满格不重跑）。
  */
 public final class PocketEssenceStore {
 
@@ -279,16 +284,31 @@ public final class PocketEssenceStore {
     }
 
     /**
-     * 一轮候选能否<b>整体</b>入账（全有全无的"预检"段）。
+     * 一份候选能否<b>整体</b>入账（全有全无的"预检"段）。
      * <p>
-     * 候选里任一 tag 的 {@code current + amount} 超过单格上限即整轮判 false；未登记的 tag
+     * 候选里任一 tag 的 {@code current + amount} 超过单格上限即这份候选判 false；未登记的 tag
      * 视为从 0 起算（仍能收 {@code ESSENCE_CAP_PER_TAG} 点）。非正数条目天然"放得下"（不占空间），
      * 空候选恒为 true。
+     * <p>
+     * 注入支（一次一份容器）用它；蒸馏侧一轮要逐组装箱，用 {@link #canAcceptAll(Map, Map)}
+     * 把已许诺给前面组的量一起算上。
      *
-     * @param candidates tag → 本轮应得点数；null/空视为无候选
+     * @param candidates tag → 应得点数；null/空视为无候选
      * @return true 表示整份候选都能入账，调用方随后可 {@link #putAll(Map)} 提交并据此消耗物品
      */
     public boolean canAcceptAll(Map<String, Integer> candidates) {
+        return canAcceptAll(candidates, null);
+    }
+
+    /**
+     * 同上，但把<b>本轮已排给其它组的预留量</b>一起算进占用（R83 A2：一轮里逐组装箱，
+     * 后装的组不能把已经许给前一组的空间再许一遍）。
+     * <p>
+     * ★预留量只加在判据上，<b>不改</b>库存：真正的入账仍是那一次 {@link #putAll(Map)}。
+     *
+     * @param reserved tag → 本轮已许诺的点数；null/空 = 无预留（退化成 {@link #canAcceptAll(Map)}）
+     */
+    public boolean canAcceptAll(Map<String, Integer> candidates, Map<String, Integer> reserved) {
         if (candidates == null || candidates.isEmpty()) {
             return true;
         }
@@ -298,11 +318,38 @@ public final class PocketEssenceStore {
             if (tag == null || tag.isEmpty() || amount == null || amount <= 0) {
                 continue;
             }
-            if (get(tag) + amount > PocketConstants.ESSENCE_CAP_PER_TAG) {
+            final int promised = reserved == null ? 0 : intOf(reserved.get(tag));
+            if (get(tag) + promised + amount > PocketConstants.ESSENCE_CAP_PER_TAG) {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * 这份候选里是否存在<b>单格永远装不下</b>的条目（某 tag 的点数本身 &gt; 单格上限）。
+     * <p>
+     * 存在的理由（R83 偏差 3c）：这类条目与"格内已有存量把空间挤掉了"是两件事——后者玩家取走晶就解卡，
+     * 前者<b>无论怎么腾都放不下</b>（TC 的 {@code getBonusTags} 在 {@code capAspects} 之后继续累加，
+     * 护甲/工具/武器类可越 64）。把它单独判出来，上层才能"放弃这一组并留下读数"，而不是拿
+     * {@link #canAcceptAll(Map)} 的一个 false 把整轮永久冻住。
+     *
+     * @return true = 至少一个条目单独就超上限
+     */
+    public boolean exceedsCellCap(Map<String, Integer> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return false;
+        }
+        for (final Integer amount : candidates.values()) {
+            if (amount != null && amount > PocketConstants.ESSENCE_CAP_PER_TAG) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int intOf(Integer value) {
+        return value == null ? 0 : value;
     }
 
     /**

@@ -171,7 +171,7 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_BIND_ROWS = "pocket.bind.rows";
     private static final String SYNC_MODE = "pocket.mode";
     private static final String SYNC_REMAIN = "pocket.remain";
-    private static final String SYNC_PROGRESS = "pocket.distill.progress";
+    static final String SYNC_PROGRESS = "pocket.distill.progress";
     /** S2C：ghost 声明视图（{@code kind:slotIndex:载荷键}，';' 分隔）⇒ 客户端据此<b>原位</b>虚化格子。 */
     private static final String SYNC_GHOST = "pocket.ghost.slots";
     /** S2C：上一次通道/绑定动作的回执（{@code langKey|数量}），客户端只做本地化格式化。 */
@@ -307,10 +307,13 @@ public final class NekoPocketPanel implements PocketSession {
 
         // 1) 槽组注册：矩阵侧与 Container 侧同名，否则 MUI2 直接 IllegalArgumentException（R41d）。
         // allowShiftTransfer 对<b>本仓四组</b>仍为 false：shift 的落点是玩家背包那一组，
-        // 而那一组由框架自己注册（rowSize 9、allowShiftTransfer=true）⇒ 双向搬运由它单边发起即可，
-        // 四组都开会出现"同一次 shift 被两组各抢一次"的分叉。
+        // 而那一组由框架自己注册（rowSize 9、allowShiftTransfer=true）。
+        // ★R83：中栏这一组第 4 参开成 true = 玩家背包↔中栏的 shift 收存（需求 5「箱子属性」里唯一能由
+        // 开关给到的那半；中键/R 键整理是自家手势，不是通用箱子整理）。蒸馏/流体/绑定三组仍关 ——
+        // 四组全开会出现"同一次 shift 被两组各抢一次"的分叉。
+        // ghost 格不因此被灌：放置判据已钉在服务端 handler 的 isItemValid 上（R83 B1）。
         syncManager
-            .registerSlotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, NekoPocketStorageColumn.COLUMNS, 100, false));
+            .registerSlotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, NekoPocketStorageColumn.COLUMNS, 100, true));
         syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_FLUID, PocketSlots.FLUID_COLUMNS, 100, false));
         syncManager.registerSlotGroup(
             new SlotGroup(PocketSlots.GROUP_DISTILL, NekoPocketEssenceColumn.DISTILL_COLUMNS, 100, false));
@@ -525,9 +528,9 @@ public final class NekoPocketPanel implements PocketSession {
      * 扣点/物化/落点判定全在服务端 {@link #performEssenceOut}（R18/R19）。
      */
     boolean requestEssenceOut(int cell, String tag, boolean shift) {
-        if (tag == null) {
-            return false;
-        }
+        // ★R83：不再在客户端拿 tag 判空后静默早退 —— 服务端 performEssenceOut 本就会按格号反查归属并
+        // 给"无事发生"回执（R18/R19：客户端字符串一律不可信）。两处各判一次就是两处真相，且客户端这
+        // 一处连回执都不发，玩家看到的是"点了一下，什么都没发生"。
         return sendAction(ACTION_ESSENCE_OUT, shift ? cell + PocketConstants.ESSENCE_OUT_SHIFT_FLAG : cell);
     }
 
@@ -663,13 +666,7 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** 从 {@code from} 起的第一个<b>非 ghost</b> 中栏槽号（越界返回 {@code slots} 本身）。 */
     private int nextRealSlot(int from) {
-        final int size = inventory.storage()
-            .getSlots();
-        int index = Math.max(0, from);
-        while (index < size && inventory.isGhostItemSlot(index)) {
-            index++;
-        }
-        return index;
+        return inventory.nextSortableStorageSlot(from);
     }
 
     /** 塞进玩家背包，装不下就掉在脚下（R40a 的非消耗退回口径；整理/搬空都不该凭空吞物品）。 */
@@ -958,7 +955,7 @@ public final class NekoPocketPanel implements PocketSession {
             return;
         }
         final ItemStack crystals = TaumCompat.newCrystalStack(tag, points);
-        final int moved = crystals == null ? 0 : depositItem(crystals);
+        final int moved = crystals == null ? 0 : depositToPlayerFirst(crystals);
         if (moved < points) {
             // 物化失败（TC 缺席/该 tag 不可物化）或落点装不下：点数退回原格，绝不销毁价值
             store.add(tag, points - moved);
@@ -1081,7 +1078,7 @@ public final class NekoPocketPanel implements PocketSession {
             return parsed;
         }
         for (String record : blob.split(";")) {
-            final String[] parts = record.split("\\|", 3);
+            final String[] parts = record.split("\\|", 4);
             if (parts.length < 3) {
                 continue;
             }
@@ -1097,8 +1094,17 @@ public final class NekoPocketPanel implements PocketSession {
             if (payload == null || payload.kind() != kind) {
                 continue;
             }
+            // ★第 4 段缺失 = 外来/陈旧三段档 ⇒ 未设（由 resolveCap 回落现全局量），不得臆造成 0
+            int cap = PocketConstants.FILTER_CAP_UNSET;
+            if (parts.length > 3 && !parts[3].isEmpty()) {
+                try {
+                    cap = Integer.parseInt(parts[3]);
+                } catch (RuntimeException ignored) {
+                    cap = PocketConstants.FILTER_CAP_UNSET;
+                }
+            }
             // ★rebuild 走 PocketGhostRequest 那一份（服务端写入口与这里必须同一段代码，否则两处迟早漂移）
-            parsed.add(slotIndex, PocketGhostRequest.rebuildAt(kind, slotIndex, payload));
+            parsed.add(slotIndex, PocketGhostRequest.rebuildAt(kind, slotIndex, payload, cap));
         }
         return parsed;
     }
@@ -1131,6 +1137,9 @@ public final class NekoPocketPanel implements PocketSession {
                 .at(PocketFilterConfig.Kind.ITEM, index);
             final ItemStack sample = declared == null ? null
                 : PocketAeChannelOps.stackFromContentKey(declared.key(), 1);
+            // ★上限读数必须走在下面那条"没变就跳过"之前：只调过 cap 而 ghost/样本都没变时，跳过判据会把
+            // 新读数整条吞掉 ⇒ 玩家滚了数字、格上不动。setter 自身同值即返回，每拍调不产生额外脏标记。
+            widget.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
             if (widget.isGhost() == (declared != null) && sameSample(widget.ghostSample(), sample)) {
                 continue;
             }
@@ -1157,6 +1166,7 @@ public final class NekoPocketPanel implements PocketSession {
             }
             final PocketFilterConfig.Filter declared = inventory.filters()
                 .at(PocketFilterConfig.Kind.FLUID, index);
+            widget.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
             widget.setGhost(
                 declared instanceof PocketFilterConfig.FluidFilter,
                 declared instanceof PocketFilterConfig.FluidFilter fluid ? fluid.fluidName : "");
@@ -1174,9 +1184,11 @@ public final class NekoPocketPanel implements PocketSession {
             if (cell == null) {
                 continue;
             }
-            cell.setGhost(
-                inventory.filters()
-                    .at(PocketFilterConfig.Kind.ESSENCE, index) != null);
+            final PocketFilterConfig.Filter declared = inventory.filters()
+                .at(PocketFilterConfig.Kind.ESSENCE, index);
+            // ★同 applyItemGhosts：cap 的推送不能挂在 setGhost 的"没变即返回"之后
+            cell.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
+            cell.setGhost(declared != null);
         }
     }
 
@@ -1319,7 +1331,11 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * {@code kind|slot|payloadKey} 记录，{@code ';'} 分隔（分隔符见 {@code PocketConstants}）。
+     * {@code kind|slot|payloadKey|cap} 记录，{@code ';'} 分隔（分隔符见 {@code PocketConstants}）。
+     * <p>
+     * ★第 4 段是 R83 C2 的组上限原始值（{@code -1} = 未设）：它必须随本 blob 下发，否则服务端存着的
+     * 玩家调值到不了客户端，虚像右上角永远显示天花板。载荷键永不含 {@code '|'}（base64 字母表 +
+     * {@code f:}/{@code e:} 前缀），故第 4 段可以安全地按同一条分隔符切。
      * <p>
      * public static 的理由同上（编解码两端各一份实现就必须钉住，否则 ghost 会在同步中静默变形）。
      */
@@ -1333,7 +1349,9 @@ public final class NekoPocketPanel implements PocketSession {
                 .append(PocketConstants.GHOST_REQUEST_SEPARATOR)
                 .append(filter.slotIndex())
                 .append(PocketConstants.GHOST_REQUEST_SEPARATOR)
-                .append(filter.key());
+                .append(filter.key())
+                .append(PocketConstants.GHOST_REQUEST_SEPARATOR)
+                .append(filter.cap());
         }
         return builder.toString();
     }
@@ -1742,7 +1760,7 @@ public final class NekoPocketPanel implements PocketSession {
             .getSlots();
     }
 
-    /** 一轮蒸馏对一格只做"减 1"（R28：5 秒是节拍不是产量，一次消耗一件）。 */
+    /** 一轮蒸馏对<b>每组</b>只做"减 1"（R28：5 秒是节拍不是产量；★R83 β 下同物多格算一组，故每格每轮至多减 1 件）。 */
     @Override
     public void consumeOneDistillInput(int index) {
         final ItemStack at = distillInputStack(index);
@@ -1759,6 +1777,36 @@ public final class NekoPocketPanel implements PocketSession {
                 .setStackInSlot(index, rest);
         }
         inventory.markDirty();
+    }
+
+    /**
+     * 手动取出的落点：★先玩家背包，装不下的余量才走 {@link #depositItem(ItemStack)}（中栏 → 背包兜底）。
+     * <p>
+     * 与通道自动拉取那条口径<b>刻意相反</b>：拉取是"往口袋里填"，中栏优先；而玩家点一下取晶却把东西
+     * 整进中栏，看到的就是"我点了一下，东西跑到别的地方去了"（R83 缺陷 2②）。两处都装不下时返回
+     * 小于请求量的数 ⇒ 调用方按差额退点，既不销毁价值也不掉地下。
+     */
+    private int depositToPlayerFirst(ItemStack stack) {
+        if (stack == null || stack.stackSize <= 0) {
+            return 0;
+        }
+        final int want = stack.stackSize;
+        int moved = 0;
+        final EntityPlayer target = player();
+        while (moved < want && target != null) {
+            final ItemStack chunk = stack.copy();
+            chunk.stackSize = Math.min(want - moved, chunk.getMaxStackSize());
+            if (!target.inventory.addItemStackToInventory(chunk)) {
+                break;
+            }
+            moved += chunk.stackSize;
+        }
+        if (moved >= want) {
+            return want;
+        }
+        final ItemStack rest = stack.copy();
+        rest.stackSize = want - moved;
+        return moved + depositItem(rest);
     }
 
     /** 先口袋中栏（跳过 ghost 格）、再玩家背包兜底；<b>不</b>掉地下（拉取是自动行为）。 */
@@ -2089,6 +2137,9 @@ public final class NekoPocketPanel implements PocketSession {
         builder.append(StatCollector.translateToLocal("gtit.pocket.ghost.capacity_note"))
             .append('\n');
         builder.append(StatCollector.translateToLocal("gtit.pocket.note.channel"))
+            .append('\n');
+        // ★R83 D-4：中栏的"箱子属性"是自家手势 + 自家算法，必须在游戏内说清它不是通用箱子整理
+        builder.append(StatCollector.translateToLocal("gtit.pocket.storage.sort_gesture"))
             .append('\n');
         builder.append(StatCollector.translateToLocal("gtit.pocket.held.note"))
             .append('\n');

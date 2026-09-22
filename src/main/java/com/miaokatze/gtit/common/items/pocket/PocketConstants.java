@@ -101,6 +101,24 @@ public final class PocketConstants {
     public static final String FILTER_TYPE_ID = "typeId";
     /** 源质配置的 aspect tag 字符串。 */
     public static final String FILTER_TAG = "tag";
+    /**
+     * ★<b>R83 C2（缺陷 6 / D-5）新增</b>：单条 ghost 声明的<b>组上限</b>（TAG_Int=3），
+     * 与 {@link #FILTER_SLOT} 同层登记（都是"每条声明自带"的字段，不是根级键）。
+     * <p>
+     * 语义 = <b>该条声明一次批次最多拉多少</b>（物品 = 件、流体 = mB、源质 = 点 = 晶）。
+     * ★刻意<b>不</b>进 {@code PocketFilterConfig.Filter#key()}（载荷键是跨重启稳定标识，
+     * {@code contains()} 与 {@code PocketAeChannelOps.contentKey} 都依赖它；把数量塞进载荷键会让
+     * "同一种物品两条声明"分裂成不同身份）。
+     * <p>
+     * ★<b>缺键 = {@link #FILTER_CAP_UNSET} 而不是 0</b>（与 {@link #FILTER_SLOT}/{@link #FILTER_SLOT_UNSET}
+     * 同一条套路）：未设的旧档条目必须回落到"该类<b>今天</b>的现全局量"，这样"引入可调上限"与
+     * "改变现有填充行为"两件事不会互相掩盖。写档侧同样只在已设时落键 ⇒ 旧档形状逐字节不变
+     * （回归用例 {@code filter_keys_carry_no_channel_index} 的"物品声明只允许
+     * itemId/meta/nbt/slotIndex"白名单因此仍然成立）。
+     */
+    public static final String FILTER_CAP = "cap";
+    /** {@link #FILTER_CAP} 的"未设置"哨兵（0 与正数都是合法读数，故未设必须可区分）。 */
+    public static final int FILTER_CAP_UNSET = -1;
 
     // ------------------------------------------------------------------ 容量与时序
     /** 绑定条目上限：超出即拒绝新绑定（防 NBT 无界膨胀，元件侧同口径按条数收口）。 */
@@ -328,6 +346,47 @@ public final class PocketConstants {
      */
     public static final int FLUID_TOTAL_CAPACITY_ML = FLUID_TANK_TOTAL * FLUID_BAR_CAPACITY_ML;
 
+    // ------------------------------------------------------ R83 C2（缺陷 6）：每条声明的组上限口径
+    //
+    // ★这一整段的存在理由：用户那句「alt 滚轮调整数量…物品每次 1 个；流体每次 1%；源质每次 1 个；
+    // alt+ctrl+滚轮 步进 ×10」里每一个数字都只允许活在这里（D-6 裁定：×10 是<b>步进</b>的倍率，
+    // 不是第二处通道速率 ⇒ 本片一个字节都不碰 Config.pocketChannelPairsPerSecond、CHANNEL_TICK_PERIOD
+    // 与 ticksToSecondsCeil）。步进量必须由<b>服务端</b>与<b>客户端读数</b>共读同一份常量，
+    // 否则"滚一下看到的"与"落档的"就是两个数。
+
+    /**
+     * 组上限的下界。★刻意取 1 而不是 0：{@code PocketAeChannelOps#extract} 对 {@code count <= 0}
+     * 走的是 {@code NO_CHANNEL} 分支，会把"玩家自己调到 0"显示成"通道失联"（撒谎）；不想拉就该右键解绑。
+     */
+    public static final int FILTER_CAP_MIN = 1;
+    /** 物品支一次滚轮的步进 = <b>1 件</b>（用户原话"物品是每次1个"）。 */
+    public static final int FILTER_CAP_STEP_ITEM = 1;
+    /** 源质支一次滚轮的步进 = <b>1 点</b>（= 1 晶，与 {@link #ESSENCE_OUT_UNIT_POINTS} 同值不同语义：那条是取出量，本条是调整量）。 */
+    public static final int FILTER_CAP_STEP_ESSENCE = 1;
+    /** 流体支"1%"的档数（★分母按 D-6 = 单 tank 容量 {@link #FLUID_BAR_CAPACITY_ML}，不是 288M 合计）。 */
+    public static final int FILTER_CAP_PERCENT_STEPS = 100;
+    /** 流体支一次滚轮的步进 = 单 tank 容量的 1% = {@code 16,000,000 / 100 =} <b>160,000 mB</b>（派生，不留字面量）。 */
+    public static final int FILTER_CAP_STEP_FLUID = FLUID_BAR_CAPACITY_ML / FILTER_CAP_PERCENT_STEPS;
+    /** alt+ctrl 的步进倍率（★作用在<b>步进</b>上：物品 1→10、流体 1%→10%、源质 1→10）。 */
+    public static final int FILTER_CAP_FAST_MULTIPLIER = 10;
+    /**
+     * 流体支组上限的<b>上界</b>，同时是"未设置"时的<b>回落值</b>（两者同值不是巧合：
+     * 现行为就是"一拍填到本 tank 的自然满量"，回落必须逐字复现它）。
+     */
+    public static final int FILTER_CAP_CEILING_FLUID = FLUID_BAR_CAPACITY_ML;
+    /** 源质支组上限的上界与回落值（同上：现行为 = {@link #ESSENCE_CAP_PER_TAG} 点/条/批）。 */
+    public static final int FILTER_CAP_CEILING_ESSENCE = ESSENCE_CAP_PER_TAG;
+    /**
+     * ★物品支<b>服务端</b>一侧的收口上界 = 不设界（刻意）。
+     * <p>
+     * 物品的自然满量是<b>该物品自己的</b> {@code maxStackSize}（1 / 16 / 64 / 960 都可能），而"解出这一件
+     * 能叠多少"要拿着 {@code ItemStack} 才做得到；在纯 JVM 的 {@code PocketGhostRequest} 里猜一个数
+     * 就是第二处真相（还会把 16 格的药材判成"最多 64"）。⇒ 请求侧只保证下界，真正的收口在消费侧
+     * {@code min(cap, maxStackSize)}（见 R83 C2 记录里的 Ops 待办 O-1，那一行本来就在那里取
+     * {@code wanted.getMaxStackSize()}）。
+     */
+    public static final int FILTER_CAP_CEILING_ITEM_SERVER = Integer.MAX_VALUE;
+
     // ------------------------------------------------------ R24 的「剩余 tick」与 R37 的状态位
     /**
      * 短效通道剩余 tick（R24：倒计时用 NBT 剩余 tick，不用世界绝对时刻）。
@@ -394,6 +453,17 @@ public final class PocketConstants {
     public static final String GHOST_REQUEST_SEPARATOR = "|";
     /** ghost 请求：把这一格就地转成配置格（NEI 左键拖入）。 */
     public static final String GHOST_REQUEST_SET = "SET";
+    /**
+     * ★<b>R83 C2</b> ghost 请求：调整这一格声明的<b>组上限</b>（alt+滚轮）。
+     * <p>
+     * 文法 {@code CAP|<槽号>|<区域字母>|<绝对值>}。★大容量（流体 16,000,000 一档）<b>只能</b>走
+     * {@code SYNC_GHOST_REQUEST}（面板那侧的字符串同步键）：自家 int 动作通道按 {@code code*1024+arg}
+     * 打包，{@code 16_000_000 / 1024 = 15625} 会落进 {@code onServerAction} 的 {@code default: break}
+     * ⇒ 静默失效（R64c 的容量判据）。这里传的是<b>绝对值</b>而非增量：增量要在服务端知道"当前值"，
+     * 而物品支的当前默认值 = 该物品自己的 {@code maxStackSize}（纯 JVM 件解不出），
+     * 绝对值则两端都由 {@code PocketGhostRequest#nudgedCap} 这<b>一条</b>算式算出 ⇒ 步进表只有一份。
+     */
+    public static final String GHOST_REQUEST_CAP = "CAP";
     /**
      * ghost 请求：解绑这一格（右键，判定与执行都在服务端）。
      * <p>

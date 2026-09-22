@@ -6,11 +6,9 @@ import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
 import com.cleanroommc.modularui.value.sync.FluidSlotSyncHandler;
 import com.cleanroommc.modularui.widget.ParentWidget;
-import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.FluidSlot;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 
 /**
@@ -71,12 +69,12 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
  * 外观推出，撤进 tooltip 就等于"当前到底在推还是拉"没有可见面。与之相反，图例与用法摘要讲的都是
  * "这格怎么用"这类<b>不随状态变的说明书文字</b> ⇒ 必须撤进 tooltip。
  * <p>
- * <b>36 个交互格两格同权（R39a 原样保留，R75/R78 只换落点）</b>：每列的"输入格"与"输出格"行为
- * <b>完全相同</b>，方向由<b>放入的容器当前有无流体</b>决定（有流体 → 抽进<b>本列的 tank</b>；
- * 为空 → 从本列的 tank 灌满）。搬运本体在 {@link PocketSlots#fluidInteraction} 的服务端
- * changeListener 里，本文件只装配 Widget；"同权"这一层由 {@code tooltip.6} 与
- * {@code gtit.pocket.legend.in_out_same} 对玩家显式声明，<b>不得</b>把两行做成"只能进 / 只能出"
- * （那会让 R39a 与检查表 2.5 同时失效）。
+ * <b>36 个交互格（★R83 D-2 覆盖 R39a 的"两格同权"）</b>：方向仍由<b>放入的容器当前有无流体</b>决定
+ * （有流体 → 抽进<b>本列的 tank</b>；为空 → 从本列的 tank 灌满），但<b>落位不再同格</b>：处理完的容器
+ * 进本列<b>出格</b>、未处理完的余量留本列<b>进格</b>，两格都放不下就整笔不搬也不吞件。搬运本体在
+ * {@link PocketSlots#fluidInteraction} 的服务端 changeListener 里，本文件只装配 Widget。
+ * ★R39a 的"同权"现在只对<b>输入侧</b>成立 ⇒ 出格仍不得做成"只能出"的单向门（那会让检查表 2.5 失效）；
+ * 玩家可见口径由 {@code gtit.pocket.legend.in_out_same} 与 {@code legend.input}/{@code legend.output} 声明。
  * <p>
  * <b>18 个流体槽（R30/R46c/L7 + R78②）</b>：一律用 MUI2 原生 {@link FluidSlot} 的子类
  * {@link NekoPocketFluidSlot} + {@link FluidSlotSyncHandler}（<b>不开 phantom</b>，理由见该方法）：
@@ -225,7 +223,6 @@ public final class NekoPocketLeftColumn {
             .child(interaction)
             .child(fluidSlots(ui))
             // R78 D-2：图例段与说明摘要段整体撤出常驻渲染，只留末行"按钮 + 一行状态回显"
-            .child(sortButton(ui))
             .child(statusLine(ui));
         return root.excludeAreaInRecipeViewer();
     }
@@ -295,40 +292,16 @@ public final class NekoPocketLeftColumn {
     }
 
     /**
-     * 一键整理中栏 135 格（计划 §6 第 4 条的<b>语义①</b>）——R78 后落在末行左侧：流体块吃满了列高，
-     * 原来那条"按钮 + 容量读数"行已经不存在（容量读数进 tooltip，按钮进末行）。
-     * <p>
-     * <b>为什么自造按钮</b>（R41c 的后备分支）：R41c 让优先复用
-     * {@code SlotGroupWidget.placeSortButtonsTopRightVertical()}，但实测本版本（2.3.88）里
-     * 那一族方法连同 {@code SortButtons} 类<b>都不存在</b>——{@code SlotGroupWidget.java:63-144}
-     * 整段被注释掉，{@code widgets/} 目录下也没有 {@code SortButtons.java} ⇒ 复用不可能。
-     * 不自绘同步面：按钮只发一次请求，排序本体在 {@link NekoPocketPanel#performSort()}（服务端）。
-     */
-    private static IWidget sortButton(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(0, STATUS_Y)
-            .size(CELL, CELL)
-            .name("pocket_sort_button")
-            .background(PocketGuiTextures.BUTTON)
-            .child(
-                NekoGuiTextures.SORT_SMART.asWidget()
-                    .pos(1, 1)
-                    .size(12, 12))
-            .playClickSound(false)
-            .tooltip(tooltip -> tooltip.addLine(IKey.lang("gtit.pocket.sort.button")))
-            .onMousePressed(button -> ui.requestSort());
-    }
-
-    /**
      * 一行状态回显（★R78 D-2 允许保留的那"一行短文本"，判据见类 javadoc：它印的是服务端算出来的
      * 运行期事实——推送/拉取方向、冷却与剩余秒数、最近一次动作的回执——不是"这格怎么用"的说明）。
      * <p>
      * 文本由 {@link NekoPocketPanel} 的同步缓存格式化 ⇒ 客户端不读服务端内存表、不按 ghost 表推断
-     * （R39b/R19）。末行只有 {@code 108-18-2 = 88}px 宽，装不下完整回执（R36 判过的宽度现实）
-     * ⇒ 同一份完整文本连同撤下来的说明进本行的 tooltip（<b>不删信息</b>）。
+     * （R39b/R19）。★R83：撤掉自造「整理」按钮后本行占满整条末行（{@code 108}px，原 88px）；
+     * 完整回执仍连同撤下来的说明进本行 tooltip（<b>不删信息</b>，R36 的宽度现实只是缓解不是解除）。
      */
     private static IWidget statusLine(NekoPocketPanel ui) {
-        return new ParentWidget<>().pos(CELL + 2, STATUS_Y)
-            .size(WIDTH - CELL - 2, STATUS_HEIGHT)
+        return new ParentWidget<>().pos(0, STATUS_Y)
+            .size(WIDTH, STATUS_HEIGHT)
             .name("pocket_status_lines")
             .child(
                 (IWidget) new TextWidget(IKey.dynamic(ui::fluidStatusLine)).textAlign(Alignment.CenterLeft)

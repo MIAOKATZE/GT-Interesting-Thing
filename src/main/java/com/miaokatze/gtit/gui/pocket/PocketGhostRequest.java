@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.gui.pocket;
 
+import com.cleanroommc.modularui.api.UpOrDown;
+import com.cleanroommc.modularui.utils.Color;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 
@@ -10,16 +12,35 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * <b>为什么把这层单切出来</b：{@code NekoPocketPanel#onServerGhostRequest} 是 ghost 的<b>唯一</b>
  * 执行体（R18/R19：判定与落档必须在服务端，客户端只发请求），但它同时握着会话守卫、槽位 widget
  * 登记表与虚化广播，零依赖回归套件碰不到。本类把其中<b>会算错的那一半</b>（文法解析、分区域
- * 越界、按载荷类型分派 kind、同槽覆盖判定）搬成纯函数，面板那侧只剩
+ * 越界、按载荷类型分派 kind、同槽覆盖判定、★组上限的步进与收口）搬成纯函数，面板那侧只剩
  * 「守卫 → {@link #apply} → 变了就写档并刷虚化」三步。
+ * <p>
+ * ★R83 C2 起本类有两个<b>惰性</b>入站引用：{@link UpOrDown}（只是带 {@code modifier} 的枚举，无 MC 依赖）
+ * 与 {@link Color}（只活在 {@link #capReadoutColor()} 的<b>方法体</b>里 —— {@code Color} 的类初始化会牵进
+ * {@code ModularUI} 主类）。⇒ {@link #capReadoutColor()} <b>只能</b>被客户端绘制路径调用，不得进任何
+ * 判定/落档分支，也不得放进本类的静态字段初始化，零依赖回归套件同样不得调它。
  * <p>
  * <b>请求文法</b>（分隔符与操作码见 {@link PocketConstants}）：
  * 
  * <pre>
  * SET|&lt;slot&gt;|&lt;载荷键&gt;          kind 由载荷键前缀推出（i/f/e ⇒ ITEM/FLUID/ESSENCE）
  * CLR|&lt;slot&gt;|&lt;kind 字母&gt;      I/F/E，见 {@link PocketConstants#GHOST_KIND_ITEM} 等
+ * CAP|&lt;slot&gt;|&lt;kind 字母&gt;|&lt;绝对值&gt;   ★R83 C2：调这一格声明的组上限（alt+滚轮）
  * </pre>
- * 
+ *
+ * ★<b>CAP 为什么走字符串而不是 int 动作通道</b>：流体一档就是 160,000 mB、默认值 16,000,000，
+ * 而自家 {@code SYNC_ACTION} 的打包式样是 {@code code*1024 + arg}（{@code ACTION_ARG_BASE}），
+ * {@code 16_000_000 / 1024 = 15625} 早已越出"一个动作码的 arg 区间"⇒ 会落进
+ * {@code onServerAction} 的 {@code default: break} <b>静默失效</b>。字符串通道无此上限，
+ * 且 CLR/SET 已经在用它 ⇒ <b>零新动作码、零新同步键</b>（面板那根 {@code SYNC_GHOST_REQUEST} 原样复用）。
+ * <p>
+ * ★<b>CAP 的第四段是绝对值</b>，但"步进"这条算式仍只有一份：{@link #nextCap}（客户端格件用，手里有
+ * 样本栈 ⇒ 知道该物品的 {@code maxStackSize}）与 {@link #applyCap}（服务端用，只做区间收口）
+ * 共读同一份 {@link PocketConstants} 步进与上下界常量 ⇒ 不会出现"客户端按一套表、服务端按另一套表"。
+ * ★服务端<b>不重算步进</b>的硬理由：物品的自然满量只有拿着 {@code ItemStack} 的一端解得出，
+ * 服务端若再解一次载荷键去查注册表就是第二处真相 ⇒ 物品支的服务端上界刻意不设
+ * （{@link PocketConstants#FILTER_CAP_CEILING_ITEM_SERVER}），真正的"不超过一叠"在消费侧收口。
+ * <p>
  * ★CLR 必须带 kind：三个区域的槽索引<b>各自从 0 起</b>（中栏 0…134 / 流体槽 0…17 / 源质格 0…71，
  * R78②③ 把后两个上界放开到 18 与 72，但"同一数字分属三个区域"这件事一个字都没变），
  * 裸 {@code CLR|0} 分不清"清中栏第 0 格"还是"清流体槽第 0 格"——那正是
@@ -66,10 +87,61 @@ public final class PocketGhostRequest {
 
     /** 拼装"把这一格就地转成配置格"的请求（kind 由载荷键前缀自己说明）。 */
     public static String setRequest(int slotIndex, String payloadKey) {
+        if (isCapDirective(payloadKey)) {
+            // ★R83 C2 的过渡形状：格件只能拿到面板那一个 requestGhost(槽, 载荷键) 入口（面板文件归主代理独占，
+            // 本片不得给它加新方法），于是"调上限"借同一个入口上来、由这里把槽号插进指令里。
+            // 判别是<b>无歧义</b>的：真载荷键只用 ':' 分段、绝不含 '|'（{@link #applySet} 的守卫正是这一条），
+            // 所以带 '|' 的第二段只可能是 {@link #capDirective} 造出来的指令。
+            // 产物与 {@code capRequest(slot, kind, cap)} 逐字符相同（用例 capDirectiveRoundTrip 钉住），
+            // 面板若日后加一个 requestGhostCap(...) 转发，本分支即可删除（Panel 待办 P-1）。
+            return PocketConstants.GHOST_REQUEST_CAP + PocketConstants.GHOST_REQUEST_SEPARATOR
+                + slotIndex
+                + PocketConstants.GHOST_REQUEST_SEPARATOR
+                + capDirectiveTail(payloadKey);
+        }
         return PocketConstants.GHOST_REQUEST_SET + PocketConstants.GHOST_REQUEST_SEPARATOR
             + slotIndex
             + PocketConstants.GHOST_REQUEST_SEPARATOR
             + payloadKey;
+    }
+
+    /** {@link #capDirective} 的固定头（= {@code CAP|}），同时是 {@link #isCapDirective} 的判别前缀。 */
+    private static final String CAP_DIRECTIVE_PREFIX = PocketConstants.GHOST_REQUEST_CAP
+        + PocketConstants.GHOST_REQUEST_SEPARATOR;
+
+    /**
+     * ★R83 C2：客户端交给 {@code requestGhost} 第二段的"调上限指令"（不是载荷键）。
+     * <p>
+     * 式样 {@code CAP|<区域字母>|<绝对值>} —— 三段里已经带了区域与目标值，槽号由 {@link #setRequest}
+     * 那一步补上（调用方本来就握着 {@code slotIndex}，两个入口共用同一个数 ⇒ 不加第二处真相）。
+     */
+    public static String capDirective(PocketFilterConfig.Kind kind, int cap) {
+        return CAP_DIRECTIVE_PREFIX + letterOf(kind) + PocketConstants.GHOST_REQUEST_SEPARATOR + cap;
+    }
+
+    /** 第二段是否是 {@link #capDirective} 造出来的调上限指令（真载荷键永不含 '|'，见 {@link #setRequest}）。 */
+    public static boolean isCapDirective(String payloadKey) {
+        return payloadKey != null && payloadKey.startsWith(CAP_DIRECTIVE_PREFIX);
+    }
+
+    /** ★R83 C2：完整的调上限请求 {@code CAP|<slot>|<kind 字母>|<绝对值>}。 */
+    public static String capRequest(int slotIndex, PocketFilterConfig.Kind kind, int cap) {
+        return PocketConstants.GHOST_REQUEST_CAP + PocketConstants.GHOST_REQUEST_SEPARATOR
+            + slotIndex
+            + PocketConstants.GHOST_REQUEST_SEPARATOR
+            + letterOf(kind)
+            + PocketConstants.GHOST_REQUEST_SEPARATOR
+            + cap;
+    }
+
+    /**
+     * 从指令串里取出"区域字母 + 绝对值"尾段（{@link #setRequest} 插槽号时用）。
+     * <p>
+     * ★不在此处解 kind/值：解它们是 {@link #applyCap} 的活（那里要判白名单、区间与"这一格到底有没有声明"），
+     * 在这里再解一次就是两处真相。
+     */
+    private static String capDirectiveTail(String directive) {
+        return directive.substring(CAP_DIRECTIVE_PREFIX.length());
     }
 
     /** 拼装"解绑这一格"的请求（★kind 必带，见类 javadoc）。 */
@@ -117,14 +189,19 @@ public final class PocketGhostRequest {
      * 解一条请求并就地改动 {@code filters}。
      * <p>
      * 客户端传来的字符串一律不可信：载荷键<b>重新解析</b>（{@link PocketFilterConfig#parseKey}）、
-     * 槽索引<b>按所属区域重新校验</b>（{@link PocketFilterConfig#isAllowedSlotIndex}），
-     * 两道都不过就一个字节都不写。伪造包最多只能往自己口袋里写声明（会话守卫在面板那侧）。
+     * 槽索引<b>按所属区域重新校验</b>（{@link PocketConstants#GHOST_REQUEST_SEPARATOR} +
+     * {@link PocketFilterConfig#isAllowedSlotIndex}）、上限值<b>重新收口</b>
+     * （{@link #clampCap}），三道都不过就一个字节都不写。伪造包最多只能往自己口袋里写声明（会话守卫在面板那侧）。
+     * <p>
+     * ★切分用 {@code limit = 4}（★R83 C2 的 {@code CAP} 要第四段）而不是"每个操作码各切一次"，因此<b>段数</b>本身
+     * 成了判据的一部分：SET/CLR 只接受恰 3 段、CAP 只接受恰 4 段。旧口径"载荷键里含 '|' 就拒收"由
+     * {@link #applySet} 的长度检查与原守卫<b>共同</b>保住（两种写法都是 REJECTED，不改变判据）。
      */
     public static Decision apply(String request, PocketFilterConfig filters) {
         if (request == null || request.isEmpty() || filters == null) {
             return REJECT;
         }
-        final String[] parts = request.split(java.util.regex.Pattern.quote(PocketConstants.GHOST_REQUEST_SEPARATOR), 3);
+        final String[] parts = request.split(java.util.regex.Pattern.quote(PocketConstants.GHOST_REQUEST_SEPARATOR), 4);
         if (parts.length < 2) {
             return REJECT;
         }
@@ -135,24 +212,68 @@ public final class PocketGhostRequest {
             return REJECT;
         }
         if (PocketConstants.GHOST_REQUEST_CLEAR.equals(parts[0])) {
-            return applyClear(parts, slotIndex, filters);
+            return parts.length != 3 ? REJECT : applyClear(parts, slotIndex, filters);
         }
         if (PocketConstants.GHOST_REQUEST_SET.equals(parts[0])) {
-            return parts.length < 3 ? REJECT : applySet(slotIndex, parts[2], filters);
+            return parts.length != 3 ? REJECT : applySet(slotIndex, parts[2], filters);
+        }
+        if (PocketConstants.GHOST_REQUEST_CAP.equals(parts[0])) {
+            return parts.length != 4 ? REJECT : applyCap(slotIndex, parts[2], parts[3], filters);
         }
         return REJECT;
     }
 
     /** ★CLR：三段齐（第三段是区域字母）才动；越界或字母不认识一律拒收。 */
     private static Decision applyClear(String[] parts, int slotIndex, PocketFilterConfig filters) {
-        if (parts.length < 3) {
-            return REJECT;
-        }
         final PocketFilterConfig.Kind kind = kindOf(parts[2]);
         if (kind == null || !PocketFilterConfig.isAllowedSlotIndex(kind, slotIndex)) {
             return REJECT;
         }
         return new Decision(filters.removeAt(kind, slotIndex) ? Outcome.APPLIED : Outcome.UNCHANGED, kind, slotIndex);
+    }
+
+    /**
+     * ★CAP（R83 C2）：把绝对值收口后落到<b>已有</b>声明上。
+     * <p>
+     * 三条拒收线，一条比一条容易静默：① 区域字母不认识 / 槽号越出该区域白名单；② 值解不出整数
+     * 或为负；③ ★<b>那一格根本没有声明</b>——没有声明就没有"这一条的上限"可言，此时绝不能顺手
+     * 建一条空声明（那会让"上限"变成第二种声明入口，绕开载荷键的合法性判定）。
+     * <p>
+     * 服务端<b>只</b>做 {@link #clampCap} 的区间收口，不重算步进：步进表在 {@link #nudgedCap} 里只有一份，
+     * 由发起方（客户端读自己那份镜像）调用；物品支的自然满量只有拿着 {@code ItemStack} 的一端知道。
+     */
+    private static Decision applyCap(int slotIndex, String letter, String rawValue, PocketFilterConfig filters) {
+        final PocketFilterConfig.Kind kind = kindOf(letter);
+        if (kind == null || !PocketFilterConfig.isAllowedSlotIndex(kind, slotIndex)) {
+            return REJECT;
+        }
+        final PocketFilterConfig.Filter current = filters.at(kind, slotIndex);
+        if (current == null) {
+            return new Decision(Outcome.REJECTED, kind, slotIndex);
+        }
+        final int requested;
+        try {
+            requested = Integer.parseInt(rawValue);
+        } catch (NumberFormatException ignored) {
+            return REJECT;
+        }
+        if (requested < PocketConstants.FILTER_CAP_MIN) {
+            // ★0 与负数一律拒收而不是"悄悄抬到 1"：0 的语义是"这一条不拉了"，而本仓的口径是
+            // "不想拉就右键解绑"（extract 对 count<=0 走 NO_CHANNEL 分支，会把玩家自己的调整显示成
+            // "通道失联" = 撒谎）。下界因此是硬门，不是钳位目标。
+            return REJECT;
+        }
+        final int ceiling = ceilingOf(kind);
+        final int next = clampCap(requested, ceiling);
+        if (next == current.cap()) {
+            return new Decision(Outcome.UNCHANGED, kind, slotIndex);
+        }
+        filters.add(slotIndex, current.withCap(next));
+        final PocketFilterConfig.Filter now = filters.at(kind, slotIndex);
+        if (now == null || now.cap() != next) {
+            return new Decision(Outcome.REJECTED, kind, slotIndex);
+        }
+        return new Decision(Outcome.APPLIED, kind, slotIndex);
     }
 
     /** ★SET：kind 由<b>解出来的载荷类型</b>给出（流体条落 FLUID 空间、源质格落 ESSENCE 空间），不按"只有物品"一刀切。 */
@@ -171,8 +292,14 @@ public final class PocketGhostRequest {
         if (!PocketFilterConfig.isAllowedSlotIndex(kind, slotIndex) || !hasRequiredPayload(parsed)) {
             return REJECT;
         }
-        final PocketFilterConfig.Filter rebuilt = rebuildAt(kind, slotIndex, parsed);
         final PocketFilterConfig.Filter before = filters.at(kind, slotIndex);
+        // ★同槽覆盖必须把<b>已调好的上限</b>带过去：载荷键一样就是"还是这一条需求"，玩家滚出来的
+        // 数值不该因为"又拖了一次同一个东西"而被抹回默认值（抹了就是"我调的上限悄悄没了"）。
+        final PocketFilterConfig.Filter rebuilt = rebuildAt(
+            kind,
+            slotIndex,
+            parsed,
+            before == null ? PocketConstants.FILTER_CAP_UNSET : before.cap());
         filters.add(slotIndex, rebuilt);
         final PocketFilterConfig.Filter now = filters.at(kind, slotIndex);
         if (now == null || !now.key()
@@ -208,9 +335,19 @@ public final class PocketGhostRequest {
      * 载荷键本身不含槽位，R38 第 1 条）。
      * <p>
      * ★单点：blob 编解码（S2C 回显）与服务端写入口都走这里，否则两处 rebuild 迟早漂移。
+     * <p>
+     * 三参形态给"载荷键里本来就没有上限"的解析路径（{@link PocketFilterConfig#parseKey}）用 ⇒ 上限
+     * 一律 {@link PocketConstants#FILTER_CAP_UNSET}；带已有声明的场合必须走四参形态把上限带上
+     * （见 {@link #applySet}）。
      */
     public static PocketFilterConfig.Filter rebuildAt(PocketFilterConfig.Kind kind, int slotIndex,
         PocketFilterConfig.Filter payload) {
+        return rebuildAt(kind, slotIndex, payload, PocketConstants.FILTER_CAP_UNSET);
+    }
+
+    /** ★R83 C2：同 {@link #rebuildAt(Kind, int, PocketFilterConfig.Filter)}，但显式给出组上限。 */
+    public static PocketFilterConfig.Filter rebuildAt(PocketFilterConfig.Kind kind, int slotIndex,
+        PocketFilterConfig.Filter payload, int cap) {
         if (kind == null || payload == null) {
             return null;
         }
@@ -219,19 +356,281 @@ public final class PocketGhostRequest {
                 if (!(payload instanceof PocketFilterConfig.ItemFilter item)) {
                     return null;
                 }
-                return new PocketFilterConfig.ItemFilter(slotIndex, item.itemId, item.meta, item.nbtString);
+                return new PocketFilterConfig.ItemFilter(slotIndex, item.itemId, item.meta, item.nbtString, cap);
             case FLUID:
                 if (!(payload instanceof PocketFilterConfig.FluidFilter fluid)) {
                     return null;
                 }
-                return new PocketFilterConfig.FluidFilter(slotIndex, fluid.fluidName);
+                return new PocketFilterConfig.FluidFilter(slotIndex, fluid.fluidName, cap);
             case ESSENCE:
                 if (!(payload instanceof PocketFilterConfig.EssenceFilter essence)) {
                     return null;
                 }
-                return new PocketFilterConfig.EssenceFilter(slotIndex, essence.typeId, essence.tag);
+                return new PocketFilterConfig.EssenceFilter(slotIndex, essence.typeId, essence.tag, cap);
             default:
                 return null;
         }
+    }
+
+    // ------------------------------------------------------------------ ★R83 C2：组上限的步进与收口（唯一一份算式）
+
+    /**
+     * 一类声明"滚一格"的步进量（★数值全部来自 {@link PocketConstants}，本方法只做分派）。
+     * <p>
+     * 用户原话：「物品是每次 1 个；流体是每次调整 1%；源质是每次 1 个」⇒
+     * 物品 {@link PocketConstants#FILTER_CAP_STEP_ITEM}、流体
+     * {@link PocketConstants#FILTER_CAP_STEP_FLUID}（= 单 tank 容量 / 100 = 160,000 mB，
+     * D-6 裁定的分母口径）、源质 {@link PocketConstants#FILTER_CAP_STEP_ESSENCE}。
+     */
+    public static int stepOf(PocketFilterConfig.Kind kind) {
+        if (kind == null) {
+            return PocketConstants.FILTER_CAP_MIN;
+        }
+        return switch (kind) {
+            case ITEM -> PocketConstants.FILTER_CAP_STEP_ITEM;
+            case FLUID -> PocketConstants.FILTER_CAP_STEP_FLUID;
+            case ESSENCE -> PocketConstants.FILTER_CAP_STEP_ESSENCE;
+        };
+    }
+
+    /**
+     * 一类声明在<b>服务端收口</b>时允许的上界。
+     * <p>
+     * 流体 / 源质是具名常量（就是这一类今天的自然满量）；★物品的上界<b>不是</b>常量而是该物品自己的
+     * {@code maxStackSize} —— 那只有拿着样本栈的一端（客户端显示、以及 {@code PocketAeChannelOps}
+     * 抽出时的 {@code wanted} 栈）解得出，纯 JVM 件在这里猜一个数就是第二处真相。
+     * ⇒ 物品支的区间只保证下界，真正的"不超过一叠"由消费侧 {@code min(cap, maxStackSize)} 收口
+     * （Ops 待办 O-1）。
+     */
+    public static int ceilingOf(PocketFilterConfig.Kind kind) {
+        if (kind == null) {
+            return PocketConstants.FILTER_CAP_MIN;
+        }
+        return switch (kind) {
+            case ITEM -> PocketConstants.FILTER_CAP_CEILING_ITEM_SERVER;
+            case FLUID -> PocketConstants.FILTER_CAP_CEILING_FLUID;
+            case ESSENCE -> PocketConstants.FILTER_CAP_CEILING_ESSENCE;
+        };
+    }
+
+    /** 区间收口：下界 {@link PocketConstants#FILTER_CAP_MIN}、上界由调用方给出（★不四舍五入、不取模）。 */
+    public static int clampCap(int value, int ceiling) {
+        return Math
+            .min(Math.max(PocketConstants.FILTER_CAP_MIN, value), Math.max(PocketConstants.FILTER_CAP_MIN, ceiling));
+    }
+
+    /**
+     * ★<b>步进的唯一落点</b>（判据 4 的"分流点"）：从当前值走 {@code steps} 格，返回收口后的新值。
+     * <p>
+     * 未设过的声明（{@link PocketConstants#FILTER_CAP_UNSET}）从"现全局量"起步 ⇒ 第一次往下滚就是
+     * {@code 现全局量 - 步进}，与右上角那一刻显示的默认读数<b>连续</b>（不会出现"显示 16M，滚一下变成
+     * 160,000"这种把默认值当 0 读的形状）。
+     * <p>
+     * {@code steps} 的符号 = 方向（滚轮 UP 为正）、绝对值 = 倍率（alt 为 1、alt+ctrl 为
+     * {@link PocketConstants#FILTER_CAP_FAST_MULTIPLIER}）⇒ D-6 的"×10 是步进倍率"在这里、且只在这里兑现：
+     * 通道节拍（{@code CHANNEL_TICK_PERIOD} / {@code ticksToSecondsCeil} /
+     * {@code Config.pocketChannelPairsPerSecond}）一个字都不动。
+     *
+     * @param kind    声明区域（决定步进）
+     * @param current 当前<b>原始</b>值（可为 {@link PocketConstants#FILTER_CAP_UNSET}）
+     * @param ceiling 这一格的上界：调用方经 {@link PocketFilterConfig#defaultCap} 现算（物品 = 该物品的
+     *                {@code maxStackSize}、流体 = 16M、源质 = 64），★不在本方法里再猜一遍
+     * @param steps   带符号的格数
+     */
+    public static int nudgedCap(PocketFilterConfig.Kind kind, int current, int ceiling, int steps) {
+        if (kind == null) {
+            return PocketConstants.FILTER_CAP_UNSET;
+        }
+        final int from = current == PocketConstants.FILTER_CAP_UNSET ? ceiling : current;
+        return clampCap(from + steps * stepOf(kind), ceiling);
+    }
+
+    /**
+     * ★<b>alt+滚轮 与 alt+ctrl+滚轮 的分流点</b>（判据 4）：把"方向 + 按住的修饰键"折成带符号的格数。
+     * <p>
+     * 方向取 {@link UpOrDown#modifier}（UP = +1、DOWN = −1）；倍率只有两档 —— 按住 ctrl 是
+     * {@link PocketConstants#FILTER_CAP_FAST_MULTIPLIER}，否则 1 格。★这里出现 {@code 1} 不是"另一处步进"，
+     * 它就是"不乘"这一件事的写法。
+     */
+    public static int capSteps(UpOrDown scrollDirection, boolean fast) {
+        final int sign = scrollDirection == null ? 0 : scrollDirection.modifier;
+        return sign * (fast ? PocketConstants.FILTER_CAP_FAST_MULTIPLIER : 1);
+    }
+
+    /**
+     * 客户端格件的一次到位算式：{@code (当前原始值, 区域, 本格的天然满量, 滚轮方向, 是否 ctrl)} →
+     * 要发给服务端的新上限（绝对值）。
+     * <p>
+     * 三个格件（中栏 / 流体槽 / 源质格）各自只负责"我是哪一类、我的天然满量是多少、玩家滚了几格"，
+     * 换算一律走这里 ⇒ 步进表、下界、上界与 ×10 都只有一份（D-6）。
+     *
+     * @param itemMaxStackSize 物品支该物品的堆叠上限（其余两支传 0 也行：{@link PocketFilterConfig#defaultCap}
+     *                         只在 {@link PocketFilterConfig.Kind#ITEM} 一支读它）
+     */
+    public static int nextCap(PocketFilterConfig.Kind kind, int currentRawCap, int itemMaxStackSize,
+        UpOrDown scrollDirection, boolean fast) {
+        return nudgedCap(
+            kind,
+            currentRawCap,
+            PocketFilterConfig.defaultCap(kind, itemMaxStackSize),
+            capSteps(scrollDirection, fast));
+    }
+
+    // ------------------------------------------------------------------ ★R83 C2：读数的缩写与右上角落点（三类共用一份）
+
+    /** 读数缩放（与面板其余 0.5 缩放的读数同口径；★不是新贴图尺寸，只是字号）。 */
+    public static final float CAP_READOUT_SCALE = 0.5f;
+    /** 读数与格内的内缩边距：与三类虚像遮罩的 {@code drawRect(1, 1, w-2, h-2)} 同一个数。 */
+    public static final int CAP_READOUT_MARGIN = 1;
+    /** 读数的纵向落点（★上半带：库把数量/容量文字画在 BottomRight，三类都留了 y 0…7 这一条）。 */
+    public static final float CAP_READOUT_TOP = 2f;
+    /** vanilla 字体里<b>最宽</b>字符的像素宽（缩放前）。★只用于估宽，见 {@link #capReadoutWidth}。 */
+    private static final float CAP_GLYPH_MAX_PX = 6f;
+
+    /**
+     * 读数控色 = 库里的橙色（用户原话"右上角会显示组上限（橙色）"）。
+     * <p>
+     * ★写成方法而不是 {@code static final int}：{@code Color} 的类初始化会牵进 {@code ModularUI} 主类，
+     * 放进静态字段就让本类（被零依赖套件直调的纯 JVM 件）在测试 JVM 里初始化即炸。方法体只在客户端
+     * 绘制路径上被调 ⇒ 与三类格件现有的 {@code GuiDraw} 调用同一层级。
+     */
+    public static int capReadoutColor() {
+        return Color.ORANGE.main;
+    }
+
+    /**
+     * 读数字宽（★保守估计：按最宽字符算再乘缩放，宁可估宽让数字整体左移，也不估窄把尾巴裁掉）。
+     * <p>
+     * 不直读 {@code fontRenderer} 的理由：那要给本类 import {@code Minecraft}（客户端类），而
+     * {@code gui/pocket} 这一层是双端同树的，本仓现有口袋格件里 {@code Minecraft} 引用数为 0。
+     * 真实像素是否恰好不压线属実机项（已进"只能实机"清单）。
+     */
+    public static float capReadoutWidth(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0f;
+        }
+        return text.length() * CAP_GLYPH_MAX_PX * CAP_READOUT_SCALE;
+    }
+
+    /**
+     * 右上角横向落点（右对齐）：{@code 格宽 - 内缩 - 文字宽}。
+     * <p>
+     * 单独成纯函数的理由与 {@link #stepOf} 同一条——三类的绘制点各在三个文件里，几何口径写三遍迟早有一遍
+     * 少减一个像素（压到边上就是"数字被裁一半"）。文字宽度由 {@link #capReadoutWidth} 给出（同一份估算），
+     * 本函数不碰任何 MC / widget 类型 ⇒ 零依赖套件能钉住这条算式。
+     */
+    public static float capReadoutX(int cellWidth, float textWidth) {
+        return cellWidth - CAP_READOUT_MARGIN - textWidth;
+    }
+
+    /**
+     * 组上限的玩家可见读数：{@code 16000000 → "16M"}、{@code 160000 → "160K"}、{@code 64 → "64"}。
+     * <p>
+     * ★存在的理由是像素而非观感：格内可写的净空只有 16 px 上下（{@code NekoPocketBottomBand} 那一条
+     * "86 ÷ 0.5 = 172 逻辑像素"的算术口径），把 8 位数原样画进右上角就是把读数画成一条糊线。
+     * 缩写只走整数与一位小数（★不引 {@code DecimalFormat}，免得区域设置把小数点写成逗号、再与
+     * {@code PocketFilterConfig} 的 ':' 分段和 blob 的 '|' 分段打架）。
+     * <p>
+     * ★只有"给玩家看"这一支用它；落档与服务端读的都是<b>原始整数</b>（缩写不是可逆形状，
+     * 拿它当第二份真相迟早出事）。
+     */
+    public static String capReadout(int cap) {
+        if (cap < 0) {
+            return "";
+        }
+        if (cap >= CAP_READOUT_BILLION) {
+            return scaledSuffix(cap, CAP_READOUT_BILLION, "G");
+        }
+        if (cap >= CAP_READOUT_MILLION) {
+            return scaledSuffix(cap, CAP_READOUT_MILLION, "M");
+        }
+        if (cap >= CAP_READOUT_THOUSAND) {
+            return scaledSuffix(cap, CAP_READOUT_THOUSAND, "K");
+        }
+        return Integer.toString(cap);
+    }
+
+    /** 缩写阶梯的三档（★"1G" 那档常态用不到 —— 上界最大就是流体的 16M；留着是为了伪造包把值推到天上去时右上角仍然只有 4 个字符）。 */
+    private static final int CAP_READOUT_THOUSAND = 1_000;
+    private static final int CAP_READOUT_MILLION = 1_000_000;
+    private static final int CAP_READOUT_BILLION = 1_000_000_000;
+
+    /** 一档缩写的实际产出：能整除到一位小数就带一位，否则只取整数部分（★向下取整，不虚报"调大了"）。 */
+    private static String scaledSuffix(int value, int divisor, String suffix) {
+        final long tenths = value / (divisor / 10);
+        final String head = tenths % 10 == 0 ? Long.toString(tenths / 10) : (tenths / 10) + "." + (tenths % 10);
+        return head + suffix;
+    }
+
+    // ------------------------------------------------------------------ ★R83 C2：ghost blob 记录的单源编解码
+
+    /**
+     * 一条声明的机读记录：{@code kind|slot|载荷键}，★上限已设时再挂第 4 段 {@code |cap}。
+     * <p>
+     * 未设时<b>不写</b>第 4 段（而不是写 {@code |-1}）：面板现有的解码器按"三段"切，多写一段会让它在
+     * 主代理接线之前就把 {@code |-1} 当成载荷键尾段（虽然同批落地不会有这一刻，但"编码先上、
+     * 解码后上"的中间态必须是<b>可运行</b>的）。
+     * <p>
+     * ★面板那两份（{@code NekoPocketPanel#ghostBlobOf} / {@code #parseGhostBlob}）应改调本方法与
+     * {@link #filterOf}（Panel 待办 P-2）：编解码各留一份实现就会在同步里静默变形，R78 给源质 blob
+     * 立的那条"单函数编解码"纪律在这里同样成立。
+     */
+    public static String recordOf(PocketFilterConfig.Filter filter) {
+        if (filter == null) {
+            return "";
+        }
+        final StringBuilder builder = new StringBuilder();
+        builder.append(filter.kind())
+            .append(PocketConstants.GHOST_REQUEST_SEPARATOR)
+            .append(filter.slotIndex())
+            .append(PocketConstants.GHOST_REQUEST_SEPARATOR)
+            .append(filter.key());
+        if (filter.cap() != PocketConstants.FILTER_CAP_UNSET) {
+            builder.append(PocketConstants.GHOST_REQUEST_SEPARATOR)
+                .append(filter.cap());
+        }
+        return builder.toString();
+    }
+
+    /**
+     * {@link #recordOf} 的解侧：三段（旧形状 / 未设上限）与四段（已设上限）都收；解不出 ⇒ {@code null}。
+     * <p>
+     * ★这里<b>不</b>复用面板那份 {@code split("\\|", 3)}：三段切法会把第 4 段整个并进载荷键里，
+     * 于是上限永远读不上来（并且会造出一条载荷键尾部带 {@code |数字} 的假声明）。
+     */
+    public static PocketFilterConfig.Filter filterOf(String record) {
+        if (record == null || record.isEmpty()) {
+            return null;
+        }
+        final String[] parts = record.split(java.util.regex.Pattern.quote(PocketConstants.GHOST_REQUEST_SEPARATOR), 4);
+        if (parts.length < 3) {
+            return null;
+        }
+        final PocketFilterConfig.Kind kind;
+        final int slotIndex;
+        try {
+            kind = PocketFilterConfig.Kind.valueOf(parts[0]);
+            slotIndex = Integer.parseInt(parts[1]);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+        final PocketFilterConfig.Filter payload = PocketFilterConfig.parseKey(parts[2]);
+        if (payload == null || payload.kind() != kind || !PocketFilterConfig.isAllowedSlotIndex(kind, slotIndex)) {
+            return null;
+        }
+        int cap = PocketConstants.FILTER_CAP_UNSET;
+        if (parts.length >= 4) {
+            try {
+                cap = Integer.parseInt(parts[3]);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+            if (cap < PocketConstants.FILTER_CAP_MIN) {
+                // 服务端不会编出这种值（写档前就收口）；外来/陈旧 blob 里出现即整条丢弃，
+                // 与面板那份解码器"解不出的条目直接丢弃、绝不炸"的既有口径同形
+                return null;
+            }
+        }
+        return rebuildAt(kind, slotIndex, payload, cap);
     }
 }

@@ -7,6 +7,8 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.utils.Color;
+import com.cleanroommc.modularui.value.sync.DoubleSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ProgressWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
@@ -28,7 +30,8 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
  * <b>★那一个"空行"里为什么还画了进度条（本片如实记的读法）</b>：R78 的加总表把这一行记作
  * <b>空行</b>，判据是"它不产任何槽"（15 行 / 220 槽两条加总都只数槽）；进度条同样<b>不产槽</b>，
  * 放进这一行不破任何一条数字。反之若把进度条撤掉，蒸馏的可见进度就没有任何落点
- * （R77 已裁定它不挂 C2 贴图、只走主题底，"腾不出位置"不是撤它的理由）。
+ * （★R83 D-8 起它挂的是契约第 13 个 token {@code POCKET_C2_progress}；R77 当年"契约没有进度件 ⇒
+ * 只走主题底"的裁定是被补全的，不是被推翻的，"腾不出位置"从来不是撤它的理由）。
  * ⇒ 裁定取"槽位意义上的空行 + 进度条住这里"；常驻的<b>蒸馏状态文字</b>则按 R74②/R78 D-2
  * 撤进 tooltip（旧那 72px 摘要段随 12 行盘一起退场）。若主代理要的是"字面全空"，
  * 唯一出路是把进度条也撤成 tooltip-only —— 那是产品决定，本文件不改数、只把这个分叉写清。
@@ -97,6 +100,25 @@ public final class NekoPocketEssenceColumn {
     /** 蒸馏输入的布局字面量（2 行 × 6 列 = 12，与 {@code distillInput()} 的 handler 索引同序）。 */
     private static final String[] DISTILL_MATRIX = { "DDDDDD", "DDDDDD" };
 
+    /**
+     * ★进度值的同步键（R83 D-8）。<b>本列唯一一处第二份真相</b>，理由写在下面：
+     * {@code ProgressWidget} 必须吃<b>已注册进 sync manager 的那个</b> {@code DoubleSyncValue}
+     * 实例（{@code NekoPocketPanel#registerSyncValues} 的 SYNC_PROGRESS 行）——现场 new 出来的实例
+     * 没人喂值：{@code DoubleSyncValue} 的 cache 只在构造时取一次，之后只由注册表驱动
+     * （{@code PanelSyncManager#detectAndSendChanges}），widget 也不会自我登记。
+     * ★R83 批 D：键名不再是字面量，直接引 Panel 的那一份（{@code NekoPocketPanel#SYNC_PROGRESS} 已放行成
+     * package-private）⇒ 注册侧与查找侧不可能再漂移。失败方式仍是"查找返回 null ⇒ 退回旧行为（条不动）"，
+     * 不是崩溃也不是错档。
+     */
+    private static final String SYNC_PROGRESS_KEY = NekoPocketPanel.SYNC_PROGRESS;
+
+    /**
+     * 进度条材质的<b>契约 token</b>（★必须与 {@code PocketGuiTextureContract} 第 13 行的名字逐字相同；
+     * 这条"必须相同"不是靠自觉：静态块里拿 {@code widthOf(本串)} 与列宽对账，改名不同步就装配期当场抛，
+     * 而不是留一根悄悄不画的条）。
+     */
+    private static final String PROGRESS_TOKEN = "POCKET_C2_progress";
+
     private NekoPocketEssenceColumn() {}
 
     /**
@@ -132,6 +154,18 @@ public final class NekoPocketEssenceColumn {
         if (ESSENCE_COLUMNS * ESSENCE_ROWS != PocketConstants.ESSENCE_DISPLAY_GRID) {
             throw new IllegalStateException("[pocket] 源质盘行列乘积不等于格数");
         }
+        // ★材质 token 与契约行必须逐字同步（`widthOf` 查不到名字返回 0）：改名不同步就在这里炸，
+        // 而不是留一根画不出东西的进度条。图宽 == 列宽 == 条长 ⇒ 满条支 1:1，不横向拉伸。
+        // ★这里只准碰契约表（纯字符串/整数）：`PocketGuiTextures` 的类初始化会建 `UITexture`，
+        // 零依赖回归套件的 JVM 里拿不到 fastutil ⇒ 静态块一旦引用它，整套用例直接炸。
+        if (PocketGuiTextureContract.widthOf(PROGRESS_TOKEN) != WIDTH) {
+            throw new IllegalStateException(
+                "[pocket] 进度条材质 " + PROGRESS_TOKEN
+                    + " 的契约宽与右列宽不符: "
+                    + PocketGuiTextureContract.widthOf(PROGRESS_TOKEN)
+                    + " != "
+                    + WIDTH);
+        }
     }
 
     /** 装配右列。 */
@@ -146,13 +180,19 @@ public final class NekoPocketEssenceColumn {
                 slot.name("distill_" + index);
                 slot.background(PocketGuiTextures.SLOT);
                 // R63b 的双用口径必须让玩家读得到（still.in 已从"待蒸馏物品"改成"输入（物品或容器）"）
-                slot.tooltip(tooltip -> {
+                // ★R83 B2：本列不留"只在装配期跑一次"的 tooltip 形态（`ITooltip.tooltip(Consumer)` =
+                // `tooltipStatic`，方法体就一句 accept ⇒ 行集永久固化）。这两行文案本身不随状态变，
+                // 但 `tooltipDynamic` 少了 `tooltipAutoUpdate(true)` 会<b>一个字都不画</b>
+                // （`RichTooltip.draw` 先 `if (autoUpdate) markDirty()`，再 `isEmpty()` 才重建），
+                // 所以两条必须成对。
+                slot.tooltipDynamic(tooltip -> {
                     tooltip.addLine(IKey.lang("gtit.pocket.still.in"));
                     tooltip.addLine(
                         IKey.lang(
                             "gtit.pocket.still.dual_use_note",
                             () -> new Object[] { PocketInventory.DISTILL_INPUT_SLOTS }));
-                });
+                })
+                    .tooltipAutoUpdate(true);
                 return slot;
             })
             .synced(PocketSlots.SYNC_DISTILL)
@@ -190,7 +230,7 @@ public final class NekoPocketEssenceColumn {
      * ★<b>ghost 声明按格号索引，所以"撤空不回收格位"是它正确性的前提</b>（R78③）：一旦回收，
      * 已声明的格就会指向别的 tag 并拉错东西。
      * <p>
-     * 需求 2 的"要素栏取出 → 晶化源质"是另一条独立路径（R15），点击/Shift 走 {@code ESSENCE_OUT}
+     * 需求 2 的"要素栏取出 → 晶化源质"是另一条独立路径（R15），★<b>左键</b>与 Shift+左键走 {@code ESSENCE_OUT}
      * 动作码（★arg 里的格号在服务端经格位归属表反查 tag，不吃客户端送来的 tag，R18/R19）。
      */
     private static IWidget essenceGrid(NekoPocketPanel ui) {
@@ -205,7 +245,9 @@ public final class NekoPocketEssenceColumn {
 
     /**
      * 单格：金属凹槽底（<b>恒画</b>，R73②）+ 内容层（aspect 图标 + 数量文本，
-     * <b>★按库存开关</b>，R78 D-1）+ tooltip；点击=取出晶化源质，左键拖入=声明 ghost（落点归本列）。
+     * <b>★按库存开关</b>，R78 D-1）+ tooltip（★每次重画都重建，见方法体★注释）；
+     * <b>左键</b>=取出晶化源质（Shift+左键一次取一整堆晶），NEI 左键拖入=声明 ghost（落点归本列），
+     * 右键在声明态=解绑（{@link NekoEssenceGhostCell#onMousePressed(int)}）；其余按键不做取出。
      * <p>
      * ★无货时<b>只撤掉图标与文本</b>，底与格子本体都在——这就是 R73② 与"槽位贴图边距 ≤ 3"
      * （{@link PocketGuiTextures#MAX_SLOT_SLICE_MARGIN}）两条裁定的共同落点。<b>这段描述现在与
@@ -221,18 +263,35 @@ public final class NekoPocketEssenceColumn {
             .size(NekoPocketPanel.GRID, NekoPocketPanel.GRID)
             .name("pocket_essence_cell_" + index)
             .background(PocketGuiTextures.SLOT)
-            .playClickSound(false)
+            // ★R83 B2 (5)：取出要有反馈音（旧实现连着把它关了 ⇒ "点了没动静"是 3e 观感的一半）
+            .playClickSound(true)
             // ★tag 现读（读的是同步镜像里"这一格当前的归属 tag"）：R78③ 后格位归属会变，
             // 装配期捕获的 tag 到点击时可能已经不是这一格的了
+            // ★R83 B2 (5)：<b>只有左键</b>取出。旧写法把 `button` 形参整个丢掉 ⇒ 右键/中键也各出 1 点，
+            // 右键还与 ghost 格的"右键解绑"撞成两种读法（{@code NekoEssenceGhostCell#onMousePressed}）。
+            // 谓词返 false = {@code Result.ACCEPT}（{@code ButtonWidget.java:70-81}）⇒ 不做动作，
+            // 但事件继续按 MUI2 的常规派发走，不额外造第二套断链。
             .onMousePressed(
-                button -> ui.requestEssenceOut(index, ui.essenceTagAtCell(index), Interactable.hasShiftDown()));
+                button -> button == 0
+                    && ui.requestEssenceOut(index, ui.essenceTagAtCell(index), Interactable.hasShiftDown()));
         ui.trackEssenceCell(index, cell);
         cell.child(
             (IWidget) new TextWidget(IKey.dynamic(cell::stockText)).textAlign(Alignment.BottomRight)
                 .scale(0.5f)
+                // ★R83 B2 (4)：数量标注的可读性——暗主题 {@code vanilla_dark.json} 的 textShadow
+                // 是 false，4px 高的数字直接压在带 alpha 的彩色 aspect 图标上会糊成一片；
+                // 这里不跟随主题（白字 + 阴影），与下面 tooltip 名字行同一个口径。
+                .color(Color.WHITE.main)
+                .shadow(Boolean.TRUE)
                 .pos(0, 8)
                 .size(17, 9));
-        cell.tooltip(tooltip -> {
+        // ★R83 B2 (1)：注册形态必须是 `tooltipDynamic`。旧写法走的是一次性通道
+        // （{@code ITooltip.java:64-66} → {@code :70-80}「Only called once」）⇒ 下面这三行分支
+        // （空/有 tag、ghost）在<b>装配期</b>就被固化，本格后来蒸出源质也不会补出名字与数量行；
+        // {@code NekoEssenceGhostCell} 构造器里的 `setAutoUpdate(true)` 与两处 `markTooltipDirty()`
+        // 在 {@code tooltipBuilder == null} 时是空转（{@code RichTooltip.java:92-99}）。
+        // 换成动态注册后：装配顺序（ghost 位晚于本列装配）与"tag 晚到"都不再需要额外触发点。
+        cell.tooltipDynamic(tooltip -> {
             final String tag = cell.aspectTag();
             if (tag == null) {
                 // 空格位：没有归属 tag ⇒ 只给"这一格还空着/TC 不在场"的读法（R31 的整栏灰显另有 tooltip）
@@ -264,38 +323,73 @@ public final class NekoPocketEssenceColumn {
 
     /**
      * 唯一的一根进度条（R78：住在 12 行盘与蒸馏盘之间那一个<b>零槽</b>的"空行"里，
-     * {@code y=216}、高 18；读法与理由见类 javadoc 的★段）。
+     * {@code y=216}、高 18；读法与理由见类 javadoc 的★段）。方向 {@code Direction.RIGHT} =
+     * <b>横向</b>（用户要的"类似炼金炉但横向"里"横向"这一维一直是在的）。
      * <p>
-     * 值走 {@link NekoPocketPanel#distillProgressValue()} 的同步通道：<b>GUI 只显示、绝不推进</b>
-     * （推进是 {@code Item.onUpdate} 服务端分支里 {@code PocketDistillDriver} 的节拍，
-     * 单一权威 {@code TaumDistillRules.DISTILL_INTERVAL_TICKS}，计划 §17.2 第 4 条）。
+     * ★R83 D-8 把两处"必然不可见"一起闭上：
+     * <ol>
+     * <li><b>没材质 ⇒ 零像素</b>：{@code ProgressWidget.draw()} 的填充支整块写在
+     * {@code if (fullTexture[0] != null && progress > 0)} 里，本件过去从未调 {@code texture(...)}
+     * ⇒ 一根像素都不画（只剩主题底）。现在挂契约第 13 个 token {@code POCKET_C2_progress}：
+     * 传的是<b>整张堆叠图</b>，widget 自己按 {@code ProgressWidget.texture(单张堆叠图, imageSize)}
+     * 的约定折半（上半空槽、下半满条），故这里不再手拆 UV。</li>
+     * <li><b>值恒 0</b>：过去接的是 {@link NekoPocketPanel#distillProgressValue()} <b>现场 new 的未注册
+     * 实例</b>（注册的是另一个），cache 冻结在装配那一刻的 0 ⇒ 见 {@link #distillProgressValue}。</li>
+     * </ol>
+     * 值仍走同步通道：<b>GUI 只显示、绝不推进</b>（推进是 {@code Item.onUpdate} 服务端分支里
+     * {@code PocketDistillDriver} 的节拍，单一权威 {@code TaumDistillRules.DISTILL_INTERVAL_TICKS}）。
      * <p>
-     * ★R78 D-2：旧那 72px 的常驻"状态摘要段"（{@code still.title} + 状态行）随 12 行盘退场，
-     * 四条状态文案（{@code still.progress} / {@code still.idle} / {@code still.no_aspect} /
-     * {@code still.full}）现在<b>只</b>走本条与蒸馏格的 tooltip；都是 {@code IKey.dynamic}，
-     * 每次悬停现读服务端同步过来的状态位，不在客户端复算状态机。
+     * ★"动画"这一词的口径：MUI2 的 {@code ProgressWidget} 只有"按值裁切"（平滑或按像素步进，
+     * 由 {@code ModularUIConfig.smoothProgressBar} 决定），<b>没有帧带</b>；本仓这 13 张 C2 贴图
+     * 也全是静态件 ⇒ 用户看到的"动画"= 每 tick 连续推进的填充条，与炼金炉同构（炼金炉本身也只是
+     * 按 tick 缩放高度的竖条）。真要帧带得另开资产面。
+     * <p>
+     * ★R78 D-2：常驻的"状态摘要段"随 12 行盘退场，四条状态文案现在只走本条与蒸馏格的 tooltip；
      * 进度条自身就是"跑到哪了"的可见状态回显 ⇒ 撤走的是文字、不是可见面。
      */
     private static IWidget progressBar(NekoPocketPanel ui) {
         return new ProgressWidget().pos(0, ESSENCE_HEIGHT)
             .size(WIDTH, SEPARATOR_HEIGHT)
             .name("pocket_distill_progress")
-            // ★不挂 C2 贴图：契约表（HTML 355–366 行）没有进度条专用件，
-            // 借 coinbar/btn 会把"铜牌 + 两铆钉"画成进度槽。这里保持主题默认底，
-            // 已在 R77 作为"契约缺件"项登记（贴图齐备后若要进度条皮肤，得先补契约行）。
+            .texture(PocketGuiTextures.PROGRESS, PocketGuiTextureContract.widthOf(PROGRESS_TOKEN))
             .direction(ProgressWidget.Direction.RIGHT)
-            .value(ui.distillProgressValue())
-            .tooltip(tooltip -> {
+            .value(distillProgressValue(ui))
+            .tooltipAutoUpdate(true)
+            .tooltipDynamic(tooltip -> {
                 tooltip.addLine(IKey.lang("gtit.pocket.still.title"));
                 tooltip.addLine(
                     IKey.lang(
                         "gtit.pocket.still.dual_use_note",
                         () -> new Object[] { PocketInventory.DISTILL_INPUT_SLOTS }));
+                // 状态行每帧现读（每次重建都重新取值）⇒ 不在客户端复算状态机
                 tooltip.addLine(IKey.dynamic(() -> distillStateLine(ui)));
             });
     }
 
-    /** 蒸馏状态行：按 {@code PocketDistillDriver} 回报的状态位挑对应的 {@code still.*} 键（不新造键）。 */
+    /**
+     * 进度值的<b>单点取用</b>：优先拿<b>已注册</b>的那份 {@code DoubleSyncValue}（键见
+     * {@link #SYNC_PROGRESS_KEY} 的注释），注册表里查不到才退回 {@code ui.distillProgressValue()}
+     * 那个未注册实例（= 旧行为：条不动，但不炸、不静默错档）。
+     * <p>
+     * ★<b>接线入口</b>：批 D 若把 Panel 的键常量放行或加 {@code distillProgressSync()} 转发，
+     * 只需把本方法体换成那一次调用，本文件其余部分不用动。
+     */
+    private static DoubleSyncValue distillProgressValue(NekoPocketPanel ui) {
+        final DoubleSyncValue registered = ui.syncManager()
+            .findSyncHandlerNullable(SYNC_PROGRESS_KEY, DoubleSyncValue.class);
+        return registered != null ? registered : ui.distillProgressValue();
+    }
+
+    /**
+     * 蒸馏状态行：按 {@code PocketDistillDriver} 回报的状态位挑对应的 {@code still.*} 键（不新造键，
+     * ★唯一例外是 A2 新增的 {@code OVER_CAP} ⇒ 配套新键 {@code gtit.pocket.still.over_cap}，
+     * 见本片的文案待办）。
+     * <p>
+     * ★多人客户端读不到真值这一条与本方法无关：{@code ui.distillStatus()} 直读服务端进程内的私有
+     * {@code CLOCKS}（R83 取证 3f 第 6 跳），补同步与否属批 D；本方法只保证<b>不说谎</b>——
+     * 旧 {@code switch} 没有 {@code OVER_CAP} 分支，超上限那一档会落 {@code default} 报
+     * "没有可蒸馏物品"，而格子里明明放着东西。
+     */
     private static String distillStateLine(NekoPocketPanel ui) {
         final PocketDistillDriver.Status status = ui.distillStatus();
         switch (status) {
@@ -303,6 +397,12 @@ public final class NekoPocketEssenceColumn {
                 return StatCollector.translateToLocal("gtit.pocket.still.full");
             case NO_ASPECT:
                 return StatCollector.translateToLocal("gtit.pocket.still.no_aspect");
+            case OVER_CAP:
+                // 两个读数是 A2 新开的只读转发（放弃了几个组、共几点）；格位归属没变时它们不变
+                return String.format(
+                    StatCollector.translateToLocal("gtit.pocket.still.over_cap"),
+                    PocketDistillDriver.discardedGroupsOf(ui.playerId()),
+                    PocketDistillDriver.discardedPointsOf(ui.playerId()));
             case RUNNING:
                 return String
                     .format(StatCollector.translateToLocal("gtit.pocket.still.progress"), ui.distillSecondsToNext());

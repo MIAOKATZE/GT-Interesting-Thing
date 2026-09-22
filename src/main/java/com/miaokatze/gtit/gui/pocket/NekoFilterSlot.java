@@ -2,6 +2,9 @@ package com.miaokatze.gtit.gui.pocket;
 
 import net.minecraft.item.ItemStack;
 
+import org.lwjgl.input.Keyboard;
+
+import com.cleanroommc.modularui.api.UpOrDown;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
@@ -10,6 +13,7 @@ import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
+import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 
 import cpw.mods.fml.relauncher.Side;
@@ -41,6 +45,9 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     /** 虚化遮罩色（R18 的 alpha 口径，与 {@code ItemSlot.drawSlot} 的拖拽预览同源）。 */
     private static final int GHOST_MASK = 0x80FFFFFF;
 
+    /** 中键按钮号（MUI2 原样透传 {@code Mouse.getEventButton()}，不做 0/1 白名单）。 */
+    private static final int MOUSE_BUTTON_MIDDLE = 2;
+
     /** ghost 内部状态（{@code false} = 普通真实格）。 */
     private boolean ghost;
     /** ghost 样本栈：只用于渲染与 tooltip，<b>绝不</b>写进真实槽（R46a）。 */
@@ -56,21 +63,34 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     private NekoPocketPanel owner;
     private int slotIndex = -1;
 
+    /**
+     * ★R83 C2：本格声明的<b>组上限原始值</b>（服务端权威值经面板的 ghost 应用落到这里；
+     * {@link PocketConstants#FILTER_CAP_UNSET} = 玩家从没调过 ⇒ 显示与生效都回落到"该物品自己的
+     * {@code maxStackSize}"，与本轮之前的行为逐字相同）。
+     * <p>
+     * 只是<b>显示与步进起点</b>，不是第二处真相：拉取量由服务端读自己那份 {@code PocketFilterConfig}
+     * （本片在 {@code PocketFilterConfig#cap()}），这里为空/陈旧时最多少画一个数字，不会多拿一件。
+     */
+    private int declaredCap = PocketConstants.FILTER_CAP_UNSET;
+
     public NekoFilterSlot() {
         super();
-        // ItemSlot 构造器已经挂了一个 tooltipBuilder（读真实槽）；这里换成读"渲染态"的版本，
-        // 使 ghost 格（真实槽为空）也能出 tooltip。
-        itemTooltip().setAutoUpdate(true);
-        itemTooltip().tooltipBuilder(tooltip -> {
+        // ★两份 RichTooltip 各挂一条动态构建器，一条都不许多挂：
+        // ① 有真实栈时 ItemSlot.getTooltip() 返回 Widget 那一份（itemTooltip()），库的构造器已经给它
+        // 挂了一条（调 buildTooltip(真实栈)）；RichTooltip.tooltipBuilder 是追加而非替换
+        // （RichTooltip.java:338-347 会把已有构建器组合起来），旧写法在此再挂一条就让 super.buildTooltip
+        // 跑两遍 ⇒ 物品行整段重复。本类因此不再碰①，只把它喂给①的内容收进 buildTooltip。
+        // ② 空槽（ghost 格的常态）时 getTooltip() 返回的是 ItemSlot 自己那一份，库从来没给它挂过构建器
+        // ⇒ 虚化格一直没有 tooltip，ghost.locked / capacity_note / ghost.on 三条文案是死字。
+        // 下面这条 tooltipDynamic 就是补这一份（tooltip() 经 ItemSlot 的覆写解析到②那一份）。
+        // ①那一份的 setAutoUpdate 库构造器已经设过（ItemSlot.java:57），这里不再重复。
+        tooltipDynamic(tooltip -> {
             if (!isSynced()) {
                 return;
             }
-            buildTooltip(ghost ? sample : getSlot().getStack(), tooltip);
-            if (ghost) {
-                tooltip.addLine(IKey.lang("gtit.pocket.ghost.locked"));
-                tooltip.addLine(IKey.lang("gtit.pocket.ghost.capacity_note"));
-            }
+            buildTooltip(getSlot().getStack(), tooltip);
         });
+        tooltip().setAutoUpdate(true);
     }
 
     /** 当前是否处于 ghost（配置格）态。 */
@@ -96,6 +116,10 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     public NekoFilterSlot setGhost(boolean ghost, ItemStack sample) {
         this.ghost = ghost;
         this.sample = sample == null ? null : sample.copy();
+        if (!ghost) {
+            // ★解绑后本格不再是"某条声明"，上限自然也没有归属 ⇒ 必须复位，否则下一次声明会沿用上一次的读数
+            this.declaredCap = PocketConstants.FILTER_CAP_UNSET;
+        }
         final ModularSlot slot = getSlot();
         if (ghost) {
             // R46d/R41b 的字面口径：ghost 态就是「禁放置 + 禁取出」，且槽实例与槽号都不变
@@ -104,7 +128,7 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
             slot.accessibility(true, true);
         }
         slot.canDragInto(!ghost);
-        markTooltipDirty();
+        markBothTooltipsDirty();
         return this;
     }
 
@@ -113,11 +137,29 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         return setGhost(ghost, this.sample);
     }
 
+    /**
+     * 两份 RichTooltip 都要置脏：{@code Widget.markTooltipDirty()} 只碰得到 Widget 那一份
+     * （{@code Widget.java:342-346} 读的是它自己的私有字段），空槽态用的那一份在 {@code ItemSlot} 里。
+     */
+    private void markBothTooltipsDirty() {
+        markTooltipDirty();
+        tooltip().markDirty();
+    }
+
     @Override
     public void buildTooltip(ItemStack stack, RichTooltip tooltip) {
-        super.buildTooltip(stack, tooltip);
-        if (ghost && stack != null) {
-            tooltip.addLine(IKey.lang("gtit.pocket.ghost.on", stack.getDisplayName()));
+        // ghost 格的真实槽是空的（R46a：样本栈绝不写进真实槽），所以显示与 tooltip 都用样本
+        final ItemStack shown = stack == null && ghost ? sample : stack;
+        super.buildTooltip(shown, tooltip);
+        if (ghost) {
+            if (shown != null) {
+                tooltip.addLine(IKey.lang("gtit.pocket.ghost.on", shown.getDisplayName()));
+            }
+            tooltip.addLine(IKey.lang("gtit.pocket.ghost.locked"));
+            tooltip.addLine(IKey.lang("gtit.pocket.ghost.capacity_note"));
+            // ★R83 C2 的组上限读数（文案待办 T-1：键 gtit.pocket.cap.readout 与两份 lang 归主代理批 D2，
+            // 落地前该行显示为键名字面串 —— 与 R83 B2 的 still.over_cap 同一条过渡口径，不假装已翻译）
+            tooltip.addLine(IKey.lang("gtit.pocket.cap.readout", capReadoutText()));
         }
     }
 
@@ -126,7 +168,36 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         super.drawOverlay();
         if (ghost) {
             GuiDraw.drawRect(1, 1, 16, 16, GHOST_MASK);
+            drawCapReadout();
         }
+    }
+
+    /**
+     * ★R83 C2（判据 7）：虚像<b>右上角</b>的橙色组上限读数（用户原话"默认绑定虚像右上角会显示组上限
+     * （橙色）"）。
+     * <p>
+     * ★为什么落在这里而不是新加一个 {@code TextWidget} 子件：{@link ItemSlot} 不是容器件，加不了孩子；
+     * 而 {@code drawOverlay} 是这条格子的<b>最后一次</b>绘制（库的顺序是 draw → drawSlot → drawOverlay），
+     * 于是数字压在遮罩之上而不会被遮罩洗白。库自己的数量文字在 <b>BottomRight</b>
+     * （{@code ItemSlot.drawSlotAmountText} → {@code GuiDraw.drawStandardSlotAmountText}），
+     * 且 ghost 格的样本恒为 1 件 ⇒ 那一条根本不画 ⇒ 右上与右下互不相干（实测见 R83 C2 记录）。
+     * <p>
+     * 色、缩放、右对齐算式与缩写一律取自 {@link PocketGhostRequest}（三类共用一份），本方法只负责"画"。
+     */
+    private void drawCapReadout() {
+        final String text = capReadoutText();
+        if (text.isEmpty()) {
+            return;
+        }
+        final float x = PocketGhostRequest.capReadoutX(getArea().w(), PocketGhostRequest.capReadoutWidth(text));
+        // ★shadow=true：遮罩是 0x80FFFFFF（接近白的浅色），不带阴影的橙字压上去就是糊成一片
+        GuiDraw.drawText(
+            text,
+            x,
+            PocketGhostRequest.CAP_READOUT_TOP,
+            PocketGhostRequest.CAP_READOUT_SCALE,
+            PocketGhostRequest.capReadoutColor(),
+            true);
     }
 
     /**
@@ -156,6 +227,35 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     /** 本格在中栏的槽号（复合键的后半段）。 */
     public int ghostSlotIndex() {
         return slotIndex;
+    }
+
+    /**
+     * ★R83 C2：面板把服务端那份声明的<b>原始</b>上限刷进显示侧（与 {@code setGhost} 同一个应用点，
+     * 见 Panel 待办 P-3）。传 {@link PocketConstants#FILTER_CAP_UNSET} = 这条从没被调过 ⇒ 读数回落
+     * 到该物品自己的堆叠上限（判据 2 的"旧档行为逐字不变"在显示侧的兑现）。
+     */
+    public NekoFilterSlot setDeclaredCap(int cap) {
+        if (this.declaredCap == cap) {
+            return this;
+        }
+        this.declaredCap = cap;
+        markBothTooltipsDirty();
+        return this;
+    }
+
+    /** 本格声明当前<b>真正生效</b>的组上限（未调过 = 该物品的 {@code maxStackSize}）。 */
+    public int ghostCap() {
+        return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.ITEM, declaredCap, naturalMaxStackSize());
+    }
+
+    /** 物品支的天然满量 = 声明样本自己的堆叠上限（★不是常数 64，见 {@link PocketConstants#FILTER_CAP_CEILING_ITEM_SERVER} 的理由）。 */
+    private int naturalMaxStackSize() {
+        return sample == null ? 0 : sample.getMaxStackSize();
+    }
+
+    /** 右上角橙色读数的文本（缩写口径与另两支同源，全在 {@link PocketGhostRequest#capReadout}）。 */
+    private String capReadoutText() {
+        return ghost ? PocketGhostRequest.capReadout(ghostCap()) : "";
     }
 
     /**
@@ -191,7 +291,11 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     }
 
     /**
-     * ★ghost 格的右键解绑入口（<b>只发请求</b>）。
+     * ★ghost 格的右键解绑入口（<b>只发请求</b>）+ 中键整理入口 + ★R83 C2 的 alt+左键直接绑定。
+     * <p>
+     * 按键矩阵（本格）：中键 = 整理（早退，见下）；右键且已声明 = 解绑请求；<b>alt+左键</b> =
+     * 把本格<b>已有的物品</b>直接声明为需求（等价于 NEI 把同一个东西拖进来）；其余（含普通左键）
+     * 一律交回 {@code super} 走 vanilla 槽点击，真实格行为不变。
      * <p>
      * R18 的字面口径是"清空必须发生在服务端 {@code phantomClick} 的 {@code button == 1} 分支"，
      * 而本仓不许换用 {@code PhantomItemSlot}/{@code PhantomItemSlotSH}（R46d：那是另一个类，
@@ -201,15 +305,104 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      * <b>本地一个字节都不清</b>；执行体是
      * {@code NekoPocketPanel#onServerGhostRequest} → {@code PocketGhostRequest#apply} 的
      * {@code GHOST_REQUEST_CLEAR} 分支（服务端）。
-     * 非 ghost 态或左键一律交回 {@code super}（走 vanilla 槽点击，真实格行为不变）。
+     * 左键一律交回 {@code super}（走 vanilla 槽点击，真实格行为不变）。
      */
     @Override
     public Interactable.Result onMousePressed(int mouseButton) {
+        if (mouseButton == MOUSE_BUTTON_MIDDLE) {
+            // ★中键必须在这里早退、且不调 super：super（ItemSlot.onMousePressed）把按钮号原样喂给
+            // 原版 GuiContainer.mouseClicked，而原版把 button 2 当 keyBindPickBlock（默认 -98 ⇒ +100=2）
+            // 走 clickType 3 的创造取物。整理走自家 C2S 动作码（ACTION_SORT=2 → SYNC_ACTION →
+            // 服务端 performSort），因为 MUI2 的服务端窗口点击只认 0/1（ModularContainer.java:249-254）。
+            requestSortFromWidget();
+            return Interactable.Result.SUCCESS;
+        }
         if (ghost && mouseButton == 1 && owner != null && slotIndex >= 0) {
             owner.requestGhostClear(PocketFilterConfig.Kind.ITEM, slotIndex);
             return Interactable.Result.SUCCESS;
         }
+        if (mouseButton == 0 && ghost && Interactable.hasAltDown()) {
+            // alt+左键在<b>已经是声明格</b>的格子上没有可绑的东西（要绑的东西不在这格），
+            // 但也不能让原版把它读成"拿不起来就算了"的正常路径 ⇒ 明确停住，不产生第二种手感
+            return Interactable.Result.SUCCESS;
+        }
+        if (mouseButton == 0 && Interactable.hasAltDown() && requestBindFromContents()) {
+            return Interactable.Result.SUCCESS;
+        }
         return super.onMousePressed(mouseButton);
+    }
+
+    /**
+     * ★R83 C2（判据 3）：alt+左键 = 对<b>这一格里已有的物品</b>直接声明需求（用户原话"还可以采用对已有
+     * 物品按下 alt"），走的与 NEI 拖入<b>同一条</b> {@code owner.requestGhost} 请求、同一套四态回执
+     * ⇒ 零新动作码、零新同步键，判定与落档仍在服务端（R18/R19）。
+     *
+     * @return 是否真的发出了请求；{@code false}（灰显、空格、未绑定面板、解不出载荷键）一律交回
+     *         {@code super} ⇒ 正常取放行为一个字都不改
+     */
+    private boolean requestBindFromContents() {
+        if (ghost || owner == null || slotIndex < 0 || !areAncestorsEnabled() || !isSynced()) {
+            return false;
+        }
+        final ItemStack stack = getSlot().getStack();
+        if (stack == null) {
+            return false;
+        }
+        final String payloadKey = PocketAeChannelOps.contentKey(stack);
+        return !payloadKey.isEmpty() && owner.requestGhost(slotIndex, payloadKey);
+    }
+
+    /**
+     * ★R83 C2（判据 4）：<b>alt+滚轮</b>调本条声明的组上限、<b>alt+ctrl+滚轮</b>把步进抬到 ×10
+     * （D-6：×10 作用在步进上，不是第二处通道速率）。
+     * <p>
+     * 三档步进（物品 1 件 / 流体 160,000 mB / 源质 1 点）与收口都在
+     * {@link PocketGhostRequest#nextCap} 这一条纯函数里；本方法只做"这一格是不是声明格 + 修饰键读数"。
+     * 不是声明格（或整栏灰显）时把事件原样交回 {@code super} —— {@link ItemSlot} 没覆写
+     * {@code onMouseScroll}（默认 {@code false} ⇒ 不消费、不挡下层），所以正常滚动手感不受影响。
+     */
+    @Override
+    public boolean onMouseScroll(UpOrDown scrollDirection, int amount) {
+        if (!ghost || owner == null || slotIndex < 0 || !areAncestorsEnabled() || !Interactable.hasAltDown()) {
+            return super.onMouseScroll(scrollDirection, amount);
+        }
+        final int next = PocketGhostRequest.nextCap(
+            PocketFilterConfig.Kind.ITEM,
+            declaredCap,
+            naturalMaxStackSize(),
+            scrollDirection,
+            Interactable.hasControlDown());
+        if (!owner.requestGhost(slotIndex, PocketGhostRequest.capDirective(PocketFilterConfig.Kind.ITEM, next))) {
+            return false;
+        }
+        // ★本地即时回显：权威值仍由服务端经 blob 落回同一字段（Panel 待办 P-2 + P-3）。不回显的话
+        // "滚了数字不动"会被读成功能没生效；回显值与服务端算的是<b>同一条</b> nextCap ⇒ 不会分叉。
+        setDeclaredCap(next);
+        return true;
+    }
+
+    /**
+     * ★R 键整理（需求 5 的"中栏本身具有箱子属性"里唯一能自证的那半：手势与算法都是自家的）。
+     * <p>
+     * 挂点是 widget 级 {@code onKeyPressed}（{@code ModularPanel.java:518-549} 遍历
+     * {@code hovering} 调 {@code Interactable.onKeyPressed}），口袋面板不是 {@code ModularPanel}
+     * 子类所以拿不到面板级覆写。返回 {@code SUCCESS}（stops）⇒ 同一格上不再往下传。
+     * 与 NEI 的"R = 查看配方"是否共存只能实机判。
+     */
+    @Override
+    public Interactable.Result onKeyPressed(char typedChar, int keyCode) {
+        if (keyCode == Keyboard.KEY_R) {
+            requestSortFromWidget();
+            return Interactable.Result.SUCCESS;
+        }
+        return super.onKeyPressed(typedChar, keyCode);
+    }
+
+    /** 两个手势共用同一个入口：只发请求，搬不搬、搬哪几格全在服务端那一份 {@code performSort} 里。 */
+    private void requestSortFromWidget() {
+        if (owner != null) {
+            owner.requestSort();
+        }
     }
 
     /**

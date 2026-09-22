@@ -2,6 +2,8 @@ package com.miaokatze.gtit.gui.pocket;
 
 import net.minecraft.item.ItemStack;
 
+import com.cleanroommc.modularui.api.UpOrDown;
+import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.integration.recipeviewer.RecipeViewerGhostIngredientSlot;
@@ -9,6 +11,7 @@ import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityStackTypes;
+import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
@@ -73,10 +76,20 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      */
     private String amountText = "";
     private boolean ghost;
+    /**
+     * ★R83 C2：本格声明的组上限<b>原始值</b>（{@link PocketConstants#FILTER_CAP_UNSET} = 没人滚过轮）。
+     * 权威值在服务端，经 ghost blob 落回本字段；本字段只用于显示与"下一次步进从哪走"。
+     */
+    private int declaredCap = PocketConstants.FILTER_CAP_UNSET;
 
     public NekoEssenceGhostCell() {
         super();
-        // ghost 声明与内容层都随时可增删 ⇒ tooltip 每次重画都重建（否则解绑后"右键取消"那行会留在屏上）
+        // ghost 声明与内容层都随时可增删 ⇒ tooltip 每次重画都重建（否则解绑后"右键取消"那行会留在屏上）。
+        // ★R83 B2：这一句过去是<b>空转</b> —— {@code RichTooltip.buildTooltip()} 只在
+        // {@code tooltipBuilder != null} 时才重建文本，而装配侧当年走的是 {@code tooltip(Consumer)}
+        // （一次性通道），于是 {@code markTooltipDirty()} 只翻了脏位、行集永远不变。
+        // 现在装配侧改走 {@code tooltipDynamic}（{@code NekoPocketEssenceColumn#essenceCell}），
+        // 本 flag 与下面两处 {@code markTooltipDirty()} 才真的有读者，二者必须成对存在。
         tooltip().setAutoUpdate(true);
     }
 
@@ -227,8 +240,72 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
             return this;
         }
         this.ghost = ghost;
+        if (!ghost) {
+            // 解绑后本格不再归属任何声明 ⇒ 上限读数必须复位，否则下一条声明沿用上一条的数字
+            this.declaredCap = PocketConstants.FILTER_CAP_UNSET;
+        }
         markTooltipDirty();
         return this;
+    }
+
+    /** ★R83 C2：服务端 ghost blob 落回本格组上限的唯一写入口（与另两支同名同语义）。 */
+    NekoEssenceGhostCell setDeclaredCap(int cap) {
+        if (this.declaredCap == cap) {
+            return this;
+        }
+        this.declaredCap = cap;
+        markTooltipDirty();
+        return this;
+    }
+
+    /** 本格声明真正生效的组上限（没滚过轮 = {@code ESSENCE_CAP_PER_TAG}，与旧档逐字同行为）。 */
+    public int ghostCap() {
+        return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.ESSENCE, declaredCap, 0);
+    }
+
+    /**
+     * ★R83 C2：alt+左键 = 对<b>本格已经有的那种源质</b>直接声明需求（用户原话"还可以采用对已有物品按下 alt"）。
+     * <p>
+     * 走的与 NEI 拖入<b>同一条</b> {@code owner.requestGhost} ⇒ 零新动作码、零新同步键；载荷键只走
+     * {@link PocketFilterConfig#essenceKey(String, String)}（不自造第四种键格式），通道 id 只走
+     * {@link #channelTypeId(String)}（与消费端 {@code InfinityStackTypes.byId} 同一探针）。
+     * 无 tag、无存量、栏灰显（TC 缺席）、解不出通道、已经是声明格 ⇒ 一律 {@code false} 交回 {@code super}，
+     * 不写一条无处可抽的声明再静默空转（{@link #ghostKeyFor} 里同一条理由）。
+     */
+    private boolean requestBindFromStock() {
+        if (owner == null || cellIndex < 0 || ghost || !areAncestorsEnabled()) {
+            return false;
+        }
+        if (tag == null || tag.isEmpty() || stock <= 0) {
+            return false;
+        }
+        final String typeId = channelTypeId(tag);
+        if (typeId == null || typeId.isEmpty()) {
+            return false;
+        }
+        return owner.requestGhost(cellIndex, PocketFilterConfig.essenceKey(typeId, tag));
+    }
+
+    /**
+     * ★R83 C2（判据 4）：alt+滚轮 = 调本格声明的组上限；alt+ctrl 把<b>步进</b>放大 10 倍（D-6 裁定）。
+     * <p>
+     * 步进表、夹取、"未设从天花板起走"全在 {@link PocketGhostRequest#nextCap} 这一条纯函数里 ⇒ 步进只有一份真值；
+     * 本方法只负责"这一格是不是声明格 + 修饰键读数"。不是声明格时把事件原样交回 {@code super}
+     * （{@link ButtonWidget} 没有 {@code onMouseScroll} 覆写，默认 {@code false} ⇒ 不消费也不挡下层）。
+     */
+    @Override
+    public boolean onMouseScroll(UpOrDown scrollDirection, int amount) {
+        if (!ghost || owner == null || cellIndex < 0 || !areAncestorsEnabled() || !Interactable.hasAltDown()) {
+            return super.onMouseScroll(scrollDirection, amount);
+        }
+        final int next = PocketGhostRequest
+            .nextCap(PocketFilterConfig.Kind.ESSENCE, declaredCap, 0, scrollDirection, Interactable.hasControlDown());
+        if (!owner.requestGhost(cellIndex, PocketGhostRequest.capDirective(PocketFilterConfig.Kind.ESSENCE, next))) {
+            return false;
+        }
+        // ★本地即时回显：不回显的话"滚了数字不动"会被读成功能没生效；回显值与服务端算的是同一条 nextCap
+        setDeclaredCap(next);
+        return true;
     }
 
     // ------------------------------------------------------------------ NEI 拖入 / 右键解绑
@@ -268,6 +345,13 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     public Result onMousePressed(int mouseButton) {
         if (ghost && mouseButton == 1 && owner != null && cellIndex >= 0) {
             owner.requestGhostClear(PocketFilterConfig.Kind.ESSENCE, cellIndex);
+            return Result.SUCCESS;
+        }
+        if (mouseButton == 0 && ghost && Interactable.hasAltDown()) {
+            // 已经是声明格的格子上没有"要绑的东西"，但也不能让原版把它读成正常路径 ⇒ 明确停住
+            return Result.SUCCESS;
+        }
+        if (mouseButton == 0 && Interactable.hasAltDown() && requestBindFromStock()) {
             return Result.SUCCESS;
         }
         return super.onMousePressed(mouseButton);
@@ -366,6 +450,28 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
         super.drawOverlay(context, widgetTheme);
         if (ghost) {
             GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
+            drawCapReadout();
         }
+    }
+
+    /**
+     * ★R83 C2（判据 7）：声明格右上角的橙色组上限读数。
+     * <p>
+     * 色、缩放、右对齐算式与缩写全部取自 {@link PocketGhostRequest}（三类共用一份），本方法只负责"画"。
+     */
+    private void drawCapReadout() {
+        final String text = ghost ? PocketGhostRequest.capReadout(ghostCap()) : "";
+        if (text.isEmpty()) {
+            return;
+        }
+        final float x = PocketGhostRequest.capReadoutX(getArea().w(), PocketGhostRequest.capReadoutWidth(text));
+        // ★shadow=true：遮罩是接近白的浅色，不带阴影的橙字压上去就是糊成一片
+        GuiDraw.drawText(
+            text,
+            x,
+            PocketGhostRequest.CAP_READOUT_TOP,
+            PocketGhostRequest.CAP_READOUT_SCALE,
+            PocketGhostRequest.capReadoutColor(),
+            true);
     }
 }

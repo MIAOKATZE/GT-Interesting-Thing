@@ -22,9 +22,10 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 契约里给出的就是这一串 token，取同一名可让"契约 ↔ 兄弟片落地文件"逐字对账；
  * 贴图片若要改名，改的是 {@link #FOLDER} 与本表，不会散到六个装配点。
  * <p>
- * ★<b>末行 {@code POCKET_C2_btn_pressed} 是本片对契约的补全，不是契约原文</b>：
- * HTML 的 btn 那一行写"未按下 / 按下 2 张"却只给了一个 token。按下态按同一命名法派生，
- * 已在回执里点名，等主代理与贴图片对账（对不上时只改本行）。
+ * ★<b>末两行 {@code POCKET_C2_btn_pressed} 与 {@code POCKET_C2_progress} 是本仓对契约的补全，
+ * 不是契约原文</b>：HTML 的 btn 那一行写"未按下 / 按下 2 张"却只给了一个 token；进度条则整张
+ * 契约没有 tex 行（只在 HTML 261 行给了 108×18 的槽位与 {@code prog} 配色）。两者都按同一命名法
+ * 派生，已在回执里点名，等主代理与贴图片对账（对不上时只改这两行）。
  */
 public final class PocketGuiTextureContract {
 
@@ -64,7 +65,14 @@ public final class PocketGuiTextureContract {
         new Spec("POCKET_C2_btn", 88, 18, 4, false), new Spec("POCKET_C2_scrollbar", 12, 12, 3, false),
         new Spec("POCKET_C2_bindbtn", 106, 18, 4, false), new Spec("POCKET_C2_rope", 8, 8, -1, true),
         // 派生行（见类 javadoc 的★）：按钮按下态
-        new Spec("POCKET_C2_btn_pressed", 88, 18, 4, false) };
+        new Spec("POCKET_C2_btn_pressed", 88, 18, 4, false),
+        // ★第 13 行同样是补全而非契约原文（HTML 355-366 的 tex 数组没有进度件）：蒸馏横向进度条材质。
+        // 高度 = 两根 18（HTML 261 行那条 role:'prog' kind:'bar' 的 108×18 槽）叠成一列，
+        // 上半空槽、下半满条 —— 这是 MUI2 {@code ProgressWidget.texture(单张堆叠图, imageSize)}
+        // 自己规定的排布（{@code getSubArea(0,0,1,0.5)} / {@code (0,0.5,1,1)}），不是本仓的偏好。
+        // 非 9-slice：按 u 裁切时任何横向特征都会退化成"快满才出现"的伪影（生成脚本把"逐行横向均匀"
+        // 钉成机检，见 tools/artgen_catalog/neko_dimension_pocket/gen_pocket_gui_progress.py）。
+        new Spec("POCKET_C2_progress", 108, 36, -1, false) };
 
     private PocketGuiTextureContract() {}
 

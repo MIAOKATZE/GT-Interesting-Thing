@@ -5,10 +5,8 @@ import java.util.List;
 
 import net.minecraft.item.ItemStack;
 
-import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
@@ -16,14 +14,13 @@ import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoClientBalances;
 
 /**
  * 底部带 = <b>横向三段</b>（R78① 定形状、★R81④ 定宽度）：
- * <b>左段 112</b>（两条币值条 + 两个通道按钮，纵向 4×18 = 72）
+ * <b>左段 112</b>（★R83 C1：两种币各占「一条币值条 + 它自己的那一枚通道按钮」＝四行 × 18 = 72）
  * ｜ <b>中间【玩家背包 9 列 × 4 行 = 162×72，★与中栏同 x 同宽】</b>
  * ｜ <b>右段 112</b>（★R81④ 由 130 收到 112 = {@code 6×18 + 4}：一格绳缝 + 六格栅格 ⇒
  * 内容区与源质列<b>同 x 同宽</b>；绑按钮 + 绑定格 + 读数 + <b>★R81③ 两条常驻绑定行</b> + 帮助按钮）。
@@ -67,8 +64,8 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
  * （{@code "player"} + 槽号，与库内 {@code SlotGroupWidget.playerInventory(…)} 同一绑法），
  * 否则就会出现"两个 handler 指向同一个背包格"的两处真相。
  * <p>
- * <b>★币值区照猫猫机形态（R78④，用户第二张图）</b>：不是"猫猫币：179"那种文本行，而是
- * <b>币物品图标 + 数量 + 两枚快捷小图标</b>。现成实现在
+ * <b>★币值区照猫猫机形态（R78④，用户第二张图；★R83 C1 撤掉那两枚快捷图标）</b>：不是"猫猫币：179"
+ * 那种文本行，而是<b>币物品图标 + 数量</b>，紧跟<b>这一枚币自己的那一枚通道按钮</b>。现成实现在
  * {@code client/gui/NekoCoinDisplayV2.java}（售货机 V2 面板用，装配点
  * {@code gui/vm/TradePage.java:1174-1206}），本块<b>借它的控件形态</b>：
  * <ul>
@@ -76,15 +73,17 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
  * （源：{@code NekoCoinDisplayV2.java:107-116}；本处 16×16 以塞进 18 高的币值条）；</li>
  * <li>数量 = {@code IKey.dynamic(...)} + 可读串（源：{@code NekoCoinDisplayV2.java:118-125}
  * 与 {@code :336-344} 的 {@code getReadableString}，10000→10K、1000000→1M）；</li>
- * <li>两枚 12×12 的快捷小图标 = {@code ButtonWidget.size(12)} +
- * {@code disableThemeBackground(true)} + {@code overlay(纹理.asIcon().size(12))}
- * （源：{@code NekoCoinDisplayV2.java:127-158} 的弹出键与 {@code :179-203} 的 ME 导入键）。</li>
+ * <li>★<b>不再</b>借 {@code NekoCoinDisplayV2.java:127-158} 的弹出键与 {@code :179-203} 的 ME
+ * 导入键那两枚 12×12 图标（R83 C1 按用户实机反馈撤除：它们把同一条通道动作摆了两份，
+ * 且是"左下拥挤"的直接来源）。撤除<b>零信息损失</b>：第一枚的 tooltip 文案（成本/秒数）就是
+ * 通道按钮的常驻标签 + tooltip，第二枚的 tooltip 文案（余额）就是币值条自己的 tooltip
+ * （{@code coinRow} 末段），两者都仍带 {@code -%d} 成本占位、数字照旧由 {@code PocketConstants} 填。</li>
  * </ul>
- * ★<b>只借形态、不借语义</b>（用户原话的对应关系由本回执说明）：售货机那两枚是"取币 / 从 ME 存币"，
- * 口袋面板没有这两个动作。这里两枚各对应"花掉这一枚币的那条通道"：
- * <b>第一枚</b> = 用该币激活它自己的通道（猫猫币 → 瞬时、闪烁币 → 短效；与下方那条通道按钮
- * <b>同一条动作码</b>，不新增服务端语义）；<b>第二枚</b> = <b>只读</b>的成本/冷却明细（无写操作、
- * 不新造动作码）。余额读数仍走 {@link NekoClientBalances}（R64c：客户端不得自行读钱包）。
+ * ★按钮<b>留在自己那一行</b>而不是塞进币值条内那两枚图标的旧位（实测条内自由带只有
+ * {@code 88 − (16+3+30)} = 39px（留 1px 间隙则 38px），而 {@code POCKET_C2_btn} 原生 88×18；
+ * 一条 39px 的带塞不进 88px 的件，缩到 38 或往段外借 12px 都会撞横向锁或裁掉文案，
+ * 详见 {@link #coinBlock} 的净空账）。余额读数仍走 {@link NekoClientBalances}
+ * （R64c：客户端不得自行读钱包）。
  * <p>
  * <b>★为什么绑定入口必须长这样</b>（R74 拦下的"不可达"）：删掉第四列 = 删掉"已绑定元件"的
  * 唯一可见面<b>与</b>解绑的选中面——旧 {@code ACTION_UNBIND(arg)} 的 arg 来自"列表选中行"，
@@ -151,8 +150,26 @@ public final class NekoPocketBottomBand {
     private static final int COIN_BAR_X = (COIN_WIDTH - COIN_BAR_WIDTH) / 2;
     /** ★币图标的边长（VM 用 22，本处必须塞进 18 高的币值条 ⇒ 取 16，其余比例照旧）。 */
     private static final int COIN_ICON_SIZE = 16;
-    /** 快捷小图标的边长（与 {@code NekoCoinDisplayV2} 的两枚 12×12 同值）。 */
-    private static final int QUICK_ICON_SIZE = 12;
+    /**
+     * ★R83 C1：左段的<b>币种数</b>（猫猫币 / 闪烁猫猫币 ⇒ 与 {@link NekoCurrencyRegistrar} 的两种
+     * 一一对应，也是 {@link #coinBlock} 里 {@code .child(...)} 的对数）。
+     */
+    private static final int CURRENCY_KINDS = 2;
+    /**
+     * ★R83 C1：<b>每种币占的行数</b> = 一条币值条 + 它自己的那一枚通道按钮。
+     * <p>
+     * 这就是"通道按钮为什么留在自己那一行、而不是塞进币值条内那两枚图标的旧位"的答案：条内
+     * 撤图标后只剩 {@code 88 − (16+3+30)} = <b>39px</b> 的自由带（留 1px 间隙则 38），而
+     * {@code POCKET_C2_btn} 原生 88×18 —— 塞进去必须把按钮缩到 ≤39 宽并换短文案（要新增 lang 键、
+     * 且实机可能裁字），往段外借 12px 又会压到背包段第一列（R80① 的"同 x 同宽"面）。
+     * 一行一件 ⇒ 尺寸、材质、文案全部沿用原生 88×18，★唯一的真实代价是"按钮在数值下方而不是右方"。
+     */
+    private static final int ROWS_PER_CURRENCY = 2;
+    /**
+     * ★R83 C1：左段行位数 = {@code CURRENCY_KINDS × ROWS_PER_CURRENCY} = <b>4</b>，与带高由
+     * {@code static} 块对账（此前左段纵向<b>零</b>断言 ⇒ 撤掉竖段会静默留下 36px 无主空白）。
+     */
+    public static final int COIN_ROWS = CURRENCY_KINDS * ROWS_PER_CURRENCY;
 
     /**
      * 中间段 x（★R80① 的<b>硬判据</b>之一：与中栏同 x。
@@ -251,6 +268,14 @@ public final class NekoPocketBottomBand {
 
     /** 绑定条目的 tooltip 最多列几条（超出必须显式提示，见类 javadoc）。 */
     public static final int TOOLTIP_ROWS = 10;
+
+    /**
+     * ★R83 C1：左段第 {@code row} 行的 y（★行位单源 —— 币值条与通道按钮都从这里取，杜绝手写 y；
+     * 行位数与带高的加总由 {@code static} 块对账）。
+     */
+    public static int coinRowY(int row) {
+        return row * COIN_BAR_HEIGHT;
+    }
 
     /** 第 {@code slot} 个常驻绑定行的 y（行 2 起，逐行往下）。 */
     public static int persistentRowY(int slot) {
@@ -354,6 +379,35 @@ public final class NekoPocketBottomBand {
             throw new IllegalStateException(
                 "[pocket] 控件高 " + COIN_BAR_HEIGHT + " != 行高 " + NekoPocketPanel.GRID + "（★右段四行会重叠）");
         }
+        // ★R83 C1 新增（左段此前<b>一条</b>纵向断言都没有）：撤掉通道按钮的"竖段"若不同时把行位收回来，
+        // 会静默留下 36px 无主空白 —— 不抛错、不打日志、不红任何旧判据，正是 R82"不留无主空白"里
+        // 唯一没被机检覆盖的角落（取证记录 r83-ret-bottomband-bind §2.4 点名的最大风险）。
+        if (COIN_ROWS * COIN_BAR_HEIGHT != HEIGHT) {
+            throw new IllegalStateException(
+                "[pocket] 左段行位加总不闭合: " + COIN_ROWS
+                    + "×"
+                    + COIN_BAR_HEIGHT
+                    + " != 带高 "
+                    + HEIGHT
+                    + "（★R83 C1：每种币「币值条 + 它自己的通道按钮」两行 × 2 币种 = 4 行）");
+        }
+        if (coinRowY(COIN_ROWS - 1) + COIN_BAR_HEIGHT != HEIGHT) {
+            throw new IllegalStateException("[pocket] 左段最后一行的下沿不等于带高（★纵向出现无主空白或越界）: " + coinRowY(COIN_ROWS - 1));
+        }
+        // ★R83 C1 左段横向闭合：一行里最宽的那件（币值条 88 / 通道按钮 88）必须留在 112 段内 ——
+        // 越出去就是爬到背包段第一列上（R80①"同 x 同宽"的视觉与点击面），而 MUI2 两端都不报。
+        if (COIN_BAR_X + Math.max(COIN_BAR_WIDTH, BUTTON_WIDTH) > COIN_WIDTH) {
+            throw new IllegalStateException(
+                "[pocket] 左段一行装不下最宽的件: " + COIN_BAR_X
+                    + "+"
+                    + Math.max(COIN_BAR_WIDTH, BUTTON_WIDTH)
+                    + " > 段宽 "
+                    + COIN_WIDTH);
+        }
+        // 居中口径与右段绑定按钮同形（★只有"段宽 − 件宽"为奇数时才会红，与上面的 BIND_BUTTON_X 那条同形态）：
+        if (2 * COIN_BAR_X + COIN_BAR_WIDTH != COIN_WIDTH) {
+            throw new IllegalStateException("[pocket] 币值条在左段里不是居中（左右余量不等）: 左 " + COIN_BAR_X + " 件宽 " + COIN_BAR_WIDTH);
+        }
         // 三条横向加总：每一行的像素都必须有归属（按钮行 / 控件+文字行 / 整幅行）
         if (BIND_BUTTON_X - BIND_CONTENT_X != BIND_CONTENT_X + BIND_CONTENT_WIDTH - BIND_BUTTON_X - BIND_BUTTON_WIDTH) {
             throw new IllegalStateException("[pocket] 绑定按钮在内容区里不是居中（左右余量不等）: 左 " + (BIND_BUTTON_X - BIND_CONTENT_X));
@@ -418,42 +472,68 @@ public final class NekoPocketBottomBand {
         return blocks;
     }
 
-    // ------------------------------------------------------------------ 左段：币值（猫猫机形态）+ 两个通道按钮
+    // --------------------------------------------- 左段：每种币「币值条 + 它自己的通道按钮」（★R83 C1 重排）
 
     /**
-     * 左段（112×72）：两条币值条（各 88×18）+ 两个通道按钮（各 88×18），纵向 4×18 = 72。
+     * ★R83 C1（缺陷 4）左段（112×72）= <b>四行 × 18</b>，每种币各占<b>相邻两行</b>：
+     * <ol>
+     * <li>行 0（y=0）：猫猫币值条 88×18（图标 + 数量）｜ 行 1（y=18）：<b>瞬时</b>通道按钮 88×18；</li>
+     * <li>行 2（y=36）：闪烁币值条 88×18 ｜ 行 3（y=54）：<b>短效</b>通道按钮 88×18。</li>
+     * </ol>
+     * <b>改了什么</b>：① 币值条内那两枚 12×12 快捷图标（用户口中的"弹出"与"导入 ME"）全部撤除
+     * ——旧代码里它们是 {@code 2 币种 × 2 枚}＝<b>4 个实例</b>，不是一个；② 原来的"通道按钮竖段"
+     * （旧 {@code pocket_channel_buttons} 容器，{@code y=36} 起两行）撤除，两枚按钮拆到<b>各自那枚
+     * 币的下一行</b> ⇒ 左段<b>仍是 4 行</b>、★纵向一格不空（旧竖段没了也不会留下 36px 无主空白）。
+     * <b>撤图标不丢功能</b>：第一枚与按钮走同一条 {@code ui.requestChannel}（同一动作此前摆了两份，
+     * 现在只剩一份）；两枚图标的 tooltip 文案本来就是「通道成本」与「余额」，两者各另有常驻落点
+     * （按钮标签+tooltip / 币值条 tooltip）⇒ ★零信息损失，R36 成立。
      * <p>
-     * R78① 的"收窄"：旧口径这一段是 180 宽（两条币值条并排 + 两个通道按钮并排 + 一段说明文字），
-     * 现在两条并排改纵向，且★说明文字（{@code note.channel}）撤进各自 tooltip（R74② / R78 D-2）。
+     * <b>★按钮为什么不塞进图标腾出的那条带</b>（用户原话是"把这两个位置换成启动通道的按钮"）：
+     * 条内数值件右沿到条右沿只有 {@code 88 − (16+3+30)} = <b>39px</b>（留 1px 间隙则 38），
+     * 而 {@code POCKET_C2_btn} 原生 <b>88×18</b> —— 一条 39px 的带塞不进 88px 的件。两条出路都更贵：
+     * 缩到 ≤39 宽必须换短文案（新增 2 条 lang 键 + 实机裁字风险，且左段纵向仍会空出 36px）；
+     * 往段外借那 12px 会爬到背包段第一列上（★撞 R80①"背包段与中栏同 x 同宽"的视觉与点击面）。
+     * 现在的形态是<b>同一行组内</b>把按钮摆在数值正下方：尺寸、材质、按下态、文案全部沿用原生件。
+     * <p>
+     * R78① 的"收窄"仍然成立：旧口径这一段是 180 宽（两条币值条并排 + 两个通道按钮并排 + 一段说明
+     * 文字），现在并排改纵向，且★说明文字（{@code note.channel}）撤进各自 tooltip（R74② / R78 D-2）。
      */
     private static ParentWidget<?> coinBlock(NekoPocketPanel ui) {
-        return new ParentWidget<>().pos(COIN_X, Y)
+        final ParentWidget<?> block = new ParentWidget<>().pos(COIN_X, Y)
             .size(COIN_WIDTH, HEIGHT)
-            .name("pocket_coin_block")
-            .child(coinRow(ui, NekoCurrencyRegistrar.NEKO_ID, 0, "pocket_balance_neko"))
-            .child(coinRow(ui, NekoCurrencyRegistrar.SHIMMERING_NEKO_ID, 1, "pocket_balance_shimmering"))
-            .child(channelButtons(ui));
+            .name("pocket_coin_block");
+        // ★行位由同一个游标按「币值条 → 它自己的通道按钮」交替发放 ⇒ 两件叠在同一行不可能；
+        // 漏画一行则由下面那条件数对账当场抛（写死四次 .child(...) 会让"改了行位却少画一行"变成
+        // 一条查不出来的错 —— 与右段常驻行同一条纪律，见 {@code bindBlock} 里那个循环的注释）。
+        int row = 0;
+        for (int currency = 0; currency < CURRENCY_KINDS; currency++) {
+            block.child(coinRow(currency, row++));
+            block.child(channelButton(ui, currency, row++));
+        }
+        if (block.getChildren()
+            .size() != COIN_ROWS) {
+            throw new IllegalStateException(
+                "[pocket] 左段画出 " + block.getChildren()
+                    .size() + " 件，与行位数 " + COIN_ROWS + " 不符（★要么有一行没被认领，要么两件叠在同一行）");
+        }
+        return block;
     }
 
     /**
-     * 一行币值（猫猫机形态：图标 + 数量 + 两枚快捷小图标）。
+     * 一行币值（猫猫机形态：图标 + 数量）。★R83 C1 起条内<b>不再</b>有快捷图标（理由见 {@link #coinBlock}）。
      *
-     * @param currencyId 币种（本仓的两种：猫猫币 / 闪烁猫猫币）
-     * @param row        第几行（0 = 猫猫币 ⇒ 对应瞬时通道；1 = 闪烁币 ⇒ 对应短效通道）
+     * @param currency 币种序号（0 = 猫猫币；1 = 闪烁猫猫币 ⇒ 与 {@link #channelButton} 同一序号成对）
+     * @param row      左段行位（★y 只由 {@link #coinRowY(int)} 给出，不手写）
      */
-    private static IWidget coinRow(NekoPocketPanel ui, String currencyId, int row, String name) {
-        final String displayName = NekoCurrencyRegistrar.getDisplayName(currencyId);
+    private static IWidget coinRow(int currency, int row) {
+        final boolean neko = currency == 0;
+        final String currencyId = neko ? NekoCurrencyRegistrar.NEKO_ID : NekoCurrencyRegistrar.SHIMMERING_NEKO_ID;
+        final String name = neko ? "pocket_balance_neko" : "pocket_balance_shimmering";
         final ItemStack iconStack = currencyIcon(currencyId);
         final IKey balanceKey = IKey.lang(
-            row == 0 ? "gtit.pocket.balance.neko" : "gtit.pocket.balance.shimmering",
+            neko ? "gtit.pocket.balance.neko" : "gtit.pocket.balance.shimmering",
             () -> new Object[] { NekoClientBalances.getBalance(currencyId) });
-        final NekoPocketPanel.ChannelRequest channel = row == 0 ? NekoPocketPanel.ChannelRequest.BURST
-            : NekoPocketPanel.ChannelRequest.SHORT;
-        final IKey costKey = IKey.lang(
-            row == 0 ? "gtit.pocket.channel.instant" : "gtit.pocket.channel.timed",
-            row == 0 ? new Object[] { PocketConstants.BURST_COST_NEKO }
-                : new Object[] { PocketConstants.SHORT_COST_SHIMMERING_NEKO, PocketConstants.SHORT_CHANNEL_SECONDS });
-        final ParentWidget<?> bar = new ParentWidget<>().pos(COIN_BAR_X, row * COIN_BAR_HEIGHT)
+        final ParentWidget<?> bar = new ParentWidget<>().pos(COIN_BAR_X, coinRowY(row))
             .size(COIN_BAR_WIDTH, COIN_BAR_HEIGHT)
             .name(name)
             .background(PocketGuiTextures.COIN_BAR)
@@ -471,98 +551,49 @@ public final class NekoPocketBottomBand {
                     .textAlign(Alignment.CenterLeft)
                     .scale(0.5f)
                     .pos(COIN_ICON_SIZE + 3, 0)
-                    .size(30, COIN_BAR_HEIGHT))
-            // 第一枚快捷键：借 NekoCoinDisplayV2.java:127-158 的形态；语义 = 用该币激活它自己的通道
-            .child(
-                quickIcon(
-                    NekoGuiTextures.EJECT_COINS,
-                    COIN_ICON_SIZE + 3 + 32,
-                    row,
-                    name + "_quick_channel",
-                    costKey,
-                    () -> ui.requestChannel(channel)))
-            // 第二枚快捷键：借 NekoCoinDisplayV2.java:179-203 的形态；★只读明细，不借"存币"语义
-            .child(
-                quickIcon(
-                    NekoGuiTextures.WALLET_PERSONAL,
-                    COIN_ICON_SIZE + 3 + 32 + QUICK_ICON_SIZE + 2,
-                    row,
-                    name + "_quick_info",
-                    balanceKey,
-                    null));
+                    .size(30, COIN_BAR_HEIGHT));
+        // ★余额的常驻可见面：撤掉那枚"只读明细"图标后，这条 tooltip 就是它唯一的落点（R36 不删信息）。
         bar.tooltip(tooltip -> tooltip.addLine(balanceKey));
         return bar;
     }
 
     /**
-     * 一枚 12×12 的快捷小图标（形态照 {@code NekoCoinDisplayV2}：主题底关掉、只画纹理图标）。
-     *
-     * @param action 点击动作；{@code null} = <b>只读</b>件（只带 tooltip，不发任何请求）
-     */
-    private static IWidget quickIcon(UITexture texture, int x, int row, String name, IKey tip, Runnable action) {
-        final ButtonWidget<?> button = new ButtonWidget<>().pos(x, 3)
-            .size(QUICK_ICON_SIZE, QUICK_ICON_SIZE)
-            .name(name)
-            .disableThemeBackground(true)
-            .disableHoverThemeBackground(true)
-            .overlay(
-                new IDrawable[] { texture.asIcon()
-                    .size(QUICK_ICON_SIZE) })
-            .playClickSound(false)
-            .tooltip(tooltip -> tooltip.addLine(tip));
-        if (action == null) {
-            // ★只读件：把点击吃掉但不发任何请求（返回 true = SUCCESS，点击不会穿到下面的币值条）
-            return button.onMousePressed(mouseButton -> true);
-        }
-        return button.onMousePressed(mouseButton -> {
-            if (mouseButton != 0) {
-                return true;
-            }
-            action.run();
-            return true;
-        });
-    }
-
-    /**
-     * 需求 3 的两个通道按钮（R78① 后纵向排在左段下半）：各 {@code POCKET_C2_btn} 88×18，
-     * 起点 {@code y = 2×18 = 36} 与 {@code y = 54}。
+     * ★R83 C1：一枚通道启动按钮，占左段<b>自己那一行</b>（{@code POCKET_C2_btn} 原生 88×18 ⇒
+     * ★未缩尺寸、未换文案、底与按下态照旧；旧竖段里的两件搬到这里，件数从 4 件（2 图标 + 2 按钮）
+     * 降到 2 件，同一动作只剩一份）。
      * <p>
      * 按钮<b>只发"请求激活"</b>（R64c 末段 + R39b）：动作码各自独立（{@code BURST} / {@code SHORT}），
      * 扣费与推送/拉取模式判定都在服务端，客户端<b>不得</b>按 ghost 表自行推断。
      * 完整文案（含 {@code -%d} 成本占位，数字由 {@code PocketConstants} 填入，R58b/契约 §7 第 5 条）
-     * 同时进缩略标签与 tooltip（R36：宽度不够就加 tooltip，不删信息）。
+     * 同时进标签与 tooltip（R36：宽度不够就加 tooltip，不删信息）。
+     *
+     * @param currency 币种序号（与上一行的币值条同序号 ⇒ "这枚币花在哪个通道"读得出来）
+     * @param row      左段行位
      */
-    private static IWidget channelButtons(NekoPocketPanel ui) {
-        final IKey instant = IKey
-            .lang("gtit.pocket.channel.instant", () -> new Object[] { PocketConstants.BURST_COST_NEKO });
-        final IKey timed = IKey.lang(
-            "gtit.pocket.channel.timed",
-            () -> new Object[] { PocketConstants.SHORT_COST_SHIMMERING_NEKO, PocketConstants.SHORT_CHANNEL_SECONDS });
-        return new ParentWidget<>().pos(0, 2 * COIN_BAR_HEIGHT)
-            .size(COIN_WIDTH, 2 * COIN_BAR_HEIGHT)
-            .name("pocket_channel_buttons")
+    private static IWidget channelButton(NekoPocketPanel ui, int currency, int row) {
+        final boolean instant = currency == 0;
+        final IKey label;
+        final NekoPocketPanel.ChannelRequest request;
+        if (instant) {
+            label = IKey.lang("gtit.pocket.channel.instant", () -> new Object[] { PocketConstants.BURST_COST_NEKO });
+            request = NekoPocketPanel.ChannelRequest.BURST;
+        } else {
+            label = IKey.lang(
+                "gtit.pocket.channel.timed",
+                () -> new Object[] { PocketConstants.SHORT_COST_SHIMMERING_NEKO,
+                    PocketConstants.SHORT_CHANNEL_SECONDS });
+            request = NekoPocketPanel.ChannelRequest.SHORT;
+        }
+        return new ButtonWidget<>().pos(COIN_BAR_X, coinRowY(row))
+            .size(BUTTON_WIDTH, COIN_BAR_HEIGHT)
+            .name(instant ? "pocket_button_instant" : "pocket_button_timed")
+            .background(PocketGuiTextures.BUTTON)
+            .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
             .child(
-                new ButtonWidget<>().pos(COIN_BAR_X, 0)
-                    .size(BUTTON_WIDTH, COIN_BAR_HEIGHT)
-                    .name("pocket_button_instant")
-                    .background(PocketGuiTextures.BUTTON)
-                    .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-                    .child(
-                        (IWidget) new TextWidget(instant).scale(0.5f)
-                            .textAlign(Alignment.Center))
-                    .tooltip(tooltip -> tooltip.addLine(instant))
-                    .onMousePressed(button -> button == 0 && ui.requestChannel(NekoPocketPanel.ChannelRequest.BURST)))
-            .child(
-                new ButtonWidget<>().pos(COIN_BAR_X, COIN_BAR_HEIGHT)
-                    .size(BUTTON_WIDTH, COIN_BAR_HEIGHT)
-                    .name("pocket_button_timed")
-                    .background(PocketGuiTextures.BUTTON)
-                    .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-                    .child(
-                        (IWidget) new TextWidget(timed).scale(0.5f)
-                            .textAlign(Alignment.Center))
-                    .tooltip(tooltip -> tooltip.addLine(timed))
-                    .onMousePressed(button -> button == 0 && ui.requestChannel(NekoPocketPanel.ChannelRequest.SHORT)));
+                (IWidget) new TextWidget(label).scale(0.5f)
+                    .textAlign(Alignment.Center))
+            .tooltip(tooltip -> tooltip.addLine(label))
+            .onMousePressed(button -> button == 0 && ui.requestChannel(request));
     }
 
     /**
