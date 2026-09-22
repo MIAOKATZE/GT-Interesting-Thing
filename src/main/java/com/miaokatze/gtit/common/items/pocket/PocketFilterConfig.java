@@ -9,6 +9,9 @@ import java.util.Map;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  * 口袋的 ghost 配置（NEI 拖拽进来的"需求清单"）：一条声明 =
  * <b>{@code {slotIndex, kind, payloadKey, cap}}</b>（{@code cap} 是 ★R83 C2 的组上限，见 {@link Filter#cap()}）。
@@ -42,6 +45,14 @@ import net.minecraft.nbt.NBTTagList;
  * {@link #resolveCap(Filter, int)} 传进来 ⇒ 本类不 import 任何 MC/AE2/TC 类型）。
  */
 public final class PocketFilterConfig {
+
+    /**
+     * ★R85 B1 用的日志器。<b>不</b>走 {@code GTInterestingThing.LOG}：那条要把 mod 主类拉进本类的
+     * 类初始化链（{@code @Mod}/{@code Tags} 注解），而 {@code PocketFilterConfig} 与它一起属"纯 JVM
+     * 可实例化"的那一侧（{@code NekoPocketModelTest} 直接 new 它）。取与 {@code PocketAeChannelOps}/
+     * {@code PocketCellProbe} 同一枚名字 {@code "gtit"} ⇒ 落进同一个 logger 配置，日志路由不变。
+     */
+    private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 标识串内部分隔符；流体名/aspect tag 均不含裸冒号冲突（源质键只切第一段）。 */
     private static final char SEPARATOR = ':';
@@ -240,40 +251,93 @@ public final class PocketFilterConfig {
             return config;
         }
         final NBTTagCompound domain = root.getCompoundTag(PocketConstants.FILTERS);
+        // ★R85 B1：三个区各自统计"读了但没落进表"的条数。旧写法把 add() 的返回值丢掉 ⇒
+        // 超出 GHOST_ITEM_SLOT_LIMIT 的尾部声明（R80 把中栏 150 收到 135 时的 135…149 号格）
+        // 整条消失且**零日志**，而同一次收缩在 PocketInventory#loadGroup 对**物品**条目是有一条
+        // 一次性 WARN 的（两套纪律，取证档案 r85-ret-robust §4-①）。R84 之后声明格还是抽取落点
+        // ⇒ 丢一条声明 = 同时丢一个落点，更不能静默。
+        int itemsDropped = 0;
         final NBTTagList items = domain.getTagList(PocketConstants.FILTER_ITEMS, TAG_COMPOUND);
         for (int i = 0; i < items.tagCount(); i++) {
             final NBTTagCompound entry = items.getCompoundTagAt(i);
             final int slot = readSlot(entry);
-            config.add(
+            if (!config.add(
                 slot,
                 new ItemFilter(
                     slot,
                     entry.getInteger(PocketConstants.FILTER_ITEM_ID),
                     entry.getInteger(PocketConstants.FILTER_META),
                     entry.getString(PocketConstants.FILTER_NBT),
-                    readCap(entry)));
+                    readCap(entry)))) {
+                itemsDropped++;
+            }
         }
+        warnDroppedOnce(Kind.ITEM, PocketConstants.FILTER_ITEMS, items.tagCount(), itemsDropped);
+        int fluidsDropped = 0;
         final NBTTagList fluids = domain.getTagList(PocketConstants.FILTER_FLUIDS, TAG_COMPOUND);
         for (int i = 0; i < fluids.tagCount(); i++) {
             final NBTTagCompound entry = fluids.getCompoundTagAt(i);
             final String name = entry.getString(PocketConstants.FILTER_FLUID);
-            if (!name.isEmpty()) {
-                final int slot = readSlot(entry);
-                config.add(slot, new FluidFilter(slot, name, readCap(entry)));
+            final int slot = readSlot(entry);
+            if (name.isEmpty() || !config.add(slot, new FluidFilter(slot, name, readCap(entry)))) {
+                fluidsDropped++;
             }
         }
+        warnDroppedOnce(Kind.FLUID, PocketConstants.FILTER_FLUIDS, fluids.tagCount(), fluidsDropped);
+        int essentiaDropped = 0;
         final NBTTagList essentia = domain.getTagList(PocketConstants.FILTER_ESSENTIA, TAG_COMPOUND);
         for (int i = 0; i < essentia.tagCount(); i++) {
             final NBTTagCompound entry = essentia.getCompoundTagAt(i);
             final String typeId = entry.getString(PocketConstants.FILTER_TYPE_ID);
             final String tag = entry.getString(PocketConstants.FILTER_TAG);
-            if (!typeId.isEmpty() && !tag.isEmpty()) {
-                final int slot = readSlot(entry);
-                config.add(slot, new EssenceFilter(slot, typeId, tag, readCap(entry)));
+            final int slot = readSlot(entry);
+            if (typeId.isEmpty() || tag.isEmpty()
+                || !config.add(slot, new EssenceFilter(slot, typeId, tag, readCap(entry)))) {
+                essentiaDropped++;
             }
         }
+        warnDroppedOnce(Kind.ESSENCE, PocketConstants.FILTER_ESSENTIA, essentia.tagCount(), essentiaDropped);
         return config;
     }
+
+    /**
+     * "ghost 声明读档被丢弃"的一次性 WARN（★R85 B1，照 {@code PocketInventory#warnOutOfRangeOnce} 的
+     * 句式与节流口径：<b>每个区一次</b>，不是每拍打）。
+     * <p>
+     * 三条口径：
+     * <ol>
+     * <li><b>不许静默</b>：面板形状收缩（150 → 135）后旧档的尾部声明必然越界，读档整条消失；
+     * 一件物品都没丢（声明表是配置不是库存），但"我明明配过"的配置消失同样不许零行日志；</li>
+     * <li><b>不每拍打</b>：本方法只在读档路径上被调（每次开屏一次），闩按<b>区</b>固定三枚键 ⇒
+     * 反复开关屏也只各报一行；</li>
+     * <li>★与 {@code PocketInventory} 同一条既存弱点：闩是<b>进程维</b>而非玩家维（这里拿不到玩家身份，
+     * {@code readFrom} 的入参只有一份 NBT），所以同 JVM 连开两档时第二档的同区丢弃不再复报。
+     * 收口属日志面结构改动（要么键里加身份、要么挂 lifecycle 清理），与 {@code outOfRangeWarnedKeys}
+     * 同一批处理，本片不自作主张换纪律。</li>
+     * </ol>
+     */
+    private static void warnDroppedOnce(Kind kind, String key, int read, int dropped) {
+        if (dropped <= 0 || !droppedWarnedKeys.add(key)) {
+            return;
+        }
+        final int limit = switch (kind) {
+            case ITEM -> PocketConstants.GHOST_ITEM_SLOT_LIMIT;
+            case FLUID -> PocketConstants.GHOST_FLUID_SLOT_LIMIT;
+            case ESSENCE -> PocketConstants.GHOST_ESSENCE_SLOT_LIMIT;
+        };
+        LOG.warn(
+            "[pocket] 存档里的 ghost 声明 {}（键 {}）有 {} 条没能落进配置表（本区共读到 {} 条；可用槽号 0…{}）"
+                + "——槽号越出当前面板形状 / 载荷为空 / 同槽重复被折叠，这些条目已丢弃"
+                + "（形状变更后的旧/外来档；本条按区只报一次）",
+            kind,
+            key,
+            dropped,
+            read,
+            limit - 1);
+    }
+
+    /** ghost 声明读档丢弃 WARN 的"每个区一次"闩（LinkedHashSet 保首次出现顺序，日志可读）。 */
+    private static final java.util.Set<String> droppedWarnedKeys = new java.util.LinkedHashSet<>();
 
     public void writeTo(NBTTagCompound root) {
         final NBTTagList items = new NBTTagList();

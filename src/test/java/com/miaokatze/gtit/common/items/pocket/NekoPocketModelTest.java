@@ -226,7 +226,199 @@ public class NekoPocketModelTest {
         cases.put("capDirectiveRoundTrip", NekoPocketModelTest::capDirectiveRoundTrip);
         cases.put("cap_not_part_of_filter_identity", NekoPocketModelTest::capNotPartOfFilterIdentity);
         cases.put("cap_consumers_actually_call_resolve_cap", NekoPocketModelTest::capConsumersActuallyCallResolveCap);
+        // ---- R85 批 0（正确性修复）三条新增判据：入包契约算术 / 抽取方向停批 / ghost blob 长度预算 ----
+        cases
+            .put("move_to_player_counts_by_vanilla_contract", NekoPocketModelTest::moveToPlayerCountsByVanillaContract);
+        cases.put("extract_batch_stops_only_on_cell_side_receipts", NekoPocketModelTest::extractBatchStopCondition);
+        cases.put("ghost_blob_budget_stops_tail_byte_identical_prefix", NekoPocketModelTest::ghostBlobBudgetShape);
         TestRunner.run(NekoPocketModelTest.class, cases);
+    }
+
+    // ================================================================== R85 批 0（正确性修复）三条新判据
+    //
+    // 共同点：这三件事在 R85 之前<b>全仓零用例</b>（档案 r85-review §三-3 与 r85-ret-sync N1/N3 都点名
+    // "覆盖情况：JVM 套件对 runRefillBatch 零用例"、"现无测试钉这一点"），所以修复本身可以被人
+    // 一行改回去而不红。下面三条各自钉住一处"改坏了没人知道"的算术。
+
+    /**
+     * ★R85：{@code moveToPlayer} 的成交数算术（R84 服务器主线程死循环修复的<b>本体</b>，
+     * 取证档案 r85-ret-sync S10 说它"已有回归"，盘上实测<b>零用例</b> ⇒ 本条补上）。
+     * <p>
+     * 钉三件事：① 契约形态（原版返回 true ⇔ 入参 {@code stackSize} 已被改写为 0）下
+     * <b>成交数 == 请求数 − 余量</b>；② <b>永不超发</b>（成交数 &gt; 请求数就意味着同一件被算两次，
+     * 也就是 R83 那版"逐 maxStackSize 切块 + 拿循环计数当成交数"的形状）；③ 生产面只有一次调用
+     * （源码机检半边：{@code moveToPlayer} 方法体内 {@code addItemStackToInventory} 命中数恰为 1，
+     * 出现第 2 处 ⇒ 说明有人又把循环加回来了）。
+     */
+    private static void moveToPlayerCountsByVanillaContract() {
+        // ---- ① / ② 算术半边 ----
+        SimpleAssert.eq(
+            64,
+            NekoPocketPanel.movedByVanillaContract(true, 64, 0),
+            "契约形态：返回 true 时入参已被置 0 ⇒ 成交 = 64 − 0 = 64（与旧口径等值，R84 语义一字未动）");
+        SimpleAssert.eq(
+            44,
+            NekoPocketPanel.movedByVanillaContract(false, 64, 20),
+            "★真正的余量分支：装下 44 件后背包满了 ⇒ 成交 = 请求 64 − 余量 20（不是 0、也不是 64）");
+        SimpleAssert.eq(0, NekoPocketPanel.movedByVanillaContract(false, 64, 64), "一件都没进 ⇒ 0");
+        SimpleAssert.eq(0, NekoPocketPanel.movedByVanillaContract(false, 10, 20), "余量大于请求（异常入参）⇒ 0，不得造出负成交数去污染调用方账目");
+        SimpleAssert.eq(0, NekoPocketPanel.movedByVanillaContract(true, 0, 0), "请求 0 件 ⇒ 0（不报'成功的空搬运'）");
+        SimpleAssert.eq(0, NekoPocketPanel.movedByVanillaContract(true, -5, 0), "负请求 ⇒ 0（外来入参不得变成负成交）");
+        // ★可 damaged 那一支：原版把入参对象整个塞进空槽后 return true，stackSize <b>留在原值</b>
+        // （r85-review §三-1）。这一支必须仍按 want 计 ⇒ 按余量算会把它报成 0 件，调用方随后
+        // 再落一次同一件 = 复制物品。
+        SimpleAssert
+            .eq(1, NekoPocketPanel.movedByVanillaContract(true, 1, 1), "★受损件那一支（true 但余量没置 0）⇒ 仍按请求数计，<b>不得</b>改成按余量算");
+        for (int want = 0; want <= 64; want += 8) {
+            for (int rest = 0; rest <= 64; rest += 8) {
+                final int moved = NekoPocketPanel.movedByVanillaContract(false, want, rest);
+                SimpleAssert.that(moved >= 0 && moved <= want, "false 支永不越界：want=" + want + " rest=" + rest);
+                SimpleAssert.that(
+                    NekoPocketPanel.movedByVanillaContract(true, want, rest) <= Math.max(0, want),
+                    "true 支永不超发（超发 == 同一件入包两次）：want=" + want);
+            }
+        }
+        // ---- ③ 接线半边（源码机检）----
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒ 「moveToPlayer 只有一次入包调用」的接线半边【未验】（★不是通过）");
+        } else {
+            final int body = methodStart(panel, "private int moveToPlayer(ItemStack toPlayer) {");
+            final int after = methodStart(panel, "public static int movedByVanillaContract(");
+            SimpleAssert.that(body >= 0 && after > body, "★必须能按符号定位 moveToPlayer 与它后面的纯函数（改名/挪动即红）");
+            final int calls = countCodeLinesIn(panel.subList(body, after), "addItemStackToInventory(");
+            SimpleAssert.eq(
+                1,
+                calls,
+                "★moveToPlayer 方法体内 addItemStackToInventory 必须恰 <b>1</b> 处（读到 " + calls
+                    + "）：0 = 入包面被摘掉，≥2 = R83 那个主线程死循环被加回来了");
+        }
+    }
+
+    /**
+     * ★R85：抽取方向的停批判据（钉 {@code PocketReceipt#stopsExtractBatch}，档案 r85-review A1/A3）。
+     * <p>
+     * 两条判据分开的理由（★不是口味）：注入方向的 {@code stopsBatch()} 是为"元件侧拒收 ⇒ 余量顺延
+     * 下一轮"设计的；而抽取方向<b>每条声明有自己的落点</b>（物品 = 各自的声明格、流体 = 各自的 tank），
+     * "这一条的落点满了 / 这只元件没有这个通道"与本条以外的一条都不相干。沿用 {@code stopsBatch} 的
+     * 形状是：队首一条补满 ⇒ 后面全部<b>永久饿死</b>（每秒重跑仍卡在同一条）。
+     * <p>
+     * 本条同时钉<b>行为面</b>（走真的 {@code runRefillBatch}，取证档案点名"JVM 套件对该方法零用例"）
+     * 与<b>语义面</b>（枚举断言），并把"注入方向仍照旧停批"钉在同一处 ⇒ 有人把两条并回一条就会红。
+     */
+    private static void extractBatchStopCondition() {
+        // ---- 语义面：抽取方向只有"元件此刻给不出"才停 ----
+        SimpleAssert.eq(Boolean.FALSE, PocketReceipt.OK.stopsExtractBatch(), "OK 不停批");
+        SimpleAssert.eq(Boolean.FALSE, PocketReceipt.NO_CHANNEL.stopsExtractBatch(), "★没有该通道 = 这一条声明的事，不停批");
+        SimpleAssert.eq(Boolean.FALSE, PocketReceipt.TARGET_FULL.stopsExtractBatch(), "★落点已满 = 这一条声明的事，不停批");
+        SimpleAssert.eq(Boolean.FALSE, PocketReceipt.PARTIAL.stopsExtractBatch(), "部分成交不停批（余量本就该由下一条继续要）");
+        SimpleAssert.eq(Boolean.FALSE, PocketReceipt.FULL.stopsExtractBatch(), "元件满是注入方向的结论，抽取侧不停批");
+        SimpleAssert.eq(Boolean.FALSE, PocketReceipt.FILTER_REJECTED.stopsExtractBatch(), "分区拒收同上（抽取本就不受分区限制）");
+        SimpleAssert.eq(Boolean.TRUE, PocketReceipt.LOST.stopsExtractBatch(), "★失联 ⇒ 停批（这只元件给不出更多，顺延下一轮）");
+        SimpleAssert.eq(Boolean.TRUE, PocketReceipt.NO_ACCESS.stopsExtractBatch(), "★无读权限 ⇒ 停批（同上一条同类）");
+        // ★两条判据不得并回一条：注入方向的 NO_CHANNEL / TARGET_FULL 仍停批（余量顺延）
+        SimpleAssert.eq(Boolean.TRUE, PocketReceipt.NO_CHANNEL.stopsBatch(), "注入方向的 NO_CHANNEL 仍停批（本条防的是「把两条判据合并回一条」）");
+        SimpleAssert.eq(Boolean.TRUE, PocketReceipt.TARGET_FULL.stopsBatch(), "注入方向的 TARGET_FULL 仍停批（同上）");
+
+        // ---- 行为面：走真的 runRefillBatch（档案点名的零覆盖面）----
+        // 队首那条声明"没有该通道" ⇒ 后面两条必须照样被叫到
+        final PocketCellBindings bindings = bindingsOf(CELL_A);
+        final PocketFilterConfig filters = new PocketFilterConfig();
+        final PocketFilterConfig.Filter first = item(1, 2621, 0, "");
+        final PocketFilterConfig.Filter second = item(2, 2622, 0, "");
+        final PocketFilterConfig.Filter third = item(3, 2623, 0, "");
+        SimpleAssert.that(filters.add(1, first), "声明第 1 格");
+        SimpleAssert.that(filters.add(2, second), "声明第 2 格");
+        SimpleAssert.that(filters.add(3, third), "声明第 3 格");
+        final StubOps skipper = new StubOps();
+        skipper.forcedExtract.put(first.key(), PocketReceipt.NO_CHANNEL);
+        skipper.extractable.put(second.key(), 5);
+        skipper.extractable.put(third.key(), 5);
+        final PocketChannelRunner.Report keptGoing = PocketChannelRunner
+            .runRefillBatch(bindings, null, filters, skipper, 1, 64);
+        SimpleAssert.eq(3, skipper.extractCalls.size(), "★队首 NO_CHANNEL 之后，第 2、3 条声明仍被叫到（旧形状在此 break ⇒ 只有 1 次）");
+        SimpleAssert.eq(1, keptGoing.noChannel, "NO_CHANNEL 计了数（不停批但必须留痕，玩家读得到）");
+        SimpleAssert.eq(10, keptGoing.transferred, "后面的声明真的搬到了东西（10 件）");
+        SimpleAssert.eq(0, keptGoing.failures(), "NO_CHANNEL 不进 failures()（它不是「哪条声明挡住了全队」那种失败）");
+
+        // 队首那条失联 ⇒ 必须停批（这是"元件此刻给不出"的那一档，顺延下一轮）
+        final StubOps stopper = new StubOps();
+        stopper.forcedExtract.put(first.key(), PocketReceipt.LOST);
+        stopper.extractable.put(second.key(), 5);
+        stopper.extractable.put(third.key(), 5);
+        final PocketChannelRunner.Report stopped = PocketChannelRunner
+            .runRefillBatch(bindings, null, filters, stopper, 1, 64);
+        SimpleAssert.eq(1, stopper.extractCalls.size(), "★队首 LOST 必须 break 掉本对的剩余声明（顺延下一轮）");
+        SimpleAssert.eq(1, stopped.lost, "LOST 计数走 accountFailure（玩家读得到「没认出的元件」）");
+        // 队首 TARGET_FULL 同样不停批（R85 A1 的稳态：每条声明最后都会补满，一停就全队饿死）
+        final StubOps fullTarget = new StubOps();
+        fullTarget.forcedExtract.put(first.key(), PocketReceipt.TARGET_FULL);
+        fullTarget.extractable.put(second.key(), 5);
+        fullTarget.extractable.put(third.key(), 5);
+        PocketChannelRunner.runRefillBatch(bindings, null, filters, fullTarget, 1, 64);
+        SimpleAssert.eq(3, fullTarget.extractCalls.size(), "★队首 TARGET_FULL 不停批（「落点满」是这一条的稳态）");
+    }
+
+    /**
+     * ★R85 N3：ghost blob 的<b>长度预算</b>形状（钉 {@code NekoPocketPanel#ghostBlobOf(config, budget)}）。
+     * <p>
+     * 上游 {@code NetworkUtils.writeStringSafe} 对超 32,693 字节的串<b>静默截断、只 WARN</b> ⇒
+     * 本仓必须自己收口。三条判据各自对应"不许出现"的一种坏形状：
+     * <ol>
+     * <li><b>超预算时尾部整条不写</b>（解析回来的条数 &lt; 声明条数，且差额 = 未同步条数）；</li>
+     * <li><b>已写部分逐字节不变</b>（与"只放前 k 条、预算无限"的拼装结果<b>完全相等</b>）⇒
+     * 解析器一个字都不用改，旧客户端拿到前缀也能正常虚化（★不许出现"截半条记录"那种形状）；</li>
+     * <li><b>条数差可算</b>（读数就是 {@code 权威条数 − 解析到的条数}，{@code ghost.not_synced} 那行文案
+     * 用的正是它 ⇒ 文案里的数字与真实差额必须同源，不是另造一处）。</li>
+     * </ol>
+     */
+    private static void ghostBlobBudgetShape() {
+        final String fatNbt = repeated('A', 4_000);
+        final PocketFilterConfig filters = new PocketFilterConfig();
+        final PocketFilterConfig.Filter head = new PocketFilterConfig.ItemFilter(1, 2621, 0, repeated('a', 20));
+        final PocketFilterConfig.Filter fat = new PocketFilterConfig.ItemFilter(2, 2622, 0, fatNbt);
+        final PocketFilterConfig.Filter tail = new PocketFilterConfig.ItemFilter(3, 2623, 0, repeated('z', 20));
+        SimpleAssert.that(filters.add(1, head), "声明第 1 格（短 NBT）");
+        SimpleAssert.that(filters.add(2, fat), "声明第 2 格（★带肥 NBT，一条就能顶爆整根通道）");
+        SimpleAssert.that(filters.add(3, tail), "声明第 3 格（短 NBT，排在肥条目<b>之后>）");
+        SimpleAssert.eq(3, filters.size(), "三条声明都进了表");
+
+        // ---- ① 预算内的形状：整串不超预算、尾部整条不写 ----
+        final int budget = 1_000;
+        final String trimmed = NekoPocketPanel.ghostBlobOf(filters, budget);
+        SimpleAssert.that(trimmed.length() <= budget, "★超预算时必须收在预算内（读到 " + trimmed.length() + " > " + budget + "）");
+        final PocketFilterConfig parsedBack = NekoPocketPanel.parseGhostBlob(trimmed);
+        SimpleAssert.eq(1, parsedBack.size(), "预算只装得下第一条 ⇒ 尾部两条整条不写（★不是截半条）");
+        // ---- ② 已写部分逐字节不变：与"表里本来就只有第一条、预算无限"的拼装结果相等 ----
+        final PocketFilterConfig onlyHead = new PocketFilterConfig();
+        SimpleAssert.that(onlyHead.add(1, head), "对照组：只声明第一条");
+        SimpleAssert.eq(
+            NekoPocketPanel.ghostBlobOf(onlyHead, Integer.MAX_VALUE),
+            trimmed,
+            "★已写部分必须与「没有预算时」逐字节相同（分隔符都不许多一个少一个 ⇒ 解析器与旧客户端都不用改）");
+        // ---- ③ 条数差可算：读数是"权威条数 − 解析到的条数" ----
+        SimpleAssert
+            .eq(filters.size() - parsedBack.size(), 2, "未同步条数 = 3 − 1 = 2（★ghost.not_synced 那行文案用的就是这个差，不得另造第二个数）");
+        // ---- 预算本身与上游硬顶的关系（钉住"为什么是 24,000"）----
+        SimpleAssert.that(
+            PocketConstants.GHOST_BLOB_MAX_CHARS > 0 && PocketConstants.GHOST_BLOB_MAX_CHARS <= 32_693,
+            "★预算必须落在 (0, 32693] 里——上游 NetworkUtils 的硬顶是 Short.MAX_VALUE - 74 = 32,693 字节，"
+                + "本 blob 全是 ASCII 单字节字符 ⇒ 字符数就是字节数；超出去就是静默截断");
+        // ---- 不超预算时一个字节都不许多（★预算不得变成新的分叉源）----
+        final PocketFilterConfig small = new PocketFilterConfig();
+        SimpleAssert.that(small.add(3, tail), "一条短声明（槽号必须与声明自带的 slotIndex 一致）");
+        SimpleAssert.eq(
+            "ITEM|3|" + tail.key() + "|-1",
+            NekoPocketPanel.ghostBlobOf(small),
+            "★默认预算下正常条目逐字节照旧（三段式载荷键 + 第 4 段 cap 原始值 -1）");
+    }
+
+    /** 造一个指定长度的字符重复串（★预算用例要的是"长度可控的载荷键"，不是内容）。 */
+    private static String repeated(char c, int times) {
+        final char[] buffer = new char[Math.max(0, times)];
+        java.util.Arrays.fill(buffer, c);
+        return new String(buffer);
     }
 
     // ================================================================== S-U7（R80）批次
@@ -3839,11 +4031,20 @@ public class NekoPocketModelTest {
         final List<Integer> extractSlots = new ArrayList<>();
         /** 元件侧各载荷键还有多少可抽（拉取模式的"源"）。 */
         final Map<String, Integer> extractable = new LinkedHashMap<>();
+        /**
+         * ★R85：按载荷键<b>钉死</b>抽取回执（0 件成交），只为让 {@code runRefillBatch} 的停批面可在纯
+         * JVM 里被驱动（真实实现的回执来自 AE2 handler，套件拿不到）。空表 = 本字段完全不影响旧行为。
+         */
+        final Map<String, PocketReceipt> forcedExtract = new LinkedHashMap<>();
 
         @Override
         public Outcome extract(PocketFilterConfig.Filter filter, String diskuuid, int count) {
             extractCalls.add(filter.key());
             extractSlots.add(filter.slotIndex());
+            final PocketReceipt forced = forcedExtract.get(filter.key());
+            if (forced != null) {
+                return new Outcome(forced, 0);
+            }
             final Integer avail = extractable.get(filter.key());
             if (avail == null || avail <= 0) {
                 return new Outcome(PocketReceipt.OK, 0);
@@ -5189,14 +5390,25 @@ public class NekoPocketModelTest {
             "aer",
             unset);
         final PocketFilterConfig.Filter essenceCapped = new PocketFilterConfig.EssenceFilter(0, "essentia", "aer", 7);
+        // ★R85 小项 6：旧写法是 min(ESSENCE_CAP_PER_TAG, resolveCap(...)) —— 256/64 解耦（R84）之后
+        // 那层 Math.min 恒等于右边一项，是一层<b>永真包装</b>：它既给后来人"这条按每格上限钉住了"的错觉，
+        // 又让"把天花板抬到 128/256"这种改法在本条上<b>永远绿</b>（假绿）。现在直接钉符号：
+        // 未设的源质声明回落 = FILTER_CAP_CEILING_ESSENCE（★不是 ESSENCE_CAP_PER_TAG），
+        // 并把"两者不等"这条 R84 裁定一起钉住 ⇒ 谁把天花板抬到 256 让两者重新相等，本条立刻红。
+        SimpleAssert.that(
+            PocketConstants.ESSENCE_CAP_PER_TAG != PocketConstants.FILTER_CAP_CEILING_ESSENCE,
+            "★R84 裁定：每格上限(256)与一次取出的天花板必须<b>不是</b>同一个数（两者一旦相等，下面那条读数就退回假绿）");
         SimpleAssert.eq(
-            Math.min(PocketConstants.ESSENCE_CAP_PER_TAG, PocketFilterConfig.resolveCap(essenceUnset, 0)),
-            64,
-            "★旧档源质：一批仍至多 64 点 = ESSENCE_CAP_PER_TAG（D-3 的全有全无门未被抬高）");
+            PocketConstants.FILTER_CAP_CEILING_ESSENCE,
+            PocketFilterConfig.resolveCap(essenceUnset, 0),
+            "★旧档源质：一批至多 FILTER_CAP_CEILING_ESSENCE 点（回落值是天花板，★不是每格上限 256；"
+                + "把 ESSENCE_OUT_MAX_POINTS_PER_ACTION 改歪会立刻红在这里）");
+        SimpleAssert
+            .eq(64, PocketFilterConfig.resolveCap(essenceUnset, 0), "★同一读数的字面锚：抬天花板是<b>裁定</b>，必须让这条红，不许悄悄跟着符号走");
         SimpleAssert.eq(
-            Math.min(PocketConstants.ESSENCE_CAP_PER_TAG, PocketFilterConfig.resolveCap(essenceCapped, 0)),
-            7,
-            "★玩家调到 7 ⇒ 一批只 7 点（不会撞 64 全有全无 ⇒ 也就不会永久 needsRoom 卡死）");
+            Math.min(7, PocketConstants.FILTER_CAP_CEILING_ESSENCE),
+            PocketFilterConfig.resolveCap(essenceCapped, 0),
+            "★玩家调到 7 ⇒ 一批只 7 点（不会撞全有全无 ⇒ 也就不会永久 needsRoom 卡死）");
     }
 
     /** 造一条"区域对、载荷随意"的声明，只为拿 {@code resolveCap} 的两条入口做同判据对表。 */

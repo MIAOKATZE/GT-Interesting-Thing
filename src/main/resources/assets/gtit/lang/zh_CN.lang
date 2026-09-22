@@ -294,6 +294,7 @@ gtit.pocket.bind.stale=位置已失效，请重新按绑定键
 gtit.pocket.bind.slot_hint=把元件放入此格，再按绑定键
 gtit.pocket.bind.button=绑定
 gtit.pocket.bind.full=一只口袋只能绑定一枚元件，请先解绑当前元件
+gtit.pocket.receipt.no_channel=绑定的元件没有这个通道（物品/流体），这一批跳过了它
 gtit.pocket.bind.added=元件已加入绑定列表
 gtit.pocket.bind.dup=该元件已在绑定列表中，未重复添加
 gtit.pocket.bind.no_identity=元件身份未能写入，请稍后再按绑定键
@@ -338,6 +339,9 @@ gtit.pocket.fluid.container_full=该容器已经装满，灌不进去
 gtit.pocket.fluid.not_enough_fluid=本槽存量不够灌满这一件容器（这类容器不支持只灌一半）
 gtit.pocket.ghost.capacity_note=每个配置格会占用一格真实存储
 gtit.pocket.ghost.fluid_bar=本列流体槽仍可手动灌排；配置只说明要拉哪种流体
+# ★R85 N3：ghost 同步包的字符预算收口后，被停在尾部的声明<b>只少客户端那一层虚化渲染</b>，
+# 服务端仍按原样执法（往里放东西照样被弹回、拉取照样按声明补）。★文案不得写成"丢件/丢失配置"。
+gtit.pocket.ghost.not_synced=尾部 %d 条声明未同步到客户端显示（服务端执法不受影响），请精简声明或换较干净的物品
 gtit.pocket.cap.readout=该配置格的组上限：%s
 gtit.pocket.cap.readout.stored=该配置格：已补 %1$s / 上限 %2$s
 gtit.pocket.held.note=只有握在主手时才运作；收进背包其他格、副手、饰品栏或箱子即停

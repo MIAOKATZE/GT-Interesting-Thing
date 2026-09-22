@@ -150,9 +150,15 @@ public final class PocketChannelRunner {
                     report.transferred += outcome.moved;
                     report.deltas.add(new PocketChannelOps.Delta(diskuuid, typeId, filter.key(), -outcome.moved));
                 }
-                if (outcome.receipt.stopsBatch()) {
+                if (outcome.receipt == PocketReceipt.NO_CHANNEL) {
+                    // ★R85 A3：这条现在不停批了，但必须留痕——R84 改判后 Report.noChannel 全仓零读者，
+                    // "这只元件没有该通道"既不计也不说，玩家只看到"通道开了却没动静"。
+                    report.noChannel++;
+                }
+                if (outcome.receipt.stopsExtractBatch()) {
                     accountFailure(report, outcome.receipt);
-                    // 余量留元件侧，本对就此打住，顺延下一轮
+                    // ★R85 A1：抽取侧只有"元件此刻给不出"才打住；落点满/无通道是这一条声明自己的事，
+                    // 其余声明各有自己的落点（物品=各自的声明格、流体=各自的 tank），必须继续跑完。
                     break;
                 }
             }

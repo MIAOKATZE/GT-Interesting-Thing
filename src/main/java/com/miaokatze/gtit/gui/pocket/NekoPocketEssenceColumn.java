@@ -293,6 +293,13 @@ public final class NekoPocketEssenceColumn {
         // 换成动态注册后：装配顺序（ghost 位晚于本列装配）与"tag 晚到"都不再需要额外触发点。
         cell.tooltipDynamic(tooltip -> {
             final String tag = cell.aspectTag();
+            // ★R85 N3：ghost blob 被长度预算收口时，尾部声明只少了客户端这一层虚化渲染（服务端执法照常），
+            // 但<b>必须</b>有读数，否则玩家的读法是"我声明过的格子怎么自己变回了普通格"。
+            // 落点选在本文件：三类 ghost 格<b>各自</b>的 tooltip 代码全在禁写面（NekoFilterSlot /
+            // NekoPocketFluidSlot / NekoEssenceGhostCell），本列的 tooltipDynamic 是白名单内唯一一处
+            // "ghost 格的 tooltip" ⇒ 读数挂在这里，★两条分支（空位 / 有 tag）都得加，否则"声明全是物品"
+            // 那种最常见的形态恰好永远看不到它（R81 的"面缺失"同族）。
+            final int ghostNotSynced = ui.ghostNotSyncedCount();
             if (tag == null) {
                 // 空格位：没有归属 tag ⇒ 只给"这一格还空着/TC 不在场"的读法（R31 的整栏灰显另有 tooltip）
                 tooltip.addLine(
@@ -302,6 +309,9 @@ public final class NekoPocketEssenceColumn {
                         IKey.lang(
                             "gtit.pocket.aspect.overflow_note",
                             () -> new Object[] { PocketConstants.ESSENCE_DISPLAY_GRID }));
+                }
+                if (ghostNotSynced > 0) {
+                    tooltip.addLine(IKey.lang("gtit.pocket.ghost.not_synced", ghostNotSynced));
                 }
                 return;
             }
@@ -316,6 +326,9 @@ public final class NekoPocketEssenceColumn {
             if (cell.isGhost()) {
                 // 声明态补一行"配置格：<tag>（右键取消）"；本格仍可点取，故不复用 ghost.locked
                 tooltip.addLine(IKey.lang("gtit.pocket.ghost.on", TaumCompat.nameOf(tag)));
+            }
+            if (ghostNotSynced > 0) {
+                tooltip.addLine(IKey.lang("gtit.pocket.ghost.not_synced", ghostNotSynced));
             }
         });
         return cell;
@@ -389,31 +402,59 @@ public final class NekoPocketEssenceColumn {
      * {@code CLOCKS}（R83 取证 3f 第 6 跳），补同步与否属批 D；本方法只保证<b>不说谎</b>——
      * 旧 {@code switch} 没有 {@code OVER_CAP} 分支，超上限那一档会落 {@code default} 报
      * "没有可蒸馏物品"，而格子里明明放着东西。
+     * <p>
+     * ★<b>R85 小项 3：{@code still.partial_skip}（"下一轮继续重试"）的播放条件收紧</b>。
+     * {@code PocketDistillDriver#statusOf} 的判定顺序是
+     * {@code stalledFull(=needsRoom) > !distillable > stalledOverCap > RUNNING}，而
+     * {@code discardedGroupsOf} 把<b>两类</b>被放弃的格混在同一个计数里
+     * （{@code exceedsCellCap} = 单件原量超上限，<b>永远</b>塞不下；{@code canAcceptAll} 失败 = 只是这轮
+     * 空间不够，<b>下一轮真的能收下</b>）。于是：
+     * <ul>
+     * <li>走到 {@code RUNNING} 就说明 {@code needsRoom} 为假 ⇒ 这一档里 {@code skipped > 0} 的那些格
+     * <b>全部</b>是"永久超上限"，播"下一轮继续重试"就是谎报 ⇒ 本档改播 {@code still.over_cap}
+     * （那句本来就说"超出单格上限"，与事实一致）；</li>
+     * <li>只有 {@code STORE_FULL}（= {@code needsRoom} 为真）才是"真的可能下一轮被收下"的那一档 ⇒
+     * {@code partial_skip} 挪到这里播；</li>
+     * <li>★两条都带 {@code skipped > 0} 的门：读数为 0 就<b>不播</b>。专用服务器的客户端读这两个数
+     * 恒为 0（{@code CLOCKS} 是服务端私有 static），有这道门就是"少一行"，没这道门就是
+     * "有 0 格没塞下 / 有 0 格超上限"这种当场可笑的谎。</li>
+     * </ul>
+     * ★<b>没有改成常播</b>：本方法仍然只在"确实有被放弃的格"时才多那一行，也没有新增任何同步键。
      */
     private static String distillStateLine(NekoPocketPanel ui) {
         final PocketDistillDriver.Status status = ui.distillStatus();
+        final int skipped = PocketDistillDriver.discardedGroupsOf(ui.playerId());
         switch (status) {
-            case STORE_FULL:
-                return StatCollector.translateToLocal("gtit.pocket.still.full");
+            case STORE_FULL: {
+                final String full = StatCollector.translateToLocal("gtit.pocket.still.full");
+                return skipped <= 0 ? full
+                    : full + "\n"
+                        + String.format(
+                            StatCollector.translateToLocal("gtit.pocket.still.partial_skip"),
+                            skipped,
+                            PocketDistillDriver.discardedPointsOf(ui.playerId()));
+            }
             case NO_ASPECT:
                 return StatCollector.translateToLocal("gtit.pocket.still.no_aspect");
             case OVER_CAP:
                 // 两个读数是 A2 新开的只读转发；★R84 起单位是<b>格</b>（放弃了几个格、共几点），
                 // 旧口径"几个组"作废——Java 侧无需改动（改名与 lang 文案由主代理落，见本片回执）
-                return String.format(
-                    StatCollector.translateToLocal("gtit.pocket.still.over_cap"),
-                    PocketDistillDriver.discardedGroupsOf(ui.playerId()),
-                    PocketDistillDriver.discardedPointsOf(ui.playerId()));
+                return skipped <= 0 ? StatCollector.translateToLocal("gtit.pocket.still.full")
+                    : String.format(
+                        StatCollector.translateToLocal("gtit.pocket.still.over_cap"),
+                        skipped,
+                        PocketDistillDriver.discardedPointsOf(ui.playerId()));
             case RUNNING: {
                 final String progress = String
                     .format(StatCollector.translateToLocal("gtit.pocket.still.progress"), ui.distillSecondsToNext());
                 // ★R84（补 R84 蒸馏片的自报缺口）：只要有<b>一格</b>建效，状态就走 RUNNING，
                 // 而"这一轮仍有 N 格没塞下"在旧代码里就此消失 ⇒ 用户看到的还是"蒸了几格，其余无声没掉"。
-                final int skipped = PocketDistillDriver.discardedGroupsOf(ui.playerId());
+                // ★R85 小项 3：这一档里被计数的格必然是"永久超上限"那类（needsRoom 为真就落 STORE_FULL
+                // 了），所以播 over_cap 那句真话，不再播"下一轮继续重试"。
                 return skipped <= 0 ? progress
                     : progress + "\n"
                         + String.format(
-                            StatCollector.translateToLocal("gtit.pocket.still.partial_skip"),
+                            StatCollector.translateToLocal("gtit.pocket.still.over_cap"),
                             skipped,
                             PocketDistillDriver.discardedPointsOf(ui.playerId()));
             }

@@ -436,13 +436,20 @@ public final class PocketSlots {
         return map;
     }
 
-    /** 排空后的容器非消耗地退回（R40a：背包满则掉到玩家脚下，遵循原版 {@code transferStackInSlot} 语义）。 */
+    /**
+     * 排空后的容器非消耗地退回（R40a：背包满则掉到玩家脚下，遵循原版 {@code transferStackInSlot} 语义）。
+     * <p>
+     * ★R85 修：玩家必须走 {@link #resolveSlotPlayer}。旧写法直接用 {@code getPlayerSlotPlayer}，而它对
+     * 本仓这类包 {@code PocketInventory} handler 的槽<b>恒返 null</b>（R84 已为 {@link #tellPlayer} 证死同一条），
+     * 又因本方法<b>先</b> {@code putStack(null)} 清空了格子 ⇒ 拿不到玩家就 return ⇒ 容器既不归也不掉落＝
+     * <b>静默销毁玩家的容器</b>（12 格注入支排空后必踩，可达路径见 {@link #injectContainerIfAny}）。
+     */
     private static void returnToPlayer(ModularSlot slot, ItemStack leftover) {
         slot.putStack(null);
         if (leftover == null) {
             return;
         }
-        final EntityPlayer player = ModularSlot.getPlayerSlotPlayer(slot);
+        final EntityPlayer player = resolveSlotPlayer(slot);
         if (player == null) {
             return;
         }

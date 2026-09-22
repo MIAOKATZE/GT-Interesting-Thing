@@ -34,9 +34,22 @@ public enum PocketReceipt {
         return this == OK || this == PARTIAL;
     }
 
-    /** 是否属于"本轮就此打住、余量顺延下一轮"（R11 的 remainder 即 break）。 */
+    /** 是否属于"本轮就此打住、余量顺延下一轮"（R11 的 remainder 即 break；★只用于<b>注入方向</b>）。 */
     public boolean stopsBatch() {
         return this != OK;
+    }
+
+    /**
+     * ★R85 A1：<b>抽取方向</b>的停批判据。
+     * <p>
+     * 抽取侧的"落点已满"（{@link #TARGET_FULL}／{@link #PARTIAL}）与"这只元件没有这个通道"
+     * （{@link #NO_CHANNEL}）都是<b>单条声明自己的属性</b>——每条物品声明有<b>自己的</b>落点格、每条流体声明有
+     * 自己的 tank，所以它们绝不能牵连同批的其余声明。R84 把物品落点改成声明格之后，"格已补满"是每条声明的
+     * <b>必然稳态</b>，沿用 {@link #stopsBatch()} 就等于"队首一条补满 ⇒ 后面全部永久饿死"。
+     * 只有元件/网络侧此刻给不出更多（失联、无读权限）才值得整对打住、顺延下一轮。
+     */
+    public boolean stopsExtractBatch() {
+        return this == LOST || this == NO_ACCESS;
     }
 
     /**

@@ -262,6 +262,12 @@ public final class NekoPocketPanel implements PocketSession {
     private double clientDistillProgress;
     /** 服务端下发的 ghost 声明 blob（客户端据此原位虚化；<b>不</b>自行推断，R39b/R19）。 */
     private String ghostBlob = "";
+    /**
+     * ★R85 N3：最近一次 blob 里<b>真正解析成功</b>的声明条数（客户端专用；服务端恒 0，但服务端不出图）。
+     * 存在的唯一理由是 {@link #ghostNotSyncedCount()} 需要它当减数——blob 被长度预算截断时，
+     * "客户端看到的条数"会小于"服务端声明的条数"，差额必须说出来（不许静默少画）。
+     */
+    private int ghostSyncedCount;
     /** 上一次动作的回执键与两个计数（{@code key == null} = 还没有回执）。 */
     private String receiptKey;
     private int receiptMoved;
@@ -375,9 +381,12 @@ public final class NekoPocketPanel implements PocketSession {
                 clientDistillProgress = value;
             }
         }));
+        // ★R85 N1：allowC2S 的 setter <b>双端都会被调</b>（上游 setValue(v) 默认 setSource=true）⇒
+        // 两个 receiver 各自带一道 isClient 早退，见 receiveServerAction / receiveGhostRequest 的 javadoc。
         syncManager.syncValue(SYNC_ACTION, new IntSyncValue(() -> 0, this::receiveServerAction).allowC2S());
         // ghost 拖入/解绑的载荷是一串键（itemId+meta+base64NBT 可以很长），装不进上面那个 int 通道，
-        // 因此单开一根字符串 C2S；**执行体在服务端**（R18/R19），客户端那份 setter 从不被调用。
+        // 因此单开一根字符串 C2S；**执行体在服务端**（R18/R19），客户端那份 setter 由入口守卫挡掉
+        // （★旧注释"从不被调用"是错的：setValue 的 setSource 默认 true ⇒ 客户端确实会被调一次）。
         syncManager.syncValue(SYNC_GHOST_REQUEST, new StringSyncValue(() -> "", this::receiveGhostRequest).allowC2S());
     }
 
@@ -402,13 +411,41 @@ public final class NekoPocketPanel implements PocketSession {
      * （{@code ConcurrentLinkedQueue}，ServerTickEvent END 消费，延迟 ≤1 tick），
      * 与本仓邮件/抽奖/签到/交易编辑/终端五条既有链路同形。投递只吃<b>不可变载荷</b>
      * （int / String），不捕获可变的同步载体。
+     * <p>
+     * ★<b>R85 N1：本方法是 {@code SYNC_ACTION} 的 setter，而 setter 双端都会被调</b>——上游
+     * {@code IValueSyncHandler.setValue(T)} 的默认重载写死 {@code setSource = true}
+     * （{@code value/sync/IValueSyncHandler.java:21-24}），{@code IntSyncValue.setDoubleValue/setSource}
+     * 一路把那个 true 传到 setter ⇒ <b>客户端</b>调 {@code setValue(v)}（{@code sendAction} 那一跳）时
+     * 本地就先把本方法跑了一遍。守卫必须落在<b>这里</b>（入口）而不是队列消费端，理由有两条：
+     * <ol>
+     * <li>消费端在 {@code ServerTickEvent} 上跑，天然只在服务端 ⇒ 客户端那颗 lambda 根本不会被"消费"，
+     * 它只是<b>永久滞留在 static 队列里</b>并连着捕获本面板（→ {@code PocketInventory} 与物品栈副本），
+     * 每点一次泄漏两个、关屏也清不掉 ⇒ 专用服客户端无界涨；</li>
+     * <li>同一根通道还要把服务端的回显（getter 恒 0）打回客户端，那一跳同样进本方法 ⇒
+     * 在入口一次挡住<b>两跳</b>，比逐处改 {@code setValue(v, false, true)} 稳（后者只挡得住自己那一跳）。</li>
+     * </ol>
+     * 守卫<b>不改变已投递路径的服务端语义</b>：服务端分支一个字节都不动，仍然 ≤1 tick 后在
+     * {@code ServerTaskScheduler} 里跑 {@link #onServerAction(int)}。
      */
     private void receiveServerAction(int packed) {
+        if (syncManager.isClient()) {
+            // ★R85 N1：客户端本地回投（setter 的 setSource 默认 true）⇒ 一个字节都不做，
+            // 免得往"只在 ServerTickEvent 消费"的 static 队列里投捕获面板的 lambda（专用服必泄漏）。
+            return;
+        }
         ServerTaskScheduler.scheduleServerTask(() -> onServerAction(packed));
     }
 
-    /** 见 {@link #receiveServerAction(int)} 的同一条线程前提。 */
+    /**
+     * 见 {@link #receiveServerAction(int)} 的同一条线程前提，以及★同一条 <b>R85 N1 客户端守卫</b>：
+     * {@code SYNC_GHOST_REQUEST} 也是 {@code allowC2S()} 的值，客户端 {@code setValue(request)} 会就地
+     * 跑本方法 ⇒ 不守卫就是"每次拖入/右键/滚轮都往服务端队列塞一颗永不消费的 lambda"。
+     * 载荷（String）本身已被本方法丢弃，服务端那一跳仍按原样执行 {@link #onServerGhostRequest(String)}。
+     */
     private void receiveGhostRequest(String request) {
+        if (syncManager.isClient()) {
+            return;
+        }
         ServerTaskScheduler.scheduleServerTask(() -> onServerGhostRequest(request));
     }
 
@@ -618,6 +655,13 @@ public final class NekoPocketPanel implements PocketSession {
             .getSlots();
         final ItemStack[] snapshot = new ItemStack[size];
         for (int index = 0; index < size; index++) {
+            // ★R85 A5：声明格<b>整格不参与整理</b>——它现在就是那条需求的落点（R84），里面的东西是"已经补到的
+            // 产物"。旧写法把 135 格全扫进合并池、回写时又跳过 ghost 格 ⇒ 玩家点一次"整理"就把产物搬去别处、
+            // 需求格重新变空，而且下面那条"非 ghost 槽数 ≥ 条目数"的不变量在声明格带货时根本不成立
+            // （溢出走 giveToPlayer ⇒ 会把物品喷到脚下）。产物留在原格，其余照旧合并前移。
+            if (inventory.isGhostItemSlot(index)) {
+                continue;
+            }
             final ItemStack stack = inventory.storage()
                 .getStackInSlot(index);
             if (stack != null) {
@@ -647,10 +691,10 @@ public final class NekoPocketPanel implements PocketSession {
                 merged.put(key + "#" + merged.size(), stack);
             }
         }
-        // ★ghost 格不参与整理，也<b>不是</b>落点（R38 第 2 条"产物不能进自己"）：
+        // ★ghost 格不参与整理，也<b>不是</b>落点池（R85 A5 起更进一步：连快照都不进，产物原地不动）：
         // 判据读服务端的 PocketFilterConfig，不读 widget 状态（widget 双端各一份，把显示层当真相即 bug）。
-        // ghost 槽在转换时已被搬空（evictAndMakeGhost），因此"非 ghost 槽数 ≥ 合并后条目数"恒成立；
-        // 仍保留兜底：万一存量档里 ghost 槽带着东西进来，走玩家背包而不是 break 掉（整理绝不吃件）。
+        // 因为声明格的货不再进合并池，"非 ghost 槽数 ≥ 池内条目数"这条不变量重新成立；
+        // 仍保留兜底：万一存量档里 ghost 槽带着东西进来、或池内条目确实多于非 ghost 槽，走玩家背包而不是 break 掉（整理绝不吃件）。
         int cursor = 0;
         for (ItemStack stack : merged.values()) {
             cursor = nextRealSlot(cursor);
@@ -732,7 +776,15 @@ public final class NekoPocketPanel implements PocketSession {
             ? PocketChannelManager.burstRemaining(PocketChannelManager.INSTANCE.peek(uuid), root, ops.nowMs())
             : 0L;
         if (cooldown > 0L) {
-            putReceipt("gtit.pocket.receipt.cooldown", (int) cooldown);
+            // ★R85 小项 4：这里<b>不</b>再把秒数当实参传下去（旧写法传了，而两份 lang 的
+            // {@code gtit.pocket.receipt.cooldown} 里根本没有占位 ⇒ 那个数字算出来、下发到客户端、
+            // 永远不显示，是一条纯粹的假读数）。
+            // 选"删实参"而不是"文案加 %d"的理由是口径唯一性：本行的回执是<b>粘性</b>的（一直显示到
+            // 下一次动作覆盖），而冷却秒数已经有一条每拍刷新的权威显示面（{@link #composeRemain()} →
+            // {@code applyRemainState} → 状态行的 {@code channel.instant.remain}）。把秒数塞进粘性回执
+            // 等于给同一个数造第二个读数，而且第二个会<b>冻在点击那一刻</b>（"还剩 9 秒"挂满 10 秒），
+            // 与旁边那条倒计时互相打脸 ⇒ 冷却"有"这件事走本行文案，冷却"还剩几秒"只走状态行那一处。
+            putReceipt("gtit.pocket.receipt.cooldown", 0);
             return;
         }
         // 点检 3：余额（团队钱包由 NekoWalletManager 内部路由，这里只认"付钱主体是这个人"）
@@ -804,6 +856,11 @@ public final class NekoPocketPanel implements PocketSession {
             }
             if (report.targetFull > 0) {
                 return "gtit.pocket.receipt.target_full";
+            }
+            if (report.noChannel > 0) {
+                // ★R85 A3：R84 把"没有该通道"从 LOST 改判成 NO_CHANNEL 后，这个计数全仓零读者 ⇒ 玩家只会
+                // 看到"通道开了却没动静"。它不停批（同批别的声明还能跑），但必须说出来。
+                return "gtit.pocket.receipt.no_channel";
             }
             if (report.filterRejected > 0) {
                 return "gtit.pocket.receipt.partition_denied";
@@ -1063,8 +1120,34 @@ public final class NekoPocketPanel implements PocketSession {
         if (!syncManager.isClient()) {
             return;
         }
-        inventory.replaceFilters(parseGhostBlob(blob));
+        final PocketFilterConfig parsed = parseGhostBlob(blob);
+        // ★R85 N3：换镜像<b>之前</b>先记下"这一份 blob 里到底解析到了几条"。它是 ghost.not_synced 读数的
+        // 减数一侧；被数出来的必须是<b>解析成功</b>的条数（不是 split 的段数），否则一条坏记录也会被算成
+        // "已同步"，读数反而会吞掉真正的差额。
+        ghostSyncedCount = parsed.size();
+        inventory.replaceFilters(parsed);
         applyGhosts();
+    }
+
+    /**
+     * ★<b>R85 N3</b>：尾部<b>没有同步到客户端显示</b>的声明条数（只影响虚化渲染，<b>不</b>影响服务端执法）。
+     * <p>
+     * <b>读数为什么是"权威总数 − 本端解析到的条数"</b>：
+     * <ul>
+     * <li>权威总数走<b>已有</b>的 {@code SYNC_MODE}（{@link #composeModeState()} 把服务端
+     * {@code inventory.filters().size()} 作为第二列发给客户端，落在 {@link #filterCount}）
+     * ⇒ ★不需要新增同步键；</li>
+     * <li>减数是 {@link #applyGhostView} 现记的 {@link #ghostSyncedCount}。这里刻意<b>不</b>用
+     * {@code inventory.filters().size()} 当减数或被减数：客户端那份 {@code inventory.filters()} 正是被
+     * 这个 blob {@code replaceFilters} 出来的镜像，它的 {@code size()} 与 {@code ghostSyncedCount}
+     * 恒等 ⇒ 差恒为 0 ⇒ 超限永远没有读数（取证档案给的式子在盘上是空转的，见本片回执）。</li>
+     * </ul>
+     * 两根键各自独立下发，服务端变更时同一次 {@code detectAndSendChanges} 里一起刷新 ⇒ 最坏情况是
+     * ≤1 tick 的读数滞后，不会长期错。<b>服务端</b>调用本方法时 {@link #filterCount} 从未被
+     * {@link #applyModeState} 写过（那里有 {@code isClient} 早退），但服务端不出图，读数无人读。
+     */
+    int ghostNotSyncedCount() {
+        return Math.max(0, filterCount - ghostSyncedCount);
     }
 
     /**
@@ -1348,9 +1431,39 @@ public final class NekoPocketPanel implements PocketSession {
      * public static 的理由同上（编解码两端各一份实现就必须钉住，否则 ghost 会在同步中静默变形）。
      */
     public static String ghostBlobOf(PocketFilterConfig filters) {
+        return ghostBlobOf(filters, PocketConstants.GHOST_BLOB_MAX_CHARS);
+    }
+
+    /**
+     * ★<b>R85 N3</b>：带<b>长度预算</b>的 ghost blob 拼装。
+     * <p>
+     * 上游 {@code StringSyncValue.serialize} → {@code NetworkUtils.writeStringSafe} 对超过
+     * {@code Short.MAX_VALUE - 74}（= 32,693 字节）的串<b>静默截断、只 WARN</b>，而一条 {@code ITEM}
+     * 声明的载荷键自带整段 gzip+base64 的 NBT（长度无上限）⇒ 不自己收口就是"尾部声明在客户端凭空消失，
+     * 且没有任何玩家可见线索"。预算值见 {@link PocketConstants#GHOST_BLOB_MAX_CHARS}（ASCII 单字节 ⇒
+     * 字符数就是字节数）。
+     * <p>
+     * 三条硬口径：
+     * <ol>
+     * <li><b>只停尾部、不跳中间</b>：写不下的那一条连同它的 {@code ';'} 一起回退 ⇒ 已写部分与"没有预算
+     * 的旧实现"<b>逐字节相同</b>，{@link #parseGhostBlob} 一个字都不用改（旧档/旧客户端天然兼容）；</li>
+     * <li><b>不静默</b>：被丢的条数由 {@link #ghostNotSyncedCount()} 现算成一条玩家可见读数
+     * （{@code gtit.pocket.ghost.not_synced}），★措辞点名"服务端执法不受影响"——这些声明在服务端照常生效，
+     * 少的只是客户端那一层虚化渲染；</li>
+     * <li><b>不新增同步键</b>：总数走已经存在的 {@code SYNC_MODE}（{@link #composeModeState()} 里那一列
+     * {@code filters().size()}），本端只需记"blob 里解析到了几条"。</li>
+     * </ol>
+     *
+     * @param maxChars 累计字符预算；{@code <= 0} 表示一条都不写（★测试用它构造"尾部被停"的形状）
+     */
+    public static String ghostBlobOf(PocketFilterConfig filters, int maxChars) {
         final StringBuilder builder = new StringBuilder();
+        if (filters == null || maxChars <= 0) {
+            return builder.toString();
+        }
         for (PocketFilterConfig.Filter filter : filters.filters()) {
-            if (builder.length() > 0) {
+            final int recordStart = builder.length();
+            if (recordStart > 0) {
                 builder.append(';');
             }
             builder.append(filter.kind())
@@ -1360,6 +1473,11 @@ public final class NekoPocketPanel implements PocketSession {
                 .append(filter.key())
                 .append(PocketConstants.GHOST_REQUEST_SEPARATOR)
                 .append(filter.cap());
+            if (builder.length() > maxChars) {
+                // 回退这一条（含它的分隔符）并停手：已写部分与无预算实现逐字节相同，尾部整条不写。
+                builder.setLength(recordStart);
+                break;
+            }
         }
         return builder.toString();
     }
@@ -1455,11 +1573,39 @@ public final class NekoPocketPanel implements PocketSession {
         }
     }
 
+    /**
+     * ★<b>R85 P2</b>：源质 blob 的<b>短路</b>版 compose（旧写法每次都被打全量重算，缓存只当返回值用）。
+     * <p>
+     * <b>为什么必须短路</b>：{@code AbstractGenericSyncValue} 的 getter 在<b>每一次</b>
+     * {@code detectAndSendChanges} 都被无条件调一次（vanilla 每拍 1 次 + 每次点击 1 次 + MUI2 自调 1 次），
+     * 而本串里那一个 {@code unplacedTagCount()} 是 {@code O(有货 tag × 72)} 的线性扫
+     * （用户包内实测 69 个 aspect ⇒ 约 4,968 次 {@code String.equals} / 拍 / 每个开屏玩家）。
+     * 旧代码下面那行 {@code cachedEssenceBlob} <b>只是返回值</b>，每次都重新算完整串再覆盖 ⇒ 一点都没省。
+     * <p>
+     * <b>短路条件</b>（两条同时成立才复用，见 {@code PocketEssenceStore#contentVersion} 的口径）：
+     * <ol>
+     * <li>{@link #cachedEssenceStore} <b>还是同一个 store 实例</b>（整表被换掉 ⇒ 实例不同 ⇒ 必重算）；</li>
+     * <li>{@code store.contentVersion()} 与上次算时记下的 {@link #cachedEssenceVersion} <b>相等</b>。</li>
+     * </ol>
+     * <b>什么输入会让它重新算</b>：任何一次 {@code add}/{@code putAll}（蒸馏入账、容器注入）、
+     * 任何一次 {@code extract}（玩家取晶、通道取出）、任何一次<b>真的占到新格位</b>的 {@code assignCell}、
+     * {@code clear}、以及<b>换 store 实例</b>（读档走 {@code PocketEssenceStore.readFrom} 的新对象）。
+     * 版本号由本仓自己在这几处递增 ⇒ 不存在"内容变了而版本没变"的漏算；反之"版本变了而内容没变"
+     * 只多算一次，方向是安全的（宁多算不算错）。
+     * <p>
+     * ★服务端专用：客户端那一支仍返回它自己那份镜像（{@code applyEssenceBlob} 写进来的），
+     * 与改动前逐字相同。
+     */
     private String composeEssenceBlob() {
         if (syncManager.isClient()) {
             return cachedEssenceBlob;
         }
         final PocketEssenceStore store = inventory.essence();
+        final long version = store.contentVersion();
+        if (store == cachedEssenceStore && version == cachedEssenceVersion) {
+            // 内容一字未变 ⇒ 连 unplacedTagCount() 那趟线性扫一起跳过（★它的答案已在这份缓存串里）
+            return cachedEssenceBlob;
+        }
         final int[] points = new int[essenceCache.length];
         final String[] tags = new String[essenceCache.length];
         for (int cell = 0; cell < essenceCache.length; cell++) {
@@ -1468,10 +1614,16 @@ public final class NekoPocketPanel implements PocketSession {
             points[cell] = tag == null ? 0 : store.get(tag);
         }
         cachedEssenceBlob = encodeEssenceBlob(points, tags, store.unplacedTagCount());
+        cachedEssenceStore = store;
+        cachedEssenceVersion = version;
         return cachedEssenceBlob;
     }
 
     private String cachedEssenceBlob = "";
+    /** ★R85 P2：短路判据的一侧（store 实例身份；换实例即整表读档，必须重算）。 */
+    private PocketEssenceStore cachedEssenceStore;
+    /** ★R85 P2：短路判据的另一侧（上一次算串时的内容版本号）。 */
+    private long cachedEssenceVersion = Long.MIN_VALUE;
 
     private void applyEssenceBlob(String blob) {
         if (!syncManager.isClient() || blob == null) {
@@ -1824,6 +1976,9 @@ public final class NekoPocketPanel implements PocketSession {
      * 会在内部将同一物品摊到多个槽（{@code InventoryPlayer.java:394-464}），且契约是
      * <b>返回 {@code true} 当且仅当入参 {@code stackSize} 已被改写为 0</b>；R83 的循环拿"入参的 stackSize"
      * 当成交数累加，成功一圈就被置 0 一次 ⇒ 进度恒 0 ⇒ 服务器主线程死循环。
+     * <p>
+     * ★R85：成交数的算术提出来放在 {@link #movedByVanillaContract(boolean, int, int)} 那一行，本方法只保留
+     * "读 want → 调一次原版 → 拿回余量"这三步（提纯的动机与可测面见那个方法）。
      *
      * @return 真正进入玩家背包的件数（余量仍留在 {@code toPlayer} 那份副本上，不影响调用方账目）
      */
@@ -1833,10 +1988,45 @@ public final class NekoPocketPanel implements PocketSession {
             return 0;
         }
         final int want = toPlayer.stackSize;
-        if (target.inventory.addItemStackToInventory(toPlayer)) {
+        // ★整个方法里 addItemStackToInventory 只出现<b>一次</b>（R83 那版 while(剩余>0) 的循环就是死循环本体）
+        final boolean accepted = target.inventory.addItemStackToInventory(toPlayer);
+        return movedByVanillaContract(accepted, want, toPlayer.stackSize);
+    }
+
+    /**
+     * ★<b>R85（把 R84 死循环修复的本体算术提成可机检的纯函数）</b>：一次
+     * {@code InventoryPlayer#addItemStackToInventory} 之后到底成交了几件。
+     * <p>
+     * 三条判据，各自对应一个真实失败面：
+     * <ul>
+     * <li><b>没有循环、没有第二次调用</b>：R83 的 bug 形态是"拿循环计数当成交数"，而原版成功那一刻
+     * 就把入参 {@code stackSize} 改写掉 ⇒ 进度恒 0、服务器主线程死循环（R84 已修，但<b>零用例</b>）。
+     * 本函数只吃三个<b>已读出的整数</b>，结构上表达不出"再投一次"；</li>
+     * <li><b>{@code accepted} 一支返回 {@code want}（契约：返回 true ⇔ 入参已被置 0，两者等值）</b>：
+     * ★这里刻意<b>不</b>统一按 {@code want - rest} 算，因为原版有一支不满足"置 0"这半条契约 ——
+     * {@code InventoryPlayer.java:394-464} 的<b>可 damaged 物品</b>分支是"把入参对象整个塞进空槽后
+     * {@code return true}"，那件东西的 {@code stackSize} <b>留在原值</b>（独立审查档案 §三-1 点名的那条）。
+     * 按余量算会把那一支报成 0 件成交 ⇒ 调用方（{@link #depositToPlayerFirst(ItemStack)} 的余量兜底、
+     * {@link #performEssenceOut} 的退点）会<b>再落一次同一件</b> = 复制。两支各按各的口径，一字不改 R84 语义；</li>
+     * <li><b>{@code false} 一支按余量现读并双向钳非负</b>：原版失败时会把并进已有堆的那部分留在入参上
+     * （余量 &lt; 请求数），这就是净成交数；余量反而大于请求数（外来/异常入参）只能得 0，
+     * 不许造出负成交数污染账目，也不许报出比请求数更大的数。</li>
+     * </ul>
+     * public static 的理由：零依赖套件拿不到 {@code EntityPlayer}/{@code InventoryPlayer}，而这条算术
+     * 本身可以纯 JVM 钉住（用例 {@code move_to_player_counts_by_vanilla_contract}）。
+     *
+     * @param accepted      原版返回值
+     * @param want          调用前那份副本的件数
+     * @param restAfterCall 原版调用<b>之后</b>同一份副本上的件数（余量）
+     */
+    public static int movedByVanillaContract(boolean accepted, int want, int restAfterCall) {
+        if (want <= 0) {
+            return 0;
+        }
+        if (accepted) {
             return want;
         }
-        return Math.max(0, want - toPlayer.stackSize);
+        return Math.max(0, want - Math.max(0, restAfterCall));
     }
 
     /** 只改件数的浅拷贝副本（原版会在入参上就地改写 {@code stackSize}，故任何"探路"都必须先断开别名）。 */
@@ -2083,6 +2273,11 @@ public final class NekoPocketPanel implements PocketSession {
      * 第二行的用途：本轮起玩家可用口径只有 1 枚，而旧档真可能残留多条（本轮刻意不在读档时收缩，
      * 见台账 §八十四⑤），那些多出来的条目<b>不再被服务</b> ⇒ 必须在这里说清楚，否则玩家以为多枚都在跑。
      * 元件"类型 / 条目数"要新增一条服务端同步值才拿得到（且新单元在上游恒返 MAX/0），本轮未接 ⇒ 列进交付说明。
+     * <p>
+     * ★<b>R85 小项 3：这里的"1 枚"必须走 {@link PocketConstants#ALLOWED_BOUND_CELLS} 而不是字面量</b>。
+     * 旧写法把"只有第 1 枚被服务"写成 {@code row == 0} 与 {@code rows.size() - 1} 两处字面量，而其余
+     * 五处消费方（{@code PocketBindFlow} / {@code PocketChannelRunner} ×2 / {@code NekoPocketBottomBand} ×2 /
+     * {@link #bindSummaryText()}）都走符号 ⇒ 常量一旦回到 2，这一行会独自继续报"另有 1 条"（取证档案 D3）。
      */
     private String cellInfoLine(int row) {
         final java.util.List<NekoPocketBottomBand.Row> rows = bindRows();
@@ -2092,10 +2287,11 @@ public final class NekoPocketPanel implements PocketSession {
         if (rows.isEmpty()) {
             return row == 0 ? StatCollector.translateToLocal("gtit.pocket.bind.none") : "";
         }
-        if (row == 0) {
-            return bindRowLine(0);
+        // 第一行永远是"被服务的那一枚"（绑定序前 ALLOWED_BOUND_CELLS 枚里取第 row+1 条）
+        if (row < PocketConstants.ALLOWED_BOUND_CELLS) {
+            return bindRowLine(row);
         }
-        final int inert = rows.size() - 1;
+        final int inert = rows.size() - PocketConstants.ALLOWED_BOUND_CELLS;
         return inert <= 0 ? "" : String.format(StatCollector.translateToLocal("gtit.pocket.bind.inert"), inert);
     }
 

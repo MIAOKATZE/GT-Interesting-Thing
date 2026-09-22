@@ -167,8 +167,8 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
                     ? IKey.lang(
                         "gtit.pocket.cap.readout.stored",
                         PocketGhostRequest.capReadout(stored),
-                        PocketGhostRequest.capReadout(ghostCap()))
-                    : IKey.lang("gtit.pocket.cap.readout", PocketGhostRequest.capReadout(ghostCap())));
+                        PocketGhostRequest.capReadout(displayStopAmount()))
+                    : IKey.lang("gtit.pocket.cap.readout", PocketGhostRequest.capReadout(displayStopAmount())));
         }
     }
 
@@ -185,6 +185,16 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
             GuiDraw.drawRect(1, 1, 16, 16, GHOST_MASK);
         }
         drawCapReadout();
+    }
+
+    /**
+     * ★R85 A2：角标与 tooltip 的分母必须是<b>停止量</b> = {@code min(组上限, 该物品自己的堆叠上限)}。
+     * {@link #ghostCap()} 是"每批额度"（消费侧还要再与落点 room 与 maxStackSize 取小，见
+     * {@code PocketAeChannelOps#extractItem}），直接拿它当分母就会出现「已补 64 / 上限 8」这种自相矛盾读数。
+     */
+    private int displayStopAmount() {
+        final int natural = naturalMaxStackSize();
+        return natural <= 0 ? ghostCap() : Math.min(ghostCap(), natural);
     }
 
     /** ★R84：本格已经补到的实际件数（真实槽读数，不是样本）。 */
@@ -284,7 +294,7 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         if (!ghost) {
             return "";
         }
-        final String cap = PocketGhostRequest.capReadout(ghostCap());
+        final String cap = PocketGhostRequest.capReadout(displayStopAmount());
         final int stored = storedSize();
         return stored <= 0 ? cap : PocketGhostRequest.capReadout(stored) + "/" + cap;
     }

@@ -6,6 +6,9 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
@@ -58,6 +61,9 @@ import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
  */
 public final class PocketChannelDriver {
 
+    /** ★R85 D1 止损那条要留一行痕（"停道"是玩家可自恢复的重要事件，不是每拍噪声）。 */
+    private static final Logger LOG = LogManager.getLogger("gtit");
+
     private PocketChannelDriver() {}
 
     /**
@@ -88,6 +94,21 @@ public final class PocketChannelDriver {
             // ★一个玩家只允许有一个活会话，且会话认的是"开界面的那一枚口袋"（对象身份）。
             // 玩家同时持有两枚口袋时，另一枚的 onUpdate 会走到这里 ⇒ 直接跳过：
             // 否则就是把 A 的绑定表与内容写到 B 的 NBT 上（跨口袋串档）。
+            return;
+        }
+        // ★R85 D1 止损（台账挂"另案未决"的那条，机制本轮被证具体）：本玩家只有<b>一份</b>通道状态，
+        // 而它的 `sessionBindings()` 是<b>开道那一枚</b>口袋的绑定表实例；玩家随后改开另一枚口袋的面板时，
+        // 会话与 carrier 都漂到 B，上面那条守卫就再也拦不住 ⇒ 结果是"A 绑定的元件搬 B 的中栏"。
+        // 绑定表实例天然随口袋走，所以拿它当同一枚口袋的身份判据即可，零新增同步面：不一致就地停道，
+        // 宁可停也不跨口袋搬件（停道是玩家可自行恢复的：重新按一次通道键）。
+        if (state.sessionBindings() != session.bindings()) {
+            LOG.warn(
+                "[gtit] 口袋通道：玩家 {} 的通道跑在另一枚口袋的绑定表上（当前会话承载={}）⇒ 就地停道，不跨口袋搬运",
+                uuid,
+                Integer.toHexString(System.identityHashCode(stack)));
+            state.stop();
+            PocketChannelManager.INSTANCE.forget(uuid);
+            retireIdleSession(uuid);
             return;
         }
         final PocketChannelOps ops = new PocketAeChannelOps(player, stack, PocketCellProbe.INSTANCE, session);

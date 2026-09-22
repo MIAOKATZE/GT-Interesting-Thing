@@ -7,6 +7,7 @@ import java.util.List;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
+import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.common.Loader;
@@ -67,8 +68,22 @@ public final class TaumBridge implements TaumBridgeApi {
      */
     static final String[] VESSEL_CANDIDATES = { "ItemVessel", "Vessel" };
 
-    /** 晶化源质可堆上限（{@code ItemCrystalEssence.java:30} 的 setMaxStackSize(64)） */
-    private static final int CRYSTAL_STACK_LIMIT = 64;
+    /**
+     * 晶化源质可堆上限（{@code ItemCrystalEssence.java:30} 的 setMaxStackSize(64)）。
+     * <p>
+     * ★<b>R85 小项 5：这里不再自己写一份 64，而是引用
+     * {@link PocketConstants#ESSENCE_OUT_MAX_POINTS_PER_ACTION}</b>。这两枚 64 不是"数值巧合"，
+     * 而是<b>同一个事实的两面</b>：一次源质取出动作最多能给出的点数，就是"能装进一个物品堆"的点数，
+     * 而那个堆叠上限由 TC 的 {@code ItemCrystalEssence} 钉死。两处各写一份 ⇒ 只抬一边就是
+     * "扣了 256 点、只造出 64 晶、退回的 192 点被 {@code PocketEssenceStore} 的入账截断吃掉"的
+     * <b>净吞点数</b>（取证档案 D4）。跨包引用在本仓有先例：{@code TaumDistillRules.java:3} 就 import
+     * 了 {@code gui.pocket.PocketInventory} 做单源转发。
+     * <p>
+     * ★派生方向是"物化侧读取出侧"：取出上界是<b>我们的</b>设计量，TC 的堆叠上限是<b>外部的</b>事实；
+     * 两者今天等值。若哪天 TC 把 64 改了，改的应该是<b>本行右边那个符号所代表的事实</b>——
+     * 真到那一步就得把两枚常量拆开并在这里补一条"取 min"的判据，而不是让两边各自漂。
+     */
+    private static final int CRYSTAL_STACK_LIMIT = PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION;
 
     /** 降级日志只发一次，避免每 tick 的蒸馏/渲染调用刷屏 */
     private static boolean warned = false;

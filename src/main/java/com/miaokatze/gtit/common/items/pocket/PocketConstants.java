@@ -522,5 +522,27 @@ public final class PocketConstants {
     /** CLR 第三段的区域字母：源质格。 */
     public static final String GHOST_KIND_ESSENCE = "E";
 
+    /**
+     * ★<b>R85 N3</b>：ghost 声明 blob（{@code SYNC_GHOST}）单次同步的<b>字符预算</b>。
+     * <p>
+     * <b>为什么必须有预算</b>：一条 {@code ITEM} 声明的载荷键里带着整段 gzip+base64 的 NBT
+     * （{@code PocketAeChannelOps#contentKey} → {@code NbtBase64Util#nbtToBase64}，<b>没有长度上限</b>），
+     * 一条带肥 NBT 的声明（GT 工具箱、带库存的容器）就能把整根通道顶爆。上游
+     * {@code StringSyncValue.serialize} → {@code NetworkUtils.writeStringSafe(..., Short.MAX_VALUE - 74)}
+     * 对超过 <b>32,693 字节</b>的串<b>静默截断、只打一行 WARN</b> ⇒ 尾部声明在客户端既不虚化也不执法一致，
+     * 玩家往里放东西被服务端拒收，读起来就是"放进去又弹回来"。
+     * <p>
+     * <b>为什么是 24,000 而不是贴着 32,693</b>：本 blob 只由
+     * 枚举名 / 十进制槽号 / base64 字母表 / {@code '|'} / {@code ';'} 组成 ⇒ 全部是 ASCII 单字节字符，
+     * 字符数即字节数，所以字符预算就是字节预算，换算不需要余量系数。留出的 ~8.6 KB 是给
+     * ①同一个包里的其它字段与包头的字节、②将来在键式样里多出任何非 ASCII 字符（那才会"字符数 &lt; 字节数"）
+     * 的<b>硬余量</b>——预算一旦贴着硬顶，超出方式就是上游那条静默截断，正是要避免的那件事。
+     * <p>
+     * 超预算的处置见 {@code NekoPocketPanel#ghostBlobOf}：<b>停止追加尾部声明</b>（已写部分的字节格式与
+     * 无预算时逐字相同 ⇒ 解析器一个字都不改），客户端把差额报成一条玩家可见读数
+     * （{@code gtit.pocket.ghost.not_synced}，★措辞必须点名"服务端执法不受影响"，不得写成丢件）。
+     */
+    public static final int GHOST_BLOB_MAX_CHARS = 24_000;
+
     private PocketConstants() {}
 }

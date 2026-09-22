@@ -294,6 +294,7 @@ gtit.pocket.bind.stale=Location lost, press bind again
 gtit.pocket.bind.slot_hint=Put a cell here, then press Bind
 gtit.pocket.bind.button=Bind
 gtit.pocket.bind.full=One pocket can only bind a single cell; unbind the current one first
+gtit.pocket.receipt.no_channel=The bound cell has no such channel (items/fluids), so this batch skipped it
 gtit.pocket.bind.added=Cell added to the bind list
 gtit.pocket.bind.dup=This cell is already bound; it was not added again
 gtit.pocket.bind.no_identity=Cell identity not written; press Bind again shortly
@@ -338,6 +339,9 @@ gtit.pocket.fluid.container_full=That container is already full and cannot be fi
 gtit.pocket.fluid.not_enough_fluid=This tank does not hold enough fluid to fill one container (these containers reject partial fills)
 gtit.pocket.ghost.capacity_note=Each filter slot costs one real storage slot
 gtit.pocket.ghost.fluid_bar=This fluid slot still takes and gives fluid by hand; the filter only says which fluid to pull
+# ★R85 N3：ghost 同步包的字符预算收口后，被停在尾部的声明<b>只少客户端那一层虚化渲染</b>，
+# 服务端仍按原样执法（往里放东西照样被弹回、拉取照样按声明补）。★文案不得写成"丢件/丢失配置"。
+gtit.pocket.ghost.not_synced=The last %d filter(s) were not synced to this client (server-side enforcement is unaffected); use fewer filters or a cleaner item
 gtit.pocket.cap.readout=Group cap for this filter: %s
 gtit.pocket.cap.readout.stored=This filter slot: %1$s filled of %2$s
 gtit.pocket.held.note=Only works while held in your main hand; it stops once put away

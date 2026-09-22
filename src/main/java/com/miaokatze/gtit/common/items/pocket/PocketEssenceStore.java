@@ -66,6 +66,22 @@ public final class PocketEssenceStore {
     /** tag → 点数；只存在非 0 项，故表大小即"有货的格数"。 */
     private final Map<String, Integer> amounts = new LinkedHashMap<>();
     /**
+     * ★<b>R85 P2</b>：内容版本号 —— 每一次"会改变显示形状"的写入都 +1（点数入账/出账、格位归属变化、
+     * 整表清空）。唯一读者是显示侧的<b>短路判据</b>（{@code NekoPocketPanel#composeEssenceBlob}），
+     * 逻辑核心与写档都不读它。
+     * <p>
+     * 存在的理由（档案 r85-ret-robust §5 / r85-ret-deadpath §2.1）：源质 blob 的 getter 在
+     * <b>每次</b> {@code detectAndSendChanges} 都被调（vanilla 每拍一次 + 每次点击一次 + MUI2 自调一次），
+     * 而 {@link #unplacedTagCount()} 是 {@code O(有货 tag × 72)} 的线性扫（69 个 tag 时约 4,968 次
+     * {@code String.equals} / 拍 / 开屏玩家）。源质内容<b>只在蒸馏入账、玩家取出、读档时</b>变，
+     * 所以"每拍重算"永远是白算 ⇒ 给一个可 O(1) 读的版本号，让显示侧能在<b>一字未变</b>时整段复用缓存串。
+     * <p>
+     * ★口径：{@code long} 单调递增，<b>只增不减、永不清零</b>（清零就等于把"内容没变"错判成"变了"，
+     * 白算一次 —— 那是性能损失不是错值；反过来若漏 bump 就是<b>陈旧显示</b>，所以新增写原语时必须在这里
+     * 一起加，宁可多算不可漏算）。
+     */
+    private long contentVersion;
+    /**
      * 格位归属表：下标 = 显示格号 {@code 0…ESSENCE_DISPLAY_GRID−1}，值 = 该格归属的 tag
      * （{@code null} = 该格从未被占过）。★长度<b>恒定</b>（R32 双端同树的前提），
      * 变的只是"哪个 tag 落在第几格"。
@@ -168,6 +184,22 @@ public final class PocketEssenceStore {
         root.setTag(PocketConstants.ESSENCE_CELL_ORDER, order);
     }
 
+    /**
+     * 内容版本号（★R85 P2，只给显示侧的短路判据用；见 {@link #contentVersion} 的口径）。
+     * <p>
+     * 为什么不给一个布尔"dirty"而是给一个数：布尔要在读侧"消费"才能复位，而源质 blob 的 getter
+     * 一次批里可能被调多遍（vanilla + 点击 + MUI2 自调），复位点放哪都会造出"第二个人读到 false"的
+     * 分叉；单调计数让<b>任何</b>一处写入都必然改变读数，读侧不需要写状态。
+     */
+    public long contentVersion() {
+        return contentVersion;
+    }
+
+    /** ★每一次会改变"点数 / 格位归属 / 有货无格位 tag 数"的写入都要过这里（漏一次 = 陈旧显示）。 */
+    private void bumpVersion() {
+        contentVersion++;
+    }
+
     /** 某 tag 当前点数，缺席为 0。 */
     public int get(String tag) {
         final Integer value = tag == null ? null : amounts.get(tag);
@@ -221,6 +253,8 @@ public final class PocketEssenceStore {
         for (int cell = 0; cell < cellTags.length; cell++) {
             if (cellTags[cell] == null) {
                 cellTags[cell] = tag;
+                // ★R85 P2：占格改变了"哪一格画什么"与"有没有 tag 没格位" ⇒ 必须进版本
+                bumpVersion();
                 return cell;
             }
         }
@@ -398,6 +432,9 @@ public final class PocketEssenceStore {
         // ★R78③：首次真的入账才占格（占格动作与"进了多少点"无关，只与"进没进"有关）；
         // 已占过格的 tag 走 assignCell 的幂等分支，落回原来那一格
         assignCell(tag);
+        // ★R85 P2：点数变了 ⇒ 显示侧的短路必须失效（assignCell 那条只在"第一次占格"时才 +1，
+        // 而点数本身每次入账都改变 blob 的第二段，所以这里无条件加一次）
+        bumpVersion();
         return added;
     }
 
@@ -423,6 +460,8 @@ public final class PocketEssenceStore {
         } else {
             amounts.put(tag, left);
         }
+        // ★R85 P2：出账同样改变 blob 的第二段（点数）⇒ 短路判据必须跟着失效
+        bumpVersion();
         return taken;
     }
 
@@ -458,5 +497,7 @@ public final class PocketEssenceStore {
     public void clear() {
         amounts.clear();
         java.util.Arrays.fill(cellTags, null);
+        // ★R85 P2：整表作废同样要让显示侧的短路失效
+        bumpVersion();
     }
 }
