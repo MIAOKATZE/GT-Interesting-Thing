@@ -6,6 +6,7 @@ import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidContainerRegistry;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.IFluidContainerItem;
 
 import com.cleanroommc.modularui.api.UpOrDown;
 import com.cleanroommc.modularui.api.drawable.IKey;
@@ -66,11 +67,16 @@ public class NekoPocketFluidSlot extends FluidSlot {
      * <li>{@link FluidRegistry#lookupFluidForBlock(Block)}（{@code Block.getBlockFromItem} 先反查方块）——
      * <b>流体方块本身</b>：创造模式拿到的水/岩浆方块，以及 molten metal 一类"源方块即流体"的 mod 方块。
      * 这一级兜的是"物品不是容器、而是流体方块"的漏网面。</li>
+     * <li>★R86（缺陷 4 甲）{@link IFluidContainerItem#getFluid(ItemStack, boolean)} —— <b>条目自己装着什么
+     * 自己说</b>：GT5U 的大型存储单元与各家自定义罐/瓶<b>从不</b>登记进 {@code FluidContainerRegistry}
+     * （那条表只收录注册过的桶/罐），也不是流体方块，于是前两级一律解不出 ⇒ 玩家拖一只装了岩浆的
+     * 大单元过来，栈被原样退回、界面一句话都不说。本级只取<b>流体名</b>，不取量、不改栈
+     * （携液量是条目自带值，见 wiki 的 1.7.10 流体容器三面割裂）。</li>
      * </ol>
-     * 两级都空 ⇒ 不收（返回 false 让 NEI 继续拖着，不吃栈）。
+     * 三级都空 ⇒ 不收（返回 false 让 NEI 继续拖着，不吃栈）。
      */
     private static final FluidNameProbe[] PROBE_CHAIN = { NekoPocketFluidSlot::filledContainerName,
-        NekoPocketFluidSlot::blockFluidName };
+        NekoPocketFluidSlot::blockFluidName, NekoPocketFluidSlot::containerItemFluidName };
 
     private NekoPocketPanel owner;
     /** 本槽所在的流体列号 = {@code Kind.FLUID} 的 ghost 槽号 = tank 号（装配期注入，-1 = 未绑定）。 */
@@ -331,6 +337,26 @@ public class NekoPocketFluidSlot extends FluidSlot {
         return fluid == null ? null : fluid.getName();
     }
 
+    /**
+     * ★R86（缺陷 4 甲）：第三级探针 —— {@link IFluidContainerItem} 自报内容。
+     * <p>
+     * ⚠ {@code getFluid(ItemStack)} 是<b>单参只读</b>面（Forge 那个接口里带 {@code doX} 布尔的是
+     * {@code fill}/{@code drain}），所以这一级天然不会抽走玩家的流体；但也<b>没有</b>"空容器返回 0"
+     * 那一类坑可避 —— 容器自己说没有就是没有，判 null 不收。
+     * ⚠ 只取名字不取量 —— 声明本身要的就是"这一列要哪一种"，而各家的容量口径是条目自带值。
+     */
+    private static String containerItemFluidName(ItemStack draggedStack) {
+        if (draggedStack == null || !(draggedStack.getItem() instanceof IFluidContainerItem)) {
+            return null;
+        }
+        final FluidStack content = ((IFluidContainerItem) draggedStack.getItem()).getFluid(draggedStack);
+        if (content == null || content.amount <= 0 || content.getFluid() == null) {
+            return null;
+        }
+        return content.getFluid()
+            .getName();
+    }
+
     // ------------------------------------------------------------------ ghost 态的渲染与 tooltip
 
     /**
@@ -438,6 +464,10 @@ public class NekoPocketFluidSlot extends FluidSlot {
         tooltip.addLine(IKey.dynamic(() -> owner == null ? "" : owner.tankOwnLabelText(slotIndex)));
         tooltip.addLine(IKey.dynamic(() -> owner == null ? "" : owner.capacityReadoutText()));
         if (!ghost) {
+            // ★R86（缺陷 4 甲）：没声明的那一条才需要"怎么声明"的读法。此前这里一句都不说，而 NEI 的
+            // 拖物面有两处坑（配方窗的流体行根本不可拖、GT 大型单元不在 Forge 容器表里），玩家看到的
+            // 全部现象就是"拖上去又弹回来，什么也没发生"。
+            tooltip.addLine(IKey.lang("gtit.pocket.ghost.drag_hint"));
             return;
         }
         tooltip.addLine(IKey.lang("gtit.pocket.ghost.on", declaredFluidName()));

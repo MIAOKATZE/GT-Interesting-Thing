@@ -10,8 +10,8 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
  * <p>
  * <b>为什么要有这层</b>：判据本体（{@code PocketSlots#classifyIncoming} 分流与 {@code PocketSlots#injectContainer}
  * 注入执行、{@code PocketDistillDriver#planDistillBatch} 蒸馏装箱）必须是纯逻辑才能在零依赖回归套件里
- * 端到端验证；而 {@link TaumCompat} 的三条读数在 Thaumcraft 缺席时<b>恒</b>返回
- * 「非容器 / 空 / 抽不出东西」，用它跑测试只会得到一片假绿（本轮已为此踩过 R59b 偏离①同形坑）。
+ * 端到端验证；而 {@link TaumCompat} 的四条读数在 Thaumcraft 缺席时<b>恒</b>返回
+ * 「非容器 / 空 / 抽不出东西 / {@code CAPACITY_NOT_A_CONTAINER}」，用它跑测试只会得到一片假绿（本轮已为此踩过 R59b 偏离①同形坑）。
  * 因此判据一律收一个 {@code EssenceGate} 入参：生产传 {@link #TAUM}，测试传记录调用序列的桩件。
  * <p>
  * ⚠ 本接口<b>不含分流判定</b>：分流与注入执行的唯一实现仍在 {@code gui/pocket/PocketSlots}
@@ -28,8 +28,28 @@ public interface EssenceGate {
     /** 读容器内容（非容器/空容器返回 {@link TaumAspectAmounts#EMPTY}）。 */
     TaumAspectAmounts readContainer(ItemStack stack);
 
-    /** 抽干容器（返回实际抽出的内容；容器随之变空。晶化源质按"读出 + 消耗整件"处理）。 */
+    /**
+     * 抽干容器（返回实际抽出的内容；容器随之变空）。
+     * <p>
+     * ⚠ <b>晶化源质不走本方法</b>：{@code TaumBridge#drainAll} 对晶<b>恒返 EMPTY</b>——清空内容但
+     * 物品还在场，TC 的服务端 {@code onItemUpdate} 会给它随机重赋型（{@code ItemCrystalEssence.java:98-110}），
+     * 那是销毁价值之外的第二条危害。晶的"读出 + 消耗整叠"由注入执行层落实
+     * （{@code PocketSlots#injectContainer} 的 {@link #capacityOf(ItemStack)} 分流 → {@code injectCrystals}），
+     * ★R86 起这句从空头承诺变成已实现。
+     */
     TaumAspectAmounts drainContainer(ItemStack stack);
+
+    /**
+     * ★R86（缺陷 2）：单容器容量档位——注入执行层用它<b>只</b>判"是不是晶化源质"
+     * （等于 {@code TaumDistillRules.CRYSTAL_CAPACITY} ⇒ 整叠消耗、不退回空壳）。
+     * <p>
+     * 为什么把这第四枚触点放进本接口而不是在 {@code PocketSlots} 里 {@code instanceof}：
+     * 晶/瓶/第三方罐的区分证据全在 TC 侧，测试桩必须能注入同一判据（同 R59b 的假绿教训）。
+     *
+     * @return 晶 {@code CRYSTAL_CAPACITY} / 瓶 {@code PHIAL_CAPACITY} / 其他容器
+     *         {@code CAPACITY_UNKNOWN} / 非容器或 TC 缺席 {@code CAPACITY_NOT_A_CONTAINER}
+     */
+    int capacityOf(ItemStack stack);
 
     /**
      * 该栈的<b>蒸馏</b>产出（判据照 {@code TileAlchemyFurnace.canSmelt()}：
@@ -41,7 +61,7 @@ public interface EssenceGate {
      */
     TaumAspectAmounts aspectsOf(ItemStack stack);
 
-    /** 生产实现：三条读数逐字转 {@link TaumCompat}（TC 缺席时天然全降级）。 */
+    /** 生产实现：四条读数逐字转 {@link TaumCompat}（TC 缺席时天然全降级）。 */
     EssenceGate TAUM = new EssenceGate() {
 
         @Override
@@ -57,6 +77,11 @@ public interface EssenceGate {
         @Override
         public TaumAspectAmounts drainContainer(ItemStack stack) {
             return TaumCompat.drainAll(stack);
+        }
+
+        @Override
+        public int capacityOf(ItemStack stack) {
+            return TaumCompat.capacityOf(stack);
         }
 
         @Override

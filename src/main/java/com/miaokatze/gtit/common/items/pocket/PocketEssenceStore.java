@@ -26,9 +26,11 @@ import net.minecraft.nbt.NBTTagString;
  * <li><b>入账时占格</b>：{@link #add(String, int)} 真的进了点数才占格（{@link #assignCell(String)}），
  * 占<b>最小空位</b> ⇒ 先入账的落前面的格；</li>
  * <li><b>持久化</b>：{@link #writeTo(NBTTagCompound)} 原样写出，重开面板/重进世界不重排；</li>
- * <li>★<b>撤空不回收</b>：{@link #extract(String, int)} 把点数扣到 0 只摘 {@code amounts} 条目，
- * <b>不动</b>格位归属 ⇒ 再灌同一种源质回到<b>原来那一格</b>，也不会因一次灌入把全部格重排
- * （用户裁定"保留"；且 ghost 声明是按<b>格号</b>索引的，回收格位会让已声明的格拉错东西）。</li>
+ * <li>★<b>R86 改判：撤空即腾格</b>（作废 R78③「撤空不回收」）——{@link #extract(String, int)} 把点数
+ * 扣到 0 时<b>同时</b>释放那一格，玩家看到的 {@code 0/256} 占位就是这么来的。旧裁定那条"ghost 声明按
+ * <b>格号</b>索引，回收会拉错东西"被取证证伪：抽取侧读的是声明<b>自带</b>的 {@code tag/typeId}，
+ * 不吃 {@code slotIndex}；真实后果只有遮罩/角标错位，由 {@code NekoPocketPanel#applyEssenceGhosts}
+ * 改按 tag 归位消化。旧档里"有格位、无库存"的历史空洞在 {@link #readFrom(NBTTagCompound)} 折叠。</li>
  * </ol>
  * 旧档（无该键）由 {@link #readFrom(NBTTagCompound)} 按 {@code Aspects} 的<b>条目顺序</b>补出
  * 归属（LinkedHashMap 的插入序即"首次入账序"，且写入端按同一顺序落档）⇒ 老档不炸、不丢格、
@@ -109,7 +111,21 @@ public final class PocketEssenceStore {
             }
         }
         store.readCellOrder(root);
+        // ★R86：折叠历史空洞。R78③ 生效期间写出的档里"tag 占着一格但点数为 0"是合法形状，而新口径下
+        // 这种格位本该在清零那一刻就腾出来 ⇒ 读档时按库存撤格，旧档里那些"0/256 占位"就地消失。
+        // 撤的只是格位归属：点数条目本来就不落档（见 {@link #writeTo} 的"0 值不写"），无丢件风险。
+        store.foldCellsWithoutStock();
         return store;
+    }
+
+    /** 见 {@link #readFrom(NBTTagCompound)} 那条 ★R86：把"有格位、无库存"的历史归属撤掉。 */
+    private void foldCellsWithoutStock() {
+        for (int cell = 0; cell < cellTags.length; cell++) {
+            final String tag = cellTags[cell];
+            if (tag != null && get(tag) <= 0) {
+                cellTags[cell] = null;
+            }
+        }
     }
 
     /**
@@ -261,7 +277,13 @@ public final class PocketEssenceStore {
         return -1;
     }
 
-    /** 已占格的数量（含"曾经占过、现在空着"的格；显示侧用它判"还有没有空格可给新 tag"）。 */
+    /**
+     * 已占格的数量。
+     * <p>
+     * ★R86 起它<b>等于</b>"当前有货的 tag 数"（清零即腾格，不再有"曾经占过、现在空着"那一档；
+     * 唯一可能的偏差是 72 格塞满后新 tag 无格可占）。旧口径"含撤空但仍占位的格"随 R78③ 一起作废。
+     * 显示侧用它判"还有没有空格可给新 tag"这一用途不变。
+     */
     public int assignedCellCount() {
         int total = 0;
         for (String tag : cellTags) {
@@ -441,10 +463,13 @@ public final class PocketEssenceStore {
     /**
      * 出账；扣到 0 时把该 tag 从表里摘掉（与"0 值不落档"同构）。
      * <p>
-     * ★<b>不动格位归属</b>（R78③ 的用户裁定"撤空不回收"）：摘掉的是<b>点数条目</b>，
-     * {@code cellTags} 里那一格仍然属于这个 tag，显示侧据 {@link #get(String)} 归 0 撤掉图标与
-     * 文本（R73② 的"留格不画内容"），再灌回来还是原来那一格。回收会造成"一次灌入全部重排"，
-     * 而且会让按<b>格号</b>索引的 ghost 声明指向别的 tag。
+     * ★<b>R86 改判（作废 R78③「撤空不回收」）</b>：扣到 0 同时<b>释放格位</b>，玩家看到的
+     * "0/256 还占着一格"就是这条旧裁定的直接产物。旧裁定当时的理由是"回收会让按<b>格号</b>索引的
+     * ghost 声明指向别的 tag"——取证已把它证半伪：抽取侧全程读声明<b>自带</b>的 {@code tag/typeId}
+     * （{@code PocketAeChannelOps#extractEssence} 那一段，落点 {@code session.depositItem}），
+     * 不吃 {@code slotIndex} ⇒ 回收不会拉错源质；真实后果只有遮罩/角标错位，那一面由
+     * {@code NekoPocketPanel#applyEssenceGhosts} 改按 tag 归位消化。
+     * NBT 形状本就允许空洞（{@link #writeCellOrder} 用空串占位），故不需要新的存档形状。
      *
      * @return 实际取出点数（请求量超过存量时按存量给）
      */
@@ -457,12 +482,27 @@ public final class PocketEssenceStore {
         final int left = current - taken;
         if (left <= 0) {
             amounts.remove(tag);
+            // ★R86：清零即腾格（下一次同 tag 入账会重新占最小空位，"首次入账序 = 格序"照旧成立）
+            releaseCell(tag);
         } else {
             amounts.put(tag, left);
         }
         // ★R85 P2：出账同样改变 blob 的第二段（点数）⇒ 短路判据必须跟着失效
         bumpVersion();
         return taken;
+    }
+
+    /**
+     * ★R86：把某 tag 占着的格位清空（幂等；没占过就是空操作）。
+     * <p>
+     * 只在两处被调用：{@link #extract(String, int)} 清零那一支，与读档时折叠旧档里
+     * "有格位、无库存"的历史空洞（{@link #readFrom(NBTTagCompound)}）。
+     */
+    private void releaseCell(String tag) {
+        final int cell = cellOf(tag);
+        if (cell >= 0) {
+            cellTags[cell] = null;
+        }
     }
 
     /** 快照（不可变副本），GUI 同步与蒸馏侧读它，不暴露内部表。 */
@@ -490,9 +530,10 @@ public final class PocketEssenceStore {
     /**
      * 整表重置：点数与<b>格位归属一起清</b>。
      * <p>
-     * ★这与 {@link #extract(String, int)} 不是一回事：extract 是"玩家拿走这一格的货"，
-     * 按 R78③ 必须<b>保留</b>格位；clear 是"这口袋的源质整表作废"（外部导入/重置一类操作），
-     * 保留一套指向空气的格位没有意义。当前生产代码零调用方（保留给"整表导入/导出"一类外部操作）。
+     * ★这与 {@link #extract(String, int)} 不是一回事：extract 是"玩家拿走这一格的货"，扣到 0 才腾出
+     * <b>那一格</b>（★R86 改判，旧 R78③"撤空不回收"已作废）；clear 是"这口袋的源质整表作废"
+     * （外部导入/重置一类操作），<b>全部</b>格位一起清。当前生产代码零调用方（保留给"整表导入/导出"
+     * 一类外部操作）。
      */
     public void clear() {
         amounts.clear();

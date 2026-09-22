@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.common.items.pocket;
 
+import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -119,12 +120,45 @@ public interface PocketSession {
      * ★必须在抽取<b>之前</b>问：先抽后放会把超出部分的流体凭空抹掉（AE2 侧已经扣了）。
      * 槽里已有别的流体 ⇒ 0；{@code probe} 为 null ⇒ 0；{@code tank} 越界 ⇒ 0。
      * <p>
-     * tank 号就是该条 ghost 声明的 {@code slotIndex}（R75①：六个流体列 = 六个 tank =
-     * {@code Kind.FLUID} 的索引空间），所以"哪一列要拉什么"与"拉到哪儿"共用同一个数，
-     * 不存在第二份映射。
+     * tank 号就是该条 ghost 声明的 {@code slotIndex}（R75①，★R78 起列数为 {@code 18}：
+     * 十八个流体列 = 十八个 tank = {@code Kind.FLUID} 的索引空间），所以"哪一列要拉什么"与"拉到哪儿"
+     * 共用同一个数，不存在第二份映射。
      */
     int fluidBarRoom(int tank, FluidStack probe);
 
     /** 往第 {@code tank} 号流体槽灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。 */
     int depositFluid(int tank, FluidStack fluid);
+
+    // ------------------------------------------------------ ★R86 缺陷 3：口袋 → 元件的推送向来源面
+
+    /**
+     * 流体条的 tank 数（注入向来源枚举用；与 {@code PocketFilterConfig.Kind.FLUID} 的索引空间同一）。
+     */
+    int fluidTankCount();
+
+    /**
+     * 第 {@code tank} 号槽<b>当前</b>那份流体（不改动任何东西；越界或空槽返 {@code null}）。
+     * <p>
+     * ★注入支靠它做防陈旧对表：快照里记的是"当时看见的那一条内容的键 + 量"，真投递前必须现读一遍比过，
+     * 否则玩家在两拍之间把槽换成别的流体就会把旧内容灌进元件（与物品支
+     * {@code PocketAeChannelOps#inject} 的 contentKey 对表同一条纪律）。
+     */
+    FluidStack fluidInTank(int tank);
+
+    /**
+     * 从第 {@code tank} 号槽抽走 {@code milliBuckets} mB（★只在元件那边<b>真的收了货</b>之后调）。
+     *
+     * @return 实际抽走量；小于请求量 ⇒ 调用方必须把差额<b>原路注回元件</b>，不得凭空抹掉（R85 小项 2 纪律）
+     */
+    int drainOwnTank(int tank, int milliBuckets);
+
+    /** 源质表现存内容（{@code tag → 点数}，不可变快照）；注入向来源枚举用。 */
+    Map<String, Integer> essenceStock();
+
+    /**
+     * 从源质表扣掉 {@code points} 点该 tag（★只在元件真的收了晶化源质之后调）。
+     *
+     * @return 实际扣掉的点数（不足按现存给；0 ⇒ 一格都没动）
+     */
+    int drainEssence(String tag, int points);
 }

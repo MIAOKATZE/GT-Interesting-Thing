@@ -18,6 +18,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.nbt.NBTTagString;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
@@ -231,6 +232,13 @@ public class NekoPocketModelTest {
             .put("move_to_player_counts_by_vanilla_contract", NekoPocketModelTest::moveToPlayerCountsByVanillaContract);
         cases.put("extract_batch_stops_only_on_cell_side_receipts", NekoPocketModelTest::extractBatchStopCondition);
         cases.put("ghost_blob_budget_stops_tail_byte_identical_prefix", NekoPocketModelTest::ghostBlobBudgetShape);
+        // ---- R86（实机 6 条）：源质清零腾格与旧档空洞折叠（缺陷 5，改判 R78③）/ 晶化源质整叠消耗（缺陷 2）
+        cases.put(
+            "essence_cell_is_released_when_drained_and_legacy_hole_folds",
+            NekoPocketModelTest::essenceCellReleasedAndLegacyHoleFolds);
+        cases.put(
+            "inject_crystal_consumes_whole_stack_into_store",
+            NekoPocketModelTest::injectCrystalConsumesWholeStack);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -3637,14 +3645,19 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(3, store.assignedCellCount(), "已占格数 = 见过的 tag 数");
         SimpleAssert.eq(0, store.unplacedTagCount(), "3 个 tag 都有格位 ⇒ 无溢出");
 
-        // ---- ③ 撤空不回收（用户裁定"保留"）----
+        // ---- ③ ★R86 改判（作废 R78③「撤空不回收」）：扣到 0 当场腾格 ----
         store.extract("aer", 10);
         SimpleAssert.eq(0, store.get("aer"), "点数确实扣光了");
-        SimpleAssert.eq(1, store.cellOf("aer"), "★扣到 0 之后格位仍在（回收会让一次灌入把全部格重排，也会让按格号的 ghost 声明指错 tag）");
-        SimpleAssert.eq("aer", store.tagAtCell(1), "格位归属表里那一行还在");
+        SimpleAssert.eq(-1, store.cellOf("aer"), "★扣到 0 ⇒ 那一格当场腾出来（用户原话「清空的源质对应位置就空出来，不要 0/256」）");
+        SimpleAssert.eq(null, store.tagAtCell(1), "格位归属表里那一行已置空（显示侧据此整格不画）");
+        SimpleAssert.eq(2, store.assignedCellCount(), "占格数随腾格减一，不再「含曾经占过的格」");
+        // 腾出来的格会被<b>新</b> tag 抢走 ⇒ 同 tag 再入账时落点<b>不必</b>是原来那一格（旧裁定「再灌回来
+        // 还是原来那一格」随 R78③ 一起作废；这里显式钉住新形状，免得有人把它当回归改回去）。
+        store.add("aqua", 3);
+        SimpleAssert.eq(1, store.cellOf("aqua"), "新 tag 占最小空位 = 刚腾出来的 1 格");
         store.add("aer", 7);
-        SimpleAssert.eq(1, store.cellOf("aer"), "再灌回来还是原来那一格");
-        SimpleAssert.eq(3, store.assignedCellCount(), "占格数不因扣光又灌回而增加");
+        SimpleAssert.eq(3, store.cellOf("aer"), "★aer 回来时只能占下一个空位（3 格），不回原来的 1 格");
+        SimpleAssert.eq(4, store.assignedCellCount(), "ignis / aqua / aer / terra 各占一格");
 
         // ---- ② 持久化：写出 → 读回 → 格序逐字不变（重开面板/重进世界不重排）----
         final NBTTagCompound root = new NBTTagCompound();
@@ -3652,10 +3665,14 @@ public class NekoPocketModelTest {
         SimpleAssert.that(root.hasKey(PocketConstants.ESSENCE_CELL_ORDER), "★格位归属必须真的落 NBT（不落 = 重开就重排）");
         final PocketEssenceStore again = PocketEssenceStore.readFrom(root);
         SimpleAssert.eq(0, again.cellOf("ignis"), "重开后 ignis 仍在 0 格");
-        SimpleAssert.eq(1, again.cellOf("aer"), "重开后 aer 仍在 1 格（★它当时是空着的，格位照样回来）");
+        SimpleAssert.eq(
+            3,
+            again.cellOf("aer"),
+            "★重开后 aer 在它<b>腾过格之后重新占的</b>那一格（R86 起格位不再长期绑定；这一条钉的是「同一份档两次读出的格序一致」，不是「一辈子不回原格」）");
+        SimpleAssert.eq(1, again.cellOf("aqua"), "重开后 aqua 抢到的那格（= aer 腾出来的）照回来");
         SimpleAssert.eq(2, again.cellOf("terra"), "重开后 terra 仍在 2 格");
         SimpleAssert.eq(7, again.get("aer"), "点数也回来了");
-        SimpleAssert.eq(store.assignedCellCount(), again.assignedCellCount(), "占格数量逐字往返（含空着的那些格）");
+        SimpleAssert.eq(store.assignedCellCount(), again.assignedCellCount(), "占格数量逐字往返（R86 起只数有货的格）");
         for (int cell = 0; cell < grid; cell++) {
             final String before = store.tagAtCell(cell);
             final String after = again.tagAtCell(cell);
@@ -3762,6 +3779,97 @@ public class NekoPocketModelTest {
             "矩阵格数 = 框架注册的 36（不等就会有格子没有 handler 或 handler 没有格子）");
     }
 
+    // ================================================================== R86（实机 6 条）两条新判据
+
+    /**
+     * ★R86（缺陷 5，改判 R78③「撤空不回收」）：出账清零 ⇒ 当场腾格，并且<b>旧档</b>里
+     * "有格位、无库存"的历史空洞在读档时被折叠掉——否则玩家手上那份 R78③ 期间写出的档会永远
+     * 顶着几格 {@code 0/256}，正是他报的那句话。
+     */
+    private static void essenceCellReleasedAndLegacyHoleFolds() {
+        final PocketEssenceStore store = new PocketEssenceStore();
+        store.add("ignis", 12);
+        store.add("aer", 30);
+        SimpleAssert.eq(0, store.cellOf("ignis"), "先占两格：ignis = 0");
+        SimpleAssert.eq(1, store.cellOf("aer"), "aer = 1");
+        SimpleAssert.eq(30, store.extract("aer", 999), "请求超过存量 ⇒ 按存量给，不报负数");
+        SimpleAssert.eq(-1, store.cellOf("aer"), "★清零即腾格（用户原话「清空的源质对应位置就空出来」）");
+        SimpleAssert.eq(null, store.tagAtCell(1), "归属表里那一行已置空 ⇒ 显示侧整格不画");
+        // 部分出账<b>不</b>腾格：还剩点数就必須留在原格，否则"点掉一半格子全跑"
+        store.add("terra", 9);
+        store.extract("terra", 4);
+        SimpleAssert.eq(1, store.cellOf("terra"), "★terra 拿到的正是 aer 腾出来的 1 格；还剩 5 点 ⇒ 格位不动");
+        SimpleAssert.eq(-1, store.cellOf("aer"), "腾出去的格被新 tag 占走后 aer 仍是无格位（不会自己「回来」）");
+        // ---- 旧档折叠：手搭一份"格位表里有 aer、库存里没有"的档（R78③ 期间的合法形状）----
+        final NBTTagCompound root = new NBTTagCompound();
+        store.writeTo(root);
+        final NBTTagList holes = new NBTTagList();
+        holes.appendTag(new NBTTagString("ignis"));
+        holes.appendTag(new NBTTagString("aer"));
+        holes.appendTag(new NBTTagString("terra"));
+        root.setTag(PocketConstants.ESSENCE_CELL_ORDER, holes);
+        final PocketEssenceStore again = PocketEssenceStore.readFrom(root);
+        SimpleAssert.eq(0, again.cellOf("ignis"), "有货的归属照回来");
+        SimpleAssert.eq(-1, again.cellOf("aer"), "★读档时把「有格位无库存」那一行折叠掉（不折叠则旧档里的 0/256 占位永远清不掉）");
+        SimpleAssert.eq(2, again.assignedCellCount(), "折叠后占格数只数真的有货的那两个");
+        // 折叠不能把中间的空位挤成重排：terra 必须还在它自己那一格
+        SimpleAssert.eq(2, again.cellOf("terra"), "★折叠只撤那一行，不做整体前移（前移＝换一套格序）");
+    }
+
+    /**
+     * ★R86（缺陷 2）：晶化源质放进 12 格 ⇒ <b>整叠消耗</b>入账，且不走 {@code drainContainer}、不退空壳。
+     * <p>
+     * ★如实标注本用例<b>测不到</b>什么（档案 r86-ret-capgap §E 的假绿警示）：真缺陷住在
+     * {@code TaumBridge#drainAll} 对晶的那道早退里，而桩 gate 没有那条早退。这里钉的是<b>上层消耗支</b>
+     * 的契约形状：点数 = 单件 amount × {@code stackSize}、结论是 {@code CONSUMED} 而非 {@code DRAINED}、
+     * 预检失败分毫不动、以及晶这一支一次都不该去调 {@code drainContainer}（白调，生产侧恒返 EMPTY）。
+     */
+    private static void injectCrystalConsumesWholeStack() {
+        final StubGate gate = new StubGate();
+        final ItemStack crystals = stack(64);
+        gate.putCrystal(crystals, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 1 }));
+        final PocketEssenceStore store = new PocketEssenceStore();
+
+        final PocketSlots.IntakeResult result = PocketSlots.injectContainer(crystals, store, gate);
+        SimpleAssert.that(result.consumed(), "★晶走整叠消耗支，不是瓶那条抽干支 ⇒ " + result.kind);
+        SimpleAssert.that(!result.drained(), "消耗支不得同时报 drained（调用方靠这两个比特分清「退回 / 销毁」）");
+        SimpleAssert.eq(64, result.points, "★整叠 64 枚各计 1 点 = 64 点（漏乘 stackSize 只会进 1 点）");
+        SimpleAssert.eq(64, store.get("ignis"), "点数按整叠入账");
+        SimpleAssert.eq(0, gate.drainCalls, "★晶一支都不碰 drainContainer（生产实现对它恒返 EMPTY）");
+        // 全有全无：单格上限只剩 3 点，10 枚晶进不去 ⇒ 一格都不动
+        final StubGate tight = new StubGate();
+        final ItemStack more = stack(10);
+        tight.putCrystal(more, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 1 }));
+        final PocketEssenceStore full = new PocketEssenceStore();
+        full.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - 3);
+        final PocketSlots.IntakeResult rejected = PocketSlots.injectContainer(more, full, tight);
+        SimpleAssert.eq(PocketSlots.Intake.STORE_FULL, rejected.kind, "装不下 ⇒ STORE_FULL（与瓶支同一条 R29 出口）");
+        SimpleAssert
+            .eq(PocketConstants.ESSENCE_CAP_PER_TAG - 3, full.get("ignis"), "★预检失败时源质表分毫未动（只够 3 点也不截断消耗，R45c/FIX-6）");
+        // 换算本体单独钉：多 tag 按各自 amount × 叠数
+        final Map<String, Integer> single = new LinkedHashMap<>();
+        single.put("aer", 8);
+        single.put("ignis", 3);
+        final Map<String, Integer> scaled = PocketSlots.scaledByStackSize(single, 5);
+        SimpleAssert.eq(40, scaled.get("aer"), "8 × 5");
+        SimpleAssert.eq(15, scaled.get("ignis"), "3 × 5");
+        SimpleAssert.eq(
+            40,
+            PocketSlots.scaledByStackSize(scaled, 0)
+                .get("aer"),
+            "★叠数非正按 ×1 计：既不抹零也不二次放大");
+        SimpleAssert.eq(
+            40,
+            PocketSlots.scaledByStackSize(scaled, -7)
+                .get("aer"),
+            "负叠数同样按 ×1（外来入参不得造出负点数）");
+        SimpleAssert.eq(
+            2,
+            PocketSlots.scaledByStackSize(scaled, 1)
+                .size(),
+            "放大只动值、不动条目数");
+    }
+
     // ------------------------------------------------------------------ 桩件与工具
 
     /**
@@ -3826,6 +3934,31 @@ public class NekoPocketModelTest {
             }
             final TaumAspectAmounts aspects = stack == null ? null : distillTable.get(stack);
             return aspects == null ? TaumAspectAmounts.EMPTY : aspects;
+        }
+
+        /**
+         * ★R86（缺陷 2）：这一栈是不是"晶化源质"（整叠消耗那一支的入口判据）。
+         * 用身份集而不是 {@code instanceof} 某个假物品类：桩件里同一假物品既要能扮晶也要能扮瓶。
+         */
+        private final java.util.Set<ItemStack> crystals = java.util.Collections
+            .newSetFromMap(new IdentityHashMap<ItemStack, Boolean>());
+
+        /** ★R86：把某栈登记成晶化源质（内容 = <b>单件</b>那份 aspect，整叠共享一份）。 */
+        StubGate putCrystal(ItemStack stack, TaumAspectAmounts single) {
+            crystals.add(stack);
+            return putContainer(stack, single);
+        }
+
+        @Override
+        public int capacityOf(ItemStack stack) {
+            if (stack == null) {
+                return TaumDistillRules.CAPACITY_NOT_A_CONTAINER;
+            }
+            if (crystals.contains(stack)) {
+                return TaumDistillRules.CRYSTAL_CAPACITY;
+            }
+            return containers.containsKey(stack) ? TaumDistillRules.PHIAL_CAPACITY
+                : TaumDistillRules.CAPACITY_NOT_A_CONTAINER;
         }
     }
 

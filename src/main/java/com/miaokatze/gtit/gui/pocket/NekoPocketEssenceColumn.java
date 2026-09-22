@@ -227,8 +227,10 @@ public final class NekoPocketEssenceColumn {
      * {@code (Kind.ESSENCE, 本格格号)}；不含该 tag ⇒ 返回 false、不吃栈。右键在声明态发
      * {@code CLR|<格号>|E}。索引空间上界 = {@code PocketConstants.GHOST_ESSENCE_SLOT_LIMIT}（72），
      * 与中栏 0…134、流体 tank 0…17 各自独立（R59b 偏离④的复合键）。
-     * ★<b>ghost 声明按格号索引，所以"撤空不回收格位"是它正确性的前提</b>（R78③）：一旦回收，
-     * 已声明的格就会指向别的 tag 并拉错东西。
+     * ★<b>R86 改判（作废 R78③）</b>：声明虽然仍按<b>格号</b>登记，但"回收格位会拉错东西"这一句被取证
+     * 证伪——抽取侧读的是声明<b>自带</b>的 {@code tag/typeId}（{@code PocketAeChannelOps#extractEssence}），
+     * 从不按 {@code slotIndex} 反查内容。所以清零照旧腾格，遮罩则改由 {@code NekoPocketPanel#applyEssenceGhosts}
+     * 按 tag 现读归位；<b>本格</b>的声明入口判据仍是"拖来的东西确实含本格的 tag"，不变。
      * <p>
      * 需求 2 的"要素栏取出 → 晶化源质"是另一条独立路径（R15），★<b>左键</b>与 Shift+左键走 {@code ESSENCE_OUT}
      * 动作码（★arg 里的格号在服务端经格位归属表反查 tag，不吃客户端送来的 tag，R18/R19）。
@@ -246,7 +248,8 @@ public final class NekoPocketEssenceColumn {
     /**
      * 单格：金属凹槽底（<b>恒画</b>，R73②）+ 内容层（aspect 图标 + 数量文本，
      * <b>★按库存开关</b>，R78 D-1）+ tooltip（★每次重画都重建，见方法体★注释）；
-     * <b>左键</b>=取出晶化源质（Shift+左键一次取一整堆晶），NEI 左键拖入=声明 ghost（落点归本列），
+     * <b>左键</b>=把该组晶化源质拿到游标上（★R86：一组至多单堆上限；游标已被占用则整笔不动并给回执），
+     * <b>Shift+左键</b>=该格整份一次进背包（背包优先、余量落中栏），NEI 左键拖入=声明 ghost（落点归本列），
      * 右键在声明态=解绑（{@link NekoEssenceGhostCell#onMousePressed(int)}）；其余按键不做取出。
      * <p>
      * ★无货时<b>只撤掉图标与文本</b>，底与格子本体都在——这就是 R73② 与"槽位贴图边距 ≤ 3"
@@ -304,6 +307,12 @@ public final class NekoPocketEssenceColumn {
                 // 空格位：没有归属 tag ⇒ 只给"这一格还空着/TC 不在场"的读法（R31 的整栏灰显另有 tooltip）
                 tooltip.addLine(
                     IKey.lang(ui.essenceAvailable() ? "gtit.pocket.aspect.empty" : "gtit.pocket.still.unavailable"));
+                // ★R86（缺陷 4 乙）：NEI 拖入被 ghostKeyFor 的 cellTag 门拒掉时要有读法，否则整个现象
+                // 又是"拖上去没反应"。判定<b>没</b>放开（放开的代价见档案 r86-ret-nei-mark §C 乙-2：
+                // 要给 Kind.ESSENCE 引入按需占格，撞 PocketEssenceStore 的格位口径），只补文案。
+                if (ui.essenceAvailable()) {
+                    tooltip.addLine(IKey.lang("gtit.pocket.essence.need_stock"));
+                }
                 if (ui.essenceOverflow()) {
                     tooltip.addLine(
                         IKey.lang(

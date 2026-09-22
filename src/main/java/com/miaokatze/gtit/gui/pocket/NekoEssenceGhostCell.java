@@ -42,7 +42,8 @@ import appeng.api.storage.data.IAEStackType;
  * <b>内容层</b>，不是格子。
  * <p>
  * <b>★声明语义 = 「确认把本格对应的 tag 声明为 ghost」</b>：格位归属由服务端算好并随
- * 同步 blob 落到本类（R78③：格序 = 该 tag 首次入账的顺序，且撤空不回收），所以拖进来的
+ * 同步 blob 落到本类（★R86 口径：格序 = 该 tag <b>首次入账</b>的顺序，但扣到 0 会<b>当场腾格</b>，
+ * 所以"本格对应的 tag"是<b>现读</b>值而不是终身绑定；旧 R78③「撤空不回收」已作废），所以拖进来的
  * 东西不需要"是什么"，但<b>必须确实含本格的 tag</b>（{@link #carriesTag}：蒸馏产出或容器内容
  * 任一命中）。不含 ⇒ 返回 false，NEI 那边继续拖着、不吃栈 ⇒ 玩家拖来的任意东西不会被当成源质声明。
  * <p>
@@ -408,7 +409,8 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * {@code getStackSize() > 0}（{@code PocketAeChannelOps.java:438-443}）。本方法用<b>同一条探针</b>
      * 在{@code InfinityStackTypes.allSupportedTypes()}（物品→流体→运行时注册的第三方通道）上取第一个
      * 命中者的 {@code getId()} ⇒ 写进声明的 id 与 {@code byId} 能解析出的 id 天然是同一个，
-     * 不会出现两处真相。物品/流体两个内建通道<b>排除</b>在外（源质不可能落在那两条上）。
+     * 不会出现两处真相。★R86：内建<b>流体</b>通道始终排除在外（源质落在流体通道上没有任何读法成立）；
+     * 内建<b>物品</b>通道从"排除"改成"兜底"——第三方全空时回落给它（见方法体末那条 ★R86）。
      * <p>
      * 边界如实声明：AE2 第三方通道的 {@code convertStackFromItem} 需要真实注册表，纯 JVM 里
      * 拿不到（与 {@code extract_essence_branch_yields_crystal} 同一批未验面，实验 E3），
@@ -439,7 +441,15 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
                 return type.getId();
             }
         }
-        return "";
+        // ★R86（缺陷 4 乙，用户裁定"三项都开"）：没有任何第三方源质通道能物化这一 tag 时，
+        // <b>回落到物品通道</b> —— 物品通道收的就是"晶化源质"这件物品本身（AE2 的
+        // {@code ITEM_STACK_TYPE.convertStackFromItem} 对任何物品都成立），于是"从 NEI 标记源质"
+        // 在没有 AE2-源质 addon 的整合包里也可用。
+        // ★已披露的语义代价（游戏内 tooltip 与本条注释同源）：回落之后声明的"1 单位"从
+        // <b>一点源质</b>变成<b>一枚晶化源质</b>（{@code PocketAeChannelOps#extractEssence} 的
+        // {@code unit} 由同一条探针实测，折算倍率属<b>实机项</b>，本仓不写死）。
+        // 内建流体通道仍在探针循环里被排除：把晶化源质声明成流体通道没有任何读法成立。
+        return InfinityStackTypes.ITEM_STACK_TYPE.getId();
     }
 
     // ------------------------------------------------------------------ ghost 态的渲染

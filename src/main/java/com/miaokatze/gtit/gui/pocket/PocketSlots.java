@@ -19,6 +19,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
+import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 
 /**
  * 口袋全部<b>真实槽</b>的工厂（本仓侧的唯一构造点）。
@@ -297,7 +298,12 @@ public final class PocketSlots {
         /** 源质格放不下：★容器<b>分毫未动</b>（{@code still.inject_full}，R29 全有全无的失败面）。 */
         STORE_FULL,
         /** 已抽干并入账（{@code still.injected}）；容器变空，由调用方按 R40a 非消耗退回。 */
-        DRAINED
+        DRAINED,
+        /**
+         * ★R86（缺陷 2）：晶化源质<b>整叠销毁</b>并入账（同样报 {@code still.injected}）。
+         * 与 {@link #DRAINED} 的唯一区别就是调用方<b>不得</b>退回——空壳晶留在场会被 TC 随机重赋型。
+         */
+        CONSUMED
     }
 
     /** 注入结果：结论 + 实际入账点数。 */
@@ -313,6 +319,11 @@ public final class PocketSlots {
 
         public boolean drained() {
             return kind == Intake.DRAINED;
+        }
+
+        /** ★R86：这一笔是"消耗整叠"，容器不退回。 */
+        public boolean consumed() {
+            return kind == Intake.CONSUMED;
         }
     }
 
@@ -333,6 +344,12 @@ public final class PocketSlots {
         if (classifyIncoming(container, gate) != IncomingAction.INJECT) {
             return new IntakeResult(Intake.NOTHING, 0);
         }
+        // ★R86（实机缺陷 2）：晶化源质走"读出 × 叠数 + 消耗整叠"那一条独立支。它<b>不能</b>复用下面的
+        // drainContainer —— {@code TaumBridge#drainAll} 对晶恒返 EMPTY（清空但物品还在场 = TC 随机重赋型
+        // 的危险态，{@code ItemCrystalEssence.java:98-110}），所以晶的消耗必须由本层显式表达成"销毁整叠"。
+        if (gate.capacityOf(container) == TaumDistillRules.CRYSTAL_CAPACITY) {
+            return injectCrystals(container, store, gate);
+        }
         final Map<String, Integer> candidates = toMap(gate.readContainer(container));
         if (candidates.isEmpty()) {
             return new IntakeResult(Intake.NOTHING, 0);
@@ -346,6 +363,42 @@ public final class PocketSlots {
         }
         final int points = store.putAll(toMap(drained));
         return new IntakeResult(points > 0 ? Intake.DRAINED : Intake.NOTHING, points);
+    }
+
+    /**
+     * ★R86（实机缺陷 2）：晶化源质 → 源质格的入账支，兑现 {@code EssenceGate#drainContainer} 那句
+     * "读出 + 消耗整叠"的旧契约（此前从未实现，玩家把晶放进 12 格只会看到"无事发生"）。
+     * <p>
+     * 三条纪律与瓶支同源：<b>全有全无</b>（预检在入账之前，装不下就一格不动）、<b>不截断消耗</b>
+     * （禁止拿逐 tag 的 {@code add()} 做判定，R45c/FIX-6）、<b>消耗后不退回</b>（空壳晶归
+     * {@link Intake#CONSUMED}，退回就等于把危险态交回 TC 的 {@code onItemUpdate}）。
+     * <p>
+     * 换算：晶的 {@code CRYSTAL_CAPACITY = 1} ⇒ 一枚晶一点源质，且<b>整叠共享同一份 aspect NBT</b>
+     * （{@code TaumBridge#newCrystalStack} 对 n 枚只写 {@code add(aspect, 1)}）⇒ 点数 =
+     * 读到的 amount × {@code stackSize}。这条乘法是"64 枚进 64 点"与"64 枚进 1 点"的分界，
+     * 故单独成函数并由 JVM 用例 {@code inject_crystal_consumes_whole_stack_into_store} 钉住。
+     */
+    public static IntakeResult injectCrystals(ItemStack crystal, PocketEssenceStore store, EssenceGate gate) {
+        final TaumAspectAmounts content = gate.readContainer(crystal);
+        if (content == null || content.isEmpty()) {
+            return new IntakeResult(Intake.NOTHING, 0);
+        }
+        final Map<String, Integer> candidates = scaledByStackSize(toMap(content), crystal.stackSize);
+        if (!store.canAcceptAll(candidates)) {
+            return new IntakeResult(Intake.STORE_FULL, 0);
+        }
+        final int points = store.putAll(candidates);
+        return new IntakeResult(points > 0 ? Intake.CONSUMED : Intake.NOTHING, points);
+    }
+
+    /** ★R86：把"单件内容"按叠放大（每 tag 点数 × {@code stackSize}；叠数非正按 1 计，不造负点数）。 */
+    public static Map<String, Integer> scaledByStackSize(Map<String, Integer> single, int stackSize) {
+        final int copies = Math.max(1, stackSize);
+        final Map<String, Integer> scaled = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : single.entrySet()) {
+            scaled.put(entry.getKey(), entry.getValue() * copies);
+        }
+        return scaled;
     }
 
     /**
@@ -372,12 +425,23 @@ public final class PocketSlots {
                 tellPlayer(slot, "gtit.pocket.still.inject_full");
                 return;
             }
-            if (!result.drained()) {
+            if (!result.drained() && !result.consumed()) {
                 return;
             }
             inv.markDirty();
             tellPlayer(slot, "gtit.pocket.still.injected", result.points);
-            returnToPlayer(slot, placed);
+            if (result.consumed()) {
+                // ★R86（实机缺陷 2）：晶是<b>整叠销毁</b>，绝不能走下面那条退回 —— 空壳晶留在玩家身上
+                // 或格内，会被 TC 服务端 {@code onItemUpdate} 随机重赋型（这正是 drainAll 对晶早退的理由）。
+                slot.putStack(null);
+            } else {
+                returnToPlayer(slot, placed);
+            }
+            // ★R86（实机「残影」条）：{@link #returnToPlayer} 里那句 {@code putStack(null)} 只会发出
+            // 非 force 的 SYNC_ITEM（{@code ModularSlot.java:101-106} → {@code ItemSlotSH.java:77}），
+            // 客户端 handler 仍持放进来那一叠 ⇒ 图标不消失，直到开屏全量重发。12 格这一面此前
+            // <b>连 R84 的 checkUpdate 补丁都没有</b>，是残影最大的一面。
+            forceSyncSlot(slot);
         } finally {
             transferring = false;
         }
@@ -1072,26 +1136,46 @@ public final class PocketSlots {
         // handler 里那个对象，我们随后用 {@code setStackInSlot} 换了引用，旧引用没有被改写），
         // 于是它把旧值又 announce + 缓存一遍，盖掉 {@code ModularSlot#putStack} 末尾那次内层 checkUpdate
         // （{@code ModularSlot.java:105}）已经发出去的真值 ⇒ 客户端当拍读到的仍是搬运前那一叠（幻象）。
-        // 这里在写完两格之后按<b>当前真值</b>再 announce 一次，让 MUI 通道至少发过一份对的值、
-        // 并把 {@code lastStoredItem} 对齐到搬运后的值（外层帧随后还会再盖一次旧值，那一层在
-        // {@code ItemSlotSH} 里，本文件改不动 ⇒ 由 :360 / 下一拍的 {@code detectAndSendChanges} 收敛，
-        // 而客户端的<b>显示</b>走的是 vanilla {@code Container#detectAndSendChanges}
-        // （{@code ModularContainer.java:115}，先于 MUI 那一圈跑），它每次采的是活值）。
-        // ★重入自证：checkUpdate → onSlotUpdate → onSlotChangedReal → changeListener 这一跳回到本类时
-        // 全程在 {@link #moveFluidBetweenTanks} 的 {@code transferring = true} 之内 ⇒ 直接被闩挡住，
-        // 不会递归；且 {@code checkUpdate} 只读 {@code slot.getStack()} 再 announce，不写任何东西，
-        // 不可能把刚写进格里的值改回去。
+        // ★R86 改判（实机「残影」条）：上面那句"客户端的显示走 vanilla 活值"是<b>错的</b>——vanilla 的基线是
+        // <b>上次发包快照</b>而不是客户端信念（{@code Container.java:85-103}），而放入那一叠是客户端
+        // {@code PlayerControllerMP.windowClick:475-481} <b>先本地模拟</b>出来的、服务端从未发过这一格 ⇒
+        // 同拍内源格回到点击前的值 ⇒ 净差为零、整包不发；MUI 常规 {@code SYNC_ITEM} 的 {@code forceSync}
+        // 恒 {@code false}（{@code ItemSlotSH.java:77}），客户端收到也只回缓存<b>不写 handler</b>；
+        // 1.7.10 的 transaction 救援只比游标而 MUI2 的 {@code slotClick} 恒返 null
+        // （{@code ModularContainer.java:361}）⇒ 恒 accept。<b>三条通道全失明</b>，残影冻结到开屏全量
+        // {@code sendContainerAndContentsToPlayer} 才修——正是"打开关闭后才消失并更新"。
+        // 正门是上游为同型问题准备的 {@code ItemSlotSH#forceSyncItem()}（{@code ItemSlotSH.java:120-133}，
+        // 先例 {@code ModularCraftingSlot.java:155}）：只有它带 {@code forceSync = true}，客户端那一支才会
+        // 真的 {@code slot.putStack(...)} 把 handler 改回真值。
+        // ★重入自证：forceSyncItem → onSlotUpdate → onSlotChangedReal → changeListener 这一跳回到本类时
+        // 全程在 {@link #moveFluidBetweenTanks} 的 {@code transferring = true} 之内 ⇒ 直接被闩挡住，不会递归
+        // （{@code ModularContainer#onSlotChanged} 是空实现 {@code :231}，那一跳不产生副作用）。
+        // ★已知边角：{@code forceSyncItem} 把 {@code lastStoredItem} 存成<b>活引用</b>而非 copy（上游实现如此）
+        // ⇒ 后续若原地改同一对象的件数，下一次 {@code checkUpdate} 的差分会看不见；本仓写格一律换引用。
         syncCellAfterRewrite(sourceIndex);
     }
 
-    /** 见 {@link #placeProcessed} 末尾那条 ★A：按当前真值补一次 {@code ItemSlotSH#checkUpdate()}。 */
+    /**
+     * 见 {@link #placeProcessed} 末尾那条 ★A/★R86：对被改写的格补一次<b>强制</b>同步。
+     * <p>
+     * ★R86 起从只 announce 的 {@code checkUpdate()} 升级为 {@code forceSyncItem()}——非 force 的包
+     * 客户端收下后<b>不写 handler</b>，而图标/件数恰恰是从 handler 读的（{@code ItemSlot.java:235-241}）。
+     */
     private void syncCellAfterRewrite(int index) {
-        final ModularSlot rewritten = fluidSlotsByIndex.get(index);
-        if (rewritten == null || !rewritten.isInitialized()) {
+        forceSyncSlot(fluidSlotsByIndex.get(index));
+    }
+
+    /**
+     * 装配前（{@code isInitialized()} 为假）不能碰：{@code forceSyncItem()} 内部<b>没有</b>
+     * {@code checkUpdate()} 那两道 {@code isValid()}/{@code isClient} 守卫，早到会在
+     * {@code getSyncManager()} 抛 {@code IllegalStateException}。
+     */
+    private static void forceSyncSlot(ModularSlot slot) {
+        if (slot == null || !slot.isInitialized()) {
             return;
         }
-        rewritten.getSyncHandler()
-            .checkUpdate();
+        slot.getSyncHandler()
+            .forceSyncItem();
     }
 
     /** 与那一格已有的同类同 NBT 内容合堆（放不放得下由 {@link #canPlacePair} 判过）。 */

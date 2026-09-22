@@ -64,7 +64,9 @@ public final class PocketConstants {
      * <p>
      * 存在的理由是"格序 = 该 tag <b>首次入账</b>的顺序"这条用户需求：{@link #ASPECTS} 列表的
      * 顺序<b>不能</b>承担它，因为扣到 0 的 tag 会被摘掉（0 值不落档），下次入账就会跑到列表末尾。
-     * 本键独立持久化，<b>撤空不回收格位</b>（R78③ 的用户裁定），重开面板/重进世界都不重排。
+     * 本键独立持久化 ⇒ 同一份档两次读出的格序一致；★<b>R86 改判</b>（作废 R78③「撤空不回收」）：点数
+     * 扣到 0 会<b>当场释放</b>那一格（见 {@code PocketEssenceStore#extract}），所以"不重排"指的是
+     * <b>有货的那些格</b>之间不重排，不含"腾出来的格永远属于那个 tag"。
      * <p>
      * 三条硬口径：① 只存 tag 字符串（绝不存裸索引，同 {@link #ASPECT_KEY} 的理由）；
      * ② 长度上界 {@link #ESSENCE_DISPLAY_GRID}，越界条目读档时丢弃；
@@ -385,7 +387,7 @@ public final class PocketConstants {
     public static final int FILTER_CAP_MIN = 1;
     /** 物品支一次滚轮的步进 = <b>1 件</b>（用户原话"物品是每次1个"）。 */
     public static final int FILTER_CAP_STEP_ITEM = 1;
-    /** 源质支一次滚轮的步进 = <b>1 点</b>（= 1 晶，与 {@link #ESSENCE_OUT_UNIT_POINTS} 同值不同语义：那条是取出量，本条是调整量）。 */
+    /** 源质支一次滚轮的步进 = <b>1 点</b>（= 1 晶；★R86 起取出侧不再有"每次几点"的常量，取出量见 {@code NekoPocketPanel#performEssenceOut}）。 */
     public static final int FILTER_CAP_STEP_ESSENCE = 1;
     /** 流体支"1%"的档数（★分母按 D-6 = 单 tank 容量 {@link #FLUID_BAR_CAPACITY_ML}，不是 288M 合计）。 */
     public static final int FILTER_CAP_PERCENT_STEPS = 100;
@@ -469,10 +471,8 @@ public final class PocketConstants {
      * 在这里写死一个数只会与那三处各自的上限打架（计划 §7 S6 第 3 条的"批次量 = 声明物 maxStackSize"）。
      */
     public static final int REFILL_AMOUNT_PER_FILTER_UNBOUNDED = Integer.MAX_VALUE;
-    /** 源质格点击取出的产量：1 点 = 1 晶（R44e③，与 {@code TaumDistillRules.CRYSTAL_CAPACITY} 同值不同语义）。 */
-    public static final int ESSENCE_OUT_UNIT_POINTS = 1;
-    /** 源质格 Shift 取出的产量：一次取满一整堆晶（= {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} 点）。 */
-    public static final int ESSENCE_OUT_SHIFT_POINTS = ESSENCE_OUT_MAX_POINTS_PER_ACTION;
+    // ★R86 删除 ESSENCE_OUT_UNIT_POINTS(=1) 与 ESSENCE_OUT_SHIFT_POINTS(=64)：取出侧改成
+    // "左键该组上游标 / Shift 该格整份进背包"后两条再无读点，留着就是零调用方的公共面（R85 耦合审计口径）。
     /**
      * {@code ESSENCE_OUT} 动作参数里"按下 Shift"的偏移量（{@code arg = cell + 本值}）。
      * <p>

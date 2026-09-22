@@ -561,7 +561,8 @@ public final class NekoPocketPanel implements PocketSession {
 
     /**
      * 源质格点击取出（需求 2 末句）。参数位：{@code arg = cell} 或 {@code cell + ESSENCE_OUT_SHIFT_FLAG}
-     * （Shift = 一次取满一整堆晶，R44e③）。走 {@code SYNC_ACTION} 单通道 ⇒ 客户端只发码，
+     * （★R86：左键＝把该组拿到游标上，Shift＝该格整份进背包；旧口径"Shift 取满一整堆"已作废）。
+     * 走 {@code SYNC_ACTION} 单通道 ⇒ 客户端只发码，
      * 扣点/物化/落点判定全在服务端 {@link #performEssenceOut}（R18/R19）。
      */
     boolean requestEssenceOut(int cell, String tag, boolean shift) {
@@ -984,9 +985,14 @@ public final class NekoPocketPanel implements PocketSession {
     /**
      * 源质格取出（需求 2 末句「要素栏里的要素拿出来自动变晶化源质」，R15 的第三条独立路径）。
      * <p>
-     * 换算 1 点 = 1 晶、Shift 一次取满一格（{@link PocketConstants#ESSENCE_OUT_SHIFT_POINTS}，
-     * R44e③）。<b>先扣点、后物化、放不下就退点</b>：三步任何一步失败都不会凭空造晶，也不会
-     * 把点数值吞掉（TC 缺席 ⇒ {@code newCrystalStack} 返回 null ⇒ 点数原样退回）。
+     * ★<b>R86 改口径</b>（实机 6 条之 1，向玩家对物品槽的信念对齐）：<b>左键＝把「该组」拿到鼠标游标上</b>
+     * （一组至多 {@link PocketConstants#ESSENCE_OUT_MAX_POINTS_PER_ACTION} 点，游标上已有东西则整笔不动
+     * 并给回执）；<b>Shift+左键＝该格整份一次进背包</b>（至多单格上限，背包优先、余量落中栏）。
+     * 旧口径是"左键 1 点到背包、Shift 64 点到背包"，两边都往背包塞，玩家拿不到手上那一叠。
+     * <p>
+     * 换算 1 点 = 1 晶、1 晶 = 1 件（{@code TaumBridge.CRYSTAL_STACK_LIMIT}）。<b>先扣点、后物化、
+     * 放不下就退点</b>：三步任何一步失败都不会凭空造晶，也不会把点数值吞掉（TC 缺席 ⇒
+     * {@code newCrystalStack} 返回 null ⇒ 点数原样退回）。
      * <p>
      * ★R78③：arg 是<b>格号</b>，tag 由服务端的格位归属表（{@code PocketEssenceStore#tagAtCell}）
      * 反查——<b>不吃</b>客户端可能送来的 tag（R18/R19：客户端字符串一律不可信），也不再是
@@ -1005,20 +1011,65 @@ public final class NekoPocketPanel implements PocketSession {
             putReceipt("gtit.pocket.still.idle", 0);
             return;
         }
-        final int wanted = shift ? PocketConstants.ESSENCE_OUT_SHIFT_POINTS : PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        if (!shift && syncManager.getCursorItem() != null) {
+            // ★R86：游标已被占用 ⇒ vanilla 也是"什么都不发生"，但这里必须说话，否则又回到"点了一下没动静"
+            putReceipt("gtit.pocket.essence.cursor_busy", 0);
+            return;
+        }
+        final int stock = store.get(tag);
+        final int wanted = shift ? stock : Math.min(stock, PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION);
         final int points = store.extract(tag, wanted);
         if (points <= 0) {
             putReceipt("gtit.pocket.still.idle", 0);
             return;
         }
-        final ItemStack crystals = TaumCompat.newCrystalStack(tag, points);
-        final int moved = crystals == null ? 0 : depositToPlayerFirst(crystals);
+        final int moved = shift ? depositCrystals(tag, points) : handCrystalsToCursor(tag, points);
         if (moved < points) {
             // 物化失败（TC 缺席/该 tag 不可物化）或落点装不下：点数退回原格，绝不销毁价值
             store.add(tag, points - moved);
         }
         inventory.markDirty();
         putReceipt(moved > 0 ? "gtit.pocket.receipt.ok" : "gtit.pocket.receipt.target_full", moved);
+    }
+
+    /**
+     * ★R86 左键支：把刚物化出的那一堆晶放上游标（{@code PanelSyncManager#setCursorItem}，
+     * 上游实现即 {@code player.inventory.setItemStack} + {@code CursorSlotSyncHandler#sync}，
+     * 故零新 C2S 键）。入参 {@code points} 已由调用方收在一堆之内，不再切块。
+     */
+    private int handCrystalsToCursor(String tag, int points) {
+        final ItemStack crystals = TaumCompat.newCrystalStack(tag, points);
+        if (crystals == null || crystals.stackSize <= 0) {
+            return 0;
+        }
+        syncManager.setCursorItem(crystals);
+        return crystals.stackSize;
+    }
+
+    /**
+     * ★R86 Shift 支：该格整份一次进背包，按单堆上限切块循环。
+     * <p>
+     * ★切块是<b>必需</b>的而非省事：单堆晶化源质上限 64，而一格至多 256 点 ⇒ 一次物化 256 件会造出
+     * 超堆叠的栈（{@code PocketConstants#FILTER_CAP_CEILING_ESSENCE} 那条 javadoc 记录的"净吞 192 点"
+     * 静默销毁就是同一个坑的另一面）。循环<b>只往前走</b>：每圈 {@code rest} 至少减掉一整块，且
+     * 落点一件都收不下时立刻 break ⇒ 不会重演 R83 那种"进度恒 0 ⇒ 服务器主线程死循环"（R84 已证死）。
+     */
+    private int depositCrystals(String tag, int points) {
+        int moved = 0;
+        for (int rest = points; rest > 0;) {
+            final int chunk = Math.min(rest, PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION);
+            final ItemStack crystals = TaumCompat.newCrystalStack(tag, chunk);
+            if (crystals == null) {
+                break;
+            }
+            final int got = depositToPlayerFirst(crystals);
+            if (got <= 0) {
+                break;
+            }
+            moved += got;
+            rest -= chunk;
+        }
+        return moved;
     }
 
     // ------------------------------------------------------------------ S5 · ghost 就地转换（NEI 拖入 / 右键解绑）
@@ -1265,18 +1316,37 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 右栏 72 格（{@code Kind.ESSENCE}）：格位归属由<b>服务端的格位表</b>钉死（R78③，
-     * 不再是 {@code aspectOrder()[index]}）⇒ 本方法只切 ghost 开关，内容层由
-     * {@link #applyEssenceBlob(String)} 走另一条原位通道。
+     * 右栏 72 格（{@code Kind.ESSENCE}）：格位归属由<b>服务端的格位表</b>钉死（★R86 起会随清零回收，
+     * 见 {@code PocketEssenceStore#extract}；不再是 {@code aspectOrder()[index]}）⇒ 本方法只切 ghost
+     * 开关，内容层由 {@link #applyEssenceBlob(String)} 走另一条原位通道。
+     * <p>
+     * ★<b>R86：遮罩按 tag 归位，不按声明当初的格号</b>。声明里的 {@code slotIndex} 只是"玩家当时拖在
+     * 哪一格"的历史坐标，而 R86 之后那一格的归属会变（清零腾格 ⇒ 新 tag 来占最小空位）。抽取侧本来就
+     * 读声明自带的 {@code tag}（不吃格号 ⇒ 不会拉错源质），所以把<b>显示</b>也钉在 tag 上，两处才同源。
+     * 该 tag 当前没有格位（货已被取空、或还没蒸出来）时，仍画在声明那一格上 ⇒ 玩家看得到"我声明过它"。
+     * <p>
+     * ★已披露代价：同一 tag 声明在两格上时两格归属相同 ⇒ 遮罩只会出现一次（后一条的 cap 生效）。
      */
     private void applyEssenceGhosts() {
+        final PocketFilterConfig.Filter[] home = new PocketFilterConfig.Filter[essenceCells.length];
+        for (int index = 0; index < essenceCells.length; index++) {
+            final PocketFilterConfig.Filter declared = inventory.filters()
+                .at(PocketFilterConfig.Kind.ESSENCE, index);
+            if (declared == null) {
+                continue;
+            }
+            final String tag = declared instanceof PocketFilterConfig.EssenceFilter essence ? essence.tag : null;
+            // ★R86（审查 B2）：走双源 accessor —— 直接读 inventory.essence() 在客户端拿到的是
+            // 开屏时的 NBT 快照，遮罩会照旧错位（改判只活服务端）
+            final int placed = essenceCellOfTag(tag);
+            home[placed >= 0 && placed < home.length ? placed : index] = declared;
+        }
         for (int index = 0; index < essenceCells.length; index++) {
             final NekoEssenceGhostCell cell = essenceCells[index];
             if (cell == null) {
                 continue;
             }
-            final PocketFilterConfig.Filter declared = inventory.filters()
-                .at(PocketFilterConfig.Kind.ESSENCE, index);
+            final PocketFilterConfig.Filter declared = home[index];
             // ★同 applyItemGhosts：cap 的推送不能挂在 setGhost 的"没变即返回"之后
             cell.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
             cell.setGhost(declared != null);
@@ -2046,6 +2116,35 @@ public final class NekoPocketPanel implements PocketSession {
         return inventory.depositFluidIntoBar(tank, fluid);
     }
 
+    // ------------------------------------------- ★R86 缺陷 3：口袋 → 元件的推送向来源面（服务端会话实现）
+
+    @Override
+    public int fluidTankCount() {
+        return PocketInventory.tankCount();
+    }
+
+    @Override
+    public FluidStack fluidInTank(int tank) {
+        return inventory.ownTankFluid(tank);
+    }
+
+    @Override
+    public int drainOwnTank(int tank, int milliBuckets) {
+        return inventory.drainOwnTank(tank, milliBuckets);
+    }
+
+    @Override
+    public Map<String, Integer> essenceStock() {
+        return inventory.essence()
+            .snapshot();
+    }
+
+    @Override
+    public int drainEssence(String tag, int points) {
+        return inventory.essence()
+            .extract(tag, points);
+    }
+
     // ------------------------------------------------------------ R84：中栏既是注入来源也是抽取落点
 
     @Override
@@ -2218,6 +2317,31 @@ public final class NekoPocketPanel implements PocketSession {
             }
         }
         return 0;
+    }
+
+    /**
+     * ★R86（审查 B2）：某 tag <b>当前</b>落在哪一格（源质遮罩归位用）。
+     * <p>
+     * 双源与 {@link #essenceTagAtCell(int)} 严格同形：服务端读权威表，客户端读同步镜像
+     * {@link #essenceCellTags}（每份 view 由 {@code applyEssenceBlob} 整体覆盖，见其
+     * {@code System.arraycopy}）。★<b>不得</b>在客户端读 {@code inventory.essence()} —— 那一份只是
+     * 开屏时从承载栈 NBT 解出的<b>起点快照</b>，之后的腾格/占格它一概不知道；拿它算归位就等于
+     * "R86 的改判只活服务端、真正出图的客户端照旧错位"。
+     */
+    int essenceCellOfTag(String tag) {
+        if (tag == null || tag.isEmpty()) {
+            return -1;
+        }
+        if (!syncManager.isClient()) {
+            return inventory.essence()
+                .cellOf(tag);
+        }
+        for (int index = 0; index < essenceCellTags.length; index++) {
+            if (tag.equals(essenceCellTags[index])) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     /**

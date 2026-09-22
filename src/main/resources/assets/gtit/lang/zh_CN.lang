@@ -321,9 +321,12 @@ gtit.pocket.still.full=源质格已满，本轮不消耗物品
 gtit.pocket.still.unavailable=未装载神秘时代
 gtit.pocket.still.over_cap=有 %d 格超出单格上限，本轮跳过（共 %d 点）
 gtit.pocket.still.partial_skip=本轮另有 %d 格没塞下（共 %d 点），下一轮继续重试
+gtit.pocket.essence.cursor_busy=手上已经攥着东西，先清空游标再点源质格
 gtit.pocket.aspect.cell=%s：%d/%d
 gtit.pocket.aspect.overflow_note=超出前 %d 项的源质只入账不显示
 gtit.pocket.ghost.on=配置格：%s（右键取消）
+gtit.pocket.ghost.drag_hint=想声明这一列：从 NEI 把 §e装了该流体的容器§r（桶/罐/大型单元）拖到这条上；配方窗里的流体行拖不出来（NEI 不让拖那种条目）
+gtit.pocket.essence.need_stock=这一格还没有源质归属：声明只能落在已经蒸出过源质的格上，先蒸一种再来拖
 gtit.pocket.ghost.locked=配置格不接受玩家放入或流体输入
 # ★R84 流体列搬运回执（9 条都是"整笔放弃/一件未成"的出口；缺一条就等于把"卡住不动"重新变成静默）。
 # ★刻意全部不带 %s：调用点是 notifyCell(cell, key, args...) 的变参形态，多传参无害、
@@ -365,6 +368,6 @@ gtit.pocket.bind.rows_more=……另有 %d 条，悬停绑定按钮可见全部
 gtit.pocket.bind.unbind_hint=右键「绑定」= 解绑最后一条；Shift + 右键 = 解绑全部
 gtit.pocket.bind.stale_hint=解绑只摘绑定表，不动元件内容，也不动 ME 网络
 gtit.pocket.bind.cleared=已解绑 %d 条元件
-gtit.pocket.aspect.empty=这一格还空着（该源质从未入账；格位一旦被占就不会回收）
+gtit.pocket.aspect.empty=这一格还空着（没有源质归属它；哪一格被取到见底就当场腾出来）
 gtit.pocket.backpack.note=玩家背包：可从这里存取物品，Shift 点击在中栏与背包之间搬运
 gtit.pocket.backpack.cost_note=背包开在面板内=面板每 tick 要对 %d 格做整栈（含 NBT）比较，背包内容一变就连同口袋一起重发（为要背包换回的代价）

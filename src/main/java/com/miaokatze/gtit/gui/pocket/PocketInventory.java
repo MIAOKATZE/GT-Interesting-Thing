@@ -640,4 +640,32 @@ public final class PocketInventory {
         }
         return moved;
     }
+
+    /**
+     * ★R86（缺陷 3）：本 tank 当前那份流体。非法 tank ⇒ {@code null}。
+     * <p>
+     * ⚠ 返回的是<b>槽内那份的引用</b>（与 {@link #fluidBarRoom} 读的是同一个数组），调用方只读不改写；
+     * 注入支拿它做"投递前现读对表"，比对的是内容键与量，绝不拿它去 {@code setFluid}。
+     */
+    public FluidStack ownTankFluid(int tank) {
+        return isValidTank(tank) ? tankFluid[tank] : null;
+    }
+
+    /**
+     * ★R86（缺陷 3）：从本 tank 抽走 {@code milliBuckets} mB —— 只在元件那边<b>真的收了货</b>之后调。
+     *
+     * @return 实际抽走量（0 ⇒ 一格都没动）；小于请求量时调用方必须把差额<b>原路注回元件</b>
+     *         （R85 小项 2 那条"落点又变小了就原路注回"的纪律，同一条）
+     */
+    public int drainOwnTank(int tank, int milliBuckets) {
+        if (!isValidTank(tank) || milliBuckets <= 0 || tankFluid[tank] == null) {
+            return 0;
+        }
+        final FluidStack drained = tanks[tank].drain(milliBuckets, true);
+        final int moved = drained == null || drained.amount <= 0 ? 0 : drained.amount;
+        if (moved > 0) {
+            dirty = true;
+        }
+        return moved;
+    }
 }

@@ -321,9 +321,12 @@ gtit.pocket.still.full=Essentia cells full, item not consumed
 gtit.pocket.still.unavailable=Thaumcraft not loaded
 gtit.pocket.still.over_cap=%d slot(s) exceed the per-aspect cap and were skipped (%d point(s))
 gtit.pocket.still.partial_skip=%d more slot(s) did not fit this round (%d point(s)); they retry next round
+gtit.pocket.essence.cursor_busy=Your cursor is holding something already; empty it before taking essence
 gtit.pocket.aspect.cell=%s: %d/%d
 gtit.pocket.aspect.overflow_note=Aspects beyond the first %d are stored but not shown
 gtit.pocket.ghost.on=Filter slot: %s (right-click to clear)
+gtit.pocket.ghost.drag_hint=To filter this bar, drag §ea container that already holds the fluid§r (bucket / cell / large storage cell) from NEI onto it; fluid rows in a recipe book cannot be dragged at all (NEI does not make them draggable)
+gtit.pocket.essence.need_stock=This cell has no aspect yet: a filter can only be declared on a cell that has already yielded essentia - distill something first, then drag
 gtit.pocket.ghost.locked=Filter slots accept no player input
 # ★R84 fluid transfer receipts (each one is an "all-or-nothing abandoned" exit; missing one is silence again).
 # Deliberately placeholder-free: notifyCell passes varargs, extra args are harmless but a %s with no arg
@@ -365,6 +368,6 @@ gtit.pocket.bind.rows_more=... and %d more (hover the Bind button for the full l
 gtit.pocket.bind.unbind_hint=Right-click Bind = unbind the last cell; Shift + right-click = unbind all cells
 gtit.pocket.bind.stale_hint=Unbinding never touches the cell contents or the ME network
 gtit.pocket.bind.cleared=Cleared %d bound cells
-gtit.pocket.aspect.empty=This cell is still unused (that aspect was never credited; a claimed cell is never reclaimed)
+gtit.pocket.aspect.empty=This cell is still unused (no aspect owns it; whichever cell is drained to zero is freed on the spot)
 gtit.pocket.backpack.note=Player inventory: take and store items here; shift-click moves items between the middle grid and your bag
 gtit.pocket.backpack.cost_note=Showing the bag means the GUI compares %d stacks (NBT included) every tick and resends them with the pocket whenever it changes (the price of having the bag)

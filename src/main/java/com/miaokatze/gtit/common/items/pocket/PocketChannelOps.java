@@ -19,7 +19,26 @@ import java.util.List;
  */
 public interface PocketChannelOps {
 
-    /** 源容器里的一个待搬运条目：槽位号 + 内容标识 + 数量。 */
+    /** 来源的形状（★R86 缺陷 3：注入向不再只有中栏物品）。 */
+    enum SourceKind {
+        /** 口袋中栏真实格：{@code slot} = 格号，{@code count} = 件数。 */
+        ITEM,
+        /** 口袋流体条：{@code slot} = tank 号，{@code count} = mB。 */
+        FLUID,
+        /**
+         * 口袋源质表：{@code slot} 不参与定位（恒 {@code FILTER_SLOT_UNSET}），身份全在
+         * {@code contentKey} 解出的 tag 上；{@code count} = 点数。
+         */
+        ESSENCE
+    }
+
+    /**
+     * 源容器里的一个待搬运条目：区域坐标 + 内容标识 + 数量。
+     * <p>
+     * ★R86：{@code slot} 的含义由 {@link #kind} 决定（中栏格号 / tank 号 / 源质格号），
+     * 三类各自只在<b>自己的区域空间</b>里计数——与 {@code PocketFilterConfig} 的
+     * {@code kind + ':' + slotIndex} 复合键同一条纪律，裸索引会让两类互相覆盖。
+     */
     final class SourceSlot {
 
         /** 源容器（玩家背包/口袋物品栏）的槽位号；仅用于实现方回读真实栈与回写余量。 */
@@ -28,11 +47,18 @@ public interface PocketChannelOps {
         public final String contentKey;
         /** 该槽当前点数/个数。 */
         public final int count;
+        /** ★R86：本条来源是哪一类（缺省 {@link SourceKind#ITEM}，旧调用点一个字不用改）。 */
+        public final SourceKind kind;
 
         public SourceSlot(int slot, String contentKey, int count) {
+            this(slot, contentKey, count, SourceKind.ITEM);
+        }
+
+        public SourceSlot(int slot, String contentKey, int count, SourceKind kind) {
             this.slot = slot;
             this.contentKey = contentKey == null ? "" : contentKey;
             this.count = count;
+            this.kind = kind == null ? SourceKind.ITEM : kind;
         }
     }
 
