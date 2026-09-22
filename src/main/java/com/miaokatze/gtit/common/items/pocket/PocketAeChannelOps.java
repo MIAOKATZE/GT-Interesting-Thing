@@ -70,7 +70,7 @@ import appeng.util.item.AEItemStack;
  * <b>抽取方向三支齐全</b>（R45b 的缺口由本批闭合，此前流体支与源质支直接 {@code return NO_CHANNEL}
  * ⇒ 需求 2「要素栏取出→晶化源质」与需求 4「按配置补满流体」两条并列要求整体静默失效）：
  * <ul>
- * <li>物品支 → 玩家背包空槽（沿用 S1 实现，未改语义）；</li>
+ * <li>物品支 → 本条声明自己那一格（★R84：中栏声明格就是落点，旧实现落玩家背包 ⇒ 需求格永远空着）；</li>
  * <li>流体支 → 口袋流体条（{@link PocketSession}），先问落点空间再抽，抽了放不下就原路注回；</li>
  * <li>源质支 → 经 {@code IAEStackType.convertStackFromItem} 以 {@code ItemCrystalEssence} 为探针
  * 反算数额后<b>物化成晶化源质</b>进口袋真实栏（R15/R31：1 点 = 1 晶；不猜第三方 mod 的私有栈格式）。</li>
@@ -88,7 +88,10 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      */
     private static final BaseActionSource SOURCE = new BaseActionSource();
 
-    /** 玩家背包是注入来源（R12 裁定：读法 B = {@code mainInventory}，含快捷栏 0-8）。 */
+    /**
+     * 服务端玩家本体：只用于 tick 读数与元件解析（维度/坐标）——★R84 起它<b>不再是注入来源</b>
+     * （旧 R12 读法 B"背包 36 格当来源"已作废，现来源是中栏，见 {@link #snapshotSources()}）。
+     */
     private final EntityPlayer player;
     /** 口袋本体，扫描来源时按身份排除，避免"口袋自己吸自己"（R12 点名的自吸风险）。 */
     private final ItemStack pocket;
@@ -173,17 +176,25 @@ public final class PocketAeChannelOps implements PocketChannelOps {
     @Override
     public List<SourceSlot> snapshotSources() {
         final List<SourceSlot> slots = new ArrayList<>();
-        if (player == null || player.inventory == null) {
-            return slots;
+        // ★R84 作废 R12 读法 B：注入来源由"玩家背包 mainInventory 36 格"改为<b>只取猫猫包中栏</b>
+        // （用户原话"直接把我整个背包栏给输入到元件了（应该只输入猫猫包里面的）"）。
+        // ★ghost 声明格不参与上传（同轮裁定），它只是抽取落点，绝不回流成来源——否则"从元件抽出来
+        // 补进需求格、下一拍又被自己灌回元件"会成环。
+        if (session == null) {
+            // 中栏真相只在活会话（承载栈的解析结果）里，关屏且会话已回收 ⇒ 本拍不猜、不搬运
+            return NO_SOURCES;
         }
-        final ItemStack[] main = player.inventory.mainInventory;
-        for (int i = 0; i < main.length; i++) {
-            final ItemStack stack = main[i];
+        final int size = session.storageSlots();
+        for (int i = 0; i < size; i++) {
+            final ItemStack stack = session.storageStackAt(i);
             if (stack == null || stack.stackSize <= 0) {
                 continue;
             }
             if (pocket != null && stack == pocket) {
-                // 排除手持口袋所在槽：否则通道会把口袋吸进自己绑定的元件
+                // 排除手持口袋所在槽：否则通道会把口袋吸进自己绑定的元件（R12 点名的自吸风险，口径不变）
+                continue;
+            }
+            if (session.isStorageGhostDeclared(i)) {
                 continue;
             }
             slots.add(new SourceSlot(i, contentKey(stack), stack.stackSize));
@@ -237,7 +248,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
 
     @Override
     public Outcome inject(SourceSlot source, String diskuuid, String typeId) {
-        final ItemStack slotStack = source == null ? null : player.inventory.getStackInSlot(source.slot);
+        // ★R84：来源格现在在中栏（见 snapshotSources 的口径变更），且只在活会话期内可搬运
+        final ItemStack slotStack = source == null || session == null ? null : session.storageStackAt(source.slot);
         if (slotStack == null || slotStack.stackSize <= 0 || !contentKey(slotStack).equals(source.contentKey)) {
             // 槽位已被玩家换掉或掏空：本条跳过，不改写任何状态
             return new Outcome(PocketReceipt.OK, 0);
@@ -247,7 +259,18 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         final Found found = foundOf(diskuuid);
         final IMEInventoryHandler handler = found == null || type == null ? null : handlerOf(found, type);
         if (handler == null) {
-            return new Outcome(PocketReceipt.LOST, 0);
+            // ★R84：元件解析不到该通道的 handler 是"这只元件不吃这个通道"，不是"元件失联"。
+            // 旧代码发 LOST，而 LOST.stopsBatch() 为真 ⇒ 既 break 掉该元件整串声明，又把回执报成
+            // "未识别到元件"（玩家读到的是谎报）。失联由 runInjectBatch 的 isCellLost 那一支负责。
+            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
+        }
+        if (!InfinityStackTypes.ITEM_STACK_TYPE.getId()
+            .equals(type.getId())) {
+            // ★R84 崩溃根因（crash-2026-09-22_16.40.05-server.txt，`Ticking player` /
+            // ClassCastException: AEItemStack→IAEFluidStack @ InfinityTypedCellInventory:101）：
+            // 轮转把流体（或第三方）通道派给物品来源时，旧代码仍无条件造 AEItemStack 投进去 ⇒ 服务端崩。
+            // 物品来源喂不了非物品通道，本条按"无事可做"跳过（OK 才不会 break 掉后面的来源）。
+            return new Outcome(PocketReceipt.OK, 0);
         }
         final IAEItemStack request = AEItemStack.create(copyOf(slotStack, requested));
         if (request == null) {
@@ -282,8 +305,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
     }
 
     /**
-     * 物品支：从元件的 item 通道抽到玩家背包（R38 第 2 条的"补满"里唯一不进口袋中栏的一支——
-     * 背包是推送源的同一空间，玩家一眼看得见，且不需要会话存活）。
+     * 物品支：从元件的 item 通道抽到<b>本条声明自己那一格</b>（★R84 用户裁定"物品应该落到物品格"，
+     * 与流体支"落点＝本 tank"同构；旧实现落玩家背包空槽，导致需求格永远空着、玩家只看到一片虚化）。
+     * 先问落点空间、后抽，落不下就不抽（与流体支同一纪律）。
      */
     private Outcome extractItem(PocketFilterConfig.Filter filter, String diskuuid, int count) {
         final ItemStack wanted = stackOfKey(filter.key(), count);
@@ -293,7 +317,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         final Found found = foundOf(diskuuid);
         final IMEInventoryHandler handler = handlerOf(found, InfinityStackTypes.ITEM_STACK_TYPE);
         if (handler == null) {
-            return new Outcome(PocketReceipt.LOST, 0);
+            // ★R84：与注入侧同口径——"这只元件没有物品通道"不是"元件失联"（失联由 isCellLost 判），
+            // 且 LOST.stopsBatch() 会把该元件整串声明 break 掉并谎报成"未识别到元件"。
+            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
         final IAEItemStack request = AEItemStack.create(wanted);
         if (request == null) {
@@ -307,13 +333,25 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             // 元件里没有该物品：等同"无事可做"，让调用方继续下一条声明
             return new Outcome(PocketReceipt.OK, 0);
         }
-        final int target = firstFreeSourceSlot();
-        if (target < 0) {
+        final int target = filter.slotIndex();
+        if (session == null || target < 0 || target >= session.storageSlots()) {
+            // 没有活会话就没有中栏真相可写；越界同理 ⇒ 一格都不抽（旧实现落玩家背包故不需要会话）
+            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
+        }
+        final ItemStack held = session.storageStackAt(target);
+        final int max = wanted.getMaxStackSize();
+        final int stored = held != null && contentKey(held).equals(filter.key()) ? held.stackSize : 0;
+        final int room = max - stored;
+        if (held != null && stored <= 0) {
+            // 声明格里杵着别的东西：错内容走 applyItemGhosts 的服务端那一支搬空，本拍绝不与它抢
+            return new Outcome(PocketReceipt.TARGET_FULL, 0);
+        }
+        if (room <= 0) {
             return new Outcome(PocketReceipt.TARGET_FULL, 0);
         }
         // ★每条声明的组上限全仓只在这一处被消费；未设时 resolveCap 回落 = maxStackSize ⇒ 旧档逐字不改行为
         final int wantedSize = (int) Math
-            .min(simulated.getStackSize(), PocketFilterConfig.resolveCap(filter, wanted.getMaxStackSize()));
+            .min(Math.min(simulated.getStackSize(), (long) room), PocketFilterConfig.resolveCap(filter, max));
         request.setStackSize(wantedSize);
         final IAEItemStack taken = (IAEItemStack) handler.extractItems(request, Actionable.MODULATE, SOURCE);
         if (taken == null || taken.getStackSize() <= 0L) {
@@ -323,10 +361,16 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (out == null || out.stackSize <= 0) {
             return new Outcome(PocketReceipt.OK, 0);
         }
-        player.inventory.setInventorySlotContents(target, out);
-        // 背包内容变化后同步一次，避免客户端仍显示旧栈（实验 E2 的时点之一）
-        player.inventory.markDirty();
+        final ItemStack merged = held == null ? out : mergeInto(held, out);
+        session.setStorageStackAt(target, merged);
         return new Outcome(PocketReceipt.OK, out.stackSize);
+    }
+
+    /** 把刚抽出的一份并进声明格里已有的同种堆（★只在调用方已按 room 钳过量之后使用）。 */
+    private static ItemStack mergeInto(ItemStack held, ItemStack added) {
+        final ItemStack merged = held.copy();
+        merged.stackSize = Math.min(merged.getMaxStackSize(), merged.stackSize + added.stackSize);
+        return merged;
     }
 
     /**
@@ -351,7 +395,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         final Found found = foundOf(diskuuid);
         final IMEInventoryHandler handler = handlerOf(found, InfinityStackTypes.FLUID_STACK_TYPE);
         if (handler == null) {
-            return new Outcome(PocketReceipt.LOST, 0);
+            return new Outcome(PocketReceipt.NO_CHANNEL, 0); // ★R84：没有该通道 ≠ 元件失联（见物品支同处注释）
         }
         // ★落点 = 本条声明自己那一个 tank（R75①：ghost 的 slotIndex 就是 tank 号；R78② 后共 18 个 tank 各拉各的）
         final int tank = filter.slotIndex();
@@ -431,7 +475,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         final Found found = foundOf(diskuuid);
         final IMEInventoryHandler handler = handlerOf(found, type);
         if (handler == null) {
-            return new Outcome(PocketReceipt.LOST, 0);
+            return new Outcome(PocketReceipt.NO_CHANNEL, 0); // ★R84：没有该通道 ≠ 元件失联（见物品支同处注释）
         }
         if (session == null) {
             // 源质支的落点是口袋真实栏（晶化源质是物品），没有活会话就没有落点 ⇒ 根本不抽
@@ -510,29 +554,20 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         }
     }
 
-    /** 找一个可落地的背包空槽（只认完全空槽，不做堆叠合并，语义简单且不会拆错堆）。 */
-    private int firstFreeSourceSlot() {
-        if (player == null || player.inventory == null) {
-            return -1;
-        }
-        final ItemStack[] main = player.inventory.mainInventory;
-        for (int i = 0; i < main.length; i++) {
-            if (main[i] == null) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
+    /**
+     * 中栏来源格扣件（★R84：来源在中栏，不再是玩家背包）。写回走 {@code PocketSession#setStorageStackAt}
+     * 那条不打扰 ghost 判据的程序化面，并由会话自己打脏；这里刻意改副本而不动传入栈，避免与 handler
+     * 内那份别名互踩。
+     */
     private void shrinkSource(int slot, ItemStack slotStack, int moved) {
         final int left = slotStack.stackSize - moved;
         if (left <= 0) {
-            player.inventory.setInventorySlotContents(slot, null);
-        } else {
-            slotStack.stackSize = left;
-            player.inventory.setInventorySlotContents(slot, slotStack);
+            session.setStorageStackAt(slot, null);
+            return;
         }
-        player.inventory.markDirty();
+        final ItemStack rest = slotStack.copy();
+        rest.stackSize = left;
+        session.setStorageStackAt(slot, rest);
     }
 
     // ------------------------------------------------------------------ 解析与通知

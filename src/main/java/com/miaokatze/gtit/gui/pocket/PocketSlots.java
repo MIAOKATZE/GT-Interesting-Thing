@@ -134,9 +134,26 @@ public final class PocketSlots {
     /**
      * 流体搬运重入闩：{@link ModularSlot#putStack(ItemStack)} 会经
      * {@code ItemSlotSH.checkUpdate → onSlotChangedReal → changeListener} 回到本类，
-     * 不加闩就是无限递归。服务端主线程单点访问 ⇒ 单布尔足够，不加锁。
+     * 不加闩就是无限递归。
+     * <p>
+     * ★<b>R84 由 {@code static} 改为实例字段</b>（旧注释自认的口径只有"服务端主线程单点访问"）。
+     * 本类是 <b>per-panel</b> 造的（一个口袋一块面板一个实例），static 的真实代价不是并发，而是
+     * "同一 tick 内 A 口袋正在搬运的那一小段里，B 口袋（另一位玩家 / 另一枚口袋）的回调被整段吞掉"，
+     * 而那一次<b>不会再来</b>——{@code ItemSlotSH#checkUpdate} 只在内容与缓存<b>不同</b>时才 announce
+     * （{@code ItemSlotSH.java:67-69}），错过的那一拍没有补偿入口。
+     * <p>
+     * 改成实例字段仍然保住重入保护，理由是可达的再入路径全部落在 {@code this} 之内：
+     * <ol>
+     * <li>本方法写的格只来自 {@link #fluidSlotsByIndex}（本实例装配的 36 格）与本实例的
+     * {@link PocketInventory}，{@code putStack → checkUpdate → onSlotChangedReal → changeListener}
+     * 那一跳回到的是<b>同一个</b>实例的 lambda；</li>
+     * <li>{@link PocketInventory#markDirty()} 只置一个布尔，不会回调任何面板；</li>
+     * <li>{@link #returnToPlayer} 写玩家背包，而 {@code PlayerMainInvWrapper#setStackInSlot} 会顺手调
+     * {@code player.openContainer.detectAndSendChanges()}——那位玩家同时只开着<b>这一块</b>面板 ⇒ 仍是本实例。</li>
+     * </ol>
+     * 换句话说 static 版多出来的那部分保护力覆盖不到任何真实路径，只会制造上面那种静默丢失。
      */
-    private static boolean transferring;
+    private boolean transferring;
 
     /**
      * 本次装配造出的 36 个流体交互格（{@code handler} 索引 → 槽件）。
@@ -159,6 +176,18 @@ public final class PocketSlots {
      * 之后照常搬运。<b>不落 NBT</b>：关屏期间没有任何触发源，重开首帧的回调一律是 {@code init=true}（被早退）。
      */
     private final Map<Integer, ItemStack> fluidOutputLatch = new HashMap<>();
+
+    /**
+     * <b>播报抑制表</b>：{@code handler} 索引 → 这一格上一次<b>放弃搬运</b>时发过的文案键。
+     * <p>
+     * 为什么必须有它：{@code changeListener} 的触发条件是"这一格的内容与上一拍不同"，而玩家从出格里
+     * <b>取走一件</b>满容器也算内容变化 ⇒ 同一条"槽满了 / 出格占着"的失败会在每次手势上重发一次。
+     * 同一格同一键只报一次；<b>搬运成功</b>（{@link #placeProcessed}）或那一格<b>清空</b>
+     * （{@link #moveFluidBetweenTanks} 的空栈支）就把键清掉 ⇒ 条件真的变了才再报。
+     * <p>
+     * 不落 NBT：这是纯会话内的手感状态，关屏即无意义。
+     */
+    private final Map<Integer, String> fluidNoticeKeys = new HashMap<>();
 
     public PocketSlots() {}
 
@@ -324,8 +353,10 @@ public final class PocketSlots {
      * <p>
      * 装得下 ⇒ 排空后的容器按 R40a 同法<b>非消耗</b>地退回玩家处（背包满则掉脚下），格清空。
      * 装不下 ⇒ 容器原样留在格内（一格都没动）。
+     * <p>
+     * ★R84：本方法读 {@link #transferring}，随该闩一起由 static 改为实例方法（判据本身未变）。
      */
-    private static void injectContainerIfAny(PocketInventory inv, ModularSlot slot) {
+    private void injectContainerIfAny(PocketInventory inv, ModularSlot slot) {
         if (transferring) {
             return;
         }
@@ -352,14 +383,42 @@ public final class PocketSlots {
         }
     }
 
-    /** 单点反馈（{@code still.injected} / {@code still.inject_full}，契约 §5）。 */
+    /**
+     * 单点反馈（{@code still.injected} / {@code still.inject_full}，契约 §5；R84 起流体侧的放弃搬运也走这里）。
+     * <p>
+     * ★<b>R84 修的那条通道本身</b>：旧写法只认 {@code ModularSlot#getPlayerSlotPlayer(SlotItemHandler)}，
+     * 而那一支的判据是"槽件包的 handler 是 {@code PlayerInvWrapper} / {@code PlayerMainInvWrapper} /
+     * {@code PlayerArmorInvWrapper}"（{@code ModularSlot.java:278-294}），另一支 {@code getPlayerSlotPlayer(Slot)}
+     * 要 {@code slot.inventory instanceof InventoryPlayer}，而 {@code SlotItemHandler} 给父类传的是
+     * <b>{@code InventoryBasic("[Null]", true, 0)}</b>（{@code SlotItemHandler.java:17-24}）。
+     * 本仓的 36 个流体交互格与 12 个蒸馏格包的都是 {@link PocketInventory} 自己的 {@code ItemStackHandler}
+     * ⇒ <b>两条判据都不成立 ⇒ 旧代码里这几处的回执一条都到不了玩家</b>（含 R29 就约定的
+     * {@code still.inject_full}）。所以退回框架自己记着的那位玩家：{@code ModularSlot#getPlayer} 用的正是
+     * 同一条路（{@code ModularSlot.java:147-149}），本文件只是没用它。
+     */
     private static void tellPlayer(ModularSlot slot, String key, Object... args) {
-        final EntityPlayer player = ModularSlot.getPlayerSlotPlayer(slot);
+        final EntityPlayer player = resolveSlotPlayer(slot);
         if (player == null) {
             return;
         }
         player.addChatMessage(
             new ChatComponentText(EnumChatFormatting.AQUA + StatCollector.translateToLocalFormatted(key, args)));
+    }
+
+    /** 槽件 → 玩家：先看是不是玩家背包的槽，否则取该槽所在面板的那位玩家（未装配完 ⇒ null）。 */
+    private static EntityPlayer resolveSlotPlayer(ModularSlot slot) {
+        if (slot == null) {
+            return null;
+        }
+        final EntityPlayer direct = ModularSlot.getPlayerSlotPlayer(slot);
+        if (direct != null) {
+            return direct;
+        }
+        // getSyncHandler() 在槽件还没被框架装配时会抛 IllegalStateException（ModularSlot.java:140-145），
+        // 而本方法可能被装配期之外的路径碰到 ⇒ 先用 isInitialized() 挡一道
+        return slot.isInitialized() ? slot.getSyncHandler()
+            .getSyncManager()
+            .getPlayer() : null;
     }
 
     private static Map<String, Integer> toMap(TaumAspectAmounts amounts) {
@@ -471,6 +530,98 @@ public final class PocketSlots {
 
     // ---------------- 流体列搬运（R39a 输入侧两格同权 + R83 D-2 输出侧不对称落位 / D-9 不吃件）
 
+    // ★R84 播报键（中文文案见回执，交给主代理落 lang；每条都是"整笔放弃"或"一件未成"的出口，
+    // 缺一条就等于把用户报的"卡住不动"重新变成静默）
+    /** 目标 tank 已无空余容量（旧写法在 {@code room <= 0} 处直接 return，玩家看不到任何提示）。 */
+    static final String KEY_TANK_FULL = "gtit.pocket.fluid.tank_full";
+    /** 该列的 tank 里没有流体，灌装支无事可做。 */
+    static final String KEY_TANK_EMPTY = "gtit.pocket.fluid.tank_empty";
+    /** 该容器一次要倒的流体比本 tank 的空余容量还多，且这类容器不支持部分倒空。 */
+    static final String KEY_UNIT_TOO_LARGE = "gtit.pocket.fluid.unit_too_large";
+    /** 出格被<b>异种</b>物品占住，或被<b>同种</b>叠满到 maxStackSize ⇒ 产物无处落位。 */
+    static final String KEY_OUTPUT_BLOCKED = "gtit.pocket.fluid.output_blocked";
+    /** 两格里<b>另一格</b>放不下（余量塞不回去，或按实际成交件数复核时撑爆）。 */
+    static final String KEY_NO_CELL_SPACE = "gtit.pocket.fluid.no_cell_space";
+    /** 容器与槽各自守不住"说得出多少就倒得出多少"的约定 ⇒ 一件都没成交。 */
+    static final String KEY_TRANSFER_REFUSED = "gtit.pocket.fluid.transfer_refused";
+    /** 这一格里的东西不是可灌排的流体容器（或该容器装不下这种流体）。 */
+    static final String KEY_UNSUPPORTED_CONTAINER = "gtit.pocket.fluid.unsupported_container";
+    /** 该容器已经没有空位，灌不进去。 */
+    static final String KEY_CONTAINER_FULL = "gtit.pocket.fluid.container_full";
+    /** 本 tank 的存量不够灌满这一件容器（注册表型容器是全有全无，不支持半瓶）。 */
+    static final String KEY_NOT_ENOUGH_FLUID = "gtit.pocket.fluid.not_enough_fluid";
+
+    /**
+     * 就某一格放弃一次搬运的播报（带 {@link #fluidNoticeKeys} 抑制：同一格同一原因只报一次）。
+     * <p>
+     * 键记在<b>触发搬运的那一格</b>上（{@code cell} 即 {@code sourceIndex}），与"这一格的东西搬不动"
+     * 的语义一致；产物落位成功后由 {@link #placeProcessed} 清键。
+     * <p>
+     * {@code key == null} 表示"这一趟不是落位问题、已由调用方自己的分支报过" ⇒ 不播也不记。
+     */
+    private void notifyCell(int cell, String key, Object... args) {
+        if (key == null || key.equals(fluidNoticeKeys.get(cell))) {
+            return;
+        }
+        final ModularSlot slot = fluidSlotsByIndex.get(cell);
+        if (slot == null) {
+            return;
+        }
+        fluidNoticeKeys.put(cell, key);
+        tellPlayer(slot, key, args);
+    }
+
+    /**
+     * 两格落位的件数收敛结果：{@code count} = 本次实际可搬件数，{@code failKey} ≠ null 表示一件都搬不动。
+     */
+    private static final class Plan {
+
+        final int count;
+        final String failKey;
+
+        Plan(int count, String failKey) {
+            this.count = count;
+            this.failKey = failKey;
+        }
+    }
+
+    /**
+     * <b>★C-1（R84）：把"两格有一处放不下"从一次判死改成上下界收敛。</b>
+     * <p>
+     * 旧写法是 {@code count = Math.min(流体侧允许件数, productRoom(出格))} 之后紧跟
+     * {@code if (count <= 0 || !canPlacePair(...)) return;}——出格一旦放不下，进格里那一叠就
+     * <b>永远留在那里</b>，流体不再进 tank、件数不再减、一行提示都不发（用户报的"卡输入槽"主因）。
+     * 这里按三条同时算：
+     * <ul>
+     * <li>产物侧上界 {@code outRoom}：出格还收得下几件（{@link #productRoom}，本身已允许与同种合堆 ⇒
+     * 出格"没满到 maxStackSize"时把那部分搬完，就是用户要的<b>部分搬运</b>）；</li>
+     * <li>件数上界 {@code units} 与流体侧上界 {@code want}；</li>
+     * <li>余量侧<b>下界</b>：只有当余量要挪到<b>另一格</b>（源格本身就是出格）时才有约束——
+     * 搬得越少余量越大 ⇒ 至少得搬 {@code units - restRoom} 件。</li>
+     * </ul>
+     * 上界与下界无交集 ⇒ 放弃，并把放弃的原因交回调用方播报（不再静默）。
+     */
+    private Plan planPlacement(PocketInventory inv, int sourceIndex, int resultCell, ItemStack product, ItemStack unit,
+        int units, int want) {
+        if (want <= 0 || units <= 0) {
+            return new Plan(0, null);
+        }
+        final int outRoom = productRoom(inv, resultCell, resultCell == sourceIndex, product);
+        if (outRoom <= 0) {
+            return new Plan(0, KEY_OUTPUT_BLOCKED);
+        }
+        final int byFluid = Math.min(want, units);
+        final int count = Math.min(byFluid, outRoom);
+        final int restCell = restCellOf(sourceIndex);
+        if (restCell != sourceIndex) {
+            final int restRoom = productRoom(inv, restCell, false, sized(unit, 1));
+            if (units - restRoom > count) {
+                return new Plan(0, KEY_NO_CELL_SPACE);
+            }
+        }
+        return new Plan(count, null);
+    }
+
     /**
      * 单格一次搬运（目标 = 该格所属那一列的那一个 tank）。R83 一次改掉三段各自一处死路，缺一处都会被读成"没修"：
      * <ol>
@@ -481,7 +632,10 @@ public final class PocketSlots {
      * <li><b>算件数</b>：一次处理整叠里放得下的<b>全部</b>件（旧写法整段没有任何按 {@code stackSize} 的累加），
      * 且每一件只把 {@code stackSize==1} 的副本交给 {@code fill/drain}；</li>
      * <li><b>落两格</b>：产物进本列出格并上闩 {@link #fluidOutputLatch}，没处理完的余量留本列进格；
-     * 两格任一放不下就<b>一格都不写</b>。★旧写法四条出口全用 {@code slot.putStack(...)} 写回<b>同一格</b>，
+     * 件数由 {@link #planPlacement} 在"流体侧 / 出格收得下产物 / 进格塞得回余量"三条之间取交集算出来，
+     * ⇒ 出格只够放一部分时就<b>搬那一部分</b>（R84②），三条彻底无交集时才放弃，且<b>必定</b>发一条玩家
+     * 看得见的回执（R84①，旧写法在这里是 {@code return} 了事）。
+     * ★旧写法四条出口全用 {@code slot.putStack(...)} 写回<b>同一格</b>，
      * 而 {@code putStack} = {@code setStackInSlot} 无条件覆写 ⇒ 一叠 N 件只搬 1 件、余 N−1 件被 1 个空格顶掉。</li>
      * </ol>
      * 一次能提多少由<b>该容器条目自带</b>的携液量决定（桶 / GT 普通单元 1000、瓶 250、打火机 100、大型单元按容量档），
@@ -501,6 +655,8 @@ public final class PocketSlots {
         final ItemStack placed = slot.getStack();
         if (placed == null || placed.stackSize <= 0) {
             fluidOutputLatch.remove(interactionIndex);
+            // 清空 ⇒ 上一轮"这一格搬不动"的原因作废，下次真的卡住要能再报一次
+            fluidNoticeKeys.remove(interactionIndex);
             return;
         }
         if (hitFluidOutputLatch(interactionIndex, placed)) {
@@ -511,8 +667,9 @@ public final class PocketSlots {
         transferring = true;
         try {
             // ★每一件灌排都用 size==1 副本：接口两侧的通行约定是"多件直接拒收"
-            // （GT5U MetaBaseItem.java:520/573、ItemVolumetricFlask.java:159/179 第一行就是 stackSize != 1 return），
-            // 把格内的整叠原始栈递过去必然静默返回 0 —— 这是"不能装载 / 不能提取"的第二条独立死路。
+            // （GT5U gregtech/api/items/MetaBaseItem.java:521/574 第一行就是 stackSize != 1 return、
+            // ItemVolumetricFlask.java:159/179 同形），把格内的整叠原始栈递过去必然静默返回 0
+            // —— 这是"不能装载 / 不能提取"的第二条独立死路。
             final ItemStack unit = placed.copy();
             unit.stackSize = 1;
             final FluidStack content = readFluidFromContainer(unit);
@@ -576,7 +733,12 @@ public final class PocketSlots {
         FluidStack content) {
         final FluidStackTank target = inv.tankAt(tank);
         final int room = target.getCapacity() - target.getFluidAmount();
-        if (room <= 0 || units <= 0 || content.amount <= 0) {
+        if (room <= 0) {
+            // ★C-1 回执（旧写法：整条 if 直接 return，玩家只看到容器躺在进格里）
+            notifyCell(sourceIndex, KEY_TANK_FULL);
+            return;
+        }
+        if (units <= 0 || content.amount <= 0) {
             return;
         }
         final int resultCell = PocketInventory.outputInteractionSlotOf(sourceIndex);
@@ -584,23 +746,35 @@ public final class PocketSlots {
             final int perUnit = content.amount;
             int count = (int) Math.min((long) units, (long) room / perUnit);
             int wantPerUnit = perUnit;
+            final boolean probeIsPartial;
             if (count <= 0) {
                 // 一整件都装不进槽（Iridium 8,192,000 起就可能出现，Osmium / Neutronium 两档更是直接大于 16M 槽）
                 // ⇒ 只倒这一件的部分量；不允许部分倒空就等于这一档永远提不动
                 count = 1;
                 wantPerUnit = room;
+                probeIsPartial = true;
+            } else {
+                probeIsPartial = false;
             }
             final ItemStack product = unit.copy();
             product.stackSize = 1;
             final FluidStack probeDrained = container.drain(product, wantPerUnit, true);
             if (probeDrained == null || probeDrained.amount <= 0) {
+                // ★新死路（R84 取证）：这一支预设"接口型容器允许部分倒空"，但 GT5U
+                // gregtech/api/items/MetaBaseItem.java:576-589 的那条注册表型满容器快路径要求
+                // maxDrain >= tFluid.amount（:577），不满足才穿到 :590-605 的 GT.FluidContent NBT
+                // （那一级才支持部分倒空）⇒ 携液量 > 本 tank 剩余容量的大型单元在这里拿到 null，
+                // 旧写法静默 return。语义 = "这一件一次倒的比槽能装的还多，且它不给半瓶"。
+                notifyCell(sourceIndex, probeIsPartial ? KEY_UNIT_TOO_LARGE : KEY_TRANSFER_REFUSED);
                 return;
             }
             product.stackSize = 1;
-            count = Math.min(count, productRoom(inv, resultCell, resultCell == sourceIndex, product));
-            if (count <= 0 || !canPlacePair(inv, sourceIndex, sized(product, count), restOf(unit, units, count))) {
+            final Plan plan = planPlacement(inv, sourceIndex, resultCell, product, unit, units, count);
+            if (plan.count <= 0) {
+                notifyCell(sourceIndex, plan.failKey);
                 return;
             }
+            count = plan.count;
             int done = 0;
             int movedFluid = 0;
             for (int index = 0; index < count; index++) {
@@ -624,9 +798,13 @@ public final class PocketSlots {
             }
             if (done > 0 && canMoveIntoBothCells(inv, sourceIndex, product, done, unit, units)) {
                 placeProcessed(inv, sourceIndex, product, done, unit, units - done);
-            } else if (movedFluid > 0) {
-                // 实际成交件数比预检时小 ⇒ 余量比预检时大，可能撑爆配对那一格：整笔退回槽，本次一件不搬
-                target.drain(movedFluid, true);
+            } else {
+                if (movedFluid > 0) {
+                    // 实际成交件数比预检时小 ⇒ 余量比预检时大，可能撑爆配对那一格：整笔退回槽，本次一件不搬
+                    target.drain(movedFluid, true);
+                }
+                // ★C-1 回执：一件都没成交（容器中途反悔）与成交了但两格塞不下，是两种不同的玩家可见事实
+                notifyCell(sourceIndex, done > 0 ? KEY_NO_CELL_SPACE : KEY_TRANSFER_REFUSED);
             }
             return;
         }
@@ -635,17 +813,22 @@ public final class PocketSlots {
         final int fitableUnits = Math.min(units, room / perUnit);
         if (fitableUnits <= 0) {
             // 槽子装不下整份就不动（注册表型不支持部分倒空）——旧注释这条仍成立，只是它前面那道门修好才轮得到这里
+            // ★C-1 回执：这条支的"装不下整份"就是 unit_too_large 的语义（room > 0 但 room < 一件的携液量）
+            notifyCell(sourceIndex, KEY_UNIT_TOO_LARGE);
             return;
         }
         final ItemStack product = FluidContainerRegistry.drainFluidContainer(unit);
         if (product == null) {
+            notifyCell(sourceIndex, KEY_TRANSFER_REFUSED);
             return;
         }
         product.stackSize = 1;
-        final int count = Math.min(fitableUnits, productRoom(inv, resultCell, resultCell == sourceIndex, product));
-        if (count <= 0 || !canPlacePair(inv, sourceIndex, sized(product, count), restOf(unit, units, count))) {
+        final Plan plan = planPlacement(inv, sourceIndex, resultCell, product, unit, units, fitableUnits);
+        if (plan.count <= 0) {
+            notifyCell(sourceIndex, plan.failKey);
             return;
         }
+        final int count = plan.count;
         final int accepted = target.fill(new FluidStack(content.getFluid(), perUnit * count), true);
         final int done = accepted / perUnit;
         if (done > 0 && canMoveIntoBothCells(inv, sourceIndex, product, done, unit, units)) {
@@ -659,6 +842,7 @@ public final class PocketSlots {
         if (accepted > 0) {
             target.drain(accepted, true);
         }
+        notifyCell(sourceIndex, done > 0 ? KEY_NO_CELL_SPACE : KEY_TRANSFER_REFUSED);
     }
 
     /**
@@ -674,6 +858,10 @@ public final class PocketSlots {
         final FluidStackTank source = inv.tankAt(tank);
         final FluidStack bar = source.getFluid();
         if (bar == null || bar.amount <= 0 || units <= 0) {
+            // ★C-1 回执（旧写法：tank 是空的时候往这一格放东西，一句"这里没流体"都没有）
+            if (units > 0) {
+                notifyCell(sourceIndex, KEY_TANK_EMPTY);
+            }
             return;
         }
         final int available = bar.amount;
@@ -683,6 +871,7 @@ public final class PocketSlots {
             final FluidStack already = container.getFluid(unit);
             final int space = capacity - (already == null ? 0 : already.amount);
             if (space <= 0) {
+                notifyCell(sourceIndex, KEY_CONTAINER_FULL);
                 return;
             }
             int count = (int) Math.min((long) units, (long) available / space);
@@ -695,13 +884,17 @@ public final class PocketSlots {
             final ItemStack product = unit.copy();
             product.stackSize = 1;
             if (container.fill(product, new FluidStack(bar.getFluid(), wantPerUnit), true) <= 0) {
+                // 灌不进去：接口自己反悔（流体不受 / 该容器不给写；含"零头灌不进半瓶"那一探）
+                notifyCell(sourceIndex, KEY_TRANSFER_REFUSED);
                 return;
             }
             product.stackSize = 1;
-            count = Math.min(count, productRoom(inv, resultCell, resultCell == sourceIndex, product));
-            if (count <= 0 || !canPlacePair(inv, sourceIndex, sized(product, count), restOf(unit, units, count))) {
+            final Plan plan = planPlacement(inv, sourceIndex, resultCell, product, unit, units, count);
+            if (plan.count <= 0) {
+                notifyCell(sourceIndex, plan.failKey);
                 return;
             }
+            count = plan.count;
             int done = 0;
             int movedFluid = 0;
             for (int index = 0; index < count; index++) {
@@ -725,32 +918,52 @@ public final class PocketSlots {
             }
             if (done > 0 && canMoveIntoBothCells(inv, sourceIndex, product, done, unit, units)) {
                 placeProcessed(inv, sourceIndex, product, done, unit, units - done);
-            } else if (movedFluid > 0) {
-                // 实际成交件数比预检时小 ⇒ 余量比预检时大：已灌进件的流体抽回槽，本次一件不搬
-                source.fill(new FluidStack(bar.getFluid(), movedFluid), true);
+            } else {
+                if (movedFluid > 0) {
+                    // 实际成交件数比预检时小 ⇒ 余量比预检时大：已灌进件的流体抽回槽，本次一件不搬
+                    source.fill(new FluidStack(bar.getFluid(), movedFluid), true);
+                }
+                notifyCell(sourceIndex, done > 0 ? KEY_NO_CELL_SPACE : KEY_TRANSFER_REFUSED);
             }
             return;
         }
         final int perUnit = FluidContainerRegistry.getContainerCapacity(new FluidStack(bar.getFluid(), 1), unit);
         if (perUnit <= 0) {
+            // 双参都问不出容量 ⇒ 这一格里的东西根本不是你 Swap 得动的注册表型空容器
+            notifyCell(sourceIndex, KEY_UNSUPPORTED_CONTAINER);
             return;
         }
         // fillFluidContainer 是纯查询（返回注册表里那份满容器的克隆），不消耗入参 ⇒ 可以先拿它探形状
         final ItemStack product = FluidContainerRegistry
             .fillFluidContainer(new FluidStack(bar.getFluid(), perUnit), unit);
         if (product == null) {
+            // 注册表里没有"该流体 + 该空容器"这一对 ⇒ 换一种流体或换容器
+            notifyCell(sourceIndex, KEY_UNSUPPORTED_CONTAINER);
             return;
         }
         product.stackSize = 1;
-        final int count = Math.min(
-            Math.min(units, available / perUnit),
-            productRoom(inv, resultCell, resultCell == sourceIndex, product));
-        if (count <= 0 || !canPlacePair(inv, sourceIndex, sized(product, count), restOf(unit, units, count))) {
+        if (available < perUnit) {
+            // 注册表型是全有全无：槽里的存量灌不满一件整的，且它不支持半瓶（接口型那一支才支持）
+            notifyCell(sourceIndex, KEY_NOT_ENOUGH_FLUID);
             return;
         }
+        final Plan plan = planPlacement(
+            inv,
+            sourceIndex,
+            resultCell,
+            product,
+            unit,
+            units,
+            Math.min(units, available / perUnit));
+        if (plan.count <= 0) {
+            notifyCell(sourceIndex, plan.failKey);
+            return;
+        }
+        final int count = plan.count;
         final int need = perUnit * count;
         final FluidStack taken = source.drain(need, true);
         if (taken == null || taken.amount <= 0) {
+            notifyCell(sourceIndex, KEY_TRANSFER_REFUSED);
             return;
         }
         final int done = taken.amount / perUnit;
@@ -765,6 +978,7 @@ public final class PocketSlots {
         }
         // 凑不成整件、或实际件数撑不下两格 ⇒ 从槽里取出的那一整份原路退回，容器一件没动
         source.fill(taken, true);
+        notifyCell(sourceIndex, done > 0 ? KEY_NO_CELL_SPACE : KEY_TRANSFER_REFUSED);
     }
 
     /** 某一格还收得下几件"与该产物同形"的栈（被异物占住 ⇒ 0）。 */
@@ -842,6 +1056,35 @@ public final class PocketSlots {
         } else if (restCount > 0) {
             restSlot.putStack(merged(inv, restCell, false, sized(unit, restCount)));
         }
+        // ★成交了 ⇒ 上一轮"这一格搬不动"的原因不再是事实，清掉抑制键；下一次真卡住要能再报
+        fluidNoticeKeys.remove(sourceIndex);
+        // ★<b>A（R84）</b>：被监听的这一格（{@code sourceIndex}）在上面被改写过，而 {@code placeProcessed}
+        // 全程嵌在<b>那一格自己的</b> {@code ItemSlotSH#checkUpdate} 帧里（{@code onSlotUpdate} 在
+        // {@code ItemSlotSH.java:70}，缓存与 announce 在它<b>返回之后</b>的 :74 与 :78-83）⇒
+        // 那一帧手里的是<b>进 listener 之前</b>拍下的旧栈（{@code SlotItemHandler#getStack} 给的是
+        // handler 里那个对象，我们随后用 {@code setStackInSlot} 换了引用，旧引用没有被改写），
+        // 于是它把旧值又 announce + 缓存一遍，盖掉 {@code ModularSlot#putStack} 末尾那次内层 checkUpdate
+        // （{@code ModularSlot.java:105}）已经发出去的真值 ⇒ 客户端当拍读到的仍是搬运前那一叠（幻象）。
+        // 这里在写完两格之后按<b>当前真值</b>再 announce 一次，让 MUI 通道至少发过一份对的值、
+        // 并把 {@code lastStoredItem} 对齐到搬运后的值（外层帧随后还会再盖一次旧值，那一层在
+        // {@code ItemSlotSH} 里，本文件改不动 ⇒ 由 :360 / 下一拍的 {@code detectAndSendChanges} 收敛，
+        // 而客户端的<b>显示</b>走的是 vanilla {@code Container#detectAndSendChanges}
+        // （{@code ModularContainer.java:115}，先于 MUI 那一圈跑），它每次采的是活值）。
+        // ★重入自证：checkUpdate → onSlotUpdate → onSlotChangedReal → changeListener 这一跳回到本类时
+        // 全程在 {@link #moveFluidBetweenTanks} 的 {@code transferring = true} 之内 ⇒ 直接被闩挡住，
+        // 不会递归；且 {@code checkUpdate} 只读 {@code slot.getStack()} 再 announce，不写任何东西，
+        // 不可能把刚写进格里的值改回去。
+        syncCellAfterRewrite(sourceIndex);
+    }
+
+    /** 见 {@link #placeProcessed} 末尾那条 ★A：按当前真值补一次 {@code ItemSlotSH#checkUpdate()}。 */
+    private void syncCellAfterRewrite(int index) {
+        final ModularSlot rewritten = fluidSlotsByIndex.get(index);
+        if (rewritten == null || !rewritten.isInitialized()) {
+            return;
+        }
+        rewritten.getSyncHandler()
+            .checkUpdate();
     }
 
     /** 与那一格已有的同类同 NBT 内容合堆（放不放得下由 {@link #canPlacePair} 判过）。 */

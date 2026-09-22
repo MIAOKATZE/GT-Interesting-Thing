@@ -25,7 +25,7 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
  * GUI 侧只做进度<b>显示</b>，绝不做推进（{@code NekoPocketEssenceColumn} 的进度条读
  * {@link #progressOf(UUID)}，推进在本类）。
  * <p>
- * <b>落地口径</b>（逐条对应计划 §7 S7 与 R63b 的改述；★三条 R83 A2 的是本轮缺陷 3 (2)(3) 的新口径）：
+ * <b>落地口径</b>（逐条对应计划 §7 S7 与 R63b 的改述；★第 4/5/6 条的<b>粒度</b>已由 R84 改写，见各条）：
  * <ol>
  * <li>节拍 = <b>5 秒/轮</b>，且只引用单一权威
  * {@link TaumDistillRules#DISTILL_INTERVAL_TICKS}（= 100）。本类与 GUI 两侧<b>都没有</b>第二个
@@ -34,22 +34,31 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
  * {@code ticksExisted}/{@code getTotalWorldTime()}，因此跨维重建玩家不会让进度漂走；</li>
  * <li>判据照 TC {@code TileAlchemyFurnace.canSmelt()}：{@code getObjectTags + getBonusTags}
  * （由 {@link EssenceGate#aspectsOf} 承担）返回空 ⇒ <b>不推进、不消耗</b>（R28/C4）；</li>
- * <li>★<b>一轮的粒度 = 每组物品各 1 次、各消耗 1 件</b>（R83 A2 / D-3 β，对应玩家那句"蒸馏应该是对
- * 每组物品进行 1 次"）：同一 {@code item + damage} 散在几格都算<b>一组</b>，一轮只问一次产物、
- * 只从该组的一格扣一件。产出入账按 {@code AspectList} <b>原量</b>，<b>既不按格重复计、也不乘
- * {@code stackSize}</b>——乘堆叠数会正面撞 {@link PocketConstants#ESSENCE_CAP_PER_TAG}=64 的单格上限
- * 与全有全无 ⇒ 一件 ≥2 点的整堆（33…64 件 → ≥66 点）<b>永久</b>判"放不下"、进度条钉死在满格，
- * 比改之前更糟（这是"为什么不整堆一次入"的算术理由，不是口味选择）；</li>
- * <li>入账<b>按组全有全无</b>（R29 的作用单位由"整轮"收到"一组"，R83 A2）：一组蒸出的全部 aspect
- * 必须<b>整体</b>放得下，放不下就<b>只放弃这一组</b>（该组物品一件都不消耗 ⇒ 不销毁价值），其它组照常
- * 入账。判据走 {@link PocketEssenceStore#canAcceptAll(Map, Map)}（第二参是本轮已许诺给前面组的预留量）
- * → {@code putAll}；<b>禁止</b>用逐 tag 截断的 {@code add()} 或 {@code isFull()} 决定"要不要消耗物品"
- * （R45c/FIX-6：{@code isFull()} 只服务 GUI 置灰）。整轮一组都没收下且是被空间挡下 ⇒ 进度<b>停在满格
- * 不重跑</b>，玩家取走晶化源质腾出空间即自动解卡；</li>
- * <li>★单件原量就超 64 点的组（TC {@code getBonusTags} 在 {@code capAspects(ret,64)} 之后继续累加 ⇒
- * 护甲/武器/工具类可越上限）是"再怎么腾格也放不下"，<b>不再</b>把整轮永久冻住（R83 偏差 3c）：它被单独
- * 放弃并留下读数——{@link #discardedGroupsOf(UUID)} / {@link #discardedPointsOf(UUID)} 与
- * {@link Status#OVER_CAP}，放弃多少组、多少点都是可读的，不再"放了东西、进度条满着、什么都不发生"；</li>
+ * <li>★<b>一轮的对象是「格」：每个非空且含源质的格各蒸 1 件、各消耗 1 件</b>（R84 用户裁定：
+ * "对象应该是格子，每个格子蒸 1 件"）⇒ 同一物品放 3 格就是 3 格各减 1 件；枚举与装箱一律
+ * <b>格号升序</b>，同输入必同结论（确定性可复现）。<b>★旧口径（R83 A2 / D-3 β）原文照录以备对照</b>：
+ * "一轮的粒度 = 每组物品各 1 次、各消耗 1 件；同一 {@code item + damage} 散在几格都算一组，一轮只问一次
+ * 产物、只从该组的一格扣一件"——该句<b>已被 R84 作废</b>，它正是"12 格装同一种物品 ⇒ 整轮只蒸 1 件"
+ * 那个症状的成因（早退发生在"折成组"那一步）。作废的只是<b>把多格折成一个消耗单位</b>这一层；
+ * "单件产出按 {@code AspectList} <b>原量</b>入账、<b>不乘 {@code stackSize}</b>"这条算术纪律<b>原样保留</b>
+ * ——乘堆叠数会正面撞 {@link PocketConstants#ESSENCE_CAP_PER_TAG} 的单格上限与全有全无 ⇒ 整堆一次入账
+ * <b>永久</b>判"放不下"、进度条钉死在满格，比逐格更糟（这是"为什么不整堆一次入"的算术理由，不是口味选择）；
+ * TC 查询成本由"对象折组"压到"× 组数"改为由 <b>{@link Probe} 记忆化</b>压到"× 不同的
+ * {@code item + damage} 数"（{@link #planDistillBatch(ItemStack[], EssenceGate, PocketEssenceStore)}
+ * 第一段，压掉了哪几次见该方法注释；上界仍是 {@code DISTILL_INPUT_SLOTS}）；</li>
+ * <li>入账<b>按格全有全无</b>（R29 的作用单位：R83 A2 收到"一组" → ★R84 收到"<b>一格</b>"）：一格蒸出的
+ * 全部 aspect 必须<b>整体</b>放得下，放不下就<b>只放弃这一格</b>（该格物品一件都不消耗 ⇒ 不销毁价值），
+ * 其它格照常入账。判据走 {@link PocketEssenceStore#canAcceptAll(Map, Map)}（第二参是本轮已许诺给
+ * <b>前面那些格</b>的预留量）→ {@code putAll}；<b>禁止</b>用逐 tag 截断的 {@code add()} 或
+ * {@code isFull()} 决定"要不要消耗物品"（R45c/FIX-6：{@code isFull()} 只服务 GUI 置灰）。
+ * 整轮一格都没收下且是被空间挡下 ⇒ 进度<b>停在满格不重跑</b>，玩家取走晶化源质腾出空间即自动解卡；</li>
+ * <li>★单件原量就超 {@link PocketConstants#ESSENCE_CAP_PER_TAG} 的格（TC {@code getBonusTags} 在
+ * {@code capAspects(ret, …)} 之后继续累加 ⇒ 护甲/武器/工具类可越上限）是"再怎么腾格也放不下"，
+ * <b>不再</b>把整轮永久冻住（R83 偏差 3c）：它被单独放弃并留下读数——{@link #discardedGroupsOf(UUID)} /
+ * {@link #discardedPointsOf(UUID)} 与 {@link Status#OVER_CAP}。★R84 起这两个读数的单位是
+ * <b>格</b>（旧句"放弃多少<b>组</b>、多少点"中的"组"已作废；字段名沿用 {@code discardedGroups} 以免撞
+ * 回归套件的编译，改名的落点见 {@link Batch#discardedGroups} 注释），不再"放了东西、进度条满着、
+ * 什么都不发生"；</li>
  * <li>★<b>容器绝不进入蒸馏判定路径</b>（R44c，按 R63b 改述；不是"不得进入这 12 格"）：
  * 每个候选格都先过唯一分流器 {@code PocketSlots#classifyIncoming}，只有判为 {@code DISTILL}
  * 的栈才会被问 {@link EssenceGate#aspectsOf}；容器当场走注入支（{@code PocketSlots#injectContainer}，
@@ -77,9 +86,9 @@ public final class PocketDistillDriver {
         /** 有产物但源质格装不下 ⇒ 进度停在满格不重跑（R29 全有全无，取走晶即解卡）。 */
         STORE_FULL,
         /**
-         * ★R83 A2（偏差 3c）：本轮<b>没有一组</b>被收下，且原因是"某组的单件原量本身超单格上限"——
-         * 腾格子救不了它，所以它既不是 {@link #STORE_FULL}（那是可解卡的"需要空间"）也不是
-         * {@link #IDLE}（12 格里确实躺着可蒸物）。放弃了哪几组、多少点由
+         * ★R83 A2（偏差 3c）＋★R84（单位改格）：本轮<b>没有一格</b>被收下，且原因是"某一格的单件原量
+         * 本身超单格上限"——腾格子救不了它，所以它既不是 {@link #STORE_FULL}（那是可解卡的"需要空间"）
+         * 也不是 {@link #IDLE}（12 格里确实躺着可蒸物）。放弃了哪几<b>格</b>、多少点由
          * {@link #discardedGroupsOf(UUID)} / {@link #discardedPointsOf(UUID)} 给读数。
          */
         OVER_CAP
@@ -93,13 +102,16 @@ public final class PocketDistillDriver {
 
         /** 距下一轮的相对 tick 倒计时（{@code 0} 表示"该跑了/没在跑"）。 */
         int ticksLeft;
-        /** 当前 12 格是否至少有一组可蒸物（只在内容或源质总量变化时重算）。 */
+        /** 当前 12 格是否至少有一<b>格</b>可蒸物（只在内容或源质总量变化时重算）。 */
         boolean distillable;
-        /** 进度停在满格（本轮一组都没收下且是被空间挡下）。 */
+        /** 进度停在满格（本轮一格都没收下且是被空间挡下）。 */
         boolean stalledFull;
-        /** ★本轮一组都没收下且全部因"单件原量超单格上限"被放弃（不倒计时，但状态与读数要报出来）。 */
+        /** ★本轮一格都没收下且全部因"单件原量超单格上限"被放弃（不倒计时，但状态与读数要报出来）。 */
         boolean stalledOverCap;
-        /** 最近一次评估被放弃的组数（放弃必须留读数，R83 偏差 3c）。 */
+        /**
+         * 最近一次评估被放弃的<b>格数</b>（放弃必须留读数，R83 偏差 3c；★R84 起单位是格，
+         * 字段名沿用 {@code discardedGroups} 只为不撞回归套件的编译）。
+         */
         int discardedGroups;
         /** 最近一次评估被放弃的点数合计。 */
         int discardedPoints;
@@ -159,7 +171,7 @@ public final class PocketDistillDriver {
             }
         }
         if (clock.stalledFull || clock.stalledOverCap) {
-            // 停在满格不重跑 / 本轮没有一组放得进：都不消耗、不入账、也不倒计时
+            // 停在满格不重跑 / 本轮没有一格放得进：都不消耗、不入账、也不倒计时
             // （前者由源质格腾出空间解卡，后者由 12 格内容变化解卡）
             return;
         }
@@ -186,13 +198,13 @@ public final class PocketDistillDriver {
             return;
         }
         if (!batch.accepted) {
-            // 本轮没有一组放得下 ⇒ 一格都不消耗、一分都不入账（消耗判据始终是"这组建效了"）
+            // 本轮没有一格放得下 ⇒ 一格都不消耗、一分都不入账（消耗判据始终是"这格建效了"）
             clock.ticksLeft = 0;
             return;
         }
         session.essence()
             .putAll(batch.candidates);
-        // ★sourceSlots 的长度就是"本轮被收下的组数"（每个被收下的组各扣 1 件，未收下的组一个都不扣）
+        // ★sourceSlots 的长度就是"本轮被收下的格数"（每个被收下的格各扣 1 件，未收下的格一个都不扣）
         for (int index : batch.sourceSlots) {
             session.consumeOneDistillInput(index);
         }
@@ -214,15 +226,25 @@ public final class PocketDistillDriver {
     /**
      * 一轮蒸馏的候选与判据（<b>纯函数</b>，回归套件用桩件 {@link EssenceGate} 直接驱动）。
      * <p>
-     * 遍历序 = 格号升序（与 {@code DISTILL_MATRIX} 行主序一致）。★R83 A2 的两条口径：
+     * 遍历序 = 格号升序（与 {@code DISTILL_MATRIX} 行主序一致）。★R84 的两条口径：
      * <ol>
-     * <li><b>按组不按格</b>：组身份 = {@code item 引用 + damage}（与 {@code NekoPocketPanel#sameSample}
-     * 同判据；<b>不</b>读 NBT，理由与 {@link #signature} 的同类取舍一致），同一组散在几格都只算一组，
-     * 每组的产物<b>只问一次</b> {@link EssenceGate#aspectsOf}、只留<b>一个</b>扣件落点；</li>
-     * <li><b>按组全有全无</b>：一组放得下就收这组（该组各扣 1 件），放不下就整组放弃（该组一件都不扣 ⇒
+     * <li><b>按格不按组</b>：工作单位是<b>格</b>，12 格里每个非空且含源质的格各是本轮的一份独立候选，
+     * 各问一次产物（同物同 damage 的后续格走 {@link Probe} 记忆化，<b>不再</b>因此少蒸一件）、各留一个
+     * 扣件落点。★旧口径（R83 A2）原文照录以备对照："<b>按组不按格</b>：组身份 = {@code item 引用 +
+     * damage}，同一组散在几格都只算一组，每组的产物只问一次、只留<b>一个</b>扣件落点"——其中"只留一个
+     * 扣件落点"已被 R84 作废（它就是"同物多格整轮只蒸 1 件"的成因），"只问一次产物"这一半由
+     * {@link Probe} 以<b>纯查询记忆化</b>的形式保留；</li>
+     * <li><b>按格全有全无</b>：一格的产物放得下就收这格（该格扣 1 件），放不下就整格放弃（该格一件都不扣 ⇒
      * 不销毁价值）；"放不下"再分两种——单件原量本身就超单格上限（腾格也没救 ⇒ {@link Status#OVER_CAP}
-     * + 放弃读数）与"当前存量 + 本轮已许诺给前面组的量"挤不下（可解卡 ⇒ {@link Status#STORE_FULL}）。</li>
+     * + 放弃读数）与"当前存量 + 本轮已许诺给前面格的量"挤不下（可解卡 ⇒ {@link Status#STORE_FULL}）。
+     * 装箱按格号升序依次许诺 ⇒ 空间不够时<b>靠前的格</b>优先拿到空间，被挡下的格下一轮重试。</li>
      * </ol>
+     * ★TC 查询成本（判据 4）：上界由"× 折出的组数"抬到"× 候选格数（≤ {@code DISTILL_INPUT_SLOTS}）"，
+     * 再由 {@link Probe} 压回"× 不同的 {@code item + damage} 数"。具体压掉的次数：12 格全是同一种物品
+     * 同一 damage 时，一次评估只问 {@code aspectsOf} <b>1 次</b>（压掉 11 次），但这 12 格<b>仍然</b>各蒸
+     * 1 件；再叠上 {@link #signature} 的"内容没变不重算 plan"，稳态下的查询频率是
+     * <b>每次内容变化 1 次 + 每轮 1 次</b>，与 R83 持平。
+     * <p>
      * ★容器格在 {@code DISTILL} 判定处就被跳过，其 {@link EssenceGate#aspectsOf} <b>永不被调用</b>
      * （R44c/R63b 的硬口径，由 {@code distill_path_never_sees_container} 锁死）。
      */
@@ -236,12 +258,18 @@ public final class PocketDistillDriver {
     /** 数组形态（回归套件用；生产入口是上面的会话重载，两者同一段代码）。 */
     public static Batch planDistillBatch(ItemStack[] slots, EssenceGate gate, PocketEssenceStore store) {
         final int capacity = slots == null ? 0 : slots.length;
-        // 第一段：把 12 格折成"组"，每组只留第一次出现的格与它的产物（组内不重复问 TC）
-        final Item[] groupItem = new Item[capacity];
-        final int[] groupDamage = new int[capacity];
-        final int[] groupSlot = new int[capacity];
-        final TaumAspectAmounts[] groupAspects = new TaumAspectAmounts[capacity];
-        int groups = 0;
+        // 第一段 + 第二段合并成一次格序升序遍历：候选就是格，装箱也按格号序许诺
+        final Probe[] probes = new Probe[capacity];
+        int probed = 0;
+        // candidates 只装"被收下的格"的产物，所以它同时就是 runBatch 的入账内容
+        final Map<String, Integer> candidates = new LinkedHashMap<>();
+        final int[] chosen = new int[capacity];
+        int used = 0;
+        int cells = 0;
+        int discardedSlots = 0;
+        int discardedPoints = 0;
+        boolean needsRoom = false;
+        boolean overCap = false;
         if (slots != null && gate != null) {
             for (int index = 0; index < slots.length; index++) {
                 final ItemStack stack = slots[index];
@@ -253,62 +281,47 @@ public final class PocketDistillDriver {
                 }
                 final Item item = stack.getItem();
                 final int damage = stack.getItemDamage();
-                // β：同物多格 = 一组 ⇒ 后面那些格既不再问产物，也不再多扣一件
-                if (item != null && indexOfGroup(groupItem, groupDamage, groups, item, damage) >= 0) {
+                // R84：命中记忆表只是"不再问一次 TC"，这一格照样是独立候选、照样扣 1 件
+                Probe probe = item == null ? null : probeOf(probes, probed, item, damage);
+                if (probe == null) {
+                    final TaumAspectAmounts aspects = gate.aspectsOf(stack);
+                    if (aspects == null || aspects.isEmpty()) {
+                        continue;
+                    }
+                    final Map<String, Integer> single = toAmountMap(aspects);
+                    if (single.isEmpty()) {
+                        continue;
+                    }
+                    probe = new Probe(item, damage, single);
+                    if (item != null && probed < capacity) {
+                        probes[probed++] = probe;
+                    }
+                }
+                cells++;
+                final int wantPoints = totalOf(probe.want);
+                if (store != null && store.exceedsCellCap(probe.want)) {
+                    // 单件原量就超单格上限：这格永远放不下 ⇒ 放弃它（物品留在格里），但不冻结别的格
+                    overCap = true;
+                    discardedSlots++;
+                    discardedPoints += wantPoints;
                     continue;
                 }
-                final TaumAspectAmounts aspects = gate.aspectsOf(stack);
-                if (aspects == null || aspects.isEmpty()) {
+                if (store == null || !store.canAcceptAll(probe.want, candidates)) {
+                    needsRoom = true;
+                    discardedSlots++;
+                    discardedPoints += wantPoints;
                     continue;
                 }
-                groupItem[groups] = item;
-                groupDamage[groups] = damage;
-                groupSlot[groups] = index;
-                groupAspects[groups] = aspects;
-                groups++;
+                mergeInto(candidates, probe.want);
+                chosen[used++] = index;
             }
         }
-        if (groups == 0) {
-            return emptyBatch();
-        }
-        // 第二段：逐组装箱。candidates 只装"被收下的组"，所以它同时就是 runBatch 的入账内容
-        final Map<String, Integer> candidates = new LinkedHashMap<>();
-        final int[] chosen = new int[groups];
-        int used = 0;
-        int realGroups = 0;
-        int discardedGroups = 0;
-        int discardedPoints = 0;
-        boolean needsRoom = false;
-        boolean overCap = false;
-        for (int group = 0; group < groups; group++) {
-            final Map<String, Integer> want = toAmountMap(groupAspects[group]);
-            if (want.isEmpty()) {
-                continue;
-            }
-            realGroups++;
-            final int wantPoints = totalOf(want);
-            if (store != null && store.exceedsCellCap(want)) {
-                // 单件原量就超单格上限：这组永远放不下 ⇒ 放弃它（物品留在格里），但不冻结别的组
-                overCap = true;
-                discardedGroups++;
-                discardedPoints += wantPoints;
-                continue;
-            }
-            if (store == null || !store.canAcceptAll(want, candidates)) {
-                needsRoom = true;
-                discardedGroups++;
-                discardedPoints += wantPoints;
-                continue;
-            }
-            mergeInto(candidates, want);
-            chosen[used++] = groupSlot[group];
-        }
-        if (realGroups == 0) {
+        if (cells == 0) {
             return emptyBatch();
         }
         final boolean accepted = used > 0;
-        // needsRoom 只在"整轮一组都没收下"时才成立：那才是 R29 的"停在满格不重跑"，
-        // 有组建效时它必须是 false，否则倒计时被冻住、本轮已收下的组也不再推进
+        // needsRoom 只在"整轮一格都没收下"时才成立：那才是 R29 的"停在满格不重跑"，
+        // 有格建效时它必须是 false，否则倒计时被冻住、本轮已收下的格也不再推进
         return new Batch(
             candidates,
             Arrays.copyOf(chosen, used),
@@ -318,23 +331,49 @@ public final class PocketDistillDriver {
             !accepted && needsRoom,
             overCap,
             totalOf(candidates),
-            discardedGroups,
+            discardedSlots,
             discardedPoints);
     }
 
-    /** 本轮无事发生（没有一组含可蒸产物）：不推进、不消耗、零读数。 */
+    /** 本轮无事发生（没有一格含可蒸产物）：不推进、不消耗、零读数。 */
     private static Batch emptyBatch() {
         return new Batch(new LinkedHashMap<String, Integer>(), new int[0], 0, false, false, false, false, 0, 0, 0);
     }
 
-    /** 组身份查表：命中返回组下标，未命中 −1（12 格上限，线性查比建 key 对象便宜）。 */
-    private static int indexOfGroup(Item[] items, int[] damages, int size, Item item, int damage) {
-        for (int group = 0; group < size; group++) {
-            if (items[group] == item && damages[group] == damage) {
-                return group;
+    /**
+     * 产物记忆表查表：命中返回该条，未命中 {@code null}（12 格上限，线性查比建 key 对象便宜）。
+     * <p>
+     * ★键的取舍照旧<b>不读 NBT</b>（与 {@link #signature} 同一理由：读 NBT 就是每 tick 序列化）；
+     * {@code item} 用引用相等比较，与 R83 的组身份判据一致，故本层不会比旧实现更容易错配。
+     */
+    private static Probe probeOf(Probe[] probes, int size, Item item, int damage) {
+        for (int at = 0; at < size; at++) {
+            final Probe probe = probes[at];
+            if (probe != null && probe.item == item && probe.damage == damage) {
+                return probe;
             }
         }
-        return -1;
+        return null;
+    }
+
+    /**
+     * 一份 {@code (item, damage)} 的<b>单件原量</b>产物（★R84：只为压 TC 查询而存在，
+     * <b>不</b>代表工作单位；同一 {@code (item, damage)} 散在几格就有几份候选，各自扣 1 件）。
+     * <p>
+     * {@link #want} 对表内所有格<b>共享同一实例</b> ⇒ 一律只读：入账只走 {@link #mergeInto} 把它并进
+     * {@code candidates}，装箱判据（{@code exceedsCellCap} / {@code canAcceptAll}）也都不改它。
+     */
+    private static final class Probe {
+
+        final Item item;
+        final int damage;
+        final Map<String, Integer> want;
+
+        Probe(Item item, int damage, Map<String, Integer> want) {
+            this.item = item;
+            this.damage = damage;
+            this.want = want;
+        }
     }
 
     /** 一份产物转 {@code tag → 点数}（同 tag 重复条目按求和收，非正数与空 tag 条目丢弃）。 */
@@ -383,6 +422,11 @@ public final class PocketDistillDriver {
      * <p>
      * ⚠ 只用 {@code itemId + damage + stackSize}：<b>不</b>读 NBT（读 NBT 就是每 tick 序列化，R53c）。
      * 代价是"同种物品但 NBT 不同且源质不同"的极端情形要等下一轮到点才刷新——可接受。
+     * <p>
+     * ★R84：本哈希<b>本来就是逐格</b>的（一格三项各 mix 一次，同物多格互不抵消），所以"对象由组改为格"
+     * 不需要动签名机制；它顺带提供判据 4 要的那层压制——12 格内容一字不差时整轮 plan 不重算，
+     * 一旦任一格数量变化则整个 plan 重算一次，而重算里同物同 damage 的格由 {@link Probe} 共享一次
+     * {@code aspectsOf}（12 格同物 ⇒ 每次重算只问 1 次）。
      */
     private static long signature(PocketSession session) {
         long hash = 1469598103934665603L;
@@ -418,7 +462,7 @@ public final class PocketDistillDriver {
             return 1d;
         }
         if (!clock.distillable || clock.stalledOverCap) {
-            // ★超上限那组被放弃时不报"满格"也不报"在跑"：条子停着 = 什么都不说，读 0 才是不说谎
+            // ★整轮都被"单件原量超上限"挡下时不报"满格"也不报"在跑"：条子停着 = 什么都不说，读 0 才是不说谎
             return 0d;
         }
         final int interval = TaumDistillRules.DISTILL_INTERVAL_TICKS;
@@ -444,11 +488,14 @@ public final class PocketDistillDriver {
     }
 
     /**
-     * 最近一次评估里<b>被放弃的组数</b>（R83 偏差 3c：放弃必须留下读数）。
+     * 最近一次评估里<b>被放弃的格数</b>（R83 偏差 3c：放弃必须留下读数；★R84：单位由"组"改为"格"）。
      * <p>
-     * 非 0 的含义是"这轮的这些组放不下，所以一件都没吃"，两种原因（超单格上限 / 格子被存量挤满）
-     * 由 {@link #statusOf(UUID)} 与 {@link #progressOf(UUID)} 区分；要"哪一组、哪一 tag"得另开同步位，
-     * 本轮只做组数与点数（面板侧见 Panel 待办）。
+     * 非 0 的含义是"这轮的这些格放不下，所以一件都没吃"，两种原因（单件原量超单格上限 / 空间被存量与
+     * 前面格的许诺挤满）由 {@link #statusOf(UUID)} 与 {@link #progressOf(UUID)} 区分；要"哪一格、哪一 tag"
+     * 得另开同步位，本轮只做格数与点数（面板侧见 {@code NekoPocketEssenceColumn#distillStateLine}）。
+     * <p>
+     * ⚠ 方法名里的 {@code Groups} 与读数单位（格）已经错位：改名要同时动回归套件
+     * （{@code NekoPocketModelTest} 直读 {@code batch.discardedGroups}）⇒ 由主代理单独立项，本片不改名。
      */
     public static int discardedGroupsOf(UUID player) {
         final Clock clock = player == null ? null : CLOCKS.get(player);
@@ -494,25 +541,35 @@ public final class PocketDistillDriver {
     /** 蒸馏一轮的结论（值对象；测试直接断言它的判据位）。 */
     public static final class Batch {
 
-        /** 本轮<b>被收下的那些组</b>的候选：{@code tag → 原量点数}（同 tag 跨组已求和）；入账就用它。 */
+        /** 本轮<b>被收下的那些格</b>的候选：{@code tag → 单件原量点数}（同 tag 跨格已求和）；入账就用它。 */
         public final Map<String, Integer> candidates;
-        /** 被收下的组各自的扣件格号，★长度 {@code == sourceCount}（一组一个落点，多出来的下标不存在）。 */
+        /** 被收下的格各自的扣件落点，★长度 {@code == sourceCount}（一格一个落点，多出来的下标不存在）。 */
         public final int[] sourceSlots;
-        /** 参与本轮的<b>组</b>数（R83 A2：不再是"参与格数"；同物多格只算一组）。 */
+        /**
+         * 本轮<b>被收下的格数</b>（★R84：对象是格 ⇒ 同物多格各算一格；旧口径"同物多格只算一组"已作废）。
+         * <p>
+         * ⚠ 它一直是"被收下的单位数"，R83 时等于组数、R84 起等于格数，与 {@link #sourceSlots} 的长度同值。
+         */
         public final int sourceCount;
-        /** 至少有一组含可蒸产物（false ⇒ 不推进、不消耗）。 */
+        /** 至少有一格含可蒸产物（false ⇒ 不推进、不消耗）。 */
         public final boolean advanceable;
-        /** 至少有一组被收下（★唯一的消耗判据，R29 的按组口径）：{@code sourceSlots} 就是被收下的那些组。 */
+        /** 至少有一格被收下（★唯一的消耗判据，R29 的按格口径）：{@code sourceSlots} 就是被收下的那些格。 */
         public final boolean accepted;
-        /** 本轮一组都没收下且原因是"当前存量 + 本轮已许诺量"挤不下 ⇒ 进度停在满格不重跑（可解卡）。 */
+        /** 本轮一格都没收下且原因是"当前存量 + 本轮已许诺量"挤不下 ⇒ 进度停在满格不重跑（可解卡）。 */
         public final boolean needsRoom;
-        /** ★R83 偏差 3c：至少有一组因"单件原量本身超单格上限"被放弃（腾格也没救，与 {@link #needsRoom} 分开）。 */
+        /** ★R83 偏差 3c：至少有一格因"单件原量本身超单格上限"被放弃（腾格也没救，与 {@link #needsRoom} 分开）。 */
         public final boolean overCap;
-        /** 本轮应入账的总点数（= {@link #candidates} 的合计，不含被放弃的组）。 */
+        /** 本轮应入账的总点数（= {@link #candidates} 的合计，不含被放弃的格）。 */
         public final int points;
-        /** 本轮被放弃的组数（放弃留读数）。 */
+        /**
+         * 本轮被放弃的<b>格数</b>（放弃留读数；★R84 单位由组改格）。
+         * <p>
+         * ⚠ 字段名 {@code discardedGroups} 与单位（格）<b>刻意错位</b>：本仓回归套件按名直读该字段
+         * （{@code NekoPocketModelTest} 的 {@code distill_all_or_nothing_keeps_both} /
+         * {@code distill_over_cap_group_leaves_reading}），改名属测试文件改动 ⇒ 交主代理落。
+         */
         public final int discardedGroups;
-        /** 本轮被放弃的点数合计（与 {@link #discardedGroups} 同一批组）。 */
+        /** 本轮被放弃的点数合计（= 被放弃的那些<b>格</b>各自原量点数之和，与 {@link #discardedGroups} 同一批格）。 */
         public final int discardedPoints;
 
         Batch(Map<String, Integer> candidates, int[] sourceSlots, int sourceCount, boolean advanceable,

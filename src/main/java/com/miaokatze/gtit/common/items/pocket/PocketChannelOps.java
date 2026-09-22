@@ -99,7 +99,11 @@ public interface PocketChannelOps {
     /** 把一个源条目注入指定 (元件, 通道)；实现方负责真实栈反解、MODULATE 写入与余量回写。 */
     Outcome inject(SourceSlot source, String diskuuid, String typeId);
 
-    /** 按配置声明从指定元件抽取到口袋真实栏；{@code count} 为需求量。 */
+    /**
+     * 按配置声明从指定元件抽取到<b>本条声明自己的落点</b>；{@code count} 为需求量。
+     * <p>
+     * ★R84 起三支落点齐了：物品＝中栏声明格本体、流体＝本条声明那个 tank、源质＝物化成晶化源质进中栏。
+     */
     Outcome extract(PocketFilterConfig.Filter filter, String diskuuid, int count);
 
     /**

@@ -72,7 +72,12 @@ public final class PocketChannelRunner {
         if (sources == null || sources.isEmpty()) {
             return report;
         }
-        for (String diskuuid : bindings.cells()) {
+        // ★R84：服务面只吃绑定序前 ALLOWED_BOUND_CELLS 枚 ⇒ 旧档里残留的第二枚起是"仍显示、不再搬运"
+        // 的惰性条目（刻意不销毁玩家数据，也不让它继续产生"能绑多枚却在轮转"的错觉）。
+        final List<String> cells = bindings.cells();
+        final int serveCells = Math.min(cells.size(), PocketConstants.ALLOWED_BOUND_CELLS);
+        for (int cellIndex = 0; cellIndex < serveCells; cellIndex++) {
+            final String diskuuid = cells.get(cellIndex);
             if (report.pairsServed >= pairLimit) {
                 break;
             }
@@ -97,7 +102,10 @@ public final class PocketChannelRunner {
     }
 
     /**
-     * 抽取方向（R38 第 2 条的补满）：按 ghost 声明从元件抽进口袋其余非 ghost 真实栏。
+     * 抽取方向（R38 第 2 条的补满）：按 ghost 声明从元件抽进<b>本条声明自己那一格</b>。
+     * <p>
+     * ★R84：落点由"口袋其余非 ghost 真实栏"改为声明格本体（用户裁定"物品应该落到物品格、流体落到流体槽内"），
+     * 与流体支"落点＝本 tank"同构。声明格因此不再是"永远空着的虚化占位"，而是能看见补到哪了的落点。
      * <p>
      * 抽取<b>不受分区拒收影响</b>（{@code MEInventoryHandler:106-118} 只查读权限，
      * GTIT 从不 {@code setIsExtractFilterActive(true)}），这是"配置补满能跨分区"的依据。
@@ -110,7 +118,11 @@ public final class PocketChannelRunner {
         if (bindings == null || bindings.isEmpty() || filters == null || filters.isEmpty() || pairLimit <= 0) {
             return report;
         }
-        for (String diskuuid : bindings.cells()) {
+        final List<String> cells = bindings.cells();
+        // ★R84：与注入侧同一条服务面口径（见 runInjectBatch），只吃绑定序前 ALLOWED_BOUND_CELLS 枚
+        final int serveCells = Math.min(cells.size(), PocketConstants.ALLOWED_BOUND_CELLS);
+        for (int cellIndex = 0; cellIndex < serveCells; cellIndex++) {
+            final String diskuuid = cells.get(cellIndex);
             if (report.pairsServed >= pairLimit) {
                 break;
             }

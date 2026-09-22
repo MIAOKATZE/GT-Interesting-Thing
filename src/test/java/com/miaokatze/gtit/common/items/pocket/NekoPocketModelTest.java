@@ -87,7 +87,7 @@ public class NekoPocketModelTest {
         cases.put("bind_position_roundtrip", NekoPocketModelTest::bindPositionRoundTrip);
         cases.put("bind_identity_dedup_overwrite_position", NekoPocketModelTest::bindIdentityDedupOverwritesPosition);
         cases.put("绑定表逐条mode与缺键回落", NekoPocketModelTest::bindingPerEntryModeAndMissingKeys);
-        cases.put("源质表64点上限", NekoPocketModelTest::essenceCapsAtSixtyFour);
+        cases.put("源质表按每格上限封顶", NekoPocketModelTest::essenceCapsFollowPerTagCap);
         cases.put(
             "essence_all_or_nothing_rejects_whole_round",
             NekoPocketModelTest::essenceAllOrNothingRejectsWholeRound);
@@ -122,9 +122,9 @@ public class NekoPocketModelTest {
         cases.put("distill_path_never_sees_container", NekoPocketModelTest::distillPathNeverSeesContainer);
         // ---- R83 A2（缺陷 3 的 (2)(3)）：β 粒度与"超单格上限"的可判定出口
         cases.put(
-            "distill_same_item_across_slots_counts_once",
-            NekoPocketModelTest::distillSameItemAcrossSlotsCountsOnce);
-        cases.put("distill_over_cap_group_leaves_reading", NekoPocketModelTest::distillOverCapGroupLeavesReading);
+            "distill_same_item_across_slots_counts_per_cell",
+            NekoPocketModelTest::distillSameItemAcrossSlotsCountsPerCell);
+        cases.put("distill_over_cap_cell_leaves_reading", NekoPocketModelTest::distillOverCapCellLeavesReading);
         cases.put("inject_vessel_drains_into_store", NekoPocketModelTest::injectVesselDrainsIntoStore);
         cases.put(
             "inject_full_store_leaves_vessel_untouched",
@@ -491,6 +491,12 @@ public class NekoPocketModelTest {
      * <p>
      * ★本用例<b>不许</b>因为"现状如此"被改掉或删掉：三条都绿 ⇒ 缺陷不在 JVM 可证的这三环，
      * 结论只能往显示面/实机面（元件 uuid 是否真的不同、归还是否成功、tooltip 是否被截断）去追。
+     * <p>
+     * ★R84 说明（防后来人误读成"用户裁定没落地"）：本用例走的是<b>数据层</b> {@code PocketCellBindings.bind}，
+     * 那一层的上限仍是 {@code MAX_BOUND_CELLS = 64}（防 NBT 无界膨胀，且旧档多条目往返、逐条 mode、
+     * 身份去重回填位置这些机制只有多条目才表达得出来）。玩家可感知的"只能绑一枚"钉在<b>入口面</b>
+     * {@code PocketBindFlow.bind}（见 {@code bind_new_cell_without_identity_materializes_and_succeeds}）
+     * 与<b>服务面</b> {@code PocketChannelRunner}，两处都不碰这里。
      */
     private static void bindTwoDistinctUuidsKeepsTwoRows() {
         final PocketCellBindings bindings = new PocketCellBindings();
@@ -634,7 +640,10 @@ public class NekoPocketModelTest {
      * <p>
      * 为什么这条能钉住症状：修前 {@code performBind} 只看 {@code cellUuid() == null}，新元件被发回
      * 「把元件放入此格」这句<b>反向误导</b>文案 ⇒ 玩家换个位置再试还是失败，观感就是"只能绑一个"。
-     * 这里连着绑<b>两枚</b>新元件（都从没进过驱动器），条数必须是 2。
+     * <p>
+     * ★R84 改口径：本用例原来连着绑<b>两枚</b>新元件并断言条数走到 2，那一条已被用户的裁定
+     * （"必须要求只能绑 1 个，不能对多个"）反转为"第二枚必须 FULL 拒收"。但 R81 的真根因面
+     * <b>一个字都没放松</b>：拒收也要先把身份物化出来，且回执必须是"先解绑"而不是"把元件放入此格"。
      */
     private static void bindNewCellWithoutIdentityMaterializesAndSucceeds() {
         // ---- 前置：新元件的身份读不出来（★不是"格子里没放元件"，两者必须在四态里分得开）----
@@ -665,25 +674,35 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(1, bindings.size(), "新元件绑定后 size = 1");
         SimpleAssert.that(bindings.contains(CELL_A), "物化出来的身份就是表里那条");
 
-        // ---- 第二枚新元件（同样从没进过驱动器）⇒ 条数必须走到 2 = 用户报的那个"只能绑一个" ----
+        // ---- ★R84 反转：第二枚<b>不同身份</b>必须被拒（用户裁定"只能绑 1 个，不能对多个"）----
+        // 拒收也必须走 FULL（"请先解绑"），不得退化成 NO_IDENTITY / slot_hint 那种反向误导——
+        // 那正是 R81 点名的形态，所以这一支仍然要先把身份物化出来。
         final LazyIdentityCell secondCell = new LazyIdentityCell(CELL_B, true);
         SimpleAssert.eq(
-            PocketBindFlow.Result.ADDED,
+            PocketBindFlow.Result.FULL,
             PocketBindFlow.bind(bindings, true, secondCell, true),
-            "★第二枚新元件也必须绑定成功（这条断言直接对着用户的症状）");
-        SimpleAssert.eq(2, bindings.size(), "两枚新元件 ⇒ size = 2");
-        SimpleAssert.eq(Arrays.asList(CELL_A, CELL_B), bindings.cells(), "顺序即绑定序（第二条没挤掉第一条）");
+            "★第二枚不同身份 ⇒ FULL（已达 ALLOWED_BOUND_CELLS）");
+        SimpleAssert.eq(1, bindings.size(), "绑定表仍只有第一枚，第二枚不得进表");
+        SimpleAssert.that(!bindings.contains(CELL_B), "第二枚的身份没有进表");
+        SimpleAssert.eq(1, secondCell.materializations, "★被拒也要物化过一次（否则玩家解绑第一枚后还得把元件再塞回去重新触发）");
+        // ---- ★上限收到 1 之后最容易踩的坑：同身份重绑必须仍是 DUPLICATE，不能被"表满"挡掉 ----
+        final LazyIdentityCell rebindSame = new LazyIdentityCell(CELL_A, true);
+        SimpleAssert.eq(
+            PocketBindFlow.Result.DUPLICATE,
+            PocketBindFlow.bind(bindings, true, rebindSame, true),
+            "表已满时同身份重绑仍走 DUPLICATE（R81 口径：contains 那一支永远先行放行）");
+        SimpleAssert.eq(1, bindings.size(), "同身份重绑不涨条目");
 
         // ---- 落档往返（★护栏：物化出来的身份必须能存能读，否则下次开面板又是 0 条）----
         final NBTTagCompound root = new NBTTagCompound();
         bindings.writeTo(root);
         final PocketCellBindings back = PocketCellBindings.readFrom(root);
-        SimpleAssert.eq(2, back.size(), "物化 + 绑定后的 NBT 往返仍是 2 条");
+        SimpleAssert.eq(1, back.size(), "物化 + 绑定后的 NBT 往返仍是 1 条");
         SimpleAssert.eq(
-            CELL_B,
+            CELL_A,
             back.entries()
-                .get(1).id,
-            "往返后第二条身份不变");
+                .get(0).id,
+            "往返后第一条身份不变");
 
         // ---- 表满这一支不算在四态里，但也不能被物化路径绕过（★不写第二条目）----
         final PocketCellBindings stuffed = new PocketCellBindings();
@@ -1115,18 +1134,24 @@ public class NekoPocketModelTest {
 
     // ------------------------------------------------------------------ 源质表
 
-    private static void essenceCapsAtSixtyFour() {
+    /**
+     * ★R84：每格上限 64 → <b>256</b>，且它是用户裁定的<b>可配值</b> ⇒ 本用例全程按
+     * {@code PocketConstants.ESSENCE_CAP_PER_TAG} 符号断言，不再钉死字面量（钉死数字的下次抬头就会
+     * 让人去删断言而不是改常量）。
+     */
+    private static void essenceCapsFollowPerTagCap() {
+        final int cap = PocketConstants.ESSENCE_CAP_PER_TAG;
         final PocketEssenceStore store = new PocketEssenceStore();
         SimpleAssert.eq(40, store.add("aer", 40), "首次入账 40 点应全额");
-        SimpleAssert.eq(24, store.add("aer", 40), "超过 64 的部分被逐格上限挡住（原语回报实收量）");
-        SimpleAssert.eq(64, store.get("aer"), "每格上限 64");
+        SimpleAssert.eq(cap - 40, store.add("aer", cap), "超过单格上限的部分被逐格上限挡住（原语回报实收量）");
+        SimpleAssert.eq(cap, store.get("aer"), "每格上限 = ESSENCE_CAP_PER_TAG");
         SimpleAssert.eq(0, store.add("aer", 5), "已满格不再入账");
-        SimpleAssert.that(store.isFull("aer"), "64 点即满格");
+        SimpleAssert.that(store.isFull("aer"), "到单格上限即满格");
         SimpleAssert.eq(Boolean.FALSE, store.isFull("ignis"), "未入账的 tag 不算满");
         SimpleAssert.eq(0, store.add("terra", -1), "非正数请求不入账");
         SimpleAssert.eq(0, store.add("", 10), "空 tag 不入账");
         SimpleAssert.eq(10, store.add("ignis", 10), "新 tag 仍可入账：存储与显示格数解耦（★R78② 后是 72 格，旧 48 口径不得留在文案里）");
-        SimpleAssert.eq(64 - 10, store.roomFor("ignis"), "剩余容量按上限差给出");
+        SimpleAssert.eq(cap - 10, store.roomFor("ignis"), "剩余容量按上限差给出");
         SimpleAssert.eq(
             2,
             store.tags()
@@ -1145,7 +1170,7 @@ public class NekoPocketModelTest {
     private static void essenceAllOrNothingRejectsWholeRound() {
         final PocketEssenceStore store = new PocketEssenceStore();
         store.add("aer", 60);
-        store.add("ignis", 64);
+        store.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG); // ★R84：按符号顶满，不写死 64
 
         final Map<String, Integer> round = new LinkedHashMap<>();
         round.put("aer", 10);
@@ -1169,10 +1194,17 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(64, store.get("aer"), "aer 补满到 64");
         SimpleAssert.eq(30, store.get("terra"), "新 tag 建立");
 
-        // 未预检直接提交时按逐格上限兜底（宁少不炸），但仍不得据此消耗物品
-        SimpleAssert.eq(30, store.putAll(fits), "aer 已满只进 0、terra 再进 30 ⇒ 兜底回报实收 30");
-        SimpleAssert.eq(64, store.get("aer"), "兜底不会把满格硬塞进去");
-        SimpleAssert.eq(60, store.get("terra"), "兜底只影响本轮入 accounting 的量，不炸档");
+        // 未预检直接提交时按逐格上限兜底（宁少不炸），但仍不得据此消耗物品。
+        // ★R84：cap 抬到 256 后"aer 补到 64"不再是满格样本 ⇒ 越界那份改用 cap 造，兜底分支必须继续被真实走到。
+        final Map<String, Integer> over = new LinkedHashMap<>();
+        over.put("aer", PocketConstants.ESSENCE_CAP_PER_TAG);
+        over.put("terra", 5);
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_CAP_PER_TAG - store.get("aer") + 5,
+            store.putAll(over),
+            "兜底只收放得下的部分（aer 收到顶 + terra 全收），且不炸档");
+        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG, store.get("aer"), "★兜底不会把超出单格上限的量硬塞进去（越界那份被丢弃在候选侧，不写进存储）");
+        SimpleAssert.eq(35, store.get("terra"), "terra 累计 30+5（多次提交是叠加不是覆盖）");
         SimpleAssert.eq(0, store.putAll(null), "null 候选不入账");
         SimpleAssert.eq(0, store.putAll(new LinkedHashMap<>()), "空候选不入账");
         SimpleAssert.that(store.canAcceptAll(null), "null 候选天然放得下");
@@ -1243,14 +1275,15 @@ public class NekoPocketModelTest {
         // 读档钳制：外部/陈旧档写进 70 点不能直接吃下；0 值条目读档即丢；无 key 条目忽略
         final NBTTagCompound dirty = new NBTTagCompound();
         final NBTTagList dirtyList = new NBTTagList();
-        dirtyList.appendTag(aspectEntry("lux", 70));
+        // ★R84：上限抬到 256 后"70 点"不再是越界样本 ⇒ 改造 cap+6，钳制分支必须继续被真实走到
+        dirtyList.appendTag(aspectEntry("lux", PocketConstants.ESSENCE_CAP_PER_TAG + 6));
         dirtyList.appendTag(aspectEntry("mortuus", 0));
         dirtyList.appendTag(new NBTTagCompound());
         final NBTTagCompound dirtyEss = new NBTTagCompound();
         dirtyEss.setTag(PocketConstants.ASPECTS, dirtyList);
         dirty.setTag(PocketConstants.ESSENCE, dirtyEss);
         final PocketEssenceStore clamped = PocketEssenceStore.readFrom(dirty);
-        SimpleAssert.eq(64, clamped.get("lux"), "读档时超过上限按 64 截断");
+        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG, clamped.get("lux"), "读档时超过上限的条目按单格上限截断（★不是丢弃整条，也不是照收越界值）");
         SimpleAssert.eq(0, clamped.get("mortuus"), "0 值条目读档即丢");
         SimpleAssert.eq(
             1,
@@ -1262,7 +1295,8 @@ public class NekoPocketModelTest {
         final NBTTagCompound again = new NBTTagCompound();
         clamped.writeTo(again);
         final PocketEssenceStore twice = PocketEssenceStore.readFrom(again);
-        SimpleAssert.eq(64, twice.get("lux"), "钳制后再往返仍是 64（幂等）");
+        SimpleAssert
+            .eq(PocketConstants.ESSENCE_CAP_PER_TAG, twice.get("lux"), "钳制后再往返仍等于单格上限（★幂等：第二次读档不得继续往下削，也不得把越界值放回来）");
         SimpleAssert.eq(
             1,
             twice.tags()
@@ -1490,7 +1524,10 @@ public class NekoPocketModelTest {
         final PocketChannelRunner.Report report = PocketChannelRunner
             .runInjectBatch(bindingsOf(CELL_A, CELL_B), new PocketRotationCursor(), ops, Integer.MAX_VALUE);
         SimpleAssert.eq(53, report.transferred, "瞬时通道一次穿完全部");
-        SimpleAssert.eq(2, report.pairsServed, "两枚元件各服务一对（绑定序做外层轮转）");
+        // ★R84：服务面只吃绑定序前 ALLOWED_BOUND_CELLS(=1) 枚 ⇒ 第二枚即使还在表里也不再被服务。
+        // 旧断言"两枚各服务一对"钉的是已被推翻的口径；本用例<b>刻意</b>让 CELL_B 继续留在表里，
+        // 正是为了钉住"在表 ≠ 在跑"（数据层不收缩与入口面拒收是同一枚硬币的两面）。
+        SimpleAssert.eq(1, report.pairsServed, "★两枚在表、只服务第 1 枚（ALLOWED_BOUND_CELLS = 1）");
         SimpleAssert.eq(1, ops.announcements.size(), "一次调用内只发一次网络通知（delta 合并）");
         final List<PocketChannelOps.Delta> posted = ops.announcements.get(0);
         SimpleAssert.eq(2, posted.size(), "同 (元件,通道,内容) 的多笔 delta 必须合并成一条");
@@ -2079,37 +2116,41 @@ public class NekoPocketModelTest {
      */
     private static void distillAllOrNothingKeepsBoth() {
         final StubGate gate = new StubGate();
-        // 组身份 = item + damage ⇒ 要造"两组"必须换 damage（同 FakePlainItem 同 damage 在 β 下只算一组）
+        // ★R84：工作单位是<b>格</b>，两格就是两个落点；这里换 damage 只为了让桩件产物是两种 tag
+        // （aer / ignis），不再承担旧 β 口径的"分组"语义。
         final ItemStack aerItem = stackDistill(2, 0);
         final ItemStack ignisItem = stackDistill(3, 1);
         gate.putDistill(aerItem, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 30 }));
         gate.putDistill(ignisItem, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 40 }));
         final PocketEssenceStore store = new PocketEssenceStore();
-        store.add("ignis", 30); // ignis 只剩 34 点空间 < 40
+        store.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - 30); // ignis 只剩 30 点空间 < 40 ⇒ 那格放不下
 
         final ItemStack[] slots = new ItemStack[] { aerItem, ignisItem };
         final PocketDistillDriver.Batch batch = PocketDistillDriver.planDistillBatch(slots, gate, store);
-        SimpleAssert.that(batch.advanceable, "两组都可蒸");
-        SimpleAssert.eq(1, batch.sourceCount, "★按组全有全无：只有放得下的 aer 组参与本轮");
+        SimpleAssert.that(batch.advanceable, "两格都可蒸");
+        SimpleAssert.eq(1, batch.sourceCount, "★按<b>格</b>全有全无：只有放得下的 aer 那格参与本轮（R84）");
         SimpleAssert.eq(0, batch.sourceSlots[0], "扣件落点就是 aer 那一格");
-        SimpleAssert.eq(Boolean.TRUE, batch.accepted, "aer 组收得进 ⇒ 本轮推进");
-        SimpleAssert.eq(Boolean.FALSE, batch.needsRoom, "有组建效 ⇒ 不判'停在满格不重跑'（否则倒计时被冻住）");
-        SimpleAssert.eq(1, batch.discardedGroups, "被放弃的组要留下读数（R83 偏差 3c：不得静默）");
-        SimpleAssert.eq(40, batch.discardedPoints, "被放弃的点数 = ignis 那组的 40 点");
-        SimpleAssert.eq(Boolean.FALSE, batch.candidates.containsKey("ignis"), "★放不下的一组整份不进候选（不做截断）");
+        SimpleAssert.eq(Boolean.TRUE, batch.accepted, "aer 那格收得进 ⇒ 本轮推进");
+        SimpleAssert.eq(Boolean.FALSE, batch.needsRoom, "有格建效 ⇒ 不判'停在满格不重跑'（否则倒计时被冻住）");
+        SimpleAssert.eq(1, batch.discardedGroups, "★被放弃的<b>格</b>要留下读数（R83 偏差 3c 不得静默；单位 R84 起是格）");
+        SimpleAssert.eq(40, batch.discardedPoints, "被放弃的点数 = ignis 那格的 40 点");
+        SimpleAssert.eq(Boolean.FALSE, batch.candidates.containsKey("ignis"), "★放不下的一格整份不进候选（不做截断）");
         // 生产侧的消耗动作被 accepted 门住（见 PocketDistillDriver#runBatch 按 sourceSlots 逐组扣件）
         store.putAll(batch.candidates);
-        SimpleAssert.eq(30, store.get("ignis"), "预检不过的那组 ⇒ ignis 零变化");
+        SimpleAssert
+            .eq(PocketConstants.ESSENCE_CAP_PER_TAG - 30, store.get("ignis"), "预检不过的那格 ⇒ ignis 零变化（★按符号读，抬上限不得让这条假绿）");
         SimpleAssert.eq(30, store.get("aer"), "放得下的那组整份入账");
         SimpleAssert.eq(2, slots[0].stackSize, "planDistillBatch 是纯函数：自己不吃件");
         SimpleAssert.eq(3, slots[1].stackSize, "★被放弃的那组一件都不消耗 ⇒ 不销毁价值");
 
-        // 只有一组、且它是被"存量挤满格子"挡下（40 + 40 > 64）⇒ 这才是可解卡的"停在满格不重跑"
+        // 只有一格、且它是被"存量挤满格子"挡下 ⇒ 这才是可解卡的"停在满格不重跑"。
+        // ★R84：越界样本按符号造（只留 20 点空间 < 40）；旧桩件写死 `add(ignis, 40)` 靠的是"40+40>64"，
+        // 上限抬到 256 后那个前提<b>静默失效</b> ⇒ 这条会假绿成"没在钉满格支"。
         final PocketEssenceStore jammed = new PocketEssenceStore();
-        jammed.add("ignis", 40);
+        jammed.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - 20);
         final PocketDistillDriver.Batch wait = PocketDistillDriver
             .planDistillBatch(new ItemStack[] { ignisItem }, gate, jammed);
-        SimpleAssert.eq(Boolean.FALSE, wait.accepted, "一组都没收下");
+        SimpleAssert.eq(Boolean.FALSE, wait.accepted, "一格都没收下");
         SimpleAssert.eq(Boolean.TRUE, wait.needsRoom, "取走晶化源质即解卡 ⇒ 仍按 R29 停在满格");
         SimpleAssert.eq(Boolean.FALSE, wait.overCap, "★这与'单件原量超上限'是两件事，不得混成一个状态");
 
@@ -2130,11 +2171,12 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★R83 A2 / D-3 β（玩家原话"蒸馏应该是对每组物品进行 1 次"）：同一物品散在几格都算<b>一组</b>
-     * ⇒ 一轮只产 1 次、只留 1 个扣件落点，且产出<b>不乘堆叠数</b>（乘了会撞 64 点/格 + 全有全无，
-     * 整堆永久卡死 ⇒ 见 PocketDistillDriver 类注释第 4 条）。
+     * ★R84（作废 R83 A2 / D-3 β 的"组"口径，玩家定档"对象应该是格子，每个格子蒸 1 件"）：
+     * 同一物品散在几格 ⇒ <b>各格每轮各蒸 1 件、各留一个扣件落点</b>；产出仍<b>不乘堆叠数</b>
+     * （乘了会撞单格上限 + 全有全无 ⇒ 整堆永久卡死，那条理由照旧成立）。
+     * TC 递归查表由驱动内的 {@code (item,damage)} 记忆表压成"每种签名一次"（省的是查询，不是落点）。
      */
-    private static void distillSameItemAcrossSlotsCountsOnce() {
+    private static void distillSameItemAcrossSlotsCountsPerCell() {
         final StubGate gate = new StubGate();
         final ItemStack first = stack(60);
         final ItemStack second = stack(60);
@@ -2142,57 +2184,62 @@ public class NekoPocketModelTest {
         gate.putDistill(second, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 5 }));
         final PocketDistillDriver.Batch one = PocketDistillDriver
             .planDistillBatch(new ItemStack[] { first, second, null }, gate, new PocketEssenceStore());
-        SimpleAssert.eq(1, one.sourceCount, "★两格同物 = 一组 ⇒ 本轮只有一个扣件落点");
-        SimpleAssert.eq(1, one.sourceSlots.length, "落点数组长度 = 组数（旧写法留 11 个 0 ⇒ 会把格 0 吃空）");
-        SimpleAssert.eq(0, one.sourceSlots[0], "落点 = 该组第一次出现的那一格");
-        SimpleAssert.eq(5, one.points, "产出 = 单件原量 5 点：既不 ×2 格，也不 ×60 堆叠");
-        SimpleAssert.eq(1, gate.aspectQueries.size(), "同组的第二格不再问一次产物（TC 递归查表只付一次）");
-        SimpleAssert.eq(0, one.discardedGroups, "没有组被放弃");
+        SimpleAssert.eq(2, one.sourceCount, "★R84：两格同物 = <b>两个</b>扣件落点（旧 β 口径只给 1 个）");
+        SimpleAssert.eq(2, one.sourceSlots.length, "落点数组长度 = 参与格数（旧写法留 11 个 0 ⇒ 会把格 0 吃空）");
+        SimpleAssert.eq(0, one.sourceSlots[0], "落点按<b>格序升序</b>：第 1 个是格 0");
+        SimpleAssert.eq(1, one.sourceSlots[1], "★第 2 个必须是格 1（重复写同一格 = 另一格永远吃不到）");
+        SimpleAssert.eq(10, one.points, "产出 = 两格各 5 点（仍不乘 60 的堆叠数）");
+        SimpleAssert.eq(1, gate.aspectQueries.size(), "同物同量只问 TC 一次（省的是查询，不是落点）");
+        SimpleAssert.eq(0, one.discardedGroups, "没有格被放弃");
 
-        // 组身份含 damage（与 {@code NekoPocketPanel#sameSample} 同判据）⇒ 同物不同 damage 是两组
+        // ★R84：damage 不再决定工作单位（格才决定），这里换 damage 只是为了让签名/产物不同
         final ItemStack otherDamage = stackDistill(60, 9);
         gate.putDistill(otherDamage, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 5 }));
-        final PocketDistillDriver.Batch twoGroups = PocketDistillDriver
+        final PocketDistillDriver.Batch three = PocketDistillDriver
             .planDistillBatch(new ItemStack[] { first, otherDamage, second }, gate, new PocketEssenceStore());
-        SimpleAssert.eq(2, twoGroups.sourceCount, "同物不同 damage 算两组，各产 1 次");
-        SimpleAssert.eq(10, twoGroups.points, "两组合并 10 点（仍未乘堆叠）");
-        SimpleAssert.eq(3, gate.aspectQueries.size(), "第三格与第一格同组 ⇒ 不再问它（总共只问三次）");
+        SimpleAssert.eq(3, three.sourceCount, "三格 ⇒ 三落点（同物同理，damage 不并格）");
+        SimpleAssert.eq(15, three.points, "三格各产 5 点");
+        SimpleAssert.eq(3, gate.aspectQueries.size(), "★记忆表是<b>每批一份</b>：本批两种签名 ⇒ 再问两次（累计 3）");
     }
 
     /**
-     * ★R83 偏差 3c：单件原量就超 {@code ESSENCE_CAP_PER_TAG=64} 的组，旧实现是<b>整轮永久放弃</b>
-     * （needsRoom → stalledFull → 不消耗也不倒计时 → 进度条钉死满格、什么都不说）。
-     * 现在它只作废自己那一组，并留下"放弃了几组、几点"的读数与 {@code OVER_CAP} 状态位。
+     * ★R83 偏差 3c 的出口，★R84 把单位由"组"改为<b>格</b>：单格原量就超 {@code ESSENCE_CAP_PER_TAG} 的东西，
+     * 旧实现是<b>整轮永久放弃</b>（needsRoom → stalledFull → 不消耗也不倒计时 → 进度条钉死满格、什么都不说）。
+     * 现在它只作废自己那一格，并留下"放弃了几格、几点"的读数与 {@code OVER_CAP} 状态位。
+     * <p>
+     * ★越界样本按符号造（{@code cap + 44}）：上限抬到 256 后，写死 70 的旧桩件<b>根本不再越界</b>，
+     * 那条分支会静默地不再被走到（用例照样绿，但什么都没钉）。
      */
-    private static void distillOverCapGroupLeavesReading() {
+    private static void distillOverCapCellLeavesReading() {
         final StubGate gate = new StubGate();
-        // aer 一项就 70 点：TC 的 getBonusTags 在 capAspects(ret,64) 之后继续 add/merge（护甲/工具类）
+        final int over = PocketConstants.ESSENCE_CAP_PER_TAG + 44;
+        // aer 一项就 over 点：TC 的 getBonusTags 在 capAspects(ret,64) 之后继续 add/merge（护甲/工具类）
         final ItemStack armor = stackDistill(1, 20);
         final ItemStack ore = stackDistill(1, 21);
-        gate.putDistill(armor, TaumAspectAmounts.of(new String[] { "aer", "terra" }, new int[] { 70, 4 }));
+        gate.putDistill(armor, TaumAspectAmounts.of(new String[] { "aer", "terra" }, new int[] { over, 4 }));
         gate.putDistill(ore, TaumAspectAmounts.of(new String[] { "metallum" }, new int[] { 6 }));
 
         final PocketDistillDriver.Batch only = PocketDistillDriver
             .planDistillBatch(new ItemStack[] { armor }, gate, new PocketEssenceStore());
         SimpleAssert.that(only.advanceable, "它确实含源质（不是'没东西可蒸'）");
-        SimpleAssert.eq(Boolean.FALSE, only.accepted, "整组放不下 ⇒ 一组都不收");
+        SimpleAssert.eq(Boolean.FALSE, only.accepted, "整格放不下 ⇒ 一格都不收");
         SimpleAssert.eq(Boolean.FALSE, only.needsRoom, "★不再冒充'需要空间'⇒ 不会被永久冻在满格");
         SimpleAssert.eq(Boolean.TRUE, only.overCap, "回报'超单格上限'这一可判定结论");
-        SimpleAssert.eq(1, only.discardedGroups, "放弃了几组");
-        SimpleAssert.eq(74, only.discardedPoints, "放弃了几点（70+4：组内一起放弃，terra 那 4 点不截断入账）");
+        SimpleAssert.eq(1, only.discardedGroups, "★读数单位是<b>格</b>：放弃了几格");
+        SimpleAssert.eq(over + 4, only.discardedPoints, "放弃了几点（格内一起放弃，terra 那 4 点不截断入账）");
         SimpleAssert.eq(0, only.points, "零入账");
         SimpleAssert.eq(0, only.sourceSlots.length, "★一件都不吃（旧实现同样不吃，但当时没人知道为什么不动）");
 
-        // 同一轮里另一组照常：超上限只作废自己那一组（旧实现里它把可蒸的 ore 一起拖成零产出）
+        // 同一轮里另一格照常：超上限只作废自己那一格（旧实现里它把可蒸的 ore 一起拖成零产出）
         final PocketDistillDriver.Batch mixed = PocketDistillDriver
             .planDistillBatch(new ItemStack[] { armor, ore }, gate, new PocketEssenceStore());
-        SimpleAssert.eq(1, mixed.sourceCount, "只有可蒸又可放的组参与本轮");
-        SimpleAssert.eq(6, mixed.points, "另一组按原量入账");
+        SimpleAssert.eq(1, mixed.sourceCount, "只有可蒸又可放的格参与本轮");
+        SimpleAssert.eq(6, mixed.points, "另一格按原量入账");
         SimpleAssert.eq(Boolean.TRUE, mixed.accepted, "本轮推进");
-        SimpleAssert.eq(Boolean.FALSE, mixed.needsRoom, "有组建效 ⇒ 不停在满格");
-        SimpleAssert.eq(Boolean.TRUE, mixed.overCap, "超上限那组仍被记下来（状态位与读数分开）");
-        SimpleAssert.eq(1, mixed.discardedGroups, "读数：这轮放弃了 1 组");
-        SimpleAssert.eq(74, mixed.discardedPoints, "读数：放弃了 74 点");
+        SimpleAssert.eq(Boolean.FALSE, mixed.needsRoom, "有建效 ⇒ 不停在满格");
+        SimpleAssert.eq(Boolean.TRUE, mixed.overCap, "超上限那格仍被记下来（状态位与读数分开）");
+        SimpleAssert.eq(1, mixed.discardedGroups, "读数：这轮放弃了 1 格");
+        SimpleAssert.eq(over + 4, mixed.discardedPoints, "读数：放弃了 " + (over + 4) + " 点");
     }
 
     /**
@@ -2266,7 +2313,7 @@ public class NekoPocketModelTest {
         final ItemStack vessel = stack(8);
         gate.putContainer(vessel, TaumAspectAmounts.of(new String[] { "aer", "ignis" }, new int[] { 10, 5 }));
         final PocketEssenceStore store = new PocketEssenceStore();
-        store.add("ignis", 64); // ignis 到顶，但 aer 还有满格空间
+        store.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG); // ignis 到顶，但 aer 还有满格空间
 
         final PocketSlots.IntakeResult result = PocketSlots.injectContainer(vessel, store, gate);
         SimpleAssert.eq(PocketSlots.Intake.STORE_FULL, result.kind, "任一 tag 放不下 ⇒ 整轮判满");
@@ -2278,7 +2325,7 @@ public class NekoPocketModelTest {
                 .total(),
             "★内容也分毫未动（还能原样取走）");
         SimpleAssert.eq(0, store.get("aer"), "收得进的那格也不进（全有全无，不留半份）");
-        SimpleAssert.eq(64, store.get("ignis"), "原有值未被覆盖或截断");
+        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG, store.get("ignis"), "原有值未被覆盖或截断（★按符号读，抬上限不得让这条假绿）");
 
         // 腾出空间后同一个容器即可注入（证明卡住的原因是"放不下"而不是"容器被拒"）
         store.extract("ignis", 5);
@@ -4673,9 +4720,11 @@ public class NekoPocketModelTest {
             PocketFilterConfig.resolveCap(new PocketFilterConfig.FluidFilter(0, "water", unset), 0),
             "流体回落值与上界同一个常量（★刻意同源：现行为就是填到自然满量）");
         SimpleAssert.eq(
-            PocketConstants.ESSENCE_CAP_PER_TAG,
+            PocketConstants.FILTER_CAP_CEILING_ESSENCE,
             PocketFilterConfig.resolveCap(new PocketFilterConfig.EssenceFilter(0, "essentia", "aer", unset), 0),
-            "★源质未设 ⇒ ESSENCE_CAP_PER_TAG（64 点 = 一整堆晶）");
+            "★R84：源质未设 ⇒ <b>FILTER_CAP_CEILING_ESSENCE</b>（一批仍至多 64 点 = 一整堆晶）——"
+                + "它与每格上限 ESSENCE_CAP_PER_TAG(256) 已<b>解耦</b>：晶化源质单堆就是 64，"
+                + "若让批上限跟着 256 走，抽取支会抽 256 点却只物化得回 64 晶、注回也只还 64 ⇒ 净吞 192 点");
 
         // ---- ② 三参形态与两参形态必须同判据（格件读的是 resolveRawCap） ----
         for (Kind kind : Kind.values()) {

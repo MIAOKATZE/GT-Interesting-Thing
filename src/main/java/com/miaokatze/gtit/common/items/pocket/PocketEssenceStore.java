@@ -42,15 +42,19 @@ import net.minecraft.nbt.NBTTagString;
  * 存储与显示解耦：多于 72 个 tag 仍照常入账，只是<b>没有格位可占</b>（{@link #assignCell(String)}
  * 返回 −1，显示侧据此走 {@code aspect.overflow_note} 兜底）。
  * <p>
- * <b>入账口径 = 全有全无，作用单位是「一组物品」</b>（R83 A2 / D-3 β）：一组（同一 item + 同一 damage
- * 散在多格也算<b>一组</b>）蒸出的全部 aspect 必须<b>整体</b>放得下，任一 tag 空间不足 ⇒ <b>该组</b>零入账、
- * 上层对该组零消耗，其它组照常入账。故走 {@link #canAcceptAll(Map, Map)}（第二参是本轮已排给其它组的
+ * <b>入账口径 = 全有全无，作用单位是「一格物品」</b>（★R84：对象是格；R83 A2 / D-3 β 的旧口径原文为
+ * "<b>作用单位是「一组物品」</b>：一组（同一 item + 同一 damage 散在多格也算一组）蒸出的全部 aspect
+ * 必须整体放得下"——其中"多格折成一组"已被 R84 作废，"整体放得下否则零入账、零消耗"这条纪律不变）：
+ * 一格蒸出的全部 aspect 必须<b>整体</b>放得下，任一 tag 空间不足 ⇒ <b>该格</b>零入账、
+ * 上层对该格零消耗，其它格照常入账。故走 {@link #canAcceptAll(Map, Map)}（第二参是本轮已排给其它格的
  * 预留量）→ {@link #putAll(Map)} 两段式；<b>不得</b>拿 {@link #add(String, int)} 的逐 tag 截断结果
  * 去决定"本轮要不要消耗物品"（截断后照扣 = 静默销毁价值）。
  * <p>
  * ★两种"放不下"必须分开（R83 偏差 3c）：{@link #exceedsCellCap(Map)} 为真 = 单件原量本身就超
- * {@link PocketConstants#ESSENCE_CAP_PER_TAG} ⇒ <b>再怎么腾格也放不下</b>，只能放弃该组并留下读数；
+ * {@link PocketConstants#ESSENCE_CAP_PER_TAG} ⇒ <b>再怎么腾格也放不下</b>，只能放弃该格并留下读数；
  * 只有"当前存量 + 预留量装得下与否"这一种才是可解卡的"需要空间"（停在满格不重跑）。
+ * ★R84 逐格后的算术提醒：同一 tag 的 12 份候选<b>共享</b>同一个 {@code ESSENCE_CAP_PER_TAG}，
+ * 越靠后的格越可能被整体放弃（这不是缺陷，是全有全无的必然；被挡下的格下一轮重试）。
  */
 public final class PocketEssenceStore {
 
@@ -258,7 +262,7 @@ public final class PocketEssenceStore {
         return PocketConstants.ESSENCE_CAP_PER_TAG - get(tag);
     }
 
-    /** 该 tag 是否已到 64 点上限。 */
+    /** 该 tag 是否已到 {@link PocketConstants#ESSENCE_CAP_PER_TAG} 上限。 */
     public boolean isFull(String tag) {
         return get(tag) >= PocketConstants.ESSENCE_CAP_PER_TAG;
     }
@@ -301,8 +305,8 @@ public final class PocketEssenceStore {
     }
 
     /**
-     * 同上，但把<b>本轮已排给其它组的预留量</b>一起算进占用（R83 A2：一轮里逐组装箱，
-     * 后装的组不能把已经许给前一组的空间再许一遍）。
+     * 同上，但把<b>本轮已排给其它格的预留量</b>一起算进占用（★R84：一轮里<b>逐格</b>装箱，
+     * 后装的格不能把已经许给前一格的空间再许一遍；旧口径"逐组装箱 / 前一组"中的"组"已作废）。
      * <p>
      * ★预留量只加在判据上，<b>不改</b>库存：真正的入账仍是那一次 {@link #putAll(Map)}。
      *
@@ -330,8 +334,9 @@ public final class PocketEssenceStore {
      * 这份候选里是否存在<b>单格永远装不下</b>的条目（某 tag 的点数本身 &gt; 单格上限）。
      * <p>
      * 存在的理由（R83 偏差 3c）：这类条目与"格内已有存量把空间挤掉了"是两件事——后者玩家取走晶就解卡，
-     * 前者<b>无论怎么腾都放不下</b>（TC 的 {@code getBonusTags} 在 {@code capAspects} 之后继续累加，
-     * 护甲/工具/武器类可越 64）。把它单独判出来，上层才能"放弃这一组并留下读数"，而不是拿
+     * 前者<b>无论怎么腾都放不下</b>（TC 的 {@code getBonusTags} 在 {@code capAspects} 之后继续累加 ⇒
+     * 护甲/工具/武器类可越 {@link PocketConstants#ESSENCE_CAP_PER_TAG}）。把它单独判出来，上层才能
+     * "放弃这<b>一格</b>并留下读数"（★R84：单位是格，旧句"放弃这一组"作废），而不是拿
      * {@link #canAcceptAll(Map)} 的一个 false 把整轮永久冻住。
      *
      * @return true = 至少一个条目单独就超上限
@@ -373,7 +378,7 @@ public final class PocketEssenceStore {
     }
 
     /**
-     * 单 tag 入账原语，按 64 点上限截断。
+     * 单 tag 入账原语，按 {@link PocketConstants#ESSENCE_CAP_PER_TAG} 上限截断。
      * <p>
      * ⚠ 蒸馏/通道的<b>整轮</b>判定不得建立在本方法的截断行为上（见类注释与
      * {@link #canAcceptAll(Map)}）；它回报的是"这一格实际进了多少"这类局部事实。

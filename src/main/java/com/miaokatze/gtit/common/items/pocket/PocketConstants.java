@@ -121,10 +121,34 @@ public final class PocketConstants {
     public static final int FILTER_CAP_UNSET = -1;
 
     // ------------------------------------------------------------------ 容量与时序
-    /** 绑定条目上限：超出即拒绝新绑定（防 NBT 无界膨胀，元件侧同口径按条数收口）。 */
+    /**
+     * 绑定表的<b>数据结构</b>上限：超出即拒收，防 NBT 无界膨胀（元件侧同口径按条数收口）。
+     * <p>
+     * ★R84 起这一条<b>不再是玩家可感知的口径</b>，可感知的那一条是 {@link #ALLOWED_BOUND_CELLS}。
+     * 两者刻意分开：把数据上限也砍成 1 会让<b>旧档里已有的多枚绑定在读档时被静默销毁</b>（丢的是玩家的
+     * 绑定关系，且 JVM 侧 8 条数据层用例——顺序往返、逐条 mode、身份去重回填位置、外来档折叠——
+     * 全靠多条目才表达得出来）。
+     */
     public static final int MAX_BOUND_CELLS = 64;
-    /** 每格源质上限，对齐 TC4 Warded Jar 的 {@code maxAmount=64}。 */
-    public static final int ESSENCE_CAP_PER_TAG = 64;
+    /**
+     * ★R84 用户裁定：<b>一只口袋只允许绑定一枚元件</b>（"必须要求只能绑 1 个，不能对多个"）。
+     * 钉在两个面上，不碰数据上限：
+     * <ul>
+     * <li>入口面 {@code PocketBindFlow#bind}：第二枚不同身份一律 {@code FULL}（配 {@code bind.full}
+     * 的"先解绑"文案），解绑后才能换；</li>
+     * <li>服务面 {@code PocketChannelRunner}：每批只服务绑定序<b>前 1 枚</b>，所以旧档里残留的多枚
+     * 会变成"仍在表里、仍在绑定行上显示，但不再被搬运"的惰性条目（不销毁任何玩家数据）。</li>
+     * </ul>
+     */
+    public static final int ALLOWED_BOUND_CELLS = 1;
+    /**
+     * 每格源质上限。★R84 裁定：64 → <b>256</b>（"单个源质格可以存储 256 个"），不再对齐 TC4 Warded Jar
+     * 的 {@code maxAmount=64}；代价是同 tag 的 12 格逐格蒸馏候选更不容易互相挤掉。
+     * <p>
+     * ★取出侧与它<b>刻意解耦</b>：一次动作最多 {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} 点，抬上限不等于
+     * 一次能掏 256 晶（晶化源质单堆上限 64，见 {@code TaumBridge.CRYSTAL_STACK_LIMIT}）。
+     */
+    public static final int ESSENCE_CAP_PER_TAG = 256;
     // ---------------------------------------------------------- R75/R78 钉死的列数（几何与索引空间同源）
     /**
      * 流体<b>组数</b>（R78②：由 1 组增至 <b>3 组</b>，每组 = 输入行 18 + 流体槽 36 + 输出行 18 = 72 高，
@@ -374,8 +398,21 @@ public final class PocketConstants {
      * 现行为就是"一拍填到本 tank 的自然满量"，回落必须逐字复现它）。
      */
     public static final int FILTER_CAP_CEILING_FLUID = FLUID_BAR_CAPACITY_ML;
-    /** 源质支组上限的上界与回落值（同上：现行为 = {@link #ESSENCE_CAP_PER_TAG} 点/条/批）。 */
-    public static final int FILTER_CAP_CEILING_ESSENCE = ESSENCE_CAP_PER_TAG;
+    /**
+     * 源质格一次取出的<b>硬上界</b> = 64 点（★R84：与 {@link #ESSENCE_CAP_PER_TAG}=256 解耦，
+     * 一格存 256 也要按堆掏；晶化源质单堆 64，写死与 {@code TaumBridge.CRYSTAL_STACK_LIMIT} 同值）。
+     * <p>
+     * ★声明位置是硬约束：它必须<b>早于</b>下面那条 {@link #FILTER_CAP_CEILING_ESSENCE}，后者按符号引用它
+     * （静态字段初始化不允许前向引用，放错位置就是编译错）。
+     */
+    public static final int ESSENCE_OUT_MAX_POINTS_PER_ACTION = 64;
+    /**
+     * 源质支组上限的上界与回落值。★R84 起与 {@link #ESSENCE_CAP_PER_TAG} <b>解耦</b>，钉在
+     * {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION}=64：晶化源质单堆就是 64（{@code TaumBridge.CRYSTAL_STACK_LIMIT}），
+     * 若让它跟着每格上限抬到 256，{@code extractEssence} 会按 256 点抽通道单位、却只能物化 64 晶，
+     * 而"放不下就注回"那条兜底同样被单堆 64 卡住 ⇒ 净吞 192 点的<b>静默价值销毁</b>。
+     */
+    public static final int FILTER_CAP_CEILING_ESSENCE = ESSENCE_OUT_MAX_POINTS_PER_ACTION;
     /**
      * ★物品支<b>服务端</b>一侧的收口上界 = 不设界（刻意）。
      * <p>
@@ -434,8 +471,8 @@ public final class PocketConstants {
     public static final int REFILL_AMOUNT_PER_FILTER_UNBOUNDED = Integer.MAX_VALUE;
     /** 源质格点击取出的产量：1 点 = 1 晶（R44e③，与 {@code TaumDistillRules.CRYSTAL_CAPACITY} 同值不同语义）。 */
     public static final int ESSENCE_OUT_UNIT_POINTS = 1;
-    /** 源质格 Shift 取出的产量：一次取满一格（{@link #ESSENCE_CAP_PER_TAG} 点 = 一整堆晶）。 */
-    public static final int ESSENCE_OUT_SHIFT_POINTS = ESSENCE_CAP_PER_TAG;
+    /** 源质格 Shift 取出的产量：一次取满一整堆晶（= {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} 点）。 */
+    public static final int ESSENCE_OUT_SHIFT_POINTS = ESSENCE_OUT_MAX_POINTS_PER_ACTION;
     /**
      * {@code ESSENCE_OUT} 动作参数里"按下 Shift"的偏移量（{@code arg = cell + 本值}）。
      * <p>

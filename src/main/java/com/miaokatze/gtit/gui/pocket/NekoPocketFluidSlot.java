@@ -387,10 +387,17 @@ public class NekoPocketFluidSlot extends FluidSlot {
     @Override
     public void drawOverlay(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
         super.drawOverlay(context, widgetTheme);
-        if (ghost) {
-            GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
-            drawCapReadout();
+        if (!ghost) {
+            return;
         }
+        // ★R84（与 NekoPocketPanel 物品支同形）：遮罩只在<b>条子里没有真流体</b>时画。旧判据是单比特
+        // {@code if (ghost)} ⇒ "已经灌进本 tank 的那一列"仍然整条蒙着，玩家读到"需求没有任何体现"。
+        // 本体与 mB 读数不受影响（getFluidStack/displayAmountText 本来就真流体优先）。
+        final FluidStack real = super.getFluidStack();
+        if (real == null || real.amount <= 0) {
+            GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
+        }
+        drawCapReadout();
     }
 
     /**

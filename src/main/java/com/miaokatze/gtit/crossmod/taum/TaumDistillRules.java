@@ -16,24 +16,33 @@ import com.miaokatze.gtit.gui.pocket.PocketInventory;
  * 的全量并入同构，可与炼金炉对账；{@code generateTags} 自带 {@code capAspects(ret,64)}
  * 与"每格 64 点"等值）；★<b>不乘 {@code stackSize}</b>（R83 A2 / D-3 β，理由见
  * {@code PocketDistillDriver} 的类注释：乘堆叠数会撞单格上限 + 全有全无 ⇒ 整堆永久卡死）；</li>
- * <li>溢出 = <b>全有全无，作用单位是"一组物品"</b>（R83 A2 把单位从"整轮"收到"一组"）：
- * 一组放不下 ⇒ 只作废<b>这一组</b>（零入账、该组一件都不消耗），其它组照常；截断后照扣物品
- * = 静默销毁价值，不可接受。整轮一组都没收下且是被空间挡下时进度停在 100 不重跑。</li>
+ * <li>溢出 = <b>全有全无，作用单位是"一格物品"</b>（★R84 由 R83 A2 的"一组"再收到"一格"，
+ * 用户定档"对象应该是格子，每个格子蒸1件"）：
+ * 一格放不下 ⇒ 只作废<b>这一格</b>（零入账、该格一件都不消耗），其它格照常；截断后照扣物品
+ * = 静默销毁价值，不可接受。整轮一格都没收下且是被空间挡下时进度停在 100 不重跑。</li>
  * </ul>
  * 曾经的"每 aspect 各 +1 点"与"部分入账"两档已按裁定删除，不留死配置、不留两说并存。
  * <p>
  * ⚠ 本类的 {@link #credit} 是<b>与 {@code PocketEssenceStore} 同口径的另一份换算实现</b>，
  * 生产代码零调用方（蒸馏实际走 {@code PocketDistillDriver} → {@code PocketEssenceStore.putAll}）。
  * 它钉的是"原量入账 + 不许截断照扣 + 放不下就作废"这条算术口径；
- * ★"全有全无的作用单位"这一层它仍是<b>整轮</b>（R83 之前的形状），生产侧已在 R83 A2 收到<b>一组</b>，
+ * ★"全有全无的作用单位"这一层它仍是<b>整轮</b>（R83 之前的形状），生产侧已在 R83 A2 收到一组、
+ * ★R84 再收到<b>一格</b>，
  * 故本方法<b>不得</b>被当成现行粒度读。删它或把它抬成活码是独立裁决（见 r83-impl-a2.md 的待办）。
  */
 public final class TaumDistillRules {
 
-    /** 单格（单 aspect）点数上限，对应 TC4 Warded Jar 的 {@code maxAmount=64} */
+    /**
+     * ★<b>这不是现行的每格上限</b>：现行值住在 {@code PocketConstants.ESSENCE_CAP_PER_TAG}（R84 起 = 256）。
+     * 本常数只服务本类那条<b>零生产调用方</b>的离线 {@code credit} 换算与 {@code TaumDistillRulesTest}
+     * 的字面量桩件，取值仍是 TC4 Warded Jar 的 {@code maxAmount=64}。
+     * <p>
+     * 两处不同值是<b>有意保留的既存分裂</b>：统一它要连带重写那份测试里 8 条按 64 摆的容量用例，
+     * 属独立裁决（与上面"删 credit 或抬成活码"同一件待办）。★不得被读成"256 没生效"。
+     */
     public static final int MAX_CELL = 64;
 
-    /** 蒸馏节拍：每 100 tick（5 秒）一轮，一轮里<b>每组物品各消耗 1 件</b>（★5 秒是节拍不是产量，须向玩家声明） */
+    /** 蒸馏节拍：每 100 tick（5 秒）一轮，一轮里<b>每个非空且含源质的格各消耗 1 件</b>（★R84：对象是格不是组；5 秒是节拍不是产量，须向玩家声明） */
     public static final int DISTILL_INTERVAL_TICKS = 100;
 
     /**
@@ -66,7 +75,7 @@ public final class TaumDistillRules {
     /**
      * 一轮蒸馏的入账换算（<b>原量 + 全有全无</b>，口径固定）。
      * <p>
-     * ⚠ 粒度是<b>整轮</b>（R83 A2 之前的形状）且生产零调用方；现行蒸馏按"一组物品"全有全无，
+     * ⚠ 粒度是<b>整轮</b>（R83 A2 之前的形状）且生产零调用方；现行蒸馏按"一格物品"全有全无（★R84），
      * 本体在 {@code PocketDistillDriver#planDistillBatch}。本方法只承担"原量 + 不许截断照扣"
      * 这条算术口径的机检，见类注释。
      *

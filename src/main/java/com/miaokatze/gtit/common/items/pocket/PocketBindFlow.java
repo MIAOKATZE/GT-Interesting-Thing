@@ -114,7 +114,10 @@ public final class PocketBindFlow {
         if (uuid == null || uuid.isEmpty()) {
             return Result.NO_IDENTITY;
         }
-        if (!bindings.hasRoom() && !bindings.contains(uuid)) {
+        // ★R84 用户裁定"只能绑 1 枚"钉在这里（而不是砍数据上限，见 PocketConstants#ALLOWED_BOUND_CELLS
+        // 的理由）：已在表内的同身份重绑仍然要能刷新位置快照，所以门禁一律先放行 contains 那一支。
+        if ((bindings.size() >= PocketConstants.ALLOWED_BOUND_CELLS || !bindings.hasRoom())
+            && !bindings.contains(uuid)) {
             return Result.FULL;
         }
         return bindings.bind(uuid, PocketConstants.MODE_DISK_UUID) ? Result.ADDED : Result.DUPLICATE;

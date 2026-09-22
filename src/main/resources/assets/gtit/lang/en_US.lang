@@ -293,7 +293,7 @@ gtit.pocket.bind.unlocated=Not found in any loaded drive/chest
 gtit.pocket.bind.stale=Location lost, press bind again
 gtit.pocket.bind.slot_hint=Put a cell here, then press Bind
 gtit.pocket.bind.button=Bind
-gtit.pocket.bind.full=Bind list is full
+gtit.pocket.bind.full=One pocket can only bind a single cell; unbind the current one first
 gtit.pocket.bind.added=Cell added to the bind list
 gtit.pocket.bind.dup=This cell is already bound; it was not added again
 gtit.pocket.bind.no_identity=Cell identity not written; press Bind again shortly
@@ -318,14 +318,28 @@ gtit.pocket.still.idle=No distillable item
 gtit.pocket.still.no_aspect=This item yields no essentia
 gtit.pocket.still.full=Essentia cells full, item not consumed
 gtit.pocket.still.unavailable=Thaumcraft not loaded
-gtit.pocket.still.over_cap=%d group(s) exceed the per-aspect cap and were skipped (%d point(s))
+gtit.pocket.still.over_cap=%d slot(s) exceed the per-aspect cap and were skipped (%d point(s))
+gtit.pocket.still.partial_skip=%d more slot(s) did not fit this round (%d point(s)); they retry next round
 gtit.pocket.aspect.cell=%s: %d/%d
 gtit.pocket.aspect.overflow_note=Aspects beyond the first %d are stored but not shown
 gtit.pocket.ghost.on=Filter slot: %s (right-click to clear)
 gtit.pocket.ghost.locked=Filter slots accept no player input
+# ★R84 fluid transfer receipts (each one is an "all-or-nothing abandoned" exit; missing one is silence again).
+# Deliberately placeholder-free: notifyCell passes varargs, extra args are harmless but a %s with no arg
+# throws MissingFormatArgumentException on the client.
+gtit.pocket.fluid.tank_full=This column's tank is full: clear the output cell or pick another column
+gtit.pocket.fluid.tank_empty=This column's tank holds no fluid, there is nothing to bottle
+gtit.pocket.fluid.unit_too_large=This container's payload exceeds the free capacity of this tank and cannot be partially drained: free up more space or use a smaller container
+gtit.pocket.fluid.output_blocked=The output cell is occupied by something else or stacked full, the product has nowhere to land: clear this column's output cell first
+gtit.pocket.fluid.no_cell_space=The other cell cannot hold the remaining containers: free a slot first
+gtit.pocket.fluid.transfer_refused=Container and tank both refused this batch, nothing moved
+gtit.pocket.fluid.unsupported_container=This cell is not a fillable/drainable fluid container, or it cannot hold this fluid
+gtit.pocket.fluid.container_full=That container is already full and cannot be filled further
+gtit.pocket.fluid.not_enough_fluid=This tank does not hold enough fluid to fill one container (these containers reject partial fills)
 gtit.pocket.ghost.capacity_note=Each filter slot costs one real storage slot
 gtit.pocket.ghost.fluid_bar=This fluid slot still takes and gives fluid by hand; the filter only says which fluid to pull
 gtit.pocket.cap.readout=Group cap for this filter: %s
+gtit.pocket.cap.readout.stored=This filter slot: %1$s filled of %2$s
 gtit.pocket.held.note=Only works while held in your main hand; it stops once put away
 item.neko_dimension_pocket.tooltip.9=Each fluid slot holds %5$d mB, %9$d mB in total across %8$d slots (a capacity chosen beyond the original request)
 gtit.pocket.legend.input=Top row: put the vessel to process (a filled one drains in, an empty one gets filled)
@@ -340,6 +354,8 @@ gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filt
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
 gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it)
 gtit.pocket.bind.summary=Bound cells: %d / %d
+gtit.pocket.bind.inert=%d legacy binding(s) are out of the served scope (only the first one runs); unbind all before switching
+gtit.pocket.channel.start=Start
 gtit.pocket.bind.truncated=... and %d more bound cells not listed here
 gtit.pocket.bind.rows_more=... and %d more (hover the Bind button for the full list)
 gtit.pocket.bind.unbind_hint=Right-click Bind = unbind the last cell; Shift + right-click = unbind all cells

@@ -107,10 +107,11 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     /**
      * 原位切换 ghost 态（S5 的唯一入口，R41b）。
      * <p>
-     * 真实槽<b>不会被本方法清空</b>：转 ghost 前 S5 必须先把格内物品挪走（R38 第 2 条：产物不能进自己），
-     * 本方法只负责属性与渲染 ⇒ 槽号恒定，220 的 Container 口径不受影响（R78）。
+     * 真实槽<b>不会被本方法清空</b>，本方法只负责属性与渲染 ⇒ 槽号恒定，220 的 Container 口径不受影响（R78）。
+     * ★R84 改口径：声明格<b>就是</b>本条需求的抽取落点（用户裁定"物品应该落到物品格"），所以格内出现真实
+     * 产物是常态；只有"内容与声明不是同一种"才由 {@code NekoPocketPanel#applyItemGhosts} 搬空。
      *
-     * @param ghost  true = 虚化配置格（禁放置禁取出）
+     * @param ghost  true = 需求格（禁放置、<b>可取出</b>，R84）
      * @param sample 声明样本；{@code null} 视为清空
      */
     public NekoFilterSlot setGhost(boolean ghost, ItemStack sample) {
@@ -122,8 +123,9 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         }
         final ModularSlot slot = getSlot();
         if (ghost) {
-            // R46d/R41b 的字面口径：ghost 态就是「禁放置 + 禁取出」，且槽实例与槽号都不变
-            slot.accessibility(false, false);
+            // ★R84：旧口径是「禁放置 + 禁取出」（R46d/R41b），但声明格成为落点后"禁取出"等于把补进来的
+            // 产物永久关在格里 ⇒ 改为禁放置、可取出。放置这一侧另有 handler 的 isItemValid 兜底（R83 B1）。
+            slot.accessibility(false, true);
         } else {
             slot.accessibility(true, true);
         }
@@ -157,19 +159,38 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
             }
             tooltip.addLine(IKey.lang("gtit.pocket.ghost.locked"));
             tooltip.addLine(IKey.lang("gtit.pocket.ghost.capacity_note"));
-            // ★R83 C2 的组上限读数（文案待办 T-1：键 gtit.pocket.cap.readout 与两份 lang 归主代理批 D2，
-            // 落地前该行显示为键名字面串 —— 与 R83 B2 的 still.over_cap 同一条过渡口径，不假装已翻译）
-            tooltip.addLine(IKey.lang("gtit.pocket.cap.readout", capReadoutText()));
+            // ★R84：读数改双形态——格内已补到实物时报「已补 x / 上限 y」，仍空着时只报上限。
+            // （R83 那条"lang 未落地前先显示键名"的过渡口径已收掉：两个键都在两份 lang 里。）
+            final int stored = storedSize();
+            tooltip.addLine(
+                stored > 0
+                    ? IKey.lang(
+                        "gtit.pocket.cap.readout.stored",
+                        PocketGhostRequest.capReadout(stored),
+                        PocketGhostRequest.capReadout(ghostCap()))
+                    : IKey.lang("gtit.pocket.cap.readout", PocketGhostRequest.capReadout(ghostCap())));
         }
     }
 
     @Override
     protected void drawOverlay() {
         super.drawOverlay();
-        if (ghost) {
-            GuiDraw.drawRect(1, 1, 16, 16, GHOST_MASK);
-            drawCapReadout();
+        if (!ghost) {
+            return;
         }
+        // ★R84（用户原话"获取物品后虚化应该被覆盖，只留下右上角的橙色数字"）：遮罩只在<b>格内没有实物</b>
+        // 时画。旧判据是单比特 {@code if (ghost)} ⇒ 产物已经补进来了却仍然整格蒙着，玩家读到"都是虚化"。
+        // 实物本体与件数由渲染层自己画（getItemStackForRendering 的样本支本就只在空格生效）。
+        if (storedSize() <= 0) {
+            GuiDraw.drawRect(1, 1, 16, 16, GHOST_MASK);
+        }
+        drawCapReadout();
+    }
+
+    /** ★R84：本格已经补到的实际件数（真实槽读数，不是样本）。 */
+    private int storedSize() {
+        final ItemStack held = getSlot().getStack();
+        return held == null ? 0 : held.stackSize;
     }
 
     /**
@@ -253,9 +274,19 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         return sample == null ? 0 : sample.getMaxStackSize();
     }
 
-    /** 右上角橙色读数的文本（缩写口径与另两支同源，全在 {@link PocketGhostRequest#capReadout}）。 */
+    /**
+     * 右上角橙色读数的文本（缩写口径与另两支同源，全在 {@link PocketGhostRequest#capReadout}）。
+     * <p>
+     * ★R84：由"只报组上限"改为<b>「实际库存/上限」</b>——声明格成为落点后，这一个读数位是用户唯一
+     * 能同时看到"补到哪了"和"要到多少为止"的地方（未补到任何件时仍只报上限，与旧读数逐字同形）。
+     */
     private String capReadoutText() {
-        return ghost ? PocketGhostRequest.capReadout(ghostCap()) : "";
+        if (!ghost) {
+            return "";
+        }
+        final String cap = PocketGhostRequest.capReadout(ghostCap());
+        final int stored = storedSize();
+        return stored <= 0 ? cap : PocketGhostRequest.capReadout(stored) + "/" + cap;
     }
 
     /**
@@ -264,7 +295,7 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      * <b>本方法只发请求，不落档、不改本地状态</b>（R18/R19）：载荷键由
      * {@link PocketAeChannelOps#contentKey(ItemStack)} 生成（{@code itemId+meta+base64NBT}，R17，
      * <b>不含任何通道索引</b>），连同槽号一起交给 {@code NekoPocketPanel#requestGhost}；
-     * 真正的落档、{@code accessibility(false,false)} 与虚化广播全在服务端那一份执行。
+     * 真正的落档、{@code accessibility(false,true)}（★R84：禁放置、可取出）与虚化广播全在服务端那一份执行。
      * <p>
      * {@code draggedStack.stackSize = 0} 是库内约定（{@code PhantomItemSlot.java:65-71} 同形）：
      * 返回 true 且数量归零 ⇒ 配方书的虚拟栈被"吃掉"，玩家背包里的原件不受影响。

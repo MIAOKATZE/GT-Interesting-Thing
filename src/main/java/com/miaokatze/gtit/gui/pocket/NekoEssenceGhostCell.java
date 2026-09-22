@@ -444,14 +444,22 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
 
     // ------------------------------------------------------------------ ghost 态的渲染
 
-    /** 声明态叠一层与中栏、流体条同色的弱遮罩（4×12 几何与着色/数量浮层一个字都不动）。 */
+    /**
+     * 声明态叠一层与中栏、流体条同色的弱遮罩（4×12 几何与着色/数量浮层一个字都不动）。
+     * <p>
+     * ★R84：与另两支同形修正——本格<b>已有存量</b>时不再叠遮罩（旧判据单比特 {@code if (ghost)}，
+     * 于是"已经补到东西的格"和"一格都没有的格"长得一模一样，玩家读到"需求从来没有被满足过"）。
+     */
     @Override
     public void drawOverlay(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
         super.drawOverlay(context, widgetTheme);
-        if (ghost) {
-            GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
-            drawCapReadout();
+        if (!ghost) {
+            return;
         }
+        if (stock <= 0) {
+            GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
+        }
+        drawCapReadout();
     }
 
     /**

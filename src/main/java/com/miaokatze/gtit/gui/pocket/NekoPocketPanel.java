@@ -337,7 +337,7 @@ public final class NekoPocketPanel implements PocketSession {
         panel.child(NekoPocketLeftColumn.build(this));
         panel.child(NekoPocketStorageColumn.build(this));
         panel.child(NekoPocketEssenceColumn.build(this));
-        for (ParentWidget<?> band : NekoPocketBottomBand.build(this)) {
+        for (ParentWidget<?> band : NekoPocketBottomBand.build(this, this::cellInfoLine)) {
             panel.child(band);
         }
 
@@ -1113,7 +1113,7 @@ public final class NekoPocketPanel implements PocketSession {
      * 把 ghost 声明<b>原位</b>应用到三个区域的格件上（双端各自应用自己那一份树，读的都是本地
      * {@code inventory.filters()} ⇒ 服务端权威值经 {@link #applyGhostView} 落到客户端镜像）。
      * <p>
-     * 服务端这一份对中栏的作用是 {@code ModularSlot.accessibility(false, false)} ——
+     * 服务端这一份对中栏的作用是 {@code ModularSlot.accessibility(false, true)} ——（★R84：禁放置、可取出）
      * 那才是"禁放置禁取出"的执法点（vanilla {@code slotClick} 在服务端读 {@code isItemValid}
      * /{@code canTakeStack}，见 {@code ModularSlot.java:73-80}）；客户端那一份负责虚化渲染。
      * 流体槽与源质格<b>不进 Container</b>（R35），它们在服务端那份只更新自身状态，
@@ -1140,12 +1140,20 @@ public final class NekoPocketPanel implements PocketSession {
             // ★上限读数必须走在下面那条"没变就跳过"之前：只调过 cap 而 ghost/样本都没变时，跳过判据会把
             // 新读数整条吞掉 ⇒ 玩家滚了数字、格上不动。setter 自身同值即返回，每拍调不产生额外脏标记。
             widget.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
+            // ★R84②：声明格现在<b>就是</b>该条需求的抽取落点，格内的同种内容就是"已经补到的产物"，
+            // 所以只在内容不是声明那一种时才搬空（旧口径"声明即无条件搬空"会把刚补进来的产物又赶走）。
+            // 同 setDeclaredCap 的理由：这一步不能挂在下面那条"没变即跳过"之后，否则服务端已塞进错内容时
+            // 永远不会被清理（R83 横向审计的 S3）。
+            if (declared != null && !syncManager.isClient()) {
+                final ItemStack held = inventory.storage()
+                    .getStackInSlot(index);
+                if (held != null && !PocketAeChannelOps.contentKey(held)
+                    .equals(declared.key())) {
+                    evictFromSlot(index);
+                }
+            }
             if (widget.isGhost() == (declared != null) && sameSample(widget.ghostSample(), sample)) {
                 continue;
-            }
-            if (declared != null && !syncManager.isClient()) {
-                // 只在服务端搬空：客户端那份 handler 改了也不会生效，反而与稍后到达的同步值分叉
-                evictFromSlot(index);
             }
             widget.setGhost(declared != null, sample);
         }
@@ -1760,7 +1768,7 @@ public final class NekoPocketPanel implements PocketSession {
             .getSlots();
     }
 
-    /** 一轮蒸馏对<b>每组</b>只做"减 1"（R28：5 秒是节拍不是产量；★R83 β 下同物多格算一组，故每格每轮至多减 1 件）。 */
+    /** 一轮蒸馏对<b>每个非空格</b>各做一次"减 1"（★R84：对象是格不是组，同物多格并行各扣 1 件；R28：5 秒是节拍不是产量）。 */
     @Override
     public void consumeOneDistillInput(int index) {
         final ItemStack at = distillInputStack(index);
@@ -1790,22 +1798,12 @@ public final class NekoPocketPanel implements PocketSession {
         if (stack == null || stack.stackSize <= 0) {
             return 0;
         }
-        final int want = stack.stackSize;
-        int moved = 0;
-        final EntityPlayer target = player();
-        while (moved < want && target != null) {
-            final ItemStack chunk = stack.copy();
-            chunk.stackSize = Math.min(want - moved, chunk.getMaxStackSize());
-            if (!target.inventory.addItemStackToInventory(chunk)) {
-                break;
-            }
-            moved += chunk.stackSize;
-        }
-        if (moved >= want) {
-            return want;
+        final int moved = moveToPlayer(stack.copy());
+        if (moved >= stack.stackSize) {
+            return stack.stackSize;
         }
         final ItemStack rest = stack.copy();
-        rest.stackSize = want - moved;
+        rest.stackSize = stack.stackSize - moved;
         return moved + depositItem(rest);
     }
 
@@ -1816,19 +1814,36 @@ public final class NekoPocketPanel implements PocketSession {
             return 0;
         }
         final int want = stack.stackSize;
-        int moved = inventory.depositIntoStorage(stack);
-        int left = want - moved;
+        final int moved = inventory.depositIntoStorage(stack);
+        final int left = want - moved;
+        return left <= 0 ? moved : moved + moveToPlayer(sizedCopy(stack, left));
+    }
+
+    /**
+     * 单程入包：★一次调用而不是逐 maxStackSize 切块循环。原版 {@code InventoryPlayer#addItemStackToInventory}
+     * 会在内部将同一物品摊到多个槽（{@code InventoryPlayer.java:394-464}），且契约是
+     * <b>返回 {@code true} 当且仅当入参 {@code stackSize} 已被改写为 0</b>；R83 的循环拿"入参的 stackSize"
+     * 当成交数累加，成功一圈就被置 0 一次 ⇒ 进度恒 0 ⇒ 服务器主线程死循环。
+     *
+     * @return 真正进入玩家背包的件数（余量仍留在 {@code toPlayer} 那份副本上，不影响调用方账目）
+     */
+    private int moveToPlayer(ItemStack toPlayer) {
         final EntityPlayer target = player();
-        while (left > 0 && target != null) {
-            final ItemStack chunk = stack.copy();
-            chunk.stackSize = Math.min(left, chunk.getMaxStackSize());
-            if (!target.inventory.addItemStackToInventory(chunk)) {
-                break;
-            }
-            left -= chunk.stackSize;
-            moved += chunk.stackSize;
+        if (target == null || toPlayer == null || toPlayer.stackSize <= 0) {
+            return 0;
         }
-        return moved;
+        final int want = toPlayer.stackSize;
+        if (target.inventory.addItemStackToInventory(toPlayer)) {
+            return want;
+        }
+        return Math.max(0, want - toPlayer.stackSize);
+    }
+
+    /** 只改件数的浅拷贝副本（原版会在入参上就地改写 {@code stackSize}，故任何"探路"都必须先断开别名）。 */
+    private static ItemStack sizedCopy(ItemStack stack, int size) {
+        final ItemStack copy = stack.copy();
+        copy.stackSize = size;
+        return copy;
     }
 
     @Override
@@ -1839,6 +1854,42 @@ public final class NekoPocketPanel implements PocketSession {
     @Override
     public int depositFluid(int tank, FluidStack fluid) {
         return inventory.depositFluidIntoBar(tank, fluid);
+    }
+
+    // ------------------------------------------------------------ R84：中栏既是注入来源也是抽取落点
+
+    @Override
+    public int storageSlots() {
+        return inventory.storage()
+            .getSlots();
+    }
+
+    @Override
+    public ItemStack storageStackAt(int slot) {
+        final int size = storageSize();
+        return slot < 0 || slot >= size ? null
+            : inventory.storage()
+                .getStackInSlot(slot);
+    }
+
+    @Override
+    public void setStorageStackAt(int slot, ItemStack stack) {
+        if (slot < 0 || slot >= storageSize()) {
+            return;
+        }
+        inventory.storage()
+            .setStackInSlot(slot, stack);
+        inventory.markDirty();
+    }
+
+    @Override
+    public boolean isStorageGhostDeclared(int slot) {
+        return inventory.isGhostItemSlot(slot);
+    }
+
+    private int storageSize() {
+        return inventory.storage()
+            .getSlots();
     }
 
     // ------------------------------------------------------------------ 关屏（R35 四道防御）
@@ -1998,7 +2049,8 @@ public final class NekoPocketPanel implements PocketSession {
      * 形状 = 标题 + 至多 {@code NekoPocketBottomBand.TOOLTIP_ROWS} 条
      * "{@code bind.entry} 换行 {@code bind.located|unlocated|stale}"，
      * ★条目多于上限时<b>必须</b>补一行 {@code bind.truncated}（含未列出的条数）——
-     * {@code MAX_BOUND_CELLS} 是 64 而 tooltip 不能滚，"只显示前 N 条却不说明"就是静默删信息
+     * {@code 绑定表的数据上限仍是 64}，但 ★R84 起玩家可用的是 {@code ALLOWED_BOUND_CELLS = 1}；tooltip 不能滚，
+     * "只显示前 N 条却不说明"就是静默删信息
      * （R36 的"宽度不够就加 tooltip，不删信息"在这里的唯一合法形态）。
      */
     String bindTooltipText() {
@@ -2022,12 +2074,43 @@ public final class NekoPocketPanel implements PocketSession {
         return builder.toString();
     }
 
-    /** 绑定块第一行的常驻读数（"已绑定 n/上限"，数字全部由服务端同步的行数与常量给出）。 */
+    /**
+     * ★R84：底部带左段那块 36px「常驻元件信息」的两行正文（缝由 {@code NekoPocketBottomBand.CellInfoText} 定）。
+     * <p>
+     * 数据只取<b>已同步的绑定行</b>（服务端 {@code composeBindRows} 现算 → {@code SYNC_BIND_ROWS} blob →
+     * 两端读同一份），★绝不按内存里的绑定表推断（R19/R39b：客户端那份可能落后，读它就是第二处真相）。
+     * <p>
+     * 第二行的用途：本轮起玩家可用口径只有 1 枚，而旧档真可能残留多条（本轮刻意不在读档时收缩，
+     * 见台账 §八十四⑤），那些多出来的条目<b>不再被服务</b> ⇒ 必须在这里说清楚，否则玩家以为多枚都在跑。
+     * 元件"类型 / 条目数"要新增一条服务端同步值才拿得到（且新单元在上游恒返 MAX/0），本轮未接 ⇒ 列进交付说明。
+     */
+    private String cellInfoLine(int row) {
+        final java.util.List<NekoPocketBottomBand.Row> rows = bindRows();
+        if (row < 0 || row >= NekoPocketBottomBand.CELL_INFO_ROWS) {
+            return "";
+        }
+        if (rows.isEmpty()) {
+            return row == 0 ? StatCollector.translateToLocal("gtit.pocket.bind.none") : "";
+        }
+        if (row == 0) {
+            return bindRowLine(0);
+        }
+        final int inert = rows.size() - 1;
+        return inert <= 0 ? "" : String.format(StatCollector.translateToLocal("gtit.pocket.bind.inert"), inert);
+    }
+
+    /**
+     * 绑定块第一行的常驻读数（"已绑定 n/上限"，数字全部由服务端同步的行数与常量给出）。
+     * <p>
+     * ★R84：分母取 {@code ALLOWED_BOUND_CELLS}（玩家可用口径＝1）而不是 {@code MAX_BOUND_CELLS}（数据层
+     * 仍 64），否则读数会喊"还能再绑 63 枚"而入口面一律拒收。旧档真残留多枚时这里就显示"3 / 1"——
+     * ★刻意不夹成 1/1：多出来的条目仍然在绑定行 tooltip 里逐条列着，读数不得替玩家删信息（R36 口径）。
+     */
     String bindSummaryText() {
         return String.format(
             StatCollector.translateToLocal("gtit.pocket.bind.summary"),
             bindRows().size(),
-            PocketConstants.MAX_BOUND_CELLS);
+            PocketConstants.ALLOWED_BOUND_CELLS);
     }
 
     /** 一条绑定行的完整文本（短码 ID + 位置或状态，与旧第四列的两行渲染同一条算式）。 */

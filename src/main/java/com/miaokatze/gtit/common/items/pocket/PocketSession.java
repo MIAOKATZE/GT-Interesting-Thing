@@ -76,8 +76,9 @@ public interface PocketSession {
     int distillInputSlots();
 
     /**
-     * 消耗某格蒸馏输入的<b>一个</b>物品（★R83 β 后：一轮 = 每组各消耗 1 件，同物多格不再并行）。
-     * 由 S7 在"全有全无预检通过"之后调用，本方法不做任何判定。
+     * 消耗某格蒸馏输入的<b>一个</b>物品（★R84 后：一轮 = 每个非空且含源质的格各消耗 1 件，
+     * 同物多格<b>并行各扣 1 件</b>；旧 R83 β 的"同物多格折叠成一组、一组只扣一次"口径作废）。
+     * 由 S7 在"该格的装箱预检通过"之后调用，本方法不做任何判定。
      */
     void consumeOneDistillInput(int index);
 
@@ -90,6 +91,27 @@ public interface PocketSession {
      * @return 实际落下的个数（0 表示无处可放，调用方据此发 {@code TARGET_FULL} 并把源侧原样退回）
      */
     int depositItem(ItemStack stack);
+
+    /**
+     * 中栏真实栏的格数（★R84：通道<b>注入侧的来源空间</b>由"玩家背包 36 格"改为此处，作废 R12 读法 B）。
+     */
+    int storageSlots();
+
+    /** 中栏第 {@code slot} 格的当前内容（可能为 {@code null}；越界亦为 {@code null}）。 */
+    ItemStack storageStackAt(int slot);
+
+    /**
+     * 程序化写回中栏第 {@code slot} 格（{@code null} 即清空）。
+     * <p>
+     * 走 {@code ItemStackHandler.setStackInSlot} 那条<b>不经过</b> {@code isItemValid} 的写入面，所以
+     * ghost 声明格（玩家禁放置）照样能当抽取落点被写进去（R84）。越界一律丢弃且不打脏。
+     */
+    void setStorageStackAt(int slot, ItemStack stack);
+
+    /**
+     * 第 {@code slot} 格是否已被某条 ghost 声明占用（★"配置好需求的格不参与上传"的判据，R84 用户裁定）。
+     */
+    boolean isStorageGhostDeclared(int slot);
 
     /**
      * 第 {@code tank} 号流体槽还能收这一份流体多少 mB。

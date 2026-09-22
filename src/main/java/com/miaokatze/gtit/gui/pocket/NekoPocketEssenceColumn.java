@@ -398,14 +398,25 @@ public final class NekoPocketEssenceColumn {
             case NO_ASPECT:
                 return StatCollector.translateToLocal("gtit.pocket.still.no_aspect");
             case OVER_CAP:
-                // 两个读数是 A2 新开的只读转发（放弃了几个组、共几点）；格位归属没变时它们不变
+                // 两个读数是 A2 新开的只读转发；★R84 起单位是<b>格</b>（放弃了几个格、共几点），
+                // 旧口径"几个组"作废——Java 侧无需改动（改名与 lang 文案由主代理落，见本片回执）
                 return String.format(
                     StatCollector.translateToLocal("gtit.pocket.still.over_cap"),
                     PocketDistillDriver.discardedGroupsOf(ui.playerId()),
                     PocketDistillDriver.discardedPointsOf(ui.playerId()));
-            case RUNNING:
-                return String
+            case RUNNING: {
+                final String progress = String
                     .format(StatCollector.translateToLocal("gtit.pocket.still.progress"), ui.distillSecondsToNext());
+                // ★R84（补 R84 蒸馏片的自报缺口）：只要有<b>一格</b>建效，状态就走 RUNNING，
+                // 而"这一轮仍有 N 格没塞下"在旧代码里就此消失 ⇒ 用户看到的还是"蒸了几格，其余无声没掉"。
+                final int skipped = PocketDistillDriver.discardedGroupsOf(ui.playerId());
+                return skipped <= 0 ? progress
+                    : progress + "\n"
+                        + String.format(
+                            StatCollector.translateToLocal("gtit.pocket.still.partial_skip"),
+                            skipped,
+                            PocketDistillDriver.discardedPointsOf(ui.playerId()));
+            }
             case IDLE:
             default:
                 return StatCollector.translateToLocal("gtit.pocket.still.idle");
