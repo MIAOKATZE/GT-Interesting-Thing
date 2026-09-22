@@ -9,6 +9,8 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 import net.minecraftforge.fluids.FluidStack;
 
@@ -33,12 +35,15 @@ import com.miaokatze.gtit.common.items.pocket.PocketChannelOps;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelRunner;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelState;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
+import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.trade.NekoWallet;
@@ -172,6 +177,8 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_MODE = "pocket.mode";
     private static final String SYNC_REMAIN = "pocket.remain";
     static final String SYNC_PROGRESS = "pocket.distill.progress";
+    /** S2C：蒸馏状态行原文（still.* + 秒数 + 放弃读数；★R87-h 缺口 #10：多人客户端旧实现直读恒 IDLE/0）。 */
+    private static final String SYNC_STATE_LINE = "pocket.distill.state";
     /** S2C：ghost 声明视图（{@code kind:slotIndex:载荷键}，';' 分隔）⇒ 客户端据此<b>原位</b>虚化格子。 */
     private static final String SYNC_GHOST = "pocket.ghost.slots";
     /** S2C：上一次通道/绑定动作的回执（{@code langKey|数量}），客户端只做本地化格式化。 */
@@ -211,6 +218,8 @@ public final class NekoPocketPanel implements PocketSession {
     private static final int ACTION_ESSENCE_OUT = 7;
     /** 解绑<b>全部</b>（绑定按钮 Shift + 右键，R74）。 */
     private static final int ACTION_UNBIND_ALL = 9;
+    /** ★R87-d：左键持晶点 72 格 = 点击入槽（arg = 手势锚点格号，服务端判定不读它）。 */
+    private static final int ACTION_ESSENCE_INTAKE = 10;
 
     private final PlayerInventoryGuiData data;
     private final PanelSyncManager syncManager;
@@ -260,6 +269,8 @@ public final class NekoPocketPanel implements PocketSession {
     private int instantRemainSeconds;
     private int timedRemainSeconds;
     private double clientDistillProgress;
+    /** ★R87-h：服务端下发的蒸馏状态行原文（客户端唯一读数；服务端不出图，恒空串）。 */
+    private String clientDistillStateLine = "";
     /** 服务端下发的 ghost 声明 blob（客户端据此原位虚化；<b>不</b>自行推断，R39b/R19）。 */
     private String ghostBlob = "";
     /**
@@ -296,6 +307,9 @@ public final class NekoPocketPanel implements PocketSession {
         }
         essenceUnplaced = inventory.essence()
             .unplacedTagCount();
+        // ★R87-f：声明保格谓词（查询式直查现役声明表）：源质清零时声明中的 tag 保留格位；null = 与 R86 逐字一致。
+        inventory.essence()
+            .setDeclaredTagProbe(tag -> PocketEssenceIntake.isDeclaredEssenceTag(filters(), tag));
     }
 
     /**
@@ -381,6 +395,8 @@ public final class NekoPocketPanel implements PocketSession {
                 clientDistillProgress = value;
             }
         }));
+        syncManager
+            .syncValue(SYNC_STATE_LINE, new StringSyncValue(this::distillStateLineText, this::applyDistillStateLine));
         // ★R85 N1：allowC2S 的 setter <b>双端都会被调</b>（上游 setValue(v) 默认 setSource=true）⇒
         // 两个 receiver 各自带一道 isClient 早退，见 receiveServerAction / receiveGhostRequest 的 javadoc。
         syncManager.syncValue(SYNC_ACTION, new IntSyncValue(() -> 0, this::receiveServerAction).allowC2S());
@@ -572,6 +588,14 @@ public final class NekoPocketPanel implements PocketSession {
         return sendAction(ACTION_ESSENCE_OUT, shift ? cell + PocketConstants.ESSENCE_OUT_SHIFT_FLAG : cell);
     }
 
+    /** ★R87-d 客户端入口：游标栈是晶才发码（TC 缺席不拦截）；判定与清游标全在服务端，客户端不自改游标。 */
+    boolean requestEssenceIntake(int cell) {
+        final ItemStack carried = syncManager.getCursorItem();
+        return carried != null && carried.stackSize > 0
+            && EssenceGate.TAUM.capacityOf(carried) == TaumDistillRules.CRYSTAL_CAPACITY
+            && sendAction(ACTION_ESSENCE_INTAKE, cell);
+    }
+
     private boolean sendAction(int code, int arg) {
         if (syncManager.isClient()) {
             syncManager.findSyncHandler(SYNC_ACTION, IntSyncValue.class)
@@ -617,6 +641,9 @@ public final class NekoPocketPanel implements PocketSession {
                 break;
             case ACTION_ESSENCE_OUT:
                 performEssenceOut(arg);
+                break;
+            case ACTION_ESSENCE_INTAKE:
+                performEssenceIntake();
                 break;
             default:
                 break;
@@ -1070,6 +1097,28 @@ public final class NekoPocketPanel implements PocketSession {
             rest -= chunk;
         }
         return moved;
+    }
+
+    /**
+     * ★R87-d 服务端执行体：四态判定在 {@link PocketEssenceIntake}（目标 tag = 晶自带 tag，手势格号不读）；
+     * 失败三态粘性回执、分毫不动；成功 = 清游标（原版 cursor 同步送达）+ 聊天回执（tag+点数，先例 = still.injected）。
+     */
+    private void performEssenceIntake() {
+        if (!serverGuardOk()) {
+            return;
+        }
+        final EntityPlayer target = player();
+        final PocketEssenceIntake.Result result = PocketEssenceIntake
+            .intake(target.inventory.getItemStack(), inventory.essence(), EssenceGate.TAUM);
+        if (!result.accepted()) {
+            putReceipt(result.langKey(), 0);
+            return;
+        }
+        target.inventory.setItemStack(null);
+        inventory.markDirty();
+        final String text = StatCollector
+            .translateToLocalFormatted(result.langKey(), TaumCompat.nameOf(result.tag), result.points);
+        target.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + text));
     }
 
     // ------------------------------------------------------------------ S5 · ghost 就地转换（NEI 拖入 / 右键解绑）
@@ -1859,14 +1908,25 @@ public final class NekoPocketPanel implements PocketSession {
         return PocketDistillDriver.progressOf(playerId());
     }
 
-    /** 蒸馏状态位（左栏/进度条 tooltip 用；文案走 {@code still.*}，不常驻渲染）。 */
-    PocketDistillDriver.Status distillStatus() {
-        return PocketDistillDriver.statusOf(playerId());
+    /**
+     * 蒸馏状态行（★R87-h 双源 accessor）：客户端读同步镜像（服务端 static {@code CLOCKS} 在专用服客户端
+     * 恒空 ⇒ 直读恒 IDLE/0）；服务端现算，拼串单源在 {@link NekoPocketEssenceColumn}。
+     */
+    String distillStateLineText() {
+        if (syncManager.isClient()) {
+            return clientDistillStateLine;
+        }
+        return NekoPocketEssenceColumn.composeDistillStateLine(
+            PocketDistillDriver.statusOf(playerId()),
+            PocketDistillDriver.secondsToNextBatch(playerId()),
+            PocketDistillDriver.discardedGroupsOf(playerId()),
+            PocketDistillDriver.discardedPointsOf(playerId()));
     }
 
-    /** 距下一轮蒸馏还剩几秒（{@code still.progress} 的 {@code %d}）。 */
-    int distillSecondsToNext() {
-        return PocketDistillDriver.secondsToNextBatch(playerId());
+    private void applyDistillStateLine(String text) {
+        if (syncManager.isClient()) {
+            clientDistillStateLine = text == null ? "" : text;
+        }
     }
 
     @Override

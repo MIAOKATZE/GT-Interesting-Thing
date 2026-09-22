@@ -403,36 +403,23 @@ public final class NekoPocketEssenceColumn {
     }
 
     /**
-     * 蒸馏状态行：按 {@code PocketDistillDriver} 回报的状态位挑对应的 {@code still.*} 键（不新造键，
-     * ★唯一例外是 A2 新增的 {@code OVER_CAP} ⇒ 配套新键 {@code gtit.pocket.still.over_cap}，
-     * 见本片的文案待办）。
+     * 蒸馏状态行的<b>单源拼串</b>（★R87-h）：raw 读数进、本地化行出——服务端同步 getter
+     * （{@code NekoPocketPanel#distillStateLineText}）与客户端 tooltip 消费同一段，不复制两份真相。
      * <p>
-     * ★多人客户端读不到真值这一条与本方法无关：{@code ui.distillStatus()} 直读服务端进程内的私有
-     * {@code CLOCKS}（R83 取证 3f 第 6 跳），补同步与否属批 D；本方法只保证<b>不说谎</b>——
-     * 旧 {@code switch} 没有 {@code OVER_CAP} 分支，超上限那一档会落 {@code default} 报
-     * "没有可蒸馏物品"，而格子里明明放着东西。
-     * <p>
-     * ★<b>R85 小项 3：{@code still.partial_skip}（"下一轮继续重试"）的播放条件收紧</b>。
-     * {@code PocketDistillDriver#statusOf} 的判定顺序是
-     * {@code stalledFull(=needsRoom) > !distillable > stalledOverCap > RUNNING}，而
-     * {@code discardedGroupsOf} 把<b>两类</b>被放弃的格混在同一个计数里
-     * （{@code exceedsCellCap} = 单件原量超上限，<b>永远</b>塞不下；{@code canAcceptAll} 失败 = 只是这轮
-     * 空间不够，<b>下一轮真的能收下</b>）。于是：
+     * 挑键规则（不新造键，A2 的 {@code OVER_CAP} ⇒ {@code gtit.pocket.still.over_cap} 除外）：
      * <ul>
-     * <li>走到 {@code RUNNING} 就说明 {@code needsRoom} 为假 ⇒ 这一档里 {@code skipped > 0} 的那些格
-     * <b>全部</b>是"永久超上限"，播"下一轮继续重试"就是谎报 ⇒ 本档改播 {@code still.over_cap}
-     * （那句本来就说"超出单格上限"，与事实一致）；</li>
-     * <li>只有 {@code STORE_FULL}（= {@code needsRoom} 为真）才是"真的可能下一轮被收下"的那一档 ⇒
-     * {@code partial_skip} 挪到这里播；</li>
-     * <li>★两条都带 {@code skipped > 0} 的门：读数为 0 就<b>不播</b>。专用服务器的客户端读这两个数
-     * 恒为 0（{@code CLOCKS} 是服务端私有 static），有这道门就是"少一行"，没这道门就是
-     * "有 0 格没塞下 / 有 0 格超上限"这种当场可笑的谎。</li>
+     * <li>{@code STORE_FULL}：{@code still.full}；带 {@code skipped > 0} 再补 {@code still.partial_skip}
+     * （这一档里被计数的格是"只是这轮没塞下"，下一轮真的可能被收下）；</li>
+     * <li>{@code NO_ASPECT}：{@code still.no_aspect}；</li>
+     * <li>{@code OVER_CAP}：{@code still.full} 或 {@code still.over_cap}（"超出单格上限"是真话）；</li>
+     * <li>{@code RUNNING}：{@code still.progress}（距下一轮秒数）；带 {@code skipped > 0} 再补
+     * {@code still.over_cap}（这一档里被计数的格必然是"永久超上限"那类，播"下一轮重试"是谎报）；</li>
+     * <li>{@code IDLE}/default：{@code still.idle}。</li>
      * </ul>
-     * ★<b>没有改成常播</b>：本方法仍然只在"确实有被放弃的格"时才多那一行，也没有新增任何同步键。
+     * {@code skipped == 0} 时两条带读数的补充行一律不播（0 格没塞下 / 0 格超上限是当场可笑的谎）。
      */
-    private static String distillStateLine(NekoPocketPanel ui) {
-        final PocketDistillDriver.Status status = ui.distillStatus();
-        final int skipped = PocketDistillDriver.discardedGroupsOf(ui.playerId());
+    public static String composeDistillStateLine(PocketDistillDriver.Status status, int secondsToNext, int skipped,
+        int discardedPoints) {
         switch (status) {
             case STORE_FULL: {
                 final String full = StatCollector.translateToLocal("gtit.pocket.still.full");
@@ -441,21 +428,19 @@ public final class NekoPocketEssenceColumn {
                         + String.format(
                             StatCollector.translateToLocal("gtit.pocket.still.partial_skip"),
                             skipped,
-                            PocketDistillDriver.discardedPointsOf(ui.playerId()));
+                            discardedPoints);
             }
             case NO_ASPECT:
                 return StatCollector.translateToLocal("gtit.pocket.still.no_aspect");
             case OVER_CAP:
                 // 两个读数是 A2 新开的只读转发；★R84 起单位是<b>格</b>（放弃了几个格、共几点），
-                // 旧口径"几个组"作废——Java 侧无需改动（改名与 lang 文案由主代理落，见本片回执）
+                // 旧口径"几个组"作废
                 return skipped <= 0 ? StatCollector.translateToLocal("gtit.pocket.still.full")
-                    : String.format(
-                        StatCollector.translateToLocal("gtit.pocket.still.over_cap"),
-                        skipped,
-                        PocketDistillDriver.discardedPointsOf(ui.playerId()));
+                    : String
+                        .format(StatCollector.translateToLocal("gtit.pocket.still.over_cap"), skipped, discardedPoints);
             case RUNNING: {
                 final String progress = String
-                    .format(StatCollector.translateToLocal("gtit.pocket.still.progress"), ui.distillSecondsToNext());
+                    .format(StatCollector.translateToLocal("gtit.pocket.still.progress"), secondsToNext);
                 // ★R84（补 R84 蒸馏片的自报缺口）：只要有<b>一格</b>建效，状态就走 RUNNING，
                 // 而"这一轮仍有 N 格没塞下"在旧代码里就此消失 ⇒ 用户看到的还是"蒸了几格，其余无声没掉"。
                 // ★R85 小项 3：这一档里被计数的格必然是"永久超上限"那类（needsRoom 为真就落 STORE_FULL
@@ -465,11 +450,21 @@ public final class NekoPocketEssenceColumn {
                         + String.format(
                             StatCollector.translateToLocal("gtit.pocket.still.over_cap"),
                             skipped,
-                            PocketDistillDriver.discardedPointsOf(ui.playerId()));
+                            discardedPoints);
             }
             case IDLE:
             default:
                 return StatCollector.translateToLocal("gtit.pocket.still.idle");
         }
+    }
+
+    /**
+     * 状态行读取口（tooltip 每帧重建）：★R87-h 起双端都走 {@code ui.distillStateLineText()} 的
+     * 双源 accessor——客户端读同步镜像（专用服客户端 JVM 无服务端 static {@code CLOCKS}，旧实现
+     * 直读恒 IDLE/0，多人恒 IDLE 即审计缺口 #10），服务端现算；拼串单源在
+     * {@link #composeDistillStateLine}。
+     */
+    private static String distillStateLine(NekoPocketPanel ui) {
+        return ui.distillStateLineText();
     }
 }

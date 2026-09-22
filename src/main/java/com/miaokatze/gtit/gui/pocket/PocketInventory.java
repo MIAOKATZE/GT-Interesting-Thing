@@ -9,6 +9,7 @@ import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -149,9 +150,11 @@ public final class PocketInventory {
         loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput, "蒸馏输入");
         loadGroup(root, PocketConstants.BIND_SLOT, inventory.bindSlot, "绑定格");
         inventory.loadTanks(root);
-        inventory.essence = PocketEssenceStore.readFrom(root);
-        inventory.bindings = PocketCellBindings.readFrom(root);
+        // ★R87-f：声明表必须先于源质表读出——保格谓词以它为输入，「有格位无库存」的空洞折叠只对无声明者生效
         inventory.filters = PocketFilterConfig.readFrom(root);
+        inventory.essence = PocketEssenceStore
+            .readFrom(root, tag -> PocketEssenceIntake.isDeclaredEssenceTag(inventory.filters, tag));
+        inventory.bindings = PocketCellBindings.readFrom(root);
         // 读档过程本身不算"内容变了"（handler 反序列化会回调脏标记）
         inventory.dirty = false;
         return inventory;

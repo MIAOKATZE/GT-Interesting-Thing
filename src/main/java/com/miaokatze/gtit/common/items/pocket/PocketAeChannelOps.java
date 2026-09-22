@@ -21,7 +21,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.miaokatze.gtit.common.items.infinitycell.InfinityStackTypes;
-import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.util.NbtBase64Util;
 
 import appeng.api.AEApi;
@@ -52,10 +51,12 @@ import appeng.util.item.AEItemStack;
  * 传 null 时 {@code CellInventory:376-378} 不回调宿主，{@code saveChanges} 链断裂 ⇒
  * {@code setDirty}/{@code is_empty}/分区门禁/Issue#16 嵌套守卫全被跳过 = 静默丢件面。
  * {@code Platform.poweredInsert} <b>禁用</b>（按 AE 能量限流，与"瞬时一次性全量"矛盾）。</li>
- * <li><b>识别口径（R6）</b>：统一用 {@code getCellArray(type)} 非空（其内部即 {@code isActive()}），
- * 不用 {@code isPowered()} 做门禁（ME 箱允许本地电池态，口径与驱动器分歧）；
- * 也绝不缓存"已识别"结论——{@code TileDrive.updateState} 被 {@code isCached} 闩住，
- * 只有 {@code isActive()} 翻转才重算。</li>
+ * <li><b>识别口径（R6，★R87-c 修订）</b>："已识别 + 宿主在位"的门禁统一收在 {@link #foundOf}
+ * （probe 解析到 tile 且它是 {@code IChestOrDrive}）；<b>handler 解析不再要求
+ * {@code getCellArray(type)} 非空</b>——AE2 宿主对多通道元件只把第一个命中的通道注册进 cellsMap
+ * （{@code TileDrive.updateState} 的 break，遍历序是 HashMap 不可控），拿它当门会把流体/第三方通道
+ * 误判成"无通道"（R87-c 的根因）。也绝不缓存"已识别"结论——{@code TileDrive.updateState} 被
+ * {@code isCached} 闩住，只有 {@code isActive()} 翻转才重算。</li>
  * <li><b>批后必须显式通知网络视图（R7）</b>：AE2 对驱动器元件不轮询，直写后终端/合成读到的是陈旧库存。
  * 首选 typed {@code IStorageGrid.postAlterationOfStoredItems(IAEStackType, Iterable, BaseActionSource)}
  * （<b>必须走 typed 重载</b>：default 版对第三方通道两个 {@code if} 都不命中会静默什么都不做，
@@ -73,8 +74,10 @@ import appeng.util.item.AEItemStack;
  * <ul>
  * <li>物品支 → 本条声明自己那一格（★R84：中栏声明格就是落点，旧实现落玩家背包 ⇒ 需求格永远空着）；</li>
  * <li>流体支 → 口袋流体条（{@link PocketSession}），先问落点空间再抽，抽了放不下就原路注回；</li>
- * <li>源质支 → 经 {@code IAEStackType.convertStackFromItem} 以 {@code ItemCrystalEssence} 为探针
- * 反算数额后<b>物化成晶化源质</b>进口袋真实栏（R15/R31：1 点 = 1 晶；不猜第三方 mod 的私有栈格式）。</li>
+ * <li>源质支 → ★R87-A 起整体搬去 {@link PocketEssenceChannelOps}（行数纪律的<b>纯搬移</b>，逻辑一字未改）：
+ * 经 {@code IAEStackType.convertStackFromItem} 以 {@code ItemCrystalEssence} 为探针
+ * 反算数额后<b>物化成晶化源质</b>进口袋真实栏（R15/R31：1 点 = 1 晶；不猜第三方 mod 的私有栈格式）。
+ * 本类只在 {@link #inject}/{@link #extract} 的分派口委派过去。</li>
  * </ul>
  */
 @SuppressWarnings({ "rawtypes", "unchecked" })
@@ -107,9 +110,6 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * 会话缺失本来就是关屏+通道停之后的正常态，不建条目也不报错（R45b 禁止的是"返回 OK 却什么都不搬"）。
      */
     private final PocketSession session;
-
-    /** 实验 E3 的降级日志去重集（"通道 × aspect tag"一条一行）。 */
-    private static final Set<String> LOG_UNMATERIALIZED = new LinkedHashSet<>();
 
     /** contentKey → 本轮见过的 AE 栈原型，用于把带符号 delta 还原成 {@code IAEStack} 列表。 */
     private final Map<String, IAEStack<?>> prototypes = new HashMap<>();
@@ -169,6 +169,19 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         this.session = session;
     }
 
+    // ------------------------------------------------------------------ 同包访问口（★R87-A：源质支搬去
+    // PocketEssenceChannelOps 后，那边经这四个口复用本类的批级缓存/会话/动作源；字段保持 private）
+
+    /** 拉取方向落点与源质/流体条所在的活会话（可能为 null，语义见字段上的 javadoc）。 */
+    PocketSession session() {
+        return session;
+    }
+
+    /** 注入/抽取共用的裸动作源（口袋拿不到 {@code IActionHost}，见 {@link #SOURCE} 的说明）。 */
+    static BaseActionSource actionSource() {
+        return SOURCE;
+    }
+
     // ------------------------------------------------------------------ 时钟与点检
 
     @Override
@@ -200,7 +213,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (found == null) {
             return ids;
         }
-        // 遍历序即 allSupportedTypes() 的序（物品→流体→注册中的第三方），但持久化/轮转一律只用字符串 id
+        // 遍历序即 allSupportedTypes() 的序（物品→流体→注册中的第三方），但持久化/轮转一律只用字符串 id。
+        // ★R87-c：handlerOf 不再看 getCellArray —— 多通道件（自家无限单元）在这里会给出全部通道，
+        // 不再被宿主 cellsMap 的"只注册第一个命中"截成一条。
         for (final IAEStackType<?> type : InfinityStackTypes.allSupportedTypes()) {
             if (handlerOf(found, type) != null) {
                 ids.add(type.getId());
@@ -398,8 +413,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
     /**
      * {@link #foundOf} 的批级包装：同一 {@code diskuuid} 在一批里只解析一次（省掉 134 次
      * chunkExists + getTileEntity + observe 扫驱动器槽读元件 NBT）。
+     * ★R87-A 起包内可见：源质支（{@link PocketEssenceChannelOps}）复用同一批缓存。
      */
-    private Found foundOfCached(String diskuuid) {
+    Found foundOfCached(String diskuuid) {
         touchCacheTick();
         if (diskuuid == null) {
             return null;
@@ -420,8 +436,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * 两批之间可能被别的 mod 改），而本缓存的作用域被 {@link #invalidateBatchCache()} 钉死在<b>一批</b>内；
      * 批内口袋是该 handler 的唯一写入者（AE 的 {@code injectItems}/{@code extractItems} 不回回调口袋），
      * 所以批内复用读到的就是本批自己写进去的最新状态。
+     * ★R87-A 起包内可见：源质支（{@link PocketEssenceChannelOps}）复用同一批缓存。
      */
-    private IMEInventoryHandler handlerOfCached(Found found, IAEStackType<?> type, String diskuuid) {
+    IMEInventoryHandler handlerOfCached(Found found, IAEStackType<?> type, String diskuuid) {
         if (found == null || type == null) {
             return null;
         }
@@ -490,7 +507,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             return injectFluidSource(source, diskuuid, typeId);
         }
         if (source != null && source.kind == SourceKind.ESSENCE) {
-            return injectEssenceSource(source, diskuuid, typeId);
+            // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（行数纪律的纯搬移，逻辑一字未改）
+            return PocketEssenceChannelOps.injectEssenceSource(this, source, diskuuid, typeId);
         }
         // ★R84：来源格现在在中栏（见 snapshotSources 的口径变更），且只在活会话期内可搬运
         final ItemStack slotStack = source == null || session == null ? null : session.storageStackAt(source.slot);
@@ -603,72 +621,6 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         return new Outcome(receipt, moved);
     }
 
-    /**
-     * ★R86（缺陷 3）：口袋源质表 → 元件的<b>第三方源质</b>通道（推送向）。
-     * 与 {@link #extractEssence} 严格镜像：那边用 {@code IAEStackType#convertStackFromItem} 以一枚自家晶
-     * 反算"1 晶 = 多少通道单位"，这边拿同一个单位量正向换算后投递；换算拿不到 ⇒ 判"这条通道收不了
-     * 源质"，一次性 INFO 后按 {@code OK} 跳过（R31/R44a：不猜 AE2 私有格式、不 {@code instanceof} 具体物品类）。
-     * <p>
-     * ★单位语义（游戏内 tooltip 与交付说明双处声明过）：口袋里的"一点源质"经这条通道出去时是
-     * <b>一枚晶化源质</b>折算而来的通道单位，实际倍率由对应 mod 的 {@code convertStackFromItem} 决定，
-     * 本仓不写死（写死就是 R85 耦合审计点名的"把转储常量当真相"）。
-     */
-    private Outcome injectEssenceSource(SourceSlot source, String diskuuid, String typeId) {
-        final IAEStackType<?> type = InfinityStackTypes.byId(typeId);
-        if (type == null || session == null) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final PocketFilterConfig.Filter payload = PocketFilterConfig.parseKey(source.contentKey);
-        if (!(payload instanceof PocketFilterConfig.EssenceFilter)) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final String tag = ((PocketFilterConfig.EssenceFilter) payload).tag;
-        final Integer stock = session.essenceStock()
-            .get(tag);
-        if (stock == null || stock <= 0) {
-            // 该 tag 已被玩家取空（快照之后就变了）⇒ 跳过，不搬不扣
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final Found found = foundOfCached(diskuuid);
-        final IMEInventoryHandler handler = handlerOfCached(found, type, diskuuid);
-        if (handler == null) {
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
-        }
-        final ItemStack single = TaumCompat.newCrystalStack(tag, 1);
-        final IAEStack<?> perPoint = essenceStackFor(type, single);
-        if (perPoint == null || perPoint.getStackSize() <= 0L) {
-            logUnmaterializableOnce(type.getId(), tag);
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final long unit = perPoint.getStackSize();
-        final int wantPoints = Math.min(stock, source.count);
-        final ItemStack probeStack = TaumCompat.newCrystalStack(tag, wantPoints);
-        final IAEStack<?> probe = essenceStackFor(type, probeStack);
-        if (probe == null) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        probe.setStackSize(unitsForCrystals(wantPoints, unit));
-        final long requestedUnits = probe.getStackSize();
-        rememberPrototype(source.contentKey, probe);
-        final boolean writable = handler.getAccess()
-            .hasPermission(AccessRestriction.WRITE);
-        final boolean acceptable = handler.canAccept(probe);
-        final IAEStack<?> leftover = handler.injectItems(probe, Actionable.MODULATE, SOURCE);
-        final long leftoverUnits = leftover == null ? 0L : leftover.getStackSize();
-        final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requestedUnits, leftoverUnits);
-        // 零头必须留在元件侧（不足 1 晶的单位不扣自己的点）——与抽取支"零头留下"是同一条纪律的两面
-        final int refused = crystalsFromUnits(leftoverUnits, unit, wantPoints);
-        final int moved = Math.max(0, wantPoints - refused);
-        if (moved > 0 && session.drainEssence(tag, moved) < moved) {
-            final IAEStack<?> back = essenceStackFor(type, TaumCompat.newCrystalStack(tag, moved));
-            if (back != null) {
-                handler.injectItems(back, Actionable.MODULATE, SOURCE);
-            }
-            return new Outcome(PocketReceipt.NO_ACCESS, 0);
-        }
-        return new Outcome(receipt, moved);
-    }
-
     @Override
     public Outcome extract(PocketFilterConfig.Filter filter, String diskuuid, int count) {
         if (filter == null || count <= 0) {
@@ -680,7 +632,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (filter instanceof PocketFilterConfig.FluidFilter) {
             return extractFluid((PocketFilterConfig.FluidFilter) filter, diskuuid, count);
         }
-        return extractEssence((PocketFilterConfig.EssenceFilter) filter, diskuuid, count);
+        // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（行数纪律的纯搬移，逻辑一字未改）
+        return PocketEssenceChannelOps.extractEssence(this, (PocketFilterConfig.EssenceFilter) filter, diskuuid, count);
     }
 
     /**
@@ -849,123 +802,10 @@ public final class PocketAeChannelOps implements PocketChannelOps {
     }
 
     /**
-     * ★<b>R86（审查 B1）</b>：把"一枚/一叠晶化源质"换算成<b>该通道自己</b>的堆栈形态；换不到 ⇒ null。
-     * <p>
-     * 物品通道必须开特判，不是可选优化：AE2 的 {@code AEItemStackType#convertStackFromItem} 是
-     * <b>无条件 {@code return null}</b> 的实现（{@code appeng/util/item/AEItemStackType.java:90-92}，
-     * rv3-beta-1050 与归档的 beta-1000 两份参考树逐字相同）——"物品 → 物品堆"那条换算它压根不走这个口。
-     * 而 R86 把源质声明的 {@code typeId} 回落到 {@code ITEM_STACK_TYPE}（缺陷 4 乙，用户裁定），
-     * 于是若仍按通用探针对待，结果就是<b>声明被接受、遮罩画出来、抽取与注入永远 {@code NO_CHANNEL}／
-     * 无事发生</b>的谎报面。特判直接 {@code AEItemStack.create(晶)}，单位量天然为 1（一枚晶 = 一个物品堆
-     * 单元），故 {@link #crystalsFromUnits} / {@link #unitsForCrystals} 两侧都退化成恒等，不需要新算式。
+     * ★源质支已整体搬去 {@link PocketEssenceChannelOps}（★R87-A 行数纪律的纯搬移，逻辑一字未改）：
+     * 抽取（extractEssence）/ 注入（injectEssenceSource）/ 换算（essenceStackFor、crystalsFromUnits、
+     * unitsForCrystals）与不可物化日志都在那边；本类经 {@code inject}/{@code extract} 的分派口委派过去。
      */
-    private static IAEStack<?> essenceStackFor(IAEStackType<?> type, ItemStack crystal) {
-        if (type == null || crystal == null) {
-            return null;
-        }
-        if (type == InfinityStackTypes.ITEM_STACK_TYPE) {
-            return AEItemStack.create(crystal);
-        }
-        return type.convertStackFromItem(crystal);
-    }
-
-    /**
-     * ★源质支（R45b 缺口之二，需求 4 的源质声明 + R15 的第三条路径之一）。
-     * <p>
-     * 元件侧的源质栈格式属对应 mod 私有（实验 E3 保留），因此<b>不猜格式</b>：
-     * 用 {@code IAEStackType.convertStackFromItem}（AE2 自己给第三方通道留的"TC4 aspect item → 通道栈"
-     * 换算口）以自家 {@code ItemCrystalEssence} 为探针反算数额，1 点 = 1 晶
-     * （{@code TaumDistillRules.CRYSTAL_CAPACITY}）。换算拿不到 ⇒ 判"该通道不可物化"，
-     * 一次性 INFO 后按 {@code NO_CHANNEL} 收口（R31/R44a：不 {@code instanceof} 任何具体物品类）。
-     * <p>
-     * 落点同样是"先问、后抽、抽了必须放得下、放不下就注回"（与流体支同一纪律）。
-     */
-    private Outcome extractEssence(PocketFilterConfig.EssenceFilter filter, String diskuuid, int count) {
-        final IAEStackType<?> type = InfinityStackTypes.byId(filter.typeId);
-        if (type == null) {
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
-        }
-        final Found found = foundOfCached(diskuuid);
-        final IMEInventoryHandler handler = handlerOfCached(found, type, diskuuid);
-        if (handler == null) {
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0); // ★R84：没有该通道 ≠ 元件失联（见物品支同处注释）
-        }
-        if (session == null) {
-            // 源质支的落点是口袋真实栏（晶化源质是物品），没有活会话就没有落点 ⇒ 根本不抽
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
-        }
-        // 一次一条声明至多补满该条声明的组上限（未设时 = ESSENCE_CAP_PER_TAG 一整堆晶），剩下的顺延下一拍
-        final int wantPoints = Math.min(count, PocketFilterConfig.resolveCap(filter, 0));
-        final ItemStack single = TaumCompat.newCrystalStack(filter.tag, 1);
-        final IAEStack<?> perPoint = essenceStackFor(type, single);
-        if (perPoint == null || perPoint.getStackSize() <= 0L) {
-            logUnmaterializableOnce(type.getId(), filter.tag);
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
-        }
-        final long unit = perPoint.getStackSize();
-        final ItemStack probeStack = TaumCompat.newCrystalStack(filter.tag, wantPoints);
-        final IAEStack<?> probe = essenceStackFor(type, probeStack);
-        if (probe == null) {
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
-        }
-        rememberPrototype(filter.key(), probe);
-        final IAEStack<?> simulated = handler.extractItems(probe, Actionable.SIMULATE, SOURCE);
-        final long available = simulated == null ? 0L : simulated.getStackSize();
-        final int points = crystalsFromUnits(available, unit, wantPoints);
-        if (points <= 0) {
-            // 元件里没有该 tag，或零头不足 1 晶：不动，避免"抽了通道单位却放不下整晶"
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        probe.setStackSize(unitsForCrystals(points, unit));
-        final IAEStack<?> taken = handler.extractItems(probe, Actionable.MODULATE, SOURCE);
-        final int takenPoints = crystalsFromUnits(taken == null ? 0L : taken.getStackSize(), unit, points);
-        if (takenPoints <= 0) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final ItemStack crystals = TaumCompat.newCrystalStack(filter.tag, takenPoints);
-        final int moved = crystals == null ? 0 : session.depositItem(crystals.copy());
-        if (moved < takenPoints) {
-            final int back = takenPoints - Math.max(0, moved);
-            final ItemStack backStack = TaumCompat.newCrystalStack(filter.tag, back);
-            final IAEStack<?> backRequest = essenceStackFor(type, backStack);
-            if (backRequest != null) {
-                handler.injectItems(backRequest, Actionable.MODULATE, SOURCE);
-            }
-        }
-        return new Outcome(moved >= takenPoints ? PocketReceipt.OK : PocketReceipt.PARTIAL, moved);
-    }
-
-    /**
-     * 通道单位 → 可物化的晶化源质个数（<b>向下取整</b>：零头必须留在元件侧，
-     * 否则"抽得出通道单位、放不下整晶"就成了凭空销毁价值）。
-     * <p>
-     * 单独成函数的理由：AE2 handler 在本仓的零依赖套件里拿不到（{@code PocketAeChannelOps} 整体属
-     * 实机项），但这条换算本身是纯算术，也是源质支<b>唯一</b>会静默吞点数的地方，
-     * 因此由 {@code extract_essence_branch_yields_crystal} 直接钉住。
-     *
-     * @param availableUnits 元件侧该 tag 现有的通道单位（SIMULATE 回报）
-     * @param unitPerCrystal 一枚晶化源质对应多少通道单位（由 {@code convertStackFromItem} 实测）
-     * @param wantCrystals   本轮最多要几晶（含 {@code ESSENCE_CAP_PER_TAG} 自缚）
-     */
-    static int crystalsFromUnits(long availableUnits, long unitPerCrystal, int wantCrystals) {
-        if (availableUnits <= 0L || unitPerCrystal <= 0L || wantCrystals <= 0) {
-            return 0;
-        }
-        final long whole = availableUnits / unitPerCrystal;
-        return whole <= 0L ? 0 : (int) Math.min((long) wantCrystals, whole);
-    }
-
-    /** 晶数 → 通道单位（{@link #crystalsFromUnits} 的逆运算；非正数一律 0）。 */
-    static long unitsForCrystals(int crystals, long unitPerCrystal) {
-        return crystals <= 0 || unitPerCrystal <= 0L ? 0L : (long) crystals * unitPerCrystal;
-    }
-
-    /** 实验 E3：某第三方通道的栈无法物化成晶化源质，只报一次（每次抽取都刷一行会淹掉日志）。 */
-    private static void logUnmaterializableOnce(String typeId, String tag) {
-        if (LOG_UNMATERIALIZED.add(typeId + '#' + tag)) {
-            LOG.info("[gtit] 口袋源质支：通道 {} 的条目（tag={}）无法物化为晶化源质，该声明按不可物化跳过", typeId, tag);
-        }
-    }
 
     /**
      * 中栏来源格扣件（★R84：来源在中栏，不再是玩家背包）。写回走 {@code PocketSession#setStorageStackAt}
@@ -1016,8 +856,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
 
     // ------------------------------------------------------------------ 解析与通知
 
-    /** 元件栈 + 宿主（R6：宿主必须是 {@code IChestOrDrive} 且该通道 {@code getCellArray} 非空）。 */
-    private static final class Found {
+    /** 元件栈 + 宿主（R6：宿主必须是 {@code IChestOrDrive}；★R87-A 起包内可见，供源质支透传）。 */
+    static final class Found {
 
         final ItemStack cellStack;
         /** 同时是 {@code ISaveProvider}（写入通路要它，R7）与 {@code IActionHost}（取 grid 通知网络，R7）。 */
@@ -1039,13 +879,18 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         return new Found(probed.stack, device);
     }
 
-    /** 每次现取 handler；同时承担 R6 的识别门禁。 */
+    /**
+     * ★R87-c：直问元件要 handler —— <b>不再</b>要求 {@code getCellArray(type)} 非空。
+     * <p>
+     * 旧前置门的漏洞：AE2 宿主对多通道元件只把<b>第一个命中</b>的通道注册进 cellsMap
+     * （AE2-ref {@code TileDrive.java:296-331} / {@code TileChest.java:216-229} 的 {@code break}；
+     * 遍历容器是 {@code HashMap}，序不可控）⇒ 流体/第三方通道被误判"这只元件没有该通道"，
+     * {@code channelIdsOf} 里根本没有它 ⇒ 轮转/全通道遍历都到不了 ⇒ 流体与源质推送静默哑火。
+     * {@code getCellInventory(stack, host, type)} 对多通道件的<b>每条</b>通道都能给出 handler，
+     * 直问即修。R6 的"已识别 + 宿主在位"门禁保持在 {@link #foundOf}（probe 解析 + instanceof 门）。
+     */
     private IMEInventoryHandler handlerOf(Found found, IAEStackType<?> type) {
         if (found == null || type == null) {
-            return null;
-        }
-        final List<IMEInventoryHandler> array = found.host.getCellArray(type);
-        if (array == null || array.isEmpty()) {
             return null;
         }
         try {
@@ -1060,7 +905,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         }
     }
 
-    private void rememberPrototype(String contentKey, IAEStack<?> prototype) {
+    /** ★R87-A 起包内可见：源质支的注入/抽取也要登记 delta 原型（同一 {@code prototypes} 表）。 */
+    void rememberPrototype(String contentKey, IAEStack<?> prototype) {
         if (contentKey == null || prototype == null) {
             return;
         }

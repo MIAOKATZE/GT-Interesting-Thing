@@ -40,6 +40,22 @@ public enum PocketReceipt {
     }
 
     /**
+     * ★R87（饿死收窄，取证 r87-ret-essence §2.2 次级 A）：<b>注入方向</b>的新停批判据。
+     * <p>
+     * 旧注入批沿用 {@link #stopsBatch()}（= {@code this != OK}），代价是"队首一格对当前轮转通道产出
+     * {@code FULL/FILTER_REJECTED}，排在后面的来源（流体/源质在队尾）每拍都被截断"的结构性饿死。
+     * 收窄后只有<b>元件/网络侧此刻给不出</b>（失联、无写权限）才停批；{@code FULL/FILTER_REJECTED/
+     * NO_CHANNEL} 是"这一格对这一通道自己的属性"——计失败后<b>跳过该来源继续</b>，余量照旧留在原槽
+     * （本批绝不重试同一槽，这条 remainder 纪律不变）。
+     * <p>
+     * ★{@link #stopsBatch()} 与 {@link #stopsExtractBatch()} 的<b>本体语义一字未动</b>（别处还在用，
+     * 且有测试钉着"两条判据不得并回一条"）；注入批的调用侧改读本谓词。
+     */
+    public boolean stopsInjectBatch() {
+        return this == LOST || this == NO_ACCESS;
+    }
+
+    /**
      * ★R85 A1：<b>抽取方向</b>的停批判据。
      * <p>
      * 抽取侧的"落点已满"（{@link #TARGET_FULL}／{@link #PARTIAL}）与"这只元件没有这个通道"

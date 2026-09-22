@@ -102,13 +102,15 @@ public final class PocketChannelManager {
     /**
      * 开一条通道（生产入口）。
      * <p>
-     * ★R39b 的唯一计算点：{@code pullMode = !filters.isEmpty()} <b>只在这里算一次</b>，随
+     * ★R39b 的唯一计算点：<code>pullMode = !filters.isEmpty()</code> <b>只在这里算一次</b>，随
      * {@link PocketChannelState#attachSession} 进状态条目，之后 30 批与 GUI 回执都读同一个值
      * （客户端不得按 ghost 表推断）。中途新增/删除 ghost 不改变本次运行的模式。
+     * ★R87-a 起该位的<b>语义</b>是"本次运行<b>含补满相</b>"——推送/拉取不再互斥（R39b 的互斥口径
+     * 作废），注入批无条件跑，这一位只决定补满相在不在。
      *
      * @param player    玩家维键
      * @param bindings  该玩家所持口袋的绑定表（激活时快照，运行期不再读 NBT）
-     * @param filters   该口袋的 ghost 配置；{@code null}/空 ⇒ 推送，非空 ⇒ 拉取
+     * @param filters   该口袋的 ghost 配置；{@code null}/空 ⇒ 纯推送，非空 ⇒ 推送 + 补满双相
      * @param pocketTag 口袋物品 NBT（设备维冷却落点，可为 null 表示不落档）
      * @param pairs     短效通道每批穿几对
      * @return true 表示已受理（短效=已登记节拍，瞬时=已穿完）
@@ -164,24 +166,23 @@ public final class PocketChannelManager {
     }
 
     /**
-     * 一批的实际执行：<b>推送 / 拉取两条路在此分叉，且互斥</b>（R39b）。
+     * 一批的实际执行（★R87-a：<b>双相</b>——先注入相（口袋 → 元件）后补满相（元件 → 口袋，按声明），
+     * 两相合并成一份 Report；R39b 的"推送/拉取互斥"口径作废）。
      * <p>
-     * 结论取自 {@link PocketChannelState#pullMode()}（激活时算的那一次），不接受调用方临时传参，
-     * 否则同一通道会出现两处真相。
+     * 补满相在不在读 {@link PocketChannelState#pullMode()}（激活时算的那一次，R87-a 起语义 =
+     * "本次运行含补满相"），<b>不</b>现读 {@code filters} 判相，否则同一通道会出现两处真相、
+     * 且面板中途增删 ghost 会换轨。与声明语义匹配的来源不进注入相（反成环铁律），
+     * 剔除面在 {@code PocketChannelRunner#injectPhase}。
      */
     private static PocketChannelRunner.Report runBatch(PocketChannelState state, PocketCellBindings bindings,
         PocketChannelOps ops, int pairLimit) {
-        final PocketFilterConfig filters = state == null ? null : state.sessionFilters();
-        final PocketChannelRunner.Report report = filters != null && !filters.isEmpty()
-            // 拉取：按 ghost 声明从元件抽进真实栏；单条批次量由 ops 按声明物自身上限收口
-            ? PocketChannelRunner.runRefillBatch(
-                bindings,
-                state.rotation(),
-                filters,
-                ops,
-                pairLimit,
-                PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED)
-            : PocketChannelRunner.runInjectBatch(bindings, state == null ? null : state.rotation(), ops, pairLimit);
+        final PocketChannelRunner.Report report = PocketChannelRunner.runDualPhase(
+            bindings,
+            state == null ? null : state.rotation(),
+            state == null ? null : state.sessionFilters(),
+            state != null && state.pullMode(),
+            ops,
+            pairLimit);
         if (state != null) {
             state.recordReport(report);
         }

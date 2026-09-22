@@ -45,8 +45,11 @@ public final class PocketChannelState {
     /** 短效通道剩余批次数。 */
     private int remainingBatches;
     /**
-     * 本次通道运行的推送/拉取结论（R39b）：<b>服务端在激活时算一次</b>，之后 30 批与回执都读这一个值，
-     * 客户端只格式化它（见 {@code NekoPocketPanel#composeModeState}），绝不按 ghost 表自行推断。
+     * 本次通道运行的<b>相构成</b>（★R87-a 覆盖 R39b 的"推送/拉取互斥"）：服务端在激活时算一次，
+     * 语义 = "本次运行<b>含补满相</b>"（true = 注入批之后还跑补满批；false = 纯推送）。
+     * <b>推送向不再被它关死</b>——注入批无条件跑，与声明语义匹配的来源由反成环铁律剔除。
+     * 之后 30 批与回执都读这一个值，客户端只格式化它（见 {@code NekoPocketPanel#composeModeState}），
+     * 绝不按 ghost 表自行推断；本类不持久化它（无 NBT 往返，运行期内存位），改名无兼容收益故沿用旧名。
      */
     private boolean pullMode;
     /** 同 tick 不可重入闩（本 tick 已处理过一次传输请求）。 */
@@ -149,7 +152,10 @@ public final class PocketChannelState {
         return ticksUntilDue;
     }
 
-    /** 本次通道运行的推送/拉取结论（服务端在激活时算一次，随回执下发，R39b）。 */
+    /**
+     * 本次通道运行的相构成（服务端在激活时算一次，随回执下发）。
+     * ★R87-a 起语义 = "本次运行含补满相"（不再是"推送/拉取互斥"的拉取位；推送向无条件跑）。
+     */
     public boolean pullMode() {
         return pullMode;
     }

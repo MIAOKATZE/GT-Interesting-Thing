@@ -4,17 +4,25 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 通道的一次批次（R9/R11/R12）：外层按<b>绑定序</b>遍历元件，内层按 {@code typeId} <b>轮转</b>选通道，
- * 每个「(元件, 通道) 对」在一批里只服务一次。
+ * 通道的一次批次（R9/R11/R12）：外层按<b>绑定序</b>遍历元件，内层遍历该元件的<b>全部可用通道</b>
+ * （★R87-b 起：每枚元件每批对 {@code channelIdsOf} 的每条通道各服务一轮，不再是"每批单通道轮转"），
+ * 每个「(元件, 通道) 对」在一批里至多服务一次。
  * <p>
- * 三条来自 E3 §4 的语义：
+ * 来自 E3 §4 / R87 的语义：
  * <ul>
- * <li><b>一次 = 一个（元件,通道）对的一个批次</b>（R9 窄口径，与 ME-IO 端口的轮转口径一致），
- * 每秒穿几对由 {@code Config.pocketChannelPairsPerSecond} 决定；瞬时通道一次穿完全部（R12）。</li>
- * <li><b>remainder 一律留在源槽</b>，本批不再对该槽重试，且首个非 OK 回执即 {@code break}
- * 顺延下一轮（照 {@code NekoMeTransferQueue.tick():111-126} 的形态）。</li>
+ * <li><b>一次 = 一个（元件,通道）对的一个批次</b>（R9 窄口径），每秒穿几对由
+ * {@code Config.pocketChannelPairsPerSecond} 决定；瞬时通道一次穿完全部（R12）。
+ * ★R87-b：注入向不再走 {@link PocketRotationCursor}（全通道各跑一轮后"轮转选一"没有意义），
+ * 游标只剩补满相在推进（见该类的 javadoc）；候选序 = {@code channelIdsOf} 的稳定列表序。</li>
+ * <li><b>remainder 一律留在源槽</b>，本批不重试同一槽；★R87（饿死收窄）起只有
+ * {@code LOST/NO_ACCESS}（元件此刻给不出）才 break 整串来源，{@code FULL/FILTER_REJECTED/NO_CHANNEL}
+ * 记失败后<b>跳过该来源继续</b>——队首一格满/被分区拒收不再饿死排在后面的流体与源质来源。</li>
  * <li><b>批尾一次网络通知</b>：把所有带符号 delta 合并成一次 {@link PocketChannelOps#announce}，
- * 瞬时=一次调用一次 post、短效=每秒一次 post（R7）。</li>
+ * 瞬时=一次调用一次 post、短效=每秒一次 post（R7）。双相批（R87-a）在
+ * {@link #runDualPhase} 里合并后仍只 flush 一次。</li>
+ * <li>★R87-a（反成环铁律）：与任一 ghost 声明<b>语义匹配</b>的来源不进注入相——声明格物品
+ * （按槽排除，快照侧职责）、同名流体 tank、同 tag 源质（按语义载荷匹配，不按原始键串），
+ * 见 {@link #withoutDeclarationMatches}。</li>
  * </ul>
  * 纯 JVM 件：只经 {@link PocketChannelOps} 触达世界，测试用桩件驱动。
  */
@@ -61,42 +69,11 @@ public final class PocketChannelRunner {
      * 注入方向：口袋/背包 → 已绑定元件。
      *
      * @param pairLimit 本批最多服务几个「(元件,通道) 对」；{@code Integer.MAX_VALUE} 即瞬时通道的一次穿完
+     * @param filters   该口袋的 ghost 声明快照（★R87-a 反成环铁律的匹配面；{@code null}/空 = 无声明，全量推送）
      */
-    public static Report runInjectBatch(PocketCellBindings bindings, PocketRotationCursor rotation,
-        PocketChannelOps ops, int pairLimit) {
-        final Report report = new Report();
-        if (bindings == null || bindings.isEmpty() || pairLimit <= 0) {
-            return report;
-        }
-        final List<PocketChannelOps.SourceSlot> sources = ops.snapshotSources();
-        if (sources == null || sources.isEmpty()) {
-            return report;
-        }
-        // ★R84：服务面只吃绑定序前 ALLOWED_BOUND_CELLS 枚 ⇒ 旧档里残留的第二枚起是"仍显示、不再搬运"
-        // 的惰性条目（刻意不销毁玩家数据，也不让它继续产生"能绑多枚却在轮转"的错觉）。
-        final List<String> cells = bindings.cells();
-        final int serveCells = Math.min(cells.size(), PocketConstants.ALLOWED_BOUND_CELLS);
-        for (int cellIndex = 0; cellIndex < serveCells; cellIndex++) {
-            final String diskuuid = cells.get(cellIndex);
-            if (report.pairsServed >= pairLimit) {
-                break;
-            }
-            if (ops.isCellLost(diskuuid)) {
-                report.lost++;
-                report.lastReceipt = PocketReceipt.LOST;
-                continue;
-            }
-            final List<String> channels = ops.channelIdsOf(diskuuid);
-            final String typeId = rotation == null ? (channels == null || channels.isEmpty() ? null : channels.get(0))
-                : rotation.next(diskuuid, channels);
-            if (typeId == null || typeId.isEmpty()) {
-                report.noChannel++;
-                report.lastReceipt = PocketReceipt.NO_CHANNEL;
-                continue;
-            }
-            report.pairsServed++;
-            injectIntoPair(sources, diskuuid, typeId, ops, report);
-        }
+    public static Report runInjectBatch(PocketCellBindings bindings, PocketChannelOps ops, int pairLimit,
+        PocketFilterConfig filters) {
+        final Report report = injectPhase(bindings, ops, pairLimit, filters);
         flush(report, ops);
         return report;
     }
@@ -114,12 +91,142 @@ public final class PocketChannelRunner {
      */
     public static Report runRefillBatch(PocketCellBindings bindings, PocketRotationCursor rotation,
         PocketFilterConfig filters, PocketChannelOps ops, int pairLimit, int amountPerFilter) {
+        final Report report = refillPhase(bindings, rotation, filters, ops, pairLimit, amountPerFilter);
+        flush(report, ops);
+        return report;
+    }
+
+    /**
+     * ★R87-a：双相批——先<b>注入相</b>（口袋 → 元件，无条件跑）后<b>补满相</b>（元件 → 口袋，按
+     * {@code refillPhase} 标志跑），两份 Report 合并、批尾仍只 {@link #flush} 一次网络通知。
+     * <p>
+     * ★{@code refillPhase} 必须由调用方传<b>激活时算好的那一次</b>（{@code PocketChannelState#pullMode}，
+     * R39b 的单点保留；R87-a 起它的语义 = "本次运行含补满相"），<b>不得</b>在本方法里现读
+     * {@code filters.isEmpty()} 判相——面板中途增删 ghost 改的就是会话里挂的同一个对象，
+     * 现读等于给"运行中换轨"开了门。两相各自享受 {@code pairLimit}（合并后的
+     * {@code Report#pairsServed} 因此可到 2×pairLimit，「每秒几对」的限流口径按相生效）。
+     *
+     * @param filters     该口袋的 ghost 声明快照（注入相的反成环匹配面 + 补满相的需求面）
+     * @param refillPhase true = 本批跑补满相（激活时算好的那一次）
+     */
+    static Report runDualPhase(PocketCellBindings bindings, PocketRotationCursor rotation, PocketFilterConfig filters,
+        boolean refillPhase, PocketChannelOps ops, int pairLimit) {
+        final Report report = new Report();
+        mergeInto(report, injectPhase(bindings, ops, pairLimit, filters));
+        if (refillPhase) {
+            mergeInto(
+                report,
+                refillPhase(
+                    bindings,
+                    rotation,
+                    filters,
+                    ops,
+                    pairLimit,
+                    PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED));
+        }
+        flush(report, ops);
+        return report;
+    }
+
+    /**
+     * ★R87-a：两份相 Report 的合并（用测试钉住的语义）：
+     * <ul>
+     * <li>计数全部累加（含 {@code noChannel}）；{@code deltas} 直接拼接（批尾 {@link #flush} 前合并才有意义，
+     * 双相批 {@link #runDualPhase} 正是这么用的；单相入口 flush 后 deltas 已清空，合并时自然是空）。</li>
+     * <li>{@code lastReceipt}：<b>失败码优先于成功码</b>（玩家必须先看到失败面，不能让"无事可做"的 OK
+     * 盖掉另一相的元件满）；两相同为成功或同为失败时取<b>后跑的一相</b>（补满相）；一侧为 null 让位给非 null。</li>
+     * </ul>
+     */
+    static void mergeInto(Report target, Report addition) {
+        if (addition == null) {
+            return;
+        }
+        target.pairsServed += addition.pairsServed;
+        target.transferred += addition.transferred;
+        target.filterRejected += addition.filterRejected;
+        target.full += addition.full;
+        target.targetFull += addition.targetFull;
+        target.noAccess += addition.noAccess;
+        target.lost += addition.lost;
+        target.noChannel += addition.noChannel;
+        target.deltas.addAll(addition.deltas);
+        if (addition.lastReceipt != null && (target.lastReceipt == null || isFailureReceipt(addition.lastReceipt)
+            || !isFailureReceipt(target.lastReceipt))) {
+            target.lastReceipt = addition.lastReceipt;
+        }
+    }
+
+    /** 合并语义里的"失败码"（与 {@link Report#failures()} 同一集合；NO_CHANNEL/OK/PARTIAL 不算）。 */
+    private static boolean isFailureReceipt(PocketReceipt receipt) {
+        return receipt == PocketReceipt.FILTER_REJECTED || receipt == PocketReceipt.FULL
+            || receipt == PocketReceipt.TARGET_FULL
+            || receipt == PocketReceipt.NO_ACCESS
+            || receipt == PocketReceipt.LOST;
+    }
+
+    /** 注入相本体（不 flush；单相入口与双相批共用，见 {@link #runInjectBatch}/{@link #runDualPhase}）。 */
+    private static Report injectPhase(PocketCellBindings bindings, PocketChannelOps ops, int pairLimit,
+        PocketFilterConfig filters) {
+        final Report report = new Report();
+        if (bindings == null || bindings.isEmpty() || pairLimit <= 0) {
+            return report;
+        }
+        List<PocketChannelOps.SourceSlot> sources = ops.snapshotSources();
+        if (sources == null || sources.isEmpty()) {
+            return report;
+        }
+        // ★R87-a 反成环铁律：与任一 ghost 声明语义匹配的来源（同名流体 tank / 同 tag 源质）不进注入——
+        // 否则"推出去一拍、按声明抽回来一拍"就是永动环。物品声明格在快照侧按槽排除（职责不在这里）。
+        sources = withoutDeclarationMatches(filters, sources);
+        if (sources.isEmpty()) {
+            return report;
+        }
+        // ★R84：服务面只吃绑定序前 ALLOWED_BOUND_CELLS 枚 ⇒ 旧档里残留的第二枚起是"仍显示、不再搬运"
+        // 的惰性条目（刻意不销毁玩家数据，也不让它继续产生"能绑多枚却在轮转"的错觉）。
+        final List<String> cells = bindings.cells();
+        final int serveCells = Math.min(cells.size(), PocketConstants.ALLOWED_BOUND_CELLS);
+        for (int cellIndex = 0; cellIndex < serveCells; cellIndex++) {
+            final String diskuuid = cells.get(cellIndex);
+            if (report.pairsServed >= pairLimit) {
+                break;
+            }
+            if (ops.isCellLost(diskuuid)) {
+                report.lost++;
+                report.lastReceipt = PocketReceipt.LOST;
+                continue;
+            }
+            final List<String> channels = ops.channelIdsOf(diskuuid);
+            if (channels == null || channels.isEmpty()) {
+                report.noChannel++;
+                report.lastReceipt = PocketReceipt.NO_CHANNEL;
+                continue;
+            }
+            // ★R87-b：每枚元件对全部可用通道各服务一轮（顺序 = 列表的稳定序），不再"每批单通道轮转"——
+            // 否则瞬时通道一次按键只推一个通道，流体/源质要等下一次按键才轮得到（"按一次没反应"的观感）。
+            for (int i = 0; i < channels.size(); i++) {
+                if (report.pairsServed >= pairLimit) {
+                    break;
+                }
+                final String typeId = channels.get(i);
+                if (typeId == null || typeId.isEmpty()) {
+                    continue;
+                }
+                report.pairsServed++;
+                injectIntoPair(sources, diskuuid, typeId, ops, report);
+            }
+        }
+        return report;
+    }
+
+    /** 补满相本体（不 flush；单相入口与双相批共用，见 {@link #runRefillBatch}/{@link #runDualPhase}）。 */
+    private static Report refillPhase(PocketCellBindings bindings, PocketRotationCursor rotation,
+        PocketFilterConfig filters, PocketChannelOps ops, int pairLimit, int amountPerFilter) {
         final Report report = new Report();
         if (bindings == null || bindings.isEmpty() || filters == null || filters.isEmpty() || pairLimit <= 0) {
             return report;
         }
         final List<String> cells = bindings.cells();
-        // ★R84：与注入侧同一条服务面口径（见 runInjectBatch），只吃绑定序前 ALLOWED_BOUND_CELLS 枚
+        // ★R84：与注入侧同一条服务面口径（见 injectPhase），只吃绑定序前 ALLOWED_BOUND_CELLS 枚
         final int serveCells = Math.min(cells.size(), PocketConstants.ALLOWED_BOUND_CELLS);
         for (int cellIndex = 0; cellIndex < serveCells; cellIndex++) {
             final String diskuuid = cells.get(cellIndex);
@@ -163,8 +270,69 @@ public final class PocketChannelRunner {
                 }
             }
         }
-        flush(report, ops);
         return report;
+    }
+
+    /**
+     * ★R87-a 反成环铁律的匹配面：剔除「与任一 ghost 声明<b>语义</b>匹配」的来源。
+     * <p>
+     * 匹配按<b>语义载荷</b>（流体名 / aspect tag 字符串），<b>绝不按原始键串</b>——声明侧与来源侧的键
+     * typeId 段可以不同（声明 {@code e:item:<tag>}（第三方通道回落），来源 {@code e::<tag>}（口袋源质
+     * 不属于任何通道）），逐字比键会漏剔。物品来源不在这里匹配：ghost 声明格在
+     * {@code snapshotSources} 里按槽排除（现状保持，R87-a 裁定）。
+     * {@code filters} 为 null/空（纯推送）照旧全量。
+     */
+    private static List<PocketChannelOps.SourceSlot> withoutDeclarationMatches(PocketFilterConfig filters,
+        List<PocketChannelOps.SourceSlot> sources) {
+        if (filters == null || filters.isEmpty()) {
+            return sources;
+        }
+        List<PocketChannelOps.SourceSlot> kept = null;
+        for (int i = 0; i < sources.size(); i++) {
+            final PocketChannelOps.SourceSlot source = sources.get(i);
+            if (source != null && matchesDeclaration(filters, source)) {
+                if (kept == null) {
+                    kept = new ArrayList<>(sources.size());
+                    for (int j = 0; j < i; j++) {
+                        kept.add(sources.get(j));
+                    }
+                }
+                continue;
+            }
+            if (kept != null) {
+                kept.add(source);
+            }
+        }
+        return kept == null ? sources : kept;
+    }
+
+    /** 单条来源是否与任一声明语义撞车（流体比流体名、源质比 tag、物品不比——见上面那段）。 */
+    private static boolean matchesDeclaration(PocketFilterConfig filters, PocketChannelOps.SourceSlot source) {
+        if (source.kind == PocketChannelOps.SourceKind.FLUID) {
+            final PocketFilterConfig.Filter parsed = PocketFilterConfig.parseKey(source.contentKey);
+            if (parsed instanceof PocketFilterConfig.FluidFilter fluid) {
+                for (PocketFilterConfig.Filter filter : filters.filters()) {
+                    if (filter instanceof PocketFilterConfig.FluidFilter declared
+                        && declared.fluidName.equals(fluid.fluidName)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        if (source.kind == PocketChannelOps.SourceKind.ESSENCE) {
+            final PocketFilterConfig.Filter parsed = PocketFilterConfig.parseKey(source.contentKey);
+            if (parsed instanceof PocketFilterConfig.EssenceFilter essence) {
+                for (PocketFilterConfig.Filter filter : filters.filters()) {
+                    if (filter instanceof PocketFilterConfig.EssenceFilter declared
+                        && declared.tag.equals(essence.tag)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        return false;
     }
 
     private static void injectIntoPair(List<PocketChannelOps.SourceSlot> sources, String diskuuid, String typeId,
@@ -182,10 +350,22 @@ public final class PocketChannelRunner {
                 report.transferred += outcome.moved;
                 report.deltas.add(new PocketChannelOps.Delta(diskuuid, typeId, source.contentKey, outcome.moved));
             }
-            if (outcome.receipt.stopsBatch()) {
+            if (outcome.receipt == PocketReceipt.NO_CHANNEL) {
+                // ★R87（饿死收窄）：这条通道收不了这个来源——是"这一格对这一通道"的属性，
+                // 计数留痕（与抽取侧 R85 A3 同一条纪律）后跳过该来源继续，不再停批。
+                report.noChannel++;
+                continue;
+            }
+            if (outcome.receipt.stopsInjectBatch()) {
                 accountFailure(report, outcome.receipt);
-                // remainder 留在源槽（不落地上、不进队列），本批不再对该槽重试
+                // ★R87：只有 LOST/NO_ACCESS（元件此刻给不出）才停批顺延下一轮；
+                // remainder 纪律不变——余量留在源槽，本批绝不重试同一槽。
                 break;
+            }
+            if (outcome.receipt != PocketReceipt.OK && outcome.receipt != PocketReceipt.PARTIAL) {
+                // ★R87（饿死收窄）：FULL/FILTER_REJECTED（及理论上的 TARGET_FULL）是"这一格对这一通道"
+                // 自己的属性——记失败后跳过该来源继续，队首一格满/被拒收不再截断后面的流体与源质来源。
+                accountFailure(report, outcome.receipt);
             }
         }
     }
@@ -208,7 +388,8 @@ public final class PocketChannelRunner {
      * 批尾一次性通知网络视图（R7）。
      * <p>
      * 同一条内容多次出现时先在此合并成一个带符号量，使「瞬时通道一次调用内穿完 + 一次 post」成立；
-     * delta 为空则完全不 post，避免空批次白刷全网。
+     * delta 为空则完全不 post，避免空批次白刷全网。双相批（R87-a）在两相合并后的这份 Report 上
+     * 只调一次，仍是"批尾一次通知"。
      */
     private static void flush(Report report, PocketChannelOps ops) {
         if (report.deltas.isEmpty()) {

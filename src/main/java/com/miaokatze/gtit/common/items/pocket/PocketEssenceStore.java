@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -90,7 +91,42 @@ public final class PocketEssenceStore {
      */
     private final String[] cellTags = new String[PocketConstants.ESSENCE_DISPLAY_GRID];
 
+    /**
+     * ★<b>R87-f 声明保格谓词</b>（null = 无声明 ⇒ 行为与 R86 逐字一致）：清零（{@link #extract} 的
+     * 清零支与 {@link #readFrom(NBTTagCompound, Predicate)} 的折叠支）时先问它——
+     * <b>声明中的 tag 保留格位</b>（{@code amounts} 摘除照旧、{@code cellTags} 保留 ⇒ 该格空置+遮罩）。
+     * <p>
+     * 为什么是"谓词注入"而不是把声明表传进来：格位表与声明表分属两个文件形态（本类只认 NBT 根上的
+     * {@code ess}，声明在 {@code PocketFilterConfig}），本类不该知道后者的存在；持有方（面板侧）用
+     * <b>查询式</b>谓词直查现役声明表（非轮询、无副本、声明变更即刻生效）。
+     */
+    private Predicate<String> declaredTagProbe;
+
+    /**
+     * ★R87-f：注入声明保格谓词（查询式；{@code null} = 无声明 ⇒ 清零/折叠照旧腾格）。
+     * 谓词实现必须<b>纯查询</b>（读现役声明表），不得有副作用、不得轮询。
+     */
+    public void setDeclaredTagProbe(Predicate<String> probe) {
+        this.declaredTagProbe = probe;
+    }
+
+    /** 该 tag 是否处于声明保格之下（无谓词 = 恒 false = 与 R86 逐字一致）。 */
+    private boolean isDeclared(String tag) {
+        return declaredTagProbe != null && tag != null && declaredTagProbe.test(tag);
+    }
+
     public static PocketEssenceStore readFrom(NBTTagCompound root) {
+        return readFrom(root, null);
+    }
+
+    /**
+     * ★R87-f 重载：带声明谓词的读档。旧档「有格位无库存」的空洞折叠<b>只对无声明的空洞生效</b>——
+     * R87-f 起"声明中的 tag 被清零但格位保留"是<b>合法现役状态</b>而不是历史残留，
+     * 折叠不得把它吃掉（否则关屏重开后声明格的遮罩锚点又漂走）。
+     * <p>
+     * 单参 {@link #readFrom(NBTTagCompound)} = 本重载传 {@code null}，行为与 R86 逐字一致。
+     */
+    public static PocketEssenceStore readFrom(NBTTagCompound root, Predicate<String> declaredTags) {
         final PocketEssenceStore store = new PocketEssenceStore();
         if (root == null) {
             return store;
@@ -114,15 +150,16 @@ public final class PocketEssenceStore {
         // ★R86：折叠历史空洞。R78③ 生效期间写出的档里"tag 占着一格但点数为 0"是合法形状，而新口径下
         // 这种格位本该在清零那一刻就腾出来 ⇒ 读档时按库存撤格，旧档里那些"0/256 占位"就地消失。
         // 撤的只是格位归属：点数条目本来就不落档（见 {@link #writeTo} 的"0 值不写"），无丢件风险。
-        store.foldCellsWithoutStock();
+        // ★R87-f：声明中的空洞（合法现役状态）不折——只对"无声明的空洞"生效。
+        store.foldCellsWithoutStock(declaredTags);
         return store;
     }
 
-    /** 见 {@link #readFrom(NBTTagCompound)} 那条 ★R86：把"有格位、无库存"的历史归属撤掉。 */
-    private void foldCellsWithoutStock() {
+    /** 见 {@link #readFrom(NBTTagCompound, Predicate)} 那条 ★R86/★R87-f：只折叠<b>无声明</b>的空洞。 */
+    private void foldCellsWithoutStock(Predicate<String> declaredTags) {
         for (int cell = 0; cell < cellTags.length; cell++) {
             final String tag = cellTags[cell];
-            if (tag != null && get(tag) <= 0) {
+            if (tag != null && get(tag) <= 0 && (declaredTags == null || !declaredTags.test(tag))) {
                 cellTags[cell] = null;
             }
         }
@@ -470,6 +507,11 @@ public final class PocketEssenceStore {
      * 不吃 {@code slotIndex} ⇒ 回收不会拉错源质；真实后果只有遮罩/角标错位，那一面由
      * {@code NekoPocketPanel#applyEssenceGhosts} 改按 tag 归位消化。
      * NBT 形状本就允许空洞（{@link #writeCellOrder} 用空串占位），故不需要新的存档形状。
+     * <p>
+     * ★★<b>R87-f 收窄（部分恢复 R78③，限定声明面）</b>：持有方注入了 {@link #declaredTagProbe}
+     * 且该 tag 正被声明 ⇒ 清零时<b>保留格位</b>（{@code amounts} 摘除照旧）⇒ 该格空置+遮罩，
+     * 同 tag 再入账（蒸馏每 100 tick 自动入账）经 {@code assignCell} 的幂等支落回<b>原格</b>，
+     * 遮罩不再漂到别的格。未声明 tag 照旧 R86 清零腾格，一字不改。
      *
      * @return 实际取出点数（请求量超过存量时按存量给）
      */
@@ -482,8 +524,10 @@ public final class PocketEssenceStore {
         final int left = current - taken;
         if (left <= 0) {
             amounts.remove(tag);
-            // ★R86：清零即腾格（下一次同 tag 入账会重新占最小空位，"首次入账序 = 格序"照旧成立）
-            releaseCell(tag);
+            // ★R86：清零即腾格；★R87-f：声明中的 tag 保留格位（该格空置+遮罩，再入账幂等落回原格）
+            if (!isDeclared(tag)) {
+                releaseCell(tag);
+            }
         } else {
             amounts.put(tag, left);
         }
@@ -495,8 +539,9 @@ public final class PocketEssenceStore {
     /**
      * ★R86：把某 tag 占着的格位清空（幂等；没占过就是空操作）。
      * <p>
-     * 只在两处被调用：{@link #extract(String, int)} 清零那一支，与读档时折叠旧档里
-     * "有格位、无库存"的历史空洞（{@link #readFrom(NBTTagCompound)}）。
+     * 只在两处被调用：{@link #extract(String, int)} 清零那一支（★R87-f 起声明中的 tag 不再走到这里），
+     * 与读档时折叠旧档里"有格位、无库存"的历史空洞（{@link #readFrom(NBTTagCompound, Predicate)}，
+     * ★R87-f 起只折无声明的空洞）。
      */
     private void releaseCell(String tag) {
         final int cell = cellOf(tag);

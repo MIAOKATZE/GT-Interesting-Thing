@@ -16,6 +16,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
+import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
@@ -339,8 +340,15 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     /**
      * ghost 态下的右键 = 解绑（★只发 {@code CLR|<格号>|E}，判定与执行在服务端）。
      * <p>
-     * 其余按键（含非 ghost 态的右键）一律交回 {@code super} ⇒ 既有的「点击取晶 / Shift 取一整堆」
-     * 行为逐字不变。
+     * ★★<b>R87-d（缺陷 1）左键持晶 = 点击入槽</b>：非 ghost、非 alt、<b>游标栈是晶</b>（客户端经
+     * {@code EssenceGate.TAUM.capacityOf == CRYSTAL_CAPACITY} 判，TC 缺席/判不出 ⇒ 不拦截交回
+     * {@code super}）⇒ 经 {@code owner.requestEssenceIntake} 走<b>现有 C2S 动作通道</b>发请求
+     * （零新同步键，与 alt 标记同形）；判定、入账、回执与清游标全在服务端
+     * {@code PocketEssenceIntake}，<b>客户端不得本地清游标</b>（原版 cursor 同步送达，防双端漂移）。
+     * 点击格只是手势锚点：目标 tag = 晶自带的 tag，本格有没有别的 tag 都不拦。
+     * <p>
+     * 其余按键（含非 ghost 态的右键、游标无晶的左键）一律交回 {@code super} ⇒ 既有的
+     * 「点击取晶 / Shift 取整份」行为逐字不变。
      */
     @Override
     public Result onMousePressed(int mouseButton) {
@@ -353,6 +361,13 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
             return Result.SUCCESS;
         }
         if (mouseButton == 0 && Interactable.hasAltDown() && requestBindFromStock()) {
+            return Result.SUCCESS;
+        }
+        if (mouseButton == 0 && !ghost
+            && !Interactable.hasAltDown()
+            && owner != null
+            && cellIndex >= 0
+            && owner.requestEssenceIntake(cellIndex)) {
             return Result.SUCCESS;
         }
         return super.onMousePressed(mouseButton);
@@ -368,10 +383,21 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * 拿生产实现跑零依赖测试只会得到"永远不匹配"的假绿（同 R59b 偏离①、
      * {@code PocketSlots#classifyIncoming(ItemStack, EssenceGate)} 的既有口径）。
      * 本仓不引第二个探针接口，故复用 {@link EssenceGate}。
+     * <p>
+     * ★★<b>R87-e（缺陷 4a）晶族特判</b>：拖入物是<b>晶化源质</b>（{@code capacityOf ==
+     * CRYSTAL_CAPACITY}）⇒ 恒视为含本格 tag（按物品形状放行）。平台事实两条：NEI 物品面板给出的
+     * {@code draggedStack} 是<b>无 NBT 裸栈</b>（两条探针里 {@code readContainer} 恒空），且 TC 把晶的
+     * 蒸馏产出注册成<b>空表</b>（{@code ConfigAspects} 那一条）⇒ 下面两条探针对晶<b>结构性恒 false</b>，
+     * "拖一枚晶去声明"这个最自然的手势在旧代码里恒被拒、且拒收被 MUI2 的 ghost 分发静默吞掉
+     * （{@code nei-ghost-dnd-first-handler-wins-and-swallow}）。★空格（{@code cellTag} null/空）的
+     * 拒收在上面原样保留（R86 裁定不放开，{@code essence.need_stock} tooltip 已解释）。
      */
     public static boolean carriesTag(ItemStack draggedStack, String cellTag, EssenceGate gate) {
         if (draggedStack == null || gate == null || cellTag == null || cellTag.isEmpty()) {
             return false;
+        }
+        if (gate.capacityOf(draggedStack) == TaumDistillRules.CRYSTAL_CAPACITY) {
+            return true;
         }
         final TaumAspectAmounts distilled = gate.aspectsOf(draggedStack);
         if (distilled != null && distilled.getAmount(cellTag) > 0) {

@@ -21,6 +21,11 @@ import java.util.Map;
  * 候选列表由调用方现场给出（{@code InfinityStackTypes.allSupportedTypes()} 的 typeId 序）。
  * 序号<b>不因通道激活而重置</b>，三通道对同一元件公平轮转；多枚元件再由绑定序做外层轮转。
  * <p>
+ * ★R87-b 起<b>只剩补满相还在推进本游标</b>（{@code runRefillBatch} 里每次取 typeId 记账）；
+ * 注入向改为"每批对该元件的全部可用通道各服务一轮"（全通道都跑，"轮转选一"没有意义），
+ * {@code runInjectBatch} 不再调用 {@link #next} 也不改写游标——两种相共用一个游标仍然自洽：
+ * 游标记录的是"上次补满记账用过的通道"，注入向读不读它都不影响公平性。
+ * <p>
  * 纯 JVM 件：只有字符串与列表。
  */
 public final class PocketRotationCursor {

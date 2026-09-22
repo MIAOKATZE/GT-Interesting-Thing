@@ -1124,9 +1124,18 @@ public final class PocketSlots {
         resultSlot.putStack(written);
         if (restCell == sourceIndex) {
             restSlot.putStack(restCount > 0 ? sized(unit, restCount) : null);
+            forceSyncSlot(restSlot);
         } else if (restCount > 0) {
             restSlot.putStack(merged(inv, restCell, false, sized(unit, restCount)));
+            forceSyncSlot(restSlot);
         }
+        // ★R87-g（O-缺口 2）：被写的<b>出格</b>同样要补强制同步——上面的 putStack 只发
+        // 非 force 的 SYNC_ITEM（客户端不写 handler），vanilla 差分通路在"客户端曾本地模拟出同值"
+        // （点击目标就是出格、或同拍"点击-搬运-回流"）时净差为零、整包不发 ⇒ 出格冻结到重开。
+        // 余格的两支已在上面各自补过；与源格同一条正门（{@link #forceSyncSlot}）；重入已由
+        // {@link #transferring} 闩覆盖（同下方 syncCellAfterRewrite 那条自证口径）；
+        // forceSyncItem 活引用边角的「写格一律换引用」纪律保持。
+        forceSyncSlot(resultSlot);
         // ★成交了 ⇒ 上一轮"这一格搬不动"的原因不再是事实，清掉抑制键；下一次真卡住要能再报
         fluidNoticeKeys.remove(sourceIndex);
         // ★<b>A（R84）</b>：被监听的这一格（{@code sourceIndex}）在上面被改写过，而 {@code placeProcessed}
