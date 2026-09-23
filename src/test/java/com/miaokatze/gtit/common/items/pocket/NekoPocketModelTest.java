@@ -130,8 +130,18 @@ public class NekoPocketModelTest {
         cases.put(
             "inject_full_store_leaves_vessel_untouched",
             NekoPocketModelTest::injectFullStoreLeavesVesselUntouched);
+        // ★R88 瓶成为现役载体后新出现的两条形状：一叠超出单 tag 上限时逐只向下收口
+        cases.put(
+            "inject_phial_stack_over_cap_fits_down_carrier_by_carrier",
+            NekoPocketModelTest::injectPhialStackFitsDownCarrierByCarrier);
         cases.put("extract_fluid_branch_moves_fluid", NekoPocketModelTest::extractFluidBranchMovesFluid);
-        cases.put("extract_essence_branch_yields_crystal", NekoPocketModelTest::extractEssenceBranchYieldsCrystal);
+        // ★R88 载体改判：用例名里的"crystal（晶化源质）"已退役 ⇒ 三条重挂并改名（旧名见各方法 javadoc）
+        cases.put("extract_essence_branch_yields_phials", NekoPocketModelTest::extractEssenceBranchYieldsPhials);
+        // ★R88 自立口径 C1（整瓶向下取整 / 余数留盘）与"下传落点是源质盘不是物品栏"
+        cases.put("essence_out_rounds_down_to_whole_phials", NekoPocketModelTest::essenceOutRoundsDownToWholePhials);
+        cases.put(
+            "essence_channel_download_lands_in_tray_not_inventory",
+            NekoPocketModelTest::essenceChannelDownloadLandsInTrayNotInventory);
         // ---- S-E 批：ghost 请求文法（CLR 带 kind / 分区域越界）+ 流体条与源质格两个 NEI 拖入入口
         cases.put("ghost_request_grammar_and_letters", NekoPocketModelTest::ghostRequestGrammarAndLetters);
         cases
@@ -252,16 +262,23 @@ public class NekoPocketModelTest {
             "multi_channel_cell_serves_all_channels_with_pair_cap",
             NekoPocketModelTest::multiChannelCellServesAllChannelsWithPairCap);
         cases.put("inject_batch_no_longer_stops_on_full", NekoPocketModelTest::injectBatchNoLongerStopsOnFull);
-        // ---- R87 批（B 切片）：源质 GUI 面修复——carriesTag 晶族特判 / 声明保格 / 结晶点击入槽四态
+        // ---- R87 批（B 切片）：源质 GUI 面修复——carriesTag 按内容判 / 声明保格 / 载体点击入槽四态
+        // ★R88 改判：R87 那三条里"晶族恒真特判"与"晶 = 唯一载体"两条判据已被 C2/瓶口径作废，
+        // 故连同用例名一起重挂（旧名 essence_carries_tag_crystal_family_passes_only_stocked_cells、
+        // essence_intake_crystal_from_cursor_four_states，见各自方法 javadoc 的原位标注）。
         cases.put(
-            "essence_carries_tag_crystal_family_passes_only_stocked_cells",
-            NekoPocketModelTest::essenceCarriesTagCrystalFamilyPassesOnlyStockedCells);
+            "essence_carries_tag_matches_phial_content_only_stocked_cells",
+            NekoPocketModelTest::essenceCarriesTagMatchesPhialContentOnlyStockedCells);
         cases.put(
             "essence_declared_tag_keeps_cell_on_drain_and_fold",
             NekoPocketModelTest::essenceDeclaredTagKeepsCellOnDrainAndFold);
         cases.put(
-            "essence_intake_crystal_from_cursor_four_states",
-            NekoPocketModelTest::essenceIntakeCrystalFromCursorFourStates);
+            "essence_intake_carrier_from_cursor_four_states",
+            NekoPocketModelTest::essenceIntakeCarrierFromCursorFourStates);
+        // ---- ★R88 C2：旧晶只读不产——存量旧晶仍能被识别并溶回盘，且与瓶共用同一条计点乘法
+        cases.put(
+            "essence_legacy_crystal_is_read_only_but_still_soluble",
+            NekoPocketModelTest::essenceLegacyCrystalIsReadOnlyButStillSoluble);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -2727,68 +2744,128 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(Boolean.FALSE, batch.candidates.containsKey("aquamen"), "容器内容没被重复计成产出");
         SimpleAssert.eq(0, gate.drainCalls, "蒸馏本轮不注入，所以 drainContainer 也不该被调");
 
-        // 晶化源质（同样是容器）也走注入支，不开第二条路（R63b）
-        final ItemStack crystal = stack(6);
-        gate.putContainer(crystal, TaumAspectAmounts.single("ignis", 1));
-        PocketDistillDriver.planDistillBatch(new ItemStack[] { crystal }, gate, new PocketEssenceStore());
-        SimpleAssert.eq(0, gate.containerQueries, "晶化源质同样绝不进入蒸馏判定路径");
-        SimpleAssert
-            .eq(PocketSlots.IncomingAction.INJECT, PocketSlots.classifyIncoming(crystal, gate), "晶化源质入格 = 注入支（同一分流器）");
+        // ★R88：两条载体（现役的瓶 / C2 只读的旧晶）与第三方罐同样是容器 ⇒ 一律走注入支，不开第二条路（R63b）
+        final ItemStack legacyCrystal = stack(6);
+        final ItemStack phialStack = stack(2);
+        // 旧晶：单件 1 点；瓶：单件 PHIAL_CAPACITY 点 —— 两条都不许进蒸馏判定
+        gate.putCrystal(legacyCrystal, TaumAspectAmounts.single("ignis", TaumDistillRules.CRYSTAL_CAPACITY));
+        gate.putContainer(phialStack, TaumAspectAmounts.single("ignis", TaumDistillRules.PHIAL_CAPACITY));
+        PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { legacyCrystal, phialStack }, gate, new PocketEssenceStore());
+        SimpleAssert.eq(0, gate.containerQueries, "★旧晶与瓶都绝不进入蒸馏判定路径（getBonusTags 会把栈内源质当产出重复计入）");
+        SimpleAssert.eq(
+            PocketSlots.IncomingAction.INJECT,
+            PocketSlots.classifyIncoming(legacyCrystal, gate),
+            "旧晶入格 = 注入支（同一分流器，C2 只改生产不改分流）");
+        SimpleAssert.eq(
+            PocketSlots.IncomingAction.INJECT,
+            PocketSlots.classifyIncoming(phialStack, gate),
+            "★现役载体（瓶）入格 = 注入支，与旧晶同一条分流器");
     }
 
     // ------------------------------------------------------------------ D 批 · R63 注入支
 
-    /** 容器入 12 格 ⇒ 当场排空进源质表（原量、全有全无），容器本身非消耗（R40a）。 */
+    /**
+     * 容器入 12 格 ⇒ 当场排空进源质盘（原量、全有全无），容器本身非消耗（R40a）。
+     * <p>
+     * ★<b>R88 重挂</b>：载体由"第三方罐（一叠只有一份内容）"换成 <b>TC 安瓿瓶</b>后，
+     * {@code PocketSlots#injectContainer} 的第 1 条实质修正把候选量算成
+     * <b>单件点数 × 只数</b>（TC 的 {@code ItemEssence} 整叠共享一份 {@code AspectList}，
+     * 一只满瓶写的是 {@code add(tag, 8)}）。旧断言把 15 点登记在 {@code stack(7)} 上、
+     * 又期望总共进 15 点 —— 那在新口径下正是"静默吞 504 点"的形状。
+     * 故本用例改为：<b>每只瓶装满（= {@code PHIAL_CAPACITY} 点）</b>、7 只 ⇒ 7 × 8 = 56 点。
+     */
     private static void injectVesselDrainsIntoStore() {
         final StubGate gate = new StubGate();
-        final ItemStack vessel = stack(7);
-        gate.putContainer(vessel, TaumAspectAmounts.of(new String[] { "aer", "ignis" }, new int[] { 10, 5 }));
+        final ItemStack phials = stack(7);
+        // 单件内容 = 一整瓶（两条 aspect 合计 PHIAL_CAPACITY 点），一叠 7 只
+        final int perPhial = TaumDistillRules.PHIAL_CAPACITY;
+        final int aerPart = perPhial - 3;
+        gate.putContainer(phials, TaumAspectAmounts.of(new String[] { "aer", "ignis" }, new int[] { aerPart, 3 }));
         final PocketEssenceStore store = new PocketEssenceStore();
 
-        final PocketSlots.IntakeResult result = PocketSlots.injectContainer(vessel, store, gate);
+        final PocketSlots.IntakeResult result = PocketSlots.injectContainer(phials, store, gate);
         SimpleAssert.eq(PocketSlots.Intake.DRAINED, result.kind, "装得下 ⇒ 抽干并入账");
-        SimpleAssert.eq(15, result.points, "原量合计 15 点");
-        SimpleAssert.eq(1, gate.drainCalls, "抽干动作恰好一次");
-        SimpleAssert.eq(10, store.get("aer"), "aer 入账");
-        SimpleAssert.eq(5, store.get("ignis"), "ignis 入账");
+        SimpleAssert.eq(perPhial * 7, result.points, "★点数 = 单瓶 " + perPhial + " 点 × 7 只（旧口径只读一份 NBT ⇒ 这里会少算 6/7）");
+        SimpleAssert.eq(1, gate.drainCalls, "抽干动作恰好一次（整叠一次抹掉，逐只会重复入账）");
+        SimpleAssert.eq(aerPart * 7, store.get("aer"), "aer 按叠入账");
+        SimpleAssert.eq(3 * 7, store.get("ignis"), "ignis 按叠入账");
+        // ★R88 新增两个收尾字段的"整叠"形状：一只都没剩、也没分裂出第二份容器
+        SimpleAssert.eq(null, result.returnedCarrier, "★整叠都被抽干 ⇒ returnedCarrier 留在 null（调用方按 R40a 退回原栈）");
+        SimpleAssert.eq(null, result.remainder, "★一叠塞得下 ⇒ 没有余量要写回格子");
+        SimpleAssert.that(!result.consumed(), "瓶是抽干不是销毁 ⇒ 调用方必须退回空壳（晶那条 C2 只读支才不退回）");
         SimpleAssert.eq(
             PocketSlots.IncomingAction.REJECT,
-            PocketSlots.classifyIncoming(vessel, gate),
-            "排空后的容器再判一次 ⇒ REJECT（空容器不收，等玩家取走）");
+            PocketSlots.classifyIncoming(phials, gate),
+            "排空后的容器再判一次 ⇒ REJECT（空壳不收，等玩家取走）");
         // 非消耗：容器还在玩家手里（注入执行只动源质，不动 stackSize，也不 return null）
-        SimpleAssert.eq(7, vessel.stackSize, "容器 stackSize 未变（R40a 非消耗；退回动作由槽位侧执行）");
+        SimpleAssert.eq(7, phials.stackSize, "容器 stackSize 未变（R40a 非消耗；退回动作由槽位侧执行）");
         // 已经空了的容器不得被反复"注入"出东西来
-        final PocketSlots.IntakeResult twice = PocketSlots.injectContainer(vessel, store, gate);
+        final PocketSlots.IntakeResult twice = PocketSlots.injectContainer(phials, store, gate);
         SimpleAssert.eq(PocketSlots.Intake.NOTHING, twice.kind, "空容器注入无事发生");
         SimpleAssert.eq(1, gate.drainCalls, "没有第二次抽干");
-        SimpleAssert.eq(15, store.totalPoints(), "源质表没被重复入账");
+        SimpleAssert.eq(perPhial * 7, store.totalPoints(), "源质盘没被重复入账");
     }
 
-    /** ★R29 的注入侧：任一 tag 放不下 ⇒ 整瓶不抽（容器分毫未动，{@code still.inject_full}）。 */
+    /** ★R29 的注入侧（★R88 重挂到单只瓶）：任一 tag 放不下 ⇒ 一只都不抽（容器分毫未动，{@code still.inject_full}）。 */
     private static void injectFullStoreLeavesVesselUntouched() {
         final StubGate gate = new StubGate();
-        final ItemStack vessel = stack(8);
-        gate.putContainer(vessel, TaumAspectAmounts.of(new String[] { "aer", "ignis" }, new int[] { 10, 5 }));
+        final int perPhial = TaumDistillRules.PHIAL_CAPACITY;
+        final int aerPart = perPhial - 3;
+        // ★刻意单只：一叠的场合由 inject_phial_stack_over_cap_fits_down_carrier_by_carrier 负责，
+        // 这一条钉的是"连一只都塞不下"这个 STORE_FULL 出口（R88 起它是该态唯一的触发条件）
+        final ItemStack phial = stack(1);
+        gate.putContainer(phial, TaumAspectAmounts.of(new String[] { "aer", "ignis" }, new int[] { aerPart, 3 }));
         final PocketEssenceStore store = new PocketEssenceStore();
         store.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG); // ignis 到顶，但 aer 还有满格空间
 
-        final PocketSlots.IntakeResult result = PocketSlots.injectContainer(vessel, store, gate);
+        final PocketSlots.IntakeResult result = PocketSlots.injectContainer(phial, store, gate);
         SimpleAssert.eq(PocketSlots.Intake.STORE_FULL, result.kind, "任一 tag 放不下 ⇒ 整轮判满");
         SimpleAssert.eq(0, result.points, "零入账");
         SimpleAssert.eq(0, gate.drainCalls, "★容器分毫未动（预检在抽取之前）");
         SimpleAssert.eq(
-            15,
-            gate.readContainer(vessel)
+            perPhial,
+            gate.readContainer(phial)
                 .total(),
             "★内容也分毫未动（还能原样取走）");
         SimpleAssert.eq(0, store.get("aer"), "收得进的那格也不进（全有全无，不留半份）");
         SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG, store.get("ignis"), "原有值未被覆盖或截断（★按符号读，抬上限不得让这条假绿）");
 
-        // 腾出空间后同一个容器即可注入（证明卡住的原因是"放不下"而不是"容器被拒"）
-        store.extract("ignis", 5);
-        final PocketSlots.IntakeResult after = PocketSlots.injectContainer(vessel, store, gate);
+        // 腾出空间后同一只瓶即可注入（证明卡住的原因是"放不下"而不是"容器被拒"）
+        store.extract("ignis", 3);
+        final PocketSlots.IntakeResult after = PocketSlots.injectContainer(phial, store, gate);
         SimpleAssert.eq(PocketSlots.Intake.DRAINED, after.kind, "腾出空间后注入成功");
-        SimpleAssert.eq(15, after.points, "整份 15 点一次入账");
+        SimpleAssert.eq(perPhial, after.points, "整只瓶一次入账");
+    }
+
+    /**
+     * ★R88（{@code PocketSlots#injectContainer} 的第 2 条实质修正）：<b>一叠满瓶超过单 tag 上限</b>
+     * ⇒ 逐只<b>向下收口</b>，能吃几只吃几只，抽干的那一份退回玩家、余量留在格内。
+     * <p>
+     * 钉的是 R86 缺陷 2 的瓶皮回归：64 只 × 8 点 = 512 点 &gt; {@code ESSENCE_CAP_PER_TAG}(256)，
+     * 若仍按"整叠全有全无"判，这一叠<b>永远</b>塞不进空盘（全空也只收 32 只）⇒ 症状还是
+     * "放进去无事发生"。这里断言的是收口后的三个数：入账点数、退回只数、留在格里的只数。
+     */
+    private static void injectPhialStackFitsDownCarrierByCarrier() {
+        final StubGate gate = new StubGate();
+        final int perPhial = TaumDistillRules.PHIAL_CAPACITY;
+        final ItemStack phials = stack(64);
+        gate.putContainer(phials, TaumAspectAmounts.single("ignis", perPhial));
+        // 真实现的容器内容挂在<b>栈</b>上（splitStack 复制 NBT）⇒ 桩件按身份查表查不到分裂出的那一段，
+        // 显式打开"按单件内容兜底"这一档（只对本用例开，别处仍是身份表，见 StubGate 的说明）
+        gate.splitContentFallback = TaumAspectAmounts.single("ignis", perPhial);
+        final PocketEssenceStore store = new PocketEssenceStore();
+
+        final PocketSlots.IntakeResult result = PocketSlots.injectContainer(phials, store, gate);
+        final int fit = PocketConstants.ESSENCE_MAX_PHIALS_PER_TAG;
+        SimpleAssert.eq(PocketSlots.Intake.DRAINED, result.kind, "★装得下 32 只就必须吃 32 只，而不是整叠判满");
+        SimpleAssert.eq(fit * perPhial, result.points, "入账 = 实际吃下的只数 × 单瓶点数（= 盘的上限，不超一行）");
+        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG, store.get("ignis"), "★恰好塞满单 tag 上限，一点不多");
+        SimpleAssert.eq(1, gate.drainCalls, "向下收口只发生在预检，抽取仍只调一次");
+        SimpleAssert.that(result.returnedCarrier != null && result.remainder != null, "部分抽干 ⇒ 两个收尾字段都得有值");
+        SimpleAssert.eq(fit, result.returnedCarrier.stackSize, "★退回玩家的空壳只数 = 被抽干的只数");
+        SimpleAssert.eq(64 - fit, result.remainder.stackSize, "★留在格内的余量只数 = 没被抽走的只数（不是 0、也不是整叠）");
+        SimpleAssert.eq(64, result.returnedCarrier.stackSize + result.remainder.stackSize, "★两条收尾相加 = 进来的总只数（少一只就是吃件）");
     }
 
     // ------------------------------------------------------------------ D 批 · R45b extract 两支
@@ -2848,45 +2925,64 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * 源质支的物化换算：把"通道单位 ⇄ 晶化源质个数"这条纯算术钉住（1 点 = 1 晶，R31/R44e③），
-     * 并断言落点侧（口袋中栏，ghost 格除外）真的收得下晶化源质。
+     * 源质支的物化换算：把"通道单位 ⇄ <b>瓶只数</b>"这条纯算术钉住。
+     * <p>
+     * ★<b>R88 重挂</b>（旧名 {@code extract_essence_branch_yields_crystal}，旧算式的 {@code unit}
+     * 语义是"1 晶 = 多少单位"）：载体换成 TC 安瓿瓶后一条瓶 = {@code ESSENCE_OUT_UNIT_POINTS} 点，
+     * 于是"零头不足一只容器"从"给得出晶"变成"<b>一只都不给</b>"（旧用例里那条
+     * {@code carriersFromUnits(5, 1, 64) == 5} 的形状在本口径下必须是 0）。
+     * 换算函数本身也已随 E1 改名（{@code crystalsFromUnits} → {@code carriersFromUnits}），
+     * 旧名在 {@code PocketEssenceChannelOps} 里只剩一行转发的过渡别名 ⇒ 本用例重挂后
+     * <b>那两个别名全仓零调用方</b>（删除属 Java 侧动作，见交付报告"代码侧待修"）。
      * <p>
      * 边界如实声明：AE2 第三方通道的 {@code convertStackFromItem}/{@code extractItems} 属实机项
-     * （实验 E3：元件侧源质栈格式仍属该 mod 私有），本用例覆盖的是<b>换算与落点</b>，
-     * 也就是"物化"两字里唯一会在纯 JVM 里算错的那一半。
+     * （实验 E3：元件侧源质栈格式仍属该 mod 私有），本用例覆盖的是<b>换算</b>那一半。
      */
-    private static void extractEssenceBranchYieldsCrystal() {
-        SimpleAssert.eq(0, PocketEssenceChannelOps.crystalsFromUnits(0L, 1L, 64), "元件没有该 tag ⇒ 0 晶");
-        SimpleAssert.eq(0, PocketEssenceChannelOps.crystalsFromUnits(5L, 0L, 64), "单位换算未知(0) ⇒ 不猜，返回 0");
-        SimpleAssert.eq(0, PocketEssenceChannelOps.crystalsFromUnits(5L, 1L, 0), "本轮不要 ⇒ 0");
-        SimpleAssert.eq(5, PocketEssenceChannelOps.crystalsFromUnits(5L, 1L, 64), "零头不足整晶时按可得给");
-        SimpleAssert.eq(64, PocketEssenceChannelOps.crystalsFromUnits(1_000L, 1L, 64), "受单批上限自缚（一整堆晶）");
+    private static void extractEssenceBranchYieldsPhials() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        SimpleAssert.eq(0, PocketEssenceChannelOps.carriersFromUnits(0L, unit, unit), "元件没有该 tag ⇒ 0 只瓶");
+        SimpleAssert.eq(0, PocketEssenceChannelOps.carriersFromUnits(5L, 0L, unit), "单位换算未知(0) ⇒ 不猜，返回 0");
+        SimpleAssert.eq(0, PocketEssenceChannelOps.carriersFromUnits(5L, unit, 0), "本轮不要 ⇒ 0");
+        SimpleAssert.eq(
+            0,
+            PocketEssenceChannelOps.carriersFromUnits(5L, unit, unit),
+            "★R88：5 单位不足一瓶 ⇒ 0 只（旧晶口径这里是 5；「零头不搬运」是瓶的固有代价）");
         SimpleAssert.eq(
             12,
-            PocketEssenceChannelOps.crystalsFromUnits(100L, 8L, 64),
-            "该通道 1 晶 = 8 单位时：100 单位只够 12 晶，余 4 单位留在元件侧（向下取整 = 不销毁价值）");
-        SimpleAssert.eq(96L, PocketEssenceChannelOps.unitsForCrystals(12, 8L), "逆运算与取整口径一致");
-        SimpleAssert.eq(0L, PocketEssenceChannelOps.unitsForCrystals(0, 8L), "非正数一律 0");
+            PocketEssenceChannelOps.carriersFromUnits(100L, unit, 64),
+            "1 只瓶 = 8 单位时：100 单位只够 12 只，余 4 单位留在元件侧（向下取整 = 不销毁价值）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION,
+            PocketEssenceChannelOps.carriersFromUnits(1_000L, unit, PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION),
+            "★受一次动作上界自缚（瓶数上界由点数上界 ÷ 粒度派生，不是第二个字面量）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_MAX_PHIALS_PER_TAG,
+            PocketConstants.ESSENCE_CAP_PER_TAG / unit,
+            "★一格存满折算的只数（Shift 到底的读数）与派生常量同源");
+        SimpleAssert.eq(96L, PocketEssenceChannelOps.unitsForCarriers(12, unit), "逆运算与取整口径一致");
+        SimpleAssert.eq(0L, PocketEssenceChannelOps.unitsForCarriers(0, unit), "非正数一律 0");
         // 取整后再回乘，必须永远不超过可用量（这是"抽了放不下"的唯一防线）
         for (long available = 0; available < 200; available++) {
-            for (long unit = 1; unit <= 8; unit++) {
-                final int crystals = PocketEssenceChannelOps.crystalsFromUnits(available, unit, 64);
+            for (long perCarrier = 1; perCarrier <= 8; perCarrier++) {
+                final int carriers = PocketEssenceChannelOps.carriersFromUnits(available, perCarrier, 64);
                 SimpleAssert.that(
-                    PocketEssenceChannelOps.unitsForCrystals(crystals, unit) <= available,
-                    "换算不得超出元件可得量：available=" + available + " unit=" + unit);
+                    PocketEssenceChannelOps.unitsForCarriers(carriers, perCarrier) <= available,
+                    "换算不得超出元件可得量：available=" + available + " unit=" + perCarrier);
             }
         }
 
-        // 落点侧：晶化源质进口袋中栏，ghost 格不算落点，装满后必须回报 0（调用方据此退回源侧）
+        // ★R88 起这一段只服务**物品通道**的落点纪律（ghost 格不是落点、装满必须回报 0）；
+        // 源质支的落点已改到源质盘 ⇒ 那半边由
+        // essence_channel_download_lands_in_tray_not_inventory 单独钉（本用例不再宣称它）。
         final PocketInventory inventory = PocketInventory.readFrom(null);
-        final ItemStack crystals = stack(9);
-        crystals.stackSize = 30;
-        final int crystalId = Item.getIdFromItem(crystals.getItem());
+        final ItemStack carriers = stack(9);
+        carriers.stackSize = 30;
+        final int carrierId = Item.getIdFromItem(carriers.getItem());
         final PocketFilterConfig ghostZero = new PocketFilterConfig();
-        ghostZero.add(0, item(0, crystalId, 0, ""));
+        ghostZero.add(0, item(0, carrierId, 0, ""));
         inventory.replaceFilters(ghostZero);
         SimpleAssert.that(inventory.isGhostItemSlot(0), "第 0 格已被就地转成配置格");
-        SimpleAssert.eq(30, inventory.depositIntoStorage(crystals.copy()), "别的格仍是落点");
+        SimpleAssert.eq(30, inventory.depositIntoStorage(carriers.copy()), "别的格仍是落点");
         SimpleAssert.eq(null, inventory.storageStack(0), "★配置格里一个产物都没落（R38 第 2 条'产物不能进自己'）");
         SimpleAssert.eq(30, inventory.storageStack(1).stackSize, "落到第一个非 ghost 空槽");
         SimpleAssert.that(!inventory.isGhostItemSlot(1), "第 1 格仍是真实格");
@@ -2898,7 +2994,7 @@ public class NekoPocketModelTest {
         }
         allGhost.replaceFilters(everywhere);
         SimpleAssert
-            .eq(0, allGhost.depositIntoStorage(crystals.copy()), "全栏都是配置格 ⇒ 回报 0 个都没放下（调用方据此发 TARGET_FULL 并回滚源侧）");
+            .eq(0, allGhost.depositIntoStorage(carriers.copy()), "全栏都是配置格 ⇒ 回报 0 个都没放下（调用方据此发 TARGET_FULL 并回滚源侧）");
         // 一格真实容量换一条声明：128 是上限口径，转 N 格 ghost 就只剩 128−N 格能装东西（R38 第 3 条）
         final PocketInventory oneReal = PocketInventory.readFrom(null);
         final PocketFilterConfig allButOne = new PocketFilterConfig();
@@ -2907,7 +3003,7 @@ public class NekoPocketModelTest {
         }
         oneReal.replaceFilters(allButOne);
         SimpleAssert
-            .eq(64, oneReal.depositIntoStorage(stackOf(crystalId, 64 + 30)), "只剩 1 格真实容量 ⇒ 一次只收得下一堆（64），其余 30 个由调用方退回");
+            .eq(64, oneReal.depositIntoStorage(stackOf(carrierId, 64 + 30)), "只剩 1 格真实容量 ⇒ 一次只收得下一堆（64），其余 30 个由调用方退回");
         SimpleAssert.eq(64, oneReal.storageStack(0).stackSize, "那一格收满 64");
     }
 
@@ -4134,33 +4230,69 @@ public class NekoPocketModelTest {
     // intake 走纯静态判定），实机面（点击派发、聊天播报、遮罩渲染）不在此声称已验证。
 
     /**
-     * ★R87-e（缺陷 4a）：{@code carriesTag} 对<b>晶族</b>（{@code capacityOf == CRYSTAL_CAPACITY}）
-     * 恒视为含本格 tag——NEI 面板给的是无 NBT 裸晶 + TC 把晶的蒸馏注册成空表 ⇒ 两条探针结构性恒空，
-     * 不特判就是"拖晶恒拒且拒收被静默吞"。★空格（cellTag null/空）的拒收原样保留（R86 裁定不放开）。
+     * ★R88（重挂 R87-e 缺陷 4a 那条）：{@code carriesTag} 的唯一判据是<b>"本格 tag 真的出现在容器
+     * 或蒸馏读数里"</b>——R87-e 那条"晶族（{@code capacityOf == CRYSTAL_CAPACITY}）恒真"特判已随
+     * 载体改判作废（★C2 旧晶只读不产 ⇒ 无 NBT 的裸晶判不出归属，玩家要拖的是<b>装满该 tag 的瓶</b>）。
+     * <p>
+     * 四条断言各有归属：
+     * <ul>
+     * <li>满瓶 × 本格 tag ⇒ 收（NEI 里每种源质一条、条目自带 {@code add(tag,8)}）；</li>
+     * <li>满瓶 × <b>另一种</b>有货格 ⇒ 拒（★旧恒真正好漏掉的那一维，现在是主判据）；</li>
+     * <li>带 NBT 的旧晶 × 它自己那个 tag ⇒ 仍收（C2 的"识别留着"半边）；</li>
+     * <li>无 NBT 裸晶 × 任意有货格 ⇒ 拒（★C2 的代价，须在 {@code essence.need_stock} 文案里说出来）。</li>
+     * </ul>
+     * 空格（{@code cellTag} 为 null/空串）的拒收原样保留（R86 裁定不放开）。
      */
-    private static void essenceCarriesTagCrystalFamilyPassesOnlyStockedCells() {
+    private static void essenceCarriesTagMatchesPhialContentOnlyStockedCells() {
+        final ItemStack phial = stack(1);
+        final ItemStack legacyCrystalWithNbt = stack(1);
         final ItemStack bareCrystal = stack(1);
         final ItemStack vessel = stack(1);
         final StubGate gate = new StubGate()
-            // 晶：内容只走 readContainer（NEI 裸晶 ⇒ EMPTY，模拟"无 NBT"）；绝不登记进 distill 表
+            // 满瓶：现役载体，容器读数里就是本格 tag（一瓶 PHIAL_CAPACITY 点）
+            .putContainer(phial, TaumAspectAmounts.single("ignis", TaumDistillRules.PHIAL_CAPACITY))
+            // 带 NBT 的旧晶（玩家存档里既存的那批）：读得到 add(tag,1) ⇒ 仍判得出
+            .putCrystal(legacyCrystalWithNbt, TaumAspectAmounts.single("ignis", TaumDistillRules.CRYSTAL_CAPACITY))
+            // 无 NBT 裸晶：NEI 物品面板给的就是这一种（内容恒空）
             .putCrystal(bareCrystal, TaumAspectAmounts.EMPTY)
+            // 第三方罐：只有 aer
             .putContainer(vessel, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 7 }));
-        SimpleAssert.eq(TaumDistillRules.CRYSTAL_CAPACITY, gate.capacityOf(bareCrystal), "前置：这一栈确实被判成晶族（否则本用例在钉一条假分支）");
+        // 前置：三个档位判据真的成立（否则本用例在钉一条假分支）
+        SimpleAssert.eq(TaumDistillRules.PHIAL_CAPACITY, gate.capacityOf(phial), "前置：这一栈确实被判成瓶（现役载体）");
+        SimpleAssert.eq(
+            TaumDistillRules.CRYSTAL_CAPACITY,
+            gate.capacityOf(bareCrystal),
+            "前置：这一栈确实被判成晶族（★但 R88 起「族」本身不再构成放行理由）");
+        // ① 瓶 × 本格 tag ⇒ 收
         SimpleAssert
-            .that(NekoEssenceGhostCell.carriesTag(bareCrystal, "ignis", gate), "★晶 × 有货格（ignis）⇒ 收（按物品形状放行，不再看 NBT）");
-        SimpleAssert.that(
-            NekoEssenceGhostCell.carriesTag(bareCrystal, "aer", gate),
-            "★晶 × 另一种有货格（aer）⇒ 同样收：目标 tag = 声明格自己的 tag，晶不自带归属");
+            .that(NekoEssenceGhostCell.carriesTag(phial, "ignis", gate), "★满瓶 × 有货格（ignis）⇒ 收：判据来自瓶自己的 NBT，不看物品族");
+        // ② 瓶 × 另一种有货格 ⇒ 拒（旧恒真漏掉的那一维）
         SimpleAssert.eq(
             Boolean.FALSE,
-            NekoEssenceGhostCell.carriesTag(bareCrystal, null, gate),
-            "★空格（cellTag null）仍拒：R86 裁定不放开");
-        SimpleAssert.eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(bareCrystal, "", gate), "★空格（cellTag 空串）仍拒");
-        // 非晶路径零变化：罐子仍按容器内容判，不含本格 tag 的仍拒（负控）
+            NekoEssenceGhostCell.carriesTag(phial, "aer", gate),
+            "★装了 ignis 的瓶声明不了 aer 格（R87-e 的恒真特判正是把这一维吃掉的元凶）");
+        // ③ 带 NBT 的旧晶 ⇒ 仍按内容命中（C2 只读不产，但识别留着）
+        SimpleAssert.that(
+            NekoEssenceGhostCell.carriesTag(legacyCrystalWithNbt, "ignis", gate),
+            "★C2：存量旧晶带着 NBT 时仍判得出 ⇒ 溶回盘那条路不吃件");
+        SimpleAssert
+            .eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(legacyCrystalWithNbt, "aer", gate), "★同一条判据也不给它放水");
+        // ④ 无 NBT 裸晶 ⇒ 不再放行（★R88 作废 R87-e，代价已写进 essence.need_stock 文案）
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            NekoEssenceGhostCell.carriesTag(bareCrystal, "ignis", gate),
+            "★无 NBT 裸晶 × 任意有货格 ⇒ 拒：晶族恒真特判已删（本条即那条删除的机检）");
+        SimpleAssert
+            .eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(bareCrystal, "aer", gate), "★同上，换一格也拒（不是「换个 tag 就漏进来」）");
+        // 空格的拒收原样保留（R86 裁定不放开）
+        SimpleAssert
+            .eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(phial, null, gate), "★空格（cellTag null）仍拒：R86 裁定不放开");
+        SimpleAssert.eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(phial, "", gate), "★空格（cellTag 空串）仍拒");
+        // 罐子仍按容器内容判（非晶非瓶路径零变化，负控）
         SimpleAssert.eq(
             Boolean.FALSE,
             NekoEssenceGhostCell.carriesTag(vessel, "ignis", gate),
-            "★非晶物品仍按两条探针判：只有 aer 的罐子声明不了 ignis 格");
+            "★第三方罐仍按两条探针判：只有 aer 的罐子声明不了 ignis 格");
     }
 
     /**
@@ -4207,56 +4339,300 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★R87-d（缺陷 1）：点击入槽的服务端判定流<b>四态</b>（carried 桩件 + StubGate）：
-     * 非晶 / 无归属 / 余量不足（晶分毫未动）/ 成功（整叠换点数、tag 取晶自带）。
+     * ★R87-d（缺陷 1）／★R88 重挂：点击入槽的服务端判定流<b>四态</b>（游标桩件 + StubGate），
      * 各态的 lang 键一并对账（回执文案键与判定态不得错位）。
+     * <p>
+     * 与 R87 版的三处差异（都是载体改判的直接后果）：
+     * <ul>
+     * <li>门禁从"== 晶档"换成 {@code PocketEssenceIntake.isAcceptedCarrierCapacity}
+     * （瓶 ∪ 旧晶，拒容量不明的第三方罐）⇒ 本用例把那条<b>真值表</b>也钉住，
+     * 因为它是"游标上的东西会不会被销毁"的唯一执法点，GUI 预筛与点击入槽共读它；</li>
+     * <li>态 4 的点数从"枚数 × 1"换成"只数 × {@code ESSENCE_OUT_UNIT_POINTS}"（★C2 之后
+     * 旧晶仍按 ×1，两条载体共用同一条乘法）；</li>
+     * <li>空瓶与无 NBT 裸晶同落态 2（{@code no_owner}）⇒ 这条键的文案必须能同时说两者，
+     * lang 侧已按此改值。</li>
+     * </ul>
+     * ★仍然测不到的一半（实机项）：点击派发、面板粘性回执的实际渲染、游标清空后的客户端表现。
      */
-    private static void essenceIntakeCrystalFromCursorFourStates() {
-        // ---- 态 1：NOT_CRYSTAL（空手 / 非晶）----
+    private static void essenceIntakeCarrierFromCursorFourStates() {
+        // ---- 门禁真值表（四档各一判，负控防"恒真式放行"）----
+        SimpleAssert
+            .that(PocketEssenceIntake.isAcceptedCarrierCapacity(TaumDistillRules.PHIAL_CAPACITY), "★瓶（现役载体）必须过门禁");
+        SimpleAssert.that(
+            PocketEssenceIntake.isAcceptedCarrierCapacity(TaumDistillRules.CRYSTAL_CAPACITY),
+            "★旧晶必须过门禁（C2 只读不产 ⇒ 识别面留着）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isAcceptedCarrierCapacity(TaumDistillRules.CAPACITY_UNKNOWN),
+            "★第三方罐（档位无证据）刻意不收：在游标上销毁它就是「把猜当真相」");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isAcceptedCarrierCapacity(TaumDistillRules.CAPACITY_NOT_A_CONTAINER),
+            "★非容器当然不收（负控：证明上面两条不是恒真读数）");
+        // ---- 态 1：NOT_CRYSTAL（空游标 / 非容器 / 容量不明）----
         final PocketEssenceStore store = new PocketEssenceStore();
         SimpleAssert.eq(
             PocketEssenceIntake.Outcome.NOT_CRYSTAL,
             PocketEssenceIntake.intake(null, store, new StubGate()).outcome,
-            "空游标 ⇒ 不是晶");
+            "空游标 ⇒ 不是载体");
         final ItemStack plain = stack(4);
         SimpleAssert.eq(
             PocketEssenceIntake.Outcome.NOT_CRYSTAL,
             PocketEssenceIntake.intake(plain, store, new StubGate()).outcome,
-            "非晶物品 ⇒ 不是晶");
+            "非载体物品 ⇒ 不是载体");
         SimpleAssert.eq(0, store.totalPoints(), "态 1 分毫不动");
-        // ---- 态 2：NO_OWNER（晶存在但内容空 = 无源质归属）----
+        // ---- 态 2：NO_OWNER（载体存在但内容空 = 无源质归属）----
         final StubGate emptyGate = new StubGate();
-        final ItemStack blank = stack(3);
-        emptyGate.putCrystal(blank, TaumAspectAmounts.EMPTY);
-        final PocketEssenceIntake.Result noOwner = PocketEssenceIntake.intake(blank, store, emptyGate);
-        SimpleAssert.eq(PocketEssenceIntake.Outcome.NO_OWNER, noOwner.outcome, "无 NBT 裸晶 ⇒ 没有归属");
+        final ItemStack blankPhial = stack(3);
+        emptyGate.putContainer(blankPhial, TaumAspectAmounts.EMPTY);
+        final PocketEssenceIntake.Result noOwner = PocketEssenceIntake.intake(blankPhial, store, emptyGate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.NO_OWNER, noOwner.outcome, "★空瓶（R88 起的新落点，旧形状只有裸晶）⇒ 没有归属");
         SimpleAssert.eq("gtit.pocket.essence.intake.no_owner", noOwner.langKey(), "态 2 回执键对账");
-        SimpleAssert.eq(3, blank.stackSize, "态 2 晶分毫未动（本路径不替 TC 随机赋型）");
-        // ---- 态 3：NO_ROOM（全有全无失败，源质表与晶都不动）----
+        SimpleAssert.eq(3, blankPhial.stackSize, "态 2 瓶分毫未动（本路径不替 TC 灌装）");
+        final ItemStack bareCrystal = stack(1);
+        emptyGate.putCrystal(bareCrystal, TaumAspectAmounts.EMPTY);
+        SimpleAssert.eq(
+            PocketEssenceIntake.Outcome.NO_OWNER,
+            PocketEssenceIntake.intake(bareCrystal, store, emptyGate).outcome,
+            "★无 NBT 裸晶仍落同一态（C2 的只读支认得它，但它也没东西可入账）");
+        // ---- 态 3：NO_ROOM（全有全无失败，源质盘与载体都分毫未动）----
         final StubGate gate = new StubGate();
-        final ItemStack crystals = stack(10);
-        gate.putCrystal(crystals, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 1 }));
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        final ItemStack phials = stack(10);
+        gate.putContainer(phials, TaumAspectAmounts.single("ignis", unit));
         final PocketEssenceStore full = new PocketEssenceStore();
         full.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - 4);
-        final PocketEssenceIntake.Result noRoom = PocketEssenceIntake.intake(crystals, full, gate);
-        SimpleAssert.eq(PocketEssenceIntake.Outcome.NO_ROOM, noRoom.outcome, "10 点 > 余 4 点 ⇒ 余量不足");
+        final PocketEssenceIntake.Result noRoom = PocketEssenceIntake.intake(phials, full, gate);
+        SimpleAssert.eq(
+            PocketEssenceIntake.Outcome.NO_ROOM,
+            noRoom.outcome,
+            "10 只 × " + unit + " 点 = 80 点 > 余 4 点 ⇒ 余量不足（★瓶口径下一叠就是比旧晶大一个量级，这一态更容易出现）");
         SimpleAssert.eq("gtit.pocket.essence.intake.no_room", noRoom.langKey(), "态 3 回执键对账");
-        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG - 4, full.get("ignis"), "★态 3 源质表分毫未动");
-        SimpleAssert.eq(10, crystals.stackSize, "★态 3 晶分毫未动（不截断消耗，R45c/FIX-6 同源纪律）");
-        // ---- 态 4：ACCEPTED（整叠入账，tag = 晶自带）----
-        final PocketEssenceIntake.Result ok = PocketEssenceIntake.intake(crystals, store, gate);
-        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, ok.outcome, "64 格空余装得下 10 点 ⇒ 入账");
+        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG - 4, full.get("ignis"), "★态 3 源质盘分毫未动");
+        SimpleAssert.eq(10, phials.stackSize, "★态 3 载体分毫未动（不截断消耗，R45c/FIX-6 同源纪律）");
+        // ---- 态 4：ACCEPTED（整叠入账，tag = 载体自带；点数 = 单只点数 × 只数）----
+        final ItemStack fewPhials = stack(3);
+        gate.putContainer(fewPhials, TaumAspectAmounts.single("ignis", unit));
+        final PocketEssenceIntake.Result ok = PocketEssenceIntake.intake(fewPhials, store, gate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, ok.outcome, "空盘整瓶装得下 ⇒ 入账");
         SimpleAssert.that(ok.accepted(), "accepted() 是调用方清游标的唯一判据");
-        SimpleAssert.eq("ignis", ok.tag, "★目标 tag = 晶自带的 tag");
-        SimpleAssert.eq(10, ok.points, "点数 = 单件 amount × 叠数");
-        SimpleAssert.eq("gtit.pocket.essence.intake.ok", ok.langKey(), "态 4 回执键对账（成功条含 tag 与点数）");
-        SimpleAssert.eq(10, store.get("ignis"), "源质表真的进了点数");
+        SimpleAssert.eq("ignis", ok.tag, "★目标 tag = 载体自带的 tag");
+        SimpleAssert.eq(3 * unit, ok.points, "★点数 = 一只 " + unit + " 点 × 3 只（旧晶口径这里会算成 3 点）");
+        SimpleAssert.eq("gtit.pocket.essence.intake.ok", ok.langKey(), "态 4 回执键对账（★R88 起该键只有一个 %d = 点数，tag 名不再上文案）");
+        SimpleAssert.eq(3 * unit, store.get("ignis"), "源质盘真的进了这些点数");
         // 失败三键（态 1）最后对账，凑齐四态
         SimpleAssert.eq(
             "gtit.pocket.essence.intake.not_crystal",
             PocketEssenceIntake.intake(plain, store, gate)
                 .langKey(),
             "态 1 回执键对账");
+        final ItemStack jar = stack(2);
+        final StubGate jarGate = new StubGate();
+        jarGate.putUnknownVessel(jar, TaumAspectAmounts.single("aer", 40));
+        SimpleAssert.eq(
+            PocketEssenceIntake.Outcome.NOT_CRYSTAL,
+            PocketEssenceIntake.intake(jar, store, jarGate).outcome,
+            "★第三方罐即使带着 40 点也走态 1（档位无证据 ⇒ 不在游标上销毁它；12 格那条路仍收它）");
+    }
+
+    // ================================================================== ★R88 批（E3 切片）：载体改判的三条自立判据
+    //
+    // 三条分别钉住：C1（整瓶向下取整 / 余数留盘）、C2（旧晶只读不产但仍能溶回盘）、
+    // 以及"下传落点是源质盘而不是物品栏"。共同点：判定面全部纯 JVM 可达；
+    // 实机项（TC 在场时瓶的真 NBT、AE2 通道倍率、GUI 取放手感）在 in-game-checklist 的 R88 节里逐条列出。
+
+    /**
+     * ★C1（取出量向下取整到整瓶，余数留盘）：把"一次动作实际出几只满瓶"这条算式钉死。
+     * <p>
+     * 三条立论：
+     * <ol>
+     * <li><b>向下</b>取整（{@code floorToPhialUnits} / {@code phialCountFor}）与<b>向上</b>取整
+     * （{@code containerCountFor}，服务"这堆点要几只容器装"）是两回事，混用即净吞点数
+     * ——E1 在 javadoc 里点了这个坑，这里给出可执行版本；</li>
+     * <li>面板取出的三步（算整瓶 → {@code extract} 扣点 → 剩余额留盘）串起来跑一遍真实数字：
+     * 20 点 ⇒ 2 只瓶（16 点）+ 盘里留 4 点；再点一次 ⇒ 凑不满一瓶 ⇒ 一分都不扣；</li>
+     * <li>★两条上限必须是粒度的整数倍（{@code PocketConstants} 里那条 {@code static{}} 运行期断言的
+     * 离线等价物，两处同源）：一旦不再整除，折算瓶数会静默少一瓶而 tooltip 与实机读数各说各话。</li>
+     * </ol>
+     * ★顺带把 E1 登记在常量注释里的那条<b>张力</b>钉成事实读数：ghost 组上限步进仍是 1 点
+     * （{@code FILTER_CAP_STEP_ESSENCE}）⇒ 停在非 8 倍数（如 3）的那一档一瓶也搬不动。
+     * 这不是本片引入的（旧载体 1 点/枚时两者天然重合），但改判后被放大；收口属裁决题。
+     */
+    private static void essenceOutRoundsDownToWholePhials() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        SimpleAssert.eq(TaumDistillRules.PHIAL_CAPACITY, unit, "★取出粒度与瓶的真实容量同源（PocketConstants 只做转发，不留第二份 8）");
+        // ---- ① 向下 vs 向上：两条取整的差就是"余数瓶 vs 整瓶" ----
+        SimpleAssert.eq(16, TaumDistillRules.floorToPhialUnits(20), "20 点 ⇒ 16 点（2 只满瓶）");
+        SimpleAssert.eq(2, TaumDistillRules.phialCountFor(20), "20 点 ⇒ 2 只瓶，余 4 点不凑");
+        SimpleAssert
+            .eq(3, TaumDistillRules.containerCountFor(20, unit), "★向上取整那条给 3 只（末瓶装余数）⇒ 与 phialCountFor 混用就是净吞/净多 4 点");
+        SimpleAssert.eq(0, TaumDistillRules.floorToPhialUnits(7), "不足一瓶 ⇒ 0 点");
+        SimpleAssert.eq(0, TaumDistillRules.phialCountFor(7), "不足一瓶 ⇒ 0 只（★不是「1 只半瓶」）");
+        SimpleAssert.eq(8, TaumDistillRules.floorToPhialUnits(8), "恰好一瓶 ⇒ 整瓶");
+        SimpleAssert.eq(unit * 3, TaumDistillRules.floorToPhialUnits(unit * 3 + 2), "任意 3 瓶 + 2 点零头 ⇒ 只给 3 瓶的量");
+        SimpleAssert.eq(0, TaumDistillRules.floorToPhialUnits(0), "0 点 ⇒ 0（不是负数）");
+        SimpleAssert.eq(0, TaumDistillRules.floorToPhialUnits(-5), "★外来负数 ⇒ 0（不得造出负取整量去污染扣点账）");
+        SimpleAssert.eq(0, TaumDistillRules.phialCountFor(-5), "同上，瓶数一侧也夹住");
+        // ---- ② 面板那三步：用真实数字串一遍 ----
+        final PocketEssenceStore store = new PocketEssenceStore();
+        store.add("ignis", 20);
+        final int wanted = Math.min(store.get("ignis"), PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION);
+        final int whole = TaumDistillRules.floorToPhialUnits(wanted);
+        final int leftover = wanted - whole;
+        SimpleAssert.eq(16, whole, "第一次左键：请求 20 → 实际取 16");
+        SimpleAssert.eq(4, leftover, "★留盘 4 点（这条余数就是 partial_leftover 回执的第二个数）");
+        final int moved = store.extract("ignis", whole);
+        SimpleAssert.eq(16, moved, "扣点按整瓶量");
+        SimpleAssert.eq(4, store.get("ignis"), "盘里剩 4 点 = 余数（★不是 0、也不是 20）");
+        SimpleAssert.eq(2, moved / unit, "到手 2 只瓶");
+        // 第二次点：只剩 4 点 ⇒ 一瓶都凑不满 ⇒ 什么都不动（走 not_enough_phial 而不是静默）
+        final int secondWanted = TaumDistillRules
+            .floorToPhialUnits(Math.min(store.get("ignis"), PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION));
+        SimpleAssert.eq(0, secondWanted, "★凑不满一瓶 ⇒ 本轮零扣点（旧晶口径这里会扣 4 点、给 4 枚晶）");
+        SimpleAssert.eq(0, store.extract("ignis", secondWanted), "extract 收到 0 ⇒ 一分不给，盘里仍是那 4 点");
+        SimpleAssert.eq(4, store.get("ignis"), "余数留在原格（配 partial_leftover / not_enough_phial 文案）");
+        // ---- ③ 上限必须整除粒度（PocketConstants 的 static{} 断言的离线等价物，两处同源）----
+        SimpleAssert
+            .eq(0, PocketConstants.ESSENCE_CAP_PER_TAG % unit, "★单 tag 上限不是整瓶 ⇒ 折算瓶数静默少一只（运行期 static{} 会抛，这里离线先红）");
+        SimpleAssert
+            .eq(0, PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION % unit, "★一次动作的点数上界不是整瓶 ⇒ 同上（运行期 static{} 的另一半）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_MAX_PHIALS_PER_TAG,
+            PocketConstants.ESSENCE_CAP_PER_TAG / unit,
+            "满格折算只数必须等于派生常量（tooltip 与回执读数用它，不是第二个字面量）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION,
+            PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION / unit,
+            "一次动作折算只数同上");
+        SimpleAssert.that(
+            PocketConstants.ESSENCE_MAX_PHIALS_PER_TAG <= 64,
+            "★一格存满的只数必须仍在瓶的堆叠上限内（TC ItemEssence 单堆 64）⇒ 否则「满格 32 只并堆」这条实机判据先天不成立");
+        // ---- ④ E1 登记的张力钉成读数：组上限停在非整瓶时那一档零搬运 ----
+        final int offGridCap = 3;
+        SimpleAssert.eq(
+            0,
+            TaumDistillRules.floorToPhialUnits(
+                PocketFilterConfig
+                    .resolveCap(new PocketFilterConfig.EssenceFilter(0, "essentia", "ignis", offGridCap), 0)),
+            "★ghost 上限停在 3 点 ⇒ 下传这一档零搬运（步进仍是 1 点，收口属裁决题；本条钉的是当前行为）");
+        SimpleAssert.eq(
+            unit * 2,
+            TaumDistillRules.floorToPhialUnits(
+                PocketFilterConfig
+                    .resolveCap(new PocketFilterConfig.EssenceFilter(0, "essentia", "ignis", unit * 2 + 1), 0)),
+            "停在 17 点 ⇒ 那一档一次给 2 只瓶（16 点），余 1 点顺延 ⇒ 非整瓶那一档确实「看得到但搬不动零头」");
+    }
+
+    /**
+     * ★C2（旧晶只读不产）：识别面留着、生产面撤掉。两半边都机检。
+     * <ul>
+     * <li><b>读得到</b>：存量旧晶放进 12 格 ⇒ 走 {@code CONSUMED} 支、整叠换点数（1 点/枚）；
+     * 点击入槽同样收它 ⇒ 不吃件；</li>
+     * <li><b>产不出</b>：pocket 两个源码目录里 {@code newCrystalStack(} 的<b>代码位</b>命中必须为 0
+     * （定义住在 {@code crossmod/taum}，不在扫描面），并配一条正控 {@code newFilledContainer(} ≥ 1
+     * ⇒ 证明扫描面真的在跑、0 不是空转读数。</li>
+     * </ul>
+     */
+    private static void essenceLegacyCrystalIsReadOnlyButStillSoluble() {
+        // ---- 半边 A：读得到（12 格 / 游标两条路）----
+        final StubGate gate = new StubGate();
+        final ItemStack legacy = stack(9);
+        gate.putCrystal(legacy, TaumAspectAmounts.single("ignis", TaumDistillRules.CRYSTAL_CAPACITY));
+        final PocketEssenceStore store = new PocketEssenceStore();
+        final PocketSlots.IntakeResult injected = PocketSlots.injectContainer(legacy, store, gate);
+        SimpleAssert.that(injected.consumed(), "★旧晶仍走整叠消耗支（不退空壳，R86 缺陷 2 的理由没变）");
+        SimpleAssert.eq(9, injected.points, "9 枚 × 1 点/枚 = 9 点（C2 只改生产，不改计点）");
+        SimpleAssert.eq(9, store.get("ignis"), "旧晶的源质溶进了盘 ⇒ 玩家不吃件");
+        SimpleAssert.eq(0, gate.drainCalls, "★晶一支都不碰 drainContainer（生产实现对它恒返 EMPTY）");
+        final ItemStack onCursor = stack(4);
+        gate.putCrystal(onCursor, TaumAspectAmounts.single("aer", TaumDistillRules.CRYSTAL_CAPACITY));
+        final PocketEssenceIntake.Result intake = PocketEssenceIntake.intake(onCursor, store, gate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, intake.outcome, "★游标上的旧晶仍可点击入槽（C2 的「仍能溶回」半边）");
+        SimpleAssert.eq(4, intake.points, "同样按 ×1 计点");
+        // ---- 半边 B：产不出（源码机检 + 同面正控）----
+        final int crystalFactories = countPocketSourceLinesMatching("newCrystalStack\\(", true);
+        if (crystalFactories < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒「pocket 域不再产晶」的源码半边未验（★不是通过；上面的读回半边照验）");
+        } else {
+            SimpleAssert.eq(0, crystalFactories, "★C2：pocket 两个源码目录的代码位不得再调用 newCrystalStack（定义在 crossmod/taum，不在扫描面）");
+            final int phialFactories = countPocketSourceLinesMatching("newFilledContainer\\(", true);
+            SimpleAssert.that(
+                phialFactories >= 1,
+                "★同一条扫描面的正控：瓶的唯一出件口必须命得中（读到 " + phialFactories + "；为 0 说明扫描器空转，上面那条 0 不算干净）");
+        }
+    }
+
+    /**
+     * ★用户裁定第 2 条（下传即溶回源质盘）：落点是 {@code PocketEssenceStore}，不再进物品栏。
+     * <p>
+     * 两半边：
+     * <ul>
+     * <li><b>算式半边（纯 JVM）</b>：把 {@code extractEssence} 入账腿用的同三个原语按站点顺序组一次
+     * （向下收口的 {@code canAcceptAll} → {@code putAll} → 读回 {@code get}/{@code tagAtCell}），
+     * 证"点数进的是盘"并且<b>塞不下时一只都不抽</b>（预检在抽取之前）；</li>
+     * <li><b>接线半边（源码机检）</b>：{@code extractEssence} 方法体内必须真有 {@code store.putAll(}
+     * 与 {@code markDirty()}，且 {@code depositItem} / {@code depositIntoStorage} 的代码位命中为 0
+     * ——旧实现正是那两句，留着它们就是"下传落物品槽"这条实机缺陷的形状本身。</li>
+     * </ul>
+     * ★不覆盖：AE2 handler 的 SIMULATE/MODULATE 返回量、真瓶的 NBT 内容（TC 缺席）⇒ 属实机项。
+     */
+    private static void essenceChannelDownloadLandsInTrayNotInventory() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        // ---- ① 算式半边：预检 → 入账 → 读回 ----
+        final Map<String, Integer> want = new LinkedHashMap<>();
+        want.put("ignis", 4 * unit);
+        final PocketEssenceStore open = new PocketEssenceStore();
+        SimpleAssert.that(open.canAcceptAll(want), "空盘整只 4 瓶都塞得下");
+        SimpleAssert.eq(4 * unit, open.putAll(want), "★入账 = 请求点数（落点是盘，不是任何 ItemStack）");
+        SimpleAssert.eq(4 * unit, open.get("ignis"), "读回同一份点数（这条即 pointsOf → putAll 之后的账面）");
+        SimpleAssert.eq(1, open.assignedCellCount(), "★入账只在 72 格盘里占了一格 ⇒ 全程没有产生任何 ItemStack（旧形状是往物品栏塞一叠晶）");
+        SimpleAssert.eq("ignis", open.tagAtCell(open.cellOf("ignis")), "归属表那一行就是本格（下传后可被左键取出的前提）");
+        SimpleAssert.eq(-1, open.cellOf("aer"), "★没进过盘的 tag 不占格（不落物品栏，也不凭空多一格归属）");
+        // 塞不下 ⇒ 一只都不抽（向下收口由 fit 循环完成，这里钉它必须停在 0 而不是截断一半）
+        final PocketEssenceStore tight = new PocketEssenceStore();
+        tight.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - (unit - 1));
+        int fit = 4;
+        while (fit > 0 && !tight.canAcceptAll(singletonPoints("ignis", fit * unit))) {
+            fit--;
+        }
+        SimpleAssert.eq(0, fit, "★余 " + (unit - 1) + " 点连一只瓶都放不下 ⇒ 收口到 0 只（不是「抽 1 只再退回」）");
+        SimpleAssert
+            .eq(PocketConstants.ESSENCE_CAP_PER_TAG - (unit - 1), tight.get("ignis"), "预检失败时盘分毫未动（R29 全有全无的落点侧）");
+        // ---- ② 接线半边：extractEssence 方法体（源码机检）----
+        final java.util.List<String> essenceOps = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceChannelOps.java");
+        if (essenceOps == null) {
+            System.out.println("[NOTE] 找不到仓库根或读不到 PocketEssenceChannelOps.java ⇒「下传落点」的接线半边【未验】（★不是通过；上面的算式半边照验）");
+            return;
+        }
+        final int extractStart = methodStart(essenceOps, "Outcome extractEssence(");
+        SimpleAssert.that(extractStart >= 0, "★extractEssence 必须还能按签名定位（改名/合并即红，不是判据放水）");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, extractStart, essenceOps.size(), "store.putAll("),
+            "★下传腿必须真的把点数写进源质盘（只写在注释里 = 没有落点）");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, extractStart, essenceOps.size(), ".markDirty()"),
+            "★入账后必须打脏，否则这一笔只活在内存里、关屏即丢（R53c 的一次读一次写）");
+        SimpleAssert.that(
+            !regionContainsCode(essenceOps, extractStart, essenceOps.size(), "depositItem("),
+            "★旧形状必须消失：下传不得再 depositItem 进物品栏（用户报的那条缺陷本体）");
+        SimpleAssert.that(
+            !regionContainsCode(essenceOps, extractStart, essenceOps.size(), "depositIntoStorage("),
+            "★同上，也不得改走中栏落点");
+        // 负控：证明上面这套区间扫描不是恒真/恒假读数
+        SimpleAssert.that(
+            !regionContainsCode(essenceOps, extractStart, essenceOps.size(), "putAllButThisTokenDoesNotExist("),
+            "★负控：区间扫描对不存在的片段必须报 false");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, extractStart, essenceOps.size(), "floorToPhialUnits("),
+            "★下传腿必须走 C1 的同一条取整函数（自己写 / 8 * 8 就是第二处真相）");
+    }
+
+    /** 只含一个 tag 的点数表（下传/注入两侧的预检入参形态）。 */
+    private static Map<String, Integer> singletonPoints(String tag, int points) {
+        final Map<String, Integer> map = new LinkedHashMap<>();
+        map.put(tag, points);
+        return map;
     }
 
     // ------------------------------------------------------------------ 桩件与工具
@@ -4287,6 +4663,16 @@ public class NekoPocketModelTest {
             return this;
         }
 
+        /**
+         * ★R88：真实现的容器内容挂在<b>栈上的 NBT</b>，而 {@code ItemStack#splitStack} 会<b>复制</b> NBT
+         * ⇒ 生产侧"一叠里分裂出来的那一段"读出来与母栈同内容。本桩件按身份查表（同一假物品要能分扮
+         * 晶／瓶／罐，不能按 item+damage 合流），查不到分裂段就会得到 EMPTY，把 R88 的向下收口支测成假红。
+         * <p>
+         * 因此开这一个<b>默认关闭</b>的兜底档：只有显式赋值过的用例（当前 = 叠内部分抽干那一条）才会
+         * 让未登记的栈读到"单件内容"；其余用例恒为 null ⇒ 既有的身份表判据与负控一条都不放松。
+         */
+        TaumAspectAmounts splitContentFallback;
+
         StubGate putDistill(ItemStack stack, TaumAspectAmounts aspects) {
             distillTable.put(stack, aspects);
             return this;
@@ -4300,7 +4686,11 @@ public class NekoPocketModelTest {
         @Override
         public TaumAspectAmounts readContainer(ItemStack stack) {
             final TaumAspectAmounts content = stack == null ? null : containers.get(stack);
-            return content == null ? TaumAspectAmounts.EMPTY : content;
+            if (content != null) {
+                return content;
+            }
+            // ★R88：未登记的栈（splitStack 的产物）按"单件内容"读，见 splitContentFallback
+            return splitContentFallback == null ? TaumAspectAmounts.EMPTY : splitContentFallback;
         }
 
         @Override
@@ -4338,10 +4728,22 @@ public class NekoPocketModelTest {
             return putContainer(stack, single);
         }
 
+        /** ★R88：把某栈判成"第三方罐"（容器，但容量档位无证据 = {@code CAPACITY_UNKNOWN}）。 */
+        private final java.util.Set<ItemStack> unknownCapacity = java.util.Collections
+            .newSetFromMap(new IdentityHashMap<ItemStack, Boolean>());
+
+        StubGate putUnknownVessel(ItemStack stack, TaumAspectAmounts single) {
+            unknownCapacity.add(stack);
+            return putContainer(stack, single);
+        }
+
         @Override
         public int capacityOf(ItemStack stack) {
             if (stack == null) {
                 return TaumDistillRules.CAPACITY_NOT_A_CONTAINER;
+            }
+            if (unknownCapacity.contains(stack)) {
+                return TaumDistillRules.CAPACITY_UNKNOWN;
             }
             if (crystals.contains(stack)) {
                 return TaumDistillRules.CRYSTAL_CAPACITY;

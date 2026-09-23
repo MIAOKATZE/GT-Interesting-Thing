@@ -503,7 +503,7 @@ public final class PocketEssenceStore {
      * ★<b>R86 改判（作废 R78③「撤空不回收」）</b>：扣到 0 同时<b>释放格位</b>，玩家看到的
      * "0/256 还占着一格"就是这条旧裁定的直接产物。旧裁定当时的理由是"回收会让按<b>格号</b>索引的
      * ghost 声明指向别的 tag"——取证已把它证半伪：抽取侧全程读声明<b>自带</b>的 {@code tag/typeId}
-     * （{@code PocketAeChannelOps#extractEssence} 那一段，落点 {@code session.depositItem}），
+     * （{@code PocketAeChannelOps#extractEssence} 那一段，★R88 载体改判后落点是源质盘本身、不再是物品栏），
      * 不吃 {@code slotIndex} ⇒ 回收不会拉错源质；真实后果只有遮罩/角标错位，那一面由
      * {@code NekoPocketPanel#applyEssenceGhosts} 改按 tag 归位消化。
      * NBT 形状本就允许空洞（{@link #writeCellOrder} 用空串占位），故不需要新的存档形状。

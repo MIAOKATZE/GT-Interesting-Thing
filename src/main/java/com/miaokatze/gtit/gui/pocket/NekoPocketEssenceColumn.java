@@ -232,7 +232,8 @@ public final class NekoPocketEssenceColumn {
      * 从不按 {@code slotIndex} 反查内容。所以清零照旧腾格，遮罩则改由 {@code NekoPocketPanel#applyEssenceGhosts}
      * 按 tag 现读归位；<b>本格</b>的声明入口判据仍是"拖来的东西确实含本格的 tag"，不变。
      * <p>
-     * 需求 2 的"要素栏取出 → 晶化源质"是另一条独立路径（R15），★<b>左键</b>与 Shift+左键走 {@code ESSENCE_OUT}
+     * 需求 2 的"要素栏取出 → 装满的源质瓶"是另一条独立路径（R15；★R88 载体改判，旧口径"→ 晶化源质"
+     * 已退役为只读），★<b>左键</b>与 Shift+左键走 {@code ESSENCE_OUT}
      * 动作码（★arg 里的格号在服务端经格位归属表反查 tag，不吃客户端送来的 tag，R18/R19）。
      */
     private static IWidget essenceGrid(NekoPocketPanel ui) {
@@ -248,8 +249,11 @@ public final class NekoPocketEssenceColumn {
     /**
      * 单格：金属凹槽底（<b>恒画</b>，R73②）+ 内容层（aspect 图标 + 数量文本，
      * <b>★按库存开关</b>，R78 D-1）+ tooltip（★每次重画都重建，见方法体★注释）；
-     * <b>左键</b>=把该组晶化源质拿到游标上（★R86：一组至多单堆上限；游标已被占用则整笔不动并给回执），
-     * <b>Shift+左键</b>=该格整份一次进背包（背包优先、余量落中栏），NEI 左键拖入=声明 ghost（落点归本列），
+     * <b>左键</b>=把该组源质物化成<b>安瓿瓶</b>拿到游标上（★R88：一瓶固定
+     * {@code PocketConstants.ESSENCE_OUT_UNIT_POINTS} 点，一组至多
+     * {@code PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 只；凑不满一瓶的余数<b>留盘</b>并给
+     * 面板回执；游标已被占用则整笔不动并给回执），
+     * <b>Shift+左键</b>=该格整份按瓶一次进背包（背包优先、余量落中栏），NEI 左键拖入=声明 ghost（落点归本列），
      * 右键在声明态=解绑（{@link NekoEssenceGhostCell#onMousePressed(int)}）；其余按键不做取出。
      * <p>
      * ★无货时<b>只撤掉图标与文本</b>，底与格子本体都在——这就是 R73② 与"槽位贴图边距 ≤ 3"
@@ -310,6 +314,8 @@ public final class NekoPocketEssenceColumn {
                 // ★R86（缺陷 4 乙）：NEI 拖入被 ghostKeyFor 的 cellTag 门拒掉时要有读法，否则整个现象
                 // 又是"拖上去没反应"。判定<b>没</b>放开（放开的代价见档案 r86-ret-nei-mark §C 乙-2：
                 // 要给 Kind.ESSENCE 引入按需占格，撞 PocketEssenceStore 的格位口径），只补文案。
+                // ★R88 E3 已把这一句补齐：need_stock 现在点名"可以拖的是装满该 tag 的安瓿瓶"，
+                // 并说明旧的晶化源质在 NEI 只有一条且不带 NBT、已判不出归属。
                 if (ui.essenceAvailable()) {
                     tooltip.addLine(IKey.lang("gtit.pocket.essence.need_stock"));
                 }
@@ -326,6 +332,12 @@ public final class NekoPocketEssenceColumn {
             }
             tooltip.addLine(IKey.str(EnumChatFormatting.WHITE + TaumCompat.nameOf(tag)));
             tooltip.addLine(IKey.dynamic(() -> ui.essenceAmountDetail(tag)));
+            // ★R88 自立口径 C1 的<b>格级</b>可见面：取出按整瓶向下取整、余数留盘 —— 只写在帮助块里
+            // 玩家点不到（帮助块在底部带），而这条恰恰是"点了怎么少给一点"的直接答案，故挂在本格 tooltip。
+            tooltip.addLine(
+                IKey.lang(
+                    "gtit.pocket.essence.phial_note",
+                    () -> new Object[] { PocketConstants.ESSENCE_OUT_UNIT_POINTS }));
             if (ui.essenceOverflow()) {
                 tooltip.addLine(
                     IKey.lang(

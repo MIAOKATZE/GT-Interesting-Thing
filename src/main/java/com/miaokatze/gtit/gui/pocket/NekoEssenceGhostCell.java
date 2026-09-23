@@ -28,7 +28,7 @@ import appeng.api.storage.data.IAEStackType;
  * 它不实现 {@link RecipeViewerGhostIngredientSlot} ⇒ 面板的拖入分发（按 hover 列表 +
  * {@code instanceof} 判定）根本看不到它 ⇒ 「源质格拖入」在游戏内零入口。本类
  * {@code extends ButtonWidget<NekoEssenceGhostCell>} <b>并</b>实现该接口：
- * 既有的点击取晶、着色、数量浮层、tooltip 与 6×12 布局<b>一格不加不减</b>（R41b/R78②）。
+ * 既有的点击取瓶、着色、数量浮层、tooltip 与 6×12 布局<b>一格不加不减</b>（R41b/R78②）。
  * <p>
  * <b>★内容层按库存开关（R78 D-1，本片修的上一片交付不实）</b>：旧实现把 aspect 图标
  * <b>无条件</b> {@code overlay(icon)} ⇒ 空格也画图标，与"无货不画内容"的裁定相反，
@@ -340,15 +340,20 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     /**
      * ghost 态下的右键 = 解绑（★只发 {@code CLR|<格号>|E}，判定与执行在服务端）。
      * <p>
-     * ★★<b>R87-d（缺陷 1）左键持晶 = 点击入槽</b>：非 ghost、非 alt、<b>游标栈是晶</b>（客户端经
-     * {@code EssenceGate.TAUM.capacityOf == CRYSTAL_CAPACITY} 判，TC 缺席/判不出 ⇒ 不拦截交回
-     * {@code super}）⇒ 经 {@code owner.requestEssenceIntake} 走<b>现有 C2S 动作通道</b>发请求
-     * （零新同步键，与 alt 标记同形）；判定、入账、回执与清游标全在服务端
-     * {@code PocketEssenceIntake}，<b>客户端不得本地清游标</b>（原版 cursor 同步送达，防双端漂移）。
-     * 点击格只是手势锚点：目标 tag = 晶自带的 tag，本格有没有别的 tag 都不拦。
+     * ★★<b>R87-d（缺陷 1）+ R88 载体改判：左键持瓶 = 点击入槽</b>：非 ghost、非 alt、<b>游标栈是
+     * 装满的源质容器</b>（客户端经 {@code EssenceGate.TAUM.capacityOf == PHIAL_CAPACITY} 判，
+     * TC 缺席/判不出 ⇒ 不拦截交回 {@code super}）⇒ 经 {@code owner.requestEssenceIntake} 走<b>现有
+     * C2S 动作通道</b>发请求（零新同步键，与 alt 标记同形）；判定、入账、回执全在服务端
+     * {@code PocketEssenceIntake}，游标由服务端经 {@code syncManager.setCursorItem(null)} 清。
      * <p>
-     * 其余按键（含非 ghost 态的右键、游标无晶的左键）一律交回 {@code super} ⇒ 既有的
-     * 「点击取晶 / Shift 取整份」行为逐字不变。
+     * ★<b>客户端不得本地清游标</b>——这条纪律的理由在 R88 被改述过：旧注释写的是"原版 cursor 同步送达"，
+     * 而 {@code ModularContainer#detectAndSendChanges} 只转 {@code super}（vanilla 只跟踪
+     * {@code inventorySlots}，不含 cursor）⇒ 服务端裸写游标<b>不会</b>到客户端，唯一通道是
+     * {@code CursorSlotSyncHandler#sync}，只有 {@code setCursorItem} 会调它。
+     * 点击格只是手势锚点：目标 tag = 容器自带的 tag，本格有没有别的 tag 都不拦。
+     * <p>
+     * 其余按键（含非 ghost 态的右键、游标无瓶的左键）一律交回 {@code super} ⇒ 既有的
+     * 「点击取瓶 / Shift 取整份」行为逐字不变。
      */
     @Override
     public Result onMousePressed(int mouseButton) {
@@ -376,35 +381,37 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     // ------------------------------------------------------------------ 纯判定（回归套件驱动这两段）
 
     /**
-     * 拖入物是否<b>含本格的 tag</b>：蒸馏产出（{@code TaumCompat.distill} 口径）或容器内容
-     * （{@code TaumCompat.readContainer} 口径）任一命中即算含。
+     * 拖入物是否<b>含本格的 tag</b>：容器内容（{@code TaumCompat.readContainer} 口径）或蒸馏产出
+     * （{@code TaumCompat.distill} 口径）任一命中即算含。
      * <p>
      * ★走 {@link EssenceGate} 而不是直调 {@link TaumCompat}：TC 缺席时三条读数<b>恒</b>为空，
      * 拿生产实现跑零依赖测试只会得到"永远不匹配"的假绿（同 R59b 偏离①、
      * {@code PocketSlots#classifyIncoming(ItemStack, EssenceGate)} 的既有口径）。
-     * 本仓不引第二个探针接口，故复用 {@link EssenceGate}。
+     * 本仓不引第二个探针接口，故复用 {@code EssenceGate}。
      * <p>
-     * ★★<b>R87-e（缺陷 4a）晶族特判</b>：拖入物是<b>晶化源质</b>（{@code capacityOf ==
-     * CRYSTAL_CAPACITY}）⇒ 恒视为含本格 tag（按物品形状放行）。平台事实两条：NEI 物品面板给出的
-     * {@code draggedStack} 是<b>无 NBT 裸栈</b>（两条探针里 {@code readContainer} 恒空），且 TC 把晶的
-     * 蒸馏产出注册成<b>空表</b>（{@code ConfigAspects} 那一条）⇒ 下面两条探针对晶<b>结构性恒 false</b>，
-     * "拖一枚晶去声明"这个最自然的手势在旧代码里恒被拒、且拒收被 MUI2 的 ghost 分发静默吞掉
-     * （{@code nei-ghost-dnd-first-handler-wins-and-swallow}）。★空格（{@code cellTag} null/空）的
-     * 拒收在上面原样保留（R86 裁定不放开，{@code essence.need_stock} tooltip 已解释）。
+     * ★★<b>R88 改判（作废 R87-e 的"晶族恒真"特判）</b>：搬运载体是 <b>TC 安瓿瓶</b>，一瓶固定
+     * {@value TaumDistillRules#PHIAL_CAPACITY} 点，而瓶的 tag <b>就写在它自己的 NBT 里</b>
+     * （TC {@code ItemEssence} 的 {@code getSubItems} 实测逐 aspect 造满瓶并 {@code setAspects(add(tag,8))}
+     * ⇒ NEI 物品面板里"每种源质一条"的那些条目<b>自带可读 NBT</b>，与旧晶那条无 NBT 的裸栈不同）。
+     * 于是"拖瓶声明"走下面这条通用容器探针就能判，<b>不需要</b>任何按物品族的恒真特判。
+     * <p>
+     * ★自立口径 <b>C2（旧晶只读不产）</b>在本判据上的落点：旧晶不再被"族"放行，但<b>带着 NBT 的旧晶
+     * 照旧命中</b>（{@code readContainer} 读得到 {@code add(tag,1)}）⇒ 识别留着、生产撤了。
+     * ★如实登记的代价：NEI 里那条<b>无 NBT 的裸晶</b>（旧 R87-e 特判专门为之而加）现在一律判不出 tag
+     * ⇒ 拖它声明不成立；玩家要声明/入槽请拖<b>瓶</b>。空格（{@code cellTag} 为 null/空）的拒收原样保留
+     * （R86 裁定不放开，{@code essence.need_stock} tooltip 已解释）。
      */
     public static boolean carriesTag(ItemStack draggedStack, String cellTag, EssenceGate gate) {
         if (draggedStack == null || gate == null || cellTag == null || cellTag.isEmpty()) {
             return false;
         }
-        if (gate.capacityOf(draggedStack) == TaumDistillRules.CRYSTAL_CAPACITY) {
+        // ★R88：唯一判据 = 容器/蒸馏读数里真的出现本格 tag（瓶、带 NBT 的旧晶、第三方罐共用这一条）
+        final TaumAspectAmounts container = gate.readContainer(draggedStack);
+        if (container != null && container.getAmount(cellTag) > 0) {
             return true;
         }
         final TaumAspectAmounts distilled = gate.aspectsOf(draggedStack);
-        if (distilled != null && distilled.getAmount(cellTag) > 0) {
-            return true;
-        }
-        final TaumAspectAmounts container = gate.readContainer(draggedStack);
-        return container != null && container.getAmount(cellTag) > 0;
+        return distilled != null && distilled.getAmount(cellTag) > 0;
     }
 
     /**
@@ -429,14 +436,18 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * 本格源质所在的<b>通道 id</b>（{@code IAEStackType.getId()} 字符串）。
      * <p>
      * ★<b>与消费端口径逐字对齐</b>，不猜：消费点是
-     * {@code PocketAeChannelOps#extractEssence} 的 {@code InfinityStackTypes.byId(filter.typeId)}
-     * （{@code PocketAeChannelOps.java:423}），而它判定"该通道能不能物化成晶化源质"用的探针是
-     * {@code type.convertStackFromItem(TaumCompat.newCrystalStack(tag, 1))} 且要求
-     * {@code getStackSize() > 0}（{@code PocketAeChannelOps.java:438-443}）。本方法用<b>同一条探针</b>
-     * 在{@code InfinityStackTypes.allSupportedTypes()}（物品→流体→运行时注册的第三方通道）上取第一个
-     * 命中者的 {@code getId()} ⇒ 写进声明的 id 与 {@code byId} 能解析出的 id 天然是同一个，
-     * 不会出现两处真相。★R86：内建<b>流体</b>通道始终排除在外（源质落在流体通道上没有任何读法成立）；
-     * 内建<b>物品</b>通道从"排除"改成"兜底"——第三方全空时回落给它（见方法体末那条 ★R86）。
+     * {@code PocketAeChannelOps#extractEssence} 的 {@code InfinityStackTypes.byId(filter.typeId)}，
+     * 而它判定"该通道能不能物化这一 tag"用的探针在 ★R88 起是<b>满瓶</b>
+     * （{@code type.convertStackFromItem(TaumCompat.newFilledContainer(tag, PHIAL_CAPACITY))} 且要求
+     * {@code getStackSize() > 0}，那条在 E1 片的 {@code PocketAeChannelOps} 里同步改）。本方法用
+     * <b>同一条探针</b>在 {@code InfinityStackTypes.allSupportedTypes()}（物品→流体→运行时注册的
+     * 第三方通道）上取第一个命中者的 {@code getId()} ⇒ 写进声明的 id 与 {@code byId} 能解析出的 id
+     * 天然是同一个，不会出现两处真相。★R86：内建<b>流体</b>通道始终排除在外（源质落在流体通道上没有
+     * 任何读法成立）；内建<b>物品</b>通道从"排除"改成"兜底"——第三方全空时回落给它（见方法体末★R88 那条）。
+     * <p>
+     * ★<b>与 E1 的对齐是硬前置</b>：若消费侧探针没同步换成瓶，本方法的回落档位就会与
+     * {@code unit} 实测各说各话（声明"1 单位 = 一只瓶"而抽取侧按"一只瓶 = 8 单位"折算 ⇒ 一次拉取
+     * 抽 8 倍）。判据见交付报告的实机项。
      * <p>
      * 边界如实声明：AE2 第三方通道的 {@code convertStackFromItem} 需要真实注册表，纯 JVM 里
      * 拿不到（与 {@code extract_essence_branch_yields_crystal} 同一批未验面，实验 E3），
@@ -447,7 +458,9 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
         if (cellTag == null || cellTag.isEmpty()) {
             return "";
         }
-        final ItemStack probeStack = TaumCompat.newCrystalStack(cellTag, 1);
+        // ★R88：探针从"一枚晶（1 点）"换成"一只满瓶（PHIAL_CAPACITY 点）"——载体改判后这是唯一
+        // 还会被产出的源质容器，用它判通道与用它算 unit 才是同一件事
+        final ItemStack probeStack = TaumCompat.newFilledContainer(cellTag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
         if (probeStack == null) {
             return "";
         }
@@ -467,14 +480,16 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
                 return type.getId();
             }
         }
-        // ★R86（缺陷 4 乙，用户裁定"三项都开"）：没有任何第三方源质通道能物化这一 tag 时，
-        // <b>回落到物品通道</b> —— 物品通道收的就是"晶化源质"这件物品本身（AE2 的
+        // ★R86（缺陷 4 乙，用户裁定"三项都开"）+ ★R88 载体改判：没有任何第三方源质通道能物化这一 tag
+        // 时，<b>回落到物品通道</b> —— 物品通道收的就是"源质瓶"这件物品本身（AE2 的
         // {@code ITEM_STACK_TYPE.convertStackFromItem} 对任何物品都成立），于是"从 NEI 标记源质"
         // 在没有 AE2-源质 addon 的整合包里也可用。
-        // ★已披露的语义代价（游戏内 tooltip 与本条注释同源）：回落之后声明的"1 单位"从
-        // <b>一点源质</b>变成<b>一枚晶化源质</b>（{@code PocketAeChannelOps#extractEssence} 的
-        // {@code unit} 由同一条探针实测，折算倍率属<b>实机项</b>，本仓不写死）。
-        // 内建流体通道仍在探针循环里被排除：把晶化源质声明成流体通道没有任何读法成立。
+        // ★已披露的语义代价（游戏内 tooltip 与本条注释同源，★R88 换算）：回落之后声明的"1 单位"是
+        // <b>一只安瓿瓶</b> = {@value TaumDistillRules#PHIAL_CAPACITY} 点源质，<b>不再是</b>旧口径的
+        // "一枚晶化源质 = 1 点"（{@code PocketAeChannelOps#extractEssence} 的 {@code unit} 由同一条
+        // 探针实测，折算倍率属<b>实机项</b>，本仓不写死）。同一格声明的抽取量语义因此放大 8 倍 ⇒
+        // 想按点抽就调小 ghost 上限（alt+滚轮），别按旧晶的读数直觉估。
+        // 内建流体通道仍在探针循环里被排除：把源质瓶声明成流体通道没有任何读法成立。
         return InfinityStackTypes.ITEM_STACK_TYPE.getId();
     }
 

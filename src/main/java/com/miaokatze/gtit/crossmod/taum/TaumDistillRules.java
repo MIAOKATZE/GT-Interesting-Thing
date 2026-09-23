@@ -58,10 +58,25 @@ public final class TaumDistillRules {
      */
     public static final int DISTILL_INPUT_SLOTS = PocketInventory.DISTILL_INPUT_SLOTS;
 
-    /** 源质瓶（TC {@code ItemEssence}）单次装点数 */
+    /**
+     * 源质瓶（TC {@code ItemEssence}）单瓶点数 = <b>8</b>（{@code ItemEssence.java:109-185}）。
+     * <p>
+     * ★<b>R88：本行是"源质搬运载体"这一档的仓内唯一真值</b>。口袋侧的取出粒度、通道单位语义与
+     * 折算瓶数都从它派生（{@code PocketConstants.ESSENCE_OUT_UNIT_POINTS} 是<b>转发</b>，
+     * {@code ESSENCE_OUT_MAX_PHIALS_PER_ACTION} / {@code ESSENCE_MAX_PHIALS_PER_TAG} 是它的商），
+     * 所以下面任何一处改动都要同时核对那三条派生式与 {@code TaumBridge#capacityOf} 给瓶的档位。
+     */
     public static final int PHIAL_CAPACITY = 8;
 
-    /** 晶化源质：1 点 = 1 个晶 */
+    /**
+     * 晶化源质：1 点 = 1 个晶（{@code TileEssentiaCrystalizer.java:293}）。
+     * <p>
+     * ★<b>R88 裁定 C2：退役为只读档位判据</b>。本常量仍是在服役的<b>识别</b>面（{@code TaumBridge#capacityOf}
+     * 给晶返它，{@code PocketSlots}/{@code PocketEssenceIntake}/{@code NekoEssenceGhostCell} 拿它做
+     * "这是不是旧晶"的分流），但<b>任何路径都不再产出晶</b>（{@code TaumBridge#newCrystalStack} 已标注退役）。
+     * 旧晶的点数照旧读得回来（不吃件）。<b>不得</b>删本常量或改它的取值：那会让存量旧晶被判成
+     * "非容器/普通物品"，直接踩回 R86 那条"整叠销毁"的危险面。
+     */
     public static final int CRYSTAL_CAPACITY = 1;
 
     /** 容器容量未知（非 TC 瓶/晶的第三方容器） */
@@ -157,6 +172,10 @@ public final class TaumDistillRules {
 
     /**
      * 装箱：单个容器本轮应装多少点（不足一容量按实际点数装）。
+     * <p>
+     * ★R88 提醒：本方法是<b>余数瓶</b>那一支（末瓶装 4 点），只在"给第三方/罐一类按余数收尾"时才是想要的
+     * 形状。口袋侧的取出与通道搬运走的是裁定 C1 的<b>整瓶</b>粒度 ⇒ 请用 {@link #floorToPhialUnits(int)}，
+     * 不要把这里当"取多少点"的口径读。
      *
      * @param remaining 该 aspect 剩余可出点数
      * @param capacity  单容器容量
@@ -167,6 +186,35 @@ public final class TaumDistillRules {
             return 0;
         }
         return capacity <= 0 ? remaining : Math.min(remaining, capacity);
+    }
+
+    /**
+     * ★<b>R88 裁定 C1 的唯一实现点：把"想取的点数"向下取整到整瓶，余数留盘</b>。
+     * <p>
+     * 存在的理由不是省一行算式，而是<b>三条搬运路必须取同一个整</b>：面板取出（游标 / Shift 进背包）、
+     * 通道上传（{@code PocketEssenceChannelOps#injectEssenceSource}）、通道下传
+     * （{@code extractEssence}）。任何一处自己写 {@code / 8 * 8}，另一处改了粒度就会出现
+     * "扣了 3 点、只出 0 瓶"或"瓶数与点数对不上"的净吞点数。
+     * <p>
+     * 粒度取 {@link #PHIAL_CAPACITY}（现役载体的真实容量），<b>不是</b> {@code PocketConstants} 里
+     * 复制一份 8 —— 那条 {@code ESSENCE_OUT_UNIT_POINTS} 是本常量的转发，两者同源。
+     *
+     * @param points 玩家/声明想要的点数（{@code <= 0} 原样给 0）
+     * @return 不超过 {@code points} 的最大 8 的倍数
+     */
+    public static int floorToPhialUnits(int points) {
+        return points <= 0 ? 0 : points - (points % PHIAL_CAPACITY);
+    }
+
+    /**
+     * 点数 → <b>整瓶</b>只数（C1 的另一半：{@link #floorToPhialUnits(int)} 的商）。
+     * <p>
+     * 与 {@link #containerCountFor(int, int)} 的区别是刻意的：那条<b>向上</b>取整（末瓶装余数），
+     * 服务"这堆点要几只容器装"；本条<b>向下</b>取整，服务"这一次动作实际出几只满瓶"。
+     * 两者混用就是把余数瓶与整瓶混在一起 ⇒ 净吞点数。
+     */
+    public static int phialCountFor(int points) {
+        return points <= 0 ? 0 : points / PHIAL_CAPACITY;
     }
 
     /**

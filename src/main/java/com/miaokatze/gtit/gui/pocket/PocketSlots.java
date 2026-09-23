@@ -6,9 +6,6 @@ import java.util.Map;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.ChatComponentText;
-import net.minecraft.util.EnumChatFormatting;
-import net.minecraft.util.StatCollector;
 import net.minecraftforge.fluids.FluidContainerRegistry;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidContainerItem;
@@ -272,6 +269,12 @@ public final class PocketSlots {
      * （{@code IEssentiaContainerItem} + 单 aspect 容器，R31/R44a）⇒
      * <b>不得</b> {@code instanceof} 任何具体物品类（TC 的晶/瓶与第三方罐子自动同判）。
      * <p>
+     * ★R88 换载体后本函数<b>一行判据都没改</b>，改的是它下游的计点：瓶（现役，
+     * {@code capacityOf == PHIAL_CAPACITY} → 8 点/只）与旧晶（C2 只读，
+     * {@code capacityOf == CRYSTAL_CAPACITY} → 1 点/枚）都落 {@link IncomingAction#INJECT}，
+     * 空瓶／空罐照旧 {@link IncomingAction#REJECT}（不收空壳，也不许它进蒸馏判定）。
+     * "这一叠值几点"由 {@link #injectContainer} 按<b>单件点数 × 只数</b>算，这里不参与算术。
+     * <p>
      * 本重载是生产入口（{@link EssenceGate#TAUM} ⇒ 转 {@code TaumCompat}）；
      * 回归套件用 {@link #classifyIncoming(ItemStack, EssenceGate)} 传桩件，两者是<b>同一段代码</b>。
      */
@@ -295,26 +298,55 @@ public final class PocketSlots {
     public enum Intake {
         /** 不是容器 / 容器为空：本轮无事发生（对应 {@code REJECT}，格内保持原样）。 */
         NOTHING,
-        /** 源质格放不下：★容器<b>分毫未动</b>（{@code still.inject_full}，R29 全有全无的失败面）。 */
+        /**
+         * 源质格放不下：★容器<b>分毫未动</b>（{@code still.inject_full}，R29 全有全无的失败面）。
+         * ★R88 后这一态只在"连一只容器都塞不下"时出现（一叠里塞得下几只就吃几只，见
+         * {@link #injectContainer} 的第 2 条修正）。
+         */
         STORE_FULL,
-        /** 已抽干并入账（{@code still.injected}）；容器变空，由调用方按 R40a 非消耗退回。 */
+        /**
+         * 已抽干并入账（{@code still.injected}）；容器变空，由调用方按 R40a 非消耗退回。
+         * ★R88：<b>瓶</b>（现役载体）走这一态，且允许只抽干一叠里的前几只 ⇒ 空壳与余量分别由
+         * {@link IntakeResult#returnedCarrier} / {@link IntakeResult#remainder} 交代。
+         */
         DRAINED,
         /**
          * ★R86（缺陷 2）：晶化源质<b>整叠销毁</b>并入账（同样报 {@code still.injected}）。
          * 与 {@link #DRAINED} 的唯一区别就是调用方<b>不得</b>退回——空壳晶留在场会被 TC 随机重赋型。
+         * ★R88 C2：晶已是<b>只读不产</b>的旧载体，本态因此在现役路径上只由"玩家手里还留着旧晶"触发；
+         * 新产出的搬运一律走瓶、落 {@link #DRAINED}。
          */
         CONSUMED
     }
 
-    /** 注入结果：结论 + 实际入账点数。 */
+    /** 注入结果：结论 + 实际入账点数 + （★R88 瓶支）本轮被抽干的那一份与留在格内的余量。 */
     public static final class IntakeResult {
 
         public final Intake kind;
         public final int points;
+        /**
+         * ★R88：<b>本轮实际被抽干、该退回玩家的那一份容器</b>（空壳仍有玻璃价值，R40a 的退回口径不变）。
+         * <p>
+         * 只在"一叠里只抽干了其中几只"时与调用方手上那一叠<b>不是同一个对象</b>（{@link #remainder}
+         * 同时非 null）；其余情形恒等于原栈（旧行为逐字保留）。{@link Intake#CONSUMED} 时本字段无意义
+         * （晶整叠销毁，不许退回）。
+         */
+        public final ItemStack returnedCarrier;
+        /**
+         * ★R88：<b>源质盘塞不下整叠、留在格内等下一轮的那一叠</b>（非 null ⇒ 调用方必须把它写回格子，
+         * 且它仍带着没被抽走的源质）。旧形状里 12 格一次只处理"一份内容"，永远用不到这一支。
+         */
+        public final ItemStack remainder;
 
         IntakeResult(Intake kind, int points) {
+            this(kind, points, null, null);
+        }
+
+        IntakeResult(Intake kind, int points, ItemStack returnedCarrier, ItemStack remainder) {
             this.kind = kind;
             this.points = points;
+            this.returnedCarrier = returnedCarrier;
+            this.remainder = remainder;
         }
 
         public boolean drained() {
@@ -334,8 +366,25 @@ public final class PocketSlots {
      * 顺序不能换——<b>预检必须在抽取之前</b>，否则"装不下"就成了"抽出来却没地方放"= 销毁价值。
      * 装不下 ⇒ 一格都不动、<b>容器分毫未动</b>（对应 {@code still.inject_full}）。
      * ⚠ 禁止用逐 tag 截断的 {@code add()} 做消耗判定（R45c/FIX-6：{@code isFull()} 只服务 GUI 置灰）。
+     * <p>
+     * ★★<b>R88 换载体带来的两处实质修正</b>（都不是口味改动，是瓶成为现役载体后才暴露的形状）：
+     * <ol>
+     * <li><b>候选按"单件点数 × 叠数"算</b>：TC 的 {@code ItemEssence} 一叠最多 64 只、
+     * <b>整叠共享同一份 {@code AspectList}</b>（NBT 挂在栈上，一只满瓶写的是 {@code add(tag, 8)}）。
+     * 旧形状只读一份 NBT 就入账 ⇒ "64 只满瓶进账 8 点、退回 64 只空瓶"＝<b>静默吞 504 点</b>，
+     * 而 {@code drainAll} 会把整叠的 NBT 一次抹掉，玩家连"退回来重灌"的机会都没有。
+     * （晶那一支在 R86 就乘了叠数，见 {@link #injectCrystals}；这一支当时只服务不可堆叠的第三方罐，
+     * 乘不乘都一样，所以那条乘法从没被要求过。）</li>
+     * <li><b>叠内允许部分抽干</b>：一叠 64 只瓶 = 512 点 &gt; 单 tag 上限
+     * {@code PocketConstants.ESSENCE_CAP_PER_TAG}（256）⇒ 若仍按"整叠全有全无"判，玩家<b>永远</b>
+     * 塞不进这一叠（盘全空也只收 32 只），症状就是 R86 缺陷 2 的"放进去无事发生"换皮回来。
+     * 于是本轮实际吃的只数由 {@code canAcceptAll} 逐只<b>向下收口</b>（最多收到 1 只；一只也收不下才是
+     * {@link Intake#STORE_FULL}），抽干的那一份退回玩家、余量留在格内等下一拍 ——
+     * <b>全有全无的作用单位仍是"一个容器"</b>（R84 定档），只是"这一格"从"一叠"改成了"一叠里的一只"。</li>
+     * </ol>
      *
-     * @param container 玩家放进 12 格里的栈（就地被抽干；调用方负责退回）
+     * @param container 玩家放进 12 格里的栈（★就地被抽干／就地减叠；调用方按
+     *                  {@link IntakeResult#returnedCarrier} 与 {@link IntakeResult#remainder} 收尾）
      */
     public static IntakeResult injectContainer(ItemStack container, PocketEssenceStore store, EssenceGate gate) {
         if (container == null || store == null || gate == null) {
@@ -344,39 +393,67 @@ public final class PocketSlots {
         if (classifyIncoming(container, gate) != IncomingAction.INJECT) {
             return new IntakeResult(Intake.NOTHING, 0);
         }
-        // ★R86（实机缺陷 2）：晶化源质走"读出 × 叠数 + 消耗整叠"那一条独立支。它<b>不能</b>复用下面的
-        // drainContainer —— {@code TaumBridge#drainAll} 对晶恒返 EMPTY（清空但物品还在场 = TC 随机重赋型
-        // 的危险态，{@code ItemCrystalEssence.java:98-110}），所以晶的消耗必须由本层显式表达成"销毁整叠"。
+        // ★R86（实机缺陷 2）／★R88 C2：晶化源质走"读出 × 叠数 + 消耗整叠"那一条独立支，且<b>只读</b>
+        // ——它不能复用下面的 drainContainer（{@code TaumBridge#drainAll} 对晶恒返 EMPTY：清空但物品还在场
+        // = TC 随机重赋型的危险态，{@code ItemCrystalEssence.java:98-110}），所以晶的消耗必须由本层显式
+        // 表达成"销毁整叠"。本仓不再<b>产出</b>晶，但存量旧晶仍从这里读回点数（不吃件）。
         if (gate.capacityOf(container) == TaumDistillRules.CRYSTAL_CAPACITY) {
             return injectCrystals(container, store, gate);
         }
-        final Map<String, Integer> candidates = toMap(gate.readContainer(container));
-        if (candidates.isEmpty()) {
+        final Map<String, Integer> perCarrier = toMap(gate.readContainer(container));
+        if (perCarrier.isEmpty()) {
             return new IntakeResult(Intake.NOTHING, 0);
         }
-        if (!store.canAcceptAll(candidates)) {
+        final int carriers = Math.max(1, container.stackSize);
+        // ★上面第 2 条的收口：从"这一叠全都要"起逐只往下退，直到盘塞得下；一次都不塞 ⇒ STORE_FULL。
+        // 判据只用 store 自己的 canAcceptAll（单点执法），这里<b>不</b>复制一份"上限 256"的算术。
+        int fit = carriers;
+        while (fit > 0 && !store.canAcceptAll(scaledByStackSize(perCarrier, fit))) {
+            fit--;
+        }
+        if (fit <= 0) {
             return new IntakeResult(Intake.STORE_FULL, 0);
         }
-        final TaumAspectAmounts drained = gate.drainContainer(container);
+        final boolean partial = fit < carriers;
+        final ItemStack drainedPart = partial ? container.splitStack(fit) : container;
+        final TaumAspectAmounts drained = gate.drainContainer(drainedPart);
         if (drained == null || drained.isEmpty()) {
+            if (partial) {
+                // 只数已经分出去了却什么都没抽出来 ⇒ 原样并回，绝不留"少了两只但没入账"的中间态
+                // （并回是安全的：splitStack 是<b>复制</b> NBT，原栈那一份一直没被动过）
+                container.stackSize += drainedPart.stackSize;
+            }
             return new IntakeResult(Intake.NOTHING, 0);
         }
-        final int points = store.putAll(toMap(drained));
-        return new IntakeResult(points > 0 ? Intake.DRAINED : Intake.NOTHING, points);
+        final int points = store.putAll(scaledByStackSize(perCarrier, fit));
+        if (!partial) {
+            return new IntakeResult(points > 0 ? Intake.DRAINED : Intake.NOTHING, points);
+        }
+        if (points <= 0) {
+            // 与预检矛盾的分支（canAcceptAll 过了却一点没进）：能救的是<b>瓶子本体</b>，把只数并回去；
+            // 已被抽干那一份的源质在此分支里确实保不住 —— 走到这里就是 PocketEssenceStore
+            // "预检 + putAll 成对"这条契约被破坏的信号，必须让下一轮重跑而不是静默收下。
+            container.stackSize += drainedPart.stackSize;
+            return new IntakeResult(Intake.NOTHING, 0);
+        }
+        return new IntakeResult(Intake.DRAINED, points, drainedPart, container.stackSize > 0 ? container : null);
     }
 
     /**
-     * ★R86（实机缺陷 2）：晶化源质 → 源质格的入账支，兑现 {@code EssenceGate#drainContainer} 那句
-     * "读出 + 消耗整叠"的旧契约（此前从未实现，玩家把晶放进 12 格只会看到"无事发生"）。
+     * ★R86（实机缺陷 2）／★R88 C2：<b>晶化源质</b>（旧载体，<b>只读不产</b>）→ 源质格的入账支，
+     * 兑现 {@code EssenceGate#drainContainer} 那句"读出 + 消耗整叠"的旧契约（此前从未实现，
+     * 玩家把晶放进 12 格只会看到"无事发生"）。
      * <p>
      * 三条纪律与瓶支同源：<b>全有全无</b>（预检在入账之前，装不下就一格不动）、<b>不截断消耗</b>
      * （禁止拿逐 tag 的 {@code add()} 做判定，R45c/FIX-6）、<b>消耗后不退回</b>（空壳晶归
      * {@link Intake#CONSUMED}，退回就等于把危险态交回 TC 的 {@code onItemUpdate}）。
      * <p>
      * 换算：晶的 {@code CRYSTAL_CAPACITY = 1} ⇒ 一枚晶一点源质，且<b>整叠共享同一份 aspect NBT</b>
-     * （{@code TaumBridge#newCrystalStack} 对 n 枚只写 {@code add(aspect, 1)}）⇒ 点数 =
-     * 读到的 amount × {@code stackSize}。这条乘法是"64 枚进 64 点"与"64 枚进 1 点"的分界，
-     * 故单独成函数并由 JVM 用例 {@code inject_crystal_consumes_whole_stack_into_store} 钉住。
+     * ⇒ 点数 = 读到的单件 amount × {@code stackSize}（与瓶支共用 {@link #scaledByStackSize} 这一条算术，
+     * 只是瓶的单件 amount 是 {@code TaumDistillRules.PHIAL_CAPACITY} = 8）。这条乘法是"64 枚进 64 点"
+     * 与"64 枚进 1 点"的分界，故单独成函数并由 JVM 用例 {@code inject_crystal_consumes_whole_stack_into_store}
+     * 钉住。★本支<b>不做</b>瓶支那套"逐只向下收口"：晶的整叠最多 64 点，永远塞得进 256 点的空盘，
+     * 全有全无在这里不会变成死路（那是 R88 瓶支特有的问题）。
      */
     public static IntakeResult injectCrystals(ItemStack crystal, PocketEssenceStore store, EssenceGate gate) {
         final TaumAspectAmounts content = gate.readContainer(crystal);
@@ -391,7 +468,13 @@ public final class PocketSlots {
         return new IntakeResult(points > 0 ? Intake.CONSUMED : Intake.NOTHING, points);
     }
 
-    /** ★R86：把"单件内容"按叠放大（每 tag 点数 × {@code stackSize}；叠数非正按 1 计，不造负点数）。 */
+    /**
+     * ★R86：把"单件内容"按叠放大（每 tag 点数 × {@code stackSize}；叠数非正按 1 计，不造负点数）。
+     * <p>
+     * ★R88：这条现在是<b>两条载体的共同算式</b>——晶支 1 点/枚 × 叠数、瓶支
+     * {@code PHIAL_CAPACITY} = 8 点/只 × 只数（TC 把 {@code AspectList} 挂在栈上，一叠只有一份 NBT，
+     * 所以"读一件"与"读一叠"必须靠这一步区分）。别再在两处各写一遍乘法。
+     */
     public static Map<String, Integer> scaledByStackSize(Map<String, Integer> single, int stackSize) {
         final int copies = Math.max(1, stackSize);
         final Map<String, Integer> scaled = new LinkedHashMap<>();
@@ -406,6 +489,10 @@ public final class PocketSlots {
      * <p>
      * 装得下 ⇒ 排空后的容器按 R40a 同法<b>非消耗</b>地退回玩家处（背包满则掉脚下），格清空。
      * 装不下 ⇒ 容器原样留在格内（一格都没动）。
+     * <p>
+     * ★R88 换载体后多一种收尾：<b>部分抽干</b>（一叠瓶里只吃下了其中几只）——被抽干的那几只空壳退回
+     * 玩家，<b>没抽干的余量必须写回格子</b>等下一拍，两步顺序不能换（{@link #returnToPlayer} 自己会
+     * {@code putStack(null)}）。晶支（{@link Intake#CONSUMED}）照旧整叠销毁、绝不退回空壳。
      * <p>
      * ★R84：本方法读 {@link #transferring}，随该闩一起由 static 改为实例方法（判据本身未变）。
      */
@@ -422,20 +509,24 @@ public final class PocketSlots {
             final IntakeResult result = injectContainer(placed, inv.essence(), EssenceGate.TAUM);
             if (result.kind == Intake.STORE_FULL) {
                 // R29 全有全无的失败面：一格都不动、容器分毫未动，必须可观测（still.inject_full）
-                tellPlayer(slot, "gtit.pocket.still.inject_full");
+                putSlotReceipt(slot, "gtit.pocket.still.inject_full");
                 return;
             }
             if (!result.drained() && !result.consumed()) {
                 return;
             }
             inv.markDirty();
-            tellPlayer(slot, "gtit.pocket.still.injected", result.points);
+            putSlotReceipt(slot, "gtit.pocket.still.injected", result.points);
             if (result.consumed()) {
                 // ★R86（实机缺陷 2）：晶是<b>整叠销毁</b>，绝不能走下面那条退回 —— 空壳晶留在玩家身上
                 // 或格内，会被 TC 服务端 {@code onItemUpdate} 随机重赋型（这正是 drainAll 对晶早退的理由）。
                 slot.putStack(null);
             } else {
-                returnToPlayer(slot, placed);
+                returnToPlayer(slot, result.returnedCarrier != null ? result.returnedCarrier : placed);
+                if (result.remainder != null) {
+                    // ★R88 部分抽干：returnToPlayer 刚把格子清空，余量要在这之后写回（顺序反了就是丢件）
+                    slot.putStack(result.remainder);
+                }
             }
             // ★R86（实机「残影」条）：{@link #returnToPlayer} 里那句 {@code putStack(null)} 只会发出
             // 非 force 的 SYNC_ITEM（{@code ModularSlot.java:101-106} → {@code ItemSlotSH.java:77}），
@@ -459,14 +550,39 @@ public final class PocketSlots {
      * ⇒ <b>两条判据都不成立 ⇒ 旧代码里这几处的回执一条都到不了玩家</b>（含 R29 就约定的
      * {@code still.inject_full}）。所以退回框架自己记着的那位玩家：{@code ModularSlot#getPlayer} 用的正是
      * 同一条路（{@code ModularSlot.java:147-149}），本文件只是没用它。
+     * <p>
+     * ★★<b>R88 C3 已闭合：本方法不再进聊天框</b>。裁定是「源质与蒸馏这类操作性回执一律留在面板内」，
+     * 而 pocket 域此前只剩这一个 {@code addChatMessage} 出口（调用点 {@link #injectContainerIfAny} 的两条 +
+     * {@link #notifyCell} 的流体那条）。槽件侧手里只有 {@code ModularSlot → SyncHandler → PanelSyncManager}
+     * 这一条链，拿不到面板对象，因此写入口开在面板那侧：{@link NekoPocketPanel#recordSlotReceipt} 按现役
+     * {@code PanelSyncManager} 实例反查面板，查不到（未装配完／已关屏）就丢弃这条回执。
+     * ★面板回执的载荷是「键 + 两个数」且本地化在客户端做 ⇒ 这里只把 {@code args} 里第一个整数当
+     * 「动了多少」带过去，其余格式化实参随聊天框一起退役；本方法因此不再需要玩家对象，而
+     * {@link #resolveSlotPlayer} 仍服务归还件那条路，未随之删除。
      */
-    private static void tellPlayer(ModularSlot slot, String key, Object... args) {
-        final EntityPlayer player = resolveSlotPlayer(slot);
-        if (player == null) {
+    private static void putSlotReceipt(ModularSlot slot, String key, Object... args) {
+        if (slot == null || !slot.isInitialized()) {
             return;
         }
-        player.addChatMessage(
-            new ChatComponentText(EnumChatFormatting.AQUA + StatCollector.translateToLocalFormatted(key, args)));
+        NekoPocketPanel.recordSlotReceipt(
+            slot.getSyncHandler()
+                .getSyncManager(),
+            key,
+            firstIntArg(args),
+            0);
+    }
+
+    /** 旧聊天回执的格式化实参里最多带一个数（点数／格数）；面板回执的载荷只有「键 + 两个数」的位置。 */
+    private static int firstIntArg(Object... args) {
+        if (args == null) {
+            return 0;
+        }
+        for (final Object arg : args) {
+            if (arg instanceof Number) {
+                return ((Number) arg).intValue();
+            }
+        }
+        return 0;
     }
 
     /** 槽件 → 玩家：先看是不是玩家背包的槽，否则取该槽所在面板的那位玩家（未装配完 ⇒ null）。 */
@@ -504,7 +620,7 @@ public final class PocketSlots {
      * 排空后的容器非消耗地退回（R40a：背包满则掉到玩家脚下，遵循原版 {@code transferStackInSlot} 语义）。
      * <p>
      * ★R85 修：玩家必须走 {@link #resolveSlotPlayer}。旧写法直接用 {@code getPlayerSlotPlayer}，而它对
-     * 本仓这类包 {@code PocketInventory} handler 的槽<b>恒返 null</b>（R84 已为 {@link #tellPlayer} 证死同一条），
+     * 本仓这类包 {@code PocketInventory} handler 的槽<b>恒返 null</b>（R84 已为 {@link #putSlotReceipt} 证死同一条），
      * 又因本方法<b>先</b> {@code putStack(null)} 清空了格子 ⇒ 拿不到玩家就 return ⇒ 容器既不归也不掉落＝
      * <b>静默销毁玩家的容器</b>（12 格注入支排空后必踩，可达路径见 {@link #injectContainerIfAny}）。
      */
@@ -639,7 +755,7 @@ public final class PocketSlots {
             return;
         }
         fluidNoticeKeys.put(cell, key);
-        tellPlayer(slot, key, args);
+        putSlotReceipt(slot, key, args);
     }
 
     /**

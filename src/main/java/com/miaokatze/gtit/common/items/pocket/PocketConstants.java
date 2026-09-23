@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.common.items.pocket;
 
+import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
+
 /**
  * 猫猫次元口袋的数据模型口径常量：口袋物品 NBT 键名、容量与时序数值。
  * <p>
@@ -148,7 +150,9 @@ public final class PocketConstants {
      * 的 {@code maxAmount=64}；代价是同 tag 的 12 格逐格蒸馏候选更不容易互相挤掉。
      * <p>
      * ★取出侧与它<b>刻意解耦</b>：一次动作最多 {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} 点，抬上限不等于
-     * 一次能掏 256 晶（晶化源质单堆上限 64，见 {@code TaumBridge.CRYSTAL_STACK_LIMIT}）。
+     * 一次能掏 256 点。★R88 载体改判后这一句换算成瓶：256 点 = {@link #ESSENCE_MAX_PHIALS_PER_TAG} 只满瓶，
+     * 一次动作最多 {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 只 —— 旧文案里"晶化源质单堆 64"那个理由
+     * 已随载体一起退役（晶只读不产，见 {@code TaumBridge#newCrystalStack} 的 ★R88 注）。
      */
     public static final int ESSENCE_CAP_PER_TAG = 256;
     // ---------------------------------------------------------- R75/R78 钉死的列数（几何与索引空间同源）
@@ -387,7 +391,16 @@ public final class PocketConstants {
     public static final int FILTER_CAP_MIN = 1;
     /** 物品支一次滚轮的步进 = <b>1 件</b>（用户原话"物品是每次1个"）。 */
     public static final int FILTER_CAP_STEP_ITEM = 1;
-    /** 源质支一次滚轮的步进 = <b>1 点</b>（= 1 晶；★R86 起取出侧不再有"每次几点"的常量，取出量见 {@code NekoPocketPanel#performEssenceOut}）。 */
+    /**
+     * 源质支一次滚轮的步进 = <b>1 点</b>（★R86 起取出侧不再有"每次几点"的常量，取出量见
+     * {@code NekoPocketPanel#performEssenceOut}）。
+     * <p>
+     * ★<b>R88 起的既有张力（不是本轮新引入，但载体换成 8 点/瓶后被放大）</b>：本步进是<b>点数</b>，
+     * 而两条搬运路都按<b>整瓶</b>取整（{@link #ESSENCE_OUT_UNIT_POINTS}，裁定 C1）⇒ 玩家把组上限停在
+     * 非 8 倍数（例如 3）时，那一档<b>一瓶也搬不动</b>，通道照跑、零搬运。旧形状里同一句写的是"= 1 晶"
+     * （1 点 = 1 晶 ⇒ 逐点都搬得动），那个"步进粒度与搬运粒度天然重合"的前提随载体一起没了。
+     * 收口属裁决题（把步进抬成瓶数、或在 tooltip/回执里声明"不足一瓶"），E3 的 lang 与检查表要跟着核。
+     */
     public static final int FILTER_CAP_STEP_ESSENCE = 1;
     /** 流体支"1%"的档数（★分母按 D-6 = 单 tank 容量 {@link #FLUID_BAR_CAPACITY_ML}，不是 288M 合计）。 */
     public static final int FILTER_CAP_PERCENT_STEPS = 100;
@@ -402,17 +415,70 @@ public final class PocketConstants {
     public static final int FILTER_CAP_CEILING_FLUID = FLUID_BAR_CAPACITY_ML;
     /**
      * 源质格一次取出的<b>硬上界</b> = 64 点（★R84：与 {@link #ESSENCE_CAP_PER_TAG}=256 解耦，
-     * 一格存 256 也要按堆掏；晶化源质单堆 64，写死与 {@code TaumBridge.CRYSTAL_STACK_LIMIT} 同值）。
+     * 一格存 256 也要按次掏）。
+     * <p>
+     * ★R88 载体改判后这一枚 64 的<b>理由换了来源、值不动</b>：旧形状是"64 = 晶化源质的单堆上限"
+     * （外部事实，见 {@code TaumBridge.CRYSTAL_STACK_LIMIT} 那条 ★★R88 段），新形状是
+     * <b>纯设计量</b> 64 点 = {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 只满瓶 ×
+     * {@link #ESSENCE_OUT_UNIT_POINTS} 点。TC 的瓶堆叠上限是 64 <b>只</b>意味着"8 只瓶天然装得进一叠"，
+     * 不再决定这个数。
      * <p>
      * ★声明位置是硬约束：它必须<b>早于</b>下面那条 {@link #FILTER_CAP_CEILING_ESSENCE}，后者按符号引用它
      * （静态字段初始化不允许前向引用，放错位置就是编译错）。
      */
     public static final int ESSENCE_OUT_MAX_POINTS_PER_ACTION = 64;
     /**
+     * ★★<b>R88 裁定：源质搬运载体 = TC 安瓿瓶（{@code ItemEssence}），本行就是"一次搬运一格"的
+     * 点数粒度</b>（旧载体是晶化源质，1 点/枚 ⇒ 粒度 1；本轮改判后所有取整都按它做）。
+     * <p>
+     * <b>真值住在</b> {@code TaumDistillRules.PHIAL_CAPACITY}（= TC {@code ItemEssence.java:109-185}
+     * 实测的单瓶容量，也是 {@code TaumBridge#capacityOf} 给瓶的档位、{@code newFilledContainer} 的装填
+     * 上限），本行是<b>转发</b>，不留第二份 8：取出侧（面板游标/背包）、通道上传侧
+     * （{@code PocketEssenceChannelOps#injectEssenceSource}）与通道下传侧
+     * （{@code extractEssence}）读的都是这里，而"瓶子究竟装几点"只有 {@code crossmod/taum} 那一侧认识。
+     * <p>
+     * ★随之生效的口径（裁定 C1）：<b>取出量向下取整到本常量的整数倍，余数留盘</b>——TC 的
+     * {@code ItemEssence} 没有半瓶语义，自造半瓶就是把私有形状送进第三方兼容面。换算见下面两条派生常量。
+     * ⚠ 本名字 R86 曾以 {@code =1}（晶粒度）存在并被当作零调用方删掉，R88 起带着新值与新调用方回来，
+     * 文件末尾那条"★R88 同名提醒"就是为这件事留的。
+     */
+    public static final int ESSENCE_OUT_UNIT_POINTS = TaumDistillRules.PHIAL_CAPACITY;
+    /**
+     * 一次取出动作的<b>瓶数</b>上界 = {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} /
+     * {@link #ESSENCE_OUT_UNIT_POINTS} = <b>8</b>（派生，不留字面量；给 tooltip 与面板回执读数用，
+     * 执法仍以点数为判据）。8 只瓶在一叠之内装得下（TC 瓶 {@code maxStackSize = 64}），
+     * 所以"一次动作"天然不需要拆叠；拆叠循环只在 12 格/背包落位那一面（见 {@code NekoPocketPanel}）。
+     */
+    public static final int ESSENCE_OUT_MAX_PHIALS_PER_ACTION = ESSENCE_OUT_MAX_POINTS_PER_ACTION
+        / ESSENCE_OUT_UNIT_POINTS;
+    /**
+     * 单 tag 满格（{@link #ESSENCE_CAP_PER_TAG} 点）折算的<b>瓶数</b> = <b>32</b>（派生）。
+     * 与 {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 的差就是"一格存满也要分 {@code 32 / 8 = 4} 次掏"
+     * 这条玩家可见节奏的来源。
+     */
+    public static final int ESSENCE_MAX_PHIALS_PER_TAG = ESSENCE_CAP_PER_TAG / ESSENCE_OUT_UNIT_POINTS;
+    static {
+        // 上面两条派生量都做了<b>整除</b>：一旦上限不再是从粒度上派生（例如有人把 256 改成 255），
+        // 折算瓶数会静默少一瓶，而 tooltip 与实机读数各说各话。构造期就炸，别留给实机。
+        if (ESSENCE_CAP_PER_TAG % ESSENCE_OUT_UNIT_POINTS != 0
+            || ESSENCE_OUT_MAX_POINTS_PER_ACTION % ESSENCE_OUT_UNIT_POINTS != 0) {
+            throw new IllegalStateException(
+                "[pocket] 源质上限不是整瓶（粒度 " + ESSENCE_OUT_UNIT_POINTS
+                    + "）的整数倍: cap="
+                    + ESSENCE_CAP_PER_TAG
+                    + ", 单次上界="
+                    + ESSENCE_OUT_MAX_POINTS_PER_ACTION);
+        }
+    }
+    /**
      * 源质支组上限的上界与回落值。★R84 起与 {@link #ESSENCE_CAP_PER_TAG} <b>解耦</b>，钉在
-     * {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION}=64：晶化源质单堆就是 64（{@code TaumBridge.CRYSTAL_STACK_LIMIT}），
-     * 若让它跟着每格上限抬到 256，{@code extractEssence} 会按 256 点抽通道单位、却只能物化 64 晶，
-     * 而"放不下就注回"那条兜底同样被单堆 64 卡住 ⇒ 净吞 192 点的<b>静默价值销毁</b>。
+     * {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION}=64。
+     * <p>
+     * ★R88 载体改判后这条理由换了说法但<b>结论一字未动</b>：上界仍是 64 点 =
+     * {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 只满瓶。旧文案写的"晶化源质单堆 64 卡住物化"
+     * 已不成立（晶退役），现在的约束是"一次动作的搬运上界是设计量"：若让它跟着每格上限抬到 256 点，
+     * {@code extractEssence} 会按 256 点抽通道单位、一次要落 32 只瓶，而"放不下就注回"那条兜底的
+     * 粒度是<b>整瓶</b> ⇒ 差额折算不成整数就出现<b>净吞点数</b>（同一形状在 R85 耦合审计里被点过一次）。
      */
     public static final int FILTER_CAP_CEILING_ESSENCE = ESSENCE_OUT_MAX_POINTS_PER_ACTION;
     /**
@@ -473,6 +539,9 @@ public final class PocketConstants {
     public static final int REFILL_AMOUNT_PER_FILTER_UNBOUNDED = Integer.MAX_VALUE;
     // ★R86 删除 ESSENCE_OUT_UNIT_POINTS(=1) 与 ESSENCE_OUT_SHIFT_POINTS(=64)：取出侧改成
     // "左键该组上游标 / Shift 该格整份进背包"后两条再无读点，留着就是零调用方的公共面（R85 耦合审计口径）。
+    // ★R88 同名提醒：ESSENCE_OUT_UNIT_POINTS 这个名字被<b>重新启用且换了值</b>（1 → 8，见上面那两条
+    // R88 常量与裁定 C1），语义位相同（"一次搬运的粒度"）、载体不同（晶 1 点 → 瓶 8 点）。
+    // 读 R86 档案里的"=1"时不要按现役值理解；ESSENCE_OUT_SHIFT_POINTS 则至今仍未回来（Shift 支按整份算）。
     /**
      * {@code ESSENCE_OUT} 动作参数里"按下 Shift"的偏移量（{@code arg = cell + 本值}）。
      * <p>

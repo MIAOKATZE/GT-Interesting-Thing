@@ -70,13 +70,17 @@ import appeng.util.item.AEItemStack;
  * 且 {@code InfinityCellHandler.getCellInventory} 每次都新建对象，缓存实例键毫无意义（R9）。
  * <p>
  * <b>抽取方向三支齐全</b>（R45b 的缺口由本批闭合，此前流体支与源质支直接 {@code return NO_CHANNEL}
- * ⇒ 需求 2「要素栏取出→晶化源质」与需求 4「按配置补满流体」两条并列要求整体静默失效）：
+ * ⇒ 需求 2「要素栏取出→源质」与需求 4「按配置补满流体」两条并列要求整体静默失效）：
  * <ul>
  * <li>物品支 → 本条声明自己那一格（★R84：中栏声明格就是落点，旧实现落玩家背包 ⇒ 需求格永远空着）；</li>
  * <li>流体支 → 口袋流体条（{@link PocketSession}），先问落点空间再抽，抽了放不下就原路注回；</li>
- * <li>源质支 → ★R87-A 起整体搬去 {@link PocketEssenceChannelOps}（行数纪律的<b>纯搬移</b>，逻辑一字未改）：
- * 经 {@code IAEStackType.convertStackFromItem} 以 {@code ItemCrystalEssence} 为探针
- * 反算数额后<b>物化成晶化源质</b>进口袋真实栏（R15/R31：1 点 = 1 晶；不猜第三方 mod 的私有栈格式）。
+ * <li>源质支 → ★R87-A 起整体搬去 {@link PocketEssenceChannelOps}（那一次是行数纪律的<b>纯搬移</b>）：
+ * 经 {@code IAEStackType.convertStackFromItem} 以<b>自家装满的源质瓶 {@code ItemEssence}</b> 为探针
+ * 反算数额后<b>溶回 72 格源质盘</b>（★R88 载体与落点双双改判，旧形状是"以 {@code ItemCrystalEssence}
+ * 为探针、1 点 = 1 晶、物化成晶进口袋真实栏"）。现在的单位语义是
+ * <b>1 只瓶 = {@value com.miaokatze.gtit.crossmod.taum.TaumDistillRules#PHIAL_CAPACITY} 点</b>，
+ * 且两侧都按<b>整瓶</b>向下取整、零头留在原侧（裁定 C1）；旧晶只保留"读得回点数"的识别支（C2 只读不产）。
+ * 不猜第三方 mod 的私有栈格式这一条 R15/R31 起未变。
  * 本类只在 {@link #inject}/{@link #extract} 的分派口委派过去。</li>
  * </ul>
  */
@@ -507,7 +511,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             return injectFluidSource(source, diskuuid, typeId);
         }
         if (source != null && source.kind == SourceKind.ESSENCE) {
-            // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（行数纪律的纯搬移，逻辑一字未改）
+            // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（那一次是行数纪律的纯搬移）；
+            // ★R88 起那边的载体与落点已改判（晶 → 瓶、物品槽 → 源质盘），委派口本身不变
             return PocketEssenceChannelOps.injectEssenceSource(this, source, diskuuid, typeId);
         }
         // ★R84：来源格现在在中栏（见 snapshotSources 的口径变更），且只在活会话期内可搬运
@@ -632,7 +637,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (filter instanceof PocketFilterConfig.FluidFilter) {
             return extractFluid((PocketFilterConfig.FluidFilter) filter, diskuuid, count);
         }
-        // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（行数纪律的纯搬移，逻辑一字未改）
+        // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（那一次是行数纪律的纯搬移）；
+        // ★R88 起那边的载体与落点已改判（晶 → 瓶、物品槽 → 源质盘），委派口本身不变
         return PocketEssenceChannelOps.extractEssence(this, (PocketFilterConfig.EssenceFilter) filter, diskuuid, count);
     }
 
@@ -802,9 +808,11 @@ public final class PocketAeChannelOps implements PocketChannelOps {
     }
 
     /**
-     * ★源质支已整体搬去 {@link PocketEssenceChannelOps}（★R87-A 行数纪律的纯搬移，逻辑一字未改）：
-     * 抽取（extractEssence）/ 注入（injectEssenceSource）/ 换算（essenceStackFor、crystalsFromUnits、
-     * unitsForCrystals）与不可物化日志都在那边；本类经 {@code inject}/{@code extract} 的分派口委派过去。
+     * ★源质支已整体搬去 {@link PocketEssenceChannelOps}（★R87-A 那次是行数纪律的纯搬移；★R88 换载体后
+     * 那边的逻辑按瓶改判过，别把纯搬移读成至今未改）：
+     * 抽取（extractEssence）/ 注入（injectEssenceSource）/ 换算（essenceStackFor、carriersFromUnits、
+     * unitsForCarriers，旧晶名只留作离线套件的过渡别名）与不可物化日志都在那边；
+     * 本类经 {@code inject}/{@code extract} 的分派口委派过去。
      */
 
     /**

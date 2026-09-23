@@ -117,7 +117,12 @@ public final class TaumCompat {
         return thaumcraftLoaded;
     }
 
-    /** @return Thaumic Tinkerer 是否在场（源质罐优先级用；本仓不静态引用其类型） */
+    /**
+     * @return Thaumic Tinkerer 是否在场。
+     *         ★R88：旧用途"源质罐优先级"已随载体改判作废（出件钉为 TC 瓶，见
+     *         {@code TaumBridge#preferredContainerItem}），本读数现在只服务
+     *         {@code TaumBridge#vesselItem()} 那条一次性的在场日志；本仓不静态引用 TT 的任何类型。
+     */
     public static boolean isThaumicTinkererLoaded() {
         ensureReady();
         return thaumicTinkererLoaded;
@@ -240,6 +245,10 @@ public final class TaumCompat {
 
     /**
      * 读任意源质容器（晶化源质 / 源质瓶 / 实现 {@code IEssentiaContainerItem} 的第三方罐）。
+     * <p>
+     * ★R88：这是<b>只读面</b>，因此也是裁定 C2 下"旧晶仍能被读回点数（不吃件）"的落点；
+     * 瓶侧的读点是 12 格注入支与通道下传支（两边都按<b>单件点数 × 叠数</b>算，见
+     * {@code PocketSlots#injectContainer} / {@code PocketEssenceChannelOps#extractEssence}）。
      *
      * @return 内容快照；空表示非容器、空容器或不可用
      */
@@ -255,6 +264,10 @@ public final class TaumCompat {
 
     /**
      * 单容器容量档位。
+     * <p>
+     * ★R88：瓶那一档（{@value TaumDistillRules#PHIAL_CAPACITY}）现在是<b>现役载体的计点依据</b>——
+     * 12 格注入支、点击入槽支与 NEI 拖入判据都按它算"这一叠值几点"；晶那一档按裁定 C2 降级为
+     * <b>只读识别</b>（旧晶仍认得，但不再有产出方）。
      *
      * @return 晶 {@value TaumDistillRules#CRYSTAL_CAPACITY} / 瓶
      *         {@value TaumDistillRules#PHIAL_CAPACITY} / 其他容器
@@ -267,7 +280,8 @@ public final class TaumCompat {
     }
 
     /**
-     * 往容器注入源质（合并语义，已有不同 aspect 时整笔拒绝）。
+     * 往容器注入源质（合并语义，已有不同 aspect 时整笔拒绝）。瓶在此完成 <b>meta 0（空）→ 1（满）</b>
+     * 的切换，所以它是"往一只<b>已经在场</b>的空瓶里灌源质"的唯一正确出口。
      * <p>
      * 单容器语义：不拆堆、不改 {@code stackSize}，{@code stackSize > 1} 请先自行拆成 1。
      *
@@ -281,8 +295,12 @@ public final class TaumCompat {
     /**
      * 取空一个容器（读出并清空；瓶退回 meta 0 空瓶态）。
      * 晶化源质不适用（返回 EMPTY），请上层「读出点数 + 消耗整件」。
+     * <p>
+     * ★R88 现役调用方：12 格注入支的<b>瓶/罐</b>那一支（{@code PocketSlots#injectContainer} →
+     * {@code EssenceGate#drainContainer}）。⚠ 该支自本轮起按<b>单件点数 × 叠数</b>入账、却只抽干
+     * <b>整叠共享的那一份 AspectList</b> ⇒ 空瓶叠原样退回，点数一分不吞（取证见那里的 ★R88 注）。
      *
-     * @return 取出的内容快照
+     * @return 取出的内容快照（单件量；叠数放大由调用方负责）
      */
     public static TaumAspectAmounts drainAll(ItemStack container) {
         TaumBridgeApi active = readyBridge();
@@ -291,6 +309,12 @@ public final class TaumCompat {
 
     /**
      * 产出晶化源质（1 点 = 1 个晶，最多 64 个/堆）。
+     * <p>
+     * ★★<b>R88 裁定 C2：本门面退役为只读，本仓不得再有调用方</b>——搬运载体是
+     * {@link #newFilledContainer(String, int)}（一瓶 8 点）。签名与实现按兄弟切片的编译依赖原样保留，
+     * "读回旧晶的点数"走 {@link #readContainer(ItemStack)} + {@link #capacityOf(ItemStack)}，不经过这里。
+     * 彻底摘除本门面（连同 {@code TaumBridge#newCrystalStack} 与 {@code CRYSTAL_STACK_LIMIT} 那条旧链接）
+     * 是收口后的独立裁决，见 {@code plan/_taskpack/r88-essentia/20-e1-report.md}。
      *
      * @return 新物品栈；不可用、tag 未知或 points &lt;= 0 时 null
      */
@@ -300,8 +324,17 @@ public final class TaumCompat {
     }
 
     /**
-     * 产出一个装好源质的容器：第三方罐按 {@code IEssentiaContainerItem} 接口探测（R31；R44a 实测本环境无 TT ItemVessel），
-     * 否则回落 TC 源质瓶（一次 8 点，不足按实际点数装）。
+     * ★<b>R88：源质搬运载体的唯一出件口</b>——产出一只<b>装满</b>的 TC 源质瓶（{@code ItemEssence}，
+     * meta 1、{@code AspectList} 里 {@code add(tag, 8)}、可堆 64）。
+     * <p>
+     * 旧文案说"第三方罐按 {@code IEssentiaContainerItem} 接口探测（R31）优先、否则回落瓶"：那条优先级
+     * 已随 R88 裁定作废（{@code TaumBridge#preferredContainerItem} 现在钉为瓶，罐探测只留在一条
+     * 在场日志里），因为取出粒度 / 通道单位 / tooltip 三处口径全都以"一瓶 8 点"为真值，
+     * 而第三方罐的容量在本仓没有证据（只能落 {@link TaumDistillRules#CAPACITY_UNKNOWN}）。
+     * R44a 的实测仍然成立：本环境锁定的 TT dev jar 里根本没有 {@code ItemVessel}。
+     * <p>
+     * ★调用方一律传整瓶点数（{@code PocketConstants.ESSENCE_OUT_UNIT_POINTS}）；桥里的 {@code min}
+     * 只是兜底，<b>不是</b>半瓶许可（C1：不足一瓶就留盘）。
      *
      * @return 容器栈（stackSize 1）；不可用时 null
      */
@@ -311,8 +344,9 @@ public final class TaumCompat {
     }
 
     /**
-     * @return {@link #newFilledContainer} 的单容器容量；0 表示没有任何可用容器
-     *         （蒸馏栏此时应禁止「出罐」操作）
+     * @return {@link #newFilledContainer} 的单容器容量（★R88 起恒为瓶档
+     *         {@value TaumDistillRules#PHIAL_CAPACITY}）；
+     *         0 表示没有任何可用容器（蒸馏栏此时应禁止「出瓶」操作）
      */
     public static int filledContainerCapacity() {
         TaumBridgeApi active = readyBridge();

@@ -304,16 +304,16 @@ gtit.pocket.receipt.ok=完成：已搬运 %d 项
 gtit.pocket.receipt.partial=已搬运 %d 项，%d 项被拒收
 gtit.pocket.receipt.partition_denied=元件分区设置拒收（并非元件已满）
 gtit.pocket.receipt.cell_full=元件已满
-gtit.pocket.receipt.target_full=口袋没有可容纳的空格
+gtit.pocket.receipt.target_full=没有可容纳的落点：口袋物品栏没有空格，源质侧也没有能塞下整只瓶的格
 gtit.pocket.receipt.unrecognised=没有已识别的绑定元件，通道未开启
 gtit.pocket.receipt.cooldown=瞬时通道冷却中
 gtit.pocket.receipt.no_funds=猫猫币不足
 gtit.pocket.receipt.nothing_to_do=没有可搬运的内容
 gtit.pocket.still.title=源质蒸馏
 gtit.pocket.still.in=输入（物品或容器）
-gtit.pocket.still.dual_use_note=这 %d 格既可蒸馏物品也可注入源质容器；容器以排空状态退回，绝不消耗
-gtit.pocket.still.injected=容器已倒入 %d 点源质
-gtit.pocket.still.inject_full=源质格已满，容器分毫未动
+gtit.pocket.still.dual_use_note=这 %d 格既可蒸馏物品也可注入源质容器；容器以排空状态退回，绝不消耗（唯一例外是旧的晶化源质：它被读一次就整叠销毁，否则会被 TC 服务端随机重赋型）
+gtit.pocket.still.injected=容器已排空进源质盘：%d 点
+gtit.pocket.still.inject_full=源质盘连这一叠里的一只容器都塞不下：先把这一叠拆小一点或腾空一格，本轮分毫未动
 gtit.pocket.still.progress=下一轮 %d 秒后
 gtit.pocket.still.idle=没有可蒸馏物品
 gtit.pocket.still.no_aspect=该物品不含源质，进度不推进
@@ -321,17 +321,26 @@ gtit.pocket.still.full=源质格已满，本轮不消耗物品
 gtit.pocket.still.unavailable=未装载神秘时代
 gtit.pocket.still.over_cap=有 %d 格超出单格上限，本轮跳过（共 %d 点）
 gtit.pocket.still.partial_skip=本轮另有 %d 格没塞下（共 %d 点），下一轮继续重试
-gtit.pocket.essence.cursor_busy=手上已经攥着东西，先清空游标再点源质格
-# ★R87-d 结晶点击入槽（72 格左键持晶）：判定流四态各一条回执；前三条粘性面板回执，成功条含 tag 与点数（聊天播报）
-gtit.pocket.essence.intake.not_crystal=手里不是源质结晶：把晶拿在游标上再点源质格
-gtit.pocket.essence.intake.no_owner=这枚晶还没有源质归属，没有可入账的源质
-gtit.pocket.essence.intake.no_room=源质格余量不足，整叠晶分毫未动
-gtit.pocket.essence.intake.ok=已把「%s」源质 %d 点收入源质格
+gtit.pocket.essence.cursor_busy=手上已经攥着东西，先清空游标再点源质格取瓶
+# ★R88 载体改判（晶化源质 → TC 安瓿瓶）+ ★C3 聊天零输出：四态一律走面板内粘性回执。
+# ★intake.ok 刻意只留一个 %d：投递面是 NekoPocketPanel#putReceipt(key, moved, refused)，
+#   载荷只有两个整数、本地化在客户端做（receiptText 的 String.format 实参 = 两个 int）。
+#   旧形状的 %s 会被第一个整数塞位（读出「已把「24」源质 …」），故键名保留、占位改成单 %d。
+# ★键名 intake.not_crystal / Outcome.NOT_CRYSTAL 保留（改键名 = 改 Java 常量与测试对账，R88 不做）；
+#   含义已按 ★C2 扩成「瓶（现役）或带归属的旧晶（只读）」。
+gtit.pocket.essence.intake.not_crystal=手里不是源质瓶：把装满源质的安瓿瓶（或还带归属的旧晶化源质）拿在游标上，再点源质格
+gtit.pocket.essence.intake.no_owner=这只瓶还没有装源质，没有可入账的源质
+gtit.pocket.essence.intake.no_room=源质盘装不下这一整叠瓶：先少放几只进来，这一叠分毫未动
+gtit.pocket.essence.intake.ok=源质已入账：%d 点
+# ★R88 C1（最小粒度 = 一瓶）的玩家可见三条：不足一瓶 / 取出与留盘并报 / 格级说明
+gtit.pocket.essence.not_enough_phial=这一格的源质还凑不满一瓶，什么都不取：盘里仍留 %d 点
+gtit.pocket.essence.partial_leftover=按整瓶取走 %d 点；另有 %d 点不足一瓶，留在盘里
+gtit.pocket.essence.phial_note=源质只能按整瓶取出：不足 %d 点的零头留在这一格里
 gtit.pocket.aspect.cell=%s：%d/%d
 gtit.pocket.aspect.overflow_note=超出前 %d 项的源质只入账不显示
 gtit.pocket.ghost.on=配置格：%s（右键取消）
 gtit.pocket.ghost.drag_hint=想声明这一列：从 NEI 把 §e装了该流体的容器§r（桶/罐/大型单元）拖到这条上；配方窗里的流体行拖不出来（NEI 不让拖那种条目）
-gtit.pocket.essence.need_stock=这一格还没有源质归属：声明只能落在已经蒸出过源质的格上，先蒸一种再来拖
+gtit.pocket.essence.need_stock=这一格还没有源质归属：声明只能落在已经蒸出过源质的格上——先蒸一种，再把 NEI 里「装满该源质的安瓿瓶」拖到这一格（NEI 中每种源质各一条、图标按该源质染色；旧的晶化源质在 NEI 只有一条且不带 NBT，已判不出归属）
 gtit.pocket.ghost.locked=配置格不接受玩家放入或流体输入
 # ★R84 流体列搬运回执（9 条都是"整笔放弃/一件未成"的出口；缺一条就等于把"卡住不动"重新变成静默）。
 # ★刻意全部不带 %s：调用点是 notifyCell(cell, key, args...) 的变参形态，多传参无害、
@@ -365,6 +374,9 @@ gtit.pocket.note.title=本面板的用法摘要
 gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋只在主手持有期间工作
 gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d 闪烁猫猫币、持续 %d 秒
 gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）
+# ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）。
+# 一个 %d = 一瓶固定点数（PocketConstants.ESSENCE_OUT_UNIT_POINTS 填，lang 不写死规格数字）。
+gtit.pocket.note.phial=源质的搬运载体是 TC 安瓿瓶，一瓶固定 %d 点：取出按整瓶向下取整，凑不满一瓶的零头留在盘里；晶化源质自本轮起只读不产——你手里剩下的旧仍能被识别并溶回盘，但任何路径都不再产出晶，且物品通道兜底时「1 单位」就是一只瓶（放大为一整瓶点数）
 gtit.pocket.bind.summary=已绑定元件：%d / %d
 gtit.pocket.bind.inert=另有 %d 条旧绑定不在服务口径内（只服务第 1 枚），需要换元件时先全部解绑
 gtit.pocket.channel.start=启动

@@ -304,16 +304,16 @@ gtit.pocket.receipt.ok=Done: %d moved
 gtit.pocket.receipt.partial=Moved %d, refused %d
 gtit.pocket.receipt.partition_denied=Cell partition rejected it (not full)
 gtit.pocket.receipt.cell_full=Cell is full
-gtit.pocket.receipt.target_full=Pocket has no free slot for it
+gtit.pocket.receipt.target_full=Nowhere to put it: the pocket has no free item slot, and (for essentia) no cell that can hold a whole phial
 gtit.pocket.receipt.unrecognised=No bound cell is recognised, channel not opened
 gtit.pocket.receipt.cooldown=Instant channel is on cooldown
 gtit.pocket.receipt.no_funds=Not enough Neko Coin
 gtit.pocket.receipt.nothing_to_do=Nothing to transfer
 gtit.pocket.still.title=Essentia still
 gtit.pocket.still.in=Input (item or vessel)
-gtit.pocket.still.dual_use_note=These %d slots distill items and drain essentia vessels; a vessel is returned emptied, never consumed
-gtit.pocket.still.injected=Vessel drained: %d essentia
-gtit.pocket.still.inject_full=Essentia cells full, vessel untouched
+gtit.pocket.still.dual_use_note=These %d slots distill items and drain essentia vessels; a vessel is returned emptied, never consumed (the only exception is a legacy essentia crystal: it is read once and consumed, since TC would otherwise re-roll its aspect)
+gtit.pocket.still.injected=Vessel emptied into the essentia cells: %d point(s)
+gtit.pocket.still.inject_full=The essentia cells cannot take even one vessel of this stack: split the stack smaller or free a cell first, nothing was drained
 gtit.pocket.still.progress=Next batch in %ds
 gtit.pocket.still.idle=No distillable item
 gtit.pocket.still.no_aspect=This item yields no essentia
@@ -321,17 +321,26 @@ gtit.pocket.still.full=Essentia cells full, item not consumed
 gtit.pocket.still.unavailable=Thaumcraft not loaded
 gtit.pocket.still.over_cap=%d slot(s) exceed the per-aspect cap and were skipped (%d point(s))
 gtit.pocket.still.partial_skip=%d more slot(s) did not fit this round (%d point(s)); they retry next round
-gtit.pocket.essence.cursor_busy=Your cursor is holding something already; empty it before taking essence
-# ★R87-d crystal click-intake (left-click with a crystal on the cursor): one receipt per judgment state; the first three are sticky panel receipts, the success line carries tag and points (chat)
-gtit.pocket.essence.intake.not_crystal=Not holding an essence crystal: put one on the cursor, then click an essence cell
-gtit.pocket.essence.intake.no_owner=This crystal carries no essentia yet, nothing to deposit
-gtit.pocket.essence.intake.no_room=Not enough room in the essentia cells; the whole stack was left untouched
-gtit.pocket.essence.intake.ok=Deposited %s essentia: %d point(s) into the essentia cells
+gtit.pocket.essence.cursor_busy=Your cursor is holding something already; empty it before taking essentia phials
+# ★R88 载体改判（晶化源质 → TC 安瓿瓶）+ ★C3 聊天零输出：四态一律走面板内粘性回执。
+# ★intake.ok 刻意只留一个 %d：投递面是 NekoPocketPanel#putReceipt(key, moved, refused)，
+#   载荷只有两个整数、本地化在客户端做（receiptText 的 String.format 实参 = 两个 int）。
+#   旧形状的 %s 会被第一个整数塞位（读出 "Deposited 24 essentia ..."），故键名保留、占位改成单 %d。
+# ★键名 intake.not_crystal / Outcome.NOT_CRYSTAL 保留（改键名 = 改 Java 常量与测试对账，R88 不做）；
+#   含义已按 ★C2 扩成"瓶（现役）或带归属的旧晶（只读）"。
+gtit.pocket.essence.intake.not_crystal=Not holding an essentia phial: put a filled phial (or a legacy essentia crystal) on the cursor, then click an essentia cell
+gtit.pocket.essence.intake.no_owner=That phial carries no essentia yet, so there is nothing to deposit
+gtit.pocket.essence.intake.no_room=The essentia cells cannot hold this whole stack of phials: put in a smaller batch first, the stack was left untouched
+gtit.pocket.essence.intake.ok=Essentia deposited into the cells: %d point(s)
+# ★R88 C1（最小粒度 = 一瓶）的玩家可见三条：不足一瓶 / 取出与留盘并报 / 格级说明
+gtit.pocket.essence.not_enough_phial=This cell holds less than one full phial, so nothing was taken: %d point(s) are still in the tray
+gtit.pocket.essence.partial_leftover=Took %d point(s) as whole phials; %d point(s) stayed in the tray (below one full phial)
+gtit.pocket.essence.phial_note=Essentia leaves the tray only in whole phials: anything below %d point(s) stays behind in the cell
 gtit.pocket.aspect.cell=%s: %d/%d
 gtit.pocket.aspect.overflow_note=Aspects beyond the first %d are stored but not shown
 gtit.pocket.ghost.on=Filter slot: %s (right-click to clear)
 gtit.pocket.ghost.drag_hint=To filter this bar, drag §ea container that already holds the fluid§r (bucket / cell / large storage cell) from NEI onto it; fluid rows in a recipe book cannot be dragged at all (NEI does not make them draggable)
-gtit.pocket.essence.need_stock=This cell has no aspect yet: a filter can only be declared on a cell that has already yielded essentia - distill something first, then drag
+gtit.pocket.essence.need_stock=This cell has no aspect yet: a filter can only be declared on a cell that has already yielded essentia - distill something first, then drag a phial filled with that aspect onto it (in NEI each aspect is its own entry, tinted with that aspect's colour; the legacy crystal is a single NBT-less entry and can no longer be recognised)
 gtit.pocket.ghost.locked=Filter slots accept no player input
 # ★R84 fluid transfer receipts (each one is an "all-or-nothing abandoned" exit; missing one is silence again).
 # Deliberately placeholder-free: notifyCell passes varargs, extra args are harmless but a %s with no arg
@@ -365,6 +374,9 @@ gtit.pocket.note.title=How this panel works
 gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket only works while held in your main hand
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
 gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it)
+# ★R88 自立口径 C1 + C2 的"游戏内文案"面（项目纪律：自立口径要文案 + 交付说明双处可见）。
+# 一个 %d = 一瓶固定点数（PocketConstants.ESSENCE_OUT_UNIT_POINTS 填，lang 不写死规格数字）。
+gtit.pocket.note.phial=Essentia travels in TC phials of %d points each: taking essence out rounds down to whole phials and the remainder stays in the cell; essentia crystals are read-only now - a stack you still own dissolves back into the tray, but nothing produces one any more, and on the item-channel fallback one unit is a whole phial
 gtit.pocket.bind.summary=Bound cells: %d / %d
 gtit.pocket.bind.inert=%d legacy binding(s) are out of the served scope (only the first one runs); unbind all before switching
 gtit.pocket.channel.start=Start

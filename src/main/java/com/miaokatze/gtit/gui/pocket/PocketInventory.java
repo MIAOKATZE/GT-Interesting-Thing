@@ -7,6 +7,7 @@ import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
+import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
@@ -377,7 +378,12 @@ public final class PocketInventory {
 
             @Override
             public boolean isItemValid(int slot, ItemStack stack) {
-                return !isGhostItemSlot(slot);
+                // ★R88 B4（实机缺陷 1 的入口侧收口）：口袋自身不得进自家存储格。放进去之后，关屏时
+                // "承载口袋的栈"就在这个格里，三级归还（原格／按对象身份／自嵌）全落空 ⇒ 扣点只能 WARN
+                // 不落盘。E2 已给 writeSessionToCarrier 补了两档兜底，但兜底的前提是"事后找得到"，
+                // 入口放开就是继续留一条"能不能落盘看运气"的路。程序化写入（通道回写／ghost 搬空）
+                // 不经过 isItemValid，因此不受本条影响。
+                return !isGhostItemSlot(slot) && !(stack != null && stack.getItem() instanceof ItemNekoDimensionPocket);
             }
         };
     }

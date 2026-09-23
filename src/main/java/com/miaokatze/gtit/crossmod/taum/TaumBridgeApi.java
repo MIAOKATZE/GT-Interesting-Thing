@@ -66,7 +66,8 @@ public interface TaumBridgeApi {
     /**
      * 往容器里注入源质（合并语义：容器已有<b>不同</b> aspect 时整笔拒绝，不做混合、不清空）。
      * <p>
-     * 晶化源质不走本方法（1 点/个由 {@link #newCrystalStack} 产出新晶），返回 0。
+     * 晶化源质不走本方法（1 点/枚；★R88 载体改判后晶已退役为「只读不产」，见 {@link #newCrystalStack}
+     * 上那条 ★R88 注），返回 0。
      * <p>
      * <b>单容器语义</b>：本方法按「一个容器」写入，不拆堆也不改动 {@code stackSize}；
      * {@code stackSize > 1} 时改动的是整堆共享的 NBT，调用方须自行先拆成 1 个。
@@ -88,6 +89,12 @@ public interface TaumBridgeApi {
 
     /**
      * 产出晶化源质（1 点 = 1 个晶，可堆到 64）。
+     * <p>
+     * ★★<b>R88 载体改判后本方法已退役为「只读不产」</b>（自立口径 C2）：源质盘的点数、上传/下传的搬运件、
+     * 入槽与绑定接受的形状一律改走 {@link #newFilledContainer(String, int)}（一瓶
+     * {@code TaumDistillRules#PHIAL_CAPACITY} 点）。本方法与 {@code CRYSTAL_CAPACITY} 档位<b>保留</b>只为
+     * 识别<b>存档里已有的旧晶</b>——旧晶仍能被读回点数溶进盘，不吃件；但口袋任何一条路都不再产出晶，
+     * 生产调用方已归零。
      *
      * @param tag    aspect tag
      * @param points 点数，实际产出 {@code min(points, 64)} 个

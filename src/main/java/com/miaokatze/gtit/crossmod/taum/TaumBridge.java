@@ -33,8 +33,19 @@ import thaumcraft.common.lib.crafting.ThaumcraftCraftingManager;
  * {@code :79} 的 {@code aspects.put(tag,this)}）迭代序，数量不假设恰为 48（addon 可追加）</li>
  * <li>染色/显示名运行时取 {@link Aspect#getColor()} / {@link Aspect#getName()}（反编译转储的 int 常量不可信）</li>
  * <li>晶化源质 1 点/个（{@code TileEssentiaCrystalizer.java:293}）、源质瓶 8 点/次
- * （{@code ItemEssence.java:109-185}，meta 0 空瓶 / meta 1 装瓶）</li>
+ * （{@code ItemEssence.java:109-185}，meta 0 空瓶 / meta 1 装瓶、可堆 64 但<b>整叠共享同一份
+ * {@link AspectList}</b> ⇒ "一叠多少点" = 单件 amount × stackSize）</li>
  * </ul>
+ * <p>
+ * ★<b>R88 载体裁定</b>：口袋侧的源质搬运载体是<b>源质瓶</b>，不是晶化源质。本类里
+ * {@link #newFilledContainer(String, int)} / {@link #capacityOf(ItemStack)} /
+ * {@link #addEssentia(ItemStack, String, int)}（含 meta 0→1）/ {@link #drainAll(ItemStack)} /
+ * {@link #filledContainerCapacity()} 这一整条瓶能力自 R31 起实现完整却零调用方，本轮起被通道支
+ * （{@code PocketEssenceChannelOps}）、12 格注入支（{@code PocketSlots}）与面板取出支
+ * （{@code NekoPocketPanel}）接上，{@link #preferredContainerItem()} 同时<b>钉为瓶</b>。
+ * {@link #newCrystalStack(String, int)} 与档位 {@code TaumDistillRules#CRYSTAL_CAPACITY}
+ * <b>按裁定保留但退役为只读</b>：任何路径都不再产出晶，旧晶仍能被 {@link #readContainer(ItemStack)}
+ * 读回点数（不吃件）。
  * <p>
  * <b>禁止改动 TC 返回值</b>：{@code getObjectTags} 命中的是 {@code ThaumcraftApi.objectTags}
  * 注册表内<b>共享</b>的 {@link AspectList} 实例（{@code ThaumcraftCraftingManager.java:243/256/260}），
@@ -82,6 +93,14 @@ public final class TaumBridge implements TaumBridgeApi {
      * ★派生方向是"物化侧读取出侧"：取出上界是<b>我们的</b>设计量，TC 的堆叠上限是<b>外部的</b>事实；
      * 两者今天等值。若哪天 TC 把 64 改了，改的应该是<b>本行右边那个符号所代表的事实</b>——
      * 真到那一步就得把两枚常量拆开并在这里补一条"取 min"的判据，而不是让两边各自漂。
+     * <p>
+     * ★★<b>R88 起这条"同一事实的两面"不再成立，必须读成两件独立的事</b>：载体改判为源质瓶后，
+     * 一次取出动作的 64 点上限是 {@link PocketConstants#ESSENCE_OUT_MAX_POINTS_PER_ACTION}
+     * <b>自己</b>的设计量（= {@link PocketConstants#ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 瓶 ×
+     * {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点，见那里的派生式），而晶的 64 堆叠上限
+     * 只服务<b>退役只读支</b>（旧晶仍可被读回点数，但本仓不再产出晶 ⇒ 这一句唯一还有意义的地方是
+     * "万一外部产出晶，读它时别把叠数放大成负数/溢出"）。本行仍引用那个符号，是<b>刻意留下的旧链接</b>：
+     * 拆掉它会让"晶单堆 64"这条 TC 事实失去仓内锚点，留着它则必须连同本段一起读，不许只读常量名。
      */
     private static final int CRYSTAL_STACK_LIMIT = PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION;
 
@@ -210,7 +229,8 @@ public final class TaumBridge implements TaumBridgeApi {
     public int addEssentia(ItemStack stack, String tag, int points) {
         IEssentiaContainerItem container = asContainer(stack);
         if (container == null || points <= 0 || isCrystal(stack)) {
-            // 晶化源质以「产新晶」表达（newCrystalStack），就地注入会让 1 点/晶的口径失真
+            // 晶化源质从来不走"就地注入"：旧形状是产新晶（★R88 起连产新晶也退役，见 newCrystalStack 的注），
+            // 在这里往晶里灌源质会让 1 点/晶的口径失真，还会造出 TC 会随机重赋型的半吊子晶
             return 0;
         }
         try {
@@ -266,6 +286,10 @@ public final class TaumBridge implements TaumBridgeApi {
         }
     }
 
+    /**
+     * ★<b>R88：退役为只读支，本仓任何路径不得再调用本方法产出晶</b>（裁定 C2）。签名与实现按兄弟切片的
+     * 编译依赖原样保留；"旧晶仍能被读回点数"走的是 {@link #readContainer(ItemStack)}，不经过这里。
+     */
     @Override
     public ItemStack newCrystalStack(String tag, int points) {
         if (points <= 0) {
@@ -287,6 +311,14 @@ public final class TaumBridge implements TaumBridgeApi {
         }
     }
 
+    /**
+     * ★R88：本方法是<b>现役载体</b>的唯一出件口（面板取出、通道上传/下传、12 格回灌都用它）。
+     * <p>
+     * 调用方一律按"一次一只满瓶"传 {@code points == TaumDistillRules.PHIAL_CAPACITY}
+     * （= {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS}，C1 的整瓶粒度）；下面那句
+     * {@code Math.min} 只是<b>兜底</b>，不是给上层"半个瓶子"的许可 —— TC 的 {@code ItemEssence}
+     * 没有半瓶语义，半瓶会把自造形状送进第三方容器兼容面。
+     */
     @Override
     public ItemStack newFilledContainer(String tag, int points) {
         if (points <= 0) {
@@ -398,13 +430,28 @@ public final class TaumBridge implements TaumBridgeApi {
         return crystal;
     }
 
-    /** 出件时的首选容器：探测到的罐（TT 一类）优先，回落 TC 瓶 */
+    /**
+     * 出件时的首选容器。★<b>R88 裁定：钉为 TC 源质瓶</b>（{@code ItemEssence}，8 点/瓶、meta 0 空 /
+     * meta 1 满、可堆 64）。旧口径"探测到的第三方罐（TT 一类）优先、回落瓶"作废：口袋侧的取出粒度、
+     * 通道单位语义与 tooltip 文案全部按"一瓶 8 点"这一档真值算（
+     * {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS}），换罐就等于把该真值挂到一个本仓
+     * <b>拿不到容量证据</b>的容器上（罐只能落 {@link TaumDistillRules#CAPACITY_UNKNOWN}）。
+     * <p>
+     * 罐探测本身（{@link #vesselItem()}）<b>保留但降级为在场读数</b>：它现在只留下一条命中才打的 INFO，
+     * 不再是任何出件路径的落点。要彻底删它属独立裁决（它同时是 {@code TaumCompat.isThaumicTinkererLoaded()}
+     * 那条读数的存在理由）。
+     */
     private Item preferredContainerItem() {
-        Item found = vesselItem();
-        return found != null ? found : phialItem();
+        vesselItem();
+        return phialItem();
     }
 
-    /** 按名探测第三方罐；只在 TT 已加载时探一次，结果（含未命中）缓存 */
+    /**
+     * 按名探测第三方罐；只在 TT 已加载时探一次，结果（含未命中）缓存。
+     * <p>
+     * ★R88 起本方法的结果<b>不参与出件</b>（见 {@link #preferredContainerItem()}），只留下面这条
+     * 命中才打的在场读数 —— 文案因此不得再写成"优先使用"。
+     */
     private Item vesselItem() {
         if (!vesselProbed) {
             vesselProbed = true;
@@ -413,8 +460,10 @@ public final class TaumBridge implements TaumBridgeApi {
                     Item found = lookupIn(MODID_THAUMIC_TINKERER, candidate);
                     if (found instanceof IEssentiaContainerItem) {
                         vessel = found;
-                        GTInterestingThing.LOG
-                            .info("[GTIT-Taum] 源质容器优先使用 {}:{} 而非源质瓶", MODID_THAUMIC_TINKERER, candidate);
+                        GTInterestingThing.LOG.info(
+                            "[GTIT-Taum] 检测到第三方源质容器 {}:{}（★R88 起仅作在场读数，" + "出件载体钉为 TC 源质瓶）",
+                            MODID_THAUMIC_TINKERER,
+                            candidate);
                         break;
                     }
                 }
