@@ -12,7 +12,6 @@ import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
-import com.cleanroommc.modularui.screen.ModularContainer;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.DoubleSyncValue;
@@ -1278,7 +1277,6 @@ public final class NekoPocketPanel implements PocketSession {
         }
         return left.getItem() == right.getItem() && left.getItemDamage() == right.getItemDamage();
     }
-
 
     // ------------------------------------------------------------------ 回执（R39b/R10：模式与结果都只由服务端下发）
 

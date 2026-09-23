@@ -548,9 +548,11 @@ final class NekoPocketServerHandler {
             return;
         }
         final EntityPlayer target = panel.player();
-        final PocketEssenceIntake.Result result = PocketEssenceIntake
-            .intake(target.inventory.getItemStack(), panel.inventory()
-                .essence(), EssenceGate.TAUM);
+        final PocketEssenceIntake.Result result = PocketEssenceIntake.intake(
+            target.inventory.getItemStack(),
+            panel.inventory()
+                .essence(),
+            EssenceGate.TAUM);
         // ★L3（[PocketR89]）：四态 Outcome 读数（D1：空瓶误入槽的纵深防御是否真的在拒）
         GTInterestingThing.LOG
             .debug("[PocketR89] L3 入槽执行：outcome={} tag={} points={}", result.outcome, result.tag, result.points);
@@ -591,10 +593,12 @@ final class NekoPocketServerHandler {
         // ★L8（[PocketR89]，服务端入口）：请求原文 + 判定结论——与客户端发送侧读数（L8 拖入栈 dump /
         // L9 拒收回读）拼成 U2（MUI2/NEI 交付栈是否保 NBT）的完整裁决链：客户端 dump 有 NBT 而此处
         // 无请求到达 ⇒ 发送前置问题；此处有请求且载荷带 tag ⇒ NBT 保住了。
-        final PocketGhostRequest.Decision decision = PocketGhostRequest
-            .apply(request, panel.inventory()
-                .filters(), panel.inventory()
-                    .essence());
+        final PocketGhostRequest.Decision decision = PocketGhostRequest.apply(
+            request,
+            panel.inventory()
+                .filters(),
+            panel.inventory()
+                .essence());
         GTInterestingThing.LOG.debug(
             "[PocketR89] L8 ghost 请求到达服务端：{} ⇒ outcome={} kind={} slot={}",
             request,

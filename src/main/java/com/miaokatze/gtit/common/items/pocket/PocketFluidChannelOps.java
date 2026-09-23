@@ -83,8 +83,8 @@ final class PocketFluidChannelOps {
         final boolean writable = handler.getAccess()
             .hasPermission(AccessRestriction.WRITE);
         final boolean acceptable = handler.canAccept(request);
-        final IAEFluidStack leftover = (IAEFluidStack) handler.injectItems(request, Actionable.MODULATE,
-            PocketAeChannelOps.actionSource());
+        final IAEFluidStack leftover = (IAEFluidStack) handler
+            .injectItems(request, Actionable.MODULATE, PocketAeChannelOps.actionSource());
         final long leftoverSize = leftover == null ? 0L : leftover.getStackSize();
         final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requested, leftoverSize);
         final int moved = (int) Math.max(0L, requested - leftoverSize);
@@ -130,8 +130,9 @@ final class PocketFluidChannelOps {
             : ops.session()
                 .fluidBarRoom(tank, new FluidStack(fluid, 1));
         if (room <= 0) {
-            return new PocketChannelOps.Outcome(ops.session() == null ? PocketReceipt.NO_CHANNEL
-                : PocketReceipt.TARGET_FULL, 0);
+            return new PocketChannelOps.Outcome(
+                ops.session() == null ? PocketReceipt.NO_CHANNEL : PocketReceipt.TARGET_FULL,
+                0);
         }
         final int request = fluidRequestFor(room, count);
         final IAEFluidStack probe = AEFluidStack.create(new FluidStack(fluid, request));
@@ -139,16 +140,16 @@ final class PocketFluidChannelOps {
             return new PocketChannelOps.Outcome(PocketReceipt.LOST, 0);
         }
         ops.rememberPrototype(filter.key(), probe);
-        final IAEFluidStack simulated = (IAEFluidStack) handler.extractItems(probe, Actionable.SIMULATE,
-            PocketAeChannelOps.actionSource());
+        final IAEFluidStack simulated = (IAEFluidStack) handler
+            .extractItems(probe, Actionable.SIMULATE, PocketAeChannelOps.actionSource());
         final long available = simulated == null ? 0L : simulated.getStackSize();
         if (available <= 0L) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
         final int want = fluidRequestFor((int) available, Math.min(room, PocketFilterConfig.resolveCap(filter, 0)));
         probe.setStackSize(want);
-        final IAEFluidStack taken = (IAEFluidStack) handler.extractItems(probe, Actionable.MODULATE,
-            PocketAeChannelOps.actionSource());
+        final IAEFluidStack taken = (IAEFluidStack) handler
+            .extractItems(probe, Actionable.MODULATE, PocketAeChannelOps.actionSource());
         final long takenAmount = taken == null ? 0L : taken.getStackSize();
         if (takenAmount <= 0L) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
