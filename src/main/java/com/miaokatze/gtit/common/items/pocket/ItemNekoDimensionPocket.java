@@ -32,6 +32,7 @@ import com.miaokatze.gtit.register.CreativeTabManager;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
+import gregtech.api.metatileentity.BaseMetaTileEntity;
 
 /**
  * 猫猫次元口袋（需求 1–5 的载体物品）。
@@ -125,6 +126,37 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
 
     /** 一次性日志闩：只报第一次点击的结果，成功与失败各占一次判读面。 */
     private boolean openLogged = false;
+
+    // ------------------------------------------------------------------ 世界交互入口（R90 S6 新功能 N）
+
+    /**
+     * ★新功能 N（AUQ-④=<b>b 潜行手势</b>）：<b>潜行</b>手持口袋右击 GT5U 机器 ⇒ 抽机器流体进流体槽。
+     * <p>
+     * 本方法是整个功能在 1.7.10 交互序里的<b>唯一正确拦截点</b>（反编译树 {@code ItemInWorldManager
+     * #activateBlockOrUseItem}:393 最先调它，true 即终止后续、方块激活(:409)与 onItemUse(:422) 不再跑）。
+     * 三条铁律（计划 §3-S6 + wiki 教训 {@code server-interaction-order-onitemusefirst}）：
+     * <ol>
+     * <li><b>客户端必须 {@code return false}</b>：拦截类物品客户端返回 true 则 C08 不发、服务端收不到交互；</li>
+     * <li><b>非潜行一律 {@code return false} 永不拦截</b>：机器 GUI 原语义（开门/开盖 GUI）完整可达
+     * （GT 机器对非潜行右击自己消费交互，写在 {@code onItemUse} 里的功能永不可达——那条老路不走）；</li>
+     * <li>目标不是 GT 机器（非 {@code BaseMetaTileEntity}）⇒ {@code return false} 完整放行原方块交互。</li>
+     * </ol>
+     * 实收 &gt;0 才 {@code return true} 拦截；一切「没搬动」的结局都 {@code return false}（聊天判因回执
+     * 由 {@link PocketWorldFluidTap} 发，键前缀 {@code gtit.pocket.world.}）。服务端 true 后同一交互
+     * <b>不会</b>再触发 {@link #onItemRightClick}（后者只由空气点击触发）⇒ 抽液与开口袋互不串门。
+     * 持久化按 F1 双分支（活会话走会话模型 / 无会话一次性 NBT 读改写），见适配器类 javadoc。
+     */
+    @Override
+    public boolean onItemUseFirst(ItemStack stack, EntityPlayer player, World world, int x, int y, int z, int side,
+        float hitX, float hitY, float hitZ) {
+        if (world.isRemote || !player.isSneaking()) {
+            return false;
+        }
+        if (!(world.getTileEntity(x, y, z) instanceof BaseMetaTileEntity tile)) {
+            return false;
+        }
+        return PocketWorldFluidTap.tap(player, stack, tile);
+    }
 
     /** ★定位"右键无反应"用的诊断计数（双端各走一遍 buildUI，故按总量限流）。 */
     private static int diagLogged = 0;

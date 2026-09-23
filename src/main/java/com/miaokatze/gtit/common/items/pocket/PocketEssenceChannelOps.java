@@ -11,13 +11,13 @@ import com.miaokatze.gtit.common.items.infinitycell.InfinityStackTypes;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 import appeng.api.config.AccessRestriction;
 import appeng.api.config.Actionable;
 import appeng.api.storage.IMEInventoryHandler;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
-import appeng.util.item.AEItemStack;
 
 /**
  * 口袋通道的<b>源质支</b>（注入 + 抽取 + 通道单位换算）。
@@ -29,16 +29,20 @@ import appeng.util.item.AEItemStack;
  * {@code rememberPrototype} / {@code actionSource()}），{@code PocketAeChannelOps} 的
  * {@code inject}/{@code extract} 分派口委派过来。世界触点仍只在服务端一侧，本类不直接碰 tile。
  * <p>
- * ★★<b>R88 载体改判（用户裁定）：搬运载体 = TC 安瓿瓶 {@code ItemEssence}，一瓶 8 点</b>。
- * 本类的两条路与三段算术都随之换档，三条硬口径现在是：
+ * ★★<b>R88 载体改判（用户裁定）：搬运载体 = TC 安瓿瓶 {@code ItemEssence}，一瓶 8 点</b>；
+ * ★★<b>R90 E2（AUQ-①=B）：上传永不产瓶</b>——盘内源质的上传只允许走「源质原生通道」
+ * （运行时探针判定，单源在 {@link EssenceNativeChannels}），无源质原生通道 ⇒ {@code NO_CHANNEL}
+ * 拒收回执；<b>任何形态的「物化成瓶塞进物品通道」的兜底都已删除</b>。瓶只存在于玩家手动取用
+ * （取出口径另一片）与 GUI 游标。本类的两条路与三段算术都按此换档，三条硬口径现在是：
  * <ul>
  * <li><b>不猜第三方 mod 的私有栈格式</b>（R31/R44a）：用 {@code IAEStackType.convertStackFromItem}
- * 以<b>自家装满的源质瓶</b>为探针反算"1 瓶 = 多少通道单位"；换不到 ⇒ 一次性 INFO 后按
- * "这条通道收不了源质"收口，绝不 {@code instanceof} 具体物品类。</li>
- * <li><b>单位语义</b>：口袋里"一点源质"经这条通道出去时不再是一枚晶折算的单位，而是
- * <b>一只满瓶（{@value TaumDistillRules#PHIAL_CAPACITY} 点）折算的单位</b>；实际倍率仍由对应 mod 的
- * {@code convertStackFromItem} 决定，本仓不写死。★代价（必须同时写进 tooltip 与交付说明）：
- * 走物品通道兜底时，"1 单位"从 1 点抬到 8 点，且<b>不足一瓶的零头两头都不搬</b>（下一条）。</li>
+ * 以<b>自家装满的源质瓶</b>为探针反算"1 瓶 = 多少通道单位"；换不到 ⇒ 不是源质原生通道
+ * （上传侧 {@code NO_CHANNEL} 拒收、抽取侧一次性 INFO 后 {@code NO_CHANNEL}），绝不
+ * {@code instanceof} 具体物品类。</li>
+ * <li><b>单位语义</b>：口袋里"一点源质"经这条通道出去时是一<b>只满瓶折算的通道单位</b>
+ * （{@value TaumDistillRules#PHIAL_CAPACITY} 点）；实际倍率仍由对应 mod 的
+ * {@code convertStackFromItem} 决定，本仓不写死。★R90 起<b>只有源质原生通道有"单位"可言</b>
+ * ——物品通道的"1 单位 = 1 只瓶"口径随兜底一起删除；<b>不足一瓶的零头两头都不搬</b>（下一条）。</li>
  * <li><b>整瓶粒度（裁定 C1）</b>：上传与下传的点数都先经 {@link TaumDistillRules#floorToPhialUnits(int)}
  * 向下取整到 8 的倍数 ⇒ 零头<b>留在原侧</b>（上传侧留盘、下传侧留元件），绝不为凑零头造半瓶；
  * 旧形状"零头不足 1 晶不扣自己的点"仍然是这条纪律的特例。</li>
@@ -63,16 +67,18 @@ final class PocketEssenceChannelOps {
     /**
      * ★R86（缺陷 3）：口袋源质表 → 元件的<b>第三方源质</b>通道（推送向）。
      * <p>
-     * ★R88 换载体后与 {@code extractEssence} 仍严格镜像：两边都用
-     * {@code IAEStackType#convertStackFromItem} 以<b>一只装满的源质瓶</b>（
-     * {@link TaumCompat#newFilledContainer(String, int)}，一瓶
-     * {@value TaumDistillRules#PHIAL_CAPACITY} 点）反算/正算同一个"1 瓶 = 多少通道单位"，
-     * 换算拿不到 ⇒ 判"这条通道收不了源质"，一次性 INFO 后按 {@code OK} 跳过
-     * （R31/R44a：不猜 AE2 私有格式、不 {@code instanceof} 具体物品类）。
+     * ★R90 E2（AUQ-①=B，路由修复）：<b>只允许走「源质原生通道」</b>——方法一进来就用
+     * {@link EssenceNativeChannels#nativeProbe}（满瓶探针 + {@code convertStackFromItem}，单源）
+     * 判这条 (通道, tag) 对；判不是（内建物品/流体、换不动的第三方、TC 缺席）⇒ 直接
+     * {@code NO_CHANNEL} 拒收，由 Runner 的 {@code essenceNoChannel} 计数进既有回执链
+     * （面板 {@code receiptOfReport} → {@code gtit.pocket.receipt.no_channel}）<b>非静默</b>面呈。
+     * <b>物品通道兜底（AEItemStack.create(瓶)）已彻底删除：上传永不产瓶</b>——上载链路里不再出现
+     * 任何瓶形态，瓶只存在于玩家手动取用（取出口径另一片）与 GUI 游标。
      * <p>
-     * ★<b>单位语义</b>（tooltip 与交付说明双处声明）：出去的是<b>整瓶折算的通道单位</b>，倍率由对应 mod
+     * ★<b>单趟探针</b>：同一只探针栈既当"路由门"又当倍率源（{@code unit}），不再像旧形状那样
+     * 造两次满瓶各探一遍。★<b>单位语义</b>：出去的是<b>整瓶折算的通道单位</b>，倍率由对应 mod
      * 决定、本仓不写死；★<b>整瓶粒度</b>（裁定 C1）：本轮要搬的点数先向下取整到 8 的倍数，
-     * <b>余数留在盘里且不扣点</b>（旧形状"1 点 = 1 枚晶"下这条取整是恒等操作，所以本轮才第一次有实际后果）。
+     * <b>余数留在盘里且不扣点</b>。
      */
     static PocketChannelOps.Outcome injectEssenceSource(PocketAeChannelOps ops, PocketChannelOps.SourceSlot source,
         String diskuuid, String typeId) {
@@ -92,6 +98,14 @@ final class PocketEssenceChannelOps {
             // 该 tag 已被玩家取空（快照之后就变了）⇒ 跳过，不搬不扣
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
+        // ★R90 E2（AUQ-①=B）：路由门在 handler 解析之前——不是源质原生通道就没有"能不能收"可问，
+        // 直接 NO_CHANNEL 拒收（回执链在 Runner/Panel 侧非静默），绝不落回任何物品形态的兜底。
+        final IAEStack<?> probe = EssenceNativeChannels.nativeProbe(type, tag);
+        if (probe == null || probe.getStackSize() <= 0L) {
+            logRouteReading(type.getId(), tag, false);
+            return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
+        }
+        logRouteReading(type.getId(), tag, true);
         final PocketAeChannelOps.Found found = ops.foundOfCached(diskuuid);
         final IMEInventoryHandler handler = ops.handlerOfCached(found, type, diskuuid);
         if (handler == null) {
@@ -103,17 +117,8 @@ final class PocketEssenceChannelOps {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
         final int wantCarriers = TaumDistillRules.phialCountFor(wantPoints);
-        final ItemStack singleCarrier = newFilledPhial(tag);
-        final IAEStack<?> perCarrier = essenceStackFor(type, singleCarrier);
-        if (perCarrier == null || perCarrier.getStackSize() <= 0L) {
-            logUnmaterializableOnce(type.getId(), tag);
-            return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
-        }
-        final long unit = perCarrier.getStackSize();
-        final IAEStack<?> probe = essenceStackFor(type, newFilledPhial(tag));
-        if (probe == null) {
-            return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
-        }
+        // ★单趟：门与倍率同源（同一只探针），不再二次造瓶二次换算
+        final long unit = probe.getStackSize();
         probe.setStackSize(unitsForCarriers(wantCarriers, unit));
         final long requestedUnits = probe.getStackSize();
         ops.rememberPrototype(source.contentKey, probe);
@@ -129,6 +134,19 @@ final class PocketEssenceChannelOps {
         final int drained = moved <= 0 ? 0
             : ops.session()
                 .drainEssence(tag, moved);
+        // ★R90 E2 L5（debug）：扣点后的落账读数——storeVersion 是源质盘自己的单调写计数
+        // （非消费式"脏"读数），置脏单点化（E1）之后这里只留观测，不参与任何判定。
+        GTInterestingThing.LOG.debug(
+            "[PocketR89] L5 源质上传扣点：tag={} want={} moved={} drained={} storeVersion={}",
+            tag,
+            wantPoints,
+            moved,
+            drained,
+            ops.session()
+                .essence() == null ? -1L
+                    : ops.session()
+                        .essence()
+                        .contentVersion());
         if (moved > 0 && drained < moved) {
             // 扣点少于搬运量 ⇒ 把<b>差额</b>原路注回元件。★R88 修正一处旧形状：旧代码回补的是整笔
             // {@code moved}（而不是 {@code moved - drained}），等于凭空多塞给元件一份源质；
@@ -140,17 +158,10 @@ final class PocketEssenceChannelOps {
     }
 
     /**
-     * 造一只<b>装满</b>的源质瓶 —— 本类唯一允许的物品形状出口（★R88：不再有任何 {@code newCrystalStack}
-     * 调用，裁定 C2「晶只读不产」在本类的执行形态）。
+     * ★R90 E2（债①收口）：本类<b>不再有"造一只装满的瓶"的私有出件函数</b>——通道侧的满瓶容器只余
+     * <b>只读探针/读回</b>用途（下传的倍率换算与容器读回校验），探针构造单源在
+     * {@link EssenceNativeChannels}；面向玩家的取瓶物化归<b>取出口径</b>（另一片）单源负责。
      * <p>
-     * 单独成函数是因为三条路（上传探针、下传探针、下传落盘时的读回）都必须拿<b>同一档</b>容器：
-     * 粒度取 {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS}，不许在这里出现字面 8。
-     */
-    private static ItemStack newFilledPhial(String tag) {
-        return TaumCompat.newFilledContainer(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
-    }
-
-    /**
      * 把"已经在元件侧但口袋里没扣成"的点数按<b>整瓶</b>折算注回该通道。
      * <p>
      * 向下取整是刻意的：不足一瓶的零头<b>无法</b>用一只瓶表达（C1 不许半瓶），这部分只能显式承认，
@@ -164,7 +175,9 @@ final class PocketEssenceChannelOps {
         final int carriers = TaumDistillRules.phialCountFor(points);
         final int refundable = carriers * PocketConstants.ESSENCE_OUT_UNIT_POINTS;
         if (refundable > 0) {
-            final IAEStack<?> back = essenceStackFor(type, newFilledPhial(tag));
+            final IAEStack<?> back = essenceStackFor(
+                type,
+                TaumCompat.newFilledContainer(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS));
             if (back != null) {
                 back.setStackSize(unitsForCarriers(carriers, unitPerCarrier));
                 handler.injectItems(back, Actionable.MODULATE, PocketAeChannelOps.actionSource());
@@ -191,6 +204,9 @@ final class PocketEssenceChannelOps {
      * {@code TaumDistillRules.CRYSTAL_CAPACITY}，按裁定 C2 只保留"读得回旧晶"的识别，不再有产出）。
      * 换算拿不到 ⇒ 判"该通道不可物化"，一次性 INFO 后按 {@code NO_CHANNEL} 收口
      * （R31/R44a：不 {@code instanceof} 任何具体物品类）。
+     * ★R90 E2（下传对称）：消费侧同样只认<b>源质原生通道</b>——{@code essenceStackFor} 的物品通道
+     * 特判删除后，旧档的 {@code e:item:<tag>} 声明换不出探针 ⇒ 每次 {@code NO_CHANNEL}，经 Runner
+     * 的 {@code essenceNoChannel} 计数进面板回执（<b>非静默</b>）；声明侧已不再写出这种键。
      * <p>
      * ★★<b>R88 改判：落点不再是物品栏</b>。旧实现在这里 {@code newCrystalStack(...)} 物化整晶后调
      * {@code session().depositItem(...)}（＝用户报的"下传变成结晶落在格子里"）。现在是
@@ -228,7 +244,7 @@ final class PocketEssenceChannelOps {
         if (wantPoints <= 0) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
-        final ItemStack carrier = newFilledPhial(filter.tag);
+        final ItemStack carrier = TaumCompat.newFilledContainer(filter.tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
         final IAEStack<?> perCarrier = essenceStackFor(type, carrier);
         if (perCarrier == null || perCarrier.getStackSize() <= 0L) {
             logUnmaterializableOnce(type.getId(), filter.tag);
@@ -245,7 +261,9 @@ final class PocketEssenceChannelOps {
         if (wantCarriers <= 0) {
             return new PocketChannelOps.Outcome(PocketReceipt.TARGET_FULL, 0);
         }
-        final IAEStack<?> probe = essenceStackFor(type, newFilledPhial(filter.tag));
+        final IAEStack<?> probe = essenceStackFor(
+            type,
+            TaumCompat.newFilledContainer(filter.tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS));
         if (probe == null) {
             return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
@@ -266,7 +284,8 @@ final class PocketEssenceChannelOps {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
         // ---- 读容器 → 入账 → 消耗容器（本地临时栈，读完即弃 ⇒ 不落物品槽）----
-        final int pointsPerCarrier = pointsOf(newFilledPhial(filter.tag));
+        final int pointsPerCarrier = pointsOf(
+            TaumCompat.newFilledContainer(filter.tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS));
         if (pointsPerCarrier <= 0) {
             // 桥说容器装好了、读回来却是空 ⇒ TC 版本漂移，宁可把这批原路注回，也不凭空记点数
             refundUnits(handler, type, filter.tag, takenCarriers * PocketConstants.ESSENCE_OUT_UNIT_POINTS, unit);
@@ -313,24 +332,21 @@ final class PocketEssenceChannelOps {
     }
 
     /**
-     * ★<b>R86（审查 B1）／R88 换载体</b>：把"一只装满的源质瓶"换算成<b>该通道自己</b>的堆栈形态；
-     * 换不到 ⇒ null。（旧实现探针物是"一枚/一叠晶化源质"，★R88 起本类不再产出晶，见类注释 C2。）
+     * ★R86（审查 B1）／R88 换载体／★R90 E2 删特判：把"一只装满的源质瓶"换算成<b>该通道自己</b>的
+     * 堆栈形态；换不到 ⇒ null。
      * <p>
-     * 物品通道必须开特判，不是可选优化：AE2 的 {@code AEItemStackType#convertStackFromItem} 是
-     * <b>无条件 {@code return null}</b> 的实现（{@code appeng/util/item/AEItemStackType.java:90-92}，
-     * rv3-beta-1050 与归档的 beta-1000 两份参考树逐字相同）——"物品 → 物品堆"那条换算它压根不走这个口。
-     * 而 R86 把源质声明的 {@code typeId} 回落到 {@code ITEM_STACK_TYPE}（缺陷 4 乙，用户裁定），
-     * 于是若仍按通用探针对待，结果就是<b>声明被接受、遮罩画出来、抽取与注入永远 {@code NO_CHANNEL}／
-     * 无事发生</b>的谎报面。特判直接 {@code AEItemStack.create(瓶)}，单位量天然为 1
-     * （一只瓶 = 一个物品堆单元），故 {@link #carriersFromUnits} / {@link #unitsForCarriers}
-     * 两侧都退化成恒等，不需要新算式。★玩家可见代价（C2 明写）：走这条兜底时"1 单位"= 一只瓶 = 8 点。
+     * ★R90（AUQ-①=B，上传永不产瓶）：对 {@code ITEM_STACK_TYPE} 的特判（直接
+     * {@code AEItemStack.create(瓶)}）已<b>删除</b>——AE2 的 {@code AEItemStackType#convertStackFromItem}
+     * 本就无条件 {@code return null}（"物品 → 物品堆"不走这个口），于是源质对物品通道恒返 null ⇒
+     * 注入探针跳过、回补跳过、抽取侧 {@code NO_CHANNEL}（经 Runner 的 {@code essenceNoChannel}
+     * 计数进面板回执，非静默）。旧档的 {@code e:item:<tag>} 声明因此成为<b>死声明</b>：不搬运、
+     * 每次抽取记一次拒收；声明侧已不再写出这种键（{@code NekoEssenceGhostCell#channelTypeId}
+     * 的物品回落已一并收口）。运行时"是不是源质原生通道"的门禁另有单源：
+     * {@link EssenceNativeChannels#nativeProbe}。
      */
     private static IAEStack<?> essenceStackFor(IAEStackType<?> type, ItemStack carrier) {
         if (type == null || carrier == null) {
             return null;
-        }
-        if (type == InfinityStackTypes.ITEM_STACK_TYPE) {
-            return AEItemStack.create(carrier);
         }
         return type.convertStackFromItem(carrier);
     }
@@ -364,6 +380,25 @@ final class PocketEssenceChannelOps {
     private static void logUnmaterializableOnce(String typeId, String tag) {
         if (LOG_UNMATERIALIZED.add(typeId + '#' + tag)) {
             LOG.info("[gtit] 口袋源质支：通道 {} 的条目（tag={}）无法物化为源质瓶，该声明按不可物化跳过", typeId, tag);
+        }
+    }
+
+    /** ★R90 E2 L12：路由读数的去重集（「命中/缺席 × 通道 × tag」一条一行；短效通道每秒一批都会撞同一对，必须去重）。 */
+    private static final java.util.Set<String> LOG_ESSENCE_ROUTES = new java.util.LinkedHashSet<>();
+
+    /**
+     * ★R90 E2 L12：未声明 tag 的路由读数（节流）——源质原生通道<b>命中</b>（debug，本条只证判据在跑）
+     * 与<b>缺席</b>（INFO；玩家侧另有面板拒收回执兜底，这里只留服务端痕迹）各报一次。
+     */
+    private static void logRouteReading(String typeId, String tag, boolean nativeHit) {
+        if (!LOG_ESSENCE_ROUTES.add((nativeHit ? "hit:" : "miss:") + typeId + '#' + tag)) {
+            return;
+        }
+        if (nativeHit) {
+            GTInterestingThing.LOG.debug("[PocketR89] L12 源质上传路由命中：通道 {} 是源质原生通道（tag={}）", typeId, tag);
+        } else {
+            GTInterestingThing.LOG
+                .info("[PocketR89] L12 源质上传路由缺席：通道 {} 不是源质原生通道（tag={}）⇒ 按 NO_CHANNEL 拒收（本条只报一次）", typeId, tag);
         }
     }
 }

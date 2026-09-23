@@ -2,6 +2,9 @@ package com.miaokatze.gtit.common.items.pocket;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 通道的一次批次（R9/R11/R12）：外层按<b>绑定序</b>遍历元件，内层遍历该元件的<b>全部可用通道</b>
@@ -28,6 +31,9 @@ import java.util.List;
  */
 public final class PocketChannelRunner {
 
+    /** ★R90 E2 L6：批序号（纯 debug 读数，不参与任何判定；三条批入口都经 {@link #flush} 各记一次）。 */
+    private static final AtomicLong BATCH_SERIAL = new AtomicLong();
+
     private PocketChannelRunner() {}
 
     /** 一批的统计与待发 delta（GUI 回执码与网络通知都读它）。 */
@@ -49,6 +55,16 @@ public final class PocketChannelRunner {
         public int lost;
         /** 无可用电通道的次数。 */
         public int noChannel;
+        /**
+         * ★R90 E2（AUQ-①=B）：<b>源质载荷</b>因「无源质原生通道」被拒的次数（注入向 = 源质来源撞上
+         * 非原生通道；抽取向 = 源质声明换不出探针，含旧档 {@code e:item:} 死声明）。
+         * <p>
+         * 它<b>计入 {@link #failures()}</b>而普通 {@link #noChannel} 仍不计（R85 A3 的钉子不动）：
+         * 面板回执链（{@code NekoPocketPanel#performChannelRequest} 的"全失败退款"口径）只认
+         * {@code failures() > 0} 才走 {@code receiptOfReport}——不单列这一项，「整批只有源质无处可上」
+         * 会被吞成 {@code nothing_to_do}（静默），恰好违背 AUQ-①=B 的"拒收必须面呈"裁定。
+         */
+        public int essenceNoChannel;
         /** 最后一个回执码，供 GUI 直接取用。 */
         public PocketReceipt lastReceipt;
         /** 本批累计的带符号变化量（注入为正、抽取为负）。 */
@@ -59,9 +75,13 @@ public final class PocketChannelRunner {
             return transferred > 0;
         }
 
-        /** 需要向玩家解释的失败次数（拒收 + 满 + 落点满 + 无权限 + 失联）。 */
+        /**
+         * 需要向玩家解释的失败次数（拒收 + 满 + 落点满 + 无权限 + 失联 + ★R90 E2 的源质无原生通道拒收）。
+         * 普通的无通道（{@link #noChannel}）仍<b>不</b>计入——它不停批也不是"哪条声明挡住了全队"
+         * 那种失败（R85 A3 的既有钉子）；源质那一支单列进 {@link #essenceNoChannel}。
+         */
         public int failures() {
-            return filterRejected + full + targetFull + noAccess + lost;
+            return filterRejected + full + targetFull + noAccess + lost + essenceNoChannel;
         }
     }
 
@@ -149,6 +169,7 @@ public final class PocketChannelRunner {
         target.noAccess += addition.noAccess;
         target.lost += addition.lost;
         target.noChannel += addition.noChannel;
+        target.essenceNoChannel += addition.essenceNoChannel;
         target.deltas.addAll(addition.deltas);
         if (addition.lastReceipt != null && (target.lastReceipt == null || isFailureReceipt(addition.lastReceipt)
             || !isFailureReceipt(target.lastReceipt))) {
@@ -261,6 +282,11 @@ public final class PocketChannelRunner {
                     // ★R85 A3：这条现在不停批了，但必须留痕——R84 改判后 Report.noChannel 全仓零读者，
                     // "这只元件没有该通道"既不计也不说，玩家只看到"通道开了却没动静"。
                     report.noChannel++;
+                    if (filter instanceof PocketFilterConfig.EssenceFilter) {
+                        // ★R90 E2（下传对称）：源质声明换不出探针（含旧档 e:item: 死声明）⇒ 同一档
+                        // 玩家可解释失败，进 failures() 走面板回执（非静默），见注入侧同处注释。
+                        report.essenceNoChannel++;
+                    }
                 }
                 if (outcome.receipt.stopsExtractBatch()) {
                     accountFailure(report, outcome.receipt);
@@ -354,6 +380,13 @@ public final class PocketChannelRunner {
                 // ★R87（饿死收窄）：这条通道收不了这个来源——是"这一格对这一通道"的属性，
                 // 计数留痕（与抽取侧 R85 A3 同一条纪律）后跳过该来源继续，不再停批。
                 report.noChannel++;
+                if (source.kind == PocketChannelOps.SourceKind.ESSENCE) {
+                    // ★R90 E2（AUQ-①=B）：源质上传只认源质原生通道——这一条 NO_CHANNEL 是
+                    // 「盘内源质无处可上」的玩家可解释失败，单列进 failures()，让面板既有回执链
+                    // （receiptOfReport → gtit.pocket.receipt.no_channel）在"整批只有这一种失败"时
+                    // 也走得进映射，不再被"全失败退款"口径吞成 nothing_to_do。
+                    report.essenceNoChannel++;
+                }
                 continue;
             }
             if (outcome.receipt.stopsInjectBatch()) {
@@ -392,6 +425,13 @@ public final class PocketChannelRunner {
      * 只调一次，仍是"批尾一次通知"。
      */
     private static void flush(Report report, PocketChannelOps ops) {
+        // ★R90 E2 L6（debug）：每批一条服务序号读数——零搬运的批也记（flush 的空批早退之前），
+        // 与"这批到底有没有跑"的服务端痕迹对得上；debug 级别默认不打，不构成刷屏面。
+        GTInterestingThing.LOG.debug(
+            "[PocketR89] L6 通道批 #{}：服务 {} 对，搬运 {} 点",
+            BATCH_SERIAL.incrementAndGet(),
+            report.pairsServed,
+            report.transferred);
         if (report.deltas.isEmpty()) {
             return;
         }

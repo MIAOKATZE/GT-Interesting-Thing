@@ -80,6 +80,9 @@ import appeng.util.item.AEItemStack;
  * 为探针、1 点 = 1 晶、物化成晶进口袋真实栏"）。现在的单位语义是
  * <b>1 只瓶 = {@value com.miaokatze.gtit.crossmod.taum.TaumDistillRules#PHIAL_CAPACITY} 点</b>，
  * 且两侧都按<b>整瓶</b>向下取整、零头留在原侧（裁定 C1）；旧晶只保留"读得回点数"的识别支（C2 只读不产）。
+ * ★R90 E2（AUQ-①=B）：满瓶探针<b>不再有物品通道兜底</b>——"是不是源质原生通道"由
+ * {@link EssenceNativeChannels} 单源判定，上传/下传都只走原生通道；无原生通道 ⇒ {@code NO_CHANNEL}
+ * 拒收（经 {@code PocketChannelRunner.Report#essenceNoChannel} 进面板回执，非静默），<b>上传永不产瓶</b>。
  * 不猜第三方 mod 的私有栈格式这一条 R15/R31 起未变。
  * 本类只在 {@link #inject}/{@link #extract} 的分派口委派过去。</li>
  * </ul>
@@ -297,7 +300,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * <p>
      * 键用 {@code essenceKey("", tag)}：口袋里的一点源质<b>不属于任何 AE2 通道</b>，typeId 那一段
      * 天然为空（读侧 {@code parseKey} 会解出 {@code typeId == ""}，见其"按最后一个分隔符切"的注释）。
-     * 哪条通道收得下由 {@link #injectEssenceSource} 现场用 {@code convertStackFromItem} 探针判。
+     * ★R90 E2：哪条通道收得下由 {@link PocketEssenceChannelOps#injectEssenceSource} 经
+     * {@link EssenceNativeChannels}（满瓶探针 + {@code convertStackFromItem}，单源）判——<b>只认
+     * 源质原生通道</b>，缺席按 {@code NO_CHANNEL} 拒收，不再有任何物品通道兜底。
      */
     private void appendEssenceSources(List<SourceSlot> slots) {
         for (Map.Entry<String, Integer> entry : session.essenceStock()
@@ -809,9 +814,10 @@ public final class PocketAeChannelOps implements PocketChannelOps {
 
     /**
      * ★源质支已整体搬去 {@link PocketEssenceChannelOps}（★R87-A 那次是行数纪律的纯搬移；★R88 换载体后
-     * 那边的逻辑按瓶改判过，别把纯搬移读成至今未改）：
+     * 那边的逻辑按瓶改判过，别把纯搬移读成至今未改；★R90 E2 又把<b>物品通道兜底删净</b>——
+     * {@code essenceStackFor} 不再对 {@code ITEM_STACK_TYPE} 特判，通道侧的满瓶容器只剩只读探针/读回）：
      * 抽取（extractEssence）/ 注入（injectEssenceSource）/ 换算（essenceStackFor、carriersFromUnits、
-     * unitsForCarriers，旧晶名只留作离线套件的过渡别名）与不可物化日志都在那边；
+     * unitsForCarriers）与不可物化日志都在那边；原生通道判定单源在 {@link EssenceNativeChannels}；
      * 本类经 {@code inject}/{@code extract} 的分派口委派过去。
      */
 

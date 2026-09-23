@@ -279,6 +279,51 @@ public class NekoPocketModelTest {
         cases.put(
             "essence_legacy_crystal_is_read_only_but_still_soluble",
             NekoPocketModelTest::essenceLegacyCrystalIsReadOnlyButStillSoluble);
+        // ---- ★R90 E1/E2（批 1 测试落地）：源质增量日志/置脏/终态回滚（D2「上传变瓶+刷源质」修复面）
+        // + SC4 路由矩阵（上传单趟源质原生路由 + 物品兜底删除）。E2 的「原生在场」列由
+        // EssenceNativeChannels 的包私有种子口驱动（生产恒空 ⇒ 判法零变化）；NekoPocketPanel 本体
+        // 不可在纯 JVM 构造（私有构造器 + MUI2 宿主），Panel 侧断言走「PocketInventory 层等价组合
+        // + 源码机检」两半，面板级驱动属实机项。
+        cases.put("essence_delta_records_and_symmetry", NekoPocketModelTest::essenceDeltaRecordsAndSymmetry);
+        cases.put(
+            "essence_delta_reconciles_untapped_store_writes",
+            NekoPocketModelTest::essenceDeltaReconcilesUntappedStoreWrites);
+        cases.put(
+            "essence_delta_clears_at_persistence_boundary",
+            NekoPocketModelTest::essenceDeltaClearsAtPersistenceBoundary);
+        cases.put("drain_marks_dirty", NekoPocketModelTest::drainMarksDirty);
+        cases.put(
+            "rollback_restores_baseline_and_is_idempotent",
+            NekoPocketModelTest::rollbackRestoresBaselineAndIsIdempotent);
+        // ---- ★R90 E2（SC4 路由矩阵）：源质上传只认源质原生通道（Runner 级桩件 + 种子口）
+        cases.put(
+            "native_present_undeclared_routes_to_native",
+            NekoPocketModelTest::nativePresentUndeclaredRoutesToNative);
+        cases.put(
+            "native_absent_undeclared_no_channel_no_phial",
+            NekoPocketModelTest::nativeAbsentUndeclaredNoChannelNoPhial);
+        cases.put("declared_tag_not_injected_antiloop", NekoPocketModelTest::declaredTagNotInjectedAntiloop);
+        cases.put(
+            "native_absent_declared_extract_no_channel",
+            NekoPocketModelTest::nativeAbsentDeclaredExtractNoChannel);
+        cases.put("extract_symmetric_carriers_from_units", NekoPocketModelTest::extractSymmetricCarriersFromUnits);
+        // ---- ★R90 E3/E4（批 2 测试落地）：S3/S5 预筛真值表 + 格→瓶取出守卫 + ghost 建档归属对账 + S6 流体决策核
+        // （世界站适配器 PocketWorldFluidTap 与 ItemNekoDimensionPocket.onItemUseFirst 的实机手势属
+        // in-game-checklist 项，本套件只钉决策核与口袋侧纯 JVM 面）
+        cases.put("intake_prefilter_truth_table", NekoPocketModelTest::intakePrefilterTruthTable);
+        cases.put("phial_take_guard_floors", NekoPocketModelTest::phialTakeGuardFloors);
+        cases
+            .put("tag_of_carrier_prefers_cell_then_payload", NekoPocketModelTest::tagOfCarrierPrefersCellThenPayload);
+        cases.put(
+            "ghost_request_unowned_cell_assigns_idempotent",
+            NekoPocketModelTest::ghostRequestUnownedCellAssignsIdempotent);
+        cases.put(
+            "intake_no_owner_still_rejects_empty_phial",
+            NekoPocketModelTest::intakeNoOwnerStillRejectsEmptyPhial);
+        cases.put("fluid_gate_reasons_u5_u6_empty", NekoPocketModelTest::fluidGateReasonsU5U6Empty);
+        cases.put("fluid_plan_caps_and_partial", NekoPocketModelTest::fluidPlanCapsAndPartial);
+        cases.put("fluid_plan_prefers_mergeable_tank", NekoPocketModelTest::fluidPlanPrefersMergeableTank);
+        cases.put("fill_own_tank_marks_dirty", NekoPocketModelTest::fillOwnTankMarksDirty);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -4635,6 +4680,1186 @@ public class NekoPocketModelTest {
         return map;
     }
 
+    // ================================================================== ★R90 E1（S1/S2）：源质增量日志 + 单点置脏 + 终态回滚
+    //
+    // D2 缺陷链：扣点只改内存不置脏 ⇒ writeSessionToCarrier 的 isDirty 门禁放行早退 ⇒ 序列化不发生
+    // ⇒ 承载栈 NBT 里点数原样、AE2 侧瓶已到手 = 净复制。修复面三件：增量日志（PocketInventory 的
+    // recordEssenceDelta/essenceDeltas/clearEssenceDeltas + 对表基点）、置脏（drainEssence 的
+    // markDirty）、终态回滚（writeSessionToCarrier 找不到承载栈 ⇒ 逆施回基线）。NekoPocketPanel
+    // 本体不可在纯 JVM 构造（私有构造器要 PlayerInventoryGuiData/PanelSyncManager，且 data.getUsedItemStack
+    // 需要 MUI2 宿主）⇒ Panel 侧断言全部走「PocketInventory 层等价组合 + 源码机检」两半，
+    // 面板级驱动属实机项（本组各用例 javadoc 原位标注）。
+
+    /**
+     * ★E1-1：增量日志的<b>登记与对称性</b>——{@code recordEssenceDelta} 按 tag 累计代数和，
+     * ± 两向登记相抵后条目消失；净 0 条目恒不落日志。
+     * <p>
+     * 序列刻意照 {@code Panel#drainEssence}/{@code performEssenceOut} 的生产形状：先在
+     * {@code essence()} 上造成等量变更（extract/add），再登记同符号的 delta。基线先经一次
+     * {@code clearEssenceDeltas} 起算（等价于持久化边界之后的起点；边界本身的判据在 E1-3 单独钉）。
+     */
+    private static void essenceDeltaRecordsAndSymmetry() {
+        final PocketInventory inv = PocketInventory.readFrom(null);
+        SimpleAssert.eq(
+            80,
+            inv.essence()
+                .putAll(singletonPoints("aer", 80)),
+            "存量 80 点先入账");
+        inv.clearEssenceDeltas();
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "基线起算后日志为空");
+        // 取出侧（drainEssence / performEssenceOut 的登记序列）
+        SimpleAssert.eq(
+            80,
+            inv.essence()
+                .extract("aer", 80),
+            "取出 80");
+        inv.recordEssenceDelta("aer", -80);
+        final Map<String, Integer> drained = inv.essenceDeltas();
+        SimpleAssert.eq(Integer.valueOf(-80), drained.get("aer"), "日志 == {aer: −80}");
+        SimpleAssert.eq(1, drained.size(), "只有这一条");
+        SimpleAssert.eq(
+            Integer.valueOf(0),
+            inv.essence()
+                .get("aer"),
+            "盘里确实空了");
+        // 逆向：回补 +80（performEssenceOut 物化失败时的退点形状）⇒ 净 0 ⇒ 条目消失
+        SimpleAssert.eq(
+            80,
+            inv.essence()
+                .add("aer", 80),
+            "回补 80");
+        inv.recordEssenceDelta("aer", 80);
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "★± 对称 ⇒ 净 0 条目不留在日志里");
+        inv.clearEssenceDeltas();
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "clear 后仍为空");
+        // 钝化入参：0 增量与空 tag 都不落条目
+        inv.recordEssenceDelta("aer", 0);
+        inv.recordEssenceDelta("", 5);
+        inv.recordEssenceDelta(null, 5);
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "0 增量 / 空 tag / null ⇒ 一条都不落");
+    }
+
+    /**
+     * ★E1-2：<b>对表兜底</b>——源质表的写原语是 {@code PocketEssenceStore} 自己的，通道下传
+     * （{@code extractEssence} 的 {@code store.putAll}）、蒸馏入账、注入支都<b>绕过</b>
+     * {@code recordEssenceDelta} 直改 store ⇒ 日志完整性由「store 现值 − 基点」的漂移并入兜底。
+     * 恒等式：日志累计 ≡ store 现值 − 基线。打点与直改混在同一 tag 上不双计（打点同步前移基点）。
+     */
+    private static void essenceDeltaReconcilesUntappedStoreWrites() {
+        final PocketInventory inv = PocketInventory.readFrom(null);
+        SimpleAssert.eq(
+            80,
+            inv.essence()
+                .putAll(singletonPoints("ignis", 80)),
+            "直改入账 80（不经 recordEssenceDelta）");
+        SimpleAssert.eq(
+            Integer.valueOf(80),
+            inv.essenceDeltas()
+                .get("ignis"),
+            "★对表并入 +80（credited 也能被回滚看见）");
+        SimpleAssert.eq(
+            1,
+            inv.essenceDeltas()
+                .size(),
+            "只有这一条");
+        SimpleAssert.eq(
+            Integer.valueOf(80),
+            inv.essenceDeltas()
+                .get("ignis"),
+            "第二次读不双计（基点已前移）");
+        inv.essence()
+            .extract("ignis", 30);
+        SimpleAssert.eq(
+            Integer.valueOf(50),
+            inv.essenceDeltas()
+                .get("ignis"),
+            "后续直改继续并入（80 − 30 = 50）");
+
+        // 混账：打点的那笔与未打点的那笔合起来恰好等于「store − 基线」，不重不漏
+        final PocketInventory mixed = PocketInventory.readFrom(null);
+        mixed.essence()
+            .putAll(singletonPoints("aer", 100));
+        mixed.clearEssenceDeltas(); // 基线 = 100
+        mixed.essence()
+            .extract("aer", 20);
+        mixed.recordEssenceDelta("aer", -20); // 打点同一笔（基点同步前移 ⇒ 对表不会二次并入）
+        SimpleAssert.eq(
+            Integer.valueOf(-20),
+            mixed.essenceDeltas()
+                .get("aer"),
+            "打点的那笔就报 −20");
+        mixed.essence()
+            .extract("aer", 10); // 再来一笔不打点的
+        SimpleAssert.eq(
+            Integer.valueOf(-30),
+            mixed.essenceDeltas()
+                .get("aer"),
+            "★未打点的 −10 由对表并入 ⇒ 累计 −30");
+        SimpleAssert.eq(
+            Integer.valueOf(
+                mixed.essence()
+                    .get("aer") - 100),
+            mixed.essenceDeltas()
+                .get("aer"),
+            "★恒等式：日志累计 ≡ store 现值 − 基线（S2 回滚的守恒前提）");
+    }
+
+    /**
+     * ★E1-3：<b>持久化边界清日志</b>——{@code writeTo} 成功后增量日志必须为空，否则 S2 的终态回滚
+     * 会把<b>已落盘</b>的那部分变更也逆施掉（凭空造点/扣点）。{@code readFrom} 同为边界：重开的
+     * 会话从零起算。负控：没有边界发生时日志不会自己消失。
+     */
+    private static void essenceDeltaClearsAtPersistenceBoundary() {
+        final PocketInventory inv = PocketInventory.readFrom(null);
+        inv.essence()
+            .putAll(singletonPoints("aer", 64)); // 直改（对表会并入）
+        SimpleAssert.eq(
+            Integer.valueOf(64),
+            inv.essenceDeltas()
+                .get("aer"),
+            "落盘前日志非空（对照）");
+        final NBTTagCompound root = new NBTTagCompound();
+        inv.writeTo(root);
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "★writeTo 成功后日志清零（防回滚逆施已落盘变更）");
+        // 落盘的 64 点真的在 NBT 里，且重开的会话从零起算
+        final PocketInventory reopened = PocketInventory.readFrom(root);
+        SimpleAssert.eq(
+            64,
+            reopened.essence()
+                .get("aer"),
+            "落盘的 64 点读得回");
+        SimpleAssert.that(
+            reopened.essenceDeltas()
+                .isEmpty(),
+            "★readFrom 也是边界 ⇒ 新会话从零起算");
+        reopened.essence()
+            .putAll(singletonPoints("ignis", 16)); // 新会话里的直改
+        SimpleAssert.eq(
+            Integer.valueOf(16),
+            reopened.essenceDeltas()
+                .get("ignis"),
+            "新会话的变更照常入日志");
+        final NBTTagCompound again = new NBTTagCompound();
+        reopened.writeTo(again);
+        SimpleAssert.that(
+            reopened.essenceDeltas()
+                .isEmpty(),
+            "再次落盘又清零");
+        // 负控：没有任何边界发生时，日志不会自己消失
+        final PocketInventory held = PocketInventory.readFrom(null);
+        held.essence()
+            .putAll(singletonPoints("terra", 24));
+        SimpleAssert.eq(
+            Integer.valueOf(24),
+            held.essenceDeltas()
+                .get("terra"),
+            "没有边界就不会清（对照）");
+    }
+
+    /**
+     * ★E1-4：<b>置Dirty 单点</b>（D2 缺陷本体）——{@code extract>0} 的扣点必须把 {@code dirty}
+     * 翻起来，否则 {@code writeSessionToCarrier} 的 {@code isDirty} 门禁放行早退、序列化永远不发生。
+     * <p>
+     * ★断言降级说明（任务包允许的那一档）：{@code NekoPocketPanel} 在纯 JVM 不可构造（私有构造器
+     * {@code NekoPocketPanel(PlayerInventoryGuiData, PanelSyncManager, UISettings)} 要 MUI2 宿主，
+     * 既有套件也零先例）⇒ 面板级驱动（真 Panel + 真 SyncManager）属<b>实机项</b>。这里钉两半：
+     * ①行为半边 = {@code PocketInventory} 层按 {@code drainEssence} 的生产序列组合断言
+     * （extract&gt;0 + recordEssenceDelta + markDirty ⇒ dirty 翻转；0 取出不翻转）；②源码半边 =
+     * {@code Panel#drainEssence} 方法体机检（扣点 → removed&gt;0 守卫 → 登记 → 置脏的行序）。
+     */
+    private static void drainMarksDirty() {
+        // ---- ① 行为半边（PocketInventory 层的等价组合）----
+        final PocketInventory inv = PocketInventory.readFrom(null);
+        inv.essence()
+            .putAll(singletonPoints("aer", 64));
+        inv.clearEssenceDeltas();
+        inv.markClean();
+        SimpleAssert.that(!inv.isDirty(), "起点干净");
+        final int removed = inv.essence()
+            .extract("aer", 40);
+        SimpleAssert.eq(40, removed, "实移除 40");
+        if (removed > 0) { // ← 生产守卫的逐字形状（Panel#drainEssence:2440）
+            inv.recordEssenceDelta("aer", -removed);
+            inv.markDirty();
+        }
+        SimpleAssert.that(inv.isDirty(), "★extract>0 ⇒ dirty 翻转（不置脏 = 扣点只活在内存 = 净复制）");
+        SimpleAssert.eq(
+            Integer.valueOf(-40),
+            inv.essenceDeltas()
+                .get("aer"),
+            "同一笔进了增量日志");
+        // 对照：无存量的 tag 取出 0 ⇒ 守卫之下不得置脏
+        final PocketInventory cold = PocketInventory.readFrom(null);
+        cold.markClean();
+        SimpleAssert.eq(
+            0,
+            cold.essence()
+                .extract("ordo", 10),
+            "无存量 ⇒ 取 0");
+        SimpleAssert.that(!cold.isDirty(), "0 取出不置脏（守卫读数；守卫本身的源码半边在下面钉）");
+
+        // ---- ② 源码半边（Panel#drainEssence 机检）----
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒ 「drainEssence 置脏」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        final int drainStart = methodStart(panel, "public int drainEssence(String tag, int points) {");
+        final int drainEnd = methodStart(panel, "public int storageSlots() {");
+        SimpleAssert.that(drainStart >= 0 && drainEnd > drainStart, "★必须能按签名定位 drainEssence（改名/挪动即红）");
+        SimpleAssert.that(regionContainsCode(panel, drainStart, drainEnd, ".extract("), "真的在源质表上扣点");
+        SimpleAssert
+            .that(regionContainsCode(panel, drainStart, drainEnd, "if (removed > 0)"), "守卫在读（removed>0 才登记/置脏）");
+        SimpleAssert
+            .that(regionContainsCode(panel, drainStart, drainEnd, "recordEssenceDelta("), "扣点登记进增量日志（S2 回滚的输入）");
+        SimpleAssert.that(regionContainsCode(panel, drainStart, drainEnd, "markDirty()"), "★置脏（D2 缺陷本体）");
+        final int extractAt = firstCodeLineWith(panel, drainStart, drainEnd, ".extract(");
+        final int guardAt = firstCodeLineWith(panel, drainStart, drainEnd, "if (removed > 0)");
+        final int recordAt = firstCodeLineWith(panel, drainStart, drainEnd, "recordEssenceDelta(");
+        final int dirtyAt = firstCodeLineWith(panel, drainStart, drainEnd, "markDirty()");
+        SimpleAssert.that(guardAt > extractAt, "扣点在前、守卫在后（行序）");
+        SimpleAssert.that(recordAt > guardAt && dirtyAt > guardAt, "★登记与置脏都在守卫之内（0 取出一概不动）");
+        SimpleAssert.that(
+            !regionContainsCode(panel, drainStart, drainEnd, "drainEssenceButThisTokenDoesNotExist("),
+            "负控：区间扫描对不存在的片段必须报 false");
+    }
+
+    /**
+     * ★E1-5：<b>终态回滚</b>——「找不到承载栈」分支把增量日志逐 tag <b>逆施</b>回「最后一次成功
+     * 落盘」的基线并清空日志；± 混合日志两侧都要回得去；日志空 ⇒ 零动作（幂等，driver 每拍重试
+     * 不刷屏）。与 E1-4 同一条断言降级：{@code rollbackEssenceToPersistedBaseline} 是 Panel 的
+     * 私有方法且 Panel 不可构造 ⇒ 行为半边钉「日志可逐 tag 逆施」的契约（Panel 回滚消费的正是它），
+     * 接线与幂等守卫由源码半边机检，面板级驱动属实机项。
+     */
+    private static void rollbackRestoresBaselineAndIsIdempotent() {
+        // ---- ① 行为半边：± 混合日志的逆施契约 ----
+        final PocketInventory inv = PocketInventory.readFrom(null);
+        inv.essence()
+            .putAll(singletonPoints("aer", 100));
+        inv.essence()
+            .putAll(singletonPoints("ignis", 24));
+        final Map<String, Integer> baseline = inv.essence()
+            .snapshot();
+        inv.clearEssenceDeltas(); // 基线（= 最后一次成功落盘那一刻的形状）
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "起点日志为空");
+        // ± 混合：取出侧打点 −40；下传入账直改 +16（由对表并入——E1-2 的兜底面）
+        inv.essence()
+            .extract("aer", 40);
+        inv.recordEssenceDelta("aer", -40);
+        inv.essence()
+            .putAll(singletonPoints("ignis", 16));
+        final Map<String, Integer> deltas = inv.essenceDeltas();
+        SimpleAssert.eq(Integer.valueOf(-40), deltas.get("aer"), "取出侧 −40");
+        SimpleAssert.eq(Integer.valueOf(16), deltas.get("ignis"), "入账侧 +16（对表并入）");
+        SimpleAssert.eq(2, deltas.size(), "两条");
+        // S2 的消费语义（与 rollbackEssenceToPersistedBaseline 同形）：−x ⇒ add 回补、+x ⇒ extract 回扣
+        for (final Map.Entry<String, Integer> entry : deltas.entrySet()) {
+            final int delta = entry.getValue();
+            if (delta < 0) {
+                inv.essence()
+                    .add(entry.getKey(), -delta);
+            } else {
+                inv.essence()
+                    .extract(entry.getKey(), delta);
+            }
+        }
+        inv.clearEssenceDeltas();
+        SimpleAssert.eq(
+            baseline,
+            inv.essence()
+                .snapshot(),
+            "★逆施后逐 tag 回到基线（± 两向都回得去）");
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "日志已清空");
+        // 逆施后日志为空 ⇒ 再读一遍也不会凭空长出条目（对表基点已随 clear 重置到回滚后的现值）
+        SimpleAssert.that(
+            inv.essenceDeltas()
+                .isEmpty(),
+            "二次读仍为空（回滚后基点 = 基线现值）");
+        SimpleAssert.eq(
+            baseline,
+            inv.essence()
+                .snapshot(),
+            "快照一个字没动");
+
+        // ---- ② 源码半边：Panel 的回滚本体与接线 ----
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒ 「终态回滚」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        final int rollbackStart = methodStart(panel, "private void rollbackEssenceToPersistedBaseline() {");
+        final int rollbackEnd = methodStart(panel, "private boolean isNestedInOwnStorage(");
+        SimpleAssert
+            .that(rollbackStart >= 0 && rollbackEnd > rollbackStart, "★必须能按签名定位 rollbackEssenceToPersistedBaseline");
+        SimpleAssert.that(regionContainsCode(panel, rollbackStart, rollbackEnd, "essenceDeltas()"), "读增量日志（读侧自带对表）");
+        SimpleAssert.that(regionContainsCode(panel, rollbackStart, rollbackEnd, ".add("), "−x ⇒ add 回补");
+        SimpleAssert.that(regionContainsCode(panel, rollbackStart, rollbackEnd, ".extract("), "+x ⇒ extract 回扣");
+        SimpleAssert.that(regionContainsCode(panel, rollbackStart, rollbackEnd, "clearEssenceDeltas()"), "逆施完清空日志");
+        final int emptyAt = firstCodeLineWith(panel, rollbackStart, rollbackEnd, "isEmpty()");
+        final int addAt = firstCodeLineWith(panel, rollbackStart, rollbackEnd, ".add(");
+        final int extractAt = firstCodeLineWith(panel, rollbackStart, rollbackEnd, ".extract(");
+        SimpleAssert.that(emptyAt >= 0 && addAt > emptyAt && extractAt > emptyAt, "★空日志早退在逆施之前（幂等：日志空 ⇒ 零动作）");
+        // 接线：writeSessionToCarrier 的「找不到承载栈」分支真的调它
+        final int writeStart = methodStart(panel, "private void writeSessionToCarrier() {");
+        SimpleAssert.that(writeStart >= 0 && rollbackStart > writeStart, "定位 writeSessionToCarrier（回滚方法在其后）");
+        SimpleAssert.that(
+            regionContainsCode(panel, writeStart, rollbackStart, "rollbackEssenceToPersistedBaseline()"),
+            "★终态不写分支调用回滚");
+    }
+
+    // ================================================================== ★R90 E2（SC4 路由矩阵）：上传只认源质原生通道
+    //
+    // 桩件方案 = Runner 级（StubOps 镜像生产路由门），「原生在场」列由 EssenceNativeChannels 的
+    // 包私有种子口驱动（生产恒空 ⇒ 判法零变化）。约束（实测）：本仓 test classpath 以 transitive=false
+    // 引 AE2 ⇒ fastutil 缺场，而 IAEStackType 的<b>实现类</b>（AEItemStackType/AEFluidStackType）在
+    // 类链接期就要解析其接口方法签名里的 ObjectLongPair ⇒ ①不能实现/代理 IAEStackType；
+    // ②InfinityStackTypes.ITEM_STACK_TYPE 等单例与 byId/allSupportedTypes 一概不可触达
+    // （NoClassDefFoundError）⇒ nativeChannelTypeId 的注册表循环不可驱动（种子在场时它提前返回，
+    // 未种子的 tag 一律不调它——缺席列由源码机检 + 桩件行为覆盖）；③nativeProbe 的内建排除只能
+    // {@code nativeProbe(null, tag)} 这一个入参形态直接驱动，内建两席位的排除判据由源码机检钉
+    // （exclusion 在 convertStackFromItem 之前、探针方法体零种子引用）。
+
+    /** E2 用例的第三方席位 typeId（与 {@link #CHANNELS} 第三项同串：测试桩的通道宇宙里它是"已注册的第三方通道"）。 */
+    private static final String NATIVE_TEST_TYPE_ID = "essentia";
+
+    /**
+     * ★E2 共用机检：{@code EssenceNativeChannels#nativeProbe} 的<b>内建排除</b>是硬的——
+     * 物品/流体两席位在 {@code convertStackFromItem} 之前就被剔除，且探针方法体<b>零种子引用</b>
+     * （种子只顶「运行时注册的第三方」那一席 ⇒ 种子永远不能把内建通道判成原生，上传永不回落物品通道）。
+     * 测试 JVM 里 AE2 的类型单例不可触达（节注释②）⇒ 这一档只能钉源码。
+     */
+    private static void assertNativeProbeExclusionPinned() {
+        final java.util.List<String> nativeChannels = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/EssenceNativeChannels.java");
+        if (nativeChannels == null) {
+            System.out.println("[NOTE] 读不到 EssenceNativeChannels.java ⇒「内建排除对种子不生效」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        final int probeStart = methodStart(nativeChannels, "public static IAEStack<?> nativeProbe(");
+        // 区域终点 = 种子字段那一行（种子口整组住在 nativeProbe 与 nativeChannelTypeId 之间）
+        final int probeEnd = methodStart(
+            nativeChannels,
+            "static final java.util.Map<String, java.util.Set<String>> SEEDED_NATIVE_TAGS");
+        SimpleAssert.that(probeStart >= 0 && probeEnd > probeStart, "★必须能按签名定位 nativeProbe（改名即红）");
+        SimpleAssert.that(regionContainsCode(nativeChannels, probeStart, probeEnd, "ITEM_STACK_TYPE"), "内建物品通道的排除在场");
+        SimpleAssert.that(regionContainsCode(nativeChannels, probeStart, probeEnd, "FLUID_STACK_TYPE"), "内建流体通道的排除在场");
+        final int itemAt = firstCodeLineWith(nativeChannels, probeStart, probeEnd, "ITEM_STACK_TYPE");
+        final int convertAt = firstCodeLineWith(nativeChannels, probeStart, probeEnd, "convertStackFromItem(");
+        SimpleAssert.that(itemAt >= 0 && convertAt > itemAt, "★排除在换算口之前（内建席位根本不问第三方换算）");
+        SimpleAssert
+            .that(!regionContainsCode(nativeChannels, probeStart, probeEnd, "SEEDED_"), "★探针方法体零种子引用（种子不弱化内建排除）");
+    }
+
+    /**
+     * ★E2-6：<b>原生在场 + 未声明</b> ⇒ 注入只到原生 typeId、moved&gt;0——种子在场时
+     * {@code nativeChannelTypeId}（声明侧单源）返回该通道 id；且种子<b>不弱化</b>内建排除
+     * （探针方法体零种子引用、exclusion 在 convertStackFromItem 之前——源码机检；测试 JVM 里
+     * AE2 的类型单例不可触达，见节注释②③）。Runner 级：三对服务里只有原生对成交，
+     * delta 的通道段 = 原生 typeId，非原生两对按路由门拒收计数（不停批）。
+     */
+    private static void nativePresentUndeclaredRoutesToNative() {
+        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        try {
+            // 生产单源（声明侧读的那个方法）：种子在场 ⇒「在场」列可驱动（未种子时不可调——见节注释②）
+            SimpleAssert.eq(
+                NATIVE_TEST_TYPE_ID,
+                EssenceNativeChannels.nativeChannelTypeId("aer"),
+                "原生在场 ⇒ 第一条源质原生通道 id（声明侧单源的读数，e:essentia:aer 的 typeId 段就从这来）");
+            // 直接可驱动的探针入参形态：空类型恒 null
+            SimpleAssert.eq(null, EssenceNativeChannels.nativeProbe(null, "aer"), "空类型 ⇒ 探针恒 null");
+            // 种子不弱化内建排除（源码机检：exclusion 在换算口之前、探针方法体零种子引用）
+            assertNativeProbeExclusionPinned();
+            // Runner 级（未声明 = 纯推送；70 点 ⇒ C1 整瓶粒度搬 64、6 点零头留盘）
+            final StubOps ops = new StubOps();
+            ops.essenceNativeRouting = true;
+            ops.fillSource(
+                PocketConstants.FILTER_SLOT_UNSET,
+                PocketFilterConfig.essenceKey("", "aer"),
+                70,
+                PocketChannelOps.SourceKind.ESSENCE);
+            final PocketChannelRunner.Report report = PocketChannelRunner
+                .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, null);
+            SimpleAssert.eq(3, report.pairsServed, "三对都被服务（全通道轮转）");
+            SimpleAssert.eq(64, report.transferred, "★moved>0：70 点按整瓶粒度搬 64（6 点零头留盘，C1）");
+            SimpleAssert.eq(2, report.essenceNoChannel, "item/fluid 两对按路由门拒收计数（不停批、留痕）");
+            SimpleAssert.eq(2, report.noChannel, "同计数进 noChannel（receiptOfReport 的读数面）");
+            SimpleAssert.eq(1, ops.announcements.size(), "批尾一次通知");
+            final List<PocketChannelOps.Delta> posted = ops.announcements.get(0);
+            SimpleAssert.eq(1, posted.size(), "只有一条 delta（拒收的两对不产生 delta）");
+            SimpleAssert.eq(NATIVE_TEST_TYPE_ID, posted.get(0).typeId, "★delta 的通道段 = 原生 typeId（inject 只到原生）");
+            SimpleAssert.eq(PocketFilterConfig.essenceKey("", "aer"), posted.get(0).contentKey, "载荷键原样（e::aer）");
+            SimpleAssert.eq(64L, posted.get(0).amount, "带符号 +64");
+            SimpleAssert.eq(
+                "gtit.pocket.receipt.partial",
+                NekoPocketPanel.receiptOfReport(report),
+                "搬了且有两对拒收 ⇒ partial（回执链可读）");
+        } finally {
+            EssenceNativeChannels.unseedNativesForTest();
+        }
+    }
+
+    /**
+     * ★E2-7：<b>原生缺席 + 未声明</b> ⇒ {@code Outcome(NO_CHANNEL,0)} + {@code report.essenceNoChannel>0}
+     * + {@code failures()>0} + 回执映射到既有键 {@code gtit.pocket.receipt.no_channel}；且（源码级）
+     * 上传路径<b>零瓶物化</b>——路由门前置在 handler 解析之前，方法体不造瓶、不进物品栏/中栏，
+     * {@code newFilledPhial}（R90 已删的出件函数）全文件零命中。
+     */
+    private static void nativeAbsentUndeclaredNoChannelNoPhial() {
+        // 生产判据半边：直接可驱动的探针入参形态 + 内建排除的源码机检（类型单例不可触达，见节注释②③）
+        SimpleAssert.eq(null, EssenceNativeChannels.nativeProbe(null, "aer"), "空类型 ⇒ 探针恒 null");
+        SimpleAssert.eq(null, EssenceNativeChannels.nativeProbe(null, null), "空 tag ⇒ 同样恒 null");
+        assertNativeProbeExclusionPinned();
+        // Runner 行为半边（桩件镜像路由门；未种子 ⇒ 第三方席位也缺席）
+        final StubOps ops = new StubOps();
+        ops.essenceNativeRouting = true;
+        ops.fillSource(
+            PocketConstants.FILTER_SLOT_UNSET,
+            PocketFilterConfig.essenceKey("", "aer"),
+            64,
+            PocketChannelOps.SourceKind.ESSENCE);
+        final PocketChannelRunner.Report report = PocketChannelRunner
+            .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, null);
+        SimpleAssert.eq(0, report.transferred, "一件都没动");
+        SimpleAssert.eq(3, report.essenceNoChannel, "★三对全部按「无源质原生通道」拒收计数");
+        SimpleAssert.eq(3, report.noChannel, "同计数进 noChannel");
+        SimpleAssert.that(report.failures() > 0, "★进 failures()（面板「全失败退款」口径读得到，不再被吞成 nothing_to_do）");
+        SimpleAssert.eq(
+            "gtit.pocket.receipt.no_channel",
+            NekoPocketPanel.receiptOfReport(report),
+            "★回执映射到既有 no_channel 键（非静默拒收）");
+        // Outcome 形状（桩件镜像路由门的直接读数）
+        final PocketChannelOps.SourceSlot source = ops.snapshotSources()
+            .get(0);
+        final PocketChannelOps.Outcome viaItem = ops.inject(source, CELL_A, "item");
+        SimpleAssert.eq(PocketReceipt.NO_CHANNEL, viaItem.receipt, "Outcome.receipt = NO_CHANNEL（内建席位走真判据）");
+        SimpleAssert.eq(0, viaItem.moved, "Outcome.moved = 0");
+        final PocketChannelOps.Outcome viaThirdParty = ops.inject(source, CELL_A, NATIVE_TEST_TYPE_ID);
+        SimpleAssert.eq(PocketReceipt.NO_CHANNEL, viaThirdParty.receipt, "第三方席位未种子 ⇒ 同样 NO_CHANNEL（缺席列）");
+        SimpleAssert.eq(0, viaThirdParty.moved, "0 点成交");
+        // 源码级：上传路径零瓶物化
+        final java.util.List<String> essenceOps = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceChannelOps.java");
+        if (essenceOps == null) {
+            System.out.println("[NOTE] 找不到仓库根或读不到 PocketEssenceChannelOps.java ⇒「上传零瓶物化」的源码半边【未验】（★不是通过；上面的行为半边照验）");
+            return;
+        }
+        final int injectStart = methodStart(essenceOps, "static PocketChannelOps.Outcome injectEssenceSource(");
+        final int injectEnd = methodStart(essenceOps, "private static void refundUnits(");
+        SimpleAssert.that(injectStart >= 0 && injectEnd > injectStart, "★必须能按签名定位 injectEssenceSource（改名/合并即红）");
+        SimpleAssert.that(regionContainsCode(essenceOps, injectStart, injectEnd, "nativeProbe("), "路由门在场（单源判据）");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, injectStart, injectEnd, ".drainEssence("),
+            "扣点走 session().drainEssence（E1 置脏单点的那条路）");
+        final int gateAt = firstCodeLineWith(essenceOps, injectStart, injectEnd, "nativeProbe(");
+        final int handlerAt = firstCodeLineWith(essenceOps, injectStart, injectEnd, "handlerOfCached(");
+        SimpleAssert.that(gateAt >= 0 && handlerAt > gateAt, "★路由门前置在 handler 解析之前（不是原生通道就没有「能不能收」可问）");
+        SimpleAssert.that(
+            !regionContainsCode(essenceOps, injectStart, injectEnd, "newFilledContainer("),
+            "★上传方法体不造瓶（探针构造已单源下沉且只读）");
+        SimpleAssert.that(!regionContainsCode(essenceOps, injectStart, injectEnd, "depositItem("), "★不物化进物品栏");
+        SimpleAssert.that(!regionContainsCode(essenceOps, injectStart, injectEnd, "depositIntoStorage("), "★也不走中栏落点");
+        SimpleAssert.eq(0, countCodeLinesIn(essenceOps, "newFilledPhial"), "★newFilledPhial 全文件零命中（R90 已删的出件函数不得还魂）");
+        SimpleAssert.eq(0, countCodeLinesIn(essenceOps, "AEItemStack"), "★源质支零 AEItemStack 特判（物品通道兜底已彻底删除）");
+    }
+
+    /**
+     * ★E2-8：<b>已声明 tag 不进注入相</b>（反成环铁律在 R90 路由世界里的延伸）——原生通道在场时，
+     * 与声明同 tag 的源质来源仍被整条剔除（不是拒收、不产生任何计数），异 tag 照常经原生通道搬走。
+     * 参照既有 {@code anti_loop_essence_matches_by_tag_not_raw_key} 的形态，把「剔除」与「路由命中」
+     * 叠在同一批里钉：原生通道的出现不得给永动环开新门。
+     */
+    private static void declaredTagNotInjectedAntiloop() {
+        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "ignis");
+        try {
+            final StubOps ops = new StubOps();
+            ops.essenceNativeRouting = true;
+            ops.addSource(
+                PocketConstants.FILTER_SLOT_UNSET,
+                PocketFilterConfig.essenceKey("", "aer"),
+                64,
+                PocketChannelOps.SourceKind.ESSENCE);
+            ops.addSource(
+                PocketConstants.FILTER_SLOT_UNSET,
+                PocketFilterConfig.essenceKey("", "ignis"),
+                64,
+                PocketChannelOps.SourceKind.ESSENCE);
+            final PocketFilterConfig filters = new PocketFilterConfig();
+            SimpleAssert.that(
+                filters.add(9, new PocketFilterConfig.EssenceFilter(9, NATIVE_TEST_TYPE_ID, "aer")),
+                "声明第 9 格补 aer（typeId = 原生通道）");
+            final PocketChannelRunner.Report report = PocketChannelRunner
+                .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, filters);
+            SimpleAssert.that(
+                !ops.servedKeys.contains(PocketFilterConfig.essenceKey("", "aer")),
+                "★已声明的 aer 从未被投递（按 tag 语义剔除）");
+            SimpleAssert.that(ops.servedKeys.contains(PocketFilterConfig.essenceKey("", "ignis")), "未声明的 ignis 照常进注入相");
+            SimpleAssert.eq(64, report.transferred, "ignis 64 点经原生通道搬走");
+            // aer 是「整条剔除」而不是「拒收」：拒收计数只来自 ignis 的 item/fluid 两对
+            SimpleAssert.eq(2, report.essenceNoChannel, "★aer 零拒收计数（剔除 ≠ 拒收；2 = ignis 的非原生两对）");
+            SimpleAssert.eq(1, ops.announcements.size(), "批尾一次通知");
+            final List<PocketChannelOps.Delta> posted = ops.announcements.get(0);
+            SimpleAssert.eq(1, posted.size(), "只有 ignis 一条 delta");
+            SimpleAssert.eq(
+                PocketFilterConfig.essenceKey("", "ignis"),
+                posted.get(0).contentKey,
+                "★delta 里没有 aer 的条目（推出去一拍、按声明抽回来一拍 = 永动环）");
+            SimpleAssert.eq(NATIVE_TEST_TYPE_ID, posted.get(0).typeId, "ignis 走的也是原生通道");
+        } finally {
+            EssenceNativeChannels.unseedNativesForTest();
+        }
+    }
+
+    /**
+     * ★E2-9：<b>原生缺席 + 已声明</b> ⇒ 抽取侧 {@code EssenceFilter} 的 {@code NO_CHANNEL}
+     * 同计数（下传对称）：{@code essenceNoChannel>0}、进 {@code failures()}、回执映射到
+     * {@code gtit.pocket.receipt.no_channel}；非源质声明的 {@code NO_CHANNEL} 不进这一档（单列）。
+     * 源码半边：{@code essenceStackFor} 的物品通道特判已删（换不出探针 ⇒ 每次 NO_CHANNEL，
+     * 旧档 {@code e:item:} 死声明经此非静默收口）。
+     */
+    private static void nativeAbsentDeclaredExtractNoChannel() {
+        final PocketCellBindings bindings = bindingsOf(CELL_A);
+        final PocketFilterConfig filters = new PocketFilterConfig();
+        final PocketFilterConfig.EssenceFilter declared = new PocketFilterConfig.EssenceFilter(
+            5,
+            NATIVE_TEST_TYPE_ID,
+            "aer");
+        SimpleAssert.that(filters.add(5, declared), "声明第 5 格补 aer（typeId = 原生通道的形状）");
+        final StubOps ops = new StubOps();
+        ops.forcedExtract.put(declared.key(), PocketReceipt.NO_CHANNEL); // 生产：换不出探针 ⇒ NO_CHANNEL
+        final PocketChannelRunner.Report report = PocketChannelRunner
+            .runRefillBatch(bindings, null, filters, ops, 8, 64);
+        SimpleAssert.eq(1, ops.extractCalls.size(), "该声明被叫到");
+        SimpleAssert.eq(0, report.transferred, "零成交");
+        SimpleAssert.eq(1, report.essenceNoChannel, "★抽取侧同计数（下传对称：源质声明的 NO_CHANNEL 单列）");
+        SimpleAssert.eq(1, report.noChannel, "同计数进 noChannel");
+        SimpleAssert.that(report.failures() > 0, "★进 failures()");
+        SimpleAssert.eq("gtit.pocket.receipt.no_channel", NekoPocketPanel.receiptOfReport(report), "★回执键同一条（拒收必须面呈）");
+        // 对照：非源质声明的 NO_CHANNEL 不进 essenceNoChannel（单列语义，不并档）
+        final PocketFilterConfig mixed = new PocketFilterConfig();
+        final PocketFilterConfig.Filter itemDecl = item(1, 2621, 0, "");
+        final PocketFilterConfig.EssenceFilter essenceDecl = new PocketFilterConfig.EssenceFilter(
+            6,
+            NATIVE_TEST_TYPE_ID,
+            "ignis");
+        SimpleAssert.that(mixed.add(1, itemDecl), "混一条物品声明");
+        SimpleAssert.that(mixed.add(6, essenceDecl), "再混一条源质声明");
+        final StubOps mixedOps = new StubOps();
+        mixedOps.forcedExtract.put(itemDecl.key(), PocketReceipt.NO_CHANNEL);
+        mixedOps.forcedExtract.put(essenceDecl.key(), PocketReceipt.NO_CHANNEL);
+        final PocketChannelRunner.Report mixedReport = PocketChannelRunner
+            .runRefillBatch(bindings, null, mixed, mixedOps, 8, 64);
+        SimpleAssert.eq(2, mixedReport.noChannel, "两条各计一次 noChannel（不停批）");
+        SimpleAssert.eq(1, mixedReport.essenceNoChannel, "★essenceNoChannel 只收源质那条（物品的不并进来）");
+        // 源码半边：essenceStackFor 无内建特判（物品通道兜底删除的判据面）
+        final java.util.List<String> essenceOps = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceChannelOps.java");
+        if (essenceOps == null) {
+            System.out
+                .println("[NOTE] 读不到 PocketEssenceChannelOps.java ⇒「essenceStackFor 无特判」的源码半边【未验】（★不是通过；上面的行为半边照验）");
+            return;
+        }
+        final int stackForStart = methodStart(essenceOps, "private static IAEStack<?> essenceStackFor(");
+        final int stackForEnd = methodStart(essenceOps, "static int carriersFromUnits(");
+        SimpleAssert.that(stackForStart >= 0 && stackForEnd > stackForStart, "定位 essenceStackFor");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, stackForStart, stackForEnd, "convertStackFromItem("),
+            "换算只走 convertStackFromItem（AE2 留给第三方的口）");
+        SimpleAssert.that(
+            !regionContainsCode(essenceOps, stackForStart, stackForEnd, "AEItemStack"),
+            "★无 AEItemStack 特判（旧物品通道兜底不得还魂）");
+        SimpleAssert.that(
+            !regionContainsCode(essenceOps, stackForStart, stackForEnd, "ITEM_STACK_TYPE"),
+            "★无内建物品通道分支（换不出 ⇒ null ⇒ NO_CHANNEL）");
+    }
+
+    /**
+     * ★E2-10：<b>下传对称的折算</b>——{@code extractEssence} 消费源质原生通道时，
+     * {@code carriersFromUnits}/{@code unitsForCarriers} 以<b>探针读数</b>为唯一倍率成立：
+     * 零头留元件、只数不超请求、回乘不超可得量、且「再多一只就装不下」（最大整瓶数）。
+     * 倍率由对应 mod 的 {@code convertStackFromItem} 决定、本仓不写死 ⇒ 这里取 250（第三方实测值的
+     * 形状，与 8 无关——钉的是算术与接线，不是某个具体倍率）。源码半边：注入与抽取两侧的
+     * {@code unit} 都读自各自的探针换算（门与倍率同源，不造第二只探针）。
+     */
+    private static void extractSymmetricCarriersFromUnits() {
+        final long unit = 250L; // 1 只满瓶折 250 通道单位（第三方决定，本仓不写死）
+        SimpleAssert.eq(3, PocketEssenceChannelOps.carriersFromUnits(3 * unit + 7, unit, 8), "3 瓶余 7 单位 ⇒ 3 只（零头留元件侧）");
+        SimpleAssert.eq(0, PocketEssenceChannelOps.carriersFromUnits(unit - 1, unit, 8), "不足一瓶 ⇒ 0（不为凑零头造半瓶）");
+        SimpleAssert.eq(
+            2,
+            PocketEssenceChannelOps.carriersFromUnits(Long.MAX_VALUE / 4, unit, 2),
+            "wantCarriers 上界自缚（请求多少就至多多少）");
+        SimpleAssert.eq(3L * unit, PocketEssenceChannelOps.unitsForCarriers(3, unit), "逆运算与取整口径一致");
+        SimpleAssert.eq(0L, PocketEssenceChannelOps.unitsForCarriers(0, unit), "非正数一律 0");
+        // 最大整瓶数 + 回乘不超可得量（「抽了放不下」的唯一防线）
+        final long available = 3 * unit + 249;
+        final int carriers = PocketEssenceChannelOps.carriersFromUnits(available, unit, 8);
+        SimpleAssert.eq(3, carriers, "available = 3 瓶 + 249 单位 ⇒ 恰 3 只");
+        SimpleAssert.that(
+            PocketEssenceChannelOps.unitsForCarriers(carriers, unit) <= available,
+            "回乘不超可得量（" + PocketEssenceChannelOps.unitsForCarriers(carriers, unit) + " <= " + available + "）");
+        SimpleAssert.that(
+            PocketEssenceChannelOps.unitsForCarriers(carriers + 1, unit) > available,
+            "★再多一只就装不下（最大整瓶数，零头必须留在元件侧）");
+        for (long avail = 0; avail < 2_000; avail += 37) {
+            final int whole = PocketEssenceChannelOps.carriersFromUnits(avail, unit, 8);
+            SimpleAssert
+                .that(PocketEssenceChannelOps.unitsForCarriers(whole, unit) <= avail, "折算不得超出元件可得量：available=" + avail);
+        }
+        // 源码半边：两侧 unit 同源（各读各的探针换算，不写死字面量）
+        final java.util.List<String> essenceOps = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceChannelOps.java");
+        if (essenceOps == null) {
+            System.out.println("[NOTE] 读不到 PocketEssenceChannelOps.java ⇒「两侧 unit 同源」的源码半边【未验】（★不是通过；上面的算术半边照验）");
+            return;
+        }
+        final int extractStart = methodStart(essenceOps, "Outcome extractEssence(");
+        final int extractEnd = methodStart(essenceOps, "private static int pointsOf(");
+        SimpleAssert.that(extractStart >= 0 && extractEnd > extractStart, "定位 extractEssence");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, extractStart, extractEnd, "carriersFromUnits("),
+            "下传消费 carriersFromUnits（折算成立）");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, extractStart, extractEnd, "essenceStackFor("),
+            "探针换算单源（essenceStackFor）");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, extractStart, extractEnd, "perCarrier.getStackSize()"),
+            "★抽取侧 unit 读自探针（第三方倍率，不写死）");
+        final int injectStart = methodStart(essenceOps, "static PocketChannelOps.Outcome injectEssenceSource(");
+        final int injectEnd = methodStart(essenceOps, "private static void refundUnits(");
+        SimpleAssert.that(injectStart >= 0 && injectEnd > injectStart, "定位 injectEssenceSource");
+        SimpleAssert.that(
+            regionContainsCode(essenceOps, injectStart, injectEnd, "probe.getStackSize()"),
+            "★注入侧 unit 读自同一只探针（门与倍率同源，单趟不二次换算）");
+    }
+
+    // ================================================================== ★R90 E3（S3+S5）批 2 测试落地
+    //
+    // 四条分别钉住：D1 手势三分的预筛唯一判据（isEmptyPhialCarrier / carriesEssence 真值表）、
+    // 「格→瓶取出」的整瓶守卫（floor 门与扣点量）、D3 组键取源次序（tagOfCarrier）、
+    // D3 服务端归属对账（apply 三参）。共同点：判定面纯 JVM 可达（StubGate 桩件注入），
+    // 面板私有执行体（performEssenceOutToPhial / dispatchEssenceCellPress）不可构造 ⇒ 按既有
+    // E1-4 的降级形状钉「等价组合 + 源码机检」两半，面板级驱动属实机项。
+
+    /**
+     * ★R90 E3（D1 手势三分）：<b>预筛唯一判据</b>的真值表——{@code PocketEssenceIntake#isEmptyPhialCarrier}
+     * （「格→瓶取出」的载体白名单：isPhial 档位 + meta 0 + 内容空）与
+     * {@code PocketEssenceIntake#carriesEssence}（内容非空，{@code gate.readContainer} =
+     * {@code IEssentiaContainerItem.getAspects} 口径）。
+     * <p>
+     * 判据三件全走 {@link StubGate}（生产 = {@code EssenceGate.TAUM}，TC 缺席恒空 ⇒ 桩件注入）；
+     * 负控覆盖 C2 白名单的全部落点：满瓶两形状（meta1 / meta0 有内容）、带 NBT 旧晶、第三方罐、
+     * 非容器、null——「会动游标上那叠东西」的唯一执法点不得在 GUI 侧再抄第二份。
+     */
+    private static void intakePrefilterTruthTable() {
+        final StubGate gate = new StubGate();
+        // ---- 空瓶（meta 0、容器内容空）= 唯一放行档 ----
+        final ItemStack blankPhial = stack(3);
+        gate.putContainer(blankPhial, TaumAspectAmounts.EMPTY);
+        SimpleAssert.that(
+            PocketEssenceIntake.isEmptyPhialCarrier(blankPhial, gate),
+            "★空瓶（meta0 + 容器空）⇒ true（「格→瓶取出」的唯一白名单档）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.carriesEssence(blankPhial, gate),
+            "空瓶内容空 ⇒ carriesEssence=false（负控：白名单与内容判据确实是两件事）");
+        // ---- 满瓶两形状都必须 false ----
+        final ItemStack filledPhial = stack(1);
+        gate.putContainer(filledPhial, TaumAspectAmounts.single("ignis", TaumDistillRules.PHIAL_CAPACITY));
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isEmptyPhialCarrier(filledPhial, gate),
+            "★满瓶（meta0 但有内容）⇒ false（它走既有入槽支，不触发取出）");
+        SimpleAssert.that(PocketEssenceIntake.carriesEssence(filledPhial, gate), "有内容 ⇒ carriesEssence=true（正控）");
+        final ItemStack metaOne = stackDistill(1, 1);
+        gate.putContainer(metaOne, TaumAspectAmounts.single("ignis", TaumDistillRules.PHIAL_CAPACITY));
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isEmptyPhialCarrier(metaOne, gate),
+            "★meta1（TC 装瓶位）⇒ false——满瓶即便档位正确也不是本支的「空瓶」");
+        final ItemStack metaOneEmpty = stackDistill(2, 1);
+        gate.putContainer(metaOneEmpty, TaumAspectAmounts.EMPTY);
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isEmptyPhialCarrier(metaOneEmpty, gate),
+            "★meta1 + 内容空（NBT 被第三方清空）⇒ 仍 false（meta 守卫先于内容判据：异常 NBT 不放行）");
+        // ---- C2 白名单的其余负控：晶 / 第三方罐 / 非容器 / null ----
+        final ItemStack legacyCrystal = stack(4);
+        gate.putCrystal(legacyCrystal, TaumAspectAmounts.single("ignis", TaumDistillRules.CRYSTAL_CAPACITY));
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isEmptyPhialCarrier(legacyCrystal, gate),
+            "★带 NBT 旧晶（CRYSTAL_CAPACITY 档）⇒ false（走识别支，不触发取出）");
+        final ItemStack jar = stack(1);
+        gate.putUnknownVessel(jar, TaumAspectAmounts.single("aer", 40));
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isEmptyPhialCarrier(jar, gate),
+            "★第三方罐（CAPACITY_UNKNOWN，即便带着 40 点）⇒ false（档位无证据不进白名单）");
+        final ItemStack plain = stack(1);
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketEssenceIntake.isEmptyPhialCarrier(plain, gate),
+            "★非容器 ⇒ false（交回 super，由「游标已被占用」回执说话）");
+        SimpleAssert.eq(Boolean.FALSE, PocketEssenceIntake.isEmptyPhialCarrier(null, gate), "null 栈 ⇒ false");
+        SimpleAssert.eq(Boolean.FALSE, PocketEssenceIntake.isEmptyPhialCarrier(blankPhial, null), "null 探针 ⇒ false（不猜）");
+        // ---- carriesEssence 的负控半边（内容读数的唯一落点）----
+        SimpleAssert.eq(Boolean.FALSE, PocketEssenceIntake.carriesEssence(null, gate), "null 栈 ⇒ 无内容");
+        SimpleAssert.eq(Boolean.FALSE, PocketEssenceIntake.carriesEssence(filledPhial, null), "null 探针 ⇒ 无内容（恒 false，不猜）");
+        SimpleAssert.eq(Boolean.FALSE, PocketEssenceIntake.carriesEssence(plain, gate), "非容器（读数空）⇒ false");
+    }
+
+    /**
+     * ★R90 E3（D1）「格→瓶取出」的整瓶守卫：stock ∈ {7, 8, 20} ⇒ 拒 / 动 / 动且余 12。
+     * <p>
+     * ★断言降级说明（任务包允许的那一档，与 {@code drainMarksDirty} 同形）：取出执行体
+     * {@code NekoPocketPanel#performEssenceOutToPhial} 是面板私有方法、Panel 在纯 JVM 不可构造
+     * （私有构造器 + MUI2 宿主）⇒ 行为半边在 {@code PocketEssenceStore} 层按生产序列组合断言
+     * （{@code floorToPhialUnits(stock) >= 1} 守卫 → {@code extract(tag, ESSENCE_OUT_UNIT_POINTS)}
+     * 恰取一瓶，与空游标取出支同一条整瓶判据单源），源码半边机检守卫与扣点量真的住在方法体内；
+     * 面板级驱动属实机项。
+     */
+    private static void phialTakeGuardFloors() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        SimpleAssert.eq(TaumDistillRules.PHIAL_CAPACITY, unit, "一瓶 = PHIAL_CAPACITY 点（格→瓶取出与空游标支共用同一条粒度）");
+        // ---- stock = 7：floor 门 = 拒 ----
+        final PocketEssenceStore seven = new PocketEssenceStore();
+        seven.add("ignis", 7);
+        SimpleAssert.eq(0, TaumDistillRules.floorToPhialUnits(seven.get("ignis")), "7 点 ⇒ 整瓶量 0");
+        SimpleAssert.that(
+            TaumDistillRules.floorToPhialUnits(seven.get("ignis")) < 1,
+            "★守卫挡下：凑不满一瓶 ⇒ 一瓶都不产、一分都不扣（余数 = 全部存量留盘）");
+        SimpleAssert.eq(7, seven.get("ignis"), "7 点分毫未动");
+        // ---- stock = 8：floor 门 = 动 ----
+        final PocketEssenceStore eight = new PocketEssenceStore();
+        eight.add("ignis", 8);
+        SimpleAssert.that(TaumDistillRules.floorToPhialUnits(eight.get("ignis")) >= 1, "恰好一瓶 ⇒ 守卫放行");
+        SimpleAssert.eq(8, eight.extract("ignis", unit), "一次点击恰扣一瓶（8 点）");
+        SimpleAssert.eq(0, eight.get("ignis"), "盘清到 0");
+        // ---- stock = 20：动且余 12（整瓶判据同源，但一次只取一瓶）----
+        final PocketEssenceStore twenty = new PocketEssenceStore();
+        twenty.add("ignis", 20);
+        SimpleAssert.that(TaumDistillRules.floorToPhialUnits(twenty.get("ignis")) >= 1, "20 点（2 瓶 + 4 点零头）⇒ 守卫放行");
+        SimpleAssert.eq(8, twenty.extract("ignis", unit), "★一次点击仍只扣一瓶（8 点），不是空游标支的一次 16 点");
+        SimpleAssert.eq(12, twenty.get("ignis"), "★余 12 点留盘（20 − 8；再点两次后余 4 点进 not_enough_phial）");
+        SimpleAssert.eq(0, TaumDistillRules.floorToPhialUnits(4), "余 4 点时下一次点击会被同一守卫挡下（口径闭环）");
+
+        // ---- 源码半边：守卫与扣点量住在 performEssenceOutToPhial 方法体内 ----
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒ 「格→瓶取出守卫」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        final int takeStart = methodStart(panel, "private void performEssenceOutToPhial(int cell) {");
+        final int takeEnd = methodStart(panel, "private static ItemStack newPhialStack(String tag, int points) {");
+        SimpleAssert.that(takeStart >= 0 && takeEnd > takeStart, "★必须能按签名定位 performEssenceOutToPhial（改名/挪动即红）");
+        SimpleAssert
+            .that(regionContainsCode(panel, takeStart, takeEnd, "isEmptyPhialCarrier("), "权威复验：空瓶白名单在服务端方法体内复验（客户端分流不可信）");
+        SimpleAssert.that(regionContainsCode(panel, takeStart, takeEnd, ".tagAtCell(cell)"), "tag 由格位归属表反查（R18/R19：不吃客户端送来的 tag）");
+        SimpleAssert.that(
+            regionContainsCode(panel, takeStart, takeEnd, "TaumDistillRules.floorToPhialUnits(stock) < 1"),
+            "★整瓶守卫在读（floorToPhialUnits 单源，不是第二份 >= 8 字面量）");
+        SimpleAssert.that(
+            regionContainsCode(panel, takeStart, takeEnd, ".extract(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS)"),
+            "★扣点量恰 = ESSENCE_OUT_UNIT_POINTS（一次一瓶，不是空游标支的整批 floor 量）");
+        SimpleAssert.that(regionContainsCode(panel, takeStart, takeEnd, "newPhialStack(tag, points)"), "物化走 newPhialStack 单源（meta1 + Aspects NBT 不在游标栈上另写一份）");
+        SimpleAssert.that(regionContainsCode(panel, takeStart, takeEnd, "markDirty()"), "成功面置脏");
+        // 动作码接线：字面量 = 11 且 dispatch case 真的落到本方法
+        SimpleAssert
+            .that(methodStart(panel, "private static final int ACTION_ESSENCE_OUT_TO_PHIAL = 11;") >= 0, "★动作码字面量 = 11（改码位即红；与既有 0…10 不冲突）");
+        SimpleAssert.that(
+            regionContainsCode(panel, 0, panel.size(), "case ACTION_ESSENCE_OUT_TO_PHIAL:"),
+            "onServerAction 的 dispatch 真的接到「格→瓶取出」");
+    }
+
+    /**
+     * ★R90 E3（D3）：组键 tag 的取源次序——本格 tag 恒优先；本格<b>无归属</b>时回落<b>拖入物自带的
+     * 可读 tag</b>（{@code NekoEssenceGhostCell#tagOfCarrier}，与 {@code PocketEssenceIntake#firstTagOf}
+     * 单源）；读不出 tag 的拖入物（裸晶 / 裸栈 / 非容器）⇒ null ⇒ {@code carriesTag} 的既有拒收入口
+     * （need_stock 文案面）生效。末尾按 {@code handleDragAndDrop} 的同一形状串组键链。
+     */
+    private static void tagOfCarrierPrefersCellThenPayload() {
+        final StubGate gate = new StubGate();
+        final ItemStack fullPhial = stack(2);
+        gate.putContainer(fullPhial, TaumAspectAmounts.single("ignis", TaumDistillRules.PHIAL_CAPACITY));
+        // ---- 本格有 tag ⇒ 恒本格 tag（不受拖入物影响，与 R88 行为逐字一致）----
+        SimpleAssert.eq(
+            "aer",
+            NekoEssenceGhostCell.tagOfCarrier(fullPhial, "aer", gate),
+            "★本格有归属 ⇒ 恒本格 tag（拖入物自带 ignis 也不改口）");
+        // ---- 空格 + 满瓶 ⇒ 瓶自带 tag ----
+        SimpleAssert.eq("ignis", NekoEssenceGhostCell.tagOfCarrier(fullPhial, null, gate), "★空格 + 满瓶 ⇒ 瓶自带 tag（空格建档的入口）");
+        SimpleAssert.eq("ignis", NekoEssenceGhostCell.tagOfCarrier(fullPhial, "", gate), "空串归属视同无归属 ⇒ 同上");
+        // ---- 空格 + 裸晶 / 裸栈 / null ⇒ null ----
+        final ItemStack bareCarrier = stack(1);
+        gate.putContainer(bareCarrier, TaumAspectAmounts.EMPTY);
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(bareCarrier, null, gate), "空格 + 无 NBT 裸晶（读数空）⇒ null");
+        final ItemStack plain = stack(1);
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(plain, null, gate), "空格 + 非容器裸栈 ⇒ null");
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(null, "aer", gate), "null 栈 ⇒ null（不看拖入物，即便本格有归属）");
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(fullPhial, null, null), "null 探针 ⇒ null");
+        // ---- 组键链（handleDragAndDrop 的同一形状）：空格 + 自带 tag 可组键；裸栈仍空键 ----
+        final String carrierTag = NekoEssenceGhostCell.tagOfCarrier(fullPhial, null, gate);
+        SimpleAssert.that(NekoEssenceGhostCell.carriesTag(fullPhial, carrierTag, gate), "自带 tag 回代 carriesTag ⇒ 匹配");
+        SimpleAssert.eq(
+            "e:essentia:ignis",
+            NekoEssenceGhostCell
+                .ghostKeyFor(0, true, NekoEssenceGhostCell.carriesTag(fullPhial, carrierTag, gate), carrierTag, "essentia"),
+            "★空格 + 自带 tag ⇒ 可组键发出建档声明（服务端对账后放行，见下一条用例）");
+        final String bareTag = NekoEssenceGhostCell.tagOfCarrier(plain, null, gate);
+        SimpleAssert.eq(
+            "",
+            NekoEssenceGhostCell
+                .ghostKeyFor(0, true, NekoEssenceGhostCell.carriesTag(plain, bareTag, gate), bareTag, "essentia"),
+            "★裸栈（tag=null）⇒ 仍空键（need_stock 拒收入口生效，不写死声明）");
+    }
+
+    /**
+     * ★R90 E3（D3）{@code apply} 三参形态的<b>归属对账</b>：无归属 + 载荷 tag ⇒ APPLIED 且
+     * {@code assignCell} 占<b>最小空位</b>（幂等：重复 ⇒ UNCHANGED 且格不漂）；有归属不匹配 ⇒
+     * REJECTED 且声明表零写入（伪造缝隙闭合）；两参旧形态对同一请求保持遗留口径（不做对账 / 不占格）。
+     */
+    private static void ghostRequestUnownedCellAssignsIdempotent() {
+        final String typeId = "essentia";
+        final String key = PocketFilterConfig.essenceKey(typeId, "ignis");
+        // ---- 无归属 + tag ⇒ APPLIED + 占最小空位 ----
+        final PocketFilterConfig filters = new PocketFilterConfig();
+        final PocketEssenceStore store = new PocketEssenceStore();
+        final PocketGhostRequest.Decision first = PocketGhostRequest
+            .apply(PocketGhostRequest.setRequest(5, key), filters, store);
+        SimpleAssert.eq(PocketGhostRequest.Outcome.APPLIED, first.outcome, "无归属格 + 载荷 tag ⇒ APPLIED（放行建档）");
+        SimpleAssert.that(store.cellOf("ignis") >= 0, "建档同时占格（cellOf >= 0）");
+        SimpleAssert.eq(0, store.cellOf("ignis"), "★占的是最小空位 0（格序 = 首次入账顺序），不是被拖的第 5 格");
+        assertFilterEquals(5, Kind.ESSENCE, key, filters.at(Kind.ESSENCE, 5));
+        // ---- 重复同请求 ⇒ UNCHANGED 且格不漂 ----
+        final PocketGhostRequest.Decision repeat = PocketGhostRequest
+            .apply(PocketGhostRequest.setRequest(5, key), filters, store);
+        SimpleAssert.eq(PocketGhostRequest.Outcome.UNCHANGED, repeat.outcome, "重复同请求 ⇒ UNCHANGED");
+        SimpleAssert.eq(0, store.cellOf("ignis"), "格不漂（幂等：落回原格，不去占第 2 格）");
+        SimpleAssert.eq(1, filters.size(), "声明表仍只有一条");
+        // ---- 有归属不匹配 ⇒ REJECTED 且声明表零写入 ----
+        final PocketFilterConfig owned = new PocketFilterConfig();
+        final PocketEssenceStore stocked = new PocketEssenceStore();
+        stocked.add("aer", 8); // 首次入账即占 0 号格
+        SimpleAssert.eq(0, stocked.cellOf("aer"), "前置：aer 已占 0 号格");
+        final PocketGhostRequest.Decision foreign = PocketGhostRequest
+            .apply(PocketGhostRequest.setRequest(0, key), owned, stocked);
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            foreign.outcome,
+            "★有归属（aer）+ 载荷 tag（ignis）不匹配 ⇒ 拒（伪造 C2S 不再能往别人的格上写声明）");
+        SimpleAssert.eq(0, owned.size(), "★声明表零写入（一个字节都不写）");
+        SimpleAssert.eq(-1, stocked.cellOf("ignis"), "格位表也不为新 tag 占格");
+        SimpleAssert.eq(8, stocked.get("aer"), "存量分毫未动");
+        // ---- 有归属且匹配 ⇒ 照旧 APPLIED（合法载荷的正常面，对账只拒伪造不拒合法）----
+        final PocketGhostRequest.Decision matching = PocketGhostRequest
+            .apply(PocketGhostRequest.setRequest(0, PocketFilterConfig.essenceKey(typeId, "aer")), owned, stocked);
+        SimpleAssert.eq(PocketGhostRequest.Outcome.APPLIED, matching.outcome, "归属与载荷同 tag ⇒ 照旧建档");
+        SimpleAssert.eq(0, stocked.cellOf("aer"), "归属格不因匹配建档而漂移");
+        // ---- 两参旧形态：遗留口径负控 ----
+        final PocketFilterConfig legacy = new PocketFilterConfig();
+        final PocketEssenceStore legacyStore = new PocketEssenceStore();
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.setRequest(5, key), legacy).outcome,
+            "两参旧形态对同一请求保持旧 APPLIED（遗留口径：不做归属对账）");
+        SimpleAssert.eq(-1, legacyStore.cellOf("ignis"), "★旧形态不碰格位表（与三参形态的分界即此）");
+    }
+
+    /**
+     * ★R90 E3 纵深负控：上游左键分流（D1 手势三分）把空瓶改派「格→瓶取出」之后，
+     * {@code intake} 的 {@code NO_OWNER} 拒收<b>原样保留</b>——伪造 / 旧客户端 / 分流竞态下空瓶
+     * 仍会落进 intake，语义仍是「分毫不动 + 粘性回执」，不因上游新增分流而放水
+     * （按既有 {@code essence_intake_carrier_from_cursor_four_states} 的风格延伸）。
+     */
+    private static void intakeNoOwnerStillRejectsEmptyPhial() {
+        final StubGate gate = new StubGate();
+        final ItemStack blankPhial = stack(3);
+        gate.putContainer(blankPhial, TaumAspectAmounts.EMPTY);
+        SimpleAssert.that(
+            PocketEssenceIntake.isEmptyPhialCarrier(blankPhial, gate),
+            "前置：这一栈确实是空瓶（会触发新分流的同一形状）");
+        final PocketEssenceStore store = new PocketEssenceStore();
+        final PocketEssenceIntake.Result result = PocketEssenceIntake.intake(blankPhial, store, gate);
+        SimpleAssert.eq(
+            PocketEssenceIntake.Outcome.NO_OWNER,
+            result.outcome,
+            "★空瓶绕过分流落进 intake ⇒ 仍 NO_OWNER（纵深防御不因 D1 放水）");
+        SimpleAssert.eq("gtit.pocket.essence.intake.no_owner", result.langKey(), "回执键对账（粘性面板回执）");
+        SimpleAssert.eq(null, result.tag, "失败态无 tag");
+        SimpleAssert.eq(0, result.points, "失败态 0 点");
+        SimpleAssert.eq(3, blankPhial.stackSize, "★载体分毫未动（空瓶不会被点击入槽销毁）");
+        SimpleAssert.eq(0, store.totalPoints(), "★源质表分毫未动");
+        SimpleAssert.that(!result.accepted(), "调用方不得清游标（accepted=false）");
+    }
+
+    // ================================================================== ★R90 E4（S6）决策核 + 口袋侧灌入
+    //
+    // 前三条把 E4 临时直测的断言组搬进套件（machineGate 判因 / plan 落点与 want / 防御分支），
+    // 第四条钉 PocketInventory#fillOwnTank 的「实收>0 ⇒ 置脏」。世界站适配器
+    // （PocketWorldFluidTap 的真 drain / 绕门禁直探 / 差额注回）与 ItemNekoDimensionPocket
+    // 的实机手势（潜行右击 GT5U 机器）属 in-game-checklist 项，不在此声称已验证。
+
+    /**
+     * ★S6 门禁判因真值表（{@code PocketFluidExtraction#machineGate}，决策核零 MC/GT5U import）：
+     * U5 太新（{@code mTickTimer <= 5}）/ 门开 / U6 禁输出（门禁量 0 但直探有货）/ 无液 /
+     * 合并档（探针不可用不瞎指），外加阈值单源与边界。
+     */
+    private static void fluidGateReasonsU5U6Empty() {
+        SimpleAssert.eq(
+            5L,
+            PocketFluidExtraction.GATE_TICK_THRESHOLD,
+            "★阈值只允许活在 GATE_TICK_THRESHOLD 一处（GT5U 门禁式 mTickTimer > 5）");
+        // ---- U5 太新：timer <= 5 一律放行失败（先于其它判据）----
+        SimpleAssert.eq(
+            PocketFluidExtraction.Reason.MACHINE_TOO_NEW,
+            PocketFluidExtraction.machineGate(5, 1_000, 1_000),
+            "timer=5（恰在阈值上）⇒ 太新（门禁式是 > 5，不是 >= 5）");
+        SimpleAssert.eq(
+            PocketFluidExtraction.Reason.MACHINE_TOO_NEW,
+            PocketFluidExtraction.machineGate(0, 1_000, 1_000),
+            "timer=0 ⇒ 太新（刚放置/刚加载区块；即便直探有货也先报太新）");
+        // ---- 门开：门禁模拟量 > 0 ----
+        SimpleAssert.eq(PocketFluidExtraction.Reason.GATE_OPEN, PocketFluidExtraction.machineGate(6, 1, 0), "timer=6 + 门禁量 1 ⇒ 门开");
+        SimpleAssert.eq(
+            PocketFluidExtraction.Reason.GATE_OPEN,
+            PocketFluidExtraction.machineGate(Long.MAX_VALUE, 2_000_000, -1),
+            "门开不看直探读数（探针缺席不影响门开判因）");
+        // ---- U6 禁输出：门禁量 0 但绕门禁直探有货 ----
+        SimpleAssert.eq(
+            PocketFluidExtraction.Reason.MACHINE_LOCKED,
+            PocketFluidExtraction.machineGate(6, 0, 1),
+            "★gate=0 + probe>0 ⇒ 禁输出（螺丝刀禁用被点名，不并档）");
+        // ---- 无液：门禁量 0 且直探也无货 ----
+        SimpleAssert.eq(PocketFluidExtraction.Reason.MACHINE_EMPTY, PocketFluidExtraction.machineGate(6, 0, 0), "gate=0 + probe=0 ⇒ 无液");
+        // ---- 合并档：直探不可用（-1）⇒ 宁可并档也不瞎指 ----
+        SimpleAssert.eq(
+            PocketFluidExtraction.Reason.MACHINE_EMPTY_OR_LOCKED,
+            PocketFluidExtraction.machineGate(6, 0, -1),
+            "★gate=0 + probe=-1 ⇒ 无液或禁输出（合并档）");
+        for (long timer = GATE_PROBE_TIMER_MIN; timer <= GATE_PROBE_TIMER_MIN + 2; timer++) {
+            SimpleAssert.eq(
+                PocketFluidExtraction.Reason.GATE_OPEN,
+                PocketFluidExtraction.machineGate(timer, 500, -1),
+                "timer>5 即过太新判（timer=" + timer + "）");
+        }
+    }
+
+    /** 门禁边界探针的起点（= 阈值 + 1，第一条放行档）。 */
+    private static final long GATE_PROBE_TIMER_MIN = PocketFluidExtraction.GATE_TICK_THRESHOLD + 1;
+
+    /**
+     * ★S6 落点规划的 16M 夹取与「部分搬运」未搬量：want = min(机器模拟量, 落点余量)（先按口袋容量
+     * 求量再真抽 = 不丢量契约）；U7 口径 tier≥4 数字罐 32M 起超单 tank 16M ⇒ {@code remainingAfter}
+     * 必须如实报「机器里还有多少」。
+     */
+    private static void fluidPlanCapsAndPartial() {
+        final int cap = PocketConstants.FLUID_BAR_CAPACITY_ML;
+        SimpleAssert.eq(16_000_000, cap, "单 tank 容量 16M（plan 的夹取上界来自这里，不是第二个字面量）");
+        // ---- 16M 夹取：机器 32M、空槽 ⇒ want=16M ----
+        final PocketFluidExtraction.Plan capped = PocketFluidExtraction
+            .plan(32_000_000, new int[] { 0 }, new boolean[] { true }, cap);
+        SimpleAssert.eq(PocketFluidExtraction.Reason.GATE_OPEN, capped.reason, "机器量 32M ⇒ 仍 GATE_OPEN（有得搬）");
+        SimpleAssert.eq(16_000_000, capped.want, "★want 夹到落点容量 16M（口袋必然装得下才真抽）");
+        SimpleAssert.eq(0, capped.tank, "落点 = 第一个空 tank");
+        // ---- 部分搬运：机器 32M、实收 16M ⇒ 机器里还剩约 16M ----
+        SimpleAssert.eq(
+            16_000_000,
+            PocketFluidExtraction.remainingAfter(32_000_000, 16_000_000),
+            "★tier≥4 数字罐 32M 起超单 tank 16M ⇒ 未搬 16M（回执如实报「实收 X、机器里还有约 Y」）");
+        SimpleAssert.eq(0, PocketFluidExtraction.remainingAfter(32_000_000, 32_000_000), "搬完 ⇒ 0");
+        SimpleAssert.eq(0, PocketFluidExtraction.remainingAfter(5, 10), "实收 > 机器量（异常入参）⇒ 钳 0，不造负数");
+        SimpleAssert.eq(0, PocketFluidExtraction.remainingAfter(-4, 0), "负机器量 ⇒ 钳 0");
+        SimpleAssert.eq(0, PocketFluidExtraction.remainingAfter(0, 0), "零量 ⇒ 0");
+        // ---- want 恒 ≤ min(机器量, 落点余量)：不丢量与不超装的双向防线 ----
+        for (int machine = 1; machine <= 2 * cap; machine += 4_000_000) {
+            for (int held = 0; held < cap; held += 4_000_000) {
+                final PocketFluidExtraction.Plan plan = PocketFluidExtraction.plan(machine, new int[] { held }, new boolean[] { true }, cap);
+                SimpleAssert.eq(
+                    PocketFluidExtraction.Reason.GATE_OPEN,
+                    plan.reason,
+                    "单兼容未满槽恒有落点（machine=" + machine + " held=" + held + "）");
+                SimpleAssert.that(
+                    plan.want <= Math.min(machine, cap - held),
+                    "want ≤ min(机器量, 落点余量)：machine=" + machine + " held=" + held);
+                SimpleAssert.that(plan.want >= 1, "GATE_OPEN 恒 want>0（" + plan.want + "）");
+            }
+        }
+        final PocketFluidExtraction.Plan full = PocketFluidExtraction
+            .plan(32_000_000, new int[] { cap }, new boolean[] { true }, cap);
+        SimpleAssert.eq(PocketFluidExtraction.Reason.POCKET_NO_ROOM, full.reason, "唯一 tank 已满 ⇒ POCKET_NO_ROOM");
+        SimpleAssert.eq(0, full.want, "不搬 ⇒ want=0");
+        SimpleAssert.eq(-1, full.tank, "不搬 ⇒ tank=-1");
+    }
+
+    /**
+     * ★S6 落点规则：同流体合并优先（余量最大者胜、同余量取最靠前）、同流体满落空槽、
+     * 全满异流体 ⇒ POCKET_NO_ROOM，与空数组 / null / 长度不齐 / 非正参的防御分支；
+     * 附 {@code tankRoom} 的纯算术（与 {@code PocketInventory#barRoom} 同语义、自含实现）。
+     */
+    private static void fluidPlanPrefersMergeableTank() {
+        final int cap = PocketConstants.FLUID_BAR_CAPACITY_ML;
+        // ---- 同流体合并优先：余 3M 的槽胜过整空槽（先合并、不散装）----
+        final PocketFluidExtraction.Plan merge = PocketFluidExtraction
+            .plan(4_000_000, new int[] { 13_000_000, 0 }, new boolean[] { true, true }, cap);
+        SimpleAssert.eq(PocketFluidExtraction.Reason.GATE_OPEN, merge.reason, "有可合并槽 ⇒ 搬");
+        SimpleAssert.eq(0, merge.tank, "★余 3M 的 0 号槽胜过整空的 1 号槽（合并支优先于空槽支）");
+        SimpleAssert.eq(3_000_000, merge.want, "want = min(机器量 4M, 合并余量 3M)");
+        // ---- 多个同流体槽：取余量最大 ----
+        final PocketFluidExtraction.Plan widest = PocketFluidExtraction
+            .plan(16_000_000, new int[] { 13_000_000, 8_000_000, 15_999_999 }, new boolean[] { true, true, true }, cap);
+        SimpleAssert.eq(1, widest.tank, "★三个同流体槽 ⇒ 余量最大者（8M）胜，不是最靠前");
+        SimpleAssert.eq(8_000_000, widest.want, "want = 落点余量 8M");
+        final PocketFluidExtraction.Plan tie = PocketFluidExtraction
+            .plan(16_000_000, new int[] { 8_000_000, 8_000_000 }, new boolean[] { true, true }, cap);
+        SimpleAssert.eq(0, tie.tank, "同余量 ⇒ 取最靠前（严格大于才替换）");
+        // ---- 同流体满落空槽 ----
+        final PocketFluidExtraction.Plan spill = PocketFluidExtraction
+            .plan(16_000_000, new int[] { cap, 0 }, new boolean[] { true, true }, cap);
+        SimpleAssert.eq(1, spill.tank, "★同流体槽已满（余 0）⇒ 落第一个空槽");
+        SimpleAssert.eq(16_000_000, spill.want, "空槽余量 = 容量 ⇒ want 夹到 16M");
+        // ---- 全满 / 异流体 ⇒ NO_ROOM ----
+        final PocketFluidExtraction.Plan blocked = PocketFluidExtraction
+            .plan(16_000_000, new int[] { cap, cap }, new boolean[] { true, false }, cap);
+        SimpleAssert.eq(
+            PocketFluidExtraction.Reason.POCKET_NO_ROOM,
+            blocked.reason,
+            "★18 格全是别种流体（异流体不兼容）⇒ POCKET_NO_ROOM");
+        SimpleAssert.eq(0, blocked.want, "不搬 ⇒ want=0");
+        SimpleAssert.eq(-1, blocked.tank, "不搬 ⇒ tank=-1");
+        // ---- 防御分支：null / 空数组 / 长度不齐 / 非正参一律按不搬处理 ----
+        for (final PocketFluidExtraction.Plan defensive : new PocketFluidExtraction.Plan[] {
+            PocketFluidExtraction.plan(16_000_000, null, null, cap),
+            PocketFluidExtraction.plan(16_000_000, new int[0], new boolean[0], cap),
+            PocketFluidExtraction.plan(16_000_000, new int[] { 0, 0 }, new boolean[] { true }, cap),
+            PocketFluidExtraction.plan(0, new int[] { 0 }, new boolean[] { true }, cap),
+            PocketFluidExtraction.plan(-1, new int[] { 0 }, new boolean[] { true }, cap),
+            PocketFluidExtraction.plan(16_000_000, new int[] { 0 }, new boolean[] { true }, 0) }) {
+            SimpleAssert.eq(PocketFluidExtraction.Reason.POCKET_NO_ROOM, defensive.reason, "防御分支一律按不搬处理");
+            SimpleAssert.eq(-1, defensive.tank, "不搬 ⇒ tank=-1");
+            SimpleAssert.eq(0, defensive.want, "不搬 ⇒ want=0");
+        }
+        SimpleAssert.eq(
+            0,
+            PocketFluidExtraction.plan(100, new int[] { -7, -7 }, new boolean[] { true, true }, cap).tank,
+            "负现有量按 0 处理（防御，不造负余量）");
+        // ---- tankRoom 的纯算术（与 PocketInventory#barRoom 同语义、不 import gui 包）----
+        SimpleAssert.eq(12_000_000, PocketFluidExtraction.tankRoom(cap, 4_000_000, true), "兼容 ⇒ 容量 − 现有量");
+        SimpleAssert.eq(0, PocketFluidExtraction.tankRoom(cap, 4_000_000, false), "异流体 ⇒ 0");
+        SimpleAssert.eq(0, PocketFluidExtraction.tankRoom(cap, cap, true), "满 ⇒ 0");
+        SimpleAssert.eq(0, PocketFluidExtraction.tankRoom(0, 0, true), "非正容量 ⇒ 0");
+        SimpleAssert.eq(cap, PocketFluidExtraction.tankRoom(cap, -3, true), "负现有量钳 0 ⇒ 整槽");
+        SimpleAssert.eq(0, PocketFluidExtraction.tankRoom(cap, cap + 5, true), "超装读数 ⇒ 0（不出现负余量）");
+    }
+
+    /**
+     * ★S6 口袋侧灌入原语 {@code PocketInventory#fillOwnTank}：实收 &gt;0 ⇒ 置脏（世界侧没有关屏钩子
+     * 可依赖）、异流体拒返 0 且不置脏、16M 夹取、null/非正量/越界防御；{@code depositFluidIntoBar}
+     * 委托它（同语义单源）。
+     * <p>
+     * 行为半边需要真实 {@code FluidStack}/{@code FluidRegistry}（先例：十八 tank NBT 用例），
+     * 按 {@link #fluidsUsable()} 探针走；不可用时退纯算术半边并显式声明真实灌入属实机项。
+     * 源码半边（fill 守卫与置脏的行序 + 委托关系）无条件机检。
+     */
+    private static void fillOwnTankMarksDirty() {
+        // ---- 源码半边：灌入原语的守卫与置脏（无条件）----
+        final java.util.List<String> inventory = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/PocketInventory.java");
+        if (inventory == null) {
+            System.out.println("[NOTE] 读不到 PocketInventory.java ⇒ 「fillOwnTank 置脏」的源码半边【未验】（★不是通过）");
+        } else {
+            final int fillStart = methodStart(inventory, "public int fillOwnTank(int tank, FluidStack fluid) {");
+            final int fillEnd = methodStart(inventory, "public FluidStack ownTankFluid(int tank) {");
+            SimpleAssert.that(fillStart >= 0 && fillEnd > fillStart, "★必须能按签名定位 fillOwnTank（改名/挪动即红）");
+            SimpleAssert.that(
+                regionContainsCode(inventory, fillStart, fillEnd, "tanks[tank].fill(fluid, true)"),
+                "真的走 FluidStackTank.fill（同流体合并 / 异流体拒 / 16M 夹取由它承担）");
+            SimpleAssert.that(regionContainsCode(inventory, fillStart, fillEnd, "if (moved > 0)"), "守卫在读（实收>0 才置脏）");
+            SimpleAssert.that(regionContainsCode(inventory, fillStart, fillEnd, "dirty = true"), "★实收>0 ⇒ dirty=true（世界侧灌入必须自含置脏）");
+            final int guardAt = firstCodeLineWith(inventory, fillStart, fillEnd, "if (moved > 0)");
+            final int dirtyAt = firstCodeLineWith(inventory, fillStart, fillEnd, "dirty = true");
+            SimpleAssert.that(dirtyAt > guardAt, "置脏在守卫之内（0 实收不置脏）");
+            final int depositStart = methodStart(inventory, "public int depositFluidIntoBar(int tank, FluidStack fluid) {");
+            SimpleAssert.that(depositStart >= 0 && depositStart < fillStart, "定位 depositFluidIntoBar（在 fillOwnTank 之前）");
+            SimpleAssert.that(
+                regionContainsCode(inventory, depositStart, fillStart, "return fillOwnTank(tank, fluid);"),
+                "★depositFluidIntoBar 委托 fillOwnTank（同语义单源，不抄第二份 fill 逻辑）");
+        }
+        // ---- 行为半边：真实 FluidStackTank（本 JVM 可构造时）----
+        if (!fluidsUsable()) {
+            final int cap = PocketConstants.FLUID_BAR_CAPACITY_ML;
+            SimpleAssert.eq(cap, PocketInventory.barRoom(cap, 0, true), "空槽余量 = 容量（灌入前的夹取上界）");
+            SimpleAssert.eq(0, PocketInventory.barRoom(cap, cap, true), "满槽 ⇒ 0（夹取上界归零）");
+            SimpleAssert.eq(0, PocketInventory.barRoom(cap, 500, false), "异流体 ⇒ 0（拒收读数）");
+            System.out.println("[NOTE] 本 JVM 不可构造真实流体 ⇒ fillOwnTank 的真实灌入半边【实机项】（源码半边照验）");
+            return;
+        }
+        final PocketInventory inv = PocketInventory.readFrom(null);
+        inv.markClean();
+        SimpleAssert.that(!inv.isDirty(), "起点干净");
+        SimpleAssert.eq(
+            1_234,
+            inv.fillOwnTank(0, new FluidStack(FluidRegistry.getFluid("water"), 1_234)),
+            "★实收如实返回（1234 mB，供回执报「实收」）");
+        SimpleAssert.that(inv.isDirty(), "★fill>0 ⇒ dirty 翻转（不置脏 = 灌入只活在内存 = 净复制）");
+        SimpleAssert.eq(1_234, inv.tankAt(0).getFluidAmount(), "tank 0 真的进了这些量");
+        // 异流体拒返 0，且拒收不置脏
+        final PocketInventory mixed = PocketInventory.readFrom(null);
+        mixed.fillOwnTank(3, new FluidStack(FluidRegistry.getFluid("water"), 500));
+        mixed.markClean();
+        SimpleAssert.eq(
+            0,
+            mixed.fillOwnTank(3, new FluidStack(FluidRegistry.getFluid("lava"), 500)),
+            "★异流体拒返 0（一个 tank 只装一种）");
+        SimpleAssert.that(!mixed.isDirty(), "★拒收 ⇒ 不置脏（moved=0 守卫）");
+        SimpleAssert.eq(500, mixed.tankAt(3).getFluidAmount(), "原有内容未被异流体冲掉");
+        // 16M 夹取
+        final PocketInventory clamp = PocketInventory.readFrom(null);
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            clamp.fillOwnTank(5, new FluidStack(FluidRegistry.getFluid("water"), 32_000_000)),
+            "★32M 只实收 16M（tank 容量夹取；真抽侧按 want 契约根本不会多抽）");
+        SimpleAssert.eq(PocketConstants.FLUID_BAR_CAPACITY_ML, clamp.tankAt(5).getFluidAmount(), "tank 5 恰满不溢出");
+        SimpleAssert.eq(0, clamp.fillOwnTank(5, new FluidStack(FluidRegistry.getFluid("water"), 1)), "满后再灌 ⇒ 0");
+        // 防御：null 流体 / 非正量 / 越界 tank ⇒ 0
+        SimpleAssert.eq(0, clamp.fillOwnTank(5, null), "null 流体 ⇒ 0");
+        SimpleAssert.eq(0, clamp.fillOwnTank(5, new FluidStack(FluidRegistry.getFluid("water"), 0)), "非正量 ⇒ 0");
+        SimpleAssert.eq(0, clamp.fillOwnTank(-1, new FluidStack(FluidRegistry.getFluid("water"), 100)), "负 tank 号 ⇒ 0");
+        SimpleAssert
+            .eq(0, clamp.fillOwnTank(18, new FluidStack(FluidRegistry.getFluid("water"), 100)), "tank=18 越界（0…17）⇒ 0");
+        // 委托等价：depositFluidIntoBar 与 fillOwnTank 同语义（既有 GUI/通道调用方零行为变化）
+        final PocketInventory delegated = PocketInventory.readFrom(null);
+        SimpleAssert.eq(
+            77,
+            delegated.depositFluidIntoBar(2, new FluidStack(FluidRegistry.getFluid("water"), 77)),
+            "depositFluidIntoBar ⇒ 同一实收");
+        SimpleAssert.eq(77, delegated.tankAt(2).getFluidAmount(), "落点同一 tank");
+    }
+
     // ------------------------------------------------------------------ 桩件与工具
 
     /**
@@ -4964,6 +6189,17 @@ public class NekoPocketModelTest {
         final Map<String, PocketReceipt> forcedExtract = new LinkedHashMap<>();
         /** ★R87：按载荷键钉死注入回执（0 件成交），驱动「LOST 仍停批 / FULL 不停批」的判别面。 */
         final Map<String, PocketReceipt> forcedInject = new LinkedHashMap<>();
+        /**
+         * ★R90 E2 镜像开关：源质来源按「源质原生通道」路由——判据与生产
+         * {@code PocketEssenceChannelOps#injectEssenceSource} 同一读法：内建两通道走
+         * {@code EssenceNativeChannels.nativeProbe} 的真排除（生产代码，纯 JVM 可驱动），
+         * 第三方席位走包私有种子口（生产 = convertStackFromItem 实测；测试 JVM 无 TC 无注册）。
+         * 默认 false = 保持 R86 旧镜像（{@code e:} 来源回落物品通道、OK/0）。两条镜像并存的理由：
+         * 旧镜像若就地改掉，{@code anti_loop_essence_matches_by_tag_not_raw_key} 的「异 tag 照常推」
+         * 正控会在无原生通道的测试 JVM 里变成 0 搬运（其被测对象是剔除判据，不是路由），而本套件
+         * 不顺手改既有用例的语义 ⇒ E2 路由矩阵的用例显式打开本开关。
+         */
+        boolean essenceNativeRouting;
 
         @Override
         public Outcome extract(PocketFilterConfig.Filter filter, String diskuuid, int count) {
@@ -5002,6 +6238,38 @@ public class NekoPocketModelTest {
 
         void addSource(int slot, String contentKey, int count, SourceKind kind) {
             sources.add(new SourceSlot(slot, contentKey, count, kind));
+        }
+
+        /**
+         * ★R90 E2 镜像：源质来源对一条 (元件, 通道) 的路由判定。内建物品/流体两席位镜像
+         * {@code EssenceNativeChannels.nativeProbe} 的内建排除（恒拒——上传永不回落物品通道；
+         * 其源码判据由 {@code assertNativeProbeExclusionPinned} 机检：测试 JVM 里 AE2 的类型
+         * 单例因 fastutil 缺场不可触达，不能直接调真探针）；第三方席位走种子口
+         * （生产 = convertStackFromItem 实测，本 JVM 无 TC 无注册 ⇒ 只能种子）。命中 ⇒ 按 C1
+         * 整瓶粒度搬（零头留盘）；未命中 ⇒ {@code NO_CHANNEL}（拒收计数由 Runner 记进
+         * {@code noChannel + essenceNoChannel}，与生产同向）。
+         */
+        private Outcome injectEssenceNativeRouted(SourceSlot source, String typeId) {
+            final PocketFilterConfig.Filter payload = PocketFilterConfig.parseKey(source.contentKey);
+            if (!(payload instanceof PocketFilterConfig.EssenceFilter)) {
+                return new Outcome(PocketReceipt.OK, 0);
+            }
+            final String tag = ((PocketFilterConfig.EssenceFilter) payload).tag;
+            final boolean nativeHit = !"item".equals(typeId) && !"fluid".equals(typeId)
+                && EssenceNativeChannels.isSeededNativeForTest(typeId, tag);
+            if (!nativeHit) {
+                return new Outcome(PocketReceipt.NO_CHANNEL, 0);
+            }
+            final int live = liveCount(source.slot);
+            if (live <= 0) {
+                return new Outcome(PocketReceipt.OK, 0);
+            }
+            final int wantPoints = TaumDistillRules.floorToPhialUnits(live);
+            if (wantPoints <= 0) {
+                return new Outcome(PocketReceipt.OK, 0);
+            }
+            settle(source.slot, live - wantPoints);
+            return new Outcome(PocketReceipt.OK, wantPoints);
         }
 
         /** 槽位活数量：真实实现读的是背包，桩件读的是本表。 */
@@ -5057,6 +6325,11 @@ public class NekoPocketModelTest {
             injectCalls++;
             servedChannels.add(typeId);
             servedKeys.add(source.contentKey);
+            if (essenceNativeRouting && source.kind == SourceKind.ESSENCE) {
+                // ★R90 E2 镜像：源质上传只认源质原生通道（见 essenceNativeRouting 的 javadoc）——
+                // 生产里这一支在 PocketEssenceChannelOps#injectEssenceSource 的路由门处发生。
+                return injectEssenceNativeRouted(source, typeId);
+            }
             // ★R87：镜像真实实现的 typeId 门（PocketAeChannelOps 的 R84 成对早退 + R86 源质回落）——
             // 物品/源质来源只走物品通道、流体来源只走流体通道，其余按"无事可做"返回 OK；
             // 否则 R87-b 的全通道轮转会把来源灌进不相干的通道，桩件就与真实行为分叉了。
@@ -6428,6 +7701,17 @@ public class NekoPocketModelTest {
     /** 第一个包含 {@code needle} 的代码行的下标；找不到返回 -1。 */
     private static int methodStart(java.util.List<String> lines, String needle) {
         for (int i = 0; i < lines.size(); i++) {
+            if (!isCommentLine(lines.get(i)) && lines.get(i)
+                .contains(needle)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** 区间内（★注释行不算）第一个包含 {@code needle} 的代码行下标；找不到返回 -1（行序断言用）。 */
+    private static int firstCodeLineWith(java.util.List<String> lines, int from, int to, String needle) {
+        for (int i = Math.max(0, from); i < Math.min(lines.size(), to); i++) {
             if (!isCommentLine(lines.get(i)) && lines.get(i)
                 .contains(needle)) {
                 return i;

@@ -340,7 +340,7 @@ gtit.pocket.aspect.cell=%s：%d/%d
 gtit.pocket.aspect.overflow_note=超出前 %d 项的源质只入账不显示
 gtit.pocket.ghost.on=配置格：%s（右键取消）
 gtit.pocket.ghost.drag_hint=想声明这一列：从 NEI 把 §e装了该流体的容器§r（桶/罐/大型单元）拖到这条上；配方窗里的流体行拖不出来（NEI 不让拖那种条目）
-gtit.pocket.essence.need_stock=这一格还没有源质归属：声明只能落在已经蒸出过源质的格上——先蒸一种，再把 NEI 里「装满该源质的安瓿瓶」拖到这一格（NEI 中每种源质各一条、图标按该源质染色；旧的晶化源质在 NEI 只有一条且不带 NBT，已判不出归属）
+gtit.pocket.essence.need_stock=这一格还没有源质归属：把「装满某一种源质的安瓿瓶」从 NEI 拖到空格即可建档声明（每种源质各一条、按源质染色）；无 NBT 的裸晶/裸物品读不出归属，仍无法声明
 gtit.pocket.ghost.locked=配置格不接受玩家放入或流体输入
 # ★R84 流体列搬运回执（9 条都是"整笔放弃/一件未成"的出口；缺一条就等于把"卡住不动"重新变成静默）。
 # ★刻意全部不带 %s：调用点是 notifyCell(cell, key, args...) 的变参形态，多传参无害、
@@ -376,7 +376,7 @@ gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d �
 gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）
 # ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）。
 # 一个 %d = 一瓶固定点数（PocketConstants.ESSENCE_OUT_UNIT_POINTS 填，lang 不写死规格数字）。
-gtit.pocket.note.phial=源质的搬运载体是 TC 安瓿瓶，一瓶固定 %d 点：取出按整瓶向下取整，凑不满一瓶的零头留在盘里；晶化源质自本轮起只读不产——你手里剩下的旧仍能被识别并溶回盘，但任何路径都不再产出晶，且物品通道兜底时「1 单位」就是一只瓶（放大为一整瓶点数）
+gtit.pocket.note.phial=源质搬运走源质原生通道；安瓿瓶（一瓶 %d 点）只在玩家手动取用时出现：取出按整瓶向下取整、余数留盘，空瓶点格即装满一瓶；上传/下传链路零瓶化，晶化源质只读不产
 gtit.pocket.bind.summary=已绑定元件：%d / %d
 gtit.pocket.bind.inert=另有 %d 条旧绑定不在服务口径内（只服务第 1 枚），需要换元件时先全部解绑
 gtit.pocket.channel.start=启动
@@ -388,3 +388,12 @@ gtit.pocket.bind.cleared=已解绑 %d 条元件
 gtit.pocket.aspect.empty=这一格还空着（没有源质归属它；哪一格被取到见底就当场腾出来）
 gtit.pocket.backpack.note=玩家背包：可从这里存取物品，Shift 点击在中栏与背包之间搬运
 gtit.pocket.backpack.cost_note=背包开在面板内=面板每 tick 要对 %d 格做整栈（含 NBT）比较，背包内容一变就连同口袋一起重发（为要背包换回的代价）
+# ★R89 世界抽液聊天回执（PocketWorldFluidTap，ChatComponentTranslation）：moved/moved_partial 带定位占位
+#   （%1$s=流体名 %2$d=实收 mB %3$d=机器剩余 mB，与调用点实参一一对应），其余 5 条不带占位。
+gtit.pocket.world.draw.moved=已收入 %1$s %2$d mB
+gtit.pocket.world.draw.moved_partial=已收入 %1$s %2$d mB；机器里约还剩 %3$d mB
+gtit.pocket.world.draw.machine_new=这台机器刚放置或刚加载，等几秒再抽
+gtit.pocket.world.draw.machine_locked=这台机器的流体输出被禁用了，用螺丝刀解锁后再抽
+gtit.pocket.world.draw.machine_empty=这台机器里没有可抽的流体
+gtit.pocket.world.draw.machine_empty_or_locked=这台机器抽不出流体：里面没液，或流体输出被禁用
+gtit.pocket.world.draw.pocket_full=口袋装不下这种流体：流体槽都满了，或装着别的流体

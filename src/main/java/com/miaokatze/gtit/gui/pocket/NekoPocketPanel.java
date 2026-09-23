@@ -219,6 +219,13 @@ public final class NekoPocketPanel implements PocketSession {
     private static final int ACTION_UNBIND_ALL = 9;
     /** ★R87-d：左键持源质容器点 72 格 = 点击入槽（arg = 手势锚点格号，服务端判定不读它；★R88 载体见 {@code requestEssenceIntake} 的门禁）。 */
     private static final int ACTION_ESSENCE_INTAKE = 10;
+    /**
+     * ★R90 E3（D1「持瓶取不出」）：左键持<b>空瓶</b>点 72 格 = 格→瓶取出（arg = 手势锚点格号，
+     * 服务端按格位归属表反查 tag——与 {@link #ACTION_ESSENCE_OUT} 同一条 R18/R19 纪律，不吃客户端 tag）。
+     * 一次点击 = 一瓶 = {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点，余数留盘（C1）；
+     * 权威复验 / 扣点 / 物化 / 游标结算全在服务端 {@link #performEssenceOutToPhial(int)}。
+     */
+    private static final int ACTION_ESSENCE_OUT_TO_PHIAL = 11;
 
     private final PlayerInventoryGuiData data;
     private final PanelSyncManager syncManager;
@@ -614,9 +621,69 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * ★R87-d 客户端入口：游标栈<b>是可点进源质盘的载体</b>才发码（TC 缺席不拦截）；判定、入账与清游标
-     * 全在服务端，客户端不自改游标（★R88 B1：清游标的唯一正解是服务端 {@code syncManager.setCursorItem(null)}，
-     * 旧注释"原版 cursor 同步送达"已被上游行号证伪）。
+     * ★R90 E3（D1 手势三分）的<b>分流口</b>：左键点源质格时按<b>游标持物</b>分派——
+     * <ol>
+     * <li><b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier}，判据单源）⇒ 新「格→瓶取出」
+     * {@link #requestEssenceOutToPhial(int)}；</li>
+     * <li><b>满瓶 / 晶</b> ⇒ 既有 {@link #requestEssenceIntake(int)}（其容量档位预筛原样不动）；</li>
+     * <li><b>空游标 / 其他东西</b> ⇒ {@code false} 交回 {@code super} ⇒ 既有取出支
+     * （装配侧 {@code requestEssenceOut}）。</li>
+     * </ol>
+     * 「容器内容非空」预筛就落在这条分流上（任务口径：入槽支只收内容非空的载体；空瓶是其中
+     * 唯一的瓶档 ⇒ 单独改派取出），客户端这一道仍只是<b>预筛</b>，服务端
+     * {@code performEssenceOutToPhial} / {@code performEssenceIntake} 各自复验，两侧读同一条谓词。
+     * <p>
+     * ★L1（[PocketR89]，D1/D3 裁决检查点）：入口读数（持瓶类型 / 游标 meta / 命中格）在此打——
+     * debug 级每次都记（不构成刷屏面），首个分流样本升 INFO 一次（终验可直接在常规 jar 里读到）。
+     */
+    boolean dispatchEssenceCellPress(int cell) {
+        final ItemStack carried = syncManager.getCursorItem();
+        if (carried == null || carried.stackSize <= 0) {
+            return false;
+        }
+        final String branch;
+        final boolean handled;
+        if (PocketEssenceIntake.isEmptyPhialCarrier(carried, EssenceGate.TAUM)) {
+            branch = "out-to-phial";
+            handled = requestEssenceOutToPhial(cell);
+        } else {
+            branch = PocketEssenceIntake.carriesEssence(carried, EssenceGate.TAUM) ? "intake" : "intake-empty-content";
+            handled = requestEssenceIntake(cell);
+        }
+        logOnce(
+            "L1-cell-press:" + branch,
+            "[PocketR89] L1 源质格左键分流：格 {}（tag={}）游标 {}x{} meta={} ⇒ {} 支（本分支首例升 INFO，后续 debug）",
+            cell,
+            essenceTagAtCell(cell),
+            carried.stackSize,
+            carried.getUnlocalizedName(),
+            carried.getItemDamage(),
+            branch);
+        GTInterestingThing.LOG.debug(
+            "[PocketR89] L1 源质格左键分流：格 {}（tag={}）游标 {}x{} meta={} ⇒ {}",
+            cell,
+            essenceTagAtCell(cell),
+            carried.stackSize,
+            carried.getUnlocalizedName(),
+            carried.getItemDamage(),
+            branch);
+        return handled;
+    }
+
+    /**
+     * ★R90 E3（D1）：客户端入口——「格→瓶取出」只发码；扣点 / 物化 / 游标结算全在服务端
+     * {@link #performEssenceOutToPhial(int)}（R18/R19：客户端一律不算真值；与 {@link #requestEssenceOut}
+     * 同形，不在客户端预判 stock——服务端会按格号反查归属并给"凑不满一瓶"回执）。
+     */
+    boolean requestEssenceOutToPhial(int cell) {
+        return sendAction(ACTION_ESSENCE_OUT_TO_PHIAL, cell);
+    }
+
+    /**
+     * ★R87-d 客户端入口（★R90 E3 起由 {@link #dispatchEssenceCellPress} 分派抵达）：游标栈<b>是可点进
+     * 源质盘的载体</b>才发码（TC 缺席不拦截）；判定、入账与清游标全在服务端，客户端不自改游标
+     * （★R88 B1：清游标的唯一正解是服务端 {@code syncManager.setCursorItem(null)}，旧注释"原版 cursor
+     * 同步送达"已被上游行号证伪）。
      * <p>
      * ★<b>R88 门禁换档</b>：不再自己写"== 某一档"的字面判据，而是<b>逐字复用 E1 落地的载体谓词</b>
      * {@link PocketEssenceIntake#isAcceptedCarrierCapacity(int)}——它收<b>瓶</b>（现役载体）与<b>旧晶</b>
@@ -624,9 +691,21 @@ public final class NekoPocketPanel implements PocketSession {
      * 刻意不收。客户端这一道只是<b>预筛</b>（省一次无谓 C2S），服务端 {@code intake} 仍是唯一执法者，
      * 两边读的是同一条谓词 ⇒ 不会出现"客户端放行 / 服务端拒"或反向的两处真相。
      * 预筛不过时把事件交回 {@code super} ⇒ 走既有取出支，服务端会用"游标已被占用"回执说话，不静默。
+     * <b>空瓶不再走到这里</b>（分流层已改派格→瓶取出）；无 NBT 裸晶仍会发码并在服务端收
+     * {@code no_owner} 粘性回执（既有反馈面，不静默）。
      */
     boolean requestEssenceIntake(int cell) {
         final ItemStack carried = syncManager.getCursorItem();
+        // ★L2（[PocketR89]）：预筛判据读数——持物档位 / 内容是否非空 / 是否真的发了码（D1 的"空瓶空转"裁决样本）
+        GTInterestingThing.LOG.debug(
+            "[PocketR89] L2 入槽预筛：格 {} 游标 {} meta={} 档位={} 内容非空={} ⇒ 发码={}",
+            cell,
+            carried == null ? "空" : carried.getUnlocalizedName() + "x" + carried.stackSize,
+            carried == null ? -1 : carried.getItemDamage(),
+            carried == null ? TaumDistillRules.CAPACITY_NOT_A_CONTAINER : EssenceGate.TAUM.capacityOf(carried),
+            PocketEssenceIntake.carriesEssence(carried, EssenceGate.TAUM),
+            carried != null && carried.stackSize > 0
+                && PocketEssenceIntake.isAcceptedCarrierCapacity(EssenceGate.TAUM.capacityOf(carried)));
         return carried != null && carried.stackSize > 0
             && PocketEssenceIntake.isAcceptedCarrierCapacity(EssenceGate.TAUM.capacityOf(carried))
             && sendAction(ACTION_ESSENCE_INTAKE, cell);
@@ -680,6 +759,9 @@ public final class NekoPocketPanel implements PocketSession {
                 break;
             case ACTION_ESSENCE_INTAKE:
                 performEssenceIntake();
+                break;
+            case ACTION_ESSENCE_OUT_TO_PHIAL:
+                performEssenceOutToPhial(arg);
                 break;
             default:
                 break;
@@ -1116,12 +1198,35 @@ public final class NekoPocketPanel implements PocketSession {
             putReceipt("gtit.pocket.still.idle", 0);
             return;
         }
+        inventory.recordEssenceDelta(tag, -points);
         final int moved = shift ? depositPhialsToPlayer(tag, points) : handPhialsToCursor(tag, points);
         if (moved < points) {
             // 物化失败（TC 缺席/该 tag 不可物化/落点装不下）：点数退回原格，绝不销毁价值
-            store.add(tag, points - moved);
+            final int returned = points - moved;
+            store.add(tag, returned);
+            inventory.recordEssenceDelta(tag, returned);
         }
         inventory.markDirty();
+        // ★L4（[PocketR89]）：取出支量值读数（U3——R88 备选一"取出支自身失效"的裁决样本）。
+        // 退点分支（moved < points）另有一条 INFO 首例：那是 U3 唯一关心的异常形态，常规 jar 里可直读。
+        GTInterestingThing.LOG.debug(
+            "[PocketR89] L4 取出支：tag={} shift={} stock={} wanted={} whole={} leftover={} moved={}",
+            tag,
+            shift,
+            stock,
+            wanted,
+            whole,
+            leftover,
+            moved);
+        if (moved < points) {
+            logOnce(
+                "L4-out-refund",
+                "[PocketR89] L4 取出支退点（U3 裁决样本，本形态首例升 INFO）：tag={} 扣 {} 点、物化只落 {} 点、退回 {} 点",
+                tag,
+                points,
+                moved,
+                points - moved);
+        }
         if (moved <= 0) {
             putReceipt("gtit.pocket.receipt.target_full", 0, leftover);
         } else if (leftover > 0) {
@@ -1179,7 +1284,102 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
+     * ★R90 E3（D1「持瓶取不出」）：左键持<b>空瓶</b>点源质格的服务端执行体——「格→瓶取出」。
+     * <p>
+     * <b>一次点击 = 一瓶 = {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点，余数留盘（C1）</b>；
+     * 扣点按 {@link TaumDistillRules#floorToPhialUnits} 的同一条整瓶判据守卫（stock ≥ 一瓶才动，
+     * 否则面板回执零变动）。权威复验三道：
+     * <ol>
+     * <li>游标是<b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier} 白名单单源——晶、第三方
+     * 容器、满瓶一律不触发取出，C2；伪造包在此被 {@code still.idle} 回执挡下）；</li>
+     * <li>格号经格位归属表反查 tag（R18/R19：不吃客户端送来的 tag，与 {@link #performEssenceOut} 同形）；</li>
+     * <li>{@code floorToPhialUnits(stock) >= 1} 才扣点（整瓶判据与空游标取出支同一条算式单源）。</li>
+     * </ol>
+     * <b>先扣点、后物化、失败退点</b>（与 {@link #performEssenceOut} 同纪律）：物化走
+     * {@link #newPhialStack} 单源（★这就是"游标空瓶 meta0→meta1 + 写 {@code Aspects} NBT"的实现形态——
+     * 服务端产出的满瓶即 meta 1 + NBT 齐备，不在游标栈上另写第二份 NBT）。
+     * 游标结算（★R88 B1：唯一写口 {@code syncManager.setCursorItem}，禁裸写 {@code inventory.setItemStack}）：
+     * 单只空瓶 ⇒ 满瓶直接换上游标；一叠空瓶 ⇒ 消耗一只、满瓶进背包（先试投递，投不进整笔回滚不动游标）。
+     */
+    private void performEssenceOutToPhial(int cell) {
+        if (!serverGuardOk()) {
+            return;
+        }
+        final ItemStack carried = syncManager.getCursorItem();
+        if (!PocketEssenceIntake.isEmptyPhialCarrier(carried, EssenceGate.TAUM)) {
+            // 权威复验不过（伪造包 / 分流竞态 / 第三方容器）：零变动 + 既有"无事发生"回执，不静默也不动游标
+            putReceipt("gtit.pocket.still.idle", 0);
+            return;
+        }
+        final PocketEssenceStore store = inventory.essence();
+        final String tag = store.tagAtCell(cell);
+        if (tag == null) {
+            // 该格没有归属 ⇒ 没东西可取（与 performEssenceOut 的空格回执同一条）
+            putReceipt("gtit.pocket.still.idle", 0);
+            return;
+        }
+        final int stock = store.get(tag);
+        if (TaumDistillRules.floorToPhialUnits(stock) < 1) {
+            // 凑不满一瓶：一瓶都不产、一分都不扣，余数（=全部存量）留盘并说话
+            putReceipt("gtit.pocket.essence.not_enough_phial", stock);
+            GTInterestingThing.LOG.debug("[PocketR89] L4 格→瓶取出拒收：格 {} tag={} stock={}（不足一瓶）", cell, tag, stock);
+            return;
+        }
+        final int points = store.extract(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
+        if (points <= 0) {
+            putReceipt("gtit.pocket.still.idle", 0);
+            return;
+        }
+        inventory.recordEssenceDelta(tag, -points);
+        final ItemStack filled = newPhialStack(tag, points);
+        if (filled == null || filled.stackSize <= 0) {
+            // 物化失败（TC 缺席 / tag 不可物化）：点数退回，绝不销毁价值
+            store.add(tag, points);
+            inventory.recordEssenceDelta(tag, points);
+            inventory.markDirty();
+            putReceipt("gtit.pocket.still.idle", 0);
+            logOnce(
+                "L4-phial-refund",
+                "[PocketR89] L4 格→瓶取出退点（U3 裁决样本，本形态首例升 INFO）：tag={} 扣 {} 点、物化失败已退回",
+                tag,
+                points);
+            return;
+        }
+        if (carried.stackSize <= 1) {
+            syncManager.setCursorItem(filled);
+        } else {
+            final int got = depositToPlayerFirst(filled);
+            if (got <= 0) {
+                // 背包/中栏一件都收不下：整笔回滚（点数退回、游标不动、满瓶不产出）
+                store.add(tag, points);
+                inventory.recordEssenceDelta(tag, points);
+                inventory.markDirty();
+                putReceipt("gtit.pocket.receipt.target_full", 0);
+                return;
+            }
+            final ItemStack rest = carried.copy();
+            rest.stackSize = carried.stackSize - 1;
+            syncManager.setCursorItem(rest);
+        }
+        inventory.markDirty();
+        putReceipt("gtit.pocket.receipt.ok", points);
+        GTInterestingThing.LOG.debug(
+            "[PocketR89] L4 格→瓶取出：格 {} tag={} stock={} 扣 {} 点 ⇒ 满瓶 1 只上游标（游标原空瓶 {} 只）",
+            cell,
+            tag,
+            stock,
+            points,
+            carried.stackSize);
+    }
+
+    /**
      * ★R88 唯一的"点 → 瓶"物化口（取出侧只此一处，不再生产晶化源质 = 自立口径 C2）。
+     * ★★R90 E3（R88 债①收口声明）：本方法是<b>全仓唯一的「取用物化」单源</b>——R90 E2 删掉上传侧
+     * 兜底腿（{@code PocketEssenceChannelOps#essenceStackFor} 满瓶特判）后，仓内一切"把点数变成一叠瓶
+     * 交给玩家"的生产路径只剩两处消费方：{@link #handPhialsToCursor} / {@link #depositPhialsToPlayer}
+     * （空游标 / Shift 取出）与本片新增的 {@link #performEssenceOutToPhial}（空瓶换满瓶）。上传链路
+     * 零瓶化（AUQ-①=B：瓶只是玩家手动取用时的体现），任何新的出瓶需求都必须汇入本方法，不得另开
+     * 第二处 {@code newFilledContainer} 调用点。
      * <p>
      * {@code TaumCompat#newFilledContainer} 一次只出<b>一只</b>容器（内部 stackSize 恒 1），
      * 所以这里按请求点数算出应得的瓶数、再夹进该瓶自身的单堆上限。满瓶的 NBT 逐只相同
@@ -1228,6 +1428,9 @@ public final class NekoPocketPanel implements PocketSession {
         final EntityPlayer target = player();
         final PocketEssenceIntake.Result result = PocketEssenceIntake
             .intake(target.inventory.getItemStack(), inventory.essence(), EssenceGate.TAUM);
+        // ★L3（[PocketR89]）：四态 Outcome 读数（D1：空瓶误入槽的纵深防御是否真的在拒）
+        GTInterestingThing.LOG
+            .debug("[PocketR89] L3 入槽执行：outcome={} tag={} points={}", result.outcome, result.tag, result.points);
         if (!result.accepted()) {
             putReceipt(result.langKey(), 0);
             return;
@@ -1311,6 +1514,9 @@ public final class NekoPocketPanel implements PocketSession {
      * 清空/落档动作，只把"请求"发上来；判定、落档、槽属性、虚化广播全在这里。
      * 文法解析、分区域越界判定与"按载荷类型分派 kind"全在 {@link PocketGhostRequest#apply}
      * （纯函数 ⇒ 由 {@code runPocketTest} 端到端钉住），本方法只剩守卫 + 写档 + 刷虚化三步。
+     * ★R90 E3（D3）起 {@code apply} 的三参形态多带 {@code inventory.essence()}：源质声明在写档前
+     * 先与<b>格位归属表</b>对账（无归属格 + 载荷带 tag ⇒ 放行并 {@code assignCell} 建档；有归属但
+     * tag 不匹配 ⇒ 拒），声明与格位从此不再各写各的。
      * 客户端传来的字符串一律不可信 —— 伪造包最多只能往自己口袋里写声明，改不到别人的口袋
      * （会话守卫 {@link #serverGuardOk()} 保证 {@link #pocket} 就是该玩家背包里那一枚）。
      */
@@ -1318,10 +1524,20 @@ public final class NekoPocketPanel implements PocketSession {
         if (syncManager.isClient() || !serverGuardOk()) {
             return;
         }
-        final PocketGhostRequest.Decision decision = PocketGhostRequest.apply(request, inventory.filters());
+        // ★L8（[PocketR89]，服务端入口）：请求原文 + 判定结论——与客户端发送侧读数（L8 拖入栈 dump /
+        // L9 拒收回读）拼成 U2（MUI2/NEI 交付栈是否保 NBT）的完整裁决链：客户端 dump 有 NBT 而此处
+        // 无请求到达 ⇒ 发送前置问题；此处有请求且载荷带 tag ⇒ NBT 保住了。
+        final PocketGhostRequest.Decision decision = PocketGhostRequest
+            .apply(request, inventory.filters(), inventory.essence());
+        GTInterestingThing.LOG.debug(
+            "[PocketR89] L8 ghost 请求到达服务端：{} ⇒ outcome={} kind={} slot={}",
+            request,
+            decision.outcome,
+            decision.kind,
+            decision.slotIndex);
         if (!decision.changed()) {
-            // REJECTED（文法不合法 / 越出该区域白名单 / 载荷解不出）与 UNCHANGED（重复拖同一载荷、
-            // 解绑本来就没声明的格）都不写档、都不刷虚化 —— 脏标记一旦为真就要在关屏时序列化整份 NBT
+            // REJECTED（文法不合法 / 越出该区域白名单 / 载荷解不出 / ★E3 起源质格归属不匹配）与
+            // UNCHANGED（重复拖同一载荷、解绑本来就没声明的格）都不写档、都不刷虚化 —— 脏标记一旦为真就要在关屏时序列化整份 NBT
             return;
         }
         inventory.markDirty();
@@ -1589,6 +1805,21 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     // ------------------------------------------------------------------ 回执（R39b/R10：模式与结果都只由服务端下发）
+
+    /**
+     * ★R90 E3 日志检查点的<b>首例升级闩</b>：同一 key 只把<b>第一次</b>命中升到 INFO
+     * （终验在常规 jar 里可直读），后续同名事件全走调用方自己的 debug 行 ⇒ 防刷屏。
+     * 与 {@code PocketEssenceChannelOps} L12 的 {@code Set.add} 闩同一形态（R89"一次性 INFO"口径）。
+     */
+    private static final java.util.Set<String> LOG_ONCE = java.util.Collections
+        .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    /** 见 {@link #LOG_ONCE}：key 首例 ⇒ INFO（SLF4J 占位格式），其余静默（重复事件由 debug 行覆盖）。 */
+    private static void logOnce(String key, String pattern, Object... args) {
+        if (LOG_ONCE.add(key)) {
+            GTInterestingThing.LOG.info(pattern, args);
+        }
+    }
 
     /**
      * 服务端记一次回执（键 + 已搬运数 + 被拒数）。
@@ -2152,6 +2383,13 @@ public final class NekoPocketPanel implements PocketSession {
             }
         }
         if (carrier == null) {
+            // ★R90 S2（终态回滚）：三级重定位与对象身份兜底<b>全部</b>落空 ⇒ 本轮源质增减再也等不到
+            // 落盘点。对增量日志逐 tag 逆施（−x ⇒ 回补 +x、+x ⇒ 回扣 −x），让内存源质回到
+            // 「最后一次成功落盘」的基线 —— 不留"AE2 侧已收瓶、口袋档仍有点数"的半提交态（D2 的刷源质面）。
+            // ★回滚后<b>不</b>主动清 dirty（保守约束）：dirty 还承载着物品/流体等其它未落盘状态，
+            // 在这里清掉等于把它们一并吞掉；增量日志已清空 ⇒ 后续即便重定位成功、重写发生，写出的
+            // 也是回滚后的基线态，不会把已逆施的账再写回去（回滚幂等：日志空 ⇒ 后续重试零动作）。
+            rollbackEssenceToPersistedBaseline();
             GTInterestingThing.LOG.warn("[pocket] 落盘时找不到承载口袋的槽位（原格 {}），本次内容暂不落档", carrierSlotIndex);
             return;
         }
@@ -2173,6 +2411,56 @@ public final class NekoPocketPanel implements PocketSession {
         }
         inventory.writeTo(root);
         inventory.markClean();
+    }
+
+    /**
+     * ★R90 S2：把源质增量日志逐 tag <b>逆施</b>回「最后一次成功落盘」的基线并清空日志（终态兜底，
+     * 仅由 {@link #writeSessionToCarrier} 的"找不到承载栈"分支调用）。
+     * <p>
+     * 逆施用 {@code inventory.essence()} 的对称 API（{@code add} / {@code extract}）：日志里的 −x
+     * 回补 +x、+x 回扣 −x，回滚后内存源质 ≡ 上一次 {@code PocketInventory#writeTo} 成功那一刻的快照。
+     * 逆施<b>不</b>走 {@code recordEssenceDelta}（那是登记侧的打点口，回滚是消费侧；基点由
+     * {@code clearEssenceDeltas} 直接重置，同一笔不会回灌进新日志）。
+     * <p>
+     * ★日志为空 ⇒ 零动作（幂等）：本分支会被 driver 每拍重试，回滚与 [PocketR89] WARN 都只在
+     * 「真有未落盘增减」的那一次发生，不会刷屏。
+     */
+    private void rollbackEssenceToPersistedBaseline() {
+        final Map<String, Integer> deltas = inventory.essenceDeltas();
+        if (deltas.isEmpty()) {
+            return;
+        }
+        int restored = 0;
+        int reclaimed = 0;
+        final StringBuilder perTag = new StringBuilder();
+        for (final Map.Entry<String, Integer> entry : deltas.entrySet()) {
+            final int delta = entry.getValue();
+            if (delta == 0) {
+                continue;
+            }
+            if (delta < 0) {
+                inventory.essence()
+                    .add(entry.getKey(), -delta);
+                restored += -delta;
+            } else {
+                inventory.essence()
+                    .extract(entry.getKey(), delta);
+                reclaimed += delta;
+            }
+            if (perTag.length() > 0) {
+                perTag.append(", ");
+            }
+            perTag.append(entry.getKey())
+                .append(delta > 0 ? "+" : "")
+                .append(delta);
+        }
+        inventory.clearEssenceDeltas();
+        // L11：逆施回滚 = 守恒类事件 ⇒ WARN（一次性：日志清空后重试分支不再进入这里）
+        GTInterestingThing.LOG.warn(
+            "[PocketR89] 承载栈终态丢失 ⇒ 源质增量日志已逐 tag 逆施回滚（{}），共回补 {} 点、回扣 {} 点；" + "内存源质回到最后落盘基线，日志已清空（dirty 位按保守约束保留）",
+            perTag,
+            restored,
+            reclaimed);
     }
 
     /**
@@ -2375,8 +2663,16 @@ public final class NekoPocketPanel implements PocketSession {
 
     @Override
     public int drainEssence(String tag, int points) {
-        return inventory.essence()
+        final int removed = inventory.essence()
             .extract(tag, points);
+        if (removed > 0) {
+            // ★R90 S1（D2「上传变瓶+刷源质」的缺陷本体）：扣点只改内存、不置脏 ⇒ writeSessionToCarrier
+            // 的 isDirty 门禁放行早退 ⇒ 序列化永远不发生 ⇒ 承载栈 NBT 里点数原样、AE2 侧瓶已到手 = 净复制。
+            // 登记进增量日志（S2 终态回滚的输入）并置脏（与 performEssenceOut 的 markDirty 同口径）。
+            inventory.recordEssenceDelta(tag, -removed);
+            inventory.markDirty();
+        }
+        return removed;
     }
 
     // ------------------------------------------------------------ R84：中栏既是注入来源也是抽取落点

@@ -340,7 +340,7 @@ gtit.pocket.aspect.cell=%s: %d/%d
 gtit.pocket.aspect.overflow_note=Aspects beyond the first %d are stored but not shown
 gtit.pocket.ghost.on=Filter slot: %s (right-click to clear)
 gtit.pocket.ghost.drag_hint=To filter this bar, drag §ea container that already holds the fluid§r (bucket / cell / large storage cell) from NEI onto it; fluid rows in a recipe book cannot be dragged at all (NEI does not make them draggable)
-gtit.pocket.essence.need_stock=This cell has no aspect yet: a filter can only be declared on a cell that has already yielded essentia - distill something first, then drag a phial filled with that aspect onto it (in NEI each aspect is its own entry, tinted with that aspect's colour; the legacy crystal is a single NBT-less entry and can no longer be recognised)
+gtit.pocket.essence.need_stock=This cell has no aspect yet: drag a phial filled with that aspect from NEI onto the empty cell to declare it (one entry per aspect, tinted accordingly); NBT-less crystals or plain items carry no tag and still cannot declare
 gtit.pocket.ghost.locked=Filter slots accept no player input
 # ★R84 fluid transfer receipts (each one is an "all-or-nothing abandoned" exit; missing one is silence again).
 # Deliberately placeholder-free: notifyCell passes varargs, extra args are harmless but a %s with no arg
@@ -376,7 +376,7 @@ gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shim
 gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it)
 # ★R88 自立口径 C1 + C2 的"游戏内文案"面（项目纪律：自立口径要文案 + 交付说明双处可见）。
 # 一个 %d = 一瓶固定点数（PocketConstants.ESSENCE_OUT_UNIT_POINTS 填，lang 不写死规格数字）。
-gtit.pocket.note.phial=Essentia travels in TC phials of %d points each: taking essence out rounds down to whole phials and the remainder stays in the cell; essentia crystals are read-only now - a stack you still own dissolves back into the tray, but nothing produces one any more, and on the item-channel fallback one unit is a whole phial
+gtit.pocket.note.phial=Essentia moves over native essentia channels; phials (%d points each) only appear when you take essence out by hand: taking rounds down to whole phials with the remainder kept, and clicking a cell with an empty phial fills exactly one; upload/download paths never produce phials, and crystals are read-only
 gtit.pocket.bind.summary=Bound cells: %d / %d
 gtit.pocket.bind.inert=%d legacy binding(s) are out of the served scope (only the first one runs); unbind all before switching
 gtit.pocket.channel.start=Start
@@ -388,3 +388,12 @@ gtit.pocket.bind.cleared=Cleared %d bound cells
 gtit.pocket.aspect.empty=This cell is still unused (no aspect owns it; whichever cell is drained to zero is freed on the spot)
 gtit.pocket.backpack.note=Player inventory: take and store items here; shift-click moves items between the middle grid and your bag
 gtit.pocket.backpack.cost_note=Showing the bag means the GUI compares %d stacks (NBT included) every tick and resends them with the pocket whenever it changes (the price of having the bag)
+# ★R89 世界抽液聊天回执（PocketWorldFluidTap，ChatComponentTranslation）：moved/moved_partial 带定位占位
+#   （%1$s=流体名 %2$d=实收 mB %3$d=机器剩余 mB，与调用点实参一一对应），其余 5 条不带占位。
+gtit.pocket.world.draw.moved=Received %2$d mB of %1$s
+gtit.pocket.world.draw.moved_partial=Received %2$d mB of %1$s; about %3$d mB remains in the machine
+gtit.pocket.world.draw.machine_new=That machine was just placed or loaded, give it a few seconds
+gtit.pocket.world.draw.machine_locked=That machine's fluid output is disabled, unlock it with a screwdriver
+gtit.pocket.world.draw.machine_empty=That machine holds no fluid to draw
+gtit.pocket.world.draw.machine_empty_or_locked=That machine yields no fluid: it is empty, or its fluid output is disabled
+gtit.pocket.world.draw.pocket_full=The pocket cannot take this fluid: its tanks are full or hold another fluid

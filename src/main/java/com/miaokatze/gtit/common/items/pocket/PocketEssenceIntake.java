@@ -5,7 +5,6 @@ import net.minecraft.item.ItemStack;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
-import com.miaokatze.gtit.gui.pocket.PocketSlots;
 
 /**
  * ★<b>R87-d（缺陷 1「源质结晶放不进源质槽」）点击入槽的服务端判定流</b>。
@@ -25,7 +24,7 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
  * <li>{@link Outcome#NO_OWNER}：载体没有源质归属（{@code readContainer} 空，例：空瓶）⇒ 粘性回执
  * {@code gtit.pocket.essence.intake.no_owner}，分毫不动；</li>
  * <li>{@link Outcome#NO_ROOM}：余量不足 ⇒ 粘性回执 {@code gtit.pocket.essence.intake.no_room}，
- * <b>载体分毫未动</b>（复用 12 格路径 {@code PocketSlots#injectCrystals} 的 {@code canAcceptAll}
+ * <b>载体分毫未动</b>（复用 12 格路径 {@code PocketIntakeOps#injectCrystals} 的 {@code canAcceptAll}
  * {@code ESSENCE_CAP_PER_TAG}=256 上限口径，全有全无的失败面）。★R88 换瓶后这条失败面<b>更容易被踩到</b>：
  * 一叠满瓶就是 8×64 = 512 点 &gt; 256 ⇒ 整叠点进 72 格必然 {@code NO_ROOM}（旧晶一叠最多 64 点，
  * 结构上撞不到这条）。这不是吞点（东西还在游标上、回执也发），但玩家要看懂"先拆一小撮再点"，
@@ -39,9 +38,15 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
  * <p>
  * ★<b>点击入槽消耗的是载体本身</b>（瓶与旧晶都一样整叠销毁，走 {@code injectCrystals} 那条
  * "读出 × 叠数 + 不退件"的原语）——与通道下传的"读容器 → 加点 → 就地消耗容器"同一条口径。
- * 差别要说清楚：12 格那条路（{@code PocketSlots#injectContainer}）对瓶是<b>抽干后把空壳退回玩家</b>，
+ * 差别要说清楚：12 格那条路（{@code PocketIntakeOps#injectContainer}）对瓶是<b>抽干后把空壳退回玩家</b>，
  * 而游标这一条没有"退回空壳"的落点（要退回就得由面板改写游标栈，那是 E2 的形状），
  * 于是玻璃瓶身按消耗处理。该不对称已进报告，留给主代理裁决（不是本轮擅自扩出来的新行为）。
+ * <p>
+ * ★★<b>R90 E3（D1 手势三分）起：空瓶不再从客户端走到这里</b>——左键分流层
+ * （{@code NekoPocketPanel#dispatchEssenceCellPress}）按 {@link #isEmptyPhialCarrier} 把空瓶改派
+ * 「格→瓶取出」新动作；但本类的 {@link Outcome#NO_OWNER} 拒收<b>原样保留作纵深防御</b>：
+ * 伪造 / 旧客户端 / 分流竞态下空瓶仍会落进 {@code intake}，语义仍是"分毫不动 + 粘性回执"，
+ * 不因上游新增分流而放水。
  * <p>
  * <b>游标清空在调用方（面板）</b>：本类保持纯判定 + 入账、不触玩家对象（零依赖套件可直接驱动四态）。
  * ★★<b>R88 更正一条被上游源码证伪的旧断言</b>（旧文："{@code player.inventory.setItemStack(null)}
@@ -133,8 +138,49 @@ public final class PocketEssenceIntake {
     }
 
     /**
+     * ★R90 E3（D1 手势三分）的<b>预筛唯一判据</b>：载体容器内容是否非空。
+     * <p>
+     * 内容读数只走 {@code gate.readContainer}（生产 = {@code EssenceGate.TAUM} → {@code TaumCompat} →
+     * {@code TaumBridge#readContainer}，即 {@code IEssentiaContainerItem.getAspects} 口径：无 NBT / 空
+     * {@code AspectList} / TC 缺席一律读成空）——<b>本方法就是那条"内容读数 helper"的唯一落点</b>，
+     * 客户端分流（{@code NekoPocketPanel#dispatchEssenceCellPress}）与服务端复验
+     * （{@code NekoPocketPanel#performEssenceOutToPhial}）两侧同调它，GUI 不抄第二份逻辑。
+     * 刻意落在本类（纯 JVM 件、{@code EssenceGate} 可注入桩件）而不是 {@code TaumBridge}：
+     * 桥接层只在 TC 在场时被加载，判据放那里零依赖套件只能拿到"恒空"的假绿（R59b 偏离①同族陷阱）。
+     */
+    public static boolean carriesEssence(ItemStack carrier, EssenceGate gate) {
+        return carrier != null && gate != null
+            && !gate.readContainer(carrier)
+                .isEmpty();
+    }
+
+    /**
+     * ★R90 E3（D1）「格→瓶取出」的<b>载体白名单</b>：仅<b>空瓶</b>——{@code capacityOf} 档位恰为
+     * {@link TaumDistillRules#PHIAL_CAPACITY}（= TC {@code ItemEssence}，isPhial 的接口探测口径）且
+     * meta 0（TC 空瓶位）且内容空（{@link #carriesEssence} 为 false）。
+     * <p>
+     * <b>C2 白名单的落点</b>：旧晶（{@code CRYSTAL_CAPACITY}）、第三方罐（{@code CAPACITY_UNKNOWN}）、
+     * 非容器与满瓶一律 {@code false} ⇒ 它们<b>不得触发</b>格→瓶取出（满瓶走既有入槽支，晶走识别支，
+     * 其余交回 {@code super} 由"游标已被占用"回执说话）。判据三件全走 {@code gate}（桩件可注入），
+     * 与 {@link #isAcceptedCarrierCapacity(int)} 一样是"会不会动游标上那叠东西"的唯一执法点。
+     */
+    public static boolean isEmptyPhialCarrier(ItemStack carrier, EssenceGate gate) {
+        if (carrier == null || carrier.stackSize <= 0 || gate == null) {
+            return false;
+        }
+        if (carrier.getItemDamage() != 0) {
+            // TC ItemEssence：meta 0 = 空瓶 / meta 1 = 装瓶；meta 1 即便 NBT 被第三方清空也不是本支的"空瓶"
+            return false;
+        }
+        if (gate.capacityOf(carrier) != TaumDistillRules.PHIAL_CAPACITY) {
+            return false;
+        }
+        return !carriesEssence(carrier, gate);
+    }
+
+    /**
      * 判定 + 入账本体（生产传 {@link EssenceGate#TAUM} 与服务端游标栈；
-     * 回归套件传桩件直接钉四态）。★R88：两档载体都走 {@code PocketSlots#injectCrystals} 那条
+     * 回归套件传桩件直接钉四态）。★R88：两档载体都走 {@code PocketIntakeOps#injectCrystals} 那条
      * "读出 × 叠数 + 整叠消耗、不退件"的原语（游标没有"退回空壳"的落点，见类注释那条不对称说明），
      * 所以这一支<b>不碰</b> {@code drainContainer}（生产实现对晶恒返 EMPTY，抽干不销毁 = 危险态）。
      *
@@ -157,8 +203,8 @@ public final class PocketEssenceIntake {
         }
         // 复用 12 格路径的"整叠消耗"原语（canAcceptAll 全有全无预检 + putAll 入账 + 整叠换点数，
         // ★R88 起这条乘法对瓶给出 8×叠数）：预检失败 ⇒ 源质表分毫未动、载体也分毫未动（调用方什么都不用退）。
-        final PocketSlots.IntakeResult injected = PocketSlots.injectCrystals(carried, store, gate);
-        if (injected.kind == PocketSlots.Intake.STORE_FULL) {
+        final PocketIntakeOps.IntakeResult injected = PocketIntakeOps.injectCrystals(carried, store, gate);
+        if (injected.kind == PocketIntakeOps.Intake.STORE_FULL) {
             return new Result(Outcome.NO_ROOM, tag, 0);
         }
         if (!injected.consumed() || injected.points <= 0) {
@@ -168,8 +214,14 @@ public final class PocketEssenceIntake {
         return new Result(Outcome.ACCEPTED, tag, injected.points);
     }
 
-    /** 容器内容里的第一个有效 tag（源质载体恒单 aspect：满瓶一个 tag、晶一个 tag；多 tag 内容取首个有量的）。 */
-    private static String firstTagOf(TaumAspectAmounts content) {
+    /**
+     * 容器内容里的第一个有效 tag（源质载体恒单 aspect：满瓶一个 tag、晶一个 tag；多 tag 内容取首个有量的）。
+     * <p>
+     * ★R90 E3（D3）起公开单源：点击入槽（本类 {@link #intake}）与 NEI 无归属格建档
+     * （{@code NekoEssenceGhostCell#tagOfCarrier}）读的是<b>同一条</b>"拖入物自带 tag"判据，
+     * 两处各写一遍就是两处真相（首 tag 的取舍漂移会让入槽与建档对同一栈给出不同归属）。
+     */
+    public static String firstTagOf(TaumAspectAmounts content) {
         if (content == null) {
             return null;
         }

@@ -3,6 +3,7 @@ package com.miaokatze.gtit.gui.pocket;
 import com.cleanroommc.modularui.api.UpOrDown;
 import com.cleanroommc.modularui.utils.Color;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 
 /**
@@ -186,18 +187,30 @@ public final class PocketGhostRequest {
     // ------------------------------------------------------------------ 判定本体（★服务端唯一执行体的内核）
 
     /**
-     * 解一条请求并就地改动 {@code filters}。
-     * <p>
-     * 客户端传来的字符串一律不可信：载荷键<b>重新解析</b>（{@link PocketFilterConfig#parseKey}）、
-     * 槽索引<b>按所属区域重新校验</b>（{@link PocketConstants#GHOST_REQUEST_SEPARATOR} +
-     * {@link PocketFilterConfig#isAllowedSlotIndex}）、上限值<b>重新收口</b>
-     * （{@link #clampCap}），三道都不过就一个字节都不写。伪造包最多只能往自己口袋里写声明（会话守卫在面板那侧）。
+     * 解一条请求并就地改动 {@code filters}（旧两参形态 = 不带源质格位真值的<b>遗留口径</b>：
+     * 源质 SET 不做归属对账 / 不建档，行为与 R88 逐字一致，供既有回归用例与不关心格位的调用方）。
+     * 生产的服务端唯一执行体走 {@link #apply(String, PocketFilterConfig, PocketEssenceStore)}。
+     */
+    public static Decision apply(String request, PocketFilterConfig filters) {
+        return apply(request, filters, null);
+    }
+
+    /**
+     * ★R90 E3（D3）三参形态：多带<b>源质格位归属表</b>（{@code PocketEssenceStore}，可为 {@code null}
+     * = 旧两参口径）。客户端传来的字符串一律不可信：载荷键<b>重新解析</b>
+     * （{@link PocketFilterConfig#parseKey}）、槽索引<b>按所属区域重新校验</b>
+     * （{@link PocketConstants#GHOST_REQUEST_SEPARATOR} + {@link PocketFilterConfig#isAllowedSlotIndex}）、
+     * 上限值<b>重新收口</b>（{@link #clampCap}）、★源质声明<b>与格位归属对账</b>
+     * （{@link #applySet}：无归属格 + 载荷 tag 非空 ⇒ 放行建档 + {@code assignCell}；有归属但
+     * tag 不匹配 ⇒ 拒——旧口径"只校验槽号白名单 + 载荷非空"留下的<b>伪造缝隙</b>：任何 C2S 都能在
+     * 无归属格 / 别人的格上写死一条声明，格位归属与声明表从此各说各话；新语义下声明必须与格位
+     * 同源成立），四道都不过就一个字节都不写。伪造包最多只能往自己口袋里写声明（会话守卫在面板那侧）。
      * <p>
      * ★切分用 {@code limit = 4}（★R83 C2 的 {@code CAP} 要第四段）而不是"每个操作码各切一次"，因此<b>段数</b>本身
      * 成了判据的一部分：SET/CLR 只接受恰 3 段、CAP 只接受恰 4 段。旧口径"载荷键里含 '|' 就拒收"由
      * {@link #applySet} 的长度检查与原守卫<b>共同</b>保住（两种写法都是 REJECTED，不改变判据）。
      */
-    public static Decision apply(String request, PocketFilterConfig filters) {
+    public static Decision apply(String request, PocketFilterConfig filters, PocketEssenceStore essenceCells) {
         if (request == null || request.isEmpty() || filters == null) {
             return REJECT;
         }
@@ -215,7 +228,7 @@ public final class PocketGhostRequest {
             return parts.length != 3 ? REJECT : applyClear(parts, slotIndex, filters);
         }
         if (PocketConstants.GHOST_REQUEST_SET.equals(parts[0])) {
-            return parts.length != 3 ? REJECT : applySet(slotIndex, parts[2], filters);
+            return parts.length != 3 ? REJECT : applySet(slotIndex, parts[2], filters, essenceCells);
         }
         if (PocketConstants.GHOST_REQUEST_CAP.equals(parts[0])) {
             return parts.length != 4 ? REJECT : applyCap(slotIndex, parts[2], parts[3], filters);
@@ -276,8 +289,25 @@ public final class PocketGhostRequest {
         return new Decision(Outcome.APPLIED, kind, slotIndex);
     }
 
-    /** ★SET：kind 由<b>解出来的载荷类型</b>给出（流体条落 FLUID 空间、源质格落 ESSENCE 空间），不按"只有物品"一刀切。 */
-    private static Decision applySet(int slotIndex, String payloadKey, PocketFilterConfig filters) {
+    /**
+     * ★SET：kind 由<b>解出来的载荷类型</b>给出（流体条落 FLUID 空间、源质格落 ESSENCE 空间），不按"只有物品"一刀切。
+     * <p>
+     * ★R90 E3（D3）<b>源质格的归属对账</b>（{@code essenceCells != null} 时，生产必非空）：
+     * <ul>
+     * <li><b>有归属格</b>（{@code tagAtCell} 非空）且载荷 tag <b>不匹配</b> ⇒ <b>REJECTED</b>——旧口径
+     * 只校验槽号白名单 + 载荷非空，伪造 C2S 能把任意 tag 写上别人的格；新语义下声明必须与格位归属
+     * 同源成立（合法客户端本来也只能发出"与本格 tag 匹配"的载荷，被拒的只有伪造包）；</li>
+     * <li><b>无归属格</b>（{@code cellTag == null/空}）且载荷 tag 非空 ⇒ <b>放行建档</b>：写声明之外还
+     * {@link PocketEssenceStore#assignCell(String)} 占格（幂等：该 tag 已有格则落回原格；占的是
+     * <b>最小空位</b>——与"格序 = 首次入账顺序"同一条既定口径，不一定是被拖的那一格）。R86"空格
+     * 拒收"由此收窄为"空格只收<b>自带可读 tag 的拖入物</b>"（无 NBT 裸栈 / 裸晶在客户端
+     * {@code carriesTag} 那一关就到不了这里，见 {@code NekoEssenceGhostCell#tagOfCarrier}）。</li>
+     * </ul>
+     * 建档的占格发生在<b>声明写入并复核成功之后</b>（顺序即纪律：先写字档后占格，失败路径不留
+     * "占了格却没声明"的半档；本分支里占格结构上不可能失败——被拖的格无归属 ⇒ 至少它自己是空位）。
+     */
+    private static Decision applySet(int slotIndex, String payloadKey, PocketFilterConfig filters,
+        PocketEssenceStore essenceCells) {
         if (payloadKey.contains(PocketConstants.GHOST_REQUEST_SEPARATOR)) {
             // 式样不变量：载荷键内部只用 ':' 分段，'|' 一旦出现就是"拼接过的假键"
             // （parseKey 会把尾段整个吃进流体名里，归一化比对反而看不出来 ⇒ 必须在这里先拦）
@@ -291,6 +321,13 @@ public final class PocketGhostRequest {
         final PocketFilterConfig.Kind kind = parsed.kind();
         if (!PocketFilterConfig.isAllowedSlotIndex(kind, slotIndex) || !hasRequiredPayload(parsed)) {
             return REJECT;
+        }
+        final boolean essenceRecheck = kind == PocketFilterConfig.Kind.ESSENCE && essenceCells != null;
+        final String cellOwner = essenceRecheck ? essenceCells.tagAtCell(slotIndex) : null;
+        if (essenceRecheck && cellOwner != null
+            && !(parsed instanceof PocketFilterConfig.EssenceFilter essence && cellOwner.equals(essence.tag))) {
+            // 有归属但 tag 不匹配 ⇒ 拒（伪造缝隙闭合；合法客户端发不出这种载荷）
+            return new Decision(Outcome.REJECTED, kind, slotIndex);
         }
         final PocketFilterConfig.Filter before = filters.at(kind, slotIndex);
         // ★同槽覆盖必须把<b>已调好的上限</b>带过去：载荷键一样就是"还是这一条需求"，玩家滚出来的
@@ -306,6 +343,14 @@ public final class PocketGhostRequest {
             .equals(rebuilt.key())) {
             // add 的 false 有两种含义（同槽覆盖 / 越界或载荷空），故以"该格现在到底是不是这条"为准
             return new Decision(Outcome.REJECTED, kind, slotIndex);
+        }
+        if (essenceRecheck && cellOwner == null) {
+            // ★D3 建档：声明已写好且复核过，才占格（幂等；返回 -1 = 72 格全满 ⇒ 撤回刚写的声明并拒）
+            final String declaredTag = ((PocketFilterConfig.EssenceFilter) parsed).tag;
+            if (essenceCells.assignCell(declaredTag) < 0) {
+                filters.removeAt(kind, slotIndex);
+                return REJECT;
+            }
         }
         return new Decision(
             before != null && before.key()

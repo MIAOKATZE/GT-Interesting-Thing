@@ -123,6 +123,25 @@ public final class PocketInventory {
     private PocketCellBindings bindings;
     private PocketFilterConfig filters;
 
+    /**
+     * ★R90 S1（D2「上传变瓶+刷源质」修复面）：源质<b>增量日志</b> —— tag → 自上一次持久化边界以来的
+     * 增减<b>代数和</b>（非 0 才有条目）。<b>不持久化</b>（随本实例生命周期），唯一读者是
+     * {@code NekoPocketPanel#writeSessionToCarrier} 的终态回滚（S2）。
+     */
+    private final java.util.Map<String, Integer> essenceDeltas = new java.util.LinkedHashMap<>();
+    /**
+     * 增量日志的<b>对表基点</b>：上一次已并入日志的源质快照。
+     * <p>
+     * ★为什么需要它（单一真相论证）：源质表的写原语（{@code putAll}/{@code add}/{@code extract}）是
+     * {@code PocketEssenceStore} 自己的，通道下传（{@code PocketEssenceChannelOps}）、蒸馏入账
+     * （{@code PocketDistillDriver}）、注入支（{@code PocketSlots}）都<b>绕过本类直接改 store</b>，
+     * 而 store 是 {@code final} 类、那些调用文件也不在本修复片的可写面里 ⇒ 打点式登记无法覆盖全部路径。
+     * 因此日志的完整性由「{@link #reconcileEssenceDeltas()} 对表 store 现值 vs 基点的漂移」兜底：
+     * <b>任何</b>代码改了 store，下一次读日志/落盘时漂移都会被并入 —— 配合 {@link #recordEssenceDelta}
+     * 的"登记时同步前移基点"，同一笔变更不会双重计入（两者恒等式：日志累计 ≡ store 现值 − 基点）。
+     */
+    private final java.util.Map<String, Integer> essenceLastSeen = new java.util.LinkedHashMap<>();
+
     private PocketInventory() {
         for (int index = 0; index < FLUID_TANK_COUNT; index++) {
             final int tank = index;
@@ -156,6 +175,8 @@ public final class PocketInventory {
         inventory.essence = PocketEssenceStore
             .readFrom(root, tag -> PocketEssenceIntake.isDeclaredEssenceTag(inventory.filters, tag));
         inventory.bindings = PocketCellBindings.readFrom(root);
+        // ★R90 S1：读档即持久化边界 —— 换上的这份 store 就是新基线，增量日志从零起算
+        inventory.clearEssenceDeltas();
         // 读档过程本身不算"内容变了"（handler 反序列化会回调脏标记）
         inventory.dirty = false;
         return inventory;
@@ -183,6 +204,9 @@ public final class PocketInventory {
         essence.writeTo(root);
         bindings.writeTo(root);
         filters.writeTo(root);
+        // ★R90 S1：写档即持久化边界 —— 内存与 NBT 重新一致，增量日志清零（否则终态回滚会把
+        // 已落盘的那部分变更也逆施掉，凭空造回点数）
+        clearEssenceDeltas();
     }
 
     /**
@@ -424,6 +448,89 @@ public final class PocketInventory {
         return essence;
     }
 
+    // ------------------------------------------------------------------ ★R90 S1：源质增量日志 API（D2 修复面）
+    //
+    // 语义 = 「可逐 tag 逆施」：任意时刻读出的日志，逐条按相反符号施回 store（负 ⇒ add 回补、
+    // 正 ⇒ extract 回扣），内存源质即回到上一次持久化边界（读档完成 / writeTo 成功）的基线。
+    // ± 两侧的登记点：Panel 可达的三个点（drainEssence 扣点、performEssenceOut 取出与退点）走
+    // recordEssenceDelta 显式打点；通道下传 / 蒸馏 / 注入支直改 store 的路径由 reconcile 对表兜底。
+
+    /**
+     * 显式登记一笔源质增减（tag，代数和累计）。
+     * <p>
+     * ★契约：调用方<b>刚在 {@link #essence()} 上造成了一笔等量变更</b>（如 {@code extract} 实移除
+     * {@code removed} 点后登记 {@code -removed}）。登记的同时把对表基点前移同一笔，保证
+     * {@link #reconcileEssenceDeltas()} 不会把同一笔变更二次并入。高频率事件 ⇒ L11 打点走 debug 级。
+     */
+    public void recordEssenceDelta(String tag, int delta) {
+        if (tag == null || tag.isEmpty() || delta == 0) {
+            return;
+        }
+        mergeEssenceDelta(tag, delta);
+        final int seen = essenceLastSeen.get(tag) == null ? 0 : essenceLastSeen.get(tag);
+        essenceLastSeen.put(tag, seen + delta);
+        GTInterestingThing.LOG
+            .debug("[PocketR89] 源质增量登记：tag={} delta={}（该 tag 累计 {}）", tag, delta, essenceDeltas.get(tag));
+    }
+
+    /**
+     * 当前增量日志（只读副本；tag → 代数和，非 0 条目）。
+     * <p>
+     * 读取前先 {@link #reconcileEssenceDeltas()} 对表 —— 保证返回值覆盖<b>全部</b>源质增减
+     * （含未打点的外部直改 store 路径），这正是 S2 终态回滚的输入。
+     */
+    public java.util.Map<String, Integer> essenceDeltas() {
+        reconcileEssenceDeltas();
+        return java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(essenceDeltas));
+    }
+
+    /** 清空增量日志并把基点重置为 store 现值（持久化边界 / 回滚完成后调用）。 */
+    public void clearEssenceDeltas() {
+        essenceDeltas.clear();
+        essenceLastSeen.clear();
+        essenceLastSeen.putAll(essence.snapshot());
+    }
+
+    /**
+     * 对表兜底：把「store 现值 − 基点」的漂移并入日志并重置基点。
+     * <p>
+     * 捕捉的是<b>未打点</b>的 store 变更 —— 通道下传入账（{@code PocketEssenceChannelOps#extractEssence}
+     * 直接 {@code store.putAll}）、蒸馏入账（{@code PocketDistillDriver}）、注入支（{@code PocketSlots}）
+     * 都在不可改文件里直改 store，唯有"store 本身是唯一真相"这一事实能把它们全部收进日志。
+     */
+    private void reconcileEssenceDeltas() {
+        final java.util.Map<String, Integer> now = essence.snapshot();
+        final java.util.Set<String> tags = new java.util.LinkedHashSet<>();
+        tags.addAll(now.keySet());
+        tags.addAll(essenceLastSeen.keySet());
+        boolean drifted = false;
+        for (final String tag : tags) {
+            final int current = now.get(tag) == null ? 0 : now.get(tag);
+            final int seen = essenceLastSeen.get(tag) == null ? 0 : essenceLastSeen.get(tag);
+            final int drift = current - seen;
+            if (drift != 0) {
+                mergeEssenceDelta(tag, drift);
+                drifted = true;
+            }
+        }
+        essenceLastSeen.clear();
+        essenceLastSeen.putAll(now);
+        if (drifted) {
+            // L11：对表属低频（只在读日志/落盘时发生）但可能有批量条目，仍走 debug 防刷屏
+            GTInterestingThing.LOG.debug("[PocketR89] 源质增量对表：并入未打点的 store 变更（通道下传/蒸馏/注入支）");
+        }
+    }
+
+    /** 按 tag 累计代数和；净 0 的条目移除（日志里恒为非 0 条目）。 */
+    private void mergeEssenceDelta(String tag, int delta) {
+        final int merged = (essenceDeltas.get(tag) == null ? 0 : essenceDeltas.get(tag)) + delta;
+        if (merged == 0) {
+            essenceDeltas.remove(tag);
+        } else {
+            essenceDeltas.put(tag, merged);
+        }
+    }
+
     public PocketCellBindings bindings() {
         return bindings;
     }
@@ -442,6 +549,8 @@ public final class PocketInventory {
     public void replaceEssence(PocketEssenceStore store) {
         this.essence = store == null ? PocketEssenceStore.readFrom(new NBTTagCompound()) : store;
         this.dirty = true;
+        // ★R90 S1：整表换实例 ⇒ 旧表的增量与新表不可通约，基线跟着新表重置
+        clearEssenceDeltas();
     }
 
     /** 绑定表换实例（S6 的绑定/解绑动作写完后放回；{@code null} 视为空表）。 */
@@ -638,8 +747,28 @@ public final class PocketInventory {
         return Math.max(0, capacity - Math.max(0, currentAmount));
     }
 
-    /** 往第 {@code tank} 号流体槽灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。 */
+    /**
+     * 往第 {@code tank} 号流体槽灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。
+     * <p>
+     * ★新功能 N 起灌入原语收口在 {@link #fillOwnTank(int, FluidStack)}（同语义单源），本方法保留给
+     * 既有调用方（GUI 侧 {@code depositFluid} / 通道侧）——不改变任何既有行为。
+     */
     public int depositFluidIntoBar(int tank, FluidStack fluid) {
+        return fillOwnTank(tank, fluid);
+    }
+
+    /**
+     * ★新功能 N（S6，G-C）世界站抽液的口袋侧灌入口：往第 {@code tank} 号槽灌入 {@code fluid}。
+     * <p>
+     * 语义三件套与 GUI 侧完全同源：{@code FluidStackTank.fill} 自身承担「同流体合并 / 异流体拒 /
+     * 16M 容量夹取」（构造期容量即 {@link PocketConstants#FLUID_BAR_CAPACITY_ML}，setter 回调写
+     * {@code tankFluid}），本方法补上「实收 &gt;0 ⇒ {@code dirty=true}」（世界侧没有关屏钩子可依赖，
+     * 脏标记必须在灌入点自含——F1 双分支里「无活会话」那支按 {@link #isDirty()} 决定是否一次性
+     * {@link #writeTo}；「有活会话」那支经 {@code PocketSession#depositFluid} 落到同一实例）。
+     *
+     * @return 实际接收量（mB；供聊天回执如实报「实收」）
+     */
+    public int fillOwnTank(int tank, FluidStack fluid) {
         if (fluid == null || fluid.amount <= 0 || !isValidTank(tank)) {
             return 0;
         }

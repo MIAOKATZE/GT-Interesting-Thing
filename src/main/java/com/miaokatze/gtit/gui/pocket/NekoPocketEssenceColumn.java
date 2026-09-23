@@ -311,11 +311,10 @@ public final class NekoPocketEssenceColumn {
                 // 空格位：没有归属 tag ⇒ 只给"这一格还空着/TC 不在场"的读法（R31 的整栏灰显另有 tooltip）
                 tooltip.addLine(
                     IKey.lang(ui.essenceAvailable() ? "gtit.pocket.aspect.empty" : "gtit.pocket.still.unavailable"));
-                // ★R86（缺陷 4 乙）：NEI 拖入被 ghostKeyFor 的 cellTag 门拒掉时要有读法，否则整个现象
-                // 又是"拖上去没反应"。判定<b>没</b>放开（放开的代价见档案 r86-ret-nei-mark §C 乙-2：
-                // 要给 Kind.ESSENCE 引入按需占格，撞 PocketEssenceStore 的格位口径），只补文案。
-                // ★R88 E3 已把这一句补齐：need_stock 现在点名"可以拖的是装满该 tag 的安瓿瓶"，
-                // 并说明旧的晶化源质在 NEI 只有一条且不带 NBT、已判不出归属。
+                // ★R86（缺陷 4 乙）→ ★R90 E3（D3）改判：空格的拖入入口已放开到「拖入物自带可读 tag」
+                // （满瓶 ⇒ 建档声明 + assignCell 占格，判据 NekoEssenceGhostCell#tagOfCarrier），本行
+                // 因此从"解释为什么不收"变成"指名要哪种拖拽物"——文案（gtit.pocket.essence.need_stock）
+                // 随 S5 撤回改写（lang 两份归主代理），无 NBT 裸栈/裸晶的拒收面不变。
                 if (ui.essenceAvailable()) {
                     tooltip.addLine(IKey.lang("gtit.pocket.essence.need_stock"));
                 }

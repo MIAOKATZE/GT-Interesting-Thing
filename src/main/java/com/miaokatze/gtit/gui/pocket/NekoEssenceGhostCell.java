@@ -10,16 +10,15 @@ import com.cleanroommc.modularui.integration.recipeviewer.RecipeViewerGhostIngre
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.miaokatze.gtit.common.items.infinitycell.InfinityStackTypes;
+import com.miaokatze.gtit.common.items.pocket.EssenceNativeChannels;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
-
-import appeng.api.storage.data.IAEStack;
-import appeng.api.storage.data.IAEStackType;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 右栏 72 格源质盘的单格（需求 4 的源质入口）：显示格 + 可被 NEI 拖入的 ghost 声明位。
@@ -47,6 +46,9 @@ import appeng.api.storage.data.IAEStackType;
  * 所以"本格对应的 tag"是<b>现读</b>值而不是终身绑定；旧 R78③「撤空不回收」已作废），所以拖进来的
  * 东西不需要"是什么"，但<b>必须确实含本格的 tag</b>（{@link #carriesTag}：蒸馏产出或容器内容
  * 任一命中）。不含 ⇒ 返回 false，NEI 那边继续拖着、不吃栈 ⇒ 玩家拖来的任意东西不会被当成源质声明。
+ * ★R90 E3（D3）补充：<b>本格无归属</b>时，拖入物<b>自带可读 tag</b>（容器内容非空，判据
+ * {@link #tagOfCarrier}）也能组键发出<b>建档声明</b>——服务端对账（有归属不匹配 ⇒ 拒）后
+ * {@code assignCell} 占格；无 NBT 裸栈/裸晶读不出 tag，仍一律拒收。
  * <p>
  * <b>★ghost 只原位改属性</b>（R41b）：实例从装配到关屏不换，声明态只影响遮罩与 tooltip；
  * 内容层同样走 {@link #setCellContent(String, int)} 原位切换 ⇒ 格数恒定 72、widget 树不因
@@ -317,20 +319,45 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * <p>
      * 分发条件是库内的「hover + {@code instanceof RecipeViewerGhostIngredientSlot}」，
      * 与本列调过 {@code excludeAreaInRecipeViewer()} 无关（R70 实测）⇒ 与中栏物品拖入同一机制。
+     * <p>
+     * ★R90 E3（D3）：组键用的 tag 经 {@link #tagOfCarrier} 取「本格 tag 或（本格无归属时）拖入物
+     * 自带的可读 tag」⇒ 拖一只<b>满瓶</b>到<b>无归属空格</b>也能组出键、发出建档声明
+     * （服务端 {@code PocketGhostRequest#apply} 三参形态对账 + {@code assignCell} 落位）；无 NBT
+     * 裸栈 / 裸晶仍组不出键（拒收面不变）。
      */
     @Override
     public boolean handleDragAndDrop(ItemStack draggedStack, int button) {
         if (owner == null || draggedStack == null || cellIndex < 0) {
             return false;
         }
-        final String typeId = channelTypeId(tag);
+        // ★L8（[PocketR89]，客户端拖入入口）：拖入交付栈的完整读数（含 NBT）——U2（MUI2/NEI 拖拽交付
+        // 栈是否保 NBT）的裁决证据<b>只在这里可见</b>（C2S 串只带载荷键，服务端永远看不到这栈）。
+        // debug 每拖必记；首例升 INFO 一次（终验常规 jar 可直读；拖拽是玩家节拍事件，不构成刷屏面）。
+        final TaumAspectAmounts draggedContainer = EssenceGate.TAUM.readContainer(draggedStack);
+        logDragDump(draggedStack, draggedContainer);
+        // ★R90 E3（D3）：组键用的 tag 改走 tagOfCarrier——本格有归属 ⇒ 本格 tag（行为与 R88 逐字一致）；
+        // 本格无归属 ⇒ 拖入物<b>自带的可读 tag</b>（容器内容非空）⇒ 空格建档声明的客户端入口。
+        final String carrierTag = tagOfCarrier(draggedStack, tag, EssenceGate.TAUM);
+        final String typeId = channelTypeId(carrierTag);
         final String key = ghostKeyFor(
             button,
             areAncestorsEnabled(),
-            carriesTag(draggedStack, tag, EssenceGate.TAUM),
-            tag,
+            carriesTag(draggedStack, carrierTag, EssenceGate.TAUM),
+            carrierTag,
             typeId);
         if (key.isEmpty()) {
+            // ★L9（[PocketR89]，客户端发送侧）：请求没发出去时的拒收回读——"无请求到达"（服务端 L8 静默）
+            // 的判因就在这四个读数里：非左键 / 栏灰显（hover 分发面）/ 拖入物无可读 tag（无 NBT 裸栈·裸晶）/
+            // 通道缺席。只打客户端发送侧读数（与 R89 L9 的"回查 requestGhost 前置"同一条）。
+            GTInterestingThing.LOG.debug(
+                "[PocketR89] L9 拖入未发请求：格 {} 本格tag={} 拖入tag={} 通道id={} 按键={} 栏可用={} 容器读数={}",
+                cellIndex,
+                tag,
+                carrierTag,
+                typeId,
+                button,
+                areAncestorsEnabled(),
+                draggedContainer.size());
             return false;
         }
         draggedStack.stackSize = 0;
@@ -338,13 +365,48 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     }
 
     /**
+     * ★L8 的读数体（独立成方法只为让 {@link #handleDragAndDrop} 的判定流保持可读）：
+     * 物品 / meta / 叠数 / NBT 原文 / 双探针（容器 + 蒸馏）读数。首例 INFO 升级用本类自己的闩
+     * （与 {@code NekoPocketPanel#logOnce} 同形态；首例打 INFO 后同键静默，后续样本走 debug 由调用方记录）。
+     */
+    private void logDragDump(ItemStack draggedStack, TaumAspectAmounts container) {
+        final String nbt = draggedStack.getTagCompound() == null ? "无"
+            : draggedStack.getTagCompound()
+                .toString();
+        final String line = "[PocketR89] L8 拖入栈读数：格 " + cellIndex
+            + " 本格tag="
+            + tag
+            + " 栈="
+            + draggedStack.getUnlocalizedName()
+            + " meta="
+            + draggedStack.getItemDamage()
+            + " x"
+            + draggedStack.stackSize
+            + " NBT="
+            + nbt
+            + " 容器读数="
+            + container
+            + " 蒸馏读数="
+            + EssenceGate.TAUM.aspectsOf(draggedStack);
+        if (DRAG_DUMP_LOGGED.add("cell-dump")) {
+            GTInterestingThing.LOG.info(line + "（U2 裁决首例升 INFO，后续样本走 debug）");
+        }
+        GTInterestingThing.LOG.debug(line);
+    }
+
+    /** {@link #logDragDump} 的首例 INFO 闩（见 {@code NekoPocketPanel#LOG_ONCE} 的同形说明）。 */
+    private static final java.util.Set<String> DRAG_DUMP_LOGGED = java.util.Collections
+        .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
+    /**
      * ghost 态下的右键 = 解绑（★只发 {@code CLR|<格号>|E}，判定与执行在服务端）。
      * <p>
-     * ★★<b>R87-d（缺陷 1）+ R88 载体改判：左键持瓶 = 点击入槽</b>：非 ghost、非 alt、<b>游标栈是
-     * 装满的源质容器</b>（客户端经 {@code EssenceGate.TAUM.capacityOf == PHIAL_CAPACITY} 判，
-     * TC 缺席/判不出 ⇒ 不拦截交回 {@code super}）⇒ 经 {@code owner.requestEssenceIntake} 走<b>现有
-     * C2S 动作通道</b>发请求（零新同步键，与 alt 标记同形）；判定、入账、回执全在服务端
-     * {@code PocketEssenceIntake}，游标由服务端经 {@code syncManager.setCursorItem(null)} 清。
+     * ★★<b>R87-d（缺陷 1）+ R88 载体改判 + ★R90 E3 手势三分：左键点格按游标持物分流</b>：
+     * 非 ghost、非 alt、游标<b>持物</b> ⇒ 交 {@code owner.dispatchEssenceCellPress} 分派——
+     * <b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier} 判据单源）走新「格→瓶取出」；
+     * <b>满瓶 / 晶</b>仍走 {@code owner.requestEssenceIntake} 的现有 C2S 动作通道（判定、入账、回执
+     * 全在服务端 {@code PocketEssenceIntake}，游标由服务端经 {@code syncManager.setCursorItem} 清）。
+     * 分派返 false（空游标 / 预筛不过）⇒ 交回 {@code super} ⇒ 既有取出支照旧。
      * <p>
      * ★<b>客户端不得本地清游标</b>——这条纪律的理由在 R88 被改述过：旧注释写的是"原版 cursor 同步送达"，
      * 而 {@code ModularContainer#detectAndSendChanges} 只转 {@code super}（vanilla 只跟踪
@@ -353,7 +415,7 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * 点击格只是手势锚点：目标 tag = 容器自带的 tag，本格有没有别的 tag 都不拦。
      * <p>
      * 其余按键（含非 ghost 态的右键、游标无瓶的左键）一律交回 {@code super} ⇒ 既有的
-     * 「点击取瓶 / Shift 取整份」行为逐字不变。
+     * 「点击取瓶 / Shift 取整份」行为逐字不变（多瓶批量空游标取出支不在本片触碰面内）。
      */
     @Override
     public Result onMousePressed(int mouseButton) {
@@ -372,13 +434,37 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
             && !Interactable.hasAltDown()
             && owner != null
             && cellIndex >= 0
-            && owner.requestEssenceIntake(cellIndex)) {
+            && owner.dispatchEssenceCellPress(cellIndex)) {
             return Result.SUCCESS;
         }
         return super.onMousePressed(mouseButton);
     }
 
     // ------------------------------------------------------------------ 纯判定（回归套件驱动这两段）
+
+    /**
+     * ★R90 E3（D3）：<b>组键该用哪个 tag</b>——本格 tag 优先；本格<b>无归属</b>（{@code null/空}）时
+     * 回落<b>拖入物自带的可读 tag</b>（{@code gate.readContainer} 非空 ⇒ 取首个有量 tag，
+     * 与点击入槽共读 {@link PocketEssenceIntake#firstTagOf} 这一条"自带 tag"判据单源）。
+     * <ul>
+     * <li>本格有归属 ⇒ 恒返本格 tag（与 R88 行为逐字一致，<b>不受拖入物影响</b>）；</li>
+     * <li>本格无归属 + 拖入物容器读数非空 ⇒ 拖入物的 tag ⇒ {@link #handleDragAndDrop} 可在<b>空格</b>
+     * 上组出键、发出建档声明（服务端对账 + 建档，见 {@code PocketGhostRequest#apply} 三参形态）；</li>
+     * <li>本格无归属 + 拖入物读不出 tag（无 NBT 裸栈 / 裸晶 / 非容器）⇒ {@code null} ⇒
+     * {@link #carriesTag} 对空 tag 的既有拒收入口生效（need_stock 文案面）。</li>
+     * </ul>
+     * 刻意<b>不</b>把蒸馏读数（{@code aspectsOf}）当"自带 tag"：多 tag 蒸馏产出没有唯一归属，
+     * 建档声明的语义载体是<b>容器</b>（满瓶/带 NBT 旧晶/第三方罐），与 R88 载体口径同源。
+     */
+    public static String tagOfCarrier(ItemStack draggedStack, String cellTag, EssenceGate gate) {
+        if (draggedStack == null || gate == null) {
+            return null;
+        }
+        if (cellTag != null && !cellTag.isEmpty()) {
+            return cellTag;
+        }
+        return PocketEssenceIntake.firstTagOf(gate.readContainer(draggedStack));
+    }
 
     /**
      * 拖入物是否<b>含本格的 tag</b>：容器内容（{@code TaumCompat.readContainer} 口径）或蒸馏产出
@@ -398,8 +484,11 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * ★自立口径 <b>C2（旧晶只读不产）</b>在本判据上的落点：旧晶不再被"族"放行，但<b>带着 NBT 的旧晶
      * 照旧命中</b>（{@code readContainer} 读得到 {@code add(tag,1)}）⇒ 识别留着、生产撤了。
      * ★如实登记的代价：NEI 里那条<b>无 NBT 的裸晶</b>（旧 R87-e 特判专门为之而加）现在一律判不出 tag
-     * ⇒ 拖它声明不成立；玩家要声明/入槽请拖<b>瓶</b>。空格（{@code cellTag} 为 null/空）的拒收原样保留
-     * （R86 裁定不放开，{@code essence.need_stock} tooltip 已解释）。
+     * ⇒ 拖它声明不成立；玩家要声明/入槽请拖<b>瓶</b>。
+     * ★★<b>R90 E3（D3）起"空格（{@code cellTag} 为 null/空）拒收"收窄</b>：本方法对空 cellTag 仍返
+     * false（判据"含<b>这一格</b>的 tag"对空格无解，本签名与既有用例不动），但空格的建档入口改走
+     * {@link #tagOfCarrier}（拖入物自带 tag ⇒ 可组键）——旧 R86"空格一律不收"只在"拖入物读不出
+     * tag"那一半继续成立。
      */
     public static boolean carriesTag(ItemStack draggedStack, String cellTag, EssenceGate gate) {
         if (draggedStack == null || gate == null || cellTag == null || cellTag.isEmpty()) {
@@ -415,10 +504,13 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     }
 
     /**
-     * 拖入是否构成一条源质声明：左键 + 该栏可用（灰显一律不收，R31）+ 本格有 tag +
+     * 拖入是否构成一条源质声明：左键 + 该栏可用（灰显一律不收，R31）+ <b>组键 tag 非空</b> +
      * 拖入物确实含该 tag + 解出了通道 id ⇒ 载荷键 {@code e:<typeId>:<tag>}；否则 {@code ""}。
      * <p>
      * 键的生成只走 {@link PocketFilterConfig#essenceKey(String, String)}（<b>不自造第四种键格式</b>）。
+     * ★R90 E3（D3）：<b>组键 tag 的来源放宽到 {@link #tagOfCarrier}</b>——第四参不再必然是"本格归属"
+     * （无归属空格上传入 {@code tagOfCarrier} 给出的拖入物自带 tag 也合法，服务端建档）；判据本体
+     * （要不要发 SET、通道 id 缺席拒收）一条未动。
      */
     public static String ghostKeyFor(int button, boolean regionEnabled, boolean tagMatched, String cellTag,
         String typeId) {
@@ -435,62 +527,24 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     /**
      * 本格源质所在的<b>通道 id</b>（{@code IAEStackType.getId()} 字符串）。
      * <p>
-     * ★<b>与消费端口径逐字对齐</b>，不猜：消费点是
-     * {@code PocketAeChannelOps#extractEssence} 的 {@code InfinityStackTypes.byId(filter.typeId)}，
-     * 而它判定"该通道能不能物化这一 tag"用的探针在 ★R88 起是<b>满瓶</b>
-     * （{@code type.convertStackFromItem(TaumCompat.newFilledContainer(tag, PHIAL_CAPACITY))} 且要求
-     * {@code getStackSize() > 0}，那条在 E1 片的 {@code PocketAeChannelOps} 里同步改）。本方法用
-     * <b>同一条探针</b>在 {@code InfinityStackTypes.allSupportedTypes()}（物品→流体→运行时注册的
-     * 第三方通道）上取第一个命中者的 {@code getId()} ⇒ 写进声明的 id 与 {@code byId} 能解析出的 id
-     * 天然是同一个，不会出现两处真相。★R86：内建<b>流体</b>通道始终排除在外（源质落在流体通道上没有
-     * 任何读法成立）；内建<b>物品</b>通道从"排除"改成"兜底"——第三方全空时回落给它（见方法体末★R88 那条）。
+     * ★R90 E2：判法已<b>单源下沉</b>到 {@link EssenceNativeChannels}（满瓶探针 +
+     * {@code convertStackFromItem}，含第三方实现的 {@code Throwable} 容错与 TC 缺场判空）——
+     * 本方法只是声明侧的薄封装，不再内联探针循环。与消费端同一只探针：写进声明的 id 与
+     * {@code InfinityStackTypes.byId} 能解析出的天然是同一个，不会出现两处真相。
      * <p>
-     * ★<b>与 E1 的对齐是硬前置</b>：若消费侧探针没同步换成瓶，本方法的回落档位就会与
-     * {@code unit} 实测各说各话（声明"1 单位 = 一只瓶"而抽取侧按"一只瓶 = 8 单位"折算 ⇒ 一次拉取
-     * 抽 8 倍）。判据见交付报告的实机项。
+     * ★★<b>R90（AUQ-①=B）起不再回落物品通道</b>（R86"缺陷 4 乙"的兜底随本次撤销）：没有任何
+     * <b>源质原生通道</b>能吃下这一 tag ⇒ 返回 {@code ""} ⇒ {@link #ghostKeyFor} 对空通道 id 的
+     * 既有拒收入口生效，<b>不写声明</b>（无处可抽的声明就是死声明）。内建流体通道照旧排除
+     * （源质落在流体通道上没有任何读法成立）。旧口径"回落后 1 单位 = 一只安瓿瓶"的语义代价说明
+     * 随之作废：上传/下传都只走源质原生通道，"1 单位"只由原生通道的探针倍率定义。
      * <p>
-     * 边界如实声明：AE2 第三方通道的 {@code convertStackFromItem} 需要真实注册表，纯 JVM 里
-     * 拿不到（与 {@code extract_essence_branch_yields_crystal} 同一批未验面，实验 E3），
-     * 因此本方法属<b>实机项</b>；判据（含不含 tag、要不要发 SET、落到哪个索引空间）全在
-     * {@link #carriesTag} 与 {@link #ghostKeyFor} 这两段纯函数里，由回归套件驱动。
+     * 边界如实声明：探针需要真实注册表与 TC，纯 JVM 里拿不到（与
+     * {@code extract_essence_branch_yields_phials} 同一批未验面，实验 E3），因此本方法属<b>实机项</b>
+     * （TC 缺席时恒 {@code ""}，与"没有源质可传"同向）；判据（含不含 tag、要不要发 SET、落到哪个
+     * 索引空间）全在 {@link #carriesTag} 与 {@link #ghostKeyFor} 这两段纯函数里，由回归套件驱动。
      */
     static String channelTypeId(String cellTag) {
-        if (cellTag == null || cellTag.isEmpty()) {
-            return "";
-        }
-        // ★R88：探针从"一枚晶（1 点）"换成"一只满瓶（PHIAL_CAPACITY 点）"——载体改判后这是唯一
-        // 还会被产出的源质容器，用它判通道与用它算 unit 才是同一件事
-        final ItemStack probeStack = TaumCompat.newFilledContainer(cellTag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
-        if (probeStack == null) {
-            return "";
-        }
-        for (IAEStackType<?> type : InfinityStackTypes.allSupportedTypes()) {
-            if (type == null || type == InfinityStackTypes.ITEM_STACK_TYPE
-                || type == InfinityStackTypes.FLUID_STACK_TYPE) {
-                continue;
-            }
-            final IAEStack<?> converted;
-            try {
-                converted = type.convertStackFromItem(probeStack);
-            } catch (Throwable t) {
-                // 第三方通道的实现不得成为 GUI 崩溃源；问下一家
-                continue;
-            }
-            if (converted != null && converted.getStackSize() > 0L) {
-                return type.getId();
-            }
-        }
-        // ★R86（缺陷 4 乙，用户裁定"三项都开"）+ ★R88 载体改判：没有任何第三方源质通道能物化这一 tag
-        // 时，<b>回落到物品通道</b> —— 物品通道收的就是"源质瓶"这件物品本身（AE2 的
-        // {@code ITEM_STACK_TYPE.convertStackFromItem} 对任何物品都成立），于是"从 NEI 标记源质"
-        // 在没有 AE2-源质 addon 的整合包里也可用。
-        // ★已披露的语义代价（游戏内 tooltip 与本条注释同源，★R88 换算）：回落之后声明的"1 单位"是
-        // <b>一只安瓿瓶</b> = {@value TaumDistillRules#PHIAL_CAPACITY} 点源质，<b>不再是</b>旧口径的
-        // "一枚晶化源质 = 1 点"（{@code PocketAeChannelOps#extractEssence} 的 {@code unit} 由同一条
-        // 探针实测，折算倍率属<b>实机项</b>，本仓不写死）。同一格声明的抽取量语义因此放大 8 倍 ⇒
-        // 想按点抽就调小 ghost 上限（alt+滚轮），别按旧晶的读数直觉估。
-        // 内建流体通道仍在探针循环里被排除：把源质瓶声明成流体通道没有任何读法成立。
-        return InfinityStackTypes.ITEM_STACK_TYPE.getId();
+        return EssenceNativeChannels.nativeChannelTypeId(cellTag);
     }
 
     // ------------------------------------------------------------------ ghost 态的渲染
