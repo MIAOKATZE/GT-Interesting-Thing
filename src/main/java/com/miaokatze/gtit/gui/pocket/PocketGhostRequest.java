@@ -340,8 +340,16 @@ public final class PocketGhostRequest {
     }
 
     /**
-     * ★★<b>R91-b 的 NEI 拖拽分派表</b>（★唯一判据、只住本类一处；三个格件都调它，服务端 SET 支也认它）：
+     * ★★<b>R91-b 的 NEI 拖拽分派表</b>（★唯一判据、只住本类一处；三个客户端格件各调它一次——
+     * {@code NekoFilterSlot} / {@code NekoPocketFluidSlot} / {@code NekoEssenceGhostCell} 的
+     * {@code handleDragAndDrop}，★{@code IGNORE} 只活在那一侧）：
      * 一格当前的属性状态 ⇒ 拖进来的载荷该<b>落到哪一档</b>。
+     * <p>
+     * ★<b>R91-n 更正（原句"服务端 SET 支也认它"不实，已改述）</b>：{@link #applySet} 实读从不问本表——
+     * 伪造 SET 的威胁面不靠它收口：玩家只能写自己的口袋，载荷本身还要过 {@code applySet} 的
+     * 键合法性 / 槽号白名单 / 归属对账（R90 E3 D3）与 {@code applyFlag} 的 R91-h 跨区硬校验。
+     * ★<b>不许</b>为对齐这句旧注释去给 SET 支补第二问——那会为一句注释开出第二条执法腿与第二处真相
+     * （账本 R91-n 的裁定原文）。
      */
     public enum DragRoute {
         /** 显式 {@code attr = BIND} ⇒ 载荷写进 BIND（＝既有语义，不变）。 */
@@ -611,6 +619,10 @@ public final class PocketGhostRequest {
                 // ★兜底读数：位表说"没变"且这一格既没载荷也没被撤掉什么 ⇒ UNCHANGED（不写档、不刷虚化）。
                 // 正常迁移路径在上面那条等值判断就返回了，走到这里只有"位表实现与真值表不一致"这一种可能
                 // ⇒ 这条分支是<b>防写歪</b>的，不是装饰（同 #applyCap 那条"写完再复核"的纪律）。
+                // ★★<b>R91-r（审查反推，免得下一个人重做这轮推演）：C2S 不可达</b>——手势字母已被
+                // isKnownGesture 白名单、nextAttr 三值封顶、存档永不落 attr=0（normalizeGhostAttr 收口）、
+                // 等值迁移在方法顶部就返回 ⇒ 合法包到不了这里；本支只防"位表自相矛盾写歪"，与
+                // applyCap:701-704 的复核支同形，危害为零，★保留、不许删也不许"顺手合并"掉。
                 return new Decision(Outcome.UNCHANGED, kind, slotIndex);
             }
         } else {

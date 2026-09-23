@@ -5,6 +5,7 @@ import java.util.Map;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidContainerRegistry;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidContainerItem;
@@ -12,6 +13,7 @@ import net.minecraftforge.fluids.IFluidContainerItem;
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketFluidTransfer;
 import com.miaokatze.gtit.common.items.pocket.PocketIntakeOps;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
@@ -683,6 +685,15 @@ public final class PocketSlots extends PocketIntakeOps {
             @Override
             public void abandoned(int cell, String key, Object... args) {
                 notifyCell(cell, key, args);
+            }
+
+            @Override
+            public boolean memoryAllowsFluid(int tank, FluidStack content) {
+                // ★R91-p：只把"这份流体过不过本列的记忆闸"问给那张位表（判据单源
+                // PocketFilterConfig#memoryAllowsFluid），本适配器不含第二份 attr 读法。
+                final Fluid fluid = content == null ? null : content.getFluid();
+                return inv.filters()
+                    .memoryAllowsFluid(PocketFilterConfig.Kind.FLUID, tank, fluid == null ? null : fluid.getName());
             }
 
             @Override

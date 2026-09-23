@@ -31,6 +31,11 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * 需求 2 的"从手上/仓里灌排流体、两格同权"就没了。⇒ 唯一正确做法是<b>子类在 phantom 门之前拦下</b>，
  * 只发本仓那一条 {@code SYNC_GHOST_REQUEST}（与 {@link NekoFilterSlot} 同形，R18/R19 不破）。
  * <p>
+ * ★<b>R91-p（L 的执法腿·流体支）</b>："往本列<b>灌入</b>流体"这条玩家写入口的拦截<b>不在本 widget</b>——
+ * 装配处（{@code NekoPocketLeftColumn#fluidSlots}）给 handler 挂库自带的 {@code filter} 谓词，
+ * 记忆列被 {@code FluidSlotSyncHandler#fillFluid} 的预检整支拒掉（判据单源
+ * {@code PocketFilterConfig#memoryAllowsFluid}，本类不含第二份 attr 读法；抽取方向与三个开关不动）。
+ * <p>
  * <b>ghost 只原位改属性</b>（R41b）：本 widget 实例从装配到关屏不换，声明态只影响
  * 渲染样本、遮罩与 tooltip；几何（★R78② 由 18×18 拉长为 18×36）与 {@code alwaysShowFull(false)}
  * 的部分填充口径都由 {@link NekoPocketLeftColumn} 原样保留 ⇒ 双端同树（R32）不受影响。

@@ -326,16 +326,20 @@ gtit.pocket.still.partial_skip=本轮另有 %d 格没塞下（共 %d 点），�
 # ★R91-g：旧 cursor_busy（"游标已被占用"）并进 essence.need_phial（游标上有东西但不是空瓶 = 同一条
 #   "拿瓶子去装"的说话），两份整体删除（不留注释尸）。
 # ★R88 载体改判（晶化源质 → TC 安瓿瓶）+ ★C3 聊天零输出：入槽态自 R91-⑤ 起为五态，一律走面板内粘性回执。
-# ★intake.ok 刻意只留一个 %d：投递面是 NekoPocketPanel#putReceipt(key, moved, refused)，
+# ★ACCEPTED 两键各留一个 %d：投递面是 NekoPocketPanel#putReceipt(key, moved, refused)，
 #   载荷只有两个整数、本地化在客户端做（receiptText 的 String.format 实参 = 两个 int）。
-#   旧形状的 %s 会被第一个整数塞位（读出「已把「24」源质 …」），故键名保留、占位改成单 %d。
+#   旧形状的 %s 会被第一个整数塞位（读出「已把「24」源质 …」），故占位是单 %d。
+# ★★R91-o：ACCEPTED 旧版两档共用一条 intake.ok、括注只说退瓶 ⇒ 晶档玩家读到假话（晶不退壳）。
+#   改按档分键：分档读数住 Result.refundsCarrier()（refundsEmptyCarrier 单源分派表的投影），
+#   瓶档说"已退回游标"、晶档说"不退空壳"，两条都是真话；★键面成对，撤一条不给落点＝删信息，门禁会红。
 # ★键名 intake.not_crystal / Outcome.NOT_CRYSTAL 保留（改键名 = 改 Java 常量与测试对账，R88 不做）；
 #   含义已按 ★C2 扩成「瓶（现役）或带归属的旧晶（只读）」。
 gtit.pocket.essence.intake.not_crystal=手里不是源质瓶：把装满源质的安瓿瓶（或还带归属的旧晶化源质）拿在游标上，再点源质格
 gtit.pocket.essence.intake.no_owner=这只瓶还没有装源质，没有可入账的源质
 gtit.pocket.essence.intake.no_room=源质盘装不下这一整叠瓶：先少放几只进来，这一叠分毫未动
 gtit.pocket.essence.intake.memory_locked=这一格记住了别的东西，放不进来：换成它记住的那一种再点，或先 alt+左键撤掉记忆（★与「装不下」那条是两回事：那是等余量，这是换东西）
-gtit.pocket.essence.intake.ok=源质已入账：%d 点（被溶掉的空瓶已退回游标）
+gtit.pocket.essence.intake.ok.phial=源质已入账：%d 点（被溶掉的空瓶已退回游标）
+gtit.pocket.essence.intake.ok.crystal=源质已入账：%d 点（晶化源质整叠溶进盘中，晶档不退空壳）
 # ★R88 C1（最小粒度 = 一瓶）的玩家可见三条：不足一瓶 / 取出与留盘并报 / 格级说明
 gtit.pocket.essence.not_enough_phial=这一格的源质还凑不满一瓶，什么都不取：盘里仍留 %d 点
 gtit.pocket.essence.partial_leftover=按整瓶取走 %d 点；另有 %d 点不足一瓶，留在盘里
@@ -354,6 +358,9 @@ gtit.pocket.ghost.locked=配置格默认不接受玩家放入或流体输入（�
 # ★刻意全部不带 %s：调用点是 notifyCell(cell, key, args...) 的变参形态，多传参无害、
 # 但文案里写了占位而某条支没传参会在客户端抛 MissingFormatArgumentException（实机崩溃形状）。
 gtit.pocket.fluid.tank_full=该列流体槽已满：先腾空本列出格，或换一列再灌
+# ★R91-p（L 的执法腿·流体支）：与 tank_full 分开成两条键——那是"等余量"，这是"换东西/撤记忆"，
+#   修法不同（与源质支 intake.memory_locked 的"两态两键"同一条纪律）。
+gtit.pocket.fluid.tank_memory_locked=该列记住了另一种流体，这一份灌不进去：换成它记住的那一种，或 alt+左键撤掉本列的记忆
 gtit.pocket.fluid.tank_empty=该列流体槽里没有流体，没有可灌装的东西
 gtit.pocket.fluid.unit_too_large=该容器一次的携液量超过本槽剩余容量，且不支持部分倒空：先腾出更多空间或改用较小的容器
 gtit.pocket.fluid.output_blocked=输出格已被别的东西占住或已叠满，产物无处落位：请先清空该列出格

@@ -48,6 +48,20 @@ public final class PocketFluidTransfer {
         void abandoned(int cell, String key, Object... args);
 
         /**
+         * ★<b>R91-p（L 的流体执法腿，入口一问）</b>：玩家往第 {@code tank} 列<b>倒空容器</b>之前问一句
+         * 「本列若挂了记忆，这份流体是不是它记住的那一种」。
+         * <p>
+         * ★判据本体住在 {@code PocketFilterConfig#memoryAllowsFluid}（三条口径的单源，与物品支
+         * {@code allowsPlayerPlacement}、源质支 {@code memoryAllowsTag} 同一族）；本接口的 gui 侧实现
+         * 只是<b>转发结论</b>（{@code inv.filters().memoryAllowsFluid(...)}），★不得含第二份 attr 读法。
+         * ★只覆盖「灌入」这一向：灌装回抽（{@code fillFromTank}）与通道回滚走的是<b>抽取/归还</b>，
+         * L 纯过滤、一条退液都不改变（与源质支"拦入账不拦取出"同形）。
+         *
+         * @param content 容器将要倒进本列的那份流体（调用方只在 {@code content != null && amount > 0} 时问）
+         */
+        boolean memoryAllowsFluid(int tank, FluidStack content);
+
+        /**
          * 一次搬运的两格落位（gui 侧 {@code placeProcessed}：产物进本列出格并上闩、余量留本列进格、
          * 强制同步与抑制键清理）。
          */
@@ -58,6 +72,12 @@ public final class PocketFluidTransfer {
     // 缺一条就等于把用户报的"卡住不动"重新变成静默）
     /** 目标 tank 已无空余容量（旧写法在 {@code room <= 0} 处直接 return，玩家看不到任何提示）。 */
     static final String KEY_TANK_FULL = "gtit.pocket.fluid.tank_full";
+    /**
+     * ★<b>R91-p</b>：本列挂了记忆 {@code L} 且记的不是这一种流体 ⇒ 整列拒收这次倒空
+     * （★与 {@code tank_full} 分开成两条键：那是"等余量"，这是"换东西 / 撤记忆"，修法不同——
+     * 与源质支 {@code intake.memory_locked} 同一条"两态两键"纪律）。
+     */
+    static final String KEY_TANK_MEMORY_LOCKED = "gtit.pocket.fluid.tank_memory_locked";
     /** 该列的 tank 里没有流体，灌装支无事可做。 */
     static final String KEY_TANK_EMPTY = "gtit.pocket.fluid.tank_empty";
     /** 该容器一次要倒的流体比本 tank 的空余容量还多，且这类容器不支持部分倒空。 */
@@ -134,6 +154,14 @@ public final class PocketFluidTransfer {
      */
     public static void drainIntoTank(Cells cells, int sourceIndex, int tank, ItemStack unit, int units,
         FluidStack content) {
+        // ★★<b>R91-p（L 的执法腿，流体支·入口一）</b>：记忆列 = "本列只能收它记住的那一种流体"。
+        // 问在<b>room 计算与任何容器副本被碰之前</b>：拒 ⇒ 槽分毫未动、格内容器原样躺着（一件不扣）、
+        // 出格零产物零闩 ⇒ 与 {@code KEY_TANK_FULL} 那一条"给整入口一个会说话的理由"同形。
+        // ★判据不在此处：整条住在 PocketFilterConfig#memoryAllowsFluid，cells 那一步只转发结论。
+        if (!cells.memoryAllowsFluid(tank, content)) {
+            cells.abandoned(sourceIndex, KEY_TANK_MEMORY_LOCKED);
+            return;
+        }
         final FluidStackTank target = cells.tank(tank);
         final int room = target.getCapacity() - target.getFluidAmount();
         if (room <= 0) {

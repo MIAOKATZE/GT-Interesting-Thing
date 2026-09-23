@@ -31,7 +31,8 @@ import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
  * 但玩家要看懂"先拆一小撮再点"；★游标侧的逐只向下收口<b>刻意不做</b>（游标只有一个栈，收口出来的
  * "半叠满瓶 + 半叠空瓶"没有第二个落点，硬做就是 R83 那类"少了东西却说不动"换皮）；</li>
  * <li>{@link Outcome#ACCEPTED}：已入账（点数 = 单件 amount × 叠数 ⇒ 满瓶一叠是 8×N 点）⇒ 成功回执
- * {@code gtit.pocket.essence.intake.ok}（含 tag 与点数）。★R91-④：本态同时带
+ * <b>按档分键</b>（★R91-o：瓶档 {@code gtit.pocket.essence.intake.ok.phial} / 晶档 {@code ...ok.crystal}，
+ * 两档各说各的退件事实——旧版两档共用一条键、括注只说退瓶，晶档玩家读到的是假话）。★R91-④：本态同时带
  * {@link Result#refund}（瓶档 = 等量空壳；晶档 = {@code null}），调用方据此结算游标。</li>
  * </ol>
  * <p>
@@ -135,6 +136,12 @@ public final class PocketEssenceIntake {
          * 本态的回执 lang 键（失败三条 = 粘性面板回执；成功一条同样应走<b>面板回执</b>——
          * ★R88 裁定"此类回执不进聊天框"，本方法只交键、不决定投递面；今天还在往聊天框发的那一句
          * 住在面板侧，改道由 E2 承接，键名与占位不变）。
+         * <p>
+         * ★★<b>R91-o：ACCEPTED 一档按载体档分键</b>（瓶档 {@code .ok.phial} / 晶档 {@code .ok.crystal}）。
+         * 旧版两档共用一条 {@code intake.ok} 而括注只说退瓶 ⇒ 玩家溶晶时读到假话（晶档不退壳，R86 只对晶
+         * 继续成立）。★分档读的是 {@link #refundsCarrier()}——它就是 {@code PocketIntakeOps#
+         * refundsEmptyCarrier} 那张单源分派表在本结果上的<b>投影读数</b>，本方法不判档位、不数瓶子；
+         * 三条失败态的键不受影响。
          */
         public String langKey() {
             switch (outcome) {
@@ -143,7 +150,8 @@ public final class PocketEssenceIntake {
                 case NO_ROOM:
                     return "gtit.pocket.essence.intake.no_room";
                 case ACCEPTED:
-                    return "gtit.pocket.essence.intake.ok";
+                    return refundsCarrier() ? "gtit.pocket.essence.intake.ok.phial"
+                        : "gtit.pocket.essence.intake.ok.crystal";
                 case MEMORY_LOCKED:
                     // ★R91-⑤：本格被记忆锁成"只能放另一种东西"⇒ 面板回执（★不进聊天框，R88 C3 同一条）
                     return "gtit.pocket.essence.intake.memory_locked";

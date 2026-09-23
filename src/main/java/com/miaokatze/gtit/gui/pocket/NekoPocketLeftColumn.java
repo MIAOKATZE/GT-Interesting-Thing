@@ -10,6 +10,7 @@ import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.FluidSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 /**
@@ -267,8 +268,17 @@ public final class NekoPocketLeftColumn {
      * 真实槽上恒拒；② <b>不</b>把 handler 设成 {@code phantom(true)}——那会让服务端那一支把流体
      * 直接写进真实 tank，而需求 2 的「从手上/仓里灌排流体、两格同权」依赖它是<b>真实槽</b>。
      * <p>
-     * ★R78 D-2：{@code legend.tank}（"这一格是本列的流体槽"）与每槽容量读数改由<b>本槽的
+     * ★★<b>R78 D-2</b>：{@code legend.tank}（"这一格是本列的流体槽"）与每槽容量读数改由<b>本槽的
      * tooltip</b> 承载（见 {@link NekoPocketFluidSlot#addToolTip}），不再常驻。
+     * <p>
+     * ★★<b>R91-p（L 的执法腿·流体支，入口二）</b>：handler 只多挂库自带的 {@code filter} 谓词——
+     * {@code FluidSlotSyncHandler#fillFluid}（上游 :352，<b>非 phantom 的点击灌入唯一落点</b>）在动任何
+     * 流体之前先 {@code filter.test(heldFluid)}，不过就整支静默返回（与库内"条内是别的流体"那一拒同形）。
+     * 谓词体只做一件事：把"这一列的记忆允不允许这种流体"<b>问给</b>
+     * {@code PocketFilterConfig#memoryAllowsFluid}（★判据单源，本文件不含第二份 attr 读法；读的是
+     * 服务端位表，fillFluid 只在 {@code readOnServer} 一支被调 ⇒ 执法面恒在服务端）。
+     * ★这条谓词<b>不</b>碰 phantom / canFill / canDrain 三个开关，也<b>不</b>参与抽取方向 ⇒
+     * 需求 2 的"两格同权灌排"与 GT5U 按键组合照旧，被拦下的只有"往记忆列灌它没记的那种"。
      */
     private static IWidget fluidSlots(NekoPocketPanel ui) {
         final ParentWidget<?> field = new ParentWidget<>().pos(0, 0)
@@ -279,6 +289,7 @@ public final class NekoPocketLeftColumn {
             final int column = tank % PocketConstants.FLUID_COLUMN_COUNT;
             final FluidStackTank target = ui.inventory()
                 .tankAt(tank);
+            final int tankIndex = tank;
             final NekoPocketFluidSlot slot = new NekoPocketFluidSlot().bindBar(ui, tank);
             slot.background(PocketGuiTextures.SLOT_TALL);
             ui.trackFluidSlot(tank, slot);
@@ -287,7 +298,16 @@ public final class NekoPocketLeftColumn {
                     .size(CELL, TANK_HEIGHT)
                     .alwaysShowFull(false)
                     .name("pocket_fluid_slot_" + tank)
-                    .syncHandler(new FluidSlotSyncHandler(target)));
+                    .syncHandler(
+                        new FluidSlotSyncHandler(target).filter(
+                            fluid -> ui.inventory()
+                                .filters()
+                                .memoryAllowsFluid(
+                                    PocketFilterConfig.Kind.FLUID,
+                                    tankIndex,
+                                    fluid == null || fluid.getFluid() == null ? null
+                                        : fluid.getFluid()
+                                            .getName()))));
         }
         return field;
     }

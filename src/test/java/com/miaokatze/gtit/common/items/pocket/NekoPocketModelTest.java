@@ -346,6 +346,14 @@ public class NekoPocketModelTest {
             "ghost_memory_pending_placement_unrestricted",
             NekoPocketModelTest::ghostMemoryPendingPlacementUnrestricted);
         cases.put("essence_out_packed_arg_bounds_rejected", NekoPocketModelTest::essenceOutPackedArgBoundsRejected);
+        // ---- ★R91-T2（S6 审查收尾批）R91-n…r：五条非阻断项的钉（两条取证结论 + 三条文案/注释不实）----
+        cases.put(
+            "ghost_drag_route_doc_matches_server_reality",
+            NekoPocketModelTest::ghostDragRouteDocMatchesServerReality);
+        cases.put("ghost_fluid_memory_gate_two_legs", NekoPocketModelTest::ghostFluidMemoryGateTwoLegs);
+        cases.put("ghost_apply_flag_unchanged_guard_kept", NekoPocketModelTest::ghostApplyFlagUnchangedGuardKept);
+        cases.put("essence_intake_ok_lang_key_per_carrier", NekoPocketModelTest::essenceIntakeOkLangKeyPerCarrier);
+        cases.put("essence_memory_gate_reads_landing_cell", NekoPocketModelTest::essenceMemoryGateReadsLandingCell);
         // ---- ★R90 E3/E4（批 2 测试落地）：S3/S5 预筛真值表 + 格→瓶取出守卫 + ghost 建档归属对账 + S6 流体决策核
         // （世界站适配器 PocketWorldFluidTap 与 ItemNekoDimensionPocket.onItemUseFirst 的实机手势属
         // in-game-checklist 项，本套件只钉决策核与口袋侧纯 JVM 面）
@@ -4495,12 +4503,19 @@ public class NekoPocketModelTest {
         // ---- 态 4：ACCEPTED（整叠入账，tag = 载体自带；点数 = 单只点数 × 只数）----
         final ItemStack fewPhials = stack(3);
         gate.putContainer(fewPhials, TaumAspectAmounts.single("ignis", unit));
+        // 退件抽干的是 {@code carriers.copy()}，而 StubGate 按<b>对象身份</>查表 ⇒ 必须显式打开共享内容
+        // （真实现里副本与原栈共用同一份 AspectList，所以生产不走降级支；本行与 :5750 那条同法）
+        gate.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
         final PocketEssenceIntake.Result ok = PocketEssenceIntake.intake(fewPhials, store, gate);
         SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, ok.outcome, "空盘整瓶装得下 ⇒ 入账");
         SimpleAssert.that(ok.accepted(), "accepted() 是调用方清游标的唯一判据");
         SimpleAssert.eq("ignis", ok.tag, "★目标 tag = 载体自带的 tag");
         SimpleAssert.eq(3 * unit, ok.points, "★点数 = 一只 " + unit + " 点 × 3 只（旧晶口径这里会算成 3 点）");
-        SimpleAssert.eq("gtit.pocket.essence.intake.ok", ok.langKey(), "态 4 回执键对账（★R88 起该键只有一个 %d = 点数，tag 名不再上文案）");
+        SimpleAssert.eq(
+            "gtit.pocket.essence.intake.ok.phial",
+            ok.langKey(),
+            "态 4 回执键对账（★R88 起该键只有一个 %d = 点数，tag 名不再上文案；★R91-o 按档分键后瓶档走 .ok.phial）");
+        SimpleAssert.that(ok.refundsCarrier(), "★态 4 的正控前提：这条 ACCEPTED 退了壳 ⇒ 分键判据读到的是瓶档");
         SimpleAssert.eq(3 * unit, store.get("ignis"), "源质盘真的进了这些点数");
         // 失败三键（态 1）最后对账，凑齐四态
         SimpleAssert.eq(
@@ -7633,6 +7648,422 @@ public class NekoPocketModelTest {
         final int guard = firstCodeLineWith(panel, perform, performEnd, "packedArg < 0");
         final int cursor = firstCodeLineWith(panel, perform, performEnd, "syncManager.getCursorItem()");
         SimpleAssert.that(guard >= 0 && cursor >= 0 && guard < cursor, "★拒绝排在读游标/扣点之前（越界一笔都不碰）");
+    }
+
+    /**
+     * ★<b>R91-o（S6 审查收尾）：ACCEPTED 回执键按档分开的两面</b>。
+     * <p>
+     * 审查报的实害：晶档与瓶档共用 {@code intake.ok}，而那句括注只说"被溶掉的空瓶已退回游标"——
+     * 晶档 {@code refund == null}（不退壳，R86 只对晶继续成立）⇒ 溶晶的玩家读到假话。
+     * ① 半边＝真判据：瓶档给 {@code .ok.phial}、晶档给 {@code .ok.crystal}，★分档读的是
+     * {@code Result#refundsCarrier()}（那张单源分派表的投影），不是第二处档位判定；
+     * ② 半边＝成对门禁：旧键在两份 lang 与代码字面量里<b>两面归零</b>（不留注释尸），新键<b>两份各恰一条</b>，
+     * 且★括注信息没有"撤了不给落点"——瓶档那句仍说退瓶、晶档那句改说"不退空壳"，两条各自对齐实现。
+     */
+    private static void essenceIntakeOkLangKeyPerCarrier() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        // ---- ① 瓶档：退了等量空壳 ⇒ .ok.phial ----
+        final StubGate phialGate = new StubGate();
+        phialGate.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack phials = stack(2);
+        phialGate.putContainer(phials, TaumAspectAmounts.single("ignis", unit));
+        final PocketEssenceIntake.Result filled = PocketEssenceIntake
+            .intake(phials, new PocketEssenceStore(), phialGate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, filled.outcome, "前置：瓶档入账");
+        SimpleAssert.that(filled.refundsCarrier(), "★正控：瓶档真的退了壳（下面那条键读数不是恒返 phial）");
+        SimpleAssert.eq("gtit.pocket.essence.intake.ok.phial", filled.langKey(), "瓶档走 .ok.phial（括注说退瓶 = 与 refund 一致）");
+        // ---- ① 晶档：整叠销毁、不退壳 ⇒ .ok.crystal（★同一条 langKey() 的第二档）----
+        final StubGate crystalGate = new StubGate();
+        crystalGate.splitContentFallback = TaumAspectAmounts.single("aer", 1);
+        final ItemStack crystals = stack(6);
+        crystalGate.putCrystal(crystals, TaumAspectAmounts.single("aer", 1));
+        final PocketEssenceIntake.Result burned = PocketEssenceIntake
+            .intake(crystals, new PocketEssenceStore(), crystalGate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, burned.outcome, "前置：晶档也入账（C2 只读支仍收）");
+        SimpleAssert.eq(Boolean.FALSE, burned.refundsCarrier(), "★晶档不退空壳（R86 的不对称，本片的文案就是照这条写）");
+        SimpleAssert.eq(
+            "gtit.pocket.essence.intake.ok.crystal",
+            burned.langKey(),
+            "★晶档走 .ok.crystal：同一 ACCEPTED 态给出另一条键 ⇒ 分档判据真的在跑（★不是恒返 phial）");
+        // ---- ② 旧键两面归零 + 新键两份各恰一条 ----
+        final java.util.List<String> intake = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceIntake.java");
+        final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
+        final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
+        if (intake == null || zh == null || en == null) {
+            System.out.println("[NOTE] 读不到 intake/zh/en 源文件 ⇒「intake.ok 分键」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(0, countCodeLinesIn(intake, "\"gtit.pocket.essence.intake.ok\""), "★旧键字面量在代码里归零（还留着就是分档没落地）");
+        for (java.util.List<String> lang : Arrays.asList(zh, en)) {
+            final String tag = lang == zh ? "zh_CN" : "en_US";
+            SimpleAssert
+                .eq(0, countCodeLinesIn(lang, "gtit.pocket.essence.intake.ok="), "★旧键行在 " + tag + " 归零（旧话不再对任何人说）");
+            SimpleAssert
+                .eq(1, countCodeLinesIn(lang, "gtit.pocket.essence.intake.ok.phial="), "新键 ok.phial 在 " + tag + " 恰一条");
+            SimpleAssert.eq(
+                1,
+                countCodeLinesIn(lang, "gtit.pocket.essence.intake.ok.crystal="),
+                "新键 ok.crystal 在 " + tag + " 恰一条");
+        }
+        // ★正控：键行检法确实认得这一族（否则上面两条「恰 1」可以是空转读数）
+        SimpleAssert.eq(1, countCodeLinesIn(zh, "gtit.pocket.essence.intake.no_room="), "★正控：同族旧键在 zh 读到恰 1 ⇒ 检法不空转");
+        // ---- ③ 括注信息与实现对齐（撤了没给落点 = 删信息，这条门禁反过来钉「给了两个落点」）----
+        final String zhPhial = langLineOrEmpty(zh, "gtit.pocket.essence.intake.ok.phial=");
+        final String zhCrystal = langLineOrEmpty(zh, "gtit.pocket.essence.intake.ok.crystal=");
+        final String enPhial = langLineOrEmpty(en, "gtit.pocket.essence.intake.ok.phial=");
+        final String enCrystal = langLineOrEmpty(en, "gtit.pocket.essence.intake.ok.crystal=");
+        SimpleAssert.that(zhPhial.contains("退回") && enPhial.contains("went back"), "瓶档文案仍说退瓶（与 refund 非空一致）");
+        SimpleAssert.that(
+            zhCrystal.contains("不退空壳") && enCrystal.toLowerCase()
+                .contains("returns no empty shells"),
+            "★晶档文案明说不退壳（与 refund == null 一致 ⇒ 玩家读到的是真话）");
+        for (String line : Arrays.asList(zhPhial, zhCrystal, enPhial, enCrystal)) {
+            SimpleAssert.that(line.contains("%d") && !line.contains("%s"), "★两条新键各只带一个 %d（占位形状与投递面同旧）");
+        }
+    }
+
+    /** lang 文件里某键的整行（找不到给空串 ⇒ 调用方的 contains 断言自然红，不 NPE）。 */
+    private static String langLineOrEmpty(java.util.List<String> lines, String keyWithEq) {
+        for (String line : lines) {
+            if (line.startsWith(keyWithEq)) {
+                return line;
+            }
+        }
+        return "";
+    }
+
+    /**
+     * ★<b>R91-q（S6 审查收尾，取证结论：审查员【判错】⇒ 不为改而改，把等价关系钉成用例）</b>。
+     * <p>
+     * 审查的疑点："入槽的记忆闸读 {@code cellOf(tag)} 而非玩家点击的那一格"，并给了修法"改成按点击格判定"。
+     * 实读否证：入槽的<b>落点格</b>由载体自带 tag 经 {@code assignCell} 幂等决定（{@code PocketEssenceIntake}
+     * 类 javadoc：「点击格只是手势锚点，服务端不读它——本类签名里没有格号，就是这条纪律的执行形态」），
+     * ⇒ {@code cellOf(tag)} <b>恰等于那一笔源质真正落进的那一格</b>，也就是"本格只能放那一种东西"这条
+     * 记忆<b>唯一该保护的格</b>。若按点击格判定：玩家点别的格 ⇒ 拦错对象（假拒），而落点格的记忆反而漏拦。
+     * 本用例钉住这条等价关系与两个方向，★不改代码（改了就破 {@code assignCell} 幂等这条既有纪律）。
+     */
+    private static void essenceMemoryGateReadsLandingCell() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        // ---- ① 等价关系：落点格 = cellOf(tag) = 闸问的那一格（生产 lambda 同形：现读 cellOf）----
+        final PocketEssenceStore store = new PocketEssenceStore();
+        store.add("aer", 8);
+        store.add("ignis", 8);
+        final int landing = store.cellOf("ignis");
+        SimpleAssert.that(landing >= 0, "前置：ignis 已有归属格（入槽不落新格 ⇒ 点击格无从参与）");
+        final PocketFilterConfig cfg = new PocketFilterConfig();
+        cfg.add(landing, new PocketFilterConfig.EssenceFilter(landing, "essentia", "ignis"));
+        cfg.setAttr(Kind.ESSENCE, landing, PocketConstants.GHOST_ATTR_MEMORY);
+        final StubGate gate = new StubGate();
+        gate.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack phials = stack(2);
+        gate.putContainer(phials, TaumAspectAmounts.single("ignis", unit));
+        final int[] asked = { -2 };
+        final PocketEssenceIntake.Result same = PocketEssenceIntake.intake(phials, store, gate, tag -> {
+            final int cell = store.cellOf(tag);
+            asked[0] = cell;
+            return cell >= 0 && !cfg.memoryAllowsTag(Kind.ESSENCE, cell, tag);
+        });
+        SimpleAssert.eq(landing, asked[0], "★闸被问的那一格 = 该 tag 的归属格");
+        SimpleAssert.eq(landing, store.cellOf("ignis"), "★入账之后归属不搬家 ⇒ 那一格就是真落点（闸没问错对象）");
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, same.outcome, "落点格记的就是这一种 ⇒ 放行");
+        // ---- ② 反向（假想"改按点击格判"会造出的两处失守，本形状钉住它不发生）----
+        // 记忆挂在<b>另一格</b>（记的是别的东西），玩家拎着 ignis 去点那一格 ⇒ 拦不拦仍只看落点格。
+        final PocketEssenceStore other = new PocketEssenceStore();
+        other.add("aer", 8);
+        other.add("ignis", 8);
+        final int ignisCell = other.cellOf("ignis");
+        final int wrongCell = ignisCell == 0 ? 1 : 0;
+        final PocketFilterConfig otherCfg = new PocketFilterConfig();
+        otherCfg.add(wrongCell, new PocketFilterConfig.EssenceFilter(wrongCell, "essentia", "aer"));
+        otherCfg.setAttr(Kind.ESSENCE, wrongCell, PocketConstants.GHOST_ATTR_MEMORY);
+        final StubGate gate2 = new StubGate();
+        gate2.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack phials2 = stack(2);
+        gate2.putContainer(phials2, TaumAspectAmounts.single("ignis", unit));
+        final PocketEssenceIntake.Result notAboutCursorCell = PocketEssenceIntake.intake(phials2, other, gate2, tag -> {
+            final int cell = other.cellOf(tag);
+            return cell >= 0 && !otherCfg.memoryAllowsTag(Kind.ESSENCE, cell, tag);
+        });
+        SimpleAssert.eq(
+            PocketEssenceIntake.Outcome.ACCEPTED,
+            notAboutCursorCell.outcome,
+            "★别的格记着另一种 ⇒ 不拦这一笔（它落的是自己的归属格；改判成点击格就会假拒）");
+        // 落点格记的是<b>另一种</b> ⇒ 真拦（执法面正是玩家直觉里"那一格只能放那一种"的那一格）
+        final PocketFilterConfig locked = new PocketFilterConfig();
+        locked.add(ignisCell, new PocketFilterConfig.EssenceFilter(ignisCell, "essentia", "terra"));
+        locked.setAttr(Kind.ESSENCE, ignisCell, PocketConstants.GHOST_ATTR_MEMORY);
+        final StubGate gate3 = new StubGate();
+        gate3.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack phials3 = stack(2);
+        gate3.putContainer(phials3, TaumAspectAmounts.single("ignis", unit));
+        final int beforeRefuse = other.get("ignis");
+        final PocketEssenceIntake.Result refused = PocketEssenceIntake.intake(phials3, other, gate3, tag -> {
+            final int cell = other.cellOf(tag);
+            return cell >= 0 && !locked.memoryAllowsTag(Kind.ESSENCE, cell, tag);
+        });
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.MEMORY_LOCKED, refused.outcome, "★落点格记的是另一种 ⇒ 整笔拒收");
+        SimpleAssert.eq(beforeRefuse, other.get("ignis"), "★拒收后盘分毫未动（基线 = 上一段 ACCEPTED 之后的现值）");
+        // ---- ③ 接线半边：服务端只把"格"当现读 cellOf，入槽判定流签名里没有格号 ----
+        final java.util.List<String> intake = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceIntake.java");
+        final java.util.List<String> handler = guiPocketSource("NekoPocketServerHandler.java");
+        if (intake == null || handler == null) {
+            System.out.println("[NOTE] 读不到 intake / server handler ⇒「记忆闸读落点格」的接线半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(0, countCodeLinesIn(intake, "int cell"), "★入槽判定流的签名里没有格号（点击格结构上进不来 = 那条纪律的执行形态）");
+        final int hStart = methodStart(handler, "void performEssenceIntake() {");
+        SimpleAssert.that(hStart >= 0, "★入槽执行体【无参】签名必须在场（点击格号进不了服务端判定面的执行形态）");
+        final int hEnd = methodEnd(handler, hStart);
+        SimpleAssert.that(regionContainsCode(handler, hStart, hEnd, "cellOf("), "★闸问的是【现读】归属格（R86 扣到 0 当场腾格）");
+        final java.util.List<String> panelSrc = guiPocketSource("NekoPocketPanel.java");
+        SimpleAssert.that(panelSrc != null, "★读得到 NekoPocketPanel.java（下一条分发形状判据的宿主）");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(panelSrc, "server.performEssenceIntake();"),
+            "★动作分发处入槽支不带格号 arg（arg 被丢弃 ⇒ 等价关系的另一半）");
+        SimpleAssert
+            .eq(0, countCodeLinesIn(panelSrc, "performEssenceIntake(arg"), "★不存在「带格号的入槽调用」第二形态（哪天有人补上，本条与上面那条无参签名同时红）");
+    }
+
+    /**
+     * ★<b>R91-n（S6 审查收尾）：拖拽分派表 javadoc 与执法面对齐</b>。
+     * <p>
+     * 审查实读：{@code applySet} 从不问 {@code dragRouteOf} ⇒ 旧注释"服务端 SET 支也认它"是<b>代码说的
+     * ≠ 文案说的</b>（D-1 型不实）。裁定＝<b>原文改述</b>，★<b>不</b>给 SET 支补那一问（那会为一句注释
+     * 开出第二条执法腿与第二处真相）。本用例钉两面：① 旧不实句在两份源文件里<b>消失</b>（README 那句
+     * "三处逐字同形"指的是手势族，不受影响）；② 新形状的<b>在场</b>——三个客户端格件各调一次 {@code dragRouteOf}、
+     * 服务端 SET 支一处都不调（★"只在客户端"这句现在是可以机检的真话）。
+     */
+    private static void ghostDragRouteDocMatchesServerReality() {
+        final java.util.List<String> request = guiPocketSource("PocketGhostRequest.java");
+        if (request == null) {
+            System.out.println("[NOTE] 读不到 PocketGhostRequest.java ⇒ R91-n 半边【未验】（★不是通过）");
+            return;
+        }
+        // ★判据收窄（R82 的同一条教训：把"由 X 改成 Y"这段取舍理由一起删掉，下一个改判的人就看不见为什么改）：
+        // 要拦的是<b>把旧句当当下契约的活句</b>，不是"这串字不许出现在仓库里"
+        // ⇒ 带「不实」更正标记的叙述面按 R82 保留，去掉限定词的活句为零才算干净。
+        final java.util.function.ToIntFunction<java.util.List<String>> liveOldClaim = lines -> {
+            int hits = 0;
+            for (String line : lines) {
+                if (line.contains("SET 支也认它") && !line.contains("不实")) {
+                    hits++;
+                }
+            }
+            return hits;
+        };
+        SimpleAssert.eq(0, liveOldClaim.applyAsInt(request), "★旧不实句不得作为当下契约存在（带「不实」标记的叙述面按 R82 保留）");
+        SimpleAssert.eq(Boolean.TRUE, textMatches(request, "只活在那一侧"), "★改述后的真话在场：IGNORE 只活在三个客户端格件");
+        SimpleAssert.eq(Boolean.TRUE, textMatches(request, "R91-n"), "★改述留痕：这一条更正挂在 R91-n 上（下一个改判的人能回看裁定）");
+        // SET 支一侧：服务端入口到 applySet，全程不问分派表（★补上那一问就是本条要拦的回归）
+        final int setStart = methodStart(request, "private static Decision applySet(int slotIndex, String payloadKey,");
+        SimpleAssert.that(setStart >= 0, "★applySet 必须还能按签名定位");
+        final int setEnd = methodEnd(request, setStart);
+        SimpleAssert
+            .eq(0, countRegionCode(request, setStart, setEnd, "dragRouteOf("), "★SET 支一处都不问 dragRouteOf（与注释逐字对齐）");
+        // 三个客户端格件：各调一次，★不多不少（多了 = 第二处判据，少了 = 手势族断线）
+        for (String widget : Arrays
+            .asList("NekoFilterSlot.java", "NekoPocketFluidSlot.java", "NekoEssenceGhostCell.java")) {
+            final java.util.List<String> src = guiPocketSource(widget);
+            SimpleAssert.that(src != null, "★读得到格件源码：" + widget);
+            final int drag = methodStart(src, "public boolean handleDragAndDrop(ItemStack draggedStack, int button) {");
+            final int dragEnd = methodEnd(src, drag);
+            SimpleAssert.that(drag >= 0 && dragEnd > drag, "格件拖入口必须还能按签名定位：" + widget);
+            SimpleAssert
+                .eq(1, countRegionCode(src, drag, dragEnd, "dragRouteOf("), "★" + widget + " 的拖入口恰调一次 dragRouteOf");
+        }
+        // ★正控（两种检法各一条，否则上面的 0 / TRUE 都可能是空转读数）：
+        SimpleAssert.eq(
+            1,
+            liveOldClaim.applyAsInt(Arrays.asList("旧行", "     * 三个格件都调它，服务端 SET 支也认它）：", "尾行")),
+            "★正控 A：去掉限定词的<b>活句</b>样本会被报出来 ⇒ 上面那条「活句 = 0」是真读数");
+        SimpleAssert.eq(
+            0,
+            liveOldClaim.applyAsInt(Collections.singletonList("     * ★R91-n 更正（原句「服务端 SET 支也认它」不实，已改述）")),
+            "★正控 B：带「不实」标记的<b>叙述面</b>不被误报 ⇒ 收窄不是放水，是把判据精确到当下契约");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(
+                Collections.singletonList("        final DragRoute route = dragRouteOf(attr, blocked);"),
+                "dragRouteOf("),
+            "★正控：调用形态检法认得 dragRouteOf( ⇒ 格件「恰 1」与 SET 支「恰 0」不是空转");
+        // ★★成对负控（裁定要拦的那条路）：不许有人"为对齐注释"给 SET 支补上那一问 ⇒ 第二条执法腿。
+        SimpleAssert
+            .eq(0, countCodeLinesIn(request, "DragRoute route = dragRouteOf"), "SET 支没有被补上第二问（钉住 R91-n 裁定的另一半）");
+    }
+
+    /**
+     * ★<b>R91-p（S6 审查收尾，非阻断项里最重的一条）：流体列的 {@code L} 真的有执法面</b>。
+     * <p>
+     * 用户原话点名「alt 左键会虚化<b>物品/流体/源质</b>」三处，而上一片的实读是 L 只有物品与源质两支，
+     * 流体列挂了 {@code L} 一句都不拦。本片补第三支：判据单源住
+     * {@code PocketFilterConfig#memoryAllowsFluid}（与物品 {@code allowsPlayerPlacement}、源质
+     * {@code memoryAllowsTag} 同一条三口径），★两条调用通道都只问结论、不含第二份位表读法。
+     * <p>
+     * 取证结论：流体条<b>存在</b>"玩家放入"这条路径（不是补不了），且它只有两个入口 ⇒
+     * ① 交互格里放容器 → {@code PocketFluidTransfer#drainIntoTank}（薄委托自 {@code PocketSlots}）；
+     * ② 光标拎着容器点流体槽 → MUI2 {@code FluidSlotSyncHandler#fillFluid}，本仓在装配处挂库自带的
+     * {@code filter} 谓词拦在预检。<b>抽取方向与灌回滚刻意不在闸内</b>（L 纯过滤，一条退液都不改变），
+     * 本用例把这三条边界各钉一面。FluidStack 纯 JVM 不可构造（同 {@code fluidBarRoom} 那一条的实机项），
+     * ⇒ 真值表半边调判据本体，接线半边按既有降级形状钉源码。
+     */
+    private static void ghostFluidMemoryGateTwoLegs() {
+        // ---- ① 真值表：三条口径（非 MEMORY 不判 / 无载荷不拦 / 载荷不同才拒），★与源质支同族 ----
+        final PocketFilterConfig cfg = new PocketFilterConfig();
+        cfg.add(3, new PocketFilterConfig.FluidFilter(3, "water"));
+        for (int attr : new int[] { PocketConstants.GHOST_ATTR_NONE, PocketConstants.GHOST_ATTR_BIND }) {
+            cfg.setAttr(Kind.FLUID, 3, attr);
+            SimpleAssert
+                .that(cfg.memoryAllowsFluid(Kind.FLUID, 3, "lava"), "★attr=" + attr + " ⇒ 本闸根本不判（需求列仍可灌任意流体，R84 未动）");
+        }
+        cfg.setAttr(Kind.FLUID, 3, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.that(cfg.memoryAllowsFluid(Kind.FLUID, 3, "water"), "★记忆列放行它记住的那一种");
+        SimpleAssert.eq(Boolean.FALSE, cfg.memoryAllowsFluid(Kind.FLUID, 3, "lava"), "★另一种流体 ⇒ 拒（这才叫「只能放那一种」）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.memoryAllowsFluid(Kind.FLUID, 3, ""), "空名 ⇒ 拒（不得把「读不出身份」当放行）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.memoryAllowsFluid(Kind.FLUID, 3, null), "★null 名 ⇒ 拒（不得 NPE，也不得放行）");
+        SimpleAssert
+            .eq(Boolean.FALSE, cfg.memoryAllowsFluid(Kind.FLUID, 3, "water:lava"), "★不许拿整键/拼接串蒙混（比的是流体名段，不是 contains）");
+        // pending 档（挂了 L 还没定档）⇒ 不拦：R91-i 那条裁定在三处同一口径
+        cfg.setAttr(Kind.FLUID, 9, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.that(cfg.memoryAllowsFluid(Kind.FLUID, 9, "lava"), "★pending 记忆列 ⇒ 第一份流体灌得进（否则空格永远定不了档）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, cfg.attrAt(Kind.FLUID, 9), "★放行不吃掉 L（那一格仍是记忆列）");
+        // 档位在别处（数据被改坏的形状）⇒ 乐观不拦，与源质支同一条口径
+        cfg.setAttr(Kind.FLUID, 12, PocketConstants.GHOST_ATTR_MEMORY);
+        cfg.add(12, new PocketFilterConfig.ItemFilter(12, 2621, 0, ""));
+        SimpleAssert.that(cfg.memoryAllowsFluid(Kind.FLUID, 12, "lava"), "★本格声明不是流体声明 ⇒ 不拦（不凭猜测销毁玩家动作）");
+        SimpleAssert.that(cfg.memoryAllowsFluid(null, 3, "lava"), "★null 区域 ⇒ 不拦（attrAt 回落 NONE，不得 NPE）");
+        // P 正交：挂 P 不改本闸真值
+        cfg.setUploadBlocked(Kind.FLUID, 3, true);
+        SimpleAssert.that(cfg.memoryAllowsFluid(Kind.FLUID, 3, "water"), "★挂 P 的记忆列仍放行记住的那种（P 只管注入向）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.memoryAllowsFluid(Kind.FLUID, 3, "lava"), "★挂 P 也不给第二种流体开口子（两条纪律互不改写）");
+        // ---- ② 接线半边：判据单源 + 两条通道 + 抽取方向不在闸内 ----
+        final java.util.List<String> filterSrc = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketFilterConfig.java");
+        final java.util.List<String> transfer = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketFluidTransfer.java");
+        final java.util.List<String> slots = guiPocketSource("PocketSlots.java");
+        final java.util.List<String> left = guiPocketSource("NekoPocketLeftColumn.java");
+        final java.util.List<String> inventory = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketInventory.java");
+        if (filterSrc == null || transfer == null || slots == null || left == null || inventory == null) {
+            System.out.println("[NOTE] 读不到流体支源码 ⇒ R91-p 的接线半边【未验】（★不是通过）");
+            return;
+        }
+        final int def = methodStart(
+            filterSrc,
+            "public boolean memoryAllowsFluid(Kind kind, int slotIndex, String fluidName) {");
+        SimpleAssert.that(def >= 0, "★流体支判据必须住在 PocketFilterConfig（三处同一张位表）");
+        final int defEnd = methodEnd(filterSrc, def);
+        SimpleAssert.eq(1, countRegionCode(filterSrc, def, defEnd, "attrAt("), "★判据体内 attrAt 恰一处（★不复制第二份位表读法）");
+        SimpleAssert.eq(1, countRegionCode(filterSrc, def, defEnd, "fluidName.equals("), "★比较点是流体名，恰一处");
+        // 通道一：交互格容器 → tank，闸排在任何容器副本被碰之前
+        final int drain = methodStart(
+            transfer,
+            "public static void drainIntoTank(Cells cells, int sourceIndex, int tank, ItemStack unit, int units,");
+        final int drainEnd = methodEnd(transfer, drain);
+        SimpleAssert.that(drain >= 0 && drainEnd > drain, "★通道一必须还能按签名定位");
+        SimpleAssert
+            .eq(1, countRegionCode(transfer, drain, drainEnd, "cells.memoryAllowsFluid("), "通道一恰问一次判据（★不在本类自己判 attr）");
+        final int gate = firstCodeLineWith(transfer, drain, drainEnd, "cells.memoryAllowsFluid(");
+        final int target = firstCodeLineWith(transfer, drain, drainEnd, "cells.tank(tank)");
+        SimpleAssert.that(gate >= 0 && target >= 0 && gate < target, "★拒收排在取 tank 之前（什么都没碰就回绝）");
+        SimpleAssert.that(
+            regionContainsCode(transfer, drain, drainEnd, "KEY_TANK_MEMORY_LOCKED"),
+            "★通道一的拒收会说话（与 tank_full 同一条「整笔放弃必给回执」纪律）");
+        // 通道一不得被灌装/回滚支复用（L 纯过滤，一条退液都不改变）
+        final int fillFrom = methodStart(
+            transfer,
+            "public static void fillFromTank(Cells cells, int sourceIndex, int tank, ItemStack unit, int units) {");
+        final int fillFromEnd = methodEnd(transfer, fillFrom);
+        SimpleAssert
+            .eq(0, countRegionCode(transfer, fillFrom, fillFromEnd, "memoryAllowsFluid("), "★抽取方向不在本闸内（对齐「纯过滤」承诺）");
+        // gui 侧只转发结论
+        final int cellsImpl = methodStart(slots, "public boolean memoryAllowsFluid(int tank, FluidStack content) {");
+        SimpleAssert.that(cellsImpl >= 0, "★通道一的端口实现必须在场");
+        final int cellsImplEnd = methodEnd(slots, cellsImpl);
+        SimpleAssert.eq(1, countRegionCode(slots, cellsImpl, cellsImplEnd, "filters()"), "★端口体内只经那一条 accessor 问位表");
+        SimpleAssert.eq(0, countRegionCode(slots, cellsImpl, cellsImplEnd, "attrAt("), "★端口体内不含第二份 attr 读法（单源纪律）");
+        // 通道二：光标拎容器点流体槽 → MUI2 handler 的 filter 谓词，落在 fillFluid 预检
+        final int bars = methodStart(left, "private static IWidget fluidSlots(NekoPocketPanel ui) {");
+        final int barsEnd = methodEnd(left, bars);
+        SimpleAssert.eq(
+            1,
+            countRegionCode(left, bars, barsEnd, ".filter("),
+            "★通道二恰挂一处库自带 filter 谓词（★不改 phantom/canFill/canDrain 开关）");
+        SimpleAssert.eq(1, countRegionCode(left, bars, barsEnd, "memoryAllowsFluid("), "通道二同样只问那张位表");
+        SimpleAssert.eq(0, countRegionCode(left, bars, barsEnd, "phantom("), "★没把槽改成 phantom（改了会把流体写进真实槽 = 破需求 2）");
+        SimpleAssert.eq(0, countRegionCode(left, bars, barsEnd, "attrAt("), "★装配处不抄判定");
+        // 旧假话的另一面：README 里"三条执法腿"的说明在场，且流体那条点了两个入口
+        final java.util.List<String> readme = sourceLinesOrNull("README.md");
+        SimpleAssert.that(readme != null, "★读得到 README（下一条判据的宿主）");
+        SimpleAssert.that(
+            textMatches(readme, "三条执法腿[\\s\\S]{0,400}流体[\\s\\S]{0,400}drainIntoTank[\\s\\S]{0,400}filter"),
+            "★README 与代码同口径（玩家唯一可信判据来源，不得写「补好了」而其实没接）");
+    }
+
+    /**
+     * ★<b>R91-r（S6 审查收尾）：{@code applyFlag} 的 UNCHANGED 兜底支保留 + 标注 C2S 不可达</b>。
+     * <p>
+     * 审查独立反推：手势字母已白名单、{@code nextAttr} 三值封顶、存档永不落 {@code attr=0}、越界由
+     * {@code normalizeGhostAttr} 收口 ⇒ 合法 C2S 到不了那一支，它属"位表自相矛盾写歪"的防写歪支
+     * （与 {@code applyCap} 的复核支同形）。裁定＝★保留、注释补一句理由，免得下一个人重做这轮推演。
+     * 本用例钉两面：① 兜底支与它的标注都在场（被"顺手合并"掉就是假绿）；② 那条推演的<b>可执行部分</b>
+     * ——从真实入口（{@code apply} 两支）驱动不出 UNCHANGED 兜底，正常等值支在方法顶部就返回。
+     */
+    private static void ghostApplyFlagUnchangedGuardKept() {
+        // ---- ① 真实入口驱动的半边：UNCHANGED 在<b>合法输入矩阵上不可达</b>（审查那轮推演的可执行形态）----
+        // 三档 attr × 三个手势字母全格覆盖：attr 支是互逆换档（NONE↔BIND/MEMORY、同手势撤销），
+        // P 支恒翻转 ⇒ 每条合法 FLG 请求都真改到位表 ⇒ 顶部等值支与兜底支都拿不到 UNCHANGED。
+        int unchangedHits = 0;
+        for (int attr : new int[] { PocketConstants.GHOST_ATTR_NONE, PocketConstants.GHOST_ATTR_BIND,
+            PocketConstants.GHOST_ATTR_MEMORY }) {
+            for (String gesture : new String[] { PocketConstants.GHOST_FLAG_BIND, PocketConstants.GHOST_FLAG_MEMORY,
+                PocketConstants.GHOST_FLAG_UPLOAD_BLOCK }) {
+                final PocketFilterConfig filters = new PocketFilterConfig();
+                filters.setAttr(Kind.ITEM, 7, attr);
+                final PocketGhostRequest.Decision d = PocketGhostRequest
+                    .apply(PocketGhostRequest.flagRequest(7, Kind.ITEM, gesture), filters);
+                SimpleAssert.eq(
+                    PocketGhostRequest.Outcome.APPLIED,
+                    d.outcome,
+                    "★attr=" + attr + " × 手势 " + gesture + " ⇒ 恒 APPLIED（UNCHANGED 两支都是防写歪，不是正常路径）");
+                if (d.outcome == PocketGhostRequest.Outcome.UNCHANGED) {
+                    unchangedHits++;
+                }
+            }
+        }
+        for (boolean blocked : new boolean[] { true, false }) {
+            final PocketFilterConfig filters = new PocketFilterConfig();
+            filters.setUploadBlocked(Kind.ITEM, 7, blocked);
+            SimpleAssert.eq(
+                PocketGhostRequest.Outcome.APPLIED,
+                PocketGhostRequest.apply(
+                    PocketGhostRequest.flagRequest(7, Kind.ITEM, PocketConstants.GHOST_FLAG_UPLOAD_BLOCK),
+                    filters).outcome,
+                "★P 恒翻转 ⇒ blocked=" + blocked + " 也 APPLIED（矩阵补全：P 没有等值档）");
+        }
+        SimpleAssert.eq(0, unchangedHits, "★整张合法矩阵里 UNCHANGED 出洞数 = 0（正是 R91-r 反推的结论，现在可执行）");
+        // ---- ② 源码半边：兜底支在场 + 标注在场 + 与 applyCap 复核支同形 ----
+        final java.util.List<String> request = guiPocketSource("PocketGhostRequest.java");
+        if (request == null) {
+            System.out.println("[NOTE] 读不到 PocketGhostRequest.java ⇒ R91-r 半边【未验】（★不是通过）");
+            return;
+        }
+        final int flag = methodStart(
+            request,
+            "private static Decision applyFlag(int slotIndex, String letter, String gesture, PocketFilterConfig filters,");
+        SimpleAssert.that(flag >= 0, "★applyFlag 必须还能按签名定位");
+        final int flagEnd = methodEnd(request, flag);
+        SimpleAssert.eq(
+            2,
+            countRegionCode(request, flag, flagEnd, "Outcome.UNCHANGED, kind, slotIndex"),
+            "★两条 UNCHANGED 各恰一次（顶部等值 + 兜底防写歪；跌破 2 = 有人把兜底支「顺手删了」）");
+        final String region = String.join("\n", request.subList(flag, flagEnd));
+        SimpleAssert.that(region.contains("C2S 不可达"), "★兜底支的注释点名「C2S 走不到」（审查那轮推演的结论落档）");
+        SimpleAssert.that(region.contains("applyCap"), "★同形指针在场（下一处同类支有得对照）");
+        SimpleAssert.eq(0, region.contains("TODO") ? 1 : 0, "★不许留 TODO 尸替代标注");
     }
 
     // ================================================================== ★R90 E3（S3+S5）批 2 测试落地

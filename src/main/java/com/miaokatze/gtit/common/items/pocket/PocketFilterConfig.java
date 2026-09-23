@@ -428,6 +428,31 @@ public final class PocketFilterConfig {
     }
 
     /**
+     * ★★<b>R91-p：L 的执法腿（流体支）</b>单源 —— 本列记的是不是<b>这一种流体</b>。
+     * <p>
+     * 与 {@link #memoryAllowsTag}（源质支）、{@link #allowsPlayerPlacement}（物品支）同一族的三条口径
+     * （非 MEMORY 不判 / 无载荷不拦 / 载荷不同才拒），R91-⑤ 的"三处逐字同形"到本片才对流体列成立。
+     * ★比较粒度是<b>流体名</b>：流体载荷键就是 {@code f:<fluidName>} 一段，名字即声明身份的全部
+     * （不像源质键里 {@code typeId} 是通道读数要剥掉 ⇒ 这里没有第二档粒度可选）。
+     * <p>
+     * ★调用方只有"玩家把流体灌进这一列"的两个入口（点流体槽的容器灌入 {@code fillFluid} 支、
+     * 交互格容器处理 {@code PocketFluidTransfer#drainIntoTank}），它们<b>只问结论不含判定</b>；
+     * 灌装回写、通道回滚与抽取方向<b>不经本闸</b>（L 纯过滤，一条抽取/一条退液都不改变）。
+     * ★本格声明<b>不是</b>流体声明（档位串了）时按"不拦"处理：与源质支同一条"数据被改坏的形状
+     * 宁可乐观放行也不凭猜测销毁玩家动作"。
+     */
+    public boolean memoryAllowsFluid(Kind kind, int slotIndex, String fluidName) {
+        if (attrAt(kind, slotIndex) != PocketConstants.GHOST_ATTR_MEMORY) {
+            return true;
+        }
+        final Filter declared = at(kind, slotIndex);
+        if (!(declared instanceof FluidFilter fluid)) {
+            return true;
+        }
+        return fluidName != null && fluidName.equals(fluid.fluidName);
+    }
+
+    /**
      * ★R91-⑤ 的<b>抽取闸门</b>单源：这一格<b>是不是</b>该从 AE 补货。
      * <p>
      * 裁定原文：「{@code L}（记忆）纯过滤，<b>不产生任何 AE 拉取行为</b>；补货行为仍只认 BIND」。

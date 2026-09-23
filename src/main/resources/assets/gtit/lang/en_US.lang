@@ -328,16 +328,21 @@ gtit.pocket.still.partial_skip=%d more slot(s) did not fit this round (%d point(
 #   that is not an empty phial = the same "go hold a phial" message); removed from both files (no corpse).
 # ★R88 carrier change (crystal → TC phial) + ★C3 zero chat output: since R91-⑤ the deposit side has FIVE
 #   sticky in-panel receipts.
-# ★intake.ok deliberately keeps exactly one %d: putReceipt(key, moved, refused) carries two ints and the
-#   client formats them (receiptText). The old %s got an integer stuffed into it ("Deposited 24 essentia…"),
-#   so the key name survived but the placeholder became a single %d.
+# ★intake.ok.* deliberately keep exactly one %d each: putReceipt(key, moved, refused) carries two ints and
+#   the client formats them (receiptText). The old %s got an integer stuffed into it ("Deposited 24
+#   essentia…"), so the placeholder is a single %d.
+# ★★R91-o: ACCEPTED used to share ONE key whose parenthetical only described the phial refund, so a player
+#   dissolving crystals read a lie (crystals return no shell). The tier reading is Result.refundsCarrier()
+#   (the projection of the single refundsEmptyCarrier dispatch table): phial says "went back", crystal says
+#   "no empty shells". ★Both keys ship — dropping the parenthetical without a landing = deleting info.
 # ★Key name intake.not_crystal / Outcome.NOT_CRYSTAL survives (renaming = Java constants + test ledger);
 #   ★C2 widened its meaning to "a filled phial (current) or a legacy crystal that still carries a tag".
 gtit.pocket.essence.intake.not_crystal=Not holding an essentia phial: put a filled phial (or a legacy essentia crystal) on the cursor, then click an essentia cell
 gtit.pocket.essence.intake.no_owner=That phial carries no essentia yet, so there is nothing to deposit
 gtit.pocket.essence.intake.no_room=The essentia cells cannot hold this whole stack of phials: put in a smaller batch first, the stack was left untouched
 gtit.pocket.essence.intake.memory_locked=This cell remembers a different thing and refuses this one: bring back the thing it remembers, or revoke the memory with alt + left-click (this is NOT "the tray is full" — that message waits for room, this one asks for a swap)
-gtit.pocket.essence.intake.ok=Essentia deposited into the cells: %d point(s); the emptied phials went back to your cursor
+gtit.pocket.essence.intake.ok.phial=Essentia deposited into the cells: %d point(s); the emptied phials went back to your cursor
+gtit.pocket.essence.intake.ok.crystal=Essentia deposited into the cells: %d point(s); the crystals dissolved whole into the tray — the crystal tier returns no empty shells
 # ★R88 C1（最小粒度 = 一瓶）的玩家可见三条：不足一瓶 / 取出与留盘并报 / 格级说明
 gtit.pocket.essence.not_enough_phial=This cell holds less than one full phial, so nothing was taken: %d point(s) are still in the tray
 gtit.pocket.essence.partial_leftover=Took %d point(s) as whole phials; %d point(s) stayed in the tray (below one full phial)
@@ -357,6 +362,9 @@ gtit.pocket.ghost.locked=Filter slots take no player input by default (a memory-
 # Deliberately placeholder-free: notifyCell passes varargs, extra args are harmless but a %s with no arg
 # throws MissingFormatArgumentException on the client.
 gtit.pocket.fluid.tank_full=This column's tank is full: clear the output cell or pick another column
+# ★R91-p (L enforcement, fluid leg): separate from tank_full — that one waits for room, this one asks for
+#   a swap / revoke (same "two states, two keys" discipline as essence intake.memory_locked).
+gtit.pocket.fluid.tank_memory_locked=This column remembers a different fluid and refuses this pour: bring the kind it remembers, or revoke its memory with alt + left-click
 gtit.pocket.fluid.tank_empty=This column's tank holds no fluid, there is nothing to bottle
 gtit.pocket.fluid.unit_too_large=This container's payload exceeds the free capacity of this tank and cannot be partially drained: free up more space or use a smaller container
 gtit.pocket.fluid.output_blocked=The output cell is occupied by something else or stacked full, the product has nowhere to land: clear this column's output cell first
