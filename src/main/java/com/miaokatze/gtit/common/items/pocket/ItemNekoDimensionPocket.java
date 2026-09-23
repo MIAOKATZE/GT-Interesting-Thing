@@ -97,9 +97,21 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * {@code data.getUsedItemStack()}，拿不到时走 {@code Objects.requireNonNull} 抛出；
      * 而在服务端 {@code openGui} 里抛出的异常会被 FML 咽进日志 ⇒ 玩家侧只看到"右键没反应"。
      * 因此这里捕获并一次性 WARN，把链路上的三个可分辨点（是否进来了 / 手持槽号 / 异常原文）写清楚。
+     * <p>
+     * ★<b>R91-⑧：潜行右击永不开屏</b>。本方法是全仓<b>唯一</b>的开屏入口，也是<b>唯一</b>有效的拦截点——
+     * 潜行抽液那一次右击在客户端会产出<b>两条</b> C08（带坐标那条打到 {@link #onItemUseFirst} 完成抽液，
+     * 补发的 side=255 那条打到本方法），而第一条<b>必须</b>是客户端放行才发得出去，
+     * 故返回码无从取消第二条（机制详见 {@link #onItemUseFirst} 的 javadoc）。
+     * 闸放在双端入口最前面（不只服务端）：{@code isSneaking()} 在服务端同样成立——
+     * 功能 N 的抽液判定本身就依赖它，实机已证该标记在这条包路径上可信。
+     * 本分支<b>不产生任何聊天输出</b>（R88「口袋域聊天零输出」裁定，门禁 {@code R88①}）。
      */
     @Override
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
+        if (player.isSneaking()) {
+            logOnce("潜行右击 ⇒ 开屏入口放行（功能 N 的抽液手势专用，不开面板）");
+            return stack;
+        }
         if (!world.isRemote) {
             try {
                 GuiFactories.playerInventory()
@@ -142,8 +154,13 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * <li>目标不是 GT 机器（非 {@code BaseMetaTileEntity}）⇒ {@code return false} 完整放行原方块交互。</li>
      * </ol>
      * 实收 &gt;0 才 {@code return true} 拦截；一切「没搬动」的结局都 {@code return false}（聊天判因回执
-     * 由 {@link PocketWorldFluidTap} 发，键前缀 {@code gtit.pocket.world.}）。服务端 true 后同一交互
-     * <b>不会</b>再触发 {@link #onItemRightClick}（后者只由空气点击触发）⇒ 抽液与开口袋互不串门。
+     * 由 {@link PocketWorldFluidTap} 发，键前缀 {@code gtit.pocket.world.}）。
+     * ★<b>R91-c 纠正一条被证伪的旧表述</b>（原文写"服务端 true 后同一交互不会再触发 {@link #onItemRightClick}，
+     * 后者只由空气点击触发"，与实机现象相反）：铁律 1 要求<b>客户端恒返 {@code false}</b> ⇒
+     * 原版据此判定"这一击没被消费"，<b>必然</b>再补发一枚 side=255 的 C08 ⇒ 服务端 {@code tryUseItem}
+     * 仍会打到 {@link #onItemRightClick} ⇒ "抽液成功"与"面板也开了"两件事同时发生。
+     * ⇒ <b>本方法的三个 {@code return false} 一个都不许改成 true</b>（客户端放行 / 非潜行放行 / 非机器放行，
+     * 改哪个都直接砍掉功能 N），拦截点只能落在 {@link #onItemRightClick} 的潜行闸上。
      * 持久化按 F1 双分支（活会话走会话模型 / 无会话一次性 NBT 读改写），见适配器类 javadoc。
      */
     @Override
