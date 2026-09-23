@@ -259,6 +259,15 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             if (session.isStorageGhostDeclared(i)) {
                 continue;
             }
+            // ★★R91-⑤ 的 P 执法腿（物品支）：本格内容永不进<b>注入向</b>（口袋 → AE 网络）。
+            // ★与上面那条 R84 反成环早退<b>并列</b>而不是替代：那条防"抽出来又灌回去"（声明格），
+            // 本条是玩家显式锁的一格（★可以在本格同时成立，两条各判各的）。
+            // ★只读 P 这一位：attr=BIND / MEMORY <b>都不</b>拦上传（否则两种属性会互相改变对方语义）。
+            // ★attr / P 的读法只有 PocketFilterConfig 一处（session.filters()），本类不再判一遍形状。
+            if (session.filters()
+                .blocksUpload(PocketFilterConfig.Kind.ITEM, i)) {
+                continue;
+            }
             slots.add(new SourceSlot(i, batchContentKey(stack), stack.stackSize));
         }
         // ★R86（缺陷 3）：口袋里的流体与源质此前<b>根本没有通往元件的路</b>（来源快照只枚举中栏物品，
@@ -281,6 +290,11 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         for (int tank = 0; tank < tanks; tank++) {
             final FluidStack fluid = session.fluidInTank(tank);
             if (fluid == null || fluid.amount <= 0 || fluid.getFluid() == null) {
+                continue;
+            }
+            // ★R91-⑤ 的 P 执法腿（流体支）：tank 号 = Kind.FLUID 的 ghost 槽号（同源，无第二份映射）
+            if (session.filters()
+                .blocksUpload(PocketFilterConfig.Kind.FLUID, tank)) {
                 continue;
             }
             slots.add(
@@ -309,6 +323,17 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             final String tag = entry.getKey();
             final Integer points = entry.getValue();
             if (tag == null || tag.isEmpty() || points == null || points <= 0) {
+                continue;
+            }
+            // ★★R91-⑤ 的 P 执法腿（源质支）：源质<b>来源</b>是 <b>tag 级</b>的（slot = FILTER_SLOT_UNSET），
+            // 而 P 是<b>挂在一格上</b>的属性 ⇒ 必须经格位归属表反查"这个 tag 现在在哪一格"。
+            // ★cellOf < 0（该 tag 有货但<b>没有格位</b>：R86 起扣腾即时、R26 的"只存不显"）⇒
+            // <b>视为无属性、照常上传</b>：属性手势点不到那一格，就没有 P 可言；这条如实写进
+            // javadoc 与实机检查表（r91-s3-panel-todo.md），★不假装拦住了。
+            final int cell = session.essence()
+                .cellOf(tag);
+            if (cell >= 0 && session.filters()
+                .blocksUpload(PocketFilterConfig.Kind.ESSENCE, cell)) {
                 continue;
             }
             slots.add(

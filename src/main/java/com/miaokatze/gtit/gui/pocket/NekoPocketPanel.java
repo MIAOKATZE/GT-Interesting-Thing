@@ -172,6 +172,19 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_STATE_LINE = "pocket.distill.state";
     /** S2C：ghost 声明视图（{@code kind:slotIndex:载荷键}，';' 分隔）⇒ 客户端据此<b>原位</b>虚化格子。 */
     private static final String SYNC_GHOST = "pocket.ghost.slots";
+    /**
+     * ★★<b>R91-a 裁定 (b)</b>：S2C 的<b>属性层</b>（每格的 {@code attr ∈ {NONE,BIND,MEMORY}} 与正交位
+     * {@code P}）= <b>另一枚</b> {@link StringSyncValue}，与 {@link #SYNC_GHOST} 各写各的半。
+     * <p>
+     * 三条理由（全部来自裁定原文）：① 方案 α 被选中的<b>全部</b>理由就是"零编解码风险、不连坐既有用例"，
+     * 把 attr 焊回 ghost blob 的编解码等于自己废掉它（那要按"改写"处理三条 blob 往返/预算用例）；
+     * ② 本仓 S2C 的既有正解形态就是 {@code StringSyncValue} + {@code onWidgetValueChanged} <b>双端对偶</b>
+     * （上面那六枚同形先例）；③ 换来的差别玩家看不见，成本却是一整轮迭代。
+     * ★R86 铁律仍然生效：这一层是"服务端算好的显示事实"⇒ 客户端<b>只</b>读
+     * {@link #ghostAttrAt} / {@link #ghostUploadBlockedAt} 那对<b>双源 accessor</b>，
+     * ★<b>不许</b>直读 {@code inventory.filters()}（那份只是开屏快照 + ghost blob 的镜像）。
+     */
+    private static final String SYNC_GHOST_FLAGS = "pocket.ghost.flags";
     /** S2C：上一次通道/绑定动作的回执（{@code langKey|数量}），客户端只做本地化格式化。 */
     private static final String SYNC_RECEIPT = "pocket.receipt";
     /** C2S：ghost 就地转换请求（{@code SET|slot|载荷键} / {@code CLR|slot|区域字母}，文法见 {@code PocketGhostRequest}）。 */
@@ -289,6 +302,19 @@ public final class NekoPocketPanel implements PocketSession {
     private String clientDistillStateLine = "";
     /** 服务端下发的 ghost 声明 blob（客户端据此原位虚化；<b>不</b>自行推断，R39b/R19）。 */
     private String ghostBlob = "";
+    /**
+     * ★★<b>R91-a（S2C 载体形状裁定）</b>：属性层（{@code attr} + {@code P}）走<b>另一枚</b>
+     * {@link StringSyncValue}（{@link #SYNC_GHOST_FLAGS}），客户端这一份是它的<b>镜像</b>。
+     * <p>
+     * ★为什么是独立的一份而不是写回 {@code inventory.filters()}：ghost blob 每来一次就
+     * {@code replaceFilters} <b>整体换实例</b>，属性若住在那个实例里就会被另一根通道的刷新抹掉
+     * （且 R91-a 明文"不把属性层焊回它的编解码"）。本字段<b>只</b>由 {@link #applyGhostFlagsView(String)}
+     * 写、只经 {@link #ghostAttrAt} / {@link #ghostUploadBlockedAt} 读 ⇒ 一根通道一个所有者。
+     * ★载荷表在这里恒空（本实例只用来装位表）。
+     */
+    private final PocketFilterConfig clientGhostFlags = new PocketFilterConfig();
+    /** 属性 blob 的上行原文（与 {@link #ghostBlob} 同一条"变了才应用"去重口径）。 */
+    private String ghostFlagsBlob = "";
     /**
      * ★R85 N3：最近一次 blob 里<b>真正解析成功</b>的声明条数（客户端专用；服务端恒 0，但服务端不出图）。
      * 存在的唯一理由是 {@link #ghostNotSyncedCount()} 需要它当减数——blob 被长度预算截断时，
@@ -432,6 +458,10 @@ public final class NekoPocketPanel implements PocketSession {
         syncManager.syncValue(SYNC_MODE, new StringSyncValue(this::composeModeState, this::applyModeState));
         syncManager.syncValue(SYNC_REMAIN, new StringSyncValue(this::composeRemain, this::applyRemainState));
         syncManager.syncValue(SYNC_GHOST, new StringSyncValue(this::composeGhostBlob, this::applyGhostBlob));
+        // ★R91-a：属性层单独一枚（<b>不</b>扩 SYNC_GHOST 的段数、<b>不</b>动它的编解码）。
+        // ★键数仍恒定：这一枚不随格数 / 属性数增加而增加（服务端一次整串下发，与 ghost blob 同口径）。
+        syncManager
+            .syncValue(SYNC_GHOST_FLAGS, new StringSyncValue(this::composeGhostFlags, this::applyGhostFlagsView));
         syncManager.syncValue(SYNC_RECEIPT, new StringSyncValue(this::composeReceipt, this::applyReceipt));
         syncManager.syncValue(SYNC_PROGRESS, new DoubleSyncValue(this::serverDistillProgress, value -> {
             if (syncManager.isClient()) {
@@ -637,7 +667,7 @@ public final class NekoPocketPanel implements PocketSession {
      * ★R90 E3（D1 手势三分）的<b>分流口</b>：左键点源质格时按<b>游标持物</b>分派——
      * <ol>
      * <li><b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier}，判据单源）⇒ 新「格→瓶取出」
-     * {@link #requestEssenceOutToPhial(int)}；</li>
+     * {@link #requestEssenceOutToPhial(int, boolean)}；</li>
      * <li><b>满瓶 / 晶</b> ⇒ 既有 {@link #requestEssenceIntake(int)}（其容量档位预筛原样不动）；</li>
      * <li><b>空游标 / 其他东西</b> ⇒ {@code false} 交回 {@code super} ⇒ 装配侧的
      * {@code requestEssenceOut}（★R91-④ 后那条动作码经 {@code performEssenceOut} 转发到<b>同一条</b>取出
@@ -646,43 +676,62 @@ public final class NekoPocketPanel implements PocketSession {
      * 「容器内容非空」预筛就落在这条分流上（任务口径：入槽支只收内容非空的载体；空瓶是其中
      * 唯一的瓶档 ⇒ 单独改派取出），客户端这一道仍只是<b>预筛</b>，服务端
      * {@code performEssenceOutToPhial} / {@code performEssenceIntake} 各自复验，两侧读同一条谓词。
-     * ★待办（交 {@code r91-s2-panel-todo.md}）：本方法把 shift 位<b>丢掉</b>了（{@code requestEssenceOutToPhial}
-     * 只发格号）⇒ 手持一叠空瓶 + Shift 目前仍按"一次动作上界"结算，整份口径只在 {@code ACTION_ESSENCE_OUT}
-     * 那条转发路上可达；S3 续写左键分派时一并改（本片不扩手势面）。
+     * ★R91-e 已把 shift 位接上（见本方法下方那一段 javadoc 与 {@code essenceOutShiftBitIsCarried} 用例）：
+     * 分流口读 {@code Interactable.hasShiftDown()} 并折进 {@code packedArg}，★批量支因此可达。
      * <p>
      * ★L1（[PocketR89]，D1/D3 裁决检查点）：入口读数（持瓶类型 / 游标 meta / 命中格）在此打——
      * debug 级每次都记（不构成刷屏面），首个分流样本升 INFO 一次（终验可直接在常规 jar 里读到）。
+     */
+    /**
+     * ★★<b>R91-e（裁 S2 交回的第一处）+ R91-⑤⑧b 的连带缺陷修复</b>：取出量按<b>shift 二分</b>——
+     * <b>左键 = 消耗 1 只空瓶、装 1 只</b>；<b>shift+左键 = 装到既有单动作上限</b>
+     * （{@code ESSENCE_OUT_MAX_POINTS_PER_ACTION}，★不新增常量、不新增第二套算式）。
+     * <p>
+     * ★★<b>本片补的就是"shift 位"这一位</b>：S2 的取出单点 {@link #performEssenceOutToPhial(int)}
+     * <b>早已</b>按 {@code packedArg} 自己解析 shift（两条动作码共用同一个单点），缺的只是这里
+     * 把 {@link Interactable#hasShiftDown()} 折进 arg ⇒ 补上之前<b>批量支永不可达</b>
+     * （手持一叠空瓶 + Shift 仍按"一次动作上界"结算，S2 已在 {@code r91-s2-panel-todo.md} §2.1 显式登记）。
+     * ★服务端<b>一字不用改</b>：算式只在 {@code PocketEssenceIntake#phialsToFill} 那一处。
+     * <p>
+     * ★同时把"哪些左键手势走哪条支"的注释口径改到与 R91-⑤ 一致：<b>alt 系三个手势
+     * （中键 / alt+左 / alt+右）都归属性层</b>（{@code NekoEssenceGhostCell#onMousePressed} 里排在
+     * 本分流<b>之前</b>），因此本方法只在<b>非 alt</b> 的左键上被调；alt+左 从此不再是"绑本格存量"
+     * （那个语义已迁到<b>中键 = BIND</b>），而是挂记忆 {@code L}。
      */
     boolean dispatchEssenceCellPress(int cell) {
         final ItemStack carried = syncManager.getCursorItem();
         if (carried == null || carried.stackSize <= 0) {
             return false;
         }
+        // ★R91-e：shift 位在这一行折进 arg（旧写法把它丢了 ⇒ 批量支不可达）
+        final boolean shift = Interactable.hasShiftDown();
         final String branch;
         final boolean handled;
         if (PocketEssenceIntake.isEmptyPhialCarrier(carried, EssenceGate.TAUM)) {
             branch = "out-to-phial";
-            handled = requestEssenceOutToPhial(cell);
+            handled = requestEssenceOutToPhial(cell, shift);
         } else {
             branch = PocketEssenceIntake.carriesEssence(carried, EssenceGate.TAUM) ? "intake" : "intake-empty-content";
             handled = requestEssenceIntake(cell);
         }
         logOnce(
             "L1-cell-press:" + branch,
-            "[PocketR89] L1 源质格左键分流：格 {}（tag={}）游标 {}x{} meta={} ⇒ {} 支（本分支首例升 INFO，后续 debug）",
+            "[PocketR89] L1 源质格左键分流：格 {}（tag={}）游标 {}x{} meta={} shift={} ⇒ {} 支（本分支首例升 INFO，后续 debug）",
             cell,
             essenceTagAtCell(cell),
             carried.stackSize,
             carried.getUnlocalizedName(),
             carried.getItemDamage(),
+            Boolean.valueOf(shift),
             branch);
         GTInterestingThing.LOG.debug(
-            "[PocketR89] L1 源质格左键分流：格 {}（tag={}）游标 {}x{} meta={} ⇒ {}",
+            "[PocketR89] L1 源质格左键分流：格 {}（tag={}）游标 {}x{} meta={} shift={} ⇒ {}",
             cell,
             essenceTagAtCell(cell),
             carried.stackSize,
             carried.getUnlocalizedName(),
             carried.getItemDamage(),
+            Boolean.valueOf(shift),
             branch);
         return handled;
     }
@@ -691,9 +740,12 @@ public final class NekoPocketPanel implements PocketSession {
      * ★R90 E3（D1）：客户端入口——「格→瓶取出」只发码；扣点 / 物化 / 游标结算全在服务端
      * {@link #performEssenceOutToPhial(int)}（R18/R19：客户端一律不算真值；与 {@link #requestEssenceOut}
      * 同形，不在客户端预判 stock——服务端会按格号反查归属并给"凑不满一瓶"回执）。
+     * <p>
+     * ★R91-e：{@code shift} 折进 arg 的 {@link PocketConstants#ESSENCE_OUT_SHIFT_FLAG} 位 ⇒
+     * 单点里 <b>左键 = 1 只、shift = 既有单动作上界</b> 两条支走<b>同一段</b>代码（★不开第二支）。
      */
-    boolean requestEssenceOutToPhial(int cell) {
-        return sendAction(ACTION_ESSENCE_OUT_TO_PHIAL, cell);
+    boolean requestEssenceOutToPhial(int cell, boolean shift) {
+        return sendAction(ACTION_ESSENCE_OUT_TO_PHIAL, shift ? cell + PocketConstants.ESSENCE_OUT_SHIFT_FLAG : cell);
     }
 
     /**
@@ -1160,6 +1212,10 @@ public final class NekoPocketPanel implements PocketSession {
             // ★上限读数必须走在下面那条"没变就跳过"之前：只调过 cap 而 ghost/样本都没变时，跳过判据会把
             // 新读数整条吞掉 ⇒ 玩家滚了数字、格上不动。setter 自身同值即返回，每拍调不产生额外脏标记。
             widget.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
+            // ★R91-⑤：attr / P 与 cap 同一条推送纪律（★读的是<b>双源 accessor</b>，客户端那份是
+            // SYNC_GHOST_FLAGS 的镜像，<b>不是</b> inventory.filters() —— 那份的 attr 只有开屏快照）。
+            widget.setGhostAttr(ghostAttrAt(PocketFilterConfig.Kind.ITEM, index));
+            widget.setUploadBlocked(ghostUploadBlockedAt(PocketFilterConfig.Kind.ITEM, index));
             // ★R84②：声明格现在<b>就是</b>该条需求的抽取落点，格内的同种内容就是"已经补到的产物"，
             // 所以只在内容不是声明那一种时才搬空（旧口径"声明即无条件搬空"会把刚补进来的产物又赶走）。
             // 同 setDeclaredCap 的理由：这一步不能挂在下面那条"没变即跳过"之后，否则服务端已塞进错内容时
@@ -1195,6 +1251,9 @@ public final class NekoPocketPanel implements PocketSession {
             final PocketFilterConfig.Filter declared = inventory.filters()
                 .at(PocketFilterConfig.Kind.FLUID, index);
             widget.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
+            // ★R91-⑤ 流体支：三组格件<b>逐个</b>都要收到 attr / P（同 applyItemGhosts 的推送纪律）
+            widget.setGhostAttr(ghostAttrAt(PocketFilterConfig.Kind.FLUID, index));
+            widget.setUploadBlocked(ghostUploadBlockedAt(PocketFilterConfig.Kind.FLUID, index));
             widget.setGhost(
                 declared instanceof PocketFilterConfig.FluidFilter,
                 declared instanceof PocketFilterConfig.FluidFilter fluid ? fluid.fluidName : "");
@@ -1235,6 +1294,10 @@ public final class NekoPocketPanel implements PocketSession {
             final PocketFilterConfig.Filter declared = home[index];
             // ★同 applyItemGhosts：cap 的推送不能挂在 setGhost 的"没变即返回"之后
             cell.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
+            // ★R91-⑤ 源质支：attr 落在<b>本格</b>（Kind.ESSENCE 的索引空间 = 格号），与上面 home[] 的
+            // "遮罩按 tag 归位"是两件事 —— 载荷声明按 tag 归位（R86），<b>属性</b>按格挂（手势就点在这一格上）。
+            cell.setGhostAttr(ghostAttrAt(PocketFilterConfig.Kind.ESSENCE, index));
+            cell.setUploadBlocked(ghostUploadBlockedAt(PocketFilterConfig.Kind.ESSENCE, index));
             cell.setGhost(declared != null);
         }
     }
@@ -1428,6 +1491,71 @@ public final class NekoPocketPanel implements PocketSession {
         }
         ghostBlob = blob;
         applyGhostView(blob);
+    }
+
+    // -------------------------------------------------- ★R91-a 属性层（第二枚 StringSyncValue，双端对偶）
+
+    /**
+     * 服务端侧的属性 blob（编码器 = {@link PocketGhostRequest#flagsBlobOf}，★与解码器同族单函数纪律）。
+     * <p>
+     * ★读的是<b>权威位表</b>（{@code inventory.filters()} 上的 attr / P），不是客户端那份镜像；
+     * 一格属性都没挂 ⇒ 整串是空串 ⇒ {@link #applyGhostFlagsView} 把镜像清干净（撤属性必须真的落回客户端，
+     * 否则"撤销手势"只活服务端 = R86 那类"改判只活一半"的复现）。
+     */
+    private String composeGhostFlags() {
+        return PocketGhostRequest.flagsBlobOf(inventory.filters());
+    }
+
+    /**
+     * 客户端侧：把属性 blob 换进 {@link #clientGhostFlags} 那份镜像，再<b>原位</b>刷三组格件的属性。
+     * <p>
+     * ★{@code applyGhosts()} 是<b>既有</b>的那一个刷新点（ghost 声明 → 三组格件），本方法与
+     * {@link #applyGhostView} 共用它 ⇒ 遮罩/角标/cap 读数永远一次刷齐，不会出现"属性刷了、虚化没刷"。
+     * 镜像与 ghost blob 的镜像一样是<b>纯显示侧</b>：它从不写档，执法读的是服务端那一份（R18/R19）。
+     */
+    private void applyGhostFlagsView(String blob) {
+        if (!syncManager.isClient() || blob == null || blob.equals(ghostFlagsBlob)) {
+            return;
+        }
+        ghostFlagsBlob = blob;
+        PocketGhostRequest.applyFlagsBlob(blob, clientGhostFlags);
+        applyGhosts();
+    }
+
+    /**
+     * ★★<b>R86 铁律的兑现点</b>：某格 {@code attr} 的<b>双源 accessor</b>（与
+     * {@link #essenceTagAtCell(int)} / {@link #essenceCellOfTag(String)} 严格同形）。
+     * <p>
+     * 服务端读权威位表；客户端读 {@link #clientGhostFlags} 那份由 {@code SYNC_GHOST_FLAGS} 整体覆盖的镜像。
+     * ★<b>不得</b>在客户端读 {@code inventory.filters()} —— 那份的 attr 只在<b>开屏瞬间</b>从承载栈 NBT
+     * 解出来，之后的每次属性变更它一概不知道；拿它出图就等于"改判只活服务端、真正出图的客户端照旧"。
+     */
+    int ghostAttrAt(PocketFilterConfig.Kind kind, int slotIndex) {
+        return (syncManager.isClient() ? clientGhostFlags : inventory.filters()).attrAt(kind, slotIndex);
+    }
+
+    /** ★同 {@link #ghostAttrAt}：正交位 {@code P} 的双源 accessor（客户端不许直读 {@code inventory}）。 */
+    boolean ghostUploadBlockedAt(PocketFilterConfig.Kind kind, int slotIndex) {
+        return (syncManager.isClient() ? clientGhostFlags : inventory.filters()).uploadBlockedAt(kind, slotIndex);
+    }
+
+    /**
+     * ★★<b>R91-⑤ 三个手势的唯一 C2S 出口</b>（中栏 / 流体槽 / 源质格三组格件共用这一条）。
+     * <p>
+     * 与 {@link #requestGhost} / {@link #requestGhostClear} 同一条 {@code SYNC_GHOST_REQUEST} 通道
+     * （R91-⑥：不新造动作码、不开第三条通道），★客户端只报表征手势的一个字母：attr 与 P 的<b>迁移真值
+     * 在服务端</b>算（{@code PocketGhostRequest#applyFlag}），本地一个字节都不改 —— 与 R18/R19 对
+     * ghost 的全部纪律同形。
+     *
+     * @param gesture {@link PocketConstants#GHOST_FLAG_BIND}（中键）/
+     *                {@link PocketConstants#GHOST_FLAG_MEMORY}（alt+左）/
+     *                {@link PocketConstants#GHOST_FLAG_UPLOAD_BLOCK}（alt+右）
+     */
+    boolean requestGhostFlag(PocketFilterConfig.Kind kind, int slotIndex, String gesture) {
+        if (slotIndex < 0 || !PocketFilterConfig.isAllowedSlotIndex(kind, slotIndex)) {
+            return false;
+        }
+        return sendGhostRequest(PocketGhostRequest.flagRequest(slotIndex, kind, gesture));
     }
 
     /**
@@ -2528,8 +2656,17 @@ public final class NekoPocketPanel implements PocketSession {
             .append('\n');
         builder.append(StatCollector.translateToLocal("gtit.pocket.note.channel"))
             .append('\n');
-        // ★R83 D-4：中栏的"箱子属性"是自家手势 + 自家算法，必须在游戏内说清它不是通用箱子整理
+        // ★R83 D-4：中栏的"箱子属性"是自家手势 + 自家算法，必须在游戏内说清它不是通用箱子整理。
+        // ★★<b>R91-⑧b（中键让位）改述</b>：整理<b>只剩 R 键</b>一个手势（中键已让给"请求绑定"），
+        // 而三条属性手势各自一条键 ⇒ 四条并列。★原来那句"中栏箱子属性（中键整理）"的说明如果留着不改，
+        // 就是"javadoc/文案声称了代码不做的事"（本仓 D-1 型不实）⇒ 与两份 lang 一起由 S5 落文（键名在此引用）。
         builder.append(StatCollector.translateToLocal("gtit.pocket.storage.sort_gesture"))
+            .append('\n');
+        builder.append(StatCollector.translateToLocal("gtit.pocket.storage.bind_gesture"))
+            .append('\n');
+        builder.append(StatCollector.translateToLocal("gtit.pocket.storage.memory_gesture"))
+            .append('\n');
+        builder.append(StatCollector.translateToLocal("gtit.pocket.storage.upload_block_gesture"))
             .append('\n');
         builder.append(StatCollector.translateToLocal("gtit.pocket.held.note"))
             .append('\n');

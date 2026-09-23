@@ -73,6 +73,17 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      */
     private int declaredCap = PocketConstants.FILTER_CAP_UNSET;
 
+    /**
+     * ★★<b>R91-⑤</b>：本格的互斥属性（{@link PocketConstants#GHOST_ATTR_NONE} /
+     * {@code _BIND} / {@code _MEMORY}）。由面板经<b>双源 accessor</b>
+     * （{@code NekoPocketPanel#ghostAttrAt}）从 {@code SYNC_GHOST_FLAGS} 的镜像刷进来，
+     * ★<b>不是</b>客户端自己推断，也<b>不是</b>从 {@code ghost} 那一个比特派生
+     * （R91-b：空格的 attr 无法从载荷表表达 ⇒ 必须独立一格状态）。
+     */
+    private int ghostAttr = PocketConstants.GHOST_ATTR_NONE;
+    /** ★R91-⑤：正交位 {@code P}（阻拦上传），可与任一 {@code ghostAttr} 并存。 */
+    private boolean uploadBlocked;
+
     public NekoFilterSlot() {
         super();
         // ★两份 RichTooltip 各挂一条动态构建器，一条都不许多挂：
@@ -122,16 +133,72 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
             this.declaredCap = PocketConstants.FILTER_CAP_UNSET;
         }
         final ModularSlot slot = getSlot();
-        if (ghost) {
-            // ★R84：旧口径是「禁放置 + 禁取出」（R46d/R41b），但声明格成为落点后"禁取出"等于把补进来的
-            // 产物永久关在格里 ⇒ 改为禁放置、可取出。放置这一侧另有 handler 的 isItemValid 兜底（R83 B1）。
-            slot.accessibility(false, true);
-        } else {
-            slot.accessibility(true, true);
-        }
-        slot.canDragInto(!ghost);
+        applyAccessibility();
         markBothTooltipsDirty();
         return this;
+    }
+
+    /**
+     * ★★<b>R91-⑤</b>：本格可写性的<b>唯一</b>落点（{@link #setGhost} 与 {@link #setGhostAttr} 都走这里，
+     * 否则"载荷换了 / 属性换了"两条路径各设一遍 accessibility 迟早分叉）。
+     * <p>
+     * 三档真值（★与 {@code PocketInventory#isItemValid} 的 L 执法腿<b>同一条</b>口径，两端不各自判）：
+     * <ol>
+     * <li>不是声明格 ⇒ 完全正常格（放与取都开）；</li>
+     * <li>是声明格且 attr = <b>MEMORY</b> ⇒ 放置<b>开</b>（"本格只能放那一种东西"里的"那一种"总得放得进去），
+     * ★<b>放错东西那一击由服务端 {@code isItemValid} 挡</b>（R83-B1：执法在 handler 链，不在 widget 里猜）；
+     * 这条同时是 {@code PocketInventory#isGhostItemSlot} 那一批"真实落点"判据的<b>唯一</b>例外，
+     * 别的属性（BIND / NONE）仍然禁放置；</li>
+     * <li>是声明格且 attr = BIND / NONE ⇒ 禁放置、可取出（★R84 的既有口径，一个字没改：旧
+     * 「禁放置 + 禁取出」的教训与"补进来的产物不许永久关在格里"那条理由原样保留）。</li>
+     * </ol>
+     */
+    private void applyAccessibility() {
+        final ModularSlot slot = getSlot();
+        if (!ghost || ghostAttr == PocketConstants.GHOST_ATTR_MEMORY) {
+            slot.accessibility(true, true);
+        } else {
+            slot.accessibility(false, true);
+        }
+        slot.canDragInto(!ghost);
+    }
+
+    /**
+     * ★R91-⑤：面板把服务端那份<b>属性位表</b>的 attr 刷进显示侧（与 {@link #setDeclaredCap} 同一个应用点，
+     * 数据源是 {@code SYNC_GHOST_FLAGS} 那枚<b>独立</b>同步值的客户端镜像，★不是从 {@code ghost} 派生）。
+     * <p>
+     * 一次做齐三件：可写性（{@link #applyAccessibility()}）、遮罩在场判据、左上蓝 {@code L} 角标。
+     * ★同值即返回 ⇒ 每拍调不产生额外脏标记（与 cap 那条同一纪律）。
+     */
+    public NekoFilterSlot setGhostAttr(int attr) {
+        final int next = PocketConstants.normalizeGhostAttr(attr);
+        if (this.ghostAttr == next) {
+            return this;
+        }
+        this.ghostAttr = next;
+        applyAccessibility();
+        markBothTooltipsDirty();
+        return this;
+    }
+
+    /** ★R91-⑤：正交位 {@code P} 的显示侧写入口（只画左下绿角标；★不改可写性、★不改遮罩）。 */
+    public NekoFilterSlot setUploadBlocked(boolean blocked) {
+        if (this.uploadBlocked == blocked) {
+            return this;
+        }
+        this.uploadBlocked = blocked;
+        markBothTooltipsDirty();
+        return this;
+    }
+
+    /** 本格当前的 attr（服务端算好、经 {@code SYNC_GHOST_FLAGS} 同步来的读数）。 */
+    public int ghostAttr() {
+        return ghostAttr;
+    }
+
+    /** 本格是否挂了 {@code P}（阻拦上传）。 */
+    public boolean isUploadBlocked() {
+        return uploadBlocked;
     }
 
     /** 只切渲染属性、不动样本（S5 的批量渲染路径）。 */
@@ -175,16 +242,44 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     @Override
     protected void drawOverlay() {
         super.drawOverlay();
-        if (!ghost) {
-            return;
-        }
-        // ★R84（用户原话"获取物品后虚化应该被覆盖，只留下右上角的橙色数字"）：遮罩只在<b>格内没有实物</b>
-        // 时画。旧判据是单比特 {@code if (ghost)} ⇒ 产物已经补进来了却仍然整格蒙着，玩家读到"都是虚化"。
-        // 实物本体与件数由渲染层自己画（getItemStackForRendering 的样本支本就只在空格生效）。
-        if (storedSize() <= 0) {
+        // ★★<b>R91-⑤</b>：遮罩"在场"的判据从单比特 ghost 放宽到 <b>ghost || attr != NONE</b>
+        // （pending 绑定 / pending 记忆都是"格内还没有东西的需求态"，观感必须与已建档的 BIND 一致）。
+        // ★★但"真实内容为空才遮"这一条<b>判据本体一个字没动</b>（仍是 storedSize() <= 0，R84 口径）：
+        // attr 只回答"这一格算不算需求态"，★绝不放宽"有实物就不许遮"。
+        if (PocketGhostRequest.drawsGhostMask(ghost, ghostAttr) && storedSize() <= 0) {
             GuiDraw.drawRect(1, 1, 16, 16, GHOST_MASK);
         }
+        // ★右上橙 cap（只有声明格有，capReadoutText 自己早退）与两个角标各占一角：
+        // L = 左上、P = 左下、cap = 右上 ⇒ 同一格同时有 attr 与 P 时也互不覆盖。
         drawCapReadout();
+        drawAttrBadout();
+    }
+
+    /**
+     * ★R91-⑤：本格的两个属性角标（左上蓝 {@code L} = 记忆 / 左下绿 {@code P} = 阻拦上传）。
+     * <p>
+     * 几何、色与"该不该画"全部取自 {@link PocketGhostRequest}（三组格件共用一份，★不在这里另算一遍）；
+     * 本方法只负责"画"。★文本为空 ⇒ 一条像素都不画（⇒ 用例
+     * {@code ghost_badge_readouts_are_empty_when_not_applicable} 钉的就是这里的前置判据）。
+     * ★{@code shadow=true} 与本类 {@link #drawCapReadout()} 同一条理由：遮罩是接近白的浅色。
+     */
+    private void drawAttrBadout() {
+        drawBadge(
+            PocketGhostRequest.memoryBadgeText(ghostAttr),
+            PocketGhostRequest.memoryBadgeTop(),
+            PocketGhostRequest.memoryBadgeColor());
+        drawBadge(
+            PocketGhostRequest.uploadBlockBadgeText(uploadBlocked),
+            PocketGhostRequest.uploadBlockBadgeTop(getArea().h()),
+            PocketGhostRequest.uploadBlockBadgeColor());
+    }
+
+    /** 一个角标的绘制体（左对齐 + 内缩；★空文本 = 不画，三组格件同形）。 */
+    private void drawBadge(String text, float top, int color) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        GuiDraw.drawText(text, PocketGhostRequest.badgeLeftX(), top, PocketGhostRequest.CAP_READOUT_SCALE, color, true);
     }
 
     /**
@@ -323,74 +418,107 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
             // 只有左键拖入 = 设声明；右键的解绑走 onMousePressed 的 button==1 分支（服务端执行）
             return false;
         }
+        // ★★<b>R91-b 的 NEI 拖拽分派</b>（唯一判据住在 PocketGhostRequest#dragRouteOf，★三个格件共用它）：
+        // 只有 P（无 attr）的格 ⇒ <b>不响应</b>：★在<b>动 draggedStack 之前</b>就返回，
+        // 所以既不"吃栈"（数量不清零 ⇒ NEI 那边继续拖着）、也不发请求（用户原话
+        // "alt 右键的锁格子是没效果的"）。这条就是本类 javadoc 上"P 格对拖拽无效"的空内容钉。
+        final PocketGhostRequest.DragRoute route = PocketGhostRequest.dragRouteOf(ghostAttr, uploadBlocked);
+        if (route == PocketGhostRequest.DragRoute.IGNORE) {
+            return false;
+        }
         final String payloadKey = PocketAeChannelOps.contentKey(draggedStack);
         if (payloadKey.isEmpty()) {
             return false;
         }
+        // ★route 的三档（EXPLICIT_BIND / EXPLICIT_MEMORY / IMPLICIT_BIND）在这里<b>都发同一条 SET</b>：
+        // 载荷键只有一个去处（PocketFilterConfig 的声明表），差别在<b>attr 已在位表上是什么</b>——
+        // attr 由手势（FLG）改、SET 永不顺手改 attr（R91-b："已有显式 attr 时 attr 优先"）。
+        // ★IMPLICIT_BIND = 需求 4 的既有建档语义，★一字未回退（无 attr 也无 P 的空格照旧建档）。
         draggedStack.stackSize = 0;
         return owner.requestGhost(slotIndex, payloadKey);
     }
 
     /**
-     * ★ghost 格的右键解绑入口（<b>只发请求</b>）+ 中键整理入口 + ★R83 C2 的 alt+左键直接绑定。
+     * ★★<b>R91-⑤⑧b 重排后的按键矩阵</b>（中栏真实格）——三个手势都只<b>发请求</b>，
+     * 迁移真值与落档在服务端（{@code PocketGhostRequest#applyFlag}，R18/R19）：
+     * <table border="1">
+     * <tr>
+     * <th>手势</th>
+     * <th>属性</th>
+     * <th>说明</th>
+     * </tr>
+     * <tr>
+     * <td><b>中键</b></td>
+     * <td>BIND（请求绑定）</td>
+     * <td>★从旧的 alt+左键<b>改派</b>而来（R91-⑤）；
+     * ★中键原本是"整理"，现已让位，整理仍由 <b>R 键</b>承担（{@code onKeyPressed}，R91-⑧b）</td>
+     * </tr>
+     * <tr>
+     * <td><b>alt+左键</b></td>
+     * <td>MEMORY（记忆 {@code L}）</td>
+     * <td>纯过滤：本格只能放那一种东西，
+     * ★不产生任何 AE 拉取行为</td>
+     * </tr>
+     * <tr>
+     * <td><b>alt+右键</b></td>
+     * <td>P（阻拦上传 {@code P}）</td>
+     * <td>正交位，可与任一 attr 并存</td>
+     * </tr>
+     * <tr>
+     * <td>右键（已声明）</td>
+     * <td>—</td>
+     * <td>解绑（★既有支，位置被 alt+右 <b>排在后面</b>）</td>
+     * </tr>
+     * </table>
+     * ★★<b>排序是判据的一部分</b>（取证 G3）：{@code alt+右} 必须排在 {@code ghost && mouseButton == 1}
+     * 那条解绑支<b>之前</b>，否则声明格上的 alt+右会先被读成解绑。
+     * ★★<b>中键支必须早退且不调 {@code super}</b>（R91-⑧b 的硬约束，理由随迁）：
+     * {@code ItemSlot.onMousePressed} 把按钮号原样喂回原版 {@code GuiContainer.mouseClicked}，
+     * 而原版把 {@code button 2} 读成 {@code keyBindPickBlock}（{@code GuiContainer.java:326/375-377}）
+     * ⇒ {@code ClickType.CREATIVE} = <b>创造模式取物</b>。这条安全语义与"整理走自家动作码"无关，
+     * 让位给 BIND 之后<b>仍然</b>成立 ⇒ 由机检 {@code R91-c} 段钉"中键支不含 super"。
      * <p>
-     * 按键矩阵（本格）：中键 = 整理（早退，见下）；右键且已声明 = 解绑请求；<b>alt+左键</b> =
-     * 把本格<b>已有的物品</b>直接声明为需求（等价于 NEI 把同一个东西拖进来）；其余（含普通左键）
-     * 一律交回 {@code super} 走 vanilla 槽点击，真实格行为不变。
-     * <p>
-     * R18 的字面口径是"清空必须发生在服务端 {@code phantomClick} 的 {@code button == 1} 分支"，
-     * 而本仓不许换用 {@code PhantomItemSlot}/{@code PhantomItemSlotSH}（R46d：那是另一个类，
-     * 换它 = 换 widget = 破坏 R41b 的双端同树）。因此这里保留同一条安全语义、换同一套载体：
-     * 客户端见到右键只往 {@code SYNC_GHOST_REQUEST} 塞一条 {@code CLR|slot|I} 包（中栏的区域字母
-     * 是 {@code I}；三个区域的槽索引各从 0 起，裸 {@code CLR|0} 分不清中栏第 0 格与流体条第 0 格），
-     * <b>本地一个字节都不清</b>；执行体是
-     * {@code NekoPocketPanel#onServerGhostRequest} → {@code PocketGhostRequest#apply} 的
-     * {@code GHOST_REQUEST_CLEAR} 分支（服务端）。
-     * 左键一律交回 {@code super}（走 vanilla 槽点击，真实格行为不变）。
+     * 其余（普通左键、非 ghost 的右键等）一律交回 {@code super} ⇒ vanilla 槽点击行为一个字不改。
      */
     @Override
     public Interactable.Result onMousePressed(int mouseButton) {
         if (mouseButton == MOUSE_BUTTON_MIDDLE) {
-            // ★中键必须在这里早退、且不调 super：super（ItemSlot.onMousePressed）把按钮号原样喂给
-            // 原版 GuiContainer.mouseClicked，而原版把 button 2 当 keyBindPickBlock（默认 -98 ⇒ +100=2）
-            // 走 clickType 3 的创造取物。整理走自家 C2S 动作码（ACTION_SORT=2 → SYNC_ACTION →
-            // 服务端 performSort），因为 MUI2 的服务端窗口点击只认 0/1（ModularContainer.java:249-254）。
-            requestSortFromWidget();
+            // ★R91-⑤：中键 = 请求绑定（★从 alt+左键改派；旧"中键=整理"已让位给 R 键）
+            // ★仍然必须早退且不调 super（原版把 button 2 读成 keyBindPickBlock ⇒ 创造取物，见本方法 javadoc）
+            requestGhostFlag(PocketConstants.GHOST_FLAG_BIND);
+            return Interactable.Result.SUCCESS;
+        }
+        if (mouseButton == 1 && Interactable.hasAltDown()) {
+            // ★R91-⑤：alt+右 = 阻拦上传 P（★★必须排在下面那条 ghost+右键解绑支之前，G3 的排序判据）
+            requestGhostFlag(PocketConstants.GHOST_FLAG_UPLOAD_BLOCK);
             return Interactable.Result.SUCCESS;
         }
         if (ghost && mouseButton == 1 && owner != null && slotIndex >= 0) {
             owner.requestGhostClear(PocketFilterConfig.Kind.ITEM, slotIndex);
             return Interactable.Result.SUCCESS;
         }
-        if (mouseButton == 0 && ghost && Interactable.hasAltDown()) {
-            // alt+左键在<b>已经是声明格</b>的格子上没有可绑的东西（要绑的东西不在这格），
-            // 但也不能让原版把它读成"拿不起来就算了"的正常路径 ⇒ 明确停住，不产生第二种手感
-            return Interactable.Result.SUCCESS;
-        }
-        if (mouseButton == 0 && Interactable.hasAltDown() && requestBindFromContents()) {
+        if (mouseButton == 0 && Interactable.hasAltDown()) {
+            // ★R91-⑤：alt+左 = 记忆 L（★取代旧的"alt+左 = 把本格存量声明为需求"，那个语义已迁到中键）
+            // ★无条件停住：即使这一格当前不可请求（灰显 / 未绑定），也不把 alt+左 交回原版读成普通左键放置
+            requestGhostFlag(PocketConstants.GHOST_FLAG_MEMORY);
             return Interactable.Result.SUCCESS;
         }
         return super.onMousePressed(mouseButton);
     }
 
     /**
-     * ★R83 C2（判据 3）：alt+左键 = 对<b>这一格里已有的物品</b>直接声明需求（用户原话"还可以采用对已有
-     * 物品按下 alt"），走的与 NEI 拖入<b>同一条</b> {@code owner.requestGhost} 请求、同一套四态回执
-     * ⇒ 零新动作码、零新同步键，判定与落档仍在服务端（R18/R19）。
+     * ★R91-⑤：三个手势共用的出口（本格 → 面板的 {@code SYNC_GHOST_REQUEST} 通道，零新动作码、零新同步键）。
+     * <p>
+     * ★本地一个字节都不改：attr / P 的迁移真值由服务端算好后经 {@code SYNC_GHOST_FLAGS} 推回来
+     * （客户端直改就是第二处真相，且关屏不落地）。
      *
-     * @return 是否真的发出了请求；{@code false}（灰显、空格、未绑定面板、解不出载荷键）一律交回
-     *         {@code super} ⇒ 正常取放行为一个字都不改
+     * @return 是否真的发出了请求（未绑定面板 / 槽号非法 / 整栏灰显 ⇒ false）
      */
-    private boolean requestBindFromContents() {
-        if (ghost || owner == null || slotIndex < 0 || !areAncestorsEnabled() || !isSynced()) {
+    private boolean requestGhostFlag(String gesture) {
+        if (owner == null || slotIndex < 0 || !areAncestorsEnabled() || !isSynced()) {
             return false;
         }
-        final ItemStack stack = getSlot().getStack();
-        if (stack == null) {
-            return false;
-        }
-        final String payloadKey = PocketAeChannelOps.contentKey(stack);
-        return !payloadKey.isEmpty() && owner.requestGhost(slotIndex, payloadKey);
+        return owner.requestGhostFlag(PocketFilterConfig.Kind.ITEM, slotIndex, gesture);
     }
 
     /**

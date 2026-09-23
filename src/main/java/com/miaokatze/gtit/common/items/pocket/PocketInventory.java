@@ -404,7 +404,24 @@ public final class PocketInventory {
                 // 不落盘。E2 已给 writeSessionToCarrier 补了两档兜底，但兜底的前提是"事后找得到"，
                 // 入口放开就是继续留一条"能不能落盘看运气"的路。程序化写入（通道回写／ghost 搬空）
                 // 不经过 isItemValid，因此不受本条影响。
-                return !isGhostItemSlot(slot) && !(stack != null && stack.getItem() instanceof ItemNekoDimensionPocket);
+                if (stack != null && stack.getItem() instanceof ItemNekoDimensionPocket) {
+                    return false;
+                }
+                if (!isGhostItemSlot(slot)) {
+                    return true;
+                }
+                // ★★<b>R91-⑤ 的 L 执法腿</b>（记忆 = "本格只能放该种东西"）。三条口径：
+                // ① 判据<b>单源</b>在 PocketFilterConfig#allowsPlayerPlacement —— 本方法<b>不含第二份
+                // 位表实现</b>，只经那一条 accessor 问 attr（★验收判据"attr 查询走单源 accessor"）；
+                // ② ★只约束「放入本格」这一条写入口：普通格照旧可放、BIND / 无属性的声明格照旧<b>禁放</b>
+                // （R84 的"声明格是抽取落点、不是玩家输入口"一字不改），L 只是把"这一格允许放那一种"
+                // 的场合里<b>放错东西</b>的那一击挡掉；
+                // ③ ★补货行为仍只认 BIND（见 PocketChannelRunner#refillPhase 的闸门）——L 纯过滤、
+                // 不参与抽取，否则等于替玩家发明需求外的自动拉货。
+                // 成本如实说明：只在"声明格 + 有人往它放东西"这一条支上算一次 contentKey（含 NBT base64），
+                // ★不在每拍、也不在未声明的 135 格上算 ⇒ 与 NEI 拖入同一只键函数、不造第二份键式样。
+                final String contentKey = stack == null ? "" : PocketAeChannelOps.contentKey(stack);
+                return filters.allowsPlayerPlacement(PocketFilterConfig.Kind.ITEM, slot, contentKey);
             }
         };
     }

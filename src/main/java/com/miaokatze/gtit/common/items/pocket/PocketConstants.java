@@ -123,6 +123,53 @@ public final class PocketConstants {
     public static final String FILTER_CAP = "cap";
     /** {@link #FILTER_CAP} 的"未设置"哨兵（0 与正数都是合法读数，故未设必须可区分）。 */
     public static final int FILTER_CAP_UNSET = -1;
+    /**
+     * ★★<b>R91-⑤⑥（格子三属性）</b>：{@code FILTERS} 域下的<b>第四枚列表</b> —— 属性位表
+     * （{@code attr} + {@code P}），与 {@link #FILTER_ITEMS}/{@link #FILTER_FLUIDS}/
+     * {@link #FILTER_ESSENTIA} 三枚<b>载荷</b>列表平行。
+     * <p>
+     * ★为什么必须是一张<b>独立的位表</b>而不是往 {@code PocketFilterConfig.Filter} 里塞两个布尔
+     * （取证 {@code r91-ret-gesture.md} §4 的方案 β 否决理由，被 R91-⑥ 采纳为裁定）：
+     * <ol>
+     * <li><b>空格也要能进状态</b>（用户原话"没东西则进入这个状态，然后 NEI 再拖动时记录为对应的状态"
+     * = R91-b）——一条 <i>声明</i>的存在感来自它的载荷键，"无载荷的声明"在本仓表达不了，
+     * 而位表的一个条目<b>不需要载荷</b>；</li>
+     * <li>挤进 Filter 会正面撞两条既有执法点：{@code PocketGhostRequest#applyCap}（"没有声明就不许挂
+     * 属性"）与 {@code #hasRequiredPayload}（不接受空载荷）；</li>
+     * <li>会撞回归门禁 {@code assertNoChannelIndexCarried}（物品条目字段白名单
+     * {@code itemId/meta/nbt/slotIndex}）——★位表是<b>另一个列表</b>，因此天然不触那条；</li>
+     * <li>★反过来也成立：{@code attr} <b>不许</b>从 Filter 派生（R91-b 明文），否则空格无从表达。</li>
+     * </ol>
+     * ★写档口径与 {@link #FILTER_CAP} 同一条纪律：<b>只写非默认条目</b> ⇒ 没有属性的旧档形状<b>逐字节不变</b>
+     * （成对门禁见 {@code verify-pocket.sh} 的 {@code R91-c} 段与用例
+     * {@code ghost_flags_persistence_pairwise}）。
+     */
+    public static final String FILTER_FLAGS = "flags";
+    /** 位表条目：<b>区域</b>（{@code Kind} 枚举名字符串，与 {@link #FILTER_SLOT} 一起定位一格）。 */
+    public static final String FILTER_FLAG_KIND = "kind";
+    /** 位表条目：{@link #GHOST_ATTR_BIND}/{@link #GHOST_ATTR_MEMORY}（TAG_Int）。 */
+    public static final String FILTER_ATTR = "attr";
+    /** 位表条目：阻拦上传位 {@code P}（TAG_Int 0/1，★与 {@link #FILTER_ATTR} 正交，可与任一 attr 并存）。 */
+    public static final String FILTER_UPLOAD_BLOCK = "uploadBlock";
+    /** attr 值域之一：无属性（默认值 ⇒ 不落档）。 */
+    public static final int GHOST_ATTR_NONE = 0;
+    /** attr 值域之一：<b>请求绑定</b>（★R91-⑤ 起由中键挂上）= 本格的补货请求，会从 AE 抽取。 */
+    public static final int GHOST_ATTR_BIND = 1;
+    /** attr 值域之一：<b>记忆</b>（alt+左键）= 本格只能放那一种东西，★纯过滤、不产生任何抽取。 */
+    public static final int GHOST_ATTR_MEMORY = 2;
+    /** attr 值域上界（含）：越界值一律按 {@link #GHOST_ATTR_NONE} 收口（伪造包/外来档）。 */
+    public static final int GHOST_ATTR_MAX = GHOST_ATTR_MEMORY;
+
+    /**
+     * attr 原始值的<b>唯一</b>收口口：越界（含负数、外来档、伪造包）一律回落
+     * {@link #GHOST_ATTR_NONE}，★不猜、不钳到"最近的一档"（那等于替玩家选属性）。
+     * <p>
+     * 单源的理由与 {@code PocketGhostRequest#clampCap} 同一条：读档侧、C2S 侧与位表读口都问这里，
+     * 三处各写一遍 {@code if (raw < 0 || raw > 2)} 迟早分叉。
+     */
+    public static int normalizeGhostAttr(int raw) {
+        return raw < GHOST_ATTR_NONE || raw > GHOST_ATTR_MAX ? GHOST_ATTR_NONE : raw;
+    }
 
     // ------------------------------------------------------------------ 容量与时序
     /**
@@ -578,6 +625,26 @@ public final class PocketConstants {
      * {@code PocketFilterConfig} 的 {@code (kind, slotIndex)} 复合键，R59b 偏离④ / R70）。
      */
     public static final String GHOST_REQUEST_CLEAR = "CLR";
+    /**
+     * ★★<b>R91-⑤⑥</b> ghost 请求：切这一格的<b>属性位</b>（中键 / alt+左 / alt+右 三个手势共用一条支）。
+     * <p>
+     * 文法 {@code FLG|<槽号>|<区域字母>|<手势字母>} —— ★<b>恰 4 段</b>，与 {@link #GHOST_REQUEST_CAP}
+     * 同形 ⇒ {@code PocketGhostRequest#apply} 那条 {@code split(..., 4)} 一个字都不改（段数本身就是判据，
+     * 放宽它必红）。
+     * <p>
+     * ★<b>为什么走这条通道而不是新造动作码</b>（R91-⑥ 的优先路）：{@code SYNC_ACTION} 是
+     * {@code code*1024 + arg} 的<b>单值</b>打包，一个码只装得下<b>一个</b> arg ⇒"区域 + 格号"要再造一处
+     * 打包算术（第二处真相）。本通道自带区域字母 + 槽索引，且服务端入口
+     * {@code NekoPocketServerHandler#onServerGhostRequest} 本来就是单点（守卫 → apply → 变了才写档刷虚化）。
+     * ★真值（迁移表）由<b>服务端</b>算，客户端只报表征哪个手势。
+     */
+    public static final String GHOST_REQUEST_FLAG = "FLG";
+    /** FLG 第四段：请求<b>绑定</b>（中键）。 */
+    public static final String GHOST_FLAG_BIND = "B";
+    /** FLG 第四段：请求<b>记忆</b>（alt+左键）。 */
+    public static final String GHOST_FLAG_MEMORY = "M";
+    /** FLG 第四段：翻转<b>阻拦上传</b>位（alt+右键）。 */
+    public static final String GHOST_FLAG_UPLOAD_BLOCK = "P";
     /**
      * CLR 第三段的区域字母：中栏物品格。
      * <p>

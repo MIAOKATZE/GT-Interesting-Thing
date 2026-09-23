@@ -27,6 +27,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * SET|&lt;slot&gt;|&lt;载荷键&gt;          kind 由载荷键前缀推出（i/f/e ⇒ ITEM/FLUID/ESSENCE）
  * CLR|&lt;slot&gt;|&lt;kind 字母&gt;      I/F/E，见 {@link PocketConstants#GHOST_KIND_ITEM} 等
  * CAP|&lt;slot&gt;|&lt;kind 字母&gt;|&lt;绝对值&gt;   ★R83 C2：调这一格声明的组上限（alt+滚轮）
+ * FLG|&lt;slot&gt;|&lt;kind 字母&gt;|&lt;手势字母&gt;  ★R91-⑤：切这一格的<b>属性位</b>（B=中键 BIND /
+ *                                              M=alt+左 记忆 / P=alt+右 阻拦上传）——★也恰 4 段
  * </pre>
  *
  * ★<b>CAP 为什么走字符串而不是 int 动作通道</b>：流体一档就是 160,000 mB、默认值 16,000,000，
@@ -153,6 +155,24 @@ public final class PocketGhostRequest {
             + letterOf(kind);
     }
 
+    /**
+     * ★★<b>R91-⑤⑥</b> 拼装一条属性请求 {@code FLG|<槽号>|<区域字母>|<手势字母>}（★恰 4 段）。
+     * <p>
+     * 三个手势字母 = {@link PocketConstants#GHOST_FLAG_BIND}（中键）/
+     * {@link PocketConstants#GHOST_FLAG_MEMORY}（alt+左）/
+     * {@link PocketConstants#GHOST_FLAG_UPLOAD_BLOCK}（alt+右）。★客户端只报"玩家做了哪个手势"，
+     * <b>迁移真值由服务端算</b>（{@link #nextAttr} / {@link #nextUploadBlocked}）——R18/R19 的老口径：
+     * 客户端字符串一律不可信，且让两端各算一次迁移表就是两处真相。
+     */
+    public static String flagRequest(int slotIndex, PocketFilterConfig.Kind kind, String gesture) {
+        return PocketConstants.GHOST_REQUEST_FLAG + PocketConstants.GHOST_REQUEST_SEPARATOR
+            + slotIndex
+            + PocketConstants.GHOST_REQUEST_SEPARATOR
+            + letterOf(kind)
+            + PocketConstants.GHOST_REQUEST_SEPARATOR
+            + gesture;
+    }
+
     /** 区域 → CLR 第三段的单字母（<b>唯一</b>映射点，两端都不写字面量）。 */
     public static String letterOf(PocketFilterConfig.Kind kind) {
         if (kind == null) {
@@ -211,6 +231,37 @@ public final class PocketGhostRequest {
      * {@link #applySet} 的长度检查与原守卫<b>共同</b>保住（两种写法都是 REJECTED，不改变判据）。
      */
     public static Decision apply(String request, PocketFilterConfig filters, PocketEssenceStore essenceCells) {
+        return apply(request, filters, essenceCells, null);
+    }
+
+    /**
+     * ★<b>R91-⑤</b>「格内有物 ⇒ 按该物记录」的<b>注入接口</b>：属性迁移要落载荷时问这一条
+     * （服务端实现读真实内容；纯 JVM 用例注入桩件）。
+     * <p>
+     * ★为什么不在客户端把载荷一起发上来（三个手势 ⇒ 两条请求）：① R18/R19 的老口径——客户端字符串
+     * 一律不可信，"这一格里躺的是什么"只有服务端知道；② 两条请求 = 一次手势两次往返，中间被别的包
+     * 插队就会出现"attr 落了、载荷没落"的半态；③ 三个格件各写一遍"从本格内容拼载荷键"就是三份真相
+     * （中栏是 {@code contentKey}、流体是 {@code fluidKey}、源质要现算通道 id）。
+     * <p>
+     * ★{@code null}（两参/三参旧形态）⇒ <b>只切属性、不落载荷</b>，既有回归用例行为逐字不变。
+     */
+    public interface PayloadSource {
+
+        /**
+         * 该格<b>当前真实内容</b>对应的载荷键。
+         *
+         * @return 载荷键；格内空 / 读不出身份 ⇒ {@code null} 或空串（＝进入"只挂状态、内容待拖拽落成"）
+         */
+        String payloadKeyAt(PocketFilterConfig.Kind kind, int slotIndex);
+    }
+
+    /**
+     * ★★<b>R91-⑤⑥ 的四参形态</b>（生产的服务端唯一执行体走这一条）：在三参形态之上多带
+     * {@link PayloadSource}，于是 {@code FLG} 支能把"属性 + 该格现有内容"一次写成一格的状态。
+     * 其余四道校验与段数纪律与三参形态<b>逐字相同</b>。
+     */
+    public static Decision apply(String request, PocketFilterConfig filters, PocketEssenceStore essenceCells,
+        PayloadSource payloads) {
         if (request == null || request.isEmpty() || filters == null) {
             return REJECT;
         }
@@ -233,7 +284,347 @@ public final class PocketGhostRequest {
         if (PocketConstants.GHOST_REQUEST_CAP.equals(parts[0])) {
             return parts.length != 4 ? REJECT : applyCap(slotIndex, parts[2], parts[3], filters);
         }
+        if (PocketConstants.GHOST_REQUEST_FLAG.equals(parts[0])) {
+            // ★FLG 与 CAP 同为恰 4 段 ⇒ 上面那条 split(..., 4) 一字不改（段数即判据，放宽必红）
+            return parts.length != 4 ? REJECT
+                : applyFlag(slotIndex, parts[2], parts[3], filters, essenceCells, payloads);
+        }
         return REJECT;
+    }
+
+    // -------------------------------------------------- ★R91-⑤ 属性迁移真值表（★唯一一份，服务端算）
+
+    /**
+     * <b>attr 的迁移单源</b>：{@code gesture} 是玩家刚做的手势字母（
+     * {@link PocketConstants#GHOST_FLAG_BIND} / {@link PocketConstants#GHOST_FLAG_MEMORY}），
+     * 返回迁移<b>之后</b>的 attr。
+     * <p>
+     * 三条裁定（R91-⑤）逐字兑现：
+     * <ol>
+     * <li><b>同格重复同手势 = 撤销该 attr</b> ⇒ {@code BIND} 手势落在 {@code BIND} 上 ⇒ {@code NONE}；
+     * {@code MEMORY} 手势落在 {@code MEMORY} 上 ⇒ {@code NONE}；</li>
+     * <li><b>互斥单值</b> ⇒ {@code BIND} 手势落在 {@code MEMORY} 上就是换过去（不会出现一格两个 attr），
+     * 换过去时<b>载荷不换</b>（只有换到 {@code NONE} 才随解绑一起撤，见 {@link #applyFlag}）；</li>
+     * <li>★本方法<b>只管 attr</b>：{@code P} 是正交位、走 {@link #nextUploadBlocked}，两者不互相影响。</li>
+     * </ol>
+     * 不认识的手势字母 ⇒ 原值返回（调用方据"没变"拒收/不写档，★不猜玩家想挂哪个属性）。
+     */
+    public static int nextAttr(int currentAttr, String gesture) {
+        final int current = PocketConstants.normalizeGhostAttr(currentAttr);
+        if (PocketConstants.GHOST_FLAG_BIND.equals(gesture)) {
+            return current == PocketConstants.GHOST_ATTR_BIND ? PocketConstants.GHOST_ATTR_NONE
+                : PocketConstants.GHOST_ATTR_BIND;
+        }
+        if (PocketConstants.GHOST_FLAG_MEMORY.equals(gesture)) {
+            return current == PocketConstants.GHOST_ATTR_MEMORY ? PocketConstants.GHOST_ATTR_NONE
+                : PocketConstants.GHOST_ATTR_MEMORY;
+        }
+        return current;
+    }
+
+    /** <b>P 位的迁移单源</b>：alt+右 = 翻转（正交位 ⇒ 与 {@code attr} 各走各的，可并存）。 */
+    public static boolean nextUploadBlocked(boolean current, String gesture) {
+        return PocketConstants.GHOST_FLAG_UPLOAD_BLOCK.equals(gesture) ? !current : current;
+    }
+
+    /** 一个手势字母是否是<b>attr</b> 类（B/M）；不是则只可能是 P 类。 */
+    public static boolean isAttrGesture(String gesture) {
+        return PocketConstants.GHOST_FLAG_BIND.equals(gesture) || PocketConstants.GHOST_FLAG_MEMORY.equals(gesture);
+    }
+
+    /** 一个手势字母是否是本文法认识的（FLG 第四段的白名单，★伪造包在这里被拒）。 */
+    public static boolean isKnownGesture(String gesture) {
+        return isAttrGesture(gesture) || PocketConstants.GHOST_FLAG_UPLOAD_BLOCK.equals(gesture);
+    }
+
+    /**
+     * ★★<b>R91-b 的 NEI 拖拽分派表</b>（★唯一判据、只住本类一处；三个格件都调它，服务端 SET 支也认它）：
+     * 一格当前的属性状态 ⇒ 拖进来的载荷该<b>落到哪一档</b>。
+     */
+    public enum DragRoute {
+        /** 显式 {@code attr = BIND} ⇒ 载荷写进 BIND（＝既有语义，不变）。 */
+        EXPLICIT_BIND,
+        /** 显式 {@code attr = MEMORY} ⇒ 载荷写进 MEMORY（新增：记忆内容 = 拖进来的那个东西）。 */
+        EXPLICIT_MEMORY,
+        /** ★<b>无 attr 也无 P</b> 的空格 ⇒ 隐式按 BIND 建档（＝需求 4 的既有拖拽建档语义，不许回退）。 */
+        IMPLICIT_BIND,
+        /** 只有 {@code P}（无 attr）⇒ <b>不响应</b>（用户原话"alt 右键的锁格子是没效果的"）。 */
+        IGNORE
+    }
+
+    /**
+     * 分派表的<b>纯函数本体</b>（四行真值，回归套件逐行钉死）：
+     * <table border="1">
+     * <tr>
+     * <th>格子当前状态</th>
+     * <th>结果</th>
+     * </tr>
+     * <tr>
+     * <td>显式 attr=BIND</td>
+     * <td>{@link DragRoute#EXPLICIT_BIND}</td>
+     * </tr>
+     * <tr>
+     * <td>显式 attr=MEMORY</td>
+     * <td>{@link DragRoute#EXPLICIT_MEMORY}</td>
+     * </tr>
+     * <tr>
+     * <td>无 attr 且无 P</td>
+     * <td>{@link DragRoute#IMPLICIT_BIND}（★需求 4 不回退）</td>
+     * </tr>
+     * <tr>
+     * <td>只有 P（无 attr）</td>
+     * <td>{@link DragRoute#IGNORE}</td>
+     * </tr>
+     * </table>
+     * ★<b>attr 优先</b>：已有显式 attr 时不论 P 与否都按 attr 走 ⇒ 不会"借拖拽顺手改成另一种属性"
+     * （R91-b 连带改判的那半句）。
+     */
+    public static DragRoute dragRouteOf(int attr, boolean uploadBlocked) {
+        final int normalized = PocketConstants.normalizeGhostAttr(attr);
+        if (normalized == PocketConstants.GHOST_ATTR_BIND) {
+            return DragRoute.EXPLICIT_BIND;
+        }
+        if (normalized == PocketConstants.GHOST_ATTR_MEMORY) {
+            return DragRoute.EXPLICIT_MEMORY;
+        }
+        return uploadBlocked ? DragRoute.IGNORE : DragRoute.IMPLICIT_BIND;
+    }
+
+    /**
+     * ★R91-⑤ 的<b>遮罩在场判据</b>（★只放宽"这一格算不算需求态"，★一条内容判据都不放宽）：
+     * {@code declared}（= 有载荷声明，即旧的 {@code ghost} 比特）<b>或</b> {@code attr != NONE}。
+     * <p>
+     * ★"真实内容为空才遮"那三条判据（{@code storedSize() <= 0} / {@code stock <= 0} /
+     * {@code super.getFluidStack()} 空）<b>一字未动</b>，仍是各格件里的唯一实质门；本方法只回答
+     * "这一格是否处于需要虚化的状态"。真值表（R91-⑤ 表格的第 3/5 行 ⇒ pending 态也要遮）：
+     * attr=BIND 或 MEMORY 且格内空 ⇒ 遮；只有 P ⇒ <b>不遮</b>（用户口径：P 不携带内容，观感只是角标）。
+     */
+    public static boolean drawsGhostMask(boolean declared, int attr) {
+        return declared || PocketConstants.normalizeGhostAttr(attr) != PocketConstants.GHOST_ATTR_NONE;
+    }
+
+    /**
+     * ★<b>蓝色 {@code L} 角标的文本单源</b>（javadoc 承诺"attr 不是 MEMORY 就不绘制"⇒ 用例
+     * {@code ghost_badge_readouts_are_empty_when_not_applicable} 钉住这里返回空串）。
+     * <p>
+     * 返回空串 = 各格件的"空文本即不画"早退生效（与 {@link #capReadout} 对负数返回空串同一形状）。
+     */
+    public static String memoryBadgeText(int attr) {
+        return PocketConstants.normalizeGhostAttr(attr) == PocketConstants.GHOST_ATTR_MEMORY ? "L" : "";
+    }
+
+    /**
+     * ★<b>绿色 {@code P} 角标的文本单源</b>（javadoc 承诺"P 位为 off 就不绘制"⇒ 同一条用例钉住空串）。
+     * ★只读 P 这一位：{@code attr} 不参与 ⇒ 一格同时有 attr 与 P 时两个角标各画各的（互不覆盖：
+     * L 在<b>左上</b>、P 在<b>左下</b>、cap 读数在<b>右上</b>）。
+     */
+    public static String uploadBlockBadgeText(boolean uploadBlocked) {
+        return uploadBlocked ? "P" : "";
+    }
+
+    /**
+     * {@code L} 的纵向落点：<b>左上</b>角。
+     * <p>
+     * ★取证 {@code r91-ret-gesture.md} §5 实测过"左上角当前无人占用"（橙字在右上 y=2、数量文字在
+     * BottomRight），所以本行不与现有任何读数重叠；纵向仍走 {@link #CAP_READOUT_TOP} 那一条上带，
+     * ★<b>横向</b>换成左对齐（{@link #badgeLeftX()}）。
+     */
+    public static float memoryBadgeTop() {
+        return CAP_READOUT_TOP;
+    }
+
+    /**
+     * {@code P} 的纵向落点：<b>左下</b>角 = 格高 − 内缩 − 缩放后字高。
+     * <p>
+     * ★与 BottomRight 的数量文字<b>同带</b>但异侧（那一串右对齐），16px 格内的像素净空只能实机判
+     * （已进"只能实机"清单）；这里给的是算式，不是"看着办"。
+     */
+    public static float uploadBlockBadgeTop(int cellHeight) {
+        return cellHeight - CAP_READOUT_MARGIN - BADGE_TEXT_PX * CAP_READOUT_SCALE;
+    }
+
+    /** 两个角标共同的横向落点 = 左边距（与右对齐的 {@link #capReadoutX} 同一枚边距常量）。 */
+    public static float badgeLeftX() {
+        return CAP_READOUT_MARGIN;
+    }
+
+    /** vanilla 字体未缩放行高（只用于 {@link #uploadBlockBadgeTop} 的净空算式，★不是新贴图尺寸）。 */
+    private static final float BADGE_TEXT_PX = 9f;
+
+    /**
+     * ★{@code L} 的蓝色（用户原话"左上角蓝色 L"）。
+     * <p>
+     * ★★<b>写成方法而不是 {@code static final int}</b>——取证 D 的既有约束、与本类
+     * {@link #capReadoutColor()} 同一条纪律：{@code Color} 的类初始化会牵进 {@code ModularUI} 主类，
+     * 放进静态字段就让本类（被零依赖套件直调的纯 JVM 件）在测试 JVM 里初始化即炸。
+     */
+    public static int memoryBadgeColor() {
+        return Color.BLUE.main;
+    }
+
+    /** ★{@code P} 的绿色（"左下角绿色 P"）；{@code static final} 禁令同 {@link #memoryBadgeColor()}。 */
+    public static int uploadBlockBadgeColor() {
+        return Color.GREEN.main;
+    }
+
+    /**
+     * 属性层的 S2C 编码（★<b>独立的一根串</b>，走面板新加的 {@code StringSyncValue}）：
+     * 每格一条 {@code 区域字母,槽号,attr,P}，记录之间 {@code ';'}。
+     * <p>
+     * ★<b>不扩 {@code SYNC_GHOST} blob 的段数、也不把属性层焊回它的编解码</b>（R91-a 裁定的原话）：
+     * 方案 α 被选中的全部理由就是"零编解码风险、不连坐既有用例"，把 attr 塞回 blob 等于自己废掉它。
+     * ★只编"至少挂了一个属性"的格（{@link PocketFilterConfig#hasNoFlags()} 为空 ⇒ 整串是空串），
+     * 长度上界 = 135+18+72 格 × 8 字符，远小于 {@link PocketConstants#GHOST_BLOB_MAX_CHARS}
+     * 与上游 {@code writeStringSafe} 的截断线 ⇒ 本串<b>不需要</b>预算回退逻辑（少一套会写错的代码）。
+     */
+    public static String flagsBlobOf(PocketFilterConfig filters) {
+        if (filters == null || filters.hasNoFlags()) {
+            return "";
+        }
+        final StringBuilder builder = new StringBuilder();
+        for (PocketFilterConfig.FlagRecord record : filters.flagRecords()) {
+            if (builder.length() > 0) {
+                builder.append(FLAG_RECORD_SEPARATOR);
+            }
+            builder.append(letterOf(record.kind))
+                .append(FLAG_FIELD_SEPARATOR)
+                .append(record.slotIndex)
+                .append(FLAG_FIELD_SEPARATOR)
+                .append(record.attr)
+                .append(FLAG_FIELD_SEPARATOR)
+                .append(record.uploadBlocked ? 1 : 0);
+        }
+        return builder.toString();
+    }
+
+    /** 属性 blob 的记录间分隔符（与 ghost blob 同字符，但那是<b>另一根通道</b>，互不解析）。 */
+    private static final char FLAG_RECORD_SEPARATOR = ';';
+    /** 属性 blob 的字段间分隔符。 */
+    private static final char FLAG_FIELD_SEPARATOR = ',';
+
+    /**
+     * {@link #flagsBlobOf} 的<b>解码侧</b>：把属性层落到 {@code target} 的位表上（★客户端镜像专用）。
+     * <p>
+     * 三条口径：① 解不出的记录<b>整条丢弃</b>，不炸面板（与 {@code NekoPocketPanel#parseGhostBlob}
+     * 同一条"外来/陈旧串不许成为崩溃源"）；② 槽号越出该区域白名单即丢（位表读口拿不到 = 那格无属性，
+     * 与没配过等效）；③ 一个字节都不写进 {@code target} 的<b>载荷表</b> ⇒ 本方法与 ghost blob 的
+     * 解码互不影响，两根通道各自只写自己那半（★这就是"不把属性层焊回 blob"的兑现点）。
+     *
+     * @return 成功落进位表的条目数（= 本端解析到的条数，与 ghost 的 {@code ghostSyncedCount} 同一族读数）
+     */
+    public static int applyFlagsBlob(String blob, PocketFilterConfig target) {
+        if (target == null) {
+            return 0;
+        }
+        target.clearFlags();
+        if (blob == null || blob.isEmpty()) {
+            return 0;
+        }
+        int applied = 0;
+        for (String record : blob.split(String.valueOf(FLAG_RECORD_SEPARATOR))) {
+            final String[] parts = record.split(java.util.regex.Pattern.quote(String.valueOf(FLAG_FIELD_SEPARATOR)), 4);
+            if (parts.length != 4) {
+                continue;
+            }
+            final PocketFilterConfig.Kind kind = kindOf(parts[0]);
+            if (kind == null) {
+                continue;
+            }
+            final int slot;
+            final int attr;
+            final int blocked;
+            try {
+                slot = Integer.parseInt(parts[1]);
+                attr = PocketConstants.normalizeGhostAttr(Integer.parseInt(parts[2]));
+                blocked = Integer.parseInt(parts[3]);
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            if (!PocketFilterConfig.isAllowedSlotIndex(kind, slot)) {
+                continue;
+            }
+            target.setAttr(kind, slot, attr);
+            target.setUploadBlocked(kind, slot, blocked != 0);
+            applied++;
+        }
+        return applied;
+    }
+
+    /**
+     * ★R91-⑤ 的 {@code FLG} 支本体（服务端唯一迁移点）：把手势字母作用到该格当前的 attr / P 上。
+     * <p>
+     * 五条纪律：
+     * <ol>
+     * <li>区域字母不认识 / 槽号越出白名单 / 手势字母不在白名单 ⇒ {@link Outcome#REJECTED}；</li>
+     * <li>迁移后与迁移前<b>完全相同</b> ⇒ {@link Outcome#UNCHANGED}（★不写档、不刷虚化，与 SET/CLR
+     * 的同一条脏标记纪律）；</li>
+     * <li>★<b>attr 换到 {@code NONE} 时随解绑一起撤载荷</b>（撤销 = 回到"普通格"，留一条载荷就是
+     * 玩家眼里的"我没清掉的需求"）；attr <b>换档</b>（BIND↔MEMORY）时<b>载荷不换</b>；</li>
+     * <li>{@code P} 支<b>永不</b>碰 attr、也永不碰载荷（正交位；"alt 右键的锁格子不携带内容"）；</li>
+     * <li>进入 BIND / MEMORY 且本格<b>还没有载荷</b>时，向 {@link PayloadSource} 要一次该格的真实内容
+     * ⇒ 有物就一次写全（attr + 载荷），空格就只挂状态（内容待 NEI 拖拽落成 = R91-b）。
+     * ★{@code payloads == null}（两参/三参旧形态）⇒ 跳过这一步，既有回归用例行为逐字不变。</li>
+     * </ol>
+     */
+    private static Decision applyFlag(int slotIndex, String letter, String gesture, PocketFilterConfig filters,
+        PocketEssenceStore essenceCells, PayloadSource payloads) {
+        final PocketFilterConfig.Kind kind = kindOf(letter);
+        if (kind == null || !PocketFilterConfig.isAllowedSlotIndex(kind, slotIndex) || !isKnownGesture(gesture)) {
+            return REJECT;
+        }
+        final int currentAttr = filters.attrAt(kind, slotIndex);
+        final boolean currentBlock = filters.uploadBlockedAt(kind, slotIndex);
+        final int nextAttr = isAttrGesture(gesture) ? nextAttr(currentAttr, gesture) : currentAttr;
+        final boolean nextBlock = nextUploadBlocked(currentBlock, gesture);
+        if (nextAttr == currentAttr && nextBlock == currentBlock) {
+            return new Decision(Outcome.UNCHANGED, kind, slotIndex);
+        }
+        if (isAttrGesture(gesture)) {
+            final boolean attrChanged = filters.setAttr(kind, slotIndex, nextAttr);
+            boolean payloadDropped = false;
+            if (nextAttr == PocketConstants.GHOST_ATTR_NONE) {
+                // 纪律 3：撤属性 = 这一格不再是"某条需求" ⇒ 载荷一起撤（P 位刻意保留，它有自己的手势）
+                payloadDropped = filters.removeAt(kind, slotIndex);
+            } else if (payloads != null && filters.at(kind, slotIndex) == null) {
+                // 纪律 5：格内有物 ⇒ 按该物记录（服务端读真实内容，★不让客户端把载荷抄一遍送上来）
+                attachExistingPayload(kind, slotIndex, filters, essenceCells, payloads);
+            }
+            if (!attrChanged && !payloadDropped && filters.at(kind, slotIndex) == null) {
+                // ★兜底读数：位表说"没变"且这一格既没载荷也没被撤掉什么 ⇒ UNCHANGED（不写档、不刷虚化）。
+                // 正常迁移路径在上面那条等值判断就返回了，走到这里只有"位表实现与真值表不一致"这一种可能
+                // ⇒ 这条分支是<b>防写歪</b>的，不是装饰（同 #applyCap 那条"写完再复核"的纪律）。
+                return new Decision(Outcome.UNCHANGED, kind, slotIndex);
+            }
+        } else {
+            filters.setUploadBlocked(kind, slotIndex, nextBlock);
+        }
+        return new Decision(Outcome.APPLIED, kind, slotIndex);
+    }
+
+    /**
+     * 把该格<b>现有内容</b>落成一条载荷声明（{@link #applyFlag} 纪律 5 的执行体）。
+     * <p>
+     * ★走 {@link #applySet} 而不是直接 {@code filters.add(...)}：载荷键的合法性、源质格的<b>归属对账</b>
+     * 与建档 {@code assignCell} 都只有一套判据（这里绕过去就是第二处真相）。解不出 / 不合法 ⇒
+     * 什么都不写（本格停在"只挂 attr、无载荷"的 pending 态，等 NEI 拖拽落成）。
+     */
+    private static void attachExistingPayload(PocketFilterConfig.Kind kind, int slotIndex, PocketFilterConfig filters,
+        PocketEssenceStore essenceCells, PayloadSource payloads) {
+        final String payloadKey;
+        try {
+            payloadKey = payloads.payloadKeyAt(kind, slotIndex);
+        } catch (RuntimeException ignored) {
+            // 内容读取要碰 ItemStack / 注册表，桩件与真实档都可能抛 ⇒ 属性已经落了，载荷这一次不要它
+            return;
+        }
+        if (payloadKey == null || payloadKey.isEmpty()) {
+            return;
+        }
+        // ★源质的载荷键要带 typeId，那是实机侧探针的读数 ⇒ 由 PayloadSource（服务端实现）整键给出，
+        // 本类不猜通道 id；给不出合法键就停在"只挂 attr、无载荷"的 pending 态。
+        // ★★连 essenceCells 一起交给 applySet：源质声明必须与<b>格位归属对账</b>（R90 E3 D3 的那道门），
+        // 从 FLG 支进来也不例外 —— 绕过它就是"属性顺手写了一条不属于本格的声明"。
+        applySet(slotIndex, payloadKey, filters, essenceCells);
     }
 
     /** ★CLR：三段齐（第三段是区域字母）才动；越界或字母不认识一律拒收。 */

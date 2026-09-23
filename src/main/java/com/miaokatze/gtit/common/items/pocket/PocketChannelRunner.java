@@ -269,6 +269,15 @@ public final class PocketChannelRunner {
             }
             report.pairsServed++;
             for (PocketFilterConfig.Filter filter : filters.filters()) {
+                // ★★<b>R91-⑤：补货行为只认 BIND</b>——本格若被 alt+左 挂上<b>记忆 L</b>，它就是一条
+                // 纯过滤规则（"这格只能放那一种东西"），★<b>不产生任何 AE 拉取行为</b>（用户原话）。
+                // 判据单源在 PocketFilterConfig#pullsFromCell（NONE=隐式 BIND 与 BIND 都拉 ⇒ 需求 4 的
+                // 既有拖拽建档语义一字不回退；只有 MEMORY 不拉）。
+                // ★写在本方法（且只在这一处）的理由：这里同时拿得到 kind 与 slotIndex ——
+                // 换到 PocketAeChannelOps#extract 里就要把两张表都传下去，写进 Report 统计又是第二处真相。
+                if (!filters.pullsFromCell(filter.kind(), filter.slotIndex())) {
+                    continue;
+                }
                 final PocketChannelOps.Outcome outcome = ops.extract(filter, diskuuid, amountPerFilter);
                 if (outcome == null) {
                     continue;

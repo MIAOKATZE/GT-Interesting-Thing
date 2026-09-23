@@ -325,6 +325,21 @@ public class NekoPocketModelTest {
         cases.put(
             "phial_self_materialization_revoked_pairwise",
             NekoPocketModelTest::phialSelfMaterializationRevokedPairwise);
+        // ---- ★R91-C（S3）格子三属性与手势重排（R91-⑤⑥⑧b + R91-b/e）----
+        cases.put("ghost_attr_migration_truth_table", NekoPocketModelTest::ghostAttrMigrationTruthTable);
+        cases.put("ghost_flag_request_grammar_and_rejects", NekoPocketModelTest::ghostFlagRequestGrammarAndRejects);
+        cases.put("ghost_flag_empty_cell_enters_state_only", NekoPocketModelTest::ghostFlagEmptyCellEntersStateOnly);
+        cases.put("ghost_flag_payload_from_server_truth", NekoPocketModelTest::ghostFlagPayloadFromServerTruth);
+        cases.put("ghost_flags_persistence_pairwise", NekoPocketModelTest::ghostFlagsPersistencePairwise);
+        cases.put("ghost_flags_blob_roundtrip", NekoPocketModelTest::ghostFlagsBlobRoundTrip);
+        cases.put(
+            "ghost_badge_readouts_are_empty_when_not_applicable",
+            NekoPocketModelTest::ghostBadgeReadoutsAreEmptyWhenNotApplicable);
+        cases.put("ghost_drag_dispatch_by_attr_four_rows", NekoPocketModelTest::ghostDragDispatchByAttrFourRows);
+        cases.put("ghost_memory_never_pulls_others_do", NekoPocketModelTest::ghostMemoryNeverPullsOthersDo);
+        cases.put("essence_intake_memory_gate_states", NekoPocketModelTest::essenceIntakeMemoryGateStates);
+        cases.put("ghost_three_widgets_gestures_wired", NekoPocketModelTest::ghostThreeWidgetsGesturesWired);
+        cases.put("essence_out_shift_bit_is_carried", NekoPocketModelTest::essenceOutShiftBitIsCarried);
         // ---- ★R90 E3/E4（批 2 测试落地）：S3/S5 预筛真值表 + 格→瓶取出守卫 + ghost 建档归属对账 + S6 流体决策核
         // （世界站适配器 PocketWorldFluidTap 与 ItemNekoDimensionPocket.onItemUseFirst 的实机手势属
         // in-game-checklist 项，本套件只钉决策核与口袋侧纯 JVM 面）
@@ -5669,20 +5684,27 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(1, 7, false), "手里有瓶但该格只有 7 点 ⇒ 0 支（凑不满一瓶一支都不给）");
         SimpleAssert.eq(1, PocketEssenceIntake.phialsToFill(1, 8, false), "恰好一瓶 ⇒ 1 支");
         SimpleAssert.eq(1, PocketEssenceIntake.phialsToFill(1, 20, false), "★游标只有 1 只 ⇒ 只灌 1 支（消耗 1 只空瓶）");
-        SimpleAssert.eq(2, PocketEssenceIntake.phialsToFill(3, 20, false), "3 只瓶 + 20 点 ⇒ 2 支（整瓶判据卡在瓶数之前，余 4 点留盘）");
+        // ★★<b>R91-e 翻案</b>（原两行按 S2 的"一次点把整叠灌满"写法）：左键 = <b>消耗 1 只空瓶、装 1 只</b>，
+        // shift 才走"既有单动作上限"。手持 3 只 + 20 点 ⇒ 过去 2 支，现在 <b>1</b> 支（余 12 点留盘）。
+        SimpleAssert.eq(1, PocketEssenceIntake.phialsToFill(3, 20, false), "★R91-e：3 只瓶 + 20 点 + 非 Shift ⇒ 只 1 支");
+        SimpleAssert
+            .eq(1, PocketEssenceIntake.phialsToFill(16, 200, false), "★R91-e：一叠 16 只 + 200 点 + 非 Shift ⇒ 仍 1 支");
         SimpleAssert.eq(
             PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION,
-            PocketEssenceIntake.phialsToFill(64, 200, false),
-            "★非 Shift 的一次动作上界仍是 ESSENCE_OUT_MAX_PHIALS_PER_ACTION（派生常量，不留字面量）");
-        SimpleAssert.eq(25, PocketEssenceIntake.phialsToFill(64, 200, true), "Shift = 该格整份 ⇒ 200/8 = 25 支");
+            PocketEssenceIntake.phialsToFill(64, 200, true),
+            "★R91-e：Shift = <b>既有单动作上限</b> ESSENCE_OUT_MAX_POINTS_PER_ACTION（= 8 只，派生常量不留字面量）");
         SimpleAssert.eq(2, PocketEssenceIntake.phialsToFill(2, 200, true), "★Shift 也被游标瓶数夹住 ⇒ 2 支（多出来的点留在盘里）");
         SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(4, 0, true), "该格 0 点 ⇒ 0 支（声明保格的现役空态）");
         SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(4, -8, false), "★负存量 ⇒ 0 支（不造负扣点）");
         // ---- ③ 留盘余数读数与取整算式同源（partial_leftover 回执的那第二个数）----
-        SimpleAssert.eq(4, PocketEssenceIntake.leftoverOnFloor(20, false), "20 点 ⇒ 留 4 点（与 phialsToFill 同一条 floor）");
+        // ★★<b>R91-e 翻案</b>：留盘余数是"本次<b>请求量</b>里没成瓶的那一截"，而请求量本身按 shift 二分
+        // （左键 = 1 只 = 8 点 ⇒ 20 点里请求的 8 点整瓶、留 0；剩下 12 点根本没进本次请求，也就无所谓"余数"）。
+        SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(20, false), "★R91-e：左键请求 8 点（整瓶）⇒ 本档留 0");
         SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(8, false), "整瓶 ⇒ 留 0");
         SimpleAssert.eq(7, PocketEssenceIntake.leftoverOnFloor(7, false), "不足一瓶 ⇒ 全部留盘（not_enough_phial 的读数）");
-        SimpleAssert.eq(3, PocketEssenceIntake.leftoverOnFloor(203, true), "Shift 整份 ⇒ 203 % 8 = 3");
+        SimpleAssert.eq(3, PocketEssenceIntake.leftoverOnFloor(59, true), "★Shift 请求 min(59,64)=59 点 ⇒ 59−56=3 点留盘");
+        SimpleAssert
+            .eq(0, PocketEssenceIntake.leftoverOnFloor(203, true), "★Shift 顶到 64 上界（整瓶）⇒ 本档留 0（余下的 139 点根本没进本次请求）");
         SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(200, false), "非 Shift 请求 64 点（整瓶）⇒ 本档不报余数");
         SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(0, true), "0 点 ⇒ 0（不是负数）");
         SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(-5, false), "★负数入参 ⇒ 0（污染不了回执）");
@@ -5872,6 +5894,1494 @@ public class NekoPocketModelTest {
             countMainJavaCodeLinesMatching("refundsEmptyCarrier\\s*\\(\\s*gate\\.capacityOf"),
             "★唯一消费点在 PocketIntakeOps 体内（读 gate 的档位，不读物品类）");
         SimpleAssert.eq(0, countCodeLinesIn(handler, "refundsEmptyCarrier("), "★面板/handler 侧不问档位 ⇒ 分派表没有被抄第二份");
+    }
+
+    // ================================================================== ★R91-C（S3）格子三属性与手势重排
+    //
+    // 十二条分别钉住：① attr 迁移真值表与越界收口 ② FLG 文法与全部拒绝面 ③ 空格只进状态、不带载荷
+    // ④ 载荷取服务端真值（PayloadSource 注入）⑤ 位表持久化成对（旧形状消失 + 新形状在场）
+    // ⑥ S2C 属性 blob 往返 ⑦ 角标"不适用即为空"（★本仓通则：javadoc 声称不绘制必须有此钉）
+    // ⑧ NEI 拖拽四行分派表 ⑨ MEMORY 不产生任何 AE 拉取 ⑩ L 的入槽执法档位
+    // ⑪ 三组格件 × 三手势逐个接线 ⑫ R91-e 的 shift 位真的传到。
+    // 共同点：判定面纯 JVM 可达（PocketConstants / PocketFilterConfig / PocketGhostRequest /
+    // PocketEssenceIntake 都是零依赖件）；三个 widget 与 NekoPocketPanel 不可在纯 JVM 构造
+    // （私有构造器 + MUI2 宿主）⇒ 手势与接线半边一律走"源码机检 + 同一条扫描面的正控"，
+    // 与 R91-B 段同形。★读不到仓库根一律打 [NOTE] 按【未验】处理，不算通过。
+
+    /** ★R91-C：{@code FLG} 支"格内有物 ⇒ 按该物记录"的注入桩件（可记被问次数、可返回外来键、可抛）。 */
+    private static final class RecordingPayloads implements PocketGhostRequest.PayloadSource {
+
+        String key;
+        int queries;
+        boolean hostile;
+        PocketFilterConfig.Kind lastKind;
+        int lastSlot = PocketConstants.FILTER_SLOT_UNSET;
+
+        RecordingPayloads(String key) {
+            this.key = key;
+        }
+
+        @Override
+        public String payloadKeyAt(PocketFilterConfig.Kind kind, int slotIndex) {
+            queries++;
+            lastKind = kind;
+            lastSlot = slotIndex;
+            if (hostile) {
+                throw new IllegalStateException("模拟真实内容读取抛（注册表缺席 / 栈已被改）");
+            }
+            return key;
+        }
+    }
+
+    /** ★R91-C：源质记忆闸的桩件（★判据必须可注入，否则零依赖套件只能拿恒不拦的假绿 = R59b 同族陷阱）。 */
+    private static final class StubMemoryGate implements PocketEssenceIntake.MemoryGate {
+
+        final List<String> seen = new ArrayList<>();
+        boolean locked;
+
+        @Override
+        public boolean isMemoryLockedOtherThan(String tag) {
+            seen.add(tag);
+            return locked;
+        }
+    }
+
+    /**
+     * 整份源码是否命中给定正则（★先把行拼回一段文本：spotless 会把一条语句折成几行，
+     * 逐行匹配会把判据打成假阴，与 {@code verify-pocket.sh} 里 {@code [[:space:]]*\(} 型宽松匹配同一条理由）。
+     */
+    private static boolean textMatches(java.util.List<String> lines, String regex) {
+        final StringBuilder builder = new StringBuilder();
+        for (String line : lines) {
+            builder.append(line)
+                .append('\n');
+        }
+        return java.util.regex.Pattern.compile(regex)
+            .matcher(builder)
+            .find();
+    }
+
+    /** 读 gui/pocket 下一个文件的源码行；读不到返回 {@code null}（调用方必须按【未验】处理）。 */
+    private static java.util.List<String> guiPocketSource(String fileName) {
+        return sourceLinesOrNull("src/main/java/com/miaokatze/gtit/gui/pocket/" + fileName);
+    }
+
+    /** ★R91-C 共用：三组格件文件名（一条判据在三份源码上各跑一遍，★不三份复制粘贴判据文本）。 */
+    private static String[] ghostWidgetFiles() {
+        return new String[] { "NekoFilterSlot.java", "NekoPocketFluidSlot.java", "NekoEssenceGhostCell.java" };
+    }
+
+    /**
+     * ★R91-⑤ 的属性迁移真值表 + attr 越界收口（★一格只可能有一个 attr；同格重复同手势 = 撤销）。
+     * <p>
+     * 期望值<b>逐格写死</b>，★不写成"再算一遍 nextAttr"的算式 —— 那等于用实现验实现，真值表被改错
+     * 方向时两边一起错（本仓 R85"判据与实现同源即假绿"的同族）。越界入参必须先归一再迁移，
+     * 否则伪造包能把一格推成第四种属性。
+     */
+    private static void ghostAttrMigrationTruthTable() {
+        final int none = PocketConstants.GHOST_ATTR_NONE;
+        final int bind = PocketConstants.GHOST_ATTR_BIND;
+        final int memory = PocketConstants.GHOST_ATTR_MEMORY;
+        final String gBind = PocketConstants.GHOST_FLAG_BIND;
+        final String gMemory = PocketConstants.GHOST_FLAG_MEMORY;
+        final String gBlock = PocketConstants.GHOST_FLAG_UPLOAD_BLOCK;
+        // ---- ① normalizeGhostAttr：三档原样；越界（含负数、大数、边界外一格）一律回落 NONE ----
+        SimpleAssert.eq(none, PocketConstants.normalizeGhostAttr(none), "NONE 原样");
+        SimpleAssert.eq(bind, PocketConstants.normalizeGhostAttr(bind), "BIND 原样");
+        SimpleAssert.eq(memory, PocketConstants.normalizeGhostAttr(memory), "MEMORY 原样");
+        SimpleAssert.eq(2, memory, "★值域上界就是 MEMORY（动上界必须同时动这条与下面那条循环）");
+        SimpleAssert.eq(memory, PocketConstants.GHOST_ATTR_MAX, "GHOST_ATTR_MAX 与最大合法档同值（单源，不留第二个 2）");
+        for (int raw : new int[] { -1, -8, Integer.MIN_VALUE, 3, 4, 99, Integer.MAX_VALUE }) {
+            SimpleAssert.eq(none, PocketConstants.normalizeGhostAttr(raw), "★越界必须回落 NONE（不钳到「最近的一档」）：" + raw);
+        }
+        // ---- ② nextAttr 的 3×2 全表（行 = 当前 attr，列 = 手势）----
+        // 中键 B：NONE→BIND（挂上）/ BIND→NONE（★重复同手势 = 撤销）/ MEMORY→BIND（互斥换档，不是并存）
+        SimpleAssert.eq(bind, PocketGhostRequest.nextAttr(none, gBind), "NONE + 中键 ⇒ BIND");
+        SimpleAssert.eq(none, PocketGhostRequest.nextAttr(bind, gBind), "★BIND + 中键 ⇒ NONE（同格重复同手势 = 撤销）");
+        SimpleAssert.eq(bind, PocketGhostRequest.nextAttr(memory, gBind), "★MEMORY + 中键 ⇒ BIND（互斥单值：换档）");
+        // alt+左 M：NONE→MEMORY / BIND→MEMORY（★换档， attr 不会变成两个）/ MEMORY→NONE
+        SimpleAssert.eq(memory, PocketGhostRequest.nextAttr(none, gMemory), "NONE + alt+左 ⇒ MEMORY");
+        SimpleAssert.eq(memory, PocketGhostRequest.nextAttr(bind, gMemory), "★BIND + alt+左 ⇒ MEMORY（换档）");
+        SimpleAssert.eq(none, PocketGhostRequest.nextAttr(memory, gMemory), "★MEMORY + alt+左 ⇒ NONE（撤销）");
+        // ---- ③ ★attr 与 P 正交：P 手势永不改 attr，B/M 手势永不改 P ----
+        for (int cur : new int[] { none, bind, memory }) {
+            SimpleAssert.eq(cur, PocketGhostRequest.nextAttr(cur, gBlock), "★P 手势不改 attr（正交位）：" + cur);
+            SimpleAssert.eq(cur, PocketGhostRequest.nextAttr(cur, "Z"), "不认得的手势 ⇒ 原值返回，★不猜：" + cur);
+            SimpleAssert.eq(cur, PocketGhostRequest.nextAttr(cur, ""), "空手势 ⇒ 原值返回：" + cur);
+            SimpleAssert.eq(cur, PocketGhostRequest.nextAttr(cur, null), "null 手势 ⇒ 原值返回：" + cur);
+            // 越界入参先归一再迁移 ⇒ 一格不会被伪造包推成第四档
+            SimpleAssert.eq(bind, PocketGhostRequest.nextAttr(7, gBind), "越界 7 先归一成 NONE 再挂 BIND");
+            SimpleAssert.eq(bind, PocketGhostRequest.nextAttr(-3, gBind), "★负数先归一成 NONE ⇒ 中键挂上 BIND（不得停在负数档）");
+            SimpleAssert.eq(memory, PocketGhostRequest.nextAttr(-3, gMemory), "负数归一后 alt+左 ⇒ MEMORY");
+        }
+        SimpleAssert.eq(
+            memory,
+            PocketGhostRequest.nextAttr(PocketConstants.GHOST_ATTR_MAX + 1, gMemory),
+            "★越界 3 归一成 NONE ⇒ MEMORY 手势挂上 MEMORY（越界不得造出第四档，也不得被当成 MEMORY 而撤销）");
+        // ---- ④ nextUploadBlocked：只有 P 翻转，且与 attr 无关 ----
+        SimpleAssert.eq(Boolean.TRUE, PocketGhostRequest.nextUploadBlocked(false, gBlock), "off + alt+右 ⇒ on");
+        SimpleAssert
+            .eq(Boolean.FALSE, PocketGhostRequest.nextUploadBlocked(true, gBlock), "on + alt+右 ⇒ off（★翻转不是「只挂不撤」）");
+        for (String gesture : new String[] { gBind, gMemory, "Z", "", null }) {
+            SimpleAssert
+                .eq(Boolean.TRUE, PocketGhostRequest.nextUploadBlocked(true, gesture), "非 P 手势保持原值 true：" + gesture);
+            SimpleAssert
+                .eq(Boolean.FALSE, PocketGhostRequest.nextUploadBlocked(false, gesture), "非 P 手势保持原值 false：" + gesture);
+        }
+        // ---- ⑤ 手势白名单（★伪造包在这一步被拒，applyFlag 用它）----
+        SimpleAssert.that(PocketGhostRequest.isAttrGesture(gBind), "B 是 attr 手势");
+        SimpleAssert.that(PocketGhostRequest.isAttrGesture(gMemory), "M 是 attr 手势");
+        SimpleAssert.eq(Boolean.FALSE, PocketGhostRequest.isAttrGesture(gBlock), "★P 不是 attr 手势（否则它会顺手改 attr）");
+        SimpleAssert.that(PocketGhostRequest.isKnownGesture(gBlock), "P 在文法白名单内");
+        SimpleAssert.eq(Boolean.FALSE, PocketGhostRequest.isKnownGesture("Z"), "Z 不在白名单（伪造包）");
+        SimpleAssert.eq(Boolean.FALSE, PocketGhostRequest.isKnownGesture("b"), "★大小写敏感：小写 b 不是 BIND（不得宽松匹配）");
+        SimpleAssert.eq(Boolean.FALSE, PocketGhostRequest.isKnownGesture(null), "null 不在白名单");
+        // ---- ⑥ 位表读写口：同值返 false（⇒ 调用方不写档、不刷虚化）、撤属性真的删条目 ----
+        final PocketFilterConfig cfg = new PocketFilterConfig();
+        SimpleAssert.that(cfg.hasNoFlags(), "新表一个属性都没有（⇒ 不落第四枚列表、blob 是空串）");
+        SimpleAssert.eq(0, cfg.flagEntryCount(), "空表条目数 0");
+        SimpleAssert.eq(none, cfg.attrAt(Kind.ITEM, 0), "★缺条目 = NONE（不是「未初始化」的第三种读数）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.uploadBlockedAt(Kind.ITEM, 0), "缺条目 = 不拦上传");
+        SimpleAssert.that(cfg.setAttr(Kind.ITEM, 0, bind), "NONE→BIND 是改变 ⇒ true");
+        SimpleAssert.eq(Boolean.FALSE, cfg.setAttr(Kind.ITEM, 0, bind), "★同值再挂 ⇒ false（同值即不写档的读口前提）");
+        SimpleAssert.eq(bind, cfg.attrAt(Kind.ITEM, 0), "读回 BIND");
+        SimpleAssert.that(cfg.setAttr(Kind.ITEM, 0, none), "撤属性 ⇒ true");
+        SimpleAssert.eq(0, cfg.flagEntryCount(), "★撤完条目真的消失（remove 语义，不是留一条 NONE 占位）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.setAttr(Kind.ITEM, 0, none), "本来就没有属性 ⇒ false（★不得把「撤一个不存在的东西」报成改变）");
+        SimpleAssert.that(cfg.setAttr(Kind.FLUID, 0, memory), "★同索引不同区域互不覆盖（中栏第 0 格 ≠ 流体第 0 列）");
+        SimpleAssert.eq(none, cfg.attrAt(Kind.ITEM, 0), "★流体列的属性不渗进中栏第 0 格");
+        SimpleAssert.eq(memory, cfg.attrAt(Kind.FLUID, 0), "流体第 0 列读回 MEMORY");
+        SimpleAssert.eq(Boolean.FALSE, cfg.setAttr(null, 0, bind), "★null 区域 ⇒ 拒绝写入（返回 false，不炸）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.setAttr(Kind.ITEM, -1, bind), "负槽号 ⇒ 拒绝写入");
+        SimpleAssert.eq(Boolean.FALSE, cfg.setUploadBlocked(null, 3, true), "★P 支同样拒 null");
+        SimpleAssert.eq(Boolean.FALSE, cfg.setUploadBlocked(Kind.ESSENCE, -2, true), "★P 支同样拒负号");
+        // ---- ⑦ 并集计数与插入序快照（★blob 的编码源）----
+        cfg.setAttr(Kind.ITEM, 5, bind);
+        cfg.setUploadBlocked(Kind.ITEM, 5, true);
+        cfg.setUploadBlocked(Kind.ESSENCE, 7, true);
+        SimpleAssert.eq(3, cfg.flagEntryCount(), "attr 与 P 的【并集】：同格两attr算一条 + 只有 P 的一格算一条");
+        SimpleAssert.that(!cfg.hasNoFlags(), "挂了属性 ⇒ hasNoFlags 为假（★写档侧「只在真有条目时才挂列表」的前提）");
+        final List<PocketFilterConfig.FlagRecord> records = cfg.flagRecords();
+        SimpleAssert.eq(3, records.size(), "快照条数 = 并集条数");
+        PocketFilterConfig.FlagRecord both = null;
+        for (PocketFilterConfig.FlagRecord record : records) {
+            if (record.kind == Kind.ITEM && record.slotIndex == 5) {
+                both = record;
+            }
+        }
+        SimpleAssert.that(both != null, "同时挂 attr 与 P 的那格必须在快照里");
+        SimpleAssert.eq(bind, both.attr, "★一格两个属性（attr=BIND + P）是合法形状，快照不得丢任何一个");
+        SimpleAssert.eq(Boolean.TRUE, both.uploadBlocked, "同上：P 也要读到");
+        SimpleAssert
+            .eq(none, new PocketFilterConfig.FlagRecord(Kind.ITEM, 1, 9, false).attr, "★值对象自己也归一越界 attr（blob/档两条路都过它）");
+    }
+
+    /**
+     * ★R91-⑥ 的 C2S 文法与<b>全部</b>拒绝面。
+     * <p>
+     * 三条纪律各一半：① 式样（恰 4 段、区域字母、手势字母）；② 越界（负号与三区各自白名单上界）；
+     * ③ ★段数本身就是判据 —— FLG 与 CAP 同为 4 段，因此 {@code split(…,4)} 一个字都不必改；
+     * 这里同时钉"CAP 少一段也红"，防止有人为了放行 FLG 而放宽那条共享判据。
+     */
+    private static void ghostFlagRequestGrammarAndRejects() {
+        final String gBind = PocketConstants.GHOST_FLAG_BIND;
+        final String gMemory = PocketConstants.GHOST_FLAG_MEMORY;
+        final String gBlock = PocketConstants.GHOST_FLAG_UPLOAD_BLOCK;
+        // ---- ① 拼装式样：三区域字母 × 三手势，逐字符钉死 ----
+        SimpleAssert.eq("FLG|5|I|B", PocketGhostRequest.flagRequest(5, Kind.ITEM, gBind), "中栏第 5 格挂 BIND 的字面式样");
+        SimpleAssert.eq("FLG|0|F|M", PocketGhostRequest.flagRequest(0, Kind.FLUID, gMemory), "流体第 0 列挂 MEMORY");
+        SimpleAssert.eq("FLG|71|E|P", PocketGhostRequest.flagRequest(71, Kind.ESSENCE, gBlock), "源质第 71 格翻 P");
+        SimpleAssert
+            .eq("FLG|-1|I|B", PocketGhostRequest.flagRequest(-1, Kind.ITEM, gBind), "★拼装口不校验槽号（校验在服务端一次做完 = 单点）");
+        SimpleAssert.eq(
+            4,
+            PocketGhostRequest.flagRequest(5, Kind.ITEM, gBind)
+                .split("\\|").length,
+            "★恰 4 段（与 CAP 同形）");
+        // ---- ② 三种合法手势都被服务端认下，且各自改到对的那一位 ----
+        final PocketFilterConfig ok = new PocketFilterConfig();
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.flagRequest(3, Kind.ITEM, gBind), ok).outcome,
+            "B 合法 ⇒ APPLIED");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, ok.attrAt(Kind.ITEM, 3), "B 落的是 attr");
+        SimpleAssert.eq(Boolean.FALSE, ok.uploadBlockedAt(Kind.ITEM, 3), "★B 手势不得同时改 P");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.flagRequest(3, Kind.ITEM, gMemory), ok).outcome,
+            "M 合法 ⇒ APPLIED");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, ok.attrAt(Kind.ITEM, 3), "M 换档成功（★互斥单值不是叠加）");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.flagRequest(3, Kind.ITEM, gBlock), ok).outcome,
+            "P 合法 ⇒ APPLIED");
+        SimpleAssert.that(ok.uploadBlockedAt(Kind.ITEM, 3), "P 落的是正交位");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, ok.attrAt(Kind.ITEM, 3), "★P 手势不得动 attr（MEMORY 还在）");
+        // ---- ③ 拒绝面穷举（★伪造包 / 半截包 / 越界 / 陌生字母一个都不许放行）----
+        final PocketFilterConfig strict = new PocketFilterConfig();
+        for (String bad : new String[] { "FLG|3|I", // 只有 3 段
+            "FLG|3|I|B|X", // 5 段（第 5 段被 split(…,4) 并进手势位 ⇒ 手势不认得）
+            "FLG|3|I|Z", // 陌生手势
+            "FLG|3|I|b", // 小写手势
+            "FLG|3|I|", // 空手势
+            "FLG|3|I|1", // 手势位填数字
+            "FLG|3|X|B", // 陌生区域字母
+            "FLG|3|i|B", // 小写区域字母
+            "FLG|3||B", // 缺区域字母
+            "FLG||I|B", // 缺槽号
+            "FLG|abc|I|B", // 槽号不是数字
+            "FLG|135|I|B", // 中栏越界（上界 = 135 ⇒ 135 本身非法）
+            "FLG|36|F|B", // 流体列越界
+            "FLG|72|E|B", // 源质格越界
+            "FLG|-1|I|B", // 负槽号
+            "FLG", "FLG|", "", "ZZZ|3|I|B", "SET|3|i:1:0:|FLG|3|I|B" }) {
+            SimpleAssert
+                .eq(PocketGhostRequest.Outcome.REJECTED, PocketGhostRequest.apply(bad, strict).outcome, "★必须拒收：" + bad);
+        }
+        SimpleAssert
+            .eq(PocketGhostRequest.Outcome.REJECTED, PocketGhostRequest.apply(null, strict).outcome, "null 包 ⇒ 拒");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("FLG|3|I|B", null).outcome,
+            "★配置表为 null ⇒ 拒（不得 NPE）");
+        SimpleAssert.eq(0, strict.flagEntryCount(), "★上面一整批被拒之后位表一个字都没写（拒收 = 零副作用）");
+        // ---- ④ 段数判据是共享的：CAP 少一段也红（防"为放行 FLG 而放宽 split"）----
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("CAP|3|I", strict).outcome,
+            "★CAP 三段仍被拒 ⇒ 那条 split(…,4) 没有被为了 FLG 而放宽");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.REJECTED,
+            PocketGhostRequest.apply("CAP|3|I|1600", strict).outcome,
+            "CAP 四段但 cap 非整数 ⇒ 拒（★同一条槽位/cap 判据没被 FLG 顺带动坏）");
+        // ---- ⑤ 同一格反复同一手势：撤销 → 再挂，两次都是 APPLIED（★不得 UNCHANGED 也不得 REJECTED）----
+        final PocketFilterConfig loop = new PocketFilterConfig();
+        final PocketGhostRequest.Decision first = PocketGhostRequest
+            .apply(PocketGhostRequest.flagRequest(9, Kind.ITEM, gBind), loop);
+        final PocketGhostRequest.Decision second = PocketGhostRequest
+            .apply(PocketGhostRequest.flagRequest(9, Kind.ITEM, gBind), loop);
+        SimpleAssert.eq(PocketGhostRequest.Outcome.APPLIED, first.outcome, "第一次挂 ⇒ APPLIED");
+        SimpleAssert.eq(PocketGhostRequest.Outcome.APPLIED, second.outcome, "★第二次（撤销）也是 APPLIED：撤销不是「没变化」");
+        SimpleAssert.eq(Kind.ITEM, second.kind, "Decision 带回区域（面板据此刷那一格的虚化）");
+        SimpleAssert.eq(9, second.slotIndex, "Decision 带回槽号");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, loop.attrAt(Kind.ITEM, 9), "两次之后回到 NONE");
+        SimpleAssert.eq(0, loop.flagEntryCount(), "★撤干净 ⇒ 条目数为 0 ⇒ 写档侧回到旧形状（成对门禁的另一半）");
+        // ---- ⑥ P 连按两次回到原值（★翻转不是"只挂不撤"的读数复述）----
+        final PocketFilterConfig flip = new PocketFilterConfig();
+        PocketGhostRequest.apply(PocketGhostRequest.flagRequest(2, Kind.FLUID, gBlock), flip);
+        SimpleAssert.that(flip.uploadBlockedAt(Kind.FLUID, 2), "第一次 ⇒ on");
+        PocketGhostRequest.apply(PocketGhostRequest.flagRequest(2, Kind.FLUID, gBlock), flip);
+        SimpleAssert.eq(Boolean.FALSE, flip.uploadBlockedAt(Kind.FLUID, 2), "第二次 ⇒ off");
+        SimpleAssert.eq(0, flip.flagEntryCount(), "★off 之后不留条目（否则 P 撤了还在写档）");
+        // ---- ⑦ 三条 C2S 出口共用一条通道（★零新动作码、零新同步键的静态面）----
+        final java.util.List<String> panel = guiPocketSource("NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒「FLG 复用 SYNC_GHOST_REQUEST」的接线半边【未验】（★不是通过）");
+        } else {
+            final int start = methodStart(
+                panel,
+                "boolean requestGhostFlag(PocketFilterConfig.Kind kind, int slotIndex, String gesture) {");
+            SimpleAssert.that(start >= 0, "★面板必须有一条三组格件共用的属性请求出口");
+            final int end = methodEnd(panel, start);
+            SimpleAssert.that(
+                regionContainsCode(panel, start, end, "sendGhostRequest(PocketGhostRequest.flagRequest("),
+                "出口只发请求，★本地一个字节都不改");
+            SimpleAssert.that(
+                regionContainsCode(panel, start, end, "isAllowedSlotIndex("),
+                "★越界槽号在客户端就早退（与三组格件的 slotIndex<0 早退同形）");
+            SimpleAssert.eq(0, countRegionCode(panel, start, end, "setAttr("), "★客户端不得自己迁移 attr（第二处真相）");
+        }
+    }
+
+    /**
+     * ★★R91-b 的核心承诺：<b>空格也能进属性状态</b>，而且进状态时<b>不带任何载荷</b>。
+     * <p>
+     * 用户原话"没东西则进入这个状态，然后 NEI 再拖动时记录为对应的状态"——前半句就是这条：
+     * 三条区域 × 两个 attr 手势各钉一遍（attr 进位表、载荷表零增长、遮罩在场）；后半句由
+     * {@link #ghostDragDispatchByAttrFourRows()} 钉。★另钉 P 在空格上<b>不遮罩</b>（用户口径：
+     * P 不携带内容，观感只是角标），以及旧三参形态（{@code payloads == null}）行为逐字不变。
+     */
+    private static void ghostFlagEmptyCellEntersStateOnly() {
+        final int bind = PocketConstants.GHOST_ATTR_BIND;
+        final int memory = PocketConstants.GHOST_ATTR_MEMORY;
+        // ---- ① 三区域 × 两手势：空格挂上去 ⇒ 位表多一条、载荷表一条都不多 ----
+        for (Kind kind : new Kind[] { Kind.ITEM, Kind.FLUID, Kind.ESSENCE }) {
+            for (int gesture = 0; gesture < 2; gesture++) {
+                final String letter = gesture == 0 ? PocketConstants.GHOST_FLAG_BIND
+                    : PocketConstants.GHOST_FLAG_MEMORY;
+                final int expected = gesture == 0 ? bind : memory;
+                final PocketFilterConfig cfg = new PocketFilterConfig();
+                final RecordingPayloads payloads = new RecordingPayloads("");
+                final PocketGhostRequest.Decision decision = PocketGhostRequest
+                    .apply(PocketGhostRequest.flagRequest(4, kind, letter), cfg, null, payloads);
+                SimpleAssert.eq(
+                    PocketGhostRequest.Outcome.APPLIED,
+                    decision.outcome,
+                    "★空格也能进属性状态（" + kind + '/' + letter + "）");
+                SimpleAssert.eq(expected, cfg.attrAt(kind, 4), "attr 落在「这一格」，区域不混（" + kind + "）");
+                SimpleAssert.eq(null, cfg.at(kind, 4), "★载荷表一个字都不多（无载荷的声明在本仓表达不了 ⇒ 才要位表）");
+                SimpleAssert.eq(0, cfg.size(), "★声明表条数仍是 0 ⇒ size() 不受属性影响（载荷表零增长）");
+                SimpleAssert.eq(1, cfg.flagEntryCount(), "位表条目恰 1");
+                SimpleAssert.eq(1, payloads.queries, "★只问一次载荷（一次手势一条请求，不是两条往返）");
+                SimpleAssert.eq(kind, payloads.lastKind, "问的是「被点的那一格所在区域」");
+                SimpleAssert.eq(4, payloads.lastSlot, "问的是「被点的那一格」");
+                SimpleAssert.that(
+                    PocketGhostRequest.drawsGhostMask(false, expected),
+                    "★pending 态（格内空 + 有 attr）必须虚化，观感与已建档一致（" + kind + '/' + letter + "）");
+                SimpleAssert.that(!cfg.uploadBlockedAt(kind, 4), "★attr 手势不得顺带挂 P（正交位）");
+            }
+        }
+        // ---- ② 旧三参形态（payloads == null）⇒ 同样只进状态，★既有回归用例行为逐字不变 ----
+        final PocketFilterConfig legacy = new PocketFilterConfig();
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(
+                PocketGhostRequest.flagRequest(0, Kind.ITEM, PocketConstants.GHOST_FLAG_BIND),
+                legacy,
+                null).outcome,
+            "三参形态：FLG 仍生效");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, legacy.attrAt(Kind.ITEM, 0), "attr 照落");
+        SimpleAssert.eq(null, legacy.at(Kind.ITEM, 0), "★载荷照旧为空（三参与四参在「格内空」这一档同行为）");
+        // ---- ③ ★P 在空格上只挂正交位：不挂 attr、【不遮罩】（用户口径原话）----
+        final PocketFilterConfig onlyP = new PocketFilterConfig();
+        final RecordingPayloads neverAsked = new RecordingPayloads("i:2621:0:");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(
+                PocketGhostRequest.flagRequest(6, Kind.ITEM, PocketConstants.GHOST_FLAG_UPLOAD_BLOCK),
+                onlyP,
+                null,
+                neverAsked).outcome,
+            "alt+右 在空格上合法");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, onlyP.attrAt(Kind.ITEM, 6), "★P 不携带内容 ⇒ attr 仍是 NONE");
+        SimpleAssert.that(onlyP.uploadBlockedAt(Kind.ITEM, 6), "P 位落了");
+        SimpleAssert.eq(0, neverAsked.queries, "★P 支【不问】载荷（问了就是「alt+右 也建档」，与裁定相反）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketGhostRequest.drawsGhostMask(false, PocketConstants.GHOST_ATTR_NONE),
+            "★只有 P 的格【不遮】（角标不是遮罩）");
+        SimpleAssert
+            .eq("", PocketGhostRequest.memoryBadgeText(onlyP.attrAt(Kind.ITEM, 6)), "★只有 P 的格不画蓝 L（attr 不适用 ⇒ 读空）");
+        SimpleAssert
+            .eq("P", PocketGhostRequest.uploadBlockBadgeText(onlyP.uploadBlockedAt(Kind.ITEM, 6)), "只有 P 的格画绿 P");
+        // ---- ④ pending 态的载荷表形状必须与"根本没有这一格"同形（★旧档零污染）----
+        final NBTTagCompound root = new NBTTagCompound();
+        onlyP.writeTo(root);
+        final NBTTagCompound domain = root.getCompoundTag(PocketConstants.FILTERS);
+        SimpleAssert.eq(
+            0,
+            domain.getTagList(PocketConstants.FILTER_ITEMS, 10)
+                .tagCount(),
+            "★中栏载荷列表仍是空的（只挂了 P）");
+        SimpleAssert.eq(
+            1,
+            domain.getTagList(PocketConstants.FILTER_FLAGS, 10)
+                .tagCount(),
+            "位表落了 1 条（只有 P）");
+    }
+
+    /**
+     * ★R91-⑤"格内有物 ⇒ 按该物记录"的<b>载荷取服务端真值</b>。
+     * <p>
+     * 四条必须分开：① 有物时一次写全（attr + 载荷）；② 已有载荷的格<b>不再问</b>也<b>不覆盖</b>
+     * （SET 的活儿 FLG 不抢）；③ 注入口给出解不出/不合法的键 ⇒ attr 照落、载荷停在 pending（★服务端不猜）；
+     * ④ 源质格必须走<b>归属对账</b>（R90 E3 D3 那道门），绕开它就是"属性顺手写了一条不属于本格的声明"。
+     * ★注入口抛异常也不许崩服务端（内容读取要碰 ItemStack 与注册表）。
+     */
+    private static void ghostFlagPayloadFromServerTruth() {
+        final String gBind = PocketConstants.GHOST_FLAG_BIND;
+        final String gMemory = PocketConstants.GHOST_FLAG_MEMORY;
+        // ---- ① 有物 ⇒ 一次手势写全 ----
+        final PocketFilterConfig cfg = new PocketFilterConfig();
+        final String itemKey = PocketFilterConfig.itemKey(2621, 7, "AAA");
+        final RecordingPayloads payloads = new RecordingPayloads(itemKey);
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.flagRequest(9, Kind.ITEM, gBind), cfg, null, payloads).outcome,
+            "中键 = 建档（旧 alt+左 的语义迁到这里）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, cfg.attrAt(Kind.ITEM, 9), "attr 落了");
+        SimpleAssert.that(cfg.at(Kind.ITEM, 9) != null, "★载荷也落了（用户原话「格内有物就按那个东西记」）");
+        SimpleAssert.eq(
+            itemKey,
+            cfg.at(Kind.ITEM, 9)
+                .key(),
+            "落的是注入口给的那一条键，★不是客户端抄上来的");
+        SimpleAssert.eq(1, payloads.queries, "问了一次");
+        // ---- ② 已有载荷 ⇒ 不再问、不覆盖 ----
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest
+                .apply(PocketGhostRequest.flagRequest(9, Kind.ITEM, gMemory), cfg, null, payloads).outcome,
+            "同格再挂 MEMORY ⇒ 换档");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, cfg.attrAt(Kind.ITEM, 9), "换档成功");
+        SimpleAssert.eq(
+            itemKey,
+            cfg.at(Kind.ITEM, 9)
+                .key(),
+            "★换档不动载荷");
+        SimpleAssert.eq(1, payloads.queries, "★本格已有载荷 ⇒ 一次都不再问（不覆盖玩家调过的东西）");
+        // ---- ③ 外来/解不出的键 ⇒ attr 照落，载荷停在 pending（★不猜）----
+        for (String junk : new String[] { "", null, "junk", "z:1", "i", "e:essentia", "x:1:2:AAA", "i:1:2:3|4" }) {
+            final PocketFilterConfig pending = new PocketFilterConfig();
+            final PocketGhostRequest.Decision decision = PocketGhostRequest.apply(
+                PocketGhostRequest.flagRequest(11, Kind.ITEM, gBind),
+                pending,
+                null,
+                new RecordingPayloads(junk));
+            SimpleAssert
+                .eq(PocketGhostRequest.Outcome.APPLIED, decision.outcome, "★键解不出也不能把属性手势本身弄成 REJECTED（" + junk + "）");
+            SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, pending.attrAt(Kind.ITEM, 11), "attr 落了（" + junk + "）");
+            SimpleAssert.eq(null, pending.at(Kind.ITEM, 11), "★载荷不落成 ⇒ 等 NEI 拖拽落成（" + junk + "）");
+        }
+        // ---- ④ ★注入口抛异常 ⇒ 属性已落、载荷这一次不要它（不得崩）----
+        final PocketFilterConfig boom = new PocketFilterConfig();
+        final RecordingPayloads hostile = new RecordingPayloads(itemKey);
+        hostile.hostile = true;
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.flagRequest(12, Kind.ITEM, gBind), boom, null, hostile).outcome,
+            "★注入口抛 ⇒ 仍然 APPLIED（内容读取碰注册表，桩件与真实档都可能抛）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, boom.attrAt(Kind.ITEM, 12), "属性已经落了，不因抛异常回退");
+        SimpleAssert.eq(null, boom.at(Kind.ITEM, 12), "载荷这一次不要它");
+        // ---- ⑤ 撤属性 ⇒ 载荷随解绑一起撤（★留一条载荷就是玩家眼里"我没清掉的需求"）----
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest
+                .apply(PocketGhostRequest.flagRequest(9, Kind.ITEM, gMemory), cfg, null, payloads).outcome,
+            "MEMORY + alt+左 ⇒ 撤销 attr");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, cfg.attrAt(Kind.ITEM, 9), "attr 回 NONE");
+        SimpleAssert.eq(null, cfg.at(Kind.ITEM, 9), "★载荷一起撤（回到「普通格」）");
+        SimpleAssert.eq(0, cfg.flagEntryCount(), "位表清空 ⇒ 写档形状回到旧形状");
+        // ---- ⑥ P 支【永不】碰 attr 也【永不】碰载荷 ----
+        final PocketFilterConfig pOnly = new PocketFilterConfig();
+        final RecordingPayloads pAsked = new RecordingPayloads(itemKey);
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(PocketGhostRequest.flagRequest(9, Kind.ITEM, gBind), pOnly, null, pAsked).outcome,
+            "前置：先挂 BIND + 落载荷");
+        SimpleAssert.that(pOnly.at(Kind.ITEM, 9) != null, "前置：载荷在场");
+        final int queriesBefore = pAsked.queries;
+        PocketGhostRequest.apply(
+            PocketGhostRequest.flagRequest(9, Kind.ITEM, PocketConstants.GHOST_FLAG_UPLOAD_BLOCK),
+            pOnly,
+            null,
+            pAsked);
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, pOnly.attrAt(Kind.ITEM, 9), "★P 不动 attr");
+        SimpleAssert.eq(
+            itemKey,
+            pOnly.at(Kind.ITEM, 9)
+                .key(),
+            "★P 不动载荷");
+        SimpleAssert.eq(queriesBefore, pAsked.queries, "★P 不问载荷");
+        SimpleAssert.that(pOnly.uploadBlockedAt(Kind.ITEM, 9), "P 落了（一格两属性合法）");
+        // ---- ⑦ ★流体支同源：读的是真 tank，不是声明样本 ----
+        final PocketFilterConfig fluid = new PocketFilterConfig();
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(
+                PocketGhostRequest.flagRequest(3, Kind.FLUID, gBind),
+                fluid,
+                null,
+                new RecordingPayloads(PocketFilterConfig.fluidKey("lava"))).outcome,
+            "流体列中键建档");
+        SimpleAssert.that(fluid.at(Kind.FLUID, 3) instanceof PocketFilterConfig.FluidFilter, "落的是流体声明（★区域由键自己决定）");
+        SimpleAssert.eq(
+            PocketFilterConfig.fluidKey("lava"),
+            fluid.at(Kind.FLUID, 3)
+                .key(),
+            "键逐字落地");
+        // ---- ⑧ ★源质支必须走归属对账（R90 E3 D3 那道门，绕开就是第二处真相）----
+        final PocketEssenceStore store = new PocketEssenceStore();
+        store.add("aer", 8);
+        final int cell = store.cellOf("aer");
+        SimpleAssert.that(cell >= 0, "前置：桩件源质已占一格");
+        final PocketFilterConfig wrongOwner = new PocketFilterConfig();
+        final PocketGhostRequest.Decision mismatched = PocketGhostRequest.apply(
+            PocketGhostRequest.flagRequest(cell, Kind.ESSENCE, gBind),
+            wrongOwner,
+            store,
+            new RecordingPayloads(PocketFilterConfig.essenceKey("essentia", "ignis")));
+        SimpleAssert.eq(PocketGhostRequest.Outcome.APPLIED, mismatched.outcome, "★归属不符也不毁掉属性手势本身");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, wrongOwner.attrAt(Kind.ESSENCE, cell), "attr 落了");
+        SimpleAssert.eq(null, wrongOwner.at(Kind.ESSENCE, cell), "★载荷被归属对账挡下（不是「ignis」这种不属于本格的声明）");
+        SimpleAssert.eq(0, store.get("ignis"), "★也没因此给盘凭空造出一格 ignis 归属");
+        final PocketFilterConfig rightOwner = new PocketFilterConfig();
+        PocketGhostRequest.apply(
+            PocketGhostRequest.flagRequest(cell, Kind.ESSENCE, gBind),
+            rightOwner,
+            store,
+            new RecordingPayloads(PocketFilterConfig.essenceKey("essentia", "aer")));
+        SimpleAssert.that(rightOwner.at(Kind.ESSENCE, cell) != null, "★同 tag ⇒ 属性 + 载荷一次写全");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, rightOwner.attrAt(Kind.ESSENCE, cell), "attr 同场");
+        // ---- ⑨ ★生产读数口按区域分支（不读声明样本、不自造第二种键）----
+        final java.util.List<String> handler = guiPocketSource("NekoPocketServerHandler.java");
+        if (handler == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketServerHandler.java ⇒「ghostPayloadAt 按区域读真值」的接线半边【未验】（★不是通过）");
+        } else {
+            final int start = methodStart(
+                handler,
+                "String ghostPayloadAt(PocketFilterConfig.Kind kind, int slotIndex) {");
+            SimpleAssert.that(start >= 0, "★服务端必须有一条唯一的载荷读数口");
+            final int end = methodEnd(handler, start);
+            for (String region : new String[] { "case ITEM:", "case FLUID:", "case ESSENCE:" }) {
+                SimpleAssert.that(regionContainsCode(handler, start, end, region), "读数口按区域分支：" + region);
+            }
+            SimpleAssert.that(
+                regionContainsCode(handler, start, end, "contentKey("),
+                "★中栏读 contentKey（与 NEI 拖入、ghost 搬空同一个键式样）");
+            SimpleAssert.that(regionContainsCode(handler, start, end, "ownTankFluid("), "★流体读真 tank（★不是会被声明样本替换的显示值）");
+            SimpleAssert.that(regionContainsCode(handler, start, end, "tagAtCell("), "★源质读本格【当前归属】（R86 扣到 0 当场腾格）");
+            SimpleAssert.eq(0, countRegionCode(handler, start, end, "declaredSample"), "★不读声明样本造第二份真值");
+            SimpleAssert.that(regionContainsCode(handler, start, end, "return \"\";"), "解不出 ⇒ 空串（停在 pending，★不是猜一个）");
+        }
+    }
+
+    /**
+     * ★R91-⑥ 位表持久化的<b>成对</b>门禁：旧形状消失 + 新形状在场，两半边都钉。
+     * <p>
+     * 只钉"新形状在场"会放过一种很坏的实现：<i>无条件</i>往 {@code FILTERS} 域挂第四枚列表 —— 那会让
+     * 从没做过任何属性手势的旧档也长出一个新键，"旧档形状逐字节不变"这条承诺当场作废（cap 那一条
+     * 纪律当年就是这么立的）。★所以半边 A 必须先证明"没属性 ⇒ 没有 flags 键"，再配一条正控证明
+     * 这条判据不是恒真（同一判据喂给真挂了属性的档必须为 true）。
+     */
+    private static void ghostFlagsPersistencePairwise() {
+        // ---- 半边 A：旧形状消失（★无属性 ⇒ 域里根本没有 flags 键）----
+        final PocketFilterConfig bare = new PocketFilterConfig();
+        final NBTTagCompound bareRoot = new NBTTagCompound();
+        bare.writeTo(bareRoot);
+        final NBTTagCompound bareDomain = bareRoot.getCompoundTag(PocketConstants.FILTERS);
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            bareDomain.hasKey(PocketConstants.FILTER_FLAGS),
+            "★没挂任何属性 ⇒ FILTERS 域下不得出现 flags 列表（旧档形状逐字节不变）");
+        // ---- 半边 B：正控（同一条判据在"真挂了属性"的档上必须为 true，否则 A 是空转）----
+        final PocketFilterConfig flagged = new PocketFilterConfig();
+        flagged.setAttr(Kind.ITEM, 7, PocketConstants.GHOST_ATTR_BIND);
+        final NBTTagCompound flaggedRoot = new NBTTagCompound();
+        flagged.writeTo(flaggedRoot);
+        SimpleAssert.that(
+            flaggedRoot.getCompoundTag(PocketConstants.FILTERS)
+                .hasKey(PocketConstants.FILTER_FLAGS),
+            "★正控：挂了属性就必须落列表（读到 false ⇒ 上面那条 A 是恒真假绿）");
+        // ---- 半边 C：三区域三档往返逐格相等 + "只写非默认条目"的计数 ----
+        final PocketFilterConfig mixed = new PocketFilterConfig();
+        mixed.add(7, new PocketFilterConfig.ItemFilter(7, 2621, 7, "AAA"));
+        mixed.add(3, new PocketFilterConfig.FluidFilter(3, "lava"));
+        mixed.add(12, new PocketFilterConfig.EssenceFilter(12, "essentia", "aer"));
+        mixed.setAttr(Kind.ITEM, 7, PocketConstants.GHOST_ATTR_BIND);
+        mixed.setAttr(Kind.FLUID, 3, PocketConstants.GHOST_ATTR_MEMORY);
+        mixed.setAttr(Kind.ESSENCE, 12, PocketConstants.GHOST_ATTR_MEMORY);
+        mixed.setUploadBlocked(Kind.ESSENCE, 12, true);
+        mixed.setUploadBlocked(Kind.ITEM, 40, true); // ★只有 P、没有 attr 的一格
+        mixed.add(40, new PocketFilterConfig.ItemFilter(40, 2621, 0, ""));
+        final NBTTagCompound mixedRoot = new NBTTagCompound();
+        mixed.writeTo(mixedRoot);
+        final PocketFilterConfig back = PocketFilterConfig.readFrom(mixedRoot);
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, back.attrAt(Kind.ITEM, 7), "中栏 BIND 往返");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, back.attrAt(Kind.FLUID, 3), "流体 MEMORY 往返");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, back.attrAt(Kind.ESSENCE, 12), "源质 MEMORY 往返");
+        SimpleAssert.that(back.uploadBlockedAt(Kind.ESSENCE, 12), "同格的 P 与 attr 各自往返（★并集条目不得只留一半）");
+        SimpleAssert.that(back.uploadBlockedAt(Kind.ITEM, 40), "只有 P 的一格往返");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, back.attrAt(Kind.ITEM, 40), "★只有 P 的一格不得被读成 attr=NONE 之外的东西");
+        SimpleAssert.eq(Boolean.FALSE, back.uploadBlockedAt(Kind.ITEM, 7), "★attr 那一格没挂 P（不得互相传染）");
+        SimpleAssert.eq(4, back.flagEntryCount(), "并集条目数 = 4（attr 三条 + 只有 P 一条）");
+        SimpleAssert.that(back.at(Kind.ITEM, 7) != null && back.at(Kind.ESSENCE, 12) != null, "★载荷三列表一位不掉（第四枚列表不接管载荷）");
+        // ---- 半边 D：条目形状"只写非默认"——只有 P 的条目里不得出现 attr 键，反之亦然 ----
+        final NBTTagList written = mixedRoot.getCompoundTag(PocketConstants.FILTERS)
+            .getTagList(PocketConstants.FILTER_FLAGS, 10);
+        SimpleAssert.eq(4, written.tagCount(), "★恰 4 条（★不给 220 格各留一条 NONE 占位）");
+        int attrKeys = 0;
+        int blockKeys = 0;
+        PocketFilterConfig.FlagRecord pOnlyEntry = null;
+        for (int i = 0; i < written.tagCount(); i++) {
+            final NBTTagCompound entry = written.getCompoundTagAt(i);
+            if (entry.hasKey(PocketConstants.FILTER_ATTR)) {
+                attrKeys++;
+            }
+            if (entry.hasKey(PocketConstants.FILTER_UPLOAD_BLOCK)) {
+                blockKeys++;
+            }
+            if (entry.getString(PocketConstants.FILTER_FLAG_KIND)
+                .equals(Kind.ITEM.name()) && entry.getInteger(PocketConstants.FILTER_SLOT) == 40) {
+                pOnlyEntry = new PocketFilterConfig.FlagRecord(
+                    Kind.ITEM,
+                    40,
+                    entry.getInteger(PocketConstants.FILTER_ATTR),
+                    entry.getInteger(PocketConstants.FILTER_UPLOAD_BLOCK) != 0);
+                SimpleAssert.eq(
+                    Boolean.FALSE,
+                    Boolean.valueOf(entry.hasKey(PocketConstants.FILTER_ATTR)),
+                    "★只有 P 的条目不得写 attr=0（与 cap「只写非默认」同一条纪律）");
+            }
+        }
+        SimpleAssert.eq(3, attrKeys, "attr 键恰 3 条（★默认值不落档）");
+        SimpleAssert.eq(2, blockKeys, "P 键恰 2 条（★off 不落档）");
+        SimpleAssert.that(pOnlyEntry != null, "★正控：只有 P 的那一条确实被逐条扫到了（读到 null ⇒ 上面的计数是空转）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, pOnlyEntry.attr, "默认值读档自然回落 NONE");
+        // ---- 半边 E：旧档（根本没有 flags 键）⇒ 三个读口回落、载荷一条不少 ----
+        final NBTTagCompound legacyRoot = new NBTTagCompound();
+        final NBTTagCompound legacyDomain = new NBTTagCompound();
+        final NBTTagList legacyItems = new NBTTagList();
+        final NBTTagCompound legacyEntry = new NBTTagCompound();
+        legacyEntry.setInteger(PocketConstants.FILTER_SLOT, 20);
+        legacyEntry.setInteger(PocketConstants.FILTER_ITEM_ID, 2621);
+        legacyEntry.setInteger(PocketConstants.FILTER_META, 0);
+        legacyEntry.setString(PocketConstants.FILTER_NBT, "");
+        legacyItems.appendTag(legacyEntry);
+        legacyDomain.setTag(PocketConstants.FILTER_ITEMS, legacyItems);
+        legacyRoot.setTag(PocketConstants.FILTERS, legacyDomain);
+        final PocketFilterConfig legacyBack = PocketFilterConfig.readFrom(legacyRoot);
+        SimpleAssert.that(legacyBack.hasNoFlags(), "★旧档 ⇒ 位表整张为空（attr/P 两个读口都回落）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, legacyBack.attrAt(Kind.ITEM, 20), "旧档那一格读 NONE（不是「未初始化」）");
+        SimpleAssert.eq(Boolean.FALSE, legacyBack.uploadBlockedAt(Kind.ITEM, 20), "旧档那一格不拦上传");
+        SimpleAssert.that(legacyBack.at(Kind.ITEM, 20) != null, "★旧档的载荷一条不掉（第四枚列表缺键不得波及三枚载荷列表）");
+        // ---- 半边 F：越界/陌生条目丢弃 ⇒ 按"无属性"处理，★宁可少读也不臆造 ----
+        final NBTTagCompound junkRoot = new NBTTagCompound();
+        final NBTTagCompound junkDomain = new NBTTagCompound();
+        final NBTTagList junkFlags = new NBTTagList();
+        for (Object[] row : new Object[][] {
+            { "ITEM", Integer.valueOf(999), Integer.valueOf(PocketConstants.GHOST_ATTR_BIND) },
+            { "BOGUS", Integer.valueOf(0), Integer.valueOf(PocketConstants.GHOST_ATTR_MEMORY) },
+            { "", Integer.valueOf(0), Integer.valueOf(PocketConstants.GHOST_ATTR_BIND) },
+            { "FLUID", Integer.valueOf(36), Integer.valueOf(PocketConstants.GHOST_ATTR_MEMORY) },
+            { "ESSENCE", Integer.valueOf(72), Integer.valueOf(PocketConstants.GHOST_ATTR_BIND) } }) {
+            final NBTTagCompound junk = new NBTTagCompound();
+            junk.setString(PocketConstants.FILTER_FLAG_KIND, (String) row[0]);
+            junk.setInteger(PocketConstants.FILTER_SLOT, ((Integer) row[1]).intValue());
+            junk.setInteger(PocketConstants.FILTER_ATTR, ((Integer) row[2]).intValue());
+            junkFlags.appendTag(junk);
+        }
+        junkDomain.setTag(PocketConstants.FILTER_FLAGS, junkFlags);
+        junkRoot.setTag(PocketConstants.FILTERS, junkDomain);
+        final PocketFilterConfig junkBack = PocketFilterConfig.readFrom(junkRoot);
+        SimpleAssert.eq(0, junkBack.flagEntryCount(), "★五条越界/陌生条目全丢（臆造成「有属性」会凭空拦掉玩家的上传与落位）");
+        SimpleAssert.that(junkBack.hasNoFlags(), "同上 ⇒ 位表仍为空");
+        // attr 值越界但区域与槽号合法 ⇒ 归一成 NONE，★不丢整条（P 那一半可能还在）
+        final NBTTagCompound clampRoot = new NBTTagCompound();
+        final NBTTagCompound clampDomain = new NBTTagCompound();
+        final NBTTagList clampFlags = new NBTTagList();
+        final NBTTagCompound clampEntry = new NBTTagCompound();
+        clampEntry.setString(PocketConstants.FILTER_FLAG_KIND, Kind.ITEM.name());
+        clampEntry.setInteger(PocketConstants.FILTER_SLOT, 3);
+        clampEntry.setInteger(PocketConstants.FILTER_ATTR, 99);
+        clampEntry.setInteger(PocketConstants.FILTER_UPLOAD_BLOCK, 1);
+        clampFlags.appendTag(clampEntry);
+        clampDomain.setTag(PocketConstants.FILTER_FLAGS, clampFlags);
+        clampRoot.setTag(PocketConstants.FILTERS, clampDomain);
+        final PocketFilterConfig clampBack = PocketFilterConfig.readFrom(clampRoot);
+        SimpleAssert
+            .eq(PocketConstants.GHOST_ATTR_NONE, clampBack.attrAt(Kind.ITEM, 3), "★attr 越界值读档归一成 NONE（不钳到最近的一档）");
+        SimpleAssert.that(clampBack.uploadBlockedAt(Kind.ITEM, 3), "★同条的 P 仍生效（一条坏值不许连坐另一个位）");
+        // ---- 半边 G：clear() 一并清位表（★换实例时不残留角标）----
+        final PocketFilterConfig cleared = new PocketFilterConfig();
+        cleared.setAttr(Kind.ITEM, 1, PocketConstants.GHOST_ATTR_MEMORY);
+        cleared.setUploadBlocked(Kind.ITEM, 1, true);
+        cleared.clear();
+        SimpleAssert.that(cleared.hasNoFlags(), "★clear() 必须连位表一起清（载荷与属性是同一格的两半）");
+        SimpleAssert.eq(0, cleared.flagEntryCount(), "同上 ⇒ 条目 0");
+        // ---- 半边 H：clearFlags() 只清位表，★一个字节都不碰载荷（两根通道各写各的半）----
+        final PocketFilterConfig onlyFlagClear = new PocketFilterConfig();
+        onlyFlagClear.add(7, new PocketFilterConfig.ItemFilter(7, 2621, 7, "AAA"));
+        onlyFlagClear.setAttr(Kind.ITEM, 7, PocketConstants.GHOST_ATTR_BIND);
+        onlyFlagClear.setUploadBlocked(Kind.FLUID, 2, true);
+        onlyFlagClear.clearFlags();
+        SimpleAssert.that(onlyFlagClear.hasNoFlags(), "位表清干净（★被服务端撤掉的属性必须真的从镜像上消失）");
+        SimpleAssert.that(onlyFlagClear.at(Kind.ITEM, 7) != null, "★载荷一个字都不动（那是 SYNC_GHOST 那根通道的东西）");
+        // ---- 半边 I：单源 accessor 的负控 —— attr 【不得】从载荷表派生（R91-b 明文）----
+        final PocketFilterConfig derived = new PocketFilterConfig();
+        derived.add(7, new PocketFilterConfig.ItemFilter(7, 2621, 7, "AAA"));
+        SimpleAssert.eq(
+            PocketConstants.GHOST_ATTR_NONE,
+            derived.attrAt(Kind.ITEM, 7),
+            "★有载荷 ≠ 有属性（旧档的隐式 BIND 由 pullsFromCell 那一条保住，attr 读数仍是 NONE）");
+        SimpleAssert.eq(Boolean.FALSE, derived.uploadBlockedAt(Kind.ITEM, 7), "★同上：有载荷不等于拦上传");
+        SimpleAssert.that(derived.pullsFromCell(Kind.ITEM, 7), "★但抽取照旧发生（需求 4 不回退，见 ghostMemoryNeverPullsOthersDo）");
+    }
+
+    /**
+     * ★R91-a/⑥：属性层的 S2C blob 往返（★独立的一根串，走面板新加的 {@code StringSyncValue}）。
+     * <p>
+     * 三条都要钉住：① 编解码互逆（含 attr 与 P 两个位）；② 解不出的记录<b>整条丢弃</b>、不炸面板，
+     * 且 attr 越界值在解码侧同样归一（与读档侧同一条 {@code normalizeGhostAttr}）；
+     * ③ ★解码<b>先清后写</b>且<b>一个字节都不写进载荷表</b> —— 这就是 R91-a"不把属性层焊回 ghost blob
+     * 编解码"的兑现点：两根通道各自只写自己那半。
+     */
+    private static void ghostFlagsBlobRoundTrip() {
+        // ---- ① 空表 ⇒ 空串（★不得写出"每格一条 NONE"的占位形状）----
+        SimpleAssert.eq("", PocketGhostRequest.flagsBlobOf(new PocketFilterConfig()), "无属性 ⇒ 空串");
+        SimpleAssert.eq("", PocketGhostRequest.flagsBlobOf(null), "★null 表 ⇒ 空串（不得 NPE）");
+        // ---- ② 编解码互逆（三区域 × attr × P 的四种组合）----
+        final PocketFilterConfig src = new PocketFilterConfig();
+        src.setAttr(Kind.ITEM, 0, PocketConstants.GHOST_ATTR_BIND);
+        src.setAttr(Kind.FLUID, 17, PocketConstants.GHOST_ATTR_MEMORY);
+        src.setAttr(Kind.ESSENCE, 12, PocketConstants.GHOST_ATTR_MEMORY);
+        src.setUploadBlocked(Kind.ESSENCE, 12, true);
+        src.setUploadBlocked(Kind.ITEM, PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1, true);
+        final String blob = PocketGhostRequest.flagsBlobOf(src);
+        SimpleAssert.that(!blob.isEmpty(), "正控：挂了属性就必须编出东西（读到空串 ⇒ 下面那批断言全是空转）");
+        SimpleAssert.eq(4, blob.split(";").length, "★并集 4 条记录（attr 三条，其中一格同挂 P；只有 P 的一条另算）");
+        final PocketFilterConfig dst = new PocketFilterConfig();
+        SimpleAssert.eq(4, PocketGhostRequest.applyFlagsBlob(blob, dst), "解码条数 = 编码条数");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, dst.attrAt(Kind.ITEM, 0), "中栏首格往返（★索引 0 是合法值，不得被「未设置」哨兵吃掉）");
+        SimpleAssert
+            .eq(PocketConstants.GHOST_ATTR_MEMORY, dst.attrAt(Kind.FLUID, 17), "★流体末列往返（上界 = FLUID_TANK_TOTAL = 18）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, dst.attrAt(Kind.ESSENCE, 12), "源质 attr 往返");
+        SimpleAssert.that(dst.uploadBlockedAt(Kind.ESSENCE, 12), "★同格两属性都过（并集条目不得只带一半）");
+        SimpleAssert.that(dst.uploadBlockedAt(Kind.ITEM, 134), "中栏末格只有 P 也过");
+        SimpleAssert.eq(
+            PocketConstants.GHOST_ATTR_NONE,
+            dst.attrAt(Kind.ITEM, PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1),
+            "★只有 P ⇒ attr 落 NONE（不是「没读到」的第三种读数）");
+        SimpleAssert.eq(src.flagEntryCount(), dst.flagEntryCount(), "并集条数逐位相等");
+        SimpleAssert.eq(0, dst.size(), "★一个字节都不写进载荷表（两根通道各写各的半 = R91-a 的兑现点）");
+        // ---- ③ 载荷表在属性解码前后逐字不变（★同一条 src/dst 的成对复述）----
+        final PocketFilterConfig withPayload = new PocketFilterConfig();
+        withPayload.add(0, new PocketFilterConfig.ItemFilter(0, 2621, 7, "AAA"));
+        withPayload.add(17, new PocketFilterConfig.FluidFilter(17, "lava"));
+        final int sizeBefore = withPayload.size();
+        PocketGhostRequest.applyFlagsBlob(blob, withPayload);
+        SimpleAssert.eq(sizeBefore, withPayload.size(), "★解码不增删载荷条目");
+        SimpleAssert.eq(
+            PocketFilterConfig.itemKey(2621, 7, "AAA"),
+            withPayload.at(Kind.ITEM, 0)
+                .key(),
+            "载荷键逐字不变");
+        // ---- ④ 先清后写：第二条 blob 里没有的格必须真的掉下来（★撤属性不得只活服务端）----
+        final PocketFilterConfig mirror = new PocketFilterConfig();
+        PocketGhostRequest.applyFlagsBlob(blob, mirror);
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, mirror.attrAt(Kind.ITEM, 0), "前置：第一次覆盖写了");
+        final PocketFilterConfig shrunk = new PocketFilterConfig();
+        shrunk.setAttr(Kind.ESSENCE, 5, PocketConstants.GHOST_ATTR_MEMORY);
+        PocketGhostRequest.applyFlagsBlob(PocketGhostRequest.flagsBlobOf(shrunk), mirror);
+        SimpleAssert
+            .eq(PocketConstants.GHOST_ATTR_NONE, mirror.attrAt(Kind.ITEM, 0), "★第二次覆盖必须先把镜像清干净（否则撤掉的属性永远留在客户端角标上）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, mirror.attrAt(Kind.FLUID, 17), "同上");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, mirror.attrAt(Kind.ESSENCE, 5), "★新 blob 里那条写了");
+        PocketGhostRequest.applyFlagsBlob("", mirror);
+        SimpleAssert.that(mirror.hasNoFlags(), "★空串 ⇒ 清空（服务端一个属性都没挂时客户端不得留旧角标）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            mirror.uploadBlockedAt(Kind.ITEM, PocketConstants.GHOST_ITEM_SLOT_LIMIT - 1),
+            "★P 也一样落回");
+        // ---- ⑤ 脏记录整条丢弃、不炸面板（★"外来/陈旧串不许成为崩溃源"，与 parseGhostBlob 同口径）----
+        final PocketFilterConfig junky = new PocketFilterConfig();
+        junky.add(9, new PocketFilterConfig.ItemFilter(9, 2621, 0, ""));
+        final String junkBlob = "I,0,1,0;I,0;X,0,1,0;I,999,1,0;I,0,zz,0;I,0,1,0,9;F,36,2,1;,;E,0,9,1;I,1,2,2;I,2,-4,0";
+        final int applied = PocketGhostRequest.applyFlagsBlob(junkBlob, junky);
+        SimpleAssert.eq(4, applied, "★十一条里只有 4 条合法（I,0,1,0 / E,0,9,1 / I,1,2,2 / I,2,-4,0）读到 " + applied);
+        SimpleAssert.eq(3, junky.flagEntryCount(), "★合法 4 条里有一条两个位都是默认（I,2,-4,0）⇒ 并集条目 3（不得留空条目占位）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, junky.attrAt(Kind.ITEM, 0), "合法那条落了");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, junky.attrAt(Kind.ITEM, 1), "I,1,2,2 合法（MEMORY + P）");
+        SimpleAssert.that(junky.uploadBlockedAt(Kind.ESSENCE, 0), "★attr 越界那条：attr 归一为 NONE，但 P 仍生效（一条坏值不连坐另一个位）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, junky.attrAt(Kind.ESSENCE, 0), "同上：attr 读 NONE");
+        SimpleAssert.eq(Boolean.FALSE, junky.uploadBlockedAt(Kind.ITEM, 2), "★负 attr 那行（I,2,-4,0）⇒ P 也是 0 ⇒ 两个位都回落");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, junky.attrAt(Kind.ITEM, 2), "同上 attr");
+        SimpleAssert.that(junky.at(Kind.ITEM, 9) != null, "★载荷表在这整批脏数据下分毫未动（★不炸、不清、不臆造）");
+        SimpleAssert.eq(1, junky.size(), "载荷条数仍是 1");
+        SimpleAssert.eq(0, PocketGhostRequest.applyFlagsBlob("I,0,1,0", null), "★目标表为 null ⇒ 返 0（不得 NPE）");
+        // ---- ⑥ ★blob 里不得出现第四枚列表没有的段数/字段（防"顺手扩段"把 blob 焊回 ghost 编解码）----
+        for (String record : blob.split(";")) {
+            SimpleAssert.eq(4, record.split(",").length, "每格恰 4 字段（区域,槽号,attr,P）：" + record);
+            SimpleAssert.that(!record.contains("|"), "★属性串不得含 ghost 请求的分隔符（两根通道互不解析）");
+        }
+        // ---- ⑦ 长度上界：最坏情况也远小于 blob 预算（★所以本串【不需要】预算回退逻辑）----
+        final PocketFilterConfig worst = new PocketFilterConfig();
+        for (int i = 0; i < PocketConstants.GHOST_ITEM_SLOT_LIMIT; i++) {
+            worst.setAttr(Kind.ITEM, i, PocketConstants.GHOST_ATTR_MEMORY);
+            worst.setUploadBlocked(Kind.ITEM, i, true);
+        }
+        for (int i = 0; i < PocketConstants.GHOST_FLUID_SLOT_LIMIT; i++) {
+            worst.setAttr(Kind.FLUID, i, PocketConstants.GHOST_ATTR_MEMORY);
+            worst.setUploadBlocked(Kind.FLUID, i, true);
+        }
+        for (int i = 0; i < PocketConstants.ESSENCE_DISPLAY_GRID; i++) {
+            worst.setAttr(Kind.ESSENCE, i, PocketConstants.GHOST_ATTR_MEMORY);
+            worst.setUploadBlocked(Kind.ESSENCE, i, true);
+        }
+        final String worstBlob = PocketGhostRequest.flagsBlobOf(worst);
+        SimpleAssert.that(
+            worstBlob.length() < PocketConstants.GHOST_BLOB_MAX_CHARS,
+            "★全仓每格都挂两个属性时的长度（" + worstBlob.length() + "）必须仍在 blob 预算内 ⇒ 本串不需要截断回退（少一套会写错的代码）");
+        final int ghostIndexTotal = PocketConstants.GHOST_ITEM_SLOT_LIMIT + PocketConstants.GHOST_FLUID_SLOT_LIMIT
+            + PocketConstants.GHOST_ESSENCE_SLOT_LIMIT;
+        SimpleAssert.eq(
+            ghostIndexTotal,
+            PocketGhostRequest.applyFlagsBlob(worstBlob, new PocketFilterConfig()),
+            "★最坏情况逐格往返 = 三区 ghost 索引空间加总（★全部派生自常量，不留字面量）");
+        SimpleAssert.eq(225, ghostIndexTotal, "★正控：135 + 18 + 72 = 225（★ghost 索引空间与 220 那个容器真实槽数是两套口径，不得混用）");
+    }
+
+    /**
+     * ★★本仓通则（D-1 型不实防线）：javadoc 声称"某状态下不绘制 X"，就必须有用例钉住该状态下读数为空。
+     * <p>
+     * 三个角标/读数各两半：<b>不适用 ⇒ 恰空串</b>（不画）+ <b>适用 ⇒ 非空</b>
+     * （★只钉前一半会把判据写成"恒空"也照样绿 —— 角标整个没接线同样是"某状态下不绘制"）。
+     * 再钉住三者的<b>几何互不覆盖</b>（cap 右上、L 左上、P 左下）与三组格件的
+     * "空文本 ⇒ 一条像素都不画"早退确实在场（★否则"返回空串"只是把判断推给了 drawText）。
+     */
+    private static void ghostBadgeReadoutsAreEmptyWhenNotApplicable() {
+        // ---- ① 蓝 L：attr 不是 MEMORY ⇒ 空串（javadoc 的原话承诺）----
+        SimpleAssert.eq("", PocketGhostRequest.memoryBadgeText(PocketConstants.GHOST_ATTR_NONE), "★NONE ⇒ 不画 L");
+        SimpleAssert.eq(
+            "",
+            PocketGhostRequest.memoryBadgeText(PocketConstants.GHOST_ATTR_BIND),
+            "★BIND ⇒ 不画 L（这是最容易写错的一格：L 不是「有属性」的意思）");
+        SimpleAssert.eq(
+            "L",
+            PocketGhostRequest.memoryBadgeText(PocketConstants.GHOST_ATTR_MEMORY),
+            "★正控：MEMORY ⇒ 非空（读到空 ⇒ 上面两条是恒真假绿）");
+        for (int junk : new int[] { -1, -99, 3, 7, Integer.MAX_VALUE, Integer.MIN_VALUE }) {
+            SimpleAssert.eq("", PocketGhostRequest.memoryBadgeText(junk), "★越界 attr ⇒ 空串（不得画出第四种角标）：" + junk);
+        }
+        // ---- ② 绿 P：位为 off ⇒ 空串 ----
+        SimpleAssert.eq("", PocketGhostRequest.uploadBlockBadgeText(false), "★P=off ⇒ 不画 P");
+        SimpleAssert.eq("P", PocketGhostRequest.uploadBlockBadgeText(true), "★正控：P=on ⇒ 非空");
+        // ---- ③ 橙 cap：未设置 ⇒ 空串（★既有承诺，本轮新增两个角标不得把它挤掉）----
+        SimpleAssert.eq("", PocketGhostRequest.capReadout(PocketConstants.FILTER_CAP_UNSET), "★cap 未设置 ⇒ 空串");
+        SimpleAssert.eq("", PocketGhostRequest.capReadout(-1), "同上：负数一律空（★0 与正数都是合法读数）");
+        SimpleAssert.eq("0", PocketGhostRequest.capReadout(0), "★正控：0 是真读数 ⇒ 必须画（不得把 0 当「未设置」吞掉）");
+        SimpleAssert.that(
+            !PocketGhostRequest.capReadout(1600000)
+                .isEmpty(),
+            "★正控：正常 cap 非空");
+        // ---- ④ 三者的落点互不覆盖（同一格可以同时有三个读数）----
+        final int cellHeight = 16;
+        final float leftTop = PocketGhostRequest.memoryBadgeTop();
+        final float leftBottom = PocketGhostRequest.uploadBlockBadgeTop(cellHeight);
+        SimpleAssert.eq(
+            Float.valueOf(PocketGhostRequest.CAP_READOUT_TOP),
+            Float.valueOf(leftTop),
+            "★蓝 L 走 cap 同一条上带（纵向复用，横向才换左对齐）");
+        SimpleAssert.that(
+            leftBottom > leftTop + PocketGhostRequest.CAP_READOUT_SCALE * 9f,
+            "★L（左上）与 P（左下）不得重叠：上带 " + leftTop + " vs 下带 " + leftBottom);
+        SimpleAssert.that(leftBottom < cellHeight, "★P 的下沿不得出格（" + leftBottom + " < " + cellHeight + "）");
+        SimpleAssert.eq(
+            Float.valueOf((float) PocketGhostRequest.CAP_READOUT_MARGIN),
+            Float.valueOf(PocketGhostRequest.badgeLeftX()),
+            "★两个角标左对齐，cap 右对齐 ⇒ 同带也不同侧（横向不覆盖）");
+        // ★两只颜色读数口（memoryBadgeColor / uploadBlockBadgeColor）★刻意不在本套件里被调用：
+        // 它们返回 ModularUI 的 Color.BLUE/GREEN.main，而既有套件对同族的 capReadoutColor() 也一律
+        // 不调（★"蓝/绿确实不同色"只能实机判，已进 r91-s3-panel-todo.md 的实机项）。
+        // 本用例钉的是【该不该画】（空串判据），不是【画成什么色】。
+        // ---- ⑤ 遮罩"在场"判据的四行真值（★"有实物就不许遮"那条本体不得被 attr 放宽）----
+        SimpleAssert
+            .eq(Boolean.FALSE, PocketGhostRequest.drawsGhostMask(false, PocketConstants.GHOST_ATTR_NONE), "★普通格不遮");
+        SimpleAssert
+            .that(PocketGhostRequest.drawsGhostMask(true, PocketConstants.GHOST_ATTR_NONE), "已建档（旧形状）⇒ 遮（★需求 4 不回退）");
+        SimpleAssert
+            .that(PocketGhostRequest.drawsGhostMask(false, PocketConstants.GHOST_ATTR_BIND), "pending BIND ⇒ 遮");
+        SimpleAssert
+            .that(PocketGhostRequest.drawsGhostMask(false, PocketConstants.GHOST_ATTR_MEMORY), "pending MEMORY ⇒ 遮");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketGhostRequest.drawsGhostMask(false, PocketConstants.GHOST_ATTR_NONE),
+            "★只有 P（attr=NONE）⇒【不遮】（用户口径：P 不携带内容）");
+        SimpleAssert.that(
+            PocketGhostRequest.drawsGhostMask(true, PocketConstants.GHOST_ATTR_NONE),
+            "★正控：drawsGhostMask 不是恒真（上面那条 FALSE 才算读数）");
+        // ---- ⑥ ★三组格件都真有"空文本 ⇒ 一条像素都不画"的早退（否则①②③的空串只是把判断推给 drawText）----
+        for (String fileName : ghostWidgetFiles()) {
+            final java.util.List<String> lines = guiPocketSource(fileName);
+            if (lines == null) {
+                System.out.println("[NOTE] 读不到 " + fileName + " ⇒「角标空文本即不画」的半边【未验】（★不是通过）");
+                continue;
+            }
+            SimpleAssert.that(
+                regionContainsCode(
+                    lines,
+                    firstCodeLineWith(lines, 0, lines.size(), "drawBadge("),
+                    lines.size(),
+                    "text.isEmpty()") || countCodeLinesIn(lines, "text.isEmpty()") >= 1,
+                "★" + fileName + " 的角标绘制体必须对空文本早退（读不到 ⇒ 所谓「不绘制」只是传了个空串给 drawText）");
+            SimpleAssert.that(countCodeLinesIn(lines, "memoryBadgeText(") >= 1, "★" + fileName + " 必须消费蓝 L 的单源读数");
+            SimpleAssert.that(countCodeLinesIn(lines, "uploadBlockBadgeText(") >= 1, "★" + fileName + " 必须消费绿 P 的单源读数");
+            SimpleAssert.that(countCodeLinesIn(lines, "drawsGhostMask(") >= 1, "★" + fileName + " 的遮罩在场判据必须走单源");
+            SimpleAssert.that(countCodeLinesIn(lines, "capReadout(") >= 1, "★同一条「空即不画」的家族：cap 读数也在这三组格件上");
+        }
+        // ---- ⑦ ★attr 的读数只能来自服务端同步（客户端不得自己从载荷推一个出来画图）----
+        final java.util.List<String> panel = guiPocketSource("NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒「双源 accessor」的半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.that(
+            textMatches(
+                panel,
+                "syncManager\\.isClient\\(\\)[^\\n]*\\?[\\s\\S]{0,80}clientGhostFlags[^\\n]*:[\\s\\S]{0,80}inventory\\.filters\\(\\)"),
+            "★attr/P 的 accessor 必须是双源（服务端读权威表、客户端读 SYNC_GHOST_FLAGS 的镜像）——R86 那条「改判只活一半」的复现路径");
+        SimpleAssert.that(
+            regionContainsCode(panel, 0, panel.size(), "widget.setGhostAttr(ghostAttrAt("),
+            "★中栏格件收 attr 只能经双源 accessor");
+        SimpleAssert.that(regionContainsCode(panel, 0, panel.size(), "cell.setGhostAttr(ghostAttrAt("), "★源质格件同上");
+        SimpleAssert.that(
+            regionContainsCode(panel, 0, panel.size(), "widget.setUploadBlocked(ghostUploadBlockedAt("),
+            "★P 也走同一对 accessor（★不许有第二条推断路径）");
+    }
+
+    /**
+     * ★★R91-b 的 NEI 拖拽分派表：<b>四行</b>真值 + 三组格件都真按它分派。
+     * <p>
+     * 四行：显式 BIND ⇒ 载荷写进 BIND（既有语义）；显式 MEMORY ⇒ 载荷写进 MEMORY（★attr 优先，
+     * 不"借拖拽顺手改成另一种属性"）；<b>无 attr 无 P 的空格 ⇒ 隐式建档</b>（★需求 4 一字不许回退）；
+     * <b>只有 P ⇒ 不响应</b>（用户原话"alt 右键的锁格子是没效果的"）。
+     * ★接线半边必须钉<b>行序</b>：IGNORE 判在 {@code draggedStack.stackSize = 0} 之前 ——
+     * 判晚了就是"P 格把玩家拖着的虚拟栈吃掉"，那比没反应更坏。
+     */
+    private static void ghostDragDispatchByAttrFourRows() {
+        final int none = PocketConstants.GHOST_ATTR_NONE;
+        final int bind = PocketConstants.GHOST_ATTR_BIND;
+        final int memory = PocketConstants.GHOST_ATTR_MEMORY;
+        final PocketGhostRequest.DragRoute explicitBind = PocketGhostRequest.DragRoute.EXPLICIT_BIND;
+        final PocketGhostRequest.DragRoute explicitMemory = PocketGhostRequest.DragRoute.EXPLICIT_MEMORY;
+        final PocketGhostRequest.DragRoute implicitBind = PocketGhostRequest.DragRoute.IMPLICIT_BIND;
+        final PocketGhostRequest.DragRoute ignore = PocketGhostRequest.DragRoute.IGNORE;
+        // ---- ① 四行真值（★逐行写死，不给算式）----
+        SimpleAssert.eq(explicitBind, PocketGhostRequest.dragRouteOf(bind, false), "行 1：显式 BIND ⇒ EXPLICIT_BIND");
+        SimpleAssert.eq(
+            explicitBind,
+            PocketGhostRequest.dragRouteOf(bind, true),
+            "★行 1b：BIND + P ⇒ attr 优先（仍是 EXPLICIT_BIND，★不得被 P 弄成 IGNORE）");
+        SimpleAssert
+            .eq(explicitMemory, PocketGhostRequest.dragRouteOf(memory, false), "行 2：显式 MEMORY ⇒ EXPLICIT_MEMORY");
+        SimpleAssert.eq(explicitMemory, PocketGhostRequest.dragRouteOf(memory, true), "★行 2b：MEMORY + P ⇒ attr 优先");
+        SimpleAssert.eq(implicitBind, PocketGhostRequest.dragRouteOf(none, false), "★行 3：无 attr 无 P ⇒ 隐式建档（需求 4 不回退）");
+        SimpleAssert.eq(ignore, PocketGhostRequest.dragRouteOf(none, true), "★行 4：只有 P ⇒ 不响应");
+        // ---- ② 越界 attr 先归一，再走行 3/4（★伪造的第四档不得成为第五种行为）----
+        for (int junk : new int[] { -1, 3, 9, Integer.MAX_VALUE, Integer.MIN_VALUE }) {
+            SimpleAssert.eq(implicitBind, PocketGhostRequest.dragRouteOf(junk, false), "越界 " + junk + " + 无 P ⇒ 隐式建档");
+            SimpleAssert.eq(ignore, PocketGhostRequest.dragRouteOf(junk, true), "越界 " + junk + " + P ⇒ 不响应");
+        }
+        // ---- ③ 分派表只有四档（★枚举形状本身就是判据：加一档就是"多一个状态要画/多一支要测"）----
+        SimpleAssert.eq(4, PocketGhostRequest.DragRoute.values().length, "★四行封顶，第五档要重新裁定");
+        // ---- ④ 三档"会建档"的档位在请求面上是<b>同一条 SET</b>（attr 只能由 FLG 改）----
+        SimpleAssert.that(
+            explicitBind != ignore && explicitMemory != ignore && implicitBind != ignore,
+            "★正控：前三档互不相同且都不等于 IGNORE（否则下面的行序判据在拿恒等式骗自己）");
+        // ---- ⑤ 接线半边：三组格件都按这张表分派，且 IGNORE 判在吃栈之前 ----
+        for (String fileName : ghostWidgetFiles()) {
+            final java.util.List<String> lines = guiPocketSource(fileName);
+            if (lines == null) {
+                System.out.println("[NOTE] 读不到 " + fileName + " ⇒「拖拽分派表接线」的半边【未验】（★不是通过）");
+                continue;
+            }
+            final int start = methodStart(
+                lines,
+                "public boolean handleDragAndDrop(ItemStack draggedStack, int button) {");
+            SimpleAssert.that(start >= 0, "★" + fileName + " 的拖拽入口必须能按签名定位（签名漂了本段读数不算）");
+            final int end = methodEnd(lines, start);
+            final int route = firstCodeLineWith(lines, start, end, "dragRouteOf(");
+            final int swallow = firstCodeLineWith(lines, start, end, "draggedStack.stackSize = 0");
+            SimpleAssert.that(route >= 0, "★" + fileName + " 的拖拽必须问那张唯一的分派表（读到 -1 ⇒ 本格件自己抄了一份判据 = 第二处真相）");
+            SimpleAssert
+                .that(regionContainsCode(lines, route, end, "DragRoute.IGNORE"), "★" + fileName + " 必须显式拒 IGNORE 档");
+            SimpleAssert.that(
+                swallow < 0 || route < swallow,
+                "★★IGNORE 判据必须排在吃栈【之前】（" + fileName
+                    + "：route="
+                    + route
+                    + " swallow="
+                    + swallow
+                    + "）——判晚了就是「P 格吃掉玩家拖着的虚拟栈」");
+            SimpleAssert.that(regionContainsCode(lines, route, end, "requestGhost("), "★三档建档都发同一条 SET（★不得为拖拽另造动作码）");
+            // ★SET 永不顺手改 attr（"已有显式 attr 时 attr 优先"的落点侧）
+            SimpleAssert.eq(
+                0,
+                countRegionCode(lines, start, end, "setGhostAttr("),
+                "★" + fileName + " 的拖拽体不得自己改 attr（客户端直改位表 = 第二处真相）");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(lines, start, end, "GHOST_FLAG_"),
+                "★" + fileName + " 的拖拽体不得顺手发 FLG（那会变成「一次拖拽两条请求」的半态）");
+        }
+        // ---- ⑥ ★服务端 SET 支也不顺手改 attr（成对：两端都不改，才叫"attr 只由手势管"）----
+        final java.util.List<String> request = guiPocketSource("PocketGhostRequest.java");
+        if (request == null) {
+            System.out.println("[NOTE] 读不到 PocketGhostRequest.java ⇒「SET 不动 attr」的半边【未验】（★不是通过）");
+        } else {
+            final int setStart = methodStart(
+                request,
+                "private static Decision applySet(int slotIndex, String payloadKey");
+            SimpleAssert.that(setStart >= 0, "★applySet 必须还能按签名定位（签名漂了 ⇒ 下面两条读数不算）");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(request, setStart, methodEnd(request, setStart), "setAttr("),
+                "★★SET 支一个 attr 都不写（否则拖一次 MEMORY 格就把它改回 BIND，四行表第 2 行当场作废）");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(request, setStart, methodEnd(request, setStart), "setUploadBlocked("),
+                "★SET 支也不写 P（P 只能由 alt+右 挂上）");
+        }
+    }
+
+    /**
+     * ★R91-⑤ 的裁定原文：<b>{@code L}（记忆）纯过滤，不产生任何 AE 拉取行为；补货行为仍只认 BIND</b>。
+     * <p>
+     * ★刻意<b>不</b>写成"只有 BIND 才拉"：那会回退需求 4 —— 从没做过手势的旧声明（{@code NONE} + 有载荷）
+     * 今天就在拉，用户没抱怨过它。所以真值只有 MEMORY 一档不拉。
+     * 三条成对：① MEMORY 不拉、另两档拉；② ★{@code L} 不改变上传结论（只有 P 拦上传）；
+     * ③ ★闸门真的只住在 {@code PocketChannelRunner} 的补货循环里一处（写进 extract 就得把两张表传下去）。
+     */
+    private static void ghostMemoryNeverPullsOthersDo() {
+        final int none = PocketConstants.GHOST_ATTR_NONE;
+        final int bind = PocketConstants.GHOST_ATTR_BIND;
+        final int memory = PocketConstants.GHOST_ATTR_MEMORY;
+        // ---- ① 抽取闸门真值表（三档 + 越界）----
+        final PocketFilterConfig cfg = new PocketFilterConfig();
+        cfg.add(7, new PocketFilterConfig.ItemFilter(7, 2621, 7, "AAA"));
+        cfg.add(3, new PocketFilterConfig.FluidFilter(3, "lava"));
+        cfg.add(12, new PocketFilterConfig.EssenceFilter(12, "essentia", "aer"));
+        SimpleAssert.that(cfg.pullsFromCell(Kind.ITEM, 7), "★无 attr 的旧声明照旧拉（需求 4 不回退 = 这条最容易写反）");
+        cfg.setAttr(Kind.ITEM, 7, bind);
+        SimpleAssert.that(cfg.pullsFromCell(Kind.ITEM, 7), "BIND 拉（它【就是】补货请求）");
+        cfg.setAttr(Kind.ITEM, 7, memory);
+        SimpleAssert.eq(Boolean.FALSE, cfg.pullsFromCell(Kind.ITEM, 7), "★MEMORY 一格都不拉（纯过滤）");
+        cfg.setAttr(Kind.ITEM, 7, none);
+        SimpleAssert.that(cfg.pullsFromCell(Kind.ITEM, 7), "★撤掉记忆后立刻恢复抽取（同值语义：NONE 是「没做过手势」，不是「禁止」）");
+        for (Kind kind : new Kind[] { Kind.ITEM, Kind.FLUID, Kind.ESSENCE }) {
+            SimpleAssert
+                .that(cfg.pullsFromCell(kind, 99), "★闸门只看 attr、不看有没有载荷（没声明的格 attr=NONE ⇒ 读数仍是「拉」；补货循环本就只遍历声明表，问不到那一格）");
+            cfg.setAttr(kind, 3, memory);
+            SimpleAssert.eq(Boolean.FALSE, cfg.pullsFromCell(kind, 3), "★" + kind + " 区域的 MEMORY 同样不拉（三区同一条判据）");
+            cfg.setAttr(kind, 3, bind);
+            SimpleAssert.that(cfg.pullsFromCell(kind, 3), "★" + kind + " 区域的 BIND 同样拉");
+            cfg.setAttr(kind, 3, none);
+            SimpleAssert.that(cfg.pullsFromCell(kind, 3), "★" + kind + " 区域归 NONE 后仍拉");
+        }
+        for (int junk : new int[] { -1, 5, 99 }) {
+            cfg.setAttr(Kind.ESSENCE, 12, junk);
+            SimpleAssert.that(cfg.pullsFromCell(Kind.ESSENCE, 12), "★越界 attr 归一成 NONE ⇒ 仍拉（不得凭空停掉一条补货）：" + junk);
+        }
+        // ---- ② ★L 不改变上传结论：只有 P 拦注入向（成对：两半都要读数）----
+        final PocketFilterConfig up = new PocketFilterConfig();
+        up.add(2, new PocketFilterConfig.ItemFilter(2, 2621, 0, ""));
+        for (int attr : new int[] { none, bind, memory }) {
+            up.setAttr(Kind.ITEM, 2, attr);
+            SimpleAssert
+                .eq(Boolean.FALSE, up.blocksUpload(Kind.ITEM, 2), "★attr=" + attr + " 都【不】拦上传（否则两种属性会互相改变对方语义）");
+            up.setUploadBlocked(Kind.ITEM, 2, true);
+            SimpleAssert.that(up.blocksUpload(Kind.ITEM, 2), "★P=on 才拦（attr=" + attr + " 不影响这一位）");
+            up.setUploadBlocked(Kind.ITEM, 2, false);
+        }
+        up.setAttr(Kind.ITEM, 2, memory);
+        up.setUploadBlocked(Kind.ITEM, 2, true);
+        SimpleAssert
+            .that(up.blocksUpload(Kind.ITEM, 2) && !up.pullsFromCell(Kind.ITEM, 2), "★一格两属性（L + P）合法且各判各的：既不拉也不上传");
+        // ---- ③ 执法腿的形状：attr 的读法只有一处（★PocketInventory / Runner / ChannelOps 都不抄第二份位表）----
+        SimpleAssert.eq(
+            1,
+            countMainJavaCodeLinesMatching("public\\s+int\\s+attrAt\\("),
+            "attr 的读口定义恰 1 处（PocketFilterConfig#attrAt）");
+        SimpleAssert.eq(1, countMainJavaCodeLinesMatching("public\\s+boolean\\s+uploadBlockedAt\\("), "P 的读口定义恰 1 处");
+        SimpleAssert.eq(1, countMainJavaCodeLinesMatching("public\\s+boolean\\s+pullsFromCell\\("), "抽取闸门判据定义恰 1 处");
+        SimpleAssert.eq(1, countMainJavaCodeLinesMatching("public\\s+boolean\\s+blocksUpload\\("), "上传闸门判据定义恰 1 处");
+        if (countMainJavaCodeLinesMatching("public\\s+int\\s+attrAt\\(") < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ 上面四条「判据唯一性」的读数【未验】（★不是通过）");
+        }
+        // ---- ④ 接线半边：Runner 的补货循环里闸门排在 extract 之前，且只此一处 ----
+        final java.util.List<String> runner = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketChannelRunner.java");
+        if (runner == null) {
+            System.out.println("[NOTE] 读不到 PocketChannelRunner.java ⇒「MEMORY 不抽取」的接线半边【未验】（★不是通过）");
+            return;
+        }
+        final int pulls = firstCodeLineWith(runner, 0, runner.size(), "pullsFromCell(");
+        final int extract = firstCodeLineWith(runner, 0, runner.size(), "ops.extract(");
+        SimpleAssert.that(pulls >= 0, "★补货循环必须问那条闸门（读到 -1 ⇒ L 只是画了个角标，「纯过滤」是空话）");
+        SimpleAssert.that(extract >= 0, "★抽取调用点必须还在（正控：证明这条扫描面认得这个文件，上面的 -1 判据不是空转）");
+        SimpleAssert.that(pulls < extract, "★闸门排在抽取【之前】（" + pulls + " < " + extract + "）——判晚了东西已经进格了");
+        SimpleAssert.eq(1, countCodeLinesIn(runner, "pullsFromCell("), "★整个 Runner 只问一次（两张表各问一遍就是两处真相）");
+        // ---- ⑤ ★P 的三条注入向执法腿都接上了（物品 / 流体 / 源质；源质要经格位归属反查）----
+        final java.util.List<String> ops = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketAeChannelOps.java");
+        if (ops == null) {
+            System.out.println("[NOTE] 读不到 PocketAeChannelOps.java ⇒「P 的注入向执法」接线半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(3, countCodeLinesIn(ops, "blocksUpload("), "★三条来源支各问一次（物品 / 流体 / 源质；少一支 = 那一类照样上传）");
+        SimpleAssert.eq(0, countCodeLinesIn(ops, "attrAt("), "★注入向【不看】attr（只有 P 拦，见本用例②）⇒ 这里不得出现第二判据");
+        SimpleAssert.that(
+            textMatches(ops, "blocksUpload\\(PocketFilterConfig\\.Kind\\.ESSENCE,\\s*cell\\)"),
+            "★源质支必须按【反查到的格位】问 P（来源是 tag 级、P 挂在格上，少一次 cellOf 就是漏一支）");
+        SimpleAssert.that(countCodeLinesIn(ops, "cellOf(") >= 1, "★正控：cellOf 的调用确实在场（上面那条多行正则才有意义）");
+    }
+
+    /**
+     * ★R91-⑤ 的记忆闸档位（源质入槽侧 + 物品落位侧，两侧同一条裁定）。
+     * <p>
+     * 三条口径一条都不能少：① 非 MEMORY ⇒ 不判（★BIND 与无属性格照旧，旧行为逐字不变）；
+     * ② MEMORY + 已有载荷 ⇒ 只放"那一种东西"，逐字比身份；③ MEMORY 但还没有载荷（pending 记忆）⇒
+     * 无立场执法 ⇒ 不拦。另钉：★三参旧形态不判这一道（既有回归用例零回退）、★拒收时盘与载体分毫未动
+     * 且<b>不退壳</b>、★源质格的归属是动态的（{@code cellOf < 0} ⇒ 无处可挂 ⇒ 如实放行）。
+     */
+    private static void essenceIntakeMemoryGateStates() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        // ---- ① 源质入槽的四档：null 闸 / 放行闸 / 拦下闸 / pending ----
+        final StubGate gate = new StubGate();
+        gate.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack phials = stack(2);
+        gate.putContainer(phials, TaumAspectAmounts.single("ignis", unit));
+        // a) 三参旧形态 ⇒ 不判
+        final PocketEssenceStore legacy = new PocketEssenceStore();
+        SimpleAssert.eq(
+            PocketEssenceIntake.Outcome.ACCEPTED,
+            PocketEssenceIntake.intake(phials, legacy, gate).outcome,
+            "★三参形态（旧回归用例的调用形状）不判记忆闸 ⇒ 行为与 R90 逐字一致");
+        // b) 注 null 闸 ⇒ 与三参同形
+        final PocketEssenceStore nullGate = new PocketEssenceStore();
+        SimpleAssert.eq(
+            PocketEssenceIntake.Outcome.ACCEPTED,
+            PocketEssenceIntake.intake(phials, nullGate, gate, null).outcome,
+            "四参但闸为 null ⇒ 同三参");
+        // c) 闸返 false ⇒ 放行
+        final StubMemoryGate pass = new StubMemoryGate();
+        final PocketEssenceStore opened = new PocketEssenceStore();
+        final PocketEssenceIntake.Result ok = PocketEssenceIntake.intake(phials, opened, gate, pass);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, ok.outcome, "记忆格记的就是这一种 ⇒ 入账");
+        SimpleAssert.eq(2 * unit, ok.points, "★放行支的入账算术一字不改（记忆闸不掺算点数）");
+        SimpleAssert.that(ok.refundsCarrier(), "★放行支仍退空壳（S2 的改判不受本闸影响）");
+        SimpleAssert.eq(1, pass.seen.size(), "★闸被问过恰一次");
+        SimpleAssert.eq("ignis", pass.seen.get(0), "★问的是【解出来的 tag】，不是格号或载体（判据要能对上归属）");
+        // d) 闸返 true ⇒ 整笔拒收
+        final StubMemoryGate locked = new StubMemoryGate();
+        locked.locked = true;
+        final PocketEssenceStore refused = new PocketEssenceStore();
+        refused.add("ignis", 4);
+        final int drainBefore = gate.drainCalls;
+        final PocketEssenceIntake.Result hit = PocketEssenceIntake.intake(phials, refused, gate, locked);
+        SimpleAssert
+            .eq(PocketEssenceIntake.Outcome.MEMORY_LOCKED, hit.outcome, "★本格记的不是这一种 ⇒ 独立一态（★不得并成 NO_ROOM：修法不同）");
+        SimpleAssert.eq(0, hit.points, "零点数");
+        SimpleAssert.eq(null, hit.refund, "★拒收不退壳（什么都没溶，退壳就是造瓶）");
+        SimpleAssert.eq(Boolean.FALSE, hit.refundsCarrier(), "同上 ⇒ 分派位为假");
+        SimpleAssert.eq(Boolean.FALSE, hit.accepted(), "同上 ⇒ 未入账");
+        SimpleAssert.eq(4, refused.get("ignis"), "★盘分毫未动");
+        SimpleAssert.eq(2, phials.stackSize, "★游标载体分毫未动");
+        SimpleAssert.eq(drainBefore, gate.drainCalls, "★连抽干都不问（预检在抽取之前，与 NO_ROOM 同形）");
+        SimpleAssert.eq(1, locked.seen.size(), "★拦下之前也问过恰一次（问都没有就问出个 MEMORY_LOCKED ⇒ 桩件被绕过）");
+        SimpleAssert.eq("gtit.pocket.essence.intake.memory_locked", hit.langKey(), "★新态必须有独立回执键（静默或复用别键 = 本次缺陷本身）");
+        // ★正控：同一条 langKey() 判据在旧态上给出旧键 ⇒ 上面那条新键不是"恒返新键"读出来的
+        final StubGate tight = new StubGate();
+        tight.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack tooMany = stack(10);
+        tight.putContainer(tooMany, TaumAspectAmounts.single("ignis", unit));
+        final PocketEssenceStore nearlyFull = new PocketEssenceStore();
+        nearlyFull.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - 4);
+        final PocketEssenceIntake.Result noRoom = PocketEssenceIntake.intake(tooMany, nearlyFull, tight, pass);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.NO_ROOM, noRoom.outcome, "前置：同一条四参入口仍能走到 NO_ROOM（★记忆闸没把别的态吃掉）");
+        SimpleAssert.eq("gtit.pocket.essence.intake.no_room", noRoom.langKey(), "★正控：langKey() 认得旧态 ⇒ 新键那条读数不是空转");
+        SimpleAssert.eq(
+            5,
+            PocketEssenceIntake.Outcome.values().length,
+            "★五态封顶（NOT_CRYSTAL/NO_OWNER/NO_ROOM/MEMORY_LOCKED/ACCEPTED）；少一态 = 有人把记忆并进了别的态");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            Boolean.valueOf(PocketEssenceIntake.Outcome.MEMORY_LOCKED == PocketEssenceIntake.Outcome.NO_ROOM),
+            "★两态必须分开（那是两种失败，玩家看到的修法完全不同）");
+        // ---- ② ★位表侧的真值表（L 的三条口径，物品与源质各一张）----
+        final PocketFilterConfig cfg = new PocketFilterConfig();
+        final String itemKey = PocketFilterConfig.itemKey(2621, 7, "AAA");
+        cfg.add(5, new PocketFilterConfig.ItemFilter(5, 2621, 7, "AAA"));
+        final String otherKey = PocketFilterConfig.itemKey(2621, 7, "BBB");
+        // a) 非 MEMORY ⇒ 一律不放行（R84"声明格是抽取落点、不是玩家输入口"一字不改）
+        for (int attr : new int[] { PocketConstants.GHOST_ATTR_NONE, PocketConstants.GHOST_ATTR_BIND }) {
+            cfg.setAttr(Kind.ITEM, 5, attr);
+            SimpleAssert.eq(
+                Boolean.FALSE,
+                cfg.allowsPlayerPlacement(Kind.ITEM, 5, itemKey),
+                "★attr=" + attr + " ⇒ 声明格仍禁放置（同种东西也不行）");
+        }
+        // b) MEMORY + 载荷 ⇒ 逐字比身份
+        cfg.setAttr(Kind.ITEM, 5, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.that(cfg.allowsPlayerPlacement(Kind.ITEM, 5, itemKey), "★记忆格放行「那一种东西」");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            cfg.allowsPlayerPlacement(Kind.ITEM, 5, otherKey),
+            "★同 item 不同 NBT ⇒ 拒（★比的是整条载荷键，不是 itemId）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.allowsPlayerPlacement(Kind.ITEM, 5, ""), "空键 ⇒ 拒（不得把「读不出身份」当成放行）");
+        SimpleAssert.eq(Boolean.FALSE, cfg.allowsPlayerPlacement(Kind.ITEM, 5, null), "★null 键 ⇒ 拒（不得 NPE，也不得放行）");
+        // c) pending 记忆（还没有载荷）⇒ 不拦（★无立场执法）
+        cfg.setAttr(Kind.ITEM, 60, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert
+            .that(cfg.allowsPlayerPlacement(Kind.ITEM, 60, itemKey), "★pending 记忆 ⇒ 第一件东西放得进去（否则 R91-b 的空格建档永远落不成）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, cfg.attrAt(Kind.ITEM, 60), "★attr 不因放行了就被吃掉（它还是记忆格）");
+        // d) 源质支：比较粒度是 tag，★不是整条载荷键（typeId 是通道读数，换整合包就会变）
+        cfg.add(2, new PocketFilterConfig.EssenceFilter(2, "essentia", "aer"));
+        cfg.setAttr(Kind.ESSENCE, 2, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.that(cfg.memoryAllowsTag(Kind.ESSENCE, 2, "aer"), "★同 tag ⇒ 放行");
+        SimpleAssert.eq(Boolean.FALSE, cfg.memoryAllowsTag(Kind.ESSENCE, 2, "ignis"), "★异 tag ⇒ 整笔拒");
+        SimpleAssert.eq(Boolean.FALSE, cfg.memoryAllowsTag(Kind.ESSENCE, 2, null), "★null tag ⇒ 拒（不得放行成「什么都收」）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            cfg.memoryAllowsTag(Kind.ESSENCE, 2, "essentia:aer"),
+            "★不许把整键塞进来蒙混（比的是 tag 段，不是 contains）");
+        cfg.setAttr(Kind.ESSENCE, 2, PocketConstants.GHOST_ATTR_BIND);
+        SimpleAssert.that(cfg.memoryAllowsTag(Kind.ESSENCE, 2, "ignis"), "★非 MEMORY ⇒ 本闸根本不判（异 tag 也放行，拦不拦由别处决定）");
+        // e) ★本格声明不是源质声明（档位串了）⇒ 乐观看"不拦"，不凭猜测销毁玩家的入槽
+        cfg.setAttr(Kind.ITEM, 3, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.that(cfg.memoryAllowsTag(Kind.ITEM, 3, "aer"), "★那一格不是源质声明 ⇒ 不拦（数据被改坏的形状）");
+        cfg.setAttr(Kind.ESSENCE, 71, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.that(cfg.memoryAllowsTag(Kind.ESSENCE, 71, "aer"), "★pending 记忆格（无载荷）⇒ 不拦");
+        SimpleAssert.that(cfg.memoryAllowsTag(null, 2, "aer"), "★null 区域 ⇒ 不拦（attrAt 回落 NONE，不得 NPE）");
+        // ---- ③ 接线半边：服务端确实把闸接上，且判据不在 handler 里抄第二份 ----
+        final java.util.List<String> handler = guiPocketSource("NekoPocketServerHandler.java");
+        if (handler == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketServerHandler.java ⇒「记忆闸接线」的半边【未验】（★不是通过）");
+            return;
+        }
+        final int start = methodStart(handler, "void performEssenceIntake() {");
+        SimpleAssert.that(start >= 0, "★入槽执行体必须还能按签名定位");
+        final int end = methodEnd(handler, start);
+        SimpleAssert
+            .that(regionContainsCode(handler, start, end, "memoryAllowsTag("), "★handler 把结论问给那张位表（★自己判 attr 就是第二处真相）");
+        SimpleAssert
+            .that(regionContainsCode(handler, start, end, "cellOf("), "★源质格归属是【动态】的（R86 扣到 0 当场腾格）⇒ 必须现读 cellOf");
+        SimpleAssert.eq(0, countRegionCode(handler, start, end, "attrAt("), "★handler 不直接读 attr（判据整条住在位表里）");
+        SimpleAssert.that(regionContainsCode(handler, start, end, "intake("), "★四参形态真的是生产入口");
+        // 物品支：PocketInventory 的 isItemValid 链
+        final java.util.List<String> inventory = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketInventory.java");
+        if (inventory == null) {
+            System.out.println("[NOTE] 读不到 PocketInventory.java ⇒「L 的物品执法腿」半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(1, countCodeLinesIn(inventory, "allowsPlayerPlacement("), "★物品支只问那一条单源判据（恰 1 处）");
+            SimpleAssert.eq(0, countCodeLinesIn(inventory, "attrAt("), "★不在 handler 里再判一遍位表");
+            SimpleAssert.that(countCodeLinesIn(inventory, "contentKey(") >= 1, "★放行判据用的是与 NEI 拖入同一条键函数（不造第二种键式样）");
+        }
+    }
+
+    /** ★R91-C：三组格件的手势接线（★逐个控件 × 逐个手势，一条都不许多也不许少）。 */
+    private static void ghostThreeWidgetsGesturesWired() {
+        final String bind = PocketConstants.GHOST_FLAG_BIND;
+        final String memory = PocketConstants.GHOST_FLAG_MEMORY;
+        final String block = PocketConstants.GHOST_FLAG_UPLOAD_BLOCK;
+        SimpleAssert.eq("B", bind, "★中键的手势字母（改它 = 改文法，两份端都要红）");
+        SimpleAssert.eq("M", memory, "★alt+左的手势字母");
+        SimpleAssert.eq("P", block, "★alt+右的手势字母");
+        // ---- ① 三组格件 × 三手势：逐个接线 + 排序判据 + 中键早退不调 super ----
+        for (String fileName : ghostWidgetFiles()) {
+            final java.util.List<String> lines = guiPocketSource(fileName);
+            if (lines == null) {
+                System.out.println("[NOTE] 读不到 " + fileName + " ⇒「三手势接线」的半边【未验】（★不是通过）");
+                continue;
+            }
+            final int start = methodStart(lines, "Result onMousePressed(int mouseButton) {");
+            SimpleAssert.that(start >= 0, "★" + fileName + " 的手势入口必须能按签名定位（改派后签名漂了 ⇒ 本段读数不算）");
+            final int end = methodEnd(lines, start);
+            final int bindAt = firstCodeLineWith(
+                lines,
+                start,
+                end,
+                "requestGhostFlag(PocketConstants." + "GHOST_FLAG_BIND");
+            final int memoryAt = firstCodeLineWith(
+                lines,
+                start,
+                end,
+                "requestGhostFlag(PocketConstants." + "GHOST_FLAG_MEMORY");
+            final int blockAt = firstCodeLineWith(
+                lines,
+                start,
+                end,
+                "requestGhostFlag(PocketConstants." + "GHOST_FLAG_UPLOAD_BLOCK");
+            final int clearAt = firstCodeLineWith(lines, start, end, "requestGhostClear(");
+            SimpleAssert.that(bindAt >= 0, "★" + fileName + " 的中键必须挂 BIND（R91-⑤ 的「中键 = 请求绑定」）");
+            SimpleAssert.that(memoryAt >= 0, "★" + fileName + " 的 alt+左必须挂 MEMORY（旧「绑本格存量」已迁走）");
+            SimpleAssert.that(blockAt >= 0, "★" + fileName + " 的 alt+右必须挂 P");
+            SimpleAssert.that(clearAt >= 0, "★" + fileName + " 的右键解绑支必须还在（改派不是删口）");
+            // ★★取证 G3：alt+右 必须排在【既有】的 "ghost && mouseButton == 1" 解绑支之前，
+            // 否则声明格上的 alt+右会先被读成解绑 —— 玩家按出来的就不是 P。
+            SimpleAssert.that(
+                blockAt < clearAt,
+                "★★排序即判据：" + fileName + " 的 alt+右(" + blockAt + ") 必须排在解绑(" + clearAt + ") 【之前】");
+            SimpleAssert.that(bindAt < memoryAt && bindAt < blockAt, "★中键支排最前（与旧「中键早退」纪律同形）：" + fileName);
+            // ★中键支必须早退且【不调 super】（原版把 button 2 读成 keyBindPickBlock ⇒ 创造取物）
+            final int firstReturn = firstCodeLineWith(lines, bindAt, end, "return ");
+            SimpleAssert.that(firstReturn > bindAt, "★" + fileName + " 的中键支必须自己 return（不早退 = 事件穿透）");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(lines, bindAt, firstReturn + 1, "super."),
+                "★★中键支不得调 super（" + fileName + "）：原版 button 2 = 创造取物，这条安全语义与「整理走自家动作码」无关");
+            // ★alt+左 无条件停住（不得交回原版读成普通左键放置）
+            final int memoryReturn = firstCodeLineWith(lines, memoryAt, end, "return ");
+            SimpleAssert.that(memoryReturn > memoryAt, "★" + fileName + " 的 alt+左支必须自己 return");
+            SimpleAssert
+                .eq(0, countRegionCode(lines, memoryAt, memoryReturn + 1, "super."), "★alt+左支也不得调 super（同一条手感纪律）");
+            // ★三条出口都只能经面板那一条 FLG 通道，★本地一个字节都不改
+            SimpleAssert.that(
+                regionContainsCode(lines, start, end, "GHOST_REQUEST_SEPARATOR") == false,
+                "★" + fileName + " 不得自己拼 C2S 串（拼装单源在 PocketGhostRequest#flagRequest）");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(lines, start, end, "setGhostAttr("),
+                "★格件不得自改 attr 显示（attr 只能由 SYNC_GHOST_FLAGS 推回来）");
+            SimpleAssert
+                .eq(0, countRegionCode(lines, start, end, "sendGhostRequest("), "★格件不得绕开面板直接发包（区域/槽号的合法性校验只有一处）");
+            // ★旧的两条 alt+左 支（"已是声明格 ⇒ 停住"与"绑本格存量"）必须合并掉，不留尸
+            SimpleAssert.eq(
+                0,
+                countCodeLinesIn(lines, "requestBindFromContents(") + countCodeLinesIn(lines, "requestBindFromTank(")
+                    + countCodeLinesIn(lines, "requestBindFromStock("),
+                "★被改派的三个「绑本格存量」方法必须整体删除（R84 的 U2 纪律：不留注释尸）：" + fileName);
+            // ★attr 与 P 的显示侧写入口 + 角标消费点都在
+            SimpleAssert
+                .that(countCodeLinesIn(lines, "setGhostAttr(") >= 1, "★" + fileName + " 必须有 attr 的显示侧写入口（面板推送落点）");
+            SimpleAssert.that(countCodeLinesIn(lines, "setUploadBlocked(") >= 1, "★" + fileName + " 必须有 P 的显示侧写入口");
+            SimpleAssert.that(
+                countCodeLinesIn(lines, "ghostAttr()") >= 1,
+                "★" + fileName + " 必须有 attr 的读数口（面板/tooltip 都问它，★不得只留字段）");
+        }
+        // ---- ② ★可写性三档：只有 MEMORY 的声明格开"放"这一侧（中栏真实格）----
+        final java.util.List<String> filterSlot = guiPocketSource("NekoFilterSlot.java");
+        if (filterSlot != null) {
+            final int start = methodStart(filterSlot, "private void applyAccessibility() {");
+            SimpleAssert.that(start >= 0, "★可写性必须收进一个唯一落点（两条路径各设一遍 accessibility 迟早分叉）");
+            final int end = methodEnd(filterSlot, start);
+            SimpleAssert.that(
+                regionContainsCode(filterSlot, start, end, "ghostAttr == PocketConstants.GHOST_ATTR_MEMORY"),
+                "★三档真值里必须有「MEMORY 开放置」那一档（否则记忆格永远放不进「那一种东西」，L 是死字）");
+            SimpleAssert.that(
+                regionContainsCode(filterSlot, start, end, "slot.canDragInto(!ghost)"),
+                "★拖入侧仍按载荷判（★P 的拒收在 handleDragAndDrop 里，不在这里）");
+            SimpleAssert.that(
+                countCodeLinesIn(filterSlot, "applyAccessibility();") >= 2,
+                "★setGhost 与 setGhostAttr 都必须经它（★同一条纪律，两条路径不各自判 accessibility）");
+        } else {
+            System.out.println("[NOTE] 读不到 NekoFilterSlot.java ⇒「可写性三档」的半边【未验】（★不是通过）");
+        }
+        // ---- ③ 面板的三手势出口与双源 accessor（★一根通道一个所有者）----
+        final java.util.List<String> panel = guiPocketSource("NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒「SYNC_GHOST_FLAGS 与三组格件推送」的半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.that(
+            textMatches(
+                panel,
+                "syncValue\\(\\s*SYNC_GHOST_FLAGS,\\s*new StringSyncValue\\(\\s*this::composeGhostFlags,\\s*this::applyGhostFlagsView\\s*\\)\\s*\\)"),
+            "★属性层必须走【另一枚】StringSyncValue（R91-a 裁定 (b)：不扩 SYNC_GHOST 的段数、不焊回它的编解码）");
+        SimpleAssert.that(
+            textMatches(panel, "new StringSyncValue\\(\\s*this::composeGhostBlob,\\s*this::applyGhostBlob\\s*\\)"),
+            "★正控：同一条扫描面认得这种注册形状 ⇒ 上面那条不匹配不是式子写错");
+        SimpleAssert
+            .that(countCodeLinesIn(panel, "ghostAttrAt(") >= 4, "★三组格件各推一次 + accessor 定义（少于 4 = 有一组格件收不到 attr）");
+        SimpleAssert.that(countCodeLinesIn(panel, "ghostUploadBlockedAt(") >= 4, "★同上：P 也要三组都推到");
+        SimpleAssert.eq(
+            4,
+            countCodeLinesIn(panel, "clientGhostFlags"),
+            "★客户端镜像恰四个代码位：字段声明 + 整体覆盖 + 两个 accessor（多一处 = 有第二根通道在抹它）");
+        SimpleAssert.that(
+            textMatches(panel, "PocketGhostRequest\\.applyFlagsBlob\\(\\s*blob,\\s*clientGhostFlags\\s*\\)"),
+            "★镜像整体覆盖经单源解码口");
+        SimpleAssert.that(regionContainsCode(panel, 0, panel.size(), "syncManager.isClient()"), "★双源 accessor 的分支在场");
+        // ---- ④ ★整理仍由 R 键承担（中键让位之后，需求 5 那半不能凭空少一只手势）----
+        final java.util.List<String> sortSlot = guiPocketSource("NekoFilterSlot.java");
+        if (sortSlot != null) {
+            final int start = methodStart(
+                sortSlot,
+                "public Interactable.Result onKeyPressed(char typedChar, int keyCode) {");
+            SimpleAssert.that(start >= 0, "★R 键整理的挂点必须还在（中键让位后它是【唯一】的整理手势）");
+            final int end = methodEnd(sortSlot, start);
+            SimpleAssert.that(regionContainsCode(sortSlot, start, end, "Keyboard.KEY_R"), "★挂的键仍是 R");
+            SimpleAssert.that(
+                regionContainsCode(sortSlot, start, end, "requestSortFromWidget()"),
+                "★按 R 真的发整理请求（走自家动作码，★不是中键那条）");
+        }
+    }
+
+    /**
+     * ★★R91-e（裁 S2 交回的第一处）：取出动作的 <b>shift 位真的传到了</b>。
+     * <p>
+     * S2 的取出单点<b>早已</b>按 {@code packedArg} 自己解析 shift（两条动作码共用同一个单点），
+     * 缺的只是面板把 {@code Interactable.hasShiftDown()} 折进 arg ⇒ 补上之前<b>批量支永不可达</b>。
+     * 因此本用例要钉三件，缺一件就是"看着接了、其实没通"：
+     * ① 编码空间的算术正确（★位的值必须恰好落在"第一个非格号"上 ⇒ 与格号不冲突、可无损还原）；
+     * ② 那一位<b>两端都被消费</b>（客户端折进去、服务端解出来，★中间不得被别处再算一遍）；
+     * ③ 解出来的 shift 真会<b>改变产出</b>（★否则传一位没人读的"接线"是纯装饰）。
+     */
+    private static void essenceOutShiftBitIsCarried() {
+        final int flag = PocketConstants.ESSENCE_OUT_SHIFT_FLAG;
+        final int grid = PocketConstants.ESSENCE_DISPLAY_GRID;
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        // ---- ① 编码空间：位 = 第一个非格号，与格号不冲突且可无损还原 ----
+        SimpleAssert.eq(grid, flag, "★shift 位的值恰好 = 显示格数（唯一能让 packed 不歧义的取值）");
+        for (int cell = 0; cell < grid; cell++) {
+            final int packedNoShift = cell;
+            final int packedShift = cell + flag;
+            final boolean shiftNo = packedNoShift >= flag;
+            final boolean shiftYes = packedShift >= flag;
+            SimpleAssert.eq(Boolean.FALSE, Boolean.valueOf(shiftNo), "无 shift 的 packed 必须解成 false（格 " + cell + "）");
+            SimpleAssert.eq(Boolean.TRUE, Boolean.valueOf(shiftYes), "带 shift 的 packed 必须解成 true（格 " + cell + "）");
+            SimpleAssert.eq(cell, shiftYes ? packedShift - flag : packedShift, "★格号无损还原（格 " + cell + "）");
+            SimpleAssert.that(PocketFilterConfig.isAllowedSlotIndex(Kind.ESSENCE, cell), "前置：格号在白名单内（" + cell + "）");
+            SimpleAssert.that(
+                packedShift < 2 * flag,
+                "★最大 packed（" + packedShift + "）不得越出第二枚位（上界 " + (2 * flag) + "）⇒ 再加位要重新裁定");
+        }
+        SimpleAssert.that(flag + (grid - 1) < 2 * flag, "★最大 packed = " + (flag + grid - 1) + " 仍在「一位」内（再加位要重新裁定）");
+        // ---- ② ★那一位真的改变产出（"没人读的位"当场变红）----
+        SimpleAssert.eq(1, PocketEssenceIntake.phialsToFill(3, 3 * unit, false), "★左键 = 消耗 1 只、装 1 只（3 只瓶 + 24 点 ⇒ 1）");
+        SimpleAssert.eq(3, PocketEssenceIntake.phialsToFill(3, 3 * unit, true), "★shift = 装到既有单动作上限（3 只瓶 + 24 点 ⇒ 3）");
+        SimpleAssert.that(
+            PocketEssenceIntake.phialsToFill(8, 8 * unit, false) != PocketEssenceIntake.phialsToFill(8, 8 * unit, true),
+            "★★同一格输入按 shift 二分必须给出不同结果（读到相等 ⇒ 那一位没人读，接线是装饰）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_OUT_UNIT_POINTS,
+            PocketEssenceIntake.phialsToFill(8, 8 * unit, false) * unit,
+            "★左键支的扣点恰一只瓶（账本 R91-④ 字面「消耗 1 只空瓶」）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION,
+            PocketEssenceIntake.phialsToFill(64, 8 * PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION * unit, true),
+            "★shift 支顶到既有的单动作上界（★派生常量，不留字面量、不新增第二套算式）");
+        // ---- ③ 接线半边：客户端折位、服务端解位，★中间不得有第二处算式 ----
+        final java.util.List<String> panel = guiPocketSource("NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒「shift 位折进 arg」的半边【未验】（★不是通过）");
+            return;
+        }
+        final int dispatch = methodStart(panel, "boolean dispatchEssenceCellPress(int cell) {");
+        SimpleAssert.that(dispatch >= 0, "★分流口必须还能按签名定位（★它现在是【唯一】的取出请求入口）");
+        final int dispatchEnd = methodEnd(panel, dispatch);
+        SimpleAssert.that(
+            regionContainsCode(panel, dispatch, dispatchEnd, "Interactable.hasShiftDown()"),
+            "★★分流口必须读 shift（S2 丢的就是这一位 ⇒ 丢了就是批量支永不可达）");
+        SimpleAssert.that(
+            regionContainsCode(panel, dispatch, dispatchEnd, "requestEssenceOutToPhial(cell, shift)"),
+            "★读到的 shift 必须原样交给请求口（★不得在客户端预判成别的东西）");
+        SimpleAssert
+            .eq(0, countRegionCode(panel, dispatch, dispatchEnd, "phialsToFill("), "★客户端【不算】只数（R18/R19：真值只在服务端一处）");
+        final int request = methodStart(panel, "boolean requestEssenceOutToPhial(int cell, boolean shift) {");
+        SimpleAssert.that(request >= 0, "★请求口必须是【格号 + shift】两参形状（★丢弃 shift 的那个重载已删除）");
+        final int requestEnd = methodEnd(panel, request);
+        SimpleAssert.that(
+            regionContainsCode(panel, request, requestEnd, "ACTION_ESSENCE_OUT_TO_PHIAL"),
+            "★仍走取出那条动作码（★不开第二条通道）");
+        SimpleAssert.that(
+            regionContainsCode(panel, request, requestEnd, "PocketConstants.ESSENCE_OUT_SHIFT_FLAG"),
+            "★位在这一行折进 arg");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(panel, "boolean requestEssenceOutToPhial("),
+            "★★只剩一形（S2 那个丢弃 shift 的重载必须整体删除，不留注释尸；留着 = 有人迟早点到它）");
+        final int perform = methodStart(panel, "void performEssenceOutToPhial(int packedArg) {");
+        SimpleAssert.that(perform >= 0, "★取出单点必须还能按签名定位");
+        final int performEnd = methodEnd(panel, perform);
+        SimpleAssert.that(
+            regionContainsCode(panel, perform, performEnd, "packedArg >= PocketConstants.ESSENCE_OUT_SHIFT_FLAG"),
+            "★服务端把那一位解回来（★两端各算一次迁移 = 两处真相）");
+        SimpleAssert.that(
+            regionContainsCode(panel, perform, performEnd, "packedArg - PocketConstants.ESSENCE_OUT_SHIFT_FLAG"),
+            "★格号无损还原");
+        SimpleAssert.that(
+            regionContainsCode(panel, perform, performEnd, "phialsToFill(carried.stackSize, stock, shift)"),
+            "★解出的 shift 真的进了算式（★否则②那三条改变产出的断言只是纯函数的自证）");
+        // ---- ④ 成对负控：另一条动作码（ACTION_ESSENCE_OUT）转发到同一点，★不各留一份算式 ----
+        SimpleAssert.that(
+            textMatches(panel, "performEssenceOutToPhial\\(\\s*arg\\s*\\)"),
+            "★旧动作码原样转发到同一个单点（两条码共读一处出瓶口 = S2 立的形状，本轮补的是那一位）");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(panel, "final int bottles = PocketEssenceIntake.phialsToFill("),
+            "★取出只数在整份面板里恰一处（第二处 = 面板抄了第二份取整算式）");
     }
 
     // ================================================================== ★R90 E3（S3+S5）批 2 测试落地

@@ -13,6 +13,7 @@ import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
+import com.miaokatze.gtit.common.items.pocket.EssenceNativeChannels;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
 import com.miaokatze.gtit.common.items.pocket.PocketBindFlow;
@@ -473,7 +474,19 @@ final class NekoPocketServerHandler {
             target.inventory.getItemStack(),
             panel.inventory()
                 .essence(),
-            EssenceGate.TAUM);
+            EssenceGate.TAUM,
+            // ★★R91-⑤ 的 L 执法腿（源质支）：本格被 alt+左 记成别的东西 ⇒ 整笔拒收。
+            // 这一格是<b>动态</b>归属（R86：扣到 0 当场腾格）⇒ 现读 cellOf(tag)；
+            // ★cellOf < 0（有货无格）⇒ 属性无处可挂，按"不拦"处理（与 P 那一条同一个如实口径）。
+            // ★判据本体在 PocketFilterConfig#memoryAllowsTag（★本 lambda 不含第二份位表读法）。
+            tag -> {
+                final int cell = panel.inventory()
+                    .essence()
+                    .cellOf(tag);
+                return cell >= 0 && !panel.inventory()
+                    .filters()
+                    .memoryAllowsTag(PocketFilterConfig.Kind.ESSENCE, cell, tag);
+            });
         // ★L3（[PocketR89]）：四态 Outcome 读数（D1：空瓶误入槽的纵深防御是否真的在拒）
         // ★R91-④ 追加 refund 读数：退了几只壳（0 = 晶档或失败态，>0 = 瓶档）
         GTInterestingThing.LOG.debug(
@@ -525,7 +538,10 @@ final class NekoPocketServerHandler {
             panel.inventory()
                 .filters(),
             panel.inventory()
-                .essence());
+                .essence(),
+            // ★R91-⑤：FLG 支要"按本格现有内容记录"⇒ 给它一个<b>服务端</b>载荷读数口（★不让客户端抄一份
+            // 载荷上来，那是 R18/R19 明令的方向）。三条读数见 {@link #ghostPayloadAt}。
+            this::ghostPayloadAt);
         GTInterestingThing.LOG.debug(
             "[PocketR89] L8 ghost 请求到达服务端：{} ⇒ outcome={} kind={} slot={}",
             request,
@@ -540,6 +556,60 @@ final class NekoPocketServerHandler {
         panel.inventory()
             .markDirty();
         panel.applyGhosts();
+    }
+
+    /**
+     * ★★<b>R91-⑤「格内有物 ⇒ 按该物记录」的服务端读数口</b>（{@link PocketGhostRequest.PayloadSource}
+     * 的生产实现，只被 {@code FLG} 支问一次）。
+     * <p>
+     * 三条区域各读自己那一格的<b>真实内容</b>，★都是既有单源件，本方法不造第二判据：
+     * <ul>
+     * <li>{@code ITEM} = 中栏那格的 {@link PocketAeChannelOps#contentKey}（与 NEI 拖入、ghost 搬空
+     * 比对<b>同一个</b>键式样）；</li>
+     * <li>{@code FLUID} = 该 tank 现装流体名（★读 {@code ownTankFluid} 那份真值，不读声明样本）；</li>
+     * <li>{@code ESSENCE} = 本格<b>当前归属</b>的 tag（{@code tagAtCell}，R86 口径）配
+     * {@link EssenceNativeChannels#nativeChannelTypeId} 的通道 id —— ★源质载荷键<b>必须</b>带 typeId，
+     * 而 typeId 只有 AE2 注册表在场时解得出：解不出（TC/AE 缺席、无原生通道）⇒ 返空 ⇒
+     * 本格停在"只挂 attr、无载荷"的 pending 态（R91-b 的合法状态，内容待 NEI 拖拽落成）。</li>
+     * </ul>
+     * ★空格的三条读数都自然落空（{@code null} / 空串）⇒ 调用方只挂状态，这正是用户要的
+     * "没东西则进入这个状态"。
+     */
+    String ghostPayloadAt(PocketFilterConfig.Kind kind, int slotIndex) {
+        if (kind == null || slotIndex < 0) {
+            return "";
+        }
+        final PocketInventory held = panel.inventory();
+        switch (kind) {
+            case ITEM: {
+                final ItemStack stack = held.storageStack(slotIndex);
+                return stack == null ? "" : PocketAeChannelOps.contentKey(stack);
+            }
+            case FLUID: {
+                final FluidStack fluid = held.ownTankFluid(slotIndex);
+                if (fluid == null || fluid.amount <= 0 || fluid.getFluid() == null) {
+                    return "";
+                }
+                return PocketFilterConfig.fluidKey(
+                    fluid.getFluid()
+                        .getName());
+            }
+            case ESSENCE: {
+                final String tag = held.essence()
+                    .tagAtCell(slotIndex);
+                if (tag == null || tag.isEmpty()) {
+                    return "";
+                }
+                final String typeId = EssenceNativeChannels.nativeChannelTypeId(tag);
+                if (typeId == null || typeId.isEmpty()) {
+                    // ★不在这里回落物品通道（R90 AUQ-①=B / R91-① 的政策四项），也不写死 id
+                    return "";
+                }
+                return PocketFilterConfig.essenceKey(typeId, tag);
+            }
+            default:
+                return "";
+        }
     }
 
     // ------------------------------------------------------------------ 防伪守卫（R19 三层）

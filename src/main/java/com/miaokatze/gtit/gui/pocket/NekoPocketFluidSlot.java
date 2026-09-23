@@ -52,6 +52,15 @@ public class NekoPocketFluidSlot extends FluidSlot {
     /** 虚化遮罩色（与 {@link NekoFilterSlot} 同一 alpha 口径，R18）。 */
     private static final int GHOST_MASK = 0x80FFFFFF;
 
+    /**
+     * ★R91-⑤：中键按钮号（MUI2 原样透传 {@code Mouse.getEventButton()}，★不按 0/1 白名单过滤）。
+     * <p>
+     * ★数值刻意<b>在本类各写一份私有常量</b>而不是抽一个共享常量：三组格件的"早退理由"彼此不同
+     * （中栏防原版创造取物、流体槽防 phantom 分支穿透、源质格防 ButtonWidget 谓词空转），
+     * 抽在一起迟早有人拿"同源"的名头把三条不同的纪律并成一条注释。按钮号本身是 LWJGL2 的固定事实。
+     */
+    private static final int MOUSE_BUTTON_MIDDLE = 2;
+
     /** 反解流体名的探针（一格一个 {@code ItemStack -> 流体名或 null}）。 */
     public interface FluidNameProbe {
 
@@ -91,6 +100,14 @@ public class NekoPocketFluidSlot extends FluidSlot {
      * {@link PocketConstants#FLUID_BAR_CAPACITY_ML}，即"一拍把本 tank 填到自然满量"的现行为）。
      */
     private int declaredCap = PocketConstants.FILTER_CAP_UNSET;
+    /**
+     * ★★<b>R91-⑤</b>：本列的互斥属性（NONE / BIND / MEMORY）。数据源是面板上
+     * {@code SYNC_GHOST_FLAGS} 那枚<b>独立</b>同步值的客户端镜像（经双源 accessor 刷进来），
+     * ★<b>不是</b>从 {@link #ghost} 派生 —— 空格也要能挂 L/P（R91-b）。
+     */
+    private int ghostAttr = PocketConstants.GHOST_ATTR_NONE;
+    /** ★R91-⑤：正交位 {@code P}（本格内容永不进注入向），可与任一 attr 并存。 */
+    private boolean uploadBlocked;
     /** 渲染样本缓存（只在客户端渲染路径上按需解析，服务端与解不出名字时保持 null）。 */
     private String sampleName;
     private FluidStack sample;
@@ -161,6 +178,40 @@ public class NekoPocketFluidSlot extends FluidSlot {
         return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.FLUID, declaredCap, 0);
     }
 
+    /**
+     * ★R91-⑤：面板把服务端属性位表的 attr 刷进本列显示侧（与 {@link #setDeclaredCap} 同一个应用点、
+     * 同一条"同值即返回"纪律）。★只影响遮罩在场判据与左上蓝 {@code L}，★不动 tank、不动灌排。
+     */
+    NekoPocketFluidSlot setGhostAttr(int attr) {
+        final int next = PocketConstants.normalizeGhostAttr(attr);
+        if (this.ghostAttr == next) {
+            return this;
+        }
+        this.ghostAttr = next;
+        markTooltipDirty();
+        return this;
+    }
+
+    /** ★R91-⑤：正交位 {@code P} 的显示侧写入口（只画左下绿角标）。 */
+    NekoPocketFluidSlot setUploadBlocked(boolean blocked) {
+        if (this.uploadBlocked == blocked) {
+            return this;
+        }
+        this.uploadBlocked = blocked;
+        markTooltipDirty();
+        return this;
+    }
+
+    /** 本列当前的 attr（服务端算好、经 {@code SYNC_GHOST_FLAGS} 同步来的读数）。 */
+    public int ghostAttr() {
+        return ghostAttr;
+    }
+
+    /** 本列是否挂了 {@code P}（阻拦上传）。 */
+    public boolean isUploadBlocked() {
+        return uploadBlocked;
+    }
+
     /** 右上角橙色读数的文本（缩写口径三类同源）。 */
     private String capReadoutText() {
         return ghost ? PocketGhostRequest.capReadout(ghostCap()) : "";
@@ -178,6 +229,12 @@ public class NekoPocketFluidSlot extends FluidSlot {
         if (owner == null || draggedStack == null) {
             return false;
         }
+        // ★★<b>R91-b</b>：只有 P（无 attr）的条 ⇒ 拖拽<b>不响应</b>，且★必须在清
+        // {@code draggedStack.stackSize} <b>之前</b>判（"P 不携带内容"这条 javadoc 承诺的空内容钉：
+        // 栈不被吃掉 ⇒ NEI 那边继续拖着，玩家看得见"没反应"而不是"东西没了"）。
+        if (PocketGhostRequest.dragRouteOf(ghostAttr, uploadBlocked) == PocketGhostRequest.DragRoute.IGNORE) {
+            return false;
+        }
         final String key = ghostKeyFor(button, areAncestorsEnabled(), firstFluidName(draggedStack, PROBE_CHAIN));
         if (key.isEmpty()) {
             return false;
@@ -187,47 +244,57 @@ public class NekoPocketFluidSlot extends FluidSlot {
     }
 
     /**
-     * ghost 态下的右键 = 解绑（★只发本列自己的 {@code CLR|<列号>|F}，判定与执行在服务端）。
+     * ★★<b>R91-⑤ 重排后的流体列按键矩阵</b>（★与 {@link NekoFilterSlot} / {@link NekoEssenceGhostCell}
+     * 三组格件<b>同一套</b>手势，一条都不许多、也不许少）：
+     * <b>中键</b> = 请求绑定 BIND（★早退、不调 {@code super}）／
+     * <b>alt+左</b> = 记忆 {@code L} ／ <b>alt+右</b> = 阻拦上传 {@code P}
+     * （★★排在既有"ghost + 右键 = 解绑"那条<b>之前</b>，否则声明条上的 alt+右 会先被读成解绑）／
+     * 其余（含手持储罐点条的普通左/右键）一律交回 {@code super} ⇒ 需求 2 的"两格同权灌排"与
+     * GT5U 那套按键组合、tooltip（{@code modularui2.fluid.click_combined} / {@code _to_fill} /
+     * {@code _to_empty}）一个字都不改（L7/R31 口径）。
      * <p>
-     * ★R83 C2 新增 <b>alt+左键</b> = 对"这一列流体槽里<b>已有的流体</b>"直接声明需求（与 NEI 拖入
-     * 同一条 {@code requestGhost} 请求、同一套四态回执 ⇒ 零新动作码）；条里没流体 / 灰显 / 未绑定面板
-     * 时不发请求，交回 {@code super} ⇒ 手持储罐的灌排行为一个字都不改（需求 2 的两格同权原样保留）。
-     * <p>
-     * 非 ghost 态与左键一律交回 {@code super} ⇒ 手持储罐点条的按键组合与 tooltip 与 GT5U 逐字一致
-     * （{@code modularui2.fluid.click_combined} / {@code _to_fill} / {@code _to_empty}，L7/R31 口径）。
+     * ★旧那条 <b>alt+左 = 对本列现在装的流体直接声明需求</b>（{@code requestBindFromTank}）已随
+     * R91-⑤ <b>改派到中键</b>（"格内有物 ⇒ 按该物记录"），且那份内容读数改由<b>服务端</b>读真实 tank
+     * （{@code NekoPocketServerHandler#ghostPayloadAt}，★客户端不把载荷抄一遍送上来 = R18/R19）
+     * ⇒ 被改派的两个方法<b>整体删除</b>，不留注释尸（R84 的 U2 同一条纪律）。
      */
     @Override
     public Result onMousePressed(int mouseButton) {
+        if (mouseButton == MOUSE_BUTTON_MIDDLE) {
+            // ★中键必须在这里早退、不调 super：FluidSlot 那一条把按钮号交给 FluidSlotSyncHandler 的
+            // 灌排/phantom 分支，而本槽刻意不是 phantom ⇒ button 2 进去就是"没人消费、事件穿透"
+            // （取证 §2：MUI2 不按按钮号过滤，防的是手感分叉，与中栏那条创造取物同源）。
+            requestGhostFlag(PocketConstants.GHOST_FLAG_BIND);
+            return Result.SUCCESS;
+        }
+        if (mouseButton == 1 && Interactable.hasAltDown()) {
+            // ★R91-⑤：alt+右 = P（★★必须排在下面那条 ghost+右键解绑支之前）
+            requestGhostFlag(PocketConstants.GHOST_FLAG_UPLOAD_BLOCK);
+            return Result.SUCCESS;
+        }
         if (ghost && mouseButton == 1 && owner != null) {
             owner.requestGhostClear(PocketFilterConfig.Kind.FLUID, slotIndex);
             return Result.SUCCESS;
         }
-        if (mouseButton == 0 && Interactable.hasAltDown() && requestBindFromTank()) {
+        if (mouseButton == 0 && Interactable.hasAltDown()) {
+            // ★R91-⑤：alt+左 = 记忆 L（无条件停住：不让原版把 alt+左 读成普通左键去灌那一格流体）
+            requestGhostFlag(PocketConstants.GHOST_FLAG_MEMORY);
             return Result.SUCCESS;
         }
         return super.onMousePressed(mouseButton);
     }
 
     /**
-     * ★R83 C2（判据 3）：本列流体槽<b>现在装着</b>的那种流体 ⇒ 一条 {@code f:<fluidName>} 声明。
-     * <p>
-     * 读的是 {@code super.getFluidStack()}（真实 tank 内容），★不是 {@link #getFluidStack()} 那个
-     * 会被声明样本替换的显示值 —— 否则"条子空着但已声明水"时 alt+左键会把样本再声明一遍，
-     * 玩家看到的是"我绑了个不存在的东西"。
+     * ★R91-⑤：三个手势共用的出口（与 {@code NekoFilterSlot#requestGhostFlag} 同形，零新动作码、零新同步键；
+     * ★本地一个字节都不改 —— attr/P 的迁移真值在服务端算好后经 {@code SYNC_GHOST_FLAGS} 推回来）。
+     *
+     * @return 是否真的发出了请求（未绑定面板 / 槽号非法 / 整栏灰显 ⇒ {@code false}）
      */
-    private boolean requestBindFromTank() {
+    private boolean requestGhostFlag(String gesture) {
         if (owner == null || slotIndex < 0 || !areAncestorsEnabled()) {
             return false;
         }
-        final FluidStack real = super.getFluidStack();
-        if (real == null || real.amount <= 0 || real.getFluid() == null) {
-            return false;
-        }
-        return owner.requestGhost(
-            slotIndex,
-            PocketFilterConfig.fluidKey(
-                real.getFluid()
-                    .getName()));
+        return owner.requestGhostFlag(PocketFilterConfig.Kind.FLUID, slotIndex, gesture);
     }
 
     /**
@@ -413,17 +480,30 @@ public class NekoPocketFluidSlot extends FluidSlot {
     @Override
     public void drawOverlay(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
         super.drawOverlay(context, widgetTheme);
-        if (!ghost) {
-            return;
-        }
-        // ★R84（与 NekoPocketPanel 物品支同形）：遮罩只在<b>条子里没有真流体</b>时画。旧判据是单比特
-        // {@code if (ghost)} ⇒ "已经灌进本 tank 的那一列"仍然整条蒙着，玩家读到"需求没有任何体现"。
-        // 本体与 mB 读数不受影响（getFluidStack/displayAmountText 本来就真流体优先）。
+        // ★★R91-⑤：遮罩"在场"判据放宽到 ghost || attr != NONE（pending 态也要虚化），
+        // ★但"条子里没有真流体才遮"那一条<b>判据本体一字未动</b>（R84 口径仍在下面三行）。
         final FluidStack real = super.getFluidStack();
-        if (real == null || real.amount <= 0) {
+        if (PocketGhostRequest.drawsGhostMask(ghost, ghostAttr) && (real == null || real.amount <= 0)) {
             GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
         }
         drawCapReadout();
+        // ★R91-⑤：左上蓝 L / 左下绿 P（几何与色单源在 PocketGhostRequest，★空文本不画）
+        drawBadge(
+            PocketGhostRequest.memoryBadgeText(ghostAttr),
+            PocketGhostRequest.memoryBadgeTop(),
+            PocketGhostRequest.memoryBadgeColor());
+        drawBadge(
+            PocketGhostRequest.uploadBlockBadgeText(uploadBlocked),
+            PocketGhostRequest.uploadBlockBadgeTop(getArea().h()),
+            PocketGhostRequest.uploadBlockBadgeColor());
+    }
+
+    /** ★R91-⑤：一个角标的绘制体（左对齐；★空文本 = 一条像素都不画）。 */
+    private void drawBadge(String text, float top, int color) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        GuiDraw.drawText(text, PocketGhostRequest.badgeLeftX(), top, PocketGhostRequest.CAP_READOUT_SCALE, color, true);
     }
 
     /**

@@ -245,6 +245,204 @@ public final class PocketFilterConfig {
      */
     private final Map<String, Filter> byKindSlot = new LinkedHashMap<>();
 
+    // -------------------------------------------------- ★R91-⑤⑥ 属性位表（与上面的载荷表<b>平行</b>）
+
+    /**
+     * ★R91-⑤：{@code (kind, slotIndex)} → {@code attr}（{@link PocketConstants#GHOST_ATTR_BIND} /
+     * {@link PocketConstants#GHOST_ATTR_MEMORY}）。<b>缺条目 = {@link PocketConstants#GHOST_ATTR_NONE}</b>
+     * ⇒ 无属性的格一个字节都不占（写档侧同一条口径 ⇒ 旧档形状逐字节不变）。
+     * <p>
+     * ★键式样与 {@link #byKindSlot} <b>逐字相同</b>（{@code kind + ':' + slotIndex}）：三个区域的槽索引
+     * 各自从 0 起，裸索引会让"中栏第 0 格"与"流体槽第 0 格"互相覆盖（R59b 偏离④ / R70 的同一条结构约束）。
+     * ★<b>互斥单值</b>：一格同时只可能有一个 attr，因此这里存的是 int 而不是位掩码。
+     */
+    private final Map<String, Integer> attrByKindSlot = new LinkedHashMap<>();
+    /**
+     * ★R91-⑤：阻拦上传位 {@code P} 的格集合。<b>正交位</b> —— 可与任一 {@code attr} 并存
+     * （"已声明 + 锁上传"是完全合法的一格），因此刻意<b>不</b>塞进 {@link #attrByKindSlot} 的 int 里
+     * （那会把互斥单值偷偷变成掩码，读法分叉）。
+     */
+    private final java.util.Set<String> uploadBlockedKeys = new java.util.LinkedHashSet<>();
+
+    /**
+     * ★R91-⑥ 位表读口（attr）：该格当前的互斥属性；无属性 ⇒ {@link PocketConstants#GHOST_ATTR_NONE}。
+     * <p>
+     * ★这是 attr 的<b>唯一</b>存储与<b>唯一</b>读法：执法侧（{@code PocketAeChannelOps} 的 P 早退、
+     * {@code PocketInventory#isItemValid} 的 L 腿、{@code PocketChannelRunner} 的"补货只认 BIND"）
+     * 都经本方法，★不得从 {@link #at(Kind, int)} 那条载荷表派生（R91-b 明文：空格无从表达）。
+     */
+    public int attrAt(Kind kind, int slotIndex) {
+        final Integer raw = kind == null ? null : attrByKindSlot.get(slotKey(kind, slotIndex));
+        return raw == null ? PocketConstants.GHOST_ATTR_NONE : PocketConstants.normalizeGhostAttr(raw);
+    }
+
+    /** ★R91-⑥ 位表读口（P）：该格是否永不进注入向。 */
+    public boolean uploadBlockedAt(Kind kind, int slotIndex) {
+        return kind != null && uploadBlockedKeys.contains(slotKey(kind, slotIndex));
+    }
+
+    /**
+     * ★R91-⑤ 迁移写口（attr）：落到 {@code attr} 上（{@link PocketConstants#GHOST_ATTR_NONE} = 撤属性）。
+     *
+     * @return 本次是否真的改变（同值 = false ⇒ 调用方不写档、不刷虚化）
+     */
+    public boolean setAttr(Kind kind, int slotIndex, int attr) {
+        if (kind == null || slotIndex < 0) {
+            return false;
+        }
+        final int next = PocketConstants.normalizeGhostAttr(attr);
+        final String key = slotKey(kind, slotIndex);
+        if (next == PocketConstants.GHOST_ATTR_NONE) {
+            return attrByKindSlot.remove(key) != null;
+        }
+        final Integer before = attrByKindSlot.put(key, Integer.valueOf(next));
+        return before == null || before.intValue() != next;
+    }
+
+    /**
+     * ★R91-⑤ 迁移写口（P）：{@code true} = 本格内容永不进注入向。
+     *
+     * @return 本次是否真的改变
+     */
+    public boolean setUploadBlocked(Kind kind, int slotIndex, boolean blocked) {
+        if (kind == null || slotIndex < 0) {
+            return false;
+        }
+        final String key = slotKey(kind, slotIndex);
+        return blocked ? uploadBlockedKeys.add(key) : uploadBlockedKeys.remove(key);
+    }
+
+    /** 位表条目数（attr 与 P 的<b>并集</b>，只数"至少挂了一个属性"的格）。 */
+    public int flagEntryCount() {
+        final java.util.Set<String> both = new java.util.LinkedHashSet<>(attrByKindSlot.keySet());
+        both.addAll(uploadBlockedKeys);
+        return both.size();
+    }
+
+    /** 本端是否<b>一个属性都没有</b>（⇒ 位表不落档、blob 不写）。 */
+    public boolean hasNoFlags() {
+        return attrByKindSlot.isEmpty() && uploadBlockedKeys.isEmpty();
+    }
+
+    /** 位表的<b>插入序</b>快照（S2C 属性 blob 的编码源，与载荷表的"声明序"同一条纪律）。 */
+    public List<FlagRecord> flagRecords() {
+        final java.util.Set<String> keys = new java.util.LinkedHashSet<>();
+        keys.addAll(attrByKindSlot.keySet());
+        keys.addAll(uploadBlockedKeys);
+        final List<FlagRecord> records = new ArrayList<>(keys.size());
+        for (String key : keys) {
+            final int at = key.indexOf(SEPARATOR);
+            final Kind kind = Kind.valueOf(key.substring(0, at));
+            final int slot = Integer.parseInt(key.substring(at + 1));
+            records.add(new FlagRecord(kind, slot, attrAt(kind, slot), uploadBlockedKeys.contains(key)));
+        }
+        return records;
+    }
+
+    /**
+     * ★R91-⑥：<b>只清属性位表</b>，一个字节都不碰载荷表。
+     * <p>
+     * 存在的理由：客户端的属性镜像由<b>另一根</b> S2C 通道（{@code SYNC_GHOST_FLAGS}）整体覆盖，
+     * 每次覆盖必须"先清后写"（否则被服务端撤掉的属性会留在镜像上永远不落），★但<b>不许</b>连带清掉
+     * ghost 载荷 —— 那是 {@code SYNC_GHOST} 那一根通道的东西，两根通道各写各的半才是"属性层不焊回
+     * blob 编解码"（R91-a）的兑现点。
+     */
+    public void clearFlags() {
+        attrByKindSlot.clear();
+        uploadBlockedKeys.clear();
+    }
+
+    /** 一条位表条目（★只是值对象：判定与迁移全在 {@code PocketGhostRequest} 那一张真值表里）。 */
+    public static final class FlagRecord {
+
+        public final PocketFilterConfig.Kind kind;
+        public final int slotIndex;
+        public final int attr;
+        public final boolean uploadBlocked;
+
+        public FlagRecord(Kind kind, int slotIndex, int attr, boolean uploadBlocked) {
+            this.kind = kind;
+            this.slotIndex = slotIndex;
+            this.attr = PocketConstants.normalizeGhostAttr(attr);
+            this.uploadBlocked = uploadBlocked;
+        }
+    }
+
+    /**
+     * ★R91-⑤ 的 <b>L 执法腿单源</b>：一格<b>已经是需求格</b>（默认禁放置）时，玩家这次的"放入本格"
+     * 要不要放行 —— 「本格只能放<b>那一种</b>东西」这一条判据的<b>唯一</b>实现。
+     * <p>
+     * 三条口径，一条都不能少：
+     * <ol>
+     * <li><b>默认不放行</b>：{@code attr != MEMORY}（含 BIND 与无属性）⇒ {@code false}。★这不是重复执法：
+     * 需求格"禁放置"是 R84 立的规定（它是抽取<b>落点</b>，不是玩家输入口），本方法只在
+     * "玩家显式按了 alt+左 挂了记忆"这一档上<b>开一个受限的口子"；</li>
+     * <li>{@code attr == MEMORY} 且<b>已有载荷</b> ⇒ 只有载荷键<b>逐字相同</b>才放行（载荷键是跨重启稳定
+     * 身份，与 {@code PocketAeChannelOps#contentKey} 同一比对口径 ⇒ "只能放该种东西"真的只放那一种）；</li>
+     * <li>{@code attr == MEMORY} 但<b>还没有载荷</b>（pending 记忆 = R91-b 的"空格先进状态、内容待拖拽落成"）
+     * ⇒ 没有任何"那一种东西"可比 ⇒ <b>不拦</b>（一格还没记住内容时它无立场可执法；
+     * NEI 拖拽一落成载荷，第二条立刻生效）。★这一档对物品支<b>结构上不可达</b>——调用方只在
+     * {@code isGhostItemSlot}（= 有载荷）为真时问本方法，写在这里是把"以后有人从别处问"的路也钉死。</li>
+     * </ol>
+     * ★调用方是 {@code PocketInventory#newStorageGroup} 的 {@code isItemValid} 链
+     * （R83-B1 改判：<b>不是</b>字面 {@code canPut}）；★补货行为仍只认 BIND（{@link #pullsFromCell}），
+     * L 不参与抽取。
+     */
+    public boolean allowsPlayerPlacement(Kind kind, int slotIndex, String contentKey) {
+        if (attrAt(kind, slotIndex) != PocketConstants.GHOST_ATTR_MEMORY) {
+            return false;
+        }
+        final Filter declared = at(kind, slotIndex);
+        return declared == null || declared.key()
+            .equals(contentKey);
+    }
+
+    /**
+     * ★R91-⑤ 的 <b>L 执法腿（源质支）</b>单源：本格记的是不是<b>这一个 tag</b>。
+     * <p>
+     * 与 {@link #allowsPlayerPlacement} 同一族的三条口径（非 MEMORY 不判 / 无载荷不拦 / 载荷不同才拒），
+     * ★但<b>比较粒度是 tag 而不是整条载荷键</b>，理由是<b>身份</b>不是<b>运输方式</b>：源质载荷键是
+     * {@code e:<typeId>:<tag>}，其中 {@code typeId} 是"哪个 AE2 通道装得下它"的<b>读数</b>
+     * （换整合包、少一个 addon 就会变），而入槽时载体带的只有 tag。拿整键比就会出现
+     * "同一格同一源质，因为通道 id 解不出而被自己的记忆规则拒收"。
+     * <p>
+     * ★本格声明<b>不是</b>源质声明（档位在别处）时按"不拦"处理：那是数据被改坏的形状，
+     * 宁可乐观放行也不凭猜测销毁玩家的入槽。
+     */
+    public boolean memoryAllowsTag(Kind kind, int slotIndex, String tag) {
+        if (attrAt(kind, slotIndex) != PocketConstants.GHOST_ATTR_MEMORY) {
+            return true;
+        }
+        final Filter declared = at(kind, slotIndex);
+        if (!(declared instanceof EssenceFilter essence)) {
+            return true;
+        }
+        return tag != null && tag.equals(essence.tag);
+    }
+
+    /**
+     * ★R91-⑤ 的<b>抽取闸门</b>单源：这一格<b>是不是</b>该从 AE 补货。
+     * <p>
+     * 裁定原文：「{@code L}（记忆）纯过滤，<b>不产生任何 AE 拉取行为</b>；补货行为仍只认 BIND」。
+     * ★刻意<b>不</b>写成"只有 BIND 才拉"：那会回退需求 4 的既有语义 —— 从没做过手势的旧声明
+     * （{@code attr == NONE} + 有载荷）今天就在拉，且用户没抱怨过它。因此真值只有 MEMORY 一档不拉：
+     * {@code NONE}（隐式 BIND）与 {@code BIND} 都拉。
+     */
+    public boolean pullsFromCell(Kind kind, int slotIndex) {
+        return attrAt(kind, slotIndex) != PocketConstants.GHOST_ATTR_MEMORY;
+    }
+
+    /**
+     * ★R91-⑤ 的 <b>P 执法腿</b>单源（注入向来源枚举读这一条）：本格内容永不进注入向。
+     * <p>
+     * 与 {@link #isStorageGhostDeclared} 那条"声明格不回流成来源"（R84 反成环铁律）<b>并列</b>而不是
+     * 替代 —— 两条各挡一件事：那条防"抽出来又灌回去"，本条防玩家显式锁住一格。★{@code attr} 不参与：
+     * 只有 {@code P} 拦上传（BIND/MEMORY 都不拦，否则一格两种属性就会互相改变对方的语义）。
+     */
+    public boolean blocksUpload(Kind kind, int slotIndex) {
+        return uploadBlockedAt(kind, slotIndex);
+    }
+
     public static PocketFilterConfig readFrom(NBTTagCompound root) {
         final PocketFilterConfig config = new PocketFilterConfig();
         if (root == null) {
@@ -297,7 +495,56 @@ public final class PocketFilterConfig {
             }
         }
         warnDroppedOnce(Kind.ESSENCE, PocketConstants.FILTER_ESSENTIA, essentia.tagCount(), essentiaDropped);
+        // ★R91-⑥：第四枚列表 = 属性位表（attr + P）。缺键（旧档 / 没有任何属性的档）⇒ 整张表为空，
+        // 三个读口都回落 NONE/false ⇒ 旧档行为逐字不变。区域字母不认识或槽号越出白名单的条目<b>丢掉</b>
+        // （与上面三条载荷列表同一条"宁可少读也不臆造"口径：位表读口拿不到越界条目 = 那格无属性 = 与
+        // 没配过等效，而臆造成"有属性"会凭空拦掉玩家的上传/落位）。
+        final NBTTagList flags = domain.getTagList(PocketConstants.FILTER_FLAGS, TAG_COMPOUND);
+        int flagsDropped = 0;
+        for (int i = 0; i < flags.tagCount(); i++) {
+            final NBTTagCompound entry = flags.getCompoundTagAt(i);
+            final Kind kind = kindOfLetter(entry.getString(PocketConstants.FILTER_FLAG_KIND));
+            final int slot = entry.getInteger(PocketConstants.FILTER_SLOT);
+            if (kind == null || !isAllowedSlotIndex(kind, slot)) {
+                flagsDropped++;
+                continue;
+            }
+            final int attr = entry.hasKey(PocketConstants.FILTER_ATTR, TAG_INT)
+                ? PocketConstants.normalizeGhostAttr(entry.getInteger(PocketConstants.FILTER_ATTR))
+                : PocketConstants.GHOST_ATTR_NONE;
+            if (attr != PocketConstants.GHOST_ATTR_NONE) {
+                config.setAttr(kind, slot, attr);
+            }
+            if (entry.hasKey(PocketConstants.FILTER_UPLOAD_BLOCK, TAG_INT)
+                && entry.getInteger(PocketConstants.FILTER_UPLOAD_BLOCK) != 0) {
+                config.setUploadBlocked(kind, slot, true);
+            }
+        }
+        if (flagsDropped > 0) {
+            LOG.warn(
+                "[pocket] 存档里的格子属性位表有 {} 条没能落进配置表（共读到 {} 条）——区域字母不认识或槽号越出当前面板形状，" + "这些格子按\"无属性\"处理（本条只报一次）",
+                flagsDropped,
+                flags.tagCount());
+        }
         return config;
+    }
+
+    /**
+     * 位表条目里的区域字符串 → {@link Kind}；不认识 ⇒ {@code null}（调用方丢弃该条）。
+     * <p>
+     * ★用<b>枚举名</b>而不是 {@code PocketGhostRequest#letterOf} 的那三个单字母：载荷三列表的键名本来也是
+     * 枚举名式样的独立常量，且 NBT 是存档侧、单字母是 C2S 文法侧 —— 两侧各一套字母会让"改一个不改另一个"
+     * 变成静默 bug。纯 JVM 侧解不出的字符串在这里收口。
+     */
+    private static Kind kindOfLetter(String name) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
+        try {
+            return Kind.valueOf(name);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     /**
@@ -371,6 +618,27 @@ public final class PocketFilterConfig {
         domain.setTag(PocketConstants.FILTER_ITEMS, items);
         domain.setTag(PocketConstants.FILTER_FLUIDS, fluids);
         domain.setTag(PocketConstants.FILTER_ESSENTIA, essentia);
+        // ★R91-⑥：位表<b>只在真有条目时</b>才挂第四枚列表（同上面 cap 那条纪律）⇒ 无属性档的序列化字节与
+        // "根本没有 flags 键"的旧形状<b>逐字节相同</b>（成对门禁：用例
+        // ghost_flags_persistence_pairwise + verify-pocket.sh 的 R91-c 段）。
+        // 条目形状 {kind(String), slotIndex(Int), attr(Int), uploadBlock(Int 0|1)}：★attr 与 P 都只写
+        // "非默认"的那一半 ⇒ 只有 P 的一格不会写出 attr=0。
+        if (!hasNoFlags()) {
+            final NBTTagList flags = new NBTTagList();
+            for (FlagRecord record : flagRecords()) {
+                final NBTTagCompound entry = new NBTTagCompound();
+                entry.setString(PocketConstants.FILTER_FLAG_KIND, record.kind.name());
+                entry.setInteger(PocketConstants.FILTER_SLOT, record.slotIndex);
+                if (record.attr != PocketConstants.GHOST_ATTR_NONE) {
+                    entry.setInteger(PocketConstants.FILTER_ATTR, record.attr);
+                }
+                if (record.uploadBlocked) {
+                    entry.setInteger(PocketConstants.FILTER_UPLOAD_BLOCK, 1);
+                }
+                flags.appendTag(entry);
+            }
+            domain.setTag(PocketConstants.FILTER_FLAGS, flags);
+        }
         root.setTag(PocketConstants.FILTERS, domain);
     }
 
@@ -441,6 +709,10 @@ public final class PocketFilterConfig {
 
     public void clear() {
         byKindSlot.clear();
+        // ★R91-⑥：属性位表与载荷表是<b>同一格的两半</b> ⇒ 整表清空必须一起清，
+        // 否则清完还留着 L/P 的读数（客户端镜像换实例时就会照旧画角标）。
+        attrByKindSlot.clear();
+        uploadBlockedKeys.clear();
     }
 
     /** 复合键：区域 + 槽索引（区域名是枚举名，不是任何注册索引）。 */

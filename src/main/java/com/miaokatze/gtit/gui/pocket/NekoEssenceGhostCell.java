@@ -64,6 +64,15 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     /** 虚化遮罩色（与 {@link NekoFilterSlot}、{@link NekoPocketFluidSlot} 同一 alpha 口径，R18）。 */
     private static final int GHOST_MASK = 0x80FFFFFF;
 
+    /**
+     * ★R91-⑤：中键按钮号（MUI2 原样透传 {@code Mouse.getEventButton()}，★不按 0/1 白名单过滤）。
+     * <p>
+     * ★数值刻意<b>在本类各写一份私有常量</b>而不是抽一个共享常量：三组格件的"早退理由"彼此不同
+     * （中栏防原版创造取物、流体槽防 phantom 分支穿透、源质格防 ButtonWidget 谓词空转），
+     * 抽在一起迟早有人拿"同源"的名头把三条不同的纪律并成一条注释。按钮号本身是 LWJGL2 的固定事实。
+     */
+    private static final int MOUSE_BUTTON_MIDDLE = 2;
+
     private NekoPocketPanel owner;
     /** 本格在 {@code Kind.ESSENCE} 索引空间里的槽号（= 格位，0…{@code ESSENCE_DISPLAY_GRID}−1）。 */
     private int cellIndex = -1;
@@ -85,6 +94,16 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * 权威值在服务端，经 ghost blob 落回本字段；本字段只用于显示与"下一次步进从哪走"。
      */
     private int declaredCap = PocketConstants.FILTER_CAP_UNSET;
+    /**
+     * ★★<b>R91-⑤</b>：本格的互斥属性（NONE / BIND / MEMORY）。数据源 = 面板上
+     * {@code SYNC_GHOST_FLAGS} 那枚<b>独立</b>同步值的客户端镜像（经双源 accessor 刷进来）。
+     * <p>
+     * ★attr 挂在<b>格</b>上（手势点的就是这一格），而 ghost 声明按 <b>tag</b> 归位（R86 的遮罩归位口径）
+     * —— 两件事刻意不同源，别把 attr 也一起按 tag 搬走。
+     */
+    private int ghostAttr = PocketConstants.GHOST_ATTR_NONE;
+    /** ★R91-⑤：正交位 {@code P}（本格内容永不进注入向），可与任一 attr 并存。 */
+    private boolean uploadBlocked;
 
     public NekoEssenceGhostCell() {
         super();
@@ -267,27 +286,91 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
         return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.ESSENCE, declaredCap, 0);
     }
 
+    /** ★R91-⑤：本格 attr 的显示侧写入口（与 {@link #setDeclaredCap} 同一个应用点、同一条"同值即返回"纪律）。 */
+    NekoEssenceGhostCell setGhostAttr(int attr) {
+        final int next = PocketConstants.normalizeGhostAttr(attr);
+        if (this.ghostAttr == next) {
+            return this;
+        }
+        this.ghostAttr = next;
+        markTooltipDirty();
+        return this;
+    }
+
+    /** ★R91-⑤：正交位 {@code P} 的显示侧写入口（只画左下绿角标；★不动内容层、不动遮罩）。 */
+    NekoEssenceGhostCell setUploadBlocked(boolean blocked) {
+        if (this.uploadBlocked == blocked) {
+            return this;
+        }
+        this.uploadBlocked = blocked;
+        markTooltipDirty();
+        return this;
+    }
+
+    /** 本格当前的 attr（服务端算好、经 {@code SYNC_GHOST_FLAGS} 同步来的读数）。 */
+    public int ghostAttr() {
+        return ghostAttr;
+    }
+
+    /** 本格是否挂了 {@code P}。 */
+    public boolean isUploadBlocked() {
+        return uploadBlocked;
+    }
+
     /**
-     * ★R83 C2：alt+左键 = 对<b>本格已经有的那种源质</b>直接声明需求（用户原话"还可以采用对已有物品按下 alt"）。
+     * ★★<b>R91-⑤⑧b 重排后的按键矩阵</b>（72 格源质盘）——★与另两组格件同一套手势：
+     * <b>中键</b> = 请求绑定 BIND ／ <b>alt+左</b> = 记忆 {@code L} ／ <b>alt+右</b> = 阻拦上传 {@code P}
+     * ／ 右键（已声明）= 解绑（★既有支，<b>被 alt+右排在后面</b>）／
+     * 左键 + 非 alt + 游标持物 = {@code owner.dispatchEssenceCellPress}（★R91-e 起那条支<b>带 shift 位</b>）。
      * <p>
-     * 走的与 NEI 拖入<b>同一条</b> {@code owner.requestGhost} ⇒ 零新动作码、零新同步键；载荷键只走
-     * {@link PocketFilterConfig#essenceKey(String, String)}（不自造第四种键格式），通道 id 只走
-     * {@link #channelTypeId(String)}（与消费端 {@code InfinityStackTypes.byId} 同一探针）。
-     * 无 tag、无存量、栏灰显（TC 缺席）、解不出通道、已经是声明格 ⇒ 一律 {@code false} 交回 {@code super}，
-     * 不写一条无处可抽的声明再静默空转（{@link #ghostKeyFor} 里同一条理由）。
+     * ★★<b>排序即判据</b>（取证 G3）：{@code alt+右} 必须排在 {@code ghost && mouseButton == 1} 那条
+     * 解绑支<b>之前</b>，否则声明格上的 alt+右 会先被读成"解绑"，玩家按出来的就不是 {@code P}。
+     * ★中键同样早退不调 {@code super}（{@code ButtonWidget} 把按钮号交给 builder 的谓词，默认那条只认
+     * 0/1 ⇒ 不早退就是"事件被 ACCEPT 穿透、无事发生"的第二种手感，取证 §2②）。
+     * <p>
+     * ★★旧的两条 alt+左 支（"已是声明格 ⇒ 停住"与"alt+左 = 绑本格存量"）已随改判<b>合并成一条
+     * alt+左 = 记忆</b>；"按本格已有内容建档"那层语义迁到<b>中键 BIND</b>，且那份内容读数改由<b>服务端</b>
+     * 读真实格内容（{@code NekoPocketServerHandler#ghostPayloadAt}，★客户端不把载荷抄一遍送上来）
+     * ⇒ {@code requestBindFromStock} <b>整体删除</b>、不留注释尸（R84 的 U2 同一条纪律）。
      */
-    private boolean requestBindFromStock() {
-        if (owner == null || cellIndex < 0 || ghost || !areAncestorsEnabled()) {
+    @Override
+    public Result onMousePressed(int mouseButton) {
+        if (mouseButton == MOUSE_BUTTON_MIDDLE) {
+            requestGhostFlag(PocketConstants.GHOST_FLAG_BIND);
+            return Result.SUCCESS;
+        }
+        if (mouseButton == 1 && Interactable.hasAltDown()) {
+            requestGhostFlag(PocketConstants.GHOST_FLAG_UPLOAD_BLOCK);
+            return Result.SUCCESS;
+        }
+        if (ghost && mouseButton == 1 && owner != null && cellIndex >= 0) {
+            owner.requestGhostClear(PocketFilterConfig.Kind.ESSENCE, cellIndex);
+            return Result.SUCCESS;
+        }
+        if (mouseButton == 0 && Interactable.hasAltDown()) {
+            requestGhostFlag(PocketConstants.GHOST_FLAG_MEMORY);
+            return Result.SUCCESS;
+        }
+        if (mouseButton == 0 && !ghost
+            && owner != null
+            && cellIndex >= 0
+            && owner.dispatchEssenceCellPress(cellIndex)) {
+            return Result.SUCCESS;
+        }
+        return super.onMousePressed(mouseButton);
+    }
+
+    /**
+     * ★R91-⑤：三个手势共用的出口（与 {@code NekoFilterSlot#requestGhostFlag} 同形，零新动作码、零新同步键；
+     * ★本地一个字节都不改 —— attr/P 的迁移真值在服务端算，经 {@code SYNC_GHOST_FLAGS} 推回来）。
+     *
+     * @return 是否真的发出了请求（未绑定面板 / 格号非法 / 整栏灰显（TC 缺席）⇒ {@code false}）
+     */
+    private boolean requestGhostFlag(String gesture) {
+        if (owner == null || cellIndex < 0 || !areAncestorsEnabled()) {
             return false;
         }
-        if (tag == null || tag.isEmpty() || stock <= 0) {
-            return false;
-        }
-        final String typeId = channelTypeId(tag);
-        if (typeId == null || typeId.isEmpty()) {
-            return false;
-        }
-        return owner.requestGhost(cellIndex, PocketFilterConfig.essenceKey(typeId, tag));
+        return owner.requestGhostFlag(PocketFilterConfig.Kind.ESSENCE, cellIndex, gesture);
     }
 
     /**
@@ -328,6 +411,11 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     @Override
     public boolean handleDragAndDrop(ItemStack draggedStack, int button) {
         if (owner == null || draggedStack == null || cellIndex < 0) {
+            return false;
+        }
+        // ★★<b>R91-b</b>：只有 P（无 attr）的格 ⇒ 拖拽<b>不响应</b>。★判在 tagOfCarrier / 日志 /
+        // 清 stackSize <b>之前</b>（"P 不携带内容"这条承诺的空内容钉 = 栈不被吃掉、请求也不发）。
+        if (PocketGhostRequest.dragRouteOf(ghostAttr, uploadBlocked) == PocketGhostRequest.DragRoute.IGNORE) {
             return false;
         }
         // ★L8（[PocketR89]，客户端拖入入口）：拖入交付栈的完整读数（含 NBT）——U2（MUI2/NEI 拖拽交付
@@ -397,48 +485,6 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     /** {@link #logDragDump} 的首例 INFO 闩（见 {@code NekoPocketPanel#LOG_ONCE} 的同形说明）。 */
     private static final java.util.Set<String> DRAG_DUMP_LOGGED = java.util.Collections
         .newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
-
-    /**
-     * ghost 态下的右键 = 解绑（★只发 {@code CLR|<格号>|E}，判定与执行在服务端）。
-     * <p>
-     * ★★<b>R87-d（缺陷 1）+ R88 载体改判 + ★R90 E3 手势三分：左键点格按游标持物分流</b>：
-     * 非 ghost、非 alt、游标<b>持物</b> ⇒ 交 {@code owner.dispatchEssenceCellPress} 分派——
-     * <b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier} 判据单源）走新「格→瓶取出」；
-     * <b>满瓶 / 晶</b>仍走 {@code owner.requestEssenceIntake} 的现有 C2S 动作通道（判定、入账、回执
-     * 全在服务端 {@code PocketEssenceIntake}，游标由服务端经 {@code syncManager.setCursorItem} 清）。
-     * 分派返 false（空游标 / 预筛不过）⇒ 交回 {@code super} ⇒ 既有取出支照旧。
-     * <p>
-     * ★<b>客户端不得本地清游标</b>——这条纪律的理由在 R88 被改述过：旧注释写的是"原版 cursor 同步送达"，
-     * 而 {@code ModularContainer#detectAndSendChanges} 只转 {@code super}（vanilla 只跟踪
-     * {@code inventorySlots}，不含 cursor）⇒ 服务端裸写游标<b>不会</b>到客户端，唯一通道是
-     * {@code CursorSlotSyncHandler#sync}，只有 {@code setCursorItem} 会调它。
-     * 点击格只是手势锚点：目标 tag = 容器自带的 tag，本格有没有别的 tag 都不拦。
-     * <p>
-     * 其余按键（含非 ghost 态的右键、游标无瓶的左键）一律交回 {@code super} ⇒ 既有的
-     * 「点击取瓶 / Shift 取整份」行为逐字不变（多瓶批量空游标取出支不在本片触碰面内）。
-     */
-    @Override
-    public Result onMousePressed(int mouseButton) {
-        if (ghost && mouseButton == 1 && owner != null && cellIndex >= 0) {
-            owner.requestGhostClear(PocketFilterConfig.Kind.ESSENCE, cellIndex);
-            return Result.SUCCESS;
-        }
-        if (mouseButton == 0 && ghost && Interactable.hasAltDown()) {
-            // 已经是声明格的格子上没有"要绑的东西"，但也不能让原版把它读成正常路径 ⇒ 明确停住
-            return Result.SUCCESS;
-        }
-        if (mouseButton == 0 && Interactable.hasAltDown() && requestBindFromStock()) {
-            return Result.SUCCESS;
-        }
-        if (mouseButton == 0 && !ghost
-            && !Interactable.hasAltDown()
-            && owner != null
-            && cellIndex >= 0
-            && owner.dispatchEssenceCellPress(cellIndex)) {
-            return Result.SUCCESS;
-        }
-        return super.onMousePressed(mouseButton);
-    }
 
     // ------------------------------------------------------------------ 纯判定（回归套件驱动这两段）
 
@@ -570,13 +616,30 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     @Override
     public void drawOverlay(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
         super.drawOverlay(context, widgetTheme);
-        if (!ghost) {
-            return;
-        }
-        if (stock <= 0) {
+        // ★★R91-⑤：遮罩"在场"判据 = ghost || attr != NONE（pending 绑定/记忆也要虚化，观感与已建档一致）；
+        // ★"本格已有存量就不遮"那一条判据本体（stock <= 0）R84 口径<b>一字未动</b>。
+        if (PocketGhostRequest.drawsGhostMask(ghost, ghostAttr) && stock <= 0) {
             GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
         }
         drawCapReadout();
+        // ★R91-⑤：左上蓝 L / 左下绿 P。★角标与遮罩互不覆盖（遮罩是底色、角标画在它之上），
+        // 且 L / P 分处上下两角 ⇒ 同一格同时挂 attr 与 P 时两个都读得到。
+        drawBadge(
+            PocketGhostRequest.memoryBadgeText(ghostAttr),
+            PocketGhostRequest.memoryBadgeTop(),
+            PocketGhostRequest.memoryBadgeColor());
+        drawBadge(
+            PocketGhostRequest.uploadBlockBadgeText(uploadBlocked),
+            PocketGhostRequest.uploadBlockBadgeTop(getArea().h()),
+            PocketGhostRequest.uploadBlockBadgeColor());
+    }
+
+    /** ★R91-⑤：一个角标的绘制体（左对齐；★空文本 = 一条像素都不画，与另两支同形）。 */
+    private void drawBadge(String text, float top, int color) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        GuiDraw.drawText(text, PocketGhostRequest.badgeLeftX(), top, PocketGhostRequest.CAP_READOUT_SCALE, color, true);
     }
 
     /**

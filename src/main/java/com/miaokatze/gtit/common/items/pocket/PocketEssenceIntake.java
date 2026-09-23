@@ -69,7 +69,7 @@ import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
  */
 public final class PocketEssenceIntake {
 
-    /** 一次点击入槽的结论（四态互斥，对应三条失败回执键与一条成功键）。 */
+    /** 一次点击入槽的结论（失败态各回一条回执键、成功一条）。 */
     public enum Outcome {
         /** 手里不是源质载体（空手 / 非容器 / TC 缺席判不出）。★R88：态名保留，语义已含瓶。 */
         NOT_CRYSTAL,
@@ -77,6 +77,15 @@ public final class PocketEssenceIntake {
         NO_OWNER,
         /** 源质格余量不足：全有全无失败，载体分毫未动。 */
         NO_ROOM,
+        /**
+         * ★★<b>R91-⑤（记忆 L 的源质执法腿）</b>：本格被 alt+左 挂了<b>记忆</b>、而记的<b>不是</b>本次
+         * 这一种 ⇒ 整笔拒收（源质表分毫未动、载体分毫未动、<b>也不退壳</b>）。
+         * <p>
+         * ★与 {@link #NO_ROOM} 分开成两态的理由：那是"格满了"、这是"格不许放这个"，玩家看到的
+         * 修法完全不同（等补满 vs 换一种东西 / 撤掉记忆）；并成一条就是"把两种失败说成一句话"。
+         * ★只有四参形态（服务端生产）<b>可能</b>返这一态：三参旧形态不判这道闸 ⇒ 既有回归用例逐字不变。
+         */
+        MEMORY_LOCKED,
         /** 已入账；调用方清游标并给成功回执。 */
         ACCEPTED
     }
@@ -135,6 +144,9 @@ public final class PocketEssenceIntake {
                     return "gtit.pocket.essence.intake.no_room";
                 case ACCEPTED:
                     return "gtit.pocket.essence.intake.ok";
+                case MEMORY_LOCKED:
+                    // ★R91-⑤：本格被记忆锁成"只能放另一种东西"⇒ 面板回执（★不进聊天框，R88 C3 同一条）
+                    return "gtit.pocket.essence.intake.memory_locked";
                 case NOT_CRYSTAL:
                 default:
                     return "gtit.pocket.essence.intake.not_crystal";
@@ -287,12 +299,41 @@ public final class PocketEssenceIntake {
      * 那一条<b>入账 + 按档退件</b>的单点（瓶档退回等量空壳、晶档整叠销毁零退件），乘法仍是
      * {@code PocketIntakeOps#scaledByStackSize} 那一条（★本支<b>不碰</b> {@code drainContainer}——
      * 抽干发生在单点里，且只在瓶档）。
+     * <p>
+     * ★<b>R91-⑤</b>：本形态 = 不判记忆闸（旧行为逐字不变，供既有回归用例与不关心属性的调用方）；
+     * 服务端生产走四参形态 {@link #intake(ItemStack, PocketEssenceStore, EssenceGate, MemoryGate)}。
      *
      * @param carried 服务端游标栈（{@code player.inventory.getItemStack()}）；可为 {@code null}
      * @param store   源质表（入账落点）
      * @param gate    源质探针（载体识别与容器内容读取）
      */
     public static Result intake(ItemStack carried, PocketEssenceStore store, EssenceGate gate) {
+        return intake(carried, store, gate, null);
+    }
+
+    /**
+     * ★<b>R91-⑤ 的 L 执法腿（源质支）注入点</b>：本格是否被挂了<b>记忆</b>且记的不是这一种。
+     * <p>
+     * ★刻意做成<b>注入接口</b>而不是在本类直读 {@code PocketFilterConfig} + {@code cellOf}：
+     * ① 判据（attr 的读法、"记的是不是这一种"的比较）住在 {@code PocketFilterConfig} 那<b>一张</b>位表里，
+     * 本类只问结论；② 源质格的归属是<b>动态</b>的（R86：扣到 0 当场腾格），"哪个 tag 在哪一格"只有
+     * 服务端权威表知道，纯 JVM 件不许自己猜；③★零依赖套件必须能注入桩件把它驱动成真的判过
+     * （R59b 那条"判据不入桩件就是假绿同族陷阱"的同一条理由）。
+     */
+    public interface MemoryGate {
+
+        /**
+         * @param tag 本次入槽要落的 tag（已从载体内容解出）
+         * @return true ⇒ 该 tag 当前所在格被 alt+左 记成了<b>别的东西</b> ⇒ 本次入槽必须整笔不落地拒收
+         */
+        boolean isMemoryLockedOtherThan(String tag);
+    }
+
+    /**
+     * ★R91-⑤ 四参形态（服务端生产唯一入口）：多带一道<b>记忆闸</b>，其余三条失败态与入账算术
+     * <b>一字不改</b>；{@code memory == null} ⇒ 不判（与三参形态逐字同行为）。
+     */
+    public static Result intake(ItemStack carried, PocketEssenceStore store, EssenceGate gate, MemoryGate memory) {
         if (carried == null || carried.stackSize <= 0
             || store == null
             || gate == null
@@ -304,6 +345,13 @@ public final class PocketEssenceIntake {
         if (content == null || content.isEmpty() || tag == null) {
             // 无 NBT 裸晶 / 空瓶（或内容空）：TC 侧会随机给晶赋型，但那是它自己的节拍，本路径不替它造归属
             return new Result(Outcome.NO_OWNER, null, 0);
+        }
+        // ★★<b>R91-⑤ 的 L 执法腿（源质支）</b>：记忆格 = "本格只能放那一种东西"，★纯过滤、不产生抽取。
+        // 落在<b>入账之前</b>（{@code canAcceptAll} 那一步之上）：源质表分毫未动、载体分毫未动、
+        // 也不退壳 ⇒ 调用方什么都不用做（与 NO_ROOM 那一条同形）。
+        // ★probe == null（旧三参形态 = 回归套件的既有调用）⇒ 不判这一道，行为与 R90 逐字一致。
+        if (memory != null && memory.isMemoryLockedOtherThan(tag)) {
+            return new Result(Outcome.MEMORY_LOCKED, tag, 0);
         }
         // 复用 12 格路径同源的"读出 × 叠数 + canAcceptAll 全有全无预检 + putAll 入账"原语，并按档退件
         // （预检失败 ⇒ 源质表分毫未动、载体也分毫未动、也不退壳 ⇒ 调用方什么都不用做）。
@@ -361,9 +409,23 @@ public final class PocketEssenceIntake {
         return wanted - TaumDistillRules.floorToPhialUnits(wanted);
     }
 
-    /** 本次动作请求的点数（shift 分档的唯一算式；{@link #phialsToFill} 与 {@link #leftoverOnFloor} 共用）。 */
+    /**
+     * 本次动作请求的点数（★<b>R91-e 改判</b>后的 shift 二分，仍是唯一算式；
+     * {@link #phialsToFill} 与 {@link #leftoverOnFloor} 共用同一个它）。
+     * <p>
+     * 裁定原文：<b>左键 = 消耗 1 只空瓶、装 1 只</b>；<b>shift+左键 = 装到既有单动作上限</b>。
+     * ★<b>不新增常量、不新增第二套算式</b>：单点那一档用的就是
+     * {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS}（"一只瓶 = 几点"这件事本来只有一个数），
+     * 批量那一档用的就是 R84 立的 {@link PocketConstants#ESSENCE_OUT_MAX_POINTS_PER_ACTION}
+     * （经 {@code min(stock, …)} 收口，与 shift 支过去读的同一枚上界）。
+     * <p>
+     * ★与旧（S2 版）算式的差只有一处：过去单点也允许"一次把游标那一叠全灌满"（上界是
+     * {@code min(手持只数, 64)}），与账本 R91-④ 字面「消耗 <b>1</b> 只空瓶」不等价 ⇒ 按 R91-e 收窄。
+     */
     private static int requestedPoints(int stock, boolean shift) {
-        return shift ? stock : Math.min(stock, PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION);
+        final int perActionCeiling = shift ? PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION
+            : PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        return Math.min(stock, perActionCeiling);
     }
 
     /**
