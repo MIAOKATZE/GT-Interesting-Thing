@@ -64,6 +64,34 @@ public interface TaumBridgeApi {
     int capacityOf(ItemStack stack);
 
     /**
+     * ★<b>R91-⑦：源质伪物品（配方显示件）承载的 aspect tag</b>——「拖入栈 → tag」反解的第三方支。
+     * <p>
+     * 存在理由：NEI 的物品列表/书签面板里，源质条目<b>不只有容器</b>。AspectRecipeIndex 会往面板塞
+     * 一种伪物品（game id {@code aspectrecipeindex:aspect}），它<b>不是</b>
+     * {@code IEssentiaContainerItem}、也<b>不在</b> TC 蒸馏注册表里 ⇒ 本仓既有两条探针
+     * （{@link #readContainer} / {@link #distill}）对它<b>结构性双空</b>（取证
+     * {@code plan/_taskpack/r91-ret-nei-carrier.md} §2 的 jar 实拆）。玩家拖它声明绑定就会被拒收，
+     * 这正是用户报的「无法绑定标记」的第二条根因（根-3）。
+     * <p>
+     * <b>三条硬边界</b>（本方法的实现必须逐条满足，判据侧由 {@code verify-pocket.sh} 的 {@code R91-a2} 段钉）：
+     * <ol>
+     * <li><b>注册名精确白名单</b>：只认 {@code aspectrecipeindex} 的 {@code aspect} 那一个 Item
+     * <b>身份</b>（按注册名解析出的 {@code Item} 实例做 {@code ==} 比对）。<b>禁止</b>扫全注册表、
+     * 禁止按 unlocalized name 前缀匹配、禁止猜别家 mod 的 key 写法；</li>
+     * <li><b>唯一键</b>：读 NBT 的 String 型 aspect 键（ARI 的 {@code ItemAspect#setAspect} 只写这一个键，
+     * 实测其类内字符串常量全集里没有任何数量字段）；</li>
+     * <li><b>TC 复核</b>：解出的字符串必须过 {@code Aspect.getAspect(tag) != null} 才算数——
+     * NBT 是第三方写的，不接受自证；返回的是<b>复核后的 canonical tag</b>。</li>
+     * </ol>
+     * ★<b>只声明、绝不入库存计点</b>（R91-⑦）：本方法<b>不</b>参与任何点数/消耗路径；计点闸门仍是
+     * {@code TaumDistillRules#PHIAL_CAPACITY} / {@code CRYSTAL_CAPACITY} 两档（伪物品天然落
+     * {@code CAPACITY_NOT_A_CONTAINER}），<b>不新增第二道门</b>。
+     * <p>
+     * 降级：TC 或 ARI 缺席、无 NBT、键缺失、非白名单物品、运行期漂移 ⇒ {@code null}（永不抛出）。
+     */
+    String pseudoAspectTag(ItemStack stack);
+
+    /**
      * 往容器里注入源质（合并语义：容器已有<b>不同</b> aspect 时整笔拒绝，不做混合、不清空）。
      * <p>
      * 晶化源质不走本方法（1 点/枚；★R88 载体改判后晶已退役为「只读不产」，见 {@link #newCrystalStack}

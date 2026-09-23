@@ -73,7 +73,8 @@ import appeng.util.item.AEItemStack;
  * （★R90 T3 起注入/抽取与两条算术纯搬移到 {@link PocketFluidChannelOps}，复用本类的批级缓存与
  * 动作源，行为零变化；来源快照的 {@code appendFluidSources} 仍在本类，与 {@code appendEssenceSources} 同位）；</li>
  * <li>源质支 → ★R87-A 起整体搬去 {@link PocketEssenceChannelOps}（那一次是行数纪律的<b>纯搬移</b>）：
- * 经 {@code IAEStackType.convertStackFromItem} 以<b>自家装满的源质瓶 {@code ItemEssence}</b> 为探针
+ * 经 AE2 的<b>容器契约</b>（★R91-① 改口，单源在 {@link EssenceNativeChannels#channelStackFromContainer}）
+ * 以<b>自家装满的源质瓶 {@code ItemEssence}</b> 为探针
  * 反算数额后<b>溶回 72 格源质盘</b>（★R88 载体与落点双双改判，旧形状是"以 {@code ItemCrystalEssence}
  * 为探针、1 点 = 1 晶、物化成晶进口袋真实栏"）。现在的单位语义是
  * <b>1 只瓶 = {@value com.miaokatze.gtit.crossmod.taum.TaumDistillRules#PHIAL_CAPACITY} 点</b>，
@@ -299,7 +300,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * 键用 {@code essenceKey("", tag)}：口袋里的一点源质<b>不属于任何 AE2 通道</b>，typeId 那一段
      * 天然为空（读侧 {@code parseKey} 会解出 {@code typeId == ""}，见其"按最后一个分隔符切"的注释）。
      * ★R90 E2：哪条通道收得下由 {@link PocketEssenceChannelOps#injectEssenceSource} 经
-     * {@link EssenceNativeChannels}（满瓶探针 + {@code convertStackFromItem}，单源）判——<b>只认
+     * {@link EssenceNativeChannels}（★R91-①：满瓶探针 + AE2 <b>容器契约</b>，单源）判——<b>只认
      * 源质原生通道</b>，缺席按 {@code NO_CHANNEL} 拒收，不再有任何物品通道兜底。
      */
     private void appendEssenceSources(List<SourceSlot> slots) {

@@ -280,6 +280,21 @@ public final class TaumCompat {
     }
 
     /**
+     * ★<b>R91-⑦：源质伪物品（配方显示件）承载的 aspect tag</b>——本仓读它的<b>唯一</b>入口，
+     * 判定的合成点在 {@code PocketEssenceIntake#declarationTagOf}（GUI 不得直调本方法、更不得抄键名）。
+     * <p>
+     * 三条硬边界（注册名精确白名单 / 唯一 String 键 / TC {@code Aspect#getAspect} 复核）与
+     * <b>「只声明、绝不入库存计点」</b>的口径全部写在 {@link TaumBridgeApi#pseudoAspectTag(ItemStack)}，
+     * 本门面只做逐字转发 + 降级（TC 或 ARI 缺席、桥接层未装配 ⇒ {@code null}）。
+     *
+     * @return 复核后的 canonical tag；读不出 ⇒ {@code null}
+     */
+    public static String pseudoAspectTag(ItemStack stack) {
+        TaumBridgeApi active = readyBridge();
+        return active == null || stack == null ? null : active.pseudoAspectTag(stack);
+    }
+
+    /**
      * 往容器注入源质（合并语义，已有不同 aspect 时整笔拒绝）。瓶在此完成 <b>meta 0（空）→ 1（满）</b>
      * 的切换，所以它是"往一只<b>已经在场</b>的空瓶里灌源质"的唯一正确出口。
      * <p>

@@ -10,8 +10,9 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
  * <p>
  * <b>为什么要有这层</b>：判据本体（{@code PocketIntakeOps#classifyIncoming} 分流与 {@code PocketIntakeOps#injectContainer}
  * 注入执行、{@code PocketDistillDriver#planDistillBatch} 蒸馏装箱）必须是纯逻辑才能在零依赖回归套件里
- * 端到端验证；而 {@link TaumCompat} 的四条读数在 Thaumcraft 缺席时<b>恒</b>返回
- * 「非容器 / 空 / 抽不出东西 / {@code CAPACITY_NOT_A_CONTAINER}」，用它跑测试只会得到一片假绿（本轮已为此踩过 R59b 偏离①同形坑）。
+ * 端到端验证；而 {@link TaumCompat} 的<b>五条</b>读数在 Thaumcraft 缺席时<b>恒</b>返回
+ * 「非容器 / 空 / 抽不出东西 / {@code CAPACITY_NOT_A_CONTAINER} / 解不出伪物品 tag」，
+ * 用它跑测试只会得到一片假绿（本轮已为此踩过 R59b 偏离①同形坑）。
  * 因此判据一律收一个 {@code EssenceGate} 入参：生产传 {@link #TAUM}，测试传记录调用序列的桩件。
  * <p>
  * ⚠ 本接口<b>不含分流判定</b>：分流与注入执行的唯一实现住 {@code common/items/pocket/PocketIntakeOps}
@@ -61,7 +62,26 @@ public interface EssenceGate {
      */
     TaumAspectAmounts aspectsOf(ItemStack stack);
 
-    /** 生产实现：四条读数逐字转 {@link TaumCompat}（TC 缺席时天然全降级）。 */
+    /**
+     * ★<b>R91-⑦（第 6 触点）：源质伪物品的声明 tag</b>——ARI 一类配方显示件既不是
+     * {@code IEssentiaContainerItem}（{@link #readContainer} 恒空）、也不在 TC 蒸馏注册表里
+     * （{@link #aspectsOf} 恒空），于是拖它声明绑定就<b>结构性双空</b>⇒ 拒收（用户报的
+     * 「无法绑定标记」根-3）。本触点是这条缺口的<b>唯一</b>补口。
+     * <p>
+     * <b>只声明、绝不入库存计点</b>：本方法与 {@link #capacityOf(ItemStack)} 无关（伪物品不是容器 ⇒
+     * 档位恒 {@code CAPACITY_NOT_A_CONTAINER}），因此 {@code PocketEssenceIntake#intake} 与 12 格注入支
+     * 对它天然拒收，<b>不新增第二道计点门</b>。识别本体（注册名精确白名单 + TC 复核）只住
+     * {@code crossmod/taum/} 一份，本触点只是转调。
+     * <p>
+     * ★<b>为什么同样要收进本接口</b>（{@code EssenceGate.java} 类注释 R59b 那条理由在此成立）：生产实现
+     * 只在 TC 在场时被加载，判据若绕过本接口直调 {@link TaumCompat}，零依赖回归套件就只能拿到"恒空"
+     * 的假绿——所以桩件必须能注入同一判据。
+     *
+     * @return 复核后的 tag；读不出（非白名单物品 / 无 NBT / TC 解不出 / TC 与 ARI 缺席）⇒ {@code null}
+     */
+    String pseudoAspectTag(ItemStack stack);
+
+    /** 生产实现：五条读数逐字转 {@link TaumCompat}（TC 缺席时天然全降级）。 */
     EssenceGate TAUM = new EssenceGate() {
 
         @Override
@@ -87,6 +107,11 @@ public interface EssenceGate {
         @Override
         public TaumAspectAmounts aspectsOf(ItemStack stack) {
             return TaumCompat.distill(stack);
+        }
+
+        @Override
+        public String pseudoAspectTag(ItemStack stack) {
+            return TaumCompat.pseudoAspectTag(stack);
         }
     };
 }

@@ -450,20 +450,21 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * <li>本格有归属 ⇒ 恒返本格 tag（与 R88 行为逐字一致，<b>不受拖入物影响</b>）；</li>
      * <li>本格无归属 + 拖入物容器读数非空 ⇒ 拖入物的 tag ⇒ {@link #handleDragAndDrop} 可在<b>空格</b>
      * 上组出键、发出建档声明（服务端对账 + 建档，见 {@code PocketGhostRequest#apply} 三参形态）；</li>
-     * <li>本格无归属 + 拖入物读不出 tag（无 NBT 裸栈 / 裸晶 / 非容器）⇒ {@code null} ⇒
+     * <li>本格无归属 + 拖入物是 <b>NEI 的源质伪物品</b>（★R91-⑦：ARI 塞进物品列表/书签面板的显示件，
+     * 不是容器、也不在 TC 蒸馏表里 ⇒ 旧两条探针<b>结构性双空</b>）⇒ 由同一条单源判据的第三档
+     * 给出它 NBT 里那个<b>已过 TC 复核</b>的 tag ⇒ 拖它也能建档（这正是用户报的「无法绑定标记」根-3）。
+     * ★伪物品<b>只声明、绝不入库存计点</b>，边界表在
+     * {@code PocketEssenceIntake#declarationTagOf}；</li>
+     * <li>本格无归属 + 拖入物读不出 tag（无 NBT 裸栈 / 裸晶 / 非容器 / 空瓶）⇒ {@code null} ⇒
      * {@link #carriesTag} 对空 tag 的既有拒收入口生效（need_stock 文案面）。</li>
      * </ul>
      * 刻意<b>不</b>把蒸馏读数（{@code aspectsOf}）当"自带 tag"：多 tag 蒸馏产出没有唯一归属，
      * 建档声明的语义载体是<b>容器</b>（满瓶/带 NBT 旧晶/第三方罐），与 R88 载体口径同源。
      */
     public static String tagOfCarrier(ItemStack draggedStack, String cellTag, EssenceGate gate) {
-        if (draggedStack == null || gate == null) {
-            return null;
-        }
-        if (cellTag != null && !cellTag.isEmpty()) {
-            return cellTag;
-        }
-        return PocketEssenceIntake.firstTagOf(gate.readContainer(draggedStack));
+        // ★R91-⑦：反解本体单源下沉到 PocketEssenceIntake#declarationTagOf（本格 tag 优先 → 真容器首 tag →
+        // 白名单伪物品的 NBT tag）。GUI 这一层只留薄封装：本文件不得出现字面 NBT 键名或第三方注册名。
+        return PocketEssenceIntake.declarationTagOf(draggedStack, cellTag, gate);
     }
 
     /**
@@ -489,6 +490,11 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * false（判据"含<b>这一格</b>的 tag"对空格无解，本签名与既有用例不动），但空格的建档入口改走
      * {@link #tagOfCarrier}（拖入物自带 tag ⇒ 可组键）——旧 R86"空格一律不收"只在"拖入物读不出
      * tag"那一半继续成立。
+     * <p>
+     * ★<b>R91-⑦ 增加第三条读数</b>：前两条（容器 / 蒸馏）之外，再认一次
+     * {@code PocketEssenceIntake#declarationTagOf} 的<b>白名单伪物品</b>档 ⇒ 拖 ARI 的源质显示件到
+     * 本格也能判"含"。★它<b>不是</b>本文件里的第二段解析：键名、注册名、TC 复核全在
+     * {@code crossmod/taum/} 与 {@code PocketEssenceIntake} 各一份，本方法只调那一条判据。
      */
     public static boolean carriesTag(ItemStack draggedStack, String cellTag, EssenceGate gate) {
         if (draggedStack == null || gate == null || cellTag == null || cellTag.isEmpty()) {
@@ -500,7 +506,13 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
             return true;
         }
         final TaumAspectAmounts distilled = gate.aspectsOf(draggedStack);
-        return distilled != null && distilled.getAmount(cellTag) > 0;
+        if (distilled != null && distilled.getAmount(cellTag) > 0) {
+            return true;
+        }
+        // ★R91-⑦：第三档 = <b>同一条</b>声明侧单源判据（白名单伪物品）。第二参传 null 是刻意的——
+        // 本格 tag 优先那一档在这里不适用（本方法问的正是"这栈含不含<b>这一格</b>"），
+        // 传 cellTag 进去会让任何栈都被第一档短路成"含本格 tag"，那是把判据自己废掉。
+        return cellTag.equals(PocketEssenceIntake.declarationTagOf(draggedStack, null, gate));
     }
 
     /**
@@ -527,8 +539,8 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
     /**
      * 本格源质所在的<b>通道 id</b>（{@code IAEStackType.getId()} 字符串）。
      * <p>
-     * ★R90 E2：判法已<b>单源下沉</b>到 {@link EssenceNativeChannels}（满瓶探针 +
-     * {@code convertStackFromItem}，含第三方实现的 {@code Throwable} 容错与 TC 缺场判空）——
+     * ★R90 E2 判法已<b>单源下沉</b>到 {@link EssenceNativeChannels}（★R91-① 改口为 AE2 <b>容器契约</b>：
+     * 满瓶探针经该通道的容器识别 + 容器→通道栈换算，含第三方实现的 {@code Throwable} 容错与 TC 缺场判空）——
      * 本方法只是声明侧的薄封装，不再内联探针循环。与消费端同一只探针：写进声明的 id 与
      * {@code InfinityStackTypes.byId} 能解析出的天然是同一个，不会出现两处真相。
      * <p>

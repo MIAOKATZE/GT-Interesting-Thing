@@ -35,13 +35,14 @@ import appeng.api.storage.data.IAEStackType;
  * 拒收回执；<b>任何形态的「物化成瓶塞进物品通道」的兜底都已删除</b>。瓶只存在于玩家手动取用
  * （取出口径另一片）与 GUI 游标。本类的两条路与三段算术都按此换档，三条硬口径现在是：
  * <ul>
- * <li><b>不猜第三方 mod 的私有栈格式</b>（R31/R44a）：用 {@code IAEStackType.convertStackFromItem}
- * 以<b>自家装满的源质瓶</b>为探针反算"1 瓶 = 多少通道单位"；换不到 ⇒ 不是源质原生通道
- * （上传侧 {@code NO_CHANNEL} 拒收、抽取侧一次性 INFO 后 {@code NO_CHANNEL}），绝不
- * {@code instanceof} 具体物品类。</li>
+ * <li><b>不猜第三方 mod 的私有栈格式</b>（R31/R44a）：走 AE2 的<b>容器契约</b>（★R91-① 改口：
+ * {@code isContainerItemForType} 认门 + {@code getStackFromContainerItem} 换算，单源在
+ * {@link EssenceNativeChannels#channelStackFromContainer}）以<b>自家装满的源质瓶</b>为探针反算
+ * "1 瓶 = 多少通道单位"；换不到 ⇒ 不是源质原生通道（上传侧 {@code NO_CHANNEL} 拒收、抽取侧一次性
+ * INFO 后 {@code NO_CHANNEL}），绝不 {@code instanceof} 具体物品类。</li>
  * <li><b>单位语义</b>：口袋里"一点源质"经这条通道出去时是一<b>只满瓶折算的通道单位</b>
- * （{@value TaumDistillRules#PHIAL_CAPACITY} 点）；实际倍率仍由对应 mod 的
- * {@code convertStackFromItem} 决定，本仓不写死。★R90 起<b>只有源质原生通道有"单位"可言</b>
+ * （{@value TaumDistillRules#PHIAL_CAPACITY} 点）；实际倍率仍由对应 mod 的<b>容器换算</b>决定，
+ * 本仓不写死。★R90 起<b>只有源质原生通道有"单位"可言</b>
  * ——物品通道的"1 单位 = 1 只瓶"口径随兜底一起删除；<b>不足一瓶的零头两头都不搬</b>（下一条）。</li>
  * <li><b>整瓶粒度（裁定 C1）</b>：上传与下传的点数都先经 {@link TaumDistillRules#floorToPhialUnits(int)}
  * 向下取整到 8 的倍数 ⇒ 零头<b>留在原侧</b>（上传侧留盘、下传侧留元件），绝不为凑零头造半瓶；
@@ -68,7 +69,7 @@ final class PocketEssenceChannelOps {
      * ★R86（缺陷 3）：口袋源质表 → 元件的<b>第三方源质</b>通道（推送向）。
      * <p>
      * ★R90 E2（AUQ-①=B，路由修复）：<b>只允许走「源质原生通道」</b>——方法一进来就用
-     * {@link EssenceNativeChannels#nativeProbe}（满瓶探针 + {@code convertStackFromItem}，单源）
+     * {@link EssenceNativeChannels#nativeProbe}（★R91-①：满瓶探针 + AE2 <b>容器契约</b>，单源）
      * 判这条 (通道, tag) 对；判不是（内建物品/流体、换不动的第三方、TC 缺席）⇒ 直接
      * {@code NO_CHANNEL} 拒收，由 Runner 的 {@code essenceNoChannel} 计数进既有回执链
      * （面板 {@code receiptOfReport} → {@code gtit.pocket.receipt.no_channel}）<b>非静默</b>面呈。
@@ -198,8 +199,9 @@ final class PocketEssenceChannelOps {
      * ★源质支（R45b 缺口之二，需求 4 的源质声明 + R15 的第三条路径之一）。
      * <p>
      * 元件侧的源质栈格式属对应 mod 私有（实验 E3 保留），因此<b>不猜格式</b>：
-     * 用 {@code IAEStackType.convertStackFromItem}（AE2 自己给第三方通道留的"TC4 aspect item → 通道栈"
-     * 换算口）以<b>一只装满的自家源质瓶</b>为探针反算数额，★R88 起 <b>1 只瓶 =
+     * 走 AE2 的<b>容器契约</b>（★R91-① 改口：{@code isContainerItemForType} +
+     * {@code getStackFromContainerItem}，AE2 为「容器」开的那一口，单源在
+     * {@link EssenceNativeChannels#channelStackFromContainer}）以<b>一只装满的自家源质瓶</b>为探针反算数额，★R88 起 <b>1 只瓶 =
      * {@value TaumDistillRules#PHIAL_CAPACITY} 点</b>（旧形状是 1 点 = 1 晶，
      * {@code TaumDistillRules.CRYSTAL_CAPACITY}，按裁定 C2 只保留"读得回旧晶"的识别，不再有产出）。
      * 换算拿不到 ⇒ 判"该通道不可物化"，一次性 INFO 后按 {@code NO_CHANNEL} 收口
@@ -332,12 +334,15 @@ final class PocketEssenceChannelOps {
     }
 
     /**
-     * ★R86（审查 B1）／R88 换载体／★R90 E2 删特判：把"一只装满的源质瓶"换算成<b>该通道自己</b>的
-     * 堆栈形态；换不到 ⇒ null。
+     * ★R86（审查 B1）／R88 换载体／R90 E2 删特判／★<b>R91-③ 同口改</b>：把"一只装满的源质瓶"换算成
+     * <b>该通道自己</b>的堆栈形态；换不到 ⇒ null。
+     * <p>
+     * ★R91-③：本方法现在只是 {@link EssenceNativeChannels#channelStackFromContainer} 的<b>薄委派</b>
+     * （AE2 容器契约：认门 + 换算），于是<b>上传侧的倍率与路由门的倍率字面同源</b>——旧形状在这里
+     * 自己问一口、探针在别处问另一口，一旦两口不同源就是"1 单位折多少"的两处真相。
      * <p>
      * ★R90（AUQ-①=B，上传永不产瓶）：对 {@code ITEM_STACK_TYPE} 的特判（直接
-     * {@code AEItemStack.create(瓶)}）已<b>删除</b>——AE2 的 {@code AEItemStackType#convertStackFromItem}
-     * 本就无条件 {@code return null}（"物品 → 物品堆"不走这个口），于是源质对物品通道恒返 null ⇒
+     * {@code AEItemStack.create(瓶)}）已<b>删除</b>——源质对物品通道恒返 null ⇒
      * 注入探针跳过、回补跳过、抽取侧 {@code NO_CHANNEL}（经 Runner 的 {@code essenceNoChannel}
      * 计数进面板回执，非静默）。旧档的 {@code e:item:<tag>} 声明因此成为<b>死声明</b>：不搬运、
      * 每次抽取记一次拒收；声明侧已不再写出这种键（{@code NekoEssenceGhostCell#channelTypeId}
@@ -345,10 +350,7 @@ final class PocketEssenceChannelOps {
      * {@link EssenceNativeChannels#nativeProbe}。
      */
     private static IAEStack<?> essenceStackFor(IAEStackType<?> type, ItemStack carrier) {
-        if (type == null || carrier == null) {
-            return null;
-        }
-        return type.convertStackFromItem(carrier);
+        return EssenceNativeChannels.channelStackFromContainer(type, carrier);
     }
 
     /**
@@ -360,7 +362,8 @@ final class PocketEssenceChannelOps {
      * {@code extract_essence_branch_yields_crystal}（★R88 起该用例需重挂到瓶，E3 待办）直接钉住。
      *
      * @param availableUnits 元件侧该 tag 现有的通道单位（SIMULATE 回报）
-     * @param unitPerCarrier 一只装满的瓶对应多少通道单位（由 {@code convertStackFromItem} 实测）
+     * @param unitPerCarrier 一只装满的瓶对应多少通道单位（由该通道的<b>容器换算</b>实测，★R91-③
+     *                       与探针同源：{@link EssenceNativeChannels#channelStackFromContainer}）
      * @param wantCarriers   本轮最多要几只瓶（含落点预检与 {@code ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 自缚）
      */
     static int carriersFromUnits(long availableUnits, long unitPerCarrier, int wantCarriers) {

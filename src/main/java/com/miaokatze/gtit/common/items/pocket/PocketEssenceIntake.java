@@ -138,6 +138,82 @@ public final class PocketEssenceIntake {
     }
 
     /**
+     * ★<b>R91-⑦：「拖入栈 → 声明 tag」的唯一单源判据</b>（声明侧 tag 反解收敛到这一条）。
+     * <p>
+     * 读法三档，按优先级：
+     * <ol>
+     * <li><b>本格 tag 优先</b>（{@code cellTag} 非空 ⇒ 原样返回，<b>不受拖入物影响</b>）——与
+     * {@code NekoEssenceGhostCell#tagOfCarrier} 的 R90 E3（D3）既有语义逐字一致；</li>
+     * <li><b>本格无归属 ⇒ 真容器的首个有量 tag</b>（{@code gate.readContainer} + {@link #firstTagOf}，
+     * 即 TC 满瓶 / 带 NBT 旧晶 / 第三方罐共用那一条）；</li>
+     * <li><b>仍读不出 ⇒ 白名单伪物品的 NBT tag</b>（{@code gate.pseudoAspectTag}：ARI 的
+     * {@code aspectrecipeindex:aspect} 一类配方显示件，注册名精确白名单 + TC {@code Aspect} 复核）。</li>
+     * </ol>
+     * 三档都读不出 ⇒ {@code null}（空瓶、无 NBT 裸晶、普通物品一律 {@code null} ⇒ 既有的
+     * "组不出键就拒收"入口生效）。
+     * <p>
+     * ★★<b>本判据只覆盖「声明侧」，绝不参与计点</b>——载体清单与边界（R91-⑦ 原文口径）：
+     * <table border="1">
+     * <tr>
+     * <th>载体</th>
+     * <th>声明（本判据）</th>
+     * <th>入库存计点（{@link #isAcceptedCarrierCapacity}）</th>
+     * </tr>
+     * <tr>
+     * <td>伪物品 {@code item.aspect} + String 型 aspect 键</td>
+     * <td>只声明</td>
+     * <td><b>绝不入库存</b></td>
+     * </tr>
+     * <tr>
+     * <td>TC 满瓶（{@code PHIAL_CAPACITY}）</td>
+     * <td>声明 + 入槽</td>
+     * <td>收（8 点/只）</td>
+     * </tr>
+     * <tr>
+     * <td>带 NBT 旧晶（{@code CRYSTAL_CAPACITY}）</td>
+     * <td>声明 + 入槽</td>
+     * <td>收（1 点/枚，C2 只读支）</td>
+     * </tr>
+     * <tr>
+     * <td>第三方罐（{@code CAPACITY_UNKNOWN}）</td>
+     * <td>声明</td>
+     * <td>刻意不收（档位无证据）</td>
+     * </tr>
+     * <tr>
+     * <td>空瓶 / 无 NBT 裸晶</td>
+     * <td colspan="2">拒收（读不出 tag）</td>
+     * </tr>
+     * </table>
+     * 计点闸门 {@code capacityOf ∈ {瓶, 晶}} <b>一个字都不动</b>：伪物品不是容器 ⇒ 档位天然落
+     * {@code CAPACITY_NOT_A_CONTAINER} ⇒ {@code intake} 对它恒 {@code NOT_CRYSTAL}，
+     * <b>不需要也不允许</b>再加第二道门（第二道门就是第二处真相）。
+     * <p>
+     * ★刻意落在本类（纯 JVM 件、{@code EssenceGate} 可注入桩件）而不是 {@code TaumBridge} 或 GUI：
+     * 桥接层只在 TC 在场时加载 ⇒ 判据放那里零依赖套件只能拿到"恒空"的假绿（R59b 同族陷阱）；
+     * 放 GUI 则声明侧与入槽侧各抄一份（{@code verify-pocket.sh} 的 {@code R91-a2} 段钉
+     * "GUI 里不得出现字面键与注册名"）。第三方解析本体只住 {@code crossmod/taum/} 一份。
+     *
+     * @param stack   拖入 / 游标上的栈；可为 {@code null}
+     * @param cellTag 本格已归属的 tag（{@code null}/空 = 无归属 ⇒ 回落读栈）
+     * @param gate    源质探针（生产传 {@link EssenceGate#TAUM}）
+     * @return 该次声明使用的 tag；三档都读不出 ⇒ {@code null}
+     */
+    public static String declarationTagOf(ItemStack stack, String cellTag, EssenceGate gate) {
+        if (stack == null || gate == null) {
+            return null;
+        }
+        if (cellTag != null && !cellTag.isEmpty()) {
+            return cellTag;
+        }
+        final String containerTag = firstTagOf(gate.readContainer(stack));
+        if (containerTag != null) {
+            return containerTag;
+        }
+        final String pseudoTag = gate.pseudoAspectTag(stack);
+        return pseudoTag == null || pseudoTag.isEmpty() ? null : pseudoTag;
+    }
+
+    /**
      * ★R90 E3（D1 手势三分）的<b>预筛唯一判据</b>：载体容器内容是否非空。
      * <p>
      * 内容读数只走 {@code gate.readContainer}（生产 = {@code EssenceGate.TAUM} → {@code TaumCompat} →

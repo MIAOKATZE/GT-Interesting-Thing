@@ -306,6 +306,13 @@ public class NekoPocketModelTest {
             "native_absent_declared_extract_no_channel",
             NekoPocketModelTest::nativeAbsentDeclaredExtractNoChannel);
         cases.put("extract_symmetric_carriers_from_units", NekoPocketModelTest::extractSymmetricCarriersFromUnits);
+        // ---- ★R91-A（S1）：探针改口（AE2 容器契约，静态半边）+ 声明侧 tag 反解单源（R91-⑦，真判据全表）
+        cases.put("declaration_tag_carrier_truth_table", NekoPocketModelTest::declarationTagCarrierTruthTable);
+        cases.put("pseudo_aspect_carrier_never_credited", NekoPocketModelTest::pseudoAspectCarrierIsNeverCredited);
+        cases.put(
+            "essence_probe_uses_container_contract_only",
+            NekoPocketModelTest::essenceProbeUsesContainerContractOnly);
+        cases.put("declaration_tag_single_source_is_wired", NekoPocketModelTest::declarationTagSingleSourceIsWired);
         // ---- ★R90 E3/E4（批 2 测试落地）：S3/S5 预筛真值表 + 格→瓶取出守卫 + ghost 建档归属对账 + S6 流体决策核
         // （世界站适配器 PocketWorldFluidTap 与 ItemNekoDimensionPocket.onItemUseFirst 的实机手势属
         // in-game-checklist 项，本套件只钉决策核与口袋侧纯 JVM 面）
@@ -2977,7 +2984,7 @@ public class NekoPocketModelTest {
      * 旧名在 {@code PocketEssenceChannelOps} 里只剩一行转发的过渡别名 ⇒ 本用例重挂后
      * <b>那两个别名全仓零调用方</b>（删除属 Java 侧动作，见交付报告"代码侧待修"）。
      * <p>
-     * 边界如实声明：AE2 第三方通道的 {@code convertStackFromItem}/{@code extractItems} 属实机项
+     * 边界如实声明：AE2 第三方通道的 {@code getStackFromContainerItem}/{@code extractItems} 属实机项
      * （实验 E3：元件侧源质栈格式仍属该 mod 私有），本用例覆盖的是<b>换算</b>那一半。
      */
     private static void extractEssenceBranchYieldsPhials() {
@@ -5037,16 +5044,20 @@ public class NekoPocketModelTest {
     // （NoClassDefFoundError）⇒ nativeChannelTypeId 的注册表循环不可驱动（种子在场时它提前返回，
     // 未种子的 tag 一律不调它——缺席列由源码机检 + 桩件行为覆盖）；③nativeProbe 的内建排除只能
     // {@code nativeProbe(null, tag)} 这一个入参形态直接驱动，内建两席位的排除判据由源码机检钉
-    // （exclusion 在 convertStackFromItem 之前、探针方法体零种子引用）。
+    // （★R91-①：排除在容器认门口 isContainerItemForType 之前、探针与单源换算件零种子引用）。
 
     /** E2 用例的第三方席位 typeId（与 {@link #CHANNELS} 第三项同串：测试桩的通道宇宙里它是"已注册的第三方通道"）。 */
     private static final String NATIVE_TEST_TYPE_ID = "essentia";
 
     /**
-     * ★E2 共用机检：{@code EssenceNativeChannels#nativeProbe} 的<b>内建排除</b>是硬的——
-     * 物品/流体两席位在 {@code convertStackFromItem} 之前就被剔除，且探针方法体<b>零种子引用</b>
+     * ★E2 共用机检 ／ ★<b>R91-① 改口</b>：{@code EssenceNativeChannels} 的<b>内建排除</b>是硬的——
+     * 物品/流体两席位在<b>容器换算口</b>（{@code isContainerItemForType} 认门 +
+     * {@code getStackFromContainerItem} 换算）之前就被剔除，且探针与换算件两半<b>零种子引用</b>
      * （种子只顶「运行时注册的第三方」那一席 ⇒ 种子永远不能把内建通道判成原生，上传永不回落物品通道）。
      * 测试 JVM 里 AE2 的类型单例不可触达（节注释②）⇒ 这一档只能钉源码。
+     * <p>
+     * ★区域 = {@code nativeProbe} 起到种子字段止 ⇒ 恰好覆盖「探针 + 它委派的那只单源换算件」两段，
+     * 因此同一段里既钉住"门在换算之前"，也钉住"探针确实委派了它"（第二判据无从藏身）。
      */
     private static void assertNativeProbeExclusionPinned() {
         final java.util.List<String> nativeChannels = sourceLinesOrNull(
@@ -5056,24 +5067,55 @@ public class NekoPocketModelTest {
             return;
         }
         final int probeStart = methodStart(nativeChannels, "public static IAEStack<?> nativeProbe(");
-        // 区域终点 = 种子字段那一行（种子口整组住在 nativeProbe 与 nativeChannelTypeId 之间）
+        // 区域终点 = 种子字段那一行（种子口整组住在探针/换算件与 nativeChannelTypeId 之间）
         final int probeEnd = methodStart(
             nativeChannels,
             "static final java.util.Map<String, java.util.Set<String>> SEEDED_NATIVE_TAGS");
         SimpleAssert.that(probeStart >= 0 && probeEnd > probeStart, "★必须能按签名定位 nativeProbe（改名即红）");
         SimpleAssert.that(regionContainsCode(nativeChannels, probeStart, probeEnd, "ITEM_STACK_TYPE"), "内建物品通道的排除在场");
         SimpleAssert.that(regionContainsCode(nativeChannels, probeStart, probeEnd, "FLUID_STACK_TYPE"), "内建流体通道的排除在场");
+        // ★R91-① 新形状（两半）：门 + 换算都在，且门在换算之前
         final int itemAt = firstCodeLineWith(nativeChannels, probeStart, probeEnd, "ITEM_STACK_TYPE");
-        final int convertAt = firstCodeLineWith(nativeChannels, probeStart, probeEnd, "convertStackFromItem(");
-        SimpleAssert.that(itemAt >= 0 && convertAt > itemAt, "★排除在换算口之前（内建席位根本不问第三方换算）");
+        final int gateAt = firstCodeLineWith(nativeChannels, probeStart, probeEnd, "isContainerItemForType(");
+        final int convertAt = firstCodeLineWith(nativeChannels, probeStart, probeEnd, "getStackFromContainerItem(");
+        SimpleAssert.that(gateAt >= 0, "★容器认门口在场（R91-① 的新判据入口）");
+        SimpleAssert.that(itemAt >= 0 && gateAt > itemAt, "★排除在认门口之前（内建席位根本不问第三方）");
+        SimpleAssert.that(gateAt >= 0 && convertAt > gateAt, "★先认门再换算（与 AE2 终端的容器选路同形）");
+        // ★R91-① 旧形状消失读数（成对门禁：撤了没给落点＝删信息，反过来"旧口还在"也必须红）
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(nativeChannels.subList(probeStart, probeEnd), "convertStackFromItem("),
+            "★旧的非容器换算口在探针与单源换算件两段里彻底消失（R90 判据不得还魂）");
+        // 探针确实委派单源换算件（而不是自己再造一口）
+        SimpleAssert.that(
+            regionContainsCode(nativeChannels, probeStart, probeEnd, "channelStackFromContainer("),
+            "★探针经唯一的 channelStackFromContainer 换算（禁第二判据）");
         SimpleAssert
-            .that(!regionContainsCode(nativeChannels, probeStart, probeEnd, "SEEDED_"), "★探针方法体零种子引用（种子不弱化内建排除）");
+            .that(!regionContainsCode(nativeChannels, probeStart, probeEnd, "SEEDED_"), "★探针与换算件零种子引用（种子不弱化内建排除）");
+        // ★R91-② 交叉断言的静态形状：只在 try 内问一次 getAmountPerUnit，catch(Throwable) 未撤
+        final int probeBodyEnd = firstCodeLineWith(
+            nativeChannels,
+            probeStart,
+            probeEnd,
+            "public static IAEStack<?> channelStackFromContainer(");
+        SimpleAssert.that(probeBodyEnd > probeStart, "定位 channelStackFromContainer（改名/合并即红）");
+        final int tryAt = firstCodeLineWith(nativeChannels, probeStart, probeBodyEnd, "try {");
+        final int catchAt = firstCodeLineWith(nativeChannels, probeStart, probeBodyEnd, "catch (Throwable");
+        final int perUnitAt = firstCodeLineWith(nativeChannels, probeStart, probeBodyEnd, "getAmountPerUnit(");
+        SimpleAssert.that(
+            tryAt >= 0 && perUnitAt > tryAt && catchAt > perUnitAt,
+            "★R91-② 交叉断言在 try 内、catch(Throwable) 之前（第三方抛不得崩）");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(nativeChannels.subList(probeStart, probeBodyEnd), "getAmountPerUnit("),
+            "交叉断言只问一次（不造第二判据）");
+        SimpleAssert.that(catchAt > 0, "★try/catch Throwable 容错形态未撤（R90 §6 R-① 纪律继续有效）");
     }
 
     /**
      * ★E2-6：<b>原生在场 + 未声明</b> ⇒ 注入只到原生 typeId、moved&gt;0——种子在场时
      * {@code nativeChannelTypeId}（声明侧单源）返回该通道 id；且种子<b>不弱化</b>内建排除
-     * （探针方法体零种子引用、exclusion 在 convertStackFromItem 之前——源码机检；测试 JVM 里
+     * （探针与单源换算件零种子引用、exclusion 在容器认门口之前——源码机检；测试 JVM 里
      * AE2 的类型单例不可触达，见节注释②③）。Runner 级：三对服务里只有原生对成交，
      * delta 的通道段 = 原生 typeId，非原生两对按路由门拒收计数（不停批）。
      */
@@ -5283,8 +5325,12 @@ public class NekoPocketModelTest {
         final int stackForEnd = methodStart(essenceOps, "static int carriersFromUnits(");
         SimpleAssert.that(stackForStart >= 0 && stackForEnd > stackForStart, "定位 essenceStackFor");
         SimpleAssert.that(
-            regionContainsCode(essenceOps, stackForStart, stackForEnd, "convertStackFromItem("),
-            "换算只走 convertStackFromItem（AE2 留给第三方的口）");
+            regionContainsCode(essenceOps, stackForStart, stackForEnd, "channelStackFromContainer("),
+            "★R91-③：换算只委派 EssenceNativeChannels 的容器契约单源（上传侧与探针倍率同源）");
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(essenceOps.subList(stackForStart, stackForEnd), "convertStackFromItem("),
+            "★旧的非容器换算口在 essenceStackFor 里消失（R90 判据不得还魂）");
         SimpleAssert.that(
             !regionContainsCode(essenceOps, stackForStart, stackForEnd, "AEItemStack"),
             "★无 AEItemStack 特判（旧物品通道兜底不得还魂）");
@@ -5297,7 +5343,7 @@ public class NekoPocketModelTest {
      * ★E2-10：<b>下传对称的折算</b>——{@code extractEssence} 消费源质原生通道时，
      * {@code carriersFromUnits}/{@code unitsForCarriers} 以<b>探针读数</b>为唯一倍率成立：
      * 零头留元件、只数不超请求、回乘不超可得量、且「再多一只就装不下」（最大整瓶数）。
-     * 倍率由对应 mod 的 {@code convertStackFromItem} 决定、本仓不写死 ⇒ 这里取 250（第三方实测值的
+     * 倍率由对应 mod 的容器换算（{@code getStackFromContainerItem}）决定、本仓不写死 ⇒ 这里取 250（第三方实测值的
      * 形状，与 8 无关——钉的是算术与接线，不是某个具体倍率）。源码半边：注入与抽取两侧的
      * {@code unit} 都读自各自的探针换算（门与倍率同源，不造第二只探针）。
      */
@@ -5351,6 +5397,237 @@ public class NekoPocketModelTest {
         SimpleAssert.that(
             regionContainsCode(essenceOps, injectStart, injectEnd, "probe.getStackSize()"),
             "★注入侧 unit 读自同一只探针（门与倍率同源，单趟不二次换算）");
+    }
+
+    // ================================================================== ★R91-A（S1 探针改口 + 载体单源）测试落地
+    //
+    // 本块钉两件事，各自的可驱动面不同，如实分开：
+    // ① 声明侧 tag 反解（R91-⑦）是<b>纯 JVM 真判据</b>——StubGate 注入第 6 触点，载体清单六档全表可钉，
+    // 含本仓通则那条"绝不入库存计点"必须有用例钉住"该状态下入账内容为空"；
+    // ② 探针改口（R91-①②③）的<b>命中</b>路径不可驱动：本 JVM 既无 TC 也不能实现/代理 IAEStackType
+    // （节注释①②：AE2 以 transitive=false 引入 ⇒ 实现类的链接期就要解析 fastutil 里的 ObjectLongPair）。
+    // 因此那一半按既有降级形状钉<b>源码机检</b>（单源、门序、容错、交叉断言在 try 内），
+    // 命中读数（真机 `isContainerItemForType(满瓶)` + 折多少单位）进 §9 实机项，不得声称已验。
+
+    /**
+     * ★R91-⑦：<b>「拖入栈 → 声明 tag」单源判据的载体全清单真值表</b>（取证
+     * {@code r91-ret-nei-carrier.md} §6 的七行表；根-3 的正面积）。
+     * <p>
+     * 六档各自钉"声明侧读不读得出"，其中伪物品那档<b>成对</b>钉"同一栈入槽仍 {@code NOT_CRYSTAL}"
+     * ——只钉前一半等于删信息（声明成功但计点闸门被顺手放宽，就是把 R91-⑦ 的边界做丢了）。
+     */
+    private static void declarationTagCarrierTruthTable() {
+        final StubGate gate = new StubGate();
+        // 档 1：白名单伪物品（NEI 的源质显示件；桩件里它就是"只有第 6 触点读数、不是容器"的栈）
+        final ItemStack pseudo = stack(1);
+        gate.putPseudoAspect(pseudo, "metallum");
+        // 档 2：TC 满瓶（容器读数 8 点）
+        final ItemStack phial = stack(1);
+        gate.putContainer(phial, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 8 }));
+        // 档 3：带 NBT 的旧晶（1 点，C2 只读支）
+        final ItemStack crystal = stack(1);
+        gate.putCrystal(crystal, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 1 }));
+        // 档 4：第三方罐（容器但档位无证据）
+        final ItemStack vessel = stack(1);
+        gate.putUnknownVessel(vessel, TaumAspectAmounts.of(new String[] { "terra" }, new int[] { 12 }));
+        // 档 5：空瓶（meta 0、无内容）／档 6：无 NBT 裸晶
+        final ItemStack emptyPhial = stack(1);
+        gate.putContainer(emptyPhial, TaumAspectAmounts.EMPTY);
+        final ItemStack bareCrystal = stack(1);
+
+        // ---- 声明侧（本格无归属 ⇒ 回落读栈）----
+        SimpleAssert.eq(
+            "metallum",
+            NekoEssenceGhostCell.tagOfCarrier(pseudo, null, gate),
+            "★伪物品 + 空格 ⇒ 第三档给出它 NBT 里那个 tag（这就是用户「无法绑定标记」的根-3 缺口）");
+        SimpleAssert.eq("ignis", NekoEssenceGhostCell.tagOfCarrier(phial, null, gate), "满瓶 ⇒ 第二档（既有行为不变）");
+        SimpleAssert.eq("aer", NekoEssenceGhostCell.tagOfCarrier(crystal, null, gate), "带 NBT 旧晶 ⇒ 第二档不变");
+        SimpleAssert.eq("terra", NekoEssenceGhostCell.tagOfCarrier(vessel, null, gate), "第三方罐 ⇒ 可声明（档位与声明无关）");
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(emptyPhial, null, gate), "空瓶 ⇒ 三档全空 ⇒ null");
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(bareCrystal, null, gate), "无 NBT 裸晶 ⇒ null（R88 代价不变）");
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(stack(1), null, gate), "普通物品 ⇒ null（白名单不放宽到任意 NBT）");
+        // ---- 本格 tag 优先（第一档）：伪物品不得改口 ----
+        SimpleAssert.eq("aer", NekoEssenceGhostCell.tagOfCarrier(pseudo, "aer", gate), "★本格有归属 ⇒ 恒本格 tag");
+        SimpleAssert.eq("metallum", NekoEssenceGhostCell.tagOfCarrier(pseudo, "", gate), "空串归属视同无归属 ⇒ 回落读栈");
+        // ---- 次序（防"第二判据"）：容器读数命中就不该再问伪物品 ----
+        final int beforeOrdered = gate.pseudoQueries;
+        SimpleAssert.eq("ignis", NekoEssenceGhostCell.tagOfCarrier(phial, null, gate), "容器档命中");
+        SimpleAssert.eq(beforeOrdered, gate.pseudoQueries, "★真容器命中时<b>不再</b>问伪物品档（三档是回落次序，不是三处并联）");
+        // ---- 兜底入参形态 ----
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(null, "aer", gate), "null 栈 ⇒ null（不看本格 tag）");
+        SimpleAssert.eq(null, NekoEssenceGhostCell.tagOfCarrier(pseudo, null, null), "null 探针 ⇒ null");
+
+        // ---- carriesTag 同读那条单源（GUI 不抄第二份）----
+        SimpleAssert.that(NekoEssenceGhostCell.carriesTag(pseudo, "metallum", gate), "★伪物品含本格 tag ⇒ 判「含」");
+        SimpleAssert
+            .eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(pseudo, "aer", gate), "★换个 tag 就漏进来 ⇒ 必红（同一条判据不放水）");
+        SimpleAssert
+            .eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(pseudo, null, gate), "空格（cellTag null）仍拒（R86 裁定不放开）");
+        SimpleAssert.eq(Boolean.FALSE, NekoEssenceGhostCell.carriesTag(pseudo, "", gate), "空 tag 仍拒");
+        // ---- 组键：伪物品 + typeId 在场 ⇒ 一条正常声明；typeId 缺席 ⇒ 仍不写死声明 ----
+        SimpleAssert.eq(
+            PocketFilterConfig.essenceKey("essentia", "metallum"),
+            NekoEssenceGhostCell
+                .ghostKeyFor(0, true, true, NekoEssenceGhostCell.tagOfCarrier(pseudo, null, gate), "essentia"),
+            "★拖伪物品能组出载荷键（e:essentia:metallum）⇒ 建档声明成立");
+        SimpleAssert.eq(
+            "",
+            NekoEssenceGhostCell.ghostKeyFor(0, true, true, NekoEssenceGhostCell.tagOfCarrier(pseudo, null, gate), ""),
+            "★通道缺席 ⇒ 伪物品同样组不出键（政策四项第 1 条不因载体扩面而放水）");
+    }
+
+    /**
+     * ★R91-⑦ 的<b>边界腿</b>（★本仓通则：声称"某状态下不产出 X"必须有用例钉住该状态下内容为空）：
+     * 伪物品<b>只可声明、绝不入库存计点</b>。钉三件——① 入槽结论 {@code NOT_CRYSTAL}；
+     * ② 源质表<b>分毫未动</b>；③ 计点那条路径<b>根本没问过</b>第 6 触点（读数 = 0 ⇒ 不是"问了但没加"，
+     * 而是那条路压根不认它）。★同时钉"闸门没被加第二道"：{@code isAcceptedCarrierCapacity} 的入参
+     * 仍是档位，伪物品天然落 {@code CAPACITY_NOT_A_CONTAINER}。
+     */
+    private static void pseudoAspectCarrierIsNeverCredited() {
+        final StubGate gate = new StubGate();
+        final ItemStack pseudo = stack(3); // 叠数放大也一样的结论（"不许数叠"由档位判据天然成立）
+        gate.putPseudoAspect(pseudo, "metallum");
+        final PocketEssenceStore store = new PocketEssenceStore();
+
+        SimpleAssert.eq(
+            TaumDistillRules.CAPACITY_NOT_A_CONTAINER,
+            gate.capacityOf(pseudo),
+            "★桩件与生产同形：伪物品不是容器 ⇒ 档位天然落非容器档（不需要第二道门）");
+        SimpleAssert
+            .eq(Boolean.FALSE, PocketEssenceIntake.isAcceptedCarrierCapacity(gate.capacityOf(pseudo)), "计点闸门不收它");
+
+        final int pseudoQueriesBefore = gate.pseudoQueries;
+        final PocketEssenceIntake.Result result = PocketEssenceIntake.intake(pseudo, store, gate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.NOT_CRYSTAL, result.outcome, "拖得进声明 ≠ 点得进盘：入槽仍拒收");
+        SimpleAssert.eq(0, result.points, "零点数");
+        SimpleAssert.eq(null, result.tag, "失败态不带 tag");
+        SimpleAssert.eq(0, store.totalPoints(), "★源质表分毫未动（该状态下内容层为空）");
+        SimpleAssert.eq(pseudoQueriesBefore, gate.pseudoQueries, "★计点那条路径压根没问第 6 触点（不是「问了又丢弃」）");
+        SimpleAssert.eq(0, gate.drainCalls, "更不抽干它（伪物品没有可抽内容）");
+
+        // 对照腿：满瓶与旧晶仍照常入账 ⇒ 这条边界没有把两档现役载体一起挡掉（撤了要给落点）
+        final ItemStack phial = stack(1);
+        gate.putContainer(phial, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 8 }));
+        final PocketEssenceStore credited = new PocketEssenceStore();
+        final PocketEssenceIntake.Result in = PocketEssenceIntake.intake(phial, credited, gate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, in.outcome, "满瓶仍入账（闸门未收 narrow 过头）");
+        SimpleAssert.eq(8, in.points, "8 点/只不变");
+        SimpleAssert.eq(8, credited.totalPoints(), "★真载体照常入账（负控：上面那个 0 不是「谁都拒」）");
+    }
+
+    /**
+     * ★R91-①②③：探针改口的<b>静态半边</b>（命中路径不可驱动，见本块节注释②）。
+     * 钉四件：容器两口<b>各恰一处</b>且同在那只单源换算件里、旧的非容器换算口全仓消失、
+     * 上传侧委派同一只件、探针方法体里<b>没有硬编码点数</b>且交叉断言在 {@code try} 内
+     * （{@code assertNativeProbeExclusionPinned} 已钉门序与容错，本用例补"倍率算术零改动"那一半）。
+     */
+    private static void essenceProbeUsesContainerContractOnly() {
+        final java.util.List<String> nativeChannels = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/EssenceNativeChannels.java");
+        final java.util.List<String> essenceOps = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceChannelOps.java");
+        if (nativeChannels == null || essenceOps == null) {
+            System.out.println("[NOTE] 读不到通道侧源码 ⇒「探针容器契约」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        // 单源：两口在判据文件里各恰一处（多一处就是第二判据藏身的地方）
+        SimpleAssert.eq(1, countCodeLinesIn(nativeChannels, "isContainerItemForType("), "★认门口全类恰一处");
+        SimpleAssert.eq(1, countCodeLinesIn(nativeChannels, "getStackFromContainerItem("), "★换算口全类恰一处");
+        SimpleAssert.eq(
+            2,
+            countCodeLinesIn(nativeChannels, "channelStackFromContainer("),
+            "★单源换算件：定义 + 探针委派合计恰两处（第三处就是第二判据藏身处）");
+        SimpleAssert.eq(0, countCodeLinesIn(nativeChannels, "convertStackFromItem("), "★旧口在本类零命中（含注释由 shell 段总门禁扫）");
+        // 上传侧同口改：essenceStackFor 委派、自己不碰任何 AE2 换算口
+        final int stackForStart = methodStart(essenceOps, "private static IAEStack<?> essenceStackFor(");
+        final int stackForEnd = methodStart(essenceOps, "static int carriersFromUnits(");
+        SimpleAssert.that(stackForStart >= 0 && stackForEnd > stackForStart, "定位 essenceStackFor");
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(essenceOps.subList(stackForStart, stackForEnd), "type.getStackFromContainerItem("),
+            "★上传侧不直调容器换算（否则就是第二处真相）");
+        SimpleAssert.eq(0, countCodeLinesIn(essenceOps, "convertStackFromItem("), "上传侧文件对旧口零命中");
+        // 倍率算术零改动：unit 仍读探针栈量，且探针方法体里不出现点数常数
+        final int probeStart = methodStart(nativeChannels, "public static IAEStack<?> nativeProbe(");
+        final int helperStart = methodStart(nativeChannels, "public static IAEStack<?> channelStackFromContainer(");
+        final java.util.List<String> probeBody = nativeChannels.subList(probeStart, helperStart);
+        SimpleAssert.that(
+            regionContainsCode(nativeChannels, probeStart, helperStart, "channelStackFromContainer("),
+            "★探针经单源换算件（禁第二判据）");
+        SimpleAssert.that(
+            !regionContainsCode(nativeChannels, probeStart, helperStart, "setStackSize("),
+            "探针不改堆量（unit 语义原样透传给上传/抽取两侧）");
+        int digits = 0;
+        for (final String line : probeBody) {
+            if (isCommentLine(line)) {
+                continue;
+            }
+            for (int i = 0; i < line.length(); i++) {
+                if (line.charAt(i) == '8') {
+                    digits++;
+                }
+            }
+        }
+        SimpleAssert.eq(0, digits, "★探针方法体不含字面量点数（R91-②「不硬编码」；读到 8 即常数被搬回本仓）");
+    }
+
+    /**
+     * ★R91-⑦ 的<b>接线与归属</b>半边：单源判据定义恰一处、消费点恰两处（声明侧两个入口都改读它 ⇒
+     * ★防"写了判据没人调"的假绿）、解析本体只住 {@code crossmod/taum/} 一份、
+     * 字面 NBT 键与第三方注册名<b>不进 GUI</b>、{@code EssenceGate} 第 6 触点与 {@code TAUM} 转调各恰一处。
+     */
+    private static void declarationTagSingleSourceIsWired() {
+        final java.util.List<String> intake = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceIntake.java");
+        final java.util.List<String> cell = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoEssenceGhostCell.java");
+        final java.util.List<String> gate = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/distill/EssenceGate.java");
+        final java.util.List<String> bridge = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/crossmod/taum/TaumBridge.java");
+        if (intake == null || cell == null || gate == null || bridge == null) {
+            System.out.println("[NOTE] 读不到载体侧源码 ⇒「声明 tag 单源接线」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(1, countCodeLinesIn(intake, "public static String declarationTagOf("), "单源判据定义恰一处");
+        SimpleAssert.eq(
+            2,
+            countCodeLinesIn(cell, "declarationTagOf("),
+            "★消费点恰两处（tagOfCarrier + carriesTag 同调它；GUI 抄第二份就是这条先红）");
+        // 判据本体：三档回落 + 第 6 触点只在那一处被消费
+        final int declStart = methodStart(intake, "public static String declarationTagOf(");
+        final int declEnd = methodStart(intake, "public static boolean carriesEssence(");
+        SimpleAssert.that(declStart >= 0 && declEnd > declStart, "定位 declarationTagOf（改名即红）");
+        SimpleAssert.that(regionContainsCode(intake, declStart, declEnd, "firstTagOf("), "★第二档 = 真容器首 tag（与入槽共读同一条）");
+        SimpleAssert.that(regionContainsCode(intake, declStart, declEnd, "pseudoAspectTag("), "★第三档 = 第 6 触点");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(intake, "pseudoAspectTag("),
+            "★第 6 触点在整份入槽文件里只被问一次（计点侧一次都不问 ⇒ 见 pseudoAspectCarrierIsNeverCredited）");
+        // 计点闸门零改动（R91-⑦「不新增第二道门」）：档位判据体内不含任何伪物品读数
+        final int capStart = methodStart(intake, "public static boolean isAcceptedCarrierCapacity(");
+        final int capEnd = declStart;
+        SimpleAssert.that(capStart >= 0 && capEnd > capStart, "定位 isAcceptedCarrierCapacity");
+        SimpleAssert.that(!regionContainsCode(intake, capStart, capEnd, "pseudoAspectTag("), "★计点闸门未被塞进第三档（不新增第二道门）");
+        // 边界：伪物品读数不参与 capacityOf（生产与桩件同形）
+        final int capAt = methodStart(bridge, "public int capacityOf(ItemStack stack) {");
+        final int capTo = methodStart(bridge, "public String pseudoAspectTag(ItemStack stack) {");
+        SimpleAssert.that(capAt >= 0 && capTo > capAt, "定位 TaumBridge#capacityOf");
+        SimpleAssert.that(!regionContainsCode(bridge, capAt, capTo, "pseudoAspectTag("), "★档位判定不问伪物品 ⇒ 只声明的边界在实现层成立");
+        // 三条硬边界的静态形状
+        SimpleAssert
+            .eq(2, countCodeLinesIn(bridge, "MODID_ASPECT_RECIPE_INDEX"), "★注册名白名单：定义 + 唯一引用点（不扫全注册表、不猜别家 key）");
+        SimpleAssert.eq(2, countCodeLinesIn(bridge, "NBT_PSEUDO_ASPECT"), "字面键常量：定义 + 唯一引用（键名在桥接层之外不出现）");
+        SimpleAssert.that(regionContainsCode(bridge, capTo, capTo + 40, "Aspect.getAspect("), "★TC 复核在场（外部 NBT 不自证）");
+        SimpleAssert.that(regionContainsCode(bridge, capTo, capTo + 40, "catch (Throwable"), "桥接层永不抛出纪律随迁");
+        // GUI 侧不得出现第二份解析：字面键 / 第三方注册名 / unlocalized 字面量
+        SimpleAssert.eq(0, countCodeLinesIn(cell, "\"Aspect\""), "★GUI 无字面 NBT 键");
+        SimpleAssert.eq(0, countCodeLinesIn(cell, "aspectrecipeindex"), "★GUI 无第三方 modId");
+        SimpleAssert.eq(0, countCodeLinesIn(cell, "item.aspect"), "★GUI 无伪物品 unlocalized 字面量");
+        // EssenceGate 第 6 触点 + TAUM 转调各恰一处
+        SimpleAssert.eq(1, countCodeLinesIn(gate, "String pseudoAspectTag(ItemStack stack);"), "接口第 6 触点签名恰一处");
+        SimpleAssert
+            .eq(1, countCodeLinesIn(gate, "TaumCompat.pseudoAspectTag("), "★TAUM 匿名实现转调恰一处（判据不入桩件 = R59b 假绿同族，见本块节注释）");
     }
 
     // ================================================================== ★R90 E3（S3+S5）批 2 测试落地
@@ -6002,6 +6279,29 @@ public class NekoPocketModelTest {
             return containers.containsKey(stack) ? TaumDistillRules.PHIAL_CAPACITY
                 : TaumDistillRules.CAPACITY_NOT_A_CONTAINER;
         }
+
+        /**
+         * ★R91-⑦（第 6 触点）：白名单伪物品档（身份 → "TC 复核后的 tag"）。
+         * <p>
+         * 刻意<b>不</b>把登记的栈同时塞进 {@link #containers}：生产实现里伪物品<b>不是</b>
+         * {@code IEssentiaContainerItem}，因此 {@link #capacityOf} 必须仍读成
+         * {@code CAPACITY_NOT_A_CONTAINER} —— 这正是"只声明、绝不入库存计点"在桩件里的形状
+         * （把伪物品做成容器 = 把 R91-⑦ 的边界判据测成假绿）。
+         */
+        private final Map<ItemStack, String> pseudoTags = new IdentityHashMap<>();
+        /** 伪物品读数被问了几次（用例钉"计点路径问过 ⇒ 0"的负控）。 */
+        int pseudoQueries;
+
+        StubGate putPseudoAspect(ItemStack stack, String tag) {
+            pseudoTags.put(stack, tag);
+            return this;
+        }
+
+        @Override
+        public String pseudoAspectTag(ItemStack stack) {
+            pseudoQueries++;
+            return stack == null ? null : pseudoTags.get(stack);
+        }
     }
 
     /** 普通物品栈（每枚都是<b>不同对象</b>，供桩件按身份查表；damage 固定 0）。 */
@@ -6219,7 +6519,7 @@ public class NekoPocketModelTest {
          * ★R90 E2 镜像开关：源质来源按「源质原生通道」路由——判据与生产
          * {@code PocketEssenceChannelOps#injectEssenceSource} 同一读法：内建两通道走
          * {@code EssenceNativeChannels.nativeProbe} 的真排除（生产代码，纯 JVM 可驱动），
-         * 第三方席位走包私有种子口（生产 = convertStackFromItem 实测；测试 JVM 无 TC 无注册）。
+         * 第三方席位走包私有种子口（生产 = AE2 容器契约实测；测试 JVM 无 TC 无注册）。
          * 默认 false = 保持 R86 旧镜像（{@code e:} 来源回落物品通道、OK/0）。两条镜像并存的理由：
          * 旧镜像若就地改掉，{@code anti_loop_essence_matches_by_tag_not_raw_key} 的「异 tag 照常推」
          * 正控会在无原生通道的测试 JVM 里变成 0 搬运（其被测对象是剔除判据，不是路由），而本套件
@@ -6271,7 +6571,7 @@ public class NekoPocketModelTest {
          * {@code EssenceNativeChannels.nativeProbe} 的内建排除（恒拒——上传永不回落物品通道；
          * 其源码判据由 {@code assertNativeProbeExclusionPinned} 机检：测试 JVM 里 AE2 的类型
          * 单例因 fastutil 缺场不可触达，不能直接调真探针）；第三方席位走种子口
-         * （生产 = convertStackFromItem 实测，本 JVM 无 TC 无注册 ⇒ 只能种子）。命中 ⇒ 按 C1
+         * （生产 = AE2 容器契约实测，本 JVM 无 TC 无注册 ⇒ 只能种子）。命中 ⇒ 按 C1
          * 整瓶粒度搬（零头留盘）；未命中 ⇒ {@code NO_CHANNEL}（拒收计数由 Runner 记进
          * {@code noChannel + essenceNoChannel}，与生产同向）。
          */

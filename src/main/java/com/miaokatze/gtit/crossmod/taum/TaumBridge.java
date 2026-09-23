@@ -69,6 +69,23 @@ public final class TaumBridge implements TaumBridgeApi {
     static final String ITEM_PHIAL = "ItemEssence";
 
     /**
+     * AspectRecipeIndex 的 modId（{@code AspectRecipeIndex.MODID} 的 {@code javap -constants} 实测，
+     * 取证 {@code plan/_taskpack/r91-ret-nei-carrier.md} §2）。★R91-⑦：本仓<b>不</b>编译期引用该 mod 的
+     * 任何类型，只按<b>注册名</b>解析出 Item 身份 ⇒ 它不在场时解析恒 null，判据自然降级。
+     */
+    static final String MODID_ASPECT_RECIPE_INDEX = "aspectrecipeindex";
+
+    /** ARI 源质伪物品的注册名（{@code ModItems.init()} 里 {@code registerItem(itemAspect, "aspect")}） */
+    static final String ITEM_PSEUDO_ASPECT = "aspect";
+
+    /**
+     * ARI 伪物品承载 aspect 的<b>唯一</b> NBT 键（String 型；其 {@code ItemAspect#setAspect} 写的就是它，
+     * 类内字符串常量全集实测没有任何数量字段）。★全仓只此一处出现这个键名——GUI 侧不得抄第二份
+     * （{@code verify-pocket.sh} 的 {@code R91-a2} 段钉「字面键出现处 = 1」）。
+     */
+    static final String NBT_PSEUDO_ASPECT = "Aspect";
+
+    /**
      * 「源质罐子」在 Thaumic Tinkerer 里的注册名候选。
      * <p>
      * 实测（见 {@code plan/_taskpack/impl-s2-taum-bridge.md}）：本地锁定的
@@ -118,9 +135,15 @@ public final class TaumBridge implements TaumBridgeApi {
     private Item crystal;
     /** 缓存：探测到的第三方罐（可能为 null，{@link #vesselProbed} 标记已探过） */
     private Item vessel;
+    /**
+     * ★R91-⑦ 缓存：按注册名解析出的 ARI 源质伪物品（不在场时为 null，{@link #pseudoAspectProbed} 标记已探过）。
+     * 与上面三件同样走 benign race（不加锁、解析幂等）。
+     */
+    private Item pseudoAspect;
     private boolean vesselProbed;
     private boolean phialProbed;
     private boolean crystalProbed;
+    private boolean pseudoAspectProbed;
 
     /**
      * 由 {@link TaumCompat} 反射调用；构造即二次确认 TC 在场（双哨兵的第二颗），
@@ -223,6 +246,44 @@ public final class TaumBridge implements TaumBridgeApi {
         }
         // 第三方容器（罐一类）：本地无容量证据，交由调用方按口袋单格上限 64 自缚
         return TaumDistillRules.CAPACITY_UNKNOWN;
+    }
+
+    /**
+     * ★R91-⑦：ARI 源质伪物品的 tag 反解本体（<b>全仓唯一一份</b>，判据边界见
+     * {@link TaumBridgeApi#pseudoAspectTag(ItemStack)} 的三条硬边界）。
+     * <p>
+     * 刻意<b>不</b> import ARI 的任何类（识别只靠"注册名解析出的 Item 身份"这一条，类名在本方法里
+     * 不参与判定）：按 {@code modId + 注册名} 解析 ⇒ 该 mod 缺席/改名/被 {@code Thaumcraft4Tweaks}
+     * 换掉类身份时本方法恒返 {@code null}，既不误判也不牵动 {@code NoClassDefFoundError}。
+     * 它同时<b>不</b>进 {@link #capacityOf(ItemStack)} 的档位判定：伪物品不是容器，
+     * 计点闸门对它天然免疫（R91-⑦「只声明、绝不入库存计点」的落点）。
+     */
+    @Override
+    public String pseudoAspectTag(ItemStack stack) {
+        if (stack == null) {
+            return null;
+        }
+        try {
+            final Item registered = pseudoAspectItem();
+            // 注册名精确白名单：只认那一个 Item 身份（比实例，不按 unlocalized 前缀、不扫全注册表）
+            if (registered == null || stack.getItem() != registered) {
+                return null;
+            }
+            if (stack.getTagCompound() == null) {
+                return null;
+            }
+            final String raw = stack.getTagCompound()
+                .getString(NBT_PSEUDO_ASPECT);
+            if (raw == null || raw.isEmpty()) {
+                return null;
+            }
+            // TC 复核：NBT 是第三方写的、不接受自证；返回 canonical tag，不把外部串直接当标识符
+            final Aspect aspect = Aspect.getAspect(raw);
+            return aspect == null ? null : aspect.getTag();
+        } catch (Throwable t) {
+            fail("pseudoAspectTag", t);
+            return null;
+        }
     }
 
     @Override
@@ -428,6 +489,21 @@ public final class TaumBridge implements TaumBridgeApi {
             crystal = lookup(ITEM_CRYSTAL);
         }
         return crystal;
+    }
+
+    /**
+     * ★R91-⑦：ARI 源质伪物品（未命中只探一次，结果含"未命中"一起缓存）。
+     * <p>
+     * 走与上面两条同样的 {@link #lookupIn(String, String)} 范式（FML 的注册名解析，语义即
+     * vanilla {@code ItemRegistry#findItem}）——注册表里没这一对名字就是 {@code null}，
+     * 不做任何模糊匹配。
+     */
+    private Item pseudoAspectItem() {
+        if (!pseudoAspectProbed) {
+            pseudoAspectProbed = true;
+            pseudoAspect = lookupIn(MODID_ASPECT_RECIPE_INDEX, ITEM_PSEUDO_ASPECT);
+        }
+        return pseudoAspect;
     }
 
     /**
