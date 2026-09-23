@@ -313,6 +313,18 @@ public class NekoPocketModelTest {
             "essence_probe_uses_container_contract_only",
             NekoPocketModelTest::essenceProbeUsesContainerContractOnly);
         cases.put("declaration_tag_single_source_is_wired", NekoPocketModelTest::declarationTagSingleSourceIsWired);
+        // ---- ★R91-B（S2）瓶往返改判（R91-④）：取出算式单源 / 入槽按档退壳 / 晶仍不退壳 / 自造瓶口成对门禁
+        cases
+            .put("phial_fill_count_and_leftover_truth_table", NekoPocketModelTest::phialFillCountAndLeftoverTruthTable);
+        cases.put(
+            "essence_intake_phial_refunds_empty_carriers",
+            NekoPocketModelTest::essenceIntakePhialRefundsEmptyCarriers);
+        cases.put(
+            "essence_intake_crystal_still_consumes_no_shell",
+            NekoPocketModelTest::essenceIntakeCrystalStillConsumesNoShell);
+        cases.put(
+            "phial_self_materialization_revoked_pairwise",
+            NekoPocketModelTest::phialSelfMaterializationRevokedPairwise);
         // ---- ★R90 E3/E4（批 2 测试落地）：S3/S5 预筛真值表 + 格→瓶取出守卫 + ghost 建档归属对账 + S6 流体决策核
         // （世界站适配器 PocketWorldFluidTap 与 ItemNekoDimensionPocket.onItemUseFirst 的实机手势属
         // in-game-checklist 项，本套件只钉决策核与口袋侧纯 JVM 面）
@@ -5630,6 +5642,238 @@ public class NekoPocketModelTest {
             .eq(1, countCodeLinesIn(gate, "TaumCompat.pseudoAspectTag("), "★TAUM 匿名实现转调恰一处（判据不入桩件 = R59b 假绿同族，见本块节注释）");
     }
 
+    // ================================================================== ★R91-B（S2）瓶往返改判（R91-④）
+    //
+    // 四条分别钉住：① 取出侧算式单源（phialsToFill / leftoverOnFloor 的真值表，含「空游标 ⇒ 零产出」那条
+    // 通则的正身）；② 入槽退件按档分派（瓶退等量空壳、空壳确实是可再装的空瓶形态）；③ 晶档仍不退壳
+    // （防串改：R86 对晶继续成立）+ 退件只数守恒与单堆上限截断；④「自造瓶口消失 + 新落点在场」源码机检对。
+    // 判定面全部纯 JVM 可达（StubGate 注入）；面板私有执行体不可构造 ⇒ 按既有 E1-4 的降级形状钉
+    // 「等价组合 + 源码机检」两半（真瓶的 NBT/meta 翻转、游标推送那半程、装不进背包的回滚手感＝实机项）。
+
+    /**
+     * ★R91-④ 取出侧唯一的量值算式：{@code PocketEssenceIntake#phialsToFill} 与 {@code leftoverOnFloor}。
+     * <p>
+     * ★本仓通则「javadoc 声称某状态下不产出 X ⇒ 必须有用例钉住该状态下内容为空」在这里的正身：
+     * <b>游标上没有空瓶 ⇒ 一支都不产</b>（0 只与负数两档都钉）。旧形状（R90 D1 的 {@code newPhialStack}）
+     * 在这一档会凭空造出一叠满瓶；今天那条路径在生产侧已不存在（机检对见
+     * {@link #phialSelfMaterializationRevokedPairwise()}）。
+     */
+    private static void phialFillCountAndLeftoverTruthTable() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        SimpleAssert.eq(TaumDistillRules.PHIAL_CAPACITY, unit, "前置：取出粒度与瓶容量同源（不是第二份 8）");
+        // ---- ① 空游标 ⇒ 零产出（★R91-④ 的正身：拿瓶子去装，不是点一下长瓶子）----
+        SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(0, 200, false), "★0 只空瓶 ⇒ 0 支（旧形状这里凭空造一叠满瓶）");
+        SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(0, 200, true), "★0 只空瓶 + Shift ⇒ 仍 0 支（「整份」不等于「造瓶」）");
+        SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(-3, 200, true), "★负数只数 ⇒ 0（外来入参不得反向产出）");
+        // ---- ② 有瓶 ⇒ C1 向下取整 + 余数留盘 ----
+        SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(1, 7, false), "手里有瓶但该格只有 7 点 ⇒ 0 支（凑不满一瓶一支都不给）");
+        SimpleAssert.eq(1, PocketEssenceIntake.phialsToFill(1, 8, false), "恰好一瓶 ⇒ 1 支");
+        SimpleAssert.eq(1, PocketEssenceIntake.phialsToFill(1, 20, false), "★游标只有 1 只 ⇒ 只灌 1 支（消耗 1 只空瓶）");
+        SimpleAssert.eq(2, PocketEssenceIntake.phialsToFill(3, 20, false), "3 只瓶 + 20 点 ⇒ 2 支（整瓶判据卡在瓶数之前，余 4 点留盘）");
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_OUT_MAX_PHIALS_PER_ACTION,
+            PocketEssenceIntake.phialsToFill(64, 200, false),
+            "★非 Shift 的一次动作上界仍是 ESSENCE_OUT_MAX_PHIALS_PER_ACTION（派生常量，不留字面量）");
+        SimpleAssert.eq(25, PocketEssenceIntake.phialsToFill(64, 200, true), "Shift = 该格整份 ⇒ 200/8 = 25 支");
+        SimpleAssert.eq(2, PocketEssenceIntake.phialsToFill(2, 200, true), "★Shift 也被游标瓶数夹住 ⇒ 2 支（多出来的点留在盘里）");
+        SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(4, 0, true), "该格 0 点 ⇒ 0 支（声明保格的现役空态）");
+        SimpleAssert.eq(0, PocketEssenceIntake.phialsToFill(4, -8, false), "★负存量 ⇒ 0 支（不造负扣点）");
+        // ---- ③ 留盘余数读数与取整算式同源（partial_leftover 回执的那第二个数）----
+        SimpleAssert.eq(4, PocketEssenceIntake.leftoverOnFloor(20, false), "20 点 ⇒ 留 4 点（与 phialsToFill 同一条 floor）");
+        SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(8, false), "整瓶 ⇒ 留 0");
+        SimpleAssert.eq(7, PocketEssenceIntake.leftoverOnFloor(7, false), "不足一瓶 ⇒ 全部留盘（not_enough_phial 的读数）");
+        SimpleAssert.eq(3, PocketEssenceIntake.leftoverOnFloor(203, true), "Shift 整份 ⇒ 203 % 8 = 3");
+        SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(200, false), "非 Shift 请求 64 点（整瓶）⇒ 本档不报余数");
+        SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(0, true), "0 点 ⇒ 0（不是负数）");
+        SimpleAssert.eq(0, PocketEssenceIntake.leftoverOnFloor(-5, false), "★负数入参 ⇒ 0（污染不了回执）");
+        // ---- ④ 两条读数的成对不变式：灌出去的点 + 留下的点 == 请求量 ----
+        for (int stock = 0; stock <= 200; stock += 7) {
+            for (boolean shift : new boolean[] { false, true }) {
+                for (int carried = 0; carried <= 40; carried += 8) {
+                    final int bottles = PocketEssenceIntake.phialsToFill(carried, stock, shift);
+                    SimpleAssert.that(bottles <= carried, "只数不得超过手里的空瓶（凭空造瓶的算术前提）：" + bottles + '/' + carried);
+                    SimpleAssert.that(
+                        bottles * unit <= PocketEssenceIntake.leftoverOnFloor(stock, shift) + stock,
+                        "★扣点 + 留盘 == 该格存量的一侧：不得出现「扣得比盘里多」");
+                    SimpleAssert.that(
+                        bottles * unit <= stock,
+                        "★扣点恒 ≤ 存量（" + bottles + " 支 × " + unit + " 点 vs stock=" + stock + "）");
+                }
+            }
+        }
+    }
+
+    /**
+     * ★R91-④ 入槽（满瓶 → 盘）<b>退回空瓶</b>：数量守恒 + 退件形态 + 三条失败/非瓶档不退。
+     * <p>
+     * ★桩件说明：退件抽干的是<b>游标那一叠的副本</b>（游标本体不许就地改，见 {@code Result#refund} 的
+     * javadoc），而 {@link StubGate} 按<b>对象身份</b>查表 ⇒ 必须显式打开 {@code splitContentFallback}
+     * 那一档（生产侧 TC 的 {@code AspectList} 挂在栈 NBT 上、{@code copy()} 天然带着同一份内容，
+     * 这条 R88 早就写在桩件注释里）。不开这一档就退不出壳 —— 那正是"少退一只 = 吞玻璃"的读数。
+     */
+    private static void essenceIntakePhialRefundsEmptyCarriers() {
+        final int unit = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        final StubGate gate = new StubGate();
+        gate.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack phials = stack(3);
+        gate.putContainer(phials, TaumAspectAmounts.single("ignis", unit));
+        final PocketEssenceStore store = new PocketEssenceStore();
+        final PocketEssenceIntake.Result accepted = PocketEssenceIntake.intake(phials, store, gate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, accepted.outcome, "前置：满瓶一叠照常入账");
+        SimpleAssert.eq(3 * unit, accepted.points, "点数 = 单只 8 点 × 3 只（★退件不改计点）");
+        SimpleAssert.that(accepted.refundsCarrier(), "★R91-④：瓶档必须退件（旧形状这里整叠销毁玻璃）");
+        SimpleAssert.eq(3, accepted.refund.stackSize, "★退件只数 == 被溶掉的只数（少一只 = 吞玻璃，多一只 = 凭空造瓶）");
+        SimpleAssert.that(
+            PocketEssenceIntake.isEmptyPhialCarrier(accepted.refund, gate),
+            "★退回那叠确实是「空瓶」形态（与取出白名单同一条判据 ⇒ 玩家能立刻再拿去装）");
+        SimpleAssert.eq(3, phials.stackSize, "★游标本体不被就地改（结算必须由调用方走 setCursorItem）");
+        SimpleAssert.eq(3 * unit, store.get("ignis"), "源质进了盘");
+        SimpleAssert.that(gate.drainCalls >= 1, "瓶档走抽干（退壳的前提）");
+        // ---- 非成功态与"非瓶档"一律不退（★成对：0 不是"谁都退"读出来的）----
+        final StubGate tight = new StubGate();
+        tight.splitContentFallback = TaumAspectAmounts.single("ignis", unit);
+        final ItemStack tooMany = stack(10);
+        tight.putContainer(tooMany, TaumAspectAmounts.single("ignis", unit));
+        final PocketEssenceStore nearlyFull = new PocketEssenceStore();
+        nearlyFull.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - 4);
+        final PocketEssenceIntake.Result noRoom = PocketEssenceIntake.intake(tooMany, nearlyFull, tight);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.NO_ROOM, noRoom.outcome, "全有全无：塞不下 ⇒ 一格都不动");
+        SimpleAssert.eq(Boolean.FALSE, noRoom.refundsCarrier(), "★NO_ROOM 不退壳（什么都没溶，退壳就是造瓶）");
+        SimpleAssert.eq(10, tooMany.stackSize, "★失败态载体分毫未动");
+        SimpleAssert.eq(0, tight.drainCalls, "★失败态连抽干都不问（R29 预检在抽取之前）");
+        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG - 4, nearlyFull.get("ignis"), "盘分毫未动");
+        final StubGate jarGate = new StubGate();
+        jarGate.splitContentFallback = TaumAspectAmounts.single("aer", 40);
+        final ItemStack jar = stack(2);
+        jarGate.putUnknownVessel(jar, TaumAspectAmounts.single("aer", 40));
+        final PocketEssenceIntake.Result rejectedJar = PocketEssenceIntake
+            .intake(jar, new PocketEssenceStore(), jarGate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.NOT_CRYSTAL, rejectedJar.outcome, "★第三方罐仍走态 1（档位无证据 ⇒ 不在游标上销毁它）");
+        SimpleAssert.eq(Boolean.FALSE, rejectedJar.refundsCarrier(), "★非瓶档不退件（分派表只认瓶）");
+        SimpleAssert.eq(0, jarGate.drainCalls, "★非瓶档不碰抽干");
+    }
+
+    /**
+     * ★R91-④ 的<b>覆盖关系</b>半边：晶化源质仍 {@code CONSUMED}、<b>不退空壳</b>（R86 那条对晶继续成立），
+     * 外加退件叠的<b>单堆上限截断</b>。
+     * <p>
+     * ★"瓶改判退还、晶不改"两条口径必须在代码里分得开 —— 这条用例就是防止 S2 的改判<b>串</b>到晶那一档：
+     * 一旦有人把退件判据写成"是载体就退壳"，本用例的 {@code drainCalls == 0} 与 {@code refund == null}
+     * 立刻变红（生产实现对晶恒返 {@code EMPTY}，退回来的会是一只"内容没清空却画成空壳"的危险态）。
+     */
+    private static void essenceIntakeCrystalStillConsumesNoShell() {
+        // ---- ① 退件分派表本身（单源真值表；★负控证明它不是恒真）----
+        SimpleAssert.that(PocketIntakeOps.refundsEmptyCarrier(TaumDistillRules.PHIAL_CAPACITY), "★瓶档 = 退空壳（R91-④ 改判）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketIntakeOps.refundsEmptyCarrier(TaumDistillRules.CRYSTAL_CAPACITY),
+            "★晶档 = 不退（R86 对晶继续成立：TC 会随机重赋型）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketIntakeOps.refundsEmptyCarrier(TaumDistillRules.CAPACITY_UNKNOWN),
+            "第三方罐：不退（本仓不在游标上销毁它，也不替它造壳）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            PocketIntakeOps.refundsEmptyCarrier(TaumDistillRules.CAPACITY_NOT_A_CONTAINER),
+            "非容器：不退（负控）");
+        // ---- ② 走 intake 的晶档全链：入账、销毁、零退件、不碰抽干 ----
+        final StubGate gate = new StubGate();
+        final ItemStack crystals = stack(9);
+        gate.putCrystal(crystals, TaumAspectAmounts.single("ignis", TaumDistillRules.CRYSTAL_CAPACITY));
+        final PocketEssenceStore store = new PocketEssenceStore();
+        final PocketEssenceIntake.Result result = PocketEssenceIntake.intake(crystals, store, gate);
+        SimpleAssert.eq(PocketEssenceIntake.Outcome.ACCEPTED, result.outcome, "旧晶仍可溶回盘（C2 只读不产，识别面留着）");
+        SimpleAssert.eq(9, result.points, "9 枚 × 1 点/枚（★退件改判没动计点）");
+        SimpleAssert.eq(Boolean.FALSE, result.refundsCarrier(), "★晶不退壳");
+        SimpleAssert.eq(null, result.refund, "★晶的 refund 恒 null（不是「退 0 只」那种含糊形状）");
+        SimpleAssert.eq(0, gate.drainCalls, "★晶一支都不碰 drainContainer（生产实现对它恒返 EMPTY）");
+        SimpleAssert.eq(9, store.get("ignis"), "点数照常进盘");
+        // ---- ③ 退件叠的单堆上限截断（★不可达兜底，但必须有用例钉着它真的夹得住）----
+        final StubGate bigGate = new StubGate();
+        final ItemStack oversized = stack(100);
+        SimpleAssert.eq(100, oversized.stackSize, "前置：假物品不夹堆叠（否则本档在钉一条假分支）");
+        bigGate.putContainer(oversized, TaumAspectAmounts.single("ignis", 1));
+        bigGate.splitContentFallback = TaumAspectAmounts.single("ignis", 1);
+        final PocketEssenceStore bigStore = new PocketEssenceStore();
+        final PocketIntakeOps.IntakeResult clamped = PocketIntakeOps.injectCarrierStack(oversized, bigStore, bigGate);
+        SimpleAssert.that(clamped.drained(), "瓶档走抽干支（★不是 CONSUMED）");
+        SimpleAssert.eq(100, clamped.points, "100 只 × 1 点 = 100 点入账（★截断只作用于玻璃本体，不动点数）");
+        SimpleAssert.that(clamped.returnedCarrier != null, "瓶档必返退件");
+        SimpleAssert.eq(
+            clamped.returnedCarrier.getMaxStackSize(),
+            clamped.returnedCarrier.stackSize,
+            "★退件叠夹进单堆上限（超堆叠栈 TC/AE 都不认，宁可少退）");
+        SimpleAssert.eq(100, oversized.stackSize, "★游标本体未被就地改");
+        SimpleAssert.eq(100, bigStore.get("ignis"), "入账与退件互不改写");
+    }
+
+    /**
+     * ★R91-④ 的<b>成对门禁</b>（撤了没给落点＝删信息也要红）：旧自造瓶口在 {@code src/main/java}
+     * 的代码位命中<b>归零</b>，且新落点（灌装 helper / 退件落点 / 转发口）逐条在场。
+     * <p>
+     * ★判据一律<b>剥注释</b>（撤销说明留在 javadoc 里是刻意的，不能让"提到旧名字"算成调用），
+     * 且每个 0 读数都配一条同扫描面的正控 ⇒ 0 不是扫描器空转。
+     */
+    private static void phialSelfMaterializationRevokedPairwise() {
+        // ---- 先证明扫描面活着（读不到仓库根 ⇒ 整段按【未验】处理，不是通过）----
+        final int fillSites = countMainJavaCodeLinesMatching("addEssentia\\s*\\(");
+        if (fillSites < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒「瓶往返改判」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        // ---- 半边 A：旧形状消失（全仓代码位）----
+        SimpleAssert.eq(0, countMainJavaCodeLinesMatching("newPhialStack\\s*\\("), "★newPhialStack 调用位 = 0（定义也已删）");
+        SimpleAssert.eq(0, countMainJavaCodeLinesMatching("handPhialsToCursor\\s*\\("), "空游标自造瓶支 = 0");
+        SimpleAssert.eq(0, countMainJavaCodeLinesMatching("depositPhialsToPlayer\\s*\\("), "Shift 自造瓶支 = 0");
+        SimpleAssert.eq(0, countMainJavaCodeLinesMatching("private\\s+static\\s+ItemStack\\s+newPhialStack"), "定义 = 0");
+        // ---- 半边 B：同一条扫描面的正控（证明上面那四个 0 不是空转）----
+        SimpleAssert.that(fillSites >= 1, "★正控：灌装 helper 的调用面必须命得中（读到 0 就说明扫描面错了，上面那四个 0 不算干净）");
+        SimpleAssert.that(
+            countMainJavaCodeLinesMatching("newFilledContainer\\s*\\(") >= 1,
+            "★正控：通道侧的出件口仍在（R91-④ 撤的是面板取出，不是容器 helper 本身）");
+        // ---- 半边 C：新落点逐条在场 ----
+        final java.util.List<String> handler = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
+        if (handler == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketServerHandler.java ⇒「退件落点 / 转发口」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        final int outStart = methodStart(handler, "void performEssenceOut(int packedArg) {");
+        SimpleAssert.that(outStart >= 0, "★ACTION_ESSENCE_OUT 的入口必须还在（改派不是删口：删了玩家左键就是纯静默）");
+        final int outEnd = methodEnd(handler, outStart);
+        SimpleAssert
+            .that(regionContainsCode(handler, outStart, outEnd, "performEssenceOutToPhial("), "★取出改派到单点（两条动作码共读一处出瓶口）");
+        SimpleAssert
+            .eq(0, countRegionCode(handler, outStart, outEnd, "markDirty()"), "★转发体内不再有第二处库存写入（SC5 的落点随之搬到单点里）");
+        SimpleAssert.eq(0, countRegionCode(handler, outStart, outEnd, "recordEssenceDelta"), "★同上：扣点记账也只能在单点里发生一次");
+        final int intakeStart = methodStart(handler, "void performEssenceIntake() {");
+        final int intakeEnd = methodEnd(handler, intakeStart);
+        SimpleAssert.that(intakeStart >= 0 && intakeEnd > intakeStart, "★入槽执行体必须还能按签名定位");
+        SimpleAssert.that(
+            regionContainsCode(handler, intakeStart, intakeEnd, "refundsCarrier()"),
+            "★退件落点：面板按 Result 的比特分派（不在面板里数瓶子档位）");
+        SimpleAssert.that(
+            regionContainsCode(handler, intakeStart, intakeEnd, "setCursorItem("),
+            "★退件走 syncManager 那条唯一正解（裸写 inventory 永不到客户端 = R88 凭空复制）");
+        SimpleAssert.that(
+            regionContainsCode(handler, intakeStart, intakeEnd, "markDirty()"),
+            "★新增的库存写入（退回空瓶）显式标脏 —— SC5 那条铁律的落点");
+        SimpleAssert.eq(
+            0,
+            countRegionCode(handler, intakeStart, intakeEnd, "newPhialStack("),
+            "★入槽侧也不许留自造瓶口（退的是玩家自己的玻璃，不是新造的）");
+        // ---- 半边 D：分派表只住 PocketIntakeOps 一份（★面板不得再判一遍档位）----
+        SimpleAssert.eq(
+            1,
+            countMainJavaCodeLinesMatching("public\\s+static\\s+boolean\\s+refundsEmptyCarrier"),
+            "退件分派表定义恰 1 处");
+        SimpleAssert.eq(
+            1,
+            countMainJavaCodeLinesMatching("refundsEmptyCarrier\\s*\\(\\s*gate\\.capacityOf"),
+            "★唯一消费点在 PocketIntakeOps 体内（读 gate 的档位，不读物品类）");
+        SimpleAssert.eq(0, countCodeLinesIn(handler, "refundsEmptyCarrier("), "★面板/handler 侧不问档位 ⇒ 分派表没有被抄第二份");
+    }
+
     // ================================================================== ★R90 E3（S3+S5）批 2 测试落地
     //
     // 四条分别钉住：D1 手势三分的预筛唯一判据（isEmptyPhialCarrier / carriesEssence 真值表）、
@@ -5741,16 +5985,16 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(12, twenty.get("ignis"), "★余 12 点留盘（20 − 8；再点两次后余 4 点进 not_enough_phial）");
         SimpleAssert.eq(0, TaumDistillRules.floorToPhialUnits(4), "余 4 点时下一次点击会被同一守卫挡下（口径闭环）");
 
-        // ---- 源码半边：守卫与扣点量住在 performEssenceOutToPhial 方法体内 ----
+        // ---- 源码半边：守卫与扣点量住在 performEssenceOutToPhial 方法体内（★R91-④ 改判后的形状）----
         final java.util.List<String> panel = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
         if (panel == null) {
             System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒ 「格→瓶取出守卫」的源码半边【未验】（★不是通过）");
             return;
         }
-        final int takeStart = methodStart(panel, "private void performEssenceOutToPhial(int cell) {");
-        final int takeEnd = methodStart(panel, "private static ItemStack newPhialStack(String tag, int points) {");
-        SimpleAssert.that(takeStart >= 0 && takeEnd > takeStart, "★必须能按签名定位 performEssenceOutToPhial（改名/挪动即红）");
+        final int takeStart = methodStart(panel, "void performEssenceOutToPhial(int packedArg) {");
+        SimpleAssert.that(takeStart >= 0, "★必须还能按签名定位取出单点（改名/挪动即红；★R91-④ 起它是包私有且吃 packedArg）");
+        final int takeEnd = methodEnd(panel, takeStart);
         SimpleAssert.that(
             regionContainsCode(panel, takeStart, takeEnd, "isEmptyPhialCarrier("),
             "权威复验：空瓶白名单在服务端方法体内复验（客户端分流不可信）");
@@ -5758,14 +6002,34 @@ public class NekoPocketModelTest {
             regionContainsCode(panel, takeStart, takeEnd, ".tagAtCell(cell)"),
             "tag 由格位归属表反查（R18/R19：不吃客户端送来的 tag）");
         SimpleAssert.that(
-            regionContainsCode(panel, takeStart, takeEnd, "TaumDistillRules.floorToPhialUnits(stock) < 1"),
-            "★整瓶守卫在读（floorToPhialUnits 单源，不是第二份 >= 8 字面量）");
+            regionContainsCode(panel, takeStart, takeEnd, "PocketEssenceIntake.phialsToFill("),
+            "★C1 的取整与「一次几只」改走 PocketEssenceIntake 单源（面板不再自己写 floorToPhialUnits）");
         SimpleAssert.that(
-            regionContainsCode(panel, takeStart, takeEnd, ".extract(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS)"),
-            "★扣点量恰 = ESSENCE_OUT_UNIT_POINTS（一次一瓶，不是空游标支的整批 floor 量）");
+            !regionContainsCode(panel, takeStart, takeEnd, "floorToPhialUnits("),
+            "★成对：面板体内不得再出现第二份 floor 算式（两条搬运路取同一个整 = 单源那条的理由）");
         SimpleAssert.that(
-            regionContainsCode(panel, takeStart, takeEnd, "newPhialStack(tag, points)"),
-            "物化走 newPhialStack 单源（meta1 + Aspects NBT 不在游标栈上另写一份）");
+            regionContainsCode(
+                panel,
+                takeStart,
+                takeEnd,
+                ".extract(tag, bottles * PocketConstants.ESSENCE_OUT_UNIT_POINTS)"),
+            "★扣点量 = 只数 × ESSENCE_OUT_UNIT_POINTS（只数由单点算式给，不是第二个字面量）");
+        SimpleAssert.that(
+            regionContainsCode(panel, takeStart, takeEnd, "TaumCompat.addEssentia("),
+            "★R91-④ 新落点：灌装走 TC 容器 helper 那一份真相（meta0→meta1 + Aspects NBT 由它做）");
+        SimpleAssert.eq(
+            0,
+            countRegionCode(panel, takeStart, takeEnd, "newPhialStack("),
+            "★成对：自造瓶口在本方法体内为 0（R90 D1 那条「无中生有」已撤销）");
+        SimpleAssert.eq(
+            0,
+            countRegionCode(panel, takeStart, takeEnd, "newFilledContainer("),
+            "★单点不得自己另开 TaumCompat 出件口（那等于把自造瓶搬进新方法体）");
+        SimpleAssert
+            .eq(0, countRegionCode(panel, takeStart, takeEnd, "new ItemStack("), "★不凭空造容器：满瓶只能是「玩家那几只瓶的副本」灌出来的");
+        SimpleAssert.that(
+            regionContainsCode(panel, takeStart, takeEnd, "carried.copy()"),
+            "正控：确有「复制玩家手里的瓶」这一步（上面那三个 0 不是「什么都不做」的读数）");
         SimpleAssert.that(regionContainsCode(panel, takeStart, takeEnd, "markDirty()"), "成功面置脏");
         // 动作码接线：字面量 = 11 且 dispatch case 真的落到本方法
         SimpleAssert.that(
@@ -8060,6 +8324,78 @@ public class NekoPocketModelTest {
             }
         }
         return false;
+    }
+
+    /**
+     * ★R91-B：从 {@code from}（签名行）起第一个<b>类方法级闭括号</b> = 方法体的结束行。
+     * <p>
+     * 判据是字面 {@code "    }"}（4 空格缩进 + 单独一个花括号）——本仓四个被机检锚定的执行体
+     * （Panel / ServerHandler 的 {@code perform*}）都是 4 空格缩进的类成员，方法体内的嵌套块
+     * 一律更深（≥ 8 空格）⇒ 不会误判在中间。★与 {@code verify-pocket.sh} 里 {@code mbody} 的 awk
+     * range 是同一条形状（两处同判据，改缩进风格时两边一起红，不会一边假绿）。
+     */
+    private static int methodEnd(java.util.List<String> lines, int from) {
+        for (int i = Math.max(0, from) + 1; i < lines.size(); i++) {
+            if (lines.get(i)
+                .equals("    }")) {
+                return i;
+            }
+        }
+        return lines.size();
+    }
+
+    /** ★R91-B：区间内的<b>代码位</b>命中数（剥注释；"符号必须为 0"那一半的读数）。 */
+    private static int countRegionCode(java.util.List<String> lines, int from, int to, String needle) {
+        int hits = 0;
+        for (int i = Math.max(0, from); i < Math.min(lines.size(), to); i++) {
+            if (!isCommentLine(lines.get(i)) && lines.get(i)
+                .contains(needle)) {
+                hits++;
+            }
+        }
+        return hits;
+    }
+
+    /**
+     * ★R91-B：整棵 {@code src/main/java} 的<b>代码位</b>正则命中数（剥注释行），读不到源 ⇒ {@code -1}
+     * （调用方按"未验"处理，不算通过——与 {@link #countPocketSourceLinesMatching} 同一口径）。
+     * 用于钉"自造瓶口全仓归零"：那种符号一旦改名/挪包就扫不到，所以同一段里必配一条正控读数。
+     */
+    private static int countMainJavaCodeLinesMatching(String regex) {
+        final java.nio.file.Path root = repoRootOrNull();
+        if (root == null) {
+            return -1;
+        }
+        final java.nio.file.Path base = root.resolve("src/main/java");
+        if (!java.nio.file.Files.isDirectory(base)) {
+            return -1;
+        }
+        final java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(regex);
+        int hits = 0;
+        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(base)) {
+            final java.util.Iterator<java.nio.file.Path> it = walk.iterator();
+            while (it.hasNext()) {
+                final java.nio.file.Path file = it.next();
+                if (!file.getFileName()
+                    .toString()
+                    .endsWith(".java")) {
+                    continue;
+                }
+                for (String line : java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
+                    final String trimmed = line.trim();
+                    if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
+                        continue;
+                    }
+                    if (pattern.matcher(line)
+                        .find()) {
+                        hits++;
+                    }
+                }
+            }
+        } catch (java.io.IOException ioFailure) {
+            return -1;
+        }
+        return hits;
     }
 
     /** 整份文件里含给定片段的代码行数（注释不算）。 */

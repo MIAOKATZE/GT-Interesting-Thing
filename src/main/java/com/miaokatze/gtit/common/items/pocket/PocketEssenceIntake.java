@@ -24,23 +24,26 @@ import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
  * <li>{@link Outcome#NO_OWNER}：载体没有源质归属（{@code readContainer} 空，例：空瓶）⇒ 粘性回执
  * {@code gtit.pocket.essence.intake.no_owner}，分毫不动；</li>
  * <li>{@link Outcome#NO_ROOM}：余量不足 ⇒ 粘性回执 {@code gtit.pocket.essence.intake.no_room}，
- * <b>载体分毫未动</b>（复用 12 格路径 {@code PocketIntakeOps#injectCrystals} 的 {@code canAcceptAll}
- * {@code ESSENCE_CAP_PER_TAG}=256 上限口径，全有全无的失败面）。★R88 换瓶后这条失败面<b>更容易被踩到</b>：
- * 一叠满瓶就是 8×64 = 512 点 &gt; 256 ⇒ 整叠点进 72 格必然 {@code NO_ROOM}（旧晶一叠最多 64 点，
- * 结构上撞不到这条）。这不是吞点（东西还在游标上、回执也发），但玩家要看懂"先拆一小撮再点"，
- * 收口办法（游标侧也按整瓶向下收口 + 把余量写回游标）需要面板配合，已进报告的待裁决项；</li>
+ * <b>载体分毫未动</b>（复用 12 格路径同源的 {@code canAcceptAll}（{@code PocketIntakeOps
+ * #injectCarrierStack} → {@code ESSENCE_CAP_PER_TAG}=256 上限口径），全有全无的失败面）。★R88 换瓶后这条
+ * 失败面<b>更容易被踩到</b>：一叠满瓶就是 8×64 = 512 点 &gt; 256 ⇒ 整叠点进 72 格必然 {@code NO_ROOM}
+ * （旧晶一叠最多 64 点，结构上撞不到这条）。这不是吞点（东西还在游标上、回执也发、<b>也不退壳</b>），
+ * 但玩家要看懂"先拆一小撮再点"；★游标侧的逐只向下收口<b>刻意不做</b>（游标只有一个栈，收口出来的
+ * "半叠满瓶 + 半叠空瓶"没有第二个落点，硬做就是 R83 那类"少了东西却说不动"换皮）；</li>
  * <li>{@link Outcome#ACCEPTED}：已入账（点数 = 单件 amount × 叠数 ⇒ 满瓶一叠是 8×N 点）⇒ 成功回执
- * {@code gtit.pocket.essence.intake.ok}（含 tag 与点数），调用方清游标。</li>
+ * {@code gtit.pocket.essence.intake.ok}（含 tag 与点数）。★R91-④：本态同时带
+ * {@link Result#refund}（瓶档 = 等量空壳；晶档 = {@code null}），调用方据此结算游标。</li>
  * </ol>
  * <p>
  * <b>目标 tag = 载体自带的 tag</b>（{@code PocketEssenceStore#assignCell} 幂等落回该 tag 既有格；
  * 点击格只是手势锚点，<b>服务端不读它</b>——本类签名里没有格号，就是这条纪律的执行形态）。
  * <p>
- * ★<b>点击入槽消耗的是载体本身</b>（瓶与旧晶都一样整叠销毁，走 {@code injectCrystals} 那条
- * "读出 × 叠数 + 不退件"的原语）——与通道下传的"读容器 → 加点 → 就地消耗容器"同一条口径。
- * 差别要说清楚：12 格那条路（{@code PocketIntakeOps#injectContainer}）对瓶是<b>抽干后把空壳退回玩家</b>，
- * 而游标这一条没有"退回空壳"的落点（要退回就得由面板改写游标栈，那是 E2 的形状），
- * 于是玻璃瓶身按消耗处理。该不对称已进报告，留给主代理裁决（不是本轮擅自扩出来的新行为）。
+ * ★★<b>R91-④（瓶往返改判）：点击入槽<b>溶掉的是载体里的源质，玻璃本体原路退回</b></b>——
+ * 游标上 N 只<b>满瓶</b>溶进盘 ⇒ 退回 N 只<b>空瓶</b>（旧文案那段"游标没有退空壳的落点、于是按消耗处理"
+ * <b>已被本裁定撤销</b>，落点就在 {@link Result#refund} 与面板的 {@code performEssenceIntake}）。
+ * ★但这条<b>只对瓶成立</b>：R86「晶化源质入槽 {@code CONSUMED}、不退空壳」<b>对晶继续有效</b>
+ * （无 NBT 的晶留在场会被 TC 服务端随机重赋型 = 销毁价值之外的第二条危害）。两条口径的唯一分派表
+ * 住 {@link PocketIntakeOps#refundsEmptyCarrier(int)}，★面板与本类都不许再判一遍档位。
  * <p>
  * ★★<b>R90 E3（D1 手势三分）起：空瓶不再从客户端走到这里</b>——左键分流层
  * （{@code NekoPocketPanel#dispatchEssenceCellPress}）按 {@link #isEmptyPhialCarrier} 把空瓶改派
@@ -48,7 +51,10 @@ import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
  * 伪造 / 旧客户端 / 分流竞态下空瓶仍会落进 {@code intake}，语义仍是"分毫不动 + 粘性回执"，
  * 不因上游新增分流而放水。
  * <p>
- * <b>游标清空在调用方（面板）</b>：本类保持纯判定 + 入账、不触玩家对象（零依赖套件可直接驱动四态）。
+ * <b>游标结算在调用方（面板）</b>：本类保持纯判定 + 入账、不触玩家对象（零依赖套件可直接驱动四态与
+ * {@link Result#refund}）。★R91-④ 之后"结算"不再只有清游标一种：瓶档要把 {@code refund} 那叠<b>空瓶放回
+ * 游标</b>（晶档 {@code refund == null} ⇒ 仍是清游标）——两种写法都必须走
+ * {@code syncManager.setCursorItem(...)} 那一条正解，理由见下面 R88 B1 那段。
  * ★★<b>R88 更正一条被上游源码证伪的旧断言</b>（旧文："{@code player.inventory.setItemStack(null)}
  * 走原版 {@code Container} 的 cursor 同步（1.7.10 {@code sentItemStack} 比对）送达客户端，
  * 客户端不得本地清游标"）：<b>那句不成立</b>。取证 {@code plan/_taskpack/r88-essentia/06-main-agent-probes.md}
@@ -75,7 +81,7 @@ public final class PocketEssenceIntake {
         ACCEPTED
     }
 
-    /** 判定结果：结论 + 入账的 tag 与点数（失败态 tag 为 {@code null}、点数为 0）。 */
+    /** 判定结果：结论 + 入账的 tag 与点数（失败态 tag 为 {@code null}、点数为 0）+（★R91-④）该退回的容器。 */
     public static final class Result {
 
         public final Outcome outcome;
@@ -83,16 +89,37 @@ public final class PocketEssenceIntake {
         public final String tag;
         /** 实际入账点数（★R88：满瓶一叠 = 8 × 叠数，旧晶一叠 = 1 × 叠数；失败态恒 0）。 */
         public final int points;
+        /**
+         * ★★<b>R91-④：这一笔入槽该原路退回游标的空壳</b>（{@code null} ⇒ 什么都不退）。
+         * <p>
+         * 只有<b>瓶档</b>非空，且<b>只数 == 被溶掉的只数</b>；<b>晶档恒 {@code null}</b>
+         * （R86「晶入槽 {@code CONSUMED} 不退空壳」只对晶继续成立）；三条失败态同样 {@code null}。
+         * 判档不在此处——那张表是 {@link PocketIntakeOps#refundsEmptyCarrier(int)} 的单源，
+         * ★面板不得再判一遍。本字段是<b>抽干后的副本</b>（游标本体没被碰过），调用方必须经
+         * {@code syncManager.setCursorItem(refund)} 落它，裸写 {@code inventory.setItemStack} 到不了客户端
+         * （R88 B1 的刷取根因）。
+         */
+        public final ItemStack refund;
 
         private Result(Outcome outcome, String tag, int points) {
+            this(outcome, tag, points, null);
+        }
+
+        private Result(Outcome outcome, String tag, int points, ItemStack refund) {
             this.outcome = outcome;
             this.tag = tag;
             this.points = points;
+            this.refund = refund;
         }
 
-        /** 是否已入账（调用方据此清游标 + {@code markDirty}）。 */
+        /** 是否已入账（调用方据此结算游标 + {@code markDirty}）。 */
         public boolean accepted() {
             return outcome == Outcome.ACCEPTED;
+        }
+
+        /** ★R91-④：本次是否真的退了空壳（面板的落点分派用这一条，不在面板里数瓶子档位）。 */
+        public boolean refundsCarrier() {
+            return refund != null && refund.stackSize > 0;
         }
 
         /**
@@ -256,9 +283,10 @@ public final class PocketEssenceIntake {
 
     /**
      * 判定 + 入账本体（生产传 {@link EssenceGate#TAUM} 与服务端游标栈；
-     * 回归套件传桩件直接钉四态）。★R88：两档载体都走 {@code PocketIntakeOps#injectCrystals} 那条
-     * "读出 × 叠数 + 整叠消耗、不退件"的原语（游标没有"退回空壳"的落点，见类注释那条不对称说明），
-     * 所以这一支<b>不碰</b> {@code drainContainer}（生产实现对晶恒返 EMPTY，抽干不销毁 = 危险态）。
+     * 回归套件传桩件直接钉四态）。★R91-④：两档载体都走 {@link PocketIntakeOps#injectCarrierStack}
+     * 那一条<b>入账 + 按档退件</b>的单点（瓶档退回等量空壳、晶档整叠销毁零退件），乘法仍是
+     * {@code PocketIntakeOps#scaledByStackSize} 那一条（★本支<b>不碰</b> {@code drainContainer}——
+     * 抽干发生在单点里，且只在瓶档）。
      *
      * @param carried 服务端游标栈（{@code player.inventory.getItemStack()}）；可为 {@code null}
      * @param store   源质表（入账落点）
@@ -277,17 +305,65 @@ public final class PocketEssenceIntake {
             // 无 NBT 裸晶 / 空瓶（或内容空）：TC 侧会随机给晶赋型，但那是它自己的节拍，本路径不替它造归属
             return new Result(Outcome.NO_OWNER, null, 0);
         }
-        // 复用 12 格路径的"整叠消耗"原语（canAcceptAll 全有全无预检 + putAll 入账 + 整叠换点数，
-        // ★R88 起这条乘法对瓶给出 8×叠数）：预检失败 ⇒ 源质表分毫未动、载体也分毫未动（调用方什么都不用退）。
-        final PocketIntakeOps.IntakeResult injected = PocketIntakeOps.injectCrystals(carried, store, gate);
+        // 复用 12 格路径同源的"读出 × 叠数 + canAcceptAll 全有全无预检 + putAll 入账"原语，并按档退件
+        // （预检失败 ⇒ 源质表分毫未动、载体也分毫未动、也不退壳 ⇒ 调用方什么都不用做）。
+        final PocketIntakeOps.IntakeResult injected = PocketIntakeOps.injectCarrierStack(carried, store, gate);
         if (injected.kind == PocketIntakeOps.Intake.STORE_FULL) {
             return new Result(Outcome.NO_ROOM, tag, 0);
         }
-        if (!injected.consumed() || injected.points <= 0) {
+        if (injected.points <= 0 || !(injected.consumed() || injected.drained())) {
             // 理论不可达（内容非空 ⇒ candidates 非空 ⇒ 要么 STORE_FULL 要么入账成功）；兜底按无归属处理
             return new Result(Outcome.NO_OWNER, null, 0);
         }
-        return new Result(Outcome.ACCEPTED, tag, injected.points);
+        return new Result(Outcome.ACCEPTED, tag, injected.points, injected.returnedCarrier);
+    }
+
+    /**
+     * ★★<b>R91-④：一次取出点击<b>实际灌几只</b>的唯一算式</b>（面板只调它，不再自己写第二份取整）。
+     * <p>
+     * 三段算术，每段都是既有单源的转发：
+     * <ol>
+     * <li><b>请求量</b>按 shift 分档：Shift = 该格整份（{@code stock}），非 Shift = 一次动作上界
+     * {@link PocketConstants#ESSENCE_OUT_MAX_POINTS_PER_ACTION}（★与 R90 之前"空游标取出支"同一条上界，
+     * 换的是<b>落点</b>不再是<b>量</b>）；</li>
+     * <li><b>向下取整到整瓶</b>走 {@link TaumDistillRules#floorToPhialUnits}（★R88 自立口径 C1 的唯一实现点，
+     * 余数原地留盘）；</li>
+     * <li><b>游标上的空瓶只数</b>是硬上界——★本仓<b>没有</b>"凭空造瓶"这条路（R91-④ 撤销 R90 D1 的自造瓶口），
+     * 一只空瓶换一只满瓶，一只也没有 ⇒ 一支都不产。</li>
+     * </ol>
+     *
+     * @param carriedPhials 游标上<b>空安瓿瓶</b>的只数（调用方须先用 {@link #isEmptyPhialCarrier} 验过档位）
+     * @param stock         该格现有点数
+     * @param shift         是否 Shift 支（整份）
+     * @return 应灌只数；{@code 0} ⇒ 一支都不产、一分都不扣（空游标 / 凑不满一瓶 / 该格没存量）
+     */
+    public static int phialsToFill(int carriedPhials, int stock, boolean shift) {
+        if (carriedPhials <= 0 || stock <= 0) {
+            // ★空手 / 持非容器（白名单已挡）或该格无存量 ⇒ 零产出，不是"产一只空的"
+            return 0;
+        }
+        final int whole = TaumDistillRules.floorToPhialUnits(requestedPoints(stock, shift));
+        if (whole < PocketConstants.ESSENCE_OUT_UNIT_POINTS) {
+            return 0;
+        }
+        return Math.min(carriedPhials, whole / PocketConstants.ESSENCE_OUT_UNIT_POINTS);
+    }
+
+    /**
+     * ★R91-④：与 {@link #phialsToFill} 同一条请求量口径下的<b>留盘余数</b>读数（C1"余数留盘"要说出来的那一半）。
+     * 两条读数读的是<b>同一个</b> {@link #requestedPoints}，★面板不得自己再写一遍 {@code stock % 8}。
+     */
+    public static int leftoverOnFloor(int stock, boolean shift) {
+        if (stock <= 0) {
+            return 0;
+        }
+        final int wanted = requestedPoints(stock, shift);
+        return wanted - TaumDistillRules.floorToPhialUnits(wanted);
+    }
+
+    /** 本次动作请求的点数（shift 分档的唯一算式；{@link #phialsToFill} 与 {@link #leftoverOnFloor} 共用）。 */
+    private static int requestedPoints(int stock, boolean shift) {
+        return shift ? stock : Math.min(stock, PocketConstants.ESSENCE_OUT_MAX_POINTS_PER_ACTION);
     }
 
     /**

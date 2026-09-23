@@ -373,7 +373,9 @@ public final class TaumBridge implements TaumBridgeApi {
     }
 
     /**
-     * ★R88：本方法是<b>现役载体</b>的唯一出件口（面板取出、通道上传/下传、12 格回灌都用它）。
+     * ★R88：本方法是<b>现役载体</b>的唯一出件口（通道探针、通道上传/下传的回读都用它）。
+     * ★★R91-④ 起<b>面板取出侧不再经过这里</b>（改为灌玩家手里的空瓶 = {@link #addEssentia}）⇒
+     * "凭空产出一叠满瓶"这条路径在生产侧已不存在，本方法只剩"给通道侧造一只探针/回读容器"一个用途。
      * <p>
      * 调用方一律按"一次一只满瓶"传 {@code points == TaumDistillRules.PHIAL_CAPACITY}
      * （= {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS}，C1 的整瓶粒度）；下面那句

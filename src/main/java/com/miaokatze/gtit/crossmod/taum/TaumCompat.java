@@ -342,6 +342,11 @@ public final class TaumCompat {
      * ★<b>R88：源质搬运载体的唯一出件口</b>——产出一只<b>装满</b>的 TC 源质瓶（{@code ItemEssence}，
      * meta 1、{@code AspectList} 里 {@code add(tag, 8)}、可堆 64）。
      * <p>
+     * ★★<b>R91-④ 起调用方只剩通道侧</b>（探针 / 上传 / 下传回读，见
+     * {@code EssenceNativeChannels} 与 {@code PocketEssenceChannelOps}）：<b>面板取出侧不再用它</b>——
+     * "点一格源质就凭空冒出一叠满瓶"是用户判定的缺陷，取出改为<b>灌玩家手里的空瓶</b>
+     * （{@link #addEssentia(ItemStack, String, int)} 那一份真相），入槽则把空瓶原路退回。
+     * <p>
      * 旧文案说"第三方罐按 {@code IEssentiaContainerItem} 接口探测（R31）优先、否则回落瓶"：那条优先级
      * 已随 R88 裁定作废（{@code TaumBridge#preferredContainerItem} 现在钉为瓶，罐探测只留在一条
      * 在场日志里），因为取出粒度 / 通道单位 / tooltip 三处口径全都以"一瓶 8 点"为真值，

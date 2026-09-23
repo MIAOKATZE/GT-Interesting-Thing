@@ -206,16 +206,26 @@ public final class NekoPocketPanel implements PocketSession {
      * "解绑第 -1 行 ⇒ 永远只发一条回执"，需求 5 的另一半仍静默失效。
      */
     private static final int ACTION_UNBIND_LAST = 6;
+    /**
+     * ★R86：左键 = 把该组拿到游标上、Shift = 该格整份进背包。<b>arg 里带 shift 位</b>。
+     * ★★R91-④ 起它<b>不再是一条独立的"造瓶"支</b>：{@code NekoPocketServerHandler#performEssenceOut}
+     * 原样转发到取出单点 {@link #performEssenceOutToPhial(int)} ⇒ 没有空瓶在手就<b>什么都不产</b>。
+     */
     private static final int ACTION_ESSENCE_OUT = 7;
     /** 解绑<b>全部</b>（绑定按钮 Shift + 右键，R74）。 */
     private static final int ACTION_UNBIND_ALL = 9;
-    /** ★R87-d：左键持源质容器点 72 格 = 点击入槽（arg = 手势锚点格号，服务端判定不读它；★R88 载体见 {@code requestEssenceIntake} 的门禁）。 */
+    /**
+     * ★R87-d：左键持源质容器点 72 格 = 点击入槽（arg = 手势锚点格号，服务端判定不读它；★R88 载体见 {@code requestEssenceIntake} 的门禁；★R91-④ 溶掉源质后按档退回空瓶）。
+     */
     private static final int ACTION_ESSENCE_INTAKE = 10;
     /**
      * ★R90 E3（D1「持瓶取不出」）：左键持<b>空瓶</b>点 72 格 = 格→瓶取出（arg = 手势锚点格号，
      * 服务端按格位归属表反查 tag——与 {@link #ACTION_ESSENCE_OUT} 同一条 R18/R19 纪律，不吃客户端 tag）。
-     * 一次点击 = 一瓶 = {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点，余数留盘（C1）；
-     * 权威复验 / 扣点 / 物化 / 游标结算全在服务端 {@link #performEssenceOutToPhial(int)}。
+     * ★★<b>R91-④ 起这一条是「盘 → 玩家」取出的唯一动作码语义</b>：一次点击把游标上的空瓶灌满
+     * （一瓶 = {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点、向下取整、余数留盘 = C1），
+     * 权威复验 / 扣点 / 灌装 / 游标结算全在服务端 {@link #performEssenceOutToPhial(int)}；
+     * 空手与持非容器点格 ⇒ 零产出（{@code gtit.pocket.essence.need_phial} 面板回执）。
+     * 与之竞争的"空游标凭空造瓶"支已随 {@link #ACTION_ESSENCE_OUT} 一并改派到同一单点。
      */
     private static final int ACTION_ESSENCE_OUT_TO_PHIAL = 11;
 
@@ -228,8 +238,8 @@ public final class NekoPocketPanel implements PocketSession {
      * ★R90 T2：服务端执行体宿主（动作实现 / ghost 执行体 / 防伪守卫 / PocketSession 驱动面实现，
      * 见 {@link NekoPocketServerHandler} 的类 javadoc）。本类降为<b>装配壳 + 委托</b>；
      * 仅离线套件源码机检钉住位置的少数执行体（{@code onServerAction} 分发 switch、
-     * {@code performEssenceOutToPhial}+{@code newPhialStack}、{@code writeSessionToCarrier} 终态回滚簇、
-     * {@code moveToPlayer}/{@code drainEssence}）按原位留在本类，经同包直调，不构成耦合回退。
+     * ★R91-④ 之后取出侧只剩 {@code performEssenceOutToPhial} 一条单点、{@code writeSessionToCarrier}
+     * 终态回滚簇、{@code moveToPlayer}/{@code drainEssence}）按原位留在本类，经同包直调，不构成耦合回退。
      */
     private final NekoPocketServerHandler server;
     /** 打开瞬间的口袋栈引用（NBT 写回目标；关屏重定位见 {@link #relocateCarrier()}）。 */
@@ -629,12 +639,16 @@ public final class NekoPocketPanel implements PocketSession {
      * <li><b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier}，判据单源）⇒ 新「格→瓶取出」
      * {@link #requestEssenceOutToPhial(int)}；</li>
      * <li><b>满瓶 / 晶</b> ⇒ 既有 {@link #requestEssenceIntake(int)}（其容量档位预筛原样不动）；</li>
-     * <li><b>空游标 / 其他东西</b> ⇒ {@code false} 交回 {@code super} ⇒ 既有取出支
-     * （装配侧 {@code requestEssenceOut}）。</li>
+     * <li><b>空游标 / 其他东西</b> ⇒ {@code false} 交回 {@code super} ⇒ 装配侧的
+     * {@code requestEssenceOut}（★R91-④ 后那条动作码经 {@code performEssenceOut} 转发到<b>同一条</b>取出
+     * 单点 ⇒ 手上没有空瓶就是"零产出 + {@code essence.need_phial} 回执"，不再有凭空造瓶的第二支）。</li>
      * </ol>
      * 「容器内容非空」预筛就落在这条分流上（任务口径：入槽支只收内容非空的载体；空瓶是其中
      * 唯一的瓶档 ⇒ 单独改派取出），客户端这一道仍只是<b>预筛</b>，服务端
      * {@code performEssenceOutToPhial} / {@code performEssenceIntake} 各自复验，两侧读同一条谓词。
+     * ★待办（交 {@code r91-s2-panel-todo.md}）：本方法把 shift 位<b>丢掉</b>了（{@code requestEssenceOutToPhial}
+     * 只发格号）⇒ 手持一叠空瓶 + Shift 目前仍按"一次动作上界"结算，整份口径只在 {@code ACTION_ESSENCE_OUT}
+     * 那条转发路上可达；S3 续写左键分派时一并改（本片不扩手势面）。
      * <p>
      * ★L1（[PocketR89]，D1/D3 裁决检查点）：入口读数（持瓶类型 / 游标 meta / 命中格）在此打——
      * debug 级每次都记（不构成刷屏面），首个分流样本升 INFO 一次（终验可直接在常规 jar 里读到）。
@@ -779,10 +793,14 @@ public final class NekoPocketPanel implements PocketSession {
     // ★R90 T2：本段的 performTakeOut / performSort / performChannelRequest / performBind /
     // performUnbindLast / performUnbindAll / performEssenceOut / performEssenceIntake 及其私有辅助
     // （nextRealSlot / mergeKey / anyRecognised / refund / returnToPlayerFromBindSlot）已整体迁往
-    // {@link NekoPocketServerHandler}（含各自 javadoc）。留在本类的只有下面两个"点→瓶物化与落点结算"簇成员：
-    // performEssenceOutToPhial + newPhialStack（离线套件锚定：方法体守卫 token 与单源声明）与
-    // handPhialsToCursor / depositPhialsToPlayer / depositToPlayerFirst（它们闭包在锚定的私有
-    // newPhialStack / moveToPlayer 周围，服务端 handler 经同包调用它们）。
+    // {@link NekoPocketServerHandler}（含各自 javadoc）。留在本类的只有下面这一簇：
+    // ★★<b>R91-④（瓶往返改判）后本簇只剩「取出 = 灌玩家自己那只瓶」的一条单点</b>
+    // {@link #performEssenceOutToPhial}（离线套件锚定：方法体守卫 token 与单源声明）与它闭包在周围的
+    // {@link #depositToPlayerFirst}（满瓶的落点结算，服务端 handler 经同包调用）。
+    // ★同一条 R91-④ 撤掉了 R90 D1 的<b>自造瓶族</b>（{@code newPhialStack} / {@code handPhialsToCursor} /
+    // {@code depositPhialsToPlayer}）：那三条是"无中生有造一叠满瓶"的物化口，正是用户报的
+    // 「点击源质槽的源质会凭空生成安瓿瓶」的形状本身 ⇒ 符号整体删除（不留 {@code _unused}、不留注释尸），
+    // 生产调用方由 {@code plan/_taskpack/verify-pocket.sh} 的 {@code R91-b} 段穷举钉成 0。
 
     /** 塞进玩家背包，装不下就掉在脚下（R40a 的非消耗退回口径；整理/搬空都不该凭空吞物品）。 */
     void giveToPlayer(ItemStack stack) {
@@ -827,78 +845,44 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * ★R88 左键支：把刚物化出的那一组<b>安瓿瓶</b>放上游标（{@code PanelSyncManager#setCursorItem}，
-     * 上游实现即 {@code player.inventory.setItemStack} + {@code CursorSlotSyncHandler#sync}，
-     * 故零新 C2S 键）。入参 {@code points} 已由调用方收在一组之内（C1 的整数倍），不再切块。
-     *
-     * @return 真正离盘、已挂上游标的<b>点数</b>（= 瓶数 × 一瓶容量）；物化失败 ⇒ 0
-     */
-    int handPhialsToCursor(String tag, int points) {
-        final ItemStack phials = newPhialStack(tag, points);
-        if (phials == null || phials.stackSize <= 0) {
-            return 0;
-        }
-        syncManager.setCursorItem(phials);
-        return phials.stackSize * PocketConstants.ESSENCE_OUT_UNIT_POINTS;
-    }
-
-    /**
-     * ★R88 Shift 支：该格整份一次进背包，<b>按一瓶容量切成"一次物化 + 一次投放"</b>的循环。
+     * ★★<b>R91-④（瓶往返改判）：「源质盘 → 玩家」的唯一出瓶口——必须手持空安瓿瓶，且只灌玩家自己那只瓶。</b>
      * <p>
-     * ★切块是<b>必需</b>的而非省事：一格至多 {@code ESSENCE_CAP_PER_TAG} 点 ⇒ 最多
-     * 「上限 ÷ 一瓶容量」只瓶，仍要受瓶自身的单堆上限约束（{@link #newPhialStack} 里夹）。
-     * 循环<b>只按实际落地量往前走</b>：★R88 收掉旧晶支的两处反向误差——旧实现
-     * {@code moved += got; rest -= chunk;} 在 {@code 0 < got < chunk} 时"按请求量前进、按落地量记账"
-     * （晶支里 got 与 chunk 都是<b>件</b>、点数被当成件数），瓶支里 1 件 = 一瓶容量点，
-     * 照抄就会把点数差算错。现在 moved 与 rest 用的是<b>同一个</b> {@code got * PHIAL_CAPACITY}，
-     * 且落点一件都收不下时立刻 break ⇒ 不重演 R83 的"进度恒 0 ⇒ 服务器主线程死循环"（R84 已证死）。
-     *
-     * @return 真正进背包/中栏的点数（C1 的整数倍）
-     */
-    int depositPhialsToPlayer(String tag, int points) {
-        int moved = 0;
-        for (int rest = points; rest > 0;) {
-            final ItemStack phials = newPhialStack(tag, rest);
-            if (phials == null || phials.stackSize <= 0) {
-                break;
-            }
-            final int got = depositToPlayerFirst(phials);
-            if (got <= 0) {
-                break;
-            }
-            final int gained = got * PocketConstants.ESSENCE_OUT_UNIT_POINTS;
-            moved += gained;
-            rest -= gained;
-        }
-        return moved;
-    }
-
-    /**
-     * ★R90 E3（D1「持瓶取不出」）：左键持<b>空瓶</b>点源质格的服务端执行体——「格→瓶取出」。
-     * <p>
-     * <b>一次点击 = 一瓶 = {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点，余数留盘（C1）</b>；
-     * 扣点按 {@link TaumDistillRules#floorToPhialUnits} 的同一条整瓶判据守卫（stock ≥ 一瓶才动，
-     * 否则面板回执零变动）。权威复验三道：
+     * 用户原话是「点击源质槽的源质，会凭空生成安瓿瓶，应该是要拿安瓿瓶去装」。R90 D1 为此留的三条
+     * <b>自造瓶口</b>（{@code newPhialStack} / 空游标 {@code handPhialsToCursor} / Shift
+     * {@code depositPhialsToPlayer}）已随本裁定<b>整体删除</b>，于是本方法是两条动作码
+     * （{@code ACTION_ESSENCE_OUT_TO_PHIAL} 与 {@code ACTION_ESSENCE_OUT}——后者由
+     * {@link NekoPocketServerHandler#performEssenceOut} 原样转发 packed arg，shift 位在里）
+     * 共同的、也是唯一的落点。四道权威复验（R18/R19：客户端一律不算真值）：
      * <ol>
-     * <li>游标是<b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier} 白名单单源——晶、第三方
-     * 容器、满瓶一律不触发取出，C2；伪造包在此被 {@code still.idle} 回执挡下）；</li>
-     * <li>格号经格位归属表反查 tag（R18/R19：不吃客户端送来的 tag，与 {@link NekoPocketServerHandler#performEssenceOut} 同形）；</li>
-     * <li>{@code floorToPhialUnits(stock) >= 1} 才扣点（整瓶判据与空游标取出支同一条算式单源）。</li>
+     * <li>游标是<b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier} 白名单单源）。空手 / 持非容器 /
+     * 持满瓶 / 持晶 ⇒ <b>不产出任何物品、不扣一点数</b>，只给 {@code gtit.pocket.essence.need_phial}
+     * 的<b>面板内</b>回执（★R88 C3：源质域一律不进聊天框）；</li>
+     * <li>格号经格位归属表反查 tag（不吃客户端送来的 tag，与 {@code performEssenceOut} 同形）；</li>
+     * <li>本次动作的量与 C1 的向下取整全在 {@link PocketEssenceIntake#phialsToFill} 一条算式里
+     * （★面板不复写 {@code floorToPhialUnits}，也不写第二个"一次几只"的字面量）：
+     * Shift = 该格整份、非 Shift = 一次动作上界，再被<b>游标上的空瓶只数</b>夹住 ⇒ 余数原地留盘；</li>
+     * <li>灌装走 TC 容器 helper 那<b>一份</b>真相——{@link TaumCompat#addEssentia}（它完成
+     * meta 0 → meta 1 与 {@code Aspects} NBT，★不在游标栈外另造一个瓶）。返回值不足一瓶 ⇒
+     * <b>整笔不动</b>。</li>
      * </ol>
-     * <b>先扣点、后物化、失败退点</b>（与 {@link NekoPocketServerHandler#performEssenceOut} 同纪律）：物化走
-     * {@link #newPhialStack} 单源（★这就是"游标空瓶 meta0→meta1 + 写 {@code Aspects} NBT"的实现形态——
-     * 服务端产出的满瓶即 meta 1 + NBT 齐备，不在游标栈上另写第二份 NBT）。
-     * 游标结算（★R88 B1：唯一写口 {@code syncManager.setCursorItem}，禁裸写 {@code inventory.setItemStack}）：
-     * 单只空瓶 ⇒ 满瓶直接换上游标；一叠空瓶 ⇒ 消耗一只、满瓶进背包（先试投递，投不进整笔回滚不动游标）。
+     * <b>先扣点、后灌装、失败退点</b>（与 {@code performEssenceOut} 旧支同纪律）：三条退出支各自
+     * {@code markDirty}（★SC5 穷举的那张"改库存入口必显式标脏"表里本方法是其中一行）。
+     * 游标结算只走 {@code syncManager.setCursorItem(...)}（★R88 B1：裸写 {@code inventory.setItemStack}
+     * 到不了客户端 = 凭空复制）：游标上只有那一只瓶 ⇒ 就地换成满瓶回游标；一叠瓶 ⇒ 消耗掉真正落地的那几只、
+     * 满瓶进背包（{@link #depositToPlayerFirst}：背包优先、中栏兜底），一件都投不进 ⇒ 整笔回滚不动游标，
+     * 投进一部分 ⇒ <b>按真正落地的只数扣点</b>、差额原样退回盘（既不销毁价值也不多给瓶）。
      */
-    private void performEssenceOutToPhial(int cell) {
+    void performEssenceOutToPhial(int packedArg) {
         if (!server.serverGuardOk()) {
             return;
         }
+        final boolean shift = packedArg >= PocketConstants.ESSENCE_OUT_SHIFT_FLAG;
+        final int cell = shift ? packedArg - PocketConstants.ESSENCE_OUT_SHIFT_FLAG : packedArg;
         final ItemStack carried = syncManager.getCursorItem();
         if (!PocketEssenceIntake.isEmptyPhialCarrier(carried, EssenceGate.TAUM)) {
-            // 权威复验不过（伪造包 / 分流竞态 / 第三方容器）：零变动 + 既有"无事发生"回执，不静默也不动游标
-            putReceipt("gtit.pocket.still.idle", 0);
+            // ★R91-④ 的正身：没有空瓶就没有任何东西可灌 ⇒ 零产出（旧形状在这里"无中生有"造一叠满瓶）
+            putReceipt("gtit.pocket.essence.need_phial", 0);
+            GTInterestingThing.LOG.debug("[PocketR89] L4 格→瓶取出拒收（R91-④ 零产出）：格 {} 游标不是空安瓿瓶 ⇒ 不产出任何物品、不扣一点数", cell);
             return;
         }
         final PocketEssenceStore store = inventory.essence();
@@ -909,34 +893,45 @@ public final class NekoPocketPanel implements PocketSession {
             return;
         }
         final int stock = store.get(tag);
-        if (TaumDistillRules.floorToPhialUnits(stock) < 1) {
-            // 凑不满一瓶：一瓶都不产、一分都不扣，余数（=全部存量）留盘并说话
+        final int bottles = PocketEssenceIntake.phialsToFill(carried.stackSize, stock, shift);
+        if (bottles <= 0) {
+            // 凑不满一瓶：一支都不产、一分都不扣，余数（=全部存量）留盘并说话
             putReceipt("gtit.pocket.essence.not_enough_phial", stock);
-            GTInterestingThing.LOG.debug("[PocketR89] L4 格→瓶取出拒收：格 {} tag={} stock={}（不足一瓶）", cell, tag, stock);
+            GTInterestingThing.LOG
+                .debug("[PocketR89] L4 格→瓶取出拒收：格 {} tag={} stock={} shift={}（不足一瓶 ⇒ 零扣点）", cell, tag, stock, shift);
             return;
         }
-        final int points = store.extract(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
+        final int points = store.extract(tag, bottles * PocketConstants.ESSENCE_OUT_UNIT_POINTS);
         if (points <= 0) {
             putReceipt("gtit.pocket.still.idle", 0);
             return;
         }
         inventory.recordEssenceDelta(tag, -points);
-        final ItemStack filled = newPhialStack(tag, points);
-        if (filled == null || filled.stackSize <= 0) {
-            // 物化失败（TC 缺席 / tag 不可物化）：点数退回，绝不销毁价值
+        final int attempts = points / PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        // ★灌装的是"玩家那几只空瓶的副本"：一叠载体共享一份 AspectList（TC 的形状），所以一次 addEssentia
+        // 就是把这一叠的<b>单件</b>内容写成整瓶（与入槽侧 scaledByStackSize 那条乘法正好互逆）。
+        final ItemStack filled = carried.copy();
+        filled.stackSize = attempts;
+        final int stored = TaumCompat.addEssentia(filled, tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
+        if (stored < PocketConstants.ESSENCE_OUT_UNIT_POINTS) {
+            // 灌不进（TC 缺席 / 该 tag 不可物化 / 容器不吃这一档）：点数退回，绝不销毁价值，也不发一只空瓶
             store.add(tag, points);
             inventory.recordEssenceDelta(tag, points);
             inventory.markDirty();
             putReceipt("gtit.pocket.still.idle", 0);
             logOnce(
                 "L4-phial-refund",
-                "[PocketR89] L4 格→瓶取出退点（U3 裁决样本，本形态首例升 INFO）：tag={} 扣 {} 点、物化失败已退回",
+                "[PocketR89] L4 格→瓶取出退点（U3 裁决样本，本形态首例升 INFO；R91-④ 改走 addEssentia）：tag={} 扣 {} 点、只回 {} 点 ⇒ 已原样退回",
                 tag,
-                points);
+                points,
+                stored);
             return;
         }
+        final int landed;
         if (carried.stackSize <= 1) {
+            // 单只空瓶 ⇒ 就地换成满瓶回游标（最常见的手感，与 R90 E3 交付的那一支逐字同形）
             syncManager.setCursorItem(filled);
+            landed = attempts;
         } else {
             final int got = depositToPlayerFirst(filled);
             if (got <= 0) {
@@ -949,49 +944,41 @@ public final class NekoPocketPanel implements PocketSession {
                 putReceipt("gtit.pocket.receipt.target_full_put", 0);
                 return;
             }
-            final ItemStack rest = carried.copy();
-            rest.stackSize = carried.stackSize - 1;
-            syncManager.setCursorItem(rest);
+            landed = got;
+            final int left = carried.stackSize - got;
+            if (left > 0) {
+                final ItemStack rest = carried.copy();
+                rest.stackSize = left;
+                syncManager.setCursorItem(rest);
+            } else {
+                syncManager.setCursorItem(null);
+            }
+        }
+        // ★只按<b>真正落地</b>的只数记账：多扣的那部分原样退回盘（landed ≤ attempts ⇒ spent ≤ points）。
+        final int spent = landed * PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        if (spent < points) {
+            final int returned = points - spent;
+            store.add(tag, returned);
+            inventory.recordEssenceDelta(tag, returned);
         }
         inventory.markDirty();
-        putReceipt("gtit.pocket.receipt.ok", points);
+        final int leftover = PocketEssenceIntake.leftoverOnFloor(stock, shift);
+        if (leftover > 0) {
+            putReceipt("gtit.pocket.essence.partial_leftover", spent, leftover);
+        } else {
+            putReceipt("gtit.pocket.receipt.ok", spent);
+        }
         GTInterestingThing.LOG.debug(
-            "[PocketR89] L4 格→瓶取出：格 {} tag={} stock={} 扣 {} 点 ⇒ 满瓶 1 只上游标（游标原空瓶 {} 只）",
+            "[PocketR89] L4 格→瓶取出：格 {} tag={} stock={} shift={} 请求 {} 只 ⇒ 落地 {} 只（扣 {} 点、游标原 {} 只、留盘余数 {} 点）",
             cell,
             tag,
             stock,
-            points,
-            carried.stackSize);
-    }
-
-    /**
-     * ★R88 唯一的"点 → 瓶"物化口（取出侧只此一处，不再生产晶化源质 = 自立口径 C2）。
-     * ★★R90 E3（R88 债①收口声明）：本方法是<b>全仓唯一的「取用物化」单源</b>——R90 E2 删掉上传侧
-     * 兜底腿（{@code PocketEssenceChannelOps#essenceStackFor} 满瓶特判）后，仓内一切"把点数变成一叠瓶
-     * 交给玩家"的生产路径只剩两处消费方：{@link #handPhialsToCursor} / {@link #depositPhialsToPlayer}
-     * （空游标 / Shift 取出）与本片新增的 {@link #performEssenceOutToPhial}（空瓶换满瓶）。上传链路
-     * 零瓶化（AUQ-①=B：瓶只是玩家手动取用时的体现），任何新的出瓶需求都必须汇入本方法，不得另开
-     * 第二处 {@code newFilledContainer} 调用点。
-     * <p>
-     * {@code TaumCompat#newFilledContainer} 一次只出<b>一只</b>容器（内部 stackSize 恒 1），
-     * 所以这里按请求点数算出应得的瓶数、再夹进该瓶自身的单堆上限。满瓶的 NBT 逐只相同
-     * （同 tag、同 {@code AspectList} 量）⇒ 并成一堆与 TC 自己的满瓶堆同形，不造超堆叠栈。
-     * <p>
-     * ★守卫：探针读回的档位必须恰为 {@value TaumDistillRules#PHIAL_CAPACITY}。第三方首选容器
-     * （TT 罐一类）的档位是 {@code CAPACITY_UNKNOWN} ⇒ 单件容量无证据，此时<b>宁可不产出</b>
-     * （调用方退点），也不按"一瓶 8 点"的假设去发放容量不明的容器。
-     */
-    private static ItemStack newPhialStack(String tag, int points) {
-        final ItemStack one = TaumCompat.newFilledContainer(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS);
-        if (one == null || one.stackSize <= 0 || EssenceGate.TAUM.capacityOf(one) != TaumDistillRules.PHIAL_CAPACITY) {
-            return null;
-        }
-        final int bottles = Math.min(points / PocketConstants.ESSENCE_OUT_UNIT_POINTS, one.getMaxStackSize());
-        if (bottles <= 0) {
-            return null;
-        }
-        one.stackSize = bottles;
-        return one;
+            shift,
+            attempts,
+            landed,
+            spent,
+            carried.stackSize,
+            leftover);
     }
 
     // ------------------------------------------------------------------ S5 · ghost 就地转换（NEI 拖入 / 右键解绑）

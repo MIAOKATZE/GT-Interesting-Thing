@@ -101,9 +101,12 @@ public class PocketIntakeOps {
         /**
          * ★R88：<b>本轮实际被抽干、该退回玩家的那一份容器</b>（空壳仍有玻璃价值，R40a 的退回口径不变）。
          * <p>
-         * 只在"一叠里只抽干了其中几只"时与调用方手上那一叠<b>不是同一个对象</b>（{@link #remainder}
-         * 同时非 null）；其余情形恒等于原栈（旧行为逐字保留）。{@link Intake#CONSUMED} 时本字段无意义
-         * （晶整叠销毁，不许退回）。
+         * 12 格那条 {@link #injectContainer}：只在"一叠里只抽干了其中几只"时与调用方手上那一叠<b>不是同一个
+         * 对象</b>（{@link #remainder} 同时非 null）；其余情形恒等于原栈（旧行为逐字保留）。
+         * ★R91-④ 那条 {@link #injectCarrierStack}（游标支）：<b>瓶档恒是本方法造出的空壳副本</b>
+         * （游标本体不许就地改，必须由调用方经 {@code syncManager.setCursorItem} 结算）；
+         * 晶档与一切失败态恒 {@code null} ⇒ "零退件"就是 {@code null}，不是"退一只"。
+         * {@link Intake#CONSUMED} 时本字段无意义（晶整叠销毁，不许退回）。
          */
         public final ItemStack returnedCarrier;
         /**
@@ -211,6 +214,81 @@ public class PocketIntakeOps {
             return new IntakeResult(Intake.NOTHING, 0);
         }
         return new IntakeResult(Intake.DRAINED, points, drainedPart, container.stackSize > 0 ? container : null);
+    }
+
+    /**
+     * ★★<b>R91-④（瓶往返改判）：入槽<b>退件分派表</b>的唯一单源</b>——哪些容量档位的载体在溶进源质盘之后
+     * <b>把空壳原路退回</b>。
+     * <p>
+     * 只有<b>瓶档</b>（{@link TaumDistillRules#PHIAL_CAPACITY}）退：玻璃本体有独立价值、且抽干后就是
+     * TC 自己的空瓶形态（{@code TaumCompat#drainAll} 把 meta 1 打回 meta 0），退回等于"什么都没少"。
+     * <b>晶档不退</b>——★R86「晶入槽 {@link Intake#CONSUMED}、不退空壳」<b>只对晶继续成立</b>：
+     * 无 NBT 的晶留在场会被 TC 服务端 {@code onItemUpdate} 随机重赋型（{@code ItemCrystalEssence.java:98-110}，
+     * 也就是 {@link com.miaokatze.gtit.common.items.pocket.distill.EssenceGate#drainContainer} 对晶恒返
+     * {@code EMPTY} 的理由）。★两条口径的<b>唯一</b>分界就是这张表：调用方（面板 / {@code intake}）
+     * 一律不得自己再判一遍档位，否则就是两处真相（改一档漏一档 = 静默吞瓶或静默造壳）。
+     *
+     * @param capacityOfCarrier {@code EssenceGate#capacityOf} 的返回值
+     */
+    public static boolean refundsEmptyCarrier(int capacityOfCarrier) {
+        return capacityOfCarrier == TaumDistillRules.PHIAL_CAPACITY;
+    }
+
+    /**
+     * ★★<b>R91-④：游标一叠载体 → 源质盘 的「入账 + 退件」单点</b>（点击入槽唯一的执行体）。
+     * <p>
+     * 与 12 格那条 {@link #injectContainer} 的分工要说清楚：那一条服务"放进槽里的东西"，落点是<b>槽</b>
+     * （抽干的空壳退回玩家、余量写回格子）；本条服务<b>游标</b>，落点是游标，因此按 {@code intake} 一贯的
+     * <b>全有全无</b>口径（★不做 {@code injectContainer} 那套逐只向下收口 —— 游标只有一个栈，收口出来的
+     * "半叠满瓶 + 半叠空瓶"没有第二个位置可放，硬做就是把 R83 那类"少了东西却说不动"换个皮）。
+     * <p>
+     * 三条纪律：
+     * <ol>
+     * <li><b>预检在抽干之前</b>（R29）：{@code canAcceptAll} 不过 ⇒ {@link Intake#STORE_FULL}、
+     * 源质盘与载体<b>都分毫未动</b>，调用方什么都不用退；</li>
+     * <li><b>计点只走 {@link #scaledByStackSize} 那一条乘法</b>（一叠载体共享一份 {@code AspectList} ⇒
+     * 单件点数 × 只数）——★本方法与 {@link #injectCrystals} 读同一条算式，不复制第二份；</li>
+     * <li><b>退件与否按 {@link #refundsEmptyCarrier(int)} 分档</b>：瓶档抽干后退回等量空瓶
+     * （★抽干的是<b>副本</b>，游标本体由调用方经 {@code syncManager.setCursorItem} 结算 —— 裸写
+     * {@code inventory.setItemStack} 到不了客户端，那是 R88 B1 的刷取根因）；晶档整叠销毁、零退件。</li>
+     * </ol>
+     *
+     * @param carriers 服务端游标上的那一叠载体（★本方法<b>不改</b>它，退件用副本）
+     * @return {@link IntakeResult#returnedCarrier} = 该退回游标的空壳（晶档与失败态恒 {@code null}）
+     */
+    public static IntakeResult injectCarrierStack(ItemStack carriers, PocketEssenceStore store, EssenceGate gate) {
+        if (carriers == null || carriers.stackSize <= 0 || store == null || gate == null) {
+            return new IntakeResult(Intake.NOTHING, 0);
+        }
+        final TaumAspectAmounts content = gate.readContainer(carriers);
+        if (content == null || content.isEmpty()) {
+            return new IntakeResult(Intake.NOTHING, 0);
+        }
+        if (!refundsEmptyCarrier(gate.capacityOf(carriers))) {
+            // 晶档（R86 原样）与其余档位：整叠销毁、不退空壳。第三方罐在 {@code intake} 的计点闸门就已被挡下，
+            // 落到这里同样按"读出 × 叠数 + 销毁"处理 ⇒ 本方法<b>不新增</b>第二道计点门（R91-⑦ 同一条纪律）。
+            return injectCrystals(carriers, store, gate);
+        }
+        final Map<String, Integer> candidates = scaledByStackSize(toMap(content), carriers.stackSize);
+        if (!store.canAcceptAll(candidates)) {
+            return new IntakeResult(Intake.STORE_FULL, 0);
+        }
+        final int points = store.putAll(candidates);
+        if (points <= 0) {
+            return new IntakeResult(Intake.NOTHING, 0);
+        }
+        final ItemStack empties = carriers.copy();
+        final TaumAspectAmounts drained = gate.drainContainer(empties);
+        if (drained == null || drained.isEmpty()) {
+            // 抽不干（生产实现对瓶不会走到这里；桩件降级面兜底）：点数已入账，那就没有"再退一份壳"的道理
+            // —— 宁可不退件，也不退出一份"内容没被清空的满瓶"（那是复制源质）。
+            return new IntakeResult(Intake.DRAINED, points);
+        }
+        // ★游标堆叠上限截断：今天<b>不可达</b>（退件只数 = 载体本体那一叠的只数，本就 ≤ 单堆上限），
+        // 留这一道是防第三方容器的档位读数在 meta 之间漂移时造出超堆叠栈（TC ItemEssence 的 meta 0/1 同上限 64）。
+        final int size = Math.min(empties.stackSize, empties.getMaxStackSize());
+        empties.stackSize = size;
+        return new IntakeResult(Intake.DRAINED, points, empties, null);
     }
 
     /**
