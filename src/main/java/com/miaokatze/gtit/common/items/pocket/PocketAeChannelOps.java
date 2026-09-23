@@ -13,8 +13,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraftforge.fluids.Fluid;
-import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 
 import org.apache.logging.log4j.LogManager;
@@ -33,11 +31,9 @@ import appeng.api.networking.events.MENetworkCellArrayUpdate;
 import appeng.api.networking.security.BaseActionSource;
 import appeng.api.networking.storage.IStorageGrid;
 import appeng.api.storage.IMEInventoryHandler;
-import appeng.api.storage.data.IAEFluidStack;
 import appeng.api.storage.data.IAEItemStack;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
-import appeng.util.item.AEFluidStack;
 import appeng.util.item.AEItemStack;
 
 /**
@@ -73,7 +69,9 @@ import appeng.util.item.AEItemStack;
  * ⇒ 需求 2「要素栏取出→源质」与需求 4「按配置补满流体」两条并列要求整体静默失效）：
  * <ul>
  * <li>物品支 → 本条声明自己那一格（★R84：中栏声明格就是落点，旧实现落玩家背包 ⇒ 需求格永远空着）；</li>
- * <li>流体支 → 口袋流体条（{@link PocketSession}），先问落点空间再抽，抽了放不下就原路注回；</li>
+ * <li>流体支 → 口袋流体条（{@link PocketSession}），先问落点空间再抽，抽了放不下就原路注回
+ * （★R90 T3 起注入/抽取与两条算术纯搬移到 {@link PocketFluidChannelOps}，复用本类的批级缓存与
+ * 动作源，行为零变化；来源快照的 {@code appendFluidSources} 仍在本类，与 {@code appendEssenceSources} 同位）；</li>
  * <li>源质支 → ★R87-A 起整体搬去 {@link PocketEssenceChannelOps}（那一次是行数纪律的<b>纯搬移</b>）：
  * 经 {@code IAEStackType.convertStackFromItem} 以<b>自家装满的源质瓶 {@code ItemEssence}</b> 为探针
  * 反算数额后<b>溶回 72 格源质盘</b>（★R88 载体与落点双双改判，旧形状是"以 {@code ItemCrystalEssence}
@@ -113,7 +111,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * ★<b>R85 小项 1 起本字段按"恒非空"用</b>：物品支（{@link #extractItem}）已经不再为
      * {@code session == null} 留分支（生产两条构造点都带会话，driver 那道守卫还在这之前），
      * 流体支与源质支仍各自保留"没有落点 ⇒ 一克都不抽"的判据（那是<b>可达</b>的：
-     * {@code extractFluid} 的 tank 越界与 {@code room <= 0} 走的是同一形状）。
+     * {@code PocketFluidChannelOps#extractFluid} 的 tank 越界与 {@code room <= 0} 走的是同一形状）。
      * 会话缺失本来就是关屏+通道停之后的正常态，不建条目也不报错（R45b 禁止的是"返回 OK 却什么都不搬"）。
      */
     private final PocketSession session;
@@ -274,7 +272,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * <p>
      * ★<b>不进 {@code batchKeys}/{@code KeyStamp} 那套批级缓存</b>：那四条复用判据全是围着
      * {@code ItemStack} 的对象引用与 NBT 键数建的（R85 P1），流体没有这些形状。防陈旧改由
-     * {@link #injectFluidSource} <b>现读现比</b>（内容键 + 量），代价只是每批多读 18 次引用比较，
+     * {@code PocketFluidChannelOps#injectFluidSource} <b>现读现比</b>（内容键 + 量），代价只是每批多读 18 次引用比较，
      * 换来的是"tank 被玩家换过 ⇒ 一定搬不出去"而不是"看缓存脸色"。
      */
     private void appendFluidSources(List<SourceSlot> slots) {
@@ -513,7 +511,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         // {@code source.slot} 是 tank 号、源质来源是"身份全在键上"，拿它们去读中栏格要么越界静默跳过、
         // 要么搬错格（同 R85 小项 2 的越界判据）。
         if (source != null && source.kind == SourceKind.FLUID) {
-            return injectFluidSource(source, diskuuid, typeId);
+            // ★R90 T3：流体支纯搬移到 PocketFluidChannelOps（宿主引用改显式 ops 首参），分派口不变
+            return PocketFluidChannelOps.injectFluidSource(this, source, diskuuid, typeId);
         }
         if (source != null && source.kind == SourceKind.ESSENCE) {
             // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（那一次是行数纪律的纯搬移）；
@@ -574,62 +573,12 @@ public final class PocketAeChannelOps implements PocketChannelOps {
     }
 
     /**
-     * ★R86（缺陷 3）：口袋流体条 → 元件的<b>流体</b>通道（推送向）。
-     * <p>
-     * 三条纪律与物品支同源：① <b>先对表再投</b>——现读 tank 的内容键与量，和快照比不上一句就不搬
-     * （玩家在两拍之间把槽换成别的流体是常态）；② <b>只有流体通道才收流体</b>——
-     * {@code typeId != FLUID_STACK_TYPE} 时按"无事可做"跳过（OK 才不会 break 掉后面的来源）；
-     * ③ <b>元件真收了才算数</b>——自己槽里扣得比对面收的少 ⇒ 差额原路注回并按 {@code NO_ACCESS} 收口
-     * （{@link #shrinkSource} 那一条纪律，绝不允许"元件收了货、来源没扣件"的复制）。
-     * <p>
-     * ★为什么这一支不会重演 R84 的崩溃（{@code AEItemStack→IAEFluidStack} @
-     * {@code InfinityTypedCellInventory:101}）：本方法<b>只在</b>流体 typeId 下构造
-     * {@code AEFluidStack}；反过来的组合由物品支 :457 那道早退挡住。★<b>两道早退是成对的</b>，
-     * 删任何一道都会把 CCE 放回来。
+     * ★流体支（注入 {@code injectFluidSource} / 抽取 {@code extractFluid} / 算术
+     * {@code fluidRequestFor}、{@code fluidFallback}）已纯搬移到 {@code PocketFluidChannelOps}
+     * （★R90 T3，行数纪律；方法体逐字保留，宿主引用改显式 {@code ops} 首参并复用本类的批级缓存/
+     * 会话/动作源），本类只在 {@code inject}/{@code extract} 的分派口委派过去；
+     * 来源快照的 appendFluidSources 仍在本类。
      */
-    private Outcome injectFluidSource(SourceSlot source, String diskuuid, String typeId) {
-        if (session == null || !InfinityStackTypes.FLUID_STACK_TYPE.getId()
-            .equals(typeId)) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final FluidStack now = session.fluidInTank(source.slot);
-        if (now == null || now.amount <= 0
-            || now.getFluid() == null
-            || !PocketFilterConfig.fluidKey(
-                now.getFluid()
-                    .getName())
-                .equals(source.contentKey)) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final IAEStackType<?> type = InfinityStackTypes.byId(typeId);
-        final Found found = foundOfCached(diskuuid);
-        final IMEInventoryHandler handler = found == null || type == null ? null
-            : handlerOfCached(found, type, diskuuid);
-        if (handler == null) {
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0);
-        }
-        final int requested = Math.min(now.amount, source.count);
-        final IAEFluidStack request = AEFluidStack.create(new FluidStack(now.getFluid(), requested));
-        if (request == null) {
-            return new Outcome(PocketReceipt.LOST, 0);
-        }
-        rememberPrototype(source.contentKey, request);
-        final boolean writable = handler.getAccess()
-            .hasPermission(AccessRestriction.WRITE);
-        final boolean acceptable = handler.canAccept(request);
-        final IAEFluidStack leftover = (IAEFluidStack) handler.injectItems(request, Actionable.MODULATE, SOURCE);
-        final long leftoverSize = leftover == null ? 0L : leftover.getStackSize();
-        final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requested, leftoverSize);
-        final int moved = (int) Math.max(0L, requested - leftoverSize);
-        if (moved > 0 && session.drainOwnTank(source.slot, moved) < moved) {
-            final IAEFluidStack back = AEFluidStack.create(new FluidStack(now.getFluid(), moved));
-            if (back != null) {
-                handler.injectItems(back, Actionable.MODULATE, SOURCE);
-            }
-            return new Outcome(PocketReceipt.NO_ACCESS, 0);
-        }
-        return new Outcome(receipt, moved);
-    }
 
     @Override
     public Outcome extract(PocketFilterConfig.Filter filter, String diskuuid, int count) {
@@ -640,7 +589,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             return extractItem(filter, diskuuid, count);
         }
         if (filter instanceof PocketFilterConfig.FluidFilter) {
-            return extractFluid((PocketFilterConfig.FluidFilter) filter, diskuuid, count);
+            // ★R90 T3：流体支纯搬移到 PocketFluidChannelOps（宿主引用改显式 ops 首参），分派口不变
+            return PocketFluidChannelOps.extractFluid(this, (PocketFilterConfig.FluidFilter) filter, diskuuid, count);
         }
         // ★R87-A：源质支整体搬去了 {@link PocketEssenceChannelOps}（那一次是行数纪律的纯搬移）；
         // ★R88 起那边的载体与落点已改判（晶 → 瓶、物品槽 → 源质盘），委派口本身不变
@@ -727,89 +677,6 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         final ItemStack merged = held.copy();
         merged.stackSize = Math.min(merged.getMaxStackSize(), merged.stackSize + added.stackSize);
         return merged;
-    }
-
-    /**
-     * ★流体支（R45b 缺口之一，需求 4「按配置补满流体」的唯一通路）。
-     * <p>
-     * 三步固定顺序，<b>顺序本身就是不丢件的保证</b>：
-     * <ol>
-     * <li>先问落点还能收多少（{@link PocketSession#fluidBarRoom(int, FluidStack)}）——
-     * 先抽后放会把超出部分凭空抹掉，AE2 侧已经扣了；</li>
-     * <li>{@code SIMULATE} 出这一份，把请求量钳到"落点空间"与"元件可得"的较小值；</li>
-     * <li>{@code MODULATE} 抽出来 → 灌进流体槽；<b>灌不进的部分立刻原路注回元件</b>
-     * （同一 handler、同一 SOURCE，语义上就是"这一拍没发生过"）。落点完全不可用（会话已丢）
-     * ⇒ 根本不抽，直接 {@code TARGET_FULL}。</li>
-     * </ol>
-     */
-    private Outcome extractFluid(PocketFilterConfig.FluidFilter filter, String diskuuid, int count) {
-        final Fluid fluid = FluidRegistry.getFluid(filter.fluidName);
-        if (fluid == null) {
-            // 声明里的流体已从注册表消失（整合包变更）：按"无事可做"继续下一条，不判失联
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final Found found = foundOfCached(diskuuid);
-        final IMEInventoryHandler handler = handlerOfCached(found, InfinityStackTypes.FLUID_STACK_TYPE, diskuuid);
-        if (handler == null) {
-            return new Outcome(PocketReceipt.NO_CHANNEL, 0); // ★R84：没有该通道 ≠ 元件失联（见物品支同处注释）
-        }
-        // ★落点 = 本条声明自己那一个 tank（R75①：ghost 的 slotIndex 就是 tank 号；R78② 后共 18 个 tank 各拉各的）
-        final int tank = filter.slotIndex();
-        final int room = session == null ? 0 : session.fluidBarRoom(tank, new FluidStack(fluid, 1));
-        if (room <= 0) {
-            return new Outcome(session == null ? PocketReceipt.NO_CHANNEL : PocketReceipt.TARGET_FULL, 0);
-        }
-        final int request = fluidRequestFor(room, count);
-        final IAEFluidStack probe = AEFluidStack.create(new FluidStack(fluid, request));
-        if (probe == null) {
-            return new Outcome(PocketReceipt.LOST, 0);
-        }
-        rememberPrototype(filter.key(), probe);
-        final IAEFluidStack simulated = (IAEFluidStack) handler.extractItems(probe, Actionable.SIMULATE, SOURCE);
-        final long available = simulated == null ? 0L : simulated.getStackSize();
-        if (available <= 0L) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final int want = fluidRequestFor((int) available, Math.min(room, PocketFilterConfig.resolveCap(filter, 0)));
-        probe.setStackSize(want);
-        final IAEFluidStack taken = (IAEFluidStack) handler.extractItems(probe, Actionable.MODULATE, SOURCE);
-        final long takenAmount = taken == null ? 0L : taken.getStackSize();
-        if (takenAmount <= 0L) {
-            return new Outcome(PocketReceipt.OK, 0);
-        }
-        final int moved = session.depositFluid(tank, new FluidStack(fluid, (int) takenAmount));
-        final int fallback = fluidFallback(takenAmount, moved);
-        if (fallback > 0) {
-            // 落点在抽取瞬间又变小了：把差额原路注回，绝不让流体凭空消失
-            handler.injectItems(AEFluidStack.create(new FluidStack(fluid, fallback)), Actionable.MODULATE, SOURCE);
-        }
-        return new Outcome(moved >= takenAmount ? PocketReceipt.OK : PocketReceipt.PARTIAL, moved);
-    }
-
-    /**
-     * 流体支的请求量钳制：一次最多要"落点空间"与"本轮配额"的较小值。
-     * <p>
-     * 拉取模式的配额是 {@link PocketConstants#REFILL_AMOUNT_PER_FILTER_UNBOUNDED}（= 不设限），
-     * 所以实际值恒等于落点空间 —— 这条算式是"先问落点再抽"的实现，写错一次就会超发；
-     * 单独成函数是为了让零依赖套件能直接钉住它（AE2 handler 与 Forge 流体对象在纯 JVM 里都拿不到）。
-     */
-    static int fluidRequestFor(int room, int quota) {
-        if (room <= 0 || quota <= 0) {
-            return 0;
-        }
-        return Math.min(room, quota);
-    }
-
-    /**
-     * 流体支的退回量：抽出来却没能落进条子的部分（必须原路注回元件）。
-     * 负数与零一律返回 0（"全部落下"是正常路径，不该触发任何回滚）。
-     */
-    static int fluidFallback(long takenAmount, int moved) {
-        if (takenAmount <= 0L) {
-            return 0;
-        }
-        final long left = takenAmount - Math.max(0, moved);
-        return left <= 0L ? 0 : (int) Math.min(left, Integer.MAX_VALUE);
     }
 
     /**

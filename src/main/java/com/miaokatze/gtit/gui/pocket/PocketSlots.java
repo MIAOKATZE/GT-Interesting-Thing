@@ -14,6 +14,7 @@ import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFluidTransfer;
 import com.miaokatze.gtit.common.items.pocket.PocketIntakeOps;
+import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 
 /**

@@ -15,6 +15,7 @@ import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoClientBalances;
 

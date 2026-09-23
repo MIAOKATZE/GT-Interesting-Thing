@@ -6,6 +6,7 @@ import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 /**
  * 中栏 = <b>135 格</b>存储（需求 2「一共16行*8列物品栏」经 R74②/R75 选项 A 定为 15 行 × 10 列，

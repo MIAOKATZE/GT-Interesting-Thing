@@ -88,7 +88,7 @@ public final class TaumBridge implements TaumBridgeApi {
      * 而那个堆叠上限由 TC 的 {@code ItemCrystalEssence} 钉死。两处各写一份 ⇒ 只抬一边就是
      * "扣了 256 点、只造出 64 晶、退回的 192 点被 {@code PocketEssenceStore} 的入账截断吃掉"的
      * <b>净吞点数</b>（取证档案 D4）。跨包引用在本仓有先例：{@code TaumDistillRules.java:3} 就 import
-     * 了 {@code gui.pocket.PocketInventory} 做单源转发。
+     * 了 {@code PocketInventory} 做单源转发。
      * <p>
      * ★派生方向是"物化侧读取出侧"：取出上界是<b>我们的</b>设计量，TC 的堆叠上限是<b>外部的</b>事实；
      * 两者今天等值。若哪天 TC 把 64 改了，改的应该是<b>本行右边那个符号所代表的事实</b>——

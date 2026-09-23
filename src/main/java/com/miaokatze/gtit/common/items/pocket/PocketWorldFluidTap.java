@@ -11,7 +11,6 @@ import net.minecraft.util.ChatComponentTranslation;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.fluids.FluidStack;
 
-import com.miaokatze.gtit.gui.pocket.PocketInventory;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;

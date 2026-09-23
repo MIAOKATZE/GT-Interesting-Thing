@@ -10,6 +10,7 @@ import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.FluidSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 /**
  * 左列 = <b>3 组 × 6 列</b>流体块（R78②；每组纵向 = 输入行 / <b>拉长的流体槽</b> / 输出行）

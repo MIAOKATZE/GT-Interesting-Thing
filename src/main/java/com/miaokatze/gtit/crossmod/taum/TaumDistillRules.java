@@ -1,6 +1,6 @@
 package com.miaokatze.gtit.crossmod.taum;
 
-import com.miaokatze.gtit.gui.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 /**
  * 蒸馏入账与容器装箱的<b>纯判定逻辑</b>（零 MC / 零 TC 依赖，可被

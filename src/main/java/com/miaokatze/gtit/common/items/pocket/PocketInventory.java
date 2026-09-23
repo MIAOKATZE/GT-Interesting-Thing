@@ -1,4 +1,4 @@
-package com.miaokatze.gtit.gui.pocket;
+package com.miaokatze.gtit.common.items.pocket;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -7,12 +7,6 @@ import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
-import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
-import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
-import com.miaokatze.gtit.common.items.pocket.PocketConstants;
-import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
-import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
-import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
@@ -50,7 +44,10 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * <b>不是</b>面板打不开、也<b>不是</b>整档清零。
  * <p>
  * 纯数据件：不持 {@code EntityPlayer}、不持 {@code World}，也不做任何搬运决策
- * （流体搬运在 {@link PocketSlots}，通道与蒸馏归 S6/S7）。
+ * （流体搬运在 {@code gui.pocket.PocketSlots}，通道与蒸馏归 S6/S7）。
+ * <p>
+ * ★R90 T3：从 {@code gui.pocket} 迁包而来（零行为变更的纯搬移——GUI 装配侧与 world 侧共用的
+ * 纯数据件不依赖任何 gui 类，落在 common 后 world 侧不必再反向 import gui 包）。
  */
 public final class PocketInventory {
 
@@ -434,7 +431,7 @@ public final class PocketInventory {
         return fluidInteraction;
     }
 
-    /** 右栏 12 个蒸馏输入格（R44c 的入口拒容器在 {@link PocketSlots} 的槽过滤里）。 */
+    /** 右栏 12 个蒸馏输入格（R44c 的入口拒容器在 {@code gui.pocket.PocketSlots} 的槽过滤里）。 */
     public ItemStackHandler distillInput() {
         return distillInput;
     }
@@ -610,7 +607,7 @@ public final class PocketInventory {
      * 同组同列里<b>配对</b>的那一格（进 ↔ 出互换）。
      * <p>
      * ★与 {@link #tankOfInteractionSlot(int)} 同住一个文件：一格属于哪一列、与谁配对，是同一份索引真相，
-     * 拆到 {@link PocketSlots} 里就会长出第二处"取模口径"。
+     * 拆到 {@code gui.pocket.PocketSlots} 里就会长出第二处"取模口径"。
      */
     public static int partnerInteractionSlotOf(int interactionIndex) {
         final int groupStart = interactionIndex - interactionIndex % FLUID_INTERACTION_PER_GROUP;

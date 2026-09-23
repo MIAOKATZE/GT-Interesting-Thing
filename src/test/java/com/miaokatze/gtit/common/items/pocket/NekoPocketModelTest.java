@@ -40,7 +40,6 @@ import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
 import com.miaokatze.gtit.gui.pocket.NekoPocketStorageColumn;
 import com.miaokatze.gtit.gui.pocket.PocketGhostRequest;
 import com.miaokatze.gtit.gui.pocket.PocketGuiTextureContract;
-import com.miaokatze.gtit.gui.pocket.PocketInventory;
 import com.miaokatze.gtit.gui.pocket.PocketSlots;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
@@ -2936,28 +2935,28 @@ public class NekoPocketModelTest {
         // ②抽取前的钳制：拉取配额是"不设限"，实际请求量必须恰好等于落点空间
         SimpleAssert.eq(
             capacity,
-            PocketAeChannelOps.fluidRequestFor(capacity, PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED),
+            PocketFluidChannelOps.fluidRequestFor(capacity, PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED),
             "先问落点再抽：请求量 = 落点空间");
-        SimpleAssert.eq(500, PocketAeChannelOps.fluidRequestFor(500, 800), "有配额时取较小值");
-        SimpleAssert.eq(0, PocketAeChannelOps.fluidRequestFor(0, 800), "没有空间 ⇒ 一个 mB 都不抽");
-        SimpleAssert.eq(0, PocketAeChannelOps.fluidRequestFor(1_000, 0), "配额为 0 ⇒ 不抽");
-        SimpleAssert.eq(0, PocketAeChannelOps.fluidRequestFor(-5, 800), "负空间（外来/异常入参）⇒ 0，不得变成'抽走 |room|'");
+        SimpleAssert.eq(500, PocketFluidChannelOps.fluidRequestFor(500, 800), "有配额时取较小值");
+        SimpleAssert.eq(0, PocketFluidChannelOps.fluidRequestFor(0, 800), "没有空间 ⇒ 一个 mB 都不抽");
+        SimpleAssert.eq(0, PocketFluidChannelOps.fluidRequestFor(1_000, 0), "配额为 0 ⇒ 不抽");
+        SimpleAssert.eq(0, PocketFluidChannelOps.fluidRequestFor(-5, 800), "负空间（外来/异常入参）⇒ 0，不得变成'抽走 |room|'");
 
         // ③抽出后落不进的部分必须原路注回元件（这是流体支唯一会静默吞流体的地方）
-        SimpleAssert.eq(0, PocketAeChannelOps.fluidFallback(500L, 500), "全部落下 ⇒ 无需退回");
-        SimpleAssert.eq(200, PocketAeChannelOps.fluidFallback(500L, 300), "落进 300 ⇒ 退回 200");
-        SimpleAssert.eq(500, PocketAeChannelOps.fluidFallback(500L, 0), "一格都没落 ⇒ 整份退回");
-        SimpleAssert.eq(0, PocketAeChannelOps.fluidFallback(0L, 0), "什么都没抽 ⇒ 无退回");
-        SimpleAssert.eq(0, PocketAeChannelOps.fluidFallback(-1L, 0), "异常入参 ⇒ 0（不造出负退回量）");
-        SimpleAssert.eq(3, PocketAeChannelOps.fluidFallback(10L, 7), "差额按整数算，不吞零头");
+        SimpleAssert.eq(0, PocketFluidChannelOps.fluidFallback(500L, 500), "全部落下 ⇒ 无需退回");
+        SimpleAssert.eq(200, PocketFluidChannelOps.fluidFallback(500L, 300), "落进 300 ⇒ 退回 200");
+        SimpleAssert.eq(500, PocketFluidChannelOps.fluidFallback(500L, 0), "一格都没落 ⇒ 整份退回");
+        SimpleAssert.eq(0, PocketFluidChannelOps.fluidFallback(0L, 0), "什么都没抽 ⇒ 无退回");
+        SimpleAssert.eq(0, PocketFluidChannelOps.fluidFallback(-1L, 0), "异常入参 ⇒ 0（不造出负退回量）");
+        SimpleAssert.eq(3, PocketFluidChannelOps.fluidFallback(10L, 7), "差额按整数算，不吞零头");
 
         // ④三步串起来：剩余空间越小 ⇒ 请求越小 ⇒ 只要 moved<=request 就不可能吞件
         for (int room = 0; room <= 2_000; room += 250) {
-            final int request = PocketAeChannelOps
+            final int request = PocketFluidChannelOps
                 .fluidRequestFor(room, PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED);
             SimpleAssert.that(request <= room, "请求量不得超过落点空间（room=" + room + "）");
             final int moved = request / 2;
-            final int back = PocketAeChannelOps.fluidFallback(request, moved);
+            final int back = PocketFluidChannelOps.fluidFallback(request, moved);
             SimpleAssert.eq(request, moved + back, "落下的 + 退回的 必须恰好等于抽出的（room=" + room + "）");
         }
 
@@ -5788,7 +5787,7 @@ public class NekoPocketModelTest {
     private static void fillOwnTankMarksDirty() {
         // ---- 源码半边：灌入原语的守卫与置脏（无条件）----
         final java.util.List<String> inventory = sourceLinesOrNull(
-            "src/main/java/com/miaokatze/gtit/gui/pocket/PocketInventory.java");
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketInventory.java");
         if (inventory == null) {
             System.out.println("[NOTE] 读不到 PocketInventory.java ⇒ 「fillOwnTank 置脏」的源码半边【未验】（★不是通过）");
         } else {
@@ -7525,34 +7524,39 @@ public class NekoPocketModelTest {
         // ================= 半边 A：站点接线（源码机检） =================
         final java.util.List<String> ops = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketAeChannelOps.java");
+        // ★R90 T3：流体支纯搬去了 PocketFluidChannelOps ⇒ 流体支的消费点改在那边扫描（同 R87-A 源质支先例）
+        final java.util.List<String> fluidOps = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketFluidChannelOps.java");
         // ★R87-A：源质支纯搬去了 PocketEssenceChannelOps ⇒ 源质支的消费点改在那边扫描
         final java.util.List<String> essenceOps = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketEssenceChannelOps.java");
-        if (ops == null || essenceOps == null) {
+        if (ops == null || fluidOps == null || essenceOps == null) {
             System.out.println(
-                "[NOTE] 找不到仓库根或读不到 PocketAeChannelOps.java / PocketEssenceChannelOps.java ⇒ 「三支消费都接上 resolveCap」的接线半边【未验】（★不是通过；下面的算式半边照验）");
+                "[NOTE] 找不到仓库根或读不到 PocketAeChannelOps.java / PocketFluidChannelOps.java / PocketEssenceChannelOps.java ⇒ 「三支消费都接上 resolveCap」的接线半边【未验】（★不是通过；下面的算式半边照验）");
         } else {
             final int itemStart = methodStart(ops, "Outcome extractItem(");
-            final int fluidStart = methodStart(ops, "Outcome extractFluid(");
+            final int mergeIntoStart = methodStart(ops, "ItemStack mergeInto(");
+            final int fluidStart = methodStart(fluidOps, "Outcome extractFluid(");
             final int essenceStart = methodStart(essenceOps, "Outcome extractEssence(");
             SimpleAssert.that(
-                itemStart >= 0 && fluidStart > itemStart && essenceStart >= 0,
-                "★三支抽取方法的定位必须成功（物品/流体在 PocketAeChannelOps、源质在其专属类，改名/合并即红）");
-            assertResolveCapInside(ops, itemStart, fluidStart, "extractItem(物品支)");
-            assertResolveCapInside(ops, fluidStart, ops.size(), "extractFluid(流体支)");
+                itemStart >= 0 && mergeIntoStart > itemStart && fluidStart >= 0 && essenceStart >= 0,
+                "★三支抽取方法的定位必须成功（物品在 PocketAeChannelOps、流体/源质在各自专属类，改名/合并即红）");
+            assertResolveCapInside(ops, itemStart, mergeIntoStart, "extractItem(物品支)");
+            assertResolveCapInside(fluidOps, fluidStart, fluidOps.size(), "extractFluid(流体支)");
             assertResolveCapInside(essenceOps, essenceStart, essenceOps.size(), "extractEssence(源质支)");
             // 物品支必须把"该物品自己的 maxStackSize"喂给 resolveCap（否则未设回落就是猜的 64）
             SimpleAssert.that(
-                regionContainsCode(ops, itemStart, fluidStart, "wanted.getMaxStackSize()"),
+                regionContainsCode(ops, itemStart, mergeIntoStart, "wanted.getMaxStackSize()"),
                 "★物品支消费点必须传 wanted.getMaxStackSize()（未设时回落 = 该件自身堆叠上限 = 今日行为）");
             SimpleAssert.eq(
                 3,
                 countCodeLinesIn(ops, "PocketFilterConfig.resolveCap(")
+                    + countCodeLinesIn(fluidOps, "PocketFilterConfig.resolveCap(")
                     + countCodeLinesIn(essenceOps, "PocketFilterConfig.resolveCap("),
-                "★全仓 resolveCap 消费点恰 3 处（物品/流体/源质各一；★R87-A 后跨两个文件计）；多一处就是第二处真相");
+                "★全仓 resolveCap 消费点恰 3 处（物品/流体/源质各一；★R90 T3 后跨三个文件计）；多一处就是第二处真相");
             // ★扫描器自身的两个负控：证明上面那三条不是"恒真式"读数（C1 的教训：静态块全绿不等于判据成立）
             SimpleAssert.that(
-                !regionContainsCode(ops, itemStart, fluidStart, "resolveCapButThisTokenDoesNotExist"),
+                !regionContainsCode(ops, itemStart, mergeIntoStart, "resolveCapButThisTokenDoesNotExist"),
                 "★负控：区间扫描必须对不存在的片段报 false（否则上面的接线判据是恒真式）");
             SimpleAssert.eq(-1, methodStart(ops, "Outcome extractNothingAtAll("), "★负控：行定位必须对不存在的方法报 -1（否则区间边界是假的）");
         }
@@ -7598,19 +7602,19 @@ public class NekoPocketModelTest {
         final PocketFilterConfig.Filter fluidUnset = new PocketFilterConfig.FluidFilter(0, "water", unset);
         final PocketFilterConfig.Filter fluidCapped = new PocketFilterConfig.FluidFilter(0, "water", 320_000);
         SimpleAssert.eq(
-            PocketAeChannelOps.fluidRequestFor(
+            PocketFluidChannelOps.fluidRequestFor(
                 PocketConstants.FLUID_BAR_CAPACITY_ML,
                 Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidUnset, 0))),
             PocketConstants.FLUID_BAR_CAPACITY_ML,
             "★旧档流体：一次仍要满整 tank（16M）= 今日行为");
         SimpleAssert.eq(
-            PocketAeChannelOps.fluidRequestFor(
+            PocketFluidChannelOps.fluidRequestFor(
                 PocketConstants.FLUID_BAR_CAPACITY_ML,
                 Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidCapped, 0))),
             320_000,
             "★玩家调到两档（320,000 mB）⇒ 请求量就是 320,000（两档 × 160,000）");
         SimpleAssert
-            .eq(PocketAeChannelOps.fluidRequestFor(7_000, 320_000), 7_000, "落点空间更小时仍按落点收口（cap 不得越过 tank 剩余空间超发）");
+            .eq(PocketFluidChannelOps.fluidRequestFor(7_000, 320_000), 7_000, "落点空间更小时仍按落点收口（cap 不得越过 tank 剩余空间超发）");
 
         // 源质支（站点算式 min(count, resolveCap(filter, 0))）
         final PocketFilterConfig.Filter essenceUnset = new PocketFilterConfig.EssenceFilter(

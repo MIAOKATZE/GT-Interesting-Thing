@@ -14,6 +14,7 @@ import com.cleanroommc.modularui.widgets.ProgressWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 
