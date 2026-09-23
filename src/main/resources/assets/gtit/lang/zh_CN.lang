@@ -305,7 +305,7 @@ gtit.pocket.receipt.partial=已搬运 %d 项，%d 项被拒收
 gtit.pocket.receipt.partition_denied=元件分区设置拒收（并非元件已满）
 gtit.pocket.receipt.cell_full=元件已满
 gtit.pocket.receipt.target_full=没有可容纳的落点：口袋物品栏没有空格，源质侧也没有能塞下整只瓶的格
-gtit.pocket.receipt.target_full_take=取出中止：源质瓶无处安放（本次取出 %d 点）；剩余 %d 点源质仍留在源质盘
+# ★R91-g：旧 target_full_take（"空游标取出落点满"）随自造瓶支失去生产调用方，两份整体删除（不留注释尸）。
 gtit.pocket.receipt.target_full_put=换瓶中止：背包与口袋中栏都放不下这只源质瓶；点数已原路退回源质盘
 gtit.pocket.receipt.unrecognised=没有已识别的绑定元件，通道未开启
 gtit.pocket.receipt.cooldown=瞬时通道冷却中
@@ -323,8 +323,9 @@ gtit.pocket.still.full=源质格已满，本轮不消耗物品
 gtit.pocket.still.unavailable=未装载神秘时代
 gtit.pocket.still.over_cap=有 %d 格超出单格上限，本轮跳过（共 %d 点）
 gtit.pocket.still.partial_skip=本轮另有 %d 格没塞下（共 %d 点），下一轮继续重试
-gtit.pocket.essence.cursor_busy=手上已经攥着东西，先清空游标再点源质格取瓶
-# ★R88 载体改判（晶化源质 → TC 安瓿瓶）+ ★C3 聊天零输出：四态一律走面板内粘性回执。
+# ★R91-g：旧 cursor_busy（"游标已被占用"）并进 essence.need_phial（游标上有东西但不是空瓶 = 同一条
+#   "拿瓶子去装"的说话），两份整体删除（不留注释尸）。
+# ★R88 载体改判（晶化源质 → TC 安瓿瓶）+ ★C3 聊天零输出：入槽态自 R91-⑤ 起为五态，一律走面板内粘性回执。
 # ★intake.ok 刻意只留一个 %d：投递面是 NekoPocketPanel#putReceipt(key, moved, refused)，
 #   载荷只有两个整数、本地化在客户端做（receiptText 的 String.format 实参 = 两个 int）。
 #   旧形状的 %s 会被第一个整数塞位（读出「已把「24」源质 …」），故键名保留、占位改成单 %d。
@@ -333,17 +334,22 @@ gtit.pocket.essence.cursor_busy=手上已经攥着东西，先清空游标再点
 gtit.pocket.essence.intake.not_crystal=手里不是源质瓶：把装满源质的安瓿瓶（或还带归属的旧晶化源质）拿在游标上，再点源质格
 gtit.pocket.essence.intake.no_owner=这只瓶还没有装源质，没有可入账的源质
 gtit.pocket.essence.intake.no_room=源质盘装不下这一整叠瓶：先少放几只进来，这一叠分毫未动
-gtit.pocket.essence.intake.ok=源质已入账：%d 点
+gtit.pocket.essence.intake.memory_locked=这一格记住了别的东西，放不进来：换成它记住的那一种再点，或先 alt+左键撤掉记忆（★与「装不下」那条是两回事：那是等余量，这是换东西）
+gtit.pocket.essence.intake.ok=源质已入账：%d 点（被溶掉的空瓶已退回游标）
 # ★R88 C1（最小粒度 = 一瓶）的玩家可见三条：不足一瓶 / 取出与留盘并报 / 格级说明
 gtit.pocket.essence.not_enough_phial=这一格的源质还凑不满一瓶，什么都不取：盘里仍留 %d 点
 gtit.pocket.essence.partial_leftover=按整瓶取走 %d 点；另有 %d 点不足一瓶，留在盘里
 gtit.pocket.essence.phial_note=源质只能按整瓶取出：不足 %d 点的零头留在这一格里
+# ★R91-④（瓶往返改判）的玩家可见面：取出必须手持空瓶，"没有空瓶 ⇒ 什么都不产出"就是这条。
+gtit.pocket.essence.need_phial=装瓶要手里拿着空安瓿瓶：拿着空瓶再点源质格才会装瓶；没有空瓶（空手或持别的东西）时点格什么都不产出
 gtit.pocket.aspect.cell=%s：%d/%d
 gtit.pocket.aspect.overflow_note=超出前 %d 项的源质只入账不显示
 gtit.pocket.ghost.on=配置格：%s（右键取消）
 gtit.pocket.ghost.drag_hint=想声明这一列：从 NEI 把 §e装了该流体的容器§r（桶/罐/大型单元）拖到这条上；配方窗里的流体行拖不出来（NEI 不让拖那种条目）
 gtit.pocket.essence.need_stock=这一格还没有源质归属：把「装满某一种源质的安瓿瓶」从 NEI 拖到空格即可建档声明（每种源质各一条、按源质染色）；无 NBT 的裸晶/裸物品读不出归属，仍无法声明
-gtit.pocket.ghost.locked=配置格不接受玩家放入或流体输入
+# ★R91-⑤ 起"默认禁放置"有了例外档：挂了记忆 L 的格放得进它记住的那一种（判据单源在
+#   PocketFilterConfig#allowsPlayerPlacement）；这条若继续一刀切说"不接受"就是 D-1 型不实。
+gtit.pocket.ghost.locked=配置格默认不接受玩家放入或流体输入（挂了记忆 L 的格除外：它只放得进被记住的那一种）
 # ★R84 流体列搬运回执（9 条都是"整笔放弃/一件未成"的出口；缺一条就等于把"卡住不动"重新变成静默）。
 # ★刻意全部不带 %s：调用点是 notifyCell(cell, key, args...) 的变参形态，多传参无害、
 # 但文案里写了占位而某条支没传参会在客户端抛 MissingFormatArgumentException（实机崩溃形状）。
@@ -371,14 +377,21 @@ gtit.pocket.legend.output=下一行：处理完的容器落在这里
 gtit.pocket.legend.in_out_same=上下两行都仍可放容器灌/排（方向看容器有无流体）；处理完的容器一律落本列下一行，只要没被换掉，就不会在那一行被自动灌回
 gtit.pocket.legend.tank_of=第 %1$d 组第 %2$d 列（流体槽 %3$d）
 gtit.pocket.fluid.capacity=每槽 %1$d mB（共 %2$d 槽，合计 %3$d mB）
-gtit.pocket.storage.sort_gesture=中栏：中键或按 R 整理（本 mod 自带手势，配置格不参与整理；不是通用箱子整理）
+# ★R91-⑧b（中键让位）：中键已改派"请求绑定"，整理只剩 R 键一个手势——旧文"中键或按 R 整理"
+#   在中键让位后就是不实文案（D-1 型），删掉"中键 … 整理"这半句。
+gtit.pocket.storage.sort_gesture=中栏：按 R 整理（本 mod 自带手势，配置格不参与整理；不是通用箱子整理）
+# ★R91-⑤ 三种格子属性（NekoPocketPanel#notesText 里与 sort_gesture 并列四行，措辞同台）
+gtit.pocket.storage.bind_gesture=中栏/流体列/源质盘：中键 = 请求绑定——把这一格登记成一条会从元件补货的需求；格内有物就按那个东西登记，空格先只进状态、内容等 NEI 拖拽落成；再按一次撤销
+gtit.pocket.storage.memory_gesture=alt+左键 = 记忆（左上角蓝色 L）：本格只能放它记住的那一种东西，纯过滤、不产生任何补货拉取；格内有物就按那件记，空格的内容等 NEI 拖拽落成；再按一次撤销
+gtit.pocket.storage.upload_block_gesture=alt+右键 = 阻拦上传（左下角绿色 P）：本格内容永不进「口袋 → 元件」的上传方向；可与上面任一属性并存；只有 P 的格不携带内容，NEI 拖拽对它不响应；再按一次撤销
 gtit.pocket.note.title=本面板的用法摘要
 gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋只在主手持有期间工作
 gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d 闪烁猫猫币、持续 %d 秒
 gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）
-# ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）。
+# ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）；
+# ★R91-④（瓶往返改判）补三层：取出必须手持空瓶、没有空瓶点格零产出、入槽退空壳；晶仍不退壳。
 # 一个 %d = 一瓶固定点数（PocketConstants.ESSENCE_OUT_UNIT_POINTS 填，lang 不写死规格数字）。
-gtit.pocket.note.phial=源质搬运走源质原生通道；安瓿瓶（一瓶 %d 点）只在玩家手动取用时出现：取出按整瓶向下取整、余数留盘，空瓶点格即装满一瓶；上传/下传链路零瓶化，晶化源质只读不产
+gtit.pocket.note.phial=源质搬运走源质原生通道；安瓿瓶（一瓶 %d 点）只在玩家手动往返时出现：取出必须手持空瓶、按整瓶向下取整、余数留盘，手里没有空瓶时点格什么都不产出；入槽溶掉源质后空瓶原路退回游标；上传/下传链路零瓶化；晶化源质只读不产，入槽整叠销毁、不退空壳
 gtit.pocket.bind.summary=已绑定元件：%d / %d
 gtit.pocket.bind.inert=另有 %d 条旧绑定不在服务口径内（只服务第 1 枚），需要换元件时先全部解绑
 gtit.pocket.channel.start=启动

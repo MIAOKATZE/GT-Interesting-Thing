@@ -904,8 +904,10 @@ public final class NekoPocketPanel implements PocketSession {
      * {@code depositPhialsToPlayer}）已随本裁定<b>整体删除</b>，于是本方法是两条动作码
      * （{@code ACTION_ESSENCE_OUT_TO_PHIAL} 与 {@code ACTION_ESSENCE_OUT}——后者由
      * {@link NekoPocketServerHandler#performEssenceOut} 原样转发 packed arg，shift 位在里）
-     * 共同的、也是唯一的落点。四道权威复验（R18/R19：客户端一律不算真值）：
+     * 共同的、也是唯一的落点。五道权威复验（R18/R19：客户端一律不算真值）：
      * <ol>
+     * <li>★<b>R91-j</b>：packed arg 解出的格号必须落在 {@code [0, GHOST_ESSENCE_SLOT_LIMIT)}——
+     * 越界（含负数与 ≥ 2×FLAG 的编码域外值）⇒ <b>整条拒绝，不截断、不取模回一个"看着合法"的格号</b>；</li>
      * <li>游标是<b>空瓶</b>（{@link PocketEssenceIntake#isEmptyPhialCarrier} 白名单单源）。空手 / 持非容器 /
      * 持满瓶 / 持晶 ⇒ <b>不产出任何物品、不扣一点数</b>，只给 {@code gtit.pocket.essence.need_phial}
      * 的<b>面板内</b>回执（★R88 C3：源质域一律不进聊天框）；</li>
@@ -930,6 +932,22 @@ public final class NekoPocketPanel implements PocketSession {
         }
         final boolean shift = packedArg >= PocketConstants.ESSENCE_OUT_SHIFT_FLAG;
         final int cell = shift ? packedArg - PocketConstants.ESSENCE_OUT_SHIFT_FLAG : packedArg;
+        // ★★<b>R91-j（越界 arg ⇒ 显式拒绝，不截断、不取模）</b>：shift 位与格号共用这一枚 int 通道。
+        // 接受该形状的理由：编码域是两段互不重叠的区间（非 shift [0, FLAG)、shift [FLAG, 2×FLAG)，
+        // 格号上界 71 < FLAG=72 ⇒ packed 最大 143，远小于动作通道的 arg 基数 ACTION_ARG_BASE=1024，
+        // 与同通道里最大格号 135（中栏 134 + 一位）同一形状，装得下）。但解出来的格号一旦越出
+        // [0, GHOST_ESSENCE_SLOT_LIMIT)，就是伪造/写歪的 arg ⇒ 整条不动（不扣点、不动游标、不标脏），
+        // ★也绝不"顺手 % 回一个合法格号"——截断会把"越界"读成"玩家点了那一格"（R70 防伪同族口径）。
+        // 位移区间不重叠 + 越界拒绝两条由用例 essence_out_packed_arg_bounds_rejected 钉住。
+        if (packedArg < 0 || cell < 0 || cell >= PocketConstants.GHOST_ESSENCE_SLOT_LIMIT) {
+            GTInterestingThing.LOG.debug(
+                "[PocketR89] L4 格→瓶取出拒收（R91-j 越界）：arg={} 解出格号 {} 不在 [{}, {}) ⇒ 拒绝，不截断",
+                packedArg,
+                cell,
+                0,
+                PocketConstants.GHOST_ESSENCE_SLOT_LIMIT);
+            return;
+        }
         final ItemStack carried = syncManager.getCursorItem();
         if (!PocketEssenceIntake.isEmptyPhialCarrier(carried, EssenceGate.TAUM)) {
             // ★R91-④ 的正身：没有空瓶就没有任何东西可灌 ⇒ 零产出（旧形状在这里"无中生有"造一叠满瓶）
@@ -991,8 +1009,9 @@ public final class NekoPocketPanel implements PocketSession {
                 store.add(tag, points);
                 inventory.recordEssenceDelta(tag, points);
                 inventory.markDirty();
-                // ★R88 债②（R90 T2 拆键）：换瓶语义的"落点满"——独立于通道 Report 的 target_full 与
-                // 取出支的 target_full_take，文案明说"点数已退回源质盘"（无占位：整笔回滚，全额留盘）。
+                // ★R88 债②（R90 T2 拆键）+ ★R91-g 收敛：换瓶语义的"落点满"——独立于通道 Report 的
+                // target_full；旧"取出支"的 target_full_take 随自造瓶支失去调用方，两份 lang 已删干净
+                // （不留注释尸）。文案明说"点数已退回源质盘"（无占位：整笔回滚，全额留盘）。
                 putReceipt("gtit.pocket.receipt.target_full_put", 0);
                 return;
             }

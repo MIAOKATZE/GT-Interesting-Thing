@@ -380,9 +380,11 @@ public final class PocketFilterConfig {
      * <li>{@code attr == MEMORY} 且<b>已有载荷</b> ⇒ 只有载荷键<b>逐字相同</b>才放行（载荷键是跨重启稳定
      * 身份，与 {@code PocketAeChannelOps#contentKey} 同一比对口径 ⇒ "只能放该种东西"真的只放那一种）；</li>
      * <li>{@code attr == MEMORY} 但<b>还没有载荷</b>（pending 记忆 = R91-b 的"空格先进状态、内容待拖拽落成"）
-     * ⇒ 没有任何"那一种东西"可比 ⇒ <b>不拦</b>（一格还没记住内容时它无立场可执法；
-     * NEI 拖拽一落成载荷，第二条立刻生效）。★这一档对物品支<b>结构上不可达</b>——调用方只在
-     * {@code isGhostItemSlot}（= 有载荷）为真时问本方法，写在这里是把"以后有人从别处问"的路也钉死。</li>
+     * ⇒ ★<b>R91-i 显式裁定：不限制放置</b>——还没有可比载荷，"只能放那一种"无从谈起；载荷定档只由
+     * NEI 拖拽、或"格内有物时再按一次手势"（R91-⑤ 共同规则）完成，一落成载荷本方法第二条接管。
+     * ★这一档是<b>契约</b>不是推演：用例 {@code ghost_memory_pending_placement_unrestricted} 直接调本方法
+     * 钉住返回值（本仓通则：能用一行源码判真伪的前提，不许留在"推断"栏——物品调用方今天只在
+     * 有载荷时问，但这条返回不依赖"谁来问"）。</li>
      * </ol>
      * ★调用方是 {@code PocketInventory#newStorageGroup} 的 {@code isItemValid} 链
      * （R83-B1 改判：<b>不是</b>字面 {@code canPut}）；★补货行为仍只认 BIND（{@link #pullsFromCell}），
@@ -393,7 +395,12 @@ public final class PocketFilterConfig {
             return false;
         }
         final Filter declared = at(kind, slotIndex);
-        return declared == null || declared.key()
+        if (declared == null) {
+            // ★R91-i：pending 档（挂了 L、还没定档）⇒ 不限制放置。这条返回就是裁定的实现形态，
+            // ★不许被"调用方结构上问不到"之类的推演顶替（推演会随下一个调用方悄悄过期）。
+            return true;
+        }
+        return declared.key()
             .equals(contentKey);
     }
 

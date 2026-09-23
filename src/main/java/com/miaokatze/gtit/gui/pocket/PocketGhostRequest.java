@@ -28,7 +28,9 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
  * CLR|&lt;slot&gt;|&lt;kind 字母&gt;      I/F/E，见 {@link PocketConstants#GHOST_KIND_ITEM} 等
  * CAP|&lt;slot&gt;|&lt;kind 字母&gt;|&lt;绝对值&gt;   ★R83 C2：调这一格声明的组上限（alt+滚轮）
  * FLG|&lt;slot&gt;|&lt;kind 字母&gt;|&lt;手势字母&gt;  ★R91-⑤：切这一格的<b>属性位</b>（B=中键 BIND /
- *                                              M=alt+左 记忆 / P=alt+右 阻拦上传）——★也恰 4 段
+ *                                              M=alt+左 记忆 / P=alt+右 阻拦上传）——★也恰 4 段；
+ *                                              ★R91-h：该支读回的载荷键必须与 kind 字母<b>同区</b>，
+ *                                              跨区合法键整条拒收（见 {@link #applyFlag} 纪律 6）
  * </pre>
  *
  * ★<b>CAP 为什么走字符串而不是 int 动作通道</b>：流体一档就是 160,000 mB、默认值 16,000,000，
@@ -561,9 +563,16 @@ public final class PocketGhostRequest {
      * <li>★<b>attr 换到 {@code NONE} 时随解绑一起撤载荷</b>（撤销 = 回到"普通格"，留一条载荷就是
      * 玩家眼里的"我没清掉的需求"）；attr <b>换档</b>（BIND↔MEMORY）时<b>载荷不换</b>；</li>
      * <li>{@code P} 支<b>永不</b>碰 attr、也永不碰载荷（正交位；"alt 右键的锁格子不携带内容"）；</li>
-     * <li>进入 BIND / MEMORY 且本格<b>还没有载荷</b>时，向 {@link PayloadSource} 要一次该格的真实内容
+     * <li>进入 BIND / MEMORY 且本格<b>还没有载荷</b>时，先向 {@link PayloadSource} 要一次该格的真实内容
      * ⇒ 有物就一次写全（attr + 载荷），空格就只挂状态（内容待 NEI 拖拽落成 = R91-b）。
      * ★{@code payloads == null}（两参/三参旧形态）⇒ 跳过这一步，既有回归用例行为逐字不变。</li>
+     * <li>★<b>R91-h（硬校验，先问后写才拦得住）</b>：读回来的载荷键若能解成一条<b>合法声明</b>、
+     * 其 kind 却 ≠ 本请求的区域字母 ⇒ 整条 {@link Outcome#REJECTED}（<b>不写</b> attr、<b>不写</b> 载荷、
+     * <b>不猜</b>"把它翻译成本区域同号格"）。这是 R70 {@code CLR|0} bug 家族的形状：三个区的索引
+     * 各自从 0 起，跨区合法键会落进"那个区同号的格" ⇒ attr 记在本格、载荷出现在别人区里，两张表各错一格。
+     * ★解不出的杂键<b>不算</b>跨区（没有可比对的 kind，按纪律 5 停在 pending，attr 手势本身不被毁，
+     * 见用例 {@code ghostFlagPayloadFromServerTruth} ③）；钉死这条的是
+     * {@code ghost_flag_cross_region_key_rejected}。</li>
      * </ol>
      */
     private static Decision applyFlag(int slotIndex, String letter, String gesture, PocketFilterConfig filters,
@@ -580,14 +589,23 @@ public final class PocketGhostRequest {
             return new Decision(Outcome.UNCHANGED, kind, slotIndex);
         }
         if (isAttrGesture(gesture)) {
+            // ★纪律 5 的"问"必须发生在纪律 6 的"判"之前、且两者都在<b>任何一个字节落下之前</b>——
+            // 先写 attr 再发现载荷键跨区，就退化成"拦了一半"（位表已多一条，回滚又要碰第二处真相）。
+            final String payloadKey = payloads != null && nextAttr != PocketConstants.GHOST_ATTR_NONE
+                && filters.at(kind, slotIndex) == null ? payloadKeyQuietly(payloads, kind, slotIndex) : null;
+            if (isCrossRegionPayload(kind, payloadKey)) {
+                // ★R91-h：伪造跨区域键 ⇒ 整条拒收（不写、不猜；Decision 带回区域与格号供 L8 读数定位）
+                return new Decision(Outcome.REJECTED, kind, slotIndex);
+            }
             final boolean attrChanged = filters.setAttr(kind, slotIndex, nextAttr);
             boolean payloadDropped = false;
             if (nextAttr == PocketConstants.GHOST_ATTR_NONE) {
                 // 纪律 3：撤属性 = 这一格不再是"某条需求" ⇒ 载荷一起撤（P 位刻意保留，它有自己的手势）
                 payloadDropped = filters.removeAt(kind, slotIndex);
-            } else if (payloads != null && filters.at(kind, slotIndex) == null) {
-                // 纪律 5：格内有物 ⇒ 按该物记录（服务端读真实内容，★不让客户端把载荷抄一遍送上来）
-                attachExistingPayload(kind, slotIndex, filters, essenceCells, payloads);
+            } else if (payloadKey != null && !payloadKey.isEmpty()) {
+                // ★纪律 5 的"写"仍走 applySet 单点：载荷键合法性、源质归属对账与建档 assignCell 都只有一套
+                // 判据（这里绕过去就是第二处真相）；applySet 自己拒收 ⇒ 本格停在 pending（★服务端不猜）。
+                applySet(slotIndex, payloadKey, filters, essenceCells);
             }
             if (!attrChanged && !payloadDropped && filters.at(kind, slotIndex) == null) {
                 // ★兜底读数：位表说"没变"且这一格既没载荷也没被撤掉什么 ⇒ UNCHANGED（不写档、不刷虚化）。
@@ -602,29 +620,36 @@ public final class PocketGhostRequest {
     }
 
     /**
-     * 把该格<b>现有内容</b>落成一条载荷声明（{@link #applyFlag} 纪律 5 的执行体）。
-     * <p>
-     * ★走 {@link #applySet} 而不是直接 {@code filters.add(...)}：载荷键的合法性、源质格的<b>归属对账</b>
-     * 与建档 {@code assignCell} 都只有一套判据（这里绕过去就是第二处真相）。解不出 / 不合法 ⇒
-     * 什么都不写（本格停在"只挂 attr、无载荷"的 pending 态，等 NEI 拖拽落成）。
+     * ★R91-h 的"问"半边：内容读取要碰 ItemStack / 注册表，桩件与真实档都可能抛 ⇒ 拿不到就当
+     * "没有载荷可读"（纪律 5 自然停在 pending，★属性手势本身不因读数口故障被毁，也不崩服务端）。
      */
-    private static void attachExistingPayload(PocketFilterConfig.Kind kind, int slotIndex, PocketFilterConfig filters,
-        PocketEssenceStore essenceCells, PayloadSource payloads) {
-        final String payloadKey;
+    private static String payloadKeyQuietly(PayloadSource payloads, PocketFilterConfig.Kind kind, int slotIndex) {
         try {
-            payloadKey = payloads.payloadKeyAt(kind, slotIndex);
+            return payloads.payloadKeyAt(kind, slotIndex);
         } catch (RuntimeException ignored) {
-            // 内容读取要碰 ItemStack / 注册表，桩件与真实档都可能抛 ⇒ 属性已经落了，载荷这一次不要它
-            return;
+            return null;
         }
+    }
+
+    /**
+     * ★★<b>R91-h（阻断级落码）</b>：载荷键是否是一条"解得开、但 kind 与手势所在区域不一致"的<b>跨区域键</b>。
+     * <p>
+     * 三区索引各自从 0 起（中栏 0…134 / 流体槽 0…17 / 源质格 0…71），{@link #applySet} 的 kind 由
+     * 载荷键自己的前缀决定 ⇒ 不加这道硬校验，一条"别区的合法键"会被完好地写进<b>那个区</b>同号格
+     * （R70 的原教训：伪造一条 {@code CLR|0} 就能撤掉不相干区域的 ghost ⇒ 测试假绿）。
+     * 生产读数口 {@code NekoPocketServerHandler#ghostPayloadAt} 按 kind 分三支读真值 ⇒ 正常路径给不出
+     * 跨区键；被拦下的只有伪造/写歪的 {@link PayloadSource}，而校验放在这里（★不是只信读数口）才是
+     * "区域字母 ↔ kind"的<b>唯一</b>执法点——所有注入实现都得过这道门，不许各区调用方各判一遍。
+     *
+     * @return {@code true} ⇒ 键解得开且属于别的区域（调用方整条拒收）；空键 / 解不开 ⇒ {@code false}
+     *         （没有可比对的 kind，走纪律 5 的 pending 口径）
+     */
+    private static boolean isCrossRegionPayload(PocketFilterConfig.Kind kind, String payloadKey) {
         if (payloadKey == null || payloadKey.isEmpty()) {
-            return;
+            return false;
         }
-        // ★源质的载荷键要带 typeId，那是实机侧探针的读数 ⇒ 由 PayloadSource（服务端实现）整键给出，
-        // 本类不猜通道 id；给不出合法键就停在"只挂 attr、无载荷"的 pending 态。
-        // ★★连 essenceCells 一起交给 applySet：源质声明必须与<b>格位归属对账</b>（R90 E3 D3 的那道门），
-        // 从 FLG 支进来也不例外 —— 绕过它就是"属性顺手写了一条不属于本格的声明"。
-        applySet(slotIndex, payloadKey, filters, essenceCells);
+        final PocketFilterConfig.Filter parsed = PocketFilterConfig.parseKey(payloadKey);
+        return parsed != null && parsed.kind() != kind;
     }
 
     /** ★CLR：三段齐（第三段是区域字母）才动；越界或字母不认识一律拒收。 */

@@ -340,6 +340,12 @@ public class NekoPocketModelTest {
         cases.put("essence_intake_memory_gate_states", NekoPocketModelTest::essenceIntakeMemoryGateStates);
         cases.put("ghost_three_widgets_gestures_wired", NekoPocketModelTest::ghostThreeWidgetsGesturesWired);
         cases.put("essence_out_shift_bit_is_carried", NekoPocketModelTest::essenceOutShiftBitIsCarried);
+        // ---- ★R91-S（S5 落码批）R91-h/i/j：FLG 跨区硬校验 / pending 放置契约 / packed arg 越界拒绝 ----
+        cases.put("ghost_flag_cross_region_key_rejected", NekoPocketModelTest::ghostFlagCrossRegionKeyRejected);
+        cases.put(
+            "ghost_memory_pending_placement_unrestricted",
+            NekoPocketModelTest::ghostMemoryPendingPlacementUnrestricted);
+        cases.put("essence_out_packed_arg_bounds_rejected", NekoPocketModelTest::essenceOutPackedArgBoundsRejected);
         // ---- ★R90 E3/E4（批 2 测试落地）：S3/S5 预筛真值表 + 格→瓶取出守卫 + ghost 建档归属对账 + S6 流体决策核
         // （世界站适配器 PocketWorldFluidTap 与 ItemNekoDimensionPocket.onItemUseFirst 的实机手势属
         // in-game-checklist 项，本套件只钉决策核与口袋侧纯 JVM 面）
@@ -7382,6 +7388,251 @@ public class NekoPocketModelTest {
             1,
             countCodeLinesIn(panel, "final int bottles = PocketEssenceIntake.phialsToFill("),
             "★取出只数在整份面板里恰一处（第二处 = 面板抄了第二份取整算式）");
+    }
+
+    /**
+     * ★★<b>R91-h（S5 落码）：{@code FLG} 支缺「区字母 ↔ 载荷 kind」硬校验</b> —— R70 {@code CLR|0}
+     * bug 家族（三区索引各自从 0 起，裸索引分不清哪一区）。裁定原文的教训形态：<i>伪造一条跨区域键
+     * 就能把载荷写到不相干区域的同号格 ⇒ 测试假绿</i>。这里钉五件，缺一件就是"拦了个半截"：
+     * ① 跨区域<b>合法</b>键 ⇒ 整条 REJECTED，attr / 载荷 / 位表<b>零副作用</b>（"不写、不猜"；
+     * ★尤其不得落进"那个区同号的格"——槽号 9 在三区都合法，正是当年会静默串位的形状）；
+     * ② 成对正控：<b>同区</b>合法键照常一次写全（证明①不是恒拒的门）；
+     * ③ ★与"解不开的杂键"分家：杂键没有可比对的 kind ⇒ attr 照落、载荷停 pending（R91-B 用例③
+     * 的形状不许被硬校验顺带改判 —— 把"解不出"也拒掉就是毁掉属性手势本身）；
+     * ④ 源质区上的伪造物品键 ⇒ REJECTED 且<b>不触发建档 assignCell</b>（归属对账那道门不能被
+     * "先过 kind 再说"绕过）；
+     * ⑤ P 支永不问载荷 ⇒ 硬校验对 P 零触发（正交位不携带内容，R91-⑤ 口径）。
+     */
+    private static void ghostFlagCrossRegionKeyRejected() {
+        final String gBind = PocketConstants.GHOST_FLAG_BIND;
+        final String gMemory = PocketConstants.GHOST_FLAG_MEMORY;
+        // 槽号 9 在中栏 / 流体 / 源质三区<b>全部合法</b> ⇒ "落进同号格"这个形状三向都验得到。
+        final int slot = 9;
+        SimpleAssert.that(PocketFilterConfig.isAllowedSlotIndex(Kind.ITEM, slot), "前置：9 在中栏合法");
+        SimpleAssert.that(PocketFilterConfig.isAllowedSlotIndex(Kind.FLUID, slot), "前置：9 在流体条合法");
+        SimpleAssert.that(PocketFilterConfig.isAllowedSlotIndex(Kind.ESSENCE, slot), "前置：9 在源质盘合法");
+        final String foreignFluid = PocketFilterConfig.fluidKey("lava");
+        final String foreignEssence = PocketFilterConfig.essenceKey("essentia", "aer");
+        // ---- ① 物品区手势 × 两手势 × 两条他区合法键 ⇒ 整条 REJECTED，零副作用 ----
+        for (String gesture : new String[] { gBind, gMemory }) {
+            for (String foreign : new String[] { foreignFluid, foreignEssence }) {
+                final PocketFilterConfig cfg = new PocketFilterConfig();
+                final RecordingPayloads payloads = new RecordingPayloads(foreign);
+                final PocketGhostRequest.Decision decision = PocketGhostRequest
+                    .apply(PocketGhostRequest.flagRequest(slot, Kind.ITEM, gesture), cfg, null, payloads);
+                SimpleAssert.eq(
+                    PocketGhostRequest.Outcome.REJECTED,
+                    decision.outcome,
+                    "★伪造跨区域键 ⇒ REJECTED（" + gesture + " + " + foreign + "）");
+                SimpleAssert.eq(Boolean.FALSE, Boolean.valueOf(decision.changed()), "REJECTED 不算「改过」（不写档、不刷虚化）");
+                SimpleAssert
+                    .eq(PocketConstants.GHOST_ATTR_NONE, cfg.attrAt(Kind.ITEM, slot), "★attr 也没落（先判后写，一个字节都不给）");
+                SimpleAssert.eq(null, cfg.at(Kind.ITEM, slot), "本格载荷零写入");
+                SimpleAssert.eq(0, cfg.flagEntryCount(), "★位表一个字都没多（拒收 = 零副作用，R70 假绿的根判据）");
+                SimpleAssert.that(cfg.at(Kind.FLUID, slot) == null, "★载荷没被「翻译」进流体区同号格（applySet 的 kind 由键决定，不加校验就会落这里）");
+                SimpleAssert.that(cfg.at(Kind.ESSENCE, slot) == null, "★也没落进源质区同号格");
+                SimpleAssert.eq(1, payloads.queries, "问了一次就被拦下（★拦在 PocketGhostRequest 这一道门，不是只信读数口）");
+                SimpleAssert.eq(Kind.ITEM, payloads.lastKind, "问的仍是手势所在区域（读数口按区域分三支的约定不变）");
+            }
+        }
+        // ---- ② 成对正控：同区合法键 ⇒ 照常一次写全（上一条不是恒拒）----
+        final PocketFilterConfig okCfg = new PocketFilterConfig();
+        final String itemKey = PocketFilterConfig.itemKey(2621, 7, "AAA");
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(
+                PocketGhostRequest.flagRequest(slot, Kind.ITEM, gBind),
+                okCfg,
+                null,
+                new RecordingPayloads(itemKey)).outcome,
+            "★同区合法键仍 APPLIED（成对：只钉「拒」不钉「放」，门坏了也读绿）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, okCfg.attrAt(Kind.ITEM, slot), "attr 落了");
+        SimpleAssert.that(okCfg.at(Kind.ITEM, slot) != null, "载荷落了，★且落在本格本区");
+        SimpleAssert.eq(
+            itemKey,
+            okCfg.at(Kind.ITEM, slot)
+                .key(),
+            "键逐字落地");
+        // ---- ③ 解不开的杂键【不是】跨区键：attr 照落、载荷停 pending（与 R91-B 用例③分家）----
+        final PocketFilterConfig junkCfg = new PocketFilterConfig();
+        final PocketGhostRequest.Decision junked = PocketGhostRequest.apply(
+            PocketGhostRequest.flagRequest(slot, Kind.ITEM, gBind),
+            junkCfg,
+            null,
+            new RecordingPayloads("junk:not:parseable"));
+        SimpleAssert
+            .eq(PocketGhostRequest.Outcome.APPLIED, junked.outcome, "★解不出的键没有可比对的 kind ⇒ 不得被硬校验顺带毁掉属性手势本身（R91-⑤ 共同规则）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_BIND, junkCfg.attrAt(Kind.ITEM, slot), "attr 照落（pending）");
+        SimpleAssert.eq(null, junkCfg.at(Kind.ITEM, slot), "载荷停在「只挂 attr 无载荷」，等 NEI 拖拽落成");
+        // ---- ④ 源质区手势 + 伪造物品键 ⇒ REJECTED，且不触发建档（归属对账不被绕过）----
+        final PocketEssenceStore store = new PocketEssenceStore();
+        store.add("aer", 8);
+        final int essenceCell = store.cellOf("aer");
+        SimpleAssert.that(essenceCell >= 0, "前置：桩件源质已占一格");
+        final PocketFilterConfig essenceCfg = new PocketFilterConfig();
+        final PocketGhostRequest.Decision essenceForged = PocketGhostRequest.apply(
+            PocketGhostRequest.flagRequest(essenceCell, Kind.ESSENCE, gBind),
+            essenceCfg,
+            store,
+            new RecordingPayloads(itemKey));
+        SimpleAssert
+            .eq(PocketGhostRequest.Outcome.REJECTED, essenceForged.outcome, "★源质格上伪造物品键 ⇒ 整条拒（不写、不猜；物品声明永远不该出现在 e 区）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_NONE, essenceCfg.attrAt(Kind.ESSENCE, essenceCell), "attr 未落");
+        SimpleAssert.eq(
+            null,
+            essenceCfg.at(Kind.ESSENCE, essenceCell),
+            "★载荷没落 ⇒ 也走不到 assignCell 建档（拦在 kind 这一道，门先于建档，盘不可能凭空多归属）");
+        SimpleAssert.eq(8, store.get("aer"), "★盘分毫未动（原归属与点数逐字不变）");
+        // ---- ⑤ P 支永不问载荷 ⇒ 硬校验零触发（正交位不携带内容）----
+        final PocketFilterConfig pCfg = new PocketFilterConfig();
+        final RecordingPayloads pPayloads = new RecordingPayloads(foreignFluid);
+        SimpleAssert.eq(
+            PocketGhostRequest.Outcome.APPLIED,
+            PocketGhostRequest.apply(
+                PocketGhostRequest.flagRequest(slot, Kind.ITEM, PocketConstants.GHOST_FLAG_UPLOAD_BLOCK),
+                pCfg,
+                null,
+                pPayloads).outcome,
+            "P 手势合法（它根本不解载荷）");
+        SimpleAssert.eq(0, pPayloads.queries, "★P 支一次都不问载荷 ⇒ kind 校验对 P 天然零触发");
+        SimpleAssert.eq(0, pCfg.size(), "载荷表零增长");
+    }
+
+    /**
+     * ★<b>R91-i（S5 落码）：pending 档（挂了 L、还没有载荷）的放置语义 = 不限制放置</b>——
+     * 裁定不再留在"推演为不可达"栏（本仓通则：能用一行源码判真伪的前提，不许靠调用方形状推断）：
+     * {@code allowsPlayerPlacement} 的返回值<b>本身就是契约</b>，本用例<b>直接调它</b>钉死，
+     * 与"调用方今天问不问得到"无关。四档真值逐格钉：
+     * ① MEMORY + 无载荷 ⇒ 任何键都放行（还没记住东西 ⇒ 无立场执法；载荷只由 NEI 拖拽或
+     * "格内有物时再按一次手势"定档 = R91-⑤ 共同规则）；
+     * ② MEMORY + 有载荷 ⇒ 只放被记住的那一条（逐字比键）；
+     * ③ BIND/NONE + 有载荷 ⇒ 一律不放（R84 需求格禁放置原样）；
+     * ④ 正交位 P 不参与本判据（挂了 P 不改上面三档的任何一条）。
+     */
+    private static void ghostMemoryPendingPlacementUnrestricted() {
+        final String remembered = PocketFilterConfig.itemKey(2621, 0, "");
+        final String other = PocketFilterConfig.itemKey(2622, 0, "");
+        // ---- ① pending（attr=MEMORY、无载荷）⇒ 不限制放置 ----
+        final PocketFilterConfig pending = new PocketFilterConfig();
+        pending.setAttr(Kind.ITEM, 5, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.eq(null, pending.at(Kind.ITEM, 5), "前置：载荷表没有这一格（★这一档对物品调用方今天是问不到的，但契约在这）");
+        SimpleAssert.eq(
+            Boolean.TRUE,
+            Boolean.valueOf(pending.allowsPlayerPlacement(Kind.ITEM, 5, remembered)),
+            "★R91-i：pending ⇒ 放行（还没有可比载荷，限制无从谈起）");
+        SimpleAssert.eq(
+            Boolean.TRUE,
+            Boolean.valueOf(pending.allowsPlayerPlacement(Kind.ITEM, 5, other)),
+            "★放行对<b>任何</b>键成立（不是「恰好比中了什么」）");
+        // ---- ② 定档之后接管：MEMORY + 有载荷 ⇒ 只放那一种 ----
+        final PocketFilterConfig set = new PocketFilterConfig();
+        set.setAttr(Kind.ITEM, 5, PocketConstants.GHOST_ATTR_MEMORY);
+        SimpleAssert.that(
+            set.add(5, new PocketFilterConfig.ItemFilter(5, 2621, 0, "")),
+            "前置：定档 = 拖拽落成载荷（NEI 拖 / 格内有物再按一次手势的共同规则）");
+        SimpleAssert
+            .eq(Boolean.TRUE, Boolean.valueOf(set.allowsPlayerPlacement(Kind.ITEM, 5, remembered)), "被记住的那一种放得进");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            Boolean.valueOf(set.allowsPlayerPlacement(Kind.ITEM, 5, other)),
+            "★另一种放不进（pending 的「放行」不留到定档之后）");
+        // ---- ③ 另外两档不享有 pending 豁免 ----
+        final PocketFilterConfig bindPending = new PocketFilterConfig();
+        bindPending.setAttr(Kind.ITEM, 6, PocketConstants.GHOST_ATTR_BIND);
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            Boolean.valueOf(bindPending.allowsPlayerPlacement(Kind.ITEM, 6, remembered)),
+            "BIND（含 pending BIND）⇒ 需求格默认禁放置（R84 口径，L 才开口子）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            Boolean.valueOf(new PocketFilterConfig().allowsPlayerPlacement(Kind.ITEM, 7, remembered)),
+            "NONE ⇒ 不放行（默认禁放置是这条判据的地面真值，不是漏网）");
+        // ---- ④ P 正交：挂不挂 P 不改三档真值 ----
+        final PocketFilterConfig withP = new PocketFilterConfig();
+        withP.setAttr(Kind.ITEM, 5, PocketConstants.GHOST_ATTR_MEMORY);
+        withP.setUploadBlocked(Kind.ITEM, 5, true);
+        SimpleAssert.eq(
+            Boolean.TRUE,
+            Boolean.valueOf(withP.allowsPlayerPlacement(Kind.ITEM, 5, other)),
+            "★pending + P ⇒ 仍按 pending 放行放置（P 只管注入向，不管玩家放入）");
+        withP.add(5, new PocketFilterConfig.ItemFilter(5, 2621, 0, ""));
+        SimpleAssert
+            .eq(Boolean.FALSE, Boolean.valueOf(withP.allowsPlayerPlacement(Kind.ITEM, 5, other)), "定档 + P ⇒ 照旧只放那一种");
+        // ---- ⑤ 显式返回的源码形状：pending 支是一条真早退，不是布尔巧合 ----
+        final java.util.List<String> cfg = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketFilterConfig.java");
+        if (cfg == null) {
+            System.out.println("[NOTE] 读不到 PocketFilterConfig.java ⇒「pending 支显式返回」的半边【未验】（★不是通过）");
+            return;
+        }
+        final int start = methodStart(
+            cfg,
+            "public boolean allowsPlayerPlacement(Kind kind, int slotIndex, String contentKey) {");
+        SimpleAssert.that(start >= 0, "★L 的物品执法腿必须还能按签名定位");
+        final int end = methodEnd(cfg, start);
+        SimpleAssert.that(
+            regionContainsCode(cfg, start, end, "return true;"),
+            "★pending 档是一条【显式的】return true（R91-i：裁定写成返回，不写成「推演」）");
+        SimpleAssert.eq(1, countRegionCode(cfg, start, end, "declared == null"), "★空载荷的读取点恰一处（判据本体，不复制第二份）");
+    }
+
+    /**
+     * ★<b>R91-j（S5 落码）：shift 位与格号共用同一枚 int 通道 —— 接受形状，但钉两条</b>：
+     * ① <b>位移区间不重叠</b>：非 shift 段 {@code [0, FLAG)} 与 shift 段 {@code [FLAG, 2×FLAG)}
+     * 互斥且拼满编码域 ⇒ 编码 (格号, shift) ↔ packed 是双射（日后加第二枚标志位必须先重新裁定）；
+     * ② <b>越界 arg 拒绝而非截断</b>：负数、{@code ≥ 2×FLAG} 这类编码域外值一旦解出的格号越出
+     * {@code [0, GHOST_ESSENCE_SLOT_LIMIT)} ⇒ 服务端单点整条拒（不扣点、不动游标、不标脏），
+     * ★绝不取模 / 钳位回一个"看着合法"的格号（把"越界"读成"玩家点了那一格"= R70 防伪同族）。
+     * Panel 纯 JVM 构造不出 ⇒ ②走"编码算术 + 源码接线"两半成对（与 R91-B/R91-C 段同形）。
+     */
+    private static void essenceOutPackedArgBoundsRejected() {
+        final int flag = PocketConstants.ESSENCE_OUT_SHIFT_FLAG;
+        final int grid = PocketConstants.GHOST_ESSENCE_SLOT_LIMIT;
+        // ---- ① 区间不重叠 ⇔ 位值恰 = 格数（双射的两半）----
+        SimpleAssert.eq(grid, flag, "★FLAG = 格数上界 ⇒ packed = cell + shift×FLAG 在 [0, 2×FLAG) 上是双射");
+        for (int packed = 0; packed < 2 * flag; packed++) {
+            final boolean shift = packed >= flag;
+            final int cell = shift ? packed - flag : packed;
+            SimpleAssert.that(cell >= 0 && cell < grid, "编码域内每个 packed 都解回合法格（" + packed + " ⇒ " + cell + "）");
+            SimpleAssert.eq(packed, cell + (shift ? flag : 0), "★反向重编码逐点还原（互不重叠的操作性证明）");
+        }
+        // 编码域外 ⇒ 解出的格号必然越界（这条推论就是"拒绝而非截断"能靠一个区间判断做完的理由）
+        final int outside = 2 * flag;
+        SimpleAssert.eq(Boolean.FALSE, Boolean.valueOf(outside - flag < grid), "★packed = 2×FLAG ⇒ 格号越界（无截断则必然落进拒绝支）");
+        // ---- ② 服务端单点的显式拒绝（源码半边 + 成对负控"没有截断"）----
+        final java.util.List<String> panel = guiPocketSource("NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒「越界 arg 显式拒绝」的半边【未验】（★不是通过）");
+            return;
+        }
+        final int perform = methodStart(panel, "void performEssenceOutToPhial(int packedArg) {");
+        SimpleAssert.that(perform >= 0, "★取出单点必须还能按签名定位");
+        final int performEnd = methodEnd(panel, perform);
+        SimpleAssert.that(regionContainsCode(panel, perform, performEnd, "packedArg < 0"), "★负数 arg 显式拒绝（R91-j②）");
+        SimpleAssert.that(
+            regionContainsCode(panel, perform, performEnd, "cell >= PocketConstants.GHOST_ESSENCE_SLOT_LIMIT"),
+            "★解出的格号按【白名单上界】拒绝（★不是拿显示格数写死第二枚数）");
+        SimpleAssert.that(regionContainsCode(panel, perform, performEnd, "return;"), "拒绝支真早退（只 log 不写）");
+        SimpleAssert.eq(
+            0,
+            countRegionCode(panel, perform, performEnd, "packedArg %"),
+            "★体内无「packedArg % …」——越界不得被取模截断回合法格（截断 = 把伪造读成点击）");
+        SimpleAssert
+            .that(textMatches(panel, "ACTION_ARG_BASE = 1024"), "★前置：动作通道是 code×1024 + arg 的打包式样（下面那条「装得下」判据的真基数）");
+        SimpleAssert.that(
+            2 * flag - 1 < 1024,
+            "★最大 packed（" + (2 * flag - 1)
+                + "）远小于 arg 基数 ⇒ 一个 int 同时装「哪一格」与「要不要多取」成立；"
+                + "再加第二枚标志位 ⇒ 2×域会顶穿基数，必须先重新裁定编码（R91-j①的防线）");
+        SimpleAssert.eq(
+            0,
+            countRegionCode(panel, perform, performEnd, "Math.min(")
+                + countRegionCode(panel, perform, performEnd, "Math.max("),
+            "★体内无钳位回合法域的 Math.min/max（本单点的既有 Math.min 只在 phialsToFill 里，★不在这里）");
+        // 行序成对：守卫早退必须排在游标读取与任何库存写入之前（拒绝 = 分毫不动）
+        final int guard = firstCodeLineWith(panel, perform, performEnd, "packedArg < 0");
+        final int cursor = firstCodeLineWith(panel, perform, performEnd, "syncManager.getCursorItem()");
+        SimpleAssert.that(guard >= 0 && cursor >= 0 && guard < cursor, "★拒绝排在读游标/扣点之前（越界一笔都不碰）");
     }
 
     // ================================================================== ★R90 E3（S3+S5）批 2 测试落地

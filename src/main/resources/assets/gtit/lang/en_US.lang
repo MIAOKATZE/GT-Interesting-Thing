@@ -305,7 +305,8 @@ gtit.pocket.receipt.partial=Moved %d, refused %d
 gtit.pocket.receipt.partition_denied=Cell partition rejected it (not full)
 gtit.pocket.receipt.cell_full=Cell is full
 gtit.pocket.receipt.target_full=Nowhere to put it: the pocket has no free item slot, and (for essentia) no cell that can hold a whole phial
-gtit.pocket.receipt.target_full_take=Take-out stopped: no room for the phials (moved %d); %d essentia points remain in the pocket tray
+# ★R91-g: the old target_full_take ("take-out with an empty cursor hit a full landing spot") lost its
+#   last production caller with the self-materialized-phial branch; removed from both files (no corpse).
 gtit.pocket.receipt.target_full_put=Phial swap stopped: no room in the inventory or pocket storage for the filled phial; the points were returned to the tray
 gtit.pocket.receipt.unrecognised=No bound cell is recognised, channel not opened
 gtit.pocket.receipt.cooldown=Instant channel is on cooldown
@@ -323,27 +324,35 @@ gtit.pocket.still.full=Essentia cells full, item not consumed
 gtit.pocket.still.unavailable=Thaumcraft not loaded
 gtit.pocket.still.over_cap=%d slot(s) exceed the per-aspect cap and were skipped (%d point(s))
 gtit.pocket.still.partial_skip=%d more slot(s) did not fit this round (%d point(s)); they retry next round
-gtit.pocket.essence.cursor_busy=Your cursor is holding something already; empty it before taking essentia phials
-# ★R88 载体改判（晶化源质 → TC 安瓿瓶）+ ★C3 聊天零输出：四态一律走面板内粘性回执。
-# ★intake.ok 刻意只留一个 %d：投递面是 NekoPocketPanel#putReceipt(key, moved, refused)，
-#   载荷只有两个整数、本地化在客户端做（receiptText 的 String.format 实参 = 两个 int）。
-#   旧形状的 %s 会被第一个整数塞位（读出 "Deposited 24 essentia ..."），故键名保留、占位改成单 %d。
-# ★键名 intake.not_crystal / Outcome.NOT_CRYSTAL 保留（改键名 = 改 Java 常量与测试对账，R88 不做）；
-#   含义已按 ★C2 扩成"瓶（现役）或带归属的旧晶（只读）"。
+# ★R91-g: the old cursor_busy state was folded into essence.need_phial (the cursor holding something
+#   that is not an empty phial = the same "go hold a phial" message); removed from both files (no corpse).
+# ★R88 carrier change (crystal → TC phial) + ★C3 zero chat output: since R91-⑤ the deposit side has FIVE
+#   sticky in-panel receipts.
+# ★intake.ok deliberately keeps exactly one %d: putReceipt(key, moved, refused) carries two ints and the
+#   client formats them (receiptText). The old %s got an integer stuffed into it ("Deposited 24 essentia…"),
+#   so the key name survived but the placeholder became a single %d.
+# ★Key name intake.not_crystal / Outcome.NOT_CRYSTAL survives (renaming = Java constants + test ledger);
+#   ★C2 widened its meaning to "a filled phial (current) or a legacy crystal that still carries a tag".
 gtit.pocket.essence.intake.not_crystal=Not holding an essentia phial: put a filled phial (or a legacy essentia crystal) on the cursor, then click an essentia cell
 gtit.pocket.essence.intake.no_owner=That phial carries no essentia yet, so there is nothing to deposit
 gtit.pocket.essence.intake.no_room=The essentia cells cannot hold this whole stack of phials: put in a smaller batch first, the stack was left untouched
-gtit.pocket.essence.intake.ok=Essentia deposited into the cells: %d point(s)
+gtit.pocket.essence.intake.memory_locked=This cell remembers a different thing and refuses this one: bring back the thing it remembers, or revoke the memory with alt + left-click (this is NOT "the tray is full" — that message waits for room, this one asks for a swap)
+gtit.pocket.essence.intake.ok=Essentia deposited into the cells: %d point(s); the emptied phials went back to your cursor
 # ★R88 C1（最小粒度 = 一瓶）的玩家可见三条：不足一瓶 / 取出与留盘并报 / 格级说明
 gtit.pocket.essence.not_enough_phial=This cell holds less than one full phial, so nothing was taken: %d point(s) are still in the tray
 gtit.pocket.essence.partial_leftover=Took %d point(s) as whole phials; %d point(s) stayed in the tray (below one full phial)
 gtit.pocket.essence.phial_note=Essentia leaves the tray only in whole phials: anything below %d point(s) stays behind in the cell
+# ★R91-④ (bottle round-trip): taking out REQUIRES an empty phial in hand; without one a click produces
+#   nothing at all (the old self-materialized phial is what the user reported).
+gtit.pocket.essence.need_phial=Filling a phial needs an empty phial in your hand: hold one and click an essentia cell to fill it; with an empty hand (or anything else) the click produces nothing at all
 gtit.pocket.aspect.cell=%s: %d/%d
 gtit.pocket.aspect.overflow_note=Aspects beyond the first %d are stored but not shown
 gtit.pocket.ghost.on=Filter slot: %s (right-click to clear)
 gtit.pocket.ghost.drag_hint=To filter this bar, drag §ea container that already holds the fluid§r (bucket / cell / large storage cell) from NEI onto it; fluid rows in a recipe book cannot be dragged at all (NEI does not make them draggable)
 gtit.pocket.essence.need_stock=This cell has no aspect yet: drag a phial filled with that aspect from NEI onto the empty cell to declare it (one entry per aspect, tinted accordingly); NBT-less crystals or plain items carry no tag and still cannot declare
-gtit.pocket.ghost.locked=Filter slots accept no player input
+# ★R91-⑤ gave the blanket "accepts no input" an exception: a memory (L) cell takes the one kind it
+#   remembers (single source: PocketFilterConfig#allowsPlayerPlacement). Keeping the old wording = D-1 lie.
+gtit.pocket.ghost.locked=Filter slots take no player input by default (a memory-marked cell is the exception: it takes only the one kind it remembers) and no fluid input
 # ★R84 fluid transfer receipts (each one is an "all-or-nothing abandoned" exit; missing one is silence again).
 # Deliberately placeholder-free: notifyCell passes varargs, extra args are harmless but a %s with no arg
 # throws MissingFormatArgumentException on the client.
@@ -371,14 +380,23 @@ gtit.pocket.legend.output=Bottom row: where this column's processed vessels land
 gtit.pocket.legend.in_out_same=Either row takes a vessel for filling or draining (direction follows whether it holds fluid); a processed vessel always lands in the lower row of its column and, while it is left untouched there, is not refilled
 gtit.pocket.legend.tank_of=Group %1$d column %2$d (fluid slot %3$d)
 gtit.pocket.fluid.capacity=%1$d mB per slot (%3$d mB in total across %2$d slots)
-gtit.pocket.storage.sort_gesture=Middle grid: middle-click or press R to tidy it (this mod's own shortcut, filter slots are skipped; not a generic chest sorter)
+# ★R91-⑧b (middle-click handover): the middle button now means "request binding", so tidying is
+#   ONLY the R key — the old "middle-click or press R" half-sentence claimed what the code no longer does.
+gtit.pocket.storage.sort_gesture=Middle grid: press R to tidy it (this mod's own shortcut, filter slots are skipped; not a generic chest sorter)
+# ★R91-⑤ the three cell attributes (four lines side by side in NekoPocketPanel#notesText, kept at stage length)
+gtit.pocket.storage.bind_gesture=Middle grid / fluid bar / essentia tray: middle-click = request binding — the cell becomes a demand refilled from the bound cell; with contents it records what is there, an empty cell only enters the state until an NEI drag fills it in; press again to revoke
+gtit.pocket.storage.memory_gesture=Alt + left-click = memory (blue L, top-left corner): the cell only takes the one kind of thing it remembers — pure filtering, it never pulls restock from the network; with contents it remembers that thing, an empty cell waits for an NEI drag; press again to revoke
+gtit.pocket.storage.upload_block_gesture=Alt + right-click = upload block (green P, bottom-left corner): the cell's contents never enter the pocket-to-cell injection direction; it coexists with either attribute above; a cell with only P carries no content, so NEI drags ignore it; press again to revoke
 gtit.pocket.note.title=How this panel works
 gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket only works while held in your main hand
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
 gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it)
-# ★R88 自立口径 C1 + C2 的"游戏内文案"面（项目纪律：自立口径要文案 + 交付说明双处可见）。
-# 一个 %d = 一瓶固定点数（PocketConstants.ESSENCE_OUT_UNIT_POINTS 填，lang 不写死规格数字）。
-gtit.pocket.note.phial=Essentia moves over native essentia channels; phials (%d points each) only appear when you take essence out by hand: taking rounds down to whole phials with the remainder kept, and clicking a cell with an empty phial fills exactly one; upload/download paths never produce phials, and crystals are read-only
+# ★R88 self-invented policy C1 + C2, the "in-game copy" face (project discipline: both copy and README);
+# ★R91-④ adds three layers: taking out needs an empty phial in hand, clicking without one produces
+#   nothing, and depositing returns the empty shells; crystals still return no shell.
+# The one %d = fixed points per phial (filled from PocketConstants.ESSENCE_OUT_UNIT_POINTS; no spec
+# digits in lang).
+gtit.pocket.note.phial=Essentia moves over native essentia channels; phials (%d points each) only appear in a hand round-trip: taking out requires an empty phial in hand, rounds down to whole phials with the remainder kept in the tray, and clicking a cell without one produces nothing at all; depositing filled phials returns the empty shells to your cursor; upload/download paths never produce phials; crystals stay read-only and are consumed whole on deposit without returning any shell
 gtit.pocket.bind.summary=Bound cells: %d / %d
 gtit.pocket.bind.inert=%d legacy binding(s) are out of the served scope (only the first one runs); unbind all before switching
 gtit.pocket.channel.start=Start
