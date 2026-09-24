@@ -285,7 +285,7 @@ public final class NekoPocketEssenceColumn {
         ui.trackEssenceCell(index, cell);
         cell.child(
             (IWidget) new TextWidget(IKey.dynamic(cell::stockText)).textAlign(Alignment.BottomRight)
-                .scale(0.5f)
+                .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
                 // ★R83 B2 (4)：数量标注的可读性——暗主题 {@code vanilla_dark.json} 的 textShadow
                 // 是 false，4px 高的数字直接压在带 alpha 的彩色 aspect 图标上会糊成一片；
                 // 这里不跟随主题（白字 + 阴影），与下面 tooltip 名字行同一个口径。

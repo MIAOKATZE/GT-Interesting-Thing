@@ -949,6 +949,37 @@ public final class PocketGhostRequest {
 
     /** 读数缩放（与面板其余 0.5 缩放的读数同口径；★不是新贴图尺寸，只是字号）。 */
     public static final float CAP_READOUT_SCALE = 0.5f;
+    /**
+     * ★★<b>R92-⑥（D6）：八处常驻小字的统一缩放 = 0.6</b>（用户实机："左右两侧文字太小了"）。
+     * <p>
+     * ★这个数<b>不是选出来的，是算出来的</b>：用例 {@code pocket_resident_text_pixel_budget} 逐点拿
+     * 「最坏文案 × 字体前进量 ÷ 盒宽」求出每点还能承受的最大缩放，取全体的下界。下界卡在
+     * <b>左列末行状态回显</b>那一处：它的盒是 88×18，而 {@code mode.pull} 拼上回执能长到三条折行
+     * （该行的 javadoc 本来就写着"装不下走 tooltip"）⇒ 再往上抬，第三行就顶出 18px 的纵向预算。
+     * ★所以本号是"能统一的最大档"，不是"看起来够大的档"；要更大只能改文案或改盒，两者都被
+     * 计划 §4-S6 的禁止面挡着（398×360 是硬顶、禁借机塞功能）。
+     * <p>
+     * ★与 {@link #CAP_READOUT_SCALE} 是<b>两件事</b>：后者住在 16px 格内、与 L/P 角标共一张几何账，
+     * 本号一个字没动它（三条读数同格并存的可读性仍是实机项）。
+     */
+    public static final float RESIDENT_TEXT_SCALE = 0.6f;
+
+    /**
+     * ★R92-⑥：<b>提示性</b>文字的颜色（"绑定"按钮标签、模式回显这类"告诉你这是什么/怎么操作"的字）。
+     * <p>
+     * ★写成方法而不是 {@code static final int}，与 {@link #capReadoutColor()} 同一条理由：
+     * {@code Color} 的类初始化会牵进 {@code ModularUI} 主类，放进静态字段就让本类在零依赖测试 JVM 里
+     * 初始化即炸。★取深色是用户拍板的分工：<b>提示深色、数据读数白色</b>（{@link #readoutTextColor()}）。
+     */
+    public static int hintTextColor() {
+        return Color.BLACK.main;
+    }
+
+    /** ★R92-⑥：<b>数据读数</b>的颜色（币值、元件信息行、绑定计数、源质格存量）；配 {@code shadow(true)} 用。 */
+    public static int readoutTextColor() {
+        return Color.WHITE.main;
+    }
+
     /** 读数与格内的内缩边距：与三类虚像遮罩的 {@code drawRect(1, 1, w-2, h-2)} 同一个数。 */
     public static final int CAP_READOUT_MARGIN = 1;
     /** 读数的纵向落点（★上半带：库把数量/容量文字画在 BottomRight，三类都留了 y 0…7 这一条）。 */

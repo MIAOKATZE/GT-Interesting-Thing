@@ -201,11 +201,13 @@ public final class NekoPocketBottomBand {
     /** 默认字体里数字的定宽（逻辑像素；vanilla 数字 = 6）。 */
     private static final int DIGIT_LOGICAL_WIDTH = 6;
     /**
-     * 数量框的渲染宽需求 = {@code ceil(5 × 6 ÷ 2)} = <b>15px</b>（÷2 = 与标签同一 {@code scale(0.5f)} 口径）。
+     * ★★R92-⑥：渲染宽需求 = {@code ceil(5 × 6 × RESIDENT_TEXT_SCALE)}。旧式写死 {@code ÷ 2}（= 0.5 档），
+     * 统一缩放抬到 0.6 之后那条装配期断言会<b>偏松</b>地放行一个其实装不下的串 ⇒ 改成按同一个常量派生。
      * 与 {@link #COIN_AMOUNT_WIDTH} 的差就是余量；★余额被同步成负数时串会更长（"-2147483648"），
      * 那种值是服务端钱包账目错乱的形状，由 {@code NekoClientBalances} 那边拦，不在这里加宽框。
      */
-    private static final int AMOUNT_WIDTH_NEED = (AMOUNT_MAX_CHARS * DIGIT_LOGICAL_WIDTH + 1) / 2;
+    private static final int AMOUNT_WIDTH_NEED = (int) Math
+        .ceil(AMOUNT_MAX_CHARS * DIGIT_LOGICAL_WIDTH * PocketGhostRequest.RESIDENT_TEXT_SCALE);
     /**
      * 币值条<b>实占</b>宽（★R84 由原生 88 收到 {@code 1+16+2+30 = 49}：条只包住"图标 + 数量"这一组，
      * 省下的横向位给同一行的按钮。收窄靠的是 9-slice N=4 ⇒ 吃掉的全是中间的平坦金属带）。
@@ -219,7 +221,7 @@ public final class NekoPocketBottomBand {
      * 通道按钮<b>实占</b>宽（★= {@code 112 − 51 = 61}，比原生 88 窄 27px；同样是 9-slice N=4 才收得住）。
      * <p>
      * 这 61px 就是"标签必须换短文案"的全部理由：原文案 {@code channel.timed}「激活短效次元通道
-     * （-3 闪烁猫猫币，30 秒）」在 {@code scale 0.5} 下约 82px &gt; 61 ⇒ 见 {@link #CHANNEL_LABEL_WIDTH_BUDGET}。
+     * （-3 闪烁猫猫币，30 秒）」在常驻小字的缩放下约 98px &gt; 61 ⇒ 见 {@link #CHANNEL_LABEL_WIDTH_BUDGET}。
      */
     private static final int CHANNEL_BUTTON_WIDTH = COIN_WIDTH - CHANNEL_BUTTON_X;
     /** 全角字在 1.7.10 默认字体里的最宽前进量（逻辑像素；★保守取 10，实测 CJK 8~10）。 */
@@ -227,14 +229,16 @@ public final class NekoPocketBottomBand {
     /** 按钮短文案的字数上限（「启动」/「停止」都只有 2 个全角字 ⇒ 账留到 4 字）。 */
     private static final int CHANNEL_LABEL_MAX_CHARS = 4;
     /**
-     * ★短文案的渲染宽预算 = {@code 4 × 10 ÷ 2} = <b>20px</b>（÷2 是标签用 {@code scale(0.5f)}，与数量 /
+     * ★★R92-⑥：短文案的渲染宽预算 = {@code ceil(4 × 10 × RESIDENT_TEXT_SCALE)}。旧式写死 {@code ÷ 2}
+     * （= 0.5 档）⇒ 换档后本式必须跟着派生，否则「预算够」这条装配期断言是偏松的假绿。与数量 /
      * 读数 / 常驻绑定行同一口径）。任务给的口径是「≤30px」，本式严一档 ⇒ 5 字以上才会顶到边。
      * <p>
      * ★这条是"给按钮留的位够不够"的账，<b>不是</b>折行开关：MUI2 的 {@code TextRenderer#draw(String)}
      * 只在 {@code maxWidth > 0}（件被给了显式宽）时才 hardWrap，故标签件<b>故意不给宽</b>，走
      * {@code drawSimple} ⇒ 真要超长也只是横向顶出，不会折成两行压到下一行。
      */
-    private static final int CHANNEL_LABEL_WIDTH_BUDGET = CHANNEL_LABEL_MAX_CHARS * FULLWIDTH_CHAR_LOGICAL_WIDTH / 2;
+    private static final int CHANNEL_LABEL_WIDTH_BUDGET = (int) Math
+        .ceil(CHANNEL_LABEL_MAX_CHARS * FULLWIDTH_CHAR_LOGICAL_WIDTH * PocketGhostRequest.RESIDENT_TEXT_SCALE);
     /**
      * ★R83 C1：左段的<b>币种数</b>（猫猫币 / 闪烁猫猫币 ⇒ 与 {@link NekoCurrencyRegistrar} 的两种
      * 一一对应，也是 {@link #coinBlock} 每轮发出的那一对件的序号源）。
@@ -828,7 +832,10 @@ public final class NekoPocketBottomBand {
             .child(
                 (IWidget) new TextWidget(IKey.dynamic(() -> readableAmount(NekoClientBalances.getBalance(currencyId))))
                     .textAlign(Alignment.CenterLeft)
-                    .scale(0.5f)
+                    // ★★R92-⑥：币值是<b>数据读数</b> ⇒ 白字 + 阴影（与源质格存量同一口径），缩放走统一档
+                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                    .color(PocketGhostRequest.readoutTextColor())
+                    .shadow(Boolean.TRUE)
                     .pos(COIN_AMOUNT_X, 0)
                     .size(COIN_AMOUNT_WIDTH, COIN_BAR_HEIGHT));
         // ★余额的常驻可见面：撤掉那枚"只读明细"图标后，这条 tooltip 就是它唯一的落点（R36 不删信息）。
@@ -875,8 +882,15 @@ public final class NekoPocketBottomBand {
             .background(PocketGuiTextures.BUTTON)
             .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
             .child(
-                (IWidget) new TextWidget(label).scale(0.5f)
-                    .textAlign(Alignment.Center))
+                // ★★R92-⑥ 两件事一起收：① 缩放走统一档 + 提示色；② <b>修标签贴左上</b> ——
+                // ButtonWidget 走 SingleChildWidget，它<b>不替子件摆位</b>（SingleChildWidget.java:30-40），
+                // 于是 textAlign(Center) 从来没生效过（截图里"绑定/启动"都顶着左上角）。
+                // ★居中量必须由盒子产生 ⇒ 显式给子件 pos(0,0) + 与按钮同宽同高，★父盒一个字不改。
+                (IWidget) new TextWidget(label).scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                    .color(PocketGhostRequest.hintTextColor())
+                    .textAlign(Alignment.Center)
+                    .pos(0, 0)
+                    .size(CHANNEL_BUTTON_WIDTH, COIN_BAR_HEIGHT))
             // ★常驻可见的完整成本账：短文案省下的那部分信息全部落在这里（不得删）
             .tooltip(tooltip -> tooltip.addLine(fullLabel))
             .onMousePressed(button -> button == 0 && ui.requestChannel(request));
@@ -898,7 +912,10 @@ public final class NekoPocketBottomBand {
         // ★逐条语句设定，不做链式：TextWidget 的 pos/size 继承自 IPositioned，链式下来拿到的是接口，
         // 上面那个 name(...) 就找不到符号（同 {@link #persistentBindRow} 记实的那条）
         line.textAlign(Alignment.CenterLeft);
-        line.scale(0.5f);
+        // ★★R92-⑥：元件信息行是<b>数据读数</b> ⇒ 白字 + 阴影 + 统一缩放
+        line.scale(PocketGhostRequest.RESIDENT_TEXT_SCALE);
+        line.color(PocketGhostRequest.readoutTextColor());
+        line.shadow(Boolean.TRUE);
         line.pos(CELL_INFO_X, cellInfoRowY(row));
         line.size(CELL_INFO_WIDTH, COIN_BAR_HEIGHT);
         line.name("pocket_cell_info_row_" + row);
@@ -1044,8 +1061,14 @@ public final class NekoPocketBottomBand {
                     .name("pocket_bind_button")
                     .background(PocketGuiTextures.BIND_BUTTON)
                     .child(
-                        (IWidget) new TextWidget(IKey.lang("gtit.pocket.bind.button")).scale(0.5f)
-                            .textAlign(Alignment.Center))
+                        // ★★R92-⑥：同"启动/停止"那条 —— 提示色 + 统一缩放 + <b>显式摆位</b>
+                        // （★ButtonWidget 不替子件摆位 ⇒ 只给 textAlign 从来没居中过）
+                        (IWidget) new TextWidget(IKey.lang("gtit.pocket.bind.button"))
+                            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                            .color(PocketGhostRequest.hintTextColor())
+                            .textAlign(Alignment.Center)
+                            .pos(0, 0)
+                            .size(BIND_BUTTON_WIDTH, COIN_BAR_HEIGHT))
                     // ★绑定信息的完整可见面（R74）：全部条目 + 位置五键 + 超出的显式截断提示。
                     // R81③ 之后它不再是<b>唯一</b>可见面（右段多了常驻行），但仍是<b>全</b>信息面 ⇒ 不得删。
                     .tooltip(tooltip -> tooltip.addLine(IKey.dynamic(ui::bindTooltipText)))
@@ -1054,7 +1077,10 @@ public final class NekoPocketBottomBand {
             .child(bindGroup)
             .child(
                 (IWidget) new TextWidget(summary).textAlign(Alignment.CenterLeft)
-                    .scale(0.5f)
+                    // ★★R92-⑥：「已绑定元件 n / m」是<b>数据读数</b>
+                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                    .color(PocketGhostRequest.readoutTextColor())
+                    .shadow(Boolean.TRUE)
                     .pos(BIND_TEXT_X, BIND_SLOT_Y)
                     .size(BIND_TEXT_WIDTH, COIN_BAR_HEIGHT));
         // ★常驻绑定行的<b>数量</b>只由 PERSISTENT_ROWS 决定（装配期断言它 = 2 且纵向恰闭合）：
@@ -1074,7 +1100,8 @@ public final class NekoPocketBottomBand {
      * 按钮 tooltip（{@link NekoPocketPanel#bindTooltipText()}）里，★这里短一分都不是删信息，
      * 而是把"有几条 / 绑的是谁"从悬停面搬到常驻面 —— 取证记录 §3 的"常驻行数 = 0"就是本缺陷的加重项。
      * <p>
-     * 文本一律 {@code scale(0.5f)}（与读数同口径）：{@code 86 ÷ 0.5 = 172} 逻辑像素，装得下
+     * ★★R92-⑥：文本一律 {@code scale(RESIDENT_TEXT_SCALE)}（与读数同口径）：{@code 86 ÷ 0.6 ≈ 143}
+     * 逻辑像素，仍装得下
      * 「元件 + 8 位短码」与「……另有 n 条绑定未在此列出」，★装不下的完整位置行本来就不进常驻面。
      */
     private static IWidget persistentBindRow(NekoPocketPanel ui, int slot) {
@@ -1083,7 +1110,10 @@ public final class NekoPocketBottomBand {
         // ★逐条语句设定，不做链式：TextWidget 的 pos/size 继承自 IPositioned，链式下来拿到的是接口，
         // 上面那个 name(...) 就找不到符号（compileJava 直接红，比留一棵没名字的 widget 树好）
         row.textAlign(Alignment.CenterLeft);
-        row.scale(0.5f);
+        // ★★R92-⑥：常驻绑定行是<b>数据读数</b>（元件短码 + 位置）
+        row.scale(PocketGhostRequest.RESIDENT_TEXT_SCALE);
+        row.color(PocketGhostRequest.readoutTextColor());
+        row.shadow(Boolean.TRUE);
         row.pos(fullWidth ? BIND_CONTENT_X : BIND_TEXT_X, persistentRowY(slot));
         row.size(fullWidth ? BIND_ROW_WIDTH : BIND_TEXT_WIDTH, COIN_BAR_HEIGHT);
         row.name("pocket_bind_row_" + slot);

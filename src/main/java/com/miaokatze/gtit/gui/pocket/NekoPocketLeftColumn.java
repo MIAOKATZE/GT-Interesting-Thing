@@ -325,8 +325,13 @@ public final class NekoPocketLeftColumn {
             .size(WIDTH, STATUS_HEIGHT)
             .name("pocket_status_lines")
             .child(
+                // ★★R92-⑥（D6）：统一缩放到 RESIDENT_TEXT_SCALE，并按"提示深色 / 读数白色"的分工
+                // 显式设色（旧形状跟随主题 fallback = 0xFF404040，压在暖沙色底板上对比度不足）。
+                // ★本行是全轮像素账的<b>下界卡点</b>（88×18 的盒 + mode.pull 拼回执可长到三行），
+                // 理由与算式见 PocketGhostRequest#RESIDENT_TEXT_SCALE 与用例 pocket_resident_text_pixel_budget。
                 (IWidget) new TextWidget(IKey.dynamic(ui::fluidStatusLine)).textAlign(Alignment.CenterLeft)
-                    .scale(0.5f)
+                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                    .color(PocketGhostRequest.hintTextColor())
                     .pos(0, 0)
                     .size(WIDTH - CELL - 2, STATUS_HEIGHT))
             .tooltip(tooltip -> {
