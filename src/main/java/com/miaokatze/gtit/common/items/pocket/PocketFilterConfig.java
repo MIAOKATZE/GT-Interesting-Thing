@@ -697,6 +697,103 @@ public final class PocketFilterConfig {
         return byKindSlot.get(slotKey(kind, slotIndex));
     }
 
+    /**
+     * ★★<b>R92-④：把一条"只带载荷、不带槽位"的解出结果落到指定格上（单源）</b>。
+     * <p>
+     * ghost 的槽位由"被拖/被点/被放的那一格"决定，载荷键本身不含槽位（R38 第 1 条），所以任何写入口
+     * 都必须经过本方法把槽位贴回去 ⇒ 单点：blob 编解码（S2C 回显）、C2S 请求（{@code applySet}）与
+     * ★R92-④ 新增的<b>服务端放置定档</b>腿共用这一份，否则三处 rebuild 迟早漂移。
+     * <p>
+     * ★<b>为什么住在这一层（而不是留在 {@code gui/pocket/PocketGhostRequest}）</b>：放置定档的三条腿里，
+     * 物品支的落档点在 {@code PocketInventory} 的槽组回调上，那是 {@code common/items/pocket} ——
+     * 为够到一个纯 JVM 函数而新增第三条 {@code common → gui} 反向 import，代价大于收益，且那条方向
+     * 本仓已登记为旧债（R92 计划 §1.2 明令不扩）。本方法<b>只依赖本层类型</b>，下移到零依赖层是收敛方向。
+     * ★{@code PocketGhostRequest#rebuildAt} 保留为薄委派（与 R91-③ 的 {@code essenceStackFor} 同一形状）。
+     * <p>
+     * 三参形态给"载荷键里本来就没有上限"的解析路径（{@link #parseKey}）用 ⇒ 上限一律
+     * {@link PocketConstants#FILTER_CAP_UNSET}；带已有声明的场合必须走四参形态把上限带上
+     * （抹了就是"我调的上限悄悄没了"）。
+     */
+    public static Filter rebuildAt(Kind kind, int slotIndex, Filter payload) {
+        return rebuildAt(kind, slotIndex, payload, PocketConstants.FILTER_CAP_UNSET);
+    }
+
+    /** 同 {@link #rebuildAt(Kind, int, Filter)}，但显式给出组上限。 */
+    public static Filter rebuildAt(Kind kind, int slotIndex, Filter payload, int cap) {
+        if (kind == null || payload == null) {
+            return null;
+        }
+        switch (kind) {
+            case ITEM:
+                if (!(payload instanceof ItemFilter item)) {
+                    return null;
+                }
+                return new ItemFilter(slotIndex, item.itemId, item.meta, item.nbtString, cap);
+            case FLUID:
+                if (!(payload instanceof FluidFilter fluid)) {
+                    return null;
+                }
+                return new FluidFilter(slotIndex, fluid.fluidName, cap);
+            case ESSENCE:
+                if (!(payload instanceof EssenceFilter essence)) {
+                    return null;
+                }
+                return new EssenceFilter(slotIndex, essence.typeId, essence.tag, cap);
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * ★★<b>R92-④（D4）：放置即配置的准入判据单源</b> —— 该格是否处于
+     * <b>「记忆档（L）+ 尚无声明（pending）」</b>这一种"可以被一次放置定档"的状态。
+     * <p>
+     * 存在的理由与 {@link #allowsPlayerPlacement} 同一条：三条腿（物品 {@code PocketInventory} /
+     * 流体 {@code PocketFluidTransfer} 与左列 / 源质 {@code NekoPocketServerHandler}）都必须问<b>同一条</b>
+     * 判据。各腿自己写一遍 {@code attrAt(...) == GHOST_ATTR_MEMORY && at(...) == null}，就会出现
+     * "某一腿忘了带 pending 条件 ⇒ 放置把已定档格的声明覆盖了"——那正是 P2 裁定明令禁止的行为。
+     * <p>
+     * ★两个条件都不可省：NONE / BIND 格今天照样禁放（{@link #allowsPlayerPlacement} 那条门一字未动），
+     * 而已定档的 MEMORY 格只允许放<b>被记住那一种</b>，放成之后不得再改声明（改走 NEI 拖入或手势）。
+     */
+    public boolean memoryPendingForPlacement(Kind kind, int slotIndex) {
+        return attrAt(kind, slotIndex) == PocketConstants.GHOST_ATTR_MEMORY && at(kind, slotIndex) == null;
+    }
+
+    /**
+     * ★★<b>R92-④：把一条载荷落到指定格的唯一服务端写入原语</b> —— 读旧档保上限 →
+     * {@link #rebuildAt} → {@link #add} → 复核"这一格现在到底是不是这条"。
+     * <p>
+     * 存在的理由：C2S 请求腿（{@code PocketGhostRequest#applySet}）与★R92-④ 新增的<b>放置定档</b>三条腿
+     * 必须走<b>同一条</b>写入口。各写一份"add 完不复核"的支，就会出现"回执说成功了、声明表里其实没有"
+     * 的假档（R91 记录里那条"投影成晶档"的同族形状）。★复核<b>不</b>回滚既有声明：本方法判不出
+     * "该格原本那条"该不该留，删它就是把玩家的上限与另一条声明一起抹掉。
+     *
+     * @param payload 只带载荷、不带槽位的解出结果（来自 {@link #parseKey}）
+     * @return null = 被拒（载荷类型不符 / 越界 / 复核不过）；非 null = 该格<b>现在</b>的声明
+     */
+    public Filter declare(Kind kind, int slotIndex, Filter payload) {
+        if (kind == null || payload == null) {
+            return null;
+        }
+        // ★同槽覆盖必须把<b>已调好的上限</b>带过去：载荷键一样就是"还是这一条需求"，玩家滚出来的
+        // 数值不该因为"又拖了一次同一个东西 / 又放了一件"而被抹回默认值。
+        final Filter before = at(kind, slotIndex);
+        final Filter rebuilt = rebuildAt(
+            kind,
+            slotIndex,
+            payload,
+            before == null ? PocketConstants.FILTER_CAP_UNSET : before.cap());
+        if (rebuilt == null) {
+            return null;
+        }
+        add(slotIndex, rebuilt);
+        final Filter now = at(kind, slotIndex);
+        // add 的 false 有两种含义（同槽覆盖 / 越界或载荷空），故以"该格现在到底是不是这条"为准
+        return now != null && now.key()
+            .equals(rebuilt.key()) ? now : null;
+    }
+
     /** 落到声明自带的槽位上；同槽即覆盖（{@code Map.put} 的返回值天然区分"新增/覆盖"）。 */
     private boolean put(Filter filter) {
         if (filter.key()

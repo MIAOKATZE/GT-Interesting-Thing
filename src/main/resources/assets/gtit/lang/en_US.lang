@@ -357,7 +357,7 @@ gtit.pocket.ghost.drag_hint=To filter this bar, drag §ea container that already
 gtit.pocket.essence.need_stock=This cell has no aspect yet: drag a phial filled with that aspect from NEI onto the empty cell to declare it (one entry per aspect, tinted accordingly); NBT-less crystals or plain items carry no tag and still cannot declare
 # ★R91-⑤ gave the blanket "accepts no input" an exception: a memory (L) cell takes the one kind it
 #   remembers (single source: PocketFilterConfig#allowsPlayerPlacement). Keeping the old wording = D-1 lie.
-gtit.pocket.ghost.locked=Filter slots take no player input by default (a memory-marked cell is the exception: it takes only the one kind it remembers) and no fluid input
+gtit.pocket.ghost.locked=Filter slots take no player input by default (a memory-marked cell is the exception: it takes only the one kind it remembers, and the first thing placed into an empty one also configures that cell) and no fluid input
 # ★R84 fluid transfer receipts (each one is an "all-or-nothing abandoned" exit; missing one is silence again).
 # Deliberately placeholder-free: notifyCell passes varargs, extra args are harmless but a %s with no arg
 # throws MissingFormatArgumentException on the client.

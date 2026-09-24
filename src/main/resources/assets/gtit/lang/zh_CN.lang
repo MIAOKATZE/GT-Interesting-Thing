@@ -353,7 +353,7 @@ gtit.pocket.ghost.drag_hint=想声明这一列：从 NEI 把 §e装了该流体�
 gtit.pocket.essence.need_stock=这一格还没有源质归属：把「装满某一种源质的安瓿瓶」从 NEI 拖到空格即可建档声明（每种源质各一条、按源质染色）；无 NBT 的裸晶/裸物品读不出归属，仍无法声明
 # ★R91-⑤ 起"默认禁放置"有了例外档：挂了记忆 L 的格放得进它记住的那一种（判据单源在
 #   PocketFilterConfig#allowsPlayerPlacement）；这条若继续一刀切说"不接受"就是 D-1 型不实。
-gtit.pocket.ghost.locked=配置格默认不接受玩家放入或流体输入（挂了记忆 L 的格除外：它只放得进被记住的那一种）
+gtit.pocket.ghost.locked=配置格默认不接受玩家放入或流体输入（挂了记忆 L 的格除外：它只放得进被记住的那一种，而空格被放进的第一件还会顺手把这一格配置成那一种）
 # ★R84 流体列搬运回执（9 条都是"整笔放弃/一件未成"的出口；缺一条就等于把"卡住不动"重新变成静默）。
 # ★刻意全部不带 %s：调用点是 notifyCell(cell, key, args...) 的变参形态，多传参无害、
 # 但文案里写了占位而某条支没传参会在客户端抛 MissingFormatArgumentException（实机崩溃形状）。

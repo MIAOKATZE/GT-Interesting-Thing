@@ -778,18 +778,13 @@ public final class PocketGhostRequest {
             return new Decision(Outcome.REJECTED, kind, slotIndex);
         }
         final PocketFilterConfig.Filter before = filters.at(kind, slotIndex);
-        // ★同槽覆盖必须把<b>已调好的上限</b>带过去：载荷键一样就是"还是这一条需求"，玩家滚出来的
-        // 数值不该因为"又拖了一次同一个东西"而被抹回默认值（抹了就是"我调的上限悄悄没了"）。
-        final PocketFilterConfig.Filter rebuilt = rebuildAt(
-            kind,
-            slotIndex,
-            parsed,
-            before == null ? PocketConstants.FILTER_CAP_UNSET : before.cap());
-        filters.add(slotIndex, rebuilt);
-        final PocketFilterConfig.Filter now = filters.at(kind, slotIndex);
-        if (now == null || !now.key()
-            .equals(rebuilt.key())) {
-            // add 的 false 有两种含义（同槽覆盖 / 越界或载荷空），故以"该格现在到底是不是这条"为准
+        // ★★<b>R92-④：写入与复核已收成 PocketFilterConfig#declare 一条原语</b>（C2S 请求腿与放置定档
+        // 三条腿走同一条写入口 ⇒ "同槽覆盖保住已调上限 + add 后必须复核"这条纪律不再抄第二遍）。
+        // 本方法因此只保留四道<b>请求侧</b>门（键式样 / 归一化回环 / kind 白名单 / 载荷非空 / 源质格归属）
+        // 与 UNCHANGED 判定 —— 那四道是给<b>外来包</b>设的，放置腿的键由服务端自己算，两道都放行。
+        final PocketFilterConfig.Filter now = filters.declare(kind, slotIndex, parsed);
+        if (now == null) {
+            // declare 的 null 有两种含义（rebuild 类型不符 / 复核不过），两者都按整条拒收
             return new Decision(Outcome.REJECTED, kind, slotIndex);
         }
         if (essenceRecheck && cellOwner == null) {
@@ -802,7 +797,7 @@ public final class PocketGhostRequest {
         }
         return new Decision(
             before != null && before.key()
-                .equals(rebuilt.key()) ? Outcome.UNCHANGED : Outcome.APPLIED,
+                .equals(now.key()) ? Outcome.UNCHANGED : Outcome.APPLIED,
             kind,
             slotIndex);
     }
@@ -829,40 +824,21 @@ public final class PocketGhostRequest {
      * <p>
      * ★单点：blob 编解码（S2C 回显）与服务端写入口都走这里，否则两处 rebuild 迟早漂移。
      * <p>
-     * 三参形态给"载荷键里本来就没有上限"的解析路径（{@link PocketFilterConfig#parseKey}）用 ⇒ 上限
-     * 一律 {@link PocketConstants#FILTER_CAP_UNSET}；带已有声明的场合必须走四参形态把上限带上
-     * （见 {@link #applySet}）。
+     * ★★<b>R92-④：判据本体已下移到 {@link PocketFilterConfig#rebuildAt}，本方法只剩薄委派</b>
+     * （与 R91-③ 的 {@code essenceStackFor} 同一形状）。下移的理由写在彼处：放置定档的物品腿落在
+     * {@code common/items/pocket/PocketInventory}，为够到一个纯 JVM 函数而新增第三条
+     * {@code common → gui} 反向 import 不划算 ⇒ 让零依赖层持有算式、GUI 层委派。
+     * ★<b>名字与签名保持不动</b>：现有 GUI 侧调用点与用例锚点全部照旧，改的只是"谁算这道 switch"。
      */
     public static PocketFilterConfig.Filter rebuildAt(PocketFilterConfig.Kind kind, int slotIndex,
         PocketFilterConfig.Filter payload) {
-        return rebuildAt(kind, slotIndex, payload, PocketConstants.FILTER_CAP_UNSET);
+        return PocketFilterConfig.rebuildAt(kind, slotIndex, payload);
     }
 
     /** ★R83 C2：同 {@link #rebuildAt(Kind, int, PocketFilterConfig.Filter)}，但显式给出组上限。 */
     public static PocketFilterConfig.Filter rebuildAt(PocketFilterConfig.Kind kind, int slotIndex,
         PocketFilterConfig.Filter payload, int cap) {
-        if (kind == null || payload == null) {
-            return null;
-        }
-        switch (kind) {
-            case ITEM:
-                if (!(payload instanceof PocketFilterConfig.ItemFilter item)) {
-                    return null;
-                }
-                return new PocketFilterConfig.ItemFilter(slotIndex, item.itemId, item.meta, item.nbtString, cap);
-            case FLUID:
-                if (!(payload instanceof PocketFilterConfig.FluidFilter fluid)) {
-                    return null;
-                }
-                return new PocketFilterConfig.FluidFilter(slotIndex, fluid.fluidName, cap);
-            case ESSENCE:
-                if (!(payload instanceof PocketFilterConfig.EssenceFilter essence)) {
-                    return null;
-                }
-                return new PocketFilterConfig.EssenceFilter(slotIndex, essence.typeId, essence.tag, cap);
-            default:
-                return null;
-        }
+        return PocketFilterConfig.rebuildAt(kind, slotIndex, payload, cap);
     }
 
     // ------------------------------------------------------------------ ★R83 C2：组上限的步进与收口（唯一一份算式）

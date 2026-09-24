@@ -465,7 +465,7 @@ final class NekoPocketServerHandler {
      * 两条分支共用同一条游标正解 {@code setCursorItem(...)} ⇒ "退件"这条<b>新增的库存写入</b>
      * 天然落在 SC5 穷举的那一格里（写游标之后必须 {@code markDirty}，顺序不许多次交错）。
      */
-    void performEssenceIntake() {
+    void performEssenceIntake(int clickedCell) {
         if (!serverGuardOk()) {
             return;
         }
@@ -505,8 +505,48 @@ final class NekoPocketServerHandler {
             .setCursorItem(result.refundsCarrier() ? result.refund : null);
         panel.inventory()
             .markDirty();
+        // ★★<b>R92-④（D4）：源质支的"放置即配置"落档腿</b> —— 玩家往<b>记忆档 pending 格</b>上点一只
+        // 满瓶，溶进盘之后本格就以那个 tag 建档。三条口径与物品/流体两支逐字同形（判据单源在彼处）：
+        // ① 只开「MEMORY + 尚无声明」；② 已定档格<b>不覆盖</b>（换声明走 NEI 拖入或手势，P2 裁定）；
+        // ③ 建档落在<b>玩家实点的那一格</b>，★不是 {@code cellOf(tag)} 那一格 —— 与 NEI 拖入完全同形
+        // （{@code applySet} 也是"声明写在被拖的格、assignCell 去占最小空位"，两者可以不是同一格）。
+        // ★越界 arg（伪造包）⇒ 只跳过定档，不影响入槽本体：入槽从来不需要 arg，★也就绝不拿它去截断格号
+        // （R91-j 同一条纪律：越界要拒绝，不许 modulo）。
+        if (clickedCell >= 0 && clickedCell < PocketConstants.ESSENCE_DISPLAY_GRID) {
+            declareEssenceFromIntake(clickedCell, result.tag);
+        }
         // ★R88 C3：入账点数进面板回执，不进聊天框（面板回执只载两个整数 ⇒ tag 名不再上文案）
         panel.putReceipt(result.langKey(), result.points);
+    }
+
+    /**
+     * ★R92-④：源质支定档的落笔点。★本方法不含第二份 attr 位表读法（问
+     * {@link PocketFilterConfig#memoryPendingForPlacement}）、不含第二份键式样（载荷用
+     * {@link PocketFilterConfig.EssenceFilter} 对象交给 {@code declare} 贴槽位）、
+     * 也不含第二个写入口（走 {@link PocketFilterConfig#declare} 那条唯一原语）。
+     */
+    private void declareEssenceFromIntake(int cell, String tag) {
+        if (tag == null || tag.isEmpty()) {
+            return;
+        }
+        final PocketInventory inventory = panel.inventory();
+        if (inventory == null) {
+            return;
+        }
+        final PocketFilterConfig filters = inventory.filters();
+        if (filters == null || !filters.memoryPendingForPlacement(PocketFilterConfig.Kind.ESSENCE, cell)) {
+            return;
+        }
+        final String typeId = EssenceNativeChannels.nativeChannelTypeId(tag);
+        if (typeId == null || typeId.isEmpty()) {
+            // 没有源质原生通道 ⇒ 这条键根本建不出来（★不猜一个通道 id 去填空档）
+            return;
+        }
+        // ★载荷对象改由 essenceKey 单源反解（键式样只住 PocketFilterConfig 一处，★不在 GUI 层重拼）
+        filters.declare(
+            PocketFilterConfig.Kind.ESSENCE,
+            cell,
+            PocketFilterConfig.parseKey(PocketFilterConfig.essenceKey(typeId, tag)));
     }
 
     // ------------------------------------------------------------------ S5 · ghost 服务端执行体

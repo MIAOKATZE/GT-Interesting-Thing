@@ -356,10 +356,11 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
             requestGhostFlag(PocketConstants.GHOST_FLAG_MEMORY);
             return Result.SUCCESS;
         }
-        if (mouseButton == 0 && !ghost
-            && owner != null
-            && cellIndex >= 0
-            && owner.dispatchEssenceCellPress(cellIndex)) {
+        // ★★<b>R92-④（D4）：撤掉这里的 {@code !ghost}</b> —— 已声明（含"记忆档 pending"）的格也要能把
+        // 满瓶点进去，否则"玩家直接放安瓿瓶上去配置"这一条在<b>属性闸之前</b>就不可达（取证 B2 点名的
+        // 那个前置）。★取出向（游标持空瓶）在 {@code ghost == true} 时仍按 R91-④ 原样早退，
+        // 由 {@code NekoPocketPanel#dispatchEssenceCellPress} 那一条分流负责，本方法不加第二份判据。
+        if (mouseButton == 0 && owner != null && cellIndex >= 0 && owner.dispatchEssenceCellPress(cellIndex, ghost)) {
             return Result.SUCCESS;
         }
         return super.onMousePressed(mouseButton);

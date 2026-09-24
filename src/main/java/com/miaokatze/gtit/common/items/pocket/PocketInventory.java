@@ -100,6 +100,27 @@ public final class PocketInventory {
 
     /** 脏标记：只有内容真的变过才序列化（R53c 第 1 条）。 */
     private boolean dirty;
+    /**
+     * ★★<b>R92-④（审查 B2 修）：玩家放置意图的一次性登记 —— 槽号 + 那一次要放的东西的载荷键</b>。
+     * <p>
+     * 为什么不能只看 {@code onContentsChanged}：那条回调对<b>所有</b>写入都响，而中栏的程序化写入面比
+     * 玩家路径多得多——{@code loadGroup}（读档）、{@code NekoPocketServerHandler#performSort}（整理，
+     * 先清空再回写）、{@code NekoPocketPanel#evictFromSlot}（ghost 产物重塞）、{@code depositItem} /
+     * {@link #depositIntoStorage}（通道拉取落点）。★它们全都不经过 {@code isItemValid}
+     * （本文件那条 javadoc 早就写明"程序化写入不经过这里"）⇒ 把"定档"挂在回调上，就等于让一次自动落点
+     * 把无关物品记成该格的记忆；之后 P2 那条"已定档拒异类"反而会把玩家<b>真想放</b>的东西拒掉。
+     * <p>
+     * ⇒ 准入信号只有一个来源：{@code isItemValid}（原版六条放入分支唯一的公共闸）。它<b>登记意图</b>，
+     * 回调只<b>消费</b>意图，且消费一次即清（★绝不留悬垂状态给下一次写入）。落进来的东西与登记的键
+     * 不一致 ⇒ 同样不建档。
+     * <p>
+     * ★残余窗口如实写明：若玩家对某格点过一次合法放置但<b>没放成</b>（意图留在槽里），随后程序化落点
+     * 又把<b>同一种</b>物品送进<b>同一格</b>，会定档。★不会错配到"另一种东西"上（键必须相等），
+     * 而那一格本来就挂着"记住这一种"的 {@code L} ⇒ 该结果与玩家已表达过的意图一致，不是新的错误面。
+     */
+    private int placementIntentSlot = -1;
+    /** ★R92-④：与 {@link #placementIntentSlot} 同生同灭的那一次的载荷键（空串 = 无意图）。 */
+    private String placementIntentKey = null;
 
     private final ItemStackHandler storage = newStorageGroup(STORAGE_SLOTS);
     private final ItemStackHandler fluidInteraction = newSlotGroup(FLUID_INTERACTION_SLOTS);
@@ -162,6 +183,9 @@ public final class PocketInventory {
         if (root == null) {
             return inventory;
         }
+        // ★R92-④：读档不再需要专门的闭闸——"放置即配置"的准入信号是 isItemValid 登记的<b>意图</b>，
+        // 而 loadGroup 走 setStackInSlot、★不经过 isItemValid ⇒ 新建的 inventory 意图恒空，读档必然不定档
+        // （理由与残余窗口见 placementIntentSlot 的 javadoc；用例 ghost_memory_placement_declares 钉这条）。
         loadGroup(root, PocketConstants.ITEM_CONTENTS, inventory.storage, "中栏");
         loadGroup(root, PocketConstants.FLUID_INTERACTION_SLOTS, inventory.fluidInteraction, "流体交互格");
         loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput, "蒸馏输入");
@@ -395,6 +419,9 @@ public final class PocketInventory {
             @Override
             protected void onContentsChanged(int slot) {
                 PocketInventory.this.dirty = true;
+                // ★★R92-④（D4）：记忆档（L）的<b>空格</b>被放进东西 ⇒ 以那一件的实际内容为本格建档。
+                // ★判据一条都不在这里重写：attr 走单源 accessor、写入走 PocketFilterConfig#declare。
+                PocketInventory.this.declareMemoryFromPlacement(slot);
             }
 
             @Override
@@ -407,6 +434,11 @@ public final class PocketInventory {
                 if (stack != null && stack.getItem() instanceof ItemNekoDimensionPocket) {
                     return false;
                 }
+                // ★★R92-④：定档的<b>唯一</b>准入信号就是这一行——本方法是原版六条玩家放入分支共同的闸，
+                // 而整理 / 产物重塞 / 拉取落点 / 读档四条程序化路径★都不经过这里。
+                // ★必须排在下面那条 {@code !isGhostItemSlot} 早退<b>之前</b>：记忆档 pending 格按定义
+                // 就是"没有声明"的格，走到早退就再也拿不到这次机会了。
+                PocketInventory.this.recordPlacementIntent(slot, stack);
                 if (!isGhostItemSlot(slot)) {
                     return true;
                 }
@@ -424,6 +456,72 @@ public final class PocketInventory {
                 return filters.allowsPlayerPlacement(PocketFilterConfig.Kind.ITEM, slot, contentKey);
             }
         };
+    }
+
+    /**
+     * ★★<b>R92-④（D4）：物品支"放置即配置"的落档腿</b>。
+     * <p>
+     * 用户口径："Alt 锁定后，可以用 NEI 配置锁定，也可以玩家直接放东西上去配置"。取证证死现状是
+     * <b>没被拦、但根本没有配置口</b>：全仓只有 NEI 拖入与手势两条路会写声明，放置/灌流体/入瓶三条
+     * 路径一行都不写 ⇒ 记忆档空格永远停在 pending（有 L、无载荷），玩家看着"锁上了却配不了"。
+     * <p>
+     * 四条口径（★与另两条腿逐字同形，判据只在 {@link PocketFilterConfig} 那一侧）：
+     * <ol>
+     * <li>★<b>只开 MEMORY 档</b>：NONE / BIND 格放置既不放行（{@code allowsPlayerPlacement} 那条门未动）
+     * 也不产生声明；</li>
+     * <li>★<b>只补 pending</b>：该格已有声明 ⇒ 一个字都不改（P2 裁定：换声明走 NEI 拖入或手势，
+     * 放置不覆盖）⇒ "放错东西就把配置改了"这条误操作面不存在。★这两条合成一条判据、单源在
+     * {@link PocketFilterConfig#memoryPendingForPlacement} —— 本类<b>不直接读 attr 位表</b>，
+     * 与 {@code allowsPlayerPlacement} 同一条纪律（★V/用例都钉着"本文件 {@code attrAt(} 命中恒 0"）；</li>
+     * <li>载荷键由<b>服务端自己</b>从格内实栈算出（{@link PocketAeChannelOps#contentKey}，与
+     * {@code isItemValid} 那一条同一只键函数）⇒ 不存在伪造输入，也不需要 C2S 那四道请求侧门；</li>
+     * <li>★程序化写入面（读档 / 整理 / 产物重塞 / 拉取落点）<b>结构性拿不到意图</b>：它们都不经过
+     * {@code isItemValid}，而意图是唯一的准入信号（★审查 B2 修，详见 {@link #placementIntentSlot}）。</li>
+     * </ol>
+     * 成本如实说明：只在"该格处于记忆档 pending"成立时才走，★不在 135 格每次变化上算 base64
+     * （准入判据是一次 map 取值，键计算排在它后面）。
+     */
+    private void declareMemoryFromPlacement(int slot) {
+        final int intentSlot = placementIntentSlot;
+        final String intentKey = placementIntentKey;
+        // ★一次性：无论这次消费不消费都清掉，绝不留悬垂意图给下一次写入
+        placementIntentSlot = -1;
+        placementIntentKey = null;
+        if (slot != intentSlot || intentKey == null || intentKey.isEmpty()) {
+            return;
+        }
+        if (!filters.memoryPendingForPlacement(PocketFilterConfig.Kind.ITEM, slot)) {
+            return;
+        }
+        final ItemStack placed = storage.getStackInSlot(slot);
+        if (placed == null || placed.stackSize <= 0) {
+            return;
+        }
+        // ★落进来的必须<b>就是</b>玩家那一次要放的东西：不等说明这一格是被程序化落点填的
+        final String actualKey = PocketAeChannelOps.contentKey(placed);
+        if (!intentKey.equals(actualKey)) {
+            return;
+        }
+        final PocketFilterConfig.Filter payload = PocketFilterConfig.parseKey(actualKey);
+        // declare 内部会复核"这一格现在到底是不是这条"，失败返回 null ⇒ 本方法不留半档
+        filters.declare(PocketFilterConfig.Kind.ITEM, slot, payload);
+    }
+
+    /**
+     * ★R92-④：登记"玩家这一次确实想把 {@code stack} 放进 {@code slot}"（★只在记忆档 pending 格上做）。
+     * <p>
+     * 成本如实说明：普通格与已声明格<b>一次键计算都不做</b>（判据是一次 map 取值，{@code contentKey}
+     * 含 NBT base64，排在它后面），★不在每拍、也不在未声明的 135 格上算。
+     */
+    private void recordPlacementIntent(int slot, ItemStack stack) {
+        if (stack == null || stack.stackSize <= 0) {
+            return;
+        }
+        if (!filters.memoryPendingForPlacement(PocketFilterConfig.Kind.ITEM, slot)) {
+            return;
+        }
+        placementIntentSlot = slot;
+        placementIntentKey = PocketAeChannelOps.contentKey(stack);
     }
 
     public boolean isDirty() {

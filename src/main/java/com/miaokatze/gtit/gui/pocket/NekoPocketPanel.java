@@ -228,7 +228,9 @@ public final class NekoPocketPanel implements PocketSession {
     /** 解绑<b>全部</b>（绑定按钮 Shift + 右键，R74）。 */
     private static final int ACTION_UNBIND_ALL = 9;
     /**
-     * ★R87-d：左键持源质容器点 72 格 = 点击入槽（arg = 手势锚点格号，服务端判定不读它；★R88 载体见 {@code requestEssenceIntake} 的门禁；★R91-④ 溶掉源质后按档退回空瓶）。
+     * ★R87-d：左键持源质容器点 72 格 = 点击入槽（arg = 手势锚点格号；★<b>R92-④ 起服务端会读它</b>，但★只给"放置定档"用——记忆闸仍现读 {@code cellOf(tag)}，
+     * 这条分离由用例 {@code essence_memory_gate_reads_landing_cell} 钉住；★R88 载体见 {@code requestEssenceIntake} 的门禁；★R91-④
+     * 溶掉源质后按档退回空瓶）。
      */
     private static final int ACTION_ESSENCE_INTAKE = 10;
     /**
@@ -699,6 +701,17 @@ public final class NekoPocketPanel implements PocketSession {
      * （那个语义已迁到<b>中键 = BIND</b>），而是挂记忆 {@code L}。
      */
     boolean dispatchEssenceCellPress(int cell) {
+        return dispatchEssenceCellPress(cell, false);
+    }
+
+    /**
+     * ★★<b>R92-④（D4）：多带一个 {@code declared}（本格是否已有声明）</b> —— 旧形状在格件那里用
+     * {@code !ghost} 把已声明格的<b>整个</b>左键分流关掉，于是"放满瓶进去配置记忆档"这一条连入口都没有。
+     * 本号把闸从"整条分流"收窄到"<b>只关取出向</b>"：入槽向（游标持内容非空的载体）在已声明格上放开。
+     * ★取出向在 {@code declared} 时返回 false ⇒ 交回 {@code super}，与 R91-④ 的现状<b>逐字同行为</b>
+     * （本号不新增"从已声明格直接掏瓶"这条面）。
+     */
+    boolean dispatchEssenceCellPress(int cell, boolean declared) {
         final ItemStack carried = syncManager.getCursorItem();
         if (carried == null || carried.stackSize <= 0) {
             return false;
@@ -708,6 +721,9 @@ public final class NekoPocketPanel implements PocketSession {
         final String branch;
         final boolean handled;
         if (PocketEssenceIntake.isEmptyPhialCarrier(carried, EssenceGate.TAUM)) {
+            if (declared) {
+                return false;
+            }
             branch = "out-to-phial";
             handled = requestEssenceOutToPhial(cell, shift);
         } else {
@@ -830,7 +846,9 @@ public final class NekoPocketPanel implements PocketSession {
                 server.performEssenceOut(arg);
                 break;
             case ACTION_ESSENCE_INTAKE:
-                server.performEssenceIntake();
+                // ★R92-④：arg（玩家<b>实点的那一格</b>）不再被丢掉 —— 入槽的 L 执法与"放瓶即定档"都要按
+                // 点击格判（R91-q 收口）。★不新增动作码：客户端 requestEssenceIntake(cell) 本来就在发它。
+                server.performEssenceIntake(arg);
                 break;
             case ACTION_ESSENCE_OUT_TO_PHIAL:
                 performEssenceOutToPhial(arg);

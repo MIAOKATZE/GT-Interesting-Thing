@@ -697,6 +697,26 @@ public final class PocketSlots extends PocketIntakeOps {
             }
 
             @Override
+            public void memoryDeclareFromIntake(int tank, FluidStack content) {
+                // ★★R92-④（D4）：流体支的"放置即配置"落档腿。★本适配器不含第二份 attr 位表读法、
+                // 也不含第二份键式样：准入判据问 PocketFilterConfig#memoryPendingForPlacement，
+                // 写入走 #declare 那一条唯一原语（与上面 memoryAllowsFluid 的"只转发结论"同一条纪律）。
+                final Fluid fluid = content == null ? null : content.getFluid();
+                if (fluid == null) {
+                    return;
+                }
+                final PocketFilterConfig filters = inv.filters();
+                if (filters == null || !filters.memoryPendingForPlacement(PocketFilterConfig.Kind.FLUID, tank)) {
+                    return;
+                }
+                // ★载荷对象改由 fluidKey 单源反解（★不在这里 new 声明类 ⇒ 键式样只住 PocketFilterConfig 一处）
+                filters.declare(
+                    PocketFilterConfig.Kind.FLUID,
+                    tank,
+                    PocketFilterConfig.parseKey(PocketFilterConfig.fluidKey(fluid.getName())));
+            }
+
+            @Override
             public void placeProcessed(int sourceIndex, ItemStack template, int moved, ItemStack unit, int restCount) {
                 PocketSlots.this.placeProcessed(inv, sourceIndex, template, moved, unit, restCount);
             }

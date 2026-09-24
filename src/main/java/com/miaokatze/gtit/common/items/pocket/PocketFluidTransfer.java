@@ -62,6 +62,18 @@ public final class PocketFluidTransfer {
         boolean memoryAllowsFluid(int tank, FluidStack content);
 
         /**
+         * ★★<b>R92-④（D4，流体支的"放置即配置"落档腿）</b>：一次<b>成功的灌入</b>之后，若本列处于
+         * 「记忆档（L）+ 尚无声明（pending）」⇒ 以这份流体为本列建档。
+         * <p>
+         * ★调用点唯一：{@code placeProcessed} 真的把流体送进槽<b>之后</b>（判据是"流体确实进来了"，
+         * 不是"玩家点过了"）⇒ 中途作废、整笔退回、槽满那几条支都不会建档。
+         * ★gui 侧实现只是将结论转发给 {@code PocketFilterConfig#declare} 那一条唯一写入口，
+         * 本接口不含第二份 attr 位表读法与第二份键式样（与 {@link #memoryAllowsFluid} 同一条纪律）。
+         * ★已定档列<b>不覆盖</b>（P2 裁定：换声明走 NEI 拖入或手势，放置不改配置）。
+         */
+        void memoryDeclareFromIntake(int tank, FluidStack content);
+
+        /**
          * 一次搬运的两格落位（gui 侧 {@code placeProcessed}：产物进本列出格并上闩、余量留本列进格、
          * 强制同步与抑制键清理）。
          */
@@ -229,6 +241,8 @@ public final class PocketFluidTransfer {
             }
             if (done > 0 && canMoveIntoBothCells(cells, sourceIndex, product, done, unit, units)) {
                 cells.placeProcessed(sourceIndex, product, done, unit, units - done);
+                // ★★R92-④：流体<b>确实进槽</b>之后才谈建档（中途作废 / 整笔退回那两条支到不了这里）。
+                cells.memoryDeclareFromIntake(tank, content);
             } else {
                 if (movedFluid > 0) {
                     // 实际成交件数比预检时小 ⇒ 余量比预检时大，可能撑爆配对那一格：整笔退回槽，本次一件不搬
@@ -267,6 +281,8 @@ public final class PocketFluidTransfer {
                 target.drain(accepted - done * perUnit, true);
             }
             cells.placeProcessed(sourceIndex, product, done, unit, units - done);
+            // ★★R92-④：注册表型/NBT 型容器这一条支也是"流体确实进槽"的成功点 ⇒ 同样只在这里建档
+            cells.memoryDeclareFromIntake(tank, content);
             return;
         }
         // 一件整份都换不来，或实际件数撑不下两格 ⇒ 已进槽的流体整笔退回槽、容器原样不动
