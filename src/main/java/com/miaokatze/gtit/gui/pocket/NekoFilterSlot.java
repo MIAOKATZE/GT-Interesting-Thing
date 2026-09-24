@@ -236,6 +236,15 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
                         PocketGhostRequest.capReadout(stored),
                         PocketGhostRequest.capReadout(displayStopAmount()))
                     : IKey.lang("gtit.pocket.cap.readout", PocketGhostRequest.capReadout(displayStopAmount())));
+        } else if (shown == null) {
+            // ★★R92-⑤（D5）：<b>真正空着</b>的格子才说两件事：这一格是什么、三个功能键各干什么。
+            // ★★审查 B1 修：判据不能只写 {@code !ghost} —— {@code ghost} 读的是"有没有载荷<b>声明</b>"，
+            // 而"装着一件实物但没声明"的普通存储格同样 {@code !ghost} ⇒ 只问 ghost 会把四行加到
+            // <b>有内容格</b>上，正面违反 D5「有内容格一条未动」。⇒ 取交真实空置判据 {@code shown == null}
+            // （ghost 格的样本走上面那条分支，本支的 {@code shown} 就是 {@code stack} 本身）。
+            // ★pending 态（挂了属性但无载荷）仍是 {@code shown == null} ⇒ 归入空格子处理，符合 D5 口径。
+            PocketCellIdentity.addStorageIdentity(tooltip, slotIndex);
+            PocketCellIdentity.addKeyHints(tooltip);
         }
     }
 

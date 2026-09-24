@@ -558,6 +558,16 @@ public class NekoPocketFluidSlot extends FluidSlot {
             // 拖物面有两处坑（配方窗的流体行根本不可拖、GT 大型单元不在 Forge 容器表里），玩家看到的
             // 全部现象就是"拖上去又弹回来，什么也没发生"。
             tooltip.addLine(IKey.lang("gtit.pocket.ghost.drag_hint"));
+            // ★★R92-⑤（D5）：空格子补"三个功能键"三行。身份行本支<b>本来就有</b>（上面 legend.tank +
+            // tankOwnLabelText 那两条，★H7 零余量族一字未动）⇒ 本号只加键说明，不重复报身份。
+            // ★★审查 B1 修：判据同样不能只写 {@code !ghost}（ghost = 有没有<b>声明</b>）——
+            // "槽里真有流体但没声明"的列也是 {@code !ghost} ⇒ 只问 ghost 就把三行加到有内容槽上了。
+            // ⇒ 取交"条子里没有真流体"那一条判据（★与上面遮罩那条用的是同一个 {@code super.getFluidStack()}，
+            // ★不复用 {@code displayAmountText()}，那条还带着库自己的开关）。
+            final FluidStack realForHint = super.getFluidStack();
+            if (realForHint == null || realForHint.amount <= 0) {
+                PocketCellIdentity.addKeyHints(tooltip);
+            }
             return;
         }
         tooltip.addLine(IKey.lang("gtit.pocket.ghost.on", declaredFluidName()));

@@ -281,6 +281,34 @@ public final class PocketConstants {
     public static final int STORAGE_COLUMNS = 9;
     /** 中栏<b>行数</b>（R75 的"选项 A"：16 → 15，本轮 R80 <b>未动</b>；★纵向 360 是硬天花板）。 */
     public static final int STORAGE_ROWS = 15;
+
+    /**
+     * ★★<b>R92-⑤（D5）：格身份的三个读数单源</b> —— 空格子 tooltip 要说"这一格是什么"，
+     * 行/列/格号就只能有一处算式。三个显示点各写一遍 {@code / 9 + 1} 的话，改一次行列数就有两说。
+     * <p>
+     * ★一律给 <b>1 起</b>的玩家可见口径（内部索引仍是 0 起）；★<b>两侧都夹</b>——未绑定（{@code < 0}）与
+     * 越出盘面（{@code >= 行 × 列} / {@code >= ESSENCE_DISPLAY_GRID}）一律返回 0，
+     * 显示侧按"0 = 读不出身份"自行早退，★不拿越界索引去凑一个看起来合法的行列号。
+     */
+    public static int storageRowOf(int slotIndex) {
+        return !isStorageSlotInGrid(slotIndex) ? 0 : slotIndex / STORAGE_COLUMNS + 1;
+    }
+
+    /** ★R92-⑤：中栏格身份的列号（1 起；越界给 0，理由同 {@link #storageRowOf}）。 */
+    public static int storageColumnOf(int slotIndex) {
+        return !isStorageSlotInGrid(slotIndex) ? 0 : slotIndex % STORAGE_COLUMNS + 1;
+    }
+
+    /** ★R92-⑤：格号是否落在 {@link #STORAGE_ROWS} × {@link #STORAGE_COLUMNS} 这张盘内（两侧都夹）。 */
+    private static boolean isStorageSlotInGrid(int slotIndex) {
+        return slotIndex >= 0 && slotIndex < STORAGE_ROWS * STORAGE_COLUMNS;
+    }
+
+    /** ★R92-⑤：源质显示盘的格号（1 起，与 {@link #ESSENCE_DISPLAY_GRID} 那一盘同一读法；越界给 0）。 */
+    public static int essenceCellNumberOf(int cellIndex) {
+        return cellIndex < 0 || cellIndex >= ESSENCE_DISPLAY_GRID ? 0 : cellIndex + 1;
+    }
+
     /**
      * 物品支可被就地转 ghost 的索引上界 = 中栏 <b>15 行 × 9 列 = 135</b>（R80 的用户定稿，
      * 覆盖 R75 的 150、R43b/R74 的 128 与 160；R78 只动流体/源质/背包未动中栏，本轮把列数由 10 收到 <b>9</b>）。

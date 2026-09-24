@@ -317,6 +317,17 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
         return ghostAttr;
     }
 
+    /**
+     * ★R92-⑤：本格的显示盘格号（0 起、未绑定 = {@code -1}）。
+     * <p>
+     * 存在的理由只有一条：空格子 tooltip 要说"这一格是盘上第几格"，而换算成玩家可见的 1 起口径
+     * 必须走 {@link PocketConstants#essenceCellNumberOf} 那<b>一处</b> ⇒ 本方法只交出内部索引，
+     * ★不在这里 +1、也不在显示点各写一遍。
+     */
+    public int cellIndex() {
+        return cellIndex;
+    }
+
     /** 本格是否挂了 {@code P}。 */
     public boolean isUploadBlocked() {
         return uploadBlocked;

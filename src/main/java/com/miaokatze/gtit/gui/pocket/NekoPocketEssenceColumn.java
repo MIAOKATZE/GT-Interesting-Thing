@@ -328,6 +328,10 @@ public final class NekoPocketEssenceColumn {
                 if (ghostNotSynced > 0) {
                     tooltip.addLine(IKey.lang("gtit.pocket.ghost.not_synced", ghostNotSynced));
                 }
+                // ★★R92-⑤（D5）：空格位补两样 —— 这一格是盘上第几格（此前<b>只有 tag 名</b>、没有格身份）
+                // 与三个功能键的作用。★放在本支末尾而不是开头：TC 不在场那一行仍是玩家第一眼要看到的。
+                PocketCellIdentity.addEssenceIdentity(tooltip, cell.cellIndex());
+                PocketCellIdentity.addKeyHints(tooltip);
                 return;
             }
             tooltip.addLine(IKey.str(EnumChatFormatting.WHITE + TaumCompat.nameOf(tag)));

@@ -392,9 +392,17 @@ gtit.pocket.fluid.capacity=%1$d mB per slot (%3$d mB in total across %2$d slots)
 #   ONLY the R key — the old "middle-click or press R" half-sentence claimed what the code no longer does.
 gtit.pocket.storage.sort_gesture=Middle grid: press R to tidy it (this mod's own shortcut, filter slots are skipped; not a generic chest sorter)
 # ★R91-⑤ the three cell attributes (four lines side by side in NekoPocketPanel#notesText, kept at stage length)
-gtit.pocket.storage.bind_gesture=Middle grid / fluid bar / essentia tray: middle-click = request binding — the cell becomes a demand refilled from the bound cell; with contents it records what is there, an empty cell only enters the state until an NEI drag fills it in; press again to revoke
-gtit.pocket.storage.memory_gesture=Alt + left-click = memory (blue L, top-left corner): the cell only takes the one kind of thing it remembers — pure filtering, it never pulls restock from the network; with contents it remembers that thing, an empty cell waits for an NEI drag; press again to revoke
+gtit.pocket.storage.bind_gesture=Middle grid / fluid bar / essentia tray: middle-click = request binding — the cell becomes a demand refilled from the bound cell; with contents it records what is there, an empty cell only enters the state until an NEI drag or a placement fills it in; press again to revoke
+gtit.pocket.storage.memory_gesture=Alt + left-click = memory (blue L, top-left corner): the cell only takes the one kind of thing it remembers — pure filtering, it never pulls restock from the network; with contents it remembers that thing, an empty cell waits for an NEI drag or a placement; press again to revoke
 gtit.pocket.storage.upload_block_gesture=Alt + right-click = upload block (green P, bottom-left corner): the cell's contents never enter the pocket-to-cell injection direction; it coexists with either attribute above; a cell with only P carries no content, so NEI drags ignore it; press again to revoke
+# ★★R92-⑤（D5）：empty-cell tooltip = ①what this cell is ②what the three keys do.
+# ★Short forms live on the cell; the long *_gesture lines above stay in the bottom help block.
+# ★No bare digits in values (the V lang digit ban) — row/column come in as %d from code.
+gtit.pocket.legend.storage_of=Middle grid: row %1$d, column %2$d
+gtit.pocket.legend.essence_cell=Essentia tray: cell %d
+gtit.pocket.storage.key.bind=Middle-click: bind this cell as a demand
+gtit.pocket.storage.key.memory=Alt + left-click: this cell takes only that kind
+gtit.pocket.storage.key.block=Alt + right-click: never upload this cell
 gtit.pocket.note.title=How this panel works
 gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket only works while held in your main hand
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
