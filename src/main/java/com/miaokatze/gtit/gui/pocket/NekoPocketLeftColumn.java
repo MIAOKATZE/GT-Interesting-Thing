@@ -325,11 +325,26 @@ public final class NekoPocketLeftColumn {
 
     /**
      * 一行状态回显（★R78 D-2 允许保留的那"一行短文本"，判据见类 javadoc：它印的是服务端算出来的
-     * 运行期事实——推送/拉取方向、冷却与剩余秒数、最近一次动作的回执——不是"这格怎么用"的说明）。
+     * 运行期事实，不是"这格怎么用"的说明）。
      * <p>
      * 文本由 {@link NekoPocketPanel} 的同步缓存格式化 ⇒ 客户端不读服务端内存表、不按 ghost 表推断
-     * （R39b/R19）。★R83：撤掉自造「整理」按钮后本行占满整条末行（{@code 108}px，原 88px）；
-     * 完整回执仍连同撤下来的说明进本行 tooltip（<b>不删信息</b>，R36 的宽度现实只是缓解不是解除）。
+     * （R39b/R19）。★R83：撤掉自造「整理」按钮后本行占满整条末行（{@code 108}px，原 88px）。
+     * <p>
+     * ★★<b>R93-③（B 项）两件事</b>：
+     * <ol>
+     * <li><b>正文只剩模式串</b>（{@code modeText}：推送 / 拉取 + ghost 条数）。回执与冷却/剩余整段
+     * 搬到底部带左段那块 112×36（{@link NekoPocketPanel#statusBlockText()}）——旧口径把整条
+     * {@code fluidStatusLine} 画在这里，而 88×18 的盒按 R92-⑥ 的保守前进量要折五行 ⇒ 顶穿，
+     * 就是用户实机报的"说明文字…会超出"。★模式串留在本行是刻意的：它是<b>这三组流体</b>的方向标签，
+     * 位置有意义；撤掉就在本列留下 18px 无主空白（R81④）。两处都走 {@code modeText()} 一个源 ⇒
+     * 重复的是<b>字</b>，不是第二处真相。</li>
+     * <li><b>文字盒从 88 抬到整幅 108</b>。那 88 是 R83 撤「整理」按钮后留下的<b>死账</b>
+     * （父盒 javadoc 当时就写着"本行占满整条末行 108"，子件却仍写 {@code WIDTH - CELL - 2}）⇒
+     * 按钮早已不存在，那 20px 谁也不属于。</li>
+     * </ol>
+     * 完整回执与说明仍留在本行 tooltip（{@code statusHintText} / {@code capacityReadoutText} /
+     * {@code notesText}）：★R93-③ 之后它是<b>额外</b>一层而非截断补偿（正文已在底部带画全），
+     * 但"不删信息"（R36）这一侧一个字没退。
      */
     private static IWidget statusLine(NekoPocketPanel ui) {
         return new ParentWidget<>().pos(0, STATUS_Y)
@@ -338,13 +353,13 @@ public final class NekoPocketLeftColumn {
             .child(
                 // ★★R92-⑥（D6）：统一缩放到 RESIDENT_TEXT_SCALE，并按"提示深色 / 读数白色"的分工
                 // 显式设色（旧形状跟随主题 fallback = 0xFF404040，压在暖沙色底板上对比度不足）。
-                // ★本行是全轮像素账的<b>下界卡点</b>（88×18 的盒 + mode.pull 拼回执可长到三行），
-                // 理由与算式见 PocketGhostRequest#RESIDENT_TEXT_SCALE 与用例 pocket_resident_text_pixel_budget。
-                (IWidget) new TextWidget(IKey.dynamic(ui::fluidStatusLine)).textAlign(Alignment.CenterLeft)
+                // ★R93-③：本行不再是全轮像素账的下界卡点（卡点随正文搬到底部带那块 112×36），
+                // 留在本行的只剩模式串；算式与逐点账见用例 resident_text_pixel_budget。
+                (IWidget) new TextWidget(IKey.dynamic(ui::modeText)).textAlign(Alignment.CenterLeft)
                     .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
                     .color(PocketGhostRequest.hintTextColor())
                     .pos(0, 0)
-                    .size(WIDTH - CELL - 2, STATUS_HEIGHT))
+                    .size(WIDTH, STATUS_HEIGHT))
             .tooltip(tooltip -> {
                 tooltip.addLine(IKey.dynamic(ui::statusHintText));
                 tooltip.addLine(IKey.dynamic(ui::capacityReadoutText));

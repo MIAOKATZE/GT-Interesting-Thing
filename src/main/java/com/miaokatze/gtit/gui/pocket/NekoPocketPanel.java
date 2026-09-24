@@ -413,7 +413,7 @@ public final class NekoPocketPanel implements PocketSession {
         panel.child(NekoPocketLeftColumn.build(this));
         panel.child(NekoPocketStorageColumn.build(this));
         panel.child(NekoPocketEssenceColumn.build(this));
-        for (ParentWidget<?> band : NekoPocketBottomBand.build(this, this::cellInfoLine)) {
+        for (ParentWidget<?> band : NekoPocketBottomBand.build(this, this::statusBlockText)) {
             panel.child(band);
         }
 
@@ -2527,39 +2527,29 @@ public final class NekoPocketPanel implements PocketSession {
             builder.append(
                 String.format(StatCollector.translateToLocal("gtit.pocket.bind.truncated"), rows.size() - shown));
         }
+        // ★★R93-③（B 项）：旧档里"不在服务口径"那条说明原先常驻在底部带左段（{@code cellInfoLine} 第 2 行），
+        // 那块本轮改成说明文字专用位 ⇒ 它必须有新落点（R36「撤形状成对」）。常驻行只有一行宽，
+        // 装不下这句 30 字的话（像素账见用例 {@code resident_text_pixel_budget}），而这条读的本来就是
+        // "要不要去解绑"这种动作前决策 ⇒ 落在全量面（tooltip）比落在常驻面更合适。
+        final int inert = rows.size() - PocketConstants.ALLOWED_BOUND_CELLS;
+        if (inert > 0) {
+            if (rows.size() > shown) {
+                builder.append('\n');
+            }
+            builder.append(String.format(StatCollector.translateToLocal("gtit.pocket.bind.inert"), inert));
+        }
         return builder.toString();
     }
 
-    /**
-     * ★R84：底部带左段那块 36px「常驻元件信息」的两行正文（缝由 {@code NekoPocketBottomBand.CellInfoText} 定）。
-     * <p>
-     * 数据只取<b>已同步的绑定行</b>（服务端 {@code composeBindRows} 现算 → {@code SYNC_BIND_ROWS} blob →
-     * 两端读同一份），★绝不按内存里的绑定表推断（R19/R39b：客户端那份可能落后，读它就是第二处真相）。
-     * <p>
-     * 第二行的用途：本轮起玩家可用口径只有 1 枚，而旧档真可能残留多条（本轮刻意不在读档时收缩，
-     * 见台账 §八十四⑤），那些多出来的条目<b>不再被服务</b> ⇒ 必须在这里说清楚，否则玩家以为多枚都在跑。
-     * 元件"类型 / 条目数"要新增一条服务端同步值才拿得到（且新单元在上游恒返 MAX/0），本轮未接 ⇒ 列进交付说明。
-     * <p>
-     * ★<b>R85 小项 3：这里的"1 枚"必须走 {@link PocketConstants#ALLOWED_BOUND_CELLS} 而不是字面量</b>。
-     * 旧写法把"只有第 1 枚被服务"写成 {@code row == 0} 与 {@code rows.size() - 1} 两处字面量，而其余
-     * 五处消费方（{@code PocketBindFlow} / {@code PocketChannelRunner} ×2 / {@code NekoPocketBottomBand} ×2 /
-     * {@link #bindSummaryText()}）都走符号 ⇒ 常量一旦回到 2，这一行会独自继续报"另有 1 条"（取证档案 D3）。
+    /*
+     * ★★R93-③：这里原先是 {@code cellInfoLine(int)}（底部带左段那两行绑定信息），本轮<b>删除</b>。
+     * 用户裁定"元件维度放到右边去，右边本身就有维度了"⇒ 那块腾空，改给装不下的说明文字
+     * （{@link #statusBlockText()}）。搬移逐条有落点，不是删除：
+     * 旧行 1（{@code bindRowLine(0)} = 元件短码 + 维度/坐标/槽位）→ 右栏常驻行 0
+     * （{@link #bindPersistentText(int)}，同一条算式同一个源）；旧行 2（{@code bind.inert}）→
+     * 绑定按钮 tooltip（{@link #bindTooltipText()}）；未绑定那枚时的 {@code bind.none} →
+     * 右栏常驻行 0 的空表分支（本来就有）。★不留转发性占位：占位会让"两处都还活着"这种半改查不出来。
      */
-    private String cellInfoLine(int row) {
-        final java.util.List<NekoPocketBottomBand.Row> rows = bindRows();
-        if (row < 0 || row >= NekoPocketBottomBand.CELL_INFO_ROWS) {
-            return "";
-        }
-        if (rows.isEmpty()) {
-            return row == 0 ? StatCollector.translateToLocal("gtit.pocket.bind.none") : "";
-        }
-        // 第一行永远是"被服务的那一枚"（绑定序前 ALLOWED_BOUND_CELLS 枚里取第 row+1 条）
-        if (row < PocketConstants.ALLOWED_BOUND_CELLS) {
-            return bindRowLine(row);
-        }
-        final int inert = rows.size() - PocketConstants.ALLOWED_BOUND_CELLS;
-        return inert <= 0 ? "" : String.format(StatCollector.translateToLocal("gtit.pocket.bind.inert"), inert);
-    }
 
     /**
      * 绑定块第一行的常驻读数（"已绑定 n/上限"，数字全部由服务端同步的行数与常量给出）。
@@ -2619,9 +2609,11 @@ public final class NekoPocketPanel implements PocketSession {
      * 规则（★条目多于常驻行位时，<b>最后一个行位让给截断提示</b>，不得静默只显示前 N 条）：
      * <ul>
      * <li>空表 ⇒ 行位 0 = {@code bind.none}（"尚未绑定元件"），其余行位空串（widget 常驻，几何不空转）；</li>
-     * <li>{@code size ≤ PERSISTENT_ROWS} ⇒ 逐位一条 {@code bind.entry}；</li>
-     * <li>{@code size > PERSISTENT_ROWS} ⇒ 前 {@code PERSISTENT_ROWS − 1} 位给条目，末位给
-     * {@code bind.rows_more}（含<b>未列出</b>的条数，文案点名"悬停绑定按钮"）。完整条目与位置五键照旧在按钮 tooltip
+     * <li>★<b>R93-③：被服务的那几枚（前 {@link PocketConstants#ALLOWED_BOUND_CELLS} 枚）逐位给
+     * {@link #bindRowLine(int)} = 完整位置行</b>（元件短码 + 维度/坐标/槽位）—— 这一族从底部带左段
+     * 搬进来（旧 {@code cellInfoLine}，本轮删除），行 0 的整幅 108 宽就是为这条算式留的；</li>
+     * <li>其余行位：只有短码 {@code bind.entry}（旧口径，本轮未动）；{@code size > PERSISTENT_ROWS} 时
+     * 末位让给 {@code bind.rows_more}（含<b>未列出</b>的条数，文案点名"悬停绑定按钮"）。完整条目与位置五键照旧在按钮 tooltip
      * （{@link #bindTooltipText()}，上限 {@code TOOLTIP_ROWS}，那里另用 {@code bind.truncated}），
      * ★常驻面变短不等于删信息。</li>
      * </ul>
@@ -2635,6 +2627,12 @@ public final class NekoPocketPanel implements PocketSession {
         final int size = rows.size();
         if (size == 0) {
             return slot == 0 ? StatCollector.translateToLocal("gtit.pocket.bind.none") : "";
+        }
+        // ★★R93-③：被服务的那几枚（前 ALLOWED_BOUND_CELLS 枚）给<b>整条位置行</b>（元件短码 + 维度/坐标/
+        // 槽位），不再是只有短码的 bindRowTitle —— 用户裁定"元件维度放到右边去，右边本身就有维度了"，
+        // 于是底部带左段那两行搬进这里。行 0 是整幅 108 宽，两行折行装得下（像素账见用例）。
+        if (slot < PocketConstants.ALLOWED_BOUND_CELLS) {
+            return bindRowLine(slot);
         }
         final int shown = size > NekoPocketBottomBand.PERSISTENT_ROWS ? NekoPocketBottomBand.PERSISTENT_ROWS - 1 : size;
         if (slot < shown) {
@@ -2764,14 +2762,21 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 左栏末行的<b>一行状态回显</b>（★R78 D-2 允许保留的那一行；为什么它算状态不算说明，
-     * 判据写在 {@code NekoPocketLeftColumn} 的类 javadoc）。
+     * ★★<b>R93-③（B 项）：底部带左段那一整块 112×36「说明文字」的正文</b>。
      * <p>
-     * 内容 = 模式（R39b 服务端算）+ 冷却/剩余与最近一次回执（R16/R24/R10），两者都是
-     * <b>运行期事实</b>；宽度装不下时走 tooltip（{@link #statusHintText()} + {@link #notesText()}），
-     * 不删信息（R36）。
+     * 旧形状：同一条串画在<b>左列末行那个 88×18 的窄条</b>里（方法名旧称 {@code fluidStatusLine}）。
+     * 最长状态串（模式 + 最长回执 + 剩余秒数）按 R92-⑥ 的保守前进量模型要折五行 ⇒ 18px 高<b>必然顶穿</b>，
+     * 这就是用户实机报的"说明文字这块…会超出"。本轮把元件短码与维度行搬到右栏常驻行
+     * （用户："元件和维度放到右边去，右边本身就有维度了"）后，底部带左段腾出连续的 36px ⇒
+     * 正文<b>整体改道</b>进那块，字号另立 {@link PocketGhostRequest#STATUS_TEXT_SCALE}。
+     * <p>
+     * 内容 = 模式（R39b 服务端算）+ 冷却/剩余与最近一次回执（R16/R24/R10），两者都是<b>运行期事实</b>
+     * （为什么这类文字允许常驻、而图例与用法摘要只许进 tooltip，判据写在
+     * {@code NekoPocketLeftColumn} 的类 javadoc）。★模式串在左列末行仍出现一次：那是流体三组的
+     * 局部标签，撤掉它就在那一列留下 18px 无主空白（R81④ 判据）；两处都走 {@link #modeText()}
+     * 这一个源 ⇒ <b>不存在</b>第二处真相。
      */
-    String fluidStatusLine() {
+    String statusBlockText() {
         final String mode = modeText();
         final String status = channelStatusText();
         return status.isEmpty() ? mode : mode + " · " + status;
@@ -2787,8 +2792,8 @@ public final class NekoPocketPanel implements PocketSession {
      * 冷却/剩余行文本（两条互斥：短效在跑显示剩余，否则显示瞬时冷却），
      * 并把<b>最近一次动作的回执</b>顶在前面（R10/R39b：失败原因必须玩家看得见）。
      * <p>
-     * 回执是粘性的（下一次动作覆盖），所以"分区拒收"不会一闪就没；
-     * 72px 装不下完整文本时走 {@code NekoPocketLeftColumn#statusLines} 的 tooltip（R36：不删信息）。
+     * 回执是粘性的（下一次动作覆盖），所以"分区拒收"不会一闪就没；★R93-③ 起这段文本画在
+     * 底部带左段那块 112×36 里（{@link #statusBlockText()}），不再挤左列末行那个 18px 窄条。
      */
     String channelStatusText() {
         final String receipt = receiptText();
@@ -2808,7 +2813,10 @@ public final class NekoPocketPanel implements PocketSession {
         return status.isEmpty() ? receipt : receipt + " " + status;
     }
 
-    /** 状态行的 tooltip（同一条文本的完整版，72px 截断时不丢信息，R36）。 */
+    /**
+     * 左列末行那一处回显的 tooltip（★R93-③ 之后它是<b>额外</b>的一层，不是截断补偿：
+     * 正文已在底部带那块 112×36 里画全，这里多给一份"模式 + 状态 + 主手限制"的完整读法）。
+     */
     String statusHintText() {
         final String receipt = receiptText();
         final String mode = modeText();

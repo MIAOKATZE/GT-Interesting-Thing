@@ -239,6 +239,8 @@ public class NekoPocketModelTest {
             NekoPocketModelTest::takeOutOverlayDeclaresHoverPassThrough);
         // ★R93-②（A 项）：流体列出格改成"只收产物、拒玩家放置"
         cases.put("fluid_output_row_read_only", NekoPocketModelTest::fluidOutputRowIsWriteProtected);
+        // ★R93-③（B 项）：底部带左段那块换成一整块说明文字，元件/维度搬进右栏常驻行（逐条有落点）
+        cases.put("status_block_takes_over_cell_info", NekoPocketModelTest::statusBlockTakesOverCellInfoBlock);
         // ---- R83 C2（缺陷 6：alt 绑定 + 每条声明的组上限滚轮）——★本批由收口片补，C2 死前零用例
         cases.put("cap_step_table_per_kind", NekoPocketModelTest::capStepTablePerKind);
         cases.put("cap_fast_multiplier_only_scales_the_step", NekoPocketModelTest::capFastMultiplierOnlyScalesTheStep);
@@ -5139,13 +5141,24 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★★<b>R92-⑥（D6）：八处常驻小字的像素账 —— 统一缩放必须是"算出来的下界"，不是选出来的喜好值</b>。
+     * ★★<b>R92-⑥（D6）／★R93-③ 重算：常驻小字的像素账 —— 缩放必须是"算出来的下界"，不是选出来的喜好值</b>。
      * <p>
-     * 用户实机："左右两侧文字太小了"。但 398×360 是硬顶（计划 §4-S6 明令禁扩盒/改段宽/借机塞功能），
-     * 所以能抬到多高完全由「最坏文案 × 字体前进量 vs 盒宽 × 盒高」决定。本用例就是那本账：
-     * 逐点取<b>最坏输出</b>（格式串直接从两份 lang 里读，★不抄字面量 ⇒ 文案一改本账自动跟着变），
-     * 求出每点的 {@code s_max}，再断言现役常量不超过全体下界。
+     * 用户实机："左右两侧文字太小了"（R92-⑥）、"说明文字这块…会超出…把说明的文字加大一些"（R93-③）。
+     * 但 398×360 是硬顶（计划 §4-S6 明令禁扩盒/改段宽/借机塞功能），所以能抬到多高完全由
+     * 「最坏文案 × 字体前进量 vs 盒宽 × 盒高」决定。本用例就是那本账：逐点取<b>最坏输出</b>
+     * （格式串直接从两份 lang 里读，★不抄字面量 ⇒ 文案一改本账自动跟着变），求出每点的 {@code s_max}，
+     * 再断言<b>该点现役那一档</b>不超过它。
      * <p>
+     * ★★<b>R93-③ 的两处结构性改动（都是本账自己抓出来的）</b>：
+     * <ol>
+     * <li><b>一档变两档</b>：统一档 {@code RESIDENT_TEXT_SCALE} 之外，底部带那块 112×36 的说明文字另立
+     * {@code STATUS_TEXT_SCALE}。每个点按<b>自己那一档</b>核，不再全体共用一个数 ⇒ "统一"这条
+     * 仍然对八处窄条成立，扩出来的只有那块（用户要的就是那一处变大）。</li>
+     * <li><b>R92 那本账漏了回执</b>：旧表把状态点记成「模式 + 剩余秒数」，而 {@code channelStatusText}
+     * 实际还会拼一条<b>回执</b>（最长那条是 30 余字的全量说明）。漏了这一项，旧账算出的 0.6
+     * 是<b>偏松</b>的下界。现在回执那一列<b>遍历全部 {@code gtit.pocket.receipt.*} 取最宽</b>，
+     * 新增回执键自动入账，不再靠人记得改测试。</li>
+     * </ol>
      * ★字体前进量口径与 {@code NekoPocketBottomBand} 那两条派生预算<b>同源</b>：
      * 全角 10、ASCII 6、空格 3、行高 10（★都取保守上界 —— 估宽宁可偏大，估窄就是把尾巴裁掉）。
      * ★真实字形是否恰好压线仍属<b>实机项</b>（本仓不直读 {@code fontRenderer}，理由写在
@@ -5155,24 +5168,37 @@ public class NekoPocketModelTest {
         final float scale = PocketGhostRequest.RESIDENT_TEXT_SCALE;
         SimpleAssert.that(scale > 0.5f, "★统一缩放必须真的比旧档 0.5 大（否则本号没交付用户要的那件事）");
         SimpleAssert.that(scale <= 1.0f, "缩放不得回到 1.0（常驻面是 18px 高的窄条，1.0 直接顶穿）");
+        final float statusScale = PocketGhostRequest.STATUS_TEXT_SCALE;
+        SimpleAssert
+            .that(statusScale > scale, "★R93-③：说明文字那一处必须<b>真的</b>比统一档大（用户点名的就是它），读到 " + statusScale + " / " + scale);
+        SimpleAssert.that(statusScale <= 1.0f, "★R93-③：专用档也不许回到 1.0（36px 高的块按 1.0 只放得下三行，最长串要五行）");
         final java.util.List<String> lang = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         if (lang == null) {
             System.out.println("[NOTE] 读不到 zh_CN.lang ⇒ 像素账【未验】（★不是通过）");
             return;
         }
-        // ---- 逐点记账：{点名, 最坏文案, 盒宽, 盒高} ----
+        // ---- 逐点记账：{点名, 最坏文案, 盒宽, 盒高, 该点用哪一档} ----
         final String pull = formatLang(lang, "gtit.pocket.mode.pull", 135);
         final String timed = formatLang(lang, "gtit.pocket.channel.timed.remain", 30);
-        final String cellInfo = formatLang(lang, "gtit.pocket.bind.entry", "b64732e9") + " "
+        // ★R93-③：位置行的宽按"搬进常驻面"后的新落点记（旧口径它是 112 宽的元件信息行，本轮改 108）
+        final String bindRow = formatLang(lang, "gtit.pocket.bind.entry", "b64732e9") + " "
             + formatLang(lang, "gtit.pocket.bind.located", 180, 172, 35, 186, 0);
-        final String[][] sites = { { "左列末行状态回显", pull + " · " + timed, "88", "18" },
-            { "币值数量（最坏 2147M）", "2147M", "30", "18" }, { "通道按钮短标签", "启动", "61", "18" },
-            { "常驻元件信息行", cellInfo, "112", "18" }, { "绑定按钮标签", "绑定", "40", "18" },
-            { "已绑定计数", formatLang(lang, "gtit.pocket.bind.summary", 1, 1), "86", "18" },
-            { "常驻绑定行（另有 n 条）", formatLang(lang, "gtit.pocket.bind.rows_more", 5), "86", "18" },
-            { "源质格存量读数", "256", "17", "9" } };
-        float worst = Float.MAX_VALUE;
-        String worstSite = "";
+        final String worstReceipt = widestReceiptLangValue(lang);
+        final String statusBody = pull + " · " + worstReceipt + " " + timed;
+        final String resident = "RESIDENT";
+        final String[][] sites = { { "左列末行（★R93-③ 起只剩模式串）", pull, "108", "18", resident },
+            { "★底部带说明块（模式 + 回执 + 剩余）", statusBody, "112", "36", "STATUS" },
+            { "币值数量（最坏 2147M）", "2147M", "30", "18", resident }, { "通道按钮短标签", "启动", "61", "18", resident },
+            { "★右栏常驻绑定行 0（整条位置行）", bindRow, "108", "18", resident }, { "绑定按钮标签", "绑定", "40", "18", resident },
+            { "已绑定计数", formatLang(lang, "gtit.pocket.bind.summary", 1, 1), "86", "18", resident },
+            { "常驻绑定行（另有 n 条）", formatLang(lang, "gtit.pocket.bind.rows_more", 5), "86", "18", resident },
+            { "源质格存量读数", "256", "17", "9", "CAP" } };
+        final java.util.Map<String, Float> active = new java.util.LinkedHashMap<>();
+        active.put(resident, Float.valueOf(scale));
+        active.put("STATUS", Float.valueOf(statusScale));
+        active.put("CAP", Float.valueOf(PocketGhostRequest.CAP_READOUT_SCALE));
+        final java.util.Map<String, Float> lowerBound = new java.util.LinkedHashMap<>();
+        final java.util.Map<String, String> boundSite = new java.util.LinkedHashMap<>();
         for (final String[] site : sites) {
             final int logical = residentLogicalWidth(site[1]);
             final int boxWidth = Integer.parseInt(site[2]);
@@ -5188,9 +5214,15 @@ public class NekoPocketModelTest {
                     break;
                 }
             }
+            final float used = active.get(site[4])
+                .floatValue();
             System.out.println(
                 "[像素账] " + site[0]
-                    + " 最坏=\""
+                    + " 档="
+                    + site[4]
+                    + "("
+                    + used
+                    + ") 最坏=\""
                     + site[1]
                     + "\" 逻辑宽="
                     + logical
@@ -5201,15 +5233,53 @@ public class NekoPocketModelTest {
                     + " ⇒ s_max="
                     + siteMax);
             SimpleAssert.that(
-                scale <= siteMax + 0.001f,
-                "★" + site[0] + " 装不下现役缩放 " + scale + "（该点上界 " + siteMax + "）⇒ 要么降档要么改文案，" + "★不许借机扩盒");
-            if (siteMax < worst) {
-                worst = siteMax;
-                worstSite = site[0];
+                used <= siteMax + 0.001f,
+                "★" + site[0] + " 装不下现役缩放 " + used + "（该点上界 " + siteMax + "）⇒ 要么降档要么改文案，" + "★不许借机扩盒");
+            final Float best = lowerBound.get(site[4]);
+            if (best == null || siteMax < best.floatValue()) {
+                lowerBound.put(site[4], Float.valueOf(siteMax));
+                boundSite.put(site[4], site[0]);
             }
         }
-        System.out.println("[像素账] 全体下界 = " + worst + "（卡在 " + worstSite + "）；现役 = " + scale);
-        SimpleAssert.that(scale >= worst - 0.1f, "★现役缩放必须贴着下界（下界 " + worst + "、现役 " + scale + "）⇒ 明显低于下界就是没把该抬的抬上去");
+        // ★两档各自的收口判据<b>不一样</b>，这是刻意的，理由写在下面两支里。
+        for (final java.util.Map.Entry<String, Float> entry : lowerBound.entrySet()) {
+            final float bound = entry.getValue()
+                .floatValue();
+            final float used = active.get(entry.getKey())
+                .floatValue();
+            System.out.println(
+                "[像素账] 档 " + entry.getKey()
+                    + " 下界 = "
+                    + bound
+                    + "（卡在 "
+                    + boundSite.get(entry.getKey())
+                    + "）现役 = "
+                    + used
+                    + " 未用余量 = "
+                    + (bound - used));
+            if ("CAP".equals(entry.getKey())) {
+                SimpleAssert.that(used == 0.5f, "★格内角标那一档本轮不许动（D6 边界：16px 格内三读数共一张几何账），读到 " + used);
+                continue;
+            }
+            if (resident.equals(entry.getKey())) {
+                // ★统一档本轮<b>不</b>再抬：用户 R93 点名放大的只有"说明文字"那一处。旧写法在这里也核
+                // "贴着下界"，而本轮之后长正文搬走、那一档的下界随之抬高（★具体是多少由上面的逐点输出报，
+                // 本注释不写死那个数 —— 独立审查抓到上一版这里写 0.85、类 javadoc 写 0.9，同一个数两处不一致）
+                // ⇒ 那条会逼着把八处窄条
+                // 一起放大，那是<b>越出本轮裁定范围</b>的顺手改。故换成两条各自说得清的硬判据：
+                // ① 不许超过下界（顶穿）；② R92-⑥ 交付的 0.6 不许回退（用户已看到的字号不得变小）。
+                // ★未用余量照旧打印 ⇒ 余量是<b>记在账上的</b>，不是没人认领的（列进交付说明的下一轮候选）。
+                SimpleAssert.that(used >= 0.6f, "★R92-⑥ 交付的统一档 0.6 回退了（读到 " + used + "）⇒ 用户会重新看到「太小」那件事");
+                continue;
+            }
+            SimpleAssert.that(
+                used >= bound - 0.1f,
+                "★" + entry.getKey() + " 档必须贴着下界（下界 " + bound + "、现役 " + used + "）⇒ 明显低于下界就是没把该抬的抬上去");
+        }
+        // ★撤形状成对：左段那块改道之后，全仓不得再有"逐行 18px"的元件信息件（旧 cellInfoRow 的残留形状）
+        final java.util.List<String> band = guiPocketSource("NekoPocketBottomBand.java");
+        SimpleAssert
+            .eq(0, countCodeLinesIn(band, "cellInfoRow(cellInfo"), "★R93-③：左段那块已经换成一整块说明文字 ⇒ 逐行件的调用必须归零（留着就是两块都还在画）");
         // ---- 撤形状成对：三处显示文件里不得再留 0.5f 的字面缩放 ----
         for (final String file : new String[] { "NekoPocketLeftColumn.java", "NekoPocketEssenceColumn.java",
             "NekoPocketBottomBand.java" }) {
@@ -5221,6 +5291,145 @@ public class NekoPocketModelTest {
             SimpleAssert
                 .eq(0, countCodeLinesIn(lines, "scale(0.5f)"), "★" + file + " 还留着写死的 0.5f ⇒ 统一档没落到这一处（用户仍会看到旧字号）");
         }
+    }
+
+    /**
+     * ★★R93-③：回执族里<b>最宽</b>的那一条（把每个 {@code %d} 填成四位最坏值）。
+     * <p>
+     * 存在的理由是 R92 那本账的一个真实漏洞：状态串的旧口径只记了「模式 + 剩余秒数」，而
+     * {@code NekoPocketPanel#channelStatusText} 还会在最前面拼一条<b>回执</b>（最长那条是三十字上下、
+     * 直接点名的全量说明）⇒ 少算这一项算出来的下界是<b>偏松</b>的假绿。这里<b>遍历整族</b>取最宽，
+     * 以后新增/加长任何回执键都会自动入账，不靠人记得改测试。
+     */
+    private static String widestReceiptLangValue(java.util.List<String> lang) {
+        String widest = "";
+        int widestWidth = -1;
+        for (final String line : lang) {
+            if (!line.startsWith("gtit.pocket.receipt.")) {
+                continue;
+            }
+            final String value = line.substring(line.indexOf('=') + 1)
+                .replace("%d", "9999");
+            final int width = residentLogicalWidth(value);
+            if (width > widestWidth) {
+                widestWidth = width;
+                widest = value;
+            }
+        }
+        SimpleAssert.that(widestWidth > 0, "★回执族一条都没读到 ⇒ 像素账的这一列是空转（读到 '" + widest + "'），不是通过");
+        return widest;
+    }
+
+    /**
+     * ★★<b>R93-③（B 项）：底部带左段那块"两行元件信息"换成一整块说明文字，元件/维度搬进右栏常驻行</b>。
+     * <p>
+     * 用户实机两条："说明文字这块…会超出…这样可以把说明的文字加大一些"与"元件维度放到右边去，
+     * 右边本身就有维度了"。这两条合起来是一次<b>搬移</b>，而搬移最容易留下的两种缺陷本用例逐一封：
+     * <ol>
+     * <li><b>搬了但旧形状还活着</b>（两块都在画 ⇒ 左段那 36px 变成上下叠印）：逐行件与旧缝签名必须归零；</li>
+     * <li><b>搬了但没有落点</b>（R36 撤形状成对）：元件短码 + 维度/坐标/槽位必须在<b>常驻面</b>读得到，
+     * 而"另有 n 条不在服务口径"那句必须另有落点（本轮进按钮 tooltip）。</li>
+     * </ol>
+     * ★另外钉三条本轮<b>不许动</b>的东西：左段横向几何账（49 + 2 + 61）、纵向行位加总、
+     * 帮助按钮那条 tooltip 落点 —— 本轮换的是"块里放什么"，不是块本身。
+     */
+    private static void statusBlockTakesOverCellInfoBlock() {
+        final java.util.List<String> band = guiPocketSource("NekoPocketBottomBand.java");
+        final java.util.List<String> panel = guiPocketSource("NekoPocketPanel.java");
+        final java.util.List<String> left = guiPocketSource("NekoPocketLeftColumn.java");
+        // ---- ① 旧形状归零（撤形状成对的前半：逐行件与"按行取正文"的缝）----
+        SimpleAssert.eq(0, countCodeLinesIn(band, "cellInfoRow("), "★R93-③：旧的逐行元件信息件必须消失（留着就是两个图层叠印）");
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(band, "String line(int row)"),
+            "★R93-③：缝的签名还带 row ⇒ 一块 36px 被当成两个 18px 件用，最长那条回执照样顶穿");
+        SimpleAssert.eq(1, countCodeLinesIn(band, "String text()"), "★整块正文只有一条取文本的口子（恰 1 处声明）");
+        // ---- ② 新形状恰一件，且件数对账走具名量（不是塞进判据的字面量 1）----
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(band, "block.child(statusBlock(cellInfo))"),
+            "★说明块在 coinBlock 里恰画一件（多一件 = 旧逐行件没删干净）");
+        SimpleAssert.that(
+            countCodeLinesIn(band, "STATUS_BLOCK_WIDGETS") >= 2,
+            "★件数对账必须引用具名量 STATUS_BLOCK_WIDGETS（声明 + 判据 ≥2 处），不许把 1 写进判据里");
+        // ---- ③ 接线：面板给的是整块正文，旧的两行供给者整体消失 ----
+        SimpleAssert.eq(0, countCodeLinesIn(panel, "cellInfoLine"), "★旧供给者必须整体撤掉（留一个转发壳就是「两处都还活着」的温床）");
+        SimpleAssert.eq(1, countCodeLinesIn(panel, "this::statusBlockText"), "★面板装配点必须把整块正文供给者接进 build(...)（恰 1 处）");
+        final int blockStart = methodStart(panel, "String statusBlockText() {");
+        final int blockEnd = methodEnd(panel, blockStart);
+        SimpleAssert.that(
+            regionContainsCode(panel, blockStart, blockEnd, "channelStatusText()"),
+            "★说明块正文 = 模式 + 回执/冷却（只给模式就是把回执又赶回 tooltip，用户看到的仍是「没变大」）");
+        // ---- ④ 左列末行：只剩模式串，且那 20px 死账（WIDTH − CELL − 2）归零 ----
+        final int statusStart = methodStart(left, "private static IWidget statusLine(NekoPocketPanel ui) {");
+        final int statusEnd = methodEnd(left, statusStart);
+        SimpleAssert.that(regionContainsCode(left, statusStart, statusEnd, "ui::modeText"), "★左列末行改读模式串（长正文已搬到底部带那块）");
+        SimpleAssert
+            .eq(0, countCodeLinesIn(left, "WIDTH - CELL - 2"), "★R83 撤「整理」按钮后留下的 88px 死账必须一起收掉（父盒 javadoc 一直写着占满 108）");
+        // ---- ⑤ 元件 + 维度在右栏常驻面（搬移的后半：落点）----
+        final int persistentStart = methodStart(panel, "String bindPersistentText(int slot) {");
+        final int persistentEnd = methodEnd(panel, persistentStart);
+        SimpleAssert.that(
+            regionContainsCode(panel, persistentStart, persistentEnd, "slot < PocketConstants.ALLOWED_BOUND_CELLS"),
+            "★被服务的那几枚走符号口径（★不许写死 slot == 0：口径一旦回调会独自只显示第一枚）");
+        SimpleAssert.that(
+            regionContainsCode(panel, persistentStart, persistentEnd, "return bindRowLine(slot)"),
+            "★常驻行 0 必须是<b>整条位置行</b>（元件短码 + 维度/坐标/槽位）——用户点名的就是这句");
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(panel.subList(persistentStart, persistentEnd), "bind.inert"),
+            "★「另有 n 条不在服务口径」不得同时住在两个面（同一条事实两个出口 = 两处真相）");
+        final int tipStart = methodStart(panel, "String bindTooltipText() {");
+        final int tipEnd = methodEnd(panel, tipStart);
+        SimpleAssert.that(
+            regionContainsCode(panel, tipStart, tipEnd, "gtit.pocket.bind.inert"),
+            "★撤下来的那句 inert 必须有新落点（R36 不删信息）⇒ 本轮落在全量面 tooltip");
+        // ---- ⑥ 装配期断言换宿主：从"信息块行位数"搬到"常驻行位"，且收严成严格大于 ----
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(band, "PERSISTENT_ROWS <= PocketConstants.ALLOWED_BOUND_CELLS"),
+            "★行位与口径的对账必须跟着搬到右段（且末位要留得下来给「另有 n 条」⇒ 严格大于）");
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(band, "CELL_INFO_ROWS < PocketConstants.ALLOWED_BOUND_CELLS"),
+            "★旧那条还钉着就说明左段那块被当成「绑定信息的家」——本轮它只装说明文字");
+        // ---- ⑦ 玩家可见：U+3000 那个识别不出来的分隔符从两份 lang 消失（用户："维度后面的符号…识别不出来"）----
+        for (final String langFile : new String[] { "zh_CN", "en_US" }) {
+            final java.util.List<String> lang = sourceLinesOrNull(
+                "src/main/resources/assets/gtit/lang/" + langFile + ".lang");
+            if (lang == null) {
+                System.out.println("[NOTE] 读不到 " + langFile + ".lang ⇒ 分隔符半边【未验】（★不是通过）");
+                continue;
+            }
+            SimpleAssert.eq(0, countIdeographicSpaces(lang), "★" + langFile + " 仍含 U+3000（全角空格）⇒ 玩家读到的是那个认不出的符号");
+            SimpleAssert.eq(
+                1,
+                countCodeLinesIn(lang, "gtit.pocket.bind.located="),
+                "★bind.located 必须还在（改的是分隔符，不是删键）：" + langFile);
+        }
+        // ---- ⑧ 本轮不许动的东西：左段几何账 + 帮助按钮那条 tooltip 落点 ----
+        SimpleAssert.that(
+            countCodeLinesIn(band, "|| COIN_BAR_WIDTH != 49") == 1
+                && countCodeLinesIn(band, "CHANNEL_BUTTON_X != 51") == 1
+                && countCodeLinesIn(band, "CHANNEL_BUTTON_WIDTH != 61") == 1,
+            "★左段一行三段的字面量账被改动了 ⇒ 本轮只换「块里放什么」，几何一字未动");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(band, "if (LEFT_BAND_ROWS * COIN_BAR_HEIGHT != HEIGHT)"),
+            "★左段纵向加总那条必须还在（下段仍认领 36px，不许搬完内容就把它当空白）");
+        SimpleAssert
+            .that(countCodeLinesIn(band, "ui::notesText") >= 1, "★帮助按钮的 notesText 落点不许被动（R78 D-2 撤下来的说明只有这一处入口）");
+    }
+
+    /** ★R93-③：数 U+3000（全角空格）出现的行数——它在 MC 字体里没有可用字形，用户读作"识别不出来的符号"。 */
+    private static int countIdeographicSpaces(java.util.List<String> lines) {
+        int hits = 0;
+        for (final String line : lines) {
+            if (line.indexOf('　') >= 0) {
+                hits++;
+            }
+        }
+        return hits;
     }
 
     /** ★R92-⑥：从 lang 行里取格式串并填参（★不在用例里抄一份文案字面量 ⇒ 文案一改，账自动跟着重算）。 */
