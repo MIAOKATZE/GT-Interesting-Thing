@@ -66,17 +66,28 @@ import com.miaokatze.gtit.common.items.pocket.PocketInventory;
  * （由底部带右段的帮助按钮与状态行的 tooltip 承载）。<b>不删信息</b>（R36），只是不再常驻。
  * <p>
  * <b>★末行为什么还留一行文本（R78 D-2 的"算状态不算说明"判据）</b>：那一行的内容是
- * {@code modeText}（推送 / 拉取，含 ghost 条数）与冷却/剩余/回执，二者都是<b>服务端每拍算出来的
- * 运行期事实</b>（R39b 的两条轨道 + R16/R24 的倒计时 + R10 的"失败必须分开说"），玩家无法从静态
- * 外观推出，撤进 tooltip 就等于"当前到底在推还是拉"没有可见面。与之相反，图例与用法摘要讲的都是
- * "这格怎么用"这类<b>不随状态变的说明书文字</b> ⇒ 必须撤进 tooltip。
+ * {@code modeText}（推送 / 拉取，含 ghost 条数）——它<b>是</b>服务端每拍算出来的运行期事实
+ * （R39b 的两条轨道），玩家无法从静态外观推出，撤进 tooltip 就等于"当前到底在推还是拉"没有可见面。
+ * 与之相反，图例与用法摘要讲的都是"这格怎么用"这类<b>不随状态变的说明书文字</b> ⇒ 必须撤进 tooltip。
+ * ★★<b>R93-③：同一行原本还拼着冷却/剩余与最近一次回执，那段本轮搬进底部带左段那块 112×36</b>
+ * （{@link NekoPocketPanel#statusBlockText()}）。搬的理由不是判据变了，而是<b>装不下</b>：
+ * 88×18 的盒放整条状态要折五行（用户实机"会超出"），而模式串单独一行永远装得下 ⇒
+ * 留下模式、把长正文搬到有 36px 高的地方。回执/冷却仍是"算状态"那一家，只是换了落点。
  * <p>
  * <b>36 个交互格（★R83 D-2 覆盖 R39a 的"两格同权"）</b>：方向仍由<b>放入的容器当前有无流体</b>决定
  * （有流体 → 抽进<b>本列的 tank</b>；为空 → 从本列的 tank 灌满），但<b>落位不再同格</b>：处理完的容器
  * 进本列<b>出格</b>、未处理完的余量留本列<b>进格</b>，两格都放不下就整笔不搬也不吞件。搬运本体在
  * {@link PocketSlots#fluidInteraction} 的服务端 changeListener 里，本文件只装配 Widget。
- * ★R39a 的"同权"现在只对<b>输入侧</b>成立 ⇒ 出格仍不得做成"只能出"的单向门（那会让检查表 2.5 失效）；
- * 玩家可见口径由 {@code gtit.pocket.legend.in_out_same} 与 {@code legend.input}/{@code legend.output} 声明。
+ * ★★<b>R93-② 撤销本句旧口径</b>（原文："R39a 的'同权'现在只对输入侧成立 ⇒ 出格仍不得做成'只能出'的
+ * 单向门（那会让检查表 2.5 失效）"）：用户实机明确"输出格也能提取和放置流体，这是不对的，应该只有
+ * 输入格才可以"⇒ 本轮<b>就是</b>把出格做成"只能被系统写入 + 玩家可取出"的单向门。
+ * ★代价如实登记：检查表 2.5「下行原地抽干」与 9.6「余量留在下行」那两条验收面随裁定作废，
+ * {@code PocketFluidTransfer#restCellOf} 的第一支与 {@code canPlacePair} 的 {@code replaceable} 同支
+ * 因此成为<b>玩家路径不可达</b>的支——★按 R91-i 通则不删、但由新用例 {@code fluid_output_row_read_only}
+ * 钉住"处理永不从出格发起"这条<b>正向</b>判据，而不是留一条"推演为不可达"当结论。
+ * ★流体<b>槽本体</b>（18 个 tank）不受影响，仍可用储罐直接交互（用户明写）。
+ * 玩家可见口径由 {@code gtit.pocket.legend.in_out_same}（★R93-② 改述）与 {@code legend.input}/
+ * {@code legend.output} 声明。
  * <p>
  * <b>18 个流体槽（R30/R46c/L7 + R78②）</b>：一律用 MUI2 原生 {@link FluidSlot} 的子类
  * {@link NekoPocketFluidSlot} + {@link FluidSlotSyncHandler}（<b>不开 phantom</b>，理由见该方法）：

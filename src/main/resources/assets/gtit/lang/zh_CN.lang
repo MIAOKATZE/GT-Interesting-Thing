@@ -381,7 +381,7 @@ item.neko_dimension_pocket.tooltip.9=每个流体槽容量 %5$d mB，%8$d 槽合
 gtit.pocket.legend.input=上一行：放入待处理的容器（有流体就抽进本列，空容器会被灌满）
 gtit.pocket.legend.tank=中间：本列的流体槽
 gtit.pocket.legend.output=下一行：处理完的容器落在这里
-gtit.pocket.legend.in_out_same=上下两行都仍可放容器灌/排（方向看容器有无流体）；处理完的容器一律落本列下一行，只要没被换掉，就不会在那一行被自动灌回
+gtit.pocket.legend.in_out_same=只有上一行能放容器灌/排（方向看容器有无流体）；下一行只收处理完的容器，玩家以点击、拖拽或快捷移动放上去会被挡回
 gtit.pocket.legend.tank_of=第 %1$d 组第 %2$d 列（流体槽 %3$d）
 gtit.pocket.fluid.capacity=每槽 %1$d mB（共 %2$d 槽，合计 %3$d mB）
 # ★R91-⑧b（中键让位）：中键已改派"请求绑定"，整理只剩 R 键一个手势——旧文"中键或按 R 整理"

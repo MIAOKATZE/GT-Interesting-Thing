@@ -224,6 +224,19 @@ public final class PocketSlots extends PocketIntakeOps {
         createdRealSlots++;
         final ModularSlot slot = new ModularSlot(inv.fluidInteraction(), index).slotGroup(GROUP_FLUID);
         fluidSlotsByIndex.put(index, slot);
+        // ★★<b>R93-②（A 项）：本列的<b>出格（下行格）不再接受玩家放入容器</b>——灌与排都只能从进格发起，
+        // 处理完的容器由 {@link #placeProcessed} 转移到出格（那一条既有链路一个字未改）。
+        // 三档口径与 {@code NekoFilterSlot#applyAccessibility} 的 BIND/NONE 档<b>同形</b>：
+        // ★禁放置、<b>可取出</b>（产物落在这一格里，玩家必须拿得走；禁取出就等于把东西永久关在格内）。
+        // ★★流体<b>槽本体</b>（18 个 tank，那根 18×36 的长格）<b>不受本条影响</b>——用户明写"流体本体槽
+        // 是可以用储罐直接交互的"，那条走 {@code FluidSlotSyncHandler}，与这里的 36 个 {@code ItemSlot}
+        // 交互格是两套东西，一个字节都没动它。
+        // ★装配侧挡的是<b>手感</b>（放不进去、拖不进）；真值由服务端 {@link #moveFluidBetweenTanks}
+        // 入口那一道<b>同一条</b> {@code isLowerInteractionRow} 兜（两侧共用一个单源谓词，不是两处真相）。
+        if (PocketInventory.isLowerInteractionRow(index)) {
+            slot.accessibility(false, true);
+            slot.canDragInto(false);
+        }
         slot.changeListener((newItem, onlyAmountChanged, client, init) -> {
             if (client || init) {
                 return;
@@ -551,6 +564,15 @@ public final class PocketSlots extends PocketIntakeOps {
             fluidOutputLatch.remove(interactionIndex);
             // 清空 ⇒ 上一轮"这一格搬不动"的原因作废，下次真的卡住要能再报一次
             fluidNoticeKeys.remove(interactionIndex);
+            return;
+        }
+        // ★★<b>R93-② 的服务端权威面</b>：出格（下行格）不发起任何灌排。★排在闩<b>之前</b>——
+        // 闩是"产物落进出格后不许被反向搬"的旧机制，本条判据比它更靠前且更一般（玩家放进来的也一样挡）。
+        // ★两侧读同一条单源谓词 {@code PocketInventory#isLowerInteractionRow}，★不长出第二处行号算术。
+        // ⇒ 旧那道输出闩自此<b>结构上不可命中</b>（它的键空间恒为下行格、唯一读点就在下一行）：
+        // ★按取证给的两条理由本轮<b>不删</b>（它是 placeProcessed 上/退件路径的既有簿记，删它会把
+        // 一条还在写的表变成"没人读也没人写"的双盲态），但注释如实改述，台账以 R93-② 记由。
+        if (PocketInventory.isLowerInteractionRow(interactionIndex)) {
             return;
         }
         if (hitFluidOutputLatch(interactionIndex, placed)) {

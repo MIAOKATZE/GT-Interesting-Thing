@@ -237,6 +237,8 @@ public class NekoPocketModelTest {
         cases.put(
             "take_out_overlay_declares_hover_pass_through",
             NekoPocketModelTest::takeOutOverlayDeclaresHoverPassThrough);
+        // ★R93-②（A 项）：流体列出格改成"只收产物、拒玩家放置"
+        cases.put("fluid_output_row_read_only", NekoPocketModelTest::fluidOutputRowIsWriteProtected);
         // ---- R83 C2（缺陷 6：alt 绑定 + 每条声明的组上限滚轮）——★本批由收口片补，C2 死前零用例
         cases.put("cap_step_table_per_kind", NekoPocketModelTest::capStepTablePerKind);
         cases.put("cap_fast_multiplier_only_scales_the_step", NekoPocketModelTest::capFastMultiplierOnlyScalesTheStep);

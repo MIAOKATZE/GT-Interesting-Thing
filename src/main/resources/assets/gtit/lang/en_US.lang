@@ -385,7 +385,7 @@ item.neko_dimension_pocket.tooltip.9=Each fluid slot holds %5$d mB, %9$d mB in t
 gtit.pocket.legend.input=Top row: put the vessel to process (a filled one drains in, an empty one gets filled)
 gtit.pocket.legend.tank=Middle: this column's fluid slot
 gtit.pocket.legend.output=Bottom row: where this column's processed vessels land
-gtit.pocket.legend.in_out_same=Either row takes a vessel for filling or draining (direction follows whether it holds fluid); a processed vessel always lands in the lower row of its column and, while it is left untouched there, is not refilled
+gtit.pocket.legend.in_out_same=Only the top row takes a vessel for filling or draining (direction follows whether it holds fluid); the lower row only receives processed vessels, and placing one there by click, drag or quick-move is rejected
 gtit.pocket.legend.tank_of=Group %1$d column %2$d (fluid slot %3$d)
 gtit.pocket.fluid.capacity=%1$d mB per slot (%3$d mB in total across %2$d slots)
 # ★R91-⑧b (middle-click handover): the middle button now means "request binding", so tidying is
