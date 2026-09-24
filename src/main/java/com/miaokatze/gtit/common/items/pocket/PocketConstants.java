@@ -462,7 +462,7 @@ public final class PocketConstants {
      */
     public static final int FILTER_CAP_CEILING_FLUID = FLUID_BAR_CAPACITY_ML;
     /**
-     * 源质格一次取出的<b>硬上界</b> = 64 点（★R84：与 {@link #ESSENCE_CAP_PER_TAG}=256 解耦，
+     * 源质格一次<b>取瓶</b>的硬上界 = 64 点（★R84：与 {@link #ESSENCE_CAP_PER_TAG}=256 解耦，
      * 一格存 256 也要按次掏）。
      * <p>
      * ★R88 载体改判后这一枚 64 的<b>理由换了来源、值不动</b>：旧形状是"64 = 晶化源质的单堆上限"
@@ -542,16 +542,25 @@ public final class PocketConstants {
         }
     }
     /**
-     * 源质支组上限的上界与回落值。★R84 起与 {@link #ESSENCE_CAP_PER_TAG} <b>解耦</b>，钉在
-     * {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION}=64。
+     * 源质支<b>声明档</b>（ghost 组上限）的上界与"未设置"时的回落值。
+     * ★★<b>R92-② 裁定：= {@link #ESSENCE_CAP_PER_TAG}（256 点），与 {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION}
+     * （一次<b>取瓶</b>动作的 64 点上界）解耦</b> —— 用户实机读数口径："源质绑定标记时其上限为 256 而不是 64"。
      * <p>
-     * ★R88 载体改判后这条理由换了说法但<b>结论一字未动</b>：上界仍是 64 点 =
-     * {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 只满瓶。旧文案写的"晶化源质单堆 64 卡住物化"
-     * 已不成立（晶退役），现在的约束是"一次动作的搬运上界是设计量"：若让它跟着每格上限抬到 256 点，
-     * {@code extractEssence} 会按 256 点抽通道单位、一次要落 32 只瓶，而"放不下就注回"那条兜底的
-     * 粒度是<b>整瓶</b> ⇒ 差额折算不成整数就出现<b>净吞点数</b>（同一形状在 R85 耦合审计里被点过一次）。
+     * ★<b>本号正面撤销 R84「三处解耦」裁定的显示侧半条</b>（原文在 {@code decision-ledger.md} 的 R84 节）：
+     * 那条裁定把声明档天花板钉在取瓶动作上界 64 上，理由是"一批 256 点 ⇒ 一次要落 32 只瓶，而
+     * {@code extractEssence} 的『放不下就注回』兜底粒度是整瓶 ⇒ 差额折算不成整数就<b>净吞点数</b>"
+     * （R85 耦合审计里同形状点过一次，R88 载体改判后换了说法但结论一字未动）。
+     * ★<b>该否决理由的前提已由 R92-① 消除</b>：通道两条腿改按<b>通道档 1 点</b>量化
+     * （单源 {@code PocketEssenceChannelOps#channelUnitsForPoints}），落点预检也从"逐瓶回退 + 每退一次
+     * 重跑 {@code canAcceptAll}"收口成一次 {@code PocketEssenceStore#roomFor} ⇒ 下传<b>不再按瓶取整</b>，
+     * 256 点就是 256 点，"折算不成整数"这一族形状结构性不可达（V 段 ★R92-② G3 把这两条前提钉成读数）。
+     * <p>
+     * ★<b>两义仍然不同</b>，只是这次同值：本常量是"一条声明一次最多补满多少点"（<b>声明档语义</b>），
+     * {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} 是"玩家一次掏多少点进游标/背包"（<b>取瓶动作语义</b>）。
+     * 前者跟每格存储上限走是刻意的：一格存得下 256 ⇒ 声明就该能一次要满 256，否则"已绑定元件 1/1"
+     * 那一档永远填不满。后者不跟本常量走 ⇒ {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 那套瓶数账不变。
      */
-    public static final int FILTER_CAP_CEILING_ESSENCE = ESSENCE_OUT_MAX_POINTS_PER_ACTION;
+    public static final int FILTER_CAP_CEILING_ESSENCE = ESSENCE_CAP_PER_TAG;
     /**
      * ★物品支<b>服务端</b>一侧的收口上界 = 不设界（刻意）。
      * <p>

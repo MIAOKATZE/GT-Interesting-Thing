@@ -851,7 +851,8 @@ public final class PocketFilterConfig {
      * ★R83 C2（判据 2 的单点）：把一条声明的原始上限换算成<b>真正生效的数</b>。
      * <p>
      * 未设 ⇒ 回落到"这一类今天的现全局量"：流体 = {@link PocketConstants#FILTER_CAP_CEILING_FLUID}
-     * （16M/tank）、源质 = {@link PocketConstants#FILTER_CAP_CEILING_ESSENCE}（64 点）、
+     * （16M/tank）、源质 = {@link PocketConstants#FILTER_CAP_CEILING_ESSENCE}
+     * （★R92-② 起 = 每格存储上限 {@code ESSENCE_CAP_PER_TAG} = 256 点；R84～R91 期间是取瓶动作上界 64）、
      * 物品 = 调用方取好的 {@code itemMaxStackSize}（本类是纯 JVM 件，解不出 {@code ItemStack}，
      * 也不猜一个 64 —— 物品的现全局量<b>本来就是每件自己带的</b>）。
      * <p>

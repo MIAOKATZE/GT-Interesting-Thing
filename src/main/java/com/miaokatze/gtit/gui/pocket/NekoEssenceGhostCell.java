@@ -281,7 +281,12 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
         return this;
     }
 
-    /** 本格声明真正生效的组上限（没滚过轮 = {@code ESSENCE_CAP_PER_TAG}，与旧档逐字同行为）。 */
+    /**
+     * 本格声明真正生效的组上限（没滚过轮 = 回落值）。
+     * ★R92-②：这条注释在 R84～R91 期间是<b>不实的</b>（它自称回落 {@code ESSENCE_CAP_PER_TAG}，实现读的
+     * 却是 {@code FILTER_CAP_CEILING_ESSENCE}=64）；本号起两者同值 ⇒ 注释转真，但仍以本行为准：
+     * 回落值住在 {@link PocketFilterConfig#resolveRawCap} 那条链上，不是本类自己写的第二处真相。
+     */
     public int ghostCap() {
         return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.ESSENCE, declaredCap, 0);
     }
