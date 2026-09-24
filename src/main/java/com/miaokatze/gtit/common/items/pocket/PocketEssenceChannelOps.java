@@ -40,20 +40,23 @@ import appeng.api.storage.data.IAEStackType;
  * {@link EssenceNativeChannels#channelStackFromContainer}）以<b>自家装满的源质瓶</b>为探针反算
  * "1 瓶 = 多少通道单位"；换不到 ⇒ 不是源质原生通道（上传侧 {@code NO_CHANNEL} 拒收、抽取侧一次性
  * INFO 后 {@code NO_CHANNEL}），绝不 {@code instanceof} 具体物品类。</li>
- * <li><b>单位语义</b>：口袋里"一点源质"经这条通道出去时是一<b>只满瓶折算的通道单位</b>
- * （{@value TaumDistillRules#PHIAL_CAPACITY} 点）；实际倍率仍由对应 mod 的<b>容器换算</b>决定，
- * 本仓不写死。★R90 起<b>只有源质原生通道有"单位"可言</b>
- * ——物品通道的"1 单位 = 1 只瓶"口径随兜底一起删除；<b>不足一瓶的零头两头都不搬</b>（下一条）。</li>
- * <li><b>整瓶粒度（裁定 C1）</b>：上传与下传的点数都先经 {@link TaumDistillRules#floorToPhialUnits(int)}
- * 向下取整到 8 的倍数 ⇒ 零头<b>留在原侧</b>（上传侧留盘、下传侧留元件），绝不为凑零头造半瓶；
- * 旧形状"零头不足 1 晶不扣自己的点"仍然是这条纪律的特例。</li>
+ * <li><b>单位语义</b>：口袋里"一点源质"经这条通道出去时折多少<b>通道单位</b>，由对应 mod 的<b>容器换算</b>
+ * 决定（一只装满的瓶实测多少单位 ÷ {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS}），本仓不写死。★R90 起
+ * <b>只有源质原生通道有"单位"可言</b>——物品通道的"1 单位 = 1 只瓶"口径随兜底一起删除。</li>
+ * <li><b>★R92-① 通道档粒度 = {@link PocketConstants#ESSENCE_CHANNEL_UNIT_POINTS} 点</b>：上传与下传的点数
+ * 按<b>点</b>量化，量化与换算单源在 {@link #channelUnitsForPoints}，★本类已不再出现
+ * {@code floorToPhialUnits} ⇒ 组上限停在任意点数都搬得动。<b>零头仍留在原侧</b>（上传侧留盘、下传侧留元件），
+ * 这条纪律换档不换。★R88 裁定 C1 的"整瓶粒度"自本号起<b>只对取瓶路（面向玩家）继续有效</b>——TC 的瓶没有
+ * 半瓶语义，两档并立的口径见 {@link PocketConstants} 里那两条常量各自的 javadoc，<b>不是翻 R88 的案</b>。
+ * ★<b>唯一例外</b>（P1 保守档）：某第三方通道"一只瓶折多少单位"不是瓶档点数的整数倍 ⇒ 按点换算会丢精度，
+ * 这一条通道<b>整体退回瓶档</b>并留一行 INFO（宁可少搬，绝不静默丢点），见 {@link #channelTierExact}。</li>
  * </ul>
  * ★★<b>下传的落点也改了</b>（同一裁定第 2 条）：从"物化成整晶 → {@code session().depositItem} 进物品栏"
  * 改成"<b>读出容器点数 → 加回 72 格源质盘 → 容器就地消耗</b>"，因此本类不再向物品栏喷东西，
  * 也不再有任何产出晶的调用（裁定 C2）。
  * <p>
- * 纯 JVM 可测面只有那三段换算算术（{@link #carriersFromUnits}/{@link #unitsForCarriers}/
- * {@link TaumDistillRules#floorToPhialUnits(int)}）；其余属实机项（AE2 handler 拿不到），
+ * 纯 JVM 可测面只有那几段换算算术（{@link #channelUnitsForPoints}/{@link #pointsFromUnits}/
+ * {@link #carriersFromUnits}/{@link #unitsForCarriers}）；其余属实机项（AE2 handler 拿不到），
  * 与 {@code PocketAeChannelOps} 同一条可测边界。
  */
 final class PocketEssenceChannelOps {
@@ -77,9 +80,10 @@ final class PocketEssenceChannelOps {
      * 任何瓶形态，瓶只存在于玩家手动取用（取出口径另一片）与 GUI 游标。
      * <p>
      * ★<b>单趟探针</b>：同一只探针栈既当"路由门"又当倍率源（{@code unit}），不再像旧形状那样
-     * 造两次满瓶各探一遍。★<b>单位语义</b>：出去的是<b>整瓶折算的通道单位</b>，倍率由对应 mod
-     * 决定、本仓不写死；★<b>整瓶粒度</b>（裁定 C1）：本轮要搬的点数先向下取整到 8 的倍数，
-     * <b>余数留在盘里且不扣点</b>。
+     * 造两次满瓶各探一遍。★<b>单位语义</b>：出去的是按该通道容器换算折出的通道单位，倍率由对应 mod
+     * 决定、本仓不写死；★<b>R92-① 通道档粒度</b>：本轮要搬的点数按
+     * {@link PocketConstants#ESSENCE_CHANNEL_UNIT_POINTS} 量化（现役 1 点 ⇒ 不再向下取整到整瓶），
+     * <b>元件收不下的零头留在盘里且不扣点</b>。
      */
     static PocketChannelOps.Outcome injectEssenceSource(PocketAeChannelOps ops, PocketChannelOps.SourceSlot source,
         String diskuuid, String typeId) {
@@ -112,16 +116,20 @@ final class PocketEssenceChannelOps {
         if (handler == null) {
             return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
-        // ★C1：想搬的点数向下取整到整瓶；不足一瓶 ⇒ 这一轮整条跳过（不扣点、不动元件）
-        final int wantPoints = TaumDistillRules.floorToPhialUnits(Math.min(stock, source.count));
-        if (wantPoints <= 0) {
-            return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
-        }
-        final int wantCarriers = TaumDistillRules.phialCountFor(wantPoints);
         // ★单趟：门与倍率同源（同一只探针），不再二次造瓶二次换算
         final long unit = probe.getStackSize();
-        probe.setStackSize(unitsForCarriers(wantCarriers, unit));
-        final long requestedUnits = probe.getStackSize();
+        // ★R92-①：想搬的点数按<b>通道档</b>量化（现役 1 点），换算单源 = channelUnitsForPoints。
+        // 扣点账必须以<b>换算取整之后</b>的读数为准（P1 降级档会掉到整瓶），拿原始请求点数扣就是净吞点数。
+        final long requestedUnits = channelUnitsForPoints(Math.min(stock, source.count), unit);
+        final int wantPoints = pointsFromUnits(requestedUnits, unit);
+        if (wantPoints <= 0) {
+            // 不足一个通道档（或降级档下不足一瓶）⇒ 这一轮整条跳过：不扣点、不动元件
+            return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
+        }
+        if (!channelTierExact(unit)) {
+            logChannelDegradeOnce(type.getId(), unit);
+        }
+        probe.setStackSize(requestedUnits);
         ops.rememberPrototype(source.contentKey, probe);
         final boolean writable = handler.getAccess()
             .hasPermission(AccessRestriction.WRITE);
@@ -129,9 +137,10 @@ final class PocketEssenceChannelOps {
         final IAEStack<?> leftover = handler.injectItems(probe, Actionable.MODULATE, PocketAeChannelOps.actionSource());
         final long leftoverUnits = leftover == null ? 0L : leftover.getStackSize();
         final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requestedUnits, leftoverUnits);
-        // 零头必须留在元件侧（不足一瓶的单位不收）——与抽取支"零头留下"是同一条纪律的两面
-        final int refusedCarriers = carriersFromUnits(leftoverUnits, unit, wantCarriers);
-        final int moved = Math.max(0, wantPoints - refusedCarriers * PocketConstants.ESSENCE_OUT_UNIT_POINTS);
+        // ★R92-①：元件收不下多少点就退多少点 ⇒ 零头<b>留在盘里且不扣点</b>（旧形状是"不足一瓶的单位不收"，
+        // 换档不换纪律）——与抽取支"零头留元件侧"是同一条纪律的两面。
+        final int refusedPoints = pointsFromUnits(leftoverUnits, unit);
+        final int moved = Math.max(0, wantPoints - refusedPoints);
         final int drained = moved <= 0 ? 0
             : ops.session()
                 .drainEssence(tag, moved);
@@ -163,31 +172,33 @@ final class PocketEssenceChannelOps {
      * <b>只读探针/读回</b>用途（下传的倍率换算与容器读回校验），探针构造单源在
      * {@link EssenceNativeChannels}；面向玩家的取瓶物化归<b>取出口径</b>（另一片）单源负责。
      * <p>
-     * 把"已经在元件侧但口袋里没扣成"的点数按<b>整瓶</b>折算注回该通道。
+     * 把"已经在元件侧但口袋里没扣成"的点数按<b>通道档</b>（★R92-①，旧形状是"整瓶"）折算注回该通道。
      * <p>
-     * 向下取整是刻意的：不足一瓶的零头<b>无法</b>用一只瓶表达（C1 不许半瓶），这部分只能显式承认，
-     * 所以这里在回补之外必须留下一行 INFO（守恒类事件不得静默，但也不该每拍刷）。
+     * ★R92-① 之后这条腿在<b>精确档</b>（{@link #channelTierExact}）下是<b>无损</b>的：点数 ↔ 通道单位
+     * 一一对应，回补多少点就注回多少点，下面的 INFO 天然不可达。它仍然必须留在原位，因为<b>降级档</b>
+     * （某第三方通道的倍率不是瓶档整数倍）会退回整瓶算式 ⇒ 不足一瓶的零头<b>无法</b>用一只瓶表达
+     * （C1 不许半瓶），这部分只能显式承认，所以这里在回补之外必须留下一行 INFO（守恒类事件不得静默，
+     * 但也不该每拍刷）。
      */
     private static void refundUnits(IMEInventoryHandler handler, IAEStackType<?> type, String tag, int points,
         long unitPerCarrier) {
         if (handler == null || points <= 0) {
             return;
         }
-        final int carriers = TaumDistillRules.phialCountFor(points);
-        final int refundable = carriers * PocketConstants.ESSENCE_OUT_UNIT_POINTS;
-        if (refundable > 0) {
+        final long refundUnits = channelUnitsForPoints(points, unitPerCarrier);
+        if (refundUnits > 0L) {
             final IAEStack<?> back = essenceStackFor(
                 type,
                 TaumCompat.newFilledContainer(tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS));
             if (back != null) {
-                back.setStackSize(unitsForCarriers(carriers, unitPerCarrier));
+                back.setStackSize(refundUnits);
                 handler.injectItems(back, Actionable.MODULATE, PocketAeChannelOps.actionSource());
             }
         }
-        final int lost = points - refundable;
+        final int lost = points - pointsFromUnits(refundUnits, unitPerCarrier);
         if (lost > 0) {
             LOG.info(
-                "[gtit] 口袋源质支：通道 {} 回补 {} 点时不足一瓶（tag={}，本轮剩 {} 点无处回补），" + "已按整瓶向下取整",
+                "[gtit] 口袋源质支：通道 {} 回补 {} 点时不足一个可折算档（tag={}，本轮剩 {} 点无处回补），" + "已按该通道的粒度向下取整",
                 type == null ? "?" : type.getId(),
                 points,
                 tag,
@@ -214,8 +225,8 @@ final class PocketEssenceChannelOps {
      * {@code session().depositItem(...)}（＝用户报的"下传变成结晶落在格子里"）。现在是
      * <b>读出容器点数 → 加回 72 格源质盘 → 容器就地消耗</b>：容器是本地临时栈，读完即弃，
      * 全程不进任何库存、不掉脚下，所以也没有"放不下就注回"的物品槽那一层——<b>放得下的判据换成了
-     * 源质盘自己的全有全无预检</b>（{@code PocketEssenceStore.canAcceptAll}，R29 纪律同源），
-     * 预检不过 ⇒ 一克都不从元件抽、回执 {@code TARGET_FULL}。
+     * 源质盘自己的落点余量</b>（★R92-①：{@code PocketEssenceStore.roomFor}，与 R29 那条全有全无预检
+     * 在单 tag 情形下同一条判据），余量为 0 ⇒ 一克都不从元件抽、回执 {@code TARGET_FULL}。
      * <p>
      * 其余口径与流体支同源："先问、后抽、抽了必须落得下、落不下就注回"。
      */
@@ -240,9 +251,9 @@ final class PocketEssenceChannelOps {
             return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
         // 一次一条声明至多补满该条声明的组上限（未设时 = FILTER_CAP_CEILING_ESSENCE 点），剩下的顺延下一拍
-        // ★C1：先向下取整到整瓶 ⇒ 组上限停在非 8 倍数时那一档天然搬不动（PocketConstants 里有同一条提醒）
-        final int wantPoints = TaumDistillRules
-            .floorToPhialUnits(Math.min(count, PocketFilterConfig.resolveCap(filter, 0)));
+        // ★R92-①：按<b>通道档</b>（现役 1 点）量化，不再向下取整到整瓶 ⇒ 组上限停在任意点数都搬得动。
+        // 这里<b>不</b>先做换算取整：落点余量还没收口，收口之后那一步（下面的 channelUnitsForPoints）才是唯一量化点。
+        final int wantPoints = Math.min(count, PocketFilterConfig.resolveCap(filter, 0));
         if (wantPoints <= 0) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
@@ -253,15 +264,21 @@ final class PocketEssenceChannelOps {
             return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
         final long unit = perCarrier.getStackSize();
-        // ★落点预检在抽取<b>之前</b>：先按"盘里塞得下几只整瓶"把本轮瓶数收口，
-        // 才去问元件有多少 —— 反过来的话"抽出来了却放不下"就只能把瓶扔掉或喷进物品栏，两条都是销毁价值。
-        int wantCarriers = TaumDistillRules.phialCountFor(wantPoints);
-        while (wantCarriers > 0 && !store.canAcceptAll(
-            Collections.singletonMap(filter.tag, wantCarriers * PocketConstants.ESSENCE_OUT_UNIT_POINTS))) {
-            wantCarriers--;
+        if (!channelTierExact(unit)) {
+            logChannelDegradeOnce(type.getId(), unit);
         }
-        if (wantCarriers <= 0) {
+        // ★落点预检在抽取<b>之前</b>：先把本轮点数收口到"盘里这个 tag 还塞得下多少"，才去问元件有多少 ——
+        // 反过来的话"抽出来了却放不下"就只能把点扔掉或喷进物品栏，两条都是销毁价值。
+        // ★R92-① 顺带收口一处旧形状：旧写法是"逐瓶回退 + 每退一次重跑 {@code canAcceptAll}"，瓶数上界抬到
+        // 32 就是 32 次循环；{@code roomFor} 一次收口，且单 tag 情形下与那条全有全无预检<b>同一条判据</b>。
+        final int room = store.roomFor(filter.tag);
+        if (room <= 0) {
             return new PocketChannelOps.Outcome(PocketReceipt.TARGET_FULL, 0);
+        }
+        final long requestedUnits = channelUnitsForPoints(Math.min(wantPoints, room), unit);
+        final int wantActual = pointsFromUnits(requestedUnits, unit);
+        if (wantActual <= 0) {
+            return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
         final IAEStack<?> probe = essenceStackFor(
             type,
@@ -269,31 +286,35 @@ final class PocketEssenceChannelOps {
         if (probe == null) {
             return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
-        probe.setStackSize(unitsForCarriers(wantCarriers, unit));
+        probe.setStackSize(requestedUnits);
         ops.rememberPrototype(filter.key(), probe);
         final IAEStack<?> simulated = handler
             .extractItems(probe, Actionable.SIMULATE, PocketAeChannelOps.actionSource());
         final long available = simulated == null ? 0L : simulated.getStackSize();
-        final int carriers = carriersFromUnits(available, unit, wantCarriers);
-        if (carriers <= 0) {
-            // 元件里没有该 tag，或零头不足一瓶：不动，避免"抽得出通道单位、却放不下整瓶"
+        // ★零头<b>留在元件侧</b>：把可得量向下折回点数（换档不换这条纪律），再与本轮请求取小
+        final long wantUnits = channelUnitsForPoints(Math.min(wantActual, pointsFromUnits(available, unit)), unit);
+        if (wantUnits <= 0L) {
+            // 元件里没有该 tag，或零头不足一个通道档：不动，避免"抽得出通道单位、却落不进盘"
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
-        probe.setStackSize(unitsForCarriers(carriers, unit));
+        probe.setStackSize(wantUnits);
         final IAEStack<?> taken = handler.extractItems(probe, Actionable.MODULATE, PocketAeChannelOps.actionSource());
-        final int takenCarriers = carriersFromUnits(taken == null ? 0L : taken.getStackSize(), unit, carriers);
-        if (takenCarriers <= 0) {
+        final int takenPoints = pointsFromUnits(taken == null ? 0L : taken.getStackSize(), unit);
+        if (takenPoints <= 0) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
         // ---- 读容器 → 入账 → 消耗容器（本地临时栈，读完即弃 ⇒ 不落物品槽）----
+        // ★R92-①：入账点数改以<b>通道换算</b>为准（{@code takenPoints}），这里的读回降级为<b>活性交叉校验</b>：
+        // 它仍必须读得出正数，否则就是"桥说容器装好了、读回来却是空"＝ TC 版本漂移。两者按构造同源——
+        // {@code unit} 正是从同一只装满 {@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点的瓶实测出来的。
         final int pointsPerCarrier = pointsOf(
             TaumCompat.newFilledContainer(filter.tag, PocketConstants.ESSENCE_OUT_UNIT_POINTS));
         if (pointsPerCarrier <= 0) {
             // 桥说容器装好了、读回来却是空 ⇒ TC 版本漂移，宁可把这批原路注回，也不凭空记点数
-            refundUnits(handler, type, filter.tag, takenCarriers * PocketConstants.ESSENCE_OUT_UNIT_POINTS, unit);
+            refundUnits(handler, type, filter.tag, takenPoints, unit);
             return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
-        final int intendedPoints = takenCarriers * pointsPerCarrier;
+        final int intendedPoints = takenPoints;
         final int credited = store.putAll(Collections.singletonMap(filter.tag, intendedPoints));
         if (credited < intendedPoints) {
             refundUnits(handler, type, filter.tag, intendedPoints - credited, unit);
@@ -364,7 +385,9 @@ final class PocketEssenceChannelOps {
      * @param availableUnits 元件侧该 tag 现有的通道单位（SIMULATE 回报）
      * @param unitPerCarrier 一只装满的瓶对应多少通道单位（由该通道的<b>容器换算</b>实测，★R91-③
      *                       与探针同源：{@link EssenceNativeChannels#channelStackFromContainer}）
-     * @param wantCarriers   本轮最多要几只瓶（含落点预检与 {@code ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 自缚）
+     * @param wantCarriers   本轮最多要几只瓶（上界自缚）。★<b>R92-① 起两条搬运路不再直接调它</b>——
+     *                       通道侧改走 {@link #pointsFromUnits}；它保留为<b>瓶档原语</b>，现役唯一代码位是
+     *                       {@link #pointsFromUnits} 在降级档里以 {@code Integer.MAX_VALUE} 上界调用它。
      */
     static int carriersFromUnits(long availableUnits, long unitPerCarrier, int wantCarriers) {
         if (availableUnits <= 0L || unitPerCarrier <= 0L || wantCarriers <= 0) {
@@ -378,6 +401,81 @@ final class PocketEssenceChannelOps {
     static long unitsForCarriers(int carriers, long unitPerCarrier) {
         return carriers <= 0 || unitPerCarrier <= 0L ? 0L : (long) carriers * unitPerCarrier;
     }
+
+    /**
+     * ★★<b>R92-①（D1）：点数 ↔ 通道单位的<b>唯一</b>换算口 —— 通道档粒度
+     * {@link PocketConstants#ESSENCE_CHANNEL_UNIT_POINTS}（现役 1 点）在这里执法，别处不得再抄一份。
+     * <p>
+     * 存在的理由不是省几行算式：旧形状在上传腿与下传腿<b>各写一次</b>
+     * {@code floorToPhialUnits} + {@code phialCountFor} + {@code unitsForCarriers}，于是"一次搬多少点"
+     * 有两处真相；R92-① 把粒度从整瓶换成 1 点时，必须<b>只有一个地方可改</b>。
+     * <p>
+     * ★两档同源不矛盾：{@code unitsPerPhial}（一只装满的瓶折多少通道单位）仍由该通道的<b>容器换算</b>
+     * 实测（{@link EssenceNativeChannels#channelStackFromContainer}），本仓不写死倍率；瓶那一档
+     * （{@link PocketConstants#ESSENCE_OUT_UNIT_POINTS} 点/只）继续是<b>取瓶路</b>的粒度。
+     * <p>
+     * ★<b>P1 降级档</b>（{@link #channelTierExact} 为 false）：一只瓶折不出瓶档点数的整数倍 ⇒ 按点换算
+     * 会丢精度，这一条通道<b>整体退回瓶档</b>（走 {@link #unitsForCarriers} 那条旧算式，与改判前逐位一致）
+     * 并由调用侧留一行 INFO。宁可少搬，绝不静默丢点。
+     *
+     * @param points        本轮想搬的点数（{@code <= 0} 原样给 0）
+     * @param unitsPerPhial 该通道一只满瓶折多少通道单位（探针实测，非本仓常量）
+     */
+    static long channelUnitsForPoints(int points, long unitsPerPhial) {
+        if (points <= 0 || unitsPerPhial <= 0L) {
+            return 0L;
+        }
+        final long perPoint = unitsPerPoint(unitsPerPhial);
+        if (perPoint <= 0L) {
+            return unitsForCarriers(TaumDistillRules.phialCountFor(points), unitsPerPhial);
+        }
+        final int step = PocketConstants.ESSENCE_CHANNEL_UNIT_POINTS;
+        final int whole = step <= 0 ? 0 : points - points % step;
+        return (long) whole * perPoint;
+    }
+
+    /**
+     * 通道单位 → 点数（{@link #channelUnitsForPoints} 的逆运算，<b>向下</b>取整 ⇒ 零头留在原侧）。
+     * <p>
+     * 与正向那条同档：精确档按 {@link PocketConstants#ESSENCE_CHANNEL_UNIT_POINTS} 折回点数，降级档按整瓶
+     * 折回（走 {@link #carriersFromUnits}）。两条都保证 {@code pointsFromUnits(channelUnitsForPoints(p, u))}
+     * 恰好等于正向实际搬得动的那个点数 —— 扣点账必须以它为准，拿原始请求点数扣就是净吞点数。
+     */
+    static int pointsFromUnits(long units, long unitsPerPhial) {
+        if (units <= 0L || unitsPerPhial <= 0L) {
+            return 0;
+        }
+        final long perPoint = unitsPerPoint(unitsPerPhial);
+        final long points = perPoint <= 0L
+            ? (long) carriersFromUnits(units, unitsPerPhial, Integer.MAX_VALUE)
+                * PocketConstants.ESSENCE_OUT_UNIT_POINTS
+            : units / perPoint;
+        return points > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) points;
+    }
+
+    /** ★R92-①：该通道的倍率能否按<b>通道档</b>精确换算（false = 只能退回瓶档，见 {@link #channelUnitsForPoints}）。 */
+    static boolean channelTierExact(long unitsPerPhial) {
+        return unitsPerPhial > 0L && unitsPerPoint(unitsPerPhial) > 0L;
+    }
+
+    /** 一只满瓶折多少通道单位 ÷ 瓶档点数 = 每点折多少单位；除不尽 ⇒ 0（= 降级信号，不猜倍率）。 */
+    private static long unitsPerPoint(long unitsPerPhial) {
+        final int perPhial = PocketConstants.ESSENCE_OUT_UNIT_POINTS;
+        return perPhial <= 0 || unitsPerPhial % perPhial != 0L ? 0L : unitsPerPhial / perPhial;
+    }
+
+    /** ★R92-① P1：某通道的倍率落不到通道档 ⇒ 已退回瓶档，只报一次（每拍都刷会淹掉日志）。 */
+    private static void logChannelDegradeOnce(String typeId, long unitsPerPhial) {
+        if (LOG_CHANNEL_DEGRADED.add(typeId)) {
+            LOG.info(
+                "[gtit] 口袋源质支：通道 {} 一只满瓶折 {} 个通道单位，不是瓶档点数（{}）的整数倍 ⇒ 该通道按" + "瓶档搬运（★R92-① 的 1 点通道档对它不生效，本条只报一次）",
+                typeId,
+                String.valueOf(unitsPerPhial),
+                PocketConstants.ESSENCE_OUT_UNIT_POINTS);
+        }
+    }
+
+    private static final java.util.Set<String> LOG_CHANNEL_DEGRADED = new java.util.LinkedHashSet<>();
 
     /** 实验 E3：某第三方通道的栈无法物化成源质瓶（★R88 前的说法是"晶化源质"），只报一次（每次抽取都刷一行会淹掉日志）。 */
     private static void logUnmaterializableOnce(String typeId, String tag) {

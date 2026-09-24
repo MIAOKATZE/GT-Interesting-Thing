@@ -442,11 +442,12 @@ public final class PocketConstants {
      * 源质支一次滚轮的步进 = <b>1 点</b>（★R86 起取出侧不再有"每次几点"的常量，取出量见
      * {@code NekoPocketPanel#performEssenceOut}）。
      * <p>
-     * ★<b>R88 起的既有张力（不是本轮新引入，但载体换成 8 点/瓶后被放大）</b>：本步进是<b>点数</b>，
-     * 而两条搬运路都按<b>整瓶</b>取整（{@link #ESSENCE_OUT_UNIT_POINTS}，裁定 C1）⇒ 玩家把组上限停在
-     * 非 8 倍数（例如 3）时，那一档<b>一瓶也搬不动</b>，通道照跑、零搬运。旧形状里同一句写的是"= 1 晶"
-     * （1 点 = 1 晶 ⇒ 逐点都搬得动），那个"步进粒度与搬运粒度天然重合"的前提随载体一起没了。
-     * 收口属裁决题（把步进抬成瓶数、或在 tooltip/回执里声明"不足一瓶"），E3 的 lang 与检查表要跟着核。
+     * ★<b>R88 起挂着、★R92-① 收口的那条张力</b>：本步进是<b>点数</b>，
+     * 而 R88 之后两条搬运路都按<b>整瓶</b>取整（{@link #ESSENCE_OUT_UNIT_POINTS}，裁定 C1）⇒ 玩家把组上限
+     * 停在非 8 倍数（例如 3）时，那一档<b>一瓶也搬不动</b>，通道照跑、零搬运（旧载体 1 点/枚 时"步进粒度与
+     * 搬运粒度天然重合"的前提随载体一起没了）。★R92-① 把通道档粒度改成 {@link #ESSENCE_CHANNEL_UNIT_POINTS}
+     * = 1 点之后，步进粒度与搬运粒度<b>重新重合</b> ⇒ 停在任意点数的档都搬得动，无需"抬步进成瓶数 / 在
+     * tooltip 声明不足一瓶"那两种收口。⚠ 取瓶路（面向玩家）仍按整瓶，那条 C1 未被改判。
      */
     public static final int FILTER_CAP_STEP_ESSENCE = 1;
     /** 流体支"1%"的档数（★分母按 D-6 = 单 tank 容量 {@link #FLUID_BAR_CAPACITY_ML}，不是 288M 合计）。 */
@@ -470,26 +471,49 @@ public final class PocketConstants {
      * {@link #ESSENCE_OUT_UNIT_POINTS} 点。TC 的瓶堆叠上限是 64 <b>只</b>意味着"8 只瓶天然装得进一叠"，
      * 不再决定这个数。
      * <p>
-     * ★声明位置是硬约束：它必须<b>早于</b>下面那条 {@link #FILTER_CAP_CEILING_ESSENCE}，后者按符号引用它
-     * （静态字段初始化不允许前向引用，放错位置就是编译错）。
+     * ★★<b>R92-② 之后本常量只服务取瓶路</b>：旧形状里 {@link #FILTER_CAP_CEILING_ESSENCE} 按符号引用它
+     * （⇒ 动它会连带改声明档天花板），现在那条改成引用 {@link #ESSENCE_CAP_PER_TAG} ⇒ 本行回到
+     * <b>单一读者</b>。★声明位置仍建议保持在 {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 之前（后者按符号
+     * 引用本行，静态字段初始化不允许前向引用，放错位置就是编译错）。
      */
     public static final int ESSENCE_OUT_MAX_POINTS_PER_ACTION = 64;
     /**
-     * ★★<b>R88 裁定：源质搬运载体 = TC 安瓿瓶（{@code ItemEssence}），本行就是"一次搬运一格"的
-     * 点数粒度</b>（旧载体是晶化源质，1 点/枚 ⇒ 粒度 1；本轮改判后所有取整都按它做）。
+     * ★★<b>R88 裁定：源质搬运载体 = TC 安瓿瓶（{@code ItemEssence}），本行就是"一次<b>取瓶</b>一格"的
+     * 点数粒度</b>（旧载体是晶化源质，1 点/枚 ⇒ 粒度 1）。
+     * <p>
+     * ★★<b>R92-① 收窄本常量的执法面（不改判 R88，只划清两档）</b>：R88 那句"改判后<b>所有</b>取整都按它做"
+     * 自 R92-① 起只对<b>取瓶路</b>成立；通道两条路（上传 / 下传）改按
+     * {@link #ESSENCE_CHANNEL_UNIT_POINTS} 的 1 点量化，算式单源在
+     * {@code PocketEssenceChannelOps#channelUnitsForPoints}，本类里已不再出现 {@code floorToPhialUnits}。
      * <p>
      * <b>真值住在</b> {@code TaumDistillRules.PHIAL_CAPACITY}（= TC {@code ItemEssence.java:109-185}
      * 实测的单瓶容量，也是 {@code TaumBridge#capacityOf} 给瓶的档位、{@code newFilledContainer} 的装填
-     * 上限），本行是<b>转发</b>，不留第二份 8：取出侧（面板游标/背包）、通道上传侧
-     * （{@code PocketEssenceChannelOps#injectEssenceSource}）与通道下传侧
-     * （{@code extractEssence}）读的都是这里，而"瓶子究竟装几点"只有 {@code crossmod/taum} 那一侧认识。
+     * 上限），本行是<b>转发</b>，不留第二份 8：取出侧（面板游标/背包）与通道侧的"一只瓶折多少点"读的都是这里，
+     * 而"瓶子究竟装几点"只有 {@code crossmod/taum} 那一侧认识。
      * <p>
-     * ★随之生效的口径（裁定 C1）：<b>取出量向下取整到本常量的整数倍，余数留盘</b>——TC 的
-     * {@code ItemEssence} 没有半瓶语义，自造半瓶就是把私有形状送进第三方兼容面。换算见下面两条派生常量。
+     * ★随之生效的口径（裁定 C1，★R92-① 后<b>仅取瓶路</b>）：<b>取瓶量向下取整到本常量的整数倍，余数留盘</b>
+     * ——TC 的 {@code ItemEssence} 没有半瓶语义（{@code canHoldPartialAmount = false}），自造半瓶就是把
+     * 私有形状送进第三方兼容面。换算见下面两条派生常量。
      * ⚠ 本名字 R86 曾以 {@code =1}（晶粒度）存在并被当作零调用方删掉，R88 起带着新值与新调用方回来，
      * 文件末尾那条"★R88 同名提醒"就是为这件事留的。
      */
     public static final int ESSENCE_OUT_UNIT_POINTS = TaumDistillRules.PHIAL_CAPACITY;
+    /**
+     * ★★<b>R92-① 裁定：源质「口袋 ↔ 元件」<b>通道档</b>的搬运粒度 = 1 点</b>（本行是这条粒度的唯一落点）。
+     * <p>
+     * 它与 {@link #ESSENCE_OUT_UNIT_POINTS}（瓶物化档 = 8 点）<b>是两件事，不是同一件事的两个名字</b>：
+     * <ul>
+     * <li><b>通道档（本常量）</b>：AE2 源质原生通道里点数进出的粒度。通道单位与点数的倍率由
+     * {@code EssenceNativeChannels} 的容器探针实测，天然细到 1 点 ⇒ 上传/下传<b>不再向下取整到整瓶</b>，
+     * 组上限停在任意点数都搬得动（与 {@link #FILTER_CAP_STEP_ESSENCE} 天然重合，R88 起挂着的那条张力
+     * 就此收口）。</li>
+     * <li><b>瓶物化档（{@link #ESSENCE_OUT_UNIT_POINTS}）</b>：面向玩家的取瓶粒度，一灌就是整瓶 ⇒
+     * <b>取出侧仍是 8 点，R88 裁定 C1 对这一侧原样有效</b>。</li>
+     * </ul>
+     * ★两档之比（{@link #ESSENCE_OUT_UNIT_POINTS} / 本值）= "一次取瓶动作折多少个通道档"，仍不写死倍率；
+     * 本常量的执法点在 {@code PocketEssenceChannelOps#channelUnitsForPoints}（唯一的量化点，别处不得再抄）。
+     */
+    public static final int ESSENCE_CHANNEL_UNIT_POINTS = 1;
     /**
      * 一次取出动作的<b>瓶数</b>上界 = {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} /
      * {@link #ESSENCE_OUT_UNIT_POINTS} = <b>8</b>（派生，不留字面量；给 tooltip 与面板回执读数用，

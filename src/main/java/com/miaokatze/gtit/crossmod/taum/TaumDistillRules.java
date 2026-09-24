@@ -174,8 +174,11 @@ public final class TaumDistillRules {
      * 装箱：单个容器本轮应装多少点（不足一容量按实际点数装）。
      * <p>
      * ★R88 提醒：本方法是<b>余数瓶</b>那一支（末瓶装 4 点），只在"给第三方/罐一类按余数收尾"时才是想要的
-     * 形状。口袋侧的取出与通道搬运走的是裁定 C1 的<b>整瓶</b>粒度 ⇒ 请用 {@link #floorToPhialUnits(int)}，
-     * 不要把这里当"取多少点"的口径读。
+     * 形状。口袋侧的<b>取瓶路</b>（面板游标 / Shift 进背包 / 入槽算式）走的是裁定 C1 的<b>整瓶</b>粒度
+     * ⇒ 请用 {@link #floorToPhialUnits(int)}，不要把这里当"取多少点"的口径读。
+     * ★<b>通道搬运路自 R92-① 起不再走这里</b>（改按 1 点，单源在
+     * {@code PocketEssenceChannelOps#channelUnitsForPoints}），只有该通道倍率落不到通道档时的
+     * <b>降级档</b>才回落到瓶档。
      *
      * @param remaining 该 aspect 剩余可出点数
      * @param capacity  单容器容量
@@ -191,10 +194,14 @@ public final class TaumDistillRules {
     /**
      * ★<b>R88 裁定 C1 的唯一实现点：把"想取的点数"向下取整到整瓶，余数留盘</b>。
      * <p>
-     * 存在的理由不是省一行算式，而是<b>三条搬运路必须取同一个整</b>：面板取出（游标 / Shift 进背包）、
-     * 通道上传（{@code PocketEssenceChannelOps#injectEssenceSource}）、通道下传
-     * （{@code extractEssence}）。任何一处自己写 {@code / 8 * 8}，另一处改了粒度就会出现
-     * "扣了 3 点、只出 0 瓶"或"瓶数与点数对不上"的净吞点数。
+     * 存在的理由不是省一行算式，而是<b>同一条取瓶路上的各站必须取同一个整</b>：面板取出（游标 / Shift 进
+     * 背包）与入槽算式都走这里。任何一处自己写 {@code / 8 * 8}，另一处改了粒度就会出现"扣了 3 点、只出
+     * 0 瓶"或"瓶数与点数对不上"的净吞点数。
+     * <p>
+     * ★<b>R92-① 收窄执法面（不改判 C1）</b>：旧句里的"三条搬运路"包含通道上传与通道下传两条，那两条
+     * 自 R92-① 起改按<b>通道档 1 点</b>量化（单源 {@code PocketEssenceChannelOps#channelUnitsForPoints}），
+     * 只有该通道倍率落不到通道档时的<b>降级档</b>才回落到本函数所服务的瓶档 ⇒ 本函数现役是
+     * <b>取瓶路</b>的口径，不再被读成"源质所有搬运都是整瓶"。
      * <p>
      * 粒度取 {@link #PHIAL_CAPACITY}（现役载体的真实容量），<b>不是</b> {@code PocketConstants} 里
      * 复制一份 8 —— 那条 {@code ESSENCE_OUT_UNIT_POINTS} 是本常量的转发，两者同源。
