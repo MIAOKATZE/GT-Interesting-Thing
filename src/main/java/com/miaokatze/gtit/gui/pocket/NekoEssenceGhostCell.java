@@ -651,9 +651,14 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * ★R83 C2（判据 7）：声明格右上角的橙色组上限读数。
      * <p>
      * 色、缩放、右对齐算式与缩写全部取自 {@link PocketGhostRequest}（三类共用一份），本方法只负责"画"。
+     * <p>
+     * ★★R92-③：早退从"只看 {@code ghost}"改问 {@link PocketGhostRequest#capReadoutVisible}
+     * （{@code declared && attr != MEMORY}）⇒ 源质支的 alt+左键记忆格也不再有那抹橙，三支同一条判据。
      */
     private void drawCapReadout() {
-        final String text = ghost ? PocketGhostRequest.capReadout(ghostCap()) : "";
+        final String text = PocketGhostRequest.capReadoutVisible(ghost, ghostAttr)
+            ? PocketGhostRequest.capReadout(ghostCap())
+            : "";
         if (text.isEmpty()) {
             return;
         }

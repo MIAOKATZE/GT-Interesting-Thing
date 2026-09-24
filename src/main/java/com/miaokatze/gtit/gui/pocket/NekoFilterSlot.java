@@ -249,7 +249,8 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         if (PocketGhostRequest.drawsGhostMask(ghost, ghostAttr) && storedSize() <= 0) {
             GuiDraw.drawRect(1, 1, 16, 16, GHOST_MASK);
         }
-        // ★右上橙 cap（只有声明格有，capReadoutText 自己早退）与两个角标各占一角：
+        // ★右上橙 cap（★R92-③：只有<b>声明格且 attr != MEMORY</b>才有，早退判据单源在
+        // {@link PocketGhostRequest#capReadoutVisible}）与两个角标各占一角：
         // L = 左上、P = 左下、cap = 右上 ⇒ 同一格同时有 attr 与 P 时也互不覆盖。
         drawCapReadout();
         drawAttrBadout();
@@ -384,9 +385,13 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      * <p>
      * ★R84：由"只报组上限"改为<b>「实际库存/上限」</b>——声明格成为落点后，这一个读数位是用户唯一
      * 能同时看到"补到哪了"和"要到多少为止"的地方（未补到任何件时仍只报上限，与旧读数逐字同形）。
+     * <p>
+     * ★★R92-③：早退从"只看 {@code ghost}"改问 {@link PocketGhostRequest#capReadoutVisible}
+     * （{@code declared && attr != MEMORY}）⇒ alt+左键（记忆 L）落了载荷也<b>不再</b>唤出这抹橙。
+     * ★判据本体不住在这里，只在 {@code PocketGhostRequest} 那一条（三类共用一份）。
      */
     private String capReadoutText() {
-        if (!ghost) {
+        if (!PocketGhostRequest.capReadoutVisible(ghost, ghostAttr)) {
             return "";
         }
         final String cap = PocketGhostRequest.capReadout(displayStopAmount());

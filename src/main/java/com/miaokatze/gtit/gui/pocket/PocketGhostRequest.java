@@ -414,6 +414,26 @@ public final class PocketGhostRequest {
     }
 
     /**
+     * ★★<b>R92-③（D3）：右上角橙色<b>组上限读数</b>的在场判据单源</b> ——
+     * {@code declared && attr != MEMORY}。
+     * <p>
+     * 用户实机口径："左键 alt 会唤出右上角橙色，不要这样，仅中键才会"。取证证死那抹橙<b>不是</b>
+     * {@code L} 角标，而是<b>这条上限读数</b>：旧形状只看 {@code ghost}（格内有没有载荷声明）、
+     * <b>一个字都没问 attr</b> ⇒ alt+左键经 {@code applyFlag} 落了载荷 ⇒ 橙字跟着冒出来。
+     * <p>
+     * ★取"排除 MEMORY"而不是"只认 BIND"，是有意保住一个信息面：NEI 直接拖入建档的格子
+     * {@code attr == NONE}（今天照样拉货），按"只认 BIND"它就<b>永久失去上限读数</b> —— 那是撤信息
+     * 而没有落点（本仓纪律）。真值表：{@code (declared, attr)} → {@code (T,NONE)=画 / (T,BIND)=画 /
+     * <b>(T,MEMORY)=不画</b> / (F,*)=不画}。
+     * <p>
+     * ★本判据<b>只管右上那一条橙字</b>：遮罩走 {@link #drawsGhostMask}、左上 {@code L} 走
+     * {@link #memoryBadgeText}、左下 {@code P} 走 {@link #uploadBlockBadgeText}，三条一字未动。
+     */
+    public static boolean capReadoutVisible(boolean declared, int attr) {
+        return declared && PocketConstants.normalizeGhostAttr(attr) != PocketConstants.GHOST_ATTR_MEMORY;
+    }
+
+    /**
      * ★<b>蓝色 {@code L} 角标的文本单源</b>（javadoc 承诺"attr 不是 MEMORY 就不绘制"⇒ 用例
      * {@code ghost_badge_readouts_are_empty_when_not_applicable} 钉住这里返回空串）。
      * <p>

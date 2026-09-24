@@ -217,9 +217,14 @@ public class NekoPocketFluidSlot extends FluidSlot {
         return uploadBlocked;
     }
 
-    /** 右上角橙色读数的文本（缩写口径三类同源）。 */
+    /**
+     * 右上角橙色读数的文本（缩写口径三类同源）。
+     * <p>
+     * ★★R92-③：早退改问 {@link PocketGhostRequest#capReadoutVisible}（{@code declared && attr != MEMORY}）
+     * ⇒ alt+左键的记忆格不再唤出橙字；NEI 拖入建档（attr=NONE）与中键绑定照旧显示。
+     */
     private String capReadoutText() {
-        return ghost ? PocketGhostRequest.capReadout(ghostCap()) : "";
+        return PocketGhostRequest.capReadoutVisible(ghost, ghostAttr) ? PocketGhostRequest.capReadout(ghostCap()) : "";
     }
 
     // ------------------------------------------------------------------ NEI 拖入 / 右键解绑
