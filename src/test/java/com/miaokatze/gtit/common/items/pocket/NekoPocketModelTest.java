@@ -10378,26 +10378,177 @@ public class NekoPocketModelTest {
      * 不实例化 widget —— 本套件的纪律是不 new GUI 件（见 {@code NekoEssenceGhostCell} 那条用例的注释）。
      */
     private static void takeOutOverlayDeclaresHoverPassThrough() {
-        Class<?> overlay = null;
+        // ★★<b>R93-① 改写本用例</b>（原三条钉的是"那个满覆盖隐形件必须自己声明两个 hover 覆写"，
+        // 而覆盖件本身已被整体删除——它把 Shift+左键在到达 135 格之前截走、服务端再扫整仓，
+        // 正是用户报的"一键把整栏全拿出来"）。★改写不删除：判据从"覆写在不在"换成
+        // "<b>这条链四类代码位全为 0 + 单格语义交回原版</b>"，并保留原用例真正在防的那件事：
+        // ★中栏 135 格上面不许再长出任何满覆盖件（无论它自己穿不穿 hover）。
+        // ---- ① 被删的类必须真的没了（Class.forName 现在期望抛）----
+        boolean gone = false;
         try {
-            overlay = Class.forName(
+            Class.forName(
                 NekoPocketStorageColumn.class.getName() + "$HoverThroughOverlayButton",
                 false,
                 NekoPocketStorageColumn.class.getClassLoader());
-        } catch (Throwable ignored) {
-            // 下面用 assert 报红，这里不吞异常就等于把断言信息换成栈
+        } catch (Throwable expected) {
+            gone = true;
         }
-        SimpleAssert.that(overlay != null, "中栏覆盖件类必须存在（改名/撤掉都要同步本用例）");
-        String missing = null;
-        try {
-            overlay.getDeclaredMethod("canHover");
-            overlay.getDeclaredMethod("canHoverThrough");
-        } catch (Throwable e) {
-            missing = e.getClass()
-                .getSimpleName() + ": "
-                + e.getMessage();
+        SimpleAssert.that(gone, "★R93-①：满覆盖取出件类必须已消失（它回来 = Shift+左键又被截走）");
+        // ---- ② 整条链四类代码位 = 0（动作码 / 请求口 / 执行体 / 覆盖件）----
+        final java.util.List<String> column = guiPocketSource("NekoPocketStorageColumn.java");
+        final java.util.List<String> panelSrc = guiPocketSource("NekoPocketPanel.java");
+        final java.util.List<String> handler = guiPocketSource("NekoPocketServerHandler.java");
+        SimpleAssert.eq(0, countCodeLinesIn(column, "takeOutOverlay"), "★覆盖件装配位必须为 0（定义 + 调用双归零，不留注释尸）");
+        SimpleAssert.eq(0, countCodeLinesIn(panelSrc, "ACTION_TAKE_OUT"), "★动作码必须为 0");
+        SimpleAssert.eq(0, countCodeLinesIn(panelSrc, "requestTakeOut"), "★客户端请求口必须为 0");
+        SimpleAssert.eq(0, countCodeLinesIn(handler, "performTakeOut"), "★服务端执行体必须为 0");
+        // ---- ③ 中栏 root 只剩 grid 一个 child（★这才是原用例真正在防的"上面又盖一层"）----
+        final int buildStart = methodStart(column, "public static ParentWidget<?> build(NekoPocketPanel ui) {");
+        SimpleAssert.that(buildStart >= 0, "★定位中栏装配口");
+        final int buildEnd = methodEnd(column, buildStart);
+        SimpleAssert.eq(
+            1,
+            countRegionCode(column, buildStart, buildEnd, ".child("),
+            "★中栏必须恰有一个 child（grid）⇒ 多于一个就是又有人往 135 格上盖满覆盖件");
+        // ---- ④ 单格语义交回原版：格件自己不得截走 Shift+左键 ----
+        final java.util.List<String> filterSlot = guiPocketSource("NekoFilterSlot.java");
+        final int pressStart = methodStart(filterSlot, "public Interactable.Result onMousePressed(int mouseButton) {");
+        SimpleAssert.that(pressStart >= 0, "★定位中栏格件的点击分派");
+        final int pressEnd = methodEnd(filterSlot, pressStart);
+        SimpleAssert.eq(
+            0,
+            countRegionCode(filterSlot, pressStart, pressEnd, "hasShiftDown("),
+            "★格件点击分派里不许出现 shift 支（出现 = 单格快捷移动又被自研分支抢回去）");
+        SimpleAssert.that(
+            regionContainsCode(filterSlot, pressStart, pressEnd, "super.onMousePressed(mouseButton)"),
+            "★兜底仍是交回 super ⇒ 原版 ModularContainer 的 QUICK_MOVE 只搬被点那一格");
+        // ---- ⑤ 原版链的落点仍在（背包 36 格由框架 handler 提供，快捷移动才有去处）----
+        SimpleAssert.that(panelSrc != null && column != null && handler != null, "★三份源码都读得到（上面几条才算真跑过）");
+    }
+
+    /**
+     * ★★<b>R93-②（A 项）：流体列的出格（下行格）只收处理产物、拒绝玩家放置</b>。
+     * <p>
+     * 用户实机："在流体槽的输出格，也能提取和放置流体，这是不对的，应该只有输入格才可以。"
+     * ★取证证死根因不是"判据恒真"，而是<b>这条链上从来没有行判据</b>：{@code moveFluidBetweenTanks}
+     * 体内零次行号判断，而 {@code tankOfInteractionSlot} 对本列进格与出格<b>返回同一个 tank</b>
+     * ⇒ 两格在效果上完全同权。★本轮撤销的是 R83 D-2 刻意保留的"输入侧两格同权"半条。
+     * <p>
+     * ★可测边界：{@code ModularSlot} 的构造需要 MUI2 宿主 ⇒ 装配侧那道 {@code accessibility} 只能钉
+     * <b>源码形状</b>；行为半边钉在<b>纯 JVM 的行身份单源</b>上（真值表 + 进/出互补 + 与 tank 映射正交），
+     * 加上"处理永不从出格发起"这条服务端形状。★"放不进去的手感"与"产物仍落在出格"属实机项（§十六）。
+     */
+    private static void fluidOutputRowIsWriteProtected() {
+        // ---- ① 行身份单源的真值表（★这是唯一允许存在的行号算术）----
+        final int perGroup = PocketInventory.FLUID_INTERACTION_PER_GROUP;
+        final int columns = PocketConstants.FLUID_COLUMN_COUNT;
+        SimpleAssert.that(!PocketInventory.isLowerInteractionRow(0), "组内第 0 格 = 上行（进格）");
+        SimpleAssert.that(!PocketInventory.isLowerInteractionRow(columns - 1), "上行最后一格仍是上行");
+        SimpleAssert.that(PocketInventory.isLowerInteractionRow(columns), "跨过上界即下行（出格）");
+        SimpleAssert.that(PocketInventory.isLowerInteractionRow(perGroup - 1), "组内最后一格 = 下行");
+        for (int index = 0; index < PocketInventory.FLUID_INTERACTION_SLOTS; index++) {
+            final boolean lower = PocketInventory.isLowerInteractionRow(index);
+            // ★进/出必须严格互补，且 partner 一定落在另一行——否则"落位不对称"会算出自指
+            final int partner = PocketInventory.partnerInteractionSlotOf(index);
+            SimpleAssert.that(
+                !lower == PocketInventory.isLowerInteractionRow(partner),
+                "★配对格必须落在另一行（index=" + index + "）⇒ 出格的 partner 是进格、反之亦然");
+            SimpleAssert.eq(index, PocketInventory.partnerInteractionSlotOf(partner), "partner 必须是对合的");
+            SimpleAssert.eq(
+                PocketInventory.tankOfInteractionSlot(index),
+                PocketInventory.tankOfInteractionSlot(partner),
+                "★同列两格共用同一个 tank（这正是旧口径下两格完全同权的几何根因）");
+            SimpleAssert.eq(
+                lower ? index : partner,
+                PocketInventory.outputInteractionSlotOf(index),
+                "★出格 = 下行格（唯一权威），index=" + index);
+            SimpleAssert.eq(
+                lower ? partner : index,
+                PocketInventory.inputInteractionSlotOf(index),
+                "★进格 = 上行格（唯一权威），index=" + index);
         }
-        SimpleAssert.eq(null, missing, "覆盖件必须自己声明 canHover() 与 canHoverThrough() 两个覆写");
+        // ---- ② 服务端权威兜底：处理链第一跳就挡掉出格，且排在旧闩之前 ----
+        final java.util.List<String> slots = guiPocketSource("PocketSlots.java");
+        final int moveStart = methodStart(
+            slots,
+            "private void moveFluidBetweenTanks(PocketInventory inv, int interactionIndex, ModularSlot slot) {");
+        SimpleAssert.that(moveStart >= 0, "★定位搬运入口（改名/换签名即红，不是放水）");
+        final int moveEnd = methodEnd(slots, moveStart);
+        final int rowGuard = firstCodeLineWith(slots, moveStart, moveEnd, "isLowerInteractionRow(interactionIndex)");
+        final int latch = firstCodeLineWith(slots, moveStart, moveEnd, "hitFluidOutputLatch(");
+        final int tank = firstCodeLineWith(slots, moveStart, moveEnd, "tankOfInteractionSlot(");
+        SimpleAssert.that(
+            rowGuard >= 0 && latch >= 0 && tank >= 0 && rowGuard < latch && latch < tank,
+            "★出格守卫必须排在旧闩与取 tank 之前（读到 guard=" + rowGuard + " / latch=" + latch + " / tank=" + tank + "）");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(slots, moveStart, moveEnd, "isLowerInteractionRow("),
+            "★服务端只问一次那一条单源谓词（问两次 = 两条门各判各的）");
+        // ---- ③ 装配侧：出格 accessibility(false,true) + canDragInto(false) ----
+        final int asmStart = methodStart(
+            slots,
+            "public ModularSlot fluidInteraction(PocketInventory inv, int index) {");
+        SimpleAssert.that(asmStart >= 0, "★定位交互格装配口");
+        final int asmEnd = methodEnd(slots, asmStart);
+        SimpleAssert.that(
+            regionContainsCode(slots, asmStart, asmEnd, "isLowerInteractionRow(index)"),
+            "★装配侧必须按同一条谓词分派（★不得自己写 % 取模 = 第二处行号算术）");
+        SimpleAssert.that(
+            regionContainsCode(slots, asmStart, asmEnd, "accessibility(false, true)"),
+            "★出格 = 禁放置、<b>可取出</b>（禁取出会把落在里头的产物永久关死）");
+        SimpleAssert.that(
+            regionContainsCode(slots, asmStart, asmEnd, "canDragInto(false)"),
+            "★拖拽入口也要挡（只挡 accessibility 会漏掉拖拽分堆那条）");
+        SimpleAssert.eq(0, countRegionCode(slots, asmStart, asmEnd, "FLUID_COLUMN_COUNT"), "★装配侧不长出第二处行号算术");
+        // ---- ④ 三条不许破的既有链路 ----
+        final int placeStart = methodStart(slots, "private void placeProcessed(PocketInventory inv, int sourceIndex,");
+        SimpleAssert.that(placeStart >= 0, "★定位产物落位（本轮的因果前提：产物仍要能落进出格）");
+        final int placeEnd = methodEnd(slots, placeStart);
+        SimpleAssert.that(
+            regionContainsCode(slots, placeStart, placeEnd, "outputInteractionSlotOf("),
+            "★产物仍按出格落位（服务端那道挡的是「玩家发起」，不许把 placeProcessed 一起挡死）");
+        final java.util.List<String> transfer = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketFluidTransfer.java");
+        final int drainStart = methodStart(
+            transfer,
+            "public static void drainIntoTank(Cells cells, int sourceIndex, int tank, ItemStack unit, int units,");
+        final int drainEnd = methodEnd(transfer, drainStart);
+        SimpleAssert.eq(
+            2,
+            countRegionCode(transfer, drainStart, drainEnd, "cells.memoryDeclareFromIntake("),
+            "★R92-④ 的流体定档腿两个成功点都还在（本轮加的服务端守卫排在它之前，不得把它一起短掉）");
+        final java.util.List<String> left = guiPocketSource("NekoPocketLeftColumn.java");
+        SimpleAssert.that(
+            countCodeLinesIn(left, "new FluidSlotSyncHandler(target)") >= 1,
+            "★流体槽本体的同步 handler 必须在场（用户明写「本体槽仍可用储罐直接交互」）");
+        // ---- ⑤ 玩家可见文案与代码同口径（改述而非删键）----
+        final java.util.List<String> langZh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
+        final java.util.List<String> langEn = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
+        SimpleAssert.that(langZh != null && langEn != null, "★两份 lang 都读得到");
+        if (langZh != null) {
+            SimpleAssert.eq(1, countCodeLinesIn(langZh, "gtit.pocket.legend.in_out_same="), "图例键在 zh 里恰一条（改述非撤键）");
+            legendSaysOnlyTopRow(langZh, "上一行");
+        }
+        if (langEn != null) {
+            SimpleAssert.eq(1, countCodeLinesIn(langEn, "gtit.pocket.legend.in_out_same="), "图例键在 en 里恰一条（改述非撤键）");
+            legendSaysOnlyTopRow(langEn, "Only the top row");
+        }
+    }
+
+    /**
+     * ★R93-②：图例文案必须已经改口到"只有上行可放"，且旧口径"两行都可放"必须从值里消失。
+     * <p>
+     * ★单独成方法是因为两份 lang 都要跑一遍同一条判据（★不在循环里写两份断言 = 抄第二处判据）。
+     */
+    private static void legendSaysOnlyTopRow(java.util.List<String> lang, String newWord) {
+        for (final String line : lang) {
+            if (!line.startsWith("gtit.pocket.legend.in_out_same=")) {
+                continue;
+            }
+            final String value = line.substring("gtit.pocket.legend.in_out_same=".length());
+            SimpleAssert.that(value.contains(newWord), "★图例文案必须已改口到新口径（读到 '" + value + "'）⇒ 否则玩家读到的是假话");
+            SimpleAssert.that(!value.contains("上下两行都") && !value.contains("Either row"), "★旧口径「两行都可放」必须从文案里消失（撤形状成对）");
+        }
     }
 
     // ================================================================== R83 C2（缺陷 6：alt 绑定 + 每条声明的组上限）

@@ -1,9 +1,6 @@
 package com.miaokatze.gtit.gui.pocket;
 
-import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.widget.ParentWidget;
-import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
@@ -158,58 +155,18 @@ public final class NekoPocketStorageColumn {
         final ParentWidget<?> root = new ParentWidget<>().pos(X, Y)
             .size(WIDTH, HEIGHT)
             .name("pocket_storage_column")
-            .child(grid)
-            // 语义②「口袋 → 玩家背包」：★R78① 后背包已画在底部带中间段 ⇒ shift-click 已有落点，
-            // 本件因此从"唯一替代出口"降级为"整块中栏一键取出的加速快捷键"（保留的理由：
-            // 它一次搬空整栏，shift 只能逐格搬；去掉它就等于撤掉一条已交付的交互）
-            .child(takeOutOverlay(ui));
+            .child(grid);
+        // ★★<b>R93-①（C 项）：这里原有的"覆盖整块中栏的隐形满覆盖件"已整体删除</b>（语义②「口袋 → 玩家背包」）。
+        // 它的判据是 {@code button == 0 && hasShiftDown()} ⇒ 在点击到达 135 格<b>之前</b>就把 Shift+左键
+        // 截走，然后服务端 {@code performTakeOut} 用 {@code for (index = 0; index < getSlots(); index++)}
+        // 扫整仓 ⇒ 用户实机报的"一键把整栏全拿出来"。
+        // ★正解不是"把被点格号穿到服务端"：MUI2 的 {@code onMousePressed(int)} <b>不给坐标</b>
+        // （取证 spike 实测：库内只有 {@code ModularPanel}/{@code ModularScreen}/{@code ModularGuiContext}
+        // /{@code InteractionSyncHandler} 四处该签名，无一携带位置），而 {@code NekoFilterSlot#onMousePressed}
+        // 里也没有 shift 支 ⇒ <b>撤掉截走，原版链自己就是"只搬被点那一格"</b>：
+        // Shift+左键与 Shift+右键同归 {@code ModularContainer} 的 QUICK_MOVE → {@code transferStackInSlot(slotId)}。
+        // ⇒ 本列不再有自研的"整栏一键取出"，逐格快捷移动交回原版（背包段今天本来就是这么走的）。
         return root.excludeAreaInRecipeViewer();
-    }
-
-    /**
-     * 覆盖整块中栏的<b>隐形满覆盖</b>转移件（范式照仓内 {@code gui/vm/IoColumnPanel.java:283-295}）。
-     * <p>
-     * 只在 <b>Shift + 左键</b>时消费点击并 {@code setValue(true)} 触发服务端搬运；其余情况返回
-     * {@code false} ⇒ {@code Interactable.Result.IGNORE} ⇒ 底下真实的 135 格照常收到点击
-     * （{@code Result} 的 {@code stops} 语义见 {@code Interactable.java:172-197}）。
-     * 同步值本体与搬运逻辑在 {@link NekoPocketPanel}（服务端），本方法不含任何搬运判定。
-     * <p>
-     * ★<b>它必须是 {@link HoverThroughOverlayButton}</b>：本件声明在 {@code grid} 之后 ⇒ 在
-     * {@code ModularPanel.hovering} 里排首位，而 {@code IWidget.canHoverThrough()} 的接口默认值是
-     * <b>false</b>（{@code IWidget.java:179-181}），{@code ModularGuiContext.getHoveredWidgets}
-     * 在第一个不穿透的件上就 {@code break}（{@code ModularGuiContext.java:428}）⇒ 135 格的
-     * {@code isHovering()} 恒 false：无悬停高亮、无物品 tooltip、{@code setHoveredSlot(null)}
-     * 让 NEI 的悬槽识别与原版连点收集一起失效。点击链不吃这一刀（{@code canClickThrough} 是另一条闸），
-     * 所以断掉的一直只是 hover。
-     */
-    private static IWidget takeOutOverlay(NekoPocketPanel ui) {
-        return new HoverThroughOverlayButton().pos(0, 0)
-            .size(WIDTH, HEIGHT)
-            .invisible()
-            .playClickSound(false)
-            .name("pocket_take_out_overlay")
-            .onMousePressed(button -> button == 0 && Interactable.hasShiftDown() && ui.requestTakeOut());
-    }
-
-    /**
-     * 只放行 hover 链的按钮件（同一个双覆写在仓内已有先例：{@code client/gui/NekoPagedWidget.java:18-26}，
-     * v1.7.18 修"物品放不回背包"用的就是它）。
-     * <p>
-     * {@code canHover()=false} 让本件不进 {@code newHovered}（它没有背景也没有 tooltip，本来就没有
-     * hover 表现），{@code canHoverThrough()=true} 让遍历继续往下走到 135 格。
-     * {@code IWidget.java:160-165} 的接口注释明写"点击与按键交互不看 canHover"⇒ 一键取出仍照旧生效。
-     */
-    private static final class HoverThroughOverlayButton extends ButtonWidget<HoverThroughOverlayButton> {
-
-        @Override
-        public boolean canHover() {
-            return false;
-        }
-
-        @Override
-        public boolean canHoverThrough() {
-            return true;
-        }
     }
 
     /** ghost 可占索引白名单的上界（中栏 = 0..134，R38 第 4 条 + R75）。 */

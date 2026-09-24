@@ -204,8 +204,14 @@ public final class NekoPocketPanel implements PocketSession {
     /** {@link #BLOB_CELL_SEPARATOR} 的正则形态（{@code String.split} 用；逗号不是元字符，无需转义）。 */
     private static final String BLOB_CELL_SEPARATOR_REGEX = ",";
 
-    /** C2S 动作码（<b>互不相同</b>：R64c 判据「各自绑定的动作码不同」）。 */
-    private static final int ACTION_TAKE_OUT = 1;
+    /**
+     * C2S 动作码（<b>互不相同</b>：R64c 判据「各自绑定的动作码不同」）。
+     * <p>
+     * ★★<b>R93-①：{@code ACTION_TAKE_OUT = 1} 已随"整栏一键取出"一并删除</b>（它的服务端执行体
+     * 扫的是整个槽组 ⇒ 用户报的"一键把整栏全拿出来"；快捷移动交回原版 {@code transferStackInSlot}
+     * 单格语义，不需要本仓动作码）。★编号<b>不重排</b>：动作码是双端同树的常量，留一个洞比
+     * 全体平移更安全（平移一旦与旧客户端/存档里的裸 int 撞上就是静默错派）。
+     */
     private static final int ACTION_SORT = 2;
     private static final int ACTION_CHANNEL_BURST = 3;
     private static final int ACTION_CHANNEL_SHORT = 4;
@@ -589,11 +595,6 @@ public final class NekoPocketPanel implements PocketSession {
 
     // ------------------------------------------------------------------ C2S 请求（客户端只发码）
 
-    /** Shift + 左键点中栏 = 语义②「口袋 → 玩家背包」。 */
-    boolean requestTakeOut() {
-        return sendAction(ACTION_TAKE_OUT, 0);
-    }
-
     /** 语义①「整理中栏 135 格」。 */
     boolean requestSort() {
         return sendAction(ACTION_SORT, 0);
@@ -821,9 +822,6 @@ public final class NekoPocketPanel implements PocketSession {
         final int code = packed / ACTION_ARG_BASE;
         final int arg = packed % ACTION_ARG_BASE;
         switch (code) {
-            case ACTION_TAKE_OUT:
-                server.performTakeOut();
-                break;
             case ACTION_SORT:
                 server.performSort();
                 break;
@@ -860,7 +858,8 @@ public final class NekoPocketPanel implements PocketSession {
 
     // ------------------------------------------------------------------ 服务端动作实现
     //
-    // ★R90 T2：本段的 performTakeOut / performSort / performChannelRequest / performBind /
+    // ★R90 T2：本段的 performSort（★R93-① 起 performTakeOut 已删，见 {@code NekoPocketStorageColumn#build}） /
+    // performChannelRequest / performBind /
     // performUnbindLast / performUnbindAll / performEssenceOut / performEssenceIntake 及其私有辅助
     // （nextRealSlot / mergeKey / anyRecognised / refund / returnToPlayerFromBindSlot）已整体迁往
     // {@link NekoPocketServerHandler}（含各自 javadoc）。留在本类的只有下面这一簇：

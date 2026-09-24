@@ -70,35 +70,33 @@ final class NekoPocketServerHandler {
 
     // ------------------------------------------------------------------ 动作实现
 
-    /** 语义②「口袋 → 玩家背包」：逐格尝试入包，装不下就留在原地（不放地上，避免误丢）。 */
-    void performTakeOut() {
-        final EntityPlayer player = panel.player();
-        if (player == null) {
-            return;
-        }
-        boolean moved = false;
-        for (int index = 0; index < panel.inventory()
-            .storage()
-            .getSlots(); index++) {
-            final ItemStack stack = panel.inventory()
-                .storage()
-                .getStackInSlot(index);
-            if (stack == null) {
-                continue;
-            }
-            if (player.inventory.addItemStackToInventory(stack.copy())) {
-                panel.inventory()
-                    .storage()
-                    .setStackInSlot(index, null);
-                moved = true;
-            }
-        }
-        if (moved) {
-            panel.inventory()
-                .markDirty();
-        }
-    }
-
+    /**
+     * ★★<b>R93-①：本类原有的 {@code performTakeOut()}（语义②「口袋 → 玩家背包」）已整体删除。</b>
+     * <p>
+     * 删除的理由不是"没人调了"这么简单，而是它的<b>判据本身就是缺陷</b>：
+     * <ol>
+     * <li>目标集合读的是<b>整个槽组</b>（{@code for (index = 0; index < storage().getSlots(); index++)}），
+     * 既不读被点格号（格号从未上网络）、也不按组合并 ⇒ 用户实机"一次把整栏全拿出来"；</li>
+     * <li>体内<b>零次</b> {@code isGhostItemSlot} ⇒ 绕过 R85 A5「声明格整格不参与」（对照本类
+     * {@code performSort} 在快照那一圈是明确早退的），且它的 {@code setStackInSlot} 走的还是
+     * "程序化写入不经过 isItemValid"那条豁免。</li>
+     * </ol>
+     * ★正解是<b>不做这条</b>：Shift+左键交回原版 {@code ModularContainer} 的 QUICK_MOVE →
+     * {@code transferStackInSlot(slotId)}，它天然只搬被点那一格（★取证 spike：MUI2 的
+     * {@code onMousePressed(int)} 不给坐标，本仓无法从满覆盖件里算出被点格号，"穿 arg"那条路不成立）。
+     * <p>
+     * ★★<b>但"缺陷 2 已修"这句要说清边界，不许写成"整格不参与已经成立了"</b>（独立审查实测库链证伪过一次口径）：
+     * 交回原版之后，<b>单格</b> Shift+左键点在一格挂着声明的真实槽上<b>仍然会把它取出</b> —— 原因在库链上：
+     * 声明格是<b>真实</b>槽（{@code NekoFilterSlot#applyAccessibility} 给 BIND / NONE 档
+     * {@code accessibility(false, true)} ⇒ {@code canTake} 为真），而 {@code ModularContainer} 的
+     * QUICK_MOVE 只问 {@code canTakeStack} 与 {@code isPhantom}（{@code ModularSlot.java:78-80} /
+     * {@code ModularContainer.java:262-265}），★一次都不问 {@code isGhostItemSlot}。
+     * ⇒ 这条<b>不是</b>绕过 A5：A5 约束的是<b>本仓自研的整批搬运 / 整理</b>（那里声明格里的东西是"已经补到的
+     * 货"，整批搬走等于把需求掏空，故本类 {@code performSort} 在快照那一圈明确早退）；单格取出走的正是
+     * <b>R84 的既有口径「声明格禁放置、可取出」</b>（"补进来的产物不许被永久关在格子里"）。
+     * ★所以本轮真正消掉的是<b>"整批掏空声明格"这个形状</b>（载体没了），不是"声明格永不被取出"；
+     * 本类也不再需要为"取出"维护第二套搬运判定。
+     */
     /** 语义①「整理中栏 135 格」：合并同类 + 前移紧凑。 */
     void performSort() {
         final int size = panel.inventory()
