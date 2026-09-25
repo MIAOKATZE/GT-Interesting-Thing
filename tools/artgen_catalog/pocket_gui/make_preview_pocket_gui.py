@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import canvas as CV
+import gen_pocket_gui_upgrades as UPG   # S1 升级格占位：token/用途/尺寸门与生成器单源
 import gui_manifest as GM
 import pngwrite
 from contract import CONTRACT
@@ -129,6 +130,41 @@ def row_h(sheet, sheets):
     return max(tall, ROW_MIN) + PAD
 
 
+# ---------------------------------------------------------------- S1 升级格灰化占位
+
+UPG_ZOOM = 4
+
+
+def upg_section(board, dr, y0, sheets) -> int:
+    """S1 升级格灰化占位：每组 = 槽底+图案合成（真实用法）与图案单独 4x（棋盘底）。
+
+    token 清单、用途文案、画布尺寸门全部 import 自生成器（gen_pocket_gui_upgrades），
+    本函数不复制第二份；缺 out/ 产物时直接抛（提示先跑生成器）。
+    """
+    sw, sh, sbuf = sheets["slot"]
+    dr.text((PAD, y0), "升级格灰化占位（S1）—— 底部右段行 3 的 5 个升级格，未升级时显示灰化插件图案",
+            font=F_HDR, fill=CHROME["txt"])
+    dr.text((PAD, y0 + 24), "每组从左到右：槽底 18×18 ＋ 图案合成 " + str(UPG_ZOOM) + "x（真实用法）｜ "
+            "图案单独 " + str(UPG_ZOOM) + "x（棋盘底）。图案画在 16×16 语义区（(1,1) 起，画布外圈 1px 让位）"
+            "⇒ 16×16 插件图标放入后逐像素遮盖；灰阶 = palette 冷钢三档（st_lo/st_mid/steel_lip，零字面 RGB）",
+            font=F_SMALL, fill=CHROME["dim"])
+    y = y0 + 46
+    for token, (usage, _art) in UPG.UPGRADES.items():
+        p = GM.OUT / (token + ".png")
+        assert p.exists(), "缺产物 " + str(p) + "，先跑 gen_pocket_gui_upgrades.py"
+        iw, ih, ibuf = CV.read_png(p)
+        assert (iw, ih) == (UPG.SIZE, UPG.SIZE), (token, iw, ih)
+        comp = bytearray(sbuf)                      # 槽底 + 图案 = 未升级时的真实观感
+        CV.blit_over(comp, UPG.SIZE, UPG.SIZE, ibuf, iw, ih, 0, 0)
+        dr.text((PAD, y + 6), token, font=F_BODY, fill=CHROME["txt"])
+        dr.text((PAD, y + 26), usage, font=F_SMALL, fill=CHROME["warn"])
+        x = LABEL_W
+        x = paste(board, CV.scale_nearest(UPG.SIZE, UPG.SIZE, comp, UPG_ZOOM), x, y, checker=True)
+        x = paste(board, CV.scale_nearest(UPG.SIZE, UPG.SIZE, ibuf, UPG_ZOOM), x, y, checker=True)
+        y += UPG_ZOOM * UPG.SIZE + PAD
+    return y - y0
+
+
 # ---------------------------------------------------------------- 组装样例
 
 def assemble(sheets) -> tuple[int, int, bytearray]:
@@ -241,8 +277,9 @@ def main() -> int:
     sz = GM.SAMPLE_ZOOM
     s3 = s1.resize((aw * sz, ah * sz), Image.NEAREST)
     samp_h = s3.height + 92
+    upg_h = 46 + len(UPG.UPGRADES) * (UPG_ZOOM * UPG.SIZE + PAD)
 
-    total = 100 + sum(heights) + 34 + samp_h + 26 * (len(log) + len(num)) + 90
+    total = 100 + sum(heights) + 34 + upg_h + 24 + samp_h + 26 * (len(log) + len(num)) + 90
     board = Image.new("RGBA", (W, total), (*CHROME["bg"], 255))
     dr = ImageDraw.Draw(board)
     dr.text((PAD, 14), "猫猫次元口袋 MUI2 面板 ｜ C2｜铜包角束口 —— 装饰贴图生产板",
@@ -263,7 +300,11 @@ def main() -> int:
         sheet_row(board, dr, y, sheet, sheets, notes)
         y += heights[i]
 
-    y += 16
+    y += 12
+    dr.rectangle((PAD, y - 3, W - PAD, y + upg_h - 3), fill=(*CHROME["panel"], 255))
+    dr.line((PAD, y + upg_h - 3, W - PAD, y + upg_h - 3), fill=CHROME["line"])
+    upg_section(board, dr, y, sheets)
+    y += upg_h + 12
     dr.rectangle((PAD, y - 6, W - PAD, y + samp_h), fill=(*CHROME["panel"], 255))
     dr.text((PAD + 8, y + 2), "面板局部样例 —— 真实像素 1:1（左）与 " + str(sz)
             + "x（右）", font=F_HDR, fill=CHROME["txt"])

@@ -3858,9 +3858,9 @@ public class NekoPocketModelTest {
     /** C2 契约表（HTML 355–366 行）与几何/边距裁定的对账。 */
     private static void c2TextureContractTableMatchesGeometry() {
         SimpleAssert.eq(
-            13,
+            18,
             PocketGuiTextureContract.contractSize(),
-            "契约 11 行 + 派生的按钮按下态 1 行 + 进度条填充 1 行（★两条派生行都是对契约的补全，不是冗余；不得为凑数删行）");
+            "契约 11 行 + 派生的按钮按下态 1 行 + 进度条填充 1 行 + S1 升级格灰化占位 5 行（★7 条派生行都是对契约的补全，不是冗余；不得为凑数删行）");
         final int[][] expected = { { 32, 32 }, { 64, 64 }, { 14, 14 }, { 6, 6 }, { 18, 18 }, { 18, 18 }, { 88, 18 },
             { 88, 18 }, { 12, 12 }, { 106, 18 }, { 8, 8 } };
         final String[] names = { "POCKET_C2_cloth", "POCKET_C2_panel", "POCKET_C2_corner", "POCKET_C2_rivet",

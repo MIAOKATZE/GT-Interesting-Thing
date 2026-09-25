@@ -22,10 +22,11 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * 契约里给出的就是这一串 token，取同一名可让"契约 ↔ 兄弟片落地文件"逐字对账；
  * 贴图片若要改名，改的是 {@link #FOLDER} 与本表，不会散到六个装配点。
  * <p>
- * ★<b>末两行 {@code POCKET_C2_btn_pressed} 与 {@code POCKET_C2_progress} 是本仓对契约的补全，
- * 不是契约原文</b>：HTML 的 btn 那一行写"未按下 / 按下 2 张"却只给了一个 token；进度条则整张
- * 契约没有 tex 行（只在 HTML 261 行给了 108×18 的槽位与 {@code prog} 配色）。两者都按同一命名法
- * 派生，已在回执里点名，等主代理与贴图片对账（对不上时只改这两行）。
+ * ★<b>表尾的派生行是本仓对契约的补全，不是契约原文</b>：{@code POCKET_C2_btn_pressed}（HTML 的
+ * btn 那一行写"未按下 / 按下 2 张"却只给了一个 token）、{@code POCKET_C2_progress}（契约没有进度件
+ * 的 tex 行，只在 HTML 261 行给了 108×18 的槽位与 {@code prog} 配色）、以及 S1 的 5 行
+ * {@code POCKET_C2_upg_*}（升级格灰化占位图案，契约同样没有 tex 行）。全部按同一命名法派生，
+ * 已在回执里点名，等主代理与贴图片对账（对不上时只改这些行）。
  */
 public final class PocketGuiTextureContract {
 
@@ -72,7 +73,15 @@ public final class PocketGuiTextureContract {
         // 自己规定的排布（{@code getSubArea(0,0,1,0.5)} / {@code (0,0.5,1,1)}），不是本仓的偏好。
         // 非 9-slice：按 u 裁切时任何横向特征都会退化成"快满才出现"的伪影（生成脚本把"逐行横向均匀"
         // 钉成机检，见 tools/artgen_catalog/neko_dimension_pocket/gen_pocket_gui_progress.py）。
-        new Spec("POCKET_C2_progress", 108, 36, -1, false) };
+        new Spec("POCKET_C2_progress", 108, 36, -1, false),
+        // ★第 14-18 行同样是补全而非契约原文（S1）：底部右段行 3 的 5 个升级格未放插件时的
+        // 灰化图案占位。18×18 = 槽位栅格画布（与 POCKET_C2_slot 同尺寸），图案画在 16×16 语义区
+        // （(1,1) 起，画布外圈 1px 让位）⇒ 16×16 的插件图标放入后逐像素遮盖图案。
+        // 非 9-slice（1:1 贴，不平铺）；生成器 tools/artgen_catalog/pocket_gui/gen_pocket_gui_upgrades.py
+        // （灰阶 = palette 冷钢三档 st_lo/st_mid/steel_lip，正文零字面 RGB）。
+        new Spec("POCKET_C2_upg_capacity", 18, 18, -1, false), new Spec("POCKET_C2_upg_stack", 18, 18, -1, false),
+        new Spec("POCKET_C2_upg_magnet", 18, 18, -1, false), new Spec("POCKET_C2_upg_channel", 18, 18, -1, false),
+        new Spec("POCKET_C2_upg_distill", 18, 18, -1, false) };
 
     private PocketGuiTextureContract() {}
 

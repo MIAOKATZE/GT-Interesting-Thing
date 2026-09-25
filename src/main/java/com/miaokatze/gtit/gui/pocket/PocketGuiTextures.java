@@ -81,6 +81,18 @@ public final class PocketGuiTextures {
     /** ScrollWidget 的独立 scrollbar 子项（12×12，N=3）；★当前只注册未绘制，见类 javadoc。 */
     public static final UITexture SCROLLBAR = TEXTURES.get("POCKET_C2_scrollbar");
 
+    // ---- S1 升级格灰化占位（契约表第 14-18 行，★补全行，生成器 gen_pocket_gui_upgrades.py） ----
+    /** 升级格占位｜容量（18×18 灰化桶形图案；插件放入后 16×16 图标逐像素遮盖）。 */
+    public static final UITexture UPGRADE_CAPACITY = TEXTURES.get("POCKET_C2_upg_capacity");
+    /** 升级格占位｜堆叠（18×18 灰化三层叠层图案）。 */
+    public static final UITexture UPGRADE_STACK = TEXTURES.get("POCKET_C2_upg_stack");
+    /** 升级格占位｜磁力（18×18 灰化马蹄磁铁图案）。 */
+    public static final UITexture UPGRADE_MAGNET = TEXTURES.get("POCKET_C2_upg_magnet");
+    /** 升级格占位｜通道（18×18 灰化拱门/门户图案）。 */
+    public static final UITexture UPGRADE_CHANNEL = TEXTURES.get("POCKET_C2_upg_channel");
+    /** 升级格占位｜蒸馏加速（18×18 灰化沙漏图案）。 */
+    public static final UITexture UPGRADE_DISTILL = TEXTURES.get("POCKET_C2_upg_distill");
+
     private PocketGuiTextures() {}
 
     /** 按<b>契约名</b>（HTML 里那一列 token）取贴图；不认识的名字返回 {@code null}。 */
