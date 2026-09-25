@@ -920,8 +920,15 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         world.spawnEntityInWorld(entityItem);
     }
 
-    // v1.7.18：删除 ICasingTextureProvider（5.09.54.20 专用接口），改用 getTexture() 覆写（5.09.52.594 + 5.09.54.20 通用）
-    // 实现 beta-1（5.09.52.594）和 beta-2（5.09.54.20）双环境兼容
+    // [GT-compat] ICasingTextureProvider 兼容层（beta1/beta2/beta3/RC1）：GT5U 正式版发布时移除本分支并切换至当时正式的纹理接口
+    // 史实：v1.7.18 删除 ICasingTextureProvider（5.09.54.20 专用接口），改用 getTexture() 覆写（5.09.52.594 + 5.09.54.20 通用）。
+    // 目标兼容面 = GT5U 四代（源码不含仅高版本写法）：5.09.52.594 / 5.09.54.20 / 5.09.54.133 / 5.09.54.183（本轮基线 = RC-1）；原枚举只写了前两代，现补全。
+    // 为何不用仅高版本写法：本类靠 getTexture() 覆写取纹理，该覆写签名（六参 getTexture(igte, side, WEST, -1, true, false) 形态）在 RC-1 有 @Override
+    // 校验实证，
+    // 余三代按 GT5U 该覆写链四代同源推断（未实测）；ICasingTextureProvider 只存在于 beta-2 一代，绑它即破其余三代；下方 @Override 的 getTexture 实现本身不动。
+    // ICasingTextureProvider 在 5.09.54.183 上是否仍不存在：源码已不引用它，故 compileJava 不构成该命题的腿，须 jar 级 javap 或归档源级 grep 才能闭合（本轮未做）；
+    // 跨代对照走参考库归档夹 2.9.0 beta-3\ 只读，或参考库新口径 GT5-Unofficial-5.09.54.183 里 git show <tag>:<path>，不切工作树。
+    // 判据出处：plan/gtit-rc1-baseline-20260925/evidence/r1-gtit-todo-table.md 与同目录 evidence/r5-survival-legs.md。
 
     /**
      * 物品栏渲染覆盖
@@ -1266,8 +1273,15 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     safeSetRefreshCache();
                 }
             }
-            // beta-1 兼容兜底：VM uplink hatch 的 onFirstTick 可能因加载顺序未能正确初始化 AE 代理，
-            // 在检测到已连接但代理未激活时主动触发一次 onReady()。
+            // [GT-compat] AE 代理就绪兜底（beta1/beta2/beta3/RC1）：VM/AE2 修正 onFirstTick 加载顺序后即删除本兜底分支
+            // 目标兼容面 = GT5U 四代（源码不含仅高版本写法）：5.09.52.594 / 5.09.54.20 / 5.09.54.133 / 5.09.54.183（本轮基线 = RC-1）；原文案只标
+            // beta-1，现补全。
+            // 兜底动因：VM uplink hatch 的 onFirstTick 可能因加载顺序未能正确初始化 AE 代理，故检测到已连接但代理未激活时主动触发一次 onReady()。
+            // 分层判据——编译期：下方 uplinkHatch.getProxy().onReady() 在 AE2 rv3-beta-1073-GTNH:dev 上是否存活由本轮 compileJava 闭合；
+            // 运行期：onFirstTick 顺序在 b2/b3/RC-1 上是否仍错乱只能靠实例冒烟证明 ⇒ 属 OBS，不由本注释冒充结论，故兜底保留、不引入仅高版本写法。
+            // 语义钉死：uplinkProxyReadyAttempted 只允许"一次性触发"（成功或抛异常都置位），不得改成每 tick 调用。
+            // 判据出处：plan/gtit-rc1-baseline-20260925/evidence/r5-survival-legs.md 与同目录
+            // plan-rc1-baseline-apply.md §5（V2/V4 套件）。
             if (uplinkHatch != null && !uplinkProxyReadyAttempted && !uplinkHatch.isActive()) {
                 try {
                     uplinkHatch.getProxy()

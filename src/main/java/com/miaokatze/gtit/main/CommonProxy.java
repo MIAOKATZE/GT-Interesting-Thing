@@ -566,11 +566,15 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStarted(FMLServerStartedEvent event) {
+        // [GT-compat] BQ 任务注入时机兼容层（beta1/beta2/beta3/RC1）：GTNH 正式版发布时按当时事件顺序复核并移除本兼容口径
         // E4a: BQ 任务注入（GTIT 包注入 + MIAO 空包哨兵清理保险）。
-        // 2026-09-07 迁移 ServerStarting→ServerStarted：GTNH 2.9.0-beta-3 专用服上
+        // 2026-09-07 迁移 ServerStarting→ServerStarted：观察发生版本 = GTNH 2.9.0-beta-3 专用服（史实，不删）——
         // dreamcraft 在更晚的 FMLServerStartingEvent 因 "Modpack has been updated" 整库
         // 重载默认任务库，会覆盖同波次注入；ServerStarted 时整波已结束且无清库者
         // （契约：BQ任务整合规范.md §6 条款 1/11）。BQ 缺席/资产未就位时注入器静默返回。
+        // RC-1 专用服是否复现同一时序：未证（纯运行期观察 ⇒ OBS，不由本注释冒充结论），故本轮保留 ServerStarted 落点、不回退也不改用仅高版本事件。
+        // BQ 声明值本轮不递进（仍为 3.8.72-GTNH，pin 落后属卫生项已裁），故 RC-1 上该时序结论面对的仍是同一 BQ 版本。
+        // 判据出处：BQ任务整合规范.md §6 条款 1/11、plan/gtit-rc1-baseline-20260925/evidence/r2-compat-layer-inventory.md。
         try {
             MiaoGtnhHost.onServerStarted();
         } catch (Throwable t) {

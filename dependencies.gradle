@@ -37,16 +37,30 @@ dependencies {
     // Minimal dependency set for current source usage.
     // Sources reference only GregTech API types (gregtech.api.*), so keep GT5-Unofficial.
     // User has an external hard backup of the original file, so this file is intentionally simplified.
-    // 2.9.0-beta-3 基线：GT5U 5.09.54.133（v1.7.18 曾回退 5.09.52.594+VM 0.4.87 做 beta-1 兼容，beta-3 迁移后放弃该窗口）
-    api("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.133") { transitive = false }
+    // 2.9.0-RC-1 基线：GT5U 5.09.54.183（v1.7.18 曾回退 5.09.52.594+VM 0.4.87 做 beta-1 兼容，beta-3 迁移后放弃该窗口）
+    // 基线代际口径：源码面守四代 —— beta-1 5.09.52.594 / beta-2 5.09.54.20 / beta-3（= 本行换基线前的前值）/ RC-1 5.09.54.183。
+    // 「守四代」只承诺源码不含仅高版本写法；已实测腿 = RC-1 一格（compileJava、build 与六个 JavaExec 套件），
+    // beta-3 腿由换基线前的 v1.8.38（commit 2636205）承担，b1/b2 两代依赖集未定义、不实测也不对外许诺。
+    // 不采用仅高版本写法：GT5U 侧唯一可选的仅高版本形态是 Textures.BlockIcons.custom(domain, name) 双参重载，它 beta-3 才引入、
+    // beta-1/beta-2 两腿（源级 + javap）都不存在，采用即破那两代编译；四代完整数值枚举见 register/TextureManager.java 的兼容注释。
+    // GT5U 正式版发布时：把本行 token 换成正式版坐标，并同步移除上述"守四代"约束与 Java 侧各 beta 兼容注释。
+    // 判据出处：plan/gtit-rc1-baseline-20260925/evidence/r1-gtit-todo-table.md、evidence/r5-survival-legs.md，
+    // 以及上游 plan/rc1-compat-20260925/work/rc1-version-triple.md §6 取值口径 P0-P6（P0 = 本仓现读）。
+    api("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.183") { transitive = false }
 
-    // Some GregTech base classes reference interfaces/types from other mods (AE2, ModularUI, GTNHLib)
-    // that are only needed at compile-time to satisfy types. Add them as compileOnlyApi so they
-    // do not become runtime/published transitive dependencies.
-    api("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1050-GTNH:dev") { transitive = false }
+    // Some GregTech base classes reference interfaces/types from other mods (AE2, ModularUI, GTNHLib) that are only
+    // needed at compile-time to satisfy types —— but they are declared as `api` ON PURPOSE, not `compileOnlyApi`.
+    // The six JavaExec suites in build.gradle.kts all consume sourceSets.test.runtimeClasspath, and build/tmp/testcp.txt
+    // shows every `api` artifact below on that classpath while every real compileOnlyApi artifact (NotEnoughItems,
+    // industrialcraft-2, BetterQuesting) is absent from it. Switching the group below to compileOnlyApi would make
+    // runNestedCellProbeTest / runPocketTest lose AE2 classes at runtime —— proven rejection, do not "tidy" it here.
+    // 代际面：这一组 `api` 腿在四代下形态一致（RC-1 已实测；beta-3 腿由换基线前的 v1.8.38（commit 2636205）承担，b1/b2 不实测也不对外许诺）。
+    // 正式版清理动作：本块不含 beta 专属写法，GT5U 正式版发布后此处无需清理，只按上游 triple 复核版本 token。
+    // 判据出处：plan/gtit-rc1-baseline-20260925/evidence/r1-gtit-todo-table.md（api 与 compileOnlyApi 的运行期类路径实测）。
+    api("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1073-GTNH:dev") { transitive = false }
     api("com.github.GTNewHorizons:ModularUI:1.3.4:dev") { transitive = false }
-    api("com.github.GTNewHorizons:ModularUI2:2.3.88-1.7.10:dev") { transitive = false }
-    api("com.github.GTNewHorizons:GTNHLib:0.11.46:dev") { transitive = false }
+    api("com.github.GTNewHorizons:ModularUI2:2.3.91-1.7.10:dev") { transitive = false }
+    api("com.github.GTNewHorizons:GTNHLib:0.11.51:dev") { transitive = false }
     api("com.github.GTNewHorizons:Baubles-Expanded:2.2.6-GTNH:dev") { transitive = false }
 
     // [S0-PROBE → 已定稿] 神秘时代桥接层（crossmod/taum）。
@@ -60,20 +74,28 @@ dependencies {
 
     // VisualProspecting is required for JourneyMap integration (ore prospecting visualization).
     // Used by TelekinesisOreScannerCore to display ore veins on the map.
-    api('com.github.GTNewHorizons:VisualProspecting:1.5.39:dev') { transitive = false }
+    api('com.github.GTNewHorizons:VisualProspecting:1.5.41:dev') { transitive = false }
 
     // StructureLib is required for multiblock machine structure definitions and building.
-    api("com.github.GTNewHorizons:StructureLib:1.4.42:dev") { transitive = false }
+    api("com.github.GTNewHorizons:StructureLib:1.4.45:dev") { transitive = false }
 
     // NEI (Not Enough Items) is required for HandlerInfo used in RecipeMapBuilder.neiHandlerInfo()
+    // 本行下方的 NotEnoughItems、以及 industrialcraft-2 与 BetterQuesting 两处才是真正的 compileOnlyApi（对照上方那组故意的 api）。
+    // NEI 声明值 2.8.98-GTNH 与 RC-1 实例 shipped 值之差属 pin 落后的卫生项，用户已裁定本轮不顺手对齐，不构成 RC-1 破坏证据。
+    // 代际面：compileOnlyApi 不进运行期类路径，故 NEI 在 beta-1 / beta-2 / beta-3 / RC-1 四代同口径（本轮只实测 RC-1）。
+    // 正式版清理动作：GTNH 正式版发布时统一复核 NEI pin，届时本段卫生项说明可删；判据出处：plan/gtit-rc1-baseline-20260925/evidence/r1-gtit-todo-table.md。
     compileOnlyApi("com.github.GTNewHorizons:NotEnoughItems:2.8.98-GTNH:dev") { transitive = false }
 
     // IC2 API is required for implementing IElectricItem to support charging stations.
     compileOnlyApi("net.industrial-craft:industrialcraft-2:2.2.828-experimental:api") { transitive = false }
 
     // Vending Machine mod - required dependency for Neko Vending Machine system
-    // 2.9.0-beta-3 基线：VM 0.4.100（v1.7.18 曾本地 jar 0.4.87 做 beta-1 兼容）
-    // 0.4.100 未发布到 maven（nexus 两 group 404、jitpack 502），沿用 GitHub release 本地 jar + rfg.deobf 模式
+    // VM 腿不在本轮 RC-1 六腿递进之列：上游 plan/rc1-compat-20260925/work/rc1-version-triple.md V-23 的动作 = 不变（文件即版本），未给第 7 腿。
+    // 基线代际：beta-1 5.09.52.594 / beta-2 5.09.54.20 / beta-3 / RC-1 5.09.54.183 四代共用同一本地件 0.4.100
+    // （0.4.100 自 2.9.0-beta-3 基线起使用；v1.7.18 曾本地 jar 0.4.87 做 beta-1 兼容）。
+    // 0.4.100 未发布到 maven（nexus 两 group 404、jitpack 502），故 RC-1 下仍沿用 GitHub release 本地 jar + rfg.deobf 模式；
+    // 不采用仅高版本写法：把本地 jar 换成 maven 坐标不是可执行动作（上游无该发布），本轮禁止顺手升 VM 版本。
+    // 正式版清理动作：VM 若正式发布到 maven，替换下方 project.files 为 maven 坐标并删除本段；判据出处同上 V-23 与 evidence/r1-gtit-todo-table.md。
     devOnlyNonPublishable(rfg.deobf(project.files("libs/vendingmachine-0.4.100.jar")))
 
     // BetterQuesting API - compile-only, needed for QuestEvent listener (BqEventBridge)

@@ -212,10 +212,20 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
 
     // ------------------------------------------------------------------ tick 与倒计时（R24）
 
+    // [GT-compat] onUpdate 形参元数兼容层（beta1/beta2/beta3/RC1）：GT5U 正式版发布时按当时映射复核形参元数并移除本口径
     /**
-     * <b>形参必须逐字是 5 参</b>：本映射（GTNH beta-3）里 {@code Item.onUpdate} 的签名是
-     * {@code onUpdate(ItemStack, World, Entity, int, boolean)}（实证：
-     * {@code javap -p -cp build/rfg/recompiled_minecraft-1.7.10.jar net.minecraft.item.Item}）。
+     * <b>形参必须逐字是 5 参</b>：RC-1 实证（{@code compileJava} 的 {@code @Override} 校验 + {@code runPocketTest} 套件）里
+     * {@code Item.onUpdate} 的签名是 {@code onUpdate(ItemStack, World, Entity, int, boolean)}，无 4 参重载；其余三代
+     * （b1 5.09.52.594 / b2 5.09.54.20 / b3 5.09.54.133）未实测，按 MC 1.7.10 + Forge 10.13.4.1614 四代同源<b>推断</b>为同一形态，
+     * 故此处不得改用任何"仅高版本"形态——这是四代兼容判据下唯一安全的写法。
+     * 实证口径已随换基线更新：旧文案把签名钉在「本映射（GTNH beta-3）」并引
+     * {@code javap -p -cp build/rfg/recompiled_minecraft-1.7.10.jar net.minecraft.item.Item}，而该 recompiled jar 在 RC-1
+     * 下会随
+     * rc1 的 forge/mcp 与 {@code enableGenericInjection = true}（gradle.properties）重新生成 ⇒ 原实证对象不再等价；
+     * 新实证 = 本轮 {@code compileJava}（RC-1 一格，见 plan/gtit-rc1-baseline-20260925/plan-rc1-baseline-apply.md §5-V2），
+     * beta-3 腿由换基线前的 v1.8.38（commit 2636205）承担，b1/b2 依赖集未定义、不实测也不对外许诺（不冒充四代实测）。GT5U 正式版发布时复核本签名并届时删除本兼容口径。
+     * 判据出处：plan/gtit-rc1-baseline-20260925/evidence/r2-compat-layer-inventory.md 与同目录
+     * evidence/r5-survival-legs.md。
      * 写成常见的 4 参只会<b>多出一个永不被调用的重载</b>——不报错、不抛异常、不打日志，
      * 倒计时与动画全部静默不跑（仓内唯一可编译先例 {@code common/items/FloatCore.java:131}）。
      * <p>
