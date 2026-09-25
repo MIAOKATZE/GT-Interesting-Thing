@@ -34,6 +34,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
@@ -382,11 +384,12 @@ public final class NekoPocketPanel implements PocketSession {
         final ModularPanel panel = ModularPanel.defaultPanel(PANEL_NAME, WIDTH, HEIGHT);
 
         // 1) 槽组注册：矩阵侧与 Container 侧同名，否则 MUI2 直接 IllegalArgumentException（R41d）。
-        // allowShiftTransfer 对<b>本仓四组</b>仍为 false：shift 的落点是玩家背包那一组，
+        // allowShiftTransfer 对<b>本仓五组</b>（★R95 S4 起含升级格）仍为 false：shift 的落点是玩家背包那一组，
         // 而那一组由框架自己注册（rowSize 9、allowShiftTransfer=true）。
         // ★R83：中栏这一组第 4 参开成 true = 玩家背包↔中栏的 shift 收存（需求 5「箱子属性」里唯一能由
-        // 开关给到的那半；中键/R 键整理是自家手势，不是通用箱子整理）。蒸馏/流体/绑定三组仍关 ——
-        // 四组全开会出现"同一次 shift 被两组各抢一次"的分叉。
+        // 开关给到的那半；中键/R 键整理是自家手势，不是通用箱子整理）。蒸馏/流体/绑定/升级四组仍关 ——
+        // 五组全开会出现"同一次 shift 被两组各抢一次"的分叉（★升级格另有"固化不可逆，不收快捷移入"
+        // 那条理由，见下方 GROUP_UPGRADE 注册处）。
         // ghost 格不因此被灌：放置判据已钉在服务端 handler 的 isItemValid 上（R83 B1）。
         syncManager
             .registerSlotGroup(new SlotGroup(PocketSlots.GROUP_STORAGE, NekoPocketStorageColumn.COLUMNS, 100, true));
@@ -394,6 +397,11 @@ public final class NekoPocketPanel implements PocketSession {
         syncManager.registerSlotGroup(
             new SlotGroup(PocketSlots.GROUP_DISTILL, NekoPocketEssenceColumn.DISTILL_COLUMNS, 100, false));
         syncManager.registerSlotGroup(new SlotGroup(PocketSlots.GROUP_BIND, 1, 100, false));
+        // ★R95 S4：升级插件格组（行 3 右位一行 5 格 ⇒ rowSize = UPGRADE_SLOTS；矩阵侧与 Container 侧
+        // 同名 GROUP_UPGRADE）。shift 仍关（与绑定格同一条纪律）：固化不可逆，快捷移入的一次误触
+        // 就会永久吃掉一枚插件——放入只留"看着灰化图案点进对应格"这一条有意手势。
+        syncManager
+            .registerSlotGroup(new SlotGroup(PocketSlots.GROUP_UPGRADE, PocketInventory.UPGRADE_SLOTS, 100, false));
         // ★R78① 撤销 R69-D2：<b>不再</b>预注册空 PlayerSlotGroup。
         // 旧那一行（syncManager.registerSlotGroup(new PlayerSlotGroup(PlayerSlotGroup.NAME))）的作用是
         // 让 ModularSyncManager#construct 的"已注册即跳过"分支生效，从而不绑那 36 格背包。
@@ -417,7 +425,8 @@ public final class NekoPocketPanel implements PocketSession {
             panel.child(band);
         }
 
-        // 4) 槽数口径断言（R80：工厂产出 184 + 框架背包 36 = 220；多 = 重复接入，少 = 漏接，双端同抛）
+        // 4) 槽数口径断言（R95：工厂产出 189（含★S4 接进底带的升级格 5）+ 框架背包 36 = 225；
+        // 多 = 重复接入，少 = 漏接，双端同抛）
         slots.assertTotalRealSlots();
 
         // 4b) ghost 虚化：客户端先按自己从 NBT 读到的那份声明表原位刷一遍（服务端那份是权威，
@@ -570,6 +579,27 @@ public final class NekoPocketPanel implements PocketSession {
 
     ItemStack pocketStack() {
         return pocket;
+    }
+
+    /**
+     * ★R95 S4：承载口袋的<b>活查表</b>（{@code PlayerInventoryGuiData#getUsedItemStack()} 现读背包，
+     * 与构造器取 {@code this.pocket} 同一条路——见 {@link #carrierStillPresent} 头部"判据不得用对象
+     * 身份"那条：堆叠合并 / 跨维重建会让缓存引用变陈旧）。升级格固化写点
+     * （{@code NekoPocketBottomBand#upgradeCellWidget} 的 changeListener）与 CHANNEL_PERSIST 的
+     * 客户端读数都从这里取栈：服务端读到的是权威栈本体（install 原地写它的 NBT），客户端读到的是
+     * vanilla 槽同步过来的那份镜像（{@code ItemStack} 相等比较含整份 NBT ⇒ 位图变化 ≤1 tick 内到达）。
+     */
+    ItemStack carrierStackLive() {
+        return data.getUsedItemStack();
+    }
+
+    /**
+     * ★R95 S4：载体是否已固化「通道持续化」位（单源判据 {@link PocketUpgrades#hasUpgrade}，双端各读
+     * 自己那份载体栈：服务端权威、客户端 vanilla 同步镜像）。两个消费面：通道按钮的客户端禁用腿
+     * （早退不发包 + tooltip 注记）与说明块的倒计时替代文案（{@link #channelStatusText}）。
+     */
+    boolean channelPersistActive() {
+        return PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CHANNEL_PERSIST);
     }
 
     /** 源质列是否可用（TC 缺席 ⇒ 整栏<b>灰显不隐藏</b>，R31）。 */
@@ -2797,11 +2827,18 @@ public final class NekoPocketPanel implements PocketSession {
      * 回执是粘性的（下一次动作覆盖），所以"分区拒收"不会一闪就没；★R93-③ 起这段文本画在
      * 底部带左段那块里（{@link #statusBlockText()}，★R94-① 起那块是 112×60），
      * 不再挤左列末行那个 18px 窄条（★那一行本轮已整行撤销）。
+     * <p>
+     * ★R95 S4：<b>通道持续化位在 ⇒ 倒计时段整体换成「通道常开」文案</b>（{@code always_on}）——
+     * 常开态下没有"剩余秒数"可读（driver 批边界自动续批），仍显倒计时就是给玩家报一个不存在的
+     * 终点。判据走 {@link #channelPersistActive()}（单源 {@code PocketUpgrades#hasUpgrade}），
+     * 客户端读 vanilla 同步过来的载体镜像。
      */
     String channelStatusText() {
         final String receipt = receiptText();
         final String status;
-        if (timedRemainSeconds > 0) {
+        if (channelPersistActive()) {
+            status = StatCollector.translateToLocal("gtit.pocket.channel.always_on");
+        } else if (timedRemainSeconds > 0) {
             status = String
                 .format(StatCollector.translateToLocal("gtit.pocket.channel.timed.remain"), timedRemainSeconds);
         } else if (instantRemainSeconds > 0) {

@@ -7,6 +7,7 @@ import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.widget.ParentWidget;
@@ -15,8 +16,11 @@ import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoClientBalances;
 
@@ -43,20 +47,21 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
  * ★三段宽与"背包段与中栏同 x 同宽""右段内容区与源质列同 x 同宽"这三条都由本类的 {@code static}
  * 块现场断言，不靠注释。
  * <p>
- * <b>右段纵向（★R81③：常驻绑定行落在这里）</b>：四行 × 18 = 72 = 带高，★<b>零富余</b>：
+ * <b>右段纵向（★R81③：常驻绑定行落在这里；★R95 S4：行 3 让给升级插件格）</b>：四行 × 18 = 72 = 带高，
+ * ★<b>零富余</b>：
  * <ol>
  * <li>行 0（y=0）：绑定按钮（原生 106 宽，在 108 内容区里<b>左右各余 1px</b> 居中）；</li>
  * <li>行 1（y=18）：绑定格 18 + 4 + 读数「已绑定 n / 上限」86；</li>
  * <li>行 2（y=36）：<b>常驻绑定行 0</b>（整幅 108；★R93-③ 起它是<b>整条位置行</b>——元件短码 +
  * 维度/坐标/槽位，那一族从原左段信息块搬来，用户："元件和维度放到右边去，右边本身就有维度了"）；</li>
- * <li>行 3（y=54）：帮助按钮 18 + 4 + <b>常驻绑定行 1</b>（86，条目多于常驻行位时这一位让给
- * {@code bind.rows_more}「另有 n 条，悬停可见全部」）。</li>
+ * <li>行 3（y=54）：帮助按钮 18（段内 x=4，原位不动）+ <b>★R95 五个升级插件格</b>
+ * （段内 x=22 起，5×18=90 恰满内容区右沿 ⇒ 22+90=112=段宽）。</li>
  * </ol>
- * 常驻行位 = {@link #PERSISTENT_ROWS} = 行数 − 按钮行 − 绑定格行 = {@code 4 − 2} = 2；
- * 修的就是取证记录点名的"常驻行数 = 0"（旧右段只有 1 行读数，条目<b>全</b>在按钮 tooltip 里，
- * 玩家不悬停就读不到"到底绑了几条"）。★R93-③ 之后常驻面<b>不再</b>只有短码：被服务的那一枚给整条
- * 位置行（维度/坐标/槽位都常驻可见）；多于常驻行位时其余仍只在 tooltip（常驻面按 {@code size − 1}
- * 截断、tooltip 按 {@code size − 10}，两个键各管一个面，见 {@code NekoPocketPanel#bindPersistentText}）。
+ * 常驻行位 = {@link #PERSISTENT_ROWS} = 行数 − 按钮行 − 绑定格行 − 升级格行 = {@code 4 − 3 = 1}；
+ * ★R95 S4 起行 3 的常驻绑定行 1（86px）撤除，其信息保留路径 = 行 2 常驻行（被服务那枚的整条位置行）
+ * + 绑定按钮 tooltip（全量条目 + 截断提示，R36 口径不删信息）⇒「另有 n 条」（{@code bind.rows_more}）
+ * 的常驻落点随之消失，<b>显式</b>改由 tooltip 面与行 1 读数（「已绑定 n / 上限」）承担——落点裁定
+ * 已进装配期断言的报错文案（见 {@code static} 块 ★R95 那条满幅判据），不是静默删面。
  * <p>
  * <b>★R78①：玩家背包是"加回来"的，代价是 E4 风险回归（不得静默）</b>。旧实现（R69-D2）预注册
  * 一个<b>空</b> {@code PlayerSlotGroup} 让 MUI2 的默认分支跳过 36 格绑定（见
@@ -156,10 +161,11 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
  * {@link PocketConstants#MAX_BOUND_CELLS} 仍是 64 ⇒ <b>旧档里真的可能留着多条</b>（本轮刻意不在读档时收缩，
  * 见 {@code decision-ledger.md} §八十四⑤），所以上面那两条提示<b>今天就可能触发</b>，不是死字。
  * 而 tooltip 不能滚，所以"不删信息"的唯一合法形态就是"截断必须说出来"，不得静默只显示前 N 条；
- * ★上限一旦回调，常驻行位与截断两处的账要一起重算（{@code static} 块会先把
- * {@code PERSISTENT_ROWS > ALLOWED_BOUND_CELLS} 那一条钉红）。
+ * ★R95 S4 起行位只剩 1（恰等于玩家口径 1 枚）⇒ 常驻面永远给"被服务的那一枚"整条位置行，
+ * 「另有 n 条」不再有常驻行位，条数读「已绑定 n / 上限」那一行、明细进绑定按钮 tooltip（static 块
+ * ★R95 满幅判据的报错文案里显式声明了这次落点改道，不许静默删面）。
  * 常驻行（{@link #PERSISTENT_ROWS} 条）：★R93-③ 起<b>被服务的那一枚给整条位置行</b>（元件短码 +
- * 维度/坐标/槽位），末位在条目多于行位时让给"另有 n 条"；★它仍不是 tooltip 的替代，
+ * 维度/坐标/槽位）；★它仍不是 tooltip 的替代，
  * 修复前的问题恰恰是"只有 tooltip"：玩家不悬停就读不到条数，于是把身份门禁那次失败
  * 读成"绑定只能绑定一个"（R81）。
  * 列表行的机读形状（{@code id|status|dim|x|y|z|slot}，{@code ';'} 分隔）与解析器
@@ -421,14 +427,13 @@ public final class NekoPocketBottomBand {
     /** 右段纵向<b>行位</b>数（★4 × 18 = 72 = 带高，零富余；行位从哪几行看 {@code static} 块的加总）。 */
     public static final int BIND_ROWS = HEIGHT / NekoPocketPanel.GRID;
     /**
-     * ★R81③：<b>常驻</b>绑定行的行位数 = {@code BIND_ROWS − 2} = <b>2</b>（减掉的是"按钮行"与
-     * "绑定格 + 读数的行"）。修复前这个数是 <b>0</b> —— 条目全在按钮 tooltip 里，玩家不悬停就
-     * 读不到"到底绑了几条"，与身份门禁叠成就成了"绑定只能绑定一个"的观感（取证记录 §3 的"面缺失"）。
-     * <p>
-     * 多于这 {@code 2} 位的部分：最后一位让给 {@code bind.rows_more} 的"另有 n 条，悬停可见"提示，
-     * 完整条目与位置五键仍在 tooltip（上限 {@link #TOOLTIP_ROWS}）——★常驻面变短不等于删信息。
+     * ★R81③ 立、★R95 S4 收窄：<b>常驻</b>绑定行的行位数 = {@code BIND_ROWS − 3} = <b>1</b>
+     * （减掉的是"按钮行"、"绑定格 + 读数的行"与★R95 的"帮助 + 升级格行"——行 3 不再装常驻绑定行）。
+     * 修复前这个数是 <b>0</b>（R81③ 治的那次）；R95 S4 起它恰等于玩家可绑定口径
+     * {@link PocketConstants#ALLOWED_BOUND_CELLS}（1 枚）⇒ 常驻面永远给"被服务的那一枚"整条位置行，
+     * 「另有 n 条」的常驻落点显式改道 tooltip 与读数行（R36 不删信息；static 块 ★R95 满幅判据声明）。
      */
-    public static final int PERSISTENT_ROWS = BIND_ROWS - 2;
+    public static final int PERSISTENT_ROWS = BIND_ROWS - 3;
     /** 绑定格 x（段内局部，★R81④ 起与内容区左沿对齐 = 绳缝右侧第一格；★R81③ 起 public 供回归套件核加总）。 */
     public static final int BIND_SLOT_X = BIND_CONTENT_X;
     /** 绑定格 y（★行 1：y = 18；行 0 整行给绑定按钮，两者上下相邻不重叠）。 */
@@ -443,8 +448,58 @@ public final class NekoPocketBottomBand {
      * 帮助按钮 x（段内局部，与绑定格同列 ⇒ 纵向读成一列控件；★R81③ 起 public 供回归套件核加总）。
      */
     public static final int BIND_HELP_X = BIND_CONTENT_X;
-    /** 帮助按钮 y（★行 3 的左位，右边那 86px 给常驻绑定行 1）。 */
+    /** 帮助按钮 y（★行 3 的左位；★R95 S4 起行 3 右侧那 90px 是五个升级插件格，不再是常驻绑定行 1）。 */
     public static final int BIND_HELP_Y = 3 * NekoPocketPanel.GRID;
+
+    /**
+     * ★R95 S4：升级插件格行的 x（段内局部 = 帮助按钮右沿 ⇒ {@code 4 + 18 = 22}，面板全局
+     * {@code BIND_X + 22 = 302}）。行内 5 格 × 18 = 90 恰满内容区右沿（22 + 90 = 112 = 段宽，
+     * 装配期断言）。
+     */
+    public static final int UPGRADE_ROW_X = BIND_CONTENT_X + NekoPocketPanel.GRID;
+    /**
+     * 升级插件格的布局字面量（★R95：一行 5 格，单一布局字符 {@code 'U'}，仿蒸馏盘 {@code "DDDDDD"}
+     * 的矩阵风格；槽号 = 布局序 = {@code PocketUpgradeType#ordinal()}，三空间同下标）。
+     */
+    private static final String[] UPGRADE_MATRIX = { "UUUUU" };
+    /**
+     * 升级格 tooltip 的插件名键表（★<b>整键字面量表</b>，不硬编码文字、不前缀拼接；下标 =
+     * {@code PocketUpgradeType#ordinal()}，与 {@code ItemPocketUpgrade#TOKENS} 的 token 同源耦合，
+     * 两表长度由 {@code static} 块对账）。
+     */
+    private static final String[] UPGRADE_ITEM_NAME_KEYS = { "item.neko_pocket_upgrade_capacity.name",
+        "item.neko_pocket_upgrade_stack.name", "item.neko_pocket_upgrade_magnet.name",
+        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_distill_fast.name" };
+    /**
+     * 升级格 tooltip 的效果说明键表（与 {@code ItemPocketUpgrade#TOOLTIP_KEYS} 同一组键的 GUI 消费面；
+     * 空格显灰化图案 + 本 tooltip，插件放入后物品自己的图标与 tooltip 自然遮盖）。
+     */
+    private static final String[] UPGRADE_EFFECT_KEYS = { "gtit.pocket.upgrade.capacity.tooltip",
+        "gtit.pocket.upgrade.stack.tooltip", "gtit.pocket.upgrade.magnet.tooltip",
+        "gtit.pocket.upgrade.channel_persist.tooltip", "gtit.pocket.upgrade.distill_fast.tooltip" };
+
+    /**
+     * 升级格的灰化图案取用（★R95 S1 的五张 18×18 {@code POCKET_C2_upg_*.png}；空格显图案指认
+     * "这一格收哪一型"，插件放入后物品图标自然遮盖——下标口径同上两张表）。
+     * <p>
+     * ★写成方法而不是静态数组：<b>不得在类初始化期触碰 {@code PocketGuiTextures}</b>——那会连带
+     * 初始化 MUI2 的纹理表（fastutil 依赖），而回归套件的 JVM 类路径上没有它 ⇒ {@code <clinit>}
+     * 当场 {@code NoClassDefFoundError}（S4 实测：方法体内引用才是惰性的，静态字段初始化不是）。
+     */
+    private static UITexture upgradeCellBackground(int index) {
+        switch (index) {
+            case 0:
+                return PocketGuiTextures.UPGRADE_CAPACITY;
+            case 1:
+                return PocketGuiTextures.UPGRADE_STACK;
+            case 2:
+                return PocketGuiTextures.UPGRADE_MAGNET;
+            case 3:
+                return PocketGuiTextures.UPGRADE_CHANNEL;
+            default:
+                return PocketGuiTextures.UPGRADE_DISTILL;
+        }
+    }
 
     /** 绑定条目的 tooltip 最多列几条（超出必须显式提示，见类 javadoc）。 */
     public static final int TOOLTIP_ROWS = 10;
@@ -497,6 +552,20 @@ public final class NekoPocketBottomBand {
     static {
         if (layoutSlotCount() != PocketInventory.BIND_SLOTS) {
             throw new IllegalStateException("[pocket] 绑定格矩阵产出 " + layoutSlotCount() + " 格，与 handler 格数不符");
+        }
+        // ★R95 S4：升级格矩阵与三张下标表（插件名键 / 效果键 / 灰化图案）必须同时与 UPGRADE_SLOTS
+        // 对齐——任何一张被加删条目都会在这里炸，而不是留一个越界下标给装配期。
+        if (upgradeLayoutSlotCount() != PocketInventory.UPGRADE_SLOTS) {
+            throw new IllegalStateException(
+                "[pocket] 升级格矩阵产出 " + upgradeLayoutSlotCount()
+                    + " 格，与 handler 格数 "
+                    + PocketInventory.UPGRADE_SLOTS
+                    + " 不符");
+        }
+        if (UPGRADE_ITEM_NAME_KEYS.length != PocketInventory.UPGRADE_SLOTS
+            || UPGRADE_EFFECT_KEYS.length != PocketInventory.UPGRADE_SLOTS) {
+            throw new IllegalStateException(
+                "[pocket] 升级格的插件名/效果两张表长度 != " + PocketInventory.UPGRADE_SLOTS + "（下标口径 = ordinal）");
         }
         if (backpackLayoutSlotCount() != PocketSlots.PLAYER_BACKPACK_SLOTS) {
             throw new IllegalStateException(
@@ -555,13 +624,22 @@ public final class NekoPocketBottomBand {
             throw new IllegalStateException(
                 "[pocket] 右段纵向加总不闭合: " + BIND_ROWS + "×18 != 带高 " + HEIGHT + "（R81③：四行零富余）");
         }
-        if (PERSISTENT_ROWS != BIND_ROWS - 2 || PERSISTENT_ROWS < 1) {
+        // ★R95 S4：常驻行位派生式换成「− 3」（减掉按钮行、绑定格行与帮助+升级格行），且仍 ≥ 1
+        // （取证记录 §3 点名的缺陷就是它等于 0——常驻面不许整面消失）。
+        if (PERSISTENT_ROWS != BIND_ROWS - 3 || PERSISTENT_ROWS < 1) {
             throw new IllegalStateException(
-                "[pocket] 常驻绑定行位数 = " + PERSISTENT_ROWS + "（★必须 = 行数 − 按钮行 − 绑定格行 且 ≥ 1，" + "取证记录 §3 点名的缺陷就是它等于 0）");
+                "[pocket] 常驻绑定行位数 = " + PERSISTENT_ROWS
+                    + "（★必须 = 行数 − 按钮行 − 绑定格行 − 帮助+升级格行 且 ≥ 1，R95 S4 起行 3 不再装常驻绑定行）");
         }
-        if (persistentRowY(PERSISTENT_ROWS - 1) + NekoPocketPanel.GRID != HEIGHT) {
+        // ★R95 S4：行位账换判据——旧的那条「最后一条常驻行的下沿 = 带高」随行 3 改装升级格一起作废
+        // （常驻行只到行 2）；纵向闭合现在钉两截：①常驻行下沿 = 行 3 上沿（无缝、不重叠）；
+        // ②行 3（帮助 + 升级格）的下沿 = 带高（见下一条）。
+        if (persistentRowY(PERSISTENT_ROWS - 1) + NekoPocketPanel.GRID != BIND_HELP_Y) {
             throw new IllegalStateException(
-                "[pocket] 最后一条常驻绑定行的下沿不等于带高（★纵向出现无主空白或越界）: " + persistentRowY(PERSISTENT_ROWS - 1));
+                "[pocket] 最后一条常驻绑定行的下沿不等于行 3 上沿（★常驻行与帮助+升级格行之间出现缝隙或重叠）: " + persistentRowY(PERSISTENT_ROWS - 1));
+        }
+        if (BIND_HELP_Y + NekoPocketPanel.GRID != HEIGHT) {
+            throw new IllegalStateException("[pocket] 行 3（帮助 + 升级格）的下沿不等于带高（★纵向出现无主空白或越界）: " + BIND_HELP_Y);
         }
         // 「按钮行与绑定格行不重叠」（R81 取证 §5）此前只靠"行位都是 18 的整数倍"隐式成立；
         // 控件高来自材质契约（coinbar 原生 88×18，★R84 左段把绘制宽收到 49 但高仍是 18），那张图一旦
@@ -620,18 +698,22 @@ public final class NekoPocketBottomBand {
             throw new IllegalStateException(
                 "[pocket] 说明块不再整幅贴左段: x " + STATUS_BLOCK_X + " 宽 " + STATUS_BLOCK_WIDTH + " / 段宽 " + COIN_WIDTH);
         }
-        // ★★R93-③（B 项）：绑定信息的常驻面从「左段那块」搬到「右段常驻行」⇒ 这条对账跟着换宿主。
-        // 旧写法钉的是 CELL_INFO_ROWS ≥ ALLOWED_BOUND_CELLS（左段那块按"一枚"排版）；现在左段那块
-        // 装的是说明文字、与绑定无关，绑定行位归 PERSISTENT_ROWS。★用「严格大于」而不是「≥」：
-        // 末位必须<b>留得下来</b>给"另有 n 条"（bind.rows_more）——口径一旦抬到把行位占满，
-        // 那句提示会<b>静默消失</b>，玩家只剩悬停面可读，正是 R81③ 点名要治的那个形状。
-        if (PERSISTENT_ROWS <= PocketConstants.ALLOWED_BOUND_CELLS) {
+        // ★★R95 S4（B 项收口）：行 3 从「帮助 + 常驻绑定行 1」改成「帮助 + 五个升级插件格」⇒ 旧的
+        // PERSISTENT_ROWS > ALLOWED_BOUND_CELLS（"末位留给「另有 n 条」"）对账随之作废：行位只剩 1、
+        // 恰等于玩家可绑定口径 ⇒ 常驻面永远给"被服务的那一枚"整条位置行，「另有 n 条」（bind.rows_more）
+        // 不再有常驻落点，★显式改道：条数读行 1 的「已绑定 n / 上限」、明细与截断提示读绑定按钮 tooltip
+        // （R36 不删信息，只换面；PERSISTENT_ROWS ≥ 1 由上面那条断言钉）。新对账 = 行 3 恰满幅：
+        // 帮助 18 + 5×18 = 108 恰等于内容区宽，且升级格右沿铺到内容区右沿（与行 0 按钮居中、行 2 整幅
+        // 同一条「零无主空白」纪律）。
+        if (NekoPocketPanel.GRID + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID != BIND_CONTENT_WIDTH
+            || UPGRADE_ROW_X + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID
+                != BIND_CONTENT_X + BIND_CONTENT_WIDTH) {
             throw new IllegalStateException(
-                "[pocket] 右段常驻行位 " + PERSISTENT_ROWS
-                    + " 减不掉玩家可用的绑定口径 "
-                    + PocketConstants.ALLOWED_BOUND_CELLS
-                    + " 枚 ⇒「另有 n 条」那句提示没有落点（★要么加行位，要么同时改文案落点，不许静默删面。"
-                    + "★注意钉的是 ALLOWED_BOUND_CELLS 而不是数据层的 MAX_BOUND_CELLS）");
+                "[pocket] 行 3「帮助 + 升级格」不满幅: 18 + " + PocketInventory.UPGRADE_SLOTS
+                    + "×18 != 内容区 "
+                    + BIND_CONTENT_WIDTH
+                    + "（★要么爬出右段，要么留无主空白；★rows_more 的常驻落点已显式改道 tooltip 与读数行，"
+                    + "本条被删时必须连那处声明一起动）");
         }
         // ★R84 左段横向闭合：一行三段「币值条 49 + 缝 2 + 按钮 61」必须恰等于段宽 112。
         // 三段里前两段钉成字面量、COIN_WIDTH 另有独立权威（= 中栏左沿 − 外边距），所以这条加总<b>不是</b>
@@ -746,6 +828,19 @@ public final class NekoPocketBottomBand {
         for (String row : BACKPACK_MATRIX) {
             for (int index = 0; index < row.length(); index++) {
                 if (row.charAt(index) == 'P') {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    /** 升级插件格矩阵产出的格数（★R95 机检用；必须等于 {@link PocketInventory#UPGRADE_SLOTS} = 5）。 */
+    public static int upgradeLayoutSlotCount() {
+        int total = 0;
+        for (String row : UPGRADE_MATRIX) {
+            for (int index = 0; index < row.length(); index++) {
+                if (row.charAt(index) == 'U') {
                     total++;
                 }
             }
@@ -960,9 +1055,28 @@ public final class NekoPocketBottomBand {
                     .textAlign(Alignment.Center)
                     .pos(0, 0)
                     .size(CHANNEL_BUTTON_WIDTH, COIN_BAR_HEIGHT))
-            // ★常驻可见的完整成本账：短文案省下的那部分信息全部落在这里（不得删）
-            .tooltip(tooltip -> tooltip.addLine(fullLabel))
-            .onMousePressed(button -> button == 0 && ui.requestChannel(request));
+            // ★常驻可见的完整成本账：短文案省下的那部分信息全部落在这里（不得删）。
+            // ★R95 S4：载体已固化 CHANNEL_PERSIST 时<b>追加</b>「通道常开」注记——tooltipDynamic +
+            // autoUpdate ⇒ 每次打开都重估（与蒸馏盘那条动态 tooltip 同一先例），未固化时不多占一行。
+            .tooltipDynamic(tooltip -> {
+                tooltip.addLine(fullLabel);
+                if (ui.channelPersistActive()) {
+                    tooltip.addLine(IKey.lang("gtit.pocket.channel.always_on"));
+                }
+            })
+            .tooltipAutoUpdate(true)
+            // ★R95 S4 通道按钮禁用客户端腿：载体已固化 CHANNEL_PERSIST ⇒ 通道常开（driver 批边界
+            // 自动续批），点击早退<b>不发包</b>（返回 true 把点击吃掉防穿透，同 dispatchBindButtonClick
+            // 的先例；服务端 performChannelRequest 本就有同判据的 always_on 早退回执，两侧读同一条
+            // 单源判据 PocketUpgrades.hasUpgrade，不构成第二处真相）。
+            // ★视觉禁用<b>不走</b> setEnabledIf：本仓实测该 API 在此 MUI2 版本会连底图一起不画
+            // （gui/vm/IoColumnPanel.java:252 记实）⇒ 61px 只剩一个黑洞；改用「点击无动作 + tooltip 注记」。
+            .onMousePressed(button -> {
+                if (ui.channelPersistActive()) {
+                    return true;
+                }
+                return button == 0 && ui.requestChannel(request);
+            });
     }
 
     /**
@@ -1124,8 +1238,8 @@ public final class NekoPocketBottomBand {
      * <li>行 0：绑定按钮（左键绑定 / 右键解绑末条 / Shift 右键清空，R74 三条语义一字未改）；</li>
      * <li>行 1：绑定格 18 + 4 + 读数「已绑定 n / 上限」；</li>
      * <li>行 2：<b>常驻绑定行 0</b>（整幅 108，★修复前这一位根本不存在）；</li>
-     * <li>行 3：帮助按钮 18 + 4 + <b>常驻绑定行 1</b>（86；条目多于常驻行位时这一位是
-     * {@code bind.rows_more}「另有 n 条，悬停可见全部」）。</li>
+     * <li>行 3（★R95 S4 重排）：帮助按钮 18（原位不动）+ <b>五个升级插件格</b>（5×18 = 90 恰满
+     * 内容区右沿；原常驻绑定行 1 撤除，其信息保留路径见 {@link #PERSISTENT_ROWS} 的 javadoc）。</li>
      * </ol>
      * 按钮 y0..18 与绑定格 y18..36 <b>上下相邻但不重叠</b>（R81 取证 §5 用它排除"点击穿透到绑定槽"，
      * 现在仍然成立 ⇒ 那条判据不许被后续改动破坏）。
@@ -1147,6 +1261,18 @@ public final class NekoPocketBottomBand {
             .slotGroup(PocketSlots.GROUP_BIND)
             .build();
         bindGroup.pos(BIND_SLOT_X, BIND_SLOT_Y);
+
+        // ★R95 S4：第 5 组 = 五个升级插件格（行 3 右位）。槽件本体由 {@link PocketSlots#upgradeCell}
+        // 工厂造（filter 单源准入 + accessibility(true,false) 放入即固化不可取出），这里只做三件事：
+        // 灰化图案底、格 tooltip、以及★固化写点——服务端 changeListener（非 init 装；先例
+        // fluidInteraction，见 {@code PocketInventory#newUpgradeGroup} javadoc 的落点设计）。
+        final SlotGroupWidget upgradeGroup = SlotGroupWidget.builder()
+            .matrix(UPGRADE_MATRIX)
+            .key('U', index -> upgradeCellWidget(ui, index))
+            .synced(PocketSlots.SYNC_UPGRADE)
+            .slotGroup(PocketSlots.GROUP_UPGRADE)
+            .build();
+        upgradeGroup.pos(UPGRADE_ROW_X, BIND_HELP_Y);
 
         final IKey summary = IKey.dynamic(ui::bindSummaryText);
         final ParentWidget<?> root = new ParentWidget<>().pos(BIND_X, Y)
@@ -1172,6 +1298,7 @@ public final class NekoPocketBottomBand {
                     // 左键绑定；右键解绑最后一条；Shift+右键清空全部（R74 裁定，语义与 onServerAction 同步改）
                     .onMousePressed(button -> ui.dispatchBindButtonClick(button)))
             .child(bindGroup)
+            .child(upgradeGroup)
             .child(
                 (IWidget) new TextWidget(summary).textAlign(Alignment.CenterLeft)
                     // ★★R92-⑥：「已绑定元件 n / m」是<b>数据读数</b>
@@ -1190,15 +1317,51 @@ public final class NekoPocketBottomBand {
     }
 
     /**
+     * ★R95 S4：一个升级插件格的槽件（行 3 右位；{@code index} = 槽号 = 位图位 =
+     * {@code PocketUpgradeType#ordinal()}，三空间同下标）。
+     * <p>
+     * 槽件本体由 {@link PocketSlots#upgradeCell} 工厂造（filter 单源准入 + {@code accessibility(true,false)}
+     * 放入即固化不可取出）；本方法只补 GUI 三件：
+     * <ol>
+     * <li>灰化图案底（{@link #upgradeCellBackground}：空格显图案指认"这一格收哪一型"，插件放入后
+     * 物品图标自然遮盖）；</li>
+     * <li>格 tooltip：格说明 + 对应插件名 + 效果（lang 动态键，整键字面量表，不硬编码文字）；</li>
+     * <li>★<b>固化写点</b>（install 的唯一调用处）：服务端 changeListener——签名与早退口径照
+     * {@code PocketSlots#fluidInteraction} 的先例（{@code (newItem, onlyAmountChanged, client, init)}，
+     * 客户端帧与 init 帧一律早退，⇒ 读档回灌那一拍不重装），载体栈照
+     * {@code PocketInventory#newUpgradeGroup} javadoc 的设计经活查表取，<b>新栈非空</b>即
+     * {@code PocketUpgrades.install}（只置不清，天然不可逆；一格一型 ⇒ 放对格才进得来，准入判据先挡）。</li>
+     * </ol>
+     */
+    private static ItemSlot upgradeCellWidget(NekoPocketPanel ui, int index) {
+        final ModularSlot modular = ui.slots()
+            .upgradeCell(ui.inventory(), index);
+        modular.changeListener((newItem, onlyAmountChanged, client, init) -> {
+            if (client || init || newItem == null) {
+                return;
+            }
+            PocketUpgrades.install(ui.carrierStackLive(), PocketUpgradeType.values()[index]);
+        });
+        final ItemSlot slot = new ItemSlot();
+        slot.slot(modular);
+        slot.name("pocket_upgrade_" + index);
+        slot.background(upgradeCellBackground(index));
+        slot.tooltip(tooltip -> {
+            tooltip.addLine(IKey.lang("gtit.pocket.upgrade.slot.tooltip"));
+            tooltip.addLine(IKey.lang(UPGRADE_ITEM_NAME_KEYS[index]));
+            tooltip.addLine(IKey.lang(UPGRADE_EFFECT_KEYS[index]));
+        });
+        return slot;
+    }
+
+    /**
      * ★R81③：右段的一条<b>常驻</b>绑定行（不悬停就能看见）。
      * <p>
-     * 行 0 整幅（108），行 1 起让出左边的 18+4 给帮助按钮 ⇒ 86。
-     * ★★<b>R93-③：行 0 的内容从"只有短码身份"升成<b>整条位置行</b></b>（元件短码 + 维度/坐标/槽位，
-     * {@code bind.located}）—— 用户裁定"元件维度放到右边去，右边本身就有维度了"，那一族从旧左段
-     * 信息块搬到这里。行 1 仍是"另有 n 条"（{@code bind.rows_more}）；★"另有 n 条不在服务口径内"
-     * （{@code bind.inert}，旧左段信息块的第二行）本轮进<b>按钮 tooltip</b>：那句 30 余字的话
-     * 在 86×18 里按保守前进量要折三行、恰好顶穿，而它读的是"要不要去解绑"这种动作前决策 ⇒
-     * 落全量面更合适（逐点账见用例 {@code resident_text_pixel_budget}）。
+     * 行 0 整幅（108）。★R95 S4 起 {@link #PERSISTENT_ROWS} = 1 ⇒ <b>只有行 0 被画</b>；"行 1 起让出
+     * 左边 18+4 ⇒ 86"那条让位分支随行 3 改装升级格而不再被走到（保留在代码里：行位一旦回调，
+     * 同一段循环不用重写）。行 0 的内容从"只有短码身份"升成<b>整条位置行</b>（R93-③）；
+     * "另有 n 条不在服务口径内"（{@code bind.inert}）在<b>绑定按钮 tooltip</b>（逐点账见用例
+     * {@code resident_text_pixel_budget}）。
      * ★这里短一分都不是删信息，而是把"有几条 / 绑的是谁"从悬停面搬到常驻面 —— 取证记录 §3 的
      * "常驻行数 = 0"就是本缺陷的加重项。
      * <p>
@@ -1227,8 +1390,8 @@ public final class NekoPocketBottomBand {
      * 主手限制 / ghost 用法与"每格声明吃掉一格真实容量"的代价）+ 绑定与解绑的两条说明。
      * <p>
      * 它不新增任何信息，只是把原本常驻在左栏的文字换成"悬停看得到"；★R81③ 后它占右段<b>行 3 的
-     * 左位</b>（{@code x = 4}，与绑定格同列），右边那 86px 让给常驻绑定行 1 —— 行位不再靠"留白行"
-     * 存在，纵向四行 × 18 = 72 一格都不富余。
+     * 左位</b>（{@code x = 4}，与绑定格同列），★R95 S4 起右边那 90px 是五个升级插件格
+     * （原常驻绑定行 1 撤除）—— 行位不再靠"留白行"存在，纵向四行 × 18 = 72 一格都不富余。
      */
     private static IWidget helpButton(NekoPocketPanel ui) {
         return new ButtonWidget<>().pos(BIND_HELP_X, BIND_HELP_Y)

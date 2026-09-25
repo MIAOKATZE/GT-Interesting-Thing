@@ -1211,34 +1211,51 @@ public class NekoPocketModelTest {
                 - NekoPocketBottomBand.BIND_BUTTON_X
                 - buttonWidth,
             "按钮左右余量必须相等（居中，不是随手偏移）");
-        SimpleAssert.eq(26, NekoPocketBottomBand.BIND_TEXT_X, "★行 1/行 3 的文字起点 = 4(绳) + 18(控件) + 4");
+        SimpleAssert.eq(26, NekoPocketBottomBand.BIND_TEXT_X, "★行 1 读数的文字起点 = 4(绳) + 18(控件) + 4");
         SimpleAssert.eq(
             NekoPocketBottomBand.BIND_TEXT_X + NekoPocketBottomBand.BIND_TEXT_WIDTH,
             NekoPocketBottomBand.BIND_WIDTH,
-            "行 1（读数）与行 3（常驻绑定行 1）铺到段宽右沿：26 + 86 = 112");
+            "行 1（读数）铺到段宽右沿：26 + 86 = 112（★R95 S4：行 3 的 86px 常驻绑定行 1 已撤除）");
         SimpleAssert.eq(86, NekoPocketBottomBand.BIND_TEXT_WIDTH, "文字宽 86（★0.5 缩放下 172 逻辑像素，装得下读数与截断提示）");
         SimpleAssert.eq(
             NekoPocketBottomBand.BIND_CONTENT_X + NekoPocketBottomBand.BIND_ROW_WIDTH,
             NekoPocketBottomBand.BIND_WIDTH,
             "★行 2（常驻绑定行 0）整幅铺到段宽右沿：4 + 108 = 112");
-        // ---- ④ 纵向：四行 × 18 = 72 = 带高，常驻行位 = 2（★修前是 0）----
+        // ---- ④ 纵向：四行 × 18 = 72 = 带高；★R95 S4：常驻行位 2→1（行 3 让给帮助+升级格）----
         SimpleAssert.eq(4, NekoPocketBottomBand.BIND_ROWS, "右段行位 = 带高 / 栅格 = 72 / 18 = 4");
         SimpleAssert.eq(
             NekoPocketBottomBand.BIND_ROWS * grid,
             NekoPocketBottomBand.HEIGHT,
             "★纵向加总恰闭合（零富余 ⇒ 既没有无主空白，也不会把绑定行挤出带子）");
-        SimpleAssert.eq(2, NekoPocketBottomBand.PERSISTENT_ROWS, "★常驻绑定行位 = 4 − 按钮行 − 绑定格行 = 2（修前 = 0）");
+        SimpleAssert.eq(
+            1,
+            NekoPocketBottomBand.PERSISTENT_ROWS,
+            "★常驻绑定行位 = 4 − 按钮行 − 绑定格行 − 帮助+升级格行 = 1（R95 S4；修前 0、R81③ 起曾为 2）");
         SimpleAssert.that(NekoPocketBottomBand.PERSISTENT_ROWS >= 1, "常驻行位不得回到 0（取证记录 §3 点名的「面缺失」）");
         SimpleAssert.eq(36, NekoPocketBottomBand.persistentRowY(0), "常驻行 0 的 y = 2×18 = 36");
-        SimpleAssert.eq(54, NekoPocketBottomBand.persistentRowY(1), "常驻行 1 的 y = 3×18 = 54");
         SimpleAssert.eq(
             NekoPocketBottomBand.persistentRowY(NekoPocketBottomBand.PERSISTENT_ROWS - 1) + grid,
-            NekoPocketBottomBand.HEIGHT,
-            "★最后一条常驻行的下沿正好落在带底（下面没有余量，上面也没有缝）");
+            NekoPocketBottomBand.BIND_HELP_Y,
+            "★最后一条常驻行的下沿正好接上行 3 上沿（常驻行与帮助+升级格行之间无缝、不重叠）");
         SimpleAssert.eq(
             NekoPocketBottomBand.BIND_HELP_Y + grid,
             NekoPocketBottomBand.HEIGHT,
             "帮助按钮占满最后一行（★旧口径「18+2+18+4+18 = 60，余 12」的富余已改成常驻行）");
+        // ---- ⑤ ★R95 S4：行 3 = 帮助 18 + 五个升级格 5×18，恰满内容区 108（面板全局 302..392）----
+        SimpleAssert.eq(22, NekoPocketBottomBand.UPGRADE_ROW_X, "升级格行 x（段内）= 4(绳) + 18(帮助) = 22（面板全局 280+22 = 302）");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_CONTENT_X + NekoPocketPanel.GRID,
+            NekoPocketBottomBand.UPGRADE_ROW_X,
+            "升级格行 x 是派生式（帮助按钮右沿），不是抄来的 22");
+        SimpleAssert.eq(5, NekoPocketBottomBand.upgradeLayoutSlotCount(), "升级格矩阵产出 5 格 = PocketUpgradeType 枚举数");
+        SimpleAssert.eq(
+            grid + PocketInventory.UPGRADE_SLOTS * grid,
+            NekoPocketBottomBand.BIND_CONTENT_WIDTH,
+            "★行 3 恰满幅：帮助 18 + 5×18 = 108 = 内容区宽（18+90 与内容区逐像素对账）");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.BIND_X + NekoPocketBottomBand.UPGRADE_ROW_X + PocketInventory.UPGRADE_SLOTS * grid,
+            NekoPocketPanel.WIDTH - NekoPocketPanel.MARGIN,
+            "★升级格右沿铺到面板右内沿（面板全局 280+22+90 = 392 = 398−6；段内 22+90 = 112 = 段宽）");
     }
 
     /**
@@ -3376,11 +3393,12 @@ public class NekoPocketModelTest {
             NekoPocketBottomBand.backpackLayoutSlotCount(),
             "★背包矩阵产出 36 格 = 框架那 36 格（不等就会有背包格只存在于 Container 而看不见）");
         SimpleAssert.eq(
-            PocketSlots.FACTORY_REAL_SLOTS - PocketInventory.UPGRADE_SLOTS,
+            PocketSlots.FACTORY_REAL_SLOTS,
             NekoPocketStorageColumn.layoutSlotCount() + NekoPocketLeftColumn.layoutSlotCount()
                 + NekoPocketEssenceColumn.layoutSlotCount()
-                + NekoPocketBottomBand.layoutSlotCount(),
-            "四块矩阵的产出之和必须恰好等于工厂口径 189 减去升级格 5（R95：S4 装配片把 5 个升级格接进底带矩阵后回到全等式）");
+                + NekoPocketBottomBand.layoutSlotCount()
+                + NekoPocketBottomBand.upgradeLayoutSlotCount(),
+            "五块矩阵的产出之和必须恰好等于工厂口径 189（★R95 S4：升级格 5 已接进底带矩阵 ⇒ S2b 的" + "「189−5 过渡态」回全等，GUI 槽序与工厂口径不再差一组）");
         SimpleAssert.eq(
             PocketSlots.TOTAL_REAL_SLOTS,
             PocketSlots.FACTORY_REAL_SLOTS + NekoPocketBottomBand.backpackLayoutSlotCount(),
@@ -5449,11 +5467,18 @@ public class NekoPocketModelTest {
         SimpleAssert.that(
             regionContainsCode(panel, tipStart, tipEnd, "gtit.pocket.bind.inert"),
             "★撤下来的那句 inert 必须有新落点（R36 不删信息）⇒ 本轮落在全量面 tooltip");
-        // ---- ⑥ 装配期断言换宿主：从"信息块行位数"搬到"常驻行位"，且收严成严格大于 ----
+        // ---- ⑥ 装配期断言换口径：R93-③ 那条「行位 > 绑定口径」随行 3 改装升级格作废，
+        // R95 S4 换成「行 3 恰满幅」+ 报错文案里显式声明 rows_more 落点改道 tooltip/读数行 ----
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(band, "PERSISTENT_ROWS <= PocketConstants.ALLOWED_BOUND_CELLS"),
+            "★旧对账必须整体消失（行位 1 恰等于口径 1，那条判据已是永真式；留着会装作还在看账）");
         SimpleAssert.eq(
             1,
-            countCodeLinesIn(band, "PERSISTENT_ROWS <= PocketConstants.ALLOWED_BOUND_CELLS"),
-            "★行位与口径的对账必须跟着搬到右段（且末位要留得下来给「另有 n 条」⇒ 严格大于）");
+            countCodeLinesIn(band, "PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID != BIND_CONTENT_WIDTH"),
+            "★新对账 = 行 3 恰满幅（18 + 5×18 = 108）必须在装配期断言里（不写就只剩注释承诺）");
+        SimpleAssert
+            .eq(1, countCodeLinesIn(band, "PERSISTENT_ROWS = BIND_ROWS - 3"), "★常驻行位派生式 = 行数 − 3（S4 起行 3 不再装常驻绑定行）");
         SimpleAssert.eq(
             0,
             countCodeLinesIn(band, "CELL_INFO_ROWS < PocketConstants.ALLOWED_BOUND_CELLS")
