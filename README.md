@@ -25,8 +25,7 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 | GTNH         | GTIT   | Maintenance / 维护 |
 | ------------ | ------ | :--------------: |
-| 2.9.0 beta-3&RC-1 | **1.8.39 +**（当前 / current） |        ✔️        |
-| 2.9.0 beta-1&2&3 | 1.8.0~1.8.38 |        ✔️        |
+| 2.9.0 beta-1&2&3&RC1 | **1.8.0 +**（当前 / current） |        ✔️        |
 | 2.9.0 beta-1&2 | 1.0.0~1.7.53| ✔️ |
 | 2.8.4        | 0.1.x  |        ❌️        |
 
