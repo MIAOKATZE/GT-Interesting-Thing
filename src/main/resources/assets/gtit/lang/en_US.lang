@@ -380,7 +380,24 @@ gtit.pocket.ghost.fluid_bar=This fluid slot still takes and gives fluid by hand;
 gtit.pocket.ghost.not_synced=The last %d filter(s) were not synced to this client (server-side enforcement is unaffected); use fewer filters or a cleaner item
 gtit.pocket.cap.readout=Group cap for this filter: %s
 gtit.pocket.cap.readout.stored=This filter slot: %1$s filled of %2$s
-gtit.pocket.held.note=Only works while held in your main hand; it stops once put away
+# ★R95 S2b (upgrade modules): held.note revalue — the S3 behavior layer widens "main hand only"
+# to "works anywhere in your inventory" (channels and distillation included; chests, baubles and
+# armor slots still stop it). No ASCII digits in values (lang digit ban) — numbers spelled out.
+gtit.pocket.held.note=Keeps working anywhere in your inventory (channels and distillation included); stops in chests, bauble slots or armor slots
+# ---- ★R95 S2b new keys (13): five module item names + five effect tooltips + upgrade-slot hint + always-on channel + distill cadence ----
+item.neko_pocket_upgrade_capacity.name=Capacity Upgrade Module
+item.neko_pocket_upgrade_stack.name=Stacking Upgrade Module
+item.neko_pocket_upgrade_magnet.name=Magnet Upgrade Module
+item.neko_pocket_upgrade_channel_persist.name=Channel Persistence Upgrade Module
+item.neko_pocket_upgrade_distill_fast.name=Distillation Accelerator Module
+gtit.pocket.upgrade.capacity.tooltip=Fluid bar capacity raised to sixteen G
+gtit.pocket.upgrade.stack.tooltip=Per-slot stack limit times sixteen
+gtit.pocket.upgrade.magnet.tooltip=Automatically picks up items within eight blocks
+gtit.pocket.upgrade.channel_persist.tooltip=Channels always on: the channel button is disabled and the pocket always shows as working
+gtit.pocket.upgrade.distill_fast.tooltip=Distillation interval halved from five seconds to two and a half
+gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
+gtit.pocket.channel.always_on=Channels always on (persistence upgrade)
+gtit.pocket.tooltip.distill_fast=With the distillation accelerator, one round every two and a half seconds
 item.neko_dimension_pocket.tooltip.9=Each fluid slot holds %5$d mB, %9$d mB in total across %8$d slots (a capacity chosen beyond the original request)
 gtit.pocket.legend.input=Top row: put the vessel to process (a filled one drains in, an empty one gets filled)
 gtit.pocket.legend.tank=Middle: this column's fluid slot

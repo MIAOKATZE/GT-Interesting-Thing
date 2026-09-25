@@ -17,6 +17,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketFluidTransfer;
 import com.miaokatze.gtit.common.items.pocket.PocketIntakeOps;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 
 /**
@@ -26,9 +27,9 @@ import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
  * （slice-s4-brief §6 第 9 条），也是「Container 槽数可机检」的前提。
  * <p>
  * 每造一个真实槽都记一次数，装配末尾必须 {@link #assertTotalRealSlots()} 命中
- * <b>{@value #TOTAL_REAL_SLOTS}</b>（R80 的口径，覆盖 R78 的 235、R75 的 175、R74 的 185、§14.3/R43b 的 149）：
+ * <b>{@value #TOTAL_REAL_SLOTS}</b>（R95 的口径，覆盖 R80 的 220、R78 的 235、R75 的 175、R74 的 185、§14.3/R43b 的 149）：
  * 中栏 <b>135</b>（15 行 × 9 列）+ 流体交互 <b>36</b>（3 组 × 6 列 × 进/出）+ 蒸馏输入 12 + 绑定 1
- * = <b>184</b> 格由本工厂造，另有<b>玩家背包 36 格</b>由框架造 ⇒ 合计 <b>220</b>；
+ * + 升级插件 5（R95）= <b>189</b> 格由本工厂造，另有<b>玩家背包 36 格</b>由框架造 ⇒ 合计 <b>225</b>；
  * 72 源质格、18 个流体槽本体与全部 ghost 配置<b>不进 Container</b>（R35/R46d），不计入。
  * 偏大 = 有区域被重复接入，偏小 = 有区域漏接 ⇒ 两种都当场炸出来，不留到实机。
  * <p>
@@ -42,7 +43,7 @@ import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
  * <p>
  * ★<b>连带代价（E4，R78① 明文要求不得静默）</b>：首开要同步 36 格，且 vanilla
  * {@code Container#detectAndSendChanges} 每 tick 对这 36 格做 {@code ItemStack} 相等比较
- * （<b>含整份 NBT 深比较</b>），玩家背包内容一变就把整枚口袋连同 184 格一起重发
+ * （<b>含整份 NBT 深比较</b>），玩家背包内容一变就把整枚口袋连同 189 格一起重发
  * （R53c 点名的包放大面）。这是用户为"要玩家背包"明确换回来的代价，README 与本注释同处点名。
  * 框架那一支的 {@code PlayerSlotGroup} rowSize=9、{@code allowShiftTransfer=true} ⇒
  * shift 点击在中栏与背包之间双向可用（旧 L2 档的"取出到背包"按钮因此是加速快捷键而非唯一出口）。
@@ -59,20 +60,21 @@ import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 public final class PocketSlots extends PocketIntakeOps {
 
     /**
-     * 本工厂造出的槽总数（R80：135 + 36 + 12 + 1 = <b>184</b>）。
+     * 本工厂造出的槽总数（R95：135 + 36 + 12 + 1 + <b>5</b> = <b>189</b>）。
      * <p>
      * ★与 {@link #TOTAL_REAL_SLOTS} 分开是有意的：那 36 格背包<b>不</b>经本工厂
      * （由框架造，见类 javadoc），把它们混进本计数就会变成"工厂自己数不出自己该造几个"。
      */
     public static final int FACTORY_REAL_SLOTS = PocketInventory.STORAGE_SLOTS + PocketInventory.FLUID_INTERACTION_SLOTS
         + PocketInventory.DISTILL_INPUT_SLOTS
-        + PocketInventory.BIND_SLOTS;
+        + PocketInventory.BIND_SLOTS
+        + PocketInventory.UPGRADE_SLOTS;
     /**
      * 玩家背包进 Container 的槽数（★<b>转发</b> {@link PocketConstants#PLAYER_BACKPACK_SLOTS}，
      * 本类不另立一份：可见格数 9×4 与框架注册的 36 必须是同一个数）。
      */
     public static final int PLAYER_BACKPACK_SLOTS = PocketConstants.PLAYER_BACKPACK_SLOTS;
-    /** R80 定稿的真实 Container 槽总数（184 + 36 = <b>220</b> = 135 + 36 + 12 + 1 + 36）。 */
+    /** R95 定稿的真实 Container 槽总数（189 + 36 = <b>225</b> = 135 + 36 + 12 + 1 + 5 + 36）。 */
     public static final int TOTAL_REAL_SLOTS = FACTORY_REAL_SLOTS + PLAYER_BACKPACK_SLOTS;
 
     // ----------------------------- 槽组名（矩阵侧与 Container 侧必须逐字相同，R41d）
@@ -80,6 +82,8 @@ public final class PocketSlots extends PocketIntakeOps {
     public static final String GROUP_FLUID = "pocket_fluid";
     public static final String GROUP_DISTILL = "pocket_distill";
     public static final String GROUP_BIND = "pocket_bind";
+    /** 升级插件格的槽组名（R95；S4 底带矩阵接入时逐字复用本常量）。 */
+    public static final String GROUP_UPGRADE = "pocket_upgrade";
 
     /**
      * 中栏每行列数（R80 定稿 10 → <b>9</b>；★<b>转发</b> {@link PocketConstants#STORAGE_COLUMNS}，
@@ -125,6 +129,16 @@ public final class PocketSlots extends PocketIntakeOps {
         if (PocketConstants.PLAYER_BACKPACK_COLUMNS * PocketConstants.PLAYER_BACKPACK_ROWS != PLAYER_BACKPACK_SLOTS) {
             throw new IllegalStateException("[pocket] 背包行列乘积不等于背包槽数");
         }
+        // ★R95：升级格数必须恰等于 PocketUpgradeType 的枚举数——槽号/位图位/ordinal 三个空间
+        // 共用同一套下标（见 PocketInventory#newUpgradeGroup），枚举增删而常量没跟上是
+        // "各自都能编译"的半改，这里在类初始化期就炸出来。
+        if (PocketInventory.UPGRADE_SLOTS != PocketUpgradeType.values().length) {
+            throw new IllegalStateException(
+                "[pocket] 升级格数 " + PocketInventory.UPGRADE_SLOTS
+                    + " != PocketUpgradeType 枚举数 "
+                    + PocketUpgradeType.values().length
+                    + "（槽号=位图位=ordinal 的三空间下标被破坏）");
+        }
         if (FACTORY_REAL_SLOTS + PLAYER_BACKPACK_SLOTS != TOTAL_REAL_SLOTS) {
             throw new IllegalStateException("[pocket] 工厂产出 + 框架背包不等于 Container 口径");
         }
@@ -135,6 +149,8 @@ public final class PocketSlots extends PocketIntakeOps {
     public static final String SYNC_FLUID = "pocket_fluid_slots";
     public static final String SYNC_DISTILL = "pocket_distill_slots";
     public static final String SYNC_BIND = "pocket_bind_slot";
+    /** 升级插件格的同步键（R95；S4 装配侧接 {@code SlotGroupWidget} 时逐字复用本常量）。 */
+    public static final String SYNC_UPGRADE = "pocket_upgrade_slots";
 
     /** 本次装配造出的真实槽计数。 */
     private int createdRealSlots;
@@ -429,6 +445,31 @@ public final class PocketSlots extends PocketIntakeOps {
         return new ModularSlot(inv.bindSlot(), 0).slotGroup(GROUP_BIND);
     }
 
+    /**
+     * 升级插件格之一（R95：{@link PocketInventory#UPGRADE_SLOTS} 格，<b>槽号 = 位图位 =
+     * {@code PocketUpgradeType#ordinal()}</b>，三空间同下标）。
+     * <p>
+     * ★准入：filter 只经单源判据 {@link PocketInventory#acceptsUpgradeCell(int, ItemStack)}
+     * （第 N 格只收第 N 型插件；handler 层还有同一条执法，见 {@code newUpgradeGroup}）。
+     * <p>
+     * ★<b>放入即固化、不可取出</b>（效果位图经 {@code PocketUpgrades#install} 只置不清）：
+     * {@code accessibility(true, false)} = 可放不可取，与出格 {@code accessibility(false, true)}
+     * （禁放可取）是同一条 API 的镜像用法——固化语义直接落在槽件上，不靠客户端自觉。
+     * <p>
+     * ★<b>固化写点（install 的调用）归 S4 装配片</b>：本方法只造槽，服务端 changeListener
+     * （取载体栈 → {@code PocketUpgrades.install}）的完整设计见
+     * {@code PocketInventory#newUpgradeGroup(int)} 的 javadoc——本类结构性拿不到
+     * {@code PlayerInventoryGuiData}，S4 在面板装配层持有它。
+     */
+    public ModularSlot upgradeCell(PocketInventory inv, int index) {
+        createdRealSlots++;
+        final ModularSlot slot = new ModularSlot(inv.upgradeGroup(), index).slotGroup(GROUP_UPGRADE);
+        slot.filter(stack -> PocketInventory.acceptsUpgradeCell(index, stack));
+        slot.accessibility(true, false);
+        slot.canDragInto(false);
+        return slot;
+    }
+
     /** 本工厂已造出的真实槽数（断言与调试用）。 */
     public int createdRealSlots() {
         return createdRealSlots;
@@ -436,7 +477,7 @@ public final class PocketSlots extends PocketIntakeOps {
 
     /**
      * 面板装配末尾调用：本工厂的产出必须是 {@link #FACTORY_REAL_SLOTS}，且加上框架绑的
-     * {@link #PLAYER_BACKPACK_SLOTS} 后必须是 {@link #TOTAL_REAL_SLOTS}（R80：184 + 36 = 220）。
+     * {@link #PLAYER_BACKPACK_SLOTS} 后必须是 {@link #TOTAL_REAL_SLOTS}（R95：189 + 36 = 225）。
      *
      * @throws IllegalStateException 计数不符（双端同抛 ⇒ 首开即暴露，不会静默错位）
      */
@@ -445,10 +486,10 @@ public final class PocketSlots extends PocketIntakeOps {
     }
 
     /**
-     * 加总判据的<b>本体</b>（两个入参形态 ⇒ 回归套件能直接喂 234 / 236 两个负控，
-     * 不必为了构造"少一格"去把 184 个槽真造一遍）。
+     * 加总判据的<b>本体</b>（两个入参形态 ⇒ 回归套件能直接喂 224 / 226 两个负控，
+     * 不必为了构造"少一格"去把 189 个槽真造一遍）。
      * <p>
-     * ★两条判据都要，不能只判合计：只判合计的话"工厂少造一格 + 背包多绑一格"会互相抵消成 220
+     * ★两条判据都要，不能只判合计：只判合计的话"工厂少造一格 + 背包多绑一格"会互相抵消成 225
      * 而静默放过（两种错各有独立的玩家可见症状：前者是某块区域点不动，后者是隐形槽）。
      *
      * @param factoryCreated 本工厂实际造出的槽数
@@ -478,7 +519,9 @@ public final class PocketSlots extends PocketIntakeOps {
                     + PocketInventory.DISTILL_INPUT_SLOTS
                     + " 蒸馏输入 + "
                     + PocketInventory.BIND_SLOTS
-                    + " 绑定格)");
+                    + " 绑定格 + "
+                    + PocketInventory.UPGRADE_SLOTS
+                    + " 升级插件格)");
         }
         if (playerBackpack != PLAYER_BACKPACK_SLOTS) {
             throw new IllegalStateException(

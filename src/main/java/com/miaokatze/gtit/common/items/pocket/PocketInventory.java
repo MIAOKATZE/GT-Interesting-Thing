@@ -68,6 +68,11 @@ public final class PocketInventory {
     /** 绑定格数（需求 5，R43a 的瞬时入口；R75 后落在底部带）。 */
     public static final int BIND_SLOTS = 1;
     /**
+     * 升级插件格数（R95：<b>转发</b> {@link PocketConstants#UPGRADE_SLOTS}，槽号 = 效果位图位 =
+     * {@code PocketUpgradeType#ordinal()}——三个空间是同一个数，读法见 {@link #newUpgradeGroup(int)}）。
+     */
+    public static final int UPGRADE_SLOTS = PocketConstants.UPGRADE_SLOTS;
+    /**
      * 独立流体 tank 数（= 组数 × 每组列数 = {@code 3 × 6 = 18}，R78②；
      * 单源同 {@link PocketConstants#FLUID_TANK_TOTAL}，也是 {@code Kind.FLUID} 的 ghost 索引空间）。
      */
@@ -126,6 +131,7 @@ public final class PocketInventory {
     private final ItemStackHandler fluidInteraction = newSlotGroup(FLUID_INTERACTION_SLOTS);
     private final ItemStackHandler distillInput = newSlotGroup(DISTILL_INPUT_SLOTS);
     private final ItemStackHandler bindSlot = newSlotGroup(BIND_SLOTS);
+    private final ItemStackHandler upgradeCells = newUpgradeGroup(UPGRADE_SLOTS);
 
     /**
      * {@link #FLUID_TANK_COUNT} 个<b>互相独立</b>的流体 tank（R75①：每列一个，各自 16,000,000 mB）。
@@ -190,6 +196,7 @@ public final class PocketInventory {
         loadGroup(root, PocketConstants.FLUID_INTERACTION_SLOTS, inventory.fluidInteraction, "流体交互格");
         loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput, "蒸馏输入");
         loadGroup(root, PocketConstants.BIND_SLOT, inventory.bindSlot, "绑定格");
+        loadGroup(root, PocketConstants.UPGRADE_SLOT_GROUP, inventory.upgradeCells, "升级插件格");
         inventory.loadTanks(root);
         // ★R87-f：声明表必须先于源质表读出——保格谓词以它为输入，「有格位无库存」的空洞折叠只对无声明者生效
         inventory.filters = PocketFilterConfig.readFrom(root);
@@ -221,6 +228,7 @@ public final class PocketInventory {
         saveGroup(root, PocketConstants.FLUID_INTERACTION_SLOTS, fluidInteraction);
         saveGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, distillInput);
         saveGroup(root, PocketConstants.BIND_SLOT, bindSlot);
+        saveGroup(root, PocketConstants.UPGRADE_SLOT_GROUP, upgradeCells);
         saveTanks(root);
         essence.writeTo(root);
         bindings.writeTo(root);
@@ -278,7 +286,7 @@ public final class PocketInventory {
      * ★R80① 将闩从"整进程一次"改为"<b>每个槽组键一次</b>"：收缩场景（150 → 135）下同一枚口袋
      * 一次读档就可能让 {@code contents}、{@code interactionSlots} 两个区各自丢条目，
      * 整进程只报一次就等于第二个区<b>静默丢件</b>（用户那句"不许静默丢件"不许）。
-     * 仍然不会成为日志洪水：键集合是固定的四个区 + 流体 tank，面板反复开关也只各报一次。
+     * 仍然不会成为日志洪水：键集合是固定的五个区（R95 起含升级插件格）+ 流体 tank，面板反复开关也只各报一次。
      */
     private static void warnOutOfRangeOnce(String label, String key, int slots, int dropped) {
         if (!outOfRangeWarnedKeys.add(key)) {
@@ -459,6 +467,57 @@ public final class PocketInventory {
     }
 
     /**
+     * 升级插件格那一组专用（R95，第 5 组）：{@link PocketConstants#UPGRADE_SLOTS} 格，
+     * <b>槽号 = 效果位图位 = {@code PocketUpgradeType#ordinal()}</b>——三个空间共用同一套下标，
+     * 这是"第 N 格只收第 N 型插件"判据能单源成立的原因。
+     * <p>
+     * ★准入判据单源在 {@link #acceptsUpgradeCell(int, ItemStack)}（本 handler 的
+     * {@code isItemValid} 与 GUI 装配侧 {@code PocketSlots#upgradeCell} 的 {@code filter}
+     * 都只经它问，<b>不含第二份 instanceof/ordinal 实现</b>；执法放 handler 这一层则开屏即生效，
+     * 口径与 {@link #newStorageGroup(int)} 把"绑定格不放"落在执法点的论证同一条）。
+     * <p>
+     * ★★<b>固化写点（install 的调用点）归 GUI 装配片 S4，本片不落调用</b>：本类是纯数据件
+     * （类 javadoc 明写"不持 EntityPlayer、不持 World"），<b>结构性拿不到口袋载体栈</b>——
+     * 效果位图写在「承载口袋的那一栈」的 NBT 根层，而 {@code readFrom/writeTo} 只面对
+     * NBT 化合物，无从回指栈本体。S4 的落点设计（本片按此移交）：
+     * 在 {@code gui.pocket.PocketSlots#upgradeCell} 造出的槽件上挂服务端 changeListener
+     * （先例：流体交互格 {@code fluidInteraction} 的 {@code changeListener}，签名
+     * {@code (newItem, onlyAmountChanged, client, init) -> { if (client || init) return; ... }}），
+     * {@code newItem != null} 时以 {@code PlayerInventoryGuiData#getUsedItemStack()} 取载体
+     * （同 {@code NekoPocketPanel} 构造器取 {@code this.pocket} 的那条路），调
+     * {@code PocketUpgrades.install(载体, PocketUpgradeType.values()[slotIndex])}。
+     * 一格一型 ⇒ 放对格才进得来（准入判据先挡），放进来即固化（install 只置不清，天然不可逆）。
+     */
+    private ItemStackHandler newUpgradeGroup(final int size) {
+        return new ItemStackHandler(size) {
+
+            @Override
+            protected void onContentsChanged(int slot) {
+                PocketInventory.this.dirty = true;
+            }
+
+            @Override
+            public boolean isItemValid(int slot, ItemStack stack) {
+                return acceptsUpgradeCell(slot, stack);
+            }
+        };
+    }
+
+    /**
+     * 升级插件格的准入判据（<b>单源</b>，R95）：第 {@code slot} 格只收
+     * {@code type().ordinal() == slot} 的那一件插件。
+     *
+     * @return {@code true} 仅当 {@code stack} 是 {@link ItemPocketUpgrade} 且其效果位恰好是这一格
+     */
+    public static boolean acceptsUpgradeCell(int slot, ItemStack stack) {
+        if (slot < 0 || slot >= PocketConstants.UPGRADE_SLOTS) {
+            return false;
+        }
+        final PocketUpgradeType type = ItemPocketUpgrade.getType(stack);
+        return type != null && type.ordinal() == slot;
+    }
+
+    /**
      * ★★<b>R92-④（D4）：物品支"放置即配置"的落档腿</b>。
      * <p>
      * 用户口径："Alt 锁定后，可以用 NEI 配置锁定，也可以玩家直接放东西上去配置"。取证证死现状是
@@ -554,6 +613,14 @@ public final class PocketInventory {
     /** 底部带绑定格（1 格，瞬时入口）。 */
     public ItemStackHandler bindSlot() {
         return bindSlot;
+    }
+
+    /**
+     * 升级插件格（R95：{@link #UPGRADE_SLOTS} 格；槽号=位图位=ordinal，准入判据
+     * {@link #acceptsUpgradeCell(int, ItemStack)}，固化写点设计见 {@link #newUpgradeGroup(int)}）。
+     */
+    public ItemStackHandler upgradeGroup() {
+        return upgradeCells;
     }
 
     public PocketEssenceStore essence() {

@@ -376,7 +376,23 @@ gtit.pocket.ghost.fluid_bar=本列流体槽仍可手动灌排；配置只说明�
 gtit.pocket.ghost.not_synced=尾部 %d 条声明未同步到客户端显示（服务端执法不受影响），请精简声明或换较干净的物品
 gtit.pocket.cap.readout=该配置格的组上限：%s
 gtit.pocket.cap.readout.stored=该配置格：已补 %1$s / 上限 %2$s
-gtit.pocket.held.note=只有握在主手时才运作；收进背包其他格、副手、饰品栏或箱子即停
+# ★R95 S2b（升级插件体系）：held.note 改值——S3 行为层把「只主手」放宽为「背包任意格都运作」
+#（通道与蒸馏照常；箱子/饰品栏/盔甲位仍停）。★值内无 ASCII 数字（lang 数字禁令）⇒ 中文数字书写。
+gtit.pocket.held.note=放进背包任意格都会继续运作（通道与蒸馏照常）；放进箱子、饰品栏或盔甲位则停
+# ---- ★R95 S2b 新增 13 键：五型插件物品名 5 + 效果 tooltip 5 + 升级格说明 1 + 通道常开 1 + 蒸馏双口径 1 ----
+item.neko_pocket_upgrade_capacity.name=容量升级插件
+item.neko_pocket_upgrade_stack.name=堆叠升级插件
+item.neko_pocket_upgrade_magnet.name=磁力升级插件
+item.neko_pocket_upgrade_channel_persist.name=通道持续化升级插件
+item.neko_pocket_upgrade_distill_fast.name=蒸馏加速升级插件
+gtit.pocket.upgrade.capacity.tooltip=流体条容量提升至十六G
+gtit.pocket.upgrade.stack.tooltip=单格堆叠上限×十六
+gtit.pocket.upgrade.magnet.tooltip=自动拾取周围八格内的物品
+gtit.pocket.upgrade.channel_persist.tooltip=通道常开：禁用通道按钮、口袋始终显示工作中
+gtit.pocket.upgrade.distill_fast.tooltip=蒸馏间隔五秒减半至二点五秒
+gtit.pocket.upgrade.slot.tooltip=每格只收对应插件；放入即固化，不可取出
+gtit.pocket.channel.always_on=通道常开中（持续化升级）
+gtit.pocket.tooltip.distill_fast=装蒸馏加速后每两秒半一轮
 item.neko_dimension_pocket.tooltip.9=每个流体槽容量 %5$d mB，%8$d 槽合计 %9$d mB（此项为需求外的设计取值，非原始要求数字）
 gtit.pocket.legend.input=上一行：放入待处理的容器（有流体就抽进本列，空容器会被灌满）
 gtit.pocket.legend.tank=中间：本列的流体槽

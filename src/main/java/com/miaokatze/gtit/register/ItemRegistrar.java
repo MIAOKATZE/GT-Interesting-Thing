@@ -16,6 +16,8 @@ import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageCell;
 import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageFluidCell;
 import com.miaokatze.gtit.common.items.infinitycell.ItemNekoInfinityStorageUnit;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
+import com.miaokatze.gtit.common.items.pocket.ItemPocketUpgrade;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.rings.RingDistantGrasp;
 import com.miaokatze.gtit.common.items.rings.RingDragonBreath;
 import com.miaokatze.gtit.common.items.rings.RingGluttony;
@@ -76,6 +78,9 @@ public class ItemRegistrar {
 
         // 猫猫次元口袋
         registerNekoDimensionPocket();
+
+        // 口袋升级插件（R95）
+        registerNekoPocketUpgrades();
 
         LOG.info("物品注册完成。");
     }
@@ -172,5 +177,21 @@ public class ItemRegistrar {
 
     private static void registerNekoDimensionPocket() {
         NekoDimensionPocket.setAndRegister(ItemNekoDimensionPocket::new);
+    }
+
+    // ========== 口袋升级插件注册（R95 升级插件体系） ==========
+
+    /**
+     * 五型插件各注册一件（{@code ItemPocketUpgrade} 构造注入 {@code PocketUpgradeType}）。
+     * <p>
+     * ★注册名由物品自己的 unlocalized 派生（{@code neko_pocket_upgrade_<token>}，
+     * {@code setAndRegister} 的 null 分支），本方法不另传注册名——两处名字就是一处真相。
+     */
+    private static void registerNekoPocketUpgrades() {
+        NekoPocketUpgradeCapacity.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.CAPACITY));
+        NekoPocketUpgradeStack.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.STACK));
+        NekoPocketUpgradeMagnet.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.MAGNET));
+        NekoPocketUpgradeChannelPersist.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.CHANNEL_PERSIST));
+        NekoPocketUpgradeDistillFast.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.DISTILL_FAST));
     }
 }

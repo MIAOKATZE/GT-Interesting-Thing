@@ -414,6 +414,34 @@ public final class PocketConstants {
     public static final String DISTILL_INPUT_SLOTS = "distillInput";
     /** 底部带绑定格（需求 5）：R40a 非消耗，绑定动作读完 ID 就把原栈放回玩家处。 */
     public static final String BIND_SLOT = "bindSlot";
+
+    // ------------------------------------------------------ R95 升级插件体系（S2a 契约面）
+    //
+    // 升级插件体系的三件套契约：效果位图根键、插件槽数、插件槽组持久化键。后续并行片只依赖这里。
+    // ★键可加不可改（同上面 S3/S4 段的口径：NBT 键与位序一旦落档即冻结）。读写入口只有
+    // {@code PocketUpgrades}，别处不得再摸这份位图。
+
+    /**
+     * 升级<b>效果位图</b>的根键（byte，位序 = {@code PocketUpgradeType#ordinal()} 第 0-4 位）。
+     * <p>
+     * ★效果查询的唯一真相：所有"有没有这个升级"的判定一律读它，不数槽里的插件；
+     * 读侧只读不建档（R53c）。位图由 {@code PocketUpgrades#install} 在插件放入对应格的
+     * 那一次手势置位，固化后不可逆。
+     */
+    public static final String UPGRADES_KEY = "upgrades";
+    /** 升级插件槽数 = {@code PocketUpgradeType} 的枚举数（位图恰用 5 位）。 */
+    public static final int UPGRADE_SLOTS = 5;
+    /**
+     * 升级<b>插件槽组</b>的 NBT 持久化键（{@code ItemStackHandler} 形状，同
+     * {@link #ITEM_CONTENTS} 一族的槽组键）。
+     * <p>
+     * ★槽组<b>只是 GUI 呈现</b>（玩家看见插件插在哪格），效果判定不走它——双表示里
+     * {@link #UPGRADES_KEY} 位图才是唯一真相，两者由落格的那一次手势同时写。
+     * <p>
+     * ★与 {@link #UPGRADES_KEY} 必须异值：槽组与位图同写在物品 NBT 根层，同值会同键异型互踩
+     * （槽组是 compound、位图是 byte）。
+     */
+    public static final String UPGRADE_SLOT_GROUP = "upgradeCells";
     /**
      * 流体槽内容（{@link #FLUID_TANK_TOTAL} 个独立 tank = 18 个）。
      * <p>

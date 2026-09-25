@@ -174,7 +174,7 @@ public class NekoPocketModelTest {
         // ---- S-U3（R75）/ S-U4（R78）：220 槽口径、三组流体、存档兼容、解绑新语义、C2 契约与几何闭合
         cases.put("slot_math_220_and_row_column_products", NekoPocketModelTest::slotMathAndProducts);
         cases.put(
-            "real_slot_count_assertion_accepts_220_rejects_219_and_221",
+            "real_slot_count_assertion_accepts_225_rejects_224_and_226",
             NekoPocketModelTest::realSlotCountAssertion);
         cases.put(
             "fluid_ghost_index_space_is_eighteen_tanks_with_zero_still_valid",
@@ -592,29 +592,31 @@ public class NekoPocketModelTest {
     // 撤掉 18 条流体列标题边条后的左栏纵向加总、旧档 150 格**收缩**到 135 的兼容、
     // tick→秒的 TICKS_PER_SECOND 单源，以及★用户点名的「绑定只能绑定一个」JVM 复现用例。
 
-    /** ★R80① 的 220 加总正例 + 219 / 221 两个负控必抛（判据本体是 {@code assertTotalRealSlots(int,int)}）。 */
+    /** ★R80①→R95 的 225 加总正例 + 224 / 226 两个负控必抛（判据本体是 {@code assertTotalRealSlots(int,int)}）。 */
     private static void slotMath220WithNegativeControls() {
-        // ---- 正例：五块加总 = 220，且每一块都能单独归因 ----
+        // ---- 正例：六块加总 = 225，且每一块都能单独归因 ----
         final int storage = PocketInventory.STORAGE_SLOTS;
         final int fluid = PocketInventory.FLUID_INTERACTION_SLOTS;
         final int distill = PocketInventory.DISTILL_INPUT_SLOTS;
         final int bind = PocketInventory.BIND_SLOTS;
+        final int upgrade = PocketInventory.UPGRADE_SLOTS;
         final int backpack = PocketConstants.PLAYER_BACKPACK_SLOTS;
         SimpleAssert.eq(135, storage, "中栏 = 15 行 × 9 列 = 135（R80①）");
         SimpleAssert.eq(36, fluid, "流体交互 = 3 组 × 6 列 × 进/出 = 36");
         SimpleAssert.eq(12, distill, "蒸馏输入 = 2 行 × 6 列 = 12");
         SimpleAssert.eq(1, bind, "绑定格 = 1");
+        SimpleAssert.eq(5, upgrade, "升级插件格 = PocketUpgradeType 枚举数 = 5（R95）");
         SimpleAssert.eq(36, backpack, "玩家背包 = 9 × 4 = 36（框架造，不经工厂）");
-        SimpleAssert.eq(220, storage + fluid + distill + bind + backpack, "★五块加总 = 135+36+12+1+36 = 220");
-        SimpleAssert.eq(184, storage + fluid + distill + bind, "工厂四块 = 184");
-        SimpleAssert.eq(220, PocketSlots.TOTAL_REAL_SLOTS, "容器口径常量必须等于上面的加总");
-        // ---- 负控：219 与 221 都必须抛（★两条各测两个入参形态，不只测合计）----
-        SimpleAssert.eq(Boolean.FALSE, throwsIllegalState(184, 36), "184 + 36 = 220 ⇒ 不抛");
-        SimpleAssert.that(throwsIllegalState(183, 36), "★219 必抛：工厂少一格（中栏少接一列就是这个形态）");
-        SimpleAssert.that(throwsIllegalState(185, 36), "★221 必抛：工厂多一格");
-        SimpleAssert.that(throwsIllegalState(184, 35), "★219 的另一半：背包少一格（隐形槽）");
-        SimpleAssert.that(throwsIllegalState(184, 37), "★221 的另一半：背包多一格");
-        SimpleAssert.that(throwsIllegalState(183, 37), "★合计仍 220 但两项各自都错 ⇒ 必须抛");
+        SimpleAssert.eq(225, storage + fluid + distill + bind + upgrade + backpack, "★六块加总 = 135+36+12+1+5+36 = 225");
+        SimpleAssert.eq(189, storage + fluid + distill + bind + upgrade, "工厂五块 = 189");
+        SimpleAssert.eq(225, PocketSlots.TOTAL_REAL_SLOTS, "容器口径常量必须等于上面的加总");
+        // ---- 负控：224 与 226 都必须抛（★两条各测两个入参形态，不只测合计）----
+        SimpleAssert.eq(Boolean.FALSE, throwsIllegalState(189, 36), "189 + 36 = 225 ⇒ 不抛");
+        SimpleAssert.that(throwsIllegalState(188, 36), "★224 必抛：工厂少一格（中栏少接一列就是这个形态）");
+        SimpleAssert.that(throwsIllegalState(190, 36), "★226 必抛：工厂多一格");
+        SimpleAssert.that(throwsIllegalState(189, 35), "★224 的另一半：背包少一格（隐形槽）");
+        SimpleAssert.that(throwsIllegalState(189, 37), "★226 的另一半：背包多一格");
+        SimpleAssert.that(throwsIllegalState(188, 37), "★合计仍 225 但两项各自都错 ⇒ 必须抛");
     }
 
     /**
@@ -3263,19 +3265,25 @@ public class NekoPocketModelTest {
     // 这一批是"128/149 → 150/175 → R78 的 235 → R80 的 220"这次批量口径重做的验收面。
     // 每条都刻意写成"改坏了就一定红"的形式：加总用字面量、行列用乘积、兼容用两代形状各自断言。
 
-    /** R78→R80 的 220 加总自证 + 全部行列乘积（★数字来自任务包 §1.1，逐条按加算式核对）。 */
+    /** R78→R80→R95 的 225 加总自证 + 全部行列乘积（★数字来自任务包 §1.1，逐条按加算式核对）。 */
     private static void slotMathAndProducts() {
-        // ★加总（R80①）：中栏 135（15×9）+ 流体交互 36（3 组 × 6 列 × 进/出）+ 蒸馏 12 + 绑定 1
-        // + 玩家背包 36（框架绑的 9×4） = 220
-        SimpleAssert.eq(220, PocketSlots.TOTAL_REAL_SLOTS, "真实 Container 槽总数（R80：184 工厂 + 36 背包）");
-        SimpleAssert.eq(184, PocketSlots.FACTORY_REAL_SLOTS, "本工厂产出口径 = 135 + 36 + 12 + 1 = 184（★回执要求的 184 加总自证就是这一条）");
+        // ★加总（R95）：中栏 135（15×9）+ 流体交互 36（3 组 × 6 列 × 进/出）+ 蒸馏 12 + 绑定 1
+        // + 升级插件 5 + 玩家背包 36（框架绑的 9×4） = 225
+        SimpleAssert.eq(225, PocketSlots.TOTAL_REAL_SLOTS, "真实 Container 槽总数（R95：189 工厂 + 36 背包）");
+        SimpleAssert
+            .eq(189, PocketSlots.FACTORY_REAL_SLOTS, "本工厂产出口径 = 135 + 36 + 12 + 1 + 5 = 189（★回执要求的 189 加总自证就是这一条）");
         SimpleAssert.eq(
-            135 + 36 + 12 + 1 + 36,
+            135 + 36 + 12 + 1 + 5 + 36,
             PocketInventory.STORAGE_SLOTS + PocketInventory.FLUID_INTERACTION_SLOTS
                 + PocketInventory.DISTILL_INPUT_SLOTS
                 + PocketInventory.BIND_SLOTS
+                + PocketInventory.UPGRADE_SLOTS
                 + PocketConstants.PLAYER_BACKPACK_SLOTS,
-            "五块加总必须等于 220（235 / 175 / 185 / 149 都是被覆盖的旧口径）");
+            "六块加总必须等于 225（235 / 220 / 175 / 185 / 149 都是被覆盖的旧口径）");
+        SimpleAssert.eq(
+            PocketInventory.UPGRADE_SLOTS,
+            PocketUpgradeType.values().length,
+            "★升级格数 = PocketUpgradeType 枚举数（槽号=位图位=ordinal 三空间同下标，R95）");
         SimpleAssert.eq(135, PocketInventory.STORAGE_SLOTS, "中栏格数 = GHOST_ITEM_SLOT_LIMIT 单源（R80①：150 → 135）");
         SimpleAssert.eq(15, PocketSlots.STORAGE_ROWS, "中栏 15 行（★R80① 纵向一行不删：360 是 GUI Scale 3 上限）");
         SimpleAssert.eq(9, PocketSlots.STORAGE_COLUMNS, "★中栏 9 列（R80① 定稿，旧 10 列）");
@@ -3368,22 +3376,22 @@ public class NekoPocketModelTest {
             NekoPocketBottomBand.backpackLayoutSlotCount(),
             "★背包矩阵产出 36 格 = 框架那 36 格（不等就会有背包格只存在于 Container 而看不见）");
         SimpleAssert.eq(
-            PocketSlots.FACTORY_REAL_SLOTS,
+            PocketSlots.FACTORY_REAL_SLOTS - PocketInventory.UPGRADE_SLOTS,
             NekoPocketStorageColumn.layoutSlotCount() + NekoPocketLeftColumn.layoutSlotCount()
                 + NekoPocketEssenceColumn.layoutSlotCount()
                 + NekoPocketBottomBand.layoutSlotCount(),
-            "四块矩阵的产出之和必须恰好等于工厂口径 184（R80①）");
+            "四块矩阵的产出之和必须恰好等于工厂口径 189 减去升级格 5（R95：S4 装配片把 5 个升级格接进底带矩阵后回到全等式）");
         SimpleAssert.eq(
             PocketSlots.TOTAL_REAL_SLOTS,
             PocketSlots.FACTORY_REAL_SLOTS + NekoPocketBottomBand.backpackLayoutSlotCount(),
-            "工厂四块 + 背包 = 容器口径 220（★背包不经工厂，所以必须单列一项）");
+            "工厂五块 + 背包 = 容器口径 225（★背包不经工厂，所以必须单列一项）");
     }
 
     /**
-     * 装配计数断言的正反两面（R80①）：184 + 36 = <b>220</b> 必须过、<b>219 与 221 必须抛</b>。
+     * 装配计数断言的正反两面（R95）：189 + 36 = <b>225</b> 必须过、<b>224 与 226 必须抛</b>。
      * <p>
      * ★三条判据都要（见 {@code PocketSlots#assertTotalRealSlots(int, int)} 的注释）：
-     * 只判合计的话"工厂少一格 + 背包多一格"会抵消成 220 而静默放过。
+     * 只判合计的话"工厂少一格 + 背包多一格"会抵消成 225 而静默放过。
      * 异常文本也必须带上新口径（且由常量拼出而不是再抄一份数），否则读到"应为 199 个 (150 …)"
      * 就是把玩家指向一个已经不存在的形状。
      */
@@ -3401,16 +3409,19 @@ public class NekoPocketModelTest {
             full.distillInput(inventory, index);
         }
         full.bind(inventory);
-        SimpleAssert.eq(184, full.createdRealSlots(), "四类槽工厂各按格数接完正好 184（★背包不经这里）");
+        for (int index = 0; index < PocketInventory.UPGRADE_SLOTS; index++) {
+            full.upgradeCell(inventory, index);
+        }
+        SimpleAssert.eq(189, full.createdRealSlots(), "五类槽工厂各按格数接完正好 189（★背包不经这里）");
         full.assertTotalRealSlots();
 
-        // ---- 负控 219 / 221：直接喂静态判据（不必真造两百个槽）----
-        SimpleAssert.eq(Boolean.FALSE, throwsIllegalState(184, 36), "184 + 36 = 220 ⇒ 不抛（正例基线）");
-        SimpleAssert.that(throwsIllegalState(183, 36), "★219 必须抛（工厂少一格 = 有区域漏接）");
-        SimpleAssert.that(throwsIllegalState(185, 36), "★221 必须抛（工厂多一格 = 有区域重复接入）");
-        SimpleAssert.that(throwsIllegalState(184, 35), "★219 的另一半：背包少一格也必须抛（隐形槽不算过关）");
-        SimpleAssert.that(throwsIllegalState(184, 37), "★221 的另一半：背包多一格同样抛");
-        SimpleAssert.that(throwsIllegalState(183, 37), "★合计恰好 220 但两项各自都错 ⇒ 仍必须抛（只判合计就会放过这一类）");
+        // ---- 负控 224 / 226：直接喂静态判据（不必真造两百个槽）----
+        SimpleAssert.eq(Boolean.FALSE, throwsIllegalState(189, 36), "189 + 36 = 225 ⇒ 不抛（正例基线）");
+        SimpleAssert.that(throwsIllegalState(188, 36), "★224 必须抛（工厂少一格 = 有区域漏接）");
+        SimpleAssert.that(throwsIllegalState(190, 36), "★226 必须抛（工厂多一格 = 有区域重复接入）");
+        SimpleAssert.that(throwsIllegalState(189, 35), "★224 的另一半：背包少一格也必须抛（隐形槽不算过关）");
+        SimpleAssert.that(throwsIllegalState(189, 37), "★226 的另一半：背包多一格同样抛");
+        SimpleAssert.that(throwsIllegalState(188, 37), "★合计恰好 225 但两项各自都错 ⇒ 仍必须抛（只判合计就会放过这一类）");
 
         // ---- 少接一格的实例路径（装配里真少造一个槽）----
         final PocketSlots shortByOne = new PocketSlots();
@@ -3424,13 +3435,16 @@ public class NekoPocketModelTest {
             shortByOne.distillInput(inventory, index);
         }
         shortByOne.bind(inventory);
-        SimpleAssert.eq(183, shortByOne.createdRealSlots(), "故意少接一格 ⇒ 183");
+        for (int index = 0; index < PocketInventory.UPGRADE_SLOTS; index++) {
+            shortByOne.upgradeCell(inventory, index);
+        }
+        SimpleAssert.eq(188, shortByOne.createdRealSlots(), "故意少接一格 ⇒ 188");
         SimpleAssert.that(throwsIllegalState(shortByOne), "★实例路径也要抛");
         SimpleAssert
             .eq(Boolean.FALSE, messageOf(shortByOne).contains("175"), "异常文本不得再引用旧口径 175：" + messageOf(shortByOne));
         SimpleAssert
             .eq(Boolean.FALSE, messageOf(shortByOne).contains("12 流体交互"), "异常文本不得再引用 12 流体交互：" + messageOf(shortByOne));
-        SimpleAssert.that(messageOf(shortByOne).contains("184"), "异常文本必须给出新的工厂口径 184：" + messageOf(shortByOne));
+        SimpleAssert.that(messageOf(shortByOne).contains("189"), "异常文本必须给出新的工厂口径 189：" + messageOf(shortByOne));
         SimpleAssert.that(messageOf(shortByOne).contains("36"), "异常文本必须给出流体交互 36（3 组×6×2）");
         SimpleAssert.that(messageOf(shortByOne).contains("135"), "异常文本必须给出中栏 135：" + messageOf(shortByOne));
         // ★异常文本本身也得是派生式：把旧口径钉成"不得出现"，否则改常量不改文案会静默指错形状
@@ -3438,15 +3452,19 @@ public class NekoPocketModelTest {
             .eq(Boolean.FALSE, messageOf(shortByOne).contains("150"), "异常文本不得再出现旧口径 150：" + messageOf(shortByOne));
         SimpleAssert
             .eq(Boolean.FALSE, messageOf(shortByOne).contains("199"), "异常文本不得再出现旧口径 199：" + messageOf(shortByOne));
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            messageOf(shortByOne).contains("184"),
+            "异常文本不得再出现旧口径 184（R80 工厂口径，R95 起=189）：" + messageOf(shortByOne));
 
         final PocketSlots extra = new PocketSlots();
         for (int index = 0; index < PocketInventory.STORAGE_SLOTS + 1; index++) {
             extra.storage(inventory, index % PocketInventory.STORAGE_SLOTS);
         }
-        SimpleAssert.that(throwsIllegalState(reseed(extra, inventory)), "★185 也要抛（重复接入同样炸）");
+        SimpleAssert.that(throwsIllegalState(reseed(extra, inventory)), "★工厂多一格也要抛（重复接入同样炸）");
     }
 
-    /** 再补三类槽，使计数恰好 185（多接一格）。 */
+    /** 再补三类槽与升级格，并多接一个绑定格（工厂多一格）。 */
     private static PocketSlots reseed(PocketSlots slots, PocketInventory inventory) {
         for (int index = 0; index < PocketInventory.FLUID_INTERACTION_SLOTS; index++) {
             slots.fluidInteraction(inventory, index);
@@ -3456,6 +3474,9 @@ public class NekoPocketModelTest {
         }
         slots.bind(inventory);
         slots.bind(inventory);
+        for (int index = 0; index < PocketInventory.UPGRADE_SLOTS; index++) {
+            slots.upgradeCell(inventory, index);
+        }
         return slots;
     }
 
