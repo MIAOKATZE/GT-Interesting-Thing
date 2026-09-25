@@ -2,20 +2,20 @@ package com.miaokatze.gtit.gui.pocket;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
 import com.cleanroommc.modularui.value.sync.FluidSlotSyncHandler;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.FluidSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 /**
- * 左列 = <b>3 组 × 6 列</b>流体块（R78②；每组纵向 = 输入行 / <b>拉长的流体槽</b> / 输出行）
- * + 末行「整理按钮 + 一行状态回显」。
+ * 左列 = <b>3 组 × 6 列</b>流体块（R78②；每组纵向 = 输入行 / <b>拉长的流体槽</b> / 输出行）。
+ * ★★<b>R94-①：本列到此结束——原先挂在下面的"末行（一行状态回显）"已收回给底部带左段</b>
+ * （用户："按钮移到最下，然后上面都放说明文字，这样文字就可以放大了"）⇒ 本列不再拥有任何文字行，
+ * 文字全部住在 {@link NekoPocketBottomBand} 那块 112×60 里。
  * <p>
  * <b>本文件名的历史</b>：它曾经是"竖贯 18×288 流体条 + 8 个同权交互格"的<b>左栏</b>；R74①/R75①
  * 把流体侧改成 6 列（每列纵向 输入格 / 流体槽 / 输出格），R74② 又把最右的说明列删掉、
@@ -31,11 +31,11 @@ import com.miaokatze.gtit.common.items.pocket.PocketInventory;
  *  90   第 2 组                                                 高 72
  * 162   组间距                                                  高 18
  * 180   第 3 组                                                 高 72
- * 252   整理按钮 + 一行状态回显                                 高 18
+ * 252   （★R94-①：这里到列尾；原先这 18px 是"一行状态回显"，现已并给底部带左段）
  * </pre>
  *
- * 即 {@code 3×72 + 2×18 = 252} 给流体块、余 {@code 270-252 = 18} 给末行（R78 的加总表原式，
- * ★R80② 撤边条后<b>逐字不变</b>，见下一段）。
+ * 即 {@code 3×72 + 2×18 = 252 = 列高}（★R78 的加总表在 R80② 撤边条后逐字不变，
+ * ★R94-① 只删掉了<b>后面</b>那 18px 的末行 ⇒ 流体块本身一格没动，中栏仍是 270 = 15 行）。
  * ★每组中间的流体槽<b>拉长为 18×36</b>（用户："流体槽应该拉长一点"）⇒ 矩阵里那两行空行
  * 就是它的位置（空格只推进坐标、不产出 widget，{@code SlotGroupWidget.java:243-245}）。
  * <p>
@@ -47,12 +47,12 @@ import com.miaokatze.gtit.common.items.pocket.PocketInventory;
  * 
  * <pre>
  *   每组 = 输入行 18 + 拉长流体槽 36 + 输出行 18 = 72   （★不出现 72 + 9 = 81）
- *   三组 + 两个 18 组间距 = 252 ;  末行(整理按钮 + 状态回显) = 18 ;  合计 = 270 = 列高
+ *   三组 + 两个 18 组间距 = 252 = 列高（★R94-①；旧式末尾还有"末行 18 ⇒ 合计 270"那一截）
  * </pre>
  * 
  * ⇒ <b>零富余、零无主空白</b>（那条 9px 是画在流体槽<b>上半部之上的覆盖件</b>，本来就不占纵向，
- * 所以撤掉它不会留下缝；本类 {@code static} 块把 {@code 252 + 18 == 270} 变成装配期断言，
- * 一旦有人给组内加高度就会红）。撤下来的<b>信息</b>另有落点（R36「不删信息」）：
+ * 所以撤掉它不会留下缝；本类 {@code static} 块现在钉的是 {@code HEIGHT == FLUID_AREA_HEIGHT}
+ * 与 {@code 中栏高 − 列高 == 一格}，★一旦有人给组内加高度、或想把那 18px 再要回去，都会红）。撤下来的<b>信息</b>另有落点（R36「不删信息」）：
  * 组号/列号进 {@link NekoPocketFluidSlot} 自己的 tooltip（{@code NekoPocketPanel#tankOwnLabelText}），
  * 图例与"两格同权"仍在 36 个交互格的 tooltip 里（{@link #interactionSlot}），
  * {@code ghost.fluid_bar} 仍由 ghost 态的同一条加行（{@code NekoPocketFluidSlot#addToolTip}）。
@@ -63,16 +63,17 @@ import com.miaokatze.gtit.common.items.pocket.PocketInventory;
  * {@code fluid.capacity} 进<b>对应格件的 tooltip</b>；{@code held.note}（主手限制）、
  * {@code note.title}/{@code note.summary}（用法摘要）、{@code note.cost}、
  * {@code ghost.capacity_note} 进 {@link NekoPocketPanel#notesText()} 那一份完整文本
- * （由底部带右段的帮助按钮与状态行的 tooltip 承载）。<b>不删信息</b>（R36），只是不再常驻。
+ * （由底部带右段的帮助按钮与<b>底部带左段那块说明文字</b>的 tooltip 承载——★R94-①：原先挂在
+ * 本列末行"状态行"上的三条 tooltip 原样搬到了那里，本列已无常驻文字）。<b>不删信息</b>（R36）。
  * <p>
- * <b>★末行为什么还留一行文本（R78 D-2 的"算状态不算说明"判据）</b>：那一行的内容是
- * {@code modeText}（推送 / 拉取，含 ghost 条数）——它<b>是</b>服务端每拍算出来的运行期事实
- * （R39b 的两条轨道），玩家无法从静态外观推出，撤进 tooltip 就等于"当前到底在推还是拉"没有可见面。
- * 与之相反，图例与用法摘要讲的都是"这格怎么用"这类<b>不随状态变的说明书文字</b> ⇒ 必须撤进 tooltip。
- * ★★<b>R93-③：同一行原本还拼着冷却/剩余与最近一次回执，那段本轮搬进底部带左段那块 112×36</b>
- * （{@link NekoPocketPanel#statusBlockText()}）。搬的理由不是判据变了，而是<b>装不下</b>：
- * 88×18 的盒放整条状态要折五行（用户实机"会超出"），而模式串单独一行永远装得下 ⇒
- * 留下模式、把长正文搬到有 36px 高的地方。回执/冷却仍是"算状态"那一家，只是换了落点。
+ * <b>★★R94-① 撤销本类的"末行文字"（这条覆盖 R78 D-2 留在本列的那半条，也覆盖 R93-③ 的
+ * "末行只剩模式串"）</b>：R78 D-2 当年允许本列常驻"一行状态回显"，理由是"推送还是拉取"这类
+ * <b>运行期事实</b>没有别的可见面（图例与用法摘要那类说明书文字则撤进 tooltip —— 那半条<b>继续有效</b>）。
+ * R93-③ 把长正文搬到底部带 112×36、本列末行只留模式串；用户看了 v1.8.37 的形状后指出：
+ * 那样<b>按钮上下各有一段文字、模式串还重复</b>，她要的是"按钮压到最下、上面整块都是说明文字"，
+ * 因为<b>块越高，字就能越大</b>。⇒ 本列末行那 18px 收回，底部带左段变 112×96（上 60 说明 + 下 36 两行
+ * 币栏按钮），模式串只在说明块里出现一次 ⇒ <b>重复消失</b>，字号从 0.65 抬到 0.8。
+ * ★"算状态不算说明"这条判据<b>没有被推翻</b>：它管的是"哪一类文字许不许常驻"，本轮改的是常驻<b>在哪一块</b>。
  * <p>
  * <b>36 个交互格（★R83 D-2 覆盖 R39a 的"两格同权"）</b>：方向仍由<b>放入的容器当前有无流体</b>决定
  * （有流体 → 抽进<b>本列的 tank</b>；为空 → 从本列的 tank 灌满），但<b>落位不再同格</b>：处理完的容器
@@ -107,8 +108,6 @@ public final class NekoPocketLeftColumn {
     public static final int Y = NekoPocketPanel.MARGIN;
     /** 左列总宽（<b>每组</b> 6 列 × 18；★组是纵向排的，不改宽度）。 */
     public static final int WIDTH = PocketConstants.FLUID_COLUMN_COUNT * NekoPocketPanel.GRID;
-    /** R75/R78：与中栏等高（15 行 × 18）。 */
-    public static final int HEIGHT = NekoPocketStorageColumn.HEIGHT;
 
     /** 单个交互格（输入行 / 输出行）的边长。 */
     public static final int CELL = NekoPocketPanel.GRID;
@@ -121,10 +120,21 @@ public final class NekoPocketLeftColumn {
     /** 流体块总高（R78：{@code 3×72 + 2×18 = 252}；★派生，别处不得写 252）。 */
     public static final int FLUID_AREA_HEIGHT = PocketConstants.FLUID_GROUP_COUNT * GROUP_HEIGHT
         + (PocketConstants.FLUID_GROUP_COUNT - 1) * GROUP_GAP;
-    /** 末行（整理按钮 + 状态回显）起点。 */
-    public static final int STATUS_Y = FLUID_AREA_HEIGHT;
-    /** 末行高度 = 列高减去流体块 ⇒ 永远闭合（★恒为 18，见类 javadoc 的算式）。 */
-    public static final int STATUS_HEIGHT = HEIGHT - STATUS_Y;
+    /**
+     * ★★<b>R94-①（AUQ 选 A）：列高权威从"与中栏等高"换成"就是流体块高"</b>。
+     * <p>
+     * 旧口径是 {@code HEIGHT = NekoPocketStorageColumn.HEIGHT = 270}，其中 252 给三组流体、
+     * 末行 18 给"一行状态回显"。用户实机看 v1.8.37 的形状："按钮上下都有文字…我希望按钮移到最下，
+     * 上面都放说明文字，这样文字就可以放大了" ⇒ 那 18px 收回给<b>底部带左段</b>（它现在从
+     * {@code y = 6 + 252} 起、高 96 = 上 60 说明 + 下 36 币栏按钮，见
+     * {@link NekoPocketBottomBand#LEFT_BLOCK_Y}）。
+     * <p>
+     * ★声明顺序：本常量必须在 {@link #FLUID_AREA_HEIGHT} <b>之后</b> —— Java 的静态初始化按书写
+     * 顺序执行，写反了这里读到的是 0，而下面那条闭合断言会把它读成"列高 0"（★不是静默错，但报的
+     * 是无关的错）。★中栏仍是 270（15 行一行不删）⇒ 左列与中栏<b>不再等高</b>，这是本轮的裁定，
+     * 不是失配；两者的下沿由底部带左段接平（{@code 258 + 96 = 354 = 360 − 6}）。
+     */
+    public static final int HEIGHT = FLUID_AREA_HEIGHT;
 
     /**
      * 36 个交互格的<b>布局字面量</b>（与中栏同一机制，R41a）：14 行 × 6 列，
@@ -193,17 +203,21 @@ public final class NekoPocketLeftColumn {
             != PocketConstants.FLUID_GROUP_COUNT * ROWS_PER_GROUP + (PocketConstants.FLUID_GROUP_COUNT - 1)) {
             throw new IllegalStateException("[pocket] 流体矩阵行数与" + PocketConstants.FLUID_GROUP_COUNT + " 组的排法不符");
         }
-        if (FLUID_AREA_HEIGHT + STATUS_HEIGHT != HEIGHT) {
+        // ★R94-①：旧那两条（"252 + 18 = 270"与"末行起点 = 流体块底部"）随末行一起作废。
+        // 现在本列只有一件事要钉：<b>列高就是流体块高</b> ⇒ 列里不许再长出第二个高度权威
+        // （那 18px 已经归底部带左段，留在这里就是"一块谁也不认领的空白"）。
+        if (FLUID_AREA_HEIGHT != HEIGHT) {
             throw new IllegalStateException(
-                "[pocket] 左栏纵向加总不闭合: 流体块 " + FLUID_AREA_HEIGHT
-                    + " + 末行 "
-                    + STATUS_HEIGHT
-                    + " != 列高 "
-                    + HEIGHT
-                    + "（R78 的 252 + 18 = 270；★R80② 撤边条后必须逐字不变，富余/缺口都算无主空白）");
+                "[pocket] 左列高 " + HEIGHT + " 不等于流体块高 " + FLUID_AREA_HEIGHT + "（★R94-① 之后本列没有末行；多出来的那一截就是没人认领的空白）");
         }
-        if (STATUS_Y != FLUID_AREA_HEIGHT) {
-            throw new IllegalStateException("[pocket] 末行起点不等于流体块底部（纵向出现缝）");
+        // ★中栏高度一个字没动（15 行一行不删是硬裁定）⇒ 本列比中栏矮 18，那 18 归底部带左段。
+        // 这条差值必须<b>恰好</b>是一行格高：多一分则左段接不上下沿，少一分则中栏被拖矮。
+        if (NekoPocketStorageColumn.HEIGHT - HEIGHT != NekoPocketPanel.GRID) {
+            throw new IllegalStateException(
+                "[pocket] 左列比中栏矮 " + (NekoPocketStorageColumn.HEIGHT - HEIGHT)
+                    + "，不等于一格 "
+                    + NekoPocketPanel.GRID
+                    + "（★R94-① 收回的就是这一行）");
         }
         if (TANK_HEIGHT != 2 * CELL) {
             throw new IllegalStateException("[pocket] 流体槽拉长倍数被改（R78② 是 2 倍格高 = 36）");
@@ -234,9 +248,11 @@ public final class NekoPocketLeftColumn {
             .size(WIDTH, HEIGHT)
             .name("pocket_fluid_column")
             .child(interaction)
-            .child(fluidSlots(ui))
-            // R78 D-2：图例段与说明摘要段整体撤出常驻渲染，只留末行"按钮 + 一行状态回显"
-            .child(statusLine(ui));
+            .child(fluidSlots(ui));
+        // ★★R94-①：这里不再有第三件。旧形状是 .child(statusLine(ui))（末行 108×18 的一行状态回显），
+        // 那一行连同它的三条 tooltip 整体搬进底部带左段那块 112×60 的说明文字
+        // （{@link NekoPocketBottomBand} 的 statusBlock）⇒ 本列只剩"流体块"一件事。
+        // ★为什么不是"留着但空着"：留一块谁也不读的位就是 R82 明令不许出现的无主空白。
         return root.excludeAreaInRecipeViewer();
     }
 
@@ -323,47 +339,16 @@ public final class NekoPocketLeftColumn {
         return field;
     }
 
-    /**
-     * 一行状态回显（★R78 D-2 允许保留的那"一行短文本"，判据见类 javadoc：它印的是服务端算出来的
-     * 运行期事实，不是"这格怎么用"的说明）。
-     * <p>
-     * 文本由 {@link NekoPocketPanel} 的同步缓存格式化 ⇒ 客户端不读服务端内存表、不按 ghost 表推断
-     * （R39b/R19）。★R83：撤掉自造「整理」按钮后本行占满整条末行（{@code 108}px，原 88px）。
-     * <p>
-     * ★★<b>R93-③（B 项）两件事</b>：
-     * <ol>
-     * <li><b>正文只剩模式串</b>（{@code modeText}：推送 / 拉取 + ghost 条数）。回执与冷却/剩余整段
-     * 搬到底部带左段那块 112×36（{@link NekoPocketPanel#statusBlockText()}）——旧口径把整条
-     * {@code fluidStatusLine} 画在这里，而 88×18 的盒按 R92-⑥ 的保守前进量要折五行 ⇒ 顶穿，
-     * 就是用户实机报的"说明文字…会超出"。★模式串留在本行是刻意的：它是<b>这三组流体</b>的方向标签，
-     * 位置有意义；撤掉就在本列留下 18px 无主空白（R81④）。两处都走 {@code modeText()} 一个源 ⇒
-     * 重复的是<b>字</b>，不是第二处真相。</li>
-     * <li><b>文字盒从 88 抬到整幅 108</b>。那 88 是 R83 撤「整理」按钮后留下的<b>死账</b>
-     * （父盒 javadoc 当时就写着"本行占满整条末行 108"，子件却仍写 {@code WIDTH - CELL - 2}）⇒
-     * 按钮早已不存在，那 20px 谁也不属于。</li>
-     * </ol>
-     * 完整回执与说明仍留在本行 tooltip（{@code statusHintText} / {@code capacityReadoutText} /
-     * {@code notesText}）：★R93-③ 之后它是<b>额外</b>一层而非截断补偿（正文已在底部带画全），
-     * 但"不删信息"（R36）这一侧一个字没退。
+    /*
+     * ★★<b>R94-①：这里原先是 {@code statusLine(NekoPocketPanel)} —— 左列末行那一行状态回显，本轮整体删除</b>。
+     * 用户的形状要求："按钮移到最下，然后上面都放说明文字，这样文字就可以放大了"⇒ 那 18px 收回给底部带左段，
+     * 本行的三样东西各有落点（★撤形状成对，R36）：
+     * <ul>
+     * <li>正文（模式串）→ 底部带那块 112×60 的说明文字（{@code NekoPocketPanel#statusBlockText()} 的第一段就是它）；</li>
+     * <li>三条 tooltip（{@code statusHintText} / {@code capacityReadoutText} / {@code notesText}）→ <b>原样</b>搬到那一块的
+     * tooltip（★一条不删、一条不双写：宿主换成了装着这段文字的那块）；</li>
+     * <li>本列的纵向账 → {@code HEIGHT = FLUID_AREA_HEIGHT}，与底部带左段的下沿由
+     * {@code NekoPocketBottomBand#LEFT_BLOCK_Y / LEFT_BLOCK_HEIGHT} 接平。</li>
+     * </ul>
      */
-    private static IWidget statusLine(NekoPocketPanel ui) {
-        return new ParentWidget<>().pos(0, STATUS_Y)
-            .size(WIDTH, STATUS_HEIGHT)
-            .name("pocket_status_lines")
-            .child(
-                // ★★R92-⑥（D6）：统一缩放到 RESIDENT_TEXT_SCALE，并按"提示深色 / 读数白色"的分工
-                // 显式设色（旧形状跟随主题 fallback = 0xFF404040，压在暖沙色底板上对比度不足）。
-                // ★R93-③：本行不再是全轮像素账的下界卡点（卡点随正文搬到底部带那块 112×36），
-                // 留在本行的只剩模式串；算式与逐点账见用例 resident_text_pixel_budget。
-                (IWidget) new TextWidget(IKey.dynamic(ui::modeText)).textAlign(Alignment.CenterLeft)
-                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
-                    .color(PocketGhostRequest.hintTextColor())
-                    .pos(0, 0)
-                    .size(WIDTH, STATUS_HEIGHT))
-            .tooltip(tooltip -> {
-                tooltip.addLine(IKey.dynamic(ui::statusHintText));
-                tooltip.addLine(IKey.dynamic(ui::capacityReadoutText));
-                tooltip.addLine(IKey.dynamic(ui::notesText));
-            });
-    }
 }

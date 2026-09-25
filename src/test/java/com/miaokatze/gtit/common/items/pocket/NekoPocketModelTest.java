@@ -684,15 +684,19 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(18, NekoPocketLeftColumn.GROUP_GAP, "组间距 = 空一行");
         SimpleAssert.eq(3 * 72 + 2 * 18, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块 = 3×72 + 2×18 = 252");
         SimpleAssert.eq(252, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "数值钉住：252");
-        SimpleAssert.eq(18, NekoPocketLeftColumn.STATUS_HEIGHT, "末行（按钮 + 状态回显）= 18");
-        SimpleAssert.eq(
-            NekoPocketStorageColumn.HEIGHT,
-            NekoPocketLeftColumn.FLUID_AREA_HEIGHT + NekoPocketLeftColumn.STATUS_HEIGHT,
-            "★纵向恰闭合：252 + 18 = 270 = 列高 ⇒ 撤边条没留缝、也没挤掉任何一行");
+        // ★★R94-① 改写本组三条（旧三条钉的是"252 + 末行 18 = 270 = 与中栏等高"）：末行已收回给
+        // 底部带左段 ⇒ 本列的纵向契约换成"列高就是流体块高"+"比中栏恰好矮一格"两条。
+        // ★为什么还要钉"矮一格"而不是只钉"等于 252"：那一格必须<b>有去处</b>（去底部带左段），
+        // 差值不等于一格就说明要么中栏被拖矮、要么左段接不上底（两处都可能，且都不抛错）。
         SimpleAssert.eq(
             NekoPocketLeftColumn.FLUID_AREA_HEIGHT,
-            NekoPocketLeftColumn.STATUS_Y,
-            "末行起点紧接流体块底部（★缝长只能等于组间距，不得给标题条留位）");
+            NekoPocketLeftColumn.HEIGHT,
+            "★R94-①：列高就是流体块高（本列不再有任何文字行 ⇒ 多出来的一截就是无主空白）");
+        SimpleAssert.eq(
+            NekoPocketPanel.GRID,
+            NekoPocketStorageColumn.HEIGHT - NekoPocketLeftColumn.HEIGHT,
+            "★左列比中栏矮<b>恰好一格</b>（18）：那一格归底部带左段（见本用例第 4 组断言）");
+        SimpleAssert.eq(252, NekoPocketLeftColumn.HEIGHT, "数值钉住：列高 252（★中栏仍 270 = 15 行一行不删）");
         SimpleAssert.eq(0, NekoPocketLeftColumn.groupTop(0), "第 1 组从列顶开始");
         SimpleAssert.eq(90, NekoPocketLeftColumn.groupTop(1), "第 2 组 y = 72 + 18");
         SimpleAssert.eq(180, NekoPocketLeftColumn.groupTop(2), "第 3 组 y = 2×90");
@@ -3929,11 +3933,18 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(18, NekoPocketLeftColumn.GROUP_GAP, "组间距 = 空一行 = 18");
         SimpleAssert.eq(3 * 72 + 2 * 18, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块 = 3×72 + 2×18 = 252（R78 加总表原式）");
         SimpleAssert.eq(252, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块高 252 ≤ 270");
+        // ★★R94-①：旧那两条（"余 18 给末行"与"末行高 18 = D-2"）随末行一起改写 ——
+        // 那 18px 现在归<b>底部带左段</b>（用户："按钮移到最下，上面都放说明文字"）。
+        // ★D-2 的"说明不得常驻"半条本轮由用户改判撤销，撤销记录与落点见台账 R94 节。
         SimpleAssert.eq(
-            NekoPocketStorageColumn.HEIGHT - NekoPocketLeftColumn.FLUID_AREA_HEIGHT,
-            NekoPocketLeftColumn.STATUS_HEIGHT,
-            "★余量 270-252 = 18 全部给末行（R78 的 余 18 给状态行）");
-        SimpleAssert.eq(18, NekoPocketLeftColumn.STATUS_HEIGHT, "末行高 18 = 只放得下一行状态回显（D-2）");
+            NekoPocketBottomBand.LEFT_BLOCK_Y,
+            NekoPocketPanel.MARGIN + NekoPocketLeftColumn.HEIGHT,
+            "★左段起点 = 左列下沿（无缝：那 18px 是<b>收回来</b>的，不是新造的空隙）");
+        SimpleAssert.eq(
+            NekoPocketBottomBand.LEFT_BLOCK_HEIGHT,
+            NekoPocketBottomBand.HEIGHT + NekoPocketPanel.GRID + NekoPocketPanel.MARGIN,
+            "★左段比带高出<b>一格 + 一条外边距</b>（96 = 72 + 18 + 6）：18 是从左列末行收回来的那一格，" + "6 是原先横在左列与带之间的那条外边距——说明块要连续就把这条缝一起吃掉"
+                + "（★背包段与绑定段仍是 282 起、高 72；三者底对齐由上一条断言钉）");
         SimpleAssert.eq(0, NekoPocketLeftColumn.groupTop(0), "第 1 组从列顶开始");
         SimpleAssert.eq(90, NekoPocketLeftColumn.groupTop(1), "第 2 组 y = 72 + 18 = 90");
         SimpleAssert.eq(180, NekoPocketLeftColumn.groupTop(2), "第 3 组 y = 2×90 = 180");
@@ -5151,7 +5162,8 @@ public class NekoPocketModelTest {
      * <p>
      * ★★<b>R93-③ 的两处结构性改动（都是本账自己抓出来的）</b>：
      * <ol>
-     * <li><b>一档变两档</b>：统一档 {@code RESIDENT_TEXT_SCALE} 之外，底部带那块 112×36 的说明文字另立
+     * <li><b>一档变两档</b>：统一档 {@code RESIDENT_TEXT_SCALE} 之外，底部带那块说明文字（★R94-① 起
+     * 盒是 112×60）另立
      * {@code STATUS_TEXT_SCALE}。每个点按<b>自己那一档</b>核，不再全体共用一个数 ⇒ "统一"这条
      * 仍然对八处窄条成立，扩出来的只有那块（用户要的就是那一处变大）。</li>
      * <li><b>R92 那本账漏了回执</b>：旧表把状态点记成「模式 + 剩余秒数」，而 {@code channelStatusText}
@@ -5171,7 +5183,7 @@ public class NekoPocketModelTest {
         final float statusScale = PocketGhostRequest.STATUS_TEXT_SCALE;
         SimpleAssert
             .that(statusScale > scale, "★R93-③：说明文字那一处必须<b>真的</b>比统一档大（用户点名的就是它），读到 " + statusScale + " / " + scale);
-        SimpleAssert.that(statusScale <= 1.0f, "★R93-③：专用档也不许回到 1.0（36px 高的块按 1.0 只放得下三行，最长串要五行）");
+        SimpleAssert.that(statusScale <= 1.0f, "★R93-③：专用档也不许回到 1.0（★R94-① 之后盒是 112×60，1.0 的最坏串正好吃满六行 = 60px ⇒ 零余量）");
         final java.util.List<String> lang = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         if (lang == null) {
             System.out.println("[NOTE] 读不到 zh_CN.lang ⇒ 像素账【未验】（★不是通过）");
@@ -5186,8 +5198,10 @@ public class NekoPocketModelTest {
         final String worstReceipt = widestReceiptLangValue(lang);
         final String statusBody = pull + " · " + worstReceipt + " " + timed;
         final String resident = "RESIDENT";
-        final String[][] sites = { { "左列末行（★R93-③ 起只剩模式串）", pull, "108", "18", resident },
-            { "★底部带说明块（模式 + 回执 + 剩余）", statusBody, "112", "36", "STATUS" },
+        // ★★R94-① 两处改账：① "左列末行"那个站点<b>删掉</b>（那一行已收回给说明块 ⇒ 盒不存在了，
+        // 留着就是拿一个不存在的盒给一个不存在的串记账）；② 说明块的盒从 112×36 换成 112×60。
+        // ★模式串没有消失，它现在是说明块正文的<b>第一段</b> ⇒ 由说明块那一行站点统一记账。
+        final String[][] sites = { { "★底部带说明块（模式 + 回执 + 剩余）", statusBody, "112", "60", "STATUS" },
             { "币值数量（最坏 2147M）", "2147M", "30", "18", resident }, { "通道按钮短标签", "启动", "61", "18", resident },
             { "★右栏常驻绑定行 0（整条位置行）", bindRow, "108", "18", resident }, { "绑定按钮标签", "绑定", "40", "18", resident },
             { "已绑定计数", formatLang(lang, "gtit.pocket.bind.summary", 1, 1), "86", "18", resident },
@@ -5272,9 +5286,22 @@ public class NekoPocketModelTest {
                 SimpleAssert.that(used >= 0.6f, "★R92-⑥ 交付的统一档 0.6 回退了（读到 " + used + "）⇒ 用户会重新看到「太小」那件事");
                 continue;
             }
+            // ★★R94-①：这里旧写法是"现役 ≥ 下界 − 0.1"一条通吃两档。盒从 112×36 长到 112×60 之后
+            // STATUS 档的下界抬到 1.00、而交付档是 0.8 ⇒ 那条会红。★红得对（它确实没贴下界），
+            // 但"贴下界"不是本轮的裁定：<b>故意</b>留 0.2 安全边际（本仓不直读 fontRenderer，前进量
+            // 模型取保守上界；且这块与币栏按钮同段相邻，字大到吃满整块会把读法糊掉）。
+            // ⇒ 换成三条各自说得清的式子：不许越界（上面那条已钉）/ 交付档不许回退 / <b>余量不许超过声明的 0.2</b>。
+            SimpleAssert.that(used >= 0.8f, "★" + entry.getKey() + " 档本轮交付的是 0.8（用户拍板 + 实机安全边际），读到 " + used + " 就是回退");
             SimpleAssert.that(
-                used >= bound - 0.1f,
-                "★" + entry.getKey() + " 档必须贴着下界（下界 " + bound + "、现役 " + used + "）⇒ 明显低于下界就是没把该抬的抬上去");
+                bound - used <= 0.2f + 0.001f,
+                "★" + entry.getKey()
+                    + " 档与下界之间留了 "
+                    + (bound - used)
+                    + "（下界 "
+                    + bound
+                    + "、现役 "
+                    + used
+                    + "）⇒ 超过<b>声明过的 0.2 安全边际</b>就是有人在没改判的情况下把档降下去，那必须红");
         }
         // ★撤形状成对：左段那块改道之后，全仓不得再有"逐行 18px"的元件信息件（旧 cellInfoRow 的残留形状）
         final java.util.List<String> band = guiPocketSource("NekoPocketBottomBand.java");
@@ -5347,7 +5374,7 @@ public class NekoPocketModelTest {
         // ---- ② 新形状恰一件，且件数对账走具名量（不是塞进判据的字面量 1）----
         SimpleAssert.eq(
             1,
-            countCodeLinesIn(band, "block.child(statusBlock(cellInfo))"),
+            countCodeLinesIn(band, "block.child(statusBlock(ui, cellInfo))"),
             "★说明块在 coinBlock 里恰画一件（多一件 = 旧逐行件没删干净）");
         SimpleAssert.that(
             countCodeLinesIn(band, "STATUS_BLOCK_WIDGETS") >= 2,
@@ -5360,12 +5387,29 @@ public class NekoPocketModelTest {
         SimpleAssert.that(
             regionContainsCode(panel, blockStart, blockEnd, "channelStatusText()"),
             "★说明块正文 = 模式 + 回执/冷却（只给模式就是把回执又赶回 tooltip，用户看到的仍是「没变大」）");
-        // ---- ④ 左列末行：只剩模式串，且那 20px 死账（WIDTH − CELL − 2）归零 ----
-        final int statusStart = methodStart(left, "private static IWidget statusLine(NekoPocketPanel ui) {");
-        final int statusEnd = methodEnd(left, statusStart);
-        SimpleAssert.that(regionContainsCode(left, statusStart, statusEnd, "ui::modeText"), "★左列末行改读模式串（长正文已搬到底部带那块）");
-        SimpleAssert
-            .eq(0, countCodeLinesIn(left, "WIDTH - CELL - 2"), "★R83 撤「整理」按钮后留下的 88px 死账必须一起收掉（父盒 javadoc 一直写着占满 108）");
+        // ---- ④ ★★R94-① 改写：左列末行<b>整行撤销</b>（旧三条钉的是"这一行只剩模式串 + 盒抬到 108"）----
+        // 用户看了 v1.8.37 的形状："按钮上下都有文字…我希望按钮移到最下、上面都放说明文字"⇒
+        // 这一行连同它的 18px 一起收回给说明块。★改写不删除：这里改钉"它不许还魂"+"它的三条
+        // tooltip 必须在新家在场"（撤形状成对，R36），比旧那三条更强。
+        SimpleAssert.eq(0, countCodeLinesIn(left, "statusLine"), "★左列末行不许还魂（本列现在只有流体块；留着就是「按钮上下各有文字」那个形状）");
+        SimpleAssert.eq(0, countCodeLinesIn(left, "ui::modeText"), "★模式串只在底部那块出现一次（旧那处重复读点已随末行撤销 ⇒ 这里必须归零）");
+        SimpleAssert.eq(0, countCodeLinesIn(left, "WIDTH - CELL - 2"), "★R83 撤「整理」按钮后留下的 88px 死账不许回来");
+        final int blockTips = methodStart(
+            band,
+            "private static IWidget statusBlock(NekoPocketPanel ui, CellInfoText cellInfo) {");
+        final int blockTipsEnd = methodEnd(band, blockTips);
+        for (final String landing : new String[] { "ui::statusHintText", "ui::capacityReadoutText", "ui::notesText" }) {
+            SimpleAssert.that(
+                regionContainsCode(band, blockTips, blockTipsEnd, landing),
+                "★末行撤掉后它的三条 tooltip 之一「" + landing + "」必须住在说明块上（没有落点就是删信息）");
+        }
+        // ★顺序判据（用户那句"按钮移到最下"的机检形态）：币栏第一行的 y 必须恰等于说明块下沿
+        SimpleAssert.that(
+            NekoPocketBottomBand.coinRowY(0) == NekoPocketBottomBand.STATUS_BLOCK_HEIGHT,
+            "★币栏必须压在说明块正下方（coinRowY(0) 必须 = STATUS_BLOCK_HEIGHT，读到 " + NekoPocketBottomBand.coinRowY(0)
+                + " / "
+                + NekoPocketBottomBand.STATUS_BLOCK_HEIGHT
+                + "）");
         // ---- ⑤ 元件 + 维度在右栏常驻面（搬移的后半：落点）----
         final int persistentStart = methodStart(panel, "String bindPersistentText(int slot) {");
         final int persistentEnd = methodEnd(panel, persistentStart);
@@ -5391,7 +5435,8 @@ public class NekoPocketModelTest {
             "★行位与口径的对账必须跟着搬到右段（且末位要留得下来给「另有 n 条」⇒ 严格大于）");
         SimpleAssert.eq(
             0,
-            countCodeLinesIn(band, "CELL_INFO_ROWS < PocketConstants.ALLOWED_BOUND_CELLS"),
+            countCodeLinesIn(band, "CELL_INFO_ROWS < PocketConstants.ALLOWED_BOUND_CELLS")
+                + countCodeLinesIn(band, "LEFT_BAND_ROWS"),
             "★旧那条还钉着就说明左段那块被当成「绑定信息的家」——本轮它只装说明文字");
         // ---- ⑦ 玩家可见：U+3000 那个识别不出来的分隔符从两份 lang 消失（用户："维度后面的符号…识别不出来"）----
         for (final String langFile : new String[] { "zh_CN", "en_US" }) {
@@ -5415,8 +5460,8 @@ public class NekoPocketModelTest {
             "★左段一行三段的字面量账被改动了 ⇒ 本轮只换「块里放什么」，几何一字未动");
         SimpleAssert.eq(
             1,
-            countCodeLinesIn(band, "if (LEFT_BAND_ROWS * COIN_BAR_HEIGHT != HEIGHT)"),
-            "★左段纵向加总那条必须还在（下段仍认领 36px，不许搬完内容就把它当空白）");
+            countCodeLinesIn(band, "if (STATUS_BLOCK_HEIGHT + COIN_BAND_HEIGHT != LEFT_BLOCK_HEIGHT)"),
+            "★左段纵向加总那条必须还在（★R94-①：说明块 60 + 币栏 36 = 段高 96，不许搬完内容就把它当空白）");
         SimpleAssert
             .that(countCodeLinesIn(band, "ui::notesText") >= 1, "★帮助按钮的 notesText 落点不许被动（R78 D-2 撤下来的说明只有这一处入口）");
     }

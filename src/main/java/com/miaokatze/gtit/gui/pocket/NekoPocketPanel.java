@@ -2762,19 +2762,21 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * ★★<b>R93-③（B 项）：底部带左段那一整块 112×36「说明文字」的正文</b>。
+     * ★★<b>R93-③ 立、★R94-① 换尺寸：底部带左段上半那一整块 112×60「说明文字」的正文</b>。
      * <p>
-     * 旧形状：同一条串画在<b>左列末行那个 88×18 的窄条</b>里（方法名旧称 {@code fluidStatusLine}）。
-     * 最长状态串（模式 + 最长回执 + 剩余秒数）按 R92-⑥ 的保守前进量模型要折五行 ⇒ 18px 高<b>必然顶穿</b>，
-     * 这就是用户实机报的"说明文字这块…会超出"。本轮把元件短码与维度行搬到右栏常驻行
-     * （用户："元件和维度放到右边去，右边本身就有维度了"）后，底部带左段腾出连续的 36px ⇒
-     * 正文<b>整体改道</b>进那块，字号另立 {@link PocketGhostRequest#STATUS_TEXT_SCALE}。
+     * <b>三代形状史</b>：① 同一条串画在左列末行那个 88×18 的窄条里（方法名旧称
+     * {@code fluidStatusLine}；那 88 还是 R83 撤「整理」按钮后没人收的死账）⇒ 最长串按 0.6 折五行
+     * = 30px &gt; 18 <b>必然顶穿</b>，就是用户报的"说明文字…会超出"；② R93-③ 把元件短码与维度行搬到
+     * 右栏常驻行后，底部带左段腾出连续 36px、字号另立 0.65；③ ★R94-① 用户看了形状再说一遍
+     * "按钮上下都有文字…按钮移到最下、上面都放说明文字，这样文字就可以放大了"⇒ 左列末行那 18px
+     * 也收进来，块变 <b>112×60</b>、字号抬到 0.8，币栏压到段底。
      * <p>
      * 内容 = 模式（R39b 服务端算）+ 冷却/剩余与最近一次回执（R16/R24/R10），两者都是<b>运行期事实</b>
      * （为什么这类文字允许常驻、而图例与用法摘要只许进 tooltip，判据写在
-     * {@code NekoPocketLeftColumn} 的类 javadoc）。★模式串在左列末行仍出现一次：那是流体三组的
-     * 局部标签，撤掉它就在那一列留下 18px 无主空白（R81④ 判据）；两处都走 {@link #modeText()}
-     * 这一个源 ⇒ <b>不存在</b>第二处真相。
+     * {@code NekoPocketLeftColumn} 的类 javadoc）。
+     * ★★R94-① 之后<b>模式串只出现一次</b>（就在本正文的第一段）：R93-③ 那轮"左列末行仍留一处模式串"
+     * 的重复读点随末行一起撤销 ⇒ 上一版为它写的"两处同一个源、重复的是字不是真相"那条论证
+     * <b>不再需要</b>（不是被推翻，是宿主没了）。
      */
     String statusBlockText() {
         final String mode = modeText();
@@ -2793,7 +2795,8 @@ public final class NekoPocketPanel implements PocketSession {
      * 并把<b>最近一次动作的回执</b>顶在前面（R10/R39b：失败原因必须玩家看得见）。
      * <p>
      * 回执是粘性的（下一次动作覆盖），所以"分区拒收"不会一闪就没；★R93-③ 起这段文本画在
-     * 底部带左段那块 112×36 里（{@link #statusBlockText()}），不再挤左列末行那个 18px 窄条。
+     * 底部带左段那块里（{@link #statusBlockText()}，★R94-① 起那块是 112×60），
+     * 不再挤左列末行那个 18px 窄条（★那一行本轮已整行撤销）。
      */
     String channelStatusText() {
         final String receipt = receiptText();
@@ -2814,8 +2817,10 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 左列末行那一处回显的 tooltip（★R93-③ 之后它是<b>额外</b>的一层，不是截断补偿：
-     * 正文已在底部带那块 112×36 里画全，这里多给一份"模式 + 状态 + 主手限制"的完整读法）。
+     * "模式 + 状态 + 主手限制"的<b>完整读法</b>（★R94-①：它的宿主从"左列末行那一行"换成了
+     * 底部带那块说明文字——末行撤销时三条 tooltip 原样搬家，见
+     * {@code NekoPocketBottomBand#statusBlock}）。★它一直是<b>额外</b>一层而不是截断补偿：
+     * 正文在块里画得全，这里多给一份带主手限制的读法。
      */
     String statusHintText() {
         final String receipt = receiptText();

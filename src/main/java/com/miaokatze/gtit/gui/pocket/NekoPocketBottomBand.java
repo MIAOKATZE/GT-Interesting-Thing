@@ -7,6 +7,7 @@ import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
@@ -21,9 +22,11 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
 
 /**
  * 底部带 = <b>横向三段</b>（R78① 定形状、★R81④ 定宽度）：
- * <b>左段 112</b>（★R84：两种币各占<b>一行</b>「币图标 + 数量 + 它自己的那一枚通道按钮」= 两行 × 18 = 36，
- * 下面 36 = <b>★R93-③ 一整块说明文字</b>（旧口径是"两行 × 18 的常驻元件信息块"，绑定信息本轮搬到右段）
- * ⇒ 纵向仍是四行 × 18 = 72 = 带高，★一格不空））
+ * <b>左段 112×<u>96</u></b>（★★R94-①：本段<b>不再等于带的一部分</b>——它从 {@code y = 258} 起、
+ * 比另两段高 18，因为左列末行那 18px 收回来了）。段内上下两半：<b>上 60 = 一整块说明文字</b>
+ * （模式 + 回执 + 冷却，字号 {@link PocketGhostRequest#STATUS_TEXT_SCALE} = 0.8）、
+ * <b>下 36 = 两行币栏</b>「币图标 + 数量 + 它自己的那一枚通道按钮」⇒ ★按钮压到面板最底、
+ * 上面整块是文字；三段<b>底对齐</b>由 {@code static} 块钉住（★不是靠这段注释）
  * ｜ <b>中间【玩家背包 9 列 × 4 行 = 162×72，★与中栏同 x 同宽】</b>
  * ｜ <b>右段 112</b>（★R81④ 由 130 收到 112 = {@code 6×18 + 4}：一格绳缝 + 六格栅格 ⇒
  * 内容区与源质列<b>同 x 同宽</b>；绑按钮 + 绑定格 + 读数 + <b>★R81③ 两条常驻绑定行</b> + 帮助按钮）。
@@ -100,21 +103,27 @@ import com.miaokatze.gtit.trade.NekoClientBalances;
  * {@link #CHANNEL_LABEL_WIDTH_BUDGET}；「停止」态本轮<b>没有</b>落地，理由见 {@link #channelButton} 的
  * 边界），完整成本文案照旧全量留在 tooltip（R36：宽度不够就加 tooltip，不删信息）。
  * <p>
- * <b>★R84：收成两行省出的 36px —— 当年给的是"常驻元件信息块"，★R93-③ 改道给"一整块说明文字"</b>。
+ * <b>★R84：收成两行省出的 36px —— 当年给的是"常驻元件信息块"，★R93-③ 改道给"一整块说明文字"，
+ * ★★R94-① 那块再长高 24px（36 → 60）并把币栏压到段底</b>（用户看了 v1.8.37 的形状："按钮上下都有文字…
+ * 我希望按钮移到最下、上面都放说明文字，这样文字就可以放大了"）。
  * <p>
  * R84 的裁定落点是「短文案「启动」+ 36px 给常驻元件信息块」，形状是左段行 2 / 行 3 各 112×18，
  * 显示<b>已绑定的那一枚</b>元件。★★R93-③ 用户实机改判："元件维度放到右边去，右边本身就有维度了…
  * 这样可以把说明的文字加大一些"⇒ 那两行的内容全部搬到<b>右段常驻行</b>（元件短码 + 维度/坐标/槽位 →
- * 常驻行 0；"另有 n 条不在服务口径" → 按钮 tooltip），左段这 36px 腾空，改成<b>一整块 112×36</b>
- * 装 {@code NekoPocketPanel#statusBlockText()}（模式 + 回执 + 冷却，字号另立
+ * 常驻行 0；"另有 n 条不在服务口径" → 按钮 tooltip），左段这 36px 腾空，改成<b>一整块</b>装
+ * {@code NekoPocketPanel#statusBlockText()}（模式 + 回执 + 冷却，字号另立
  * {@link PocketGhostRequest#STATUS_TEXT_SCALE}）。★<b>不再切两半</b>是这条改判的要点：一条正文要的
- * 是连续 36px，切成两个 18px 件会让最长那条在第一个件里折五行顶穿、第二个件空着。
+ * 是<b>连续</b>纵向预算，切成两个 18px 件会让最长那条在第一个件里折五行顶穿、第二个件空着。
+ * ★★R94-① 正是同一条理由把这块从 36 长到 <b>60</b>（字号因此 0.65 → 0.8）。
  * <p>
- * ★<b>命名债如实登记</b>：件本体与几何常量仍叫 {@code cellInfo*} / {@code CELL_INFO_*} /
- * {@link CellInfoText}，而块里装的已经不是元件信息。★不改名的理由是<b>判据不断链</b>：那组名字被
- * 十四条装配期断言与本仓回归套件同时引用，改名等于把那些断言换成"新名字之间自洽"的空转对账，
- * 换来的只有好看。本轮改为：{@link #CELL_INFO_ROWS} 的语义从"信息块行数"退化成"这一段的行位数
- * （仍是 36px 的账）"，而"块里必须只有一件"由 {@code coinBlock} 的件数对账钉住。见台账 R93 节。
+ * ★<b>命名债已在 R94-① 偿清</b>：R93-③ 登记的是"块里装的已经不是元件信息、名字却仍叫
+ * {@code cellInfo*} / {@code CELL_INFO_*}"，当时不改的理由是<b>判据不断链</b>（那组名字被十四条装配期
+ * 断言与回归套件同时引用，改名等于把它们换成"新名字之间自洽"的空转对账）。本轮行位账整体作废
+ * （块高 60 不是 18 的倍数 ⇒ "行位数"这个概念在本块消失）⇒ 那些断言本来就要重写 ⇒ <b>改名不再有
+ * 风险，一次改到位</b>：几何常量现在是 {@code STATUS_BLOCK_X / Y / WIDTH / HEIGHT}，件本体是
+ * {@link #statusBlock}。★<b>仍挂在账上的一条</b>：注入缝还叫 {@link CellInfoText} 与
+ * {@link #EMPTY_CELL_INFO}（它只管"给一块正文"，与内容无关；改它要连面板接线一起动，收益只有好看）。
+ * ★"块里必须只有一件"仍由 {@code coinBlock} 的件数对账钉住（{@link #STATUS_BLOCK_WIDGETS}）。
  * <p>
  * ★只按一枚排版的口径不变（{@link PocketConstants#ALLOWED_BOUND_CELLS} = <b>1</b>；
  * {@link PocketConstants#MAX_BOUND_CELLS} 仍是<b>数据层</b>的 64，分层理由见
@@ -178,6 +187,24 @@ public final class NekoPocketBottomBand {
 
     /** 左段 x（= 面板外边距）。 */
     public static final int COIN_X = NekoPocketPanel.MARGIN;
+    /**
+     * ★★<b>R94-①：左段自己的 y 起点 = 左列下沿</b>（{@code 6 + 252 = 258}）。
+     * <p>
+     * 旧形状里左段就是"带的一部分"（{@code y = 282}、高 72，与背包段/绑定段同一条带）。用户看
+     * v1.8.37 后要求"按钮移到最下、上面都放说明文字，这样文字就可以放大"⇒ 左列末行那 18px
+     * 收回给本段（{@link NekoPocketLeftColumn#HEIGHT} 从 270 变 252），本段因此<b>向上长</b>。
+     * ★中栏仍 270（15 行一行不删）、背包段与绑定段仍 {@code y = 282 高 72} ⇒ <b>三段底对齐</b>
+     * 这条由 {@code static} 块钉，不靠注释。
+     */
+    public static final int LEFT_BLOCK_Y = NekoPocketPanel.MARGIN + NekoPocketLeftColumn.HEIGHT;
+    /**
+     * ★R94-①：左段高 = 面板下沿内缩位 − 本段起点（{@code 354 − 258 = 96}）。
+     * <p>
+     * ★写成派生式而不是 96：面板总高 360 是 1080p / GUI Scale 3 的硬天花板（R75 起未动），
+     * 任何人改总高或改左列高，本值跟着变，而下面那条"与其它两段底对齐"的断言会立刻红 ——
+     * ★这才是不留无主空白的做法（写死 96 就只剩"今天对得上"）。
+     */
+    public static final int LEFT_BLOCK_HEIGHT = NekoPocketPanel.HEIGHT - NekoPocketPanel.MARGIN - LEFT_BLOCK_Y;
     /**
      * ★R80①：左段宽 <b>112</b>（R78 的 100 → 112）。
      * <p>
@@ -274,15 +301,16 @@ public final class NekoPocketBottomBand {
      * 只剩 {@code 88 − (16+3+30)} = 39px 自由带）。★R84 换了做法：把<b>币值条本身</b>从原生 88 收到
      * 49（{@code POCKET_C2_coinbar} 是 9-slice N=4 ⇒ 收掉的全是中间的平坦金属带）⇒ 同一行给按钮
      * 腾出 61px，代价是标签必须换短文案（见 {@link #CHANNEL_LABEL_WIDTH_BUDGET}）、完整文案进 tooltip。
-     * 省下来的 36px <b>不是白留</b>：R84 当年整块给 {@link #CELL_INFO_ROWS}（旧称"常驻元件信息块"，
-     * ★R93-③ 起那一块装的是说明文字，理由见类 javadoc）⇒ ★左段纵向仍然
+     * 省下来的 36px <b>不是白留</b>：R84 当年整块给"元件信息块"（★R93-③ 起装说明文字，
+     * ★R94-① 起这块高 60 且与币栏一起住进加高后的左段）⇒ ★左段纵向仍然
      * 逐像素闭合（见 {@code static} 块的游标推演），R83 C1 立的"撤件必须同时收行位"那条纪律照旧成立，
      * 只是这次的"收"换成了"改道"。
      */
     private static final int ROWS_PER_CURRENCY = 1;
     /**
      * ★左段<b>币栏</b>行位数 = {@code CURRENCY_KINDS × ROWS_PER_CURRENCY} = <b>2</b>。
-     * 与带高的对账不直接用它，而用 {@link #LEFT_BAND_ROWS}（币栏 + 下段，旧称"元件信息块"）。
+     * ★★R94-①：与左段高的对账既不用它也不再用"行位加总"（说明块高 60 不是 18 的倍数 ⇒ 行位概念
+     * 在本段作废），改钉 {@code STATUS_BLOCK_HEIGHT + COIN_BAND_HEIGHT == LEFT_BLOCK_HEIGHT}。
      */
     public static final int COIN_ROWS = CURRENCY_KINDS * ROWS_PER_CURRENCY;
     /**
@@ -294,44 +322,34 @@ public final class NekoPocketBottomBand {
      */
     private static final int WIDGETS_PER_COIN_ROW = 2;
     /**
-     * ★★R93-③：左段<b>下段</b>画出的件数 = <b>恰 1</b>（一整块 112×36 的说明文字）。
+     * ★★R93-③ 立、★R94-① 换尺寸：左段<b>上半</b>画出的件数 = <b>恰 1</b>（一整块 112×60 的说明文字）。
      * <p>
-     * 旧形态是 {@link #CELL_INFO_ROWS} 件（两行、各 112×18）。写成具名量而不是把 {@code + 1} 塞进
+     * 旧形态是"两行、各 112×18 共两件"（那时那块还叫 {@code CELL_INFO_ROWS} 行位）。写成具名量而不是把 {@code + 1} 塞进
      * {@code coinBlock} 的判据，是为了让"逐行件又长回来了"这种形状在<b>报错文案里就看得见</b>：
      * 那条对账读的是「币栏两件一行 + 下段一件」，任何一边数目被改都当场说出是哪一段。
      */
     private static final int STATUS_BLOCK_WIDGETS = 1;
-    /**
-     * ★R84 立、★R93-③ 换语义：左段<b>下段</b>（旧称"常驻元件信息块"）的<b>行位数</b>
-     * （= 币栏省下的 36px ÷ 18 = <b>2</b>，★纯派生不写死）。
-     * <p>
-     * ★★R93-③ 起它<b>只</b>是"这一段在纵向账里占几格 18px"的几何量 —— 那块现在画的是<b>一整件</b>
-     * 说明文字（不逐行排版），所以"漏画一行"这个旧缺陷形状在本块已经不成立了，取而代之的对账是
-     * {@code coinBlock} 里那句<b>件数</b>（币栏两件一行 + 说明块恰一件）。
-     * <p>
-     * ★旧口径"只按一枚元件排版 ⇒ 与 {@link PocketConstants#ALLOWED_BOUND_CELLS} 绑成一条断言"随内容
-     * 一起搬走了：那条对账现在的宿主是 {@link #PERSISTENT_ROWS}（★且收严成<b>严格大于</b>，见
-     * {@code static} 块）。★名仍叫 {@code CELL_INFO_*} 是本号登记的命名债，理由在类 javadoc。
-     */
-    public static final int CELL_INFO_ROWS = (HEIGHT - COIN_ROWS * COIN_BAR_HEIGHT) / COIN_BAR_HEIGHT;
-    /** 币栏占的纵向高（= {@code COIN_ROWS × 18} = 36）。 */
+    /** 币栏占的纵向高（= {@code COIN_ROWS × 18} = 36；★R94-① 之后它住在左段<b>下沿</b>）。 */
     public static final int COIN_BAND_HEIGHT = COIN_ROWS * COIN_BAR_HEIGHT;
-    /** 下段（旧称元件信息块）起点 y（★= 币栏下沿，两半逐像素相接 ⇒ 中间不许有缝）。 */
-    public static final int CELL_INFO_Y = COIN_BAND_HEIGHT;
-    /** 下段高（= {@code CELL_INFO_ROWS × 18} = 36；★R93-③：一整件说明文字的纵向预算）。 */
-    public static final int CELL_INFO_HEIGHT = CELL_INFO_ROWS * COIN_BAR_HEIGHT;
-    /** 下段的 x（★整幅贴左段：段内没有第四件要排位 ⇒ 横向不必再切）。 */
-    public static final int CELL_INFO_X = 0;
-    /** 下段的宽（= 段宽 112；★说明文字的横向预算 = {@code 112 ÷ 0.65 ≈ 172} 逻辑像素一行）。 */
-    public static final int CELL_INFO_WIDTH = COIN_WIDTH - CELL_INFO_X;
     /**
-     * ★左段<b>全部</b>行位数（币栏 + 信息块 = {@code 2 + 2} = <b>4</b>）。
+     * ★★<b>R94-①：说明块高 = 左段高 − 币栏高（{@code 96 − 36 = 60}）</b>，★纯派生不写死。
      * <p>
-     * 它是 R83 C1 那条「左段行位加总 = 带高」的<b>替代单源</b>：只数币栏的话，下段那 36px 没有归属
-     * 不会让任何判据变红（正是 R82"不留无主空白"里最容易漏的那一格）。★R93-③ 之后下段只画一件 ⇒
-     * "件数对不对"另有 {@code coinBlock} 的对账，本量只管<b>纵向加总</b>。
+     * 这一族常量的旧名是 {@code CELL_INFO_*}（R84 起那块装的是元件信息，R93-③ 换成说明文字后
+     * 名字成了登记的<b>命名债</b>：当时它被十四条装配期断言引用，改名等于让那些断言空转）。
+     * ★本轮行位账整体作废（60 不是 18 的整数倍 ⇒ "行位数"这个概念在本块消失）⇒ 那些断言本来
+     * 就要重写 ⇒ <b>改名不再有风险，一次改到位</b>（债在此偿清，台账 R94 节记由）。
+     * <p>
+     * ★为什么这块能"让字变大"：纵向预算从 36 变 60 ⇒ 同一条最坏串（663 逻辑像素）按 0.8 折
+     * 5 行 = 40px ≤ 60（0.65 时只能塞进 36px 的盒，那是上一轮的上限 0.70）。★字号单源
+     * {@link PocketGhostRequest#STATUS_TEXT_SCALE}，逐点账见用例 {@code resident_text_pixel_budget}。
      */
-    public static final int LEFT_BAND_ROWS = COIN_ROWS + CELL_INFO_ROWS;
+    public static final int STATUS_BLOCK_HEIGHT = LEFT_BLOCK_HEIGHT - COIN_BAND_HEIGHT;
+    /** 说明块 y（段内局部：★R94-① 起它在<b>上</b>，币栏压到最下）。 */
+    public static final int STATUS_BLOCK_Y = 0;
+    /** 说明块 x（★整幅贴左段：段内没有第四件要排位 ⇒ 横向不必再切）。 */
+    public static final int STATUS_BLOCK_X = 0;
+    /** 说明块宽（= 段宽 112；★横向预算 = {@code 112 ÷ 0.8 = 140} 逻辑像素一行）。 */
+    public static final int STATUS_BLOCK_WIDTH = COIN_WIDTH - STATUS_BLOCK_X;
 
     /**
      * 中间段 x（★R80① 的<b>硬判据</b>之一：与中栏同 x。
@@ -436,28 +454,18 @@ public final class NekoPocketBottomBand {
      * 杜绝手写 y；行位数与带高的加总由 {@code static} 块的游标推演对账）。
      */
     public static int coinRowY(int row) {
-        return row * COIN_BAR_HEIGHT;
+        // ★★R94-①：币栏压到左段<b>下沿</b> ⇒ 起点不再是 0，而是说明块的下边界（两半逐像素相接）
+        return STATUS_BLOCK_HEIGHT + row * COIN_BAR_HEIGHT;
     }
 
-    /**
-     * ★R84：左段<b>下段</b>（旧称元件信息块）第 {@code row} 个行位的 y（起点 {@link #CELL_INFO_Y}
-     * 起逐格往下）。★R93-③ 之后它是<b>行位推演</b>专用（喂 {@link #leftBandRowY(int)} 与那条
-     * 逐格对账），块里那一件说明文字用的是一整块 {@link #CELL_INFO_HEIGHT}、<b>不</b>走这里。
+    /*
+     * ★★R94-①：这里原先是 {@code cellInfoRowY(int)} 与 {@code leftBandRowY(int)} 两条"行位推演"。
+     * 它们存在的唯一理由是<b>那块的高度是 18 的整数倍</b>（36 = 两格），于是可以拿"逐格走一遍 y"
+     * 当纵向闭合的机检。本轮说明块高 = 60（不是 18 的倍数）⇒ 行位这个概念在本块不成立，
+     * 两条推演一起删除，纵向账换成三条<b>高度</b>对账（见 static 块）：
+     * ① 说明块高 + 币栏高 = 左段高；② 币栏第一行的 y = 说明块下沿（不许有缝）；
+     * ③ 左段起点 + 左段高 = 带起点 + 带高（★三段底对齐，中栏与背包段一格未动）。
      */
-    public static int cellInfoRowY(int row) {
-        return CELL_INFO_Y + row * COIN_BAR_HEIGHT;
-    }
-
-    /**
-     * ★R84：左段<b>第 {@code row} 个行位</b>（0 … {@link #LEFT_BAND_ROWS}−1）的 y。
-     * <p>
-     * 币栏与下段共用这一条推演（前 {@link #COIN_ROWS} 个是币栏行，往后是下段行位）⇒
-     * {@code static} 块可以把它当"行位清单"逐格走一遍：任一行错位、重叠或被漏掉都在当场抛，
-     * 而不是靠注释说"这里加总正好等于带高"。
-     */
-    public static int leftBandRowY(int row) {
-        return row < COIN_ROWS ? coinRowY(row) : cellInfoRowY(row - COIN_ROWS);
-    }
 
     /** 第 {@code slot} 个常驻绑定行的 y（行 2 起，逐行往下）。 */
     public static int persistentRowY(int slot) {
@@ -562,53 +570,55 @@ public final class NekoPocketBottomBand {
             throw new IllegalStateException(
                 "[pocket] 控件高 " + COIN_BAR_HEIGHT + " != 行高 " + NekoPocketPanel.GRID + "（★左段与右段的行都会互相重叠）");
         }
-        // ★R83 C1 立的纪律（左段撤件必须同时收行位，否则静默留下 36px 无主空白）在 R84 换了形状：
-        // 币栏从 4 行收成 2 行，省下的 36px <b>整块改道</b>给常驻元件信息块 ⇒ 判据从"币栏行数 × 行高
-        // = 带高"升级为「<b>左段全部行位</b>（{@link #LEFT_BAND_ROWS} = 币栏 + 信息块）逐格走完带高」。
-        // 数值钉住：2 行币栏 + 下段 36px（旧账形仍是两格 18），每行 18 ⇒ 36 + 36 = 72 = 带高，一次都不许多出或少吃。
-        if (COIN_ROWS * COIN_BAR_HEIGHT != 36 || CELL_INFO_ROWS * COIN_BAR_HEIGHT != 36) {
+        // ★★R94-①：左段不再是"带的三等分之一"，它自己从 {@link #LEFT_BLOCK_Y} 起、高
+        // {@link #LEFT_BLOCK_HEIGHT}（= 96 = 上 60 说明块 + 下 36 币栏）。旧的"逐格走行位"那套账
+        // 随 60 这个非整倍数一起作废 ⇒ 换成三条<b>高度</b>对账 + 一条<b>三段底对齐</b>判据。
+        // ① 两半各有归属：说明块 + 币栏 = 左段高（★不整除的余数、漏掉的一截都是无主空白）。
+        if (STATUS_BLOCK_HEIGHT + COIN_BAND_HEIGHT != LEFT_BLOCK_HEIGHT) {
             throw new IllegalStateException(
-                "[pocket] 左段两半的高度不再是「币栏 36 + 信息块 36」: " + COIN_ROWS
-                    + "×"
-                    + COIN_BAR_HEIGHT
-                    + " / "
-                    + CELL_INFO_ROWS
-                    + "×"
-                    + COIN_BAR_HEIGHT);
+                "[pocket] 左段纵向不闭合: 说明块 " + STATUS_BLOCK_HEIGHT
+                    + " + 币栏 "
+                    + COIN_BAND_HEIGHT
+                    + " != 左段高 "
+                    + LEFT_BLOCK_HEIGHT
+                    + "（★R94-①：上说明下按钮，中间不许有缝、上下不许有富余）");
         }
-        if (LEFT_BAND_ROWS * COIN_BAR_HEIGHT != HEIGHT) {
+        // ② 说明块在<b>上</b>、币栏压在<b>最下</b>：币栏第一行的 y 必须恰等于说明块下沿。
+        // ★这条就是用户那句"按钮移到最下"的机检形态 —— 谁把两者换回来（或塞一条分隔），当场红。
+        if (coinRowY(0) != STATUS_BLOCK_HEIGHT || STATUS_BLOCK_Y != 0) {
             throw new IllegalStateException(
-                "[pocket] 左段行位加总不闭合: " + LEFT_BAND_ROWS
-                    + "×"
-                    + COIN_BAR_HEIGHT
-                    + " != 带高 "
-                    + HEIGHT
-                    + "（★R84：2 行币栏 + 2 行元件信息块 = 72；不整除的那点余数就是无主空白）");
+                "[pocket] 左段上下顺序不对：币栏第一行 y = " + coinRowY(0)
+                    + "、说明块 y = "
+                    + STATUS_BLOCK_Y
+                    + "（★期望 coinRowY(0) == STATUS_BLOCK_HEIGHT 且说明块贴段顶 ⇒ 说明在上、按钮压底）");
         }
-        // ★行位清单与行位数一一对应：游标从 0 起逐格走，第 k 个行位的 y 必须恰 = k×行高（既不许重叠
-        // 也不许留缝），走完正好落在带高上（不越界）。今天它由 {@link #leftBandRowY(int)} 的构造成立，
-        // 但它拦的是"下一次有人往两半之间塞一条分隔缝"——那一格既不抛错也不打日志，只有这条会红。
-        for (int row = 0; row < LEFT_BAND_ROWS; row++) {
-            if (leftBandRowY(row) != row * COIN_BAR_HEIGHT) {
-                throw new IllegalStateException(
-                    "[pocket] 左段第 " + row
-                        + " 个行位的 y = "
-                        + leftBandRowY(row)
-                        + "，不等于 "
-                        + row
-                        + "×"
-                        + COIN_BAR_HEIGHT
-                        + "（★两半之间出现缝或行重叠）");
-            }
-        }
-        if (coinRowY(COIN_ROWS - 1) + COIN_BAR_HEIGHT != CELL_INFO_Y) {
+        // ③ 币栏最后一行的下沿必须恰落在左段下沿（★不留尾缝、不越界）。
+        if (coinRowY(COIN_ROWS - 1) + COIN_BAR_HEIGHT != LEFT_BLOCK_HEIGHT) {
             throw new IllegalStateException(
-                "[pocket] 币栏下沿不等于元件信息块上沿: " + (coinRowY(COIN_ROWS - 1) + COIN_BAR_HEIGHT) + " != " + CELL_INFO_Y);
+                "[pocket] 币栏最后一行的下沿不等于左段下沿: " + (coinRowY(COIN_ROWS - 1) + COIN_BAR_HEIGHT)
+                    + " != "
+                    + LEFT_BLOCK_HEIGHT);
         }
-        // ★R93-③：块内不再逐行排版 ⇒ 闭合判据从"最后一行的下沿"换成"整块的下沿"（同一条数学）
-        if (CELL_INFO_Y + CELL_INFO_HEIGHT != HEIGHT) {
+        // ④ ★三段<b>底对齐</b>：左段（258…354）与背包段/绑定段（282…354）必须共用同一条下沿，
+        // 且左段起点必须恰等于左列下沿（★无缝：那 18px 是收回来的，不是新造的空隙）。
+        // 面板总高 360 与中栏 15 行由各自的权威钉住，本轮一个字没动。
+        if (LEFT_BLOCK_Y + LEFT_BLOCK_HEIGHT != Y + HEIGHT) {
             throw new IllegalStateException(
-                "[pocket] 左段最后一行的下沿不等于带高（★纵向出现无主空白或越界）: " + cellInfoRowY(CELL_INFO_ROWS - 1));
+                "[pocket] 左段与背包/绑定段不再底对齐: " + (LEFT_BLOCK_Y + LEFT_BLOCK_HEIGHT)
+                    + " != "
+                    + (Y + HEIGHT)
+                    + "（★面板下沿出现两截不等高的空白）");
+        }
+        if (LEFT_BLOCK_Y != NekoPocketPanel.MARGIN + NekoPocketLeftColumn.HEIGHT) {
+            throw new IllegalStateException(
+                "[pocket] 左段起点不等于左列下沿: " + LEFT_BLOCK_Y
+                    + " != "
+                    + (NekoPocketPanel.MARGIN + NekoPocketLeftColumn.HEIGHT));
+        }
+        // ⑤ 说明块必须是<b>整幅</b>（段内没有第四件要排位 ⇒ 横向不必再切）。
+        if (STATUS_BLOCK_X != 0 || STATUS_BLOCK_WIDTH != COIN_WIDTH) {
+            throw new IllegalStateException(
+                "[pocket] 说明块不再整幅贴左段: x " + STATUS_BLOCK_X + " 宽 " + STATUS_BLOCK_WIDTH + " / 段宽 " + COIN_WIDTH);
         }
         // ★★R93-③（B 项）：绑定信息的常驻面从「左段那块」搬到「右段常驻行」⇒ 这条对账跟着换宿主。
         // 旧写法钉的是 CELL_INFO_ROWS ≥ ALLOWED_BOUND_CELLS（左段那块按"一枚"排版）；现在左段那块
@@ -646,10 +656,6 @@ public final class NekoPocketBottomBand {
         if (CHANNEL_BUTTON_X + CHANNEL_BUTTON_WIDTH != COIN_WIDTH) {
             throw new IllegalStateException(
                 "[pocket] 通道按钮的右沿没铺到段宽右沿: " + (CHANNEL_BUTTON_X + CHANNEL_BUTTON_WIDTH) + " != " + COIN_WIDTH);
-        }
-        if (CELL_INFO_X != 0 || CELL_INFO_WIDTH != COIN_WIDTH) {
-            throw new IllegalStateException(
-                "[pocket] 元件信息块不再整幅贴左段: x " + CELL_INFO_X + " 宽 " + CELL_INFO_WIDTH + " / 段宽 " + COIN_WIDTH);
         }
         // ★收窄的两件材质前提（R84 新增，★这才是"把 88 收到 49 / 61"真正的安全边界）：
         // 1) 两张都必须仍是 9-slice —— 非 9-slice 的图一收就是整体横向压缩，中间的平坦带变斜纹，
@@ -781,22 +787,26 @@ public final class NekoPocketBottomBand {
         return blocks;
     }
 
-    // ------------------------- 左段：每种币「图标 + 数量 + 启动按钮」两行 + 一整块说明文字（★R84 重排、R93-③ 换内容）
+    // ---------------- 左段（112×96）：上一整块说明文字 + 下两行「图标 + 数量 + 启动按钮」（★R84 重排、R93-③ 换内容、R94-① 换尺寸与上下顺序）
 
     /**
-     * ★R84（需求 4 与 5）左段（112×72）= <b>四行 × 18</b>，但四行的<b>归属</b>换了：
+     * ★★<b>R94-①（需求 4 与 5 的形状再改一次）左段（112×96）= 上 60 + 下 36</b>：
      * <ol>
-     * <li>行 0（y=0）：猫猫币「图标 16 + 数量 30」<b>同行</b> {@code 瞬时}通道按钮（61 宽）；</li>
-     * <li>行 1（y=18）：闪烁币「图标 + 数量」 同行 {@code 短效}通道按钮；</li>
-     * <li>行 2 + 行 3（y=36…72）：<b>★R93-③ 一整块说明文字</b>（连续 112×36，正文走 {@link CellInfoText}；
-     * 旧口径是"两行常驻元件信息块"，绑定信息本轮搬到右段常驻行）。</li>
+     * <li><b>y=0…60</b>：一整块说明文字（连续 112×60，正文走 {@link CellInfoText}；★它现在在<b>最上</b>，
+     * 不再在段底）；</li>
+     * <li><b>y=60（行 0）</b>：猫猫币「图标 16 + 数量 30」<b>同行</b> {@code 瞬时}通道按钮（61 宽）；</li>
+     * <li><b>y=78（行 1）</b>：闪烁币「图标 + 数量」 同行 {@code 短效}通道按钮 ⇒ ★<b>按钮压到段底</b>。</li>
      * </ol>
+     * ★★<b>旧行位清单（"112×72 = 四行 × 18、行 2/行 3 是说明文字"）本轮作废</b>：那是 R93-③ 的形状，
+     * 描述的正是用户投诉的"文字在下、按钮在上"。★为什么单独强调：类级 javadoc 本轮已改对，
+     * 方法级这段漏改就会<b>自相矛盾</b>，而六门与 G9/G10 都不扫代码内 javadoc ⇒ 下一轮照它搬回去无人报警。
+     * ★现在的顺序由装配期断言钉：{@code coinRowY(0) == STATUS_BLOCK_HEIGHT} 且说明块贴段顶。
      * <b>改了什么</b>：R83 C1 的「一币两行（条 + 它自己的按钮）」按用户原话收成<b>一币一行</b>
      * （「物品栏左侧猫猫币栏…改成两行即可：猫猫币图标+数量+启动按钮 / 闪烁猫猫币图标+数量+启动按钮」），
      * 省下的 36px 没有变成空白，R84 当年整块改道给<b>常驻元件信息块</b>（用户裁定的落点：
      * 「短文案「启动」+ 36px 给常驻元件信息块」）；★★R93-③ 同一块 36px <b>再改道一次</b>给说明文字
      * （用户："元件和维度放到右边去…这样可以把说明的文字加大一些"）。两次改道都不许留空白，
-     * 纵向账由 {@link #LEFT_BAND_ROWS} 与下面的件数对账一起钉住。
+     * 纵向账由 {@code static} 块的三条<b>高度</b>对账（★R94-①：行位账作废）与下面的件数对账一起钉住。
      * <p>
      * <b>★一行为什么现在装得下三件</b>（R83 C1 曾判定装不下）：那次算的是"按钮沿用原生 88 宽"，
      * 而条内撤图标后只剩 39px 自由带 ⇒ 结论是不许挤。R84 换了腾法：<b>币值条本身</b>从原生 88 收到
@@ -814,12 +824,18 @@ public final class NekoPocketBottomBand {
      * （{@code note.channel}）仍只在自己的 tooltip 里（R74② / R78 D-2）。
      */
     private static ParentWidget<?> coinBlock(NekoPocketPanel ui, CellInfoText cellInfo) {
-        final ParentWidget<?> block = new ParentWidget<>().pos(COIN_X, Y)
-            .size(COIN_WIDTH, HEIGHT)
+        // ★★R94-①：本段的 y 与高<b>不再等于带的 y 与高</b>（左列末行那 18px 收回来了 ⇒ 段从 258 起、高 96）。
+        // 背包段与绑定段仍是 pos(..., Y).size(..., HEIGHT)，两者与本段<b>底对齐</b>（static 块第 ④ 条）。
+        final ParentWidget<?> block = new ParentWidget<>().pos(COIN_X, LEFT_BLOCK_Y)
+            .size(COIN_WIDTH, LEFT_BLOCK_HEIGHT)
             .name("pocket_coin_block");
         // ★行位由同一个游标按「币值条 → 同一行的通道按钮」成对发放 ⇒ 两件叠在同一行不可能；
         // 漏画任一件则由下面那条件数对账当场抛（R84 起一行两件，★只数行数会漏掉"那一行右边空着"，
         // 故计数是 COIN_ROWS × WIDGETS_PER_COIN_ROW + 说明块那一件，与右段常驻行同一条纪律）。
+        // ★★R94-①：先挂说明块（贴上沿）、再挂两行币栏（压到下沿）——顺序本身不决定位置
+        // （两件各自 pos），但<b>读树的人</b>按这个顺序就能看出"上面是文字、下面是按钮"，
+        // 而真正的顺序保证在 static 块第 ② 条（coinRowY(0) == STATUS_BLOCK_HEIGHT）。
+        block.child(statusBlock(ui, cellInfo));
         int row = 0;
         for (int currency = 0; currency < CURRENCY_KINDS; currency++) {
             block.child(coinRow(currency, row));
@@ -829,14 +845,13 @@ public final class NekoPocketBottomBand {
         if (row != COIN_ROWS) {
             throw new IllegalStateException("[pocket] 左段币栏发出 " + row + " 行，与行位数 " + COIN_ROWS + " 不符（★币种数或每币种行数被改）");
         }
-        // ★★<b>R93-③（B 项）：这一块从"两行元件信息"改成"一整块 112×36 的说明文字"</b>。
+        // ★★<b>R93-③ 把这块从"两行元件信息"改成"一整块说明文字"；★R94-① 把它搬到段顶并长到 112×60</b>。
         // 元件短码与位置五键已迁到<b>右栏常驻行</b>（用户："元件和维度移到右侧栏位去"），这块地方腾出来
         // 给那条装不下的说明文字（用户："说明文字…会超出…就有更多位置了，应该能容纳"）。
-        // ★不再按 18px 切两半：一条说明文字要的是<b>连续 36px</b>——切成两个 18px 件会让最坏那条正文
-        // （模式 + 最长回执 + 剩余 = 663 逻辑像素，见用例 resident_text_pixel_budget）在第一个件里
-        // 折四行 = 26px > 18 顶穿、第二个件空着。★纵向闭合改由 CELL_INFO_Y + CELL_INFO_HEIGHT == HEIGHT
-        // 那条断言守（static 块已同步），"漏画一行"的旧对账换成"漏画这一块"。
-        block.child(statusBlock(cellInfo));
+        // ★不按 18px 切件：一条说明文字要的是<b>连续纵向预算</b>（R93-③ 是 36px、★R94-① 是 60px）——
+        // 切成 18px 件会让最坏那条正文（模式 + 最长回执 + 剩余 = 663 逻辑像素，见用例
+        // resident_text_pixel_budget）在第一个件里折四行 = 26px > 18 顶穿、第二个件空着。★纵向闭合现在由 static 块那三条高度对账守
+        // （说明块 + 币栏 = 段高 / 币栏起点 = 说明块下沿 / 段底与带底对齐），"漏画一行"的旧对账换成"漏画这一块"。
         if (block.getChildren()
             .size() != COIN_ROWS * WIDGETS_PER_COIN_ROW + STATUS_BLOCK_WIDGETS) {
             throw new IllegalStateException(
@@ -951,18 +966,20 @@ public final class NekoPocketBottomBand {
     }
 
     /**
-     * ★★<b>R93-③：左段下沿那一整块（{@link #CELL_INFO_WIDTH} × {@link #CELL_INFO_HEIGHT} = 112×36）
-     * 的说明文字件</b>——模式 / 回执 / 冷却的完整可读体（旧形状是左栏末行那个 88×18 的窄条，
-     * 最长串按 0.6 折五行、只有 18px 高 ⇒ 必然溢出）。
+     * ★★<b>R93-③ 立、★R94-① 长高：左段<b>上半</b>那一整块
+     * （{@link #STATUS_BLOCK_WIDTH} × {@link #STATUS_BLOCK_HEIGHT} = 112×60）的说明文字件</b>
+     * ——模式 / 回执 / 冷却的完整可读体。
      * <p>
-     * ★名字仍沿用 {@code CELL_INFO_*} 那组几何常量：它们描述的是<b>块的位置与尺寸</b>（R84 由币栏
-     * 省下的 36px），本轮换的是<b>块里放什么</b>，不是块本身 ⇒ 改名会让十四条装配期断言与 V 锚点
-     * 全部空转，收益只有好看。★这一处命名债已记进 {@code decision-ledger.md} R93 节，不当它不存在。
+     * <b>三代的形状史</b>：① 左栏末行 88×18（最长串按 0.6 折五行 = 30px &gt; 18 ⇒ 必然溢出，就是用户
+     * 实机报的"会超出"）；② R93-③ 换到底部带左段下沿 112×36、字号 0.65（该点上界 0.70）；
+     * ③ ★R94-① 把左列末行那 18px 也收进来 ⇒ 块变 112×<b>60</b>、字号抬到 0.8，同时<b>币栏压到段底</b>
+     * ⇒ 用户要的"按钮在最下、上面整块是文字"（★顺序由 static 块第 ② 条钉，不靠注释）。
      * <p>
      * 本方法<b>不产生任何信息</b>，只把 {@link CellInfoText} 给到的正文原样摆上去（★含 null 兜底：
-     * 供给者给了 null 就当空行，不许让整屏 NPE）。数据为什么只能从外面注入，见 {@link CellInfoText}。
+     * 供给者给了 null 就当空，不许让整屏 NPE）。数据为什么只能从外面注入，见 {@link CellInfoText}。
+     * ★它同时是左列末行原先那三条 tooltip 的<b>新宿主</b>（见方法体末段）——撤形状成对，R36。
      */
-    private static IWidget statusBlock(CellInfoText cellInfo) {
+    private static IWidget statusBlock(NekoPocketPanel ui, CellInfoText cellInfo) {
         final TextWidget body = new TextWidget(IKey.dynamic(() -> {
             final String text = cellInfo.text();
             return text == null ? "" : text;
@@ -973,15 +990,30 @@ public final class NekoPocketBottomBand {
         // ★★R93-③：这块是<b>说明文字</b>（不是数据读数）⇒ 走提示色 + 说明文字专用档
         body.scale(PocketGhostRequest.STATUS_TEXT_SCALE);
         body.color(PocketGhostRequest.hintTextColor());
-        body.pos(CELL_INFO_X, CELL_INFO_Y);
-        body.size(CELL_INFO_WIDTH, CELL_INFO_HEIGHT);
+        body.pos(STATUS_BLOCK_X, STATUS_BLOCK_Y);
+        body.size(STATUS_BLOCK_WIDTH, STATUS_BLOCK_HEIGHT);
         body.name("pocket_status_block");
+        // ★★R94-①：左列末行被收回时，它原本挂的三条 tooltip <b>原样搬到这里</b>（撤形状成对，R36）：
+        // statusHintText（模式 + 状态 + 主手限制的完整读法）/ capacityReadoutText（每槽容量与总容量）/
+        // notesText（用法摘要、通道成本、ghost 代价那一份全量说明）。★一条不删、一条不双写：
+        // 宿主从"那一行文字"换成"装着这段文字的那块"。
+        // ★写成"先攒一个 RichTooltip 再交出去"而不是链式 lambda：{@code TextWidget} 是自指泛型
+        // （{@code TextWidget<W extends TextWidget<W>>}），本方法按仓内既有写法用裸类型建件（下面
+        // pos/size 那几条语句同理），裸接受者上 lambda 的参数会被擦成 Object ⇒ addLine 找不到符号。
+        // ★★非阻断 ②（审查指出）：库内 lambda 那一支是 `new RichTooltip().parent(this)`
+        // （`Widget.java:321`），而裸构造器的构造器预置是 `parent(Area.ZERO)`（`RichTooltip.java:53-55`）
+        // ⇒ 不接 parent 就等于强制"跟鼠标"，玩家把 tooltip 锚定档改掉时<b>只有这一块</b>不跟别人一致。
+        final RichTooltip tips = new RichTooltip().parent(body);
+        tips.addLine(IKey.dynamic(ui::statusHintText));
+        tips.addLine(IKey.dynamic(ui::capacityReadoutText));
+        tips.addLine(IKey.dynamic(ui::notesText));
+        body.tooltip(tips);
         return body;
     }
 
     /**
-     * ★R84 立、★R93-③ 换内容：左段<b>下段那一整块说明文字</b>的正文供给者（连续 112×36；旧形态是
-     * "两行、每行 {@link #CELL_INFO_ROWS} 分之一"，本轮起 {@code row} 这个参数整个消失）。
+     * ★R84 立、★R93-③ 换内容、★R94-① 换尺寸：左段<b>上半那一整块说明文字</b>的正文供给者
+     * （连续 112×60；旧形态是"两行、各 18px 高"，R93-③ 起 {@code row} 这个参数整个消失）。
      * <p>
      * <b>为什么是一个缝而不是一段自算的码</b>（R84 立的那条理由<b>原样成立</b>，只是要显示的东西换了）：
      * 这块要读的都是<b>服务端算出来的运行期事实</b>（模式 / 回执 / 冷却），客户端自己按内存表或 ghost 表
@@ -989,13 +1021,17 @@ public final class NekoPocketBottomBand {
      * ★元件的"类型 / 条目数"从未真的接上（要新增一条服务端同步值，且新单元在上游恒返 {@code MAX}/{@code 0}
      * ⇒ 占用比不是可用信息），本轮那块改道给说明文字之后，这条待办<b>不再</b>有常驻落点 ⇒ 列进交付说明。
      * <p>
-     * <b>调用点约定</b>（★实现方 = {@code NekoPocketPanel}）：
+     * <b>调用点约定</b>（★实现方 = {@code NekoPocketPanel#statusBlockText()}）：
      * <ul>
-     * <li>{@code row} 一定是 {@code 0 ≤ row < }{@link #CELL_INFO_ROWS}，越界当空行处理即可（本类不会越界调用）；</li>
-     * <li>返回值是<b>一行</b>成品文本（含标签），无信息给 {@code ""}；返回 {@code null} 本类兜底成空行；</li>
-     * <li>★宽度预算：行给了显式宽 ⇒ MUI2 会按宽度 hardWrap，正文别超过
-     * {@code 112 ÷ 0.5 = }<b>224 逻辑像素</b>（约 22 个全角字 / 37 个半角），超一行就折进行高、读糊；</li>
-     * <li>未绑定那一枚时，行 0 建议直接给既有的 {@code gtit.pocket.bind.none}（★不另立新键、不留死区）。</li>
+     * <li>返回值是<b>整块</b>成品文本（可以含 {@code '\n'}，MUI2 会按行各自折行）；无信息给 {@code ""}，
+     * 返回 {@code null} 本类兜底成空文本；</li>
+     * <li>★预算：块给了显式宽 ⇒ MUI2 按宽度 hardWrap。逐点账住在用例 {@code resident_text_pixel_budget}
+     * 里（最坏串 = 模式 + <b>最长回执</b> + 剩余秒数 = 663 逻辑像素，盒 112×60、字号 0.8 ⇒ 5 行 40px ≤ 60），
+     * ★回执族新增/加长任何键都会自动进这本账，不靠人记得改测试；</li>
+     * <li>★<b>不要在这里塞绑定信息</b>：元件短码与维度/坐标/槽位住右栏常驻行（{@code bindPersistentText}），
+     * "另有 n 条不在服务口径"住绑定按钮 tooltip（{@code bindTooltipText}）——同一条事实只许有一个面；</li>
+     * <li>未绑定那一枚时不需要在这里说：那块读的是运行期状态，与绑了几条无关（★旧形态"行 0 给
+     * {@code bind.none}"已经作废，那条读数现在由右栏常驻行 0 的空表分支承担）。</li>
      * </ul>
      */
     public interface CellInfoText {
