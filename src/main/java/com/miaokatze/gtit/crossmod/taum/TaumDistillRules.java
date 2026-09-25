@@ -42,8 +42,29 @@ public final class TaumDistillRules {
      */
     public static final int MAX_CELL = 64;
 
-    /** 蒸馏节拍：每 100 tick（5 秒）一轮，一轮里<b>每个非空且含源质的格各消耗 1 件</b>（★R84：对象是格不是组；5 秒是节拍不是产量，须向玩家声明） */
-    public static final int DISTILL_INTERVAL_TICKS = 100;
+    /**
+     * 蒸馏节拍<b>基档</b>：每 100 tick（5 秒）一轮，一轮里<b>每个非空且含源质的格各消耗 1 件</b>
+     * （★R84：对象是格不是组；5 秒是节拍不是产量，须向玩家声明）。
+     * <p>
+     * ★<b>R95 蒸馏加速：本常数不再是独立真值</b>——它由 {@link #distillIntervalTicks(boolean)} 的
+     * {@code fast=false} 档<b>派生</b>；100/50 两档字面量<b>只</b>活在那个方法一处（节拍权威单点纪律，
+     * 即旧「本类与 GUI 两侧都没有第二个 100」那条纪律的 R95 延伸：档位变多，真值点仍只有一个）。
+     */
+    public static final int DISTILL_INTERVAL_TICKS = distillIntervalTicks(false);
+
+    /**
+     * 蒸馏节拍（★R95 蒸馏加速的唯一真值点）：{@code fast=false} 基档 100 tick（5 秒/轮），
+     * {@code fast=true} 加速档 50 tick（2.5 秒/轮，载体固化
+     * {@code PocketUpgradeType.DISTILL_FAST} 时启用）。
+     * <p>
+     * 100/50 两个字面量<b>只</b>出现在本方法体内；一切消费侧（{@code PocketDistillDriver} 的
+     * 装填与进度分母、tooltip 的秒数换算）一律经本方法或其派生常量 {@link #DISTILL_INTERVAL_TICKS}，
+     * 不得自抄数字。中途安装的行为口径（当前轮旧间隔跑完、下一轮生效）住在消费侧
+     * {@code PocketDistillDriver#distillIntervalOf} 的装填点，不在本层。
+     */
+    public static int distillIntervalTicks(boolean fast) {
+        return fast ? 50 : 100;
+    }
 
     /**
      * 蒸馏输入格数。★R83 A2 收单源：真值住在<b>被消费的那一侧</b>——

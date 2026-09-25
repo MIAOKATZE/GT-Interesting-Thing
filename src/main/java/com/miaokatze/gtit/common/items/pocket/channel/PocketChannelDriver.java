@@ -19,6 +19,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketChannelState;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 
 /**
@@ -33,14 +35,16 @@ import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
  * → {@code ItemStack.updateAnimation}（{@code ItemStack.java:454-462}）
  * → <b>五参</b> {@code Item.onUpdate(stack, world, entity, slot, selected)}。
  * <p>
- * <b>{@code selected} 的确切语义（R66b 的待证项，本轮已定死）</b>：
+ * <b>{@code selected} 的确切语义（R66b 定死，★R95 作废其门控用法）</b>：
  * {@code InventoryPlayer.java:347} 传的是 {@code this.currentItem == i} ⇒ <b>只有当前手持的那一格为真</b>。
- * 也就是说本方法只在口袋<b>握在主手</b>时被调用。这不是缺陷而是 R24 的裁定口径
- * （"要求主手持有，与 {@code openFromMainHand} 自洽，且天然杜绝塞进箱子后继续跑"），
- * 因此门控<b>保持原样不摘</b>（R66b：证实之前不改；现已证实它恰好实现了裁定，改它才是偏离）。
- * 代价已按裁定对玩家显式声明：{@code gtit.pocket.held.note} + {@code item.neko_dimension_pocket.tooltip.7}。
- * 对照参考：GT5U {@code ItemGTToolbox.onUpdate} 干脆不使用第 5 个形参（它对全部 36 格都跑），
- * 本仓刻意比它严，是裁定而非疏漏。
+ * R66b 时代据此把门控钉在"主手持有"（R24 裁定）；★R95 升级插件体系<b>放宽</b>：宿主
+ * {@code ItemNekoDimensionPocket.onUpdate} 已<b>摘掉 {@code !selected}</b>——背包 36 格任意位都推进
+ * （通道/蒸馏/磁力；vanilla 证据 {@code InventoryPlayer.java:343-348} 对全部 36 格调
+ * {@code updateAnimation}），箱子/饰品栏/盔甲位 vanilla 不 tick 物品故停（盔甲位走
+ * {@code onArmorTick}，:351-357）。多枚口袋由下面的会话身份守卫保证只有"开界面那一枚"跑通道。
+ * 旧"换手/收进背包即停摆"的玩家声明文案（{@code gtit.pocket.held.note}）自 R95 起口径过期，
+ * lang 侧翻新属 S2b；{@code tooltip.7} 说的是"内容随物品丢"，与主手口径无关，不得混引。
+ * 对照参考：GT5U {@code ItemGTToolbox.onUpdate} 对全部 36 格都跑，R95 起本仓与它同形。
  * <p>
  * <b>本方法每 tick 做且仅做三件事</b>（R57c①）：
  * <ol>
@@ -67,7 +71,8 @@ public final class PocketChannelDriver {
     private PocketChannelDriver() {}
 
     /**
-     * 由 {@code ItemNekoDimensionPocket.onUpdate} 的<b>服务端且主手持有</b>分支调用（每 tick 一次）。
+     * 由 {@code ItemNekoDimensionPocket.onUpdate} 的<b>服务端</b>分支调用（每 tick 一次；★R95 起背包
+     * 36 格任意位都会到达，会话身份守卫见方法体）。
      */
     public static void onItemTick(ItemStack stack, World world, EntityPlayer player, int slot, boolean isHeld) {
         if (player == null || player.getGameProfile() == null) {
@@ -115,6 +120,18 @@ public final class PocketChannelDriver {
         final boolean ranBatch = PocketChannelManager.INSTANCE
             .tickShortChannel(uuid, bindings, ops, PocketChannelManager.pairsPerBatchFromConfig());
         if (ranBatch) {
+            // ★R95 通道持续化：载体已固化 CHANNEL_PERSIST 位 ⇒ 批边界把剩余批次<b>回满</b>——这是
+            // 「批边界续批」，不是独立状态机：不新开计数器、不绕过 PocketChannelState 的批次权威，
+            // 复用 activate 的 SHORT 装填单点（remainingBatches 与 ticksUntilDue 都由它写；finishBatch
+            // 刚把节拍装回 CHANNEL_TICK_PERIOD，这里同值重装无害）。因为每批跑完都立刻回满，
+            // remainingBatches 永远到不了 0 ⇒ finishBatch 的 stop() 分支与 tickShortChannel 的
+            // 「批次用尽即回收」都结构性不可达。位图每秒读一次（每批一次，R53c 量级可忽略）。
+            // 免激活费免冷却：无激活事件可挂扣费点（R95 裁定）——持续化的成本语义就是
+            // "一次性付过激活费后不再到 0"，不引入任何周期扣费。
+            if (state.mode() == PocketChannelState.Mode.SHORT
+                && PocketUpgrades.hasUpgrade(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
+                state.activate(PocketChannelState.Mode.SHORT, 0L, 0L);
+            }
             // 只在批边界写一次 NBT（不是每 tick 写档，R53c）：动画窗口 = 本通道剩余总长
             ItemNekoDimensionPocket.startWorkTicks(
                 stack,

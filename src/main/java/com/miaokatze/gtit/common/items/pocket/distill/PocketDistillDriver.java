@@ -14,6 +14,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.PocketSlots;
@@ -27,9 +29,11 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
  * <p>
  * <b>落地口径</b>（逐条对应计划 §7 S7 与 R63b 的改述；★第 4/5/6 条的<b>粒度</b>已由 R84 改写，见各条）：
  * <ol>
- * <li>节拍 = <b>5 秒/轮</b>，且只引用单一权威
- * {@link TaumDistillRules#DISTILL_INTERVAL_TICKS}（= 100）。本类与 GUI 两侧<b>都没有</b>第二个
- * {@code 100}（计划 §17.2 第 4 条）；</li>
+ * <li>节拍 = <b>5 秒/轮</b>基档（★R95 蒸馏加速：载体固化 {@code PocketUpgradeType.DISTILL_FAST}
+ * 时为 2.5 秒/轮），且只引用单一权威 {@link TaumDistillRules#distillIntervalTicks(boolean)}
+ * （{@link TaumDistillRules#DISTILL_INTERVAL_TICKS} 是其 {@code fast=false} 派生）。本类与 GUI 两侧
+ * <b>都没有</b>第二个 {@code 100}/{@code 50}（计划 §17.2 第 4 条）；<b>中途安装</b>：当前轮按旧间隔
+ * 跑完、下一轮生效（节拍只在装填点 {@link #distillIntervalOf} 读一次位图，不中途改拍）；</li>
  * <li>计时是 {@link Clock#ticksLeft} 这一<b>相对倒计时</b>（R62）：不读
  * {@code ticksExisted}/{@code getTotalWorldTime()}，因此跨维重建玩家不会让进度漂走；</li>
  * <li>判据照 TC {@code TileAlchemyFurnace.canSmelt()}：{@code getObjectTags + getBonusTags}
@@ -121,13 +125,25 @@ public final class PocketDistillDriver {
 
     private static final Map<UUID, Clock> CLOCKS = new LinkedHashMap<>();
 
+    /**
+     * ★R95 蒸馏加速的「双口径」tooltip 行 lang 键（消费点在
+     * {@code ItemNekoDimensionPocket#appendDistillFastLine}；lang 行由 S2b 落）。
+     * <p>
+     * 键字面量住在本类而不是物品类的理由：R88① 的 pocket 域聊天白名单门禁对白名单文件
+     * （{@code ItemNekoDimensionPocket} 在列）做「文件内 {@code "gtit.pocket.*"} 字面量一律须
+     * {@code world.} 前缀」的粗粒度键前缀检查——tooltip 键放那边会被误判成越权聊天键；本类不在
+     * 白名单内，且该键本就是蒸馏域的规格读数，与节拍真值同域。
+     */
+    public static final String TOOLTIP_DISTILL_FAST_KEY = "gtit.pocket.tooltip.distill_fast";
+
     private PocketDistillDriver() {}
 
     /**
-     * 由 {@code ItemNekoDimensionPocket.onUpdate} 的<b>服务端且主手持有</b>分支调用（每 tick 一次）。
+     * 由 {@code ItemNekoDimensionPocket.onUpdate} 的<b>服务端</b>分支调用（每 tick 一次）。
      * <p>
-     * 主手门控是 R24 的裁定口径（"要求主手持有"），vanilla 侧证据见
-     * {@code InventoryPlayer.java:347}（{@code selected = currentItem == i}）。
+     * ★R95 门控放宽：宿主已不再要求主手持有——背包 36 格任意位都推进
+     * （vanilla 证据 {@code InventoryPlayer.java:343-348}；R66b 时代"selected 即门控"的口径随之作废）；
+     * 多枚口袋时靠下面的会话身份守卫只让"开界面那一枚"跑。
      */
     public static void onItemTick(ItemStack stack, World world, EntityPlayer player, int slot, boolean isHeld) {
         if (player == null || player.getGameProfile() == null) {
@@ -179,7 +195,7 @@ public final class PocketDistillDriver {
             return;
         }
         if (clock.ticksLeft <= 0) {
-            clock.ticksLeft = TaumDistillRules.DISTILL_INTERVAL_TICKS;
+            clock.ticksLeft = distillIntervalOf(session);
         } else {
             clock.ticksLeft--;
         }
@@ -211,7 +227,20 @@ public final class PocketDistillDriver {
         session.markDirty();
         // 界面已关时写权在 driver 手上（R57c①：关屏后"东西留在格里继续蒸"是正常用法）
         session.persistIdle();
-        clock.ticksLeft = TaumDistillRules.DISTILL_INTERVAL_TICKS;
+        clock.ticksLeft = distillIntervalOf(session);
+    }
+
+    /**
+     * 本轮蒸馏节拍（★R95 蒸馏加速）：读<b>载体栈</b>（取法照 {@link #onItemTick} 的会话口径
+     * {@code session.carrierStack()}）的 {@code DISTILL_FAST} 位，经唯一真值点
+     * {@link TaumDistillRules#distillIntervalTicks(boolean)} 选 100/50。
+     * <p>
+     * <b>中途安装：当前轮旧间隔跑完，下一轮生效</b>——节拍只在装填点（这里）读一次位图，
+     * 跑动中的倒计时不改拍；位图只读不建档（R53c 读路径纪律）。
+     */
+    private static int distillIntervalOf(PocketSession session) {
+        return TaumDistillRules.distillIntervalTicks(
+            PocketUpgrades.hasUpgrade(session == null ? null : session.carrierStack(), PocketUpgradeType.DISTILL_FAST));
     }
 
     /** 把一次评估的结论落到节拍状态上（判据位只有这一处写，避免签名支与到点支各说各话）。 */
@@ -465,7 +494,7 @@ public final class PocketDistillDriver {
             // ★整轮都被"单件原量超上限"挡下时不报"满格"也不报"在跑"：条子停着 = 什么都不说，读 0 才是不说谎
             return 0d;
         }
-        final int interval = TaumDistillRules.DISTILL_INTERVAL_TICKS;
+        final int interval = distillIntervalOf(PocketSessions.peek(player));
         return (double) (interval - clock.ticksLeft) / (double) interval;
     }
 

@@ -22,6 +22,7 @@ import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelDriver;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
+import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
 import com.miaokatze.gtit.gui.pocket.NekoPocketStorageColumn;
@@ -229,28 +230,37 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * 写成常见的 4 参只会<b>多出一个永不被调用的重载</b>——不报错、不抛异常、不打日志，
      * 倒计时与动画全部静默不跑（仓内唯一可编译先例 {@code common/items/FloatCore.java:131}）。
      * <p>
-     * 本方法内<b>只有</b>两件事（pocket-plan §5 第 4 条）：
+     * 本方法内<b>只有</b>三件事（pocket-plan §5 第 4 条 + ★R95 磁力）：
      * <ol>
      * <li>递减 R24 的两条「剩余 tick」NBT（{@link PocketConstants#UI_WORK_TICKS} 与
      * {@link PocketConstants#UI_BURST_SHOW_TICKS}），归零 {@code removeTag} 自清理，
      * 口径照 {@code ItemGTToolbox.java:200-203}；</li>
-     * <li>把通道与蒸馏两个宿主各自的一 tick 交给 driver 的静态入口（S6 / S7 实装）。</li>
+     * <li>把通道与蒸馏两个宿主各自的一 tick 交给 driver 的静态入口（S6 / S7 实装）；</li>
+     * <li>★R95：磁力驱动 {@link PocketMagnetDriver#onItemTick}（自带节拍与 MAGNET 位早退）。</li>
      * </ol>
      * 计时一律走 NBT 剩余 tick，<b>不用</b>任何世界绝对时刻或实体存活 tick 计数
      * （不变量 G8 与 R59e：实体跨维度重建时后者不连续 ⇒ 计时会漂；计时源全仓只允许一处）；
      * 10 秒防刷冷却走墙钟（{@link #readDeviceLastBurstAtMs(ItemStack)}，R16 双维）。
      *
-     * @param selected 本栈是否为主手持有物。<b>本轮已用可读源码定死其语义</b>（R66b 的待证项）：
-     *                 {@code InventoryPlayer.java:347} 传的是 {@code this.currentItem == i}
-     *                 ⇒ 只有玩家<b>当前手持的那一格</b>为真，其余 35 格恒 false。
-     *                 因此本方法的门控确实等于 R24 的裁定口径「要求主手持有」
-     *                 （与 {@code openFromMainHand} 自洽，且天然杜绝塞进箱子后继续跑），
-     *                 <b>不摘</b>；代价（换手/收进背包即停摆）由 {@code gtit.pocket.held.note}
-     *                 与 {@code tooltip.7} 对玩家显式声明。
+     * @param selected 本栈是否为主手持有物（{@code InventoryPlayer.java:347} 传的是
+     *                 {@code this.currentItem == i} ⇒ 只有当前手持的那一格为真）。
+     *                 ★<b>R95 门控放宽：本方法不再用 {@code !selected} 做早退</b>——背包 36 格
+     *                 任意位都推进（通道/蒸馏/磁力；vanilla 证据 {@code InventoryPlayer.java:343-348}：
+     *                 {@code decrementAnimations} 对 mainInventory 全部 36 格调 {@code updateAnimation}），
+     *                 箱子/饰品栏/盔甲位 vanilla 不 tick 物品故停（盔甲位走 {@code onArmorTick}，
+     *                 {@code InventoryPlayer.java:351-357}）。R66b 时代"selected 即门控"的旧口径
+     *                 （与 {@code openFromMainHand} 自洽）随之作废；形参保留只为 5 参签名与
+     *                 两个 driver 的既有透传。
+     *                 ★笔误修正（R95）：旧句把「换手/收进背包即停摆」的声明引到
+     *                 {@code gtit.pocket.held.note} <b>与</b> {@code tooltip.7} 两处——后者说的是
+     *                 「内容随物品丢」（lang {@code item.neko_dimension_pocket.tooltip.7}），与主手
+     *                 口径无关；主手口径的玩家声明只在 {@code gtit.pocket.held.note} 一处
+     *                 （该文案自 R95 起口径过期，lang 翻新属 S2b）。
      */
     @Override
     public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
-        if (world.isRemote || !selected || !(entity instanceof EntityPlayer player)) {
+        // ★R95 门控放宽：只保留服务端与玩家检查（vanilla tick 链证据见 @param selected）
+        if (world.isRemote || !(entity instanceof EntityPlayer player)) {
             return;
         }
         final NBTTagCompound root = stack.getTagCompound();
@@ -262,6 +272,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         tickDown(root, PocketConstants.UI_BURST_SHOW_TICKS);
         PocketChannelDriver.onItemTick(stack, world, player, slot, selected);
         PocketDistillDriver.onItemTick(stack, world, player, slot, selected);
+        PocketMagnetDriver.onItemTick(stack, world, player);
     }
 
     /**
@@ -282,11 +293,19 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
 
     // ------------------------------------------------------------------ 状态位与冷却（R37/R16/R24）
 
-    /** {@code work} 位：短效通道剩余 tick 或 burst 显示窗剩余 tick 任一在跑（R37 的工作动画来源）。 */
+    /**
+     * {@code work} 位：短效通道剩余 tick 或 burst 显示窗剩余 tick 任一在跑（R37 的工作动画来源），
+     * <b>或</b>载体已固化通道持续化（★R95：CHANNEL_PERSIST 位图在场 = 工作态<b>常亮</b>——driver
+     * 在批边界把剩余批次回满、通道永不停，帧带跟着常亮）。只读腿：{@code hasUpgrade} 不建档
+     * （R53c 读路径纪律），无档口袋照旧走倒计时两键。
+     */
     public static boolean isWorkActive(ItemStack stack) {
         final NBTTagCompound root = stack == null ? null : stack.getTagCompound();
         if (root == null) {
             return false;
+        }
+        if (PocketUpgrades.hasUpgrade(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
+            return true;
         }
         return root.hasKey(PocketConstants.UI_WORK_TICKS) || root.hasKey(PocketConstants.UI_BURST_SHOW_TICKS);
     }
@@ -439,7 +458,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
 
     /**
      * tooltip 从 0 连续（{@code pocket-lang-keys.md} §1 的 7 行，R75 后为 10 行，R78 仍是 10 行；
-     * ★新增的规格读数一律走已有的 {@code %N$d} 槽位扩到 {@code %11$d}，不加新行号 ⇒ 不断号）。
+     * ★新增的规格读数一律走已有的 {@code %N$d} 槽位扩到 {@code %12$d}，不加新行号 ⇒ 不断号）。
+     * 连号行之外还有<b>一条追加行</b>（★R95 蒸馏加速的双口径行，见
+     * {@link #appendDistillFastLine}，追加在连号循环之后、不在连号中间插行）。
      * <p>
      * 消费端是 {@code equals(key)} 即 break 的循环（先例 {@code common/items/NekoCoin.java:28-34}），
      * <b>跳号会静默截断后面的行</b>，其中 {@code tooltip.5}/{@code tooltip.6} 是 R28（5 秒是节拍不是产量）
@@ -447,7 +468,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * <p>
      * ★<b>行里不写规格数字</b>（R75 的 lang 契约第 5 条）：格数、行列、流体<b>组数与 tank 总数</b>、
      * 单槽容量与<b>总容量</b>（R78②）、源质盘格数（R78②）、面板内背包格数（R78①）、蒸馏节拍
-     * 全部由 {@link #tooltipArgs()} 从常量填进 {@code %1$d…%11$d} 的<b>带位置下标</b>的占位。
+     * 全部由 {@link #tooltipArgs()} 从常量填进 {@code %1$d…%12$d} 的<b>带位置下标</b>的占位。
      * 用下标而不是裸 {@code %d} 的理由：所有行走同一个实参数组，裸 {@code %d} 会一律取第 1 个实参
      * ⇒ "每槽 16,000,000" 会被填成"135"，而且不报错。
      */
@@ -463,13 +484,35 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
                 EnumChatFormatting.LIGHT_PURPLE
                     + (template.indexOf('%') < 0 ? template : String.format(template, args)));
         }
+        appendDistillFastLine(tooltip, args);
     }
 
     /**
-     * tooltip 的规格读数（<b>顺序即 {@code %1$d…%11$d}</b>，与 lang 里的下标一一对应）。
+     * ★R95 蒸馏加速的「双口径」追加行：消费 {@code PocketDistillDriver#TOOLTIP_DISTILL_FAST_KEY}
+     * （{@code gtit.pocket.tooltip.distill_fast}）——动态文案由 lang 承担（S2b 落键），本侧只送实参；
+     * 可用的占位与连号行同一份实参数组（基档秒数 {@code %6$d}、加速档秒数 {@code %12$d}）。
+     * 追加在连号循环<b>之后</b>而不是往 {@code tooltip.N} 族里插行：连号族的消费端是
+     * {@code equals(key)} 即 break 的循环，插行 = 给所有人断号。键字面量住在
+     * {@code PocketDistillDriver}（R88① 门禁对白名单文件做 {@code "gtit.pocket.*"} 字面量的
+     * world 前缀粗粒度检查，tooltip 键放本文件会被误判成越权聊天键）。键未落（S2b lang 时序未到）
+     * 时 {@code translateToLocal} 原样返回键名 ⇒ 与连号循环同一个判据跳过，不把键名当文案展示。
+     */
+    private static void appendDistillFastLine(List tooltip, Object[] args) {
+        final String key = PocketDistillDriver.TOOLTIP_DISTILL_FAST_KEY;
+        final String template = StatCollector.translateToLocal(key);
+        if (template.equals(key)) {
+            return;
+        }
+        tooltip.add(
+            EnumChatFormatting.LIGHT_PURPLE + (template.indexOf('%') < 0 ? template : String.format(template, args)));
+    }
+
+    /**
+     * tooltip 的规格读数（<b>顺序即 {@code %1$d…%12$d}</b>，与 lang 里的下标一一对应）。
      * <p>
      * 全部取自常量与面板列类的几何单源，不在这里做任何算术以外的推导；
-     * 蒸馏秒数由 {@code TaumDistillRules.DISTILL_INTERVAL_TICKS} 换算（节拍权威只有那一处）。
+     * 蒸馏秒数的<b>双口径</b>由 {@code TaumDistillRules.distillIntervalTicks} 换算（节拍权威只有那一处：
+     * 基档 {@code %6$d}、★R95 加速档 {@code %12$d}）。
      * <p>
      * ★R78 新增的四项（组数 / tank 总数 / 流体总容量 / 源质格数 / 背包格数）与它们替代的旧写法
      * 同一条纪律：这些数字只允许出现在这里一次，lang 与 README 都只引用不重抄
@@ -485,7 +528,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             Integer.valueOf(PocketConstants.FLUID_COLUMN_COUNT),
             // %5$d 单槽容量 mB（★规格外自立项，见 PocketConstants#FLUID_BAR_CAPACITY_ML）
             Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
-            // %6$d 蒸馏一轮秒数（★tick→秒的换算走 PocketConstants 单源，不再内联 20）
+            // %6$d 蒸馏一轮秒数·基档（★tick→秒的换算走 PocketConstants 单源，不再内联 20）
             Integer.valueOf(PocketConstants.ticksToSecondsCeil(TaumDistillRules.DISTILL_INTERVAL_TICKS)),
             // %7$d 流体组数（R78②）
             Integer.valueOf(PocketConstants.FLUID_GROUP_COUNT),
@@ -496,6 +539,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             // %10$d 源质盘格数（R78②③：6×12 = 72，且 ≥ 实测 aspect 注册数）
             Integer.valueOf(PocketConstants.ESSENCE_DISPLAY_GRID),
             // %11$d 面板内玩家背包格数（R78①；★代价 = E4 包放大，见 PocketSlots 类注释）
-            Integer.valueOf(PocketConstants.PLAYER_BACKPACK_SLOTS) };
+            Integer.valueOf(PocketConstants.PLAYER_BACKPACK_SLOTS),
+            // %12$d 蒸馏一轮秒数·加速档（★R95：装 DISTILL_FAST 后 2.5 秒；与 %6$d 同一换算单源，
+            // 真值只住 TaumDistillRules.distillIntervalTicks 一处）
+            Integer.valueOf(PocketConstants.ticksToSecondsCeil(TaumDistillRules.distillIntervalTicks(true))) };
     }
 }

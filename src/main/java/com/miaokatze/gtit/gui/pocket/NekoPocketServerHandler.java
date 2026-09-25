@@ -28,6 +28,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -182,6 +184,8 @@ final class NekoPocketServerHandler {
      * <b>顺序是判据，不是风格</b>（R14）：点检（识别 → 冷却 → 余额）→ {@code tryDeduct} → 传输；
      * 任一点检不过就直接返回，<b>一分都不扣</b>。扣完之后传输全失败 ⇒ 同回执退款；
      * 部分失败不退（"搬走的东西已经搬走了"，退款等于白送一次）。
+     * ★R95 在三重点检<b>之前</b>还有一条持续化早退：载体已固化 CHANNEL_PERSIST ⇒ 直接回
+     * {@code gtit.pocket.channel.always_on}（通道由 driver 批边界续批，无需也不应再走扣费链）。
      * <p>
      * ⚠ 调用 {@code tryDeduct} <b>之前</b>必须断言 {@code cost > 0}：
      * {@code NekoWallet.tryDeduct} 的 {@code if (amount <= 0) return true;} 会让"零成本扣费"
@@ -195,6 +199,15 @@ final class NekoPocketServerHandler {
         final UUID uuid = panel.playerId();
         final EntityPlayer target = panel.player();
         if (uuid == null || target == null) {
+            return;
+        }
+        // ★R95 通道持续化：载体已固化 CHANNEL_PERSIST 位 ⇒ 通道批边界自动续批（见
+        // PocketChannelDriver 的回满腿），本按钮请求一律<b>早退</b>——放在识别/冷却/扣费三重点检
+        // <b>之前</b> ⇒ 一分不扣、一次冷却不占、一个识别查询不发；回执走面板粘性回执通道
+        // （putReceipt，R88 口袋域聊天零输出的同一裁定）告知"已在常开态"。客户端按钮禁用是
+        // S4 片 BottomBand 的职责，本处只做服务端腿（伪造包 / 旧客户端照样被挡）。
+        if (PocketUpgrades.hasUpgrade(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)) {
+            panel.putReceipt("gtit.pocket.channel.always_on", 0);
             return;
         }
         final PocketCellBindings bindings = panel.inventory()
