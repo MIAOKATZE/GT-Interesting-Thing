@@ -288,7 +288,13 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
      * 回落值住在 {@link PocketFilterConfig#resolveRawCap} 那条链上，不是本类自己写的第二处真相。
      */
     public int ghostCap() {
-        return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.ESSENCE, declaredCap, 0);
+        // ★R95 S5（STACK 位）：回落跟升级位走（256/4096，与源质盘每格上限同一把尺；
+        // 未绑定面板 ⇒ 未升级口径，与纯 JVM 用例同解）
+        return PocketFilterConfig.resolveRawCapStackAware(
+            PocketFilterConfig.Kind.ESSENCE,
+            declaredCap,
+            0,
+            owner != null && owner.storageStackUpgraded());
     }
 
     /** ★R91-⑤：本格 attr 的显示侧写入口（与 {@link #setDeclaredCap} 同一个应用点、同一条"同值即返回"纪律）。 */
@@ -402,8 +408,14 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
         if (!ghost || owner == null || cellIndex < 0 || !areAncestorsEnabled() || !Interactable.hasAltDown()) {
             return super.onMouseScroll(scrollDirection, amount);
         }
-        final int next = PocketGhostRequest
-            .nextCap(PocketFilterConfig.Kind.ESSENCE, declaredCap, 0, scrollDirection, Interactable.hasControlDown());
+        // ★R95 S5：天花板按升级位现算（256/4096）——"未设从天花板起走"与 ghostCap 的显示读数同源连续
+        final int next = PocketGhostRequest.nextCapEffective(
+            PocketFilterConfig.Kind.ESSENCE,
+            declaredCap,
+            PocketConstants.essenceCapPerTag(owner != null && owner.storageStackUpgraded()),
+            false,
+            scrollDirection,
+            Interactable.hasControlDown());
         if (!owner.requestGhost(cellIndex, PocketGhostRequest.capDirective(PocketFilterConfig.Kind.ESSENCE, next))) {
             return false;
         }

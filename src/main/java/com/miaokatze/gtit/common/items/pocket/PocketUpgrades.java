@@ -34,7 +34,17 @@ public final class PocketUpgrades {
      * @param type  要查询的升级；按位图位（= {@link PocketUpgradeType#ordinal()}）读
      */
     public static boolean hasUpgrade(ItemStack stack, PocketUpgradeType type) {
-        final NBTTagCompound root = stack == null ? null : stack.getTagCompound();
+        return hasUpgrade(stack == null ? null : stack.getTagCompound(), type);
+    }
+
+    /**
+     * ★R95 S5：按 <b>NBT 根</b>查升级位的重载 —— 双轨容量（16M/16G）与堆叠上限（64/1024）都要在
+     * "手里只有 NBTTagCompound" 的场合现读升级位（{@code PocketInventory#readFrom} 只面对化合物；
+     * 根实例是活的 ⇒ 会话期内 {@code install} 写进的位<b>下一次查询即生效</b>，与栈版同一条真相）。
+     * <p>
+     * ★栈版 {@link #hasUpgrade(ItemStack, PocketUpgradeType)} 薄委派到这里 ⇒ 位图判据只有一份。
+     */
+    public static boolean hasUpgrade(NBTTagCompound root, PocketUpgradeType type) {
         if (root == null || !root.hasKey(PocketConstants.UPGRADES_KEY)) {
             return false;
         }
@@ -57,6 +67,17 @@ public final class PocketUpgrades {
         if (root == null) {
             root = new NBTTagCompound();
             stack.setTagCompound(root);
+        }
+        install(root, type);
+    }
+
+    /**
+     * ★R95 S5：往 <b>NBT 根</b>固化升级的重载（栈版薄委派到这里 ⇒ 写入算式只有一份）。
+     * 给"手里只有化合物"的装配与用例面用（读侧的对应重载见 {@link #hasUpgrade(NBTTagCompound, PocketUpgradeType)}）。
+     */
+    public static void install(NBTTagCompound root, PocketUpgradeType type) {
+        if (root == null) {
+            return;
         }
         root.setByte(
             PocketConstants.UPGRADES_KEY,

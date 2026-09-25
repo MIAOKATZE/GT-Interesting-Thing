@@ -166,8 +166,11 @@ public class NekoPocketFluidSlot extends FluidSlot {
     }
 
     /**
-     * ★R83 C2：面板把本列声明的<b>原始</b>上限刷进显示侧（与 {@link #setGhost} 同一个应用点，
-     * 见 Panel 待办 P-3）。
+     * 本列声明当前<b>真正生效</b>的组上限（未调过 = {@code FLUID_BAR_CAPACITY_ML}）。
+     * ★R95 S5：显示与生效都改为 <b>min(声明档天花板, tank 容量)</b> 的"自然满量"读数——声明档天花板
+     * 已钉 {@code Integer.MAX_VALUE}（一批 ≤ 2.147G、多批灌满），但未升级条只有 16M ⇒ 显示
+     * {@code min(INT_MAX, 16M)} = 16M（与旧读数同字面）；升级条 = {@code min(INT_MAX, 16G)} = 16G
+     * （long 域，经 {@link #ghostCapL()} 出）。容量按 CAPACITY 位现读（面板探针）。
      */
     NekoPocketFluidSlot setDeclaredCap(int cap) {
         if (this.declaredCap == cap) {
@@ -178,9 +181,22 @@ public class NekoPocketFluidSlot extends FluidSlot {
         return this;
     }
 
-    /** 本列声明当前<b>真正生效</b>的组上限（未调过 = {@code FLUID_BAR_CAPACITY_ML}）。 */
-    public int ghostCap() {
-        return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.FLUID, declaredCap, 0);
+    /** 本列声明当前真正生效的组上限（<b>long</b>：升级条的自然满量 16G 不进 int）。 */
+    public long ghostCapL() {
+        final long naturalFull = owner == null ? PocketConstants.FLUID_BAR_CAPACITY_ML : owner.fluidTankCapacityNow();
+        final long ceiling = Math.min(PocketConstants.FILTER_CAP_CEILING_FLUID, naturalFull);
+        return declaredCap == PocketConstants.FILTER_CAP_UNSET ? ceiling : Math.min(declaredCap, ceiling);
+    }
+
+    /**
+     * ★R95 S5：本列"未调过"时滚轮起步的<b>有效天花板</b>（int 域——声明档本身是 int）：
+     * {@code min(声明档天花板 INT_MAX, tank 容量)}。未升级 = 16M（与显示读数连续，旧手感逐字不变）；
+     * 升级 = int 顶（16G 容量对 int 声明档的钳制）⇒ 首滚落在 int 顶 − 一档，属声明档 int 形状的
+     * 已知边界（见 {@code PocketConstants#FILTER_CAP_CEILING_FLUID} 的双口径注释）。
+     */
+    private int effectiveScrollCeiling() {
+        final long naturalFull = owner == null ? PocketConstants.FLUID_BAR_CAPACITY_ML : owner.fluidTankCapacityNow();
+        return (int) Math.min(PocketConstants.FILTER_CAP_CEILING_FLUID, naturalFull);
     }
 
     /**
@@ -224,7 +240,8 @@ public class NekoPocketFluidSlot extends FluidSlot {
      * ⇒ alt+左键的记忆格不再唤出橙字；NEI 拖入建档（attr=NONE）与中键绑定照旧显示。
      */
     private String capReadoutText() {
-        return PocketGhostRequest.capReadoutVisible(ghost, ghostAttr) ? PocketGhostRequest.capReadout(ghostCap()) : "";
+        // ★R95 S5：long 重载——升级条的自然满量 16G 只在 long 梯子里画得对（16G → "16G"）
+        return PocketGhostRequest.capReadoutVisible(ghost, ghostAttr) ? PocketGhostRequest.capReadout(ghostCapL()) : "";
     }
 
     // ------------------------------------------------------------------ NEI 拖入 / 右键解绑
@@ -323,8 +340,15 @@ public class NekoPocketFluidSlot extends FluidSlot {
         if (!ghost || owner == null || slotIndex < 0 || !areAncestorsEnabled() || !Interactable.hasAltDown()) {
             return false;
         }
-        final int next = PocketGhostRequest
-            .nextCap(PocketFilterConfig.Kind.FLUID, declaredCap, 0, scrollDirection, Interactable.hasControlDown());
+        // ★R95 S5：滚轮走升级位感知的算式——天花板 = min(声明档天花板, tank 容量)（未升级 16M ⇒
+        // 与显示的默认读数连续，旧手感逐字不变）；步进跟容量走（未升级 160K / 升级 160M）。
+        final int next = PocketGhostRequest.nextCapEffective(
+            PocketFilterConfig.Kind.FLUID,
+            declaredCap,
+            effectiveScrollCeiling(),
+            owner != null && owner.capacityUpgradeActiveNow(),
+            scrollDirection,
+            Interactable.hasControlDown());
         if (!owner.requestGhost(slotIndex, PocketGhostRequest.capDirective(PocketFilterConfig.Kind.FLUID, next))) {
             return false;
         }
@@ -480,11 +504,16 @@ public class NekoPocketFluidSlot extends FluidSlot {
         }
     }
 
-    /** 声明态下条子空着时不画数字（那个 mB 数是样本的假数，画出来就是误导）。 */
+    /**
+     * ★R95 S5：<b>原生数量文字压掉</b>——库那份画的是 int 头值（真值超 int 顶后头饱和在
+     * {@code Integer.MAX_VALUE}，画出来就是错的），且单位是"桶"口径；真值的读数改由
+     * {@link #drawTruthAmountText()} 自绘（{@code PocketGhostRequest#capReadout(long)} 的 K/M/G 梯子，
+     * 16,000,000,000 → "16G"）。恒 {@code false} ⇒ 库的 {@code drawOverlay} 一条像素都不画，
+     * ghost 样本那半条旧判据也一并由自绘的"有真流体才画"承接。
+     */
     @Override
     protected boolean displayAmountText() {
-        final FluidStack real = super.getFluidStack();
-        return super.displayAmountText() && (real != null && real.amount > 0);
+        return false;
     }
 
     @Override
@@ -496,6 +525,8 @@ public class NekoPocketFluidSlot extends FluidSlot {
         if (PocketGhostRequest.drawsGhostMask(ghost, ghostAttr) && (real == null || real.amount <= 0)) {
             GuiDraw.drawRect(1, 1, getArea().w() - 2, getArea().h() - 2, GHOST_MASK);
         }
+        // ★R95 S5：真值读数自绘（原生数量文字已被 displayAmountText 压掉），与右上橙 cap 互不相干
+        drawTruthAmountText();
         drawCapReadout();
         // ★R91-⑤：左上蓝 L / 左下绿 P（几何与色单源在 PocketGhostRequest，★空文本不画）
         drawBadge(
@@ -506,6 +537,32 @@ public class NekoPocketFluidSlot extends FluidSlot {
             PocketGhostRequest.uploadBlockBadgeText(uploadBlocked),
             PocketGhostRequest.uploadBlockBadgeTop(getArea().h()),
             PocketGhostRequest.uploadBlockBadgeColor());
+    }
+
+    /**
+     * ★R95 S5：本条 <b>long 真值</b>的自绘读数（右下角，顶替被压掉的库数量文字）。
+     * <p>
+     * 真值从面板的 {@code LongSyncValue} 镜像现读（每 tank 一根，服务端权威），缩写走
+     * {@link PocketGhostRequest#capReadout(long)}（16G 档唯一能画对的那条梯子）；
+     * 落点/对齐用库自己的 {@code drawScaledAlignedTextInBox}（BottomRight，与被顶替的那份同几何）。
+     * 条里<b>没有真流体</b>（含 ghost 样本态）一条不画——样本是"要拉满的目标"，量是假数。
+     */
+    private void drawTruthAmountText() {
+        if (owner == null) {
+            return;
+        }
+        final FluidStack real = super.getFluidStack();
+        final long truth = owner.tankAmountTruth(slotIndex);
+        if (real == null || real.amount <= 0 || truth <= 0L) {
+            return;
+        }
+        GuiDraw.drawScaledAlignedTextInBox(
+            PocketGhostRequest.capReadout(truth),
+            0,
+            0,
+            getArea().w(),
+            getArea().h(),
+            com.cleanroommc.modularui.utils.Alignment.BottomRight);
     }
 
     /** ★R91-⑤：一个角标的绘制体（左对齐；★空文本 = 一条像素都不画）。 */

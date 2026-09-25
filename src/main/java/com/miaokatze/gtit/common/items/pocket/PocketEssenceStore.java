@@ -110,6 +110,25 @@ public final class PocketEssenceStore {
         this.declaredTagProbe = probe;
     }
 
+    /**
+     * ★R95 S5：<b>每格上限的动态探针</b>（STACK 位在 ⇒ 4096，否则 256；默认基值 256）。
+     * 单源注入点在 {@code PocketInventory#syncEssenceCapProbe}（面板/读档两条装配路都从那里走），
+     * 本类不自读升级位——它是纯数据件，与位图的距离由持有方跨越。
+     * 探针给非正值时按基值收口（伪造注入不放大上限）。
+     */
+    private java.util.function.IntSupplier capPerTagProbe = () -> PocketConstants.ESSENCE_CAP_PER_TAG;
+
+    /** ★R95 S5：注入动态每格上限（查询式；{@code null} = 回落基值 256）。 */
+    public void setCapPerTag(java.util.function.IntSupplier probe) {
+        this.capPerTagProbe = probe == null ? () -> PocketConstants.ESSENCE_CAP_PER_TAG : probe;
+    }
+
+    /** 当前生效的每格上限（唯一读点：下面所有"单格上限"执法处都经它，不再直读常量）。 */
+    private int capPerTag() {
+        final int cap = capPerTagProbe.getAsInt();
+        return cap <= 0 ? PocketConstants.ESSENCE_CAP_PER_TAG : cap;
+    }
+
     /** 该 tag 是否处于声明保格之下（无谓词 = 恒 false = 与 R86 逐字一致）。 */
     private boolean isDeclared(String tag) {
         return declaredTagProbe != null && tag != null && declaredTagProbe.test(tag);
@@ -127,7 +146,20 @@ public final class PocketEssenceStore {
      * 单参 {@link #readFrom(NBTTagCompound)} = 本重载传 {@code null}，行为与 R86 逐字一致。
      */
     public static PocketEssenceStore readFrom(NBTTagCompound root, Predicate<String> declaredTags) {
+        return readFrom(root, declaredTags, null);
+    }
+
+    /**
+     * ★R95 S5 重载：带<b>动态每格上限</b>的读档——读档钳制（外来/手改档的截断）必须按"这一只口袋
+     * 今天的上限"做：STACK 位已固化的口袋按 4096 收，未升级仍按 256（老档行为逐字不变）。
+     * {@code capPerTag == null} = 基值，与两参形态逐字同解。
+     */
+    public static PocketEssenceStore readFrom(NBTTagCompound root, Predicate<String> declaredTags,
+        java.util.function.IntSupplier capPerTag) {
         final PocketEssenceStore store = new PocketEssenceStore();
+        if (capPerTag != null) {
+            store.setCapPerTag(capPerTag);
+        }
         if (root == null) {
             return store;
         }
@@ -143,7 +175,7 @@ public final class PocketEssenceStore {
             }
             final int amount = entry.getShort(PocketConstants.ASPECT_AMOUNT);
             if (amount > 0) {
-                store.amounts.put(tag, Math.min(amount, PocketConstants.ESSENCE_CAP_PER_TAG));
+                store.amounts.put(tag, Math.min(amount, store.capPerTag()));
             }
         }
         store.readCellOrder(root);
@@ -352,12 +384,12 @@ public final class PocketEssenceStore {
 
     /** 该 tag 还能收多少点。 */
     public int roomFor(String tag) {
-        return PocketConstants.ESSENCE_CAP_PER_TAG - get(tag);
+        return capPerTag() - get(tag);
     }
 
     /** 该 tag 是否已到 {@link PocketConstants#ESSENCE_CAP_PER_TAG} 上限。 */
     public boolean isFull(String tag) {
-        return get(tag) >= PocketConstants.ESSENCE_CAP_PER_TAG;
+        return get(tag) >= capPerTag();
     }
 
     /**
@@ -373,7 +405,7 @@ public final class PocketEssenceStore {
             return false;
         }
         for (int amount : amounts.values()) {
-            if (amount < PocketConstants.ESSENCE_CAP_PER_TAG) {
+            if (amount < capPerTag()) {
                 return false;
             }
         }
@@ -416,7 +448,7 @@ public final class PocketEssenceStore {
                 continue;
             }
             final int promised = reserved == null ? 0 : intOf(reserved.get(tag));
-            if (get(tag) + promised + amount > PocketConstants.ESSENCE_CAP_PER_TAG) {
+            if (get(tag) + promised + amount > capPerTag()) {
                 return false;
             }
         }
@@ -439,7 +471,7 @@ public final class PocketEssenceStore {
             return false;
         }
         for (final Integer amount : candidates.values()) {
-            if (amount != null && amount > PocketConstants.ESSENCE_CAP_PER_TAG) {
+            if (amount != null && amount > capPerTag()) {
                 return true;
             }
         }
@@ -483,7 +515,7 @@ public final class PocketEssenceStore {
             return 0;
         }
         final int current = get(tag);
-        final int added = Math.min(amount, PocketConstants.ESSENCE_CAP_PER_TAG - current);
+        final int added = Math.min(amount, capPerTag() - current);
         if (added <= 0) {
             return 0;
         }

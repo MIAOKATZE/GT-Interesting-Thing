@@ -978,6 +978,22 @@ public final class PocketFilterConfig {
     }
 
     /**
+     * ★R95 S5：{@link #resolveRawCap(Kind, int, int)} 的 <b>STACK 位感知</b>形态——"没有 Filter 在手"
+     * 的格件（三类虚像只持原始值与区域）在升级位下的回落。分派与 {@link #resolveCapStackAware(Filter, int, boolean)}
+     * 同一条：ESSENCE 跟 STACK 位走（256/4096），ITEM 用调用方喂的升级档 {@code itemMaxStackSize}，
+     * FLUID 仍是声明档天花板（int 顶；格件侧的"自然满量"显示由调用方再与 tank 容量取小）。
+     */
+    public static int resolveRawCapStackAware(Kind kind, int rawCap, int itemMaxStackSize, boolean stackUpgraded) {
+        if (kind == null) {
+            return PocketConstants.FILTER_CAP_UNSET;
+        }
+        return rawCap == PocketConstants.FILTER_CAP_UNSET
+            ? (kind == Kind.ESSENCE ? PocketConstants.essenceCapPerTag(stackUpgraded)
+                : defaultCap(kind, itemMaxStackSize))
+            : rawCap;
+    }
+
+    /**
      * "没人调过"时这一类的现全局量（★与 {@link #resolveCap} 同一条判据的另一半，只在未设时被读到）。
      * <p>
      * 物品支的兜底：{@code itemMaxStackSize <= 0}（纯 JVM 桩件、解不出的物品）时给
@@ -992,5 +1008,27 @@ public final class PocketFilterConfig {
             case FLUID -> PocketConstants.FILTER_CAP_CEILING_FLUID;
             case ESSENCE -> PocketConstants.FILTER_CAP_CEILING_ESSENCE;
         };
+    }
+
+    /**
+     * ★R95 S5：<b>STACK 升级位感知</b>的有效上限（已设 ⇒ 原值；未设 ⇒ 按升级档回落）。
+     * <ul>
+     * <li>{@link Kind#ESSENCE}：回落跟 STACK 位走（256 → <b>4096</b>，用户原话"所有物品和源质
+     * 最大单格堆叠数*16"一位管两者）——静态 {@link #defaultCap} 读不到升级位，升级侧一律走本方法；</li>
+     * <li>{@link Kind#ITEM}：回落 = 调用方喂进来的 {@code itemMaxStackSize}（★调用侧应喂
+     * {@code PocketInventory#effectiveStorageLimit} 的升级档值，本方法不重算）；</li>
+     * <li>{@link Kind#FLUID}：回落 = 声明档天花板 {@code INT_MAX}（消费侧 room 收口，与升级位无关）。</li>
+     * </ul>
+     * 消费点：{@code PocketEssenceChannelOps#extractEssence}（通道批量）与源质格件的显示回落。
+     */
+    public static int resolveCapStackAware(Filter filter, int itemMaxStackSize, boolean stackUpgraded) {
+        if (filter == null) {
+            return PocketConstants.FILTER_CAP_UNSET;
+        }
+        if (filter.cap() != PocketConstants.FILTER_CAP_UNSET) {
+            return filter.cap();
+        }
+        return filter.kind() == Kind.ESSENCE ? PocketConstants.essenceCapPerTag(stackUpgraded)
+            : defaultCap(filter.kind(), itemMaxStackSize);
     }
 }

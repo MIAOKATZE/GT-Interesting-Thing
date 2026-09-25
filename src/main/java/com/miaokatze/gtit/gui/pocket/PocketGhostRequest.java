@@ -889,6 +889,16 @@ public final class PocketGhostRequest {
     }
 
     /**
+     * ★R95 S5：long 域的同一把区间收口——天花板钉 {@code Integer.MAX_VALUE} 后，{@code int 顶 + 步进}
+     * 会溢出成负数再被 {@link #clampCap(int, int)} 抬回下界 1（"往上滚 = 1"的坏读数）。所有
+     * "从天花板起走"的算式一律在 long 里加完再收口。
+     */
+    private static int clampCapLong(long value, int ceiling) {
+        final long effectiveCeiling = Math.max(PocketConstants.FILTER_CAP_MIN, ceiling);
+        return (int) Math.min(Math.max((long) PocketConstants.FILTER_CAP_MIN, value), effectiveCeiling);
+    }
+
+    /**
      * ★<b>步进的唯一落点</b>（判据 4 的"分流点"）：从当前值走 {@code steps} 格，返回收口后的新值。
      * <p>
      * 未设过的声明（{@link PocketConstants#FILTER_CAP_UNSET}）从"现全局量"起步 ⇒ 第一次往下滚就是
@@ -911,7 +921,8 @@ public final class PocketGhostRequest {
             return PocketConstants.FILTER_CAP_UNSET;
         }
         final int from = current == PocketConstants.FILTER_CAP_UNSET ? ceiling : current;
-        return clampCap(from + steps * stepOf(kind), ceiling);
+        // ★R95 S5：long 域加法再收口（天花板 = int 顶时 int 加法会溢出成负，见 clampCapLong 的 javadoc）
+        return clampCapLong((long) from + (long) steps * stepOf(kind), ceiling);
     }
 
     /**
@@ -943,6 +954,26 @@ public final class PocketGhostRequest {
             currentRawCap,
             PocketFilterConfig.defaultCap(kind, itemMaxStackSize),
             capSteps(scrollDirection, fast));
+    }
+
+    /**
+     * ★R95 S5：<b>升级位感知</b>的一次到位算式——天花板与（流体支的）步进都由调用方按升级档现算。
+     * <p>
+     * 为什么不复用 {@link #nextCap}：它的天花板取自 {@code defaultCap}（纯静态读不到升级位），而
+     * 流体格件要的是 {@code min(声明档天花板, tank 容量)}（未升级 16M ⇒ 与显示的默认读数连续）、
+     * 源质格件要的是升级后的每格上限（4096）；流体步进在升级后也要跟容量走（16G/100 = 160M）。
+     * 三个"现算"都只能发生在持有升级位的格件一侧 ⇒ 本方法只保留<b>区间收口 + 方向/倍率</b>这份公共算式。
+     *
+     * @param effectiveCeiling 这一格的<b>现算天花板</b>（int 域：声明档本身是 int；16G 容量在调用侧
+     *                         先与 {@code Integer.MAX_VALUE} 取小）
+     */
+    public static int nextCapEffective(PocketFilterConfig.Kind kind, int currentRawCap, int effectiveCeiling,
+        boolean capacityUpgraded, UpOrDown scrollDirection, boolean fast) {
+        final int from = currentRawCap == PocketConstants.FILTER_CAP_UNSET ? effectiveCeiling : currentRawCap;
+        final int step = kind == PocketFilterConfig.Kind.FLUID ? PocketConstants.filterCapStepFluid(capacityUpgraded)
+            : stepOf(kind);
+        // ★R95 S5：long 域加法再收口（int 顶 + 步进的溢出形状与 nudgedCap 同一条）
+        return clampCapLong((long) from + (long) capSteps(scrollDirection, fast) * step, effectiveCeiling);
     }
 
     // ------------------------------------------------------------------ ★R83 C2：读数的缩写与右上角落点（三类共用一份）
@@ -1087,13 +1118,44 @@ public final class PocketGhostRequest {
         return Integer.toString(cap);
     }
 
+    /**
+     * ★R95 S5：<b>long 重载</b>——16G 档（16,000,000,000 mB）不进 int，梯子同一条（K/M/G，G = 10^9）：
+     * {@code 16,000,000,000 → "16G"}、{@code 160,000,000 → "160M"}。int 实参自动加宽到本重载，
+     * 旧调用点零改动；缩写口径与 {@link #capReadout(int)} 一字不差（同一份 scaledSuffix 的 long 算式）。
+     */
+    public static String capReadout(long cap) {
+        if (cap < 0L) {
+            return "";
+        }
+        if (cap >= CAP_READOUT_BILLION_L) {
+            return scaledSuffix(cap, CAP_READOUT_BILLION_L, "G");
+        }
+        if (cap >= CAP_READOUT_MILLION_L) {
+            return scaledSuffix(cap, CAP_READOUT_MILLION_L, "M");
+        }
+        if (cap >= CAP_READOUT_THOUSAND) {
+            return scaledSuffix(cap, CAP_READOUT_THOUSAND, "K");
+        }
+        return Long.toString(cap);
+    }
+
     /** 缩写阶梯的三档（★"1G" 那档常态用不到 —— 上界最大就是流体的 16M；留着是为了伪造包把值推到天上去时右上角仍然只有 4 个字符）。 */
     private static final int CAP_READOUT_THOUSAND = 1_000;
     private static final int CAP_READOUT_MILLION = 1_000_000;
     private static final int CAP_READOUT_BILLION = 1_000_000_000;
+    /** ★R95 S5：long 梯子的 M/G 两档（K 档与 int 版同一个 int 常量，long 比较自动加宽）。 */
+    private static final long CAP_READOUT_MILLION_L = 1_000_000L;
+    private static final long CAP_READOUT_BILLION_L = 1_000_000_000L;
 
     /** 一档缩写的实际产出：能整除到一位小数就带一位，否则只取整数部分（★向下取整，不虚报"调大了"）。 */
     private static String scaledSuffix(int value, int divisor, String suffix) {
+        final long tenths = value / (divisor / 10);
+        final String head = tenths % 10 == 0 ? Long.toString(tenths / 10) : (tenths / 10) + "." + (tenths % 10);
+        return head + suffix;
+    }
+
+    /** ★R95 S5：{@link #scaledSuffix(int, int, String)} 的 long 域版（16G 档的 tenths = 值/1e8 ≤ 160，远不溢出）。 */
+    private static String scaledSuffix(long value, long divisor, String suffix) {
         final long tenths = value / (divisor / 10);
         final String head = tenths % 10 == 0 ? Long.toString(tenths / 10) : (tenths / 10) + "." + (tenths % 10);
         return head + suffix;

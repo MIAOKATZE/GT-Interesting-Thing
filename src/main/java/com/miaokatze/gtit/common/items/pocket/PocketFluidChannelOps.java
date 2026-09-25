@@ -87,16 +87,18 @@ final class PocketFluidChannelOps {
             .injectItems(request, Actionable.MODULATE, PocketAeChannelOps.actionSource());
         final long leftoverSize = leftover == null ? 0L : leftover.getStackSize();
         final PocketReceipt receipt = PocketReceipt.classify(true, writable, acceptable, requested, leftoverSize);
-        final int moved = (int) Math.max(0L, requested - leftoverSize);
+        // ★R95 S5：moved 留在 long 域（requested ≤ 头值 ≤ int 顶 ⇒ Outcome 的 int 收口无损）；
+        // 扣 tank 走 long 原语（真值域），注回仍按 AE2 的 FluidStack 探针造（int 种子 + setStackSize）。
+        final long moved = Math.max(0L, requested - leftoverSize);
         if (moved > 0 && ops.session()
-            .drainOwnTank(source.slot, moved) < moved) {
-            final IAEFluidStack back = AEFluidStack.create(new FluidStack(now.getFluid(), moved));
+            .drainOwnTankL(source.slot, moved) < moved) {
+            final IAEFluidStack back = AEFluidStack.create(new FluidStack(now.getFluid(), (int) moved));
             if (back != null) {
                 handler.injectItems(back, Actionable.MODULATE, PocketAeChannelOps.actionSource());
             }
             return new PocketChannelOps.Outcome(PocketReceipt.NO_ACCESS, 0);
         }
-        return new PocketChannelOps.Outcome(receipt, moved);
+        return new PocketChannelOps.Outcome(receipt, (int) moved);
     }
 
     /**
@@ -126,27 +128,31 @@ final class PocketFluidChannelOps {
         }
         // ★落点 = 本条声明自己那一个 tank（R75①：ghost 的 slotIndex 就是 tank 号；R78② 后共 18 个 tank 各拉各的）
         final int tank = filter.slotIndex();
-        final int room = ops.session() == null ? 0
+        // ★R95 S5：余量/请求/成交全程 long（16G 域；AE2 的 IAEFluidStack 栈大小原生就是 long）
+        final long room = ops.session() == null ? 0L
             : ops.session()
-                .fluidBarRoom(tank, new FluidStack(fluid, 1));
-        if (room <= 0) {
+                .fluidBarRoomL(tank, new FluidStack(fluid, 1));
+        if (room <= 0L) {
             return new PocketChannelOps.Outcome(
                 ops.session() == null ? PocketReceipt.NO_CHANNEL : PocketReceipt.TARGET_FULL,
                 0);
         }
-        final int request = fluidRequestFor(room, count);
-        final IAEFluidStack probe = AEFluidStack.create(new FluidStack(fluid, request));
+        final long request = fluidRequestFor(room, count);
+        final IAEFluidStack probe = AEFluidStack
+            .create(new FluidStack(fluid, (int) Math.min(request, Integer.MAX_VALUE)));
         if (probe == null) {
             return new PocketChannelOps.Outcome(PocketReceipt.LOST, 0);
         }
         ops.rememberPrototype(filter.key(), probe);
+        probe.setStackSize(request);
         final IAEFluidStack simulated = (IAEFluidStack) handler
             .extractItems(probe, Actionable.SIMULATE, PocketAeChannelOps.actionSource());
         final long available = simulated == null ? 0L : simulated.getStackSize();
         if (available <= 0L) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
-        final int want = fluidRequestFor((int) available, Math.min(room, PocketFilterConfig.resolveCap(filter, 0)));
+        // ★声明档是 int（FILTER_CAP_CEILING_FLUID = INT_MAX）⇒ want ≤ int 顶；room/cap 谁小听谁的
+        final long want = fluidRequestFor(available, Math.min(room, PocketFilterConfig.resolveCap(filter, 0)));
         probe.setStackSize(want);
         final IAEFluidStack taken = (IAEFluidStack) handler
             .extractItems(probe, Actionable.MODULATE, PocketAeChannelOps.actionSource());
@@ -154,17 +160,21 @@ final class PocketFluidChannelOps {
         if (takenAmount <= 0L) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }
-        final int moved = ops.session()
-            .depositFluid(tank, new FluidStack(fluid, (int) takenAmount));
-        final int fallback = fluidFallback(takenAmount, moved);
-        if (fallback > 0) {
+        final long moved = ops.session()
+            .depositFluidL(tank, fluid, takenAmount);
+        final long fallback = fluidFallback(takenAmount, moved);
+        if (fallback > 0L) {
             // 落点在抽取瞬间又变小了：把差额原路注回，绝不让流体凭空消失
-            handler.injectItems(
-                AEFluidStack.create(new FluidStack(fluid, fallback)),
-                Actionable.MODULATE,
-                PocketAeChannelOps.actionSource());
+            final IAEFluidStack back = AEFluidStack
+                .create(new FluidStack(fluid, (int) Math.min(fallback, Integer.MAX_VALUE)));
+            if (back != null) {
+                back.setStackSize(fallback);
+                handler.injectItems(back, Actionable.MODULATE, PocketAeChannelOps.actionSource());
+            }
         }
-        return new PocketChannelOps.Outcome(moved >= takenAmount ? PocketReceipt.OK : PocketReceipt.PARTIAL, moved);
+        return new PocketChannelOps.Outcome(
+            moved >= takenAmount ? PocketReceipt.OK : PocketReceipt.PARTIAL,
+            (int) moved);
     }
 
     /**
@@ -173,23 +183,24 @@ final class PocketFluidChannelOps {
      * 拉取模式的配额是 {@link PocketConstants#REFILL_AMOUNT_PER_FILTER_UNBOUNDED}（= 不设限），
      * 所以实际值恒等于落点空间 —— 这条算式是"先问落点再抽"的实现，写错一次就会超发；
      * 单独成函数是为了让零依赖套件能直接钉住它（AE2 handler 与 Forge 流体对象在纯 JVM 里都拿不到）。
+     * ★R95 S5：参数与返回全程 <b>long</b>（16G 域；调用方的 int 实参自动加宽，行为对老入参逐字不变）。
      */
-    static int fluidRequestFor(int room, int quota) {
-        if (room <= 0 || quota <= 0) {
-            return 0;
+    static long fluidRequestFor(long room, long quota) {
+        if (room <= 0L || quota <= 0L) {
+            return 0L;
         }
         return Math.min(room, quota);
     }
 
     /**
      * 流体支的退回量：抽出来却没能落进条子的部分（必须原路注回元件）。
-     * 负数与零一律返回 0（"全部落下"是正常路径，不该触发任何回滚）。
+     * 负数与零一律返回 0（"全部落下"是正常路径，不该触发任何回滚）。★R95 S5：long 域。
      */
-    static int fluidFallback(long takenAmount, int moved) {
+    static long fluidFallback(long takenAmount, long moved) {
         if (takenAmount <= 0L) {
-            return 0;
+            return 0L;
         }
-        final long left = takenAmount - Math.max(0, moved);
-        return left <= 0L ? 0 : (int) Math.min(left, Integer.MAX_VALUE);
+        final long left = takenAmount - Math.max(0L, moved);
+        return left <= 0L ? 0L : left;
     }
 }

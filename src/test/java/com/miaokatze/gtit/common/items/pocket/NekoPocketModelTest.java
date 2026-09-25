@@ -134,6 +134,9 @@ public class NekoPocketModelTest {
             "inject_phial_stack_over_cap_fits_down_carrier_by_carrier",
             NekoPocketModelTest::injectPhialStackFitsDownCarrierByCarrier);
         cases.put("extract_fluid_branch_moves_fluid", NekoPocketModelTest::extractFluidBranchMovesFluid);
+        // ★R95 S5：16G 双轨计数（long 真值 + int 头不变式）、AmountL 双写与旧档回退、
+        // STACK 位两把尺（存储格上限/源质每格上限）、K/M/G long 梯子
+        cases.put("fluid_16g_dual_track_and_upgrade_scales", NekoPocketModelTest::fluid16gDualTrackAndUpgradeScales);
         // ★R88 载体改判：用例名里的"crystal（晶化源质）"已退役 ⇒ 三条重挂并改名（旧名见各方法 javadoc）
         cases.put("extract_essence_branch_yields_phials", NekoPocketModelTest::extractEssenceBranchYieldsPhials);
         // ★R88 自立口径 C1（整瓶向下取整 / 余数留盘）与"下传落点是源质盘不是物品栏"
@@ -3018,31 +3021,55 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(0, PocketInventory.barRoom(0, 0, true), "容量非正 ⇒ 0（不出现负空间）");
 
         // ②抽取前的钳制：拉取配额是"不设限"，实际请求量必须恰好等于落点空间
+        // ★R95 S5：fluidRequestFor 已 long 化（16G 域）⇒ 断言按 Long 装箱（int 实参自动加宽）
         SimpleAssert.eq(
-            capacity,
-            PocketFluidChannelOps.fluidRequestFor(capacity, PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED),
+            Long.valueOf(capacity),
+            Long.valueOf(
+                PocketFluidChannelOps.fluidRequestFor(capacity, PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED)),
             "先问落点再抽：请求量 = 落点空间");
-        SimpleAssert.eq(500, PocketFluidChannelOps.fluidRequestFor(500, 800), "有配额时取较小值");
-        SimpleAssert.eq(0, PocketFluidChannelOps.fluidRequestFor(0, 800), "没有空间 ⇒ 一个 mB 都不抽");
-        SimpleAssert.eq(0, PocketFluidChannelOps.fluidRequestFor(1_000, 0), "配额为 0 ⇒ 不抽");
-        SimpleAssert.eq(0, PocketFluidChannelOps.fluidRequestFor(-5, 800), "负空间（外来/异常入参）⇒ 0，不得变成'抽走 |room|'");
+        SimpleAssert.eq(Long.valueOf(500), Long.valueOf(PocketFluidChannelOps.fluidRequestFor(500, 800)), "有配额时取较小值");
+        SimpleAssert
+            .eq(Long.valueOf(0), Long.valueOf(PocketFluidChannelOps.fluidRequestFor(0, 800)), "没有空间 ⇒ 一个 mB 都不抽");
+        SimpleAssert.eq(Long.valueOf(0), Long.valueOf(PocketFluidChannelOps.fluidRequestFor(1_000, 0)), "配额为 0 ⇒ 不抽");
+        SimpleAssert.eq(
+            Long.valueOf(0),
+            Long.valueOf(PocketFluidChannelOps.fluidRequestFor(-5, 800)),
+            "负空间（外来/异常入参）⇒ 0，不得变成'抽走 |room|'");
+        SimpleAssert.eq(
+            Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML),
+            Long.valueOf(
+                PocketFluidChannelOps.fluidRequestFor(
+                    PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML,
+                    PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML + 5L)),
+            "★R95 S5：16G 域整条可收（long 钳制不因 int 顶截断；quota 也给 long）");
+        SimpleAssert.eq(
+            Long.valueOf(PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED),
+            Long.valueOf(
+                PocketFluidChannelOps.fluidRequestFor(
+                    PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML,
+                    PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED)),
+            "★R95 S5：int 配额（不设限 = INT_MAX）在 16G 余量面前成为收口侧 ⇒ 一批 ≤ 2.147G、多批灌满");
 
         // ③抽出后落不进的部分必须原路注回元件（这是流体支唯一会静默吞流体的地方）
-        SimpleAssert.eq(0, PocketFluidChannelOps.fluidFallback(500L, 500), "全部落下 ⇒ 无需退回");
-        SimpleAssert.eq(200, PocketFluidChannelOps.fluidFallback(500L, 300), "落进 300 ⇒ 退回 200");
-        SimpleAssert.eq(500, PocketFluidChannelOps.fluidFallback(500L, 0), "一格都没落 ⇒ 整份退回");
-        SimpleAssert.eq(0, PocketFluidChannelOps.fluidFallback(0L, 0), "什么都没抽 ⇒ 无退回");
-        SimpleAssert.eq(0, PocketFluidChannelOps.fluidFallback(-1L, 0), "异常入参 ⇒ 0（不造出负退回量）");
-        SimpleAssert.eq(3, PocketFluidChannelOps.fluidFallback(10L, 7), "差额按整数算，不吞零头");
+        // ★R95 S5：moved 也 long 化 ⇒ 断言按 Long 装箱
+        SimpleAssert.eq(Long.valueOf(0), Long.valueOf(PocketFluidChannelOps.fluidFallback(500L, 500)), "全部落下 ⇒ 无需退回");
+        SimpleAssert
+            .eq(Long.valueOf(200), Long.valueOf(PocketFluidChannelOps.fluidFallback(500L, 300)), "落进 300 ⇒ 退回 200");
+        SimpleAssert.eq(Long.valueOf(500), Long.valueOf(PocketFluidChannelOps.fluidFallback(500L, 0)), "一格都没落 ⇒ 整份退回");
+        SimpleAssert.eq(Long.valueOf(0), Long.valueOf(PocketFluidChannelOps.fluidFallback(0L, 0)), "什么都没抽 ⇒ 无退回");
+        SimpleAssert
+            .eq(Long.valueOf(0), Long.valueOf(PocketFluidChannelOps.fluidFallback(-1L, 0)), "异常入参 ⇒ 0（不造出负退回量）");
+        SimpleAssert.eq(Long.valueOf(3), Long.valueOf(PocketFluidChannelOps.fluidFallback(10L, 7)), "差额按整数算，不吞零头");
 
         // ④三步串起来：剩余空间越小 ⇒ 请求越小 ⇒ 只要 moved<=request 就不可能吞件
         for (int room = 0; room <= 2_000; room += 250) {
-            final int request = PocketFluidChannelOps
+            final long request = PocketFluidChannelOps
                 .fluidRequestFor(room, PocketConstants.REFILL_AMOUNT_PER_FILTER_UNBOUNDED);
             SimpleAssert.that(request <= room, "请求量不得超过落点空间（room=" + room + "）");
-            final int moved = request / 2;
-            final int back = PocketFluidChannelOps.fluidFallback(request, moved);
-            SimpleAssert.eq(request, moved + back, "落下的 + 退回的 必须恰好等于抽出的（room=" + room + "）");
+            final long moved = request / 2;
+            final long back = PocketFluidChannelOps.fluidFallback(request, moved);
+            SimpleAssert
+                .eq(Long.valueOf(request), Long.valueOf(moved + back), "落下的 + 退回的 必须恰好等于抽出的（room=" + room + "）");
         }
 
         // ⑤流体条内容的落档形状（关屏后必须还在；读写走 FluidStack 自身，不在此构造流体实例）
@@ -3051,6 +3078,132 @@ public class NekoPocketModelTest {
             .writeTo(empty);
         SimpleAssert
             .eq(Boolean.FALSE, empty.hasKey(PocketConstants.FLUID_BAR), "空条不落档（与 ITEM_CONTENTS 等同口径：空区一律 removeTag）");
+    }
+
+    /**
+     * ★R95 S5 的核心面：16G 双轨计数 + NBT 双写/回退 + STACK 位两把尺 + long 缩写梯子。
+     * <p>
+     * 半边划分照 {@link #extractFluidBranchMovesFluid()} 的口径：纯 JVM 算式恒验；
+     * 真实 {@code FluidStack} 那半边按 {@link #fluidsUsable()} 探针走，不可用时显式声明属实机项。
+     */
+    private static void fluid16gDualTrackAndUpgradeScales() {
+        // ---- ① 常量面：两档容量/步进/上限的选择点 ----
+        SimpleAssert
+            .eq(16_000_000_000L, PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML, "★16G = 16,000,000,000 mB（精确值）");
+        SimpleAssert.eq(16_000_000L, PocketConstants.fluidTankCapacityMl(false), "未升级口径逐字 = 旧常量 16M（现状不变）");
+        SimpleAssert
+            .eq(16_000_000_000L, PocketConstants.fluidTankCapacityMl(true), "升级口径 = 16G（选择点只有 fluidTankCapacityMl 一个）");
+        SimpleAssert.eq(288_000_000_000L, PocketConstants.fluidTotalCapacityMl(true), "升级合计 = 18 × 16G = 288G（long）");
+        SimpleAssert.eq(160_000_000, PocketConstants.filterCapStepFluid(true), "升级步进 = 16G/100 = 160M");
+        SimpleAssert.eq(160_000, PocketConstants.filterCapStepFluid(false), "未升级步进 = 16M/100 = 160K（不变）");
+        SimpleAssert.eq(
+            Integer.MAX_VALUE,
+            PocketConstants.FILTER_CAP_CEILING_FLUID,
+            "★声明档天花板钉 INT_MAX（双口径：一批 ≤ 2.147G、多批灌满 16G）");
+        SimpleAssert.eq(4096, PocketConstants.essenceCapPerTag(true), "★源质每格上限 STACK 位在 ⇒ 4096");
+        SimpleAssert.eq(256, PocketConstants.essenceCapPerTag(false), "未升级 ⇒ 256（现状不变）");
+        SimpleAssert.eq(1024, PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED, "存储槽上限升级档 = 64 × 16 = 1024");
+
+        // ---- ② STACK 位物品尺：effectiveStorageLimit（真实物品两型——纸 64 叠 / 剪刀 1 叠） ----
+        // ★真注册物品在纯 JVM 里解不出（Item 注册表未初始化）⇒ 用 FakePlainItem 族桩件
+        // （先例：本套件既有 Fake 物件族；getItemStackLimit 是 Item 上的实例方法，桩可覆写）。
+        final ItemStack stack64 = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        final ItemStack stack16 = new ItemStack(FakeStack16Item.INSTANCE, 1, 0);
+        final ItemStack stack1 = new ItemStack(FakeUnstackableItem.INSTANCE, 1, 0);
+        SimpleAssert.eq(64, stack64.getMaxStackSize(), "桩事实：64 叠档（判据输入）");
+        SimpleAssert.eq(16, stack16.getMaxStackSize(), "桩事实：16 叠档（药材类）");
+        SimpleAssert.eq(1, stack1.getMaxStackSize(), "桩事实：1 叠档（不可叠）");
+        SimpleAssert.eq(64, PocketInventory.effectiveStorageLimit(false, stack64), "未升级 64 叠 ⇒ min(64,64) = 64（现状）");
+        SimpleAssert.eq(16, PocketInventory.effectiveStorageLimit(false, stack16), "未升级 16 叠 ⇒ 16（现状：不硬抬到 64）");
+        SimpleAssert
+            .eq(1024, PocketInventory.effectiveStorageLimit(true, stack64), "升级 64 叠 ⇒ min(1024, 64×16) = 1024");
+        SimpleAssert.eq(256, PocketInventory.effectiveStorageLimit(true, stack16), "升级 16 叠 ⇒ 16×16 = 256");
+        SimpleAssert.eq(1, PocketInventory.effectiveStorageLimit(true, stack1), "★不可叠（max=1）升级后仍 1（工具不参与 ×16）");
+        SimpleAssert.eq(0, PocketInventory.effectiveStorageLimit(true, null), "null 栈 ⇒ 0（与上游 getStackLimit 同口径）");
+        // 源质尺走探针：STACK 位 ⇒ store 上限 4096（单源注入）
+        final PocketEssenceStore storeUp = PocketEssenceStore.readFrom(new NBTTagCompound());
+        storeUp.setCapPerTag(() -> PocketConstants.essenceCapPerTag(true));
+        SimpleAssert.eq(4096, storeUp.add("aer", 9_000), "★升级源质盘一次收 4096（探针注入的动态上限执法）");
+        SimpleAssert.eq(0, storeUp.add("aer", 1), "4096 之后一滴不进");
+        SimpleAssert.eq(4096, storeUp.roomFor("ignis"), "空 tag 的 roomFor 也按动态上限（4096）");
+        final PocketEssenceStore storeBase = PocketEssenceStore.readFrom(new NBTTagCompound());
+        SimpleAssert.eq(256, storeBase.add("aer", 9_000), "未注入探针 ⇒ 基值 256（旧档行为逐字不变）");
+
+        // ---- ③ K/M/G long 梯子 ----
+        SimpleAssert.eq("16G", PocketGhostRequest.capReadout(16_000_000_000L), "★16,000,000,000 → 16G");
+        SimpleAssert.eq("2.1G", PocketGhostRequest.capReadout(Integer.MAX_VALUE), "int 顶 → 2.1G");
+        SimpleAssert.eq("16M", PocketGhostRequest.capReadout(16_000_000L), "long 入参 16M → 16M（与 int 版同字面）");
+        SimpleAssert.eq("16M", PocketGhostRequest.capReadout(16_000_000), "int 版行为不变");
+        SimpleAssert.eq("4.7G", PocketGhostRequest.capReadout(4_700_000_000L), "4.7G 档带一位小数");
+
+        // ---- ④ 双轨真值域：long 余量按 CAPACITY 位（位图播种与 readFrom 同一条真相） ----
+        final NBTTagCompound upgradedRoot = new NBTTagCompound();
+        PocketUpgrades.install(upgradedRoot, PocketUpgradeType.CAPACITY);
+        final PocketInventory tank16g = PocketInventory.readFrom(upgradedRoot);
+        final PocketInventory tankBase = PocketInventory.readFrom(new NBTTagCompound());
+        SimpleAssert.eq(Boolean.TRUE, upgradedRoot.hasKey(PocketConstants.UPGRADES_KEY), "install 落位图键（判据输入在场）");
+        if (!fluidsUsable()) {
+            System.out.println("[NOTE] 本 JVM 不可构造真实流体 ⇒ long 余量/灌入/AmountL 往返属实机项（算式半边照验）");
+            return;
+        }
+        SimpleAssert.eq(16_000_000_000L, tank16g.fluidBarRoomL(0, waterProbe()), "空条 long 余量 = 16G（按 CAPACITY 位）");
+        SimpleAssert.eq(16_000_000L, tankBase.fluidBarRoomL(0, waterProbe()), "未升级空条 long 余量 = 16M（现状）");
+
+        // ---- ⑤ 真实 FluidStack 半边：灌入/头钳制/NBT 双写往返/旧档回退 ----
+        final net.minecraftforge.fluids.Fluid water = FluidRegistry.getFluid("water");
+        SimpleAssert.eq(2_500_000_000L, tank16g.fillOwnTankL(0, water, 2_500_000_000L), "第一笔 2.5G 全收");
+        SimpleAssert.eq(
+            Integer.MAX_VALUE,
+            tank16g.tankAt(0)
+                .getFluidAmount(),
+            "★头钳在 int 顶（不变式 头=min(真值,INT_MAX)）");
+        SimpleAssert.eq(5_000_000_000L, tank16g.tankTruthAt(0), "真值 = 5G（long 侧不受头钳影响）");
+        SimpleAssert.eq(2_500_000_000L, tank16g.fillOwnTankL(0, water, 2_500_000_000L), "第二笔 2.5G 全收（真值 > int 顶后仍可灌）");
+        SimpleAssert.eq(11_000_000_000L, tank16g.fillOwnTankL(0, water, 11_000_000_000L), "第三笔 11G 全收 ⇒ 恰满 16G");
+        SimpleAssert.eq(0L, tank16g.fillOwnTankL(0, water, 1L), "满后再灌 ⇒ 0（不超发）");
+        SimpleAssert.eq(16_000_000_000L, tank16g.tankTruthAt(0), "满槽真值 = 16G 精确");
+        SimpleAssert.eq(1_000, tank16g.drainOwnTank(0, 1_000), "头侧 drain 1000 mB 成立");
+        SimpleAssert.eq(16_000_000_000L - 1_000L, tank16g.tankTruthAt(0), "★真值同步扣 1000（头回钳 int 顶，账目闭合）");
+        SimpleAssert.eq(500_000_000L, tank16g.drainOwnTankL(0, 500_000_000L), "long drain 5 亿成立");
+        SimpleAssert.eq(16_000_000_000L - 1_000L - 500_000_000L, tank16g.tankTruthAt(0), "long drain 后真值闭合");
+        // 异种拒收（long 原语同语义）
+        SimpleAssert.eq(0L, tank16g.fillOwnTankL(1, FluidRegistry.getFluid("lava"), 1_000L), "异种流体 ⇒ 0（一个 tank 只装一种）");
+        // NBT 双写 + 优先读 AmountL
+        final NBTTagCompound saved = new NBTTagCompound();
+        tank16g.writeTo(saved);
+        final NBTTagList bar = saved.getTagList(PocketConstants.FLUID_BAR, 10);
+        SimpleAssert.that(bar.tagCount() >= 1, "16G 档写出的流体条目在场");
+        final NBTTagCompound firstEntry = bar.getCompoundTagAt(0);
+        SimpleAssert.eq(Integer.MAX_VALUE, firstEntry.getInteger("Amount"), "Amount = 头值（int 顶，旧版读侧来源）");
+        SimpleAssert.eq(
+            16_000_000_000L - 1_000L - 500_000_000L,
+            firstEntry.getLong(PocketConstants.FLUID_BAR_AMOUNT_L),
+            "AmountL = 真值（long 权威）");
+        final PocketInventory back = PocketInventory.readFrom(saved);
+        SimpleAssert.eq(16_000_000_000L - 1_000L - 500_000_000L, back.tankTruthAt(0), "★读档优先 AmountL ⇒ 超头真值零损失往返");
+        // 旧档回退：无 AmountL 的条目按 Amount（= 真值）读
+        final NBTTagCompound legacyEntry = new NBTTagCompound();
+        new FluidStack(water, 12_345).writeToNBT(legacyEntry);
+        legacyEntry.setInteger(PocketConstants.FLUID_BAR_TANK, 3);
+        final NBTTagList legacyList = new NBTTagList();
+        legacyList.appendTag(legacyEntry);
+        final NBTTagCompound legacyRoot = new NBTTagCompound();
+        legacyRoot.setTag(PocketConstants.FLUID_BAR, legacyList);
+        final PocketInventory legacyBack = PocketInventory.readFrom(legacyRoot);
+        SimpleAssert.eq(12_345L, legacyBack.tankTruthAt(3), "★无 AmountL 的老档按 Amount 回退（16G 前老档零损失）");
+        SimpleAssert.eq(
+            12_345,
+            legacyBack.tankAt(3)
+                .getFluidAmount(),
+            "头与真值同读数（≤ int 顶时双轨恒等）");
+    }
+
+    /** 探针：只有"是哪一种流体"参与余量判定（量取 1，与生产 extractFluid 的探针同形）。 */
+    private static FluidStack waterProbe() {
+        if (!fluidsUsable()) {
+            return null;
+        }
+        return new FluidStack(FluidRegistry.getFluid("water"), 1);
     }
 
     /**
@@ -9822,6 +9975,26 @@ public class NekoPocketModelTest {
         static final FakePlainItem INSTANCE = new FakePlainItem();
     }
 
+    /** ★R95 S5：16 叠档桩（effectiveStorageLimit 的"药材类"判据输入）。 */
+    private static final class FakeStack16Item extends Item {
+
+        static final FakeStack16Item INSTANCE = new FakeStack16Item();
+
+        FakeStack16Item() {
+            setMaxStackSize(16);
+        }
+    }
+
+    /** ★R95 S5：不可叠档桩（max=1：升级后仍 1 的判据输入）。 */
+    private static final class FakeUnstackableItem extends Item {
+
+        static final FakeUnstackableItem INSTANCE = new FakeUnstackableItem();
+
+        FakeUnstackableItem() {
+            setMaxStackSize(1);
+        }
+    }
+
     /**
      * 假宿主：既是 {@code TileEntity}（探针生产路径的硬门禁），又是 {@code IInventory}（扫槽与复验的对象），
      * 同时充当 {@link PocketCellProbe.HostResolver} 的测试实现——把"坐标 ↔ 世界"这一段唯一需要真
@@ -10901,14 +11074,50 @@ public class NekoPocketModelTest {
             64,
             PocketGhostRequest.nextCap(Kind.ITEM, PocketConstants.FILTER_CAP_UNSET, 64, UpOrDown.UP, false),
             "物品：未设往上滚仍停在该物品的 maxStackSize（上界收口，不回绕成 1）");
+        // ★R95 S5 翻新：声明档天花板 FILTER_CAP_CEILING_FLUID 已钉 Integer.MAX_VALUE（一批 ≤ 2.147G、
+        // 多批灌满 16G）⇒ 静态 nextCap 的"未设"起步跟着换 int 顶；格件侧的"与显示读数连续"由
+        // nextCapEffective 按现算天花板（min(天花板, tank 容量)）承接，断言在下面那组。
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_CEILING_FLUID - PocketConstants.FILTER_CAP_STEP_FLUID,
+            PocketGhostRequest.nextCap(Kind.FLUID, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.DOWN, false),
+            "★流体：未设往下滚一格 = int 顶 − 160,000（R95：天花板 = FILTER_CAP_CEILING_FLUID = INT_MAX）");
+        SimpleAssert.eq(
+            PocketConstants.FILTER_CAP_CEILING_FLUID,
+            PocketGhostRequest.nextCap(Kind.FLUID, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.UP, false),
+            "流体：未设往上滚 = 天花板本身（R95 后即 int 顶）");
+        // ---- ★R95 S5：升级位感知的滚轮（流体格件实际走的那条）----
         SimpleAssert.eq(
             15_840_000,
-            PocketGhostRequest.nextCap(Kind.FLUID, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.DOWN, false),
-            "★流体：未设往下滚一格 = 16,000,000 − 160,000（与右上角那一刻的「16M」读数连续）");
+            PocketGhostRequest.nextCapEffective(
+                Kind.FLUID,
+                PocketConstants.FILTER_CAP_UNSET,
+                PocketConstants.FLUID_BAR_CAPACITY_ML,
+                false,
+                UpOrDown.DOWN,
+                false),
+            "★未升级流体：现算天花板 16M ⇒ 未设往下滚一格 = 16,000,000 − 160,000（与「16M」默认读数连续，旧手感保真）");
         SimpleAssert.eq(
-            PocketConstants.FLUID_BAR_CAPACITY_ML,
-            PocketGhostRequest.nextCap(Kind.FLUID, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.UP, false),
-            "流体：未设往上滚 = 天花板本身");
+            Integer.MAX_VALUE - PocketConstants.FILTER_CAP_STEP_FLUID_UPGRADED,
+            PocketGhostRequest.nextCapEffective(
+                Kind.FLUID,
+                PocketConstants.FILTER_CAP_UNSET,
+                Integer.MAX_VALUE,
+                true,
+                UpOrDown.DOWN,
+                false),
+            "★升级流体：天花板钳 int 顶、步进 16G/100 = 160M ⇒ 未设往下滚一格 = int 顶 − 160,000,000");
+        SimpleAssert
+            .eq(160_000_000, PocketConstants.FILTER_CAP_STEP_FLUID_UPGRADED, "★升级流体步进 = 16G / 100（「每次 1%」跟容量走）");
+        SimpleAssert.eq(
+            PocketConstants.essenceCapPerTag(true) - 1,
+            PocketGhostRequest.nextCapEffective(
+                Kind.ESSENCE,
+                PocketConstants.FILTER_CAP_UNSET,
+                PocketConstants.essenceCapPerTag(true),
+                true,
+                UpOrDown.DOWN,
+                false),
+            "★升级源质：未设往下滚一格 = 4096 − 1（STACK 位抬高每格上限 ⇒ 天花板同步抬高）");
         SimpleAssert.eq(
             255,
             PocketGhostRequest.nextCap(Kind.ESSENCE, PocketConstants.FILTER_CAP_UNSET, 0, UpOrDown.DOWN, false),
@@ -11052,9 +11261,10 @@ public class NekoPocketModelTest {
             PocketFilterConfig.resolveCap(new PocketFilterConfig.ItemFilter(0, 2621, 7, "", unset), 960),
             "GT5U 缆线类 960 叠也照自身回落");
         SimpleAssert.eq(
-            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            PocketConstants.FILTER_CAP_CEILING_FLUID,
             PocketFilterConfig.resolveCap(new PocketFilterConfig.FluidFilter(0, "water", unset), 0),
-            "★流体未设 ⇒ FLUID_BAR_CAPACITY_ML（16M/tank，与今日的填tank行为同值）");
+            "★R95 S5：流体未设 ⇒ 声明档天花板（已钉 Integer.MAX_VALUE：一批 ≤ 2.147G、多批灌满 16G；"
+                + "未升级条由消费侧 room ≤ 16M 收口 ⇒ 行为与旧「填到自然满量」逐字同效）");
         SimpleAssert.eq(
             PocketConstants.FILTER_CAP_CEILING_FLUID,
             PocketFilterConfig.resolveCap(new PocketFilterConfig.FluidFilter(0, "water", unset), 0),
@@ -11129,9 +11339,10 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(1, PocketGhostRequest.clampCap(5, 0), "★天花板本身畸形(0) ⇒ 仍不低于下界（不返回 0）");
         SimpleAssert.eq(64, PocketGhostRequest.clampCap(64, 64), "边界值原样通过");
         SimpleAssert.eq(
-            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            Integer.MAX_VALUE,
             PocketGhostRequest.ceilingOf(Kind.FLUID),
-            "★流体上界 = 单 tank 16M（不是 FLUID_TOTAL_CAPACITY_ML 288M）");
+            "★R95 S5：流体上界 = FILTER_CAP_CEILING_FLUID 已钉 Integer.MAX_VALUE（不是 288M、也不是 16M ——"
+                + "声明档是 int，16G 靠多批；消费侧由 room 收口）");
         SimpleAssert.that(
             PocketConstants.FLUID_TOTAL_CAPACITY_ML != PocketGhostRequest.ceilingOf(Kind.FLUID),
             "流体上界不得等于 18 tank 合计");
@@ -11181,13 +11392,13 @@ public class NekoPocketModelTest {
                 .cap(),
             "落档读的是绝对值本身（服务端不重算步进）");
         SimpleAssert.eq(
-            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            999_999_999,
             PocketGhostRequest.apply(PocketGhostRequest.capRequest(1, Kind.FLUID, 999_999_999), fluid).outcome
                 == PocketGhostRequest.Outcome.APPLIED
                     ? fluid.at(Kind.FLUID, 1)
                         .cap()
                     : -1,
-            "★越界值 ⇒ 收口到 16M 后落档（不是拒收、也不是原样存 999,999,999）");
+            "★R95 S5：999,999,999 ≤ 新天花板（INT_MAX）⇒ 原样落档（旧口径收口到 16M 已随天花板换档作废；" + "真正的上界钳由消费侧 room 收口，格内读数不虚报）");
         for (String bad : new String[] { "0", "-1", "-999999" }) {
             final PocketFilterConfig probe = new PocketFilterConfig();
             set(probe, 1, PocketFilterConfig.fluidKey("lava"));
@@ -11468,16 +11679,23 @@ public class NekoPocketModelTest {
             assertResolveCapInside(ops, itemStart, mergeIntoStart, "extractItem(物品支)");
             assertResolveCapInside(fluidOps, fluidStart, fluidOps.size(), "extractFluid(流体支)");
             assertResolveCapInside(essenceOps, essenceStart, essenceOps.size(), "extractEssence(源质支)");
-            // 物品支必须把"该物品自己的 maxStackSize"喂给 resolveCap（否则未设回落就是猜的 64）
+            // ★R95 S5：物品支喂的是 effectiveStorageLimit（单源算式内部读 wanted 的堆叠 + STACK 位），
+            // 未设回落 = 该件自身的升级档堆叠上限（未升级 = min(64,max) ⇒ 与今日行为逐字同效）
             SimpleAssert.that(
-                regionContainsCode(ops, itemStart, mergeIntoStart, "wanted.getMaxStackSize()"),
-                "★物品支消费点必须传 wanted.getMaxStackSize()（未设时回落 = 该件自身堆叠上限 = 今日行为）");
+                regionContainsCode(
+                    ops,
+                    itemStart,
+                    mergeIntoStart,
+                    "PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), wanted)"),
+                "★R95 S5：物品支消费点必须传 effectiveStorageLimit(升级位, wanted)（未设时回落 = 该件自身"
+                    + "的升级档堆叠上限；直接喂裸 maxStackSize 会与 handler 的 getStackLimit 分叉）");
             SimpleAssert.eq(
                 3,
                 countCodeLinesIn(ops, "PocketFilterConfig.resolveCap(")
                     + countCodeLinesIn(fluidOps, "PocketFilterConfig.resolveCap(")
-                    + countCodeLinesIn(essenceOps, "PocketFilterConfig.resolveCap("),
-                "★全仓 resolveCap 消费点恰 3 处（物品/流体/源质各一；★R90 T3 后跨三个文件计）；多一处就是第二处真相");
+                    + countCodeLinesIn(essenceOps, "PocketFilterConfig.resolveCap(")
+                    + countCodeLinesIn(essenceOps, "PocketFilterConfig.resolveCapStackAware("),
+                "★全仓 resolveCap(族) 消费点恰 3 处（物品/流体/源质各一；★R90 T3 后跨三个文件计、" + "★R95 S5 起源质支是 stack-aware 形态）；多一处就是第二处真相");
             // ★扫描器自身的两个负控：证明上面那三条不是"恒真式"读数（C1 的教训：静态块全绿不等于判据成立）
             SimpleAssert.that(
                 !regionContainsCode(ops, itemStart, mergeIntoStart, "resolveCapButThisTokenDoesNotExist"),
@@ -11488,14 +11706,16 @@ public class NekoPocketModelTest {
         // ⇒ 认 "PocketGhostRequest\.nextCap\(" 会随机漏掉被折的两支（本轮实测只报 1/3）。
         // 点号始终粘在方法名上，故认 "\.nextCap\(" 既跨得过折行、又不会撞上定义行（`int nextCap(`）
         // 与 javadoc 引用（`#nextCap}`）。
-        final int nextCapHits = countPocketSourceLinesMatching("\\.nextCap\\(", true);
+        // ★R95 S5：流体/源质两支换升级位感知的 nextCapEffective（天花板/步进现算），物品支仍走 nextCap
+        // ⇒ 认 "(Effective)?" 两形态合计仍恰 3（每支一条滚轮腿，判据意图不变）。
+        final int nextCapHits = countPocketSourceLinesMatching("\\.nextCap(Effective)?\\(", true);
         if (nextCapHits < 0) {
             System.out.println("[NOTE] 找不到仓库根 ⇒ 「三类格件都走同一条 nextCap」的接线半边未验（★不是通过）");
         } else {
             SimpleAssert.eq(
                 3,
                 nextCapHits,
-                "★nextCap 的三个调用方 = NekoFilterSlot / NekoPocketFluidSlot / NekoEssenceGhostCell 各一处（少一处即某一支滚轮是死码）");
+                "★nextCap(Effective) 的三个调用方 = NekoFilterSlot / NekoPocketFluidSlot / NekoEssenceGhostCell 各一处（★R95 S5 起流体/源质走升级位感知形态；少一处即某一支滚轮是死码）");
         }
         final int directiveHits = countPocketSourceLinesMatching("PocketGhostRequest\\.capDirective\\(", true);
         if (directiveHits < 0) {
@@ -11525,20 +11745,25 @@ public class NekoPocketModelTest {
         // 流体支（站点算式 fluidRequestFor(available, min(room, resolveCap(filter, 0)))，用的是生产的 fluidRequestFor）
         final PocketFilterConfig.Filter fluidUnset = new PocketFilterConfig.FluidFilter(0, "water", unset);
         final PocketFilterConfig.Filter fluidCapped = new PocketFilterConfig.FluidFilter(0, "water", 320_000);
+        // ★R95 S5：fluidRequestFor 已 long 化 ⇒ 断言两侧都按 Long 装箱（Integer/Long 装箱不相等）
         SimpleAssert.eq(
-            PocketFluidChannelOps.fluidRequestFor(
-                PocketConstants.FLUID_BAR_CAPACITY_ML,
-                Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidUnset, 0))),
-            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            Long.valueOf(
+                PocketFluidChannelOps.fluidRequestFor(
+                    PocketConstants.FLUID_BAR_CAPACITY_ML,
+                    Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidUnset, 0)))),
+            Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
             "★旧档流体：一次仍要满整 tank（16M）= 今日行为");
         SimpleAssert.eq(
-            PocketFluidChannelOps.fluidRequestFor(
-                PocketConstants.FLUID_BAR_CAPACITY_ML,
-                Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidCapped, 0))),
-            320_000,
+            Long.valueOf(
+                PocketFluidChannelOps.fluidRequestFor(
+                    PocketConstants.FLUID_BAR_CAPACITY_ML,
+                    Math.min(PocketConstants.FLUID_BAR_CAPACITY_ML, PocketFilterConfig.resolveCap(fluidCapped, 0)))),
+            Long.valueOf(320_000),
             "★玩家调到两档（320,000 mB）⇒ 请求量就是 320,000（两档 × 160,000）");
-        SimpleAssert
-            .eq(PocketFluidChannelOps.fluidRequestFor(7_000, 320_000), 7_000, "落点空间更小时仍按落点收口（cap 不得越过 tank 剩余空间超发）");
+        SimpleAssert.eq(
+            Long.valueOf(PocketFluidChannelOps.fluidRequestFor(7_000, 320_000)),
+            Long.valueOf(7_000),
+            "落点空间更小时仍按落点收口（cap 不得越过 tank 剩余空间超发）");
 
         // 源质支（站点算式 min(count, resolveCap(filter, 0))）
         final PocketFilterConfig.Filter essenceUnset = new PocketFilterConfig.EssenceFilter(
@@ -11760,13 +11985,12 @@ public class NekoPocketModelTest {
 
     /** ★判据 6 的"接线"断言：某一支抽取方法的方法体里必须真有一行在调 resolveCap。 */
     private static void assertResolveCapInside(java.util.List<String> lines, int from, int to, String label) {
-        final int hits = countCodeLinesIn(
-            lines.subList(Math.max(0, from), Math.min(lines.size(), to)),
-            "PocketFilterConfig.resolveCap(");
-        SimpleAssert.eq(
-            1,
-            hits,
-            "★" + label + " 方法体内必须恰有一处消费 PocketFilterConfig.resolveCap(（读到 " + hits + " ⇒ 该支要么没接上、要么接了两遍）");
+        // ★R95 S5：消费符号族扩为 {resolveCap, resolveCapStackAware}（源质支换 stack-aware 版读升级位）——
+        // 两族合计仍必须恰 1，多一处就是第二处真相的老判据不变。
+        final java.util.List<String> region = lines.subList(Math.max(0, from), Math.min(lines.size(), to));
+        final int hits = countCodeLinesIn(region, "PocketFilterConfig.resolveCap(")
+            + countCodeLinesIn(region, "PocketFilterConfig.resolveCapStackAware(");
+        SimpleAssert.eq(1, hits, "★" + label + " 方法体内必须恰有一处消费 resolveCap(族（读到 " + hits + " ⇒ 该支要么没接上、要么接了两遍）");
     }
 
     /** 各区域的一条代表性载荷键（多处复用，免得同一份字面量在断言里写三遍）。 */

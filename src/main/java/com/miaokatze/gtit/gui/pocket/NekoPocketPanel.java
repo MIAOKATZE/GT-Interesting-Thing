@@ -8,6 +8,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.StatCollector;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.api.widget.Interactable;
@@ -16,6 +17,7 @@ import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.DoubleSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
+import com.cleanroommc.modularui.value.sync.LongSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
@@ -302,6 +304,14 @@ public final class NekoPocketPanel implements PocketSession {
      * 客户端无从知道服务端一共见过几个 tag（R19/R39b 的"客户端不得推断"口径）。
      */
     private int essenceUnplaced;
+    /**
+     * ★R95 S5：18 个流体槽 <b>long 真值</b>的客户端镜像（每 tank 一根 {@code LongSyncValue}，
+     * 服务端 getter 读 {@code PocketInventory#tankTruthAt}；自绘读数（{@code NekoPocketFluidSlot}）
+     * 只读镜像，不在客户端读 inventory——那份只是开屏快照，同 {@link #essenceCache} 的口径）。
+     */
+    private final long[] clientTankAmounts = new long[PocketConstants.FLUID_TANK_TOTAL];
+    /** ★R95 S5：long 真值同步键前缀（实际键 = 前缀 + tank 号；每 tank 一根）。 */
+    private static final String SYNC_TANK_TRUTH_PREFIX = "pocket.tank.truth.";
     private String bindRowsBlob = "";
     private boolean pullMode;
     private int filterCount;
@@ -351,6 +361,12 @@ public final class NekoPocketPanel implements PocketSession {
         this.pocket = data.getUsedItemStack();
         this.carrierSlotIndex = data.getSlotIndex();
         this.inventory = PocketInventory.readFrom(this.pocket == null ? null : this.pocket.getTagCompound());
+        // ★R95 S5：升级位探针注入（活查载体栈版）——readFrom 已用档内位图自播种，这里换活查表版：
+        // 覆盖"口袋原本无 NBT、会话期内才第一次固化升级"的那一支（install 写的是栈上现 NBT，可能不在
+        // readFrom 捕获的那份根上）。注入点约定见 PocketInventory#setUpgradeProbes 的 javadoc。
+        this.inventory.setUpgradeProbes(
+            () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CAPACITY),
+            () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.STACK));
         // ★R78③：把"格位归属 + 现有点数"当作两份镜像的<b>起点</b>。双端读的都是同一份口袋 NBT
         // （客户端那一份是 vanilla 同步过来的物品 tag），所以起点天然一致；之后的每一次变化
         // 都由服务端 composeEssenceBlob 覆盖客户端那份 ⇒ 不存在"两端各算各的格序"。
@@ -490,6 +506,19 @@ public final class NekoPocketPanel implements PocketSession {
         // ★R85 N1：allowC2S 的 setter <b>双端都会被调</b>（上游 setValue(v) 默认 setSource=true）⇒
         // 两个 receiver 各自带一道 isClient 早退，见 receiveServerAction / receiveGhostRequest 的 javadoc。
         syncManager.syncValue(SYNC_ACTION, new IntSyncValue(() -> 0, this::receiveServerAction).allowC2S());
+        // ★R95 S5：18 个流体槽的 long 真值（每 tank 一根，S2C；16G 不进 int，头层 FluidStack 同步
+        // 只带得到 min(真值, int 顶)）。★只在变化时上包（ValueSyncHandler 的 cache 比对），与
+        // FluidSlotSyncHandler 的头层同步互不替代：头管"哪种流体 + 液面比例"，这里管"到底有多少 mB"。
+        for (int tank = 0; tank < clientTankAmounts.length; tank++) {
+            final int tankIndex = tank;
+            syncManager.syncValue(
+                SYNC_TANK_TRUTH_PREFIX + tank,
+                new LongSyncValue(() -> inventory.tankTruthAt(tankIndex), value -> {
+                    if (syncManager.isClient()) {
+                        clientTankAmounts[tankIndex] = value;
+                    }
+                }));
+        }
         // ghost 拖入/解绑的载荷是一串键（itemId+meta+base64NBT 可以很长），装不进上面那个 int 通道，
         // 因此单开一根字符串 C2S；**执行体在服务端**（R18/R19），客户端那份 setter 由入口守卫挡掉
         // （★旧注释"从不被调用"是错的：setValue 的 setSource 默认 true ⇒ 客户端确实会被调一次）。
@@ -600,6 +629,30 @@ public final class NekoPocketPanel implements PocketSession {
      */
     boolean channelPersistActive() {
         return PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CHANNEL_PERSIST);
+    }
+
+    // ------------------ ★R95 S5：升级位的面板读口（双端各读自己那份载体：服务端权威、客户端 vanilla 镜像）
+
+    /** CAPACITY 位是否固化（流体条 16M/16G；流体格件的步进/天花板读它）。 */
+    boolean capacityUpgradeActiveNow() {
+        return PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CAPACITY);
+    }
+
+    /** 单 tank 当前容量（mB，long；CAPACITY 位现读 ⇒ 会话期内固化即换档）。 */
+    long fluidTankCapacityNow() {
+        return PocketConstants.fluidTankCapacityMl(capacityUpgradeActiveNow());
+    }
+
+    /**
+     * 第 {@code tank} 号流体槽的 <b>long 真值</b>（mB）：服务端读权威 inventory，客户端读
+     * {@link #clientTankAmounts} 镜像（每 tank 一根 LongSyncValue 推来的；★不在客户端读
+     * inventory——那份只是开屏快照，与 {@code essenceTagAtCell} 的双源纪律同一条）。
+     */
+    long tankAmountTruth(int tank) {
+        if (tank < 0 || tank >= clientTankAmounts.length) {
+            return 0L;
+        }
+        return syncManager.isClient() ? clientTankAmounts[tank] : inventory.tankTruthAt(tank);
     }
 
     /** 源质列是否可用（TC 缺席 ⇒ 整栏<b>灰显不隐藏</b>，R31）。 */
@@ -2278,6 +2331,30 @@ public final class NekoPocketPanel implements PocketSession {
         return server.depositFluid(tank, fluid);
     }
 
+    // ------------------ ★R95 S5：16G 双轨的 long 面 + STACK 位查询（PocketSession 扩面，实现照 int 版同一条转发）
+
+    @Override
+    public long fluidBarRoomL(int tank, FluidStack probe) {
+        return server.fluidBarRoomL(tank, probe);
+    }
+
+    @Override
+    public long depositFluidL(int tank, Fluid fluid, long amount) {
+        return server.depositFluidL(tank, fluid, amount);
+    }
+
+    @Override
+    public long drainOwnTankL(int tank, long amount) {
+        return server.drainOwnTankL(tank, amount);
+    }
+
+    @Override
+    public boolean storageStackUpgraded() {
+        // ★直读载体活查表（不经 server 转发回自己 ⇒ 无自环）：与服务端权威同一条真相，
+        // 且双端可用（客户端读 vanilla 镜像，格件的显示回落与滚轮在客户端也拿得到升级位）。
+        return PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.STACK);
+    }
+
     // ------------------------------------------- ★R86 缺陷 3：口袋 → 元件的推送向来源面（服务端会话实现）
 
     @Override
@@ -2476,7 +2553,8 @@ public final class NekoPocketPanel implements PocketSession {
             syncManager.isClient() ? essenceAmountByTag(tag)
                 : inventory.essence()
                     .get(tag),
-            PocketConstants.ESSENCE_CAP_PER_TAG);
+            // ★R95 S5：分母跟 STACK 位走（256/4096），与存储执法同一把尺（探针读载体活查表）
+            PocketConstants.essenceCapPerTag(storageStackUpgraded()));
     }
 
     private int essenceAmountByTag(String tag) {
@@ -2784,11 +2862,17 @@ public final class NekoPocketPanel implements PocketSession {
      * 左栏末行的 tooltip 承载。
      */
     String capacityReadoutText() {
+        // ★R95 S5：容量读数按 CAPACITY 位动态（16M/16G；合计 288M/288G）——Long 喂 %d（lang 不改键、
+        // 不写死数字），未升级喂 Integer（渲染与旧值同字面）。升级位双端各读自己那份载体（同本类
+        // channelPersistActive 的口径）。
+        final boolean upgraded = capacityUpgradeActiveNow();
         return String.format(
             StatCollector.translateToLocal("gtit.pocket.fluid.capacity"),
-            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            upgraded ? Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML)
+                : Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
             PocketConstants.FLUID_TANK_TOTAL,
-            PocketConstants.FLUID_TOTAL_CAPACITY_ML);
+            upgraded ? Long.valueOf(PocketConstants.fluidTotalCapacityMl(true))
+                : Integer.valueOf(PocketConstants.FLUID_TOTAL_CAPACITY_ML));
     }
 
     /**

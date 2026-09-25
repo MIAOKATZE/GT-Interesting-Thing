@@ -129,6 +129,36 @@ public interface PocketSession {
     /** 往第 {@code tank} 号流体槽灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。 */
     int depositFluid(int tank, FluidStack fluid);
 
+    // ------------------------------------------------------ ★R95 S5：16G 双轨的 long 面 + STACK 位查询
+
+    /**
+     * ★R95 S5：第 {@code tank} 号流体槽的 <b>long 余量</b>（16G 真值域；通道抽取用，与
+     * {@link #fluidBarRoom(int, FluidStack)} 的 int 头口径并存——后者服务世界侧/交互面）。
+     */
+    long fluidBarRoomL(int tank, FluidStack probe);
+
+    /**
+     * ★R95 S5：往第 {@code tank} 号槽灌入 {@code amount} mB 的 long 原语（真值域直达 16G；
+     * 单笔超 int 的通道批量靠它，不经过头层 {@code fill} 的 int 容量算术）。
+     *
+     * @return 实际接收量（long）
+     */
+    long depositFluidL(int tank, net.minecraftforge.fluids.Fluid fluid, long amount);
+
+    /**
+     * ★R95 S5：从第 {@code tank} 号槽抽走 {@code amount} mB 的 long 原语（真值域；注入向在
+     * 元件真收货之后调用，差额纪律与 {@link #drainOwnTank(int, int)} 同一条）。
+     *
+     * @return 实际抽走量（long）
+     */
+    long drainOwnTankL(int tank, long amount);
+
+    /**
+     * ★R95 S5：STACK 升级位是否固化（存储格堆叠 ×16 与源质每格上限 256→4096 的共同输入；
+     * 通道消费侧的 room/上限钳与源质声明档回落都读它）。
+     */
+    boolean storageStackUpgraded();
+
     // ------------------------------------------------------ ★R86 缺陷 3：口袋 → 元件的推送向来源面
 
     /**

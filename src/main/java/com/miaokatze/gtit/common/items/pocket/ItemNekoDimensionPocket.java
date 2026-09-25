@@ -474,7 +474,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
-        final Object[] args = tooltipArgs();
+        final Object[] args = tooltipArgs(stack);
         for (int i = 0;; i++) {
             final String key = TOOLTIP_PREFIX + i;
             final String template = StatCollector.translateToLocal(key);
@@ -518,7 +518,10 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * 同一条纪律：这些数字只允许出现在这里一次，lang 与 README 都只引用不重抄
      * （R75 的"每槽 16M"双处声明 = 本方法 + README，本批把合计 288,000,000 也并进同一纪律）。
      */
-    private static Object[] tooltipArgs() {
+    private static Object[] tooltipArgs(ItemStack carrier) {
+        // ★R95 S5：单槽/合计容量按 CAPACITY 位动态（16M/16G、288M/288G）——升级侧喂 Long（%d 对
+        // Long/Integer 同形，lang 键与 %5$d/%9$d 槽位零改动）；未升级喂 Integer（渲染与旧字面同源）。
+        final boolean capacityUpgraded = PocketUpgrades.hasUpgrade(carrier, PocketUpgradeType.CAPACITY);
         return new Object[] {
             // %1$d 中栏格数
             Integer.valueOf(PocketConstants.GHOST_ITEM_SLOT_LIMIT),
@@ -526,16 +529,18 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             Integer.valueOf(NekoPocketStorageColumn.ROWS), Integer.valueOf(PocketSlots.STORAGE_COLUMNS),
             // %4$d 每组流体列数（R75①；★R78② 的组数与 tank 总数在下面两项）
             Integer.valueOf(PocketConstants.FLUID_COLUMN_COUNT),
-            // %5$d 单槽容量 mB（★规格外自立项，见 PocketConstants#FLUID_BAR_CAPACITY_ML）
-            Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
+            // %5$d 单槽容量 mB（★规格外自立项；★R95 S5 起按 CAPACITY 位 16M/16G 动态喂）
+            capacityUpgraded ? Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML)
+                : Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
             // %6$d 蒸馏一轮秒数·基档（★tick→秒的换算走 PocketConstants 单源，不再内联 20）
             Integer.valueOf(PocketConstants.ticksToSecondsCeil(TaumDistillRules.DISTILL_INTERVAL_TICKS)),
             // %7$d 流体组数（R78②）
             Integer.valueOf(PocketConstants.FLUID_GROUP_COUNT),
             // %8$d 独立流体 tank 总数（= 组数 × 每组列数 = 18）
             Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL),
-            // %9$d 流体总容量 mB（= tank 总数 × 单槽容量，★派生不是手抄）
-            Integer.valueOf(PocketConstants.FLUID_TOTAL_CAPACITY_ML),
+            // %9$d 流体总容量 mB（= tank 总数 × 单槽容量，★派生不是手抄；★R95 S5 起升级侧 18 × 16G = 288G）
+            capacityUpgraded ? Long.valueOf(PocketConstants.fluidTotalCapacityMl(true))
+                : Integer.valueOf(PocketConstants.FLUID_TOTAL_CAPACITY_ML),
             // %10$d 源质盘格数（R78②③：6×12 = 72，且 ≥ 实测 aspect 注册数）
             Integer.valueOf(PocketConstants.ESSENCE_DISPLAY_GRID),
             // %11$d 面板内玩家背包格数（R78①；★代价 = E4 包放大，见 PocketSlots 类注释）

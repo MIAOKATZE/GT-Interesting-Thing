@@ -9,6 +9,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
@@ -810,6 +811,27 @@ final class NekoPocketServerHandler {
     int drainOwnTank(int tank, int milliBuckets) {
         return panel.inventory()
             .drainOwnTank(tank, milliBuckets);
+    }
+
+    // ------------------ ★R95 S5：16G 双轨的 long 面 + STACK 位查询（转发到 PocketInventory 的真值原语）
+
+    long fluidBarRoomL(int tank, FluidStack probe) {
+        return panel.inventory()
+            .fluidBarRoomL(tank, probe);
+    }
+
+    long depositFluidL(int tank, Fluid fluid, long amount) {
+        return panel.inventory()
+            .fillOwnTankL(tank, fluid, amount);
+    }
+
+    long drainOwnTankL(int tank, long amount) {
+        return panel.inventory()
+            .drainOwnTankL(tank, amount);
+    }
+
+    boolean storageStackUpgraded() {
+        return panel.storageStackUpgraded();
     }
 
     Map<String, Integer> essenceStock() {

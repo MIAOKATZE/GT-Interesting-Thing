@@ -667,7 +667,10 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             return new Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
         final ItemStack held = session.storageStackAt(target);
-        final int max = wanted.getMaxStackSize();
+        // ★R85 P1 + ★R95 S5（STACK 位）：这一格的可叠上限按"该物品的天然堆叠 × 升级档"取——
+        // 未升级 = min(64, max)（= 上游 handler 的既有行为，逐字不变）；STACK 位固化 = min(1024, max×16)。
+        // 算式单源在 PocketInventory#effectiveStorageLimit（handler 的 getStackLimit 覆写与显示侧共读它）。
+        final int max = PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), wanted);
         // ★R85 P1：批级缓存版（同批同格重复读不再重算 base64；内容被换掉 ⇒ 对象引用变了 ⇒ 必然重算）
         final int stored = held != null && batchContentKey(held).equals(filter.key()) ? held.stackSize : 0;
         final int room = max - stored;
@@ -681,7 +684,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             // 补满本是稳态，队首一条就能把后面全部永久饿死）。
             return new Outcome(PocketReceipt.OK, 0);
         }
-        // ★每条声明的组上限全仓只在这一处被消费；未设时 resolveCap 回落 = maxStackSize ⇒ 旧档逐字不改行为
+        // ★每条声明的组上限全仓只在这一处被消费；未设时 resolveCap 回落 = 上面的升级档上限
+        // （★R95 S5 起是 effectiveStorageLimit 的值 ⇒ 与 room 同一把尺，不会出现"room 放得下、cap 不许"的自锁）
         final int wantedSize = (int) Math
             .min(Math.min(simulated.getStackSize(), (long) room), PocketFilterConfig.resolveCap(filter, max));
         request.setStackSize(wantedSize);
@@ -693,15 +697,20 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (out == null || out.stackSize <= 0) {
             return new Outcome(PocketReceipt.OK, 0);
         }
-        final ItemStack merged = held == null ? out : mergeInto(held, out);
+        final ItemStack merged = held == null ? out : mergeInto(held, out, session.storageStackUpgraded());
         session.setStorageStackAt(target, merged);
         return new Outcome(PocketReceipt.OK, out.stackSize);
     }
 
-    /** 把刚抽出的一份并进声明格里已有的同种堆（★只在调用方已按 room 钳过量之后使用）。 */
-    private static ItemStack mergeInto(ItemStack held, ItemStack added) {
+    /**
+     * 把刚抽出的一份并进声明格里已有的同种堆（★只在调用方已按 room 钳过量之后使用）。
+     * ★R95 S5：合并上限按 STACK 升级档取（未升级 = maxStackSize 的既有钳；升级 = 单源
+     * {@link PocketInventory#effectiveStorageLimit}），与 {@code getStackLimit} 同一把尺。
+     */
+    private static ItemStack mergeInto(ItemStack held, ItemStack added, boolean stackUpgraded) {
         final ItemStack merged = held.copy();
-        merged.stackSize = Math.min(merged.getMaxStackSize(), merged.stackSize + added.stackSize);
+        merged.stackSize = Math
+            .min(PocketInventory.effectiveStorageLimit(stackUpgraded, merged), merged.stackSize + added.stackSize);
         return merged;
     }
 

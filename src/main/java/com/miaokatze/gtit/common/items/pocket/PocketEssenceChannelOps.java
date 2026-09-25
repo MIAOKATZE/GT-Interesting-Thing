@@ -253,7 +253,14 @@ final class PocketEssenceChannelOps {
         // 一次一条声明至多补满该条声明的组上限（未设时 = FILTER_CAP_CEILING_ESSENCE 点），剩下的顺延下一拍
         // ★R92-①：按<b>通道档</b>（现役 1 点）量化，不再向下取整到整瓶 ⇒ 组上限停在任意点数都搬得动。
         // 这里<b>不</b>先做换算取整：落点余量还没收口，收口之后那一步（下面的 channelUnitsForPoints）才是唯一量化点。
-        final int wantPoints = Math.min(count, PocketFilterConfig.resolveCap(filter, 0));
+        // ★R95 S5：未设的回落换 stack-aware 版（STACK 位在 ⇒ 4096，与源质盘每格上限同一把尺）。
+        final int wantPoints = Math.min(
+            count,
+            PocketFilterConfig.resolveCapStackAware(
+                filter,
+                0,
+                ops.session()
+                    .storageStackUpgraded()));
         if (wantPoints <= 0) {
             return new PocketChannelOps.Outcome(PocketReceipt.OK, 0);
         }

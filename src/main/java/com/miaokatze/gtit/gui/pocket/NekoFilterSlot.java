@@ -15,6 +15,7 @@ import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
+import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -379,14 +380,24 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         return this;
     }
 
-    /** 本格声明当前<b>真正生效</b>的组上限（未调过 = 该物品的 {@code maxStackSize}）。 */
+    /**
+     * 本格声明当前<b>真正生效</b>的组上限（未调过 = 该物品的 {@code maxStackSize}）。
+     * ★R95 S5（STACK 位）：显示回落换<b>升级档</b>——天然满量从裸 {@code maxStackSize} 改按
+     * {@code PocketInventory#effectiveStorageLimit}（未升级 = min(64, max)，逐字不变；升级 =
+     * min(1024, max×16)），与通道消费侧（{@code PocketAeChannelOps#extractItem} 的 room/收口/合并）
+     * 同一把尺，否则"看到的上限"与"填到多少才停"分叉。
+     */
     public int ghostCap() {
         return PocketFilterConfig.resolveRawCap(PocketFilterConfig.Kind.ITEM, declaredCap, naturalMaxStackSize());
     }
 
-    /** 物品支的天然满量 = 声明样本自己的堆叠上限（★不是常数 64，见 {@link PocketConstants#FILTER_CAP_CEILING_ITEM_SERVER} 的理由）。 */
+    /**
+     * 物品支的天然满量 = 声明样本自己的堆叠上限（★不是常数 64，见 {@link PocketConstants#FILTER_CAP_CEILING_ITEM_SERVER} 的理由；
+     * ★R95 S5 起按 STACK 位取升级档：算式单源 {@code PocketInventory#effectiveStorageLimit}，升级位经
+     * {@code owner.storageStackUpgraded()} 现读（未绑定面板 ⇒ 按未升级收口，与纯 JVM 用例同口径））。
+     */
     private int naturalMaxStackSize() {
-        return sample == null ? 0 : sample.getMaxStackSize();
+        return PocketInventory.effectiveStorageLimit(owner != null && owner.storageStackUpgraded(), sample);
     }
 
     /**

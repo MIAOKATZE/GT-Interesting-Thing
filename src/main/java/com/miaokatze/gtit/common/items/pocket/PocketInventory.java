@@ -3,6 +3,7 @@ package com.miaokatze.gtit.common.items.pocket;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.utils.fluid.FluidStackTank;
@@ -134,14 +135,37 @@ public final class PocketInventory {
     private final ItemStackHandler upgradeCells = newUpgradeGroup(UPGRADE_SLOTS);
 
     /**
-     * {@link #FLUID_TANK_COUNT} 个<b>互相独立</b>的流体 tank（R75①：每列一个，各自 16,000,000 mB）。
+     * {@link #FLUID_TANK_COUNT} 个<b>互相独立</b>的流体 tank（R75①：每列一个；★R95 S5 起容量按
+     * CAPACITY 位 16M/16G 双档）。
      * <p>
-     * 每个 tank 是「内存 {@code FluidStack} + {@link FluidStackTank}」的一对：
-     * 数组下标 = tank 号 = {@code Kind.FLUID} 的 ghost 槽号 = 流体列号，三者同一个数，
-     * 不再有"条子只有一格"的特例。
+     * ★★<b>R95 S5：双轨计数</b>——16G（16,000,000,000）不进 int，而 MUI2 的
+     * {@link FluidStackTank} 是<b>全 int API</b>（{@code fill/drain/getCapacity} 的字节码实证）⇒
+     * tank 拆成两层：
+     * <ul>
+     * <li><b>真值层</b> {@link #tankTruth}（{@code long[]}，0…16G，权威）；</li>
+     * <li><b>头层</b> {@link #tankFluid} + {@link #tanks}（现有 {@code FluidStackTank} 原样保留，
+     * 作「<b>身份 + 交互头</b>」：GUI 的 {@code FluidSlotSyncHandler}、玩家容器灌排、
+     * {@code PocketFluidTransfer} 都继续只碰它）。头容量经 {@link IntSupplier} 现读
+     * {@link #fluidTankCapacity()}（未升级 16M / 升级后 int 顶 {@code Integer.MAX_VALUE}）。</li>
+     * </ul>
+     * <b>不变式：头 ≡ min(真值, Integer.MAX_VALUE)</b>，由 {@link #applyHeadWrite(int, FluidStack)}
+     * （tank 的 setter 钩子，所有头写入的唯一进口）维护：头写入按差额推进真值后<b>再把头钳回
+     * 不变式</b> ⇒ 真值 &gt; int 顶时，头侧 drain 走多少真值扣多少、头回到 int 顶；头侧 fill 因
+     * 头容量已顶到 int 顶而收 0（玩家容器灌排是 int 量级，超 2.147G 的灌入走通道/长原语——已列实机项）。
+     * 数组下标 = tank 号 = {@code Kind.FLUID} 的 ghost 槽号 = 流体列号，三者同一个数。
      */
     private final FluidStack[] tankFluid = new FluidStack[FLUID_TANK_COUNT];
     private final FluidStackTank[] tanks = new FluidStackTank[FLUID_TANK_COUNT];
+    /** ★R95 S5：每个 tank 的 <b>long 真值</b>（mB，双轨计数的权威侧；头层见 {@link #tankFluid} 的 javadoc）。 */
+    private final long[] tankTruth = new long[FLUID_TANK_COUNT];
+    /**
+     * ★R95 S5：CAPACITY 升级位的<b>查询式探针</b>（默认 {@code false}）。{@code readFrom} 用档内
+     * 位图自播种，面板（GUI 装配侧）再换成「活查载体栈」版（会话期内放入容量插件即生效，
+     * 见 {@link #setUpgradeProbes(BooleanSupplier, BooleanSupplier)} 的接线说明）。
+     */
+    private java.util.function.BooleanSupplier capacityProbe = () -> false;
+    /** ★R95 S5：STACK 升级位的查询式探针（管存储格堆叠与源质每格上限两处，同一位）。 */
+    private java.util.function.BooleanSupplier stackProbe = () -> false;
 
     private PocketEssenceStore essence;
     private PocketCellBindings bindings;
@@ -169,14 +193,46 @@ public final class PocketInventory {
     private PocketInventory() {
         for (int index = 0; index < FLUID_TANK_COUNT; index++) {
             final int tank = index;
-            tanks[index] = new FluidStackTank(() -> tankFluid[tank], fluid -> {
-                this.tankFluid[tank] = fluid == null || fluid.amount <= 0 ? null : fluid;
-                this.dirty = true;
-            }, PocketConstants.FLUID_BAR_CAPACITY_ML);
+            // ★R95 S5：头容量走 IntSupplier 现读（未升级 16M / 升级 int 顶）⇒ 会话期内固化 CAPACITY 位
+            // 之后头容量即时换档，不需要重建 tank（FluidStackTank 构造子原生支持 supplier 形态）。
+            tanks[index] = new FluidStackTank(
+                () -> tankFluid[tank],
+                fluid -> applyHeadWrite(tank, fluid),
+                (java.util.function.IntSupplier) () -> (int) Math.min(fluidTankCapacity(), Integer.MAX_VALUE));
         }
         this.essence = PocketEssenceStore.readFrom(new NBTTagCompound());
         this.bindings = PocketCellBindings.readFrom(new NBTTagCompound());
         this.filters = PocketFilterConfig.readFrom(new NBTTagCompound());
+    }
+
+    /**
+     * ★R95 S5：tank 头层的<b>唯一写进口</b>（{@link FluidStackTank} 的 setter 钩子）——所有经
+     * {@code fill/drain/validateFluid} 的头写入都落到这里，双轨不变式只在这一个方法里维护：
+     * <ol>
+     * <li>按「新头值 − 旧头值（= min(旧真值, int 顶)）」的<b>差额</b>推进真值（fill/drain 都是头额度
+     * 的算术，差额即真值的增减）；</li>
+     * <li>存回头引用后<b>把头钳回 {@code min(真值, Integer.MAX_VALUE)}</b>——真值仍超 int 顶时，头侧
+     * 刚 drain 出去的缺口会被顶回 int 顶（玩家拿走的量已从真值扣除，账目闭合），fill 侧则因头容量
+     * 已到顶天然收 0。</li>
+     * </ol>
+     * 旧档/未升级口袋：真值恒 ≤ 16M ≤ int 顶 ⇒ 头逐字镜像真值，行为与 R95 之前<b>逐字相同</b>。
+     */
+    private void applyHeadWrite(int tank, FluidStack fluid) {
+        final long incoming = fluid == null || fluid.amount <= 0 ? 0L : fluid.amount;
+        final long before = tankTruth[tank];
+        tankTruth[tank] = Math.max(0L, before + (incoming - headAmountOf(before)));
+        if (fluid == null || fluid.amount <= 0) {
+            this.tankFluid[tank] = null;
+        } else {
+            this.tankFluid[tank] = fluid;
+            fluid.amount = headAmountOf(tankTruth[tank]);
+        }
+        this.dirty = true;
+    }
+
+    /** 双轨不变式的钳制算式：<b>头 ≡ min(真值, Integer.MAX_VALUE)</b>（唯一落点）。 */
+    private static int headAmountOf(long truth) {
+        return (int) Math.min(truth, Integer.MAX_VALUE);
     }
 
     /**
@@ -189,6 +245,11 @@ public final class PocketInventory {
         if (root == null) {
             return inventory;
         }
+        // ★R95 S5：升级位探针先于一切内容读取播种——tank 头容量、源质每格上限、存储格堆叠上限
+        // 三处都按它现读；捕获的 root 是<b>活实例</b>（install 原地写位图 ⇒ 会话期内固化即生效）。
+        inventory.capacityProbe = () -> PocketUpgrades.hasUpgrade(root, PocketUpgradeType.CAPACITY);
+        inventory.stackProbe = () -> PocketUpgrades.hasUpgrade(root, PocketUpgradeType.STACK);
+        inventory.syncEssenceCapProbe();
         // ★R92-④：读档不再需要专门的闭闸——"放置即配置"的准入信号是 isItemValid 登记的<b>意图</b>，
         // 而 loadGroup 走 setStackInSlot、★不经过 isItemValid ⇒ 新建的 inventory 意图恒空，读档必然不定档
         // （理由与残余窗口见 placementIntentSlot 的 javadoc；用例 ghost_memory_placement_declares 钉这条）。
@@ -200,8 +261,11 @@ public final class PocketInventory {
         inventory.loadTanks(root);
         // ★R87-f：声明表必须先于源质表读出——保格谓词以它为输入，「有格位无库存」的空洞折叠只对无声明者生效
         inventory.filters = PocketFilterConfig.readFrom(root);
-        inventory.essence = PocketEssenceStore
-            .readFrom(root, tag -> PocketEssenceIntake.isDeclaredEssenceTag(inventory.filters, tag));
+        // ★R95 S5：源质表读档带动态每格上限（STACK 位在 ⇒ 读档钳制按 4096；单源见 PocketEssenceStore#setCapPerTag）
+        inventory.essence = PocketEssenceStore.readFrom(
+            root,
+            tag -> PocketEssenceIntake.isDeclaredEssenceTag(inventory.filters, tag),
+            inventory::essenceCapPerTag);
         inventory.bindings = PocketCellBindings.readFrom(root);
         // ★R90 S1：读档即持久化边界 —— 换上的这份 store 就是新基线，增量日志从零起算
         inventory.clearEssenceDeltas();
@@ -308,6 +372,10 @@ public final class PocketInventory {
      * <p>
      * 旧档的单 compound ⇒ <b>整份落到 0 号 tank</b>；新档的列表 ⇒ 按 {@link PocketConstants#FLUID_BAR_TANK}
      * 归位。缺 tank 键按 0 读（与旧档同义）并计入一次性 WARN；tank 号越界的条目丢弃（同一个 WARN）。
+     * <p>
+     * ★R95 S5：每条目<b>优先读 {@link PocketConstants#FLUID_BAR_AMOUNT_L}</b>（long 真值），无该键的
+     * 老档回退 {@code FluidStack} 自带的 {@code Amount}（int 头值）——16G 之前的老档真值 ≤ 16M ≤ 头值，
+     * 回退零损失；AmountL 比 Amount 小的脏档按<b>头值</b>收口（头是真值的最小可信下界，宁多不吞）。
      */
     private void loadTanks(NBTTagCompound root) {
         if (!root.hasKey(PocketConstants.FLUID_BAR)) {
@@ -331,6 +399,13 @@ public final class PocketInventory {
                 final FluidStack fluid = FluidStack.loadFluidStackFromNBT(entry);
                 if (fluid != null && fluid.amount > 0) {
                     tankFluid[tank] = fluid;
+                    // ★R95 S5 双轨：真值优先 AmountL；头值同步钳到不变式（老档 Amount 即真值）
+                    final long head = fluid.amount;
+                    final long truth = entry.hasKey(PocketConstants.FLUID_BAR_AMOUNT_L)
+                        ? Math.max(head, entry.getLong(PocketConstants.FLUID_BAR_AMOUNT_L))
+                        : head;
+                    tankTruth[tank] = truth;
+                    fluid.amount = headAmountOf(truth);
                 }
             }
             if (dropped > 0) {
@@ -343,22 +418,39 @@ public final class PocketInventory {
             final FluidStack legacy = FluidStack.loadFluidStackFromNBT(root.getCompoundTag(PocketConstants.FLUID_BAR));
             if (legacy != null && legacy.amount > 0) {
                 tankFluid[0] = legacy;
+                tankTruth[0] = legacy.amount;
             }
         }
     }
 
+    /** {@link #saveTanks} 里"真值超头 ⇒ 旧版降级读会丢超头部分"的一次性 WARN 闩（形状级问题，按进程一次）。 */
+    private static boolean downgradeWarned;
+
     /** 写档：只写非空 tank，每条自带 tank 号；全空即 {@code removeTag}。 */
     private void saveTanks(NBTTagCompound root) {
         final NBTTagList list = new NBTTagList();
+        boolean overHead = false;
         for (int tank = 0; tank < FLUID_TANK_COUNT; tank++) {
             final FluidStack fluid = tankFluid[tank];
-            if (fluid == null || fluid.amount <= 0) {
+            if (fluid == null || fluid.amount <= 0 || tankTruth[tank] <= 0) {
                 continue;
             }
             final NBTTagCompound entry = new NBTTagCompound();
+            // ★R95 S5 双写：Amount（int 头值，FluidStack.writeToNBT 原样写出 = 旧版读侧来源）
+            // + AmountL（long 真值，本版起的权威）。写前把头的 amount 对齐不变式（防御头被外部直改）。
+            fluid.amount = headAmountOf(tankTruth[tank]);
             fluid.writeToNBT(entry);
+            entry.setLong(PocketConstants.FLUID_BAR_AMOUNT_L, tankTruth[tank]);
+            if (tankTruth[tank] > fluid.amount) {
+                overHead = true;
+            }
             entry.setInteger(PocketConstants.FLUID_BAR_TANK, tank);
             list.appendTag(entry);
+        }
+        if (overHead && !downgradeWarned) {
+            downgradeWarned = true;
+            GTInterestingThing.LOG
+                .warn("[pocket] 流体条真值超过 int 头（16G 档）：已双写 Amount（头值）与 AmountL（真值），" + "旧版本 jar 读这份档只能看到头值部分（本条只报一次）");
         }
         if (list.tagCount() == 0) {
             root.removeTag(PocketConstants.FLUID_BAR);
@@ -463,7 +555,118 @@ public final class PocketInventory {
                 final String contentKey = stack == null ? "" : PocketAeChannelOps.contentKey(stack);
                 return filters.allowsPlayerPlacement(PocketFilterConfig.Kind.ITEM, slot, contentKey);
             }
+
+            /**
+             * ★R95 S5（STACK 位）：中栏槽位上限两档——未升级 64（上游默认，现状逐字不变）、
+             * 升级 1024（= 64 × 16）。{@code insertItem} 与 vanilla 槽交互都经
+             * {@link #getStackLimit(int, ItemStack)}（其内调本方法）⇒ 覆写这两点即覆盖全部写入面。
+             */
+            @Override
+            public int getSlotLimit(int slot) {
+                return storageStackUpgraded() ? PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED
+                    : PocketConstants.STORAGE_SLOT_LIMIT_BASE;
+            }
+
+            /**
+             * ★R95 S5（STACK 位）：单格可叠上限的<b>唯一执法点</b>——算式单源在
+             * {@link #effectiveStorageLimit(boolean, ItemStack)}（通道消费侧与 ghost 读数侧共读它，
+             * 本文件不含第二份三元）。
+             */
+            @Override
+            protected int getStackLimit(int slot, ItemStack stack) {
+                return PocketInventory.effectiveStorageLimit(storageStackUpgraded(), stack);
+            }
         };
+    }
+
+    /**
+     * ★R95 S5：<b>STACK 位是否固化</b>（存储格堆叠 ×16 与源质每格上限 256→4096 共用这一位）。
+     * handler 内部读点（{@code getSlotLimit}/{@code getStackLimit}）与源质上限选择都经它。
+     */
+    boolean storageStackUpgraded() {
+        return stackProbe.getAsBoolean();
+    }
+
+    /**
+     * ★R95 S5：中栏单格<b>可叠上限的单源算式</b>。
+     * <ul>
+     * <li><b>未升级</b> = {@code min(64, maxStackSize)}（= 上游 {@code ItemStackHandler#getStackLimit}
+     * 的既有行为，逐字不变）；</li>
+     * <li><b>升级后</b> = {@code min(1024, maxStackSize == 1 ? 1 : maxStackSize × 16)}——不可叠物品
+     * （max=1）保持 1，其余 ×16 后以 1024 封顶。乘法按 long 做（防超大 maxStackSize 的 int 溢出）。</li>
+     * </ul>
+     * 消费点三处共读：本类的 {@code getStackLimit} 覆写、{@code PocketAeChannelOps#extractItem} 的
+     * room/wantedSize/mergeInto 钳、{@code NekoFilterSlot#naturalMaxStackSize} 的显示回落。
+     *
+     * @param stack 待判栈；{@code null} ⇒ 0（与上游 {@code getStackLimit} 同一返回口径）
+     */
+    public static int effectiveStorageLimit(boolean stackUpgraded, ItemStack stack) {
+        if (stack == null) {
+            return 0;
+        }
+        final int max = stack.getMaxStackSize();
+        if (!stackUpgraded) {
+            return Math.min(PocketConstants.STORAGE_SLOT_LIMIT_BASE, max);
+        }
+        if (max == 1) {
+            return 1;
+        }
+        return (int) Math.min(
+            (long) PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED,
+            (long) max * PocketConstants.UPGRADE_STACK_MULTIPLIER);
+    }
+
+    /**
+     * ★R95 S5：CAPACITY 位是否固化（16M/16G 的选择输入；GUI 装配侧的容量读数也经它）。
+     */
+    boolean capacityUpgradeActive() {
+        return capacityProbe.getAsBoolean();
+    }
+
+    /**
+     * ★R95 S5：单 tank 容量（mB，long）——{@link PocketConstants#fluidTankCapacityMl(boolean)} 的
+     * 本实例读法（探针默认 false ⇒ 未升级口径）。
+     */
+    long fluidTankCapacity() {
+        return PocketConstants.fluidTankCapacityMl(capacityUpgradeActive());
+    }
+
+    /** ★R95 S5：源质每格上限的本实例读法（STACK 位在 ⇒ 4096；喂给 {@link PocketEssenceStore} 的动态上限）。 */
+    int essenceCapPerTag() {
+        return PocketConstants.essenceCapPerTag(storageStackUpgraded());
+    }
+
+    /**
+     * ★R95 S5：升级位探针的<b>注入点</b>（GUI 装配侧接线）。
+     * <p>
+     * 本类是纯数据件（只面对 NBT），结构性拿不到载体栈；{@code readFrom} 已用<b>档内位图</b>自播种
+     * （活 NBT 实例 ⇒ 会话期内 install 写位图后下一次查询即生效），但"口袋原本无 NBT、会话期内才
+     * 第一次装插件"的那一支没有根实例可捕获 ⇒ 面板构造完 {@code readFrom} 后应即时注入
+     * 「活查载体栈」版探针（先例：{@code NekoPocketPanel#carrierStackLive} 那条活查表通道）：
+     *
+     * <pre>
+     * {@code
+     * inventory.setUpgradeProbes(
+     *     () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CAPACITY),
+     *     () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.STACK));
+     * }
+     * </pre>
+     *
+     * <p>
+     * {@code null} 入参视为回落默认（false）。注入同时把源质表的动态上限一并接上（单源转发）。
+     */
+    public void setUpgradeProbes(java.util.function.BooleanSupplier capacity,
+        java.util.function.BooleanSupplier stack) {
+        this.capacityProbe = capacity == null ? () -> false : capacity;
+        this.stackProbe = stack == null ? () -> false : stack;
+        syncEssenceCapProbe();
+    }
+
+    /** 把 {@link #stackProbe} 接到源质表的动态每格上限（读档、注入、换探针后都要重接一次）。 */
+    private void syncEssenceCapProbe() {
+        if (essence != null) {
+            essence.setCapPerTag(this::essenceCapPerTag);
+        }
     }
 
     /**
@@ -730,6 +933,8 @@ public final class PocketInventory {
         this.dirty = true;
         // ★R90 S1：整表换实例 ⇒ 旧表的增量与新表不可通约，基线跟着新表重置
         clearEssenceDeltas();
+        // ★R95 S5：新实例要把动态每格上限探针重新接上（setCapPerTag 是实例级的）
+        syncEssenceCapProbe();
     }
 
     /** 绑定表换实例（S6 的绑定/解绑动作写完后放回；{@code null} 视为空表）。 */
@@ -895,10 +1100,14 @@ public final class PocketInventory {
     }
 
     /**
-     * 第 {@code tank} 号流体槽还能收这一份多少 mB（槽内已有别的流体 ⇒ 0；tank 号非法 ⇒ 0）。
+     * 第 {@code tank} 号流体槽还能收这一份多少 mB（<b>int 口径</b>，头层交互面；槽内已有别的流体 ⇒ 0；
+     * tank 号非法 ⇒ 0）。
      * <p>
      * ★拉取模式下的落点就是"该流体列自己那一格"：ghost 声明的 {@code slotIndex} 即 tank 号，
      * 所以十八个 tank 各拉各的（R78②：3 组 × 6 列），不会像旧单条那样"第一格满了后面全满"。
+     * <p>
+     * ★R95 S5：本方法仍按<b>头容量</b>（16M/int 顶）收口——服务它的都是 int 交互面（世界侧 tap 的
+     * 计划量）；通道抽取（16G 真值域）走 {@link #fluidBarRoomL(int, FluidStack)}。
      */
     public int fluidBarRoom(int tank, FluidStack probe) {
         if (probe == null || probe.amount <= 0 || !isValidTank(tank)) {
@@ -907,7 +1116,24 @@ public final class PocketInventory {
         final FluidStack current = tankFluid[tank];
         final int currentAmount = current == null || current.amount <= 0 ? 0 : current.amount;
         final boolean compatible = currentAmount == 0 || current.getFluid() == probe.getFluid();
-        return barRoom(PocketConstants.FLUID_BAR_CAPACITY_ML, currentAmount, compatible);
+        return barRoom((int) Math.min(fluidTankCapacity(), Integer.MAX_VALUE), currentAmount, compatible);
+    }
+
+    /**
+     * ★R95 S5：第 {@code tank} 号流体槽的 <b>long 余量</b>（按真值与动态容量算，16G 域的通道抽取用）：
+     * 异种流体 ⇒ 0；同种/空槽 ⇒ {@link #fluidTankCapacity()} − 真值。
+     */
+    public long fluidBarRoomL(int tank, FluidStack probe) {
+        if (probe == null || !isValidTank(tank)) {
+            return 0L;
+        }
+        final FluidStack current = tankFluid[tank];
+        final long currentAmount = current == null || current.amount <= 0 ? 0L : tankTruth[tank];
+        final boolean compatible = currentAmount == 0L || current.getFluid() == probe.getFluid();
+        if (!compatible) {
+            return 0L;
+        }
+        return Math.max(0L, fluidTankCapacity() - Math.max(0L, currentAmount));
     }
 
     /**
@@ -931,6 +1157,8 @@ public final class PocketInventory {
      * <p>
      * ★新功能 N 起灌入原语收口在 {@link #fillOwnTank(int, FluidStack)}（同语义单源），本方法保留给
      * 既有调用方（GUI 侧 {@code depositFluid} / 通道侧）——不改变任何既有行为。
+     * ★R95 S5：int 头层面的灌入（单笔量 ≤ int；累加超 int 顶的部分走
+     * {@link #fillOwnTankL(int, Fluid, long)} 的真值域）。
      */
     public int depositFluidIntoBar(int tank, FluidStack fluid) {
         return fillOwnTank(tank, fluid);
@@ -984,5 +1212,72 @@ public final class PocketInventory {
             dirty = true;
         }
         return moved;
+    }
+
+    /**
+     * ★R95 S5：往第 {@code tank} 号槽灌入 {@code amount} mB 的 <b>long 原语</b>（真值域直达 16G）。
+     * <p>
+     * 不经头层 {@code fill}（那是 int 容量算术，真值超 int 顶后会收 0）⇒ 自己做三件事：
+     * 异种拒收 / 按动态容量钳接收量 / 双轨同推（真值 += moved，头重钳到不变式）。
+     * 调用方是 AE2 通道抽取（元件侧一次可给出超 int 的长整批量）。
+     *
+     * @return 实际接收量（mB，long；0 = 一滴没进——异种 / 满 / 非法 tank）
+     */
+    public long fillOwnTankL(int tank, Fluid fluid, long amount) {
+        if (fluid == null || amount <= 0 || !isValidTank(tank)) {
+            return 0L;
+        }
+        final FluidStack current = tankFluid[tank];
+        if (current != null && current.amount > 0 && current.getFluid() != fluid) {
+            return 0L;
+        }
+        final long moved = Math.min(amount, Math.max(0L, fluidTankCapacity() - Math.max(0L, tankTruth[tank])));
+        if (moved <= 0L) {
+            return 0L;
+        }
+        final long truth = tankTruth[tank] + moved;
+        tankTruth[tank] = truth;
+        if (current == null || current.amount <= 0) {
+            tankFluid[tank] = new FluidStack(fluid, headAmountOf(truth));
+        } else {
+            current.amount = headAmountOf(truth);
+        }
+        dirty = true;
+        return moved;
+    }
+
+    /**
+     * ★R95 S5：从第 {@code tank} 号槽抽走 {@code amount} mB 的 <b>long 原语</b>（真值域）。
+     * <p>
+     * 与 {@link #drainOwnTank(int, int)} 同一条"只在元件真收了货之后调"的纪律；真值不足按存量给，
+     * 头同步重钳（真值仍超 int 顶时头保持 int 顶）。
+     *
+     * @return 实际抽走量（long；小于请求量 ⇒ 调用方必须把差额原路注回元件）
+     */
+    public long drainOwnTankL(int tank, long amount) {
+        if (!isValidTank(tank) || amount <= 0L || tankFluid[tank] == null || tankTruth[tank] <= 0L) {
+            return 0L;
+        }
+        final long moved = Math.min(amount, tankTruth[tank]);
+        if (moved <= 0L) {
+            return 0L;
+        }
+        final long truth = tankTruth[tank] - moved;
+        tankTruth[tank] = truth;
+        if (truth <= 0L) {
+            tankFluid[tank] = null;
+        } else {
+            tankFluid[tank].amount = headAmountOf(truth);
+        }
+        dirty = true;
+        return moved;
+    }
+
+    /**
+     * ★R95 S5：第 {@code tank} 号槽的 <b>long 真值</b>（mB；GUI 的 long 同步值与自绘读数读它；
+     * 非法 tank ⇒ 0）。真值 ≤ int 顶时与头层读数恒等（双轨不变式的直接推论）。
+     */
+    public long tankTruthAt(int tank) {
+        return isValidTank(tank) ? Math.max(0L, tankTruth[tank]) : 0L;
     }
 }
