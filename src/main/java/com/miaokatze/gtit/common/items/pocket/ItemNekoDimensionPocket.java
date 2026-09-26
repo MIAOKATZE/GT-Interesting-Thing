@@ -577,7 +577,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             Integer.valueOf(PocketConstants.ESSENCE_DISPLAY_GRID),
             // %11$d 面板内玩家背包格数（R78①；★代价 = E4 包放大，见 PocketSlots 类注释）
             Integer.valueOf(PocketConstants.PLAYER_BACKPACK_SLOTS),
-            // %12$d 蒸馏一轮秒数·加速档（★R95：装 DISTILL_FAST 后 2.5 秒；与 %6$d 同一换算单源，
+            // %12$d 蒸馏一轮秒数·加速档（★R95：装 MAGE 后 1 秒；与 %6$d 同一换算单源，
             // 真值只住 TaumDistillRules.distillIntervalTicks 一处）
             Integer.valueOf(PocketConstants.ticksToSecondsCeil(TaumDistillRules.distillIntervalTicks(true))) };
     }

@@ -237,7 +237,7 @@ public final class PocketConfigPanel {
                 return Arrays.asList(Section.SWITCH, Section.MOUNT_MAGNET);
             case CHANNEL_PERSIST:
                 return Collections.singletonList(Section.SWITCH);
-            case DISTILL_FAST:
+            case MAGE:
                 return Arrays.asList(Section.SWITCH, Section.MOUNT_MAGE);
             default:
                 // 走不到（上面已穷举五个值）。留这一支的意义：将来追加第 6 型而忘了在上面表态时，
@@ -600,5 +600,5 @@ public final class PocketConfigPanel {
      */
     private static final String[] UPGRADE_NAME_KEYS = { "item.neko_pocket_upgrade_capacity.name",
         "item.neko_pocket_upgrade_stack.name", "item.neko_pocket_upgrade_magnet.name",
-        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_distill_fast.name" };
+        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_mage.name" };
 }

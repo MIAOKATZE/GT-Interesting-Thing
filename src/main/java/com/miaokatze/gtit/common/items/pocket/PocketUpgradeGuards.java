@@ -45,7 +45,7 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * <b>存储区（含游标）{@code >64} 的栈数</b>与<b>源质 {@code >256} 的 tag 数</b>，两者都是 0 时打一次性
  * INFO ⇒ "0"不再与"没东西可拦"混淆，比逐条人肉数格子的检查表强。
  *
- * <h2>MAGNET / CHANNEL_PERSIST / DISTILL_FAST 恒允许关闭</h2>
+ * <h2>MAGNET / CHANNEL_PERSIST / MAGE 恒允许关闭</h2>
  * 这三型需求没配守卫，且关闭只让各自的 driver 早退：<b>不主动 stop</b> 已在跑的通道状态（关掉
  * CHANNEL_PERSIST 后通道自然衰减到 0，复用既有 {@code finishBatch} 的回收支，不建第二台状态机）。
  */
@@ -143,7 +143,7 @@ public final class PocketUpgradeGuards {
             case STACK:
                 break;
             default:
-                // MAGNET / CHANNEL_PERSIST / DISTILL_FAST：关闭只让 driver 早退，不主动 stop 现有状态
+                // MAGNET / CHANNEL_PERSIST / MAGE：关闭只让 driver 早退，不主动 stop 现有状态
                 return new OffVerdict(Reason.ALLOW, 0, -1, -1, false);
         }
         return type == PocketUpgradeType.CAPACITY

@@ -15994,11 +15994,11 @@ public class NekoPocketModelTest {
         SimpleAssert.that(PocketConfigPanel.typeOfArg(-1) == null, "arg = −1（非法编码）⇒ 丢弃");
         SimpleAssert.that(PocketConfigPanel.typeOfArg(0) == PocketUpgradeType.CAPACITY, "arg 0 ⇒ 型 0 关=false");
         SimpleAssert.that(PocketConfigPanel.typeOfArg(1) == PocketUpgradeType.CAPACITY, "arg 1 ⇒ 型 0 关=true");
-        SimpleAssert.that(PocketConfigPanel.typeOfArg(9) == PocketUpgradeType.DISTILL_FAST, "arg 9 ⇒ 末型（2*4+1）");
+        SimpleAssert.that(PocketConfigPanel.typeOfArg(9) == PocketUpgradeType.MAGE, "arg 9 ⇒ 末型（2*4+1）");
         SimpleAssert.that(PocketConfigPanel.typeOfArg(10) == null, "★arg 10 越界 ⇒ 丢弃（码空间恰 = 型数 × 2）");
         SimpleAssert.eq(-1, PocketConfigPanel.encode(null, true), "空型编不出码 ⇒ −1（调用方不发这条）");
         SimpleAssert.eq(0, PocketConfigPanel.encode(PocketUpgradeType.CAPACITY, false), "编码真值表①");
-        SimpleAssert.eq(9, PocketConfigPanel.encode(PocketUpgradeType.DISTILL_FAST, true), "编码真值表②");
+        SimpleAssert.eq(9, PocketConfigPanel.encode(PocketUpgradeType.MAGE, true), "编码真值表②");
         final java.util.Set<String> keys = new java.util.HashSet<>();
         for (final PocketConfigPanel.Outcome outcome : PocketConfigPanel.Outcome.values()) {
             final String key = PocketConfigPanel.receiptKey(outcome);
@@ -16173,7 +16173,7 @@ public class NekoPocketModelTest {
 
     private static final String[] CONFIG_NAME_KEYS = { "item.neko_pocket_upgrade_capacity.name",
         "item.neko_pocket_upgrade_stack.name", "item.neko_pocket_upgrade_magnet.name",
-        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_distill_fast.name" };
+        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_mage.name" };
 
     /**
      * ★R96 S2 验收目标里的"按型分派"那条：面板<b>不得被写死成五型同形</b>，也不许长成五套面板。
@@ -16195,13 +16195,13 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(1, sections.get(PocketUpgradeType.STACK).intValue(), "堆叠 = 只开关");
         SimpleAssert.eq(1, sections.get(PocketUpgradeType.CHANNEL_PERSIST).intValue(), "通道持续化 = 只开关");
         SimpleAssert.eq(2, sections.get(PocketUpgradeType.MAGNET).intValue(), "★磁力 = 开关 + 挂载位（S7 的宿主）");
-        SimpleAssert.eq(2, sections.get(PocketUpgradeType.DISTILL_FAST).intValue(), "★魔法使 = 开关 + 挂载位（S9 的宿主）");
+        SimpleAssert.eq(2, sections.get(PocketUpgradeType.MAGE).intValue(), "★魔法使 = 开关 + 挂载位（S9 的宿主）");
         SimpleAssert.eq(PocketConfigPanel.Section.MOUNT_MAGNET,
             PocketConfigPanel.sectionsOf(PocketUpgradeType.MAGNET).get(1), "★磁力那一段点名 MOUNT_MAGNET");
         SimpleAssert.eq(PocketConfigPanel.Section.MOUNT_MAGE,
-            PocketConfigPanel.sectionsOf(PocketUpgradeType.DISTILL_FAST).get(1), "★魔法使那一段点名 MOUNT_MAGE");
+            PocketConfigPanel.sectionsOf(PocketUpgradeType.MAGE).get(1), "★魔法使那一段点名 MOUNT_MAGE");
         SimpleAssert.that(PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGNET) != null
-            && PocketConfigPanel.mountTitleKey(PocketUpgradeType.DISTILL_FAST) != null,
+            && PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGE) != null,
             "两个挂载位各有自己的标题键（★不是同一句「配置」糊五遍）");
         SimpleAssert.that(
             PocketConfigPanel.mountTitleKey(PocketUpgradeType.CAPACITY) == null
