@@ -96,8 +96,12 @@ public final class PocketWorldFluidTap {
             amounts[tank] = amount;
             compatible[tank] = amount == 0 || own.getFluid() == sim.getFluid();
         }
+        // ★R96 S3 封漏点：这里原先直传静态 {@code FLUID_BAR_CAPACITY_ML}（未升级基值），不经
+        // {@link PocketConstants#fluidTankCapacityMl(boolean)} 那唯一的容量选择点 ⇒ 装了 CAPACITY 的口袋
+        // 在世界侧抽液永远只按未升级档夹取（升级档对本路径不可见）。现走 {@link #tankCapacityFor}。
+        final boolean capacityUpgraded = PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CAPACITY);
         final PocketFluidExtraction.Plan plan = PocketFluidExtraction
-            .plan(gateSim, amounts, compatible, PocketConstants.FLUID_BAR_CAPACITY_ML);
+            .plan(gateSim, amounts, compatible, tankCapacityFor(capacityUpgraded));
         if (plan.reason != PocketFluidExtraction.Reason.GATE_OPEN) {
             logL10("判因=" + plan.reason, timer, gateSim, ungated, 0, 0, 0, 0, viaSession, -1, tile);
             chat(player, "gtit.pocket.world.draw.pocket_full");
@@ -160,6 +164,22 @@ public final class PocketWorldFluidTap {
     }
 
     // ------------------------------------------------------------------ 内部：读数 / 回填 / 聊天 / L10
+
+    /**
+     * ★R96 S3：世界侧抽液的<b>单 tank 夹取上界</b>——把「容量升级位 → 容量」这一步从 {@link #tap} 里
+     * 抽成一个<b>不碰 MC/GT5U 类型</b>的纯函数，为的是让这条漏点能被 {@code NekoPocketModelTest} 直接
+     * 断言（{@code tap} 本体要 {@code BaseMetaTileEntity}，纯 JVM 造不出来 ⇒ 只能钉源码在场、钉不了读数）。
+     * <p>
+     * 三条不变式：① 值<b>只能</b>来自 {@link PocketConstants#fluidTankCapacityMl(boolean)} 那<b>一个</b>
+     * 选择点（读静态基值 = 本文件历史上犯过的错，升级档会对世界侧永久不可见）；② 升级位由调用侧用
+     * {@link PocketUpgradeSwitches#isActive} 求出（位图 ∧ ¬off-mask，与全仓其余读点同一条真值；
+     * 关了开关必须落回未升级那一档，否则这里就长出旁路开关的第九个读点）；③ 外层
+     * {@code min(Integer.MAX_VALUE, …)} 在 2G 下退化为恒等仍<b>保留</b>——{@link PocketFluidExtraction#plan}
+     * 的容量形参是 int，这道钳是「升级档一旦抬回 int 顶之上就不会截断成负数」的唯一防线。
+     */
+    static int tankCapacityFor(boolean capacityUpgraded) {
+        return (int) Math.min(Integer.MAX_VALUE, PocketConstants.fluidTankCapacityMl(capacityUpgraded));
+    }
 
     /** 门禁模拟/真抽的统一入口：任何 MTE 自实现抛错都不许炸掉玩家的一次右击。 */
     private static FluidStack tryDrain(BaseMetaTileEntity tile, int maxDrain, boolean doDrain) {

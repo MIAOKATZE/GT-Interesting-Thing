@@ -529,8 +529,10 @@ public final class PocketConstants {
      * ★<b>R95 S5：流体条目的 long 真值键</b>（TAG_Long）—— 双轨计数的落档面。
      * <p>
      * 写档<b>双写</b>：{@code Amount}（由 {@code FluidStack.writeToNBT} 写出的 int 头值
-     * = min(真值, {@code Integer.MAX_VALUE})，旧版读侧的唯一来源）+ 本键（long 真值，16G 档的权威）。
-     * 读档<b>优先 AmountL</b>、无则回退旧 {@code Amount}（16G 之前的老档真值恒 ≤ 16M ≤ 头值，回退零损失）。
+     * = min(真值, {@code Integer.MAX_VALUE})，旧版读侧的唯一来源）+ 本键（long 真值，超 int 顶时的唯一权威）。
+     * 读档<b>优先 AmountL</b>、无则回退旧 {@code Amount}。★回退腿只对「双轨之前的老档」有意义：那批档真值
+     * 恒 ≤ 当时的基值 ≤ 头值 ⇒ 零损失。★R96 S3 把两档改成 20M / 2G <b>不</b>新增回退面（2G 档真值恒 ≤ 头值
+     * ⇒ 双写两数相等，走哪条腿读数一致）；本键仍是已写出的 16G 时代存档保住原值的唯一来源，故不删。
      * <p>
      * ★<b>降级损失如实声明</b>：S5 之前的 jar 读 S5 档只认 {@code Amount} ⇒ 真值超头部分
      * （&gt; 2,147,483,647 mB）在旧版里读不到 —— 写档侧在真值超头时打一次性 WARN（不阻止写）。
@@ -538,29 +540,43 @@ public final class PocketConstants {
     public static final String FLUID_BAR_AMOUNT_L = "AmountL";
     /**
      * <b>单个</b>流体 tank 的容量（mB）⇒ {@link #FLUID_TANK_TOTAL} 个 tank 的总量是它的 18 倍
-     * （R78②：{@code 18 × 16,000,000 = 288,000,000}，旧"六槽合计 96,000,000"口径作废）。
+     * （★R96 S3：{@code 18 × 20,000,000 = 360,000,000}；R78② 的 18 × 16M 口径与更早的"六槽合计"口径
+     * 都已作废，数值史只留在 README / wiki，不在这个常量上再立一份）。
      * <p>
      * ★<b>规格外自立项</b>（R75 明文，须"游戏内文案 + 交付说明"双处声明；R78 的合计变更同样双处同步）：
-     * 值由旧口径 16,000 改为 <b>每槽 16,000,000</b>（×1000），来源是用户那句「流体槽容量 16M」，
-     * <b>不是</b>需求原文数字。★R95 S5 起本常量是<b>未升级口径</b>——玩家可见侧的容量一律由
+     * 本值由 R75 那句「流体槽容量 16M」定为每槽 16,000,000（×1000 于更早的 16,000），★R96 S3 按用户那句
+     * 「原始流体容量 16M → 20M」抬到<b>每槽 20,000,000</b>。两代都是<b>口头量级、不是需求原文数字</b>。
+     * ★R95 S5 起本常量是<b>未升级口径</b>——玩家可见侧的容量一律由
      * {@link #fluidTankCapacityMl(boolean)} 按升级位选值填进 {@code gtit.pocket.fluid.capacity} 与
      * {@code item.neko_dimension_pocket.tooltip.9}（lang 不得写死规格数字）。
      */
-    public static final int FLUID_BAR_CAPACITY_ML = 16_000_000;
+    public static final int FLUID_BAR_CAPACITY_ML = 20_000_000;
     /**
-     * ★<b>R95 S5：CAPACITY 升级位固化后的单 tank 容量</b> = <b>16G = 16,000,000,000 mB</b>（long，
-     * 超 int ⇒ 流体条自此走双轨计数：内存 long 真值 + int 头，见 {@code PocketInventory} 的 tank 注释）。
+     * ★<b>R96 S3 改值：CAPACITY 升级位固化后的单 tank 容量</b> = <b>2G = 2,000,000,000 mB</b>
+     * （十进制 G，与旧 16G 同口径；用户已裁定）。★仍写成 <b>long 字面量</b>：这一档的<b>形状</b>是双轨
+     * 计数的前提（内存 long 真值 + int 头，见 {@code PocketInventory} 的 tank 注释），且
+     * {@code verify-pocket.sh} 的字面量判据按尾缀 {@code L} 认它 —— 降成 int 会同时破掉
+     * "两档常量 + 一个选择点"的结构判据，而 {@link #fluidTankCapacityMl(boolean)} 的返回型本就是 long。
+     * <p>
+     * ★<b>2G 与旧 16G 的实质差别（理由文按 2G 重写）</b>：2G <b>不进</b> int 顶之外
+     * （{@code 2,000,000,000 < 2,147,483,647}）⇒「真值超头」这一支在数值上<b>不可达</b>，双轨读数恒满足
+     * 头 ≡ 真值（用例 {@code fluid_truth_never_exceeds_int_head} 把这条钉成用例，而不是只删文档）。
+     * 双轨机制本身<b>全部保留</b>，三条理由：① 已写出的 16G 时代存档里 {@code Amount} 已被钳在 int 顶，
+     * 只有 {@link #FLUID_BAR_AMOUNT_L} 保得住原值；② {@code PocketInventory} 的执法面（构造期覆写、
+     * 头 amount 落点恰 3）按 头 = min(真值, {@code Integer.MAX_VALUE}) 的<b>一般式</b>写，为前向兼容零改动；
+     * ③ 全仓 7 处 {@code min(…, Integer.MAX_VALUE)} 在 2G 下退化为恒等（零成本、零行为差），
+     * 删任何一处都是把「当前够不着」读成「永远够不着」。
      * <p>
      * ★两套常量 + 运行时选择（而不是改写 {@link #FLUID_BAR_CAPACITY_ML} 一个数）的理由：基值是
-     * R75 已对玩家双处声明（tooltip.9 / README）的<b>落档口径</b>，且全仓十余处派生（步进、总容量、
+     * R75 起已对玩家双处声明（tooltip.9 / README）的<b>落档口径</b>，且全仓十余处派生（步进、总容量、
      * verify 门禁）都按"未升级"读它 ⇒ 动态化收进 {@link #fluidTankCapacityMl(boolean)} 这<b>一个</b>
-     * 选择点，基值常量与既有派生一个字不改，升级侧另立 long 常量（16G 不进 int，本就是第二形态）。
+     * 选择点，基值常量与既有派生一个字不改，升级侧另立 long 常量。
      */
-    public static final long FLUID_BAR_CAPACITY_UPGRADED_ML = 16_000_000_000L;
+    public static final long FLUID_BAR_CAPACITY_UPGRADED_ML = 2_000_000_000L;
 
     /**
-     * ★R95 S5：单 tank 容量的<b>唯一选择点</b> —— 未升级 = {@link #FLUID_BAR_CAPACITY_ML}（16M 现状
-     * 逐字不变），CAPACITY 位固化 = {@link #FLUID_BAR_CAPACITY_UPGRADED_ML}（16G）。
+     * ★R95 S5：单 tank 容量的<b>唯一选择点</b> —— 未升级 = {@link #FLUID_BAR_CAPACITY_ML}（★R96 S3：20M），
+     * CAPACITY 位固化 = {@link #FLUID_BAR_CAPACITY_UPGRADED_ML}（★R96 S3：2G）。
      * <p>
      * 调用方（tank 头容量 supplier、{@link #fluidTotalCapacityMl(boolean)}、GUI 容量读数、tooltip 参数）
      * 一律经它取值，不得各自再写一遍三元。
@@ -571,15 +587,16 @@ public final class PocketConstants {
 
     /**
      * 流体侧<b>总</b>容量（mB）= {@link #FLUID_TANK_TOTAL} × {@link #FLUID_BAR_CAPACITY_ML}
-     * = {@code 18 × 16,000,000 =} <b>288,000,000</b>（R78②；★R95 S5 起这是<b>未升级口径</b>，
-     * 升级后的合计走 {@link #fluidTotalCapacityMl(boolean)}，两个读数不得互相顶替）。
+     * = {@code 18 × 20,000,000 =} <b>360,000,000</b>（★R96 S3；R78② 那代「18 × 16M」合计已作废。
+     * ★R95 S5 起这是<b>未升级口径</b>，升级后的合计走 {@link #fluidTotalCapacityMl(boolean)}，
+     * 两个读数不得互相顶替）。
      * <p>
      * ★存在的理由与 {@link #BURST_SHOW_TICKS} 同一条纪律：合计是"规格外自立项"的玩家可见读数，
      * 一旦在 lang 或 README 里另写一个数就是两处真相；玩家侧只允许由本常量填占位。
      */
     public static final int FLUID_TOTAL_CAPACITY_ML = FLUID_TANK_TOTAL * FLUID_BAR_CAPACITY_ML;
 
-    /** ★R95 S5：升级后的流体总容量（long，= 18 × 16G = 288G）——选择点语义同 {@link #fluidTankCapacityMl(boolean)}。 */
+    /** ★R95 S5：升级后的流体总容量（long，★R96 S3 = 18 × 2G = 36G）——选择点语义同 {@link #fluidTankCapacityMl(boolean)}。 */
     public static long fluidTotalCapacityMl(boolean capacityUpgraded) {
         return FLUID_TANK_TOTAL * fluidTankCapacityMl(capacityUpgraded);
     }
@@ -611,18 +628,20 @@ public final class PocketConstants {
      * tooltip 声明不足一瓶"那两种收口。⚠ 取瓶路（面向玩家）仍按整瓶，那条 C1 未被改判。
      */
     public static final int FILTER_CAP_STEP_ESSENCE = 1;
-    /** 流体支"1%"的档数（★分母按 D-6 = 单 tank 容量 {@link #FLUID_BAR_CAPACITY_ML}，不是 288M 合计）。 */
+    /** 流体支"1%"的档数（★分母按 D-6 = 单 tank 容量 {@link #FLUID_BAR_CAPACITY_ML}，不是 360M 合计）。 */
     public static final int FILTER_CAP_PERCENT_STEPS = 100;
-    /** 流体支一次滚轮的步进 = 单 tank 容量的 1% = {@code 16,000,000 / 100 =} <b>160,000 mB</b>（派生，不留字面量）。 */
+    /** 流体支一次滚轮的步进 = 单 tank 容量的 1% = {@code 20,000,000 / 100 =} <b>200,000 mB</b>（派生，不留字面量）。 */
     public static final int FILTER_CAP_STEP_FLUID = FLUID_BAR_CAPACITY_ML / FILTER_CAP_PERCENT_STEPS;
     /**
-     * ★R95 S5：CAPACITY 位固化后的流体步进 = 16G / 100 = <b>160,000,000 mB</b>（"每次 1%"的口径跟
+     * ★R95 S5：CAPACITY 位固化后的流体步进 = ★R96 S3 的 2G / 100 = <b>20,000,000 mB</b>（"每次 1%"的口径跟
      * 容量走；选择点 {@link #filterCapStepFluid(boolean)}，消费点 {@code PocketGhostRequest#nextCapEffective}）。
+     * ★外面那层 {@code min(Integer.MAX_VALUE, …)} 在 2G 下退化为恒等，仍<b>保留</b>：它是「升级档一旦抬回
+     * int 顶之外就不会溢出成负数」的唯一防线，删它等于把 (int) 强转裸露出来。
      */
     public static final int FILTER_CAP_STEP_FLUID_UPGRADED = (int) Math
         .min(Integer.MAX_VALUE, FLUID_BAR_CAPACITY_UPGRADED_ML / FILTER_CAP_PERCENT_STEPS);
 
-    /** ★R95 S5：流体步进的唯一选择点（未升级 160K / 升级 160M，语义同 {@link #fluidTankCapacityMl(boolean)}）。 */
+    /** ★R95 S5：流体步进的唯一选择点（★R96 S3：未升级 200K / 升级 20M，语义同 {@link #fluidTankCapacityMl(boolean)}）。 */
     public static int filterCapStepFluid(boolean capacityUpgraded) {
         return capacityUpgraded ? FILTER_CAP_STEP_FLUID_UPGRADED : FILTER_CAP_STEP_FLUID;
     }
@@ -633,17 +652,20 @@ public final class PocketConstants {
      * 流体支组上限的<b>上界</b>，同时是"未设置"时的<b>回落值</b>。
      * <p>
      * ★★<b>R95 S5 改判：钉 {@code Integer.MAX_VALUE}</b>（旧值 = {@link #FLUID_BAR_CAPACITY_ML}）。
-     * 双口径如实声明：
+     * ★<b>R96 S3 之后这一枚「声明档天花板」在数值上不再执法</b>：两档容量（20M / 2G）都<b>低于</b> int 顶
+     * ⇒ 真正收口的是 {@code min(本常量, tank 容量) = tank 容量}。值仍<b>不动</b>：改它会破
+     * {@code verify-pocket.sh} 的符号判据，并让「未设 ⇒ 从天花板起滚」的手感凭空跳档。双口径如实声明：
      * <ul>
-     * <li><b>声明档是 int</b>（{@link #FILTER_CAP} 的 NBT 形状与滚轮文法都装不下 16G）⇒ 一条声明
+     * <li><b>声明档是 int</b>（{@link #FILTER_CAP} 的 NBT 形状与滚轮文法都装不下 long 档）⇒ 一条声明
      * <b>单批</b>至多补 {@code 2,147,483,647} mB ≈ 2.147G；</li>
-     * <li><b>16G 靠多批灌满</b>：CAPACITY 位固化后单 tank 容量 16G &gt; 声明档上界，通道按
-     * "落点余量 ∧ 声明上限"逐批收口，余量没收满就顺延下一拍 ⇒ 多批自然灌到 16G。
-     * 消费侧（{@code PocketFluidChannelOps#extractFluid}）的 {@code min(room, cap)} 已 long 化。</li>
+     * <li><b>★R96 S3：两档容量都在 int 顶之内</b> ⇒ 一批就够填满整个 tank；旧「升级档 16G &gt; 声明档上界、
+     * 必须多批灌满」那条前提随容量降档一起消失。通道仍按 "落点余量 ∧ 声明上限" 逐批收口
+     * （消费侧 {@code PocketFluidChannelOps#extractFluid} 的 {@code min(room, cap)} 已 long 化、<b>保留</b>），
+     * 只是余量恰好一批就能收满。</li>
      * </ul>
-     * ★回落语义因此从"一拍填到本 tank 自然满量"放宽为"一拍至多 2.147G、直到填满为止"——对
-     * <b>未升级</b>口袋两者逐字同效（room ≤ 16M 恒为收口侧）；<b>显示侧</b>的"自然满量"读数
-     * （未调过的默认显示）由各格件按 {@code min(本常量, tank 容量)} 现算，不在本常量上再立第二份真相。
+     * ★回落语义因此回到"一拍填到本 tank 自然满量"——对<b>两档</b>口袋都逐字同效（room ≤ 20M / ≤ 2G 恒为
+     * 收口侧）；<b>显示侧</b>的"自然满量"读数（未调过的默认显示）由各格件按 {@code min(本常量, tank 容量)}
+     * 现算，不在本常量上再立第二份真相。
      */
     public static final int FILTER_CAP_CEILING_FLUID = Integer.MAX_VALUE;
     /**
@@ -831,9 +853,9 @@ public final class PocketConstants {
     /**
      * ★<b>R83 C2</b> ghost 请求：调整这一格声明的<b>组上限</b>（alt+滚轮）。
      * <p>
-     * 文法 {@code CAP|<槽号>|<区域字母>|<绝对值>}。★大容量（流体 16,000,000 一档）<b>只能</b>走
+     * 文法 {@code CAP|<槽号>|<区域字母>|<绝对值>}。★大容量（★R96 S3：未升级档一档就 20,000,000）<b>只能</b>走
      * {@code SYNC_GHOST_REQUEST}（面板那侧的字符串同步键）：自家 int 动作通道按 {@code code*1024+arg}
-     * 打包，{@code 16_000_000 / 1024 = 15625} 会落进 {@code onServerAction} 的 {@code default: break}
+     * 打包，{@code 20_000_000 / 1024 = 19531} 会落进 {@code onServerAction} 的 {@code default: break}
      * ⇒ 静默失效（R64c 的容量判据）。这里传的是<b>绝对值</b>而非增量：增量要在服务端知道"当前值"，
      * 而物品支的当前默认值 = 该物品自己的 {@code maxStackSize}（纯 JVM 件解不出），
      * 绝对值则两端都由 {@code PocketGhostRequest#nudgedCap} 这<b>一条</b>算式算出 ⇒ 步进表只有一份。

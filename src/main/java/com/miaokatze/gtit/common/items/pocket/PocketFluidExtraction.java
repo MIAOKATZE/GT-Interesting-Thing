@@ -22,7 +22,8 @@ package com.miaokatze.gtit.common.items.pocket;
  * <b>搬运契约（计划 §3-S6「不丢量 + 回执如实」）</b>：{@link #plan} 先按口袋侧余量求
  * {@code want = min(机器可抽量, 落点 tank 余量)}，真抽一律以 {@code want} 为上限 ⇒ 口袋必然装得下；
  * 适配器侧若仍出现「真抽 > 实收」（接口自反悔），差额必须原路注回机器（不丢弃），回执按实收报。
- * U7 门槛口径（tier≥4 数字罐 32M 起超单 tank 16M）⇒ {@link #remainingAfter} 供「部分搬运」回执。
+ * U7 门槛口径（tier≥4 数字罐 32M 起超单 tank 的未升级档 ⇒ ★R96 S3 后是超 20M；2G 档下同一条
+ * 结论仍成立，只是门槛挪到 tier 更高的罐）⇒ {@link #remainingAfter} 供「部分搬运」回执。
  */
 public final class PocketFluidExtraction {
 
@@ -113,7 +114,10 @@ public final class PocketFluidExtraction {
      * @param gatedSimulated 机器模拟量（>0）
      * @param tankAmounts    各 tank 现有量（{@code null} 或长度 0 ⇒ POCKET_NO_ROOM；负值按 0）
      * @param tankCompatible 各 tank 是否收这种流体（空槽必须传 true；与 amounts 等长，不等长按不搬处理）
-     * @param tankCapacity   单 tank 容量（{@code PocketConstants.FLUID_BAR_CAPACITY_ML}，16M）
+     * @param tankCapacity   单 tank 容量（★由调用侧按 {@code PocketConstants.fluidTankCapacityMl(boolean)}
+     *                       的<b>选择点</b>取值传入：未升级档 = {@code FLUID_BAR_CAPACITY_ML}（20M），
+     *                       CAPACITY 位固化档 = {@code FLUID_BAR_CAPACITY_UPGRADED_ML}（2G，本形参是 int ⇒
+     *                       适配器侧那道 {@code min(Integer.MAX_VALUE, …)} 是截断防线，不是第二处容量真相））
      */
     public static Plan plan(int gatedSimulated, int[] tankAmounts, boolean[] tankCompatible, int tankCapacity) {
         if (gatedSimulated <= 0 || tankAmounts == null
@@ -168,8 +172,9 @@ public final class PocketFluidExtraction {
     /**
      * 搬完后机器侧还剩多少（「部分搬运」回执的未搬量；负数钳 0）。
      * <p>
-     * U7 口径：tier≥4 数字罐（32M 起）超单 tank 16M ⇒ {@code received < 机器量} 是常态，
-     * 回执必须如实报「实收 X、机器里还有约 Y」，不许把截断藏成「搬完了」。
+     * U7 口径：tier≥4 数字罐（32M 起）超<b>未升级</b>单 tank（★R96 S3：20M）⇒ {@code received < 机器量} 是常态，
+     * 回执必须如实报「实收 X、机器里还有约 Y」，不许把截断藏成「搬完了」。★装了 CAPACITY 的口袋按 2G 夹取
+     * ⇒ 同一台机器可能从"部分搬运"变成"全搬"，这条差异正是 {@code PocketWorldFluidTap} 必须走选择点的原因。
      */
     public static int remainingAfter(int machineContent, int received) {
         final int left = machineContent - Math.max(0, received);

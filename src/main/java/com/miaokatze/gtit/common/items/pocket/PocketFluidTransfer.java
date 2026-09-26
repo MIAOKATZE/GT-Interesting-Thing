@@ -191,7 +191,9 @@ public final class PocketFluidTransfer {
             int wantPerUnit = perUnit;
             final boolean probeIsPartial;
             if (count <= 0) {
-                // 一整件都装不进槽（Iridium 8,192,000 起就可能出现，Osmium / Neutronium 两档更是直接大于 16M 槽）
+                // 一整件都装不进<b>剩余</b>空间（Iridium 档单件 8,192,000 mB，Osmium / Neutronium 两档更大；
+                // ★R96 S3：槽容量已换成未升级 20M / 升级 2G 两档 ⇒ "整件超一槽"的档位对照要按
+                // fluidTankCapacityMl(当前档) 重读，不许照旧 16M 那一档的名单想当然）
                 // ⇒ 只倒这一件的部分量；不允许部分倒空就等于这一档永远提不动
                 count = 1;
                 wantPerUnit = room;
