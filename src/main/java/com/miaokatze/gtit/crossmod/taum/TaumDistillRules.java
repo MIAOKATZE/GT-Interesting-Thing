@@ -95,11 +95,21 @@ public final class TaumDistillRules {
     /**
      * 晶化源质：1 点 = 1 个晶（{@code TileEssentiaCrystalizer.java:293}）。
      * <p>
-     * ★<b>R88 裁定 C2：退役为只读档位判据</b>。本常量仍是在服役的<b>识别</b>面（{@code TaumBridge#capacityOf}
-     * 给晶返它，{@code PocketSlots}/{@code PocketEssenceIntake}/{@code NekoEssenceGhostCell} 拿它做
-     * "这是不是旧晶"的分流），但<b>任何路径都不再产出晶</b>（{@code TaumBridge#newCrystalStack} 已标注退役）。
-     * 旧晶的点数照旧读得回来（不吃件）。<b>不得</b>删本常量或改它的取值：那会让存量旧晶被判成
-     * "非容器/普通物品"，直接踩回 R86 那条"整叠销毁"的危险面。
+     * ★<b>R88 裁定 C2「退役为只读档位判据」→ ★R96 S9b 按用户裁定改判一半</b>。本常量一直是双身份，
+     * 两个身份现在<b>都在役</b>，读的时候别只读一半：
+     * <ul>
+     * <li><b>识别面（R88 起就在役，一字未改）</b>：{@code TaumBridge#capacityOf} 给晶返它，
+     * {@code PocketSlots}/{@code PocketEssenceIntake}/{@code NekoEssenceGhostCell} 拿它做
+     * "这是不是旧晶"的分流；旧晶的点数照旧读得回来（不吃件）。★这条判据与 {@code CRYSTAL_STACK_LIMIT}
+     * <b>不得</b>删或改值：那会让存量旧晶被判成"非容器/普通物品"，直接踩回 R86 那条"整叠销毁"的危险面。</li>
+     * <li><b>生产面（★R96 S9b 改判：从"任何路径都不再产出晶"变成"结晶模式这条路径产出晶"）</b>：
+     * 魔法使的「结晶模式」（{@code PocketMageModes#crystalOn}，★默认关）开通后，蒸馏进盘的源质按
+     * <b>本档位</b>换算成枚数出袋（1 点/枚、一批每 tag ≤ {@code MAGE_CRYSTAL_MAX_PER_BATCH} 枚）。
+     * ★改判<b>没有</b>碰的两件事：① 晶<b>永不就地排空 / 就地灌入</b>（wiki
+     * {@code gtit-taumcraft-essentia-carriers.md} §3 已证死：服务端会随机重赋型），产晶一律是
+     * "读数 + 消耗整件 + 出新晶"；② 不开结晶模式时，源质出袋的载体<b>仍然</b>是瓶
+     * （{@link #PHIAL_CAPACITY}，一瓶 8 点）——本模式是<b>新增的第三条出口</b>，不是把瓶换回晶。</li>
+     * </ul>
      */
     public static final int CRYSTAL_CAPACITY = 1;
 

@@ -12,6 +12,7 @@ import net.minecraft.world.World;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketElementStore;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketMageModes;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
@@ -63,8 +64,10 @@ public final class PocketCoinChargeDriver {
             return;
         }
         final NBTTagCompound root = stack.getTagCompound();
-        if (root == null || !PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)) {
-            // 无档 = 什么都没有；关着 = 一次位图读就回（★零 NBT 写）
+        if (root == null || !PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)
+            || !PocketMageModes.coinOn(root)) {
+            // 无档 = 什么都没有；关着（主开关或 ★R96 S9b 的猫猫币模式位任一关）
+            // = 一次位图读 + 一次模式位读就回（★零 NBT 写，也不装拍）
             return;
         }
         final PocketElementStore elem = PocketElementStore.attach(root);
@@ -107,7 +110,9 @@ public final class PocketCoinChargeDriver {
      * @return 本拍<b>扣掉</b>的币数（0 或 1 —— 一秒一枚是硬上界，不是统计结果）
      */
     public static int tick(NBTTagCompound root, CoinHolder[] holders, CoinGate gate) {
-        if (!PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)) {
+        if (!PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE) || !PocketMageModes.coinOn(root)) {
+            // ★R96 S9b：主开关之外再问一句猫猫币模式位。合取点刻意留在本腿（不折进 PocketMageModes），
+            // 否则同一条主开关判据会被读两遍 —— 见 PocketMageModes 类注释「组合点不在本类」那节。
             return 0;
         }
         if (root == null || gate == null || holders == null || holders.length == 0) {

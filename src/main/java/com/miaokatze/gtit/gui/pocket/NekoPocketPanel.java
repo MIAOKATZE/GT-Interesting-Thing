@@ -266,6 +266,20 @@ public final class NekoPocketPanel implements PocketSession {
     private static final int ACTION_UPGRADE_SWITCH = 12;
 
     /**
+     * ★R96 S9b（P-3 的续）：配置面板<b>魔法使挂载框</b>里那三行模式控件的唯一出口——arg 的编解码单源在
+     * {@link PocketConfigPanel#encodeMode}（{@code row * 2 + onBit}），本处只登记码值。
+     * <p>
+     * ★<b>不复用 {@link #ACTION_UPGRADE_SWITCH} 的码空间</b>：那条的 arg 是「型 ordinal × 2 + <b>off</b> 位」，
+     * 本条是「行号 × 2 + <b>on</b> 位」。并码会造出两个静默错读：{@code ordinal} 与 {@code row} 同为 0..2
+     * 的整数（CAPACITY=0 / STACK=1 / MAGNET=2 与 结晶=0 / 猫猫币=1 / 源质转换=2），一旦合流，
+     * "关掉结晶"会被解成"把容量升级切到关"；而 {@code off} 与 {@code on} 两个位义相反，
+     * 复用码位就等于把某一条的语义整体取反。★分派表在 {@link #onServerAction} 的 switch 里，两条各一行。
+     * <p>
+     * ★左键点插件格仍然<b>不发这条</b>（开面板是纯客户端手势，同 {@link #ACTION_UPGRADE_SWITCH} 的裁定）。
+     */
+    private static final int ACTION_UPGRADE_MODE = 13;
+
+    /**
      * ★R96 S2：升级配置面板（主面板之上的次级面板）的句柄。
      * <p>
      * ★只在客户端有值（{@code IPanelHandler.simple} 要求宿主 {@code ModularPanel} 已挂树，服务端没有
@@ -950,6 +964,18 @@ public final class NekoPocketPanel implements PocketSession {
         return arg >= 0 && sendAction(ACTION_UPGRADE_SWITCH, arg);
     }
 
+    /**
+     * ★R96 S9b：配置面板里那一行<b>模式控件</b>的唯一出口（客户端只发码，★一个字节都不写本地 NBT）。
+     * <p>
+     * 发的是<b>目标值</b>（{@code wantOn}）而不是"翻一下"，理由与 {@link #requestUpgradeSwitch} 逐字相同：
+     * 重复包打到同一目标 ⇒ 服务端 {@code NO_CHANGE} 支零写入。★也不做客户端预筛（不判"魔法使装没装"）——
+     * 那两个判据的输入是服务端那份档，客户端预筛就是给同一个判据造第二处读数。
+     */
+    boolean requestUpgradeMode(int row, boolean wantOn) {
+        final int arg = PocketConfigPanel.encodeMode(row, wantOn);
+        return arg >= 0 && sendAction(ACTION_UPGRADE_MODE, arg);
+    }
+
     private boolean sendAction(int code, int arg) {
         if (syncManager.isClient()) {
             syncManager.findSyncHandler(SYNC_ACTION, IntSyncValue.class)
@@ -1066,6 +1092,11 @@ public final class NekoPocketPanel implements PocketSession {
                 // ★R96 S2：开关的唯一服务端落点（arg 的解越归 PocketConfigPanel，判据归 handler）。
                 // 本 case 是"静态可达链"的中间一跳，两侧都不能省：客户端只发码，服务端才写档。
                 server.performUpgradeSwitchToggle(arg);
+                break;
+            case ACTION_UPGRADE_MODE:
+                // ★R96 S9b：模式位的唯一服务端落点，形状与上面那条开关腿逐字同构（★同一条可达链纪律：
+                // 客户端只发码 ⇒ 服务端才写档；解越归 PocketConfigPanel.modeRowOfArg，判据归 handler）。
+                server.performUpgradeModeToggle(arg);
                 break;
             default:
                 break;

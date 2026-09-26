@@ -410,6 +410,41 @@ final class NekoPocketServerHandler {
     }
 
     /**
+     * ★R96 S9b：配置面板里那一行<b>模式控件</b>的服务端执行体（三判中的两判在
+     * {@link PocketConfigPanel#commitMode}，本处只跑第三判"持有者本人 + 载体身份"）。
+     * <p>
+     * ★与 {@link #performUpgradeSwitchToggle} <b>同构而不共用</b>：码空间不同（见
+     * {@code NekoPocketPanel#ACTION_UPGRADE_MODE} 那条注释里"ordinal 与 row 同为 0..2"那个陷阱），
+     * 且模式没有容量/堆叠那两类关闭守卫。两条腿各写一遍"解越即丢 + 身份判 + 粘性回执"这三步，
+     * 换来的是<b>改一条不会静默改掉另一条</b>（并成一条就会：守卫那段只对开关有意义，
+     * 将来有人给开关加守卫会连带把模式也挡掉，而玩家读到的是同一句"这一型没在档上"）。
+     */
+    void performUpgradeModeToggle(int arg) {
+        final int row = PocketConfigPanel.modeRowOfArg(arg);
+        if (row < 0) {
+            // 解越（含客户端伪造的 arg）⇒ 丢弃这条包：不写档、也不回回执
+            // （★与开关那条腿同一条纪律：越界的包不代表玩家做了什么动作）
+            return;
+        }
+        if (!serverGuardOk()) {
+            panel.putReceipt(PocketConfigPanel.identityReceiptKey(), 0);
+            return;
+        }
+        // ★写的是<b>活查表</b>取到的那枚载体（与开关腿同一个理由：panel.pocketStack() 是开屏快照，
+        // 会话期内载体被换出时它会陈旧 ⇒ 模式会写进错误的口袋）。
+        final ItemStack carrier = panel.carrierStackLive();
+        if (carrier == null) {
+            panel.putReceipt(PocketConfigPanel.identityReceiptKey(), 0);
+            return;
+        }
+        final PocketConfigPanel.Outcome outcome = PocketConfigPanel.commitMode(
+            carrier,
+            row,
+            PocketConfigPanel.modeOnOfArg(arg));
+        panel.putReceipt(PocketConfigPanel.receiptKey(outcome), 0);
+    }
+
+    /**
      * 玩家游标栈（★堆叠守卫的扫描面必须含它，理由见 {@code PocketUpgradeGuards} 类 javadoc 那段
      * "游标必须在扫描面里"）。取的是 {@code EntityPlayer#inventory#getItemStack()} —— 服务端权威那份，
      * 不是 {@code syncManager.getCursorItem()}（那是同步镜像，本方法已在服务端主线程，直读权威）。

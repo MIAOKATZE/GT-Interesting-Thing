@@ -202,7 +202,8 @@ public final class PocketConstants {
      * ★取出侧与它<b>刻意解耦</b>：一次动作最多 {@link #ESSENCE_OUT_MAX_POINTS_PER_ACTION} 点，抬上限不等于
      * 一次能掏 256 点。★R88 载体改判后这一句换算成瓶：256 点 = {@link #ESSENCE_MAX_PHIALS_PER_TAG} 只满瓶，
      * 一次动作最多 {@link #ESSENCE_OUT_MAX_PHIALS_PER_ACTION} 只 —— 旧文案里"晶化源质单堆 64"那个理由
-     * 已随载体一起退役（晶只读不产，见 {@code TaumBridge#newCrystalStack} 的 ★R88 注）。
+     * 已随载体一起退役（★R96 S9b 起晶在「结晶模式」这一条出口上恢复可产，但那条出口<b>不</b>走这里那套
+     * 瓶粒度换算，也不改"就地排空"的禁令，见 {@code TaumBridge#newCrystalStack} 的 ★R96 S9b 注）。
      */
     public static final int ESSENCE_CAP_PER_TAG = 256;
 
@@ -527,7 +528,7 @@ public final class PocketConstants {
     //    平铺会互混淆 —— R96 计划 §5 S9 禁止项原文）；
     // ② ★<b>不建 long/int 双轨</b>：单 tag 上限 {@link #ELEMENT_CAP_PER_TAG}=500，int 头恒不越界，
     //    流体那条 AmountL 双轨的根因（{@code FluidStack.amount} 是 int、真值要冲到 16G）在这里结构性不存在；
-    // ③ 键名一经落档即冻结（「可加不可改」）：{@link #ELEMENTS} 与 compound 内的三个节拍键同此纪律。
+    // ③ 键名一经落档即冻结（「可加不可改」）：{@link #ELEMENTS} 与 compound 内的节拍键同此纪律（★第四条节拍键与模式位图由 S9b 追加，见下面那段）。
 
     /**
      * ★R96 S9a：元素容量的根键（独立 compound，读写本体在 {@code PocketElementStore}）。
@@ -619,6 +620,74 @@ public final class PocketConstants {
      */
     public static final int MAGE_COIN_VALUE_NORMAL = 1;
     public static final int MAGE_COIN_VALUE_SHIMMERING = 10;
+    // ================================================================================ ★R96 S9b：魔法使<b>四模式</b>与<b>结晶模式</b>
+    //
+    // ★R96 S9b 只在 S9a 那块预留段之后<b>追加</b>，S9a 的六条 tag / 三个节拍键 / 两档上限一字未动。
+    // 两件新事各有一条落档纪律，写在这里免得后来人在别处再立一份：
+    // ① 模式状态住在 {@link #ELEMENTS} compound <b>内</b>的 {@link #ELEMENT_MODES} 一枚 byte，
+    //    ★<b>不开第四个根键</b>（R96 计划 §3 只批了 upgradesOff / magnetFilter / elem 三枚根键，
+    //    多开一根就是第四次表态），也★<b>不塞进 {@link #UPGRADES_OFF_KEY}</b>（那位回答"这一<b>型</b>开不开"，
+    //    一共五位；模式回答"型内哪一条<b>被动</b>开不开"，两码事，并成一位会让"关掉魔法使"与
+    //    "只关结晶模式"读起来是同一个键）；
+    // ② 结晶模式的出件量以<b>整枚晶</b>为单位（{@code TaumDistillRules#CRYSTAL_CAPACITY} = 1 点/枚），
+    //    ★不复用 {@code TaumDistillRules#credit} 那套"整轮批量"语义做逐点入账（R96 计划 §5 S9 禁止项）。
+    /**
+     * ★R96 S9b：{@link #ELEMENTS} compound 内的<b>模式位图</b>（byte，bit = {@link #MAGE_MODE_CRYSTAL} 一族）。
+     * <p>
+     * <b>语义 = on-mask（启用位）而不是 off-mask</b>：bit=1 ⇒ 该模式开。三种模式各有<b>自己的缺省</b>，
+     * 缺省合起来就是 {@link #MAGE_MODES_DEFAULT}（猫猫币 + 源质转换开、结晶关）⇒
+     * <b>缺键按 {@link #MAGE_MODES_DEFAULT} 读</b>（R53c 读路径不建档 ⇒ 默认态零写入，
+     * S9a 那三条被动在旧档上的行为逐字不变），写回缺省值时<b>{@code removeTag}</b> 而不是留 0 壳。
+     * <p>
+     * ★<b>键名 {@code modes} 一经落档即冻结</b>（「可加不可改」的键名版，同 {@link #ELEMENTS} 与
+     * {@link #UPGRADES_OFF_KEY} 那两条）：改字面量 = 玩家配好的三枚模式读回来全变缺省，且零日志。
+     * <b>位序同样冻结</b>：追加第四种模式只许用 bit3，★不得复用已作废的位（老档里那位可能正被人手改过）。
+     */
+    public static final String ELEMENT_MODES = "modes";
+    /** ★R96 S9b 模式位 0：结晶模式（蒸馏出的源质直接以<b>晶</b>形态进背包）。★缺省 = <b>关</b>（用户裁定"默认关"）。 */
+    public static final int MAGE_MODE_CRYSTAL = 1;
+    /** ★R96 S9b 模式位 1：猫猫币充能（S9a 那条被动被本位包一层可关的外壳）。缺省 = 开（S9a 的既有行为）。 */
+    public static final int MAGE_MODE_COIN = 2;
+    /** ★R96 S9b 模式位 2：源质转换（同上）。缺省 = 开（S9a 的既有行为）。 */
+    public static final int MAGE_MODE_TRANSMUTE = 4;
+    /**
+     * 缺省模式位图 = {@link #MAGE_MODE_COIN} | {@link #MAGE_MODE_TRANSMUTE} = <b>6</b>。
+     * <p>
+     * ★这一枚是"缺键怎么读"的<b>唯一</b>真值：三条腿的判据与写腿的"回到缺省就摘键"都读它，
+     * 抄第二份字面量就会出现"读侧默认与写侧摘键条件不同值"的静默漂移。
+     */
+    public static final int MAGE_MODES_DEFAULT = MAGE_MODE_COIN | MAGE_MODE_TRANSMUTE;
+    /** 全部已定义的模式位（★新增模式位必须同时进这张表与 {@link #MAGE_MODES_DEFAULT} 的推理，缺一即红）。 */
+    public static final int[] MAGE_MODE_BITS = { MAGE_MODE_CRYSTAL, MAGE_MODE_COIN, MAGE_MODE_TRANSMUTE };
+    /**
+     * 这一枚位是不是已定义的模式位（★纯查表，与 {@link #isPrimalTag(String)} 同一条纪律：
+     * 白名单外的位一律不认 —— 认了就会出现"往档里写进一个没人读的第 7 位"，
+     * 而那一位在下次掩码比较里既不算缺省也读不回来，是静默的档污染）。
+     */
+    public static boolean isMageModeBit(int bit) {
+        for (int defined : MAGE_MODE_BITS) {
+            if (defined == bit) {
+                return true;
+            }
+        }
+        return false;
+    }
+    /**
+     * ★R96 S9b：{@link #ELEMENTS} compound 内的<b>第四条</b>节拍键（结晶模式剩余 tick，int）。
+     * <p>
+     * 与 S9a 那三条同住 {@link #ELEMENTS} 的理由同一条（R96 计划 §3 只批三枚根键，且这是魔法使族的
+     * 私有状态）。⚠ 本被动搬的资源是<b>源质盘</b>（{@code ess}）而不是元素容量，
+     * ★"键住在哪 ≠ 搬的是哪张表"—— S9a 的 {@link #ELEMENT_TICK_TRANSMUTE} 已经是同一个先例。
+     */
+    public static final String ELEMENT_TICK_CRYSTAL = "tickCrystal";
+    /**
+     * ★R96 S9b：结晶模式一批里<b>每个 tag</b> 至多出这么多枚晶。
+     * <p>
+     * 64 的依据是 {@code TaumBridge#CRYSTAL_STACK_LIMIT}（TC 晶的可堆数）——桥里那枚 {@code min} 只是
+     * 兜底、★不是"半枚也出"的许可，所以本仓按<b>整枚</b>取上界（一晶 = {@code CRYSTAL_CAPACITY} = 1 点）。
+     * 节拍与猫猫币/源质转换同档（{@link #MAGE_SECOND_INTERVAL_TICKS}），四枚数值全是符号、码位不留裸数字。
+     */
+    public static final int MAGE_CRYSTAL_MAX_PER_BATCH = 64;
     /**
      * ★R95 S5：STACK 升级位对"单格堆叠"的<b>倍率</b>（用户原话"所有物品和源质最大单格堆叠数*16"，
      * 一位同时管物品格与源质格）。执法点：{@code PocketInventory#effectiveStorageLimit}（物品侧单源）

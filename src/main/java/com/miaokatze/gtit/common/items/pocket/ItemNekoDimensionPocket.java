@@ -23,6 +23,7 @@ import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelDriver;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketCoinChargeDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketCrystalDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketEssenceTransmuteDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
@@ -282,6 +283,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         PocketWandChargeDriver.onItemTick(stack, world, player);
         PocketCoinChargeDriver.onItemTick(stack, world, player);
         PocketEssenceTransmuteDriver.onItemTick(stack, world, player);
+        // ★R96 S9b 第四条（只加挂载行，本方法的门控与结构一字未动）：结晶模式，★缺省关。
+        // 它自带「主开关 + 子模式位」两道早退与 NBT 剩余 tick 节拍 ⇒ 两种关态在这里都只花一次位读。
+        PocketCrystalDriver.onItemTick(stack, world, player);
     }
 
     /**

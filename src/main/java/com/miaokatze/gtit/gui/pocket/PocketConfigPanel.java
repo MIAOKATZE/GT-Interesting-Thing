@@ -17,6 +17,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketMageModes;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeGuards;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
@@ -107,6 +108,20 @@ public final class PocketConfigPanel {
     public static final int MOUNT_GAP = 4;
     /** 回执行的高。 */
     public static final int RECEIPT_HEIGHT = 12;
+    /**
+     * ★R96 S9b：魔法使挂载框里<b>一行模式控件</b>的高（= 一枚按钮的高，与 {@link #SWITCH_HEIGHT} 同档）。
+     */
+    public static final int MODE_ROW_HEIGHT = 18;
+    /** ★R96 S9b：两行模式控件之间的缝。 */
+    public static final int MODE_ROW_GAP = 1;
+    /** ★R96 S9b：模式控件那枚小按钮的宽（只装"关掉 / 打开"两枚二字串，★不装三态 —— 三态在行首读数里）。 */
+    public static final int MODE_BUTTON_WIDTH = 30;
+    /** ★R96 S9b：挂载框标题占的高（= {@link #ROW_HEIGHT}，标题与开关列同一把尺）。 */
+    public static final int MOUNT_TITLE_HEIGHT = ROW_HEIGHT;
+    /**
+     * ★R96 S9b：模式行里<b>标签</b>的宽（派生：挂载框可用宽 − 2px 缝 − 那枚小按钮，★不手抄）。
+     */
+    public static final int MODE_LABEL_WIDTH = MOUNT_COLUMN - 2 - 2 - MODE_BUTTON_WIDTH;
     /** 关闭按钮的高与宽。 */
     public static final int CLOSE_HEIGHT = 16;
     /** 关闭按钮的宽。 */
@@ -201,6 +216,18 @@ public final class PocketConfigPanel {
         if (PocketUpgradeType.values().length * ROW_HEIGHT > HEIGHT - MARGIN) {
             throw new IllegalStateException("[pocket] 开关列放不下五行: " + HEIGHT);
         }
+        // ★R96 S9b：魔法使挂载框里的<b>模式行</b>必须落在框内（框高由 {@link #MOUNT_HEIGHT} 给，
+        // 而框高又进 {@link #HEIGHT} 的纵向预算 ⇒ 这一条红的同时会带走上面那条"挂载列顶出面板"，
+        // 所以单独写一条，报的是"行多了"而不是"面板高了"）。
+        if (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP) > MOUNT_HEIGHT) {
+            throw new IllegalStateException("[pocket] 魔法使挂载框放不下 " + modeRowCount() + " 行模式控件: 框高="
+                + MOUNT_HEIGHT + "，需要=" + (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP)));
+        }
+        if (MODE_LABEL_WIDTH < 40 || MODE_LABEL_WIDTH + MODE_BUTTON_WIDTH + 2 > MOUNT_COLUMN - 2) {
+            throw new IllegalStateException(
+                "[pocket] 模式行横向不闭合（标签 + 按钮顶出挂载框）: 标签=" + MODE_LABEL_WIDTH + "，按钮="
+                    + MODE_BUTTON_WIDTH);
+        }
         // ★分派表与挂载框数必须对得上：对不上就是"有人改了分派表而没改纵向预算"。
         int mounts = 0;
         for (final PocketUpgradeType type : PocketUpgradeType.values()) {
@@ -261,6 +288,145 @@ public final class PocketConfigPanel {
             return "gtit.pocket.config.mount.mage";
         }
         return null;
+    }
+
+    // ========================================================== ★R96 S9b：魔法使挂载框里的「四模式」数据面
+    //
+    // ★★四模式 = ①「魔法使」主开关（本件第 {@link Section#SWITCH} 段，S1/S2 已定稿，一条码都没加）
+    // ②结晶模式 ③猫猫币充能 ④源质转换。后三条住在本段，位序单源在
+    // {@link PocketConstants#MAGE_MODE_BITS}（★本件不写第二份位清单，见 {@link #modeBit(int)}）。
+    //
+    // ★为什么不与磁力那段共用一套硬编码：磁力的内容段（S7b 会填名单格与三态）与这里的"三条 on/off 行"
+    // 只有"都装在 MOUNT_* 框里"这一件事相同，判据、动作码空间与几何全不同 ⇒ 本件把<b>框</b>留给
+    // {@link #mountFrame}，把<b>框里的内容</b>按 {@link Section} 分派到 {@link #mountContent}
+    // （磁力 ⇒ 既有的 pending 文本件；魔法使 ⇒ {@link #mageModeRows}）。S7b 落地时换掉的是它自己那一支。
+
+    /** 模式行的<b>标签</b>键（★按 {@link PocketConstants#MAGE_MODE_BITS} 的行序，两个下标空间同一个数）。 */
+    private static final String[] MODE_LABEL_KEYS = { "gtit.pocket.config.mode.crystal",
+        "gtit.pocket.config.mode.coin", "gtit.pocket.config.mode.transmute" };
+    /** 模式行的 tooltip 键（★三行共用一条：讲的是"这一行的开关意味着什么"，与具体哪条模式无关）。 */
+    public static final String MODE_HINT_KEY = "gtit.pocket.config.mode.hint";
+
+    /** 模式行数 = 位的<b>唯一</b>来源（★追加第四种模式时本件不加控件、只加标签键，几何自断言会红）。 */
+    public static int modeRowCount() {
+        return PocketConstants.MAGE_MODE_BITS.length;
+    }
+
+    /** 第 {@code row} 行的位（越界 ⇒ {@code 0}，★0 不是任何已定义位 ⇒ 下游一律判非法，不会误写）。 */
+    public static int modeBit(int row) {
+        if (row < 0 || row >= PocketConstants.MAGE_MODE_BITS.length) {
+            return 0;
+        }
+        return PocketConstants.MAGE_MODE_BITS[row];
+    }
+
+    /** 位 → 行号（★找不到 ⇒ −1；本件与动作码都经它，别处不得再抄一份"哪位第几行"）。 */
+    public static int modeRowOf(int bit) {
+        for (int row = 0; row < PocketConstants.MAGE_MODE_BITS.length; row++) {
+            if (PocketConstants.MAGE_MODE_BITS[row] == bit) {
+                return row;
+            }
+        }
+        return -1;
+    }
+
+    /** 模式行的标签键；非法行 ⇒ {@code null}（★调用方不许把 null 读成空串继续画行）。 */
+    public static String modeLabelKey(int row) {
+        if (row < 0 || row >= MODE_LABEL_KEYS.length || row >= PocketConstants.MAGE_MODE_BITS.length) {
+            return null;
+        }
+        return MODE_LABEL_KEYS[row];
+    }
+
+    /** 模式动作码 arg 的编码：{@code row * 2 + onBit}（★与开关那条 {@code ordinal*2+offBit} <b>同形而不同表</b>）。 */
+    public static int encodeMode(int row, boolean on) {
+        if (modeLabelKey(row) == null) {
+            return -1;
+        }
+        return row * 2 + (on ? 1 : 0);
+    }
+
+    /** 模式 arg → 行号；越界（含 −1）⇒ −1，调用方必须丢弃这条包而不是猜一行。 */
+    public static int modeRowOfArg(int arg) {
+        if (arg < 0 || arg >= modeRowCount() * 2) {
+            return -1;
+        }
+        return arg / 2;
+    }
+
+    /** 模式 arg → 玩家请求的目标（{@code true} = 要<b>开</b>；★与开关那条的"off 位"方向相反，见 {@link #encodeMode}）。 */
+    public static boolean modeOnOfArg(int arg) {
+        return (arg & 1) != 0;
+    }
+
+    /**
+     * 某一行的模式位当前开不开（★读<b>载体栈 NBT</b>，与 {@link #switchState} 同一条通道、同一个理由）。
+     * <p>
+     * ★本方法<b>不</b>判"魔法使在不在档上"：那一位的读数已经在自己那一行上显示过一次了，
+     * 在模式行上再显示一次会把"没装这个升级"读成"三条模式都关着"——那是假读数（口径同
+     * {@link #switchLabelKey} 那句"未装不许显示成已关闭"）。提交腿才判它（{@link #commitMode}）。
+     */
+    public static boolean modeState(ItemStack carrier, int row) {
+        if (carrier == null) {
+            return false;
+        }
+        final int bit = modeBit(row);
+        return bit != 0 && PocketMageModes.on(carrier.getTagCompound(), bit);
+    }
+
+    /** 下一次点击应请求的目标（★现读：面板是缓存件、行是常驻件，与 {@link #nextOff} 同一条纪律）。 */
+    public static boolean nextModeOn(ItemStack carrier, int row) {
+        return !modeState(carrier, row);
+    }
+
+    /**
+     * ★服务端唯一的<b>模式</b>写腿（与 {@link #commitSwitch} 并列的第二条写腿，★两条不共用一个入口）。
+     * <p>
+     * 三判里这里只跑两判：①"魔法使这一型在不在档上"（★判据经 {@link PocketMageModes#masterOnRecord}，
+     * <b>不</b>在本件直读位图 —— R96-S1b 门 F 把本件对 {@code PocketUpgradeSwitches.} 的引用钉成恰 4 处，
+     * 多一处就是长出第二条不点名的读腿）；②落档，返回"本次是否真的改变了"。
+     * ★<b>没有</b>第三判（容量/堆叠那两类关闭守卫）：模式位只闸"这条被动动不动手"，
+     * 关掉它不会让任何东西缩尺，拿守卫拒它是把两码事并成一条。
+     * <p>
+     * <b>目标值语义</b>（与开关同一条）：请求的是"开/关"而不是"翻一下" ⇒ 同值重复包走
+     * {@link Outcome#NO_CHANGE}，零写入、零同步包。
+     * <p>
+     * <b>无档不建档</b>（R53c）：{@code carrier} 为 null 或没有 NBT 根 ⇒ 判
+     * {@link Outcome#NOT_ON_RECORD}（连"未固化"都算不上，就是一句都没问）。
+     */
+    public static Outcome commitMode(ItemStack carrier, int row, boolean wantOn) {
+        final int bit = modeBit(row);
+        if (bit == 0) {
+            // 非法行：零写入。★真正的"丢包"在 handler 的解码腿（modeRowOfArg 返 −1 就 return），
+            // 走到这里只可能是调用方自己传错了行号 ⇒ 报 NO_CHANGE 而不是造一条新说法。
+            return Outcome.NO_CHANGE;
+        }
+        if (!PocketMageModes.masterOnRecord(carrier)) {
+            return Outcome.NOT_ON_RECORD;
+        }
+        final net.minecraft.nbt.NBTTagCompound root = carrier.getTagCompound();
+        if (root == null) {
+            return Outcome.NOT_ON_RECORD;
+        }
+        if (!PocketMageModes.write(root, bit, wantOn)) {
+            return Outcome.NO_CHANGE;
+        }
+        return wantOn ? Outcome.TURNED_ON : Outcome.TURNED_OFF;
+    }
+
+    /** 第 {@code row} 行的 y（★挂载框<b>内</b>坐标系，标题之下第一行；单源，调用点不写第二次）。 */
+    public static int modeRowY(int row) {
+        return row * (MODE_ROW_HEIGHT + MODE_ROW_GAP);
+    }
+
+    /** 挂载框内容区的 x（★框左沿 + 1px，与 {@link #mountFrame} 里标题用的那个 1 同一个数）。 */
+    public static int mountContentX() {
+        return MARGIN + SWITCH_COLUMN + COLUMN_GAP + 1;
+    }
+
+    /** 第 {@code frame} 个挂载框内容区的 y（★框顶 + 标题高 ⇒ 内容段与框之间不留第二份偏移表）。 */
+    public static int mountContentY(int frame) {
+        return mountY(frame) + MOUNT_TITLE_HEIGHT;
     }
 
     /** 动作码 arg 的编码：{@code ordinal * 2 + offBit}（★一条式子，双端同读；非法入参 ⇒ −1）。 */
@@ -438,6 +604,13 @@ public final class PocketConfigPanel {
             "gtit.pocket.config.mount.magnet",
             "gtit.pocket.config.mount.mage",
             "gtit.pocket.config.mount.pending",
+            // ★R96 S9b：魔法使挂载框里那三行模式控件的文案（三条标签 + 一条共用 tooltip）。
+            // ★开关按钮与行首读数★不★新增键：复用上面那四条既有的 turn_on / turn_off / state.on / state.off
+            // ——模式与开关在玩家侧读起来就是同一件事（"这一条动还是不动"），两套字面量才是第二份真相。
+            "gtit.pocket.config.mode.crystal",
+            "gtit.pocket.config.mode.coin",
+            "gtit.pocket.config.mode.transmute",
+            MODE_HINT_KEY,
             "gtit.pocket.upgrade.cell.off",
             identityReceiptKey()));
         for (final Outcome outcome : Outcome.values()) {
@@ -473,6 +646,15 @@ public final class PocketConfigPanel {
             // ★挂载框只给"有挂载位"的型画（判据来自分派表，本处不重写第二份型清单）
             if (hasMount(type)) {
                 panel.child(mountFrame(type, frame));
+                // ★R96 S9b：内容段排在框之<b>后</b>（MUI2 的 child 序 = 绘制序 ⇒ 控件画在框面上）。
+                // 为什么不在 mountFrame 内部挂：那条调用点的字面量是既有用例
+                // config_panel_dispatch_is_not_five_identical 钉着的锚（"写了表没人画 = R57 同族"），
+                // 给它加一个 ui 形参会把那条锚改写成"匹配得更少就算了"——★旧锚不许改，于是内容段另起一腿。
+                // 判据仍然只有一张表：下面这个 contains(Section.MOUNT_MAGE) 与 mountFrame 里那一支读的是
+                // 同一个 sectionsOf，没有出现第二份型清单。
+                if (sectionsOf(type).contains(Section.MOUNT_MAGE)) {
+                    mageModeRows(ui, panel, frame);
+                }
                 frame++;
             }
         }
@@ -550,10 +732,15 @@ public final class PocketConfigPanel {
     }
 
     /**
-     * 挂载位框（★S7 / S9 的内容落在这里）。本轮框里只有标题 + 一行"内容尚未提供"——
-     * <b>这不是留白，是把位显出来</b>：分派表说了这一型有内容段，画面上就得有一块对得上那句话的框，
-     * 否则 S7/S9 落地时玩家读到的是凭空长出的控件。★S7/S9 的替换点就是下面那枚 {@code pending} 文本件
-     * （框位与列宽已由几何账定死，它们不需要改本件的布局）。
+     * 挂载位框（★S7 / S9 的内容落在这里）。★框本身两段共用（标题 + 一块框），
+     * <b>框里的内容按 {@link Section} 分派</b>：
+     * <ul>
+     * <li>{@link Section#MOUNT_MAGNET} —— S7b 的名单格与三态还没落地 ⇒ 画既有那行 {@code pending} 文本件
+     * （★S7b 落地时换掉的是它自己那一支，本件的框与几何账不用动）；</li>
+     * <li>{@link Section#MOUNT_MAGE} —— ★R96 S9b 已落地：三行模式控件（{@link #mageModeRows}），
+     * 加主开关一共四枚控件，正是需求那句"四模式"。</li>
+     * </ul>
+     * ★分派判据读的是 {@link #sectionsOf}（同一张唯一分派表），★不是"型 == MAGE"那种第二份型清单。
      */
     private static IWidget mountFrame(PocketUpgradeType type, int frame) {
         final int x = MARGIN + SWITCH_COLUMN + COLUMN_GAP;
@@ -573,15 +760,79 @@ public final class PocketConfigPanel {
                 .name("pocket_config_mount_title_" + type.ordinal())
                 .pos(1, 1)
                 .size(MOUNT_COLUMN - 2, ROW_HEIGHT));
-        box.child(
-            (IWidget) new TextWidget(IKey.lang("gtit.pocket.config.mount.pending")).textAlign(Alignment.TopLeft)
-                .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
-                .color(PocketGhostRequest.hintTextColor())
-                .shadow(Boolean.TRUE)
-                .name("pocket_config_mount_pending_" + type.ordinal())
-                .pos(1, ROW_HEIGHT)
-                .size(MOUNT_COLUMN - 2, MOUNT_HEIGHT - ROW_HEIGHT));
+        final java.util.List<Section> sections = sectionsOf(type);
+        if (sections.contains(Section.MOUNT_MAGNET)) {
+            box.child(
+                (IWidget) new TextWidget(IKey.lang("gtit.pocket.config.mount.pending")).textAlign(Alignment.TopLeft)
+                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                    .color(PocketGhostRequest.hintTextColor())
+                    .shadow(Boolean.TRUE)
+                    .name("pocket_config_mount_pending_" + type.ordinal())
+                    .pos(1, ROW_HEIGHT)
+                    .size(MOUNT_COLUMN - 2, MOUNT_HEIGHT - ROW_HEIGHT));
+        } else if (!sections.contains(Section.MOUNT_MAGE)) {
+            throw new IllegalStateException("[pocket] 挂载位分派表说这一型有框、却没有内容段: " + type);
+        }
+        // ★走到这一支的是 MOUNT_MAGE：内容（三行模式控件）不长在本框的 child 树里，而是由
+        // {@link #build} 挂在面板上（{@link #mageModeRows}）。理由是那条 {@code mountFrame(type, frame)}
+        // 的字面量被既有用例 config_panel_dispatch_is_not_five_identical 钉着 ⇒ 本件的形参不能加 ui，
+        // 而"框里那行 pending 文本"对魔法使已经是一句假话（它的内容本轮落地了），所以内容段挪到框之后、
+        // 同一张分派表判据之下。★框与内容的坐标全经 {@link #mountContentX()} / {@link #mountContentY(int)}
+        // 这两个单源，没有第二份偏移表。
         return box;
+    }
+
+    /**
+     * ★R96 S9b：魔法使挂载框里的<b>三行模式控件</b>（第四枚控件是主面板那一行的开关，不在这里重复画）。
+     * <p>
+     * <b>树形恒定</b>（本件类注释那条 R32 纪律在模式行上的延续）：行数 = {@link #modeRowCount()}，
+     * 而它派生自 {@link PocketConstants#MAGE_MODE_BITS}，★不随"哪条模式开着"变化 ⇒ 面板那套
+     * "首次构建即缓存"的形体不会因为状态改而拿到一棵旧树。
+     * <p>
+     * <b>零同步值、零本地写</b>：与开关列同一条通道（读载体栈 NBT 的 vanilla 镜像、写只发码），
+     * {@code registerSyncValues} 一处未加 ⇒ 给同一个布尔造第二个读数面这件事在模式上也成立。
+     * <p>
+     * <b>标签 = 模式名 + 现状同一句</b>（{@link #stateKey} 复用的就是开关列那两条既有键，
+     * ★模式与开关在玩家侧读起来是同一件事："这一条动还是不动"）。按钮上的字复用
+     * {@link #switchLabelKey} 那两条 —— 只是模式没有"未固化"这一态（那一判在 {@link #commitMode} 里
+     * 拒写并回一条既有回执，不在按钮上骗人）。
+     */
+    private static void mageModeRows(NekoPocketPanel ui, ModularPanel panel, int frame) {
+        final int rows = modeRowCount();
+        for (int index = 0; index < rows; index++) {
+            final int row = index;
+            final String labelKey = modeLabelKey(row);
+            if (labelKey == null) {
+                throw new IllegalStateException(
+                    "[pocket] 模式行数与标签键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
+            }
+            panel.child(
+                (IWidget) new TextWidget(IKey.dynamic(
+                    () -> StatCollector.translateToLocal(labelKey) + "：" + StatCollector.translateToLocal(
+                        stateKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
+                            .textAlign(Alignment.TopLeft)
+                            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                            .color(PocketGhostRequest.readoutTextColor())
+                            .shadow(Boolean.TRUE)
+                            .name("pocket_config_mode_label_" + row)
+                            .pos(mountContentX(), mountContentY(frame) + modeRowY(row))
+                            .size(MODE_LABEL_WIDTH, MODE_ROW_HEIGHT));
+            panel.child(
+                new ButtonWidget<>().pos(mountContentX() + MOUNT_COLUMN - 2 - MODE_BUTTON_WIDTH,
+                    mountContentY(frame) + modeRowY(row))
+                    .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
+                    .name("pocket_config_mode_switch_" + row)
+                    .background(PocketGuiTextures.BUTTON)
+                    .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
+                    .overlay(IKey.dynamic(() -> StatCollector.translateToLocal(switchLabelKey(
+                        modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
+                    .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(MODE_HINT_KEY)))
+                    .tooltipAutoUpdate(true)
+                    .playClickSound(true)
+                    // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）
+                    .onMousePressed(button -> button == 0
+                        && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row))));
+        }
     }
 
     /** 第 {@code row} 行的 y（★单源：行高改了这里跟着走，调用点不写第二次）。 */

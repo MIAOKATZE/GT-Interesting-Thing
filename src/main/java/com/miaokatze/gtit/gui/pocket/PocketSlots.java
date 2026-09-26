@@ -17,6 +17,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketFluidTransfer;
 import com.miaokatze.gtit.common.items.pocket.PocketIntakeOps;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketItemExit;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 
@@ -457,9 +458,11 @@ public final class PocketSlots extends PocketIntakeOps {
         if (player == null) {
             return;
         }
-        if (!player.inventory.addItemStackToInventory(leftover)) {
-            player.entityDropItem(leftover, 0);
-        }
+        // ★R96 S9b：这两行<b>原样上移</b>到 {@link PocketItemExit#giveOrDrop}（逐字未改、语义零变化），
+        // 因为结晶模式的产物要同一条「背包优先、满则掉脚下」的兜底。★不开第四条腿的硬理由：
+        // R96-S4 门 D 把口袋与 GUI 两目录里的 addItemStackToInventory 钉成恰 3、entityDropItem 钉成恰 2
+        // （出包的尺子只许这几把，多一处就多一处踩 NEI 无限物品与 vanilla byte Count 的机会）。
+        PocketItemExit.giveOrDrop(player, leftover);
     }
 
     /** 底部带绑定格（1 格，瞬时入口）。 */

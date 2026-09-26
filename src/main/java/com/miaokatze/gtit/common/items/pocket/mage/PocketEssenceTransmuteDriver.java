@@ -13,6 +13,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketElementStore;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketMageModes;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
@@ -64,7 +65,9 @@ public final class PocketEssenceTransmuteDriver {
             return;
         }
         final NBTTagCompound root = stack.getTagCompound();
-        if (root == null || !PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)) {
+        if (root == null || !PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)
+            || !PocketMageModes.transmuteOn(root)) {
+            // ★R96 S9b：主开关 + 源质转换模式位两道闸（关着 ⇒ 连 tickDue 都不问 ⇒ 零 NBT 写）
             return;
         }
         final PocketElementStore elem = PocketElementStore.attach(root);
@@ -101,7 +104,9 @@ public final class PocketEssenceTransmuteDriver {
      * @return 本拍折算成功的<b>总点数</b>（0 = 什么都没动，且零 NBT 写）
      */
     public static int tick(NBTTagCompound root, PocketEssenceStore ess) {
-        if (!PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)) {
+        if (!PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)
+            || !PocketMageModes.transmuteOn(root)) {
+            // ★R96 S9b：合取点在本腿（同 PocketCoinChargeDriver 那条注释的理由，不折进 PocketMageModes）
             return 0;
         }
         if (root == null || ess == null) {

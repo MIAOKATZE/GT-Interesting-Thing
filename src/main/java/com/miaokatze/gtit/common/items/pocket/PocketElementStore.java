@@ -36,7 +36,7 @@ import net.minecraft.nbt.NBTTagCompound;
  * 栈根已经住着 {@link PocketConstants#ESSENCE}（源质）与 {@code essCellOrder} 一族，条目里同样
  * 以 aspect tag 为标识；把 {@code aer/terra/…} 平铺到根层会让"源质点数"和"元素容量"共用一套键名空间
  * （R96 计划 §5 S9 禁止项）。本类的所有取值都只经 {@link PocketConstants#PRIMAL_TAGS} 白名单
- * <b>点查</b> compound 内的 6 个键，<b>从不</b>扫全条目 ⇒ 同 compound 内的三个节拍键
+ * <b>点查</b> compound 内的 6 个键，<b>从不</b>扫全条目 ⇒ 同 compound 内的四条节拍键与一枚模式位图
  * （{@link PocketConstants#ELEMENT_TICK_WAND} 等）与 tag 键天然不可能混淆。
  *
  * <h2>入账口径 = 整笔预检（R96 S9a 验收 4）</h2>
@@ -239,7 +239,82 @@ public final class PocketElementStore {
     }
 
     /**
-     * 把本表（连同三个节拍键）落到<b>目标根</b>——{@code PocketInventory#writeTo} 的接线形状。
+     * ★R96 S9b：<b>消耗</b>侧的整笔预检 —— 这份账单（{@code tag → 要掏多少点}）能不能<b>全部</b>付得起。
+     * <p>
+     * ★与 {@link #canAcceptAll(Map)} 是<b>两条不同的判据</b>，不是同一个数换个问法：
+     * 本方法问 {@link #get(String)}（<b>存量</b>），那条问 {@link #roomFor(String)}（<b>余量</b>）；
+     * 两者在 500 上限下互为补数，⇒ <b>拿错一条不是"稍严/稍宽"，是方向反了</b>
+     * （空口袋的余量恒等于上限 ⇒ 用余量判"付得起吗"会把一只一分没有的口袋判成"随便付"）。
+     * 这Exactly是 R96 S10 报告 U-8 那一格的根因，S9b 把它收在原语层而不是收在调用方。
+     * <p>
+     * 非白名单条目判 {@code false} 而不是跳过（跳过 = 半收，与 {@link #canAcceptAll} 同一条禁令）；
+     * 空账单恒 {@code true}。
+     */
+    public boolean canPayAll(Map<String, Integer> bill) {
+        if (bill == null || bill.isEmpty()) {
+            return true;
+        }
+        for (Map.Entry<String, Integer> entry : bill.entrySet()) {
+            final Integer amount = entry.getValue();
+            if (amount == null || amount <= 0) {
+                continue;
+            }
+            if (!isTrackedTag(entry.getKey()) || amount > get(entry.getKey())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * ★R96 S9b：<b>全有全无</b>的出账（护盾回充那条腿要的正是这一枚，★不是逐条 {@link #extract}）。
+     * <p>
+     * 两道闸：① 先 {@link #canPayAll(Map)}，付不起 ⇒ 一分不动、返 {@code 0}；
+     * ② 逐条 {@code extract} 之后<b>实掏数 ≠ 应掏数</b> ⇒ 把已经掏出去的<b>原样补回</b>并返 {@code 0}。
+     * 第②道在默认配置下不可达（同一 tick、同一份活档判据），★但它不是"理论保证"而是"代码保证"：
+     * {@code shieldCost} 被配置调大、或有别人的 mixin 在两步之间改了容量时，兜住的就是这一道。
+     * 旧实现（S10 的 {@code PocketVisSupport}）只有第①道的<b>问错版本</b>且完全没有第②道。
+     * <p>
+     * ★回滚只用 {@link #add(String, int)}（它会钳到上限）：回滚发生在同一 tick 的同一份账上，
+     * 刚掏多少就有多少个空位，钳制不会被触发；真触发了说明有别的东西在这两步之间进了账，
+     * 那时"少补一点"也比"整笔按已付处理"安全（后者会让玩家白亏一半账单）。
+     *
+     * @return 实际付出去的点数（{@code 0} = 整笔未付，档面逐字节不变）
+     */
+    public int payAll(Map<String, Integer> bill) {
+        if (bill == null || bill.isEmpty() || !canPayAll(bill)) {
+            return 0;
+        }
+        int want = 0;
+        for (Integer amount : bill.values()) {
+            want += amount == null || amount.intValue() <= 0 ? 0 : amount.intValue();
+        }
+        if (want <= 0) {
+            return 0;
+        }
+        int paid = 0;
+        final Map<String, Integer> takenPerTag = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> entry : bill.entrySet()) {
+            final Integer amount = entry.getValue();
+            final int taken = extract(entry.getKey(), amount == null ? 0 : amount.intValue());
+            if (taken > 0) {
+                takenPerTag.put(entry.getKey(), Integer.valueOf(taken));
+                paid += taken;
+            }
+        }
+        if (paid == want) {
+            return paid;
+        }
+        // 数不上 ⇒ <b>按每条实际掏走多少</b>原样补回（★不是"总共差多少补到某一条上"——
+        // 摊到一条上会造出 TC 侧看不见的错账：aer 少的那两点被补进 terra，玩家读到的是"容量莫名其妙多了"）
+        for (Map.Entry<String, Integer> entry : takenPerTag.entrySet()) {
+            add(entry.getKey(), entry.getValue().intValue());
+        }
+        return 0;
+    }
+
+    /**
+     * 把本表（连同四条节拍键与 ★R96 S9b 的模式位图）落到<b>目标根</b>——{@code PocketInventory#writeTo} 的接线形状。
      * <p>
      * ★目标与实例所接的根<b>是同一个对象</b>时本方法是幂等 no-op（值本来就现读现写），
      * 这正是"活档视图"允许它出现在整表回写路径里的原因：它不可能用陈旧副本盖掉新值。
@@ -252,7 +327,8 @@ public final class PocketElementStore {
         }
         final Map<String, Integer> values = snapshot();
         final Map<String, Integer> ticks = tickSnapshot();
-        if (values.isEmpty() && ticks.isEmpty()) {
+        final boolean hasModes = hasModeKey();
+        if (values.isEmpty() && ticks.isEmpty() && !hasModes) {
             if (target != root) {
                 target.removeTag(PocketConstants.ELEMENTS);
             }
@@ -264,10 +340,16 @@ public final class PocketElementStore {
         }
         final NBTTagCompound elem = new NBTTagCompound();
         for (Map.Entry<String, Integer> entry : values.entrySet()) {
-            elem.setInteger(entry.getKey(), entry.getValue());
+            elem.setInteger(entry.getKey(), entry.getValue().intValue());
         }
         for (Map.Entry<String, Integer> entry : ticks.entrySet()) {
-            elem.setInteger(entry.getKey(), entry.getValue());
+            elem.setInteger(entry.getKey(), entry.getValue().intValue());
+        }
+        // ★R96 S9b：模式位图必须跟着搬，且★按 byte 搬（与 {@link #setMode} 的写出形状同型）。
+        // 漏这一趟的后果不是"少一个键"而是"面板关屏那一次整表回写把玩家刚配的模式抹回缺省"——
+        // modes 与 tag 同住 elem，而上面建的是<b>新</b> compound。
+        if (hasModes) {
+            elem.setByte(PocketConstants.ELEMENT_MODES, (byte) modeMask());
         }
         target.setTag(PocketConstants.ELEMENTS, elem);
     }
@@ -326,19 +408,76 @@ public final class PocketElementStore {
         return elem == null || key == null || !elem.hasKey(key) ? 0 : Math.max(0, elem.getInteger(key));
     }
 
+    /** 四条节拍键的<b>携带侧</b>表（★不是 tag：{@link #get(String)} 一族只认白名单 tag）。 */
+    private static final String[] STATE_KEYS = { PocketConstants.ELEMENT_TICK_WAND,
+        PocketConstants.ELEMENT_TICK_COIN, PocketConstants.ELEMENT_TICK_TRANSMUTE,
+        PocketConstants.ELEMENT_TICK_CRYSTAL };
+
     private Map<String, Integer> tickSnapshot() {
         final Map<String, Integer> out = new LinkedHashMap<>();
         final NBTTagCompound elem = raw(false);
         if (elem == null) {
             return out;
         }
-        for (String key : new String[] { PocketConstants.ELEMENT_TICK_WAND, PocketConstants.ELEMENT_TICK_COIN,
-            PocketConstants.ELEMENT_TICK_TRANSMUTE }) {
+        for (String key : STATE_KEYS) {
             if (elem.hasKey(key)) {
                 out.put(key, elem.getInteger(key));
             }
         }
         return out;
+    }
+
+    // ------------------------------------------------------------------ ★R96 S9b 模式位图（同 compound、另一族键）
+
+    /**
+     * 模式位图的<b>读</b>腿（只读、不建档，R53c）：缺键 ⇒ {@link PocketConstants#MAGE_MODES_DEFAULT}。
+     * <p>
+     * ★本方法是"缺省怎么读"的<b>唯一</b>落点：{@code PocketMageModes} 的三个谓词与写腿的"回到缺省即摘键"
+     * 都经它，别处不得再抄一遍 {@code MAGE_MODES_DEFAULT}（抄第二处 = 读写两侧的缺省可以对不齐）。
+     */
+    public int modeMask() {
+        final NBTTagCompound elem = raw(false);
+        if (elem == null || !elem.hasKey(PocketConstants.ELEMENT_MODES)) {
+            return PocketConstants.MAGE_MODES_DEFAULT;
+        }
+        return elem.getByte(PocketConstants.ELEMENT_MODES) & 0xFF;
+    }
+
+    /** 某个模式位当前是否开（{@code bit} 必须是 {@link PocketConstants#MAGE_MODE_BITS} 里的一枚，否则 false）。 */
+    public boolean modeOn(int bit) {
+        return PocketConstants.isMageModeBit(bit) && (modeMask() & bit) != 0;
+    }
+
+    /**
+     * 模式位的<b>唯一写</b>腿（同值 ⇒ {@code false} 且零写入，形状照
+     * {@code PocketUpgradeSwitches#setOff}：连点同一模式不会刷出一串整栈同步包）。
+     * <p>
+     * 写完若掩码回到缺省就 {@code removeTag}（缺键与缺省同义，少一个键少一份 NBT 深比较的体积；
+     * ★也顺带保证"从来没动过模式的档"在本方法被误调一次之后仍然是<b>零新增键</b>）。
+     *
+     * @return 本次是否真的改变了档
+     */
+    public boolean setMode(int bit, boolean on) {
+        if (!PocketConstants.isMageModeBit(bit)) {
+            return false;
+        }
+        final int current = modeMask();
+        final int next = on ? (current | bit) : (current & ~bit);
+        if (next == current) {
+            return false;
+        }
+        final NBTTagCompound elem = raw(true);
+        if (elem == null) {
+            // 无根可写：建档责任在调用方（口径同 {@link #add(String, int)}）
+            return false;
+        }
+        if (next == PocketConstants.MAGE_MODES_DEFAULT) {
+            elem.removeTag(PocketConstants.ELEMENT_MODES);
+        } else {
+            elem.setByte(PocketConstants.ELEMENT_MODES, (byte) next);
+        }
+        pruneIfEmpty();
+        return true;
     }
 
     // ------------------------------------------------------------------ 内部
@@ -380,7 +519,13 @@ public final class PocketElementStore {
         return fresh;
     }
 
-    /** 整族空（6 条 tag 与 3 个节拍键都不在）⇒ 摘掉 {@code elem} 键，与"空区不留壳"同口径。 */
+    /** 档里是否真的存在 {@link PocketConstants#ELEMENT_MODES} 键（★"缺省"与"缺键"必须分得开，见 writeTo）。 */
+    private boolean hasModeKey() {
+        final NBTTagCompound elem = raw(false);
+        return elem != null && elem.hasKey(PocketConstants.ELEMENT_MODES);
+    }
+
+    /** 整族空（6 条 tag、4 个节拍键与模式位图都不在）⇒ 摘掉 {@code elem} 键，与"空区不留壳"同口径。 */
     private void pruneIfEmpty() {
         final NBTTagCompound elem = raw(false);
         if (elem != null && elem.hasNoTags()) {

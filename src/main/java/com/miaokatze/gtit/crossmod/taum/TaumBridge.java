@@ -44,9 +44,12 @@ import thaumcraft.common.lib.crafting.ThaumcraftCraftingManager;
  * {@link #filledContainerCapacity()} 这一整条瓶能力自 R31 起实现完整却零调用方，本轮起被通道支
  * （{@code PocketEssenceChannelOps}）、12 格注入支（{@code PocketSlots}）与面板取出支
  * （{@code NekoPocketPanel}）接上，{@link #preferredContainerItem()} 同时<b>钉为瓶</b>。
- * {@link #newCrystalStack(String, int)} 与档位 {@code TaumDistillRules#CRYSTAL_CAPACITY}
- * <b>按裁定保留但退役为只读</b>：任何路径都不再产出晶，旧晶仍能被 {@link #readContainer(ItemStack)}
- * 读回点数（不吃件）。
+ * {@link #newCrystalStack(String, int)} 与档位 {@code TaumDistillRules#CRYSTAL_CAPACITY} 曾按 R88 裁定
+ * <b>退役为只读</b>；★<b>R96 S9b 已按用户裁定改判一半</b>：识别面一字未改（旧晶仍能被
+ * {@link #readContainer(ItemStack)} 读回点数、不吃件），生产面则新增了一条在役出口——魔法使的
+ * <b>结晶模式</b>（★默认关）开通后源质以晶出袋。★两条没变：晶<b>永不就地排空/就地灌入</b>
+ * （下面 {@link #addEssentia} 那道 {@code isCrystal} 闸就是这一条的执法点），不开模式时载体<b>仍是瓶</b>。
+ * 口袋侧不得直接调本方法（改走 {@code TaumCompat#mintCrystals}），理由见那里。
  * <p>
  * <b>禁止改动 TC 返回值</b>：{@code getObjectTags} 命中的是 {@code ThaumcraftApi.objectTags}
  * 注册表内<b>共享</b>的 {@link AspectList} 实例（{@code ThaumcraftCraftingManager.java:243/256/260}），
@@ -291,8 +294,8 @@ public final class TaumBridge implements TaumBridgeApi {
     public int addEssentia(ItemStack stack, String tag, int points) {
         IEssentiaContainerItem container = asContainer(stack);
         if (container == null || points <= 0 || isCrystal(stack)) {
-            // 晶化源质从来不走"就地注入"：旧形状是产新晶（★R88 起连产新晶也退役，见 newCrystalStack 的注），
-            // 在这里往晶里灌源质会让 1 点/晶的口径失真，还会造出 TC 会随机重赋型的半吊子晶
+            // 晶化源质从来不走"就地注入"：★R96 S9b 改判的是"可以产新晶"（见 newCrystalStack 的注），
+            // ★没改判"就地灌/就地排"这一条 —— 往晶里灌源质会让 1 点/晶的口径失真，还会造出 TC 会随机重赋型的半吊子晶
             return 0;
         }
         try {
@@ -349,8 +352,14 @@ public final class TaumBridge implements TaumBridgeApi {
     }
 
     /**
-     * ★<b>R88：退役为只读支，本仓任何路径不得再调用本方法产出晶</b>（裁定 C2）。签名与实现按兄弟切片的
-     * 编译依赖原样保留；"旧晶仍能被读回点数"走的是 {@link #readContainer(ItemStack)}，不经过这里。
+     * ★<b>R88 退役为只读 → ★R96 S9b 改判为「结晶模式」的生产实现</b>（裁定 C2 的生产那一半被用户撤销）。
+     * 本实现的三条形状与 R88 之前逐字相同，★改判只改了"谁可以调它"：
+     * ① 一枚晶恒 1 点（{@code new AspectList().add(aspect, 1)}），堆数 = {@code min(points, 64)}；
+     * ② 拿不到可写源质的晶物品时<b>宁可不产出</b>也不产"无 aspect 的晶"（TC 会随机重赋型 —— 这正是
+     *    "就地排空"被 wiki {@code gtit-taumcraft-essentia-carriers.md} §3 证死的同一条根因）；
+     * ③ 只被 {@code TaumCompat#mintCrystals} 调用（口袋两目录内的码位命中被 R88③ 门钉成恰 0，
+     *    与"结晶模式已在役"并存的做法与理由写在 {@code TaumCompat#newCrystalStack} 的 javadoc）。
+     * "旧晶仍能被读回点数"走的仍是 {@link #readContainer(ItemStack)}，不经过这里。
      */
     @Override
     public ItemStack newCrystalStack(String tag, int points) {

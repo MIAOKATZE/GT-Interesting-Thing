@@ -265,6 +265,16 @@ final class PocketVisSupport {
      * <p>
      * 全有全无：{@code cost} 里任何一条非白名单元始、或口袋凑不出整笔 ⇒ 整笔不付
      * （与 {@code consumeAllVis} 的「任一 aspect 不够就整笔 false」同形）。
+     * <p>
+     * ★★<b>R96 S9b 把这条"全有全无"从口径升级成了代码级保证</b>（补掉 S10 报告 U-8 那条登记）：
+     * 预检与出账两道都换成存储层的 {@code canPayAll} / {@code payAll}（★问的是<b>存量</b>，
+     * 不是 {@link #roomFor}；实掏 ≠ 应掏时把已掏的原样补回并整笔让给 TC）。两道加起来才是
+     * "缺一即整笔不扣"，旧实现只有第一道、而且第一道问错了那个数。
+     * <p>
+     * ★<b>与 S11 的交接点</b>（= U-4 的交叉登记）：本腿只让口袋当<b>油箱</b>，不当<b>油箱大小</b>。
+     * 护盾的容量上限由 {@code EventHandlerRunic.java:63-73} 扫<b>穿上的</b>盔甲 0..3 + bauble 0..3 里
+     * 的 {@code IRunicArmor} 算出，口袋当前<b>不可穿戴</b> ⇒ 不占容量。让口袋计入容量需要先可穿戴化
+     * = <b>S11 的活</b>，本片★不在此处做任何暗示（本方法一个 {@code IRunicArmor} 都不碰）。
      */
     static boolean payShieldCycleFromPockets(EntityPlayer player, AspectList cost) {
         if (player == null || player.worldObj == null || player.worldObj.isRemote || cost == null
@@ -289,12 +299,13 @@ final class PocketVisSupport {
         if (pocket == null) {
             return false;
         }
-        final PocketElementStore store = writableStore(pocket);
-        int paid = 0;
-        for (Map.Entry<String, Integer> entry : bill.entrySet()) {
-            paid += store.extract(entry.getKey(), entry.getValue().intValue());
-        }
-        return paid > 0;
+        // ★★R96 S9b：整笔出账<b>整体下沉</b>到存储层那一对原语（{@code canPayAll} / {@code payAll}），
+        // 本方法只负责"哪些 aspect、换算成几点、扫哪些槽"。理由不是省事：护盾这条腿要的
+        // 「缺一即整笔不扣 + 数不上就回滚」是<b>容量表自己的</b>判据，写在本类里就只有 mixin 侧看得见、
+        // 离线套件一次都跑不到（S10 的 U-8 之所以只能登记成"留待裁定"就是这个原因）。收进
+        // {@code PocketElementStore} 之后它是常驻侧<b>可测的一等判据</b>，★且与 S9a 那三条被动吃的是
+        // 同一份存量读数（get / 白名单 / 上限全在一处）—— 这条就是"护盾那条腿的容量侧是否闭合"的答案。
+        return writableStore(pocket).payAll(bill) > 0;
     }
 
     private static ItemStack firstPocketCovering(EntityPlayer player, Map<String, Integer> bill) {
@@ -319,17 +330,22 @@ final class PocketVisSupport {
         return null;
     }
 
-    /** 这只口袋是否付得起整笔 bill（★只读余量，不建档、不掏）。 */
+    /**
+     * 这只口袋是否付得起整笔 bill（★只读、不建档、不掏；判据本体在 {@code PocketElementStore#canPayAll}，
+     * ★本类不抄第二遍"逐条比存量"）。
+     * <p>
+     * ★★<b>R96 S9b 修正</b>：旧写法在这里逐条问的是 {@link #roomFor}（「还能收多少」），而本方法的语义是
+     * 「付得起吗」——消耗侧要问的是<b>存量</b>。两者在 500 上限下互为补数 ⇒ 拿错不是"稍严/稍宽"，
+     * 是<b>方向反了</b>：一只空口袋的余量恒等于上限，"付得起"判成 true。旧实现靠末尾那句
+     * {@code return paid > 0} 侥幸挡掉了"整只都空"这一格，但只要<b>一条够、一条不够</b>
+     * （如 aer 空、terra 有 300），terra 那条就会被真掏走而整笔没付齐 ⇒ 护盾回充了、口袋只付了一半。
+     * ★这就是 S10 报告 U-8 登的那格，且它<b>不是"理论不可达"而是已达</b>——预检从一开始就问错了那个数。
+     */
     private static boolean covers(ItemStack pocket, Map<String, Integer> bill) {
         if (!mageActive(pocket)) {
             return false;
         }
-        for (Map.Entry<String, Integer> entry : bill.entrySet()) {
-            if (roomFor(pocket, entry.getKey()) < entry.getValue().intValue()) {
-                return false;
-            }
-        }
-        return true;
+        return PocketElementStore.readFrom(pocket.getTagCompound()).canPayAll(bill);
     }
 
     private static IInventory safeBaubles(EntityPlayer player) {

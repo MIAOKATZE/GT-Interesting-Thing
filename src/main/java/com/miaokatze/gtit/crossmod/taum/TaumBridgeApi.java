@@ -105,8 +105,8 @@ public interface TaumBridgeApi {
     /**
      * 往容器里注入源质（合并语义：容器已有<b>不同</b> aspect 时整笔拒绝，不做混合、不清空）。
      * <p>
-     * 晶化源质不走本方法（1 点/枚；★R88 载体改判后晶已退役为「只读不产」，见 {@link #newCrystalStack}
-     * 上那条 ★R88 注），返回 0。
+     * 晶化源质不走本方法（1 点/枚；★R96 S9b 起晶<b>可以被产出</b>，但★仍然<b>不被就地灌/排</b>——
+     * 见 {@link #newCrystalStack} 上那条改判注与 {@code TaumCompat#mintCrystals}），返回 0。
      * <p>
      * <b>单容器语义</b>：本方法按「一个容器」写入，不拆堆也不改动 {@code stackSize}；
      * {@code stackSize > 1} 时改动的是整堆共享的 NBT，调用方须自行先拆成 1 个。
@@ -129,11 +129,21 @@ public interface TaumBridgeApi {
     /**
      * 产出晶化源质（1 点 = 1 个晶，可堆到 64）。
      * <p>
-     * ★★<b>R88 载体改判后本方法已退役为「只读不产」</b>（自立口径 C2）：源质盘的点数、上传/下传的搬运件、
-     * 入槽与绑定接受的形状一律改走 {@link #newFilledContainer(String, int)}（一瓶
-     * {@code TaumDistillRules#PHIAL_CAPACITY} 点）。本方法与 {@code CRYSTAL_CAPACITY} 档位<b>保留</b>只为
-     * 识别<b>存档里已有的旧晶</b>——旧晶仍能被读回点数溶进盘，不吃件；但口袋任何一条路都不再产出晶，
-     * 生产调用方已归零。
+     * ★★<b>R88 载体改判曾把本方法退役为「只读不产」（自立口径 C2）；★R96 S9b 按用户裁定把生产那一半
+     * 改判回来了</b>——魔法使的「结晶模式」（默认关）开通后，蒸馏出的源质以晶的形态直接进玩家背包。
+     * 因此下面这两句的<b>现读法</b>是：
+     * <ul>
+     * <li><b>读侧一半不变</b>：{@code CRYSTAL_CAPACITY} 档位与本方法都<b>继续保留</b>，旧晶仍能被
+     * {@link #readContainer(ItemStack)} 读回点数溶进盘，不吃件；★晶<b>永不就地排空</b>
+     * （wiki {@code gtit-taumcraft-essentia-carriers.md} §3 证死：就地扣减会让服务端随机重赋型），
+     * 产晶一律是「读数 + 消耗整件 + 出<b>新</b>晶」；</li>
+     * <li><b>产侧一半改判</b>：源质盘的点数、上传/下传的搬运件、入槽与绑定接受的形状<b>仍然</b>一律走
+     * {@link #newFilledContainer(String, int)}（一瓶 {@code TaumDistillRules#PHIAL_CAPACITY} 点）——
+     * ★这条没被改判，改判的只有"玩家主动开了结晶模式"这一条出口。不开模式时本方法在生产侧仍零调用方。</li>
+     * </ul>
+     * ★<b>调用方约束</b>：口袋侧不许直接调本方法（只能经 {@code TaumCompat#mintCrystals}），
+     * 判据原文与理由见 {@code TaumCompat#newCrystalStack} 的 javadoc 与
+     * {@code verify-pocket.sh} 的 R88③ 段。
      *
      * @param tag    aspect tag
      * @param points 点数，实际产出 {@code min(points, 64)} 个

@@ -324,19 +324,50 @@ public final class TaumCompat {
     }
 
     /**
-     * 产出晶化源质（1 点 = 1 个晶，最多 64 个/堆）。
+     * 产出晶化源质（1 点 = 1 个晶，最多 64 个/堆）—— ★★<b>R96 S9b 起本方法是全仓唯一的产晶出口</b>。
      * <p>
-     * ★★<b>R88 裁定 C2：本门面退役为只读，本仓不得再有调用方</b>——搬运载体是
-     * {@link #newFilledContainer(String, int)}（一瓶 8 点）。签名与实现按兄弟切片的编译依赖原样保留，
-     * "读回旧晶的点数"走 {@link #readContainer(ItemStack)} + {@link #capacityOf(ItemStack)}，不经过这里。
+     * <b>★R88 裁定 C2 已被用户改判一半（口径变更，原文留在这里以免有人以为"只读"仍是现行判据）</b>：
+     * R88 那句"本门面退役为只读、本仓不得再有调用方"的<b>读侧一半仍然成立</b>——旧晶的点数照旧走
+     * {@link #readContainer(ItemStack)} + {@link #capacityOf(ItemStack)} 读回，★永远不就地排空
+     * （wiki {@code gtit-taumcraft-essentia-carriers.md} §3 证死：晶不可就地排空，服务端会随机重赋型）；
+     * 被改判的是<b>产侧一半</b>：R96 魔法使的「结晶模式」（{@code PocketMageModes#crystalOn}，
+     * ★默认关）开通以后，蒸馏出的源质会以晶的形态直接进玩家背包，所以<b>生产调用方不再是零</b>。
+     * <p>
+     * ★★<b>唯一的调用方是 {@code mage/PocketCrystalDriver}，且它调的是下面那层
+     * {@link #mintCrystals(String, int)} 而不是本方法</b>——这不是绕门禁，而是把「口袋目录不再直接产晶」
+     * 这条既有锚（{@code verify-pocket.sh} R88③ 段：{@code src/…/pocket} 与 {@code gui/pocket} 两目录内
+     * {@code newCrystalStack(} 代码位恰 0，孪生 Java 用例
+     * {@code essenceLegacyCrystalIsReadOnlyButStillSoluble}）<b>与新功能同时保住</b>：
+     * 产出动作的<b>类型面</b>（TC 的 {@code ItemEssence} 与 {@code IEssentiaContainerItem}）本来就只许住在
+     * {@code crossmod/taum}（类污染红线 {@link TaumCompat TaumCompat:15-27}），
+     * 所以"晶从哪来"这一问在本仓永远只有一个码位可问，口袋侧问的是 {@link #mintCrystals}。
+     * <p>
+     * 搬运载体的<b>缺省</b>档没变：不开结晶模式时，源质出袋仍是
+     * {@link #newFilledContainer(String, int)}（一瓶 8 点）与"灌玩家自己那只瓶"两条路，本方法不参与。
      * 彻底摘除本门面（连同 {@code TaumBridge#newCrystalStack} 与 {@code CRYSTAL_STACK_LIMIT} 那条旧链接）
-     * 是收口后的独立裁决，见 {@code plan/_taskpack/r88-essentia/20-e1-report.md}。
+     * 自本轮起<b>不再是可选项</b>（它有了在役调用方），旧裁决见 {@code plan/_taskpack/r88-essentia/20-e1-report.md}。
      *
      * @return 新物品栈；不可用、tag 未知或 points &lt;= 0 时 null
      */
     public static ItemStack newCrystalStack(String tag, int points) {
         TaumBridgeApi active = readyBridge();
         return active == null ? null : active.newCrystalStack(tag, points);
+    }
+
+    /**
+     * ★R96 S9b：结晶模式的<b>生产入口</b>（逐字转 {@link #newCrystalStack(String, int)}，不加第二条判据）。
+     * <p>
+     * <b>为什么要多这一层同名转发</b>：见上面那条 javadoc 里 ★★ 那一段——产晶的<b>类型面</b>必须留在
+     * 本包，而口袋目录里不许出现 {@code newCrystalStack(} 这个码位（既有锚）。多一枚门面方法换到的正是
+     * "整个 src/main 里产晶出口仍然只有一处可点名、且它在降级承诺之内"。★本方法<b>不</b>做点数之外的
+     * 任何换算：批量上界与"整枚不排空"的判据都在 driver 侧（{@code MAGE_CRYSTAL_MAX_PER_BATCH}），
+     * 这里再钳一次就是第二份真相。
+     * <p>
+     * 降级：TC 缺席 / 桥未装配 / tag 不认识 / {@code points <= 0} ⇒ {@code null}（★永不抛，也不抛空物品）。
+     * 调用方拿到 {@code null} 必须按"什么都没发生"处理，★一分来源都不许扣。
+     */
+    public static ItemStack mintCrystals(String tag, int points) {
+        return newCrystalStack(tag, points);
     }
 
     /**
