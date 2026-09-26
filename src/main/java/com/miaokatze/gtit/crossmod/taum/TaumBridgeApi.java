@@ -19,6 +19,17 @@ import net.minecraft.item.ItemStack;
 public interface TaumBridgeApi {
 
     /**
+     * ★R96 S9a：{@link #chargeWandVis(ItemStack, String, int)} 的"这一栈不可充"返回值
+     * （<b>与 0 有意区分</b>：0 = 认得这栈、只是装不下，调用方据此<b>不</b>掏容量、也<b>不</b>把它当成功；
+     * 本值 = 连身份都不认，扫描侧可以继续问下一栈）。
+     * <p>
+     * 单源住在桥接契约上；口袋侧的转发常量是 {@code mage/WandVisGate#NOT_CHARGEABLE}
+     * （派生、不留第二个 {@code -1}，形状同 {@code PocketConstants.ESSENCE_OUT_UNIT_POINTS}
+     * 转发 {@code TaumDistillRules.PHIAL_CAPACITY} 那条既有先例）。
+     */
+    int WAND_NOT_CHARGEABLE = -1;
+
+    /**
      * @return 运行时派生的 aspect 注册序 tag 快照（{@code Aspect.aspects.keySet()} 迭代序）；
      *         数量不假设恰为 48（addon 可追加）
      */
@@ -145,4 +156,50 @@ public interface TaumBridgeApi {
      *         {@value TaumDistillRules#CAPACITY_UNKNOWN}，此时按调用方给的点数装）
      */
     int filledContainerCapacity();
+
+    /**
+     * ★<b>R96 S9a：这个 tag 是不是「元始（primal）」</b>——元素容量表认哪几条键的唯一判据。
+     * <p>
+     * 判据是<b>两条的合取</b>，缺一即错（R96 计划 §5 S9 禁止项原文）：
+     * <ol>
+     * <li>{@code PocketConstants#PRIMAL_TAGS} 白名单（{@code PocketConstants.isPrimalTag(String)}，
+     * 纯查表、零 TC 依赖）——单看下一条会错：TC 的 {@code Aspect#isPrimal()} 实现就是
+     * "{@code components} 为空 ⇒ true"，而 <b>addon 可以注册没有 components 的新 aspect</b>
+     * ⇒ 只用 {@code isPrimal()} 会把外部手写的一个空成分 aspect 判成元始并收进容量表；</li>
+     * <li>{@code Aspect.getAspect(tag).isPrimal()}——TC 侧的<b>复核</b>，挡掉"白名单里有、但这个实例
+     * 的注册表里根本没有／被别的 mod 改成了复合"的漂移。</li>
+     * </ol>
+     * ★<b>降级腿与白名单腿是两件事，不得读成一处</b>：TC 缺席时本方法恒 {@code false}（拿不到复核），
+     * 而容量表与 UI 的行数仍由白名单定（6 行照旧，只是<b>没有任何外部 tag</b> 能被判成元始）——
+     * 两条腿分别由 {@code NekoPocketModelTest} 的两条用例钉住（R96 S9a 验收 4）。
+     *
+     * @param tag aspect tag
+     * @return true = 白名单内<b>且</b> TC 复核为元始；{@code null}/空、白名单外、TC 缺席、api 漂移 ⇒ false
+     */
+    boolean isPrimalTag(String tag);
+
+    /**
+     * ★<b>R96 S9a：缓慢充法杖腿的唯一写侧</b>——把 {@code points} 点该 tag 的元素灌进一支 TC 法杖。
+     * <p>
+     * <b>为什么必须走桥、不能在口袋侧照 TC 的形状自己写</b>（取证 {@code r96-ret4.md} §3.1）：
+     * TC 的 vis 是「挂在物品 NBT 根上、以 aspect tag 为键的 <b>int</b>」，而
+     * <b>刻度是 ×100</b>（{@code ItemWandCasting#addVis} 内部 {@code amount * 100}）且
+     * <b>上限来自杖芯</b>（{@code getMaxVis = getRod(stack).getCapacity() × 100}，杖芯数据在 TC 的
+     * {@code ConfigItems.wandRods} 运行时表里，本地无证据可得）。抄这两条字面量就是第二份真相 ——
+     * 超上限那份更会直接灌成"看不见的溢出"。
+     * <p>
+     * ★所以 {@link #isPrimalTag(String)} 是<b>判据</b>面（可以纯白名单），充能<b>写入</b>面不行：
+     * 后者必须把量交给 TC 自己钳。本方法内部即用 {@code ItemWandCasting#addVis}（自带 ×100 与落钳），
+     * 并把 TC 的"剩余"换算回仓内点数返回 ⇒ 调用方按<b>实收</b>掏自己的容量，
+     * 不做"先掏 5 点、实际只灌进 3 点"那种凭空损失（R96 S9a 验收 4 的出账侧孪生形状）。
+     * <p>
+     * ★<b>永不抛出</b>（接口契约：TC 版本漂移只降级）。
+     *
+     * @param wand   候选法杖栈（可以是任何东西，判据在实现里）
+     * @param tag    primal tag（实现侧仍复核一次 {@link #isPrimalTag(String)}，不接受调用方自证）
+     * @param points 本批期望灌入的点数（仓内单位，非 TC 的 ×100 原值）
+     * @return {@code -1} = 这一栈不是可充法杖（含 TC 缺席、tag 非元始）；{@code 0} = 认得但一分没吃
+     *         （已满／放不下）；{@code >0} = <b>实际灌入</b>的点数
+     */
+    int chargeWandVis(ItemStack wand, String tag, int points);
 }

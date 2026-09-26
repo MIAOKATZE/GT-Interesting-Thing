@@ -15,6 +15,7 @@ import cpw.mods.fml.common.registry.GameRegistry;
 import thaumcraft.api.aspects.Aspect;
 import thaumcraft.api.aspects.AspectList;
 import thaumcraft.api.aspects.IEssentiaContainerItem;
+import thaumcraft.common.items.wands.ItemWandCasting;
 import thaumcraft.common.lib.crafting.ThaumcraftCraftingManager;
 
 /**
@@ -417,6 +418,68 @@ public final class TaumBridge implements TaumBridgeApi {
             return TaumDistillRules.CAPACITY_NOT_A_CONTAINER;
         }
         return preferred == phialItem() ? TaumDistillRules.PHIAL_CAPACITY : TaumDistillRules.CAPACITY_UNKNOWN;
+    }
+
+    /**
+     * ★R96 S9a：元始判据（<b>两条合取</b>，缺一即错；判据与降级口径的原文见
+     * {@link TaumBridgeApi#isPrimalTag(String)}）。
+     * <p>
+     * 白名单腿走在前面有两个作用：① {@code tag} 根本不在容量表里时<b>一次 TC 都不碰</b>
+     * （这条问句在面板与被动侧都会被反复问，早退顺序就是成本顺序）；② 即使本类的 TC 腿因
+     * 运行期漂移而降级，也<b>不会</b>把"注册表里凭空多出来的空成分 aspect"放进元素表 ——
+     * addon 注册无 components 的新 aspect 时 {@code Aspect#isPrimal()} 会假判 true，
+     * 这就是"不得只用 isPrimal()"那条禁令的具体形状。
+     */
+    @Override
+    public boolean isPrimalTag(String tag) {
+        if (!PocketConstants.isPrimalTag(tag)) {
+            return false;
+        }
+        try {
+            Aspect aspect = Aspect.getAspect(tag);
+            return aspect != null && aspect.isPrimal();
+        } catch (Throwable t) {
+            fail("isPrimalTag", t);
+            return false;
+        }
+    }
+
+    /**
+     * ★R96 S9a：缓慢充法杖的写侧本体（为什么必须落在桥里、不能在口袋侧照形状自己写 NBT，
+     * 原文见 {@link TaumBridgeApi#chargeWandVis(ItemStack, String, int)}：
+     * <b>×100 刻度</b>与<b>杖芯上限</b>两条事实都在 TC 手里）。
+     * <p>
+     * 实现刻意只做三件事：认物品（{@code instanceof ItemWandCasting}，TC 的充能判据本来就是
+     * 认这个具体类，{@code TileWandPedestal} 同）→ 复核 tag（{@link #isPrimalTag}，不接受调用方自证）
+     * → 把量交给 TC 的 {@code addVis}（<b>它自带 ×100 与 {@code min(…, getMaxVis)} 落钳</b>，
+     * 返回的是<b>装不下的剩余</b>），再把"实收"换算回仓内点数。本仓因此<b>不需要</b>知道 100 这个刻度、
+     * 也不需要杖芯容量表，两处外部事实零复制（{@code r96-ret4.md} §3.1）。
+     * <p>
+     * ⚠ 非 {@code ItemWandCasting} 与"TC 在场但该类被别的 fork 换掉"都走 {@code -1} 降级，
+     * 不抛（接口契约）；{@code ItemWandCasting} 的类引用第一次被执行才解析，
+     * {@code NoClassDefFoundError} 一并被这里的 {@code catch (Throwable)} 接住。
+     */
+    @Override
+    public int chargeWandVis(ItemStack wand, String tag, int points) {
+        if (wand == null || wand.getItem() == null || points <= 0 || !isPrimalTag(tag)) {
+            return WAND_NOT_CHARGEABLE;
+        }
+        try {
+            if (!(wand.getItem() instanceof ItemWandCasting)) {
+                return WAND_NOT_CHARGEABLE;
+            }
+            ItemWandCasting wandItem = (ItemWandCasting) wand.getItem();
+            Aspect aspect = Aspect.getAspect(tag);
+            if (aspect == null) {
+                return WAND_NOT_CHARGEABLE;
+            }
+            final int leftover = wandItem.addVis(wand, aspect, points, true);
+            final int landed = points - Math.max(0, leftover);
+            return landed <= 0 ? 0 : landed;
+        } catch (Throwable t) {
+            fail("chargeWandVis", t);
+            return WAND_NOT_CHARGEABLE;
+        }
     }
 
     // ------------------------------------------------------------------------------------

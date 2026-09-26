@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.Item;
@@ -21,6 +22,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.World;
+import net.minecraft.world.WorldServer;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 
@@ -32,9 +35,18 @@ import com.miaokatze.gtit.common.items.infinitycell.InfinityCellConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig.Kind;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.CoinGate;
+import com.miaokatze.gtit.common.items.pocket.mage.CoinHolder;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketCoinChargeDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketEssenceTransmuteDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.WandVisGate;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetClaims;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
+import com.miaokatze.gtit.crossmod.taum.TaumBridgeApi;
+import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.NekoEssenceGhostCell;
 import com.miaokatze.gtit.gui.pocket.NekoPocketBottomBand;
@@ -49,6 +61,7 @@ import com.miaokatze.gtit.gui.pocket.PocketGuiTextureContract;
 import com.miaokatze.gtit.gui.pocket.PocketSlots;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
+import com.mojang.authlib.GameProfile;
 
 import appeng.api.storage.IMEInventoryHandler;
 import appeng.api.storage.ISaveProvider;
@@ -515,6 +528,29 @@ public class NekoPocketModelTest {
         cases.put("mage_legacy_alias_stack_still_reads_as_mage",
             NekoPocketModelTest::mageLegacyAliasStackStillReadsAsMage);
         cases.put("mage_alias_adds_no_creative_entry", NekoPocketModelTest::mageAliasAddsNoCreativeEntry);
+        // ---- ★R96 S9a（TP-S9a）元素容量载体 + 三条被动：本轮起点 174 ⇒ 本批 +7 = 181
+        //   七条按验收编号排：①形状/整笔预检 ②每模式"被问到"（关⇒零变化且零 NBT 写）×3
+        //   ③猫猫币口径四条 ④6 而非 5 与两条腿 ⑤零 TC 泄漏机检 ⑥调用方在场的可达链
+        cases.put("mage_elem_store_shape_no_root_flush_and_whole_batch",
+            NekoPocketModelTest::mageElementStoreShapeAndWholeBatch);
+        cases.put("mage_wand_charge_beed_and_cadence_counted",
+            NekoPocketModelTest::mageWandChargeBehaviorAndCadence);
+        cases.put("mage_coin_charge_pocket_before_player_and_order",
+            NekoPocketModelTest::mageCoinChargeOrderAndValue);
+        cases.put("mage_coin_charge_precheck_never_eats_coin",
+            NekoPocketModelTest::mageCoinChargePrecheckKeepsCoin);
+        cases.put("mage_transmute_six_primals_in_parallel_off_is_zero_write",
+            NekoPocketModelTest::mageTransmuteBehaviorAndOff);
+        cases.put("mage_six_not_five_and_two_primal_legs_split",
+            NekoPocketModelTest::mageSixNotFiveAndTwoPrimalLegs);
+        cases.put("mage_drivers_reachable_from_onUpdate_and_no_tc_leak",
+            NekoPocketModelTest::mageDriversReachableAndNoTaumLeak);
+        // ---- ★R96 S9a-fix（TP-S9a-fix）补缺两条：S9a 报告 §2 的 MG / ML 两行「181/181 仍全绿」
+        //   本轮起点 181 ⇒ 本批 +2 = 183。①生产装配序（holdersFor 那一刀）②猫猫币关态行为（isActive 那一刀）
+        cases.put("mage_coin_charge_holders_assembled_by_production_path",
+            NekoPocketModelTest::mageCoinChargeProductionAssemblyOrder);
+        cases.put("mage_coin_charge_off_is_zero_change_and_zero_nbt_write",
+            NekoPocketModelTest::mageCoinChargeOffIsZeroChangeAndZeroWrite);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -14472,6 +14508,1106 @@ public class NekoPocketModelTest {
         } catch (Throwable tabUnavailable) {
             System.out.println("[NOTE] 本 JVM 里创造页静态链不可用（" + tabUnavailable
                 + "）⇒ 创造栏清单半边【未验】，只走上面源码半边");
+        }
+    }
+
+    // ================================================================== ★R96 S9a（TP-S9a）元素容量 + 三条被动七条
+    //
+    // 编排原则照 R96 计划 §7.1 的三条反证要求：每条用例的第一段都是**行为**（资源真的变了 /
+    // 关着真的什么都没变），常量与源码位判据排在后面。★三条「关 ⇒ 零变化且零 NBT 写」用同一把尺：
+    // 把整棵 NBT 树 toString() 当快照比对 —— 比「只查某个键在不在」强，因为它连 driver 顺手建的
+    // 空 compound、顺手写 0 的节拍键都能抓到（那些形状在「键存在性」判据下是绿的）。
+
+    /** 三条 driver 的源文件（下标即下面读数里说的「腿①/腿②/腿③」）。 */
+    private static final String[] R96_MAGE_DRIVER_FILES = {
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/mage/PocketWandChargeDriver.java",
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/mage/PocketCoinChargeDriver.java",
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/mage/PocketEssenceTransmuteDriver.java" };
+    /** 三个挂载方法名（可达链第一跳的判据串）。 */
+    private static final String[] R96_MAGE_DRIVER_NAMES = { "PocketWandChargeDriver", "PocketCoinChargeDriver",
+        "PocketEssenceTransmuteDriver" };
+    /** 两条入口（宿主挂载腿 / 回归套件腿）都必须调到的<b>同一份</b>本体（可达链第二跳）。 */
+    private static final String[] R96_MAGE_TICK_CALLS = { "chargeAndArm(", "chargeAndArm(", "transmuteAndArm(" };
+    /** 两条生产探针（法杖写侧 / 猫猫币身份）。 */
+    private static final String[] R96_MAGE_GATE_FILES = {
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/mage/WandVisGate.java",
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/mage/CoinGate.java" };
+    /** 宿主挂载文件与桥接两文件。 */
+    private static final String R96_MAGE_HOST_FILE = "src/main/java/com/miaokatze/gtit/common/items/pocket/ItemNekoDimensionPocket.java";
+    private static final String[] R96_TAUM_FILES = {
+        "src/main/java/com/miaokatze/gtit/crossmod/taum/TaumBridge.java",
+        "src/main/java/com/miaokatze/gtit/crossmod/taum/TaumCompat.java" };
+
+    /**
+     * 存储形状三条纪律 + 整笔预检（验收 4 的存储半边）：6 条 tag 各 500、★写在独立 compound 里
+     * 而不是栈根、白名单外不收、0 值不落档、任一 tag 装不下就整份拒收。
+     */
+    private static void mageElementStoreShapeAndWholeBatch() {
+        final NBTTagCompound root = new NBTTagCompound();
+        final PocketElementStore elem = PocketElementStore.attach(root);
+        // ---- ① 6 而非 5（判据是白名单本身，与 TC 在场与否无关）----
+        SimpleAssert.eq(6, PocketConstants.PRIMAL_TAGS.length, "P-7 定案 6 条 primal");
+        SimpleAssert.eq(3000, PocketConstants.ELEMENT_TOTAL_CAP, "总容量 = 6 × 500（派生式，不留第二个数）");
+        SimpleAssert.eq(500, PocketElementStore.capPerTag(), "单 tag 上限 500（★不是源质那两档 256/4096）");
+        // ---- ② 落在 elem 里、绝不平铺到栈根（禁项原文那条）----
+        SimpleAssert.eq(7, elem.add("aer", 7), "入账原语工作");
+        SimpleAssert.that(root.hasKey(PocketConstants.ELEMENTS), "elem compound 已建");
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            SimpleAssert.that(!root.hasKey(tag),
+                "★tag「" + tag + "」不得出现在栈根（与 ess 一族同批键名互混淆 = 禁令形状）");
+        }
+        // ---- ③ 白名单外一分不收（存储层自己挡一次，不依赖桥）----
+        SimpleAssert.eq(0, elem.add("lux", 9), "复合源质不是元素容量的键");
+        SimpleAssert.eq(0, elem.add(null, 9), "null 不入表");
+        SimpleAssert.eq(0, elem.roomFor("vacuos"), "白名单外的余量读数恒 0（不是 500）");
+        // ---- ④ 钳到上限 + 0 值不落档 ----
+        SimpleAssert.eq(493, elem.add("aer", 5000), "进量钳到 500");
+        SimpleAssert.eq(500, elem.get("aer"), "封顶 500");
+        SimpleAssert.that(elem.isFull("aer"), "到顶读数");
+        SimpleAssert.eq(0, elem.roomFor("aer"), "满格余量 0");
+        SimpleAssert.eq(500, elem.extract("aer", 9999), "出账按现存给");
+        SimpleAssert.eq(0, elem.get("aer"), "掏空读回 0");
+        SimpleAssert.that(!root.getCompoundTag(PocketConstants.ELEMENTS)
+            .hasKey("aer"), "★0 值不落档");
+        // ---- ⑤ 整笔预检：六条各 +10，只有一条腾得下 ⇒ 整份拒（不得吃五条扔一条）----
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            elem.add(tag, 490);
+        }
+        elem.add("perditio", 5);
+        final Map<String, Integer> candidate = PocketCoinChargeDriver.candidateFor(10);
+        SimpleAssert.eq(6, candidate.size(), "一份币候选恰好铺满六条（★不是只列放得下的那几条）");
+        SimpleAssert.eq(5, elem.roomFor("perditio"), "故意留一条只放得下 5 点");
+        SimpleAssert.that(!elem.canAcceptAll(candidate), "★任一 tag 装不下 ⇒ 整份判 false");
+        SimpleAssert.eq(0, elem.putAll(new LinkedHashMap<>()), "空候选零入账（兜底不炸）");
+        elem.extract("perditio", 5);
+        SimpleAssert.that(elem.canAcceptAll(candidate), "腾出来就放行（同一判据的双向）");
+        SimpleAssert.eq(60, elem.putAll(candidate), "提交 = 6 × 10");
+        SimpleAssert.eq(3000, elem.total(), "六条同时到顶 = 6 × 500（★上限不是源质那两档）");
+        // ---- ⑥ 活档视图：换实例不换真相；重定位才真搬运 ----
+        final String written = root.toString();
+        SimpleAssert.eq(elem.total(), PocketElementStore.attach(root)
+            .total(), "★另取一份实例读到同一个数（不是快照缓存 ⇒ 关屏回写抹不掉被动的入账）");
+        final NBTTagCompound relocated = new NBTTagCompound();
+        elem.writeTo(relocated);
+        SimpleAssert.eq(written, relocated.toString(), "重定位到另一枚栈时搬运逐字同解");
+        SimpleAssert.eq(written, root.toString(), "★目标是同一份档时 writeTo 是幂等 no-op");
+    }
+
+    /**
+     * ★验收 1（法杖腿）+ 出账侧的整笔纪律：开 ⇒ 容量按「对方实收量」减少；关 ⇒ 零变化且零 NBT 写；
+     * ★并钉「实际被 tick 到的次数」（防节拍常量对、但每 tick 都在搬）。
+     */
+    private static void mageWandChargeBehaviorAndCadence() {
+        final NBTTagCompound root = mageCarrierRoot();
+        final PocketElementStore elem = PocketElementStore.attach(root);
+        elem.add("aer", 100);
+        elem.add("ignis", 100);
+        final ItemStack wand = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        final ItemStack secondWand = new ItemStack(FakeStack16Item.INSTANCE, 1, 0);
+        final ItemStack junk = new ItemStack(FakeUnstackableItem.INSTANCE, 1, 0);
+        // ---- ① 开着一拍：搬得动，且掏自己的量恰等于对方向报的实收量 ----
+        final MageWandGate gate = new MageWandGate();
+        gate.accepts.add(FakePlainItem.INSTANCE);
+        final int before = elem.total();
+        final int moved = PocketWandChargeDriver.tick(root, new ItemStack[] { wand, junk }, gate);
+        SimpleAssert.that(moved > 0, "★开着 ⇒ 目标资源变化（本批搬了 " + moved + " 点）");
+        SimpleAssert.eq(moved, before - elem.total(), "★掏自己的量恰等于实收量（多掏 = 凭空损失）");
+        SimpleAssert.eq(2, gate.calls, "一批问了两个有货的 tag（aer / ignis），junk 那一栈也被问过");
+        SimpleAssert.eq(1, gate.fedItems.size(), "★一批只喂第一支吃得下的法杖（多支轮灌会把速率抬成 ×支数）");
+        // ---- ② 节拍常量单源 + 实际被 tick 到的次数 ----
+        SimpleAssert.eq(5, PocketConstants.MAGE_WAND_INTERVAL_TICKS, "魔力石同形：每 5 tick 一批");
+        SimpleAssert.eq(5, PocketConstants.MAGE_WAND_MAX_POINTS_PER_BATCH, "每批每 tag ≤5 点");
+        final MageWandGate counted = new MageWandGate();
+        counted.accepts.add(FakeStack16Item.INSTANCE);
+        int batches = 0;
+        for (int tick = 0; tick < 20; tick++) {
+            final int perTick = PocketWandChargeDriver.tick(root, new ItemStack[] { secondWand }, counted);
+            SimpleAssert.that(perTick <= 2 * PocketConstants.MAGE_WAND_MAX_POINTS_PER_BATCH,
+                "单批上界 = 每 tag ≤5 × 本例两个有货的 tag = 10（每 tick 都在搬会立刻越界；实读 " + perTick + "）");
+            batches += perTick > 0 ? 1 : 0;
+        }
+        SimpleAssert.eq(4, batches, "★20 tick 里恰好 4 批（不是 20 批）⇒ 节拍闸真的在执法，不只是常量对");
+        assertLiteralCountIn(R96_MAGE_DRIVER_FILES[0], "PocketConstants.MAGE_WAND_INTERVAL_TICKS", 1,
+            "法杖驱动的节拍必须引符号、不抄数字");
+        assertLiteralCountIn(R96_MAGE_DRIVER_FILES[0], "PocketConstants.MAGE_WAND_MAX_POINTS_PER_BATCH", 1,
+            "单批上界同上");
+        assertNoBareCadenceNumber(R96_MAGE_DRIVER_FILES[0]);
+        // ---- ③ 关着 ⇒ 零变化 + 零 NBT 写（★行为用例，不是常量断言）----
+        final NBTTagCompound offRoot = mageCarrierRoot();
+        final PocketElementStore offElem = PocketElementStore.attach(offRoot);
+        offElem.add("aer", 50);
+        SimpleAssert.that(PocketUpgradeSwitches.setOff(offRoot, PocketUpgradeType.MAGE, true),
+            "关掉 MAGE（off-mask 位）");
+        final String offSnapshot = offRoot.toString();
+        final int offBefore = offElem.total();
+        final MageWandGate offGate = new MageWandGate();
+        offGate.accepts.add(FakePlainItem.INSTANCE);
+        for (int tick = 0; tick < 20; tick++) {
+            SimpleAssert.eq(0, PocketWandChargeDriver.tick(offRoot, new ItemStack[] { wand }, offGate),
+                "关着的每一拍都一分不搬");
+        }
+        SimpleAssert.eq(offBefore, offElem.total(), "关着 ⇒ 容量一分未动");
+        SimpleAssert.eq(0, offGate.calls, "★开关关 ⇒ 连桥都没被问一次（不是问了再拒）");
+        SimpleAssert.eq(offSnapshot, offRoot.toString(), "★关着 ⇒ 整棵 NBT 一字未变（零写，含不建空 compound）");
+        // ---- ④ 对方不吃 ⇒ 不掏自己 ----
+        final NBTTagCompound fullRoot = mageCarrierRoot();
+        final PocketElementStore fullElem = PocketElementStore.attach(fullRoot);
+        fullElem.add("aer", 30);
+        final MageWandGate refusing = new MageWandGate();
+        refusing.accepts.add(FakePlainItem.INSTANCE);
+        refusing.reply = 0;
+        SimpleAssert.eq(0, PocketWandChargeDriver.tick(fullRoot, new ItemStack[] { wand }, refusing),
+            "法杖满着 ⇒ 本批 0 点");
+        SimpleAssert.eq(30, fullElem.get("aer"), "★对方一分不吃 ⇒ 自己一分不掏（先掏后灌 = 凭空损失）");
+    }
+
+    /**
+     * ★验收 2（猫猫币口径）：先口袋内 135 格、后玩家背包；普通各 +1 / 闪烁各 +10；1 秒恰 1 枚；
+     * ★先扣币再加容量（造一个「扣不动」的来源，断言容量一分不涨）。
+     */
+    private static void mageCoinChargeOrderAndValue() {
+        final MageCoinGate gate = new MageCoinGate();
+        gate.values.put(FakePlainItem.INSTANCE, PocketConstants.MAGE_COIN_VALUE_NORMAL);
+        gate.values.put(FakeUnstackableItem.INSTANCE, PocketConstants.MAGE_COIN_VALUE_SHIMMERING);
+        SimpleAssert.eq(1, PocketConstants.MAGE_COIN_VALUE_NORMAL, "普通币各元素 +1");
+        SimpleAssert.eq(10, PocketConstants.MAGE_COIN_VALUE_SHIMMERING, "闪烁币各元素 +10");
+        // ---- ① 先口袋内、后玩家背包（G-2 用户裁定）：同一拍两档都有币，只许吃口袋那档 ----
+        final NBTTagCompound root = mageCarrierRoot();
+        final PocketElementStore elem = PocketElementStore.attach(root);
+        final ItemStack normal = new ItemStack(FakePlainItem.INSTANCE, 3, 0);
+        final ItemStack shimmering = new ItemStack(FakeUnstackableItem.INSTANCE, 1, 0);
+        final MageCoinHolder pocket = new MageCoinHolder("口袋", normal);
+        final MageCoinHolder player = new MageCoinHolder("背包", shimmering);
+        final CoinHolder[] holders = new CoinHolder[] { pocket, player };
+        SimpleAssert.eq(1, PocketCoinChargeDriver.tick(root, holders, gate), "第 1 拍吃掉一枚");
+        SimpleAssert.eq("口袋#0", pocket.events.get(0), "★第一档是口袋内 135 格");
+        SimpleAssert.eq(0, player.events.size(), "★同一拍背包档一格未动（口袋里还有币）");
+        SimpleAssert.eq(2, normal.stackSize, "同一格扣 1 枚（★不是整格抹掉）");
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            SimpleAssert.eq(1, elem.get(tag), "普通币 ⇒ 六条 tag 各 +1");
+        }
+        // ---- ② 1 秒恰 1 枚：中间那 19 拍必须一枚都不吃 ----
+        for (int tick = 0; tick < 19; tick++) {
+            SimpleAssert.eq(0, PocketCoinChargeDriver.tick(root, holders, gate),
+                "第 " + (tick + 2) + " 拍仍在节拍下 ⇒ 一枚都不吃");
+        }
+        SimpleAssert.eq(1, PocketCoinChargeDriver.tick(root, holders, gate), "第 21 拍才吃第二枚");
+        SimpleAssert.eq(2, pocket.events.size(), "两枚都出自口袋");
+        SimpleAssert.eq(0, player.events.size(), "背包仍未被问");
+        // ---- ③ 口袋吃空之后才轮到背包；闪烁币是各 +10 ----
+        for (int tick = 0; tick < 40; tick++) {
+            PocketCoinChargeDriver.tick(root, holders, gate);
+        }
+        SimpleAssert.eq(3, pocket.events.size(), "口袋三枚吃满三枚");
+        SimpleAssert.eq(1, player.events.size(), "★口袋空了才吃背包");
+        SimpleAssert.that(player.stackAt(0) == null, "★闪烁币那一格已空（它本来就一枚 ⇒ 整格摘掉）");
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            SimpleAssert.eq(13, elem.get(tag), "普通三枚各 +1 再叠闪烁一枚 +10 = 13（★逐条对齐，不是合计）");
+        }
+        assertNoBareCadenceNumber(R96_MAGE_DRIVER_FILES[1]);
+        // ---- ④ ★先扣币、再加容量：扣不动 ⇒ 一分容量都不给 ----
+        final NBTTagCompound stuckRoot = mageCarrierRoot();
+        final MageCoinHolder stuck = new MageCoinHolder("扣不动", new ItemStack(FakePlainItem.INSTANCE, 1, 0));
+        stuck.refuseConsume = true;
+        SimpleAssert.eq(0, PocketCoinChargeDriver.tick(stuckRoot, new CoinHolder[] { stuck }, gate),
+            "扣减失败 ⇒ 本拍不算吃币");
+        final PocketElementStore stuckElem = PocketElementStore.attach(stuckRoot);
+        SimpleAssert.eq(0, stuckElem.total(), "★币没扣成 ⇒ 容量必须一分不涨（反序 = 可无限刷容量）");
+        SimpleAssert.that(!stuckRoot.hasKey(PocketConstants.ELEMENTS), "★且不给 elem 建档（零写）");
+        SimpleAssert.eq(1, stuck.stacks[0].stackSize, "币仍在那一格");
+    }
+
+    /**
+     * ★验收 3（整笔预检）：容量不足时<b>不吃币</b> —— 币保持原状、容量不涨；
+     * 并放一个「只腾够一部分」的场景钉死「不吃五条扔一条」。
+     */
+    private static void mageCoinChargePrecheckKeepsCoin() {
+        final MageCoinGate gate = new MageCoinGate();
+        gate.values.put(FakePlainItem.INSTANCE, 10);
+        final NBTTagCompound root = mageCarrierRoot();
+        final PocketElementStore elem = PocketElementStore.attach(root);
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            elem.add(tag, 495);
+        }
+        final ItemStack coin = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        final MageCoinHolder holder = new MageCoinHolder("将满", coin);
+        final CoinHolder[] holders = new CoinHolder[] { holder };
+        final int totalBefore = elem.total();
+        SimpleAssert.eq(0, PocketCoinChargeDriver.tick(root, holders, gate), "六条都只放得下 5 点 ⇒ 整份拒");
+        SimpleAssert.eq(0, holder.events.size(), "★预检挡下时连扣减都没被问到");
+        SimpleAssert.eq(1, coin.stackSize, "★币保持原状（没被吃掉）");
+        SimpleAssert.eq(totalBefore, elem.total(), "★容量一分不涨（不做部分入账）");
+        // ---- 只腾够五条：整份照样拒（★这条才是「吃一半」的正面反证）----
+        for (int i = 0; i < 5; i++) {
+            elem.extract(PocketConstants.PRIMAL_TAGS[i], 5);
+        }
+        SimpleAssert.eq(10, elem.roomFor(PocketConstants.PRIMAL_TAGS[0]), "前五条已腾够");
+        SimpleAssert.eq(5, elem.roomFor(PocketConstants.PRIMAL_TAGS[5]), "最后一条仍只放得下 5 点");
+        SimpleAssert.eq(0, PocketCoinChargeDriver.tick(root, holders, gate), "★五条放得下、一条放不下 ⇒ 仍整份拒");
+        SimpleAssert.eq(1, coin.stackSize, "★币仍未被吃");
+        // ---- 六条都腾够 ⇒ 同一判据必须放行（正控：上面那些 0 是判据挡的，不是链路没接上）----
+        elem.extract(PocketConstants.PRIMAL_TAGS[5], 5);
+        SimpleAssert.eq(1, tickUntilConsumed(root, holders, gate, 25), "正控：放得下就放行（跨过挡下那一拍的节拍）");
+        SimpleAssert.that(holder.stackAt(0) == null, "★这次币被扣掉了（那一格空）");
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            SimpleAssert.eq(500, elem.get(tag), tag + " 各 +10 到顶");
+        }
+    }
+
+    /**
+     * ★S9a-fix 缺口①：把「先口袋内 135 格、后玩家背包 36 格」（用户裁定 G-2）从<b>注入式数组</b>
+     * 搬到<b>生产装配点</b>上。S9a 报告 §2 反证 MG 实测：{@code PocketCoinChargeDriver#holdersFor}
+     * 里两档整个反过来，181/181 仍全绿 —— 因为既有那条用例自己传数组序，从没经过 {@code holdersFor}。
+     * <p>
+     * 本 case 走<b>公开挂载入口</b> {@link PocketCoinChargeDriver#onItemTick}：口袋档由会话在场时的
+     * {@link CoinHolder#ofSession} 产出、背包档由 {@link CoinHolder#ofPlayer} 产出，<b>两档序完全由
+     * 生产的 {@code holdersFor} 决定</b>；判据也换回生产那一份 {@code CoinGate.NEKO}（把
+     * {@link NekoCurrencyRegistrar} 里 postInit 才赋值的两枚可变静态字段指到既有桩件物品上，
+     * ★结束在 {@code finally} 里还原成 {@code null}，不留全局污染）。于是「口袋先被吃」不再是
+     * 一句算式，而是三档生产实现 + 一份生产身份判据合起来的可观测结果：
+     * <ol>
+     * <li>两档各有币的第一拍 ⇒ 只有口袋那格 3→2，背包那枚原封不动；</li>
+     * <li>口袋里还有币的整段期间（第 21 / 41 拍）⇒ 背包永不被取；</li>
+     * <li>口袋吃空之后（第 61 拍）⇒ 才轮到背包那枚，且走的是 vanilla {@code InventoryPlayer#decrStackSize}
+     * （本来就只有 1 枚 ⇒ 整格摘掉）；</li>
+     * <li>第三档 {@link CoinHolder#ofStorage} 钉两处：挂载腿的<b>无会话分支</b>确实把它装配进了数组
+     * （★同一条分支选择反过来会先红在第①段 —— 有会话时拿到的是 {@code ofStorage(null)}，口袋吃不到），
+     * 以及它对真 {@link PocketInventory} 存储面的<b>直接扣减行为</b>（135 格、同一格扣一枚、扣完返 0）。</li>
+     * </ol>
+     */
+    private static void mageCoinChargeProductionAssemblyOrder() {
+        final UUID uuid = UUID.randomUUID();
+        final World world = mageServerWorldShell();
+        final EntityPlayer player = magePlayerShell(uuid, world);
+        final NBTTagCompound root = mageCarrierRoot();
+        final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        carrier.setTagCompound(root);
+        final MageSessionShell session = new MageSessionShell(uuid, carrier);
+        session.storage[3] = new ItemStack(FakePlainItem.INSTANCE, 3, 0);
+        player.inventory.mainInventory[9] = new ItemStack(FakeUnstackableItem.INSTANCE, 1, 0);
+        try {
+            // ★生产身份判据点亮：FakePlainItem = 普通币（各 +1）、FakeUnstackableItem = 闪烁币（各 +10）
+            NekoCurrencyRegistrar.nekoCoinItem = FakePlainItem.INSTANCE;
+            NekoCurrencyRegistrar.shimmeringNekoCoinItem = FakeUnstackableItem.INSTANCE;
+            PocketSessions.register(session);
+            SimpleAssert.eq(1, PocketSessions.liveSessions(), "会话在场 ⇒ 挂载腿选的那一档就是 ofSession");
+            final PocketElementStore elem = PocketElementStore.attach(root);
+            // ---- ① 两档各有币的第一拍：被吃的必须是口袋那格（★序由 holdersFor 决定，不由本用例决定）----
+            PocketCoinChargeDriver.onItemTick(carrier, world, player);
+            SimpleAssert.eq(2, session.storage[3].stackSize, "★口袋档（排在第一）3→2：同一格扣一枚，不是整格抹掉");
+            SimpleAssert.eq(1, player.inventory.mainInventory[9].stackSize, "★背包档（排在第二）那一枚原封不动");
+            for (String tag : PocketConstants.PRIMAL_TAGS) {
+                SimpleAssert.eq(1, elem.get(tag), "普通币 ⇒ 六条 primal 各 +1");
+            }
+            // ---- ② 节拍内的 19 拍：两档一枚都不动 ----
+            for (int tick = 0; tick < 19; tick++) {
+                PocketCoinChargeDriver.onItemTick(carrier, world, player);
+            }
+            SimpleAssert.eq(2, session.storage[3].stackSize, "第 2..20 拍仍在节拍下 ⇒ 口袋不动");
+            SimpleAssert.eq(1, player.inventory.mainInventory[9].stackSize, "★背包那一枚仍在（口袋里还有币 ⇒ 第二档根本不被取）");
+            // ---- ③ 口袋里还有币 ⇒ 第 21 / 41 拍仍只吃口袋 ----
+            for (int tick = 0; tick < 20; tick++) {
+                PocketCoinChargeDriver.onItemTick(carrier, world, player);
+            }
+            SimpleAssert.eq(1, session.storage[3].stackSize, "第 21 拍吃到口袋第二枚");
+            for (int tick = 0; tick < 20; tick++) {
+                PocketCoinChargeDriver.onItemTick(carrier, world, player);
+            }
+            SimpleAssert.that(session.storage[3] == null, "第 41 拍吃到第三枚 ⇒ 那一格整格摘掉");
+            SimpleAssert.eq(1, player.inventory.mainInventory[9].stackSize, "★口袋里刚吃空之前，背包一律不被取");
+            for (String tag : PocketConstants.PRIMAL_TAGS) {
+                SimpleAssert.eq(3, elem.get(tag), "三枚普通币 ⇒ 各 +3");
+            }
+            // ---- ④ 口袋吃空之后才轮到背包（同一份 holdersFor 序的第二半），闪烁币各 +10 ----
+            for (int tick = 0; tick < 20; tick++) {
+                PocketCoinChargeDriver.onItemTick(carrier, world, player);
+            }
+            SimpleAssert.that(player.inventory.mainInventory[9] == null,
+                "★第 61 拍才吃背包那枚，且扣减走 vanilla decrStackSize（1 枚 ⇒ 整格摘掉）");
+            for (String tag : PocketConstants.PRIMAL_TAGS) {
+                SimpleAssert.eq(13, elem.get(tag), "3×(+1) + 1×(+10) = 各 13（★逐条对齐，不是六条合计）");
+            }
+            // ---- ⑤ F1 双分支：会话在场只打脏，绝不整表回写这枚栈（★否则一次读改写会盖掉面板的真相）----
+            SimpleAssert.that(!root.hasKey(PocketConstants.ITEM_CONTENTS),
+                "★会话分支零整表回写：contents 键仍只归关屏落盘（root 上只有 elem 那一处活档写）");
+            SimpleAssert.eq(7, session.dirties,
+                "★前三枚出自会话档 ⇒ 每枚两处打脏（ofSession 写回 + 挂载腿 markDirty），第四枚走背包档只剩挂载腿那一处 = 3×2+1");
+            // ---- ⑥ 无会话分支：装配换成 ofStorage（★另一处生产出口），135 格空表扫过 ⇒ 本拍只可能来自背包档 ----
+            PocketSessions.forget(uuid);
+            SimpleAssert.eq(0, PocketSessions.liveSessions(), "会话已回收 ⇒ 挂载腿改走一次性 readFrom 分支");
+            final NBTTagCompound oneShotRoot = mageCarrierRoot();
+            final ItemStack oneShotCarrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+            oneShotCarrier.setTagCompound(oneShotRoot);
+            player.inventory.mainInventory[10] = new ItemStack(FakePlainItem.INSTANCE, 3, 0);
+            for (int tick = 0; tick < 21; tick++) {
+                PocketCoinChargeDriver.onItemTick(oneShotCarrier, world, player);
+            }
+            SimpleAssert.eq(1, player.inventory.mainInventory[10].stackSize,
+                "★无会话分支两枚都出自背包档：装配这一对换成的是 ofStorage(空表) + ofPlayer；"
+                    + "★把挂载腿那句 ofSession/ofStorage 选择反过来会先红在第①段（有会话时拿到 ofStorage(null)）");
+            final PocketElementStore oneShotElem = PocketElementStore.attach(oneShotRoot);
+            for (String tag : PocketConstants.PRIMAL_TAGS) {
+                SimpleAssert.eq(2, oneShotElem.get(tag), "无会话分支照样各 +1（★同一份 chargeAndArm 本体）");
+            }
+            // ---- ⑦ ★第三档生产实现的真行为：ofStorage 直接对真 PocketInventory 的存储面扣减 ----
+            final PocketInventory inventory = PocketInventory.readFrom(new NBTTagCompound());
+            final CoinHolder storageHolder = CoinHolder.ofStorage(inventory);
+            SimpleAssert.eq(PocketInventory.STORAGE_SLOTS, storageHolder.slots(),
+                "★口袋档格数 = 135（不是玩家那 36 ⇒ 两档不是同一个东西的两个别名）");
+            inventory.storage().setStackInSlot(11, new ItemStack(FakePlainItem.INSTANCE, 2, 0));
+            SimpleAssert.eq(1, storageHolder.consumeOne(11), "真扣减第一枚");
+            SimpleAssert.eq(1, storageHolder.stackAt(11).stackSize, "同一格剩 1（★不是整格抹掉）");
+            SimpleAssert.eq(1, storageHolder.consumeOne(11), "真扣减第二枚");
+            SimpleAssert.that(storageHolder.stackAt(11) == null, "扣完 ⇒ 那一格空");
+            SimpleAssert.eq(0, storageHolder.consumeOne(11), "★空格返 0 ⇒ 调用方据此一分容量都不给（先扣后加的输入侧）");
+        } finally {
+            PocketSessions.forget(uuid);
+            NekoCurrencyRegistrar.nekoCoinItem = null;
+            NekoCurrencyRegistrar.shimmeringNekoCoinItem = null;
+            SimpleAssert.eq(0, PocketSessions.liveSessions(),
+                "★会话表清空（本套件同一 JVM 顺序跑，留残条目会污染后面的用例）");
+        }
+    }
+
+    /**
+     * ★S9a-fix 缺口②：猫猫币这一模此前<b>没有</b>「关 ⇒ 零变化且零 NBT 写」的行为级用例
+     * （S9a 报告 §2 反证 ML：撤掉 {@code PocketCoinChargeDriver} 的 {@code isActive} 组合谓词，
+     * 181/181 仍全绿；全仓 {@code setOff} 在 mage 段只出现在法杖与源质转换两条用例里）。
+     * <p>
+     * ★两半各钉一道谓词，且<b>两半都是真入口</b>：挂载腿 {@link PocketCoinChargeDriver#onItemTick}
+     * 钉 driver 挂载点那道（关着时连一次性 {@code readFrom} 都不该做），套件腿
+     * {@link PocketCoinChargeDriver#tick} 钉纯逻辑腿那道（ML 那一刀正落在这里 —— 只测挂载腿会漏）。
+     * <p>
+     * ★两半后面各配一道<b>正控</b>：同一套 World 壳 / 玩家壳 / 会话壳 / 币，把开关打开后必须立刻吃到一枚
+     * ⇒ 上面那些 0 只可能是判据挡的，不可能是「链路根本没接上」（那才是比没检更坏的绿：壳分配失败、
+     * {@code isRemote} 为真、注册表没点亮，都会安静地把整条用例变成空转）。
+     */
+    private static void mageCoinChargeOffIsZeroChangeAndZeroWrite() {
+        final UUID uuid = UUID.randomUUID();
+        final World world = mageServerWorldShell();
+        final EntityPlayer player = magePlayerShell(uuid, world);
+        try {
+            NekoCurrencyRegistrar.nekoCoinItem = FakePlainItem.INSTANCE;
+            // ---- ① 挂载腿：关着的档 + 两档各有币 ⇒ 20 拍逐拍零 ----
+            final NBTTagCompound mountRoot = mageCarrierRoot();
+            SimpleAssert.that(PocketUpgradeSwitches.setOff(mountRoot, PocketUpgradeType.MAGE, true),
+                "关掉 MAGE（off-mask 位）");
+            final ItemStack mountCarrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+            mountCarrier.setTagCompound(mountRoot);
+            final MageSessionShell mountSession = new MageSessionShell(uuid, mountCarrier);
+            mountSession.storage[3] = new ItemStack(FakePlainItem.INSTANCE, 3, 0);
+            player.inventory.mainInventory[9] = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+            PocketSessions.register(mountSession);
+            final String mountSnapshot = mountRoot.toString();
+            for (int tick = 0; tick < 20; tick++) {
+                PocketCoinChargeDriver.onItemTick(mountCarrier, world, player);
+            }
+            SimpleAssert.eq(mountSnapshot, mountRoot.toString(),
+                "★挂载腿关着 ⇒ 整棵 NBT 一字未变（零写：连 elem 空壳、tickCoin 键都不许有）");
+            SimpleAssert.that(!mountRoot.hasKey(PocketConstants.ELEMENTS), "★关着 ⇒ 连 elem 档都不建");
+            SimpleAssert.eq(3, mountSession.storage[3].stackSize, "关着 ⇒ 口袋里三枚一枚没少");
+            SimpleAssert.eq(1, player.inventory.mainInventory[9].stackSize, "关着 ⇒ 背包那枚也没被扫走");
+            SimpleAssert.eq(0, mountSession.dirties, "★关着 ⇒ 连打脏都没有（不是「问了再拒」，是一句都没问）");
+            // ---- ② 挂载腿正控：开回来 ⇒ 同一套对象立刻真的动起来 ----
+            SimpleAssert.that(PocketUpgradeSwitches.setOff(mountRoot, PocketUpgradeType.MAGE, false),
+                "开回来（关闭位归零 ⇒ 连键一起摘）");
+            PocketCoinChargeDriver.onItemTick(mountCarrier, world, player);
+            SimpleAssert.that(mountRoot.hasKey(PocketConstants.ELEMENTS),
+                "★正控：开着 ⇒ 真入口确实动了档");
+            SimpleAssert.that(PocketElementStore.attach(mountRoot).total() > 0,
+                "★正控：开着 ⇒ 容量确实涨了 ⇒ 上面那些 0 是判据挡的，不是链路空转（★刻意不钉哪一档被吃：那是缺口①那条用例的活）");
+            SimpleAssert.that(mountSession.dirties > 0, "★正控：开着才打脏");
+            // ---- ③ 套件腿（★ML 那一刀的位置）：★另起一套玩家壳，与前半段互不借用状态 ----
+            final NBTTagCompound pureRoot = mageCarrierRoot();
+            SimpleAssert.that(PocketUpgradeSwitches.setOff(pureRoot, PocketUpgradeType.MAGE, true),
+                "关掉 MAGE（套件腿读的是同一把谓词）");
+            final ItemStack pureCarrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+            pureCarrier.setTagCompound(pureRoot);
+            final MageSessionShell pureSession = new MageSessionShell(uuid, pureCarrier);
+            pureSession.storage[3] = new ItemStack(FakePlainItem.INSTANCE, 2, 0);
+            final EntityPlayer purePlayer = magePlayerShell(uuid, world);
+            purePlayer.inventory.mainInventory[9] = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+            final CoinHolder[] holders = new CoinHolder[] { CoinHolder.ofSession(pureSession),
+                CoinHolder.ofPlayer(purePlayer) };
+            final String pureSnapshot = pureRoot.toString();
+            for (int tick = 0; tick < 20; tick++) {
+                SimpleAssert.eq(0, PocketCoinChargeDriver.tick(pureRoot, holders, CoinGate.NEKO),
+                    "关着的第 " + (tick + 1) + " 拍：一枚都不吃");
+            }
+            SimpleAssert.eq(pureSnapshot, pureRoot.toString(), "★套件腿关着 ⇒ 零 NBT 写");
+            SimpleAssert.eq(2, pureSession.storage[3].stackSize, "★套件腿关着 ⇒ 口袋两枚未动");
+            SimpleAssert.eq(1, purePlayer.inventory.mainInventory[9].stackSize, "★套件腿关着 ⇒ 背包那枚也未动");
+            SimpleAssert.eq(0, pureSession.dirties, "★套件腿关着 ⇒ 零打脏");
+            // ---- ④ 套件腿正控：开回来 ⇒ 同一对档立刻吃到一枚（1 枚是硬上界，与"吃哪一档"无关）----
+            SimpleAssert.that(PocketUpgradeSwitches.setOff(pureRoot, PocketUpgradeType.MAGE, false),
+                "开回来");
+            SimpleAssert.eq(1, PocketCoinChargeDriver.tick(pureRoot, holders, CoinGate.NEKO),
+                "★正控：开着 ⇒ 同一道判据立刻吃一枚（不是 0、也不是 2）");
+            SimpleAssert.that(PocketElementStore.attach(pureRoot).total() > 0, "★正控：开着才入账");
+            SimpleAssert.that(pureSession.storage[3].stackSize < 2
+                    || purePlayer.inventory.mainInventory[9] == null,
+                "★正控：涨的那 1 点确实来自这两档之一（不是凭空涨容量）");
+        } finally {
+            PocketSessions.forget(uuid);
+            NekoCurrencyRegistrar.nekoCoinItem = null;
+            SimpleAssert.eq(0, PocketSessions.liveSessions(), "★会话表清空");
+        }
+    }
+
+    /**
+     * ★验收 1（源质转换腿）+ 验收 3：6 种 primal 同批并行、非 primal 永不碰、
+     * 容量放不下时<b>源质保持原状</b>、关着 ⇒ 零变化且零 NBT 写。
+     */
+    private static void mageTransmuteBehaviorAndOff() {
+        final NBTTagCompound root = mageCarrierRoot();
+        final PocketEssenceStore ess = PocketEssenceStore.readFrom(new NBTTagCompound());
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            ess.add(tag, 3);
+        }
+        ess.add("lux", 3);
+        // ---- ① 开着：六种同批各折 1 点（1 元素/秒）----
+        SimpleAssert.eq(6, PocketEssenceTransmuteDriver.tick(root, ess), "★一批里六条 primal 各折 1 点（同批并行）");
+        final PocketElementStore elem = PocketElementStore.attach(root);
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            SimpleAssert.eq(1, elem.get(tag), tag + " 进了 1 点容量");
+            SimpleAssert.eq(2, ess.get(tag), tag + " 的源质同步少 1");
+        }
+        SimpleAssert.eq(3, ess.get("lux"), "★复合源质一个都不碰（折算只按白名单点查，不扫全表）");
+        // ---- ② 节拍：常量单源 + 实到批数 ----
+        SimpleAssert.eq(PocketConstants.TICKS_PER_SECOND, PocketConstants.MAGE_SECOND_INTERVAL_TICKS,
+            "秒级节拍派生自 TICKS_PER_SECOND，不另抄 20");
+        SimpleAssert.eq(1, PocketConstants.MAGE_TRANSMUTE_POINTS_PER_BATCH, "每批每 tag 1 点");
+        int batches = 0;
+        for (int tick = 0; tick < 21; tick++) {
+            final int perTick = PocketEssenceTransmuteDriver.tick(root, ess);
+            SimpleAssert.that(perTick <= 6, "单批至多六条各 1 点（实读 " + perTick + "）");
+            batches += perTick > 0 ? 1 : 0;
+        }
+        SimpleAssert.eq(1, batches, "★循环那 21 拍里只有 1 批（连首拍共 2 批 / 22 拍 = 每秒一批）");
+        // ---- ③ 源质见底 ⇒ 两张表都不动、也不建档 ----
+        final NBTTagCompound dryRoot = mageCarrierRoot();
+        SimpleAssert.eq(0, PocketEssenceTransmuteDriver.tick(dryRoot,
+            PocketEssenceStore.readFrom(new NBTTagCompound())), "盘里没 primal ⇒ 本批 0 点");
+        SimpleAssert.that(!dryRoot.hasKey(PocketConstants.ELEMENTS), "★且不给 elem 建档（零写）");
+        // ---- ④ 某条容量放不下 ⇒ 只放弃那一条，其余五条照折（★不绑整笔，否则违反「6 种可同时」）----
+        final NBTTagCompound jamRoot = mageCarrierRoot();
+        final PocketElementStore jamElem = PocketElementStore.attach(jamRoot);
+        final PocketEssenceStore jamEss = PocketEssenceStore.readFrom(new NBTTagCompound());
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            jamEss.add(tag, 2);
+        }
+        jamElem.add(PocketConstants.PRIMAL_TAGS[0], 500);
+        SimpleAssert.eq(5, PocketEssenceTransmuteDriver.tick(jamRoot, jamEss), "五条照折、第一条放弃");
+        SimpleAssert.eq(2, jamEss.get(PocketConstants.PRIMAL_TAGS[0]), "★放不下的那条：源质一分未扣");
+        SimpleAssert.eq(500, jamElem.get(PocketConstants.PRIMAL_TAGS[0]), "★也没多进一分");
+        SimpleAssert.eq(1, jamElem.get(PocketConstants.PRIMAL_TAGS[1]), "其余各进 1 点");
+        SimpleAssert.eq(1, jamEss.get(PocketConstants.PRIMAL_TAGS[1]), "其余各扣 1 点");
+        // ---- ⑤ 关着 ⇒ 零变化且零 NBT 写 ----
+        final NBTTagCompound offRoot = mageCarrierRoot();
+        PocketUpgradeSwitches.setOff(offRoot, PocketUpgradeType.MAGE, true);
+        final PocketEssenceStore offEss = PocketEssenceStore.readFrom(new NBTTagCompound());
+        offEss.add("aer", 5);
+        final String offSnapshot = offRoot.toString();
+        for (int tick = 0; tick < 20; tick++) {
+            SimpleAssert.eq(0, PocketEssenceTransmuteDriver.tick(offRoot, offEss), "关着的每一拍都 0 点");
+        }
+        SimpleAssert.eq(offSnapshot, offRoot.toString(), "★关着 ⇒ 整棵 NBT 一字未变");
+        SimpleAssert.eq(5, offEss.get("aer"), "★关着 ⇒ 源质一分不扣");
+        assertNoBareCadenceNumber(R96_MAGE_DRIVER_FILES[2]);
+    }
+
+    /**
+     * ★验收 4：6 而非 5 ＋ 两条腿分开测（白名单腿定容量表与 UI；桥接判据的降级腿在 TC 缺席时返 false）。
+     */
+    private static void mageSixNotFiveAndTwoPrimalLegs() {
+        // ---- 腿一：白名单（纯查表、零 TC ⇒ 本 JVM 里就是全量真相）----
+        SimpleAssert.eq(6, PocketConstants.PRIMAL_TAGS.length, "★6 而非 5（ret4/eva3 的 5-vs-6 歧义已由 P-7 闭合）");
+        SimpleAssert.eq(3000, PocketConstants.ELEMENT_TOTAL_CAP, "各 500 × 6");
+        for (String tag : new String[] { "aer", "terra", "ignis", "aqua", "ordo", "perditio" }) {
+            SimpleAssert.that(PocketConstants.isPrimalTag(tag), tag + " 在白名单内（逐字点名，不靠长度蒙）");
+        }
+        SimpleAssert.that(!PocketConstants.isPrimalTag("vacuos"), "VOID 是复合（aer + perditio）⇒ 不在表内");
+        SimpleAssert.that(!PocketConstants.isPrimalTag("lux"), "LIGHT 同理");
+        SimpleAssert.that(!PocketConstants.isPrimalTag(""), "空串不算");
+        SimpleAssert.that(!PocketConstants.isPrimalTag(null), "null 不算");
+        // ---- 腿二：桥接判据的降级腿（本 JVM 无 Thaumcraft ⇒ 恒 false）----
+        SimpleAssert.that(!TaumCompat.isThaumcraftLoaded(),
+            "前提：本 JVM 确实没有 TC（否则这条测的是复核腿、不是降级腿）");
+        SimpleAssert.that(!TaumCompat.isAvailable(), "前提：桥未装配");
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            SimpleAssert.that(!TaumCompat.isPrimalTag(tag),
+                "★降级腿：TC 缺席时 " + tag + " 的 isPrimalTag 必须返 false（宁缺不错）");
+        }
+        SimpleAssert.eq(TaumBridgeApi.WAND_NOT_CHARGEABLE, TaumCompat.chargeWandVis(null, "aer", 5),
+            "★同一条降级承诺覆盖写侧：入参 null / TC 缺席都返「不可充」，不抛");
+        // ---- 两条腿的读数必须能分开（6 真 vs 0 真 ⇒ 不是同一处判据被读两遍）----
+        SimpleAssert.eq(6, countWhitelistPrimals(), "白名单腿数到 6");
+        SimpleAssert.eq(0, countBridgePrimals(), "桥接腿在 TC 缺席时数到 0");
+        // ---- 合取判据的源码位：桥与门面两道都要过（★不得只用 isPrimal()）----
+        assertLiteralCountIn(R96_TAUM_FILES[0], "PocketConstants.isPrimalTag(tag)", 1,
+            "白名单腿在桥里在场（先挡一次，TC 复核在后）");
+        assertLiteralCountIn(R96_TAUM_FILES[0], "aspect.isPrimal()", 1, "TC 复核腿在场");
+        assertLiteralCountIn(R96_TAUM_FILES[1], "PocketConstants.isPrimalTag(tag)", 2,
+            "门面两条腿各一次（isPrimalTag 与 chargeWandVis 的白名单前置）");
+    }
+
+    /**
+     * ★验收 5 + 验收 6：零 TC 泄漏机检（实测读数）＋ 从 onUpdate 到每条 driver 的静态可达链逐跳点名。
+     */
+    private static void mageDriversReachableAndNoTaumLeak() {
+        // ---- ① ★R57 那一条先办：证明「有调用方」，再谈算式。第一跳 onUpdate → driver.onItemTick ----
+        final java.util.List<String> host = sourceLinesOrNull(R96_MAGE_HOST_FILE);
+        if (host == null) {
+            System.out.println("[NOTE] 读不到 ItemNekoDimensionPocket.java ⇒ 可达链半边【未验】（★不是通过）");
+        } else {
+            final int from = methodStart(host, "public void onUpdate(ItemStack stack, World world");
+            SimpleAssert.that(from >= 0, "定位 onUpdate");
+            final java.util.List<String> body = methodBodyOf(host, from);
+            for (final String driver : R96_MAGE_DRIVER_NAMES) {
+                SimpleAssert.eq(1, countCodeLinesIn(body, driver + ".onItemTick("),
+                    "★onUpdate 体内必须恰有一处挂 " + driver + "（读到 0 = R57 的零调用方形状）");
+            }
+            for (final String existing : new String[] { "PocketChannelDriver.onItemTick(",
+                "PocketDistillDriver.onItemTick(", "PocketMagnetDriver.onItemTick(" }) {
+                SimpleAssert.eq(1, countCodeLinesIn(body, existing), "既有挂载「" + existing + "」保持恰 1");
+            }
+            SimpleAssert.eq(1, countCodeLinesIn(body, "tickDown(root, PocketConstants.UI_WORK_TICKS)"),
+                "onUpdate 的结构（两条倒计时）未被本片改动 ⇒ 本片只加了挂载行");
+        }
+        // ---- ② 第二跳：挂载方法体内真调到纯逻辑腿，且自带 MAGE 组合谓词早退 ----
+        for (int i = 0; i < R96_MAGE_DRIVER_FILES.length; i++) {
+            final java.util.List<String> lines = sourceLinesOrNull(R96_MAGE_DRIVER_FILES[i]);
+            if (lines == null) {
+                System.out.println("[NOTE] 读不到 " + R96_MAGE_DRIVER_FILES[i] + " ⇒ 该跳【未验】");
+                continue;
+            }
+            SimpleAssert.eq(1, countCodeLinesIn(lines, "public static void onItemTick("),
+                "挂载方法恰一处声明");
+            final String core = R96_MAGE_TICK_CALLS[i];
+            final int mountAt = methodStart(lines, "public static void onItemTick(");
+            final int pureAt = methodStart(lines, "public static int tick(");
+            SimpleAssert.that(mountAt >= 0 && pureAt >= 0, "两个入口都能按签名定位（挂载腿 + 套件腿）");
+            SimpleAssert.that(countCodeLinesIn(methodBodyOf(lines, mountAt), core) >= 1,
+                "★挂载方法体内必须真调到共用本体「" + core + "」（0 = onUpdate 挂在这里、这里却什么都不干）");
+            SimpleAssert.that(countCodeLinesIn(methodBodyOf(lines, pureAt), core) >= 1,
+                "★套件入口调的是<b>同一份</b>本体「" + core + "」（各写一遍就会出现套件绿而实机不跑）");
+            SimpleAssert.that(countCodeLinesIn(lines, "PocketUpgradeSwitches.isActive(") >= 1,
+                "★每条 driver 自带 MAGE 组合谓词早退（关着 ⇒ 一次位图读就回）");
+            final int mageChecks = countCodeLinesIn(lines, "PocketUpgradeType.MAGE");
+            SimpleAssert.that(mageChecks >= 1 && mageChecks <= 2,
+                "★早退读的是 MAGE 这一型（1 = 只在纯逻辑腿；2 = 挂载点另有一次前置读，为的是关着时"
+                    + "连一次性 readFrom 都不做；实读 " + mageChecks + "）");
+            SimpleAssert.that(countCodeLinesIn(lines, "PocketConstants.ELEMENT_TICK_") >= 1
+                || countCodeLinesIn(lines, "ELEMENT_TICK_") >= 1, "★计时走 NBT 剩余 tick 键（不是取模）");
+            SimpleAssert.eq(0, countCodeLinesIn(lines, "ticksExisted"),
+                "★不得用 ticksExisted % n 扩散（G8；磁力那条既存例外不在此列）");
+        }
+        // ---- ③ 第三跳：driver → 生产探针 → 门面（充法杖腿 / 猫猫币身份腿）----
+        assertLiteralCountIn(R96_MAGE_DRIVER_FILES[0], "WandVisGate.TAUM", 1, "法杖腿的生产探针在挂载点接上");
+        assertLiteralCountIn(R96_MAGE_DRIVER_FILES[1], "CoinGate.NEKO", 1, "币身份走注册表那一份真相");
+        assertLiteralCountIn(R96_MAGE_GATE_FILES[0], "TaumCompat.chargeWandVis(", 1, "探针逐字转门面");
+        assertLiteralCountIn(R96_MAGE_GATE_FILES[1], "NekoCurrencyRegistrar.getNekoCurrencyId(", 1,
+            "★认两件币的判据单源在注册表，driver 侧不抄 instanceof");
+        // ---- ④ ★验收 5：零 TC 泄漏机检（自己数，不留「应该没漏」）----
+        final int leak = countTaumImportsOutsideBridge();
+        SimpleAssert.that(leak >= 0, "检法必须真跑到（读不到 src/main/java ⇒ 空转 = 比没检更坏）");
+        SimpleAssert.eq(0, leak, "★TaumBridge.java 之外的 import thaumcraft 命中数");
+        SimpleAssert.eq(5, countTaumImportsInBridge(),
+            "TC 类型引用全仓只集中在 TaumBridge 一处（S9a 新增 ItemWandCasting ⇒ 4→5，仍零外泄）");
+    }
+
+    /**
+     * 连打若干拍直到吃到一枚（★猫猫币那条在"整笔预检挡下"时也会装拍，见
+     * {@code PocketCoinChargeDriver#tick} 的那条注释 ⇒ 正控不能只问一拍）。
+     */
+    private static int tickUntilConsumed(NBTTagCompound root, CoinHolder[] holders, CoinGate gate, int ticks) {
+        int eaten = 0;
+        for (int tick = 0; tick < ticks && eaten == 0; tick++) {
+            eaten += PocketCoinChargeDriver.tick(root, holders, gate);
+        }
+        return eaten;
+    }
+
+    /**
+     * 按花括号配对取一个方法的方法体（从声明行 {@code from} 起算）。
+     * <p>
+     * ★不用"扫到第一个单独的 }"那种偷懒写法 —— 方法体里嵌套的 if 块会以同样的缩进先收口，
+     * 于是"方法体"被截断成前几行，挂载行读不到就报 0 命中（检法自己先把判据截掉了）。
+     */
+    private static java.util.List<String> methodBodyOf(java.util.List<String> lines, int from) {
+        int depth = 0;
+        for (int i = from; i < lines.size(); i++) {
+            final String line = lines.get(i);
+            if (isCommentLine(line)) {
+                continue;
+            }
+            for (int c = 0; c < line.length(); c++) {
+                final char ch = line.charAt(c);
+                if (ch == '{') {
+                    depth++;
+                } else if (ch == '}') {
+                    depth--;
+                }
+            }
+            if (depth == 0 && i > from) {
+                return lines.subList(from, i + 1);
+            }
+        }
+        SimpleAssert.that(false, "★花括号配对收不了口（" + (from < lines.size() ? lines.get(from)
+            .trim() : "?") + "）⇒ 检法空转，不许当成通过");
+        return lines.subList(from, lines.size());
+    }
+
+    /** 载体根：固化 MAGE 插件位（off-mask 缺键 ⇒ 默认开）。 */
+    private static NBTTagCompound mageCarrierRoot() {
+        final NBTTagCompound root = new NBTTagCompound();
+        PocketUpgrades.install(root, PocketUpgradeType.MAGE);
+        return root;
+    }
+
+    private static int countWhitelistPrimals() {
+        int hits = 0;
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            if (PocketConstants.isPrimalTag(tag)) {
+                hits++;
+            }
+        }
+        return hits;
+    }
+
+    private static int countBridgePrimals() {
+        int hits = 0;
+        for (String tag : PocketConstants.PRIMAL_TAGS) {
+            if (TaumCompat.isPrimalTag(tag)) {
+                hits++;
+            }
+        }
+        return hits;
+    }
+
+    /** 扫 src/main/java：TaumBridge.java <b>之外</b>的 import thaumcraft 命中数；读不到树返回 −1。 */
+    private static int countTaumImportsOutsideBridge() {
+        return countTaumImports(false);
+    }
+
+    /** 同上，只数 TaumBridge.java <b>之内</b>（用来证明「新增那一处仍留在桥内」）。 */
+    private static int countTaumImportsInBridge() {
+        return countTaumImports(true);
+    }
+
+    private static int countTaumImports(boolean insideBridgeOnly) {
+        final java.nio.file.Path base = repoRootOrNull();
+        if (base == null) {
+            return -1;
+        }
+        final java.nio.file.Path root = base.resolve("src/main/java");
+        if (!java.nio.file.Files.isDirectory(root)) {
+            return -1;
+        }
+        int hits = 0;
+        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(root)) {
+            final java.util.Iterator<java.nio.file.Path> it = walk.iterator();
+            while (it.hasNext()) {
+                final java.nio.file.Path file = it.next();
+                if (!file.toString()
+                    .endsWith(".java")) {
+                    continue;
+                }
+                final boolean isBridge = file.getFileName()
+                    .toString()
+                        .equals("TaumBridge.java");
+                if (isBridge != insideBridgeOnly) {
+                    continue;
+                }
+                for (String line : java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
+                    if (line.startsWith("import thaumcraft")) {
+                        hits++;
+                    }
+                }
+            }
+        } catch (java.io.IOException ignored) {
+            return -1;
+        }
+        return hits;
+    }
+
+    /** 节拍数字只许活在 PocketConstants：driver 的代码行里出现裸 5 / 20 ⇒ 红（单源判据的行为侧孪生）。 */
+    private static void assertNoBareCadenceNumber(String path) {
+        final java.util.List<String> lines = sourceLinesOrNull(path);
+        if (lines == null) {
+            System.out.println("[NOTE] 读不到 " + path + " ⇒ 裸节拍数字判据【未验】（★不是通过）");
+            return;
+        }
+        final java.util.regex.Pattern pattern = java.util.regex.Pattern
+            .compile("(?<![A-Za-z0-9_.])(5|20)(?![0-9A-Za-z])");
+        for (int i = 0; i < lines.size(); i++) {
+            final String line = lines.get(i);
+            if (isCommentLine(line)) {
+                continue;
+            }
+            SimpleAssert.that(!pattern.matcher(line)
+                .find(), "★" + path + ":" + (i + 1) + " 出现裸节拍数字 ⇒ 该行：" + line.trim());
+        }
+    }
+
+    /**
+     * 法杖写侧桩件：按 {@code Item} 身份决定认不认、一次吃多少（★生产腿在 TC 缺席的测试 JVM 里恒返
+     * 「不可充」，直调门面只会拿到假绿 —— 形状与理由照 {@code distill/EssenceGate} 的桩件先例）。
+     */
+    private static final class MageWandGate implements WandVisGate {
+
+        final java.util.List<Item> accepts = new ArrayList<>();
+        final java.util.List<Item> fedItems = new ArrayList<>();
+        final Map<String, Integer> landed = new LinkedHashMap<>();
+        /** 单次可充量（默认照生产的「每批 ≤5」量级；置 0 = 模拟法杖已满）。 */
+        int reply = 5;
+        int calls;
+
+        @Override
+        public int chargeWandVis(ItemStack wand, String tag, int points) {
+            calls++;
+            if (wand == null || points <= 0 || !PocketConstants.isPrimalTag(tag)
+                || !accepts.contains(wand.getItem())) {
+                return NOT_CHARGEABLE;
+            }
+            final int give = Math.min(reply, points);
+            if (give <= 0) {
+                return 0;
+            }
+            if (!fedItems.contains(wand.getItem())) {
+                fedItems.add(wand.getItem());
+            }
+            landed.merge(tag, give, Integer::sum);
+            return give;
+        }
+    }
+
+    /** 按 {@code Item} 身份给价值的币桩件（认哪两件、各值几点全在表里）。 */
+    private static final class MageCoinGate implements CoinGate {
+
+        final Map<Item, Integer> values = new LinkedHashMap<>();
+
+        @Override
+        public int valueOf(ItemStack stack) {
+            if (stack == null || stack.getItem() == null) {
+                return 0;
+            }
+            final Integer value = values.get(stack.getItem());
+            return value == null ? 0 : value;
+        }
+    }
+
+    /** 一格一栈的来源桩件：记录「什么时候被扣过」，并可强制扣不动（验先扣再加的顺序性）。 */
+    private static final class MageCoinHolder implements CoinHolder {
+
+        private final String label;
+        final ItemStack[] stacks;
+        final java.util.List<String> events = new ArrayList<>();
+        int consumes;
+        boolean refuseConsume;
+
+        MageCoinHolder(String label, ItemStack... stacks) {
+            this.label = label;
+            this.stacks = stacks;
+        }
+
+        @Override
+        public int slots() {
+            return stacks.length;
+        }
+
+        @Override
+        public ItemStack stackAt(int slot) {
+            return slot < 0 || slot >= stacks.length ? null : stacks[slot];
+        }
+
+        @Override
+        public int consumeOne(int slot) {
+            consumes++;
+            events.add(label + "#" + slot);
+            if (refuseConsume) {
+                return 0;
+            }
+            final ItemStack current = stackAt(slot);
+            if (current == null || current.stackSize <= 0) {
+                return 0;
+            }
+            if (current.stackSize == 1) {
+                stacks[slot] = null;
+            } else {
+                current.stackSize--;
+            }
+            return 1;
+        }
+    }
+
+    /**
+     * ★R96 S9a-fix 两条补缺用到的三样东西：服务端 {@code World} 壳、{@code EntityPlayer} 壳、
+     * {@code PocketSession} 壳。
+     * <p>
+     * <b>为什么要壳、以及壳薄到什么程度</b>：{@code EntityPlayer} 在这份 patched MC 里唯一的构造子是
+     * {@code EntityPlayer(World, GameProfile)}，实测第一行就读 {@code worldIn.isRemote}、紧接着读
+     * {@code worldIn.provider.dimensionId} ⇒ 真构造要先把整条 {@code MinecraftServer}/{@code WorldServer}
+     * 装起来（两条 NPE 的落点已记进 S9a-fix 报告）。而猫猫币这条腿在生产里只碰玩家三样东西：
+     * {@code getGameProfile().getId()}（找会话）、{@code inventory.mainInventory}（扫 36 格）、
+     * {@code inventory.decrStackSize(...)}（★扣减仍是 vanilla 本体，壳不替它算），外加
+     * {@code onItemTick} 入口那句 {@code world.isRemote}。所以壳<b>只</b>补这几样：
+     * <ul>
+     * <li>World 壳只为「非空且 {@code isRemote == false}」（分配出来的字段就是 false，
+     * {@link #mageServerWorldShell()} 里显式钉一次 —— 万一哪天它是 true，三条 driver 全部早退，
+     * 关态用例就成了空转）；</li>
+     * <li>玩家壳的 {@code getGameProfile()} 由壳自己的字段答出（分配出来的实例字段全为默认值，
+     * 所以先分配、后写字段，构造子一行都不执行）；</li>
+     * <li>会话壳未点名的方法<b>一被问就抛</b>（口径同 {@link FakeHost}：不假装有实现；
+     * 这条腿哪天多问一个会话方法，本用例立刻红而不是悄悄绿过去）。</li>
+     * </ul>
+     * 换句话说：壳补的全是「本 JVM 造不出来的容器」，判据与算式一处都没被替身顶掉。
+     */
+    private static World mageServerWorldShell() {
+        final World world = (World) allocateWithoutConstructor(WorldServer.class);
+        SimpleAssert.that(world != null && !world.isRemote,
+            "★服务端侧 World 壳：isRemote 为真会让三条 driver 全部早退 ⇒ 关态那条就成了空转");
+        return world;
+    }
+
+    /** 玩家壳：带 {@code GameProfile}（挂载腿靠它找回会话）与 vanilla 那 36 格主背包。 */
+    private static EntityPlayer magePlayerShell(UUID uuid, World world) {
+        final MagePlayerShell player = (MagePlayerShell) allocateWithoutConstructor(MagePlayerShell.class);
+        player.shellGameProfile = new GameProfile(uuid, "mage-shell");
+        player.worldObj = world;
+        player.inventory = new InventoryPlayer(player);
+        SimpleAssert.eq(36, player.inventory.mainInventory.length,
+            "★背包档就是 vanilla 那 36 格（不是口袋的 135 格 ⇒ 两档不是同一个东西）");
+        return player;
+    }
+
+    /**
+     * 跳过构造子的实例分配（{@code EntityPlayer} / {@code WorldServer} 的构造子在本 JVM 不可用，
+     * 见上面的说明）。★反射取 {@code sun.misc.Unsafe} 而不 import：不给测试源添一条 JDK 内部 API 的
+     * 编译期依赖。<b>分配不出来就直接判红</b> —— 返回 {@code null} 让用例空转成绿是比不测更坏的形状。
+     */
+    private static Object allocateWithoutConstructor(Class<?> target) {
+        try {
+            final Class<?> unsafe = Class.forName("sun.misc.Unsafe");
+            final java.lang.reflect.Field theUnsafe = unsafe.getDeclaredField("theUnsafe");
+            theUnsafe.setAccessible(true);
+            return unsafe.getMethod("allocateInstance", Class.class)
+                .invoke(theUnsafe.get(null), target);
+        } catch (Throwable t) {
+            SimpleAssert.that(false, "★本 JVM 分配不出 " + target.getSimpleName() + " 的壳 ⇒ 生产装配那条腿无从可验："
+                + t);
+            return null;
+        }
+    }
+
+    /** {@code EntityPlayer} 的壳（构造子永不执行；只答猫猫币这条腿真会问的那几面）。 */
+    private static final class MagePlayerShell extends EntityPlayer {
+
+        GameProfile shellGameProfile;
+
+        private MagePlayerShell(World world, GameProfile profile) {
+            super(world, profile);
+        }
+
+        @Override
+        public GameProfile getGameProfile() {
+            return shellGameProfile;
+        }
+
+        @Override
+        public net.minecraft.util.ChunkCoordinates getPlayerCoordinates() {
+            return null;
+        }
+
+        @Override
+        public boolean canCommandSenderUseCommand(int i, String s) {
+            return false;
+        }
+
+        @Override
+        public void addChatMessage(net.minecraft.util.IChatComponent component) {}
+    }
+
+    /**
+     * {@code PocketSession} 的壳：只实现猫猫币这条腿会问到的十面（身份两件、承载栈两件、开关两件、
+     * 打脏/落盘两个计数、中栏三件），其余一被问就抛。中栏用真数组装 135 格，所以
+     * {@link CoinHolder#ofSession} 那份<b>生产</b>读面／写面（"同一格扣一枚而不是抹整格"）
+     * 与 {@code markDirty} 计数都是真读数。
+     */
+    private static final class MageSessionShell implements PocketSession {
+
+        private final UUID playerId;
+        private final ItemStack carrier;
+        final ItemStack[] storage = new ItemStack[PocketInventory.STORAGE_SLOTS];
+        int dirties;
+        int finalPersists;
+
+        MageSessionShell(UUID playerId, ItemStack carrier) {
+            this.playerId = playerId;
+            this.carrier = carrier;
+        }
+
+        @Override
+        public UUID playerId() {
+            return playerId;
+        }
+
+        @Override
+        public ItemStack carrierStack() {
+            return carrier;
+        }
+
+        @Override
+        public NBTTagCompound carrierTag() {
+            return carrier == null ? null : carrier.getTagCompound();
+        }
+
+        @Override
+        public boolean isOpen() {
+            return false;
+        }
+
+        @Override
+        public boolean isHeldByOwner() {
+            return true;
+        }
+
+        @Override
+        public void markDirty() {
+            dirties++;
+        }
+
+        @Override
+        public void persistFinal() {
+            finalPersists++;
+        }
+
+        @Override
+        public int storageSlots() {
+            return storage.length;
+        }
+
+        @Override
+        public ItemStack storageStackAt(int slot) {
+            return slot < 0 || slot >= storage.length ? null : storage[slot];
+        }
+
+        @Override
+        public void setStorageStackAt(int slot, ItemStack stack) {
+            if (slot >= 0 && slot < storage.length) {
+                storage[slot] = stack;
+            }
+        }
+
+        @Override
+        public EntityPlayer player() {
+            throw mageSessionFaceOutsideCoinLeg("player");
+        }
+
+        @Override
+        public void persistIdle() {
+            throw mageSessionFaceOutsideCoinLeg("persistIdle");
+        }
+
+        @Override
+        public PocketCellBindings bindings() {
+            throw mageSessionFaceOutsideCoinLeg("bindings");
+        }
+
+        @Override
+        public PocketFilterConfig filters() {
+            throw mageSessionFaceOutsideCoinLeg("filters");
+        }
+
+        @Override
+        public PocketEssenceStore essence() {
+            throw mageSessionFaceOutsideCoinLeg("essence");
+        }
+
+        @Override
+        public ItemStack distillInputStack(int index) {
+            throw mageSessionFaceOutsideCoinLeg("distillInputStack");
+        }
+
+        @Override
+        public int distillInputSlots() {
+            throw mageSessionFaceOutsideCoinLeg("distillInputSlots");
+        }
+
+        @Override
+        public void consumeOneDistillInput(int index) {
+            throw mageSessionFaceOutsideCoinLeg("consumeOneDistillInput");
+        }
+
+        @Override
+        public int depositItem(ItemStack stack) {
+            throw mageSessionFaceOutsideCoinLeg("depositItem");
+        }
+
+        @Override
+        public boolean isStorageGhostDeclared(int slot) {
+            throw mageSessionFaceOutsideCoinLeg("isStorageGhostDeclared");
+        }
+
+        @Override
+        public boolean storageStackUpgraded() {
+            throw mageSessionFaceOutsideCoinLeg("storageStackUpgraded");
+        }
+
+        @Override
+        public int fluidBarRoom(int tank, FluidStack probe) {
+            throw mageSessionFaceOutsideCoinLeg("fluidBarRoom");
+        }
+
+        @Override
+        public int depositFluid(int tank, FluidStack fluid) {
+            throw mageSessionFaceOutsideCoinLeg("depositFluid");
+        }
+
+        @Override
+        public long fluidBarRoomL(int tank, FluidStack probe) {
+            throw mageSessionFaceOutsideCoinLeg("fluidBarRoomL");
+        }
+
+        @Override
+        public long depositFluidL(int tank, net.minecraftforge.fluids.Fluid fluid, long amount) {
+            throw mageSessionFaceOutsideCoinLeg("depositFluidL");
+        }
+
+        @Override
+        public long drainOwnTankL(int tank, long amount) {
+            throw mageSessionFaceOutsideCoinLeg("drainOwnTankL");
+        }
+
+        @Override
+        public int fluidTankCount() {
+            throw mageSessionFaceOutsideCoinLeg("fluidTankCount");
+        }
+
+        @Override
+        public FluidStack fluidInTank(int tank) {
+            throw mageSessionFaceOutsideCoinLeg("fluidInTank");
+        }
+
+        @Override
+        public int drainOwnTank(int tank, int milliBuckets) {
+            throw mageSessionFaceOutsideCoinLeg("drainOwnTank");
+        }
+
+        @Override
+        public Map<String, Integer> essenceStock() {
+            throw mageSessionFaceOutsideCoinLeg("essenceStock");
+        }
+
+        @Override
+        public int drainEssence(String tag, int points) {
+            throw mageSessionFaceOutsideCoinLeg("drainEssence");
+        }
+
+        /** ★未点名的面被问到 = 猫猫币这条腿的边界变了 ⇒ 抛出去让用例红（不是静默给出"看着对"的默认值）。 */
+        private static IllegalStateException mageSessionFaceOutsideCoinLeg(String face) {
+            return new IllegalStateException("猫猫币这条腿问到了会话的「" + face + "」面 —— 本壳只承诺"
+                + "身份 / 承载栈 / 中栏三件 / 打脏落盘，其余一面都不该被问（被问 = 边界变了，红给人看）");
         }
     }
 

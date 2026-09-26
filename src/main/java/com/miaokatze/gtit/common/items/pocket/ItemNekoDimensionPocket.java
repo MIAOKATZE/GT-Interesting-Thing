@@ -22,6 +22,9 @@ import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelDriver;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketCoinChargeDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketEssenceTransmuteDriver;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
@@ -274,6 +277,11 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         PocketChannelDriver.onItemTick(stack, world, player, slot, selected);
         PocketDistillDriver.onItemTick(stack, world, player, slot, selected);
         PocketMagnetDriver.onItemTick(stack, world, player);
+        // ★R96 S9a 魔法使三条被动（只加挂载行，本方法的门控与结构一字未动；抽取 runPassives 归 S11）。
+        // 三条都在自己类内做 MAGE 组合谓词早退 + NBT 剩余 tick 节拍 ⇒ 关着开关时这里只花三次位图读。
+        PocketWandChargeDriver.onItemTick(stack, world, player);
+        PocketCoinChargeDriver.onItemTick(stack, world, player);
+        PocketEssenceTransmuteDriver.onItemTick(stack, world, player);
     }
 
     /**

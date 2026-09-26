@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.item.ItemStack;
 
+import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.common.Loader;
@@ -371,6 +372,52 @@ public final class TaumCompat {
     public static int filledContainerCapacity() {
         TaumBridgeApi active = readyBridge();
         return active == null ? TaumDistillRules.CAPACITY_NOT_A_CONTAINER : active.filledContainerCapacity();
+    }
+
+    /**
+     * ★<b>R96 S9a：这个 tag 是不是元始（primal）</b>——口袋元素容量认键的唯一问句。
+     * <p>
+     * 本门面只做两件事，都不引入任何 TC 类型：① <b>白名单腿</b>先行
+     * （{@code PocketConstants#isPrimalTag(String)}，纯查表）——不在 6 条里的 tag 一次桥都不碰，
+     * 这条问句在面板与被动侧会被反复问，早退顺序就是成本顺序；② 剩下的交给桥做
+     * <b>TC 复核</b>（{@code Aspect#getAspect(tag).isPrimal()}）。
+     * <p>
+     * ★<b>两条腿分别降级，不要读成一条</b>：TC 缺席 ⇒ 桥未装配 ⇒ 本方法对<b>任何</b> tag 都返
+     * {@code false}（复核拿不到，宁缺不错）；而容量表的<b>行数与序</b>仍由白名单定（6 行照旧），
+     * 因为那一面读的是 {@code PocketConstants#PRIMAL_TAGS}，不经本方法。合取判据的原文与
+     * "为什么 {@code isPrimal()} 单独用会假判"（addon 可注册无 components 的新 aspect）写在
+     * {@link TaumBridgeApi#isPrimalTag(String)}。
+     *
+     * @return true = 白名单内<b>且</b> TC 复核为元始；否则 false（含 TC 缺席）
+     */
+    public static boolean isPrimalTag(String tag) {
+        if (!PocketConstants.isPrimalTag(tag)) {
+            return false;
+        }
+        TaumBridgeApi active = readyBridge();
+        return active != null && active.isPrimalTag(tag);
+    }
+
+    /**
+     * ★<b>R96 S9a：给一支 TC 法杖灌入元素容量</b>（缓慢充能腿的唯一写侧；调用方是
+     * {@code common/items/pocket/mage/PocketWandChargeDriver}，口袋侧不得再摸第二条路）。
+     * <p>
+     * 为什么这一句<b>必须</b>过桥而不能在常驻类里照 TC 的形状自己写 NBT：vis 的
+     * <b>×100 刻度</b>与<b>杖芯上限</b>两条外部事实都在 TC 手里
+     * （取证 {@code r96-ret4.md} §3.1；判据原文与"为什么不能像 {@link #isPrimalTag(String)} 那样
+     * 纯白名单成立"写在 {@link TaumBridgeApi#chargeWandVis(ItemStack, String, int)}）。
+     * <p>
+     * 降级：TC 缺席、桥未装配、tag 不在白名单 ⇒ {@link TaumBridgeApi#WAND_NOT_CHARGEABLE}
+     * （法杖未改动，调用方据此<b>一分都不掏</b>自己的容量）。
+     *
+     * @return {@code -1} = 不认这一栈；{@code 0} = 认得但一分没吃；{@code >0} = <b>实际灌入</b>点数
+     */
+    public static int chargeWandVis(ItemStack wand, String tag, int points) {
+        if (wand == null || points <= 0 || !PocketConstants.isPrimalTag(tag)) {
+            return TaumBridgeApi.WAND_NOT_CHARGEABLE;
+        }
+        TaumBridgeApi active = readyBridge();
+        return active == null ? TaumBridgeApi.WAND_NOT_CHARGEABLE : active.chargeWandVis(wand, tag, points);
     }
 
     // ------------------------------------------------------------------------------------

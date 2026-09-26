@@ -518,6 +518,107 @@ public final class PocketConstants {
     //   而迁移没有回头路。
     // ★同一段给 S9 预留 PRIMAL_TAGS（6 项 primal 白名单，判据 Aspect#isPrimal() ★叠加该白名单）的常量落点
     //   —— 它不是 NBT 键，但同样住在本类尾部追加区，先占位免得两片并行时在同一段互相挤位置。
+    //
+    // ================================================================================ ★R96 S9a：元素容量载体（已落地，占用上面那块预留位）
+    //
+    // 形状与三条纪律，一次写清楚，免得后来人在别处抄第二份：
+    // ① 容量的唯一落点 = 根层独立 compound {@link #ELEMENTS}，<b>内含</b>「primal tag → int」，
+    //    ★<b>绝不把这 6 条 tag 写在栈根</b>（栈根已有 {@link #ESSENCE} 一族同批 tag 名的条目，
+    //    平铺会互混淆 —— R96 计划 §5 S9 禁止项原文）；
+    // ② ★<b>不建 long/int 双轨</b>：单 tag 上限 {@link #ELEMENT_CAP_PER_TAG}=500，int 头恒不越界，
+    //    流体那条 AmountL 双轨的根因（{@code FluidStack.amount} 是 int、真值要冲到 16G）在这里结构性不存在；
+    // ③ 键名一经落档即冻结（「可加不可改」）：{@link #ELEMENTS} 与 compound 内的三个节拍键同此纪律。
+
+    /**
+     * ★R96 S9a：元素容量的根键（独立 compound，读写本体在 {@code PocketElementStore}）。
+     * <p>
+     * 与 {@link #ESSENCE}（源质表）是<b>两张独立的表</b>：同一批 tag 名在两处各存一份不是冗余，
+     * 而是两个量纲 —— 源质是「可蒸/可搬的原料点数」，元素是「已经折成元始、可直接给法杖与护盾用的容量」。
+     * 折价发生在 {@code mage/PocketEssenceTransmuteDriver}（1 源质点 → 1 元素/秒），不在存储层。
+     */
+    public static final String ELEMENTS = "elem";
+    /**
+     * ★R96 S9a：{@link #ELEMENTS} compound 内的<b>节拍键</b>（法杖缓慢充能剩余 tick，int）。
+     * <p>
+     * 为什么把计时状态放进 {@link #ELEMENTS} 而不是栈根：根键一经落档即冻结，R96 计划 §3 只给本轮
+     * 批了三个新根键（{@code upgradesOff}/{@code magnetFilter}/{@code elem}），多开一个根键就是第四次
+     * 表态；而这三条节拍<b>本来就是元素容量这一族的私有状态</b>，同住一个 compound 是最贴近所有权的放法。
+     * <p>
+     * ★读侧只按 {@link #PRIMAL_TAGS} 那 6 个键名取值，节拍键与 tag 键因此<b>不可能混淆</b>
+     * （{@code PocketElementStore} 的取值循环以白名单为输入，不做「扫全 compound 条目」）。
+     */
+    public static final String ELEMENT_TICK_WAND = "tickWand";
+    /** ★R96 S9a：猫猫币充能剩余 tick（int；计时走 NBT 剩余 tick = 不变量 G8，★禁止 {@code ticksExisted % n}）。 */
+    public static final String ELEMENT_TICK_COIN = "tickCoin";
+    /** ★R96 S9a：源质转换剩余 tick（int；同上）。 */
+    public static final String ELEMENT_TICK_TRANSMUTE = "tickTransmute";
+    /**
+     * ★R96 P-7 定案：<b>6 个</b> primal tag（TC4 {@code Aspect.getPrimalAspects()} 的同一批，
+     * 逐字对齐 {@code thaumcraft/api/aspects/Aspect.java:20-25} 的 AIR/EARTH/FIRE/WATER/ORDER/ENTROPY）。
+     * <p>
+     * ★这条白名单是<b>独立于 TC 的第二道判据</b>，不是 {@code Aspect#isPrimal()} 的装饰：addon 可以注册
+     * <b>没有 components</b> 的新 aspect，而 TC 的 {@code isPrimal()} 实现正是「{@code components} 空 ⇒ true」
+     * ⇒ 单用它会把手写的无成分 aspect 判成元始（R96 计划 §5 S9 禁止项原文）。取值序 = UI 网格序，
+     * <b>只增不改序</b>（改序会让面板与已存档的读数对不上号）。
+     */
+    public static final String[] PRIMAL_TAGS = { "aer", "terra", "ignis", "aqua", "ordo", "perditio" };
+    /**
+     * 该 tag 是否在 {@link #PRIMAL_TAGS} 白名单内（<b>纯查表、零 TC 依赖</b>的一条腿）。
+     * <p>
+     * ★两条腿必须分开用：本方法定"容量表与 UI 有几行、按什么序"（TC 缺席照样成立）；
+     * {@code TaumCompat.isPrimalTag} 定"外部拿来的 tag 到底是不是 TC 认的元始"（TC 缺席恒 false）。
+     * 合成点在 {@code TaumBridge#isPrimalTag} = 本方法 ∧ {@code Aspect#isPrimal()}。
+     */
+    public static boolean isPrimalTag(String tag) {
+        if (tag == null || tag.isEmpty()) {
+            return false;
+        }
+        for (String primal : PRIMAL_TAGS) {
+            if (primal.equals(tag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    /** ★R96 P-7：单 tag 元素容量上限 = <b>500</b>（用户裁定的"各 500"，★不是 {@link #ESSENCE_CAP_PER_TAG}）。 */
+    public static final int ELEMENT_CAP_PER_TAG = 500;
+    /**
+     * 元素总容量 = {@link #ELEMENT_CAP_PER_TAG} × {@code PRIMAL_TAGS.length} = <b>3000</b>（派生，不留字面量）。
+     * <p>
+     * ★留派生式的理由与 {@link #ESSENCE_MAX_PHIALS_PER_TAG} 同一条：这个数同时是"UI 的格数账"和
+     * "测试的总量锚"，写死一份就会出现"改了白名单长度而总量锚不动"的假绿。
+     */
+    public static final int ELEMENT_TOTAL_CAP = ELEMENT_CAP_PER_TAG * PRIMAL_TAGS.length;
+    /**
+     * ★R96 S9a：法杖缓慢充能的<b>节拍</b>（tick）与<b>单次每 tag 上界</b>（点）。
+     * <p>
+     * 两个数照 TC4 魔力石 {@code thaumcraft/common/items/baubles/ItemAmuletVis.java:74} 的同一形状
+     * （{@code entity.ticksExisted % 5 == 0} + {@code Math.min(5, 法杖余量, 自身存量)}），
+     * 取证原文见 {@code r96-eva3.md} §2.3。★<b>取模那一半不照抄</b>：本仓的计时一律走 NBT 剩余 tick
+     * （不变量 G8 与 R59e；磁力是既存例外，单独记账，不得扩散），这里只继承"5 tick 一批、每批 ≤5 点"
+     * 这个速率事实。两处字面量<b>只</b>活在下面两行，搬运侧与测试都读符号（钉"节拍常量单源"的那半边判据）。
+     */
+    public static final int MAGE_WAND_INTERVAL_TICKS = 5;
+    /** 法杖缓慢充能：一批里<b>每个 tag</b> 至多搬这么多点（照 {@link #MAGE_WAND_INTERVAL_TICKS} 的同一出处）。 */
+    public static final int MAGE_WAND_MAX_POINTS_PER_BATCH = 5;
+    /**
+     * 秒级节拍的<b>单源</b> = {@link #TICKS_PER_SECOND}（猫猫币"1 秒恰 1 枚"与源质转换"1 元素/秒"共用）。
+     * <p>
+     * ★两条被动各自持有<b>自己的剩余 tick 键</b>（{@link #ELEMENT_TICK_COIN} / {@link #ELEMENT_TICK_TRANSMUTE}），
+     * 共用只是"同一个速率事实"，不是同一份状态 —— 合并成一键会让"关掉其中一条"必须连带停另一条的拍。
+     */
+    public static final int MAGE_SECOND_INTERVAL_TICKS = TICKS_PER_SECOND;
+    /** 源质转换：一批里每个 tag 折这么多点（1 元素/秒），★6 种 primal <b>同批并行</b>各折这么多。 */
+    public static final int MAGE_TRANSMUTE_POINTS_PER_BATCH = 1;
+    /**
+     * 猫猫币充能的一枚价值（点）—— 普通猫猫币 {@code +1}、闪烁猫猫币 {@code +10}（需求原文）。
+     * <p>
+     * ★这里的"点"是<b>一次入账同时给 6 条 tag 各加的量</b>（"普通各元素 +1"里的"各"），
+     * 不是"六个元素合计 1 点"；入账因此是一份 {@code tag → 价值} 的全有全无候选，
+     * 预检走 {@code PocketElementStore#canAcceptAll}。
+     */
+    public static final int MAGE_COIN_VALUE_NORMAL = 1;
+    public static final int MAGE_COIN_VALUE_SHIMMERING = 10;
     /**
      * ★R95 S5：STACK 升级位对"单格堆叠"的<b>倍率</b>（用户原话"所有物品和源质最大单格堆叠数*16"，
      * 一位同时管物品格与源质格）。执法点：{@code PocketInventory#effectiveStorageLimit}（物品侧单源）

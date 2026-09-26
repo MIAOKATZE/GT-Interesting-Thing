@@ -186,6 +186,14 @@ public final class PocketInventory {
     private java.util.function.BooleanSupplier stackProbe = () -> false;
 
     private PocketEssenceStore essence;
+    /**
+     * ★R96 S9a：元素容量表（{@link PocketConstants#ELEMENTS}）。★<b>活档视图，不是快照</b> ——
+     * 它只持本装配所依据的那枚 NBT 根的引用，读现读、写现写，所以"装配出来的这份"与"载体档里那份"
+     * <b>结构性是同一份</b>。之所以不像 {@link #essence} 那样做快照：{@code mage/} 下三条被动由
+     * {@code Item.onUpdate} 驱动、面板开着也要写它，快照形状会在关屏整表回写时把期间刚入账的容量
+     * 抹回去（币已扣 ⇒ 净吞玩家件）。完整论证见 {@link PocketElementStore} 类注释。
+     */
+    private PocketElementStore elements;
     private PocketCellBindings bindings;
     private PocketFilterConfig filters;
 
@@ -260,6 +268,9 @@ public final class PocketInventory {
             };
         }
         this.essence = PocketEssenceStore.readFrom(new NBTTagCompound());
+        // ★R96 S9a：无根可接 ⇒ 接到一枚空档（一切读数 0、一切写落在这枚空 compound 上，等若 no-op），
+        // 与上面两条同一姿势；readFrom 会用<b>真根</b>换上来的实例覆盖它。
+        this.elements = PocketElementStore.attach(new NBTTagCompound());
         this.bindings = PocketCellBindings.readFrom(new NBTTagCompound());
         this.filters = PocketFilterConfig.readFrom(new NBTTagCompound());
     }
@@ -359,6 +370,12 @@ public final class PocketInventory {
             tag -> PocketEssenceIntake.isDeclaredEssenceTag(inventory.filters, tag),
             () -> PocketConstants.essenceCapPerTag(PocketUpgrades.hasUpgrade(root, PocketUpgradeType.STACK)));
         inventory.bindings = PocketCellBindings.readFrom(root);
+        // ★R96 S9a：元素容量<b>接</b>在同一个活根上（不是快照 ⇒ 与 essence 那条读档钳制不是一回事）。
+        // 三条被动（mage/ 下的充法杖 / 猫猫币 / 源质转换）由 Item.onUpdate 驱动、面板开着也在写这张表，
+        // 若这里做成"读出六条存进字段"，关屏的整表回写就会把期间刚入账的容量抹回旧值 —— 而猫猫币那一份
+        // 已经扣掉了 ⇒ 净吞玩家件（R96 计划 §7.1 的"双轨旁路"同族）。视图形状下这件事不可表示。
+        // ★读档钳制（外来/手改档越 500 的部分）落在 PocketElementStore#get 的现读侧，不落在这里。
+        inventory.elements = PocketElementStore.attach(root);
         // ★R90 S1：读档即持久化边界 —— 换上的这份 store 就是新基线，增量日志从零起算
         inventory.clearEssenceDeltas();
         // 读档过程本身不算"内容变了"（handler 反序列化会回调脏标记）
@@ -387,6 +404,9 @@ public final class PocketInventory {
         saveGroup(root, PocketConstants.UPGRADE_SLOT_GROUP, upgradeCells);
         saveTanks(root);
         essence.writeTo(root);
+        // ★R96 S9a：目标与实例所接的根同一对象时是幂等 no-op（值本来就现读现写），只有"会话被重定位到
+        // 另一枚栈"那一支才是真搬运 ⇒ 这一行不会用陈旧副本盖掉被动刚写进去的容量。
+        elements.writeTo(root);
         bindings.writeTo(root);
         filters.writeTo(root);
         // ★R90 S1：写档即持久化边界 —— 内存与 NBT 重新一致，增量日志清零（否则终态回滚会把
@@ -1012,6 +1032,17 @@ public final class PocketInventory {
 
     public PocketEssenceStore essence() {
         return essence;
+    }
+
+    /**
+     * ★R96 S9a：元素容量表（{@link PocketConstants#ELEMENTS} 的活档视图，单源探针）。
+     * <p>
+     * 面板/tooltip 与 {@code PocketUpgradeGuards} 一类"只看数不写数"的读者都经这里，
+     * 不得在别处再摸一次 {@code root.getCompoundTag("elem")}；被动侧的写者同样只经
+     * {@code PocketElementStore#add/extract} 这一对原语（同一个实例、同一份 NBT）。
+     */
+    public PocketElementStore elements() {
+        return elements;
     }
 
     // ------------------------------------------------------------------ ★R90 S1：源质增量日志 API（D2 修复面）
