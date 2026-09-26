@@ -470,10 +470,52 @@ public final class PocketConstants {
      * ★与 {@link #UPGRADES_KEY}/{@link #UPGRADE_SLOT_GROUP} 必须<b>异值</b>（同键异型互踩）。
      */
     public static final String UPGRADES_OFF_KEY = "upgradesOff";
-    // ★R96 根层新键的异值预留位（本片只落 UPGRADES_OFF_KEY 一条，其余归各自切片）：R96 计划新增的三个根键
-    //   必须彼此异值、也与上面三条 R95 键异值 —— upgradesOff（S1，本片已落）、magnetFilter（S7 磁力名单）、
-    //   elem（S9 元素容量，内含 6 条 tag→int，★不建 FLUID_BAR_AMOUNT_L 式双轨）。写在这里的理由：根键一经
-    //   落档即冻结，事后发现撞键只能靠迁移救，而迁移没有回头路。
+    /**
+     * ★R96 S7a：磁力<b>三态名单</b>的根键（compound：{@link #MAGNET_FILTER_MODE} + {@link #MAGNET_FILTER_LIST}）。
+     * <p>
+     * <b>形状</b>：{@code {mode(String, ★仅非 NONE 时写), list(NBTTagList of String, ★仅非空时写)}} ——
+     * 条目是 {@link PocketMagnetFilter#itemKey(int, int)} 那枚 <b>Kind-free</b> 的物品键
+     * （{@code i:itemId:meta:}，与 {@code PocketFilterConfig.itemKey(id, meta, "")} <b>逐字符同形</b>，
+     * 于是 ghost 拖入那份 {@code contentKey} 可以直接喂进来）。★<b>条目里不嵌 NBT</b>（前提 P-11：磁力名单
+     * 不做 NBT 敏感匹配），也★<b>不嵌 base64 NBT</b>（既无必要，又要撞同步墙）。
+     * <p>
+     * <b>三态语义</b>：{@code NONE}（无限制）= <b>名单保留在场但不生效</b>（全部放行）；{@code WHITELIST} =
+     * 只吸名单内；{@code BLACKLIST} = 名单内一律不吸。⇒「无限制」不清名单，切回来条目还在。
+     * <p>
+     * ★<b>键名 {@code magnetFilter} 一经落档即冻结</b>（「可加不可改」的键名版，同 {@link #UPGRADES_OFF_KEY}
+     * 那一条）：改字面量 = 玩家配好的名单读回来变空，且零日志。子键 {@code mode}/{@code list} 只活在
+     * 本 compound 内，不与根层任何键比异值。
+     * <p>
+     * ★与 {@link #UPGRADES_KEY}/{@link #UPGRADES_OFF_KEY}/{@link #FILTERS}/{@link #UPGRADE_SLOT_GROUP}
+     * 必须<b>异值</b>；它是 {@code PocketInventory} <b>不拥有</b>的根键（写口在
+     * {@code NekoPocketServerHandler}，读口在 {@code PocketMagnetDriver}）⇒ 会话落盘不会覆掉它。
+     * <p>
+     * <b>同步预算（供 S7b 决定载体）</b>：满档 72 条 × 键长 12–25 字符 ⇒ 纯名单串长上界
+     * <b>864–1800 B</b>，远低于 {@code StringSyncValue} 的 32693 字节墙（{@code Short.MAX_VALUE-74}）⇒
+     * <b>不撞墙</b>；算术与结论见 {@link PocketMagnetFilter} 类注释与交付记录。
+     */
+    public static final String MAGNET_FILTER = "magnetFilter";
+    /** {@link #MAGNET_FILTER} 内的三态位（String = {@code PocketMagnetFilter.Mode} 的枚举名；缺键/空 = {@code NONE}）。 */
+    public static final String MAGNET_FILTER_MODE = "mode";
+    /** {@link #MAGNET_FILTER} 内的条目表（NBTTagList of String，元素 = Kind-free 物品键；★插入序就是 S7b 的格序）。 */
+    public static final String MAGNET_FILTER_LIST = "list";
+    /**
+     * ★R96 S7a：磁力名单的<b>格数口径</b> —— 与源质显示格<b>同形</b>（12 行 × 6 列 = 72，
+     * RET-3 C7 / EVA-2 AUQ-5 的朝向歧义在此定案）。
+     * <p>
+     * ★<b>刻意不写成 {@link #ESSENCE_DISPLAY_GRID} 的别名</b>：那是"源质格"的语义，S7b 若把磁力名单的
+     * 排布翻成 6 行 × 12 列（计划写的"反转成本 = 换两个常量 + 一处循环序"）不该顺手动到源质格。
+     * 两者<b>数值同形</b>由用例 {@code magnet_filter_grid_shape_and_no_real_slot} 钉住，而不是由引用钉住。
+     * <p>
+     * ★这是<b>数据层的条目预算</b>，不是槽位：名单格件是 phantom（S7b 落地），守恒 225 与本常量无关。
+     */
+    public static final int MAGNET_FILTER_ROWS = 12;
+    public static final int MAGNET_FILTER_COLUMNS = 6;
+    public static final int MAGNET_FILTER_SLOTS = MAGNET_FILTER_ROWS * MAGNET_FILTER_COLUMNS;
+    // ★R96 根层新键的异值预留位：R96 计划新增的三个根键必须彼此异值、也与上面三条 R95 键异值 ——
+    //   upgradesOff（S1 已落）、magnetFilter（★S7a 本片已落，见上）、elem（S9 元素容量，内含 6 条 tag→int，
+    //   ★不建 FLUID_BAR_AMOUNT_L 式双轨）。写在这里的理由：根键一经落档即冻结，事后发现撞键只能靠迁移救，
+    //   而迁移没有回头路。
     // ★同一段给 S9 预留 PRIMAL_TAGS（6 项 primal 白名单，判据 Aspect#isPrimal() ★叠加该白名单）的常量落点
     //   —— 它不是 NBT 键，但同样住在本类尾部追加区，先占位免得两片并行时在同一段互相挤位置。
     /**

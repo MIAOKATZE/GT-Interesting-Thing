@@ -7,11 +7,13 @@ import java.util.UUID;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketMagnetFilter;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
@@ -44,7 +46,9 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  * <p>
  * <b>吸收判据</b>：{@code EntityItem} 且非死亡、{@code delayBeforeCanPickup <= 0}（Botania 口径；
  * 本类自己位移过的实体天然被这一条挡住，不会同一轮重复认领）、未被 {@link #isProtectedEntity} 排除、
- * 未被任何口袋认领、且<b>该物品的最近玩家就是本玩家</b>（多人公平，DE {@code Magnet.java:134,170-173} 同形）。
+ * 未被任何口袋认领、<b>过得了 {@link PocketMagnetFilter} 的三态名单</b>（★R96 S7a：无限制恒放行 /
+ * 白名单只放名单内 / 黑名单拦掉名单内，条目只到 {@code itemId + meta}，前提 P-11 不做 NBT 敏感匹配）、
+ * 且<b>该物品的最近玩家就是本玩家</b>（多人公平，DE {@code Magnet.java:134,170-173} 同形）。
  * <p>
  * <b>★受保护实体（S6 验收 1，数据破坏级）</b>：{@code getEntitiesWithinAABB(EntityItem.class, …)}
  * <b>按类含子类</b>一起抓，而 AE2 的 {@code EntityGrowingCrystal}/{@code EntityChargedQuartz}/
@@ -55,8 +59,11 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  * 否则磁力直接失效（{@link #isProtectedClassName} 对 {@code net.minecraft.entity.item.EntityItem} 返 {@code false}）。
  * <p>
  * <b>成本口径（R95 裁定：多枚口袋各自扫，成本线性）</b>：每枚带 MAGNET 位且开关未关的口袋各自独立扫描，
- * N 枚口袋 = N 次 AABB；无实体时一次 AABB 查询即返回（★位移拍<b>完全不碰 NBT</b>——入账挪到收口拍后，
- * 扫描侧只剩 AABB 与判据）；每拍的收口侧在无认领时是一次 {@code Map.get} + 判空，零分配零遍历。
+ * N 枚口袋 = N 次 AABB；无实体时一次 AABB 查询即返回。★<b>R96 S7a 修正本段旧口径</b>：位移拍原先写的是
+ * "<b>完全不碰 NBT</b>"，接了名单执法腿之后不再成立 —— 现在的准确读法是"<b>只在真的扫到掉落物的那一拍</b>
+ * 读一次名单、建一个判定集合"（执法腿排在空 AABB 早退<b>之后</b> ⇒ 磁力的<b>常态</b>（周围没东西）仍是
+ * 零 NBT 零分配）；★每扫一次一个集合，<b>禁</b>每实体构建（用例 {@code magnet_filter_one_scan_gate_per_scan}
+ * 钉构建次数 = 扫描次数）。每拍的收口侧在无认领时是一次 {@code Map.get} + 判空，零分配零遍历。
  * 单扫位移上限 {@link #MAX_PULL_PER_SCAN}（EVA-2 §2.4 缺的第 1 条，Botania {@code ItemMagnetRing.java:111} 同形）。
  * <p>
  * <b>序列化上界 = 扫描率（R53c 口径）</b>：无会话分支的 {@code readFrom → writeTo} 一次读改写
@@ -74,8 +81,11 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  * {@code PocketInventory.readFrom} → 逐条认领 {@code depositIntoStorage} → 收进过才 {@code writeTo}。</li>
  * </ol>
  * <p>
- * <b>本轮不做（各自的归属写清楚，免得被当成漏项或当成越项）</b>：白/黑名单与"吸取目标两档"的配置面
- * 属 S7（执法点读名单那一条由 S7 接）；穿戴态的 {@code onWornTick} 宿主与 {@code runPassives} 抽取属 S11；
+ * <b>本轮本片（S7a）已做 / 未做（各自的归属写清楚，免得被当成漏项或当成越项）</b>：
+ * ★<b>名单进执法已接</b>（{@link PocketMagnetFilter} 三态 + 条目，判定腿在位移拍里，见 {@link #onItemTick}）；
+ * <b>配置面</b>（72 格格件、NEI 与背包拖入"只记录不放置"、面板挂载、tooltip 与三态按钮）全归 <b>S7b</b>
+ * （它还要等主干 S2 的配置面板挂载点）；"吸取目标两档"（P-11 的玩家主背包 36 格 / 口袋内 135 格栏）
+ * 也不在本片；穿戴态的 {@code onWornTick} 宿主与 {@code runPassives} 抽取属 S11；
  * 潜行临时关（DE {@code MAGNET_SNEAK}）与自投三档（DE {@code SelfPickupMode}）不在需求内；
  * DE 的第二档半径 32 需要"按载体分档"的数值来源，本轮没有 ⇒ 半径仍单档 8。
  */
@@ -133,7 +143,8 @@ public final class PocketMagnetDriver {
      * <p>
      * 顺序（★S6 起分两拍，宿主仍是同一个 {@code Item.onUpdate}，<b>不</b>挪 {@code ServerTickEvent}）：
      * 客户端与空参早退 → MAGNET 开关早退 → <b>收口拍</b>（每拍一次，无认领时零成本）→ 节拍闸 →
-     * 满载退避 → AABB 扫 → 无实体零开销返回 → 逐条判据 → 位移 + 登记认领 → 轻音效。
+     * 满载退避 → AABB 扫 → 无实体零开销返回 → <b>每扫一次</b>读名单建一个判定上下文（★S7a，排在空早退之后）→
+     * 逐条判据（含名单）→ 位移 + 登记认领 → 轻音效。
      * <p>
      * ★节拍闸是<b>无状态取模闸</b>不是倒计时：不持有任何跨 tick 的到期字段，跨维重建导致的相位跳变至多把
      * 某一拍推迟一拍（R59e 要消灭的"写死的绝对到期"形态在这里结构性不存在）。
@@ -169,7 +180,11 @@ public final class PocketMagnetDriver {
             // 无实体早退：零 NBT 读写、零分配（磁力的常态开销就是一次空 AABB 查询 / SCAN_PERIOD_TICKS）
             return;
         }
-        // ★位移拍一次 NBT 都不读：入账整段在收口拍，读档只发生在真要有东西进袋时
+        // ★位移拍的唯一一次 NBT 读数，且★排在空 AABB 早退之后（磁力的常态是周围没东西 ⇒ 那一拍仍然零读零分配）。
+        // ★每扫一次建一个判定上下文（一次集合复制），禁每实体构建 —— PocketMagnetFilter#newScanGate 的类注释。
+        final PocketMagnetFilter.ScanGate gate = PocketMagnetFilter.readFrom(stack.getTagCompound())
+            .newScanGate();
+        // ★位移拍不再"一次 NBT 都不读"（S6 的旧口径，S7a 起改为"每扫至多一次"）：入账整段仍在收口拍
         final boolean soloWorld = world.playerEntities.size() < 2;
         final double beltY = player.posY + player.getEyeHeight() - BELT_DROP_FROM_EYES;
         int pulled = 0;
@@ -191,6 +206,13 @@ public final class PocketMagnetDriver {
             }
             final ItemStack content = drop.getEntityItem();
             if (content == null || content.stackSize <= 0) {
+                continue;
+            }
+            if (!gate.allows(Item.getIdFromItem(content.getItem()), content.getItemDamage())) {
+                // ★R96 S7a 验收 1（名单进执法）：白名单外 / 黑名单内 ⇒ 整件跳过 —— 不位移、不认领，
+                //   因此收口拍根本见不到它（也就不会退回 S6 刚修掉的"吸进来再甩脚下"）。
+                //   ★排在多人仲裁之前：这里是一次 long 装箱查找，而 getClosestPlayerToEntity 要遍历玩家。
+                //   ★无限制档（NONE）恒真：名单在场但全部放行（见 PocketMagnetFilter 类注释三态读法）。
                 continue;
             }
             if (!soloWorld && world.getClosestPlayerToEntity(drop, SCAN_RANGE) != player) {

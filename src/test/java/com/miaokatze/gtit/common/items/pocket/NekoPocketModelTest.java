@@ -464,6 +464,15 @@ public class NekoPocketModelTest {
         cases.put("magnet_closest_player_and_cross_pocket_ownership",
             NekoPocketModelTest::magnetClosestPlayerFairnessAndCrossPocketOwnership);
         cases.put("magnet_host_chain_and_empty_scan_cost", NekoPocketModelTest::magnetHostChainReachableAndEmptyScanFree);
+        // ---- ★R96 S7a（TP-S7a）磁力名单五条：三态执法 / 每扫一次一个集合 / 三态循环不丢名单 /
+        // ★键往返与畸形一次性 WARN / 调用方在场且不占真实槽。起点 176 ⇒ 本批 +5 = 181
+        // ★守恒 225 不新建口：既有 slot_math_225_and_row_column_products 逐字不动，本批只加一条
+        //   "MAGNET_FILTER_* 不得进槽位算法"的反向读数（第五条里）。
+        cases.put("magnet_filter_three_state_enforcement", NekoPocketModelTest::magnetFilterEnforcementThreeStates);
+        cases.put("magnet_filter_one_scan_gate_per_scan", NekoPocketModelTest::magnetFilterOneScanGatePerScan);
+        cases.put("magnet_filter_cycle_keeps_entries", NekoPocketModelTest::magnetFilterCycleKeepsEntries);
+        cases.put("magnet_filter_key_round_trip_and_malformed", NekoPocketModelTest::magnetFilterKeyRoundTripAndMalformed);
+        cases.put("magnet_filter_call_chain_and_no_real_slot", NekoPocketModelTest::magnetFilterCallChainAndNoRealSlot);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -10551,8 +10560,12 @@ public class NekoPocketModelTest {
         SimpleAssert.that(shield >= 0 && shield < warp, "★AE2 免疫判据排在 setPosition 之前（排在之后就挡不住灭实体）");
         SimpleAssert.that(fair >= 0 && fair < warp, "★最近玩家判据排在位移之前（多人公平）");
         SimpleAssert.that(claimed > warp, "位移成功后才登记认领（先登记后位移 = 位移失败留死条目）");
-        // ---- ★同步改第 4 条：位移拍不碰 NBT（入账整段挪到收口拍 ⇒ 扫描侧连 readFrom 都没有） ----
-        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "readFrom("), "位移拍零 NBT 读（readFrom 只在收口拍）");
+        // ---- ★同步改第 4 条：位移拍的 NBT 读数收窄（★S7a 口径修正，同 magnet_host_chain_and_empty_scan_cost
+        //      的 getTagCompound 那条一起改：名单执法腿必须在位移拍读档，"零读数"按字面已不可能成立）----
+        SimpleAssert.eq(1, countRegionCode(mag, tick, tickEnd, "readFrom("),
+            "★位移拍 readFrom 恰一处 = S7a 的名单执法腿（长出第二处 = 每实体读档的旧病）");
+        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "PocketInventory.readFrom("),
+            "★入账侧读数仍只在收口拍（位移拍零个 PocketInventory.readFrom）");
         SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "writeTo("), "位移拍零 NBT 写（★撤掉的旧读数：体内恰一处 writeTo）");
         System.out.println(
             "[NOTE] EntityItem / World 本 JVM 不可构造 ⇒ 「跳到腰带 → 跨拍入袋」的实机表现属实机项（挂载/常量/判据顺序/撤兜底已机检）");
@@ -11225,6 +11238,20 @@ public class NekoPocketModelTest {
     }
 
     /**
+     * ★<b>S7a 修的基础设施</b>（不是新判据）：磁力用例需要"能参与堆叠算术的 ItemStack"。
+     * <p>
+     * S6 那批写的是 {@code Items.stone} —— <b>1.7.10 的 {@code Items} 里没有 {@code stone} 这枚字段</b>
+     * （石头是方块件，在 {@code Blocks} 一侧）⇒ 那四处引用<b>根本编不过</b>。而就算换成真实存在的
+     * {@code Items.coal} 也一样红：本套件跑在<b>未经 Forge 注册</b>的 JVM 里，{@code Item.itemRegistry}
+     * 是空的（实测 {@code getKeys().size() == 0}）⇒ 所有 {@code Items.*} 字段都是 {@code null}，
+     * 造出来的栈一碰 {@code getMaxStackSize()} 就 NPE（多条 {@code [NOTE]} 早就承认"本 JVM 的 ItemStack
+     * 不含物品"这条既存事实）。现造一枚 {@link Item} 实例是这里唯一既能编译、又能在离线 JVM 里真算的形状。
+     */
+    private static ItemStack anyItemStack(int stackSize) {
+        return new ItemStack(new Item(), stackSize, 0);
+    }
+
+    /**
      * ★S6 验收 2（既有缺陷：满载 40 tick 死循环）：{@code depositItem} 返回 <b>0 成交</b>时
      * <b>不 {@code setDead}</b>、不发 {@code ItemTossEvent}、不生成新实体，并进满载退避。
      * <p>
@@ -11237,16 +11264,16 @@ public class NekoPocketModelTest {
         final PocketInventory full = PocketInventory.readFrom(null);
         for (int index = 0; index < PocketInventory.STORAGE_SLOTS; index++) {
             full.storage()
-                .setStackInSlot(index, new ItemStack(Items.stone, 64, 0));
+                .setStackInSlot(index, anyItemStack(64));
         }
-        final ItemStack probe = new ItemStack(Items.iron_ingot, 5, 0);
+        final ItemStack probe = anyItemStack(5);
         SimpleAssert.eq(0, full.depositIntoStorage(probe.copy()), "★全栏满 ⇒ 成交 0（驱动收口侧读的就是这个数）");
         SimpleAssert.eq(64, full.storageStack(0).stackSize, "★成交 0 之后一格都没多、也没少（不凭空造件也不吃件）");
         SimpleAssert.eq(5, PocketInventory.readFrom(null)
             .depositIntoStorage(probe.copy()), "正控：空袋同一件成交 5 ⇒ 上面那个 0 是判据在起作用，不是恒返回 0");
         // ---- 行为腿 2：同一实体连续被扫 N 轮（40tick 循环的可证伪形态） ----
         final UUID owner = UUID.randomUUID();
-        final ItemStack carrier = new ItemStack(Items.stone);
+        final ItemStack carrier = anyItemStack(1);
         final int scanned = 970001;
         final int liveBefore = PocketMagnetClaims.liveClaimCount();
         final ArrayList<PocketMagnetClaims.Claim> out = new ArrayList<>();
@@ -11325,7 +11352,7 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(1, countCodeLinesIn(mag, "RIPED.clear()"), "到期缓冲每次用前先 clear（热路径零分配的半边；漏 clear = 上一批条目重复入账）");
         // ---- 认领表行为腿：跨拍形状 ----
         final UUID owner = UUID.randomUUID();
-        final ItemStack carrier = new ItemStack(Items.stone);
+        final ItemStack carrier = anyItemStack(1);
         final int id = 970101;
         final ArrayList<PocketMagnetClaims.Claim> out = new ArrayList<>();
         SimpleAssert.that(PocketMagnetClaims.claim(owner, id, carrier, 2), "登记认领");
@@ -11364,8 +11391,8 @@ public class NekoPocketModelTest {
     private static void magnetClosestPlayerFairnessAndCrossPocketOwnership() {
         // ---- 行为腿：两枚口袋互相抢的反例（归属按载体栈对象身份） ----
         final UUID owner = UUID.randomUUID();
-        final ItemStack pocketA = new ItemStack(Items.stone);
-        final ItemStack pocketB = new ItemStack(Items.iron_ingot);
+        final ItemStack pocketA = anyItemStack(1);
+        final ItemStack pocketB = anyItemStack(1);
         final int id = 970301;
         final ArrayList<PocketMagnetClaims.Claim> out = new ArrayList<>();
         SimpleAssert.that(PocketMagnetClaims.claim(owner, id, pocketA, 2), "A 先认领");
@@ -11467,12 +11494,425 @@ public class NekoPocketModelTest {
         SimpleAssert.that(phase > switchOff && phase < aabb, "节拍闸在 AABB 之前（不满拍 ⇒ 一次查询都不发）");
         SimpleAssert.that(cooling >= 0 && cooling < aabb, "★满载退避在 AABB 之前（退避期间连查询都不发）");
         SimpleAssert.that(emptyBack > aabb, "空 AABB 立刻返回");
-        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "getTagCompound("), "★位移拍一次 NBT 都不读");
+        // ★★S7a 口径修正（不是放宽，是把"一个从来没能实现的承诺"换成可执行的读数）：S6 这条写的是
+        //   "位移拍一次 NBT 都不读"，而名单执法腿（S7a 验收 1）必须读名单 ⇒ 该断言按字面不可能同时成立。
+        //   换成两条：<b>整张位移拍只有一处</b> NBT 读数 + <b>那一处排在空 AABB 早退之后</b> ⇒
+        //   磁力的常态（周围没掉落物）仍然零 NBT 零分配，而"每实体一次读档"那个真正的倒退形态被数量钉死。
+        final int tagReads = countRegionCode(mag, tick, tickEnd, "getTagCompound(");
+        SimpleAssert.eq(1, tagReads, "★位移拍读 NBT 恰一处（= S7a 的名单执法；长出第二处就是每实体读档的旧病）");
+        SimpleAssert.that(
+            firstCodeLineWith(mag, tick, tickEnd, "getTagCompound(") > emptyBack,
+            "★那一处排在空 AABB 早退之后 ⇒ 无实体路径仍然一次 NBT 都不读（S6 的成本结论没被推翻，只是收窄到有东西的那一拍）");
         SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "writeTo("), "★位移拍一次 NBT 都不写");
         SimpleAssert.eq(0, countRegionCode(mag, emptyBack, tickEnd, "new "), "★空 AABB 早退之后到方法尾零个 new（无实体路径零分配）");
         SimpleAssert.eq(1, countCodeLinesIn(mag, "oneshot.writeTo(root)"), "落盘点全文件恰一处（序列化上界 = 扫描率，R53c）");
         SimpleAssert.eq(1, countCodeLinesIn(mag, "PocketInventory.readFrom(root)"), "读档点全文件恰一处（禁每实体一次）");
         SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "synchronized"), "★认领表不加锁（服务器主线程单线程访问，与 PocketSessions 同口径）");
+    }
+
+    // ------------------------------------------------------------------ ★R96 S7a · 磁力三态名单（数据层 + 进执法）
+    //
+    // 本批五条把 S7 的"名单数据层 + 进执法"那一半钉住（UI 与拖入归 S7b）。两条口径先写在这里：
+    // ① ★三态读法（"无限制"= 名单保留在场但不生效）同时活在<b>用例</b>与 PocketMagnetFilter 的类注释里，
+    //    S7b 的 tooltip 文案清单要引同一段（交付报告 r96-s7a.md 里已列逐字文案），不许只靠实现隐含；
+    // ② 驱动本体（EntityItem / World）在本 JVM 不可造（既存的 [NOTE] 已承认这是实机项）⇒
+    //    "摘掉判定腿必红"这半边由<b>源码腿</b>承担（判定实参逐字 + 行序 + 数量），行为的三态翻转由
+    //    PocketMagnetFilter 的真实读路承担。两条合起来才是验收 1 的完整证据链。
+
+    /** 名单数据层源码（与驱动同一批读点；三条"只有一处"的读数都按这个文件跑）。 */
+    private static final String R96_MAGNET_FILTER_FILE =
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketMagnetFilter.java";
+    // ★S7a 补：上一手写五条用例时引用了下面五枚路径常量却<b>没有定义</b>（离线 javac 实测报"找不到符号"，
+    //   即本文件在补齐前根本编不过）。此处按各用例的读点语义补齐定义，路径与 R96_READPOINT_FILES /
+    //   R96_MAGNET_FILES 同一清单口径，不引入新文件、不改任何判据。
+    /** 键常量宿主（"根键字面量恰一处"与"冻结口径写在档上"两条源码腿的读点）。 */
+    private static final String R96_POCKET_CONSTANTS_FILE =
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketConstants.java";
+    /** 磁力宿主物品（跳 1"调用点恰一处"的读点）。 */
+    private static final String R96_POCKET_ITEM_FILE =
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/ItemNekoDimensionPocket.java";
+    /** 服务端写口（跳 6 四条 perform* 与"读现态/落档各恰一处"的读点）。 */
+    private static final String R96_SERVER_HANDLER_FILE =
+        "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java";
+    /** 真实槽口径（"PocketSlots 不提名单格数"反向读数的读点）。 */
+    private static final String R96_POCKET_SLOTS_FILE =
+        "src/main/java/com/miaokatze/gtit/gui/pocket/PocketSlots.java";
+    /** 会话容器（"PocketInventory 不参与名单"反向读数的读点）。 */
+    private static final String R96_POCKET_INVENTORY_FILE =
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketInventory.java";
+
+    /**
+     * ★S7a 验收 1：<b>名单真的被问到</b> —— 同一批条目、同一个实例，只换三态，结论必须翻转：
+     * 白名单外的即使落在同一 AABB 也不吸、黑名单内的不吸、无限制档<b>名单在场但全部放行</b>。
+     * 另钉"白名单 + 空名单 = 什么都不吸"这条不顺着 {@code NONE} 含糊的读法，以及"执法读的是<b>落档那一份</b>"。
+     */
+    private static void magnetFilterEnforcementThreeStates() {
+        final PocketMagnetFilter filter = new PocketMagnetFilter();
+        SimpleAssert.that(filter.addEntry(100, 0), "加第一条");
+        SimpleAssert.that(filter.addEntry(200, 3), "加第二条");
+        SimpleAssert.eq(Boolean.FALSE, filter.addEntry(100, 0), "★同 id 同 meta 重复条目 ⇒ 幂等失败（不写第二份真相）");
+        SimpleAssert.that(filter.addEntry(100, 4), "★meta 不同就是另一条条目（itemId + meta 才是身份）");
+        SimpleAssert.eq(3, filter.size(), "去重后共三条");
+        // ---- 档 1：无限制 = 名单在场但一律放行（三态读法第 1 条）----
+        SimpleAssert.that(!filter.isEmpty(), "★前提：名单确实<b>在场</b>，否则这一档等于没测");
+        SimpleAssert.that(filter.allows(100, 0) && filter.allows(200, 3) && filter.allows(999, 7),
+            "★NONE 档：名单内、名单外全部放行（读法写在 PocketMagnetFilter 类注释，用例在此复述一遍）");
+        // ---- 档 2：白名单 ----
+        SimpleAssert.that(filter.setMode(PocketMagnetFilter.Mode.WHITELIST), "切白名单 = 真改变");
+        SimpleAssert.that(filter.allows(100, 0) && filter.allows(200, 3), "白名单内的放行");
+        SimpleAssert.that(!filter.allows(999, 7), "★白名单外 ⇒ 不吸（同一 AABB 里也不吸：判定排在位移之前）");
+        SimpleAssert.that(filter.allows(100, 4),
+            "★100:4 在第三条登记过 ⇒ 吸（离线跑暴露的自相矛盾：旧腿把已登记的 100:4 当成了「未登记」反例）");
+        SimpleAssert.that(!filter.allows(100, 5), "★白名单登记了 100:0/100:4 而未登记 100:5 ⇒ 不吸（meta 参与判定）");
+        // ---- 档 3：黑名单 ----
+        SimpleAssert.that(filter.setMode(PocketMagnetFilter.Mode.BLACKLIST), "切黑名单 = 真改变");
+        SimpleAssert.that(!filter.allows(100, 0), "★黑名单内 ⇒ 不吸");
+        SimpleAssert.that(filter.allows(999, 7), "★黑名单外照吸（阳性对照：不是把磁力整体关死）");
+        SimpleAssert.eq(Boolean.FALSE, filter.setMode(PocketMagnetFilter.Mode.BLACKLIST),
+            "★同值 ⇒ 返回\"没改变\"（调用方据此不写档、不刷虚化）");
+        // ---- 空名单在两档下的读法（不顺着 NONE 含糊）----
+        final PocketMagnetFilter bare = new PocketMagnetFilter();
+        SimpleAssert.that(bare.allows(1, 0), "NONE + 空名单 = 全放行");
+        bare.setMode(PocketMagnetFilter.Mode.WHITELIST);
+        SimpleAssert.that(!bare.allows(1, 0), "★白名单 + 空名单 = 什么都不吸（这是玩家显式选的姿态，不是「没配过」）");
+        bare.setMode(PocketMagnetFilter.Mode.BLACKLIST);
+        SimpleAssert.that(bare.allows(1, 0), "黑名单 + 空名单 = 全放行（表里没有该被拦的）");
+        // ---- 执法读的是"落档那一份"：写出→读回，判定必须逐字相同 ----
+        final NBTTagCompound root = new NBTTagCompound();
+        filter.writeTo(root);
+        final PocketMagnetFilter back = PocketMagnetFilter.readFrom(root);
+        SimpleAssert.eq(PocketMagnetFilter.Mode.BLACKLIST, back.mode(), "往返后三态不变");
+        SimpleAssert.eq(3, back.size(), "往返后条目数不变");
+        SimpleAssert.that(!back.allows(100, 0) && back.allows(999, 7), "★往返后执法判定相同（驱动读的是档，不是谁手里那份现造的）");
+        SimpleAssert.eq(0, back.readDropped(), "正向对照：自家写出的档零丢弃（畸形那条另测）");
+        // ---- 源码腿：判定腿确实在抓取路径上、且实参逐字是 itemId + meta（★摘掉/换判据即红）----
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        if (mag == null) {
+            System.out.println("[NOTE] 读不到 PocketMagnetDriver.java ⇒ 「执法腿的实参与位置」【未验】（★不是通过）");
+            return;
+        }
+        final int tick = methodStart(
+            mag,
+            "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
+        final int tickEnd = methodEnd(mag, tick);
+        final int loop = firstCodeLineWith(mag, tick, tickEnd, "for (EntityItem drop : nearby)");
+        final int claim = firstCodeLineWith(mag, tick, tickEnd, "PocketMagnetClaims.claim(owner");
+        final int allows = firstCodeLineWith(
+            mag,
+            tick,
+            tickEnd,
+            "if (!gate.allows(Item.getIdFromItem(content.getItem()), content.getItemDamage())) {");
+        SimpleAssert.that(loop >= 0 && claim > loop, "前提：能定位实体循环与登记认领那一行");
+        SimpleAssert.that(
+            allows > loop && allows < claim,
+            "★判定腿在实体循环<b>之内</b>、在登记认领<b>之前</b> ⇒ 被拦下的那件不位移、不认领（continue 就排在下一行）");
+        SimpleAssert.eq(1, countRegionCode(mag, tick, tickEnd, "gate.allows("),
+            "★每实体那一步只问一次（两处 = 两份判据，迟早有一处漏 meta 或 NBT）");
+    }
+
+    /**
+     * ★S7a 验收 2：<b>每扫一次构建一次集合</b>（不是每实体一次）—— S6 成本纪律的延续。
+     * 行为腿用 {@code scanGatesBuilt()} 那根计数探针真跑（1 次"扫" + 5000 次"实体"），
+     * 源码腿钉"构建点恰一处、且不在收口拍"。
+     */
+    private static void magnetFilterOneScanGatePerScan() {
+        final PocketMagnetFilter filter = new PocketMagnetFilter();
+        filter.setMode(PocketMagnetFilter.Mode.WHITELIST);
+        for (int i = 0; i < PocketConstants.MAGNET_FILTER_SLOTS; i++) {
+            SimpleAssert.that(filter.addEntry(32000 - i, i), "满档预算内第 " + i + " 条应可加");
+        }
+        SimpleAssert.eq(Boolean.FALSE, filter.addEntry(999999, 0), "★越出 72 格预算 ⇒ 拒收（不是先塞进集合再裁剪）");
+        SimpleAssert.eq(PocketConstants.MAGNET_FILTER_SLOTS, filter.size(), "名单恰好装满");
+        SimpleAssert.eq(0, filter.scanGatesBuilt(), "刚配好名单时一次集合都没建（构建只发生在扫描）");
+        // ---- 一次"扫描" = 一个上下文；随后 5000 次"逐实体判定"不再建任何集合 ----
+        final PocketMagnetFilter.ScanGate gate = filter.newScanGate();
+        SimpleAssert.eq(1, filter.scanGatesBuilt(), "★一次扫描建一个上下文");
+        SimpleAssert.eq(PocketConstants.MAGNET_FILTER_SLOTS, gate.size(), "★上下文真的带走了那 72 条（不是回表再查）");
+        int hits = 0;
+        for (int round = 0; round < 5000; round++) {
+            if (gate.allows(32000 - (round % PocketConstants.MAGNET_FILTER_SLOTS), round % PocketConstants.MAGNET_FILTER_SLOTS)) {
+                hits++;
+            }
+            gate.allows(999999, 0);
+        }
+        SimpleAssert.eq(1, filter.scanGatesBuilt(), "★5000 次逐实体判定之后仍是 1 ⇒ 集合构建次数 = 扫描次数，不是实体数");
+        SimpleAssert.eq(5000, hits, "正控：命中的确在放行（判据不是恒假凑数）");
+        // ---- NONE / 空名单那一档连复制都不做 ----
+        final PocketMagnetFilter loose = new PocketMagnetFilter();
+        SimpleAssert.eq(0, loose.newScanGate()
+            .size(), "NONE 档的上下文里一个条目都不带（名单在场但不生效 ⇒ 不必复制）");
+        SimpleAssert.eq(1, loose.scanGatesBuilt(), "探针照样计数（★探针本身不是构建，见下一段源码腿）");
+        final PocketMagnetFilter black = new PocketMagnetFilter();
+        black.setMode(PocketMagnetFilter.Mode.BLACKLIST);
+        SimpleAssert.eq(0, black.newScanGate()
+            .size(), "空名单 + 黑名单 ⇒ 零条目集合");
+        // ---- 源码腿：构建点的位置与数量 ----
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        final java.util.List<String> filt = sourceLinesOrNull(R96_MAGNET_FILTER_FILE);
+        if (mag == null || filt == null) {
+            System.out.println("[NOTE] 读不到驱动或名单源码 ⇒ 「集合构建次数 = 扫描次数」的源码半边【未验】（★不是通过）");
+            return;
+        }
+        final int tick = methodStart(
+            mag,
+            "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
+        final int tickEnd = methodEnd(mag, tick);
+        final int settle = settleStart(mag);
+        final int loop = firstCodeLineWith(mag, tick, tickEnd, "for (EntityItem drop : nearby)");
+        final int emptyBack = firstCodeLineWith(mag, tick, tickEnd, "nearby == null || nearby.isEmpty()");
+        SimpleAssert.eq(1, countRegionCode(mag, tick, tickEnd, "newScanGate("), "★位移拍里构建点恰一处（两处 = 两份集合）");
+        SimpleAssert.that(
+            firstCodeLineWith(mag, tick, tickEnd, "newScanGate(") > emptyBack && firstCodeLineWith(
+                mag,
+                tick,
+                tickEnd,
+                "newScanGate(") < loop,
+            "★构建排在空 AABB 早退之后、实体循环之前 ⇒ 每扫一次一个，且无实体那一拍根本不建");
+        SimpleAssert.eq(0, countRegionCode(mag, settle, methodEnd(mag, settle), "newScanGate("),
+            "★收口拍不再建集合（入账按实体 id 取回，不重问名单）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "PocketMagnetFilter.readFrom("), "驱动里读名单恰一处（禁每实体读档）");
+        // ★探针本体只是 int 自增：它自己不得变成第二次集合构建，否则"为了数构建而构建"
+        SimpleAssert.eq(1, countCodeLinesIn(filt, "scanGatesBuilt++"), "计数探针本体恰一处自增");
+        SimpleAssert.that(
+            !filt.get(firstCodeLineWith(filt, 0, filt.size(), "scanGatesBuilt++")).contains("new "),
+            "★探针那一行不建任何对象（热路径成本只是 ++int）");
+        SimpleAssert.eq(0, countCodeLinesIn(filt, "ordinal() + 1) % 3"),
+            "★三态循环不写死模 3（将来加态不会静默漏改；序 = 声明序 + values().length）");
+    }
+
+    /**
+     * ★S7a 验收 3：三态循环的<b>序</b>与「无限制保留名单」不丢数据 ——
+     * 切到无限制再切回白名单，条目还在（含跨存读档那一圈）。
+     */
+    private static void magnetFilterCycleKeepsEntries() {
+        final PocketMagnetFilter.Mode[] all = PocketMagnetFilter.Mode.values();
+        SimpleAssert.eq(3, all.length, "★三态恰三个（第四态要么经 PocketFilterConfig.Kind 讨论、要么根本不该存在）");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.WHITELIST, PocketMagnetFilter.Mode.NONE.next(), "NONE → 白名单");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.BLACKLIST, PocketMagnetFilter.Mode.WHITELIST.next(), "白名单 → 黑名单");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.NONE, PocketMagnetFilter.Mode.BLACKLIST.next(), "黑名单 → NONE（回环）");
+        for (PocketMagnetFilter.Mode mode : all) {
+            SimpleAssert.that(mode.next() != mode, mode + " 的下一态不能是它自己（按钮按下去必须真的动）");
+        }
+        SimpleAssert.eq(null, PocketMagnetFilter.Mode.of("NOPE"), "★不认识的态名 ⇒ null（由读档侧回落 NONE 并计入丢弃）");
+        SimpleAssert.eq(null, PocketMagnetFilter.Mode.of(null), "null 态名 ⇒ null，不抛");
+        // ---- 循环一整圈不丢名单（★"无限制"是松开判定，不是清空清单）----
+        final PocketMagnetFilter filter = new PocketMagnetFilter();
+        filter.addEntry(100, 0);
+        filter.addEntry(200, 3);
+        final List<String> before = filter.entryKeys();
+        SimpleAssert.that(filter.cycleMode(), "第 1 次推进（→ 白名单）");
+        SimpleAssert.eq(before, filter.entryKeys(), "白名单档条目一字不变");
+        SimpleAssert.that(filter.cycleMode(), "第 2 次推进（→ 黑名单）");
+        SimpleAssert.eq(before, filter.entryKeys(), "黑名单档条目一字不变");
+        SimpleAssert.that(filter.cycleMode(), "第 3 次推进（→ NONE）");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.NONE, filter.mode(), "一整圈回到 NONE");
+        SimpleAssert.eq(2, filter.size(), "★切到无限制<b>没有</b>清名单（插入序也保持：S7b 的格序靠这个）");
+        SimpleAssert.eq(before, filter.entryKeys(), "★回环后条目与顺序逐字相同（不许只数条数不数序）");
+        SimpleAssert.that(filter.cycleMode(), "再推进一次回白名单");
+        SimpleAssert.that(filter.allows(100, 0) && !filter.allows(999, 7),
+            "★切回白名单后判定立刻照旧生效（数据没被「路过 NONE」洗掉）");
+        // ---- 跨存读档那一圈也不丢：NONE 档写出（名单在场 ⇒ 仍占键）→ 读回 → 切回白名单 ----
+        final NBTTagCompound root = new NBTTagCompound();
+        filter.setMode(PocketMagnetFilter.Mode.NONE);
+        filter.writeTo(root);
+        SimpleAssert.that(
+            root.getCompoundTag(PocketConstants.MAGNET_FILTER)
+                .hasKey(PocketConstants.MAGNET_FILTER_LIST, 9),
+            "★NONE + 有条目 ⇒ 名单照样落档（模式位缺键 = NONE，条目位必须在）");
+        final PocketMagnetFilter back = PocketMagnetFilter.readFrom(root);
+        SimpleAssert.eq(PocketMagnetFilter.Mode.NONE, back.mode(), "读回 = NONE（缺态名的读法）");
+        SimpleAssert.eq(before, back.entryKeys(), "★读回后条目与顺序仍在（无限制保留名单跨重启成立）");
+        back.setMode(PocketMagnetFilter.Mode.WHITELIST);
+        SimpleAssert.that(!back.allows(999, 7), "切回白名单后名单真的还能用");
+        // ---- 其余写口都返"真改变"（照 PocketFilterConfig#setAttr 的 :289-300 那一形状）----
+        SimpleAssert.eq(Boolean.FALSE, filter.addEntry(100, 0), "重复条目 ⇒ false");
+        SimpleAssert.that(filter.removeAt(0), "按格号摘第一条");
+        SimpleAssert.eq(Boolean.FALSE, filter.removeAt(9), "越界格号 ⇒ false（不抛）");
+        SimpleAssert.that(filter.removeEntry(200, 3), "按身份摘第二条");
+        SimpleAssert.eq(Boolean.FALSE, filter.removeEntry(200, 3), "★重复摘 ⇒ false（幂等无副作用）");
+        SimpleAssert.eq(Boolean.FALSE, filter.clearEntries(), "空名单再清 ⇒ false");
+        // ---- "非默认才占键"三条（同 cap / 位表那条纪律 ⇒ 没配过的档逐字节等于旧档）----
+        // ★S7a 补前置：上一段"跨存读档那一圈"结束时态已被显式切回 NONE，而这一段要读的是
+        //   "态非默认 + 名单已空"的形状 ⇒ 这里显式回到白名单（离线跑暴露：不补这一句时下面两条
+        //   读的是整根键被摘掉的空 compound，属测试自己的前置漂移，不是产品形状）。
+        SimpleAssert.that(filter.setMode(PocketMagnetFilter.Mode.WHITELIST), "前置：切回白名单（态非默认）");
+        final NBTTagCompound cleared = new NBTTagCompound();
+        filter.writeTo(cleared);
+        final NBTTagCompound clearedDomain = cleared.getCompoundTag(PocketConstants.MAGNET_FILTER);
+        SimpleAssert.that(
+            clearedDomain.hasKey(PocketConstants.MAGNET_FILTER_MODE, 8),
+            "★白名单（非默认态）⇒ 落态位；此时名单已被清空但<b>态</b>仍不是默认的");
+        SimpleAssert.that(
+            !clearedDomain.hasKey(PocketConstants.MAGNET_FILTER_LIST, 9),
+            "★空列表不占键（写了个空 NBTTagList 就是把「没配过」和「配过又清干净」混成一态）");
+        final NBTTagCompound blank = new NBTTagCompound();
+        new PocketMagnetFilter().writeTo(blank);
+        SimpleAssert.that(
+            !blank.hasKey(PocketConstants.MAGNET_FILTER, 10),
+            "★NONE + 空 ⇒ 整根键摘掉（默认形状一个字节都不占，R53c 的写侧对偶）");
+    }
+
+    /**
+     * ★S7a 验收 4：{@code itemId + meta} 键的<b>写出→读回等价</b>；★未知/畸形条目按
+     * 「丢弃 + 一次性 WARN」处理 —— 不静默吞、也不抛。另钉与 {@code PocketFilterConfig} 的<b>同形</b>
+     * （Kind-free 复用：不给那枚枚举加第四值，但 S7b 可以直接喂现成的 {@code contentKey}）。
+     */
+    private static void magnetFilterKeyRoundTripAndMalformed() {
+        // ---- 与 PocketFilterConfig.itemKey(id, meta, "") 逐字符同形（★同形而不共享 Kind）----
+        SimpleAssert.eq(
+            PocketFilterConfig.itemKey(1543, 12, ""),
+            PocketMagnetFilter.itemKey(1543, 12),
+            "★磁力键 = PocketFilterConfig 物品键的「空 NBT 尾段」形状 ⇒ S7b 的拖入腿不需要第三份键式样");
+        SimpleAssert.eq(
+            "i:1543:12:",
+            PocketMagnetFilter.itemKey(1543, 12),
+            "前缀 i + 分隔符 : + itemId + meta + 空 NBT 段（写出形状逐字钉住，改形即红）");
+        // ---- 往返等价 ----
+        final long[] parsed = PocketMagnetFilter.parseEntry(PocketMagnetFilter.itemKey(1543, 12));
+        SimpleAssert.that(parsed != null, "自家写出的键必可解回");
+        SimpleAssert.eq(1543L, parsed[0], "itemId 往返等价");
+        SimpleAssert.eq(12L, parsed[1], "meta 往返等价");
+        final long[] negativeMeta = PocketMagnetFilter.parseEntry(PocketMagnetFilter.itemKey(0, -1));
+        SimpleAssert.that(negativeMeta != null && negativeMeta[1] == -1L, "负 meta（原版 wildcard 那一族）也要能往返");
+        // ---- ★带 NBT 尾段的键：丢掉尾段、保住身份（P-11 不做 NBT 敏感匹配）----
+        final long[] withNbt = PocketMagnetFilter.parseEntry("i:1543:12:{Display:{Name:x}}");
+        SimpleAssert.that(withNbt != null && withNbt[0] == 1543L && withNbt[1] == 12L,
+            "★NEI 递来的 contentKey（四段）⇒ 只取身份，NBT 段被丢掉而不是把整条拒了");
+        SimpleAssert.that(PocketMagnetFilter.parseEntry(PocketMagnetFilter.itemKey(1543, 12)) != null,
+            "自家 itemKey 自家 parseEntry 必可解（★不存在第三种键形状：既不加 Kind，也不另立前缀）");
+        // ---- 畸形/未知：null，不抛 ----
+        for (String junk : new String[] { null, "", "i", "i:", "i:1", "i:abc:1:", "x:1:2:", "1:2:3:", "i:-5:0:" }) {
+            SimpleAssert.eq(null, PocketMagnetFilter.parseEntry(junk), "★畸形键必须解不出（返回 null，不抛）：" + junk);
+        }
+        // ---- 读档侧：畸形条目 = 丢弃 + 计数 + 一次性 WARN（★不静默吞）----
+        final NBTTagCompound dirty = new NBTTagCompound();
+        final NBTTagCompound domain = new NBTTagCompound();
+        final NBTTagList list = new NBTTagList();
+        for (String junk : new String[] { "junk", "i:abc:1:", "x:7:7:", "i:-1:0:", "" }) {
+            list.appendTag(new NBTTagString(junk));
+        }
+        list.appendTag(new NBTTagString(PocketMagnetFilter.itemKey(42, 1)));
+        domain.setTag(PocketConstants.MAGNET_FILTER_LIST, list);
+        domain.setString(PocketConstants.MAGNET_FILTER_MODE, "WHITELISTT");
+        dirty.setTag(PocketConstants.MAGNET_FILTER, domain);
+        final PocketMagnetFilter recovered = PocketMagnetFilter.readFrom(dirty);
+        SimpleAssert.eq(6, recovered.readDropped(), "★五条坏条目 + 一项坏态名 = 六条丢弃读数（不静默吞）");
+        SimpleAssert.eq(1, recovered.size(), "★唯一合法的那条落进名单（外来档不该让整枚口袋读不出来）");
+        SimpleAssert.that(recovered.entryKeys()
+            .contains(PocketMagnetFilter.itemKey(42, 1)), "合法条目逐字保留");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.NONE, recovered.mode(), "★坏态名回落 NONE（「没配过」那一态），不臆造成白/黑");
+        // ---- 一次性 WARN 的形状（日志本体只能靠源码腿读）----
+        final java.util.List<String> filt = sourceLinesOrNull(R96_MAGNET_FILTER_FILE);
+        final java.util.List<String> consts = sourceLinesOrNull(R96_POCKET_CONSTANTS_FILE);
+        if (filt == null || consts == null) {
+            System.out.println("[NOTE] 读不到名单或常量源码 ⇒ 「一次性 WARN / 键名冻结」【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(1, countCodeLinesIn(filt, "LOG.warn("), "★丢弃必有一条 WARN（配好的名单凭空少一条必须看得见账）");
+        SimpleAssert.eq(1, countCodeLinesIn(filt, "droppedWarnedKeys.add("), "一次性闩恰一处（同 PocketFilterConfig 的既存纪律）");
+        SimpleAssert.eq(0, countCodeLinesIn(filt, "throw "), "★解析与读档全程不抛（外来档最多丢条目，不该炸掉整枚口袋）");
+        SimpleAssert.that(
+            countCodeLinesIn(filt, "import net.minecraft.item") == 0 && countCodeLinesIn(filt, "import appeng") == 0
+                && countCodeLinesIn(filt, "import thaumcraft") == 0,
+            "★纯 JVM 纪律：不 import MC 物品 / AE2 / TC 类型（物品↔键的换算住在驱动里）");
+        SimpleAssert.eq(0, countCodeLinesIn(filt, "Kind"),
+            "★Kind-free：本类一个字都不提 PocketFilterConfig.Kind（更不给它加第四值）");
+        SimpleAssert.eq(1, countCodeLinesIn(consts, "\"magnetFilter\""), "★根键字面量全仓恰一处（PocketConstants 单源）");
+        // ★S7a 修（离线跑暴露：本腿原用 countCodeLinesIn = 剥注释口径数"一经落档即冻结"，而冻结口径
+        //   按定义只可能写在注释位 ⇒ 剥注释后结构性恒 0，本腿构造上永不可能满足，属 R57 同族的悬空判据）。
+        //   改成逐字面行（含注释）计数：PocketConstants 内"一经落档即冻结"必须 ≥2 处（upgradesOff 一条 +
+        //   magnetFilter 一条 + 根键预留位注释一条），语义"口径写在档上"不变、且更强（字面量在场被钉死）。
+        int freezeMentions = 0;
+        for (String line : consts) {
+            if (line.contains("一经落档即冻结")) {
+                freezeMentions++;
+            }
+        }
+        SimpleAssert.that(freezeMentions >= 2,
+            "键名冻结的口径要写在档上（原行数=" + freezeMentions + "，★含注释位；S13 文档腿引它）");
+        // ---- 满档预算的<b>算术</b>（S7b 决定同步载体用；★这里量的是真串长度，不是注释里的期望）----
+        final PocketMagnetFilter full = new PocketMagnetFilter();
+        for (int i = 0; i < PocketConstants.MAGNET_FILTER_SLOTS; i++) {
+            full.addEntry(32000 - i, 32767);
+        }
+        int blobChars = 0;
+        for (String key : full.entryKeys()) {
+            blobChars += key.length() + 1;
+        }
+        SimpleAssert.eq(PocketConstants.MAGNET_FILTER_SLOTS, full.size(), "满档恰 72 条");
+        SimpleAssert.that(
+            blobChars <= 1800,
+            "★72 条<b>最宽</b>身份键（5+5 位）实测串长 = " + blobChars + " B ≤ 1800 B ⇒ 距 StringSyncValue 的"
+                + " 32693 字节墙（Short.MAX_VALUE-74）有 ≥18 倍余量 ⇒ 不撞墙、不需要 GHOST_BLOB_MAX_CHARS 那条预算");
+    }
+
+    /**
+     * ★S7a 验收 6（调用方在场）+ 验收 5（守恒 225 零改动）：从宿主 tick 链到 {@code PocketMagnetFilter}
+     * 判定的<b>静态可达链逐跳点名</b>，并反向钉"名单条目不是真实槽"。
+     */
+    private static void magnetFilterCallChainAndNoRealSlot() {
+        final java.util.List<String> host = sourceLinesOrNull(R96_POCKET_ITEM_FILE);
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        final java.util.List<String> filt = sourceLinesOrNull(R96_MAGNET_FILTER_FILE);
+        final java.util.List<String> write = sourceLinesOrNull(R96_SERVER_HANDLER_FILE);
+        if (host == null || mag == null || filt == null || write == null) {
+            System.out.println("[NOTE] 读不到宿主/驱动/名单/写口源码 ⇒ 「静态可达链逐跳」【未验】（★不是通过）");
+            return;
+        }
+        // ---- 跳 1：宿主 vanilla tick 链（S6 已钉，这里只复述"链头还在"）----
+        SimpleAssert.eq(1, countCodeLinesIn(host, "PocketMagnetDriver.onItemTick("), "★跳 1：宿主调用点恰一处");
+        // ---- 跳 2：驱动签名 + 读名单 ----
+        final int tick = methodStart(
+            mag,
+            "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
+        final int tickEnd = methodEnd(mag, tick);
+        final int read = firstCodeLineWith(mag, tick, tickEnd, "PocketMagnetFilter.readFrom(stack.getTagCompound())");
+        SimpleAssert.that(read >= 0, "★跳 2：驱动从<b>载体栈根 NBT</b>读名单（不是从别处复制一份真相）");
+        // ---- 跳 3：建上下文 ----
+        final int gate = firstCodeLineWith(mag, tick, tickEnd, ".newScanGate()");
+        SimpleAssert.that(gate > read, "★跳 3：读完立刻建上下文（同一行也算：顺序按读数判）");
+        // ---- 跳 4：每实体问一次 ----
+        final int allows = firstCodeLineWith(mag, tick, tickEnd, "gate.allows(");
+        SimpleAssert.that(allows > gate, "★跳 4：上下文真被问");
+        // ---- 跳 5：ScanGate → 三态判据本体 ----
+        final int gateMethod = methodStart(filt, "public static final class ScanGate {");
+        SimpleAssert.that(gateMethod >= 0, "跳 5：ScanGate 本体可定位（改名即红）");
+        SimpleAssert.eq(1, countCodeLinesIn(filt, "private static boolean allowsMode("), "★三态判据本体恰一份（不留第二份读法）");
+        SimpleAssert.eq(2, countCodeLinesIn(filt, "allowsMode(mode, itemId, meta,"),
+            "两处调用（直问口 + 上下文口）都汇到那一本体 ⇒ 执法与 UI 预览不会分叉");
+        SimpleAssert.that(
+            countCodeLinesIn(filt, "case WHITELIST:") == 1 && countCodeLinesIn(filt, "case BLACKLIST:") == 1
+                && countCodeLinesIn(filt, "default:") >= 1,
+            "★三态在判据本体里各有其位（NONE 走 default 恒放行 = 那条读法）");
+        // ---- 跳 6：写口（配置面归 S7b，但执行体必须已在场且被同一根键收口）----
+        for (String mouth : new String[] { "boolean performMagnetModeCycle() {", "boolean performMagnetEntryAdd(String key) {",
+            "boolean performMagnetEntryRemove(String key) {", "boolean performMagnetClearEntries() {" }) {
+            SimpleAssert.eq(1, countCodeLinesIn(write, mouth), "写口在位：" + mouth);
+        }
+        SimpleAssert.eq(1, countCodeLinesIn(write, "PocketMagnetFilter.readFrom("), "★写口读现态恰一处（第二处就是第二份真相）");
+        SimpleAssert.eq(1, countCodeLinesIn(write, "filter.writeTo(root)"), "★写口落档恰一处（与驱动读的那根键同源）");
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(write, "new ItemSlot"),
+            "★本片零 UI：不造格件、不接 C2S（72 格与拖入全归 S7b）");
+        // ---- 验收 5 的反向读数：名单格数不是真实槽（守恒 225 与本常量无关）----
+        final java.util.List<String> slots = sourceLinesOrNull(R96_POCKET_SLOTS_FILE);
+        final java.util.List<String> inventory = sourceLinesOrNull(R96_POCKET_INVENTORY_FILE);
+        if (slots != null && inventory != null) {
+            SimpleAssert.eq(0, countCodeLinesIn(slots, "MAGNET_FILTER"), "★PocketSlots 一个字都不提名单格数");
+            SimpleAssert.eq(0, countCodeLinesIn(inventory, "MAGNET_FILTER"), "★PocketInventory 同样不参与名单（守恒 225 零改动）");
+        } else {
+            System.out.println("[NOTE] 读不到 PocketSlots/PocketInventory ⇒ 「名单不占真实槽」【未验】（★不是通过）");
+        }
+        // ---- 同形口径：12 行 × 6 列 = 72 = 源质显示格数（刻意不引 ESSENCE_DISPLAY_GRID，见常量注释）----
+        SimpleAssert.eq(
+            PocketConstants.ESSENCE_DISPLAY_GRID,
+            PocketConstants.MAGNET_FILTER_SLOTS,
+            "★与源质格同形（12×6=72）；S7b 反转排布只改磁力那两个常量，不动源质格");
+        SimpleAssert.eq(
+            PocketConstants.MAGNET_FILTER_ROWS * PocketConstants.MAGNET_FILTER_COLUMNS,
+            PocketConstants.MAGNET_FILTER_SLOTS,
+            "格数 = 行 × 列的派生式（不留裸 72）");
     }
 
     // ------------------------------------------------------------------ 桩件与工具

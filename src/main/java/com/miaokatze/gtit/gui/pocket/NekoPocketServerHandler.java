@@ -29,6 +29,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketMagnetFilter;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
@@ -719,6 +720,105 @@ final class NekoPocketServerHandler {
             default:
                 return "";
         }
+    }
+
+    // ------------------------------------------- ★R96 S7a · 磁力三态名单的服务端写口
+
+    /**
+     * ★磁力名单（{@link PocketMagnetFilter}）的<b>唯一</b>服务端写口 —— 本切片只提供<b>执行体</b>：
+     * 72 格格件、NEI/背包拖入、三态循环按钮与面板挂载全在 <b>S7b</b>（★刻意不留 TODO 占位，也不接任何
+     * C2S 入口，S7b 的 widget 按 {@code perform*} 的既存形状一行委托过来即可）。
+     * <p>
+     * <b>三条与 ghost 写口同源的纪律</b>（{@link #onServerGhostRequest}）：
+     * <ol>
+     * <li>★<b>不接客户端抄上来的目标态</b>：三态只接受"点了一次循环"这一个意图，下一态由服务端读现态
+     * {@link PocketMagnetFilter.Mode#next()} 推出 ⇒ 伪造包改不出第四态，也跳不到指定态；</li>
+     * <li>条目入参是<b>键串</b>（{@code i:itemId:meta:} 形状，与 {@code PocketFilterConfig.itemKey} 同形）
+     * 而不是整栈：★NBT 一个字都不上网络（前提 P-11 不做 NBT 敏感匹配），也就绕开了
+     * {@code StringSyncValue} 那 32693 字节墙的一切风险；解不出的键 {@link #performMagnetEntryAdd}
+     * 直接返 {@code false}（★不写档；拒收回执由 S7b 的格件负责 —— wiki 那条"每个拒收分支自带 tooltip"）；</li>
+     * <li>★<b>只在真改变时写档</b>：四个写口都返回"本次是否真的改变"，{@code false} ⇒ 不落 NBT、
+     * 不置脏（同 {@code decision.changed()} 那一支的理由：脏标记一为真，关屏就要序列化整份 NBT）。</li>
+     * </ol>
+     * <b>落在哪里</b>：直接写<b>载体栈的根 NBT</b>（键 {@link PocketConstants#MAGNET_FILTER}）。这个根键
+     * {@code PocketInventory} <b>不拥有</b>，因此与会话落盘（{@code writeSessionToCarrier → inventory.writeTo(root)}）
+     * <b>不构成双写竞争</b>；读点只有一个（{@code PocketMagnetDriver} 的位移拍），写点也只有这里 ⇒ 一份真相。
+     * <p>
+     * <b>防伪</b>：{@link #serverGuardOk()} 的 L1 会话绑定（持有者本人 + 承载格上仍是同一枚口袋）——
+     * 与 ghost 同一强度：伪造包最多往<b>自己</b>口袋里写 ≤72 条身份键，改不到别人的口袋。
+     * ★本片<b>不</b>额外问"该型是否已固化"：那要么加第 9 枚 {@code PocketUpgrades.hasUpgrade(} 直调点
+     * （S1b 的门 E/F 把它钉成"恰 8 = 豁免表求和"，多一处即红），要么用 {@code isActive} 把"开关关掉时
+     * 还能不能编辑名单"这种产品问题写进数据层。名单写进没装磁力的口袋 = 一坨永不被读的 ≤1.8KB 死数据，
+     * 代价与 ghost 声明同类；S2 的面板挂载点本身就是"该型已固化"的入口闸。⇒ 记进交付报告的遗留项。
+     */
+    boolean performMagnetModeCycle() {
+        final PocketMagnetFilter filter = magnetFilterToEdit();
+        if (filter == null || !filter.cycleMode()) {
+            return false;
+        }
+        commitMagnetFilter(filter);
+        return true;
+    }
+
+    /** ★加一条名单条目（键串入参，见 {@link #performMagnetModeCycle} 的纪律 2）。@return 本次是否真的改变 */
+    boolean performMagnetEntryAdd(String key) {
+        final PocketMagnetFilter filter = magnetFilterToEdit();
+        if (filter == null || !filter.addEntryKey(key)) {
+            return false;
+        }
+        commitMagnetFilter(filter);
+        return true;
+    }
+
+    /** ★按键摘一条（同键两条不可能存在：条目集合按身份去重）。@return 本次是否真的改变 */
+    boolean performMagnetEntryRemove(String key) {
+        final PocketMagnetFilter filter = magnetFilterToEdit();
+        if (filter == null || !filter.removeEntryKey(key)) {
+            return false;
+        }
+        commitMagnetFilter(filter);
+        return true;
+    }
+
+    /**
+     * ★清空名单（<b>不动三态</b>）。与"切到无限制"是两件事：后者按 P-11 的读法<b>保留</b>条目，
+     * 只有这一条抹掉（{@code PocketMagnetFilter} 类注释三态读法第 1 条）。
+     *
+     * @return 本次是否真的改变
+     */
+    boolean performMagnetClearEntries() {
+        final PocketMagnetFilter filter = magnetFilterToEdit();
+        if (filter == null || !filter.clearEntries()) {
+            return false;
+        }
+        commitMagnetFilter(filter);
+        return true;
+    }
+
+    /** 名单写口的公共前段：防伪三判 + 载体在场，否则 {@code null}（★调用方据此什么都不写）。 */
+    private PocketMagnetFilter magnetFilterToEdit() {
+        if (panel.syncManager()
+            .isClient() || !serverGuardOk()) {
+            return null;
+        }
+        final ItemStack carrier = panel.pocketStack();
+        return carrier == null ? null : PocketMagnetFilter.readFrom(carrier.getTagCompound());
+    }
+
+    /** 名单写口的公共后段：落回载体栈根层 + 置脏（★只在真改变时被调）。 */
+    private void commitMagnetFilter(PocketMagnetFilter filter) {
+        final ItemStack carrier = panel.pocketStack();
+        if (carrier == null) {
+            return;
+        }
+        NBTTagCompound root = carrier.getTagCompound();
+        if (root == null) {
+            // ★写路径可以建档（R53c 禁的是读路径顺手建）；与 writeSessionToCarrier 同一形状
+            root = new NBTTagCompound();
+            carrier.setTagCompound(root);
+        }
+        filter.writeTo(root);
+        markDirty();
     }
 
     // ------------------------------------------------------------------ 防伪守卫（R19 三层）
