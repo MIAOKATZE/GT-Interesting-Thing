@@ -137,7 +137,14 @@ final class NekoPocketServerHandler {
                 merged.put(key, stack);
                 continue;
             }
-            final int free = existing.getMaxStackSize() - existing.stackSize;
+            // ★★R96 S4（根因第 2 处，取证 r96-ret1 §1.3 缺陷 2）：合堆天花板原来是裸
+            // {@code existing.getMaxStackSize()}（= 64）⇒ 磁力拾取 / ME 补满两条自动路<b>好不容易</b>造出的
+            // 1024 堆，玩家点一次「整理」就被拆回若干 64 堆 —— README 承诺的「单格 64 → 1024」在这一条上是<b>反的</b>。
+            // 现在与 handler、通道消费侧、ghost 读数侧共读同一条单源算式
+            // （{@link PocketInventory#effectiveStorageLimit(boolean, ItemStack)}），★不在本文件抄第二份三元。
+            // 未升级档该算式给 64 ⇒ 现状逐字不变（反「修过头」的判据，见用例 A2）。
+            final int free = PocketInventory.effectiveStorageLimit(storageStackUpgraded(), existing)
+                - existing.stackSize;
             final int take = Math.min(free, stack.stackSize);
             if (take > 0) {
                 existing.stackSize += take;
@@ -152,18 +159,67 @@ final class NekoPocketServerHandler {
         // 因为声明格的货不再进合并池，"非 ghost 槽数 ≥ 池内条目数"这条不变量重新成立；
         // 仍保留兜底：万一存量档里 ghost 槽带着东西进来、或池内条目确实多于非 ghost 槽，走玩家背包而不是 break 掉（整理绝不吃件）。
         int cursor = 0;
-        for (ItemStack stack : merged.values()) {
-            cursor = nextRealSlot(cursor);
-            if (cursor >= size) {
-                panel.giveToPlayer(stack);
-                continue;
+        // ★★R96 S4b（R-1 同一条纪律的另一半）：回写这一圈<b>挂起</b>中栏的按件收口
+        // （{@link PocketInventory#beginStorageRawRewrite()}）。上面的快照已经把非声明格清空，本循环按
+        // {@code cursor++} 递增落点逐格原样写回；若收口插手，它钳下来的差额会被摊到<b>后面那几次落点</b>上
+        // ⇒ 下一笔 {@code setStackInSlot} 正好覆盖它 = <b>整理一次吃掉一截</b>（关着 STACK 开关、格里还存着
+        // 大堆的玩家一点整理就命中）。整理必须不增不减，与读档同一裁定（P-4：关开关不许销毁已存进去的）。
+        panel.inventory()
+            .beginStorageRawRewrite();
+        try {
+            for (ItemStack stack : merged.values()) {
+                cursor = nextRealSlot(cursor);
+                if (cursor >= size) {
+                    // ★R96 S4 验收 5（出包边界）：溢出的一堆<b>不整堆</b>交给玩家，见
+                    // {@link #giveAwayInNaturalChunks}（那条 1024 直接进原版背包 = NEI 当无限物品改写成 111）。
+                    giveAwayInNaturalChunks(stack);
+                    continue;
+                }
+                panel.inventory()
+                    .storage()
+                    .setStackInSlot(cursor++, stack);
             }
+        } finally {
             panel.inventory()
-                .storage()
-                .setStackInSlot(cursor++, stack);
+                .endStorageRawRewrite();
         }
         panel.inventory()
             .markDirty();
+    }
+
+    /**
+     * ★★<b>R96 S4 验收 5：出包边界</b> —— 把一堆内容<b>按该件的天然 {@code maxStackSize} 拆成若干普通栈</b>
+     * 再逐块交给玩家，使 {@code >100} 的堆<b>只存在于口袋自己的 handler 内</b>。
+     * <p>
+     * 为什么必须在离开中栏这一刻拆（两条独立的数据破坏面，取证 r96-ret7 §2.1 / §3.3 / §3.4）：
+     * <ol>
+     * <li><b>NEI 的裸数值判据</b>：{@code InfiniteStackSizeHandler.isItemInfinite} 写作
+     * {@code stackSize == -1 || stackSize > 100}，{@code NEIController.updateUnlimitedItems} 由
+     * {@code ClientHandler} <b>每客户端 tick</b> 扫 {@code InventoryPlayer} 每一格，命中即
+     * {@code replenishInfiniteStack} ⇒ <b>把该格件数改写成 111</b>。1024 件进背包 = 一次读成 111 的
+     * 静默改档（NEI 开了 item 动作时；生存下多半不触发，但这条腿的存在不由我们决定）。</li>
+     * <li><b>vanilla 的 byte 宽度</b>：{@code ItemStack.writeToNBT} 用 {@code setByte("Count", ...)}，
+     * {@code EntityItem} 的掉落物存档同病 ⇒ 1024 掉成实体后读回是 0（<b>件数蒸发</b>）。MUI2 / 本仓的
+     * handler 存档早已补成 INT 口径，那条加固<b>不覆盖</b>原版实体与原版背包。</li>
+     * </ol>
+     * ★天然上限取 {@code stack.getMaxStackSize()}（不是 {@code effectiveStorageLimit}）：出包后的世界是
+     * <b>原版背包</b>，那里的尺子就是天然满量；把口袋那把放大尺带出去正是上面两条的成因。
+     * 每块 ≤ 64 ⇒ 同时满足「不触发 NEI 阈值」与「byte 宽度装得下」两项，无需再判开关位。
+     * <p>
+     * 非消耗语义不变：{@link NekoPocketPanel#giveToPlayer} 自己负责「装不下掉脚下」，本方法只负责
+     * <b>不把整堆 1024 递给它</b>；拆块过程中 {@code stack.stackSize} 递减到 0，一件不多一件不少。
+     */
+    private void giveAwayInNaturalChunks(ItemStack stack) {
+        if (stack == null) {
+            return;
+        }
+        final int natural = Math.max(1, stack.getMaxStackSize());
+        while (stack.stackSize > 0) {
+            final ItemStack chunk = stack.copy();
+            chunk.stackSize = Math.min(natural, stack.stackSize);
+            stack.stackSize -= chunk.stackSize;
+            panel.giveToPlayer(chunk);
+        }
     }
 
     /** 从 {@code from} 起的第一个<b>非 ghost</b> 中栏槽号（越界返回 {@code slots} 本身）。 */

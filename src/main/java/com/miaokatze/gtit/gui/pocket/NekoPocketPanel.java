@@ -1078,14 +1078,51 @@ public final class NekoPocketPanel implements PocketSession {
     // 「点击源质槽的源质会凭空生成安瓿瓶」的形状本身 ⇒ 符号整体删除（不留 {@code _unused}、不留注释尸），
     // 生产调用方由 {@code plan/_taskpack/verify-pocket.sh} 的 {@code R91-b} 段穷举钉成 0。
 
-    /** 塞进玩家背包，装不下就掉在脚下（R40a 的非消耗退回口径；整理/搬空都不该凭空吞物品）。 */
+    /**
+     * 塞进玩家背包，装不下就掉在脚下（R40a 的非消耗退回口径；整理/搬空都不该凭空吞物品）。
+     * <p>
+     * ★★<b>R96 S4b（R-1 收口）：本方法是「离开口袋进入原版世界」唯一的漏斗，拆堆上移到这里</b>。
+     * S4 把整理溢出那一条改走了 {@code NekoPocketServerHandler#giveAwayInNaturalChunks}，但
+     * {@link #evictFromSlot} 交进本方法的那份余量仍是<b>整堆</b>直递 —— 那一条当时不在
+     * S4 的允许清单内，只能钉成「恰 1 计数门」挂账（README 代价 37）。本片按裁定把尺子收到本方法：
+     * <b>任何</b>离开口袋中栏进入玩家原版背包 / 掉落的路径，都先按该件的天然 {@code maxStackSize}
+     * 拆成普通栈再逐块交付。两条独立的破坏面（取证 r96-ret7 §3.3 / §3.4）：
+     * ① NEI 的 {@code isItemInfinite} 是裸数值判据 {@code stackSize > 100}，每客户端 tick 扫
+     * {@code InventoryPlayer} 命中即改写成 111；② {@code EntityItem}／vanilla {@code ItemStack} 的
+     * {@code Count} 走<b>有符号 byte</b>，&gt;127 掉出世界即坏。每块 ≤ 天然满量（≤ 64）⇒ 两条同时躲开。
+     * <p>
+     * ★尺子是 {@code getMaxStackSize()}，★不是 {@code effectiveStorageLimit}：出包后的世界是原版背包，
+     * 那里的尺子就是天然满量，把口袋那把放大尺带出去正是上面两条的成因（与 S4 那条拆堆口同一口径）。
+     * ★天然 ≤ 一块的栈（绝大多数手势与全部工具类）走不到循环里 ⇒ <b>行为逐字不变</b>。
+     */
     void giveToPlayer(ItemStack stack) {
         final EntityPlayer target = player();
-        if (target == null || stack == null) {
+        if (target == null || stack == null || stack.stackSize <= 0) {
             return;
         }
-        if (!target.inventory.addItemStackToInventory(stack)) {
-            target.entityDropItem(stack, 0);
+        final int natural = Math.max(1, stack.getMaxStackSize());
+        // ★★循环条件读的是<b>本体剩余</b>（每轮先 {@code splitStack} 把它减掉 natural），既不是原版的
+        //   返回值、也不是被递出去那一块的 stackSize（原版成功那一刻就把入参置 0）——R83 那版「拿入参
+        //   stackSize 当进度」的写法成功一圈就被清零 ⇒ 进度恒 0 ⇒ 服务器主线程死循环（同文件
+        //   {@link #moveToPlayer(ItemStack)} 的 javadoc 记的就是这一条）。每一轮必然递减 ⇒ 必收敛。
+        while (stack.stackSize > natural) {
+            handNaturalChunkToPlayer(target, stack.splitStack(natural));
+        }
+        if (stack.stackSize > 0) {
+            handNaturalChunkToPlayer(target, stack);
+        }
+    }
+
+    /**
+     * 单块交付（★一件"进背包 → 装不下掉脚下"的非消耗退回，R40a 口径原样保留）。
+     * <p>
+     * ★拆成独立方法只为让上面那条循环里 <b>{@code addItemStackToInventory} 与 {@code entityDropItem}
+     * 各只出现一次</b>（门禁门 D 按落点穷举计数：口袋目录内进原版背包恰 3 处、掉脚下恰 2 处）；
+     * ★<b>不许</b>在这里再套一层"投完再投"的循环 —— 一格里能装的件数由原版自己摊，摊不下就是掉脚下。
+     */
+    private void handNaturalChunkToPlayer(EntityPlayer target, ItemStack chunk) {
+        if (!target.inventory.addItemStackToInventory(chunk)) {
+            target.entityDropItem(chunk, 0);
         }
     }
 

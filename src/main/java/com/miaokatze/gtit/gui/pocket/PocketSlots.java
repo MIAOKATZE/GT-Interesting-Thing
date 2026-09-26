@@ -215,10 +215,33 @@ public final class PocketSlots extends PocketIntakeOps {
 
     public PocketSlots() {}
 
-    /** 中栏 {@link PocketConstants#GHOST_ITEM_SLOT_LIMIT} 格之一（行主序，与矩阵字符序一致）。 */
+    /**
+     * 中栏 {@link PocketConstants#GHOST_ITEM_SLOT_LIMIT} 格之一（行主序，与矩阵字符序一致）。
+     * <p>
+     * ★★<b>R96 S4：这两条链式调用就是「堆叠升级装了没生效」的正身</b>（取证 r96-ret1 §1.1、r96-ret7 §4.1）。
+     * 口袋 GUI 是 ModularUI2 自有容器，玩家手势的件数由
+     * {@code ModularContainer.stackLimit(Slot, ItemStack)} 单点决定，它对 modular 槽转调
+     * {@code SlotItemHandler.getItemStackLimit}，而后者<b>第一行</b>就取 {@code stack.getMaxStackSize()}
+     * ⇒ 恒返 64。{@code PocketInventory} 那两条 handler 覆写（{@code getSlotLimit} / {@code getStackLimit}）
+     * 只在 {@code ItemStackHandler.insertItem} 这条整数域上被问到，而 GUI 写格走的是
+     * {@code Slot.putStack → setStackInSlot}（<b>不钳</b>）⇒ 覆写正确、<b>执法点从没被问到</b>。
+     * <p>
+     * {@code ignoreMaxStackSize(true)} 是 MUI2 为此准备的唯一开关（{@code ModularSlot.java:86-89}：
+     * 打开后尺子换成 {@code getSlotStackLimit() = itemHandler.getSlotLimit(index)} ⇒ 双档由 handler 决定）。
+     * ★<b>必须恒 true，不许按 STACK 位取值</b>：升级位是<b>会话期活值</b>（面板开着就能装插件、S1 还能关），
+     * 而装配只发生一次 ⇒ 按开关位取值等于把尺子冻在开屏那一刻。收口靠 handler 侧两档
+     * （{@code PocketInventory#getSlotLimit} 未升级仍返 64，所以 A2「未升级档逐字不变」成立）。
+     * <p>
+     * ★{@code canDragInto(false)} 绕开的是<b>第三条独立的路</b>：按住左键拖过一片格子均分（QUICK_CRAFT）
+     * 的资格判定在 vanilla 静态 {@code Container.func_94527_a:727} 里按裸 {@code getMaxStackSize()} 算，
+     * 没有任何 per-slot 开关能传进去（r96-ret7 表 B 第 3 条）⇒ 唯一正解是不提供这条手势。
+     * 先例同文件 {@link #upgradeCell}（用的正是这一条 API）。<b>代价</b>：中栏失去拖拽均分手感，见 README。
+     */
     public ModularSlot storage(PocketInventory inv, int index) {
         createdRealSlots++;
-        return new ModularSlot(inv.storage(), index).slotGroup(GROUP_STORAGE);
+        return new ModularSlot(inv.storage(), index).slotGroup(GROUP_STORAGE)
+            .ignoreMaxStackSize(true)
+            .canDragInto(false);
     }
 
     /**

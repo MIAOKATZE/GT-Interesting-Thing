@@ -107,6 +107,20 @@ public final class PocketInventory {
     /** 脏标记：只有内容真的变过才序列化（R53c 第 1 条）。 */
     private boolean dirty;
     /**
+     * ★★<b>R96 S4b：内部「整体搬运」挂起中栏按件收口的那道闩</b>（{@code false} = 收口在位）。
+     * <p>
+     * 为什么必须有它：{@link ItemStackHandler#setStackInSlot} 收口的差额是<b>摊到别的空格</b>去的，
+     * 而两处内部搬运的形态恰好是「先把整组清空、再逐格原样回写」——
+     * ① {@link #readFrom} 的 {@code loadGroup}（读档必须逐字还原），
+     * ② {@code NekoPocketServerHandler#performSort} 的回写循环（先快照清空、再按 {@code cursor++} 回写）。
+     * 这两处若让收口插手，摊出去的格会<b>正好</b>落在后面那几次 {@code setStackInSlot} 的落点上 ⇒
+     * 被后一笔覆盖 = <b>整理一次吃掉一截</b>（关着 STACK 开关、格里还存着 1024 大堆的玩家一点整理就命中）。
+     * 挂起期间本收口不参与，两处都按「原样搬回」执行 ⇒ 不增不减（整理绝不吃件的既有裁定）。
+     * <p>
+     * ★与 P-4 同一条裁定的孪生：关掉开关<b>不许销毁</b>已经存进去的东西，只许不再往里加。
+     */
+    private boolean rawStorageRewrite;
+    /**
      * ★★<b>R92-④（审查 B2 修）：玩家放置意图的一次性登记 —— 槽号 + 那一次要放的东西的载荷键</b>。
      * <p>
      * 为什么不能只看 {@code onContentsChanged}：那条回调对<b>所有</b>写入都响，而中栏的程序化写入面比
@@ -316,7 +330,15 @@ public final class PocketInventory {
         // ★R92-④：读档不再需要专门的闭闸——"放置即配置"的准入信号是 isItemValid 登记的<b>意图</b>，
         // 而 loadGroup 走 setStackInSlot、★不经过 isItemValid ⇒ 新建的 inventory 意图恒空，读档必然不定档
         // （理由与残余窗口见 placementIntentSlot 的 javadoc；用例 ghost_memory_placement_declares 钉这条）。
-        loadGroup(root, PocketConstants.ITEM_CONTENTS, inventory.storage, "中栏");
+        // ★★R96 S4b：中栏读档<b>挂起按件收口</b> —— 存档里那一格是多少就还原多少（不摊平、不裁数）。
+        // 关着 STACK 开关 reopen 一个存着 1024 大堆的口袋，若在这里收口就是把玩家的存量就地打散。
+        // ★只圈中栏这一条：其余四组（流体交互格 / 蒸馏 / 绑定 / 插件格）本来就没有放大尺，不受影响。
+        inventory.beginStorageRawRewrite();
+        try {
+            loadGroup(root, PocketConstants.ITEM_CONTENTS, inventory.storage, "中栏");
+        } finally {
+            inventory.endStorageRawRewrite();
+        }
         loadGroup(root, PocketConstants.FLUID_INTERACTION_SLOTS, inventory.fluidInteraction, "流体交互格");
         loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput, "蒸馏输入");
         loadGroup(root, PocketConstants.BIND_SLOT, inventory.bindSlot, "绑定格");
@@ -627,9 +649,71 @@ public final class PocketInventory {
             }
 
             /**
+             * ★★<b>R96 S4b（R-2 收口）：玩家手势那一族的「按件分档」</b>。
+             * <p>
+             * 为什么收口点必须在这里（取证 r96-ret1 §1.2 行 A/B/C：GUI 写格走
+             * {@code putStack → setStackInSlot}，上游那一份<b>既不钳、也不调</b>
+             * {@code insertItem}）：{@code PocketSlots#storage} 开着
+             * {@code ModularSlot.ignoreMaxStackSize(true)} 之后，手势的<b>一次问多少件</b>由
+             * {@code getSlotLimit(index)} 那把<b>平</b>尺决定（它的契约按定义不含物品 ⇒ 表达不出
+             * 「按该件天然满量 ×16」，这是 S4 §5 记下的 R-2）。<b>落进格里的件数</b>却是另一回事 ——
+             * 这一支带 {@code stack} 参数，于是按 {@link #effectiveStorageLimit(boolean, ItemStack)}
+             * 收口就能把三族各自钉回原档位：不可叠 ⇒ 1、16 叠药材 ⇒ 16（升级 256）、普通 ⇒ 64（升级 1024）。
+             * <p>
+             * ★<b>绝不吃件</b>（R40a / R83「整理绝不吃件」同一条纪律）：钳掉的差额先走既有落点
+             * {@link #depositIntoStorage(ItemStack)}（先同类、再空槽、★跳过 ghost 声明格），
+             * 放不下那一截的场合<b>并回本格</b> ⇒ 宁可就得多、绝不凭空少。手势侧的合并腿（
+             * {@code ModularContainer.java:326-333}）是「先从游标扣件、再 {@code putStack}」，
+             * 在这里静默裁数就是<b>把玩家的东西变没</b>，所以「收口」与「不丢件」两半必须同时成立。
+             * <p>
+             * ★<b>内部整体搬运挂在本收口之外</b>（{@link #rawStorageRewrite}）：读档与整理的回写是
+             * 「原样搬回」，那里若再摊平会把玩家已经存好的大堆就地打散（与 P-4「关开关不许销毁已存进去的
+             * 东西」同一裁定）。程序化写入面（{@code insertItem} 与它内部的 {@code getStackLimit}）
+             * 一字未动 ⇒ 磁力 / ME 补满 / 产物重塞三条照旧分物品收口。
+             */
+            @Override
+            public void setStackInSlot(int slot, ItemStack stack) {
+                if (PocketInventory.this.rawStorageRewrite || stack == null || stack.stackSize <= 0) {
+                    super.setStackInSlot(slot, stack);
+                    return;
+                }
+                final int cap = PocketInventory.effectiveStorageLimit(storageStackUpgraded(), stack);
+                if (cap <= 0 || stack.stackSize <= cap) {
+                    super.setStackInSlot(slot, stack);
+                    return;
+                }
+                // ---- 本格只留 cap，差额另寻落点（顺序要紧：先把本格落定，再让余量去并别的格）----
+                final ItemStack rest = stack.copy();
+                rest.stackSize = stack.stackSize - cap;
+                stack.stackSize = cap;
+                super.setStackInSlot(slot, stack);
+                final int moved = PocketInventory.this.depositIntoStorage(rest);
+                if (moved < rest.stackSize) {
+                    // ★无处可放的那一截并回本格 ⇒ 这一格暂时超档（形态异常），但件数一件不少
+                    stack.stackSize += rest.stackSize - moved;
+                }
+            }
+
+            /**
              * ★R95 S5（STACK 位）：中栏槽位上限两档——未升级 64（上游默认，现状逐字不变）、
              * 升级 1024（= 64 × 16）。{@code insertItem} 与 vanilla 槽交互都经
              * {@link #getStackLimit(int, ItemStack)}（其内调本方法）⇒ 覆写这两点即覆盖全部写入面。
+             * <p>
+             * ★★<b>R96 S4 补一条事实（★只改注释、不改行为）</b>：从本片起本方法<b>另外还是</b>
+             * 玩家手势那一侧尺子的<b>唯一输入</b> —— {@code PocketSlots#storage} 打开
+             * {@code ModularSlot.ignoreMaxStackSize(true)} 之后，
+             * {@code ModularContainer.stackLimit} → {@code ModularSlot.getItemStackLimit} 换成读
+             * {@code getSlotStackLimit() = itemHandler.getSlotLimit(index)}，也就是<b>这里</b>。
+             * ⇒ <b>未升级档必须继续返 64</b>：这一行的常量就是"没装插件的口袋行为逐字不变"的前提，
+             * 把它改成任何与 64 有差的数都会让未升级档静默变大（用例
+             * {@code stack_limit_base_tier_unchanged_at_enforcement} 钉这一点）。
+             * 双档收口全在这里，槽件侧那个标志因此可以恒 {@code true}（升级位是会话期活值，装配期取不到）。
+             * <p>
+             * ★★<b>R96 S4b 补另一半（本方法不改行为，只补一条口径）</b>：本方法是<b>平尺</b> —— 它决定的是
+             * 「手势一次<b>问</b>多少件」，而<b>三族物品各自的档位</b>（不可叠 1 / 16 叠 16 或 256 / 普通 64
+             * 或 1024）由上面那条 {@link #setStackInSlot(int, ItemStack)} 在<b>落格那一刻</b>按件收口。
+             * 两半合起来才是「×16 生效」的完整口径；<b>不许</b>把本方法改成按物品的尺（契约不含物品，
+             * 且未升级档返 64 是 A2 与代价 31 两侧读数的共同前提）。
              */
             @Override
             public int getSlotLimit(int slot) {
@@ -875,6 +959,27 @@ public final class PocketInventory {
 
     public void markClean() {
         this.dirty = false;
+    }
+
+    /**
+     * ★★<b>R96 S4b：内部整体搬运的成对挂起口</b> —— 与 {@link #endStorageRawRewrite()} <b>成对</b>使用，
+     * 且调用方必须用 {@code try/finally} 括起来（挂起漏还 = 中栏按件收口静默失效，比不修更坏）。
+     * <p>
+     * 唯一的两个合法调用方：{@link #readFrom} 的中栏 {@code loadGroup}（读档逐字还原）与
+     * {@code NekoPocketServerHandler#performSort} 的回写循环（整理不增不减）。理由见
+     * {@link #rawStorageRewrite} 的 javadoc —— 这两处都是「先清空、再按递增槽号原样回写」的形态，
+     * 收口在那里插手会把差额摊到<b>后面那几次回写的落点</b>上 ⇒ 覆盖 = 吃件。
+     * <p>
+     * ★<b>不是</b>给玩家手势或程序化写入留的后门：{@code depositIntoStorage} / 通道回写 / 磁力
+     * 三条都落在 {@code insertItem}（自带分物品收口）或本收口之内，一律不许包进这一对里。
+     */
+    public void beginStorageRawRewrite() {
+        this.rawStorageRewrite = true;
+    }
+
+    /** ★R96 S4b：与 {@link #beginStorageRawRewrite()} 成对，恢复中栏按件收口。 */
+    public void endStorageRawRewrite() {
+        this.rawStorageRewrite = false;
     }
 
     /** 中栏 135 格（行主序 0..134，与 {@code SlotGroupWidget} 矩阵的字符序天然一致）。 */

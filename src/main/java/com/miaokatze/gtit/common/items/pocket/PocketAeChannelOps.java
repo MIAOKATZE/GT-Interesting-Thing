@@ -553,7 +553,14 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             // 槽位已被玩家换掉或掏空：本条跳过，不改写任何状态
             return new Outcome(PocketReceipt.OK, 0);
         }
-        final int requested = Math.min(slotStack.stackSize, slotStack.getMaxStackSize());
+        // ★★R96 S4（G-3 裁定算本轮缺陷）：一批的件数原来取裸 {@code getMaxStackSize()}（= 64），于是中栏
+        // 一格 1024 往元件推时每趟只走 64 ⇒ 与 README「一次搬一整堆」的表述不符，玩家读成"推得慢"。
+        // 现在与 handler、整理腿、ghost 读数共读同一条单源算式（不在本文件抄第二份三元）。
+        // ★未升级档该算式给 min(64, maxStackSize)：对 maxStackSize==64 的普通物品与旧写法<b>逐字等值</b>
+        // （反"修过头"）；不可叠物品（max==1）两档都给 1 ⇒ 本条改动不会把一件工具推成"超一叠"。
+        final int requested = Math.min(
+            slotStack.stackSize,
+            PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), slotStack));
         final IAEStackType<?> type = InfinityStackTypes.byId(typeId);
         final Found found = foundOfCached(diskuuid);
         final IMEInventoryHandler handler = found == null || type == null ? null

@@ -25,6 +25,8 @@ import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.api.UpOrDown;
+import com.cleanroommc.modularui.screen.ModularContainer;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.infinitycell.IInfinityCellItem;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig.Kind;
@@ -473,6 +475,39 @@ public class NekoPocketModelTest {
         cases.put("magnet_filter_cycle_keeps_entries", NekoPocketModelTest::magnetFilterCycleKeepsEntries);
         cases.put("magnet_filter_key_round_trip_and_malformed", NekoPocketModelTest::magnetFilterKeyRoundTripAndMalformed);
         cases.put("magnet_filter_call_chain_and_no_real_slot", NekoPocketModelTest::magnetFilterCallChainAndNoRealSlot);
+        // ---- ★R96 S4（TP-S4）堆叠打通七条：执法点被问到（A1）/ 未升级档不变（A2）/ 拖拽腿禁用 /
+        // ★槽尺是<b>平</b>的这件事的代价 / 整理不拆堆（A4）/ 出包边界按天然满量拆堆 / 推送批量的天花板。
+        // ★本批的分工：前四条<b>真驱动</b> {@code ModularContainer.stackLimit}（本轮唯一能证伪"什么都没发生"
+        //   的那条断言，r96-ret1 §1.1 的执法点），后三条只证在场（不可达的理由各写在用例注释里）。
+        // ★用例总数按"本类双冒号的方法引用"计数，起点 190 ⇒ 本批 +7 = 197。
+        cases.put(
+            "stack_limit_enforcement_asked_by_modular_container",
+            NekoPocketModelTest::stackLimitEnforcementAskedByModularContainer);
+        cases.put(
+            "stack_limit_base_tier_unchanged_at_enforcement",
+            NekoPocketModelTest::stackLimitBaseTierUnchangedAtEnforcement);
+        cases.put("storage_slot_drag_leg_disabled", NekoPocketModelTest::storageSlotDragLegDisabled);
+        cases.put(
+            "stack_slot_ruler_is_flat_across_items_cost",
+            NekoPocketModelTest::stackSlotRulerIsFlatAcrossItemsCost);
+        cases.put(
+            "sort_merge_ceiling_uses_effective_storage_limit",
+            NekoPocketModelTest::sortMergeCeilingUsesEffectiveStorageLimit);
+        cases.put(
+            "pocket_exit_paths_split_at_natural_stack_limit",
+            NekoPocketModelTest::pocketExitPathsSplitAtNaturalStackLimit);
+        cases.put(
+            "ae_push_batch_ceiling_uses_effective_storage_limit",
+            NekoPocketModelTest::aePushBatchCeilingUsesEffectiveStorageLimit);
+        // ---- ★R96 S4b（TP-S4b）两条：① 平尺之下的「按件收口」正身（真驱动 handler 的 setStackInSlot）
+        // + 内部整体搬运的挂起面；③ 出包漏斗的拆堆（★R-1 欠账收口，Panel 侧只能扫源码）。
+        // ★起点 197 ⇒ 本批 +2 = 199（分母一律取跑出来的数）。
+        cases.put(
+            "storage_slot_write_enforces_per_item_tier",
+            NekoPocketModelTest::storageSlotWriteEnforcesPerItemTier);
+        cases.put(
+            "pocket_exit_funnel_splits_at_natural_limit",
+            NekoPocketModelTest::pocketExitFunnelSplitsAtNaturalLimit);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -4019,9 +4054,13 @@ public class NekoPocketModelTest {
             source.storage()
                 .getSlots(),
             "新形状是 135 格（R80①）");
+        // ★件数一律 ≤ 天然满量（(index % 64) + 1，仍逐格不同）：R96 S4b 起中栏的 setStackInSlot 会按件
+        //   收口（超档那一截被摊到别的空格，见 PocketInventory 的那条覆写）⇒ 本 fixture 若再往格子里
+        //   直写 65…128 件，"有货的格数"就不再只反映<b>形状</b>，而混进了收口的账（拆堆那半边另有
+        //   用例 storage_slot_write_enforces_per_item_tier 钉，不靠本条的形状读数）。
         for (int index = 0; index < 128; index++) {
             source.storage()
-                .setStackInSlot(index, stackOf(1, index + 1));
+                .setStackInSlot(index, stackOf(1, (index % 64) + 1));
         }
         final NBTTagCompound root = new NBTTagCompound();
         source.writeTo(root);
@@ -10356,7 +10395,16 @@ public class NekoPocketModelTest {
     /**
      * ★R95 通道持续化：SHORT 模式的批边界<b>回满</b>与无位时的照旧衰减，两半都在
      * {@link PocketChannelState} 上真驱动（回满复用 {@code activate} 这一个装填单点 ⇒ 不是第二台状态机）；
-     * driver 的接线与服务端按钮早退走源码半边机检（World / EntityPlayer / MUI2 面板本 JVM 不可构造）。
+     * driver 的接线与服务端按钮早退走源码半边机检。
+     * <p>
+     * ★★<b>R96 S4 改口（原注释的自辩被同文件证伪，不许留）</b>：这一句原来把"扫源码"整块推给一条
+     * 做不到的前提，写作「World / EntityPlayer / <b>MUI2 的面板类在本 JVM 里造不出来</b>」。事实是
+     * ① 同文件 {@code real_slot_count_assertion_...} 早就在纯 JVM 真造 189 个 {@code ModularSlot}，
+     * ② R96 S4 的 {@code stack_limit_enforcement_asked_by_modular_container} 更进一步真调
+     * {@code ModularContainer.stackLimit}（<b>MUI2 的类可以加载、静态方法可以直接调</b>）。
+     * 真正不可构造的只有 <b>Panel 本体</b>（私有构造器 + 需要 {@code PlayerInventoryGuiData}）与
+     * {@code World}/{@code EntityPlayer} ⇒ 本用例走源码半边的<b>真实理由</b>是那两样，不是「MUI2 碰不得」。
+     * 后续任何「JVM 造不出来所以只钉文本」的说法，先在同文件找反例。
      */
     private static void channelPersistRefuelsAtBatchBoundary() {
         // ---- 行为半边：衰减 ⇒ 回满 ⇒ 不再回满时归零回收 ----
@@ -14862,5 +14910,497 @@ public class NekoPocketModelTest {
                     || PocketConfigPanel.switchState(carrier, type) == PocketConfigPanel.SwitchState.ABSENT,
                 "非 CAPACITY 型不会被这一次切换误伤（★误伤 = 一位变五位）");
         }
+    }
+
+    // ================================================================== ★R96 S4（TP-S4）堆升级打通：执法点五条 + 出包边界
+    //
+    // 本批的分工写清楚，因为它就是本轮「绿≠有效」的正身（§7.1 教训 C3）：
+    //   ① 前四条<b>真驱动</b> MUI2 的执法函数 {@code ModularContainer.stackLimit(Slot, ItemStack)} ——
+    //     R95 交付时这一族一条都没有，于是「算式全对 + 套件全绿 + 玩家实机没变化」可以同时成立
+    //     （r96-ret1 §1.1：GUI 写格走 {@code putStack → setStackInSlot}（不钳），handler 那两条覆写
+    //     只被 {@code insertItem} 问到 ⇒ <b>执法点从来没被问到</b>）。
+    //   ② 后三条只能扫源码（不可达的理由各写在用例注释的第一行）⇒ 注释里必须<b>如实写</b>
+    //     「这条只证在场，不证被问到」，不许用「用例已覆盖」的口径混过去。
+    //   ③ 第 4 条（平尺代价）是本片<b>跑出来</b>的新事实，不是计划里的条目：见它的 javadoc。
+
+    /**
+     * ★★<b>A1 本片唯一硬通货</b>：升级档下 {@code ModularContainer.stackLimit(中栏槽, 64 件栈)} 必须<b>返 1024</b>。
+     * <p>
+     * 为什么这一行就是根因：口袋 GUI 是 ModularUI2 自有容器，玩家每一条放入/合并/交换手势的件数都由这一个
+     * 静态函数决定（{@code ModularContainer.java:379-390}）。它对 modular 槽转调
+     * {@code SlotItemHandler.getItemStackLimit}，而后者<b>第一行</b>取 {@code stack.getMaxStackSize()} ⇒ 恒 64；
+     * MUI2 为此准备的唯一旁路是 {@code ModularSlot.ignoreMaxStackSize}（{@code ModularSlot.java:88}），
+     * R95 全仓 grep 该符号<b>零命中</b>。所以本用例在修前<b>必须是红的</b>（实测红：读到 64）。
+     * <p>
+     * ★被驱动的对象是<b>工厂造出来的那一个槽</b>（{@code new PocketSlots().storage(...)}），不是手搓替身；
+     * 末段再拿一个不带标志的裸 {@code ModularSlot} 做<b>阳性对照</b> —— 同一 handler、同一个栈，只差那个标志，
+     * 读数从 1024 掉回 64 ⇒ 证明变化是标志带来的，不是有人把算式改大了（算式 R95 就是对的，缺的是有人问它）。
+     */
+    private static void stackLimitEnforcementAskedByModularContainer() {
+        final NBTTagCompound root = new NBTTagCompound();
+        PocketUpgrades.install(root, PocketUpgradeType.STACK);
+        final PocketInventory inv = PocketInventory.readFrom(root);
+        // ---- 前置三条：三把尺子各自的位置（缺一半就等于"其实什么都没接上"）----
+        SimpleAssert.that(inv.storageStackUpgraded(), "前置：STACK 位生效（S1 的组合谓词为真）");
+        SimpleAssert.eq(1024, inv.storage().getSlotLimit(0), "前置：handler 侧槽位上限 = 1024（放大尺子的输入源）");
+        final ItemStack sample = new ItemStack(FakePlainItem.INSTANCE, 64, 0);
+        SimpleAssert.eq(1024, PocketInventory.effectiveStorageLimit(true, sample), "前置：单源算式升级档给 1024");
+        // ---- ★执法点本体（★断言顺序有意为之：先让"实机症状那一数字"红，再报开关缺席。
+        //      SimpleAssert 一失败即抛 ⇒ 若把开关那条放前面，修前的红只会写"标志没开"，
+        //      读起来像文本门；放在后面才能留下「期望 1024 / 实际 64」这条与玩家观察同形的证据）----
+        final ModularSlot slot = new PocketSlots().storage(inv, 0);
+        SimpleAssert.eq(1024, ModularContainer.stackLimit(slot, sample),
+            "★★A1 执法点被问到：ModularContainer.stackLimit 在升级档返 1024（修前恒返 64 ⇒ 本行修前必红）");
+        SimpleAssert.that(slot.isIgnoreMaxStackSize(),
+            "★执法开关在场：中栏槽件必须打开 ModularSlot.ignoreMaxStackSize（R95 全仓 grep 零命中 = 本次原罪现场）");
+        // ---- 阳性对照（A5 的口径在套件里的孪生腿：摘掉标志 ⇒ 同一格立刻回 64）----
+        final ModularSlot bare = new ModularSlot(inv.storage(), 0);
+        SimpleAssert.eq(Boolean.FALSE, bare.isIgnoreMaxStackSize(), "对照槽确未开标志（上游默认 false）");
+        SimpleAssert.eq(64, ModularContainer.stackLimit(bare, sample),
+            "★阳性对照：同一 handler、同一个栈，只关掉那个标志 ⇒ 1024 掉回 64 ⇒ A1 不是被算式改大骗绿的");
+    }
+
+    /**
+     * ★★<b>A2（R96 S4b 改口：这条的规格原本写错了）</b>：没装 STACK 插件的口袋，落进格里的件数
+     * <b>不是</b>「恒 64」，而是<b>按件分档</b> —— 不可叠物品 ⇒ <b>1</b>、16 叠药材 ⇒ <b>16</b>、
+     * 普通 64 叠物品 ⇒ <b>64</b>。
+     * <p>
+     * <b>原规格错在哪（★这是一条判据侧的回归，不是实现侧的）</b>：S4 那条把本用例写成「未升级档
+     * {@code == 64} 逐字不变」，而 {@code effectiveStorageLimit(false, stack)} 从来都是
+     * {@code min(64, maxStackSize)} —— 未升级档对不同物品<b>本来就该</b>返不同值（工具 1、药材 16）。
+     * 拿「恒 64」当规格，等于把 S4 那把<b>平尺</b>（{@code ignoreMaxStackSize(true)} 让
+     * {@code getSlotLimit(index)} 一律答 64）读成了规格，于是「一个格子里塞 64 把锤子」这一族在
+     * <b>判据上</b>被放行（取证 r96-s4 §5 与 R-2）。
+     * <p>
+     * ★<b>两半都要在，才是「未升级档逐字不变」</b>：
+     * ① <b>平尺半边（问多少）</b>保留原读数 —— 空槽上 {@code ModularContainer.stackLimit} 仍 64、
+     * {@code getSlotLimit} 仍 64、开标志与不开标志在 64 叠物品上等值（这三条 S4 已有，<b>逐字不动</b>）；
+     * ② <b>收口半边（落多少）</b>是本条新增的正身 —— 三族各自的档位由
+     * {@code PocketInventory} 的 {@code setStackInSlot} 收口（★摘掉那半边收口，本条的不可叠那一行
+     * 立刻红，见 §突变自证）。
+     */
+    private static void stackLimitBaseTierUnchangedAtEnforcement() {
+        final PocketInventory inv = PocketInventory.readFrom(new NBTTagCompound());
+        SimpleAssert.that(!inv.storageStackUpgraded(), "前置：没装 STACK ⇒ 组合谓词为假");
+        SimpleAssert.eq(64, inv.storage().getSlotLimit(0), "★未升级档 handler 槽位上限仍是 64 —— 这一行就是平尺那半边的前提");
+        // ---- ★★收口半边（本条改口后的正身）：三族各自回位，这才是「未升级档」的真实规格 ----
+        final ItemStack plain64 = new ItemStack(FakePlainItem.INSTANCE, 64, 0);
+        SimpleAssert.eq(64, PocketInventory.effectiveStorageLimit(false, plain64), "算式：普通 64 叠物品未升级档给 64");
+        // ★三族各写 100 号往后：收口的差额是从 0 号往后摊的（depositIntoStorage 的游标口径），
+        //   写在低号格会被下一族的摊平覆盖掉（setStackInSlot 是替换语义），那读数就成了测试自己的错。
+        inv.storage()
+            .setStackInSlot(100, new ItemStack(FakePlainItem.INSTANCE, 200, 0));
+        inv.storage()
+            .setStackInSlot(101, new ItemStack(FakeStack16Item.INSTANCE, 64, 0));
+        inv.storage()
+            .setStackInSlot(102, new ItemStack(FakeUnstackableItem.INSTANCE, 2, 0));
+        // ★断言顺序有意为之：不可叠那一族放最前 —— SimpleAssert 一失败即抛，突变自证（摘掉收口）要留下的
+        //   证据行就是「两把锤子不许叠成一格」那一条（见 r96-s4b 报告 §突变自证）。
+        SimpleAssert.eq(1, inv.storage()
+            .getStackInSlot(102)
+            .stackSize, "★★★A2 主断言（不可叠族）：未升级档仍 1 ⇒ 两把同款锤子不许叠成一格（★摘掉 setStackInSlot 收口本行必红）");
+        SimpleAssert.eq(16, inv.storage()
+            .getStackInSlot(101)
+            .stackSize, "★★按件收口（药材族）：未升级档仍 16 —— S4 平尺回归的正身（修前这一格落 64）");
+        SimpleAssert.eq(64, inv.storage()
+            .getStackInSlot(100)
+            .stackSize, "★按件收口（普通族）：未升级档仍 64，与 R95 逐字等值（★这一族的旧规格没被改口顺手动掉）");
+        // ---- ★收口 ≠ 吃件：被钳下来的差额另有落点，总数一件不少（钳与吞的分界）----
+        SimpleAssert.eq(200, countItemInStorage(inv, FakePlainItem.INSTANCE), "普通族 200 件进格 ⇒ 摊完仍 200 件");
+        SimpleAssert.eq(64, countItemInStorage(inv, FakeStack16Item.INSTANCE), "药材 64 件 ⇒ 一格 16，余 48 摊到别的空格，仍 64 件");
+        SimpleAssert.eq(2, countItemInStorage(inv, FakeUnstackableItem.INSTANCE), "两把锤子 ⇒ 两格各 1 把，★不是 1 把也不是 2 把挤一格");
+        // ---- 平尺半边（S4 既有读数，逐字保留）----
+        final ItemStack sample = new ItemStack(FakePlainItem.INSTANCE, 64, 0);
+        final ModularSlot slot = new PocketSlots().storage(inv, 0);
+        SimpleAssert.that(slot.isIgnoreMaxStackSize(),
+            "★标志恒 true（不是按开关位取值）⇒ 未升级档也开着，64 这件事必须由 handler 给而不是由标志给");
+        SimpleAssert.eq(64, ModularContainer.stackLimit(slot, sample),
+            "★★A2 平尺半边：空槽上执法点仍读 64 —— 它决定手势一次「问」多少件，与上面「落」多少件是两件事");
+        // 与不带标志的裸槽完全等值 ⇒ "开着标志的基档"与"R95 的基档"在 64 叠物品上不可分辨
+        SimpleAssert.eq(
+            ModularContainer.stackLimit(new ModularSlot(inv.storage(), 0), sample),
+            ModularContainer.stackLimit(slot, sample),
+            "★同一格两种装配读数相等 ⇒ 基档行为没被这次改动搬动（64 叠物品这一族）");
+    }
+
+    /** 中栏全格里属于该物品的件数合计（★收口是否吃件的唯一读数）。 */
+    private static int countItemInStorage(PocketInventory inv, Item kind) {
+        int total = 0;
+        for (int index = 0; index < inv.storage()
+            .getSlots(); index++) {
+            final ItemStack at = inv.storage()
+                .getStackInSlot(index);
+            if (at != null && at.getItem() == kind) {
+                total += at.stackSize;
+            }
+        }
+        return total;
+    }
+
+    /**
+     * ★<b>腿 2 的定性钉</b>：中栏必须显式 {@code canDragInto(false)}。
+     * <p>
+     * 为什么不能只开上一条标志：按住左键拖过一片格子均分（QUICK_CRAFT）的<b>资格</b>判定在 vanilla 的
+     * 静态 {@code Container.func_94527_a:727} 里按裸 {@code stack.getMaxStackSize()} 算，
+     * 那是 vanilla 方法、没有任何 per-slot 参数能把标志传进去（r96-ret7 表 B 第 3 条）⇒
+     * 唯一正解是<b>不提供这条手势</b>。先例是同文件 {@code PocketSlots#upgradeCell}（同一条 API）。
+     * <p>
+     * 判据用 {@code canDragIntoSlot()}（{@code ModularSlot.java:82-84}）—— 它就是
+     * {@code ModularContainer.canDragIntoSlot(Slot)} 的读点，所以本行钉的是<b>执法读点认得这个槽</b>，
+     * 不是钉一个字段值。
+     */
+    private static void storageSlotDragLegDisabled() {
+        final PocketInventory inv = PocketInventory.readFrom(new NBTTagCompound());
+        SimpleAssert.eq(
+            Boolean.TRUE,
+            new ModularSlot(inv.storage(), 0).canDragIntoSlot(),
+            "上游默认态必须是可以拖入（否则下面那条 false 是恒真，什么都没钉住）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            new PocketSlots().storage(inv, 0)
+                .canDragIntoSlot(),
+            "★中栏槽件的拖入资格被显式关掉（vanilla 那条静态尺子没有旁路 ⇒ 只能禁手势）");
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            new PocketSlots().upgradeCell(inv, 0)
+                .canDragIntoSlot(),
+            "仓内先例同时在位：升级插件格用的就是同一条 API（判据不是本片新造的口径）");
+    }
+
+    /**
+     * ★<b>本片跑出来的新事实（不在计划里，因此更要钉住）：那条标志给的是一把<b>平</b>尺。</b>
+     * <p>
+     * {@code ignoreMaxStackSize(true)} 把尺子换成 {@code getSlotStackLimit() = itemHandler.getSlotLimit(index)}，
+     * 而 {@code getSlotLimit(int)} 的契约<b>按定义不含物品</b> ⇒ 它表达不出「按该件天然满量 ×16 封顶」这一族：
+     * <ul>
+     * <li>64 叠物品：基档 64（不变）、升级 1024（正是用户要的）—— 计划覆盖的主用例，见 A1/A2；</li>
+     * <li>16 叠物品（药材类）：基档 16→<b>64</b>、升级 256→<b>1024</b> —— 与设计意图分叉；</li>
+     * <li>不可叠物品（max=1）：基档 1→<b>64</b>、升级 1→<b>1024</b> —— 两条点击合并/shift 入格腿在 GUI 上
+     * 可以把两把同款新斧头叠成一格。</li>
+     * </ul>
+     * ★收口仍在 handler 那一侧且<b>没有</b>被动：{@code getStackLimit} 那条覆写照旧按
+     * {@code effectiveStorageLimit} 收 256 / 1 ⇒ 磁力拾取、ME 补满、产物重塞、读档四条<b>程序化</b>路径
+     * 的每格上限一字不变，只有<b>玩家手势</b>那一族变平。本用例把这两侧的差同时钉出来，
+     * 免得日后只看到一边就说「×16 全口径生效」。
+     * <p>
+     * ⇒ 结论如实写：这一族属<b>代价</b>，见 README 代价 31；不在本片擅自动
+     * {@code PocketInventory#getSlotLimit}（那是被明令冻结的「未升级档返 64」前提）。
+     * <p>
+     * ★★<b>R96 S4b 补一句读法（本用例的断言一字未动）</b>：平尺确实还在（下面那三条 64/64/1024 就是它），
+     * 但它的作用域到此为止 —— 它只决定手势一次<b>问</b>多少件；<b>落进格里的件数</b>已由
+     * {@code PocketInventory} 的 {@code setStackInSlot} 按件收口（用例
+     * {@code storage_slot_write_enforces_per_item_tier} 与改口后的 A2）。⇒ 本用例现在读作
+     * 「<b>平尺仍在，但已由收口兜住</b>」，★不许再被读成「玩家可以往一个格子塞 64 把锤子」仍然成立。
+     */
+    private static void stackSlotRulerIsFlatAcrossItemsCost() {
+        final NBTTagCompound upRoot = new NBTTagCompound();
+        PocketUpgrades.install(upRoot, PocketUpgradeType.STACK);
+        final PocketInventory up = PocketInventory.readFrom(upRoot);
+        final PocketInventory base = PocketInventory.readFrom(new NBTTagCompound());
+        final ItemStack herb = new ItemStack(FakeStack16Item.INSTANCE, 16, 0);
+        final ItemStack axe = new ItemStack(FakeUnstackableItem.INSTANCE, 1, 0);
+        // ---- ① 平尺这件事本身（工厂槽 vs 不带标志的裸槽，同一 handler 同一栈）----
+        SimpleAssert.eq(16, ModularContainer.stackLimit(new ModularSlot(base.storage(), 0), herb), "裸尺：16 叠基档 16");
+        SimpleAssert.eq(
+            64,
+            ModularContainer.stackLimit(new PocketSlots().storage(base, 0), herb),
+            "★平尺：基档 16 叠物品现在读 64（这一族基档行为确实变了 ⇒ 不许宣称「只有升级档受影响」）");
+        SimpleAssert.eq(1, ModularContainer.stackLimit(new ModularSlot(base.storage(), 0), axe), "裸尺：不可叠基档 1");
+        SimpleAssert.eq(
+            64,
+            ModularContainer.stackLimit(new PocketSlots().storage(base, 0), axe),
+            "★平尺：不可叠物品基档现在读 64 ⇒ GUI 合并腿可以把同款不可叠物品叠成一格（README 代价 31）"
+                + "（★R96 S4b 追加口径：这一问确实还答 64，但<b>落进格里的件数</b>另由 setStackInSlot 按件收口 ⇒ 本行读作「平尺仍在、已被收口兜住」）");
+        SimpleAssert.eq(
+            1024,
+            ModularContainer.stackLimit(new PocketSlots().storage(up, 0), axe),
+            "★升级档同一族读 1024 ⇒ 平尺不按物品分档，这一点必须写在文档里而不是留给读者推");
+        // ---- ② handler 那一侧的收口<b>没有</b>被动（程序化写入面仍按该件 ×16 / 1 封顶）----
+        SimpleAssert.eq(256, PocketInventory.effectiveStorageLimit(true, herb), "算式：16 叠 ×16 = 256（不是 1024）");
+        SimpleAssert.eq(1, PocketInventory.effectiveStorageLimit(true, axe), "算式：不可叠两档都是 1");
+        final ItemStack bulk = new ItemStack(FakeStack16Item.INSTANCE, 300, 0);
+        final ItemStack rest = up.storage().insertItem(1, bulk, false);
+        SimpleAssert.that(rest != null && rest.stackSize == 44,
+            "★程序化灌 300 件 16 叠物品进升级档空格 ⇒ 只收 256、退 44（handler 那把尺子照旧分物品收口）");
+        SimpleAssert.eq(256, up.storage().getStackInSlot(1).stackSize, "落进格内的正是 256（不是平尺的 1024）");
+        SimpleAssert.eq(null, up.storage().insertItem(2, new ItemStack(FakeUnstackableItem.INSTANCE, 1, 0), false),
+            "第一把斧头进得了格");
+        SimpleAssert.that(
+            up.storage().insertItem(2, new ItemStack(FakeUnstackableItem.INSTANCE, 1, 0), false) != null,
+            "★第二把斧头被 handler 拒（insertItem 面仍 1 封顶 ⇒ 只有玩家手势那一族会变平）");
+    }
+
+    /**
+     * <b>A4：整理不许把 1024 拆回 64</b>。
+     * <p>
+     * ★如实声明：<b>这条只证在场，不证被问到</b>。理由（不是「JVM 造不出来」那种被证伪的自辩）：
+     * {@code NekoPocketServerHandler} 是 {@code gui.pocket} 的<b>包内私有 final 类</b>，本套件在
+     * {@code common.items.pocket} 包 ⇒ 类型不可见；而它每个入口第一句就取
+     * {@code panel.inventory()/panel.giveToPlayer()}，Panel 的构造需要 {@code PlayerInventoryGuiData}。
+     * 所以退化成源码判据：整理体内<b>裸 {@code getMaxStackSize()} 命中数必须为 0</b> 且
+     * {@code effectiveStorageLimit(} 在场并吃 {@code storageStackUpgraded()}（同一条单源算式，不抄第二份三元）。
+     * ★外加一条真驱动的<b>输入腿</b>（第 ④ 段）：把「同一件 200 件」喂给两档算式，读数必须给 1024 / 64 ——
+     * 这至少钉住「被读进来的是那条算式、且它确实分两档」，不至于整条用例恒真。
+     */
+    private static void sortMergeCeilingUsesEffectiveStorageLimit() {
+        final java.util.List<String> sheet = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
+        if (sheet == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketServerHandler.java ⇒ 整理腿【未验】（★不是通过）");
+            return;
+        }
+        // ---- ① 执法点：合并天花板的算式来源 ----
+        final int sort = methodStart(sheet, "void performSort() {");
+        SimpleAssert.that(sort >= 0, "★必须按签名定位 performSort（改名/挪签名即红，不接受全文件 grep）");
+        final int sortEnd = methodEnd(sheet, sort);
+        SimpleAssert.eq(0, countRegionCode(sheet, sort, sortEnd, "existing.getMaxStackSize()"),
+            "★整理体内裸 getMaxStackSize() 必须归零（R95 就是这一行把 1024 拆回 64 ⇒ 这条红即原缺陷复活）");
+        SimpleAssert.eq(1, countRegionCode(sheet, sort, sortEnd, "PocketInventory.effectiveStorageLimit("),
+            "合并天花板必须恰有一处读那条单源算式（多一处 = 第二份真相）");
+        SimpleAssert.eq(1, countRegionCode(sheet, sort, sortEnd, "storageStackUpgraded()"),
+            "算式的输入档位就在同一行（不吃运行期档位 = 双档收口断在这里）");
+        // ---- ② ghost 声明格整格不参与（R85 A5 的既有钉，本批只复述不放宽）----
+        SimpleAssert.eq(1, countRegionCode(sheet, sort, sortEnd, "isGhostItemSlot(index)"),
+            "声明格仍恰在快照那一圈早退一次（★不得因为「反正合并改了」就顺手放宽）");
+        // ---- ③ 溢出腿不许再直递整堆（与下一条用例配对）----
+        SimpleAssert.eq(0, countRegionCode(sheet, sort, sortEnd, "panel.giveToPlayer("),
+            "★整理溢出不再把整堆直接交给玩家（改走 giveAwayInNaturalChunks）");
+        SimpleAssert.eq(1, countRegionCode(sheet, sort, sortEnd, "giveAwayInNaturalChunks("),
+            "溢出腿恰有一处走拆堆出口");
+        // ---- ④ 真驱动的输入腿：两档读数各就各位（防①沦为文本门）----
+        final ItemStack pile = new ItemStack(FakePlainItem.INSTANCE, 200, 0);
+        SimpleAssert.eq(1024, PocketInventory.effectiveStorageLimit(true, pile), "升级档：200 件装得下（free = 824）");
+        SimpleAssert.eq(64, PocketInventory.effectiveStorageLimit(false, pile), "基档：仍 64（旧行为）");
+    }
+
+    /**
+     * <b>验收 5：出包边界 —— {@code >100} 的堆只许存在于口袋自己的 handler 内</b>。
+     * <p>
+     * 两条独立的数据破坏面（r96-ret7 §2.1 / §3.3 / §3.4）：
+     * ① NEI 的 {@code InfiniteStackSizeHandler.isItemInfinite} 是裸数值判据 {@code stackSize > 100}，
+     * 其驱动器 {@code NEIController.updateUnlimitedItems} 由 {@code ClientHandler} <b>每客户端 tick</b> 扫
+     * {@code InventoryPlayer}，命中即 {@code replenishInfiniteStack} ⇒ <b>把该格件数改写成 111</b>；
+     * ② vanilla {@code ItemStack.writeToNBT} 用 {@code setByte("Count", ...)}，
+     * {@code EntityItem} 的掉落物同病 ⇒ 1024 掉成实体读回是 0（件数蒸发）。
+     * 口袋自己的 handler 存档侧本仓早已是 INT 口径（{@code PocketInventory} 读档那段），
+     * <b>那条加固不覆盖原版背包与原版实体</b> ⇒ 离开口袋那一刻必须按天然 {@code maxStackSize} 拆堆。
+     * <p>
+     * ★如实声明：本条同样是「只证在场」的源码半边（理由同 A4：{@code giveToPlayer} 在 Panel 里、
+     * 且原版 {@code InventoryPlayer} 需要 {@code EntityPlayer}）。行为半边由两处真实约束顶上：
+     * 拆堆用的尺子是 {@code getMaxStackSize()}（≤ 64 ⇒ 同时躲开 ① 的 100 阈与 ② 的 byte 宽），
+     * 且全仓「直插原版背包 / 掉落」的<b>落点数被逐文件点名钉死</b> ⇒ 长出第二条整堆外运的腿立刻红。
+     * <p>
+     * ★★<b>欠账登记 → ★R96 S4b 已闭合（口径随之改口，谓词一字未动）</b>：
+     * {@code NekoPocketPanel#evictFromSlot} 的余量仍写作 {@code giveToPlayer(rest)}，但 S4b 把
+     * <b>拆堆上移到了 {@code giveToPlayer} 这一个漏斗</b>（三个出口共用），所以那一行交出去的已经不是整堆。
+     * 本用例这条计数（恰 1）继续钉住「余量只有这一个出口，没有长出第二条整堆外运的腿」；
+     * ★拆堆本体由同批新增的 {@code pocket_exit_funnel_splits_at_natural_limit} 钉（正身 + 三条一起钉，
+     * 不留恒真空间）。README 代价 37 的欠账段同步改口。
+     */
+    private static void pocketExitPathsSplitAtNaturalStackLimit() {
+        final java.util.List<String> sheet = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        if (sheet == null || panel == null) {
+            System.out.println("[NOTE] 读不到 handler / Panel 源 ⇒ 出包边界【未验】（★不是通过）");
+            return;
+        }
+        // ---- ① 拆堆出口本体 ----
+        final int chunk = methodStart(sheet, "private void giveAwayInNaturalChunks(ItemStack stack) {");
+        SimpleAssert.that(chunk >= 0, "★按签名定位拆堆出口（改名/挪签名即红）");
+        final int chunkEnd = methodEnd(sheet, chunk);
+        SimpleAssert.eq(1, countRegionCode(sheet, chunk, chunkEnd, "stack.getMaxStackSize()"),
+            "★拆堆用的尺子是天然满量（不是口袋那把放大尺 —— 出包后的世界是原版背包，那里的尺子就是它）");
+        SimpleAssert.eq(0, countRegionCode(sheet, chunk, chunkEnd, "effectiveStorageLimit"),
+            "★出包面不得改吃口袋的槽位上限（否则 1024 又被整块递出去，本条恒真）");
+        SimpleAssert.eq(1, countRegionCode(sheet, chunk, chunkEnd, "panel.giveToPlayer(chunk)"),
+            "每块（≤ 64）各交一次，★且交的是 chunk 不是 stack 本体");
+        SimpleAssert.eq(1, countRegionCode(sheet, chunk, chunkEnd, "chunk.stackSize = Math.min("),
+            "块长 = min(天然满量, 剩余) ⇒ 收敛：件数不多不少，循环不会漏尾");
+        // ---- ② 口袋两目录内「整堆外运」的落点穷举（新写法即红）----
+        // ★口径限定在 pocket 两目录：全仓另有 reincarnation 一套自己的掉落口（与本模块无关），
+        //   拿全域计数当 0 会把别人的既有代码算成本片的账（实测 4 ≠ 口袋的 0）。
+        final int dropCalls = countPocketSourceLinesMatching("dropPlayerItemWithRandomChoice\\(", true);
+        final int intoVanilla = countPocketSourceLinesMatching("\\.addItemStackToInventory\\(", true);
+        final int tossCalls = countPocketSourceLinesMatching("\\.entityDropItem\\(", true);
+        if (dropCalls < 0 || intoVanilla < 0 || tossCalls < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ 出包落点穷举半边【未验】（★不是通过，只跑完上面那一段）");
+            return;
+        }
+        SimpleAssert.eq(0, dropCalls,
+            "★口袋目录内 dropPlayerItemWithRandomChoice 必须恒 0（EntityItem 的 Count 走 vanilla byte，1024 落即坏）");
+        SimpleAssert.eq(3, intoVanilla,
+            "★进原版背包的落点在口袋目录内恰 3（Panel#giveToPlayer / Panel#moveToPlayer / PocketSlots#returnToPlayer，"
+                + "读到 " + intoVanilla + " ⇒ 长出第四条整堆外运的腿，或原有某条被拆堆口取代后少了一处）");
+        SimpleAssert.eq(2, tossCalls, "掉脚下的落点在口袋目录内恰 2（两条兜底：背包满则掉脚下，各一处）");
+        // ---- ③ 三个落点的<b>定义</b>逐一点名（数对了还要知道是谁）----
+        SimpleAssert.eq(1, countCodeLinesIn(panel, "void giveToPlayer(ItemStack stack) {"), "giveToPlayer 定义恰 1");
+        SimpleAssert.eq(1, countCodeLinesIn(panel, "private int moveToPlayer(ItemStack toPlayer) {"),
+            "moveToPlayer 定义恰 1（R84 的「一次调用不循环」形状仍在）");
+        // ---- ④ ★R96 S4b：余量仍只这一个出口，但拆堆已上移到 giveToPlayer 漏斗（欠账闭合）----
+        SimpleAssert.eq(1, countCodeLinesIn(panel, "giveToPlayer(rest)"),
+            "★余量交经漏斗的落点仍恰 1（读到 2 = 又添一条同类整堆外运；读到 0 = 漏斗被绕过 ⇒ 两种都要连本门与 README 代价 37 一起改口径）"
+                + "；S4b 起这一行交出去的已不是整堆，拆堆本体见 pocket_exit_funnel_splits_at_natural_limit");
+    }
+
+    /**
+     * <b>腿 8 / G-3（用户裁定算本轮缺陷）：推送向来源每批的件数</b>。
+     * <p>
+     * 原来 {@code PocketAeChannelOps#inject} 取 {@code min(stackSize, getMaxStackSize())} ⇒ 中栏一格
+     * 1024 往元件推时每趟只走 64（吞吐口径，不丢件，但与「一次搬一整堆」的表述不符）。
+     * ★如实声明：本条<b>只证在场，不证被问到</b>——{@code inject} 需要真的 {@code IAEStackType} 与
+     * {@code IMEInventoryHandler}，纯 JVM 里代理不出这两族（同 R92 段既有的实机项口径），
+     * 所以判据退到「体内裸 {@code slotStack.getMaxStackSize()} 归零 + 单源算式在场并吃档位」，
+     * 再由第 ③ 段用两档真读数兜住「读的不是第二份三元」。
+     */
+    private static void aePushBatchCeilingUsesEffectiveStorageLimit() {
+        final java.util.List<String> ops = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketAeChannelOps.java");
+        if (ops == null) {
+            System.out.println("[NOTE] 读不到 PocketAeChannelOps.java ⇒ 推送批量腿【未验】（★不是通过）");
+            return;
+        }
+        final int inject = methodStart(ops, "public Outcome inject(SourceSlot source, String diskuuid, String typeId) {");
+        SimpleAssert.that(inject >= 0, "★按签名定位 inject（改名/挪签名即红）");
+        final int injectEnd = methodEnd(ops, inject);
+        SimpleAssert.eq(0, countRegionCode(ops, inject, injectEnd, "slotStack.getMaxStackSize()"),
+            "★推送批量的裸 getMaxStackSize() 必须归零（G-3 那条缺陷的正身）");
+        SimpleAssert.eq(1, countRegionCode(ops, inject, injectEnd, "PocketInventory.effectiveStorageLimit("),
+            "批量上限恰一处读单源算式（抽取腿那两处不在本方法体内，故仍为 1）");
+        SimpleAssert.eq(1, countRegionCode(ops, inject, injectEnd, "session.storageStackUpgraded()"),
+            "算式的档位来自会话谓词（与 handler / 整理腿同一个来源）");
+        // ---- ③ 两档真读数：max=64 的物品未升级档与旧写法逐字等值（反「修过头」）----
+        final ItemStack sample = new ItemStack(FakePlainItem.INSTANCE, 64, 0);
+        SimpleAssert.eq(64, PocketInventory.effectiveStorageLimit(false, sample),
+            "★未升级档 min(64,64)=64 ⇒ 这一族的批量一字不变（旧写法就是 getMaxStackSize()=64）");
+        SimpleAssert.eq(1024, PocketInventory.effectiveStorageLimit(true, sample), "升级档一批可以走满一整格 1024");
+    }
+
+    // ================================================================== ★R96 S4b（TP-S4b）两半：按件收口 + 出包漏斗拆堆
+    //
+    // S4 把执法点接通了（A1 红→绿为证），但那把尺子是<b>平</b>的（r96-s4 §5 / R-2）：
+    // {@code getSlotLimit(index)} 的契约不含物品 ⇒ 一次手势「问」多少件分不出三族。本片补的是另一半：
+    // <b>落进格里的件数</b>由 handler 的 {@code setStackInSlot}（它带 stack 参数）按件收口。
+    // ★A2 因此改口成按件断言，本节的 N1 再钉三件 A2 装不下的事（升级档分档 / 不吃件 / 挂起面）。
+
+    /**
+     * ★★<b>S4b-N1：按件收口的另一半 + 内部整体搬运的挂起面（全条真驱动，无源码扫描）</b>。
+     * <p>
+     * 与 A2 的分工：A2 管「未升级档三族各回各位」，本条管三件 A2 装不下的事 ——
+     * ① <b>升级档</b>的按件分档（药材 256、不可叠仍是 1，★不是平尺那个 1024）；
+     * ② ★<b>收口绝不吃件</b>：钳下来的差额另找落点，全格合计一件不少（这一条是「钳」与「吞」的分界 ——
+     * 手势侧的合并腿是「先从游标扣件、再 {@code putStack}」，在这里静默裁数就是把玩家的东西变没）；
+     * ③ ★<b>内部整体搬运挂起收口</b>：读档与整理的回写是「先清空、再按递增槽号原样写回」，收口插手会把
+     * 差额摊到后面那几次回写的落点上 ⇒ 被覆盖 = 吃件；同时钉<b>挂起不漏还</b>（出了那一段收口立刻回来，
+     * 漏还 = 静默失效，比不修更坏）。
+     */
+    private static void storageSlotWriteEnforcesPerItemTier() {
+        final NBTTagCompound upRoot = new NBTTagCompound();
+        PocketUpgrades.install(upRoot, PocketUpgradeType.STACK);
+        final PocketInventory up = PocketInventory.readFrom(upRoot);
+        // ---- ① 升级档按件分档：平尺一律答 1024，落到格里的数由收口给 ----
+        SimpleAssert.eq(1024, up.storage()
+            .getSlotLimit(0), "前置：平尺读 1024（一次可以问 1024 件 ⇒ 问多少与落多少必须分开钉）");
+        up.storage()
+            .setStackInSlot(0, new ItemStack(FakeStack16Item.INSTANCE, 300, 0));
+        SimpleAssert.eq(256, up.storage()
+            .getStackInSlot(0)
+            .stackSize, "★★升级档药材落格 = 16 × 16 = 256（★不是平尺的 1024；设计意图 r96-s4 §5 表末列）");
+        SimpleAssert.eq(300, countItemInStorage(up, FakeStack16Item.INSTANCE),
+            "★300 件药材进格 ⇒ 一格 256 + 余 44 摊到别的空格，仍 300 件（钳 ≠ 吞）");
+        // ★另起一格一份档：不可叠那一族单独验，免得与上面摊出去的药材撞格（setStackInSlot 是替换语义）
+        final NBTTagCompound axeRoot = new NBTTagCompound();
+        PocketUpgrades.install(axeRoot, PocketUpgradeType.STACK);
+        final PocketInventory axes = PocketInventory.readFrom(axeRoot);
+        axes.storage()
+            .setStackInSlot(0, new ItemStack(FakeUnstackableItem.INSTANCE, 64, 0));
+        SimpleAssert.eq(1, axes.storage()
+            .getStackInSlot(0)
+            .stackSize, "★★升级档不可叠物品落格仍是 1（★S4 平尺最坏的那一族：64 把锤子挤进同一个格）");
+        SimpleAssert.eq(64, countItemInStorage(axes, FakeUnstackableItem.INSTANCE),
+            "★64 把锤子 ⇒ 64 个格各一把，一件不少");
+        int stackedTwice = 0;
+        for (int index = 0; index < axes.storage()
+            .getSlots(); index++) {
+            final ItemStack at = axes.storage()
+                .getStackInSlot(index);
+            if (at != null && at.getItem() == FakeUnstackableItem.INSTANCE && at.stackSize > 1) {
+                stackedTwice++;
+            }
+        }
+        SimpleAssert.eq(0, stackedTwice, "★全格扫一遍：没有任何一格把不可叠物品叠到 1 件以上（形态异常那一族已闭合）");
+        // ---- ③ ★内部整体搬运挂起收口（读档 / 整理回写的形状），且挂起不漏还 ----
+        final PocketInventory base = PocketInventory.readFrom(new NBTTagCompound());
+        base.beginStorageRawRewrite();
+        try {
+            base.storage()
+                .setStackInSlot(0, new ItemStack(FakeStack16Item.INSTANCE, 64, 0));
+            SimpleAssert.eq(64, base.storage()
+                .getStackInSlot(0)
+                .stackSize, "★挂起期间原样搬回：64 件药材整堆进格，既不裁也不摊（关着 STACK 的档里存着大堆 = 这一支的真实场景）");
+        } finally {
+            base.endStorageRawRewrite();
+        }
+        base.storage()
+            .setStackInSlot(1, new ItemStack(FakeStack16Item.INSTANCE, 40, 0));
+        SimpleAssert.eq(16, base.storage()
+            .getStackInSlot(1)
+            .stackSize, "★★出了那一段收口立刻回来 ⇒ 挂起只圈读档／整理那几行，漏还（忘了 end）本行必红 = 静默失效不放过");
+        SimpleAssert.eq(104, countItemInStorage(base, FakeStack16Item.INSTANCE),
+            "★挂起段内外加起来仍是一件不少（64 原样 + 40 摊平）⇒ 收口与挂起两条都不许改变件数");
+    }
+
+    /**
+     * <b>S4b-③：出包漏斗 {@code NekoPocketPanel#giveToPlayer} 按天然满量拆堆</b>（R-1 欠账的正解）。
+     * <p>
+     * ★如实声明：<b>这条只证在场，不证被问到</b>，理由与 A4 / 出包边界同一条 ——
+     * {@code giveToPlayer} 在 Panel 里（私有构造器 + 需要 {@code PlayerInventoryGuiData}），而它第一句就要
+     * 真 {@code EntityPlayer}；本套件在 {@code common.items.pocket} 包，类型也不可见。
+     * ★<b>不是</b>「JVM 造不出来」那种被 A1 证伪过的自辩：这里缺的是真玩家，不是 MUI2。
+     * 所以判据退到源码半边，但<b>三条一起钉</b>，不留恒真空间：尺子来源、落点穷举不被撑宽、
+     * 以及 ★R83 那条死循环纪律（循环条件必须读本体剩余，不能读原版入参）。
+     * <p>
+     * ★行为半边的硬依据在档：{@code EntityItem.writeToNBT} 用 {@code setByte("Count")}（&gt;127 即坏，
+     * r96-ret7 §3.4）＋ NEI 把 {@code stackSize > 100} 当无限物品并每客户端 tick 扫 {@code InventoryPlayer}
+     * 改写成 111（r96-ret7 §3.3）⇒ 每块 ≤ 天然满量（≤ 64）同时躲开两条。
+     */
+    private static void pocketExitFunnelSplitsAtNaturalLimit() {
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒ 出包漏斗拆堆【未验】（★不是通过）");
+            return;
+        }
+        // ---- ① 漏斗本体：按签名定位，★改名/挪走即红（不接受"全文件 grep 到就算"）----
+        final int give = methodStart(panel, "void giveToPlayer(ItemStack stack) {");
+        SimpleAssert.that(give >= 0, "★按签名定位 giveToPlayer（三个出口共用的那一个漏斗）");
+        final int giveEnd = methodEnd(panel, give);
+        SimpleAssert.eq(1, countRegionCode(panel, give, giveEnd, "stack.getMaxStackSize()"),
+            "★尺子是天然满量（恰一处）——不是 effectiveStorageLimit：出包后的世界是原版背包，那里的尺子就是天然满量");
+        SimpleAssert.eq(0, countRegionCode(panel, give, giveEnd, "effectiveStorageLimit"),
+            "★出包面不得改吃口袋槽位上限（否则 1024 又被整块递出去，NEI 111 与 byte 截断两条同时踩）");
+        SimpleAssert.eq(1, countRegionCode(panel, give, giveEnd, "stack.stackSize > natural"),
+            "★收敛判据读的是<b>本体剩余</b>（每轮 splitStack 递减）——R83 那版拿原版入参 stackSize 当进度 = 成功一圈即被置 0 ⇒ 主线程死循环");
+        SimpleAssert.eq(1, countRegionCode(panel, give, giveEnd, "stack.splitStack(natural)"),
+            "★逐块切出去的是副本，剩余留在本体上 ⇒ 块长 = natural，尾块由下面那一次交付收尾");
+        // ---- ② ★R-1 欠账闭合：evictFromSlot 的余量仍在同一漏斗里（计数仍恰 1 = 没长出第二条整堆外运的腿）----
+        final int evict = methodStart(panel, "private void evictFromSlot(int index) {");
+        SimpleAssert.that(evict >= 0, "★按签名定位 evictFromSlot（R-1 那条欠账的现场）");
+        SimpleAssert.eq(1, countRegionCode(panel, evict, methodEnd(panel, evict), "giveToPlayer(rest)"),
+            "★余量仍恰一处交经漏斗（读到 2 = 长出第二条整堆外运的腿；读到 0 = 漏斗被绕过 ⇒ 两种都要连本门与 README 一起改口径）");
+        // ---- ③ 落点穷举仍成立：拆堆不得顺手长出第四个进背包口 / 第三个掉落口 ----
+        final int intoVanilla = countPocketSourceLinesMatching("\\.addItemStackToInventory\\(", true);
+        final int tossCalls = countPocketSourceLinesMatching("\\.entityDropItem\\(", true);
+        final int dropCalls = countPocketSourceLinesMatching("dropPlayerItemWithRandomChoice\\(", true);
+        if (intoVanilla < 0 || tossCalls < 0 || dropCalls < 0) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ 出包落点穷举半边【未验】（★不是通过，只跑完上面两段）");
+            return;
+        }
+        SimpleAssert.eq(3, intoVanilla,
+            "★进原版背包的落点在口袋目录内仍恰 3（giveToPlayer 的单块交付 / moveToPlayer / PocketSlots#returnToPlayer）"
+                + "⇒ 读到 " + intoVanilla + " = 拆堆之外又添一条整堆外运的腿");
+        SimpleAssert.eq(2, tossCalls, "★掉脚下的落点仍恰 2（单块交付那一条 + 流体侧兜底，循环里不许再套投口）");
+        SimpleAssert.eq(0, dropCalls, "★vanilla 掉落口在口袋目录内恒 0（EntityItem 的 Count 走 byte，整堆掉出去即蒸发）");
     }
 }
