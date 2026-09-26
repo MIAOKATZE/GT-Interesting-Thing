@@ -19,10 +19,25 @@ import com.gtnewhorizon.gtnhmixins.LateMixin;
  * （见 {@code gradle.properties} 的 {@code modId = gtit} → 只有 {@code mixins.gtit.json} 会被自动施加），
  * 因此额外放置的 {@code mixins.gtit.ae2.json} 不会被自动注册，必须由代码显式提供。
  * <p>
- * <b>为什么不能靠 required=false / @Mixin(targets=...) + require=0</b>：Mixin 的 target 类缺失报错来自
- * {@code Option.DEBUG_TARGETS} 的严格性检查，与 json 的 {@code required} 无关，两种写法都防不住
- * 「AE2 未安装 → 启动崩溃」；{@code IMixinConfigPlugin#shouldApplyMixin} 也只解决单条 mixin 的取舍，
- * 配置本身仍需先被注册。参见 {@code plan/sum/13_MDK_Fix_sum.md:17} 记录的「靠 required:false 导致静默失效」教训。
+ * <b>为什么仍然不能靠 required=false / {@code @Mixin(targets="…")} + require=0 这类「声明式可选」写法</b>：
+ * ★先更正一处本注释历史上说错的话——「target 类缺失会<b>导致启动崩溃</b>」是<b>错的</b>，
+ * 已被本仓归档的专用服冒烟日志证否：同一轮里就有两例目标类缺失只降级成 WARN 而<b>没有</b>中断启动
+ * （{@code plan/smoketest/runs/20260909-090709-repeatable_pass/fml-server-latest.log:1013}
+ * 的 {@code @Mixin target net.minecraft.client.renderer.RenderBlocks was not found
+ * mixins.gtnhlib.early.json:…}，与 {@code :2284}（其配对 WARN 在 {@code :2282}）的
+ * {@code @Mixin target MoreFunQuicksandMod.main.MFQM was not found mixins.endlessids.late.json:…}），
+ * 两处之后 Mixin 都照常 {@code Preparing …} 下一个 config，同轮 {@code markers.log:22} 为
+ * {@code FINAL PASS} 且断言 {@code no_crash_report new=0 unexpected_exception=0}。
+ * 机制面互证：该报错的严格性开关是 {@code Option.DEBUG_TARGETS}，而 gtnhgradle 2.0.20 整个 jar 里
+ * {@code DEBUG_TARGETS} token 出现 <b>0</b> 次（其 {@code MixinModule} 不注入该项），默认值即为关。
+ * <p>
+ * 但这<b>不改变</b>结论，只把失败形态改写得<b>更糟</b>：目标缺失不崩 ⇒ 「AE2 未安装」根本不需要防，
+ * 真正防不住的是「config 压根没被注册 ⇒ 一行 WARN 都没有、mixin 静默不施加」。
+ * {@code required=false} 与 {@code shouldApplyMixin} 都只在<b>配置已被注册</b>之后才起作用
+ * （后者还只解决单条 mixin 的取舍），而上一段已经说明第二份 json 不会被自动注册；
+ * 所以「靠 required:false 兜住可选依赖」这条路本身就是空的。
+ * 参见 {@code plan/sum/13_MDK_Fix_sum.md:17} 记录的「靠 required:false 导致静默失效」教训——
+ * 那条教训的措辞（「静默失效」而非「崩溃」）与本更正完全一致。
  * <p>
  * <b>本类的引导时机</b>：unimixins 内置的
  * {@code com.gtnewhorizon.gtnhmixins.mixins.LateMixinOrchestrationMixin#beforeConstructing} 在 FML
