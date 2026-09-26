@@ -659,9 +659,18 @@ public final class NekoPocketPanel implements PocketSession {
      * ★这条腿是 R96 S2 收口的六处旁路之一：留成位图直读 ⇒ 玩家在配置面板里把常开关掉，
      * 按钮依旧"已在常开态"早退，而 {@code PocketChannelDriver} 那一侧已经按开关停了回满 ⇒
      * <b>通道既不续批也不能手开</b>，两头都不通（比"开关无效"更坏）。
+     * <p>
+     * ★★★<b>R96 S5 补第二问（验收 B4：假读数门）</b>：这一判现在除位图外<b>再问一次"有活通道在场"</b>
+     * （唯一判据落在 {@link ItemNekoDimensionPocket#isChannelWorkLive}，读的是 driver 每批边界续写的
+     * {@code UI_WORK_TICKS} —— 那条同步到客户端的真读数；为什么不问 {@code PocketChannelManager#peek}
+     * 的理由原文写在那里）。★一次改口三处同时闭：状态行的"通道常开中"、通道按钮 tooltip 的注记、
+     * 以及客户端吞点击那一腿，全都要么一起真、要么一起假，不留第二处口径。
+     * ★副作用是<b>期望的</b>：位在场而通道没起来（从没开过界面 / 一枚元件都没绑）时按钮不再被吃掉，
+     * 玩家那一按会走到服务端常开支，由同一个激活口把道起起来（★仍不扣费、仍不进冷却）。
      */
     boolean channelPersistActive() {
-        return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CHANNEL_PERSIST);
+        return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CHANNEL_PERSIST)
+            && ItemNekoDimensionPocket.isChannelWorkLive(carrierStackLive());
     }
 
     // ------------------ ★R95 S5：升级位的面板读口（双端各读自己那份载体：服务端权威、客户端 vanilla 镜像；

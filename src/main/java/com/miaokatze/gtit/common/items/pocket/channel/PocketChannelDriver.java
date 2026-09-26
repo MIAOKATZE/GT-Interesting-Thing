@@ -46,16 +46,23 @@ import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
  * lang 侧翻新属 S2b；{@code tooltip.7} 说的是"内容随物品丢"，与主手口径无关，不得混引。
  * 对照参考：GT5U {@code ItemGTToolbox.onUpdate} 对全部 36 格都跑，R95 起本仓与它同形。
  * <p>
- * <b>本方法每 tick 做且仅做三件事</b>（R57c①）：
+ * <b>本方法每 tick 做且仅做三件事</b>（R57c①；★R96 S5 给第 1 条补了"有位 ⇒ 保证有道"那一腿）：
  * <ol>
- * <li>没有活通道 ⇒ 一次 {@code Map.get} 判空即返回（<b>不建条目、不读 NBT、不分配 ops</b>）；</li>
+ * <li>没有活通道 ⇒ 先一次 {@code Map.get} 判空；★真空态若持续化<b>当前生效</b>且这一枚承载栈正是
+ * 活会话认的那一枚，就经 {@link PocketChannelManager#ensurePersistentShortChannel} 就地装填一条
+ * SHORT 通道（R95 缺的正是这一腿：位一置起，通道谁也开不起来 ⇒ 界面三处承诺全成了假读数）。
+ * 三条守卫的顺序按成本排：{@code peek}（Map）→ 载体身份（引用比较）→ 位图（两次 byte 读）——
+ * ★"不建条目、不分配 ops"照旧成立，被放宽的只有"不读 NBT"半句，且只在有活会话的口袋里发生
+ * （没开过界面 ⇒ 第二道守卫就把这次读省掉了）；</li>
  * <li>有活通道 ⇒ {@code PocketChannelManager.INSTANCE.tickShortChannel(uuid, bindings, ops,
  * {@link PocketChannelManager#pairsPerBatchFromConfig()})}；绑定表取激活时快照
  * （{@link PocketChannelState#sessionBindings()}），<b>绝不</b>每 tick 现解 NBT（R53c）；
  * {@code pairs} 走配置，不写字面量（R58b）；</li>
  * <li>跑完一批后把 {@code work} 位的剩余 tick 续到"本通道剩余总长"，通道自然结束即由
  * {@code ItemNekoDimensionPocket.onUpdate} 的递减归零自清理（R37/R62：动画走 NBT 相对倒计时，
- * 冷却才走墙钟）。</li>
+ * 冷却才走墙钟）。★R96 S5 起这一条同时是帧带「常亮」的<b>真读数来源</b>（B4 的裁定，见
+ * {@code ItemNekoDimensionPocket#isChannelWorkLive}）：续上去的量 ≥ 一整拍 ⇒ 活通道在跑时
+ * 该键永不 lapse，位在场而通道没跑时它必然 lapse。</li>
  * </ol>
  * 推送 / 拉取的分支<b>不在本类</b>：那是 {@code openChannel} 激活时算一次的 {@code pullMode}（R39b），
  * 本类只是把这一拍交给状态机。
@@ -82,6 +89,25 @@ public final class PocketChannelDriver {
             .getId();
         final PocketChannelState state = PocketChannelManager.INSTANCE.peek(uuid);
         if (state == null || state.idle()) {
+            // ★★R96 S5（TP-S5 决定性的那条腿）：把「有位常驻」接到一条真的会走的生产路上。
+            // R95 的旧形状是「这一支无条件 retireIdleSession + return」，而全仓唯一能造出 SHORT 状态的
+            // openChannel 又排在 NekoPocketServerHandler 同方法那条持续化早退<b>之后</b> ⇒
+            // 位一置起就没人能把通道开起来，而下面那条回满腿要求 ranBatch、ranBatch 又要求已有活通道
+            // ⇒ 闭环死锁（取证 r96-ret1 §2.4/§2.5：算式对，执法点从来没被问到）。
+            // ★三条前置一条都不省：① 判据是组合谓词（关着开关 ⇒ 这条路跟着断，S1 的语义不被绕过）；
+            // ② 会话必须在场且认的就是<b>这一枚</b>承载栈（缺这一判就是把 A 的绑定写到 B 的档上，
+            //   R85 D1 那一族的反例）；③ 绑定表非空由激活口自己把关（空表 ⇒ 一条只会空跑、还会把
+            //   会话永久钉在内存里的通道）。装填只在真空态发生一次 ⇒ 常态成本仍是一次 Map.get。
+            if (PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
+                final PocketSession pending = PocketSessions.peek(uuid);
+                if (pending != null && pending.carrierStack() == stack && PocketChannelManager.INSTANCE
+                    .ensurePersistentShortChannel(uuid, stack, pending.bindings(), pending.filters())) {
+                    // 本拍只装填就返回（与 openChannel 的短效支同口径：倒计时刚装整拍，下一拍才到期）。
+                    // ★刻意不在此刻写 work 位：帧带的常亮由批边界那条续写负责（B4 的"真读数"裁定），
+                    //   在这里抢写一次反而让"还没穿过一件货"的那一拍亮起来。
+                    return;
+                }
+            }
             retireIdleSession(uuid);
             return;
         }

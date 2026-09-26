@@ -33,6 +33,7 @@ import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.infinitycell.IInfinityCellItem;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig.Kind;
+import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelDriver;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.CoinGate;
@@ -551,6 +552,22 @@ public class NekoPocketModelTest {
             NekoPocketModelTest::mageCoinChargeProductionAssemblyOrder);
         cases.put("mage_coin_charge_off_is_zero_change_and_zero_nbt_write",
             NekoPocketModelTest::mageCoinChargeOffIsZeroChangeAndZeroWrite);
+        // ---- ★R96 S5（TP-S5）通道持续化四条反证：可达性 / 闭环 / 瞬时通道 / 假读数门。
+        //   ★B1、B2 在修前必须是红的（红→绿两次输出入台账 = §7.1 教训 C3 的强制要求）：R95 把这一型
+        //   记为完成而实机什么都没发生，四条里没有一条钉算式（算式一直是对的），钉的全是执法点被问到。
+        //   ★本批起点 183 ⇒ 本批 +4 = 187（分母一律取跑出来的数，不取注册计数）。
+        cases.put(
+            "channel_persist_activation_reachable_from_production",
+            NekoPocketModelTest::channelPersistActivationReachableFromProduction);
+        cases.put(
+            "channel_persist_closed_loop_never_presses_button",
+            NekoPocketModelTest::channelPersistClosedLoopNeverPressesButton);
+        cases.put(
+            "channel_persist_burst_still_payable",
+            NekoPocketModelTest::channelPersistBurstStillPayable);
+        cases.put(
+            "channel_always_on_promise_requires_live_channel",
+            NekoPocketModelTest::channelAlwaysOnPromiseRequiresLiveChannel);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -10482,9 +10499,12 @@ public class NekoPocketModelTest {
             final int tickEnd = methodEnd(driver, tick);
             SimpleAssert.that(tick >= 0, "★必须按签名定位 driver.onItemTick（改名/挪签名即红）");
             final int ranBatch = firstCodeLineWith(driver, tick, tickEnd, "if (ranBatch)");
+            // ★R96 S5 改口（断言改、用例名不动）：这一判的位图读点从 1 处变 2 处 —— 原来只有批边界
+            // 回满那一处，S5 在真空支又补了一处"有位 ⇒ 保证有道"。因此"回满紧随位判定"必须<b>在
+            // if (ranBatch) 之后</b>找那一位判定，否则读到的是真空支那一处，行序判据就空转了。
             final int persistIf = firstCodeLineWith(
                 driver,
-                tick,
+                ranBatch,
                 tickEnd,
                 "PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)");
             final int refuel = firstCodeLineWith(
@@ -10497,18 +10517,35 @@ public class NekoPocketModelTest {
             SimpleAssert.eq(
                 1,
                 countRegionCode(driver, tick, tickEnd, "state.activate("),
-                "★全方法体内 activate 恰 1 处（批次装填单点只有一个，不回满第二条路）");
+                "★全方法体内 activate 恰 1 处（批次装填单点只有一个，不回满第二条路；★R96 S5 的真空支"
+                    + "那条腿走 PocketChannelManager 的激活口，不在这里多出一条 activate）");
+            SimpleAssert.eq(
+                2,
+                countRegionCode(driver, tick, tickEnd, "isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)"),
+                "★持续化读点恰 2 处 = 批边界回满 + 真空支激活（读到 1 = S5 那条腿被摘掉 ⇒ 激活真空回来；"
+                    + "读到 3 = 长出第三个说法）");
             SimpleAssert.eq(
                 0,
                 countRegionCode(driver, tick, tickEnd, "remainingBatches = "),
                 "driver 不自己写批次字段（批次权威只在 PocketChannelState）");
         }
-        // ---- 源码半边②：服务端按钮早退在三重点检之前（伪造包 / 旧客户端同样被挡）----
+        // ---- 源码半边②：服务端常开支（★R96 S5 整段重写，见下方删除说明）----
         final java.util.List<String> handler = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
         if (handler == null) {
-            System.out.println("[NOTE] 读不到 NekoPocketServerHandler.java ⇒ 「performChannelRequest 早退」的半边【未验】");
+            System.out.println("[NOTE] 读不到 NekoPocketServerHandler.java ⇒ 「performChannelRequest 常开支」的半边【未验】");
         } else {
+            // ★★R96 S5（TP-S5 验收 5）本用例的旧钉 <b>已被删除</b>，不是被改弱：
+            //   被删的是这三行 + 那两条断言 ——
+            //     final int ret = firstCodeLineWith(handler, receipt, reqEnd, "return;");
+            //     final int identify = firstCodeLineWith(handler, req, reqEnd, "gtit.pocket.receipt.unrecognised");
+            //     final int deduct = firstCodeLineWith(handler, req, reqEnd, "tryDeduct");
+            //     SimpleAssert.that(ret > receipt && ret < identify, "★早退在识别/冷却/扣费三重点检之前");
+            //     SimpleAssert.that(deduct > identify, "扣费点仍在其后");
+            //   它把"早退排在三重点检之前"当成<b>通过条件</b>来钉，而那正是造成激活真空的那一行本身
+            //   （r96-ret1 §3.2 点名："这条用例主动锁死了造成激活真空的那一行"）。留着它，S5 修好也
+            //   会红；改弱它，就等于没人记得那里曾钉错过 ⇒ 整段删掉，可达性改由
+            //   channel_persist_activation_reachable_from_production 用行为与形状两条一起钉。
             final int req = methodStart(handler, "void performChannelRequest(PocketChannelState.Mode mode) {");
             final int reqEnd = methodEnd(handler, req);
             SimpleAssert.that(req >= 0, "定位 performChannelRequest");
@@ -10518,21 +10555,17 @@ public class NekoPocketModelTest {
                 reqEnd,
                 "isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)");
             final int receipt = firstCodeLineWith(handler, req, reqEnd, "gtit.pocket.channel.always_on");
-            final int ret = firstCodeLineWith(handler, receipt, reqEnd, "return;");
-            final int identify = firstCodeLineWith(handler, req, reqEnd, "gtit.pocket.receipt.unrecognised");
-            final int deduct = firstCodeLineWith(handler, req, reqEnd, "tryDeduct");
             SimpleAssert.that(persistIf >= 0 && receipt > persistIf, "★有位 ⇒ 回 always_on 粘性回执（不静默吞掉点击）");
-            SimpleAssert.that(ret > receipt && ret < identify, "★早退在识别/冷却/扣费三重点检<b>之前</b>（一分不扣、一次冷却不占）");
-            SimpleAssert.that(deduct > identify, "扣费点仍在其后（持续化不产生第二条扣费路径）");
             SimpleAssert.eq(1, countRegionCode(handler, req, reqEnd, "always_on"), "常开回执键恰 1 处（单源）");
-            // ★★R96 S2 收口（旧断言只改文本、名字不动）：这一判早退的判据从位图直读换成组合谓词。
+            // ★★R96 S2 收口（旧断言只改文本、名字不动）：常开支的判据从位图直读换成组合谓词。
             // 留成 hasUpgrade 的后果比"开关对按钮没作用"更坏 —— driver 的回满腿（S1 读点③）已经吃开关，
             // 这里却还按位图早退 ⇒ 玩家关掉常开后<b>既不自动续批、也按不动按钮</b>，两头都不通而两侧断言全绿。
-            // ★阳性对照：把这一行改回 hasUpgrade ⇒ 下面那条 0 立刻红（本用例的其余断言照旧绿，
-            // 因为"早退在三重点检之前"这个形状没变 —— 正是这条读数为 0 才把旁路本身钉住）。
+            // ★阳性对照：把这一行改回 hasUpgrade ⇒ 下面那条 0 立刻红。
+            // ★R96 S5 之后"早退排在三重点检之前"这个<b>形状</b>仍然成立（短效那一支照旧不扣费、不进冷却），
+            // 但它不再是本用例的通过条件 —— 它锁死过可达性（见上面那段删除说明）。
             SimpleAssert.that(
                 regionContainsCode(handler, req, reqEnd, "PocketUpgradeSwitches.isActive("),
-                "★早退必须读组合谓词（开关一置起，这一判就该放行到手动通道）");
+                "★常开支必须读组合谓词（开关一置起，这一判就该放行到手动通道）");
             SimpleAssert.eq(
                 0,
                 countRegionCode(handler, req, reqEnd, "PocketUpgrades.hasUpgrade("),
@@ -10576,14 +10609,15 @@ public class NekoPocketModelTest {
         SimpleAssert.that(work >= 0 && workEnd > work, "定位 isWorkActive / isOpenFlag");
         SimpleAssert.that(
             regionContainsCode(item, work, workEnd, "isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)"),
-            "★isWorkActive 含 CHANNEL_PERSIST 腿（常亮唯一来源；★R96 起这条腿是组合谓词，关掉开关即不常亮）");
-        final int persistAt = firstCodeLineWith(
-            item,
-            work,
-            workEnd,
-            "isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)");
-        final int ticksAt = firstCodeLineWith(item, work, workEnd, "UI_WORK_TICKS");
-        SimpleAssert.that(persistAt < ticksAt, "常亮腿在倒计时两键之前（有位 ⇒ 不再依赖倒计时）");
+            "★常亮腿含 CHANNEL_PERSIST 组合谓词（★R96 起这一型是组合谓词，关掉开关即不常亮）");
+        // ★★R96 S5 改口（断言改、用例名不动，验收 B4）：旧断言写作"常亮腿排在倒计时两键之前 ⇒
+        // 有位就不再依赖倒计时"，而那<b>正是假读数本身</b> —— 位一置起帧带就常亮，而那一版谁都开不起
+        // 通道（激活真空，r96-ret1 §2.5）。S5 把常亮腿挪进唯一判据 isChannelWorkLive，并给它加了
+        // 第二问"有活通道在场" ⇒ 这里改钉"帧带经那条唯一判据问位图"，位置先后不再是判据。
+        SimpleAssert.that(
+            regionContainsCode(item, work, methodEnd(item, work), "isChannelWorkLive("),
+            "★常亮腿改走唯一判据（★不再由裸位图单独点亮；第二问「有活通道在场」的判据与用例见 "
+                + "channel_always_on_promise_requires_live_channel）");
         SimpleAssert.that(
             item.stream()
                 .anyMatch(s -> s.contains("InventoryPlayer.java:343")),
@@ -10874,15 +10908,23 @@ public class NekoPocketModelTest {
      */
     private static void upgradeSwitchGatesAllEffectReadpoints() {
         // ================= 读点①：ItemNekoDimensionPocket.isWorkActive（行为腿）=================
+        // ★★R96 S5 改口（断言改、用例名不动，验收 B4）：判据从 isWorkActive 换成持续化那一腿本身
+        // isChannelWorkLive —— S5 之后 isWorkActive 还含"倒计时在跑"那条腿（短效通道本来就该亮，与
+        // 持续化的开关无关），拿整体当翻转判据会把"通道在跑所以还亮"误读成"开关无效"。
+        // ★配套的第二问（有活通道在场）由 s5 那组用例钉，本处仍只管 S1 那一刀的开关翻转。
         final ItemStack pocket = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
         PocketUpgrades.install(pocket, PocketUpgradeType.CHANNEL_PERSIST);
-        SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(pocket), "读点①有位且开着 ⇒ isWorkActive 常亮（R95 行为）");
+        ItemNekoDimensionPocket.startWorkTicks(pocket, PocketConstants.CHANNEL_TICK_PERIOD);
+        SimpleAssert.that(ItemNekoDimensionPocket.isChannelWorkLive(pocket), "读点①有位且开着（且有活通道在场）⇒ 常亮");
+        SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(pocket), "读点①同一态下帧带也亮（两个消费面同源）");
         PocketUpgradeSwitches.setOff(pocket.getTagCompound(), PocketUpgradeType.CHANNEL_PERSIST, true);
-        SimpleAssert.that(!ItemNekoDimensionPocket.isWorkActive(pocket),
-            "★读点① off 置起 ⇒ isWorkActive 翻转（关了还常亮 = 开关对光泽与帧带无效 = R57/C3 同族）");
+        SimpleAssert.that(!ItemNekoDimensionPocket.isChannelWorkLive(pocket),
+            "★读点① off 置起 ⇒ 常亮腿翻转（关了还常亮 = 开关对光泽与帧带无效 = R57/C3 同族）");
+        SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(pocket),
+            "★倒计时那条腿不吃 CHANNEL_PERSIST 的开关（通道在跑就该亮，★不许顺手把它一起砍掉）");
         SimpleAssert.that(pocket.getTagCompound().hasKey(PocketConstants.UPGRADES_KEY), "关掉后位图仍在（关开关 ≠ 卸插件）");
         PocketUpgradeSwitches.setOff(pocket.getTagCompound(), PocketUpgradeType.CHANNEL_PERSIST, false);
-        SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(pocket), "★读点① 清位 ⇒ 常亮回来（可置可清双向都验）");
+        SimpleAssert.that(ItemNekoDimensionPocket.isChannelWorkLive(pocket), "★读点① 清位 ⇒ 常亮回来（可置可清双向都验）");
         // ================= 读点②⑦：ItemNekoDimensionPocket 的 tooltipArgs 与 hasEffect（源码腿）=================
         final java.util.List<String> item = sourceLinesOrNull(R96_READPOINT_FILES[0]);
         if (item == null) {
@@ -15116,6 +15158,292 @@ public class NekoPocketModelTest {
             "TC 类型引用全仓只集中在 TaumBridge 一处（S9a 新增 ItemWandCasting ⇒ 4→5，仍零外泄）");
     }
 
+    // ================================================================== ★R96 S5（TP-S5）通道持续化：四条反证
+    //
+    // ★★这一组四条的存在理由：R95 把「通道持续化」记为已完成、套件全绿、门禁 0 FAIL，而玩家实机
+    // 什么都没发生（取证 {@code .qoder/tmp/r96-ret1.md} §2）。算式一直是对的
+    // （{@code PocketChannelState#activate} 的回满不清快照），错的是<b>可达性</b>：全仓唯一能造出
+    // SHORT 状态的生产入口是 {@code performChannelRequest} 尾部那条 {@code openChannel}，而它被
+    // <b>同一个位</b>的早退关在门外；driver 的续批腿又排在 {@code if (ranBatch)} 之内，而
+    // {@code ranBatch} 要求"已经有活通道"（{@code peek} 不建条目）⇒ 闭环死锁。
+    // ⇒ 四条判据一律钉<b>执法点被问到</b>，一条都不再钉算式；★B1/B2 修前必须是红的。
+    // 与既有用例的分工：{@code channel_persist_refuels_at_batch_boundary} 钉回满<b>算式</b>（保留），
+    // {@code short_channel_uses_relative_countdown} 钉<b>节拍</b>（保留），本组钉<b>位→道那条路</b>。
+
+    /** ★S5 四条共用的源文件路径（通道三件 + 载体类 + GUI 两件）。 */
+    private static final String R96_S5_DRIVER = "src/main/java/com/miaokatze/gtit/common/items/pocket/channel/PocketChannelDriver.java";
+    private static final String R96_S5_MANAGER = "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketChannelManager.java";
+    private static final String R96_S5_ITEM = "src/main/java/com/miaokatze/gtit/common/items/pocket/ItemNekoDimensionPocket.java";
+    private static final String R96_S5_HANDLER = "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java";
+    private static final String R96_S5_BAND = "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketBottomBand.java";
+    private static final String R96_S5_PANEL = "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java";
+    private static final String R96_S5_DRIVER_SIG = "public static void onItemTick(ItemStack stack, World world, EntityPlayer player, int slot, boolean isHeld) {";
+    private static final String R96_S5_REQUEST_SIG = "void performChannelRequest(PocketChannelState.Mode mode) {";
+
+    /** ★S5 的载体：一枚<b>只</b>固化 {@code CHANNEL_PERSIST} 的口袋（off-mask 缺键 ⇒ 组合谓词为真）。 */
+    private static ItemStack s5PersistCarrier() {
+        final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        PocketUpgrades.install(carrier, PocketUpgradeType.CHANNEL_PERSIST);
+        return carrier;
+    }
+
+    /**
+     * ★★验收 <b>B1（可达性，决定性的那条）</b>：{@code isActive(CHANNEL_PERSIST)} 为真的世界里，
+     * <b>必须存在一条从生产代码到 {@code state.mode() == SHORT && !idle()} 的路</b>。
+     * <p>
+     * ★形状照 r96-ret1 §3.3 B1 的原文：那条二选一（常开支自己激活<b>或</b> driver 的真空支读持续化）
+     * 在 R95 的代码里<b>两半都为假</b> ⇒ 本用例修前必红。三段各钉一处：
+     * ① 激活口本体（住在 {@code PocketChannelManager}，★复用 {@code activate} 单点，不建第二台状态机）；
+     * ② driver 的真空支问到它（"从不按按钮"那条路 = B2 的静态孪生）；
+     * ③ 服务端的常开支不再是"什么都不做"（伪造包 / 旧客户端那一按也得把道起起来）。
+     */
+    private static void channelPersistActivationReachableFromProduction() {
+        final java.util.List<String> driver = sourceLinesOrNull(R96_S5_DRIVER);
+        final java.util.List<String> manager = sourceLinesOrNull(R96_S5_MANAGER);
+        final java.util.List<String> handler = sourceLinesOrNull(R96_S5_HANDLER);
+        if (driver == null || manager == null || handler == null) {
+            System.out.println("[NOTE] 读不到 driver / manager / handler ⇒ B1 可达性【未验】（★不是通过）");
+            return;
+        }
+        // ---- ① 生产激活口本体：ret1 §2.4 的穷尽表里它原本<b>不存在</b> ----
+        final int arm = methodStart(manager, "public boolean ensurePersistentShortChannel(");
+        SimpleAssert.that(arm >= 0, "★PocketChannelManager 上必须有一条「有位 ⇒ 保证有一条活 SHORT 通道」的生产激活口");
+        final java.util.List<String> armBody = methodBodyOf(manager, arm);
+        SimpleAssert.that(countCodeLinesIn(armBody, "PocketUpgradeSwitches.isActive(") >= 1, "★激活口自己读组合谓词（关掉开关 ⇒ 这条路也必须跟着断）");
+        SimpleAssert.eq(0, countCodeLinesIn(armBody, "PocketUpgrades.hasUpgrade("), "★阳性对照就位：激活口改回裸位图 ⇒ 本行红（关着开关还能白拿一条道）");
+        SimpleAssert.eq(1, countCodeLinesIn(armBody, "state.activate("), "★装填只走 PocketChannelState.activate 这一个单点（★禁止第二台通道状态机）");
+        SimpleAssert.that(countCodeLinesIn(armBody, "attachSession(") >= 1, "★activate 与 attachSession 成对（缺快照 ⇒ 下一拍被 driver 的 sessionBindings 守卫就地停道）");
+        SimpleAssert.eq(0, countCodeLinesIn(armBody, "new PocketChannelState("), "不新建状态条目（一律经 stateOf 拿那一份）");
+        SimpleAssert.eq(0, countCodeLinesIn(armBody, "remainingBatches"), "激活口不写批次字段 ⇒ 批次权威仍只在 PocketChannelState 一处");
+        // ---- ② driver 的真空支必须问到它（今天这一支是"无条件 retireIdleSession + return"）----
+        final int dtick = methodStart(driver, R96_S5_DRIVER_SIG);
+        SimpleAssert.that(dtick >= 0, "按签名定位 driver.onItemTick（改名/挪签名即红）");
+        final int dtickEnd = methodEnd(driver, dtick);
+        final int idleBranch = firstCodeLineWith(driver, dtick, dtickEnd, "if (state == null || state.idle())");
+        final int afterIdle = firstCodeLineWith(driver, idleBranch, dtickEnd, "state.sessionBindings()");
+        SimpleAssert.that(idleBranch >= 0 && afterIdle > idleBranch, "定位 driver 的真空支区间 [state == null || state.idle() , sessionBindings)");
+        SimpleAssert.that(
+            regionContainsCode(driver, idleBranch, afterIdle, "ensurePersistentShortChannel("),
+            "★★B1 的决定性读数：真空支里必须问到激活口 —— 读到 0 就是「激活真空」本身（R95 的形状：这一支无条件回收会话后 return）");
+        SimpleAssert.eq(1, countRegionCode(driver, dtick, dtickEnd, "state.activate("), "★driver 的 activate 仍恰 1 处（批边界回满那一条，不因本片多出一条路）");
+        // ---- ③ 服务端的常开支不得是"什么都不做" ----
+        final int req = methodStart(handler, R96_S5_REQUEST_SIG);
+        SimpleAssert.that(req >= 0, "定位 performChannelRequest");
+        final int reqEnd = methodEnd(handler, req);
+        final int persistIf = firstCodeLineWith(handler, req, reqEnd, "isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)");
+        final int receipt = firstCodeLineWith(handler, persistIf, reqEnd, "gtit.pocket.channel.always_on");
+        final int branchReturn = firstCodeLineWith(handler, receipt, reqEnd, "return;");
+        SimpleAssert.that(persistIf >= 0 && receipt > persistIf && branchReturn > receipt, "有位 ⇒ 回 always_on 粘性回执（★不静默吞点击）");
+        SimpleAssert.that(
+            regionContainsCode(handler, persistIf, branchReturn, "ensurePersistentShortChannel("),
+            "★常开支从「什么都不做」改成「幂等地保证有一条活 SHORT」⇒ 伪造包 / 旧客户端那一按也把道起起来");
+    }
+
+    /**
+     * ★★验收 <b>B2（闭环反证，纯 JVM，不需 MUI2 / World 真身）</b>：把老用例
+     * {@code short_channel_uses_relative_countdown} 的<b>前提交设反过来</b> —— 那条先
+     * {@code openChannel} 再 tick，于是把"被质疑的那一步"当给定用，因此全绿（这正是它没抓到缺陷的原因）。
+     * <p>
+     * 三个半边：
+     * ① <b>真空见证</b>（改前改后都该绿）：只装插件、只问裸节拍 ⇒ 1000 拍一次传输都没有
+     *    ⇒ 钉死「位 = 效果」这个假设是假的（= R95 台账犯的那件事）；
+     * ② <b>★决定性半边（修前必红）</b>：装好插件、<b>一次按钮都没按</b>，走<b>一拍</b>生产宿主腿
+     *    {@link PocketChannelDriver#onItemTick} ⇒ 必须已经有一条活 SHORT 通道，并且此后每拍问的
+     *    都是 driver 在批边界问的那一条生产方法 ⇒ 30 批真的穿完；
+     * ③ 用尽回收后的<b>下一拍又被装回来</b>（"永不停"的另一半）+ 关掉开关 ⇒ 这条路跟着断（S1 语义不被绕过）。
+     */
+    private static void channelPersistClosedLoopNeverPressesButton() {
+        final UUID player = UUID.fromString(CELL_A);
+        final PocketCellBindings bindings = bindingsOf(CELL_A);
+        final StubOps ops = new StubOps();
+        ops.fillSources(2, 2);
+        try {
+            // ================= 半边①：真空见证 =================
+            PocketChannelManager.INSTANCE.reset();
+            final ItemStack carrier = s5PersistCarrier();
+            SimpleAssert.that(PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CHANNEL_PERSIST), "前置：持续化生效（位图 ∧ 未关闭）");
+            SimpleAssert.eq(null, PocketChannelManager.INSTANCE.peek(player), "起点：peek 不建条目 ⇒ 真空");
+            int witness = 0;
+            for (int tick = 0; tick < 1000; tick++) {
+                if (PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1)) {
+                    witness++;
+                }
+            }
+            SimpleAssert.eq(0, witness, "★半边①：光有位、只问裸节拍 ⇒ 1000 拍一次传输都没有（这条把「记为完成」读成假的）");
+            SimpleAssert.eq(0, ops.announcements.size(), "★半边①：一条网络通知都没发");
+            SimpleAssert.eq(0, PocketChannelManager.INSTANCE.trackedPlayers(), "★半边①：连条目都不会被建出来");
+            // ================= 半边②：★修前必红 =================
+            final World world = mageServerWorldShell();
+            final EntityPlayer holder = magePlayerShell(player, world);
+            // ★会话在场是激活口的硬前置（不是便利）：R85 D1 那条"只许把 A 的绑定搬到 A"的守卫认的是
+            // 会话与承载栈的<b>对象身份</b>，无会话 ⇒ 宁可不开道，也绝不在无主对象上跑传输。
+            PocketSessions.register(new S5SessionShell(player, carrier, bindings, new PocketFilterConfig()));
+            ops.fillSources(2, 2);
+            PocketChannelDriver.onItemTick(carrier, world, holder, 12, false);
+            final PocketChannelState armed = PocketChannelManager.INSTANCE.peek(player);
+            SimpleAssert.that(
+                armed != null && !armed.idle(),
+                "★★B2 的决定性读数：装好插件、一次按钮都没按，走一拍<b>生产宿主腿</b>之后必须已经有活通道（修前读 null ⇒ 激活真空）");
+            SimpleAssert.eq(PocketChannelState.Mode.SHORT, armed.mode(), "★装出来的就是短效那一种模式（不是新造的第三种状态）");
+            SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, armed.remainingBatches(), "一条完整的 30 批（激活口不打折）");
+            SimpleAssert.that(armed.sessionBindings() == bindings, "★快照的绑定表就是会话那一份的<b>对象身份</b>（否则下一拍被 driver 的实例守卫停道 = R85 D1 那一族）");
+            SimpleAssert.that(armed.sessionFilters() != null, "ghost 配置成对挂上（缺它 ⇒ pullMode 无来源 ⇒ 补满相静默消失）");
+            int batches = 0;
+            for (int tick = 0; tick < 1000; tick++) {
+                if (PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1)) {
+                    batches++;
+                }
+                ops.fillSources(2, 2);
+            }
+            SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, batches, "★被装起来的通道真的把 30 批穿完了（不是只建条目不跑货）");
+            SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, ops.announcements.size(), "每批各一次网络通知");
+            // ================= 半边③：用尽即装回 + 关开关即断 =================
+            SimpleAssert.eq(null, PocketChannelManager.INSTANCE.peek(player), "30 批用尽即自然回收（★不留「已停但占内存」的条目）");
+            PocketChannelDriver.onItemTick(carrier, world, holder, 12, false);
+            SimpleAssert.that(PocketChannelManager.INSTANCE.peek(player) != null, "★回收后的下一拍又被装回来 ⇒ 有位 ⇒ 通道不会停（激活口幂等重入 = 永不停的另一半）");
+            PocketChannelManager.INSTANCE.reset();
+            PocketUpgradeSwitches.setOff(carrier.getTagCompound(), PocketUpgradeType.CHANNEL_PERSIST, true);
+            PocketChannelDriver.onItemTick(carrier, world, holder, 12, false);
+            SimpleAssert.eq(null, PocketChannelManager.INSTANCE.peek(player), "★关掉开关 ⇒ 这一路跟着断（激活口读组合谓词，S1 的语义不许被绕过）");
+            SimpleAssert.that(PocketUpgrades.hasUpgrade(carrier, PocketUpgradeType.CHANNEL_PERSIST), "★阳性对照：位还在 ⇒ 上面那个 null 确实是开关挡的，不是「顺手把插件卸了」");
+        } finally {
+            PocketChannelManager.INSTANCE.reset();
+            PocketSessions.forget(player);
+        }
+    }
+
+    /**
+     * ★验收 <b>B3（瞬时通道不得被顺带禁掉）</b>：{@code performChannelRequest(BURST)} 在
+     * {@code CHANNEL_PERSIST} 位在场时的期望行为<b>显式写进用例</b>，不许再靠"早退不分 mode"隐式决定。
+     * <p>
+     * ★本轮裁定 = <b>瞬时通道恢复可用</b>。理由（ret1 §2.5 的派生事实 1）：README 代价 33 只承诺了
+     * "短效通道批边界自动续批"，从没承诺"顺带禁掉瞬时"；那条早退排在三重点检之前且<b>不分 mode</b>
+     * ⇒ 装了持续化之后连"一次穿完"都没了，是玩家可感知的功能损失，不是设计意图的证据。
+     * ★恢复可用 <b>≠</b> 免费：瞬时那一支仍走识别 → 冷却 → 扣费三重点检（★旧门一条不放宽）。
+     */
+    private static void channelPersistBurstStillPayable() {
+        // ---- 半边①（行为）：通道层从来没有为持续化挡过瞬时 ⇒ 挡它的只能是按钮那一支 ----
+        PocketChannelManager.INSTANCE.reset();
+        try {
+            final UUID player = UUID.fromString(CELL_B);
+            final PocketCellBindings bindings = bindingsOf(CELL_A);
+            final StubOps ops = new StubOps();
+            ops.fillSources(3, 3);
+            final ItemStack carrier = s5PersistCarrier();
+            final NBTTagCompound root = carrier.getTagCompound();
+            SimpleAssert.that(
+                PocketChannelManager.INSTANCE.openChannel(player, PocketChannelState.Mode.BURST, bindings, null, root, ops, 1),
+                "★半边①：持续化位在场，瞬时通道在通道层仍被受理（manager 本来就没读这一位）");
+            SimpleAssert.that(ops.announcements.size() >= 1, "受理之后真穿了货（★受理 ≠ 有效：这条不钉就是又一个绿≠有效）");
+            SimpleAssert.that(PocketChannelState.readDeviceLastBurstAtMs(root) > 0L, "★设备维冷却照记（旧门一条不放宽）");
+            ops.tick += 100L;
+            SimpleAssert.eq(
+                Boolean.FALSE,
+                PocketChannelManager.INSTANCE.openChannel(player, PocketChannelState.Mode.BURST, bindings, null, root, ops, 1),
+                "★第二次仍被冷却挡住 ⇒「恢复可用」不是「取消冷却」");
+            PocketChannelManager.INSTANCE.reset();
+            // ---- 半边②（源码）：服务端那一判必须分 mode ----
+            final java.util.List<String> handler = sourceLinesOrNull(R96_S5_HANDLER);
+            final java.util.List<String> band = sourceLinesOrNull(R96_S5_BAND);
+            if (handler == null || band == null) {
+                System.out.println("[NOTE] 读不到 handler / BottomBand ⇒ B3 的两条 mode 分岔【未验】（★不是通过）");
+                return;
+            }
+            final int req = methodStart(handler, R96_S5_REQUEST_SIG);
+            SimpleAssert.that(req >= 0, "定位 performChannelRequest");
+            final int reqEnd = methodEnd(handler, req);
+            final int persistIf = firstCodeLineWith(handler, req, reqEnd, "isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)");
+            final int receipt = firstCodeLineWith(handler, persistIf, reqEnd, "gtit.pocket.channel.always_on");
+            SimpleAssert.that(persistIf >= 0 && receipt > persistIf, "定位常开支");
+            SimpleAssert.that(
+                countRegionCode(handler, req, persistIf + 1, "Mode.BURST") >= 1,
+                "★★B3 服务端半边：常开早退必须<b>分 mode</b>（R95 不分 ⇒ 位一置起连瞬时都按不动；读到 0 就是那条隐式决定本身）");
+            final int deduct = firstCodeLineWith(handler, receipt, reqEnd, "tryDeduct");
+            SimpleAssert.that(deduct > persistIf, "★瞬时那一支仍然落在扣费点之后 ⇒ 恢复可用 ≠ 白送（成本 33 的「一次性付过激活费」语义照旧）");
+            SimpleAssert.eq(1, countRegionCode(handler, req, reqEnd, "always_on"), "常开回执键仍恰 1 处（单源）");
+            // ---- 半边③（源码）：客户端吞击那一腿也要分按钮 ----
+            final int press = firstCodeLineWith(band, 0, band.size(), ".onMousePressed(button -> {");
+            SimpleAssert.that(press >= 0, "定位通道按钮的客户端吞击腿");
+            SimpleAssert.that(
+                regionContainsCode(band, press, press + 12, "instant"),
+                "★★B3 客户端半边：吞击腿也要分按钮（R95 同一判据把两枚按钮一起吃掉，瞬时那枚因此在客户端就死了）");
+            SimpleAssert.that(
+                regionContainsCode(band, press, press + 12, "ui.channelPersistActive()"),
+                "★吞击腿仍读面板那条单源判据（★不在 Band 里抄第二份位图读法）");
+        } finally {
+            PocketChannelManager.INSTANCE.reset();
+        }
+    }
+
+    /**
+     * ★验收 <b>B4（假读数门）</b>：状态行 / tooltip / 帧带的「常开」承诺除位图外
+     * <b>再问一次活通道在场</b>。界面三处早已在承诺这个行为（ret1 §2.5 派生事实 2），而 R95 什么都
+     * 没推进 ⇒ 玩家看到的是"帧带亮着、状态行写着常开、通道一批都没走过"。
+     * <p>
+     * ★★裁定（两条候选择一）：走"<b>除位图外再问一次在场</b>"，而"在场"的读数<b>复用</b> S1 定案
+     * 那条机制 —— driver 在批边界把 {@code UI_WORK_TICKS} 续到
+     * {@code remainingBatches × CHANNEL_TICK_PERIOD + ticksUntilDue}（有位 ⇒ 每批都回满 ⇒
+     * 该键在活通道的整个寿命内永不 lapse）⇒ 常亮因此是<b>真读数的等价物</b>。
+     * <p>
+     * ★为什么不问 {@code PocketChannelManager#peek}：那台状态机是<b>服务端内存</b>条目，而这三个
+     * 承诺面全在客户端被问（{@code hasEffect}/{@code pickIcon} 每帧、{@code tooltipDynamic} 每次打开、
+     * 状态行走 {@code StringSyncValue} 的客户端侧）⇒ 客户端恒读不到，"再问一次在场"会把
+     * <b>常亮改成常暗</b>（比假读数更坏的恒假显示），还得为显示新建第二条同步 = 两处真相。
+     * {@code UI_WORK_TICKS} 随载体 NBT 同步到客户端，正是"有活通道在场"的唯一客户端镜像。
+     */
+    private static void channelAlwaysOnPromiseRequiresLiveChannel() {
+        // ---- 半边①（行为，★帧带：修前必红的那一行）----
+        final ItemStack bare = s5PersistCarrier();
+        SimpleAssert.eq(
+            Boolean.FALSE,
+            ItemNekoDimensionPocket.isWorkActive(bare),
+            "★★B4：只装了持续化插件、一条通道都没在跑 ⇒ 帧带不得常亮（R95 读裸位图 ⇒ 修前此处必红）");
+        ItemNekoDimensionPocket.startWorkTicks(bare, PocketConstants.CHANNEL_TICK_PERIOD);
+        SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(bare), "★driver 续上的 work 位在场 ⇒ 常亮（真读数的等价物）");
+        final ItemStack plain = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        plain.setTagCompound(new NBTTagCompound());
+        ItemNekoDimensionPocket.startWorkTicks(plain, PocketConstants.CHANNEL_TICK_PERIOD);
+        SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(plain), "★无位的普通短效通道照旧亮（本片只砍「位图单独点亮」这一条腿，倒计时那条一字不动）");
+        final ItemStack switchedOff = s5PersistCarrier();
+        PocketUpgradeSwitches.setOff(switchedOff.getTagCompound(), PocketUpgradeType.CHANNEL_PERSIST, true);
+        ItemNekoDimensionPocket.startWorkTicks(switchedOff, PocketConstants.CHANNEL_TICK_PERIOD);
+        SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(switchedOff), "关着开关时 work 位仍单独成立（★S1 的倒计时腿不被本片改动）");
+        ItemNekoDimensionPocket.startWorkTicks(switchedOff, -1);
+        SimpleAssert.eq(Boolean.FALSE, ItemNekoDimensionPocket.isWorkActive(switchedOff), "★清掉 work 位 ⇒ 关着开关 + 没在跑 ⇒ 不亮（三态逐条对上）");
+        // ---- 半边②（源码）：状态行与 tooltip 共用的那条单源判据也要问"在场" ----
+        final java.util.List<String> panel = sourceLinesOrNull(R96_S5_PANEL);
+        final java.util.List<String> item = sourceLinesOrNull(R96_S5_ITEM);
+        if (panel == null || item == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel / ItemNekoDimensionPocket ⇒ B4 的 GUI 半边【未验】（★不是通过）");
+            return;
+        }
+        final int read = methodStart(panel, "boolean channelPersistActive() {");
+        SimpleAssert.that(read >= 0, "★按签名定位面板那条单源判据（S2 的门禁也认这个签名，改名两边一起红）");
+        SimpleAssert.that(regionContainsCode(panel, read, methodEnd(panel, read), "PocketUpgradeSwitches.isActive("), "★S1/S2 的读点仍在组合谓词上（本片一条不动）");
+        SimpleAssert.that(
+            regionContainsCode(panel, read, methodEnd(panel, read), "isChannelWorkLive("),
+            "★★B4 GUI 半边：面板这条单源判据除位图外再问一次活通道在场 ⇒ 状态行 + 两处 tooltip + 客户端吞击<b>一次改口四处同时闭</b>");
+        final int status = methodStart(panel, "String channelStatusText() {");
+        SimpleAssert.that(regionContainsCode(panel, status, methodEnd(panel, status), "channelPersistActive()"), "状态行确实走这一条单源判据（★不在状态行里另抄一份位图读法 = 第二处真相）");
+        final int work = methodStart(item, "public static boolean isWorkActive(ItemStack stack) {");
+        SimpleAssert.that(work >= 0, "定位 isWorkActive");
+        SimpleAssert.that(regionContainsCode(item, work, methodEnd(item, work), "isChannelWorkLive("), "★帧带也走同一条「在场」判据（三处承诺共用一条，而不是三处各写一遍）");
+        final int live = methodStart(item, "public static boolean isChannelWorkLive(ItemStack stack) {");
+        SimpleAssert.that(live >= 0, "★「活通道在场」的唯一判据必须落在载体类（帧带与 GUI 两头都能问它）");
+        SimpleAssert.that(
+            regionContainsCode(item, live, methodEnd(item, live), "PocketConstants.UI_WORK_TICKS"),
+            "★在场读数 = work 位（driver 每批边界续写的那一条），★不是第二份计时真相");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(item, "PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)"),
+            "★全文件持续化组合谓词恰 1 处，且就在 isChannelWorkLive 里（与 verify-pocket.sh 的 WORK_LEG"
+                + " 是同一条读数 ⇒ 两边不许分叉；★R96 S5 起这一处从 isWorkActive 挪进唯一判据）");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(item, "isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)"),
+            "★阳性对照就位：有人把持续化读点再抄一份（帧带与唯一判据各问一遍）⇒ 本行变 2 立刻红");
+    }
+
     /**
      * 连打若干拍直到吃到一枚（★猫猫币那条在"整笔预检挡下"时也会装拍，见
      * {@code PocketCoinChargeDriver#tick} 的那条注释 ⇒ 正控不能只问一拍）。
@@ -15434,7 +15762,7 @@ public class NekoPocketModelTest {
      * {@link CoinHolder#ofSession} 那份<b>生产</b>读面／写面（"同一格扣一枚而不是抹整格"）
      * 与 {@code markDirty} 计数都是真读数。
      */
-    private static final class MageSessionShell implements PocketSession {
+    private static class MageSessionShell implements PocketSession {
 
         private final UUID playerId;
         private final ItemStack carrier;
@@ -15611,9 +15939,58 @@ public class NekoPocketModelTest {
         }
     }
 
+    /**
+     * ★S5 的会话壳：在 {@link MageSessionShell} 之上只补<b>通道这一腿</b>会问到的四面（绑定表 /
+     * ghost 配置 / 蒸馏两读 / {@code persistIdle}），其余照旧一被问就抛。
+     * <p>
+     * ★为什么必须有它（而不是在套件里直接调那条新激活口）：B2 要钉的是<b>生产宿主腿</b>
+     * {@code PocketChannelDriver#onItemTick}，而它认的是"开界面那一枚口袋"的<b>对象身份</b>
+     * （{@code session.carrierStack() != stack} 与 {@code state.sessionBindings() != session.bindings()}
+     * 两道守卫，R85 D1 的跨口袋串档防线）。真面板在本 JVM 不可构造（私有构造子 + 需要
+     * {@code PlayerInventoryGuiData}，理由同 {@code channel_persist_refuels_at_batch_boundary}
+     * 那条改口注释）⇒ 壳补的全是<b>造不出来的容器</b>，判据与算式一处都没被替身顶掉。
+     */
+    private static final class S5SessionShell extends MageSessionShell {
+
+        private final PocketCellBindings s5Bindings;
+        private final PocketFilterConfig s5Filters;
+        int idles;
+
+        S5SessionShell(UUID playerId, ItemStack carrier, PocketCellBindings bindings, PocketFilterConfig filters) {
+            super(playerId, carrier);
+            this.s5Bindings = bindings;
+            this.s5Filters = filters;
+        }
+
+        @Override
+        public PocketCellBindings bindings() {
+            return s5Bindings;
+        }
+
+        @Override
+        public PocketFilterConfig filters() {
+            return s5Filters;
+        }
+
+        @Override
+        public void persistIdle() {
+            idles++;
+        }
+
+        /** ★蒸馏那两读答"空"（不是抛）：{@code retireIdleSession} 每拍都会问它，答抛就成了壳的噪声。 */
+        @Override
+        public int distillInputSlots() {
+            return 0;
+        }
+
+        @Override
+        public ItemStack distillInputStack(int index) {
+            return null;
+        }
+    }
+
     /** 流体名探针桩件：按栈<b>身份</b>给名，并可指定"问到就抛"的条目。 */
     private static final class NamedProbe implements NekoPocketFluidSlot.FluidNameProbe {
-
         private final Map<ItemStack, String> names = new IdentityHashMap<>();
         private final Set<ItemStack> hostile = Collections.newSetFromMap(new IdentityHashMap<ItemStack, Boolean>());
         int queries;

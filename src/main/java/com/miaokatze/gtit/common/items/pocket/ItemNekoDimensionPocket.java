@@ -303,26 +303,54 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     // ------------------------------------------------------------------ 状态位与冷却（R37/R16/R24）
 
     /**
-     * {@code work} 位：短效通道剩余 tick 或 burst 显示窗剩余 tick 任一在跑（R37 的工作动画来源），
-     * <b>或</b>通道持续化<b>当前生效</b>（R95 立的常亮腿：driver 在批边界把剩余批次回满、通道永不停，
-     * 帧带跟着常亮；★R96 起"生效"按组合谓词读，见下面改口段）。只读腿：{@code isActive} 不建档
+     * {@code work} 位：短效通道剩余 tick 或 burst 显示窗剩余 tick 任一在跑（R37 的工作动画来源）；
+     * ★R96 S5 起<b>持续化那一腿也走真读数</b>（见 {@link #isChannelWorkLive}）。只读腿：不建档
      * （R53c 读路径纪律），无档口袋照旧走倒计时两键。
      * <p>
-     * ★<b>R96 S1 改口（P-1 正交 enabled 位图）</b>：常亮腿从"位图在场即恒真"改成
+     * ★★<b>R96 S1 改口（P-1 正交 enabled 位图）</b>：常亮腿从"位图在场即恒真"改成
      * {@code PocketUpgradeSwitches.isActive(CHANNEL_PERSIST)} —— 玩家把持续化<b>关掉</b>之后帧带与光泽
      * 必须跟着停，否则"关了开关画面还亮着"就是开关对该路径根本无效（R57/C3 同族的静默失效）。
      * ★不主动 stop 已在跑的通道：关开关只让 driver 的批边界回满不再发生 ⇒ 自然衰减到 0，
      * 复用既有 {@code finishBatch} 的回收支，不建第二台状态机。
+     * <p>
+     * ★★★<b>R96 S5 再改口（验收 B4：假读数门）</b>：位图单独<b>不再点亮任何东西</b>。S5 之前这一腿
+     * 写作「位生效 ⇒ 常亮」，而那一版的持续化<b>谁都开不起通道</b>（激活真空，取证 r96-ret1 §2.5）⇒
+     * 帧带亮着、状态行写着"通道常开中"、通道一批都没走过 = 本轮两处「记为完成而实机未生效」之一。
+     * ★下面这条腿因此除位图外<b>再问一次"有活通道在场"</b>；两半在这一版里读数的确会重合
+     * （driver 每批边界把 work 位续到 {@code 30×20+20} 拍 ⇒ 活通道在跑时它必然在场），保留位图这一半
+     * 的理由是<b>身份</b>：这一族的常亮属于持续化，摘掉它 {@code isWorkActive} 就退化成纯倒计时读数，
+     * 帧带不再声明它代表什么。真正被修掉的是「位在场即恒真」那半句 —— 现在它单独一律不成立。
      */
     public static boolean isWorkActive(ItemStack stack) {
         final NBTTagCompound root = stack == null ? null : stack.getTagCompound();
         if (root == null) {
             return false;
         }
-        if (PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
+        if (isChannelWorkLive(stack)) {
             return true;
         }
         return root.hasKey(PocketConstants.UI_WORK_TICKS) || root.hasKey(PocketConstants.UI_BURST_SHOW_TICKS);
+    }
+
+    /**
+     * ★★R96 S5（验收 B4）：玩家可见的「通道常开中」三处承诺（面板状态行 / 通道按钮 tooltip /
+     * 物品帧带与光泽）共用的<b>唯一</b>判据 = 持续化组合谓词生效 <b>且</b> 有活通道在场。
+     * <p>
+     * <b>"在场"读的是 {@code UI_WORK_TICKS} 那一条同步下来的相对倒计时</b>，不是
+     * {@code PocketChannelManager#peek}。★这条选择不是风格问题：那台状态机是<b>服务端内存</b>条目，
+     * 而这三个承诺面全在客户端被问（{@code hasEffect}/{@code pickIcon} 每帧、{@code tooltipDynamic}
+     * 每次打开、状态行走 {@code StringSyncValue} 的客户端侧）⇒ 问 {@code peek} 恒读到"没通道"，
+     * 会把常亮改成<b>常暗</b>（恒假显示，比假读数更坏），还要为显示新建第二条同步 = 两处真相。
+     * work 位由 {@code PocketChannelDriver} 在<b>每个批边界</b>续到"本通道剩余总长"（≥ 一整拍 ⇒
+     * 活通道在跑时永不 lapse；通道没跑时它必然归零并被 {@code tickDown} 摘键），因此它正是
+     * "有活通道在场"的客户端镜像 —— 也就是 S1 定案里那句「常亮 = 真读数的等价物」的落地形状。
+     * <p>
+     * ★只读腿：不建档、不碰状态机（R53c 读路径纪律）。
+     */
+    public static boolean isChannelWorkLive(ItemStack stack) {
+        final NBTTagCompound root = stack == null ? null : stack.getTagCompound();
+        return root != null && PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)
+            && root.hasKey(PocketConstants.UI_WORK_TICKS);
     }
 
     /** {@code open} 位：GUI 打开期（写入点见 {@code NekoPocketPanel}，清零点在关屏钩子，R35/R37）。 */

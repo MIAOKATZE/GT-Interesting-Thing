@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
 import com.miaokatze.gtit.config.Config;
@@ -102,7 +103,9 @@ public final class PocketChannelManager {
     /**
      * 开一条通道（生产入口）。
      * <p>
-     * ★R39b 的唯一计算点：<code>pullMode = !filters.isEmpty()</code> <b>只在这里算一次</b>，随
+     * ★R39b 的唯一计算点：<code>pullMode = !filters.isEmpty()</code> <b>每次运行只算一次</b>（算式本身
+     * ★R96 S5 起内聚到 {@link #pullPhaseOf} 一处，供本方法与 {@link #ensurePersistentShortChannel}
+     * 两个激活口共用 —— <b>两个激活口共用一条算式，不是两条算式各说一遍</b>），随
      * {@link PocketChannelState#attachSession} 进状态条目，之后 30 批与 GUI 回执都读同一个值
      * （客户端不得按 ghost 表推断）。中途新增/删除 ghost 不改变本次运行的模式。
      * ★R87-a 起该位的<b>语义</b>是"本次运行<b>含补满相</b>"——推送/拉取不再互斥（R39b 的互斥口径
@@ -122,7 +125,7 @@ public final class PocketChannelManager {
             return false;
         }
         final PocketChannelState state = stateOf(player);
-        final boolean pull = filters != null && !filters.isEmpty();
+        final boolean pull = pullPhaseOf(filters);
         if (mode == PocketChannelState.Mode.BURST) {
             state.attachSession(bindings, filters, null, pull);
             final boolean accepted = requestBurst(player, bindings, pocketTag, ops);
@@ -136,6 +139,65 @@ public final class PocketChannelManager {
         // 短效通道不在这里跑第一批：激活时倒计时已装填为整拍（CHANNEL_TICK_PERIOD），
         // 不依赖任何监听器注册顺序（E3 §3.4），也不引用绝对 tick（R62）。
         return true;
+    }
+
+    /**
+     * ★★<b>R96 S5（TP-S5）：把「有位常驻」做成一条真正的生产激活口</b> —— 持续化生效时幂等地保证
+     * <b>有一条活的短效通道</b>。
+     * <p>
+     * <b>它修的是什么</b>（取证 {@code .qoder/tmp/r96-ret1.md} §2.4/§2.5）：R95 那一版里全仓唯一能造出
+     * SHORT 状态的入口只有 {@code NekoPocketServerHandler#performChannelRequest} 尾部那条
+     * {@code openChannel}，而 {@code CHANNEL_PERSIST} 位一置起，同方法的早退就把它关在门外；
+     * driver 的续批腿又排在 {@code if (ranBatch)} 之内，而 {@code ranBatch} 要求"已经有活通道"
+     * （{@link #peek} 按设计不建条目）⇒ <b>闭环死锁</b>：没有通道 ⇒ 不会有 ranBatch ⇒ 不会回满 ⇒
+     * 永远没有通道。算式一直是对的，缺的从来只是可达性。
+     * <p>
+     * <b>★不建第二台状态机</b>：本方法一个字节都不写批次/节拍字段，装填一律走
+     * {@link PocketChannelState#activate} 那<b>一个</b> SHORT 单点（与 {@link #openChannel} 的短效支
+     * 同一条），并且照它的形状<b>成对</b>挂 {@link PocketChannelState#attachSession} —— 缺了后半句
+     * 会让 {@code sessionBindings} 为 null，下一拍被 driver 的守卫就地停道（ret1 §2.5 末段点名的坑）。
+     * <p>
+     * <b>免费、免冷却不是本方法给的</b>：本方法<b>不碰</b>钱包、<b>不碰</b>冷却、<b>不发</b>识别查询；
+     * 成本语义仍由调用方那一条"持续化不产生第二条扣费路径"的裁定守着（README 代价 33）。
+     *
+     * @param player   玩家维键
+     * @param carrier  承载这一型的口袋栈（★判据读的就是它；{@code null} ⇒ 不给道）
+     * @param bindings 会话里那一份绑定表<b>实例</b>（★必须是会话那一份 —— driver 的 R85 D1 守卫比的是
+     *                 对象身份，给它另一份等价表等于下一拍停道）
+     * @param filters  会话里那一份 ghost 配置（可为 {@code null} ⇒ 纯推送）
+     * @return {@code true} = "有位 ⇒ 有一条活短效通道"这件事在本拍之后<b>成立</b>（含"本来就在跑"那种
+     *         幂等命中）；{@code false} = 位没生效 / 没有可搬的东西 / 那条道上跑着别的模式 ⇒
+     *         ★三种情况都<b>零写入</b>
+     */
+    public boolean ensurePersistentShortChannel(UUID player, ItemStack carrier, PocketCellBindings bindings,
+        PocketFilterConfig filters) {
+        if (player == null || carrier == null || bindings == null || bindings.isEmpty()) {
+            // ★没绑定就不开道：那是一条只会空跑、还会把会话永久钉在内存里的通道（retireIdleSession
+            // 只在真空态才回收 ⇒ 开一条空道等于替玩家造一个永不退休的活会话）。
+            return false;
+        }
+        if (!PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CHANNEL_PERSIST)) {
+            // ★组合谓词，不是裸位图：关着开关还白给一条道 = S1 那一族"开关对某条路径无效"的复发形状。
+            return false;
+        }
+        final PocketChannelState live = states.get(player);
+        if (live != null && !live.idle()) {
+            // 幂等：已经有一条活道 ⇒ 零写入。★唯一不给过的是"跑着别的模式"（BURST 的会话快照不该被
+            // 常开腿改写成 SHORT），那种情况由调用方按自己的判据决定要不要继续。
+            return live.mode() == PocketChannelState.Mode.SHORT;
+        }
+        final PocketChannelState state = stateOf(player);
+        state.activate(PocketChannelState.Mode.SHORT, 0L, 0L);
+        state.attachSession(bindings, filters, null, pullPhaseOf(filters));
+        return true;
+    }
+
+    /**
+     * 本次运行含不含补满相（★R39b 的那一次计算，R96 S5 起与 {@link #ensurePersistentShortChannel}
+     * 共用这一个式子 —— 式子内聚到一处，两个激活口才不会算出两个值）。
+     */
+    private static boolean pullPhaseOf(PocketFilterConfig filters) {
+        return filters != null && !filters.isEmpty();
     }
 
     /**

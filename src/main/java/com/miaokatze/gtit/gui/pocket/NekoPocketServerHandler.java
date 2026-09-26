@@ -242,8 +242,9 @@ final class NekoPocketServerHandler {
      * <b>顺序是判据，不是风格</b>（R14）：点检（识别 → 冷却 → 余额）→ {@code tryDeduct} → 传输；
      * 任一点检不过就直接返回，<b>一分都不扣</b>。扣完之后传输全失败 ⇒ 同回执退款；
      * 部分失败不退（"搬走的东西已经搬走了"，退款等于白送一次）。
-     * ★R95 在三重点检<b>之前</b>还有一条持续化早退：载体已固化 CHANNEL_PERSIST ⇒ 直接回
-     * {@code gtit.pocket.channel.always_on}（通道由 driver 批边界续批，无需也不应再走扣费链）。
+     * ★R95 在三重点检<b>之前</b>还有一条持续化早退（★R96 S5 起它<b>分 mode</b> 且<b>会装道</b>：
+     * 短效那一支先幂等地保证有一条活 SHORT 通道、再回 {@code gtit.pocket.channel.always_on}，
+     * 瞬时那一支则<b>不早退</b>、照常走三重点检 ⇒ 持续化不再顺带禁掉瞬时通道）。
      * <p>
      * ⚠ 调用 {@code tryDeduct} <b>之前</b>必须断言 {@code cost > 0}：
      * {@code NekoWallet.tryDeduct} 的 {@code if (amount <= 0) return true;} 会让"零成本扣费"
@@ -259,21 +260,37 @@ final class NekoPocketServerHandler {
         if (uuid == null || target == null) {
             return;
         }
-        // ★R95 通道持续化：载体上这一型<b>当前生效</b> ⇒ 通道批边界自动续批（见
-        // PocketChannelDriver 的回满腿），本按钮请求一律<b>早退</b>——放在识别/冷却/扣费三重点检
-        // <b>之前</b> ⇒ 一分不扣、一次冷却不占、一个识别查询不发；回执走面板粘性回执通道
-        // （putReceipt，R88 口袋域聊天零输出的同一裁定）告知"已在常开态"。客户端按钮禁用是
-        // S4 片 BottomBand 的职责，本处只做服务端腿（伪造包 / 旧客户端照样被挡）。
-        // ★★R96 S2 收口（六处旁路的最后一处，也是本处最要紧的一处）：判据从位图直读换成组合谓词
-        // {@code PocketUpgradeSwitches.isActive}。留成 hasUpgrade 的后果比"开关对按钮无效"更坏——
-        // driver 那一侧已按开关停了回满（S1 读点③），这里却还早退 ⇒ <b>通道既不续批、玩家也手动开不了</b>，
-        // 两头都不通。用例 panel_readpoints_close_the_six_bypasses 钉这一条的方法体。
-        if (PocketUpgradeSwitches.isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)) {
-            panel.putReceipt("gtit.pocket.channel.always_on", 0);
-            return;
-        }
+        final boolean burst = mode == PocketChannelState.Mode.BURST;
         final PocketCellBindings bindings = panel.inventory()
             .bindings();
+        // ★R95 通道持续化：载体上这一型<b>当前生效</b> ⇒ 通道批边界自动续批（见 PocketChannelDriver 的
+        // 回满腿），短效这一支<b>早退</b>——放在识别/冷却/扣费三重点检<b>之前</b> ⇒ 一分不扣、一次冷却不占、
+        // 一个识别查询不发；回执走面板粘性回执通道（putReceipt，R88 口袋域聊天零输出的同一裁定）
+        // 告知"已在常开态"。客户端按钮禁用是 BottomBand 的职责，本处是服务端腿（伪造包 / 旧客户端同样被挡）。
+        // ★★R96 S2 收口（六处旁路的最后一处）：判据从位图直读换成组合谓词 {@code isActive}。
+        // <p>
+        // ★★★<b>R96 S5 的三条改动，一条都不许并回旧口径讲</b>（取证 r96-ret1 §2.4/§2.5）：
+        // ① <b>分 mode</b>（验收 B3，本轮裁定 = 瞬时通道恢复可用）：早退只吃短效那一支。R95 那一支
+        //    <b>不分 mode</b> ⇒ 位一置起连"一次穿完"的瞬时通道也被顺带禁掉，而 README 代价 33 从没
+        //    承诺过这件事 —— 那是玩家可感知的功能损失，不是设计意图的证据。瞬时那一支照旧走
+        //    识别 → 冷却 → 扣费三重点检（★恢复可用 ≠ 免费，旧门一条不放宽）。
+        // ② <b>这一支不再是"什么都不做"</b>（验收 B1 的服务端补腿）：幂等地保证有一条活 SHORT 通道。
+        //    R95 的死锁正在这儿 —— 早退排在下面那条 {@code openChannel}（全仓唯一的激活口）之前，
+        //    于是"位"把"道"关死，而续批腿又要求已有活通道。两条腿（这里 + driver 的真空支）
+        //    共用 {@code ensurePersistentShortChannel} <b>同一个</b>激活口，★不长出第二台状态机。
+        // ③ <b>回执跟着真值走</b>（验收 B4 同一条纪律）：装不出活通道（一枚元件都没绑 ⇒ 绑定了也不算
+        //    "常驻"）时不许回"已在常开态"，落到下面的点检，让玩家读到"没认出元件"那条真话。
+        if (!burst && PocketUpgradeSwitches.isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)) {
+            if (PocketChannelManager.INSTANCE.ensurePersistentShortChannel(
+                uuid,
+                panel.pocketStack(),
+                bindings,
+                panel.inventory()
+                    .filters())) {
+                panel.putReceipt("gtit.pocket.channel.always_on", 0);
+                return;
+            }
+        }
         final PocketChannelOps ops = new PocketAeChannelOps(target, panel.pocketStack(), panel);
         // 点检 1：识别（R6/R64c）—— 至少一枚绑定元件当前"在带电驱动器/ME 箱里且有可用通道"。
         // getCellArray 全空 ⇒ 拒绝开道并回独立回执码，客户端那侧的置灰只是体验层。
@@ -281,7 +298,6 @@ final class NekoPocketServerHandler {
             panel.putReceipt("gtit.pocket.receipt.unrecognised", 0);
             return;
         }
-        final boolean burst = mode == PocketChannelState.Mode.BURST;
         final int cost = burst ? PocketConstants.BURST_COST_NEKO : PocketConstants.SHORT_COST_SHIMMERING_NEKO;
         final String currency = burst ? NekoCurrencyRegistrar.NEKO_ID : NekoCurrencyRegistrar.SHIMMERING_NEKO_ID;
         if (cost <= 0) {

@@ -1069,11 +1069,18 @@ public final class NekoPocketBottomBand {
             // ★R95 S4 通道按钮禁用客户端腿：载体已固化 CHANNEL_PERSIST ⇒ 通道常开（driver 批边界
             // 自动续批），点击早退<b>不发包</b>（返回 true 把点击吃掉防穿透，同 dispatchBindButtonClick
             // 的先例；服务端 performChannelRequest 本就有同判据的 always_on 早退回执，两侧读同一条
-            // 单源判据 PocketUpgrades.hasUpgrade，不构成第二处真相）。
+            // 单源判据 NekoPocketPanel#channelPersistActive，不构成第二处真相）。
             // ★视觉禁用<b>不走</b> setEnabledIf：本仓实测该 API 在此 MUI2 版本会连底图一起不画
             // （gui/vm/IoColumnPanel.java:252 记实）⇒ 61px 只剩一个黑洞；改用「点击无动作 + tooltip 注记」。
+            // ★★★R96 S5（验收 B3）：这一腿从"两枚按钮一起吃"改成<b>只吃短效那一枚</b>。R95 的写法
+            // 不分 mode ⇒ 位一置起，连"一次穿完"的瞬时通道也在客户端就被吞掉了，而 README 代价 33
+            // 从没承诺过禁瞬时（取证 r96-ret1 §2.5 派生事实 1）⇒ 本轮裁定<b>瞬时通道恢复可用</b>，
+            // 服务端那一支同步分 mode（识别→冷却→扣费三重点检照旧 ⇒ 恢复可用 ≠ 免费）。
+            // ★短效那一腿读的是面板那条<b>已经补了"在场"第二问</b>的单源判据（B4 同一次改口）：
+            // 位在场而道没起来（从没开过界面 / 一枚元件都没绑）时放这一按过去，服务端那个幂等激活口
+            // 会把道起起来 —— 仍不扣费、仍不进冷却。
             .onMousePressed(button -> {
-                if (ui.channelPersistActive()) {
+                if (!instant && ui.channelPersistActive()) {
                     return true;
                 }
                 return button == 0 && ui.requestChannel(request);
