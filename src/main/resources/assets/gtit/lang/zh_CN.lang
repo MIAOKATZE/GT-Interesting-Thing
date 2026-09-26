@@ -384,12 +384,12 @@ item.neko_pocket_upgrade_capacity.name=容量升级插件
 item.neko_pocket_upgrade_stack.name=堆叠升级插件
 item.neko_pocket_upgrade_magnet.name=磁力升级插件
 item.neko_pocket_upgrade_channel_persist.name=通道持续化升级插件
-item.neko_pocket_upgrade_distill_fast.name=蒸馏加速升级插件
+item.neko_pocket_upgrade_mage.name=魔法使升级插件
 gtit.pocket.upgrade.capacity.tooltip=流体条容量提升至两G
 gtit.pocket.upgrade.stack.tooltip=单格堆叠上限×十六
 gtit.pocket.upgrade.magnet.tooltip=自动拾取周围八格内的物品
 gtit.pocket.upgrade.channel_persist.tooltip=通道常开：禁用通道按钮、口袋始终显示工作中
-gtit.pocket.upgrade.distill_fast.tooltip=蒸馏间隔五秒减半至二点五秒
+gtit.pocket.upgrade.mage.tooltip=蒸馏间隔五秒缩至一秒
 gtit.pocket.upgrade.slot.tooltip=每格只收对应插件；放入即固化，不可取出
 # ---- ★R96 S2 新增 19 键：升级配置面板（次级面板）的标题/三态读数/挂载位 + 关闭态格读数 + 七条粘性回执 ----
 # ★值内不得出现 ASCII 数字（门禁的 lang 数字禁令）⇒ 数字一律中文书写。
@@ -413,7 +413,7 @@ gtit.pocket.receipt.upgrade.refuse_capacity=先腾流体条：关掉容量会装
 gtit.pocket.receipt.upgrade.refuse_stack=先拆大堆：关掉堆叠会装不下现有的堆
 gtit.pocket.receipt.upgrade.not_owner=承载的口袋已换位或界面已关，这次没改开关
 gtit.pocket.channel.always_on=通道常开中（持续化升级）
-gtit.pocket.tooltip.distill_fast=装蒸馏加速后每两秒半一轮
+gtit.pocket.tooltip.distill_fast=装魔法使后每一秒一轮
 item.neko_dimension_pocket.tooltip.9=每个流体槽容量 %5$d mB，%8$d 槽合计 %9$d mB（此项为需求外的设计取值，非原始要求数字）
 gtit.pocket.legend.input=上一行：放入待处理的容器（有流体就抽进本列，空容器会被灌满）
 gtit.pocket.legend.tank=中间：本列的流体槽

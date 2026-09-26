@@ -399,7 +399,7 @@ public class NekoPocketModelTest {
         // ★R95-W1（审查修复回归钉）：头轨不充当存储轨，一切头写点走「改真值→syncHead 单点」
         cases.put("fluid_head_truth_single_sync_enforcement", NekoPocketModelTest::fluidHeadTruthSingleSyncEnforcement);
         // ---- ★R95 S6 收尾批：升级体系六条判据（位图 / 通道持续化 / 关背包续作 / 磁力 / 升级槽）
-        // ★蒸馏加速的 100/50 双口径已由 TaumDistillRulesTest 钉住（本批不重复建口，见交付报告）
+        // ★蒸馏节拍（★R96 S8 定速 1 秒）的 100/20 双口径已由 TaumDistillRulesTest 钉住（本批不重复建口，见交付报告）
         cases.put(
             "upgrade_bitmap_five_legs_idempotent_roundtrip",
             NekoPocketModelTest::upgradeBitmapFiveLegsRoundTripAndIdempotence);
@@ -508,6 +508,13 @@ public class NekoPocketModelTest {
         cases.put(
             "pocket_exit_funnel_splits_at_natural_limit",
             NekoPocketModelTest::pocketExitFunnelSplitsAtNaturalLimit);
+        // ---- ★R96 S8（TP-S8）改名三条：13/14 面逐面在场 / 影子别名读回同型 / 别名不漏创造栏
+        //   ★S8 原批起点 171 ⇒ +3 = 174；线性重放到 master 后（S3/S2/S6/S7a/S4/S4b 已入）起点变 199 ⇒ 本批 +3 = 202。
+        cases.put("mage_rename_surfaces_and_one_second_cadence",
+            NekoPocketModelTest::mageRenameSurfacesAndOneSecondCadence);
+        cases.put("mage_legacy_alias_stack_still_reads_as_mage",
+            NekoPocketModelTest::mageLegacyAliasStackStillReadsAsMage);
+        cases.put("mage_alias_adds_no_creative_entry", NekoPocketModelTest::mageAliasAddsNoCreativeEntry);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -10902,18 +10909,19 @@ public class NekoPocketModelTest {
             final int ioEnd = methodEnd(distill, io);
             SimpleAssert.that(io >= 0, "按签名定位 distillIntervalOf（节拍只在装填点读一次位图）");
             SimpleAssert.that(
-                regionContainsCode(distill, io, ioEnd, "PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.DISTILL_FAST)"),
+                regionContainsCode(distill, io, ioEnd, "PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.MAGE)"),
                 "★读点④ 蒸馏节拍读组合谓词（关掉加速 ⇒ 下一轮回基档）");
             SimpleAssert.eq(0, countRegionCode(distill, io, ioEnd, "PocketUpgrades.hasUpgrade("),
                 "★阳性对照：读点④不许退回位图直读");
         }
         final NBTTagCompound fastRoot = new NBTTagCompound();
-        PocketUpgrades.install(fastRoot, PocketUpgradeType.DISTILL_FAST);
-        SimpleAssert.eq(50, TaumDistillRules.distillIntervalTicks(
-            PocketUpgradeSwitches.isActive(fastRoot, PocketUpgradeType.DISTILL_FAST)), "读点④行为腿：开着 ⇒ 加速档 50 tick");
-        PocketUpgradeSwitches.setOff(fastRoot, PocketUpgradeType.DISTILL_FAST, true);
+        PocketUpgrades.install(fastRoot, PocketUpgradeType.MAGE);
+        SimpleAssert.eq(20, TaumDistillRules.distillIntervalTicks(
+            PocketUpgradeSwitches.isActive(fastRoot, PocketUpgradeType.MAGE)),
+            "读点④行为腿：开着 ⇒ 加速档 20 tick（★R96 S8 定速 1 秒）");
+        PocketUpgradeSwitches.setOff(fastRoot, PocketUpgradeType.MAGE, true);
         SimpleAssert.eq(TaumDistillRules.DISTILL_INTERVAL_TICKS, TaumDistillRules.distillIntervalTicks(
-            PocketUpgradeSwitches.isActive(fastRoot, PocketUpgradeType.DISTILL_FAST)),
+            PocketUpgradeSwitches.isActive(fastRoot, PocketUpgradeType.MAGE)),
             "★读点④行为腿：off 置起 ⇒ 同一个装填算式换回基档（不是「位图还在所以一直加速」）");
         // ================= 读点⑤⑥：PocketInventory 两条探针播种（驱动到执法点）=================
         final NBTTagCompound probeRoot = new NBTTagCompound();
@@ -11111,7 +11119,7 @@ public class NekoPocketModelTest {
      * 三条腿 + 一个恒允许组：① 中栏一槽 1024 件 ⇒ 拒关，且同一条栈在「开着」的尺子下不算越界（证明拒关来自
      * {@code false} 那一档，不是硬写 64）；② 中栏清空、只有游标 100 件 ⇒ 仍拒（这条就是">64 的堆在游标上、
      * 关屏无处安放"的防线）；③ 无会话 ⇒ 放行但据实报「中栏没参与扫描」（不许读成「扫过、没问题」）；
-     * ④ MAGNET / CHANNEL_PERSIST / DISTILL_FAST 恒允许关闭。
+     * ④ MAGNET / CHANNEL_PERSIST / MAGE 恒允许关闭。
      */
     private static void stackOffGuardUsesEffectiveStorageLimitFalse() {
         final NBTTagCompound root = new NBTTagCompound();
@@ -11149,7 +11157,7 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(-1, v3.stacksOverBase(), "探针读数 −1 = 未测，不是 0 = 干净");
         // ---- ④ 三型恒允许 ----
         for (final PocketUpgradeType t : new PocketUpgradeType[] { PocketUpgradeType.MAGNET,
-            PocketUpgradeType.CHANNEL_PERSIST, PocketUpgradeType.DISTILL_FAST }) {
+            PocketUpgradeType.CHANNEL_PERSIST, PocketUpgradeType.MAGE }) {
             SimpleAssert.that(PocketUpgradeGuards.canTurnOff(t, inv, null, cursor).allowed(),
                 "★" + t + " 无守卫 ⇒ 恒允许关闭（关闭只让 driver 早退，不主动 stop 现有通道状态）");
         }
@@ -14217,6 +14225,253 @@ public class NekoPocketModelTest {
             case ESSENCE:
             default:
                 return PocketFilterConfig.essenceKey("essentia", "aer");
+        }
+    }
+
+    // ================================================================== ★R96 S8（TP-S8）魔法使改名三条
+    //
+    // 三条各钉一处"改坏了不会编译失败、只会让玩家读到半新半旧的名字"的面：
+    // ① 名字面逐面恰 1（旧 token 在名面归零）+ 类初始化的静态耦合 + 1 秒的文案位；
+    // ② 影子别名注册的实例读回仍是 MAGE（旧档那一栈既不变成别的东西、也不空）；
+    // ③ 别名不进创造栏（{@code GTITItemList#setAndRegister} 的加栏是无条件的 ⇒ 走它必多出一件）。
+
+    /** ★R96 S8 三条用例共用的五张名字面文件（下标即下面读数里说的"面"）。 */
+    private static final String[] R96_MAGE_NAME_FILES = {
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/ItemPocketUpgrade.java",
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketUpgradeType.java",
+        "src/main/java/com/miaokatze/gtit/common/api/enums/GTITItemList.java",
+        "src/main/java/com/miaokatze/gtit/register/ItemRegistrar.java",
+        "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketBottomBand.java" };
+
+    /**
+     * 一条"某文件代码位里某字面量出现几次"的判据。源文件读不到时报【未验】而不是"0 命中 = 通过"
+     * （R57 同族：检法空转比没有检法更坏）。
+     */
+    private static void assertLiteralCountIn(String path, String needle, int expected, String why) {
+        final java.util.List<String> lines = sourceLinesOrNull(path);
+        if (lines == null) {
+            System.out.println("[NOTE] 读不到 " + path + " ⇒ 「" + needle + "」的读数【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(expected, countCodeLinesIn(lines, needle), path + " 里「" + needle + "」" + why);
+    }
+
+    /**
+     * 抽出一个 {@code String[]} 声明（从声明行到它那一族的结束行）里的全部引号字面量。
+     * <p>
+     * 存在的理由：{@code ItemPocketUpgrade} 的 token↔键耦合由<b>私有静态块</b>执法，违反时是
+     * {@code ExceptionInInitializerError}——整条套件连坐、说不出是哪一对漂移；本方法把同一条
+     * predicate 在源码位重算一遍，红的时候指名道姓。
+     */
+    private static java.util.List<String> arrayLiterals(java.util.List<String> lines, String declarationNeedle) {
+        final java.util.List<String> out = new ArrayList<>();
+        if (lines == null) {
+            return out;
+        }
+        final int start = methodStart(lines, declarationNeedle);
+        if (start < 0) {
+            return out;
+        }
+        for (int i = start; i < lines.size(); i++) {
+            final String line = lines.get(i);
+            if (!isCommentLine(line)) {
+                for (int at = line.indexOf('"'); at >= 0;) {
+                    final int close = line.indexOf('"', at + 1);
+                    if (close < 0) {
+                        break;
+                    }
+                    out.add(line.substring(at + 1, close));
+                    at = line.indexOf('"', close + 1);
+                }
+            }
+            if (line.contains("};")) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * ★R96 S8 验收 1/2/5/6：「蒸馏加速 → 魔法使」必须<b>逐面</b>换到 token {@code mage}，旧 token 只许
+     * 活在行为层的三个保留词里（{@code PocketDistillDriver} 的常量名、{@code TaumDistillRules} 的键、
+     * lang 键 {@code gtit.pocket.tooltip.distill_fast}）；提速到 1 秒之后 tooltip 的秒数位由派生式自己跟。
+     */
+    private static void mageRenameSurfacesAndOneSecondCadence() {
+        final String item = R96_MAGE_NAME_FILES[0];
+        final String type = R96_MAGE_NAME_FILES[1];
+        final String list = R96_MAGE_NAME_FILES[2];
+        final String registrar = R96_MAGE_NAME_FILES[3];
+        final String band = R96_MAGE_NAME_FILES[4];
+        // ---- ① 位序钉：改名绝对不许动 ordinal（槽号 = 位图位 = ordinal）----
+        SimpleAssert.eq(4, PocketUpgradeType.MAGE.ordinal(),
+            "★MAGE 仍是 ordinal 4 ⇒ 效果位图第 4 位、插件第 5 格一字不变（动了就是二次破档）");
+        SimpleAssert.eq(5, PocketUpgradeType.values().length, "本批只改名，不增删型");
+        // ---- ② 名面逐面恰 1（新 token 在场；★漏任何一面的表现是"半新半旧"，不会编译失败）----
+        assertLiteralCountIn(item, "\"mage\"", 1, "是 TOKENS[4]（注册名/unlocalized/贴图基名的唯一派生点）");
+        assertLiteralCountIn(item, "\"gtit.pocket.upgrade.mage.tooltip\"", 1, "是 TOOLTIP_KEYS[4]");
+        assertLiteralCountIn(type, "MAGE", 1, "是枚举常量名（javadoc 位不算，注释行被 isCommentLine 剥掉）");
+        assertLiteralCountIn(list, "NekoPocketUpgradeMage", 1, "是创造栏索引枚举项");
+        assertLiteralCountIn(registrar, "NekoPocketUpgradeMage.setAndRegister", 1, "是在册那一支");
+        assertLiteralCountIn(band, "\"item.neko_pocket_upgrade_mage.name\"", 1, "在 GUI 插件名键表里");
+        assertLiteralCountIn(band, "\"gtit.pocket.upgrade.mage.tooltip\"", 1, "在 GUI 效果键表里");
+        // ---- ③ 旧 token 在这五张名面归零（★别名只活在注册那一处，见下一条用例）----
+        assertLiteralCountIn(item, "distill_fast", 0, "不许留在物品侧");
+        assertLiteralCountIn(type, "DISTILL_FAST", 0, "不许留在型名侧");
+        assertLiteralCountIn(list, "DistillFast", 0, "不许留在枚举项名侧");
+        assertLiteralCountIn(band, "distill_fast", 0,
+            "不许留在两张键表里（★灰化图案 token UPGRADE_DISTILL 是 GUI 契约面，本轮只换像素不改名）");
+        // ---- ④ 类初始化的静态耦合同口径重算（验收 2）----
+        final java.util.List<String> itemLines = sourceLinesOrNull(item);
+        if (itemLines == null) {
+            System.out.println("[NOTE] 读不到 ItemPocketUpgrade.java ⇒ token↔键耦合【未验】（★不是通过）");
+        } else {
+            final java.util.List<String> tokens = arrayLiterals(itemLines, "String[] TOKENS = {");
+            final java.util.List<String> keys = arrayLiterals(itemLines, "String[] TOOLTIP_KEYS = {");
+            SimpleAssert.eq(5, tokens.size(), "TOKENS 读出 5 枚（★正控：抽字面量的检法认得这张表，不是空转）");
+            SimpleAssert.eq(tokens.size(), keys.size(), "两张表长度一致（静态块的第一条判据）");
+            for (int i = 0; i < tokens.size(); i++) {
+                SimpleAssert.that(keys.get(i).endsWith("." + tokens.get(i) + ".tooltip"),
+                    "★下标 " + i + "：token「" + tokens.get(i) + "」与键「" + keys.get(i)
+                        + "」漂移 ⇒ 类初始化当场炸（ExceptionInInitializerError）");
+            }
+            SimpleAssert.eq("mage", tokens.get(4), "下标 4 的 token 已是 mage");
+        }
+        // ---- ⑤ 1 秒：真值点改一处，文案位零改动自动跟（验收 5）----
+        SimpleAssert.eq(20, TaumDistillRules.distillIntervalTicks(true), "★R96 S8：加速档定速 20 tick");
+        SimpleAssert.eq(100, TaumDistillRules.distillIntervalTicks(false), "基档 100 tick 不受本批影响");
+        SimpleAssert.eq(1, PocketConstants.ticksToSecondsCeil(TaumDistillRules.distillIntervalTicks(true)),
+            "★tooltip 的 %12$d（ItemNekoDimensionPocket 的 tooltipArgs 派生式）零改动即读 \"1\"");
+        SimpleAssert.eq(5, PocketConstants.ticksToSecondsCeil(TaumDistillRules.DISTILL_INTERVAL_TICKS),
+            "%6$d 基档那一处仍读 5（★同一条换算单源，只有一档变了）");
+        // ---- ⑥ 两份 lang 键族同步：新键各恰 1、旧键归零、行为层键不许改名、值内无裸数字（验收 6）----
+        for (final java.util.List<String> lang : Arrays.asList(
+            sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang"),
+            sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang"))) {
+            if (lang == null) {
+                System.out.println("[NOTE] 读不到某份 lang ⇒ 键族同步半边【未验】（★不是通过）");
+                continue;
+            }
+            SimpleAssert.eq(1, countCodeLinesIn(lang, "item.neko_pocket_upgrade_mage.name="),
+                "★新名键在两份里各恰一条（comm -3 差集门同判据的具名版）");
+            SimpleAssert.eq(1, countCodeLinesIn(lang, "gtit.pocket.upgrade.mage.tooltip="), "新效果键恰一条");
+            SimpleAssert.eq(0, countCodeLinesIn(lang, "item.neko_pocket_upgrade_distill_fast.name="), "旧名键归零");
+            SimpleAssert.eq(0, countCodeLinesIn(lang, "gtit.pocket.upgrade.distill_fast.tooltip="), "旧效果键归零");
+            SimpleAssert.eq(1, countCodeLinesIn(lang, "gtit.pocket.tooltip.distill_fast="),
+                "★行为层的双口径键【不许改名】（本轮只改值：键说的是规格读数，不是型名）");
+            checkLangValueHasNoBareDigit(lang, "item.neko_pocket_upgrade_mage.name");
+            checkLangValueHasNoBareDigit(lang, "gtit.pocket.upgrade.mage.tooltip");
+            checkLangValueHasNoBareDigit(lang, "gtit.pocket.tooltip.distill_fast");
+            final String upgradeTip = langLineOrEmpty(lang, "gtit.pocket.upgrade.mage.tooltip=");
+            final String fastLine = langLineOrEmpty(lang, "gtit.pocket.tooltip.distill_fast=");
+            SimpleAssert.that(upgradeTip.contains("一秒") || upgradeTip.toLowerCase()
+                .contains("one second"), "★效果文案必须已改口到 1 秒（读到 '" + upgradeTip + "' = 与 20 tick 不符的假话）");
+            SimpleAssert.that(!upgradeTip.contains("二点五") && !upgradeTip.toLowerCase()
+                .contains("two and a half"), "旧的 2.5 秒措辞必须从值里消失（改述而非留双口径）");
+            SimpleAssert.that(fastLine.contains("魔法使") || fastLine.toLowerCase()
+                .contains("mage"), "★双口径行的文案归属跟着改名（读到 '" + fastLine + "'）");
+        }
+    }
+
+    /**
+     * ★R96 S8 验收 3（★本轮最硬的一条）：影子注册的旧 ID 别名<b>真的把旧栈认回同一型</b>。
+     * <p>
+     * 判据天然安全的原因：槽位识别走 {@link ItemPocketUpgrade#getType(ItemStack)} 读的<b>实例 type
+     * 字段</b>，与注册名无关 ⇒ 只要别名的那一支还在（旧数字 ID 不被释放给别的 mod 复用），旧栈读回来
+     * 就是"这一型插件"。这一条只钉 JVM 侧可证的半边（实例判据 + 别名字面量单源）；
+     * "Forge 是否真按注册名分配/保留 ID"属实机项（§8 V-4），不许用本用例的绿冒充。
+     */
+    private static void mageLegacyAliasStackStillReadsAsMage() {
+        final String registrar = R96_MAGE_NAME_FILES[3];
+        // ---- ① 别名字面量全仓唯一，且那一行是裸注册 ----
+        final java.util.List<String> reg = sourceLinesOrNull(registrar);
+        if (reg == null) {
+            System.out.println("[NOTE] 读不到 ItemRegistrar.java ⇒ 影子注册半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(1, countCodeLinesIn(reg, "\"neko_pocket_upgrade_distill_fast\""),
+                "★旧注册名的字面量恰一处（住在常量里，别处再写一份 = 第二个 ID 键）");
+            final int start = methodStart(reg, "private static void registerNekoPocketUpgrades() {");
+            final int end = methodEnd(reg, start);
+            SimpleAssert.that(start >= 0, "按签名定位口袋插件注册方法");
+            SimpleAssert.that(
+                regionContainsCode(reg, start, end,
+                    "GameRegistry.registerItem(new ItemPocketUpgrade(PocketUpgradeType.MAGE), LEGACY_REGISTER_NAME_MAGE)"),
+                "★影子注册在场：同一 MAGE 的第二个实例 + 旧注册名");
+            final int alias = firstCodeLineWith(reg, start, end, "LEGACY_REGISTER_NAME_MAGE)");
+            SimpleAssert.that(alias >= 0 && !reg.get(alias)
+                .contains("setAndRegister"), "★那一行不走 setAndRegister（set(item) 会把枚举项指到影子实例上）");
+        }
+        assertLiteralCountIn(R96_MAGE_NAME_FILES[0], "neko_pocket_upgrade_distill_fast", 0, "物品侧不该有旧 ID");
+        assertLiteralCountIn(R96_MAGE_NAME_FILES[4], "neko_pocket_upgrade_distill_fast", 0, "GUI 键表侧不该有旧 ID");
+        // ---- ② 行为半边：影子栈读回同型、进对格 ----
+        ItemPocketUpgrade primary = null;
+        ItemPocketUpgrade aliasItem = null;
+        try {
+            primary = new ItemPocketUpgrade(PocketUpgradeType.MAGE);
+            aliasItem = new ItemPocketUpgrade(PocketUpgradeType.MAGE);
+        } catch (Throwable constructionFailure) {
+            primary = null;
+            aliasItem = null;
+        }
+        if (aliasItem == null) {
+            System.out.println("[NOTE] 本 JVM 造不出 ItemPocketUpgrade（注册表/创造页静态链）⇒ 「影子栈读回同型」的"
+                + "行为半边【未验】（★不是通过），只走上面源码半边");
+        } else {
+            final ItemStack aliasStack = new ItemStack(aliasItem, 1, 0);
+            SimpleAssert.eq(PocketUpgradeType.MAGE, ItemPocketUpgrade.getType(aliasStack),
+                "★别名那一栈的型仍是 MAGE（getType 只看实例字段 ⇒ 与注册名无关）");
+            SimpleAssert.that(PocketInventory.acceptsUpgradeCell(4, aliasStack),
+                "★第 5 格收它 ⇒ 旧档那一栈读回来还是「这一型插件」，不是空气");
+            for (int slot = 0; slot < 4; slot++) {
+                SimpleAssert.that(!PocketInventory.acceptsUpgradeCell(slot, aliasStack),
+                    "第 " + slot + " 格仍拒它（一格一型不因别名松动）");
+            }
+            SimpleAssert.eq("item.neko_pocket_upgrade_mage", aliasItem.getUnlocalizedName(),
+                "★影子实例的 unlocalized 就是 mage 那一族 ⇒ 显示名与贴图都走新键，别名不需要额外的文案键");
+            SimpleAssert.eq(primary.getUnlocalizedName(), aliasItem.getUnlocalizedName(),
+                "正控：在册那件与影子那件同键（区别只在 Forge 的注册名）");
+            SimpleAssert.eq(null, ItemPocketUpgrade.getType(new ItemStack(FakePlainItem.INSTANCE, 1, 4)),
+                "★正控：getType 不是恒返 MAGE（否则上面那条读数是假的）");
+        }
+    }
+
+    /**
+     * ★R96 S8 验收 4：别名<b>不许</b>让创造页多出一件重复物品。
+     * <p>
+     * JVM 侧的替代判据（实机计数只能在游戏里读）：影子注册不得调
+     * {@code CreativeTabManager.addItemToTab}——本仓的创造页内容<b>只</b>来自那份显式清单
+     * （{@code displayAllReleventItems} 逐条搬 {@code getItemsToAdd()}），所以"没进清单"就等价于
+     * "页面上不多一件"；而 {@code GTITItemList#setAndRegister} 末尾的加栏是<b>无条件</b>的。
+     */
+    private static void mageAliasAddsNoCreativeEntry() {
+        final java.util.List<String> reg = sourceLinesOrNull(R96_MAGE_NAME_FILES[3]);
+        if (reg == null) {
+            System.out.println("[NOTE] 读不到 ItemRegistrar.java ⇒ 创造栏半边【未验】（★不是通过）");
+        } else {
+            final int start = methodStart(reg, "private static void registerNekoPocketUpgrades() {");
+            final int end = methodEnd(reg, start);
+            SimpleAssert.that(start >= 0, "按签名定位口袋插件注册方法");
+            SimpleAssert.eq(5, countRegionCode(reg, start, end, "setAndRegister("),
+                "★只有五型走 setAndRegister ⇒ 影子那一支不在其中");
+            SimpleAssert.eq(1, countRegionCode(reg, start, end, "GameRegistry.registerItem("),
+                "方法体内的裸注册恰一处 = 别名那一支（长出第二处 = 又有东西被静默塞进 ID 表）");
+            SimpleAssert.eq(0, countRegionCode(reg, start, end, "addItemToTab("),
+                "★影子注册不得调 addItemToTab（调了就是创造页 +1 件重复物品 = 本片要防的新缺陷）");
+            SimpleAssert.eq(0, countCodeLinesIn(reg, "CreativeTabManager.addItemToTab("),
+                "整个 ItemRegistrar 都不直接加创造栏（加栏只在 GTITItemList#setAndRegister 一处）");
+            SimpleAssert.eq(1, countCodeLinesIn(reg, "registerNekoPocketUpgrades();"),
+                "★正控：这条注册链真的被调用（否则上面几条读数可以是空转）");
+        }
+        // ---- 行为半边：实例化本身不进创造页清单 ----
+        try {
+            final int before = com.miaokatze.gtit.register.CreativeTabManager.getItemsToAdd()
+                .size();
+            new ItemPocketUpgrade(PocketUpgradeType.MAGE);
+            new ItemPocketUpgrade(PocketUpgradeType.MAGE);
+            SimpleAssert.eq(before, com.miaokatze.gtit.register.CreativeTabManager.getItemsToAdd()
+                .size(), "★再造两件影子实例，创造页清单不变 ⇒ 件数不因别名 +1");
+        } catch (Throwable tabUnavailable) {
+            System.out.println("[NOTE] 本 JVM 里创造页静态链不可用（" + tabUnavailable
+                + "）⇒ 创造栏清单半边【未验】，只走上面源码半边");
         }
     }
 

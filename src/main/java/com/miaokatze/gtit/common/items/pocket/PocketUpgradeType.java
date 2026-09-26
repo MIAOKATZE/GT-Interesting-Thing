@@ -19,6 +19,13 @@ public enum PocketUpgradeType {
     MAGNET,
     /** 通道持续化：通道常开 + 禁用通道按钮 + 帧带常亮。 */
     CHANNEL_PERSIST,
-    /** 蒸馏加速：蒸馏间隔 5s → 2.5s。 */
-    DISTILL_FAST
+    /**
+     * ★R96 S8 改名（原名「蒸馏加速」）：蒸馏间隔 5s → 1s。
+     * <p>
+     * 名字面（注册名 / lang 键 / 贴图基名）已全族换到 token {@code mage}，但<b>位序不动</b>（ordinal 仍为 4
+     * ⇒ 效果位图第 4 位、插件槽第 5 格一字不变），旧注册名由 {@code ItemRegistrar} 的<b>影子注册</b>钉住，
+     * 见本片的 README 代价条目。行为层（{@code PocketDistillDriver} / {@code TaumDistillRules} 与其
+     * lang 键 {@code gtit.pocket.tooltip.distill_fast}）本轮<b>不改名</b>：它说的是"做什么"，型名说的是"是谁"。
+     */
+    MAGE
 }

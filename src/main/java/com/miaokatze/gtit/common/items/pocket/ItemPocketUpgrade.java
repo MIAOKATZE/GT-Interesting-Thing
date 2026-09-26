@@ -41,8 +41,13 @@ public class ItemPocketUpgrade extends Item {
      * {@code ItemNekoDimensionPocket#ICON_SUFFIXES} 的"顺序即分派"先例）。
      * <p>
      * ★与 lang 键前缀 {@code item.<token>.name} 天然一致；改 token = 改注册名 = 破档，落档后不可再改。
+     * <p>
+     * ★R96 S8 是本条纪律唯一一次<b>带防护</b>的破档：下标 4 由 {@code distill_fast} 换成 {@code mage}，
+     * 旧注册名不由 Forge 释放，而是被 {@code ItemRegistrar#registerNekoPocketUpgrades} 的<b>影子注册</b>
+     * （同一 {@link PocketUpgradeType#MAGE} 实例、裸 {@code GameRegistry.registerItem}、不进创造栏）钉住
+     * ⇒ 旧存档那一栈读回来仍是"这一型插件"，只是名字与像素都显示成魔法使。
      */
-    private static final String[] TOKENS = { "capacity", "stack", "magnet", "channel_persist", "distill_fast" };
+    private static final String[] TOKENS = { "capacity", "stack", "magnet", "channel_persist", "mage" };
 
     /**
      * type → tooltip 的完整 lang 键（下标口径同 {@link #TOKENS}）。
@@ -54,7 +59,7 @@ public class ItemPocketUpgrade extends Item {
      */
     private static final String[] TOOLTIP_KEYS = { "gtit.pocket.upgrade.capacity.tooltip",
         "gtit.pocket.upgrade.stack.tooltip", "gtit.pocket.upgrade.magnet.tooltip",
-        "gtit.pocket.upgrade.channel_persist.tooltip", "gtit.pocket.upgrade.distill_fast.tooltip" };
+        "gtit.pocket.upgrade.channel_persist.tooltip", "gtit.pocket.upgrade.mage.tooltip" };
 
     static {
         if (TOOLTIP_KEYS.length != TOKENS.length) {

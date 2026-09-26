@@ -470,14 +470,14 @@ public final class NekoPocketBottomBand {
      */
     private static final String[] UPGRADE_ITEM_NAME_KEYS = { "item.neko_pocket_upgrade_capacity.name",
         "item.neko_pocket_upgrade_stack.name", "item.neko_pocket_upgrade_magnet.name",
-        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_distill_fast.name" };
+        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_mage.name" };
     /**
      * 升级格 tooltip 的效果说明键表（与 {@code ItemPocketUpgrade#TOOLTIP_KEYS} 同一组键的 GUI 消费面；
      * 空格显灰化图案 + 本 tooltip，插件放入后物品自己的图标与 tooltip 自然遮盖）。
      */
     private static final String[] UPGRADE_EFFECT_KEYS = { "gtit.pocket.upgrade.capacity.tooltip",
         "gtit.pocket.upgrade.stack.tooltip", "gtit.pocket.upgrade.magnet.tooltip",
-        "gtit.pocket.upgrade.channel_persist.tooltip", "gtit.pocket.upgrade.distill_fast.tooltip" };
+        "gtit.pocket.upgrade.channel_persist.tooltip", "gtit.pocket.upgrade.mage.tooltip" };
 
     /**
      * 升级格的灰化图案取用（★R95 S1 的五张 18×18 {@code POCKET_C2_upg_*.png}；空格显图案指认

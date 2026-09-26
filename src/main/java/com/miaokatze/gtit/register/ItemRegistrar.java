@@ -29,6 +29,7 @@ import com.miaokatze.gtit.common.items.rings.RingWindrider;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
 
 /**
@@ -182,16 +183,35 @@ public class ItemRegistrar {
     // ========== 口袋升级插件注册（R95 升级插件体系） ==========
 
     /**
+     * ★R96 S8：魔法使型插件的<b>旧注册名</b>（改名前的 token 就是下面这串字面量去掉族前缀的那一截）。
+     * <p>
+     * 全仓<b>唯一</b>一处这个字面量，且只喂给 {@code GameRegistry.registerItem} 的注册名参数——它的作用是
+     * 占住 Forge ID 表里那个旧键，让改名不释放、不旁落旧数字 ID（存档里存的是数字 ID，
+     * {@code ItemStack.java:177}；注册名才是 ID 表的键，{@code GTITItemList:177-181}）。
+     * 它<b>不是</b> lang 键、<b>不是</b>贴图名：影子实例的 unlocalized 与贴图都走 {@code mage} 那一族。
+     */
+    private static final String LEGACY_REGISTER_NAME_MAGE = "neko_pocket_upgrade_distill_fast";
+
+    /**
      * 五型插件各注册一件（{@code ItemPocketUpgrade} 构造注入 {@code PocketUpgradeType}）。
      * <p>
      * ★注册名由物品自己的 unlocalized 派生（{@code neko_pocket_upgrade_<token>}，
      * {@code setAndRegister} 的 null 分支），本方法不另传注册名——两处名字就是一处真相。
+     * <p>
+     * ★<b>尾巴那一支是影子注册，不许改成 {@code setAndRegister}</b>：{@code GTITItemList:185} 的
+     * {@code CreativeTabManager.addItemToTab(get(1))} 是<b>无条件加创造栏</b>，走 {@code setAndRegister}
+     * 会让创造页多出一件重复物品（新缺陷），且 {@code set(item)} 还会把枚举项指到影子实例上。
      */
     private static void registerNekoPocketUpgrades() {
         NekoPocketUpgradeCapacity.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.CAPACITY));
         NekoPocketUpgradeStack.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.STACK));
         NekoPocketUpgradeMagnet.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.MAGNET));
         NekoPocketUpgradeChannelPersist.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.CHANNEL_PERSIST));
-        NekoPocketUpgradeDistillFast.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.DISTILL_FAST));
+        NekoPocketUpgradeMage.setAndRegister(() -> new ItemPocketUpgrade(PocketUpgradeType.MAGE));
+        // ★R96 S8（EVA-3 候选 C）：改名破档的防护腿。旧注册名由这一支钉住 ⇒ Forge 的 ID 键还在、
+        // 旧数字 ID 不被释放给别的 mod 复用；影子实例的 type 同样是 MAGE，而槽位识别走
+        // ItemPocketUpgrade#getType 的实例 type 字段（不看注册名）⇒ 旧档那一栈读回来还是"这一型插件"，
+        // 名字与像素都显示成魔法使（它的 unlocalized 就是 mage 那一族的键，不需要额外的别名文案）。
+        GameRegistry.registerItem(new ItemPocketUpgrade(PocketUpgradeType.MAGE), LEGACY_REGISTER_NAME_MAGE);
     }
 }

@@ -29,10 +29,11 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
  * <p>
  * <b>落地口径</b>（逐条对应计划 §7 S7 与 R63b 的改述；★第 4/5/6 条的<b>粒度</b>已由 R84 改写，见各条）：
  * <ol>
- * <li>节拍 = <b>5 秒/轮</b>基档（★R95 蒸馏加速：载体固化 {@code PocketUpgradeType.DISTILL_FAST}
- * 时为 2.5 秒/轮），且只引用单一权威 {@link TaumDistillRules#distillIntervalTicks(boolean)}
+ * <li>节拍 = <b>5 秒/轮</b>基档（★R95 起有加速档，★R96 S8：该型插件改名「魔法使」并把提速定到
+ * {@code PocketUpgradeType.MAGE} 固化时 1 秒/轮），且只引用单一权威
+ * {@link TaumDistillRules#distillIntervalTicks(boolean)}
  * （{@link TaumDistillRules#DISTILL_INTERVAL_TICKS} 是其 {@code fast=false} 派生）。本类与 GUI 两侧
- * <b>都没有</b>第二个 {@code 100}/{@code 50}（计划 §17.2 第 4 条）；<b>中途安装</b>：当前轮按旧间隔
+ * <b>都没有</b>第二个 {@code 100}/{@code 20}（计划 §17.2 第 4 条）；<b>中途安装</b>：当前轮按旧间隔
  * 跑完、下一轮生效（节拍只在装填点 {@link #distillIntervalOf} 读一次位图，不中途改拍）；</li>
  * <li>计时是 {@link Clock#ticksLeft} 这一<b>相对倒计时</b>（R62）：不读
  * {@code ticksExisted}/{@code getTotalWorldTime()}，因此跨维重建玩家不会让进度漂走；</li>
@@ -126,8 +127,14 @@ public final class PocketDistillDriver {
     private static final Map<UUID, Clock> CLOCKS = new LinkedHashMap<>();
 
     /**
-     * ★R95 蒸馏加速的「双口径」tooltip 行 lang 键（消费点在
+     * 蒸馏加速档的「双口径」tooltip 行 lang 键（消费点在
      * {@code ItemNekoDimensionPocket#appendDistillFastLine}；lang 行由 S2b 落）。
+     * <p>
+     * ★R96 S8：这一档的<b>型</b>已改名「魔法使」（{@code PocketUpgradeType.MAGE}），但<b>本键与本常量名
+     * 不改</b>——键说的是"这一行讲什么规格"（蒸馏节拍），不是"哪一型插件"；行为层的类名/方法名/键名同此理由
+     * （改名面只覆盖名字面：型名、注册名、lang 键族 {@code gtit.pocket.upgrade.*}、贴图基名）。
+     * 于是这一族留下"名实分家"的一处不对称：{@code mage} 型 ⇒ 读 {@code distill_fast} 行为键，
+     * 已登记进 README 代价条目。
      * <p>
      * 键字面量住在本类而不是物品类的理由：R88① 的 pocket 域聊天白名单门禁对白名单文件
      * （{@code ItemNekoDimensionPocket} 在列）做「文件内 {@code "gtit.pocket.*"} 字面量一律须
@@ -231,9 +238,9 @@ public final class PocketDistillDriver {
     }
 
     /**
-     * 本轮蒸馏节拍（★R95 蒸馏加速）：读<b>载体栈</b>（取法照 {@link #onItemTick} 的会话口径
-     * {@code session.carrierStack()}）的 {@code DISTILL_FAST} 位，经唯一真值点
-     * {@link TaumDistillRules#distillIntervalTicks(boolean)} 选 100/50。
+     * 本轮蒸馏节拍（★R95 起有加速档）：读<b>载体栈</b>（取法照 {@link #onItemTick} 的会话口径
+     * {@code session.carrierStack()}）的 {@code MAGE} 位（★R96 S8 型名，原名「蒸馏加速」），经唯一真值点
+     * {@link TaumDistillRules#distillIntervalTicks(boolean)} 选 100/20。
      * <p>
      * <b>中途安装：当前轮旧间隔跑完，下一轮生效</b>——节拍只在装填点（这里）读一次位图，
      * 跑动中的倒计时不改拍；位图只读不建档（R53c 读路径纪律）。
@@ -243,7 +250,7 @@ public final class PocketDistillDriver {
      */
     private static int distillIntervalOf(PocketSession session) {
         final ItemStack carrier = session == null ? null : session.carrierStack();
-        final boolean fast = PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.DISTILL_FAST);
+        final boolean fast = PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.MAGE);
         return TaumDistillRules.distillIntervalTicks(fast);
     }
 

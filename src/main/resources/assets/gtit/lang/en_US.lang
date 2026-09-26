@@ -389,12 +389,12 @@ item.neko_pocket_upgrade_capacity.name=Capacity Upgrade Module
 item.neko_pocket_upgrade_stack.name=Stacking Upgrade Module
 item.neko_pocket_upgrade_magnet.name=Magnet Upgrade Module
 item.neko_pocket_upgrade_channel_persist.name=Channel Persistence Upgrade Module
-item.neko_pocket_upgrade_distill_fast.name=Distillation Accelerator Module
+item.neko_pocket_upgrade_mage.name=Mage Upgrade Module
 gtit.pocket.upgrade.capacity.tooltip=Fluid bar capacity raised to two G
 gtit.pocket.upgrade.stack.tooltip=Per-slot stack limit times sixteen
 gtit.pocket.upgrade.magnet.tooltip=Automatically picks up items within eight blocks
 gtit.pocket.upgrade.channel_persist.tooltip=Channels always on: the channel button is disabled and the pocket always shows as working
-gtit.pocket.upgrade.distill_fast.tooltip=Distillation interval halved from five seconds to two and a half
+gtit.pocket.upgrade.mage.tooltip=Distillation interval cut from five seconds to one second
 gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
 # ---- ★R96 S2 new keys (19): the upgrade config band (secondary panel) title / three-state readouts /
 # mount frames + the closed-state cell readout + seven sticky receipts.
@@ -419,7 +419,7 @@ gtit.pocket.receipt.upgrade.refuse_capacity=Empty the fluid bar first: turning c
 gtit.pocket.receipt.upgrade.refuse_stack=Break those stacks first: turning stacking off would not fit what is stored
 gtit.pocket.receipt.upgrade.not_owner=The pocket carrying it moved slot or the screen closed, so nothing changed
 gtit.pocket.channel.always_on=Channels always on (persistence upgrade)
-gtit.pocket.tooltip.distill_fast=With the distillation accelerator, one round every two and a half seconds
+gtit.pocket.tooltip.distill_fast=With the mage module installed, one round every second
 item.neko_dimension_pocket.tooltip.9=Each fluid slot holds %5$d mB, %9$d mB in total across %8$d slots (a capacity chosen beyond the original request)
 gtit.pocket.legend.input=Top row: put the vessel to process (a filled one drains in, an empty one gets filled)
 gtit.pocket.legend.tank=Middle: this column's fluid slot

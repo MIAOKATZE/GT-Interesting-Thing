@@ -194,16 +194,16 @@ public class TaumDistillRulesTest {
     /** 需求原文写死的数值即验收判据，改动必须先过账本。 */
     private static void literalNumbersLocked() {
         SimpleAssert.eq(64, TaumDistillRules.MAX_CELL, "每格最大 64 点（TC4 Warded Jar maxAmount 同值）");
-        // ★R95 蒸馏加速：节拍从单一 100 字面量改为 distillIntervalTicks(fast) 双口径（100/50 只活在那一处）；
+        // ★R95 蒸馏加速：节拍从单一 100 字面量改为 distillIntervalTicks(fast) 双口径（100/20 只活在那一处）；
         // DISTILL_INTERVAL_TICKS 是 fast=false 的派生，三条一起钉「基档不变 + 加速档在场 + 常数只是派生」。
         SimpleAssert.eq(
             100,
             TaumDistillRules.DISTILL_INTERVAL_TICKS,
             "基档每 5 秒 = 100 tick 一轮（5 秒是节拍不是产量；★R95：本常数是 distillIntervalTicks(false) 的派生，不是独立真值）");
         SimpleAssert
-            .eq(100, TaumDistillRules.distillIntervalTicks(false), "★R95 蒸馏加速双口径：未装 DISTILL_FAST ⇒ 100 tick（5 秒）");
+            .eq(100, TaumDistillRules.distillIntervalTicks(false), "★蒸馏双口径：未装 MAGE ⇒ 100 tick（5 秒）");
         SimpleAssert
-            .eq(50, TaumDistillRules.distillIntervalTicks(true), "★R95 蒸馏加速双口径：装 DISTILL_FAST ⇒ 50 tick（2.5 秒）");
+            .eq(20, TaumDistillRules.distillIntervalTicks(true), "★R96 S8 提速：装 MAGE（原「蒸馏加速」）⇒ 20 tick（1 秒）");
         SimpleAssert.eq(
             12,
             TaumDistillRules.DISTILL_INPUT_SLOTS,
