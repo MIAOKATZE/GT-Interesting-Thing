@@ -391,6 +391,27 @@ gtit.pocket.upgrade.magnet.tooltip=自动拾取周围八格内的物品
 gtit.pocket.upgrade.channel_persist.tooltip=通道常开：禁用通道按钮、口袋始终显示工作中
 gtit.pocket.upgrade.distill_fast.tooltip=蒸馏间隔五秒减半至二点五秒
 gtit.pocket.upgrade.slot.tooltip=每格只收对应插件；放入即固化，不可取出
+# ---- ★R96 S2 新增 19 键：升级配置面板（次级面板）的标题/三态读数/挂载位 + 关闭态格读数 + 七条粘性回执 ----
+# ★值内不得出现 ASCII 数字（门禁的 lang 数字禁令）⇒ 数字一律中文书写。
+gtit.pocket.upgrade.cell.off=当前已关闭：左键这一格开配置面板
+gtit.pocket.config.close=关闭
+gtit.pocket.config.state.on=已开启
+gtit.pocket.config.state.off=已关闭
+gtit.pocket.config.state.absent=未固化
+gtit.pocket.config.switch.turn_off=关掉
+gtit.pocket.config.switch.turn_on=打开
+gtit.pocket.config.switch.none=未固化
+gtit.pocket.config.switch.hint=左键切换这一型的开与关；关掉不会退回插件
+gtit.pocket.config.mount.magnet=磁力：吸取目标与名单
+gtit.pocket.config.mount.mage=魔法使：模式与元素
+gtit.pocket.config.mount.pending=这一段的完整配置由后续版本提供
+gtit.pocket.receipt.upgrade.off=已关掉这一型
+gtit.pocket.receipt.upgrade.on=已打开这一型
+gtit.pocket.receipt.upgrade.no_change=状态没变，本来就是这一档
+gtit.pocket.receipt.upgrade.not_on_record=这一型还没固化，没有开关可切
+gtit.pocket.receipt.upgrade.refuse_capacity=先腾流体条：关掉容量会装不下现有的量
+gtit.pocket.receipt.upgrade.refuse_stack=先拆大堆：关掉堆叠会装不下现有的堆
+gtit.pocket.receipt.upgrade.not_owner=承载的口袋已换位或界面已关，这次没改开关
 gtit.pocket.channel.always_on=通道常开中（持续化升级）
 gtit.pocket.tooltip.distill_fast=装蒸馏加速后每两秒半一轮
 item.neko_dimension_pocket.tooltip.9=每个流体槽容量 %5$d mB，%8$d 槽合计 %9$d mB（此项为需求外的设计取值，非原始要求数字）

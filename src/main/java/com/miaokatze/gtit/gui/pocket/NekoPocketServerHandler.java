@@ -29,8 +29,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
-import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -202,12 +202,16 @@ final class NekoPocketServerHandler {
         if (uuid == null || target == null) {
             return;
         }
-        // ★R95 通道持续化：载体已固化 CHANNEL_PERSIST 位 ⇒ 通道批边界自动续批（见
+        // ★R95 通道持续化：载体上这一型<b>当前生效</b> ⇒ 通道批边界自动续批（见
         // PocketChannelDriver 的回满腿），本按钮请求一律<b>早退</b>——放在识别/冷却/扣费三重点检
         // <b>之前</b> ⇒ 一分不扣、一次冷却不占、一个识别查询不发；回执走面板粘性回执通道
         // （putReceipt，R88 口袋域聊天零输出的同一裁定）告知"已在常开态"。客户端按钮禁用是
         // S4 片 BottomBand 的职责，本处只做服务端腿（伪造包 / 旧客户端照样被挡）。
-        if (PocketUpgrades.hasUpgrade(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)) {
+        // ★★R96 S2 收口（六处旁路的最后一处，也是本处最要紧的一处）：判据从位图直读换成组合谓词
+        // {@code PocketUpgradeSwitches.isActive}。留成 hasUpgrade 的后果比"开关对按钮无效"更坏——
+        // driver 那一侧已按开关停了回满（S1 读点③），这里却还早退 ⇒ <b>通道既不续批、玩家也手动开不了</b>，
+        // 两头都不通。用例 panel_readpoints_close_the_six_bypasses 钉这一条的方法体。
+        if (PocketUpgradeSwitches.isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)) {
             panel.putReceipt("gtit.pocket.channel.always_on", 0);
             return;
         }
@@ -287,6 +291,59 @@ final class NekoPocketServerHandler {
                 .startWorkAnimation(pocket, PocketConstants.BURST_SHOW_TICKS, PocketConstants.BURST_SHOW_TICKS);
         }
         // 短效通道：剩余秒数由 composeRemain 走 NBT 倒计时回显，无需即时回执（模式行同时刷新）
+    }
+
+    /**
+     * ★★R96 S2：配置面板那枚开关的<b>服务端入口</b>（三判的第三判 + 委托数据面写腿）。
+     * <p>
+     * <b>三判的顺序</b>：① 持有者本人 / 载体身份（{@link #serverGuardOk}，与取出·通道<b>同一条</b> R19 L1
+     * 防伪单源，★不自造第二份身份判据）→ ② 该型已在档上 → ③ 关闭守卫。后两判全在
+     * {@link PocketConfigPanel#commitSwitch} 里（那两判只吃 NBT 与数据面 ⇒ 抽成静态纯函数后能在纯 JVM
+     * 真跑；留在本方法里就只能"钉文本"，正是 R57/C3 那族形状）。
+     * <p>
+     * <b>三种拒绝的公共形状：零写入 + 一条粘性回执</b>。回执走 {@code putReceipt}（口袋域聊天零输出，
+     * R88 的同一裁定）⇒ 连点不会刷屏；同值重复到达走 {@code NO_CHANGE} 支，连 NBT 都不碰。
+     * <p>
+     * <b>非法 arg 静默丢弃</b>（不写档、不回执）：伪造包不该买到一条回执，而"这一型存在吗"的判定
+     * 本身也不该长成一次可见反馈（口径同 {@code performEssenceOutToPhial} 的格号越界支）。
+     *
+     * @param arg {@code PocketConfigPanel.encode} 的产物：{@code ordinal * 2 + offBit}
+     */
+    void performUpgradeSwitchToggle(int arg) {
+        final PocketUpgradeType type = PocketConfigPanel.typeOfArg(arg);
+        if (type == null) {
+            return;
+        }
+        // 判①：持有者本人 + 载体身份（客户端伪造 / 载体被换出 / 界面已关都在这里挡住）。
+        // ★这一判不通过时★不写档★，只回一条粘性回执 —— 静默是这里最坏的失败方式。
+        if (!serverGuardOk()) {
+            panel.putReceipt(PocketConfigPanel.identityReceiptKey(), 0);
+            return;
+        }
+        // ★写的是<b>活查表</b>取到的那枚载体（与 R95 的固化写点同一对象，W3 那条身份门同源）：
+        // panel.pocketStack() 是开屏瞬间的引用，会话期内载体被换出时它会陈旧 ⇒ 开关会写进错误的口袋。
+        final ItemStack carrier = panel.carrierStackLive();
+        if (carrier == null) {
+            panel.putReceipt(PocketConfigPanel.identityReceiptKey(), 0);
+            return;
+        }
+        final PocketConfigPanel.Outcome outcome = PocketConfigPanel.commitSwitch(
+            carrier,
+            type,
+            PocketConfigPanel.offOfArg(arg),
+            panel.inventory(),
+            cursorStack());
+        panel.putReceipt(PocketConfigPanel.receiptKey(outcome), 0);
+    }
+
+    /**
+     * 玩家游标栈（★堆叠守卫的扫描面必须含它，理由见 {@code PocketUpgradeGuards} 类 javadoc 那段
+     * "游标必须在扫描面里"）。取的是 {@code EntityPlayer#inventory#getItemStack()} —— 服务端权威那份，
+     * 不是 {@code syncManager.getCursorItem()}（那是同步镜像，本方法已在服务端主线程，直读权威）。
+     */
+    private ItemStack cursorStack() {
+        final EntityPlayer target = panel.player();
+        return target == null || target.inventory == null ? null : target.inventory.getItemStack();
     }
 
     /** 至少一枚绑定元件"被识别"（R6 的 getCellArray 非空口径，不缓存结论、不看 isPowered）。 */

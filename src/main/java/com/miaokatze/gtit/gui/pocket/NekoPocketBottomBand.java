@@ -7,6 +7,7 @@ import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.utils.Alignment;
@@ -1351,16 +1352,73 @@ public final class NekoPocketBottomBand {
             }
             PocketUpgrades.install(carrier, PocketUpgradeType.values()[index]);
         });
-        final ItemSlot slot = new ItemSlot();
+        final ItemSlot slot = new UpgradeCellSlot(ui, index);
         slot.slot(modular);
         slot.name("pocket_upgrade_" + index);
         slot.background(upgradeCellBackground(index));
-        slot.tooltip(tooltip -> {
+        // ★R96 S2：注册形态从 tooltip(...) 换成 tooltipDynamic(...) + autoUpdate —— 本处新增的
+        // "已关闭"那一行是<b>运行期状态</b>（玩家在配置面板里切一下就该消失），而一次性通道
+        // （ITooltip:64-66「Only called once」）会在装配期把它冻住（同 R83 B2(1) 记过的那条）。
+        slot.tooltipDynamic(tooltip -> {
             tooltip.addLine(IKey.lang("gtit.pocket.upgrade.slot.tooltip"));
             tooltip.addLine(IKey.lang(UPGRADE_ITEM_NAME_KEYS[index]));
             tooltip.addLine(IKey.lang(UPGRADE_EFFECT_KEYS[index]));
+            // ★关闭态读数（逐型状态的可见面之一；光泽只有一个布尔位，见 S1 的定案）：
+            // 判据与配置面板行首读数同源（PocketConfigPanel 的 SwitchState），不在此重写第二次。
+            final String offKey = PocketConfigPanel
+                .cellOffReadoutKeyOf(ui.upgradeSwitchState(PocketUpgradeType.values()[index]));
+            if (offKey != null) {
+                tooltip.addLine(IKey.lang(offKey));
+            }
         });
+        slot.tooltipAutoUpdate(true);
         return slot;
+    }
+
+    /**
+     * ★R96 S2：升级插件格的槽件 = R95 的"放入即固化"槽件 + <b>左键开配置面板</b>（P-2/P-3）。
+     * <p>
+     * <b>为什么要自己开一个子类而不是挂 lambda</b>：{@code ItemSlot} 没有 {@code onMousePressed} 的
+     * setter 形状（只有 {@link ItemSlot#onMousePressed(int)} 这个覆写点），而本格的手势是
+     * <b>条件让位</b>——空格 / 手上有货时必须把点击交回 vanilla 的放置语义，否则 R95 那条"放进格子里
+     * 即固化"的既有动作会被吃掉。这正好是 {@code NekoFilterSlot#onMousePressed} 那套按键矩阵的形状。
+     * <p>
+     * <b>吞击条件（三条同时成立才吞）</b>：① 左键；② 这一格里<b>已经有</b>插件（= 这一型已固化，
+     * 判据单源在 {@code NekoPocketPanel#upgradeCellFilled}，★不在这里再问一次位图）；③ 游标<b>空</b>
+     * （手上拿着东西的左键是"放上去"的意图，包括往别型格里误放）。三者齐 ⇒ 开配置面板并
+     * {@code return SUCCESS} 吞击（先例：{@code NekoPocketBottomBand} 通道按钮那条 {@code return true}
+     * 与 {@code NekoFilterSlot} 的中键支——★不调 {@code super}，否则 vanilla 会把它读成拿起/放置）。
+     * <p>
+     * <b>★这里一个字节都不写</b>：开面板是纯客户端手势；写档只发生在面板里那枚开关的
+     * {@code onMousePressed} → 动作码 → 服务端这一趟（静态可达链由用例
+     * {@code config_panel_action_reaches_guard} 逐跳钉）。
+     */
+    private static final class UpgradeCellSlot extends ItemSlot {
+
+        private final NekoPocketPanel ui;
+        private final int cellIndex;
+
+        UpgradeCellSlot(NekoPocketPanel ui, int cellIndex) {
+            this.ui = ui;
+            this.cellIndex = cellIndex;
+        }
+
+        @Override
+        public Interactable.Result onMousePressed(int mouseButton) {
+            if (mouseButton == 0 && ui.upgradeCellFilled(cellIndex) && cursorIsEmpty()) {
+                if (ui.openUpgradeConfig(cellIndex, this)) {
+                    return Interactable.Result.SUCCESS;
+                }
+            }
+            return super.onMousePressed(mouseButton);
+        }
+
+        /** 游标是否为空（★非空 = 玩家正拿着东西，那一次左键是放置意图，必须让位给 R95 的固化手势）。 */
+        private boolean cursorIsEmpty() {
+            final ItemStack carried = ui.syncManager()
+                .getCursorItem();
+            return carried == null || carried.stackSize <= 0;
+        }
     }
 
     /**

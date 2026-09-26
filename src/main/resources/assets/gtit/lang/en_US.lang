@@ -396,6 +396,28 @@ gtit.pocket.upgrade.magnet.tooltip=Automatically picks up items within eight blo
 gtit.pocket.upgrade.channel_persist.tooltip=Channels always on: the channel button is disabled and the pocket always shows as working
 gtit.pocket.upgrade.distill_fast.tooltip=Distillation interval halved from five seconds to two and a half
 gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
+# ---- ★R96 S2 new keys (19): the upgrade config band (secondary panel) title / three-state readouts /
+# mount frames + the closed-state cell readout + seven sticky receipts.
+# No ASCII digits inside values (the lang digit gate) — numbers are spelled out.
+gtit.pocket.upgrade.cell.off=Currently off: left-click this slot to open the config panel
+gtit.pocket.config.close=Close
+gtit.pocket.config.state.on=Turned on
+gtit.pocket.config.state.off=Turned off
+gtit.pocket.config.state.absent=Not installed
+gtit.pocket.config.switch.turn_off=Turn off
+gtit.pocket.config.switch.turn_on=Turn on
+gtit.pocket.config.switch.none=Not installed
+gtit.pocket.config.switch.hint=Left-click to switch this module on or off; turning it off does not refund the module
+gtit.pocket.config.mount.magnet=Magnet: pickup targets and lists
+gtit.pocket.config.mount.mage=Mage: modes and elements
+gtit.pocket.config.mount.pending=The full settings for this section come in a later version
+gtit.pocket.receipt.upgrade.off=Module turned off
+gtit.pocket.receipt.upgrade.on=Module turned on
+gtit.pocket.receipt.upgrade.no_change=Nothing changed, it already was in that state
+gtit.pocket.receipt.upgrade.not_on_record=That module is not installed yet, so there is nothing to switch
+gtit.pocket.receipt.upgrade.refuse_capacity=Empty the fluid bar first: turning capacity off would not fit what is stored
+gtit.pocket.receipt.upgrade.refuse_stack=Break those stacks first: turning stacking off would not fit what is stored
+gtit.pocket.receipt.upgrade.not_owner=The pocket carrying it moved slot or the screen closed, so nothing changed
 gtit.pocket.channel.always_on=Channels always on (persistence upgrade)
 gtit.pocket.tooltip.distill_fast=With the distillation accelerator, one round every two and a half seconds
 item.neko_dimension_pocket.tooltip.9=Each fluid slot holds %5$d mB, %9$d mB in total across %8$d slots (a capacity chosen beyond the original request)

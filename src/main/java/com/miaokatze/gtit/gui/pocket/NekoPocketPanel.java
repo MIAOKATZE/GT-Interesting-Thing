@@ -11,6 +11,8 @@ import net.minecraft.util.StatCollector;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
+import com.cleanroommc.modularui.api.IPanelHandler;
+import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
@@ -36,8 +38,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
-import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
@@ -253,6 +255,28 @@ public final class NekoPocketPanel implements PocketSession {
      * 与之竞争的"空游标凭空造瓶"支已随 {@link #ACTION_ESSENCE_OUT} 一并改派到同一单点。
      */
     private static final int ACTION_ESSENCE_OUT_TO_PHIAL = 11;
+    /**
+     * ★R96 S2（P-2/P-3）：配置面板里那一枚开关的<b>唯一</b>出口——arg 的编解码单源在
+     * {@link PocketConfigPanel#encode}（{@code ordinal * 2 + offBit}），本处只登记码值。
+     * <p>
+     * ★<b>左键点插件格不发这条</b>：开面板是纯客户端手势（次级面板由 {@link IPanelHandler#openPanel()}
+     * 在客户端建），不发码 ⇒ 不会因为"看一眼配置"就往服务端队列里投一颗 lambda。写档只发生在
+     * <b>面板里那枚开关按钮</b>上，且执行体在服务端。
+     */
+    private static final int ACTION_UPGRADE_SWITCH = 12;
+
+    /**
+     * ★R96 S2：升级配置面板（主面板之上的次级面板）的句柄。
+     * <p>
+     * ★只在客户端有值（{@code IPanelHandler.simple} 要求宿主 {@code ModularPanel} 已挂树，服务端没有
+     * 屏幕对象），服务端恒 {@code null} ⇒ 写腿不可能被这条通道碰到（写腿另有 {@code isClient} 早退兜底）。
+     * 宿主面板换实例（重开屏幕）时按 {@code TerminalGiftPage:301-306} 的既有范式重建，防跨屏打开。
+     */
+    private IPanelHandler configPanel;
+    /** {@link #configPanel} 当时挂的宿主面板（身份比对：换实例即重建）。 */
+    private ModularPanel configPanelHost;
+    /** {@link #assemble()} 产出的主面板实例（次级面板要挂到它上面）。 */
+    private ModularPanel mainPanel;
 
     private final PlayerInventoryGuiData data;
     private final PanelSyncManager syncManager;
@@ -364,9 +388,13 @@ public final class NekoPocketPanel implements PocketSession {
         // ★R95 S5：升级位探针注入（活查载体栈版）——readFrom 已用档内位图自播种，这里换活查表版：
         // 覆盖"口袋原本无 NBT、会话期内才第一次固化升级"的那一支（install 写的是栈上现 NBT，可能不在
         // readFrom 捕获的那份根上）。注入点约定见 PocketInventory#setUpgradeProbes 的 javadoc。
+        // ★★R96 S2 收口：这两条 lambda 从 hasUpgrade 换成组合谓词 isActive。这不是风格问题——
+        // 注入会<b>覆盖</b> readFrom 的自播种，留成 hasUpgrade 就等于把整场面板会话里的开关旁路掉：
+        // 玩家在配置面板上关掉容量/堆叠，tank 天花板与单格上限照旧走升级档（"切了开关但行为不变"，
+        // 本轮 C3 的同型事故）。读法与 PocketInventory#readFrom 那两条逐字同形。
         this.inventory.setUpgradeProbes(
-            () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CAPACITY),
-            () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.STACK));
+            () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY),
+            () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK));
         // ★R78③：把"格位归属 + 现有点数"当作两份镜像的<b>起点</b>。双端读的都是同一份口袋 NBT
         // （客户端那一份是 vanilla 同步过来的物品 tag），所以起点天然一致；之后的每一次变化
         // 都由服务端 composeEssenceBlob 覆盖客户端那份 ⇒ 不存在"两端各算各的格序"。
@@ -623,24 +651,41 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * ★R95 S4：载体是否已固化「通道持续化」位（单源判据 {@link PocketUpgrades#hasUpgrade}，双端各读
-     * 自己那份载体栈：服务端权威、客户端 vanilla 同步镜像）。两个消费面：通道按钮的客户端禁用腿
-     * （早退不发包 + tooltip 注记）与说明块的倒计时替代文案（{@link #channelStatusText}）。
+     * ★R95 S4：载体上的「通道持续化」<b>当前生效没有</b>（★R96 S2 起判据是组合谓词
+     * {@link PocketUpgradeSwitches#isActive} = 位图 ∧ 未关闭；双端各读自己那份载体栈：服务端权威、
+     * 客户端 vanilla 同步镜像）。两个消费面：通道按钮的客户端禁用腿（早退不发包 + tooltip 注记）
+     * 与说明块的倒计时替代文案（{@link #channelStatusText}）。
+     * <p>
+     * ★这条腿是 R96 S2 收口的六处旁路之一：留成位图直读 ⇒ 玩家在配置面板里把常开关掉，
+     * 按钮依旧"已在常开态"早退，而 {@code PocketChannelDriver} 那一侧已经按开关停了回满 ⇒
+     * <b>通道既不续批也不能手开</b>，两头都不通（比"开关无效"更坏）。
      */
     boolean channelPersistActive() {
-        return PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CHANNEL_PERSIST);
+        return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CHANNEL_PERSIST);
     }
 
-    // ------------------ ★R95 S5：升级位的面板读口（双端各读自己那份载体：服务端权威、客户端 vanilla 镜像）
+    // ------------------ ★R95 S5：升级位的面板读口（双端各读自己那份载体：服务端权威、客户端 vanilla 镜像；
+    // ★R96 S2 起三个读口统一走 PocketUpgradeSwitches.isActive，位图直读在 GUI 侧归零）
 
-    /** CAPACITY 位是否固化（流体条 16M/16G；流体格件的步进/天花板读它）。 */
+    /** CAPACITY 位是否<b>生效</b>（流体条 20M/2G；流体格件的步进/天花板读它）。 */
     boolean capacityUpgradeActiveNow() {
-        return PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CAPACITY);
+        return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY);
     }
 
     /** 单 tank 当前容量（mB，long；CAPACITY 位现读 ⇒ 会话期内固化即换档）。 */
     long fluidTankCapacityNow() {
         return PocketConstants.fluidTankCapacityMl(capacityUpgradeActiveNow());
+    }
+
+    /**
+     * ★R96 S2：某一型当前的开关三态（配置面板与升级格 tooltip 的<b>共用读数口</b>）。
+     * <p>
+     * 判据单源在 {@code PocketUpgradeSwitches}（组合谓词 + off-mask），本方法只负责"读哪一份载体"——
+     * 活查表那枚（服务端权威栈 / 客户端 vanilla 镜像），★不在客户端写、也不建第二份缓存。
+     * 三态而不是两态：没装的型不许显示成"已关闭"（那是"还能开回来"的错误暗示）。
+     */
+    PocketConfigPanel.SwitchState upgradeSwitchState(PocketUpgradeType type) {
+        return PocketConfigPanel.switchState(carrierStackLive(), type);
     }
 
     /**
@@ -880,6 +925,22 @@ public final class NekoPocketPanel implements PocketSession {
             && sendAction(ACTION_ESSENCE_INTAKE, cell);
     }
 
+    /**
+     * ★R96 S2：配置面板里那枚开关的唯一出口（<b>客户端只发码，一个字节都不写本地 NBT</b>）。
+     * <p>
+     * 发的是<b>目标值</b>（{@code wantOff}）而不是"翻一下"：重复包打到同一目标 ⇒ 服务端走
+     * {@code NO_CHANGE} 支零写入，不会把一次点击的包重放成两次翻转。arg 的编解码单源在
+     * {@link PocketConfigPanel#encode}，本处不重写第二份。
+     * <p>
+     * ★不做客户端预筛（不查守卫、不查这一型装没装）：守卫的输入是服务端内存里的 tank 真值与中栏栈，
+     * 客户端那份只是开屏快照 + 单独的显示镜像，拿它预筛就是给同一个判据造第二处读数（R39b/R19 的
+     * "客户端不得推断服务端事实"同一条纪律）。拒绝与成交都由服务端的粘性回执行告诉玩家。
+     */
+    boolean requestUpgradeSwitch(PocketUpgradeType type, boolean wantOff) {
+        final int arg = PocketConfigPanel.encode(type, wantOff);
+        return arg >= 0 && sendAction(ACTION_UPGRADE_SWITCH, arg);
+    }
+
     private boolean sendAction(int code, int arg) {
         if (syncManager.isClient()) {
             syncManager.findSyncHandler(SYNC_ACTION, IntSyncValue.class)
@@ -888,6 +949,64 @@ public final class NekoPocketPanel implements PocketSession {
             onServerAction(code * ACTION_ARG_BASE + arg);
         }
         return true;
+    }
+
+    /**
+     * 第 {@code index} 个升级格的左键：<b>打开配置面板</b>（★纯客户端手势，不发码、不写档）。
+     * <p>
+     * ★不在这里判"这一型装没装"以外的任何事，也★不在这里判守卫：开面板不需要服务端同意
+     * （写档才需要，那一趟走 {@link #requestUpgradeSwitch}）。
+     *
+     * @param anchor 点击来自哪个槽件（次级面板要挂到它所在的宿主面板上；★装配期取不到，
+     *               {@code getPanel()} 那时还是 null，所以由点击现场传进来）
+     */
+    boolean openUpgradeConfig(int index, IWidget anchor) {
+        if (!upgradeCellFilled(index)) {
+            // 空格的左键归 vanilla 的"放置"语义（R95 的放入即固化手势走的就是这一支）⇒
+            // 这条腿必须把点击交回去，不然"装插件"这个既有动作会被吃掉。
+            return false;
+        }
+        final ModularPanel host = anchor == null ? null : anchor.getPanel();
+        if (host == null) {
+            return false;
+        }
+        if (configPanel == null || configPanelHost != host) {
+            configPanel = IPanelHandler.simple(host, (parent, player) -> PocketConfigPanel.build(this), true);
+            configPanelHost = host;
+        }
+        configPanel.openPanel();
+        return true;
+    }
+
+    /** 关闭配置面板（★只关面板；关闭不写任何状态，配置面板本身无待提交内容）。 */
+    boolean closeUpgradeConfig() {
+        if (configPanel != null) {
+            configPanel.closePanel();
+        }
+        return true;
+    }
+
+    /**
+     * ★R96 S2：配置面板回执行要显示的那句话 = 既有<b>粘性回执</b>的原文（单源 {@link #receiptText()}）。
+     * <p>
+     * ★不另开一条"开关专用回执"通道：面板内外的回执必须是同一句真话，否则同一次拒绝在两个地方有两种
+     * 说法（{@code SYNC_RECEIPT} 一根通道一个所有者）。
+     */
+    String upgradeConfigReceiptText() {
+        return receiptText();
+    }
+
+    /**
+     * ★R96 S2：升级格的<b>占用判据</b>（第 {@code index} 格里有没有插件）。
+     * <p>
+     * 为什么用它而不是再问一次位图：R95 的"放入即固化、不可取出"（{@code PocketSlots#upgradeCell} 的
+     * {@code accessibility(true, false)}）保证<b>格里有货 ⇔ 这一型已经固化</b>，而这一判据双端都拿得到
+     * （槽内容由 {@code SYNC_UPGRADE} 同步），不需要在 GUI 侧长出第三次 {@code hasUpgrade} 直读
+     * （门禁 E 段把全仓总点数钉成 2，见 {@code PocketConfigPanel#switchState} 的说明）。
+     */
+    boolean upgradeCellFilled(int index) {
+        return inventory.upgradeGroup()
+            .getStackInSlot(index) != null;
     }
 
     /**
@@ -933,6 +1052,11 @@ public final class NekoPocketPanel implements PocketSession {
                 break;
             case ACTION_ESSENCE_OUT_TO_PHIAL:
                 performEssenceOutToPhial(arg);
+                break;
+            case ACTION_UPGRADE_SWITCH:
+                // ★R96 S2：开关的唯一服务端落点（arg 的解越归 PocketConfigPanel，判据归 handler）。
+                // 本 case 是"静态可达链"的中间一跳，两侧都不能省：客户端只发码，服务端才写档。
+                server.performUpgradeSwitchToggle(arg);
                 break;
             default:
                 break;
@@ -2352,7 +2476,9 @@ public final class NekoPocketPanel implements PocketSession {
     public boolean storageStackUpgraded() {
         // ★直读载体活查表（不经 server 转发回自己 ⇒ 无自环）：与服务端权威同一条真相，
         // 且双端可用（客户端读 vanilla 镜像，格件的显示回落与滚轮在客户端也拿得到升级位）。
-        return PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.STACK);
+        // ★R96 S2：判据换成组合谓词 isActive ⇒ 关掉堆叠开关以后，本方法的中栏/滚轮/ghost 上限读数
+        // 与 PocketInventory#storageStackUpgraded（getSlotLimit / getStackLimit 两条执法点）同一个说法。
+        return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK);
     }
 
     // ------------------------------------------- ★R86 缺陷 3：口袋 → 元件的推送向来源面（服务端会话实现）
@@ -2914,7 +3040,7 @@ public final class NekoPocketPanel implements PocketSession {
      * <p>
      * ★R95 S4：<b>通道持续化位在 ⇒ 倒计时段整体换成「通道常开」文案</b>（{@code always_on}）——
      * 常开态下没有"剩余秒数"可读（driver 批边界自动续批），仍显倒计时就是给玩家报一个不存在的
-     * 终点。判据走 {@link #channelPersistActive()}（单源 {@code PocketUpgrades#hasUpgrade}），
+     * 终点。判据走 {@link #channelPersistActive()}（单源组合谓词 {@code PocketUpgradeSwitches#isActive}），
      * 客户端读 vanilla 同步过来的载体镜像。
      */
     String channelStatusText() {

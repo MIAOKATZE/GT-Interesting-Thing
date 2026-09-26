@@ -38,6 +38,7 @@ import com.miaokatze.gtit.gui.pocket.NekoPocketFluidSlot;
 import com.miaokatze.gtit.gui.pocket.NekoPocketLeftColumn;
 import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
 import com.miaokatze.gtit.gui.pocket.NekoPocketStorageColumn;
+import com.miaokatze.gtit.gui.pocket.PocketConfigPanel;
 import com.miaokatze.gtit.gui.pocket.PocketGhostRequest;
 import com.miaokatze.gtit.gui.pocket.PocketGuiTextureContract;
 import com.miaokatze.gtit.gui.pocket.PocketSlots;
@@ -424,6 +425,29 @@ public class NekoPocketModelTest {
         // ---- ★R96 S3（TP-S3）容量数值链 20M / 2G 两条：超顶支不可达钉成用例 / 世界侧抽液走容量选择点
         cases.put("fluid_truth_never_exceeds_int_head", NekoPocketModelTest::fluidTruthNeverExceedsIntHead);
         cases.put("world_tap_uses_capacity_choice_point", NekoPocketModelTest::worldTapUsesCapacityChoicePoint);
+        // ---- ★R96 S2（TP-S2）配置面板与开关写腿七条：可达链 / 六处旁路收口 / 三种拒绝 / 写点单源 /
+        // 几何账 / 按型分派 / 格上读数跟开关。★本批是"上一手写完七条却一条都没挂进注册表"的收口：
+        //   173/173 全绿而七条一条不跑 = R57「写了没人调」在<b>测试面</b>的同一形状。
+        // ★用例总数按"本类双冒号的方法引用"计数，起点 173 ⇒ 本批 +7 = 180。
+        cases.put(
+            "config_panel_action_reaches_guard",
+            NekoPocketModelTest::configPanelActionReachesGuard);
+        cases.put(
+            "panel_readpoints_close_the_six_bypasses",
+            NekoPocketModelTest::panelReadpointsCloseTheSixBypasses);
+        cases.put(
+            "switch_write_refuses_three_cases",
+            NekoPocketModelTest::switchWriteRefusesThreeCases);
+        cases.put("no_client_side_switch_write", NekoPocketModelTest::noClientSideSwitchWrite);
+        cases.put(
+            "config_panel_geometry_within_secondary_caps",
+            NekoPocketModelTest::configPanelGeometryWithinSecondaryCaps);
+        cases.put(
+            "config_panel_dispatch_is_not_five_identical",
+            NekoPocketModelTest::configPanelDispatchIsNotFiveIdentical);
+        cases.put(
+            "upgrade_cell_readouts_follow_the_switch",
+            NekoPocketModelTest::upgradeCellReadoutsFollowTheSwitch);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -10376,7 +10400,7 @@ public class NekoPocketModelTest {
                 handler,
                 req,
                 reqEnd,
-                "hasUpgrade(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)");
+                "isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)");
             final int receipt = firstCodeLineWith(handler, req, reqEnd, "gtit.pocket.channel.always_on");
             final int ret = firstCodeLineWith(handler, receipt, reqEnd, "return;");
             final int identify = firstCodeLineWith(handler, req, reqEnd, "gtit.pocket.receipt.unrecognised");
@@ -10385,6 +10409,18 @@ public class NekoPocketModelTest {
             SimpleAssert.that(ret > receipt && ret < identify, "★早退在识别/冷却/扣费三重点检<b>之前</b>（一分不扣、一次冷却不占）");
             SimpleAssert.that(deduct > identify, "扣费点仍在其后（持续化不产生第二条扣费路径）");
             SimpleAssert.eq(1, countRegionCode(handler, req, reqEnd, "always_on"), "常开回执键恰 1 处（单源）");
+            // ★★R96 S2 收口（旧断言只改文本、名字不动）：这一判早退的判据从位图直读换成组合谓词。
+            // 留成 hasUpgrade 的后果比"开关对按钮没作用"更坏 —— driver 的回满腿（S1 读点③）已经吃开关，
+            // 这里却还按位图早退 ⇒ 玩家关掉常开后<b>既不自动续批、也按不动按钮</b>，两头都不通而两侧断言全绿。
+            // ★阳性对照：把这一行改回 hasUpgrade ⇒ 下面那条 0 立刻红（本用例的其余断言照旧绿，
+            // 因为"早退在三重点检之前"这个形状没变 —— 正是这条读数为 0 才把旁路本身钉住）。
+            SimpleAssert.that(
+                regionContainsCode(handler, req, reqEnd, "PocketUpgradeSwitches.isActive("),
+                "★早退必须读组合谓词（开关一置起，这一判就该放行到手动通道）");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(handler, req, reqEnd, "PocketUpgrades.hasUpgrade("),
+                "★阳性对照就位：服务端按钮早退改回位图直读 ⇒ 本行红");
         }
     }
 
@@ -13351,6 +13387,671 @@ public class NekoPocketModelTest {
                 throw new IllegalStateException("模拟第三方容器实现抛异常");
             }
             return draggedStack == null ? null : names.get(draggedStack);
+        }
+    }
+
+    // ================================================================== ★R96 S2（TP-S2）六条判据
+    //
+    // 共同点：S2 的两半是「GUI 内左键开配置面板」与「收口 S1 移交的 6 处位图直读旁路」。
+    // 后一半才是本轮最容易翻车的地方 —— 不收口则面板会话内的开关被注入侧旁路，玩家切了开关而行为不变，
+    // 与 R95 C3「测试全绿、实机没生效」同型。所以这六条里凡 GUI 侧的判据都走
+    // <b>按签名定位方法体 + 阳性对照（改回 hasUpgrade 必红）</b>，凡数据面的判据都<b>真驱动</b>。
+
+    /** 造一只"装了给定几型插件"的载体口袋栈（★走真实 install 写点，位图与面板会话同源）。 */
+    private static ItemStack carrierWithUpgrades(PocketUpgradeType... types) {
+        final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        final NBTTagCompound root = new NBTTagCompound();
+        for (final PocketUpgradeType type : types) {
+            PocketUpgrades.install(root, type);
+        }
+        carrier.setTagCompound(root);
+        return carrier;
+    }
+
+    /** off-mask 的当前字节（键缺席 ⇒ −1，★用来把"没写档"读成一个可判的数而不是读注释）。 */
+    private static int offMaskOf(ItemStack carrier) {
+        final NBTTagCompound root = carrier == null ? null : carrier.getTagCompound();
+        return root == null || !root.hasKey(PocketConstants.UPGRADES_OFF_KEY)
+            ? -1
+            : root.getByte(PocketConstants.UPGRADES_OFF_KEY) & 0xFF;
+    }
+
+    /**
+     * ★★R96 S2 验收 1（P-2/P-3 的执法半边）：<b>静态可达链逐跳点名</b>。
+     * <p>
+     * 五跳全在（少任何一跳 = 面板是一棵画得出来但没人按的树 = R57「写了没人调」同族）：
+     * ① 升级格 {@code onMousePressed(mouseButton == 0)} → {@code openUpgradeConfig}；
+     * ② 面板内开关的 {@code onMousePressed(button == 0)} → {@code requestUpgradeSwitch}；
+     * ③ {@code requestUpgradeSwitch} → {@code sendAction(ACTION_UPGRADE_SWITCH, arg)}；
+     * ④ {@code onServerAction} 的 {@code case} → {@code server.performUpgradeSwitchToggle(arg)}；
+     * ⑤ 该方法 → {@code PocketConfigPanel.commitSwitch} → {@code canTurnOff} → {@code setOff}。
+     * ★每跳都用<b>方法体区间</b>判（{@code methodStart}/{@code methodEnd} 按签名圈），不接受
+     * "这个符号在文件里出现过"——那种读数换个方法埋进去照样绿。
+     */
+    private static void configPanelActionReachesGuard() {
+        final java.util.List<String> band = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketBottomBand.java");
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        final java.util.List<String> sheet = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
+        final java.util.List<String> conf = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/PocketConfigPanel.java");
+        if (band == null || panel == null || sheet == null || conf == null) {
+            System.out.println("[NOTE] 读不到四个 GUI 源文件 ⇒ S2 可达链【未验】（★不是通过）");
+            return;
+        }
+        // ---- 跳①：格件左键 → 开面板（而且是"有条件的让位"，不能吞掉 R95 的固化手势）----
+        final int cellPress = methodStart(band, "public Interactable.Result onMousePressed(int mouseButton) {");
+        SimpleAssert.that(cellPress >= 0, "★跳①起点：必须定位升级格槽件覆写的 onMousePressed（不是通道按钮那条）");
+        final int cellPressEnd = methodEnd(band, cellPress);
+        SimpleAssert.that(regionContainsCode(band, cellPress, cellPressEnd, "mouseButton == 0"),
+            "跳①：只有左键开面板（右键/中键交回原语义，同 R83 B2(5) 那条口径）");
+        SimpleAssert.that(regionContainsCode(band, cellPress, cellPressEnd, "ui.upgradeCellFilled(cellIndex)"),
+            "跳①：只对<b>已安装</b>的格开面板（空格里键属「放入即固化」）");
+        SimpleAssert.that(regionContainsCode(band, cellPress, cellPressEnd, "cursorIsEmpty()"),
+            "跳①：游标非空时让位给放置意图 ⇒ 与 R95 固化手势互不干扰的<b>静态</b>半边（观感属 V-8）");
+        SimpleAssert.that(regionContainsCode(band, cellPress, cellPressEnd, "ui.openUpgradeConfig(cellIndex, this)"),
+            "★跳①→跳②的把手：格件真的把点击交给面板（本行断了，后面四跳再直也是死树）");
+        SimpleAssert.that(regionContainsCode(band, cellPress, cellPressEnd, "Interactable.Result.SUCCESS"),
+            "跳①：吞击用 SUCCESS（先例 NekoFilterSlot 的中键支 ⇒ ★不调 super，否则 vanilla 读成拿起/放置）");
+        SimpleAssert.that(regionContainsCode(band, cellPress, cellPressEnd, "return super.onMousePressed(mouseButton);"),
+            "跳①：不满足三条时必须把点击交回 super（否则放不进插件 = 弄坏 R95 既有动作）");
+        SimpleAssert.eq(0, countCodeLinesIn(band, "setOff("), "★Band 侧零写档（客户端不碰 off-mask）");
+        // ---- 跳②：面板里那枚开关的 onMousePressed → requestUpgradeSwitch ----
+        final int open = methodStart(panel, "boolean openUpgradeConfig(int index, IWidget anchor) {");
+        SimpleAssert.that(open >= 0, "★定位 NekoPocketPanel#openUpgradeConfig（左键的落点）");
+        final int openEnd = methodEnd(panel, open);
+        SimpleAssert.that(regionContainsCode(panel, open, openEnd, "upgradeCellFilled(index)"),
+            "跳②：空格早退并把点击让回去（return false ⇒ 格件走 super）");
+        SimpleAssert.that(regionContainsCode(panel, open, openEnd, "PocketConfigPanel.build(this)"),
+            "跳②：次级面板的内容由 PocketConfigPanel 单源给（★不是五套面板）");
+        SimpleAssert.that(
+            regionContainsCode(panel, open, openEnd, "IPanelHandler.simple(host, (parent, player) -> PocketConfigPanel.build(this), true)"),
+            "跳②：挂的是既有 IPanelHandler 范式（TerminalGiftPage / NekoVMGuiV2 同形）⇒ 不是自造的第四套 UI");
+        SimpleAssert.that(regionContainsCode(panel, open, openEnd, "configPanel.openPanel()"), "跳②：真的 openPanel");
+        SimpleAssert.eq(0, countRegionCode(panel, open, openEnd, "sendAction("),
+            "★开面板不发码（看一眼配置不该往服务端队列投 lambda）");
+        SimpleAssert.eq(0, countRegionCode(panel, open, openEnd, "setOff("), "★开面板不写档");
+        final int swBuild = methodStart(conf, "public static ModularPanel build(NekoPocketPanel ui) {");
+        SimpleAssert.that(swBuild >= 0, "★定位 PocketConfigPanel#build（一个面板、按型分派内容）");
+        SimpleAssert.that(regionContainsCode(conf, swBuild, methodEnd(conf, swBuild), "switchButton(ui, types[row], row)"),
+            "跳②→跳③的把手：build 真的把开关件画出来（画不出来就没有 onMousePressed 这回事）");
+        final int swBtn = methodStart(conf, "private static IWidget switchButton(NekoPocketPanel ui, PocketUpgradeType type, int row) {");
+        SimpleAssert.that(swBtn >= 0, "★定位 switchButton（链上第一个真正会改行为的控件）");
+        final int swBtnEnd = methodEnd(conf, swBtn);
+        SimpleAssert.that(regionContainsCode(conf, swBtn, swBtnEnd, "onMousePressed(button -> button == 0"),
+            "跳③：开关件只认左键");
+        SimpleAssert.that(
+            regionContainsCode(conf, swBtn, swBtnEnd, "ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type))"),
+            "★跳③：左键的唯一出口是发码（目标值现读载体，不在装配期冻住）");
+        SimpleAssert.eq(0, countRegionCode(conf, swBtn, swBtnEnd, "setOff("),
+            "★★阳性对照就位：这里若长出本地写档（客户端私写 off-mask）⇒ 本行立刻红");
+        // ---- 跳③：requestUpgradeSwitch → sendAction ----
+        final int req = methodStart(panel, "boolean requestUpgradeSwitch(PocketUpgradeType type, boolean wantOff) {");
+        SimpleAssert.that(req >= 0, "★定位 requestUpgradeSwitch");
+        final int reqEnd = methodEnd(panel, req);
+        SimpleAssert.that(regionContainsCode(panel, req, reqEnd, "PocketConfigPanel.encode(type, wantOff)"),
+            "跳③：arg 的编解码单源在 PocketConfigPanel（本处不写第二份 ordinal*2+bit）");
+        SimpleAssert.that(regionContainsCode(panel, req, reqEnd, "arg >= 0 && sendAction(ACTION_UPGRADE_SWITCH, arg)"),
+            "★跳③：非法编码不发码 + 复用 SYNC_ACTION（不新增通道）");
+        SimpleAssert.that(
+            methodStart(panel, "private static final int ACTION_UPGRADE_SWITCH = 12;") >= 0,
+            "★动作码字面量 = 12（与既有 2…11 不冲突；改码位即红）");
+        // ---- 跳④：onServerAction 的 case → handler ----
+        final int dispatch = methodStart(panel, "private void onServerAction(int packed) {");
+        SimpleAssert.that(dispatch >= 0, "★定位 onServerAction（离线套件锚定的分发体）");
+        final int dispatchEnd = methodEnd(panel, dispatch);
+        SimpleAssert.that(regionContainsCode(panel, dispatch, dispatchEnd, "case ACTION_UPGRADE_SWITCH:"),
+            "★跳④：分派 case 在场（码表加了但没接 case = 玩家点了永远没反应 = R57 同族）");
+        final int caseLine = firstCodeLineWith(panel, dispatch, dispatchEnd, "case ACTION_UPGRADE_SWITCH:");
+        final int callLine = firstCodeLineWith(panel, caseLine, dispatchEnd, "server.performUpgradeSwitchToggle(arg)");
+        SimpleAssert.that(callLine > caseLine, "★跳④：case 真的落到 handler 的开关入口（不是落到 default 上）");
+        SimpleAssert.that(regionContainsCode(panel, dispatch, dispatchEnd, "default:"), "分发仍有 default（未知码不吞动作）");
+        // ---- 跳⑤：handler → commitSwitch → canTurnOff → setOff（顺序即判序）----
+        final int toggle = methodStart(sheet, "void performUpgradeSwitchToggle(int arg) {");
+        SimpleAssert.that(toggle >= 0, "★定位 performUpgradeSwitchToggle");
+        final int toggleEnd = methodEnd(sheet, toggle);
+        SimpleAssert.that(regionContainsCode(sheet, toggle, toggleEnd, "PocketConfigPanel.typeOfArg(arg)"),
+            "跳⑤：arg 用同一条单源解码");
+        final int guardLine = firstCodeLineWith(sheet, toggle, toggleEnd, "serverGuardOk()");
+        final int commitLine = firstCodeLineWith(sheet, toggle, toggleEnd, "PocketConfigPanel.commitSwitch(");
+        SimpleAssert.that(guardLine >= 0 && commitLine > guardLine,
+            "★跳⑤的判序：持有者/载体身份这一判<b>在前</b>，写腿在后（反过来就是「先写再想写给了谁」）");
+        SimpleAssert.that(regionContainsCode(sheet, toggle, toggleEnd, "panel.carrierStackLive()"),
+            "跳⑤：写的是活查表那枚载体（与 R95 固化写点同一对象，★不是开屏旧引用）");
+        SimpleAssert.that(regionContainsCode(sheet, toggle, toggleEnd, "cursorStack()"),
+            "跳⑤：★游标喂进守卫（关掉堆叠后游标那一大份无处安放，扫描面必须含它）");
+        SimpleAssert.that(regionContainsCode(sheet, toggle, toggleEnd, "panel.putReceipt(PocketConfigPanel.receiptKey(outcome), 0)"),
+            "跳⑤：结论一律落<b>粘性回执</b>（成交与拒绝都有说法，不静默）");
+        final int commit = methodStart(conf, "public static Outcome commitSwitch(ItemStack carrier, PocketUpgradeType type, boolean wantOff,");
+        SimpleAssert.that(commit >= 0, "★定位 PocketConfigPanel#commitSwitch（全仓唯一写腿）");
+        final int commitEnd = methodEnd(conf, commit);
+        final int stateLine = firstCodeLineWith(conf, commit, commitEnd, "switchState(carrier, type)");
+        final int verdictLine = firstCodeLineWith(conf, commit, commitEnd, "PocketUpgradeGuards.canTurnOff(");
+        final int writeLine = firstCodeLineWith(conf, commit, commitEnd, "PocketUpgradeSwitches.setOff(");
+        SimpleAssert.that(stateLine >= 0 && verdictLine > stateLine,
+            "★判序：先问「这一型在不在档上」，再跑守卫（反过来会给没买过的型写关闭位 = 假读数）");
+        SimpleAssert.that(writeLine > verdictLine,
+            "★★链尾：守卫通过之后才写档 —— onMousePressed(0) → onServerAction → canTurnOff → setOff 这条链逐跳在场");
+        SimpleAssert.eq(1, countRegionCode(conf, commit, commitEnd, "PocketUpgradeSwitches.setOff("),
+            "写点在这条腿里恰 1（不出现「关与开两条各写一次」的分叉）");
+        SimpleAssert.eq(0, countRegionCode(conf, commit, commitEnd, "addChatMessage("),
+            "★不发消息洪泛：拒绝走面板回执，本件零聊天发包（R88 口袋域零输出的同一裁定）");
+    }
+
+    /**
+     * ★★R96 S2 验收 4（本片存在的另一半理由）：<b>六处旁路已归零的正向证据</b>。
+     * <p>
+     * 两条腿各钉一遍：<b>源码腿</b>逐跳点名（三个读口 + 注入的两条 lambda + 服务端按钮早退，
+     * 每一处都断言"读 isActive 且 hasUpgrade 为 0"）；<b>行为腿</b>真驱动 CAPACITY 与 STACK 两条
+     * <b>探针注入</b>腿到执法点上（tank 天花板 mB 与 {@code getSlotLimit} 件数）。
+     * ★阳性对照两条：① 全仓直调总点数必须恰 2（把任一读口改回 {@code hasUpgrade} ⇒ 变 3 ⇒ 红）；
+     * ② 关掉开关以后<b>位图仍在</b>（⇒ 上面那些翻转确实来自组合谓词，不是"关开关顺手把插件卸了"）。
+     */
+    private static void panelReadpointsCloseTheSixBypasses() {
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        final java.util.List<String> sheet = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
+        if (panel == null || sheet == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel / NekoPocketServerHandler ⇒ 六处旁路的收口【未验】");
+            return;
+        }
+        // ---- 源码腿：三处读口逐个点名（签名定位，不做全文件 grep）----
+        final String[][] reads = { { "boolean channelPersistActive() {", "CHANNEL_PERSIST" },
+            { "boolean capacityUpgradeActiveNow() {", "CAPACITY" },
+            { "public boolean storageStackUpgraded() {", "STACK" } };
+        for (final String[] read : reads) {
+            final int at = methodStart(panel, read[0]);
+            SimpleAssert.that(at >= 0, "★必须按签名定位面板读口 " + read[0] + "（改名/挪走 ⇒ 本判据红，不许「漂着绿」）");
+            final int end = methodEnd(panel, at);
+            SimpleAssert.that(
+                regionContainsCode(panel, at, end, "PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType."
+                    + read[1] + ")"),
+                "★面板读口 " + read[1] + " 读组合谓词（关开关 ⇒ 这一处行为必须跟着翻）");
+            SimpleAssert.eq(0, countRegionCode(panel, at, end, "PocketUpgrades.hasUpgrade("),
+                "★阳性对照就位：" + read[0] + " 改回 hasUpgrade ⇒ 本行红（那就是面板会话内的旁路本身）");
+        }
+        // ---- 源码腿：注入的两条 lambda（★最要紧的一处：注入会覆盖 readFrom 的自播种）----
+        final int ctor = methodStart(panel, "private NekoPocketPanel(PlayerInventoryGuiData data, PanelSyncManager syncManager, UISettings settings) {");
+        SimpleAssert.that(ctor >= 0, "★定位面板构造器（探针注入点住在这里）");
+        final int ctorEnd = methodEnd(panel, ctor);
+        SimpleAssert.eq(1, countRegionCode(panel, ctor, ctorEnd, "setUpgradeProbes("),
+            "注入点恰 1 处（拆成两次注入 = 两条读口各说一遍，门 F 就是为这个洞立的）");
+        SimpleAssert.eq(
+            2,
+            countRegionCode(
+                panel,
+                ctor,
+                ctorEnd,
+                "() -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType."),
+            "★CAPACITY / STACK 两条注入 lambda 都走组合谓词（留一条 hasUpgrade = 整场会话的开关被旁路）");
+        SimpleAssert.eq(0, countRegionCode(panel, ctor, ctorEnd, "PocketUpgrades.hasUpgrade("),
+            "★阳性对照就位：任一条注入改回位图直读 ⇒ 本行红");
+        // ---- 源码腿：服务端通道按钮的扣费前早退（第 6 处）----
+        final int channel = methodStart(sheet, "void performChannelRequest(PocketChannelState.Mode mode) {");
+        SimpleAssert.that(channel >= 0, "★定位 performChannelRequest");
+        final int channelEnd = methodEnd(sheet, channel);
+        SimpleAssert.that(
+            regionContainsCode(sheet, channel, channelEnd,
+                "PocketUpgradeSwitches.isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)"),
+            "★第 6 处（服务端按钮早退）也收进组合谓词");
+        SimpleAssert.eq(0, countRegionCode(sheet, channel, channelEnd, "PocketUpgrades.hasUpgrade("),
+            "★阳性对照就位：这一处改回位图 ⇒ 本行红（后果是「既不续批也按不动按钮」，两头都不通）");
+        // ---- 全仓读数：GUI 两个文件直调归零 + 全域总点归零到 2 ----
+        SimpleAssert.eq(0, countCodeLinesIn(panel, "PocketUpgrades.hasUpgrade("),
+            "★面板文件直读位图 = 0（S1 留下的 5 ⇒ 0）");
+        SimpleAssert.eq(0, countCodeLinesIn(sheet, "PocketUpgrades.hasUpgrade("),
+            "★handler 文件直读位图 = 0（S1 留下的 1 ⇒ 0）");
+        final int total = countMainJavaCodeLinesMatching("PocketUpgrades\\.hasUpgrade\\(");
+        if (total < 0) {
+            System.out.println("[NOTE] 读不到 src/main/java ⇒ 全仓总点闸【未验】");
+        } else {
+            SimpleAssert.eq(2, total,
+                "★★门禁 E 翻面后的同一个读数：全仓 hasUpgrade 直调只剩永久两条腿（P-4 源质钳制 + 组合谓词类内）"
+                    + "⇒ 任何一处读口退回直读 ⇒ 本行变 3 立刻红");
+        }
+        SimpleAssert.eq(1,
+            countMainJavaCodeLinesMatching("PocketConstants\\.essenceCapPerTag\\(PocketUpgrades\\.hasUpgrade\\("),
+            "★防恒真：豁免腿（E1）确实在场 ⇒ 上面那个 2 不是「扫描面空了」的读数");
+        SimpleAssert.eq(
+            1,
+            countMainJavaCodeLinesMatching("return PocketUpgrades\\.hasUpgrade\\(root, type\\) && !isOff\\(root, type\\);"),
+            "★防恒真：组合谓词自己的位图腿也在场（第二条永久腿）");
+        // ---- 行为腿：CAPACITY 与 STACK 两条<b>注入</b>腿真驱动到执法点 ----
+        final ItemStack carrier = carrierWithUpgrades(PocketUpgradeType.CAPACITY, PocketUpgradeType.STACK);
+        final PocketInventory inv = PocketInventory.readFrom(carrier.getTagCompound());
+        // ★与面板构造器那两行<b>逐字同形</b>的注入（生产代码走的是同一个表达式；上面六段源码腿已证
+        // 生产代码里就是这两行，本处负责把"这个表达式真的把执法点翻过来"这半件事跑出来）。
+        inv.setUpgradeProbes(
+            () -> PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CAPACITY),
+            () -> PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.STACK));
+        SimpleAssert.that(inv.capacityUpgradeActive(), "注入腿起点：CAPACITY 生效");
+        SimpleAssert.that(inv.storageStackUpgraded(), "注入腿起点：STACK 生效");
+        SimpleAssert.eq(
+            (int) Math.min(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML, Integer.MAX_VALUE),
+            inv.tankAt(0).getCapacity(),
+            "★执法点①在场：tank 天花板 = 升级档（2G，int 顶之内）");
+        SimpleAssert.eq(1024, inv.storage().getSlotLimit(0), "★执法点②在场：中栏槽位上限 = 1024");
+        // 关掉 CAPACITY：走<b>面板的写腿</b>（commitSwitch），不是手写 setOff ⇒ 连"写腿→探针→执法点"一起验
+        SimpleAssert.eq(PocketConfigPanel.Outcome.TURNED_OFF,
+            PocketConfigPanel.commitSwitch(carrier, PocketUpgradeType.CAPACITY, true, inv, null),
+            "面板写腿：关容量放行（tank 空 ⇒ 守卫不拒）");
+        SimpleAssert.that(!inv.capacityUpgradeActive(),
+            "★★开关一关，同一实例的<b>注入</b>探针立刻翻转（留 hasUpgrade 时这里永远绿不了 = 本片要防的事故）");
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            inv.tankAt(0).getCapacity(),
+            "★执法点①跟着翻回 20M（钉的是执法点，不是算式）");
+        SimpleAssert.eq(1024, inv.storage().getSlotLimit(0), "★同档里 STACK 那一型仍开着（逐型独立，不是一键全灭）");
+        SimpleAssert.eq(PocketConfigPanel.Outcome.TURNED_OFF,
+            PocketConfigPanel.commitSwitch(carrier, PocketUpgradeType.STACK, true, inv, null), "面板写腿：关堆叠放行");
+        SimpleAssert.eq(64, inv.storage().getSlotLimit(0),
+            "★★执法点②跟着翻回 64（这正是 R95 C3「用例全绿而 ×16 没落地」那一族的反向钉）");
+        // ★上游 ItemStackHandler#getStackLimit(int, ItemStack) 是 protected ⇒ 按件尺子只能从公共入口
+        // insertItem(…, simulate=true) 打进来（它内部第一句就问 getStackLimit ⇒ 同一个执法点、零写入）。
+        // 关闭档尺子 = 64，探针 1 件 ⇒ 全收、余 0（"1 件放不下"才是这一族要防的假绿）。
+        final ItemStack probeOnePlain = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        final ItemStack probeRest = inv.storage().insertItem(0, probeOnePlain, true);
+        SimpleAssert.eq(0, probeRest == null ? 0 : probeRest.stackSize,
+            "★执法点②的<b>按件尺子</b>在关闭档收得下 1 件（仿真零写入，★不是只读 getSlotLimit 那一档）");
+        // ★阳性对照的第二半：关掉两型以后位图<b>一位没掉</b> ⇒ 上面所有翻转来自组合谓词，不是"关了等于卸了"
+        SimpleAssert.eq(0b11, offMaskOf(carrier), "off-mask 现读 = 型 0 与型 1 两位");
+        SimpleAssert.that(PocketUpgrades.hasUpgrade(carrier.getTagCompound(), PocketUpgradeType.CAPACITY),
+            "★位图仍在（关开关 ≠ 卸插件，R95 那条不变量没被本片弄坏）");
+        SimpleAssert.that(PocketUpgrades.hasUpgrade(carrier.getTagCompound(), PocketUpgradeType.STACK), "同上，STACK 位");
+        // 开回来（可置可清双向都过执法点），并顺手钉"同值重复请求 ⇒ 零写入"
+        SimpleAssert.eq(PocketConfigPanel.Outcome.TURNED_ON,
+            PocketConfigPanel.commitSwitch(carrier, PocketUpgradeType.STACK, false, inv, null), "面板写腿：开回来");
+        SimpleAssert.eq(1024, inv.storage().getSlotLimit(0), "★执法点②又翻回 1024（双向可逆）");
+        final int maskBefore = offMaskOf(carrier);
+        SimpleAssert.eq(PocketConfigPanel.Outcome.NO_CHANGE,
+            PocketConfigPanel.commitSwitch(carrier, PocketUpgradeType.STACK, false, inv, null),
+            "同值重复到达 ⇒ NO_CHANGE（连点不刷整栈同步包）");
+        SimpleAssert.eq(maskBefore, offMaskOf(carrier), "★NO_CHANGE 支一档 NBT 都没动");
+    }
+
+    /**
+     * ★R96 S2 验收 2：三种拒绝情形<b>不写档、各回一条粘性回执</b>（数据面真跑，★不是钉文本）。
+     * <p>
+     * 三情形 = 未固化该型 / 守卫拒绝（容量与堆叠各一条）/ 载体身份不符（这一判要读 {@code Container}
+     * 与玩家对象 ⇒ 纯 JVM 造不出来 ⇒ 走"结构 + 顺序"的源码腿，并在台账里如实标为未验的那半条）。
+     * 另钉两条协议面：arg 越界一律丢弃、回执键族内不得撞车。
+     */
+    private static void switchWriteRefusesThreeCases() {
+        // ================= 情形一：未固化该型 ⇒ 不写档 =================
+        final ItemStack onlyCapacity = carrierWithUpgrades(PocketUpgradeType.CAPACITY);
+        SimpleAssert.eq(PocketConfigPanel.Outcome.NOT_ON_RECORD,
+            PocketConfigPanel.commitSwitch(onlyCapacity, PocketUpgradeType.STACK, true, null, null),
+            "★只装了 CAPACITY ⇒ 切 STACK 判「这一型没在档上」");
+        SimpleAssert.eq(-1, offMaskOf(onlyCapacity), "★★不写档：off-mask 键根本没被建出来（R53c 的读路径纪律同形）");
+        SimpleAssert.eq(PocketConfigPanel.Outcome.TURNED_OFF,
+            PocketConfigPanel.commitSwitch(onlyCapacity, PocketUpgradeType.CAPACITY, true, null, null),
+            "★防恒真：同一张档上把<b>已固化</b>那一型关掉是成交的 ⇒ 上面那条拒不是「一律拒」");
+        SimpleAssert.eq(1, offMaskOf(onlyCapacity), "成交后才落键（位 = 1<<ordinal）");
+        // 无根载体（口袋从未写过 NBT）⇒ 同样不建档
+        final ItemStack bare = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        SimpleAssert.eq(PocketConfigPanel.Outcome.NOT_ON_RECORD,
+            PocketConfigPanel.commitSwitch(bare, PocketUpgradeType.CAPACITY, true, null, null),
+            "★无 NBT 的口袋 ⇒ 不建档、判不在档上");
+        SimpleAssert.that(bare.getTagCompound() == null, "★★写腿不给无根载体凭空建 compound（建档责任在调用方）");
+        // ================= 情形二：守卫拒绝 ⇒ 不写档 =================
+        final ItemStack fatCarrier = carrierWithUpgrades(PocketUpgradeType.CAPACITY);
+        // 同一张档上再加一罐真值 5G 的流体条（★容量守卫读的是 long 真值，见 S1 验收 3）
+        final NBTTagCompound fatRoot = fatCarrier.getTagCompound();
+        final NBTTagList bar = new NBTTagList();
+        final NBTTagCompound entry = new NBTTagCompound();
+        entry.setString(PocketConstants.FLUID_BAR_FLUID_NAME, "water");
+        entry.setInteger(PocketConstants.FLUID_BAR_AMOUNT, 1000);
+        entry.setLong(PocketConstants.FLUID_BAR_AMOUNT_L, 5_000_000_000L);
+        bar.appendTag(entry);
+        fatRoot.setTag(PocketConstants.FLUID_BAR, bar);
+        SimpleAssert.eq(PocketConfigPanel.Outcome.REFUSE_CAPACITY,
+            PocketConfigPanel.commitSwitch(fatCarrier, PocketUpgradeType.CAPACITY, true, null, null),
+            "★守卫拒：关掉容量以后 5G 装不下");
+        SimpleAssert.eq(-1, offMaskOf(fatCarrier), "★★拒了就不写档（写了就是「开关显示已关、内容还在超容量」的第二处真相）");
+        final ItemStack stackCarrier = carrierWithUpgrades(PocketUpgradeType.STACK);
+        final ItemStack cursorBig = new ItemStack(FakePlainItem.INSTANCE, 100, 0);
+        SimpleAssert.eq(PocketConfigPanel.Outcome.REFUSE_STACK,
+            PocketConfigPanel.commitSwitch(stackCarrier, PocketUpgradeType.STACK, true, null, cursorBig),
+            "★守卫拒：游标上 100 件的堆在关闭后的尺子（64）里无处安放");
+        SimpleAssert.eq(-1, offMaskOf(stackCarrier), "★同样一档不写");
+        SimpleAssert.eq(PocketConfigPanel.Outcome.TURNED_OFF,
+            PocketConfigPanel.commitSwitch(stackCarrier, PocketUpgradeType.STACK, true, null, null),
+            "★防恒真：同一张档、只把游标撤掉就放行 ⇒ 上面那条拒来自游标扫描面，不是恒拒");
+        // ================= 情形三：载体身份不符 ⇒ 结构半边（真判据属服务端 + 实机）=================
+        final java.util.List<String> sheet = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
+        if (sheet == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketServerHandler.java ⇒ 「载体身份不符不写档」的半边【未验】");
+        } else {
+            final int toggle = methodStart(sheet, "void performUpgradeSwitchToggle(int arg) {");
+            final int toggleEnd = methodEnd(sheet, toggle);
+            SimpleAssert.that(toggle >= 0, "按签名定位开关入口");
+            final int guard = firstCodeLineWith(sheet, toggle, toggleEnd, "serverGuardOk()");
+            final int receipt = firstCodeLineWith(sheet, toggle, toggleEnd, "identityReceiptKey()");
+            final int commit = firstCodeLineWith(sheet, toggle, toggleEnd, "PocketConfigPanel.commitSwitch(");
+            SimpleAssert.that(guard >= 0 && receipt > guard && receipt < commit,
+                "★身份这一判<b>在写腿之前</b>，且它自己带一条回执（不静默）");
+            SimpleAssert.that(
+                regionContainsCode(sheet, receipt, commit, "return;"),
+                "★身份不过 ⇒ 打完回执就 return，<b>走不到写腿</b>（★不复用 S1 那条「写完再回滚」的形状：回滚多打一包、留一帧脏态）");
+            SimpleAssert.eq(0, countRegionCode(sheet, toggle, toggleEnd, "setByte("),
+                "★入口自己不碰 off-mask 键（写只经 commitSwitch 一条腿）");
+            SimpleAssert.eq(0, countRegionCode(sheet, toggle, toggleEnd, "addChatMessage("),
+                "★不发消息洪泛：口袋域零聊天包（R88 既有裁定），拒绝只走面板粘性回执");
+        }
+        // ================= 协议面：arg 越界丢弃 + 回执键族不撞车 =================
+        SimpleAssert.that(PocketConfigPanel.typeOfArg(-1) == null, "arg = −1（非法编码）⇒ 丢弃");
+        SimpleAssert.that(PocketConfigPanel.typeOfArg(0) == PocketUpgradeType.CAPACITY, "arg 0 ⇒ 型 0 关=false");
+        SimpleAssert.that(PocketConfigPanel.typeOfArg(1) == PocketUpgradeType.CAPACITY, "arg 1 ⇒ 型 0 关=true");
+        SimpleAssert.that(PocketConfigPanel.typeOfArg(9) == PocketUpgradeType.DISTILL_FAST, "arg 9 ⇒ 末型（2*4+1）");
+        SimpleAssert.that(PocketConfigPanel.typeOfArg(10) == null, "★arg 10 越界 ⇒ 丢弃（码空间恰 = 型数 × 2）");
+        SimpleAssert.eq(-1, PocketConfigPanel.encode(null, true), "空型编不出码 ⇒ −1（调用方不发这条）");
+        SimpleAssert.eq(0, PocketConfigPanel.encode(PocketUpgradeType.CAPACITY, false), "编码真值表①");
+        SimpleAssert.eq(9, PocketConfigPanel.encode(PocketUpgradeType.DISTILL_FAST, true), "编码真值表②");
+        final java.util.Set<String> keys = new java.util.HashSet<>();
+        for (final PocketConfigPanel.Outcome outcome : PocketConfigPanel.Outcome.values()) {
+            final String key = PocketConfigPanel.receiptKey(outcome);
+            SimpleAssert.that(key != null && key.startsWith("gtit.pocket.receipt.upgrade."),
+                "每种结论各一条回执键，且同族：" + outcome);
+            SimpleAssert.that(keys.add(key), "★★回执键族内不撞车（撞车 = 三种拒绝被读成同一句话）");
+        }
+        SimpleAssert.that(keys.add(PocketConfigPanel.identityReceiptKey()), "★身份那条也独占一键");
+        SimpleAssert.eq(7, keys.size(), "七条键（六种结论 + 身份）彼此不同");
+        // 三态读数：没装 ≠ 关着（★"已关闭"挂在没买过的型上就是假读数）
+        final ItemStack none = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        SimpleAssert.eq(PocketConfigPanel.SwitchState.ABSENT, PocketConfigPanel.switchState(none, PocketUpgradeType.MAGNET),
+            "没装 ⇒ ABSENT");
+        // ★三态闭合：ABSENT 有「没装」的现场，OFF 与 ON 各取本用例里已有的两张档 —— 缺任何一态，
+        // 「三态而不是两态」这句就只是注释。★两个现场都是真读数，不是把期望值写进表达式。
+        SimpleAssert.eq(PocketConfigPanel.SwitchState.OFF,
+            PocketConfigPanel.switchState(onlyCapacity, PocketUpgradeType.CAPACITY),
+            "★装过又被关掉 ⇒ OFF（关着 ≠ 没装，上面那条 ABSENT 才是没装）");
+        SimpleAssert.eq(PocketConfigPanel.SwitchState.ON,
+            PocketConfigPanel.switchState(fatCarrier, PocketUpgradeType.CAPACITY),
+            "★守卫拒的那一型一档没写 ⇒ 仍是 ON（★「拒了不写档」在读数面也可见）");
+    }
+
+    /**
+     * ★R96 S2 验收 3：全 {@code src/main/java} 里 off-mask 的<b>写点只在服务端一条腿</b>（机检恰 1）。
+     * <p>
+     * 光数"调用点 = 1"不够 —— 还要证明这一处<b>不可达于客户端</b>：① 它住在 {@code commitSwitch}；
+     * ② {@code commitSwitch} 的类外调用点恰 1 且在 {@code NekoPocketServerHandler}；
+     * ③ 该入口的第一句是 {@code serverGuardOk()}，而它以 {@code isClient ⇒ false} 开头；
+     * ④ 面板与格件的装配区里写点为 0（画面上不存在"本地先写一发"的支路）。
+     */
+    private static void noClientSideSwitchWrite() {
+        final int writeSites = countMainJavaCodeLinesMatching("PocketUpgradeSwitches\\.setOff\\(");
+        if (writeSites < 0) {
+            System.out.println("[NOTE] 读不到 src/main/java ⇒ 写点计数【未验】");
+            return;
+        }
+        SimpleAssert.eq(1, writeSites,
+            "★★全主源 setOff 调用点恰 1（在 PocketConfigPanel#commitSwitch）⇒ 长出第二处写者即红");
+        SimpleAssert.eq(1, countMainJavaCodeLinesMatching("public static boolean setOff\\("),
+            "setOff 的定义也恰 1（置位与清位共用同一条写腿）");
+        SimpleAssert.eq(1, countMainJavaCodeLinesMatching("PocketConstants\\.UPGRADES_OFF_KEY, \\(byte\\) next"),
+            "真正的 setByte 落在开关类内部恰 1（★「写点恰 1」的口径是这一个字节，不是这一个符号）");
+        final java.util.List<String> conf = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/PocketConfigPanel.java");
+        final java.util.List<String> sheet = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java");
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        final java.util.List<String> band = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketBottomBand.java");
+        if (conf == null || sheet == null || panel == null || band == null) {
+            System.out.println("[NOTE] 读不到四个 GUI 源文件 ⇒ 写点归属的半边【未验】");
+            return;
+        }
+        // ① 写点在 commitSwitch 内
+        final int commit = methodStart(conf, "public static Outcome commitSwitch(ItemStack carrier, PocketUpgradeType type, boolean wantOff,");
+        SimpleAssert.that(commit >= 0, "定位 commitSwitch");
+        SimpleAssert.eq(1, countRegionCode(conf, commit, methodEnd(conf, commit), "PocketUpgradeSwitches.setOff("),
+            "★唯一的写点就在这条腿里");
+        // ② 它的类外调用点恰 1，且在服务端文件里
+        SimpleAssert.eq(
+            2,
+            countMainJavaCodeLinesMatching("PocketConfigPanel\\.commitSwitch\\(|static Outcome commitSwitch\\("),
+            "commitSwitch 全域 = 定义 1 + 调用 1（★调用点不是「面板自己」而是 handler；★式子必须两半都认得，"
+                + "只写调用点那一半会把「定义」这一半算成 0 ⇒ 上面那条「写点恰 1」失去落点）");
+        SimpleAssert.eq(1, countCodeLinesIn(sheet, "PocketConfigPanel.commitSwitch("),
+            "★调用点恰在 NekoPocketServerHandler");
+        SimpleAssert.eq(0, countCodeLinesIn(conf, "commitSwitch(") - 1,
+            "★PocketConfigPanel 自己除了定义之外不再调它（装配面没有第二条写路）");
+        // ③ 客户端不可达：入口第一判 + 该判的 isClient 早退
+        final int guard = methodStart(sheet, "boolean serverGuardOk() {");
+        SimpleAssert.that(guard >= 0, "定位 serverGuardOk（R19 L1 的防伪单源）");
+        // ★regionContainsCode 是<b>逐行</b>片段匹配 ⇒ 带换行的针脚永远匹配不上（spotless 把这个 if 折成两行
+        // 正是它的常见形状）。判"第一句"要用行序：签名行的下一行就是 syncManager()，再下一行是 .isClient()) {。
+        final int guardEnd = methodEnd(sheet, guard);
+        final int syncLine = firstCodeLineWith(sheet, guard, guardEnd, "if (panel.syncManager()");
+        final int clientLine = firstCodeLineWith(sheet, syncLine, guardEnd, ".isClient()) {");
+        SimpleAssert.that(syncLine == guard + 1 && clientLine == syncLine + 1,
+            "★身份判据第一句就是 isClient ⇒ false，客户端伪造的这条包根本走不到写腿");
+        // ④ 装配面零写
+        final int build = methodStart(conf, "public static ModularPanel build(NekoPocketPanel ui) {");
+        SimpleAssert.eq(0, countRegionCode(conf, build, methodEnd(conf, build), "setOff("), "★build 零写");
+        SimpleAssert.eq(0, countCodeLinesIn(conf, "UPGRADES_OFF_KEY"), "★面板连键名都不摸（只有开关类摸键）");
+        SimpleAssert.eq(0, countCodeLinesIn(panel, "UPGRADES_OFF_KEY"), "★主面板同样不摸键");
+        SimpleAssert.eq(0, countCodeLinesIn(band, "UPGRADES_OFF_KEY"), "★格件同样不摸键");
+        // ⑤ 客户端侧的读也只是一次读（不是"读→写"的合批）：载体根的取法走活查表
+        SimpleAssert.that(
+            regionContainsCode(panel, methodStart(panel, "ItemStack carrierStackLive() {"),
+                methodEnd(panel, methodStart(panel, "ItemStack carrierStackLive() {")), "data.getUsedItemStack()"),
+            "读腿用的是既有活查表（双端各读自己那份载体，与 R95 S4 客户端腿同一条通道，★零新通道）");
+    }
+
+    /**
+     * ★R96 S2 验收 5：几何账 —— 次级面板 高 ≤ 340、宽 ≤ 380，且★主面板那条 {@code HEIGHT == 360} 的
+     * 断言零改动（本件不搬它的账，也不给它加高）。
+     * <p>
+     * 除常数外还跑<b>两处自己的像素账</b>（型名行与回执行），因为 S2 往常驻面加了新文案：
+     * 型名行是"型名 + 现状"两段拼起来的最坏串，回执行吃<b>全族最宽的那条回执</b>（含本轮新增的七条）。
+     */
+    private static void configPanelGeometryWithinSecondaryCaps() {
+        SimpleAssert.that(PocketConfigPanel.WIDTH <= PocketConfigPanel.MAX_WIDTH,
+            "★次级面板宽 ≤ 380（读到 " + PocketConfigPanel.WIDTH + "）");
+        SimpleAssert.that(PocketConfigPanel.HEIGHT <= PocketConfigPanel.MAX_HEIGHT,
+            "★次级面板高 ≤ 340（读到 " + PocketConfigPanel.HEIGHT + "）");
+        SimpleAssert.that(PocketConfigPanel.WIDTH < NekoPocketPanel.WIDTH,
+            "★严格小于主面板宽（等于可视面时 DraggablePanelWrapper 的除算退化）");
+        SimpleAssert.that(PocketConfigPanel.HEIGHT < NekoPocketPanel.HEIGHT, "★严格小于主面板高");
+        // ★主面板尺寸断言零改动（这条判据归 panel_geometry_closes_398x360，本处只复钉读数没漂）
+        SimpleAssert.eq(360, NekoPocketPanel.HEIGHT, "主面板高仍是 360（★本件没碰它，也没借它加高）");
+        SimpleAssert.eq(398, NekoPocketPanel.WIDTH, "主面板宽仍是 398");
+        SimpleAssert.eq(225, PocketSlots.TOTAL_REAL_SLOTS, "★真实槽数仍是 225（次级面板零槽 ⇒ 不占 Container 账）");
+        // 行位与框位的纵向闭合（★不是靠注释：最后一行的下沿与最后一个框的下沿都必须在面板内）
+        final int rows = PocketUpgradeType.values().length;
+        SimpleAssert.that(PocketConfigPanel.rowY(rows - 1) + PocketConfigPanel.ROW_HEIGHT
+            <= PocketConfigPanel.HEIGHT - PocketConfigPanel.MARGIN, "五行开关的纵向闭合");
+        SimpleAssert.that(
+            PocketConfigPanel.mountY(PocketConfigPanel.MOUNT_FRAMES - 1) + PocketConfigPanel.MOUNT_HEIGHT
+                <= PocketConfigPanel.HEIGHT - PocketConfigPanel.MARGIN,
+            "★两个挂载框的纵向闭合（S7/S9 往里加内容时这一条是它们的地基）");
+        // ---- 本件自己的像素账：型名行 + 回执行（两份 lang 各算一遍，取最宽）----
+        final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
+        final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
+        if (zh == null || en == null) {
+            System.out.println("[NOTE] 读不到两份 lang ⇒ 配置面板像素账【未验】（★不是通过）");
+            return;
+        }
+        // ★行带全宽（型名在左、开关在本行最右端）⇒ 盒宽与下面 receiptBox 同一条式子，只是把关闭键换成开关键
+        final int labelBox = PocketConfigPanel.WIDTH - 2 * PocketConfigPanel.MARGIN
+            - PocketConfigPanel.SWITCH_WIDTH - 2;
+        final int receiptBox = PocketConfigPanel.WIDTH - 2 * PocketConfigPanel.MARGIN
+            - PocketConfigPanel.CLOSE_WIDTH - 2;
+        for (final java.util.List<String> lang : new java.util.List[] { zh, en }) {
+            int worstLabel = 0;
+            String worstName = "";
+            for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+                final String name = formatLang(lang, CONFIG_NAME_KEYS[type.ordinal()]);
+                for (final String state : new String[] { "gtit.pocket.config.state.on",
+                    "gtit.pocket.config.state.off", "gtit.pocket.config.state.absent" }) {
+                    final int w = residentLogicalWidth(name + "：" + formatLang(lang, state));
+                    if (w > worstLabel) {
+                        worstLabel = w;
+                        worstName = name;
+                    }
+                }
+            }
+            final int labelLines = (int) Math.ceil(worstLabel * PocketGhostRequest.RESIDENT_TEXT_SCALE / labelBox);
+            SimpleAssert.that(labelLines <= 1,
+                "★型名行必须一行放得下（两行就顶穿 20px 的行盒）：最坏「" + worstName + "」逻辑宽 " + worstLabel
+                    + " 盒宽 " + labelBox + " ⇒ " + labelLines + " 行");
+            int worstReceipt = 0;
+            String worstKey = "";
+            for (final PocketConfigPanel.Outcome outcome : PocketConfigPanel.Outcome.values()) {
+                final String key = PocketConfigPanel.receiptKey(outcome);
+                final int w = residentLogicalWidth(formatLang(lang, key));
+                if (w > worstReceipt) {
+                    worstReceipt = w;
+                    worstKey = key;
+                }
+            }
+            final int idW = residentLogicalWidth(formatLang(lang, PocketConfigPanel.identityReceiptKey()));
+            if (idW > worstReceipt) {
+                worstReceipt = idW;
+                worstKey = PocketConfigPanel.identityReceiptKey();
+            }
+            final int receiptLines = (int) Math.ceil(worstReceipt * PocketGhostRequest.RESIDENT_TEXT_SCALE / receiptBox);
+            SimpleAssert.that(receiptLines * 10 <= PocketConfigPanel.RECEIPT_HEIGHT,
+                "★回执行折行后不许顶穿（最坏键 " + worstKey + " 逻辑宽 " + worstReceipt + " 盒宽 " + receiptBox
+                    + " ⇒ " + receiptLines + " 行 × 10 ≤ " + PocketConfigPanel.RECEIPT_HEIGHT + "）");
+        }
+    }
+
+    private static final String[] CONFIG_NAME_KEYS = { "item.neko_pocket_upgrade_capacity.name",
+        "item.neko_pocket_upgrade_stack.name", "item.neko_pocket_upgrade_magnet.name",
+        "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_distill_fast.name" };
+
+    /**
+     * ★R96 S2 验收目标里的"按型分派"那条：面板<b>不得被写死成五型同形</b>，也不许长成五套面板。
+     * <p>
+     * 三面同钉：① 分派表真值表（三型只开关、磁力与魔法使各带一段挂载位）；② 挂载位的<b>宿主在场</b>
+     * （装配代码真的按分派表画框，且 {@code MOUNT_FRAMES} 与表自洽 ⇒ S7/S9 有地方落，本轮不是空承诺）；
+     * ③ "一个面板"（★只有一枚 PANEL_NAME 常量、只有一处 defaultPanel、主面板只挂一枚 handler）。
+     */
+    private static void configPanelDispatchIsNotFiveIdentical() {
+        // ---- ① 分派表真值表 ----
+        final java.util.Map<PocketUpgradeType, Integer> sections = new java.util.LinkedHashMap<>();
+        for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+            final java.util.List<PocketConfigPanel.Section> got = PocketConfigPanel.sectionsOf(type);
+            SimpleAssert.that(got.size() >= 1 && got.get(0) == PocketConfigPanel.Section.SWITCH,
+                "★五型都有开关段（第一段恒为 SWITCH）：" + type);
+            sections.put(type, got.size());
+        }
+        SimpleAssert.eq(1, sections.get(PocketUpgradeType.CAPACITY).intValue(), "容量 = 只开关（P-3 字面）");
+        SimpleAssert.eq(1, sections.get(PocketUpgradeType.STACK).intValue(), "堆叠 = 只开关");
+        SimpleAssert.eq(1, sections.get(PocketUpgradeType.CHANNEL_PERSIST).intValue(), "通道持续化 = 只开关");
+        SimpleAssert.eq(2, sections.get(PocketUpgradeType.MAGNET).intValue(), "★磁力 = 开关 + 挂载位（S7 的宿主）");
+        SimpleAssert.eq(2, sections.get(PocketUpgradeType.DISTILL_FAST).intValue(), "★魔法使 = 开关 + 挂载位（S9 的宿主）");
+        SimpleAssert.eq(PocketConfigPanel.Section.MOUNT_MAGNET,
+            PocketConfigPanel.sectionsOf(PocketUpgradeType.MAGNET).get(1), "★磁力那一段点名 MOUNT_MAGNET");
+        SimpleAssert.eq(PocketConfigPanel.Section.MOUNT_MAGE,
+            PocketConfigPanel.sectionsOf(PocketUpgradeType.DISTILL_FAST).get(1), "★魔法使那一段点名 MOUNT_MAGE");
+        SimpleAssert.that(PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGNET) != null
+            && PocketConfigPanel.mountTitleKey(PocketUpgradeType.DISTILL_FAST) != null,
+            "两个挂载位各有自己的标题键（★不是同一句「配置」糊五遍）");
+        SimpleAssert.that(
+            PocketConfigPanel.mountTitleKey(PocketUpgradeType.CAPACITY) == null
+                && PocketConfigPanel.mountTitleKey(PocketUpgradeType.STACK) == null
+                && PocketConfigPanel.mountTitleKey(PocketUpgradeType.CHANNEL_PERSIST) == null,
+            "★只开关的三型拿不到挂载键 ⇒ 面板给它们的就是一枚开关，不给空框");
+        int mounts = 0;
+        for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+            if (PocketConfigPanel.hasMount(type)) {
+                mounts++;
+            }
+        }
+        SimpleAssert.eq(PocketConfigPanel.MOUNT_FRAMES, mounts, "★分派表与纵向预算自洽（MOUNT_FRAMES 就是表里数出来的）");
+        SimpleAssert.that(mounts > 0 && mounts < PocketUpgradeType.values().length,
+            "★★五型同形的反证：有挂载位的型数既不是 0 也不是 5（读到 " + mounts + "）");
+        // ---- ② 宿主在场：装配代码真的按分派表走 ----
+        final java.util.List<String> conf = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/PocketConfigPanel.java");
+        final java.util.List<String> panel = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java");
+        if (conf == null || panel == null) {
+            System.out.println("[NOTE] 读不到 PocketConfigPanel / NekoPocketPanel ⇒ 装配半边【未验】");
+            return;
+        }
+        final int build = methodStart(conf, "public static ModularPanel build(NekoPocketPanel ui) {");
+        SimpleAssert.that(build >= 0, "定位 build");
+        final int buildEnd = methodEnd(conf, build);
+        SimpleAssert.that(regionContainsCode(conf, build, buildEnd, "if (hasMount(type))"),
+            "★画不画框由分派表决定（装配侧不重写第二份型清单 ⇒ 改表就跟着变）");
+        SimpleAssert.that(regionContainsCode(conf, build, buildEnd, "mountFrame(type, frame)"),
+            "★挂载框真的被 child 进面板（写了表没人画 = R57 同族）");
+        SimpleAssert.eq(1, countCodeLinesIn(conf, "ModularPanel.defaultPanel("),
+            "★只有一个面板定义点（不是五套面板、也不是五行各一面）");
+        SimpleAssert.eq(1, countCodeLinesIn(conf, "public static final String PANEL_NAME"),
+            "★面板名只有一个常量（同一条：五套面板会在这里长出五个串）");
+        SimpleAssert.eq(1, countCodeLinesIn(panel, "IPanelHandler.simple("),
+            "★主面板只挂一枚次级面板句柄");
+        SimpleAssert.eq(0, countCodeLinesIn(panel, "ModularPanel.defaultPanel(") - 1,
+            "★主面板自己仍只有一处 defaultPanel（本轮没在面板里另起一面）");
+        SimpleAssert.eq(0, countCodeLinesIn(conf, "registerFactory"), "不变量 G1：不新增 GUI 工厂");
+        SimpleAssert.eq(0, countCodeLinesIn(conf, "SimpleNetworkWrapper"), "不新增网络通道");
+        SimpleAssert.eq(0, countCodeLinesIn(conf, "new ItemSlot"), "★次级面板零槽（真实槽账 225 不动）");
+        SimpleAssert.eq(0, countCodeLinesIn(conf, "syncValue("), "★零同步值 ⇒ 结构性避开 SecondaryPanel 那条抛");
+        // ---- ③ 关闭态读数的真值表（格 tooltip 只在"关着"时追加一行）----
+        SimpleAssert.that(PocketConfigPanel.cellOffReadoutKeyOf(PocketConfigPanel.SwitchState.OFF) != null,
+            "关着 ⇒ 追加「已关闭」读数");
+        SimpleAssert.that(PocketConfigPanel.cellOffReadoutKeyOf(PocketConfigPanel.SwitchState.ON) == null,
+            "开着 ⇒ 不追加（★三种正常态不该都喊同一句）");
+        SimpleAssert.that(PocketConfigPanel.cellOffReadoutKeyOf(PocketConfigPanel.SwitchState.ABSENT) == null,
+            "没装 ⇒ 不追加");
+        SimpleAssert.eq(3, PocketConfigPanel.SwitchState.values().length, "★三态而不是两态（没装 ≠ 关着）");
+        // ---- ④ 两份 lang 的键面（本件用到的键族齐备，且两份同数）----
+        final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
+        final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
+        if (zh == null || en == null) {
+            System.out.println("[NOTE] 读不到两份 lang ⇒ 键面【未验】");
+            return;
+        }
+        final java.util.List<String> used = PocketConfigPanel.langKeys();
+        SimpleAssert.that(used.size() >= 21, "本件点名的键数 ≥ 21（读到 " + used.size() + "）");
+        for (final String key : used) {
+            SimpleAssert.that(countCodeLinesIn(zh, key + "=") >= 1, "★zh 缺键：" + key);
+            SimpleAssert.that(countCodeLinesIn(en, key + "=") >= 1, "★en 缺键：" + key);
+        }
+    }
+
+    /**
+     * ★R96 S2 验收 1 的另一半：面板会话内"格 → 面板 → 开关 → 读口 → 执法点"这条<b>读</b>链在场
+     * （写链由 {@code config_panel_action_reaches_guard} 钉，六处旁路的归零由
+     * {@code panel_readpoints_close_the_six_bypasses} 钉，本条钉中间那截"面板读数确实接到格件"）。
+     */
+    private static void upgradeCellReadoutsFollowTheSwitch() {
+        final ItemStack carrier = carrierWithUpgrades(PocketUpgradeType.CAPACITY);
+        SimpleAssert.eq(PocketConfigPanel.SwitchState.ON, PocketConfigPanel.switchState(carrier, PocketUpgradeType.CAPACITY),
+            "起点：装上即 ON（缺键 = 全开，S1 的默认态）");
+        SimpleAssert.that(PocketConfigPanel.nextOff(carrier, PocketUpgradeType.CAPACITY),
+            "ON 时下一次点击请求的是「关掉」");
+        SimpleAssert.eq(PocketConfigPanel.Outcome.TURNED_OFF,
+            PocketConfigPanel.commitSwitch(carrier, PocketUpgradeType.CAPACITY, true, null, null), "关掉成交");
+        SimpleAssert.eq(PocketConfigPanel.SwitchState.OFF, PocketConfigPanel.switchState(carrier, PocketUpgradeType.CAPACITY),
+            "★同一份载体上读数翻成 OFF");
+        SimpleAssert.that(!PocketConfigPanel.nextOff(carrier, PocketUpgradeType.CAPACITY),
+            "OFF 时下一次点击请求的是「打开」（可置可清，双向都在读数里可见）");
+        SimpleAssert.eq(PocketConfigPanel.SwitchState.ABSENT,
+            PocketConfigPanel.switchState(carrier, PocketUpgradeType.MAGNET), "没装的型 = ABSENT（★不是 OFF）");
+        SimpleAssert.eq(PocketConfigPanel.Outcome.NOT_ON_RECORD,
+            PocketConfigPanel.commitSwitch(carrier, PocketUpgradeType.MAGNET, true, null, null),
+            "★ABSENT 上点开关 ⇒ 拒（不是「帮你打开一个没买的东西」）");
+        SimpleAssert.eq(1, offMaskOf(carrier), "拒之后 off-mask 没多一位");
+        // 逐型独立：关掉 CAPACITY 不影响其余四型的默认开态
+        for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+            if (type == PocketUpgradeType.CAPACITY) {
+                continue;
+            }
+            SimpleAssert.that(
+                PocketConfigPanel.switchState(carrier, type) == PocketConfigPanel.SwitchState.OFF
+                    || PocketConfigPanel.switchState(carrier, type) == PocketConfigPanel.SwitchState.ABSENT,
+                "非 CAPACITY 型不会被这一次切换误伤（★误伤 = 一位变五位）");
         }
     }
 }
