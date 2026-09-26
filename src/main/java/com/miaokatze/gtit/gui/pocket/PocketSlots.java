@@ -108,7 +108,7 @@ public final class PocketSlots extends PocketIntakeOps {
      * 都是跨文件的批量口径变更，
      * 最坏的失败形态不是编译不过，而是"矩阵行数改了、常量没改"或"常量改了、Container 注册的
      * 行数没改"这类<b>各自都能编译</b>的半改。这里把三者的乘积关系变成一条构造期就抛的断言，
-     * 配套的负控在回归套件里（{@code slot_math_220_and_row_column_products}）。
+     * 配套的负控在回归套件里（{@code slot_math_225_and_row_column_products}）。
      */
     static {
         if (STORAGE_ROWS * STORAGE_COLUMNS != PocketInventory.STORAGE_SLOTS) {

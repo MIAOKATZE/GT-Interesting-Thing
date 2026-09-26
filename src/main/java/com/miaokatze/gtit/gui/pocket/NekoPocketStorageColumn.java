@@ -29,7 +29,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketInventory;
  * 槽号 = 行主序 {@code 0..134}，与 {@code PocketInventory.storage()} 的 handler 索引天然一致
  * （{@code Builder.build()} 按字符出现次序回调 {@code IntFunction}，见 {@code SlotGroupWidget.java:228-257}）。
  * 行列乘积与格数的关系由 {@link PocketSlots} 的静态断言与
- * {@code NekoPocketModelTest#slot_math_220_and_row_column_products} 双向钉住。
+ * {@code NekoPocketModelTest#slot_math_225_and_row_column_products} 双向钉住。
  */
 public final class NekoPocketStorageColumn {
 
