@@ -295,16 +295,22 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
 
     /**
      * {@code work} 位：短效通道剩余 tick 或 burst 显示窗剩余 tick 任一在跑（R37 的工作动画来源），
-     * <b>或</b>载体已固化通道持续化（★R95：CHANNEL_PERSIST 位图在场 = 工作态<b>常亮</b>——driver
-     * 在批边界把剩余批次回满、通道永不停，帧带跟着常亮）。只读腿：{@code hasUpgrade} 不建档
+     * <b>或</b>通道持续化<b>当前生效</b>（R95 立的常亮腿：driver 在批边界把剩余批次回满、通道永不停，
+     * 帧带跟着常亮；★R96 起"生效"按组合谓词读，见下面改口段）。只读腿：{@code isActive} 不建档
      * （R53c 读路径纪律），无档口袋照旧走倒计时两键。
+     * <p>
+     * ★<b>R96 S1 改口（P-1 正交 enabled 位图）</b>：常亮腿从"位图在场即恒真"改成
+     * {@code PocketUpgradeSwitches.isActive(CHANNEL_PERSIST)} —— 玩家把持续化<b>关掉</b>之后帧带与光泽
+     * 必须跟着停，否则"关了开关画面还亮着"就是开关对该路径根本无效（R57/C3 同族的静默失效）。
+     * ★不主动 stop 已在跑的通道：关开关只让 driver 的批边界回满不再发生 ⇒ 自然衰减到 0，
+     * 复用既有 {@code finishBatch} 的回收支，不建第二台状态机。
      */
     public static boolean isWorkActive(ItemStack stack) {
         final NBTTagCompound root = stack == null ? null : stack.getTagCompound();
         if (root == null) {
             return false;
         }
-        if (PocketUpgrades.hasUpgrade(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
+        if (PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
             return true;
         }
         return root.hasKey(PocketConstants.UI_WORK_TICKS) || root.hasKey(PocketConstants.UI_BURST_SHOW_TICKS);
@@ -443,15 +449,30 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * {@code hasEffect(ItemStack, int)} 默认实现会回调 {@code hasEffect(ItemStack)}，
      * 但覆写点各渲染路径都会走到（{@code ShimmeringNekoCoin.java:26-29} 覆写的是带 {@code int} 的那个），
      * 只覆一个存在"完全无效"的风险。
+     * <p>
+     * ★★<b>R96 S1 定案（附魔特效，不留待裁）</b>：判据 = {@code isWorkActive(stack) ||
+     * PocketUpgradeSwitches.anyActive(stack)} —— <b>并集，只加不减</b>：R37 那条"正在作业就亮"的信号
+     * 一个字不删（删它 = 改掉一条已被用例与玩家认知双重固定的既有行为），新增的是"有插件开着就亮"。
+     * <p>
+     * 取并集而不是"逐型光泽"的理由是<b>vanilla 的物理上限</b>：{@code Item.hasEffect} 是单个布尔，
+     * 一件物品只有一个光泽位 ⇒ 五个开关共用它时，光泽只能表达
+     * 「<b>有插件开着 ∨ 正在作业</b>」这一句话，<b>分辨不出是哪一型在亮</b>；
+     * ★逐型状态的唯一读数是<b>配置面板</b>（R96 S2 的次级面板 + 升级格的关闭态视觉）。
+     * 需求字面要的是"开时有附魔特效"，这条并集正好是它在单个布尔位上的最大可实现近似。
+     * <p>
+     * ★刻意<b>不</b>扩帧带表（{@code ICON_SUFFIXES} 本轮保持 4 档）：扩到 8 档要同步改
+     * {@code gen_pocket.py} 的"四态 × 8 帧"自检判据与落地脚本，属材质轮工作，与本轮风险预算不成比例；
+     * {@code pickIcon} 的下标回落（{@code index < icons.length ? … : icons[0]}，R48c）原样保留 ⇒
+     * 将来扩表不改任何代码路径。
      */
     @Override
     public boolean hasEffect(ItemStack stack) {
-        return isWorkActive(stack);
+        return isWorkActive(stack) || PocketUpgradeSwitches.anyActive(stack);
     }
 
     @Override
     public boolean hasEffect(ItemStack stack, int pass) {
-        return isWorkActive(stack);
+        return isWorkActive(stack) || PocketUpgradeSwitches.anyActive(stack);
     }
 
     // ------------------------------------------------------------------ 提示
@@ -521,7 +542,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     private static Object[] tooltipArgs(ItemStack carrier) {
         // ★R95 S5：单槽/合计容量按 CAPACITY 位动态（16M/16G、288M/288G）——升级侧喂 Long（%d 对
         // Long/Integer 同形，lang 键与 %5$d/%9$d 槽位零改动）；未升级喂 Integer（渲染与旧字面同源）。
-        final boolean capacityUpgraded = PocketUpgrades.hasUpgrade(carrier, PocketUpgradeType.CAPACITY);
+        // ★R96 S1：读点换组合谓词 isActive ⇒ 关掉容量开关后 tooltip 的读数跟着回落到未升级那一档
+        // （"关了开关读数还写 16G"是最容易被玩家当成"开关没生效"的一处，所以它必须在同一批里换）。
+        final boolean capacityUpgraded = PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CAPACITY);
         return new Object[] {
             // %1$d 中栏格数
             Integer.valueOf(PocketConstants.GHOST_ITEM_SLOT_LIMIT),

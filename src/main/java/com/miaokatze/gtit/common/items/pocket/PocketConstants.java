@@ -452,6 +452,31 @@ public final class PocketConstants {
      */
     public static final String UPGRADE_SLOT_GROUP = "upgradeCells";
     /**
+     * ★R96 S1：升级<b>启用位图</b>的根键（byte，位序同 {@code PocketUpgradeType#ordinal()}）。
+     * <p>
+     * <b>语义 = off-mask（关闭位掩码）</b>：bit=1 表示"这一型当前被玩家关掉"，<b>缺键 = 五型全开</b>
+     * ⇒ 默认态零写入，天然满足 R53c 的读路径不建档。它与 {@link #UPGRADES_KEY} <b>正交</b>：那位回答
+     * "买没买到"（只置不清、放入即固化不可取出，R95 裁定一字未动），本位回答"买到的当前开不开"（可置可清）。
+     * 效果的判据是两者的合成 {@code PocketUpgradeSwitches#isActive} = 位图 ∧ ¬本位。
+     * <p>
+     * ★<b>键名 {@code upgradesOff} 一经落档即冻结</b>（「可加不可改」的键名版）：改字面量会让玩家存档里
+     * 已写出的关闭位读不回来，表现是"关掉的插件自己开回来了"，且零日志。
+     * <p>
+     * ★<b>为什么不塞进 {@link #UPGRADES_KEY} 的高位</b>：{@code PocketUpgrades#install} 的写进口是
+     * {@code setByte} —— 若为容纳启用位把那个 byte 加宽成 TAG_Short，任何一次装插件都会把它<b>降级</b>回
+     * TAG_Byte 并静默吃掉高字节（四个开关悄悄回到"默认开"、零日志），同时破掉既有锚「三轮 install 后字节
+     * == 0b11111」（那条锚正是"位图唯一真相"的门禁化身）。
+     * <p>
+     * ★与 {@link #UPGRADES_KEY}/{@link #UPGRADE_SLOT_GROUP} 必须<b>异值</b>（同键异型互踩）。
+     */
+    public static final String UPGRADES_OFF_KEY = "upgradesOff";
+    // ★R96 根层新键的异值预留位（本片只落 UPGRADES_OFF_KEY 一条，其余归各自切片）：R96 计划新增的三个根键
+    //   必须彼此异值、也与上面三条 R95 键异值 —— upgradesOff（S1，本片已落）、magnetFilter（S7 磁力名单）、
+    //   elem（S9 元素容量，内含 6 条 tag→int，★不建 FLUID_BAR_AMOUNT_L 式双轨）。写在这里的理由：根键一经
+    //   落档即冻结，事后发现撞键只能靠迁移救，而迁移没有回头路。
+    // ★同一段给 S9 预留 PRIMAL_TAGS（6 项 primal 白名单，判据 Aspect#isPrimal() ★叠加该白名单）的常量落点
+    //   —— 它不是 NBT 键，但同样住在本类尾部追加区，先占位免得两片并行时在同一段互相挤位置。
+    /**
      * ★R95 S5：STACK 升级位对"单格堆叠"的<b>倍率</b>（用户原话"所有物品和源质最大单格堆叠数*16"，
      * 一位同时管物品格与源质格）。执法点：{@code PocketInventory#effectiveStorageLimit}（物品侧单源）
      * 与 {@code PocketEssenceStore#capPerTag()}（源质侧单源），别处不得再抄 16。
@@ -489,6 +514,17 @@ public final class PocketConstants {
     public static final String FLUID_BAR = "fluidBar";
     /** 新档里每个流体条目的 tank 序号键（int，0…{@link #FLUID_TANK_TOTAL}−1；缺键按 0 读并一次性 WARN）。 */
     public static final String FLUID_BAR_TANK = "tank";
+    /**
+     * 流体条目<b>头值</b>的键名（TAG_Int）—— ★这不是本仓写的键，是 vanilla/Forge
+     * {@code FluidStack.writeToNBT} 自己写出的 {@code Amount}；列在这里只为让<b>只读</b>侧
+     * （{@code PocketUpgradeGuards} 的容量守卫回落腿）也遵守"NBT 键名住在 PocketConstants"这一条。
+     * <p>
+     * ★写侧一律仍走 {@code FluidStack.writeToNBT}（见 {@code PocketInventory#saveTanks} 的双写）：
+     * 拿这个键去<b>写</b>档就是绕开流体栈自己的序列化形状，会造出读不回来的档。
+     */
+    public static final String FLUID_BAR_AMOUNT = "Amount";
+    /** 流体条目的流体名键（同样由 {@code FluidStack.writeToNBT} 写出；守卫按"有没有名"判条目是不是真内容）。 */
+    public static final String FLUID_BAR_FLUID_NAME = "FluidName";
     /**
      * ★<b>R95 S5：流体条目的 long 真值键</b>（TAG_Long）—— 双轨计数的落档面。
      * <p>

@@ -19,8 +19,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketChannelState;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
-import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 
 /**
@@ -128,8 +128,11 @@ public final class PocketChannelDriver {
             // 「批次用尽即回收」都结构性不可达。位图每秒读一次（每批一次，R53c 量级可忽略）。
             // 免激活费免冷却：无激活事件可挂扣费点（R95 裁定）——持续化的成本语义就是
             // "一次性付过激活费后不再到 0"，不引入任何周期扣费。
+            // ★R96 S1：判据换组合谓词 isActive（位图 ∧ ¬off-mask）⇒ 玩家关掉持续化之后这一行不再成立，
+            // 回满停止 ⇒ remainingBatches 自然衰减到 0，走既有 finishBatch 的 stop 支回收。
+            // ★刻意不主动 stop()：那等于替玩家发明第二条状态机（R59e 那一族），自然衰减已足够。
             if (state.mode() == PocketChannelState.Mode.SHORT
-                && PocketUpgrades.hasUpgrade(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
+                && PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
                 state.activate(PocketChannelState.Mode.SHORT, 0L, 0L);
             }
             // 只在批边界写一次 NBT（不是每 tick 写档，R53c）：动画窗口 = 本通道剩余总长

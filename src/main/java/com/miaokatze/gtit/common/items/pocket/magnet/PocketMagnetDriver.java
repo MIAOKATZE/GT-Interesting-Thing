@@ -12,8 +12,8 @@ import net.minecraft.world.World;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
-import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 
 /**
  * 磁力升级（R95 {@code PocketUpgradeType#MAGNET}）的 <b>tick 宿主本体</b>：把玩家周围掉落物
@@ -60,16 +60,21 @@ public final class PocketMagnetDriver {
     /**
      * 磁力驱动的一拍（<b>仅服务端</b>由宿主调用；客户端路径在宿主已早退，这里再判一次是零成本双保险）。
      * <p>
-     * 顺序：MAGNET 位早退（无位 ⇒ 每 tick 只花一次位图读）→ 节拍闸（玩家 tick 计数 % 10——这是
+     * 顺序：MAGNET 位早退（无位或被关掉 ⇒ 每 tick 只花一次位图读）→ 节拍闸（玩家 tick 计数 % 10——这是
      * <b>无状态取模闸</b>不是倒计时：不持有任何跨 tick 计时状态，跨维重建导致的相位跳变至多把
      * 某一拍推迟一拍，R59e 要消灭的"写死的绝对到期"形态在这里结构性不存在）→ AABB 扫
      * {@code EntityItem} → 无实体零开销返回 → 批量入袋 → 溢出回退。
+     * <p>
+     * ★R96 S1：早退判据换组合谓词 {@code PocketUpgradeSwitches.isActive}（位图 ∧ ¬off-mask）——磁五是
+     * 五位之一，玩家关掉开关必须让这一拍真的早退。★EVA-1 §4 末行曾按"磁力不在需求四条里"提议
+     * <b>保留</b> {@code hasUpgrade} 并在门禁里显式豁免，该豁免已被 R96 计划 §3（P-1 五型全纳入 off-mask）
+     * 撤销：留着直读 = 五位里有一位"开关写了但行为不变"，正是本轮要防的 C3 同族形状。
      */
     public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {
         if (world.isRemote || player == null || stack == null) {
             return;
         }
-        if (!PocketUpgrades.hasUpgrade(stack, PocketUpgradeType.MAGNET)) {
+        if (!PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.MAGNET)) {
             return;
         }
         if (player.ticksExisted % SCAN_PERIOD_TICKS != 0) {

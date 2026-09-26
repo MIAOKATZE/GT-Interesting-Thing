@@ -14,8 +14,8 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
-import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.PocketSlots;
@@ -237,10 +237,14 @@ public final class PocketDistillDriver {
      * <p>
      * <b>中途安装：当前轮旧间隔跑完，下一轮生效</b>——节拍只在装填点（这里）读一次位图，
      * 跑动中的倒计时不改拍；位图只读不建档（R53c 读路径纪律）。
+     * <p>
+     * ★R96 S1：读点换组合谓词 {@code PocketUpgradeSwitches.isActive}（位图 ∧ ¬off-mask）⇒ 玩家关掉加速
+     * 之后同样"下一轮生效"（回落到基档 100），与"中途安装下一轮生效"是同一条不对称，不需要第二套计时。
      */
     private static int distillIntervalOf(PocketSession session) {
-        return TaumDistillRules.distillIntervalTicks(
-            PocketUpgrades.hasUpgrade(session == null ? null : session.carrierStack(), PocketUpgradeType.DISTILL_FAST));
+        final ItemStack carrier = session == null ? null : session.carrierStack();
+        final boolean fast = PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.DISTILL_FAST);
+        return TaumDistillRules.distillIntervalTicks(fast);
     }
 
     /** 把一次评估的结论落到节拍状态上（判据位只有这一处写，避免签名支与到点支各说各话）。 */

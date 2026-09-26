@@ -307,8 +307,11 @@ public final class PocketInventory {
         }
         // ★R95 S5：升级位探针先于一切内容读取播种——tank 头容量、源质每格上限、存储格堆叠上限
         // 三处都按它现读；捕获的 root 是<b>活实例</b>（install 原地写位图 ⇒ 会话期内固化即生效）。
-        inventory.capacityProbe = () -> PocketUpgrades.hasUpgrade(root, PocketUpgradeType.CAPACITY);
-        inventory.stackProbe = () -> PocketUpgrades.hasUpgrade(root, PocketUpgradeType.STACK);
+        // ★R96 S1：谓词从 hasUpgrade 换成 isActive（位图 ∧ ¬off-mask）⇒ 关掉开关的同一 tick 起，
+        // 这两把尺子就按"未升级"那一档收（tank 天花板回 16M/20M、单格回 64）。源质尺<b>不</b>跟这条腿走，
+        // 见下面 essence 读档钳制那一行的 P-4 说明。
+        inventory.capacityProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.CAPACITY);
+        inventory.stackProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.STACK);
         inventory.syncEssenceCapProbe();
         // ★R92-④：读档不再需要专门的闭闸——"放置即配置"的准入信号是 isItemValid 登记的<b>意图</b>，
         // 而 loadGroup 走 setStackInSlot、★不经过 isItemValid ⇒ 新建的 inventory 意图恒空，读档必然不定档
@@ -322,10 +325,17 @@ public final class PocketInventory {
         // ★R87-f：声明表必须先于源质表读出——保格谓词以它为输入，「有格位无库存」的空洞折叠只对无声明者生效
         inventory.filters = PocketFilterConfig.readFrom(root);
         // ★R95 S5：源质表读档带动态每格上限（STACK 位在 ⇒ 读档钳制按 4096；单源见 PocketEssenceStore#setCapPerTag）
+        // ★★R96 P-4（不对称，故意与上面两条探针<b>不</b>同步）：读档钳制只吃 <b>installed</b>（位图），
+        // <b>不</b>吃 installed ∧ enabled。原因是这条钳制会落盘：玩家关掉 STACK ⇒ 重开面板 ⇒
+        // PocketEssenceStore.readFrom 按 256 就地削平 >256 的 tag ⇒ 关屏落盘 = 源质点数永久蒸发。
+        // "关堆叠不许销毁已经存进去的源质"是用户裁定（P-4），代价是<b>物品尺吃开关、源质尺不吃开关</b>这条
+        // 不对称（同一句话也写在 PocketUpgradeSwitches 与本轮 README 代价条目里）。
+        // ★这一处也是主源里唯一合法的 PocketUpgrades.hasUpgrade <b>直接</b>调用点（off-mask 门禁对它开豁免）：
+        // 它要的正是不叠开关的那半个真值，走 isActive 反而是错的。
         inventory.essence = PocketEssenceStore.readFrom(
             root,
             tag -> PocketEssenceIntake.isDeclaredEssenceTag(inventory.filters, tag),
-            inventory::essenceCapPerTag);
+            () -> PocketConstants.essenceCapPerTag(PocketUpgrades.hasUpgrade(root, PocketUpgradeType.STACK)));
         inventory.bindings = PocketCellBindings.readFrom(root);
         // ★R90 S1：读档即持久化边界 —— 换上的这份 store 就是新基线，增量日志从零起算
         inventory.clearEssenceDeltas();
@@ -642,6 +652,10 @@ public final class PocketInventory {
     /**
      * ★R95 S5：<b>STACK 位是否固化</b>（存储格堆叠 ×16 与源质每格上限 256→4096 共用这一位）。
      * handler 内部读点（{@code getSlotLimit}/{@code getStackLimit}）与源质上限选择都经它。
+     * <p>
+     * ★R96 S1 改口（方法名沿用，语义已挪）：{@code stackProbe} 现在装的是<b>组合谓词</b>
+     * {@code PocketUpgradeSwitches.isActive(STACK)} ⇒ 本方法回答的是"<b>当前生效没有</b>"（位图 ∧ 未关闭），
+     * 不再是"位图在场"。关掉开关即回到 64 那一档，这是本轮"正交 enabled 位图"要的唯一执法形状。
      */
     boolean storageStackUpgraded() {
         return stackProbe.getAsBoolean();
@@ -678,6 +692,7 @@ public final class PocketInventory {
 
     /**
      * ★R95 S5：CAPACITY 位是否固化（16M/16G 的选择输入；GUI 装配侧的容量读数也经它）。
+     * ★R96 S1 改口：探针已换组合谓词 ⇒ 语义是"<b>当前生效没有</b>"，关掉开关即回落未升级那一档。
      */
     boolean capacityUpgradeActive() {
         return capacityProbe.getAsBoolean();
@@ -699,21 +714,25 @@ public final class PocketInventory {
     /**
      * ★R95 S5：升级位探针的<b>注入点</b>（GUI 装配侧接线）。
      * <p>
-     * 本类是纯数据件（只面对 NBT），结构性拿不到载体栈；{@code readFrom} 已用<b>档内位图</b>自播种
-     * （活 NBT 实例 ⇒ 会话期内 install 写位图后下一次查询即生效），但"口袋原本无 NBT、会话期内才
+     * 本类是纯数据件（只面对 NBT），结构性拿不到载体栈；{@code readFrom} 已用<b>档内合成谓词</b>自播种
+     * （活 NBT 实例 ⇒ 会话期内 install 写位图、或写开关位，下一次查询即生效），但"口袋原本无 NBT、会话期内才
      * 第一次装插件"的那一支没有根实例可捕获 ⇒ 面板构造完 {@code readFrom} 后应即时注入
-     * 「活查载体栈」版探针（先例：{@code NekoPocketPanel#carrierStackLive} 那条活查表通道）：
+     * 「活查载体栈」版探针（先例：{@code NekoPocketPanel#carrierStackLive} 那条活查表通道）。
+     * ★R96 S1：注入侧的谓词也<b>必须</b>是组合谓词（与 {@code readFrom} 那两条逐字同形）——
+     * 注入会<b>覆盖</b>读档播种，注入成 {@code hasUpgrade} 就等于把开关对整场面板会话旁路掉：
      *
      * <pre>
      * {@code
      * inventory.setUpgradeProbes(
-     *     () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.CAPACITY),
-     *     () -> PocketUpgrades.hasUpgrade(carrierStackLive(), PocketUpgradeType.STACK));
+     *     () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY),
+     *     () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK));
      * }
      * </pre>
      *
      * <p>
      * {@code null} 入参视为回落默认（false）。注入同时把源质表的动态上限一并接上（单源转发）。
+     * ★源质<b>读档钳制</b>那一条不吃开关（P-4，理由见 {@code readFrom} 里的 ★★R96 段）；本注入改的是
+     * <b>运行期</b>入账上限，两件事不同一条腿，别把它们读成一处真相的两次表态。
      */
     public void setUpgradeProbes(java.util.function.BooleanSupplier capacity,
         java.util.function.BooleanSupplier stack) {
