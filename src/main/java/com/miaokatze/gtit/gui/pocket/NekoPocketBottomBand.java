@@ -1330,7 +1330,11 @@ public final class NekoPocketBottomBand {
      * {@code PocketSlots#fluidInteraction} 的先例（{@code (newItem, onlyAmountChanged, client, init)}，
      * 客户端帧与 init 帧一律早退，⇒ 读档回灌那一拍不重装），载体栈照
      * {@code PocketInventory#newUpgradeGroup} javadoc 的设计经活查表取，<b>新栈非空</b>即
-     * {@code PocketUpgrades.install}（只置不清，天然不可逆；一格一型 ⇒ 放对格才进得来，准入判据先挡）。</li>
+     * {@code PocketUpgrades.install}（只置不清，天然不可逆；一格一型 ⇒ 放对格才进得来，准入判据先挡）。
+     * ★<b>W3（R95 审查加固）</b>：install 前加一道<b>载体身份校验</b>——活查结果必须与
+     * {@code session} 的载体栈（{@link NekoPocketPanel#carrierStack()}）<b>是同一个对象</b>，
+     * 不等即跳过：载体在会话期内被换出（掉落重捡 / 堆叠合并 / 跨维重建造新栈）时，
+     * "把不可逆的位图写进错误的口袋"比"少固化一次"重得多（插件仍躺在格内，重开面板即补上）。</li>
      * </ol>
      */
     private static ItemSlot upgradeCellWidget(NekoPocketPanel ui, int index) {
@@ -1340,7 +1344,12 @@ public final class NekoPocketBottomBand {
             if (client || init || newItem == null) {
                 return;
             }
-            PocketUpgrades.install(ui.carrierStackLive(), PocketUpgradeType.values()[index]);
+            // ★W3：载体换位漂移门（身份判据，理由见方法 javadoc 第 3 条）
+            final ItemStack carrier = ui.carrierStackLive();
+            if (carrier == null || carrier != ui.carrierStack()) {
+                return;
+            }
+            PocketUpgrades.install(carrier, PocketUpgradeType.values()[index]);
         });
         final ItemSlot slot = new ItemSlot();
         slot.slot(modular);

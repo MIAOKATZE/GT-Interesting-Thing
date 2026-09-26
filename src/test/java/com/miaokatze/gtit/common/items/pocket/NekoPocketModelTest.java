@@ -389,6 +389,8 @@ public class NekoPocketModelTest {
         cases.put("fluid_plan_caps_and_partial", NekoPocketModelTest::fluidPlanCapsAndPartial);
         cases.put("fluid_plan_prefers_mergeable_tank", NekoPocketModelTest::fluidPlanPrefersMergeableTank);
         cases.put("fill_own_tank_marks_dirty", NekoPocketModelTest::fillOwnTankMarksDirty);
+        // ★R95-W1（审查修复回归钉）：头轨不充当存储轨，一切头写点走「改真值→syncHead 单点」
+        cases.put("fluid_head_truth_single_sync_enforcement", NekoPocketModelTest::fluidHeadTruthSingleSyncEnforcement);
         // ---- ★R95 S6 收尾批：升级体系六条判据（位图 / 通道持续化 / 关背包续作 / 磁力 / 升级槽）
         // ★蒸馏加速的 100/50 双口径已由 TaumDistillRulesTest 钉住（本批不重复建口，见交付报告）
         cases.put(
@@ -9683,16 +9685,25 @@ public class NekoPocketModelTest {
             final int fillStart = methodStart(inventory, "public int fillOwnTank(int tank, FluidStack fluid) {");
             final int fillEnd = methodStart(inventory, "public FluidStack ownTankFluid(int tank) {");
             SimpleAssert.that(fillStart >= 0 && fillEnd > fillStart, "★必须能按签名定位 fillOwnTank（改名/挪动即红）");
+            // ★★R95-W1（审查修复）形状变更：头类 FluidStackTank.fill 的「非空同流体合并」与 drain 的
+            // 「部分抽出」两支直改头 amount 不触发 setter 钩子（字节码实证）⇒ 真值不动，saveTanks 写前
+            // 钳回 = 入侧蒸发 / 出侧复制。原语因此改走真值域单式 advanceTruthFill（与 long 档同源）。
             SimpleAssert.that(
-                regionContainsCode(inventory, fillStart, fillEnd, "tanks[tank].fill(fluid, true)"),
-                "真的走 FluidStackTank.fill（同流体合并 / 异流体拒 / 16M 夹取由它承担）");
-            SimpleAssert.that(regionContainsCode(inventory, fillStart, fillEnd, "if (moved > 0)"), "守卫在读（实收>0 才置脏）");
-            SimpleAssert.that(
-                regionContainsCode(inventory, fillStart, fillEnd, "dirty = true"),
-                "★实收>0 ⇒ dirty=true（世界侧灌入必须自含置脏）");
-            final int guardAt = firstCodeLineWith(inventory, fillStart, fillEnd, "if (moved > 0)");
-            final int dirtyAt = firstCodeLineWith(inventory, fillStart, fillEnd, "dirty = true");
-            SimpleAssert.that(dirtyAt > guardAt, "置脏在守卫之内（0 实收不置脏）");
+                regionContainsCode(inventory, fillStart, fillEnd, "advanceTruthFill(tank, fluid.amount"),
+                "★R95-W1：灌入原语走真值域单式（int/long 档同源，不再经头类 fill）");
+            SimpleAssert
+                .that(!regionContainsCode(inventory, fillStart, fillEnd, "tanks[tank].fill"), "★头类 fill 的增量旁路不得在原语里复活");
+            final int coreStart = methodStart(
+                inventory,
+                "private long advanceTruthFill(int tank, long amount, java.util.function.Supplier<FluidStack> emptyHeadFactory) {");
+            final int coreEnd = methodStart(inventory, "private long advanceTruthDrain(int tank, long amount) {");
+            SimpleAssert.that(coreStart >= 0 && coreEnd > coreStart, "★必须能按签名定位 advanceTruthFill（改名即红）");
+            SimpleAssert.that(regionContainsCode(inventory, coreStart, coreEnd, "if (moved <= 0L)"), "实收守卫（≤0 双轨全不碰）");
+            SimpleAssert
+                .that(regionContainsCode(inventory, coreStart, coreEnd, "syncHead(tank);"), "★真值写完立即 syncHead 回同步头");
+            final int syncAt = firstCodeLineWith(inventory, coreStart, coreEnd, "syncHead(tank);");
+            final int dirtyAt = firstCodeLineWith(inventory, coreStart, coreEnd, "dirty = true;");
+            SimpleAssert.that(syncAt >= 0 && dirtyAt > syncAt, "★实收>0 ⇒ 先 syncHead 再置脏（0 实收不置脏；脏标记世界侧灌入点自含的口径不变）");
             final int depositStart = methodStart(
                 inventory,
                 "public int depositFluidIntoBar(int tank, FluidStack fluid) {");
@@ -9765,6 +9776,272 @@ public class NekoPocketModelTest {
             delegated.tankAt(2)
                 .getFluidAmount(),
             "落点同一 tank");
+    }
+
+    /**
+     * ★★<b>R95-W1（审查修复的回归钉）：双轨的头轨不充当存储轨，一切头写点走「改真值 → syncHead 单点回同步」</b>。
+     * <p>
+     * 缺陷本体（reviewer 字节码实证，MUI2 2.3.91 {@code FluidStackTank}）：{@code fill} 的非空同流体
+     * 合并支与 {@code drain} 的部分抽出支直改 getter 返回栈的 amount、<b>不触发 setter 钩子</b> ⇒
+     * 入侧真值不动被 saveTanks 钳回（<b>差额蒸发</b>，源容器已耗），出侧头减量无真值反证（<b>流体复制</b>）。
+     * <p>
+     * 静态/反射半边<b>无条件跑</b>（纯 JVM 可达）：①原语不再经头类 fill/drain；②头 amount 的落点恒 3 处
+     * （syncHead 运行时单点 + loadTanks 读钳 + saveTanks 写前防御钳）；③构造期把 fill/drain 覆写为原语
+     * 转发（外部头轨调用者——GUI {@code FluidSlotSyncHandler} 点击灌排、{@code PocketFluidTransfer}
+     * 经 {@code tankAt} 的容器搬运——自动走执法入口）；④:222 注释如实改口；⑤反射实证覆写装在当前实例上；
+     * ⑥空槽守卫面在本 JVM 真驱动（不触 FluidStack 构造）。
+     * 守恒行为半边（堵蒸发 / 堵复制 / 连点 20 次 / 未升级档回归）需要真实 {@code FluidStack}——
+     * Forge 的构造子必触 {@code FluidRegistry}（实测 {@code ExceptionInInitializerError}，与本 JVM 的
+     * fluidsUsable 探针同一事实），不可构造时显式声明<b>实机项</b>。
+     */
+    private static void fluidHeadTruthSingleSyncEnforcement() {
+        // ---- 静态半边（读不到源 ⇒ NOTE，不算通过）----
+        final java.util.List<String> inventory = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketInventory.java");
+        if (inventory == null) {
+            System.out.println("[NOTE] 读不到 PocketInventory.java ⇒ W1 静态半边【未验】（★不是通过）");
+        } else {
+            // ② 头 amount 的直接落点恒 3 处：syncHead（唯一运行时回同步）+ loadTanks + saveTanks 防御钳
+            int headWrites = 0;
+            for (final String line : inventory) {
+                if (!isCommentLine(line) && line.contains(".amount = headAmountOf")) {
+                    headWrites++;
+                }
+            }
+            SimpleAssert
+                .eq(3, headWrites, "★头 amount 落点恒 3（syncHead/loadTanks/saveTanks；原语与 applyHeadWrite 一律经 syncHead）");
+            // ③ 构造期覆写：两条头类变更方法都在，且各自转发到原语
+            SimpleAssert.that(
+                methodStart(inventory, "public int fill(FluidStack resource, boolean doFill) {") >= 0
+                    && regionContainsCode(inventory, 0, inventory.size(), "return fillOwnTank(tank, resource);"),
+                "★头类 fill 被覆写为 fillOwnTank 转发（GUI 点击 / 容器搬运的增量旁路进执法入口）");
+            SimpleAssert.that(
+                methodStart(inventory, "public FluidStack drain(int maxDrain, boolean doDrain) {") >= 0
+                    && regionContainsCode(
+                        inventory,
+                        0,
+                        inventory.size(),
+                        "final int moved = drainOwnTank(tank, maxDrain);"),
+                "★头类 drain 被覆写为 drainOwnTank 转发（出侧防复制）");
+            // ④ 注释改口（:222 的旧承诺不成立，就不许留在源码里当下一次旁路的邀请函）
+            boolean honestDoc = false;
+            boolean oldClaimGone = true;
+            for (final String line : inventory) {
+                if (line.contains("只捕获「整替换」写")) {
+                    honestDoc = true;
+                }
+                if (line.contains("所有头写入的唯一进口")) {
+                    oldClaimGone = false;
+                }
+            }
+            SimpleAssert.that(honestDoc, "★applyHeadWrite 注释如实改口：setter 钩子只捕获「整替换」写");
+            SimpleAssert.that(oldClaimGone, "「所有头写入的唯一进口」旧话不得复活");
+        }
+        // ---- 反射半边（不需要流体，恒跑）：当前实例的 fill/drain 不是头类原实现 ----
+        final PocketInventory probe = PocketInventory.readFrom(null);
+        try {
+            final Class<?> installed = probe.tankAt(0)
+                .getClass();
+            SimpleAssert.that(
+                installed != com.cleanroommc.modularui.utils.fluid.FluidStackTank.class,
+                "★tank 是构造期生成的执法子类（不是头类原样）");
+            SimpleAssert.that(
+                installed.getMethod("fill", FluidStack.class, boolean.class)
+                    .getDeclaringClass() == installed,
+                "★fill 覆写装在当前实例上（FluidSlotSyncHandler 经接口虚分派命中它）");
+            SimpleAssert.that(
+                installed.getMethod("drain", int.class, boolean.class)
+                    .getDeclaringClass() == installed,
+                "★drain 覆写装在当前实例上");
+        } catch (ReflectiveOperationException e) {
+            SimpleAssert.that(false, "反射取 fill/drain 失败：" + e);
+        }
+        // ---- 空槽守卫半边（本 JVM 可驱动：守卫面不触 FluidStack 构造）----
+        probe.markClean();
+        SimpleAssert.eq(0, probe.fillOwnTank(0, null), "原语 null 流体 ⇒ 0");
+        SimpleAssert.eq(
+            0,
+            probe.tankAt(0)
+                .fill(null, true),
+            "头轨入口 null 资源 ⇒ 0（覆写守卫，不动双轨）");
+        SimpleAssert.eq(
+            0,
+            probe.tankAt(0)
+                .fill(null, false),
+            "simulate 支同样拒 null");
+        SimpleAssert.that(
+            probe.tankAt(0)
+                .drain(1_000, true) == null,
+            "空头 drain ⇒ null");
+        SimpleAssert.that(
+            probe.tankAt(0)
+                .drain(1_000, false) == null,
+            "空头 simulate drain ⇒ null");
+        SimpleAssert.eq(0, probe.drainOwnTank(0, 1_000), "空头原语 ⇒ 0");
+        SimpleAssert.that(!probe.isDirty(), "★守卫面一滴未动 ⇒ 不置脏");
+        final NBTTagCompound capRoot = new NBTTagCompound();
+        PocketUpgrades.install(capRoot, PocketUpgradeType.CAPACITY);
+        SimpleAssert.eq(
+            PocketConstants.FLUID_BAR_CAPACITY_ML,
+            probe.tankAt(0)
+                .getCapacity(),
+            "未升级头容量 = 16M（覆写后 IntSupplier 接线仍成立）");
+        SimpleAssert.eq(
+            Integer.MAX_VALUE,
+            PocketInventory.readFrom(capRoot)
+                .tankAt(0)
+                .getCapacity(),
+            "升级头容量 = min(16G, int 顶)");
+        // ---- 行为半边：需要真实 FluidStack ⇒ fluidsUsable 探针，不可用显式声明实机项 ----
+        if (!fluidsUsable()) {
+            System.out.println(
+                "[NOTE] 本 JVM 不可构造 FluidStack（构造子必触 FluidRegistry，实测 ExceptionInInitializerError）"
+                    + " ⇒ 堵蒸发/堵复制/连点守恒/未升级回归四条属实机项（静态+反射+守卫半边已机检）");
+            return;
+        }
+        final net.minecraftforge.fluids.Fluid water = FluidRegistry.getFluid("water");
+        final net.minecraftforge.fluids.Fluid lava = FluidRegistry.getFluid("lava");
+        // ---- T1 堵蒸发：非空同流体二次灌入（16G 档；差额必须活在真值并如实落档）----
+        final PocketInventory a = PocketInventory.readFrom(capRoot);
+        SimpleAssert.eq(1_000_000, a.fillOwnTank(0, new FluidStack(water, 1_000_000)), "第一笔 1M 全收");
+        SimpleAssert.eq(2_000_000, a.fillOwnTank(0, new FluidStack(water, 2_000_000)), "第二笔同流体 2M 全收");
+        SimpleAssert.eq(3_000_000L, a.tankTruthAt(0), "★真值 = 两次之和（旧缺陷停 1M ⇒ 差额蒸发）");
+        SimpleAssert.eq(
+            3_000_000,
+            a.tankAt(0)
+                .getFluidAmount(),
+            "头 = min(真值, 容量)");
+        final NBTTagCompound aSaved = new NBTTagCompound();
+        a.writeTo(aSaved);
+        final NBTTagCompound aEntry = aSaved.getTagList(PocketConstants.FLUID_BAR, 10)
+            .getCompoundTagAt(0);
+        SimpleAssert.eq(3_000_000, aEntry.getInteger("Amount"), "写档 Amount = 头");
+        SimpleAssert.eq(3_000_000L, aEntry.getLong(PocketConstants.FLUID_BAR_AMOUNT_L), "★写档 AmountL = 真值（钳回无差额可吞）");
+        // int 顶之上：L 灌 2.5G 后 int 档追加 1M ⇒ 全额进真值、头保持顶、写档双数对账
+        final PocketInventory a2 = PocketInventory.readFrom(capRoot);
+        SimpleAssert.eq(2_500_000_000L, a2.fillOwnTankL(0, water, 2_500_000_000L), "L 灌 2.5G");
+        SimpleAssert
+            .eq(1_000_000, a2.fillOwnTank(0, new FluidStack(water, 1_000_000)), "★头钳在顶后 int 档灌入仍全收（旧行为头满收 0 的分支已改真值域）");
+        SimpleAssert.eq(2_501_000_000L, a2.tankTruthAt(0), "真值 2.5G+1M");
+        SimpleAssert.eq(
+            Integer.MAX_VALUE,
+            a2.tankAt(0)
+                .getFluidAmount(),
+            "头仍钳 int 顶（min(真值, INT_MAX)）");
+        final NBTTagCompound a2Saved = new NBTTagCompound();
+        a2.writeTo(a2Saved);
+        final NBTTagCompound a2Entry = a2Saved.getTagList(PocketConstants.FLUID_BAR, 10)
+            .getCompoundTagAt(0);
+        SimpleAssert.eq(Integer.MAX_VALUE, a2Entry.getInteger("Amount"), "写档 Amount = int 顶（旧版读侧）");
+        SimpleAssert.eq(2_501_000_000L, a2Entry.getLong(PocketConstants.FLUID_BAR_AMOUNT_L), "写档 AmountL = 真值");
+        // ---- T2 堵复制：满/半箱部分抽出（抽出量 = 头减量 = 真值减量 三方对账）----
+        final PocketInventory b = PocketInventory.readFrom(capRoot);
+        b.fillOwnTankL(0, water, 3_000_000_000L);
+        SimpleAssert.eq(500, b.drainOwnTank(0, 500), "int 顶之上部分抽出 500");
+        SimpleAssert.eq(3_000_000_000L - 500L, b.tankTruthAt(0), "★真值同扣 500（旧缺陷真值不动 ⇒ 钳回头「复活」= 复制）");
+        SimpleAssert.eq(
+            Integer.MAX_VALUE,
+            b.tankAt(0)
+                .getFluidAmount(),
+            "头仍 int 顶 = min(真值, INT_MAX)");
+        final NBTTagCompound bSaved = new NBTTagCompound();
+        b.writeTo(bSaved);
+        final NBTTagCompound bEntry = bSaved.getTagList(PocketConstants.FLUID_BAR, 10)
+            .getCompoundTagAt(0);
+        SimpleAssert.eq(
+            3_000_000_000L - 500L,
+            bEntry.getLong(PocketConstants.FLUID_BAR_AMOUNT_L),
+            "写档真值 = 3G−500（抽走的 500 不回流）");
+        // 未升级半箱：抽出后头 = min(真值, 容量) 逐位一致
+        final PocketInventory c = PocketInventory.readFrom(new NBTTagCompound());
+        c.fillOwnTank(1, new FluidStack(water, 10_000_000));
+        SimpleAssert.eq(4_000_000, c.drainOwnTank(1, 4_000_000), "半箱抽 4M");
+        SimpleAssert.eq(
+            6_000_000,
+            c.tankAt(1)
+                .getFluidAmount(),
+            "头 6M");
+        SimpleAssert.eq(6_000_000L, c.tankTruthAt(1), "★真值 6M（头=真值双轨恒等）");
+        // ---- T3 连点 20 次交替 fill/drain 质量守恒 ----
+        final PocketInventory d = PocketInventory.readFrom(capRoot);
+        long sumIn = 0L;
+        long sumOut = 0L;
+        for (int i = 0; i < 20; i++) {
+            sumIn += d.fillOwnTank(7, new FluidStack(water, 777_777));
+            sumOut += d.drainOwnTank(7, 333_333);
+        }
+        SimpleAssert.eq(sumIn - sumOut, d.tankTruthAt(7), "★真值净变 = Σ入 − Σ出（20 连点）");
+        SimpleAssert.eq(
+            (int) Math.min(sumIn - sumOut, Integer.MAX_VALUE),
+            d.tankAt(7)
+                .getFluidAmount(),
+            "头 = min(真值, int 顶)");
+        final NBTTagCompound dSaved = new NBTTagCompound();
+        d.writeTo(dSaved);
+        SimpleAssert.eq(
+            d.tankTruthAt(7),
+            PocketInventory.readFrom(dSaved)
+                .tankTruthAt(7),
+            "连点结果 writeTo→readFrom 零损失（Amount/AmountL 双写对账）");
+        // ---- T4 未升级档（头容量 16M、真值 < 2.1G）同一路径守恒回归（R75 既有功能）----
+        final PocketInventory e = PocketInventory.readFrom(new NBTTagCompound());
+        SimpleAssert.eq(9_000_000, e.fillOwnTank(0, new FluidStack(water, 9_000_000)), "未升级第一笔 9M");
+        SimpleAssert.eq(7_000_000, e.fillOwnTank(0, new FluidStack(water, 9_000_000)), "★第二笔 9M 只实收 7M（16M 夹取如实回报）");
+        SimpleAssert.eq(16_000_000L, e.tankTruthAt(0), "真值 16M 恰满");
+        SimpleAssert.eq(16_000_000, e.drainOwnTank(0, 20_000_000), "要 20M 只实抽存量 16M");
+        SimpleAssert.eq(0L, e.tankTruthAt(0), "真值归零");
+        SimpleAssert.that(
+            e.tankAt(0)
+                .getFluid() == null,
+            "头随之置 null（抽空清身份）");
+        SimpleAssert.eq(3_000_000, e.fillOwnTank(0, new FluidStack(water, 3_000_000)), "重灌立身份 3M");
+        final NBTTagCompound eSaved = new NBTTagCompound();
+        e.writeTo(eSaved);
+        final PocketInventory eBack = PocketInventory.readFrom(eSaved);
+        SimpleAssert.eq(3_000_000L, eBack.tankTruthAt(0), "未升级档写读往返守恒");
+        SimpleAssert.eq(
+            3_000_000,
+            eBack.tankAt(0)
+                .getFluidAmount(),
+            "往返后头 = 真值");
+        // ---- 头轨入口与原语同账（覆写的存在性用行为再证一遍：GUI/容器搬运走的就是这条路）----
+        final PocketInventory g = PocketInventory.readFrom(capRoot);
+        g.markClean();
+        SimpleAssert.eq(
+            1_500_000,
+            g.tankAt(3)
+                .fill(new FluidStack(water, 1_500_000), true),
+            "头轨入口第一笔");
+        SimpleAssert.eq(
+            600_000,
+            g.tankAt(3)
+                .fill(new FluidStack(water, 600_000), true),
+            "头轨入口第二笔（旧缺陷主案：只动头）");
+        SimpleAssert.eq(2_100_000L, g.tankTruthAt(3), "★经头轨入口灌入同样推真值（防蒸发·外部侧）");
+        final FluidStack viaHead = g.tankAt(3)
+            .drain(400_000, true);
+        SimpleAssert.that(viaHead != null && viaHead.amount == 400_000, "头轨入口抽出如实给量");
+        SimpleAssert.eq(1_700_000L, g.tankTruthAt(3), "★经头轨入口抽出同样扣真值（防复制·外部侧）");
+        SimpleAssert.eq(
+            1_700_000,
+            g.tankAt(3)
+                .getFluidAmount(),
+            "抽出后头 = min(真值, 容量)");
+        SimpleAssert.that(g.isDirty(), "驱动过 ⇒ 置脏");
+        final PocketInventory f = PocketInventory.readFrom(capRoot);
+        f.fillOwnTank(2, new FluidStack(water, 500));
+        f.markClean();
+        SimpleAssert.eq(
+            0,
+            f.tankAt(2)
+                .fill(new FluidStack(lava, 500), true),
+            "★头轨入口异种拒（覆写守卫与头类等语义）");
+        SimpleAssert.eq(
+            0,
+            f.tankAt(2)
+                .fill(new FluidStack(lava, 500), false),
+            "simulate 异种也拒");
+        SimpleAssert.that(!f.isDirty(), "拒收一滴未动 ⇒ 不置脏");
     }
 
     // ================================================================== ★R95 S6 收尾批：升级体系五条判据

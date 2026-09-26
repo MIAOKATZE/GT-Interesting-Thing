@@ -148,10 +148,14 @@ public final class PocketInventory {
      * {@code PocketFluidTransfer} 都继续只碰它）。头容量经 {@link IntSupplier} 现读
      * {@link #fluidTankCapacity()}（未升级 16M / 升级后 int 顶 {@code Integer.MAX_VALUE}）。</li>
      * </ul>
-     * <b>不变式：头 ≡ min(真值, Integer.MAX_VALUE)</b>，由 {@link #applyHeadWrite(int, FluidStack)}
-     * （tank 的 setter 钩子，所有头写入的唯一进口）维护：头写入按差额推进真值后<b>再把头钳回
-     * 不变式</b> ⇒ 真值 &gt; int 顶时，头侧 drain 走多少真值扣多少、头回到 int 顶；头侧 fill 因
-     * 头容量已顶到 int 顶而收 0（玩家容器灌排是 int 量级，超 2.147G 的灌入走通道/长原语——已列实机项）。
+     * <b>不变式：头 ≡ min(真值, Integer.MAX_VALUE)</b>。★<b>R95-W1（审查修复）起这条由两处共同执法，
+     * 不再是一句"setter 钩子=唯一进口"</b>：头类（MUI2 2.3.91 {@code FluidStackTank}，字节码实证）的
+     * {@code fill} 在<b>非空同流体合并支</b>与 {@code drain} 在<b>部分抽出支</b>都对 getter 返回的栈
+     * 直接 {@code amount ±=}，<b>不触发 setter 钩子</b> ⇒ 钩子只捕获「整替换」写（空灌入 / 抽空置 null）。
+     * 于是：① 增量写的回同步落在<b>调用点/原语</b>——构造期把 {@code tanks[i]} 覆写成把 fill/drain
+     * 转发到真值域原语的子类（外部头轨调用者：{@code FluidSlotSyncHandler} 的点击灌排、
+     * {@code PocketFluidTransfer} 经 {@link #tankAt(int)}，都自动走执法入口）；② 所有头 amount 的落钳
+     * 收口在唯一函数 {@link #syncHead(int)}（原语推完真值后立即回同步）。
      * 数组下标 = tank 号 = {@code Kind.FLUID} 的 ghost 槽号 = 流体列号，三者同一个数。
      */
     private final FluidStack[] tankFluid = new FluidStack[FLUID_TANK_COUNT];
@@ -195,10 +199,51 @@ public final class PocketInventory {
             final int tank = index;
             // ★R95 S5：头容量走 IntSupplier 现读（未升级 16M / 升级 int 顶）⇒ 会话期内固化 CAPACITY 位
             // 之后头容量即时换档，不需要重建 tank（FluidStackTank 构造子原生支持 supplier 形态）。
+            // ★★R95-W1（审查修复）：fill/drain 整体覆写成「真值域原语」转发 —— 头类的非空同流体合并支
+            // 与部分抽出支不触发 setter 钩子（字节码实证，2.3.91），留头类原样就是让外部头轨调用者
+            // （FluidSlotSyncHandler 点击灌排 / PocketFluidTransfer 经 tankAt）只动头不动真值 ⇒
+            // saveTanks 写前钳回 = 入侧蒸发 / 出侧复制。覆写后这些调用者与四个公开原语走同一条
+            // 「改真值 → syncHead 回同步」算式，simulate 支（doFill/doDrain=false）保持不触碰双轨。
             tanks[index] = new FluidStackTank(
                 () -> tankFluid[tank],
                 fluid -> applyHeadWrite(tank, fluid),
-                (java.util.function.IntSupplier) () -> (int) Math.min(fluidTankCapacity(), Integer.MAX_VALUE));
+                (java.util.function.IntSupplier) () -> (int) Math.min(fluidTankCapacity(), Integer.MAX_VALUE)) {
+
+                @Override
+                public int fill(FluidStack resource, boolean doFill) {
+                    if (resource == null || resource.amount <= 0) {
+                        return 0;
+                    }
+                    final FluidStack head = tankFluid[tank];
+                    if (head != null && head.amount > 0 && head.getFluid() != resource.getFluid()) {
+                        return 0;
+                    }
+                    if (!doFill) {
+                        // simulate：按真值域给预计收量，不触碰任何一侧
+                        final long room = Math.max(0L, fluidTankCapacity() - Math.max(0L, tankTruth[tank]));
+                        return (int) Math.min((long) resource.amount, room);
+                    }
+                    return fillOwnTank(tank, resource);
+                }
+
+                @Override
+                public FluidStack drain(int maxDrain, boolean doDrain) {
+                    final FluidStack head = tankFluid[tank];
+                    if (head == null || head.amount <= 0 || maxDrain <= 0) {
+                        return null;
+                    }
+                    final Fluid fluid = head.getFluid();
+                    final long available = Math.min((long) maxDrain, Math.max(0L, tankTruth[tank]));
+                    if (available <= 0L) {
+                        return null;
+                    }
+                    if (!doDrain) {
+                        return new FluidStack(fluid, (int) available);
+                    }
+                    final int moved = drainOwnTank(tank, maxDrain);
+                    return moved <= 0 ? null : new FluidStack(fluid, moved);
+                }
+            };
         }
         this.essence = PocketEssenceStore.readFrom(new NBTTagCompound());
         this.bindings = PocketCellBindings.readFrom(new NBTTagCompound());
@@ -206,14 +251,16 @@ public final class PocketInventory {
     }
 
     /**
-     * ★R95 S5：tank 头层的<b>唯一写进口</b>（{@link FluidStackTank} 的 setter 钩子）——所有经
-     * {@code fill/drain/validateFluid} 的头写入都落到这里，双轨不变式只在这一个方法里维护：
+     * ★R95 S5：tank 头层的 setter 钩子（{@link FluidStackTank} 构造子接线）。★<b>R95-W1（审查修复）
+     * 改口，如实口径如下</b>：本钩子<b>只捕获「整替换」写</b>——头类字节码实证，其 {@code fill} 的
+     * 非空同流体合并支与 {@code drain} 的部分抽出支都是对 getter 返回栈的直接 {@code amount ±=}，
+     * <b>不经过这里</b>（只有空灌入与抽空置 null 才 {@code setter.accept}）。增量旁路由构造期的
+     * fill/drain 覆写收进真值域原语（见构造函数注释），所有头 amount 的落钳统一在 {@link #syncHead(int)}
+     * ——本方法<b>不再是、也不可能是全部头写入的总进口</b>（旧承诺与字节码不符，已收回）。仍保留的算术：
      * <ol>
-     * <li>按「新头值 − 旧头值（= min(旧真值, int 顶)）」的<b>差额</b>推进真值（fill/drain 都是头额度
-     * 的算术，差额即真值的增减）；</li>
-     * <li>存回头引用后<b>把头钳回 {@code min(真值, Integer.MAX_VALUE)}</b>——真值仍超 int 顶时，头侧
-     * 刚 drain 出去的缺口会被顶回 int 顶（玩家拿走的量已从真值扣除，账目闭合），fill 侧则因头容量
-     * 已到顶天然收 0。</li>
+     * <li>按「新头值 − 旧头值（= min(旧真值, int 顶)）」的<b>差额</b>推进真值（整替换语义下差额即
+     * 真值的增减）；</li>
+     * <li>存回头引用后经 {@link #syncHead(int)} 把头钳回不变式。</li>
      * </ol>
      * 旧档/未升级口袋：真值恒 ≤ 16M ≤ int 顶 ⇒ 头逐字镜像真值，行为与 R95 之前<b>逐字相同</b>。
      */
@@ -221,13 +268,26 @@ public final class PocketInventory {
         final long incoming = fluid == null || fluid.amount <= 0 ? 0L : fluid.amount;
         final long before = tankTruth[tank];
         tankTruth[tank] = Math.max(0L, before + (incoming - headAmountOf(before)));
-        if (fluid == null || fluid.amount <= 0) {
-            this.tankFluid[tank] = null;
-        } else {
-            this.tankFluid[tank] = fluid;
-            fluid.amount = headAmountOf(tankTruth[tank]);
-        }
+        this.tankFluid[tank] = incoming <= 0L ? null : fluid;
+        syncHead(tank);
         this.dirty = true;
+    }
+
+    /**
+     * ★★<b>R95-W1（审查修复）：「真值 → 头」回同步的唯一落点</b>——双轨不变式 {@code 头 ≡ min(真值,
+     * Integer.MAX_VALUE)} 的钳制只在这一处执行（外加 {@link #loadTanks}/{@link #saveTanks} 两侧对
+     * 档案的读钳/写前防御钳）。任何<b>直接推进真值</b>的原语（{@code fillOwnTank}/{@code drainOwnTank}
+     * 及其 long 版）写完真值必须<b>立即</b>调用本方法，不依赖 {@link #applyHeadWrite(int, FluidStack)}
+     * 的 setter 钩子捕获（该钩子只捕获「整替换」写，见其 javadoc）；头轨永不充当存储轨。
+     */
+    private void syncHead(int tank) {
+        final long truth = Math.max(0L, tankTruth[tank]);
+        final FluidStack head = this.tankFluid[tank];
+        if (truth <= 0L) {
+            this.tankFluid[tank] = null;
+        } else if (head != null) {
+            head.amount = headAmountOf(truth);
+        }
     }
 
     /** 双轨不变式的钳制算式：<b>头 ≡ min(真值, Integer.MAX_VALUE)</b>（唯一落点）。 */
@@ -1024,7 +1084,12 @@ public final class PocketInventory {
     }
 
     /**
-     * 第 {@code tank} 号流体 tank（{@code FluidStackTank}：内存 FluidStack + 只报真实容量）。
+     * 第 {@code tank} 号流体槽本体（{@code FluidStackTank}：内存 FluidStack + 只报真实容量）。
+     * <p>
+     * ★★R95-W1（审查修复）：它的 {@code fill/drain} 已被构造期覆写为真值域原语的转发 ⇒ 一切经本出口
+     * 拿头的调用者（GUI 点击灌排、{@code PocketFluidTransfer} 容器搬运）改动的都是「真值 + 头」
+     * 一对账，头轨单独漂移在结构上不可能。只读面（{@code getFluid/getFluidAmount/getCapacity/getInfo}）
+     * 仍读头（不变式 头 ≡ min(真值, int 顶)）。
      * <p>
      * ★GUI 侧的 {@code FluidSlotSyncHandler} 直接挂它 ⇒ 6 个槽各有一根同步通道，
      * 上游那份 handler 只在<b>内容与缓存不等</b>时才发更新（{@code needsSync} 走
@@ -1143,7 +1208,8 @@ public final class PocketInventory {
      * 单独成函数并由零依赖套件直接驱动的理由：Forge 的 {@code Fluid}/{@code FluidRegistry}
      * 在纯 JVM 里连类初始化都过不去（实测 {@code ExceptionInInitializerError}），
      * 而"抽取前先算准能收多少"正是流体支唯一会静默吞流体的判据点（R45b）；
-     * {@code FluidStackTank.fill} 自身的截断属 Forge 代码，列为实机项。
+     * ★R95-W1（审查修复）后灌入截断住在 {@link #advanceTruthFill} 自己的算式里（头类 fill 已被构造期
+     * 覆写接管），其守恒行为半边随流体可构造性走（用例 fluid_head_truth_single_sync_enforcement）。
      */
     public static int barRoom(int capacity, int currentAmount, boolean compatible) {
         if (!compatible || capacity <= 0) {
@@ -1153,12 +1219,13 @@ public final class PocketInventory {
     }
 
     /**
-     * 往第 {@code tank} 号流体槽灌入（{@code FluidStackTank.fill} 自身会拒收别的流体）；返回实际接收 mB。
+     * 往第 {@code tank} 号流体槽灌入；返回实际接收 mB。
      * <p>
      * ★新功能 N 起灌入原语收口在 {@link #fillOwnTank(int, FluidStack)}（同语义单源），本方法保留给
      * 既有调用方（GUI 侧 {@code depositFluid} / 通道侧）——不改变任何既有行为。
-     * ★R95 S5：int 头层面的灌入（单笔量 ≤ int；累加超 int 顶的部分走
-     * {@link #fillOwnTankL(int, Fluid, long)} 的真值域）。
+     * ★R95-W1（审查修复）：int 档与 long 档（{@link #fillOwnTankL(int, Fluid, long)}）共用
+     * {@link #advanceTruthFill} 一条真值域算式——按动态容量钳实收、推真值、{@link #syncHead(int)}
+     * 回同步头；单笔量 ≤ int 顶但<b>累加可越 int 顶</b>（越顶部分活在真值，头钳在顶，账目闭合）。
      */
     public int depositFluidIntoBar(int tank, FluidStack fluid) {
         return fillOwnTank(tank, fluid);
@@ -1167,11 +1234,12 @@ public final class PocketInventory {
     /**
      * ★新功能 N（S6，G-C）世界站抽液的口袋侧灌入口：往第 {@code tank} 号槽灌入 {@code fluid}。
      * <p>
-     * 语义三件套与 GUI 侧完全同源：{@code FluidStackTank.fill} 自身承担「同流体合并 / 异流体拒 /
-     * 16M 容量夹取」（构造期容量即 {@link PocketConstants#FLUID_BAR_CAPACITY_ML}，setter 回调写
-     * {@code tankFluid}），本方法补上「实收 &gt;0 ⇒ {@code dirty=true}」（世界侧没有关屏钩子可依赖，
-     * 脏标记必须在灌入点自含——F1 双分支里「无活会话」那支按 {@link #isDirty()} 决定是否一次性
-     * {@link #writeTo}；「有活会话」那支经 {@code PocketSession#depositFluid} 落到同一实例）。
+     * ★★<b>R95-W1（审查修复）</b>：不再经头类 {@code FluidStackTank.fill}（其非空同流体合并支直改
+     * 头 amount 不触发 setter 钩子 ⇒ 真值不动、saveTanks 钳回 = 差额静默蒸发）——守卫语义逐条保留
+     * （同流体合并 / 异流体拒 / 动态容量夹取），落算式统一进 {@link #advanceTruthFill}：按真值域算
+     * 实收、推真值、{@link #syncHead(int)} 回同步头。补上「实收 &gt;0 ⇒ {@code dirty=true}」（世界侧
+     * 没有关屏钩子可依赖，脏标记必须在灌入点自含——F1 双分支里「无活会话」那支按 {@link #isDirty()}
+     * 决定是否一次性 {@link #writeTo}；「有活会话」那支经 {@code PocketSession#depositFluid} 落到同一实例）。
      *
      * @return 实际接收量（mB；供聊天回执如实报「实收」）
      */
@@ -1179,11 +1247,12 @@ public final class PocketInventory {
         if (fluid == null || fluid.amount <= 0 || !isValidTank(tank)) {
             return 0;
         }
-        final int moved = tanks[tank].fill(fluid, true);
-        if (moved > 0) {
-            dirty = true;
+        final FluidStack current = tankFluid[tank];
+        if (current != null && current.amount > 0 && current.getFluid() != fluid.getFluid()) {
+            return 0;
         }
-        return moved;
+        // 空头的身份用调用方栈的拷贝（保 tag）；量由 advanceTruthFill 的容量钳 + syncHead 定
+        return (int) advanceTruthFill(tank, fluid.amount, fluid::copy);
     }
 
     /**
@@ -1206,19 +1275,62 @@ public final class PocketInventory {
         if (!isValidTank(tank) || milliBuckets <= 0 || tankFluid[tank] == null) {
             return 0;
         }
-        final FluidStack drained = tanks[tank].drain(milliBuckets, true);
-        final int moved = drained == null || drained.amount <= 0 ? 0 : drained.amount;
-        if (moved > 0) {
-            dirty = true;
+        // ★R95-W1：不再经头类 drain（部分抽出支直改头 amount 不触发 setter ⇒ 真值不动、头被钳回 =
+        // 流体复制）；抽出量、头、真值由同一条算式对账。
+        return (int) advanceTruthDrain(tank, milliBuckets);
+    }
+
+    /**
+     * ★★<b>R95-W1（审查修复）：灌入侧「改真值 → 同步头」的唯一真值域算式</b>（int 档
+     * {@link #fillOwnTank(int, FluidStack)} 与 long 档 {@link #fillOwnTankL(int, Fluid, long)} 共用）。
+     * 实收 = min(请求量, 动态容量 − 真值)；实收&gt;0 才动轨：<b>真值 += 实收，随后 {@link #syncHead(int)}
+     * 立即把头重写为 min(真值, int 顶)</b>，再置脏。空头灌入时以 {@code emptyHeadFactory} 立头身份
+     * （量随后由同一落点定）。守卫（异种拒 / 非法 tank）留在各公开原语，与 R95-W1 之前逐条同语义。
+     *
+     * @param emptyHeadFactory 仅在头空时调用一次，产出携带流体身份的新头
+     * @return 实际接收量（mB，long 域；0 = 一滴没进 ⇒ 双轨与脏标记全不碰）
+     */
+    private long advanceTruthFill(int tank, long amount, java.util.function.Supplier<FluidStack> emptyHeadFactory) {
+        final long room = Math.max(0L, fluidTankCapacity() - Math.max(0L, tankTruth[tank]));
+        final long moved = Math.min(Math.max(0L, amount), room);
+        if (moved <= 0L) {
+            return 0L;
         }
+        tankTruth[tank] = Math.max(0L, tankTruth[tank]) + moved;
+        final FluidStack head = tankFluid[tank];
+        if (head == null || head.amount <= 0) {
+            tankFluid[tank] = emptyHeadFactory.get();
+        }
+        syncHead(tank);
+        dirty = true;
+        return moved;
+    }
+
+    /**
+     * ★★<b>R95-W1（审查修复）：抽出侧「改真值 → 同步头」的唯一真值域算式</b>（int 档
+     * {@link #drainOwnTank(int, int)} 与 long 档 {@link #drainOwnTankL(int, long)} 共用）。
+     * 实抽 = min(请求量, 真值)；实抽&gt;0 才动轨：真值 −= 实抽，{@link #syncHead(int)} 重写头
+     * （真值归零 ⇒ 头置 null；真值仍超 int 顶 ⇒ 头保持 int 顶，玩家拿走的量已从真值扣除，账目闭合）。
+     *
+     * @return 实际抽走量（mB，long 域；小于请求量 ⇒ 调用方必须把差额原路注回）
+     */
+    private long advanceTruthDrain(int tank, long amount) {
+        final long moved = Math.min(Math.max(0L, amount), Math.max(0L, tankTruth[tank]));
+        if (moved <= 0L) {
+            return 0L;
+        }
+        tankTruth[tank] = Math.max(0L, tankTruth[tank]) - moved;
+        syncHead(tank);
+        dirty = true;
         return moved;
     }
 
     /**
      * ★R95 S5：往第 {@code tank} 号槽灌入 {@code amount} mB 的 <b>long 原语</b>（真值域直达 16G）。
      * <p>
-     * 不经头层 {@code fill}（那是 int 容量算术，真值超 int 顶后会收 0）⇒ 自己做三件事：
-     * 异种拒收 / 按动态容量钳接收量 / 双轨同推（真值 += moved，头重钳到不变式）。
+     * 不经头层 {@code fill} ⇒ 三件事：异种拒收 / 按动态容量钳接收量 / 双轨同推。★R95-W1（审查修复）
+     * 起与 int 档 {@link #fillOwnTank(int, FluidStack)} 共用 {@link #advanceTruthFill} 同一条算式
+     * （头重钳统一走 {@link #syncHead(int)}），本方法只保留守卫腿。
      * 调用方是 AE2 通道抽取（元件侧一次可给出超 int 的长整批量）。
      *
      * @return 实际接收量（mB，long；0 = 一滴没进——异种 / 满 / 非法 tank）
@@ -1231,26 +1343,15 @@ public final class PocketInventory {
         if (current != null && current.amount > 0 && current.getFluid() != fluid) {
             return 0L;
         }
-        final long moved = Math.min(amount, Math.max(0L, fluidTankCapacity() - Math.max(0L, tankTruth[tank])));
-        if (moved <= 0L) {
-            return 0L;
-        }
-        final long truth = tankTruth[tank] + moved;
-        tankTruth[tank] = truth;
-        if (current == null || current.amount <= 0) {
-            tankFluid[tank] = new FluidStack(fluid, headAmountOf(truth));
-        } else {
-            current.amount = headAmountOf(truth);
-        }
-        dirty = true;
-        return moved;
+        return advanceTruthFill(tank, amount, () -> new FluidStack(fluid, 0));
     }
 
     /**
      * ★R95 S5：从第 {@code tank} 号槽抽走 {@code amount} mB 的 <b>long 原语</b>（真值域）。
      * <p>
-     * 与 {@link #drainOwnTank(int, int)} 同一条"只在元件真收了货之后调"的纪律；真值不足按存量给，
-     * 头同步重钳（真值仍超 int 顶时头保持 int 顶）。
+     * 与 {@link #drainOwnTank(int, int)} 同一条"只在元件真收了货之后调"的纪律；★R95-W1（审查修复）
+     * 起两档共用 {@link #advanceTruthDrain} 同一条算式：真值不足按存量给，头同步经
+     * {@link #syncHead(int)} 重钳（真值归零 ⇒ 头置 null；真值仍超 int 顶 ⇒ 头保持 int 顶）。
      *
      * @return 实际抽走量（long；小于请求量 ⇒ 调用方必须把差额原路注回元件）
      */
@@ -1258,19 +1359,7 @@ public final class PocketInventory {
         if (!isValidTank(tank) || amount <= 0L || tankFluid[tank] == null || tankTruth[tank] <= 0L) {
             return 0L;
         }
-        final long moved = Math.min(amount, tankTruth[tank]);
-        if (moved <= 0L) {
-            return 0L;
-        }
-        final long truth = tankTruth[tank] - moved;
-        tankTruth[tank] = truth;
-        if (truth <= 0L) {
-            tankFluid[tank] = null;
-        } else {
-            tankFluid[tank].amount = headAmountOf(truth);
-        }
-        dirty = true;
-        return moved;
+        return advanceTruthDrain(tank, amount);
     }
 
     /**
