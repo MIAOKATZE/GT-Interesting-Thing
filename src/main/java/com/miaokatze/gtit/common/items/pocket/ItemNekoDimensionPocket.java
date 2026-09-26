@@ -236,7 +236,8 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * {@link PocketConstants#UI_BURST_SHOW_TICKS}），归零 {@code removeTag} 自清理，
      * 口径照 {@code ItemGTToolbox.java:200-203}；</li>
      * <li>把通道与蒸馏两个宿主各自的一 tick 交给 driver 的静态入口（S6 / S7 实装）；</li>
-     * <li>★R95：磁力驱动 {@link PocketMagnetDriver#onItemTick}（自带节拍与 MAGNET 位早退）。</li>
+     * <li>★R95：磁力驱动 {@link PocketMagnetDriver#onItemTick}（自带开关早退与节拍闸；★R96 S6 起这一拍
+     * 内部含"每拍跨拍收口 + 每 5 tick 位移"两段，<b>不</b>新增第二个宿主入口）。</li>
      * </ol>
      * 计时一律走 NBT 剩余 tick，<b>不用</b>任何世界绝对时刻或实体存活 tick 计数
      * （不变量 G8 与 R59e：实体跨维度重建时后者不连续 ⇒ 计时会漂；计时源全仓只允许一处）；

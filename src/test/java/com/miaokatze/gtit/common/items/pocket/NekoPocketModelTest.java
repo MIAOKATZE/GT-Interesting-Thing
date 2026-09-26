@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.IInventory;
@@ -29,6 +30,8 @@ import com.miaokatze.gtit.common.items.infinitycell.InfinityCellConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig.Kind;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
+import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetClaims;
+import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.NekoEssenceGhostCell;
@@ -448,6 +451,19 @@ public class NekoPocketModelTest {
         cases.put(
             "upgrade_cell_readouts_follow_the_switch",
             NekoPocketModelTest::upgradeCellReadoutsFollowTheSwitch);
+        // ---- ★R96 S6（TP-S6）磁力行为层五条：AE2 免疫 / 满载不吸 / 位移+跨拍收口 / 多人公平 / 调用方在场
+        // ★既有钉 magnet_cadence_aabb_and_landing_order 的**内容**已同步改写（旧钉的"落点三级兜底"被 P-11
+        //   撤掉），用例名保留 ⇒ 不撞 verify-pocket.sh 的注册计数门。★S6 原批起点 171 ⇒ +5 = 176；
+        //   线性重放到 master 后（S3 +2、S2 +7）起点变 180 ⇒ 本批 +5 = 185。
+        cases.put(
+            "magnet_protected_entity_shield_ae2_subclasses",
+            NekoPocketModelTest::magnetShieldExcludesAe2EntitySubclasses);
+        cases.put("magnet_full_load_release_no_toss", NekoPocketModelTest::magnetFullLoadNoAbsorbNoToss);
+        cases.put("magnet_two_stage_displacement_and_claim_ledger",
+            NekoPocketModelTest::magnetDisplacementAndClaimSettlement);
+        cases.put("magnet_closest_player_and_cross_pocket_ownership",
+            NekoPocketModelTest::magnetClosestPlayerFairnessAndCrossPocketOwnership);
+        cases.put("magnet_host_chain_and_empty_scan_cost", NekoPocketModelTest::magnetHostChainReachableAndEmptyScanFree);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -10475,22 +10491,28 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★R95 磁力升级（纯源码半边）：节拍常量 10 tick、AABB 三轴各扩 8、MAGNET 位与相位的两道闸、
-     * 尊重 {@code delayBeforeCanPickup}，以及 R95 裁定的<b>三落点顺序</b>（入袋 → 背包 → 脚下）与
-     * "每扫至多一次读改写、收进过才写"的持久化纪律。
+     * ★R95 磁力升级的节拍与 AABB 半边（★R96 S6 <b>同步改</b>：落点半边整体换掉）。
      * <p>
-     * 落点行为半边需要真实 {@code EntityItem} 与 {@code World}（本 JVM 不可构造）⇒ 三落点的实机表现
-     * 属实机项（in-game-checklist §R95），本用例只钉挂载、常量与行序。
+     * ★★本钉的旧形态（R95：{@code SCAN_PERIOD_TICKS = 10} + "入袋 → 玩家背包 → 脚下"三级兜底 + 同拍
+     * {@code deposit} 后无条件 {@code drop.setDead()}）<b>已被 P-11 与候选 B 作废</b>。用例名保留是为了
+     * 不撞 {@code verify-pocket.sh} 的注册计数门，内容全部重写：① 节拍 5 tick（DE {@code Magnet.java:117}
+     * 同档）；② 位移拍<b>不删实体、不入包、不碰 NBT</b>；③ 三条兜底腿的读数必须为 0
+     * （{@code addItemStackToInventory} / {@code dropPlayerItemWithRandomChoice} / {@code ItemTossEvent}
+     * ——这正是"满载不甩脚下"的源码半边，行为半边见 {@code magnet_full_load_release_no_toss}）；
+     * ④ 免疫判据与多人公平判据都排在位移<b>之前</b>。
+     * <p>
+     * 落点的实机表现仍需要真实 {@code EntityItem} 与 {@code World}（本 JVM 不可构造）⇒ 属实机项。
      */
     private static void magnetCadenceAabbAndLandingOrder() {
         final java.util.List<String> mag = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/common/items/pocket/magnet/PocketMagnetDriver.java");
         if (mag == null) {
-            System.out.println("[NOTE] 读不到 PocketMagnetDriver.java ⇒ 「磁力节拍/落点顺序」【未验】（★不是通过）");
+            System.out.println("[NOTE] 读不到 PocketMagnetDriver.java ⇒ 「磁力节拍/AABB/撤兜底」【未验】（★不是通过）");
             return;
         }
-        SimpleAssert.eq(1, countCodeLinesIn(mag, "SCAN_PERIOD_TICKS = 10"), "★节拍常量恰一处 = 10 tick");
-        SimpleAssert.eq(1, countCodeLinesIn(mag, "SCAN_RANGE = 8.0"), "★半径字面恰一处 = 8.0（R95 裁定 8 格）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "SCAN_PERIOD_TICKS = 5"),
+            "★节拍常量恰一处 = 5 tick（★同步改：旧钉的是 10；R96 S6 对齐 DE 同一节流档，实机定值属 V-10）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "SCAN_RANGE = 8.0"), "★半径字面恰一处 = 8.0（R95 裁定 8 格，本轮不加第二档）");
         final int tick = methodStart(
             mag,
             "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
@@ -10510,24 +10532,30 @@ public class NekoPocketModelTest {
             .that(regionContainsCode(mag, tick, tickEnd, "getEntitiesWithinAABB(EntityItem.class"), "只扫 EntityItem");
         SimpleAssert
             .that(regionContainsCode(mag, tick, tickEnd, "delayBeforeCanPickup > 0"), "★尊重拾取延迟（故意丢出去的东西不能被瞬间吸回）");
-        // ---- 三落点的行序（入袋 → 背包 → 脚下），吸收成功后原实体必须摘除 ----
-        final int pocket = firstCodeLineWith(mag, tick, tickEnd, "depositIntoStorage(");
-        final int viaSession = firstCodeLineWith(mag, tick, tickEnd, "session.depositItem(");
-        final int backpack = firstCodeLineWith(mag, tick, tickEnd, "addItemStackToInventory(");
-        final int toss = firstCodeLineWith(mag, tick, tickEnd, "dropPlayerItemWithRandomChoice(");
-        final int dead = firstCodeLineWith(mag, tick, tickEnd, "drop.setDead()");
-        SimpleAssert.that(pocket >= 0 && viaSession >= 0, "★两条入袋支（会话模型 / 一次性读改写）都在场");
-        SimpleAssert.that(backpack > pocket && backpack > viaSession, "背包兜底在入袋之后（入袋优先，R95 裁定）");
-        SimpleAssert.that(toss > backpack, "脚下是最后一级兜底（背包也满才 drop）");
-        SimpleAssert.that(dead > pocket, "账落位后才摘除原实体（先 setDead = 复制变消失）");
-        // ---- 持久化纪律：每扫至多一次读改写，收进过才写 ----
-        final int read = firstCodeLineWith(mag, tick, tickEnd, "PocketInventory.readFrom(root)");
-        final int stored = firstCodeLineWith(mag, tick, tickEnd, "storedAny |= moved > 0");
-        final int wrote = firstCodeLineWith(mag, tick, tickEnd, "oneshot.writeTo(root)");
-        SimpleAssert.that(read >= 0 && read < wrote, "★无会话分支是一次性 readFrom → writeTo（禁每实体一次）");
-        SimpleAssert.that(stored > read && stored < wrote, "写盘受 storedAny 守卫（没收进东西 ⇒ 零写档）");
-        SimpleAssert.eq(1, countRegionCode(mag, tick, tickEnd, ".writeTo("), "落盘点恰一处（序列化上界 = 扫描率）");
-        System.out.println("[NOTE] EntityItem / World 本 JVM 不可构造 ⇒ 「入袋→背包→脚下」的实机表现属实机项（挂载/常量/行序已机检）");
+        // ---- ★同步改第 1 条：旧"落点三级兜底"必须整段消失（P-11 撤兜底；残留 = 满载 40tick 死循环复发） ----
+        SimpleAssert.eq(0, countCodeLinesIn(mag, "addItemStackToInventory("),
+            "★玩家背包兜底腿已撤（旧形态：中栏满 → addItemStackToInventory）");
+        SimpleAssert.eq(0, countCodeLinesIn(mag, "dropPlayerItemWithRandomChoice("),
+            "★脚下兜底腿已撤（旧形态：背包也满 → drop 到脚下 ⇒ 每 40 tick 甩一次、每轮一条 ItemTossEvent）");
+        SimpleAssert.eq(0, countCodeLinesIn(mag, "ItemTossEvent"), "全文件不出现投掷事件（满载时不该有任何 toss）");
+        // ---- ★同步改第 2 条：setDead 退出位移拍，全文件只在收口拍出现一次 ----
+        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "setDead()"),
+            "★位移拍一个实体都不删（同拍 setPosition + setDead 客户端什么都看不见 ⇒ 位移必须跨拍，r96-eva2.md §2.3）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "drop.setDead()"),
+            "★全文件收口点恰一处 setDead（多了 = 又长出第二条灭实体路；为 0 = 入账后不摘实体 = 复制）");
+        // ---- ★同步改第 3 条：免疫/公平判据排在位移之前（判据顺序 = 数据破坏防线的位置） ----
+        final int shield = firstCodeLineWith(mag, tick, tickEnd, "isProtectedEntity(drop)");
+        final int fair = firstCodeLineWith(mag, tick, tickEnd, "getClosestPlayerToEntity(drop, SCAN_RANGE) != player");
+        final int warp = firstCodeLineWith(mag, tick, tickEnd, "drop.setPosition(");
+        final int claimed = firstCodeLineWith(mag, tick, tickEnd, "PocketMagnetClaims.claim(");
+        SimpleAssert.that(shield >= 0 && shield < warp, "★AE2 免疫判据排在 setPosition 之前（排在之后就挡不住灭实体）");
+        SimpleAssert.that(fair >= 0 && fair < warp, "★最近玩家判据排在位移之前（多人公平）");
+        SimpleAssert.that(claimed > warp, "位移成功后才登记认领（先登记后位移 = 位移失败留死条目）");
+        // ---- ★同步改第 4 条：位移拍不碰 NBT（入账整段挪到收口拍 ⇒ 扫描侧连 readFrom 都没有） ----
+        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "readFrom("), "位移拍零 NBT 读（readFrom 只在收口拍）");
+        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "writeTo("), "位移拍零 NBT 写（★撤掉的旧读数：体内恰一处 writeTo）");
+        System.out.println(
+            "[NOTE] EntityItem / World 本 JVM 不可构造 ⇒ 「跳到腰带 → 跨拍入袋」的实机表现属实机项（挂载/常量/判据顺序/撤兜底已机检）");
     }
 
     /**
@@ -11106,6 +11134,347 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(256, PocketInventory.readFrom(legacy).essence().get("aer"),
             "★没装过 STACK 的档照旧钳到 256（P-4 只豁免「装了的那一位」，不是把所有读档钳制关掉）");
     }
+    // ================================================================== ★R96 S6（TP-S6）磁力行为层五条验收
+    //
+    // 共同口径（与 S1 批同形）：能纯 JVM 真驱动的（认领表全生命周期、满载 0 成交、受保护类名判据）
+    // 一律驱动到执法点并配<b>阳性对照</b>；驱动不到的（EntityItem / World / 客户端帧）走<b>点名方法体</b>的
+    // 源码腿。★本批的第一优先不是手感而是「数据破坏级」的 AE2 免疫，其次是满载死循环；
+    // 位移模型的节拍与悬停拍数注定要实机定值（计划 §8 V-10）⇒ 代码侧只允许一个常量，用例也只钉"恰一处声明"。
+
+    /** 磁力源码两份（驱动本体 + 认领表）；"零 AE2 依赖 / 零 NBT / 零事件总线"三条读数都按这张名单逐文件跑。 */
+    private static final String[] R96_MAGNET_FILES = {
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/magnet/PocketMagnetDriver.java",
+        "src/main/java/com/miaokatze/gtit/common/items/pocket/magnet/PocketMagnetClaims.java" };
+
+    /**
+     * ★S6 验收 1（数据破坏级，优先于手感）：AE2 的四个 {@code EntityItem} 子类必须被排除，
+     * 而 {@code EntityItem} 直系的普通掉落物<b>必须仍被处理</b>（阳性对照，防"修过头把磁力修没了"）。
+     * <p>
+     * 缺陷成立的前提是 {@code getEntitiesWithinAABB(EntityItem.class, …)} <b>按类含子类</b>一起抓：
+     * {@code EntityGrowingCrystal} 靠 {@code age} 慢慢成熟、{@code EntityChargedQuartz}／
+     * {@code EntitySingularity} 是充能与单方块聚变现场、{@code EntityFloatingItem} 是 AE2 自家浮空件
+     * ——抓到即 {@code setDead} 就是吞掉进度。排除判据只做<b>类名比较</b>（DE {@code ModHelper.java:46-52}
+     * 的反射形状，但连 {@code Class.forName} 都不需要 ⇒ AE2 缺席时没有 NPE 分支）。
+     */
+    private static void magnetShieldExcludesAe2EntitySubclasses() {
+        // ---- 行为腿：判据本体（纯类名，无 MC 运行时也能驱动）----
+        final String[] shielded = PocketMagnetDriver.protectedEntityClasses();
+        SimpleAssert.eq(4, shielded.length, "★排除表恰四条（多一条要有同级别的破坏证据，少一条就回到吞实体）");
+        for (String name : new String[] { "appeng.entity.EntityGrowingCrystal", "appeng.entity.EntityChargedQuartz",
+            "appeng.entity.EntitySingularity", "appeng.entity.EntityFloatingItem" }) {
+            SimpleAssert.that(PocketMagnetDriver.isProtectedClassName(name), "★" + name + " 必须在排除表上");
+        }
+        // ---- ★阳性对照：EntityItem 直系必须放行，否则本判据等于关掉磁力 ----
+        SimpleAssert.that(!PocketMagnetDriver.isProtectedClassName("net.minecraft.entity.item.EntityItem"),
+            "★普通掉落物的类名不在表上（阳性对照）");
+        SimpleAssert.that(!PocketMagnetDriver.isProtectedClass(EntityItem.class),
+            "★用真实 MC 类驱动的阳性对照：EntityItem 直系放行");
+        SimpleAssert.that(!PocketMagnetDriver.isProtectedClass(String.class),
+            "★非 EntityItem 血统的类也放行（判据只认表上的名字，不做前缀没收）");
+        // ---- 真 AE2 类：能加载就把"子类会被 AABB 抓到"和"子类被排除表挡住"两条一起验实 ----
+        int resolved = 0;
+        for (String name : shielded) {
+            try {
+                final Class<?> ae2 = Class.forName(name, false, PocketMagnetDriver.class.getClassLoader());
+                SimpleAssert.that(
+                    EntityItem.class.isAssignableFrom(ae2),
+                    "★" + name + " 是 EntityItem 的子类 ⇒ 旧的 getEntitiesWithinAABB(EntityItem.class) 本来就会抓到它（缺陷前提成立）");
+                SimpleAssert.that(PocketMagnetDriver.isProtectedClass(ae2), "★真实 AE2 类被排除表挡住");
+                resolved++;
+            } catch (Throwable absent) {
+                System.out.println("[NOTE] AE2 类 " + name + " 在本 JVM 不可加载 ⇒ 该条只剩类名判据（★不是通过）");
+            }
+        }
+        System.out.println("[INFO] AE2 实体真类加载并被双条判据验实：" + resolved + "/4");
+        // ---- 源码腿：执法点在位移之前问到判据 + 磁力文件零 AE2 硬依赖、零反射 ----
+        for (String relative : R96_MAGNET_FILES) {
+            final java.util.List<String> lines = sourceLinesOrNull(relative);
+            if (lines == null) {
+                System.out.println("[NOTE] 读不到 " + relative + " ⇒ 「零 AE2 依赖」【未验】（★不是通过）");
+                continue;
+            }
+            SimpleAssert.eq(0, countCodeLinesIn(lines, "import appeng"), "★" + relative + " 不 import 任何 AE2 类（零硬依赖）");
+            SimpleAssert.eq(0, countCodeLinesIn(lines, "Class.forName"), "★" + relative + " 不做反射加载（缺席时没有 NPE 分支）");
+        }
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        if (mag == null) {
+            System.out.println("[NOTE] 读不到 PocketMagnetDriver.java ⇒ 「免疫判据的位置」【未验】（★不是通过）");
+            return;
+        }
+        final int tick = methodStart(
+            mag,
+            "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
+        final int tickEnd = methodEnd(mag, tick);
+        SimpleAssert.that(tick >= 0, "★必须能按签名定位磁力的一拍（改名即红）");
+        SimpleAssert.eq(1, countRegionCode(mag, tick, tickEnd, "isProtectedEntity(drop)"), "免疫判据在位移拍恰一处（两处 = 第二份判据）");
+        SimpleAssert.that(
+            firstCodeLineWith(mag, tick, tickEnd, "isProtectedEntity(drop)") < firstCodeLineWith(mag, tick, tickEnd,
+                "drop.setPosition("),
+            "★判据排在 setPosition 与认领之前（排在后面就仍然挡不住收口那一拍的 setDead）");
+        SimpleAssert.that(
+            firstCodeLineWith(mag, tick, tickEnd, "isProtectedEntity(drop)") < firstCodeLineWith(mag, settleStart(mag),
+                methodEnd(mag, settleStart(mag)), "drop.setDead()"),
+            "★被挡住的实体根本进不了收口拍（认领都没登记）");
+    }
+
+    /** 收口拍签名行（多处用例复用，写在一处防"同一个签名在断言里抄三遍还各抄一遍"）。 */
+    private static int settleStart(java.util.List<String> mag) {
+        return methodStart(
+            mag,
+            "private static void settleClaimed(ItemStack stack, World world, EntityPlayer player, UUID owner) {");
+    }
+
+    /**
+     * ★S6 验收 2（既有缺陷：满载 40 tick 死循环）：{@code depositItem} 返回 <b>0 成交</b>时
+     * <b>不 {@code setDead}</b>、不发 {@code ItemTossEvent}、不生成新实体，并进满载退避。
+     * <p>
+     * 可证伪形态：① 用真 {@code PocketInventory} 把中栏 135 格塞满 ⇒ {@code depositIntoStorage} 真返 0
+     * （这是驱动读到的那个 0，不是恒真）；② 同一实体 id 连续被扫 N 轮 ⇒ 件数不变、认领零残留
+     * （旧形态每轮都会 {@code dropPlayerItemWithRandomChoice} 生成<b>新</b>实体 + 一条 toss 事件）。
+     */
+    private static void magnetFullLoadNoAbsorbNoToss() {
+        // ---- 行为腿 1：满载那一拍的真实读数 ----
+        final PocketInventory full = PocketInventory.readFrom(null);
+        for (int index = 0; index < PocketInventory.STORAGE_SLOTS; index++) {
+            full.storage()
+                .setStackInSlot(index, new ItemStack(Items.stone, 64, 0));
+        }
+        final ItemStack probe = new ItemStack(Items.iron_ingot, 5, 0);
+        SimpleAssert.eq(0, full.depositIntoStorage(probe.copy()), "★全栏满 ⇒ 成交 0（驱动收口侧读的就是这个数）");
+        SimpleAssert.eq(64, full.storageStack(0).stackSize, "★成交 0 之后一格都没多、也没少（不凭空造件也不吃件）");
+        SimpleAssert.eq(5, PocketInventory.readFrom(null)
+            .depositIntoStorage(probe.copy()), "正控：空袋同一件成交 5 ⇒ 上面那个 0 是判据在起作用，不是恒返回 0");
+        // ---- 行为腿 2：同一实体连续被扫 N 轮（40tick 循环的可证伪形态） ----
+        final UUID owner = UUID.randomUUID();
+        final ItemStack carrier = new ItemStack(Items.stone);
+        final int scanned = 970001;
+        final int liveBefore = PocketMagnetClaims.liveClaimCount();
+        final ArrayList<PocketMagnetClaims.Claim> out = new ArrayList<>();
+        for (int round = 0; round < 8; round++) {
+            SimpleAssert.that(
+                PocketMagnetClaims.claim(owner, scanned, carrier, 0),
+                "第 " + round + " 轮：同一件实体可再次被认领（旧形态是甩出一件<b>新</b>实体，形态完全不同）");
+            out.clear();
+            SimpleAssert.eq(1, PocketMagnetClaims.ripeClaims(owner, carrier, out), "每轮只到期一次（认领表不重复计数）");
+            PocketMagnetClaims.release(owner, scanned);
+            PocketMagnetClaims.noteScanBackoff(owner, 8);
+            SimpleAssert.eq(8, PocketMagnetClaims.scanBackoffLeft(owner),
+                "第 " + round + " 轮：反复 0 成交不把退避拉长（取最大值不是累加 ⇒ 满载不会越关越久）");
+        }
+        SimpleAssert.eq(0, PocketMagnetClaims.liveClaimCount() - liveBefore,
+            "★8 轮扫下来认领零残留：没有新实体、也没有第二份在飞的真相");
+        SimpleAssert.eq(64, full.storageStack(0).stackSize, "★8 轮之后中栏件数不变（这就是「件数不变」那条判据的可执行形态）");
+        int cooled = 0;
+        while (PocketMagnetClaims.isScanCooling(owner)) {
+            cooled++;
+        }
+        SimpleAssert.eq(8, cooled, "★一次 0 成交 ⇒ 连续 8 次扫描整轮不吸（P-11 满载不吸；连 AABB 都不发）");
+        SimpleAssert.that(!PocketMagnetClaims.isScanCooling(owner), "退避到期自动恢复（不是把磁力永久关死）");
+        PocketMagnetClaims.noteScanBackoff(owner, 3);
+        PocketMagnetClaims.noteProductive(owner);
+        SimpleAssert.that(!PocketMagnetClaims.isScanCooling(owner), "★玩家掏空口袋 ⇒ 退避立刻归零（下一拍就恢复手感）");
+        // ---- 源码腿：0 成交那一支不摘实体、不 toss、不建新实体 ----
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        if (mag == null) {
+            System.out.println("[NOTE] 读不到 PocketMagnetDriver.java ⇒ 「0 成交支的形状」【未验】（★不是通过）");
+            return;
+        }
+        final int settle = settleStart(mag);
+        SimpleAssert.that(settle >= 0, "★必须能按签名定位收口拍（改名/内联即红）");
+        final int settleEnd = methodEnd(mag, settle);
+        final int zero = firstCodeLineWith(mag, settle, settleEnd, "if (moved <= 0) {");
+        final int backoff = firstCodeLineWith(mag, settle, settleEnd, "noteScanBackoff(owner, FULL_BACKOFF_SCANS)");
+        final int dead = firstCodeLineWith(mag, settle, settleEnd, "drop.setDead()");
+        SimpleAssert.that(zero >= 0, "★0 成交判据恰按字面在场（改成 moved != want 之类的写法即红）");
+        SimpleAssert.that(backoff > zero, "0 成交支先登记退避");
+        SimpleAssert.that(dead > zero, "★setDead 排在 0 成交判据之后 ⇒ 0 成交永不摘实体");
+        SimpleAssert.eq(1, countRegionCode(mag, settle, settleEnd, "setDead()"), "收口拍恰一处 setDead");
+        SimpleAssert.eq(0, countCodeLinesIn(mag, "new EntityItem"), "★不生成新实体（旧兜底 dropPlayerItemWithRandomChoice 会 spawn 一件）");
+    }
+
+    /**
+     * ★S6 验收 3：位移模型（DE 三件事）+ 跨拍收口，且节拍/悬停拍数是<b>单一常量</b>。
+     * <p>
+     * 认领表整条生命周期都在本 JVM 真驱动：登记 → 悬停若干拍不到期（★到期太早 = 同拍收口 = 客户端看不见
+     * 位移，正是本切片要修的形态）→ 到期条数恰一 → 重复认领被拒 → 收口后摘除 → 条数有界 → 寿命内自然淘汰
+     * （"可整体重建"的实证）→ 全程零 NBT。
+     */
+    private static void magnetDisplacementAndClaimSettlement() {
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        final java.util.List<String> claimsSrc = sourceLinesOrNull(R96_MAGNET_FILES[1]);
+        if (mag == null || claimsSrc == null) {
+            System.out.println("[NOTE] 读不到磁力源码 ⇒ 「位移三件事 / 认领表不落 NBT」【未验】（★不是通过）");
+            return;
+        }
+        // ---- 单一常量（★实机定值项 V-10：只允许一处声明，改一处即全改） ----
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "SCAN_PERIOD_TICKS = 5"), "★节拍单一常量恰一处（5 tick）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "HOVER_TICKS = 2"), "★悬停拍数单一常量恰一处（V-10 实机定值）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "PICKUP_HOLD_TICKS = 20"), "拾取保护拍数单一常量恰一处");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "MAX_PULL_PER_SCAN = 32"), "单扫位移上限单一常量恰一处");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "BELT_DROP_FROM_EYES = 0.62"), "腰带高度单一常量恰一处（DE Magnet.java:188-191 同值）");
+        final int tick = methodStart(
+            mag,
+            "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
+        final int tickEnd = methodEnd(mag, tick);
+        SimpleAssert.that(regionContainsCode(mag, tick, tickEnd, "drop.delayBeforeCanPickup = PICKUP_HOLD_TICKS"),
+            "★位移第 1 件事：拾取延迟（DE Magnet.java:184 同位，我们换成「挡住原版抢收口」的反向用途）");
+        SimpleAssert.eq(3, countRegionCode(mag, tick, tickEnd, "drop.motion"), "★位移第 2 件事：motionX/Y/Z 归零恰三行");
+        SimpleAssert.that(regionContainsCode(mag, tick, tickEnd, "drop.setPosition("), "★位移第 3 件事：setPosition 到玩家身上");
+        SimpleAssert.that(regionContainsCode(mag, tick, tickEnd, "beltY"), "落点用腰带高度常量（不是直接写 posY）");
+        SimpleAssert.that(regionContainsCode(mag, tick, tickEnd, "PocketMagnetClaims.claim(owner"), "位移成功后登记认领");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "RIPED.clear()"), "到期缓冲每次用前先 clear（热路径零分配的半边；漏 clear = 上一批条目重复入账）");
+        // ---- 认领表行为腿：跨拍形状 ----
+        final UUID owner = UUID.randomUUID();
+        final ItemStack carrier = new ItemStack(Items.stone);
+        final int id = 970101;
+        final ArrayList<PocketMagnetClaims.Claim> out = new ArrayList<>();
+        SimpleAssert.that(PocketMagnetClaims.claim(owner, id, carrier, 2), "登记认领");
+        SimpleAssert.eq(0, PocketMagnetClaims.ripeClaims(owner, carrier, out), "★位移后的第 1 拍不到期（还在悬停）");
+        out.clear();
+        SimpleAssert.eq(1, PocketMagnetClaims.ripeClaims(owner, carrier, out),
+            "★位移后的第 2 拍到期的条数恰 1（HOVER_TICKS 的效果；同拍收口就等于客户端看不见位移）");
+        out.clear();
+        SimpleAssert.that(!PocketMagnetClaims.claim(owner, id, carrier, 2), "★同一条目不可重复认领（两轮扫描抢同一件）");
+        SimpleAssert.eq(1, PocketMagnetClaims.ripeClaims(owner, carrier, out), "到期后不摘就会重复到期 ⇒ 用例据此验 release 的必要性");
+        PocketMagnetClaims.release(owner, id);
+        SimpleAssert.that(!PocketMagnetClaims.isClaimed(id), "★收口后认领摘除（残留会把下一轮的同一件永久挡住）");
+        // ---- 有界 + 可整体重建 ----
+        final UUID crowd = UUID.randomUUID();
+        for (int i = 0; i < PocketMagnetClaims.MAX_CLAIMS_PER_OWNER + 10; i++) {
+            PocketMagnetClaims.claim(crowd, 970200 + i, carrier, 1);
+        }
+        SimpleAssert.eq(PocketMagnetClaims.MAX_CLAIMS_PER_OWNER, PocketMagnetClaims.claimCount(crowd),
+            "★每人认领条数有界（GTNH 矿机一次吐几千件时本表不跟着长）");
+        for (int i = 0; i < PocketMagnetClaims.CLAIM_STALE_TICKS + 2; i++) {
+            PocketMagnetClaims.ripeClaims(crowd, carrier, new ArrayList<PocketMagnetClaims.Claim>());
+        }
+        SimpleAssert.eq(0, PocketMagnetClaims.claimCount(crowd),
+            "★载体不再被 tick 的条目在寿命内自然淘汰 ⇒ 整张表可随时丢弃（它允许存在的理由）");
+        // ---- 不落 NBT（R53c + S6 明令禁止） ----
+        SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "NBTTagCompound"), "★认领表零 NBT 类型（禁每 tick 写档）");
+        SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "getTagCompound"), "★认领表不读栈 NBT");
+        SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "getTotalWorldTime"), "★认领表不用世界绝对时刻（R59e 的「写死的到期」形态）");
+        SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "ticksExisted"), "★认领表也不引入第二处计时源（G8：计时源只有一处）");
+    }
+
+    /**
+     * ★S6 验收 4：多人公平 —— {@code getClosestPlayerToEntity(item, range) != player ⇒ continue}，
+     * 单人用 {@code playerEntities.size() < 2} 短路；行为反例覆盖"两枚口袋互相抢同一件"。
+     */
+    private static void magnetClosestPlayerFairnessAndCrossPocketOwnership() {
+        // ---- 行为腿：两枚口袋互相抢的反例（归属按载体栈对象身份） ----
+        final UUID owner = UUID.randomUUID();
+        final ItemStack pocketA = new ItemStack(Items.stone);
+        final ItemStack pocketB = new ItemStack(Items.iron_ingot);
+        final int id = 970301;
+        final ArrayList<PocketMagnetClaims.Claim> out = new ArrayList<>();
+        SimpleAssert.that(PocketMagnetClaims.claim(owner, id, pocketA, 2), "A 先认领");
+        SimpleAssert.that(!PocketMagnetClaims.claim(owner, id, pocketB, 2),
+            "★B 抢同一件 ⇒ 拒（两枚口袋互相抢的检出器：旧形态两枚都会搬同一件）");
+        SimpleAssert.eq(0, PocketMagnetClaims.ripeClaims(owner, pocketB, out),
+            "★B 那一拍收不到 A 认领的条目（不会把 A 吸的东西塞进 B）");
+        SimpleAssert.eq(0, PocketMagnetClaims.ripeClaims(owner, pocketB, out), "★悬停到点但归属不匹配 ⇒ B 仍不收口");
+        out.clear();
+        SimpleAssert.eq(1, PocketMagnetClaims.ripeClaims(owner, pocketA, out), "A 自己那一拍收到（两枚互不越界）");
+        SimpleAssert.that(out.get(0)
+            .carrier() == pocketA, "条目的归属就是 A（对象身份，与 PocketSession#carrierStack 同口径）");
+        PocketMagnetClaims.release(owner, id);
+        // 跨玩家同理：第二个人不能抢已在飞的那件
+        final UUID stranger = UUID.randomUUID();
+        SimpleAssert.that(PocketMagnetClaims.claim(stranger, id, pocketA, 2), "先由某玩家认领");
+        SimpleAssert.that(!PocketMagnetClaims.claim(UUID.randomUUID(), id, pocketA, 2), "★别的玩家的口袋抢同一件 ⇒ 也拒");
+        PocketMagnetClaims.release(stranger, id);
+        // ---- 源码腿：判据与位置 ----
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        if (mag == null) {
+            System.out.println("[NOTE] 读不到 PocketMagnetDriver.java ⇒ 「最近玩家判据」【未验】（★不是通过）");
+            return;
+        }
+        final int tick = methodStart(
+            mag,
+            "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
+        final int tickEnd = methodEnd(mag, tick);
+        final int solo = firstCodeLineWith(mag, tick, tickEnd, "world.playerEntities.size() < 2");
+        final int closest = firstCodeLineWith(mag, tick, tickEnd,
+            "if (!soloWorld && world.getClosestPlayerToEntity(drop, SCAN_RANGE) != player)");
+        final int warp = firstCodeLineWith(mag, tick, tickEnd, "drop.setPosition(");
+        final int loop = firstCodeLineWith(mag, tick, tickEnd, "for (EntityItem drop : nearby)");
+        SimpleAssert.that(solo >= 0 && loop > solo, "★单人短路在位移拍里、且排在实体循环之前（每扫一次，不在每个实体上算）");
+        SimpleAssert.that(closest >= 0, "★多人时只吸「该物品的最近玩家就是我」的那件（改名/换判据即红）");
+        SimpleAssert.that(closest < warp, "公平判据排在位移之前（排在后面就是先抢了再说）");
+        SimpleAssert.eq(1, countRegionCode(mag, tick, tickEnd, "getClosestPlayerToEntity("), "最近玩家读数恰一处（两处 = 两份真相）");
+    }
+
+    /**
+     * ★S6 验收 5：调用方在场 —— 从 vanilla 的 tick 链到 {@code PocketMagnetDriver.onItemTick} 再到跨拍收口，
+     * <b>逐跳</b>点名；并钉"早退不写 NBT / 空 AABB 零分配"的成本口径。
+     * <p>
+     * 本切片刻意<b>不给</b> {@code ItemNekoDimensionPocket} 加新入口：跨拍腿挂在同一个宿主调用里
+     * （{@code onItemTick} 的开头），因此不需要 {@code ServerTickEvent}——仓内实证过"监听器实测不存在
+     * ⇒ 一拍不跑且不报错"的教训（{@code PocketChannelDriver.java:31}），这里把它写成可证伪的读数。
+     */
+    private static void magnetHostChainReachableAndEmptyScanFree() {
+        final java.util.List<String> host = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/ItemNekoDimensionPocket.java");
+        final java.util.List<String> mag = sourceLinesOrNull(R96_MAGNET_FILES[0]);
+        final java.util.List<String> claimsSrc = sourceLinesOrNull(R96_MAGNET_FILES[1]);
+        if (host == null || mag == null || claimsSrc == null) {
+            System.out.println("[NOTE] 读不到宿主或磁力源码 ⇒ 「静态可达链逐跳」【未验】（★不是通过）");
+            return;
+        }
+        // ---- 跳 1：vanilla tick 链的证据指针仍在（宿主不是自造的；★这条在注释里，按原始行读） ----
+        SimpleAssert.that(
+            host.stream()
+                .anyMatch(s -> s.contains("InventoryPlayer.java:343")),
+            "★跳 1：onUpdate 的 javadoc 仍留着 vanilla tick 链指针（InventoryPlayer.java:343-348）");
+        // ---- 跳 2：宿主签名（5 参）与守卫 ----
+        final int onUpdate = methodStart(
+            host,
+            "public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {");
+        SimpleAssert.that(onUpdate >= 0, "★跳 2：onUpdate 的 5 参签名仍可定位（写成 4 参 = 永不被调用的重载，静默不跑）");
+        final int onUpdateEnd = methodEnd(host, onUpdate);
+        SimpleAssert.that(
+            regionContainsCode(host, onUpdate, onUpdateEnd, "world.isRemote || !(entity instanceof EntityPlayer player)"),
+            "跳 2 的服务端 + 玩家守卫在场");
+        // ---- 跳 3：宿主真的调了磁力驱动（不是只 import） ----
+        SimpleAssert.eq(1, countCodeLinesIn(host, "PocketMagnetDriver.onItemTick("), "★跳 3：调用点恰一处");
+        SimpleAssert.that(
+            firstCodeLineWith(host, onUpdate, onUpdateEnd, "PocketMagnetDriver.onItemTick(stack, world, player);") >= 0,
+            "★跳 3：调用实参逐字是 (stack, world, player)（改形参顺序即红）");
+        // ---- 跳 4：驱动内部两腿（含跨拍收口）都在同一个宿主调用里 ----
+        final int tick = methodStart(
+            mag,
+            "public static void onItemTick(ItemStack stack, World world, EntityPlayer player) {");
+        final int tickEnd = methodEnd(mag, tick);
+        final int settle = firstCodeLineWith(mag, tick, tickEnd, "settleClaimed(stack, world, player, owner)");
+        final int phase = firstCodeLineWith(mag, tick, tickEnd, "player.ticksExisted % SCAN_PERIOD_TICKS != 0");
+        SimpleAssert.that(settle >= 0, "★跳 4：跨拍收口腿在同一方法体内（不为它另找宿主）");
+        SimpleAssert.that(settle < phase, "★跳 4：收口排在节拍闸<b>之前</b> ⇒ 每拍都跑（否则悬停 2 拍的东西要等满 5 拍才落袋）");
+        SimpleAssert.that(regionContainsCode(mag, settleStart(mag), methodEnd(mag, settleStart(mag)),
+            "PocketMagnetClaims.ripeClaims(owner, stack, RIPED)"), "跳 5：收口腿真读认领表（不是只写个方法放着）");
+        // ---- 禁令的可证伪读数：磁力不挪事件总线（两个文件各扫一遍，不用通配 raw 数组） ----
+        SimpleAssert.eq(0, countCodeLinesIn(mag, "ServerTickEvent"),
+            "★零 ServerTickEvent（PocketChannelDriver.java:31 的「监听器实测不存在」教训落成读数）");
+        SimpleAssert.eq(0, countCodeLinesIn(mag, "@SubscribeEvent"), "★驱动不靠事件总线推进（没有「注册了但没人调」的路）");
+        SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "ServerTickEvent"), "★认领表同样不订阅事件");
+        SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "@SubscribeEvent"), "★认领表同样不订阅事件");
+        // ---- 成本断言：早退顺序 + 空 AABB 零分配零 NBT ----
+        final int switchOff = firstCodeLineWith(mag, tick, tickEnd, "isActive(stack, PocketUpgradeType.MAGNET)");
+        final int cooling = firstCodeLineWith(mag, tick, tickEnd, "PocketMagnetClaims.isScanCooling(owner)");
+        final int aabb = firstCodeLineWith(mag, tick, tickEnd, "getEntitiesWithinAABB(EntityItem.class");
+        final int emptyBack = firstCodeLineWith(mag, tick, tickEnd, "nearby == null || nearby.isEmpty()");
+        SimpleAssert.that(switchOff >= 0 && switchOff < settle, "开关早退排在一切动作之前（关掉 ⇒ 每 tick 只花一次位图读）");
+        SimpleAssert.that(phase > switchOff && phase < aabb, "节拍闸在 AABB 之前（不满拍 ⇒ 一次查询都不发）");
+        SimpleAssert.that(cooling >= 0 && cooling < aabb, "★满载退避在 AABB 之前（退避期间连查询都不发）");
+        SimpleAssert.that(emptyBack > aabb, "空 AABB 立刻返回");
+        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "getTagCompound("), "★位移拍一次 NBT 都不读");
+        SimpleAssert.eq(0, countRegionCode(mag, tick, tickEnd, "writeTo("), "★位移拍一次 NBT 都不写");
+        SimpleAssert.eq(0, countRegionCode(mag, emptyBack, tickEnd, "new "), "★空 AABB 早退之后到方法尾零个 new（无实体路径零分配）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "oneshot.writeTo(root)"), "落盘点全文件恰一处（序列化上界 = 扫描率，R53c）");
+        SimpleAssert.eq(1, countCodeLinesIn(mag, "PocketInventory.readFrom(root)"), "读档点全文件恰一处（禁每实体一次）");
+        SimpleAssert.eq(0, countCodeLinesIn(claimsSrc, "synchronized"), "★认领表不加锁（服务器主线程单线程访问，与 PocketSessions 同口径）");
+    }
+
     // ------------------------------------------------------------------ 桩件与工具
 
     /**
