@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.StatCollector;
@@ -40,6 +41,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
@@ -2648,12 +2650,42 @@ public final class NekoPocketPanel implements PocketSession {
         if (atCarrier == null || atCarrier.getItem() == null
             || pocket.getItem() == null
             || atCarrier.getItem() != pocket.getItem()) {
-            return false;
+            // ★R96 S11：读不到承载格 ≠ 口袋不见了。穿戴态开屏时 data 的 InventoryType 是 BAUBLES
+            // （本来就读 mainInventory），而会话中途把口袋从手上拖进饰品栏时 data 还钉在 PLAYER 那一格
+            // ⇒ 这里补一条 bauble 腿，找到就把写权钉过去；★找不到仍照原样返回 false
+            // （失效判定本身一个字没放宽）。
+            return repinFromBaubles();
         }
         if (atCarrier != pocket) {
             pocket = atCarrier;
         }
         return true;
+    }
+
+    /**
+     * ★R96 S11：{@link #carrierStillPresent(EntityPlayer)} 的 bauble 腿（★判据与
+     * {@link #relocateCarrier()} 的第四级同源 —— 同物品身份即认，不另立第二套认人标准）。
+     * ★两道判空都是必需的：owner/baubles 拿不到 ⇒ 按"没穿戴"处理，绝不让 Baubles 侧的漂移变成崩溃。
+     */
+    private boolean repinFromBaubles() {
+        if (pocket == null || pocket.getItem() == null) {
+            return false;
+        }
+        final IInventory baubles = PocketWornTapHandler.safeBaubles(player());
+        if (baubles == null) {
+            return false;
+        }
+        for (int i = 0; i < baubles.getSizeInventory(); i++) {
+            final ItemStack at = baubles.getStackInSlot(i);
+            if (at == null || at.getItem() == null) {
+                continue;
+            }
+            if (at == pocket || at.getItem() == pocket.getItem()) {
+                pocket = at;
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -2688,11 +2720,15 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 找到承载本会话的那一枚口袋。三级判据，<b>对象身份优先</b>：
+     * 找到承载本会话的那一枚口袋。★R96 S11 起是<b>四级</b>判据，<b>对象身份优先</b>：
      * <ol>
      * <li>开界面那一格上的栈还是同一枚对象 ⇒ 用它；</li>
      * <li>主背包 36 格里扫同一对象（玩家在界面里搬动过口袋）；</li>
-     * <li>最后才用 {@code open} 标记兜底（口径照 {@code ItemGTToolbox.java:391-425}）。</li>
+     * <li>主背包里按 {@code open} 标记兜底（口径照 {@code ItemGTToolbox.java:391-425}）；</li>
+     * <li>★<b>bauble 栏</b>：先按对象身份、再按 {@code open} 标记 —— 穿戴态开屏时前三级的视野里
+     * 根本没有那一格（{@code data.getUsedItemStack()} 走的是 MUI2 的 {@code InventoryTypes.BAUBLES}，
+     * 而 {@code target.inventory.mainInventory} 永远不含饰品格），少了这一腿 ⇒ 关屏找不到承载栈 ⇒
+     * 只 WARN 不落盘 = 静默丢件（R88 B3 那一族）。</li>
      * </ol>
      * ★为什么不把 {@code open} 位当第一判据（本批修正）：关屏时该位已被清零，而 driver 在关屏之后
      * 还要继续落盘（上面那条），按标记找就永远找不着 ⇒ 只剩一条 warn、内容留在内存里等丢。
@@ -2726,6 +2762,34 @@ public final class NekoPocketPanel implements PocketSession {
                 && ItemNekoDimensionPocket.isOpenFlag(held)) {
                 pocket = held;
                 return held;
+            }
+        }
+        // ★★R96 S11 第四级 = bauble 栏那一腿（穿戴态开屏时上面三级的视野里根本没有这一格）：
+        //   先按对象身份（开着面板时把口袋从手上拖进饰品栏），再按 open 位兜底（重载后身份已断）。
+        //   ★判空守卫是必需的，不是防御性冗余：Baubles 缺席或它内部漂移时 safeBaubles 返回 null，
+        //   少了这道守卫关屏落点就 NPE —— 而关屏落点 NPE 的结局是"内容留在内存里等丢"（R88 B3 同族）。
+        final IInventory baubles = PocketWornTapHandler.safeBaubles(target);
+        if (baubles != null) {
+            if (pocket != null) {
+                for (int i = 0; i < baubles.getSizeInventory(); i++) {
+                    final ItemStack at = baubles.getStackInSlot(i);
+                    if (at == null) {
+                        continue;
+                    }
+                    if (at == pocket) {
+                        return at;
+                    }
+                }
+            }
+            for (int i = 0; i < baubles.getSizeInventory(); i++) {
+                final ItemStack at = baubles.getStackInSlot(i);
+                if (at == null) {
+                    continue;
+                }
+                if (at.getItem() instanceof ItemNekoDimensionPocket && ItemNekoDimensionPocket.isOpenFlag(at)) {
+                    pocket = at;
+                    return at;
+                }
             }
         }
         return null;

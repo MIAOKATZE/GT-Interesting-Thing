@@ -228,6 +228,17 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 猫猫次元口袋生命周期监听器注册失败（通道状态可能跨存档残留）", t);
         }
 
+        // ★R96 S11（需求 8）：穿戴态的抽液手势腿 —— 挂 **Forge** 总线（PlayerInteractEvent 住在
+        // net.minecraftforge 那一条，不是 FML 总线；挂错总线 = 按键与手势都收不到事件，且不报错）。
+        // 纯服务端腿：判据全通过才 setCanceled，故注册本身不改变任何既有右击结果。
+        try {
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS
+                .register(com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler.INSTANCE);
+            GTInterestingThing.LOG.info("[0/3] 猫猫次元口袋穿戴抽液监听器已注册（Forge 总线 · PlayerInteractEvent）");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[0/3] 猫猫次元口袋穿戴抽液监听器注册失败（潜行空手右击抽液不会生效）", t);
+        }
+
         // v1.7.0 目标 5: 注册交易配置同步监听器（登录时向客户端推送服务端交易/标签页配置）
         try {
             FMLCommonHandler.instance()

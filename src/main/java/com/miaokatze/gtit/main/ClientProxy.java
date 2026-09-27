@@ -4,6 +4,7 @@ import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 
 /**
  * 客户端代理类
@@ -11,6 +12,25 @@ import cpw.mods.fml.common.event.FMLInitializationEvent;
  * 如：渲染注册、按键绑定等。
  */
 public class ClientProxy extends CommonProxy {
+
+    /**
+     * ★R96 S11（需求 8）：饰品背包按键注册。放 <b>preInit</b> 的理由与 MUI2 自己的
+     * {@code ClientProxy#preInit}（{@code :76-77}）一致 —— {@code KeyBinding} 要在
+     * {@code GameSettings} 成形之前进列表，玩家换绑后的 {@code options.txt} 才读得到它。
+     * <p>
+     * ★这里只调 {@code install()}，不在常驻类里碰任何客户端类型：物理专用服务器不加载本类 ⇒
+     * {@code PocketBaubleKeybind} 与 {@code KeyBinding}/{@code Keyboard}/{@code ClientRegistry}
+     * 全链路不可达（注册失败只损失按键，不影响既有右击，照 {@code ReincarnationClientFx} 骨架吞进日志）。
+     */
+    @Override
+    public void preInit(FMLPreInitializationEvent event) {
+        super.preInit(event);
+        try {
+            com.miaokatze.gtit.client.PocketBaubleKeybind.install();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[1/3] 饰品背包按键注册失败（B 键不可用；右击开屏与抽液不受影响）", t);
+        }
+    }
 
     /**
      * 初始化阶段 (Init)

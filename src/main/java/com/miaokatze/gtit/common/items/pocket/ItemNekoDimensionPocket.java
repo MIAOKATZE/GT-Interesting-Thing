@@ -4,6 +4,7 @@ import java.util.List;
 
 import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -34,7 +35,10 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
+import baubles.api.BaubleType;
+import baubles.api.IBauble;
 import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
@@ -56,8 +60,34 @@ import gregtech.api.metatileentity.BaseMetaTileEntity;
  * <b>类污染红线</b>：{@link #registerIcons(IIconRegister)} 的参数是客户端类，必须标
  * {@code @SideOnly(Side.CLIENT)}；{@link #getIconIndex(ItemStack)} <b>双端都会被调</b>，
  * 其体内不得触达任何客户端类型（只从 {@link #icons} 取），否则专用服 {@code NoClassDefFoundError}。
+ * <p>
+ * <b>★R96 S11 可穿戴化（需求 8）</b>：本类同时是 Baubles 饰品（{@link IBauble}，
+ * 槽型 {@link BaubleType#UNIVERSAL} —— ★刻意不是 {@code RING}：仓内已有七枚指环在抢那两个
+ * 戒指格，UNIVERSAL 才让它落到空着的格上）。渲染零成本：本仓的 Baubles fork（Baubles-Expanded）
+ * 已删 {@code IBaubleRender}，穿上不需要任何客户端渲染器。
+ * <p>
+ * <b>★R96 S11-fix：需求 8 的「符文护盾 +20」那一半不在本类（S11 原写法已撤销）</b>。
+ * S11 原本让常驻类直接 {@code implements} 神秘时代的护盾接口，判据是「{@code @Optional.Interface}
+ * 会让 FML 在 mod 缺席时把接口从 {@code interfaces} 数组里擦掉」——★这条兜底<b>靠不住</b>：
+ * 神秘时代在本仓是 {@code compileOnly}（{@code dependencies.gradle:73}），把它的类型写进
+ * {@code implements} 位就是让<b>常驻类</b>的类型层次在运行期要求一个可选件在场，而接口解析发生在
+ * JVM 加载本类的那一刻；写全限定名只绕得过 {@code import} 行的文本检查，绕不过类型层次。
+ * 于是「没装神秘时代的实例」这一格上，本类一被加载就 {@code NoClassDefFoundError} ⇒ 整个 mod 起不来，
+ * 撞的正是 {@code TaumCompat:15-19} 那条「会被正常加载的类不得静态引用 TC」的类污染红线。
+ * <p>
+ * ⇒ 那一半现在住在 {@code mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor}：mixin 类只由
+ * Mixin transformer 通道消费、mod 的常规类加载器按名不可见（口径与取证见 {@code r96-ret10.md §6}），
+ * 所以 TC 类型进 mixin 不算进常驻面。注入走 {@code GtitThaumLateMixinLoader} 的 LateMixin，
+ * <b>施加条件 = TC 在场</b> ⇒ ★没装神秘时代时这一半<b>自然缺席</b>：口袋照常可穿戴、照常跑八条被动，
+ * 只是不给符文护盾加容量（这正是需求 8 想要的「可选」语义，也是 {@code @Optional} 本来该给的行为）。
+ * <p>
+ * <b>★R96 S11 双宿主桥（硬要求 7）</b>：穿戴态下 vanilla <b>不再</b>调 {@code Item.onUpdate}
+ * （{@code InventoryPlayer.java:341-348} 只扫主背包 36 格），被动改由 {@link #onWornTick} 驱动
+ * （{@code EventHandlerEntity.playerTick}，★双端都发）。两枚宿主共用同一段
+ * {@link #runPassives} ⇒ ★加一条被动只需要改一处，结构上不存在"只挂了一个宿主"的那种漏。
  */
-public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerInventoryGuiData> {
+@Optional.InterfaceList(value = { @Optional.Interface(iface = "baubles.api.IBauble", modid = "Baubles") })
+public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerInventoryGuiData>, IBauble {
 
     /**
      * 物品 ID 单源：{@code unlocalized}、{@code setTextureName} 的默认贴图名、四态图标基名<b>全部</b>
@@ -264,6 +294,28 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      */
     @Override
     public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
+        // ★R96 S11：体段抽出（★一字未改，只是搬家）⇒ 宿主从一枚变两枚，见 runPassives 的 javadoc。
+        // 本方法只保留 5 参签名与逐字透传（形参元数是 GT-compat 判据，见上面的 javadoc）。
+        runPassives(stack, world, entity, slot, selected);
+    }
+
+    /**
+     * ★R96 S11（硬要求 7）：<b>被动段落的唯一载体</b>，{@link #onUpdate}（背包态，vanilla 只 tick 主背包
+     * 36 格）与 {@link #onWornTick}（穿戴态，Baubles 的 {@code EventHandlerEntity.playerTick} 驱动）
+     * <b>共用</b>这一段。
+     * <p>
+     * ★这条桥不是风格问题而是<b>结构问题</b>：穿戴态下 {@code Item.onUpdate} 根本不被调用
+     * （{@code InventoryPlayer.java:341-348} 的循环只走 {@code mainInventory}），而 {@code onWornTick}
+     * 在没穿上的时候又不存在 ⇒ 只挂一侧就必然出现「放背包里会动、穿在身上全停」或者反过来。
+     * 本轮在册的被动共 <b>八条</b>：两条 {@code tickDown} 倒计时 + 通道 + 蒸馏 + 磁力 +
+     * 魔法使四条（法杖 / 猫猫币 / 源质转换 / 结晶）——★摘掉任何一条都是 R57 的同族形状。
+     * <p>
+     * ★形参 {@code slot} / {@code selected} 是 onUpdate 的逐字透传：R95 起本段<b>不</b>用它们做门控
+     * （背包任意格都推进），穿戴侧传的是 {@code (-1, true)} —— 没有主手槽号，而 {@code true}
+     * 是刻意给的（★不是笔误）：将来若有人重新拿 {@code selected} 加门，给 {@code false} 就等于
+     * 把穿戴这一侧的八条被动全关掉且不报错。
+     */
+    private void runPassives(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
         // ★R95 门控放宽：只保留服务端与玩家检查（vanilla tick 链证据见 @param selected）
         if (world.isRemote || !(entity instanceof EntityPlayer player)) {
             return;
@@ -302,6 +354,73 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         } else {
             root.removeTag(key);
         }
+    }
+
+    // ------------------------------------------------------------------ 穿戴面（R96 S11 · 需求 8）
+
+    // ★R96 S11-fix：本段现在<b>只有 Baubles 那一侧</b>（六法 + 槽型）。需求 8 的另一半「符文护盾 +20」
+    //   原先也住这里（常驻类 implements 神秘时代的护盾接口 + getRunicCharge 返回 20），★已整段搬进
+    //   mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor —— 撤销理由（TC 缺席时常驻类的类型层次
+    //   解析不出那个接口 ⇒ 整个 mod 起不来）与「不穿戴不计入 / 只数前四格」那两条消费端事实，
+    //   都写在那枚 mixin 的类注释里（★判据跟着接口一起搬家，不留第二处真相）。
+    //   ★本类因此不含任何 TC 类型引用：implements 位 / 字段类型 / 方法签名 / 返回类型 / 局部变量
+    //   五类位置全零，这条由 verify-pocket.sh 的 ★R96-S11-fix 门（整棵 src/main/java 除
+    //   TaumBridge.java 外的 thaumcraft. 代码位计数）与用例
+    //   wearable_mount_is_optional_universal_and_honest 各钉一遍。
+
+    /** 穿戴侧没有"主手槽号"这个东西（{@code slot} 形参自 R95 起不参与任何门控，见 {@link #runPassives}）。 */
+    private static final int WORN_SLOT = -1;
+
+    @Override
+    @Optional.Method(modid = "Baubles")
+    public BaubleType getBaubleType(ItemStack stack) {
+        // ★UNIVERSAL，不是 RING：仓内在册的七枚指环（common/items/rings/）已经在抢戒指格，
+        // 给 RING 等于让口袋与它们互相挤槽；UNIVERSAL 由 Baubles 自己按空位落格。
+        return BaubleType.UNIVERSAL;
+    }
+
+    /**
+     * ★穿戴态的宿主（R96 S11 双宿主桥的另一枚）。驱动点是 Baubles 的
+     * {@code EventHandlerEntity.playerTick}（{@code LivingUpdateEvent}），★<b>双端都发</b> ⇒
+     * ★首行这道 {@code isRemote} 早退不是收尾工作，而是让这一侧与服务端那一侧<b>同形</b>的唯一保证：
+     * 没有它，客户端会真的跑一遍 {@link #runPassives}（driver 们在客户端读到的是同步镜像，
+     * 写出去的就是"客户端改服务端数据"那类静默错账）。
+     * <p>
+     * ★入参 {@code stack} 的非空由 Baubles 自己的循环保证（它先 {@code stack != null &&
+     * stack.getItem() instanceof IBauble} 才发这一拍），本方法不重复那道判据。
+     */
+    @Override
+    @Optional.Method(modid = "Baubles")
+    public void onWornTick(ItemStack stack, EntityLivingBase entity) {
+        if (entity.worldObj.isRemote) {
+            return;
+        }
+        runPassives(stack, entity.worldObj, entity, WORN_SLOT, true);
+    }
+
+    @Override
+    @Optional.Method(modid = "Baubles")
+    public void onEquipped(ItemStack stack, EntityLivingBase entity) {}
+
+    @Override
+    @Optional.Method(modid = "Baubles")
+    public void onUnequipped(ItemStack stack, EntityLivingBase entity) {}
+
+    /**
+     * ★允许随时穿上：不额外设门槛（穿脱与"内容还在不在"是两件事 —— 内容在栈 NBT 里，
+     * 而 {@code relocateCarrier} 那一双判据自 R96 S11 起<b>多了一条 bauble 腿</b>，见
+     * {@code NekoPocketPanel}，所以从饰品栏关屏也能落盘）。
+     */
+    @Override
+    @Optional.Method(modid = "Baubles")
+    public boolean canEquip(ItemStack stack, EntityLivingBase entity) {
+        return true;
+    }
+
+    @Override
+    @Optional.Method(modid = "Baubles")
+    public boolean canUnequip(ItemStack stack, EntityLivingBase entity) {
+        return true;
     }
 
     // ------------------------------------------------------------------ 状态位与冷却（R37/R16/R24）

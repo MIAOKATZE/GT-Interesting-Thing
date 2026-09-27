@@ -583,6 +583,16 @@ public class NekoPocketModelTest {
         cases.put(
             "channel_always_on_promise_requires_live_channel",
             NekoPocketModelTest::channelAlwaysOnPromiseRequiresLiveChannel);
+        // ---- ★R96 S11（TP-S11）可穿戴四条：①双宿主桥（★本片最硬）②B 键链 ③穿戴抽液腿 + 旧腿逐字
+        //   ④护盾挂载点的可选性与诚实性。★本批起点 219 ⇒ 本批 +4 = 223（分母一律取跑出来的数）。
+        cases.put("worn_double_host_bridge_covers_all_passives",
+            NekoPocketModelTest::wornDoubleHostBridgeCoversAllPassives);
+        cases.put("b_key_chain_is_client_only_and_rebindable",
+            NekoPocketModelTest::bKeyChainIsClientOnlyAndRebindable);
+        cases.put("worn_tap_leg_guards_and_old_legs_verbatim",
+            NekoPocketModelTest::wornTapLegGuardsAndOldLegsVerbatim);
+        cases.put("wearable_mount_is_optional_universal_and_honest",
+            NekoPocketModelTest::wearableMountIsOptionalUniversalAndHonest);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -10640,7 +10650,8 @@ public class NekoPocketModelTest {
         final int upd = methodStart(
             item,
             "public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {");
-        final int updEnd = methodEnd(item, upd);
+        // ★R96 S11：体段搬进 runPassives ⇒ 视野按 passiveRegionEnd 扩到那一法之尾（★断言原文与数值未动）
+        final int updEnd = passiveRegionEnd(item, upd);
         SimpleAssert.that(upd >= 0, "★必须按 5 参签名定位 onUpdate（GT-compat 形参元数变了要同步本判据）");
         SimpleAssert.eq(0, countRegionCode(item, upd, updEnd, "!selected"), "★R95 摘掉的正是这条门：体内不得再有 !selected 字面");
         SimpleAssert.eq(0, countRegionCode(item, upd, updEnd, "slot !="), "同理不得按槽号重新加门（背包任意格 ⇒ 槽号不参与判定）");
@@ -11644,7 +11655,14 @@ public class NekoPocketModelTest {
             host,
             "public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {");
         SimpleAssert.that(onUpdate >= 0, "★跳 2：onUpdate 的 5 参签名仍可定位（写成 4 参 = 永不被调用的重载，静默不跑）");
-        final int onUpdateEnd = methodEnd(host, onUpdate);
+        // ★R96 S11-fix（★只换视野、★断言原文与数值一字未动）：S11 把 onUpdate 的体段抽成了
+        //   runPassives（双宿主共用），本用例的"onUpdate 体内"这个旧视野于是只剩一行调用 ⇒ 守卫与挂载行
+        //   两处断言一起红。挪到 S11 自己为这一族判据准备的 passiveRegionEnd（★定位不到 runPassives
+        //   就直接红，所以"抽取被撤销"与"挂载行被摘"两种形状都不可能假绿）。
+        //   ★为什么本片要动它：S11 期间 compileMixinJava 因常驻类 implements TC 接口而编译失败 ⇒
+        //   整个套件从未跑起来过，这三处过期视野被那次编译错误遮住了；本片把接口搬进 mixin、编译转绿，
+        //   它们才第一次被读到（★生产码一个字没动，动的只有断言的指向）。
+        final int onUpdateEnd = passiveRegionEnd(host, onUpdate);
         SimpleAssert.that(
             regionContainsCode(host, onUpdate, onUpdateEnd, "world.isRemote || !(entity instanceof EntityPlayer player)"),
             "跳 2 的服务端 + 玩家守卫在场");
@@ -15155,7 +15173,10 @@ public class NekoPocketModelTest {
         } else {
             final int from = methodStart(host, "public void onUpdate(ItemStack stack, World world");
             SimpleAssert.that(from >= 0, "定位 onUpdate");
-            final java.util.List<String> body = methodBodyOf(host, from);
+            // ★R96 S11-fix：同 magnetHostChainReachableAndEmptyScanFree 那一处——S11 抽出 runPassives 后
+            //   "onUpdate 体内"只剩一行调用，七条挂载断言全落空（被 S11 的编译失败遮住，本片转绿后才现形）。
+            //   换成 passiveBodyOf = onUpdate 签名行 → runPassives 方法尾（★断言原文与期望值逐字未动）。
+            final java.util.List<String> body = passiveBodyOf(host, from);
             for (final String driver : R96_MAGE_DRIVER_NAMES) {
                 SimpleAssert.eq(1, countCodeLinesIn(body, driver + ".onItemTick("),
                     "★onUpdate 体内必须恰有一处挂 " + driver + "（读到 0 = R57 的零调用方形状）");
@@ -15372,7 +15393,10 @@ public class NekoPocketModelTest {
         } else {
             final int from = methodStart(host, "public void onUpdate(ItemStack stack, World world");
             SimpleAssert.that(from >= 0, "定位 onUpdate");
-            SimpleAssert.eq(1, countCodeLinesIn(methodBodyOf(host, from), "PocketCrystalDriver.onItemTick("),
+            // ★R96 S11-fix：视野跟着 S11 的体段抽取挪一次（passiveBodyOf = onUpdate 签名行 → runPassives
+            //   方法尾）。★两条断言的原文与期望值逐字未动，只是不再只看 onUpdate 那三行——
+            //   那三行现在只剩一行 runPassives(...) 调用，读到 0 会被误读成"结晶没挂上"。
+            SimpleAssert.eq(1, countCodeLinesIn(passiveBodyOf(host, from), "PocketCrystalDriver.onItemTick("),
                 "★onUpdate 体内恰一处挂结晶 driver（读到 0 = R57 的零调用方形状）");
             // ★计数口径逐名点名（TP-S9b-fix 核过，不是「读到几都算对」）：这个形状在 onUpdate 体内命中 5 行 =
             // 魔法使四条被动（PocketWandChargeDriver / PocketCoinChargeDriver / PocketEssenceTransmuteDriver
@@ -15380,7 +15404,8 @@ public class NekoPocketModelTest {
             // （磁力挂载位，HEAD b7eef79 之前就在场，且被既有用例 magnetHostChainReachableAndEmptyScanFree
             // 在 :11654 逐字点名 ⇒ 它不是本片长出的重复挂载）。另两枚 driver（channel / distill）签名多带
             // slot / selected 两个形参，天然不落在这个形状里。★仍是恰数等值：任何一枚被摘 ⇒ 读到 4 即红。
-            SimpleAssert.eq(5, countCodeLinesIn(methodBodyOf(host, from), "Driver.onItemTick(stack, world, player)"),
+            SimpleAssert.eq(5,
+                countCodeLinesIn(passiveBodyOf(host, from), "Driver.onItemTick(stack, world, player)"),
                 "★魔法使四条被动 + 既有磁力那条，五枚挂载行全在场（读到 4 = 有人被摘；结晶那条只写了没挂正是这个形状）");
         }
         final java.util.List<String> driver = sourceLinesOrNull(R96_S9B_CRYSTAL_DRIVER);
@@ -16067,6 +16092,489 @@ public class NekoPocketModelTest {
         SimpleAssert.that(false, "★花括号配对收不了口（" + (from < lines.size() ? lines.get(from)
             .trim() : "?") + "）⇒ 检法空转，不许当成通过");
         return lines.subList(from, lines.size());
+    }
+
+    // ================================================================== ★R96 S11（TP-S11）可穿戴 / 双宿主桥 / B 键 / 穿戴抽液
+    //
+    // ★本组四条钉的是 S11 那四件事，全部走「静态可达 + 逐字文本」两条路：穿戴态要真 EntityPlayer、
+    // B 键要真客户端按键循环、护盾那半边的消费端在神秘时代自己家里 —— 纯 JVM 套件都够不着
+    // （理由与 S6 世界站、S9 driver 同款），所以这里刻意<b>不</b>写"模拟穿戴"那种自己圆自己的用例。
+    // ★实机项在 §8 V-1 / V-2 / V-3（`plan/_taskpack/in-game-checklist.md`），本组的绿<b>不替代</b>它们。
+
+    private static final String R96_S11_ITEM = "src/main/java/com/miaokatze/gtit/common/items/pocket/ItemNekoDimensionPocket.java";
+    private static final String R96_S11_TAP = "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketWornTapHandler.java";
+    private static final String R96_S11_KEYBIND = "src/main/java/com/miaokatze/gtit/client/PocketBaubleKeybind.java";
+    private static final String R96_S11_CLIENT_PROXY = "src/main/java/com/miaokatze/gtit/main/ClientProxy.java";
+    private static final String R96_S11_COMMON_PROXY = "src/main/java/com/miaokatze/gtit/main/CommonProxy.java";
+    private static final String R96_S11_PANEL = "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java";
+    // ★R96 S11-fix：需求 8「符文护盾 +20」那一半的<b>真正落点</b>与它的注册面（判据跟着接口一起搬过来）
+    private static final String R96_S11_RUNIC_MIXIN = "src/mixin/java/com/miaokatze/gtit/mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor.java";
+    private static final String R96_S11_THAUM_LOADER = "src/main/java/com/miaokatze/gtit/asm/GtitThaumLateMixinLoader.java";
+    private static final String R96_S11_EARLY_MIXIN_JSON = "src/main/resources/mixins.gtit.json";
+    private static final String R96_S11_ON_UPDATE = "public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {";
+    private static final String R96_S11_BODY = "private void runPassives(ItemStack stack, World world, Entity entity,";
+    private static final String R96_S11_WORN = "public void onWornTick(ItemStack stack, EntityLivingBase entity) {";
+
+    /**
+     * ★R96 S11 点名清单：共用的 {@code runPassives} 里<b>逐字</b>必须在场的九行挂载
+     * （两条 R24 倒计时 + 通道 + 蒸馏 + 磁力 + 魔法使四条）。★逐行逐字比对，不是"数一数有几处
+     * onItemTick"——后者会把"参数写错"读成通过，而参数写错正是穿戴态最常见的死法。
+     */
+    private static final String[] R96_S11_PASSIVES = { "tickDown(root, PocketConstants.UI_WORK_TICKS);",
+        "tickDown(root, PocketConstants.UI_BURST_SHOW_TICKS);",
+        "PocketChannelDriver.onItemTick(stack, world, player, slot, selected);",
+        "PocketDistillDriver.onItemTick(stack, world, player, slot, selected);",
+        "PocketMagnetDriver.onItemTick(stack, world, player);",
+        "PocketWandChargeDriver.onItemTick(stack, world, player);",
+        "PocketCoinChargeDriver.onItemTick(stack, world, player);",
+        "PocketEssenceTransmuteDriver.onItemTick(stack, world, player);",
+        "PocketCrystalDriver.onItemTick(stack, world, player);" };
+
+    /**
+     * 验收 ① + ⑥（★本片最硬的一条）：<b>双宿主桥</b>。钉四件事 ——
+     * ① {@code onUpdate} 与 {@code onWornTick} <b>各自</b>都恰一处调到<b>同一段</b> {@code runPassives}；
+     * ② {@code onWornTick} 的<b>体首行</b>是 {@code isRemote} 早退且紧跟 {@code return}
+     * （驱动它的 {@code EventHandlerEntity.playerTick} 双端都发）；
+     * ③ 共用的体段里九行被动<b>逐行逐字</b>全在场；
+     * ④ 全文件对 {@code runPassives} 的调用恰两处 = 两枚宿主（★这条就是三刀里"摘任一侧"的靶）。
+     */
+    private static void wornDoubleHostBridgeCoversAllPassives() {
+        final java.util.List<String> item = sourceLinesOrNull(R96_S11_ITEM);
+        if (item == null) {
+            System.out.println("[NOTE] 读不到 ItemNekoDimensionPocket.java ⇒ 双宿主桥【未验】（★不是通过）");
+            return;
+        }
+        final int upd = methodStart(item, R96_S11_ON_UPDATE);
+        final int worn = methodStart(item, R96_S11_WORN);
+        final int body = methodStart(item, R96_S11_BODY);
+        SimpleAssert.that(upd >= 0, "★宿主一（背包态）：onUpdate 的 5 参签名可定位（形参元数是 GT-compat 判据）");
+        SimpleAssert.that(body >= 0, "★共用的体段 runPassives 可定位（定位不到 = 抽取被撤销 ⇒ 双侧必有一侧空）");
+        SimpleAssert.that(worn >= 0,
+            "★宿主二（穿戴态）：onWornTick 的 IBauble 签名 (ItemStack, EntityLivingBase) 可定位");
+        // ---- 跳 1 / 跳 2：两枚宿主各自都调到同一段 ----
+        SimpleAssert.eq(1, countCodeLinesIn(methodBodyOf(item, upd), "runPassives(stack, world, entity, slot, selected);"),
+            "★跳 1：onUpdate 体内恰一处委托 runPassives，★且五个形参逐字透传（改写实参 = 背包态那侧静默变样）");
+        SimpleAssert.eq(1,
+            countCodeLinesIn(methodBodyOf(item, worn), "runPassives(stack, entity.worldObj, entity, WORN_SLOT, true);"),
+            "★跳 2：onWornTick 体内恰一处委托到<b>同一段</b>（读到 0 = 穿戴后九行被动全停，正是本片要修的洞）");
+        // ---- ★跳 2 的体首行：isRemote 早退 + 紧跟 return ----
+        final int wornEnd = methodEnd(item, worn);
+        final int firstCode = firstCodeLine(item, worn + 1, wornEnd);
+        SimpleAssert.that(firstCode >= 0, "★onWornTick 体内要有至少一行代码（空体 = 穿戴态什么都不做且不报错）");
+        SimpleAssert.that(item.get(firstCode)
+            .contains("worldObj.isRemote"),
+            "★onWornTick 的<b>体首行</b>必须是 isRemote 早退：LivingUpdateEvent 双端都发 ⇒"
+                + " 没这道闸客户端会真跑一遍服务端逻辑（读到「" + item.get(firstCode)
+                    .trim() + "」）");
+        SimpleAssert.that(firstCode + 1 < wornEnd && item.get(firstCode + 1)
+            .trim()
+            .equals("return;"),
+            "★闸后面紧跟 return（只判不返回 = 恒假闸，与没有这道闸等价）");
+        // ---- 跳 3：共用的体段里九行挂载逐行逐字在场 ----
+        final java.util.List<String> mountBody = methodBodyOf(item, body);
+        for (final String mount : R96_S11_PASSIVES) {
+            SimpleAssert.eq(1, countCodeLinesIn(mountBody, mount),
+                "★runPassives 体内恰一行挂「" + mount + "」（0 = 这一条被动在<b>两个</b>宿主上都丢了）");
+        }
+        // ---- 跳 4：体段自带的服务端 + 玩家两道闸（搬家时一字未动）----
+        SimpleAssert.that(
+            regionContainsCode(item, body, methodEnd(item, body),
+                "world.isRemote || !(entity instanceof EntityPlayer player)"),
+            "★两道早退闸随体段一起搬过来了（摘掉任何一道 = 客户端或生物也会跑口袋逻辑）");
+        // ---- ★计数口径逐名点名（三刀之二的靶）：全文件对 runPassives 的调用恰两处 = 双宿主 ----
+        SimpleAssert.eq(2, countCodeLinesIn(item, "runPassives(stack,"),
+            "★全文件调用 runPassives 恰两处（背包 + 穿戴）；读到 1 = 有人摘了一侧的挂载，读到 0 = 桥没了");
+    }
+
+    /**
+     * 验收 ② + ③：★B 键链。钉五件事 —— {@code new KeyBinding} 全树恰一枚且住在 client-only 包、
+     * 默认键取 {@code Keyboard.KEY_B}（★不写裸数字）、注册走 vanilla {@code ClientRegistry}（=可换绑、
+     * ★不自写配置）、install 只由 {@code ClientProxy.preInit} 触发、★饰品背包入口只在
+     * {@code BAUBLES.isLoaded()} 为真的分支里且降级腿在场。
+     */
+    private static void bKeyChainIsClientOnlyAndRebindable() {
+        // ---- ① 全树读数（★先证检法跑到了，再读那个 1）----
+        final int all = countMainJavaCodeLinesMatching("new KeyBinding\\(");
+        SimpleAssert.that(all >= 0, "★检法必须真跑到（读不到 src/main/java ⇒ 空转 = 比没检更坏）");
+        SimpleAssert.eq(1, all,
+            "★src/main/java 里 new KeyBinding 命中数恰 1（>1 = 长出第二个按键真相；0 = 键根本没注册）");
+        final java.util.List<String> kb = sourceLinesOrNull(R96_S11_KEYBIND);
+        if (kb == null) {
+            System.out.println("[NOTE] 读不到 client/PocketBaubleKeybind.java ⇒ B 键链【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(1, countCodeLinesIn(kb, "new KeyBinding(KEY_LANG, KEY_DEFAULT, KEY_CATEGORY);"),
+            "★那一枚落在 client 包里，三个实参全取常量（★不在这里写裸数字也不写裸键名字面量）");
+        SimpleAssert.eq(1, countCodeLinesIn(kb, "static final int KEY_DEFAULT = Keyboard.KEY_B;"),
+            "★默认键 = Keyboard.KEY_B（lwjgl 侧值 48；★刻意取符号不取字面量 ⇒ 换映射时不会留一枚假数）");
+        SimpleAssert.eq(0, countCodeLinesIn(kb, "= 48"), "★没有把 48 抄成第二处真相（读数是上面那条符号名）");
+        // ---- ② 可换绑 = 走 vanilla；★不自写配置；★不假装事件可取消 ----
+        SimpleAssert.eq(1, countCodeLinesIn(kb, "ClientRegistry.registerKeyBinding(openPocketKey);"),
+            "★注册走 vanilla ClientRegistry ⇒ 进 options/keybindings（可换绑的唯一正解）");
+        SimpleAssert.eq(0, countCodeLinesIn(kb, "Configuration"),
+            "★不自写按键配置（那是第二处按键真相，且 vanilla 那条路本来就给用户改了键）");
+        SimpleAssert.eq(1, countCodeLinesIn(kb, "!openPocketKey.isPressed()"),
+            "★按键读 isPressed（本方法只做事，不拦事件）");
+        SimpleAssert.eq(0, countCodeLinesIn(kb, "setCanceled"),
+            "★确认没假装可取消：1.7.10 的 InputEvent.KeyInputEvent 无 @Cancelable（ReincarnationClientFx:77-80 实证）");
+        // ---- ③ install 的唯一触发点 = ClientProxy.preInit ----
+        final java.util.List<String> proxy = sourceLinesOrNull(R96_S11_CLIENT_PROXY);
+        if (proxy == null) {
+            System.out.println("[NOTE] 读不到 main/ClientProxy.java ⇒ install 半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(1, countCodeLinesIn(proxy, "com.miaokatze.gtit.client.PocketBaubleKeybind.install();"),
+                "★ClientProxy 侧显式 install（骨架照 ReincarnationClientFx:255-264 + ClientProxy:48）");
+            final int pre = methodStart(proxy, "public void preInit(FMLPreInitializationEvent event) {");
+            SimpleAssert.that(pre >= 0 && regionContainsCode(proxy, pre, methodEnd(proxy, pre),
+                "com.miaokatze.gtit.client.PocketBaubleKeybind.install();"),
+                "★install 落在 preInit（MUI2 自己的 ClientProxy 也在这里注册按键）");
+            SimpleAssert.eq(0, countCodeLinesIn(proxy, "new KeyBinding"),
+                "★ClientProxy 自己造键 = 0（全树那一枚住在 client 包）");
+        }
+        // ---- ④ ★饰品背包入口：只在 BAUBLES.isLoaded() 为真的分支里 + 降级腿在场 ----
+        final int handler = methodStart(kb, "public void onKeyInput(InputEvent.KeyInputEvent event) {");
+        SimpleAssert.that(handler >= 0, "★按键腿的方法体可定位（定位不到 = 上面几条都在读注释）");
+        final int handlerEnd = methodEnd(kb, handler);
+        final int gate = firstCodeLineWith(kb, handler, handlerEnd, "if (ModularUI.Mods.BAUBLES.isLoaded()) {");
+        SimpleAssert.that(gate >= 0, "★onKeyInput 体内有 BAUBLES.isLoaded() 这道闸");
+        SimpleAssert.eq(1, countRegionCode(kb, gate, handlerEnd, "openFromBaublesClient("),
+            "★openFromBaublesClient 只在闸<b>之内</b>出现恰一次（Baubles 缺席时 MUI2 直抛 IllegalArgumentException，"
+                + "PlayerInventoryGuiFactory:55-57）");
+        SimpleAssert.eq(0, countRegionCode(kb, handler, gate, "openFromBaubles"),
+            "★闸<b>之前</b>一个开屏调用都没有（写在闸外 = 那道闸是装饰品）");
+        SimpleAssert.eq(1, countRegionCode(kb, gate, handlerEnd, "InventoryTypes.BAUBLES.visitAll("),
+            "★槽位由 MUI2 自己的 visitAll 枚举（★索引语义与 openFromBaublesClient 同一份，不自己数格子）");
+        SimpleAssert.that(gate < firstCodeLineWith(kb, gate, handlerEnd, "openFromMainHandClient();"),
+            "★降级腿在闸之后（没穿 / Baubles 不在 ⇒ 回既有主手那一路，按键不是死键）");
+        SimpleAssert.eq(1, countCodeLinesIn(kb, "openFromMainHandClient();"), "★降级腿恰一处");
+        // ---- ⑤ 两份 lang 的按键名与分组齐（缺一份 = 选项界面显示原始键名）----
+        final String[] keys = { "key.gtit.pocket.baubles=", "key.categories.gtit=" };
+        for (final String file : new String[] { "src/main/resources/assets/gtit/lang/zh_CN.lang",
+            "src/main/resources/assets/gtit/lang/en_US.lang" }) {
+            final java.util.List<String> lang = sourceLinesOrNull(file);
+            if (lang == null) {
+                System.out.println("[NOTE] 读不到 " + file + " ⇒ lang 半边【未验】");
+                continue;
+            }
+            for (final String key : keys) {
+                SimpleAssert.eq(1, countCodeLinesIn(lang, key), "★" + file + " 里 " + key + " 恰一枚（两份不齐 = 差集门红）");
+            }
+        }
+    }
+
+    /**
+     * 验收 ④ + ⑥：★穿戴抽液那条新腿，以及<b>不戴时那条腿逐字未动</b>。
+     * 钉三组：① 旧两段的源码文本逐字（潜行闸 + {@code onItemUseFirst} 的三个 return false）；
+     * ② 新腿的守卫顺序（★动作 → 服务端 → 空手 → 潜行 → 穿戴口袋 → GT 机器 → 真搬动了才取消）与
+     * {@code setCanceled} 的位置；③ 面板侧的 bauble 腿与它那道判空守卫（三刀之三的靶）。
+     */
+    private static void wornTapLegGuardsAndOldLegsVerbatim() {
+        final java.util.List<String> item = sourceLinesOrNull(R96_S11_ITEM);
+        final java.util.List<String> tap = sourceLinesOrNull(R96_S11_TAP);
+        final java.util.List<String> panel = sourceLinesOrNull(R96_S11_PANEL);
+        if (item == null || tap == null) {
+            System.out.println("[NOTE] 读不到宿主或 PocketWornTapHandler ⇒ 抽液手势【未验】（★不是通过）");
+            return;
+        }
+        // ---- ① ★不戴时那条腿逐字未动：潜行闸四行（门禁钉文本，不是钉"有 if"）----
+        final int right = methodStart(item,
+            "public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {");
+        SimpleAssert.that(right >= 0, "★定位 onItemRightClick");
+        SimpleAssert.that(regionContainsCode(item, right, methodEnd(item, right), "if (player.isSneaking()) {"),
+            "★潜行闸仍在（S6 的 R91-⑧：这一族永不开屏）");
+        SimpleAssert.eq(2, countRegionCode(item, right, methodEnd(item, right), "return stack;"),
+            "★两处 return 的都是<b>原栈本体</b>（潜行分支 + 末尾；1.7.10 的 onItemRightClick 语义：既不消耗也不复制）");
+        final int useFirst = methodStart(item, "public boolean onItemUseFirst(ItemStack stack, EntityPlayer player, World world, int x, int y, int z, int side,");
+        SimpleAssert.that(useFirst >= 0, "★定位 onItemUseFirst（★签名换行 = 检法要跟着改，这里逐字钉住）");
+        final int useFirstEnd = methodEnd(item, useFirst);
+        SimpleAssert.eq(1, countRegionCode(item, useFirst, useFirstEnd, "if (world.isRemote || !player.isSneaking()) {"),
+            "★铁律 1：客户端恒放行那道闸逐字在场");
+        SimpleAssert.eq(2, countRegionCode(item, useFirst, useFirstEnd, "return false;"),
+            "★两个 {@code return false} 放行点逐字在场（客户端放行 + 非潜行放行合写在同一道闸里，"
+                + "非机器放行是第二个）⇒ 改成 true 就砍掉功能 N（R91-c 那条被证伪的旧表述已记在 javadoc）");
+        SimpleAssert.eq(1, countRegionCode(item, useFirst, useFirstEnd, "return PocketWorldFluidTap.tap(player, stack, tile);"),
+            "★手持那条腿的出口仍是 PocketWorldFluidTap.tap(player, stack, tile)（实参逐字）");
+        // ---- ② ★新腿：守卫顺序 + setCanceled 的位置 ----
+        final int leg = methodStart(tap, "public void onPlayerInteract(PlayerInteractEvent event) {");
+        SimpleAssert.that(leg >= 0, "★定位新腿 onPlayerInteract");
+        final int legEnd = methodEnd(tap, leg);
+        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "event.action != PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK"),
+            "★只看 RIGHT_CLICK_BLOCK（左击/空中/纯使用一律不碰）");
+        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "player.getCurrentEquippedItem() != null"),
+            "★空手硬门在场（手持螺丝刀/扳手 ⇒ 本腿绝不生效；GT 工具白名单 BlockMachines:412-419 那条避让）");
+        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "!player.isSneaking()"), "★潜行门在场");
+        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "findWorn(player)"), "★找的是<b>穿在饰品栏上</b>的那一枚");
+        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "instanceof BaseMetaTileEntity tile"),
+            "★目标仍是 GT 机器（★与手持那条腿同一个'非机器不拦'口径）");
+        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "PocketWorldFluidTap.tap(player, pocket, tile)"),
+            "★走的仍是<b>既有</b>那个适配器（★不抄第二份抽液算式）");
+        final int cancel = firstCodeLineWith(tap, leg, legEnd, "event.setCanceled(true);");
+        final int tapCall = firstCodeLineWith(tap, leg, legEnd, "if (!PocketWorldFluidTap.tap(");
+        SimpleAssert.that(cancel > tapCall,
+            "★setCanceled(true) 排在'真搬动了流体'那一问<b>之后</b> ⇒ 一切'没搬动'的结局都不取消（"
+                + "取消 = 不开机器 GUI，只在成交时才是想要的）");
+        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "event.setCanceled("),
+            "★本腿只有这一个取消点（多处取消 = 会有哪一处守卫没走完就把交互吞了）");
+        // ---- ②′ 纯服务端单腿：★不新建 C2S 包、不引客户端类 ----
+        SimpleAssert.eq(0, countCodeLinesIn(tap, "SimpleNetworkWrapper"), "★不新建 C2S 包（抽液这条腿只有服务端）");
+        SimpleAssert.eq(0, countCodeLinesIn(tap, "SideOnly"),
+            "★新腿不在客户端类型上（住在 common ⇒ 专用服也要能加载它）");
+        SimpleAssert.eq(1, countCodeLinesIn(tap, "PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK"),
+            "★动作枚举只有一处引用点（读的是 event.action，★不是自造客户端包）");
+        // ---- ②″ BaublesApi 的 null 守卫（★三刀之三的靶）----
+        SimpleAssert.that(countCodeLinesIn(tap, "if (baubles == null) {") >= 1,
+            "★饰品栏取不到时必须按'没穿'处理（Baubles 缺席/漂移 ⇒ 少这道守卫就是 NPE）");
+        SimpleAssert.that(countCodeLinesIn(tap, "if (at == null) {") >= 1, "★空格子要跳过（饰品栏大部分是空的）");
+        SimpleAssert.eq(1, countCodeLinesIn(tap, "BaublesApi.getBaubles("), "★读饰品栏只有一个入口");
+        // ---- ③ 面板侧的 bauble 腿（关屏落盘 + 会话存续判定都认饰品栏）----
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 gui/pocket/NekoPocketPanel.java ⇒ 落盘半边【未验】（★不是通过）");
+        } else {
+            final int relocate = methodStart(panel, "private ItemStack relocateCarrier() {");
+            SimpleAssert.that(relocate >= 0, "★定位 relocateCarrier");
+            final int relocateEnd = methodEnd(panel, relocate);
+            SimpleAssert.eq(1, countRegionCode(panel, relocate, relocateEnd, "PocketWornTapHandler.safeBaubles(target)"),
+                "★关屏落点多了一级 bauble 判据（★穿戴态关屏时前三级的视野里根本没有那一格）");
+            // ★R96 S11-fix（★只换检法、判据不松）：落盘那一级的判空守卫在生产侧写的是<b>正向形</b>
+            //   （if (baubles != null) { … } ⇒ null 时整级跳过），而这条断言原先只认反向形，
+            //   于是守卫在位也读 0（★被 S11 的编译失败遮住，本片把接口搬进 mixin、编译转绿后才现形）。
+            //   verify-pocket.sh 的门 G 从一开始就「两种形都认」（baubles [!=]= null），这里改成与门禁
+            //   同一口径 = 两条通道对同一件事共用一条判据；★合计仍要求恰 1 ⇒ 两形都不在时照样红。
+            final int nullGuard = countRegionCode(panel, relocate, relocateEnd, "if (baubles == null) {")
+                + countRegionCode(panel, relocate, relocateEnd, "if (baubles != null) {");
+            SimpleAssert.that(nullGuard == 1,
+                "★那一级自带判空守卫（少它 = 关屏落盘 NPE，R88 B3 那一族：只 warn 不落盘 = 静默丢件）");
+            final int still = methodStart(panel, "boolean carrierStillPresent(EntityPlayer testPlayer) {");
+            SimpleAssert.that(still >= 0, "★定位 carrierStillPresent");
+            SimpleAssert.eq(1, countRegionCode(panel, still, methodEnd(panel, still), "return repinFromBaubles();"),
+                "★会话存续判定也走 bauble 腿（★找不到仍照原样 false ⇒ 没放宽旧判据）");
+            final int repin = methodStart(panel, "private boolean repinFromBaubles() {");
+            SimpleAssert.that(repin >= 0 && countRegionCode(panel, repin, methodEnd(panel, repin), "return false;") >= 2,
+                "★降级的两条出口都在（拿不到 owner / 拿不到饰品栏 ⇒ 按'没穿'处理，不崩也不假成功）");
+        }
+    }
+
+    /**
+     * 验收 ⑤ + ⑦：★护盾那半边的挂载点与它的可选性。钉六组 ——
+     * ① 常驻类只余 {@code IBauble} 那一侧、★TC 那枚接口在常驻类的痕迹为<b>零</b>；
+     * ② 接口与读数现在住在 mixin 类里（读数是 20、且<b>不</b>被仓内任何显示面复用）；
+     * ③ 槽型是 UNIVERSAL 而不是 RING（★不跟七枚指环抢槽）；
+     * ④ ★整棵 {@code src/main/java}（TaumBridge 之外）的 TC <b>类型引用</b>恰 0，配 implements 位与
+     * 字段类型位的阳性对照 + 字符串字面量的反向对照（★旧门只看 {@code ^import thaumcraft}，
+     * 对 {@code implements thaumcraft.…} 全盲）；
+     * ⑤ 注册面：那枚 mixin <b>只</b>进 TC 条件清单，★绝不进被 manifest 无条件施加的
+     * {@code mixins.gtit.json}；⑥ Forge 总线那个注册点（原样）。
+     * <p>
+     * ★★★R96 S11-fix 的换检法说明（★判据只紧不松）：本用例原先钉的是「常驻类里 TC 触达<b>恰两处</b>
+     * （注解字符串 + implements 位）」，而那两处<b>就是缺陷本身</b> —— 常驻类把 {@code compileOnly}
+     * 的类型写进类型层次 ⇒ 没装神秘时代的实例上 JVM 解析不出该接口 ⇒ {@code NoClassDefFoundError} ⇒
+     * 整个 mod 起不来（{@code @Optional.Interface} 的擦除救不了层次解析）。⇒ 那几个数字从「恰 2 / 恰 1」
+     * 改成「恰 0」不是放宽，是把同一个读数换到<b>能拦住崩溃</b>的那一侧；接口与读数都没消失，只是搬进
+     * {@code mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor}，②⑤ 两组就是搬家后的等价判据
+     * （容量读数值、体内唯一 return、无自建"是否穿戴"、无显示面复用这四条<b>逐字</b>跟着搬）。
+     * ★"穿上真的加 20 点容量"属实机项（计划 §8 V-3），本用例只证挂载点在位、施加条件对、不撒谎。
+     */
+    private static void wearableMountIsOptionalUniversalAndHonest() {
+        final java.util.List<String> item = sourceLinesOrNull(R96_S11_ITEM);
+        if (item == null) {
+            System.out.println("[NOTE] 读不到 ItemNekoDimensionPocket.java ⇒ 穿戴挂载点【未验】（★不是通过）");
+            return;
+        }
+        // ---- ① 常驻类：只余 Baubles 那一枚可选接口，TC 痕迹归零 ----
+        SimpleAssert.eq(1, countCodeLinesIn(item, "@Optional.Interface(iface = \"baubles.api.IBauble\", modid = \"Baubles\")"),
+            "★IBauble 走 @Optional.Interface（Baubles 是 api 腿、运行期在场；★任务包明令不动这一枚）");
+        SimpleAssert.eq(1, countCodeLinesIn(item, "@Optional.InterfaceList("),
+            "★可选接口走 InterfaceList（旧判据原样、期望值未动：常驻类只剩一枚，仍走同一声明形状）");
+        SimpleAssert.eq(1, countCodeLinesIn(item, "implements IGuiHolder<PlayerInventoryGuiData>, IBauble {"),
+            "★implements 位收口在两枚在场类型 ⇒ 后面不再跟第三个类型（旧的两条「含 IBauble / 含 IRunicArmor」合成一条）");
+        SimpleAssert.eq(0,
+            countCodeLinesIn(item, "@Optional.Interface(iface = \"thaumcraft.api.IRunicArmor\", modid = \"Thaumcraft\")"),
+            "★S11-fix：常驻类不再挂 TC 那枚 @Optional.Interface（★换检法的原因见本用例 javadoc：接口已不在类层次里，注解留着等于宣称一个兜不住层次解析的擦除）");
+        SimpleAssert.eq(0, countCodeLinesIn(item, "thaumcraft."), "★常驻类零 TC 触达（旧口径「恰 2」⇒ 收紧，不是放宽）");
+        SimpleAssert.eq(0, countCodeLinesIn(item, "IRunicArmor"), "★常驻类代码位不出现那个接口名（implements / 签名 / 字段都没有）");
+        SimpleAssert.eq(0, countCodeLinesIn(item, "getRunicCharge"), "★常驻类不再实现那个接口的方法（实现随接口进 mixin）");
+        SimpleAssert.eq(6, countCodeLinesIn(item, "@Optional.Method(modid = \"Baubles\")"),
+            "★IBauble 的六个抽象方法逐一带 @Optional.Method（getBaubleType/onWornTick/onEquipped/onUnequipped/canEquip/canUnequip）");
+        SimpleAssert.eq(0, countCodeLinesIn(item, "@Optional.Method(modid = \"Thaumcraft\")"),
+            "★常驻类里不再有 TC 侧的方法注解（与上一行配对：实现搬走、注解也搬走，不留半个 TC 痕迹）");
+        // ---- ② 接口与读数在 mixin 侧齐全（★四条旧判据逐字跟着搬家，不改期望值）----
+        final java.util.List<String> runic = sourceLinesOrNull(R96_S11_RUNIC_MIXIN);
+        if (runic == null) {
+            System.out.println("[NOTE] 读不到 MixinItemNekoDimensionPocket_RunicArmor.java ⇒ 护盾半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(1,
+                countCodeLinesIn(runic, "@Mixin(value = ItemNekoDimensionPocket.class, remap = false)"),
+                "★注入点指向<b>本仓常驻的口袋 Item 类</b>（★不是 TC 的某个类 ⇒ 这一枚 mixin 的存在理由）");
+            SimpleAssert.eq(1,
+                countCodeLinesIn(runic, "class MixinItemNekoDimensionPocket_RunicArmor implements IRunicArmor {"),
+                "★接口住在 mixin 类的 implements 位（mixin 类只由 transformer 通道消费 ⇒ 常驻面解析不到它）");
+            SimpleAssert.eq(1, countCodeLinesIn(runic, "import thaumcraft.api.IRunicArmor;"),
+                "★mixin 侧走正常 import（S11 那套「不写 import、只用全限定名」是为绕 grep 的文本检查，★绕不过类型层次；搬家后没这个需要）");
+            SimpleAssert.eq(1, countCodeLinesIn(runic, "private static final int RUNIC_CHARGE = 20;"),
+                "★护盾容量读数 = 20（需求 8 的字面值，★住在唯一一个常量里）");
+            SimpleAssert.eq(2, countCodeLinesIn(runic, "RUNIC_CHARGE"),
+                "★RUNIC_CHARGE 全文件恰两处（定义 + return）⇒ 没有任何 tooltip / 面板 / 状态行把它当'已生效'读出来"
+                    + "（'穿上才计入'那一半由 TC 的循环执法，本仓不另立第二处读数）");
+            final int charge = methodStart(runic, "public int getRunicCharge(ItemStack stack) {");
+            SimpleAssert.that(charge >= 0, "★定位 getRunicCharge（IRunicArmor 的唯一方法）");
+            SimpleAssert.eq(1, countRegionCode(runic, charge, methodEnd(runic, charge), "return RUNIC_CHARGE;"),
+                "★体内只有 return（在这里再判一次'是否穿戴' = 第二处真相，且会把 TC 那条恒假 tooltip 伪装成我们处理过）");
+            SimpleAssert.eq(0, countCodeLinesIn(runic, "isWorn"),
+                "★仓内不自建'是否穿戴'判据（计入与否由 TC 决定，自建就是两处真相）");
+            SimpleAssert.eq(0, countCodeLinesIn(runic, "extends "),
+                "★mixin 类不继承任何东西（只补接口与一个方法，★不动口袋的 Item 血统）");
+        }
+        SimpleAssert.eq(0, countMainJavaCodeLinesMatching("RUNIC_CHARGE"),
+            "★src/main/java 全树 RUNIC_CHARGE 代码位恰 0（常驻面连那个读数都不持有 ⇒ 显示面复用无处可长）");
+        // ---- ③ 槽型 ----
+        SimpleAssert.eq(1, countCodeLinesIn(item, "return BaubleType.UNIVERSAL;"), "★槽型 = UNIVERSAL");
+        SimpleAssert.eq(0, countCodeLinesIn(item, "BaubleType.RING"),
+            "★不给 RING（仓内在册七枚指环已经占着戒指格 ⇒ 给 RING 就是让口袋与它们互相挤槽）");
+        // ---- ④ TC 引用面：旧的 import 门一字未放宽，再加一条认得全部五个位置的类型引用门 ----
+        SimpleAssert.eq(0, countCodeLinesIn(item, "import thaumcraft"),
+            "★本文件零 import thaumcraft（旧的「TaumBridge 之外 import 恒 0」那条门读数不变 ⇒ 本片没有靠放宽它过关）");
+        SimpleAssert.eq(0, countTaumImportsOutsideBridge(),
+            "★整棵 src/main/java 里 TaumBridge 之外的 import thaumcraft 仍恰 0（既有断言原样成立）");
+        // ★阳性对照（先证明检法认得那个形状，下面那条 0 才是读数而不是空转）：S11 的缺陷正是从
+        //   implements 位进来的，而旧门（只看 ^import 行）对它<b>零命中</b>。
+        SimpleAssert.eq(1,
+            countCodeLinesIn(java.util.Arrays.asList("public class Foo implements thaumcraft.api.IRunicArmor {"),
+                "thaumcraft."),
+            "★阳性对照一：检法必须认得 implements 位的全限定名（不认得 ⇒ ④ 那条 0 是空转读数）");
+        SimpleAssert.that(isTaumTypeReferenceLine("    private thaumcraft.api.IRunicArmor probe;"),
+            "★阳性对照二：同一条谓词也认得字段类型位 ⇒ 五类位置共用一条式子，不是逐行打补丁");
+        SimpleAssert.that(
+            isTaumTypeReferenceLine("@Ann(\"x\") public class Bar implements thaumcraft.api.IRunicArmor {"),
+            "★阳性对照三（混合行）：字面量在前、类型引用在后仍必须命中 ⇒ ★排除字面量不许顺手把整行放过"
+                + "（写成「行内有引号就算干净」的门能被一个注解绕穿，而 implements 位恰恰是本案的漏点）");
+        SimpleAssert.that(
+            !isTaumTypeReferenceLine("    private static final String FLAG = \"thaumcraft.api.aspects.Aspect\";"),
+            "★反向对照：字符串字面量里的 FQN <b>不算</b>类型引用（常量池里进的是 String 不是 Class ⇒ "
+                + "TaumCompat 的双哨兵正是这个形状；★排除它是为了不把反射读成越线，不是为了让门变绿）");
+        SimpleAssert.eq(0, countMainJavaTaumTypeRefsOutsideBridge(),
+            "★TC 缺席不崩的离线读数：src/main/java（TaumBridge 之外）的 TC <b>类型引用</b>恰 0 ⇒ "
+                + "常驻面没有任何一个类在类型层次 / 签名 / 字段上要求 TC 在场");
+        // ---- ⑤ 注册面：条件清单恰 1、无条件清单恰 0（★这一格写错，①② 全绿也照样崩）----
+        final java.util.List<String> loader = sourceLinesOrNull(R96_S11_THAUM_LOADER);
+        if (loader == null) {
+            System.out.println("[NOTE] 读不到 GtitThaumLateMixinLoader.java ⇒ 施加条件半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(1, countCodeLinesIn(loader, "\"thaum.MixinItemNekoDimensionPocket_RunicArmor\""),
+                "★护盾 mixin 在 TC 条件清单里恰 1（读到 0 ⇒ TC 在场时那 +20 静默不生效 = 绿≠有效）");
+        }
+        final java.util.List<String> early = sourceLinesOrNull(R96_S11_EARLY_MIXIN_JSON);
+        if (early == null) {
+            System.out.println("[NOTE] 读不到 mixins.gtit.json ⇒ 无条件清单那一半【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(0, countCodeLinesIn(early, "MixinItemNekoDimensionPocket_RunicArmor"),
+                "★★那枚 mixin <b>不在</b> mixins.gtit.json 里：那份配置被 jar manifest 无条件施加 ⇒ "
+                    + "写进去等于「TC 缺席时也注入那个接口」= 原缺陷原地复发（成因从 implements 换成注入器）");
+        }
+        // ---- ⑥ 服务端那条腿的注册点（挂错总线 = 静默失效，所以也钉这里）----
+        final java.util.List<String> common = sourceLinesOrNull(R96_S11_COMMON_PROXY);
+        if (common == null) {
+            System.out.println("[NOTE] 读不到 main/CommonProxy.java ⇒ 注册半边【未验】");
+        } else {
+            SimpleAssert.eq(1,
+                countCodeLinesIn(common, "net.minecraftforge.common.MinecraftForge.EVENT_BUS"),
+                "★PocketWornTapHandler 挂在 <b>Forge</b> 总线（PlayerInteractEvent 不住 FML 总线 ⇒ 挂错就是静默不响应）");
+            SimpleAssert.eq(1,
+                countCodeLinesIn(common, "PocketWornTapHandler.INSTANCE"), "★注册点恰一处（第二处 = 同一事件跑两遍抽液）");
+        }
+    }
+
+    /**
+     * ★R96 S11-fix：某一行是否<b>把 TC 的类型当类型用</b> —— 剥掉注释行，再把<b>成对引号整段抹掉</b>
+     * 之后看还剩不剩 {@code thaumcraft.}。剩下的那种（{@code implements thaumcraft.x.Y}、
+     * {@code private thaumcraft.x.Y f;}、签名/返回/局部变量）才是类型引用；只剩字符串字面量的那种
+     * 进常量池的是 String 而非 Class 符号 ⇒ 不构成运行期类型依赖（{@code TaumCompat} 的双哨兵就是这个形状）。
+     * <p>
+     * ★为什么要"抹掉字面量"而不是"行内有引号就放过"：后者会把
+     * {@code @Ann("x") class Bar implements thaumcraft.api.IRunicArmor} 这类混合行一起放过——
+     * 而那正是本判据要抓的形状，所以 {@code wearable_mount_is_optional_universal_and_honest}
+     * 里为它单独立了一条阳性对照。
+     * <p>
+     * ★与 {@code verify-pocket.sh} 的 ★R96-S11-fix 门 F-1 共用同一条判据（两处同判据、各带自己的
+     * 阳性对照 ⇒ 不可能一边假绿）。旧门只看 {@code ^import thaumcraft}，对 {@code implements} /
+     * 字段类型 / 方法签名 / 返回类型 / 局部变量<b>五类位置全盲</b> —— S11 那个「TC 缺席即整模起不来」
+     * 的缺陷正是从这一格里漏过去的，所以本谓词的第一条阳性对照必须喂 {@code implements} 位那一行。
+     */
+    private static boolean isTaumTypeReferenceLine(String line) {
+        if (isCommentLine(line) || !line.contains("thaumcraft.")) {
+            return false;
+        }
+        return line.replaceAll("\"[^\"]*\"", "")
+            .contains("thaumcraft.");
+    }
+
+    /**
+     * ★R96 S11-fix：扫整棵 {@code src/main/java}，数 {@link #isTaumTypeReferenceLine(String)} 命中的代码行。
+     * ★唯一例外是 {@code crossmod/taum/TaumBridge.java}（在册的桥，只经 {@code Class.forName} 装配 ⇒
+     * 常驻面不静态引用它；与既有 import 门同一例外口径，★不是本片新开的口子）。
+     * 读不到树返回 {@code -1}（调用方按"未验"处理，不算通过——与 {@link #countTaumImportsOutsideBridge()} 同口径）。
+     */
+    private static int countMainJavaTaumTypeRefsOutsideBridge() {
+        final java.nio.file.Path base = repoRootOrNull();
+        if (base == null) {
+            return -1;
+        }
+        final java.nio.file.Path root = base.resolve("src/main/java");
+        if (!java.nio.file.Files.isDirectory(root)) {
+            return -1;
+        }
+        int hits = 0;
+        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(root)) {
+            final java.util.Iterator<java.nio.file.Path> it = walk.iterator();
+            while (it.hasNext()) {
+                final java.nio.file.Path file = it.next();
+                final String name = file.getFileName()
+                    .toString();
+                if (!name.endsWith(".java") || name.equals("TaumBridge.java")) {
+                    continue;
+                }
+                for (String line : java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
+                    if (isTaumTypeReferenceLine(line)) {
+                        hits++;
+                    }
+                }
+            }
+        } catch (java.io.IOException ignored) {
+            return -1;
+        }
+        return hits;
+    }
+
+    /** 区间内第一行<b>非注释</b>代码的下标（★"体首行"这类判据要的是位置，不是存在性）。 */
+    private static int firstCodeLine(java.util.List<String> lines, int from, int to) {
+        for (int i = Math.max(0, from); i < Math.min(lines.size(), to); i++) {
+            if (!isCommentLine(lines.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * ★R96 S11（双宿主桥）：S11 把 {@code onUpdate} 的体段抽成了私有
+     * {@code runPassives(...)}，由 {@code onUpdate}（背包态）与 {@code onWornTick}（穿戴态）<b>共用</b>
+     * ⇒ 旧判据里"onUpdate 体内"这个视野要跟着挪。本 helper 给的是
+     * <b>onUpdate 签名行 → runPassives 方法尾</b>这一段（两法在源文件里相邻）。
+     * <p>
+     * ★<b>只扩不改</b>：区间内每一条断言的原文与期望数值一字未动，扩的只是把搬家后的挂载行纳入视野。
+     * 定位不到 {@code runPassives} ⇒ 直接红（不是退回旧的窄视野），所以"抽取被撤销"与"挂载行被摘"
+     * 这两种形状都不可能假绿。逐跳的双宿主断言在 {@code worn_double_host_bridge_covers_all_passives}。
+     */
+    private static int passiveRegionEnd(java.util.List<String> host, int onUpdateStart) {
+        final int body = methodStart(host, "private void runPassives(ItemStack stack, World world, Entity entity,");
+        SimpleAssert.that(body >= 0,
+            "★R96 S11：定位不到 runPassives ⇒ 双宿主共用的体段不在场（背包与穿戴两侧必有一侧什么都没挂）");
+        SimpleAssert.that(body > onUpdateStart, "★runPassives 必须排在 onUpdate 之后（本 helper 的区间靠这个顺序）");
+        return methodEnd(host, body);
+    }
+
+    /** 同上，给 {@link #methodBodyOf} 那两个调用点用的区间版本。 */
+    private static java.util.List<String> passiveBodyOf(java.util.List<String> host, int onUpdateStart) {
+        return host.subList(onUpdateStart, passiveRegionEnd(host, onUpdateStart));
     }
 
     /** 载体根：固化 MAGE 插件位（off-mask 缺键 ⇒ 默认开）。 */

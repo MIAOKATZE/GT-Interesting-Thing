@@ -383,7 +383,10 @@ gtit.pocket.cap.readout.stored=This filter slot: %1$s filled of %2$s
 # ★R95 S2b (upgrade modules): held.note revalue — the S3 behavior layer widens "main hand only"
 # to "works anywhere in your inventory" (channels and distillation included; chests, baubles and
 # armor slots still stop it). No ASCII digits in values (lang digit ban) — numbers spelled out.
-gtit.pocket.held.note=Keeps working anywhere in your inventory (channels and distillation included); stops in chests, bauble slots or armor slots
+# ★★R96 S11 (wearable) revalue again: a bauble slot keeps it running from today on (onWornTick and
+# onUpdate share one runPassives body), so "stops in bauble slots" is now false and had to go.
+# Still stops: chests and armor slots (the armor host onArmorTick is not implemented here).
+gtit.pocket.held.note=Keeps working anywhere in your inventory (channels and distillation included); wearing it in a bauble slot keeps working too (a key opens it, and sneak plus empty-hand right click still draws fluid); stops in chests and armor slots
 # ---- ★R95 S2b new keys (13): five module item names + five effect tooltips + upgrade-slot hint + always-on channel + distill cadence ----
 item.neko_pocket_upgrade_capacity.name=Capacity Upgrade Module
 item.neko_pocket_upgrade_stack.name=Stacking Upgrade Module
@@ -476,3 +479,7 @@ gtit.pocket.world.draw.machine_locked=That machine's fluid output is disabled, u
 gtit.pocket.world.draw.machine_empty=That machine holds no fluid to draw
 gtit.pocket.world.draw.machine_empty_or_locked=That machine yields no fluid: it is empty, or its fluid output is disabled
 gtit.pocket.world.draw.pocket_full=The pocket cannot take this fluid: its tanks are full or hold another fluid
+# ---- ★R96 S11 new keys (2): label + category of the bauble-pocket key. Registered through vanilla
+#      options/keybindings so it is rebindable; no config file of our own, no second source of truth.
+key.gtit.pocket.baubles=Open the worn dimensional pocket
+key.categories.gtit=GT Interesting Thing

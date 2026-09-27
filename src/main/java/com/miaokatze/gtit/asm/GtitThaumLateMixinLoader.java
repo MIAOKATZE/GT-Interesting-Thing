@@ -61,7 +61,7 @@ public class GtitThaumLateMixinLoader implements ILateMixinLoader {
     /**
      * 仅在 TC 存在时施加的 mixin 列表（相对 json 的 {@code package} 的点号子包名）。
      * <p>
-     * 五条腿，成对关系是硬约束，不要单独摘：
+     * ★六条腿（前五条成对关系是硬约束，不要单独摘）：
      * <ul>
      * <li>{@code thaum.MixinTileWandPedestal_PocketIntake}（P1 {@code isItemValidForSlot} +
      * P2 {@code canInsertItem}）与 {@code thaum.MixinTileWandPedestal_PocketCharge}（P3 充能）：
@@ -70,7 +70,15 @@ public class GtitThaumLateMixinLoader implements ILateMixinLoader {
      * {@code thaum.MixinEntityAspectOrb_PocketAbsorb}（P5）：只做 P4 会让
      * {@code EntityAspectOrb.java:200} 那条唯一的 {@code checkcast ItemWandCasting} 在玩家走近球时抛
      * CCE，两枚必须同轮；</li>
-     * <li>{@code thaum.MixinEventHandlerRunic_PocketShield}：符文护盾回充的口袋掏账腿（G-1 扩权项）。</li>
+     * <li>{@code thaum.MixinEventHandlerRunic_PocketShield}：符文护盾回充的口袋掏账腿（G-1 扩权项）；</li>
+     * <li>★{@code thaum.MixinItemNekoDimensionPocket_RunicArmor}（R96 S11-fix）：把 {@code IRunicArmor}
+     * <b>注入</b>常驻口袋 Item 类，替掉 S11 原先写在 {@code implements} 位上的那一半。
+     * ★★★<b>本枚进的是这份由 LateMixin 条件施加的清单，★不是 {@code mixins.gtit.json}</b>：
+     * 后者被 jar manifest 无条件施加 ⇒ 写进去等于「TC 缺席时也注入那个接口」，
+     * 常驻类照样在类加载期解析不出该接口 ⇒ 整个 mod 起不来（＝ S11 那个阻塞缺陷原地复发，
+     * 只是成因从我们的 {@code implements} 换成注入器）。前五枚的目标都是 TC 自己的类
+     * （「目标不在场 ⇒ 整枚不施加」天然成立），只有本枚的目标是本仓常驻类 ⇒ 这条在场判据
+     * 从「省一次失败日志」升格成「唯一的正确性来源」。</li>
      * </ul>
      */
     private static final List<String> THAUM_MIXINS = Collections.unmodifiableList(
@@ -79,7 +87,8 @@ public class GtitThaumLateMixinLoader implements ILateMixinLoader {
             "thaum.MixinTileWandPedestal_PocketCharge",
             "thaum.MixinInventoryUtils_PocketHotbar",
             "thaum.MixinEntityAspectOrb_PocketAbsorb",
-            "thaum.MixinEventHandlerRunic_PocketShield"));
+            "thaum.MixinEventHandlerRunic_PocketShield",
+            "thaum.MixinItemNekoDimensionPocket_RunicArmor"));
 
     @Override
     public String getMixinConfig() {
