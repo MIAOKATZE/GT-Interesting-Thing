@@ -432,7 +432,7 @@ gtit.pocket.magnet.clear.hint=抹掉全部条目，★但不改三态（切到�
 gtit.pocket.magnet.cell.empty=本格是空格：右键没有条目可摘
 gtit.pocket.magnet.cell.remove=右键：把本格从名单里摘掉
 gtit.pocket.magnet.cell.number=名单第 %d 格
-gtit.pocket.magnet.gesture=左键持物品点格 = 记这一件；从 NEI 拖进来 = 同样只记录，★一件都不会少
+gtit.pocket.magnet.gesture=左键持物品点格 = 记这一件（不会消耗手上的物品）；从 NEI 拖进来 = 同样只记录，★一件都不会少
 gtit.pocket.magnet.refuse.no_item=手上没有物品，这一格记不了东西
 gtit.pocket.magnet.refuse.wrong_button=只有左键会记进名单（右键是摘掉本格）
 gtit.pocket.magnet.refuse.locked=还没固化磁力升级，名单暂时不能编辑

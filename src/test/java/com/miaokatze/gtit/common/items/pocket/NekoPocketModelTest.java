@@ -636,6 +636,19 @@ public class NekoPocketModelTest {
         // @Mixin（PocketVisSupport 曾以普通类住进声明包 ⇒ defined mixin package 守卫令其永不可加载，
         // v1.8.41 在产地雷；本条把「helper 再落进 mixin 包」钉成必红）。
         cases.put("mixin_package_tree_has_no_plain_classes", NekoPocketModelTest::mixinPackageTreeHasNoPlainClasses);
+        // ---- ★R97 S3（需求④：幽灵物品六连修的离线验收面）三条：R1 位表并入 / R3 探测不吃意图 /
+        // R4 预算 32,000。R2/R5/R6 的差分-强推-镜像链需要 MUI2 容器与同步管理器（纯 JVM 构造不出），
+        // 它们的静态形状由各用例的源码机检半边钉住（detectAndSendChanges 覆写 / 拒收记账与消费 /
+        // SYNC_UPGRADE_ACTIVE 镜像接线），运行时观感挂检查表 §二十一。
+        cases.put(
+            "ghost_client_flags_merge_survives_instance_swap",
+            NekoPocketModelTest::ghostClientFlagsMergeSurvivesInstanceSwap);
+        cases.put(
+            "ghost_placement_intent_survives_temp_null_probe",
+            NekoPocketModelTest::ghostPlacementIntentSurvivesTempNullProbe);
+        cases.put(
+            "ghost_blob_budget_32k_realistic_and_tailstop",
+            NekoPocketModelTest::ghostBlobBudget32kRealisticAndTailStop);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -815,7 +828,7 @@ public class NekoPocketModelTest {
         // ---- ③ 条数差可算：读数是"权威条数 − 解析到的条数" ----
         SimpleAssert
             .eq(filters.size() - parsedBack.size(), 2, "未同步条数 = 3 − 1 = 2（★ghost.not_synced 那行文案用的就是这个差，不得另造第二个数）");
-        // ---- 预算本身与上游硬顶的关系（钉住"为什么是 24,000"）----
+        // ---- 预算本身与上游硬顶的关系（★R97 R4 起 32,000：现实/病理两个半边见 ghostBlobBudget32kRealisticAndTailStop）----
         SimpleAssert.that(
             PocketConstants.GHOST_BLOB_MAX_CHARS > 0 && PocketConstants.GHOST_BLOB_MAX_CHARS <= 32_693,
             "★预算必须落在 (0, 32693] 里——上游 NetworkUtils 的硬顶是 Short.MAX_VALUE - 74 = 32,693 字节，"
@@ -834,6 +847,257 @@ public class NekoPocketModelTest {
         final char[] buffer = new char[Math.max(0, times)];
         java.util.Arrays.fill(buffer, c);
         return new String(buffer);
+    }
+
+    // ================================================================= ★R97 S3 批（需求④：幽灵物品六连修）
+    //
+    // 六连修里 R1/R3/R4 的<b>本体</b>能在纯 JVM 里跑（PocketFilterConfig / PocketInventory 的数据面）；
+    // R2/R5/R6 的运行时链（Container 钩子 / MUI2 同步管理器）零依赖套件构造不出 ⇒ 它们的判据落在
+    // 「行为可跑的半边」（R5 记账就在 PocketInventory 实例上）+「源码机检的接线半边」
+    // （detectAndSendChanges 覆写 / forceSyncSlot 消费 / SYNC_UPGRADE_ACTIVE 镜像接线），
+    // 运行时观感（L 放入游标扣减 / 拒收无残留 / 堆叠预测档）挂检查表 §二十一。
+
+    /**
+     * ★★<b>R97 R1：ghost blob 换实例不得再抹掉客户端 attr/P 位表</b>（用户报④「L 锁定格放进那一种
+     * 出幽灵物品」的正身）。双源场景：载荷来自 SYNC_GHOST blob、attr/P 来自 SYNC_GHOST_FLAGS 镜像，
+     * 旧形状 {@code replaceFilters} 每换一次实例就把预测读的那份位表抹成 NONE ⇒ 服务端按 MEMORY 收、
+     * 客户端按 NONE 预测拒 ⇒ 满栈幽灵游标（vanilla 救援被 MUI2 恒返 null 杀死，见 NekoPocketContainer
+     * 的 R2 取证）。本用例钉：① 病灶正控（blob 本来就不带 attr）；② 并入后双格属性存活；
+     * ③ 预测链（allowsPlayerPlacement）读到并入后的真值；④ 面板两条接线形状（applyGhostView 先并后换、
+     * applyGhostFlagsView 同步推进预测那份）；⑤ R6 的升级位图镜像接线（同一批「客户端读侧换同步镜像」）。
+     */
+    private static void ghostClientFlagsMergeSurvivesInstanceSwap() {
+        final PocketFilterConfig.Kind item = PocketFilterConfig.Kind.ITEM;
+        // ---- ① 双源场景：服务端真值 = 2 条载荷声明 + 3 格属性（MEMORY 带载荷 / 纯 P / pending-L 无载荷）----
+        final PocketFilterConfig truth = new PocketFilterConfig();
+        SimpleAssert.that(truth.add(2, new PocketFilterConfig.ItemFilter(2, 2621, 0, "")), "第 2 格：MEMORY + 载荷");
+        SimpleAssert.that(truth.add(5, new PocketFilterConfig.ItemFilter(5, 2622, 0, "")), "第 5 格：载荷 + 纯 P");
+        truth.setAttr(item, 2, PocketConstants.GHOST_ATTR_MEMORY);
+        truth.setUploadBlocked(item, 5, true);
+        truth.setAttr(item, 7, PocketConstants.GHOST_ATTR_MEMORY);
+        // 客户端 clientGhostFlags 镜像 = SYNC_GHOST_FLAGS 的解码结果（与 applyGhostFlagsView 同一条链）
+        final PocketFilterConfig clientFlags = new PocketFilterConfig();
+        SimpleAssert.eq(
+            3,
+            PocketGhostRequest.applyFlagsBlob(PocketGhostRequest.flagsBlobOf(truth), clientFlags),
+            "镜像解码 3 条全落（R91-a 那对编解码的既有回归，本条只当前置）");
+        // ---- ② 病灶正控 + 并入 ----
+        final PocketFilterConfig parsed = NekoPocketPanel.parseGhostBlob(NekoPocketPanel.ghostBlobOf(truth));
+        SimpleAssert.eq(2, parsed.size(), "blob 只带载荷（2 条），不产属性");
+        SimpleAssert.eq(
+            PocketConstants.GHOST_ATTR_NONE,
+            parsed.attrAt(item, 2),
+            "★病灶正控：重建实例的位表为空（防恒真假绿——若 blob 哪天自带了 attr，本用例要红着重审）");
+        SimpleAssert.eq(Boolean.FALSE, parsed.uploadBlockedAt(item, 5), "病灶正控（P 位同样不在 blob 里）");
+        // R1 的并入本体：与 applyGhostView 同一对编解码函数（flagsBlobOf → applyFlagsBlob）
+        PocketGhostRequest.applyFlagsBlob(PocketGhostRequest.flagsBlobOf(clientFlags), parsed);
+        SimpleAssert.eq(
+            PocketConstants.GHOST_ATTR_MEMORY,
+            parsed.attrAt(item, 2),
+            "★并入后 MEMORY 存活（replaceFilters 换实例不再抹 attr）");
+        SimpleAssert.that(parsed.uploadBlockedAt(item, 5), "★P 位存活（正交位一并并入）");
+        SimpleAssert.eq(PocketConstants.GHOST_ATTR_MEMORY, parsed.attrAt(item, 7), "★pending-L 格（无载荷）也存活");
+        // ---- ③ 预测链读到并入后的真值：客户端 isItemValid 的 L 腿与服务端同判 ----
+        SimpleAssert.that(
+            parsed.allowsPlayerPlacement(item, 2, PocketFilterConfig.itemKey(2621, 0, "")),
+            "★同键放置按 MEMORY 放行（预测与执法同源 ⇒ 不再「服务端收、客户端拒」）");
+        SimpleAssert
+            .that(!parsed.allowsPlayerPlacement(item, 2, PocketFilterConfig.itemKey(2622, 0, "")), "异键仍拒（L 只放那一种）");
+        SimpleAssert.that(
+            parsed.allowsPlayerPlacement(item, 7, PocketFilterConfig.itemKey(2621, 0, "")),
+            "pending 格不限制（放第一件顺手定档的前置）");
+        final PocketInventory mirror = PocketInventory.readFrom(null);
+        mirror.replaceFilters(parsed);
+        SimpleAssert.eq(
+            PocketConstants.GHOST_ATTR_MEMORY,
+            mirror.filters()
+                .attrAt(item, 2),
+            "★replaceFilters 之后 filters().attrAt 仍在（客户端 isItemValid 预测读的就是这份）");
+        // ---- ④ 接线形状：面板两条应用点都并入（blob 先并后换；属性包到时同步推进预测那份）----
+        final java.util.List<String> panel = guiPocketSource("NekoPocketPanel.java");
+        if (panel == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel.java ⇒ R1 的接线半边【未验】（★不是通过）");
+            return;
+        }
+        final int view = methodStart(panel, "private void applyGhostView(String blob) {");
+        SimpleAssert.that(view >= 0, "★按签名定位 applyGhostView");
+        final int viewEnd = methodEnd(panel, view);
+        final int mergeAt = firstCodeLineWith(panel, view, viewEnd, "applyFlagsBlob(");
+        final int replaceAt = firstCodeLineWith(panel, view, viewEnd, "replaceFilters(");
+        SimpleAssert
+            .that(mergeAt >= 0 && replaceAt > mergeAt, "★applyGhostView 里位表并入必须排在 replaceFilters 之前（换实例前并入才不会被自己抹掉）");
+        final int flagsView = methodStart(panel, "private void applyGhostFlagsView(String blob) {");
+        SimpleAssert.that(flagsView >= 0, "★按签名定位 applyGhostFlagsView");
+        SimpleAssert.eq(
+            2,
+            countRegionCode(panel, flagsView, methodEnd(panel, flagsView), "applyFlagsBlob("),
+            "★属性镜像更新要写两处：clientGhostFlags 镜像本体 + 预测读的 inventory.filters()（先清后写 ⇒ 撤属性两头都掉）");
+        // ---- ⑤ R6 接线形状：STACK 探针客户端读侧换 SYNC_UPGRADE_ACTIVE 镜像 ----
+        SimpleAssert
+            .that(countCodeLinesIn(panel, "SYNC_UPGRADE_ACTIVE") >= 2, "★R6：常量定义 + 注册点都在（pocket.upgrade.active）");
+        final int ctor = methodStart(
+            panel,
+            "private NekoPocketPanel(PlayerInventoryGuiData data, PanelSyncManager syncManager, UISettings settings) {");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(panel, ctor, methodEnd(panel, ctor), "setClientStackMirror("),
+            "★R6：客户端镜像注入恰 1 处（且不占 setUpgradeProbes 那个「恰 1」的单点口径）");
+        final int stackRead = methodStart(panel, "public boolean storageStackUpgraded() {");
+        SimpleAssert.that(
+            regionContainsCode(panel, stackRead, methodEnd(panel, stackRead), "clientUpgradeActive("),
+            "★R6：面板读口客户端腿走镜像（服务端腿仍 isActive 现读活载体）");
+        final java.util.List<String> inventorySrc = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketInventory.java");
+        if (inventorySrc != null) {
+            // ★判据是「javadoc 点名」⇒ 用全文正则（javadoc 是注释行，countCodeLinesIn 会剥掉它）
+            SimpleAssert.that(
+                textMatches(inventorySrc, "SYNC_UPGRADE_ACTIVE"),
+                "★R6：PocketInventory#storageStackUpgraded 的 javadoc 点名同步镜像（判据：客户端读侧走同步值）");
+        }
+    }
+
+    /**
+     * ★★<b>R97 R3：temp-null 探测写不吃掉放置意图</b>（实机「放置即配置」失效的根因）+ <b>R5：拒收记账
+     * 读一次即清</b>。MUI2 {@code SlotItemHandler#isItemValid} 的探测序列是
+     * {@code isItemValid → setStackInSlot(null) → insertItem(simulate) → setStackInSlot(还原)}，而
+     * {@code ItemStackHandler#setStackInSlot} 对 null→null 也无条件回调 declare ⇒ 旧形状顶部无条件清意图
+     * 让探测那一写把意图吃掉（JVM 用例直调 handler 绕过探测，所以 R92-④ 套件一直是绿的）。
+     * 本用例按<b>真实探测序列</b>的形状跑：意图必须在 temp-null 之后仍存活，真放置那一步才落档。
+     */
+    private static void ghostPlacementIntentSurvivesTempNullProbe() {
+        final PocketFilterConfig.Kind item = PocketFilterConfig.Kind.ITEM;
+        final PocketInventory inv = PocketInventory.readFrom(null);
+        inv.filters()
+            .setAttr(item, 3, PocketConstants.GHOST_ATTR_MEMORY);
+        // ---- ① 探测序列（空格形态）：预检登记 → temp-null 清槽 → 还原写（还原的还是 null）----
+        SimpleAssert.that(
+            inv.storage()
+                .isItemValid(3, stack(3)),
+            "pending-L 格预检放行（顺带登记意图）");
+        inv.storage()
+            .setStackInSlot(3, null);
+        inv.storage()
+            .setStackInSlot(3, null);
+        // ---- ② 真放置（putStack → setStackInSlot 那一跳）：意图仍在 ⇒ 落档 ----
+        inv.storage()
+            .setStackInSlot(3, stack(3));
+        final PocketFilterConfig.Filter declared = inv.filters()
+            .at(item, 3);
+        SimpleAssert.that(declared != null, "★探测没吃掉意图 ⇒ 真放置落档（实机「放置即配置」恢复）");
+        SimpleAssert.eq(
+            PocketAeChannelOps.contentKey(stack(3)),
+            declared == null ? "" : declared.key(),
+            "★落档键 = 放进去那一件的载荷键（服务端自算，不吃客户端输入）");
+        // ---- ③ 意图一次性 + P2：落档后再换放别件 ⇒ 声明一个字都不变 ----
+        inv.storage()
+            .setStackInSlot(3, stackDistill(1, 9));
+        SimpleAssert.eq(
+            PocketAeChannelOps.contentKey(stack(3)),
+            inv.filters()
+                .at(item, 3) == null ? ""
+                    : inv.filters()
+                        .at(item, 3)
+                        .key(),
+            "★已定档格换放异类不改配置（且不再登记新意图）");
+        // ---- ④ R5：拒收记账读一次即清；放行不记账 ----
+        inv.filters()
+            .setAttr(item, 4, PocketConstants.GHOST_ATTR_MEMORY);
+        inv.storage()
+            .isItemValid(4, stackDistill(1, 9));
+        inv.storage()
+            .setStackInSlot(4, stackDistill(1, 9));
+        SimpleAssert.that(
+            inv.filters()
+                .at(item, 4) != null,
+            "第 4 格同样定档（已带载荷 ⇒ L 开始执法）");
+        SimpleAssert.eq(-1, inv.consumeRejectedPlacementSlot(), "放行/落档路径不记账（强推只在真拒收的那一拍发生）");
+        SimpleAssert.that(
+            !inv.storage()
+                .isItemValid(4, stack(1)),
+            "★L 已定档 ⇒ 异键拒收（客户端镜像缺声明时的反向幽灵入口）");
+        SimpleAssert.eq(4, inv.consumeRejectedPlacementSlot(), "★R5：拒收记账读到被点槽号（forceSyncSlot 的目标）");
+        SimpleAssert.eq(-1, inv.consumeRejectedPlacementSlot(), "★读一次即清（第二次 = -1 ⇒ 强推不重复、不陈旧触发）");
+        // ---- ⑤ R2/R5 的容器钩子接线形状（运行时链纯 JVM 构造不出 ⇒ 钉源码）----
+        final java.util.List<String> container = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketContainer.java");
+        if (container == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketContainer.java ⇒ R2/R5 的接线半边【未验】（★不是通过）");
+            return;
+        }
+        final int det = methodStart(container, "public void detectAndSendChanges() {");
+        SimpleAssert.that(det >= 0, "★R2：detectAndSendChanges 覆写在场（vanilla 每 tick + MUI2 点击收尾都经过它）");
+        final int detEnd = methodEnd(container, det);
+        SimpleAssert.that(
+            regionContainsCode(container, det, detEnd, "super.detectAndSendChanges()"),
+            "super 先行（@MustBeInvokedByOverriders）");
+        SimpleAssert.that(regionContainsCode(container, det, detEnd, "isClient()"), "客户端支 no-op 早退在钩子本体里");
+        final int push = methodStart(container, "private void pushCursorDiff() {");
+        SimpleAssert.that(push >= 0, "★游标差分腿在场");
+        final int pushEnd = methodEnd(container, push);
+        SimpleAssert.that(
+            regionContainsCode(container, push, pushEnd, "setCursorItem("),
+            "★变更才经 syncManager.setCursorItem 推 S2C（R88 B1 判例的封装口）");
+        SimpleAssert
+            .that(regionContainsCode(container, push, pushEnd, "copy()"), "★缓存存副本（活引用跟着 splitStack 原地变 ⇒ 差分失明，R12 同族）");
+        final int force = methodStart(container, "private void forceSyncRejectedStorageSlot() {");
+        SimpleAssert.that(force >= 0, "★拒收强推腿在场");
+        final int forceEnd = methodEnd(container, force);
+        SimpleAssert.that(
+            regionContainsCode(container, force, forceEnd, "consumeRejectedPlacementSlot("),
+            "★消费 PocketInventory 的拒收记账");
+        SimpleAssert.that(
+            regionContainsCode(container, force, forceEnd, "forceSyncSlot("),
+            "★强推走 PocketSlots.forceSyncSlot 封装（isInitialized 挡装配前）");
+    }
+
+    /**
+     * ★★<b>R97 R4：blob 预算 24,000 → 32,000 的两个半边</b>——现实规模收进全量、病理规模照旧 tail-stop。
+     * <p>
+     * 现实规模锚：135 格全声明、每格带 180 字符 NBT 的「重配置档」（≈27k 字符）——24k 时代这个形状会被
+     * 尾部截断（玩家读作「后面的格没虚化、放进去又弹回来」），32k 起全量到达。病理锚：单条肥 NBT
+     * （GT 工具箱一类）依旧装不下 ⇒ tail-stop + not_synced 读数两条语义<b>逐字不变</b>。
+     */
+    private static void ghostBlobBudget32kRealisticAndTailStop() {
+        SimpleAssert.eq(
+            32_000,
+            PocketConstants.GHOST_BLOB_MAX_CHARS,
+            "★R4：预算钉 32,000（上游 writeStringSafe 硬顶 Short.MAX_VALUE-74 = 32,693，余 693 字节帧余量）");
+        // ---- ① 现实规模全量：135 格 × 180 字符 NBT（≈27k）在预算内一条不丢 ----
+        final PocketFilterConfig realistic = new PocketFilterConfig();
+        for (int slot = 0; slot < PocketConstants.GHOST_ITEM_SLOT_LIMIT; slot++) {
+            SimpleAssert.that(
+                realistic.add(slot, new PocketFilterConfig.ItemFilter(slot, 2621, 0, repeated('n', 180))),
+                "现实档第 " + slot + " 格声明");
+        }
+        final String full = NekoPocketPanel.ghostBlobOf(realistic);
+        SimpleAssert.that(
+            full.length() > 24_000 && full.length() <= PocketConstants.GHOST_BLOB_MAX_CHARS,
+            "★现实规模整串落在 (24,000, 32,000]（读到 " + full.length() + "）——24k 时代必截断、32k 全量，正是 R4 改值的动机与边界");
+        final int parsedCount = NekoPocketPanel.parseGhostBlob(full)
+            .size();
+        SimpleAssert.eq(PocketConstants.GHOST_ITEM_SLOT_LIMIT, parsedCount, "★一条不丢（全量到达客户端镜像）");
+        SimpleAssert.eq(realistic.size() - parsedCount, 0, "★not_synced 读数 = 权威 − 解析 = 0（现实档零截断）");
+        // ---- ② 病理规模照旧 tail-stop：一条肥 NBT 顶爆预算 ⇒ 尾部整条不写、已写部分逐字节不变 ----
+        final PocketFilterConfig pathological = new PocketFilterConfig();
+        final PocketFilterConfig.Filter head = new PocketFilterConfig.ItemFilter(0, 2621, 0, repeated('a', 20));
+        final PocketFilterConfig.Filter fat = new PocketFilterConfig.ItemFilter(1, 2622, 0, repeated('f', 31_990));
+        final PocketFilterConfig.Filter tail = new PocketFilterConfig.ItemFilter(2, 2623, 0, repeated('z', 20));
+        SimpleAssert.that(pathological.add(0, head), "病理档：短头");
+        SimpleAssert.that(pathological.add(1, fat), "病理档：肥 NBT 一条顶爆");
+        SimpleAssert.that(pathological.add(2, tail), "病理档：短尾");
+        final String trimmed = NekoPocketPanel.ghostBlobOf(pathological);
+        SimpleAssert
+            .that(trimmed.length() <= PocketConstants.GHOST_BLOB_MAX_CHARS, "病理档收在预算内（读到 " + trimmed.length() + "）");
+        final int trimmedCount = NekoPocketPanel.parseGhostBlob(trimmed)
+            .size();
+        SimpleAssert.eq(1, trimmedCount, "★肥条目装不下 ⇒ 连同它的 ';' 整条不写（不是截半条）");
+        SimpleAssert.eq(pathological.size() - trimmedCount, 2, "★not_synced 读数 = 3 − 1 = 2（读数语义逐字不变）");
+        final PocketFilterConfig onlyHead = new PocketFilterConfig();
+        SimpleAssert.that(onlyHead.add(0, head), "对照组：只声明第一条");
+        SimpleAssert.eq(
+            NekoPocketPanel.ghostBlobOf(onlyHead, Integer.MAX_VALUE),
+            trimmed,
+            "★已写部分与「无预算」逐字节相同（解析器与旧客户端零改动 ⇒ 兼容性逐字不动）");
     }
 
     // ================================================================== S-U7（R80）批次
@@ -9087,9 +9351,10 @@ public class NekoPocketModelTest {
             .that(countCodeLinesIn(panel, "ghostAttrAt(") >= 4, "★三组格件各推一次 + accessor 定义（少于 4 = 有一组格件收不到 attr）");
         SimpleAssert.that(countCodeLinesIn(panel, "ghostUploadBlockedAt(") >= 4, "★同上：P 也要三组都推到");
         SimpleAssert.eq(
-            4,
+            6,
             countCodeLinesIn(panel, "clientGhostFlags"),
-            "★客户端镜像恰四个代码位：字段声明 + 整体覆盖 + 两个 accessor（多一处 = 有第二根通道在抹它）");
+            "★客户端镜像恰六个代码位（★R97 R1 前为 4）：字段声明 + 覆盖两处（镜像本体 + 预测读的 inventory.filters()）"
+                + " + applyGhostView 并入一处 + 两个 accessor（多一处 = 有第二根通道在抹它）");
         SimpleAssert.that(
             textMatches(panel, "PocketGhostRequest\\.applyFlagsBlob\\(\\s*blob,\\s*clientGhostFlags\\s*\\)"),
             "★镜像整体覆盖经单源解码口");

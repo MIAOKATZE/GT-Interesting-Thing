@@ -905,8 +905,12 @@ public final class PocketSlots extends PocketIntakeOps {
      * 装配前（{@code isInitialized()} 为假）不能碰：{@code forceSyncItem()} 内部<b>没有</b>
      * {@code checkUpdate()} 那两道 {@code isValid()}/{@code isClient} 守卫，早到会在
      * {@code getSyncManager()} 抛 {@code IllegalStateException}。
+     * <p>
+     * ★R97 R5：可见性从 {@code private} 放宽为包内（语义零变化）——新的消费点是
+     * {@code NekoPocketContainer#detectAndSendChanges} 的拒收强推腿（读 {@code PocketInventory}
+     * 的拒收记账后对被点槽强推），与本类既有两处消费同一条「isInitialized 挡装配前」纪律。
      */
-    private static void forceSyncSlot(ModularSlot slot) {
+    static void forceSyncSlot(ModularSlot slot) {
         if (slot == null || !slot.isInitialized()) {
             return;
         }

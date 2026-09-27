@@ -222,6 +222,18 @@ public final class NekoPocketPanel implements PocketSession {
      * {@code StringSyncValue + apply*} 双端对偶形态（与 {@link #SYNC_ESSENCE} 同一条通道形状）。
      */
     private static final String SYNC_MAGNET = "pocket.magnet.filter";
+    /**
+     * ★★<b>R97 R6</b>：五型升级插件「当前生效」位图的 S2C 载体（一枚 {@code IntSyncValue}，
+     * bit = {@code PocketUpgradeType#ordinal()}，值 = <b>installed 位图 ∧ ¬off-mask</b>）。
+     * <p>
+     * 为什么需要它：客户端的 STACK 探针旧读 {@code carrierStackLive()} = vanilla 槽同步<b>滞后</b>的
+     * 载体 NBT ⇒ 会话中装上堆叠插件后客户端按旧档预测放入量 = 数量级预测差 = 游标数量幽灵（R2 族）。
+     * <b>服务端真值单源不动</b>（{@code PocketUpgradeSwitches#isActive} 现读活载体，执法链零改），
+     * 这枚同步值只是把<b>客户端读侧</b>换成服务端算好的镜像；消费点 =
+     * {@link #clientUpgradeActiveBits}（经 {@code PocketInventory#setClientStackMirror} 接到
+     * {@code storageStackUpgraded()} 的读侧）。不扩 {@code SYNC_MODE}、不开 C2S（客户端只读）。
+     */
+    private static final String SYNC_UPGRADE_ACTIVE = "pocket.upgrade.active";
     /** C2S：所有按钮/选中动作走这一个键，值 = {@code code * ACTION_ARG_BASE + arg}（单包原子，无两值竞态）。 */
     private static final String SYNC_ACTION = "pocket.action";
     /** 动作参数基数（当前最大 arg = 134 格 / 71 格+Shift 位）。 */
@@ -407,6 +419,13 @@ public final class NekoPocketPanel implements PocketSession {
     private final long[] clientTankAmounts = new long[PocketConstants.FLUID_TANK_TOTAL];
     /** ★R95 S5：long 真值同步键前缀（实际键 = 前缀 + tank 号；每 tank 一根）。 */
     private static final String SYNC_TANK_TRUTH_PREFIX = "pocket.tank.truth.";
+    /**
+     * ★★<b>R97 R6：五型「当前生效」位图的客户端镜像</b>（bit = {@code PocketUpgradeType#ordinal()}，
+     * 写者只有 {@code SYNC_UPGRADE_ACTIVE} 的客户端 setter；开屏以 vanilla 已同步的载体档播种
+     * ——与旧读法的开屏值同源，首包到达后即由服务端真值接管）。
+     * 读侧只经 {@link #clientUpgradeActive(PocketUpgradeType)} 这一条小 accessor，不散写位运算。
+     */
+    private int clientUpgradeActiveBits;
     private String bindRowsBlob = "";
     private boolean pullMode;
     private int filterCount;
@@ -494,6 +513,14 @@ public final class NekoPocketPanel implements PocketSession {
         this.inventory.setUpgradeProbes(
             () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY),
             () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK));
+        // ★★<b>R97 R6：客户端 STACK 读侧换同步镜像</b>（服务端保持上面那条活查载体探针 = 执法链零改）。
+        // 播种值与旧读法的开屏值<b>同源</b>（vanilla 已同步到客户端的载体档）⇒ 开屏首帧到
+        // SYNC_UPGRADE_ACTIVE 首包之间读数不回退；之后每次升级位/开关位变化由服务端真值 ≤1 tick 推平。
+        // ★刻意走 setClientStackMirror 而不是二次 setUpgradeProbes（探针注入点是"恰 1 处"的单点口径）。
+        if (syncManager.isClient()) {
+            clientUpgradeActiveBits = liveUpgradeActiveBits();
+            this.inventory.setClientStackMirror(() -> clientUpgradeActive(PocketUpgradeType.STACK));
+        }
         // ★R78③：把"格位归属 + 现有点数"当作两份镜像的<b>起点</b>。双端读的都是同一份口袋 NBT
         // （客户端那一份是 vanilla 同步过来的物品 tag），所以起点天然一致；之后的每一次变化
         // 都由服务端 composeEssenceBlob 覆盖客户端那份 ⇒ 不存在"两端各算各的格序"。
@@ -659,6 +686,14 @@ public final class NekoPocketPanel implements PocketSession {
         syncManager.syncValue(SYNC_MAGNET, new StringSyncValue(this::composeMagnetBlob, this::applyMagnetBlob));
         syncManager
             .syncValue(SYNC_MAGNET_REQUEST, new StringSyncValue(() -> "", this::receiveMagnetRequest).allowC2S());
+        // ★R97 R6：五型「当前生效」位图（installed ∧ ¬off）单枚 S2C——服务端 getter 现读活载体
+        // （真值单源 PocketUpgradeSwitches），客户端 setter 只写镜像。与 SYNC_PROGRESS 同形：
+        // setter 带 isClient 守卫（上游 setValue 的 setSource 默认 true，双端都可能被调一次）。
+        syncManager.syncValue(SYNC_UPGRADE_ACTIVE, new IntSyncValue(this::liveUpgradeActiveBits, value -> {
+            if (syncManager.isClient()) {
+                clientUpgradeActiveBits = value;
+            }
+        }));
     }
 
     /**
@@ -1122,6 +1157,32 @@ public final class NekoPocketPanel implements PocketSession {
     /** CAPACITY 位是否<b>生效</b>（流体条 20M/2G；流体格件的步进/天花板读它）。 */
     boolean capacityUpgradeActiveNow() {
         return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY);
+    }
+
+    /**
+     * ★★<b>R97 R6：五型「当前生效」位图 = installed ∧ ¬off</b>（逐型问 {@code PocketUpgradeSwitches}
+     * 那一<b>条</b>组合谓词真值，不抄第二份位运算）。
+     * <p>
+     * 三个读者：{@code SYNC_UPGRADE_ACTIVE} 的服务端 getter（每拍差分比对，变了才推）、
+     * 客户端镜像的<b>开屏播种</b>（与旧读法的开屏值同源 ⇒ 首帧不回退）、以及
+     * {@code IntSyncValue} 构造期的 cache 初始化（客户端那一跳经本方法读到的就是播种值）。
+     */
+    int liveUpgradeActiveBits() {
+        int bits = 0;
+        for (PocketUpgradeType type : PocketUpgradeType.values()) {
+            if (PocketUpgradeSwitches.isActive(carrierStackLive(), type)) {
+                bits |= 1 << type.ordinal();
+            }
+        }
+        return bits;
+    }
+
+    /**
+     * ★R97 R6：客户端镜像的位读取口（{@code clientUpgradeActiveBits} 的唯一读法；服务端没有写者，
+     * 服务端读升级态一律走 {@code PocketUpgradeSwitches.isActive} 现读活载体）。
+     */
+    boolean clientUpgradeActive(PocketUpgradeType type) {
+        return (clientUpgradeActiveBits & (1 << type.ordinal())) != 0;
     }
 
     /** 单 tank 当前容量（mB，long；CAPACITY 位现读 ⇒ 会话期内固化即换档）。 */
@@ -1877,6 +1938,14 @@ public final class NekoPocketPanel implements PocketSession {
         // 减数一侧；被数出来的必须是<b>解析成功</b>的条数（不是 split 的段数），否则一条坏记录也会被算成
         // "已同步"，读数反而会吞掉真正的差额。
         ghostSyncedCount = parsed.size();
+        // ★★<b>R97 R1（正门）：并入 {@link #clientGhostFlags} 的 attr/P 位表</b>。ghost blob 只携带载荷
+        // （{@code kind|slot|payloadKey|cap}），重建出的实例位表全空 ⇒ 旧形状 {@code replaceFilters}
+        // 每换一次实例就把客户端 {@code inventory.filters()} 的位表抹成 NONE，而客户端预测
+        // （{@code PocketInventory#isItemValid} → {@code allowsPlayerPlacement} → {@code attrAt}）读的
+        // 恰是这份被抹掉的表 ⇒ 服务端按 MEMORY 放行、客户端按 NONE 预测拒绝 = 满栈幽灵游标的正身。
+        // 并入走<b>既有编解码单源</b>（{@code flagsBlobOf → applyFlagsBlob}，与角标镜像同一对函数），
+        // 面板自身零份位表写法；{@code parsed} 是新实例（位表本来就空），apply 的"先清后写"在此是 no-op。
+        PocketGhostRequest.applyFlagsBlob(PocketGhostRequest.flagsBlobOf(clientGhostFlags), parsed);
         inventory.replaceFilters(parsed);
         applyGhosts();
     }
@@ -1978,7 +2047,9 @@ public final class NekoPocketPanel implements PocketSession {
             // 新读数整条吞掉 ⇒ 玩家滚了数字、格上不动。setter 自身同值即返回，每拍调不产生额外脏标记。
             widget.setDeclaredCap(declared == null ? PocketConstants.FILTER_CAP_UNSET : declared.cap());
             // ★R91-⑤：attr / P 与 cap 同一条推送纪律（★读的是<b>双源 accessor</b>，客户端那份是
-            // SYNC_GHOST_FLAGS 的镜像，<b>不是</b> inventory.filters() —— 那份的 attr 只有开屏快照）。
+            // SYNC_GHOST_FLAGS 的镜像。<b>★R97 R1 之后</b> inventory.filters() 在客户端也带着并入的
+            // 位表（预测读它），但角标读<b>仍钉在 accessor</b>——一根通道一个所有者，显示读口不因
+            // 预测侧的同源化而分叉出第二条）。
             widget.setGhostAttr(ghostAttrAt(PocketFilterConfig.Kind.ITEM, index));
             widget.setUploadBlocked(ghostUploadBlockedAt(PocketFilterConfig.Kind.ITEM, index));
             // ★R84②：声明格现在<b>就是</b>该条需求的抽取落点，格内的同种内容就是"已经补到的产物"，
@@ -2284,6 +2355,11 @@ public final class NekoPocketPanel implements PocketSession {
         }
         ghostFlagsBlob = blob;
         PocketGhostRequest.applyFlagsBlob(blob, clientGhostFlags);
+        // ★★<b>R97 R1 的对偶半条</b>：属性镜像更新时把<b>预测读的那一份</b>（{@code inventory.filters()}，
+        // 也就是 {@code replaceFilters} 换出来的镜像）同步推进——applyFlagsBlob 自带"先清后写"，
+        // 服务端<b>撤掉</b>的属性会真的从预测那份掉下来（只 ADD 不清的形状撤属性只活角标）。
+        // 若无此半条：blob 先到 / 属性包后到的交错序里，预测表会停留在旧位表直到下一次 blob 换实例。
+        PocketGhostRequest.applyFlagsBlob(PocketGhostRequest.flagsBlobOf(clientGhostFlags), inventory.filters());
         applyGhosts();
     }
 
@@ -2292,8 +2368,10 @@ public final class NekoPocketPanel implements PocketSession {
      * {@link #essenceTagAtCell(int)} / {@link #essenceCellOfTag(String)} 严格同形）。
      * <p>
      * 服务端读权威位表；客户端读 {@link #clientGhostFlags} 那份由 {@code SYNC_GHOST_FLAGS} 整体覆盖的镜像。
-     * ★<b>不得</b>在客户端读 {@code inventory.filters()} —— 那份的 attr 只在<b>开屏瞬间</b>从承载栈 NBT
-     * 解出来，之后的每次属性变更它一概不知道；拿它出图就等于"改判只活服务端、真正出图的客户端照旧"。
+     * ★<b>角标/显示读口不得在客户端读 {@code inventory.filters()}</b>——显示读口只认这一条 accessor
+     * （一根通道一个所有者）。★<b>R97 R1 之后</b>那份 filters 的位表已由 {@link #applyGhostView} /
+     * {@link #applyGhostFlagsView} 并入同源（供 {@code isItemValid} 预测链读），但那是<b>预测读侧</b>
+     * 的同源化，不构成显示侧的第二条读法。
      */
     int ghostAttrAt(PocketFilterConfig.Kind kind, int slotIndex) {
         return (syncManager.isClient() ? clientGhostFlags : inventory.filters()).attrAt(kind, slotIndex);
@@ -2996,10 +3074,14 @@ public final class NekoPocketPanel implements PocketSession {
 
     @Override
     public boolean storageStackUpgraded() {
-        // ★直读载体活查表（不经 server 转发回自己 ⇒ 无自环）：与服务端权威同一条真相，
-        // 且双端可用（客户端读 vanilla 镜像，格件的显示回落与滚轮在客户端也拿得到升级位）。
+        // ★直读载体活查表（不经 server 转发回自己 ⇒ 无自环）：与服务端权威同一条真相。
         // ★R96 S2：判据换成组合谓词 isActive ⇒ 关掉堆叠开关以后，本方法的中栏/滚轮/ghost 上限读数
         // 与 PocketInventory#storageStackUpgraded（getSlotLimit / getStackLimit 两条执法点）同一个说法。
+        // ★★<b>R97 R6：客户端读腿换成 {@code SYNC_UPGRADE_ACTIVE} 的位图镜像</b>（格件的显示回落与
+        // 滚轮读它；vanilla 载体档镜像在会话中装插件后会滞后 ⇒ 显示与预测在旧读法下各说各话）。
+        if (syncManager.isClient()) {
+            return clientUpgradeActive(PocketUpgradeType.STACK);
+        }
         return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK);
     }
 

@@ -141,6 +141,21 @@ public final class PocketInventory {
     private int placementIntentSlot = -1;
     /** ★R92-④：与 {@link #placementIntentSlot} 同生同灭的那一次的载荷键（空串 = 无意图）。 */
     private String placementIntentKey = null;
+    /**
+     * ★★<b>R97 R5：服务端 {@code isItemValid} 拒收记账</b>——最近一次被 L 执法腿拒掉的中栏槽号
+     * （{@code -1} = 自上次消费以来没有拒收）。
+     * <p>
+     * 为什么记账：反向幽灵（客户端预测接受、服务端拒收）发生时，服务端槽位没有变化 ⇒ vanilla 槽差分
+     * <b>不会发纠正包</b> ⇒ 客户端槽内的预测栈滞留（R86 残影同族）。把拒收记下来，由容器的
+     * {@code detectAndSendChanges} 钩子在<b>同一拍或下一拍</b>对被点槽做一次
+     * {@code forceSyncSlot} 强推（R86 先例），残留窗口被压到 ≤1 tick。
+     * <p>
+     * 三条纪律：① <b>单字段、零额外扫描</b>——{@code isItemValid} 的 false 支顺手写一行，不遍历任何表；
+     * ② <b>读一次即清</b>（{@link #consumeRejectedPlacementSlot()}），消费点每 tick 跑 ⇒ 记录寿命 ≤1 tick，
+     * 不需要再记时间戳（清掉之前的陈旧强推在结构上不可达）；③ 双端实例都会记，但消费点只在服务端
+     * 跑 ⇒ 客户端那份记录无人读、随实例消亡，不构成第二处真相。
+     */
+    private int lastRejectedPlacementSlot = -1;
 
     private final ItemStackHandler storage = newStorageGroup(STORAGE_SLOTS);
     private final ItemStackHandler fluidInteraction = newSlotGroup(FLUID_INTERACTION_SLOTS);
@@ -665,7 +680,13 @@ public final class PocketInventory {
                 // 成本如实说明：只在"声明格 + 有人往它放东西"这一条支上算一次 contentKey（含 NBT base64），
                 // ★不在每拍、也不在未声明的 135 格上算 ⇒ 与 NEI 拖入同一只键函数、不造第二份键式样。
                 final String contentKey = stack == null ? "" : PocketAeChannelOps.contentKey(stack);
-                return filters.allowsPlayerPlacement(PocketFilterConfig.Kind.ITEM, slot, contentKey);
+                final boolean allowed = filters.allowsPlayerPlacement(PocketFilterConfig.Kind.ITEM, slot, contentKey);
+                if (!allowed) {
+                    // ★R97 R5：拒收记账（单字段写，零扫描）——消费点是容器 detectAndSendChanges 钩子的
+                    // forceSyncSlot 强推，压掉"客户端预测接受 / 服务端拒收"的反向幽灵 ≤1 tick 窗口。
+                    lastRejectedPlacementSlot = slot;
+                }
+                return allowed;
             }
 
             /**
@@ -760,6 +781,13 @@ public final class PocketInventory {
      * ★R96 S1 改口（方法名沿用，语义已挪）：{@code stackProbe} 现在装的是<b>组合谓词</b>
      * {@code PocketUpgradeSwitches.isActive(STACK)} ⇒ 本方法回答的是"<b>当前生效没有</b>"（位图 ∧ 未关闭），
      * 不再是"位图在场"。关掉开关即回到 64 那一档，这是本轮"正交 enabled 位图"要的唯一执法形状。
+     * <p>
+     * ★★<b>R97 R6：客户端读侧走同步镜像</b>。旧形状里两端探针都读 {@code carrierStackLive()}，而客户端
+     * 读到的是 vanilla 槽同步<b>滞后</b>的那份载体 NBT ⇒ 会话中装上 STACK 插件后的 ≤1+ tick 内，客户端
+     * 按旧档预测放入量 = 数量级预测差 = 游标数量幽灵（R2 族）。R6 起客户端由面板注入
+     * {@link #setClientStackMirror(BooleanSupplier)} 换成读 {@code SYNC_UPGRADE_ACTIVE}
+     * （面板侧 {@code pocket.upgrade.active} 那枚 {@code IntSyncValue} 的位图镜像）——服务端真值单源
+     * （{@code PocketUpgradeSwitches}）与执法链<b>零改</b>，只换客户端读侧的来源。
      */
     boolean storageStackUpgraded() {
         return stackProbe.getAsBoolean();
@@ -845,6 +873,28 @@ public final class PocketInventory {
         syncEssenceCapProbe();
     }
 
+    /**
+     * ★★<b>R97 R6：STACK 探针的<b>客户端读侧覆盖</b></b>（唯一合法调用方 = 面板的
+     * {@code isClient()} 支，装配期一次）。
+     * <p>
+     * 与 {@link #setUpgradeProbes} <b>刻意分成两个方法</b>而不是二次调它：探针注入点是
+     * 「一套注入覆盖 readFrom 自播种」的单点口径（门 F / 用例钉 {@code setUpgradeProbes} 恰 1 处），
+     * 客户端镜像覆盖是<b>另一件事</b>——换的是<b>读侧来源</b>（vanilla 载体档镜像 → 面板
+     * {@code SYNC_UPGRADE_ACTIVE} 位图镜像），不是第二套探针。
+     * <p>
+     * ⚠<b>服务端禁用</b>：镜像在服务端没有写者（同步值的 getter 才是服务端真值），服务端误注会把
+     * 执法探针冻在开屏值。{@code null} 入参 = no-op（不回落 false，避免把已注入的活探针误清）。
+     * 注入后源质表的动态每格上限跟着同一根 {@code stackProbe} 链走（{@link #syncEssenceCapProbe()}
+     * 重接一次，幂等）。
+     */
+    public void setClientStackMirror(java.util.function.BooleanSupplier stackActive) {
+        if (stackActive == null) {
+            return;
+        }
+        this.stackProbe = stackActive;
+        syncEssenceCapProbe();
+    }
+
     /** 把 {@link #stackProbe} 接到源质表的动态每格上限（读档、注入、换探针后都要重接一次）。 */
     private void syncEssenceCapProbe() {
         if (essence != null) {
@@ -927,19 +977,26 @@ public final class PocketInventory {
      * （准入判据是一次 map 取值，键计算排在它后面）。
      */
     private void declareMemoryFromPlacement(int slot) {
+        // ★★<b>R97 R3：temp-null 探测写不吃掉意图</b>。MUI2 {@code SlotItemHandler#isItemValid} 的探测序列是
+        // {@code isItemValid → setStackInSlot(null) → insertItem(simulate) → setStackInSlot(还原)}，
+        // 而 {@code ItemStackHandler#setStackInSlot} 对 null→null 也<b>无条件</b>回调本方法 ⇒ 旧形状
+        // 「顶部无条件清意图」让探测的那一写把刚登记的放置意图吃掉（placed == null ⇒ 声明也没落），
+        // 随后真 {@code putStack} 再触发本方法时意图已空 ⇒ 实机「放置即配置」永不发生
+        // （JVM 用例直调 handler 绕过了探测，所以套件一直是绿的）。⇒ 清意图挪到 {@code placed != null}
+        // 判定<b>之后</b>：只有「真有东西落进这一格」的那一写才有资格消费意图。
+        final ItemStack placed = storage.getStackInSlot(slot);
+        if (placed == null || placed.stackSize <= 0) {
+            return;
+        }
         final int intentSlot = placementIntentSlot;
         final String intentKey = placementIntentKey;
-        // ★一次性：无论这次消费不消费都清掉，绝不留悬垂意图给下一次写入
+        // ★一次性：无论这次消费不消费都清掉，绝不留悬垂意图给下一次<b>非空</b>写入
         placementIntentSlot = -1;
         placementIntentKey = null;
         if (slot != intentSlot || intentKey == null || intentKey.isEmpty()) {
             return;
         }
         if (!filters.memoryPendingForPlacement(PocketFilterConfig.Kind.ITEM, slot)) {
-            return;
-        }
-        final ItemStack placed = storage.getStackInSlot(slot);
-        if (placed == null || placed.stackSize <= 0) {
             return;
         }
         // ★落进来的必须<b>就是</b>玩家那一次要放的东西：不等说明这一格是被程序化落点填的
@@ -967,6 +1024,19 @@ public final class PocketInventory {
         }
         placementIntentSlot = slot;
         placementIntentKey = PocketAeChannelOps.contentKey(stack);
+    }
+
+    /**
+     * ★R97 R5：<b>读一次即清</b>的拒收槽号（{@code -1} = 自上次消费以来没有拒收）。
+     * <p>
+     * 消费点 = {@code NekoPocketContainer#detectAndSendChanges} 的服务端支（每 tick + 每次 MUI2
+     * 点击收尾都会跑）：读到非负槽号 ⇒ 对该槽做一次 {@code forceSyncSlot} 强推。客户端实例上的
+     * 记录无人消费（消费点带 {@code isClient} 早退），随面板实例消亡。
+     */
+    public int consumeRejectedPlacementSlot() {
+        final int slot = lastRejectedPlacementSlot;
+        lastRejectedPlacementSlot = -1;
+        return slot;
     }
 
     public boolean isDirty() {
