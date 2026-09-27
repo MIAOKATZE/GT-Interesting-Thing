@@ -617,6 +617,10 @@ public class NekoPocketModelTest {
         cases.put("magnet_three_state_ui_semantics", NekoPocketModelTest::magnetThreeStateUiSemantics);
         cases.put("magnet_panel_geometry_closes", NekoPocketModelTest::magnetPanelGeometryCloses);
         cases.put("magnet_pending_removed_from_magnet_mount", NekoPocketModelTest::magnetPendingRemovedFromMagnetMount);
+        // ---- ★R97 S1（TP-S1）mixin 包纪律一条：src/mixin/java 的 mixin 声明包树内每个 .java 必含
+        // @Mixin（PocketVisSupport 曾以普通类住进声明包 ⇒ defined mixin package 守卫令其永不可加载，
+        // v1.8.41 在产地雷；本条把「helper 再落进 mixin 包」钉成必红）。
+        cases.put("mixin_package_tree_has_no_plain_classes", NekoPocketModelTest::mixinPackageTreeHasNoPlainClasses);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -16321,7 +16325,7 @@ public class NekoPocketModelTest {
     private static final String R96_S9B_CONFIG_PANEL = "src/main/java/com/miaokatze/gtit/gui/pocket/PocketConfigPanel.java";
     private static final String R96_S9B_PANEL = "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketPanel.java";
     private static final String R96_S9B_HANDLER = "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketServerHandler.java";
-    private static final String R96_S9B_VIS_SUPPORT = "src/mixin/java/com/miaokatze/gtit/mixin/thaum/PocketVisSupport.java";
+    private static final String R96_S9B_VIS_SUPPORT = "src/main/java/com/miaokatze/gtit/crossmod/taum/PocketVisSupport.java";
 
     /** 出晶桩件：记录问句，并允许把请求量改小（= 模拟桥里那道 {@code min(points, 64)} 的钳制）。 */
     private static final class StubCrystalGate implements CrystalGate {
@@ -16932,6 +16936,63 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(6, PocketConstants.PRIMAL_TAGS.length, "六条 primal（P-7 定案）");
         SimpleAssert.eq(500, PocketConstants.ELEMENT_CAP_PER_TAG, "各 500");
         SimpleAssert.eq(3000, PocketConstants.ELEMENT_TOTAL_CAP, "合计派生式");
+    }
+
+    // ================================================================== ★R97 S1（TP-S1）mixin 包纪律
+    //
+    // 背景见 crossmod/taum/PocketVisSupport.java 类注释：三份 mixins.gtit.*.json 声明同一包根
+    // com.miaokatze.gtit.mixin ⇒ 该包根下<b>所有</b>类（含子包）都落在 Mixin 框架的 defined mixin
+    // package 守卫里，普通类放进去 = LaunchClassLoader 永远加载不出（宿主类解析常量池即抛
+    // IllegalClassLoadError → NoClassDefFoundError，v1.8.41 在产地雷，首个触发路径 = 要素球吸收腿）。
+    // 本条扫整棵声明包树：每个 .java 的代码位必须含 @Mixin——「helper 再落进 mixin 包」自此必红。
+
+    /**
+     * ★R97 S1：mixin 声明包树（{@code src/mixin/java/com/miaokatze/gtit/mixin} 含子包）内
+     * 不得出现<b>无 {@code @Mixin} 注解的普通 .java</b>。读不到树 ⇒ 打 NOTE 半边未验（★不是通过，
+     * 与 {@link #sourceLinesOrNull} 同口径，不当 0 用）。
+     */
+    private static void mixinPackageTreeHasNoPlainClasses() {
+        final java.nio.file.Path root = repoRootOrNull();
+        if (root == null) {
+            System.out.println("[NOTE] 找不到仓库根 ⇒ 「mixin 包树全 @Mixin」【未验】（★不是通过）");
+            return;
+        }
+        final java.nio.file.Path base = root.resolve("src/mixin/java/com/miaokatze/gtit/mixin");
+        if (!java.nio.file.Files.isDirectory(base)) {
+            System.out.println("[NOTE] 找不到 src/mixin/java 的 mixin 声明包树 ⇒ 「mixin 包树全 @Mixin」【未验】（★不是通过）");
+            return;
+        }
+        int files = 0;
+        final java.util.List<String> plain = new java.util.ArrayList<>();
+        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(base)) {
+            final java.util.Iterator<java.nio.file.Path> it = walk.iterator();
+            while (it.hasNext()) {
+                final java.nio.file.Path file = it.next();
+                if (!file.getFileName()
+                    .toString()
+                    .endsWith(".java")) {
+                    continue;
+                }
+                files++;
+                boolean mixin = false;
+                for (String line : java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
+                    if (!isCommentLine(line) && line.contains("@Mixin")) {
+                        mixin = true;
+                        break;
+                    }
+                }
+                if (!mixin) {
+                    plain.add(
+                        root.relativize(file)
+                            .toString());
+                }
+            }
+        } catch (java.io.IOException ioFailure) {
+            System.out.println("[NOTE] mixin 包树读失败 ⇒ 「mixin 包树全 @Mixin」【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.that(files >= 20, "★扫描面必须真跑到（读到 " + files + " 个 .java；R97 S1 基线 21 枚 = 12 根包 + 3 ae2 + 6 thaum）");
+        SimpleAssert.eq(0, plain.size(), "★mixin 声明包树内每个 .java 都含 @Mixin（无注解的普通类放这里 = 永远加载不出的地雷）：" + plain);
     }
 
     // ================================================================== ★R96 S5（TP-S5）通道持续化：四条反证
@@ -17825,7 +17886,11 @@ public class NekoPocketModelTest {
                 final java.nio.file.Path file = it.next();
                 final String name = file.getFileName()
                     .toString();
-                if (!name.endsWith(".java") || name.equals("TaumBridge.java")) {
+                if (!name.endsWith(".java") || name.equals("TaumBridge.java")
+                // ★R97 S1：crossmod/taum/PocketVisSupport.java（TC 条件 mixin 的判据体，从 mixin 声明包
+                // 搬来）与 TaumBridge 同一张安全论证：只被 TC 条件施加的 mixin handler 引用、
+                // 常驻面零静态引用 ⇒ 同款豁免（verify-pocket.sh 门 F-1 扩的同一枚，不是新开的口子）。
+                    || name.equals("PocketVisSupport.java")) {
                     continue;
                 }
                 for (String line : java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
@@ -17930,7 +17995,13 @@ public class NekoPocketModelTest {
                 final boolean isBridge = file.getFileName()
                     .toString()
                     .equals("TaumBridge.java");
-                if (isBridge != insideBridgeOnly) {
+                // ★R97 S1：PocketVisSupport.java 搬进 crossmod/taum 后与 TaumBridge 同款豁免
+                // （只被 TC 条件 mixin handler 引用、常驻面零静态引用，门 F-1 同扩的同一枚）；
+                // ★两个模式都跳过 ⇒ 桥内 eq 5 那条读数仍只数 TaumBridge 自己，不因搬家翻数。
+                final boolean isVisSupport = file.getFileName()
+                    .toString()
+                    .equals("PocketVisSupport.java");
+                if (isVisSupport || isBridge != insideBridgeOnly) {
                     continue;
                 }
                 for (String line : java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {

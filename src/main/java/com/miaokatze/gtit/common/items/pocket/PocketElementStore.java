@@ -273,7 +273,8 @@ public final class PocketElementStore {
      * ② 逐条 {@code extract} 之后<b>实掏数 ≠ 应掏数</b> ⇒ 把已经掏出去的<b>原样补回</b>并返 {@code 0}。
      * 第②道在默认配置下不可达（同一 tick、同一份活档判据），★但它不是"理论保证"而是"代码保证"：
      * {@code shieldCost} 被配置调大、或有别人的 mixin 在两步之间改了容量时，兜住的就是这一道。
-     * 旧实现（S10 的 {@code PocketVisSupport}）只有第①道的<b>问错版本</b>且完全没有第②道。
+     * 旧实现（S10 的 {@code com.miaokatze.gtit.crossmod.taum.PocketVisSupport}，★R97 S1 起住 crossmod/taum）
+     * 只有第①道的<b>问错版本</b>且完全没有第②道。
      * <p>
      * ★回滚只用 {@link #add(String, int)}（它会钳到上限）：回滚发生在同一 tick 的同一份账上，
      * 刚掏多少就有多少个空位，钳制不会被触发；真触发了说明有别的东西在这两步之间进了账，

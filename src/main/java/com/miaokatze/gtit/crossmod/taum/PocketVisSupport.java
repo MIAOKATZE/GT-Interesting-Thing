@@ -1,4 +1,4 @@
-package com.miaokatze.gtit.mixin.thaum;
+package com.miaokatze.gtit.crossmod.taum;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -26,9 +26,17 @@ import thaumcraft.api.aspects.AspectList;
 
 /**
  * ★R96 S10：TC 侧 mixin 的<b>唯一共享判据体</b>（口袋的「认栈 / 查余量 / 入账 / 掏账」四条原语）。
+ * ★R97 S1：从 {@code com.miaokatze.gtit.mixin.thaum} 搬进本包（crossmod/taum）。原址撞的不是
+ * 「类污染红线」而是 Mixin 框架的另一条守卫：三份 {@code mixins.gtit.*.json} 都声明包根
+ * {@code com.miaokatze.gtit.mixin}，该包根下<b>所有类</b>都算 defined mixin package，普通类放进
+ * 去就<b>永远无法被 LaunchClassLoader 直接加载</b>（TC 宿主类解析常量池时抛
+ * {@code IllegalClassLoadError: is in a defined mixin package} → {@code NoClassDefFoundError}，
+ * v1.8.41 在产地雷，首个触发路径 = 要素球吸收腿）。本类不在任何 mixin 清单里 ⇒ 在 mixin 包内
+ * 就是死类；搬进 crossmod/taum 后与 {@code TaumBridge} 同一张安全论证（见下一节）。
  *
  * <h2>为什么要有这个类，而不是把判据写进 mixin</h2>
- * 要素球那两枚（{@link MixinInventoryUtils_PocketHotbar} 与 {@link MixinEntityAspectOrb_PocketAbsorb}）
+ * 要素球那两枚（{@code com.miaokatze.gtit.mixin.thaum.MixinInventoryUtils_PocketHotbar} 与
+ * {@code MixinEntityAspectOrb_PocketAbsorb}）
  * 宿主<b>不是同一个类</b>，{@code @Unique} 成员跨不过去；而它们在<b>同一次服务端 tick 内</b>必须给
  * <b>同一个答案</b>：TC 的 {@code EntityAspectOrb.func_70100_b_} 在偏移 19 调
  * {@code InventoryUtils.isWandInHotbarWithRoom}、偏移 63 就是一条
@@ -38,10 +46,12 @@ import thaumcraft.api.aspects.AspectList;
  *
  * <h2>本类算不算撞「类污染红线」</h2>
  * 红线管的是<b>会被正常加载的常驻类</b>的常量池（{@code crossmod/taum/TaumCompat.java:16-27}）。
- * 本类引用了 {@code thaumcraft.api.aspects.*}，但只被 mixin 类调用，而 mixin 类只在 TC 在场、
- * 宿主类被加载时才经 transformer 通道施加 ⇒ 无 TC 的实例里本类永不会被加载（与 {@code TaumBridge}
- * 同一性质）。常驻侧的 {@code TaumCompat}/{@code PocketElementStore}/{@code ItemNekoDimensionPocket}
- * 签名<b>零改动</b>，也没有新增常驻文件。
+ * 本类引用了 {@code thaumcraft.api.aspects.*}，但只被 TC 条件施加的 mixin handler 引用
+ * （★R97 S1 起<b>任何 src/main 常驻类不得 import 本类</b>，verify-pocket.sh 门 Q 钉死），
+ * 而 mixin 类只在 TC 在场、宿主类被加载时才经 transformer 通道施加 ⇒ 无 TC 的实例里本类
+ * 永不会被加载（与 {@code TaumBridge} 同一性质，门 F-1 对两者同款豁免）。常驻侧的
+ * {@code TaumCompat}/{@code PocketElementStore}/{@code ItemNekoDimensionPocket}
+ * 签名<b>零改动</b>。
  *
  * <h2>★入账口径：一律「整笔预检」，绝不吃一半</h2>
  * 与 {@link PocketElementStore} 类注释那条 R45c/FIX-6 同构：任何「先消耗别人（节点 / 要素球 /
@@ -60,7 +70,7 @@ import thaumcraft.api.aspects.AspectList;
  * 故护盾腿按 {@code ceil(stored / 100)} 换算 —— {@link #costToPocketPoints(int)} 是 {@code addVis}
  * 那次 ×100 的<b>逆运算</b>，本仓不自造第三种刻度。
  */
-final class PocketVisSupport {
+public final class PocketVisSupport {
 
     private static final Logger LOG = LogManager.getLogger("gtit");
 
@@ -76,19 +86,19 @@ final class PocketVisSupport {
      * （TC 的基座/球本来也只认具体类，取证 {@code r96-ret4.md} §3.2/§3.3）。
      * ★刻意不查开关：开关只闸「动不动容量」，不闸「这是不是口袋」。
      */
-    static boolean isPocket(ItemStack stack) {
+    public static boolean isPocket(ItemStack stack) {
         return stack != null && stack.getItem() instanceof ItemNekoDimensionPocket;
     }
 
     /** 「魔法使」这一型被动此刻是否生效（S1 的位图 ∧ ¬off-mask 组合谓词）；三条腿共用这一道闸。 */
-    static boolean mageActive(ItemStack pocket) {
+    public static boolean mageActive(ItemStack pocket) {
         return isPocket(pocket) && PocketUpgradeSwitches.isActive(pocket, PocketUpgradeType.MAGE);
     }
 
     // ------------------------------------------------------------------ 读数
 
     /** 只读余量（<b>不建档</b>，R53c 读路径纪律）：无档 / 非白名单 tag 一律 0。 */
-    static int roomFor(ItemStack pocket, String tag) {
+    public static int roomFor(ItemStack pocket, String tag) {
         if (pocket == null) {
             return 0;
         }
@@ -104,7 +114,7 @@ final class PocketVisSupport {
      * （{@code Aspect#isPrimal()}，同 {@code EntityAspectOrb.java:199} 的原生判据）<b>合取</b>：
      * 容量表只有 6 行，addon 注册的无成分新 aspect 单独问 {@code isPrimal()} 会被判真。
      */
-    static String tagOf(Aspect aspect) {
+    public static String tagOf(Aspect aspect) {
         if (aspect == null) {
             return null;
         }
@@ -122,7 +132,7 @@ final class PocketVisSupport {
     }
 
     /** tag → TC 的 {@code Aspect} 实例（注册表查不到就 null；addon 改名不炸）。 */
-    static Aspect aspectOf(String tag) {
+    public static Aspect aspectOf(String tag) {
         try {
             return Aspect.getAspect(tag);
         } catch (Throwable t) {
@@ -152,7 +162,7 @@ final class PocketVisSupport {
      *
      * @return 实际入账点数；0 = 非白名单 / 开关关着 / 余量不够（★调用方据此<b>一分不拿</b>对方）
      */
-    static int credit(ItemStack pocket, Aspect aspect, int points) {
+    public static int credit(ItemStack pocket, Aspect aspect, int points) {
         if (points <= 0 || !mageActive(pocket)) {
             return 0;
         }
@@ -185,7 +195,7 @@ final class PocketVisSupport {
      *
      * @return 槽号；没有符合条件的口袋 ⇒ -1（★-1 不是失败，是「让 TC 的原生法杖逻辑照跑」）
      */
-    static int hotbarPocketSlotWithRoom(EntityPlayer player, Aspect aspect, int amount) {
+    public static int hotbarPocketSlotWithRoom(EntityPlayer player, Aspect aspect, int amount) {
         if (player == null || player.inventory == null || amount <= 0) {
             return -1;
         }
@@ -211,13 +221,13 @@ final class PocketVisSupport {
     }
 
     /**
-     * 要素球→口袋的吸收一笔（{@link MixinEntityAspectOrb_PocketAbsorb} 的本体）。
+     * 要素球→口袋的吸收一笔（{@code com.miaokatze.gtit.mixin.thaum.MixinEntityAspectOrb_PocketAbsorb} 的本体）。
      * ★预检 + 整笔落地才返回 true；返回 true 时已替调用方做完 TC {@code :202-204} 的三件事
      * （冷却 2 tick、{@code random.orb} 音效、{@code setDead}），调用方只需 {@code ci.cancel()}
      * 让含 {@code checkcast} 的原方法体根本不执行。预检不过就返回 false ⇒ 原方法照跑、球不消失、
      * 玩家一分不亏（口径同 TC 原生「装不下就不收」）。
      */
-    static boolean absorbIntoPocket(Entity orb, EntityPlayer player, Aspect aspect, int amount) {
+    public static boolean absorbIntoPocket(Entity orb, EntityPlayer player, Aspect aspect, int amount) {
         if (orb == null || player == null
             || player.inventory == null
             || amount <= 0
@@ -280,7 +290,7 @@ final class PocketVisSupport {
      * 的 {@code IRunicArmor} 算出，口袋当前<b>不可穿戴</b> ⇒ 不占容量。让口袋计入容量需要先可穿戴化
      * = <b>S11 的活</b>，本片★不在此处做任何暗示（本方法一个 {@code IRunicArmor} 都不碰）。
      */
-    static boolean payShieldCycleFromPockets(EntityPlayer player, AspectList cost) {
+    public static boolean payShieldCycleFromPockets(EntityPlayer player, AspectList cost) {
         if (player == null || player.worldObj == null || player.worldObj.isRemote || cost == null || cost.size() <= 0) {
             return false;
         }

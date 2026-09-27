@@ -7,6 +7,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import com.miaokatze.gtit.crossmod.taum.PocketVisSupport;
+
 import thaumcraft.api.aspects.Aspect;
 import thaumcraft.common.lib.utils.InventoryUtils;
 
@@ -44,7 +46,8 @@ import thaumcraft.common.lib.utils.InventoryUtils;
  * 全类唯一），只做 P4 ⇒ 玩家走近球时抛 CCE。
  * <p>
  * 返回值口径：命中口袋就返回它的快捷栏槽号；不命中<b>不设返回值</b>（TC 原生 9 格法杖扫描照跑）。
- * {@code PocketVisSupport} 是 P4/P5 共用的唯一判据体（两侧答案必须同瞬时一致，理由见该类注释）。
+ * {@code com.miaokatze.gtit.crossmod.taum.PocketVisSupport}（★R97 S1 起住 crossmod/taum，非 mixin 包）
+ * 是 P4/P5 共用的唯一判据体（两侧答案必须同瞬时一致，理由见该类注释）。
  * <p>
  * 仅在 TC 已加载时由 {@code com.miaokatze.gtit.asm.GtitThaumLateMixinLoader} 条件施加。
  */

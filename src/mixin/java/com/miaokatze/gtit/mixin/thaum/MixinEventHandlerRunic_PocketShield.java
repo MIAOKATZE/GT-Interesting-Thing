@@ -6,6 +6,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
+import com.miaokatze.gtit.crossmod.taum.PocketVisSupport;
+
 import thaumcraft.api.aspects.AspectList;
 import thaumcraft.common.items.wands.WandManager;
 import thaumcraft.common.lib.events.EventHandlerRunic;
