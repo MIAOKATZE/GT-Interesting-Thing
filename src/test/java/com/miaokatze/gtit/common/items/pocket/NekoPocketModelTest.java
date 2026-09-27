@@ -12463,7 +12463,20 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(0, zero.stackSize, "★连 0 都不被改写（★没有任何一支写回件数）");
         // ---- ④ 键 → 物品的换算只服务图标，★判定腿不碰注册表 ----
         SimpleAssert.eq(stackId, NekoMagnetGhostCell.itemIdOf(key), "身份键的 itemId 段读回的就是那颗注册表读数（★本 JVM 非法 ⇒ 上面已登记为实机项）");
-        SimpleAssert.eq(meta, NekoMagnetGhostCell.metaOf(key), "身份键的 meta 段读回同一个值");
+        // ★TP-S7c 首跑改口（S7b 未验证提交的自带缺陷，与本片合并无关：参与的三个文件都不在冲突面上）：
+        // 本 JVM 那颗 id = −1 ⇒ parseEntry 按生产口径拒解负 id（外来档防线，PocketMagnetFilter 的
+        // isLegalIdentity），metaOf("i:-1:3:") 读到 0 是实现的<b>正确行为</b>、旧断言拿它要 3 是把
+        // 「非法键」误当「可回读键」⇒ 本 JVM 必红。往返改在同一条 itemKey 式子的<b>合法样本</b>上量
+        // （与落档那两行同一个 legalizeForJvmRegistry 口径：★不改式子、不改判定、真栈→合法 id 那一跳
+        // 仍登记为实机项），并★把「非法 id 的键必须解不出」这半步也钉上——旧写法两头都没量到。
+        final String legalKey = legalizeForJvmRegistry(key, legalId, meta);
+        SimpleAssert.eq(meta, NekoMagnetGhostCell.metaOf(legalKey), "★身份键的 meta 段在合法样本上读回同一个值");
+        SimpleAssert.eq(legalId, NekoMagnetGhostCell.itemIdOf(legalKey), "★身份键的 itemId 段在合法样本上读回那颗合法 id");
+        if (stackId < 0) {
+            SimpleAssert.eq(0, NekoMagnetGhostCell.metaOf(key),
+                "★负 id 的键必须解不出（parseEntry 的外来档防线：它若解出任何 meta 都算破防，这一条把『拒解』钉成读数）");
+            System.out.println("[NOTE] metaOf 往返走合法样本（本 JVM 无注册表 ⇒ 实机项：真栈真 id 的往返与上面两条同一条式子）");
+        }
         SimpleAssert.that(NekoMagnetGhostCell.itemOf("i:not-a-number:0:") == null, "解不出的键 ⇒ 不画图标（★不静默当空格）");
         SimpleAssert.that(NekoMagnetGhostCell.drawsEntryLayer(key) && !NekoMagnetGhostCell.drawsEntryLayer(""),
             "内容层判据：有键才画（空格只留槽位底，同 R73② 口径）");
@@ -12770,7 +12783,7 @@ public class NekoPocketModelTest {
         final int fakeMagnetGuard = firstCodeLineWith(fake, 0, fake.size(), "if (magnet) {");
         SimpleAssert.that(fakePending >= 0 && fakePending < fakeReturn && fakeMageGate < 0 && fakeMagnetGuard < 0,
             "★检法活着：假框被读成「pending 可及」（pending=" + fakePending + "、return=" + fakeReturn
-                + "、两守卫皆无）⇒ 上面两条『到不了』不是检法坏出来的假 0（R57 那一族"全绿但什么都没发生"）");
+                + "、两守卫皆无）⇒ 上面两条『到不了』不是检法坏出来的假 0（R57 那一族「全绿但什么都没发生」）");
         // ---- 键面仍在（★挂载位兜底支仍是该键的消费者 ⇒ 不撤键、385 对账门不动）----
         final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
