@@ -13471,40 +13471,44 @@ public class NekoPocketModelTest {
         SimpleAssert.that(
             PocketConfigPanel.MAGNET_ROWS * PocketConfigPanel.CELL <= usableHeight,
             "★行数 × 18 ≤ 框内可用高（" + PocketConfigPanel.MAGNET_ROWS * PocketConfigPanel.CELL + " ≤ " + usableHeight + "）");
-        // ---- 次级面板的两条硬顶（★宽 ≤ 380、高 ≤ 340；★等于可视面时 DraggablePanelWrapper 的除算退化）----
+        // ---- 磁力面自己的两条硬顶（★R97 S5 起磁力是一块独立面板，读它自己的尺寸，不再共用一对 WIDTH/HEIGHT）----
         SimpleAssert.that(
-            PocketConfigPanel.WIDTH <= PocketConfigPanel.MAX_WIDTH,
-            "★次级面板宽 ≤ 380（读到 " + PocketConfigPanel.WIDTH + "）");
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) <= PocketConfigPanel.MAX_WIDTH,
+            "★磁力面宽 ≤ 380（读到 " + PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) + "）");
         SimpleAssert.that(
-            PocketConfigPanel.HEIGHT <= PocketConfigPanel.MAX_HEIGHT,
-            "★次级面板高 ≤ 340（读到 " + PocketConfigPanel.HEIGHT + "）");
+            PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) <= PocketConfigPanel.MAX_HEIGHT,
+            "★磁力面高 ≤ 340（读到 " + PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) + "）");
         SimpleAssert.that(
-            PocketConfigPanel.WIDTH < NekoPocketPanel.WIDTH && PocketConfigPanel.HEIGHT < NekoPocketPanel.HEIGHT,
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) < NekoPocketPanel.WIDTH
+                && PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) < NekoPocketPanel.HEIGHT,
             "★严格小于主面板（★主面板那本账 398×360 由 S2 那条用例钉，本条只验不被搬高）");
         SimpleAssert.that(
-            PocketConfigPanel.MAGNET_FRAME_X + PocketConfigPanel.MAGNET_FRAME_WIDTH
-                <= PocketConfigPanel.WIDTH - PocketConfigPanel.MARGIN,
+            PocketConfigPanel.magnetFrameXOf(PocketUpgradeType.MAGNET) + PocketConfigPanel.MAGNET_FRAME_WIDTH
+                <= PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.MARGIN,
             "★磁力框横向在面板内");
         SimpleAssert.that(
-            PocketConfigPanel.MAGNET_GRID_Y + PocketConfigPanel.MAGNET_GRID_HEIGHT
-                <= PocketConfigPanel.HEIGHT - PocketConfigPanel.MARGIN,
-            "★盘面纵向下沿在面板内");
-        // ---- 控制块（三枚按钮 + 计数 + 读数行）整块排在左列、行带之下、挂载框之上 ----
+            PocketConfigPanel.magnetGridY() + PocketConfigPanel.MAGNET_GRID_HEIGHT
+                <= PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.BOTTOM_STACK,
+            "★盘面纵向下沿落在底部两件之上");
+        // ---- 控制块（三枚按钮 + 计数 + 读数行）整块排在左列、格盘之左、底部两件之上 ----
         SimpleAssert.that(
-            PocketConfigPanel.MAGNET_CONTROL_X + 2 * PocketConfigPanel.MAGNET_BUTTON_WIDTH + 10
-                <= PocketConfigPanel.MARGIN + PocketConfigPanel.SWITCH_COLUMN,
-            "★控制块两只按钮不顶出行带列");
+            PocketConfigPanel.MAGNET_CONTROL_X + PocketConfigPanel.MAGNET_CONTROL_WIDTH + PocketConfigPanel.COLUMN_GAP
+                <= PocketConfigPanel.magnetFrameXOf(PocketUpgradeType.MAGNET),
+            "★控制块整列 + 缝不顶进格盘列（控制块宽 " + PocketConfigPanel.MAGNET_CONTROL_WIDTH
+                + " + 缝 "
+                + PocketConfigPanel.COLUMN_GAP
+                + " ≤ 格盘 x "
+                + PocketConfigPanel.magnetFrameXOf(PocketUpgradeType.MAGNET)
+                + "）");
         SimpleAssert.that(PocketConfigPanel.MAGNET_COUNT_WIDTH > 0, "★计数读数行有宽度可占");
         SimpleAssert.that(
-            PocketConfigPanel.magnetNoteY()
-                >= PocketConfigPanel.MARGIN + PocketUpgradeType.values().length * PocketConfigPanel.ROW_HEIGHT,
-            "★控制块不压五行带");
+            PocketConfigPanel.magnetNoteY() + PocketConfigPanel.MAGNET_NOTE_HEIGHT
+                <= PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.BOTTOM_STACK,
+            "★控制块说明行纵向在面板内");
         SimpleAssert.that(
-            PocketConfigPanel.magnetNoteY() + PocketConfigPanel.MAGNET_NOTE_HEIGHT <= PocketConfigPanel.mountY(1),
-            "★控制块不顶进魔法使挂载框");
-        SimpleAssert.that(
-            PocketConfigPanel.LABEL_WIDTH + 2 + PocketConfigPanel.SWITCH_WIDTH <= PocketConfigPanel.SWITCH_COLUMN,
-            "★行带横向闭合（型名 + 缝 + 开关 ≤ 左列）");
+            PocketConfigPanel.labelWidthOf(PocketUpgradeType.MAGNET) + 2 + PocketConfigPanel.SWITCH_WIDTH
+                <= PocketConfigPanel.switchRowWidthOf(PocketUpgradeType.MAGNET),
+            "★行带横向闭合（型名 + 缝 + 开关 ≤ 行带宽）");
         // ---- ★守恒 225 的结构性证据：次级面板与格件零真实槽、零同步值 ----
         final java.util.List<String> conf = sourceLinesOrNull(R96_CONFIG_PANEL_FILE);
         final java.util.List<String> cell = sourceLinesOrNull(R96_MAGNET_GHOST_CELL_FILE);
@@ -13523,120 +13527,69 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★★R96 S7b 验收 6（★TP-S7c 合并后口径）：{@code MOUNT_MAGNET} 段的 {@code gtit.pocket.config.mount.pending}
-     * 占位消失的结构钉。
+     * ★★R97 S5 后的口径（用例名保留、判据翻新）：R96 的「pending 占位」随「五行常驻一面」一起
+     * <b>整体退场</b>——五型五面后每一段都有真内容（容量/堆叠/常开是读数段、磁力是 72 格盘、魔法使是
+     * 三行模式控件），「分派表说有框但内容还没落地」的兜底分支失去了存在前提 ⇒ 占位文本件、键清单里的
+     * 键、两份 lang 的键行<b>三处一起归零</b>。
      * <p>
-     * 判据不是"pending 这个串不见了"——那种写法在整段被删掉时也会绿。这里钉的是<b>结构</b>：
-     * 磁力分支在画完 72 格盘之后立刻 {@code return}，pending 那一行排在 return <b>之后</b> ⇒ 磁力框
-     * ★字面上到不了那句占位（半①，S7b 原文逐字保留）。
-     * <p>
-     * ★★半②的改口（推导史全在这里，TP-S7c 所改，<b>不是放宽断言</b>）：分支侧 S7b 当年写的是"同一条
-     * 检法在魔法使那一格里必须<b>还能</b>读到 pending"，因为它那条基线上 S9b 还没落地、魔法使那格确实
-     * 挂着 pending。master 侧 S9b 已把那一格接上四模式真控件 ⇒ 合并后<b>屏上的两个框都不该</b>读到
-     * pending，旧半②的前提（"总有一个框还挂着"）消失。判据换成同等强度的两半：
-     * <ul>
-     * <li>②′ 魔法使排除条件：pending 文本件挂在裸条件 {@code if (!sections.contains(Section.MOUNT_MAGE))}
-     * 之下 ⇒ 魔法使框也<b>结构上到不了</b> pending，与磁力的 early return 互不遮蔽（三分支合成）；</li>
-     * <li>②″ 合成假框阳性对照：把同一条检法喂给一段自造的"仍挂 pending"的假 mountFrame 码行（无
-     * 磁力分支、无排除条件），检法<b>必须</b>读到命中 ⇒ 若检法坏了，②′ 与半①的读数会一起变成假的 0，
-     * 而假框那三条读不出"pending 可及"的形状 ⇒ "两个框读到 0"不可能是空转读出来的。</li>
-     * </ul>
-     * ★键撤不撤的结论（一并写在这段推导史里）：pending 仍是<b>代码里的活符号</b>（②′ 那条给未来挂载位
-     * 兜底的分支柱件），{@code langKeys()} 清单与两份 lang 都留该键 ⇒ <b>不撤</b>，385/385 对账门与
-     * 差集门不动；撤掉的只是"屏上消费者"（五型表里已没有挂它的型），不是键本身。
+     * ★判据强度不降反升：R96 的检法钉「结构上到不了」（pending 还在文件里、只是分支到不了它），
+     * 本检法钉「物理上不存在」（源码与两份 lang 一处都不许再有）。配<b>阳性对照</b>：同一条计数检法喂
+     * 一段含 pending 的假清单必须读到 1 ⇒ 上面的 0 是结构读数，不是检法空转（R57 那一族）。
+     * 撤键 ⇒ 两份 lang 的 418/418 与差集门随之翻新（R96 先例：键数变动就地改钉值）。
      */
     private static void magnetPendingRemovedFromMagnetMount() {
         final java.util.List<String> conf = sourceLinesOrNull(R96_CONFIG_PANEL_FILE);
         if (conf == null) {
-            System.out.println("[NOTE] 读不到 PocketConfigPanel.java ⇒ ★pending 归零【未验】（★不是通过）");
+            System.out.println("[NOTE] 读不到 PocketConfigPanel.java ⇒ ★pending 退场【未验】（★不是通过）");
             return;
         }
-        // ---- 分派表这一侧：磁力确实有挂载位（★否则"磁力框没 pending"是因为框都没画）----
+        // ---- 分派表这一侧：磁力与魔法使的挂载段都接的是真控件（★前提：不是「段都没画」的空读数）----
         SimpleAssert.that(
             PocketConfigPanel.sectionsOf(PocketUpgradeType.MAGNET)
                 .contains(PocketConfigPanel.Section.MOUNT_MAGNET),
-            "★前提：分派表说磁力有挂载位");
-        SimpleAssert.that(
-            PocketConfigPanel.hasMount(PocketUpgradeType.MAGE),
-            "★前提：魔法使仍有挂载位（S9b 后它接的是四模式真控件 ⇒ 该格不再挂 pending，见下面的半②′）");
-        final int frame = methodStart(
-            conf,
-            "private static IWidget mountFrame(NekoPocketPanel ui, PocketUpgradeType type, int frame) {");
-        SimpleAssert.that(frame >= 0, "★定位 mountFrame（★签名带 ui 这件事本身就是本片的前提：磁力框要读面板镜像）");
-        final int frameEnd = methodEnd(conf, frame);
-        final int magnetGuard = firstCodeLineWith(conf, frame, frameEnd, "if (magnet) {");
-        final int gridChild = firstCodeLineWith(conf, frame, frameEnd, "box.child(magnetGrid(ui, x, y));");
-        final int earlyReturn = firstCodeLineWith(conf, gridChild, frameEnd, "return box;");
-        final int pending = firstCodeLineWith(conf, frame, frameEnd, "gtit.pocket.config.mount.pending");
-        SimpleAssert.that(magnetGuard >= 0 && gridChild > magnetGuard, "★磁力框里画的是 72 格盘（真控件，不是一句话）");
-        SimpleAssert.that(
-            earlyReturn > gridChild && pending > earlyReturn,
-            "★★磁力分支在 pending 那一行之前就 return（读到 return=" + earlyReturn
-                + "、pending="
-                + pending
-                + "）⇒ pending 结构上到不了磁力框，★不是把那句整体删掉了");
-        SimpleAssert.that(pending >= 0, "★阳性对照在场：pending 那一行仍在（TP-S7c 后它只给「既非磁力也非魔法使」的未来挂载位兜底，见半②′）");
+            "★前提：分派表说磁力有挂载段");
+        SimpleAssert.that(PocketConfigPanel.hasMount(PocketUpgradeType.MAGE), "★前提：魔法使仍有挂载段（接的是三行模式真控件）");
+        // ---- pending 的三处物理归零（源码 / 键清单 / 两份 lang）----
         SimpleAssert.eq(
-            1,
-            countCodeLinesIn(conf, "pocket_config_mount_pending_"),
-            "★pending 文本件仍恰一枚（若被整体删掉这里读到 0 ⇒ 上面那条「到不了」就变成空转读数）");
-        // ---- ★半②′（TP-S7c 替代反证之一）：魔法使框也结构上到不了 pending ----
-        final int mageGate = firstCodeLineWith(
-            conf,
-            earlyReturn,
-            frameEnd,
-            "if (!sections.contains(Section.MOUNT_MAGE)) {");
-        SimpleAssert.that(
-            mageGate >= 0 && pending > mageGate,
-            "★★pending 文本件挂在「非魔法使」的裸条件之下（gate=" + mageGate
-                + "、pending="
-                + pending
-                + "）⇒ 魔法使框也到不了它：它接的是四模式真控件，拿占位文案冒充没接上的控件正是这一条要防的形状"
-                + "（★旧半②「魔法使还挂着 pending」的前提已被 S9b 消掉，本条是它的同等强度替代）");
-        SimpleAssert.eq(
-            1,
-            countCodeLinesIn(conf, "if (!sections.contains(Section.MOUNT_MAGE)) {"),
-            "★这条排除条件全文件恰一处（长出第二处 = 有人在别处重写分派；读到 0 = 条件被并进了别的形状）");
-        // ---- ★半②″（TP-S7c 替代反证之二）：合成假框阳性对照，证明上面那条检法不是空转 ----
-        // 假框 = "仍挂 pending"的挂载框形状（无磁力分支、无排除条件，pending 画在 return 之前）。
-        // 与真实文件用<b>同一条</b> firstCodeLineWith 读法：它必须读出"pending 可及"（命中、在 return
-        // 之前、两个守卫都不在场）⇒ 真实文件里磁力/魔法使两条 0 读数来自结构，而不是检法坏了。
-        final java.util.List<String> fake = new java.util.ArrayList<>(
-            java.util.Arrays.asList(
-                "    private static IWidget mountFrame(NekoPocketPanel ui, PocketUpgradeType type, int frame) {",
-                "        box.child(mountTitle);",
-                "        box.child(new TextWidget(IKey.lang(\"gtit.pocket.config.mount.pending\")));",
-                "        return box;",
-                "    }"));
-        final int fakePending = firstCodeLineWith(fake, 0, fake.size(), "gtit.pocket.config.mount.pending");
-        final int fakeReturn = firstCodeLineWith(fake, 0, fake.size(), "return box;");
-        final int fakeMageGate = firstCodeLineWith(
-            fake,
             0,
-            fake.size(),
-            "if (!sections.contains(Section.MOUNT_MAGE)) {");
-        final int fakeMagnetGuard = firstCodeLineWith(fake, 0, fake.size(), "if (magnet) {");
-        SimpleAssert.that(
-            fakePending >= 0 && fakePending < fakeReturn && fakeMageGate < 0 && fakeMagnetGuard < 0,
-            "★检法活着：假框被读成「pending 可及」（pending=" + fakePending
-                + "、return="
-                + fakeReturn
-                + "、两守卫皆无）⇒ 上面两条『到不了』不是检法坏出来的假 0（R57 那一族「全绿但什么都没发生」）");
-        // ---- 键面仍在（★挂载位兜底支仍是该键的消费者 ⇒ 不撤键、385 对账门不动）----
+            countCodeLinesIn(conf, "gtit.pocket.config.mount.pending"),
+            "★占位键在配置面板源码里归零（R96 时代它有两处活消费者：兜底分支的 TextWidget + 键清单那一条）");
+        SimpleAssert
+            .eq(0, countCodeLinesIn(conf, "pocket_config_mount_pending_"), "★占位文本件（widget 名）也归零（★防「键撤了、件还挂着别的键」的半截退场）");
         final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
-        if (zh != null && en != null) {
-            SimpleAssert.that(
-                PocketConfigPanel.langKeys()
-                    .contains("gtit.pocket.config.mount.pending"),
-                "★pending 键仍在本件的键清单里（还有用户）");
-            SimpleAssert.that(
-                countCodeLinesIn(zh, "gtit.pocket.config.mount.pending=") >= 1
-                    && countCodeLinesIn(en, "gtit.pocket.config.mount.pending=") >= 1,
-                "两份 lang 都还留着 pending");
-        } else {
+        if (zh == null || en == null) {
             System.out.println("[NOTE] 读不到两份 lang ⇒ pending 键面【未验】（★不是通过）");
+            return;
         }
+        SimpleAssert.that(
+            !PocketConfigPanel.langKeys()
+                .contains("gtit.pocket.config.mount.pending"),
+            "★键清单不再点 pending（它已经没有消费者）");
+        SimpleAssert.eq(0, countCodeLinesIn(zh, "gtit.pocket.config.mount.pending="), "★zh 已撤 pending 键行");
+        SimpleAssert.eq(0, countCodeLinesIn(en, "gtit.pocket.config.mount.pending="), "★en 已撤 pending 键行");
+        // ---- 阳性对照：同一条计数检法喂一段含 pending 的假清单，必须读到 1 ----
+        final java.util.List<String> fake = java.util.Arrays
+            .asList("        box.child(new TextWidget(IKey.lang(\"gtit.pocket.config.mount.pending\")));");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(fake, "gtit.pocket.config.mount.pending"),
+            "★检法活着：假清单被读出 1 ⇒ 上面那三处 0 是「真的没了」，不是检法失灵（R57 那一族「全绿但什么都没发生」）");
+        // ---- 两段真内容仍在（★撤占位 ≠ 撤挂载段本体）----
+        final int magnet = methodStart(
+            conf,
+            "private static void mountMagnet(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
+        SimpleAssert.that(magnet >= 0, "★定位 mountMagnet（★R97 S5：磁力面的整面装配，签名带 ui 与 type）");
+        SimpleAssert.that(
+            regionContainsCode(conf, magnet, methodEnd(conf, magnet), "box.child(magnetGrid(ui, x, y));"),
+            "★磁力挂载段里画的仍是 72 格盘本体（真控件，不是一句话）");
+        final int mage = methodStart(
+            conf,
+            "private static void mountMage(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
+        SimpleAssert.that(mage >= 0, "★定位 mountMage（★R97 S5：魔法使面的整面装配）");
+        SimpleAssert.that(
+            regionContainsCode(conf, mage, methodEnd(conf, mage), "mageModeRows(ui, panel);"),
+            "★魔法使挂载段里画的仍是三行模式控件（真控件）");
         // ---- ★磁力段的键族整批在场（三态 ×3 + 说明 ×3 + 两档 ×2 + 提示与格件 + 四条拒收支）----
         final java.util.List<String> used = PocketConfigPanel.langKeys();
         int magnetKeys = 0;
@@ -17303,55 +17256,62 @@ public class NekoPocketModelTest {
                 SimpleAssert.eq(1, hits, "★两份 lang 各恰一条键行: " + key + "@" + face);
             }
         }
-        // 三条模式名与「未提供」那行必须互不遮蔽：★TP-S7c 合并后口径 —— 魔法使段已接四模式真控件、
-        // 磁力段接的是 72 格盘 ⇒ 两个屏上的框都不再用 pending；该键只剩「无宿主挂载位」的兜底分支柱件。
+        // 三条模式名必须各有落点：★R97 S5 后口径 —— pending 占位随「五行常驻一面」整体退场
+        // （磁力段接 72 格盘、魔法使段接三行模式控件，紧凑三型接读数行 ⇒ 不存在「有框没内容」的段）。
         final java.util.List<String> conf = sourceLinesOrNull(R96_S9B_CONFIG_PANEL);
         if (conf == null) {
             System.out.println("[NOTE] 读不到 PocketConfigPanel.java ⇒ 装配半边【未验】（★不是通过）");
         } else {
-            // ★计数口径逐名点名（TP-S9b-fix 核过；TP-S7c 合并改口，命数不变、两半的身份换人）：
-            // 这条字面量在本件里命中 2 处 =
-            // ① 挂载框的占位 TextWidget —— S9b 基线上它挂在「只有磁力」那一支，合并后挪挂在
-            // 「既非磁力也非魔法使」的兜底分支（PocketConfigPanel 的 mountFrame，判据见下面锐化③）；
-            // ② langKeys() 的键清单 —— 兜底分支仍是这个键的消费者 ⇒ 清单里那行必须留
-            // （删它等于把一条在用的键从对账面上摘掉，两份 lang 的 385/385 与差集门都会跟着失真）。
-            // MOUNT_MAGE 那一段★不是★占位：四模式控件的写入链完整在场（build 的 mountFrame(ui, type, frame)
-            // + mageModeRows(ui, panel, frame) 装配 → 每行一个 ButtonWidget → ui.requestUpgradeMode(row,
-            // nextModeOn(...)) → sendAction(ACTION_UPGRADE_MODE, arg) → performUpgradeModeToggle →
-            // commitMode → PocketMageModes.write），且下面两条既有用例逐段问到了它（本方法 ②③ 两段 + ① 段闭环）。
-            // ⇒ 旧的「恰 1」把键清单误当成第二个占位段，口径改为恰 2；本条原来该抓的两件事改由下面
-            // ★三条更锐的判据分别钉住（占位文本件本体恰一、模式控件装配恰一、占位分支条件裸形恰一），抓法只紧不松。
-            SimpleAssert.eq(
-                2,
-                countCodeLinesIn(conf, "gtit.pocket.config.mount.pending"),
-                "★pending 字面量恰两处 = 挂载框兜底分支的占位文本件 + 键清单那一条（读到 3 = 又长出一个占位段）");
-            SimpleAssert.eq(
-                1,
-                countCodeLinesIn(conf, "new TextWidget(IKey.lang(\"gtit.pocket.config.mount.pending\")"),
-                "★占位文本件本体恰一处（TP-S7c 后只留给无宿主挂载位的兜底分支）：读到 2 = 有框接的还是占位文案；读到 0 = 兜底被连根删掉、键清单那半成孤儿");
-            SimpleAssert.eq(
-                1,
-                countCodeLinesIn(conf, "mageModeRows(ui, panel"),
-                "★三行模式控件在 build 里恰一处装配（读到 0 = 只写了方法没挂上 = R57 的零调用方形状）");
-            // ★锐化③（TP-S7c 改形，抓法只紧不松）：S9b 基线上这条钉的是「占位只挂磁力」（裸条件
-            // if (sections.contains(Section.MOUNT_MAGNET))）；合并后磁力框接了 72 格盘、占位改挂
-            // 「非魔法使」的兜底分支 ⇒ 同一条「拿占位当实现」的防形改钉新的裸条件，并且★两条历史形状
-            // 一起问：磁力那支必须只剩格盘装配（若占位又被并回磁力 = 读到 ≥1 的第二处 IKey.lang），
-            // 「两段共用占位」的扩写在两个方向上都必须被 0 读数抓住。
-            final int mf = methodStart(conf, "private static IWidget mountFrame(");
-            SimpleAssert.that(mf >= 0, "定位 mountFrame");
-            SimpleAssert.eq(
-                1,
-                countCodeLinesIn(methodBodyOf(conf, mf), "if (!sections.contains(Section.MOUNT_MAGE)) {"),
-                "★挂载框里那一支占位分支的判据是裸的「非魔法使」（读到 0 = 条件被改写或删掉；读到 2 = 又长一个占位段）");
+            // ★R97 S5 翻新（抓法只紧不松）：pending 在本件里三处全零（字面量 / 占位文本件 / widget 名）——
+            // R96 时代它有两处活消费者（兜底分支的 TextWidget + 键清单），五型五面后兜底分支失去存在前提，
+            // 键与文本件一并撤销（键面归零由 magnet_pending_removed_from_magnet_mount 那条用例 + 418/418 门钉）。
+            // MOUNT_MAGE 那一段★不是★占位：四模式控件的写入链完整在场（build 的 case MOUNT_MAGE
+            // → mountMage(ui, panel, type) → mageModeRows(ui, panel) 装配 → 每行一个 ButtonWidget →
+            // ui.requestUpgradeMode(row, nextModeOn(...)) → sendAction(ACTION_UPGRADE_MODE, arg) →
+            // performUpgradeModeToggle → commitMode → PocketMageModes.write），
+            // 且下面两条既有用例逐段问到了它（本方法 ②③ 两段 + ① 段闭环）。
             SimpleAssert.eq(
                 0,
-                countCodeLinesIn(methodBodyOf(conf, mf), "if (sections.contains(Section.MOUNT_MAGNET)) {"),
-                "★磁力那支不再挂占位（S7b 的格盘分支是 if (magnet) + 画盘 + return，没有 MOUNT_MAGNET 的 IKey.lang）⇒ 旧裸形在本体里必须归零");
+                countCodeLinesIn(conf, "gtit.pocket.config.mount.pending"),
+                "★pending 字面量归零（读到 ≥1 = 占位回潮：五面各有真内容后不存在「没内容」的段）");
+            SimpleAssert.eq(
+                0,
+                countCodeLinesIn(conf, "new TextWidget(IKey.lang(\"gtit.pocket.config.mount.pending\")"),
+                "★占位文本件本体归零（有框接占位文案 = 拿「以后再说」冒充控件）");
+            SimpleAssert
+                .eq(1, countCodeLinesIn(conf, "mageModeRows(ui, panel"), "★三行模式控件恰一处装配（读到 0 = 只写了方法没挂上 = R57 的零调用方形状）");
+            // ★锐化③（R97 S5 改形，抓法只紧不松）：挂载装配改经 case 分派进 mountMage / mountMagnet
+            // 两个整面方法 ⇒ 「拿占位当实现」的防形改钉：build 体内两枚 case 标签各恰一（几何表那两个
+            // switch 也会写 case 标签，所以这里圈 build 的方法体而不是全文件）、格盘装配恰一且住在
+            // mountMagnet 体内（72 格盘只属于磁力面）、模式装配恰一且住在 mountMage 体内。
+            final int bd = methodStart(
+                conf,
+                "public static ModularPanel build(NekoPocketPanel ui, PocketUpgradeType type) {");
+            SimpleAssert.that(bd >= 0, "定位 build（带型参）");
+            SimpleAssert.eq(
+                1,
+                countCodeLinesIn(methodBodyOf(conf, bd), "case MOUNT_MAGE:"),
+                "★魔法使挂载段的装配支恰一（build 的 Section 分派）");
+            SimpleAssert.eq(
+                1,
+                countCodeLinesIn(methodBodyOf(conf, bd), "case MOUNT_MAGNET:"),
+                "★磁力挂载段的装配支恰一（72 格盘常量只经这一支可达 = 只属于磁力面）");
+            final int mf = methodStart(
+                conf,
+                "private static void mountMagnet(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
+            SimpleAssert.that(mf >= 0, "定位 mountMagnet（磁力面整面装配）");
             SimpleAssert.eq(
                 1,
                 countCodeLinesIn(methodBodyOf(conf, mf), "box.child(magnetGrid(ui, x, y));"),
-                "★磁力框内容恰一处 = 72 格盘本体（读到 0 = 格盘被摘、占位回潮的前置信号）");
+                "★磁力面内容恰一处 = 72 格盘本体（读到 0 = 格盘被摘）");
+            final int mg = methodStart(
+                conf,
+                "private static void mountMage(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
+            SimpleAssert.that(mg >= 0, "定位 mountMage（魔法使面整面装配）");
+            SimpleAssert.eq(
+                1,
+                countCodeLinesIn(methodBodyOf(conf, mg), "mageModeRows(ui, panel);"),
+                "★模式控件装配住在 mountMage 体内（★挂载框本体不长控件树，控件是面板级孩子）");
             SimpleAssert.eq(0, countCodeLinesIn(conf, "setByte("), "★配置面板里没有第二条写位图的腿");
             SimpleAssert
                 .eq(1, countCodeLinesIn(conf, "PocketUpgradeSwitches.setOff("), "开关写腿仍恰一条（★模式位不走它，见门 D 的「类外恰 1 且点名」）");
@@ -17362,7 +17322,7 @@ public class NekoPocketModelTest {
             SimpleAssert.that(
                 countCodeLinesIn(conf, "sections.contains(Section.MOUNT_MAGE)") >= 1
                     && countCodeLinesIn(conf, "sections.contains(Section.MOUNT_MAGNET)") >= 1,
-                "★两支各有自己的分派判据（磁力读 MOUNT_MAGNET、模式读 MOUNT_MAGE；TP-S7c 合并后同表三分支）");
+                "★两支各有自己的分派判据（磁力读 MOUNT_MAGNET、模式读 MOUNT_MAGE；hasMount/mountTitleKey 共用同一张表）");
             SimpleAssert.that(countCodeLinesIn(conf, "requestUpgradeMode(row,") >= 1, "模式那一行的唯一出口是发码（★不是本地写档）");
         }
         final java.util.List<String> panel = sourceLinesOrNull(R96_S9B_PANEL);
@@ -19111,26 +19071,30 @@ public class NekoPocketModelTest {
             regionContainsCode(panel, open, openEnd, "upgradeCellFilled(index)"),
             "跳②：空格早退并把点击让回去（return false ⇒ 格件走 super）");
         SimpleAssert.that(
-            regionContainsCode(panel, open, openEnd, "PocketConfigPanel.build(this)"),
-            "跳②：次级面板的内容由 PocketConfigPanel 单源给（★不是五套面板）");
+            regionContainsCode(panel, open, openEnd, "PocketConfigPanel.build(this, type)"),
+            "跳②：次级面板的内容由 PocketConfigPanel 单源给（★R97 S5 起带 type 实参——一型一面；★不是五套面板类）");
+        // ★检法（空白无关）：spotless 会把 `IPanelHandler` 与 `.simple(` 折成两行（本仓已两处踩），
+        // 逐行字面匹配把这条判据打成假阴 ⇒ 改走 textMatches：把方法体拼回一段文本再匹配。
         SimpleAssert.that(
-            regionContainsCode(
-                panel,
-                open,
-                openEnd,
-                "IPanelHandler.simple(host, (parent, player) -> PocketConfigPanel.build(this), true)"),
+            textMatches(
+                panel.subList(open, openEnd),
+                "IPanelHandler\\s*\\.\\s*simple\\(host, \\(parent, player\\) -> PocketConfigPanel\\.build\\(this, type\\), true\\)"),
             "跳②：挂的是既有 IPanelHandler 范式（TerminalGiftPage / NekoVMGuiV2 同形）⇒ 不是自造的第四套 UI");
-        SimpleAssert.that(regionContainsCode(panel, open, openEnd, "configPanel.openPanel()"), "跳②：真的 openPanel");
+        SimpleAssert.that(
+            regionContainsCode(panel, open, openEnd, "configPanels[index].openPanel()"),
+            "跳②：真的按槽 openPanel（R97 S5：index 参与面板选择）");
         SimpleAssert.eq(0, countRegionCode(panel, open, openEnd, "sendAction("), "★开面板不发码（看一眼配置不该往服务端队列投 lambda）");
         SimpleAssert.eq(0, countRegionCode(panel, open, openEnd, "setOff("), "★开面板不写档");
-        final int swBuild = methodStart(conf, "public static ModularPanel build(NekoPocketPanel ui) {");
-        SimpleAssert.that(swBuild >= 0, "★定位 PocketConfigPanel#build（一个面板、按型分派内容）");
+        final int swBuild = methodStart(
+            conf,
+            "public static ModularPanel build(NekoPocketPanel ui, PocketUpgradeType type) {");
+        SimpleAssert.that(swBuild >= 0, "★定位 PocketConfigPanel#build（一个面板类、按型给内容，★R97 S5 起带型参）");
         SimpleAssert.that(
-            regionContainsCode(conf, swBuild, methodEnd(conf, swBuild), "switchButton(ui, types[row], row)"),
+            regionContainsCode(conf, swBuild, methodEnd(conf, swBuild), "switchButton(ui, type)"),
             "跳②→跳③的把手：build 真的把开关件画出来（画不出来就没有 onMousePressed 这回事）");
         final int swBtn = methodStart(
             conf,
-            "private static IWidget switchButton(NekoPocketPanel ui, PocketUpgradeType type, int row) {");
+            "private static IWidget switchButton(NekoPocketPanel ui, PocketUpgradeType type) {");
         SimpleAssert.that(swBtn >= 0, "★定位 switchButton（链上第一个真正会改行为的控件）");
         final int swBtnEnd = methodEnd(conf, swBtn);
         // ★检法（空白无关）：spotless 会把 `.onMousePressed(` 与它的 lambda 体折成两行（本仓已两处踩），
@@ -19582,8 +19546,10 @@ public class NekoPocketModelTest {
         final int clientLine = firstCodeLineWith(sheet, syncLine, guardEnd, ".isClient()) {");
         SimpleAssert
             .that(syncLine == guard + 1 && clientLine == syncLine + 1, "★身份判据第一句就是 isClient ⇒ false，客户端伪造的这条包根本走不到写腿");
-        // ④ 装配面零写
-        final int build = methodStart(conf, "public static ModularPanel build(NekoPocketPanel ui) {");
+        // ④ 装配面零写（★R97 S5 起 build 带型参——五型各开各面，但装配面零写的口径一条不松）
+        final int build = methodStart(
+            conf,
+            "public static ModularPanel build(NekoPocketPanel ui, PocketUpgradeType type) {");
         SimpleAssert.eq(0, countRegionCode(conf, build, methodEnd(conf, build), "setOff("), "★build 零写");
         SimpleAssert.eq(0, countCodeLinesIn(conf, "UPGRADES_OFF_KEY"), "★面板连键名都不摸（只有开关类摸键）");
         SimpleAssert.eq(0, countCodeLinesIn(panel, "UPGRADES_OFF_KEY"), "★主面板同样不摸键");
@@ -19599,55 +19565,57 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★R96 S2 验收 5：几何账 —— 次级面板 高 ≤ 340、宽 ≤ 380，且★主面板那条 {@code HEIGHT == 360} 的
-     * 断言零改动（本件不搬它的账，也不给它加高）。
+     * ★R97 S5（翻案后的新判据）：几何账<b>逐型一本</b> —— 五面各自 ≤ 380×340、各自严格小于主面板 398×360、
+     * 各自行带横向闭合、各自内容段纵向闭合，且<b>五本高账互不相同</b>（「五型五面」的几何正身：同一张脸
+     * 换五个标题时，高度集合会塌缩成一个数）。像素账也逐型量：每一面量<b>自己那一行</b>的型名最坏串
+     * （两份 lang × 三态）与回执行最坏串（七条回执 + 身份键），紧凑三型与魔法使面再量各自读数/说明行。
      * <p>
-     * 除常数外还跑<b>两处自己的像素账</b>（型名行与回执行），因为 S2 往常驻面加了新文案：
-     * 型名行是"型名 + 现状"两段拼起来的最坏串，回执行吃<b>全族最宽的那条回执</b>（含本轮新增的七条）。
+     * ★主面板那条 {@code HEIGHT == 360} 的断言零改动（本片不搬它的账，也不给它加高）。
      */
     private static void configPanelGeometryWithinSecondaryCaps() {
-        SimpleAssert.that(
-            PocketConfigPanel.WIDTH <= PocketConfigPanel.MAX_WIDTH,
-            "★次级面板宽 ≤ 380（读到 " + PocketConfigPanel.WIDTH + "）");
-        SimpleAssert.that(
-            PocketConfigPanel.HEIGHT <= PocketConfigPanel.MAX_HEIGHT,
-            "★次级面板高 ≤ 340（读到 " + PocketConfigPanel.HEIGHT + "）");
-        SimpleAssert
-            .that(PocketConfigPanel.WIDTH < NekoPocketPanel.WIDTH, "★严格小于主面板宽（等于可视面时 DraggablePanelWrapper 的除算退化）");
-        SimpleAssert.that(PocketConfigPanel.HEIGHT < NekoPocketPanel.HEIGHT, "★严格小于主面板高");
-        // ★主面板尺寸断言零改动（这条判据归 panel_geometry_closes_398x360，本处只复钉读数没漂）
-        SimpleAssert.eq(360, NekoPocketPanel.HEIGHT, "主面板高仍是 360（★本件没碰它，也没借它加高）");
+        final java.util.Set<Integer> heights = new java.util.HashSet<>();
+        for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+            final int width = PocketConfigPanel.panelWidthOf(type);
+            final int height = PocketConfigPanel.panelHeightOf(type);
+            SimpleAssert.that(width <= PocketConfigPanel.MAX_WIDTH, "★" + type + " 面宽 ≤ 380（读到 " + width + "）");
+            SimpleAssert.that(height <= PocketConfigPanel.MAX_HEIGHT, "★" + type + " 面高 ≤ 340（读到 " + height + "）");
+            SimpleAssert.that(
+                width < NekoPocketPanel.WIDTH && height < NekoPocketPanel.HEIGHT,
+                "★" + type + " 严格小于主面板（等于可视面时 DraggablePanelWrapper 的除算退化）");
+            // ★行带横向闭合（逐型）：型名盒 + 缝 + 开关 + 两个边距收进面板宽。
+            SimpleAssert.that(
+                PocketConfigPanel.MARGIN + PocketConfigPanel.switchRowWidthOf(type) + PocketConfigPanel.MARGIN <= width,
+                "★" + type + " 行带横向闭合");
+            // ★内容段纵向闭合（逐型）：每段下沿都落在底部两件（回执行 + 关闭钮）之上。
+            for (final PocketConfigPanel.Section section : PocketConfigPanel.sectionsOf(type)) {
+                SimpleAssert.that(
+                    PocketConfigPanel.CONTENT_TOP + PocketConfigPanel.sectionContentHeight(section)
+                        <= height - PocketConfigPanel.BOTTOM_STACK,
+                    "★" + type + " 内容段纵向不顶出（段 " + section + "）");
+            }
+            heights.add(Integer.valueOf(height));
+        }
+        SimpleAssert.eq(
+            PocketUpgradeType.values().length,
+            heights.size(),
+            "★★五型五面的几何正身：五本高账互不相同（读到 " + heights.size() + " 种 —— 塌缩即「同一张脸换标题」）");
+        // ★主面板尺寸断言零改动（这条判据归 panel_geometry_closes_398x360，本处只复钉读数没漂）。
+        SimpleAssert.eq(360, NekoPocketPanel.HEIGHT, "主面板高仍是 360（★本片没碰它，也没借它加高）");
         SimpleAssert.eq(398, NekoPocketPanel.WIDTH, "主面板宽仍是 398");
         SimpleAssert.eq(225, PocketSlots.TOTAL_REAL_SLOTS, "★真实槽数仍是 225（次级面板零槽 ⇒ 不占 Container 账）");
-        // 行位与框位的纵向闭合（★不是靠注释：最后一行的下沿与最后一个框的下沿都必须在面板内）
-        final int rows = PocketUpgradeType.values().length;
-        SimpleAssert.that(
-            PocketConfigPanel.rowY(rows - 1) + PocketConfigPanel.ROW_HEIGHT
-                <= PocketConfigPanel.HEIGHT - PocketConfigPanel.MARGIN,
-            "五行开关的纵向闭合");
-        SimpleAssert.that(
-            PocketConfigPanel.mountY(PocketConfigPanel.MOUNT_FRAMES - 1) + PocketConfigPanel.MOUNT_HEIGHT
-                <= PocketConfigPanel.HEIGHT - PocketConfigPanel.MARGIN,
-            "★两个挂载框的纵向闭合（S7/S9 往里加内容时这一条是它们的地基）");
-        // ---- 本件自己的像素账：型名行 + 回执行（两份 lang 各算一遍，取最宽）----
+        // ---- 逐型像素账：型名行 + 回执行 + 各面自己的读数/说明行（两份 lang 各算一遍，取最坏）----
         final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
         if (zh == null || en == null) {
             System.out.println("[NOTE] 读不到两份 lang ⇒ 配置面板像素账【未验】（★不是通过）");
             return;
         }
-        // ★R96 S7b：型名行不再"横贯全宽"（72 格盘与五行带无法同时塞进 340 的顶 ⇒ 两者并排）。
-        // 盒宽因此★必须读装配侧那同一个常数 {@link PocketConfigPanel#LABEL_WIDTH}，★不许再用
-        // "面板宽 − 两个边距 − 开关"那条近似式 —— 它在新布局下虚高（290 vs 真实 174），
-        // 拿它算出来的"一行放得下"就是一张恒绿的假像素账（正是本轮 C3 那一族）。
-        final int labelBox = PocketConfigPanel.LABEL_WIDTH;
-        final int receiptBox = PocketConfigPanel.WIDTH - 2 * PocketConfigPanel.MARGIN
-            - PocketConfigPanel.CLOSE_WIDTH
-            - 2;
         for (final java.util.List<String> lang : new java.util.List[] { zh, en }) {
-            int worstLabel = 0;
-            String worstName = "";
             for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+                // 型名行：盒宽逐型读 labelWidthOf（★R97 S5 起短型给短盒；旧写法是"面板宽 − 边距 − 开关"
+                // 的近似式，紧凑面上它会虚高 ⇒ 恒绿的假像素账）。
+                int worstLabel = 0;
+                String worstName = "";
                 final String name = formatLang(lang, CONFIG_NAME_KEYS[type.ordinal()]);
                 for (final String state : new String[] { "gtit.pocket.config.state.on", "gtit.pocket.config.state.off",
                     "gtit.pocket.config.state.absent" }) {
@@ -19657,48 +19625,163 @@ public class NekoPocketModelTest {
                         worstName = name;
                     }
                 }
-            }
-            final int labelLines = (int) Math.ceil(worstLabel * PocketGhostRequest.RESIDENT_TEXT_SCALE / labelBox);
-            SimpleAssert.that(
-                labelLines <= 1,
-                "★型名行必须一行放得下（两行就顶穿 20px 的行盒）：最坏「" + worstName
-                    + "」逻辑宽 "
-                    + worstLabel
-                    + " 盒宽 "
-                    + labelBox
-                    + " ⇒ "
-                    + labelLines
-                    + " 行");
-            int worstReceipt = 0;
-            String worstKey = "";
-            for (final PocketConfigPanel.Outcome outcome : PocketConfigPanel.Outcome.values()) {
-                final String key = PocketConfigPanel.receiptKey(outcome);
-                final int w = residentLogicalWidth(formatLang(lang, key));
-                if (w > worstReceipt) {
-                    worstReceipt = w;
-                    worstKey = key;
+                final int labelBox = PocketConfigPanel.labelWidthOf(type);
+                final int labelLines = (int) Math.ceil(worstLabel * PocketGhostRequest.RESIDENT_TEXT_SCALE / labelBox);
+                SimpleAssert.that(
+                    labelLines <= 1,
+                    "★" + type
+                        + " 型名行必须一行放得下（两行就顶穿 20px 的行盒）：最坏「"
+                        + worstName
+                        + "」逻辑宽 "
+                        + worstLabel
+                        + " 盒宽 "
+                        + labelBox
+                        + " ⇒ "
+                        + labelLines
+                        + " 行");
+                // 回执行：吃全族最宽的那条回执（七条结论 + 身份键），盒宽逐型按本面宽算；两行盒（22px）。
+                int worstReceipt = 0;
+                String worstKey = "";
+                for (final PocketConfigPanel.Outcome outcome : PocketConfigPanel.Outcome.values()) {
+                    final String key = PocketConfigPanel.receiptKey(outcome);
+                    final int w = residentLogicalWidth(formatLang(lang, key));
+                    if (w > worstReceipt) {
+                        worstReceipt = w;
+                        worstKey = key;
+                    }
                 }
+                final int idW = residentLogicalWidth(formatLang(lang, PocketConfigPanel.identityReceiptKey()));
+                if (idW > worstReceipt) {
+                    worstReceipt = idW;
+                    worstKey = PocketConfigPanel.identityReceiptKey();
+                }
+                final int receiptBox = PocketConfigPanel.panelWidthOf(type) - 2 * PocketConfigPanel.MARGIN
+                    - PocketConfigPanel.CLOSE_WIDTH
+                    - 2;
+                final int receiptLines = (int) Math
+                    .ceil(worstReceipt * PocketGhostRequest.RESIDENT_TEXT_SCALE / receiptBox);
+                SimpleAssert.that(
+                    receiptLines * 10 <= PocketConfigPanel.RECEIPT_HEIGHT,
+                    "★" + type
+                        + " 回执行折行后不许顶穿（最坏键 "
+                        + worstKey
+                        + " 逻辑宽 "
+                        + worstReceipt
+                        + " 盒宽 "
+                        + receiptBox
+                        + " ⇒ "
+                        + receiptLines
+                        + " 行 × 10 ≤ "
+                        + PocketConfigPanel.RECEIPT_HEIGHT
+                        + "）");
             }
-            final int idW = residentLogicalWidth(formatLang(lang, PocketConfigPanel.identityReceiptKey()));
-            if (idW > worstReceipt) {
-                worstReceipt = idW;
-                worstKey = PocketConfigPanel.identityReceiptKey();
-            }
-            final int receiptLines = (int) Math
-                .ceil(worstReceipt * PocketGhostRequest.RESIDENT_TEXT_SCALE / receiptBox);
+            // ---- 各面自己的读数/说明行（逐型点名；磁力面的格盘/控制块账归 magnet_panel_geometry_closes）----
+            // 容量面：容量读数块（复用主面板那句 fluid.capacity，喂最宽数字 = 升级档 2G/36G）。
+            final int capW = residentLogicalWidth(
+                formatLang(
+                    lang,
+                    "gtit.pocket.fluid.capacity",
+                    Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML),
+                    Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL),
+                    Long.valueOf(PocketConstants.fluidTotalCapacityMl(true))));
+            final int capBox = contentBoxOf(PocketUpgradeType.CAPACITY);
+            final int capLines = (int) Math.ceil(capW * PocketGhostRequest.RESIDENT_TEXT_SCALE / capBox);
             SimpleAssert.that(
-                receiptLines * 10 <= PocketConfigPanel.RECEIPT_HEIGHT,
-                "★回执行折行后不许顶穿（最坏键 " + worstKey
-                    + " 逻辑宽 "
-                    + worstReceipt
+                capLines * 10 <= PocketConfigPanel.CAPACITY_READOUT_HEIGHT,
+                "★容量面读数块折行后放得下（逻辑宽 " + capW
                     + " 盒宽 "
-                    + receiptBox
+                    + capBox
                     + " ⇒ "
-                    + receiptLines
+                    + capLines
                     + " 行 × 10 ≤ "
-                    + PocketConfigPanel.RECEIPT_HEIGHT
+                    + PocketConfigPanel.CAPACITY_READOUT_HEIGHT
                     + "）");
+            // 堆叠面：上限读数（喂最宽数字 1024）+ 同尺说明。
+            assertSingleReadoutLine(
+                lang,
+                "gtit.pocket.config.stack.limit",
+                Integer.valueOf(PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED),
+                contentBoxOf(PocketUpgradeType.STACK),
+                "堆叠面上限读数");
+            assertSingleReadoutLine(
+                lang,
+                "gtit.pocket.config.stack.note",
+                contentBoxOf(PocketUpgradeType.STACK),
+                "堆叠面同尺说明");
+            // 通道持续化面：常开状态两支 + 两条说明。
+            assertSingleReadoutLine(
+                lang,
+                "gtit.pocket.channel.always_on",
+                contentBoxOf(PocketUpgradeType.CHANNEL_PERSIST),
+                "通道面常开态读数");
+            assertSingleReadoutLine(
+                lang,
+                "gtit.pocket.config.persist.idle",
+                contentBoxOf(PocketUpgradeType.CHANNEL_PERSIST),
+                "通道面未常开读数");
+            assertSingleReadoutLine(
+                lang,
+                "gtit.pocket.config.persist.button",
+                contentBoxOf(PocketUpgradeType.CHANNEL_PERSIST),
+                "通道面按钮禁用说明");
+            assertSingleReadoutLine(
+                lang,
+                "gtit.pocket.config.persist.frame",
+                contentBoxOf(PocketUpgradeType.CHANNEL_PERSIST),
+                "通道面帧带常亮说明");
+            // 魔法使面：三行模式标签（最长态那支）+ 元素容量行（喂 500/3000）。
+            for (int row = 0; row < PocketConfigPanel.modeRowCount(); row++) {
+                final String label = formatLang(lang, PocketConfigPanel.modeLabelKey(row));
+                int worst = 0;
+                for (final String state : new String[] { "gtit.pocket.config.state.on",
+                    "gtit.pocket.config.state.off" }) {
+                    worst = Math.max(worst, residentLogicalWidth(label + "：" + formatLang(lang, state)));
+                }
+                final int lines = (int) Math
+                    .ceil(worst * PocketGhostRequest.RESIDENT_TEXT_SCALE / PocketConfigPanel.MODE_LABEL_WIDTH);
+                SimpleAssert.that(
+                    lines <= 1,
+                    "★魔法使面第 " + row + " 行模式标签一行放得下（逻辑宽 " + worst + " 盒宽 " + PocketConfigPanel.MODE_LABEL_WIDTH + "）");
+            }
+            assertSingleReadoutLine(
+                lang,
+                "gtit.pocket.config.mage.capacity",
+                Integer.valueOf(PocketConstants.ELEMENT_CAP_PER_TAG),
+                Integer.valueOf(PocketConstants.ELEMENT_TOTAL_CAP),
+                contentBoxOf(PocketUpgradeType.MAGE),
+                "魔法使面元素容量行");
         }
+    }
+
+    /** 某一型读数行的盒宽 = 面宽 − 两个边距（★单源式，不抄第二份）。 */
+    private static int contentBoxOf(PocketUpgradeType type) {
+        return PocketConfigPanel.panelWidthOf(type) - 2 * PocketConfigPanel.MARGIN;
+    }
+
+    /** 单行读数像素账（无格式参数版）：最坏串按 0.6 档折进盒宽必须 ≤ 1 行。 */
+    private static void assertSingleReadoutLine(java.util.List<String> lang, String key, int box, String what) {
+        final int w = residentLogicalWidth(formatLang(lang, key));
+        final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / box);
+        SimpleAssert
+            .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
+    }
+
+    /** 单行读数像素账（单格式参数版）。 */
+    private static void assertSingleReadoutLine(java.util.List<String> lang, String key, Object argA, int box,
+        String what) {
+        final int w = residentLogicalWidth(formatLang(lang, key, argA));
+        final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / box);
+        SimpleAssert
+            .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
+    }
+
+    /** 单行读数像素账（双格式参数版）。 */
+    private static void assertSingleReadoutLine(java.util.List<String> lang, String key, Object argA, Object argB,
+        int box, String what) {
+        final int w = residentLogicalWidth(formatLang(lang, key, argA, argB));
+        final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / box);
+        SimpleAssert
+            .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
     }
 
     private static final String[] CONFIG_NAME_KEYS = { "item.neko_pocket_upgrade_capacity.name",
@@ -19706,57 +19789,42 @@ public class NekoPocketModelTest {
         "item.neko_pocket_upgrade_channel_persist.name", "item.neko_pocket_upgrade_mage.name" };
 
     /**
-     * ★R96 S2 验收目标里的"按型分派"那条：面板<b>不得被写死成五型同形</b>，也不许长成五套面板。
+     * ★R96 S2 验收目标里的"按型分派"那条，★R97 S5 翻案后的口径：面板<b>不得被写死成五型同形</b>，
+     * 也不许长成五套面板<b>类</b>。
      * <p>
-     * 三面同钉：① 分派表真值表（三型只开关、磁力与魔法使各带一段挂载位）；② 挂载位的<b>宿主在场</b>
-     * （装配代码真的按分派表画框，且 {@code MOUNT_FRAMES} 与表自洽 ⇒ S7/S9 有地方落，本轮不是空承诺）；
-     * ③ "一个面板"（★只有一枚 PANEL_NAME 常量、只有一处 defaultPanel、主面板只挂一枚 handler）。
+     * 四面同钉：① 分派表真值表（每型 = 开关 + <b>恰一段本型专属内容</b>，五段的第二段互不相同）；
+     * ② 宿主在场（装配代码真的按分派表画内容段，五枚 handler 一型一枚）；③ "一个面板类"
+     * （★只有一枚 PANEL_NAME 常量、只有一处 defaultPanel、主面板只有一处 handler 创建语句）；
+     * ④ 五面各自的键族在两份 lang 齐备。
      */
     private static void configPanelDispatchIsNotFiveIdentical() {
-        // ---- ① 分派表真值表 ----
-        final java.util.Map<PocketUpgradeType, Integer> sections = new java.util.LinkedHashMap<>();
+        // ---- ① 分派表真值表（★R97 S5：五型五面 —— 每型第二段互不相同）----
+        final java.util.Map<PocketUpgradeType, PocketConfigPanel.Section> second = new java.util.LinkedHashMap<>();
         for (final PocketUpgradeType type : PocketUpgradeType.values()) {
             final java.util.List<PocketConfigPanel.Section> got = PocketConfigPanel.sectionsOf(type);
             SimpleAssert.that(
-                got.size() >= 1 && got.get(0) == PocketConfigPanel.Section.SWITCH,
-                "★五型都有开关段（第一段恒为 SWITCH）：" + type);
-            sections.put(type, got.size());
+                got.size() == 2 && got.get(0) == PocketConfigPanel.Section.SWITCH,
+                "★每型 = 公共开关段 + 恰一段本型专属内容（第一段恒为 SWITCH）：" + type + " 读到 " + got);
+            second.put(type, got.get(1));
         }
+        SimpleAssert.eq(PocketUpgradeType.values().length, second.size(), "★分派表逐型点名（五型都在表里，缺一型这里就先红）");
         SimpleAssert.eq(
-            1,
-            sections.get(PocketUpgradeType.CAPACITY)
-                .intValue(),
-            "容量 = 只开关（P-3 字面）");
+            new java.util.HashSet<>(second.values()).size(),
+            PocketUpgradeType.values().length,
+            "★★五型五面的分派正身：第二段互不相同（读到 " + new java.util.HashSet<>(second.values()).size() + " 种 —— 任何两型共用一段就是「同一张脸换标题」）");
+        SimpleAssert
+            .eq(PocketConfigPanel.Section.READOUT_CAPACITY, second.get(PocketUpgradeType.CAPACITY), "容量 = 开关 + 容量读数段");
+        SimpleAssert
+            .eq(PocketConfigPanel.Section.READOUT_STACK, second.get(PocketUpgradeType.STACK), "堆叠 = 开关 + 单格上限读数段");
         SimpleAssert.eq(
-            1,
-            sections.get(PocketUpgradeType.STACK)
-                .intValue(),
-            "堆叠 = 只开关");
-        SimpleAssert.eq(
-            1,
-            sections.get(PocketUpgradeType.CHANNEL_PERSIST)
-                .intValue(),
-            "通道持续化 = 只开关");
-        SimpleAssert.eq(
-            2,
-            sections.get(PocketUpgradeType.MAGNET)
-                .intValue(),
-            "★磁力 = 开关 + 挂载位（S7 的宿主）");
-        SimpleAssert.eq(
-            2,
-            sections.get(PocketUpgradeType.MAGE)
-                .intValue(),
-            "★魔法使 = 开关 + 挂载位（S9 的宿主）");
+            PocketConfigPanel.Section.READOUT_PERSIST,
+            second.get(PocketUpgradeType.CHANNEL_PERSIST),
+            "通道持续化 = 开关 + 常开状态与说明段");
         SimpleAssert.eq(
             PocketConfigPanel.Section.MOUNT_MAGNET,
-            PocketConfigPanel.sectionsOf(PocketUpgradeType.MAGNET)
-                .get(1),
-            "★磁力那一段点名 MOUNT_MAGNET");
-        SimpleAssert.eq(
-            PocketConfigPanel.Section.MOUNT_MAGE,
-            PocketConfigPanel.sectionsOf(PocketUpgradeType.MAGE)
-                .get(1),
-            "★魔法使那一段点名 MOUNT_MAGE");
+            second.get(PocketUpgradeType.MAGNET),
+            "★磁力 = 开关 + 名单盘挂载段（72 格盘的宿主，★五型里唯一）");
+        SimpleAssert.eq(PocketConfigPanel.Section.MOUNT_MAGE, second.get(PocketUpgradeType.MAGE), "★魔法使 = 开关 + 模式挂载段");
         SimpleAssert.that(
             PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGNET) != null
                 && PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGE) != null,
@@ -19765,17 +19833,17 @@ public class NekoPocketModelTest {
             PocketConfigPanel.mountTitleKey(PocketUpgradeType.CAPACITY) == null
                 && PocketConfigPanel.mountTitleKey(PocketUpgradeType.STACK) == null
                 && PocketConfigPanel.mountTitleKey(PocketUpgradeType.CHANNEL_PERSIST) == null,
-            "★只开关的三型拿不到挂载键 ⇒ 面板给它们的就是一枚开关，不给空框");
+            "★读数段的三型拿不到挂载键 ⇒ 面板给它们的是读数行，不给空框");
         int mounts = 0;
         for (final PocketUpgradeType type : PocketUpgradeType.values()) {
             if (PocketConfigPanel.hasMount(type)) {
                 mounts++;
             }
         }
-        SimpleAssert.eq(PocketConfigPanel.MOUNT_FRAMES, mounts, "★分派表与纵向预算自洽（MOUNT_FRAMES 就是表里数出来的）");
+        SimpleAssert.eq(2, mounts, "★有挂载段的恰两型（磁力与魔法使）；读数段三型不画框");
         SimpleAssert.that(
             mounts > 0 && mounts < PocketUpgradeType.values().length,
-            "★★五型同形的反证：有挂载位的型数既不是 0 也不是 5（读到 " + mounts + "）");
+            "★★五型同形的反证：有挂载段的型数既不是 0 也不是 5（读到 " + mounts + "）");
         // ---- ② 宿主在场：装配代码真的按分派表走 ----
         final java.util.List<String> conf = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/gui/pocket/PocketConfigPanel.java");
@@ -19785,20 +19853,38 @@ public class NekoPocketModelTest {
             System.out.println("[NOTE] 读不到 PocketConfigPanel / NekoPocketPanel ⇒ 装配半边【未验】");
             return;
         }
-        final int build = methodStart(conf, "public static ModularPanel build(NekoPocketPanel ui) {");
-        SimpleAssert.that(build >= 0, "定位 build");
+        final int build = methodStart(
+            conf,
+            "public static ModularPanel build(NekoPocketPanel ui, PocketUpgradeType type) {");
+        SimpleAssert.that(build >= 0, "定位 build（★R97 S5 起带型参——一个面板类、五块面板实例）");
         final int buildEnd = methodEnd(conf, build);
         SimpleAssert.that(
-            regionContainsCode(conf, build, buildEnd, "if (hasMount(type))"),
-            "★画不画框由分派表决定（装配侧不重写第二份型清单 ⇒ 改表就跟着变）");
-        SimpleAssert.that(
-            regionContainsCode(conf, build, buildEnd, "mountFrame(ui, type, frame)"),
-            "★挂载框真的被 child 进面板（写了表没人画 = R57 同族）；★R96 S7b 起签名多带一个 ui"
-                + "（磁力框的内容是 72 格盘，要面板的名单镜像才能装配 ⇒ ★不是同步值，本面板仍零 syncValue）");
-        SimpleAssert.eq(1, countCodeLinesIn(conf, "ModularPanel.defaultPanel("), "★只有一个面板定义点（不是五套面板、也不是五行各一面）");
+            regionContainsCode(conf, build, buildEnd, "for (final Section section : sectionsOf(type))"),
+            "★画什么由分派表决定（装配侧不重写第二份型清单 ⇒ 改表就跟着变）");
         SimpleAssert
-            .eq(1, countCodeLinesIn(conf, "public static final String PANEL_NAME"), "★面板名只有一个常量（同一条：五套面板会在这里长出五个串）");
-        SimpleAssert.eq(1, countCodeLinesIn(panel, "IPanelHandler.simple("), "★主面板只挂一枚次级面板句柄");
+            .that(regionContainsCode(conf, build, buildEnd, "case MOUNT_MAGNET:"), "★磁力挂载段真的有装配支（写了表没人画 = R57 同族）");
+        SimpleAssert.that(regionContainsCode(conf, build, buildEnd, "case MOUNT_MAGE:"), "★魔法使挂载段真的有装配支");
+        SimpleAssert.that(
+            regionContainsCode(conf, build, buildEnd, "case READOUT_CAPACITY:")
+                && regionContainsCode(conf, build, buildEnd, "case READOUT_STACK:")
+                && regionContainsCode(conf, build, buildEnd, "case READOUT_PERSIST:"),
+            "★紧凑三型的读数段各有装配支（不是「只剩开关」的旧形状）");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(conf, ".defaultPanel(panelNameOf(type), panelWidthOf(type), panelHeightOf(type));"),
+            "★只有一个面板定义点（不是五套面板类；五块实例出自同一处带型参的调用；★spotless 会把 ModularPanel 与 .defaultPanel 折成两行 ⇒ 锚折行后的那一半）");
+        SimpleAssert
+            .eq(1, countCodeLinesIn(conf, "public static final String PANEL_NAME"), "★面板名只有一个常量（同一条：五套面板类会在这里长出五个串）");
+        // ★R97 S5：主面板侧五 handler 的形状——一处创建语句（spotless 会把 `IPanelHandler` 与 `.simple(`
+        // 折成两行 ⇒ 锚到折行后的那一半，读数仍是「创建语句恰一」）+ 数组长 = 型数 + 按槽开/全关。
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(panel, ".simple(host, (parent, player) -> PocketConfigPanel.build(this, type), true)"),
+            "★主面板只有一处 handler 创建语句（不是五处散抄的第五套）");
+        SimpleAssert.eq(
+            1,
+            countCodeLinesIn(panel, "new IPanelHandler[PocketUpgradeType.values().length]"),
+            "★configPanels 数组长度 = 型数（★R97 S5：一型一槽逐槽缓存，TerminalGiftPage 范式数组化）");
         SimpleAssert
             .eq(0, countCodeLinesIn(panel, "ModularPanel.defaultPanel(") - 1, "★主面板自己仍只有一处 defaultPanel（本轮没在面板里另起一面）");
         SimpleAssert.eq(0, countCodeLinesIn(conf, "registerFactory"), "不变量 G1：不新增 GUI 工厂");

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.StatCollector;
@@ -24,144 +25,121 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 
 /**
- * 升级<b>配置面板</b>：主面板之上的次级面板，五个插件格的左键都开<b>这一个</b>（R96 S2，P-3）。
+ * 升级<b>配置面板</b>：主面板之上的次级面板，<b>五型各开各的一面、各排各的版</b>（★R97 S5，显式翻案
+ * R96 台账 §R96 ①-3 / P-3 —— 用户 2026-09-27 明令「五种不同 UI」）。
  *
- * <h2>为什么是一个面板而不是五套</h2>
- * P-3 的字面是"五个已安装插件格左键一律打开一个配置面板"。本件因此把<b>结构</b>定成"一行一型、五行常驻"，
- * 左键只决定"开哪一面"（同一面），不决定"造哪一面"。MUI2 2.3.88 的 {@code SecondaryPanel} 会<b>缓存</b>
- * 首次构建的面板（{@code openPanel()} 里 {@code panel != null} 就直接开），而同一版本<b>没有 widget
- * 可见性 API</b>（{@code NekoVMGuiV2:997-1000} 已实测记过这条）⇒ 结构一旦按"点击的型"变形，第二次点别的格
- * 拿到的还是第一型那一套。"五行常驻"把这条库限制一次消化掉：面板不需要按型重建。
+ * <h2>★R97 S5：为什么能从「一个面板」改成「五面」</h2>
+ * R96 P-3 把五格左键都开<b>同一个</b>面板实例（"五行常驻一行一型"），当时的硬约束是 MUI2 2.3.88 起
+ * {@code SecondaryPanel} 的面板缓存是<b>handler 实例级</b>的、且没有 widget 可见性 API ⇒ 一块缓存面板
+ * 结构上不可能按"点击的型"变形。R97 对 2.3.91 的字节码复核给出另一条路：{@code IPanelHandler} 接口
+ * 含 {@code deleteCachedPanel()}，而<b>开 N 个 handler 实例 = N 块互不串型的独立面板</b>（仓内先例：
+ * {@code TerminalGiftPage:301-313} 的宿主身份比对 + 每宿主重建范式）。于是宿主侧（{@code NekoPocketPanel}）
+ * 挂五枚 handler、每枚只建一型，本件把 {@link #build} 参数化：<b>一个面板类、五块面板实例</b>，
+ * 不是五套 GUI 类。"五行常驻"随五 handler 消失——每面只画自己那一型的控件区。
  *
- * <h2>★按型分派不被写死成五型同形</h2>
- * 每一行的内容由 {@link #sectionsOf(PocketUpgradeType)} 这张<b>唯一分派表</b>决定：五型都有开关段；
- * 只有磁力与魔法使各带一段<b>挂载位</b>（{@link Section#MOUNT_MAGNET} / {@link Section#MOUNT_MAGE} ——
- * S7 / S9 的完整配置内容就填进那两个框，本轮把位画出来并钉住型）。容量 / 堆叠 / 通道持续化三型
- * <b>只有开关</b> ⇒ 面板给它们的就是那一枚开关，不给空框。
- * 分派表对 {@link PocketUpgradeType} 的五个值<b>逐个点名</b> ⇒ "追加第 6 型"时必须在这里表态，
- * 不能靠一条 {@code default} 把"只有开关"变成新形状的默认形状。
- * 这条是"五型同形"的唯一反证面，由用例 {@code config_panel_dispatch_is_not_five_identical} 钉。
+ * <h2>★按型分派的单源：sectionsOf + 五型五面</h2>
+ * 每一型画什么，仍由 {@link #sectionsOf(PocketUpgradeType)} 这张<b>唯一分派表</b>决定（追加第 6 型必须在
+ * 表里表态，不能靠 {@code default} 把新形状变成默认形状）。五型的内容段互不相同：
+ * 容量 = 开关 + 容量读数（{@link Section#READOUT_CAPACITY}）；堆叠 = 开关 + 单格上限读数
+ * （{@link Section#READOUT_STACK}）；通道持续化 = 开关 + 常开状态与两条说明
+ * （{@link Section#READOUT_PERSIST}）；磁力 = 开关 + 72 格名单盘与控制块（{@link Section#MOUNT_MAGNET}）；
+ * 魔法使 = 开关 + 三行模式控件 + 元素容量读数（{@link Section#MOUNT_MAGE}）。
+ * <b>面板尺寸也派生自这张表</b>（{@link #panelWidthOf} / {@link #panelHeightOf} 读各内容段的高宽预算），
+ * ⇒ 改分派表 = 改面板几何，不会出现"表改了、几何还停在三型开关"的漂移。
+ * "五型五面"由用例 {@code config_panel_dispatch_is_not_five_identical} 与
+ * {@code config_panel_geometry_within_secondary_caps}（逐型像素账）双面钉住。
  *
  * <h2>三块职责（装配面与数据面分开，数据面必须能在纯 JVM 真跑）</h2>
  * <ol>
  * <li>{@link #build} = 纯装配：只画控件、只发码，★一个字节都不写档；</li>
- * <li>{@link #encode} / {@link #typeOfArg} / {@link #offOfArg} = 动作码 arg 的编解码（双端同一条式子，
- * 越界一律丢弃）；</li>
- * <li>{@link #commitSwitch} = ★<b>服务端唯一的开关写腿</b>：三判里的"该型在档上"与"关闭守卫"两判
- * 加落档全在这一条腿里。它之所以住在本类而不是 {@link NekoPocketServerHandler}：
- * <b>handler 需要 {@code NekoPocketPanel}，而面板在纯 JVM 里造不出来</b> ⇒ 判据留在 handler 里就只能
- * "钉文本"，正是 R57/C3 那族"用例全绿、实机什么都没发生"。抽成静态纯函数后，三种拒绝与两种成交
- * 都能在 JVM 跑出来（用例 {@code switch_write_refuses_three_cases}）。
- * 第三判"持有者本人 + 载体身份"仍归 handler（它要读 {@code Container} 与 {@code EntityPlayer}）。</li>
+ * <li>{@link #encode} / {@link #typeOfArg} / {@link #offOfArg}（开关）与 {@link #encodeMode} /
+ * {@link #modeRowOfArg} / {@link #modeOnOfArg}（模式）= 动作码 arg 的编解码（双端同一条式子，
+ * 越界一律丢弃；★R97 S5 对这两族<b>零改动</b>）；</li>
+ * <li>{@link #commitSwitch} / {@link #commitMode} = ★<b>服务端仅有的两条写腿</b>（★R97 S5 零改动）。
+ * 它们之所以住在本类而不是 {@link NekoPocketServerHandler}：<b>handler 需要 {@code NekoPocketPanel}，
+ * 而面板在纯 JVM 里造不出来</b> ⇒ 判据留在 handler 里就只能"钉文本"，正是 R57/C3 那族"用例全绿、
+ * 实机什么都没发生"。抽成静态纯函数后，三种拒绝与两种成交都能在 JVM 跑出来
+ * （用例 {@code switch_write_refuses_three_cases}）。</li>
  * </ol>
  *
  * <h2>★客户端读的是什么、以及为什么没有第二条通道</h2>
- * 行上的读数来自 {@code NekoPocketPanel#carrierStackLive()} —— <b>载体栈的 NBT</b>：服务端读权威栈、
- * 客户端读 vanilla 槽同步过来的那份镜像（与 R95 S4 的 {@code channelPersistActive} 客户端腿<b>同一条通道</b>，
- * off-mask 本身就住在这个根里）。本轮<b>不</b>为开关另开同步键：给同一个布尔造第二个读数面，就是
- * EVA-1 方向丙 DP2「零新通道」要避免的那件事（{@code registerSyncValues} 因此一处未加）。
- * ★代价照实登记：镜像是否 ≤1 tick 到达属实机项（V-2 / V-8）；点完按钮<b>立刻</b>能看到的反馈是回执
- * （走既有 {@code SYNC_RECEIPT}），那条不依赖镜像 ⇒ "切了开关但什么都不动"这一族被回执腿挡住。
+ * 面上的读数（开关三态 / 容量 / 堆叠档 / 常开状态）来自 {@code NekoPocketPanel} 的既有读口 —— 它们读
+ * <b>载体栈的 NBT 镜像或既有 SYNC 族同步值</b>（容量走 vanilla 槽同步、堆叠走 R97 R6 的
+ * {@code SYNC_UPGRADE_ACTIVE} 位图镜像、常开走 {@code isChannelWorkLive} 那条既有腿）。本轮<b>不</b>为
+ * 配置面板另开任何同步键：{@code registerSyncValues} 一处未加（EVA-1 方向丙 DP2「零新通道」）。
  *
- * <h2>几何账（★硬顶，装配期自断言）</h2>
- * ★R96 S7b 起是 {@code 370 × 312}（旧 {@code 348 × 308} 随布局重排作废）：宽 =
- * {@code 6 + 行带 242 + 6 + 磁力格盘 110 + 6}，高 = 左右两列里更高那一列 + 4 + 回执行 + 关闭钮 + 边距。
- * 两个方向都<b>严格小于</b>主面板的 {@code 398 × 360}，也小于次级面板自己的判据顶
- * （宽 ≤ {@link #MAX_WIDTH}=380、高 ≤ {@link #MAX_HEIGHT}=340）。
+ * <h2>几何账（★硬顶，装配期自断言，逐型各自成立）</h2>
+ * 每型面板 = 边距 + 开关行（型名 + 开关）+ 该型的内容段 + 底部两件（回执行 + 关闭钮）：
+ * 容量 {@code 214×98}、堆叠 {@code 214×118}、通道持续化 {@code 250×140}、磁力 {@code 358×314}、
+ * 魔法使 {@code 200×176}（★派生自分派表，不手抄）。逐型断言：≤ {@link #MAX_WIDTH}×{@link #MAX_HEIGHT}
+ * （380×340）且<b>严格小于</b>主面板 {@code 398×360}（盖满主面板的次级面板读起来就是一块新屏，且非主面板
+ * 恒可拖 —— {@code DraggablePanelWrapper} 按可视面余量做除算，贴边即除零/负数）；几何闭合；行带可用宽
+ * 扛得住<b>本型</b>型名 + 三态的英文最坏串（逐型的像素账由用例拿两份 lang 真量，本件只钉
+ * {@link #WORST_LABEL_WIDTH}=168 那条「最宽一型不许被整体缩水」的下界）。
  * <p>
- * <b>★为什么行带不再是全宽、格盘为什么必须与它并排</b>（一条算术，不是口味）：磁力名单盘是
- * {@code 12 行 × 18 = 216} 高的硬形状（本片验收 5 就钉"行数×18 ≤ 可用高、列数×18 ≤ 可用宽"），
- * 而顶只有 340；五行带 {@code 5×20=100} + 盘面 216 + 框标题 20 + 回执行 12 + 关闭 16 + 两个边距 12
- * = <b>376 高</b> ⇒ ★竖着叠<b>结构性放不下</b>，只能横着并排（横向换纵向）。并排之后行带只占左列，
- * 型名可用宽 = {@link #LABEL_WIDTH}=174（英文最坏串在 0.6 档要 168：static 块钉下界、用例逐型量真值）。
- * <p>
- * ★两个挂载框在 S7b 之后<b>各走各的</b>：磁力框在右列顶到面板上边（高 = 标题 + 216 盘面），
- * 魔法使框仍在左列的挂载框栈里（{@link #mountY(int)}）。纵向预算因此由 {@link #HEIGHT} 那条
- * {@code max(两列)} 给，★不再用"框数 × MOUNT_HEIGHT"那条乘式（两片既不同高又不同列时，那条乘式就是假账）。
- * <p>
- * ★为什么必须留余量而不是贴边：非主面板在 MUI2 里<b>恒可拖</b>（{@code ModularPanel.isDraggable()}
- * 的实现就是"不是主面板就可拖"），拖动走 {@code DraggablePanelWrapper:49-50}，那里按"可视面减面板"的
- * 余量做除算 ⇒ 面板一旦等于可视面就是除零/负数。主面板那条 {@code HEIGHT != 360} 的断言一字未动
- * （本件的顶是<b>另立</b>的常数，不搬它的账）。
+ * ★紧凑三型（容量 / 堆叠 / 通道持续化）的回执行按<b>两行</b>给高（{@link #RECEIPT_HEIGHT}=22）：它们的面板
+ * 窄，英文最坏回执（守卫拒绝那两长句，逻辑宽 ≈ 417 ⇒ 0.6 档 ≈ 251px）在一百多 px 的盒里一行放不下；
+ * 磁力那面最宽（回执盒 288px）也允许两行 —— 同一把尺，免得逐型分叉出第二份回执高度账。
  *
  * <h2>不进 Container、不进同步值</h2>
  * 面板里<b>不</b>放 {@code ItemSlot}/{@code SlotGroupWidget}，也不用任何 {@code syncValue}：
  * MUI2 的 {@code SecondaryPanel.openPanel()} 对"树里有同步值、面板本身没被同步"直接抛
  * {@code IllegalArgumentException}（库实测形体）⇒ 本件零同步值，从形状上避开那条抛，而不是靠"运行期
  * 别再点一次"。它因此也不占 {@code PocketSlots.TOTAL_REAL_SLOTS} 那条真实槽账（225 一字未动，
- * ★不变量 G1：本件不新增 {@code registerFactory}）。
- * <p>
- * <b>★R96 S7b 的名单格盘如何继续守住这两条</b>：72 格用的是 {@link NekoMagnetGhostCell}
- * （{@code extends ButtonWidget} 并实现 {@code RecipeViewerGhostIngredientSlot}），★显示侧不进 Container ⇒
- * 守恒 225 零冲突；名单的同步载体是<b>主面板</b>上的一枚 {@code StringSyncValue}
- * （{@code NekoPocketPanel#SYNC_MAGNET}），本面板里的控件只读面板那侧的<b>双源访问器</b>
- * （{@code magnetEntryKeyAt/magnetMode/magnetTarget/magnetEntryCount}），★一个同步值都不往本树里挂 ⇒
- * 那条 {@code IllegalArgumentException} 仍然结构性不可达。写一律发码/发键到服务端，★客户端零写入。
+ * ★不变量 G1：本件不新增 {@code registerFactory}）。磁力 72 格名单盘走 {@link NekoMagnetGhostCell}
+ * （phantom 侧），名单的同步载体是<b>主面板</b>上那枚 {@code StringSyncValue}（{@code SYNC_MAGNET}），
+ * 本面板控件只读双源访问器 ⇒ 那条 {@code IllegalArgumentException} 结构性不可达。
  */
 public final class PocketConfigPanel {
 
-    /** 次级面板名（MUI2 的面板标识与调试树；<b>不是</b>同步键，本件零同步值）。 */
+    /** 次级面板名前缀（MUI2 的面板标识与调试树；<b>不是</b>同步键，本件零同步值）。逐型后缀见 {@link #panelNameOf}。 */
     public static final String PANEL_NAME = "gtit.pocket.config";
 
     /** 外边距（与主面板同一档，两把尺子才对得上）。 */
     public static final int MARGIN = 6;
-    /** 行高：一行 = 一个 18px 控件 + 2px 缝。 */
+    /** 开关行的高：一行 = 一个 18px 控件 + 2px 缝。 */
     public static final int ROW_HEIGHT = 20;
-    /** 开关按钮的宽（"关闭 / 打开 / 未装"三态在常驻档下都要放得下）。 */
+    /** 开关按钮的宽（"关闭 / 打开 / 未装"三态都要放得下）。 */
     public static final int SWITCH_WIDTH = 66;
     /** 开关按钮的高。 */
     public static final int SWITCH_HEIGHT = 18;
     /**
-     * 左列宽 —— ★R96 S7b 起它是<b>开关行带</b>的宽度（型名 + 缝 + 开关），不再是"挂载列的 x 偏移来源"。
-     * <p>
-     * ★为什么必须从 156 加宽到这里（这不是口味，是一条算术）：磁力的 72 格盘是
-     * {@code 12 行 × 18 = 216} 高的硬形状，而次级面板的高顶是 {@link #MAX_HEIGHT}=340。五行带占
-     * {@code 5×20=100}，回执行 + 关闭按钮 + 边距占 {@code 12+16+12=40}，加起来
-     * {@code 100 + 216 + 40 = 356} <b>已经越过 340</b>，再加挂载框的标题行只会更糟
-     * ⇒ ★72 格盘<b>结构上不可能</b>排在五行带<b>之下</b>，只能与它<b>并排</b>（横向换纵向）。
-     * 并排之后行带只剩左列可用，而左列必须容得下"型名 + 开关"：英文最坏串（"Channel Persistence
-     * Upgrade Module：Not installed"）的逻辑宽 280 在 0.6 档要 168px，加 2px 缝与 66px 开关 ⇒
-     * 本常数的下界就是 {@code 168 + 2 + 66}。★那个 168 不是这里自证的（本件只钉下界），
-     * 真串真宽由用例 {@code config_panel_geometry_within_secondary_caps} 拿两份 lang 逐型算。
+     * 回执行的高（★R97 S5 起 22 = 两行 × 10px 的账）：紧凑三型的面板窄，英文最坏回执一行放不下
+     * （见类 javadoc 几何账那段），给两行；用例按 {@code 行数 × 10 ≤ 本常数} 逐型量。
      */
-    public static final int SWITCH_COLUMN = 242;
-    /** 型名行的可用宽（★单源：装配侧与像素账用例读的是同一个数，★不是"面板宽减两个边距"那种近似式）。 */
-    public static final int LABEL_WIDTH = SWITCH_COLUMN - 2 - SWITCH_WIDTH;
-    /**
-     * 挂载框的宽（★R96 S7b 起它是<b>左列</b>那一格挂载框的宽 —— 魔法使的 S9 内容落在这里）。
-     * 它必须不大于 {@link #SWITCH_COLUMN}，否则左列放不下（static 块对账）。
-     */
-    public static final int MOUNT_COLUMN = 174;
-    /** 列间距。 */
-    public static final int COLUMN_GAP = 6;
-    /** 一个挂载框的高。 */
-    public static final int MOUNT_HEIGHT = 80;
-    /** 两个挂载框之间的缝。 */
-    public static final int MOUNT_GAP = 4;
-    /** 回执行的高。 */
-    public static final int RECEIPT_HEIGHT = 12;
-    /**
-     * ★R96 S9b：魔法使挂载框里<b>一行模式控件</b>的高（= 一枚按钮的高，与 {@link #SWITCH_HEIGHT} 同档）。
-     */
-    public static final int MODE_ROW_HEIGHT = 18;
-    /** ★R96 S9b：两行模式控件之间的缝。 */
-    public static final int MODE_ROW_GAP = 1;
-    /** ★R96 S9b：模式控件那枚小按钮的宽（只装"关掉 / 打开"两枚二字串，★不装三态 —— 三态在行首读数里）。 */
-    public static final int MODE_BUTTON_WIDTH = 30;
-    /** ★R96 S9b：挂载框标题占的高（= {@link #ROW_HEIGHT}，标题与开关列同一把尺）。 */
-    public static final int MOUNT_TITLE_HEIGHT = ROW_HEIGHT;
-    /**
-     * ★R96 S9b：模式行里<b>标签</b>的宽（派生：挂载框可用宽 − 2px 缝 − 那枚小按钮，★不手抄）。
-     */
-    public static final int MODE_LABEL_WIDTH = MOUNT_COLUMN - 2 - 2 - MODE_BUTTON_WIDTH;
+    public static final int RECEIPT_HEIGHT = 22;
     /** 关闭按钮的高与宽。 */
     public static final int CLOSE_HEIGHT = 16;
     /** 关闭按钮的宽。 */
     public static final int CLOSE_WIDTH = 56;
-    /** 挂载框的个数 = 分派表里有内容段的型数（本轮两条：S7 磁力、S9 魔法使）。★声明在 {@link #HEIGHT} 之前：纵向预算要读它。 */
-    public static final int MOUNT_FRAMES = 2;
+    /** 一条<b>单行</b>读数的高（10px 文字 + 上下留白，与 {@link #ROW_HEIGHT} 同一把尺减缝）。 */
+    public static final int READOUT_HEIGHT = 20;
+    /** 读数行之间的缝（也用于开关行与首个内容段之间）。 */
+    public static final int READOUT_GAP = 2;
+    /** 列间距（磁力面：控制块与 72 格盘之间）。 */
+    public static final int COLUMN_GAP = 6;
+    /** 各型内容段的起始 y = 边距 + 开关行 + 一条缝（★单源，装配侧与断言侧同一个数）。 */
+    public static final int CONTENT_TOP = MARGIN + ROW_HEIGHT + READOUT_GAP;
+    /** 底部两件的纵向预算 = 回执行之上的缝 + 回执行 + 关闭钮 + 边距（★单源）。 */
+    public static final int BOTTOM_STACK = 4 + RECEIPT_HEIGHT + CLOSE_HEIGHT + MARGIN;
+    /** 次级面板的宽度硬顶（见类 javadoc 的几何账）。 */
+    public static final int MAX_WIDTH = 380;
+    /** 次级面板的高度硬顶。 */
+    public static final int MAX_HEIGHT = 340;
+    /**
+     * 英文最坏型名串（"Channel Persistence Upgrade Module：Not installed"，逻辑宽 280）在 0.6 档要的
+     * 像素宽。★逐型行盒按 {@link #labelWidthOf} 给（短型给短盒，这正是五面差异化的一部分），本常数只钉
+     * 「五型里最宽的那一盒不许被整体缩到 168 以下」——缩了，通道持续化那一行的英文就折行顶穿行盒。
+     */
+    public static final int WORST_LABEL_WIDTH = 168;
+    /**
+     * 逐型的型名行盒宽（像素预算表，下标 = ordinal；真串真宽由用例拿两份 lang 逐型量，这里只给盒子）。
+     * 五型各自的英文最坏串（型名 + "：" + 三态里最长的"未装"）在 0.6 档分别要 ≈131/131/123/168/116px，
+     * 本表逐型给盒（+3 上取整余量）。★这是<b>数据表不是分派表</b>：装什么内容仍只由 {@link #sectionsOf} 说。
+     */
+    private static final int[] LABEL_BOX_WIDTHS = { 134, 134, 126, 170, 120 };
 
-    // ==== ★R96 S7b：磁力 72 格盘 + 三态/目标控件的几何（★12×6 = 108×216 是硬形状，逼出上面的并排布局） ====
+    // ==== ★R97 S5：磁力面的几何（★12×6 = 108×216 是硬形状，仍是五面里唯一带格盘的那面） ====
 
     /** 名单格盘的单格边长（★与主面板三栏同一把尺，不另立 16/20 的第二档）。 */
     public static final int CELL = NekoPocketPanel.GRID;
@@ -171,65 +149,75 @@ public final class PocketConfigPanel {
     public static final int MAGNET_ROWS = PocketConstants.MAGNET_FILTER_ROWS;
     /** 盘面宽 = {@code 6 × 18 = 108}。 */
     public static final int MAGNET_GRID_WIDTH = MAGNET_COLUMNS * CELL;
-    /** 盘面高 = {@code 12 × 18 = 216}（★本片整个布局重排就是被这一个数逼出来的，见 SWITCH_COLUMN 那段算术）。 */
+    /** 盘面高 = {@code 12 × 18 = 216}。 */
     public static final int MAGNET_GRID_HEIGHT = MAGNET_ROWS * CELL;
     /** 磁力挂载框的宽（盘面 + 左右各 1px 框边）。 */
     public static final int MAGNET_FRAME_WIDTH = MAGNET_GRID_WIDTH + 2;
     /** 磁力挂载框的高（标题行 + 盘面 + 上下各 1px 框边）。 */
     public static final int MAGNET_FRAME_HEIGHT = ROW_HEIGHT + MAGNET_GRID_HEIGHT + 2;
-    /** 磁力挂载框的 x（★右列：与五行带<b>并排</b>，不是排在它下面）。 */
-    public static final int MAGNET_FRAME_X = MARGIN + SWITCH_COLUMN + COLUMN_GAP;
-    /** 磁力挂载框的 y（★顶到面板上边，因为行带已经让给左列了）。 */
-    public static final int MAGNET_FRAME_Y = MARGIN;
-    /** 盘面原点的 x（框内 1px 边）。 */
-    public static final int MAGNET_GRID_X = MAGNET_FRAME_X + 1;
-    /** 盘面原点的 y（框边 + 标题行）。 */
-    public static final int MAGNET_GRID_Y = MAGNET_FRAME_Y + ROW_HEIGHT;
-    /** 磁力控制块（三态按钮 / 目标按钮 / 清空 / 读数）的 x —— 排左列。 */
+    /** 磁力挂载框的 y（★内容段顶：开关行之下第一条）。 */
+    public static final int MAGNET_FRAME_Y = CONTENT_TOP;
+    /** 控制块（三态 / 目标 / 清空 / 计数 / 说明）的 x —— 排左列（格盘在右）。 */
     public static final int MAGNET_CONTROL_X = MARGIN;
-    /** 磁力控制块的 y 起点 = 五行带之下。 */
-    public static final int MAGNET_CONTROL_Y = MARGIN + PocketUpgradeType.values().length * ROW_HEIGHT + 4;
-    /** 控制块里一行的按钮宽（两只并排 + 10px 缝 ≤ {@link #SWITCH_COLUMN}）。 */
+    /** 控制块的 y 起点 = 内容段顶。 */
+    public static final int MAGNET_CONTROL_Y = CONTENT_TOP;
+    /** 控制块里一行的按钮宽。 */
     public static final int MAGNET_BUTTON_WIDTH = 110;
     /** 控制块里一行的按钮高。 */
     public static final int MAGNET_BUTTON_HEIGHT = SWITCH_HEIGHT;
     /** 控制块行间距。 */
     public static final int MAGNET_ROW_GAP = 4;
+    /** 同一行里两只控件（按钮 + 按钮 / 按钮 + 计数）之间的缝。 */
+    public static final int MAGNET_BUTTON_GAP = 10;
+    /** 控制块整列的宽（两只按钮并排 + 缝；说明行同宽-2）。 */
+    public static final int MAGNET_CONTROL_WIDTH = 2 * MAGNET_BUTTON_WIDTH + MAGNET_BUTTON_GAP;
     /** 计数读数行的宽（控制块第一行的第二列）。 */
-    public static final int MAGNET_COUNT_WIDTH = SWITCH_COLUMN - MAGNET_BUTTON_WIDTH - 10;
+    public static final int MAGNET_COUNT_WIDTH = MAGNET_CONTROL_WIDTH - MAGNET_BUTTON_WIDTH - MAGNET_BUTTON_GAP;
     /** ★三态不对称说明行的高（24 = 两行 × 10px 的账，被 {@code magnet_panel_geometry_closes} 那条用例量）。 */
     public static final int MAGNET_NOTE_HEIGHT = 24;
 
-    /** 面板宽 = {@code 6 + 242 + 6 + 110 + 6} = <b>370</b>（★派生自列宽，不手抄）。 */
-    public static final int WIDTH = MARGIN + SWITCH_COLUMN + COLUMN_GAP + MAGNET_FRAME_WIDTH + MARGIN;
-    /**
-     * 面板高 = {@code max(左列栈下沿, 磁力格盘下沿) + 4 + 回执 12 + 关闭 16 + 边距 6} = <b>312</b>。
-     * <p>
-     * ★两列各算各的：左列 = 五行带 + 磁力控制块 + 最后一个挂载框（S9 的魔法使），右列 = 磁力框。
-     * 谁高听谁（★不再用"两个挂载框 × MOUNT_HEIGHT"那条旧加总式 —— S7b 之后两个框既不同高也不同列，
-     * 拿一条乘式当账就是假账）。
-     */
-    public static final int HEIGHT = Math
-        .max(mountY(MOUNT_FRAMES - 1) + MOUNT_HEIGHT, MAGNET_FRAME_Y + MAGNET_FRAME_HEIGHT) + 4
-        + RECEIPT_HEIGHT
-        + CLOSE_HEIGHT
-        + MARGIN;
+    // ==== ★R97 S5：魔法使面的几何（挂载框 + 三行模式控件 + 元素容量读数） ====
 
-    /** 次级面板的宽度硬顶（见类 javadoc 的几何账）。 */
-    public static final int MAX_WIDTH = 380;
-    /** 次级面板的高度硬顶。 */
-    public static final int MAX_HEIGHT = 340;
+    /** 挂载框标题占的高（= {@link #ROW_HEIGHT}，标题与开关行同一把尺）。 */
+    public static final int MOUNT_TITLE_HEIGHT = ROW_HEIGHT;
+    /** 魔法使挂载框里<b>一行模式控件</b>的高（= 一枚按钮的高，与 {@link #SWITCH_HEIGHT} 同档）。 */
+    public static final int MODE_ROW_HEIGHT = 18;
+    /** 两行模式控件之间的缝。 */
+    public static final int MODE_ROW_GAP = 1;
+    /** 模式控件那枚小按钮的宽（只装"关掉 / 打开"两枚二字串，★不装三态 —— 三态在行首读数里）。 */
+    public static final int MODE_BUTTON_WIDTH = 30;
+    /** 魔法使挂载框的 x（★左起：这一面的主体就是这框 + 框下的容量行）。 */
+    public static final int MAGE_FRAME_X = MARGIN;
+    /** 魔法使挂载框的 y（内容段顶）。 */
+    public static final int MAGE_FRAME_Y = CONTENT_TOP;
+    /** 魔法使挂载框的宽（标题/标签的英文最坏串 105px + 按钮 30 + 两道内缝 + 2px 框边）。 */
+    public static final int MAGE_FRAME_WIDTH = 144;
+    /** 框内模式行的纵向预算 = 行数 × 行高 + 行间缝。 */
+    public static final int MAGE_MODE_STACK_HEIGHT = modeRowCount() * MODE_ROW_HEIGHT
+        + (modeRowCount() - 1) * MODE_ROW_GAP;
+    /** 魔法使挂载框的高 = 上下框边 + 标题 + 模式行栈。 */
+    public static final int MAGE_FRAME_HEIGHT = 2 + MOUNT_TITLE_HEIGHT + MAGE_MODE_STACK_HEIGHT;
+    /** 模式行里<b>标签</b>的宽（派生：框宽 − 2px 缝 − 那枚小按钮 − 2px 缝，★不手抄）。 */
+    public static final int MODE_LABEL_WIDTH = MAGE_FRAME_WIDTH - 2 - 2 - MODE_BUTTON_WIDTH;
+    /** 容量读数行的宽（两行版面里横贯整面）。 */
+    public static final int CAPACITY_READOUT_HEIGHT = RECEIPT_HEIGHT;
 
     /**
-     * 一行的<b>内容段</b>（★按型分派，"五型同形"的反证面）。{@link #SWITCH} 是公共段，
-     * 两段 {@code MOUNT_*} 只有磁力与魔法使有。
+     * 一行（或一面）的<b>内容段</b>（★按型分派，"五型五面"的正身）。{@link #SWITCH} 是公共段
+     * （五面顶上都那一行），其余五段<b>每型恰一段</b>：三个读数段（紧凑面）与两个挂载段（磁力 / 魔法使）。
      */
     public enum Section {
-        /** 开 / 关切换（五型都有）。 */
+        /** 开 / 关切换（五型都有，恒为第一段）。 */
         SWITCH,
-        /** 磁力的配置内容挂载位（S7：吸取目标 / 三态名单 / 12×6 格）。 */
+        /** 容量面的读数段：流体条双轨口径（20M/2G per tank，合计 18 倍）。 */
+        READOUT_CAPACITY,
+        /** 堆叠面的读数段：单格上限两档（64 → 1024）+ 同尺说明。 */
+        READOUT_STACK,
+        /** 通道持续化面的读数段：常开现状 + 通道按钮禁用说明 + 帧带常亮说明。 */
+        READOUT_PERSIST,
+        /** 磁力面的挂载段：72 格 phantom 名单盘 + 三态 / 目标 / 清空 / 计数 / 说明。 */
         MOUNT_MAGNET,
-        /** 魔法使的配置内容挂载位（S9：四模式 / 元素容量 / 充能读数）。 */
+        /** 魔法使面的挂载段：三行模式控件 + 元素容量读数。 */
         MOUNT_MAGE
     }
 
@@ -266,60 +254,75 @@ public final class PocketConfigPanel {
         // 而不是留一条"派生式跟着漂、永不红"的活口）。★本块只碰整数与字符串，不碰纹理表
         // （{@code PocketGuiTextures} 的初始化会连带拉 fastutil，零依赖回归套件的类路径上没有它 ——
         // 同 {@code NekoPocketBottomBand#upgradeCellBackground} 记过的实测）。
-        if (WIDTH > MAX_WIDTH || HEIGHT > MAX_HEIGHT) {
+        if (LABEL_BOX_WIDTHS.length != PocketUpgradeType.values().length) {
             throw new IllegalStateException(
-                "[pocket] 配置面板越过次级面板硬顶: " + WIDTH
-                    + "x"
-                    + HEIGHT
-                    + " 顶="
-                    + MAX_WIDTH
-                    + "x"
-                    + MAX_HEIGHT
-                    + "（★非主面板恒可拖，DraggablePanelWrapper 按可视面余量做除算 ⇒ 贴边即除零/负数）");
+                "[pocket] 型名行盒表长度 " + LABEL_BOX_WIDTHS.length
+                    + " ≠ 型数 "
+                    + PocketUpgradeType.values().length
+                    + "（★追加第 6 型必须同步给盒宽与 sectionsOf 表态，两处一起改）");
         }
-        if (WIDTH >= NekoPocketPanel.WIDTH || HEIGHT >= NekoPocketPanel.HEIGHT) {
+        int widestLabel = 0;
+        for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+            final int width = panelWidthOf(type);
+            final int height = panelHeightOf(type);
+            if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+                throw new IllegalStateException(
+                    "[pocket] " + type
+                        + " 的配置面板越过次级面板硬顶: "
+                        + width
+                        + "x"
+                        + height
+                        + " 顶="
+                        + MAX_WIDTH
+                        + "x"
+                        + MAX_HEIGHT
+                        + "（★非主面板恒可拖，DraggablePanelWrapper 按可视面余量做除算 ⇒ 贴边即除零/负数）");
+            }
+            if (width >= NekoPocketPanel.WIDTH || height >= NekoPocketPanel.HEIGHT) {
+                throw new IllegalStateException(
+                    "[pocket] " + type
+                        + " 的配置面板不再严格小于主面板: "
+                        + width
+                        + "x"
+                        + height
+                        + "，主面板="
+                        + NekoPocketPanel.WIDTH
+                        + "x"
+                        + NekoPocketPanel.HEIGHT
+                        + "（盖满主面板的次级面板读起来就是一块新屏，且拖动余量归零）");
+            }
+            // ★几何闭合（派生式防手改）：行带 + 两个边距必须恰好收进面板宽；内容段下沿必须恰好落在
+            // 底部两件之上。两条都是「派生式 ⇒ 恒等」，有人手抄面板尺寸时会在这里先红。
+            if (MARGIN + switchRowWidthOf(type) + MARGIN > width) {
+                throw new IllegalStateException("[pocket] " + type + " 行带横向不闭合: " + switchRowWidthOf(type));
+            }
+            for (final Section section : sectionsOf(type)) {
+                if (CONTENT_TOP + sectionContentHeight(section) > height - BOTTOM_STACK) {
+                    throw new IllegalStateException(
+                        "[pocket] " + type
+                            + " 的内容段纵向不闭合: "
+                            + section
+                            + " 下沿="
+                            + (CONTENT_TOP + sectionContentHeight(section))
+                            + " 面板高="
+                            + height);
+                }
+            }
+            widestLabel = Math.max(widestLabel, labelWidthOf(type));
+        }
+        // ★型名行可用宽的下界（★这里只钉"最宽一型扛得住英文最坏串"这件事被写死在常数上，逐型真串真宽
+        // 由用例 config_panel_geometry_within_secondary_caps 拿两份 lang 逐型算 —— 短型的短盒是本片
+        // 排版差异化的一部分，不在这条下界的管辖里）。
+        if (widestLabel < WORST_LABEL_WIDTH) {
             throw new IllegalStateException(
-                "[pocket] 配置面板不再严格小于主面板: " + WIDTH
-                    + "x"
-                    + HEIGHT
-                    + "，主面板="
-                    + NekoPocketPanel.WIDTH
-                    + "x"
-                    + NekoPocketPanel.HEIGHT
-                    + "（盖满主面板的次级面板读起来就是一块新屏，且拖动余量归零）");
+                "[pocket] 型名行盒被整体缩水: 最宽一型 " + widestLabel + " < " + WORST_LABEL_WIDTH + "（0.6 档的英文最坏串会折行顶穿 20px 行盒）");
         }
-        if (SWITCH_COLUMN < SWITCH_WIDTH + 18) {
-            throw new IllegalStateException("[pocket] 左列放不下开关（行带的 x 偏移会压到按钮上）: " + SWITCH_COLUMN);
+        // ★磁力格盘的算术（★本面整个宽账就是被 108×216 这块硬形状逼出来的）。
+        if (MAGNET_COLUMNS * CELL != MAGNET_GRID_WIDTH || MAGNET_ROWS * CELL != MAGNET_GRID_HEIGHT) {
+            throw new IllegalStateException("[pocket] 栅格乘式与盘面尺寸不符（★格数不得是裸字面量）");
         }
-        // ★型名可用宽的下界（★这里只钉"放得下最坏串的下界"这件事被写死在常数上，真串真宽由用例逐型算；
-        // 上一手把它写成"全宽 − 两边距 − 开关"的近似式，S7b 把行带收窄到左列之后那条近似式会<b>虚高</b>
-        // ⇒ 用例改读 {@link #LABEL_WIDTH}，本条钉它不许被谁悄悄缩回去）。
-        if (LABEL_WIDTH < 168) {
-            throw new IllegalStateException(
-                "[pocket] 型名行可用宽顶不住英文最坏串（0.6 档要 168px）: LABEL_WIDTH=" + LABEL_WIDTH
-                    + "，SWITCH_COLUMN="
-                    + SWITCH_COLUMN);
-        }
-        if (LABEL_WIDTH + 2 + SWITCH_WIDTH > SWITCH_COLUMN) {
-            throw new IllegalStateException("[pocket] 行带横向不闭合（型名 + 缝 + 开关顶出左列）: " + SWITCH_COLUMN);
-        }
-        // ★横向闭合（与下面那条纵向闭合同一条纪律：{@link #WIDTH} 是派生式，有人手改成字面量时先在这里红，
-        // 而不是等到屏幕上挂载框被裁掉）。★S7b 起右列是磁力格盘、左列是行带 + 挂载框栈。
-        if (MAGNET_FRAME_X + MAGNET_FRAME_WIDTH > WIDTH - MARGIN) {
-            throw new IllegalStateException(
-                "[pocket] 配置面板横向不闭合（磁力格盘顶出面板）: " + WIDTH + "，格盘右沿=" + (MAGNET_FRAME_X + MAGNET_FRAME_WIDTH));
-        }
-        if (MOUNT_COLUMN > SWITCH_COLUMN) {
-            throw new IllegalStateException(
-                "[pocket] 挂载框宽顶出行带列: MOUNT_COLUMN=" + MOUNT_COLUMN + " > SWITCH_COLUMN=" + SWITCH_COLUMN);
-        }
-        if (mountY(MOUNT_FRAMES - 1) + MOUNT_HEIGHT > HEIGHT - MARGIN) {
-            throw new IllegalStateException("[pocket] 配置面板纵向不闭合（左列挂载框顶出面板）: " + HEIGHT);
-        }
-        // ★磁力格盘的纵向闭合 + <b>盘面本身必须真装得下 12×6 的 18px 栅格</b>（★本片验收 5 的算术落点：
-        // 列数×18 ≤ 可用宽、行数×18 ≤ 可用高，两个方向都留 1px 框边）。
-        if (MAGNET_FRAME_Y + MAGNET_FRAME_HEIGHT > HEIGHT - MARGIN) {
-            throw new IllegalStateException("[pocket] 磁力格盘纵向不闭合（顶出面板）: " + HEIGHT);
+        if (MAGNET_ROWS * MAGNET_COLUMNS != PocketConstants.MAGNET_FILTER_SLOTS) {
+            throw new IllegalStateException("[pocket] 磁力格盘行列乘积不等于数据层的条目预算");
         }
         if (MAGNET_GRID_WIDTH > MAGNET_FRAME_WIDTH - 2 || MAGNET_GRID_HEIGHT > MAGNET_FRAME_HEIGHT - ROW_HEIGHT - 2) {
             throw new IllegalStateException(
@@ -331,52 +334,49 @@ public final class PocketConfigPanel {
                     + "x"
                     + (MAGNET_FRAME_HEIGHT - ROW_HEIGHT - 2));
         }
-        if (MAGNET_COLUMNS * CELL != MAGNET_GRID_WIDTH || MAGNET_ROWS * CELL != MAGNET_GRID_HEIGHT) {
-            throw new IllegalStateException("[pocket] 栅格乘式与盘面尺寸不符（★格数不得是裸字面量）");
-        }
-        if (MAGNET_ROWS * MAGNET_COLUMNS != PocketConstants.MAGNET_FILTER_SLOTS) {
-            throw new IllegalStateException("[pocket] 磁力格盘行列乘积不等于数据层的条目预算");
-        }
-        // ★磁力控制块（三态 / 目标 / 清空 / 不对称读数）整块必须排在行带之下、最后一个挂载框之上：
-        // 反过来（叠到挂载框上）在纯 JVM 里不会崩、只会在屏幕上叠字，所以这条只能钉成装配期断言。
-        if (MAGNET_CONTROL_Y < MARGIN + PocketUpgradeType.values().length * ROW_HEIGHT) {
-            throw new IllegalStateException("[pocket] 磁力控制块压在五行带上: " + MAGNET_CONTROL_Y);
-        }
-        if (magnetNoteY() + MAGNET_NOTE_HEIGHT > mountY(1)) {
+        if (MAGNET_CONTROL_X + MAGNET_CONTROL_WIDTH + COLUMN_GAP + MAGNET_FRAME_WIDTH + MARGIN
+            != panelWidthOf(magnetType())) {
             throw new IllegalStateException(
-                "[pocket] 磁力控制块顶进魔法使挂载框: 控制块下沿=" + (magnetNoteY() + MAGNET_NOTE_HEIGHT) + "，挂载框 y=" + mountY(1));
+                "[pocket] 磁力面横向不闭合（控制块 + 缝 + 格盘 + 边距 ≠ 面板宽）: " + panelWidthOf(magnetType()));
         }
-        if (MAGNET_CONTROL_X + 2 * MAGNET_BUTTON_WIDTH + 10 > MARGIN + SWITCH_COLUMN) {
+        if (magnetNoteY() + MAGNET_NOTE_HEIGHT > panelHeightOf(magnetType()) - BOTTOM_STACK) {
             throw new IllegalStateException(
-                "[pocket] 控制块两只按钮顶出行带列: " + (2 * MAGNET_BUTTON_WIDTH + 10) + " > " + SWITCH_COLUMN);
+                "[pocket] 磁力控制块说明行纵向不闭合: " + (magnetNoteY() + MAGNET_NOTE_HEIGHT)
+                    + " > "
+                    + (panelHeightOf(magnetType()) - BOTTOM_STACK));
         }
-        if (PocketUpgradeType.values().length * ROW_HEIGHT > HEIGHT - MARGIN) {
-            throw new IllegalStateException("[pocket] 开关列放不下五行: " + HEIGHT);
+        if (MAGNET_COUNT_WIDTH <= 0) {
+            throw new IllegalStateException("[pocket] 磁力计数读数行没有宽度可占");
         }
-        // ★R96 S9b：魔法使挂载框里的<b>模式行</b>必须落在框内（框高由 {@link #MOUNT_HEIGHT} 给，
-        // 而框高又进 {@link #HEIGHT} 的纵向预算 ⇒ 这一条红的同时会带走上面那条"挂载列顶出面板"，
-        // 所以单独写一条，报的是"行多了"而不是"面板高了"）。
-        if (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP) > MOUNT_HEIGHT) {
+        // ★魔法使框里的模式行必须落在框内（框高进面板高的纵向预算 ⇒ 这条红的同时会带走上面那条
+        // 「内容段纵向不闭合」，所以单独写一条，报的是"行多了"而不是"面板高了"）。
+        if (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP) > MAGE_FRAME_HEIGHT) {
             throw new IllegalStateException(
                 "[pocket] 魔法使挂载框放不下 " + modeRowCount()
                     + " 行模式控件: 框高="
-                    + MOUNT_HEIGHT
+                    + MAGE_FRAME_HEIGHT
                     + "，需要="
                     + (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP)));
         }
-        if (MODE_LABEL_WIDTH < 40 || MODE_LABEL_WIDTH + MODE_BUTTON_WIDTH + 2 > MOUNT_COLUMN - 2) {
+        if (MODE_LABEL_WIDTH < 40 || MODE_LABEL_WIDTH + MODE_BUTTON_WIDTH + 2 > MAGE_FRAME_WIDTH - 2) {
             throw new IllegalStateException(
                 "[pocket] 模式行横向不闭合（标签 + 按钮顶出挂载框）: 标签=" + MODE_LABEL_WIDTH + "，按钮=" + MODE_BUTTON_WIDTH);
         }
-        // ★分派表与挂载框数必须对得上：对不上就是"有人改了分派表而没改纵向预算"。
-        int mounts = 0;
+        // ★分派表与内容段族必须对得上：五个值逐个点名 ⇒ 追加第 6 型时 sectionsOf 不表态就先在这里红。
+        int secondSections = 0;
         for (final PocketUpgradeType type : PocketUpgradeType.values()) {
-            if (hasMount(type)) {
-                mounts++;
+            final List<Section> sections = sectionsOf(type);
+            if (sections.size() != 2 || sections.get(0) != Section.SWITCH) {
+                throw new IllegalStateException(
+                    "[pocket] " + type
+                        + " 的内容段族不是「开关 + 恰一段专属内容」: "
+                        + sections
+                        + "（★五型五面：每面 = 公共开关行 + 本型自己的那一段，不多画也不少画）");
             }
+            secondSections++;
         }
-        if (mounts != MOUNT_FRAMES) {
-            throw new IllegalStateException("[pocket] 分派表里有挂载位的型数 = " + mounts + "，纵向预算按 " + MOUNT_FRAMES + " 个框算");
+        if (secondSections != PocketUpgradeType.values().length) {
+            throw new IllegalStateException("[pocket] 分派表点名数 " + secondSections + " ≠ 型数（表与枚举不齐）");
         }
     }
 
@@ -385,10 +385,10 @@ public final class PocketConfigPanel {
     /**
      * ★唯一分派表：这一型的面板由哪些内容段组成。
      * <p>
-     * 五个值<b>逐个点名</b>（不写成 {@code default} 一把梭）就是这条判据的全部内容：容量 / 堆叠 /
-     * 通道持续化 = 只开关（P-3 的字面"只需开关的项其面板里就只放开关"），磁力 = 开关 + 名单挂载位，
-     * 魔法使 = 开关 + 元素挂载位。若这里退化成"五型同形"，S7/S9 的完整配置就失去了宿主，
-     * 而这条退化<b>不会</b>让编译或任何既有读数变红 —— 所以它由用例钉住而不是由注释自证。
+     * 五个值<b>逐个点名</b>（不写成 {@code default} 一把梭）就是这条判据的全部内容：容量 = 开关 + 容量读数，
+     * 堆叠 = 开关 + 单格上限读数，通道持续化 = 开关 + 常开状态与说明，磁力 = 开关 + 名单盘挂载位，
+     * 魔法使 = 开关 + 模式挂载位。若这里退化成"五型同形"，五面就塌回一张脸 —— 这条退化<b>不会</b>让
+     * 编译或任何既有读数变红，所以它由用例 {@code config_panel_dispatch_is_not_five_identical} 钉。
      */
     public static List<Section> sectionsOf(PocketUpgradeType type) {
         if (type == null) {
@@ -396,25 +396,26 @@ public final class PocketConfigPanel {
         }
         switch (type) {
             case CAPACITY:
-                return Collections.singletonList(Section.SWITCH);
+                return Arrays.asList(Section.SWITCH, Section.READOUT_CAPACITY);
             case STACK:
-                return Collections.singletonList(Section.SWITCH);
+                return Arrays.asList(Section.SWITCH, Section.READOUT_STACK);
             case MAGNET:
                 return Arrays.asList(Section.SWITCH, Section.MOUNT_MAGNET);
             case CHANNEL_PERSIST:
-                return Collections.singletonList(Section.SWITCH);
+                return Arrays.asList(Section.SWITCH, Section.READOUT_PERSIST);
             case MAGE:
                 return Arrays.asList(Section.SWITCH, Section.MOUNT_MAGE);
             default:
                 // 走不到（上面已穷举五个值）。留这一支的意义：将来追加第 6 型而忘了在上面表态时，
-                // 这里给的是"与开关同形"的最小安全回落，同时 static 块的 mounts 对账会先一步炸红。
+                // 这里给的是"与开关同形"的最小安全回落，同时 static 块的段族对账会先一步炸红。
                 return Collections.singletonList(Section.SWITCH);
         }
     }
 
     /** 这一型是否有挂载位（★由 {@link #sectionsOf} 派生，别处不得再写一遍型清单）。 */
     public static boolean hasMount(PocketUpgradeType type) {
-        return sectionsOf(type).size() > 1;
+        final List<Section> sections = sectionsOf(type);
+        return sections.contains(Section.MOUNT_MAGNET) || sections.contains(Section.MOUNT_MAGE);
     }
 
     /** 挂载框的标题键；这一型没有挂载位 ⇒ {@code null}（★调用方不许把 null 读成空串继续画框）。 */
@@ -429,16 +430,11 @@ public final class PocketConfigPanel {
         return null;
     }
 
-    // ========================================================== ★R96 S9b：魔法使挂载框里的「四模式」数据面
+    // ========================================================== 魔法使挂载框里的「四模式」数据面
     //
     // ★★四模式 = ①「魔法使」主开关（本件第 {@link Section#SWITCH} 段，S1/S2 已定稿，一条码都没加）
-    // ②结晶模式 ③猫猫币充能 ④源质转换。后三条住在本段，位序单源在
+    // ②结晶模式 ③猫猫币充能 ④源质转换。后三条住在魔法使那一面，位序单源在
     // {@link PocketConstants#MAGE_MODE_BITS}（★本件不写第二份位清单，见 {@link #modeBit(int)}）。
-    //
-    // ★为什么不与磁力那段共用一套硬编码：磁力的内容段（S7b 会填名单格与三态）与这里的"三条 on/off 行"
-    // 只有"都装在 MOUNT_* 框里"这一件事相同，判据、动作码空间与几何全不同 ⇒ 本件把<b>框</b>留给
-    // {@link #mountFrame}，把<b>框里的内容</b>按 {@link Section} 分派到 {@link #mountContent}
-    // （磁力 ⇒ 既有的 pending 文本件；魔法使 ⇒ {@link #mageModeRows}）。S7b 落地时换掉的是它自己那一支。
 
     /** 模式行的<b>标签</b>键（★按 {@link PocketConstants#MAGE_MODE_BITS} 的行序，两个下标空间同一个数）。 */
     private static final String[] MODE_LABEL_KEYS = { "gtit.pocket.config.mode.crystal", "gtit.pocket.config.mode.coin",
@@ -551,21 +547,6 @@ public final class PocketConfigPanel {
             return Outcome.NO_CHANGE;
         }
         return wantOn ? Outcome.TURNED_ON : Outcome.TURNED_OFF;
-    }
-
-    /** 第 {@code row} 行的 y（★挂载框<b>内</b>坐标系，标题之下第一行；单源，调用点不写第二次）。 */
-    public static int modeRowY(int row) {
-        return row * (MODE_ROW_HEIGHT + MODE_ROW_GAP);
-    }
-
-    /** 挂载框内容区的 x（★框左沿 + 1px，与 {@link #mountFrame} 里标题用的那个 1 同一个数）。 */
-    public static int mountContentX() {
-        return MARGIN + SWITCH_COLUMN + COLUMN_GAP + 1;
-    }
-
-    /** 第 {@code frame} 个挂载框内容区的 y（★框顶 + 标题高 ⇒ 内容段与框之间不留第二份偏移表）。 */
-    public static int mountContentY(int frame) {
-        return mountY(frame) + MOUNT_TITLE_HEIGHT;
     }
 
     /** 动作码 arg 的编码：{@code ordinal * 2 + offBit}（★一条式子，双端同读；非法入参 ⇒ −1）。 */
@@ -742,10 +723,15 @@ public final class PocketConfigPanel {
                 "gtit.pocket.config.switch.hint",
                 "gtit.pocket.config.mount.magnet",
                 "gtit.pocket.config.mount.mage",
-                "gtit.pocket.config.mount.pending",
-                // ★R96 S9b：魔法使挂载框里那三行模式控件的文案（三条标签 + 一条共用 tooltip）。
-                // ★开关按钮与行首读数★不★新增键：复用上面那四条既有的 turn_on / turn_off / state.on / state.off
-                // ——模式与开关在玩家侧读起来就是同一件事（"这一条动还是不动"），两套字面量才是第二份真相。
+                // ★R97 S5：五面各自的读数/说明键（紧凑三型 + 魔法使容量行）。★R96 S2 那条
+                // gtit.pocket.config.mount.pending 随「五行常驻一面」一起退场（五型五面后不存在
+                // 「有框没内容」的挂载位 ⇒ 占位文案失去消费者，键与文本件一并撤销）。
+                "gtit.pocket.config.stack.limit",
+                "gtit.pocket.config.stack.note",
+                "gtit.pocket.config.persist.idle",
+                "gtit.pocket.config.persist.button",
+                "gtit.pocket.config.persist.frame",
+                "gtit.pocket.config.mage.capacity",
                 "gtit.pocket.config.mode.crystal",
                 "gtit.pocket.config.mode.coin",
                 "gtit.pocket.config.mode.transmute",
@@ -755,10 +741,9 @@ public final class PocketConfigPanel {
         for (final Outcome outcome : Outcome.values()) {
             keys.add(receiptKey(outcome));
         }
-        // ★R96 S7b：磁力配置面的键（三态标签 ×3 + 三态不对称说明 ×3 + 目标两档标签 ×2 + 三枚提示 +
+        // ★磁力配置面的键（三态标签 ×3 + 三态不对称说明 ×3 + 目标两档标签 ×2 + 三枚提示 +
         // 计数读数 + 清空按钮两行 + 格件四行 + 格件的四条拒收支）。★逐条点名进这张表 ⇒ 两份 lang 的
-        // 对账用例（config_panel_dispatch_is_not_five_identical 的④面）会自动把它们一起量，
-        // 不需要谁再手工补一遍。
+        // 对账用例（config_panel_dispatch_is_not_five_identical 的④面）会自动把它们一起量。
         for (final PocketMagnetFilter.Mode mode : PocketMagnetFilter.Mode.values()) {
             keys.add(modeLabelKey(mode));
             keys.add(noteKeyOf(mode));
@@ -785,74 +770,166 @@ public final class PocketConfigPanel {
         return keys;
     }
 
+    // ================================================================== 逐型几何（派生自分派表）
+
+    /** 这一型的型名行盒宽（★数据表 {@link #LABEL_BOX_WIDTHS} 的唯一读口；越界 ⇒ 0，调用方停）。 */
+    public static int labelWidthOf(PocketUpgradeType type) {
+        if (type == null || type.ordinal() >= LABEL_BOX_WIDTHS.length) {
+            return 0;
+        }
+        return LABEL_BOX_WIDTHS[type.ordinal()];
+    }
+
+    /** 开关行整行的宽 = 型名盒 + 2px 缝 + 开关（★派生式，不手抄）。 */
+    public static int switchRowWidthOf(PocketUpgradeType type) {
+        return labelWidthOf(type) + 2 + SWITCH_WIDTH;
+    }
+
+    /** 这一段内容块的宽（像素预算）；读数段横贯整面（回 0），挂载段自带硬宽。 */
+    static int sectionContentWidth(Section section) {
+        switch (section) {
+            case MOUNT_MAGNET:
+                return MAGNET_CONTROL_WIDTH + COLUMN_GAP + MAGNET_FRAME_WIDTH;
+            case MOUNT_MAGE:
+                return MAGE_FRAME_WIDTH;
+            default:
+                // SWITCH 行带宽度按型给（switchRowWidthOf），读数段不自带宽度约束（像素账由用例量）。
+                return 0;
+        }
+    }
+
+    /** 这一段内容块的高（像素预算；{@link Section#SWITCH} 的高已计入 {@link #CONTENT_TOP}）。★公开给用例的逐型闭合账。 */
+    public static int sectionContentHeight(Section section) {
+        switch (section) {
+            case READOUT_CAPACITY:
+                return CAPACITY_READOUT_HEIGHT;
+            case READOUT_STACK:
+                return 2 * READOUT_HEIGHT + READOUT_GAP;
+            case READOUT_PERSIST:
+                return 3 * READOUT_HEIGHT + 2 * READOUT_GAP;
+            case MOUNT_MAGNET:
+                return MAGNET_FRAME_HEIGHT;
+            case MOUNT_MAGE:
+                return MAGE_FRAME_HEIGHT + READOUT_GAP + READOUT_HEIGHT;
+            default:
+                return 0;
+        }
+    }
+
+    /** 这一型面板的宽 = 边距 + max(行带宽, 各内容段宽) + 边距（★派生自分派表，不手抄）。 */
+    public static int panelWidthOf(PocketUpgradeType type) {
+        int content = switchRowWidthOf(type);
+        for (final Section section : sectionsOf(type)) {
+            content = Math.max(content, sectionContentWidth(section));
+        }
+        return MARGIN + content + MARGIN;
+    }
+
+    /** 这一型面板的高 = 内容顶 + max(各内容段高) + 底部两件（★派生自分派表，不手抄）。 */
+    public static int panelHeightOf(PocketUpgradeType type) {
+        int content = 0;
+        for (final Section section : sectionsOf(type)) {
+            content = Math.max(content, sectionContentHeight(section));
+        }
+        return CONTENT_TOP + content + BOTTOM_STACK;
+    }
+
+    /** 这一型的面板名（调试树与 MUI2 面板标识；前缀单源 {@link #PANEL_NAME}，后缀 = 型 token）。 */
+    public static String panelNameOf(PocketUpgradeType type) {
+        return PANEL_NAME + '.'
+            + (type == null ? "none"
+                : type.name()
+                    .toLowerCase(Locale.ROOT));
+    }
+
+    /** 磁力挂载框在这一型面板里的 x（★右贴边：右缘压着 {@code 面板宽 − 边距}）。 */
+    public static int magnetFrameXOf(PocketUpgradeType type) {
+        return panelWidthOf(type) - MARGIN - MAGNET_FRAME_WIDTH;
+    }
+
+    /** 盘面原点的 x（框内 1px 边）。 */
+    public static int magnetGridXOf(PocketUpgradeType type) {
+        return magnetFrameXOf(type) + 1;
+    }
+
+    /** 盘面原点的 y（框边 + 标题行）。 */
+    public static int magnetGridY() {
+        return MAGNET_FRAME_Y + ROW_HEIGHT;
+    }
+
+    /** 分派表里带 {@link Section#MOUNT_MAGNET} 的那一型（★几何断言用；当前五型表里恰一枚 = MAGNET）。 */
+    private static PocketUpgradeType magnetType() {
+        for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+            if (sectionsOf(type).contains(Section.MOUNT_MAGNET)) {
+                return type;
+            }
+        }
+        throw new IllegalStateException("[pocket] 分派表里没有任何一型挂磁力盘（72 格名单盘失去了宿主）");
+    }
+
     // ================================================================== 装配面（客户端控件树）
 
     /**
-     * 构建次级面板（★只画控件与发码，不写档、不跑守卫）。
+     * 构建这一型的次级面板（★只画控件与发码，不写档、不跑守卫）。
      * <p>
-     * <b>树形恒定</b>（R32 同一条纪律的次级面板版）：行数 = {@code PocketUpgradeType.values().length}、
-     * 挂载框数 = {@link #MOUNT_FRAMES}、回执行与关闭按钮各一枚，全部<b>不随</b>"哪一型开着"变化；
-     * 状态只进 {@code IKey.dynamic} 的内容层 ⇒ 原位换字，不重排、不增删节点。
+     * <b>★R97 S5 参数化</b>：一块面板 = 一型。画什么由 {@link #sectionsOf} 决定（公共的开关行 + 本型
+     * 专属的那一段），多一段少一段都过不了 static 块的段族对账。宿主侧为五型各挂一枚
+     * {@code IPanelHandler}（{@code NekoPocketPanel#openUpgradeConfig} 按 index 选），同一 handler 的
+     * 首建缓存仍生效 ⇒ 同型重开拿缓存面板（正是想要的），异型重开拿的是<b>另一枚 handler 的</b>面板
+     * —— P-3 那条"第二型拿到的还是第一型那一套"的库限制在五 handler 形状下结构性不存在。
      * <p>
      * <b>装配期不执行点击谓词</b>：{@code onMousePressed} 在这里只是登记 lambda，服务端那次
      * {@code assemble()} 调用不会因此跑任何开关判定，也不会多出一条写腿。
      */
-    public static ModularPanel build(NekoPocketPanel ui) {
-        final ModularPanel panel = ModularPanel.defaultPanel(PANEL_NAME, WIDTH, HEIGHT);
-        panel.child(receiptLine(ui));
-        panel.child(closeButton(ui));
-        final PocketUpgradeType[] types = PocketUpgradeType.values();
-        for (int row = 0; row < types.length; row++) {
-            panel.child(typeLabel(ui, types[row], row));
-            panel.child(switchButton(ui, types[row], row));
+    public static ModularPanel build(NekoPocketPanel ui, PocketUpgradeType type) {
+        if (ui == null || type == null || type.ordinal() >= PocketUpgradeType.values().length) {
+            throw new IllegalArgumentException("[pocket] build 需要有效的面板宿主与升级型: ui=" + ui + " type=" + type);
         }
-        // ★R96 S7b：磁力控制块（三态循环 / 吸取目标两档 / 清空 / 计数 / 不对称读数）排在<b>左列</b>行带之下，
-        // 72 格盘在<b>右列</b>的挂载框里（下面那个循环画）。★常驻树形：这五枚件不随名单条数增删（R32/R41b），
-        // 名单变化只进各件的 IKey.dynamic / 内容层。★整块只发码或发键，一个字节都不写本地 NBT。
-        panel.child(magnetModeButton(ui));
-        panel.child(magnetTargetButton(ui));
-        panel.child(magnetClearButton(ui));
-        panel.child(magnetCountLine(ui));
-        panel.child(magnetNoteLine(ui));
-        int frame = 0;
-        for (final PocketUpgradeType type : types) {
-            // ★挂载框只给"有挂载位"的型画（判据来自分派表，本处不重写第二份型清单）
-            if (hasMount(type)) {
-                panel.child(mountFrame(ui, type, frame));
-                // ★R96 S9b：魔法使的内容段排在框之<b>后</b>（MUI2 的 child 序 = 绘制序 ⇒ 控件画在框面上）。
-                // 为什么不在 mountFrame 内部挂：模式控件是<b>面板级</b>的孩子（坐标全走
-                // {@link #mountContentX()} / {@link #mountContentY(int)} 的单源式），不是框的 child 树；
-                // 而磁力框（S7b）的内容<b>是</b>框的孩子（盘面原点随框走）⇒ 两支的挂载点天然不同，
-                // 不是同一条纪律的两个写法。判据仍然只有一张表：下面这个 contains(Section.MOUNT_MAGE)
-                // 与 mountFrame 里那一支读的是同一个 sectionsOf，没有出现第二份型清单。
-                if (sectionsOf(type).contains(Section.MOUNT_MAGE)) {
-                    mageModeRows(ui, panel, frame);
-                }
-                frame++;
+        final ModularPanel panel = ModularPanel
+            .defaultPanel(panelNameOf(type), panelWidthOf(type), panelHeightOf(type));
+        panel.child(receiptLine(ui, type));
+        panel.child(closeButton(ui, type));
+        for (final Section section : sectionsOf(type)) {
+            switch (section) {
+                case SWITCH:
+                    panel.child(typeLabel(ui, type));
+                    panel.child(switchButton(ui, type));
+                    break;
+                case READOUT_CAPACITY:
+                    panel.child(capacityReadoutBlock(ui, type));
+                    break;
+                case READOUT_STACK:
+                    panel.child(stackLimitLine(ui, type));
+                    panel.child(stackNoteLine(type));
+                    break;
+                case READOUT_PERSIST:
+                    panel.child(persistStateLine(ui, type));
+                    panel.child(persistNoteLine(type, "gtit.pocket.config.persist.button", 1));
+                    panel.child(persistNoteLine(type, "gtit.pocket.config.persist.frame", 2));
+                    break;
+                case MOUNT_MAGNET:
+                    mountMagnet(ui, panel, type);
+                    break;
+                case MOUNT_MAGE:
+                    mountMage(ui, panel, type);
+                    break;
+                default:
+                    // 走不到（Section 已穷举）。留这一支的意义：将来追加段族而忘了画法时先在这里炸，
+                    // 而不是静默画出一块空白面。
+                    throw new IllegalStateException("[pocket] 未知内容段: " + section);
             }
-        }
-        if (frame != MOUNT_FRAMES) {
-            throw new IllegalStateException("[pocket] 分派表画出的挂载框数与几何账不符: " + frame + " vs " + MOUNT_FRAMES);
         }
         return panel;
     }
 
     /**
-     * 第 {@code row} 行的型名 + 现状读数（★动态：型名与状态同一句里，读的是同一个 {@link SwitchState}）。
+     * 型名 + 现状读数（★动态：型名与状态同一句里，读的是同一个 {@link SwitchState}）。
      * <p>
-     * ★★<b>R96 S7b 改布局</b>：行带从"横贯面板的全宽"收成<b>左列</b>那一条。原因是一条算术，逐字写在
-     * {@link #SWITCH_COLUMN} 的注释里：磁力 72 格盘的 {@code 12×18=216} 高与五行带 {@code 5×20=100}
-     * <b>无法同时</b>塞进次级面板的 340 高顶（还要留标题行、回执行、关闭钮与两个边距）⇒ 只能把格盘
-     * 挪到<b>右列、与行带并排</b>，行带因此只占左列。贴左排字，右端留给本行的开关
-     * （{@link #switchButton}），两者之间留 2px。
-     * <p>
-     * ★可用宽度 = {@link #LABEL_WIDTH}（★单源：装配侧与像素账用例读的是同一个数。旧写法是
-     * "面板宽 − 两个边距 − 一枚开关"的近似式，行带收窄到左列之后那条式子会<b>虚高</b> ⇒ 用例照它算
-     * 永远一行放得下、屏幕上却折出第二行顶穿 20px 行盒 —— 那正是"用例恒绿而画面不对"的形状）。
-     * 英文最坏串（"Channel Persistence Upgrade Module：Not installed" 逻辑宽 280）在 0.6 档要 168px，
-     * 本件给到 174（真串真宽由 {@code config_panel_geometry_within_secondary_caps} 逐型量）。
+     * ★可用宽度 = {@link #labelWidthOf}（★逐型给盒：短型的英文最坏串本来就短，五面差异化的一部分；
+     * 真串真宽由 {@code config_panel_geometry_within_secondary_caps} 拿两份 lang 逐型量 ——
+     * 用「全宽 − 边距 − 开关」那种近似式会在紧凑面上虚高，恒绿的假像素账正是它要防的形状）。
      */
-    private static IWidget typeLabel(NekoPocketPanel ui, PocketUpgradeType type, int row) {
+    private static IWidget typeLabel(NekoPocketPanel ui, PocketUpgradeType type) {
         final String nameKey = UPGRADE_NAME_KEYS[type.ordinal()];
         return (IWidget) new TextWidget(IKey.dynamic(() -> {
             final SwitchState state = switchState(ui.carrierStackLive(), type);
@@ -862,16 +939,13 @@ public final class PocketConfigPanel {
             .color(PocketGhostRequest.readoutTextColor())
             .shadow(Boolean.TRUE)
             .name("pocket_config_label_" + type.ordinal())
-            .pos(MARGIN, rowY(row))
-            // ★R96 S7b：可用宽单源取 {@link #LABEL_WIDTH}（旧写法是"全宽 − 两边距 − 开关"的近似式，
-            // 行带收窄到左列之后那条近似式会虚高 ⇒ 用例与装配侧改读同一个数，见 SWITCH_COLUMN 的算术）。
-            .size(LABEL_WIDTH, ROW_HEIGHT);
+            .pos(MARGIN, MARGIN)
+            .size(labelWidthOf(type), ROW_HEIGHT);
     }
 
-    /** 第 {@code row} 行的开关（★唯一出口是发码，本地零写入；★排在本行右端，与型名同一横带）。 */
-    private static IWidget switchButton(NekoPocketPanel ui, PocketUpgradeType type, int row) {
-        // ★x = 左列右端（不是"面板宽 − 边距 − 开关"）：S7b 之后行带只占左列，右列整块给了磁力格盘
-        return new ButtonWidget<>().pos(MARGIN + LABEL_WIDTH + 2, rowY(row))
+    /** 开关（★唯一出口是发码，本地零写入；★排在本行右端，与型名同一横带）。 */
+    private static IWidget switchButton(NekoPocketPanel ui, PocketUpgradeType type) {
+        return new ButtonWidget<>().pos(MARGIN + labelWidthOf(type) + 2, MARGIN)
             .size(SWITCH_WIDTH, SWITCH_HEIGHT)
             .name("pocket_config_switch_" + type.ordinal())
             .background(PocketGuiTextures.BUTTON)
@@ -888,20 +962,21 @@ public final class PocketConfigPanel {
                 button -> button == 0 && ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type)));
     }
 
-    /** 回执行：最近一次切换成了什么 / 为什么被拒（★走既有粘性回执通道，不新建通道）。 */
-    private static IWidget receiptLine(NekoPocketPanel ui) {
+    /** 回执行：最近一次切换成了什么 / 为什么被拒（★走既有粘性回执通道，不新建通道；★两行盒）。 */
+    private static IWidget receiptLine(NekoPocketPanel ui, PocketUpgradeType type) {
         return (IWidget) new TextWidget(IKey.dynamic(ui::upgradeConfigReceiptText)).textAlign(Alignment.CenterLeft)
             .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
             .color(PocketGhostRequest.hintTextColor())
             .shadow(Boolean.TRUE)
             .name("pocket_config_receipt")
-            .pos(MARGIN, HEIGHT - MARGIN - CLOSE_HEIGHT - RECEIPT_HEIGHT)
-            .size(WIDTH - 2 * MARGIN - CLOSE_WIDTH - 2, RECEIPT_HEIGHT);
+            .pos(MARGIN, panelHeightOf(type) - MARGIN - CLOSE_HEIGHT - RECEIPT_HEIGHT)
+            .size(panelWidthOf(type) - 2 * MARGIN - CLOSE_WIDTH - 2, RECEIPT_HEIGHT);
     }
 
     /** 关闭本面的按钮（★只关面板，不动任何数据：本面无"待提交"状态，每次点开关都是即时单发）。 */
-    private static IWidget closeButton(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(WIDTH - MARGIN - CLOSE_WIDTH, HEIGHT - MARGIN - CLOSE_HEIGHT)
+    private static IWidget closeButton(NekoPocketPanel ui, PocketUpgradeType type) {
+        return new ButtonWidget<>()
+            .pos(panelWidthOf(type) - MARGIN - CLOSE_WIDTH, panelHeightOf(type) - MARGIN - CLOSE_HEIGHT)
             .size(CLOSE_WIDTH, CLOSE_HEIGHT)
             .name("pocket_config_close")
             .background(PocketGuiTextures.BUTTON)
@@ -911,135 +986,105 @@ public final class PocketConfigPanel {
             .onMousePressed(button -> button == 0 && ui.closeUpgradeConfig());
     }
 
+    // ================================================================== ★R97 S5 紧凑三面的读数段
+
+    /** 容量读数块（★两行盒：复用主面板 {@code capacityReadoutText} 的同一句话与同一个格式源）。 */
+    private static IWidget capacityReadoutBlock(NekoPocketPanel ui, PocketUpgradeType type) {
+        return (IWidget) new TextWidget(IKey.dynamic(ui::capacityReadoutText)).textAlign(Alignment.TopLeft)
+            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+            .color(PocketGhostRequest.readoutTextColor())
+            .shadow(Boolean.TRUE)
+            .name("pocket_config_capacity_readout")
+            .pos(MARGIN, CONTENT_TOP)
+            .size(panelWidthOf(type) - 2 * MARGIN, CAPACITY_READOUT_HEIGHT);
+    }
+
+    /** 堆叠面第 1 行：单格上限的<b>现档</b>读数（64 ↔ 1024，随开关翻转；读 R97 R6 的同步镜像）。 */
+    private static IWidget stackLimitLine(NekoPocketPanel ui, PocketUpgradeType type) {
+        return (IWidget) new TextWidget(
+            IKey.dynamic(
+                () -> String.format(
+                    StatCollector.translateToLocal("gtit.pocket.config.stack.limit"),
+                    ui.storageStackUpgraded() ? Integer.valueOf(PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED)
+                        : Integer.valueOf(PocketConstants.STORAGE_SLOT_LIMIT_BASE)))).textAlign(Alignment.CenterLeft)
+                            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                            .color(PocketGhostRequest.readoutTextColor())
+                            .shadow(Boolean.TRUE)
+                            .name("pocket_config_stack_limit")
+                            .pos(MARGIN, CONTENT_TOP)
+                            .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+    }
+
+    /** 堆叠面第 2 行：这把尺同时管两栏的说明（静态文案，提示色）。 */
+    private static IWidget stackNoteLine(PocketUpgradeType type) {
+        return (IWidget) new TextWidget(IKey.lang("gtit.pocket.config.stack.note")).textAlign(Alignment.CenterLeft)
+            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+            .color(PocketGhostRequest.hintTextColor())
+            .shadow(Boolean.TRUE)
+            .name("pocket_config_stack_note")
+            .pos(MARGIN, CONTENT_TOP + READOUT_HEIGHT + READOUT_GAP)
+            .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+    }
+
+    /** 通道持续化面第 1 行：常开<b>现状</b>（复用主面板 always_on 那条键；未常开给 idle 说明，★不给假"常开中"）。 */
+    private static IWidget persistStateLine(NekoPocketPanel ui, PocketUpgradeType type) {
+        return (IWidget) new TextWidget(
+            IKey.dynamic(
+                () -> StatCollector.translateToLocal(
+                    ui.channelPersistActive() ? "gtit.pocket.channel.always_on" : "gtit.pocket.config.persist.idle")))
+                        .textAlign(Alignment.CenterLeft)
+                        .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                        .color(PocketGhostRequest.readoutTextColor())
+                        .shadow(Boolean.TRUE)
+                        .name("pocket_config_persist_state")
+                        .pos(MARGIN, CONTENT_TOP)
+                        .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+    }
+
+    /** 通道持续化面第 2/3 行：按钮禁用与帧带常亮两条说明（静态文案，提示色；行号 1 起）。 */
+    private static IWidget persistNoteLine(PocketUpgradeType type, String key, int rowFromOne) {
+        return (IWidget) new TextWidget(IKey.lang(key)).textAlign(Alignment.CenterLeft)
+            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+            .color(PocketGhostRequest.hintTextColor())
+            .shadow(Boolean.TRUE)
+            .name("pocket_config_persist_note_" + rowFromOne)
+            .pos(MARGIN, CONTENT_TOP + rowFromOne * (READOUT_HEIGHT + READOUT_GAP))
+            .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+    }
+
+    // ================================================================== ★R96 S7b 磁力面（五面里的整面排版）
+
     /**
-     * 挂载位框（★S7 / S9 的内容落在这里）。★框本身几段共用（标题 + 一块框），<b>框里的内容按
-     * {@link Section} 分派</b>。★合并后的三分支（S7b × S9b 各自在旧基线上都对，两侧语义都保留）：
-     * <ul>
-     * <li>{@link Section#MOUNT_MAGNET} —— ★R96 S7b 已落地：框里是 12×6 = 72 格的名单盘
-     * （{@link #magnetGrid}），画完盘立刻 return ⇒ pending 那行<b>结构上到不了</b>磁力框；</li>
-     * <li>{@link Section#MOUNT_MAGE} —— ★R96 S9b 已落地：三行模式控件（{@link #mageModeRows}，由
-     * {@link #build} 挂在框之<b>后</b>的面板上），加主开关一共四枚控件，正是需求那句"四模式"
-     * ⇒ 这一格也<b>不</b>画 pending；</li>
-     * <li>其余挂载位（分派表说"有框"但内容还没落地的型）—— 才画既有那行 pending 文本件。
-     * ★合并后的五型表里已不存在这样的型 ⇒ 这一支是给未来新挂载位兜底的，不是屏上的占位。</li>
-     * </ul>
-     * ★分派判据读的是 {@link #sectionsOf}（同一张唯一分派表），★不是"型 == MAGE"那种第二份型清单。
-     * <p>
-     * <b>★两个框的几何各走各的（S7b 之后它们既不同列、也不同高）</b>：磁力框在<b>右列</b>顶到面板上边、
-     * 高 = 标题 + 216 格盘；其余挂载框仍在<b>左列</b>的挂载框栈里（{@link #mountY(int)}）。
-     * <p>
-     * ★反证归用例：{@code magnet_pending_removed_from_magnet_mount}（S7b 半，钉"格盘在位 + pending
-     * 到不了磁力框"+ 合并后补的"pending 也到不了魔法使框"）与
-     * {@code mage_config_panel_mode_codec_and_commit_leg}（S9b 半，钉"模式控件装配恰一处 + 占位分支
-     * 的判据是裸的『非魔法使』"）两把检法各盯一侧，合成后互不遮蔽。
+     * 磁力面的整面装配：右列 = 12×6 名单盘挂载框（顶到内容段顶），左列 = 三态 / 目标 / 清空 / 计数 /
+     * 不对称说明的控制块。★「72 格盘常量只属于磁力面」的结构正身：本方法只经
+     * {@link Section#MOUNT_MAGNET} 那一分派支可达，五型里没有第二型的面板画得出格盘。
      */
-    private static IWidget mountFrame(NekoPocketPanel ui, PocketUpgradeType type, int frame) {
-        final boolean magnet = sectionsOf(type).contains(Section.MOUNT_MAGNET);
-        final int x = magnet ? MAGNET_FRAME_X : MARGIN;
-        final int y = magnet ? MAGNET_FRAME_Y : mountY(frame);
-        final int width = magnet ? MAGNET_FRAME_WIDTH : MOUNT_COLUMN;
-        final int height = magnet ? MAGNET_FRAME_HEIGHT : MOUNT_HEIGHT;
+    private static void mountMagnet(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {
+        final int x = magnetFrameXOf(type);
+        final int y = MAGNET_FRAME_Y;
         final ParentWidget<?> box = new ParentWidget<>().background(PocketGuiTextures.PANEL)
-            .name("pocket_config_mount_" + type.ordinal())
+            .name("pocket_config_mount_magnet")
             .pos(x, y)
-            .size(width, height);
-        final String titleKey = mountTitleKey(type);
-        if (titleKey == null) {
-            throw new IllegalStateException("[pocket] 分派表说这一型有挂载位，却没有标题键: " + type);
-        }
+            .size(MAGNET_FRAME_WIDTH, MAGNET_FRAME_HEIGHT);
         box.child(
-            (IWidget) new TextWidget(IKey.lang(titleKey)).textAlign(Alignment.TopLeft)
+            (IWidget) new TextWidget(IKey.lang("gtit.pocket.config.mount.magnet")).textAlign(Alignment.TopLeft)
                 .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
                 .color(PocketGhostRequest.readoutTextColor())
                 .shadow(Boolean.TRUE)
-                .name("pocket_config_mount_title_" + type.ordinal())
+                .name("pocket_config_mount_title_magnet")
                 .pos(1, 1)
-                .size(width - 2, ROW_HEIGHT));
-        if (magnet) {
-            // ★S7b：磁力框的内容 = 72 格名单盘（盘面原点在框内 1px 边 + 标题行之下，见 MAGNET_GRID_X/Y 的单源式）。
-            // ★这一支画完盘立刻 return ⇒ pending 结构上到不了磁力框（magnet_pending_removed_from_magnet_mount 的半①）。
-            box.child(magnetGrid(ui, x, y));
-            return box;
-        }
-        final java.util.List<Section> sections = sectionsOf(type);
-        // ★R96 S9b（合并后口径）：魔法使框的内容（三行模式控件）不长在本框的 child 树里，而是由
-        // {@link #build} 挂在框之后的面板上（{@link #mageModeRows}）⇒ 这一支也<b>不</b>给魔法使画 pending
-        // （画了 = 拿占位文案冒充没接上的控件，正是这条检法要防的形状）。仍拿 pending 文本件的是「分派表说
-        // 有框、但内容还没落地」的挂载位；本件五型表里已不存在这样的型 ⇒ 它是给未来新挂载位兜底的，
-        // 不是屏上的占位。撤不撤该键的推导史写在用例 magnet_pending_removed_from_magnet_mount 的注释里。
-        // ★框与内容的坐标全经 {@link #mountContentX()} / {@link #mountContentY(int)}
-        // 这两个单源，没有第二份偏移表。
-        if (!sections.contains(Section.MOUNT_MAGE)) {
-            box.child(
-                (IWidget) new TextWidget(IKey.lang("gtit.pocket.config.mount.pending")).textAlign(Alignment.TopLeft)
-                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
-                    .color(PocketGhostRequest.hintTextColor())
-                    .shadow(Boolean.TRUE)
-                    .name("pocket_config_mount_pending_" + type.ordinal())
-                    .pos(1, ROW_HEIGHT)
-                    .size(width - 2, height - ROW_HEIGHT));
-        }
-        return box;
+                .size(MAGNET_FRAME_WIDTH - 2, ROW_HEIGHT));
+        box.child(magnetGrid(ui, x, y));
+        panel.child(box);
+        // ★控制块（三态循环 / 吸取目标两档 / 清空 / 计数 / 不对称读数）排在<b>左列</b>。
+        // ★常驻树形：这五枚件不随名单条数增删（R32/R41b），名单变化只进各件的 IKey.dynamic / 内容层。
+        // ★整块只发码或发键，一个字节都不写本地 NBT。
+        panel.child(magnetModeButton(ui));
+        panel.child(magnetTargetButton(ui));
+        panel.child(magnetClearButton(ui));
+        panel.child(magnetCountLine(ui));
+        panel.child(magnetNoteLine(ui));
     }
-
-    /**
-     * ★R96 S9b：魔法使挂载框里的<b>三行模式控件</b>（第四枚控件是主面板那一行的开关，不在这里重复画）。
-     * <p>
-     * <b>树形恒定</b>（本件类注释那条 R32 纪律在模式行上的延续）：行数 = {@link #modeRowCount()}，
-     * 而它派生自 {@link PocketConstants#MAGE_MODE_BITS}，★不随"哪条模式开着"变化 ⇒ 面板那套
-     * "首次构建即缓存"的形体不会因为状态改而拿到一棵旧树。
-     * <p>
-     * <b>零同步值、零本地写</b>：与开关列同一条通道（读载体栈 NBT 的 vanilla 镜像、写只发码），
-     * {@code registerSyncValues} 一处未加 ⇒ 给同一个布尔造第二个读数面这件事在模式上也成立。
-     * <p>
-     * <b>标签 = 模式名 + 现状同一句</b>（{@link #stateKey} 复用的就是开关列那两条既有键，
-     * ★模式与开关在玩家侧读起来是同一件事："这一条动还是不动"）。按钮上的字复用
-     * {@link #switchLabelKey} 那两条 —— 只是模式没有"未固化"这一态（那一判在 {@link #commitMode} 里
-     * 拒写并回一条既有回执，不在按钮上骗人）。
-     */
-    private static void mageModeRows(NekoPocketPanel ui, ModularPanel panel, int frame) {
-        final int rows = modeRowCount();
-        for (int index = 0; index < rows; index++) {
-            final int row = index;
-            final String labelKey = modeLabelKey(row);
-            if (labelKey == null) {
-                throw new IllegalStateException("[pocket] 模式行数与标签键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
-            }
-            panel.child(
-                (IWidget) new TextWidget(
-                    IKey.dynamic(
-                        () -> StatCollector.translateToLocal(labelKey) + "："
-                            + StatCollector.translateToLocal(
-                                stateKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
-                                    .textAlign(Alignment.TopLeft)
-                                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
-                                    .color(PocketGhostRequest.readoutTextColor())
-                                    .shadow(Boolean.TRUE)
-                                    .name("pocket_config_mode_label_" + row)
-                                    .pos(mountContentX(), mountContentY(frame) + modeRowY(row))
-                                    .size(MODE_LABEL_WIDTH, MODE_ROW_HEIGHT));
-            panel.child(
-                new ButtonWidget<>()
-                    .pos(mountContentX() + MOUNT_COLUMN - 2 - MODE_BUTTON_WIDTH, mountContentY(frame) + modeRowY(row))
-                    .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
-                    .name("pocket_config_mode_switch_" + row)
-                    .background(PocketGuiTextures.BUTTON)
-                    .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-                    .overlay(
-                        IKey.dynamic(
-                            () -> StatCollector.translateToLocal(
-                                switchLabelKey(
-                                    modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
-                    .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(MODE_HINT_KEY)))
-                    .tooltipAutoUpdate(true)
-                    .playClickSound(true)
-                    // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）
-                    .onMousePressed(
-                        button -> button == 0 && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row))));
-        }
-    }
-
-    // ================================================================== ★R96 S7b 磁力配置面（格盘 + 三态 / 目标 / 清空 / 读数）
 
     /**
      * 72 格名单盘（★12 行 × 6 列 = 108×216，与源质格<b>同形但★不共用那两个常量</b>）。
@@ -1056,12 +1101,15 @@ public final class PocketConfigPanel {
      * <b>★树形恒定</b>：72 个格件与格序不随名单条数增删（R41b/R32）；数据变化只由
      * {@code NekoPocketPanel#applyMagnetCells()} 原位换内容层。
      *
-     * @param frameX 挂载框在面板里的 x（★盘面的面板坐标 = 框 x + 1 边距，见 {@link #MAGNET_GRID_X}）
+     * @param frameX 挂载框在面板里的 x（★盘面的面板坐标 = 框 x + 1 边距，见 {@link #magnetGridXOf}）
      * @param frameY 挂载框在面板里的 y
      */
     private static IWidget magnetGrid(NekoPocketPanel ui, int frameX, int frameY) {
-        // 盘面作为一个 ParentWidget 挂在框内（子格坐标 = 相对盘面原点，18px 栅格）
-        final ParentWidget<?> grid = new ParentWidget<>().pos(MAGNET_GRID_X - frameX, MAGNET_GRID_Y - frameY)
+        // 盘面作为一个 ParentWidget 挂在框内（子格坐标 = 相对盘面原点，18px 栅格）。盘面原点的<b>面板</b>坐标
+        // 单源在 {@link #magnetGridXOf} / {@link #magnetGridY()}，框内相对坐标 = 面板坐标 − 框原点
+        // ⇒ 这里不抄第二份「1px 边 + 标题行」。
+        final ParentWidget<?> grid = new ParentWidget<>()
+            .pos(magnetGridXOf(magnetType()) - frameX, magnetGridY() - frameY)
             .size(MAGNET_GRID_WIDTH, MAGNET_GRID_HEIGHT)
             .name("pocket_magnet_grid");
         for (int index = 0; index < MAGNET_COLUMNS * MAGNET_ROWS; index++) {
@@ -1167,7 +1215,9 @@ public final class PocketConfigPanel {
     /** ★清空名单按钮（★只抹条目、不动三态；与"切到无限制"是两件事，见 {@code PocketMagnetFilter} 三态读法）。 */
     private static IWidget magnetClearButton(NekoPocketPanel ui) {
         return new ButtonWidget<>()
-            .pos(MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + 10, MAGNET_CONTROL_Y + MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP)
+            .pos(
+                MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + MAGNET_BUTTON_GAP,
+                MAGNET_CONTROL_Y + MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP)
             .size(MAGNET_BUTTON_WIDTH, MAGNET_BUTTON_HEIGHT)
             .name("pocket_magnet_clear_button")
             .background(PocketGuiTextures.BUTTON)
@@ -1191,7 +1241,7 @@ public final class PocketConfigPanel {
                         .color(PocketGhostRequest.readoutTextColor())
                         .shadow(Boolean.TRUE)
                         .name("pocket_magnet_count")
-                        .pos(MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + 10, MAGNET_CONTROL_Y)
+                        .pos(MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + MAGNET_BUTTON_GAP, MAGNET_CONTROL_Y)
                         .size(MAGNET_COUNT_WIDTH, MAGNET_BUTTON_HEIGHT);
     }
 
@@ -1210,7 +1260,7 @@ public final class PocketConfigPanel {
             .shadow(Boolean.TRUE)
             .name("pocket_magnet_note")
             .pos(MAGNET_CONTROL_X, magnetNoteY())
-            .size(SWITCH_COLUMN - 2, MAGNET_NOTE_HEIGHT);
+            .size(MAGNET_CONTROL_WIDTH - 2, MAGNET_NOTE_HEIGHT);
     }
 
     /** 读数行的 y（★单源：三行各一枚，纵向闭合由 static 块与用例一起钉）。 */
@@ -1263,14 +1313,122 @@ public final class PocketConfigPanel {
         return sample.getDisplayName();
     }
 
-    /** 第 {@code row} 行的 y（★单源：行高改了这里跟着走，调用点不写第二次）。 */
-    public static int rowY(int row) {
-        return MARGIN + row * ROW_HEIGHT;
+    // ================================================================== ★R96 S9b 魔法使面（挂载框 + 三行模式 + 容量行）
+
+    /**
+     * 魔法使面的整面装配：挂载框（标题 + 三行模式控件）+ 框下的元素容量读数行。
+     * <p>
+     * <b>树形恒定</b>（R32 纪律）：行数 = {@link #modeRowCount()}（派生自
+     * {@link PocketConstants#MAGE_MODE_BITS}），★不随"哪条模式开着"变化 ⇒ 同型重开拿到的缓存面板
+     * 不会因为状态改而拿到一棵旧树。
+     * <p>
+     * <b>零同步值、零本地写</b>：与开关行同一条通道（读载体栈 NBT 的 vanilla 镜像、写只发码）。
+     */
+    private static void mountMage(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {
+        final ParentWidget<?> box = new ParentWidget<>().background(PocketGuiTextures.PANEL)
+            .name("pocket_config_mount_mage")
+            .pos(MAGE_FRAME_X, MAGE_FRAME_Y)
+            .size(MAGE_FRAME_WIDTH, MAGE_FRAME_HEIGHT);
+        box.child(
+            (IWidget) new TextWidget(IKey.lang("gtit.pocket.config.mount.mage")).textAlign(Alignment.TopLeft)
+                .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                .color(PocketGhostRequest.readoutTextColor())
+                .shadow(Boolean.TRUE)
+                .name("pocket_config_mount_title_mage")
+                .pos(1, 1)
+                .size(MAGE_FRAME_WIDTH - 2, ROW_HEIGHT));
+        panel.child(box);
+        // ★模式控件是<b>面板级</b>的孩子（坐标走 {@link #mageContentX()} / {@link #mageContentY()} 的单源式），
+        // 挂在框之<b>后</b>（MUI2 的 child 序 = 绘制序 ⇒ 控件画在框面上）——与磁力框的盘面是框内孩子
+        // 相反，两支的挂载点不同不是同一条纪律的两个写法。
+        mageModeRows(ui, panel);
+        panel.child(mageCapacityLine(type));
     }
 
-    /** 第 {@code frame} 个挂载框的 y（★排在开关列之下，与纵向预算同源）。 */
-    public static int mountY(int frame) {
-        return MARGIN + PocketUpgradeType.values().length * ROW_HEIGHT + 4 + frame * (MOUNT_HEIGHT + MOUNT_GAP);
+    /**
+     * 魔法使挂载框里的<b>三行模式控件</b>（第四枚控件是面板顶上那一行的开关，不在这里重复画）。
+     * <p>
+     * <b>标签 = 模式名 + 现状同一句</b>（{@link #stateKey} 复用的就是开关行那两条既有键，
+     * ★模式与开关在玩家侧读起来是同一件事："这一条动还是不动"）。按钮上的字复用
+     * {@link #switchLabelKey} 那两条 —— 只是模式没有"未固化"这一态（那一判在 {@link #commitMode} 里
+     * 拒写并回一条既有回执，不在按钮上骗人）。
+     */
+    private static void mageModeRows(NekoPocketPanel ui, ModularPanel panel) {
+        final int rows = modeRowCount();
+        for (int index = 0; index < rows; index++) {
+            final int row = index;
+            final String labelKey = modeLabelKey(row);
+            if (labelKey == null) {
+                throw new IllegalStateException("[pocket] 模式行数与标签键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
+            }
+            panel.child(
+                (IWidget) new TextWidget(
+                    IKey.dynamic(
+                        () -> StatCollector.translateToLocal(labelKey) + "："
+                            + StatCollector.translateToLocal(
+                                stateKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
+                                    .textAlign(Alignment.TopLeft)
+                                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                                    .color(PocketGhostRequest.readoutTextColor())
+                                    .shadow(Boolean.TRUE)
+                                    .name("pocket_config_mode_label_" + row)
+                                    .pos(mageContentX(), mageContentY() + modeRowY(row))
+                                    .size(MODE_LABEL_WIDTH, MODE_ROW_HEIGHT));
+            panel.child(
+                new ButtonWidget<>()
+                    .pos(mageContentX() + MAGE_FRAME_WIDTH - 2 - MODE_BUTTON_WIDTH, mageContentY() + modeRowY(row))
+                    .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
+                    .name("pocket_config_mode_switch_" + row)
+                    .background(PocketGuiTextures.BUTTON)
+                    .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
+                    .overlay(
+                        IKey.dynamic(
+                            () -> StatCollector.translateToLocal(
+                                switchLabelKey(
+                                    modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
+                    .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(MODE_HINT_KEY)))
+                    .tooltipAutoUpdate(true)
+                    .playClickSound(true)
+                    // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）
+                    .onMousePressed(
+                        button -> button == 0 && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row))));
+        }
+    }
+
+    /** 魔法使面的元素容量读数行（P-7 的「各 500」口径：常量单源 {@code PocketConstants}，lang 不写数字）。 */
+    private static IWidget mageCapacityLine(PocketUpgradeType type) {
+        return (IWidget) new TextWidget(
+            IKey.dynamic(
+                () -> String.format(
+                    StatCollector.translateToLocal("gtit.pocket.config.mage.capacity"),
+                    PocketConstants.ELEMENT_CAP_PER_TAG,
+                    PocketConstants.ELEMENT_TOTAL_CAP))).textAlign(Alignment.CenterLeft)
+                        .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                        .color(PocketGhostRequest.readoutTextColor())
+                        .shadow(Boolean.TRUE)
+                        .name("pocket_config_mage_capacity")
+                        .pos(MARGIN, mageCapacityY())
+                        .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+    }
+
+    /** 挂载框内容区的 x（★框左沿 + 1px，与标题用的那个 1 同一个数）。 */
+    public static int mageContentX() {
+        return MAGE_FRAME_X + 1;
+    }
+
+    /** 挂载框内容区的 y（★框顶 + 标题高 ⇒ 内容段与框之间不留第二份偏移表）。 */
+    public static int mageContentY() {
+        return MAGE_FRAME_Y + MOUNT_TITLE_HEIGHT;
+    }
+
+    /** 第 {@code row} 行模式控件的 y（★挂载框<b>内</b>坐标系，标题之下第一行；单源，调用点不写第二次）。 */
+    public static int modeRowY(int row) {
+        return row * (MODE_ROW_HEIGHT + MODE_ROW_GAP);
+    }
+
+    /** 元素容量行的 y（★框下 + 一条缝；单源）。 */
+    public static int mageCapacityY() {
+        return MAGE_FRAME_Y + MAGE_FRAME_HEIGHT + READOUT_GAP;
     }
 
     /**

@@ -413,7 +413,16 @@ gtit.pocket.config.switch.none=Not installed
 gtit.pocket.config.switch.hint=Left-click to switch this module on or off; turning it off does not refund the module
 gtit.pocket.config.mount.magnet=Magnet: pickup targets and lists
 gtit.pocket.config.mount.mage=Mage: modes and elements
-gtit.pocket.config.mount.pending=The full settings for this section come in a later version
+# ---- ★R97 S5 five faces for five modules: readout/note keys for the three compact faces and the mage
+# ★face. The capacity face reuses the main panel sentence gtit.pocket.fluid.capacity (no new key); net
+# ★+5 keys here (R96's mount.pending retired with the one-shared-panel shape: every face now carries
+# ★real content, so the "frame with no content yet" placeholder lost its consumer).
+gtit.pocket.config.stack.limit=Current per-slot limit: %d
+gtit.pocket.config.stack.note=One ruler for the storage grid and the essence grid
+gtit.pocket.config.persist.idle=Not always-on right now (the switch is off, or no live channel yet)
+gtit.pocket.config.persist.button=While it is active the channel buttons stay disabled
+gtit.pocket.config.persist.frame=The pocket icon stays lit as working
+gtit.pocket.config.mage.capacity=Element capacity: %d each, %d across all six
 gtit.pocket.config.mode.crystal=Crystallise
 gtit.pocket.config.mode.coin=Cat coin charging
 gtit.pocket.config.mode.transmute=Essence transmuting

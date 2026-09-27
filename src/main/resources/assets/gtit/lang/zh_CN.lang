@@ -407,7 +407,15 @@ gtit.pocket.config.switch.none=未固化
 gtit.pocket.config.switch.hint=左键切换这一型的开与关；关掉不会退回插件
 gtit.pocket.config.mount.magnet=磁力：吸取目标与名单
 gtit.pocket.config.mount.mage=魔法使：模式与元素
-gtit.pocket.config.mount.pending=这一段的完整配置由后续版本提供
+# ---- ★R97 S5 五型五面：紧凑三型与魔法使面的读数/说明键。容量面复用主面板 gtit.pocket.fluid.capacity
+# ★那一句不另立键；本段净增五键（R96 的 mount.pending 随「五行常驻一面」退场 ⇒ −1，五面各有真内容后
+# ★「有框没内容」的占位文案失去消费者，键与文本件一并撤销）。----
+gtit.pocket.config.stack.limit=当前单格上限：%d
+gtit.pocket.config.stack.note=中栏物品格与源质格同用这把尺
+gtit.pocket.config.persist.idle=此刻未常开（开关关着，或通道还没起来）
+gtit.pocket.config.persist.button=常开生效期间，通道按钮被禁用
+gtit.pocket.config.persist.frame=口袋图标保持「工作中」常亮
+gtit.pocket.config.mage.capacity=元素容量：每种元素 %d，六种合计 %d
 gtit.pocket.config.mode.crystal=结晶模式
 gtit.pocket.config.mode.coin=猫猫币充能
 gtit.pocket.config.mode.transmute=源质转换

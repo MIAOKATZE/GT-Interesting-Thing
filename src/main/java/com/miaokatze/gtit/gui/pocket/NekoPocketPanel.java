@@ -339,15 +339,20 @@ public final class NekoPocketPanel implements PocketSession {
     private static final int ACTION_UPGRADE_MODE = 13;
 
     /**
-     * ★R96 S2：升级配置面板（主面板之上的次级面板）的句柄。
+     * ★R96 S2 → ★R97 S5：升级配置面板（主面板之上的次级面板）的句柄，<b>一型一枚、共五枚</b>。
      * <p>
      * ★只在客户端有值（{@code IPanelHandler.simple} 要求宿主 {@code ModularPanel} 已挂树，服务端没有
      * 屏幕对象），服务端恒 {@code null} ⇒ 写腿不可能被这条通道碰到（写腿另有 {@code isClient} 早退兜底）。
-     * 宿主面板换实例（重开屏幕）时按 {@code TerminalGiftPage:301-306} 的既有范式重建，防跨屏打开。
+     * <p>
+     * ★★R97 S5（P-3 显式翻案）：{@code SecondaryPanel} 的面板缓存是<b>handler 实例级</b>的（字节码实证
+     * {@code panel != null} 即跳过 buildPanel）⇒ R96 那个"单字段 + 五行常驻"的形状里，第二型拿到的是第一型
+     * 的缓存面板。开<b>五枚</b> handler = 五块互不串型的独立面板（仓内多 handler 先例：
+     * {@code TerminalGiftPage:301-313} 宿主身份比对范式，这里数组化：一型一槽、逐槽各自比对宿主）。
+     * 同型重开仍拿本枚的缓存面板（想要的），异型重开拿到的是<b>另一枚</b>的面板。
      */
-    private IPanelHandler configPanel;
-    /** {@link #configPanel} 当时挂的宿主面板（身份比对：换实例即重建）。 */
-    private ModularPanel configPanelHost;
+    private final IPanelHandler[] configPanels = new IPanelHandler[PocketUpgradeType.values().length];
+    /** {@link #configPanels} 各槽当时挂的宿主面板（身份比对：换实例即重建，防跨屏打开）。 */
+    private final ModularPanel[] configPanelHosts = new ModularPanel[PocketUpgradeType.values().length];
     /** {@link #assemble()} 产出的主面板实例（次级面板要挂到它上面）。 */
     private ModularPanel mainPanel;
 
@@ -1477,10 +1482,14 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 第 {@code index} 个升级格的左键：<b>打开配置面板</b>（★纯客户端手势，不发码、不写档）。
+     * 第 {@code index} 个升级格的左键：<b>打开这一型的配置面板</b>（★纯客户端手势，不发码、不写档）。
      * <p>
      * ★不在这里判"这一型装没装"以外的任何事，也★不在这里判守卫：开面板不需要服务端同意
      * （写档才需要，那一趟走 {@link #requestUpgradeSwitch}）。
+     * <p>
+     * ★★R97 S5（P-3 显式翻案）：{@code index}（= 槽号 = 型 ordinal，三个空间同一个数）现在<b>参与面板选择</b>
+     * —— 按槽选 {@link #configPanels} 里那一枚 handler，各型各开各的面。签名与调用点零改
+     * （{@code UpgradeCellSlot} 传进来的就是格号）。
      *
      * @param anchor 点击来自哪个槽件（次级面板要挂到它所在的宿主面板上；★装配期取不到，
      *               {@code getPanel()} 那时还是 null，所以由点击现场传进来）
@@ -1492,21 +1501,31 @@ public final class NekoPocketPanel implements PocketSession {
             return false;
         }
         final ModularPanel host = anchor == null ? null : anchor.getPanel();
-        if (host == null) {
+        if (host == null || index < 0 || index >= configPanels.length) {
             return false;
         }
-        if (configPanel == null || configPanelHost != host) {
-            configPanel = IPanelHandler.simple(host, (parent, player) -> PocketConfigPanel.build(this), true);
-            configPanelHost = host;
+        final PocketUpgradeType type = PocketUpgradeType.values()[index];
+        if (configPanels[index] == null || configPanelHosts[index] != host) {
+            configPanels[index] = IPanelHandler
+                .simple(host, (parent, player) -> PocketConfigPanel.build(this, type), true);
+            configPanelHosts[index] = host;
         }
-        configPanel.openPanel();
+        configPanels[index].openPanel();
         return true;
     }
 
-    /** 关闭配置面板（★只关面板；关闭不写任何状态，配置面板本身无待提交内容）。 */
+    /**
+     * 关闭配置面板（★只关面板；关闭不写任何状态，配置面板本身无待提交内容）。
+     * <p>
+     * ★R97 S5 起有五枚句柄 ⇒ 这里<b>全关</b>而不是记"当前开的那枚"：{@code SecondaryPanel#closePanel}
+     * 自带 {@code open} 早退（字节码实证：没开的关成 no-op），逐枚关零副作用，也不需要一份
+     * "哪枚开着"的镜像状态（那份镜像一旦与真值分叉，就会出现"关不掉的面板"）。
+     */
     boolean closeUpgradeConfig() {
-        if (configPanel != null) {
-            configPanel.closePanel();
+        for (final IPanelHandler handler : configPanels) {
+            if (handler != null) {
+                handler.closePanel();
+            }
         }
         return true;
     }
