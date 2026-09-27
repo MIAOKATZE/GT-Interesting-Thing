@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.common.items.pocket;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -15,8 +16,13 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * <ul>
  * <li><b>一次 = 一个（元件,通道）对的一个批次</b>（R9 窄口径），每秒穿几对由
  * {@code Config.pocketChannelPairsPerSecond} 决定；瞬时通道一次穿完全部（R12）。
- * ★R87-b：注入向不再走 {@link PocketRotationCursor}（全通道各跑一轮后"轮转选一"没有意义），
- * 游标只剩补满相在推进（见该类的 javadoc）；候选序 = {@code channelIdsOf} 的稳定列表序。</li>
+ * ★R97 S2（饿死修复，取证 {@code plan/_taskpack/R97-inv-channel.md} §3）：注入相两条新语义——
+ * <b>(1) 无源可投的通道不占对</b>（快照按 {@code SourceKind} 分桶 + {@code kindOfChannel} 判兼容，
+ * 语义 = (A)「有机会投」：该通道存在兼容源即占对，<b>不是</b>「真搬动才计」——(B) 会把
+ * 「对数 = 服务机会」的契约改得更深且满目标重试退化成活锁，明记为已拒绝的备选）；
+ * <b>(2) 注入相起始通道每批轮转 +1</b>（mod 通道数，游标在 {@link PocketRotationCursor#nextInjectStart}，
+ * 与补满相游标独立推进、只在内存延续）。R87-b 的「每批对全部可用通道各服务一轮」保留——
+ * 轮转的只是<b>起始位</b>，pairLimit=1 时 ITEM 空源不再恒吃首对，流体/源质通道轮得到。</li>
  * <li><b>remainder 一律留在源槽</b>，本批不重试同一槽；★R87（饿死收窄）起只有
  * {@code LOST/NO_ACCESS}（元件此刻给不出）才 break 整串来源，{@code FULL/FILTER_REJECTED/NO_CHANNEL}
  * 记失败后<b>跳过该来源继续</b>——队首一格满/被分区拒收不再饿死排在后面的流体与源质来源。</li>
@@ -93,7 +99,9 @@ public final class PocketChannelRunner {
      */
     public static Report runInjectBatch(PocketCellBindings bindings, PocketChannelOps ops, int pairLimit,
         PocketFilterConfig filters) {
-        final Report report = injectPhase(bindings, ops, pairLimit, filters);
+        // ★R97 S2：无游标入口（生产全走 {@link #runDualPhase} 的注入相，本入口只剩纯 JVM 套件在用）
+        // ⇒ 注入相起始位恒为 0、不推进任何游标，服务序对测试保持确定。
+        final Report report = injectPhase(bindings, null, ops, pairLimit, filters);
         flush(report, ops);
         return report;
     }
@@ -132,7 +140,7 @@ public final class PocketChannelRunner {
     static Report runDualPhase(PocketCellBindings bindings, PocketRotationCursor rotation, PocketFilterConfig filters,
         boolean refillPhase, PocketChannelOps ops, int pairLimit) {
         final Report report = new Report();
-        mergeInto(report, injectPhase(bindings, ops, pairLimit, filters));
+        mergeInto(report, injectPhase(bindings, rotation, ops, pairLimit, filters));
         if (refillPhase) {
             mergeInto(
                 report,
@@ -185,9 +193,17 @@ public final class PocketChannelRunner {
             || receipt == PocketReceipt.LOST;
     }
 
-    /** 注入相本体（不 flush；单相入口与双相批共用，见 {@link #runInjectBatch}/{@link #runDualPhase}）。 */
-    private static Report injectPhase(PocketCellBindings bindings, PocketChannelOps ops, int pairLimit,
-        PocketFilterConfig filters) {
+    /**
+     * 注入相本体（不 flush；单相入口与双相批共用，见 {@link #runInjectBatch}/{@link #runDualPhase}）。
+     * <p>
+     * ★R97 S2 两腿（决策③）：(1) 无源可投的通道<b>不占对</b>——{@code snapshotSources} 的结果（反成环
+     * 剔除之后）按 {@link PocketChannelOps.SourceKind} 分桶，{@link PocketChannelOps#kindOfChannel}
+     * 给出通道的类别，两边一比即知「这条通道本批有没有机会投」；{@code null}（未知第三方通道）按
+     * 保守规则「有任意源即视为可投」照常占对。(2) 注入相起始通道每批 <b>+1</b>（mod 通道数，游标
+     * {@code rotation.nextInjectStart}；{@code rotation == null} = 无游标入口，恒从 0 起）。
+     */
+    private static Report injectPhase(PocketCellBindings bindings, PocketRotationCursor rotation, PocketChannelOps ops,
+        int pairLimit, PocketFilterConfig filters) {
         final Report report = new Report();
         if (bindings == null || bindings.isEmpty() || pairLimit <= 0) {
             return report;
@@ -201,6 +217,13 @@ public final class PocketChannelRunner {
         sources = withoutDeclarationMatches(filters, sources);
         if (sources.isEmpty()) {
             return report;
+        }
+        // ★R97 S2 腿 1：来源按 SourceKind 分桶——「无源可投的通道不占对」的判据面。
+        final EnumSet<PocketChannelOps.SourceKind> presentKinds = EnumSet.noneOf(PocketChannelOps.SourceKind.class);
+        for (final PocketChannelOps.SourceSlot source : sources) {
+            if (source != null && source.count > 0) {
+                presentKinds.add(source.kind == null ? PocketChannelOps.SourceKind.ITEM : source.kind);
+            }
         }
         // ★R84：服务面只吃绑定序前 ALLOWED_BOUND_CELLS 枚 ⇒ 旧档里残留的第二枚起是"仍显示、不再搬运"
         // 的惰性条目（刻意不销毁玩家数据，也不让它继续产生"能绑多枚却在轮转"的错觉）。
@@ -222,18 +245,51 @@ public final class PocketChannelRunner {
                 report.lastReceipt = PocketReceipt.NO_CHANNEL;
                 continue;
             }
-            // ★R87-b：每枚元件对全部可用通道各服务一轮（顺序 = 列表的稳定序），不再"每批单通道轮转"——
-            // 否则瞬时通道一次按键只推一个通道，流体/源质要等下一次按键才轮得到（"按一次没反应"的观感）。
+            // ★R97 S2 腿 2：注入相起始序号每批 +1（mod 通道数；null = 无游标入口恒从 0 起）
+            final int start = rotation == null ? 0 : rotation.nextInjectStart(diskuuid, channels);
+            // ★R97 S2：本枚元件这批有没有走到「能尝试源质来源的席位」（源质通道或未知第三方通道）
+            boolean essenceSeatSeen = false;
+            // ★R97 S2：本枚元件批前的已占对数——批后不变 = 这枚元件一对都没服务 ⇒ 源质来源连被尝试都没有
+            final int pairsBeforeCell = report.pairsServed;
+            // ★R87-b：每枚元件对全部可用通道各服务一轮（R97 S2 起从注入相游标的起始位开始转这一圈）
             for (int i = 0; i < channels.size(); i++) {
                 if (report.pairsServed >= pairLimit) {
                     break;
                 }
-                final String typeId = channels.get(i);
+                final String typeId = channels.get((start + i) % channels.size());
                 if (typeId == null || typeId.isEmpty()) {
+                    continue;
+                }
+                final PocketChannelOps.SourceKind kind = ops.kindOfChannel(typeId);
+                if (kind == PocketChannelOps.SourceKind.ESSENCE || kind == null) {
+                    essenceSeatSeen = true;
+                }
+                // ★R97 S2 腿 1（语义 (A)「有机会投」）：快照里不存在该通道可投来源的通道不占对——
+                // pairLimit=1 时 ITEM 空源不再把唯一配额烧掉，FLUID/ESSENCE 通道轮得到被服务。
+                // 未知第三方（kind == null）保守规则：有任意源即视为可投、照常占对——本仓不猜第三方
+                // 通道吃哪种来源（R31/R44a），免占对会让配额上限被未识别通道绕过。
+                // 已拒绝的备选 (B)「真搬动才计」：满目标的通道会每批重占一对直到有人搬动 = 活锁。
+                if (kind == null ? presentKinds.isEmpty() : !presentKinds.contains(kind)) {
                     continue;
                 }
                 report.pairsServed++;
                 injectIntoPair(sources, diskuuid, typeId, ops, report);
+            }
+            // ★R97 S2：源质来源在场、但这枚元件这批<b>连一次被尝试都没有</b>（零席位可试，或配额根本
+            // 没进到这枚元件）⇒ 内建排除保证逐源 NO_CHANNEL（源质无处可上）。不烧对也要把这次拒收
+            // <b>面呈</b>出来：R90 E2（AUQ-①=B）"整批只有源质无处可上不得被吞成 nothing_to_do"的钉子，
+            // 在「无源不占对」之后由这里接住。某对若已被服务，源质来源已随那一对被尝试过、那次尝试
+            // 自己计过数（FULL/NO_CHANNEL 均留痕），这里不重复计；计数口径从旧的「来源 × 被尝试通道」
+            // 收窄为「来源 × 元件」——回执只读零/非零。
+            if (presentKinds.contains(PocketChannelOps.SourceKind.ESSENCE) && !essenceSeatSeen
+                && report.pairsServed == pairsBeforeCell) {
+                for (final PocketChannelOps.SourceSlot source : sources) {
+                    if (source != null && source.count > 0 && source.kind == PocketChannelOps.SourceKind.ESSENCE) {
+                        report.noChannel++;
+                        report.essenceNoChannel++;
+                    }
+                }
+                report.lastReceipt = PocketReceipt.NO_CHANNEL;
             }
         }
         return report;

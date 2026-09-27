@@ -99,6 +99,16 @@ public final class PocketAeChannelOps implements PocketChannelOps {
     private static final BaseActionSource SOURCE = new BaseActionSource();
 
     /**
+     * ★R97 S2：源质通道的 typeId 字符串（{@link #kindOfChannel} 的第三席位）。
+     * <p>
+     * ThaumicEnergistics 在 preInit 用这个 id 注册源质通道（AE2 fork {@code ThEConvertor} 的
+     * {@code AEStackTypeRegistry} 注册串，见 {@code plan/_taskpack/R97-inv-channel.md} §6）。
+     * 本仓对 ThE 是<b>零编译期依赖</b>（dependencies.gradle 只有 Thaumcraft），拿不到它的类，
+     * 字符串是唯一可握的把手；既不等于它 ⇒ 按「未知第三方通道」的保守规则走（返回 null）。
+     */
+    private static final String ESSENTIA_CHANNEL_ID = "essentia";
+
+    /**
      * 服务端玩家本体：只用于 tick 读数与元件解析（维度/坐标）——★R84 起它<b>不再是注入来源</b>
      * （旧 R12 读法 B"背包 36 格当来源"已作废，现来源是中栏，见 {@link #snapshotSources()}）。
      */
@@ -228,6 +238,34 @@ public final class PocketAeChannelOps implements PocketChannelOps {
             }
         }
         return ids;
+    }
+
+    /**
+     * ★R97 S2：typeId → 该通道承载的来源类别（注入相「无源可投的通道不占对」的判据口）。
+     * <p>
+     * 内建两席位按<b>注册表单例的引用</b>判（{@code byId(typeId) == ITEM_STACK_TYPE}——先例
+     * {@link EssenceNativeChannels#nativeProbe} 的内建排除；id 即注册键，反解回来的一定是同一批
+     * 单例。<b>刻意不</b>再写一遍 {@code ITEM_STACK_TYPE.getId().equals}：那处「成对早退」字样
+     * 在本文件必须恰一次（{@code verify-pocket.sh} 的 R91-a 门把它当 CCE 回归哨兵钉着），本口
+     * 不得让哨兵双读）；第三席位是 ThE 的 {@link #ESSENTIA_CHANNEL_ID}；其余返回 {@code null}
+     * 交由调用方按保守规则处理。
+     */
+    @Override
+    public SourceKind kindOfChannel(String typeId) {
+        if (typeId == null || typeId.isEmpty()) {
+            return null;
+        }
+        final IAEStackType<?> type = InfinityStackTypes.byId(typeId);
+        if (type == InfinityStackTypes.ITEM_STACK_TYPE) {
+            return SourceKind.ITEM;
+        }
+        if (type == InfinityStackTypes.FLUID_STACK_TYPE) {
+            return SourceKind.FLUID;
+        }
+        if (ESSENTIA_CHANNEL_ID.equals(typeId)) {
+            return SourceKind.ESSENCE;
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ 来源快照

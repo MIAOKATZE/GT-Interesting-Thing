@@ -119,6 +119,18 @@ public interface PocketChannelOps {
     /** 该元件当前可用的 typeId 列表（运行时注册序，元素为字符串 id；空列表即 {@link PocketReceipt#NO_CHANNEL}）。 */
     List<String> channelIdsOf(String diskuuid);
 
+    /**
+     * ★R97 S2：该通道承载的<b>来源类别</b>——注入相「有机会投」判据的一半（另一半是来源快照按
+     * {@link SourceKind} 分桶，见 {@code PocketChannelRunner#injectPhase}）。
+     * <p>
+     * 三<b>已知</b>类：物品通道 → {@link SourceKind#ITEM}、流体通道 → {@link SourceKind#FLUID}、
+     * 源质通道（ThaumicEnergistics 注册的 {@code "essentia"}）→ {@link SourceKind#ESSENCE}。
+     * 返回 {@code null} = <b>未知第三方通道</b>：本仓不猜第三方通道吃哪种来源（R31/R44a 纪律），
+     * 调用方按保守规则处理（有任意来源即视为可投、照常占对——宁可多占一对，也不让配额上限被
+     * 未识别的通道绕过）。纯字符串映射，不触达世界。
+     */
+    SourceKind kindOfChannel(String typeId);
+
     /** 本轮可搬运的源条目快照（实现方按来源与配置过滤后给出，顺序即搬运序）。 */
     List<SourceSlot> snapshotSources();
 

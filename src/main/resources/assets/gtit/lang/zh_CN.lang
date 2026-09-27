@@ -478,7 +478,7 @@ gtit.pocket.storage.key.block=alt+右键：本格内容不上传
 gtit.pocket.note.title=本面板的用法摘要
 gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋只在主手持有期间工作
 gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d 闪烁猫猫币、持续 %d 秒
-gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）
+gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）；上传每秒在通道间轮转，没有东西可上传的通道不占对数
 # ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）；
 # ★R91-④（瓶往返改判）补三层：取出必须手持空瓶、没有空瓶点格零产出、入槽退空壳；晶仍不退壳。
 # 一个 %d = 一瓶固定点数（PocketConstants.ESSENCE_OUT_UNIT_POINTS 填，lang 不写死规格数字）。

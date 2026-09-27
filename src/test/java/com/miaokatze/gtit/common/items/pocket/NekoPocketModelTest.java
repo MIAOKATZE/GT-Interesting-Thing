@@ -306,6 +306,21 @@ public class NekoPocketModelTest {
             "multi_channel_cell_serves_all_channels_with_pair_cap",
             NekoPocketModelTest::multiChannelCellServesAllChannelsWithPairCap);
         cases.put("inject_batch_no_longer_stops_on_full", NekoPocketModelTest::injectBatchNoLongerStopsOnFull);
+        // ---- ★R97 S2 批：通道注入相公平性——无源通道不占对 + 注入相轮转 + 未知席位保守规则 +
+        // 无源质席位的拒收面呈 + 补满相回归零变化
+        cases.put(
+            "inject_pair_limit_one_fluid_channel_served",
+            NekoPocketModelTest::injectPairLimitOneFluidChannelServed);
+        cases.put(
+            "inject_phase_rotation_fairness_across_batches",
+            NekoPocketModelTest::injectPhaseRotationFairnessAcrossBatches);
+        cases.put(
+            "inject_unknown_channel_kind_conservative_pair",
+            NekoPocketModelTest::injectUnknownChannelKindConservativePair);
+        cases.put(
+            "inject_no_essence_seat_still_surfaces_no_channel",
+            NekoPocketModelTest::injectNoEssenceSeatStillSurfacesNoChannel);
+        cases.put("refill_cursor_untouched_by_inject_phase", NekoPocketModelTest::refillCursorUntouchedByInjectPhase);
         // ---- R87 批（B 切片）：源质 GUI 面修复——carriesTag 按内容判 / 声明保格 / 载体点击入槽四态
         // ★R88 改判：R87 那三条里"晶族恒真特判"与"晶 = 唯一载体"两条判据已被 C2/瓶口径作废，
         // 故连同用例名一起重挂（旧名 essence_carries_tag_crystal_family_passes_only_stocked_cells、
@@ -2095,10 +2110,9 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★R87-b 改钉（旧钉"轮转不因换实例而重置"已被全通道轮转覆盖）：注入向<b>不再读也不再推进</b>
-     * 轮转游标——每批对该元件的全部可用通道各服务一轮，"轮转选一"没有意义；游标只剩补满相在推进
-     * （见 {@code runRefillBatch} 的 typeId 记账）。注入批前后 {@code lastServedOf} 必须逐字不变，
-     * 且批内服务的通道序 = {@code channelIdsOf} 的稳定序（不被任何游标状态影响）。
+     * ★R97 S2 改钉（R87-b 的「注入向不读写游标」已被注入相<b>独立</b>游标取代）：注入相与补满相
+     * 各用各的游标、互不推进——补满相把游标推到某处后，注入批不改写补满相读数；{@code runInjectBatch}
+     * 是<b>无游标</b>入口（生产全走 {@code runDualPhase} 的注入相），服务序恒从 0 起、两条游标都不动。
      */
     private static void rotationSurvivesHandlerRecreation() {
         final StubOps ops = new StubOps();
@@ -2114,15 +2128,16 @@ public class NekoPocketModelTest {
         PocketChannelRunner.runRefillBatch(bindings, cursor, filters, ops, 1, 64);
         PocketChannelRunner.runRefillBatch(bindings, cursor, filters, ops, 1, 64);
         SimpleAssert.eq("fluid", cursor.lastServedOf(CELL_A), "前置：补满相确实把游标推进到了 fluid");
-        // 注入批跑完：游标一字不动，服务序也不受游标影响（不再从 fluid 的下一个开始）
+        // 注入批跑完：补满相游标一字不动；快照里只有物品来源 ⇒ 只有 item 通道占对（无源通道不服务）
         ops.fillSources(4);
         ops.servedChannels.clear();
         ops.injectCalls = 0;
         final PocketChannelRunner.Report report = PocketChannelRunner
             .runInjectBatch(bindings, ops, Integer.MAX_VALUE, null);
-        SimpleAssert.eq("fluid", cursor.lastServedOf(CELL_A), "★注入向不推进游标（R87-b：全通道轮转后游标只剩补满相在写）");
-        SimpleAssert.eq(3, report.pairsServed, "★三通道各自服务一轮（服务序 = channelIdsOf 的稳定序）");
-        SimpleAssert.eq(Arrays.asList("item", "fluid", "essentia"), ops.servedChannels, "不被游标位置影响（旧形状会从 essentia 开始）");
+        SimpleAssert.eq("fluid", cursor.lastServedOf(CELL_A), "★注入向不推进补满相游标（R97 S2：两条游标独立）");
+        SimpleAssert.eq(1, report.pairsServed, "★只有 item 通道有兼容源 ⇒ 只占 1 对（无源可投的通道不占对）");
+        SimpleAssert.eq(Arrays.asList("item"), ops.servedChannels, "fluid/essentia 无源可投 ⇒ 不被服务");
+        SimpleAssert.eq(null, cursor.lastInjectStartOf(CELL_A), "★无游标入口不推进注入相游标（服务序恒从 0 起）");
     }
 
     // ------------------------------------------------------------------ 批次与回执
@@ -2195,9 +2210,9 @@ public class NekoPocketModelTest {
         // ★R84：服务面只吃绑定序前 ALLOWED_BOUND_CELLS(=1) 枚 ⇒ 第二枚即使还在表里也不再被服务。
         // 旧断言"两枚各服务一对"钉的是已被推翻的口径；本用例<b>刻意</b>让 CELL_B 继续留在表里，
         // 正是为了钉住"在表 ≠ 在跑"（数据层不收缩与入口面拒收是同一枚硬币的两面）。
-        // ★R87-b：单枚元件的三条通道各服务一轮（全通道轮转），fluid/essentia 对物品来源按 typeId 门
-        // "无事可做"跳过（桩件已镜像真实实现的成对早退）——所以 transferred 不变、pairsServed 变 3。
-        SimpleAssert.eq(3, report.pairsServed, "★一对元件 × 三通道 = 3 对（R87-b 全通道轮转）");
+        // ★R97 S2：快照里只有物品来源 ⇒ 只有 item 通道占对（fluid/essentia 无源可投不占对，
+        // 桩件 typeId 门对它们的"无事可做"连尝试都不再发生）——transferred 不变、pairsServed 变 1。
+        SimpleAssert.eq(1, report.pairsServed, "★一对元件 × 有源通道 = 1 对（R97 S2 无源通道不占对）");
         SimpleAssert.eq(1, ops.announcements.size(), "一次调用内只发一次网络通知（delta 合并）");
         final List<PocketChannelOps.Delta> posted = ops.announcements.get(0);
         SimpleAssert.eq(2, posted.size(), "同 (元件,通道,内容) 的多笔 delta 必须合并成一条");
@@ -2683,7 +2698,7 @@ public class NekoPocketModelTest {
         final PocketChannelRunner.Report report = PocketChannelRunner
             .runDualPhase(bindings, new PocketRotationCursor(), filters, true, ops, 8);
         SimpleAssert.eq(10, report.transferred, "★两相累加：注入 6 + 补满 4");
-        SimpleAssert.eq(4, report.pairsServed, "注入相 3 对（全通道轮转）+ 补满相 1 对");
+        SimpleAssert.eq(2, report.pairsServed, "★R97 S2：注入相 1 对（只有 item 通道有兼容源）+ 补满相 1 对");
         SimpleAssert.eq(1, ops.announcements.size(), "★两相合并后批尾只 post 一次（R7）");
         final List<PocketChannelOps.Delta> posted = ops.announcements.get(0);
         SimpleAssert.eq(2, posted.size(), "两个不同载荷键各一条带符号 delta（+6 与 -4，同键才合并）");
@@ -2782,48 +2797,75 @@ public class NekoPocketModelTest {
      * 口袋源质不进注入；异 tag 照常推。
      */
     private static void antiLoopEssenceMatchesByTagNotRawKey() {
-        final StubOps ops = new StubOps();
-        ops.addSource(0, PocketFilterConfig.essenceKey("", "aer"), 10, PocketChannelOps.SourceKind.ESSENCE);
-        ops.addSource(1, PocketFilterConfig.essenceKey("", "ignis"), 20, PocketChannelOps.SourceKind.ESSENCE);
-        final PocketFilterConfig filters = new PocketFilterConfig();
-        SimpleAssert.that(
-            filters.add(9, new PocketFilterConfig.EssenceFilter(9, "item", "aer")),
-            "声明第 9 源质格补 aer（typeId=第三方回落 item）");
-        final PocketChannelRunner.Report report = PocketChannelRunner
-            .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, filters);
-        SimpleAssert.eq(20, report.transferred, "★同 tag（aer）来源被剔除：只推 ignis 20 点");
-        SimpleAssert
-            .that(!ops.servedKeys.contains(PocketFilterConfig.essenceKey("", "aer")), "aer 从未被投递（按 tag 匹配，键串不同也剔）");
-        SimpleAssert.that(ops.servedKeys.contains(PocketFilterConfig.essenceKey("", "ignis")), "异 tag 照常推");
+        // ★R97 S2 判据同步：源质来源只会在源质席位上被尝试（item 席位无源不占对）⇒ 桩件必须开
+        // E2 原生路由并把 essentia 席位种子成原生，"异 tag 照常推"的正控才有落点。被测对象仍是
+        // 剔除判据本身（aer 整条不进注入相），路由形状与 E2 矩阵用例一致。
+        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "ignis");
+        try {
+            final StubOps ops = new StubOps();
+            ops.essenceNativeRouting = true;
+            ops.addSource(0, PocketFilterConfig.essenceKey("", "aer"), 10, PocketChannelOps.SourceKind.ESSENCE);
+            ops.addSource(1, PocketFilterConfig.essenceKey("", "ignis"), 20, PocketChannelOps.SourceKind.ESSENCE);
+            final PocketFilterConfig filters = new PocketFilterConfig();
+            SimpleAssert.that(
+                filters.add(9, new PocketFilterConfig.EssenceFilter(9, "item", "aer")),
+                "声明第 9 源质格补 aer（typeId=第三方回落 item）");
+            final PocketChannelRunner.Report report = PocketChannelRunner
+                .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, filters);
+            // 桩件镜像 C1 整瓶粒度：ignis 20 点搬 16（4 点零头留盘）
+            SimpleAssert.eq(16, report.transferred, "★同 tag（aer）来源被剔除：只推 ignis（20 点按整瓶粒度搬 16）");
+            SimpleAssert
+                .that(!ops.servedKeys.contains(PocketFilterConfig.essenceKey("", "aer")), "aer 从未被投递（按 tag 匹配，键串不同也剔）");
+            SimpleAssert.that(ops.servedKeys.contains(PocketFilterConfig.essenceKey("", "ignis")), "异 tag 照常推");
 
-        // 负控：filters 为 null ⇒ 两支都推（铁律只剔与声明语义匹配的，不多剔）
-        final StubOps bare = new StubOps();
-        bare.addSource(0, PocketFilterConfig.essenceKey("", "aer"), 10, PocketChannelOps.SourceKind.ESSENCE);
-        bare.addSource(1, PocketFilterConfig.essenceKey("", "ignis"), 20, PocketChannelOps.SourceKind.ESSENCE);
-        final PocketChannelRunner.Report pushed = PocketChannelRunner
-            .runInjectBatch(bindingsOf(CELL_A), bare, Integer.MAX_VALUE, null);
-        SimpleAssert.eq(30, pushed.transferred, "无声明 ⇒ 全量推送");
+            // 负控：filters 为 null ⇒ 两支都推（铁律只剔与声明语义匹配的，不多剔；8 + 16 = 整瓶粒度）
+            final StubOps bare = new StubOps();
+            bare.essenceNativeRouting = true;
+            bare.addSource(0, PocketFilterConfig.essenceKey("", "aer"), 10, PocketChannelOps.SourceKind.ESSENCE);
+            bare.addSource(1, PocketFilterConfig.essenceKey("", "ignis"), 20, PocketChannelOps.SourceKind.ESSENCE);
+            final PocketChannelRunner.Report pushed = PocketChannelRunner
+                .runInjectBatch(bindingsOf(CELL_A), bare, Integer.MAX_VALUE, null);
+            SimpleAssert.eq(24, pushed.transferred, "无声明 ⇒ 两支都推（10→8、20→16，各留零头）");
+        } finally {
+            EssenceNativeChannels.unseedNativesForTest();
+        }
     }
 
     /**
-     * ★R87-b：多通道件每批对 {@code channelIdsOf} 的<b>全部</b>通道各服务一轮（顺序 = 列表稳定序），
-     * {@code pairLimit} 仍是硬上限。三通道都出现在候选里，正是 R87-c（handlerOf 直问元件）的
-     * 消费侧表现：通道发现不再被宿主 cellsMap 的"只注册第一个命中"截成一条。
+     * ★R97 S2 改钉（R87-b「全通道各服务一轮」的<b>新口径</b>）：多通道件每批对<b>有兼容来源的</b>通道
+     * 各服务一轮、无源通道<b>不占对</b>；{@code pairLimit} 仍是硬上限。三通道都出现在候选里，正是
+     * R87-c（handlerOf 直问元件）的消费侧表现：通道发现不再被宿主 cellsMap 的"只注册第一个命中"截成一条。
      */
     private static void multiChannelCellServesAllChannelsWithPairCap() {
         final StubOps ops = new StubOps();
-        ops.fillSources(2);
+        ops.addSource(0, "i:1:0:", 2, PocketChannelOps.SourceKind.ITEM);
+        ops.addSource(1, PocketFilterConfig.fluidKey("water"), 1000, PocketChannelOps.SourceKind.FLUID);
         final PocketChannelRunner.Report all = PocketChannelRunner
             .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, null);
-        SimpleAssert.eq(3, all.pairsServed, "★三通道都在 channelIdsOf ⇒ 各服务一轮");
-        SimpleAssert.eq(Arrays.asList("item", "fluid", "essentia"), ops.servedChannels, "服务序 = channelIdsOf 的稳定序");
+        SimpleAssert.eq(2, all.pairsServed, "★有兼容源的两通道各服务一轮，essentia 无源不占对");
+        // servedChannels 按每次 inject 记账（一对会尝试快照里的全部来源）⇒ 判序前先去重
+        SimpleAssert
+            .eq(Arrays.asList("item", "fluid"), distinctServedChannels(ops), "服务序 = channelIdsOf 的稳定序（无源通道被跳过）");
+        SimpleAssert.eq(1002, all.transferred, "两路都真的搬了（物品 2 + 流体 1000）");
 
-        // pairLimit=2 ⇒ 硬上限：只服务前两条通道，不开新对（重灌来源：上一轮已把桩件来源搬空）
-        ops.fillSources(2);
+        // pairLimit=2 ⇒ 硬上限恰好放行两对；pairLimit=1 ⇒ 只有排在首位的 item 通道吃到配额
+        ops.sources.clear();
+        ops.addSource(0, "i:1:0:", 2, PocketChannelOps.SourceKind.ITEM);
+        ops.addSource(1, PocketFilterConfig.fluidKey("water"), 1000, PocketChannelOps.SourceKind.FLUID);
         ops.servedChannels.clear();
-        final PocketChannelRunner.Report capped = PocketChannelRunner.runInjectBatch(bindingsOf(CELL_A), ops, 2, null);
-        SimpleAssert.eq(2, capped.pairsServed, "pairLimit 仍是硬上限");
-        SimpleAssert.eq(Arrays.asList("item", "fluid"), ops.servedChannels, "超限后不再服务第三对");
+        final PocketChannelRunner.Report cappedTwo = PocketChannelRunner
+            .runInjectBatch(bindingsOf(CELL_A), ops, 2, null);
+        SimpleAssert.eq(2, cappedTwo.pairsServed, "pairLimit=2 两对都吃到");
+
+        ops.sources.clear();
+        ops.addSource(0, "i:1:0:", 2, PocketChannelOps.SourceKind.ITEM);
+        ops.addSource(1, PocketFilterConfig.fluidKey("water"), 1000, PocketChannelOps.SourceKind.FLUID);
+        ops.servedChannels.clear();
+        final PocketChannelRunner.Report cappedOne = PocketChannelRunner
+            .runInjectBatch(bindingsOf(CELL_A), ops, 1, null);
+        SimpleAssert.eq(1, cappedOne.pairsServed, "pairLimit 仍是硬上限（无源通道不占对 ⇒ 有源的两对分得开）");
+        SimpleAssert.eq(Arrays.asList("item"), distinctServedChannels(ops), "唯一配额给了首位的 item 通道（跨批轮转见注入相公平用例）");
 
         // 候选为空 ⇒ noChannel 计数留痕（玩家读得到"这只元件没有通道"）
         final StubOps blind = new StubOps();
@@ -2832,6 +2874,220 @@ public class NekoPocketModelTest {
         final PocketChannelRunner.Report gone = PocketChannelRunner
             .runInjectBatch(bindingsOf(CELL_A), blind, Integer.MAX_VALUE, null);
         SimpleAssert.eq(1, gone.lost, "失联元件走 lost 计数（不进通道循环）");
+    }
+
+    // ------------------------------------------------------------------ ★R97 S2 批：通道注入相公平性
+
+    /**
+     * ★R97 S2 用例 (a)：pairLimit=1、快照里只有流体来源 ⇒ FLUID 通道吃到唯一配额——ITEM 通道
+     * 无源可投<b>不再恒吃首对</b>（R96 前的形状：通道序固定 ITEM 在首 + 配额默认 1 ⇒ 流体/源质
+     * 通道在 SHORT 的全部 30 批里一次都轮不到，取证 R97-inv-channel §3）。源质腿同构反控。
+     */
+    private static void injectPairLimitOneFluidChannelServed() {
+        final StubOps ops = new StubOps();
+        ops.fillSource(0, PocketFilterConfig.fluidKey("water"), 500, PocketChannelOps.SourceKind.FLUID);
+        final PocketChannelRunner.Report report = PocketChannelRunner.runInjectBatch(bindingsOf(CELL_A), ops, 1, null);
+        SimpleAssert.eq(1, report.pairsServed, "★唯一配额落在 FLUID 通道（不再被无源的 ITEM 通道烧掉）");
+        SimpleAssert.eq(Arrays.asList("fluid"), ops.servedChannels, "被服务的就是 FLUID 通道（ITEM 零源整批跳过）");
+        SimpleAssert.eq(500, report.transferred, "流体真的搬上去了");
+
+        // 源质腿同形状：只有源质来源 + 原生席位在场 ⇒ essentia 通道吃到唯一配额
+        EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+        try {
+            final StubOps essence = new StubOps();
+            essence.essenceNativeRouting = true;
+            essence.fillSource(
+                PocketConstants.FILTER_SLOT_UNSET,
+                PocketFilterConfig.essenceKey("", "aer"),
+                64,
+                PocketChannelOps.SourceKind.ESSENCE);
+            final PocketChannelRunner.Report routed = PocketChannelRunner
+                .runInjectBatch(bindingsOf(CELL_A), essence, 1, null);
+            SimpleAssert.eq(1, routed.pairsServed, "唯一配额落在 essentia 通道（源质腿同形状）");
+            SimpleAssert.eq(Arrays.asList(NATIVE_TEST_TYPE_ID), essence.servedChannels, "item/fluid 无源不占对，只有原生席位被服务");
+            SimpleAssert.eq(64, routed.transferred, "源质 64 点经原生通道搬走");
+        } finally {
+            EssenceNativeChannels.unseedNativesForTest();
+        }
+    }
+
+    /**
+     * ★R97 S2 用例 (b)：双源（物品 + 流体）多批轮转公平性——注入相起始序号每批 +1（mod 通道数），
+     * pairLimit=1 时 N 批内（N = 通道数 3）每个有源通道都吃到<b>首对</b>（R87-b 起丢失的轮转在
+     * 注入相恢复；BURST 语义不变——MAX_VALUE 一次穿完，起始位只是圈序）。批间游标在内存延续。
+     */
+    private static void injectPhaseRotationFairnessAcrossBatches() {
+        final PocketRotationCursor cursor = new PocketRotationCursor();
+        final PocketCellBindings bindings = bindingsOf(CELL_A);
+        final List<String> firstServed = new ArrayList<>();
+        for (int batch = 0; batch < CHANNELS.size(); batch++) {
+            final StubOps ops = new StubOps();
+            ops.addSource(0, "i:1:0:", 4, PocketChannelOps.SourceKind.ITEM);
+            ops.addSource(1, PocketFilterConfig.fluidKey("water"), 200, PocketChannelOps.SourceKind.FLUID);
+            // 生产形状：SHORT/瞬时都走 runDualPhase 的注入相（refillPhase=false = 纯推送）
+            final PocketChannelRunner.Report report = PocketChannelRunner
+                .runDualPhase(bindings, cursor, null, false, ops, 1);
+            SimpleAssert.eq(1, report.pairsServed, "pairLimit=1：每批恰一对（无源的 essentia 不占对）");
+            firstServed.add(ops.servedChannels.get(0));
+        }
+        SimpleAssert
+            .eq(Arrays.asList("item", "fluid", "item"), firstServed, "★首对在 item/fluid 间轮转（essentia 无源被跳过不占轮转位）");
+        SimpleAssert.eq("essentia", cursor.lastInjectStartOf(CELL_A), "注入相游标停在最后一批的起始位（内存延续）");
+
+        // 反控：换无游标入口（runInjectBatch）⇒ 服务序恒从 0 起（确定性入口不读不推游标）
+        final StubOps cursorless = new StubOps();
+        cursorless.addSource(0, "i:1:0:", 4, PocketChannelOps.SourceKind.ITEM);
+        cursorless.addSource(1, PocketFilterConfig.fluidKey("water"), 200, PocketChannelOps.SourceKind.FLUID);
+        PocketChannelRunner.runInjectBatch(bindings, cursorless, 1, null);
+        SimpleAssert.eq(Arrays.asList("item"), distinctServedChannels(cursorless), "无游标入口恒从 item 起（游标读数为前置）");
+        SimpleAssert.eq("essentia", cursor.lastInjectStartOf(CELL_A), "无游标入口不推进注入相游标");
+
+        // 三源齐 ⇒ 3 批一轮回到 item：起始位 mod 通道数推进（essentia 有源时也吃得到首对）
+        final PocketRotationCursor three = new PocketRotationCursor();
+        final List<String> threeFirst = new ArrayList<>();
+        for (int batch = 0; batch < 3; batch++) {
+            final StubOps ops = new StubOps();
+            ops.essenceNativeRouting = true;
+            EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
+            try {
+                ops.addSource(0, "i:1:0:", 4, PocketChannelOps.SourceKind.ITEM);
+                ops.addSource(1, PocketFilterConfig.fluidKey("water"), 200, PocketChannelOps.SourceKind.FLUID);
+                ops.addSource(
+                    PocketConstants.FILTER_SLOT_UNSET,
+                    PocketFilterConfig.essenceKey("", "aer"),
+                    16,
+                    PocketChannelOps.SourceKind.ESSENCE);
+                PocketChannelRunner.runDualPhase(bindings, three, null, false, ops, 1);
+            } finally {
+                EssenceNativeChannels.unseedNativesForTest();
+            }
+            threeFirst.add(ops.servedChannels.get(0));
+        }
+        SimpleAssert.eq(Arrays.asList("item", "fluid", "essentia"), threeFirst, "★N=通道数批内每个有源通道都吃到首对（公平性）");
+
+        // BURST（MAX_VALUE）语义不变：一次穿完所有有源通道（起始位只影响圈序，不影响覆盖面）
+        final StubOps burst = new StubOps();
+        burst.addSource(0, "i:1:0:", 4, PocketChannelOps.SourceKind.ITEM);
+        burst.addSource(1, PocketFilterConfig.fluidKey("water"), 200, PocketChannelOps.SourceKind.FLUID);
+        final PocketChannelRunner.Report burstReport = PocketChannelRunner
+            .runDualPhase(bindings, new PocketRotationCursor(), null, false, burst, Integer.MAX_VALUE);
+        SimpleAssert.eq(2, burstReport.pairsServed, "瞬时一次穿完所有有源通道（BURST 语义零改）");
+        SimpleAssert.eq(204, burstReport.transferred, "两路全量");
+    }
+
+    /**
+     * ★R97 S2 用例 (c)：未知第三方通道的保守规则——{@code kindOfChannel} 返回 null（本仓不猜
+     * 第三方通道吃哪种来源）时，只要快照里有<b>任意</b>来源，该通道就照常占对、照常被服务。
+     * 保守的方向：宁可多占一对（配额上限不被未识别通道绕过），不因识别不了而放行超配额服务。
+     */
+    private static void injectUnknownChannelKindConservativePair() {
+        final StubOps ops = new StubOps();
+        ops.channels = Arrays.asList("gt_matter", "item");
+        ops.fillSource(0, "i:1:0:", 7, PocketChannelOps.SourceKind.ITEM);
+        SimpleAssert.eq(null, ops.kindOfChannel("gt_matter"), "前置：桩件镜像生产——未知 typeId ⇒ null");
+        final PocketChannelRunner.Report report = PocketChannelRunner.runInjectBatch(bindingsOf(CELL_A), ops, 1, null);
+        SimpleAssert.eq(Arrays.asList("gt_matter"), ops.servedChannels, "★未知通道吃到唯一配额（保守规则：有任意源即视为可投、照常占对）");
+        SimpleAssert.eq(1, report.pairsServed, "pairLimit=1 对未知通道同样是硬上限");
+        SimpleAssert.eq(0, report.transferred, "item 来源对未知通道无事可做（桩件门镜像真实成对早退）⇒ 本批零成交");
+
+        // pairLimit=2 ⇒ 轮到 item 通道：未知通道占掉的那一对计入配额（上限没有被绕过）
+        ops.fillSource(0, "i:1:0:", 7, PocketChannelOps.SourceKind.ITEM);
+        ops.servedChannels.clear();
+        final PocketChannelRunner.Report two = PocketChannelRunner.runInjectBatch(bindingsOf(CELL_A), ops, 2, null);
+        SimpleAssert.eq(Arrays.asList("gt_matter", "item"), ops.servedChannels, "未知通道先占一对，item 通道随后");
+        SimpleAssert.eq(2, two.pairsServed, "★未知通道占的那一对计入 pairLimit（不因识别不了而白送）");
+        SimpleAssert.eq(7, two.transferred, "item 通道随后照常成交");
+
+        // 反向排他：只有未知通道 + 只有流体源 ⇒ 仍被服务（不是只有「同类」才投）
+        final StubOps anyKind = new StubOps();
+        anyKind.channels = Arrays.asList("gt_matter");
+        anyKind.fillSource(0, PocketFilterConfig.fluidKey("lava"), 300, PocketChannelOps.SourceKind.FLUID);
+        final PocketChannelRunner.Report served = PocketChannelRunner
+            .runInjectBatch(bindingsOf(CELL_A), anyKind, 1, null);
+        SimpleAssert.eq(Arrays.asList("gt_matter"), anyKind.servedChannels, "★只有未知通道 + 只有流体源 ⇒ 未知通道仍被服务");
+        SimpleAssert.eq(1, served.pairsServed, "占对成立（1 对）");
+    }
+
+    /**
+     * ★R97 S2（R90 E2 钉子的接住面）：源质来源在场、但这批<b>连一个能尝试它的席位都没走到</b>
+     * （生产里即 ThE 缺席：channelIdsOf 只剩内建 item/fluid）⇒ 不烧对，但拒收必须面呈——
+     * {@code essenceNoChannel>0}、进 {@code failures()}、回执映射 {@code gtit.pocket.receipt.no_channel}，
+     * 不被「无源不占对」吞成 nothing_to_do（AUQ-①=B 的"拒收必须面呈"裁定不被本轮推翻）。
+     */
+    private static void injectNoEssenceSeatStillSurfacesNoChannel() {
+        final StubOps ops = new StubOps();
+        ops.channels = Arrays.asList("item", "fluid");
+        ops.essenceNativeRouting = true;
+        ops.fillSource(
+            PocketConstants.FILTER_SLOT_UNSET,
+            PocketFilterConfig.essenceKey("", "aer"),
+            64,
+            PocketChannelOps.SourceKind.ESSENCE);
+        final PocketChannelRunner.Report report = PocketChannelRunner
+            .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, null);
+        SimpleAssert.eq(0, report.pairsServed, "零对被服务（item/fluid 都无源可投、不占对）");
+        SimpleAssert.eq(0, ops.injectCalls, "连一次 inject 都没发生（没有席位可试）");
+        SimpleAssert.eq(1, report.essenceNoChannel, "★源质来源逐条面呈拒收（不烧对也不静默）");
+        SimpleAssert.eq(1, report.noChannel, "同计数进 noChannel（receiptOfReport 读得到）");
+        SimpleAssert.that(report.failures() > 0, "★进 failures()（「整批只有源质无处可上」不被吞成 nothing_to_do）");
+        SimpleAssert.eq(
+            "gtit.pocket.receipt.no_channel",
+            NekoPocketPanel.receiptOfReport(report),
+            "★回执映射到既有 no_channel 键（R90 E2 的钉子由「无席位面呈」接住）");
+
+        // 负控：混合来源（物品 + 无席位源质）⇒ item 通道照常占对搬运，源质拒收照常面呈（不互斥）
+        final StubOps mixed = new StubOps();
+        mixed.channels = Arrays.asList("item", "fluid");
+        mixed.essenceNativeRouting = true;
+        mixed.addSource(0, "i:1:0:", 3, PocketChannelOps.SourceKind.ITEM);
+        mixed.addSource(
+            PocketConstants.FILTER_SLOT_UNSET,
+            PocketFilterConfig.essenceKey("", "aer"),
+            64,
+            PocketChannelOps.SourceKind.ESSENCE);
+        final PocketChannelRunner.Report mixedReport = PocketChannelRunner
+            .runInjectBatch(bindingsOf(CELL_A), mixed, Integer.MAX_VALUE, null);
+        SimpleAssert.eq(1, mixedReport.pairsServed, "只有 item 席位占对");
+        SimpleAssert.eq(3, mixedReport.transferred, "物品照常搬走");
+        SimpleAssert.eq(1, mixedReport.essenceNoChannel, "源质拒收照常面呈（与物品成交并存）");
+    }
+
+    /**
+     * ★R97 S2 用例 (d)：补满相回归零变化——注入相轮转只推进<b>注入相</b>游标；补满相读数
+     * （{@code lastServedOf}）与补满相自己的推进（{@code next} 的下一跳）都不受注入活动影响。
+     */
+    private static void refillCursorUntouchedByInjectPhase() {
+        final PocketRotationCursor cursor = new PocketRotationCursor();
+        final PocketCellBindings bindings = bindingsOf(CELL_A);
+        final PocketFilterConfig filters = new PocketFilterConfig();
+        SimpleAssert.that(filters.add(0, item(0, 2621, 0, "")), "第 0 格声明");
+        final StubOps refillOps = new StubOps();
+        refillOps.extractable.put(
+            filters.at(Kind.ITEM, 0)
+                .key(),
+            64);
+        PocketChannelRunner.runRefillBatch(bindings, cursor, filters, refillOps, 1, 64);
+        PocketChannelRunner.runRefillBatch(bindings, cursor, filters, refillOps, 1, 64);
+        SimpleAssert.eq("fluid", cursor.lastServedOf(CELL_A), "前置：补满相游标推进到 fluid（item→fluid）");
+
+        // 注入相带游标跑两批（双源、pairLimit=1）⇒ 注入相游标推进，补满相读数一动不动
+        for (int batch = 0; batch < 2; batch++) {
+            final StubOps ops = new StubOps();
+            ops.addSource(0, "i:1:0:", 4, PocketChannelOps.SourceKind.ITEM);
+            ops.addSource(1, PocketFilterConfig.fluidKey("water"), 200, PocketChannelOps.SourceKind.FLUID);
+            PocketChannelRunner.runDualPhase(bindings, cursor, null, false, ops, 1);
+        }
+        SimpleAssert.eq("fluid", cursor.lastServedOf(CELL_A), "★注入相两批后补满相游标仍在 fluid（两张表独立）");
+        SimpleAssert.eq("fluid", cursor.lastInjectStartOf(CELL_A), "注入相游标推进到 fluid 起始（item→fluid 两批）");
+
+        // 补满相的下一跳不受注入活动影响：从 fluid 的后一个（essentia）继续
+        final StubOps moreRefill = new StubOps();
+        moreRefill.extractable.put(
+            filters.at(Kind.ITEM, 0)
+                .key(),
+            64);
+        PocketChannelRunner.runRefillBatch(bindings, cursor, filters, moreRefill, 1, 64);
+        SimpleAssert.eq("essentia", cursor.lastServedOf(CELL_A), "★补满相下一跳 = essentia（fluid 的后继，不被注入相起始位污染）");
     }
 
     /**
@@ -6690,8 +6946,8 @@ public class NekoPocketModelTest {
      * ★E2-6：<b>原生在场 + 未声明</b> ⇒ 注入只到原生 typeId、moved&gt;0——种子在场时
      * {@code nativeChannelTypeId}（声明侧单源）返回该通道 id；且种子<b>不弱化</b>内建排除
      * （探针与单源换算件零种子引用、exclusion 在容器认门口之前——源码机检；测试 JVM 里
-     * AE2 的类型单例不可触达，见节注释②③）。Runner 级：三对服务里只有原生对成交，
-     * delta 的通道段 = 原生 typeId，非原生两对按路由门拒收计数（不停批）。
+     * AE2 的类型单例不可触达，见节注释②③）。Runner 级（★R97 S2 后）：只有原生席位占对并成交，
+     * delta 的通道段 = 原生 typeId，非原生两席位「无源可投不占对」整批不被服务（零拒收计数）。
      */
     private static void nativePresentUndeclaredRoutesToNative() {
         EssenceNativeChannels.seedNativeForTest(NATIVE_TEST_TYPE_ID, "aer");
@@ -6715,20 +6971,22 @@ public class NekoPocketModelTest {
                 PocketChannelOps.SourceKind.ESSENCE);
             final PocketChannelRunner.Report report = PocketChannelRunner
                 .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, null);
-            SimpleAssert.eq(3, report.pairsServed, "三对都被服务（全通道轮转）");
+            // ★R97 S2：快照里只有源质来源 ⇒ item/fluid 两席位「无源可投不占对」整批被跳过
+            // （不再被服务、也就不再各记一次拒收），只有原生那一对被服务并成交。
+            SimpleAssert.eq(1, report.pairsServed, "只有原生席位占对（item/fluid 无源质来源可投，不占对）");
             SimpleAssert.eq(64, report.transferred, "★moved>0：70 点按整瓶粒度搬 64（6 点零头留盘，C1）");
-            SimpleAssert.eq(2, report.essenceNoChannel, "item/fluid 两对按路由门拒收计数（不停批、留痕）");
-            SimpleAssert.eq(2, report.noChannel, "同计数进 noChannel（receiptOfReport 的读数面）");
+            SimpleAssert.eq(0, report.essenceNoChannel, "非原生两席位本批根本没被服务 ⇒ 零拒收计数");
+            SimpleAssert.eq(0, report.noChannel, "noChannel 同为零（receiptOfReport 的读数面）");
             SimpleAssert.eq(1, ops.announcements.size(), "批尾一次通知");
             final List<PocketChannelOps.Delta> posted = ops.announcements.get(0);
-            SimpleAssert.eq(1, posted.size(), "只有一条 delta（拒收的两对不产生 delta）");
+            SimpleAssert.eq(1, posted.size(), "只有一条 delta（原生那一对成交）");
             SimpleAssert.eq(NATIVE_TEST_TYPE_ID, posted.get(0).typeId, "★delta 的通道段 = 原生 typeId（inject 只到原生）");
             SimpleAssert.eq(PocketFilterConfig.essenceKey("", "aer"), posted.get(0).contentKey, "载荷键原样（e::aer）");
             SimpleAssert.eq(64L, posted.get(0).amount, "带符号 +64");
             SimpleAssert.eq(
-                "gtit.pocket.receipt.partial",
+                "gtit.pocket.receipt.ok",
                 NekoPocketPanel.receiptOfReport(report),
-                "搬了且有两对拒收 ⇒ partial（回执链可读）");
+                "★R97 S2：搬了且零拒收（非原生席位不再被白试）⇒ ok（回执链可读）");
         } finally {
             EssenceNativeChannels.unseedNativesForTest();
         }
@@ -6756,8 +7014,12 @@ public class NekoPocketModelTest {
         final PocketChannelRunner.Report report = PocketChannelRunner
             .runInjectBatch(bindingsOf(CELL_A), ops, Integer.MAX_VALUE, null);
         SimpleAssert.eq(0, report.transferred, "一件都没动");
-        SimpleAssert.eq(3, report.essenceNoChannel, "★三对全部按「无源质原生通道」拒收计数");
-        SimpleAssert.eq(3, report.noChannel, "同计数进 noChannel");
+        // ★R97 S2：item/fluid 两席位「无源可投不占对」不被服务（旧计数 3 = 三席位各试一次）；
+        // 只有 essentia 席位占对并按路由门拒收一次。「连 essentia 席位都没有」的整族拒收面呈
+        // 由 inject_no_essence_seat_still_surfaces_no_channel 用例单钉。
+        SimpleAssert.eq(1, report.pairsServed, "只有 essentia 席位占对（item/fluid 无源质来源可投）");
+        SimpleAssert.eq(1, report.essenceNoChannel, "★该席位按「无源质原生通道」拒收计数");
+        SimpleAssert.eq(1, report.noChannel, "同计数进 noChannel");
         SimpleAssert.that(report.failures() > 0, "★进 failures()（面板「全失败退款」口径读得到，不再被吞成 nothing_to_do）");
         SimpleAssert.eq(
             "gtit.pocket.receipt.no_channel",
@@ -6831,8 +7093,9 @@ public class NekoPocketModelTest {
                 "★已声明的 aer 从未被投递（按 tag 语义剔除）");
             SimpleAssert.that(ops.servedKeys.contains(PocketFilterConfig.essenceKey("", "ignis")), "未声明的 ignis 照常进注入相");
             SimpleAssert.eq(64, report.transferred, "ignis 64 点经原生通道搬走");
-            // aer 是「整条剔除」而不是「拒收」：拒收计数只来自 ignis 的 item/fluid 两对
-            SimpleAssert.eq(2, report.essenceNoChannel, "★aer 零拒收计数（剔除 ≠ 拒收；2 = ignis 的非原生两对）");
+            // aer 是「整条剔除」而不是「拒收」；★R97 S2：item/fluid 席位无源可投不占对也不被试
+            // ⇒ 拒收计数归零（旧计数 2 = ignis 在非原生两席位各被拒一次）
+            SimpleAssert.eq(0, report.essenceNoChannel, "★aer 零拒收计数（剔除 ≠ 拒收；ignis 只经原生席位成交）");
             SimpleAssert.eq(1, ops.announcements.size(), "批尾一次通知");
             final List<PocketChannelOps.Delta> posted = ops.announcements.get(0);
             SimpleAssert.eq(1, posted.size(), "只有 ignis 一条 delta");
@@ -13305,6 +13568,14 @@ public class NekoPocketModelTest {
         return bindings;
     }
 
+    /**
+     * ★R97 S2：桩件 {@code servedChannels} 按<b>每次 inject</b> 记账（一对服务会把快照里的全部来源
+     * 各试一次 ⇒ 同一通道可能出现多次）——判「服务了哪些通道、按什么序」时先去重保序。
+     */
+    private static List<String> distinctServedChannels(StubOps ops) {
+        return new ArrayList<>(new LinkedHashSet<>(ops.servedChannels));
+    }
+
     private static String uuidOf(int i) {
         return new UUID(0L, i).toString();
     }
@@ -13493,6 +13764,11 @@ public class NekoPocketModelTest {
         final List<SourceSlot> sources = new ArrayList<>();
         final List<List<Delta>> announcements = new ArrayList<>();
         final List<String> servedChannels = new ArrayList<>();
+        /**
+         * ★R97 S2：该元件的通道清单（默认三通道镜像生产序；用例可换——例如驱动「无源质席位」
+         * （ThE 缺席）或「未知第三方通道在场」两列）。
+         */
+        List<String> channels = CHANNELS;
         /** ★R87：每次注入被叫到的来源载荷键（反成环铁律的"从未被投递"证据面）。 */
         final List<String> servedKeys = new ArrayList<>();
         int injectCalls;
@@ -13626,7 +13902,25 @@ public class NekoPocketModelTest {
 
         @Override
         public List<String> channelIdsOf(String diskuuid) {
-            return lost.contains(diskuuid) ? Collections.<String>emptyList() : CHANNELS;
+            return lost.contains(diskuuid) ? Collections.<String>emptyList() : channels;
+        }
+
+        /**
+         * ★R97 S2：镜像生产 {@code PocketAeChannelOps#kindOfChannel} 的三席位 + 未知第三方回落
+         * {@code null}（item/fluid/essentia 正是生产侧类型单例的真 id，与 {@link #CHANNELS} 同源）。
+         */
+        @Override
+        public SourceKind kindOfChannel(String typeId) {
+            if ("item".equals(typeId)) {
+                return SourceKind.ITEM;
+            }
+            if ("fluid".equals(typeId)) {
+                return SourceKind.FLUID;
+            }
+            if ("essentia".equals(typeId)) {
+                return SourceKind.ESSENCE;
+            }
+            return null;
         }
 
         @Override

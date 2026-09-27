@@ -483,7 +483,7 @@ gtit.pocket.storage.key.block=Alt + right-click: never upload this cell
 gtit.pocket.note.title=How this panel works
 gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket only works while held in your main hand
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
-gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it)
+gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it); uploads rotate between channels each second, and a channel with nothing to upload never spends the pair quota
 # ★R88 self-invented policy C1 + C2, the "in-game copy" face (project discipline: both copy and README);
 # ★R91-④ adds three layers: taking out needs an empty phial in hand, clicking without one produces
 #   nothing, and depositing returns the empty shells; crystals still return no shell.

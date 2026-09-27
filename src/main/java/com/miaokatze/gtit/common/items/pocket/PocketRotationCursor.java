@@ -21,17 +21,25 @@ import java.util.Map;
  * 候选列表由调用方现场给出（{@code InfinityStackTypes.allSupportedTypes()} 的 typeId 序）。
  * 序号<b>不因通道激活而重置</b>，三通道对同一元件公平轮转；多枚元件再由绑定序做外层轮转。
  * <p>
- * ★R87-b 起<b>只剩补满相还在推进本游标</b>（{@code runRefillBatch} 里每次取 typeId 记账）；
- * 注入向改为"每批对该元件的全部可用通道各服务一轮"（全通道都跑，"轮转选一"没有意义），
- * {@code runInjectBatch} 不再调用 {@link #next} 也不改写游标——两种相共用一个游标仍然自洽：
- * 游标记录的是"上次补满记账用过的通道"，注入向读不读它都不影响公平性。
+ * ★R87-b 起<b>补满相</b>走 {@link #next}（{@code runRefillBatch} 里每次取 typeId 记账）。
+ * ★R97 S2 起<b>注入相有自己的游标</b>（{@link #nextInjectStart}）：R87-b 那次"注入向改为全通道各服务一轮、
+ * 不再轮转"在 {@code pairLimit=1}（配置默认值）时退化成「ITEM 通道恒吃首对、流体/源质通道永久饿死」
+ * （取证 {@code plan/_taskpack/R97-inv-channel.md} §3）——注入相现在仍是全通道各服务一轮（R87-b 的
+ * 该语义保留），但<b>起始序号每批 +1</b>（mod 通道数），有源通道轮流吃到首对。两条游标
+ * <b>同构但独立推进</b>（两张表、两个记账口），互不读写；注入相游标<b>只在内存延续、不进 NBT</b>
+ * ——重启丢的只是公平起始位，无害（避免 NBT 格式变更）。
  * <p>
  * 纯 JVM 件：只有字符串与列表。
  */
 public final class PocketRotationCursor {
 
-    /** diskuuid 字符串 → 上次服务过的 typeId 字符串。 */
+    /** diskuuid 字符串 → 补满相上次服务过的 typeId 字符串。 */
     private final Map<String, String> lastServed = new LinkedHashMap<>();
+    /**
+     * ★R97 S2：diskuuid 字符串 → 注入相上一批的<b>起始</b>typeId 字符串（独立于 {@link #lastServed}）。
+     * 存"起始位"而不是"最后一个服务位"：注入相每批对全部可用通道各服务一轮，有意义的轮转量只有起点。
+     */
+    private final Map<String, String> injectStartedAt = new LinkedHashMap<>();
 
     /**
      * 取该元件本轮应服务的 typeId，并把它记为"上次服务过"。
@@ -63,20 +71,58 @@ public final class PocketRotationCursor {
         return chosen;
     }
 
+    /**
+     * ★R97 S2：注入相本批的<b>起始通道序号</b>（记帐后每批自动 +1，mod 通道数）。
+     * <p>
+     * 与 {@link #next} 同构：存"本批起始的 typeId"，下一次从它的后一个开始；上一批起始通道已不在
+     * 候选里（mod 掉线/元件换型）⇒ 从 0 重新开始。<b>与补满相游标互不相干</b>——两相各自推进，
+     * 互相的推进也不影响对方的下一个值。只应被注入相在<b>每元件每批恰好一次</b>地调用
+     * （每批起始位 +1 正是公平性的来源；BURST 一次穿完全部通道，起始位对结果无影响，照常记帐）。
+     *
+     * @return 本批注入相该元件的通道起始序号；候选为空返回 -1（调用方据此走无通道支）
+     */
+    public int nextInjectStart(String diskuuid, List<String> typeIdCandidates) {
+        if (typeIdCandidates == null || typeIdCandidates.isEmpty()) {
+            return -1;
+        }
+        if (diskuuid == null || diskuuid.isEmpty()) {
+            return 0;
+        }
+        this.trimIfNeeded();
+        final int size = typeIdCandidates.size();
+        final String previous = injectStartedAt.get(diskuuid);
+        int index = 0;
+        if (previous != null) {
+            final int at = typeIdCandidates.indexOf(previous);
+            if (at >= 0) {
+                index = (at + 1) % size;
+            }
+        }
+        injectStartedAt.put(diskuuid, typeIdCandidates.get(index));
+        return index;
+    }
+
     /** 该元件上次实际服务过的 typeId（诊断与 GUI 回显用）。 */
     public String lastServedOf(String diskuuid) {
         return diskuuid == null ? null : lastServed.get(diskuuid);
     }
 
-    /** 元件解绑后清掉它的游标；不影响其他元件。 */
+    /** ★R97 S2：该元件注入相上一批的起始 typeId（诊断与测试用；补满相游标读 {@link #lastServedOf}）。 */
+    public String lastInjectStartOf(String diskuuid) {
+        return diskuuid == null ? null : injectStartedAt.get(diskuuid);
+    }
+
+    /** 元件解绑后清掉它的两条游标；不影响其他元件。 */
     public void forget(String diskuuid) {
         if (diskuuid != null) {
             lastServed.remove(diskuuid);
+            injectStartedAt.remove(diskuuid);
         }
     }
 
     public void reset() {
         lastServed.clear();
+        injectStartedAt.clear();
     }
 
     /** 被跟踪的元件数。 */
@@ -84,10 +130,12 @@ public final class PocketRotationCursor {
         return lastServed.size();
     }
 
-    /** 只在条目过多时整体清空（纯内存回收，不参与序号推进语义）。 */
+    /** 只在条目过多时整体清空（纯内存回收，不参与序号推进语义；★R97 S2 起两条游标一起回收）。 */
     private void trimIfNeeded() {
-        if (lastServed.size() > PocketConstants.MAX_ROTATION_ENTRIES) {
+        if (lastServed.size() > PocketConstants.MAX_ROTATION_ENTRIES
+            || injectStartedAt.size() > PocketConstants.MAX_ROTATION_ENTRIES) {
             lastServed.clear();
+            injectStartedAt.clear();
         }
     }
 }
