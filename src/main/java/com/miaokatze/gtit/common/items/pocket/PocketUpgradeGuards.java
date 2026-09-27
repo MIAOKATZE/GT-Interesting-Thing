@@ -146,9 +146,7 @@ public final class PocketUpgradeGuards {
                 // MAGNET / CHANNEL_PERSIST / MAGE：关闭只让 driver 早退，不主动 stop 现有状态
                 return new OffVerdict(Reason.ALLOW, 0, -1, -1, false);
         }
-        return type == PocketUpgradeType.CAPACITY
-            ? capacityVerdict(inv, carrier)
-            : stackVerdict(inv, carrier, cursor);
+        return type == PocketUpgradeType.CAPACITY ? capacityVerdict(inv, carrier) : stackVerdict(inv, carrier, cursor);
     }
 
     // ------------------------------------------------------------------ 容量腿
@@ -256,12 +254,7 @@ public final class PocketUpgradeGuards {
         }
         final int tags = essenceTagsOverBase(inv, carrier);
         logProbeOnce(overBase == 0 && tags == 0, inv == null ? "无会话，中栏未参与扫描" : null);
-        return new OffVerdict(
-            over > 0 ? Reason.STACK_OVER_OFF_LIMIT : Reason.ALLOW,
-            over,
-            overBase,
-            tags,
-            inv != null);
+        return new OffVerdict(over > 0 ? Reason.STACK_OVER_OFF_LIMIT : Reason.ALLOW, over, overBase, tags, inv != null);
     }
 
     /** 单条栈是否超过"关闭后"的尺子（{@code false} = 未升级那一档，与执法点同一份算式）。 */
@@ -279,7 +272,9 @@ public final class PocketUpgradeGuards {
         final int base = PocketConstants.ESSENCE_CAP_PER_TAG;
         int hits = 0;
         if (inv != null && inv.essence() != null) {
-            for (Map.Entry<String, Integer> entry : inv.essence().snapshot().entrySet()) {
+            for (Map.Entry<String, Integer> entry : inv.essence()
+                .snapshot()
+                .entrySet()) {
                 if (entry.getValue() != null && entry.getValue() > base) {
                     hits++;
                 }
@@ -294,7 +289,8 @@ public final class PocketUpgradeGuards {
             .getTagList(PocketConstants.ASPECTS, TAG_COMPOUND);
         for (int i = 0; i < list.tagCount(); i++) {
             // ASPECT_AMOUNT 的落档形状是 Short（照 PocketEssenceStore#readFrom 的同一条读法）
-            if (list.getCompoundTagAt(i).getShort(PocketConstants.ASPECT_AMOUNT) > base) {
+            if (list.getCompoundTagAt(i)
+                .getShort(PocketConstants.ASPECT_AMOUNT) > base) {
                 hits++;
             }
         }

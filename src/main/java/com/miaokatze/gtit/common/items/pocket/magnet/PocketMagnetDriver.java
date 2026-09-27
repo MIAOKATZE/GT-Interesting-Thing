@@ -210,9 +210,9 @@ public final class PocketMagnetDriver {
             }
             if (!gate.allows(Item.getIdFromItem(content.getItem()), content.getItemDamage())) {
                 // ★R96 S7a 验收 1（名单进执法）：白名单外 / 黑名单内 ⇒ 整件跳过 —— 不位移、不认领，
-                //   因此收口拍根本见不到它（也就不会退回 S6 刚修掉的"吸进来再甩脚下"）。
-                //   ★排在多人仲裁之前：这里是一次 long 装箱查找，而 getClosestPlayerToEntity 要遍历玩家。
-                //   ★无限制档（NONE）恒真：名单在场但全部放行（见 PocketMagnetFilter 类注释三态读法）。
+                // 因此收口拍根本见不到它（也就不会退回 S6 刚修掉的"吸进来再甩脚下"）。
+                // ★排在多人仲裁之前：这里是一次 long 装箱查找，而 getClosestPlayerToEntity 要遍历玩家。
+                // ★无限制档（NONE）恒真：名单在场但全部放行（见 PocketMagnetFilter 类注释三态读法）。
                 continue;
             }
             if (!soloWorld && world.getClosestPlayerToEntity(drop, SCAN_RANGE) != player) {
@@ -311,7 +311,10 @@ public final class PocketMagnetDriver {
     /** 放手全部认领（防御支：无处可写时把在飞的东西还给世界，不留着当垃圾）。 */
     private static void releaseAll(UUID owner) {
         for (int i = 0, n = RIPED.size(); i < n; i++) {
-            PocketMagnetClaims.release(owner, RIPED.get(i).entityId());
+            PocketMagnetClaims.release(
+                owner,
+                RIPED.get(i)
+                    .entityId());
         }
     }
 
@@ -337,8 +340,7 @@ public final class PocketMagnetDriver {
      * {@code isProtectedClass(appeng 那四类)} 必须 {@code true}）。
      */
     public static boolean isProtectedClass(Class<?> clazz) {
-        for (Class<?> cursor = clazz; cursor != null && cursor != Entity.class; cursor = cursor
-            .getSuperclass()) {
+        for (Class<?> cursor = clazz; cursor != null && cursor != Entity.class; cursor = cursor.getSuperclass()) {
             if (isProtectedClassName(cursor.getName())) {
                 return true;
             }
@@ -366,7 +368,8 @@ public final class PocketMagnetDriver {
 
     /** 会话表的键（与 {@code PocketSessions}／{@code PocketChannelManager} 同一玩家维键；无档案 ⇒ null 早退）。 */
     private static UUID ownerId(EntityPlayer player) {
-        return player.getGameProfile() == null ? null : player.getGameProfile()
-            .getId();
+        return player.getGameProfile() == null ? null
+            : player.getGameProfile()
+                .getId();
     }
 }

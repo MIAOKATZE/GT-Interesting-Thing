@@ -3,7 +3,6 @@ package com.miaokatze.gtit.gui.pocket;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
-import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.integration.recipeviewer.RecipeViewerGhostIngredientSlot;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
@@ -171,13 +170,13 @@ public class NekoMagnetGhostCell extends ButtonWidget<NekoMagnetGhostCell>
     /** 身份键里的 {@code itemId}（解不出 ⇒ −1，★调用方据此不画东西）。 */
     public static int itemIdOf(String key) {
         final long[] parsed = PocketMagnetFilter.parseEntry(key);
-        return parsed == null ? -1 : (int)parsed[0];
+        return parsed == null ? -1 : (int) parsed[0];
     }
 
     /** 身份键里的 {@code meta}（解不出 ⇒ 0）。 */
     public static int metaOf(String key) {
         final long[] parsed = PocketMagnetFilter.parseEntry(key);
-        return parsed == null ? 0 : (int)parsed[1];
+        return parsed == null ? 0 : (int) parsed[1];
     }
 
     /**
@@ -258,8 +257,7 @@ public class NekoMagnetGhostCell extends ButtonWidget<NekoMagnetGhostCell>
      * @param editable 本栏是否可编辑（磁力未固化 ⇒ 灰显 ⇒ 一律不收）
      * @param entries  名单当前条数（客户端镜像读数）
      */
-    public static DragResult applyDrop(ItemStack carried, int button, boolean editable, int entries,
-        RecordSink sink) {
+    public static DragResult applyDrop(ItemStack carried, int button, boolean editable, int entries, RecordSink sink) {
         final int capacity = PocketConstants.MAGNET_FILTER_SLOTS;
         if (!editable) {
             return new DragResult("", REFUSE_LOCKED, capacity);
@@ -313,17 +311,13 @@ public class NekoMagnetGhostCell extends ButtonWidget<NekoMagnetGhostCell>
         if (mouseButton == MOUSE_BUTTON_LEFT) {
             final ItemStack carried = owner == null ? null : owner.magnetCursorStack();
             if (carried != null && carried.stackSize > 0) {
-                applyCursorPress(
-                    carried,
-                    editable(),
-                    owner == null ? 0 : owner.magnetEntryCount(),
-                    new RecordSink() {
+                applyCursorPress(carried, editable(), owner == null ? 0 : owner.magnetEntryCount(), new RecordSink() {
 
-                        @Override
-                        public void recordEntry(String key) {
-                            owner.requestMagnetEntryAdd(key);
-                        }
-                    });
+                    @Override
+                    public void recordEntry(String key) {
+                        owner.requestMagnetEntryAdd(key);
+                    }
+                });
             }
             return Result.SUCCESS;
         }

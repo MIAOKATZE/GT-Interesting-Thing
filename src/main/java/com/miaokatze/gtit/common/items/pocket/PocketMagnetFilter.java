@@ -102,6 +102,7 @@ public final class PocketMagnetFilter {
      * <b>{@code NONE} 是"名单在场但不生效"，不是"名单被清空"</b> —— 见类注释第 1 条。
      */
     public enum Mode {
+
         /** 无限制：全部放行（★名单仍保留在场，只是不被问）。 */
         NONE,
         /** 白名单：只吸名单内的。 */
@@ -146,6 +147,7 @@ public final class PocketMagnetFilter {
      * ★"[NOTE] …【未验】（不是通过）"，★不靠注释隐含。
      */
     public enum Target {
+
         /** 口袋内 135 格栏（默认 = R96 P-11 的现状行为：中栏优先，余量进玩家背包）。 */
         POCKET,
         /** 玩家主背包 36 格（★配置位在场、执法腿待接，见本枚举的★★段）。 */
@@ -290,7 +292,7 @@ public final class PocketMagnetFilter {
     /** 写口（加一条，键式样入参 = S7b 的拖入腿与 FLG 记录腿共用的那一枚）。解不出 ⇒ {@code false}。 */
     public boolean addEntryKey(String key) {
         final long[] parsed = parseEntry(key);
-        return parsed != null && addEntry((int)parsed[0], (int)parsed[1]);
+        return parsed != null && addEntry((int) parsed[0], (int) parsed[1]);
     }
 
     /**
@@ -305,7 +307,7 @@ public final class PocketMagnetFilter {
     /** 写口（摘一条，键式样入参）。解不出 ⇒ {@code false}。 */
     public boolean removeEntryKey(String key) {
         final long[] parsed = parseEntry(key);
-        return parsed != null && removeEntry((int)parsed[0], (int)parsed[1]);
+        return parsed != null && removeEntry((int) parsed[0], (int) parsed[1]);
     }
 
     /** 写口（按格号摘，S7b 的"右键解绑某一格"）：越界 ⇒ {@code false}。 */
@@ -346,8 +348,10 @@ public final class PocketMagnetFilter {
         return allowsMode(mode, itemId, meta, entries);
     }
 
-    /** 三态判据本体（★唯一一份：{@link #allows(int, int)} 与 {@link ScanGate#allows(int, int)} 都走它，
-     * 不留第二份读法 —— 第二份迟早只更新一处，那是"名单生效与否"最容易静默分叉的地方）。 */
+    /**
+     * 三态判据本体（★唯一一份：{@link #allows(int, int)} 与 {@link ScanGate#allows(int, int)} 都走它，
+     * 不留第二份读法 —— 第二份迟早只更新一处，那是"名单生效与否"最容易静默分叉的地方）。
+     */
     private static boolean allowsMode(Mode mode, int itemId, int meta, Set<Long> keys) {
         switch (mode) {
             case WHITELIST:
@@ -404,9 +408,9 @@ public final class PocketMagnetFilter {
      */
     public ScanGate newScanGate() {
         scanGatesBuilt++;
-        return new ScanGate(mode, entries.isEmpty() || mode == Mode.NONE
-            ? Collections.<Long>emptySet()
-            : new LinkedHashSet<>(entries));
+        return new ScanGate(
+            mode,
+            entries.isEmpty() || mode == Mode.NONE ? Collections.<Long>emptySet() : new LinkedHashSet<>(entries));
     }
 
     /** {@link #newScanGate()} 的产物：一份<b>已经定型</b>的三态 + 集合快照（★整轮扫描零再构建）。 */
@@ -477,15 +481,15 @@ public final class PocketMagnetFilter {
 
     /** 两个 int 合成一个 long（★每实体那一步零字符串分配）。 */
     private static long composite(int itemId, int meta) {
-        return ((long)itemId << 32) ^ (meta & 0xFFFFFFFFL);
+        return ((long) itemId << 32) ^ (meta & 0xFFFFFFFFL);
     }
 
     private static int itemIdOf(long packed) {
-        return (int)(packed >> 32);
+        return (int) (packed >> 32);
     }
 
     private static int metaOf(long packed) {
-        return (int)packed;
+        return (int) packed;
     }
 
     // ------------------------------------------------------------------ NBT 往返

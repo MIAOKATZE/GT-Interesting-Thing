@@ -93,7 +93,9 @@ final class PocketVisSupport {
             return 0;
         }
         final NBTTagCompound root = pocket.getTagCompound();
-        return root == null ? 0 : PocketElementStore.readFrom(root).roomFor(tag);
+        return root == null ? 0
+            : PocketElementStore.readFrom(root)
+                .roomFor(tag);
     }
 
     /**
@@ -168,8 +170,7 @@ final class PocketVisSupport {
         final int landed = store.putAll(candidate);
         if (landed > 0 && !loggedCredit) {
             loggedCredit = true;
-            LOG.info("[gtit] TC mixin 元素入账命中：口袋收到 " + landed + " 点 " + tag
-                + "（基座 / 要素球 / 护盾三条腿共用的判据体在跑）");
+            LOG.info("[gtit] TC mixin 元素入账命中：口袋收到 " + landed + " 点 " + tag + "（基座 / 要素球 / 护盾三条腿共用的判据体在跑）");
         }
         return landed;
     }
@@ -217,7 +218,10 @@ final class PocketVisSupport {
      * 玩家一分不亏（口径同 TC 原生「装不下就不收」）。
      */
     static boolean absorbIntoPocket(Entity orb, EntityPlayer player, Aspect aspect, int amount) {
-        if (orb == null || player == null || player.inventory == null || amount <= 0 || orb.worldObj == null
+        if (orb == null || player == null
+            || player.inventory == null
+            || amount <= 0
+            || orb.worldObj == null
             || orb.worldObj.isRemote) {
             return false;
         }
@@ -277,8 +281,7 @@ final class PocketVisSupport {
      * = <b>S11 的活</b>，本片★不在此处做任何暗示（本方法一个 {@code IRunicArmor} 都不碰）。
      */
     static boolean payShieldCycleFromPockets(EntityPlayer player, AspectList cost) {
-        if (player == null || player.worldObj == null || player.worldObj.isRemote || cost == null
-            || cost.size() <= 0) {
+        if (player == null || player.worldObj == null || player.worldObj.isRemote || cost == null || cost.size() <= 0) {
             return false;
         }
         final Map<String, Integer> bill = new LinkedHashMap<String, Integer>();
@@ -345,7 +348,8 @@ final class PocketVisSupport {
         if (!mageActive(pocket)) {
             return false;
         }
-        return PocketElementStore.readFrom(pocket.getTagCompound()).canPayAll(bill);
+        return PocketElementStore.readFrom(pocket.getTagCompound())
+            .canPayAll(bill);
     }
 
     private static IInventory safeBaubles(EntityPlayer player) {

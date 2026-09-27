@@ -99,8 +99,7 @@ public class MixinTileWandPedestal_PocketIntake {
      * 将来有人按「canInsertItem 是否等价于 isItemValidForSlot」推理时会被这里误导。
      */
     @Inject(method = "canInsertItem", at = @At("HEAD"), cancellable = true, remap = true)
-    private void gtit$acceptPocketAutomation(int slot, ItemStack stack, int side,
-        CallbackInfoReturnable<Boolean> cir) {
+    private void gtit$acceptPocketAutomation(int slot, ItemStack stack, int side, CallbackInfoReturnable<Boolean> cir) {
         if (PocketVisSupport.isPocket(stack) && ((IInventory) (Object) this).getStackInSlot(slot) == null) {
             cir.setReturnValue(Boolean.TRUE);
         }

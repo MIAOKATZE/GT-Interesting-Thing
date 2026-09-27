@@ -209,9 +209,11 @@ public final class PocketConfigPanel {
      * 谁高听谁（★不再用"两个挂载框 × MOUNT_HEIGHT"那条旧加总式 —— S7b 之后两个框既不同高也不同列，
      * 拿一条乘式当账就是假账）。
      */
-    public static final int HEIGHT = Math.max(
-        mountY(MOUNT_FRAMES - 1) + MOUNT_HEIGHT,
-        MAGNET_FRAME_Y + MAGNET_FRAME_HEIGHT) + 4 + RECEIPT_HEIGHT + CLOSE_HEIGHT + MARGIN;
+    public static final int HEIGHT = Math
+        .max(mountY(MOUNT_FRAMES - 1) + MOUNT_HEIGHT, MAGNET_FRAME_Y + MAGNET_FRAME_HEIGHT) + 4
+        + RECEIPT_HEIGHT
+        + CLOSE_HEIGHT
+        + MARGIN;
 
     /** 次级面板的宽度硬顶（见类 javadoc 的几何账）。 */
     public static final int MAX_WIDTH = 380;
@@ -266,14 +268,24 @@ public final class PocketConfigPanel {
         // 同 {@code NekoPocketBottomBand#upgradeCellBackground} 记过的实测）。
         if (WIDTH > MAX_WIDTH || HEIGHT > MAX_HEIGHT) {
             throw new IllegalStateException(
-                "[pocket] 配置面板越过次级面板硬顶: " + WIDTH + "x" + HEIGHT
-                    + " 顶=" + MAX_WIDTH + "x" + MAX_HEIGHT
+                "[pocket] 配置面板越过次级面板硬顶: " + WIDTH
+                    + "x"
+                    + HEIGHT
+                    + " 顶="
+                    + MAX_WIDTH
+                    + "x"
+                    + MAX_HEIGHT
                     + "（★非主面板恒可拖，DraggablePanelWrapper 按可视面余量做除算 ⇒ 贴边即除零/负数）");
         }
         if (WIDTH >= NekoPocketPanel.WIDTH || HEIGHT >= NekoPocketPanel.HEIGHT) {
             throw new IllegalStateException(
-                "[pocket] 配置面板不再严格小于主面板: " + WIDTH + "x" + HEIGHT + "，主面板="
-                    + NekoPocketPanel.WIDTH + "x" + NekoPocketPanel.HEIGHT
+                "[pocket] 配置面板不再严格小于主面板: " + WIDTH
+                    + "x"
+                    + HEIGHT
+                    + "，主面板="
+                    + NekoPocketPanel.WIDTH
+                    + "x"
+                    + NekoPocketPanel.HEIGHT
                     + "（盖满主面板的次级面板读起来就是一块新屏，且拖动余量归零）");
         }
         if (SWITCH_COLUMN < SWITCH_WIDTH + 18) {
@@ -285,18 +297,17 @@ public final class PocketConfigPanel {
         if (LABEL_WIDTH < 168) {
             throw new IllegalStateException(
                 "[pocket] 型名行可用宽顶不住英文最坏串（0.6 档要 168px）: LABEL_WIDTH=" + LABEL_WIDTH
-                    + "，SWITCH_COLUMN=" + SWITCH_COLUMN);
+                    + "，SWITCH_COLUMN="
+                    + SWITCH_COLUMN);
         }
         if (LABEL_WIDTH + 2 + SWITCH_WIDTH > SWITCH_COLUMN) {
-            throw new IllegalStateException(
-                "[pocket] 行带横向不闭合（型名 + 缝 + 开关顶出左列）: " + SWITCH_COLUMN);
+            throw new IllegalStateException("[pocket] 行带横向不闭合（型名 + 缝 + 开关顶出左列）: " + SWITCH_COLUMN);
         }
         // ★横向闭合（与下面那条纵向闭合同一条纪律：{@link #WIDTH} 是派生式，有人手改成字面量时先在这里红，
         // 而不是等到屏幕上挂载框被裁掉）。★S7b 起右列是磁力格盘、左列是行带 + 挂载框栈。
         if (MAGNET_FRAME_X + MAGNET_FRAME_WIDTH > WIDTH - MARGIN) {
             throw new IllegalStateException(
-                "[pocket] 配置面板横向不闭合（磁力格盘顶出面板）: " + WIDTH + "，格盘右沿="
-                    + (MAGNET_FRAME_X + MAGNET_FRAME_WIDTH));
+                "[pocket] 配置面板横向不闭合（磁力格盘顶出面板）: " + WIDTH + "，格盘右沿=" + (MAGNET_FRAME_X + MAGNET_FRAME_WIDTH));
         }
         if (MOUNT_COLUMN > SWITCH_COLUMN) {
             throw new IllegalStateException(
@@ -312,8 +323,13 @@ public final class PocketConfigPanel {
         }
         if (MAGNET_GRID_WIDTH > MAGNET_FRAME_WIDTH - 2 || MAGNET_GRID_HEIGHT > MAGNET_FRAME_HEIGHT - ROW_HEIGHT - 2) {
             throw new IllegalStateException(
-                "[pocket] 72 格盘放不下自己的框: 盘面=" + MAGNET_GRID_WIDTH + "x" + MAGNET_GRID_HEIGHT
-                    + " 框内=" + (MAGNET_FRAME_WIDTH - 2) + "x" + (MAGNET_FRAME_HEIGHT - ROW_HEIGHT - 2));
+                "[pocket] 72 格盘放不下自己的框: 盘面=" + MAGNET_GRID_WIDTH
+                    + "x"
+                    + MAGNET_GRID_HEIGHT
+                    + " 框内="
+                    + (MAGNET_FRAME_WIDTH - 2)
+                    + "x"
+                    + (MAGNET_FRAME_HEIGHT - ROW_HEIGHT - 2));
         }
         if (MAGNET_COLUMNS * CELL != MAGNET_GRID_WIDTH || MAGNET_ROWS * CELL != MAGNET_GRID_HEIGHT) {
             throw new IllegalStateException("[pocket] 栅格乘式与盘面尺寸不符（★格数不得是裸字面量）");
@@ -328,8 +344,7 @@ public final class PocketConfigPanel {
         }
         if (magnetNoteY() + MAGNET_NOTE_HEIGHT > mountY(1)) {
             throw new IllegalStateException(
-                "[pocket] 磁力控制块顶进魔法使挂载框: 控制块下沿=" + (magnetNoteY() + MAGNET_NOTE_HEIGHT)
-                    + "，挂载框 y=" + mountY(1));
+                "[pocket] 磁力控制块顶进魔法使挂载框: 控制块下沿=" + (magnetNoteY() + MAGNET_NOTE_HEIGHT) + "，挂载框 y=" + mountY(1));
         }
         if (MAGNET_CONTROL_X + 2 * MAGNET_BUTTON_WIDTH + 10 > MARGIN + SWITCH_COLUMN) {
             throw new IllegalStateException(
@@ -342,13 +357,16 @@ public final class PocketConfigPanel {
         // 而框高又进 {@link #HEIGHT} 的纵向预算 ⇒ 这一条红的同时会带走上面那条"挂载列顶出面板"，
         // 所以单独写一条，报的是"行多了"而不是"面板高了"）。
         if (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP) > MOUNT_HEIGHT) {
-            throw new IllegalStateException("[pocket] 魔法使挂载框放不下 " + modeRowCount() + " 行模式控件: 框高="
-                + MOUNT_HEIGHT + "，需要=" + (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP)));
+            throw new IllegalStateException(
+                "[pocket] 魔法使挂载框放不下 " + modeRowCount()
+                    + " 行模式控件: 框高="
+                    + MOUNT_HEIGHT
+                    + "，需要="
+                    + (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP)));
         }
         if (MODE_LABEL_WIDTH < 40 || MODE_LABEL_WIDTH + MODE_BUTTON_WIDTH + 2 > MOUNT_COLUMN - 2) {
             throw new IllegalStateException(
-                "[pocket] 模式行横向不闭合（标签 + 按钮顶出挂载框）: 标签=" + MODE_LABEL_WIDTH + "，按钮="
-                    + MODE_BUTTON_WIDTH);
+                "[pocket] 模式行横向不闭合（标签 + 按钮顶出挂载框）: 标签=" + MODE_LABEL_WIDTH + "，按钮=" + MODE_BUTTON_WIDTH);
         }
         // ★分派表与挂载框数必须对得上：对不上就是"有人改了分派表而没改纵向预算"。
         int mounts = 0;
@@ -358,8 +376,7 @@ public final class PocketConfigPanel {
             }
         }
         if (mounts != MOUNT_FRAMES) {
-            throw new IllegalStateException(
-                "[pocket] 分派表里有挂载位的型数 = " + mounts + "，纵向预算按 " + MOUNT_FRAMES + " 个框算");
+            throw new IllegalStateException("[pocket] 分派表里有挂载位的型数 = " + mounts + "，纵向预算按 " + MOUNT_FRAMES + " 个框算");
         }
     }
 
@@ -424,8 +441,8 @@ public final class PocketConfigPanel {
     // （磁力 ⇒ 既有的 pending 文本件；魔法使 ⇒ {@link #mageModeRows}）。S7b 落地时换掉的是它自己那一支。
 
     /** 模式行的<b>标签</b>键（★按 {@link PocketConstants#MAGE_MODE_BITS} 的行序，两个下标空间同一个数）。 */
-    private static final String[] MODE_LABEL_KEYS = { "gtit.pocket.config.mode.crystal",
-        "gtit.pocket.config.mode.coin", "gtit.pocket.config.mode.transmute" };
+    private static final String[] MODE_LABEL_KEYS = { "gtit.pocket.config.mode.crystal", "gtit.pocket.config.mode.coin",
+        "gtit.pocket.config.mode.transmute" };
     /** 模式行的 tooltip 键（★三行共用一条：讲的是"这一行的开关意味着什么"，与具体哪条模式无关）。 */
     public static final String MODE_HINT_KEY = "gtit.pocket.config.mode.hint";
 
@@ -622,8 +639,8 @@ public final class PocketConfigPanel {
      * @param inv     当前面板会话的数据面（守卫的 long 真值与中栏扫描面），可为 {@code null}
      * @param cursor  玩家游标栈（堆叠守卫的扫描面必须含它，理由见 {@code PocketUpgradeGuards} 类 javadoc）
      */
-    public static Outcome commitSwitch(ItemStack carrier, PocketUpgradeType type, boolean wantOff,
-        PocketInventory inv, ItemStack cursor) {
+    public static Outcome commitSwitch(ItemStack carrier, PocketUpgradeType type, boolean wantOff, PocketInventory inv,
+        ItemStack cursor) {
         final SwitchState state = switchState(carrier, type);
         if (state == SwitchState.ABSENT) {
             return Outcome.NOT_ON_RECORD;
@@ -636,8 +653,7 @@ public final class PocketConfigPanel {
         if (wantOff) {
             final PocketUpgradeGuards.OffVerdict verdict = PocketUpgradeGuards.canTurnOff(type, inv, carrier, cursor);
             if (!verdict.allowed()) {
-                return verdict.reason() == PocketUpgradeGuards.Reason.CAPACITY_OVER_OFF_LIMIT
-                    ? Outcome.REFUSE_CAPACITY
+                return verdict.reason() == PocketUpgradeGuards.Reason.CAPACITY_OVER_OFF_LIMIT ? Outcome.REFUSE_CAPACITY
                     : Outcome.REFUSE_STACK;
             }
         }
@@ -714,27 +730,28 @@ public final class PocketConfigPanel {
 
     /** 本件的全部 lang 键（★字面量清单，给两份 lang 的对账与用例点名用；不参与装配）。 */
     public static List<String> langKeys() {
-        final List<String> keys = new ArrayList<>(Arrays.asList(
-            "gtit.pocket.config.close",
-            "gtit.pocket.config.state.on",
-            "gtit.pocket.config.state.off",
-            "gtit.pocket.config.state.absent",
-            "gtit.pocket.config.switch.turn_on",
-            "gtit.pocket.config.switch.turn_off",
-            "gtit.pocket.config.switch.none",
-            "gtit.pocket.config.switch.hint",
-            "gtit.pocket.config.mount.magnet",
-            "gtit.pocket.config.mount.mage",
-            "gtit.pocket.config.mount.pending",
-            // ★R96 S9b：魔法使挂载框里那三行模式控件的文案（三条标签 + 一条共用 tooltip）。
-            // ★开关按钮与行首读数★不★新增键：复用上面那四条既有的 turn_on / turn_off / state.on / state.off
-            // ——模式与开关在玩家侧读起来就是同一件事（"这一条动还是不动"），两套字面量才是第二份真相。
-            "gtit.pocket.config.mode.crystal",
-            "gtit.pocket.config.mode.coin",
-            "gtit.pocket.config.mode.transmute",
-            MODE_HINT_KEY,
-            "gtit.pocket.upgrade.cell.off",
-            identityReceiptKey()));
+        final List<String> keys = new ArrayList<>(
+            Arrays.asList(
+                "gtit.pocket.config.close",
+                "gtit.pocket.config.state.on",
+                "gtit.pocket.config.state.off",
+                "gtit.pocket.config.state.absent",
+                "gtit.pocket.config.switch.turn_on",
+                "gtit.pocket.config.switch.turn_off",
+                "gtit.pocket.config.switch.none",
+                "gtit.pocket.config.switch.hint",
+                "gtit.pocket.config.mount.magnet",
+                "gtit.pocket.config.mount.mage",
+                "gtit.pocket.config.mount.pending",
+                // ★R96 S9b：魔法使挂载框里那三行模式控件的文案（三条标签 + 一条共用 tooltip）。
+                // ★开关按钮与行首读数★不★新增键：复用上面那四条既有的 turn_on / turn_off / state.on / state.off
+                // ——模式与开关在玩家侧读起来就是同一件事（"这一条动还是不动"），两套字面量才是第二份真相。
+                "gtit.pocket.config.mode.crystal",
+                "gtit.pocket.config.mode.coin",
+                "gtit.pocket.config.mode.transmute",
+                MODE_HINT_KEY,
+                "gtit.pocket.upgrade.cell.off",
+                identityReceiptKey()));
         for (final Outcome outcome : Outcome.values()) {
             keys.add(receiptKey(outcome));
         }
@@ -749,20 +766,21 @@ public final class PocketConfigPanel {
         for (final PocketMagnetFilter.Target target : PocketMagnetFilter.Target.values()) {
             keys.add(targetLabelKey(target));
         }
-        keys.addAll(Arrays.asList(
-            "gtit.pocket.magnet.mode.hint",
-            "gtit.pocket.magnet.target.hint",
-            "gtit.pocket.magnet.count",
-            "gtit.pocket.magnet.clear",
-            "gtit.pocket.magnet.clear.hint",
-            "gtit.pocket.magnet.cell.empty",
-            "gtit.pocket.magnet.cell.remove",
-            "gtit.pocket.magnet.cell.number",
-            "gtit.pocket.magnet.gesture",
-            NekoMagnetGhostCell.REFUSE_NO_ITEM,
-            NekoMagnetGhostCell.REFUSE_WRONG_BUTTON,
-            NekoMagnetGhostCell.REFUSE_LOCKED,
-            NekoMagnetGhostCell.REFUSE_FULL));
+        keys.addAll(
+            Arrays.asList(
+                "gtit.pocket.magnet.mode.hint",
+                "gtit.pocket.magnet.target.hint",
+                "gtit.pocket.magnet.count",
+                "gtit.pocket.magnet.clear",
+                "gtit.pocket.magnet.clear.hint",
+                "gtit.pocket.magnet.cell.empty",
+                "gtit.pocket.magnet.cell.remove",
+                "gtit.pocket.magnet.cell.number",
+                "gtit.pocket.magnet.gesture",
+                NekoMagnetGhostCell.REFUSE_NO_ITEM,
+                NekoMagnetGhostCell.REFUSE_WRONG_BUTTON,
+                NekoMagnetGhostCell.REFUSE_LOCKED,
+                NekoMagnetGhostCell.REFUSE_FULL));
         keys.addAll(Arrays.asList(UPGRADE_NAME_KEYS));
         return keys;
     }
@@ -814,8 +832,7 @@ public final class PocketConfigPanel {
             }
         }
         if (frame != MOUNT_FRAMES) {
-            throw new IllegalStateException(
-                "[pocket] 分派表画出的挂载框数与几何账不符: " + frame + " vs " + MOUNT_FRAMES);
+            throw new IllegalStateException("[pocket] 分派表画出的挂载框数与几何账不符: " + frame + " vs " + MOUNT_FRAMES);
         }
         return panel;
     }
@@ -839,8 +856,7 @@ public final class PocketConfigPanel {
         final String nameKey = UPGRADE_NAME_KEYS[type.ordinal()];
         return (IWidget) new TextWidget(IKey.dynamic(() -> {
             final SwitchState state = switchState(ui.carrierStackLive(), type);
-            return StatCollector.translateToLocal(nameKey) + "："
-                + StatCollector.translateToLocal(stateKey(state));
+            return StatCollector.translateToLocal(nameKey) + "：" + StatCollector.translateToLocal(stateKey(state));
         })).textAlign(Alignment.CenterLeft)
             .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
             .color(PocketGhostRequest.readoutTextColor())
@@ -868,8 +884,8 @@ public final class PocketConfigPanel {
             .playClickSound(true)
             // ★只有左键生效（同 R83 B2(5) 的口径：丢掉 button 形参 = 右键也切一次）；
             // ★★这里一个字节都不写档 —— 客户端私写 off-mask 是门禁 G12 / 门 D 钉死的 FAIL 形状。
-            .onMousePressed(button -> button == 0
-                && ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type)));
+            .onMousePressed(
+                button -> button == 0 && ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type)));
     }
 
     /** 回执行：最近一次切换成了什么 / 为什么被拒（★走既有粘性回执通道，不新建通道）。 */
@@ -918,8 +934,7 @@ public final class PocketConfigPanel {
      * 的判据是裸的『非魔法使』"）两把检法各盯一侧，合成后互不遮蔽。
      */
     private static IWidget mountFrame(NekoPocketPanel ui, PocketUpgradeType type, int frame) {
-        final boolean magnet = sectionsOf(type)
-            .contains(Section.MOUNT_MAGNET);
+        final boolean magnet = sectionsOf(type).contains(Section.MOUNT_MAGNET);
         final int x = magnet ? MAGNET_FRAME_X : MARGIN;
         final int y = magnet ? MAGNET_FRAME_Y : mountY(frame);
         final int width = magnet ? MAGNET_FRAME_WIDTH : MOUNT_COLUMN;
@@ -967,7 +982,6 @@ public final class PocketConfigPanel {
         return box;
     }
 
-
     /**
      * ★R96 S9b：魔法使挂载框里的<b>三行模式控件</b>（第四枚控件是主面板那一行的开关，不在这里重复画）。
      * <p>
@@ -989,38 +1003,41 @@ public final class PocketConfigPanel {
             final int row = index;
             final String labelKey = modeLabelKey(row);
             if (labelKey == null) {
-                throw new IllegalStateException(
-                    "[pocket] 模式行数与标签键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
+                throw new IllegalStateException("[pocket] 模式行数与标签键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
             }
             panel.child(
-                (IWidget) new TextWidget(IKey.dynamic(
-                    () -> StatCollector.translateToLocal(labelKey) + "：" + StatCollector.translateToLocal(
-                        stateKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
-                            .textAlign(Alignment.TopLeft)
-                            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
-                            .color(PocketGhostRequest.readoutTextColor())
-                            .shadow(Boolean.TRUE)
-                            .name("pocket_config_mode_label_" + row)
-                            .pos(mountContentX(), mountContentY(frame) + modeRowY(row))
-                            .size(MODE_LABEL_WIDTH, MODE_ROW_HEIGHT));
+                (IWidget) new TextWidget(
+                    IKey.dynamic(
+                        () -> StatCollector.translateToLocal(labelKey) + "："
+                            + StatCollector.translateToLocal(
+                                stateKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
+                                    .textAlign(Alignment.TopLeft)
+                                    .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                                    .color(PocketGhostRequest.readoutTextColor())
+                                    .shadow(Boolean.TRUE)
+                                    .name("pocket_config_mode_label_" + row)
+                                    .pos(mountContentX(), mountContentY(frame) + modeRowY(row))
+                                    .size(MODE_LABEL_WIDTH, MODE_ROW_HEIGHT));
             panel.child(
-                new ButtonWidget<>().pos(mountContentX() + MOUNT_COLUMN - 2 - MODE_BUTTON_WIDTH,
-                    mountContentY(frame) + modeRowY(row))
+                new ButtonWidget<>()
+                    .pos(mountContentX() + MOUNT_COLUMN - 2 - MODE_BUTTON_WIDTH, mountContentY(frame) + modeRowY(row))
                     .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
                     .name("pocket_config_mode_switch_" + row)
                     .background(PocketGuiTextures.BUTTON)
                     .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-                    .overlay(IKey.dynamic(() -> StatCollector.translateToLocal(switchLabelKey(
-                        modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
+                    .overlay(
+                        IKey.dynamic(
+                            () -> StatCollector.translateToLocal(
+                                switchLabelKey(
+                                    modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
                     .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(MODE_HINT_KEY)))
                     .tooltipAutoUpdate(true)
                     .playClickSound(true)
                     // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）
-                    .onMousePressed(button -> button == 0
-                        && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row))));
+                    .onMousePressed(
+                        button -> button == 0 && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row))));
         }
     }
-
 
     // ================================================================== ★R96 S7b 磁力配置面（格盘 + 三态 / 目标 / 清空 / 读数）
 
@@ -1106,12 +1123,13 @@ public final class PocketConfigPanel {
     /**
      * 游标是否"没有可记的东西"（★判据不抄第二份：身份键那一段直接回读 {@code NekoMagnetGhostCell#applyDrop}
      * 用的同一条 {@link NekoMagnetGhostCell#identityKeyOf}；件数那一段与 applyDrop 的
-     * {@code carried.stackSize <= 0} 同一读法 ⇒  tooltip 说的与格件做的是<b>同一句话</b>）。
+     * {@code carried.stackSize <= 0} 同一读法 ⇒ tooltip 说的与格件做的是<b>同一句话</b>）。
      * ★只读判定，不碰游标本身。
      */
     public static boolean isEmptyCursor(final net.minecraft.item.ItemStack carried) {
-        return carried == null || carried.stackSize <= 0 || NekoMagnetGhostCell.identityKeyOf(carried)
-            .isEmpty();
+        return carried == null || carried.stackSize <= 0
+            || NekoMagnetGhostCell.identityKeyOf(carried)
+                .isEmpty();
     }
 
     /** ★三态循环按钮（{@code NONE → WHITELIST → BLACKLIST → NONE}，★只有左键，★客户端零写入）。 */
@@ -1121,8 +1139,7 @@ public final class PocketConfigPanel {
             .name("pocket_magnet_mode_button")
             .background(PocketGuiTextures.BUTTON)
             .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-            .overlay(IKey.dynamic(
-                () -> StatCollector.translateToLocal(modeLabelKey(ui.magnetMode()))))
+            .overlay(IKey.dynamic(() -> StatCollector.translateToLocal(modeLabelKey(ui.magnetMode()))))
             .tooltipDynamic(tooltip -> {
                 tooltip.addLine(IKey.lang("gtit.pocket.magnet.mode.hint"));
                 // ★同一条不对称说明（验收 4 的"两处都可见"里的 tooltip 那一处）
@@ -1140,8 +1157,7 @@ public final class PocketConfigPanel {
             .name("pocket_magnet_target_button")
             .background(PocketGuiTextures.BUTTON)
             .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-            .overlay(IKey.dynamic(
-                () -> StatCollector.translateToLocal(targetLabelKey(ui.magnetTarget()))))
+            .overlay(IKey.dynamic(() -> StatCollector.translateToLocal(targetLabelKey(ui.magnetTarget()))))
             .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang("gtit.pocket.magnet.target.hint")))
             .tooltipAutoUpdate(true)
             .playClickSound(true)
@@ -1150,9 +1166,8 @@ public final class PocketConfigPanel {
 
     /** ★清空名单按钮（★只抹条目、不动三态；与"切到无限制"是两件事，见 {@code PocketMagnetFilter} 三态读法）。 */
     private static IWidget magnetClearButton(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(
-            MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + 10,
-            MAGNET_CONTROL_Y + MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP)
+        return new ButtonWidget<>()
+            .pos(MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + 10, MAGNET_CONTROL_Y + MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP)
             .size(MAGNET_BUTTON_WIDTH, MAGNET_BUTTON_HEIGHT)
             .name("pocket_magnet_clear_button")
             .background(PocketGuiTextures.BUTTON)
@@ -1166,17 +1181,18 @@ public final class PocketConfigPanel {
 
     /** 名单计数读数（★条数是服务端算好带下来的权威数，不是客户端"非空格"的计数）。 */
     private static IWidget magnetCountLine(NekoPocketPanel ui) {
-        return (IWidget) new TextWidget(IKey.dynamic(() -> String
-            .format(
-                StatCollector.translateToLocal("gtit.pocket.magnet.count"),
-                ui.magnetEntryCount(),
-                PocketConstants.MAGNET_FILTER_SLOTS))).textAlign(Alignment.CenterLeft)
-            .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
-            .color(PocketGhostRequest.readoutTextColor())
-            .shadow(Boolean.TRUE)
-            .name("pocket_magnet_count")
-            .pos(MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + 10, MAGNET_CONTROL_Y)
-            .size(MAGNET_COUNT_WIDTH, MAGNET_BUTTON_HEIGHT);
+        return (IWidget) new TextWidget(
+            IKey.dynamic(
+                () -> String.format(
+                    StatCollector.translateToLocal("gtit.pocket.magnet.count"),
+                    ui.magnetEntryCount(),
+                    PocketConstants.MAGNET_FILTER_SLOTS))).textAlign(Alignment.CenterLeft)
+                        .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
+                        .color(PocketGhostRequest.readoutTextColor())
+                        .shadow(Boolean.TRUE)
+                        .name("pocket_magnet_count")
+                        .pos(MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + 10, MAGNET_CONTROL_Y)
+                        .size(MAGNET_COUNT_WIDTH, MAGNET_BUTTON_HEIGHT);
     }
 
     /**
@@ -1187,8 +1203,8 @@ public final class PocketConfigPanel {
      * 玩家切到无限制时看到的是一个<b>还在的清单 + 一句不生效</b>，而不是"清单没了"。
      */
     private static IWidget magnetNoteLine(NekoPocketPanel ui) {
-        return (IWidget) new TextWidget(IKey.dynamic(
-            () -> StatCollector.translateToLocal(noteKeyOf(ui.magnetMode())))).textAlign(Alignment.TopLeft)
+        return (IWidget) new TextWidget(IKey.dynamic(() -> StatCollector.translateToLocal(noteKeyOf(ui.magnetMode()))))
+            .textAlign(Alignment.TopLeft)
             .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
             .color(PocketGhostRequest.hintTextColor())
             .shadow(Boolean.TRUE)
@@ -1240,7 +1256,10 @@ public final class PocketConfigPanel {
         if (item == null) {
             return key;
         }
-        final net.minecraft.item.ItemStack sample = new net.minecraft.item.ItemStack(item, 1, NekoMagnetGhostCell.metaOf(key));
+        final net.minecraft.item.ItemStack sample = new net.minecraft.item.ItemStack(
+            item,
+            1,
+            NekoMagnetGhostCell.metaOf(key));
         return sample.getDisplayName();
     }
 

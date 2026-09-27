@@ -308,7 +308,10 @@ public final class PocketElementStore {
         // 数不上 ⇒ <b>按每条实际掏走多少</b>原样补回（★不是"总共差多少补到某一条上"——
         // 摊到一条上会造出 TC 侧看不见的错账：aer 少的那两点被补进 terra，玩家读到的是"容量莫名其妙多了"）
         for (Map.Entry<String, Integer> entry : takenPerTag.entrySet()) {
-            add(entry.getKey(), entry.getValue().intValue());
+            add(
+                entry.getKey(),
+                entry.getValue()
+                    .intValue());
         }
         return 0;
     }
@@ -340,10 +343,16 @@ public final class PocketElementStore {
         }
         final NBTTagCompound elem = new NBTTagCompound();
         for (Map.Entry<String, Integer> entry : values.entrySet()) {
-            elem.setInteger(entry.getKey(), entry.getValue().intValue());
+            elem.setInteger(
+                entry.getKey(),
+                entry.getValue()
+                    .intValue());
         }
         for (Map.Entry<String, Integer> entry : ticks.entrySet()) {
-            elem.setInteger(entry.getKey(), entry.getValue().intValue());
+            elem.setInteger(
+                entry.getKey(),
+                entry.getValue()
+                    .intValue());
         }
         // ★R96 S9b：模式位图必须跟着搬，且★按 byte 搬（与 {@link #setMode} 的写出形状同型）。
         // 漏这一趟的后果不是"少一个键"而是"面板关屏那一次整表回写把玩家刚配的模式抹回缺省"——
@@ -409,9 +418,8 @@ public final class PocketElementStore {
     }
 
     /** 四条节拍键的<b>携带侧</b>表（★不是 tag：{@link #get(String)} 一族只认白名单 tag）。 */
-    private static final String[] STATE_KEYS = { PocketConstants.ELEMENT_TICK_WAND,
-        PocketConstants.ELEMENT_TICK_COIN, PocketConstants.ELEMENT_TICK_TRANSMUTE,
-        PocketConstants.ELEMENT_TICK_CRYSTAL };
+    private static final String[] STATE_KEYS = { PocketConstants.ELEMENT_TICK_WAND, PocketConstants.ELEMENT_TICK_COIN,
+        PocketConstants.ELEMENT_TICK_TRANSMUTE, PocketConstants.ELEMENT_TICK_CRYSTAL };
 
     private Map<String, Integer> tickSnapshot() {
         final Map<String, Integer> out = new LinkedHashMap<>();

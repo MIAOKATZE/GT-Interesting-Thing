@@ -271,15 +271,15 @@ final class NekoPocketServerHandler {
         // <p>
         // ★★★<b>R96 S5 的三条改动，一条都不许并回旧口径讲</b>（取证 r96-ret1 §2.4/§2.5）：
         // ① <b>分 mode</b>（验收 B3，本轮裁定 = 瞬时通道恢复可用）：早退只吃短效那一支。R95 那一支
-        //    <b>不分 mode</b> ⇒ 位一置起连"一次穿完"的瞬时通道也被顺带禁掉，而 README 代价 33 从没
-        //    承诺过这件事 —— 那是玩家可感知的功能损失，不是设计意图的证据。瞬时那一支照旧走
-        //    识别 → 冷却 → 扣费三重点检（★恢复可用 ≠ 免费，旧门一条不放宽）。
+        // <b>不分 mode</b> ⇒ 位一置起连"一次穿完"的瞬时通道也被顺带禁掉，而 README 代价 33 从没
+        // 承诺过这件事 —— 那是玩家可感知的功能损失，不是设计意图的证据。瞬时那一支照旧走
+        // 识别 → 冷却 → 扣费三重点检（★恢复可用 ≠ 免费，旧门一条不放宽）。
         // ② <b>这一支不再是"什么都不做"</b>（验收 B1 的服务端补腿）：幂等地保证有一条活 SHORT 通道。
-        //    R95 的死锁正在这儿 —— 早退排在下面那条 {@code openChannel}（全仓唯一的激活口）之前，
-        //    于是"位"把"道"关死，而续批腿又要求已有活通道。两条腿（这里 + driver 的真空支）
-        //    共用 {@code ensurePersistentShortChannel} <b>同一个</b>激活口，★不长出第二台状态机。
+        // R95 的死锁正在这儿 —— 早退排在下面那条 {@code openChannel}（全仓唯一的激活口）之前，
+        // 于是"位"把"道"关死，而续批腿又要求已有活通道。两条腿（这里 + driver 的真空支）
+        // 共用 {@code ensurePersistentShortChannel} <b>同一个</b>激活口，★不长出第二台状态机。
         // ③ <b>回执跟着真值走</b>（验收 B4 同一条纪律）：装不出活通道（一枚元件都没绑 ⇒ 绑定了也不算
-        //    "常驻"）时不许回"已在常开态"，落到下面的点检，让玩家读到"没认出元件"那条真话。
+        // "常驻"）时不许回"已在常开态"，落到下面的点检，让玩家读到"没认出元件"那条真话。
         if (!burst && PocketUpgradeSwitches.isActive(panel.pocketStack(), PocketUpgradeType.CHANNEL_PERSIST)) {
             if (PocketChannelManager.INSTANCE.ensurePersistentShortChannel(
                 uuid,
@@ -400,12 +400,8 @@ final class NekoPocketServerHandler {
             panel.putReceipt(PocketConfigPanel.identityReceiptKey(), 0);
             return;
         }
-        final PocketConfigPanel.Outcome outcome = PocketConfigPanel.commitSwitch(
-            carrier,
-            type,
-            PocketConfigPanel.offOfArg(arg),
-            panel.inventory(),
-            cursorStack());
+        final PocketConfigPanel.Outcome outcome = PocketConfigPanel
+            .commitSwitch(carrier, type, PocketConfigPanel.offOfArg(arg), panel.inventory(), cursorStack());
         panel.putReceipt(PocketConfigPanel.receiptKey(outcome), 0);
     }
 
@@ -437,10 +433,8 @@ final class NekoPocketServerHandler {
             panel.putReceipt(PocketConfigPanel.identityReceiptKey(), 0);
             return;
         }
-        final PocketConfigPanel.Outcome outcome = PocketConfigPanel.commitMode(
-            carrier,
-            row,
-            PocketConfigPanel.modeOnOfArg(arg));
+        final PocketConfigPanel.Outcome outcome = PocketConfigPanel
+            .commitMode(carrier, row, PocketConfigPanel.modeOnOfArg(arg));
         panel.putReceipt(PocketConfigPanel.receiptKey(outcome), 0);
     }
 
@@ -932,7 +926,7 @@ final class NekoPocketServerHandler {
         }
         if (filter != null && filter.size() >= PocketConstants.MAGNET_FILTER_SLOTS
             && !filter.entryKeys()
-                .contains(PocketMagnetFilter.itemKey((int)parsed[0], (int)parsed[1]))) {
+                .contains(PocketMagnetFilter.itemKey((int) parsed[0], (int) parsed[1]))) {
             return MAGNET_RECEIPT_FULL;
         }
         return MAGNET_RECEIPT_DUPLICATE;

@@ -37,7 +37,8 @@ public final class PocketMageModes {
 
     /** 结晶模式是否开（★只看子模式位；与主开关的合取在 {@code mage/PocketCrystalDriver}）。 */
     public static boolean crystalOn(NBTTagCompound root) {
-        return PocketElementStore.attach(root).modeOn(PocketConstants.MAGE_MODE_CRYSTAL);
+        return PocketElementStore.attach(root)
+            .modeOn(PocketConstants.MAGE_MODE_CRYSTAL);
     }
 
     /** 结晶模式是否开（栈版，面板与 tooltip 用）。 */
@@ -47,12 +48,14 @@ public final class PocketMageModes {
 
     /** 猫猫币充能是否开（★只看子模式位；合取在 {@code mage/PocketCoinChargeDriver}，S9a 的既有锚不动）。 */
     public static boolean coinOn(NBTTagCompound root) {
-        return PocketElementStore.attach(root).modeOn(PocketConstants.MAGE_MODE_COIN);
+        return PocketElementStore.attach(root)
+            .modeOn(PocketConstants.MAGE_MODE_COIN);
     }
 
     /** 源质转换是否开（★只看子模式位；合取在 {@code mage/PocketEssenceTransmuteDriver}）。 */
     public static boolean transmuteOn(NBTTagCompound root) {
-        return PocketElementStore.attach(root).modeOn(PocketConstants.MAGE_MODE_TRANSMUTE);
+        return PocketElementStore.attach(root)
+            .modeOn(PocketConstants.MAGE_MODE_TRANSMUTE);
     }
 
     /**
@@ -74,7 +77,8 @@ public final class PocketMageModes {
 
     /** 写某一枚模式位（★唯一写腿，返回值 = 本次是否真的改了档；同值零写入 ⇒ 连点不刷整栈同步包）。 */
     public static boolean write(NBTTagCompound root, int bit, boolean wantOn) {
-        return root != null && PocketElementStore.attach(root).setMode(bit, wantOn);
+        return root != null && PocketElementStore.attach(root)
+            .setMode(bit, wantOn);
     }
 
     /**

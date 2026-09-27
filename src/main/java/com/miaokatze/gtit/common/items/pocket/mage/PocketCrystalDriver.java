@@ -186,7 +186,8 @@ public final class PocketCrystalDriver {
     }
 
     private static UUID uuidOf(EntityPlayer player) {
-        return player.getGameProfile() == null ? null : player.getGameProfile()
-            .getId();
+        return player.getGameProfile() == null ? null
+            : player.getGameProfile()
+                .getId();
     }
 }

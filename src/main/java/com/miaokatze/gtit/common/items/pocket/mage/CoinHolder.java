@@ -79,12 +79,16 @@ public interface CoinHolder {
 
             @Override
             public int slots() {
-                return inventory == null ? 0 : inventory.storage().getSlots();
+                return inventory == null ? 0
+                    : inventory.storage()
+                        .getSlots();
             }
 
             @Override
             public ItemStack stackAt(int slot) {
-                return inventory == null ? null : inventory.storage().getStackInSlot(slot);
+                return inventory == null ? null
+                    : inventory.storage()
+                        .getStackInSlot(slot);
             }
 
             @Override
@@ -98,11 +102,13 @@ public interface CoinHolder {
                     return 0;
                 }
                 if (current.stackSize == 1) {
-                    inventory.storage().setStackInSlot(slot, null);
+                    inventory.storage()
+                        .setStackInSlot(slot, null);
                 } else {
                     final ItemStack rest = current.copy();
                     rest.stackSize = current.stackSize - 1;
-                    inventory.storage().setStackInSlot(slot, rest);
+                    inventory.storage()
+                        .setStackInSlot(slot, rest);
                 }
                 // ItemStackHandler 的 onContentsChanged 已把 PocketInventory 置脏，落盘由调用方一次 writeTo
                 return 1;

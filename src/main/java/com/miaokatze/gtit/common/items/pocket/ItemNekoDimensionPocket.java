@@ -359,14 +359,14 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     // ------------------------------------------------------------------ 穿戴面（R96 S11 · 需求 8）
 
     // ★R96 S11-fix：本段现在<b>只有 Baubles 那一侧</b>（六法 + 槽型）。需求 8 的另一半「符文护盾 +20」
-    //   原先也住这里（常驻类 implements 神秘时代的护盾接口 + getRunicCharge 返回 20），★已整段搬进
-    //   mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor —— 撤销理由（TC 缺席时常驻类的类型层次
-    //   解析不出那个接口 ⇒ 整个 mod 起不来）与「不穿戴不计入 / 只数前四格」那两条消费端事实，
-    //   都写在那枚 mixin 的类注释里（★判据跟着接口一起搬家，不留第二处真相）。
-    //   ★本类因此不含任何 TC 类型引用：implements 位 / 字段类型 / 方法签名 / 返回类型 / 局部变量
-    //   五类位置全零，这条由 verify-pocket.sh 的 ★R96-S11-fix 门（整棵 src/main/java 除
-    //   TaumBridge.java 外的 thaumcraft. 代码位计数）与用例
-    //   wearable_mount_is_optional_universal_and_honest 各钉一遍。
+    // 原先也住这里（常驻类 implements 神秘时代的护盾接口 + getRunicCharge 返回 20），★已整段搬进
+    // mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor —— 撤销理由（TC 缺席时常驻类的类型层次
+    // 解析不出那个接口 ⇒ 整个 mod 起不来）与「不穿戴不计入 / 只数前四格」那两条消费端事实，
+    // 都写在那枚 mixin 的类注释里（★判据跟着接口一起搬家，不留第二处真相）。
+    // ★本类因此不含任何 TC 类型引用：implements 位 / 字段类型 / 方法签名 / 返回类型 / 局部变量
+    // 五类位置全零，这条由 verify-pocket.sh 的 ★R96-S11-fix 门（整棵 src/main/java 除
+    // TaumBridge.java 外的 thaumcraft. 代码位计数）与用例
+    // wearable_mount_is_optional_universal_and_honest 各钉一遍。
 
     /** 穿戴侧没有"主手槽号"这个东西（{@code slot} 形参自 R95 起不参与任何门控，见 {@link #runPassives}）。 */
     private static final int WORN_SLOT = -1;

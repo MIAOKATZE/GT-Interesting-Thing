@@ -96,15 +96,16 @@ public final class PocketChannelDriver {
             // ⇒ 闭环死锁（取证 r96-ret1 §2.4/§2.5：算式对，执法点从来没被问到）。
             // ★三条前置一条都不省：① 判据是组合谓词（关着开关 ⇒ 这条路跟着断，S1 的语义不被绕过）；
             // ② 会话必须在场且认的就是<b>这一枚</b>承载栈（缺这一判就是把 A 的绑定写到 B 的档上，
-            //   R85 D1 那一族的反例）；③ 绑定表非空由激活口自己把关（空表 ⇒ 一条只会空跑、还会把
-            //   会话永久钉在内存里的通道）。装填只在真空态发生一次 ⇒ 常态成本仍是一次 Map.get。
+            // R85 D1 那一族的反例）；③ 绑定表非空由激活口自己把关（空表 ⇒ 一条只会空跑、还会把
+            // 会话永久钉在内存里的通道）。装填只在真空态发生一次 ⇒ 常态成本仍是一次 Map.get。
             if (PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
                 final PocketSession pending = PocketSessions.peek(uuid);
-                if (pending != null && pending.carrierStack() == stack && PocketChannelManager.INSTANCE
-                    .ensurePersistentShortChannel(uuid, stack, pending.bindings(), pending.filters())) {
+                if (pending != null && pending.carrierStack() == stack
+                    && PocketChannelManager.INSTANCE
+                        .ensurePersistentShortChannel(uuid, stack, pending.bindings(), pending.filters())) {
                     // 本拍只装填就返回（与 openChannel 的短效支同口径：倒计时刚装整拍，下一拍才到期）。
                     // ★刻意不在此刻写 work 位：帧带的常亮由批边界那条续写负责（B4 的"真读数"裁定），
-                    //   在这里抢写一次反而让"还没穿过一件货"的那一拍亮起来。
+                    // 在这里抢写一次反而让"还没穿过一件货"的那一拍亮起来。
                     return;
                 }
             }

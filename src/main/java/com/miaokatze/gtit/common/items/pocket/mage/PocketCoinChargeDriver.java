@@ -76,13 +76,15 @@ public final class PocketCoinChargeDriver {
             // 一次 PocketInventory.readFrom（整表反序列化），放到判拍之前就成了每 tick 一次（R53c 明禁）。
             return;
         }
-        final UUID uuid = player.getGameProfile() == null ? null : player.getGameProfile()
-            .getId();
+        final UUID uuid = player.getGameProfile() == null ? null
+            : player.getGameProfile()
+                .getId();
         final PocketSession session = uuid == null ? null : PocketSessions.peek(uuid);
         final boolean viaSession = session != null && session.carrierStack() == stack;
         final PocketInventory oneshot = viaSession ? null : PocketInventory.readFrom(root);
-        final CoinHolder[] holders = holdersFor(viaSession ? CoinHolder.ofSession(session)
-            : CoinHolder.ofStorage(oneshot), player);
+        final CoinHolder[] holders = holdersFor(
+            viaSession ? CoinHolder.ofSession(session) : CoinHolder.ofStorage(oneshot),
+            player);
         final int consumed = chargeAndArm(elem, holders, CoinGate.NEKO);
         if (consumed <= 0) {
             return;

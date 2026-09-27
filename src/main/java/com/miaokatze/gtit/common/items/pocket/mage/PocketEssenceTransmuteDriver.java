@@ -1,7 +1,5 @@
 package com.miaokatze.gtit.common.items.pocket.mage;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -92,8 +90,9 @@ public final class PocketEssenceTransmuteDriver {
     }
 
     private static java.util.UUID uuidOf(EntityPlayer player) {
-        return player.getGameProfile() == null ? null : player.getGameProfile()
-            .getId();
+        return player.getGameProfile() == null ? null
+            : player.getGameProfile()
+                .getId();
     }
 
     /**
@@ -104,8 +103,7 @@ public final class PocketEssenceTransmuteDriver {
      * @return 本拍折算成功的<b>总点数</b>（0 = 什么都没动，且零 NBT 写）
      */
     public static int tick(NBTTagCompound root, PocketEssenceStore ess) {
-        if (!PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE)
-            || !PocketMageModes.transmuteOn(root)) {
+        if (!PocketUpgradeSwitches.isActive(root, PocketUpgradeType.MAGE) || !PocketMageModes.transmuteOn(root)) {
             // ★R96 S9b：合取点在本腿（同 PocketCoinChargeDriver 那条注释的理由，不折进 PocketMageModes）
             return 0;
         }

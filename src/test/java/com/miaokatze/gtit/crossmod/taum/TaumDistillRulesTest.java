@@ -200,10 +200,8 @@ public class TaumDistillRulesTest {
             100,
             TaumDistillRules.DISTILL_INTERVAL_TICKS,
             "基档每 5 秒 = 100 tick 一轮（5 秒是节拍不是产量；★R95：本常数是 distillIntervalTicks(false) 的派生，不是独立真值）");
-        SimpleAssert
-            .eq(100, TaumDistillRules.distillIntervalTicks(false), "★蒸馏双口径：未装 MAGE ⇒ 100 tick（5 秒）");
-        SimpleAssert
-            .eq(20, TaumDistillRules.distillIntervalTicks(true), "★R96 S8 提速：装 MAGE（原「蒸馏加速」）⇒ 20 tick（1 秒）");
+        SimpleAssert.eq(100, TaumDistillRules.distillIntervalTicks(false), "★蒸馏双口径：未装 MAGE ⇒ 100 tick（5 秒）");
+        SimpleAssert.eq(20, TaumDistillRules.distillIntervalTicks(true), "★R96 S8 提速：装 MAGE（原「蒸馏加速」）⇒ 20 tick（1 秒）");
         SimpleAssert.eq(
             12,
             TaumDistillRules.DISTILL_INPUT_SLOTS,

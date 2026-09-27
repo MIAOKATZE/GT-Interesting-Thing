@@ -1,7 +1,10 @@
 package com.miaokatze.gtit.client;
 
+import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+
+import org.lwjgl.input.Keyboard;
 
 import com.cleanroommc.modularui.ModularUI;
 import com.cleanroommc.modularui.factory.GuiFactories;
@@ -16,8 +19,6 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.InputEvent;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
-import net.minecraft.client.settings.KeyBinding;
-import org.lwjgl.input.Keyboard;
 
 /**
  * ★R96 S11（需求 8 第一件）：<b>B 键</b>（可换绑）打开<b>穿在饰品栏里</b>的那枚口袋。

@@ -527,20 +527,20 @@ public final class PocketConstants {
     public static final int MAGNET_FILTER_COLUMNS = 6;
     public static final int MAGNET_FILTER_SLOTS = MAGNET_FILTER_ROWS * MAGNET_FILTER_COLUMNS;
     // ★R96 根层新键的异值预留位：R96 计划新增的三个根键必须彼此异值、也与上面三条 R95 键异值 ——
-    //   upgradesOff（S1 已落）、magnetFilter（★S7a 本片已落，见上）、elem（S9 元素容量，内含 6 条 tag→int，
-    //   ★不建 FLUID_BAR_AMOUNT_L 式双轨）。写在这里的理由：根键一经落档即冻结，事后发现撞键只能靠迁移救，
-    //   而迁移没有回头路。
+    // upgradesOff（S1 已落）、magnetFilter（★S7a 本片已落，见上）、elem（S9 元素容量，内含 6 条 tag→int，
+    // ★不建 FLUID_BAR_AMOUNT_L 式双轨）。写在这里的理由：根键一经落档即冻结，事后发现撞键只能靠迁移救，
+    // 而迁移没有回头路。
     // ★同一段给 S9 预留 PRIMAL_TAGS（6 项 primal 白名单，判据 Aspect#isPrimal() ★叠加该白名单）的常量落点
-    //   —— 它不是 NBT 键，但同样住在本类尾部追加区，先占位免得两片并行时在同一段互相挤位置。
+    // —— 它不是 NBT 键，但同样住在本类尾部追加区，先占位免得两片并行时在同一段互相挤位置。
     //
     // ================================================================================ ★R96 S9a：元素容量载体（已落地，占用上面那块预留位）
     //
     // 形状与三条纪律，一次写清楚，免得后来人在别处抄第二份：
     // ① 容量的唯一落点 = 根层独立 compound {@link #ELEMENTS}，<b>内含</b>「primal tag → int」，
-    //    ★<b>绝不把这 6 条 tag 写在栈根</b>（栈根已有 {@link #ESSENCE} 一族同批 tag 名的条目，
-    //    平铺会互混淆 —— R96 计划 §5 S9 禁止项原文）；
+    // ★<b>绝不把这 6 条 tag 写在栈根</b>（栈根已有 {@link #ESSENCE} 一族同批 tag 名的条目，
+    // 平铺会互混淆 —— R96 计划 §5 S9 禁止项原文）；
     // ② ★<b>不建 long/int 双轨</b>：单 tag 上限 {@link #ELEMENT_CAP_PER_TAG}=500，int 头恒不越界，
-    //    流体那条 AmountL 双轨的根因（{@code FluidStack.amount} 是 int、真值要冲到 16G）在这里结构性不存在；
+    // 流体那条 AmountL 双轨的根因（{@code FluidStack.amount} 是 int、真值要冲到 16G）在这里结构性不存在；
     // ③ 键名一经落档即冻结（「可加不可改」）：{@link #ELEMENTS} 与 compound 内的节拍键同此纪律（★第四条节拍键与模式位图由 S9b 追加，见下面那段）。
 
     /**
@@ -576,6 +576,7 @@ public final class PocketConstants {
      * <b>只增不改序</b>（改序会让面板与已存档的读数对不上号）。
      */
     public static final String[] PRIMAL_TAGS = { "aer", "terra", "ignis", "aqua", "ordo", "perditio" };
+
     /**
      * 该 tag 是否在 {@link #PRIMAL_TAGS} 白名单内（<b>纯查表、零 TC 依赖</b>的一条腿）。
      * <p>
@@ -594,6 +595,7 @@ public final class PocketConstants {
         }
         return false;
     }
+
     /** ★R96 P-7：单 tag 元素容量上限 = <b>500</b>（用户裁定的"各 500"，★不是 {@link #ESSENCE_CAP_PER_TAG}）。 */
     public static final int ELEMENT_CAP_PER_TAG = 500;
     /**
@@ -633,17 +635,18 @@ public final class PocketConstants {
      */
     public static final int MAGE_COIN_VALUE_NORMAL = 1;
     public static final int MAGE_COIN_VALUE_SHIMMERING = 10;
-    // ================================================================================ ★R96 S9b：魔法使<b>四模式</b>与<b>结晶模式</b>
+    // ================================================================================ ★R96
+    // S9b：魔法使<b>四模式</b>与<b>结晶模式</b>
     //
     // ★R96 S9b 只在 S9a 那块预留段之后<b>追加</b>，S9a 的六条 tag / 三个节拍键 / 两档上限一字未动。
     // 两件新事各有一条落档纪律，写在这里免得后来人在别处再立一份：
     // ① 模式状态住在 {@link #ELEMENTS} compound <b>内</b>的 {@link #ELEMENT_MODES} 一枚 byte，
-    //    ★<b>不开第四个根键</b>（R96 计划 §3 只批了 upgradesOff / magnetFilter / elem 三枚根键，
-    //    多开一根就是第四次表态），也★<b>不塞进 {@link #UPGRADES_OFF_KEY}</b>（那位回答"这一<b>型</b>开不开"，
-    //    一共五位；模式回答"型内哪一条<b>被动</b>开不开"，两码事，并成一位会让"关掉魔法使"与
-    //    "只关结晶模式"读起来是同一个键）；
+    // ★<b>不开第四个根键</b>（R96 计划 §3 只批了 upgradesOff / magnetFilter / elem 三枚根键，
+    // 多开一根就是第四次表态），也★<b>不塞进 {@link #UPGRADES_OFF_KEY}</b>（那位回答"这一<b>型</b>开不开"，
+    // 一共五位；模式回答"型内哪一条<b>被动</b>开不开"，两码事，并成一位会让"关掉魔法使"与
+    // "只关结晶模式"读起来是同一个键）；
     // ② 结晶模式的出件量以<b>整枚晶</b>为单位（{@code TaumDistillRules#CRYSTAL_CAPACITY} = 1 点/枚），
-    //    ★不复用 {@code TaumDistillRules#credit} 那套"整轮批量"语义做逐点入账（R96 计划 §5 S9 禁止项）。
+    // ★不复用 {@code TaumDistillRules#credit} 那套"整轮批量"语义做逐点入账（R96 计划 §5 S9 禁止项）。
     /**
      * ★R96 S9b：{@link #ELEMENTS} compound 内的<b>模式位图</b>（byte，bit = {@link #MAGE_MODE_CRYSTAL} 一族）。
      * <p>
@@ -672,6 +675,7 @@ public final class PocketConstants {
     public static final int MAGE_MODES_DEFAULT = MAGE_MODE_COIN | MAGE_MODE_TRANSMUTE;
     /** 全部已定义的模式位（★新增模式位必须同时进这张表与 {@link #MAGE_MODES_DEFAULT} 的推理，缺一即红）。 */
     public static final int[] MAGE_MODE_BITS = { MAGE_MODE_CRYSTAL, MAGE_MODE_COIN, MAGE_MODE_TRANSMUTE };
+
     /**
      * 这一枚位是不是已定义的模式位（★纯查表，与 {@link #isPrimalTag(String)} 同一条纪律：
      * 白名单外的位一律不认 —— 认了就会出现"往档里写进一个没人读的第 7 位"，
@@ -685,6 +689,7 @@ public final class PocketConstants {
         }
         return false;
     }
+
     /**
      * ★R96 S9b：{@link #ELEMENTS} compound 内的<b>第四条</b>节拍键（结晶模式剩余 tick，int）。
      * <p>

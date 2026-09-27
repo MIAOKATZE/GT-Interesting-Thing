@@ -356,9 +356,9 @@ public final class TaumBridge implements TaumBridgeApi {
      * 本实现的三条形状与 R88 之前逐字相同，★改判只改了"谁可以调它"：
      * ① 一枚晶恒 1 点（{@code new AspectList().add(aspect, 1)}），堆数 = {@code min(points, 64)}；
      * ② 拿不到可写源质的晶物品时<b>宁可不产出</b>也不产"无 aspect 的晶"（TC 会随机重赋型 —— 这正是
-     *    "就地排空"被 wiki {@code gtit-taumcraft-essentia-carriers.md} §3 证死的同一条根因）；
+     * "就地排空"被 wiki {@code gtit-taumcraft-essentia-carriers.md} §3 证死的同一条根因）；
      * ③ 只被 {@code TaumCompat#mintCrystals} 调用（口袋两目录内的码位命中被 R88③ 门钉成恰 0，
-     *    与"结晶模式已在役"并存的做法与理由写在 {@code TaumCompat#newCrystalStack} 的 javadoc）。
+     * 与"结晶模式已在役"并存的做法与理由写在 {@code TaumCompat#newCrystalStack} 的 javadoc）。
      * "旧晶仍能被读回点数"走的仍是 {@link #readContainer(ItemStack)}，不经过这里。
      */
     @Override

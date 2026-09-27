@@ -76,7 +76,11 @@ public abstract class MixinEntityAspectOrb_PocketAbsorb {
         // (Entity)(Object)this：口袋侧逻辑只需要 Entity 的公开面（worldObj / playSound / setDead），
         // 合并后的实例本来就是 EntityAspectOrb，强转成立；这样就不必为 MC 成员再开 shadow，也不必 extends Entity
         if (PocketVisSupport.absorbIntoPocket(
-            (Entity) (Object) this, player, this.getAspect(), Integer.valueOf(this.getAspectValue()).intValue())) {
+            (Entity) (Object) this,
+            player,
+            this.getAspect(),
+            Integer.valueOf(this.getAspectValue())
+                .intValue())) {
             ci.cancel();
         }
     }

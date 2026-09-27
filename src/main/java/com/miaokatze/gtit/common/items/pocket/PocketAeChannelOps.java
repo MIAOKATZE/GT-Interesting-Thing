@@ -558,9 +558,8 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         // 现在与 handler、整理腿、ghost 读数共读同一条单源算式（不在本文件抄第二份三元）。
         // ★未升级档该算式给 min(64, maxStackSize)：对 maxStackSize==64 的普通物品与旧写法<b>逐字等值</b>
         // （反"修过头"）；不可叠物品（max==1）两档都给 1 ⇒ 本条改动不会把一件工具推成"超一叠"。
-        final int requested = Math.min(
-            slotStack.stackSize,
-            PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), slotStack));
+        final int requested = Math
+            .min(slotStack.stackSize, PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), slotStack));
         final IAEStackType<?> type = InfinityStackTypes.byId(typeId);
         final Found found = foundOfCached(diskuuid);
         final IMEInventoryHandler handler = found == null || type == null ? null

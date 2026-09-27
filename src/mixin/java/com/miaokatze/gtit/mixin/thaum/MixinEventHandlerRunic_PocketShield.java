@@ -77,7 +77,8 @@ import thaumcraft.common.lib.events.EventHandlerRunic;
  * 本腿只是让它当「油箱」而不是「油箱大小」。让口袋计入容量需要可穿戴化，那是 S11 的活，
  * 已在报告里交叉登记。
  *
- * <p>仅在 TC 已加载时由 {@code com.miaokatze.gtit.asm.GtitThaumLateMixinLoader} 条件施加。
+ * <p>
+ * 仅在 TC 已加载时由 {@code com.miaokatze.gtit.asm.GtitThaumLateMixinLoader} 条件施加。
  * 目标是 TC 自有明文方法（{@code livingTick} / {@code consumeVisFromInventory} 均不混淆，
  * 生产 jar {@code javap} 实证）⇒ 类级 {@code remap = false}，且本枚<b>不需要</b> refmap 条目。
  */

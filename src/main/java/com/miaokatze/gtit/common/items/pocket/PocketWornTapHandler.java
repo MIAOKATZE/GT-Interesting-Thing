@@ -4,13 +4,13 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import baubles.api.BaublesApi;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
-import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 
 /**
  * ★R96 S11（需求 8 第二件）：<b>穿戴后</b>潜行 + 空手右击 GT 机器 ⇒ 抽机器流体进口袋。

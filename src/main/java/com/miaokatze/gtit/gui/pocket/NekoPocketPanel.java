@@ -657,9 +657,8 @@ public final class NekoPocketPanel implements PocketSession {
         // ★枚数刻意是"名单整体一枚"而不是"每格一枚"：S7a 的预算算术给出满档 ≤1800 B（距 32693 墙 ≥18 倍），
         // 而每格一枚会长出 72 个同步键、72 次 cache 比对 ⇒ 同一件事的两条轨道里只留一条。
         syncManager.syncValue(SYNC_MAGNET, new StringSyncValue(this::composeMagnetBlob, this::applyMagnetBlob));
-        syncManager.syncValue(
-            SYNC_MAGNET_REQUEST,
-            new StringSyncValue(() -> "", this::receiveMagnetRequest).allowC2S());
+        syncManager
+            .syncValue(SYNC_MAGNET_REQUEST, new StringSyncValue(() -> "", this::receiveMagnetRequest).allowC2S());
     }
 
     /**
@@ -766,9 +765,7 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** 三态 → 字母（★单源：编码与解码都走这里，不留两份对照表）。 */
     public static char magnetModeLetter(PocketMagnetFilter.Mode mode) {
-        return mode == PocketMagnetFilter.Mode.WHITELIST
-            ? 'W'
-            : mode == PocketMagnetFilter.Mode.BLACKLIST ? 'B' : 'N';
+        return mode == PocketMagnetFilter.Mode.WHITELIST ? 'W' : mode == PocketMagnetFilter.Mode.BLACKLIST ? 'B' : 'N';
     }
 
     /** 吸取目标 → 字母（同上，单源）。 */
@@ -797,8 +794,12 @@ public final class NekoPocketPanel implements PocketSession {
         }
 
         static MagnetView malformed(int cells) {
-            return new MagnetView(PocketMagnetFilter.Mode.NONE, PocketMagnetFilter.Target.POCKET,
-                new String[cells], 0, true);
+            return new MagnetView(
+                PocketMagnetFilter.Mode.NONE,
+                PocketMagnetFilter.Target.POCKET,
+                new String[cells],
+                0,
+                true);
         }
     }
 
@@ -845,8 +846,7 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** 字母 → 吸取目标两档（同上）。 */
     public static PocketMagnetFilter.Target magnetTargetOfBlobLetter(char letter) {
-        return letter == 'P'
-            ? PocketMagnetFilter.Target.PLAYER
+        return letter == 'P' ? PocketMagnetFilter.Target.PLAYER
             : letter == 'K' ? PocketMagnetFilter.Target.POCKET : null;
     }
 
@@ -899,8 +899,7 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** ★开屏播种：双端都从<b>同一枚载体 NBT</b>出发（之后每一次变化都由服务端推 ⇒ 不存在两端各算各的）。 */
     private void seedMagnetTracks() {
-        final PocketMagnetFilter seeded = PocketMagnetFilter
-            .readFrom(pocket == null ? null : pocket.getTagCompound());
+        final PocketMagnetFilter seeded = PocketMagnetFilter.readFrom(pocket == null ? null : pocket.getTagCompound());
         final String blob = encodeMagnetBlob(seeded);
         serverMagnetBlob = blob;
         magnetSnapshotCarrier = pocket;
@@ -941,27 +940,23 @@ public final class NekoPocketPanel implements PocketSession {
         if (syncManager.isClient()) {
             return clientMagnetKeys[index];
         }
-        final java.util.List<String> keys = magnetFilterNow()
-            .entryKeys();
+        final java.util.List<String> keys = magnetFilterNow().entryKeys();
         return index < keys.size() ? keys.get(index) : null;
     }
 
     /** 三态读数（双源，同 {@link #magnetEntryKeyAt(int)}）。 */
     PocketMagnetFilter.Mode magnetMode() {
-        return syncManager.isClient() ? clientMagnetMode : magnetFilterNow()
-            .mode();
+        return syncManager.isClient() ? clientMagnetMode : magnetFilterNow().mode();
     }
 
     /** 吸取目标两档读数（双源）。 */
     PocketMagnetFilter.Target magnetTarget() {
-        return syncManager.isClient() ? clientMagnetTarget : magnetFilterNow()
-            .target();
+        return syncManager.isClient() ? clientMagnetTarget : magnetFilterNow().target();
     }
 
     /** 名单条数读数（★服务端那条是权威条数，不是客户端非空格的计数）。 */
     int magnetEntryCount() {
-        return syncManager.isClient() ? clientMagnetCount : magnetFilterNow()
-            .size();
+        return syncManager.isClient() ? clientMagnetCount : magnetFilterNow().size();
     }
 
     /** 服务端现读那一份名单（★只在服务端出图路径之外被问：本方法解一次 NBT，客户端永不调它）。 */
@@ -1004,8 +999,7 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** ★按格号摘一条（arg = 格号；★服务端用它自己那份键，不吃客户端抄上来的键，R18/R19）。 */
     boolean requestMagnetEntryRemoveAt(int index) {
-        return index >= 0 && index < PocketConstants.MAGNET_FILTER_SLOTS
-            && sendAction(ACTION_MAGNET_REMOVE_AT, index);
+        return index >= 0 && index < PocketConstants.MAGNET_FILTER_SLOTS && sendAction(ACTION_MAGNET_REMOVE_AT, index);
     }
 
     /**
@@ -1062,7 +1056,6 @@ public final class NekoPocketPanel implements PocketSession {
         }
         ServerTaskScheduler.scheduleServerTask(() -> server.onServerMagnetRequest(request));
     }
-
 
     // ------------------------------------------------------------------ 访问器（列类共用）
 
@@ -1594,9 +1587,9 @@ public final class NekoPocketPanel implements PocketSession {
         }
         final int natural = Math.max(1, stack.getMaxStackSize());
         // ★★循环条件读的是<b>本体剩余</b>（每轮先 {@code splitStack} 把它减掉 natural），既不是原版的
-        //   返回值、也不是被递出去那一块的 stackSize（原版成功那一刻就把入参置 0）——R83 那版「拿入参
-        //   stackSize 当进度」的写法成功一圈就被清零 ⇒ 进度恒 0 ⇒ 服务器主线程死循环（同文件
-        //   {@link #moveToPlayer(ItemStack)} 的 javadoc 记的就是这一条）。每一轮必然递减 ⇒ 必收敛。
+        // 返回值、也不是被递出去那一块的 stackSize（原版成功那一刻就把入参置 0）——R83 那版「拿入参
+        // stackSize 当进度」的写法成功一圈就被清零 ⇒ 进度恒 0 ⇒ 服务器主线程死循环（同文件
+        // {@link #moveToPlayer(ItemStack)} 的 javadoc 记的就是这一条）。每一轮必然递减 ⇒ 必收敛。
         while (stack.stackSize > natural) {
             handNaturalChunkToPlayer(target, stack.splitStack(natural));
         }
@@ -3215,9 +3208,9 @@ public final class NekoPocketPanel implements PocketSession {
             }
         }
         // ★★R96 S11 第四级 = bauble 栏那一腿（穿戴态开屏时上面三级的视野里根本没有这一格）：
-        //   先按对象身份（开着面板时把口袋从手上拖进饰品栏），再按 open 位兜底（重载后身份已断）。
-        //   ★判空守卫是必需的，不是防御性冗余：Baubles 缺席或它内部漂移时 safeBaubles 返回 null，
-        //   少了这道守卫关屏落点就 NPE —— 而关屏落点 NPE 的结局是"内容留在内存里等丢"（R88 B3 同族）。
+        // 先按对象身份（开着面板时把口袋从手上拖进饰品栏），再按 open 位兜底（重载后身份已断）。
+        // ★判空守卫是必需的，不是防御性冗余：Baubles 缺席或它内部漂移时 safeBaubles 返回 null，
+        // 少了这道守卫关屏落点就 NPE —— 而关屏落点 NPE 的结局是"内容留在内存里等丢"（R88 B3 同族）。
         final IInventory baubles = PocketWornTapHandler.safeBaubles(target);
         if (baubles != null) {
             if (pocket != null) {
