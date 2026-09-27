@@ -1,4 +1,4 @@
-"""口袋升级插件物品图标（5 张 16×16 彩色）的幂等生成器（R95 S2b）。
+"""口袋升级插件物品图标（5 张 16×16 彩色）的幂等生成器（R95 S2b 立 / R96 S12a 换形 + 放开用色档数判据）。
 
 为什么是单独脚本（仿 `tools/artgen_catalog/pocket_gui/gen_pocket_gui_upgrades.py` 的先例）：
   本目录（neko_dimension_pocket = 物品图标族）的 `gen_pocket.py` 钉死在口袋四态帧带的
@@ -6,26 +6,34 @@
   既有权威，跨文件零复制：
 
   颜色  = 同目录 `palette.py`（物品图标族唯一允许字面 RGB 的文件）：基色逐条钉在既有实图
-          （`REF_POINTS` + `REF_SHA`），本脚本用到的三档全部由已登记的 tint/shade 派生档
-          取得（R95 S2b 新登记 amb_lt / green_md / green_dk 三档），本文件零新派生、零字面 RGB；
+          （`REF_POINTS` + `REF_SHA`）。本批每张实际用色 6~8 档（旧图恰 3 档 = 单调根因），
+          全部由**已登记**档名取得（五金 blk/gry/hig/hig_lt + 家族黄 fam + 每型一条四档色相链），
+          R96 零新增色档：本文件零新派生、零字面 RGB；
   几何  = 语义形**逐字复用** `pocket_gui/gen_pocket_gui_upgrades.py` 的五张 16×16 字符画
-          （桶/叠层/马蹄/拱门/沙漏——GUI 灰化占位与物品图标同形，玩家凭形状即可对上槽位；
-          两处字符画由本脚本的自检"与 pocket_gui 版逐字符相等"钉住，不许单边漂移）；
+          （储罐/金箱成摞/马蹄磁铁/闭环管道/尖顶巫师帽——GUI 灰化占位与物品图标同形，玩家凭形状
+          即可对上槽位；两处字符画由本脚本的自检"与 pocket_gui 版逐字符相等"钉住，不许单边漂移）；
   编码  = 同目录 `pngwrite.encode_png`（与口袋四态帧带同一实现，无时间戳）。
 
-语义（五型插件，色系与效果对应）：
-  capacity  容量   = 流体蓝系（cyan_dk/cyan/aqua_lt）桶形
-  stack     堆叠   = 金棕系（eng/brz/brt）三层叠层
-  magnet    磁力   = 赤红系（eng/amb/amb_lt）马蹄磁铁
-  channel_persist 通道 = 紫系（deep/lpur/lilac）拱门
-  distill_fast 蒸馏 = 绿系（green_dk/green_md/green）沙漏
+语义（五型插件；每型一条「暗 `-` → 体 `#` → 亮 `+` → 高光 `*`」四档色相链，五金档五张共用）：
+  capacity        容量   = 流体蓝系（cyan_dk/cyan/aqua/aqua_lt）带液位线与刻度的储罐
+  stack           堆叠   = 金暖系  （gld_dk/gld/brt/crm）三件金箱成摞
+  magnet          磁力   = 赤红系  （eng/brz/amb/ivory）马蹄磁铁 + 被吸住的铁块
+  channel_persist 通道   = 源质绿  （green_dk/green_md/green/ivory）闭环管道 + 四向流向箭
+  mage            魔法使 = 紫系    （lpur_dk/lpur/lilac/lilac_lt）+ fam 金饰带：尖顶巫师帽
+  ★R96 S8：token[4] 由 `distill_fast` 改名 `mage`（`ItemPocketUpgrade.TOKENS[4]` 单源派生基名），
+  而 GUI 侧 token `POCKET_C2_upg_distill` 本轮**不改名、只换像素**（改名属独立契约轮），
+  故 `_GUI_TOKEN_MAP` 里存在这一处 `distill -> mage` 的有意不对称映射。
 
 用法:
   python -B gen_pocket_upgrade_items.py                     # 自检 + 写 out/ + 打印双跑 SHA
   python -B gen_pocket_upgrade_items.py --land --i-have-authorization   # 落地 5 张物品图标
 
-判据：字符画与 pocket_gui 版逐字符相等 / 4 连通单分量 / 三档俱全且明度严格递增
-（O<#<+，无字面 RGB，色名全部经 palette 公式命中）/ 双跑逐字节一致 / 落地 snapshot 只动本批 5 张。
+判据（R96 S12a 只放开「档数」这一条，其余硬门一律保持）：
+  字符画与 pocket_gui 版逐字符相等（★「两族同改」的机检凭据，两处粘同一张 charart）/
+  16×16 / 行内字符集合法 / 实际用色档数 >= 6 且角色档与 RGB 一一对应（防塌色）/
+  同族色链明度严格递增 blk < 暗 < 体 < 亮 < 高光 + 五金档 blk < gry < hig < hig_lt 且五张共用 /
+  4 连通单分量 / 外圈全透明 / 包围盒下限 / 双跑逐字节一致 / 来源 8 张实图 SHA 钉住。
+  ★旧口径「三档俱全 + O<#<+」已放开：新图用 9 个角色档，三档判据在数学上不可能过（会误判红）。
 """
 from __future__ import annotations
 
@@ -53,116 +61,139 @@ PAL, _PROV = P.build_palette(ITEMS)
 SIZE = 16                              # MC 物品图标原生尺寸（1.7.10 items 贴图口径）
 BLANK_CH = "."
 
-# ---------------------------------------------------------------- 色系登记（O 轮廓 / # 体 / + 受光；全部是 palette 档名）
-# ★明度必须严格递增 O < # < +（自检里断言）：16px 小图的三档读法靠明度阶撑。
-TONES: dict[str, tuple[str, str, str]] = {
-    "capacity": ("cyan_dk", "cyan", "aqua_lt"),       # 流体蓝系
-    "stack": ("eng", "brz", "brt"),                   # 金棕系
-    "magnet": ("eng", "amb", "amb_lt"),               # 赤红系
-    "channel_persist": ("deep", "lpur", "lilac"),     # 紫系
-    "distill_fast": ("green_dk", "green_md", "green") # 绿系
+# ---------------------------------------------------------------- 角色表（字符 -> palette 档名，本文件零字面 RGB）
+# 五金档 = 五张共用（"一眼同族"的骨架，自检钉住不许单张漂移）；色相档 = 每型一条四档链。
+# 明度序（自检断言严格递增）：
+#   五金 blk(O) < gry(X) < hig(x) < hig_lt(L)          —— 冷钢外骨骼，家族其余贴图同源
+#   色相 blk < 暗(-) < 体(#) < 亮(+) < 高光(*)          —— 每型一条，替代旧口径的 O<#<+
+#   fam(Y) = 家族黄（口袋抽绳/角标同档）：只做饰带与星的**点缀档**，不进色链。
+METAL: dict[str, str] = {
+    "O": "blk",        # 1px 纯黑全包络描边（家族外骨骼：infinity_cell / 口袋主物品 / 单元一致）
+    "X": "gry",        # 壳体主灰（暗钢面）
+    "x": "hig",        # 壳体受光倒角
+    "L": "hig_lt",     # 亮钢高光角（面板强高光档：罐肩/刻度/箍带亮棱）
+    "Y": "fam",        # 家族黄（本仓自己的东西：帽饰带 + 四芒星）
 }
-
-CHAR_TO_ROLE = {"O": 0, "#": 1, "+": 2}
+METAL_CHAIN = ("O", "X", "x", "L")  # 五金档的明度序（严格递增，且五张共用同一 RGB）
+HUE: dict[str, dict[str, str]] = {
+    #        "-" 暗            "#" 体           "+" 亮           "*" 高光
+    "capacity":        {"-": "cyan_dk",  "#": "cyan",     "+": "aqua",  "*": "aqua_lt"},   # 流体蓝系
+    "stack":           {"-": "gld_dk",   "#": "gld",      "+": "brt",   "*": "crm"},        # 金暖系
+    "magnet":          {"-": "eng",      "#": "brz",      "+": "amb",   "*": "ivory"},      # 赤红系
+    "channel_persist": {"-": "green_dk", "#": "green_md", "+": "green", "*": "ivory"},      # 源质绿
+    "mage":            {"-": "lpur_dk",  "#": "lpur",     "+": "lilac", "*": "lilac_lt"},   # 神秘紫
+}
+HUE_CHAIN = ("-", "#", "+", "*")     # 同族色链的明度序（blk 之后按此序严格递增）
+MIN_TONES = 6                        # 实际用色档数下限（旧图恰 3 档 = 单调根因；本批 6~8 档）
 
 # ---------------------------------------------------------------- 像素（16×16 字符画：几何登记处 = 语义形单一来源的镜像）
 # 与 pocket_gui/gen_pocket_gui_upgrades.py 的 UPGRADES 五张逐字符同源（自检钉住）；
 # 本表按 type token 命名（与注册名 neko_pocket_upgrade_<token> 一致）。
+# ★R96 定稿：五张字符画逐字粘自设计稿登记处 `.qoder/tmp/icon-draft/out/charart.txt`
+#   （r96-icons.md §5「几何登记处，落地时逐字粘进两个生产脚本」），两处粘的是同一份内容。
 ART: dict[str, tuple[str, ...]] = {
+    # 容量升级 = 带液位计的储罐：瓶颈 + 亮钢罐肩 + 空气带 + 弯月液面线 + 左列三道刻度 + 亮钢底托
     "capacity": (
         "................",
-        "......OOOO......",
-        ".....OO..OO.....",
-        "....OO....OO....",
-        "....O......O....",
-        "...OOOOOOOOOO...",
-        "...O++++++++O...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "....O+#####O....",
-        "....O+#####O....",
-        "....O+#####O....",
-        "....OOOOOOOO....",
+        ".....OLLLLO.....",
+        ".....OXXXXO.....",
+        ".OOOOOOOOOOOOOO.",
+        ".OxLLLLLLLLLLxO.",
+        ".Ox----------XO.",
+        ".Ox*+++++++++XO.",
+        ".OL+#########XO.",
+        ".Ox+#########XO.",
+        ".OL##########XO.",
+        ".Ox##########XO.",
+        ".OL##########XO.",
+        ".OXXXXXXXXXXXXO.",
+        "..OxLLLLLLLLxO..",
+        "..OOOOOOOOOOOO..",
         "................",
     ),
+    # 堆叠升级 = 三件金箱成摞（下宽上窄阶台）：每件亮顶面 + 左受光 + 右暗面 + 金属锁扣
     "stack": (
         "................",
-        "................",
         "....OOOOOOOO....",
-        "....O+#####O....",
-        "....O+#####O....",
-        "....OOOOOOOO....",
+        "....O******O....",
+        "....O++####O....",
+        "....O##---#O....",
         "...OOOOOOOOOO...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "...OOOOOOOOOO...",
+        "...O********O...",
+        "...O++LL####O...",
+        "...O####----O...",
         "..OOOOOOOOOOOO..",
-        "..O+#########O..",
-        "..O+#########O..",
+        "..O**********O..",
+        "..O++LL######O..",
+        "..O#####-----O..",
+        "..O----------O..",
         "..OOOOOOOOOOOO..",
-        "................",
         "................",
     ),
+    # 磁力升级 = 马蹄磁铁（开口向上、两行象牙白极帽）+ 一极内侧被吸住的铁块 + 背部金属箍带
     "magnet": (
         "................",
-        "..OOO......OOO..",
-        "..O+O......O+O..",
-        "..O+O......O+O..",
-        "..O#O......O#O..",
-        "..O#O......O#O..",
-        "..O#O......O#O..",
-        "..O#O......O#O..",
-        "..O#OO....OO#O..",
-        "..O##OO..OO##O..",
-        "..O##OO..OO##O..",
-        "..O+#########O..",
-        "...O+#######O...",
-        "....OOOOOOOO....",
-        "................",
+        "..OOOO....OOOO..",
+        "..O**O....O**O..",
+        "..O**O....O**O..",
+        "..O+#O....O+#O..",
+        "..O+#O....O+#O..",
+        "..O+#OLX..O+#O..",
+        "..O+#OXX..O+#O..",
+        "..O+#OO..OO+#O..",
+        "..O+##OOOO##+O..",
+        "..O##########O..",
+        "..O+########-O..",
+        "..O+xLLLLLLx+O..",
+        "..O----------O..",
+        "..OOOOOOOOOOOO..",
         "................",
     ),
+    # 通道持续化升级 = 闭环管道（黑描边 / 冷钢管壁 / 源质绿流体）+ 四角削圆 + 四支旋转对称流向箭
     "channel_persist": (
         "................",
-        "....OOOOOOOO....",
-        "...OOO####OOO...",
-        "..OO##....##OO..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..OOO......OOO..",
-        "................",
+        "..OOOOOOOOOOOO..",
+        ".OxLxxxxXXXXLXO.",
+        ".Ox++++**++++XO.",
+        ".Ox++++**##++XO.",
+        ".Ox+#......++XO.",
+        ".Ox+#......++XO.",
+        ".Ox**......**XO.",
+        ".OX**......**XO.",
+        ".OX++......#+XO.",
+        ".OX++......#+XO.",
+        ".OX++##**++++XO.",
+        ".OX++++**++++XO.",
+        ".OXLXXXXXXXXLXO.",
+        "..OOOOOOOOOOOO..",
         "................",
     ),
-    "distill_fast": (
+    # 魔法使升级 = 尖顶巫师帽：右弯帽尖 + 金饰带 + 亮钢铜扣 + 四芒星 + 帽尖两点星尘
+    "mage": (
         "................",
-        "................",
+        "........O+O*....",
+        ".......O+#-O*...",
+        ".......O+#-O....",
+        "......O+Y##-O...",
+        ".....O+YYY-O....",
+        ".....O+#Y##-O...",
+        "....O+#####-O...",
+        "....O+######-O..",
+        "...O+#######-O..",
+        "...OYYYYLYYYYO..",
+        ".O*++#########O.",
+        ".O#######-----O.",
+        "..O----------O..",
         "..OOOOOOOOOOOO..",
-        "..O++++++++++O..",
-        "...O########O...",
-        "....O+####+O....",
-        ".....O+##+O.....",
-        "......O##O......",
-        "......O##O......",
-        ".....O+##+O.....",
-        "....O+#####O....",
-        "...O########O...",
-        "..O+#########O..",
-        "..OOOOOOOOOOOO..",
-        "................",
         "................",
     ),
 }
 
-# pocket_gui 版的 token（对齐自检用）：GUI 灰化图 token <本表 token> 的映射（其余恒等）
-_GUI_TOKEN_MAP = {"channel": "channel_persist", "distill": "distill_fast"}
+# pocket_gui 版的 token（对齐自检用）：GUI 灰化图 token <本表 token> 的映射（其余恒等）。
+# ★有意不对称：GUI 侧 `distill` 本轮不改名（锚在 plan/assest/pocket-ui-mockups-2.html 与
+#   pocket_gui/contract.py 的行号断言 + PocketGuiTextureContract.java 的 18 行契约表上，
+#   改名属独立契约轮），物品侧 token 已随 `ItemPocketUpgrade.TOKENS[4]` 变成 `mage`。
+_GUI_TOKEN_MAP = {"channel": "channel_persist", "distill": "mage"}
 
 
 def _luma(rgb: tuple[int, int, int]) -> float:
@@ -170,14 +201,19 @@ def _luma(rgb: tuple[int, int, int]) -> float:
     return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
 
 
+def color_of(token: str, ch: str) -> tuple[int, int, int]:
+    """字符 -> RGB：五金档全局共用一张表，色相档按本型四档链取；色名一律经 palette 命中。"""
+    name = METAL.get(ch) or HUE[token][ch]
+    assert name in PAL, "%s 的字符 %s 指向未登记档名 %s" % (token, ch, name)
+    return PAL[name]
+
+
 def build_one(token: str) -> bytearray:
     """字符画 -> 16×16 RGBA 缓冲（色由 palette 档名现取，本文件无 RGB 字面量）。"""
-    o, m, h = TONES[token]
-    rgb = {BLANK_CH: None, "O": PAL[o], "#": PAL[m], "+": PAL[h]}
     buf = bytearray()
     for row in ART[token]:
         for ch in row:
-            buf += b"\x00\x00\x00\x00" if ch == BLANK_CH else bytes((*rgb[ch], 255))
+            buf += b"\x00\x00\x00\x00" if ch == BLANK_CH else bytes((*color_of(token, ch), 255))
     return buf
 
 
@@ -239,7 +275,15 @@ def self_check(built: dict[str, bytes]) -> list[str]:
     # --- 0 调色板：来源实图钉值 + 派生公式复算（与 gen_pocket 的第 0 判据同一条纪律）
     bad = P.check_sources(ITEMS)
     assert not bad, "来源贴图基线漂移（本任务全程只读）：\n  " + "\n  ".join(bad)
-    out.append("调色板：来源实图 %d 张 SHA 逐字节钉住；本批三档全部为 palette 已登记派生档" % len(P.REF_SHA))
+    out.append("调色板：来源实图 %d 张 SHA 逐字节钉住；本批用色档全部为 palette 已登记档（R96 零新增色档）"
+               % len(P.REF_SHA))
+    # --- 0b 五金档：五张共用同一组冷钢/纯黑档，且自身明度严格递增 blk < gry < hig < hig_lt
+    metal_rgb = [PAL[METAL[ch]] for ch in METAL_CHAIN]
+    assert all(_luma(metal_rgb[i]) < _luma(metal_rgb[i + 1]) for i in range(len(metal_rgb) - 1)), \
+        "五金档明度序被破坏 blk < gry < hig < hig_lt：" + str(metal_rgb)
+    out.append("五金档（五张共用，成套骨架）：%s ｜ 明度 %.1f < %.1f < %.1f < %.1f"
+               % (" < ".join("%s(%s)" % (ch, METAL[ch]) for ch in METAL_CHAIN),
+                  *[_luma(c) for c in metal_rgb]))
     # --- 1 几何与 pocket_gui 版逐字符相等（语义形单一来源，不许单边漂移）
     gui_art = _gui_upgrades_source()
     assert set(gui_art) == set(ART), "token 集与 pocket_gui 版不一致：" + str(set(gui_art) ^ set(ART))
@@ -251,18 +295,21 @@ def self_check(built: dict[str, bytes]) -> list[str]:
         assert len(art) == SIZE, token + " 行数不是 16"
         for row in art:
             assert len(row) == SIZE, token + " 行宽不是 16：" + row
-            assert all(ch in CHAR_TO_ROLE or ch == BLANK_CH for ch in row), token + " 行内未登记字符"
-        # --- 2 色档：三档俱全 + 明度严格递增（O < # < +）
-        o, m, h = TONES[token]
-        cells_by_role = {0: 0, 1: 0, 2: 0}
-        for row in art:
-            for ch in row:
-                if ch != BLANK_CH:
-                    cells_by_role[CHAR_TO_ROLE[ch]] += 1
-        assert all(v > 0 for v in cells_by_role.values()), token + " 三档没有用全（没有深浅读法）"
-        assert _luma(PAL[o]) < _luma(PAL[m]) < _luma(PAL[h]), \
-            token + " 明度阶被破坏：O %s < # %s < + %s" % (PAL[o], PAL[m], PAL[h])
-        assert PAL[o] != PAL[m] and PAL[m] != PAL[h], token + " 存在重复 RGB"
+            assert all(ch in METAL or ch in HUE[token] or ch == BLANK_CH for ch in row), \
+                token + " 行内未登记字符：" + row
+        # --- 2 色档：实际用色档数 >= 6（★R96 放开口径，旧「三档俱全」在 9 角色档下数学上不可能过）
+        #     + 角色档与 RGB 一一对应（防多字符塌成同一色 = 读不出深浅）
+        #     + 同族色链明度严格递增 blk < 暗 < 体 < 亮 < 高光
+        chars = {ch for ch in "".join(art) if ch != BLANK_CH}
+        used = {color_of(token, ch) for ch in chars}
+        assert len(used) >= MIN_TONES, \
+            token + " 实际用色只有 %d 档（下限 %d；旧图正是 3 档才读成色块剪影）" % (len(used), MIN_TONES)
+        assert len(used) == len(chars), \
+            token + " 有角色档塌成同一 RGB（角色 %d 个 / 实色 %d 个）" % (len(chars), len(used))
+        chain = [PAL["blk"]] + [PAL[HUE[token][k]] for k in HUE_CHAIN]
+        assert all(_luma(chain[i]) < _luma(chain[i + 1]) for i in range(len(chain) - 1)), \
+            token + " 色链明度不递增（blk < 暗 < 体 < 亮 < 高光）：" + str(chain)
+        assert len(set(chain)) == len(chain), token + " 色链存在重复 RGB"
         # --- 3 图形：连通单分量 + 包围盒下限 + 边缘留白
         buf = bytes(build_one(token))
         cells = _opaque(buf)
@@ -281,8 +328,10 @@ def self_check(built: dict[str, bytes]) -> list[str]:
         png = built[token]
         assert len(png) > 8 and png[1:4] == b"PNG", token + " 不是 PNG"
         assert pngwrite.encode_png(SIZE, SIZE, bytes(build_one(token))) == png, token + " 双跑不一致"
-        out.append("%s：%s / %s / %s ｜ 实体 %d px ｜ 双跑逐字节一致"
-                   % (token, o, m, h, len(cells)))
+        out.append("%s：用色 %d 档 / 角色 %d 档 ｜ 色链 %s ｜ 实体 %d px ｜ 包围盒 %dx%d ｜ 双跑逐字节一致"
+                   % (token, len(used), len(chars),
+                      " < ".join(["blk"] + [HUE[token][k] for k in HUE_CHAIN]),
+                      len(cells), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1))
     return out
 
 
@@ -306,6 +355,12 @@ def main() -> int:
         name = "neko_pocket_upgrade_%s.png" % token
         (OUT_DIR / name).write_bytes(built[token])
         print("  SHA %-40s %d %s" % (name, len(built[token]), sha(built[token])))
+    # ★改名残留哨兵（R96 S8 起 token[4] = mage）：本脚本只认自己这一批基名，
+    #   out/ 里同前缀但不在本批的文件 = 上一代的旧图或旧名，一律不得落地。
+    stale = sorted(p.name for p in OUT_DIR.glob("neko_pocket_upgrade_*.png")
+                   if p.name not in {"neko_pocket_upgrade_%s.png" % t for t in ART})
+    if stale:
+        print("  ★out/ 内非本批同族文件（旧名/旧图残留，★不得落地，需人工确认后再删）= " + ", ".join(stale))
     print("  候选产物目录 = " + str(OUT_DIR.relative_to(ROOT)).replace(chr(92), "/"))
     if "--land" in sys.argv:
         assert "--i-have-authorization" in sys.argv, "落地需 --i-have-authorization"
@@ -321,6 +376,10 @@ def main() -> int:
             assert after[name] == sha(built[token]), name + " 落地字节与本跑产物不符"
         print("  已落地 %d 张到 %s（该目录其余 %d 张逐字节未变；无 mcmeta 伴生文件）"
               % (len(mine), str(ITEMS.relative_to(ROOT)).replace(chr(92), "/"), len(after) - len(mine)))
+        ghost = sorted(k for k in after if k.startswith("neko_pocket_upgrade_") and k not in mine)
+        if ghost:
+            print("  ★目标目录仍有旧名同族文件（snapshot 判不出「未变」，需主代理单独删除）= " + ", ".join(ghost))
+
     else:
         print("  （未落地；落地需 --land --i-have-authorization）")
     return 0

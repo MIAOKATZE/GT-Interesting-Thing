@@ -6,25 +6,33 @@
   HTML 355-366 行（R75 单源），加不进升级格行 —— 动它就是动主管线，本片明令禁止。
   本脚本因此只**复用**同目录的既有权威，跨文件零复制：
 
-  颜色  = 同目录 `palette.py` 的冷钢（steel）家族现成四档 —— st_lo / st_mid / st_hi /
-          steel_lip 全是 palette.DERIV 已登记的派生档，本文件零新派生、零字面 RGB；
+  颜色  = 同目录 `palette.py` 的冷钢（steel）家族现成档 —— 深组 st_lo / 中组 st_mid /
+          强受光组 steel_lip 全是 palette.DERIV 已登记的派生档，本文件零新派生、零字面 RGB。
+          ★第四档 st_hi 有意**不用**：它与槽心底 `floor` 的对比实测 1.135 < 本文件的
+          受光门 1.60（WCAG 口径），落在灰化图案上等于「一块与底同化的洞」，
+          故物品侧 9 个角色在本侧按明度塌成三组（深/中/强），不引入过不了门的中间调。
   尺寸  = 画布 = 契约 SPEC 的 GRID（18，槽位栅格单源）；语义区 = GRID-2 = 16，即 MC
           物品图标在 18px 槽内 +1 让位后的 16×16 —— 插件图标放入后逐像素遮盖图案；
   编码  = 同目录 `pngwrite.encode_png`（与家族 13 张同一实现，无时间戳）。
 
-语义（底部右段行 3 的 5 个升级格，未升级时显示灰化插件图案占位）：
-  upg_capacity 容量     = 桶形（流体桶轮廓，带提梁）
-  upg_stack    堆叠     = 三层叠层（8/10/12 宽的阶台）
-  upg_magnet   磁力     = 马蹄磁铁（开口向上，极帽提亮）
-  upg_channel  通道     = 拱门/门户（通到底的开口 + 柱脚）
-  upg_distill  蒸馏加速 = 沙漏（上空下满，腰部沙流）
+语义（底部右段行 3 的 5 个升级格，未升级时显示灰化插件图案占位；R96 S12a 换形，token 不改名）：
+  upg_capacity 容量     = 带液位线与刻度的储罐
+  upg_stack    堆叠     = 三件金箱成摞（下宽上窄阶台）
+  upg_magnet   磁力     = 马蹄磁铁（开口向上，极帽提亮）+ 被吸住的铁块
+  upg_channel  通道     = 闭环管道（四角削圆 + 四支旋转对称流向箭）
+  upg_distill  ★魔法使 = 尖顶巫师帽（★GUI token 仍叫 distill：它锚在
+              plan/assest/pocket-ui-mockups-2.html 与 contract.py 的行号断言 + Java 契约表上，
+              改名属独立契约轮；物品侧 token 已随 ItemPocketUpgrade.TOKENS[4] 变成 mage）
 
 用法:
   python -B gen_pocket_gui_upgrades.py                     # 自检 + 写 out/ + 打印双跑 SHA
   python -B gen_pocket_gui_upgrades.py --land --i-have-authorization   # 落地 5 张目标 PNG
 
-判据：画布外圈全透明（16×16 语义区）/ 图形 4 连通单分量 / 实际用色 ⊆ 冷钢四档且三档俱全 /
-对比度门（对槽心底）/ 低饱和门 / 双跑逐字节一致 / 落地前后 snapshot 只动本批 5 张。
+判据（R96 S12a 只放开「三档俱全」这一条，其余硬门一律保持）：画布外圈全透明（16×16 语义区）/
+图形 4 连通单分量 / 实际用色 ⊆ 灰化冷钢档且深·中·强三组都在 / ★角色档 >= 6（物品侧 9 个角色
+在本侧按明度塌成三组，旧的「恰三档字符」判据在 9 角色下不可能过）/ 对比度门（对槽心底）/
+低饱和门 / 双跑逐字节一致 / 与物品图标族逐字符同源（凭 `gen_pocket_upgrade_items.py` 的镜像自检）/
+落地前后 snapshot 只动本批 5 张。
 """
 from __future__ import annotations
 
@@ -54,14 +62,31 @@ OFFSET = (SIZE - SEMANTIC) // 2         # 1：语义区左上角 = (1, 1)
 assert SIZE >= 4 and SEMANTIC >= 2, (SIZE, SEMANTIC)
 
 # ---------------------------------------------------------------- 色板（冷钢家族现成档，零新派生）
-# 灰化占位的读法：图案整体坐冷灰（与暖色布底分形 => 一眼"未激活"），三档 = 轮廓/体/受光。
-# 四档全部是 palette.DERIV 已登记的 steel 家族派生，本文件不出现任何 tint/shade 参数。
+# 灰化占位的读法：图案整体坐冷灰（与暖色布底分形 => 一眼"未激活"），三组 = 深/中/强受光。
+# ★R96 S12a：字符画与物品图标族同源，角色从 3 个（O/#/+）扩到 9 个，故这里按**明度**把
+#   物品侧角色塌成灰化三组（同一组共用同一档，本文件不出现任何 tint/shade 参数）：
+#     深组 st_lo      <- O 描边 / X 暗钢 / - 暗色相
+#     中组 st_mid     <- x 受光倒角 / # 体
+#     强受光组 steel_lip <- L 亮钢 / + 亮 / * 高光 / Y 家族黄（占位是灰图，黄也塌成最亮档）
+#   对比度门（下面三个 CON_*_GATE）钉的就是这三组对槽心底的可读性；物品侧最亮两档在本侧
+#   共用 steel_lip，所以四道门与换形前同一口径（★st_hi 因 1.135 < 1.60 不入表，见模块头）。
 TONES = {
-    "O": P.PAL["st_lo"],        # 轮廓（最深档）
-    "#": P.PAL["st_mid"],       # 体
-    "+": P.PAL["steel_lip"],    # 受光/极帽/玻璃（家族冷钢的最亮档，slot_tall 外圈同源）
+    # 深组（轮廓承重）
+    "O": P.PAL["st_lo"],
+    "X": P.PAL["st_lo"],
+    "-": P.PAL["st_lo"],
+    # 中组（体）
+    "x": P.PAL["st_mid"],
+    "#": P.PAL["st_mid"],
+    # 强受光组
+    "L": P.PAL["steel_lip"],
+    "+": P.PAL["steel_lip"],
+    "*": P.PAL["steel_lip"],
+    "Y": P.PAL["steel_lip"],
 }
+GROUPS = ("O", "#", "+")               # 三组的代表字符（对比度门 + "深浅都在"判据用）
 BLANK_CH = "."
+MIN_ROLE_CHARS = 6                    # 角色档下限：与物品图标族同源（物品侧每张 6~8 个角色）
 
 MIN_SPREAD_GATE = 48            # 低饱和门：max-min 通道差上界（实测四档 24..39）
 CON_OUTLINE_GATE = 2.80         # 轮廓对槽心底（实测 3.42）：轮廓承重，门最高
@@ -70,96 +95,102 @@ CON_HILITE_GATE = 1.60          # 受光对槽心底（实测 >1.8）
 CON_SELF_GATE = 1.50            # 轮廓对体（实测 1.84）：图形自身要切得开
 
 # ---------------------------------------------------------------- 像素（16×16 语义区，字符画 = 本脚本的几何登记处）
-# 每张恰 16 行 x 16 列；列/行 0 与 15 对齐画布外圈 1px 让位。O=轮廓 #=体 +=受光 .=透明
+# 每张恰 16 行 x 16 列；列/行 0 与 15 对齐画布外圈 1px 让位。
+# ★R96 S12a：五张字符画逐字粘自设计稿登记处 `.qoder/tmp/icon-draft/out/charart.txt`，与物品图标族
+#   （`neko_dimension_pocket/gen_pocket_upgrade_items.py` 的 ART）粘的是同一份内容；两处同源由
+#   物品侧脚本的镜像自检「与 pocket_gui 版逐字符相等」机检钉住（该判据 ★不许放开）。
+#   角色：O X x L 五金 / - # + * 色相四档 / Y 家族黄 / . 透明（灰化侧按明度塌成三组，见 TONES）
 UPGRADES: dict[str, tuple[str, tuple[str, ...]]] = {
-    "POCKET_C2_upg_capacity": ("容量 = 流体桶（提梁 + 收口桶身）", (
+    "POCKET_C2_upg_capacity": ("容量 = 带液位计的储罐（亮钢罐肩 + 空气带 + 弯月液面线 + 左列三道刻度 + 亮钢底托）", (
         "................",
-        "......OOOO......",
-        ".....OO..OO.....",
-        "....OO....OO....",
-        "....O......O....",
+        ".....OLLLLO.....",
+        ".....OXXXXO.....",
+        ".OOOOOOOOOOOOOO.",
+        ".OxLLLLLLLLLLxO.",
+        ".Ox----------XO.",
+        ".Ox*+++++++++XO.",
+        ".OL+#########XO.",
+        ".Ox+#########XO.",
+        ".OL##########XO.",
+        ".Ox##########XO.",
+        ".OL##########XO.",
+        ".OXXXXXXXXXXXXO.",
+        "..OxLLLLLLLLxO..",
+        "..OOOOOOOOOOOO..",
+        "................",
+    )),
+    "POCKET_C2_upg_stack": ("堆叠 = 三件金箱成摞（下宽上窄阶台，每件亮顶面 + 左受光 + 右暗面 + 金属锁扣）", (
+        "................",
+        "....OOOOOOOO....",
+        "....O******O....",
+        "....O++####O....",
+        "....O##---#O....",
         "...OOOOOOOOOO...",
-        "...O++++++++O...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "....O+#####O....",
-        "....O+#####O....",
-        "....O+#####O....",
-        "....OOOOOOOO....",
-        "................",
-    )),
-    "POCKET_C2_upg_stack": ("堆叠 = 三层叠层（8/10/12 宽阶台）", (
-        "................",
-        "................",
-        "....OOOOOOOO....",
-        "....O+#####O....",
-        "....O+#####O....",
-        "....OOOOOOOO....",
-        "...OOOOOOOOOO...",
-        "...O+#######O...",
-        "...O+#######O...",
-        "...OOOOOOOOOO...",
+        "...O********O...",
+        "...O++LL####O...",
+        "...O####----O...",
         "..OOOOOOOOOOOO..",
-        "..O+#########O..",
-        "..O+#########O..",
+        "..O**********O..",
+        "..O++LL######O..",
+        "..O#####-----O..",
+        "..O----------O..",
         "..OOOOOOOOOOOO..",
         "................",
-        "................",
     )),
-    "POCKET_C2_upg_magnet": ("磁力 = 马蹄磁铁（开口向上，极帽提亮）", (
+    "POCKET_C2_upg_magnet": ("磁力 = 马蹄磁铁（开口向上、两行极帽）+ 一极内侧被吸住的铁块 + 背部金属箍带", (
         "................",
-        "..OOO......OOO..",
-        "..O+O......O+O..",
-        "..O+O......O+O..",
-        "..O#O......O#O..",
-        "..O#O......O#O..",
-        "..O#O......O#O..",
-        "..O#O......O#O..",
-        "..O#OO....OO#O..",
-        "..O##OO..OO##O..",
-        "..O##OO..OO##O..",
-        "..O+#########O..",
-        "...O+#######O...",
-        "....OOOOOOOO....",
-        "................",
-        "................",
-    )),
-    "POCKET_C2_upg_channel": ("通道 = 拱门/门户（通底开口 + 柱脚）", (
-        "................",
-        "....OOOOOOOO....",
-        "...OOO####OOO...",
-        "..OO##....##OO..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..O#+......+#O..",
-        "..OOO......OOO..",
-        "................",
-        "................",
-    )),
-    "POCKET_C2_upg_distill": ("蒸馏加速 = 沙漏（上空下满，腰部沙流）", (
-        "................",
-        "................",
-        "..OOOOOOOOOOOO..",
-        "..O++++++++++O..",
-        "...O########O...",
-        "....O+####+O....",
-        ".....O+##+O.....",
-        "......O##O......",
-        "......O##O......",
-        ".....O+##+O.....",
-        "....O+#####O....",
-        "...O########O...",
-        "..O+#########O..",
+        "..OOOO....OOOO..",
+        "..O**O....O**O..",
+        "..O**O....O**O..",
+        "..O+#O....O+#O..",
+        "..O+#O....O+#O..",
+        "..O+#OLX..O+#O..",
+        "..O+#OXX..O+#O..",
+        "..O+#OO..OO+#O..",
+        "..O+##OOOO##+O..",
+        "..O##########O..",
+        "..O+########-O..",
+        "..O+xLLLLLLx+O..",
+        "..O----------O..",
         "..OOOOOOOOOOOO..",
         "................",
+    )),
+    "POCKET_C2_upg_channel": ("通道 = 闭环管道（黑描边 / 冷钢管壁 / 流体）+ 四角削圆 + 四支旋转对称的流向箭", (
+        "................",
+        "..OOOOOOOOOOOO..",
+        ".OxLxxxxXXXXLXO.",
+        ".Ox++++**++++XO.",
+        ".Ox++++**##++XO.",
+        ".Ox+#......++XO.",
+        ".Ox+#......++XO.",
+        ".Ox**......**XO.",
+        ".OX**......**XO.",
+        ".OX++......#+XO.",
+        ".OX++......#+XO.",
+        ".OX++##**++++XO.",
+        ".OX++++**++++XO.",
+        ".OXLXXXXXXXXLXO.",
+        "..OOOOOOOOOOOO..",
+        "................",
+    )),
+    # ★第五格 token 仍为 distill（本轮不改名只换像素：GUI token 锚在 HTML 与 Java 契约表上，
+    #   改名属独立契约轮）；而物品侧 token 已随 ItemPocketUpgrade.TOKENS[4] 变成 mage。
+    "POCKET_C2_upg_distill": ("魔法使 = 尖顶巫师帽（右弯帽尖 + 金饰带 + 亮钢铜扣 + 四芒星 + 帽尖两点星尘）", (
+        "................",
+        "........O+O*....",
+        ".......O+#-O*...",
+        ".......O+#-O....",
+        "......O+Y##-O...",
+        ".....O+YYY-O....",
+        ".....O+#Y##-O...",
+        "....O+#####-O...",
+        "....O+######-O..",
+        "...O+#######-O..",
+        "...OYYYYLYYYYO..",
+        ".O*++#########O.",
+        ".O#######-----O.",
+        "..O----------O..",
+        "..OOOOOOOOOOOO..",
         "................",
     )),
 }
@@ -243,6 +274,12 @@ def self_check(built: dict[str, bytes]) -> list[str]:
     out.append("对比度门：轮廓/体/受光 对槽心底 = %.2f / %.2f / %.2f；轮廓对体 = %.2f"
                % (P.contrast(TONES["O"], floor), P.contrast(TONES["#"], floor),
                   P.contrast(TONES["+"], floor), P.contrast(TONES["O"], TONES["#"])))
+    # ★证据行（不是判据）：冷钢第四档为什么有意不进 TONES —— 实测它过不了受光门，
+    #   用它当任何一组都会在同底上留下"与底同化"的洞（r96-icons.md §9 的 +->st_hi 因此未采纳）。
+    out.append("灰化档数：9 个角色塌成 %d 组（%s）；冷钢第四档 st_hi 对槽心底 = %.2f"
+               " < 受光门 %.2f ⇒ 有意不用"
+               % (len(set(TONES.values())), "/".join(("st_lo", "st_mid", "steel_lip")),
+                  P.contrast(P.PAL["st_hi"], floor), CON_HILITE_GATE))
     for token in UPGRADES:
         usage, art = UPGRADES[token]
         assert len(art) == SEMANTIC, token + " 行数不是语义区高"
@@ -265,8 +302,15 @@ def self_check(built: dict[str, bytes]) -> list[str]:
         assert _connected(buf, bbox), token + " 不是 4 连通单分量"
         used = {CV.rgb_at(buf, SIZE, x, y) for y in range(SIZE) for x in range(SIZE)
                 if CV.alpha_at(buf, SIZE, x, y) != 0}
-        assert used <= set(TONES.values()), token + " 用色超出冷钢三档"
-        assert used == set(TONES.values()), token + " 三档没有用全（图形没有深浅读法）"
+        # ★R96 S12a 放开口径：旧的「used 恰等于三档」在 9 角色档源下不可能过（物品侧角色在本侧
+        #   按明度塌成三组，组数不是字符数）。改为两条：用色不得越出灰化冷钢档 + 深/中/强三组都在
+        #   （灰化读法仍要有深浅）；"档数"判据挪到角色维度（>= 6，与物品图标族同一张字符画）。
+        assert used <= set(TONES.values()), token + " 用色超出灰化冷钢档"
+        groups = {TONES[ch] for ch in GROUPS}
+        assert groups <= used, token + " 灰化三组（深/中/强受光）没有用全（图形没有深浅读法）"
+        chars = {ch for ch in "".join(art) if ch != BLANK_CH}
+        assert len(chars) >= MIN_ROLE_CHARS, \
+            token + " 角色档只有 %d 个（下限 %d；与物品图标同源的那张至少要 6）" % (len(chars), MIN_ROLE_CHARS)
         assert P.ACCENT_RGB not in used, token + " 强调色越界（占位图案不是可点物）"
         assert opaque >= 40, token + " 实体像素太少"
         again = pngwrite.encode_png(SIZE, SIZE, flat_of(build_one(token)))
