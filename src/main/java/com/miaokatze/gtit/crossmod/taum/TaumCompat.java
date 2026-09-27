@@ -32,7 +32,8 @@ import cpw.mods.fml.common.Loader;
  * <b>降级承诺</b>：TC 缺席、装配失败或运行期 api 漂移时——
  * {@link #isAvailable()} 为 false；{@link #distill(ItemStack)} 与 {@link #readContainer(ItemStack)}
  * 返回 {@link TaumAspectAmounts#EMPTY}；{@link #aspectOrder()} 返回空数组；
- * {@link #colorOf(String)} 返回 -1；产出型 API 返回 null。<b>不抛异常、不崩溃</b>，
+ * {@link #colorOf(String)} 返回 -1；{@link #imageLocationOf(String)} 回落
+ * {@link TaumDistillRules#aspectTexturePath(String)} 公式串；产出型 API 返回 null。<b>不抛异常、不崩溃</b>，
  * 上层据此把蒸馏栏整栏置灰（口径：灰显 + tooltip，不隐藏，避免面板宽度双分支）。
  */
 public final class TaumCompat {
@@ -73,6 +74,8 @@ public final class TaumCompat {
     private static final Map<String, String> NAME_CACHE = new ConcurrentHashMap<>();
     /** tag → 颜色 缓存 */
     private static final Map<String, Integer> COLOR_CACHE = new ConcurrentHashMap<>();
+    /** ★R97 S4：tag → 图标定位串 缓存（与 {@link #colorOf(String)} 同一渲染热点的第三项；桥结果进程内不变） */
+    private static final Map<String, String> IMAGE_CACHE = new ConcurrentHashMap<>();
 
     private TaumCompat() {}
 
@@ -221,11 +224,37 @@ public final class TaumCompat {
     }
 
     /**
-     * aspect 图标资源路径（{@code thaumcraft:textures/aspects/<tag小写>.png}）。
-     * 纯字符串，不依赖 TC 是否在场；TC 缺席时该资源域不存在，渲染方须自行回落。
+     * ★<b>R97 S4（需求⑤）：aspect 图标定位——GUI 侧唯一消费口径</b>（消费点 =
+     * {@code NekoEssenceGhostCell#setCellContent} 的 {@code UITexture.builder().location(...)}）。
+     * <p>
+     * 桥在场走 {@link TaumBridgeApi#imageLocationOf(String)} 读 {@code Aspect.getImage()} 的真资源域
+     * ——附属 mod 注册的 aspect 图标从此不再被拼到 {@code thaumcraft:} 域下落 missing texture
+     * （TC 原生 aspect 与回落公式本就重合，<b>零视觉差</b>）；桥缺席、桥返 null 或运行期漂移一律回落
+     * {@link TaumDistillRules#aspectTexturePath(String)}（回落串<b>单源</b>，公式本体 R97 未动；
+     * 桥实现内另有 Throwable 兜底，两层降级语义等价）。旧门面 {@code aspectTexturePath} 已随本方法
+     * 落地摘除——消费面只剩这一个口径，不留第二份「恒 thaumcraft 域」的拼串入口。
+     *
+     * @param tag aspect tag
+     * @return {@code "modid:path"} 定位串；tag 为 null/空时 null（与旧口径一致，渲染层判据
+     *         {@code drawsContentLayer} 先挡掉空 tag）
      */
-    public static String aspectTexturePath(String tag) {
-        return TaumDistillRules.aspectTexturePath(tag);
+    public static String imageLocationOf(String tag) {
+        ensureReady();
+        TaumBridgeApi active = bridge;
+        if (active == null || tag == null) {
+            return TaumDistillRules.aspectTexturePath(tag);
+        }
+        String cached = IMAGE_CACHE.get(tag);
+        if (cached == null) {
+            cached = active.imageLocationOf(tag);
+            if (cached == null) {
+                cached = TaumDistillRules.aspectTexturePath(tag);
+            }
+            if (cached != null) {
+                IMAGE_CACHE.put(tag, cached);
+            }
+        }
+        return cached;
     }
 
     /**

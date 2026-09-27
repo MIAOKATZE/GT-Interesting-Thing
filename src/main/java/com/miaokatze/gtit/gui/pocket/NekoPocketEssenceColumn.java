@@ -38,9 +38,11 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
  * 唯一出路是把进度条也撤成 tooltip-only —— 那是产品决定，本文件不改数、只把这个分叉写清。
  * <p>
  * <b>72 格是纯显示件</b>（R35：源质格全部 phantom 侧，<b>不进 Container</b>，不计入 220）：
- * 每格 = {@code UITexture(location=TaumCompat.aspectTexturePath(tag)).fullImage().nonOpaque()}
+ * 每格 = {@code UITexture(location=TaumCompat.imageLocationOf(tag)).fullImage().nonOpaque()}
  * + {@code colorOverride=colorOf(tag)}（R30：<b>{@code nonOpaque} 必给</b>，否则
  * {@code withBlend=false} 走 {@code disableBlend}，把带 alpha 的 aspect 图标画成<b>黑块</b>）。
+ * ★R97 S4：location 走桥读 {@code Aspect.getImage()} 真资源域（附属 aspect 不再落
+ * thaumcraft 域 missing）；无桥/未知/异常回落 {@code TaumDistillRules.aspectTexturePath} 公式串。
  * <p>
  * <b>★格序不再是 {@code TaumCompat.aspectOrder()} 的固定派生序</b>（R78③）：格序 =
  * <b>该 tag 首次入账的顺序</b>，映射由<b>服务端</b>算（{@code PocketEssenceStore} 的格位归属表，

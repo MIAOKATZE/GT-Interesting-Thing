@@ -48,6 +48,27 @@ public interface TaumBridgeApi {
     String nameOf(String tag);
 
     /**
+     * ★<b>R97 S4（需求⑤）：aspect 图标的资源定位串</b>——读 {@code Aspect.getImage()} 的真注册，
+     * 而不是在 GUI 侧拼 {@code thaumcraft:} 域字符串。
+     * <p>
+     * <b>为什么要走桥</b>：TC 自家 aspect 走便捷构造器（{@code Aspect.java:84/:88}），图标恰与
+     * {@link TaumDistillRules#aspectTexturePath(String)} 的公式重合；但附属 mod 经 5 参构造器
+     * （{@code Aspect.java:70}）注册的 aspect 图标落在<b>它自己的资源域</b>
+     * （如 {@code forbiddenmagic:textures/aspects/xxx.png}）——拼 {@code thaumcraft:} 域一律落
+     * missing texture（黑白棋盘格），这正是「附属源质图标错误、颜色名字却正确」的根因
+     * （取证 {@code plan/_taskpack/R97-inv-aspecticon.md} §2）。
+     * <p>
+     * 返回串形如 {@code "modid:path"}（{@code ResourceLocation.toString()}），MUI2 的
+     * {@code UITexture.Builder#location(String)} 原生支持。附属异常注册
+     * （{@code getImage()} 返 null / 抛错）按 T9 双回落压回公式串——与全接口的降级纪律一致。
+     *
+     * @param tag aspect tag
+     * @return 图标定位串；未知 / {@code getImage()} 为 null / 不可用时回落
+     *         {@link TaumDistillRules#aspectTexturePath(String)} 的 thaumcraft 域公式串
+     */
+    String imageLocationOf(String tag);
+
+    /**
      * 蒸馏判据与产出集合（照 TC4 {@code TileAlchemyFurnace.canSmelt()} 的查表口径）。
      *
      * @param stack 待蒸馏物品

@@ -187,7 +187,7 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
             @Override
             public void showIcon(String aspectTag) {
                 final UITexture icon = UITexture.builder()
-                    .location(TaumCompat.aspectTexturePath(aspectTag))
+                    .location(TaumCompat.imageLocationOf(aspectTag))
                     .fullImage()
                     .nonOpaque()
                     .build();

@@ -6,6 +6,7 @@ import java.util.List;
 
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.main.GTInterestingThing;
@@ -32,7 +33,9 @@ import thaumcraft.common.lib.crafting.ThaumcraftCraftingManager;
  * ＝ TC4 {@code TileAlchemyFurnace.canSmelt():307-325} 的同源查表，空 {@link AspectList} 即不可蒸馏</li>
  * <li>显示序取 {@code Aspect.aspects}（{@code Aspect.java:19} 的 {@code LinkedHashMap}、
  * {@code :79} 的 {@code aspects.put(tag,this)}）迭代序，数量不假设恰为 48（addon 可追加）</li>
- * <li>染色/显示名运行时取 {@link Aspect#getColor()} / {@link Aspect#getName()}（反编译转储的 int 常量不可信）</li>
+ * <li>染色/显示名运行时取 {@link Aspect#getColor()} / {@link Aspect#getName()}（反编译转储的 int 常量不可信）；
+ * ★R97 S4：图标定位同样运行时取 {@code Aspect#getImage()}（附属自资源域），降级回落
+ * {@code TaumDistillRules#aspectTexturePath} 公式串</li>
  * <li>晶化源质 1 点/个（{@code TileEssentiaCrystalizer.java:293}）、源质瓶 8 点/次
  * （{@code ItemEssence.java:109-185}，meta 0 空瓶 / meta 1 装瓶、可堆 64 但<b>整叠共享同一份
  * {@link AspectList}</b> ⇒ "一叠多少点" = 单件 amount × stackSize）</li>
@@ -198,6 +201,30 @@ public final class TaumBridge implements TaumBridgeApi {
         } catch (Throwable t) {
             fail("nameOf", t);
             return tag;
+        }
+    }
+
+    /**
+     * ★R97 S4（需求⑤）：图标定位读 TC 真注册（{@code Aspect.getImage()}，附属自资源域），
+     * 判据与降级纪律见 {@link TaumBridgeApi#imageLocationOf(String)}。
+     * <p>
+     * TC 原生 aspect 与 {@link TaumDistillRules#aspectTexturePath(String)} 的便捷构造器公式
+     * 恰好重合 ⇒ 对 TC 原生集合<b>零视觉差</b>；变的只有「附属经 5 参构造器注册自域图标」那一族。
+     * T9 双回落：aspect 未知、{@code getImage()} 返 null、或任何 Throwable ⇒ 压回公式串
+     * （回落单源 = {@link TaumDistillRules#aspectTexturePath(String)}，公式本体 R97 未动）。
+     */
+    @Override
+    public String imageLocationOf(String tag) {
+        try {
+            Aspect aspect = Aspect.getAspect(tag);
+            if (aspect == null) {
+                return TaumDistillRules.aspectTexturePath(tag);
+            }
+            ResourceLocation image = aspect.getImage();
+            return image == null ? TaumDistillRules.aspectTexturePath(tag) : image.toString();
+        } catch (Throwable t) {
+            fail("imageLocationOf", t);
+            return TaumDistillRules.aspectTexturePath(tag);
         }
     }
 

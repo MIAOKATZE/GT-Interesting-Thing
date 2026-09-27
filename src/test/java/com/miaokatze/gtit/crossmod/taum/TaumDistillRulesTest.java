@@ -12,13 +12,15 @@ import com.miaokatze.gtit.testutil.TestRunner;
  * <p>
  * 覆盖 {@link TaumDistillRules} 与 {@link TaumAspectAmounts} 这两块<b>不依赖 MC / TC 类型</b>的
  * 纯函数：是否有 aspect、按 {@code AspectList} <b>原量</b>入账、<b>全有全无</b>的消耗判定、
- * 按 8 点装箱、以及 TC 图标路径派生。
+ * 按 8 点装箱、以及 aspect 图标定位（★R97 S4：无桥 / 桥 null 回落 thaumcraft 域公式 +
+ * 桩桥读附属自资源域，两分支都在纯 JVM 侧可测）。
  * <p>
  * <b>只有一套口径可测</b>：产出量 = 原量、溢出 = 全有全无。桥层已按裁定删掉
  * 「每 aspect 各 +1 点」与「部分入账」两档，因此本套件里也不留它们的用例（两说不得并存）。
  * <p>
  * 不覆盖（须实机或 TC 在场环境）：{@code TaumBridge} 对 {@code ThaumcraftCraftingManager}
- * 的真实查表、{@code Aspect.getColor()} 的实际染色、瓶 meta 0/1 切换与晶化源质的 NBT 形状
+ * 的真实查表、{@code Aspect.getColor()} 的实际染色、瓶 meta 0/1 切换与晶化源质的 NBT 形状，
+ * 以及真实 {@code Aspect.getImage()} 的注册表读数（桩桥只证门面分派与回落）
  * ——那些调用点在本层被刻意压薄（只做「读 TC → 转值对象」），TC 缺席时整条路径不加载。
  */
 public class TaumDistillRulesTest {
@@ -36,7 +38,7 @@ public class TaumDistillRulesTest {
         cases.put("入账换算不改动入参", TaumDistillRulesTest::creditIsPure);
         cases.put("8点装箱与未知容量", TaumDistillRulesTest::bottlingMath);
         cases.put("aspect快照过滤脏条目", TaumDistillRulesTest::snapshotDropsJunk);
-        cases.put("图标路径派生", TaumDistillRulesTest::texturePathDerivedFromTag);
+        cases.put("图标定位：回落+桩桥", TaumDistillRulesTest::aspectImageLocationBridgeAndFallback);
         cases.put("需求数值常量钉死", TaumDistillRulesTest::literalNumbersLocked);
         cases.put("单一口径无档位可切", TaumDistillRulesTest::noSwitchableCaliberLeft);
         TestRunner.run(TaumDistillRulesTest.class, cases);
@@ -180,8 +182,13 @@ public class TaumDistillRulesTest {
         }
     }
 
-    /** aspect 图标来自 TC 资源域，路径按 tag 派生（不 baked 清单）。 */
-    private static void texturePathDerivedFromTag() {
+    /**
+     * ★R97 S4：图标定位 = 桥读 {@code Aspect.getImage()} 的真资源域；无桥 / 桥 null 回落
+     * {@link TaumDistillRules#aspectTexturePath} 的 thaumcraft 域公式（回落<b>单源</b>，公式本体未动）。
+     * 桥在场分支用反射钉 {@link TaumCompat} 装配态 + {@code Proxy} 桩桥——纯 JVM 可测，无需 TC 在场。
+     */
+    private static void aspectImageLocationBridgeAndFallback() {
+        // 回落单源钉值：公式本体住在 TaumDistillRules（R97 前的旧全量口径，现只服务回落）
         SimpleAssert.eq("thaumcraft:textures/aspects/aer.png", TaumDistillRules.aspectTexturePath("aer"), "小写 tag 路径");
         SimpleAssert.eq(
             "thaumcraft:textures/aspects/perditio.png",
@@ -189,6 +196,80 @@ public class TaumDistillRulesTest {
             "tag 大小写不敏感（TC 侧 image 用 toLowerCase）");
         SimpleAssert.eq(null, TaumDistillRules.aspectTexturePath(null), "null tag ⇒ null 路径");
         SimpleAssert.eq(null, TaumDistillRules.aspectTexturePath(""), "空 tag ⇒ null 路径");
+
+        // 门面无桥腿：装配态钉成「已初始化 + bridge=null」⇒ 走公式回落（TC 原生与公式重合 ⇒ 零视觉差）
+        withPokedBridge(
+            null,
+            () -> SimpleAssert.eq(
+                "thaumcraft:textures/aspects/aer.png",
+                TaumCompat.imageLocationOf("aer"),
+                "无桥 ⇒ 门面回落 thaumcraft 域公式"));
+        // 桩桥腿：桥读出附属自资源域 ⇒ 门面原样透传（R97 ⑤ 根因的修复点）
+        withPokedBridge(
+            stubBridgeReturning("forbiddenmagic:textures/aspects/sanctus.png"),
+            () -> SimpleAssert.eq(
+                "forbiddenmagic:textures/aspects/sanctus.png",
+                TaumCompat.imageLocationOf("sanctus"),
+                "桩桥 ⇒ 附属自资源域真路径（不再被拼进 thaumcraft 域）"));
+        // 桥 null 腿：桥在场但对未知 tag 返 null ⇒ 门面回落公式（与无桥腿同读数）
+        withPokedBridge(
+            stubBridgeReturning(null),
+            () -> SimpleAssert.eq(
+                "thaumcraft:textures/aspects/vacuous.png",
+                TaumCompat.imageLocationOf("vacuous"),
+                "桥返 null ⇒ 门面回落公式"));
+    }
+
+    /**
+     * 手工腿专用：把 {@link TaumCompat} 的装配态反射钉成「已初始化 + 指定桥」，跑完还原。
+     * <p>
+     * 纯 JVM 腿不能走 {@code detect()}（FML 的 {@code Loader.isModLoaded} 与主类日志在无启动环境
+     * 下不可控），所以直接钉 {@code initialized=true} 绕开探测、钉 {@code bridge} 为给定桩件；
+     * {@code IMAGE_CACHE} 前后清空，防两腿读数互相污染。字段名漂移时以 {@code AssertionError}
+     * 响而不是假绿。
+     */
+    private static void withPokedBridge(TaumBridgeApi stub, Runnable body) {
+        try {
+            java.lang.reflect.Field initializedField = TaumCompat.class.getDeclaredField("initialized");
+            java.lang.reflect.Field bridgeField = TaumCompat.class.getDeclaredField("bridge");
+            java.lang.reflect.Field imageCacheField = TaumCompat.class.getDeclaredField("IMAGE_CACHE");
+            initializedField.setAccessible(true);
+            bridgeField.setAccessible(true);
+            imageCacheField.setAccessible(true);
+            Object originalInitialized = initializedField.get(null);
+            Object originalBridge = bridgeField.get(null);
+            Map<?, ?> cache = (Map<?, ?>) imageCacheField.get(null);
+            cache.clear();
+            initializedField.set(null, Boolean.TRUE);
+            bridgeField.set(null, stub);
+            try {
+                body.run();
+            } finally {
+                cache.clear();
+                bridgeField.set(null, originalBridge);
+                initializedField.set(null, originalInitialized);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("反射钉桥失败（TaumCompat 字段名漂移？）", e);
+        }
+    }
+
+    /**
+     * 桩桥：只钉 {@code imageLocationOf} 的定向返回，其余方法一律响
+     * {@link UnsupportedOperationException}（本套件不触达它们）。{@code Proxy} 使本腿
+     * 无需手写整个 {@link TaumBridgeApi}——签名里的 {@code ItemStack} 只需类路径上可解析
+     * （testcp 含 MC/Forge），无需 TC 注册表在场。
+     */
+    private static TaumBridgeApi stubBridgeReturning(String imageLocation) {
+        return (TaumBridgeApi) java.lang.reflect.Proxy.newProxyInstance(
+            TaumBridgeApi.class.getClassLoader(),
+            new Class<?>[] { TaumBridgeApi.class },
+            (proxy, method, args) -> {
+                if ("imageLocationOf".equals(method.getName())) {
+                    return imageLocation;
+                }
+                throw new UnsupportedOperationException("手工腿桩桥只钉 imageLocationOf，被调 " + method.getName());
+            });
     }
 
     /** 需求原文写死的数值即验收判据，改动必须先过账本。 */
