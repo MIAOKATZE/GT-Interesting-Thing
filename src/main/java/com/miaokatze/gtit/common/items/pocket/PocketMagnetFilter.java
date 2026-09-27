@@ -130,8 +130,55 @@ public final class PocketMagnetFilter {
         }
     }
 
+    /**
+     * ★R96 S7b：<b>吸取目标</b>两档（需求原文的两档 = 玩家主背包 36 格 / 口袋内 135 格栏）。
+     * <p>
+     * 与 {@link Mode} 同形：★序就是循环序 {@code POCKET → PLAYER → POCKET}（面板上那一枚两档按钮的落点），
+     * 三态用 enum + {@link #next()}、不留第二份"下一个是什么"的表。
+     * <p>
+     * ★★<b>执法腿的归属如实写明（不许把配置位读成已生效）</b>：本档今天落的是<b>配置 + 写口 + 同步 + UI 读数</b>
+     * 这一整面，{@link Target#PLAYER} 那一档<b>尚未</b>改变 {@code PocketMagnetDriver} 的落点顺序 ——
+     * 落点要真改成"玩家背包优先"，必须给 {@code PocketMagnetDriver}/{@code PocketSession} 新增一条
+     * <b>player-first 且走天然满量拆堆漏斗</b>的落点口（R96 S4b 的 {@code giveToPlayer} 那一族纪律：
+     * 直插 {@code addItemStackToInventory} 的落点数被门 D 钉成恰 3，磁力整堆外运会同时踩 NEI 的
+     * {@code stackSize > 100} 改写与 {@code EntityItem} 的 byte 截断两条破坏面）。
+     * ⇒ 缺口登记在交付报告的遗留项，用例 {@code magnet_config_ui_reaches_enforcement} 里也打一条
+     * ★"[NOTE] …【未验】（不是通过）"，★不靠注释隐含。
+     */
+    public enum Target {
+        /** 口袋内 135 格栏（默认 = R96 P-11 的现状行为：中栏优先，余量进玩家背包）。 */
+        POCKET,
+        /** 玩家主背包 36 格（★配置位在场、执法腿待接，见本枚举的★★段）。 */
+        PLAYER;
+
+        /** 循环到下一档（两档按钮只有这一处用到"循环"这件事）。 */
+        public Target next() {
+            final Target[] all = values();
+            return all[(ordinal() + 1) % all.length];
+        }
+
+        /** 按枚举名安全解析：{@code null}/空/不认识 ⇒ {@code null}（由调用方按缺键 = {@link #POCKET} 处理）。 */
+        public static Target of(String name) {
+            if (name == null || name.isEmpty()) {
+                return null;
+            }
+            for (Target candidate : values()) {
+                if (candidate.name()
+                    .equals(name)) {
+                    return candidate;
+                }
+            }
+            return null;
+        }
+    }
+
     /** 当前三态（默认 {@link Mode#NONE} = 旧档/没配过的天然读法）。 */
     private Mode mode = Mode.NONE;
+    /**
+     * ★R96 S7b：吸取目标两档（默认 {@link Target#POCKET} = 旧档/没配过的天然读法 = R96 P-11 定案后的
+     * 现状行为）。与 {@link #mode} 一样是"配置位"，★不参与条目集合与执法判据。
+     */
+    private Target target = Target.POCKET;
     /**
      * 条目表：{@code (itemId, meta)} 合成一个 long，★{@link LinkedHashSet} 保插入序
      * （S7b 的 72 格按这份顺序渲染，所以<b>不得</b>换成 {@code HashSet}；同
@@ -178,6 +225,33 @@ public final class PocketMagnetFilter {
         return setMode(nextMode());
     }
 
+    /** ★R96 S7b：当前的吸取目标两档。 */
+    public Target target() {
+        return target;
+    }
+
+    /** 两档的服务端读数：下一档是什么（★同 {@link #nextMode()} 的纪律：客户端只发"点了一次"）。 */
+    public Target nextTarget() {
+        return target.next();
+    }
+
+    /**
+     * ★R96 S7b：写口（吸取目标），照 {@link #setMode(Mode)} 的形状：同值 / {@code null} ⇒ {@code false}
+     * ⇒ 调用方不写档。
+     */
+    public boolean setTarget(Target next) {
+        if (next == null || next == target) {
+            return false;
+        }
+        target = next;
+        return true;
+    }
+
+    /** ★R96 S7b：推进到下一档（两档按钮的唯一出口）。@return 本次是否真的改变 */
+    public boolean cycleTarget() {
+        return setTarget(nextTarget());
+    }
+
     /** 条目数（≤{@link PocketConstants#MAGNET_FILTER_SLOTS}）。 */
     public int size() {
         return entries.size();
@@ -188,9 +262,13 @@ public final class PocketMagnetFilter {
         return entries.isEmpty();
     }
 
-    /** 本端是否<b>一个字节都不必落档</b>（{@code NONE} 且零条目 ⇒ {@code writeTo} 走 {@code removeTag}）。 */
+    /**
+     * 本端是否<b>一个字节都不必落档</b>（三态 {@code NONE} + 零条目 + 目标 {@code POCKET} ⇒
+     * {@code writeTo} 走 {@code removeTag}）。★R96 S7b 把吸取目标并进这一判据：那一档的默认值就是
+     * 本特性出现前的行为，默认态不占键 ⇒ 老档的字节形状一字不变。
+     */
     public boolean isDefaultShape() {
-        return mode == Mode.NONE && entries.isEmpty();
+        return mode == Mode.NONE && entries.isEmpty() && target == Target.POCKET;
     }
 
     /**
@@ -434,6 +512,16 @@ public final class PocketMagnetFilter {
                 filter.mode = parsed;
             }
         }
+        // ★R96 S7b：吸取目标两档，读法与上面态名同形（不认识 ⇒ 回落默认档 + 计入丢弃读数）
+        final String rawTarget = domain.getString(PocketConstants.MAGNET_FILTER_TARGET);
+        if (rawTarget != null && !rawTarget.isEmpty()) {
+            final Target parsedTarget = Target.of(rawTarget);
+            if (parsedTarget == null) {
+                dropped++;
+            } else {
+                filter.target = parsedTarget;
+            }
+        }
         final NBTTagList list = domain.getTagList(PocketConstants.MAGNET_FILTER_LIST, TAG_STRING);
         final int read = list.tagCount();
         for (int i = 0; i < read; i++) {
@@ -444,7 +532,7 @@ public final class PocketMagnetFilter {
         filter.readDropped = dropped;
         if (dropped > 0 && droppedWarnedKeys.add(PocketConstants.MAGNET_FILTER)) {
             LOG.warn(
-                "[pocket] 磁力名单（键 {}）有 {} 条没能落进配置（本档共读到 {} 条 + 1 项态名；条目上限 {}）"
+                "[pocket] 磁力名单（键 {}）有 {} 条没能落进配置（本档共读到 {} 条 + 1 项态名 + 1 项目标档；条目上限 {}）"
                     + "——条形态不认识 / itemId 为负 / 超出 {} 格预算的尾部条目已丢弃"
                     + "（外来或形状变更后的旧档；本条只报一次）",
                 PocketConstants.MAGNET_FILTER,
@@ -472,6 +560,10 @@ public final class PocketMagnetFilter {
         final NBTTagCompound domain = new NBTTagCompound();
         if (mode != Mode.NONE) {
             domain.setString(PocketConstants.MAGNET_FILTER_MODE, mode.name());
+        }
+        // ★R96 S7b：吸取目标同一条"非默认才占键"（POCKET = 本特性出现前的行为 ⇒ 不写）
+        if (target != Target.POCKET) {
+            domain.setString(PocketConstants.MAGNET_FILTER_TARGET, target.name());
         }
         if (!entries.isEmpty()) {
             final NBTTagList list = new NBTTagList();

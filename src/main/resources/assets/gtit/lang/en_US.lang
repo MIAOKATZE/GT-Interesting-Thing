@@ -418,6 +418,37 @@ gtit.pocket.config.mode.crystal=Crystallise
 gtit.pocket.config.mode.coin=Cat coin charging
 gtit.pocket.config.mode.transmute=Essence transmuting
 gtit.pocket.config.mode.hint=Turning one of these off stops that passive entirely; Crystallise is off by default - when on, distilled essence leaves as crystals straight into your inventory (dropped at your feet if it is full)
+# ---- ★R96 S7b: magnet tri-state list config surface (mode labels / asymmetry notes / intake target
+# ★two modes / count / clear / cell lines / four refusal lines). Values must carry NO bare ASCII
+# digits (the lang digit ban) — numbers go through %d.
+# ★note.none is one of the two visible faces of "Unlimited keeps the list but stops enforcing it"
+# (the other is the tooltip) — shortening it to just "Unlimited" would change the acceptance criterion.
+gtit.pocket.magnet.mode.none=Unlimited
+gtit.pocket.magnet.mode.white=Whitelist
+gtit.pocket.magnet.mode.black=Blacklist
+gtit.pocket.magnet.mode.hint=Left-click to cycle: Unlimited, Whitelist, Blacklist
+gtit.pocket.magnet.note.none=Unlimited: the list is still here, it just lets everything through
+gtit.pocket.magnet.note.white=Whitelist: only the listed items are pulled, everything else stays
+gtit.pocket.magnet.note.black=Blacklist: listed items are never pulled, everything else still is
+gtit.pocket.magnet.target.pocket=Into the pocket bar
+gtit.pocket.magnet.target.player=Into the player inventory
+gtit.pocket.magnet.target.hint=Left-click cycles the two landing spots: the pocket's own bar, or the player inventory
+gtit.pocket.magnet.count=List %d / %d
+gtit.pocket.magnet.clear=Clear the list
+gtit.pocket.magnet.clear.hint=Erases every entry but keeps the mode (switching to Unlimited does not clear it)
+gtit.pocket.magnet.cell.empty=Empty slot: right-click has nothing to remove here
+gtit.pocket.magnet.cell.remove=Right-click: remove this slot from the list
+gtit.pocket.magnet.cell.number=List slot %d
+gtit.pocket.magnet.gesture=Left-click holding an item records it; dragging from NEI records it the same way and takes nothing
+gtit.pocket.magnet.refuse.no_item=Nothing in hand to record into this slot
+gtit.pocket.magnet.refuse.wrong_button=Only left-click records into the list (right-click removes this slot)
+gtit.pocket.magnet.refuse.locked=No magnet module installed, the list cannot be edited yet
+gtit.pocket.magnet.refuse.full=The list is full; right-click a slot to free one before adding
+gtit.pocket.receipt.magnet.duplicate=That item is already on the list (no need to record it twice)
+gtit.pocket.receipt.magnet.full=The list is full, this entry was not added; free a slot first
+gtit.pocket.receipt.magnet.unparsed=The item identity in that request could not be read; the list was not changed
+gtit.pocket.receipt.magnet.out_of_range=That slot is not on the list (out of range or already removed); nothing changed
+gtit.pocket.receipt.magnet.unchanged=That slot held nothing, so nothing changed
 gtit.pocket.receipt.upgrade.off=Module turned off
 gtit.pocket.receipt.upgrade.on=Module turned on
 gtit.pocket.receipt.upgrade.no_change=Nothing changed, it already was in that state

@@ -37,6 +37,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
+import com.miaokatze.gtit.common.items.pocket.PocketMagnetFilter;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
@@ -197,6 +198,30 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_RECEIPT = "pocket.receipt";
     /** C2S：ghost 就地转换请求（{@code SET|slot|载荷键} / {@code CLR|slot|区域字母}，文法见 {@code PocketGhostRequest}）。 */
     private static final String SYNC_GHOST_REQUEST = "pocket.ghost.request";
+    /**
+     * ★R96 S7b：磁力名单的<b>录入</b>请求 C2S（文法只有一条 {@code ADD|<身份键>}）。
+     * <p>
+     * ★<b>为什么这条不走 {@link #SYNC_ACTION} 那根 int 通道</b>：动作通道的打包式样是
+     * {@code code * ACTION_ARG_BASE(1024) + arg} ⇒ {@code arg < 1024}，而 {@code itemId} 在 GTNH 的注册表里
+     * 常态就过千 ⇒ 装不进去（越界的 arg 会被 {@code onServerAction} 解成<b>另一个码</b>，
+     * 那正是 {@code PocketGhostRequest} 类注释里 CAP 那一段点名过的"落进 default: break 静默失效"）。
+     * ★同一条理由也决定了不复用 {@link #SYNC_GHOST_REQUEST}：那根通道的文法是 ghost 声明域
+     * （{@code SET/CLR/CAP/FLG}），把磁力名单塞进去就是让一条通道服务两个域、两套真相。
+     * ⇒ 单开一根字符串 C2S，形状逐字照 {@link #SYNC_GHOST_REQUEST}（含★客户端 setter 就地被调那一条
+     * R85 N1 守卫）。载荷只有 {@code i:itemId:meta:} 那枚身份键，★一个字 NBT 都不上网络（前提 P-11）。
+     */
+    private static final String SYNC_MAGNET_REQUEST = "pocket.magnet.request";
+    /**
+     * ★R96 S7b：磁力三态名单的<b>配置面</b> S2C 载体（一枚 {@code StringSyncValue}，文法见
+     * {@link #encodeMagnetBlob}）。
+     * <p>
+     * ★用一枚而不是七十二枚：S7a 的预算算术（{@code PocketMagnetFilter} 类注释）给出满档
+     * 864–1800 B，距 {@code StringSyncValue} 的 32693 字节墙（{@code Short.MAX_VALUE-74}）有 ≥18 倍余量
+     * ⇒ 不撞墙，也就不需要 {@code GHOST_BLOB_MAX_CHARS} 那条"未同步条数"预算（★仍然★不嵌 base64 NBT）。
+     * ★也不用 vanilla 槽同步：名单格是 phantom（不进 Container），走的是本仓既有的
+     * {@code StringSyncValue + apply*} 双端对偶形态（与 {@link #SYNC_ESSENCE} 同一条通道形状）。
+     */
+    private static final String SYNC_MAGNET = "pocket.magnet.filter";
     /** C2S：所有按钮/选中动作走这一个键，值 = {@code code * ACTION_ARG_BASE + arg}（单包原子，无两值竞态）。 */
     private static final String SYNC_ACTION = "pocket.action";
     /** 动作参数基数（当前最大 arg = 134 格 / 71 格+Shift 位）。 */
@@ -266,6 +291,26 @@ public final class NekoPocketPanel implements PocketSession {
      * <b>面板里那枚开关按钮</b>上，且执行体在服务端。
      */
     private static final int ACTION_UPGRADE_SWITCH = 12;
+    /**
+     * ★R96 S7b：磁力名单的四条<b>无载荷</b>写腿（★都只发"我点了一次"，真值全在服务端算）。
+     * <p>
+     * ★为什么不把"加一条"也放进来：加条的载荷是那枚 {@code i:itemId:meta:} 身份键，越不出
+     * {@code arg < 1024} 的形状 ⇒ 走 {@link #SYNC_MAGNET_REQUEST}（理由逐字写在那一枚常量的注释里）。
+     * ★编号接续 14…17，不重排既有码值（动作码是双端同树的常量，留洞比平移安全，同 R93-① 那条）。
+     * ★★TP-S7c 合并改口：S7b 当时写的是"接续 13…16"，而 master 侧 S9b 已把 <b>13 判给了
+     * {@link #ACTION_UPGRADE_MODE}</b>（两侧各自都对，合成即撞码 = 同一 case 标签编译不过）。
+     * 让位的是<b>未验证、未交付</b>的 S7b 四腿（平移 14→15、15→16、16→17、13→14）：S7b 从未以
+     * 任何码值出过包，双端同树 ⇒ 平移零兼容成本；S9b 的 13 已随 master 收口并被用例
+     * （mage_config_panel_mode_codec_and_commit_leg 的"与开关码不同值"那条）钉死 ⇒ 不动。
+     */
+    /** 三态循环（{@code NONE → WHITELIST → BLACKLIST → NONE}，无 arg）。 */
+    private static final int ACTION_MAGNET_MODE_CYCLE = 14;
+    /** 吸取目标两档循环（{@code POCKET → PLAYER → POCKET}，无 arg）。 */
+    private static final int ACTION_MAGNET_TARGET_CYCLE = 15;
+    /** 清空名单（★只抹条目、★不动三态，与"切到无限制"是两件事；无 arg）。 */
+    private static final int ACTION_MAGNET_CLEAR = 16;
+    /** 按格号摘一条（arg = 格号 0…71，★服务端用现读的那条键，不吃客户端抄上来的键）。 */
+    private static final int ACTION_MAGNET_REMOVE_AT = 17;
 
     /**
      * ★R96 S9b（P-3 的续）：配置面板<b>魔法使挂载框</b>里那三行模式控件的唯一出口——arg 的编解码单源在
@@ -329,6 +374,16 @@ public final class NekoPocketPanel implements PocketSession {
      */
     private final NekoPocketFluidSlot[] fluidSlots = new NekoPocketFluidSlot[PocketConstants.GHOST_FLUID_SLOT_LIMIT];
     private final NekoEssenceGhostCell[] essenceCells = new NekoEssenceGhostCell[PocketConstants.GHOST_ESSENCE_SLOT_LIMIT];
+    /**
+     * ★R96 S7b：磁力名单 72 格（12×6）的格件登记表（★phantom 侧，<b>不进 Container</b> ⇒ 守恒 225 一字不动）。
+     * <p>
+     * 与上面三组同一机制：长度恒定为 {@code MAGNET_FILTER_SLOTS}、装配序固定 ⇒ 数据变化只原位换内容层
+     * （R41b/R32），不会因为"名单多了三条"而在 widget 树上长出或缩掉节点。
+     * ★这些实例由<b>次级</b>配置面板装配（{@code PocketConfigPanel#magnetGrid}），而次级面板在纯 JVM 里造不出来，
+     * 所以登记表可能一直是空的 ⇒ {@link #applyMagnetCells()} 必须容忍 {@code null} 项（★不允许 NPE，
+     * 也不允许"没登记就抛"把主面板装配带崩）。
+     */
+    private final NekoMagnetGhostCell[] magnetCells = new NekoMagnetGhostCell[PocketConstants.MAGNET_FILTER_SLOTS];
 
     // ---- 客户端显示缓存（S2C 写入；服务端不读）----
     //
@@ -375,6 +430,34 @@ public final class NekoPocketPanel implements PocketSession {
     private final PocketFilterConfig clientGhostFlags = new PocketFilterConfig();
     /** 属性 blob 的上行原文（与 {@link #ghostBlob} 同一条"变了才应用"去重口径）。 */
     private String ghostFlagsBlob = "";
+    // ---- ★R96 S7b：磁力三态名单的两份轨（客户端镜像 + 服务端快照；★一根通道一个所有者）----
+    //
+    // ★为什么客户端要一份镜像而不是现读 inventory：名单住在<b>载体栈的根 NBT</b>（键 magnetFilter），
+    // 而 {@code inventory} 那份只是开屏快照 + 关屏写回 —— 拿它当读数就是 R39b/R19 明令的"客户端推断服务端
+    // 事实"。镜像只由 {@link #applyMagnetBlob(String)} 写、只经 {@link #magnetMode()} 那一组访问器读，
+    // 与 {@link #clientGhostFlags} 完全同形（一根通道一个所有者）。
+    /** 客户端镜像：三态（★空档 = {@code NONE} = "没配过"那一态）。 */
+    private PocketMagnetFilter.Mode clientMagnetMode = PocketMagnetFilter.Mode.NONE;
+    /** 客户端镜像：吸取目标两档（★空档 = {@code POCKET} = 现状行为）。 */
+    private PocketMagnetFilter.Target clientMagnetTarget = PocketMagnetFilter.Target.POCKET;
+    /**
+     * 客户端镜像：72 格的身份键，★下标 = 格号 = 服务端 {@code LinkedHashSet} 的插入序位置
+     * （排序由服务端算并随 {@link #SYNC_MAGNET} 下发，★客户端绝不按字符串自己排一遍 —— 那就是 R32 的
+     * "两端各算各的序"）。空位是 {@code null}。
+     */
+    private final String[] clientMagnetKeys = new String[PocketConstants.MAGNET_FILTER_SLOTS];
+    /** 客户端镜像：名单条数（★读数是服务端算好带下来的，不是 {@code clientMagnetKeys} 的非空计数）。 */
+    private int clientMagnetCount;
+    /** 客户端镜像的上行原文（★与 {@link #ghostBlob} 同一条"变了才应用"去重口径，也是同步 getter 的客户端回值）。 */
+    private String clientMagnetBlob = "";
+    /**
+     * ★服务端侧的<b>上次算好的串</b>（同步 getter 的返回值）。名单的唯一写点在
+     * {@code NekoPocketServerHandler}，所以这里由 {@link #refreshMagnetSnapshot()} 在<b>变更后</b>重算，
+     * 而不是每 tick 解一遍 NBT —— 与 {@code composeEssenceBlob} 的 R85 P2 缓存同一动机。
+     * ★另带载体身份比对做兜底（{@link #magnetSnapshotCarrier}）：换栈即重算，不留陈旧串。
+     */
+    private String serverMagnetBlob = "";
+    private ItemStack magnetSnapshotCarrier;
     /**
      * ★R85 N3：最近一次 blob 里<b>真正解析成功</b>的声明条数（客户端专用；服务端恒 0，但服务端不出图）。
      * 存在的唯一理由是 {@link #ghostNotSyncedCount()} 需要它当减数——blob 被长度预算截断时，
@@ -424,6 +507,9 @@ public final class NekoPocketPanel implements PocketSession {
         }
         essenceUnplaced = inventory.essence()
             .unplacedTagCount();
+        // ★R96 S7b：磁力名单的两份轨从<b>同一枚载体 NBT</b>播种（服务端那份是权威、客户端那份是 vanilla
+        // 同步过来的镜像，开屏时二者逐字节相同 ⇒ 起点一致；之后的每一次变化只由服务端推，见 composeMagnetBlob）。
+        seedMagnetTracks();
         // ★R87-f：声明保格谓词（查询式直查现役声明表）：源质清零时声明中的 tag 保留格位；null = 与 R86 逐字一致。
         inventory.essence()
             .setDeclaredTagProbe(tag -> PocketEssenceIntake.isDeclaredEssenceTag(filters(), tag));
@@ -567,6 +653,13 @@ public final class NekoPocketPanel implements PocketSession {
         // 因此单开一根字符串 C2S；**执行体在服务端**（R18/R19），客户端那份 setter 由入口守卫挡掉
         // （★旧注释"从不被调用"是错的：setValue 的 setSource 默认 true ⇒ 客户端确实会被调一次）。
         syncManager.syncValue(SYNC_GHOST_REQUEST, new StringSyncValue(() -> "", this::receiveGhostRequest).allowC2S());
+        // ★R96 S7b：磁力名单的配置面轨（S2C 一枚 + C2S 一枚，形状逐字照上面 SYNC_GHOST / SYNC_GHOST_REQUEST）。
+        // ★枚数刻意是"名单整体一枚"而不是"每格一枚"：S7a 的预算算术给出满档 ≤1800 B（距 32693 墙 ≥18 倍），
+        // 而每格一枚会长出 72 个同步键、72 次 cache 比对 ⇒ 同一件事的两条轨道里只留一条。
+        syncManager.syncValue(SYNC_MAGNET, new StringSyncValue(this::composeMagnetBlob, this::applyMagnetBlob));
+        syncManager.syncValue(
+            SYNC_MAGNET_REQUEST,
+            new StringSyncValue(() -> "", this::receiveMagnetRequest).allowC2S());
     }
 
     /**
@@ -629,6 +722,347 @@ public final class NekoPocketPanel implements PocketSession {
         }
         ServerTaskScheduler.scheduleServerTask(() -> server.onServerGhostRequest(request));
     }
+
+    // ======================================================================================
+    // ★R96 S7b · 磁力三态名单的<b>配置面轨</b>（同步载体 / 编解码 / 客户端镜像 / 请求腿 / 格件登记）
+    //
+    // 分工逐字照 ghost 那一族（★同一形状不留第二份）：<b>判定与落档全在
+    // {@link NekoPocketServerHandler} 的 {@code performMagnet*} 里</b>（S7a 已交付执行体），
+    // 本段只做三件事：① 把服务端那一份名单编码成一枚字符串下发（{@link #SYNC_MAGNET}）；
+    // ② 把客户端那一份镜像交给格件与读数（★客户端一个字节都不写）；③ 把玩家手势换成一条请求。
+    // ======================================================================================
+
+    /**
+     * 名单 → 同步串（★单枚 {@code StringSyncValue}，预算见 {@code PocketMagnetFilter} 类注释：
+     * 满档 ≤1800 B，距 32693 字节墙 ≥18 倍余量）。
+     * <p>
+     * 文法：{@code <态字母><目标字母>|<键0>,<键1>,…}，键就是 {@link PocketMagnetFilter#itemKey(int, int)}
+     * 那枚 {@code i:itemId:meta:}（★逗号与竖线都不出现在键里 ⇒ 分段无歧义；同
+     * {@code PocketGhostRequest} 对载荷键的那条论证）。
+     * <ul>
+     * <li>态字母：{@code N}=无限制 / {@code W}=白名单 / {@code B}=黑名单；</li>
+     * <li>目标字母：{@code K}=口袋 135 格栏 / {@code P}=玩家主背包 36 格；</li>
+     * <li>★键的<b>顺序</b>就是 {@code PocketMagnetFilter} 里 {@code LinkedHashSet} 的插入序 ⇒ 面板的格序
+     * 由服务端定，客户端不重排（R32）。空名单 ⇒ 竖线后一段都没有。</li>
+     * </ul>
+     */
+    public static String encodeMagnetBlob(PocketMagnetFilter filter) {
+        final StringBuilder builder = new StringBuilder(64 + PocketConstants.MAGNET_FILTER_SLOTS * 16);
+        builder.append(magnetModeLetter(filter == null ? PocketMagnetFilter.Mode.NONE : filter.mode()));
+        builder.append(magnetTargetLetter(filter == null ? PocketMagnetFilter.Target.POCKET : filter.target()));
+        builder.append('|');
+        if (filter != null) {
+            boolean first = true;
+            for (String key : filter.entryKeys()) {
+                if (!first) {
+                    builder.append(',');
+                }
+                builder.append(key);
+                first = false;
+            }
+        }
+        return builder.toString();
+    }
+
+    /** 三态 → 字母（★单源：编码与解码都走这里，不留两份对照表）。 */
+    public static char magnetModeLetter(PocketMagnetFilter.Mode mode) {
+        return mode == PocketMagnetFilter.Mode.WHITELIST
+            ? 'W'
+            : mode == PocketMagnetFilter.Mode.BLACKLIST ? 'B' : 'N';
+    }
+
+    /** 吸取目标 → 字母（同上，单源）。 */
+    public static char magnetTargetLetter(PocketMagnetFilter.Target target) {
+        return target == PocketMagnetFilter.Target.PLAYER ? 'P' : 'K';
+    }
+
+    /** {@link #encodeMagnetBlob} 的产物（★字段直读，用例据此断言"畸形串不会把读数抹成空"）。 */
+    public static final class MagnetView {
+
+        public final PocketMagnetFilter.Mode mode;
+        public final PocketMagnetFilter.Target target;
+        /** 长度恒 = {@code cells}（★格数不随数据伸缩 ⇒ widget 树恒定）；空位是 {@code null}。 */
+        public final String[] keys;
+        public final int count;
+        /** ★头部不合法 / 缺竖线 ⇒ {@code true}（调用方必须<b>保留上一份镜像</b>并说话，不许抹成空）。 */
+        public final boolean malformed;
+
+        MagnetView(PocketMagnetFilter.Mode mode, PocketMagnetFilter.Target target, String[] keys, int count,
+            boolean malformed) {
+            this.mode = mode;
+            this.target = target;
+            this.keys = keys;
+            this.count = count;
+            this.malformed = malformed;
+        }
+
+        static MagnetView malformed(int cells) {
+            return new MagnetView(PocketMagnetFilter.Mode.NONE, PocketMagnetFilter.Target.POCKET,
+                new String[cells], 0, true);
+        }
+    }
+
+    /**
+     * 同步串 → 视图。★越界/畸形一律给 {@link MagnetView#malformed}，<b>不抛</b>（外来包不该炸掉界面），
+     * 也<b>不静默当成空名单</b>（{@code applyMagnetBlob} 据此保留上一份并打日志）。
+     * 超出 {@code cells} 的尾部键被丢弃并计入 {@code count} ⇒ 读数是"服务端一共几条"，与盘面格数分离。
+     */
+    public static MagnetView decodeMagnetBlob(String blob, int cells) {
+        if (blob == null || blob.length() < 2 || blob.charAt(1) != '|') {
+            return MagnetView.malformed(cells);
+        }
+        final PocketMagnetFilter.Mode mode = magnetModeOfBlobLetter(blob.charAt(0));
+        final PocketMagnetFilter.Target target = magnetTargetOfBlobLetter(blob.charAt(1));
+        if (mode == null || target == null) {
+            return MagnetView.malformed(cells);
+        }
+        final String[] keys = new String[cells];
+        final String tail = blob.substring(2);
+        int count = 0;
+        if (!tail.isEmpty()) {
+            final String[] parts = tail.split(",");
+            for (String part : parts) {
+                if (PocketMagnetFilter.parseEntry(part) == null) {
+                    // ★单条解不出 = 整串不认识（自家编码器不会产出这种东西）⇒ 按畸形处理，不半收半丢
+                    return MagnetView.malformed(cells);
+                }
+                if (count < cells) {
+                    keys[count] = part;
+                }
+                count++;
+            }
+        }
+        return new MagnetView(mode, target, keys, count, false);
+    }
+
+    /** 字母 → 三态（不认识 ⇒ {@code null}，由 {@link #decodeMagnetBlob} 折成畸形视图）。 */
+    public static PocketMagnetFilter.Mode magnetModeOfBlobLetter(char letter) {
+        if (letter == 'W') {
+            return PocketMagnetFilter.Mode.WHITELIST;
+        }
+        return letter == 'B' ? PocketMagnetFilter.Mode.BLACKLIST : letter == 'N' ? PocketMagnetFilter.Mode.NONE : null;
+    }
+
+    /** 字母 → 吸取目标两档（同上）。 */
+    public static PocketMagnetFilter.Target magnetTargetOfBlobLetter(char letter) {
+        return letter == 'P'
+            ? PocketMagnetFilter.Target.PLAYER
+            : letter == 'K' ? PocketMagnetFilter.Target.POCKET : null;
+    }
+
+    /**
+     * 同步 getter（★双端都会被调，同 {@link #composeEssenceBlob} 那一条 R85 P2 口径）：
+     * 服务端<b>不每 tick 解 NBT</b> —— 名单的唯一写点在 handler，写完后调
+     * {@link #invalidateMagnetSnapshot()}，于是这一格只在"真变过 / 换了载体"时重算一次。
+     */
+    private String composeMagnetBlob() {
+        if (syncManager.isClient()) {
+            return clientMagnetBlob;
+        }
+        final ItemStack carrier = carrierStackLive();
+        if (carrier != magnetSnapshotCarrier || serverMagnetBlob == null) {
+            magnetSnapshotCarrier = carrier;
+            serverMagnetBlob = encodeMagnetBlob(
+                PocketMagnetFilter.readFrom(carrier == null ? null : carrier.getTagCompound()));
+        }
+        return serverMagnetBlob;
+    }
+
+    /** 服务端：让快照失效（★名单唯一的写点 {@code commitMagnetFilter} 之后必须调，漏调 = 客户端永远看不到变化）。 */
+    void invalidateMagnetSnapshot() {
+        magnetSnapshotCarrier = null;
+        serverMagnetBlob = null;
+    }
+
+    /**
+     * 客户端：把服务端下发的名单换进镜像，再<b>原位</b>刷 72 格内容层（★格数与树都不变，R41b/R32）。
+     * <p>
+     * ★畸形支<b>保留上一份</b>并打一条 debug：把读数抹成"名单空了"是谎报，而留着旧值至少还是
+     * 上一次的真话（同 {@code PocketMagnetFilter#readFrom} 那条"不静默、不炸档"的裁定）。
+     */
+    private void applyMagnetBlob(String blob) {
+        if (!syncManager.isClient()) {
+            return;
+        }
+        final MagnetView view = decodeMagnetBlob(blob, clientMagnetKeys.length);
+        if (view.malformed) {
+            GTInterestingThing.LOG.debug("[pocket] 磁力名单同步串不认识，保留上一份镜像：{}", blob);
+            return;
+        }
+        clientMagnetBlob = blob == null ? "" : blob;
+        clientMagnetMode = view.mode;
+        clientMagnetTarget = view.target;
+        clientMagnetCount = view.count;
+        System.arraycopy(view.keys, 0, clientMagnetKeys, 0, clientMagnetKeys.length);
+        applyMagnetCells();
+    }
+
+    /** ★开屏播种：双端都从<b>同一枚载体 NBT</b>出发（之后每一次变化都由服务端推 ⇒ 不存在两端各算各的）。 */
+    private void seedMagnetTracks() {
+        final PocketMagnetFilter seeded = PocketMagnetFilter
+            .readFrom(pocket == null ? null : pocket.getTagCompound());
+        final String blob = encodeMagnetBlob(seeded);
+        serverMagnetBlob = blob;
+        magnetSnapshotCarrier = pocket;
+        final MagnetView view = decodeMagnetBlob(blob, clientMagnetKeys.length);
+        clientMagnetBlob = blob;
+        clientMagnetMode = view.mode;
+        clientMagnetTarget = view.target;
+        clientMagnetCount = Math.min(view.count, clientMagnetKeys.length);
+        System.arraycopy(view.keys, 0, clientMagnetKeys, 0, clientMagnetKeys.length);
+    }
+
+    /** 72 格内容层的原位刷新（登记表可能为空：次级面板尚未装配 ⇒ 逐项判空，★不抛）。 */
+    void applyMagnetCells() {
+        for (int index = 0; index < magnetCells.length; index++) {
+            final NekoMagnetGhostCell widget = magnetCells[index];
+            if (widget != null) {
+                widget.setEntryKey(clientMagnetKeys[index]);
+            }
+        }
+    }
+
+    /** 名单格件的登记（次级面板装配期逐格调，★只在客户端发生；下标 = 格号 = 插入序位置）。 */
+    void trackMagnetCell(int index, NekoMagnetGhostCell widget) {
+        if (index >= 0 && index < magnetCells.length) {
+            magnetCells[index] = widget;
+        }
+    }
+
+    /**
+     * 第 {@code index} 格的身份键（★双端：服务端现读档、客户端读镜像；越界 ⇒ {@code null}）。
+     * <p>
+     * 与 {@link #tankAmountTruth(int)} 同一条双源纪律 —— ★不在客户端读 {@code inventory}（那份只是开屏快照）。
+     */
+    String magnetEntryKeyAt(int index) {
+        if (index < 0 || index >= clientMagnetKeys.length) {
+            return null;
+        }
+        if (syncManager.isClient()) {
+            return clientMagnetKeys[index];
+        }
+        final java.util.List<String> keys = magnetFilterNow()
+            .entryKeys();
+        return index < keys.size() ? keys.get(index) : null;
+    }
+
+    /** 三态读数（双源，同 {@link #magnetEntryKeyAt(int)}）。 */
+    PocketMagnetFilter.Mode magnetMode() {
+        return syncManager.isClient() ? clientMagnetMode : magnetFilterNow()
+            .mode();
+    }
+
+    /** 吸取目标两档读数（双源）。 */
+    PocketMagnetFilter.Target magnetTarget() {
+        return syncManager.isClient() ? clientMagnetTarget : magnetFilterNow()
+            .target();
+    }
+
+    /** 名单条数读数（★服务端那条是权威条数，不是客户端非空格的计数）。 */
+    int magnetEntryCount() {
+        return syncManager.isClient() ? clientMagnetCount : magnetFilterNow()
+            .size();
+    }
+
+    /** 服务端现读那一份名单（★只在服务端出图路径之外被问：本方法解一次 NBT，客户端永不调它）。 */
+    private PocketMagnetFilter magnetFilterNow() {
+        final ItemStack carrier = carrierStackLive();
+        return PocketMagnetFilter.readFrom(carrier == null ? null : carrier.getTagCompound());
+    }
+
+    /** 玩家游标栈（★只读；磁力那条腿<b>绝不</b>清它，理由见 {@link NekoMagnetGhostCell} 类注释★★段 2）。 */
+    ItemStack magnetCursorStack() {
+        return syncManager.getCursorItem();
+    }
+
+    /**
+     * 磁力栏是否可编辑（★未固化 ⇒ 灰显且不收任何手势，与 R31"整栏灰显不隐藏"同一条口径）。
+     * <p>
+     * ★这里刻意<b>不</b>用"开关是否开着"当判据：开关关掉时名单仍然应当能配（玩家就是不想吸的时候来改名单），
+     * 而"有没有这一型"才是"这块面板有没有这一栏"的判据 —— 读的是 S2 那条三态读数口（同一份真相）。
+     */
+    boolean magnetEditable() {
+        return upgradeSwitchState(PocketUpgradeType.MAGNET) != PocketConfigPanel.SwitchState.ABSENT;
+    }
+
+    // ------------------------------------------- 客户端请求腿（★一个字节都不写档，只发码/发键）
+
+    /** ★三态循环按钮的唯一出口（发码；目标态由服务端读现态 {@code next()} 推 ⇒ 伪造包跳不到指定态）。 */
+    boolean requestMagnetModeCycle() {
+        return sendAction(ACTION_MAGNET_MODE_CYCLE, 0);
+    }
+
+    /** ★吸取目标两档按钮的唯一出口（发码，同上）。 */
+    boolean requestMagnetTargetCycle() {
+        return sendAction(ACTION_MAGNET_TARGET_CYCLE, 0);
+    }
+
+    /** ★清空名单按钮的唯一出口（发码；★只抹条目、不动三态）。 */
+    boolean requestMagnetClear() {
+        return sendAction(ACTION_MAGNET_CLEAR, 0);
+    }
+
+    /** ★按格号摘一条（arg = 格号；★服务端用它自己那份键，不吃客户端抄上来的键，R18/R19）。 */
+    boolean requestMagnetEntryRemoveAt(int index) {
+        return index >= 0 && index < PocketConstants.MAGNET_FILTER_SLOTS
+            && sendAction(ACTION_MAGNET_REMOVE_AT, index);
+    }
+
+    /**
+     * ★加一条名单（NEI 拖入 / 游标持物点格两条手势共用的唯一出口）。
+     * <p>
+     * ★客户端在这里<b>不</b>判"名单满不满"、也<b>不</b>判"这条在不在里面"（那是服务端
+     * {@code PocketMagnetFilter#addEntry} 的活），本方法的判据只有"键解不解得出"，
+     * 而那个判据住在 {@link NekoMagnetGhostCell#identityKeyOf} 那一条纯函数里（两条手势共读一份）。
+     * ★★发完<b>不动游标、不动原件件数</b>（本片验收 2 的两条相反语义，逐字写在格件类注释）。
+     */
+    boolean requestMagnetEntryAdd(String key) {
+        if (key == null || key.isEmpty()) {
+            return false;
+        }
+        final String request = magnetAddRequest(key);
+        if (syncManager.isClient()) {
+            syncManager.findSyncHandler(SYNC_MAGNET_REQUEST, StringSyncValue.class)
+                .setValue(request);
+        } else {
+            server.onServerMagnetRequest(request);
+        }
+        return true;
+    }
+
+    /** 请求文法的拼装（★单源：客户端发与服务端解读的是同一条式子，同 {@code PocketGhostRequest.setRequest}）。 */
+    public static String magnetAddRequest(String key) {
+        return MAGNET_REQUEST_ADD + '|' + key;
+    }
+
+    /** 请求文法里"加一条"的操作码。 */
+    private static final String MAGNET_REQUEST_ADD = "ADD";
+
+    /**
+     * ★服务端：解 {@link #MAGNET_REQUEST_ADD} 那条请求的键段。
+     * 不认识（缺操作码 / 段数不对 / 键解不出）⇒ 空串，调用方丢弃这条包并回一条说法（★不静默）。
+     */
+    public static String magnetAddKeyOf(String request) {
+        if (request == null) {
+            return "";
+        }
+        final int bar = request.indexOf('|');
+        if (bar <= 0 || !request.substring(0, bar)
+            .equals(MAGNET_REQUEST_ADD)) {
+            return "";
+        }
+        final String key = request.substring(bar + 1);
+        return PocketMagnetFilter.parseEntry(key) == null ? "" : key;
+    }
+
+    /** 见 {@link #receiveGhostRequest(String)} 的同一条 R85 N1 客户端守卫：allowC2S 的 setter 双端都被调。 */
+    private void receiveMagnetRequest(String request) {
+        if (syncManager.isClient()) {
+            return;
+        }
+        ServerTaskScheduler.scheduleServerTask(() -> server.onServerMagnetRequest(request));
+    }
+
 
     // ------------------------------------------------------------------ 访问器（列类共用）
 
@@ -1099,6 +1533,22 @@ public final class NekoPocketPanel implements PocketSession {
                 // ★R96 S9b：模式位的唯一服务端落点，形状与上面那条开关腿逐字同构（★同一条可达链纪律：
                 // 客户端只发码 ⇒ 服务端才写档；解越归 PocketConfigPanel.modeRowOfArg，判据归 handler）。
                 server.performUpgradeModeToggle(arg);
+                break;
+            case ACTION_MAGNET_MODE_CYCLE:
+                // ★R96 S7b：三态循环按钮。本 case 与下面三条都是那条"静态可达链"的<b>中间一跳</b>：
+                // 上面（格件/按钮的 onMousePressed）与下面（handler 的 performMagnet* 写口）任一侧断链，
+                // 玩家点到的就是一块画出来的死控件（R57/C3 那一族"全绿但什么都没发生"）。
+                server.performMagnetModeCycle();
+                break;
+            case ACTION_MAGNET_TARGET_CYCLE:
+                server.performMagnetTargetCycle();
+                break;
+            case ACTION_MAGNET_CLEAR:
+                server.performMagnetClearEntries();
+                break;
+            case ACTION_MAGNET_REMOVE_AT:
+                // ★arg = 玩家<b>实点的那一格</b>；键由服务端按自己那份插入序取（R18/R19：不吃客户端抄上来的键）
+                server.performMagnetEntryRemoveAt(arg);
                 break;
             default:
                 break;

@@ -832,9 +832,11 @@ final class NekoPocketServerHandler {
     // ------------------------------------------- ★R96 S7a · 磁力三态名单的服务端写口
 
     /**
-     * ★磁力名单（{@link PocketMagnetFilter}）的<b>唯一</b>服务端写口 —— 本切片只提供<b>执行体</b>：
-     * 72 格格件、NEI/背包拖入、三态循环按钮与面板挂载全在 <b>S7b</b>（★刻意不留 TODO 占位，也不接任何
-     * C2S 入口，S7b 的 widget 按 {@code perform*} 的既存形状一行委托过来即可）。
+     * ★磁力名单（{@link PocketMagnetFilter}）的<b>唯一</b>服务端写口 —— S7a 交付的是<b>执行体</b>，
+     * ★R96 S7b 已把它接上 C2S：四条无载荷腿走 {@code SYNC_ACTION}（三态循环 / 目标两档 / 清空 / 按格号摘），
+     * 带载荷的那一条（NEI 拖入与游标持物点格共用的"加一条"）走 {@link #onServerMagnetRequest(String)}
+     * （★身份键越不出 {@code arg < 1024} 的形状，理由逐字写在
+     * {@code NekoPocketPanel#SYNC_MAGNET_REQUEST} 的注释里）。
      * <p>
      * <b>三条与 ghost 写口同源的纪律</b>（{@link #onServerGhostRequest}）：
      * <ol>
@@ -870,11 +872,91 @@ final class NekoPocketServerHandler {
     /** ★加一条名单条目（键串入参，见 {@link #performMagnetModeCycle} 的纪律 2）。@return 本次是否真的改变 */
     boolean performMagnetEntryAdd(String key) {
         final PocketMagnetFilter filter = magnetFilterToEdit();
-        if (filter == null || !filter.addEntryKey(key)) {
+        if (filter == null) {
+            return false;
+        }
+        if (!filter.addEntryKey(key)) {
+            // ★三种拒绝各有各的说法（重复 / 已满 / 键不认识），并成一句就是让玩家自己试（同 S2 那六条回执）
+            panel.putReceipt(magnetAddRefusalKey(filter, key), 0);
             return false;
         }
         commitMagnetFilter(filter);
         return true;
+    }
+
+    /**
+     * ★R96 S7b：按<b>格号</b>摘一条（右键点的那一格）。
+     * <p>
+     * ★为什么吃格号而不是键：格号是"玩家实点的那一格"这个手势锚点，而<b>那一格现在装的是哪条</b>
+     * 只有服务端那份 {@code LinkedHashSet} 的插入序说了算（与 ghost 的 {@code CLR|<格号>|<区域>}、
+     * 源质入槽的 {@code arg = 格号} 同一条 R18/R19 纪律 ⇒ ★客户端一个字的内容都不抄上来）。
+     * 越界 ⇒ {@code false} 且不写档（★伪造包最多让自己的名单少一条，改不到别人）。
+     */
+    boolean performMagnetEntryRemoveAt(int index) {
+        final PocketMagnetFilter filter = magnetFilterToEdit();
+        if (filter == null) {
+            return false;
+        }
+        if (!filter.removeAt(index)) {
+            panel.putReceipt(
+                index < 0 || index >= filter.size() ? MAGNET_RECEIPT_OUT_OF_RANGE : MAGNET_RECEIPT_UNCHANGED,
+                0);
+            return false;
+        }
+        commitMagnetFilter(filter);
+        return true;
+    }
+
+    /** ★R96 S7b：吸取目标两档循环（★同 {@link #performMagnetModeCycle}：客户端只发"点了一次"，下一档服务端推）。 */
+    boolean performMagnetTargetCycle() {
+        final PocketMagnetFilter filter = magnetFilterToEdit();
+        if (filter == null || !filter.cycleTarget()) {
+            return false;
+        }
+        commitMagnetFilter(filter);
+        return true;
+    }
+
+    /** 三条"加不进去"的区分（★重复 ≠ 已满 ≠ 键不认识：并成一条就是假读数）。 */
+    private static final String MAGNET_RECEIPT_DUPLICATE = "gtit.pocket.receipt.magnet.duplicate";
+    private static final String MAGNET_RECEIPT_FULL = "gtit.pocket.receipt.magnet.full";
+    private static final String MAGNET_RECEIPT_UNPARSED = "gtit.pocket.receipt.magnet.unparsed";
+    private static final String MAGNET_RECEIPT_OUT_OF_RANGE = "gtit.pocket.receipt.magnet.out_of_range";
+    private static final String MAGNET_RECEIPT_UNCHANGED = "gtit.pocket.receipt.magnet.unchanged";
+
+    /** {@link #performMagnetEntryAdd} 的拒收分档：判据全部回读 {@link PocketMagnetFilter} 的既有谓词，★不抄第二份。 */
+    private String magnetAddRefusalKey(PocketMagnetFilter filter, String key) {
+        final long[] parsed = PocketMagnetFilter.parseEntry(key);
+        if (parsed == null) {
+            return MAGNET_RECEIPT_UNPARSED;
+        }
+        if (filter != null && filter.size() >= PocketConstants.MAGNET_FILTER_SLOTS
+            && !filter.entryKeys()
+                .contains(PocketMagnetFilter.itemKey((int)parsed[0], (int)parsed[1]))) {
+            return MAGNET_RECEIPT_FULL;
+        }
+        return MAGNET_RECEIPT_DUPLICATE;
+    }
+
+    /**
+     * ★R96 S7b：磁力名单的<b>带载荷</b>写腿入口（NEI 拖入 / 游标持物点格两条手势共用的那一条 C2S）。
+     * <p>
+     * 形状逐字照 {@link #onServerGhostRequest}：守卫在前 → 解请求 → 写腿在后（★判序即判据）。
+     * 文法只有一条 {@code ADD|<身份键>}，解不出 ⇒ ★丢弃这条包并回一条说法（伪造包最多往自己口袋里
+     * 写 ≤72 条身份键，同 {@link #performMagnetModeCycle} 那段防伪口径）。
+     */
+    void onServerMagnetRequest(String request) {
+        if (panel.syncManager()
+            .isClient() || !serverGuardOk()) {
+            return;
+        }
+        final String key = NekoPocketPanel.magnetAddKeyOf(request);
+        if (key.isEmpty()) {
+            // 文法不认识（含跨域打错操作码）：不写档，只给一条说法
+            panel.putReceipt(MAGNET_RECEIPT_UNPARSED, 0);
+            return;
+        }
+        performMagnetEntryAdd(key);
     }
 
     /** ★按键摘一条（同键两条不可能存在：条目集合按身份去重）。@return 本次是否真的改变 */
@@ -912,7 +994,14 @@ final class NekoPocketServerHandler {
         return carrier == null ? null : PocketMagnetFilter.readFrom(carrier.getTagCompound());
     }
 
-    /** 名单写口的公共后段：落回载体栈根层 + 置脏（★只在真改变时被调）。 */
+    /**
+     * 名单写口的公共后段：落回载体栈根层 + 置脏（★只在真改变时被调）。
+     * <p>
+     * ★R96 S7b 补第三件事：<b>让面板那份同步快照失效</b>（{@code NekoPocketPanel#invalidateMagnetSnapshot}）。
+     * 名单格的显示走 {@code SYNC_MAGNET} 那一枚 {@code StringSyncValue}，而同步 getter 为了不做"每 tick
+     * 解一遍 NBT"（R85 P2 同一条成本口径）读的是<b>缓存串</b> ⇒ 写完之后必须显式作废它，
+     * 否则玩家点了半天盘面一格不动、tooltip 永远念旧名单 —— 那正是本片验收 1 要防的"画了控件没接线"。
+     */
     private void commitMagnetFilter(PocketMagnetFilter filter) {
         final ItemStack carrier = panel.pocketStack();
         if (carrier == null) {
@@ -925,6 +1014,7 @@ final class NekoPocketServerHandler {
             carrier.setTagCompound(root);
         }
         filter.writeTo(root);
+        panel.invalidateMagnetSnapshot();
         markDirty();
     }
 

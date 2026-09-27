@@ -412,6 +412,36 @@ gtit.pocket.config.mode.crystal=结晶模式
 gtit.pocket.config.mode.coin=猫猫币充能
 gtit.pocket.config.mode.transmute=源质转换
 gtit.pocket.config.mode.hint=关掉这一条 ⇒ 该被动一分都不动；结晶模式默认关，开着时蒸馏出的源质会直接以晶的形态进背包（背包满则掉到脚下）
+# ---- ★R96 S7b 新增：磁力三态名单的配置面（三态标签 / 不对称说明 / 吸取目标两档 / 计数 / 清空 /
+# ★格件与四条拒收支）。值内★不得出现 ASCII 裸数字（门禁的 lang 数字禁令）⇒ 需要数字的走 %d。
+# ★note.none 那一句是「无限制保留名单但不生效」这条不对称的两个可见面之一（另一个在 tooltip），
+# ★改它等于改验收判据，不许顺手精简成「无限制」三个字。
+gtit.pocket.magnet.mode.none=无限制
+gtit.pocket.magnet.mode.white=白名单
+gtit.pocket.magnet.mode.black=黑名单
+gtit.pocket.magnet.mode.hint=左键循环：无限制 → 白名单 → 黑名单
+gtit.pocket.magnet.note.none=无限制：名单仍在这里，只是当前一律放行
+gtit.pocket.magnet.note.white=白名单：只吸名单里的那些，名单外不吸
+gtit.pocket.magnet.note.black=黑名单：名单里的一律不吸，其余照吸
+gtit.pocket.magnet.target.pocket=吸进口袋栏
+gtit.pocket.magnet.target.player=吸进玩家背包
+gtit.pocket.magnet.target.hint=左键在两档之间循环：吸进口袋的那一栏，或吸进玩家自己的背包
+gtit.pocket.magnet.count=名单 %d / %d 条
+gtit.pocket.magnet.clear=清空名单
+gtit.pocket.magnet.clear.hint=抹掉全部条目，★但不改三态（切到无限制不清名单，这是两件事）
+gtit.pocket.magnet.cell.empty=本格是空格：右键没有条目可摘
+gtit.pocket.magnet.cell.remove=右键：把本格从名单里摘掉
+gtit.pocket.magnet.cell.number=名单第 %d 格
+gtit.pocket.magnet.gesture=左键持物品点格 = 记这一件；从 NEI 拖进来 = 同样只记录，★一件都不会少
+gtit.pocket.magnet.refuse.no_item=手上没有物品，这一格记不了东西
+gtit.pocket.magnet.refuse.wrong_button=只有左键会记进名单（右键是摘掉本格）
+gtit.pocket.magnet.refuse.locked=还没固化磁力升级，名单暂时不能编辑
+gtit.pocket.magnet.refuse.full=名单已经满格，先右键摘掉一格再记新的
+gtit.pocket.receipt.magnet.duplicate=这一件已经在名单里了（同一种物品不需要记两条）
+gtit.pocket.receipt.magnet.full=名单已经满格，这一条没记进去；先摘掉一格再试
+gtit.pocket.receipt.magnet.unparsed=这条请求带的物品身份读不出来，已丢弃（没有改动名单）
+gtit.pocket.receipt.magnet.out_of_range=要摘的那一格不在名单里（越界或已被摘掉），没有改动
+gtit.pocket.receipt.magnet.unchanged=那一格本来就没有条目，没有改动
 gtit.pocket.receipt.upgrade.off=已关掉这一型
 gtit.pocket.receipt.upgrade.on=已打开这一型
 gtit.pocket.receipt.upgrade.no_change=状态没变，本来就是这一档

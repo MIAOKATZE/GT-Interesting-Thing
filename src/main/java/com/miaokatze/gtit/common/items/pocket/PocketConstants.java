@@ -501,6 +501,19 @@ public final class PocketConstants {
     /** {@link #MAGNET_FILTER} 内的条目表（NBTTagList of String，元素 = Kind-free 物品键；★插入序就是 S7b 的格序）。 */
     public static final String MAGNET_FILTER_LIST = "list";
     /**
+     * ★R96 S7b：{@link #MAGNET_FILTER} 内的<b>吸取目标</b>两档位（String = {@code PocketMagnetFilter.Target}
+     * 的枚举名；★缺键/空 = {@code POCKET} = 口袋内 135 格栏，即 R96 P-11 定案后的<b>现状行为</b>）。
+     * <p>
+     * 与 {@link #MAGNET_FILTER_MODE} 同一条"非默认才占键"的纪律：{@code POCKET} 不写键 ⇒ 本片之前落的所有
+     * 档读回来都是 {@code POCKET}，字节形状与"本档不存在"时<b>逐字节相同</b>。
+     * <p>
+     * ★<b>这是配置位，不是槽位</b>：它不进口袋栏位算法、不进 {@code PocketSlots}（守恒 225 与本键无关）。
+     * ★执法腿（把落点从中栏优先换成玩家主背包优先）需要 {@code PocketSession} 新增一条 player-first
+     * 落点口并过 S4b 那条天然满量拆堆漏斗 ⇒ <b>本片只落配置面 + 写口 + 读数</b>，缺口逐字登记在
+     * {@code PocketMagnetFilter.Target} 的注释与交付报告，不在这里含糊成"已经生效"。
+     */
+    public static final String MAGNET_FILTER_TARGET = "target";
+    /**
      * ★R96 S7a：磁力名单的<b>格数口径</b> —— 与源质显示格<b>同形</b>（12 行 × 6 列 = 72，
      * RET-3 C7 / EVA-2 AUQ-5 的朝向歧义在此定案）。
      * <p>
