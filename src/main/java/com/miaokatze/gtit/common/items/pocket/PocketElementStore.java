@@ -52,6 +52,30 @@ import net.minecraft.nbt.NBTTagCompound;
  */
 public final class PocketElementStore {
 
+    /**
+     * ★R98 S2：物品 tooltip 那六行<b>元素储量</b>的 lang 模板键（值形如 {@code %1$s§r x %2$d}，
+     * 名字与数量由代码喂，★lang 里不写任何规格数字 —— R75 契约第 5 条）。
+     * <p>
+     * ★<b>键字面量为什么住在这里、而不是住在消费它的物品类里</b>：
+     * {@code ItemNekoDimensionPocket.java} 在 {@code verify-pocket.sh} 的
+     * {@code WORLD_CHAT_FILES} 白名单里，那道门（R88① / AUQ-②=a 修订）要求该文件内<b>所有</b>
+     * {@code "gtit.pocket.*"} 字面量都必须是 {@code gtit.pocket.world.} 前缀 ⇒ 把 tooltip 键写进物品侧
+     * 会被当场判成"越权聊天键"。先例是同族的 {@code PocketDistillDriver#TOOLTIP_DISTILL_FAST_KEY}
+     * （★键名与数值由数据主人持有，展示侧只引用常量）。
+     * <p>
+     * ★<b>本键是 {@code PocketConstants#ELEMENTS}（{@code elem}）的第一个面向玩家的读数面</b>。
+     * R96 S9a/S9b 落地时元素容量只有配置面板那一处（{@code gtit.pocket.config.mage.capacity}，
+     * 且它报的是<b>规格</b>"每种 %d、合计 %d"，不是<b>当前存量</b>）⇒ 取证
+     * {@code 01b-essence-ref.md} §3.3 的结论"面板零显示、玩家侧无任何读数"在本键落地的这一刻起作废，
+     * 该文档那一节需要随 S6 的文档轮翻新。玩家现在能在悬停物品时直接看到六条 tag 各自存了多少点。
+     * <p>
+     * ⚠ 与连号族 {@code item.neko_dimension_pocket.tooltip.N} 的关系：本键<b>不在</b>那个族里，它和
+     * {@code distill_fast} 一样是<b>追加行</b>（消费点在连号循环之后）。理由见物品侧
+     * {@code appendElementReserveLines} 的 javadoc —— 连号族的消费端是 {@code equals(key)} 即 break
+     * 的循环，往中间插行 = 给所有人断号。
+     */
+    public static final String TOOLTIP_ELEMENT_KEY = "gtit.pocket.tooltip.element";
+
     /** 载体栈的 NBT 根（活引用；{@code null} = 无档 ⇒ 一切写都是 no-op，读一律 0）。 */
     private final NBTTagCompound root;
 

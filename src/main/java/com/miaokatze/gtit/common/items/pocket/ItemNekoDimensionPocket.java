@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.common.items.pocket;
 
 import java.util.List;
+import java.util.Map;
 
 import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.entity.Entity;
@@ -28,6 +29,7 @@ import com.miaokatze.gtit.common.items.pocket.mage.PocketCrystalDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketEssenceTransmuteDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
+import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
 import com.miaokatze.gtit.gui.pocket.NekoPocketStorageColumn;
@@ -291,6 +293,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      *                 「内容随物品丢」（lang {@code item.neko_dimension_pocket.tooltip.7}），与主手
      *                 口径无关；主手口径的玩家声明只在 {@code gtit.pocket.held.note} 一处
      *                 （该文案自 R95 起口径过期，lang 翻新属 S2b）。
+     *                 ★<b>R98 S2 后该键号已漂移</b>：激进裁剪把连号族重排成 {@code 0..3}，那句
+     *                 「内容随物品丢」现在住在 {@code item.neko_dimension_pocket.tooltip.2}，
+     *                 旧号 {@code .7} 在两份 lang 里都不再存在 ⇒ 引用本段处请按<b>内容</b>认，别照号抄。
      */
     @Override
     public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
@@ -434,7 +439,8 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * {@code PocketUpgradeSwitches.isActive(CHANNEL_PERSIST)} —— 玩家把持续化<b>关掉</b>之后帧带与光泽
      * 必须跟着停，否则"关了开关画面还亮着"就是开关对该路径根本无效（R57/C3 同族的静默失效）。
      * ★不主动 stop 已在跑的通道：关开关只让 driver 的批边界回满不再发生 ⇒ 自然衰减到 0，
-     * 复用既有 {@code finishBatch} 的回收支，不建第二台状态机。
+     * 复用既有 {@code finishBatch} 的回收支，不建第二台状态机。<b>（★这一句"不主动 stop / 自然衰减"
+     * 自 R98 起作废，史实留在原处不删；现行口径见本节末尾的 R98 段。）</b>
      * <p>
      * ★★★<b>R96 S5 再改口（验收 B4：假读数门）</b>：位图单独<b>不再点亮任何东西</b>。S5 之前这一腿
      * 写作「位生效 ⇒ 常亮」，而那一版的持续化<b>谁都开不起通道</b>（激活真空，取证 r96-ret1 §2.5）⇒
@@ -443,6 +449,24 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * （driver 每批边界把 work 位续到 {@code 30×20+20} 拍 ⇒ 活通道在跑时它必然在场），保留位图这一半
      * 的理由是<b>身份</b>：这一族的常亮属于持续化，摘掉它 {@code isWorkActive} 就退化成纯倒计时读数，
      * 帧带不再声明它代表什么。真正被修掉的是「位在场即恒真」那半句 —— 现在它单独一律不成立。
+     * <p>
+     * ★★★<b>R98 改判（需求 3）：上面 R96 S1 那句「★不主动 stop 已在跑的通道 ⇒ 自然衰减到 0」作废</b>。
+     * 现行口径：关掉持续化的<b>那一个边沿</b>由服务端开关写点（
+     * {@code NekoPocketServerHandler#performUpgradeSwitchToggle} 里 {@code type + Outcome.TURNED_OFF}
+     * 那一支）当场调 {@code PocketChannelManager#stopChannel} 停道，并立刻调
+     * {@link #startWorkTicks(ItemStack, int)} 写 {@code -1} 摘掉 {@code UI_WORK_TICKS} ⇒
+     * <b>本类的帧带与光泽在同一拍转暗</b>，不再存在"开关已关、画面还亮着、货还在白搬最长 30 秒"那一段。
+     * ★<b>上面那句"同一拍转暗"的射程必须写明 —— 本方法是两条腿的合取，不是单因，别把它读成"整块画面必然熄灭"</b>：
+     * ① 另有 {@code UI_BURST_SHOW_TICKS} 那一腿（≤5 秒，代表<b>一次已经发生完的瞬时通道</b>，与持续化无关），
+     * ★边沿腿<b>不碰它</b>（{@code -1} 只走 {@code removeTag(UI_WORK_TICKS)}）⇒ burst 显示窗内画面照旧会亮到
+     * 它自己归零，那<b>不是</b>停道失效；② 光泽读的是 {@code isWorkActive() || anyActive(...)} ⇒
+     * <b>任一其它升级插件开着本就该亮</b>，同样不在本判射程。⇒ 精确表述是「<b>work 腿同拍清零</b>」；
+     * 至于三腿在玩家眼里是否<b>视觉上同拍</b>翻转，属实机项（检查表 §二十二 X-4，本轮离线不可证）。
+     * 旧判的另一半（"<b>不建第二台状态机</b>"）不仅仍然成立、还被加强：停道用的就是既有
+     * {@code PocketChannelState#stop()} 原语与既有 {@code PocketChannelManager#forget} 的成对形状
+     * （driver 自己那两处就地停道早就是这个形状），零新增状态、零新增计时真相。
+     * 下面 {@link #isChannelWorkLive(ItemStack)} 这条判据<b>一字未改</b> —— 组合谓词与"在场"两半都还在，
+     * 只是"在场"这一半现在可能由边沿腿提前清零，而不是只能等 {@code tickDown} 归零。
      */
     public static boolean isWorkActive(ItemStack stack) {
         final NBTTagCompound root = stack == null ? null : stack.getTagCompound();
@@ -639,19 +663,35 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
 
     /**
      * tooltip 从 0 连续（{@code pocket-lang-keys.md} §1 的 7 行，R75 后为 10 行，R78 仍是 10 行；
-     * ★新增的规格读数一律走已有的 {@code %N$d} 槽位扩到 {@code %12$d}，不加新行号 ⇒ 不断号）。
-     * 连号行之外还有<b>一条追加行</b>（★R95 蒸馏加速的双口径行，见
-     * {@link #appendDistillFastLine}，追加在连号循环之后、不在连号中间插行）。
+     * ★<b>R98 S2 起为 4 行</b>——用户裁定"大幅度简化 Tooltip"，激进档 −6：几何说明书 / 绑定流程 /
+     * 有电前提 / NEI 虚化格四行删除、原 {@code tooltip.5} 与蒸馏双口径行合并成一条追加行、
+     * 原 {@code tooltip.9}（每槽与合计容量）让位给面板的 {@code gtit.pocket.fluid.capacity}）。
+     * 连号行之外还有<b>两类追加行</b>：★R95 蒸馏双口径行（{@link #appendDistillFastLine}）与
+     * ★R98 的 0–6 行元素储量（{@link #appendElementReserveLines}），都追加在连号循环<b>之后</b>、
+     * ★不在连号中间插行 ⇒ 恒定 5 行（4 + 蒸馏），加储量后总行数按内容浮动（5–11 行）。
      * <p>
      * 消费端是 {@code equals(key)} 即 break 的循环（先例 {@code common/items/NekoCoin.java:28-34}），
-     * <b>跳号会静默截断后面的行</b>，其中 {@code tooltip.5}/{@code tooltip.6} 是 R28（5 秒是节拍不是产量）
-     * 与 R39a（两排同权不是上下分流）的显式声明位，丢了就等于埋坑。
+     * <b>跳号会静默截断后面的行</b> ⇒ R98 的裁剪是<b>整体重编号</b>（新 {@code 0..3}），不是"删几条留几条"。
+     * ★留下的三处声明位一个都没动：新 {@code tooltip.1}（旧 {@code .6}）= R39a 的"两排同权不是上下分流"、
+     * 新 {@code tooltip.2}（旧 {@code .7}）= R53b 的后果声明、新 {@code tooltip.3}（旧 {@code .8}）=
+     * 合成一次性代价声明；旧 {@code .5} 那句"5 秒是节拍不是产量"（R28）随合并活在新追加行里。
+     * 本文件的 javadoc 曾经点名 {@code tooltip.5}/{@code tooltip.6}，R98 后按<b>新号</b>重述，
+     * 用例 {@code pocket_tooltip_family_is_contiguous_and_four} 把"恰 4 条、连号、两份同键集"钉成机检。
      * <p>
      * ★<b>行里不写规格数字</b>（R75 的 lang 契约第 5 条）：格数、行列、流体<b>组数与 tank 总数</b>、
      * 单槽容量与<b>总容量</b>（R78②）、源质盘格数（R78②）、面板内背包格数（R78①）、蒸馏节拍
      * 全部由 {@link #tooltipArgs()} 从常量填进 {@code %1$d…%12$d} 的<b>带位置下标</b>的占位。
      * 用下标而不是裸 {@code %d} 的理由：所有行走同一个实参数组，裸 {@code %d} 会一律取第 1 个实参
      * ⇒ "每槽 16,000,000" 会被填成"135"，而且不报错。
+     * <p>
+     * ⚠ <b>备而未用的槽清单（R98 裁剪的直接后果，★不是死代码）</b>：{@code %1,%2,%3,%4,%7,%8,%10,%11}
+     * 八项仍由 {@link #tooltipArgs()} 派生、但 lang 停止引用（几何行与容量行都撤了）；
+     * {@code %5$d}/{@code %9$d} 同样不再被 lang 念到，★却<b>必须</b>留在数组里 ——
+     * 它们的读点 {@code PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CAPACITY)} 被
+     * {@code NekoPocketModelTest} 按签名硬钉（"关掉容量开关 tooltip 读数跟着回落"这条承诺的载体），
+     * 而且面板的 {@code gtit.pocket.fluid.capacity} 随时可能把这两个数再念回来。
+     * ★新增数字一律从 {@code %13$d} 起槽并同步扩数组（越界 = {@code MissingFormatArgumentException} =
+     * 悬停即崩）；R98 的六行储量<b>不占</b>这个族的槽，它走独立的两个实参，见 {@link #appendElementReserveLines}。
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
@@ -666,6 +706,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
                     + (template.indexOf('%') < 0 ? template : String.format(template, args)));
         }
         appendDistillFastLine(tooltip, args);
+        appendElementReserveLines(tooltip, stack);
     }
 
     /**
@@ -677,6 +718,10 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * {@code PocketDistillDriver}（R88① 门禁对白名单文件做 {@code "gtit.pocket.*"} 字面量的
      * world 前缀粗粒度检查，tooltip 键放本文件会被误判成越权聊天键）。键未落（S2b lang 时序未到）
      * 时 {@code translateToLocal} 原样返回键名 ⇒ 与连号循环同一个判据跳过，不把键名当文案展示。
+     * <p>
+     * ★<b>R98 S2 起本行同时是原 {@code tooltip.5}（"蒸馏每 %6$d 秒一轮，产出量按物品自身源质原量入账"）
+     * 的替代者</b>：两档口径合并成一条，★正好吃掉 {@code %12$d} 这个此前备而未用的槽（零扩槽 ⇒
+     * 键数 −6 + 1，行数 −6），键名与 {@link PocketConstants#ticksToSecondsCeil} 的换算单源都没动。
      */
     private static void appendDistillFastLine(List tooltip, Object[] args) {
         final String key = PocketDistillDriver.TOOLTIP_DISTILL_FAST_KEY;
@@ -686,6 +731,66 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         }
         tooltip.add(
             EnumChatFormatting.LIGHT_PURPLE + (template.indexOf('%') < 0 ? template : String.format(template, args)));
+    }
+
+    /**
+     * ★R98 S2（需求 1 的"腾位置"那一半）：<b>六行元素储量</b>，形状照 TC4 魔力石
+     * {@code thaumcraft/common/items/baubles/ItemAmuletVis.java:127-137} 的逐行储量。
+     * 生产入口：解析 lang 模板后把排版交给 {@link #appendElementReserveLines(List, String, PocketElementStore)}
+     * （★拆两段是为了可测：测试 JVM 里没有加载本 mod 的 lang，{@code translateToLocal} 会原样返键 ⇒
+     * 若把取模板与排版缝在一起，那六行的排版就只能实机目检。拆开后测试拿<b>两份 lang 的真模板</b>
+     * 驱动同一段代码，钉的就是上线的那段）。
+     */
+    private static void appendElementReserveLines(List tooltip, ItemStack carrier) {
+        final String key = PocketElementStore.TOOLTIP_ELEMENT_KEY;
+        final String template = StatCollector.translateToLocal(key);
+        if (template.equals(key)) {
+            // 键未落 ⇒ 与连号循环、distill 行同一个判据跳过，不把键名当文案展示
+            return;
+        }
+        // ★attach 只持根引用、读腿走 raw(false) ⇒ 空口袋一行都不出，且★绝不因为"要显示 0"而建档（R53c）
+        appendElementReserveLines(tooltip, template, PocketElementStore.attach(carrier.getTagCompound()));
+    }
+
+    /**
+     * 储量行的<b>排版腿</b>（包级可见只为测试可驱动，★生产唯一调用点是上面那个重载）。
+     * <p>
+     * 四条口径，逐条都是需求/裁定落下来的：
+     * <ul>
+     * <li><b>行序 = {@link PocketConstants#PRIMAL_TAGS} 的白名单序</b>（aer/terra/ignis/aqua/ordo/perditio），
+     * 与 TC 的 {@code Aspect.aspects}（{@code LinkedHashMap}）插入序逐字一致；★不由数量、不由色、
+     * 不由玩家操作决定 ⇒ <b>TC 缺席照样出这六行</b>，回落的只有名字（{@link TaumCompat#nameOf(String)}
+     * 返 tag 本身）。</li>
+     * <li><b>非零才出行</b>（DP-2）：取数走 {@link PocketElementStore#snapshot()}，它本身就
+     * {@code amount > 0} 才入表，与魔力石的 {@code hasKey} 判据同形 ⇒ 新口袋只有五行，越用越长。</li>
+     * <li><b>★不带 {@code /100}、不带小数</b>：魔力石那层 {@code / 100.0F} + {@code DecimalFormat}
+     * 是 TC 的 <b>vis ×100 存档刻度</b>（{@code ItemAmuletVis#addVis} 写入时 {@code amount * 100}），
+     * ★不是显示风格；本仓 {@code elem} 存的<b>就是点数</b>（{@code PocketElementStore#add} 直存
+     * {@code setInteger}、上限 {@link PocketConstants#ELEMENT_CAP_PER_TAG}=500 直接是点）
+     * ⇒ 抄过来会把"500"显示成"5"，是量纲错，不是美化（取证 {@code 01b-essence-ref.md} §3.7）。</li>
+     * <li><b>独立实参，★不占 {@link #tooltipArgs()} 那个族</b>：那 12 项是<b>恒定规格读数</b>，
+     * 混进"随存档内容浮动的六项"会同时造出第二份真相与越界风险。本行只有两个实参
+     * （{@code %1$s} 名字、{@code %2$d} 数量），模板与数组都是这一条行专用。</li>
+     * </ul>
+     * 前导那一个半角空格★必须在 Java 侧加：{@code java.util.Properties} 会吃掉 lang 值的行首空白，
+     * 写进 lang 等于没写（魔力石也是把空格放在 {@code list.add} 的字面量里，见 {@code :134}）。
+     * 色码用 {@link PocketConstants#PRIMAL_CHAT_CODES}（本地表、零 TC 依赖，★有意的第二份真相，
+     * 立法理由写在该常量的 javadoc 里）；{@code §r} 复位住在 lang 模板里，与魔力石的
+     * {@code "§r x "} 同形。★行内不加 {@code LIGHT_PURPLE}：那会盖掉 aspect 自己的颜色。
+     */
+    static void appendElementReserveLines(List tooltip, String template, PocketElementStore store) {
+        // ★一次 snapshot()、六次点查：「非零才出」这条口径由 snapshot 单独持有（DP-2），
+        // 这里不再判一次 <= 0 —— 判第二次就是给同一条裁定立第二个来源。
+        final Map<String, Integer> reserve = store.snapshot();
+        for (int i = 0; i < PocketConstants.PRIMAL_TAGS.length; i++) {
+            final String tag = PocketConstants.PRIMAL_TAGS[i];
+            final Integer amount = reserve.get(tag);
+            if (amount == null) {
+                continue;
+            }
+            tooltip.add(
+                " " + PocketConstants.PRIMAL_CHAT_CODES[i] + String.format(template, TaumCompat.nameOf(tag), amount));
+        }
     }
 
     /**

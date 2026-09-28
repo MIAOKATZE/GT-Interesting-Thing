@@ -270,15 +270,24 @@ gtit.reincarnation.single_player_only=Reincarnation is available in single-playe
 
 # ---- 猫猫次元口袋 (S3/S4) ---- keys are the single-source contract plan/_taskpack/pocket-lang-keys.md; both files must keep the same key set
 item.neko_dimension_pocket.name=Neko Dimensional Pocket
-item.neko_dimension_pocket.tooltip.0=Right-click to open the three-column panel
-item.neko_dimension_pocket.tooltip.1=Middle: %2$d rows x %3$d columns = %1$d storage slots; left: %7$d groups x %4$d fluid columns (%8$d slots); right: %10$d essentia cells
-item.neko_dimension_pocket.tooltip.2=Put a cell into the bind slot in the bottom band, then press Bind to open a dimensional channel
-item.neko_dimension_pocket.tooltip.3=Bound cells must sit in a powered ME Drive or Chest to be recognised
-item.neko_dimension_pocket.tooltip.4=Drag from NEI onto a slot to turn it into a ghost filter (right-click clears)
-item.neko_dimension_pocket.tooltip.5=Distillation runs one batch every %6$d seconds; yield follows the aspects of each item
-item.neko_dimension_pocket.tooltip.6=All fluid columns behave the same: direction depends on whether the placed tank currently holds fluid
-item.neko_dimension_pocket.tooltip.7=Contents live in this item: losing or destroying the pocket loses everything inside
-item.neko_dimension_pocket.tooltip.8=Crafting consumes one Neko Infinity Storage Unit: empty it first, or its stored contents stay orphaned in the world save
+# ★★R98 S2 (request 1 "drastically simplify the tooltip"): the contiguous family was
+# <b>renumbered as a whole</b> from 0..9 down to 0..3 — NOT "delete a few and keep the rest",
+# because the consumer loop breaks on equals(key) ⇒ a gap silently truncates every later line.
+# Where the six removed lines went (R36 "a removed shape must have a new home"), line by line:
+#   old .1 geometry sheet → the panel already shows it (135 cells / 18 fluid slots / 72-cell grid)
+#   old .2 binding flow   → near-verbatim duplicate of the panel note gtit.pocket.note.summary
+#   old .3 powered-cell   → same duplication, plus the runtime readout gtit.pocket.bind.unlocated
+#   old .4 NEI ghost cell → five more precise spots on the panel side (ghost.* keys)
+#   old .5 cadence        → merged into the appended line gtit.pocket.tooltip.distill_fast (name frozen)
+#   old .9 per-slot/total capacity → yielded to the panel's gtit.pocket.fluid.capacity (DP-5)
+# The freed rows are handed to the element reserve line gtit.pocket.tooltip.element (six entries,
+# only non-zero ones print, appended at the very bottom of the tooltip).
+# The three declaration spots survive untouched: new .1 = R39a equal fluid rows,
+# new .2 = R53b contents live in the item, new .3 = the one-shot crafting cost.
+item.neko_dimension_pocket.tooltip.0=Right-click or press the key to open the panel
+item.neko_dimension_pocket.tooltip.1=All fluid columns behave the same: direction depends on whether the placed tank currently holds fluid
+item.neko_dimension_pocket.tooltip.2=Contents live in this item: losing or destroying the pocket loses everything inside
+item.neko_dimension_pocket.tooltip.3=Crafting consumes one Neko Infinity Storage Unit: empty it first, or its stored contents stay orphaned in the world save
 gtit.pocket.balance.neko=Neko Coin: %d
 gtit.pocket.balance.shimmering=Shimmering Neko Coin: %d
 gtit.pocket.channel.instant=Open Instant Channel (-%d coin)
@@ -417,11 +426,13 @@ gtit.pocket.config.mount.mage=Mage: modes and elements
 # ★face. The capacity face reuses the main panel sentence gtit.pocket.fluid.capacity (no new key); net
 # ★+5 keys here (R96's mount.pending retired with the one-shared-panel shape: every face now carries
 # ★real content, so the "frame with no content yet" placeholder lost its consumer).
+# ★★R98 S4（DP-7）再撤三条<b>静态说明</b>键 ⇒ 本段只剩逐型<b>读数</b>各一条：
+#   gtit.pocket.config.stack.note / gtit.pocket.config.persist.button / gtit.pocket.config.persist.frame
+#   —— 新家 = 主面板现场本身（中栏与源质栏的格数上限、通道按钮置灰、口袋图标"工作中"常亮），配置面板
+#   不再常驻教一遍；★玩家可见面从此只剩 gtit.pocket.config.switch.hint 那条 tooltip。有意的信息面收缩，
+#   用户 2026-09-28 明确接受这两个事实从面板消失。----
 gtit.pocket.config.stack.limit=Current per-slot limit: %d
-gtit.pocket.config.stack.note=One ruler for the storage grid and the essence grid
 gtit.pocket.config.persist.idle=Not always-on right now (the switch is off, or no live channel yet)
-gtit.pocket.config.persist.button=While it is active the channel buttons stay disabled
-gtit.pocket.config.persist.frame=The pocket icon stays lit as working
 gtit.pocket.config.mage.capacity=Element capacity: %d each, %d across all six
 gtit.pocket.config.mode.crystal=Crystallise
 gtit.pocket.config.mode.coin=Cat coin charging
@@ -466,8 +477,21 @@ gtit.pocket.receipt.upgrade.refuse_capacity=Empty the fluid bar first: turning c
 gtit.pocket.receipt.upgrade.refuse_stack=Break those stacks first: turning stacking off would not fit what is stored
 gtit.pocket.receipt.upgrade.not_owner=The pocket carrying it moved slot or the screen closed, so nothing changed
 gtit.pocket.channel.always_on=Channels always on (persistence upgrade)
-gtit.pocket.tooltip.distill_fast=With the mage module installed, one round every second
-item.neko_dimension_pocket.tooltip.9=Each fluid slot holds %5$d mB, %9$d mB in total across %8$d slots (a capacity chosen beyond the original request)
+# ★★R98 S2: these two carry the six freed rows.
+# distill_fast is the appended line outside the contiguous family; since R98 it is also the
+# replacement for old tooltip.5 (both cadences in one line, which finally consumes the previously
+# unused %12$d ⇒ no new slots). The key name is frozen (README R96 ruling + a test pins "must not
+# be renamed"); ★this round only changes the value. Consumer: appendDistillFastLine.
+gtit.pocket.tooltip.distill_fast=Distillation runs one batch every %6$d seconds, every %12$d second with the mage module; yield follows each item's own aspects
+# ★★R98 S2 (second half of request 1): template for the element reserve lines — one primal per row,
+# ★only non-zero ones print (a fresh pocket shows five rows, it grows as you use it).
+# Name and amount are both fed by code (%1$s = aspect display name, %2$d = current points);
+# ★the value carries no spec digits — R75 lang contract rule 5.
+# Scale: elem stores plain points (cap 500 per tag), ★no /100 (that layer is TC's ×100 vis scale).
+# The leading half-width space and the §color code ★must be added Java-side (Properties eats leading
+# whitespace in a value); consumer = appendElementReserveLines, key literal lives on
+# PocketElementStore.TOOLTIP_ELEMENT_KEY.
+gtit.pocket.tooltip.element=%1$s§r x %2$d
 gtit.pocket.legend.input=Top row: put the vessel to process (a filled one drains in, an empty one gets filled)
 gtit.pocket.legend.tank=Middle: this column's fluid slot
 gtit.pocket.legend.output=Bottom row: where this column's processed vessels land
@@ -490,7 +514,13 @@ gtit.pocket.storage.key.bind=Middle-click: bind this cell as a demand
 gtit.pocket.storage.key.memory=Alt + left-click: this cell takes only that kind
 gtit.pocket.storage.key.block=Alt + right-click: never upload this cell
 gtit.pocket.note.title=How this panel works
-gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket only works while held in your main hand
+# ★★R98 S5 (need 4) revalue: the old tail "the pocket only works while held in your main hand" was
+#   FALSE. Behavior truth = ItemNekoDimensionPocket.onUpdate -> runPassives (since R95 that body does
+#   NOT gate on slot/selected, so any of the 36 main-inventory slots keeps it running; the worn state
+#   is driven by onWornTick through the same body). gtit.pocket.held.note carries the boundary detail
+#   (bauble slots keep working, chests and armor slots stop) — both lines say "anywhere in your
+#   inventory" but at different granularity, no verbatim duplicate (notesText concatenates both).
+gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket keeps working anywhere in your inventory
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
 gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it); uploads rotate between channels each second, and a channel with nothing to upload never spends the pair quota
 # ★R88 self-invented policy C1 + C2, the "in-game copy" face (project discipline: both copy and README);

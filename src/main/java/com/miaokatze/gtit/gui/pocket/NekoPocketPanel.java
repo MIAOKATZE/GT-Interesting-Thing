@@ -1490,6 +1490,22 @@ public final class NekoPocketPanel implements PocketSession {
      * ★★R97 S5（P-3 显式翻案）：{@code index}（= 槽号 = 型 ordinal，三个空间同一个数）现在<b>参与面板选择</b>
      * —— 按槽选 {@link #configPanels} 里那一枚 handler，各型各开各的面。签名与调用点零改
      * （{@code UpgradeCellSlot} 传进来的就是格号）。
+     * <p>
+     * ★★<b>R98 S3（需求 2-a）：五块插件面板之间单开互斥</b> —— 用户口径「同时只能打开一个插件 UI，再打开会关掉旧的」。
+     * 互斥范围是<b>这五块插件面板</b>（★不是"整个口袋屏单实例"：主面板由 {@code GuiManager.openFromClient} 覆盖
+     * {@code mc.currentScreen}、服务端会话按玩家 UUID 一份，本来就不会叠两层口袋屏）。落点见方法体里那段循环：
+     * 开本枚之前，把<b>别枚</b>里真开着的那几枚关掉。三条实现约束（都有库侧出处）：
+     * <ol>
+     * <li>★<b>不能先全关再开</b>：{@code SecondaryPanel.openPanel()} 首行就是 {@code if (this.open) return;}，
+     * 而 {@code open} 只在 {@code closePanelInternal()} 里清（{@code ModularPanel.onClose} 触发，NEA 在场时
+     * 关闭还是<b>异步动画</b>）⇒ 同帧"全关 + 开本枚"会把紧随的开启一起吞掉，玩家读到"点了没反应"。
+     * 这一支因此严格排除 {@code index}，本枚一个字段都不碰；</li>
+     * <li>只关 {@code isPanelOpen()} 为真的那几枚 ⇒ 对"没开的关成 no-op"这条库侧行为免疫，也不依赖关闭是否异步；</li>
+     * <li>{@code isPanelOpen()} 是 {@link IPanelHandler} 自带的读数 ⇒ ★不新增"哪枚开着"的镜像状态
+     * （那份镜像一旦与真值分叉就会出现关不掉的面板，{@link #closeUpgradeConfig()} 的 javadoc 点名的就是这个风险）。</li>
+     * </ol>
+     * ★主面板关闭行为一字未动（仍走 {@code MCHelper.popScreen}，本仓从不设 {@code openParentOnClose}）；
+     * 插件面板不是 {@code GuiScreen} ⇒ 本改动不涉及 {@code displayGuiScreen}、{@code closeContainer} 与包注销。
      *
      * @param anchor 点击来自哪个槽件（次级面板要挂到它所在的宿主面板上；★装配期取不到，
      *               {@code getPanel()} 那时还是 null，所以由点击现场传进来）
@@ -1509,6 +1525,18 @@ public final class NekoPocketPanel implements PocketSession {
             configPanels[index] = IPanelHandler
                 .simple(host, (parent, player) -> PocketConfigPanel.build(this, type), true);
             configPanelHosts[index] = host;
+        }
+        // ★★R98 S3（需求 2-a）：<b>五块插件面板之间单开互斥</b> ⇒ 开本枚之前关掉<b>别枚</b>里开着的那几枚。
+        // 三条形状约束（理由见本方法 javadoc）：① ★严格排除 {@code index}（先全关会把本枚的 openPanel 一起吞掉
+        // —— {@code SecondaryPanel.openPanel()} 首行 {@code if (this.open) return;}，而 {@code open} 只在
+        // {@code closePanelInternal()} 里清，NEA 在场时关闭还是异步动画）；② 只关 {@code isPanelOpen()} 为真的
+        // 那几枚 ⇒ "没开的关成 no-op"这条库侧行为与是否异步都无所谓；③ 用接口自带的 {@code isPanelOpen()} 读数
+        // ⇒ 不在此长出"哪枚开着"的镜像状态（那正是 {@link #closeUpgradeConfig()} 的 javadoc 点名的分叉风险）。
+        // ★这一支必须排在两个早退支（空格让位、宿主/型别解算）<b>之后</b>：空格点击不该顺手关掉已经开着的面板。
+        for (int i = 0; i < configPanels.length; i++) {
+            if (i != index && configPanels[i] != null && configPanels[i].isPanelOpen()) {
+                configPanels[i].closePanel();
+            }
         }
         configPanels[index].openPanel();
         return true;
@@ -3666,11 +3694,16 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 每槽容量读数（★规格外自立项的玩家可见面之一，另两处是物品 tooltip 的 {@code tooltip.9}
-     * 与 README；数字全部由 {@code PocketConstants} 填，lang 里不得写死，见契约 §7 第 5 条）。
+     * 每槽容量读数（★规格外自立项的玩家可见面之一）。★★<b>R98 改判后这一族共三处面、同一条算式</b>：
+     * 本方法（= 配置面板 CAPACITY 那一行，宿主 {@code PocketConfigPanel}）、流体格件 tooltip
+     * （{@code NekoPocketFluidSlot}）、底部带说明块 tooltip（{@code NekoPocketBottomBand}）；
+     * 数字全部由 {@code PocketConstants} 填，lang 里不得写死，见契约 §7 第 5 条。
      * <p>
-     * R78 D-2 后它<b>不再</b>常驻在左栏（那一行只剩状态回显），改由流体槽 tooltip 与
-     * 左栏末行的 tooltip 承载。
+     * ★★旧口径点名的两处宿主<b>都已不存在，别照号去找</b>：① 物品 tooltip 的 {@code tooltip.9}
+     * 自 R98 起<b>整行撤销</b>（tooltip 激进裁剪 ⇒ 连号族整体重排成 {@code 0..3}，现行权威见 README 代价 55；
+     * ★不要为此把容量行加回 tooltip）；②「左栏末行的 tooltip」自 R94-① 起随末行<b>整行撤销</b>，
+     * 今天挂着这几条 tooltip 的是底部带左段那块 112×60 说明文字。
+     * R78 D-2 那句「不再常驻左栏」<b>仍然成立</b>。
      */
     String capacityReadoutText() {
         // ★R95 S5：容量读数按 CAPACITY 位动态（16M/16G；合计 288M/288G）——Long 喂 %d（lang 不改键、

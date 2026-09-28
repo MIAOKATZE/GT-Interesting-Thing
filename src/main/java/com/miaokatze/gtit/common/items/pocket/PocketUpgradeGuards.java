@@ -46,8 +46,16 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * INFO ⇒ "0"不再与"没东西可拦"混淆，比逐条人肉数格子的检查表强。
  *
  * <h2>MAGNET / CHANNEL_PERSIST / MAGE 恒允许关闭</h2>
- * 这三型需求没配守卫，且关闭只让各自的 driver 早退：<b>不主动 stop</b> 已在跑的通道状态（关掉
- * CHANNEL_PERSIST 后通道自然衰减到 0，复用既有 {@code finishBatch} 的回收支，不建第二台状态机）。
+ * 这三型需求没配守卫 ⇒ 关闭一律 {@link Reason#ALLOW}，本类不为它们写任何判据。
+ * <p>
+ * ★★<b>R98 改判（需求 3）：旧句「关闭只让各自的 driver 早退：<b>不主动 stop</b> 已在跑的通道状态
+ * （关掉 CHANNEL_PERSIST 后通道自然衰减到 0，复用既有 {@code finishBatch} 的回收支，不建第二台状态机）」
+ * 里的"不主动 stop / 自然衰减"那一半作废</b>，史实留在原文不删。现行口径：关掉 CHANNEL_PERSIST 的
+ * <b>那一个边沿</b>由服务端开关写点即刻停道（{@code NekoPocketServerHandler#performUpgradeSwitchToggle}
+ * → {@code PocketChannelManager#stopChannel}，最坏 30 秒的衰减窗口取消）。
+ * <b>本类在这一条路上零参与</b>：停道既不走守卫、也不由守卫授权 ⇒ 上面那句"恒允许关闭"的裁定
+ * <b>一字未改</b>，{@code Reason.ALLOW} 与 {@code canTurnOff} 的逻辑、探针、求和全部原样。
+ * MAGNET 那一型本来就是每拍现读开关、关掉即停（{@code PocketMagnetDriver}），与本轮无关。
  */
 public final class PocketUpgradeGuards {
 
@@ -143,7 +151,10 @@ public final class PocketUpgradeGuards {
             case STACK:
                 break;
             default:
-                // MAGNET / CHANNEL_PERSIST / MAGE：关闭只让 driver 早退，不主动 stop 现有状态
+                // MAGNET / CHANNEL_PERSIST / MAGE：恒放行，本类不为其写判据。
+                // ★旧句"关闭只让 driver 早退，不主动 stop 现有状态"里"不主动 stop"那一半已被
+                // <b>R98 改判</b>作废（类 javadoc 同一条）：关 CHANNEL_PERSIST 现在由服务端开关写点
+                // 即刻停道，但那条腿<b>不经过本类</b> ⇒ 这里的 ALLOW 与零写入形状一字未动。
                 return new OffVerdict(Reason.ALLOW, 0, -1, -1, false);
         }
         return type == PocketUpgradeType.CAPACITY ? capacityVerdict(inv, carrier) : stackVerdict(inv, carrier, cursor);

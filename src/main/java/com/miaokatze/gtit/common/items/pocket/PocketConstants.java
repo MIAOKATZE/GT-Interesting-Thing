@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.common.items.pocket;
 
+import net.minecraft.util.EnumChatFormatting;
+
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 
 /**
@@ -578,6 +580,38 @@ public final class PocketConstants {
     public static final String[] PRIMAL_TAGS = { "aer", "terra", "ignis", "aqua", "ordo", "perditio" };
 
     /**
+     * ★R98 S2（DP-1 定案）：与 {@link #PRIMAL_TAGS} <b>同序同长</b>的本地 tooltip 色表（六项），
+     * 唯一消费者是物品 tooltip 的储量行（{@code ItemNekoDimensionPocket#appendElementReserveLines}）。
+     * <p>
+     * ★<b>本表是有意的第二份真相</b>，必须如实登记：原始色值住在 TC
+     * {@code thaumcraft/api/aspects/Aspect#getChatcolor()}（{@code Aspect.java:174-176}，返回单个色码字符），
+     * 这里抄了一份。立法理由与 {@link #isPrimalTag(String)} 那条白名单腿<b>完全同一条</b> ——
+     * <b>TC 缺席时口袋必须照常工作</b>：那六行储量在没装神秘时代的整合包里照样要出（行序与存在性由
+     * {@link #PRIMAL_TAGS} 定，★不由桥定），所以颜色这一维不能去问桥要。
+     * <p>
+     * ★为什么不选另两条看起来"更单源"的路（DP-1 的三条候选，本条拍板后前两条作废）：
+     * ① 新增第 16 个桥方法 {@code chatColorOf(tag)} —— TC 缺席时<b>仍然</b>得有本地兜底才出得来颜色，
+     * 于是实际形态是"桥 + 本地表"两份都要，还得同批改 {@code TaumBridgeApi}/{@code TaumBridge}/
+     * {@code TaumCompat} 三处与门 P、F-1 复核 ⇒ 多出来的是一份<b>永久</b>的桥面，换不到"少一份真相"；
+     * ② 拿现成的 {@code TaumCompat.colorOf(tag)}（RGB int）反查最近的 {@link EnumChatFormatting} ——
+     * 省掉桥方法，但新增一个 16 格量化函数（★那本身就是新口径），且 TC 缺席时它返
+     * {@code TaumCompat.COLOR_UNKNOWN}（-1）⇒ 仍需第三份兜底色。
+     * <p>
+     * ★代价照记（不许只写收益）：TC 若改了某个 aspect 的配色，本表<b>不会跟着变</b>，
+     * 那六行的颜色会与 TC 自家物品差一色。可接受的依据 = 这一维<b>只影响观感</b>：
+     * 不承载规格数字（R75 的数字单源纪律不受触）、不承载任何判定（入账/白名单/上限都不读它）、
+     * 玩家侧也不会因色读错数值 —— 数值那一半永远由 {@link PocketElementStore#get(String)} 现读。
+     * <p>
+     * ★取值逐字对齐 {@code Aspect.java:20-25} 的 chatcolor 字符 {@code e / 2 / c / 3 / 7 / 8}
+     * （aer/terra/ignis/aqua/ordo/perditio 依次），下标与 {@link #PRIMAL_TAGS} 一一对应 ⇒
+     * {@code PRIMAL_TAGS[i]} 配 {@code PRIMAL_CHAT_CODES[i]}。<b>只增不改序</b>那条纪律对本表同样成立，
+     * 两表长度不等或某项为 null 会被用例当场钉红。
+     */
+    public static final EnumChatFormatting[] PRIMAL_CHAT_CODES = { EnumChatFormatting.YELLOW,
+        EnumChatFormatting.DARK_GREEN, EnumChatFormatting.RED, EnumChatFormatting.DARK_AQUA, EnumChatFormatting.GRAY,
+        EnumChatFormatting.DARK_GRAY };
+
+    /**
      * 该 tag 是否在 {@link #PRIMAL_TAGS} 白名单内（<b>纯查表、零 TC 依赖</b>的一条腿）。
      * <p>
      * ★两条腿必须分开用：本方法定"容量表与 UI 有几行、按什么序"（TC 缺席照样成立）；
@@ -777,8 +811,10 @@ public final class PocketConstants {
      * 本值由 R75 那句「流体槽容量 16M」定为每槽 16,000,000（×1000 于更早的 16,000），★R96 S3 按用户那句
      * 「原始流体容量 16M → 20M」抬到<b>每槽 20,000,000</b>。两代都是<b>口头量级、不是需求原文数字</b>。
      * ★R95 S5 起本常量是<b>未升级口径</b>——玩家可见侧的容量一律由
-     * {@link #fluidTankCapacityMl(boolean)} 按升级位选值填进 {@code gtit.pocket.fluid.capacity} 与
-     * {@code item.neko_dimension_pocket.tooltip.9}（lang 不得写死规格数字）。
+     * {@link #fluidTankCapacityMl(boolean)} 按升级位选值填进 {@code gtit.pocket.fluid.capacity}
+     * （lang 不得写死规格数字）。★<b>R98 S2 改口</b>：物品 tooltip 的 {@code tooltip.9} 已随激进裁剪
+     * 退场（那六位腾给六行元素储量），容量在玩家侧的<b>唯一</b>读数面只剩面板那一条
+     * （DP-5 定案），"两代都是口头量级"这句显式声明也随之改由 README 承担。
      */
     public static final int FLUID_BAR_CAPACITY_ML = 20_000_000;
     /**
@@ -798,9 +834,10 @@ public final class PocketConstants {
      * 删任何一处都是把「当前够不着」读成「永远够不着」。
      * <p>
      * ★两套常量 + 运行时选择（而不是改写 {@link #FLUID_BAR_CAPACITY_ML} 一个数）的理由：基值是
-     * R75 起已对玩家双处声明（tooltip.9 / README）的<b>落档口径</b>，且全仓十余处派生（步进、总容量、
+     * R75 起已对玩家双处声明（当时的 tooltip.9 / README）的<b>落档口径</b>，且全仓十余处派生（步进、总容量、
      * verify 门禁）都按"未升级"读它 ⇒ 动态化收进 {@link #fluidTankCapacityMl(boolean)} 这<b>一个</b>
      * 选择点，基值常量与既有派生一个字不改，升级侧另立 long 常量。
+     * （★R98 S2 后物品侧那一处已退场 ⇒ 双处变单处，但"两套常量 + 一个选择点"的形状判据不动。）
      */
     public static final long FLUID_BAR_CAPACITY_UPGRADED_ML = 2_000_000_000L;
 

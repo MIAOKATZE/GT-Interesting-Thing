@@ -270,15 +270,21 @@ gtit.reincarnation.single_player_only=轮回机制仅单机可用
 
 # ---- 猫猫次元口袋（S3/S4）---- 键集来自单源契约 plan/_taskpack/pocket-lang-keys.md，两份文件必须逐键一致
 item.neko_dimension_pocket.name=猫猫次元口袋
-item.neko_dimension_pocket.tooltip.0=右键打开三栏面板
-item.neko_dimension_pocket.tooltip.1=中栏 %2$d 行 × %3$d 列 = %1$d 格存储；左列 %7$d 组 × %4$d 列流体（共 %8$d 槽）；右列源质盘 %10$d 格
-item.neko_dimension_pocket.tooltip.2=把元件放入底部带的绑定格，再按绑定键，即可开启次元通道
-item.neko_dimension_pocket.tooltip.3=元件必须置于有电的 ME 驱动器/箱子才会被识别
-item.neko_dimension_pocket.tooltip.4=从 NEI 拖到槽位可把该格变为虚化配置格，右键取消
-item.neko_dimension_pocket.tooltip.5=蒸馏每 %6$d 秒一轮，产出量按物品自身源质原量入账
-item.neko_dimension_pocket.tooltip.6=各流体列行为相同：方向取决于放入的储罐当前有无流体
-item.neko_dimension_pocket.tooltip.7=内容存在本物品上：丢失或销毁口袋即同时失去其中所有物品与源质
-item.neko_dimension_pocket.tooltip.8=合成会消耗一枚无限存储单元：请先把它转空，否则存档里那份存量将无主残留
+# ★★R98 S2（需求 1「大幅度简化 Tooltip」）：连号族由 0..9 十行<b>整体重编号</b>成 0..3 四行
+# （★不是"删几条留几条"——消费端是 equals(key) 即 break 的循环，跳号 = 静默截断后面的行）。
+# 撤掉的六行去了哪里（R36「撤形状必须落新家在」的逐条对账）：
+#   旧 .1 几何说明书 → 面板本来就数得见（中栏 135 格 / 左列 18 槽 / 右列 72 格盘），物品侧不再报数
+#   旧 .2 绑定流程   → 与面板说明块 gtit.pocket.note.summary 逐字近重复（复读机，删）
+#   旧 .3 有电前提   → 同上，且运行期读数已有 gtit.pocket.bind.unlocated
+#   旧 .4 NEI 虚化格 → 面板侧五处更精确落点（ghost.on / drag_hint / locked / capacity_note + 空格三行）
+#   旧 .5 蒸馏节拍   → 并入 gtit.pocket.tooltip.distill_fast 那一条追加行（★键不删不改名，只并值）
+#   旧 .9 每槽/合计容量 → 让位给面板 gtit.pocket.fluid.capacity（DP-5：容量唯一可见面 = 面板）
+# 腾出来的位置给了下面的元素储量行 gtit.pocket.tooltip.element（六项、非零才出、追加在 tooltip 最底部）。
+# 留下的三处声明位一个没动：新 .1 = R39a 两排同权、新 .2 = R53b 内容随物品丢、新 .3 = 合成一次性代价。
+item.neko_dimension_pocket.tooltip.0=右键或按键打开面板
+item.neko_dimension_pocket.tooltip.1=各流体列行为相同：方向取决于放入的储罐当前有无流体
+item.neko_dimension_pocket.tooltip.2=内容存在本物品上：丢失或销毁口袋即同时失去其中所有物品与源质
+item.neko_dimension_pocket.tooltip.3=合成会消耗一枚无限存储单元：请先把它转空，否则存档里那份存量将无主残留
 gtit.pocket.balance.neko=猫猫币：%d
 gtit.pocket.balance.shimmering=闪烁猫猫币：%d
 gtit.pocket.channel.instant=激活瞬时次元通道（-%d 猫猫币）
@@ -407,14 +413,18 @@ gtit.pocket.config.switch.none=未固化
 gtit.pocket.config.switch.hint=左键切换这一型的开与关；关掉不会退回插件
 gtit.pocket.config.mount.magnet=磁力：吸取目标与名单
 gtit.pocket.config.mount.mage=魔法使：模式与元素
-# ---- ★R97 S5 五型五面：紧凑三型与魔法使面的读数/说明键。容量面复用主面板 gtit.pocket.fluid.capacity
+# ---- ★R97 S5 五型五面：紧凑三型与魔法使面的读数键。容量面复用主面板 gtit.pocket.fluid.capacity
 # ★那一句不另立键；本段净增五键（R96 的 mount.pending 随「五行常驻一面」退场 ⇒ −1，五面各有真内容后
-# ★「有框没内容」的占位文案失去消费者，键与文本件一并撤销）。----
+# ★「有框没内容」的占位文案失去消费者，键与文本件一并撤销）。
+# ★★R98 S4（DP-7）再撤三条<b>静态说明</b>键 ⇒ 本段只剩逐型<b>读数</b>各一条：
+#   gtit.pocket.config.stack.note（"中栏物品格与源质格同用这把尺"）——新家 = 主面板中栏与源质栏本身
+#     （那两栏的格数与上限本来就在同一屏数得见），面板不再常驻教一遍；
+#   gtit.pocket.config.persist.button / gtit.pocket.config.persist.frame（常开期间按钮禁用 / 图标常亮）
+#     ——新家 = 主面板上那两枚既有的现场（通道按钮置灰与口袋图标的"工作中"常亮），★玩家可见面从此
+#     只剩 gtit.pocket.config.switch.hint 那条 tooltip 与实际现场。★这是有意的信息面收缩，
+#     用户 2026-09-28 明确接受"改判后这两个事实从配置面板消失"。----
 gtit.pocket.config.stack.limit=当前单格上限：%d
-gtit.pocket.config.stack.note=中栏物品格与源质格同用这把尺
 gtit.pocket.config.persist.idle=此刻未常开（开关关着，或通道还没起来）
-gtit.pocket.config.persist.button=常开生效期间，通道按钮被禁用
-gtit.pocket.config.persist.frame=口袋图标保持「工作中」常亮
 gtit.pocket.config.mage.capacity=元素容量：每种元素 %d，六种合计 %d
 gtit.pocket.config.mode.crystal=结晶模式
 gtit.pocket.config.mode.coin=猫猫币充能
@@ -458,8 +468,17 @@ gtit.pocket.receipt.upgrade.refuse_capacity=先腾流体条：关掉容量会装
 gtit.pocket.receipt.upgrade.refuse_stack=先拆大堆：关掉堆叠会装不下现有的堆
 gtit.pocket.receipt.upgrade.not_owner=承载的口袋已换位或界面已关，这次没改开关
 gtit.pocket.channel.always_on=通道常开中（持续化升级）
-gtit.pocket.tooltip.distill_fast=装魔法使后每一秒一轮
-item.neko_dimension_pocket.tooltip.9=每个流体槽容量 %5$d mB，%8$d 槽合计 %9$d mB（此项为需求外的设计取值，非原始要求数字）
+# ★★R98 S2：这两条一起承担"腾出来的六行位置"。
+# distill_fast = 连号族之外的追加行，★R98 起它同时是旧 tooltip.5 的替代者（两档口径并成一行，
+# 正好吃掉此前备而未用的 %12$d ⇒ 零扩槽）。键名冻结（README R96 裁定 + 用例硬钉「不许改名」），
+# ★本轮只改值。消费点：ItemNekoDimensionPocket#appendDistillFastLine。
+gtit.pocket.tooltip.distill_fast=蒸馏每 %6$d 秒一轮，装魔法使后 %12$d 秒一轮；产出量按物品自身源质原量入账
+# ★★R98 S2（需求 1 的后半）：元素储量行的模板，一条 primal 一行、★非零才出（新口袋只出五行，越用越长）。
+# 名字与数量都由代码喂（%1$s = aspect 显示名、%2$d = 当前点数），★值里不写任何规格数字 ⇒ R75 契约第 5 条。
+# 量纲：本仓 elem 存的就是点数（单 tag 上限 500），★不带魔力石那层 /100（那是 TC 的 vis ×100 刻度）。
+# 行首那一个半角空格与 §色码★必须由 Java 侧加（Properties 会吃掉 lang 值的行首空白），消费点
+# ItemNekoDimensionPocket#appendElementReserveLines，键字面量住在 PocketElementStore#TOOLTIP_ELEMENT_KEY。
+gtit.pocket.tooltip.element=%1$s§r x %2$d
 gtit.pocket.legend.input=上一行：放入待处理的容器（有流体就抽进本列，空容器会被灌满）
 gtit.pocket.legend.tank=中间：本列的流体槽
 gtit.pocket.legend.output=下一行：处理完的容器落在这里
@@ -484,7 +503,12 @@ gtit.pocket.storage.key.bind=中键：把这格绑定成需求格
 gtit.pocket.storage.key.memory=alt+左键：本格只放这一种
 gtit.pocket.storage.key.block=alt+右键：本格内容不上传
 gtit.pocket.note.title=本面板的用法摘要
-gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋只在主手持有期间工作
+# ★★R98 S5（需求 4）改口：句尾旧文案「口袋只在主手持有期间工作」是<b>假话</b>——行为真值在
+#   ItemNekoDimensionPocket.java 的 onUpdate → runPassives（R95 起<b>不</b>用 slot/selected 做门控 ⇒
+#   主背包 36 格里<b>任意</b>一格都推进；穿戴态另由 onWornTick 驱动同一段）。本句是权威口径，
+#   边界细节（饰品栏也续作 / 箱子与盔甲位停）由 gtit.pocket.held.note 那条承担 ⇒ 两句都念到
+#   "背包任意格"，但详略不同、不逐字重复（本键与 held.note 会被 notesText 拼进同一段说明块）。
+gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋放进背包任意格都会继续运作
 gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d 闪烁猫猫币、持续 %d 秒
 gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）；上传每秒在通道间轮转，没有东西可上传的通道不占对数
 # ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）；

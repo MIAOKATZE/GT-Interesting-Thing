@@ -71,6 +71,41 @@ public final class PocketChannelManager {
         }
     }
 
+    /**
+     * ★★<b>R98（需求 3）：即刻停道单点</b> —— 把某玩家<b>当前在跑的那条通道</b>当场关掉，
+     * 于是 {@link PocketChannelState#finishBatch()} 的归零分支<b>不再是唯一的停道路</b>。
+     * <p>
+     * <b>为什么必须 {@code stop()} 与 {@link #forget} 成对</b>：只做 {@code stop()} 会留一条 idle
+     * 死条目 —— {@link #tickShortChannel} 的自清理只挂在「跑过一批且跑完为 idle」那一支，而已经停掉的
+     * 道再也不会到期，条目因此永不回收（driver 的两处就地停道早就是这个成对形状，本方法只是第三个调用点）。
+     * <p>
+     * <b>★idle 条目一律不动</b>：一条 {@code mode == NONE} 的条目仍可能持有<b>瞬时通道的玩家维冷却镜像</b>
+     * （{@link PocketChannelState#lastBurstAtMs()}，R16 双维校验的那一半；一次 burst 跑完就是这种
+     * "已完成但条目仍在"的形态）。顺手摘掉它等于给玩家刷新一次瞬时冷却 ⇒ "停道"不许带洗冷却的副作用。
+     *
+     * <p>
+     * <b>★刻意不复用 {@code openChannel(player, Mode.NONE, …)}</b>：那条路的 {@code mode == null}
+     * 干净停支只在传 {@code null} 时命中，传 {@link PocketChannelState.Mode#NONE} 会走
+     * {@link PocketChannelState#activate} 的 {@code stop()} 之后<b>再</b>经
+     * {@link PocketChannelState#attachSession} 把绑定表/ghost 配置/承载栈挂回去 —— 得到的是一条
+     * 「没批次但带着会话快照」的僵尸道，下一拍还会被 driver 当成活道。
+     * <p>
+     * 本方法<b>不碰</b>钱包、<b>不碰</b>冷却、<b>不发</b>任何识别查询：停道本身不产生第二条扣费或免扣费路径。
+     *
+     * @param player 玩家维键
+     * @return {@code true} = 确实停掉并摘除了一条在跑的通道；{@code false} = 无条目或条目本就空闲
+     *         ⇒ <b>零写入</b>，可幂等重复调用
+     */
+    public boolean stopChannel(UUID player) {
+        final PocketChannelState state = peek(player);
+        if (state == null || state.idle()) {
+            return false;
+        }
+        state.stop();
+        forget(player);
+        return true;
+    }
+
     /** 停服/换档复位，防跨存档残留通道。 */
     public void reset() {
         states.clear();

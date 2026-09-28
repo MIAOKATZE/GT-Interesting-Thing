@@ -379,6 +379,13 @@ final class NekoPocketServerHandler {
      * <p>
      * <b>非法 arg 静默丢弃</b>（不写档、不回执）：伪造包不该买到一条回执，而"这一型存在吗"的判定
      * 本身也不该长成一次可见反馈（口径同 {@code performEssenceOutToPhial} 的格号越界支）。
+     * <p>
+     * ★★★<b>R98（需求 3）：本方法在写腿之后多了一条「关持续化 ⇒ 即刻停道」的边沿腿</b>，
+     * 它是对 R96 S1 那句「刻意不主动 {@code stop()}、让批次自然衰减」的<b>显式改判</b>
+     * （旧判作废的理由写在 {@code PocketChannelDriver} 的回满注释上，三处注释同源翻新）。
+     * 停道判据是 {@code type + Outcome} 的<b>边沿</b>而不是 {@code isActive} 的<b>现值</b> —— 这条差异
+     * 就是候选 A 与候选 B/C 的分界：现值判据会连带打死"持续化从没开过、玩家刚花 2 闪烁币开的手动
+     * 30 批道"（{@code PocketChannelState} 里没有"这条道由持续化撑着"的位，无法区分）。
      *
      * @param arg {@code PocketConfigPanel.encode} 的产物：{@code ordinal * 2 + offBit}
      */
@@ -403,6 +410,24 @@ final class NekoPocketServerHandler {
         final PocketConfigPanel.Outcome outcome = PocketConfigPanel
             .commitSwitch(carrier, type, PocketConfigPanel.offOfArg(arg), panel.inventory(), cursorStack());
         panel.putReceipt(PocketConfigPanel.receiptKey(outcome), 0);
+        // ★★R98（需求 3）：关掉「通道持续化」的那一个边沿 ⇒ 当场停道，不再等 30 批衰减（旧口径最坏要
+        // 30 秒才由 finishBatch 的归零分支回收，那 30 秒里搬运仍分文不取、不进冷却 = 开关的效果看不见）。
+        // ★判据三处约束，都是钉死的：① 用 type + Outcome 的<b>边沿</b>，★不许在这里写
+        // {@code isActive(panel.pocketStack(), CHANNEL_PERSIST)} —— 那条谓词在本文件里恰 1 处是门禁读数
+        // （verify-pocket.sh 的 HU_HANDLER_PRED 与用例 channel_persist_refuels_at_batch_boundary 同源），
+        // 长出第二处就是"第三个说法"；② 必须排在 commitSwitch <b>之后</b>（写失败 ⇒ outcome 不是
+        // TURNED_OFF ⇒ 不停道；顺序反过来就是"先把玩家的道收了，再问他买没买到"），由用例
+        // config_panel_action_reaches_guard 与本片的顺序腿共同钉住；③ ★零聊天消息（R88 口袋域零输出），
+        // 回执就是上面那条 gtit.pocket.receipt.upgrade.off。
+        // ★DP-6 已定案：这一拍<b>一律停</b>当时在跑的通道，含玩家在窗口内付费开的那条手动 30 批短效道；
+        // 已扣的 2 闪烁猫猫币按 R14「部分失败不退」口径<b>不退</b>，也不另发回执。
+        if (type == PocketUpgradeType.CHANNEL_PERSIST && outcome == PocketConfigPanel.Outcome.TURNED_OFF) {
+            PocketChannelManager.INSTANCE.stopChannel(panel.playerId());
+            // work 位是"有活通道在场"的<b>唯一</b>客户端镜像（面板状态行的剩余秒数、帧带与光泽都读它，
+            // 见 ItemNekoDimensionPocket#isChannelWorkLive）：道停了还留着 ≤600 tick 的倒计时就是说谎的读数。
+            // 写 −1 走 removeTag（★不碰 burst 显示窗那一键，它属于一次已经发生完的瞬时通道）。
+            ItemNekoDimensionPocket.startWorkTicks(carrier, -1);
+        }
     }
 
     /**

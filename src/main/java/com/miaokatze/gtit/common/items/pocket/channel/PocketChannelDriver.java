@@ -43,7 +43,9 @@ import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
  * {@code updateAnimation}），箱子/饰品栏/盔甲位 vanilla 不 tick 物品故停（盔甲位走
  * {@code onArmorTick}，:351-357）。多枚口袋由下面的会话身份守卫保证只有"开界面那一枚"跑通道。
  * 旧"换手/收进背包即停摆"的玩家声明文案（{@code gtit.pocket.held.note}）自 R95 起口径过期，
- * lang 侧翻新属 S2b；{@code tooltip.7} 说的是"内容随物品丢"，与主手口径无关，不得混引。
+ * lang 侧翻新属 S2b；★★<b>R98 后该族键号已整体漂移</b>（tooltip 激进裁剪 ⇒ 连号族 {@code 0..9} 重排成
+ * {@code 0..3}）：那句"内容随物品丢"现在住在 {@code tooltip.2}，★旧号 {@code .7} 在两份 lang 里<b>都不再存在</b>
+ * ⇒ <b>按内容认、别照号抄</b>；它与主手口径无关，不得混引。
  * 对照参考：GT5U {@code ItemGTToolbox.onUpdate} 对全部 36 格都跑，R95 起本仓与它同形。
  * <p>
  * <b>本方法每 tick 做且仅做三件事</b>（R57c①；★R96 S5 给第 1 条补了"有位 ⇒ 保证有道"那一腿）：
@@ -156,8 +158,19 @@ public final class PocketChannelDriver {
             // 免激活费免冷却：无激活事件可挂扣费点（R95 裁定）——持续化的成本语义就是
             // "一次性付过激活费后不再到 0"，不引入任何周期扣费。
             // ★R96 S1：判据换组合谓词 isActive（位图 ∧ ¬off-mask）⇒ 玩家关掉持续化之后这一行不再成立，
-            // 回满停止 ⇒ remainingBatches 自然衰减到 0，走既有 finishBatch 的 stop 支回收。
-            // ★刻意不主动 stop()：那等于替玩家发明第二条状态机（R59e 那一族），自然衰减已足够。
+            // 回满停止 ⇒ remainingBatches 逐批衰减。
+            // ★★★<b>R98 改判（需求 3）</b>：本处旧句「★刻意不主动 stop()：那等于替玩家发明第二条状态机
+            // （R59e 那一族），自然衰减已足够」<b>自 R98 起作废</b>。作废的理由：它把"关掉一个开关"
+            // 的效果推迟到最长 30 秒之后（上一次回满装好的 30 批逐秒衰减才归零），而那 30 秒里
+            // 搬运<b>仍然分文不取、不进冷却</b> ⇒ 玩家读到的是"开关已经关了，货还在搬，还不要钱"。
+            // 这不是"少一条状态机"的收益，而是"开关不成立"的代价。现在关持续化由<b>服务端开关写点</b>
+            // 即刻停道：见 {@code NekoPocketServerHandler#performUpgradeSwitchToggle} 里
+            // {@code type + Outcome.TURNED_OFF} 那一支 → {@code PocketChannelManager#stopChannel}
+            // （stop 与 forget 成对，并清 {@code workTicks} 镜像）。
+            // ★<b>本处代码一行不动</b>，回满腿继续存在：关掉持续化之后它只负责"<b>开着</b>时不断"。
+            // 停道不落在这一支的理由：这一支对<b>所有</b> SHORT 通道成立，在这里补 else 会连带打死
+            // "持续化从没开过、玩家刚花 2 闪烁币开的手动 30 批道"（状态条目里没有"这条道由持续化撑着"
+            // 的位，无从区分）⇒ 那是候选 B/C 被判死的理由，也是本轮采边沿方案的唯一理由。
             if (state.mode() == PocketChannelState.Mode.SHORT
                 && PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
                 state.activate(PocketChannelState.Mode.SHORT, 0L, 0L);
