@@ -477,6 +477,12 @@ public class NekoPocketModelTest {
         cases.put(
             "config_panel_geometry_within_secondary_caps",
             NekoPocketModelTest::configPanelGeometryWithinSecondaryCaps);
+        // ---- ★R99 P0（整改前置判据，用户 2026-09-28 拍板「必须补」）两条：① 磁力面文字账（三态说明行折行 +
+        // 两枚挂载框标题余量——此前这两条串不在任何折行账里，盒一窄就"绿但溢出"，R98 的现成活口）；
+        // ② 逐面内区空白率上限（R99-D-2 的教训：磁力面 51.4% 空洞离线全绿 ⇒ 没有判据的观感需求拦不住）。
+        // ★起点 241（R98 收束实测）⇒ 本批 +2 = 243。
+        cases.put("magnet_panel_text_fits_its_boxes", NekoPocketModelTest::magnetPanelTextFitsItsBoxes);
+        cases.put("config_panel_blank_rate_within_caps", NekoPocketModelTest::configPanelBlankRateWithinCaps);
         cases.put(
             "config_panel_dispatch_is_not_five_identical",
             NekoPocketModelTest::configPanelDispatchIsNotFiveIdentical);
@@ -667,7 +673,7 @@ public class NekoPocketModelTest {
             NekoPocketModelTest::ghostBlobBudget32kRealisticAndTailStop);
         // ---- ★R98 S2（需求 1：tooltip 大幅裁剪 + 六行元素储量）两条：① 连号族形状（R98-5 加固本体，
         // 此前"跳号 = 静默截断"只靠人眼核对，verify-pocket.sh 那一段只 echo 不 FAIL）；② 储量行内容
-        // （行序 = 白名单序 / 非零才出 / 数量不带 TC 的 ×100 / TC 缺席仍出文本 / 读侧不建档）。
+        // （行序 = 白名单序 / ★R99 P4-D 恒六行空位显 0 / 数量不带 TC 的 ×100 / TC 缺席仍出文本 / 读侧不建档）。
         // ★两条都不动 tooltipArgs 的既有判据（那 12 项与 isActive(...CAPACITY) 读点仍由
         // upgrade_switch_gates_all_effect_readpoints 按签名硬钉，本批一字未改）。
         cases.put(
@@ -13558,6 +13564,239 @@ public class NekoPocketModelTest {
     }
 
     /**
+     * ★★R99 P0 判据①：磁力面的<b>文字</b>账（三态说明行折行 + 两枚挂载框标题余量），两份 lang 各算一遍。
+     * <p>
+     * 这三条串此前<b>不在任何折行账里</b>：{@code config_panel_geometry_within_secondary_caps} 的逐型像素账
+     * 不点名磁力说明行（旧分工注释把它推给 {@code magnet_panel_geometry_closes}，而那条只量盒子不量文字），
+     * M-1 把说明盒从 228 窄到 108 后，英文那句按保守前进量要折三行 —— 没有这条判据，"盒 24 高装三行"
+     * 就是又一个"绿但溢出"（R98 的现成活口，取证 {@code 02-ui-style-layout.md} §8-5）。标题那条同理：
+     * 磁力框标题英文与 108px 的盒<b>零余量</b>，任何加宽/换字体就顶穿，先把"零余量"钉成账。
+     */
+    private static void magnetPanelTextFitsItsBoxes() {
+        final java.util.List<String> zh = sourceLinesOrNull(R98_LANG_ZH);
+        final java.util.List<String> en = sourceLinesOrNull(R98_LANG_EN);
+        if (zh == null || en == null) {
+            System.out.println("[NOTE] 读不到两份 lang ⇒ 磁力面文字账【未验】（★不是通过）");
+            return;
+        }
+        final int noteBox = PocketConfigPanel.MAGNET_CONTROL_WIDTH - 2;
+        for (final java.util.List<String> lang : Arrays.asList(zh, en)) {
+            // ---- 三态不对称说明行：按 0.6 档折进 108px 的盒，行数 × 10 不得超过 30px 的盒高 ----
+            for (final PocketMagnetFilter.Mode mode : PocketMagnetFilter.Mode.values()) {
+                final int w = residentLogicalWidth(formatLang(lang, PocketConfigPanel.noteKeyOf(mode)));
+                final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / noteBox);
+                SimpleAssert.that(
+                    lines * 10 <= PocketConfigPanel.MAGNET_NOTE_HEIGHT,
+                    "★磁力说明行折行后放得下（" + PocketConfigPanel.noteKeyOf(mode)
+                        + " 逻辑宽 "
+                        + w
+                        + " 盒宽 "
+                        + noteBox
+                        + " ⇒ "
+                        + lines
+                        + " 行 × 10 ≤ "
+                        + PocketConfigPanel.MAGNET_NOTE_HEIGHT
+                        + "）");
+            }
+            // ---- 两枚挂载框标题：0.6 档下一行放得下（★磁力那枚今天就是零余量，这里把账立起来）----
+            assertSingleReadoutLine(
+                lang,
+                PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGNET),
+                PocketConfigPanel.MAGNET_FRAME_WIDTH - 2,
+                "磁力挂载框标题");
+            assertSingleReadoutLine(
+                lang,
+                PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGE),
+                PocketConfigPanel.MAGE_FRAME_WIDTH - 2,
+                "魔法使挂载框标题");
+        }
+    }
+
+    /**
+     * ★★R99 P0 判据②：逐面<b>内区空白率</b>上限（R99-D-2 的直接教训：磁力面 51.4% 的成片空洞在
+     * "测试全绿"下交付了实机）。内区 = 面板减 6px 边距；覆盖 = 装配侧<b>同一套常量</b>摆出的控件盒矩形并集
+     * （与装配式逐字同源 ⇒ 改布局不用改本判据的式子，只看它红不红）。文字件按整个矩形盒计入（与
+     * 取证 {@code 02-ui-style-layout.md} §4 同一口径，真实观感只会更空）。
+     * <p>
+     * 阈值分两档，都是本轮定案不是拍脑袋：紧凑四面 ≤ <b>15%</b>（B-0 并带后的实测 11.0–11.8%）；
+     * 磁力面 ≤ <b>30%</b> —— M-1（控制块单列化、不转置盘）的结构地板是 ≈28.4%（左列说明行之下到
+     * 底带之间没有可放的内容），真正把它吃掉要 M-2 转置 72 格盘（改玩家读法，用户 2026-09-28 明确不采）。
+     * ★阳性对照：磁力面的空白率必须<b>严格大于</b>最紧的魔法使面 ⇒ 读数恒 0 的空转检法在这里当场红。
+     */
+    private static void configPanelBlankRateWithinCaps() {
+        double magnetRate = -1;
+        double mageRate = -1;
+        for (final PocketUpgradeType type : PocketUpgradeType.values()) {
+            final int width = PocketConfigPanel.panelWidthOf(type);
+            final int height = PocketConfigPanel.panelHeightOf(type);
+            final int innerW = width - 2 * PocketConfigPanel.MARGIN;
+            final int innerH = height - 2 * PocketConfigPanel.MARGIN;
+            final boolean[][] covered = new boolean[innerH][innerW];
+            // ---- 公共四件：型名 / 开关 / 回执行 / 关闭钮（★式子与装配侧逐字同源）----
+            cover(
+                covered,
+                innerW,
+                innerH,
+                PocketConfigPanel.MARGIN,
+                PocketConfigPanel.MARGIN,
+                PocketConfigPanel.labelWidthOf(type),
+                PocketConfigPanel.ROW_HEIGHT);
+            cover(
+                covered,
+                innerW,
+                innerH,
+                PocketConfigPanel.MARGIN + PocketConfigPanel.labelWidthOf(type) + 2,
+                PocketConfigPanel.MARGIN,
+                PocketConfigPanel.SWITCH_WIDTH,
+                PocketConfigPanel.SWITCH_HEIGHT);
+            final int receiptY = height - PocketConfigPanel.MARGIN - PocketConfigPanel.RECEIPT_HEIGHT;
+            cover(
+                covered,
+                innerW,
+                innerH,
+                PocketConfigPanel.MARGIN,
+                receiptY,
+                width - 2 * PocketConfigPanel.MARGIN - PocketConfigPanel.CLOSE_WIDTH - 2,
+                PocketConfigPanel.RECEIPT_HEIGHT);
+            cover(
+                covered,
+                innerW,
+                innerH,
+                width - PocketConfigPanel.MARGIN - PocketConfigPanel.CLOSE_WIDTH,
+                receiptY + (PocketConfigPanel.RECEIPT_HEIGHT - PocketConfigPanel.CLOSE_HEIGHT) / 2,
+                PocketConfigPanel.CLOSE_WIDTH,
+                PocketConfigPanel.CLOSE_HEIGHT);
+            // ---- 逐型内容段（经分派表派生，不写第二份型清单）----
+            for (final PocketConfigPanel.Section section : PocketConfigPanel.sectionsOf(type)) {
+                switch (section) {
+                    case READOUT_CAPACITY:
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.MARGIN,
+                            PocketConfigPanel.CONTENT_TOP,
+                            innerW,
+                            PocketConfigPanel.CAPACITY_READOUT_HEIGHT);
+                        break;
+                    case READOUT_STACK:
+                    case READOUT_PERSIST:
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.MARGIN,
+                            PocketConfigPanel.CONTENT_TOP,
+                            innerW,
+                            PocketConfigPanel.READOUT_HEIGHT);
+                        break;
+                    case MOUNT_MAGE:
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.MAGE_FRAME_X,
+                            PocketConfigPanel.MAGE_FRAME_Y,
+                            PocketConfigPanel.MAGE_FRAME_WIDTH,
+                            PocketConfigPanel.MAGE_FRAME_HEIGHT);
+                        break;
+                    case MOUNT_MAGNET:
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.magnetFrameXOf(type),
+                            PocketConfigPanel.MAGNET_FRAME_Y,
+                            PocketConfigPanel.MAGNET_FRAME_WIDTH,
+                            PocketConfigPanel.MAGNET_FRAME_HEIGHT);
+                        for (int row = 0; row < 4; row++) {
+                            cover(
+                                covered,
+                                innerW,
+                                innerH,
+                                PocketConfigPanel.MAGNET_CONTROL_X,
+                                PocketConfigPanel.MAGNET_CONTROL_Y
+                                    + row * (PocketConfigPanel.MAGNET_BUTTON_HEIGHT + PocketConfigPanel.MAGNET_ROW_GAP),
+                                PocketConfigPanel.MAGNET_BUTTON_WIDTH,
+                                PocketConfigPanel.MAGNET_BUTTON_HEIGHT);
+                        }
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.MAGNET_CONTROL_X,
+                            PocketConfigPanel.magnetNoteY(),
+                            PocketConfigPanel.MAGNET_CONTROL_WIDTH - 2,
+                            PocketConfigPanel.MAGNET_NOTE_HEIGHT);
+                        break;
+                    default:
+                        break;
+                }
+            }
+            long coveredCount = 0;
+            for (final boolean[] row : covered) {
+                for (final boolean cell : row) {
+                    if (cell) {
+                        coveredCount++;
+                    }
+                }
+            }
+            final double rate = 1.0 - (double) coveredCount / ((double) innerW * innerH);
+            SimpleAssert.that(rate > 0.0 && rate < 1.0, "★" + type + " 空白率读数在 (0,1) 内（读到 " + rate + " = 检法空转或几何爆炸）");
+            // ★阈值两档（见方法 javadoc）：紧凑四面 ≤15%，磁力 ≤30%（M-1 结构地板）。
+            final boolean isMagnetFace = PocketConfigPanel.sectionsOf(type)
+                .get(1) == PocketConfigPanel.Section.MOUNT_MAGNET;
+            final double cap = isMagnetFace ? 0.30 : 0.15;
+            SimpleAssert.that(
+                rate <= cap,
+                "★★" + type
+                    + " 内区空白率 "
+                    + String.format(java.util.Locale.ROOT, "%.1f%%", rate * 100)
+                    + " ≤ 上限 "
+                    + String.format(java.util.Locale.ROOT, "%.0f%%", cap * 100)
+                    + "（内区 "
+                    + innerW
+                    + "×"
+                    + innerH
+                    + "，覆盖 "
+                    + coveredCount
+                    + "px²）——"
+                    + "超限 = 又一处 R99-D-2 形状的成片空洞");
+            if (PocketConfigPanel.sectionsOf(type)
+                .get(1) == PocketConfigPanel.Section.MOUNT_MAGNET) {
+                magnetRate = rate;
+            }
+            if (PocketConfigPanel.sectionsOf(type)
+                .get(1) == PocketConfigPanel.Section.MOUNT_MAGE) {
+                mageRate = rate;
+            }
+        }
+        // ---- 阳性对照（R57 纪律）：磁力面的洞必须真的比最紧的面大 ⇒ 检法认得出"更空"----
+        SimpleAssert.that(
+            magnetRate > mageRate,
+            "★阳性对照：磁力面空白率（" + String.format(java.util.Locale.ROOT, "%.1f%%", magnetRate * 100)
+                + "）> 魔法使面（"
+                + String.format(java.util.Locale.ROOT, "%.1f%%", mageRate * 100)
+                + "）——读到反的或相等 = 本检法没有分辨力，上面的上限断言不算干净");
+    }
+
+    /** 把一个面板坐标系的矩形标进内区覆盖图（★越界部分裁掉，与"控件盒只在内区计账"同口径）。 */
+    private static void cover(boolean[][] covered, int innerW, int innerH, int x, int y, int w, int h) {
+        for (int dy = 0; dy < h; dy++) {
+            final int gy = y + dy - PocketConfigPanel.MARGIN;
+            if (gy < 0 || gy >= innerH) {
+                continue;
+            }
+            for (int dx = 0; dx < w; dx++) {
+                final int gx = x + dx - PocketConfigPanel.MARGIN;
+                if (gx >= 0 && gx < innerW) {
+                    covered[gy][gx] = true;
+                }
+            }
+        }
+    }
+
+    /**
      * ★★R97 S5 后的口径（用例名保留、判据翻新）：R96 的「pending 占位」随「五行常驻一面」一起
      * <b>整体退场</b>——五型五面后每一段都有真内容（容量/堆叠/常开是读数段、磁力是 72 格盘、魔法使是
      * 三行模式控件），「分派表说有框但内容还没落地」的兜底分支失去了存在前提 ⇒ 占位文本件、键清单里的
@@ -19906,7 +20145,8 @@ public class NekoPocketModelTest {
                         + PocketConfigPanel.RECEIPT_HEIGHT
                         + "）");
             }
-            // ---- 各面自己的读数/说明行（逐型点名；磁力面的格盘/控制块账归 magnet_panel_geometry_closes）----
+            // ---- 各面自己的读数/说明行（逐型点名；磁力面的格盘/控制块几何账归 magnet_panel_geometry_closes，
+            // ★磁力说明行与两枚挂载框标题的<b>文字</b>账自 R99 P0 起归 magnet_panel_text_fits_its_boxes）----
             // 容量面：容量读数块（复用主面板那句 fluid.capacity，喂最宽数字 = 升级档 2G/36G）。
             final int capW = residentLogicalWidth(
                 formatLang(
@@ -21204,13 +21444,14 @@ public class NekoPocketModelTest {
     // ================================================================== ★R98 S2（TP-S2）tooltip 裁剪 + 六行元素储量
     //
     // 需求原话：「大幅度简化次元猫猫口袋的 Tooltip，把位置空出来一些，增加类似魔力石的 6 个源质储量显示。」
-    // 定案档位 = 激进 −6（恒定 11 行 → 5 行），腾出的位置给 0–6 行储量（★非零才出，DP-2）。
+    // 定案档位 = 激进 −6（恒定 11 行 → 5 行），腾出的位置给 0–6 行储量（★R99 P4-D 改判：恒六行、空位显 0，
+    // R98 期 DP-2「非零才出」作废——全 0 时六行一行不出的形状让"没吸进来"与"没同步"不可分辨，正是实机驳回点）。
     // 两条用例各钉一面，且★两条都带阳性对照（R57 那一族：检法空转比没有检法更坏）：
     // ① {@code pocket_tooltip_family_is_contiguous_and_four} —— 连号族的<b>形状</b>。
     // "跳号 = 静默截断"这件事在 R98 之前<b>只靠人眼核对</b>（{@code verify-pocket.sh} 那一段只 echo
     // 编号、没有 FAIL 分支，见 {@code 01a-tooltip-current.md} §6-4）⇒ 本条就是 R98-5 加固本体。
     // ② {@code pocket_element_reserve_lines_follow_primal_tag_order} —— 六行储量的<b>内容</b>：
-    // 行序 = 白名单序 / 非零才出 / 量纲不带 TC 的 ×100 / TC 缺席仍出文本 / ★读侧不建档。
+    // 行序 = 白名单序 / ★R99 P4-D 恒六行空位显 0 / 量纲不带 TC 的 ×100 / TC 缺席仍出文本 / ★读侧不建档。
     // 本条驱动的是<b>生产同一段代码</b>（排版腿 {@code appendElementReserveLines}），不是源码回声。
     // ★两条都不动 {@code tooltipArgs} 的判据（那 12 项与 {@code isActive(...CAPACITY)} 读点仍由
     // {@code upgradeSwitchGatesAllEffectReadpoints} 按签名硬钉，本批一字未改）。
@@ -21222,7 +21463,7 @@ public class NekoPocketModelTest {
     private static final String R98_LANG_ZH = "src/main/resources/assets/gtit/lang/zh_CN.lang";
     private static final String R98_LANG_EN = "src/main/resources/assets/gtit/lang/en_US.lang";
     private static final String R98_ELEMENT_STORE_FILE = "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketElementStore.java";
-    /** R98 之后的<b>恒定</b>行数：4 条连号 + 1 条蒸馏双口径追加行（储量行是浮动的，不计入恒定面）。 */
+    /** R98 之后的<b>恒定</b>行数：4 条连号 + 1 条蒸馏双口径追加行（储量行恒 6 行且不占连号族，R99 P4-D）。 */
     private static final int R98_CONSTANT_TOOLTIP_ROWS = 5;
     /** {@code tooltipArgs} 的槽数：R95 起 12，★裁剪只改"lang 引用了哪几个"，不改数组。 */
     private static final int R98_TOOLTIP_ARG_SLOTS = 12;
@@ -21292,11 +21533,11 @@ public class NekoPocketModelTest {
                 Integer.valueOf(keySet.size()),
                 Integer.valueOf(drawn),
                 "★「族内键数 == 画出行数」：不等就说明有键悬在 break 之后（lang 还写着、tooltip 永远不吐）");
-            // 恒定面 = 连号画出的行数 + 那条蒸馏追加行（★储量行按内容浮动，不计入恒定面）
+            // 恒定面 = 连号画出的行数 + 那条蒸馏追加行（★储量行恒 6 行、不占连号族，R99 P4-D 后总行数恒 11）
             SimpleAssert.eq(
                 Integer.valueOf(R98_CONSTANT_TOOLTIP_ROWS),
                 Integer.valueOf(drawn + 1),
-                "★任何状态下 tooltip 都至少画 " + R98_CONSTANT_TOOLTIP_ROWS + " 行（旧档 11 行的啰嗦面必须回不来；读到别的数 = 裁剪档位被动过）");
+                "★任何状态下连号族 + 蒸馏行都恒为 " + R98_CONSTANT_TOOLTIP_ROWS + " 行（旧档 11 行的啰嗦面必须回不来；读到别的数 = 裁剪档位被动过）");
         }
         // ---- ④ 旧号 tooltip.4 到 tooltip.9 在两份里全部归零 ----
         // （★"只回 lang 不回代码"是 PLAN 回退段点名的反向症状：lang 还写着十行、消费端只画四行）
@@ -21426,9 +21667,10 @@ public class NekoPocketModelTest {
     /**
      * ★R98 S2 用例 ②：六行元素储量的<b>内容</b>判据（驱动生产排版腿，模板取两份 lang 的真值）。
      * <p>
-     * 钉五件事，逐条对应 PLAN §3-S2 与已定案 1/2/5/6：行序 = {@code PRIMAL_TAGS} 白名单序（★不由入账
-     * 顺序决定）、非零才出（DP-2）、★数量不带 TC 的 {@code /100}（那是 vis ×100 刻度）、TC 缺席照样出文本
-     * （名字回落 tag）、★读侧一律不建 {@code elem} 档（R53c）。
+     * 钉五件事，逐条对应 PLAN §3-S2 与已定案 1/2/5/6（★R99 P4-D 改判后的口径）：行序 =
+     * {@code PRIMAL_TAGS} 白名单序（★不由入账顺序决定）、★★恒六行空位显 0（R98 DP-2「非零才出」作废，
+     * 全 0 也要出六行——"真 0"与"坏了/没同步"必须分得开）、★数量不带 TC 的 {@code /100}（那是 vis ×100
+     * 刻度）、TC 缺席照样出文本（名字回落 tag）、★读侧一律不建 {@code elem} 档（R53c）。
      */
     private static void pocketElementReserveLinesFollowPrimalTagOrder() {
         // ================= 前提面：本 JVM 就是「TC 缺席」那一档 =================
@@ -21473,35 +21715,58 @@ public class NekoPocketModelTest {
         }
         // ================= 行为腿：驱动生产的排版腿 =================
         final String template = langValueOrEmpty(langZh, R98_ELEMENT_KEY);
-        // ---- 腿 A：全 0（从未写过 elem 的口袋）⇒ 一行都不出，且★绝不因为"要显示 0"而建档 ----
+        // ---- 腿 A：全 0（从未写过 elem 的口袋）⇒ ★恒出六行、每行以 "x 0" 收尾，且★绝不因为"要显示 0"而建档 ----
         final NBTTagCompound blank = new NBTTagCompound();
         final java.util.List<String> blankRows = new java.util.ArrayList<>();
         ItemNekoDimensionPocket.appendElementReserveLines(blankRows, template, PocketElementStore.attach(blank));
-        SimpleAssert.eq(Integer.valueOf(0), Integer.valueOf(blankRows.size()), "★全 0 ⇒ 出行数 0（DP-2 非零才出）");
+        SimpleAssert.eq(
+            Integer.valueOf(PocketConstants.PRIMAL_TAGS.length),
+            Integer.valueOf(blankRows.size()),
+            "★全 0 ⇒ 恒出六行（★R99 P4-D：空位显 0，「真 0」与「坏了/没同步」必须在画面上分得开；R98 期 DP-2 出 0 行的口径作废）");
+        for (final String row : blankRows) {
+            SimpleAssert.that(row.endsWith("x 0"), "★全 0 档的每一行都必须以「x 0」收尾（读到 '" + row + "' = 空位没有显 0）");
+        }
         SimpleAssert.that(
             !blank.hasKey(PocketConstants.ELEMENTS),
             "★★读一次 tooltip 不许在档里建出 elem 复合体（R53c 读路径纪律：为「补 0」建档 = 平白扩档）");
         final java.util.List<String> noRootRows = new java.util.ArrayList<>();
         ItemNekoDimensionPocket.appendElementReserveLines(noRootRows, template, PocketElementStore.attach(null));
-        SimpleAssert.eq(Integer.valueOf(0), Integer.valueOf(noRootRows.size()), "★无根（tagCompound == null）⇒ 0 行，且不炸");
-        // ---- 腿 B：单项非零只出那一行，且格式逐字 = 魔力石那一族（前导空格 + §色 + 名 + §r x + 数量）----
+        SimpleAssert.eq(
+            Integer.valueOf(PocketConstants.PRIMAL_TAGS.length),
+            Integer.valueOf(noRootRows.size()),
+            "★无根（tagCompound == null）⇒ 仍恒六行全 0，且不炸、不建档");
+        // ---- 腿 B：单项非零 ⇒ 六行里恰那一行带值、其余五行显 0，且带值行格式逐字 = 魔力石那一族
+        // （前导空格 + §色 + 名 + §r x + 数量）----
         final NBTTagCompound oneRoot = new NBTTagCompound();
         final PocketElementStore one = PocketElementStore.attach(oneRoot);
         SimpleAssert.eq(Integer.valueOf(120), Integer.valueOf(one.add("ignis", 120)), "★前提：120 点真进了档（否则下面读到 0 行会是空转）");
         final java.util.List<String> oneRows = new java.util.ArrayList<>();
         ItemNekoDimensionPocket.appendElementReserveLines(oneRows, template, one);
-        SimpleAssert.eq(Integer.valueOf(1), Integer.valueOf(oneRows.size()), "★单项非零 ⇒ 恰出那一行");
+        SimpleAssert.eq(
+            Integer.valueOf(PocketConstants.PRIMAL_TAGS.length),
+            Integer.valueOf(oneRows.size()),
+            "★单项非零 ⇒ 仍六行（R99 P4-D 恒六行）");
+        final int ignisRow = indexOfPrimal("ignis");
+        SimpleAssert.that(ignisRow >= 0, "★前提：ignis 在白名单里（色表/行序的锚）");
         SimpleAssert.eq(
             " §" + net.minecraft.util.EnumChatFormatting.RED.getFormattingCode() + "ignis§r x 120",
-            oneRows.get(0),
-            "★行形状逐字钉（照魔力石 ItemAmuletVis.java:134 的「\" §\" + 色 + 名 + \"§r x \" + 数量」；★行首空格由 Java 侧加，Properties 会吃掉 lang 里的行首空白）");
+            oneRows.get(ignisRow),
+            "★带值行形状逐字钉（照魔力石 ItemAmuletVis.java:134 的「\" §\" + 色 + 名 + \"§r x \" + 数量」；★行首空格由 Java 侧加，Properties 会吃掉 lang 里的行首空白）");
+        for (int i = 0; i < oneRows.size(); i++) {
+            if (i != ignisRow) {
+                SimpleAssert.that(
+                    oneRows.get(i)
+                        .endsWith("x 0"),
+                    "★非 ignis 的五行必须显 0（读到 '" + oneRows.get(i) + "' = 恒六行没做全）");
+            }
+        }
         SimpleAssert.that(
-            oneRows.get(0)
+            oneRows.get(ignisRow)
                 .indexOf('.') < 0
-                && oneRows.get(0)
+                && oneRows.get(ignisRow)
                     .indexOf('/') < 0,
             "★数量不得带小数或斜杠：魔力石的 /100 是 TC 的 vis ×100 存档刻度，本仓 elem 存的就是点数（01b §3.7）");
-        // ---- 腿 C：行序 = PRIMAL_TAGS 序，★不由入账先后决定（入账序刻意反着写）----
+        // ---- 腿 C：行序 = PRIMAL_TAGS 序，★不由入账先后决定（入账序刻意反着写）；零值行在原位显 0 ----
         final NBTTagCompound mixedRoot = new NBTTagCompound();
         final PocketElementStore mixed = PocketElementStore.attach(mixedRoot);
         mixed.add(PocketConstants.PRIMAL_TAGS[5], 7);
@@ -21509,27 +21774,33 @@ public class NekoPocketModelTest {
         mixed.add(PocketConstants.PRIMAL_TAGS[3], 8);
         final java.util.List<String> mixedRows = new java.util.ArrayList<>();
         ItemNekoDimensionPocket.appendElementReserveLines(mixedRows, template, mixed);
-        SimpleAssert.eq(Integer.valueOf(3), Integer.valueOf(mixedRows.size()), "★三条非零 ⇒ 三行（缺项不补位、不显示 0）");
-        final java.util.List<String> expectedTags = new java.util.ArrayList<>();
-        for (final String tag : PocketConstants.PRIMAL_TAGS) {
-            if (mixed.get(tag) > 0) {
-                expectedTags.add(tag);
-            }
-        }
         SimpleAssert.eq(
-            Arrays.asList("aer", "aqua", "perditio"),
-            expectedTags,
-            "★白名单过滤后的期望序必须是 aer/aqua/perditio（入账序是 perditio/aer/aqua ⇒ 读到反的 = 行序被入账顺序牵着走）");
-        for (int i = 0; i < expectedTags.size(); i++) {
+            Integer.valueOf(PocketConstants.PRIMAL_TAGS.length),
+            Integer.valueOf(mixedRows.size()),
+            "★三条非零 ⇒ 仍六行（零值三条在原位显 0，不挤掉、不重排）");
+        for (int i = 0; i < PocketConstants.PRIMAL_TAGS.length; i++) {
+            final String tag = PocketConstants.PRIMAL_TAGS[i];
             final String row = mixedRows.get(i);
-            SimpleAssert.that(
-                row.indexOf(expectedTags.get(i)) >= 0,
-                "★第 " + i + " 行必须念 " + expectedTags.get(i) + "（读到 '" + row + "' = 序不是白名单序）");
+            SimpleAssert.that(row.indexOf(tag) >= 0, "★第 " + i + " 行必须念 " + tag + "（读到 '" + row + "' = 序不是白名单序）");
             SimpleAssert.eq(
-                " §" + PocketConstants.PRIMAL_CHAT_CODES[indexOfPrimal(expectedTags.get(i))].getFormattingCode(),
+                " §" + PocketConstants.PRIMAL_CHAT_CODES[i].getFormattingCode(),
                 row.substring(0, 3),
                 "★第 " + i + " 行的颜色必须按<b>白名单下标</b>取（颜色跟行、不跟入账顺序）");
+            final int expected = mixed.get(tag);
+            SimpleAssert.that(
+                row.endsWith("x " + expected),
+                "★第 " + i + " 行必须显自己的存量（" + tag + " 期望 " + expected + "，读到 '" + row + "'）");
         }
+        SimpleAssert.eq(
+            Arrays.asList(9, 0, 0, 8, 0, 7),
+            Arrays.asList(
+                Integer.valueOf(mixed.get(PocketConstants.PRIMAL_TAGS[0])),
+                Integer.valueOf(mixed.get(PocketConstants.PRIMAL_TAGS[1])),
+                Integer.valueOf(mixed.get(PocketConstants.PRIMAL_TAGS[2])),
+                Integer.valueOf(mixed.get(PocketConstants.PRIMAL_TAGS[3])),
+                Integer.valueOf(mixed.get(PocketConstants.PRIMAL_TAGS[4])),
+                Integer.valueOf(mixed.get(PocketConstants.PRIMAL_TAGS[5]))),
+            "★前提复钉：入账序刻意反着写（perditio/aer/aqua），三条非零落在白名单的 0/3/5 位");
         // ---- 腿 D：满配六行 + 上限直显（★数量 = 点数，不是 /100 的小数）----
         final PocketElementStore full = PocketElementStore.attach(new NBTTagCompound());
         for (final String tag : PocketConstants.PRIMAL_TAGS) {
@@ -21549,21 +21820,29 @@ public class NekoPocketModelTest {
                     + row
                     + "' = 把 TC 的 ×100 刻度抄进来了，500 会变成 5）");
         }
-        // ---- 腿 E：TC 缺席仍出文本（本 JVM 就是缺席档；名字的回落不吞行）+ 行数随内容浮动的阶梯 ----
+        // ---- 腿 E：TC 缺席仍出文本（本 JVM 就是缺席档；名字的回落不吞行）+ ★R99 P4-D 恒六行 ----
         for (final String row : mixedRows) {
             SimpleAssert.that(
                 row.trim()
                     .length() > 0,
                 "★TC 缺席时行必须有内容（读到空串 = 回落腿把整行吞了）");
         }
-        // ★1 行 / 3 行 / 6 行三级阶梯（上面三腿各读一级）⇒ 证明"恒定 6 行补 0"没有回来，也证明排版腿
-        // 不是把行数写死的常数；★同时每一行都必须含数字（模板 %2$d 真被填上，不是空串占位）。
-        SimpleAssert.eq(Integer.valueOf(1), Integer.valueOf(oneRows.size()), "阶梯①：单项档 = 1 行");
-        SimpleAssert.eq(Integer.valueOf(3), Integer.valueOf(mixedRows.size()), "阶梯②：三项档 = 3 行");
+        // ★0 行 / 1 行带值 / 3 行带值三档（腿 A/B/C 各读一级）行数全部 = 6 ⇒ 恒六行不是"恰好这档有值"；
+        // ★同时每一行都必须含数字（模板 %2$d 真被填上，不是空串占位）。
+        SimpleAssert.eq(
+            Integer.valueOf(PocketConstants.PRIMAL_TAGS.length),
+            Integer.valueOf(blankRows.size()),
+            "阶梯①：全 0 档 = 6 行（R99 P4-D 后行数不再随内容浮动）");
+        SimpleAssert
+            .eq(Integer.valueOf(PocketConstants.PRIMAL_TAGS.length), Integer.valueOf(oneRows.size()), "阶梯②：单项档 = 6 行");
+        SimpleAssert.eq(
+            Integer.valueOf(PocketConstants.PRIMAL_TAGS.length),
+            Integer.valueOf(mixedRows.size()),
+            "阶梯③：三项档 = 6 行");
         for (final String row : fullRows) {
-            SimpleAssert.that(row.matches(".*[0-9].*"), "★阶梯③的每行都必须带数量读数（读到无数字的行 = 模板 %2$d 没被喂上）：" + row);
+            SimpleAssert.that(row.matches(".*[0-9].*"), "★每行都必须带数量读数（读到无数字的行 = 模板 %2$d 没被喂上）：" + row);
         }
-        // ================= 源码腿：储量行不吃 tooltipArgs、不套 LIGHT_PURPLE、快照只取一次 =================
+        // ================= 源码腿：储量行不吃 tooltipArgs、不套 LIGHT_PURPLE、取数走逐 tag 点查 =================
         final java.util.List<String> item = sourceLinesOrNull(R96_POCKET_ITEM_FILE);
         if (item == null) {
             System.out.println("[NOTE] 读不到 ItemNekoDimensionPocket.java ⇒ 排版腿形状半边【未验】（★不是通过）");
@@ -21574,7 +21853,21 @@ public class NekoPocketModelTest {
             "static void appendElementReserveLines(List tooltip, String template, PocketElementStore store) {");
         SimpleAssert.that(layout >= 0, "★按签名定位排版腿（★测试驱动的就是这一段，签名漂了本用例就是空转）");
         final int layoutEnd = methodEnd(item, layout);
-        SimpleAssert.eq(1, countRegionCode(item, layout, layoutEnd, "snapshot()"), "★只取一次快照（六次点查同一份）");
+        // ★R99 P4-D：排版腿改逐 tag 点查（恒六行显 0）⇒ snapshot 在本方法体必须绝迹，
+        // 点查必须经 PocketElementStore.get（缺键即 0 的唯一读口）。
+        SimpleAssert.eq(
+            0,
+            countRegionCode(item, layout, layoutEnd, "snapshot()"),
+            "★R99 P4-D：排版腿不得再走 snapshot（非零才出那条旧口径的载体；恒六行显 0 走逐 tag 点查）");
+        SimpleAssert.that(
+            regionContainsCode(item, layout, layoutEnd, "store.get(tag)"),
+            "★取数走 PocketElementStore.get(tag)（缺键即 0 的唯一读口；★读侧零建档 R53c 不动）");
+        // ★"0 读数"的正控：snapshot 仍在它的数据主人（PocketElementStore）里被别的读点消费
+        // ⇒ 上面的 0 是「排版腿不再用它」，不是抓法瞎了（R91-B 同一纪律）。
+        final java.util.List<String> storeFile = sourceLinesOrNull(R98_ELEMENT_STORE_FILE);
+        SimpleAssert.that(
+            storeFile != null && countCodeLinesIn(storeFile, "snapshot()") >= 1,
+            "★正控：snapshot() 在 PocketElementStore 里仍有消费点（读到 0 = 抓法瞎了，排版腿那条 0 不算干净）");
         SimpleAssert.eq(
             1,
             countRegionCode(item, layout, layoutEnd, "String.format("),

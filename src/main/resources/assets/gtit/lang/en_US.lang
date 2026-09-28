@@ -281,7 +281,7 @@ item.neko_dimension_pocket.name=Neko Dimensional Pocket
 #   old .5 cadence        → merged into the appended line gtit.pocket.tooltip.distill_fast (name frozen)
 #   old .9 per-slot/total capacity → yielded to the panel's gtit.pocket.fluid.capacity (DP-5)
 # The freed rows are handed to the element reserve line gtit.pocket.tooltip.element (six entries,
-# only non-zero ones print, appended at the very bottom of the tooltip).
+# all six always print with 0 for empty since R99, appended at the very bottom of the tooltip).
 # The three declaration spots survive untouched: new .1 = R39a equal fluid rows,
 # new .2 = R53b contents live in the item, new .3 = the one-shot crafting cost.
 item.neko_dimension_pocket.tooltip.0=Right-click or press the key to open the panel
@@ -420,7 +420,7 @@ gtit.pocket.config.switch.turn_off=Turn off
 gtit.pocket.config.switch.turn_on=Turn on
 gtit.pocket.config.switch.none=Not installed
 gtit.pocket.config.switch.hint=Left-click to switch this module on or off; turning it off does not refund the module
-gtit.pocket.config.mount.magnet=Magnet: pickup targets and lists
+gtit.pocket.config.mount.magnet=Magnet: targets and lists
 gtit.pocket.config.mount.mage=Mage: modes and elements
 # ---- ★R97 S5 five faces for five modules: readout/note keys for the three compact faces and the mage
 # ★face. The capacity face reuses the main panel sentence gtit.pocket.fluid.capacity (no new key); net
@@ -484,7 +484,7 @@ gtit.pocket.channel.always_on=Channels always on (persistence upgrade)
 # be renamed"); ★this round only changes the value. Consumer: appendDistillFastLine.
 gtit.pocket.tooltip.distill_fast=Distillation runs one batch every %6$d seconds, every %12$d second with the mage module; yield follows each item's own aspects
 # ★★R98 S2 (second half of request 1): template for the element reserve lines — one primal per row,
-# ★only non-zero ones print (a fresh pocket shows five rows, it grows as you use it).
+# ★all six rows always print, 0 for empty (R99 P4-D: "real zero" and "not synced" must look different).
 # Name and amount are both fed by code (%1$s = aspect display name, %2$d = current points);
 # ★the value carries no spec digits — R75 lang contract rule 5.
 # Scale: elem stores plain points (cap 500 per tag), ★no /100 (that layer is TC's ×100 vis scale).

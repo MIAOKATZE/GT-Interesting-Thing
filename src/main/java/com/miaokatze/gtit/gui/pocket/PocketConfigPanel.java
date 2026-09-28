@@ -73,24 +73,30 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  * 配置面板另开任何同步键：{@code registerSyncValues} 一处未加（EVA-1 方向丙 DP2「零新通道」）。
  *
  * <h2>几何账（★硬顶，装配期自断言，逐型各自成立）</h2>
- * 每型面板 = 边距 + 开关行（型名 + 开关）+ 该型的内容段 + 底部两件（回执行 + 关闭钮）：
- * 容量 {@code 214×98}、堆叠 {@code 214×94}、通道持续化 {@code 250×94}、磁力 {@code 356×312}、
- * 魔法使 {@code 200×172}（★派生自分派表，不手抄；★R98 S4 度量统一与 DP-7 mini 后的现值）。
+ * 每型面板 = 边距 + 开关行（型名 + 开关）+ 该型的内容段 + 一条底部带（回执行 + 关闭钮并带，★R99 P2）：
+ * 容量 {@code 214×80}、堆叠 {@code 214×76}、通道持续化 {@code 250×76}、磁力 {@code 236×294}、
+ * 魔法使 {@code 200×154}（★派生自分派表，不手抄；★R99 整改后的现值：底带并带 −18、磁力面控制块
+ * 单列化收窄至 236，R98 期的 214×98 / 214×94 / 250×94 / 356×312 / 200×172 全部作废）。
  * 逐型断言：≤ {@link #MAX_WIDTH}×{@link #MAX_HEIGHT}
  * （380×340）且<b>严格小于</b>主面板 {@code 398×360}（盖满主面板的次级面板读起来就是一块新屏，且非主面板
  * 恒可拖 —— {@code DraggablePanelWrapper} 按可视面余量做除算，贴边即除零/负数）；几何闭合；行带可用宽
  * 扛得住<b>本型</b>型名 + 三态的英文最坏串（逐型的像素账由用例拿两份 lang 真量，本件只钉
  * {@link #WORST_LABEL_WIDTH}=168 那条「最宽一型不许被整体缩水」的下界）。
  * <p>
- * <h2>★R98 S4 度量统一（只统一度量，不碰主面板装饰层）</h2>
- * 用户裁定「风格对齐猫猫次元口袋」= <b>把五块插件面板收进主 UI 的度量口径</b>，★<b>不</b>给次级面板加
- * {@link NekoPocketDecoration} 那一层（它是 package-private 且尺寸写死 398×360，复用即画成巨底；动它要
- * 动主面板调用点 ⇒ 本轮明令不碰）。落地的四处常数（取证 {@code 02-gui.md} §4 给的五维里，字号与配色
- * <b>本来就已同源</b>，所以本轮一个字节都没动 {@code RESIDENT_TEXT_SCALE} 与那两个颜色函数）：
- * {@link #ROW_HEIGHT} 20→18、{@link #READOUT_HEIGHT} 20→18、{@link #CLOSE_HEIGHT} 16→18（主面板的按钮
- * 全是 18 高，同一张 {@code BUTTON} 9-slice 被拉成 16 与 18 两种高就是「不像同一套 UI」的直接来源）、
- * {@link #COLUMN_GAP} 6→4（= {@code NekoPocketPanel.COLUMN_GAP}）。派生量跟着走：
- * {@link #CONTENT_TOP} = 6+18+2 = 26、{@link #BOTTOM_STACK} = 4+22+18+6 = 50。
+ * <h2>★R99 P1：风格对齐 = 装饰层真的上五面（T3 档，对 R98 S4 那条"不上装饰"的改判）</h2>
+ * R98 写在这里的「{@code NekoPocketDecoration} 是 package-private 且尺寸写死，复用即画成巨底」
+ * **两条理由一真一假**：尺寸写死是真的（已由 {@code build(int,int)} 参数化解决），package-private
+ * **不是障碍**——两个类同在 {@code gui.pocket} 包。用户 2026-09-28 实机判"裸浅灰底不合格"后拍板 T3：
+ * 五面第一 child = {@code NekoPocketDecoration.build(w,h)}（cloth + PANEL 9-slice + 4 包角，
+ * 不画铆钉与绳缝——次级面板没有可压的列缝，绳缝坐标是主面板底部带专属），零参 {@code build()}
+ * 与主面板调用点一字不动。★可见边框只有约 7px（10px 边距里有 3px 平色），内容仍从 {@code MARGIN=6}
+ * 起排——与主面板同口径，不是新缺陷。
+ * <p>
+ * <h2>★R98 S4 度量统一（历史档：字号与配色本来已同源，四处常数沿用）</h2>
+ * 落地的四处常数：{@link #ROW_HEIGHT} 20→18、{@link #READOUT_HEIGHT} 20→18、{@link #CLOSE_HEIGHT}
+ * 16→18、{@link #COLUMN_GAP} 6→4（= {@code NekoPocketPanel.COLUMN_GAP}）。派生量跟着走：
+ * {@link #CONTENT_TOP} = 6+18+2 = 26；★{@link #BOTTOM_STACK} 自 R99 P2 起 = 4+22+6 = <b>32</b>
+ * （回执行与关闭钮并成一条底带，R98 期公式 4+22+18+6 = 50 作废）。
  * <p>
  * ★对齐口径也一并定死（不是"看情况"）：面板级的<b>横贯读数</b>一律 {@code CenterLeft}（型名、回执、
  * 三面读数、磁力计数、魔法使容量行与容量块）；<b>框内件</b>与<b>多行说明块</b>保持 {@code TopLeft}
@@ -100,7 +106,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  * <p>
  * ★紧凑三型（容量 / 堆叠 / 通道持续化）的回执行按<b>两行</b>给高（{@link #RECEIPT_HEIGHT}=22）：它们的面板
  * 窄，英文最坏回执（守卫拒绝那两长句，逻辑宽 ≈ 417 ⇒ 0.6 档 ≈ 251px）在一百多 px 的盒里一行放不下；
- * 磁力那面最宽（回执盒 286px）也允许两行 —— 同一把尺，免得逐型分叉出第二份回执高度账。
+ * 磁力面（★R99 P3 收窄后回执盒 166px）也放不下一行 —— 同一把尺，免得逐型分叉出第二份回执高度账。
  *
  * <h2>不进 Container、不进同步值</h2>
  * 面板里<b>不</b>放 {@code ItemSlot}/{@code SlotGroupWidget}，也不用任何 {@code syncValue}：
@@ -157,8 +163,12 @@ public final class PocketConfigPanel {
     public static final int COLUMN_GAP = 4;
     /** 各型内容段的起始 y = 边距 + 开关行 + 一条缝（★单源，装配侧与断言侧同一个数）。 */
     public static final int CONTENT_TOP = MARGIN + ROW_HEIGHT + READOUT_GAP;
-    /** 底部两件的纵向预算 = 回执行之上的缝 + 回执行 + 关闭钮 + 边距（★单源）。 */
-    public static final int BOTTOM_STACK = 4 + RECEIPT_HEIGHT + CLOSE_HEIGHT + MARGIN;
+    /**
+     * 底部带的纵向预算（★R99 P2 并带改判：回执行与关闭钮<b>同带并排</b>，不再上下两行）：
+     * 回执行之上的缝 + 回执行 + 边距。R98 期公式 {@code 4 + RECEIPT_HEIGHT + CLOSE_HEIGHT + MARGIN}
+     * （= 50）作废——旧形状里关闭钮独占一行，"右下角那枚离所有东西都远"就是它给的。
+     */
+    public static final int BOTTOM_STACK = 4 + RECEIPT_HEIGHT + MARGIN;
     /** 次级面板的宽度硬顶（见类 javadoc 的几何账）。 */
     public static final int MAX_WIDTH = 380;
     /** 次级面板的高度硬顶。 */
@@ -204,14 +214,20 @@ public final class PocketConfigPanel {
     public static final int MAGNET_BUTTON_HEIGHT = SWITCH_HEIGHT;
     /** 控制块行间距。 */
     public static final int MAGNET_ROW_GAP = 4;
-    /** 同一行里两只控件（按钮 + 按钮 / 按钮 + 计数）之间的缝。 */
-    public static final int MAGNET_BUTTON_GAP = 10;
-    /** 控制块整列的宽（两只按钮并排 + 缝；说明行同宽-2）。 */
-    public static final int MAGNET_CONTROL_WIDTH = 2 * MAGNET_BUTTON_WIDTH + MAGNET_BUTTON_GAP;
-    /** 计数读数行的宽（控制块第一行的第二列）。 */
-    public static final int MAGNET_COUNT_WIDTH = MAGNET_CONTROL_WIDTH - MAGNET_BUTTON_WIDTH - MAGNET_BUTTON_GAP;
-    /** ★三态不对称说明行的高（24 = 两行 × 10px 的账，被 {@code magnet_panel_geometry_closes} 那条用例量）。 */
-    public static final int MAGNET_NOTE_HEIGHT = 24;
+    /**
+     * 控制块整列的宽（★R99 P3 M-1 单列化：三钮 + 计数 + 说明<b>竖排一列</b>，宽 = 一枚按钮；
+     * R98 期「两只按钮并排 + 缝」的 230 作废——那正是磁力面左半成片空洞的结构成因，取证
+     * {@code 02-ui-style-layout.md} §3-2）。说明行同宽 −2。
+     */
+    public static final int MAGNET_CONTROL_WIDTH = MAGNET_BUTTON_WIDTH;
+    /** 计数读数行的宽（★R99 P3 起它在左列第 4 段，与按钮同一把尺；旧"第二列"口径作废）。 */
+    public static final int MAGNET_COUNT_WIDTH = MAGNET_BUTTON_WIDTH;
+    /**
+     * ★三态不对称说明行的高（★R99 P3 起 <b>30 = 三行 × 10px</b>）：说明盒从 228 窄到 108 之后，
+     * 英文那句按保守前进量要折三行，24 装不下；逐型像素账由 {@code magnet_panel_text_fits_its_boxes}
+     * 拿两份 lang 真量（★R99 P0 补的判据，此前这条串不在任何折行账里）。
+     */
+    public static final int MAGNET_NOTE_HEIGHT = 30;
 
     // ==== ★R97 S5：魔法使面的几何（挂载框 + 三行模式控件 + ★R98 S4 起框内再收一行元素容量读数） ====
 
@@ -994,6 +1010,10 @@ public final class PocketConfigPanel {
         }
         final ModularPanel panel = ModularPanel
             .defaultPanel(panelNameOf(type), panelWidthOf(type), panelHeightOf(type));
+        // ★R99 P1（T3 档）：五面第一 child = 与主面板同源的 C2 装饰底（cloth + 木框 9-slice + 4 包角）。
+        // MUI2 按 child 序绘制 ⇒ 底材在最下，控件画在框面上；这也是「MUI2 面板主题默认底
+        // GuiTextures.MC_BACKGROUND（浅灰板）」被盖掉的那一层——R98 判不合格的"裸浅灰底"就是缺它。
+        panel.child(NekoPocketDecoration.build(panelWidthOf(type), panelHeightOf(type)));
         // ★R98 S4 的 child 序：<b>各段先、底部两件后</b>。MUI2 按 child 序绘制 ⇒ 旧写法（回执 + 关闭钮
         // 抢在内容段之前）会让磁力框（y 26..262）与魔法使框（26..122）画在回执行与关闭钮<b>之上</b>：
         // 当前几何不重叠所以看不出来，但取证 02-gui.md §4-6 点的正是这颗雷 —— 任何一次往下扩段的排版
@@ -1079,14 +1099,20 @@ public final class PocketConfigPanel {
             .color(PocketGhostRequest.hintTextColor())
             .shadow(Boolean.TRUE)
             .name("pocket_config_receipt")
-            .pos(MARGIN, panelHeightOf(type) - MARGIN - CLOSE_HEIGHT - RECEIPT_HEIGHT)
+            .pos(MARGIN, panelHeightOf(type) - MARGIN - RECEIPT_HEIGHT)
             .size(panelWidthOf(type) - 2 * MARGIN - CLOSE_WIDTH - 2, RECEIPT_HEIGHT);
     }
 
-    /** 关闭本面的按钮（★只关面板，不动任何数据：本面无"待提交"状态，每次点开关都是即时单发）。 */
+    /**
+     * 关闭本面的按钮（★只关面板，不动任何数据：本面无"待提交"状态，每次点开关都是即时单发）。
+     * ★R99 P2 并带：纵向落在回执行带内居中（带高 22 − 钮高 18 = 上下各 2px），横向仍是右端——
+     * 旧形状"独占一行、右下角离一切最远"从几何上消失。
+     */
     private static IWidget closeButton(NekoPocketPanel ui, PocketUpgradeType type) {
         return new ButtonWidget<>()
-            .pos(panelWidthOf(type) - MARGIN - CLOSE_WIDTH, panelHeightOf(type) - MARGIN - CLOSE_HEIGHT)
+            .pos(
+                panelWidthOf(type) - MARGIN - CLOSE_WIDTH,
+                panelHeightOf(type) - MARGIN - RECEIPT_HEIGHT + (RECEIPT_HEIGHT - CLOSE_HEIGHT) / 2)
             .size(CLOSE_WIDTH, CLOSE_HEIGHT)
             .name("pocket_config_close")
             .background(PocketGuiTextures.BUTTON)
@@ -1158,8 +1184,10 @@ public final class PocketConfigPanel {
     // ================================================================== ★R96 S7b 磁力面（五面里的整面排版）
 
     /**
-     * 磁力面的整面装配：右列 = 12×6 名单盘挂载框（顶到内容段顶），左列 = 三态 / 目标 / 清空 / 计数 /
-     * 不对称说明的控制块。★「72 格盘常量只属于磁力面」的结构正身：本方法只经
+     * 磁力面的整面装配（★R99 P3 M-1 重排）：右列 = 12×6 名单盘挂载框（顶到内容段顶，仍是这一面唯一的
+     * 高度驱动者），左列 = 三态 / 目标 / 清空 / 计数 / 不对称说明<b>竖排一列</b>（五段各占一行，
+     * R98 期"两列并排"的 230 宽控制块作废——它留下 234×172 的成片空洞，是实机判不合格的排布缺陷）。
+     * ★「72 格盘常量只属于磁力面」的结构正身：本方法只经
      * {@link Section#MOUNT_MAGNET} 那一分派支可达，五型里没有第二型的面板画得出格盘。
      */
     private static void mountMagnet(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {
@@ -1318,9 +1346,7 @@ public final class PocketConfigPanel {
     /** ★清空名单按钮（★只抹条目、不动三态；与"切到无限制"是两件事，见 {@code PocketMagnetFilter} 三态读法）。 */
     private static IWidget magnetClearButton(NekoPocketPanel ui) {
         return new ButtonWidget<>()
-            .pos(
-                MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + MAGNET_BUTTON_GAP,
-                MAGNET_CONTROL_Y + MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP)
+            .pos(MAGNET_CONTROL_X, MAGNET_CONTROL_Y + 2 * (MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP))
             .size(MAGNET_BUTTON_WIDTH, MAGNET_BUTTON_HEIGHT)
             .name("pocket_magnet_clear_button")
             .background(PocketGuiTextures.BUTTON)
@@ -1344,7 +1370,7 @@ public final class PocketConfigPanel {
                         .color(PocketGhostRequest.readoutTextColor())
                         .shadow(Boolean.TRUE)
                         .name("pocket_magnet_count")
-                        .pos(MAGNET_CONTROL_X + MAGNET_BUTTON_WIDTH + MAGNET_BUTTON_GAP, MAGNET_CONTROL_Y)
+                        .pos(MAGNET_CONTROL_X, MAGNET_CONTROL_Y + 3 * (MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP))
                         .size(MAGNET_COUNT_WIDTH, MAGNET_BUTTON_HEIGHT);
     }
 
@@ -1366,9 +1392,9 @@ public final class PocketConfigPanel {
             .size(MAGNET_CONTROL_WIDTH - 2, MAGNET_NOTE_HEIGHT);
     }
 
-    /** 读数行的 y（★单源：三行各一枚，纵向闭合由 static 块与用例一起钉）。 */
+    /** 读数行的 y（★R99 P3 M-1 单列化：说明块在四段控件之下的第 5 段；单源，纵向闭合由 static 块与用例一起钉）。 */
     public static int magnetNoteY() {
-        return MAGNET_CONTROL_Y + 2 * (MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP);
+        return MAGNET_CONTROL_Y + 4 * (MAGNET_BUTTON_HEIGHT + MAGNET_ROW_GAP);
     }
 
     /** 三态 → 按钮文字键（★单源：装配侧与用例读的是同一张表，★不是 switch 里各写一遍）。 */

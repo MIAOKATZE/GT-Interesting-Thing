@@ -1,7 +1,6 @@
 package com.miaokatze.gtit.common.items.pocket;
 
 import java.util.List;
-import java.util.Map;
 
 import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.entity.Entity;
@@ -669,6 +668,8 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * 连号行之外还有<b>两类追加行</b>：★R95 蒸馏双口径行（{@link #appendDistillFastLine}）与
      * ★R98 的 0–6 行元素储量（{@link #appendElementReserveLines}），都追加在连号循环<b>之后</b>、
      * ★不在连号中间插行 ⇒ 恒定 5 行（4 + 蒸馏），加储量后总行数按内容浮动（5–11 行）。
+     * ★★R99 P4-D 改判：储量六行<b>恒出</b>（空位显 0）⇒ 悬停总行数恒 <b>11 行</b>，"浮动"仅指六行的
+     * 数值、不再指行数（R98 期"新口袋只有五行"的口径作废）。
      * <p>
      * 消费端是 {@code equals(key)} 即 break 的循环（先例 {@code common/items/NekoCoin.java:28-34}），
      * <b>跳号会静默截断后面的行</b> ⇒ R98 的裁剪是<b>整体重编号</b>（新 {@code 0..3}），不是"删几条留几条"。
@@ -748,7 +749,8 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             // 键未落 ⇒ 与连号循环、distill 行同一个判据跳过，不把键名当文案展示
             return;
         }
-        // ★attach 只持根引用、读腿走 raw(false) ⇒ 空口袋一行都不出，且★绝不因为"要显示 0"而建档（R53c）
+        // ★attach 只持根引用、读腿走 raw(false) ⇒ 读侧零建档（R53c）；★R99 P4-D 起六行恒出、
+        // 空位显 0 —— 「没吸进来」与「没同步」靠这六行分得开
         appendElementReserveLines(tooltip, template, PocketElementStore.attach(carrier.getTagCompound()));
     }
 
@@ -761,8 +763,12 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * 与 TC 的 {@code Aspect.aspects}（{@code LinkedHashMap}）插入序逐字一致；★不由数量、不由色、
      * 不由玩家操作决定 ⇒ <b>TC 缺席照样出这六行</b>，回落的只有名字（{@link TaumCompat#nameOf(String)}
      * 返 tag 本身）。</li>
-     * <li><b>非零才出行</b>（DP-2）：取数走 {@link PocketElementStore#snapshot()}，它本身就
-     * {@code amount > 0} 才入表，与魔力石的 {@code hasKey} 判据同形 ⇒ 新口袋只有五行，越用越长。</li>
+     * <li><b>★恒六行、空位显 0（R99 P4-D 改判，用户 2026-09-28 拍板）</b>：取数走逐 tag 的
+     * {@link PocketElementStore#get(String)}（缺键即 0）⇒ 「没吸进来」与「吸了但没同步」在画面上
+     * <b>不再长得一样</b>——六个 0 是"这张表活着且真是 0"，整块消失才是"坏了"。R98 DP-2 的
+     * 「非零才出行」（走 {@code snapshot()}）作废，当时的痛点正是全 0 时六行一行都不出、
+     * 玩家无法判读吸收有没有工作。★读侧仍零建档：{@code get} 走 {@code raw(false)}，
+     * 为显示 0 也绝不写 {@code elem} 键（R53c 一字未动）。</li>
      * <li><b>★不带 {@code /100}、不带小数</b>：魔力石那层 {@code / 100.0F} + {@code DecimalFormat}
      * 是 TC 的 <b>vis ×100 存档刻度</b>（{@code ItemAmuletVis#addVis} 写入时 {@code amount * 100}），
      * ★不是显示风格；本仓 {@code elem} 存的<b>就是点数</b>（{@code PocketElementStore#add} 直存
@@ -779,17 +785,13 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * {@code "§r x "} 同形。★行内不加 {@code LIGHT_PURPLE}：那会盖掉 aspect 自己的颜色。
      */
     static void appendElementReserveLines(List tooltip, String template, PocketElementStore store) {
-        // ★一次 snapshot()、六次点查：「非零才出」这条口径由 snapshot 单独持有（DP-2），
-        // 这里不再判一次 <= 0 —— 判第二次就是给同一条裁定立第二个来源。
-        final Map<String, Integer> reserve = store.snapshot();
+        // ★R99 P4-D：六行恒出、逐 tag 点查（缺键即 0）。「非零才出」的旧裁定由 snapshot 持有、
+        // 这里不判第二次的口径随之作废——现在的口径就一条：白名单序 × 恒六行 × 空位显 0。
         for (int i = 0; i < PocketConstants.PRIMAL_TAGS.length; i++) {
             final String tag = PocketConstants.PRIMAL_TAGS[i];
-            final Integer amount = reserve.get(tag);
-            if (amount == null) {
-                continue;
-            }
             tooltip.add(
-                " " + PocketConstants.PRIMAL_CHAT_CODES[i] + String.format(template, TaumCompat.nameOf(tag), amount));
+                " " + PocketConstants.PRIMAL_CHAT_CODES[i]
+                    + String.format(template, TaumCompat.nameOf(tag), store.get(tag)));
         }
     }
 

@@ -279,7 +279,7 @@ item.neko_dimension_pocket.name=猫猫次元口袋
 #   旧 .4 NEI 虚化格 → 面板侧五处更精确落点（ghost.on / drag_hint / locked / capacity_note + 空格三行）
 #   旧 .5 蒸馏节拍   → 并入 gtit.pocket.tooltip.distill_fast 那一条追加行（★键不删不改名，只并值）
 #   旧 .9 每槽/合计容量 → 让位给面板 gtit.pocket.fluid.capacity（DP-5：容量唯一可见面 = 面板）
-# 腾出来的位置给了下面的元素储量行 gtit.pocket.tooltip.element（六项、非零才出、追加在 tooltip 最底部）。
+# 腾出来的位置给了下面的元素储量行 gtit.pocket.tooltip.element（六项、★R99 起恒六行空位显 0、追加在 tooltip 最底部）。
 # 留下的三处声明位一个没动：新 .1 = R39a 两排同权、新 .2 = R53b 内容随物品丢、新 .3 = 合成一次性代价。
 item.neko_dimension_pocket.tooltip.0=右键或按键打开面板
 item.neko_dimension_pocket.tooltip.1=各流体列行为相同：方向取决于放入的储罐当前有无流体
@@ -473,7 +473,7 @@ gtit.pocket.channel.always_on=通道常开中（持续化升级）
 # 正好吃掉此前备而未用的 %12$d ⇒ 零扩槽）。键名冻结（README R96 裁定 + 用例硬钉「不许改名」），
 # ★本轮只改值。消费点：ItemNekoDimensionPocket#appendDistillFastLine。
 gtit.pocket.tooltip.distill_fast=蒸馏每 %6$d 秒一轮，装魔法使后 %12$d 秒一轮；产出量按物品自身源质原量入账
-# ★★R98 S2（需求 1 的后半）：元素储量行的模板，一条 primal 一行、★非零才出（新口袋只出五行，越用越长）。
+# ★★R98 S2（需求 1 的后半）：元素储量行的模板，一条 primal 一行、★★R99 P4-D 改判：恒六行、空位显 0（「真 0」与「没同步」分得开）。
 # 名字与数量都由代码喂（%1$s = aspect 显示名、%2$d = 当前点数），★值里不写任何规格数字 ⇒ R75 契约第 5 条。
 # 量纲：本仓 elem 存的就是点数（单 tag 上限 500），★不带魔力石那层 /100（那是 TC 的 vis ×100 刻度）。
 # 行首那一个半角空格与 §色码★必须由 Java 侧加（Properties 会吃掉 lang 值的行首空白），消费点

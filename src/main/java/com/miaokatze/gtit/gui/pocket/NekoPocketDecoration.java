@@ -42,22 +42,7 @@ final class NekoPocketDecoration {
         final ParentWidget<?> root = new ParentWidget<>().pos(0, 0)
             .size(NekoPocketPanel.WIDTH, NekoPocketPanel.HEIGHT)
             .name("pocket_decoration");
-        root.child(
-            (IWidget) new ParentWidget<>().pos(0, 0)
-                .size(NekoPocketPanel.WIDTH, NekoPocketPanel.HEIGHT)
-                .name("pocket_decoration_cloth")
-                .background(PocketGuiTextures.CLOTH));
-        root.child(
-            (IWidget) new ParentWidget<>().pos(0, 0)
-                .size(NekoPocketPanel.WIDTH, NekoPocketPanel.HEIGHT)
-                .name("pocket_decoration_panel")
-                .background(PocketGuiTextures.PANEL));
-        // 铜包角：四角各一枚，1:1（左上/右上/左下/右下）
-        final int panelHeight = NekoPocketPanel.HEIGHT;
-        root.child(corner(0, 0));
-        root.child(corner(NekoPocketPanel.WIDTH - CORNER, 0));
-        root.child(corner(0, panelHeight - CORNER));
-        root.child(corner(NekoPocketPanel.WIDTH - CORNER, panelHeight - CORNER));
+        appendBase(root, NekoPocketPanel.WIDTH, NekoPocketPanel.HEIGHT);
         // 铆钉：两条列分隔缝（流体列|中栏、中栏|源质列）的上下两端，共 4 枚
         root.child(rivet(firstSeamX(), NekoPocketPanel.MARGIN));
         root.child(rivet(secondSeamX(), NekoPocketPanel.MARGIN));
@@ -75,6 +60,48 @@ final class NekoPocketDecoration {
                 .size(NekoPocketBottomBand.BIND_ROPE_WIDTH, NekoPocketBottomBand.HEIGHT)
                 .name("pocket_decoration_rope"));
         return root;
+    }
+
+    /**
+     * ★R99 P1（T3 档）：次级面板的同源装饰底——与主面板<b>同一套贴图、同一条装配式</b>的
+     * cloth + 木框 9-slice + 4 枚铜包角。
+     * <p>
+     * ★只给三件套、不给铆钉与绳缝（与主面板分叉的两条理由，取证 {@code 02-ui-style-layout.md} §6-2）：
+     * 铆钉要压在列分隔缝上才读得出"铆在框上"，五块次级面板没有可压的缝（磁力面唯一的 4px
+     * {@code COLUMN_GAP} 比 8px 的 rope 还窄）；绳缝的落点坐标是主面板底部带专属常量。★零参
+     * {@link #build()} 与主面板调用点一字不动：本方法只<b>加</b>不改编译单元里的既有语句。
+     * <p>
+     * 尺寸边界：{@code PANEL} 是 N=10 的 9-slice，可画下限 2N+1 = 21×21；{@code CORNER}（14×14，1:1）
+     * 同轴两枚不重叠要求盒 ≥ 28×28 —— 五面现值 200×154 … 236×294 全部满足（取证 §6-2）。
+     */
+    static IWidget build(int width, int height) {
+        final ParentWidget<?> root = new ParentWidget<>().pos(0, 0)
+            .size(width, height)
+            .name("pocket_decoration");
+        appendBase(root, width, height);
+        return root;
+    }
+
+    /**
+     * cloth + panel + 4 包角的公共底件（★两个 build 入口共用同一条装配式 ⇒ 不存在
+     * "次级面板画的是另一套底"的第二份真相；铆钉与绳缝是主面板专属，留在零参 {@link #build()} 里）。
+     */
+    private static void appendBase(ParentWidget<?> root, int width, int height) {
+        root.child(
+            (IWidget) new ParentWidget<>().pos(0, 0)
+                .size(width, height)
+                .name("pocket_decoration_cloth")
+                .background(PocketGuiTextures.CLOTH));
+        root.child(
+            (IWidget) new ParentWidget<>().pos(0, 0)
+                .size(width, height)
+                .name("pocket_decoration_panel")
+                .background(PocketGuiTextures.PANEL));
+        // 铜包角：四角各一枚，1:1（左上/右上/左下/右下）
+        root.child(corner(0, 0));
+        root.child(corner(width - CORNER, 0));
+        root.child(corner(0, height - CORNER));
+        root.child(corner(width - CORNER, height - CORNER));
     }
 
     /** 第一条列分隔缝的左边界（流体列右侧）。 */
