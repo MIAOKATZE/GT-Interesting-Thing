@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.gui.pocket;
 
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.widget.ParentWidget;
 
 /**
@@ -71,32 +72,49 @@ final class NekoPocketDecoration {
      * {@code COLUMN_GAP} 比 8px 的 rope 还窄）；绳缝的落点坐标是主面板底部带专属常量。★零参
      * {@link #build()} 与主面板调用点一字不动：本方法只<b>加</b>不改编译单元里的既有语句。
      * <p>
+     * ★★R101.1（实机判不合格整改）：<b>摊平</b>成面板最前的一组<b>直接 child</b>，不再包装饰根子树。
+     * 理由 = MUI2 多 child 面板的两波绘制（{@code InternalWidgetTree}：children &gt; 1 时先画各
+     * 顶层 child <b>自己</b>的 background，再逐个子树画 draw/overlay 与子树内背景）——装饰根子树的
+     * cloth/panel 贴图在第二波才铺出，把第一波里先画的按钮背景（R101 纯色三态底、R100 的 BUTTON
+     * 贴图底）整体盖掉；按钮文字在第二波更后（child 序在装饰之后）才画所以盖得回来 ⇒ 症状恰是
+     * "按钮没按钮的样式"。摊平后 cloth/panel 的 background 进第一波、按 child 序垫在按钮背景之下。
+     * <p>
      * 尺寸边界：{@code PANEL} 是 N=10 的 9-slice，可画下限 2N+1 = 21×21；{@code CORNER}（14×14，1:1）
      * 同轴两枚不重叠要求盒 ≥ 28×28 —— 五面现值 200×154 … 236×294 全部满足（取证 §6-2）。
      */
-    static IWidget build(int width, int height) {
-        final ParentWidget<?> root = new ParentWidget<>().pos(0, 0)
+    static void appendTo(ModularPanel panel, int width, int height) {
+        panel.child(clothLayer(width, height));
+        panel.child(panelLayer(width, height));
+        // 铜包角：四角各一枚，1:1（左上/右上/左下/右下）
+        panel.child(corner(0, 0));
+        panel.child(corner(width - CORNER, 0));
+        panel.child(corner(0, height - CORNER));
+        panel.child(corner(width - CORNER, height - CORNER));
+    }
+
+    /** cloth 平铺底（★面板宽高由调用方给，本件不写字面面板尺寸）。 */
+    private static IWidget clothLayer(int width, int height) {
+        return (IWidget) new ParentWidget<>().pos(0, 0)
             .size(width, height)
-            .name("pocket_decoration");
-        appendBase(root, width, height);
-        return root;
+            .name("pocket_decoration_cloth")
+            .background(PocketGuiTextures.CLOTH);
+    }
+
+    /** 木框 9-slice + 内圈铜线层。 */
+    private static IWidget panelLayer(int width, int height) {
+        return (IWidget) new ParentWidget<>().pos(0, 0)
+            .size(width, height)
+            .name("pocket_decoration_panel")
+            .background(PocketGuiTextures.PANEL);
     }
 
     /**
-     * cloth + panel + 4 包角的公共底件（★两个 build 入口共用同一条装配式 ⇒ 不存在
-     * "次级面板画的是另一套底"的第二份真相；铆钉与绳缝是主面板专属，留在零参 {@link #build()} 里）。
+     * cloth + panel + 4 包角的公共底件（★零参 {@link #build()} 主面板入口专用；主面板的所有
+     * 交互件都长在更深一层子树里（列/底部带），不受"装饰根子树两波绘制"的盖底问题影响，形状不动）。
      */
     private static void appendBase(ParentWidget<?> root, int width, int height) {
-        root.child(
-            (IWidget) new ParentWidget<>().pos(0, 0)
-                .size(width, height)
-                .name("pocket_decoration_cloth")
-                .background(PocketGuiTextures.CLOTH));
-        root.child(
-            (IWidget) new ParentWidget<>().pos(0, 0)
-                .size(width, height)
-                .name("pocket_decoration_panel")
-                .background(PocketGuiTextures.PANEL));
+        root.child(clothLayer(width, height));
+        root.child(panelLayer(width, height));
         // 铜包角：四角各一枚，1:1（左上/右上/左下/右下）
         root.child(corner(0, 0));
         root.child(corner(width - CORNER, 0));

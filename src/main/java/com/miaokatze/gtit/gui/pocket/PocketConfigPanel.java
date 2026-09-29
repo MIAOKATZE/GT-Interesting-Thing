@@ -92,9 +92,10 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  * <p>
  * <h2>★R99 P1：风格对齐 = 装饰层真的上五面（T3 档，对 R98 S4 那条"不上装饰"的改判）</h2>
  * R98 写在这里的「{@code NekoPocketDecoration} 是 package-private 且尺寸写死，复用即画成巨底」
- * **两条理由一真一假**：尺寸写死是真的（已由 {@code build(int,int)} 参数化解决），package-private
+ * **两条理由一真一假**：尺寸写死是真的（已由 {@code appendTo(panel,w,h)} 参数化解决），package-private
  * **不是障碍**——两个类同在 {@code gui.pocket} 包。用户 2026-09-28 实机判"裸浅灰底不合格"后拍板 T3：
- * 五面第一 child = {@code NekoPocketDecoration.build(w,h)}（cloth + PANEL 9-slice + 4 包角，
+ * 五面最前一组直接 child = {@code NekoPocketDecoration.appendTo(panel,w,h)}（cloth + PANEL 9-slice +
+ * 4 包角，★R101.1 起摊平为直接 child、不再包装饰根子树——两波绘制盖按钮底的根因，见该方法 javadoc；
  * 不画铆钉与绳缝——次级面板没有可压的列缝，绳缝坐标是主面板底部带专属），零参 {@code build()}
  * 与主面板调用点一字不动。★可见边框只有约 7px（10px 边距里有 3px 平色），★R100 起内容从
  * {@code MARGIN=8} 起排（旧值 6 压框线，用户判「过于贴边」的那条正身）。
@@ -1278,10 +1279,13 @@ public final class PocketConfigPanel {
         }
         final ModularPanel panel = ModularPanel
             .defaultPanel(panelNameOf(type), panelWidthOf(type), panelHeightOf(type));
-        // ★R99 P1（T3 档）：五面第一 child = 与主面板同源的 C2 装饰底（cloth + 木框 9-slice + 4 包角）。
-        // MUI2 按 child 序绘制 ⇒ 底材在最下，控件画在框面上；这也是「MUI2 面板主题默认底
+        // ★R99 P1（T3 档）：五面最前的一组直接 child = 与主面板同源的 C2 装饰底（cloth + 木框 9-slice
+        // + 4 包角）。MUI2 按 child 序绘制 ⇒ 底材在最下，控件画在框面上；这也是「MUI2 面板主题默认底
         // GuiTextures.MC_BACKGROUND（浅灰板）」被盖掉的那一层——R98 判不合格的"裸浅灰底"就是缺它。
-        panel.child(NekoPocketDecoration.build(panelWidthOf(type), panelHeightOf(type)));
+        // ★★R101.1 摊平（appendTo，不再是装饰根子树）：MUI2 多 child 面板两波绘制——先画各顶层 child
+        // 自己的 background、再逐个子树画 draw/overlay 与子树内背景；装饰子树的贴图第二波才铺，
+        // 会把第一波先画的按钮背景盖掉（实机判"按钮没按钮的样式"的根因，R101.1 前按钮底从未显形）。
+        NekoPocketDecoration.appendTo(panel, panelWidthOf(type), panelHeightOf(type));
         // ★R98 S4 的 child 序：<b>各段先、底部两件后</b>。MUI2 按 child 序绘制 ⇒ 旧写法（回执 + 关闭钮
         // 抢在内容段之前）会让磁力框（y 26..262）与魔法使框（26..122）画在回执行与关闭钮<b>之上</b>：
         // 当前几何不重叠所以看不出来，但取证 02-gui.md §4-6 点的正是这颗雷 —— 任何一次往下扩段的排版
