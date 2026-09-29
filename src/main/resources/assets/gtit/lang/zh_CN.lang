@@ -439,13 +439,14 @@ gtit.pocket.config.mount.mage=魔法使：模式与元素
 #     ——新家 = 主面板上那两枚既有的现场（通道按钮置灰与口袋图标的"工作中"常亮），★玩家可见面从此
 #     只剩 gtit.pocket.config.switch.hint 那条 tooltip 与实际现场。★这是有意的信息面收缩，
 #     用户 2026-09-28 明确接受"改判后这两个事实从配置面板消失"。----
-gtit.pocket.config.stack.limit=当前单格上限：%d
+# ---- ★R101：量级读数改关闭规则说明（数字面与执法面在服务端）。容量键为本面独有（主面板
+#   gtit.pocket.fluid.capacity 仍由流体格件/底部带 tooltip 消费，不改义）----
+gtit.pocket.config.capacity.rule=仅在未超出当前容量时，才可以关闭
+gtit.pocket.config.stack.limit=仅在未超出堆叠上限时，才可以关闭
 gtit.pocket.config.persist.idle=此刻未常开（开关关着，或通道还没起来）
-# ---- ★R100 频率档位段四键（只随通道持续化配置面消费；档位表单源在 PocketConstants，lang 不写秒数清单）
+# ---- ★R100→R101 频率段两键（更快/更慢两枚按钮连键退场，输入框复用 hint 键；秒值域单源在 PocketConstants）
 gtit.pocket.config.persist.freq=通道频率：%d 秒/批
-gtit.pocket.config.persist.freq.faster=更快
-gtit.pocket.config.persist.freq.slower=更慢
-gtit.pocket.config.persist.freq.hint=调节持续化通道每批的间隔（仅常开道生效；手动三十秒道不变）。改档当场生效，下一批就用新节拍
+gtit.pocket.config.persist.freq.hint=输入每批间隔的秒数（1-60，仅持续化通道生效；手动三十秒道不变）。改完当场生效，下一批就用新节拍
 gtit.pocket.config.mage.capacity=元素容量：每种元素 %d，六种合计 %d
 gtit.pocket.config.mode.crystal=结晶模式
 gtit.pocket.config.mode.coin=猫猫币充能
@@ -468,14 +469,7 @@ gtit.pocket.magnet.target.hint=左键在两档之间循环：吸进口袋的那�
 gtit.pocket.magnet.count=名单 %d / %d 条
 gtit.pocket.magnet.clear=清空名单
 gtit.pocket.magnet.clear.hint=抹掉全部条目，★但不改三态（切到无限制不清名单，这是两件事）
-gtit.pocket.magnet.cell.empty=本格是空格：右键没有条目可摘
-gtit.pocket.magnet.cell.remove=右键：把本格从名单里摘掉
-gtit.pocket.magnet.cell.number=名单第 %d 格
-gtit.pocket.magnet.gesture=左键持物品点格 = 记这一件（不会消耗手上的物品）；从 NEI 拖进来 = 同样只记录，★一件都不会少
-gtit.pocket.magnet.refuse.no_item=手上没有物品，这一格记不了东西
-gtit.pocket.magnet.refuse.wrong_button=只有左键会记进名单（右键是摘掉本格）
-gtit.pocket.magnet.refuse.locked=还没固化磁力升级，名单暂时不能编辑
-gtit.pocket.magnet.refuse.full=名单已经满格，先右键摘掉一格再记新的
+# ---- ★R101：磁力格件逐条描述收口（tooltip 只剩物品显示名 ⇒ 上面四行说明与四条拒收说明连键退场）----
 gtit.pocket.receipt.magnet.duplicate=这一件已经在名单里了（同一种物品不需要记两条）
 gtit.pocket.receipt.magnet.full=名单已经满格，这一条没记进去；先摘掉一格再试
 gtit.pocket.receipt.magnet.unparsed=这条请求带的物品身份读不出来，已丢弃（没有改动名单）

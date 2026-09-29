@@ -450,14 +450,14 @@ gtit.pocket.config.mount.mage=Mage: modes and elements
 #   —— 新家 = 主面板现场本身（中栏与源质栏的格数上限、通道按钮置灰、口袋图标"工作中"常亮），配置面板
 #   不再常驻教一遍；★玩家可见面从此只剩 gtit.pocket.config.switch.hint 那条 tooltip。有意的信息面收缩，
 #   用户 2026-09-28 明确接受这两个事实从面板消失。----
-gtit.pocket.config.stack.limit=Current per-slot limit: %d
+# ---- R101: magnitude readout (64-1024) replaced by the turn-off rule (numbers live on the server) ----
+gtit.pocket.config.capacity.rule=Can only be turned off while usage stays within the current capacity
+gtit.pocket.config.stack.limit=Can only be turned off while within stack limits
 gtit.pocket.config.persist.idle=Not always-on right now (the switch is off, or no live channel yet)
 # ---- R100: frequency tier row, four keys (consumed only by the channel-persistence config face;
 # the tier table has its single source in PocketConstants - lang never lists the seconds)
 gtit.pocket.config.persist.freq=Channel cadence: %d s per batch
-gtit.pocket.config.persist.freq.faster=Faster
-gtit.pocket.config.persist.freq.slower=Slower
-gtit.pocket.config.persist.freq.hint=Sets the per-batch interval of the always-on channel only (the manual thirty-second channel stays fixed). Takes effect at once - the next batch already uses the new cadence
+gtit.pocket.config.persist.freq.hint=Type the per-batch interval in seconds (1-60, always-on channel only; the manual thirty-second channel stays fixed). Takes effect at once - the next batch already uses the new cadence
 gtit.pocket.config.mage.capacity=Element capacity: %d each, %d across all six
 gtit.pocket.config.mode.crystal=Crystallise
 gtit.pocket.config.mode.coin=Cat coin charging
@@ -481,14 +481,7 @@ gtit.pocket.magnet.target.hint=Left-click cycles the two landing spots: the pock
 gtit.pocket.magnet.count=List %d / %d
 gtit.pocket.magnet.clear=Clear the list
 gtit.pocket.magnet.clear.hint=Erases every entry but keeps the mode (switching to Unlimited does not clear it)
-gtit.pocket.magnet.cell.empty=Empty slot: right-click has nothing to remove here
-gtit.pocket.magnet.cell.remove=Right-click: remove this slot from the list
-gtit.pocket.magnet.cell.number=List slot %d
-gtit.pocket.magnet.gesture=Left-click holding an item records it without consuming the held item; dragging from NEI records it the same way and takes nothing
-gtit.pocket.magnet.refuse.no_item=Nothing in hand to record into this slot
-gtit.pocket.magnet.refuse.wrong_button=Only left-click records into the list (right-click removes this slot)
-gtit.pocket.magnet.refuse.locked=No magnet module installed, the list cannot be edited yet
-gtit.pocket.magnet.refuse.full=The list is full; right-click a slot to free one before adding
+# ---- R101: magnet cell per-entry descriptions collapsed (tooltip keeps the display name only) ----
 gtit.pocket.receipt.magnet.duplicate=That item is already on the list (no need to record it twice)
 gtit.pocket.receipt.magnet.full=The list is full, this entry was not added; free a slot first
 gtit.pocket.receipt.magnet.unparsed=The item identity in that request could not be read; the list was not changed

@@ -421,7 +421,11 @@ public final class PocketConstants {
         return channelFreqTierSeconds(tier) * TICKS_PER_SECOND;
     }
 
-    /** 读口袋档上的频率档位（无栈/无根/缺键/脏档 ⇒ {@link #CHANNEL_FREQ_TIER_DEFAULT}；只读不建档）。 */
+    /**
+     * 读口袋档上的频率档位（无栈/无根/缺键/脏档 ⇒ {@link #CHANNEL_FREQ_TIER_DEFAULT}；只读不建档）。
+     * ★R101 起它是<b>旧档位键的兼容读口</b>：新秒值键（{@link #CHANNEL_FREQ_SECONDS_KEY}）在场的档上
+     * 不再被读（新键优先），读取侧只经由 {@link #readChannelFreqSeconds} 的回落支到达这里。
+     */
     public static int readChannelFreqTier(net.minecraft.nbt.NBTTagCompound root) {
         if (root == null || !root.hasKey(CHANNEL_FREQ_TIER_KEY)) {
             return CHANNEL_FREQ_TIER_DEFAULT;
@@ -429,21 +433,76 @@ public final class PocketConstants {
         return channelFreqTierClamp(root.getInteger(CHANNEL_FREQ_TIER_KEY));
     }
 
+    // ------------------------------------------------------ ★R101：频率改「秒值输入框」的数据面
+    //
+    // ★任务拍板：频率档位 UI 从「更快/更慢步进的 11 档封闭表」改为「直接填秒数的输入框」，域钳到
+    // [1,60] 秒（旧档位表中 >60s 的档位在读取侧按域钳制回落）。档位表本体（
+    // {@link #CHANNEL_FREQ_TIERS_SECONDS}）与旧键 {@link #CHANNEL_FREQ_TIER_KEY} 都<b>不删不改</b>：
+    // 前者还是手动付费短效道 1s×30 批的节拍源（{@link #CHANNEL_TICK_PERIOD}，R100 用户裁决不动），
+    // 后者是旧存档的兼容读面（读侧映射，写侧不碰）。★新键一经落档即冻结（同上面那条键名纪律）。
+
     /**
-     * 写频率档位（★仅服务端写腿调）：写的是<b>默认档 ⇒ {@code removeTag}</b>（缺键同义，少一个键就少一份
-     * NBT 深比较体积，口径同 {@code PocketUpgradeSwitches#setOff} 的掩码归零支）；非默认档 ⇒ 落 int。
-     *
-     * @return 本次是否真的改变（同值 {@code false} 且零写入 ⇒ 连点不刷整栈同步）
+     * 频率秒值在口袋 NBT 根层的键名（int = <b>秒/批</b>）。
+     * <p>
+     * ★★<b>键名 {@code channelFreqSeconds} 一经落档即冻结</b>（同 {@link #CHANNEL_FREQ_TIER_KEY} 那条：
+     * 改字面量 = 玩家已调好的频率读回来全变缺省，且零日志）。★写腿只写本键、不碰旧档位键：
+     * 读取优先级 = 本键在场 ⇒ 以本键为准；否则旧档位键映射成秒；两者都缺 ⇒ 默认值。
      */
-    public static boolean writeChannelFreqTier(net.minecraft.nbt.NBTTagCompound root, int tier) {
-        if (root == null || channelFreqTierClamp(tier) != tier || tier == readChannelFreqTier(root)) {
+    public static final String CHANNEL_FREQ_SECONDS_KEY = "channelFreqSeconds";
+    /** 频率秒值域下界（含）：1 秒 = 手动道同款最快节拍。 */
+    public static final int CHANNEL_FREQ_SECONDS_MIN = 1;
+    /** 频率秒值域上界（含）：任务拍板 60 秒；旧档位档超过它的部分在读取侧钳到本值。 */
+    public static final int CHANNEL_FREQ_SECONDS_MAX = 60;
+    /** 默认频率秒值 = 旧默认档（下标 {@link #CHANNEL_FREQ_TIER_DEFAULT} = 5s）的秒值（★不手抄 5）。 */
+    public static final int CHANNEL_FREQ_SECONDS_DEFAULT = CHANNEL_FREQ_TIERS_SECONDS[CHANNEL_FREQ_TIER_DEFAULT];
+
+    /**
+     * 频率秒值钳到 {@code [}{@link #CHANNEL_FREQ_SECONDS_MIN}{@code , }{@link #CHANNEL_FREQ_SECONDS_MAX}{@code ]}（读侧不抛、不写）。
+     */
+    public static int channelFreqSecondsClamp(int seconds) {
+        return Math.max(CHANNEL_FREQ_SECONDS_MIN, Math.min(CHANNEL_FREQ_SECONDS_MAX, seconds));
+    }
+
+    /**
+     * 读口袋档上的频率<b>秒值</b>（★三段优先级：新键 → 旧档位键映射 → 默认；只读不建档）。
+     * <p>
+     * ★旧档位键支 = 「按现有档位表映射成秒」：{@code channelFreqTierSeconds(readChannelFreqTier(root))}
+     * ——两步各自带自己的钳制（脏档先钳档、映射出的 120/300/600s 再钳进 [1,60]），合起来就是
+     * "旧档最慢读成 60s"的任务口径。★读路径一个字节都不写（R53c）。
+     */
+    public static int readChannelFreqSeconds(net.minecraft.nbt.NBTTagCompound root) {
+        if (root == null) {
+            return CHANNEL_FREQ_SECONDS_DEFAULT;
+        }
+        if (root.hasKey(CHANNEL_FREQ_SECONDS_KEY)) {
+            return channelFreqSecondsClamp(root.getInteger(CHANNEL_FREQ_SECONDS_KEY));
+        }
+        if (root.hasKey(CHANNEL_FREQ_TIER_KEY)) {
+            return channelFreqSecondsClamp(channelFreqTierSeconds(readChannelFreqTier(root)));
+        }
+        return CHANNEL_FREQ_SECONDS_DEFAULT;
+    }
+
+    /** 频率秒值 → tick（★秒→tick 的唯一换算点：{@code 秒 × }{@link #TICKS_PER_SECOND}；与档位那条并列只服务秒值域）。 */
+    public static int channelFreqSecondsTicks(int seconds) {
+        return channelFreqSecondsClamp(seconds) * TICKS_PER_SECOND;
+    }
+
+    /**
+     * 写频率秒值（★仅服务端写腿调；★只写新键、旧档位键一字不动——键名冻结纪律）：
+     * 越域（{@code clamp(s) != s}）拒写；同值（现读 == 目标）零写入（连点不刷整栈同步）；
+     * 合法且真改 ⇒ 落 int。
+     *
+     * @return 本次是否真的改变
+     */
+    public static boolean writeChannelFreqSeconds(net.minecraft.nbt.NBTTagCompound root, int seconds) {
+        if (root == null || channelFreqSecondsClamp(seconds) != seconds) {
             return false;
         }
-        if (tier == CHANNEL_FREQ_TIER_DEFAULT) {
-            root.removeTag(CHANNEL_FREQ_TIER_KEY);
-        } else {
-            root.setInteger(CHANNEL_FREQ_TIER_KEY, tier);
+        if (readChannelFreqSeconds(root) == seconds) {
+            return false;
         }
+        root.setInteger(CHANNEL_FREQ_SECONDS_KEY, seconds);
         return true;
     }
 

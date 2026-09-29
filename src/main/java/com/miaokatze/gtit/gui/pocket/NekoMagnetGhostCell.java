@@ -41,10 +41,10 @@ import com.miaokatze.gtit.common.items.pocket.PocketMagnetFilter;
  * 用例除了正向断言"跑完 {@code carried.stackSize} 不变"，还带一条<b>反向</b>机检：磁力那几条腿里
  * {@code setCursorItem} 命中数恰 0，而同一条检法在源质入槽那条腿上必须读到 ≥1（否则那个 0 是空转）。
  * <p>
- * <b>★每一个拒收分支都自带说法</b>（wiki 那条"ghost 静默吞点击"的已知坑）：{@link DragResult#refusalKey}
- * 对四条拒收支（无栈 / 非左键 / 本栏不可编辑 / 名单已满）各给一条 lang 键，装配侧
- * （{@code PocketConfigPanel#magnetCell}）把它写进 tooltip ⇒ 玩家看到的不是"点了没反应"，
- * 而是一句指名为什么。空 {@code refusalKey} = 成交。
+ * <b>★R101 收口：拒收不再自带说法</b>（对 R100 那代"每个拒收分支一条 tooltip 键"设计的显式翻案，
+ * 任务拍板"磁力逐条描述收掉、tooltip 仅保留物品显示名"）：{@link DragResult} 只报"成没成"
+ * （{@code accepted()}），四条拒收支（无栈 / 非左键 / 本栏不可编辑 / 名单已满）的 lang 键族随
+ * 装配侧的格件 tooltip 一起整批退场。拒收的手感 = 点击无事发生（灰显面仍有 R31 的形状语义）。
  * <p>
  * <b>★纯判定与绘制的分层</b>（同 {@link NekoEssenceGhostCell} 的 {@code applyContentLayer} 纪律）：
  * 本 JVM 里构造任何 MUI2 widget 都会抛 fastutil 缺类（{@link PocketGuiTextures} 的类注释记过这条实测），
@@ -201,36 +201,23 @@ public class NekoMagnetGhostCell extends ButtonWidget<NekoMagnetGhostCell>
 
     // ------------------------------------------------------------------ 两条录入腿（★生产分支，用例真跑这两条）
 
-    /** 一次录入尝试的结论：成交（{@link #entryKey} 非空）或某一条带说法的拒收。 */
+    /** 一次录入尝试的结论：成交（{@link #entryKey} 非空）或静默拒收（★R101 收口：不给说法）。 */
     public static final class DragResult {
 
         /** 要写进名单的键（★空串 = 一条都没写）。 */
         public final String entryKey;
-        /** 拒收说法的 lang 键（★成交时为空串 ⇒ 装配侧不追加噪声行）。 */
-        public final String refusalKey;
         /** 名单已满时还差几条（给读数用；★不是字面量 72 抄第二遍）。 */
         public final int capacity;
 
-        DragResult(String entryKey, String refusalKey, int capacity) {
+        DragResult(String entryKey, int capacity) {
             this.entryKey = entryKey == null ? "" : entryKey;
-            this.refusalKey = refusalKey == null ? "" : refusalKey;
             this.capacity = capacity;
         }
 
         public boolean accepted() {
             return !this.entryKey.isEmpty();
         }
-
-        public boolean refused() {
-            return !this.refusalKey.isEmpty();
-        }
     }
-
-    /** 四条拒收支的键（★每个分支各一条，不许并成一句"不能加"——并成一句就是让玩家自己试）。 */
-    public static final String REFUSE_NO_ITEM = "gtit.pocket.magnet.refuse.no_item";
-    public static final String REFUSE_WRONG_BUTTON = "gtit.pocket.magnet.refuse.wrong_button";
-    public static final String REFUSE_LOCKED = "gtit.pocket.magnet.refuse.locked";
-    public static final String REFUSE_FULL = "gtit.pocket.magnet.refuse.full";
 
     /** 录入腿的落地口（★只有"记录"这一个动作 —— 没有"吃栈"、没有"清游标"，那两件事结构性不在本接口上）。 */
     public interface RecordSink {
@@ -243,8 +230,8 @@ public class NekoMagnetGhostCell extends ButtonWidget<NekoMagnetGhostCell>
      * ★★<b>拖入腿的本体（NEI 与游标两条手势共用的那一条判定序列）</b>：
      * 顺序 = ① 本栏可编辑？ → ② 按键是左键？ → ③ 手里真有东西？ → ④ 名单没满？ → ⑤ 成交。
      * <p>
-     * ★④ 排在 ⑤ 之前是判据的一部分：满了就先说话、★不发那条注定被服务端拒的请求（服务端
-     * {@code PocketMagnetFilter#addEntry} 自己也再挡一次 ⇒ 两处都挡，但客户端这一挡是"给说法"，
+     * ★④ 排在 ⑤ 之前是判据的一部分：满了就静默拒收、★不发那条注定被服务端拒的请求（服务端
+     * {@code PocketMagnetFilter#addEntry} 自己也再挡一次 ⇒ 两处都挡：客户端这一挡省一次无谓 C2S，
      * 服务端那一挡是"守数据"，两份职责不同，★不是同一处真相抄两遍）。
      * <p>
      * ★★★<b>本方法任何一支都不写 {@code carried.stackSize}</b> —— 那一句写在
@@ -260,26 +247,26 @@ public class NekoMagnetGhostCell extends ButtonWidget<NekoMagnetGhostCell>
     public static DragResult applyDrop(ItemStack carried, int button, boolean editable, int entries, RecordSink sink) {
         final int capacity = PocketConstants.MAGNET_FILTER_SLOTS;
         if (!editable) {
-            return new DragResult("", REFUSE_LOCKED, capacity);
+            return new DragResult("", capacity);
         }
         if (button != MOUSE_BUTTON_LEFT) {
-            return new DragResult("", REFUSE_WRONG_BUTTON, capacity);
+            return new DragResult("", capacity);
         }
         final String key = identityKeyOf(carried);
         if (key.isEmpty()) {
-            return new DragResult("", REFUSE_NO_ITEM, capacity);
+            return new DragResult("", capacity);
         }
         if (carried != null && carried.stackSize <= 0) {
             // ★件数为 0 的那件不是"手里的东西"（外来入参）：不记、更不写回件数
-            return new DragResult("", REFUSE_NO_ITEM, capacity);
+            return new DragResult("", capacity);
         }
         if (entries >= capacity) {
-            return new DragResult("", REFUSE_FULL, capacity);
+            return new DragResult("", capacity);
         }
         if (sink != null) {
             sink.recordEntry(key);
         }
-        return new DragResult(key, "", capacity);
+        return new DragResult(key, capacity);
     }
 
     /**

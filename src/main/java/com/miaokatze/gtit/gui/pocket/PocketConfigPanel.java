@@ -5,17 +5,22 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.StatCollector;
 
+import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
+import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 import com.miaokatze.gtit.common.items.pocket.PocketMageModes;
@@ -74,10 +79,11 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  *
  * <h2>几何账（★硬顶，装配期自断言，逐型各自成立）</h2>
  * 每型面板 = 边距 + 开关行（型名 + 开关）+ 该型的内容段 + 一条底部带（回执行 + 关闭钮并带，★R99 P2）：
- * 容量 {@code 266×85}、堆叠 {@code 266×81}、通道持续化 {@code 318×102}（★R100 片 C 后含频率档位段）、
- * 磁力 {@code 266×299}、魔法使 {@code 248×164}（★派生自分派表，不手抄；★R100 UI 整改现值：文字 0.6 → 0.8 档
+ * 容量 {@code 266×85}、堆叠 {@code 266×81}、通道持续化 {@code 318×102}（★R100 片 C 后含频率段）、
+ * 磁力 {@code 266×299}、魔法使 {@code 248×145}（★派生自分派表，不手抄；★R100 UI 整改现值：文字 0.6 → 0.8 档
  * 全链重算行盒/按钮宽、边距 6 → 8、磁力左下空带收编为四段等距 + 说明行迁 tooltip、魔法使框宽对齐行带、
- * 小钮 30 → 46，R99 期的 214×80 / 214×76 / 250×76 / 236×294 / 200×154 全部作废）。
+ * 小钮 30 → 46，R99 期的 214×80 / 214×76 / 250×76 / 236×294 / 200×154 全部作废；★R101：魔法使改横排
+ * 164 → 145、频率两枚升降钮改秒值输入框——宽都不动）。
  * 逐型断言：≤ {@link #MAX_WIDTH}×{@link #MAX_HEIGHT}
  * （380×340）且<b>严格小于</b>主面板 {@code 398×360}（盖满主面板的次级面板读起来就是一块新屏，且非主面板
  * 恒可拖 —— {@code DraggablePanelWrapper} 按可视面余量做除算，贴边即除零/负数）；几何闭合；行带可用宽
@@ -262,23 +268,26 @@ public final class PocketConfigPanel {
      */
     public static final int MAGNET_CONTROL_STRIDE = (MAGNET_FRAME_HEIGHT - MAGNET_BUTTON_HEIGHT) / 3;
 
-    // ==== ★R97 S5：魔法使面的几何（挂载框 + 三行模式控件 + ★R98 S4 起框内再收一行元素容量读数） ====
+    // ==== ★R97 S5：魔法使面的几何（挂载框 + ★R101 起按钮行在上、名单文字行在下的横排三列） ====
 
     /** 挂载框标题占的高（= {@link #ROW_HEIGHT}，标题与开关行同一把尺）。 */
     public static final int MOUNT_TITLE_HEIGHT = ROW_HEIGHT;
     /** 魔法使挂载框里<b>一行模式控件</b>的高（= 一枚按钮的高，与 {@link #SWITCH_HEIGHT} 同档）。 */
     public static final int MODE_ROW_HEIGHT = 18;
     /**
-     * 两行模式控件之间的缝（★R100 UI 整改 1 → <b>3</b>：0.8 档字高 8px 下 1px 的缝三行读成一块，
-     * 抬到 3 与 {@link #READOUT_GAP} 同一档的行间可辨尺）。
+     * 模式按钮行与名单文字行之间的缝（★R100 起 3 与 {@link #READOUT_GAP} 同一档；R101 重排后
+     * 这条缝从「竖排行与行之间」改义为「上钮下名两层之间」，宽度不变）。
      */
     public static final int MODE_ROW_GAP = 3;
+    /** 名单三列之间的缝（列缝取窄档：三列等分后每列还要装最坏模式名）。 */
+    public static final int MODE_COLUMN_GAP = 2;
     /**
-     * 模式控件那枚小按钮的宽（只装"关掉 / 打开"两枚串，★不装三态 —— 三态在行首读数里）。
+     * 模式控件那枚小按钮的宽（只装"关掉 / 打开"两枚串，★不装三态 —— 三态在按钮的动态 overlay 里）。
      * ★R100 几何修正 30 → <b>46</b>：{@code BUTTON} 贴图是 88×18 的 9-slice（N=4），30px 宽时
      * 中带只剩 22px = 源 80px 的 27%，高光带被压成竖条（用户点名的「小钮变形」正身）；46px 时中带
      * 38px = 源的 46%，且装得下 0.8 档 "Turn off"（36px）+ 两道 4px 边。主面板最窄的按钮本来就是 88，
-     * 次级面板所有用这张贴图的钮一律 ≥ 46。
+     * 次级面板所有用这张贴图的钮一律 ≥ 46。★R101 起本面的钮走纯色三态（见 {@code configButtonStyle}），
+     * 宽下界 46 仍然成立（像素账用例同批钉）。
      */
     public static final int MODE_BUTTON_WIDTH = 46;
     /** 魔法使挂载框的 x（★左起：这一面的主体就是这一框）。 */
@@ -294,11 +303,24 @@ public final class PocketConfigPanel {
      * {@code config_panel_text_scale_and_layout_rework} 的⑤钉住（改型名盒/开关宽而忘了这里会先在那红）。
      */
     public static final int MAGE_FRAME_WIDTH = 232;
-    /** 框内模式行的纵向预算 = 行数 × 行高 + 行间缝。 */
-    public static final int MAGE_MODE_STACK_HEIGHT = modeRowCount() * MODE_ROW_HEIGHT
-        + (modeRowCount() - 1) * MODE_ROW_GAP;
     /**
-     * 魔法使挂载框的高 = 上下框边 + 标题 + 模式行栈 + ★框内的元素容量行（含它上面那条缝）。
+     * 名单<b>列</b>宽（★R101 横排重排的派生式）：框内可用宽（框宽 − 两道 1px 框边）按模式行数等分、
+     * 列间留 {@link #MODE_COLUMN_GAP} 缝 ⇒ (232 − 2 − 2×2) / 3 = <b>75</b>。★名单文字按列与按钮对齐
+     * （文字盒 75×{@link #MODE_LABEL_HEIGHT} 两行盒；英文最坏模式名按 0.8 档折两行装得下，用例逐列量）。
+     */
+    public static final int MODE_COLUMN_WIDTH = (MAGE_FRAME_WIDTH - 2 - (modeRowCount() - 1) * MODE_COLUMN_GAP)
+        / modeRowCount();
+    /**
+     * 名单文字行的盒高（★<b>两行盒</b> = 20px）：英文最坏模式名（"Essence transmuting"，逻辑宽 111）
+     * 在 75px 的列里按 0.8 档要 89px ⇒ 折两行（10px 行高 × 2）；中文最坏 40px 一行装得下。
+     * ★三列横排装不下「模式名 + ：+ 状态」（en 最坏 111px ×0.8 = 89 ×3 列 > 232）⇒ 状态读数收进
+     * 按钮的动态 overlay（"关闭 / 打开"本来就是状态位），名单行只念模式名 —— 信息一项不减。
+     */
+    public static final int MODE_LABEL_HEIGHT = 20;
+    /** 框内模式段的纵向预算 = 按钮行 + 层间缝 + 名单行（★R101 横排：一层钮 + 一层名，不再三行竖排）。 */
+    public static final int MAGE_MODE_STACK_HEIGHT = MODE_ROW_HEIGHT + MODE_ROW_GAP + MODE_LABEL_HEIGHT;
+    /**
+     * 魔法使挂载框的高 = 上下框边 + 标题 + 模式段（按钮行 + 名单行）+ ★框内的元素容量行（含它上面那条缝）。
      * R98 S4 之前这一面是「框 + 框下一条悬空读数」（取证 {@code 02-gui.md} §4-5：框的语义"这里面是一组"
      * 与磁力框"这里面是整盘"不一致），那一行现在进框，框语义统一。
      */
@@ -306,35 +328,34 @@ public final class PocketConfigPanel {
         + MAGE_MODE_STACK_HEIGHT
         + READOUT_GAP
         + READOUT_HEIGHT;
-    /** 模式行里<b>标签</b>的宽（派生：框宽 − 2px 缝 − 那枚小按钮 − 2px 缝，★不手抄）。 */
-    public static final int MODE_LABEL_WIDTH = MAGE_FRAME_WIDTH - 2 - 2 - MODE_BUTTON_WIDTH;
     /**
-     * 容量读数块的高（★两行盒 = {@link #RECEIPT_HEIGHT}）：这一句用的是主面板那把口径
-     * （{@code gtit.pocket.fluid.capacity}，双轨 20M/2G + 合计），英文最坏串在容量面横贯盒
-     * （★R100 后 250px）里按 0.8 档仍要折两行 —— 用例 {@code config_panel_geometry_within_secondary_caps}
-     * 拿两份 lang 逐型量，量到两行就必须留两行的高（★R98 逐型几何目标给的 94 是「一行装得下」那一支，
-     * 实测吃不下 ⇒ 一直留在两行盒，不削盒）。
+     * 容量读数块的高（★两行盒 = {@link #RECEIPT_HEIGHT}）：R101 起这一句是配置面独有的关闭规则说明
+     * （{@code gtit.pocket.config.capacity.rule}），英文最坏串在容量面横贯盒（★R100 后 250px）里按
+     * 0.8 档仍要折两行 —— 用例 {@code config_panel_geometry_within_secondary_caps} 拿两份 lang 逐型量，
+     * 量到两行就必须留两行的高（★R98 逐型几何目标给的 94 是「一行装得下」那一支，实测吃不下 ⇒
+     * 一直留在两行盒，不削盒）。
      */
     public static final int CAPACITY_READOUT_HEIGHT = RECEIPT_HEIGHT;
 
-    // ==== ★R100：通道持续化面的频率档位段几何（该面第二行专属内容，只此一型画） ====
+    // ==== ★R100：通道持续化面的频率段几何（该面第二行专属内容，只此一型画） ====
 
     /**
-     * 频率档位行的 y = 常开读数那一行之下（内容段顶 + 一行读数 + 一条缝，★派生式不手抄）。
+     * 频率段的 y = 常开读数那一行之下（内容段顶 + 一行读数 + 一条缝，★派生式不手抄）。
      */
     public static final int FREQ_ROW_Y = CONTENT_TOP + READOUT_HEIGHT + READOUT_GAP;
     /**
-     * 频率档位行的<b>读数标签</b>宽（★R100 0.8 档 146 → <b>206</b> 并改为「填满行带」的账：标签盒 +
-     * 两缝 + 两枚小按钮 = 本型行带宽 302，标签盒取差值 ⇒ 本行横向零空白，英文最坏串
-     * "Channel cadence: 600 s per batch"（0.8 档 142px）远在盒内。闭合由 static 块等式钉）。
+     * 频率段的<b>读数标签</b>宽（★R100 0.8 档定为「填满行带」的账：标签盒 + 一条缝 + 输入框 =
+     * 本型行带宽 302 ⇒ 本行横向零空白）。
      */
     public static final int FREQ_LABEL_WIDTH = 206;
     /**
-     * 升/降档小按钮的宽（装"更快/更慢"两枚短语，与 {@link #MODE_BUTTON_WIDTH} 同一把小尺；
-     * ★R100 38 → 46：同一张 88×18 9-slice 的「中带不许压到源 45% 以下」纪律，见那边 javadoc）。
+     * ★R101：频率<b>秒值输入框</b>的宽（★R100 期的「更快/更慢」两枚 46px 小钮随档位表一起退场，
+     * 原位置改为一枚 MUI2 {@code TextFieldWidget}：显示当前秒数、仅收 1–60 的正整数、
+     * 回车或失焦提交、非法输入回显现值）。派生：行带 302 − 标签 206 − 一条缝 2 = <b>94</b>，
+     * 行带与面板宽（318）一个字不动。
      */
-    public static final int FREQ_BUTTON_WIDTH = 46;
-    /** 两枚小按钮之间的缝（与行内其余缝同档）。 */
+    public static final int FREQ_FIELD_WIDTH = 94;
+    /** 标签与输入框之间的缝（与行内其余缝同档；沿用旧小钮行的缝常数名）。 */
     public static final int FREQ_BUTTON_GAP = 2;
 
     /**
@@ -365,8 +386,13 @@ public final class PocketConfigPanel {
                 return 0;
             }
         },
-        /** 容量面的读数段：流体条双轨口径（20M/2G per tank，合计 18 倍）。读数横贯整面（不自带宽）。 */
-        READOUT_CAPACITY("gtit.pocket.fluid.capacity") {
+        /**
+         * 容量面的读数段：★R101 改判——量级口径（20M/2G per tank + 合计）换成<b>关闭规则说明</b>。
+         * 读数横贯整面（不自带宽）。★键从主面板的 {@code gtit.pocket.fluid.capacity} 改为本型独有的
+         * {@code gtit.pocket.config.capacity.rule}：主面板那句还有流体格件 tooltip 与底部带说明块
+         * tooltip 两个消费面（数字读数在那里仍然成立），不能跟着本面一起改义。
+         */
+        READOUT_CAPACITY("gtit.pocket.config.capacity.rule") {
 
             @Override
             public int contentWidth() {
@@ -407,12 +433,12 @@ public final class PocketConfigPanel {
                 return READOUT_HEIGHT;
             }
         },
-        /** ★R100：通道持续化面的<b>频率档位段</b>——档位读数一行 + 更快/更慢两枚按钮（只此一型有）。 */
+        /** ★R100：通道持续化面的<b>频率段</b>——档位读数一行 + ★R101 起秒值输入框（只此一型有）。 */
         FREQUENCY(null) {
 
             @Override
             public int contentWidth() {
-                return FREQ_LABEL_WIDTH + 2 * FREQ_BUTTON_GAP + 2 * FREQ_BUTTON_WIDTH;
+                return FREQ_LABEL_WIDTH + FREQ_BUTTON_GAP + FREQ_FIELD_WIDTH;
             }
 
             @Override
@@ -435,7 +461,7 @@ public final class PocketConfigPanel {
                 return MAGNET_FRAME_HEIGHT;
             }
         },
-        /** 魔法使面的挂载段：三行模式控件 + 元素容量读数（容量行在框内 ⇒ 框高即段高）。 */
+        /** 魔法使面的挂载段：★R101 横排（按钮行在上 + 名单行在下）+ 元素容量读数（容量行在框内 ⇒ 框高即段高）。 */
         MOUNT_MAGE(null) {
 
             @Override
@@ -596,19 +622,24 @@ public final class PocketConfigPanel {
         if (MAGNET_COUNT_WIDTH <= 0) {
             throw new IllegalStateException("[pocket] 磁力计数读数行没有宽度可占");
         }
-        // ★魔法使框里的模式行必须落在框内（框高进面板高的纵向预算 ⇒ 这条红的同时会带走上面那条
-        // 「内容段纵向不闭合」，所以单独写一条，报的是"行多了"而不是"面板高了"）。
-        if (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP) > MAGE_FRAME_HEIGHT) {
+        // ★魔法使框里的模式段必须落在框内（框高进面板高的纵向预算 ⇒ 这条红的同时会带走上面那条
+        // 「内容段纵向不闭合」，所以单独写一条，报的是"段高了"而不是"面板高了"）。
+        // ★R101 横排重排后的段 = 按钮行 + 层间缝 + 名单行（名单两行盒），不再按行数×行高派生。
+        if (MOUNT_TITLE_HEIGHT + MAGE_MODE_STACK_HEIGHT + READOUT_GAP + READOUT_HEIGHT > MAGE_FRAME_HEIGHT - 2) {
             throw new IllegalStateException(
-                "[pocket] 魔法使挂载框放不下 " + modeRowCount()
-                    + " 行模式控件: 框高="
-                    + MAGE_FRAME_HEIGHT
+                "[pocket] 魔法使挂载框放不下按钮行 + 名单行 + 容量行: 框高=" + MAGE_FRAME_HEIGHT
                     + "，需要="
-                    + (MOUNT_TITLE_HEIGHT + modeRowCount() * (MODE_ROW_HEIGHT + MODE_ROW_GAP)));
+                    + (MOUNT_TITLE_HEIGHT + MAGE_MODE_STACK_HEIGHT + READOUT_GAP + READOUT_HEIGHT + 2));
         }
-        if (MODE_LABEL_WIDTH < 40 || MODE_LABEL_WIDTH + MODE_BUTTON_WIDTH + 2 > MAGE_FRAME_WIDTH - 2) {
+        // ★R101 横排的列闭合：名单三列（列宽等分）+ 列间缝必须收进框内可用宽（框宽 − 两道框边）。
+        if (MODE_COLUMN_WIDTH < 40
+            || modeRowCount() * MODE_COLUMN_WIDTH + (modeRowCount() - 1) * MODE_COLUMN_GAP > MAGE_FRAME_WIDTH - 2) {
             throw new IllegalStateException(
-                "[pocket] 模式行横向不闭合（标签 + 按钮顶出挂载框）: 标签=" + MODE_LABEL_WIDTH + "，按钮=" + MODE_BUTTON_WIDTH);
+                "[pocket] 魔法使名单横排列不闭合: 列宽=" + MODE_COLUMN_WIDTH
+                    + "，列数="
+                    + modeRowCount()
+                    + "，框内可用宽="
+                    + (MAGE_FRAME_WIDTH - 2));
         }
         // ★R98 S4：元素容量行搬进框内以后的两条闭合（框语义 = "这里面是一组"，行不许再悬在框外）。
         // 纵向：行的下沿必须落在框底（含 1px 框边）之内；横向：行的盒必须收得进框内可用宽。
@@ -644,14 +675,10 @@ public final class PocketConfigPanel {
         if (secondSections != PocketUpgradeType.values().length) {
             throw new IllegalStateException("[pocket] 分派表点名数 " + secondSections + " ≠ 型数（表与枚举不齐）");
         }
-        // ★R100：频率档位行必须收得进本型行带（面板宽 − 两个边距）：标签 + 缝 + 两枚小按钮 + 缝。
-        if (MARGIN + FREQ_LABEL_WIDTH
-            + FREQ_BUTTON_GAP
-            + FREQ_BUTTON_WIDTH
-            + FREQ_BUTTON_GAP
-            + FREQ_BUTTON_WIDTH
-            + MARGIN > panelWidthOf(PocketUpgradeType.CHANNEL_PERSIST)) {
-            throw new IllegalStateException("[pocket] 频率档位行横向不闭合（标签 + 两枚按钮顶出面板宽）");
+        // ★R101：频率段必须收得进本型行带（面板宽 − 两个边距）：标签 + 缝 + 秒值输入框。
+        if (MARGIN + FREQ_LABEL_WIDTH + FREQ_BUTTON_GAP + FREQ_FIELD_WIDTH + MARGIN
+            > panelWidthOf(PocketUpgradeType.CHANNEL_PERSIST)) {
+            throw new IllegalStateException("[pocket] 频率段横向不闭合（标签 + 输入框顶出面板宽）");
         }
     }
 
@@ -715,7 +742,9 @@ public final class PocketConfigPanel {
     // 会在用例 config_panel_geometry_within_secondary_caps 的判据②上直接红。
 
     /**
-     * 容量面那一行读的键（★与主面板同一句、同一个格式源 {@code NekoPocketPanel#capacityReadoutText}，本件只点名不重写第二份；★字面量单源在
+     * 容量面那一行读的键（★R101 改判：配置面改读<b>关闭规则说明</b>，键本型独有；主面板量级句
+     * {@code gtit.pocket.fluid.capacity} 与其格式源 {@code NekoPocketPanel#capacityReadoutText} 不跟改——
+     * 那句仍由流体格件 tooltip 与底部带说明块 tooltip 消费，两句话两份职责；字面量单源在
      * {@link Section#READOUT_CAPACITY}）。
      */
     public static final String READOUT_CAPACITY_KEY = Section.READOUT_CAPACITY.readoutKey;
@@ -724,53 +753,62 @@ public final class PocketConfigPanel {
     /** 通道持续化面那一行<b>未常开</b>支的键（★本型独有；常开支复用的是主面板那条 {@code channel.always_on}；字面量单源在 {@link Section#READOUT_PERSIST}）。 */
     public static final String READOUT_PERSIST_KEY = Section.READOUT_PERSIST.readoutKey;
 
-    // ==================================================== ★R100：频率档位段的数据面（档位表本体在 PocketConstants）
+    // ==================================================== ★R100 → ★R101：频率段的数据面（秒值域单源在 PocketConstants）
 
-    /** ★R100：频率档位行的读数键（占位 {@code %d} = 秒/批；★同键复用为写腿的粘性回执，不另立第二条）。 */
+    /** ★R100：频率段的读数键（占位 {@code %d} = 秒/批；★同键复用为写腿的粘性回执，不另立第二条）。 */
     public static final String READOUT_FREQ_KEY = "gtit.pocket.config.persist.freq";
-    /** ★R100：更快（降秒）按钮的键。 */
-    public static final String READOUT_FREQ_FASTER_KEY = "gtit.pocket.config.persist.freq.faster";
-    /** ★R100：更慢（升秒）按钮的键。 */
-    public static final String READOUT_FREQ_SLOWER_KEY = "gtit.pocket.config.persist.freq.slower";
-    /** ★R100：两枚按钮共用的 tooltip 键（讲的是"这一档管什么、何时生效"）。 */
+    /**
+     * ★R101：频率秒值输入框的 tooltip 键（旧"更快/更慢"两枚按钮的 tooltip 键原键改义：讲的是
+     * "这一框怎么填、何时生效"）。★撤键必须与装配侧、两份 lang 同批（R96 S5 先例）。
+     */
     public static final String READOUT_FREQ_HINT_KEY = "gtit.pocket.config.persist.freq.hint";
 
     /**
-     * ★R100：频率档动作码 arg 的编码（arg = <b>目标档位下标</b>；一条式子，双端同读）。
-     * 越界（含 −1 与伪造）⇒ −1，调用方必须丢弃这条包而不是猜一档。
+     * ★R101：频率秒值输入的<b>解析纯函数</b>（装配侧输入框与服务端提交侧共读同一份判域）：
+     * 去首尾空白、全数字、值域 {@code [1,60]}（{@code PocketConstants#channelFreqSecondsClamp} 的域）
+     * ⇒ 回秒值；其余（空串 / 非数字 / 越域 / 溢出）一律回 <b>0</b>，调用方必须把文本回显现值，
+     * ★不许猜一个"最近合法值"替玩家做主。
      */
-    public static int encodeFreqTier(int tier) {
-        return tier >= 0 && tier < PocketConstants.CHANNEL_FREQ_TIERS_SECONDS.length ? tier : -1;
-    }
-
-    /** arg → 档位下标（越界 ⇒ −1，同 {@link #encodeFreqTier} 单源；handler 侧的解越腿）。 */
-    public static int freqTierOfArg(int arg) {
-        return encodeFreqTier(arg);
-    }
-
-    /** 载体档上当前的频率档（无键 = 默认 5s 档；读法单源在 {@code PocketConstants#readChannelFreqTier}）。 */
-    public static int freqTierState(ItemStack carrier) {
-        return PocketConstants.readChannelFreqTier(carrier == null ? null : carrier.getTagCompound());
+    public static int parseFreqSecondsInput(String input) {
+        if (input == null) {
+            return 0;
+        }
+        final String trimmed = input.trim();
+        if (trimmed.isEmpty()) {
+            return 0;
+        }
+        for (int i = 0; i < trimmed.length(); i++) {
+            final char c = trimmed.charAt(i);
+            if (c < '0' || c > '9') {
+                return 0;
+            }
+        }
+        final int seconds;
+        try {
+            seconds = Integer.parseInt(trimmed);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+        return PocketConstants.channelFreqSecondsClamp(seconds) == seconds ? seconds : 0;
     }
 
     /**
-     * ★R100：服务端唯一的<b>频率档</b>写腿（与 {@link #commitSwitch}/{@link #commitMode} 并列的第三条
-     * 纯函数写腿；「三条不共用一个入口」的口径同 {@link #commitMode} 那条 javadoc——守卫与目标值语义各不相同，
-     * 并成一条就会互相改写）。
+     * ★R101：服务端唯一的<b>频率秒值</b>写腿（旧 {@code commitFreqTier} 的位置与三步形状逐字继承，
+     * 目标从"档位下标"换成"秒/批"；域 [1,60] 的钳制与旧键映射单源在 {@code PocketConstants}）。
      * <p>
      * 三步与开关腿同构：① 这一型在不在档上（{@link #switchState} == {@code ABSENT} ⇒ 不写——给没装
-     * 持久化的口袋写频率档是假读数的种子）；② 同值重复到达 ⇒ 零写入（连点不刷整栈同步）；
-     * ③ 落档走 {@code PocketConstants#writeChannelFreqTier}（写默认档 = {@code removeTag}，
-     * 缺键同义 ⇒ 老档天然干净；读写不建档纪律同 {@code PocketUpgradeSwitches}）。
+     * 持久化的口袋写频率是假读数的种子）；② 越域/同值重复到达 ⇒ 零写入（连点不刷整栈同步）；
+     * ③ 落档走 {@code PocketConstants#writeChannelFreqSeconds}（新键 {@code channelFreqSeconds}；
+     * 旧档位键 {@code channelFreqTier} 一字不动，读取侧按"新键优先"回落映射）。
      * <p>
      * ★不判持有者 / 载体身份（那两判在 handler 侧的 {@code serverGuardOk}，同 {@link #commitSwitch} 的分工）；
      * ★不碰通道状态（在跑的道换节拍由 handler 在写腿成功后调 {@code PocketChannelManager#retimePersistentChannel}，
      * 那是一条幂等的运行期腿，不该长在纯函数里）。
      *
-     * @return 本次是否真的改变（{@code false} = 越界 / 不在档上 / 同值，全部<b>零写入</b>）
+     * @return 本次是否真的改变（{@code false} = 越域 / 不在档上 / 同值，全部<b>零写入</b>）
      */
-    public static boolean commitFreqTier(ItemStack carrier, int tier) {
-        if (encodeFreqTier(tier) < 0) {
+    public static boolean commitChannelFreqSeconds(ItemStack carrier, int seconds) {
+        if (PocketConstants.channelFreqSecondsClamp(seconds) != seconds) {
             return false;
         }
         if (switchState(carrier, PocketUpgradeType.CHANNEL_PERSIST) == SwitchState.ABSENT) {
@@ -781,7 +819,7 @@ public final class PocketConfigPanel {
             // 无档 = 还没固化过这一型：不建档（R53c），口径同 commitMode 的 NOT_ON_RECORD 支
             return false;
         }
-        return PocketConstants.writeChannelFreqTier(root, tier);
+        return PocketConstants.writeChannelFreqSeconds(root, seconds);
     }
 
     /**
@@ -1098,12 +1136,12 @@ public final class PocketConfigPanel {
                 // 一起撤 —— gtit.pocket.config.stack.note（同尺说明）、gtit.pocket.config.persist.button
                 // （常开期间按钮禁用）、gtit.pocket.config.persist.frame（帧带常亮）。★这里撤键必须与
                 // 装配侧、两份 lang 同批：留一半就是"键还在但没人读"的第二份僵尸（R96 S5 的先例）。
+                READOUT_CAPACITY_KEY,
                 READOUT_STACK_KEY,
                 READOUT_PERSIST_KEY,
-                // ★R100：频率档位段四键（读数 + 两枚按钮 + tooltip；只随 CHANNEL_PERSIST 那一面消费）。
+                // ★R100：频率段两键（读数 + ★R101 输入框 tooltip；只随 CHANNEL_PERSIST 那一面消费）。
+                // ★R101 撤「更快/更慢」两枚按钮 ⇒ faster/slower 两键随消费件一起退场（撤键与两份 lang 同批）。
                 READOUT_FREQ_KEY,
-                READOUT_FREQ_FASTER_KEY,
-                READOUT_FREQ_SLOWER_KEY,
                 READOUT_FREQ_HINT_KEY,
                 "gtit.pocket.config.mage.capacity",
                 "gtit.pocket.config.mode.crystal",
@@ -1116,8 +1154,9 @@ public final class PocketConfigPanel {
             keys.add(receiptKey(outcome));
         }
         // ★磁力配置面的键（三态标签 ×3 + 三态不对称说明 ×3 + 目标两档标签 ×2 + 三枚提示 +
-        // 计数读数 + 清空按钮两行 + 格件四行 + 格件的四条拒收支）。★逐条点名进这张表 ⇒ 两份 lang 的
-        // 对账用例（config_panel_dispatch_is_not_five_identical 的④面）会自动把它们一起量。
+        // 计数读数 + 清空按钮两行）。★R101 撤逐条描述：格件 tooltip 收到只剩物品显示名 ⇒
+        // 格件四行（empty/remove/number/gesture）与四条拒收支键随消费件一起退场（撤键与两份 lang 同批）；
+        // 三态不对称说明仍由三态钮的 tooltip 消费（键不删只减消费面）。
         for (final PocketMagnetFilter.Mode mode : PocketMagnetFilter.Mode.values()) {
             keys.add(modeLabelKey(mode));
             keys.add(noteKeyOf(mode));
@@ -1131,15 +1170,7 @@ public final class PocketConfigPanel {
                 "gtit.pocket.magnet.target.hint",
                 "gtit.pocket.magnet.count",
                 "gtit.pocket.magnet.clear",
-                "gtit.pocket.magnet.clear.hint",
-                "gtit.pocket.magnet.cell.empty",
-                "gtit.pocket.magnet.cell.remove",
-                "gtit.pocket.magnet.cell.number",
-                "gtit.pocket.magnet.gesture",
-                NekoMagnetGhostCell.REFUSE_NO_ITEM,
-                NekoMagnetGhostCell.REFUSE_WRONG_BUTTON,
-                NekoMagnetGhostCell.REFUSE_LOCKED,
-                NekoMagnetGhostCell.REFUSE_FULL));
+                "gtit.pocket.magnet.clear.hint"));
         keys.addAll(Arrays.asList(UPGRADE_NAME_KEYS));
         return keys;
     }
@@ -1293,6 +1324,55 @@ public final class PocketConfigPanel {
         return panel;
     }
 
+    // ------------------------------------------------------------------ ★R101 五面按钮的纯色三态
+
+    /**
+     * ★R101 UI 整改：五面的按钮统一样式 = <b>底色块 + 1px 边框、悬浮提亮、按下压暗</b>（三态，
+     * 尺寸一个字不动）。色阶单源在 {@link PocketGhostRequest}（任务拍板"不散落魔法数"），本方法只拼装。
+     * <p>
+     * 实现走 MUI2 Widget 的三个既有槽位（零子类化、零新控件）：
+     * {@code background} = 常态、{@code hoverBackground} = 悬浮（hover 时库整层替换常态底）、
+     * {@code overlay} = 内容层 + 按下压暗层——库没有"按下"主题槽，压暗层内部用 LWJGL 的实时按键
+     * 读数判"正在按"（体只在客户端绘制路径执行，服务端装配树永远不会调它，同
+     * {@code PocketGhostRequest#capReadoutColor()} 的方法体纪律）。
+     * <p>
+     * ★{@code content}（按钮文字）与压暗层<b>共用同一个 overlay 槽</b>：库的 overlay setter 是
+     * "替换"不是"追加" ⇒ 两层必须合成一个 {@link IDrawable#of(IDrawable...)} 栈（按序绘制 ⇒
+     * 压暗画在文字之上，按下时整钮连字一起变暗）。传 {@code null} = 无文字钮。
+     */
+    private static void applyConfigButtonStyle(ButtonWidget<?> button, IDrawable content) {
+        button.background(configButtonFill(PocketGhostRequest.buttonFillColor()));
+        button.hoverBackground(configButtonFill(PocketGhostRequest.buttonHoverColor()));
+        if (content == null) {
+            button.overlay(pressedDarkenOverlay(button));
+        } else {
+            button.overlay(content, pressedDarkenOverlay(button));
+        }
+    }
+
+    /**
+     * 一态的按钮底绘制（边框 1px + 内色块 1px 内缩）：常态与悬浮共用同一份式子，只换内色
+     * （★边框/内色的取值单源在 {@link PocketGhostRequest}，这里不写第二份色值）。
+     */
+    private static IDrawable configButtonFill(int fillColor) {
+        return (context, x, y, width, height, widgetTheme) -> {
+            GuiDraw.drawRect(x, y, width, height, PocketGhostRequest.buttonBorderColor());
+            GuiDraw.drawRect(x + 1, y + 1, width - 2, height - 2, fillColor);
+        };
+    }
+
+    /**
+     * 按下压暗层：本钮<b>正被悬停且左键按住</b>才画一层深色（三态的第三态）。
+     * ★只压暗、不位移：位移要让整棵子树跟着挪，库的绘制坐标在 draw 时已定 ⇒ 压暗即可辨识。
+     */
+    private static IDrawable pressedDarkenOverlay(ButtonWidget<?> button) {
+        return (context, x, y, width, height, widgetTheme) -> {
+            if (button.isHovering() && org.lwjgl.input.Mouse.isButtonDown(0)) {
+                GuiDraw.drawRect(x, y, width, height, PocketGhostRequest.buttonPressColor());
+            }
+        };
+    }
+
     /**
      * 型名 + 现状读数（★动态：型名与状态同一句里，读的是同一个 {@link SwitchState}）。
      * <p>
@@ -1314,23 +1394,27 @@ public final class PocketConfigPanel {
             .size(labelWidthOf(type), ROW_HEIGHT);
     }
 
-    /** 开关（★唯一出口是发码，本地零写入；★排在本行右端，与型名同一横带）。 */
+    /**
+     * 开关（★唯一出口是发码，本地零写入；★排在本行右端，与型名同一横带）。
+     * ★R101：底改纯色三态（见 {@link #applyConfigButtonStyle}）；逐条语句设定取
+     * {@code NekoPocketBottomBand#persistentBindRow} 的同一条先例（链式拿不到 self 型时不再硬拧）。
+     */
     private static IWidget switchButton(NekoPocketPanel ui, PocketUpgradeType type) {
-        return new ButtonWidget<>().pos(MARGIN + labelWidthOf(type) + 2, MARGIN)
+        final ButtonWidget<?> button = new ButtonWidget<>();
+        button.pos(MARGIN + labelWidthOf(type) + 2, MARGIN)
             .size(SWITCH_WIDTH, SWITCH_HEIGHT)
             .name("pocket_config_switch_" + type.ordinal())
-            .background(PocketGuiTextures.BUTTON)
-            .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-            .overlay(
-                IKey.dynamic(
-                    () -> StatCollector.translateToLocal(switchLabelKey(switchState(ui.carrierStackLive(), type)))))
             .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang("gtit.pocket.config.switch.hint")))
             .tooltipAutoUpdate(true)
             .playClickSound(true)
             // ★只有左键生效（同 R83 B2(5) 的口径：丢掉 button 形参 = 右键也切一次）；
             // ★★这里一个字节都不写档 —— 客户端私写 off-mask 是门禁 G12 / 门 D 钉死的 FAIL 形状。
-            .onMousePressed(
-                button -> button == 0 && ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type)));
+            .onMousePressed(press -> press == 0 && ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type)));
+        applyConfigButtonStyle(
+            button,
+            IKey.dynamic(
+                () -> StatCollector.translateToLocal(switchLabelKey(switchState(ui.carrierStackLive(), type)))));
+        return button;
     }
 
     /** 回执行：最近一次切换成了什么 / 为什么被拒（★走既有粘性回执通道，不新建通道；★两行盒）。 */
@@ -1350,31 +1434,32 @@ public final class PocketConfigPanel {
      * 旧形状"独占一行、右下角离一切最远"从几何上消失。
      */
     private static IWidget closeButton(NekoPocketPanel ui, PocketUpgradeType type) {
-        return new ButtonWidget<>()
+        final ButtonWidget<?> button = new ButtonWidget<>();
+        button
             .pos(
                 panelWidthOf(type) - MARGIN - CLOSE_WIDTH,
                 panelHeightOf(type) - MARGIN - RECEIPT_HEIGHT + (RECEIPT_HEIGHT - CLOSE_HEIGHT) / 2)
             .size(CLOSE_WIDTH, CLOSE_HEIGHT)
             .name("pocket_config_close")
-            .background(PocketGuiTextures.BUTTON)
-            .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-            .overlay(IKey.lang("gtit.pocket.config.close"))
             .playClickSound(true)
-            .onMousePressed(button -> button == 0 && ui.closeUpgradeConfig());
+            .onMousePressed(press -> press == 0 && ui.closeUpgradeConfig());
+        // ★R101：底改纯色三态（同开关钮那条）
+        applyConfigButtonStyle(button, IKey.lang("gtit.pocket.config.close"));
+        return button;
     }
 
     // ================================================================== ★R98 S4 紧凑三面的读数段（各剩一行）
 
     /**
-     * 容量读数块（★两行盒：复用主面板 {@code capacityReadoutText} 的同一句话与同一个格式源，
-     * ★键单源 {@link #READOUT_CAPACITY_KEY}）。
+     * 容量读数块（★两行盒：R101 起读本型独有的<b>关闭规则说明</b>（{@link #READOUT_CAPACITY_KEY}，
+     * 不再复用主面板量级句），规则文案静态一条 ⇒ {@code IKey.lang} 直读，不走动态供串）。
      * <p>
      * ★R98 S4 把对齐从 {@code TopLeft} 换成 {@code CenterLeft}：本面其余读数件（型名、回执）全是
      * {@code CenterLeft}，同一面里两种对齐是取证 {@code 02-gui.md} §4-1 点名那一处。两行盒居中后
      * 上下各余 1px（20 ≤ 22），不顶穿。
      */
     private static IWidget capacityReadoutBlock(NekoPocketPanel ui, PocketUpgradeType type) {
-        return (IWidget) new TextWidget(IKey.dynamic(ui::capacityReadoutText)).textAlign(Alignment.CenterLeft)
+        return (IWidget) new TextWidget(IKey.lang(READOUT_CAPACITY_KEY)).textAlign(Alignment.CenterLeft)
             .scale(TEXT_SCALE)
             .color(PocketGhostRequest.readoutTextColor())
             .shadow(Boolean.TRUE)
@@ -1383,20 +1468,19 @@ public final class PocketConfigPanel {
             .size(panelWidthOf(type) - 2 * MARGIN, CAPACITY_READOUT_HEIGHT);
     }
 
-    /** 堆叠面那一行：单格上限的<b>现档</b>读数（64 ↔ 1024，随开关翻转；读 R97 R6 的同步镜像）。 */
+    /**
+     * 堆叠面那一行：★R101 改判——量级读数（64 ↔ 1024）换成<b>关闭规则说明</b>（"仅在未超出当前
+     * 堆叠上限时，才可以关闭"；数字面与守卫执法面都在服务端，本行不再代念量级）。键不变
+     * （{@link #READOUT_STACK_KEY}），lang 文本与格式参数同批翻新。
+     */
     private static IWidget stackLimitLine(NekoPocketPanel ui, PocketUpgradeType type) {
-        return (IWidget) new TextWidget(
-            IKey.dynamic(
-                () -> String.format(
-                    StatCollector.translateToLocal(READOUT_STACK_KEY),
-                    ui.storageStackUpgraded() ? Integer.valueOf(PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED)
-                        : Integer.valueOf(PocketConstants.STORAGE_SLOT_LIMIT_BASE)))).textAlign(Alignment.CenterLeft)
-                            .scale(TEXT_SCALE)
-                            .color(PocketGhostRequest.readoutTextColor())
-                            .shadow(Boolean.TRUE)
-                            .name("pocket_config_stack_limit")
-                            .pos(MARGIN, CONTENT_TOP)
-                            .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+        return (IWidget) new TextWidget(IKey.lang(READOUT_STACK_KEY)).textAlign(Alignment.CenterLeft)
+            .scale(TEXT_SCALE)
+            .color(PocketGhostRequest.readoutTextColor())
+            .shadow(Boolean.TRUE)
+            .name("pocket_config_stack_limit")
+            .pos(MARGIN, CONTENT_TOP)
+            .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
     }
 
     /**
@@ -1422,26 +1506,32 @@ public final class PocketConfigPanel {
                         .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
     }
 
-    // ================================================================== ★R100 频率档位段（本型第二行专属内容）
+    // ================================================================== ★R100 → ★R101 频率段（本型第二行专属内容）
 
     /**
-     * 频率档位行的整行装配：读数标签（现读载体档，vanilla 镜像 ≤1+ tick 跟真值）+ 更快/更慢两枚按钮。
+     * 频率段的整行装配：读数标签（现读载体秒值，vanilla 镜像 ≤1+ tick 跟真值）+ ★R101 起一枚
+     * <b>秒值输入框</b>（旧"更快/更慢"两枚升降钮随 11 档封闭表一起退场）。
      * <p>
-     * ★树形恒定（R32 纪律）：一行三件不随档位值变化，值只进 {@code IKey.dynamic} 的内容层 ⇒
-     * 同型重开拿到的缓存面板不会因为档位改了而拿到一棵旧树。★读数不另开同步键：走载体栈 NBT 的
-     * vanilla 槽同步（与 {@link #switchState}/{@link #modeState} 同一条通道，EVA-1 DP2「零新通道」）。
+     * ★输入框行为（任务拍板）：显示当前秒数、仅收正整数（打字层 {@code [0-9]*} 过滤 + 提交层
+     * {@link #parseFreqSecondsInput} 判域）、回车或失焦提交（MUI2 的 {@code TextFieldWidget}
+     * 两条路都汇到 removeFocus ⇒ setter）、非法输入不发包——底值不变，未聚焦时的 onUpdate 会把
+     * 文本刷回现值（"回显原值"）。服务端仍是唯一写腿（{@code commitChannelFreqSeconds}），域钳制
+     * 两端各跑一遍但判域同源。
      * <p>
-     * ★按钮只在目标档合法时发码（越界那一头的按钮<b>不发</b>而不是发了让服务端丢）：边界档上
-     * "更快"已到 1s 档 ⇒ 那一枚不再发码；服务端仍保留解越丢弃（伪造包不买到任何东西）。
-     * ★本行一个字节都不写本地 NBT（写腿在服务端 {@code NekoPocketServerHandler#performChannelFreqTier}）。
+     * ★树形恒定（R32 纪律）：一行两件不随秒值变化，值只进内容层（标签的 {@code IKey.dynamic} 与
+     * 输入框的 {@code StringValue.Dynamic} getter）⇒ 同型重开拿到的缓存面板不会因为值改了而拿到一棵旧树。
+     * ★读数不另开同步键：走载体栈 NBT 的 vanilla 槽同步（与 {@link #switchState}/{@link #modeState}
+     * 同一条通道）。★本行一个字节都不写本地 NBT（写腿在服务端）。
      */
     private static void frequencyRow(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {
         panel.child(
             (IWidget) new TextWidget(
                 IKey.dynamic(
-                    () -> String.format(
-                        StatCollector.translateToLocal(READOUT_FREQ_KEY),
-                        Integer.valueOf(PocketConstants.channelFreqTierSeconds(freqTierState(ui.carrierStackLive()))))))
+                    () -> String
+                        .format(StatCollector.translateToLocal(READOUT_FREQ_KEY), Integer.valueOf(freqSecondsOf(ui))))) // ★%d
+                                                                                                                        // =
+                                                                                                                        // 当前秒/批（域
+                                                                                                                        // [1,60]，旧档位键映射兼容）
                             .textAlign(Alignment.CenterLeft)
                             .scale(TEXT_SCALE)
                             .color(PocketGhostRequest.readoutTextColor())
@@ -1449,38 +1539,31 @@ public final class PocketConfigPanel {
                             .name("pocket_config_freq_label")
                             .pos(MARGIN, FREQ_ROW_Y)
                             .size(FREQ_LABEL_WIDTH, ROW_HEIGHT));
-        final int fasterX = MARGIN + FREQ_LABEL_WIDTH + FREQ_BUTTON_GAP;
-        panel.child(
-            new ButtonWidget<>().pos(fasterX, FREQ_ROW_Y)
-                .size(FREQ_BUTTON_WIDTH, ROW_HEIGHT)
-                .name("pocket_config_freq_faster")
-                .background(PocketGuiTextures.BUTTON)
-                .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-                .overlay(IKey.lang(READOUT_FREQ_FASTER_KEY))
-                .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(READOUT_FREQ_HINT_KEY)))
-                .tooltipAutoUpdate(true)
-                .playClickSound(true)
-                // ★只有左键生效（同开关钮的口径）；目标档越下界 ⇒ 不发码（1s 已是最快档）
-                .onMousePressed(button -> button == 0 && requestFreq(ui, -1)));
-        panel.child(
-            new ButtonWidget<>().pos(fasterX + FREQ_BUTTON_WIDTH + FREQ_BUTTON_GAP, FREQ_ROW_Y)
-                .size(FREQ_BUTTON_WIDTH, ROW_HEIGHT)
-                .name("pocket_config_freq_slower")
-                .background(PocketGuiTextures.BUTTON)
-                .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-                .overlay(IKey.lang(READOUT_FREQ_SLOWER_KEY))
-                .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(READOUT_FREQ_HINT_KEY)))
-                .tooltipAutoUpdate(true)
-                .playClickSound(true)
-                // ★目标档越上界 ⇒ 不发码（600s 已是最慢档）；发的是目标档不是"翻一下"（重复包零写入）
-                .onMousePressed(button -> button == 0 && requestFreq(ui, +1)));
+        final TextFieldWidget field = new TextFieldWidget().value(
+            new StringValue.Dynamic(
+                () -> String.valueOf(freqSecondsOf(ui)),
+                // 提交层（回车 / 失焦）：合法才发码；非法 ⇒ 底值未动，文本由 onUpdate 刷回现值
+                input -> {
+                    final int seconds = parseFreqSecondsInput(input);
+                    if (seconds > 0) {
+                        ui.requestChannelFreqSeconds(seconds);
+                    }
+                }))
+            .setMaxLength(3)
+            // 打字层只放数字进缓冲（"仅允许正整数"的第一道；域判定在提交层）
+            .setPattern(Pattern.compile("[0-9]*"));
+        field.pos(MARGIN + FREQ_LABEL_WIDTH + FREQ_BUTTON_GAP, FREQ_ROW_Y)
+            .size(FREQ_FIELD_WIDTH, ROW_HEIGHT)
+            .name("pocket_config_freq_field");
+        field.tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(READOUT_FREQ_HINT_KEY)));
+        field.tooltipAutoUpdate(true);
+        panel.child(field);
     }
 
-    /** 现读载体档算目标档并按需发码（{@code dir = -1} 更快 / {@code +1} 更慢；越界那一头 ⇒ 不发）。 */
-    private static boolean requestFreq(NekoPocketPanel ui, int dir) {
-        final int current = freqTierState(ui.carrierStackLive());
-        final int target = current + dir;
-        return encodeFreqTier(target) >= 0 && ui.requestChannelFreq(target);
+    /** 载体档上当前的频率秒值（无键 = 默认 5s；旧档位键在场时按档位表映射成秒，读法单源在 PocketConstants）。 */
+    private static int freqSecondsOf(NekoPocketPanel ui) {
+        final ItemStack carrier = ui.carrierStackLive();
+        return PocketConstants.readChannelFreqSeconds(carrier == null ? null : carrier.getTagCompound());
     }
 
     // ================================================================== ★R96 S7b 磁力面（五面里的整面排版）
@@ -1552,8 +1635,9 @@ public final class PocketConfigPanel {
     }
 
     /**
-     * 单个名单格：凹槽底（★恒画）+ 物品图标内容层（★本格有条目才画）+ tooltip（★每帧重建，
-     * 含四条拒收支的说法）+ 三条手势（左键持物录入 / 右键摘本格 / NEI 拖入录入）。
+     * 单个名单格：凹槽底（★恒画）+ 物品图标内容层（★本格有条目才画）+ tooltip（★R101 收口：
+     * <b>只保留物品显示名</b>，空格不给 tooltip —— 逐条描述族（空格说明 / remove / 格号 / 手势 /
+     * 四条拒收支）随任务拍板整批退场，键与两份 lang 同批撤）。
      * <p>
      * ★格件登记进面板的 {@code magnetCells}（{@code NekoPocketPanel#trackMagnetCell}），于是服务端推来的
      * 名单能<b>原位</b>刷这一格，而装配期捕获的键不会留在屏上（R78③ 那一族"晚到的数据"同一口径）。
@@ -1568,99 +1652,67 @@ public final class PocketConfigPanel {
             .background(PocketGuiTextures.SLOT)
             .playClickSound(true);
         ui.trackMagnetCell(index, cell);
+        // ★R101：tooltip = 物品显示名一条（键解不出物品时念原始键，不静默）；空格 = 没有 tooltip。
         cell.tooltipDynamic(tooltip -> {
-            final int synced = ui.magnetEntryCount();
             final String key = cell.entryKey();
-            final boolean empty = key == null || key.isEmpty();
-            if (empty) {
-                tooltip.addLine(IKey.lang("gtit.pocket.magnet.cell.empty"));
-                // ★拒收支②（按键读法）：空格上右键确实无事发生 ⇒ 把"只有左键记、右键是摘"念出来，
-                // ★不许让玩家自己去试（{@code NekoMagnetGhostCell#onMousePressed} 的右枝对空格就是不发请求的）
-                tooltip.addLine(IKey.lang(NekoMagnetGhostCell.REFUSE_WRONG_BUTTON));
-            } else {
+            if (key != null && !key.isEmpty()) {
                 tooltip.addLine(IKey.str(entryTitleOf(key)));
-                tooltip.addLine(IKey.lang("gtit.pocket.magnet.cell.remove"));
             }
-            tooltip.addLine(IKey.lang("gtit.pocket.magnet.cell.number", index + 1));
-            // ★四条拒收支的说法都在 tooltip 里（ghost 那族"静默吞点击"的坑就在这：不写出来就等于没说法）
-            tooltip.addLine(IKey.lang("gtit.pocket.magnet.gesture"));
-            if (!ui.magnetEditable()) {
-                tooltip.addLine(IKey.lang(NekoMagnetGhostCell.REFUSE_LOCKED));
-            } else if (synced >= PocketConstants.MAGNET_FILTER_SLOTS) {
-                tooltip.addLine(IKey.lang(NekoMagnetGhostCell.REFUSE_FULL));
-            } else if (empty && isEmptyCursor(ui.magnetCursorStack())) {
-                // ★拒收支①：手上没东西 ⇒ 左键点这一格记不了任何件（游标读数是客户端只读口，★不写）
-                tooltip.addLine(IKey.lang(NekoMagnetGhostCell.REFUSE_NO_ITEM));
-            }
-            // ★三态不对称的第二处可见面（★R100 起第一处也是 tooltip：说明行迁出面板后本格 tooltip 与
-            // 三态钮 tooltip 就是那两处）："无限制"档下名单仍在场、只是不生效 —— 这条不许只靠实现隐含。
-            tooltip.addLine(IKey.dynamic(() -> StatCollector.translateToLocal(noteKeyOf(ui.magnetMode()))));
         });
-        // ★R100 补：格件 tooltip 里有随场变化的动态行（三态说明、四条拒收支里的锁定/满格两支），
-        // 只挂 tooltipDynamic 不挂 autoUpdate 会停在悬停开始那一刻的快照（MUI2 装配期一次性的坑，
-        // 同 {@link #magnetModeButton} / NekoFilterSlot 的口径）。
         cell.tooltipAutoUpdate(true);
         // ★整块（含格盘与三个按钮）在"这一型没固化"时灰显（R31 同一条：灰显不隐藏，画面形状不双分支）
         cell.setEnabledIf(widget -> ui.magnetEditable());
         return cell;
     }
 
-    /**
-     * 游标是否"没有可记的东西"（★判据不抄第二份：身份键那一段直接回读 {@code NekoMagnetGhostCell#applyDrop}
-     * 用的同一条 {@link NekoMagnetGhostCell#identityKeyOf}；件数那一段与 applyDrop 的
-     * {@code carried.stackSize <= 0} 同一读法 ⇒ tooltip 说的与格件做的是<b>同一句话</b>）。
-     * ★只读判定，不碰游标本身。
-     */
-    public static boolean isEmptyCursor(final net.minecraft.item.ItemStack carried) {
-        return carried == null || carried.stackSize <= 0
-            || NekoMagnetGhostCell.identityKeyOf(carried)
-                .isEmpty();
-    }
-
     /** ★三态循环按钮（{@code NONE → WHITELIST → BLACKLIST → NONE}，★只有左键，★客户端零写入）。 */
     private static IWidget magnetModeButton(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(MAGNET_CONTROL_X, magnetControlRowY(0))
+        final ButtonWidget<?> button = new ButtonWidget<>();
+        button.pos(MAGNET_CONTROL_X, magnetControlRowY(0))
             .size(MAGNET_BUTTON_WIDTH, MAGNET_BUTTON_HEIGHT)
             .name("pocket_magnet_mode_button")
-            .background(PocketGuiTextures.BUTTON)
-            .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-            .overlay(IKey.dynamic(() -> StatCollector.translateToLocal(modeLabelKey(ui.magnetMode()))))
             .tooltipDynamic(tooltip -> {
                 tooltip.addLine(IKey.lang("gtit.pocket.magnet.mode.hint"));
-                // ★同一条不对称说明（★R100 起说明行的两处可见面都是 tooltip：本钮 + 格件）
+                // ★同一条不对称说明（★R101 起说明键的唯一 tooltip 消费面：本钮。格件 tooltip 已收口）
                 tooltip.addLine(IKey.dynamic(() -> StatCollector.translateToLocal(noteKeyOf(ui.magnetMode()))));
             })
             .tooltipAutoUpdate(true)
             .playClickSound(true)
-            .onMousePressed(button -> button == 0 && ui.requestMagnetModeCycle());
+            .onMousePressed(press -> press == 0 && ui.requestMagnetModeCycle());
+        applyConfigButtonStyle(
+            button,
+            IKey.dynamic(() -> StatCollector.translateToLocal(modeLabelKey(ui.magnetMode()))));
+        return button;
     }
 
     /** ★吸取目标两档按钮（{@code POCKET → PLAYER}；★目标执法腿的归属逐字写在 {@code Target} 的注释里）。 */
     private static IWidget magnetTargetButton(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(MAGNET_CONTROL_X, magnetControlRowY(1))
+        final ButtonWidget<?> button = new ButtonWidget<>();
+        button.pos(MAGNET_CONTROL_X, magnetControlRowY(1))
             .size(MAGNET_BUTTON_WIDTH, MAGNET_BUTTON_HEIGHT)
             .name("pocket_magnet_target_button")
-            .background(PocketGuiTextures.BUTTON)
-            .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-            .overlay(IKey.dynamic(() -> StatCollector.translateToLocal(targetLabelKey(ui.magnetTarget()))))
             .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang("gtit.pocket.magnet.target.hint")))
             .tooltipAutoUpdate(true)
             .playClickSound(true)
-            .onMousePressed(button -> button == 0 && ui.requestMagnetTargetCycle());
+            .onMousePressed(press -> press == 0 && ui.requestMagnetTargetCycle());
+        applyConfigButtonStyle(
+            button,
+            IKey.dynamic(() -> StatCollector.translateToLocal(targetLabelKey(ui.magnetTarget()))));
+        return button;
     }
 
     /** ★清空名单按钮（★只抹条目、不动三态；与"切到无限制"是两件事，见 {@code PocketMagnetFilter} 三态读法）。 */
     private static IWidget magnetClearButton(NekoPocketPanel ui) {
-        return new ButtonWidget<>().pos(MAGNET_CONTROL_X, magnetControlRowY(2))
+        final ButtonWidget<?> button = new ButtonWidget<>();
+        button.pos(MAGNET_CONTROL_X, magnetControlRowY(2))
             .size(MAGNET_BUTTON_WIDTH, MAGNET_BUTTON_HEIGHT)
             .name("pocket_magnet_clear_button")
-            .background(PocketGuiTextures.BUTTON)
-            .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-            .overlay(IKey.lang("gtit.pocket.magnet.clear"))
             .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang("gtit.pocket.magnet.clear.hint")))
             .tooltipAutoUpdate(true)
             .playClickSound(true)
-            .onMousePressed(button -> button == 0 && ui.requestMagnetClear());
+            .onMousePressed(press -> press == 0 && ui.requestMagnetClear());
+        applyConfigButtonStyle(button, IKey.lang("gtit.pocket.magnet.clear"));
+        return button;
     }
 
     /** 名单计数读数（★条数是服务端算好带下来的权威数，不是客户端"非空格"的计数）。 */
@@ -1736,7 +1788,8 @@ public final class PocketConfigPanel {
     // ================================================================== ★R96 S9b 魔法使面（挂载框 + 三行模式 + 容量行）
 
     /**
-     * 魔法使面的整面装配：一枚挂载框，框内 = 标题 + 三行模式控件 + 元素容量读数行。
+     * 魔法使面的整面装配：一枚挂载框，框内 = 标题 + ★R101 横排模式段（按钮行在上、名单文字行在下）
+     * + 元素容量读数行。
      * <p>
      * ★R98 S4 的排版改判：容量行原本悬在<b>框外</b>（取证 {@code 02-gui.md} §4-5 —— "框 = 这里面是一组"
      * 这条语义在魔法使面只兑现了一半，磁力面框住的是整盘）。现在它和模式行同框，两面的框语义一致；
@@ -1776,14 +1829,19 @@ public final class PocketConfigPanel {
     }
 
     /**
-     * 魔法使挂载框里的<b>三行模式控件</b>（第四枚控件是面板顶上那一行的开关，不在这里重复画）。
+     * 魔法使挂载框里的模式控件（★R101 横排重排：<b>按钮行在上、名单文字行在下、按列对齐</b>，
+     * 第四枚控件是面板顶上那一行的开关，不在这里重复画）。
      * <p>
-     * <b>标签 = 模式名 + 现状同一句</b>（{@link #stateKey} 复用的就是开关行那两条既有键，
-     * ★模式与开关在玩家侧读起来是同一件事："这一条动还是不动"）。按钮上的字复用
-     * {@link #switchLabelKey} 那两条 —— 只是模式没有"未固化"这一态（那一判在 {@link #commitMode} 里
-     * 拒写并回一条既有回执，不在按钮上骗人）。
+     * ★三列布局：每列 = 一枚 {@link #MODE_BUTTON_WIDTH} 宽的按钮（行在 {@link #modeButtonRowY()}）
+     * + 列宽 {@link #MODE_COLUMN_WIDTH} 的名单文字盒（行在 {@link #modeLabelRowY()}），按钮与文字
+     * 左对齐同一列 x。三列在 232px 的框内等分（3×75 + 2×2 = 229 ≤ 框内可用宽 230），面板宽 248 不动。
      * <p>
-     * ★每行按钮仍各挂同一条 {@link #MODE_HINT_KEY} tooltip（R98 计划提过"合并成一条框级 tooltip"，
+     * ★<b>名单文字只念模式名</b>（旧"模式名：状态"的行首读数收进按钮的动态 overlay）：竖排时代
+     * 每行盒 182px 装得下全句，三列横排在 0.8 档装不下（en 最坏 "Essence transmuting：Off" ≈ 111px，
+     * 三列 > 232）⇒ 状态读数回到按钮上（"关闭 / 打开"本来就是状态位，竖排时代它与行首读数是同一
+     * 事实的两处读点）；名单行只念模式名，信息一项不减、重复读点收掉。
+     * <p>
+     * ★每列按钮仍各挂同一条 {@link #MODE_HINT_KEY} tooltip（R98 计划提过"合并成一条框级 tooltip"，
      * <b>本片没做</b>，理由记在这儿而不是留给下一个人重新发现）：MUI2 的 hover 链在
      * {@code ModularGuiContext#getHoveredWidgets} 里遇到第一枚 {@code canHoverThrough()==false} 的件就
      * {@code break}，而 {@code ButtonWidget} 走的是那个默认值 ⇒ 框级 tooltip 在<b>正好压在按钮上</b>
@@ -1798,38 +1856,52 @@ public final class PocketConfigPanel {
             if (labelKey == null) {
                 throw new IllegalStateException("[pocket] 模式行数与标签键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
             }
+            final int columnX = mageContentX() + columnXOf(row);
+            // ★名单行只念模式名（静态文本：键按行定死，不随状态变；状态读数在正上方按钮的 overlay 里）
             panel.child(
-                (IWidget) new TextWidget(
-                    IKey.dynamic(
-                        () -> StatCollector.translateToLocal(labelKey) + "："
-                            + StatCollector.translateToLocal(
-                                stateKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
-                                    .textAlign(Alignment.TopLeft)
-                                    .scale(TEXT_SCALE)
-                                    .color(PocketGhostRequest.readoutTextColor())
-                                    .shadow(Boolean.TRUE)
-                                    .name("pocket_config_mode_label_" + row)
-                                    .pos(mageContentX(), mageContentY() + modeRowY(row))
-                                    .size(MODE_LABEL_WIDTH, MODE_ROW_HEIGHT));
-            panel.child(
-                new ButtonWidget<>()
-                    .pos(mageContentX() + MAGE_FRAME_WIDTH - 2 - MODE_BUTTON_WIDTH, mageContentY() + modeRowY(row))
-                    .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
-                    .name("pocket_config_mode_switch_" + row)
-                    .background(PocketGuiTextures.BUTTON)
-                    .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
-                    .overlay(
-                        IKey.dynamic(
-                            () -> StatCollector.translateToLocal(
-                                switchLabelKey(
-                                    modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))))
-                    .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(MODE_HINT_KEY)))
-                    .tooltipAutoUpdate(true)
-                    .playClickSound(true)
-                    // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）
-                    .onMousePressed(
-                        button -> button == 0 && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row))));
+                (IWidget) new TextWidget(IKey.lang(labelKey)).textAlign(Alignment.TopLeft)
+                    .scale(TEXT_SCALE)
+                    .color(PocketGhostRequest.readoutTextColor())
+                    .shadow(Boolean.TRUE)
+                    .name("pocket_config_mode_label_" + row)
+                    .pos(columnX, mageContentY() + modeLabelRowY())
+                    .size(MODE_COLUMN_WIDTH, MODE_LABEL_HEIGHT));
+            final ButtonWidget<?> button = new ButtonWidget<>();
+            button.pos(columnX, mageContentY() + modeButtonRowY())
+                .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
+                .name("pocket_config_mode_switch_" + row)
+                .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(MODE_HINT_KEY)))
+                .tooltipAutoUpdate(true)
+                .playClickSound(true)
+                // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）
+                .onMousePressed(
+                    press -> press == 0 && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row)));
+            // ★按钮上的字 = 三态读数（"关闭 / 打开"，与开关行共用同一对键；模式没有"未固化"这一态，
+            // 那一判在 commitMode 里拒写并回一条既有回执，不在按钮上骗人）
+            applyConfigButtonStyle(
+                button,
+                IKey.dynamic(
+                    () -> StatCollector.translateToLocal(
+                        switchLabelKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))));
+            panel.child(button);
         }
+    }
+
+    /**
+     * 第 {@code column} 列的 x（★挂载框内容区内坐标系：列宽等分 + 列间缝；单源，调用点不写第二次）。
+     */
+    public static int columnXOf(int column) {
+        return column * (MODE_COLUMN_WIDTH + MODE_COLUMN_GAP);
+    }
+
+    /** 模式<b>按钮行</b>的 y（★挂载框内容区坐标系，标题之下第一层；单源，调用点与对账读同一个数）。 */
+    public static int modeButtonRowY() {
+        return 0;
+    }
+
+    /** 模式<b>名单文字行</b>的 y（= 按钮行 + 一行按钮高 + 层间缝；单源同上）。 */
+    public static int modeLabelRowY() {
+        return MODE_ROW_HEIGHT + MODE_ROW_GAP;
     }
 
     /**
@@ -1860,11 +1932,6 @@ public final class PocketConfigPanel {
     /** 挂载框内容区的 y（★框顶 + 标题高 ⇒ 内容段与框之间不留第二份偏移表）。 */
     public static int mageContentY() {
         return MAGE_FRAME_Y + MOUNT_TITLE_HEIGHT;
-    }
-
-    /** 第 {@code row} 行模式控件的 y（★挂载框<b>内</b>坐标系，标题之下第一行；单源，调用点不写第二次）。 */
-    public static int modeRowY(int row) {
-        return row * (MODE_ROW_HEIGHT + MODE_ROW_GAP);
     }
 
     /**

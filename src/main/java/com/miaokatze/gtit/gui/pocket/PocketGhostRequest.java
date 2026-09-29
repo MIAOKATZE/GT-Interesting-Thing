@@ -1032,9 +1032,14 @@ public final class PocketGhostRequest {
      * ★写成方法而不是 {@code static final int}，与 {@link #capReadoutColor()} 同一条理由：
      * {@code Color} 的类初始化会牵进 {@code ModularUI} 主类，放进静态字段就让本类在零依赖测试 JVM 里
      * 初始化即炸。★取深色是用户拍板的分工：<b>提示深色、数据读数白色</b>（{@link #readoutTextColor()}）。
+     * <p>
+     * ★★<b>R101 改判（面板正文白字）</b>：用户 R101 拍板「面板正文改白字 + 深色阴影」⇒ 本方法改回
+     * <b>白色</b>（与 {@link #readoutTextColor()} 同色阶）——消费方（五面回执行、底部带说明块与
+     * 钮上标签）全部配 {@code shadow(true)} 深色阴影，布纹浅底上的对比度因此抬高而不是降低。
+     * 「提示 / 读数」两色的分工就此收拢成「同白 + 影」，仅保留语义命名不合并方法（两条读口各有人钉）。
      */
     public static int hintTextColor() {
-        return Color.BLACK.main;
+        return Color.WHITE.main;
     }
 
     /**
@@ -1064,6 +1069,33 @@ public final class PocketGhostRequest {
      */
     public static int capReadoutColor() {
         return Color.ORANGE.main;
+    }
+
+    // ------------------------------------------------------------------ ★R101：五面按钮的纯色三态（色阶单源）
+    //
+    // ★R101 UI 整改：次级面板五面的按钮改「可辨识的按钮样式」——底色块 + 1px 边框、悬浮提亮、
+    // 按下压暗（三态，尺寸不动）。颜色全部收进本段（任务拍板"色阶单源"，不许散落魔法数），
+    // 方法形态的理由与 {@link #capReadoutColor()} 逐字相同：Color 的类初始化牵 MUI2 主类，
+    // 零依赖回归套件碰不得 ⇒ 只许在客户端绘制/装配路径上被调。色相跟随 C2 面板的暖木/布纹系。
+
+    /** 按钮边框色（深木色，1px 描边把"这是一枚可以按的东西"从布纹底上剥出来）。 */
+    public static int buttonBorderColor() {
+        return Color.rgb(58, 43, 27);
+    }
+
+    /** 按钮常态底色块（中木色）。 */
+    public static int buttonFillColor() {
+        return Color.rgb(118, 90, 58);
+    }
+
+    /** 按钮悬浮底色块（常态提亮一档）。 */
+    public static int buttonHoverColor() {
+        return Color.rgb(148, 115, 75);
+    }
+
+    /** 按钮按下底色块（常态压暗一档；叠加在悬浮底之上整体变暗）。 */
+    public static int buttonPressColor() {
+        return Color.rgb(84, 62, 38);
     }
 
     /**

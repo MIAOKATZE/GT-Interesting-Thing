@@ -464,22 +464,24 @@ final class NekoPocketServerHandler {
     }
 
     /**
-     * ★R100：配置面频率档两枚按钮的服务端执行体（形状与 {@link #performUpgradeModeToggle} 同构：
-     * 解越即丢 + 身份判 + 粘性回执；数据面三步在 {@link PocketConfigPanel#commitFreqTier} 那条纯函数里）。
+     * ★R101：配置面频率<b>秒值输入框</b>的服务端执行体（形状与 {@link #performUpgradeModeToggle} 同构：
+     * 解越即丢 + 身份判 + 粘性回执；数据面三步在 {@link PocketConfigPanel#commitChannelFreqSeconds} 那条
+     * 纯函数里，域 [1,60] 的钳制单源在 {@code PocketConstants}）。
      * <p>
-     * ★越界档（含客户端伪造的 arg）<b>静默丢弃</b>：不写档、也不回回执（越界的包不代表玩家做了什么动作，
-     * 与模式腿 {@code modeRowOfArg < 0} 那支同一条纪律）。不在档上 / 同值重复到达 ⇒ 零写入、不回执
-     * （档位读数行本来就显示现值，多一条"没变"的回执反而是第二个读数）。
+     * ★解越（文法不认识 / 非数字 / 越域，含客户端伪造）<b>静默丢弃</b>：不写档、也不回回执
+     * （越界的包不代表玩家做了什么动作，与模式腿 {@code modeRowOfArg < 0} 那支同一条纪律）。
+     * 不在档上 / 同值重复到达 ⇒ 零写入、不回执（频率读数行本来就显示现值，多一条"没变"的回执
+     * 反而是第二个读数）。
      * <p>
-     * ★★<b>档位立即生效</b>：写腿成功之后调 {@link PocketChannelManager#retimePersistentChannel}——
-     * 在跑的持续化道<b>当场</b>把节拍钳进新档（下一拍就用新节拍），不用等下一个批边界、更不用重开通道。
+     * ★★<b>秒值立即生效</b>：写腿成功之后调 {@link PocketChannelManager#retimePersistentChannel}——
+     * 在跑的持续化道<b>当场</b>把节拍钳进新值（下一拍就用新节拍），不用等下一个批边界、更不用重开通道。
      * ★这条腿<b>不</b>碰手动付费道（retime 的组合谓词门只放行 persist 生效的那条道，见其 javadoc），
-     * 也<b>不</b>触发扣费/退款/冷却（档位调节不是通道事件）。
+     * 也<b>不</b>触发扣费/退款/冷却（调频不是通道事件）。
      */
-    void performChannelFreqTier(int arg) {
-        final int tier = PocketConfigPanel.freqTierOfArg(arg);
-        if (tier < 0) {
-            // 解越（含 −1 与伪造）⇒ 丢弃这条包：不写档、不回回执
+    void onServerFreqRequest(String request) {
+        final int seconds = NekoPocketPanel.freqSecondsOf(request);
+        if (seconds <= 0) {
+            // 解越（含伪造）⇒ 丢弃这条包：不写档、不回回执
             return;
         }
         // 判①：持有者本人 + 载体身份（与开关/模式两条腿同一个 R19 L1 防伪单源）。★不通过时零写入。
@@ -493,14 +495,14 @@ final class NekoPocketServerHandler {
             panel.putReceipt(PocketConfigPanel.identityReceiptKey(), 0);
             return;
         }
-        if (!PocketConfigPanel.commitFreqTier(carrier, tier)) {
-            // 不在档上 / 同值 ⇒ 零写入零回执（见方法 javadoc；commitFreqTier 自带这两判）
+        if (!PocketConfigPanel.commitChannelFreqSeconds(carrier, seconds)) {
+            // 不在档上 / 同值 ⇒ 零写入零回执（commitChannelFreqSeconds 自带这两判）
             return;
         }
-        // ★档位立即生效腿（幂等、零写入于 NBT：只钳运行期倒计时）
+        // ★秒值立即生效腿（幂等、零写入于 NBT：只钳运行期倒计时）
         PocketChannelManager.INSTANCE.retimePersistentChannel(panel.playerId(), carrier);
-        // 回执复用频率读数那一条键（%d = 新档秒数）：不另立第二条说法，读数行与回执说的是同一句话
-        panel.putReceipt(PocketConfigPanel.READOUT_FREQ_KEY, PocketConstants.channelFreqTierSeconds(tier));
+        // 回执复用频率读数那一条键（%d = 新秒值）：不另立第二条说法，读数行与回执说的是同一句话
+        panel.putReceipt(PocketConfigPanel.READOUT_FREQ_KEY, seconds);
     }
 
     /**

@@ -1053,6 +1053,8 @@ public final class NekoPocketBottomBand {
                 // ★居中量必须由盒子产生 ⇒ 显式给子件 pos(0,0) + 与按钮同宽同高，★父盒一个字不改。
                 (IWidget) new TextWidget(label).scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
                     .color(PocketGhostRequest.hintTextColor())
+                    // ★R101：提示色改白字（色阶单源处改判）⇒ 白字必须配深色阴影才压得住布纹底
+                    .shadow(Boolean.TRUE)
                     .textAlign(Alignment.Center)
                     .pos(0, 0)
                     .size(CHANNEL_BUTTON_WIDTH, COIN_BAR_HEIGHT))
@@ -1112,6 +1114,8 @@ public final class NekoPocketBottomBand {
         // ★★R93-③：这块是<b>说明文字</b>（不是数据读数）⇒ 走提示色 + 说明文字专用档
         body.scale(PocketGhostRequest.STATUS_TEXT_SCALE);
         body.color(PocketGhostRequest.hintTextColor());
+        // ★R101：提示色改白字 ⇒ 深色阴影跟着（白字无影压不住布纹底）
+        body.shadow(Boolean.TRUE);
         body.pos(STATUS_BLOCK_X, STATUS_BLOCK_Y);
         body.size(STATUS_BLOCK_WIDTH, STATUS_BLOCK_HEIGHT);
         body.name("pocket_status_block");
@@ -1297,6 +1301,8 @@ public final class NekoPocketBottomBand {
                         (IWidget) new TextWidget(IKey.lang("gtit.pocket.bind.button"))
                             .scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)
                             .color(PocketGhostRequest.hintTextColor())
+                            // ★R101：提示色改白字 ⇒ 深色阴影跟着（同"启动/停止"标签那条）
+                            .shadow(Boolean.TRUE)
                             .textAlign(Alignment.Center)
                             .pos(0, 0)
                             .size(BIND_BUTTON_WIDTH, COIN_BAR_HEIGHT))

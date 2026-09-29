@@ -229,13 +229,14 @@ public final class PocketChannelManager {
             return live.mode() == PocketChannelState.Mode.SHORT;
         }
         final PocketChannelState state = stateOf(player);
-        // ★R100：持续化道的节拍按<b>载体 NBT 的频率档位</b>取（无键=默认 5s 档 ⇒ 旧存档零迁移），
+        // ★R100：持续化道的节拍按<b>载体 NBT 的频率</b>取（无键=默认 5s 档 ⇒ 旧存档零迁移），
         // 手动道不走这里（openChannel 的三参 activate 恒 1s，R100 用户裁决）。
+        // ★R101：读数换秒值口（新键优先 + 旧档位键映射兼容，域 [1,60]），换算单源 channelFreqSecondsTicks。
         state.activate(
             PocketChannelState.Mode.SHORT,
             0L,
             0L,
-            PocketConstants.channelFreqTierTicks(PocketConstants.readChannelFreqTier(carrier.getTagCompound())));
+            PocketConstants.channelFreqSecondsTicks(PocketConstants.readChannelFreqSeconds(carrier.getTagCompound())));
         state.attachSession(bindings, filters, null, pullPhaseOf(filters));
         // ★R100（需求 4）：与 openChannel 的短效支同口径——开启瞬间立即第一批（due=0 形式）。
         state.fireFirstBatchNow();
@@ -259,7 +260,7 @@ public final class PocketChannelManager {
             return;
         }
         state.retime(
-            PocketConstants.channelFreqTierTicks(PocketConstants.readChannelFreqTier(carrier.getTagCompound())));
+            PocketConstants.channelFreqSecondsTicks(PocketConstants.readChannelFreqSeconds(carrier.getTagCompound())));
     }
 
     /**

@@ -45,8 +45,8 @@ public final class PocketChannelState {
     /**
      * 本次运行<b>每批间隔</b>的 tick 数（★R100 频率片起节拍参数化：装填进状态、随批重装）。
      * 手动付费短效道恒 {@link PocketConstants#CHANNEL_TICK_PERIOD}（1s，R100 用户裁决不动）；
-     * 持续化道按载体 NBT 的频率档位经 {@link PocketConstants#channelFreqTierTicks} 换算。
-     * <b>档位表之外任何地方不得再写第二个节拍数</b>（换算单源在 {@code PocketConstants}）。
+     * 持续化道按载体 NBT 的频率秒值经 {@link PocketConstants#channelFreqSecondsTicks} 换算（R101 秒值化，旧档位键只作兼容读）。
+     * <b>秒值域之外任何地方不得再写第二个节拍数</b>（换算单源在 {@code PocketConstants}）。
      */
     private int periodTicks = PocketConstants.CHANNEL_TICK_PERIOD;
     /** 短效通道剩余批次数。 */
@@ -87,8 +87,8 @@ public final class PocketChannelState {
     }
 
     /**
-     * ★R100 节拍参数化重载：<b>持续化道</b>的激活口走这一条（{@code periodTicks} 来自载体 NBT 的频率档位，
-     * 经 {@link PocketConstants#channelFreqTierTicks} 换算）；手动道沿用三参版（恒 1s）。
+     * ★R100 节拍参数化重载：<b>持续化道</b>的激活口走这一条（{@code periodTicks} 来自载体 NBT 的频率秒值，
+     * 经 {@link PocketConstants#channelFreqSecondsTicks} 换算）；手动道沿用三参版（恒 1s）。
      */
     public boolean activate(Mode activating, long nowTick, long nowMs, int periodTicks) {
         if (activating == null || activating == Mode.NONE) {

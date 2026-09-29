@@ -193,15 +193,18 @@ public final class PocketChannelDriver {
             // 的位，无从区分）⇒ 那是候选 B/C 被判死的理由，也是本轮采边沿方案的唯一理由。
             if (state.mode() == PocketChannelState.Mode.SHORT
                 && PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
-                // ★R100：回满装填的节拍按<b>载体 NBT 的频率档位</b>取（无键=默认 5s 档），不再用全局 1s 常量
-                // ——档位写腿（NekoPocketServerHandler#performChannelFreqTier）之外没有第二个改档入口，
-                // 这里每批边界现读一次（每节拍一次的 NBT int 读，R53c 量级可忽略）⇒ 玩家中途调档，
-                // 下一批边界就换新节拍（另有 manager 的 retimePersistentChannel 让"调档"当场钳进新节拍）。
+                // ★R100：回满装填的节拍按<b>载体 NBT 的频率</b>取（无键=默认 5s 档），不再用全局 1s 常量
+                // ——频率写腿之外没有第二个改频入口，这里每批边界现读一次（每节拍一次的 NBT int 读，
+                // R53c 量级可忽略）⇒ 玩家中途调频，下一批边界就换新节拍（另有 manager 的
+                // retimePersistentChannel 让"调频"当场钳进新节拍）。
+                // ★R101：读数换秒值口（新键 channelFreqSeconds 优先 + 旧档位键映射兼容，域 [1,60]），
+                // 换算单源 channelFreqSecondsTicks。
                 state.activate(
                     PocketChannelState.Mode.SHORT,
                     0L,
                     0L,
-                    PocketConstants.channelFreqTierTicks(PocketConstants.readChannelFreqTier(stack.getTagCompound())));
+                    PocketConstants
+                        .channelFreqSecondsTicks(PocketConstants.readChannelFreqSeconds(stack.getTagCompound())));
             }
             // 只在批边界写一次 NBT（不是每 tick 写档，R53c）：动画窗口 = 本通道剩余总长
             // （★R100：长度按<b>本次运行的节拍</b>算——持续化道按档位走时，1s 常量会把读数放大/缩小错档）

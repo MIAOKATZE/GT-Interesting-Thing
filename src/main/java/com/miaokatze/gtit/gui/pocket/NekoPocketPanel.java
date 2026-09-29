@@ -213,6 +213,18 @@ public final class NekoPocketPanel implements PocketSession {
      */
     private static final String SYNC_MAGNET_REQUEST = "pocket.magnet.request";
     /**
+     * ★R101：持续化通道<b>频率秒值</b>的提交 C2S（文法只有一条 {@code FREQ|<秒数>}；域 [1,60] 的
+     * 钳制两端各跑一遍、判域单源在 {@code PocketConstants}）。
+     * <p>
+     * ★<b>为什么是一条独立的字符串 C2S</b>（同 {@link #SYNC_MAGNET_REQUEST} 的裁定原文）：
+     * 动作通道的打包式样是 {@code code * ACTION_ARG_BASE(1024) + arg} ⇒ {@code arg < 1024} ——
+     * 秒值本身装得下（≤60），但旧 {@code ACTION_CHANNEL_FREQ} 那条 int 链随"更快/更慢"两枚按钮
+     * 一起退场（R101 拍板：档位 UI 改输入框、11 档封闭表不再约束玩家），单开一条形状逐字照
+     * {@link #SYNC_GHOST_REQUEST} 的字符串通道换来"载荷与钳制判域同源、无打包上限"，也避免
+     * 复用 {@code SYNC_GHOST_REQUEST}（那根通道的文法是 ghost 声明域，两域一线就是两套真相）。
+     */
+    private static final String SYNC_FREQ_REQUEST = "pocket.freq.request";
+    /**
      * ★R96 S7b：磁力三态名单的<b>配置面</b> S2C 载体（一枚 {@code StringSyncValue}，文法见
      * {@link #encodeMagnetBlob}）。
      * <p>
@@ -340,17 +352,11 @@ public final class NekoPocketPanel implements PocketSession {
     private static final int ACTION_UPGRADE_MODE = 13;
 
     /**
-     * ★R100（持续化通道频率调节）：CHANNEL_PERSIST 配置面里那两枚升降档按钮的唯一出口——
-     * <b>arg = 目标档位下标</b>（编解码与越界判定单源在 {@link PocketConfigPanel#freqTierOfArg}，
-     * 本处只登记码值；档位表本体住在 {@code PocketConstants#CHANNEL_FREQ_TIERS_SECONDS}）。
-     * <p>
-     * ★发的是<b>目标值</b>而不是"翻一下"（与 {@link #ACTION_UPGRADE_SWITCH}/{@link #ACTION_UPGRADE_MODE}
-     * 同一条纪律）：同目标重复到达 ⇒ 服务端 {@code NO_CHANGE} 支零写入。★编号接续 18（不重排既有码值，
-     * 留洞比平移安全，同 R93-① 那条）。★只作用于持续化通道：手动付费短效道 1s×30 批语义不动
-     * （R100 用户裁决），服务端写腿因此只碰档位 NBT，不碰通道状态本身（在跑的道换节拍走
-     * {@code PocketChannelManager#retimePersistentChannel} 那条幂等腿）。
+     * ★★<b>R101：{@code ACTION_CHANNEL_FREQ = 18} 已随"更快/更慢"两枚升降按钮一并删除</b>（频率档位
+     * 改为秒值输入框，提交走新的字符串通道 {@link #SYNC_FREQ_REQUEST}）。★编号<b>不重排</b>：动作码是
+     * 双端同树的常量，留一个洞比全体平移更安全（平移一旦与旧客户端/存档里的裸 int 撞上就是静默错派，
+     * 同 R93-① 那条）。档位表本体与旧 NBT 键名也一字未动（前者还是手动道的节拍源，后者是兼容读面）。
      */
-    private static final int ACTION_CHANNEL_FREQ = 18;
 
     /**
      * ★R96 S2 → ★R97 S5：升级配置面板（主面板之上的次级面板）的句柄，<b>一型一枚、共五枚</b>。
@@ -708,6 +714,9 @@ public final class NekoPocketPanel implements PocketSession {
         syncManager.syncValue(SYNC_MAGNET, new StringSyncValue(this::composeMagnetBlob, this::applyMagnetBlob));
         syncManager
             .syncValue(SYNC_MAGNET_REQUEST, new StringSyncValue(() -> "", this::receiveMagnetRequest).allowC2S());
+        // ★R101：频率秒值提交的 C2S 一枚（形状逐字照 SYNC_MAGNET_REQUEST：getter 恒空、allowC2S、
+        // 服务端执行体在 handler；客户端 setter 的就地回投由 receiveFreqRequest 的 R85 N1 守卫挡掉）。
+        syncManager.syncValue(SYNC_FREQ_REQUEST, new StringSyncValue(() -> "", this::receiveFreqRequest).allowC2S());
         // ★R97 R6：五型「当前生效」位图（installed ∧ ¬off）单枚 S2C——服务端 getter 现读活载体
         // （真值单源 PocketUpgradeSwitches），客户端 setter 只写镜像。与 SYNC_PROGRESS 同形：
         // setter 带 isClient 守卫（上游 setValue 的 setSource 默认 true，双端都可能被调一次）。
@@ -1114,6 +1123,48 @@ public final class NekoPocketPanel implements PocketSession {
         ServerTaskScheduler.scheduleServerTask(() -> server.onServerMagnetRequest(request));
     }
 
+    /** 见 {@link #receiveGhostRequest(String)} 的同一条 R85 N1 客户端守卫：allowC2S 的 setter 双端都被调。 */
+    private void receiveFreqRequest(String request) {
+        if (syncManager.isClient()) {
+            return;
+        }
+        ServerTaskScheduler.scheduleServerTask(() -> server.onServerFreqRequest(request));
+    }
+
+    // ------------------------------------------------------------------ ★R101 频率秒值请求的文法（拼装与解读共用同一条式子）
+
+    /** 请求文法里"提交频率秒值"的操作码（★单段载荷 = 正整数秒，域钳制在 PocketConstants）。 */
+    private static final String FREQ_REQUEST_SET = "FREQ";
+
+    /**
+     * 请求文法的拼装（★单源：客户端发与服务端解读的是同一条式子，同 {@code magnetAddRequest}）。
+     * {@code FREQ|<秒数>}；非法秒值（越域）也在拼装侧拒绝（回空串，调用方不发）。
+     */
+    public static String freqSecondsRequest(int seconds) {
+        if (PocketConstants.channelFreqSecondsClamp(seconds) != seconds) {
+            return "";
+        }
+        return FREQ_REQUEST_SET + '|' + seconds;
+    }
+
+    /**
+     * ★服务端：解 {@link #FREQ_REQUEST_SET} 那条请求的秒值段。
+     * 不认识（缺操作码 / 段数不对 / 非数字 / 越域）⇒ −1，调用方丢弃这条包（★静默：伪造包不买到回执，
+     * 口径同 {@code performUpgradeModeToggle} 的解越支）。
+     */
+    public static int freqSecondsOf(String request) {
+        if (request == null) {
+            return -1;
+        }
+        final int bar = request.indexOf('|');
+        if (bar <= 0 || !request.substring(0, bar)
+            .equals(FREQ_REQUEST_SET)) {
+            return -1;
+        }
+        final int seconds = PocketConfigPanel.parseFreqSecondsInput(request.substring(bar + 1));
+        return seconds > 0 ? seconds : -1;
+    }
+
     // ------------------------------------------------------------------ 访问器（列类共用）
 
     PocketInventory inventory() {
@@ -1489,14 +1540,23 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * ★R100：配置面频率档两枚升降钮的唯一出口（客户端只发码，★一个字节都不写本地 NBT；写腿在服务端
-     * {@code NekoPocketServerHandler#performChannelFreqTier}）。也不做客户端预筛（不判越界档的另一头）：
-     * 调用方（{@code PocketConfigPanel} 的按钮 lambda）只在目标档合法时才发码，这里再判一遍就是给
-     * 同一个判据造第二处读数（R39b/R19 同一条）。
+     * ★R101：配置面频率<b>秒值输入框</b>的唯一出口（客户端只发请求，★一个字节都不写本地 NBT；
+     * 写腿在服务端 {@code NekoPocketServerHandler#onServerFreqRequest}）。调用方（
+     * {@code PocketConfigPanel} 的输入框提交 lambda）只传解析过的合法秒值；服务端仍再钳一遍域
+     * （伪造包不买到任何东西）。
      */
-    boolean requestChannelFreq(int tier) {
-        final int arg = PocketConfigPanel.encodeFreqTier(tier);
-        return arg >= 0 && sendAction(ACTION_CHANNEL_FREQ, arg);
+    boolean requestChannelFreqSeconds(int seconds) {
+        return sendFreqRequest(freqSecondsRequest(seconds));
+    }
+
+    private boolean sendFreqRequest(String request) {
+        if (syncManager.isClient()) {
+            syncManager.findSyncHandler(SYNC_FREQ_REQUEST, StringSyncValue.class)
+                .setValue(request);
+        } else {
+            server.onServerFreqRequest(request);
+        }
+        return true;
     }
 
     private boolean sendAction(int code, int arg) {
@@ -1662,11 +1722,6 @@ public final class NekoPocketPanel implements PocketSession {
                 // ★R96 S9b：模式位的唯一服务端落点，形状与上面那条开关腿逐字同构（★同一条可达链纪律：
                 // 客户端只发码 ⇒ 服务端才写档；解越归 PocketConfigPanel.modeRowOfArg，判据归 handler）。
                 server.performUpgradeModeToggle(arg);
-                break;
-            case ACTION_CHANNEL_FREQ:
-                // ★R100：频率档的唯一服务端落点（同一条可达链纪律：客户端只发码 ⇒ 服务端才写档；
-                // 解越归 PocketConfigPanel.freqTierOfArg，判据与写腿归 handler + commitFreqTier）。
-                server.performChannelFreqTier(arg);
                 break;
             case ACTION_MAGNET_MODE_CYCLE:
                 // ★R96 S7b：三态循环按钮。本 case 与下面三条都是那条"静态可达链"的<b>中间一跳</b>：
@@ -3727,16 +3782,17 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * 每槽容量读数（★规格外自立项的玩家可见面之一）。★★<b>R98 改判后这一族共三处面、同一条算式</b>：
-     * 本方法（= 配置面板 CAPACITY 那一行，宿主 {@code PocketConfigPanel}）、流体格件 tooltip
-     * （{@code NekoPocketFluidSlot}）、底部带说明块 tooltip（{@code NekoPocketBottomBand}）；
-     * 数字全部由 {@code PocketConstants} 填，lang 里不得写死，见契约 §7 第 5 条。
+     * 主面板量级读数（每槽/合计容量）——消费宿主 = 流体格件 tooltip（{@code NekoPocketFluidSlot}）
+     * 与底部带说明块 tooltip（{@code NekoPocketBottomBand}）两处，数字读数在这两处仍然成立。
      * <p>
-     * ★★旧口径点名的两处宿主<b>都已不存在，别照号去找</b>：① 物品 tooltip 的 {@code tooltip.9}
-     * 自 R98 起<b>整行撤销</b>（tooltip 激进裁剪 ⇒ 连号族整体重排成 {@code 0..3}，现行权威见 README 代价 55；
-     * ★不要为此把容量行加回 tooltip）；②「左栏末行的 tooltip」自 R94-① 起随末行<b>整行撤销</b>，
-     * 今天挂着这几条 tooltip 的是底部带左段那块 112×60 说明文字。
-     * R78 D-2 那句「不再常驻左栏」<b>仍然成立</b>。
+     * ★R101 改判分工：容量<b>配置面</b>那一行改读关闭规则说明（键 = 配置面板容量段独有的
+     * {@code PocketConfigPanel#READOUT_CAPACITY_KEY}，{@code gtit.pocket.config.capacity.rule}，
+     * 由配置面自己消费）——本方法<b>不再</b>被配置面消费，量级格式源仍然只有这一份，不另写第二份。
+     * <p>
+     * ★★旧口径点名的两处宿主<b>都不存在，别照号去找</b>：① 物品 tooltip 的 {@code tooltip.9}
+     * 自 R98 起整行撤销（现行权威见 README 代价 55，不要为此把容量行加回 tooltip）；
+     * ②「左栏末行的 tooltip」自 R94-① 起随末行整行撤销，今天挂着那条容量 tooltip 的是底部带
+     * 左段那块 112×60 说明文字。R78 D-2 那句「不再常驻左栏」仍然成立。
      */
     String capacityReadoutText() {
         // ★R95 S5：容量读数按 CAPACITY 位动态（16M/16G；合计 288M/288G）——Long 喂 %d（lang 不改键、

@@ -496,7 +496,8 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      * ⇒ {@code ClickType.CREATIVE} = <b>创造模式取物</b>。这条安全语义与"整理走自家动作码"无关，
      * 让位给 BIND 之后<b>仍然</b>成立 ⇒ 由机检 {@code R91-c} 段钉"中键支不含 super"。
      * <p>
-     * 其余（普通左键、非 ghost 的右键等）一律交回 {@code super} ⇒ vanilla 槽点击行为一个字不改。
+     * 其余交回 {@code super} ⇒ vanilla 槽点击行为一个字不改。★例外一条（R101）：ghost 格 +
+     * 普通左键 + 游标持物 = 就地声明（见方法体末段那条支），不再交回原版空转。
      */
     @Override
     public Interactable.Result onMousePressed(int mouseButton) {
@@ -520,6 +521,34 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
             // ★无条件停住：即使这一格当前不可请求（灰显 / 未绑定），也不把 alt+左 交回原版读成普通左键放置
             requestGhostFlag(PocketConstants.GHOST_FLAG_MEMORY);
             return Interactable.Result.SUCCESS;
+        }
+        // ★★<b>R101：背包持物「点 / 释放」到 ghost 格 = 就地声明（拖拽标记的第二条腿）</b>。
+        // NEI 拖入那条腿（{@link #handleDragAndDrop}）只覆盖"从 NEI 面板拖来"的来源；玩家从背包
+        // 拿起一件、点在 ghost 格上的手势在 vanilla 里是"尝试放置"——BIND/NONE 声明格被
+        // {@code accessibility(false, true)} 拦下后整条点击静默无事，标记从未发生。本支把这一击
+        // 改派成 SET 请求（载荷键 = 游标栈的内容键，走同一条 {@code SYNC_GHOST_REQUEST} 通道）。
+        // <ul>
+        // <li>★MEMORY 声明格<b>不拦</b>：那一档放置是<b>开</b>的（R84"本格只能放那一种东西里的那一种
+        // 总得放得进去"），交回 {@code super} 走原版放置 = 既有补货手势一字不动；</li>
+        // <li>★P（阻拦上传、无 attr）的格<b>不拦</b>（判据单源 {@code PocketGhostRequest#dragRouteOf} 的
+        // IGNORE 档，与 {@link #handleDragAndDrop} 的 NEI 腿同一条判域）；</li>
+        // <li>★右键/中键/alt 组合各自另有语义（解绑 / BIND / 记忆 L / P），都在上面各支早退，到不了这里。</li>
+        // </ul>
+        // ★仍然只发请求不落档（R18/R19）：SET 的真值、落档与虚化广播全在服务端那一份执行。
+        if (mouseButton == 0 && ghost
+            && !Interactable.hasAltDown()
+            && owner != null
+            && slotIndex >= 0
+            && areAncestorsEnabled()
+            && ghostAttr != PocketConstants.GHOST_ATTR_MEMORY
+            && PocketGhostRequest.dragRouteOf(ghostAttr, uploadBlocked) != PocketGhostRequest.DragRoute.IGNORE) {
+            final ItemStack carried = owner.magnetCursorStack();
+            if (carried != null && carried.stackSize > 0) {
+                final String payloadKey = PocketAeChannelOps.contentKey(carried);
+                if (!payloadKey.isEmpty() && owner.requestGhost(slotIndex, payloadKey)) {
+                    return Interactable.Result.SUCCESS;
+                }
+            }
         }
         return super.onMousePressed(mouseButton);
     }
