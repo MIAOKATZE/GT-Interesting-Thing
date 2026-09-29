@@ -13,8 +13,10 @@ import net.minecraft.util.StatCollector;
 import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
@@ -147,6 +149,19 @@ public final class PocketConfigPanel {
      * 文字全部换到这把新尺，像素账（行盒/按钮/回执折行）已按 0.8 档重算（用例拿两份 lang 真量）。
      */
     public static final float TEXT_SCALE = 0.8f;
+    /**
+     * ★R101.4：本面板<b>正文</b>（按钮内文字、各读数行、魔法使模式名行）的缩放档 = <b>1.0</b>（原版整数档：
+     * 不做字形插值，实机判 0.8 档的字"发虚"就是插值字形；1.0 档字形逐像素原生）。★标题行（型名 + 状态）
+     * <b>不</b>跟抬、仍走 {@link #TEXT_SCALE}=0.8：en 最坏串（"Channel Persistence Upgrade Module：
+     * Not installed"）按 1.0 档要 280px，逐型行盒（{@link #labelWidthOf} 最宽 228）装不下 ⇒ 抬档必折行
+     * 顶穿 18px 行盒，两档由此分立。
+     * <p>
+     * ★换档的配套（同批落地）：① en 文案按 1.0 档逐条量宽、超盒的缩词（zh 一字不动）；② 行高几何不破
+     * （{@link #ROW_HEIGHT} 18 / {@link #READOUT_HEIGHT} 18 / {@link #MODE_LABEL_HEIGHT} 20 —— 两行盒
+     * 在 1.0 档两行 20px 仍装得下）；③ 像素账（用例拿两份 lang 真量）正文档换本档重算，标题行与回执行
+     * 账仍按 {@link #TEXT_SCALE}（回执行是最坏 417px 的两行盒，1.0 档要三行必顶穿 {@link #RECEIPT_HEIGHT}）。
+     */
+    public static final float BODY_TEXT_SCALE = 1.0f;
     /**
      * 开关行的高（★R98 S4 度量统一 20 → <b>18</b>）：这一行放的控件本身就是 {@link #SWITCH_HEIGHT} 18，
      * 主面板每一行也是 18 —— 旧值多出的那 2px 是「子面板自成一套第二把尺」的一部分。行与行之间的留白
@@ -1152,6 +1167,17 @@ public final class PocketConfigPanel {
     }
 
     /**
+     * ★R101.4：容量 / 堆叠两面<b>规则文案行</b>的 y（★派生式不手抄，装配侧与用例空白率覆盖读同一个数）：
+     * {@code CONTENT_TOP + (面板高 − CONTENT_TOP − BOTTOM_STACK − READOUT_HEIGHT) / 2} —— 把内容段下方的
+     * 底带余量对半匀给规则行上方，<b>两行内容纵向匀称，底带留白不再成片</b>（用户实机反馈规则行贴着开关行、
+     * 底部空白成片）。其他面位置不动（五面结构用户已认可）。★本式只挪 y、不改行高与段高账：
+     * 纵向闭合断言（{@code CONTENT_TOP + 段高 ≤ 面高 − BOTTOM_STACK}）与逐型像素账的式子一字不变。
+     */
+    public static int ruleLineYOf(PocketUpgradeType type) {
+        return CONTENT_TOP + (panelHeightOf(type) - CONTENT_TOP - BOTTOM_STACK - READOUT_HEIGHT) / 2;
+    }
+
+    /**
      * 这一段内容块的宽（像素预算）。★R100 D6③ 收敛后本方法只是 {@link Section#contentWidth()} 的
      * 一行转发（被钉的调用形态不变）：段的宽预算与段本体住在同一处，追加段族不再要「枚举 + 两处 switch」
      * 三地同改。读数段横贯整面（回 0），挂载段与频率档位行自带硬宽。
@@ -1314,6 +1340,10 @@ public final class PocketConfigPanel {
      * <p>
      * 悬浮/按压语义也与主面板对齐：hover 整层换 BUTTON_PRESSED，不再有第三态压暗层
      * （主按钮没有，继承就不自己发明）。传 {@code null} = 无文字钮（overlay 槽留空）。
+     * <p>
+     * ★R101.4：{@code content} 是调用方传入的 {@code IKey}，本方法不再代设字号——各钮在装配自己的
+     * content 时逐个挂 {@link #BODY_TEXT_SCALE}（=1.0 原版档，钮上文字不再发虚；像素账
+     * {@code assertButtonLineFits} 按本档量）。
      */
     private static void applyConfigButtonStyle(ButtonWidget<?> button, IDrawable content) {
         button.background(PocketGuiTextures.BUTTON);
@@ -1329,6 +1359,10 @@ public final class PocketConfigPanel {
      * ★可用宽度 = {@link #labelWidthOf}（★逐型给盒：短型的英文最坏串本来就短，五面差异化的一部分；
      * 真串真宽由 {@code config_panel_geometry_within_secondary_caps} 拿两份 lang 逐型量 ——
      * 用「全宽 − 边距 − 开关」那种近似式会在紧凑面上虚高，恒绿的假像素账正是它要防的形状）。
+     * <p>
+     * ★R101.4 ③：颜色从 {@link PocketGhostRequest#readoutTextColor()} 白改为
+     * {@link PocketGhostRequest#titleTextColor()} 暖金强调——正文换 1.0 档后标题与正文同白不再分层，
+     * 标题单独走强调色（阴影保持）。字号仍 {@link #TEXT_SCALE}=0.8 不动（1.0 档 en 最坏串必折行）。
      */
     private static IWidget typeLabel(NekoPocketPanel ui, PocketUpgradeType type) {
         final String nameKey = UPGRADE_NAME_KEYS[type.ordinal()];
@@ -1337,7 +1371,7 @@ public final class PocketConfigPanel {
             return StatCollector.translateToLocal(nameKey) + "：" + StatCollector.translateToLocal(stateKey(state));
         })).textAlign(Alignment.CenterLeft)
             .scale(TEXT_SCALE)
-            .color(PocketGhostRequest.readoutTextColor())
+            .color(PocketGhostRequest.titleTextColor())
             .shadow(Boolean.TRUE)
             .name("pocket_config_label_" + type.ordinal())
             .pos(MARGIN, MARGIN)
@@ -1362,12 +1396,18 @@ public final class PocketConfigPanel {
             .onMousePressed(press -> press == 0 && ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type)));
         applyConfigButtonStyle(
             button,
-            IKey.dynamic(
-                () -> StatCollector.translateToLocal(switchLabelKey(switchState(ui.carrierStackLive(), type)))));
+            IKey.dynamic(() -> StatCollector.translateToLocal(switchLabelKey(switchState(ui.carrierStackLive(), type))))
+                .scale(BODY_TEXT_SCALE));
         return button;
     }
 
-    /** 回执行：最近一次切换成了什么 / 为什么被拒（★走既有粘性回执通道，不新建通道；★两行盒）。 */
+    /**
+     * 回执行：最近一次切换成了什么 / 为什么被拒（★走既有粘性回执通道，不新建通道；★两行盒）。
+     * <p>
+     * ★R101.4：字号<b>保持</b> {@link #TEXT_SCALE}=0.8、不跟正文换 1.0——en 最坏回执（守卫拒绝两长句，
+     * 逻辑宽 ≈417）在本面回执盒（192~244px）里 1.0 档要折三行，必顶穿两行的 {@link #RECEIPT_HEIGHT}；
+     * 行高几何不破是本轮边界 ⇒ 回执行留在 0.8 档（用例回执行账同口径）。
+     */
     private static IWidget receiptLine(NekoPocketPanel ui, PocketUpgradeType type) {
         return (IWidget) new TextWidget(IKey.dynamic(ui::upgradeConfigReceiptText)).textAlign(Alignment.CenterLeft)
             .scale(TEXT_SCALE)
@@ -1393,8 +1433,11 @@ public final class PocketConfigPanel {
             .name("pocket_config_close")
             .playClickSound(true)
             .onMousePressed(press -> press == 0 && ui.closeUpgradeConfig());
-        // ★R101：底改纯色三态（同开关钮那条）
-        applyConfigButtonStyle(button, IKey.lang("gtit.pocket.config.close"));
+        // ★R101：底改纯色三态（同开关钮那条）；★R101.4 钮上文字换 1.0 原版档
+        applyConfigButtonStyle(
+            button,
+            IKey.lang("gtit.pocket.config.close")
+                .scale(BODY_TEXT_SCALE));
         return button;
     }
 
@@ -1407,14 +1450,17 @@ public final class PocketConfigPanel {
      * ★R98 S4 把对齐从 {@code TopLeft} 换成 {@code CenterLeft}：本面其余读数件（型名、回执）全是
      * {@code CenterLeft}，同一面里两种对齐是取证 {@code 02-gui.md} §4-1 点名那一处。两行盒居中后
      * 上下各余 1px（20 ≤ 22），不顶穿。
+     * <p>
+     * ★R101.4：① 字号换 {@link #BODY_TEXT_SCALE}=1.0 原版档（en 文案同批缩到一行宽，像素账随之重算）；
+     * ② y 从 {@link #CONTENT_TOP} 改 {@link #ruleLineYOf} 派生式——两行内容纵向匀称，底带留白不再成片。
      */
     private static IWidget capacityReadoutBlock(NekoPocketPanel ui, PocketUpgradeType type) {
         return (IWidget) new TextWidget(IKey.lang(READOUT_CAPACITY_KEY)).textAlign(Alignment.CenterLeft)
-            .scale(TEXT_SCALE)
+            .scale(BODY_TEXT_SCALE)
             .color(PocketGhostRequest.readoutTextColor())
             .shadow(Boolean.TRUE)
             .name("pocket_config_capacity_readout")
-            .pos(MARGIN, CONTENT_TOP)
+            .pos(MARGIN, ruleLineYOf(type))
             .size(panelWidthOf(type) - 2 * MARGIN, CAPACITY_READOUT_HEIGHT);
     }
 
@@ -1422,14 +1468,17 @@ public final class PocketConfigPanel {
      * 堆叠面那一行：★R101 改判——量级读数（64 ↔ 1024）换成<b>关闭规则说明</b>（"仅在未超出当前
      * 堆叠上限时，才可以关闭"；数字面与守卫执法面都在服务端，本行不再代念量级）。键不变
      * （{@link #READOUT_STACK_KEY}），lang 文本与格式参数同批翻新。
+     * <p>
+     * ★R101.4：① 字号换 {@link #BODY_TEXT_SCALE}=1.0 原版档；② y 从 {@link #CONTENT_TOP} 改
+     * {@link #ruleLineYOf} 派生式（与容量面同一条式子——两行内容纵向匀称，底带留白不再成片）。
      */
     private static IWidget stackLimitLine(NekoPocketPanel ui, PocketUpgradeType type) {
         return (IWidget) new TextWidget(IKey.lang(READOUT_STACK_KEY)).textAlign(Alignment.CenterLeft)
-            .scale(TEXT_SCALE)
+            .scale(BODY_TEXT_SCALE)
             .color(PocketGhostRequest.readoutTextColor())
             .shadow(Boolean.TRUE)
             .name("pocket_config_stack_limit")
-            .pos(MARGIN, CONTENT_TOP)
+            .pos(MARGIN, ruleLineYOf(type))
             .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
     }
 
@@ -1448,7 +1497,8 @@ public final class PocketConfigPanel {
                 () -> StatCollector.translateToLocal(
                     ui.channelPersistActive() ? "gtit.pocket.channel.always_on" : READOUT_PERSIST_KEY)))
                         .textAlign(Alignment.CenterLeft)
-                        .scale(TEXT_SCALE)
+                        // ★R101.4：正文换 1.0 原版档（y 不动——⑤只挪容量/堆叠两面的规则行）
+                        .scale(BODY_TEXT_SCALE)
                         .color(PocketGhostRequest.readoutTextColor())
                         .shadow(Boolean.TRUE)
                         .name("pocket_config_persist_state")
@@ -1483,7 +1533,8 @@ public final class PocketConfigPanel {
                                                                                                                         // 当前秒/批（域
                                                                                                                         // [1,60]，旧档位键映射兼容）
                             .textAlign(Alignment.CenterLeft)
-                            .scale(TEXT_SCALE)
+                            // ★R101.4：正文换 1.0 原版档（en 串实测 171px ≤ 标签盒 206，不用缩词）
+                            .scale(BODY_TEXT_SCALE)
                             .color(PocketGhostRequest.readoutTextColor())
                             .shadow(Boolean.TRUE)
                             .name("pocket_config_freq_label")
@@ -1502,6 +1553,14 @@ public final class PocketConfigPanel {
             .setMaxLength(3)
             // 打字层只放数字进缓冲（"仅允许正整数"的第一道；域判定在提交层）
             .setPattern(Pattern.compile("[0-9]*"));
+        // ★R101.4 ④：黑底默认底换面板同风格的自绘底（尺寸与位置一字不动）——外 1px 深木边框
+        // {@code rgb(58,43,27)}（与装饰层木框同族的中性深木色，压得住布纹又不过黑）+ 内填
+        // {@code rgb(38,30,22)} 深底（比边框再暗一档的近黑暖底），白字在深底上对比清晰；
+        // 色值内联在本绘制 lambda 里（只活在客户端绘制路径，零依赖测试 JVM 不触达）。
+        field.background((context, x, y, width, height, widgetTheme) -> {
+            GuiDraw.drawRect(x, y, width, height, Color.rgb(58, 43, 27));
+            GuiDraw.drawRect(x + 1, y + 1, width - 2, height - 2, Color.rgb(38, 30, 22));
+        });
         field.pos(MARGIN + FREQ_LABEL_WIDTH + FREQ_BUTTON_GAP, FREQ_ROW_Y)
             .size(FREQ_FIELD_WIDTH, ROW_HEIGHT)
             .name("pocket_config_freq_field");
@@ -1619,7 +1678,8 @@ public final class PocketConfigPanel {
             .onMousePressed(press -> press == 0 && ui.requestMagnetModeCycle());
         applyConfigButtonStyle(
             button,
-            IKey.dynamic(() -> StatCollector.translateToLocal(modeLabelKey(ui.magnetMode()))));
+            IKey.dynamic(() -> StatCollector.translateToLocal(modeLabelKey(ui.magnetMode())))
+                .scale(BODY_TEXT_SCALE));
         return button;
     }
 
@@ -1635,7 +1695,8 @@ public final class PocketConfigPanel {
             .onMousePressed(press -> press == 0 && ui.requestMagnetTargetCycle());
         applyConfigButtonStyle(
             button,
-            IKey.dynamic(() -> StatCollector.translateToLocal(targetLabelKey(ui.magnetTarget()))));
+            IKey.dynamic(() -> StatCollector.translateToLocal(targetLabelKey(ui.magnetTarget())))
+                .scale(BODY_TEXT_SCALE));
         return button;
     }
 
@@ -1649,7 +1710,10 @@ public final class PocketConfigPanel {
             .tooltipAutoUpdate(true)
             .playClickSound(true)
             .onMousePressed(press -> press == 0 && ui.requestMagnetClear());
-        applyConfigButtonStyle(button, IKey.lang("gtit.pocket.magnet.clear"));
+        applyConfigButtonStyle(
+            button,
+            IKey.lang("gtit.pocket.magnet.clear")
+                .scale(BODY_TEXT_SCALE));
         return button;
     }
 
@@ -1661,7 +1725,8 @@ public final class PocketConfigPanel {
                     StatCollector.translateToLocal("gtit.pocket.magnet.count"),
                     ui.magnetEntryCount(),
                     PocketConstants.MAGNET_FILTER_SLOTS))).textAlign(Alignment.CenterLeft)
-                        .scale(TEXT_SCALE)
+                        // ★R101.4：正文换 1.0 原版档
+                        .scale(BODY_TEXT_SCALE)
                         .color(PocketGhostRequest.readoutTextColor())
                         .shadow(Boolean.TRUE)
                         .name("pocket_magnet_count")
@@ -1765,9 +1830,11 @@ public final class PocketConfigPanel {
             }
             final int columnX = mageContentX() + columnXOf(row);
             // ★名单行只念模式名（静态文本：键按行定死，不随状态变；状态读数在正上方按钮的 overlay 里）
+            // ★R101.4：正文换 1.0 原版档（en 最坏 "Essence transmuting" 111px 在 76px 列里折两行，
+            // 两行盒 20px 仍装下，MODE_LABEL_HEIGHT 不动）
             panel.child(
                 (IWidget) new TextWidget(IKey.lang(labelKey)).textAlign(Alignment.TopLeft)
-                    .scale(TEXT_SCALE)
+                    .scale(BODY_TEXT_SCALE)
                     .color(PocketGhostRequest.readoutTextColor())
                     .shadow(Boolean.TRUE)
                     .name("pocket_config_mode_label_" + row)
@@ -1789,7 +1856,8 @@ public final class PocketConfigPanel {
                 button,
                 IKey.dynamic(
                     () -> StatCollector.translateToLocal(
-                        switchLabelKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF))));
+                        switchLabelKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF)))
+                    .scale(BODY_TEXT_SCALE));
             panel.child(button);
         }
     }

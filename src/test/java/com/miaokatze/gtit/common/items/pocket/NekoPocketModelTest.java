@@ -13800,16 +13800,27 @@ public class NekoPocketModelTest {
             for (final PocketConfigPanel.Section section : PocketConfigPanel.sectionsOf(type)) {
                 switch (section) {
                     case READOUT_CAPACITY:
+                        // ★R101.4 ⑤：容量/堆叠规则行 y 改 ruleLineYOf 派生式（与装配侧同源单源，
+                        // 两行内容纵向匀称、底带留白不再成片）；常开行（READOUT_PERSIST）位置不动。
                         cover(
                             covered,
                             innerW,
                             innerH,
                             PocketConfigPanel.MARGIN,
-                            PocketConfigPanel.CONTENT_TOP,
+                            PocketConfigPanel.ruleLineYOf(type),
                             innerW,
                             PocketConfigPanel.CAPACITY_READOUT_HEIGHT);
                         break;
                     case READOUT_STACK:
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.MARGIN,
+                            PocketConfigPanel.ruleLineYOf(type),
+                            innerW,
+                            PocketConfigPanel.READOUT_HEIGHT);
+                        break;
                     case READOUT_PERSIST:
                         cover(
                             covered,
@@ -13992,6 +14003,8 @@ public class NekoPocketModelTest {
     private static void configPanelTextScaleAndLayoutRework() {
         // ---- ① 文字档：面板局部 0.8（对齐主面板 STATUS_TEXT_SCALE 先例），本件不再消费主面板那把 0.6 ----
         SimpleAssert.eq(0.8f, PocketConfigPanel.TEXT_SCALE, "★配置面板文字档 = 0.8（0.6 档 ≈5.4px 被用户判过小）");
+        // ★R101.4：正文换 1.0 原版整数档（字形无插值不发虚），标题行（型名 + 状态）与回执行仍走 0.8 两档分立
+        SimpleAssert.eq(1.0f, PocketConfigPanel.BODY_TEXT_SCALE, "★R101.4 正文档 = 1.0（原版整数档：不做字形插值；0.8 档实机判「发虚」）");
         final java.util.List<String> conf = sourceLinesOrNull(R96_CONFIG_PANEL_FILE);
         if (conf == null) {
             System.out.println("[NOTE] 读不到 PocketConfigPanel.java ⇒ 源码面钉值【未验】（★不是通过）");
@@ -14005,6 +14018,25 @@ public class NekoPocketModelTest {
                 1,
                 countCodeLinesIn(conf, "noteKeyOf(ui.magnetMode())"),
                 "★说明键只剩三态钮一处 tooltip 消费（R101 ④ 免逐条描述：格件解释已收，不对称说明留在三态钮）");
+            // ★R101.4 ③：标题行消费暖金强调色（typeLabel 那一处；正文保持白 + 阴影）
+            final int typeLabel = methodStart(
+                conf,
+                "private static IWidget typeLabel(NekoPocketPanel ui, PocketUpgradeType type) {");
+            SimpleAssert.that(
+                typeLabel >= 0 && regionContainsCode(
+                    conf,
+                    typeLabel,
+                    methodEnd(conf, typeLabel),
+                    "PocketGhostRequest.titleTextColor()"),
+                "★R101.4 标题行（typeLabel）改读 titleTextColor() 暖金强调色（正文仍 readoutTextColor 白 + 阴影）");
+            // ★R101.4 ④：频率输入框自绘底（外 1px 深木边框 + 内填深底），黑底默认退场
+            final int freqRow = methodStart(
+                conf,
+                "private static void frequencyRow(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
+            SimpleAssert.that(
+                freqRow >= 0 && regionContainsCode(conf, freqRow, methodEnd(conf, freqRow), "Color.rgb(58, 43, 27)")
+                    && regionContainsCode(conf, freqRow, methodEnd(conf, freqRow), "Color.rgb(38, 30, 22)"),
+                "★R101.4 频率输入框背景 = 面板同风格自绘底（1px 深木边框 rgb(58,43,27) + 内填 rgb(38,30,22)）");
         }
         SimpleAssert.that(
             PocketConfigPanel.langKeys()
@@ -14082,7 +14114,7 @@ public class NekoPocketModelTest {
             (PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.MAGNET_GRID_WIDTH) / 2,
             PocketConfigPanel.magnetGridXOf(PocketUpgradeType.MAGNET),
             "★磁力横盘在面板内居中（旧「盘面在框内居中」随去框改义为面板级居中）");
-        // ---- ⑧ 按钮串像素账（0.8 档）：每一枚用 BUTTON 底的钮，其最坏 overlay 串一行放得下 ----
+        // ---- ⑧ 按钮串像素账（★R101.4 起 1.0 原版档）：每一枚用 BUTTON 底的钮，其最坏 overlay 串一行放得下 ----
         final java.util.List<String> zh2 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         final java.util.List<String> en2 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
         if (zh2 == null || en2 == null) {
@@ -14090,7 +14122,7 @@ public class NekoPocketModelTest {
             return;
         }
         for (final java.util.List<String> lang : new java.util.List[] { zh2, en2 }) {
-            // 开关钮：三态里最长的 "Not installed"
+            // 开关钮：三态里最长的 "Absent"（★R101.4 en 缩词，1.0 档下原 "Not installed" 75px 装不进 72 钳宽）
             int worstSwitch = 0;
             for (final PocketConfigPanel.SwitchState state : PocketConfigPanel.SwitchState.values()) {
                 worstSwitch = Math
@@ -14129,9 +14161,12 @@ public class NekoPocketModelTest {
         }
     }
 
-    /** 按钮串像素账：最坏 overlay 串按 0.8 档折进<b>整钮宽</b>必须 ≤ 1 行（两份 lang 各调一遍；与既有单行读数账同一前进量模型）。 */
+    /**
+     * 按钮串像素账：最坏 overlay 串按<b>正文 1.0 档</b>（★R101.4 起 {@code BODY_TEXT_SCALE}，钮上文字与
+     * 正文同一档）折进<b>整钮宽</b>必须 ≤ 1 行（两份 lang 各调一遍；与既有单行读数账同一前进量模型）。
+     */
     private static void assertButtonLineFits(int worst, int buttonWidth, String what) {
-        final int lines = (int) Math.ceil(worst * PocketConfigPanel.TEXT_SCALE / buttonWidth);
+        final int lines = (int) Math.ceil(worst * PocketConfigPanel.BODY_TEXT_SCALE / buttonWidth);
         SimpleAssert.that(lines <= 1, "★" + what + "最坏串一行放得下（逻辑宽 " + worst + " 钮宽 " + buttonWidth + "）");
     }
 
@@ -20803,6 +20838,7 @@ public class NekoPocketModelTest {
                     }
                 }
                 final int labelBox = PocketConfigPanel.labelWidthOf(type);
+                // ★R101.4：标题行（型名 + 状态）留在 0.8 档（1.0 档 en 最坏串 280px 必折行）——不换正文档
                 final int labelLines = (int) Math.ceil(worstLabel * PocketConfigPanel.TEXT_SCALE / labelBox);
                 SimpleAssert.that(
                     labelLines <= 1,
@@ -20835,6 +20871,7 @@ public class NekoPocketModelTest {
                 final int receiptBox = PocketConfigPanel.panelWidthOf(type) - 2 * PocketConfigPanel.MARGIN
                     - PocketConfigPanel.CLOSE_WIDTH
                     - 2;
+                // ★R101.4：回执行留在 0.8 档（en 最坏回执 ≈417px，1.0 档折三行必顶穿两行的 RECEIPT_HEIGHT=22）
                 final int receiptLines = (int) Math.ceil(worstReceipt * PocketConfigPanel.TEXT_SCALE / receiptBox);
                 SimpleAssert.that(
                     receiptLines * 10 <= PocketConfigPanel.RECEIPT_HEIGHT,
@@ -20852,17 +20889,14 @@ public class NekoPocketModelTest {
                         + "）");
             }
             // ---- 各面自己的读数/说明行（逐型点名；磁力面的格盘/控制块几何账归 magnet_panel_geometry_closes，
-            // ★磁力说明行与两枚挂载框标题的<b>文字</b>账自 R99 P0 起归 magnet_panel_text_fits_its_boxes）----
-            // 容量面：容量读数块（复用主面板那句 fluid.capacity，喂最宽数字 = 升级档 2G/36G）。
-            final int capW = residentLogicalWidth(
-                formatLang(
-                    lang,
-                    "gtit.pocket.fluid.capacity",
-                    Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML),
-                    Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL),
-                    Long.valueOf(PocketConstants.fluidTotalCapacityMl(true))));
+            // ★磁力说明行与两枚挂载框标题的<b>文字</b>账自 R99 P0 起归 magnet_panel_text_fits_its_boxes）
+            // ★★R101.4：正文档换 BODY_TEXT_SCALE=1.0 —— 容量规则行改量<b>本面真读的那条</b>规则句
+            // （READOUT_CAPACITY_KEY；旧账量的 gtit.pocket.fluid.capacity 是 R101 改读规则句之前的旧键，
+            // 面上已不渲染它，账随消费件同批翻新），其余读数行/模式名/频率标签照旧式换档重算 ----
+            // 容量面：规则句（本型独有键，R101.4 en 已缩到 1.0 档一行宽）。
+            final int capW = residentLogicalWidth(formatLang(lang, PocketConfigPanel.READOUT_CAPACITY_KEY));
             final int capBox = contentBoxOf(PocketUpgradeType.CAPACITY);
-            final int capLines = (int) Math.ceil(capW * PocketConfigPanel.TEXT_SCALE / capBox);
+            final int capLines = (int) Math.ceil(capW * PocketConfigPanel.BODY_TEXT_SCALE / capBox);
             SimpleAssert.that(
                 capLines * 10 <= PocketConfigPanel.CAPACITY_READOUT_HEIGHT,
                 "★容量面读数块折行后放得下（逻辑宽 " + capW
@@ -20900,10 +20934,12 @@ public class NekoPocketModelTest {
                 "通道面频率档读数");
             // ★R101 魔法使面：三列名单（按钮行在上、名单行在下）——模式名在列宽里 ≤2 行（两行盒）；
             // 状态读数收进按钮的动态 overlay（"开启 / 关闭"本来就是状态位），名单行只念模式名。
+            // ★R101.4：名单行按正文 1.0 档量（en 最坏 111px 在 76px 列里折两行，20px 两行盒仍装下）。
             for (int row = 0; row < PocketConfigPanel.modeRowCount(); row++) {
                 final String label = formatLang(lang, PocketConfigPanel.modeLabelKey(row));
                 final int lines = (int) Math.ceil(
-                    residentLogicalWidth(label) * PocketConfigPanel.TEXT_SCALE / PocketConfigPanel.MODE_COLUMN_WIDTH);
+                    residentLogicalWidth(label) * PocketConfigPanel.BODY_TEXT_SCALE
+                        / PocketConfigPanel.MODE_COLUMN_WIDTH);
                 SimpleAssert.that(
                     lines <= 2,
                     "★魔法使面第 " + row
@@ -20923,28 +20959,28 @@ public class NekoPocketModelTest {
         return PocketConfigPanel.panelWidthOf(type) - 2 * PocketConfigPanel.MARGIN;
     }
 
-    /** 单行读数像素账（无格式参数版）：最坏串按配置面板 0.8 档（{@code PocketConfigPanel.TEXT_SCALE}）折进盒宽必须 ≤ 1 行。 */
+    /** 单行读数像素账（无格式参数版）：最坏串按正文 1.0 档（★R101.4 起 {@code PocketConfigPanel.BODY_TEXT_SCALE}）折进盒宽必须 ≤ 1 行。 */
     private static void assertSingleReadoutLine(java.util.List<String> lang, String key, int box, String what) {
         final int w = residentLogicalWidth(formatLang(lang, key));
-        final int lines = (int) Math.ceil(w * PocketConfigPanel.TEXT_SCALE / box);
+        final int lines = (int) Math.ceil(w * PocketConfigPanel.BODY_TEXT_SCALE / box);
         SimpleAssert
             .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
     }
 
-    /** 单行读数像素账（单格式参数版）。 */
+    /** 单行读数像素账（单格式参数版，★R101.4 起同按正文 1.0 档量）。 */
     private static void assertSingleReadoutLine(java.util.List<String> lang, String key, Object argA, int box,
         String what) {
         final int w = residentLogicalWidth(formatLang(lang, key, argA));
-        final int lines = (int) Math.ceil(w * PocketConfigPanel.TEXT_SCALE / box);
+        final int lines = (int) Math.ceil(w * PocketConfigPanel.BODY_TEXT_SCALE / box);
         SimpleAssert
             .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
     }
 
-    /** 单行读数像素账（双格式参数版）。 */
+    /** 单行读数像素账（双格式参数版，★R101.4 起同按正文 1.0 档量）。 */
     private static void assertSingleReadoutLine(java.util.List<String> lang, String key, Object argA, Object argB,
         int box, String what) {
         final int w = residentLogicalWidth(formatLang(lang, key, argA, argB));
-        final int lines = (int) Math.ceil(w * PocketConfigPanel.TEXT_SCALE / box);
+        final int lines = (int) Math.ceil(w * PocketConfigPanel.BODY_TEXT_SCALE / box);
         SimpleAssert
             .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
     }

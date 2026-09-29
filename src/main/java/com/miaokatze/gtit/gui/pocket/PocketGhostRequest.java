@@ -1053,6 +1053,20 @@ public final class PocketGhostRequest {
         return Color.WHITE.main;
     }
 
+    /**
+     * ★R101.4：配置面板<b>标题行</b>（型名 + 状态，{@code PocketConfigPanel#typeLabel} 那一行）的
+     * <b>暖金强调色</b>（浅金 {@code rgb(255, 224, 138)}）：型名行是每面的"这是哪一面"读数，用户
+     * 实机反馈五面正文换 1.0 原版档后标题与正文同白不再分层 ⇒ 标题单独走强调色，其余正文保持
+     * {@link #readoutTextColor()} 白 + 阴影。
+     * <p>
+     * ★写成方法而不是 {@code static final int}，与 {@link #hintTextColor()} 同一条纪律：
+     * {@code Color} 的类初始化会牵进 {@code ModularUI} 主类，放进静态字段就让本类在零依赖测试 JVM 里
+     * 初始化即炸；方法体只在客户端绘制路径上被调。
+     */
+    public static int titleTextColor() {
+        return Color.rgb(255, 224, 138);
+    }
+
     /** 读数与格内的内缩边距：与三类虚像遮罩的 {@code drawRect(1, 1, w-2, h-2)} 同一个数。 */
     public static final int CAP_READOUT_MARGIN = 1;
     /** 读数的纵向落点（★上半带：库把数量/容量文字画在 BottomRight，三类都留了 y 0…7 这一条）。 */
