@@ -653,22 +653,15 @@ public class NekoEssenceGhostCell extends ButtonWidget<NekoEssenceGhostCell>
         drawCapReadout();
         // ★R91-⑤：左上蓝 L / 左下绿 P。★角标与遮罩互不覆盖（遮罩是底色、角标画在它之上），
         // 且 L / P 分处上下两角 ⇒ 同一格同时挂 attr 与 P 时两个都读得到。
-        drawBadge(
+        // ★R100 片 F：绘制体走共享助手 PocketBadgeDrawer（原三份同形 private drawBadge 收拢）。
+        PocketBadgeDrawer.drawBadge(
             PocketGhostRequest.memoryBadgeText(ghostAttr),
             PocketGhostRequest.memoryBadgeTop(),
             PocketGhostRequest.memoryBadgeColor());
-        drawBadge(
+        PocketBadgeDrawer.drawBadge(
             PocketGhostRequest.uploadBlockBadgeText(uploadBlocked),
             PocketGhostRequest.uploadBlockBadgeTop(getArea().h()),
             PocketGhostRequest.uploadBlockBadgeColor());
-    }
-
-    /** ★R91-⑤：一个角标的绘制体（左对齐；★空文本 = 一条像素都不画，与另两支同形）。 */
-    private void drawBadge(String text, float top, int color) {
-        if (text == null || text.isEmpty()) {
-            return;
-        }
-        GuiDraw.drawText(text, PocketGhostRequest.badgeLeftX(), top, PocketGhostRequest.CAP_READOUT_SCALE, color, true);
     }
 
     /**

@@ -13,6 +13,7 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.config.GiftConfig;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -47,6 +48,7 @@ public class StarterGift extends Item {
             if (line.equals(key)) break;
             tooltip.add(EnumChatFormatting.LIGHT_PURPLE + line);
         }
+        tooltip.add(GTITUtils.getAddedByLine());
     }
 
     @Override

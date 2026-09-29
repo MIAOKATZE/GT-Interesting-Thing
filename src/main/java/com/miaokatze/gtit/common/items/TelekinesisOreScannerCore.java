@@ -12,6 +12,7 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.sinthoras.visualprospecting.VisualProspecting_API;
 
@@ -231,5 +232,6 @@ public class TelekinesisOreScannerCore extends Item {
         }
 
         list.add(EnumChatFormatting.ITALIC.toString() + EnumChatFormatting.DARK_GRAY + "Shift+Right to switch mode");
+        list.add(GTITUtils.getAddedByLine());
     }
 }

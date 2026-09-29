@@ -16,7 +16,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.miaokatze.gtit.config.NekoMusicConfig;
-import com.miaokatze.gtit.gui.vm.GuiMusicController;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -29,7 +28,9 @@ import cpw.mods.fml.relauncher.SideOnly;
  * 为猫猫售货机播放自定义 BGM，支持：
  * - 淡入淡出效果（2秒，原版 VM 的 2 倍）
  * - 最大音量 50%（通过 SoundSystem.setVolume 精确控制）
- * - 退出 GUI 后自动停止（通过 GuiMusicController.isV2GuiOpen 标志 + tick 检测，A01 蓝图 G5 随域迁移）
+ * - 退出 GUI 后自动停止（通过本类的 V2 GUI 打开标志 + tick 检测，A01 蓝图 G5 随域迁移；
+ * ★R100 片 F 起标志真相迁回本类——写点只有 {@link #onGuiOpened()}/{@link #onGuiClosed()} 两条，
+ * {@code GuiMusicController} 只是转发壳，common 侧不再 import gui 包）
  * - 防止叠加播放（先停止再播放）
  * - 接入 GUI 左上角的 BGM 切换按钮
  * <p>
@@ -54,6 +55,19 @@ public class NekoMusicEventHandler {
 
     // 单例实例（由 ClientProxy 注册事件时创建）
     private static NekoMusicEventHandler instance;
+
+    /**
+     * ★R100 片 F：V2 GUI 是否打开（标志真相住本类，原 GuiMusicController.isV2GuiOpen 公有字段迁入）。
+     * 写点只有 {@link #onGuiOpened()}/{@link #onGuiClosed()} 两条生命周期口（幂等语义随迁）。
+     * ★不写 {@code = false} 初始化器：字段默认值即 false，且该字面量被回归套件计为「清位写点」，
+     * 写第二次就是第二处真相。
+     */
+    private static boolean v2GuiOpen;
+
+    /** V2 GUI 打开状态的唯一读口（原 GuiMusicController.isV2GuiOpen 字段读点）。 */
+    public static boolean isV2GuiOpen() {
+        return v2GuiOpen;
+    }
 
     // 当前正在播放的 BGM 声音实例
     private ISound currentSound = null;
@@ -266,18 +280,24 @@ public class NekoMusicEventHandler {
     // ==================== GUI 事件回调 ====================
 
     /**
-     * GUI 打开时调用（由 NekoVendingMachineGui.build() 调用）
+     * GUI 打开时调用（原调用方 NekoVendingMachineGui.build() → GuiMusicController.onGuiOpened 的
+     * 前半——置标志 + 通知——已随 ★R100 片 F 迁入本方法，顺序与旧形状逐字等价：先置标志再触发 BGM）。
      */
     public static void onGuiOpened() {
+        v2GuiOpen = true;
         if (instance != null) {
             instance.handleGuiOpened();
         }
     }
 
     /**
-     * GUI 关闭时调用（由 NekoVendingMachineGui.onCloseAction 调用）
+     * GUI 关闭时调用（原 GuiMusicController.close 的幂等守卫 + 置标志 + 通知，三步已随 ★R100 片 F
+     * 迁入本方法）：仅当 GUI 仍标记为打开时才执行清理，避免 onCloseAction 与 onDispose 重复调用
+     * 导致淡出被反复重置、BGM 微弱未止的问题。
      */
     public static void onGuiClosed() {
+        if (!v2GuiOpen) return;
+        v2GuiOpen = false;
         if (instance != null) {
             instance.handleGuiClosed();
         }
@@ -341,7 +361,8 @@ public class NekoMusicEventHandler {
 
         // 安全检查：如果 GUI 已关闭但 BGM 还在播放且没有在淡出，触发淡出
         // V1 GUI (NekoVendingMachineGui) 已移除，仅检查 V2 (NekoVMGuiV2) 的 GUI 状态
-        boolean isOpen = GuiMusicController.isV2GuiOpen;
+        // （★R100 片 F：标志真相迁入本类，原 GuiMusicController.isV2GuiOpen 字段读点改走本类读口）
+        boolean isOpen = isV2GuiOpen();
         if (!isOpen && this.currentSound != null && !this.fadingOut) {
             handleGuiClosed();
         }

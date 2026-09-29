@@ -171,8 +171,15 @@ public final class PocketChannelManager {
         }
         state.activate(mode, ops.currentTick(), ops.nowMs());
         state.attachSession(bindings, filters, null, pull);
-        // 短效通道不在这里跑第一批：激活时倒计时已装填为整拍（CHANNEL_TICK_PERIOD），
-        // 不依赖任何监听器注册顺序（E3 §3.4），也不引用绝对 tick（R62）。
+        if (mode == PocketChannelState.Mode.SHORT) {
+            // ★★<b>R100 用户改判（需求 4：开启通道瞬间立即执行第一批）</b>：本处旧裁定「短效通道不在
+            // 这里跑第一批：激活时倒计时已装填为整拍（CHANNEL_TICK_PERIOD），不依赖任何监听器注册顺序
+            // （E3 §3.4），也不引用绝对 tick（R62）」自 R100 起<b>作废</b>——作废的只有"整拍装填"那半句，
+            // E3 §3.4（不依赖监听器注册顺序）与 R62（不引用绝对 tick）两条纪律<b>原样保留</b>：
+            // due=0 形式仍是纯相对倒计时（清零 ⇒ 下一次宿主驱动立刻到期），只是不再让玩家白等一拍。
+            // 首批照常计入 30 批预算（SHORT_CHANNEL_BATCHES 与批计数语义不动，见 finishBatch）。
+            state.fireFirstBatchNow();
+        }
         return true;
     }
 
@@ -222,9 +229,37 @@ public final class PocketChannelManager {
             return live.mode() == PocketChannelState.Mode.SHORT;
         }
         final PocketChannelState state = stateOf(player);
-        state.activate(PocketChannelState.Mode.SHORT, 0L, 0L);
+        // ★R100：持续化道的节拍按<b>载体 NBT 的频率档位</b>取（无键=默认 5s 档 ⇒ 旧存档零迁移），
+        // 手动道不走这里（openChannel 的三参 activate 恒 1s，R100 用户裁决）。
+        state.activate(
+            PocketChannelState.Mode.SHORT,
+            0L,
+            0L,
+            PocketConstants.channelFreqTierTicks(PocketConstants.readChannelFreqTier(carrier.getTagCompound())));
         state.attachSession(bindings, filters, null, pullPhaseOf(filters));
+        // ★R100（需求 4）：与 openChannel 的短效支同口径——开启瞬间立即第一批（due=0 形式）。
+        state.fireFirstBatchNow();
         return true;
+    }
+
+    /**
+     * ★<b>R100（档位立即生效）</b>：频率档位刚被写腿改过 ⇒ 在跑的持续化道<b>当场</b>换新节拍
+     * （倒计时由 {@link PocketChannelState#retime} 钳进新节拍之内，下一拍就用新节拍）。
+     * <p>
+     * ★只碰「持续化撑着的」那条道：判据是载体上 CHANNEL_PERSIST 当前生效（同 {@link #ensurePersistentShortChannel}
+     * 的组合谓词）。手动付费道只可能出现在持续化<b>未生效</b>的时候（常开支早退拦住了 persist 态下的手动
+     * 开道）⇒ 这条腿结构上改不到 1s×30 批的手动语义。无活道 / 非短效 / 持续化未生效 ⇒ 零写入幂等。
+     */
+    public void retimePersistentChannel(UUID player, ItemStack carrier) {
+        final PocketChannelState state = peek(player);
+        if (state == null || state.idle() || state.mode() != PocketChannelState.Mode.SHORT) {
+            return;
+        }
+        if (carrier == null || !PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CHANNEL_PERSIST)) {
+            return;
+        }
+        state.retime(
+            PocketConstants.channelFreqTierTicks(PocketConstants.readChannelFreqTier(carrier.getTagCompound())));
     }
 
     /**
@@ -312,6 +347,18 @@ public final class PocketChannelManager {
         }
         state.advanceClock();
         if (!state.due()) {
+            return false;
+        }
+        // ★R100（保守跳过）：四要素齐 ⇒ 本拍早退——①物品来源清单为空（中栏空、或全部格被 ghost 声明/
+        // P 标记拦下）②无流体来源 ③无源质来源（三者恰是 {@code snapshotSources} 的全部产出面 ⇒
+        // 一次调用一并判掉，不为判定额外做第二份快照逻辑）④无补满需求（pullMode=false = 本次运行
+        // 不含补满相）。早退的形状：不执行传输方法体（runBatch/网络通知/回执全跳过 ⇒ 零 NBT 写、
+        // 零同步）、不消耗批次数、{@link PocketChannelState#skipBeat()} 把倒计时按原节拍重装 ⇒
+        // 通道不断开（30 批预算只被真跑过的批扣）、不触发任何回收。保守性：只要含补满相就<b>不跳</b>
+        // （补满相的需求面在元件侧，口袋侧快照判不了"要不要补"，跳了就是拿口袋读数冒充元件事实）。
+        if (!state.pullMode() && ops.snapshotSources()
+            .isEmpty()) {
+            state.skipBeat();
             return false;
         }
         if (!state.enterBatch()) {

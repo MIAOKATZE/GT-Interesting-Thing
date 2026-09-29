@@ -4,9 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -44,6 +42,7 @@ import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.common.machine.v2.MeTransferEntry;
+import com.miaokatze.gtit.common.machine.v2.VendingServerActions;
 import com.miaokatze.gtit.config.NekoMusicConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.gui.vm.edit.BlessingEditor;
@@ -174,7 +173,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         meCoinAmountSyncs,
         statusCodec::markTradeableStatusDirtyAndNotify,
         () -> this.guiData != null ? this.guiData.getPlayer() : null);
-    /** BGM 开关联动（接管 isV2GuiOpen，NekoMusicEventHandler 消费点随迁） */
+    /** BGM 开关联动（★R100 片 F：标志真相在 NekoMusicEventHandler，本类只持转发壳） */
     private final GuiMusicController musicController = new GuiMusicController();
 
     /** 交易结果消息（服务端设置，通过 tradeResultSync 同步到客户端） */
@@ -191,20 +190,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     // ==================== 其他字段 ====================
 
     // ==================== B2-02：C2S 动作 Netty→主线程投递 ====================
-
-    /**
-     * Netty IO 线程 → 服务器主线程的 C2S 动作队列（同 {@code MailHandler}/{@code LotteryHandler} 范式）。
-     * <p>
-     * MUI2 2.3.70 网络层 C2S 同步值的 changeListener 在 Netty IO 线程直跑
-     * （{@code ModularNetworkSide.receivePacket} 无线程切换），而交易/投币链涉及
-     * 共享机器槽读写（NekoTradeExecutor 快照→扣减→整槽写回）、HashMap 标志写与
-     * meTransferQueue 写——与主线程 checkTrade（detectAndSendChanges 驱动）/
-     * onPostTick 交叉访问存在竞态。服务端动作主体整体 offer 到本队列，
-     * 由 {@link MTENekoVendingMachineV2#onPostTick} 服务端分支逐 tick 消费
-     * （操作延迟 ≤1 tick，玩家无感）。1 tick 后 GUI 可能已关：闭包内引用的
-     * multiblock/baseMetaTileEntity 生命周期独立于 GUI，各动作方法自带存活守卫。
-     */
-    private static final Queue<Runnable> SERVER_ACTIONS = new ConcurrentLinkedQueue<>();
+    // ★R100 片 F（架构解耦）：队列与 schedule/drain 两口逐字迁往 common 侧
+    // {@link VendingServerActions}——生产者（本类 C2S 同步值的服务端迁移点）与消费者
+    // （MTENekoVendingMachineV2#onPostTick 服务端分支）本就都在 common 侧，TE 据此不再 import gui 包。
 
     /** GUI 位置数据引用（build 时设置，供同步值 getter 使用） */
     private PosGuiData guiData;
@@ -835,31 +823,11 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /**
      * B2-02：将 C2S 同步值的服务端动作主体投递到服务器主线程（Netty 线程调用安全）。
      * <p>
-     * 仅服务端侧调用；客户端侧的 changeListener 保持原语义直跑（无服务端动作）。
+     * ★R100 片 F：队列本体迁往 {@link VendingServerActions}，本方法保留为 gui 侧五个
+     * C2S 迁移点的同形转发口（签名与调用形制零变化）。
      */
     static void scheduleServerAction(Runnable action) {
-        if (action != null) {
-            SERVER_ACTIONS.offer(action);
-        }
-    }
-
-    /**
-     * B2-02：服务器主线程逐 tick 消费投递的 C2S 动作。
-     * <p>
-     * 由 {@link MTENekoVendingMachineV2#onPostTick} 服务端分支调用；调用点必须位于
-     * {@code setActive(mMachine)} 之后（super 链每 tick 以 mMaxProgresstime>0 重置 active，
-     * 先 drain 会使投递动作的 isActive() 前置守卫恒判 false，v1.7.52 修复）；单任务异常仅记日志，
-     * 不中断同批其余任务（对齐 MailHandler 消费循环）。
-     */
-    public static void drainServerActions() {
-        Runnable action;
-        while ((action = SERVER_ACTIONS.poll()) != null) {
-            try {
-                action.run();
-            } catch (Throwable t) {
-                LOG.error("[NekoVMV2] 执行投递的 C2S 动作失败", t);
-            }
-        }
+        VendingServerActions.scheduleServerAction(action);
     }
 
     @Override

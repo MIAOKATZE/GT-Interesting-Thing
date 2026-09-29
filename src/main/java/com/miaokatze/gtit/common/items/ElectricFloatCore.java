@@ -9,6 +9,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
 import baubles.api.BaubleType;
@@ -132,6 +133,7 @@ public class ElectricFloatCore extends Item implements IBauble, IElectricItem {
             if (line.equals(key)) break;
             tooltip.add(EnumChatFormatting.GOLD + line);
         }
+        tooltip.add(GTITUtils.getAddedByLine());
     }
 
     // ========== IC2电力物品实现 ==========

@@ -8,6 +8,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
+import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -61,6 +63,25 @@ public class ItemPocketUpgrade extends Item {
         "gtit.pocket.upgrade.stack.tooltip", "gtit.pocket.upgrade.magnet.tooltip",
         "gtit.pocket.upgrade.channel_persist.tooltip", "gtit.pocket.upgrade.mage.tooltip" };
 
+    /**
+     * ★R100 片 B：魔法使的<b>连号说明族</b>整键字面量表（下标即行号 {@code line.0..line.9}）。
+     * <p>
+     * 为什么是整键表而不是前缀拼接：R91-e① 的对账门按「源码里每条 {@code gtit.pocket.*} 引号
+     * 字面量 ⇔ 两份 lang 各恰一条键行」对账，前缀拼接既进不了那道门（拼出来的键不是字面量，
+     * 漏写 lang 抓不住），还会以悬空前缀形态误红；整键表让十行键天然可被机检对账（与
+     * {@link #TOOLTIP_KEYS} 同一类冻结表）。静态块钉住连号形状与 mage token 的耦合：
+     * 第 i 项必须恰是挂在 {@code TOKENS[MAGE.ordinal()]} 下的 {@code line.<i>} ⇒ 跳号/重号/
+     * token 改名而键族没跟都在类初始化即炸（与上面两张表同一条纪律的第三名成员）。
+     * <p>
+     * 行序：固化 → 四模式 → 蒸馏补充 → 三被动（法杖/猫猫币/源质转换）→ 结晶 → 元素容量 → 代价；
+     * 旧单键 {@code mage.tooltip} 仍是首行效果行，本族追加在其后、{@code getAddedByLine()} 尾行之前，
+     * 统一 GRAY 单色、不加空行分隔（对齐升级插件 tooltip 的既有单色惯例）。
+     */
+    private static final String[] MAGE_LINE_KEYS = { "gtit.pocket.upgrade.mage.line.0",
+        "gtit.pocket.upgrade.mage.line.1", "gtit.pocket.upgrade.mage.line.2", "gtit.pocket.upgrade.mage.line.3",
+        "gtit.pocket.upgrade.mage.line.4", "gtit.pocket.upgrade.mage.line.5", "gtit.pocket.upgrade.mage.line.6",
+        "gtit.pocket.upgrade.mage.line.7", "gtit.pocket.upgrade.mage.line.8", "gtit.pocket.upgrade.mage.line.9" };
+
     static {
         if (TOOLTIP_KEYS.length != TOKENS.length) {
             throw new IllegalStateException("[pocket] 升级插件的 token/tooltip 键两张表长度不一致");
@@ -69,6 +90,21 @@ public class ItemPocketUpgrade extends Item {
             if (!TOOLTIP_KEYS[i].endsWith("." + TOKENS[i] + ".tooltip")) {
                 throw new IllegalStateException(
                     "[pocket] 升级插件 token " + TOKENS[i] + " 与 tooltip 键 " + TOOLTIP_KEYS[i] + " 漂移（两表必须同下标耦合）");
+            }
+        }
+        // ★R100 片 B：连号族的期望键由 TOOLTIP_KEYS[4] 派生（去掉 .tooltip 尾换成 .line.<i>）——
+        // 不在这里写出第二条前缀字面量，否则那条半截字面量会被 R91-e① 当悬空键误红。
+        final String mageKey = TOOLTIP_KEYS[PocketUpgradeType.MAGE.ordinal()];
+        final String familyPrefix = mageKey.substring(0, mageKey.length() - ".tooltip".length());
+        for (int i = 0; i < MAGE_LINE_KEYS.length; i++) {
+            if (!MAGE_LINE_KEYS[i].equals(familyPrefix + ".line." + i)) {
+                throw new IllegalStateException(
+                    "[pocket] 魔法使连号说明键 " + MAGE_LINE_KEYS[i]
+                        + " 与期望 "
+                        + familyPrefix
+                        + ".line."
+                        + i
+                        + " 漂移（族必须 0..N 连续且挂在 mage token 下）");
             }
         }
     }
@@ -111,9 +147,80 @@ public class ItemPocketUpgrade extends Item {
      * <p>
      * 消费端是 {@code equals(key)} 即 break 的循环（先例 {@code common/items/NekoCoin.java:28-34}）；
      * 本类只有一行，缺键时显示键名原文（可观测），不静默空白。
+     * <p>
+     * ★R100 片 B：mage 型在首行效果行之后追加 {@link #appendMageLines(List)} 的连号说明族；
+     * 两类行都在 {@link GTITUtils#getAddedByLine()} 尾行（片 A）之前。
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
         tooltip.add(EnumChatFormatting.GRAY + StatCollector.translateToLocal(TOOLTIP_KEYS[type.ordinal()]));
+        if (type == PocketUpgradeType.MAGE) {
+            appendMageLines(tooltip);
+        }
+        tooltip.add(GTITUtils.getAddedByLine());
+    }
+
+    /**
+     * ★R100 片 B：魔法使连号说明族（{@link #MAGE_LINE_KEYS}，循环上限 = 表长钉死）。
+     * <p>
+     * 读法对齐口袋本体先例（{@code ItemNekoDimensionPocket#addInformation} 的连号循环）：键未落时
+     * {@code translateToLocal} 原样返回键名 ⇒ 与那位同一个判据跳过，不把键名当文案展示；
+     * 只在真的含占位时才格式化一次（口径同 {@code NekoPocketPanel#receiptText}）。
+     * 行内数字一律 {@code %n$d} 带位置下标的占位（裸 {@code %d} 会一律取第 1 个实参，与口袋本体
+     * 同一条理由），实参由 {@link #mageLineArgs()} 从 PocketConstants 符号派生 —— 本类不写
+     * 任何第二份规格数字。
+     */
+    private static void appendMageLines(List tooltip) {
+        final Object[][] args = mageLineArgs();
+        for (int i = 0; i < MAGE_LINE_KEYS.length; i++) {
+            final String template = StatCollector.translateToLocal(MAGE_LINE_KEYS[i]);
+            if (template.equals(MAGE_LINE_KEYS[i])) {
+                continue;
+            }
+            tooltip.add(
+                EnumChatFormatting.GRAY + (template.indexOf('%') < 0 ? template : String.format(template, args[i])));
+        }
+    }
+
+    /**
+     * 连号说明族的实参（<b>顺序即各行 {@code %1$d…%n$d}</b>，下标与 {@link #MAGE_LINE_KEYS} 一一对应；
+     * 每行自己的实参组，不与口袋本体 {@code tooltipArgs} 那个族混槽 —— 那位是口袋规格读数单源，
+     * 本族是插件说明行，两族数字互不相欠）。
+     * <p>
+     * 全部取自常量符号（节拍换算走 {@code PocketConstants.ticksToSecondsCeil} 单源），本方法
+     * 不出现任何规格数字字面量；改任何一处常量 ⇒ 两份 lang 的读数零改动自动跟。
+     */
+    private static Object[][] mageLineArgs() {
+        return new Object[][] {
+            // line.0 固化：插件格号 = MAGE 的 ordinal + 1（ordinal 同时是效果位图位，别处不抄格号）
+            { Integer.valueOf(PocketUpgradeType.MAGE.ordinal() + 1) },
+            // line.1 四模式：主开关之外的子模式位数
+            { Integer.valueOf(PocketConstants.MAGE_MODE_BITS.length) },
+            // line.2 蒸馏补充：无数字行（间隔秒数住首行效果与口袋本体的 distill_fast 行，不重抄）
+            {},
+            // line.3 法杖·速率：节拍 tick 与单批每杖上界
+            { Integer.valueOf(PocketConstants.MAGE_WAND_INTERVAL_TICKS),
+                Integer.valueOf(PocketConstants.MAGE_WAND_MAX_POINTS_PER_BATCH) },
+            // line.4 法杖·扫描：玩家背包格数（主手优先那半句无数字）
+            { Integer.valueOf(PocketConstants.PLAYER_BACKPACK_SLOTS) },
+            // line.5 猫猫币：秒节拍 / 口袋中栏格数 / 背包格数 / 普通币值 / 闪烁币值
+            { Integer.valueOf(PocketConstants.ticksToSecondsCeil(PocketConstants.MAGE_SECOND_INTERVAL_TICKS)),
+                Integer.valueOf(PocketConstants.GHOST_ITEM_SLOT_LIMIT),
+                Integer.valueOf(PocketConstants.PLAYER_BACKPACK_SLOTS),
+                Integer.valueOf(PocketConstants.MAGE_COIN_VALUE_NORMAL),
+                Integer.valueOf(PocketConstants.MAGE_COIN_VALUE_SHIMMERING) },
+            // line.6 源质转换：秒节拍 / 单批每元始点数 / 元始种数
+            { Integer.valueOf(PocketConstants.ticksToSecondsCeil(PocketConstants.MAGE_SECOND_INTERVAL_TICKS)),
+                Integer.valueOf(PocketConstants.MAGE_TRANSMUTE_POINTS_PER_BATCH),
+                Integer.valueOf(PocketConstants.PRIMAL_TAGS.length) },
+            // line.7 结晶：秒节拍 / 单批每源质枚数上界 / 每枚点数（真值在 TaumDistillRules）
+            { Integer.valueOf(PocketConstants.ticksToSecondsCeil(PocketConstants.MAGE_SECOND_INTERVAL_TICKS)),
+                Integer.valueOf(PocketConstants.MAGE_CRYSTAL_MAX_PER_BATCH),
+                Integer.valueOf(TaumDistillRules.CRYSTAL_CAPACITY) },
+            // line.8 元素容量：元始种数 / 单 tag 上限 / 合计（派生常量）
+            { Integer.valueOf(PocketConstants.PRIMAL_TAGS.length), Integer.valueOf(PocketConstants.ELEMENT_CAP_PER_TAG),
+                Integer.valueOf(PocketConstants.ELEMENT_TOTAL_CAP) },
+            // line.9 代价：结晶先取的秒节拍（其余半句无数字）
+            { Integer.valueOf(PocketConstants.ticksToSecondsCeil(PocketConstants.MAGE_SECOND_INTERVAL_TICKS)) }, };
     }
 }

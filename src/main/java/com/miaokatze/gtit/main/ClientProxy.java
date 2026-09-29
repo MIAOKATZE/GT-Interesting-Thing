@@ -1,6 +1,8 @@
 package com.miaokatze.gtit.main;
 
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
+import com.miaokatze.gtit.common.machine.v2.VendingGuiBridge;
+import com.miaokatze.gtit.gui.vm.NekoVMGuiV2;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
@@ -40,6 +42,11 @@ public class ClientProxy extends CommonProxy {
     public void init(FMLInitializationEvent event) {
         // 调用父类的 init 方法，确保通用逻辑正常执行
         super.init(event);
+
+        // ★R100 片 F（架构解耦）：猫猫售货机 GUI 工厂注入 —— common 侧 MTENekoVendingMachineV2#getGui
+        // 经 VendingGuiBridge 委托，不再静态 import gui.vm 包。★只在客户端注册：GUI 实例只在客户端
+        // 创建（GT5U buildUI final 链仅客户端触达 getGui），专用服不加载本类、该桥保持未注册态。
+        VendingGuiBridge.register(NekoVMGuiV2::new);
 
         // 注册猫猫售货机 BGM 事件处理器（客户端）
         // 原因：之前因 getTooltip() NPE 崩溃而临时禁用，现 @SkipGenerateDescription 已修复根因

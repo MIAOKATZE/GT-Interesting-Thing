@@ -10,6 +10,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
 import baubles.api.BaubleType;
@@ -71,6 +72,7 @@ public abstract class BaseRing extends Item implements IBauble {
             tooltip.add(EnumChatFormatting.GRAY + sourceLine);
         }
         addStackableInfo(stack, player, tooltip);
+        tooltip.add(GTITUtils.getAddedByLine());
     }
 
     /**

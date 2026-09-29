@@ -42,6 +42,13 @@ public final class PocketChannelState {
      * 本类不存在任何绝对到期字段，也不参与 {@code ticksExisted}/{@code getTotalTime()} 的比较。
      */
     private int ticksUntilDue;
+    /**
+     * 本次运行<b>每批间隔</b>的 tick 数（★R100 频率片起节拍参数化：装填进状态、随批重装）。
+     * 手动付费短效道恒 {@link PocketConstants#CHANNEL_TICK_PERIOD}（1s，R100 用户裁决不动）；
+     * 持续化道按载体 NBT 的频率档位经 {@link PocketConstants#channelFreqTierTicks} 换算。
+     * <b>档位表之外任何地方不得再写第二个节拍数</b>（换算单源在 {@code PocketConstants}）。
+     */
+    private int periodTicks = PocketConstants.CHANNEL_TICK_PERIOD;
     /** 短效通道剩余批次数。 */
     private int remainingBatches;
     /**
@@ -76,6 +83,14 @@ public final class PocketChannelState {
      * @return true 表示状态确实发生了变化
      */
     public boolean activate(Mode activating, long nowTick, long nowMs) {
+        return activate(activating, nowTick, nowMs, PocketConstants.CHANNEL_TICK_PERIOD);
+    }
+
+    /**
+     * ★R100 节拍参数化重载：<b>持续化道</b>的激活口走这一条（{@code periodTicks} 来自载体 NBT 的频率档位，
+     * 经 {@link PocketConstants#channelFreqTierTicks} 换算）；手动道沿用三参版（恒 1s）。
+     */
+    public boolean activate(Mode activating, long nowTick, long nowMs, int periodTicks) {
         if (activating == null || activating == Mode.NONE) {
             stop();
             return true;
@@ -86,11 +101,50 @@ public final class PocketChannelState {
             // 瞬时是一次穿完，不占短效节拍；把节拍字段留在关闭态
             this.ticksUntilDue = 0;
             this.remainingBatches = 0;
+            this.periodTicks = PocketConstants.CHANNEL_TICK_PERIOD;
             return true;
         }
-        this.ticksUntilDue = PocketConstants.CHANNEL_TICK_PERIOD;
+        this.periodTicks = Math.max(1, periodTicks);
+        this.ticksUntilDue = this.periodTicks;
         this.remainingBatches = PocketConstants.SHORT_CHANNEL_BATCHES;
         return true;
+    }
+
+    /**
+     * ★R100（需求 4：「开启通道瞬间立即执行第一批」的 <b>due=0 形式</b>）：把距下一拍的倒计时清零，
+     * 下一次宿主驱动（≤1 tick 之后）立刻跑第一批。只对 SHORT 模式有意义；不碰批次数
+     * （首批照常由 {@link #finishBatch()} 计入 30 批预算，SHORT_CHANNEL_BATCHES 语义不动）。
+     */
+    public void fireFirstBatchNow() {
+        if (mode == Mode.SHORT) {
+            ticksUntilDue = 0;
+        }
+    }
+
+    /**
+     * ★R100（档位立即生效）：在跑的道换新节拍。倒计时<b>钳进新节拍之内</b>（绝不放大）——
+     * 玩家把 600s 档调回 1s 时，下一拍最多再等 1s，而不是把旧档剩下的整个倒计时走完。
+     * 不改批次数、不改模式；非 SHORT / 非法节拍一律零动作。
+     */
+    public void retime(int newPeriodTicks) {
+        if (mode != Mode.SHORT || newPeriodTicks <= 0) {
+            return;
+        }
+        this.periodTicks = newPeriodTicks;
+        if (ticksUntilDue > newPeriodTicks) {
+            ticksUntilDue = newPeriodTicks;
+        }
+    }
+
+    /**
+     * ★R100（保守跳过）：口袋侧无可传内容的那一拍，把倒计时<b>按原节拍重装</b>后让位。
+     * 不消耗批次数（30 批预算只被真跑过的批扣）、不碰模式 ⇒ 通道不断开；下一拍按同一节拍再问一次
+     * （快照判定因此每节拍一次而不是每 tick 一次，成本面与跑批同量级）。
+     */
+    public void skipBeat() {
+        if (mode == Mode.SHORT && remainingBatches > 0) {
+            ticksUntilDue = periodTicks;
+        }
     }
 
     /** 关闭通道并清掉短效节拍与会话快照；不动冷却（冷却跟着物品/玩家走，与开关无关）。 */
@@ -140,7 +194,8 @@ public final class PocketChannelState {
             stop();
             return;
         }
-        ticksUntilDue = PocketConstants.CHANNEL_TICK_PERIOD;
+        // ★R100：重装的是<b>本次运行的节拍</b>（持续化道=档位 tick，手动道=1s），不是全局常量
+        ticksUntilDue = periodTicks;
     }
 
     public int remainingBatches() {
@@ -150,6 +205,14 @@ public final class PocketChannelState {
     /** 距下一拍还剩几个 tick（动画/进度回显用；未开启即 0）。 */
     public int ticksUntilDue() {
         return ticksUntilDue;
+    }
+
+    /**
+     * ★R100：本次运行的每批间隔（tick）。动画窗口（{@code UI_WORK_TICKS} 的"剩余总长"算式）读它，
+     * 不再直读全局常量 —— 持续化道按档位走时，1s 常量会把读数放大/缩小错档。
+     */
+    public int periodTicks() {
+        return periodTicks;
     }
 
     /**

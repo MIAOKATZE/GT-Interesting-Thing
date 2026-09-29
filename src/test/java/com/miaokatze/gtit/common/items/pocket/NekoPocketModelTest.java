@@ -37,6 +37,7 @@ import com.miaokatze.gtit.common.items.infinitycell.IInfinityCellItem;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig.Kind;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelDriver;
+import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelSessions;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.CoinGate;
@@ -50,6 +51,8 @@ import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.WandVisGate;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetClaims;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
+import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
+import com.miaokatze.gtit.common.machine.v2.VendingServerActions;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumBridgeApi;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
@@ -483,6 +486,10 @@ public class NekoPocketModelTest {
         // ★起点 241（R98 收束实测）⇒ 本批 +2 = 243。
         cases.put("magnet_panel_text_fits_its_boxes", NekoPocketModelTest::magnetPanelTextFitsItsBoxes);
         cases.put("config_panel_blank_rate_within_caps", NekoPocketModelTest::configPanelBlankRateWithinCaps);
+        // ---- ★R100 片 D（UI 整改）一条：文字 0.8 档 / 边距 8 / 小钮 46 / 磁力空带收编（四段等距 + 连续空白带
+        // 上限）/ 说明行迁 tooltip（键不删）这些「排版改判」的钉值与正身，全部离线可算 ⇒ 248 → 249。
+        cases
+            .put("config_panel_text_scale_and_layout_rework", NekoPocketModelTest::configPanelTextScaleAndLayoutRework);
         cases.put(
             "config_panel_dispatch_is_not_five_identical",
             NekoPocketModelTest::configPanelDispatchIsNotFiveIdentical);
@@ -623,6 +630,16 @@ public class NekoPocketModelTest {
         cases.put(
             "channel_persist_switch_off_stops_channel_immediately",
             NekoPocketModelTest::channelPersistSwitchOffStopsChannelImmediately);
+        // ---- ★R100（频率片）五条：档位编解码与无键默认 5s / 开启即首批（短效 + 持续化两条激活口）/
+        // 保守跳过四要素与零写零同步 / 会话复原三前置（空绑定零写入）与一拍装道 / 档位节拍进状态机
+        // 与 retime 只钳不放。★起点 243（R98 收束实测）⇒ 本批 +5 = 248（分母一律取跑出来的数）。
+        cases.put(
+            "channel_freq_tier_codec_default_and_commit",
+            NekoPocketModelTest::channelFreqTierCodecDefaultAndCommit);
+        cases.put("channel_first_batch_fires_on_open", NekoPocketModelTest::channelFirstBatchFiresOnOpen);
+        cases.put("channel_conservative_skip_zero_write", NekoPocketModelTest::channelConservativeSkipZeroWrite);
+        cases.put("channel_session_restore_three_guards", NekoPocketModelTest::channelSessionRestoreThreeGuards);
+        cases.put("channel_persist_tier_cadence_and_retime", NekoPocketModelTest::channelPersistTierCadenceAndRetime);
         // ---- ★R96 S11（TP-S11）可穿戴四条：①双宿主桥（★本片最硬）②B 键链 ③穿戴抽液腿 + 旧腿逐字
         // ④护盾挂载点的可选性与诚实性。★本批起点 219 ⇒ 本批 +4 = 223（分母一律取跑出来的数）。
         cases.put(
@@ -676,12 +693,33 @@ public class NekoPocketModelTest {
         // （行序 = 白名单序 / ★R99 P4-D 恒六行空位显 0 / 数量不带 TC 的 ×100 / TC 缺席仍出文本 / 读侧不建档）。
         // ★两条都不动 tooltipArgs 的既有判据（那 12 项与 isActive(...CAPACITY) 读点仍由
         // upgrade_switch_gates_all_effect_readpoints 按签名硬钉，本批一字未改）。
+        // ★R100 片 E：用例①随描述族 4 → 3 改名翻新（恰 3 条 {0,1,2}、恒 4 行、新内容钉），
+        // 并新增第三条（只增不删）钉「R39a 行已删 + 翻案注释在物品类原声明位」。
         cases.put(
-            "pocket_tooltip_family_is_contiguous_and_four",
-            NekoPocketModelTest::pocketTooltipFamilyIsContiguousAndFour);
+            "pocket_tooltip_family_is_contiguous_and_three",
+            NekoPocketModelTest::pocketTooltipFamilyIsContiguousAndThree);
         cases.put(
             "pocket_element_reserve_lines_follow_primal_tag_order",
             NekoPocketModelTest::pocketElementReserveLinesFollowPrimalTagOrder);
+        cases.put(
+            "pocket_tooltip_r39a_row_removed_with_reversal_note",
+            NekoPocketModelTest::pocketTooltipR39aRowRemovedWithReversalNote);
+        // ---- ★R100 片 F（架构解耦）四条：common→gui 反向依赖归零（归零门常驻化 + 两座桥注册半边 +
+        // 工厂委托契约）+ tooltip 行列改读 PocketConstants 的等值钉 + 蒸馏分流改走 PocketIntakeOps 的
+        // 等值钉 + 售货机队列与 BGM 标志迁 common 的行为真值表。起点 250 ⇒ 本批 +4 = 254
+        // （分母一律取跑出来的数）。
+        cases.put(
+            "r100_common_has_zero_gui_imports_and_bridges_wired",
+            NekoPocketModelTest::r100CommonHasZeroGuiImportsAndBridgesWired);
+        cases.put(
+            "r100_pocket_constants_single_home_for_tooltip_geometry",
+            NekoPocketModelTest::r100PocketConstantsSingleHomeForTooltipGeometry);
+        cases.put(
+            "r100_distill_driver_classifies_via_common_intake_ops",
+            NekoPocketModelTest::r100DistillDriverClassifiesViaCommonIntakeOps);
+        cases.put(
+            "r100_vending_queue_and_music_flag_live_in_common",
+            NekoPocketModelTest::r100VendingQueueAndMusicFlagLiveInCommon);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -2546,16 +2584,22 @@ public class NekoPocketModelTest {
             "短效通道应受理");
         final PocketChannelState state = PocketChannelManager.INSTANCE.peek(player);
         SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, state.remainingBatches(), "短效通道共 30 批（30 秒）");
-        SimpleAssert.eq(PocketConstants.CHANNEL_TICK_PERIOD, state.ticksUntilDue(), "激活时装填整拍倒计时（不在激活那一拍跑第一批）");
+        // ★★R100 翻案（需求 4：开启瞬间立即执行第一批，due=0 形式）：旧钉「激活时装填整拍倒计时
+        // （不在激活那一拍跑第一批）」随 PocketChannelManager#openChannel 里那条旧裁定一起作废——
+        // 激活口自己把倒计时清零（fireFirstBatchNow），下一次宿主驱动（≤1 tick 后）就是第一批。
+        SimpleAssert.eq(0, state.ticksUntilDue(), "★R100 开启即首批：激活后倒计时为 0（下一次驱动立刻到期）");
         SimpleAssert.eq(0L, PocketChannelState.readDeviceLastBurstAtMs(pocketTag), "短效通道不写瞬时冷却字段（两码事）");
         SimpleAssert.eq(PocketChannelState.Mode.SHORT, state.mode(), "模式已登记");
+        SimpleAssert.eq(PocketConstants.CHANNEL_TICK_PERIOD, state.periodTicks(), "手动道节拍恒 1s（R100 用户裁决：可调档位只作用于持续化道）");
 
-        SimpleAssert.eq(
-            Boolean.FALSE,
+        SimpleAssert.that(
             PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1),
-            "激活的同一 tick 不跑第一批（倒计时刚装填为整拍）");
-        // 第 2…19 次驱动都不到拍（倒计时 19→1），第 20 次才到期
-        for (int tick = 1; tick < PocketConstants.CHANNEL_TICK_PERIOD - 1; tick++) {
+            "★R100 开启瞬间立即执行第一批（激活后的第一次驱动就到期跑批）");
+        SimpleAssert.eq(1, ops.announcements.size(), "第一批每拍一次 post");
+        SimpleAssert
+            .eq(PocketConstants.CHANNEL_TICK_PERIOD, state.ticksUntilDue(), "跑完一批重新装填整拍（finishBatch 不再引用 nowTick）");
+        // 之后每 20 次驱动一批（第 1…19 次驱动都不到拍：倒计时 19→1）
+        for (int tick = 1; tick < PocketConstants.CHANNEL_TICK_PERIOD; tick++) {
             SimpleAssert.eq(
                 Boolean.FALSE,
                 PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1),
@@ -2564,12 +2608,9 @@ public class NekoPocketModelTest {
         ops.fillSources(2, 2);
         SimpleAssert.that(
             PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1),
-            "满 " + PocketConstants.CHANNEL_TICK_PERIOD + " 次驱动跑第一批");
-        SimpleAssert.eq(1, ops.announcements.size(), "短效通道每拍一次 post");
-        SimpleAssert
-            .eq(PocketConstants.CHANNEL_TICK_PERIOD, state.ticksUntilDue(), "跑完一批重新装填整拍（finishBatch 不再引用 nowTick）");
+            "满 " + PocketConstants.CHANNEL_TICK_PERIOD + " 次驱动跑第二批（节拍仍是 1s 一批）");
 
-        int batches = 1;
+        int batches = 2;
         while (batches < PocketConstants.SHORT_CHANNEL_BATCHES) {
             // 每拍重新装满源槽：等价于玩家往背包里补货，用来验证"每秒一次 post"的节拍而非容量
             for (int tick = 1; tick < PocketConstants.CHANNEL_TICK_PERIOD; tick++) {
@@ -2581,7 +2622,8 @@ public class NekoPocketModelTest {
                 batches++;
             }
         }
-        SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, batches, "共跑满 30 批");
+        SimpleAssert
+            .eq(PocketConstants.SHORT_CHANNEL_BATCHES, batches, "共跑满 30 批（立即首批计入预算，SHORT_CHANNEL_BATCHES 语义不动）");
         SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, ops.announcements.size(), "短效通道每一拍各发一次网络通知（每秒一次 post）");
         SimpleAssert.eq(
             Boolean.FALSE,
@@ -2968,11 +3010,9 @@ public class NekoPocketModelTest {
         PocketChannelManager.INSTANCE.reset();
     }
 
-    /** 把短效通道推到第一批真的跑起来（按倒计时逐 tick 驱动）。 */
+    /** 把短效通道推到第一批真的跑起来（★R100 起激活即 due=0 ⇒ 一次驱动就是第一批；旧"逐 tick 驱动到整拍"口径随开启即首批一起翻案）。 */
     private static void driveToBatch(UUID player, PocketCellBindings bindings, StubOps ops) {
-        for (int tick = 0; tick < PocketConstants.CHANNEL_TICK_PERIOD + 1; tick++) {
-            PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1);
-        }
+        PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1);
     }
 
     // ================================================================== R87 批 · 通道方向修复（A 切片）
@@ -8896,6 +8936,22 @@ public class NekoPocketModelTest {
             PocketGhostRequest.drawsGhostMask(true, PocketConstants.GHOST_ATTR_NONE),
             "★正控：drawsGhostMask 不是恒真（上面那条 FALSE 才算读数）");
         // ---- ⑥ ★三组格件都真有"空文本 ⇒ 一条像素都不画"的早退（否则①②③的空串只是把判断推给 drawText）----
+        // ★R100 片 F 翻新：三份逐字同形的 private drawBadge 收拢进共享助手 PocketBadgeDrawer
+        // ⇒ 早退判据改钉单点（助手文件：空文本早退 + 恰一份绘制体），格件侧改钉「确实接了助手」
+        // （L/P 两次调用各就位；旧的逐格 text.isEmpty() 读数随三份同形体一起退役）。
+        final java.util.List<String> drawer = guiPocketSource("PocketBadgeDrawer.java");
+        if (drawer == null) {
+            System.out.println("[NOTE] 读不到 PocketBadgeDrawer.java ⇒「角标空文本即不画」的单源半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.that(
+                countCodeLinesIn(drawer, "text.isEmpty()") >= 1,
+                "★共享角标绘制体必须对空文本早退（读不到 ⇒ 所谓「不绘制」只是传了个空串给 drawText）");
+            SimpleAssert
+                .eq(1, countCodeLinesIn(drawer, "public static void drawBadge("), "★绘制体收拢后恰 1 份（助手内出现第二份 = 去重失败）");
+            SimpleAssert.that(
+                countCodeLinesIn(drawer, "PocketGhostRequest.badgeLeftX()") >= 1,
+                "★角标横向几何读数必须仍走 PocketGhostRequest 单源（助手不得自算第二份几何）");
+        }
         for (String fileName : ghostWidgetFiles()) {
             final java.util.List<String> lines = guiPocketSource(fileName);
             if (lines == null) {
@@ -8903,12 +8959,11 @@ public class NekoPocketModelTest {
                 continue;
             }
             SimpleAssert.that(
-                regionContainsCode(
-                    lines,
-                    firstCodeLineWith(lines, 0, lines.size(), "drawBadge("),
-                    lines.size(),
-                    "text.isEmpty()") || countCodeLinesIn(lines, "text.isEmpty()") >= 1,
-                "★" + fileName + " 的角标绘制体必须对空文本早退（读不到 ⇒ 所谓「不绘制」只是传了个空串给 drawText）");
+                countCodeLinesIn(lines, "PocketBadgeDrawer.drawBadge(") >= 2,
+                "★" + fileName
+                    + " 必须经共享助手画 L/P 两个角标（读到 "
+                    + countCodeLinesIn(lines, "PocketBadgeDrawer.drawBadge(")
+                    + "；自己再留一份绘制体 = 三份同形还魂）");
             SimpleAssert.that(countCodeLinesIn(lines, "memoryBadgeText(") >= 1, "★" + fileName + " 必须消费蓝 L 的单源读数");
             SimpleAssert.that(countCodeLinesIn(lines, "uploadBlockBadgeText(") >= 1, "★" + fileName + " 必须消费绿 P 的单源读数");
             SimpleAssert.that(countCodeLinesIn(lines, "drawsGhostMask(") >= 1, "★" + fileName + " 的遮罩在场判据必须走单源");
@@ -11167,13 +11222,15 @@ public class NekoPocketModelTest {
                 ranBatch,
                 tickEnd,
                 "PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)");
-            final int refuel = firstCodeLineWith(
-                driver,
-                tick,
-                tickEnd,
-                "state.activate(PocketChannelState.Mode.SHORT, 0L, 0L)");
+            final int refuel = firstCodeLineWith(driver, tick, tickEnd, "state.activate(");
             SimpleAssert.that(ranBatch >= 0 && persistIf > ranBatch, "★回满在批边界之内（if (ranBatch) 之后），不是独立状态机");
             SimpleAssert.that(refuel > persistIf, "回满点紧随 CHANNEL_PERSIST 位判定");
+            // ★R100 钉值翻新：回满那一行的实参从三参（恒 1s）换成四参——第四参 = 载体 NBT 频率档位
+            // 经 channelFreqTierTicks 换算的节拍（档位表单源在 PocketConstants；旧三参钉随"可调档位"
+            // 一起作废，语义一行不动、只换节拍来源）。
+            SimpleAssert.that(
+                regionContainsCode(driver, tick, tickEnd, "PocketConstants.channelFreqTierTicks("),
+                "★回满装填的节拍来自频率档位表（channelFreqTierTicks 单源换算），不是全局 1s 常量");
             SimpleAssert.eq(
                 1,
                 countRegionCode(driver, tick, tickEnd, "state.activate("),
@@ -13390,7 +13447,9 @@ public class NekoPocketModelTest {
             targetLabels.add(PocketConfigPanel.targetLabelKey(target));
         }
         SimpleAssert.eq(2, targetLabels.size(), "★两档各有按钮文字键");
-        // ---- ④ 不对称的两个可见面：常驻读数行 + tooltip（★验收 4 点名要两处都在）----
+        // ---- ④ 不对称的两个可见面（★R100 片 D 判据翻新：说明行从「面板常驻 + tooltip」改成「两处 tooltip」）----
+        // 用户 2026-09-28 明令「详细描述改悬浮 Tooltip」⇒ 常驻读数行（R97/R98「验收 4」的面一）退场，
+        // 两处可见面 = 三态钮 tooltip + 任意格件 tooltip；键不删（⑤仍在两份 lang 逐键点名）⇒ 信息面收缩不是删文案。
         final java.util.List<String> conf = sourceLinesOrNull(R96_CONFIG_PANEL_FILE);
         final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
@@ -13398,18 +13457,15 @@ public class NekoPocketModelTest {
             System.out.println("[NOTE] 读不到次级面板源码 ⇒ 「两处可见面」【未验】（★不是通过）");
             return;
         }
-        final int note = methodStart(conf, "private static IWidget magnetNoteLine(NekoPocketPanel ui) {");
-        SimpleAssert.that(
-            note >= 0 && regionContainsCode(conf, note, methodEnd(conf, note), "noteKeyOf(ui.magnetMode())"),
-            "★面一：常驻读数行按当前三态念那句不对称说明");
+        SimpleAssert.eq(0, countCodeLinesIn(conf, "magnetNoteLine"), "★常驻说明行归零（R100 迁 tooltip 的正身：留着它 = 「面板显著简化」没兑现）");
         final int modeButton = methodStart(conf, "private static IWidget magnetModeButton(NekoPocketPanel ui) {");
         SimpleAssert.that(
             regionContainsCode(conf, modeButton, methodEnd(conf, modeButton), "noteKeyOf(ui.magnetMode())"),
-            "★面二：三态按钮的 tooltip 也念那一句（★不是只有一处有说法）");
+            "★面一：三态按钮的 tooltip 按当前三态念那句不对称说明（★tooltipDynamic + tooltipAutoUpdate，动态内容不走装配期一次性）");
         final int cellBuild = methodStart(conf, "private static IWidget magnetCell(NekoPocketPanel ui, int index) {");
         SimpleAssert.that(
             regionContainsCode(conf, cellBuild, methodEnd(conf, cellBuild), "noteKeyOf(ui.magnetMode())"),
-            "★面二的另一半：悬在<b>任何一格</b>上都能看到（72 格不是只有按钮那枚有解释）");
+            "★面二：悬在<b>任何一格</b>上都能看到（72 格不是只有按钮那枚有解释）");
         SimpleAssert.that(
             regionContainsCode(conf, modeButton, methodEnd(conf, modeButton), "ui.requestMagnetModeCycle()"),
             "★三态按钮的唯一出口是发码（★客户端不自己 next()）");
@@ -13538,10 +13594,11 @@ public class NekoPocketModelTest {
                 + PocketConfigPanel.magnetFrameXOf(PocketUpgradeType.MAGNET)
                 + "）");
         SimpleAssert.that(PocketConfigPanel.MAGNET_COUNT_WIDTH > 0, "★计数读数行有宽度可占");
+        // ★R100：说明行迁 tooltip ⇒ 旧「说明行纵向在面板内」换钉「左列末段（计数行）下沿不越底带」
         SimpleAssert.that(
-            PocketConfigPanel.magnetNoteY() + PocketConfigPanel.MAGNET_NOTE_HEIGHT
+            PocketConfigPanel.magnetControlRowY(3) + PocketConfigPanel.MAGNET_BUTTON_HEIGHT
                 <= PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.BOTTOM_STACK,
-            "★控制块说明行纵向在面板内");
+            "★控制列末段纵向在面板内");
         SimpleAssert.that(
             PocketConfigPanel.labelWidthOf(PocketUpgradeType.MAGNET) + 2 + PocketConfigPanel.SWITCH_WIDTH
                 <= PocketConfigPanel.switchRowWidthOf(PocketUpgradeType.MAGNET),
@@ -13564,13 +13621,12 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★★R99 P0 判据①：磁力面的<b>文字</b>账（三态说明行折行 + 两枚挂载框标题余量），两份 lang 各算一遍。
+     * ★★R99 P0 判据①（★R100 片 D 后的口径）：磁力面的<b>文字</b>账，两份 lang 各算一遍。
      * <p>
-     * 这三条串此前<b>不在任何折行账里</b>：{@code config_panel_geometry_within_secondary_caps} 的逐型像素账
-     * 不点名磁力说明行（旧分工注释把它推给 {@code magnet_panel_geometry_closes}，而那条只量盒子不量文字），
-     * M-1 把说明盒从 228 窄到 108 后，英文那句按保守前进量要折三行 —— 没有这条判据，"盒 24 高装三行"
-     * 就是又一个"绿但溢出"（R98 的现成活口，取证 {@code 02-ui-style-layout.md} §8-5）。标题那条同理：
-     * 磁力框标题英文与 108px 的盒<b>零余量</b>，任何加宽/换字体就顶穿，先把"零余量"钉成账。
+     * ★三态说明行自 R100 起<b>迁出面板常驻</b>（进三态钮与格件的 tooltip，键不删只改用用途）⇒ 折行盒判据
+     * 失去对象，换成两条仍在的账：① 三条说明键在两份 lang 里<b>仍非空</b>（迁 tooltip 不是删文案——
+     * 键成孤儿会在玩家可见面上静默消失）；② 两枚挂载框标题在 0.8 档下一行放得下（R99 立账时磁力那枚
+     * 与 108px 的盒零余量，R100 框宽抬到「盘面 + 两侧各 4px」后有余量，把账继续钉着）。
      */
     private static void magnetPanelTextFitsItsBoxes() {
         final java.util.List<String> zh = sourceLinesOrNull(R98_LANG_ZH);
@@ -13579,26 +13635,15 @@ public class NekoPocketModelTest {
             System.out.println("[NOTE] 读不到两份 lang ⇒ 磁力面文字账【未验】（★不是通过）");
             return;
         }
-        final int noteBox = PocketConfigPanel.MAGNET_CONTROL_WIDTH - 2;
         for (final java.util.List<String> lang : Arrays.asList(zh, en)) {
-            // ---- 三态不对称说明行：按 0.6 档折进 108px 的盒，行数 × 10 不得超过 30px 的盒高 ----
+            // ---- 三态不对称说明（已迁 tooltip）：两份 lang 仍非空（孤儿键 = 玩家可见面静默消失）----
             for (final PocketMagnetFilter.Mode mode : PocketMagnetFilter.Mode.values()) {
-                final int w = residentLogicalWidth(formatLang(lang, PocketConfigPanel.noteKeyOf(mode)));
-                final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / noteBox);
+                final String note = formatLang(lang, PocketConfigPanel.noteKeyOf(mode));
                 SimpleAssert.that(
-                    lines * 10 <= PocketConfigPanel.MAGNET_NOTE_HEIGHT,
-                    "★磁力说明行折行后放得下（" + PocketConfigPanel.noteKeyOf(mode)
-                        + " 逻辑宽 "
-                        + w
-                        + " 盒宽 "
-                        + noteBox
-                        + " ⇒ "
-                        + lines
-                        + " 行 × 10 ≤ "
-                        + PocketConfigPanel.MAGNET_NOTE_HEIGHT
-                        + "）");
+                    note != null && !note.isEmpty(),
+                    "★磁力三态说明键仍有非空文案（" + PocketConfigPanel.noteKeyOf(mode) + " 迁 tooltip 不是删文案）");
             }
-            // ---- 两枚挂载框标题：0.6 档下一行放得下（★磁力那枚今天就是零余量，这里把账立起来）----
+            // ---- 两枚挂载框标题：0.8 档下一行放得下（★磁力那枚 R99 曾零余量，这里把账立着）----
             assertSingleReadoutLine(
                 lang,
                 PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGNET),
@@ -13613,14 +13658,16 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★★R99 P0 判据②：逐面<b>内区空白率</b>上限（R99-D-2 的直接教训：磁力面 51.4% 的成片空洞在
-     * "测试全绿"下交付了实机）。内区 = 面板减 6px 边距；覆盖 = 装配侧<b>同一套常量</b>摆出的控件盒矩形并集
-     * （与装配式逐字同源 ⇒ 改布局不用改本判据的式子，只看它红不红）。文字件按整个矩形盒计入（与
-     * 取证 {@code 02-ui-style-layout.md} §4 同一口径，真实观感只会更空）。
+     * ★★R99 P0 判据②（★R100 片 D 判据同步重算）：逐面<b>内区空白率</b>上限（R99-D-2 的直接教训：磁力面
+     * 51.4% 的成片空洞在"测试全绿"下交付了实机）。内区 = 面板减边距；覆盖 = 装配侧<b>同一套常量</b>摆出的
+     * 控件盒矩形并集（与装配式逐字同源 ⇒ 改布局不用改本判据的式子，只看它红不红）。文字件按整个矩形盒计入
+     * （与取证 {@code 02-ui-style-layout.md} §4 同一口径，真实观感只会更空）。
      * <p>
-     * 阈值分两档，都是本轮定案不是拍脑袋：紧凑四面 ≤ <b>15%</b>（B-0 并带后的实测 11.0–11.8%）；
-     * 磁力面 ≤ <b>30%</b> —— M-1（控制块单列化、不转置盘）的结构地板是 ≈28.4%（左列说明行之下到
-     * 底带之间没有可放的内容），真正把它吃掉要 M-2 转置 72 格盘（改玩家读法，用户 2026-09-28 明确不采）。
+     * 阈值两档：紧凑四面 ≤ <b>15%</b>（R100 重排后实测 ~5.6–13.1%）；磁力面 ≤ <b>35%</b> —— ★R100 起的
+     * 结构地板 ≈34.1%（说明行迁 tooltip 是用户裁定的信息面收缩 ⇒ 左列只剩 4×18px 控件对 236px 列高，
+     * 面积口径的地板随之上浮；R99 的 30% 写的是「说明行还在面板上」那一代的 28.4% 地板）。★面积不是
+     * 用户判词的全部：成片空带另有一条<b>连续空白带上限</b>钉着（左列任意连续空白 ≤ 等距步距，见方法尾），
+     * 「顶上一撮 + 底部空带」那种形状在面积达标时也会红。
      * ★阳性对照：磁力面的空白率必须<b>严格大于</b>最紧的魔法使面 ⇒ 读数恒 0 的空转检法在这里当场红。
      */
     private static void configPanelBlankRateWithinCaps() {
@@ -13690,6 +13737,35 @@ public class NekoPocketModelTest {
                             innerW,
                             PocketConfigPanel.READOUT_HEIGHT);
                         break;
+                    // ★R100：频率档位行（本型第二行专属内容）——标签盒 + 两枚小按钮各按装配式覆盖。
+                    case FREQUENCY:
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.MARGIN,
+                            PocketConfigPanel.FREQ_ROW_Y,
+                            PocketConfigPanel.FREQ_LABEL_WIDTH,
+                            PocketConfigPanel.ROW_HEIGHT);
+                        final int freqBtnX = PocketConfigPanel.MARGIN + PocketConfigPanel.FREQ_LABEL_WIDTH
+                            + PocketConfigPanel.FREQ_BUTTON_GAP;
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            freqBtnX,
+                            PocketConfigPanel.FREQ_ROW_Y,
+                            PocketConfigPanel.FREQ_BUTTON_WIDTH,
+                            PocketConfigPanel.ROW_HEIGHT);
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            freqBtnX + PocketConfigPanel.FREQ_BUTTON_WIDTH + PocketConfigPanel.FREQ_BUTTON_GAP,
+                            PocketConfigPanel.FREQ_ROW_Y,
+                            PocketConfigPanel.FREQ_BUTTON_WIDTH,
+                            PocketConfigPanel.ROW_HEIGHT);
+                        break;
                     case MOUNT_MAGE:
                         cover(
                             covered,
@@ -13709,25 +13785,17 @@ public class NekoPocketModelTest {
                             PocketConfigPanel.MAGNET_FRAME_Y,
                             PocketConfigPanel.MAGNET_FRAME_WIDTH,
                             PocketConfigPanel.MAGNET_FRAME_HEIGHT);
+                        // ★R100：左列四段等距铺满框高（行位单源 = magnetControlRowY；说明行已迁 tooltip）
                         for (int row = 0; row < 4; row++) {
                             cover(
                                 covered,
                                 innerW,
                                 innerH,
                                 PocketConfigPanel.MAGNET_CONTROL_X,
-                                PocketConfigPanel.MAGNET_CONTROL_Y
-                                    + row * (PocketConfigPanel.MAGNET_BUTTON_HEIGHT + PocketConfigPanel.MAGNET_ROW_GAP),
+                                PocketConfigPanel.magnetControlRowY(row),
                                 PocketConfigPanel.MAGNET_BUTTON_WIDTH,
                                 PocketConfigPanel.MAGNET_BUTTON_HEIGHT);
                         }
-                        cover(
-                            covered,
-                            innerW,
-                            innerH,
-                            PocketConfigPanel.MAGNET_CONTROL_X,
-                            PocketConfigPanel.magnetNoteY(),
-                            PocketConfigPanel.MAGNET_CONTROL_WIDTH - 2,
-                            PocketConfigPanel.MAGNET_NOTE_HEIGHT);
                         break;
                     default:
                         break;
@@ -13743,10 +13811,10 @@ public class NekoPocketModelTest {
             }
             final double rate = 1.0 - (double) coveredCount / ((double) innerW * innerH);
             SimpleAssert.that(rate > 0.0 && rate < 1.0, "★" + type + " 空白率读数在 (0,1) 内（读到 " + rate + " = 检法空转或几何爆炸）");
-            // ★阈值两档（见方法 javadoc）：紧凑四面 ≤15%，磁力 ≤30%（M-1 结构地板）。
+            // ★阈值两档（见方法 javadoc）：紧凑四面 ≤15%，磁力 ≤35%（★R100 重算的结构地板 34.4%）。
             final boolean isMagnetFace = PocketConfigPanel.sectionsOf(type)
                 .get(1) == PocketConfigPanel.Section.MOUNT_MAGNET;
-            final double cap = isMagnetFace ? 0.30 : 0.15;
+            final double cap = isMagnetFace ? 0.35 : 0.15;
             SimpleAssert.that(
                 rate <= cap,
                 "★★" + type
@@ -13765,6 +13833,35 @@ public class NekoPocketModelTest {
             if (PocketConfigPanel.sectionsOf(type)
                 .get(1) == PocketConfigPanel.Section.MOUNT_MAGNET) {
                 magnetRate = rate;
+                // ---- ★R100 新判据：左列「连续空白带」上限（面积口径之外的成片空洞拦截）----
+                // 左列条带 = x ∈ [MARGIN, MARGIN+CONTROL_WIDTH)，y ∈ [CONTENT_TOP, 格盘框底)；
+                // 逐行问「这一行条带里有没有任何覆盖」，连续全空行数的最大值 ≤ 等距步距（72）——
+                // 「四段紧凑在顶 + 底部 ~150px 空带」那种面积可能达标、观感必炸的形状在这里红。
+                final int colLeft = PocketConfigPanel.MAGNET_CONTROL_X - PocketConfigPanel.MARGIN;
+                final int colRight = colLeft + PocketConfigPanel.MAGNET_CONTROL_WIDTH;
+                final int yTop = PocketConfigPanel.CONTENT_TOP - PocketConfigPanel.MARGIN;
+                final int yBottom = PocketConfigPanel.MAGNET_FRAME_Y + PocketConfigPanel.MAGNET_FRAME_HEIGHT
+                    - PocketConfigPanel.MARGIN;
+                int maxRun = 0;
+                int run = 0;
+                for (int gy = yTop; gy < yBottom; gy++) {
+                    boolean rowBlank = true;
+                    for (int gx = colLeft; gx < colRight && rowBlank; gx++) {
+                        rowBlank = !covered[gy][gx];
+                    }
+                    if (rowBlank) {
+                        run++;
+                        maxRun = Math.max(maxRun, run);
+                    } else {
+                        run = 0;
+                    }
+                }
+                SimpleAssert.that(
+                    maxRun <= PocketConfigPanel.MAGNET_CONTROL_STRIDE,
+                    "★磁力左列连续空白带 " + maxRun
+                        + "px ≤ 等距步距 "
+                        + PocketConfigPanel.MAGNET_CONTROL_STRIDE
+                        + "px（超过 = 「四段挤在一处 + 成片空带」回潮，R99-D-2 那种空洞的纵向正身）");
             }
             if (PocketConfigPanel.sectionsOf(type)
                 .get(1) == PocketConfigPanel.Section.MOUNT_MAGE) {
@@ -13794,6 +13891,145 @@ public class NekoPocketModelTest {
                 }
             }
         }
+    }
+
+    /**
+     * ★★R100 片 D（UI 表现整改）的钉值与正身：文字 0.8 档 / 边距 ≥8 不压装饰框线 / 小钮 9-slice 不变形
+     * 下界 / 磁力空带收编（四段等距 + 首末对齐）/ 魔法使框右零空白 / 说明行迁 tooltip（键不删、面板常驻行归零）/
+     * 三 switch 收敛后键真相单源在 Section。五型新尺寸在这里<b>逐字钉值</b>（改排版必须连这里一起翻，
+     * 先例 = R98/R99 的尺寸链就地翻新）。
+     */
+    private static void configPanelTextScaleAndLayoutRework() {
+        // ---- ① 文字档：面板局部 0.8（对齐主面板 STATUS_TEXT_SCALE 先例），本件不再消费主面板那把 0.6 ----
+        SimpleAssert.eq(0.8f, PocketConfigPanel.TEXT_SCALE, "★配置面板文字档 = 0.8（0.6 档 ≈5.4px 被用户判过小）");
+        final java.util.List<String> conf = sourceLinesOrNull(R96_CONFIG_PANEL_FILE);
+        if (conf == null) {
+            System.out.println("[NOTE] 读不到 PocketConfigPanel.java ⇒ 源码面钉值【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(
+                0,
+                countCodeLinesIn(conf, ".scale(PocketGhostRequest.RESIDENT_TEXT_SCALE)"),
+                "★本面板零处消费主面板 0.6 档（换档必须全链换，不许一面里两把尺）");
+            SimpleAssert.eq(0, countCodeLinesIn(conf, "magnetNoteLine"), "★三态说明行的面板常驻文本件归零（R100 迁 tooltip）");
+            SimpleAssert.that(
+                countCodeLinesIn(conf, "noteKeyOf(ui.magnetMode())") >= 2,
+                "★说明键仍有 ≥2 处 tooltip 消费（三态钮 + 格件；迁走不是删文案）");
+        }
+        SimpleAssert.that(
+            PocketConfigPanel.langKeys()
+                .contains("gtit.pocket.magnet.note.none"),
+            "★说明键仍在键清单（键不删只改用途 ⇒ lang 键数 425 一字不动）");
+        // ---- ② 排版下界：边距不压 ~7px 装饰框线；行缝可辨 ----
+        SimpleAssert.that(PocketConfigPanel.MARGIN >= 8, "★边距 ≥ 8（装饰层可见框线 ≈7px，旧值 6 压线 = 用户判「过于贴边」的正身）");
+        SimpleAssert.that(
+            PocketConfigPanel.READOUT_GAP >= 2 && PocketConfigPanel.MODE_ROW_GAP >= 2,
+            "★行缝 ≥ 2（0.8 档 8px 字高下 1~2px 的缝读成贴在一起）");
+        // ---- ③ 小钮 9-slice 下界：凡用 BUTTON（88×18，N=4）的钮宽 ≥ 46（中带 ≥38 = 源 80px 的 45%）----
+        for (final int w : new int[] { PocketConfigPanel.SWITCH_WIDTH, PocketConfigPanel.CLOSE_WIDTH,
+            PocketConfigPanel.MAGNET_BUTTON_WIDTH, PocketConfigPanel.MODE_BUTTON_WIDTH,
+            PocketConfigPanel.FREQ_BUTTON_WIDTH }) {
+            SimpleAssert.that(w >= 46, "★按钮宽 " + w + " ≥ 46（88×18 9-slice 压到 30 时中带只剩源的 27% = 用户点名的「小钮变形」）");
+        }
+        // ---- ④ 磁力空带收编：首段贴内容段顶、末段下沿距框底 ≤2px（与 static 块同账双钉）----
+        SimpleAssert
+            .eq(PocketConfigPanel.CONTENT_TOP, PocketConfigPanel.magnetControlRowY(0), "★左列首段贴内容段顶（等距分布的锚点不许漂）");
+        SimpleAssert.that(
+            PocketConfigPanel.MAGNET_FRAME_Y + PocketConfigPanel.MAGNET_FRAME_HEIGHT
+                - (PocketConfigPanel.magnetControlRowY(3) + PocketConfigPanel.MAGNET_BUTTON_HEIGHT) <= 2,
+            "★左列末段下沿距格盘框底 ≤ 2px（远了就是「空带回潮」）");
+        // ---- ⑤ 魔法使框右零空白：框宽 = 本型行带宽（派生式的读数复钉）----
+        SimpleAssert.eq(
+            PocketConfigPanel.switchRowWidthOf(PocketUpgradeType.MAGE),
+            PocketConfigPanel.MAGE_FRAME_WIDTH,
+            "★魔法使框宽 = 行带宽（R98/R99 的「框窄于行带 ⇒ 框右空带」作废）");
+        // ---- ⑥ 五型新尺寸逐字钉值（★改排版必须同批翻这五行，先例 = R98/R99 尺寸链就地翻新）----
+        SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CAPACITY), "★容量面宽 266");
+        SimpleAssert.eq(85, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY), "★容量面高 85");
+        SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.STACK), "★堆叠面宽 266");
+        SimpleAssert.eq(81, PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK), "★堆叠面高 81");
+        SimpleAssert.eq(318, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CHANNEL_PERSIST), "★通道持续化面宽 318");
+        SimpleAssert.eq(102, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CHANNEL_PERSIST), "★通道持续化面高 102");
+        SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET), "★磁力面宽 266");
+        SimpleAssert.eq(299, PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET), "★磁力面高 299");
+        SimpleAssert.eq(248, PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGE), "★魔法使面宽 248");
+        SimpleAssert.eq(164, PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGE), "★魔法使面高 164");
+        // ---- ⑦ 三 switch 收敛：读数键的真相单源在 Section（外部 *_KEY 常量从枚举派生，不是第二份字面量）----
+        SimpleAssert.eq(
+            PocketConfigPanel.Section.READOUT_CAPACITY.readoutKey,
+            PocketConfigPanel.READOUT_CAPACITY_KEY,
+            "★容量读数键与 Section 元数据同源");
+        SimpleAssert.eq(
+            PocketConfigPanel.Section.READOUT_STACK.readoutKey,
+            PocketConfigPanel.READOUT_STACK_KEY,
+            "★堆叠读数键与 Section 元数据同源");
+        SimpleAssert.eq(
+            PocketConfigPanel.Section.READOUT_PERSIST.readoutKey,
+            PocketConfigPanel.READOUT_PERSIST_KEY,
+            "★常开读数键与 Section 元数据同源");
+        SimpleAssert.that(
+            PocketConfigPanel.Section.MOUNT_MAGNET.readoutKey == null
+                && PocketConfigPanel.Section.MOUNT_MAGE.readoutKey == null
+                && PocketConfigPanel.Section.FREQUENCY.readoutKey == null,
+            "★挂载段与频率段不带读数键（收敛后 null 语义与旧 switch 的 default 支一致）");
+        SimpleAssert.eq(
+            PocketConfigPanel.MAGNET_FRAME_WIDTH - 2 * PocketConfigPanel.MAGNET_GRID_INSET,
+            PocketConfigPanel.MAGNET_GRID_WIDTH,
+            "★磁力盘面在框内居中（框宽抬到装标题后，盘面 ≠ 框宽 − 2 那条旧式）");
+        // ---- ⑧ 按钮串像素账（0.8 档）：每一枚用 BUTTON 底的钮，其最坏 overlay 串一行放得下 ----
+        final java.util.List<String> zh2 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
+        final java.util.List<String> en2 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
+        if (zh2 == null || en2 == null) {
+            System.out.println("[NOTE] 读不到两份 lang ⇒ 按钮串像素账【未验】（★不是通过）");
+            return;
+        }
+        for (final java.util.List<String> lang : new java.util.List[] { zh2, en2 }) {
+            // 开关钮：三态里最长的 "Not installed"
+            int worstSwitch = 0;
+            for (final PocketConfigPanel.SwitchState state : PocketConfigPanel.SwitchState.values()) {
+                worstSwitch = Math
+                    .max(worstSwitch, residentLogicalWidth(formatLang(lang, PocketConfigPanel.switchLabelKey(state))));
+            }
+            assertButtonLineFits(worstSwitch, PocketConfigPanel.SWITCH_WIDTH, "开关钮");
+            // 魔法使模式小钮 / 频率两枚小钮 / 关闭钮
+            assertButtonLineFits(
+                residentLogicalWidth(formatLang(lang, "gtit.pocket.config.switch.turn_off")),
+                PocketConfigPanel.MODE_BUTTON_WIDTH,
+                "魔法使模式小钮");
+            for (final String key : new String[] { PocketConfigPanel.READOUT_FREQ_FASTER_KEY,
+                PocketConfigPanel.READOUT_FREQ_SLOWER_KEY }) {
+                assertButtonLineFits(
+                    residentLogicalWidth(formatLang(lang, key)),
+                    PocketConfigPanel.FREQ_BUTTON_WIDTH,
+                    "频率小钮");
+            }
+            assertButtonLineFits(
+                residentLogicalWidth(formatLang(lang, "gtit.pocket.config.close")),
+                PocketConfigPanel.CLOSE_WIDTH,
+                "关闭钮");
+            // 磁力三枚钮：三态标签 / 两档目标 / 清空
+            int worstMode = 0;
+            for (final PocketMagnetFilter.Mode mode : PocketMagnetFilter.Mode.values()) {
+                worstMode = Math
+                    .max(worstMode, residentLogicalWidth(formatLang(lang, PocketConfigPanel.modeLabelKey(mode))));
+            }
+            assertButtonLineFits(worstMode, PocketConfigPanel.MAGNET_BUTTON_WIDTH, "磁力三态钮");
+            int worstTarget = 0;
+            for (final PocketMagnetFilter.Target target : PocketMagnetFilter.Target.values()) {
+                worstTarget = Math
+                    .max(worstTarget, residentLogicalWidth(formatLang(lang, PocketConfigPanel.targetLabelKey(target))));
+            }
+            assertButtonLineFits(worstTarget, PocketConfigPanel.MAGNET_BUTTON_WIDTH, "磁力目标钮");
+            assertButtonLineFits(
+                residentLogicalWidth(formatLang(lang, "gtit.pocket.magnet.clear")),
+                PocketConfigPanel.MAGNET_BUTTON_WIDTH,
+                "磁力清空钮");
+        }
+    }
+
+    /** 按钮串像素账：最坏 overlay 串按 0.8 档折进<b>整钮宽</b>必须 ≤ 1 行（两份 lang 各调一遍；与既有单行读数账同一前进量模型）。 */
+    private static void assertButtonLineFits(int worst, int buttonWidth, String what) {
+        final int lines = (int) Math.ceil(worst * PocketConfigPanel.TEXT_SCALE / buttonWidth);
+        SimpleAssert.that(lines <= 1, "★" + what + "最坏串一行放得下（逻辑宽 " + worst + " 钮宽 " + buttonWidth + "）");
     }
 
     /**
@@ -17309,10 +17545,13 @@ public class NekoPocketModelTest {
             SimpleAssert.eq(1, countCodeLinesIn(exit, "entityDropItem(stack, 0)"), "★背包满则掉脚下恰一处（= 需求那句「背包满要有明确出口」的落点）");
         }
         // 旧门 R96-S4 门 D 的两个数在 Java 侧再钉一遍：本片的上移不是新增
+        // ★R100 钉值翻新：3 → 4 —— 频率片在 channel 包新增了 headless 会话的 depositItem 兜底腿
+        // （PocketChannelSessions#HeadlessSession，与 Panel#moveToPlayer 同一条"一次调用、按余量记账"的
+        // 纪律），不是长出第五条整堆外运；entityDropItem 仍恰 2（headless 掉落口为零）。
         SimpleAssert.eq(
-            3,
+            4,
             countPocketSourceCodeLines("addItemStackToInventory"),
-            "★口袋与 GUI 两目录内 addItemStackToInventory 仍恰 3（读到 4 = 长出第四条出包腿，NEI 与 byte 截断那两条坑多一处入口）");
+            "★口袋与 GUI 两目录内 addItemStackToInventory 仍恰 4（读到 5 = 长出第五条出包腿，NEI 与 byte 截断那两条坑多一处入口）");
         SimpleAssert.eq(2, countPocketSourceCodeLines("entityDropItem"), "★同两目录内 entityDropItem 仍恰 2");
     }
 
@@ -17938,13 +18177,20 @@ public class NekoPocketModelTest {
                 "★快照的绑定表就是会话那一份的<b>对象身份</b>（否则下一拍被 driver 的实例守卫停道 = R85 D1 那一族）");
             SimpleAssert.that(armed.sessionFilters() != null, "ghost 配置成对挂上（缺它 ⇒ pullMode 无来源 ⇒ 补满相静默消失）");
             int batches = 0;
-            for (int tick = 0; tick < 1000; tick++) {
+            // ★R100 钉值翻新：驱动上界 1000 → 30 批 × 默认档节拍（5s = 100 tick）+ 余量。旧 1000 是
+            // 「持续化道 = 手动道 1s 节拍」时代的账；频率片起持续化道按载体档位走（本载体无键 ⇒ 默认
+            // 5s 档），30 批要 29×100+1 拍 ⇒ 旧上界只能跑 10 批（改前实测正是这个数）。
+            final int driveBudget = PocketConstants.SHORT_CHANNEL_BATCHES
+                * PocketConstants.channelFreqTierTicks(PocketConstants.CHANNEL_FREQ_TIER_DEFAULT)
+                + PocketConstants.CHANNEL_TICK_PERIOD;
+            for (int tick = 0; tick < driveBudget; tick++) {
                 if (PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1)) {
                     batches++;
                 }
                 ops.fillSources(2, 2);
             }
-            SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, batches, "★被装起来的通道真的把 30 批穿完了（不是只建条目不跑货）");
+            SimpleAssert
+                .eq(PocketConstants.SHORT_CHANNEL_BATCHES, batches, "★被装起来的通道真的把 30 批穿完了（不是只建条目不跑货；按默认 5s 档的节拍）");
             SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, ops.announcements.size(), "每批各一次网络通知");
             // ================= 半边③：用尽即装回 + 关开关即断 =================
             SimpleAssert.eq(null, PocketChannelManager.INSTANCE.peek(player), "30 批用尽即自然回收（★不留「已停但占内存」的条目）");
@@ -18248,6 +18494,348 @@ public class NekoPocketModelTest {
             1,
             countRegionCode(wrongShape, 0, wrongShape.size(), "isActive("),
             "★阳性对照②：把边沿判据写成现读谓词 ⇒ isActive 读数从 0 变 1（证明上面那条 0 不是空转）");
+    }
+
+    // ================================================================== ★R100（频率片）五条新判据
+    //
+    // 四件事的离线验收面：① 档位编解码与无键默认 5s（含写腿的读写不建档）；② 开启瞬间立即第一批
+    // （短效 + 持续化两条激活口）；③ 保守跳过（四要素齐才跳，跳的那拍零写零同步零批消耗）；
+    // ④ 会话自动复原的三前置（空绑定零写入）+ 档位节拍进状态机（含 retime 的"只钳不放"）。
+
+    /**
+     * ★R100-①：频率档位的<b>单源账</b>——档位表形状 / 无键默认 5s（旧存档零迁移）/ 脏档钳回 /
+     * 动作码编解码 / 写腿 {@code PocketConfigPanel#commitFreqTier} 的三种零写入与"写默认档=摘键"。
+     */
+    private static void channelFreqTierCodecDefaultAndCommit() {
+        // ---- 档位表本体：11 档、单调升、默认档恰是 5s 那档（用户点名的表，一个数都不许手抄在别处）----
+        SimpleAssert.eq(11, PocketConstants.CHANNEL_FREQ_TIERS_SECONDS.length, "档位表恰 11 档（用户点名表）");
+        for (int tier = 1; tier < PocketConstants.CHANNEL_FREQ_TIERS_SECONDS.length; tier++) {
+            SimpleAssert.that(
+                PocketConstants.channelFreqTierSeconds(tier) > PocketConstants.channelFreqTierSeconds(tier - 1),
+                "档位单调升（第 " + tier + " 档必须比前一档慢）");
+        }
+        SimpleAssert
+            .eq(5, PocketConstants.channelFreqTierSeconds(PocketConstants.CHANNEL_FREQ_TIER_DEFAULT), "默认档 = 5 秒/批");
+        SimpleAssert.eq(
+            100,
+            PocketConstants.channelFreqTierTicks(PocketConstants.CHANNEL_FREQ_TIER_DEFAULT),
+            "5s × 20 tick = 100（秒→tick 唯一换算点）");
+        // ---- 无键默认（旧存档零迁移）+ 读路径不建档 + 脏档钳回 ----
+        final NBTTagCompound bareRoot = new NBTTagCompound();
+        SimpleAssert.eq(
+            PocketConstants.CHANNEL_FREQ_TIER_DEFAULT,
+            PocketConstants.readChannelFreqTier(bareRoot),
+            "无键 = 默认 5s 档（旧存档零迁移）");
+        SimpleAssert.eq(false, bareRoot.hasKey(PocketConstants.CHANNEL_FREQ_TIER_KEY), "★读路径不建档（R53c）");
+        final NBTTagCompound dirty = new NBTTagCompound();
+        dirty.setInteger(PocketConstants.CHANNEL_FREQ_TIER_KEY, 99);
+        SimpleAssert.eq(
+            PocketConstants.CHANNEL_FREQ_TIER_DEFAULT,
+            PocketConstants.readChannelFreqTier(dirty),
+            "脏档（越界档位）钳回默认，不抛、不写");
+        final NBTTagCompound negative = new NBTTagCompound();
+        negative.setInteger(PocketConstants.CHANNEL_FREQ_TIER_KEY, -1);
+        SimpleAssert
+            .eq(PocketConstants.CHANNEL_FREQ_TIER_DEFAULT, PocketConstants.readChannelFreqTier(negative), "负档同样钳回默认");
+        // ---- 动作码编解码（越界一律 -1，双端同一条式子）----
+        SimpleAssert.eq(3, PocketConfigPanel.encodeFreqTier(3), "合法档原样编码（arg = 目标档下标）");
+        SimpleAssert.eq(-1, PocketConfigPanel.encodeFreqTier(-1), "负档 ⇒ -1（调用方必须丢包）");
+        SimpleAssert
+            .eq(-1, PocketConfigPanel.encodeFreqTier(PocketConstants.CHANNEL_FREQ_TIERS_SECONDS.length), "越上界 ⇒ -1");
+        SimpleAssert.eq(7, PocketConfigPanel.freqTierOfArg(7), "解码与编码同一式子");
+        SimpleAssert.eq(-1, PocketConfigPanel.freqTierOfArg(1024), "arg 1024（伪造包形状）⇒ -1 丢弃");
+        // ---- 写腿：三种零写入 + 写默认档 = 摘键 ----
+        final ItemStack stranger = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        stranger.setTagCompound(new NBTTagCompound());
+        SimpleAssert.eq(false, PocketConfigPanel.commitFreqTier(stranger, 6), "不在档上（没装持续化插件）⇒ 不写（假读数的种子）");
+        SimpleAssert.eq(
+            false,
+            stranger.getTagCompound()
+                .hasKey(PocketConstants.CHANNEL_FREQ_TIER_KEY),
+            "不在档上 ⇒ 键都没建（不建档纪律）");
+        SimpleAssert.eq(false, PocketConfigPanel.commitFreqTier(null, 6), "无载体 ⇒ 不写（建档责任在调用方）");
+        final ItemStack carrier = s5PersistCarrier();
+        SimpleAssert.eq(
+            false,
+            PocketConfigPanel.commitFreqTier(carrier, PocketConstants.CHANNEL_FREQ_TIER_DEFAULT),
+            "目标 = 现值（默认档）⇒ 同值零写入（连点不刷整栈同步）");
+        SimpleAssert.eq(
+            false,
+            carrier.getTagCompound()
+                .hasKey(PocketConstants.CHANNEL_FREQ_TIER_KEY),
+            "同值 ⇒ 键都没建");
+        SimpleAssert.that(PocketConfigPanel.commitFreqTier(carrier, 6), "真改档（5s → 600s 档）写入成立");
+        SimpleAssert.eq(6, PocketConstants.readChannelFreqTier(carrier.getTagCompound()), "写后读回同一档");
+        SimpleAssert.eq(false, PocketConfigPanel.commitFreqTier(carrier, 6), "重复同一目标 ⇒ 第二次零写入（目标值语义，不是翻一下）");
+        SimpleAssert
+            .that(PocketConfigPanel.commitFreqTier(carrier, PocketConstants.CHANNEL_FREQ_TIER_DEFAULT), "改回默认档成立");
+        SimpleAssert.eq(
+            false,
+            carrier.getTagCompound()
+                .hasKey(PocketConstants.CHANNEL_FREQ_TIER_KEY),
+            "★写默认档 = removeTag（缺键同义 ⇒ 老档天然干净，setOff 掩码归零支同口径）");
+    }
+
+    /**
+     * ★R100-②：开启瞬间立即执行第一批——<b>短效与持续化两条激活口都 due=0</b>（需求 4 的翻案正身；
+     * 手动道的完整节拍账在 {@code short_channel_uses_relative_countdown}，本条只钉"开启那一拍"）。
+     */
+    private static void channelFirstBatchFiresOnOpen() {
+        PocketChannelManager.INSTANCE.reset();
+        PocketSessions.forget(UUID.fromString(CELL_A));
+        try {
+            // ---- 手动付费短效道：激活后第一次驱动就是第一批 ----
+            final UUID player = UUID.fromString(CELL_A);
+            final StubOps ops = new StubOps();
+            ops.fillSources(2, 2);
+            final PocketCellBindings bindings = bindingsOf(CELL_A);
+            SimpleAssert.that(
+                PocketChannelManager.INSTANCE
+                    .openChannel(player, PocketChannelState.Mode.SHORT, bindings, new NBTTagCompound(), ops, 1),
+                "前置：手动短效道受理");
+            final PocketChannelState manual = PocketChannelManager.INSTANCE.peek(player);
+            SimpleAssert.eq(0, manual.ticksUntilDue(), "★手动道激活即 due=0（fireFirstBatchNow）");
+            SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, manual.remainingBatches(), "立即首批不动批预算（首批照常计入 30 批）");
+            SimpleAssert
+                .that(PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1), "★开启后的第一次驱动立即跑第一批");
+            SimpleAssert.eq(1, ops.announcements.size(), "首批一次网络通知");
+            PocketChannelManager.INSTANCE.reset();
+            // ---- 持续化激活口（ensurePersistentShortChannel，经生产宿主腿 onItemTick 到达）----
+            PocketSessions.forget(player);
+            final World world = mageServerWorldShell();
+            final EntityPlayer holder = magePlayerShell(player, world);
+            final ItemStack carrier = s5PersistCarrier();
+            PocketSessions.register(new S5SessionShell(player, carrier, bindings, new PocketFilterConfig()));
+            PocketChannelDriver.onItemTick(carrier, world, holder, 12, false);
+            final PocketChannelState armed = PocketChannelManager.INSTANCE.peek(player);
+            SimpleAssert.that(armed != null && !armed.idle(), "前置：一拍宿主腿把持续化道装起来");
+            SimpleAssert.eq(0, armed.ticksUntilDue(), "★★持续化道同样开启即 due=0（两条激活口一个口径）");
+            SimpleAssert.eq(
+                PocketConstants.channelFreqTierTicks(PocketConstants.CHANNEL_FREQ_TIER_DEFAULT),
+                armed.periodTicks(),
+                "持续化道节拍 = 载体档位（无键 ⇒ 默认 5s = 100 tick，不是手动道的 1s）");
+            ops.fillSources(2, 2);
+            SimpleAssert.that(
+                PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1),
+                "★持续化道开启后的第一次驱动立即跑第一批（免开背包的第一批货不用等一整拍）");
+        } finally {
+            PocketChannelManager.INSTANCE.reset();
+            PocketSessions.forget(UUID.fromString(CELL_A));
+        }
+    }
+
+    /**
+     * ★R100-③：保守跳过——四要素齐（物品来源空 + 无流体 + 无源质 + 无补满相）才跳，跳的那一拍
+     * <b>零方法体、零 NBT、零同步、零批消耗、通道不断开</b>；补满相在场就<b>不跳</b>（保守性）。
+     */
+    private static void channelConservativeSkipZeroWrite() {
+        PocketChannelManager.INSTANCE.reset();
+        try {
+            final UUID player = UUID.fromString(CELL_A);
+            final StubOps ops = new StubOps();
+            // ★刻意不 fillSources：口袋侧一件可传的货都没有（快照为空）
+            final PocketCellBindings bindings = bindingsOf(CELL_A);
+            SimpleAssert.that(
+                PocketChannelManager.INSTANCE
+                    .openChannel(player, PocketChannelState.Mode.SHORT, bindings, new NBTTagCompound(), ops, 1),
+                "前置：纯推送道（pullMode=false ⇒ 无补满相）受理");
+            final PocketChannelState state = PocketChannelManager.INSTANCE.peek(player);
+            // 第一拍（due=0）：四要素齐 ⇒ 跳过
+            SimpleAssert.eq(
+                Boolean.FALSE,
+                PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1),
+                "★空口袋 + 无补满相 ⇒ 本拍早退（不执行方法体）");
+            SimpleAssert.eq(0, ops.announcements.size(), "★零同步（一条网络通知都没发）");
+            SimpleAssert.eq(0, ops.injectCalls, "★方法体未执行（inject 一次都没被叫到）");
+            SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES, state.remainingBatches(), "★零批消耗（30 批预算只被真跑过的批扣）");
+            SimpleAssert.eq(PocketChannelState.Mode.SHORT, state.mode(), "★通道不断开（仍是 SHORT）");
+            SimpleAssert
+                .eq(PocketConstants.CHANNEL_TICK_PERIOD, state.ticksUntilDue(), "★跳过后按原节拍重装倒计时（每节拍问一次，不是每 tick）");
+            // 再空转一整个节拍：仍是跳（幂等，无累计副作用）
+            for (int tick = 1; tick < PocketConstants.CHANNEL_TICK_PERIOD; tick++) {
+                PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1);
+            }
+            SimpleAssert.eq(
+                Boolean.FALSE,
+                PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1),
+                "第二个到期拍仍跳（空转幂等）");
+            SimpleAssert.eq(0, ops.announcements.size(), "空转一整拍后仍零同步");
+            // 货来了：下一拍照常跑批（跳过不吞批、不吞节拍）
+            ops.fillSources(2, 2);
+            int drove = 0;
+            boolean ran = false;
+            while (!ran && drove < PocketConstants.CHANNEL_TICK_PERIOD + 1) {
+                ran = PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, ops, 1);
+                drove++;
+            }
+            SimpleAssert.that(ran, "★货一到位，批照常跑（跳过没有把通道卡死）");
+            SimpleAssert.eq(PocketConstants.SHORT_CHANNEL_BATCHES - 1, state.remainingBatches(), "真跑过的第一批照常扣预算");
+            PocketChannelManager.INSTANCE.reset();
+            // ---- 保守性半边：补满相在场（pullMode=true）⇒ 口袋侧空也<b>不跳</b>（需求面在元件侧）----
+            final StubOps pull = new StubOps();
+            final PocketFilterConfig filters = new PocketFilterConfig();
+            SimpleAssert.that(filters.add(5, item(5, 1, 0, "")), "第 5 格声明（⇒ 本次运行含补满相）");
+            pull.extractable.put("i:1:0:", 3);
+            SimpleAssert.that(
+                PocketChannelManager.INSTANCE.openChannel(
+                    player,
+                    PocketChannelState.Mode.SHORT,
+                    bindings,
+                    filters,
+                    new NBTTagCompound(),
+                    pull,
+                    1),
+                "前置：双相道受理");
+            SimpleAssert.that(
+                PocketChannelManager.INSTANCE.tickShortChannel(player, bindings, pull, 1),
+                "★含补满相 ⇒ 口袋侧快照为空也不跳（补满需求在元件侧，口袋读数不许冒充元件事实）");
+            SimpleAssert.that(!pull.extractCalls.isEmpty(), "补满相确实被问到（跳过判据没把补满一起吞掉）");
+        } finally {
+            PocketChannelManager.INSTANCE.reset();
+        }
+    }
+
+    /**
+     * ★R100-④：会话自动复原的三前置（isActive / 载体身份 / 绑定非空）——任一不满足 ⇒ <b>零写入</b>
+     * 返回 null（不建会话、不建通道条目、不写一个字节 NBT）；成功支 = 会话登记 + isOpen=false
+     * （retire 判据一致）+ 一拍生产宿主腿把道装起来（免开背包的正身）。
+     */
+    private static void channelSessionRestoreThreeGuards() {
+        PocketChannelManager.INSTANCE.reset();
+        final UUID player = UUID.fromString(CELL_B);
+        PocketSessions.forget(player);
+        try {
+            final World world = mageServerWorldShell();
+            final EntityPlayer holder = magePlayerShell(player, world);
+            // ---- 前置③：绑定表空（旧档形状：boundCells 键都不在）⇒ null + 零写入 ----
+            final ItemStack bare = s5PersistCarrier();
+            SimpleAssert.eq(null, PocketChannelSessions.restoreIfBound(holder, bare), "★空绑定 ⇒ 不复原（R96 S5 前置③）");
+            SimpleAssert.eq(null, PocketSessions.peek(player), "★零登记（会话表里没有条目）");
+            SimpleAssert.eq(
+                false,
+                bare.getTagCompound()
+                    .hasKey(PocketConstants.BOUND_CELLS),
+                "★零 NBT 写（没为判定建任何键）");
+            SimpleAssert.eq(null, PocketChannelManager.INSTANCE.peek(player), "★零通道条目（ensure 没被问到）");
+            // ---- 前置①：persist 位关着（组合谓词）⇒ 绑定非空也不复原 ----
+            final ItemStack switchedOff = s5PersistCarrier();
+            PocketUpgradeSwitches.setOff(switchedOff.getTagCompound(), PocketUpgradeType.CHANNEL_PERSIST, true);
+            bindingsOf(CELL_A).writeTo(switchedOff.getTagCompound());
+            SimpleAssert
+                .eq(null, PocketChannelSessions.restoreIfBound(holder, switchedOff), "★关着持续化 ⇒ 不复原（S1 语义不被复原腿绕过）");
+            SimpleAssert.eq(null, PocketSessions.peek(player), "关着开关 ⇒ 仍零登记");
+            // ---- 前置②：载体缺席（null 玩家 / null 栈）⇒ null ----
+            SimpleAssert.eq(null, PocketChannelSessions.restoreIfBound(null, bare), "null 玩家 ⇒ 不复原");
+            SimpleAssert.eq(null, PocketChannelSessions.restoreIfBound(holder, null), "null 载体 ⇒ 不复原");
+            // ---- 成功支：persist 生效 + 绑定非空 ⇒ 复原 + 登记 + 一拍装道（免开背包）----
+            final ItemStack carrier = s5PersistCarrier();
+            bindingsOf(CELL_A).writeTo(carrier.getTagCompound());
+            final PocketSession restored = PocketChannelSessions.restoreIfBound(holder, carrier);
+            SimpleAssert.that(restored != null, "persist 生效 + 绑定非空 ⇒ 复原成立");
+            SimpleAssert.eq(restored, PocketSessions.peek(player), "★复原出的会话已登记（与面板开屏同一个登记单点）");
+            SimpleAssert.eq(false, restored.isOpen(), "★headless 恒 isOpen=false（retire 判据一致，防复原-退役振荡）");
+            SimpleAssert.eq(player, restored.playerId(), "会话认的是本玩家");
+            SimpleAssert.eq(
+                false,
+                restored.bindings()
+                    .isEmpty(),
+                "绑定表随之在场");
+            SimpleAssert.eq(
+                CELL_A,
+                restored.bindings()
+                    .cells()
+                    .get(0),
+                "绑定读得回同一枚元件（档 → 内存同源）");
+            // ---- 生产宿主腿（不开界面，一次 onItemTick）----
+            PocketSessions.forget(player);
+            PocketChannelManager.INSTANCE.reset();
+            PocketChannelDriver.onItemTick(carrier, world, holder, 12, false);
+            final PocketChannelState armed = PocketChannelManager.INSTANCE.peek(player);
+            SimpleAssert.that(armed != null && !armed.idle(), "★★免开背包的正身：登录后一拍生产宿主腿 = 复原会话 + 装起活道（R95 时代这条路必须先开一次界面）");
+            SimpleAssert.that(PocketSessions.peek(player) != null, "驱动腿复原出的会话已登记（下一拍的会话身份守卫认的就是它）");
+        } finally {
+            PocketChannelManager.INSTANCE.reset();
+            PocketSessions.forget(player);
+        }
+    }
+
+    /**
+     * ★R100-⑤：档位节拍进状态机——四参 activate 按档装填、finishBatch 按本次节拍重装、
+     * retime <b>只钳不放</b>（600s→1s 立刻收口，1s→600s 不把倒计时放大）、
+     * manager 的 retimePersistentChannel 只碰 persist 生效的道（手动 1s 语义不被改写）。
+     */
+    private static void channelPersistTierCadenceAndRetime() {
+        // ---- 状态机半边：装填 / 重装 / retime ----
+        final int slowest = PocketConstants.channelFreqTierTicks(PocketConstants.CHANNEL_FREQ_TIERS_SECONDS.length - 1);
+        final PocketChannelState state = new PocketChannelState();
+        state.activate(PocketChannelState.Mode.SHORT, 0L, 0L, slowest);
+        SimpleAssert.eq(slowest, state.ticksUntilDue(), "四参 activate 按档位装整拍（600s = 12000 tick）");
+        SimpleAssert.eq(slowest, state.periodTicks(), "节拍随激活进状态");
+        for (int tick = 0; tick < slowest; tick++) {
+            state.advanceClock();
+        }
+        SimpleAssert.that(state.due(), "走满整拍到期");
+        state.finishBatch();
+        SimpleAssert.eq(slowest, state.ticksUntilDue(), "finishBatch 按<b>本次</b>节拍重装（不是全局 1s 常量）");
+        for (int tick = 0; tick < 10; tick++) {
+            state.advanceClock();
+        }
+        state.retime(PocketConstants.channelFreqTierTicks(0));
+        SimpleAssert.eq(PocketConstants.channelFreqTierTicks(0), state.periodTicks(), "retime 换新节拍（600s → 1s）");
+        SimpleAssert
+            .eq(PocketConstants.channelFreqTierTicks(0), state.ticksUntilDue(), "★倒计时钳进新节拍（旧档余量不带过来：调档当场生效的正身）");
+        state.retime(slowest);
+        SimpleAssert.eq(PocketConstants.channelFreqTierTicks(0), state.ticksUntilDue(), "★retime 只钳不放（往慢调不把剩余倒计时放大）");
+        SimpleAssert.eq(
+            PocketConstants.SHORT_CHANNEL_BATCHES - 1,
+            state.remainingBatches(),
+            "retime 不动批预算（批次数只归 finishBatch 管）");
+        // ---- manager 半边：档位进活道 + 手动道不被改写 ----
+        PocketChannelManager.INSTANCE.reset();
+        try {
+            final UUID player = UUID.fromString(CELL_A);
+            final World world = mageServerWorldShell();
+            final EntityPlayer holder = magePlayerShell(player, world);
+            final PocketCellBindings bindings = bindingsOf(CELL_A);
+            // 无键载体 ⇒ 默认 5s 档
+            final ItemStack carrier = s5PersistCarrier();
+            PocketSessions.register(new S5SessionShell(player, carrier, bindings, new PocketFilterConfig()));
+            PocketChannelDriver.onItemTick(carrier, world, holder, 12, false);
+            PocketChannelState armed = PocketChannelManager.INSTANCE.peek(player);
+            SimpleAssert.that(armed != null, "前置：默认档载体装道");
+            SimpleAssert.eq(
+                PocketConstants.channelFreqTierTicks(PocketConstants.CHANNEL_FREQ_TIER_DEFAULT),
+                armed.periodTicks(),
+                "无键 ⇒ 活道节拍 = 默认 5s 档（旧存档零迁移）");
+            // 档位写腿 + retime 腿：在跑的道当场换新节拍
+            SimpleAssert.that(
+                PocketConstants.writeChannelFreqTier(
+                    carrier.getTagCompound(),
+                    PocketConstants.CHANNEL_FREQ_TIERS_SECONDS.length - 1),
+                "前置：档位写到最慢档");
+            PocketChannelManager.INSTANCE.retimePersistentChannel(player, carrier);
+            SimpleAssert.eq(slowest, armed.periodTicks(), "★档位立即生效：写腿后活道当场换到新节拍");
+            // 手动道（persist 未生效的载体）不被频率腿改写
+            PocketChannelManager.INSTANCE.reset();
+            final StubOps ops = new StubOps();
+            ops.fillSources(2);
+            final ItemStack plainCarrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+            plainCarrier.setTagCompound(new NBTTagCompound());
+            PocketConstants.writeChannelFreqTier(plainCarrier.getTagCompound(), 0);
+            SimpleAssert.that(
+                PocketChannelManager.INSTANCE
+                    .openChannel(player, PocketChannelState.Mode.SHORT, bindings, new NBTTagCompound(), ops, 1),
+                "前置：手动道受理（载体没装持续化）");
+            final PocketChannelState manual = PocketChannelManager.INSTANCE.peek(player);
+            PocketChannelManager.INSTANCE.retimePersistentChannel(player, plainCarrier);
+            SimpleAssert.eq(
+                PocketConstants.CHANNEL_TICK_PERIOD,
+                manual.periodTicks(),
+                "★手动付费道节拍不被频率腿改写（R100 用户裁决：可调档位只作用于持续化道）");
+        } finally {
+            PocketChannelManager.INSTANCE.reset();
+            PocketSessions.forget(UUID.fromString(CELL_A));
+        }
     }
 
     /**
@@ -20023,9 +20611,15 @@ public class NekoPocketModelTest {
             footprints.add(width + "x" + height);
             // ---- 判据②③的逐型取样（★读的是本件的正身：分派表第二段 + 该段自己的读数键）----
             final java.util.List<PocketConfigPanel.Section> sections = PocketConfigPanel.sectionsOf(type);
+            // ★R100 钉值翻新（同 config_panel_dispatch_is_not_five_identical ① 的口径）：
+            // 四型恰两段；通道持续化恰三段且第三段被点名为 FREQUENCY。
+            final boolean pairFace = sections.size() == 2 && sections.get(0) == PocketConfigPanel.Section.SWITCH;
+            final boolean persistTripleFace = type == PocketUpgradeType.CHANNEL_PERSIST && sections.size() == 3
+                && sections.get(0) == PocketConfigPanel.Section.SWITCH
+                && sections.get(2) == PocketConfigPanel.Section.FREQUENCY;
             SimpleAssert.that(
-                sections.size() == 2 && sections.get(0) == PocketConfigPanel.Section.SWITCH,
-                "★判据③前提：" + type + " 的面 = 公共开关行 + 恰一段本型内容（读到 " + sections + "）");
+                pairFace || persistTripleFace,
+                "★判据③前提：" + type + " 的面 = 公共开关行 + 本型内容（四型恰一段；通道持续化 = 常开读数 + 频率档）（读到 " + sections + "）");
             seconds.add(sections.get(1));
             final String readoutKey = PocketConfigPanel.readoutKeyOf(type);
             if (readoutKey == null) {
@@ -20096,11 +20690,11 @@ public class NekoPocketModelTest {
                     }
                 }
                 final int labelBox = PocketConfigPanel.labelWidthOf(type);
-                final int labelLines = (int) Math.ceil(worstLabel * PocketGhostRequest.RESIDENT_TEXT_SCALE / labelBox);
+                final int labelLines = (int) Math.ceil(worstLabel * PocketConfigPanel.TEXT_SCALE / labelBox);
                 SimpleAssert.that(
                     labelLines <= 1,
                     "★" + type
-                        + " 型名行必须一行放得下（两行就顶穿 20px 的行盒）：最坏「"
+                        + " 型名行必须一行放得下（两行就顶穿 18px 的行盒）：最坏「"
                         + worstName
                         + "」逻辑宽 "
                         + worstLabel
@@ -20128,8 +20722,7 @@ public class NekoPocketModelTest {
                 final int receiptBox = PocketConfigPanel.panelWidthOf(type) - 2 * PocketConfigPanel.MARGIN
                     - PocketConfigPanel.CLOSE_WIDTH
                     - 2;
-                final int receiptLines = (int) Math
-                    .ceil(worstReceipt * PocketGhostRequest.RESIDENT_TEXT_SCALE / receiptBox);
+                final int receiptLines = (int) Math.ceil(worstReceipt * PocketConfigPanel.TEXT_SCALE / receiptBox);
                 SimpleAssert.that(
                     receiptLines * 10 <= PocketConfigPanel.RECEIPT_HEIGHT,
                     "★" + type
@@ -20156,7 +20749,7 @@ public class NekoPocketModelTest {
                     Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL),
                     Long.valueOf(PocketConstants.fluidTotalCapacityMl(true))));
             final int capBox = contentBoxOf(PocketUpgradeType.CAPACITY);
-            final int capLines = (int) Math.ceil(capW * PocketGhostRequest.RESIDENT_TEXT_SCALE / capBox);
+            final int capLines = (int) Math.ceil(capW * PocketConfigPanel.TEXT_SCALE / capBox);
             SimpleAssert.that(
                 capLines * 10 <= PocketConfigPanel.CAPACITY_READOUT_HEIGHT,
                 "★容量面读数块折行后放得下（逻辑宽 " + capW
@@ -20185,6 +20778,24 @@ public class NekoPocketModelTest {
                 "gtit.pocket.config.persist.idle",
                 contentBoxOf(PocketUpgradeType.CHANNEL_PERSIST),
                 "通道面未常开读数");
+            // ★R100：频率档位行（读数喂<b>最宽</b>数字 = 最慢档秒数，来源档位表末位不抄字面量；
+            // 两枚按钮短语也按同法量进它们的小按钮盒）。
+            assertSingleReadoutLine(
+                lang,
+                PocketConfigPanel.READOUT_FREQ_KEY,
+                Integer.valueOf(
+                    PocketConstants.channelFreqTierSeconds(PocketConstants.CHANNEL_FREQ_TIERS_SECONDS.length - 1)),
+                PocketConfigPanel.FREQ_LABEL_WIDTH,
+                "通道面频率档读数");
+            for (final String key : new String[] { PocketConfigPanel.READOUT_FREQ_FASTER_KEY,
+                PocketConfigPanel.READOUT_FREQ_SLOWER_KEY }) {
+                final int w = residentLogicalWidth(formatLang(lang, key));
+                final int btnLines = (int) Math
+                    .ceil(w * PocketConfigPanel.TEXT_SCALE / PocketConfigPanel.FREQ_BUTTON_WIDTH);
+                SimpleAssert.that(
+                    btnLines <= 1,
+                    "★频率按钮一行放得下（" + key + " 逻辑宽 " + w + " 盒宽 " + PocketConfigPanel.FREQ_BUTTON_WIDTH + "）");
+            }
             // 魔法使面：三行模式标签（最长态那支）+ 元素容量行（喂 500/3000）。
             for (int row = 0; row < PocketConfigPanel.modeRowCount(); row++) {
                 final String label = formatLang(lang, PocketConfigPanel.modeLabelKey(row));
@@ -20194,7 +20805,7 @@ public class NekoPocketModelTest {
                     worst = Math.max(worst, residentLogicalWidth(label + "：" + formatLang(lang, state)));
                 }
                 final int lines = (int) Math
-                    .ceil(worst * PocketGhostRequest.RESIDENT_TEXT_SCALE / PocketConfigPanel.MODE_LABEL_WIDTH);
+                    .ceil(worst * PocketConfigPanel.TEXT_SCALE / PocketConfigPanel.MODE_LABEL_WIDTH);
                 SimpleAssert.that(
                     lines <= 1,
                     "★魔法使面第 " + row + " 行模式标签一行放得下（逻辑宽 " + worst + " 盒宽 " + PocketConfigPanel.MODE_LABEL_WIDTH + "）");
@@ -20216,10 +20827,10 @@ public class NekoPocketModelTest {
         return PocketConfigPanel.panelWidthOf(type) - 2 * PocketConfigPanel.MARGIN;
     }
 
-    /** 单行读数像素账（无格式参数版）：最坏串按 0.6 档折进盒宽必须 ≤ 1 行。 */
+    /** 单行读数像素账（无格式参数版）：最坏串按配置面板 0.8 档（{@code PocketConfigPanel.TEXT_SCALE}）折进盒宽必须 ≤ 1 行。 */
     private static void assertSingleReadoutLine(java.util.List<String> lang, String key, int box, String what) {
         final int w = residentLogicalWidth(formatLang(lang, key));
-        final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / box);
+        final int lines = (int) Math.ceil(w * PocketConfigPanel.TEXT_SCALE / box);
         SimpleAssert
             .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
     }
@@ -20228,7 +20839,7 @@ public class NekoPocketModelTest {
     private static void assertSingleReadoutLine(java.util.List<String> lang, String key, Object argA, int box,
         String what) {
         final int w = residentLogicalWidth(formatLang(lang, key, argA));
-        final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / box);
+        final int lines = (int) Math.ceil(w * PocketConfigPanel.TEXT_SCALE / box);
         SimpleAssert
             .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
     }
@@ -20237,7 +20848,7 @@ public class NekoPocketModelTest {
     private static void assertSingleReadoutLine(java.util.List<String> lang, String key, Object argA, Object argB,
         int box, String what) {
         final int w = residentLogicalWidth(formatLang(lang, key, argA, argB));
-        final int lines = (int) Math.ceil(w * PocketGhostRequest.RESIDENT_TEXT_SCALE / box);
+        final int lines = (int) Math.ceil(w * PocketConfigPanel.TEXT_SCALE / box);
         SimpleAssert
             .that(lines <= 1, "★" + what + "一行放得下（键 " + key + " 逻辑宽 " + w + " 盒宽 " + box + " ⇒ " + lines + " 行）");
     }
@@ -20260,9 +20871,15 @@ public class NekoPocketModelTest {
         final java.util.Map<PocketUpgradeType, PocketConfigPanel.Section> second = new java.util.LinkedHashMap<>();
         for (final PocketUpgradeType type : PocketUpgradeType.values()) {
             final java.util.List<PocketConfigPanel.Section> got = PocketConfigPanel.sectionsOf(type);
+            // ★R100 钉值翻新：段族前提从「每型恰两段」放宽为「开关打头 + ≥1 段本型专属内容；
+            // 通道持续化恰三段（开关 + 常开读数 + 频率档），其余四型仍恰两段」。第三段被逐字点名成
+            // FREQUENCY（static 块同款对账）⇒ 不是把口子放开，是给本型的新段上户口。
+            final boolean pair = got.size() == 2;
+            final boolean persistTriple = type == PocketUpgradeType.CHANNEL_PERSIST && got.size() == 3
+                && got.get(2) == PocketConfigPanel.Section.FREQUENCY;
             SimpleAssert.that(
-                got.size() == 2 && got.get(0) == PocketConfigPanel.Section.SWITCH,
-                "★每型 = 公共开关段 + 恰一段本型专属内容（第一段恒为 SWITCH）：" + type + " 读到 " + got);
+                got.get(0) == PocketConfigPanel.Section.SWITCH && (pair || persistTriple),
+                "★每型 = 公共开关段 + 本型专属内容（四型恰一段；通道持续化 = 常开读数 + 频率档两段）：" + type + " 读到 " + got);
             second.put(type, got.get(1));
         }
         SimpleAssert.eq(PocketUpgradeType.values().length, second.size(), "★分派表逐型点名（五型都在表里，缺一型这里就先红）");
@@ -20277,7 +20894,7 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(
             PocketConfigPanel.Section.READOUT_PERSIST,
             second.get(PocketUpgradeType.CHANNEL_PERSIST),
-            "通道持续化 = 开关 + 常开状态与说明段");
+            "通道持续化 = 开关 + 常开状态与说明段（★R100 再加频率档段，仍以此段为第二段）");
         SimpleAssert.eq(
             PocketConfigPanel.Section.MOUNT_MAGNET,
             second.get(PocketUpgradeType.MAGNET),
@@ -21223,12 +21840,16 @@ public class NekoPocketModelTest {
             0,
             dropCalls,
             "★口袋目录内 dropPlayerItemWithRandomChoice 必须恒 0（EntityItem 的 Count 走 vanilla byte，1024 落即坏）");
+        // ★R100 钉值翻新：3 → 4 —— 第四条是频率片新增的 headless 会话 depositItem 兜底
+        // （PocketChannelSessions#HeadlessSession，镜像 Panel#moveToPlayer 的「一次调用 + 按余量记账」纪律）。
         SimpleAssert.eq(
-            3,
+            4,
             intoVanilla,
-            "★进原版背包的落点在口袋目录内恰 3（Panel#giveToPlayer / Panel#moveToPlayer / PocketSlots#returnToPlayer，" + "读到 "
+            "★进原版背包的落点在口袋目录内恰 4（Panel#giveToPlayer / Panel#moveToPlayer / PocketSlots#returnToPlayer"
+                + " / PocketChannelSessions#HeadlessSession#depositItem，"
+                + "读到 "
                 + intoVanilla
-                + " ⇒ 长出第四条整堆外运的腿，或原有某条被拆堆口取代后少了一处）");
+                + " ⇒ 长出第五条整堆外运的腿，或原有某条被拆堆口取代后少了一处）");
         SimpleAssert.eq(2, tossCalls, "掉脚下的落点在口袋目录内恰 2（两条兜底：背包满则掉脚下，各一处）");
         // ---- ③ 三个落点的<b>定义</b>逐一点名（数对了还要知道是谁）----
         SimpleAssert.eq(1, countCodeLinesIn(panel, "void giveToPlayer(ItemStack stack) {"), "giveToPlayer 定义恰 1");
@@ -21431,10 +22052,12 @@ public class NekoPocketModelTest {
             System.out.println("[NOTE] 找不到仓库根 ⇒ 出包落点穷举半边【未验】（★不是通过，只跑完上面两段）");
             return;
         }
+        // ★R100 钉值翻新：3 → 4 —— 第四条是 headless 会话 depositItem 兜底（同上一用例那条翻新的口径）。
         SimpleAssert.eq(
-            3,
+            4,
             intoVanilla,
-            "★进原版背包的落点在口袋目录内仍恰 3（giveToPlayer 的单块交付 / moveToPlayer / PocketSlots#returnToPlayer）" + "⇒ 读到 "
+            "★进原版背包的落点在口袋目录内仍恰 4（giveToPlayer 的单块交付 / moveToPlayer / PocketSlots#returnToPlayer"
+                + " / headless 会话的 depositItem 兜底）⇒ 读到 "
                 + intoVanilla
                 + " = 拆堆之外又添一条整堆外运的腿");
         SimpleAssert.eq(2, tossCalls, "★掉脚下的落点仍恰 2（单块交付那一条 + 流体侧兜底，循环里不许再套投口）");
@@ -21446,14 +22069,17 @@ public class NekoPocketModelTest {
     // 需求原话：「大幅度简化次元猫猫口袋的 Tooltip，把位置空出来一些，增加类似魔力石的 6 个源质储量显示。」
     // 定案档位 = 激进 −6（恒定 11 行 → 5 行），腾出的位置给 0–6 行储量（★R99 P4-D 改判：恒六行、空位显 0，
     // R98 期 DP-2「非零才出」作废——全 0 时六行一行不出的形状让"没吸进来"与"没同步"不可分辨，正是实机驳回点）。
-    // 两条用例各钉一面，且★两条都带阳性对照（R57 那一族：检法空转比没有检法更坏）：
-    // ① {@code pocket_tooltip_family_is_contiguous_and_four} —— 连号族的<b>形状</b>。
+    // ★R100 片 E：描述族再收 4 → 3（删 R39a 声明行，翻案；剩余三行口语化压短）⇒ 连号 + 蒸馏恒 4 行。
+    // 用例各钉一面，且★都带阳性对照（R57 那一族：检法空转比没有检法更坏）：
+    // ① {@code pocket_tooltip_family_is_contiguous_and_three} —— 连号族的<b>形状</b>。
     // "跳号 = 静默截断"这件事在 R98 之前<b>只靠人眼核对</b>（{@code verify-pocket.sh} 那一段只 echo
     // 编号、没有 FAIL 分支，见 {@code 01a-tooltip-current.md} §6-4）⇒ 本条就是 R98-5 加固本体。
     // ② {@code pocket_element_reserve_lines_follow_primal_tag_order} —— 六行储量的<b>内容</b>：
     // 行序 = 白名单序 / ★R99 P4-D 恒六行空位显 0 / 量纲不带 TC 的 ×100 / TC 缺席仍出文本 / ★读侧不建档。
     // 本条驱动的是<b>生产同一段代码</b>（排版腿 {@code appendElementReserveLines}），不是源码回声。
-    // ★两条都不动 {@code tooltipArgs} 的判据（那 12 项与 {@code isActive(...CAPACITY)} 读点仍由
+    // ③ {@code pocket_tooltip_r39a_row_removed_with_reversal_note} —— R39a 删行的<b>翻案钉</b>
+    // （R100 片 E 新增，只增不删）：旧措辞在两份连号族里归零 + 翻案注释在物品类原声明位在场。
+    // ★以上都不动 {@code tooltipArgs} 的判据（那 12 项与 {@code isActive(...CAPACITY)} 读点仍由
     // {@code upgradeSwitchGatesAllEffectReadpoints} 按签名硬钉，本批一字未改）。
 
     /** 连号族键前缀（与 {@code ItemNekoDimensionPocket.TOOLTIP_PREFIX} 同一条串，★两处同判据）。 */
@@ -21463,23 +22089,30 @@ public class NekoPocketModelTest {
     private static final String R98_LANG_ZH = "src/main/resources/assets/gtit/lang/zh_CN.lang";
     private static final String R98_LANG_EN = "src/main/resources/assets/gtit/lang/en_US.lang";
     private static final String R98_ELEMENT_STORE_FILE = "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketElementStore.java";
-    /** R98 之后的<b>恒定</b>行数：4 条连号 + 1 条蒸馏双口径追加行（储量行恒 6 行且不占连号族，R99 P4-D）。 */
-    private static final int R98_CONSTANT_TOOLTIP_ROWS = 5;
+    /**
+     * R98 之后的<b>恒定</b>行数（★R100 片 E 翻新）：3 条连号 + 1 条蒸馏双口径追加行（储量行恒 6 行且
+     * 不占连号族，R99 P4-D）⇒ 恒 4 行；含储量恒 10 行、再加片 A 品牌尾行则 addInformation 总产出恒 11 行。
+     */
+    private static final int R98_CONSTANT_TOOLTIP_ROWS = 4;
     /** {@code tooltipArgs} 的槽数：R95 起 12，★裁剪只改"lang 引用了哪几个"，不改数组。 */
     private static final int R98_TOOLTIP_ARG_SLOTS = 12;
 
-    /** 每份 lang 一组：四条连号行各自必须还带着那句话（★按<b>内容</b>认行，不按号认 ⇒ 防"重编号时顺手改语义"）。 */
-    private static final String[][] R98_ROW_CONTENT = { { "右键", "面板", "各流体列", "丢失或销毁口袋", "无限存储单元" },
-        { "Right-click", "panel", "All fluid columns", "losing or destroying the pocket", "Infinity Storage Unit" } };
+    /**
+     * 每份 lang 一组：三条连号行各自必须还带着那句话（★按<b>内容</b>认行，不按号认 ⇒ 防"重编号时顺手改语义"；
+     * ★R100 片 E 翻新：R39a 的「流体列」措辞移出本清单，"它必须不在场"这半边由翻案钉用例接管）。
+     */
+    private static final String[][] R98_ROW_CONTENT = { { "右键", "B 键", "源质", "无限存储单元", "转空" },
+        { "Right-click", "press B", "aspects", "Infinity Storage Unit", "empty it" } };
 
     /** 蒸馏双口径合并行的内容判据（zh / en 各一组词）。 */
     private static final String[][] R98_DISTILL_CONTENT = { { "蒸馏", "魔法使", "产出" },
         { "Distillation", "mage", "yield" } };
 
     /**
-     * ★R98 S2 用例 ①：连号族的<b>机检</b>（R98-5 加固）。成功判据逐条对应 PLAN §3-S2 的 1/2/4。
+     * ★R98 S2 用例 ①（★R100 片 E 改名翻新：four → three）：连号族的<b>机检</b>（R98-5 加固）。
+     * 成功判据逐条对应 PLAN §3-S2 的 1/2/4。
      */
-    private static void pocketTooltipFamilyIsContiguousAndFour() {
+    private static void pocketTooltipFamilyIsContiguousAndThree() {
         // ================= 阳性对照：检法自己必须先证明它认得"断号"与"悬空" =================
         final java.util.Set<Integer> gapped = new java.util.LinkedHashSet<>();
         gapped.add(Integer.valueOf(0));
@@ -21508,42 +22141,43 @@ public class NekoPocketModelTest {
         }
         final java.util.List<Integer> zhIndexes = tooltipFamilyIndexes(langZh);
         final java.util.List<Integer> enIndexes = tooltipFamilyIndexes(langEn);
-        // ---- ① 恰 4 条、编号 = 0..3、无重号（PLAN 成功判据 1：grep -cE 各恰 4）----
-        SimpleAssert.eq(Integer.valueOf(4), Integer.valueOf(zhIndexes.size()), "zh 的连号族恰 4 行");
-        SimpleAssert.eq(Integer.valueOf(4), Integer.valueOf(enIndexes.size()), "en 的连号族恰 4 行");
+        // ---- ① 恰 3 条、编号 = 0..2、无重号（R100 片 E：4 → 3 删 R39a 行后的定稿形状）----
+        SimpleAssert.eq(Integer.valueOf(3), Integer.valueOf(zhIndexes.size()), "zh 的连号族恰 3 行");
+        SimpleAssert.eq(Integer.valueOf(3), Integer.valueOf(enIndexes.size()), "en 的连号族恰 3 行");
         SimpleAssert.eq(
-            sortedCopy(Arrays.asList(Integer.valueOf(0), Integer.valueOf(1), Integer.valueOf(2), Integer.valueOf(3))),
+            sortedCopy(Arrays.asList(Integer.valueOf(0), Integer.valueOf(1), Integer.valueOf(2))),
             sortedCopy(zhIndexes),
-            "★zh 连号族编号必须恰为 {0,1,2,3}（读到别的 = 跳号或重号）");
+            "★zh 连号族编号必须恰为 {0,1,2}（读到别的 = 跳号或重号）");
         SimpleAssert.eq(
-            sortedCopy(Arrays.asList(Integer.valueOf(0), Integer.valueOf(1), Integer.valueOf(2), Integer.valueOf(3))),
+            sortedCopy(Arrays.asList(Integer.valueOf(0), Integer.valueOf(1), Integer.valueOf(2))),
             sortedCopy(enIndexes),
-            "★en 连号族编号必须恰为 {0,1,2,3}");
+            "★en 连号族编号必须恰为 {0,1,2}");
         // ---- ② 两份键集合相等（comm -3 差集门的具名版，同 :17256 那一族的形状）----
         SimpleAssert.eq(
             new java.util.TreeSet<>(enIndexes),
             new java.util.TreeSet<>(zhIndexes),
             "★两份 lang 的连号族键集必须相等（只改一份 = 另一份当场多吐/少吐行）");
-        // ---- ③ 消费腿：按生产的 break 规则能画 4 行，且★行数 == 键数（悬空键 = 0）----
+        // ---- ③ 消费腿：按生产的 break 规则能画 3 行，且★行数 == 键数（悬空键 = 0）----
         for (final java.util.List<Integer> indexes : Arrays.asList(zhIndexes, enIndexes)) {
             final java.util.Set<Integer> keySet = new java.util.LinkedHashSet<>(indexes);
             final int drawn = drawTooltipFamily(keySet);
-            SimpleAssert.eq(Integer.valueOf(4), Integer.valueOf(drawn), "★消费腿必须画满 4 行（画得少 = 族里有断号，后面的行会静默消失）");
+            SimpleAssert.eq(Integer.valueOf(3), Integer.valueOf(drawn), "★消费腿必须画满 3 行（画得少 = 族里有断号，后面的行会静默消失）");
             SimpleAssert.eq(
                 Integer.valueOf(keySet.size()),
                 Integer.valueOf(drawn),
                 "★「族内键数 == 画出行数」：不等就说明有键悬在 break 之后（lang 还写着、tooltip 永远不吐）");
-            // 恒定面 = 连号画出的行数 + 那条蒸馏追加行（★储量行恒 6 行、不占连号族，R99 P4-D 后总行数恒 11）
+            // 恒定面 = 连号画出的行数 + 那条蒸馏追加行（★储量行恒 6 行、不占连号族 ⇒ 3 + 1 = 恒 4，
+            // R99 P4-D 后连号 + 蒸馏 + 储量恒 10、含片 A 尾行则 addInformation 总产出恒 11）
             SimpleAssert.eq(
                 Integer.valueOf(R98_CONSTANT_TOOLTIP_ROWS),
                 Integer.valueOf(drawn + 1),
-                "★任何状态下连号族 + 蒸馏行都恒为 " + R98_CONSTANT_TOOLTIP_ROWS + " 行（旧档 11 行的啰嗦面必须回不来；读到别的数 = 裁剪档位被动过）");
+                "★任何状态下连号族 + 蒸馏行都恒为 " + R98_CONSTANT_TOOLTIP_ROWS + " 行（R98 期 5 行的口径到 R100 片 E 为止；读到别的数 = 裁剪档位被动过）");
         }
-        // ---- ④ 旧号 tooltip.4 到 tooltip.9 在两份里全部归零 ----
+        // ---- ④ 旧号 tooltip.3 到 tooltip.9 在两份里全部归零（★R100 片 E 起 .3 也是旧号：删的就是它）----
         // （★"只回 lang 不回代码"是 PLAN 回退段点名的反向症状：lang 还写着十行、消费端只画四行）
         for (final String face : new String[] { "zh", "en" }) {
             final java.util.List<String> lang = "zh".equals(face) ? langZh : langEn;
-            for (int i = 4; i <= 9; i++) {
+            for (int i = 3; i <= 9; i++) {
                 SimpleAssert.eq(
                     0,
                     countCodeLinesIn(lang, R98_TOOLTIP_PREFIX + i + "="),
@@ -21551,14 +22185,14 @@ public class NekoPocketModelTest {
             }
             // ★同扫描面的正控：同一把「键名 + =」的抓法必须在新号上读到恰 1 ⇒ 上面那一串 0 是结构读数，
             // 不是 needle 拼错导致的空转（R97 门 P 与 :17256 那一族的同一纪律）。
-            for (int i = 0; i <= 3; i++) {
+            for (int i = 0; i <= 2; i++) {
                 SimpleAssert.eq(
                     1,
                     countCodeLinesIn(lang, R98_TOOLTIP_PREFIX + i + "="),
-                    "★正控：新号 tooltip." + i + " 在 " + face + " 里恰一条（读不到 = 这把抓法本身瞎了，六个 0 不算干净）");
+                    "★正控：新号 tooltip." + i + " 在 " + face + " 里恰一条（读不到 = 这把抓法本身瞎了，上面的 0 不算干净）");
             }
         }
-        // ---- ⑤ 留下的三处声明位按内容仍在场（R39a / R53b / 合成一次性 + 入口行）----
+        // ---- ⑤ 留下的两处声明位按内容仍在场（R53b / 合成一次性 + 入口行；R39a 已翻案删除，归 ③ 用例管）----
         for (int face = 0; face < R98_ROW_CONTENT.length; face++) {
             final java.util.List<String> lang = face == 0 ? langZh : langEn;
             final StringBuilder all = new StringBuilder();
@@ -21569,7 +22203,7 @@ public class NekoPocketModelTest {
             for (final String word : R98_ROW_CONTENT[face]) {
                 SimpleAssert.that(
                     all.indexOf(word) >= 0,
-                    "★连号四行里必须念到「" + word + "」（" + (face == 0 ? "zh" : "en") + "）——裁剪只许删整句，不许改口成另一句话");
+                    "★连号三行里必须念到「" + word + "」（" + (face == 0 ? "zh" : "en") + "）——裁剪只许删整句，不许改口成另一句话");
             }
         }
         // ---- ⑥ 追加行族：distill_fast 键名冻结 + 合并行同时念两档（%6$d 与 %12$d）----
@@ -21662,6 +22296,53 @@ public class NekoPocketModelTest {
         assertLiteralCountIn(R96_POCKET_ITEM_FILE, R98_ELEMENT_KEY, 0, "★键字面量住在 PocketElementStore，不写在物品侧");
         assertLiteralCountIn(R96_POCKET_ITEM_FILE, R98_DISTILL_KEY, 0, "★蒸馏键同理（既有判据同族：不许回流到物品侧）");
         assertLiteralCountIn(R98_ELEMENT_STORE_FILE, "\"" + R98_ELEMENT_KEY + "\"", 1, "字面量恰一处（数据主人持有）");
+    }
+
+    /**
+     * ★R100 片 E 用例 ③（新增，只增不删）：R39a 声明行删除的<b>翻案钉</b>。
+     * <p>
+     * 删行不钉就会"静默回魂"：把那行原样加回 lang 会被用例①的"恰 3 条"抓住，但<b>措辞借行回魂</b>
+     * （塞进剩下三行里的任何一行）与<b>翻案注释被顺手删掉</b>这两件事①都不管 —— 翻案注释住在
+     * 物品类 javadoc 的原声明位，是这次翻案的代码侧档案（台账半边由片 G 记档）。本条各钉一半。
+     */
+    private static void pocketTooltipR39aRowRemovedWithReversalNote() {
+        final java.util.List<String> langZh = sourceLinesOrNull(R98_LANG_ZH);
+        final java.util.List<String> langEn = sourceLinesOrNull(R98_LANG_EN);
+        SimpleAssert.that(langZh != null && langEn != null, "★两份 lang 都读得到（读不到 ⇒ 本用例整条【未验】）");
+        if (langZh == null || langEn == null) {
+            System.out.println("[NOTE] 读不到两份 lang ⇒ R39a 翻案钉【未验】（★不是通过）");
+            return;
+        }
+        // ---- ① 措辞归零：R39a 那句「流体列方向」在两份连号族的<b>值</b>拼串里必须一处都不在 ----
+        // ★只在连号族值里查，不查整份 lang：面板侧另有合法的流体列措辞（gtit.pocket.fluid.* 族），
+        // 全文查会把"删的是 tooltip 那一行"偷换成"全仓不许提流体列"。
+        for (int face = 0; face < 2; face++) {
+            final java.util.List<String> lang = face == 0 ? langZh : langEn;
+            final StringBuilder all = new StringBuilder();
+            for (final Integer index : tooltipFamilyIndexes(lang)) {
+                all.append(langValueOrEmpty(lang, R98_TOOLTIP_PREFIX + index))
+                    .append('\n');
+            }
+            final String dead = face == 0 ? "流体列" : "fluid column";
+            SimpleAssert
+                .that(all.indexOf(dead) < 0, "★R39a 声明行已删（R100 片 E 翻案）：连号族里不得再念到「" + dead + "」——要恢复这行必须先翻回本案，不许借行回魂");
+        }
+        // ---- ② 翻案注释在位：物品类原声明处必须有一行同时点名 R39a 与「翻案」 ----
+        // ★按"单行同现"认而不是全文各查一次：分开查会把「R39a 在注释 A、翻案在注释 B」也算命中，
+        // 那不是原位翻案注释的形状。
+        final java.util.List<String> item = sourceLinesOrNull(R96_POCKET_ITEM_FILE);
+        SimpleAssert.that(item != null, "★读得到 ItemNekoDimensionPocket.java（注释半边全靠它）");
+        if (item == null) {
+            System.out.println("[NOTE] 读不到物品类 ⇒ R39a 翻案注释钉【未验】（★不是通过）");
+            return;
+        }
+        int hits = 0;
+        for (final String line : item) {
+            if (line.contains("R39a") && line.contains("翻案")) {
+                hits++;
+            }
+        }
+        SimpleAssert.that(hits >= 1, "★R39a 翻案注释必须留在物品类原声明位（读到 " + hits + " 行同现；台账半边由片 G 记档）");
     }
 
     /**
@@ -22044,5 +22725,285 @@ public class NekoPocketModelTest {
             }
         }
         return "";
+    }
+
+    // ================================================================== ★R100 片 F（架构解耦）四条
+    //
+    // 共同点：把「common 反向 import gui」的四处（口袋物品类 / 蒸馏 driver / 售货机 TE / BGM 处理器）
+    // 换成常量单源改读与工厂注入，外加三份同形 drawBadge 收拢成一份。四条各钉一处"改坏了没人知道"
+    // 的形状：① 归零门本身（把验收 grep 变成常驻用例）② tooltip 行列改读 PocketConstants 后与面板
+    // 几何的等值 ③ 蒸馏分流改走 PocketIntakeOps 后与 gui 侧继承名的等值 ④ 队列与 BGM 标志的 common
+    // 侧行为真值表。
+
+    /**
+     * ★R100 片 F 验收 4 的常驻化：{@code src/main/java/com/miaokatze/gtit/common/} 树内
+     * {@code import com.miaokatze.gtit.gui.*} 必须恒 0（注释行不算数），并钉两座桥的注册半边：
+     * 口袋面板桥在双端 {@code CommonProxy#init} 注册（MUI2 双端建树），售货机 GUI 桥只在客户端
+     * {@code ClientProxy#init} 注册（GUI 实例仅客户端创建）。★阳性对照：同一台扫描机对
+     * {@code import com.miaokatze.gtit.common.} 必须读到 &gt;0 ⇒ 归零不是扫描机空转。
+     * <p>
+     * 行为半边顺带钉工厂委托契约：未注册 ⇒ {@code IllegalStateException}（可读的失败面）；
+     * 注册后调用路由到该工厂；再注册 ⇒ 后者生效。★本套件单 JVM 按注册序执行，此前无用例碰桥
+     * ⇒ 「开局未注册」是本条的可依赖前提（若未来有更早的用例注册了工厂，本条会当场红给改成者看）。
+     */
+    private static void r100CommonHasZeroGuiImportsAndBridgesWired() {
+        // ---- ① 归零门 + 阳性对照（同一台扫描机，剥注释行）----
+        final int guiImports = countTreeLinesMatching(
+            "src/main/java/com/miaokatze/gtit/common",
+            "import com\\.miaokatze\\.gtit\\.gui\\.",
+            true);
+        SimpleAssert.eq(
+            0,
+            guiImports,
+            "★common 树内 gui import 必须恒 0（读到 " + guiImports + " ⇒ 又有人把 gui 类 import 回 common 了：走常量单源或工厂注入）");
+        final int positiveControl = countTreeLinesMatching(
+            "src/main/java/com/miaokatze/gtit/common",
+            "import com\\.miaokatze\\.gtit\\.common\\.",
+            true);
+        SimpleAssert.that(positiveControl > 0, "★阳性对照：同一扫描机对 common 自包 import 读到 " + positiveControl + " ⇒ 归零门不空转");
+        // ---- ② 两座桥的注册半边（注册点在 main 包，gui import 在那里是合法的）----
+        final java.util.List<String> commonProxy = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/main/CommonProxy.java");
+        if (commonProxy == null) {
+            System.out.println("[NOTE] 读不到 CommonProxy.java ⇒ 桥注册半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.that(
+                countCodeLinesIn(commonProxy, "PocketPanelBridge.register(") >= 1,
+                "★口袋面板桥必须在双端的 CommonProxy#init 注册（MUI2 双端建树，只注册客户端会让专用服开屏炸）");
+            SimpleAssert.that(
+                countCodeLinesIn(commonProxy, "NekoPocketPanel::build") >= 1,
+                "★注册的委托目标必须还是 NekoPocketPanel::build 本身（换目标 = 行为不再是零变化）");
+        }
+        final java.util.List<String> clientProxy = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/main/ClientProxy.java");
+        if (clientProxy == null) {
+            System.out.println("[NOTE] 读不到 ClientProxy.java ⇒ 桥注册半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.that(
+                countCodeLinesIn(clientProxy, "VendingGuiBridge.register(") >= 1
+                    && countCodeLinesIn(clientProxy, "NekoVMGuiV2::new") >= 1,
+                "★售货机 GUI 桥必须在客户端 ClientProxy#init 注册（GUI 实例仅客户端创建，专用服保持未注册态）");
+        }
+        // ---- ③ 工厂委托契约（行为半边）----
+        boolean threwUnregistered = false;
+        try {
+            PocketPanelBridge.build(null, null, null);
+        } catch (IllegalStateException expected) {
+            threwUnregistered = true;
+        }
+        SimpleAssert.that(threwUnregistered, "★未注册 ⇒ 可读的 IllegalStateException（静默返回 null 会把开屏炸点藏进 NPE 里）");
+        final boolean[] firstRouted = { false };
+        PocketPanelBridge.register((data, syncManager, settings) -> {
+            firstRouted[0] = true;
+            return null;
+        });
+        SimpleAssert.eq(null, PocketPanelBridge.build(null, null, null), "桩件返回 null ⇒ build 原样透传 null");
+        SimpleAssert.that(firstRouted[0], "★注册后调用必须路由到该工厂（没路由 = 桥是死壳）");
+        final boolean[] secondWins = { false };
+        PocketPanelBridge.register((data, syncManager, settings) -> {
+            secondWins[0] = true;
+            return null;
+        });
+        firstRouted[0] = false;
+        PocketPanelBridge.build(null, null, null);
+        SimpleAssert.that(secondWins[0] && !firstRouted[0], "★后注册者覆盖先注册者（last-wins，注册形制与旧静态调用同形）");
+    }
+
+    /**
+     * ★R100 片 F：tooltip 的行列两项改读 {@link PocketConstants} 单源（原读 gui 侧
+     * {@code NekoPocketStorageColumn.ROWS} / {@code PocketSlots.STORAGE_COLUMNS}）——本条钉住
+     * 改读之后两套常量<b>逐值等值</b>且都等于那张 15×9 矩阵，谁漂了都红；再以源码机检钉住
+     * 物品类代码位对两个 gui 类名的引用恒 0（javadoc 提及不算数）。
+     */
+    private static void r100PocketConstantsSingleHomeForTooltipGeometry() {
+        // ---- ① 三处行/列两两等值（tooltip 读的 PocketConstants vs 面板几何单源）----
+        SimpleAssert.eq(
+            PocketInventory.STORAGE_SLOTS,
+            PocketConstants.STORAGE_ROWS * PocketConstants.STORAGE_COLUMNS,
+            "★PocketConstants 的行×列必须正好闭合出中栏矩阵本身（" + PocketConstants.STORAGE_ROWS
+                + "×"
+                + PocketConstants.STORAGE_COLUMNS
+                + "）：tooltip 读数与面板矩阵不许分叉");
+        SimpleAssert
+            .eq(NekoPocketStorageColumn.ROWS, PocketConstants.STORAGE_ROWS, "面板中栏行数 == tooltip 读的行数（R100 片 F 改读后的等值钉）");
+        SimpleAssert.eq(
+            NekoPocketStorageColumn.COLUMNS,
+            PocketConstants.STORAGE_COLUMNS,
+            "面板中栏列数 == tooltip 读的列数（gui 侧本就是转发，等值必须钉死）");
+        SimpleAssert.eq(PocketSlots.STORAGE_ROWS, PocketConstants.STORAGE_ROWS, "工厂口径行数 == PocketConstants（转发链等值）");
+        SimpleAssert
+            .eq(PocketSlots.STORAGE_COLUMNS, PocketConstants.STORAGE_COLUMNS, "工厂口径列数 == PocketConstants（转发链等值）");
+        // ---- ② 源码半边：物品类代码位不再触碰两个 gui 类名 ----
+        final java.util.List<String> item = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/ItemNekoDimensionPocket.java");
+        if (item == null) {
+            System.out.println("[NOTE] 读不到 ItemNekoDimensionPocket.java ⇒ 常量改读半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(item, "NekoPocketStorageColumn"),
+            "★物品类代码位不得再引用 NekoPocketStorageColumn（行列读 PocketConstants 单源；javadoc 提及不算）");
+        SimpleAssert.eq(0, countCodeLinesIn(item, "PocketSlots"), "★物品类代码位不得再引用 PocketSlots（javadoc 提及不算）");
+        SimpleAssert
+            .that(countCodeLinesIn(item, "PocketConstants.STORAGE_ROWS") >= 1, "★行数读点必须落在 PocketConstants（改读要有正面证据）");
+        SimpleAssert.that(countCodeLinesIn(item, "PocketConstants.STORAGE_COLUMNS") >= 1, "★列数读点必须落在 PocketConstants");
+    }
+
+    /**
+     * ★R100 片 F：蒸馏 driver 的分流判定改走 common 侧 {@link PocketIntakeOps}
+     * （原经 gui 侧 {@code PocketSlots} 的继承名）——本条钉住改道之后两条名字<b>解析到同一段代码</b>
+     * （同一枚枚举常量 + 两路调用结果逐值相同），并以源码机检钉住 driver 代码位对
+     * {@code PocketSlots} 的引用恒 0。
+     */
+    private static void r100DistillDriverClassifiesViaCommonIntakeOps() {
+        // ---- ① 枚举同一性：PocketSlots.IncomingAction 是继承名，必须就是 PocketIntakeOps 的那一枚 ----
+        SimpleAssert.that(
+            PocketSlots.IncomingAction.DISTILL == PocketIntakeOps.IncomingAction.DISTILL
+                && PocketSlots.IncomingAction.INJECT == PocketIntakeOps.IncomingAction.INJECT,
+            "★继承名与 common 名必须是同一枚枚举常量（两枚 = 分流真相分叉）");
+        // ---- ② 行为等值：容器 ⇒ INJECT / 普通物品 ⇒ DISTILL，两路调用同判 ----
+        final StubGate gate = new StubGate();
+        final ItemStack ore = stack(4);
+        final ItemStack vessel = stack(5);
+        gate.putDistill(ore, TaumAspectAmounts.of(new String[] { "metallum" }, new int[] { 6 }));
+        gate.putContainer(vessel, TaumAspectAmounts.of(new String[] { "aquamen" }, new int[] { 40 }));
+        SimpleAssert.eq(
+            PocketSlots.classifyIncoming(ore, gate),
+            PocketIntakeOps.classifyIncoming(ore, gate),
+            "★普通物品：gui 继承名与 common 名同一判定（DISTILL 支）");
+        SimpleAssert.eq(
+            PocketIntakeOps.IncomingAction.DISTILL,
+            PocketIntakeOps.classifyIncoming(ore, gate),
+            "普通物品 ⇒ 蒸馏支（正控，判据本体没被改道碰掉）");
+        SimpleAssert.eq(
+            PocketSlots.classifyIncoming(vessel, gate),
+            PocketIntakeOps.classifyIncoming(vessel, gate),
+            "★有内容的容器：两路同一判定（INJECT 支，容器绝不进蒸馏路径）");
+        // ---- ③ 源码半边：driver 代码位改道证据 ----
+        final java.util.List<String> driver = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/distill/PocketDistillDriver.java");
+        if (driver == null) {
+            System.out.println("[NOTE] 读不到 PocketDistillDriver.java ⇒ 分流改道半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(0, countCodeLinesIn(driver, "PocketSlots"), "★driver 代码位不得再引用 PocketSlots（javadoc 提及不算）");
+        SimpleAssert.that(
+            countCodeLinesIn(driver, "PocketIntakeOps.classifyIncoming(") >= 1,
+            "★分流读点必须落在 PocketIntakeOps（改道要有正面证据）");
+    }
+
+    /**
+     * ★R100 片 F：售货机 C2S 动作队列与 BGM「GUI 打开」标志的真相迁入 common 侧——
+     * 行为半边钉 {@link VendingServerActions} 的消费契约（投递→主线程逐个消费 / 单任务异常不中断
+     * 同批 / null 投递与空队列无害）与 BGM 标志的生命周期真值表（开→关→再关幂等，instance 缺席
+     * 也不炸）；源码半边钉 TE / gui 类两侧的改道证据与旧形状归零。
+     */
+    private static void r100VendingQueueAndMusicFlagLiveInCommon() {
+        // ---- ① 队列行为：投递的消费顺序 + 异常隔离 ----
+        final java.util.List<Integer> ran = new java.util.ArrayList<>();
+        VendingServerActions.scheduleServerAction(() -> ran.add(1));
+        VendingServerActions.scheduleServerAction(() -> ran.add(2));
+        VendingServerActions.drainServerActions();
+        SimpleAssert.eq(Integer.valueOf(2), Integer.valueOf(ran.size()), "投递两条 ⇒ 消费两条");
+        SimpleAssert.eq(Integer.valueOf(1), ran.get(0), "★FIFO：先投递先消费（队列语义没被搬家改掉）");
+        ran.clear();
+        VendingServerActions.scheduleServerAction(() -> { throw new IllegalStateException("桩件：单任务失败"); });
+        VendingServerActions.scheduleServerAction(() -> ran.add(3));
+        VendingServerActions.drainServerActions();
+        SimpleAssert
+            .eq(Integer.valueOf(1), Integer.valueOf(ran.size()), "★单任务异常仅记日志、不中断同批（对齐 MailHandler 消费循环，消费口不外抛）");
+        VendingServerActions.scheduleServerAction(null);
+        VendingServerActions.drainServerActions();
+        SimpleAssert.eq(Integer.valueOf(1), Integer.valueOf(ran.size()), "null 投递与空队列 drain 均无害（再 drain 一轮不炸不加账）");
+        // ---- ② BGM 标志生命周期（instance 缺席路径：纯 JVM 无注册单例）----
+        SimpleAssert.that(!NekoMusicEventHandler.isV2GuiOpen(), "开局 GUI 未打开 ⇒ false");
+        NekoMusicEventHandler.onGuiOpened();
+        SimpleAssert.that(NekoMusicEventHandler.isV2GuiOpen(), "★打开口置位（标志真相已迁入 handler）");
+        NekoMusicEventHandler.onGuiClosed();
+        SimpleAssert.that(!NekoMusicEventHandler.isV2GuiOpen(), "关闭口清位");
+        NekoMusicEventHandler.onGuiClosed();
+        SimpleAssert.that(!NekoMusicEventHandler.isV2GuiOpen(), "★幂等：已关再关不重放清理（旧 close 的守卫语义随迁）");
+        // ---- ③ 源码半边：TE 改道 + gui 侧旧形状归零 ----
+        final java.util.List<String> te = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/machine/v2/MTENekoVendingMachineV2.java");
+        if (te == null) {
+            System.out.println("[NOTE] 读不到 MTENekoVendingMachineV2.java ⇒ 队列改道半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.that(
+                countCodeLinesIn(te, "VendingServerActions.drainServerActions(") >= 1,
+                "★TE 的消费点必须落在 common 侧 VendingServerActions");
+            SimpleAssert.eq(0, countCodeLinesIn(te, "NekoVMGuiV2"), "★TE 代码位不得再引用 NekoVMGuiV2（javadoc 提及不算）");
+        }
+        final java.util.List<String> gui = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/vm/NekoVMGuiV2.java");
+        if (gui == null) {
+            System.out.println("[NOTE] 读不到 NekoVMGuiV2.java ⇒ 队列搬家半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(0, countCodeLinesIn(gui, "SERVER_ACTIONS"), "★队列本体必须整体离开 gui 类（留壳 = 两处真相）");
+            SimpleAssert.that(
+                countCodeLinesIn(gui, "VendingServerActions.scheduleServerAction(") >= 1,
+                "★gui 侧五个 C2S 迁移点经同形转发口投递（调用形制零变化）");
+        }
+        final java.util.List<String> musicController = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/vm/GuiMusicController.java");
+        if (musicController == null) {
+            System.out.println("[NOTE] 读不到 GuiMusicController.java ⇒ 标志搬家半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(0, countCodeLinesIn(musicController, "isV2GuiOpen"), "★标志字段必须整体离开 gui 控制器（转发壳不再持真相）");
+            SimpleAssert.that(
+                countCodeLinesIn(musicController, "NekoMusicEventHandler.onGuiClosed()") >= 1,
+                "★关闭联动必须转发到 handler（幂等守卫随迁到那一侧）");
+        }
+        final java.util.List<String> handler = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/machine/neko/NekoMusicEventHandler.java");
+        if (handler == null) {
+            System.out.println("[NOTE] 读不到 NekoMusicEventHandler.java ⇒ 标志搬家半边【未验】（★不是通过）");
+            return;
+        }
+        SimpleAssert.eq(1, countCodeLinesIn(handler, "public static boolean isV2GuiOpen()"), "★标志读口恰 1（真相单源在 handler）");
+        SimpleAssert.that(countCodeLinesIn(handler, "v2GuiOpen = true") == 1, "★置位写点恰 1（onGuiOpened 那一条）");
+        SimpleAssert.that(countCodeLinesIn(handler, "v2GuiOpen = false") == 1, "★清位写点恰 1（onGuiClosed 那一条）");
+    }
+
+    /**
+     * ★R100 片 F：{@code countPocketSourceLinesMatching} 的整树版（目录参数化，供 common 全树
+     * 的 gui-import 归零门使用）。仓库根找不到 ⇒ −1（调用方按"未验"处理）；剥注释行口径与
+     * 那台双目录机相同。
+     */
+    private static int countTreeLinesMatching(String relativeDir, String regex, boolean skipComments) {
+        final java.nio.file.Path root = repoRootOrNull();
+        if (root == null) {
+            return -1;
+        }
+        final java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(regex);
+        final java.nio.file.Path base = root.resolve(relativeDir);
+        if (!java.nio.file.Files.isDirectory(base)) {
+            return -1;
+        }
+        int hits = 0;
+        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(base)) {
+            final java.util.Iterator<java.nio.file.Path> it = walk.iterator();
+            while (it.hasNext()) {
+                final java.nio.file.Path file = it.next();
+                if (!file.getFileName()
+                    .toString()
+                    .endsWith(".java")) {
+                    continue;
+                }
+                for (String line : java.nio.file.Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
+                    if (skipComments && isCommentLine(line)) {
+                        continue;
+                    }
+                    if (pattern.matcher(line)
+                        .find()) {
+                        hits++;
+                    }
+                }
+            }
+        } catch (java.io.IOException ioFailure) {
+            return -1;
+        }
+        return hits;
     }
 }

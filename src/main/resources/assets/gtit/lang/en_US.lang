@@ -66,6 +66,7 @@ item.ring_tempest.source=Source: Chest Loot
 # Common tooltip keys
 gtit.tooltip.reach_distance=Interaction/Attack Range
 gtit.tooltip.max_health=Max Health
+gtit.tooltip.added_by=Added by:
 
 # Starter Gift
 item.starter_gift.name=Starter Gift
@@ -284,10 +285,15 @@ item.neko_dimension_pocket.name=Neko Dimensional Pocket
 # all six always print with 0 for empty since R99, appended at the very bottom of the tooltip).
 # The three declaration spots survive untouched: new .1 = R39a equal fluid rows,
 # new .2 = R53b contents live in the item, new .3 = the one-shot crafting cost.
-item.neko_dimension_pocket.tooltip.0=Right-click or press the key to open the panel
-item.neko_dimension_pocket.tooltip.1=All fluid columns behave the same: direction depends on whether the placed tank currently holds fluid
-item.neko_dimension_pocket.tooltip.2=Contents live in this item: losing or destroying the pocket loses everything inside
-item.neko_dimension_pocket.tooltip.3=Crafting consumes one Neko Infinity Storage Unit: empty it first, or its stored contents stay orphaned in the world save
+# ★★R100 slice E (description trim): family 4 → 3 — the R39a declaration row (old .1 fluid
+# column direction note) is removed as an explicit reversal (the misreading it guarded against
+# has no surface now that every panel column is shaped alike; reversal annotation sits in the
+# item class javadoc at the original declaration spot, ledger updated by slice G); the remaining
+# rows are renumbered to {0,1,2} and rewritten short and colloquial: .0 how to open /
+# .1 = R53b contents live in the item (old .2) / .2 = crafting cost (old .3).
+item.neko_dimension_pocket.tooltip.0=Right-click or press B to open the panel
+item.neko_dimension_pocket.tooltip.1=Items and aspects live in this pocket: lose the pocket, lose it all
+item.neko_dimension_pocket.tooltip.2=Crafting eats one Neko Infinity Storage Unit: empty it first
 gtit.pocket.balance.neko=Neko Coin: %d
 gtit.pocket.balance.shimmering=Shimmering Neko Coin: %d
 gtit.pocket.channel.instant=Open Instant Channel (-%d coin)
@@ -407,6 +413,19 @@ gtit.pocket.upgrade.stack.tooltip=Per-slot stack limit times sixteen
 gtit.pocket.upgrade.magnet.tooltip=Automatically picks up items within eight blocks
 gtit.pocket.upgrade.channel_persist.tooltip=Channels always on: the channel button is disabled and the pocket always shows as working
 gtit.pocket.upgrade.mage.tooltip=Distillation interval cut from five seconds to one second
+# ---- R100 slice B new keys (10): mage module numbered detail lines line.0..line.9 (the one-line effect stays first) ----
+# Order: permanent install -> four modes -> distillation notes -> three passives (wand / coin / transmute)
+# -> crystal -> element capacity -> costs. Numbers are %n$d placeholders fed by ItemPocketUpgrade#mageLineArgs.
+gtit.pocket.upgrade.mage.line.0=Permanent once inserted into slot %1$d; the master switch can still be turned off at any time
+gtit.pocket.upgrade.mage.line.1=Four modes: the master switch plus %1$d sub-modes (crystal / coin / transmute); coin and transmute on by default, crystal off
+gtit.pocket.upgrade.mage.line.2=Distillation speeds up from the next batch when inserted mid-run; yield follows each item's own aspects
+gtit.pocket.upgrade.mage.line.3=Passive wand charging: one batch every %1$d ticks, at most %2$d points per wand; only the first wand that can take points is fed
+gtit.pocket.upgrade.mage.line.4=Wand scan: main hand first, then the %1$d backpack slots; without Thaumcraft not a single point is taken
+gtit.pocket.upgrade.mage.line.5=Passive coin charging: exactly one coin every %1$d second, the pocket's %2$d slots before the backpack's %3$d; all-or-nothing precheck, normal coins +%4$d and shimmering +%5$d to each primal
+gtit.pocket.upgrade.mage.line.6=Passive transmute: every %1$d second each primal folds %2$d point into element capacity, all %3$d in parallel; non-primals are never touched
+gtit.pocket.upgrade.mage.line.7=Crystal mode: every %1$d second up to %2$d crystals per aspect (%3$d point each); drops at your feet when the inventory is full, essence is charged only for what is delivered
+gtit.pocket.upgrade.mage.line.8=Element capacity: %1$d primals with %2$d each, %3$d in total; see the pocket's own tooltip for the six reserve lines
+gtit.pocket.upgrade.mage.line.9=Costs: crystal and transmute share the essence tray, crystal drains first every %1$d second with no arbitration; the passives degrade without Thaumcraft
 gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
 # ---- ★R96 S2 new keys (19): the upgrade config band (secondary panel) title / three-state readouts /
 # mount frames + the closed-state cell readout + seven sticky receipts.
@@ -433,6 +452,12 @@ gtit.pocket.config.mount.mage=Mage: modes and elements
 #   用户 2026-09-28 明确接受这两个事实从面板消失。----
 gtit.pocket.config.stack.limit=Current per-slot limit: %d
 gtit.pocket.config.persist.idle=Not always-on right now (the switch is off, or no live channel yet)
+# ---- R100: frequency tier row, four keys (consumed only by the channel-persistence config face;
+# the tier table has its single source in PocketConstants - lang never lists the seconds)
+gtit.pocket.config.persist.freq=Channel cadence: %d s per batch
+gtit.pocket.config.persist.freq.faster=Faster
+gtit.pocket.config.persist.freq.slower=Slower
+gtit.pocket.config.persist.freq.hint=Sets the per-batch interval of the always-on channel only (the manual thirty-second channel stays fixed). Takes effect at once - the next batch already uses the new cadence
 gtit.pocket.config.mage.capacity=Element capacity: %d each, %d across all six
 gtit.pocket.config.mode.crystal=Crystallise
 gtit.pocket.config.mode.coin=Cat coin charging
@@ -482,7 +507,7 @@ gtit.pocket.channel.always_on=Channels always on (persistence upgrade)
 # replacement for old tooltip.5 (both cadences in one line, which finally consumes the previously
 # unused %12$d ⇒ no new slots). The key name is frozen (README R96 ruling + a test pins "must not
 # be renamed"); ★this round only changes the value. Consumer: appendDistillFastLine.
-gtit.pocket.tooltip.distill_fast=Distillation runs one batch every %6$d seconds, every %12$d second with the mage module; yield follows each item's own aspects
+gtit.pocket.tooltip.distill_fast=Distillation: %6$d s per batch, %12$d s with mage module; yield follows each item's own aspects
 # ★★R98 S2 (second half of request 1): template for the element reserve lines — one primal per row,
 # ★all six rows always print, 0 for empty (R99 P4-D: "real zero" and "not synced" must look different).
 # Name and amount are both fed by code (%1$s = aspect display name, %2$d = current points);

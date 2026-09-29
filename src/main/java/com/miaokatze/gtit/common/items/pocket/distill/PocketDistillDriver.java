@@ -12,13 +12,13 @@ import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
+import com.miaokatze.gtit.common.items.pocket.PocketIntakeOps;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
-import com.miaokatze.gtit.gui.pocket.PocketSlots;
 
 /**
  * 源质蒸馏的 <b>tick 宿主本体</b>（需求 2 右半 / S7）。
@@ -65,8 +65,8 @@ import com.miaokatze.gtit.gui.pocket.PocketSlots;
  * 回归套件的编译，改名的落点见 {@link Batch#discardedGroups} 注释），不再"放了东西、进度条满着、
  * 什么都不发生"；</li>
  * <li>★<b>容器绝不进入蒸馏判定路径</b>（R44c，按 R63b 改述；不是"不得进入这 12 格"）：
- * 每个候选格都先过唯一分流器 {@code PocketSlots#classifyIncoming}，只有判为 {@code DISTILL}
- * 的栈才会被问 {@link EssenceGate#aspectsOf}；容器当场走注入支（{@code PocketSlots#injectContainer}，
+ * 每个候选格都先过唯一分流器 {@code PocketIntakeOps#classifyIncoming}，只有判为 {@code DISTILL}
+ * 的栈才会被问 {@link EssenceGate#aspectsOf}；容器当场走注入支（{@code PocketIntakeOps#injectContainer}，
  * 由 S4 落地、本类<b>不</b>再造第二条平行分流，R69）。
  * 这样 {@code getBonusTags} 把栈内已有源质重复计入产出的回路从入口就断了。</li>
  * </ol>
@@ -316,7 +316,7 @@ public final class PocketDistillDriver {
                 if (stack == null || stack.stackSize <= 0) {
                     continue;
                 }
-                if (PocketSlots.classifyIncoming(stack, gate) != PocketSlots.IncomingAction.DISTILL) {
+                if (PocketIntakeOps.classifyIncoming(stack, gate) != PocketIntakeOps.IncomingAction.DISTILL) {
                     continue;
                 }
                 final Item item = stack.getItem();

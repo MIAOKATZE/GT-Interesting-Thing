@@ -10,6 +10,7 @@ import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
 import baubles.api.BaubleType;
@@ -123,6 +124,7 @@ public class FloatCore extends Item implements IBauble {
             if (line.equals(key)) break;
             tooltip.add(EnumChatFormatting.GOLD + line);
         }
+        tooltip.add(GTITUtils.getAddedByLine());
     }
 
     // ========== 普通物品功能（没有Baubles时也能用） ==========

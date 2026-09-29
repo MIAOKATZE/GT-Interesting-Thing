@@ -9,6 +9,7 @@ import com.miaokatze.gtit.client.gui.NekoWidgetThemes;
 import com.miaokatze.gtit.command.GTITGiftCommand;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellHandler;
 import com.miaokatze.gtit.common.items.infinitycell.StorageManager;
+import com.miaokatze.gtit.common.items.pocket.PocketPanelBridge;
 import com.miaokatze.gtit.common.loot.LootRegistrar;
 import com.miaokatze.gtit.config.Config;
 import com.miaokatze.gtit.config.GiftConfig;
@@ -17,6 +18,7 @@ import com.miaokatze.gtit.crossmod.bq.BqCompat;
 import com.miaokatze.gtit.crossmod.miaogtnh.MiaoGtnhHost;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.event.PlayerLoginHandler;
+import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
 import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
 import com.miaokatze.gtit.recipe.GTITRecipes;
@@ -365,6 +367,12 @@ public class CommonProxy {
     public void init(FMLInitializationEvent event) {
         // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
         ensureBaublesRingSlots();
+
+        // ★R100 片 F（架构解耦）：口袋主面板的 gui 侧实现注入 —— common 侧 ItemNekoDimensionPocket
+        // 不再静态 import gui.pocket，buildUI 经 PocketPanelBridge 委托。★必须双端注册：
+        // IGuiHolder.buildUI 在服务端也要构建面板树（MUI2 双端同步），而本方法在专用服上同样执行
+        // （ClientProxy.init 首行 super.init 已带上），两侧同享这一次注册。
+        PocketPanelBridge.register(NekoPocketPanel::build);
 
         // 注册猫猫币团队数据到 GTNHLib Teams
         // O2-04：Teams 探测/注册/降级日志统一走 TeamDataProvider 门面（不可用时统一回退个人模式）

@@ -44,7 +44,8 @@ import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
  * {@code onArmorTick}，:351-357）。多枚口袋由下面的会话身份守卫保证只有"开界面那一枚"跑通道。
  * 旧"换手/收进背包即停摆"的玩家声明文案（{@code gtit.pocket.held.note}）自 R95 起口径过期，
  * lang 侧翻新属 S2b；★★<b>R98 后该族键号已整体漂移</b>（tooltip 激进裁剪 ⇒ 连号族 {@code 0..9} 重排成
- * {@code 0..3}）：那句"内容随物品丢"现在住在 {@code tooltip.2}，★旧号 {@code .7} 在两份 lang 里<b>都不再存在</b>
+ * {@code 0..3}；★R100 片 E 再收紧成 {@code 0..2}）：那句"内容随物品丢"现在住在 {@code tooltip.1}，
+ * ★旧号 {@code .7} 在两份 lang 里<b>都不再存在</b>
  * ⇒ <b>按内容认、别照号抄</b>；它与主手口径无关，不得混引。
  * 对照参考：GT5U {@code ItemGTToolbox.onUpdate} 对全部 36 格都跑，R95 起本仓与它同形。
  * <p>
@@ -53,6 +54,8 @@ import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
  * <li>没有活通道 ⇒ 先一次 {@code Map.get} 判空；★真空态若持续化<b>当前生效</b>且这一枚承载栈正是
  * 活会话认的那一枚，就经 {@link PocketChannelManager#ensurePersistentShortChannel} 就地装填一条
  * SHORT 通道（R95 缺的正是这一腿：位一置起，通道谁也开不起来 ⇒ 界面三处承诺全成了假读数）。
+ * ★R100（需求 2）在此腿上补了<b>会话自动复原</b>：会话缺失时先经
+ * {@link PocketChannelSessions#restoreIfBound} 复原一只 headless 会话（免开背包），
  * 三条守卫的顺序按成本排：{@code peek}（Map）→ 载体身份（引用比较）→ 位图（两次 byte 读）——
  * ★"不建条目、不分配 ops"照旧成立，被放宽的只有"不读 NBT"半句，且只在有活会话的口袋里发生
  * （没开过界面 ⇒ 第二道守卫就把这次读省掉了）；</li>
@@ -101,13 +104,24 @@ public final class PocketChannelDriver {
             // R85 D1 那一族的反例）；③ 绑定表非空由激活口自己把关（空表 ⇒ 一条只会空跑、还会把
             // 会话永久钉在内存里的通道）。装填只在真空态发生一次 ⇒ 常态成本仍是一次 Map.get。
             if (PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
-                final PocketSession pending = PocketSessions.peek(uuid);
+                PocketSession pending = PocketSessions.peek(uuid);
+                if (pending == null) {
+                    // ★★R100（需求 2「免开背包」）：会话缺失（登录后从未开过界面 / 服重启后）⇒ 就地复原一只
+                    // headless 会话。会话构造与面板登记点同源（解析单源 = PocketChannelSessions#
+                    // parseCarrierInventory，登记单源 = PocketSessions.register，禁第二份真相）；
+                    // 前置与 S5 那三条同一套：isActive（就是外层这一判）、会话身份（复原出的会话认的就是
+                    // 本枚承载栈）、绑定表非空（restoreIfBound 的便宜门 + 全档复核，空表 ⇒ null 零写入）。
+                    // 复原出的会话恒 isOpen()=false ⇒ 与下面的 retireIdleSession 判据一致，
+                    // 不会出现"刚复原就被退役"的振荡。
+                    pending = PocketChannelSessions.restoreIfBound(player, stack);
+                }
                 if (pending != null && pending.carrierStack() == stack
                     && PocketChannelManager.INSTANCE
                         .ensurePersistentShortChannel(uuid, stack, pending.bindings(), pending.filters())) {
-                    // 本拍只装填就返回（与 openChannel 的短效支同口径：倒计时刚装整拍，下一拍才到期）。
-                    // ★刻意不在此刻写 work 位：帧带的常亮由批边界那条续写负责（B4 的"真读数"裁定），
-                    // 在这里抢写一次反而让"还没穿过一件货"的那一拍亮起来。
+                    // 本拍只装填就返回：与 openChannel 的短效支同口径。★R100 起"开启瞬间立即首批"
+                    // 由激活口自己装 due=0（fireFirstBatchNow）⇒ 下一拍（≤1 tick 后）就是第一批，
+                    // 不再是"倒计时刚装整拍、白等一节拍"。★刻意不在此刻写 work 位：帧带的常亮由批边界
+                    // 那条续写负责（B4 的"真读数"裁定），在这里抢写一次反而让"还没穿过一件货"的那一拍亮起来。
                     return;
                 }
             }
@@ -129,6 +143,11 @@ public final class PocketChannelDriver {
             // 玩家同时持有两枚口袋时，另一枚的 onUpdate 会走到这里 ⇒ 直接跳过：
             // 否则就是把 A 的绑定表与内容写到 B 的 NBT 上（跨口袋串档）。
             return;
+        }
+        if (session instanceof PocketChannelSessions.HeadlessCarrier) {
+            // ★R100：headless 会话同步回填"此刻被 tick 的这一枚"（与上一行 state.retargetCarrier
+            // 同一理由：堆叠移动/跨维重建后引用不陈旧；面板会话有它自己的 relocateCarrier，不走这里）。
+            ((PocketChannelSessions.HeadlessCarrier) session).retargetCarrier(stack);
         }
         // ★R85 D1 止损（台账挂"另案未决"的那条，机制本轮被证具体）：本玩家只有<b>一份</b>通道状态，
         // 而它的 `sessionBindings()` 是<b>开道那一枚</b>口袋的绑定表实例；玩家随后改开另一枚口袋的面板时，
@@ -152,9 +171,10 @@ public final class PocketChannelDriver {
             // ★R95 通道持续化：载体已固化 CHANNEL_PERSIST 位 ⇒ 批边界把剩余批次<b>回满</b>——这是
             // 「批边界续批」，不是独立状态机：不新开计数器、不绕过 PocketChannelState 的批次权威，
             // 复用 activate 的 SHORT 装填单点（remainingBatches 与 ticksUntilDue 都由它写；finishBatch
-            // 刚把节拍装回 CHANNEL_TICK_PERIOD，这里同值重装无害）。因为每批跑完都立刻回满，
-            // remainingBatches 永远到不了 0 ⇒ finishBatch 的 stop() 分支与 tickShortChannel 的
-            // 「批次用尽即回收」都结构性不可达。位图每秒读一次（每批一次，R53c 量级可忽略）。
+            // 刚把节拍装回<b>本次运行的节拍</b>，★R100 起持续化道按档位 tick 装填，这里同值重装无害）。
+            // 因为每批跑完都立刻回满，remainingBatches 永远到不了 0 ⇒ finishBatch 的 stop() 分支与
+            // tickShortChannel 的「批次用尽即回收」都结构性不可达。位图与档位每节拍读一次（每批一次，
+            // R53c 量级可忽略）。
             // 免激活费免冷却：无激活事件可挂扣费点（R95 裁定）——持续化的成本语义就是
             // "一次性付过激活费后不再到 0"，不引入任何周期扣费。
             // ★R96 S1：判据换组合谓词 isActive（位图 ∧ ¬off-mask）⇒ 玩家关掉持续化之后这一行不再成立，
@@ -173,12 +193,20 @@ public final class PocketChannelDriver {
             // 的位，无从区分）⇒ 那是候选 B/C 被判死的理由，也是本轮采边沿方案的唯一理由。
             if (state.mode() == PocketChannelState.Mode.SHORT
                 && PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CHANNEL_PERSIST)) {
-                state.activate(PocketChannelState.Mode.SHORT, 0L, 0L);
+                // ★R100：回满装填的节拍按<b>载体 NBT 的频率档位</b>取（无键=默认 5s 档），不再用全局 1s 常量
+                // ——档位写腿（NekoPocketServerHandler#performChannelFreqTier）之外没有第二个改档入口，
+                // 这里每批边界现读一次（每节拍一次的 NBT int 读，R53c 量级可忽略）⇒ 玩家中途调档，
+                // 下一批边界就换新节拍（另有 manager 的 retimePersistentChannel 让"调档"当场钳进新节拍）。
+                state.activate(
+                    PocketChannelState.Mode.SHORT,
+                    0L,
+                    0L,
+                    PocketConstants.channelFreqTierTicks(PocketConstants.readChannelFreqTier(stack.getTagCompound())));
             }
             // 只在批边界写一次 NBT（不是每 tick 写档，R53c）：动画窗口 = 本通道剩余总长
-            ItemNekoDimensionPocket.startWorkTicks(
-                stack,
-                state.remainingBatches() * PocketConstants.CHANNEL_TICK_PERIOD + state.ticksUntilDue());
+            // （★R100：长度按<b>本次运行的节拍</b>算——持续化道按档位走时，1s 常量会把读数放大/缩小错档）
+            ItemNekoDimensionPocket
+                .startWorkTicks(stack, state.remainingBatches() * state.periodTicks() + state.ticksUntilDue());
             if (refreshLocationSnapshot(bindings)) {
                 session.markDirty();
             }

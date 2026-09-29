@@ -26,8 +26,8 @@ import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructa
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
-import com.miaokatze.gtit.gui.vm.NekoVMGuiV2;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
@@ -971,6 +971,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             .addController("Bottom Right")
             .addOtherStructurePart("Vending Machine Casing", "Any casing block")
             .addOtherStructurePart("ME Vending Uplink Hatch", "Optional, any casing")
+            .addInfo(GTITUtils.getAddedByLine())
             .toolTipFinisher();
     }
 
@@ -1256,8 +1257,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             // 投递动作执行时读到的 active 恒为 false，整个弹币族会静默提前返回（v1.7.52 修复）。
             aBaseMetaTileEntity.setActive(mMachine);
             // B2-02：消费 GUI C2S 同步值投递的服务端动作（Netty IO 线程 → 主线程，
-            // 队列为空时仅一次 volatile 读，开销可忽略；任一台在 tick 的机器都会清空全局队列）
-            NekoVMGuiV2.drainServerActions();
+            // 队列为空时仅一次 volatile 读，开销可忽略；任一台在 tick 的机器都会清空全局队列。
+            // ★R100 片 F：队列与消费口迁往同包 VendingServerActions，TE 不再 import gui 包）
+            VendingServerActions.drainServerActions();
             // 当 uplink 丢失时重置代理就绪兜底标记，下次连接成功后重新尝试
             if (uplinkHatch == null) {
                 uplinkProxyReadyAttempted = false;
@@ -1445,13 +1447,15 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 获取机器的 GUI 实例
      * <p>
-     * 返回 {@link NekoVMGuiV2} 实例，由 GT5U 的 buildUI (final 方法) 调用。
+     * ★R100 片 F（架构解耦）：经同包 {@link VendingGuiBridge} 委托到客户端注册的工厂
+     * （{@code ClientProxy#init} 注册 {@code NekoVMGuiV2::new}），本类不再静态 import
+     * {@code gui.vm} 包；由 GT5U 的 buildUI (final 方法) 调用（仅客户端触达）。
      *
-     * @return NekoVMGuiV2 实例
+     * @return NekoVMGuiV2 实例（客户端）
      */
     @Override
     protected gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui<?> getGui() {
-        return new NekoVMGuiV2(this);
+        return VendingGuiBridge.create(this);
     }
 
     // === 输入/输出槽适配器 ===

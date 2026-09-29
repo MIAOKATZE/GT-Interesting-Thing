@@ -270,27 +270,20 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      * ★R91-⑤：本格的两个属性角标（左上蓝 {@code L} = 记忆 / 左下绿 {@code P} = 阻拦上传）。
      * <p>
      * 几何、色与"该不该画"全部取自 {@link PocketGhostRequest}（三组格件共用一份，★不在这里另算一遍）；
-     * 本方法只负责"画"。★文本为空 ⇒ 一条像素都不画（⇒ 用例
-     * {@code ghost_badge_readouts_are_empty_when_not_applicable} 钉的就是这里的前置判据）。
+     * 绘制体走共享助手 {@link PocketBadgeDrawer}（★R100 片 F：原三份同形 private drawBadge 收拢，
+     * 行为零变化）。★文本为空 ⇒ 一条像素都不画（⇒ 用例
+     * {@code ghost_badge_readouts_are_empty_when_not_applicable} 钉的就是那条前置判据）。
      * ★{@code shadow=true} 与本类 {@link #drawCapReadout()} 同一条理由：遮罩是接近白的浅色。
      */
     private void drawAttrBadout() {
-        drawBadge(
+        PocketBadgeDrawer.drawBadge(
             PocketGhostRequest.memoryBadgeText(ghostAttr),
             PocketGhostRequest.memoryBadgeTop(),
             PocketGhostRequest.memoryBadgeColor());
-        drawBadge(
+        PocketBadgeDrawer.drawBadge(
             PocketGhostRequest.uploadBlockBadgeText(uploadBlocked),
             PocketGhostRequest.uploadBlockBadgeTop(getArea().h()),
             PocketGhostRequest.uploadBlockBadgeColor());
-    }
-
-    /** 一个角标的绘制体（左对齐 + 内缩；★空文本 = 不画，三组格件同形）。 */
-    private void drawBadge(String text, float top, int color) {
-        if (text == null || text.isEmpty()) {
-            return;
-        }
-        GuiDraw.drawText(text, PocketGhostRequest.badgeLeftX(), top, PocketGhostRequest.CAP_READOUT_SCALE, color, true);
     }
 
     /**

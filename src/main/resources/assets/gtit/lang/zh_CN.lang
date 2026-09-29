@@ -66,6 +66,7 @@ item.ring_tempest.source=来源：宝箱战利品
 # 通用tooltip
 gtit.tooltip.reach_distance=交互/攻击距离
 gtit.tooltip.max_health=生命上限
+gtit.tooltip.added_by=添加模组：
 
 # 新手宝箱
 item.starter_gift.name=新手宝箱
@@ -281,10 +282,12 @@ item.neko_dimension_pocket.name=猫猫次元口袋
 #   旧 .9 每槽/合计容量 → 让位给面板 gtit.pocket.fluid.capacity（DP-5：容量唯一可见面 = 面板）
 # 腾出来的位置给了下面的元素储量行 gtit.pocket.tooltip.element（六项、★R99 起恒六行空位显 0、追加在 tooltip 最底部）。
 # 留下的三处声明位一个没动：新 .1 = R39a 两排同权、新 .2 = R53b 内容随物品丢、新 .3 = 合成一次性代价。
-item.neko_dimension_pocket.tooltip.0=右键或按键打开面板
-item.neko_dimension_pocket.tooltip.1=各流体列行为相同：方向取决于放入的储罐当前有无流体
-item.neko_dimension_pocket.tooltip.2=内容存在本物品上：丢失或销毁口袋即同时失去其中所有物品与源质
-item.neko_dimension_pocket.tooltip.3=合成会消耗一枚无限存储单元：请先把它转空，否则存档里那份存量将无主残留
+# ★★R100 片 E（描述精简轮）：连号族 4 → 3——删 R39a 声明行（旧 .1 流体列方向说明，显式翻案：该行防的
+# 误读在面板逐列同形的现状下已无落点，翻案注释落在物品类 javadoc 原声明位，台账由片 G 记档），剩余三行
+# 重排为 {0,1,2} 且文案口语化压短：.0 打开方式 / .1 = R53b 内容随物品丢（旧 .2）/ .2 = 合成代价（旧 .3）。
+item.neko_dimension_pocket.tooltip.0=右键或按 B 键打开面板
+item.neko_dimension_pocket.tooltip.1=物品与源质都存在口袋上，口袋丢了就全没了
+item.neko_dimension_pocket.tooltip.2=合成会吞掉一枚无限存储单元，先转空再合成
 gtit.pocket.balance.neko=猫猫币：%d
 gtit.pocket.balance.shimmering=闪烁猫猫币：%d
 gtit.pocket.channel.instant=激活瞬时次元通道（-%d 猫猫币）
@@ -399,6 +402,19 @@ gtit.pocket.upgrade.stack.tooltip=单格堆叠上限×十六
 gtit.pocket.upgrade.magnet.tooltip=自动拾取周围八格内的物品
 gtit.pocket.upgrade.channel_persist.tooltip=通道常开：禁用通道按钮、口袋始终显示工作中
 gtit.pocket.upgrade.mage.tooltip=蒸馏间隔五秒缩至一秒
+# ---- ★R100 片 B 新增 10 键：魔法使插件连号说明族 line.0..line.9（首行效果行不动，族追加其后）----
+# 行序：固化 → 四模式 → 蒸馏补充 → 三被动（法杖/猫猫币/转换）→ 结晶 → 元素容量 → 代价。
+# 数字一律 %n$d 位置参数，实参由 ItemPocketUpgrade#mageLineArgs 从 PocketConstants 符号派生。
+gtit.pocket.upgrade.mage.line.0=放入第 %1$d 格即固化不可逆；主开关可随时关
+gtit.pocket.upgrade.mage.line.1=四模式：主开关＋%1$d 个子模式（结晶/猫猫币/源质转换），缺省猫猫币与转换开、结晶关
+gtit.pocket.upgrade.mage.line.2=蒸馏中途装入下一轮生效；产量按物品源质原量入账
+gtit.pocket.upgrade.mage.line.3=被动·充法杖：每 %1$d tick 一批、每杖至多 %2$d 点，只喂吃得下的第一支
+gtit.pocket.upgrade.mage.line.4=法杖主手优先，再扫背包 %1$d 格；无神秘时代时不掏分
+gtit.pocket.upgrade.mage.line.5=被动·猫猫币：每 %1$d 秒恰一枚，先口袋 %2$d 格后背包 %3$d 格；整笔预检，普通币各源 +%4$d、闪烁 +%5$d
+gtit.pocket.upgrade.mage.line.6=被动·源质转换：每 %1$d 秒每元始折 %2$d 点入元素容量，%3$d 种同批并行；非元始不碰
+gtit.pocket.upgrade.mage.line.7=模式·结晶：每 %1$d 秒每源质至多 %2$d 枚（%3$d 点/枚）；背包满掉脚下，按实交付扣源质
+gtit.pocket.upgrade.mage.line.8=元素容量：%1$d 个元始各 %2$d、合计 %3$d；储量六行见口袋本体悬浮
+gtit.pocket.upgrade.mage.line.9=代价：结晶与源质转换同吃源质盘，结晶每 %1$d 秒先取、无仲裁；无神秘时代时被动降级
 gtit.pocket.upgrade.slot.tooltip=每格只收对应插件；放入即固化，不可取出
 # ---- ★R96 S2 新增 19 键：升级配置面板（次级面板）的标题/三态读数/挂载位 + 关闭态格读数 + 七条粘性回执 ----
 # ★值内不得出现 ASCII 数字（门禁的 lang 数字禁令）⇒ 数字一律中文书写。
@@ -425,6 +441,11 @@ gtit.pocket.config.mount.mage=魔法使：模式与元素
 #     用户 2026-09-28 明确接受"改判后这两个事实从配置面板消失"。----
 gtit.pocket.config.stack.limit=当前单格上限：%d
 gtit.pocket.config.persist.idle=此刻未常开（开关关着，或通道还没起来）
+# ---- ★R100 频率档位段四键（只随通道持续化配置面消费；档位表单源在 PocketConstants，lang 不写秒数清单）
+gtit.pocket.config.persist.freq=通道频率：%d 秒/批
+gtit.pocket.config.persist.freq.faster=更快
+gtit.pocket.config.persist.freq.slower=更慢
+gtit.pocket.config.persist.freq.hint=调节持续化通道每批的间隔（仅常开道生效；手动三十秒道不变）。改档当场生效，下一批就用新节拍
 gtit.pocket.config.mage.capacity=元素容量：每种元素 %d，六种合计 %d
 gtit.pocket.config.mode.crystal=结晶模式
 gtit.pocket.config.mode.coin=猫猫币充能
@@ -472,7 +493,7 @@ gtit.pocket.channel.always_on=通道常开中（持续化升级）
 # distill_fast = 连号族之外的追加行，★R98 起它同时是旧 tooltip.5 的替代者（两档口径并成一行，
 # 正好吃掉此前备而未用的 %12$d ⇒ 零扩槽）。键名冻结（README R96 裁定 + 用例硬钉「不许改名」），
 # ★本轮只改值。消费点：ItemNekoDimensionPocket#appendDistillFastLine。
-gtit.pocket.tooltip.distill_fast=蒸馏每 %6$d 秒一轮，装魔法使后 %12$d 秒一轮；产出量按物品自身源质原量入账
+gtit.pocket.tooltip.distill_fast=蒸馏 %6$d 秒一轮，装魔法使 %12$d 秒；产出按物品源质原量
 # ★★R98 S2（需求 1 的后半）：元素储量行的模板，一条 primal 一行、★★R99 P4-D 改判：恒六行、空位显 0（「真 0」与「没同步」分得开）。
 # 名字与数量都由代码喂（%1$s = aspect 显示名、%2$d = 当前点数），★值里不写任何规格数字 ⇒ R75 契约第 5 条。
 # 量纲：本仓 elem 存的就是点数（单 tag 上限 500），★不带魔力石那层 /100（那是 TC 的 vis ×100 刻度）。

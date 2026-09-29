@@ -367,9 +367,9 @@ public final class PocketConstants {
     /**
      * tick → 秒，<b>向上取整</b>（{@code 0 tick → 0 秒}、{@code 1 tick → 1 秒}）。
      * <p>
-     * 为什么统一取"上"而不是"四舍五入/向下"：这三处读数都是"<b>还要多久才发生</b>"
-     * （蒸馏还剩几轮、短效通道还剩几秒），向下取整会在只剩 19 tick 时显示 0 秒 ⇒
-     * 玩家读到"已经结束"但实际还在跑（R10 的"失败与状态不得说谎"同一族）。
+     * 为什么统一取"上"而不是"下取整/四舍五入"：这三处读数都是"<b>还要多久才发生</b>"
+     * （蒸馏还剩几轮、短效通道还剩几秒），向下取整会在只剩 19 tick 时显示 0 秒 ⇒ 玩家
+     * 读到"已经结束"但实际还在跑（R10 的"失败与状态不得说谎"同一族）。
      * 取整的进位表达式（{@link #TICKS_PER_SECOND} − 1）也只存在于此一处。
      *
      * @param ticks 剩余 tick 数；{@code <= 0} 一律给 0 秒（不把"没有剩余"显示成"还剩 1 秒"）
@@ -381,8 +381,81 @@ public final class PocketConstants {
         return (ticks + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND;
     }
 
-    /** 短效通道节拍：每 {@link #TICKS_PER_SECOND} tick 一批（= 每秒一批，共 {@value #SHORT_CHANNEL_SECONDS} 批）。 */
-    public static final int CHANNEL_TICK_PERIOD = TICKS_PER_SECOND;
+    // ------------------------------------------------------ ★R100：持续化通道的频率档位表（单源）
+    //
+    // ★整段只允许活在这里（"频率值单源"裁定）：秒表、默认档索引、NBT 键名、秒→tick 换算
+    // 四件一体；主源任何别处再写一个秒数/tick 数/换算式就是第二处速率源（R80③ ticksToSecondsCeil
+    // 同一条纪律）。★只作用于<b>持续化</b>通道：手动付费短效道维持 1s 节拍 ×30 批（R100 用户裁决，
+    // 见 {@link #CHANNEL_TICK_PERIOD} 的注释），档位 UI 也只挂在 CHANNEL_PERSIST 那一面。
+
+    /**
+     * 持续化通道的频率档位表（<b>秒/批</b>，升序；下标即档位索引）。
+     * <p>
+     * ★表本体即判据：档位 UI 的升/降钮、NBT 档位值、服务端校验全部按下标消费本表，
+     * 不许在任何调用方再抄一份秒数清单。11 档 = 用户点名的 {@code {1,2,3,5,10,15,30,60,120,300,600}}。
+     */
+    public static final int[] CHANNEL_FREQ_TIERS_SECONDS = { 1, 2, 3, 5, 10, 15, 30, 60, 120, 300, 600 };
+    /** 默认档 = <b>5 秒</b>那一档（下标 3）。★无键即默认 ⇒ 旧存档口袋零迁移读出 5s 档。 */
+    public static final int CHANNEL_FREQ_TIER_DEFAULT = 3;
+    /**
+     * 频率档位在口袋 NBT 根层的键名（int = 档位下标）。
+     * <p>
+     * ★★<b>键名 {@code channelFreqTier} 一经落档即冻结</b>（「可加不可改」的键名版，同
+     * {@link #UPGRADES_OFF_KEY} 那条）：改字面量 = 玩家已调好的频率读回来全变缺省，且零日志。
+     * 缺键与「默认档下标」同义（读写两侧都不为默认档建档 ⇒ 老档天然干净，R53c 的"读路径不建档"）。
+     */
+    public static final String CHANNEL_FREQ_TIER_KEY = "channelFreqTier";
+
+    /** 档位下标钳到合法区间（越界/脏档一律回落 {@link #CHANNEL_FREQ_TIER_DEFAULT}，读侧不抛、不写）。 */
+    public static int channelFreqTierClamp(int tier) {
+        return tier >= 0 && tier < CHANNEL_FREQ_TIERS_SECONDS.length ? tier : CHANNEL_FREQ_TIER_DEFAULT;
+    }
+
+    /** 档位 → 秒（唯一换算；调用方不得再写 {@code CHANNEL_FREQ_TIERS_SECONDS[x]} 式直取）。 */
+    public static int channelFreqTierSeconds(int tier) {
+        return CHANNEL_FREQ_TIERS_SECONDS[channelFreqTierClamp(tier)];
+    }
+
+    /** 档位 → tick（秒→tick 的<b>唯一</b>换算点：{@code 秒 × }{@link #TICKS_PER_SECOND}）。 */
+    public static int channelFreqTierTicks(int tier) {
+        return channelFreqTierSeconds(tier) * TICKS_PER_SECOND;
+    }
+
+    /** 读口袋档上的频率档位（无栈/无根/缺键/脏档 ⇒ {@link #CHANNEL_FREQ_TIER_DEFAULT}；只读不建档）。 */
+    public static int readChannelFreqTier(net.minecraft.nbt.NBTTagCompound root) {
+        if (root == null || !root.hasKey(CHANNEL_FREQ_TIER_KEY)) {
+            return CHANNEL_FREQ_TIER_DEFAULT;
+        }
+        return channelFreqTierClamp(root.getInteger(CHANNEL_FREQ_TIER_KEY));
+    }
+
+    /**
+     * 写频率档位（★仅服务端写腿调）：写的是<b>默认档 ⇒ {@code removeTag}</b>（缺键同义，少一个键就少一份
+     * NBT 深比较体积，口径同 {@code PocketUpgradeSwitches#setOff} 的掩码归零支）；非默认档 ⇒ 落 int。
+     *
+     * @return 本次是否真的改变（同值 {@code false} 且零写入 ⇒ 连点不刷整栈同步）
+     */
+    public static boolean writeChannelFreqTier(net.minecraft.nbt.NBTTagCompound root, int tier) {
+        if (root == null || channelFreqTierClamp(tier) != tier || tier == readChannelFreqTier(root)) {
+            return false;
+        }
+        if (tier == CHANNEL_FREQ_TIER_DEFAULT) {
+            root.removeTag(CHANNEL_FREQ_TIER_KEY);
+        } else {
+            root.setInteger(CHANNEL_FREQ_TIER_KEY, tier);
+        }
+        return true;
+    }
+
+    /**
+     * 短效通道节拍：<b>手动付费道恒 1s</b>（= 档位表的 1 秒档经 {@link #channelFreqTierTicks} 换算，
+     * ★R100 频率片起它是档位表成员、不再独立成第二个速率源）。
+     * <p>
+     * ★只描述<b>手动</b>短效道（每秒一批、共 {@value #SHORT_CHANNEL_SECONDS} 批=30 秒语义不动，
+     * R100 用户裁决「可调档位只作用于持续化通道」）；持续化通道的节拍按载体 NBT 档位走
+     * {@link #readChannelFreqTier} + {@link #channelFreqTierTicks}，与手动道互不顶替。
+     */
+    public static final int CHANNEL_TICK_PERIOD = channelFreqTierTicks(0);
     /** 短效通道批次数上限 = 秒数（一批一秒）。 */
     public static final int SHORT_CHANNEL_BATCHES = SHORT_CHANNEL_SECONDS;
     /** 瞬时通道冷却秒数（墙钟口径）。 */
@@ -872,9 +945,13 @@ public final class PocketConstants {
     //
     // ★这一整段的存在理由：用户那句「alt 滚轮调整数量…物品每次 1 个；流体每次 1%；源质每次 1 个；
     // alt+ctrl+滚轮 步进 ×10」里每一个数字都只允许活在这里（D-6 裁定：×10 是<b>步进</b>的倍率，
-    // 不是第二处通道速率 ⇒ 本片一个字节都不碰 Config.pocketChannelPairsPerSecond、CHANNEL_TICK_PERIOD
-    // 与 ticksToSecondsCeil）。步进量必须由<b>服务端</b>与<b>客户端读数</b>共读同一份常量，
-    // 否则"滚一下看到的"与"落档的"就是两个数。
+    // ★★<b>R100 用户改判</b>：旧句「本片一个字节都不碰 Config.pocketChannelPairsPerSecond、
+    // CHANNEL_TICK_PERIOD 与 ticksToSecondsCeil」中关于 CHANNEL_TICK_PERIOD 的那一半<b>自 R100 起作废</b>
+    // —— 频率片把 CHANNEL_TICK_PERIOD 吸收为档位表成员（见上方 R100 段：值仍 20 tick、语义仍是
+    // "手动道每秒一批"，动的只是它的<b>出处</b>：由独立字面量改经 channelFreqTierTicks(0) 换算，
+    // 全仓速率源从两处并一处）。Config.pocketChannelPairsPerSecond 与 ticksToSecondsCeil 的不碰裁定
+    // ★仍然成立（R100 只动了节拍出处，没动每批对数与取整口径））。步进量必须由<b>服务端</b>与
+    // <b>客户端读数</b>共读同一份常量，否则"滚一下看到的"与"落档的"就是两个数。
 
     /**
      * 组上限的下界。★刻意取 1 而不是 0：{@code PocketAeChannelOps#extract} 对 {@code count <= 0}

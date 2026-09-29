@@ -28,11 +28,9 @@ import com.miaokatze.gtit.common.items.pocket.mage.PocketCrystalDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketEssenceTransmuteDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
-import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
-import com.miaokatze.gtit.gui.pocket.NekoPocketStorageColumn;
-import com.miaokatze.gtit.gui.pocket.PocketSlots;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -226,13 +224,17 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * <p>
      * 槽位与 widget 树由面板内部<b>一份</b> {@code SlotGroupWidget.matrix(...)} 字面量描述（R41a），
      * 本方法不做任何分支。
+     * <p>
+     * ★R100 片 F（架构解耦）：gui 侧实现经 {@link PocketPanelBridge} 注入（注册点 =
+     * 双端都跑的 {@code CommonProxy#init}），common 不再静态 import {@code gui.pocket} ——
+     * 委托目标就是原来那次静态调用本身，行为零变化。
      */
     @Override
     public ModularPanel buildUI(PlayerInventoryGuiData data, PanelSyncManager syncManager, UISettings settings) {
         logOnce(
             "buildUI 到达 " + FMLCommonHandler.instance()
                 .getEffectiveSide() + "，手持槽栈 " + (data.getUsedItemStack() == null ? "null" : "非 null"));
-        return NekoPocketPanel.build(data, syncManager, settings);
+        return PocketPanelBridge.build(data, syncManager, settings);
     }
 
     /**
@@ -295,6 +297,8 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      *                 ★<b>R98 S2 后该键号已漂移</b>：激进裁剪把连号族重排成 {@code 0..3}，那句
      *                 「内容随物品丢」现在住在 {@code item.neko_dimension_pocket.tooltip.2}，
      *                 旧号 {@code .7} 在两份 lang 里都不再存在 ⇒ 引用本段处请按<b>内容</b>认，别照号抄。
+     *                 ★R100 片 E 后再漂移一次（4 → 3 删行重排）：那句话现在住在
+     *                 {@code tooltip.1}，同一条纪律——按内容认。
      */
     @Override
     public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
@@ -662,22 +666,32 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
 
     /**
      * tooltip 从 0 连续（{@code pocket-lang-keys.md} §1 的 7 行，R75 后为 10 行，R78 仍是 10 行；
-     * ★<b>R98 S2 起为 4 行</b>——用户裁定"大幅度简化 Tooltip"，激进档 −6：几何说明书 / 绑定流程 /
+     * ★R98 S2 起为 4 行——用户裁定"大幅度简化 Tooltip"，激进档 −6：几何说明书 / 绑定流程 /
      * 有电前提 / NEI 虚化格四行删除、原 {@code tooltip.5} 与蒸馏双口径行合并成一条追加行、
-     * 原 {@code tooltip.9}（每槽与合计容量）让位给面板的 {@code gtit.pocket.fluid.capacity}）。
-     * 连号行之外还有<b>两类追加行</b>：★R95 蒸馏双口径行（{@link #appendDistillFastLine}）与
-     * ★R98 的 0–6 行元素储量（{@link #appendElementReserveLines}），都追加在连号循环<b>之后</b>、
-     * ★不在连号中间插行 ⇒ 恒定 5 行（4 + 蒸馏），加储量后总行数按内容浮动（5–11 行）。
-     * ★★R99 P4-D 改判：储量六行<b>恒出</b>（空位显 0）⇒ 悬停总行数恒 <b>11 行</b>，"浮动"仅指六行的
-     * 数值、不再指行数（R98 期"新口袋只有五行"的口径作废）。
+     * 原 {@code tooltip.9}（每槽与合计容量）让位给面板的 {@code gtit.pocket.fluid.capacity}；
+     * ★<b>R100 片 E 起为 3 行</b>——描述精简：删 R39a 流体列方向行、剩余三行文案口语化压短，
+     * 整体重排成 {@code 0..2}）。
+     * 连号行之外还有<b>两类追加行</b>：★R95 蒸馏双口径行（{@link #appendDistillFastLine}；R100 片 E
+     * 同批删冗词，键名冻结、{@code %6$d}/{@code %12$d} 注入形态不动）与 ★R98 的元素储量
+     * （{@link #appendElementReserveLines}），都追加在连号循环<b>之后</b>、★不在连号中间插行
+     * ⇒ 恒定 4 行（3 + 蒸馏）。
+     * ★★R99 P4-D 改判：储量六行<b>恒出</b>（空位显 0）⇒ 连号 + 蒸馏 + 储量恒 <b>10 行</b>
+     * （R98/R99 期"恒 11 行"的口径到本批为止），再加片 A 的品牌尾行 ⇒ addInformation 总产出
+     * 恒 <b>11 行</b>；检查表 X-1 的行数判读挂账由片 G 翻新。
      * <p>
      * 消费端是 {@code equals(key)} 即 break 的循环（先例 {@code common/items/NekoCoin.java:28-34}），
-     * <b>跳号会静默截断后面的行</b> ⇒ R98 的裁剪是<b>整体重编号</b>（新 {@code 0..3}），不是"删几条留几条"。
-     * ★留下的三处声明位一个都没动：新 {@code tooltip.1}（旧 {@code .6}）= R39a 的"两排同权不是上下分流"、
-     * 新 {@code tooltip.2}（旧 {@code .7}）= R53b 的后果声明、新 {@code tooltip.3}（旧 {@code .8}）=
-     * 合成一次性代价声明；旧 {@code .5} 那句"5 秒是节拍不是产量"（R28）随合并活在新追加行里。
+     * <b>跳号会静默截断后面的行</b> ⇒ 每次裁剪都是<b>整体重编号</b>（R98 重排成 {@code 0..3}，
+     * R100 片 E 重排成 {@code 0..2}），不是"删几条留几条"。
+     * ★★<b>R100 片 E 翻案（R39a 的原声明位就是本段）</b>：R39a 的"两排同权不是上下分流"声明行
+     * （R98 期为 {@code tooltip.1}、更早的旧 {@code .6}）<b>删除</b>——用户裁定描述"简洁明了不废话"，
+     * 该行防的误读（以为上下两排分工不同）在面板逐列同形的现状下已无落点；翻案按仓内纪律
+     * 「显式记档 + 原位注释 + 台账双落」执行，台账由片 G 记，新增用例
+     * {@code pocket_tooltip_r39a_row_removed_with_reversal_note} 把"行已删 + 本注释在位"钉成机检。
+     * ★留下的两处声明位只换号不动语义：新 {@code tooltip.1}（旧 {@code .2}、更早 {@code .7}）=
+     * R53b 的后果声明、新 {@code tooltip.2}（旧 {@code .3}、更早 {@code .8}）= 合成一次性代价声明；
+     * 旧 {@code .5} 那句"5 秒是节拍不是产量"（R28）随合并活在新追加行里。
      * 本文件的 javadoc 曾经点名 {@code tooltip.5}/{@code tooltip.6}，R98 后按<b>新号</b>重述，
-     * 用例 {@code pocket_tooltip_family_is_contiguous_and_four} 把"恰 4 条、连号、两份同键集"钉成机检。
+     * 用例 {@code pocket_tooltip_family_is_contiguous_and_three} 把"恰 3 条、连号、两份同键集"钉成机检。
      * <p>
      * ★<b>行里不写规格数字</b>（R75 的 lang 契约第 5 条）：格数、行列、流体<b>组数与 tank 总数</b>、
      * 单槽容量与<b>总容量</b>（R78②）、源质盘格数（R78②）、面板内背包格数（R78①）、蒸馏节拍
@@ -708,6 +722,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         }
         appendDistillFastLine(tooltip, args);
         appendElementReserveLines(tooltip, stack);
+        tooltip.add(GTITUtils.getAddedByLine());
     }
 
     /**
@@ -798,7 +813,10 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
     /**
      * tooltip 的规格读数（<b>顺序即 {@code %1$d…%12$d}</b>，与 lang 里的下标一一对应）。
      * <p>
-     * 全部取自常量与面板列类的几何单源，不在这里做任何算术以外的推导；
+     * 全部取自 {@link PocketConstants} 常量单源（★R100 片 F 起行列两项也读它：中栏行/列在
+     * gui 侧本就是它的转发/派生，见 {@code PocketSlots.STORAGE_COLUMNS} 与
+     * {@code NekoPocketStorageColumn.ROWS} 的声明，common 侧不再为此 import gui 包），
+     * 不在这里做任何算术以外的推导；
      * 蒸馏秒数的<b>双口径</b>由 {@code TaumDistillRules.distillIntervalTicks} 换算（节拍权威只有那一处：
      * 基档 {@code %6$d}、★R95 加速档 {@code %12$d}）。
      * <p>
@@ -815,8 +833,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         return new Object[] {
             // %1$d 中栏格数
             Integer.valueOf(PocketConstants.GHOST_ITEM_SLOT_LIMIT),
-            // %2$d 行数 / %3$d 列数
-            Integer.valueOf(NekoPocketStorageColumn.ROWS), Integer.valueOf(PocketSlots.STORAGE_COLUMNS),
+            // %2$d 行数 / %3$d 列数（★R100 片 F：读 PocketConstants 单源；面板侧 15 行=135/9、
+            // 9 列=同源转发，两处等值由回归套件钉住）
+            Integer.valueOf(PocketConstants.STORAGE_ROWS), Integer.valueOf(PocketConstants.STORAGE_COLUMNS),
             // %4$d 每组流体列数（R75①；★R78② 的组数与 tank 总数在下面两项）
             Integer.valueOf(PocketConstants.FLUID_COLUMN_COUNT),
             // %5$d 单槽容量 mB（★规格外自立项；★R95 S5 起按 CAPACITY 位 16M/16G 动态喂）
@@ -833,7 +852,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
                 : Integer.valueOf(PocketConstants.FLUID_TOTAL_CAPACITY_ML),
             // %10$d 源质盘格数（R78②③：6×12 = 72，且 ≥ 实测 aspect 注册数）
             Integer.valueOf(PocketConstants.ESSENCE_DISPLAY_GRID),
-            // %11$d 面板内玩家背包格数（R78①；★代价 = E4 包放大，见 PocketSlots 类注释）
+            // %11$d 面板内玩家背包格数（R78①；★代价 = E4 包放大，见 gui 侧 PocketSlots 类注释）
             Integer.valueOf(PocketConstants.PLAYER_BACKPACK_SLOTS),
             // %12$d 蒸馏一轮秒数·加速档（★R95：装 MAGE 后 1 秒；与 %6$d 同一换算单源，
             // 真值只住 TaumDistillRules.distillIntervalTicks 一处）

@@ -8,6 +8,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
 /**
@@ -33,5 +34,6 @@ public class NekoCoin extends Item {
             if (line.equals(key)) break;
             tooltip.add(EnumChatFormatting.YELLOW + line);
         }
+        tooltip.add(GTITUtils.getAddedByLine());
     }
 }

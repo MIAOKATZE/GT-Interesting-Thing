@@ -12,6 +12,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.StatCollector;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import appeng.api.AEApi;
@@ -80,6 +81,7 @@ public class ItemInfinityStorageFluidCell extends Item implements IInfinityCellI
                 }
             }
         }
+        lines.add(GTITUtils.getAddedByLine());
     }
 
     public long getBytes(ItemStack cellItem) {

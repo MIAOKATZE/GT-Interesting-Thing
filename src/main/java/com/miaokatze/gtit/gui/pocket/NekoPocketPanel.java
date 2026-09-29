@@ -43,6 +43,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
+import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelSessions;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
@@ -339,6 +340,19 @@ public final class NekoPocketPanel implements PocketSession {
     private static final int ACTION_UPGRADE_MODE = 13;
 
     /**
+     * ★R100（持续化通道频率调节）：CHANNEL_PERSIST 配置面里那两枚升降档按钮的唯一出口——
+     * <b>arg = 目标档位下标</b>（编解码与越界判定单源在 {@link PocketConfigPanel#freqTierOfArg}，
+     * 本处只登记码值；档位表本体住在 {@code PocketConstants#CHANNEL_FREQ_TIERS_SECONDS}）。
+     * <p>
+     * ★发的是<b>目标值</b>而不是"翻一下"（与 {@link #ACTION_UPGRADE_SWITCH}/{@link #ACTION_UPGRADE_MODE}
+     * 同一条纪律）：同目标重复到达 ⇒ 服务端 {@code NO_CHANGE} 支零写入。★编号接续 18（不重排既有码值，
+     * 留洞比平移安全，同 R93-① 那条）。★只作用于持续化通道：手动付费短效道 1s×30 批语义不动
+     * （R100 用户裁决），服务端写腿因此只碰档位 NBT，不碰通道状态本身（在跑的道换节拍走
+     * {@code PocketChannelManager#retimePersistentChannel} 那条幂等腿）。
+     */
+    private static final int ACTION_CHANNEL_FREQ = 18;
+
+    /**
      * ★R96 S2 → ★R97 S5：升级配置面板（主面板之上的次级面板）的句柄，<b>一型一枚、共五枚</b>。
      * <p>
      * ★只在客户端有值（{@code IPanelHandler.simple} 要求宿主 {@code ModularPanel} 已挂树，服务端没有
@@ -507,7 +521,10 @@ public final class NekoPocketPanel implements PocketSession {
         this.slots = new PocketSlots();
         this.pocket = data.getUsedItemStack();
         this.carrierSlotIndex = data.getSlotIndex();
-        this.inventory = PocketInventory.readFrom(this.pocket == null ? null : this.pocket.getTagCompound());
+        // ★R100（免开背包）：解析走 PocketChannelSessions 那个<b>单一公共入口</b>（面板装配与
+        // driver 的 headless 复原腿共用同一份"取根 + readFrom"式子，禁第二份真相）；
+        // 下面那两条活查探针<b>留在本类</b>（门禁按"注入点恰 1 + lambda 恰 2"钉着）。
+        this.inventory = PocketChannelSessions.parseCarrierInventory(this.pocket);
         // ★R95 S5：升级位探针注入（活查载体栈版）——readFrom 已用档内位图自播种，这里换活查表版：
         // 覆盖"口袋原本无 NBT、会话期内才第一次固化升级"的那一支（install 写的是栈上现 NBT，可能不在
         // readFrom 捕获的那份根上）。注入点约定见 PocketInventory#setUpgradeProbes 的 javadoc。
@@ -1471,6 +1488,17 @@ public final class NekoPocketPanel implements PocketSession {
         return arg >= 0 && sendAction(ACTION_UPGRADE_MODE, arg);
     }
 
+    /**
+     * ★R100：配置面频率档两枚升降钮的唯一出口（客户端只发码，★一个字节都不写本地 NBT；写腿在服务端
+     * {@code NekoPocketServerHandler#performChannelFreqTier}）。也不做客户端预筛（不判越界档的另一头）：
+     * 调用方（{@code PocketConfigPanel} 的按钮 lambda）只在目标档合法时才发码，这里再判一遍就是给
+     * 同一个判据造第二处读数（R39b/R19 同一条）。
+     */
+    boolean requestChannelFreq(int tier) {
+        final int arg = PocketConfigPanel.encodeFreqTier(tier);
+        return arg >= 0 && sendAction(ACTION_CHANNEL_FREQ, arg);
+    }
+
     private boolean sendAction(int code, int arg) {
         if (syncManager.isClient()) {
             syncManager.findSyncHandler(SYNC_ACTION, IntSyncValue.class)
@@ -1634,6 +1662,11 @@ public final class NekoPocketPanel implements PocketSession {
                 // ★R96 S9b：模式位的唯一服务端落点，形状与上面那条开关腿逐字同构（★同一条可达链纪律：
                 // 客户端只发码 ⇒ 服务端才写档；解越归 PocketConfigPanel.modeRowOfArg，判据归 handler）。
                 server.performUpgradeModeToggle(arg);
+                break;
+            case ACTION_CHANNEL_FREQ:
+                // ★R100：频率档的唯一服务端落点（同一条可达链纪律：客户端只发码 ⇒ 服务端才写档；
+                // 解越归 PocketConfigPanel.freqTierOfArg，判据与写腿归 handler + commitFreqTier）。
+                server.performChannelFreqTier(arg);
                 break;
             case ACTION_MAGNET_MODE_CYCLE:
                 // ★R96 S7b：三态循环按钮。本 case 与下面三条都是那条"静态可达链"的<b>中间一跳</b>：

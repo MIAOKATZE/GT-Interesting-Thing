@@ -528,12 +528,13 @@ public class NekoPocketFluidSlot extends FluidSlot {
         // ★R95 S5：真值读数自绘（原生数量文字已被 displayAmountText 压掉），与右上橙 cap 互不相干
         drawTruthAmountText();
         drawCapReadout();
-        // ★R91-⑤：左上蓝 L / 左下绿 P（几何与色单源在 PocketGhostRequest，★空文本不画）
-        drawBadge(
+        // ★R91-⑤：左上蓝 L / 左下绿 P（几何与色单源在 PocketGhostRequest，★空文本不画；
+        // ★R100 片 F：绘制体走共享助手 PocketBadgeDrawer，原三份同形 private drawBadge 收拢）
+        PocketBadgeDrawer.drawBadge(
             PocketGhostRequest.memoryBadgeText(ghostAttr),
             PocketGhostRequest.memoryBadgeTop(),
             PocketGhostRequest.memoryBadgeColor());
-        drawBadge(
+        PocketBadgeDrawer.drawBadge(
             PocketGhostRequest.uploadBlockBadgeText(uploadBlocked),
             PocketGhostRequest.uploadBlockBadgeTop(getArea().h()),
             PocketGhostRequest.uploadBlockBadgeColor());
@@ -563,14 +564,6 @@ public class NekoPocketFluidSlot extends FluidSlot {
             getArea().w(),
             getArea().h(),
             com.cleanroommc.modularui.utils.Alignment.BottomRight);
-    }
-
-    /** ★R91-⑤：一个角标的绘制体（左对齐；★空文本 = 一条像素都不画）。 */
-    private void drawBadge(String text, float top, int color) {
-        if (text == null || text.isEmpty()) {
-            return;
-        }
-        GuiDraw.drawText(text, PocketGhostRequest.badgeLeftX(), top, PocketGhostRequest.CAP_READOUT_SCALE, color, true);
     }
 
     /**

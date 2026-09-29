@@ -1,10 +1,13 @@
 package com.miaokatze.gtit.common.items;
 
+import java.util.List;
+
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 
+import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -39,6 +42,11 @@ public class ReincarnationCrystal extends Item {
         setTextureName("gtit:reincarnation_crystal");
         setCreativeTab(CreativeTabManager.CREATIVE_TAB);
         setMaxStackSize(64);
+    }
+
+    @Override
+    public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
+        tooltip.add(GTITUtils.getAddedByLine());
     }
 
     @Override
