@@ -435,12 +435,13 @@ gtit.pocket.config.close=Close
 gtit.pocket.config.state.on=Turned on
 gtit.pocket.config.state.off=Turned off
 gtit.pocket.config.state.absent=Not installed
-gtit.pocket.config.switch.turn_off=Turn off
-gtit.pocket.config.switch.turn_on=Turn on
+# ---- R101.3: the switch button reads the STATE, not the action ("On"/"Off" replace "Turn on"/"Turn
+# ★off"; two keys out, two keys in, key count unchanged). The two mount-frame title keys
+# ★(config.mount.magnet / config.mount.mage) retired with the frames themselves.
+gtit.pocket.config.switch.state_on=On
+gtit.pocket.config.switch.state_off=Off
 gtit.pocket.config.switch.none=Not installed
 gtit.pocket.config.switch.hint=Left-click to switch this module on or off; turning it off does not refund the module
-gtit.pocket.config.mount.magnet=Magnet: targets and lists
-gtit.pocket.config.mount.mage=Mage: modes and elements
 # ---- ★R97 S5 five faces for five modules: readout/note keys for the three compact faces and the mage
 # ★face. The capacity face reuses the main panel sentence gtit.pocket.fluid.capacity (no new key); net
 # ★+5 keys here (R96's mount.pending retired with the one-shared-panel shape: every face now carries
@@ -458,7 +459,7 @@ gtit.pocket.config.persist.idle=Not always-on right now (the switch is off, or n
 # the tier table has its single source in PocketConstants - lang never lists the seconds)
 gtit.pocket.config.persist.freq=Channel cadence: %d s per batch
 gtit.pocket.config.persist.freq.hint=Type the per-batch interval in seconds (1-60, always-on channel only; the manual thirty-second channel stays fixed). Takes effect at once - the next batch already uses the new cadence
-gtit.pocket.config.mage.capacity=Element capacity: %d each, %d across all six
+# ---- R101.3: the mage element-capacity line retired with the mount frame (key removed with it) ----
 gtit.pocket.config.mode.crystal=Crystallise
 gtit.pocket.config.mode.coin=Cat coin charging
 gtit.pocket.config.mode.transmute=Essence transmuting
@@ -475,8 +476,10 @@ gtit.pocket.magnet.mode.hint=Left-click to cycle: Unlimited, Whitelist, Blacklis
 gtit.pocket.magnet.note.none=Unlimited: the list is still here, it just lets everything through
 gtit.pocket.magnet.note.white=Whitelist: only the listed items are pulled, everything else stays
 gtit.pocket.magnet.note.black=Blacklist: listed items are never pulled, everything else still is
-gtit.pocket.magnet.target.pocket=Into the pocket bar
-gtit.pocket.magnet.target.player=Into the player inventory
+# ---- R101.3: target labels shortened to "To player"/"To pocket" (three buttons now sit in one
+# ★78px-wide row above the grid; the old sentences could not fit, the hint keeps the full wording)
+gtit.pocket.magnet.target.pocket=To pocket
+gtit.pocket.magnet.target.player=To player
 gtit.pocket.magnet.target.hint=Left-click cycles the two landing spots: the pocket's own bar, or the player inventory
 gtit.pocket.magnet.count=List %d / %d
 gtit.pocket.magnet.clear=Clear the list

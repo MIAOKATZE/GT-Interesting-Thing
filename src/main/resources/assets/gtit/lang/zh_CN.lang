@@ -423,12 +423,12 @@ gtit.pocket.config.close=关闭
 gtit.pocket.config.state.on=已开启
 gtit.pocket.config.state.off=已关闭
 gtit.pocket.config.state.absent=未固化
-gtit.pocket.config.switch.turn_off=关掉
-gtit.pocket.config.switch.turn_on=打开
+# ---- ★R101.3：开关钮改读<b>状态</b>而不是行为（"开启 / 关闭"替换"打开 / 关掉"；两键撤两键增，
+# ★键总数不变）。两枚挂载框标题键（config.mount.magnet / config.mount.mage）随两块框一起撤。
+gtit.pocket.config.switch.state_on=开启
+gtit.pocket.config.switch.state_off=关闭
 gtit.pocket.config.switch.none=未固化
 gtit.pocket.config.switch.hint=左键切换这一型的开与关；关掉不会退回插件
-gtit.pocket.config.mount.magnet=磁力：吸取目标与名单
-gtit.pocket.config.mount.mage=魔法使：模式与元素
 # ---- ★R97 S5 五型五面：紧凑三型与魔法使面的读数键。容量面复用主面板 gtit.pocket.fluid.capacity
 # ★那一句不另立键；本段净增五键（R96 的 mount.pending 随「五行常驻一面」退场 ⇒ −1，五面各有真内容后
 # ★「有框没内容」的占位文案失去消费者，键与文本件一并撤销）。
@@ -447,7 +447,7 @@ gtit.pocket.config.persist.idle=此刻未常开（开关关着，或通道还没
 # ---- ★R100→R101 频率段两键（更快/更慢两枚按钮连键退场，输入框复用 hint 键；秒值域单源在 PocketConstants）
 gtit.pocket.config.persist.freq=通道频率：%d 秒/批
 gtit.pocket.config.persist.freq.hint=输入每批间隔的秒数（1-60，仅持续化通道生效；手动三十秒道不变）。改完当场生效，下一批就用新节拍
-gtit.pocket.config.mage.capacity=元素容量：每种元素 %d，六种合计 %d
+# ---- ★R101.3：魔法使元素容量行随挂载框整行退场（键同批撤；量级读数的活口 = 主面板既有读面）----
 gtit.pocket.config.mode.crystal=结晶模式
 gtit.pocket.config.mode.coin=猫猫币充能
 gtit.pocket.config.mode.transmute=源质转换

@@ -797,6 +797,23 @@ public final class NekoPocketPanel implements PocketSession {
     // ② 把客户端那一份镜像交给格件与读数（★客户端一个字节都不写）；③ 把玩家手势换成一条请求。
     // ======================================================================================
 
+    // ★R101.3 文法单源：同步串头部三件套（头长 / 分隔位 / 分隔字符）只在这里出现一份，
+    // 编码侧拼头、解码侧验头共读。教训（实锤病史）：R96 S7b（dc7eb39，提交信息自带"未验证"）让
+    // encode 发三字符头、decode 却按两字符头验（charAt(1)=='|' 且 charAt(1)∈{P,K}）——两处口径漂移
+    // ⇒ 不存在任何串能通过，客户端磁力镜像自引入起从未成功解析（实机 R101.3 判「NEI 拖入无效」的正身）。
+    /** 头部长度恒 3：{@code <态字母><目标字母><分隔竖线>}，键段从下标 3 起。 */
+    private static final int MAGNET_BLOB_HEADER_LENGTH = 3;
+    /** 分隔竖线恒在下标 2（★从头长派生，两处永不漂移）。 */
+    private static final int MAGNET_BLOB_SEPARATOR_INDEX = MAGNET_BLOB_HEADER_LENGTH - 1;
+    /** 分段竖线（★键里不出竖线与逗号 ⇒ 分段无歧义，论证见 {@link #encodeMagnetBlob} 文法段）。 */
+    private static final char MAGNET_BLOB_SEPARATOR = '|';
+
+    /** ★头部文法唯一判定：{@code null} / 长度不足 / 分隔位不对 ⇒ {@code false}（解码据此折成畸形视图）。 */
+    private static boolean magnetBlobHeaderOk(String blob) {
+        return blob != null && blob.length() >= MAGNET_BLOB_HEADER_LENGTH
+            && blob.charAt(MAGNET_BLOB_SEPARATOR_INDEX) == MAGNET_BLOB_SEPARATOR;
+    }
+
     /**
      * 名单 → 同步串（★单枚 {@code StringSyncValue}，预算见 {@code PocketMagnetFilter} 类注释：
      * 满档 ≤1800 B，距 32693 字节墙 ≥18 倍余量）。
@@ -815,7 +832,7 @@ public final class NekoPocketPanel implements PocketSession {
         final StringBuilder builder = new StringBuilder(64 + PocketConstants.MAGNET_FILTER_SLOTS * 16);
         builder.append(magnetModeLetter(filter == null ? PocketMagnetFilter.Mode.NONE : filter.mode()));
         builder.append(magnetTargetLetter(filter == null ? PocketMagnetFilter.Target.POCKET : filter.target()));
-        builder.append('|');
+        builder.append(MAGNET_BLOB_SEPARATOR);
         if (filter != null) {
             boolean first = true;
             for (String key : filter.entryKeys()) {
@@ -873,9 +890,19 @@ public final class NekoPocketPanel implements PocketSession {
      * 同步串 → 视图。★越界/畸形一律给 {@link MagnetView#malformed}，<b>不抛</b>（外来包不该炸掉界面），
      * 也<b>不静默当成空名单</b>（{@code applyMagnetBlob} 据此保留上一份并打日志）。
      * 超出 {@code cells} 的尾部键被丢弃并计入 {@code count} ⇒ 读数是"服务端一共几条"，与盘面格数分离。
+     * <p>
+     * ★★病史（R101.3 实锤，钉在这里防复发）：头判定在 R96 S7b（dc7eb39，提交信息自带"未验证"）被写成
+     * {@code charAt(1)=='|'} 且目标字母也取 {@code charAt(1)}——而 {@link #encodeMagnetBlob} 发的是三字符头
+     * {@code <态字母><目标字母>|}，竖线在下标 2 ⇒ 两条件互斥，<b>不存在任何串能通过本函数</b>。
+     * 后果链：服务端写链完好、客户端镜像自 R96 S7b 起从未刷新（计数恒 0/72、72 格恒无图标、三态/目标恒默认档），
+     * 同一件第二次拖入触发 DUPLICATE 回执（"这一件已经在名单里了"），实机被读成「NEI 拖入无效」；
+     * 且全仓唯一覆盖是文本域门（compose 区含 {@code encodeMagnetBlob(}），无任何往返行为用例——
+     * 「文法漂移无人抓」。R101.3 修复 = 头判定与编码同一口径（{@link #magnetBlobHeaderOk} 三字符头、
+     * 键段从下标 3 起），模式/目标字母表也收进两对单源函数（反查）；往返用例
+     * {@code magnet_blob_roundtrip_grammar_and_malformed} 钉住四类输入。
      */
     public static MagnetView decodeMagnetBlob(String blob, int cells) {
-        if (blob == null || blob.length() < 2 || blob.charAt(1) != '|') {
+        if (!magnetBlobHeaderOk(blob)) {
             return MagnetView.malformed(cells);
         }
         final PocketMagnetFilter.Mode mode = magnetModeOfBlobLetter(blob.charAt(0));
@@ -884,7 +911,7 @@ public final class NekoPocketPanel implements PocketSession {
             return MagnetView.malformed(cells);
         }
         final String[] keys = new String[cells];
-        final String tail = blob.substring(2);
+        final String tail = blob.substring(MAGNET_BLOB_HEADER_LENGTH);
         int count = 0;
         if (!tail.isEmpty()) {
             final String[] parts = tail.split(",");
@@ -902,18 +929,28 @@ public final class NekoPocketPanel implements PocketSession {
         return new MagnetView(mode, target, keys, count, false);
     }
 
-    /** 字母 → 三态（不认识 ⇒ {@code null}，由 {@link #decodeMagnetBlob} 折成畸形视图）。 */
+    /**
+     * 字母 → 三态（不认识 ⇒ {@code null}，由 {@link #decodeMagnetBlob} 折成畸形视图）。
+     * ★R101.3 单源强化：合法字母表从 {@link #magnetModeLetter} 那一份<b>反查</b>，不留第二份对照
+     * （两份对照漂移的病史见 {@link #decodeMagnetBlob}）。
+     */
     public static PocketMagnetFilter.Mode magnetModeOfBlobLetter(char letter) {
-        if (letter == 'W') {
-            return PocketMagnetFilter.Mode.WHITELIST;
+        for (final PocketMagnetFilter.Mode mode : PocketMagnetFilter.Mode.values()) {
+            if (magnetModeLetter(mode) == letter) {
+                return mode;
+            }
         }
-        return letter == 'B' ? PocketMagnetFilter.Mode.BLACKLIST : letter == 'N' ? PocketMagnetFilter.Mode.NONE : null;
+        return null;
     }
 
-    /** 字母 → 吸取目标两档（同上）。 */
+    /** 字母 → 吸取目标两档（同上，反查单源）。 */
     public static PocketMagnetFilter.Target magnetTargetOfBlobLetter(char letter) {
-        return letter == 'P' ? PocketMagnetFilter.Target.PLAYER
-            : letter == 'K' ? PocketMagnetFilter.Target.POCKET : null;
+        for (final PocketMagnetFilter.Target target : PocketMagnetFilter.Target.values()) {
+            if (magnetTargetLetter(target) == letter) {
+                return target;
+            }
+        }
+        return null;
     }
 
     /**

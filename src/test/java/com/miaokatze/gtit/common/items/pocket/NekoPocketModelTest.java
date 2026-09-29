@@ -671,6 +671,11 @@ public class NekoPocketModelTest {
         cases.put("magnet_three_state_ui_semantics", NekoPocketModelTest::magnetThreeStateUiSemantics);
         cases.put("magnet_panel_geometry_closes", NekoPocketModelTest::magnetPanelGeometryCloses);
         cases.put("magnet_pending_removed_from_magnet_mount", NekoPocketModelTest::magnetPendingRemovedFromMagnetMount);
+        // ★R101.3 实锤：文法漂移无人抓 —— 磁力镜像 decode 自 R96 S7b 起从未成功解析过，
+        // 而全仓只有一条文本域门、零条 encode→decode 往返行为用例（病史见方法 javadoc）。
+        cases.put(
+            "magnet_blob_roundtrip_grammar_and_malformed",
+            NekoPocketModelTest::magnetBlobRoundtripGrammarAndMalformed);
         // ---- ★R97 S1（TP-S1）mixin 包纪律一条：src/mixin/java 的 mixin 声明包树内每个 .java 必含
         // @Mixin（PocketVisSupport 曾以普通类住进声明包 ⇒ defined mixin package 守卫令其永不可加载，
         // v1.8.41 在产地雷；本条把「helper 再落进 mixin 包」钉成必红）。
@@ -13000,8 +13005,8 @@ public class NekoPocketModelTest {
         // ---- 跳①c：装配侧真的把格件画出来并登记（写了类没人 child = R57 同族）----
         final int grid = methodStart(
             conf,
-            "private static IWidget magnetGrid(NekoPocketPanel ui, int frameX, int frameY) {");
-        SimpleAssert.that(grid >= 0, "★定位 magnetGrid（72 格的装配点）");
+            "private static IWidget magnetGrid(NekoPocketPanel ui, PocketUpgradeType type) {");
+        SimpleAssert.that(grid >= 0, "★定位 magnetGrid（72 格的装配点；★R101.3 去框后签名收成 ui + type）");
         final int gridEnd = methodEnd(conf, grid);
         SimpleAssert.that(
             regionContainsCode(conf, grid, gridEnd, "index < MAGNET_COLUMNS * MAGNET_ROWS"),
@@ -13517,40 +13522,106 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★★R96 S7b 验收 5：几何账（★72 格盘的 12×6 硬形状是这一片整个布局重排的起因，逐字钉住）。
+     * ★★R101.3 实锤：文法漂移无人抓 —— 编码侧 {@code encodeMagnetBlob} 发三字符头
+     * {@code <态字母><目标字母>|}，解码侧却在 R96 S7b（dc7eb39，提交信息自带"未验证"）被写成按两字符头验
+     * （{@code charAt(1)=='|'} 且目标字母也取 {@code charAt(1)}）⇒ 两处自相矛盾，<b>不存在任何串能通过</b>。
+     * 后果：服务端写链完好、客户端镜像自 R96 S7b 起从未刷新（计数恒 0/72、72 格恒无图标），
+     * 同一件第二次拖入触发 DUPLICATE 回执（"这一件已经在名单里了"），实机被判「NEI 拖入无效」；
+     * 而当时全仓唯一覆盖是一条文本域门（compose 区含 {@code encodeMagnetBlob(}）——零条往返行为用例。
+     * 本用例把这条洞钉死：四类输入驱动 encode→decode 往返并断言视图等值，任一侧再单方面改文法
+     * （头长 / 分隔位 / 字母表）而不同步另一侧 ⇒ 这里红。
+     */
+    private static void magnetBlobRoundtripGrammarAndMalformed() {
+        final int cells = PocketConstants.MAGNET_FILTER_SLOTS;
+        // ---- (a) 空名单：0 条 / 72 空位，三态与目标读默认档（★修复前这类串同样过不了解码头）----
+        final PocketMagnetFilter empty = new PocketMagnetFilter();
+        final String emptyBlob = NekoPocketPanel.encodeMagnetBlob(empty);
+        SimpleAssert.eq('|', emptyBlob.charAt(2), "(a) 线上形状先钉住：分隔竖线恒在下标 2（三字符头）");
+        final NekoPocketPanel.MagnetView emptyView = NekoPocketPanel.decodeMagnetBlob(emptyBlob, cells);
+        SimpleAssert.that(!emptyView.malformed, "★(a) 空名单的串必须被认出（修复前它走的是畸形支）");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.NONE, emptyView.mode, "(a) 三态往返 = 默认 NONE");
+        SimpleAssert.eq(PocketMagnetFilter.Target.POCKET, emptyView.target, "(a) 目标往返 = 默认 POCKET");
+        SimpleAssert.eq(0, emptyView.count, "(a) 空名单 0 条");
+        SimpleAssert.eq(cells, emptyView.keys.length, "(a) 键位长度恒 = cells");
+        for (final String key : emptyView.keys) {
+            SimpleAssert.eq(null, key, "(a) 空名单不应有任何键位被填");
+        }
+        // ---- (b) 1 条真实形状键（i:<itemId>:<meta:>）：三态/目标/键集合/计数逐字一致 ----
+        final PocketMagnetFilter one = new PocketMagnetFilter();
+        one.setMode(PocketMagnetFilter.Mode.WHITELIST);
+        one.setTarget(PocketMagnetFilter.Target.PLAYER);
+        SimpleAssert.that(one.addEntry(2621, 7), "(b) 前置：落一条");
+        final String oneBlob = NekoPocketPanel.encodeMagnetBlob(one);
+        final NekoPocketPanel.MagnetView oneView = NekoPocketPanel.decodeMagnetBlob(oneBlob, cells);
+        SimpleAssert.that(!oneView.malformed, "(b) 一条名单的串必须被认出");
+        SimpleAssert.eq("WP", oneBlob.substring(0, 2), "(b) 头两字符 = 态字母 W + 目标字母 P（字母表单源往返）");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.WHITELIST, oneView.mode, "(b) 三态往返");
+        SimpleAssert.eq(PocketMagnetFilter.Target.PLAYER, oneView.target, "(b) 目标往返");
+        SimpleAssert.eq(1, oneView.count, "(b) 计数往返");
+        SimpleAssert.eq(PocketMagnetFilter.itemKey(2621, 7), oneView.keys[0], "(b) 键逐字一致（i:<id>:<meta>:）");
+        // ---- (c) 满档 72 条：计数与键序逐位一致（服务端定序 = 插入序，客户端不重排）----
+        final PocketMagnetFilter full = new PocketMagnetFilter();
+        full.setMode(PocketMagnetFilter.Mode.BLACKLIST);
+        for (int i = 0; i < PocketConstants.MAGNET_FILTER_SLOTS; i++) {
+            SimpleAssert.that(full.addEntry(1000 + i, i % 16), "(c) 前置：第 " + i + " 条应落档");
+        }
+        SimpleAssert.eq(PocketConstants.MAGNET_FILTER_SLOTS, full.size(), "(c) 前置：满 72 条");
+        final NekoPocketPanel.MagnetView fullView = NekoPocketPanel
+            .decodeMagnetBlob(NekoPocketPanel.encodeMagnetBlob(full), cells);
+        SimpleAssert.that(!fullView.malformed, "(c) 满档的串必须被认出");
+        SimpleAssert.eq(PocketMagnetFilter.Mode.BLACKLIST, fullView.mode, "(c) 三态往返");
+        SimpleAssert.eq(PocketConstants.MAGNET_FILTER_SLOTS, fullView.count, "(c) 计数 = 72（读数 = 服务端一共几条）");
+        final java.util.List<String> expectedKeys = full.entryKeys();
+        for (int i = 0; i < PocketConstants.MAGNET_FILTER_SLOTS; i++) {
+            SimpleAssert.eq(expectedKeys.get(i), fullView.keys[i], "(c) 键序逐位一致（插入序往返）：第 " + i + " 位");
+        }
+        // ---- (d) 畸形输入：不抛、一律折成畸形视图（默认档 + 0 条 + 恒长空位），按既有畸形纪律整串丢弃 ----
+        // "N|i:1:0:" 是修复前唯一能过旧头判定（charAt(1)=='|'）的形状（随后仍死在目标字母上），
+        // 如今按三字符头口径同样判畸形 ⇒ 旧病头不再有特例。"NK|i:1:0:,junk" 钉"单条解不出 = 整串不认识"。
+        for (final String bad : new String[] { null, "", "N", "N|", "NK", "N|i:1:0:", "XK|i:1:0:", "NZ|i:1:0:",
+            "NK|i:1:0:,junk", "NKK|i:1:0:" }) {
+            final NekoPocketPanel.MagnetView badView = NekoPocketPanel.decodeMagnetBlob(bad, cells);
+            SimpleAssert.that(badView.malformed, "(d) 畸形串必须判畸形（且不抛）：<" + bad + ">");
+            SimpleAssert.eq(PocketMagnetFilter.Mode.NONE, badView.mode, "(d) 畸形串给默认三态：<" + bad + ">");
+            SimpleAssert.eq(PocketMagnetFilter.Target.POCKET, badView.target, "(d) 畸形串给默认目标：<" + bad + ">");
+            SimpleAssert.eq(0, badView.count, "(d) 畸形串 0 条：<" + bad + ">");
+            SimpleAssert.eq(cells, badView.keys.length, "(d) 畸形串仍给恒长键位（widget 树不随数据伸缩）：<" + bad + ">");
+        }
+    }
+
+    /**
+     * ★★R96 S7b 验收 5：几何账（★R101.3 横盘重排后：72 格盘的显示朝向 = 12 列 × 6 行 = 216×108，
+     * 对调关系与整面横排布局逐字钉住）。
      * <p>
      * 与 S2 那条 {@code config_panel_geometry_within_secondary_caps} 的分工：那条量<b>整块面板</b>与
-     * 两份 lang 的像素账，本条量<b>磁力格盘自己的</b>行列乘式、盘面在框内、控制块不越列、★格件是 phantom
-     * （守恒 225 的结构性证据）。★两条都不动主面板 {@code HEIGHT == 360} 那本账。
+     * 两份 lang 的像素账，本条量<b>磁力格盘自己的</b>行列乘式与对调关系、按钮行在盘上方、盘面居中、
+     * 计数行贴盘下、横纵两条闭合、★格件是 phantom（守恒 225 的结构性证据）。
+     * ★两条都不动主面板 {@code HEIGHT == 360} 那本账。
      */
     private static void magnetPanelGeometryCloses() {
-        // ---- 朝向定案：12 行 × 6 列（★宽 108，与源质格同形口径但★不引它那两个常量）----
-        SimpleAssert.eq(12, PocketConfigPanel.MAGNET_ROWS, "★行数 = 12（朝向歧义在此定案，翻转排布只改这两个常量）");
-        SimpleAssert.eq(6, PocketConfigPanel.MAGNET_COLUMNS, "★列数 = 6");
+        // ---- 朝向定案（★R101.3 横盘）：显示 12 列 × 6 行 = 216×108；对调关系逐字钉住（数据层两常量一字不动）----
+        SimpleAssert.eq(12, PocketConfigPanel.MAGNET_COLUMNS, "★显示列数 = 12（R101.3 横盘：新列数 = 数据层行数）");
+        SimpleAssert.eq(6, PocketConfigPanel.MAGNET_ROWS, "★显示行数 = 6（R101.3 横盘：新行数 = 数据层列数）");
+        SimpleAssert.eq(
+            PocketConstants.MAGNET_FILTER_ROWS,
+            PocketConfigPanel.MAGNET_COLUMNS,
+            "★列数 = 数据层 MAGNET_FILTER_ROWS（显示朝向对调，单源仍在数据层）");
+        SimpleAssert.eq(
+            PocketConstants.MAGNET_FILTER_COLUMNS,
+            PocketConfigPanel.MAGNET_ROWS,
+            "★行数 = 数据层 MAGNET_FILTER_COLUMNS（显示朝向对调，单源仍在数据层）");
         SimpleAssert.eq(18, PocketConfigPanel.CELL, "★单格 18px（与主面板三栏同一把尺，不另立第二档）");
         SimpleAssert.eq(NekoPocketPanel.GRID, PocketConfigPanel.CELL, "★格尺单源（不抄第二份 18）");
-        SimpleAssert.eq(108, PocketConfigPanel.MAGNET_GRID_WIDTH, "★盘面宽 = 6 × 18 = 108");
-        SimpleAssert.eq(216, PocketConfigPanel.MAGNET_GRID_HEIGHT, "★盘面高 = 12 × 18 = 216");
+        SimpleAssert.eq(216, PocketConfigPanel.MAGNET_GRID_WIDTH, "★盘面宽 = 12 × 18 = 216");
+        SimpleAssert.eq(108, PocketConfigPanel.MAGNET_GRID_HEIGHT, "★盘面高 = 6 × 18 = 108");
         SimpleAssert.eq(
             PocketConstants.MAGNET_FILTER_SLOTS,
             PocketConfigPanel.MAGNET_ROWS * PocketConfigPanel.MAGNET_COLUMNS,
-            "★格数 = 行列乘积 = 数据层条目预算（★两处真相迟早分叉）");
+            "★格数 = 行列乘积 = 数据层条目预算（★两处真相迟早分叉；R101.3 对调后乘积不变 = 72）");
         SimpleAssert.eq(
             PocketConstants.ESSENCE_DISPLAY_GRID,
             PocketConfigPanel.MAGNET_ROWS * PocketConfigPanel.MAGNET_COLUMNS,
-            "★与源质格同形（12×6=72），但★不共用那两个常量（S7a 的裁定）");
-        // ---- ★本片验收 5 原文的两条乘式：列数×18 ≤ 可用宽、行数×18 ≤ 可用高（两个方向各留 1px 框边）----
-        final int usableWidth = PocketConfigPanel.MAGNET_FRAME_WIDTH - 2;
-        final int usableHeight = PocketConfigPanel.MAGNET_FRAME_HEIGHT - PocketConfigPanel.ROW_HEIGHT - 2;
-        SimpleAssert.that(
-            PocketConfigPanel.MAGNET_COLUMNS * PocketConfigPanel.CELL <= usableWidth,
-            "★列数 × 18 ≤ 框内可用宽（" + PocketConfigPanel.MAGNET_COLUMNS * PocketConfigPanel.CELL
-                + " ≤ "
-                + usableWidth
-                + "）");
-        SimpleAssert.that(
-            PocketConfigPanel.MAGNET_ROWS * PocketConfigPanel.CELL <= usableHeight,
-            "★行数 × 18 ≤ 框内可用高（" + PocketConfigPanel.MAGNET_ROWS * PocketConfigPanel.CELL + " ≤ " + usableHeight + "）");
+            "★与源质格同乘积（72），但★不共用那两个常量（S7a 的裁定）");
         // ---- 磁力面自己的两条硬顶（★R97 S5 起磁力是一块独立面板，读它自己的尺寸，不再共用一对 WIDTH/HEIGHT）----
         SimpleAssert.that(
             PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) <= PocketConfigPanel.MAX_WIDTH,
@@ -13562,30 +13633,44 @@ public class NekoPocketModelTest {
             PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) < NekoPocketPanel.WIDTH
                 && PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) < NekoPocketPanel.HEIGHT,
             "★严格小于主面板（★主面板那本账 398×360 由 S2 那条用例钉，本条只验不被搬高）");
+        // ---- ★R101.3 横排布局的三条正身：按钮行在盘上方 / 盘面横向居中 / 计数行贴盘下 ----
+        SimpleAssert.eq(
+            PocketConfigPanel.CONTENT_TOP,
+            PocketConfigPanel.MAGNET_BUTTON_ROW_Y,
+            "★按钮行贴内容段顶（三钮横排在格盘之上，用户判「按钮放名单上面」的落点）");
         SimpleAssert.that(
-            PocketConfigPanel.magnetFrameXOf(PocketUpgradeType.MAGNET) + PocketConfigPanel.MAGNET_FRAME_WIDTH
-                <= PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.MARGIN,
-            "★磁力框横向在面板内");
+            PocketConfigPanel.MAGNET_BUTTON_ROW_Y + PocketConfigPanel.MAGNET_BUTTON_HEIGHT
+                <= PocketConfigPanel.MAGNET_GRID_Y,
+            "★按钮行整行落在格盘上方（钮底 " + (PocketConfigPanel.MAGNET_BUTTON_ROW_Y + PocketConfigPanel.MAGNET_BUTTON_HEIGHT)
+                + " ≤ 盘顶 "
+                + PocketConfigPanel.MAGNET_GRID_Y
+                + "）");
+        SimpleAssert.eq(
+            (PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.MAGNET_GRID_WIDTH) / 2,
+            PocketConfigPanel.magnetGridXOf(PocketUpgradeType.MAGNET),
+            "★横盘居中（盘 x = (面宽 − 盘宽)/2；258 宽的面上 = 21）");
+        SimpleAssert.eq(
+            2 * PocketConfigPanel.magnetGridXOf(PocketUpgradeType.MAGNET) + PocketConfigPanel.MAGNET_GRID_WIDTH,
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET),
+            "★盘面两侧余量相等（居中的派生式复钉）");
+        SimpleAssert.eq(
+            PocketConfigPanel.MAGNET_GRID_Y + PocketConfigPanel.MAGNET_GRID_HEIGHT + PocketConfigPanel.READOUT_GAP,
+            PocketConfigPanel.MAGNET_COUNT_Y,
+            "★计数行贴盘下（盘底 + 一条缝；旧「左列第 4 段」口径作废）");
+        // ---- 横向 / 纵向闭合（与 static 块同账双钉：按钮行带宽 = 面板可用宽；计数行下沿 = 底部两件之上）----
+        SimpleAssert.eq(
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET),
+            PocketConfigPanel.MARGIN + PocketConfigPanel.MAGNET_BUTTON_ROW_WIDTH + PocketConfigPanel.MARGIN,
+            "★按钮行 + 两边距恰好收满面板宽（3×78 + 2×4 = 242）");
+        SimpleAssert.eq(
+            PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.BOTTOM_STACK,
+            PocketConfigPanel.MAGNET_COUNT_Y + PocketConfigPanel.READOUT_HEIGHT,
+            "★计数行下沿恰好落在底部两件之上（面高由常量派生，不手抄）");
         SimpleAssert.that(
             PocketConfigPanel.magnetGridY() + PocketConfigPanel.MAGNET_GRID_HEIGHT
                 <= PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.BOTTOM_STACK,
             "★盘面纵向下沿落在底部两件之上");
-        // ---- 控制块（三枚按钮 + 计数 + 读数行）整块排在左列、格盘之左、底部两件之上 ----
-        SimpleAssert.that(
-            PocketConfigPanel.MAGNET_CONTROL_X + PocketConfigPanel.MAGNET_CONTROL_WIDTH + PocketConfigPanel.COLUMN_GAP
-                <= PocketConfigPanel.magnetFrameXOf(PocketUpgradeType.MAGNET),
-            "★控制块整列 + 缝不顶进格盘列（控制块宽 " + PocketConfigPanel.MAGNET_CONTROL_WIDTH
-                + " + 缝 "
-                + PocketConfigPanel.COLUMN_GAP
-                + " ≤ 格盘 x "
-                + PocketConfigPanel.magnetFrameXOf(PocketUpgradeType.MAGNET)
-                + "）");
         SimpleAssert.that(PocketConfigPanel.MAGNET_COUNT_WIDTH > 0, "★计数读数行有宽度可占");
-        // ★R100：说明行迁 tooltip ⇒ 旧「说明行纵向在面板内」换钉「左列末段（计数行）下沿不越底带」
-        SimpleAssert.that(
-            PocketConfigPanel.magnetControlRowY(3) + PocketConfigPanel.MAGNET_BUTTON_HEIGHT
-                <= PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.BOTTOM_STACK,
-            "★控制列末段纵向在面板内");
         SimpleAssert.that(
             PocketConfigPanel.labelWidthOf(PocketUpgradeType.MAGNET) + 2 + PocketConfigPanel.SWITCH_WIDTH
                 <= PocketConfigPanel.switchRowWidthOf(PocketUpgradeType.MAGNET),
@@ -13608,12 +13693,13 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★★R99 P0 判据①（★R100 片 D 后的口径）：磁力面的<b>文字</b>账，两份 lang 各算一遍。
+     * ★★R99 P0 判据①（★R100 片 D 后的口径；★R101.3 再翻新）：磁力面的<b>文字</b>账，两份 lang 各算一遍。
      * <p>
      * ★三态说明行自 R100 起<b>迁出面板常驻</b>（进三态钮与格件的 tooltip，键不删只改用用途）⇒ 折行盒判据
      * 失去对象，换成两条仍在的账：① 三条说明键在两份 lang 里<b>仍非空</b>（迁 tooltip 不是删文案——
-     * 键成孤儿会在玩家可见面上静默消失）；② 两枚挂载框标题在 0.8 档下一行放得下（R99 立账时磁力那枚
-     * 与 108px 的盒零余量，R100 框宽抬到「盘面 + 两侧各 4px」后有余量，把账继续钉着）。
+     * 键成孤儿会在玩家可见面上静默消失）；② ★R101.3 状态文案两键（switch.state_on/state_off）非空、
+     * 旧行为两键（turn_off/turn_on）与两枚挂载框标题键（mount.magnet/mount.mage）及魔法使容量键
+     * （mage.capacity）<b>三处物理归零</b>（撤键与消费件同批，R96 S5 先例：留一半就是僵尸键）。
      */
     private static void magnetPanelTextFitsItsBoxes() {
         final java.util.List<String> zh = sourceLinesOrNull(R98_LANG_ZH);
@@ -13630,36 +13716,46 @@ public class NekoPocketModelTest {
                     note != null && !note.isEmpty(),
                     "★磁力三态说明键仍有非空文案（" + PocketConfigPanel.noteKeyOf(mode) + " 迁 tooltip 不是删文案）");
             }
-            // ---- 两枚挂载框标题：0.8 档下一行放得下（★磁力那枚 R99 曾零余量，这里把账立着）----
-            assertSingleReadoutLine(
-                lang,
-                PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGNET),
-                PocketConfigPanel.MAGNET_FRAME_WIDTH - 2,
-                "磁力挂载框标题");
-            assertSingleReadoutLine(
-                lang,
-                PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGE),
-                PocketConfigPanel.MAGE_FRAME_WIDTH - 2,
-                "魔法使挂载框标题");
+            // ---- ★R101.3 状态文案：两键非空（开关钮与魔法使三模式钮共用的那对状态读数）----
+            for (final String stateKey : new String[] { "gtit.pocket.config.switch.state_on",
+                "gtit.pocket.config.switch.state_off" }) {
+                final String text = formatLang(lang, stateKey);
+                SimpleAssert.that(text != null && !text.isEmpty(), "★状态文案两键仍非空：" + stateKey);
+            }
+            // ---- ★R101.3 撤键的三处物理归零（键清单 + 两份 lang 的键行，缺一即红）----
+            final String[] retired = { "gtit.pocket.config.switch.turn_off", "gtit.pocket.config.switch.turn_on",
+                "gtit.pocket.config.mount.magnet", "gtit.pocket.config.mount.mage",
+                "gtit.pocket.config.mage.capacity" };
+            for (final String key : retired) {
+                SimpleAssert.that(
+                    !PocketConfigPanel.langKeys()
+                        .contains(key),
+                    "★键清单不再点名已撤键：" + key + "（消费件撤了键还留着 = 僵尸键）");
+                SimpleAssert.eq(0, countCodeLinesIn(lang, key + "="), "★lang 已撤键行：" + key);
+            }
         }
     }
 
     /**
-     * ★★R99 P0 判据②（★R100 片 D 判据同步重算）：逐面<b>内区空白率</b>上限（R99-D-2 的直接教训：磁力面
-     * 51.4% 的成片空洞在"测试全绿"下交付了实机）。内区 = 面板减边距；覆盖 = 装配侧<b>同一套常量</b>摆出的
-     * 控件盒矩形并集（与装配式逐字同源 ⇒ 改布局不用改本判据的式子，只看它红不红）。文字件按整个矩形盒计入
-     * （与取证 {@code 02-ui-style-layout.md} §4 同一口径，真实观感只会更空）。
+     * ★★R99 P0 判据②（★R100 片 D 判据同步重算；★R101.3 横盘重排后整套阈值重算）：逐面<b>内区空白率</b>上限
+     * （R99-D-2 的直接教训：磁力面 51.4% 的成片空洞在"测试全绿"下交付了实机）。内区 = 面板减边距；
+     * 覆盖 = 装配侧<b>同一套常量</b>摆出的控件盒矩形并集（与装配式逐字同源 ⇒ 改布局不用改本判据的式子，
+     * 只看它红不红）。文字件按整个矩形盒计入（与取证 {@code 02-ui-style-layout.md} §4 同一口径，
+     * 真实观感只会更空）。
      * <p>
-     * 阈值两档：紧凑四面 ≤ <b>15%</b>（R100 重排后实测 ~5.6–13.1%）；磁力面 ≤ <b>35%</b> —— ★R100 起的
-     * 结构地板 ≈34.1%（说明行迁 tooltip 是用户裁定的信息面收缩 ⇒ 左列只剩 4×18px 控件对 236px 列高，
-     * 面积口径的地板随之上浮；R99 的 30% 写的是「说明行还在面板上」那一代的 28.4% 地板）。★面积不是
-     * 用户判词的全部：成片空带另有一条<b>连续空白带上限</b>钉着（左列任意连续空白 ≤ 等距步距，见方法尾），
-     * 「顶上一撮 + 底部空带」那种形状在面积达标时也会红。
-     * ★阳性对照：磁力面的空白率必须<b>严格大于</b>最紧的魔法使面 ⇒ 读数恒 0 的空转检法在这里当场红。
+     * ★R101.3 阈值三档（新布局实测值反推，宁紧勿松）：紧凑三面 ≤ <b>15%</b>（不变）；磁力 ≤ <b>20%</b>
+     * ——横盘 216×108 铺满大半内区、三钮横排一行带，实测 ≈15.8%（旧竖盘 + 左列的 35% 档随旧布局作废）；
+     * 魔法使 ≤ <b>25%</b> ——去框后三列名单的两行盒 + 46px 小钮按列对齐，列右 30px、层缝与列缝是不可压的
+     * 结构空白，实测 ≈21.5%（旧「框住整段」把空白算进框矩形，掩盖了真实观感，去框后第一次量真值）。
+     * ★面积不是用户判词的全部：成片空带另有一条<b>连续空白带上限</b>钉着（磁力面任意整宽空白行带
+     * ≤ 2×行缝，见方法尾），「顶上一撮 + 成片空带」那种形状在面积达标时也会红。
+     * ★阳性对照改形（旧「磁力 > 魔法使」随旧布局作废——去框后魔法使反而更空）：最空的一面必须
+     * <b>严格大于</b>最满的一面 ⇒ 读数恒 0 的空转检法在这里当场红。
      */
     private static void configPanelBlankRateWithinCaps() {
         double magnetRate = -1;
-        double mageRate = -1;
+        double minRate = Double.MAX_VALUE;
+        double maxRate = -1;
         for (final PocketUpgradeType type : PocketUpgradeType.values()) {
             final int width = PocketConfigPanel.panelWidthOf(type);
             final int height = PocketConfigPanel.panelHeightOf(type);
@@ -13746,35 +13842,57 @@ public class NekoPocketModelTest {
                             PocketConfigPanel.ROW_HEIGHT);
                         break;
                     case MOUNT_MAGE:
-                        cover(
-                            covered,
-                            innerW,
-                            innerH,
-                            PocketConfigPanel.MAGE_FRAME_X,
-                            PocketConfigPanel.MAGE_FRAME_Y,
-                            PocketConfigPanel.MAGE_FRAME_WIDTH,
-                            PocketConfigPanel.MAGE_FRAME_HEIGHT);
-                        break;
-                    case MOUNT_MAGNET:
-                        cover(
-                            covered,
-                            innerW,
-                            innerH,
-                            PocketConfigPanel.magnetFrameXOf(type),
-                            PocketConfigPanel.MAGNET_FRAME_Y,
-                            PocketConfigPanel.MAGNET_FRAME_WIDTH,
-                            PocketConfigPanel.MAGNET_FRAME_HEIGHT);
-                        // ★R100：左列四段等距铺满框高（行位单源 = magnetControlRowY；说明行已迁 tooltip）
-                        for (int row = 0; row < 4; row++) {
+                        // ★R101.3 去框：三列模式控件直接放面板——每列 = 46px 钮（modeButtonRowY 行）
+                        // + 76px 名单盒（modeLabelRowY 行），x 走装配同一条 columnXOf 等分式。
+                        for (int row = 0; row < PocketConfigPanel.modeRowCount(); row++) {
                             cover(
                                 covered,
                                 innerW,
                                 innerH,
-                                PocketConfigPanel.MAGNET_CONTROL_X,
-                                PocketConfigPanel.magnetControlRowY(row),
+                                PocketConfigPanel.mageContentX() + PocketConfigPanel.columnXOf(row),
+                                PocketConfigPanel.mageContentY() + PocketConfigPanel.modeButtonRowY(),
+                                PocketConfigPanel.MODE_BUTTON_WIDTH,
+                                PocketConfigPanel.MODE_ROW_HEIGHT);
+                            cover(
+                                covered,
+                                innerW,
+                                innerH,
+                                PocketConfigPanel.mageContentX() + PocketConfigPanel.columnXOf(row),
+                                PocketConfigPanel.mageContentY() + PocketConfigPanel.modeLabelRowY(),
+                                PocketConfigPanel.MODE_COLUMN_WIDTH,
+                                PocketConfigPanel.MODE_LABEL_HEIGHT);
+                        }
+                        break;
+                    case MOUNT_MAGNET:
+                        // ★R101.3 横排：按钮行三钮横排（x = MARGIN + i×(钮宽+缝)，与装配式同源）
+                        // + 12×6 盘面（72 格铺满盘面矩形）+ 贴盘下的计数行。
+                        for (int i = 0; i < 3; i++) {
+                            cover(
+                                covered,
+                                innerW,
+                                innerH,
+                                PocketConfigPanel.MARGIN
+                                    + i * (PocketConfigPanel.MAGNET_BUTTON_WIDTH + PocketConfigPanel.MAGNET_BUTTON_GAP),
+                                PocketConfigPanel.MAGNET_BUTTON_ROW_Y,
                                 PocketConfigPanel.MAGNET_BUTTON_WIDTH,
                                 PocketConfigPanel.MAGNET_BUTTON_HEIGHT);
                         }
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.magnetGridXOf(type),
+                            PocketConfigPanel.MAGNET_GRID_Y,
+                            PocketConfigPanel.MAGNET_GRID_WIDTH,
+                            PocketConfigPanel.MAGNET_GRID_HEIGHT);
+                        cover(
+                            covered,
+                            innerW,
+                            innerH,
+                            PocketConfigPanel.MARGIN,
+                            PocketConfigPanel.MAGNET_COUNT_Y,
+                            PocketConfigPanel.MAGNET_COUNT_WIDTH,
+                            PocketConfigPanel.READOUT_HEIGHT);
                         break;
                     default:
                         break;
@@ -13790,10 +13908,11 @@ public class NekoPocketModelTest {
             }
             final double rate = 1.0 - (double) coveredCount / ((double) innerW * innerH);
             SimpleAssert.that(rate > 0.0 && rate < 1.0, "★" + type + " 空白率读数在 (0,1) 内（读到 " + rate + " = 检法空转或几何爆炸）");
-            // ★阈值两档（见方法 javadoc）：紧凑四面 ≤15%，磁力 ≤35%（★R100 重算的结构地板 34.4%）。
-            final boolean isMagnetFace = PocketConfigPanel.sectionsOf(type)
-                .get(1) == PocketConfigPanel.Section.MOUNT_MAGNET;
-            final double cap = isMagnetFace ? 0.35 : 0.15;
+            // ★阈值三档（见方法 javadoc）：紧凑三面 ≤15%；磁力 ≤20%（新布局实测 ~15.8%）；魔法使 ≤25%（~21.5%）。
+            final java.util.List<PocketConfigPanel.Section> sectionsOfFace = PocketConfigPanel.sectionsOf(type);
+            final boolean isMagnetFace = sectionsOfFace.get(1) == PocketConfigPanel.Section.MOUNT_MAGNET;
+            final boolean isMageFace = sectionsOfFace.get(1) == PocketConfigPanel.Section.MOUNT_MAGE;
+            final double cap = isMagnetFace ? 0.20 : isMageFace ? 0.25 : 0.15;
             SimpleAssert.that(
                 rate <= cap,
                 "★★" + type
@@ -13809,23 +13928,19 @@ public class NekoPocketModelTest {
                     + coveredCount
                     + "px²）——"
                     + "超限 = 又一处 R99-D-2 形状的成片空洞");
-            if (PocketConfigPanel.sectionsOf(type)
-                .get(1) == PocketConfigPanel.Section.MOUNT_MAGNET) {
+            minRate = Math.min(minRate, rate);
+            maxRate = Math.max(maxRate, rate);
+            if (isMagnetFace) {
                 magnetRate = rate;
-                // ---- ★R100 新判据：左列「连续空白带」上限（面积口径之外的成片空洞拦截）----
-                // 左列条带 = x ∈ [MARGIN, MARGIN+CONTROL_WIDTH)，y ∈ [CONTENT_TOP, 格盘框底)；
-                // 逐行问「这一行条带里有没有任何覆盖」，连续全空行数的最大值 ≤ 等距步距（72）——
-                // 「四段紧凑在顶 + 底部 ~150px 空带」那种面积可能达标、观感必炸的形状在这里红。
-                final int colLeft = PocketConfigPanel.MAGNET_CONTROL_X - PocketConfigPanel.MARGIN;
-                final int colRight = colLeft + PocketConfigPanel.MAGNET_CONTROL_WIDTH;
-                final int yTop = PocketConfigPanel.CONTENT_TOP - PocketConfigPanel.MARGIN;
-                final int yBottom = PocketConfigPanel.MAGNET_FRAME_Y + PocketConfigPanel.MAGNET_FRAME_HEIGHT
-                    - PocketConfigPanel.MARGIN;
+                // ---- ★R101.3 新判据：整面「整宽空白行带」上限（横排后不再有左列）----
+                // 逐行问「这一行内区里有没有任何覆盖」，连续全空行数的最大值 ≤ 2×行缝（新布局实测 4：
+                // 各行带之间就是 3~4px 的行缝；「控件挤在一处 + 成片空带」那种面积可能达标、观感必炸的
+                // 形状在这里红——R99-D-2 那种空洞的纵向正身）。
                 int maxRun = 0;
                 int run = 0;
-                for (int gy = yTop; gy < yBottom; gy++) {
+                for (int gy = 0; gy < innerH; gy++) {
                     boolean rowBlank = true;
-                    for (int gx = colLeft; gx < colRight && rowBlank; gx++) {
+                    for (int gx = 0; gx < innerW && rowBlank; gx++) {
                         rowBlank = !covered[gy][gx];
                     }
                     if (rowBlank) {
@@ -13836,24 +13951,20 @@ public class NekoPocketModelTest {
                     }
                 }
                 SimpleAssert.that(
-                    maxRun <= PocketConfigPanel.MAGNET_CONTROL_STRIDE,
-                    "★磁力左列连续空白带 " + maxRun
-                        + "px ≤ 等距步距 "
-                        + PocketConfigPanel.MAGNET_CONTROL_STRIDE
-                        + "px（超过 = 「四段挤在一处 + 成片空带」回潮，R99-D-2 那种空洞的纵向正身）");
-            }
-            if (PocketConfigPanel.sectionsOf(type)
-                .get(1) == PocketConfigPanel.Section.MOUNT_MAGE) {
-                mageRate = rate;
+                    maxRun <= 2 * PocketConfigPanel.READOUT_GAP,
+                    "★磁力面整宽空白带 " + maxRun
+                        + "px ≤ 2×行缝 "
+                        + (2 * PocketConfigPanel.READOUT_GAP)
+                        + "px（超过 = 「控件挤在一处 + 成片空带」回潮，R99-D-2 那种空洞的纵向正身）");
             }
         }
-        // ---- 阳性对照（R57 纪律）：磁力面的洞必须真的比最紧的面大 ⇒ 检法认得出"更空"----
+        // ---- 阳性对照（R57 纪律，★R101.3 改形）：最空的一面必须真的比最满的一面洞多 ⇒ 检法认得出"更空"----
         SimpleAssert.that(
-            magnetRate > mageRate,
-            "★阳性对照：磁力面空白率（" + String.format(java.util.Locale.ROOT, "%.1f%%", magnetRate * 100)
-                + "）> 魔法使面（"
-                + String.format(java.util.Locale.ROOT, "%.1f%%", mageRate * 100)
-                + "）——读到反的或相等 = 本检法没有分辨力，上面的上限断言不算干净");
+            maxRate > minRate,
+            "★阳性对照：最空面空白率（" + String.format(java.util.Locale.ROOT, "%.1f%%", maxRate * 100)
+                + "）> 最满面（"
+                + String.format(java.util.Locale.ROOT, "%.1f%%", minRate * 100)
+                + "）——读到相等 = 本检法没有分辨力，上面的上限断言不算干净");
     }
 
     /** 把一个面板坐标系的矩形标进内区覆盖图（★越界部分裁掉，与"控件盒只在内区计账"同口径）。 */
@@ -13873,10 +13984,10 @@ public class NekoPocketModelTest {
     }
 
     /**
-     * ★★R100 片 D（UI 表现整改）的钉值与正身：文字 0.8 档 / 边距 ≥8 不压装饰框线 / 小钮 9-slice 不变形
-     * 下界 / 磁力空带收编（四段等距 + 首末对齐）/ 魔法使框右零空白 / 说明行迁 tooltip（键不删、面板常驻行归零）/
-     * 三 switch 收敛后键真相单源在 Section。五型新尺寸在这里<b>逐字钉值</b>（改排版必须连这里一起翻，
-     * 先例 = R98/R99 的尺寸链就地翻新）。
+     * ★★R100 片 D（UI 表现整改）的钉值与正身（★R101.3 横盘重排后翻新）：文字 0.8 档 / 边距 ≥8 不压装饰框线 /
+     * 小钮 9-slice 不变形下界 / 磁力横排布局（按钮行在盘上 + 计数行贴盘下 + 钮行 = 行带宽）/ 魔法使去框后
+     * 段宽 = 行带宽 / 说明行迁 tooltip（键不删、面板常驻行归零）/ 三 switch 收敛后键真相单源在 Section。
+     * 五型新尺寸在这里<b>逐字钉值</b>（改排版必须连这里一起翻，先例 = R98/R99/R100 的尺寸链就地翻新）。
      */
     private static void configPanelTextScaleAndLayoutRework() {
         // ---- ① 文字档：面板局部 0.8（对齐主面板 STATUS_TEXT_SCALE 先例），本件不再消费主面板那把 0.6 ----
@@ -13898,7 +14009,7 @@ public class NekoPocketModelTest {
         SimpleAssert.that(
             PocketConfigPanel.langKeys()
                 .contains("gtit.pocket.magnet.note.none"),
-            "★说明键仍在键清单（键不删只改用途 ⇒ lang 键数 425 一字不动）");
+            "★说明键仍在键清单（键不删只改用途；★R101.3 净撤三键后键数账 = 412，钉值单源在 verify-pocket.sh 的 LANG_KEY_PIN）");
         // ---- ② 排版下界：边距不压 ~7px 装饰框线；行缝可辨 ----
         SimpleAssert.that(PocketConfigPanel.MARGIN >= 8, "★边距 ≥ 8（装饰层可见框线 ≈7px，旧值 6 压线 = 用户判「过于贴边」的正身）");
         SimpleAssert.that(
@@ -13909,32 +14020,46 @@ public class NekoPocketModelTest {
             PocketConfigPanel.MAGNET_BUTTON_WIDTH, PocketConfigPanel.MODE_BUTTON_WIDTH }) {
             SimpleAssert.that(w >= 46, "★按钮宽 " + w + " ≥ 46（88×18 9-slice 压到 30 时中带只剩源的 27% = 用户点名的「小钮变形」）");
         }
-        // ---- ④ 磁力空带收编：首段贴内容段顶、末段下沿距框底 ≤2px（与 static 块同账双钉）----
-        SimpleAssert
-            .eq(PocketConfigPanel.CONTENT_TOP, PocketConfigPanel.magnetControlRowY(0), "★左列首段贴内容段顶（等距分布的锚点不许漂）");
-        SimpleAssert.that(
-            PocketConfigPanel.MAGNET_FRAME_Y + PocketConfigPanel.MAGNET_FRAME_HEIGHT
-                - (PocketConfigPanel.magnetControlRowY(3) + PocketConfigPanel.MAGNET_BUTTON_HEIGHT) <= 2,
-            "★左列末段下沿距格盘框底 ≤ 2px（远了就是「空带回潮」）");
-        // ---- ⑤ 魔法使框右零空白：框宽 = 本型行带宽（派生式的读数复钉）----
+        // ---- ④ 磁力横排布局（★R101.3）：按钮行 = 行带宽（横向零空白）、行内三枚钮等宽等缝、
+        // 计数行贴盘下且横贯同一行带（与 static 块同账双钉）----
+        SimpleAssert.eq(
+            PocketConfigPanel.switchRowWidthOf(PocketUpgradeType.MAGNET),
+            PocketConfigPanel.MAGNET_BUTTON_ROW_WIDTH,
+            "★磁力按钮行宽 = 本型行带宽（3×78 + 2×4 = 242，横向零空白；旧「左列 128 宽」作废）");
+        SimpleAssert.eq(
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.MARGIN,
+            PocketConfigPanel.MARGIN + 2 * (PocketConfigPanel.MAGNET_BUTTON_WIDTH + PocketConfigPanel.MAGNET_BUTTON_GAP)
+                + PocketConfigPanel.MAGNET_BUTTON_WIDTH,
+            "★横排末钮右缘贴右边距（装配式 x + 宽与面板宽闭合；空隙只许是两条 4px 缝）");
+        SimpleAssert.eq(
+            PocketConfigPanel.MAGNET_GRID_Y + PocketConfigPanel.MAGNET_GRID_HEIGHT + PocketConfigPanel.READOUT_GAP,
+            PocketConfigPanel.MAGNET_COUNT_Y,
+            "★计数行贴盘下（盘底 + 一条缝）");
+        // ---- ⑤ 魔法使去框后的段宽 = 行带宽（旧「框宽 = 行带宽」判据的去框正身）----
         SimpleAssert.eq(
             PocketConfigPanel.switchRowWidthOf(PocketUpgradeType.MAGE),
-            PocketConfigPanel.MAGE_FRAME_WIDTH,
-            "★魔法使框宽 = 行带宽（R98/R99 的「框窄于行带 ⇒ 框右空带」作废）");
-        // ---- ⑥ 五型新尺寸逐字钉值（★改排版必须同批翻这五行，先例 = R98/R99 尺寸链就地翻新）----
+            PocketConfigPanel.MAGE_CONTENT_WIDTH,
+            "★魔法使内容段可用宽 = 行带宽（去框后三列横排吃满 232，框右零空白那条旧账的正身）");
+        // ---- ⑥ 五型新尺寸逐字钉值（★改排版必须同批翻这五行，先例 = R98/R99/R100 尺寸链就地翻新）----
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CAPACITY), "★容量面宽 266");
         SimpleAssert.eq(85, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY), "★容量面高 85");
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.STACK), "★堆叠面宽 266");
         SimpleAssert.eq(81, PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK), "★堆叠面高 81");
         SimpleAssert.eq(318, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CHANNEL_PERSIST), "★通道持续化面宽 318");
         SimpleAssert.eq(102, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CHANNEL_PERSIST), "★通道持续化面高 102");
-        SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET), "★磁力面宽 266");
-        SimpleAssert.eq(299, PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET), "★磁力面高 299");
+        SimpleAssert.eq(
+            258,
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET),
+            "★磁力面宽 258（R101.3 派生：钮行 242 + 两边距 16；旧 266 是旧左列 128 宽控制列撑出来的，随横排作废）");
+        SimpleAssert.eq(
+            213,
+            PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGNET),
+            "★磁力面高 213（★R101.3 横盘重排：29 + 按钮行 18 + 缝 3 + 盘 108 + 缝 3 + 计数行 18 + 底带 34；旧 299 作废）");
         SimpleAssert.eq(248, PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGE), "★魔法使面宽 248");
         SimpleAssert.eq(
-            145,
+            104,
             PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGE),
-            "★魔法使面高 145（★R101 横排：名单一层钮一层名，竖排三行的高度账作废）");
+            "★魔法使面高 104（★R101.3 去框：29 + 模式段 41 + 底带 34；容量行与框高账随退场作废，R101 期 145 作废）");
         // ---- ⑦ 三 switch 收敛：读数键的真相单源在 Section（外部 *_KEY 常量从枚举派生，不是第二份字面量）----
         SimpleAssert.eq(
             PocketConfigPanel.Section.READOUT_CAPACITY.readoutKey,
@@ -13954,9 +14079,9 @@ public class NekoPocketModelTest {
                 && PocketConfigPanel.Section.FREQUENCY.readoutKey == null,
             "★挂载段与频率段不带读数键（收敛后 null 语义与旧 switch 的 default 支一致）");
         SimpleAssert.eq(
-            PocketConfigPanel.MAGNET_FRAME_WIDTH - 2 * PocketConfigPanel.MAGNET_GRID_INSET,
-            PocketConfigPanel.MAGNET_GRID_WIDTH,
-            "★磁力盘面在框内居中（框宽抬到装标题后，盘面 ≠ 框宽 − 2 那条旧式）");
+            (PocketConfigPanel.panelWidthOf(PocketUpgradeType.MAGNET) - PocketConfigPanel.MAGNET_GRID_WIDTH) / 2,
+            PocketConfigPanel.magnetGridXOf(PocketUpgradeType.MAGNET),
+            "★磁力横盘在面板内居中（旧「盘面在框内居中」随去框改义为面板级居中）");
         // ---- ⑧ 按钮串像素账（0.8 档）：每一枚用 BUTTON 底的钮，其最坏 overlay 串一行放得下 ----
         final java.util.List<String> zh2 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         final java.util.List<String> en2 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
@@ -13972,11 +14097,14 @@ public class NekoPocketModelTest {
                     .max(worstSwitch, residentLogicalWidth(formatLang(lang, PocketConfigPanel.switchLabelKey(state))));
             }
             assertButtonLineFits(worstSwitch, PocketConfigPanel.SWITCH_WIDTH, "开关钮");
-            // 魔法使模式小钮 / 关闭钮（★R101：频率两枚小钮撤，改输入框不占 BUTTON 盒账）
-            assertButtonLineFits(
-                residentLogicalWidth(formatLang(lang, "gtit.pocket.config.switch.turn_off")),
-                PocketConfigPanel.MODE_BUTTON_WIDTH,
-                "魔法使模式小钮");
+            // 魔法使模式小钮 / 关闭钮（★R101：频率两枚小钮撤，改输入框不占 BUTTON 盒账；
+            // ★R101.3：小钮文案 = 状态两枚 state_on/state_off，取最坏）
+            int worstModeState = 0;
+            for (final String stateKey : new String[] { "gtit.pocket.config.switch.state_on",
+                "gtit.pocket.config.switch.state_off" }) {
+                worstModeState = Math.max(worstModeState, residentLogicalWidth(formatLang(lang, stateKey)));
+            }
+            assertButtonLineFits(worstModeState, PocketConfigPanel.MODE_BUTTON_WIDTH, "魔法使模式小钮");
             assertButtonLineFits(
                 residentLogicalWidth(formatLang(lang, "gtit.pocket.config.close")),
                 PocketConfigPanel.CLOSE_WIDTH,
@@ -14064,8 +14192,8 @@ public class NekoPocketModelTest {
             "private static void mountMagnet(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
         SimpleAssert.that(magnet >= 0, "★定位 mountMagnet（★R97 S5：磁力面的整面装配，签名带 ui 与 type）");
         SimpleAssert.that(
-            regionContainsCode(conf, magnet, methodEnd(conf, magnet), "box.child(magnetGrid(ui, x, y));"),
-            "★磁力挂载段里画的仍是 72 格盘本体（真控件，不是一句话）");
+            regionContainsCode(conf, magnet, methodEnd(conf, magnet), "panel.child(magnetGrid(ui, type));"),
+            "★磁力挂载段里画的仍是 72 格盘本体（真控件，不是一句话；★R101.3 去框后盘面直接挂 panel）");
         final int mage = methodStart(
             conf,
             "private static void mountMage(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
@@ -17786,8 +17914,8 @@ public class NekoPocketModelTest {
             SimpleAssert.that(mf >= 0, "定位 mountMagnet（磁力面整面装配）");
             SimpleAssert.eq(
                 1,
-                countCodeLinesIn(methodBodyOf(conf, mf), "box.child(magnetGrid(ui, x, y));"),
-                "★磁力面内容恰一处 = 72 格盘本体（读到 0 = 格盘被摘）");
+                countCodeLinesIn(methodBodyOf(conf, mf), "panel.child(magnetGrid(ui, type));"),
+                "★磁力面内容恰一处 = 72 格盘本体（读到 0 = 格盘被摘；★R101.3 去框后盘面直接挂 panel）");
             final int mg = methodStart(
                 conf,
                 "private static void mountMage(NekoPocketPanel ui, ModularPanel panel, PocketUpgradeType type) {");
@@ -17806,7 +17934,7 @@ public class NekoPocketModelTest {
             SimpleAssert.that(
                 countCodeLinesIn(conf, "sections.contains(Section.MOUNT_MAGE)") >= 1
                     && countCodeLinesIn(conf, "sections.contains(Section.MOUNT_MAGNET)") >= 1,
-                "★两支各有自己的分派判据（磁力读 MOUNT_MAGNET、模式读 MOUNT_MAGE；hasMount/mountTitleKey 共用同一张表）");
+                "★两支各有自己的分派判据（磁力读 MOUNT_MAGNET、模式读 MOUNT_MAGE；hasMount 派生自同一张表）");
             SimpleAssert.that(countCodeLinesIn(conf, "requestUpgradeMode(row,") >= 1, "模式那一行的唯一出口是发码（★不是本地写档）");
         }
         final java.util.List<String> panel = sourceLinesOrNull(R96_S9B_PANEL);
@@ -20639,21 +20767,19 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(360, NekoPocketPanel.HEIGHT, "主面板高仍是 360（★本片没碰它，也没借它加高）");
         SimpleAssert.eq(398, NekoPocketPanel.WIDTH, "主面板宽仍是 398");
         SimpleAssert.eq(225, PocketSlots.TOTAL_REAL_SLOTS, "★真实槽数仍是 225（次级面板零槽 ⇒ 不占 Container 账）");
-        // ---- ★R98 S4 排版改判的几何正身：魔法使那行元素容量读数现在住在挂载框<b>内</b> ----
-        // 旧形状是"框 + 框下一条悬空读数"（取证 02-gui.md §4-5：框语义与磁力框"这里面是整盘"不一致）。
+        // ---- ★R101.3 去框后的魔法使几何正身（旧「容量行落在挂载框内」两条随框与容量行一起退场）----
+        // 模式段的横纵两条闭合：三列（列宽等分 + 列缝）恰好收满内容段可用宽；段高恰落在底部两件之上。
         // 装配期的 static 对账已经钉过同一件事（它会当场抛），这里再钉一遍的理由与既有先例同：
         // 判据要留在用例里才有人看得见它被谁要求过，★删 static 块里那条而忘了这条 = 只红一次。
-        SimpleAssert.that(
-            PocketConfigPanel.mageCapacityY() + PocketConfigPanel.READOUT_HEIGHT
-                <= PocketConfigPanel.MAGE_FRAME_Y + PocketConfigPanel.MAGE_FRAME_HEIGHT - 1,
-            "★魔法使容量行落在挂载框内（行底 " + (PocketConfigPanel.mageCapacityY() + PocketConfigPanel.READOUT_HEIGHT)
-                + " ≤ 框底 "
-                + (PocketConfigPanel.MAGE_FRAME_Y + PocketConfigPanel.MAGE_FRAME_HEIGHT - 1)
-                + "）");
-        SimpleAssert.that(
-            PocketConfigPanel.MAGE_FRAME_X + 1 + PocketConfigPanel.mageCapacityWidth()
-                <= PocketConfigPanel.MAGE_FRAME_X + PocketConfigPanel.MAGE_FRAME_WIDTH - 1,
-            "★魔法使容量行的盒收得进框内可用宽（盒宽 " + PocketConfigPanel.mageCapacityWidth() + "）");
+        SimpleAssert.eq(
+            PocketConfigPanel.MAGE_CONTENT_WIDTH,
+            PocketConfigPanel.modeRowCount() * PocketConfigPanel.MODE_COLUMN_WIDTH
+                + (PocketConfigPanel.modeRowCount() - 1) * PocketConfigPanel.MODE_COLUMN_GAP,
+            "★魔法使三列恰好收满内容段可用宽（3×76 + 2×2 = 232，旧「框内 75 宽」随框作废）");
+        SimpleAssert.eq(
+            PocketConfigPanel.panelHeightOf(PocketUpgradeType.MAGE) - PocketConfigPanel.BOTTOM_STACK,
+            PocketConfigPanel.CONTENT_TOP + PocketConfigPanel.MAGE_MODE_STACK_HEIGHT,
+            "★魔法使模式段下沿恰好落在底部两件之上（去框后段高 = 面高的派生腿）");
         // ---- 逐型像素账：型名行 + 回执行 + 各面自己的读数/说明行（两份 lang 各算一遍，取最坏）----
         final java.util.List<String> zh = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
         final java.util.List<String> en = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
@@ -20773,7 +20899,7 @@ public class NekoPocketModelTest {
                 PocketConfigPanel.FREQ_LABEL_WIDTH,
                 "通道面频率档读数");
             // ★R101 魔法使面：三列名单（按钮行在上、名单行在下）——模式名在列宽里 ≤2 行（两行盒）；
-            // 状态读数收进按钮的动态 overlay（"关闭 / 打开"本来就是状态位），名单行只念模式名。
+            // 状态读数收进按钮的动态 overlay（"开启 / 关闭"本来就是状态位），名单行只念模式名。
             for (int row = 0; row < PocketConfigPanel.modeRowCount(); row++) {
                 final String label = formatLang(lang, PocketConfigPanel.modeLabelKey(row));
                 final int lines = (int) Math.ceil(
@@ -20787,15 +20913,8 @@ public class NekoPocketModelTest {
                         + PocketConfigPanel.MODE_COLUMN_WIDTH
                         + "）");
             }
-            assertSingleReadoutLine(
-                lang,
-                "gtit.pocket.config.mage.capacity",
-                Integer.valueOf(PocketConstants.ELEMENT_CAP_PER_TAG),
-                Integer.valueOf(PocketConstants.ELEMENT_TOTAL_CAP),
-                // ★R98 S4：容量行搬进挂载框<b>内</b>以后，它的盒是框内可用宽而不是"横贯整面"的那本账
-                // （旧写法读 contentBoxOf(MAGE) = 面宽 − 2×边距 ⇒ 盒比框还宽，量的是一条画不出来的宽度）。
-                PocketConfigPanel.mageCapacityWidth(),
-                "魔法使面元素容量行（框内）");
+            // ★R101.3：魔法使元素容量行随挂载框整行退场（键 mage.capacity 撤，两份 lang 同批；
+            // 它的像素账与「框内可用宽」判据一并作废——撤判据与撤消费件成对，见 magnetPanelTextFitsItsBoxes）。
         }
     }
 
@@ -20877,15 +20996,14 @@ public class NekoPocketModelTest {
             second.get(PocketUpgradeType.MAGNET),
             "★磁力 = 开关 + 名单盘挂载段（72 格盘的宿主，★五型里唯一）");
         SimpleAssert.eq(PocketConfigPanel.Section.MOUNT_MAGE, second.get(PocketUpgradeType.MAGE), "★魔法使 = 开关 + 模式挂载段");
+        // ★★R101.3 去框：两枚挂载框标题键整批退场（旧「两个挂载位各有自己的标题键」随框作废）——
+        // 键清单不再点名、两份 lang 不再有键行（三处同批，缺一即红；成对判据 = 上面的 hasMount 恰两型仍在）。
         SimpleAssert.that(
-            PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGNET) != null
-                && PocketConfigPanel.mountTitleKey(PocketUpgradeType.MAGE) != null,
-            "两个挂载位各有自己的标题键（★不是同一句「配置」糊五遍）");
-        SimpleAssert.that(
-            PocketConfigPanel.mountTitleKey(PocketUpgradeType.CAPACITY) == null
-                && PocketConfigPanel.mountTitleKey(PocketUpgradeType.STACK) == null
-                && PocketConfigPanel.mountTitleKey(PocketUpgradeType.CHANNEL_PERSIST) == null,
-            "★读数段的三型拿不到挂载键 ⇒ 面板给它们的是读数行，不给空框");
+            !PocketConfigPanel.langKeys()
+                .contains("gtit.pocket.config.mount.magnet")
+                && !PocketConfigPanel.langKeys()
+                    .contains("gtit.pocket.config.mount.mage"),
+            "★键清单不再点名两枚挂载框标题键（去框后没有框就没有框标题）");
         int mounts = 0;
         for (final PocketUpgradeType type : PocketUpgradeType.values()) {
             if (PocketConfigPanel.hasMount(type)) {
