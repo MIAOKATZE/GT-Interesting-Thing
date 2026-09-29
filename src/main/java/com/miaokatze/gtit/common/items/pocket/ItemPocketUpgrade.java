@@ -114,11 +114,21 @@ public class ItemPocketUpgrade extends Item {
 
     public ItemPocketUpgrade(PocketUpgradeType type) {
         this.type = type;
-        final String id = ID_PREFIX + tokenOf(type);
-        setUnlocalizedName(id);
-        setTextureName(GTInterestingThing.MODID + ":" + id);
+        setUnlocalizedName(unlocalizedNameOf(type));
+        setTextureName(GTInterestingThing.MODID + ":" + unlocalizedNameOf(type));
         setMaxStackSize(1);
         setCreativeTab(CreativeTabManager.CREATIVE_TAB);
+    }
+
+    /**
+     * 注册名/unlocalized 基名（{@code neko_pocket_upgrade_<token>}，单源 {@link #TOKENS}）。
+     * <p>
+     * ★R101.2：影子注册（{@code ItemRegistrar} 的旧注册名防护腿）注册后要用它<b>回填</b>翻译键
+     * ——{@code GameRegistry.registerItem} 会把键改写成注册名，影子件因此裸键显示过
+     * （{@code gtit.neko_pocket_upgrade_distill_fast}，用户实机判"两个魔法使插件"）。
+     */
+    public static String unlocalizedNameOf(PocketUpgradeType type) {
+        return ID_PREFIX + tokenOf(type);
     }
 
     /** 本实例的效果类型（{@code final} 字段读取，无推导）。 */

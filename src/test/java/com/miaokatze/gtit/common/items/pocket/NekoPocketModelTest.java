@@ -16572,12 +16572,8 @@ public class NekoPocketModelTest {
             final int end = methodEnd(reg, start);
             SimpleAssert.that(start >= 0, "按签名定位口袋插件注册方法");
             SimpleAssert.that(
-                regionContainsCode(
-                    reg,
-                    start,
-                    end,
-                    "GameRegistry.registerItem(new ItemPocketUpgrade(PocketUpgradeType.MAGE), LEGACY_REGISTER_NAME_MAGE)"),
-                "★影子注册在场：同一 MAGE 的第二个实例 + 旧注册名");
+                regionContainsCode(reg, start, end, "GameRegistry.registerItem(shadowMage, LEGACY_REGISTER_NAME_MAGE)"),
+                "★影子注册在场：同一 MAGE 的第二个实例 + 旧注册名（★R101.2：先落变量，注册后回填 mage 族键并对 NEI 隐藏）");
             final int alias = firstCodeLineWith(reg, start, end, "LEGACY_REGISTER_NAME_MAGE)");
             SimpleAssert.that(
                 alias >= 0 && !reg.get(alias)

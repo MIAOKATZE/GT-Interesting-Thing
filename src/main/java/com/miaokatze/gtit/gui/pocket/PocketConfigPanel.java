@@ -13,7 +13,6 @@ import net.minecraft.util.StatCollector;
 import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.StringValue;
@@ -287,7 +286,7 @@ public final class PocketConfigPanel {
      * ★R100 几何修正 30 → <b>46</b>：{@code BUTTON} 贴图是 88×18 的 9-slice（N=4），30px 宽时
      * 中带只剩 22px = 源 80px 的 27%，高光带被压成竖条（用户点名的「小钮变形」正身）；46px 时中带
      * 38px = 源的 46%，且装得下 0.8 档 "Turn off"（36px）+ 两道 4px 边。主面板最窄的按钮本来就是 88，
-     * 次级面板所有用这张贴图的钮一律 ≥ 46。★R101 起本面的钮走纯色三态（见 {@code configButtonStyle}），
+     * 次级面板所有用这张贴图的钮一律 ≥ 46。★R101.2 起本面的钮回到这张贴图（见 {@code applyConfigButtonStyle}），
      * 宽下界 46 仍然成立（像素账用例同批钉）。
      */
     public static final int MODE_BUTTON_WIDTH = 46;
@@ -1328,53 +1327,27 @@ public final class PocketConfigPanel {
         return panel;
     }
 
-    // ------------------------------------------------------------------ ★R101 五面按钮的纯色三态
+    // ------------------------------------------------------------------ ★R101.2 五面按钮继承主面板按钮样式
 
     /**
-     * ★R101 UI 整改：五面的按钮统一样式 = <b>底色块 + 1px 边框、悬浮提亮、按下压暗</b>（三态，
-     * 尺寸一个字不动）。色阶单源在 {@link PocketGhostRequest}（任务拍板"不散落魔法数"），本方法只拼装。
+     * ★R101.2 UI 整改（对 R101 纯色三态的实机翻案）：五面的按钮<b>直接继承主面板通道按钮</b>的既有
+     * 样式——{@code background} = {@link PocketGuiTextures#BUTTON}（88×18，N=4 九宫）、
+     * {@code hoverBackground} = {@link PocketGuiTextures#BUTTON_PRESSED}（主面板"启动次元通道"
+     * 同款同槽位，NekoPocketBottomBand 装配式照抄），{@code overlay} 只挂内容件。尺寸与内容一个字不动。
      * <p>
-     * 实现走 MUI2 Widget 的三个既有槽位（零子类化、零新控件）：
-     * {@code background} = 常态、{@code hoverBackground} = 悬浮（hover 时库整层替换常态底）、
-     * {@code overlay} = 内容层 + 按下压暗层——库没有"按下"主题槽，压暗层内部用 LWJGL 的实时按键
-     * 读数判"正在按"（体只在客户端绘制路径执行，服务端装配树永远不会调它，同
-     * {@code PocketGhostRequest#capReadoutColor()} 的方法体纪律）。
+     * 为什么 R101 的纯色三态会"生效却难看"、而 R100 的 BUTTON 贴图底从未显形：两波绘制盖底（根因
+     * 见 {@link NekoPocketDecoration#appendTo} 的 javadoc）——贴图底当时根本没画出来，纯色底画出来
+     * 了但与主面板风格不合，用户 2026-09-29 实机判"太丑，直接继承主面板的按钮"。
      * <p>
-     * ★{@code content}（按钮文字）与压暗层<b>共用同一个 overlay 槽</b>：库的 overlay setter 是
-     * "替换"不是"追加" ⇒ 两层必须合成一个 {@link IDrawable#of(IDrawable...)} 栈（按序绘制 ⇒
-     * 压暗画在文字之上，按下时整钮连字一起变暗）。传 {@code null} = 无文字钮。
+     * 悬浮/按压语义也与主面板对齐：hover 整层换 BUTTON_PRESSED，不再有第三态压暗层
+     * （主按钮没有，继承就不自己发明）。传 {@code null} = 无文字钮（overlay 槽留空）。
      */
     private static void applyConfigButtonStyle(ButtonWidget<?> button, IDrawable content) {
-        button.background(configButtonFill(PocketGhostRequest.buttonFillColor()));
-        button.hoverBackground(configButtonFill(PocketGhostRequest.buttonHoverColor()));
-        if (content == null) {
-            button.overlay(pressedDarkenOverlay(button));
-        } else {
-            button.overlay(content, pressedDarkenOverlay(button));
+        button.background(PocketGuiTextures.BUTTON);
+        button.hoverBackground(PocketGuiTextures.BUTTON_PRESSED);
+        if (content != null) {
+            button.overlay(content);
         }
-    }
-
-    /**
-     * 一态的按钮底绘制（边框 1px + 内色块 1px 内缩）：常态与悬浮共用同一份式子，只换内色
-     * （★边框/内色的取值单源在 {@link PocketGhostRequest}，这里不写第二份色值）。
-     */
-    private static IDrawable configButtonFill(int fillColor) {
-        return (context, x, y, width, height, widgetTheme) -> {
-            GuiDraw.drawRect(x, y, width, height, PocketGhostRequest.buttonBorderColor());
-            GuiDraw.drawRect(x + 1, y + 1, width - 2, height - 2, fillColor);
-        };
-    }
-
-    /**
-     * 按下压暗层：本钮<b>正被悬停且左键按住</b>才画一层深色（三态的第三态）。
-     * ★只压暗、不位移：位移要让整棵子树跟着挪，库的绘制坐标在 draw 时已定 ⇒ 压暗即可辨识。
-     */
-    private static IDrawable pressedDarkenOverlay(ButtonWidget<?> button) {
-        return (context, x, y, width, height, widgetTheme) -> {
-            if (button.isHovering() && org.lwjgl.input.Mouse.isButtonDown(0)) {
-                GuiDraw.drawRect(x, y, width, height, PocketGhostRequest.buttonPressColor());
-            }
-        };
     }
 
     /**
@@ -1400,7 +1373,7 @@ public final class PocketConfigPanel {
 
     /**
      * 开关（★唯一出口是发码，本地零写入；★排在本行右端，与型名同一横带）。
-     * ★R101：底改纯色三态（见 {@link #applyConfigButtonStyle}）；逐条语句设定取
+     * ★R101.2：底换主面板同款 BUTTON 贴图（见 {@link #applyConfigButtonStyle}）；逐条语句设定取
      * {@code NekoPocketBottomBand#persistentBindRow} 的同一条先例（链式拿不到 self 型时不再硬拧）。
      */
     private static IWidget switchButton(NekoPocketPanel ui, PocketUpgradeType type) {
