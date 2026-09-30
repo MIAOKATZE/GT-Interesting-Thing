@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "trades": [
     {
       "id": "MIAO1",
@@ -962,6 +962,111 @@
           "meta": 0,
           "amount": 1,
           "nbtBase64": "CgAAAA=="
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "MIAO90",
+      "tabId": 3,
+      "orderId": 8,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 64
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:neko_pocket_upgrade_capacity",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "MIAO91",
+      "tabId": 3,
+      "orderId": 9,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 64
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:neko_pocket_upgrade_stack",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "MIAO92",
+      "tabId": 3,
+      "orderId": 10,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 64
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:neko_pocket_upgrade_magnet",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "MIAO93",
+      "tabId": 3,
+      "orderId": 11,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 64
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:neko_pocket_upgrade_channel_persist",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
+        }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": ""
+    },
+    {
+      "id": "MIAO94",
+      "tabId": 3,
+      "orderId": 12,
+      "currency": {
+        "type": "shimmeringNeko",
+        "amount": 64
+      },
+      "fromItems": [],
+      "toItems": [
+        {
+          "item": "gtit:neko_pocket_upgrade_mage",
+          "meta": 0,
+          "amount": 1,
+          "nbtBase64": null
         }
       ],
       "cooldown": 0,

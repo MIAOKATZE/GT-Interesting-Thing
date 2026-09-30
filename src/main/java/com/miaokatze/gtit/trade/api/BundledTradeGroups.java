@@ -58,7 +58,7 @@ public final class BundledTradeGroups {
      * 开猫猫贸易机时强制弹覆盖通知"默认贸易组已更新。"（单按钮，配置不可关闭）。
      * 发布推荐更新时由作者手动递改。
      */
-    public static final String UPDATE_TAG = "1.8.24";
+    public static final String UPDATE_TAG = "1.8.51";
 
     /** GUI 询问状态：无 */
     public static final String PROMPT_NONE = "";

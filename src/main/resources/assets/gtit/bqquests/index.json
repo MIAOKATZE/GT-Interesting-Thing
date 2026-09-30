@@ -137,6 +137,10 @@
         {
           "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NekoInfinityStor-R1RJVAAAAAAAAAAAAAAAJA==.json",
           "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NekoInfinityStor-R1RJVAAAAAAAAAAAAAAAJA==.json"
+        },
+        {
+          "entryFile": "assets/gtit/bqquests/QuestLines/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NekoDimensionPoc-R1RJVAAAAAAAAAAAAAAAJQ==.json",
+          "questFile": "assets/gtit/bqquests/Quests/GTInterestingThi-R1RJVAAAAAAAAAAAAAAAAQ==/NekoDimensionPoc-R1RJVAAAAAAAAAAAAAAAJQ==.json"
         }
       ],
       "idHigh": 5139813699862659072,
