@@ -108,17 +108,17 @@ import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
  * 落地的四处常数：{@link #ROW_HEIGHT} 20→18、{@link #READOUT_HEIGHT} 20→18、{@link #CLOSE_HEIGHT}
  * 16→18、{@link #COLUMN_GAP} 6→4（= {@code NekoPocketPanel.COLUMN_GAP}）。派生量跟着走：
  * {@link #CONTENT_TOP} 自 R99 期为 6+18+2 = 26，★R100 起随边距与行缝 = 8+18+3 = <b>29</b>；
- * ★{@link #BOTTOM_STACK} 自 R99 P2 起并带（回执行与关闭钮同带并排），★R100 起随边距 = 4+22+8 = <b>34</b>
- * （R98 期公式 4+22+18+6 = 50 作废）。
+ * ★{@link #BOTTOM_STACK} 自 R99 P2 起并带，★R100 起随边距 = 4+22+8 = <b>34</b>（R98 期公式
+ * 4+22+18+6 = 50 作废）；★本片撤配置面回执行后关闭钮独占底带，带高不变。
  * <p>
  * ★对齐口径也一并定死（不是"看情况"）：面板级的<b>横贯读数</b>一律 {@code CenterLeft}（型名、回执、
  * 三面读数、磁力计数）；<b>多行说明块</b>保持 {@code TopLeft}（魔法使三列的名单行 —— 多行盒从顶排起
  * 才不会把首行推到盒外）。★两枚挂载框标题与磁力说明行都已退场（R100 迁 tooltip、R101.3 去框），
  * 「框内件」这一对齐类不再有在册成员。
  * <p>
- * ★紧凑三型（容量 / 堆叠 / 通道持续化）的回执行按<b>两行</b>给高（{@link #RECEIPT_HEIGHT}=22）：它们的面板
- * 窄，英文最坏回执（守卫拒绝那两长句，逻辑宽 ≈ 417 ⇒ ★R100 的 0.8 档 ≈ 334px）在一两百 px 的盒里一行放不下；
- * 磁力面（★R100 后回执盒 192px）也放不下一行 —— 同一把尺，免得逐型分叉出第二份回执高度账。
+ * ★配置面回执行已随本片撤线（用户定稿：这个位置不需要这个文本，回执只在口袋主界面 —— 粘性回执经
+ * 主面板既有读面消费）：{@link #RECEIPT_HEIGHT}=22 这把尺保留 —— 底带（{@link #BOTTOM_STACK}）与
+ * 关闭钮落位仍按它记账，容量读数块的两行盒也与它同尺；高度账一字不变，只少了回执盒这张消费面。
  *
  * <h2>不进 Container、不进同步值</h2>
  * 面板里<b>不</b>放 {@code ItemSlot}/{@code SlotGroupWidget}，也不用任何 {@code syncValue}：
@@ -211,9 +211,10 @@ public final class PocketConfigPanel {
     /** 各型内容段的起始 y = 边距 + 开关行 + 一条缝（★单源，装配侧与断言侧同一个数）。 */
     public static final int CONTENT_TOP = MARGIN + ROW_HEIGHT + READOUT_GAP;
     /**
-     * 底部带的纵向预算（★R99 P2 并带改判：回执行与关闭钮<b>同带并排</b>，不再上下两行）：
-     * 回执行之上的缝 + 回执行 + 边距。R98 期公式 {@code 4 + RECEIPT_HEIGHT + CLOSE_HEIGHT + MARGIN}
-     * （= 50）作废——旧形状里关闭钮独占一行，"右下角那枚离所有东西都远"就是它给的。
+     * 底部带的纵向预算（★R99 P2 并带改判：回执行与关闭钮<b>同带并排</b>；★本片撤配置面回执行后
+     * <b>关闭钮独占底带，带高不变</b>）：带内缝 + 带高（{@link #RECEIPT_HEIGHT}）+ 边距。R98 期公式
+     * {@code 4 + RECEIPT_HEIGHT + CLOSE_HEIGHT + MARGIN}（= 50）作废——旧形状里关闭钮独占一行，
+     * "右下角那枚离所有东西都远"就是它给的。
      */
     public static final int BOTTOM_STACK = 4 + RECEIPT_HEIGHT + MARGIN;
     /** 次级面板的宽度硬顶（见类 javadoc 的几何账）。 */
@@ -815,8 +816,9 @@ public final class PocketConfigPanel {
     /** 模式行的<b>标签</b>键（★按 {@link PocketConstants#MAGE_MODE_BITS} 的行序，两个下标空间同一个数）。 */
     private static final String[] MODE_LABEL_KEYS = { "gtit.pocket.config.mode.crystal", "gtit.pocket.config.mode.coin",
         "gtit.pocket.config.mode.transmute" };
-    /** 模式行的 tooltip 键（★三行共用一条：讲的是"这一行的开关意味着什么"，与具体哪条模式无关）。 */
-    public static final String MODE_HINT_KEY = "gtit.pocket.config.mode.hint";
+    /** 模式行的 tooltip 键（★每条模式行为不同，hint 各讲各的；行序与 {@link #MODE_LABEL_KEYS} 同一下标空间）。 */
+    private static final String[] MODE_HINT_KEYS = { "gtit.pocket.config.mode.crystal.hint",
+        "gtit.pocket.config.mode.coin.hint", "gtit.pocket.config.mode.transmute.hint" };
 
     /** 模式行数 = 位的<b>唯一</b>来源（★追加第四种模式时本件不加控件、只加标签键，几何自断言会红）。 */
     public static int modeRowCount() {
@@ -847,6 +849,14 @@ public final class PocketConfigPanel {
             return null;
         }
         return MODE_LABEL_KEYS[row];
+    }
+
+    /** 模式行的 tooltip 键；非法行 ⇒ {@code null}（★镜像 {@link #modeLabelKey}：同一把越界尺、同一下标空间）。 */
+    public static String modeHintKey(int row) {
+        if (row < 0 || row >= MODE_HINT_KEYS.length || row >= PocketConstants.MAGE_MODE_BITS.length) {
+            return null;
+        }
+        return MODE_HINT_KEYS[row];
     }
 
     /** 模式动作码 arg 的编码：{@code row * 2 + onBit}（★与开关那条 {@code ordinal*2+offBit} <b>同形而不同表</b>）。 */
@@ -1123,7 +1133,10 @@ public final class PocketConfigPanel {
                 "gtit.pocket.config.mode.crystal",
                 "gtit.pocket.config.mode.coin",
                 "gtit.pocket.config.mode.transmute",
-                MODE_HINT_KEY,
+                // ★本片拆键：三行模式行为不同，hint 各讲各的（共用键 gtit.pocket.config.mode.hint 随消费件一起撤）。
+                "gtit.pocket.config.mode.crystal.hint",
+                "gtit.pocket.config.mode.coin.hint",
+                "gtit.pocket.config.mode.transmute.hint",
                 "gtit.pocket.upgrade.cell.off",
                 identityReceiptKey()));
         for (final Outcome outcome : Outcome.values()) {
@@ -1284,10 +1297,10 @@ public final class PocketConfigPanel {
         // 自己的 background、再逐个子树画 draw/overlay 与子树内背景；装饰子树的贴图第二波才铺，
         // 会把第一波先画的按钮背景盖掉（实机判"按钮没按钮的样式"的根因，R101.1 前按钮底从未显形）。
         NekoPocketDecoration.appendTo(panel, panelWidthOf(type), panelHeightOf(type));
-        // ★R98 S4 的 child 序：<b>各段先、底部两件后</b>。MUI2 按 child 序绘制 ⇒ 旧写法（回执 + 关闭钮
-        // 抢在内容段之前）会让磁力框（y 26..262）与魔法使框（26..122）画在回执行与关闭钮<b>之上</b>：
-        // 当前几何不重叠所以看不出来，但取证 02-gui.md §4-6 点的正是这颗雷 —— 任何一次往下扩段的排版
-        // 都会把底部两件盖掉。顺序换过来以后，"贴底的两件永远压得住内容段"是结构性的，不靠行号运气。
+        // ★R98 S4 的 child 序：<b>各段先、底部一件后</b>（★回执行撤线后底带只剩关闭钮）。MUI2 按 child 序绘制
+        // ⇒ 旧写法（回执 + 关闭钮抢在内容段之前）会让磁力框（y 26..262）与魔法使框（26..122）画在底带
+        // 控件<b>之上</b>：当前几何不重叠所以看不出来，但取证 02-gui.md §4-6 点的正是这颗雷 —— 任何一次
+        // 往下扩段的排版都会把底部那件盖掉。顺序换过来以后，"贴底的件永远压得住内容段"是结构性的，不靠行号运气。
         for (final Section section : sectionsOf(type)) {
             switch (section) {
                 case SWITCH:
@@ -1321,7 +1334,6 @@ public final class PocketConfigPanel {
                     throw new IllegalStateException("[pocket] 未知内容段: " + section);
             }
         }
-        panel.child(receiptLine(ui, type));
         panel.child(closeButton(ui, type));
         return panel;
     }
@@ -1402,26 +1414,9 @@ public final class PocketConfigPanel {
     }
 
     /**
-     * 回执行：最近一次切换成了什么 / 为什么被拒（★走既有粘性回执通道，不新建通道；★两行盒）。
-     * <p>
-     * ★R101.4：字号<b>保持</b> {@link #TEXT_SCALE}=0.8、不跟正文换 1.0——en 最坏回执（守卫拒绝两长句，
-     * 逻辑宽 ≈417）在本面回执盒（192~244px）里 1.0 档要折三行，必顶穿两行的 {@link #RECEIPT_HEIGHT}；
-     * 行高几何不破是本轮边界 ⇒ 回执行留在 0.8 档（用例回执行账同口径）。
-     */
-    private static IWidget receiptLine(NekoPocketPanel ui, PocketUpgradeType type) {
-        return (IWidget) new TextWidget(IKey.dynamic(ui::upgradeConfigReceiptText)).textAlign(Alignment.CenterLeft)
-            .scale(TEXT_SCALE)
-            .color(PocketGhostRequest.hintTextColor())
-            .shadow(Boolean.TRUE)
-            .name("pocket_config_receipt")
-            .pos(MARGIN, panelHeightOf(type) - MARGIN - RECEIPT_HEIGHT)
-            .size(panelWidthOf(type) - 2 * MARGIN - CLOSE_WIDTH - 2, RECEIPT_HEIGHT);
-    }
-
-    /**
      * 关闭本面的按钮（★只关面板，不动任何数据：本面无"待提交"状态，每次点开关都是即时单发）。
-     * ★R99 P2 并带：纵向落在回执行带内居中（带高 22 − 钮高 18 = 上下各 2px），横向仍是右端——
-     * 旧形状"独占一行、右下角离一切最远"从几何上消失。
+     * ★R99 P2 并带：纵向落在底带内居中（带高 22 − 钮高 18 = 上下各 2px），横向仍是右端——
+     * 旧形状"独占一行、右下角离一切最远"从几何上消失；★本片撤回执行后它独占底带（带高不变）。
      */
     private static IWidget closeButton(NekoPocketPanel ui, PocketUpgradeType type) {
         final ButtonWidget<?> button = new ButtonWidget<>();
@@ -1813,7 +1808,7 @@ public final class PocketConfigPanel {
      * 三列 > 232）⇒ 状态读数回到按钮上（"开启 / 关闭"本来就是状态位，竖排时代它与行首读数是同一
      * 事实的两处读点）；名单行只念模式名，信息一项不减、重复读点收掉。
      * <p>
-     * ★每列按钮仍各挂同一条 {@link #MODE_HINT_KEY} tooltip（R98 计划提过"合并成一条面板级 tooltip"，
+     * ★每列按钮各挂本行键的 tooltip（{@link #modeHintKey}；R98 计划提过"合并成一条面板级 tooltip"，
      * <b>本片没做</b>，理由记在这儿而不是留给下一个人重新发现）：MUI2 的 hover 链在
      * {@code ModularGuiContext#getHoveredWidgets} 里遇到第一枚 {@code canHoverThrough()==false} 的件就
      * {@code break}，而 {@code ButtonWidget} 走的是那个默认值 ⇒ 面板级 tooltip 在<b>正好压在按钮上</b>
@@ -1827,6 +1822,10 @@ public final class PocketConfigPanel {
             final String labelKey = modeLabelKey(row);
             if (labelKey == null) {
                 throw new IllegalStateException("[pocket] 模式行数与标签键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
+            }
+            final String hintKey = modeHintKey(row);
+            if (hintKey == null) {
+                throw new IllegalStateException("[pocket] 模式行数与 tooltip 键表不齐: 第 " + row + " 行没有键（两份清单必须同序）");
             }
             final int columnX = mageContentX() + columnXOf(row);
             // ★名单行只念模式名（静态文本：键按行定死，不随状态变；状态读数在正上方按钮的 overlay 里）
@@ -1844,7 +1843,7 @@ public final class PocketConfigPanel {
             button.pos(columnX, mageContentY() + modeButtonRowY())
                 .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
                 .name("pocket_config_mode_switch_" + row)
-                .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(MODE_HINT_KEY)))
+                .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(hintKey)))
                 .tooltipAutoUpdate(true)
                 .playClickSound(true)
                 // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）

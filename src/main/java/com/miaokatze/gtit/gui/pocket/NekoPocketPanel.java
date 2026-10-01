@@ -1684,16 +1684,6 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     /**
-     * ★R96 S2：配置面板回执行要显示的那句话 = 既有<b>粘性回执</b>的原文（单源 {@link #receiptText()}）。
-     * <p>
-     * ★不另开一条"开关专用回执"通道：面板内外的回执必须是同一句真话，否则同一次拒绝在两个地方有两种
-     * 说法（{@code SYNC_RECEIPT} 一根通道一个所有者）。
-     */
-    String upgradeConfigReceiptText() {
-        return receiptText();
-    }
-
-    /**
      * ★R96 S2：升级格的<b>占用判据</b>（第 {@code index} 格里有没有插件）。
      * <p>
      * 为什么用它而不是再问一次位图：R95 的"放入即固化、不可取出"（{@code PocketSlots#upgradeCell} 的

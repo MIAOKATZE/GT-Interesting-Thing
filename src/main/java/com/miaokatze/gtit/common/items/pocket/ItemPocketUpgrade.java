@@ -223,14 +223,13 @@ public class ItemPocketUpgrade extends Item {
             { Integer.valueOf(PocketConstants.ticksToSecondsCeil(PocketConstants.MAGE_SECOND_INTERVAL_TICKS)),
                 Integer.valueOf(PocketConstants.MAGE_TRANSMUTE_POINTS_PER_BATCH),
                 Integer.valueOf(PocketConstants.PRIMAL_TAGS.length) },
-            // line.7 结晶：秒节拍 / 单批每源质枚数上界 / 每枚点数（真值在 TaumDistillRules）
-            { Integer.valueOf(PocketConstants.ticksToSecondsCeil(PocketConstants.MAGE_SECOND_INTERVAL_TICKS)),
-                Integer.valueOf(PocketConstants.MAGE_CRYSTAL_MAX_PER_BATCH),
-                Integer.valueOf(TaumDistillRules.CRYSTAL_CAPACITY) },
+            // line.7 结晶：每枚点数（真值在 TaumDistillRules；并入蒸馏腿分叉后无独立秒节拍与批量读数，
+            // lang 侧按"恰 1 个 %1$d"配对，实参个数不得再变）
+            { Integer.valueOf(TaumDistillRules.CRYSTAL_CAPACITY) },
             // line.8 元素容量：元始种数 / 单 tag 上限 / 合计（派生常量）
             { Integer.valueOf(PocketConstants.PRIMAL_TAGS.length), Integer.valueOf(PocketConstants.ELEMENT_CAP_PER_TAG),
                 Integer.valueOf(PocketConstants.ELEMENT_TOTAL_CAP) },
-            // line.9 代价：结晶先取的秒节拍（其余半句无数字）
-            { Integer.valueOf(PocketConstants.ticksToSecondsCeil(PocketConstants.MAGE_SECOND_INTERVAL_TICKS)) }, };
+            // line.9 代价：无数字行（lang 侧无占位符，实参恒空数组，个数不得再变）
+            {}, };
     }
 }

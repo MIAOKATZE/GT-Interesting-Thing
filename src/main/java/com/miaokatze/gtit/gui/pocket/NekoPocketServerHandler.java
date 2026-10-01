@@ -501,7 +501,8 @@ final class NekoPocketServerHandler {
         }
         // ★秒值立即生效腿（幂等、零写入于 NBT：只钳运行期倒计时）
         PocketChannelManager.INSTANCE.retimePersistentChannel(panel.playerId(), carrier);
-        // 回执复用频率读数那一条键（%d = 新秒值）：不另立第二条说法，读数行与回执说的是同一句话
+        // 回执复用频率读数那一条键（%d = 新秒值）：不另立第二条说法，读数行与回执说的是同一句话；
+        // ★配置面回执行撤行后两读点分居两面（读数在配置面，回执落主面板状态块）
         panel.putReceipt(PocketConfigPanel.READOUT_FREQ_KEY, seconds);
     }
 

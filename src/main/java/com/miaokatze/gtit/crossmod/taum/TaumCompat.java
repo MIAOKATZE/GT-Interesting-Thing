@@ -362,8 +362,10 @@ public final class TaumCompat {
      * 被改判的是<b>产侧一半</b>：R96 魔法使的「结晶模式」（{@code PocketMageModes#crystalOn}，
      * ★默认关）开通以后，蒸馏出的源质会以晶的形态直接进玩家背包，所以<b>生产调用方不再是零</b>。
      * <p>
-     * ★★<b>唯一的调用方是 {@code mage/PocketCrystalDriver}，且它调的是下面那层
-     * {@link #mintCrystals(String, int)} 而不是本方法</b>——这不是绕门禁，而是把「口袋目录不再直接产晶」
+     * ★★<b>唯一的调用链是蒸馏腿的结晶分叉（{@code PocketDistillDriver} 结晶支 →
+     * {@code mage/PocketCrystalDriver#deliverAsCrystals} → {@code CrystalGate.TAUM}），且它调的是下面那层
+     * {@link #mintCrystals(String, int)} 而不是本方法</b>——时机随蒸馏轮次（产物当轮成晶进背包，
+     * 无独立的秒级批量腿），这不是绕门禁，而是把「口袋目录不再直接产晶」
      * 这条既有锚（{@code verify-pocket.sh} R88③ 段：{@code src/…/pocket} 与 {@code gui/pocket} 两目录内
      * {@code newCrystalStack(} 代码位恰 0，孪生 Java 用例
      * {@code essenceLegacyCrystalIsReadOnlyButStillSoluble}）<b>与新功能同时保住</b>：

@@ -50,9 +50,34 @@ public final class PocketItemExit {
         if (player == null || stack == null || stack.stackSize <= 0) {
             return false;
         }
-        if (!player.inventory.addItemStackToInventory(stack)) {
+        if (!intoInventory(player, stack)) {
             player.entityDropItem(stack, 0);
         }
         return true;
+    }
+
+    /**
+     * 只进背包、<b>不掉地</b>的交付口（结晶交付腿用）：按实收递减 {@code stack.stackSize}，
+     * 未付的余量留在栈上由调用方处置——结晶腿把余量折回点数回退源质盘，掉地兜底移交蒸馏腿的
+     * spill 支，本方法两级兜底都不做、只报告事实。
+     *
+     * @return 实付枚数（入参不合法为 0）；背包一点都塞不下 ⇒ 0 且栈原样
+     */
+    public static int giveIntoInventory(EntityPlayer player, ItemStack stack) {
+        if (player == null || stack == null || stack.stackSize <= 0) {
+            return 0;
+        }
+        final int before = stack.stackSize;
+        intoInventory(player, stack);
+        return before - stack.stackSize;
+    }
+
+    /**
+     * 唯一的背包塞入口（{@code addItemStackToInventory} 按实收递减 {@code stack.stackSize}）。
+     * 目录内该调用码位<b>只此一行</b>、掉地行只住 {@link #giveOrDrop}——两处计数是
+     * 门 D 钉着的既有锚，新增落点必须先过"按 maxStackSize 拆堆"那道尺。
+     */
+    private static boolean intoInventory(EntityPlayer player, ItemStack stack) {
+        return player.inventory.addItemStackToInventory(stack);
     }
 }

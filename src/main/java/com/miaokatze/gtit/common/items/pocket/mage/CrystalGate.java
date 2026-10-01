@@ -8,8 +8,8 @@ import com.miaokatze.gtit.crossmod.taum.TaumCompat;
  * 结晶模式出晶的<b>探针</b>（"这一 tag、这些点数能不能出一批晶、出来的是哪枚栈"的唯一问句）。
  * <p>
  * <b>为什么要有这层</b>（形状与理由照 {@link WandVisGate} 与 {@code distill/EssenceGate}）：
- * 判据本体（{@link PocketCrystalDriver#crystallizeOnce} 的「读数 → 出整枚 → 交付 → 按实交付量消耗」
- * 四段式）必须能在零依赖回归套件里端到端跑；而生产实现经 {@link TaumCompat} 在 Thaumcraft 缺席时
+ * 判据本体（{@link PocketCrystalDriver#deliverAsCrystals} 的「mint 出整枚 → 按实付枚数记账」
+ * 纪律）必须能在零依赖回归套件里端到端跑；而生产实现经 {@link TaumCompat} 在 Thaumcraft 缺席时
  * <b>恒</b>返回 {@code null} —— 判据若绕过本接口直调门面，回归套件只会拿到"永远产不出"的一片假绿
  * （★与 S9a 报告 §3.4 那条"两条腿分开测"是同一条纪律）。
  * <p>

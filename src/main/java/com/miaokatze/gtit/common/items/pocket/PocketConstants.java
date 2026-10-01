@@ -675,7 +675,8 @@ public final class PocketConstants {
     // 平铺会互混淆 —— R96 计划 §5 S9 禁止项原文）；
     // ② ★<b>不建 long/int 双轨</b>：单 tag 上限 {@link #ELEMENT_CAP_PER_TAG}=500，int 头恒不越界，
     // 流体那条 AmountL 双轨的根因（{@code FluidStack.amount} 是 int、真值要冲到 16G）在这里结构性不存在；
-    // ③ 键名一经落档即冻结（「可加不可改」）：{@link #ELEMENTS} 与 compound 内的节拍键同此纪律（★第四条节拍键与模式位图由 S9b 追加，见下面那段）。
+    // ③ 键名一经落档即冻结（「可加不可改」）：{@link #ELEMENTS} 与 compound 内的节拍键同此纪律（★模式位图由 S9b 追加，见下面那段；
+    // S9b 曾追加的第四条节拍键 tickCrystal 已随结晶并入蒸馏腿而删除，不写读档迁移——旧档残留值无人读，携带侧也不再跨根搬运）。
 
     /**
      * ★R96 S9a：元素容量的根键（独立 compound，读写本体在 {@code PocketElementStore}）。
@@ -857,19 +858,12 @@ public final class PocketConstants {
     }
 
     /**
-     * ★R96 S9b：{@link #ELEMENTS} compound 内的<b>第四条</b>节拍键（结晶模式剩余 tick，int）。
-     * <p>
-     * 与 S9a 那三条同住 {@link #ELEMENTS} 的理由同一条（R96 计划 §3 只批三枚根键，且这是魔法使族的
-     * 私有状态）。⚠ 本被动搬的资源是<b>源质盘</b>（{@code ess}）而不是元素容量，
-     * ★"键住在哪 ≠ 搬的是哪张表"—— S9a 的 {@link #ELEMENT_TICK_TRANSMUTE} 已经是同一个先例。
-     */
-    public static final String ELEMENT_TICK_CRYSTAL = "tickCrystal";
-    /**
-     * ★R96 S9b：结晶模式一批里<b>每个 tag</b> 至多出这么多枚晶。
+     * ★R96 S9b：结晶交付里<b>每堆</b>至多这么多个晶（同一 tag 超出按堆循环 mint）。
      * <p>
      * 64 的依据是 {@code TaumBridge#CRYSTAL_STACK_LIMIT}（TC 晶的可堆数）——桥里那枚 {@code min} 只是
      * 兜底、★不是"半枚也出"的许可，所以本仓按<b>整枚</b>取上界（一晶 = {@code CRYSTAL_CAPACITY} = 1 点）。
-     * 节拍与猫猫币/源质转换同档（{@link #MAGE_SECOND_INTERVAL_TICKS}），四枚数值全是符号、码位不留裸数字。
+     * ★结晶并入蒸馏腿分叉后，本上界管的是"一次 mint 一堆"的堆容量——时序随蒸馏轮次，
+     * 不再有独立的秒级节拍与剩余 tick 键（原 {@code tickCrystal} 已删）。
      */
     public static final int MAGE_CRYSTAL_MAX_PER_BATCH = 64;
     /**

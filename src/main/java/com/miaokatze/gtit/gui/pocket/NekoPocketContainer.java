@@ -1,10 +1,12 @@
 package com.miaokatze.gtit.gui.pocket;
 
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
  * 口袋面板的 Container（两件事：<b>关屏写状态的落点</b> + <b>每拍同步硬化钩子</b>）。
@@ -17,8 +19,9 @@ import com.cleanroommc.modularui.widgets.slot.ModularSlot;
  * <p>
  * 本类由 {@link NekoPocketPanel} 经 {@code UISettings#customContainer} 提供
  * （{@code GuiManager.java:81/112/143} 双端都读该 supplier ⇒ 双端同一个类，不破坏 R32）。
- * <b>不覆写</b> {@code slotClick} 与 {@code transferStackInSlot}，也<b>不手工加槽</b>：
- * 槽位注册与点击处理全交 MUI2（slice-s4-brief §5 判据里"口袋不手工加槽"是硬口径）。
+ * {@code slotClick} 已覆写（仅服务端前置拆分中栏超天然堆，其余路径原样交 MUI2）；
+ * {@code transferStackInSlot} 仍不覆写，也<b>不手工加槽</b>：
+ * 槽位注册与其余点击处理全交 MUI2（slice-s4-brief §5 判据里"口袋不手工加槽"是硬口径）。
  * <p>
  * ★★<b>R97 R2：唯一的新覆写是 {@code detectAndSendChanges}</b>（{@code @MustBeInvokedByOverriders}，
  * super 先行）。 vanilla 每 tick 对 {@code openContainer} 调它、MUI2 的 {@code slotClick} 在点击
@@ -79,6 +82,66 @@ public class NekoPocketContainer extends ModularContainer {
         forceSyncRejectedStorageSlot();
     }
 
+    /**
+     * ★服务端前置拆分：MUI2 的 {@code ModularContainer#slotClick} 三条分支都按"天然堆"假设裸搬
+     * 中栏的超天然大堆（1.7.10 {@code ItemStack} 数量走<b>有符号 byte</b> 序列化，&gt;127 出网络即回绕）：
+     * ① 手持 A swap 点 1024 堆 B——swap 分支把整堆 B 推上游标，出包回绕成 0，B 凭空蒸发；
+     * ② STACK 关闭且格内 &gt;64 时 merge 分支拿负数 {@code splitStack} 复制出幽灵件数；
+     * ③ Ctrl+Q 整堆丢出 1024 同样在实体 Count 上回绕蒸发。
+     * <p>
+     * 本覆写只做一件事：进 super <b>之前</b>，服务端把中栏被点格的超天然余量先拆出去
+     * （天然满量留格、余量经 {@code giveToPlayer} 天然拆块进背包/掉脚下），让 super 看到的
+     * 永远是 ≤ 天然满量的普通堆 ⇒ 三条分支全部失去坏输入。QUICK_MOVE（mode 1）早退——
+     * MUI2 自带拆分且失败留格，保持旧行为逐字不变；客户端支不拆（真值由服务端纠正包保证）。
+     */
+    @Override
+    public ItemStack slotClick(int slotId, int mouseButton, int mode, EntityPlayer player) {
+        if (!panel.syncManager()
+            .isClient() && mode != 1) {
+            drainOversizedStorageSlot(slotId);
+        }
+        return super.slotClick(slotId, mouseButton, mode, player);
+    }
+
+    /**
+     * 中栏被点格的超天然余量前置拆分（{@link #slotClick} 的服务端腿）：非中栏槽 / 空槽 /
+     * 未超天然满量一律直通。超出时天然满量留在格内、余量整份交
+     * {@code NekoPocketPanel#giveToPlayer}（内部按天然满量拆块、背包满掉脚下——现语义零变化），
+     * 随后显式标脏并 {@code PocketSlots#forceSyncSlot} 强推格内真值（isInitialized 挡装配前）。
+     */
+    private void drainOversizedStorageSlot(int slotId) {
+        if (slotId < 0 || slotId >= this.inventorySlots.size()) {
+            return;
+        }
+        if (!(this.inventorySlots.get(slotId) instanceof ModularSlot modular)
+            || !PocketSlots.GROUP_STORAGE.equals(modular.getSlotGroupName())) {
+            return;
+        }
+        final ItemStack stack = modular.getStack();
+        final int excess = excessOverNatural(stack);
+        if (excess <= 0) {
+            return;
+        }
+        final ItemStack kept = stack.copy();
+        kept.stackSize = Math.max(1, stack.getMaxStackSize());
+        modular.putStack(kept);
+        final ItemStack surplus = stack.copy();
+        surplus.stackSize = excess;
+        panel.giveToPlayer(surplus);
+        panel.inventory()
+            .markDirty();
+        PocketSlots.forceSyncSlot(modular);
+    }
+
+    /** 纯函数（供 JVM 直测）：超过天然满量 {@code max(1, getMaxStackSize())} 的余量；null 或未超 → 0。 */
+    static int excessOverNatural(ItemStack stack) {
+        if (stack == null) {
+            return 0;
+        }
+        final int natural = Math.max(1, stack.getMaxStackSize());
+        return Math.max(0, stack.stackSize - natural);
+    }
+
     /** ★R97 R2 的差分本体（见 {@link #detectAndSendChanges()} 的库层取证）。 */
     private void pushCursorDiff() {
         final ItemStack current = panel.syncManager()
@@ -92,6 +155,14 @@ public class NekoPocketContainer extends ModularContainer {
             return;
         }
         lastCursorSynced = current == null ? null : current.copy();
+        // 兜底缺陷指示器：1.7.10 数量以有符号 byte 序列化，>127 出网络即回绕蒸发；
+        // slotClick 的前置拆分本应阻止超天然堆上游标，仍见到 ⇒ 有路径漏拆，请回报复现路径。
+        if (current != null && current.stackSize > 127) {
+            GTInterestingThing.LOG.warn(
+                "口袋游标仍出现 {} 件的超天然大堆（{}），1.7.10 byte 序列化会回绕蒸发；" + "slotClick 前置拆分本应阻止——本条 WARN 即缺陷指示器",
+                current.stackSize,
+                current.getUnlocalizedName());
+        }
         // setCursorItem = setItemStack（对现值是 no-op）+ cursorSlotSyncHandler.sync()（S2C 推送）
         panel.syncManager()
             .setCursorItem(current);

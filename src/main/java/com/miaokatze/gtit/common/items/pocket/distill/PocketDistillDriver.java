@@ -13,10 +13,14 @@ import net.minecraft.world.World;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketIntakeOps;
+import com.miaokatze.gtit.common.items.pocket.PocketMageModes;
 import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.mage.CrystalGate;
+import com.miaokatze.gtit.common.items.pocket.mage.CrystalSink;
+import com.miaokatze.gtit.common.items.pocket.mage.PocketCrystalDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumAspectAmounts;
 import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
 
@@ -71,6 +75,20 @@ import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
  * 这样 {@code getBonusTags} 把栈内已有源质重复计入产出的回路从入口就断了。</li>
  * </ol>
  * <p>
+ * <b>★结晶分叉（蒸馏腿的内生分叉，不是第二条被动）</b>：魔法使「结晶模式」开通
+ * （主开关 {@code MAGE} ∧ 子模式位 {@code PocketMageModes#crystalOn}，合取点
+ * {@link #crystallizeRedirectOn}，缺省关）时：
+ * <ol>
+ * <li>本轮蒸馏产出<b>不进源质盘</b>——判盘在 {@link #planDistillBatch(PocketSession, EssenceGate)}
+ * 就整体跳过（store 传 {@code null} 走恒放行通道，盘满不再误停蒸馏），候选直接 mint 成结晶进
+ * 玩家背包（{@link #settleBatch} → {@code PocketCrystalDriver#deliverAsCrystals}）；</li>
+ * <li>背包放不下的点数<b>回退源质盘</b>（逐 tag {@code add}，按实收）；盘也满的差额经
+ * 兜底落点 {@code CrystalSink#ofPlayerDropping}（背包或脚下）按堆出晶（spill 支）——两级兜底的
+ * 裁决点在本类，交付层只报告实付枚数；</li>
+ * <li>源质盘已有存量<b>原地不动</b>：没有独立抽干腿（旧「每秒抽干全盘」的 tick 宿主
+ * {@code mage/PocketCrystalDriver} 已随本分叉退役，只留交付算法）。</li>
+ * </ol>
+ * <p>
  * <b>会话来源</b>（R53c）：12 格内容与源质表都在 {@link PocketSession} 里（面板持有的那一份内存真相）。
  * 关屏后会话继续存活并由 driver 落盘，因此"把物品留在格里去干别的"能真的蒸完；
  * 反过来 driver <b>绝不</b>每 tick 现解 NBT（那是 R53c 点名的成本形态）。
@@ -122,6 +140,13 @@ public final class PocketDistillDriver {
         int discardedPoints;
         /** 上一次"评估过"的内容签名。 */
         long checkedSignature;
+        /**
+         * 上一次评估时的结晶分叉开关（{@link #crystallizeRedirectOn}）。单独比对而不混进
+         * {@link #checkedSignature}：签名是"不读 NBT 的内容指纹"（R53c 纪律），而开关是 O(1) 键查；
+         * 盘满卡死（{@link #stalledFull}）时玩家打开结晶模式 = 要求蒸馏改道绕开盘，
+         * 不重评估就会永远卡死——模式切换必须与内容变化一样能触发重评估。
+         */
+        boolean crystalRedirect;
     }
 
     private static final Map<UUID, Clock> CLOCKS = new LinkedHashMap<>();
@@ -185,8 +210,12 @@ public final class PocketDistillDriver {
             clock.checkedSignature = 0L;
             return;
         }
-        if (signature != clock.checkedSignature) {
+        // 开关单独比对（见 Clock.crystalRedirect 的理由）：结晶分叉的开/关都会改变"放不放得下"
+        // 的结论，必须与内容变化一样触发重评估——否则盘满卡死后玩家开结晶，stall 永不解锁
+        final boolean crystalNow = crystallizeRedirectOn(session);
+        if (signature != clock.checkedSignature || crystalNow != clock.crystalRedirect) {
             clock.checkedSignature = signature;
+            clock.crystalRedirect = crystalNow;
             final Batch batch = planDistillBatch(session, EssenceGate.TAUM);
             applyAssessment(clock, batch);
             if (!batch.advanceable) {
@@ -209,11 +238,11 @@ public final class PocketDistillDriver {
         if (clock.ticksLeft > 0) {
             return;
         }
-        runBatch(session, clock);
+        runBatch(session, clock, player);
     }
 
     /** 到点了：重新评估一次（上一拍之后内容可能又变了），再决定消耗与入账。 */
-    private static void runBatch(PocketSession session, Clock clock) {
+    private static void runBatch(PocketSession session, Clock clock, EntityPlayer player) {
         final Batch batch = planDistillBatch(session, EssenceGate.TAUM);
         applyAssessment(clock, batch);
         if (!batch.advanceable) {
@@ -225,8 +254,21 @@ public final class PocketDistillDriver {
             clock.ticksLeft = 0;
             return;
         }
-        session.essence()
-            .putAll(batch.candidates);
+        // ★结晶分叉：结晶开 ⇒ 产物 mint 成晶进背包、回退入盘（结算在 settleBatch）；
+        // 结晶关 ⇒ settleBatch 内部就是原来的 putAll，行为与旧路径一致
+        final Map<String, Integer> spill = settleBatch(
+            batch.candidates,
+            session.essence(),
+            crystallizeRedirectOn(session),
+            CrystalGate.TAUM,
+            CrystalSink.ofPlayer(player));
+        if (!spill.isEmpty()) {
+            // 兜底支也走"东西必须在世界里"，且必须复用同一条按堆出晶纪律：桥侧 newCrystalStack
+            // 自带 min(points,64) 钳制，对整段 spill 点数单次 mint 会把 64 之外的部分静默吞掉
+            // （蒸馏格的件已扣、点数蒸发）；giveOrDrop 的掉地兜底让该落点恒全额实付，
+            // mint 不出的整段（TC 缺席）无载体可落，属既有降级面，不掉第二次
+            PocketCrystalDriver.deliverAsCrystals(spill, CrystalGate.TAUM, CrystalSink.ofPlayerDropping(player));
+        }
         // ★sourceSlots 的长度就是"本轮被收下的格数"（每个被收下的格各扣 1 件，未收下的格一个都不扣）
         for (int index : batch.sourceSlots) {
             session.consumeOneDistillInput(index);
@@ -235,6 +277,65 @@ public final class PocketDistillDriver {
         // 界面已关时写权在 driver 手上（R57c①：关屏后"东西留在格里继续蒸"是正常用法）
         session.persistIdle();
         clock.ticksLeft = distillIntervalOf(session);
+    }
+
+    /**
+     * ★结晶分叉的合取判据（口径与 {@link #distillIntervalOf} 同宿主同形状）：读<b>载体栈</b>的
+     * {@code MAGE} 位（{@link PocketUpgradeSwitches#isActive}）∧ 子模式位
+     * （{@link PocketMageModes#crystalOn}，认根 NBT）。主开关与子模式的合取点住在这里
+     * （"组合点在被闸的那条腿里"），别处不得再折第二份；判据每轮到点现读、不跨轮缓存
+     * ——中途开关与中途安装同一条不对称：当前轮按旧去向跑完，下一轮生效。
+     */
+    private static boolean crystallizeRedirectOn(PocketSession session) {
+        final ItemStack carrier = session == null ? null : session.carrierStack();
+        if (!PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.MAGE)) {
+            return false;
+        }
+        return PocketMageModes.crystalOn(carrier == null ? null : carrier.getTagCompound());
+    }
+
+    /**
+     * 一轮蒸馏产物的<b>入账分叉</b>（★公共纯函数：只结算、不碰 tick 状态；测试用桩件
+     * {@link CrystalGate}/{@link CrystalSink} 与真 {@link PocketEssenceStore} 直接驱动，
+     * 不经真 EntityPlayer）。
+     * <ul>
+     * <li>结晶关：整份候选 {@link PocketEssenceStore#putAll} 进源质盘，返回空表（与旧路径同形）；</li>
+     * <li>结晶开：候选先经 {@link PocketCrystalDriver#deliverAsCrystals} mint 成晶进背包，
+     * 回退点数逐 tag {@link PocketEssenceStore#add}（按实收入盘），加不进的差额进返回的
+     * spill 表——由调用方经兜底落点按堆出晶掉脚下。</li>
+     * </ul>
+     * 盘内存量两侧都<b>只增不动</b>：结晶开时入账的是"背包放不下的回退"，不存在抽干腿。
+     *
+     * @return spill 表（{@code tag → 点数}）：结晶开且盘也满的差额；结晶关恒空
+     */
+    public static Map<String, Integer> settleBatch(Map<String, Integer> candidates, PocketEssenceStore ess,
+        boolean crystalMode, CrystalGate gate, CrystalSink sink) {
+        final Map<String, Integer> spill = new LinkedHashMap<>();
+        if (candidates == null || candidates.isEmpty()) {
+            return spill;
+        }
+        if (!crystalMode) {
+            if (ess != null) {
+                ess.putAll(candidates);
+            }
+            return spill;
+        }
+        final Map<String, Integer> refund = PocketCrystalDriver.deliverAsCrystals(candidates, gate, sink);
+        if (ess == null) {
+            spill.putAll(refund);
+            return spill;
+        }
+        for (Map.Entry<String, Integer> entry : refund.entrySet()) {
+            final Integer pts = entry.getValue();
+            if (pts == null || pts.intValue() <= 0) {
+                continue;
+            }
+            final int taken = ess.add(entry.getKey(), pts.intValue());
+            if (pts.intValue() - taken > 0) {
+                spill.put(entry.getKey(), Integer.valueOf(pts.intValue() - taken));
+            }
+        }
+        return spill;
     }
 
     /**
@@ -292,7 +393,10 @@ public final class PocketDistillDriver {
         return planDistillBatch(
             session == null ? null : slotsOf(session),
             gate,
-            session == null ? null : session.essence());
+            // ★结晶分叉：结晶模式开 ⇒ store 传 null，走数组形态既有的 null 通道
+            // （store != null 才查 cap / store == null || 放行）⇒ 不判盘容量、不产 OVER_CAP 读数，
+            // 盘满不再误停蒸馏；产物的去向分叉在 runBatch 的 settleBatch（直接成晶，不经盘）
+            session == null ? null : (crystallizeRedirectOn(session) ? null : session.essence()));
     }
 
     /** 数组形态（回归套件用；生产入口是上面的会话重载，两者同一段代码）。 */

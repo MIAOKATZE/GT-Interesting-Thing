@@ -442,9 +442,9 @@ public final class PocketElementStore {
         return elem == null || key == null || !elem.hasKey(key) ? 0 : Math.max(0, elem.getInteger(key));
     }
 
-    /** 四条节拍键的<b>携带侧</b>表（★不是 tag：{@link #get(String)} 一族只认白名单 tag）。 */
+    /** 三条节拍键的<b>携带侧</b>表（★不是 tag：{@link #get(String)} 一族只认白名单 tag；结晶腿退役后不再含其节拍键）。 */
     private static final String[] STATE_KEYS = { PocketConstants.ELEMENT_TICK_WAND, PocketConstants.ELEMENT_TICK_COIN,
-        PocketConstants.ELEMENT_TICK_TRANSMUTE, PocketConstants.ELEMENT_TICK_CRYSTAL };
+        PocketConstants.ELEMENT_TICK_TRANSMUTE };
 
     private Map<String, Integer> tickSnapshot() {
         final Map<String, Integer> out = new LinkedHashMap<>();

@@ -24,7 +24,6 @@ import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelDriver;
 import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketCoinChargeDriver;
-import com.miaokatze.gtit.common.items.pocket.mage.PocketCrystalDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketEssenceTransmuteDriver;
 import com.miaokatze.gtit.common.items.pocket.mage.PocketWandChargeDriver;
 import com.miaokatze.gtit.common.items.pocket.magnet.PocketMagnetDriver;
@@ -77,7 +76,7 @@ import gregtech.api.metatileentity.BaseMetaTileEntity;
  * ⇒ 那一半现在住在 {@code mixin/thaum/MixinItemNekoDimensionPocket_RunicArmor}：mixin 类只由
  * Mixin transformer 通道消费、mod 的常规类加载器按名不可见（口径与取证见 {@code r96-ret10.md §6}），
  * 所以 TC 类型进 mixin 不算进常驻面。注入走 {@code GtitThaumLateMixinLoader} 的 LateMixin，
- * <b>施加条件 = TC 在场</b> ⇒ ★没装神秘时代时这一半<b>自然缺席</b>：口袋照常可穿戴、照常跑八条被动，
+ * <b>施加条件 = TC 在场</b> ⇒ ★没装神秘时代时这一半<b>自然缺席</b>：口袋照常可穿戴、照常跑七条被动，
  * 只是不给符文护盾加容量（这正是需求 8 想要的「可选」语义，也是 {@code @Optional} 本来该给的行为）。
  * <p>
  * <b>★R96 S11 双宿主桥（硬要求 7）</b>：穿戴态下 vanilla <b>不再</b>调 {@code Item.onUpdate}
@@ -315,13 +314,14 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
      * ★这条桥不是风格问题而是<b>结构问题</b>：穿戴态下 {@code Item.onUpdate} 根本不被调用
      * （{@code InventoryPlayer.java:341-348} 的循环只走 {@code mainInventory}），而 {@code onWornTick}
      * 在没穿上的时候又不存在 ⇒ 只挂一侧就必然出现「放背包里会动、穿在身上全停」或者反过来。
-     * 本轮在册的被动共 <b>八条</b>：两条 {@code tickDown} 倒计时 + 通道 + 蒸馏 + 磁力 +
-     * 魔法使四条（法杖 / 猫猫币 / 源质转换 / 结晶）——★摘掉任何一条都是 R57 的同族形状。
+     * 本轮在册的被动共 <b>七条</b>：两条 {@code tickDown} 倒计时 + 通道 + 蒸馏 + 磁力 +
+     * 魔法使三条（法杖 / 猫猫币 / 源质转换；结晶已并入蒸馏腿分叉，不独立挂载）——★摘掉任何一条都是
+     * R57 的同族形状。
      * <p>
      * ★形参 {@code slot} / {@code selected} 是 onUpdate 的逐字透传：R95 起本段<b>不</b>用它们做门控
      * （背包任意格都推进），穿戴侧传的是 {@code (-1, true)} —— 没有主手槽号，而 {@code true}
      * 是刻意给的（★不是笔误）：将来若有人重新拿 {@code selected} 加门，给 {@code false} 就等于
-     * 把穿戴这一侧的八条被动全关掉且不报错。
+     * 把穿戴这一侧的七条被动全关掉且不报错。
      */
     private void runPassives(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
         // ★R95 门控放宽：只保留服务端与玩家检查（vanilla tick 链证据见 @param selected）
@@ -340,12 +340,10 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         PocketMagnetDriver.onItemTick(stack, world, player);
         // ★R96 S9a 魔法使三条被动（只加挂载行，本方法的门控与结构一字未动；抽取 runPassives 归 S11）。
         // 三条都在自己类内做 MAGE 组合谓词早退 + NBT 剩余 tick 节拍 ⇒ 关着开关时这里只花三次位图读。
+        // ★结晶模式不再独立挂载：并入蒸馏腿分叉（PocketDistillDriver 的结晶支），时机随蒸馏轮次。
         PocketWandChargeDriver.onItemTick(stack, world, player);
         PocketCoinChargeDriver.onItemTick(stack, world, player);
         PocketEssenceTransmuteDriver.onItemTick(stack, world, player);
-        // ★R96 S9b 第四条（只加挂载行，本方法的门控与结构一字未动）：结晶模式，★缺省关。
-        // 它自带「主开关 + 子模式位」两道早退与 NBT 剩余 tick 节拍 ⇒ 两种关态在这里都只花一次位读。
-        PocketCrystalDriver.onItemTick(stack, world, player);
     }
 
     /**
