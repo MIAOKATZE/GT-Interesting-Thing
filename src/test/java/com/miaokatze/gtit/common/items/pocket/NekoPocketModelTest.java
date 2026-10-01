@@ -615,11 +615,11 @@ public class NekoPocketModelTest {
         cases.put(
             "mage_crystal_settle_fork_delivers_refunds_and_spills",
             NekoPocketModelTest::mageCrystalSettleForkDeliversRefundsAndSpills);
-        // ---- ★slotClick 前置拆分：纯函数面一条（excessOverNatural 四档向量；跨包经反射）。
-        // 槽级行为 = limited：drainOversizedStorageSlot 出包腿要真 EntityPlayer/ModularUI，由实机验收。----
+        // ---- ★slotClick 大堆拦截（R104 修订）：纯函数面一条（rejectsOversizedClick 向量；跨包经反射）。
+        // 槽级拦截与拒绝后双纠正 = limited：真 EntityPlayer/ModularUI 装配不可注入，由实机验收。----
         cases.put(
-            "slot_click_excess_over_natural_pure_function",
-            NekoPocketModelTest::slotClickExcessOverNaturalPureFunction);
+            "slot_click_oversized_reject_pure_function",
+            NekoPocketModelTest::slotClickOversizedRejectPureFunction);
         // ---- ★R96 S5（TP-S5）通道持续化四条反证：可达性 / 闭环 / 瞬时通道 / 假读数门。
         // ★B1、B2 在修前必须是红的（红→绿两次输出入台账 = §7.1 教训 C3 的强制要求）：R95 把这一型
         // 记为完成而实机什么都没发生，四条里没有一条钉算式（算式一直是对的），钉的全是执法点被问到。
@@ -17770,42 +17770,53 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(4, nullRefund.get("aer"), "aer 整段 4 点回退");
     }
 
-    // ================================================================== slotClick 前置拆分（纯函数面）
+    // ================================================================== slotClick 大堆拦截（纯函数面）
     //
-    // ★槽级行为 = limited：drainOversizedStorageSlot 的出包腿（panel.giveToPlayer → 真
-    // EntityPlayer / ModularUI 装配）在纯 JVM 里不可注入 ⇒ 那半边由实机验收，本套件只落
-    // 纯函数面（excessOverNatural：null / 天然满量内 / 超出余量，四档 maxStackSize 各一枚向量）。
-    // ★excessOverNatural 是包私有静态（本套件在 common/items/pocket 包、它在 gui/pocket 包）⇒
-    // 经反射调用；反射不可达时判红（返回 -1 让断言红），不当 0 用。
+    // ★R104 修订（用户裁定）：旧「前置拆分顶背包」实测在背包已有同物时几乎不加量、其余掉脚下，
+    // 被否 ⇒ 改为禁止——超过 64 的存储堆只放行空手取件（MUI2 PICKUP 按天然上限截取 ≤64，
+    // byte 天然安全），替换/合并/热键换位/克隆/丢掷全部拒绝。
+    // ★槽级拦截与拒绝后双纠正（forceSyncSlot + setCursorItem 拉回客户端预测）= limited，实机验收。
+    // ★rejectsOversizedClick 是包私有静态（本套件在 common/items/pocket 包、它在 gui/pocket 包）⇒
+    // 经反射调用；反射不可达时判红（返回 false 让放行侧断言红），不当"允许"用。
 
     /** 反射腿（★判据本体仍是生产那一份纯函数，反射只跨过包私有这道编译期门槛）。 */
-    private static int excessOverNaturalReflect(ItemStack stack) {
+    private static boolean rejectsOversizedClickReflect(ItemStack slotStack, int mode, ItemStack held) {
         try {
             final java.lang.reflect.Method method = NekoPocketContainer.class
-                .getDeclaredMethod("excessOverNatural", ItemStack.class);
+                .getDeclaredMethod("rejectsOversizedClick", ItemStack.class, int.class, ItemStack.class);
             method.setAccessible(true);
-            final Object out = method.invoke(null, stack);
-            return out instanceof Integer ? ((Integer) out).intValue() : -1;
+            final Object out = method.invoke(null, slotStack, Integer.valueOf(mode), held);
+            return out instanceof Boolean && ((Boolean) out).booleanValue();
         } catch (Throwable t) {
-            SimpleAssert.that(false, "★excessOverNatural 反射不可达（包私有静态）⇒ 纯函数面无从可验：" + t);
-            return -1;
+            SimpleAssert.that(false, "★rejectsOversizedClick 反射不可达（包私有静态）⇒ 纯函数面无从可验：" + t);
+            return false;
         }
     }
 
-    /** 逐向量钉「超过天然满量 {@code max(1, getMaxStackSize())} 的余量」：null→0、未超→0、超出→差值。 */
-    private static void slotClickExcessOverNaturalPureFunction() {
-        SimpleAssert.eq(0, excessOverNaturalReflect(null), "null 槽 → 0（直通，不拆）");
-        SimpleAssert.eq(0, excessOverNaturalReflect(stack(64)), "天然 64 堆恰好 64 → 0（未超 = 不拆）");
-        SimpleAssert.eq(1, excessOverNaturalReflect(stack(65)), "64 堆 65 件 → 余 1");
-        SimpleAssert.eq(960, excessOverNaturalReflect(stack(1024)), "64 堆 1024 件 → 余 960（NEI/byte 回绕那种大堆的正身）");
-        SimpleAssert.eq(
-            240,
-            excessOverNaturalReflect(new ItemStack(FakeStack16Item.INSTANCE, 256, 0)),
-            "16 堆 256 件 → 余 240（天然满量跟物品自己的 maxStackSize 走，不是抄 64）");
-        SimpleAssert.eq(
-            4,
-            excessOverNaturalReflect(new ItemStack(FakeUnstackableItem.INSTANCE, 5, 0)),
-            "1 堆 5 件 → 余 4（max=1 也不许负余量：天然满量取 max(1, maxStackSize)）");
+    /** 逐向量钉「超过 64 只放行空手取件」：未超全放行；超 64 后空手 mode 0 放行、其余全拒。 */
+    private static void slotClickOversizedRejectPureFunction() {
+        // 未超 64：一切照旧（普通堆的替换/合并是 vanilla 正常语义，不受本规则管）
+        SimpleAssert.that(!rejectsOversizedClickReflect(null, 0, null), "null 槽 → 放行（越界/非中栏直通）");
+        SimpleAssert.that(!rejectsOversizedClickReflect(stack(64), 0, null), "恰好 64 → 放行（大堆线之上才拦）");
+        SimpleAssert.that(!rejectsOversizedClickReflect(stack(64), 0, stack(1)), "64 堆 + 手上有物 → 放行");
+        // 超 64：空手取件放行（左右键同属 mode 0，MUI2 按天然上限截取——左键 64 / 右键 32，byte 天然安全）
+        SimpleAssert.that(!rejectsOversizedClickReflect(stack(1024), 0, null), "1024 堆 + 空手 mode 0 → 放行（取件 ≤64）");
+        // 超 64：手上有东西（替换/合并）拒绝——swap 分支整堆上游标 >127 回绕蒸发，R104 用户裁定的正身
+        SimpleAssert.that(rejectsOversizedClickReflect(stack(1024), 0, stack(1)), "1024 堆 + 手上有物 → 拒绝（替换/合并都不许）");
+        SimpleAssert.that(rejectsOversizedClickReflect(stack(65), 0, stack(1)), "65 堆 + 手上有物 → 拒绝（>64 一刀切）");
+        // 超 64：其余 mode 全拒（各自对应一条 byte 蒸发面）
+        SimpleAssert.that(
+            rejectsOversizedClickReflect(stack(1024), 2, null),
+            "1024 堆 + 热键换位 mode 2 → 拒绝（整堆落玩家背包栏，NBT byte 蒸发）");
+        SimpleAssert
+            .that(rejectsOversizedClickReflect(stack(1024), 3, null), "1024 堆 + creative 克隆 mode 3 → 拒绝（整堆副本上游标）");
+        SimpleAssert
+            .that(rejectsOversizedClickReflect(stack(1024), 4, null), "1024 堆 + 丢掷 mode 4 → 拒绝（Ctrl+Q 整堆丢出 1024 实体回绕）");
+        SimpleAssert.that(
+            rejectsOversizedClickReflect(stack(1024), 5, null),
+            "1024 堆 + 拖拽 mode 5 → 拒绝（canDragInto 已 false，双保险）");
+        // mode 1 生产路径上游早退放行，判据本体仍表拒绝作第二层防线
+        SimpleAssert.that(rejectsOversizedClickReflect(stack(1024), 1, null), "1024 堆 + mode 1 → 判据本体拒绝（实际由上游早退放行）");
     }
 
     /**

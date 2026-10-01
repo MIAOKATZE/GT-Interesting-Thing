@@ -19,8 +19,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * <p>
  * 本类由 {@link NekoPocketPanel} 经 {@code UISettings#customContainer} 提供
  * （{@code GuiManager.java:81/112/143} 双端都读该 supplier ⇒ 双端同一个类，不破坏 R32）。
- * {@code slotClick} 已覆写（仅服务端前置拆分中栏超天然堆，其余路径原样交 MUI2）；
- * {@code transferStackInSlot} 仍不覆写，也<b>不手工加槽</b>：
+ * {@code slotClick} 已覆写（仅服务端拦截：中栏超过 64 的存储堆只放行空手取件，其余手势拒绝
+ * ——R104 用户裁定「超过 64 不允许被替换」，旧「前置拆分顶背包」方案在背包已有同物时行为
+ * 怪异被否；其余路径原样交 MUI2）；{@code transferStackInSlot} 仍不覆写，也<b>不手工加槽</b>：
  * 槽位注册与其余点击处理全交 MUI2（slice-s4-brief §5 判据里"口袋不手工加槽"是硬口径）。
  * <p>
  * ★★<b>R97 R2：唯一的新覆写是 {@code detectAndSendChanges}</b>（{@code @MustBeInvokedByOverriders}，
@@ -83,63 +84,76 @@ public class NekoPocketContainer extends ModularContainer {
     }
 
     /**
-     * ★服务端前置拆分：MUI2 的 {@code ModularContainer#slotClick} 三条分支都按"天然堆"假设裸搬
-     * 中栏的超天然大堆（1.7.10 {@code ItemStack} 数量走<b>有符号 byte</b> 序列化，&gt;127 出网络即回绕）：
-     * ① 手持 A swap 点 1024 堆 B——swap 分支把整堆 B 推上游标，出包回绕成 0，B 凭空蒸发；
-     * ② STACK 关闭且格内 &gt;64 时 merge 分支拿负数 {@code splitStack} 复制出幽灵件数；
-     * ③ Ctrl+Q 整堆丢出 1024 同样在实体 Count 上回绕蒸发。
-     * <p>
-     * 本覆写只做一件事：进 super <b>之前</b>，服务端把中栏被点格的超天然余量先拆出去
-     * （天然满量留格、余量经 {@code giveToPlayer} 天然拆块进背包/掉脚下），让 super 看到的
-     * 永远是 ≤ 天然满量的普通堆 ⇒ 三条分支全部失去坏输入。QUICK_MOVE（mode 1）早退——
-     * MUI2 自带拆分且失败留格，保持旧行为逐字不变；客户端支不拆（真值由服务端纠正包保证）。
+     * 大堆交互线（R104 用户裁定）：超过 64 的存储堆不接受任何"整堆离格"的手势。
+     * 64 = vanilla 天然满量；大堆（STACK 升级档）只能靠 Shift 搬运或空手取件出格。
+     */
+    private static final int OVERSIZED_STACK_LINE = 64;
+
+    /**
+     * ★大堆拦截（R104 修订：由「前置拆分顶背包」改为「超过 64 不允许被替换」——用户实测拆分支
+     * 在背包已有同物时几乎不加量、其余掉脚下，裁定干脆禁止）。只拦<b>服务端</b>：客户端那份
+     * 槽栈对 &gt;127 的堆本就是 byte 回绕后的坏数据，拦不住也不该拦（预测瞬态由拒绝后的双纠正拉回）。
+     * QUICK_MOVE（mode 1）早退放行——MUI2 自带按天然满量拆块且失败留格，天然安全。
      */
     @Override
     public ItemStack slotClick(int slotId, int mouseButton, int mode, EntityPlayer player) {
-        if (!panel.syncManager()
-            .isClient() && mode != 1) {
-            drainOversizedStorageSlot(slotId);
+        if (mode != 1 && !panel.syncManager()
+            .isClient()) {
+            final ModularSlot modular = storageSlotAt(slotId);
+            if (modular != null && rejectsOversizedClick(
+                modular.getStack(),
+                mode,
+                player == null ? null : player.inventory.getItemStack())) {
+                rejectOversizedClick(modular, player);
+                return null;
+            }
         }
         return super.slotClick(slotId, mouseButton, mode, player);
     }
 
-    /**
-     * 中栏被点格的超天然余量前置拆分（{@link #slotClick} 的服务端腿）：非中栏槽 / 空槽 /
-     * 未超天然满量一律直通。超出时天然满量留在格内、余量整份交
-     * {@code NekoPocketPanel#giveToPlayer}（内部按天然满量拆块、背包满掉脚下——现语义零变化），
-     * 随后显式标脏并 {@code PocketSlots#forceSyncSlot} 强推格内真值（isInitialized 挡装配前）。
-     */
-    private void drainOversizedStorageSlot(int slotId) {
+    /** 被点格若是中栏存储格则返回该 {@code ModularSlot}（服务端真值面），否则 null。 */
+    private ModularSlot storageSlotAt(int slotId) {
         if (slotId < 0 || slotId >= this.inventorySlots.size()) {
-            return;
+            return null;
         }
-        if (!(this.inventorySlots.get(slotId) instanceof ModularSlot modular)
-            || !PocketSlots.GROUP_STORAGE.equals(modular.getSlotGroupName())) {
-            return;
+        if (this.inventorySlots.get(slotId) instanceof ModularSlot modular
+            && PocketSlots.GROUP_STORAGE.equals(modular.getSlotGroupName())) {
+            return modular;
         }
-        final ItemStack stack = modular.getStack();
-        final int excess = excessOverNatural(stack);
-        if (excess <= 0) {
-            return;
-        }
-        final ItemStack kept = stack.copy();
-        kept.stackSize = Math.max(1, stack.getMaxStackSize());
-        modular.putStack(kept);
-        final ItemStack surplus = stack.copy();
-        surplus.stackSize = excess;
-        panel.giveToPlayer(surplus);
-        panel.inventory()
-            .markDirty();
-        PocketSlots.forceSyncSlot(modular);
+        return null;
     }
 
-    /** 纯函数（供 JVM 直测）：超过天然满量 {@code max(1, getMaxStackSize())} 的余量；null 或未超 → 0。 */
-    static int excessOverNatural(ItemStack stack) {
-        if (stack == null) {
-            return 0;
+    /**
+     * 大堆拦截判据（★纯函数，JVM 直测）：超过 {@link #OVERSIZED_STACK_LINE} 的存储堆，只放行
+     * <b>空手取件</b>（mode 0 且光标为空——MUI2 的 PICKUP 按天然上限截取，左键 ≤64 / 右键 ≤32
+     * 上游标，1.7.10 的 byte 数量序列化天然安全）；其余手势一律拒绝，各自对应的蒸发面：
+     * <ul>
+     * <li>手持物品点击（替换 swap / 同物合并）——swap 分支把整堆推上游标，&gt;127 出网络回绕成 0
+     * （物品蒸发，正是用户报的"大堆被替换就消失"；合并也一并拒：手上有东西就不许碰大堆，规则只有一条）；</li>
+     * <li>热键换位（mode 2）——vanilla 把整堆塞进玩家背包栏，落 NBT 时同一条 byte 纪律蒸发；</li>
+     * <li>creative 克隆（mode 3）——光标拿到整堆副本，同 swap；</li>
+     * <li>丢掷（mode 4，Q / Ctrl+Q）——Ctrl+Q 整堆丢出，EntityItem.Count 是 byte，1024 回绕。</li>
+     * </ul>
+     * 判据本体对 mode 1 也表拒绝，作 QUICK_MOVE 上游早退之外的第二层防线。
+     */
+    static boolean rejectsOversizedClick(ItemStack slotStack, int mode, ItemStack held) {
+        if (slotStack == null || slotStack.stackSize <= OVERSIZED_STACK_LINE) {
+            return false;
         }
-        final int natural = Math.max(1, stack.getMaxStackSize());
-        return Math.max(0, stack.stackSize - natural);
+        return mode != 0 || held != null;
+    }
+
+    /**
+     * 拒绝后的双纠正：客户端会先本地预测一遍 MUI2 的手势（槽被换成手上的 A、游标拿到大堆副本），
+     * 服务端拒绝后若不拉回，两端分叉无包可纠（MUI2 对 PICKUP 恒返 null ⇒ vanilla mismatch 救援
+     * 永不触发，R97 R2 取证的同族幽灵）——① {@code forceSyncSlot} 把槽真值（byte 口径，与拒绝前
+     * 一致）强推回去覆盖预测；② {@code setCursorItem} 把游标真值强推回去。返回值与 MUI2 的
+     * PICKUP 口径一致取 null：mismatch 救援包推的是服务端返回值本身，&gt;127 同样回绕，救不了。
+     */
+    private void rejectOversizedClick(ModularSlot modular, EntityPlayer player) {
+        PocketSlots.forceSyncSlot(modular);
+        panel.syncManager()
+            .setCursorItem(player == null ? null : player.inventory.getItemStack());
     }
 
     /** ★R97 R2 的差分本体（见 {@link #detectAndSendChanges()} 的库层取证）。 */
@@ -156,10 +170,10 @@ public class NekoPocketContainer extends ModularContainer {
         }
         lastCursorSynced = current == null ? null : current.copy();
         // 兜底缺陷指示器：1.7.10 数量以有符号 byte 序列化，>127 出网络即回绕蒸发；
-        // slotClick 的前置拆分本应阻止超天然堆上游标，仍见到 ⇒ 有路径漏拆，请回报复现路径。
+        // slotClick 的大堆拦截本应阻止超 64 堆以任何手势离格，仍见到 ⇒ 有路径漏拦，请回报复现路径。
         if (current != null && current.stackSize > 127) {
             GTInterestingThing.LOG.warn(
-                "口袋游标仍出现 {} 件的超天然大堆（{}），1.7.10 byte 序列化会回绕蒸发；" + "slotClick 前置拆分本应阻止——本条 WARN 即缺陷指示器",
+                "口袋游标仍出现 {} 件的超天然大堆（{}），1.7.10 byte 序列化会回绕蒸发；" + "slotClick 大堆拦截本应阻止——本条 WARN 即缺陷指示器",
                 current.stackSize,
                 current.getUnlocalizedName());
         }
