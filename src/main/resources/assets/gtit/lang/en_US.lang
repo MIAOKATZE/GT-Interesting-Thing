@@ -425,7 +425,7 @@ gtit.pocket.upgrade.mage.line.3=Passive wand charging: one batch every %1$d tick
 gtit.pocket.upgrade.mage.line.4=Wand scan: main hand first, then the %1$d backpack slots; without Thaumcraft not a single point is taken
 gtit.pocket.upgrade.mage.line.5=Passive coin charging: exactly one coin every %1$d second, the pocket's %2$d slots before the backpack's %3$d; all-or-nothing precheck, normal coins +%4$d and shimmering +%5$d to each primal
 gtit.pocket.upgrade.mage.line.6=Passive transmute: every %1$d second each primal folds %2$d point into element capacity, all %3$d in parallel; non-primals are never touched
-gtit.pocket.upgrade.mage.line.7=Crystal mode: while on, distillation yield goes straight into your inventory as crystals (%1$d point each), skipping the essence tray; whatever does not fit falls back into the tray, whose existing stock is never touched
+gtit.pocket.upgrade.mage.line.7=Crystal mode: while on, distillation yield lands in the pocket's middle bar first as crystals, then the backpack if it will not fit (%1$d point each); the essence tray is never touched and no essence is produced, and whatever fits nowhere drops at your feet; the tray's existing stock is unaffected
 gtit.pocket.upgrade.mage.line.8=Element capacity: %1$d primals with %2$d each, %3$d in total; see the pocket's own tooltip for the six reserve lines
 gtit.pocket.upgrade.mage.line.9=Costs: transmute is the only drain on the essence tray; the passives degrade without Thaumcraft
 gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
@@ -468,9 +468,13 @@ gtit.pocket.config.persist.freq.hint=Type the per-batch interval in seconds (1-6
 gtit.pocket.config.mode.crystal=Crystallise
 gtit.pocket.config.mode.coin=Cat coin charging
 gtit.pocket.config.mode.transmute=Essence transmuting
-gtit.pocket.config.mode.crystal.hint=While on, distillation yield skips the essence tray and goes straight into your inventory as crystals; whatever does not fit falls back into the tray, and the tray's existing stock is never touched; off by default, and off simply means yield returns to the tray
-gtit.pocket.config.mode.coin.hint=Turning this off stops it entirely; while on, exactly one cat coin is produced on a timer, the pocket's slots before the backpack, and nothing is produced if it would not fit
+gtit.pocket.config.mode.crystal.hint=While on, distillation yield lands in the pocket's middle bar first as crystals, then the backpack if it will not fit; the essence tray is never touched and no essence is produced, and whatever fits nowhere drops at your feet; off by default, and off simply means yield returns to the tray
+gtit.pocket.config.mode.coin.hint=Turning this off stops it entirely; while on, one cat coin is consumed on a timer to charge element capacity (pocket slots first, then the backpack); if any of the six primals is full or no coin is available, the round is skipped and nothing is consumed
 gtit.pocket.config.mode.transmute.hint=Turning this off stops it entirely; while on, primals in the essence tray are folded into element capacity on a timer; non-primals are never touched
+# ---- R106-2 two new keys: the mode row's third state "Inert" (sub-mode bit on AND the MAGE master
+# switch off) - the button label and the extra tooltip line
+gtit.pocket.config.mode.inert=Inert
+gtit.pocket.config.mode.inert.hint=The mage master switch is off, so this mode is not in effect
 # ---- ★R96 S7b: magnet tri-state list config surface (mode labels / asymmetry notes / intake target
 # ★two modes / count / clear / cell lines / four refusal lines). Values must carry NO bare ASCII
 # digits (the lang digit ban) — numbers go through %d.

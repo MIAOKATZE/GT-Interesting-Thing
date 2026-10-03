@@ -33,6 +33,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketChannelManager;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelRunner;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelState;
 import com.miaokatze.gtit.common.items.pocket.PocketConstants;
+import com.miaokatze.gtit.common.items.pocket.PocketElementStore;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceIntake;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
@@ -247,6 +248,20 @@ public final class NekoPocketPanel implements PocketSession {
      * {@code storageStackUpgraded()} 的读侧）。不扩 {@code SYNC_MODE}、不开 C2S（客户端只读）。
      */
     private static final String SYNC_UPGRADE_ACTIVE = "pocket.upgrade.active";
+    /**
+     * ★★<b>R106 D2</b>：魔法使三条<b>子模式</b>位图的 S2C 载体（一枚 {@link IntSyncValue}，值 =
+     * {@code PocketElementStore#modeMask()}，缺键读数 = {@code MAGE_MODES_DEFAULT}）。
+     * <p>
+     * 为什么需要它：穿戴态（B 键开屏）下容器<b>不含饰品格</b> ⇒ 载体栈的 vanilla 槽同步永远不推
+     * 饰品格里的那一份 ⇒ 模式行的旧读腿（{@code PocketConfigPanel#modeState} 直读
+     * {@code carrierStackLive()}）在穿戴态读到的是<b>陈旧镜像</b>：每次重开都「重置」回旧档，
+     * 点击还会按陈旧读数把服务端真值写反。服务端真值单源不动（{@link #liveMageModeBits()} 现读
+     * 活查表载体，写点 {@code performUpgradeModeToggle} 同一活查表 ⇒ 写后差分必推新值）；
+     * 本枚同步值只是把<b>客户端读侧</b>换成服务端算好的镜像。与 {@link #SYNC_UPGRADE_ACTIVE}
+     * 同形（逐字照 R97 R6 先例）：不扩 {@link #SYNC_MODE}（那是通道拉取模式，语义不同——
+     * 键名带 {@code mage} 段防误读）、不开 C2S（写仍走动作码 13 服务端链，零改）。
+     */
+    private static final String SYNC_MAGE_MODES = "pocket.mage.modes";
     /** C2S：所有按钮/选中动作走这一个键，值 = {@code code * ACTION_ARG_BASE + arg}（单包原子，无两值竞态）。 */
     private static final String SYNC_ACTION = "pocket.action";
     /** 动作参数基数（当前最大 arg = 134 格 / 71 格+Shift 位）。 */
@@ -451,6 +466,13 @@ public final class NekoPocketPanel implements PocketSession {
      * 读侧只经 {@link #clientUpgradeActive(PocketUpgradeType)} 这一条小 accessor，不散写位运算。
      */
     private int clientUpgradeActiveBits;
+    /**
+     * ★★<b>R106 D2</b>：魔法使三条子模式位图的客户端镜像（值 = 服务端 {@link #liveMageModeBits()}；
+     * 写者只有 {@link #SYNC_MAGE_MODES} 的客户端 setter，开屏以 vanilla 已同步的载体档播种——与
+     * {@link #clientUpgradeActiveBits} 同款「首帧不回退」，随后由服务端真值 ≤1 tick 推平）。
+     * 读侧只经 {@link #mageModeOnNow(int)} 这一条双源 accessor 的客户端支，不散写位运算。
+     */
+    private int clientMageModeBits;
     private String bindRowsBlob = "";
     private boolean pullMode;
     private int filterCount;
@@ -547,6 +569,9 @@ public final class NekoPocketPanel implements PocketSession {
         // ★刻意走 setClientStackMirror 而不是二次 setUpgradeProbes（探针注入点是"恰 1 处"的单点口径）。
         if (syncManager.isClient()) {
             clientUpgradeActiveBits = liveUpgradeActiveBits();
+            // ★R106 D2：模式位镜像同款播种（vanilla 已同步的载体档）⇒ 首帧不闪变；穿戴态的
+            // 「陈旧窗口」从『永远』缩到 SYNC_MAGE_MODES 首包 ≤1 tick（B 键/主手两路开屏都经这里）。
+            clientMageModeBits = liveMageModeBits();
             this.inventory.setClientStackMirror(() -> clientUpgradeActive(PocketUpgradeType.STACK));
         }
         // ★R78③：把"格位归属 + 现有点数"当作两份镜像的<b>起点</b>。双端读的都是同一份口袋 NBT
@@ -723,6 +748,15 @@ public final class NekoPocketPanel implements PocketSession {
         syncManager.syncValue(SYNC_UPGRADE_ACTIVE, new IntSyncValue(this::liveUpgradeActiveBits, value -> {
             if (syncManager.isClient()) {
                 clientUpgradeActiveBits = value;
+            }
+        }));
+        // ★R106 D2：魔法使三条子模式位图单枚 S2C（形状逐字照上面 SYNC_UPGRADE_ACTIVE：服务端 getter
+        // 现读活载体真值、客户端 setter 只写镜像并带 isClient 守卫——上游 setValue 的 setSource 默认
+        // true，双端都可能被调一次）。写点零改：动作码 13 服务端链改档后 liveMageModeBits 差分变化 ⇒
+        // ValueSyncHandler cache 比对推新值 ⇒ 穿戴态的模式按钮首次真正可达。
+        syncManager.syncValue(SYNC_MAGE_MODES, new IntSyncValue(this::liveMageModeBits, value -> {
+            if (syncManager.isClient()) {
+                clientMageModeBits = value;
             }
         }));
     }
@@ -1293,6 +1327,52 @@ public final class NekoPocketPanel implements PocketSession {
      */
     boolean clientUpgradeActive(PocketUpgradeType type) {
         return (clientUpgradeActiveBits & (1 << type.ordinal())) != 0;
+    }
+
+    /**
+     * ★★<b>R106 D2</b>：魔法使三条子模式位图的<b>服务端真值</b>（bit 域 =
+     * {@code PocketConstants#MAGE_MODE_BITS}，值 = 活查表载体的 {@code PocketElementStore#modeMask()}）。
+     * <p>
+     * 三个读者与 {@link #liveUpgradeActiveBits} 同族：{@code SYNC_MAGE_MODES} 的服务端 getter
+     * （每拍差分比对，变了才推）、客户端镜像的开屏播种（与旧读腿 {@code PocketConfigPanel#modeState}
+     * 的开屏值同源 ⇒ 首帧不闪变）、以及双源 accessor {@link #mageModeOnNow(int)} 的服务端支。
+     * 缺键 ⇒ {@code MAGE_MODES_DEFAULT}（与旧读腿「缺键默认读数」的显示语义同值）；载体缺席 ⇒ 0
+     * 全关（对齐旧 {@code modeState(null) == false}）。
+     */
+    int liveMageModeBits() {
+        final ItemStack carrier = carrierStackLive();
+        if (carrier == null) {
+            return 0;
+        }
+        return PocketElementStore.attach(carrier.getTagCompound())
+            .modeMask();
+    }
+
+    /**
+     * ★R106 D2：某一模式行<b>当前</b>开不开——双源 accessor（R86 铁律）：客户端读
+     * {@link #clientMageModeBits} 镜像（穿戴态唯一真读数）、服务端读 {@link #liveMageModeBits()} 真值。
+     * 行→位经 {@code PocketConfigPanel#modeBit} 单源；非法行 ⇒ false。
+     */
+    boolean mageModeOnNow(int row) {
+        final int bit = PocketConfigPanel.modeBit(row);
+        if (bit == 0) {
+            return false;
+        }
+        final int mask = syncManager.isClient() ? clientMageModeBits : liveMageModeBits();
+        return (mask & bit) != 0;
+    }
+
+    /**
+     * ★R106-②：MAGE 主开关<b>当前生效没有</b>——双源 accessor（客户端读 {@link #SYNC_UPGRADE_ACTIVE}
+     * 镜像 {@link #clientUpgradeActive}，服务端读活载体真值）。模式行的「未生效」第三态与 tooltip
+     * 追加行都读它，不在 {@code PocketConfigPanel} 里直点名这一型（门 F / 「型 == MAGE」两张既有门
+     * 都钉着本件不养第二份型清单）。
+     */
+    boolean mageMasterActiveNow() {
+        if (syncManager.isClient()) {
+            return clientUpgradeActive(PocketUpgradeType.MAGE);
+        }
+        return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.MAGE);
     }
 
     /** 单 tank 当前容量（mB，long；CAPACITY 位现读 ⇒ 会话期内固化即换档）。 */

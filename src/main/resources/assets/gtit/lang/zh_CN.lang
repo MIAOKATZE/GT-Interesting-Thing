@@ -414,7 +414,7 @@ gtit.pocket.upgrade.mage.line.3=被动·充法杖：每 %1$d tick 一批、每�
 gtit.pocket.upgrade.mage.line.4=法杖主手优先，再扫背包 %1$d 格；无神秘时代时不掏分
 gtit.pocket.upgrade.mage.line.5=被动·猫猫币：每 %1$d 秒恰一枚，先口袋 %2$d 格后背包 %3$d 格；整笔预检，普通币各源 +%4$d、闪烁 +%5$d
 gtit.pocket.upgrade.mage.line.6=被动·源质转换：每 %1$d 秒每元始折 %2$d 点入元素容量，%3$d 种同批并行；非元始不碰
-gtit.pocket.upgrade.mage.line.7=模式·结晶：开着时蒸馏产出直接以结晶形态进背包（每枚 %1$d 点），不进源质盘；背包满则该部分回退入源质盘，盘内存量不受影响
+gtit.pocket.upgrade.mage.line.7=模式·结晶：开着时蒸馏产出以结晶形态先落口袋中栏、放不下进背包（每枚 %1$d 点）；全程不进源质盘、不产生源质，两处都满则掉脚下；盘内存量不受影响
 gtit.pocket.upgrade.mage.line.8=元素容量：%1$d 个元始各 %2$d、合计 %3$d；储量六行见口袋本体悬浮
 gtit.pocket.upgrade.mage.line.9=代价：源质盘只被源质转换消耗；无神秘时代时被动降级
 gtit.pocket.upgrade.slot.tooltip=每格只收对应插件；放入即固化，不可取出
@@ -453,9 +453,12 @@ gtit.pocket.config.persist.freq.hint=输入每批间隔的秒数（1-60，仅持
 gtit.pocket.config.mode.crystal=结晶模式
 gtit.pocket.config.mode.coin=猫猫币充能
 gtit.pocket.config.mode.transmute=源质转换
-gtit.pocket.config.mode.crystal.hint=开着时蒸馏产出不进源质盘、直接以结晶形态进背包；背包放不下的部分回退入源质盘，盘内已有存量不受影响；关掉则照常入盘（默认关）
-gtit.pocket.config.mode.coin.hint=关掉即完全停发；开着时定时恰产一枚猫猫币，先入口袋格、再入背包，放不下则整批不产
+gtit.pocket.config.mode.crystal.hint=开着时蒸馏产出以结晶形态先落口袋中栏、放不下进背包；全程不进源质盘、不产生源质，两处都满则掉脚下；盘内存量不受影响；关掉则照常入盘（默认关）
+gtit.pocket.config.mode.coin.hint=关掉即完全停充；开着时定时消耗一枚猫猫币为元素容量充能（先口袋格、后背包取币）；六条元始有任一满量或取不到币，则本轮跳过、币不动
 gtit.pocket.config.mode.transmute.hint=关掉即完全停折；开着时定时把源质盘里的元始折算进元素容量，非元始不碰
+# ---- ★R106-② 新增两键：模式行第三态「未生效」（子模式位开 ∧ MAGE 主开关关）的按钮字与 tooltip 追加行
+gtit.pocket.config.mode.inert=未生效
+gtit.pocket.config.mode.inert.hint=主开关已关，此模式当前未生效
 # ---- ★R96 S7b 新增：磁力三态名单的配置面（三态标签 / 不对称说明 / 吸取目标两档 / 计数 / 清空 /
 # ★格件与四条拒收支）。值内★不得出现 ASCII 裸数字（门禁的 lang 数字禁令）⇒ 需要数字的走 %d。
 # ★note.none 那一句是「无限制保留名单但不生效」这条不对称的两个可见面之一（另一个在 tooltip），

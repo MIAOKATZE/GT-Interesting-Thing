@@ -819,6 +819,10 @@ public final class PocketConfigPanel {
     /** 模式行的 tooltip 键（★每条模式行为不同，hint 各讲各的；行序与 {@link #MODE_LABEL_KEYS} 同一下标空间）。 */
     private static final String[] MODE_HINT_KEYS = { "gtit.pocket.config.mode.crystal.hint",
         "gtit.pocket.config.mode.coin.hint", "gtit.pocket.config.mode.transmute.hint" };
+    /** ★R106-②：模式行第三态「未生效」（位开 ∧ 主开关关）的按钮字键——读成「已开启」就是假读数。 */
+    private static final String MODE_INERT_KEY = "gtit.pocket.config.mode.inert";
+    /** ★R106-②：「未生效」态的 tooltip 追加行键（明示主开关已关、此模式当前未生效）。 */
+    private static final String MODE_INERT_HINT_KEY = "gtit.pocket.config.mode.inert.hint";
 
     /** 模式行数 = 位的<b>唯一</b>来源（★追加第四种模式时本件不加控件、只加标签键，几何自断言会红）。 */
     public static int modeRowCount() {
@@ -881,7 +885,12 @@ public final class PocketConfigPanel {
     }
 
     /**
-     * 某一行的模式位当前开不开（★读<b>载体栈 NBT</b>，与 {@link #switchState} 同一条通道、同一个理由）。
+     * 某一行的模式位当前开不开（★读<b>载体栈 NBT</b> 的<b>纯 NBT 读腿</b>）。
+     * <p>
+     * ★★<b>R106 D2 起</b>：面板的<b>生产读侧</b>（按钮字、点击目标）已换走同步镜像真值
+     * {@code NekoPocketPanel#mageModeOnNow}——穿戴态 B 键开屏下容器不含饰品格，本读腿依赖的
+     * vanilla 槽镜像永远陈旧（D2 正身）。本方法保留给测试钉「写腿落的是同一条 NBT 通道」
+     * （{@code mage_config_panel_mode_codec_and_commit_leg}），语义仍真，不新增生产消费方。
      * <p>
      * ★本方法<b>不</b>判"魔法使在不在档上"：那一位的读数已经在自己那一行上显示过一次了，
      * 在模式行上再显示一次会把"没装这个升级"读成"三条模式都关着"——那是假读数（口径同
@@ -895,9 +904,38 @@ public final class PocketConfigPanel {
         return bit != 0 && PocketMageModes.on(carrier.getTagCompound(), bit);
     }
 
-    /** 下一次点击应请求的目标（★现读：面板是缓存件、行是常驻件，与 {@link #nextOff} 同一条纪律）。 */
-    public static boolean nextModeOn(ItemStack carrier, int row) {
-        return !modeState(carrier, row);
+    /** ★R106-②：模式行按钮的三态（比开关行的 {@link SwitchState} 多出的第三态 = <b>未生效</b>）。 */
+    private enum ModeReadout {
+        /** 子模式位关。 */
+        OFF,
+        /** 位开 ∧ MAGE 主开关生效。 */
+        ON,
+        /** ★位开 ∧ MAGE 主开关关：被动整条被闸住，位本身仍在档上（「配的是下次开了动不动」）。 */
+        INERT
+    }
+
+    /**
+     * 模式行三态读数的<b>判据单源</b>（★R106 D2：位读数走同步镜像真值 {@code mageModeOnNow}、
+     * ★R106-②：主开关态走 {@code mageMasterActiveNow} 双源 accessor）。按钮字与 tooltip 追加行
+     * 都经它，不散写第二份三态判断。
+     */
+    private static ModeReadout modeReadoutOf(NekoPocketPanel ui, int row) {
+        if (!ui.mageModeOnNow(row)) {
+            return ModeReadout.OFF;
+        }
+        return ui.mageMasterActiveNow() ? ModeReadout.ON : ModeReadout.INERT;
+    }
+
+    /** 三态 → 按钮字键（OFF/ON 复用开关行那对状态键；未生效第三态用 {@link #MODE_INERT_KEY} 新键）。 */
+    private static String modeSwitchLabelKey(ModeReadout readout) {
+        switch (readout) {
+            case ON:
+                return switchLabelKey(SwitchState.ON);
+            case INERT:
+                return MODE_INERT_KEY;
+            default:
+                return switchLabelKey(SwitchState.OFF);
+        }
     }
 
     /**
@@ -1137,6 +1175,9 @@ public final class PocketConfigPanel {
                 "gtit.pocket.config.mode.crystal.hint",
                 "gtit.pocket.config.mode.coin.hint",
                 "gtit.pocket.config.mode.transmute.hint",
+                // ★R106-②：模式行第三态「未生效」（位开 ∧ 主开关关）的按钮字与 tooltip 追加行两键。
+                "gtit.pocket.config.mode.inert",
+                "gtit.pocket.config.mode.inert.hint",
                 "gtit.pocket.upgrade.cell.off",
                 identityReceiptKey()));
         for (final Outcome outcome : Outcome.values()) {
@@ -1785,7 +1826,9 @@ public final class PocketConfigPanel {
      * {@link PocketConstants#MAGE_MODE_BITS}），★不随"哪条模式开着"变化 ⇒ 同型重开拿到的缓存面板
      * 不会因为状态改而拿到一棵旧树。
      * <p>
-     * <b>零同步值、零本地写</b>：与开关行同一条通道（读载体栈 NBT 的 vanilla 镜像、写只发码）。
+     * <b>零本地写、模式行读数走同步镜像</b>（★R106 D2 起）：模式行的按钮字与点击目标读
+     * {@code NekoPocketPanel#mageModeOnNow}（双源 accessor，穿戴态真读数），写仍只发码；
+     * 开关行照旧读载体栈 NBT 的 vanilla 镜像（主开关行三态的同病显示 = 账本外残留，见 R106 计划 §0）。
      * <p>
      * ★形参 {@code type} 是两支挂载装配的同形签名；本支几何全部走 {@link #MAGE_CONTENT_WIDTH} 与
      * {@link #mageContentX()}/{@link #mageContentY()} 这套面板级常数，不再从 {@code type} 取宽 —— 签名由
@@ -1843,19 +1886,23 @@ public final class PocketConfigPanel {
             button.pos(columnX, mageContentY() + modeButtonRowY())
                 .size(MODE_BUTTON_WIDTH, MODE_ROW_HEIGHT)
                 .name("pocket_config_mode_switch_" + row)
-                .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(hintKey)))
+                .tooltipDynamic(tooltip -> {
+                    tooltip.addLine(IKey.lang(hintKey));
+                    // ★R106-②：未生效态追加一行明示（主开关已关）——位还开着，静态 hint 不会讲这件事
+                    if (modeReadoutOf(ui, row) == ModeReadout.INERT) {
+                        tooltip.addLine(IKey.lang(MODE_INERT_HINT_KEY));
+                    }
+                })
                 .tooltipAutoUpdate(true)
                 .playClickSound(true)
-                // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）
-                .onMousePressed(
-                    press -> press == 0 && ui.requestUpgradeMode(row, nextModeOn(ui.carrierStackLive(), row)));
-            // ★按钮上的字 = 当前状态（"开启 / 关闭"，与开关行共用同一对状态键；模式没有"未固化"这一态，
-            // 那一判在 commitMode 里拒写并回一条既有回执，不在按钮上骗人）
+                // ★同样只有左键生效，且★这里一个字节都不写档（写腿在服务端 commitMode）。
+                // ★R106 D2：点击目标改读同步镜像真值（穿戴态下从载体镜像反算会把服务端真值写反——D2 正身）。
+                .onMousePressed(press -> press == 0 && ui.requestUpgradeMode(row, !ui.mageModeOnNow(row)));
+            // ★按钮上的字 = 三态（关 / 开 / ★R106-② 未生效——位开但主开关关时读「已开启」是假读数；
+            // 模式没有"未固化"这一态，那一判在 commitMode 里拒写并回一条既有回执，不在按钮上骗人）
             applyConfigButtonStyle(
                 button,
-                IKey.dynamic(
-                    () -> StatCollector.translateToLocal(
-                        switchLabelKey(modeState(ui.carrierStackLive(), row) ? SwitchState.ON : SwitchState.OFF)))
+                IKey.dynamic(() -> StatCollector.translateToLocal(modeSwitchLabelKey(modeReadoutOf(ui, row))))
                     .scale(BODY_TEXT_SCALE));
             panel.child(button);
         }

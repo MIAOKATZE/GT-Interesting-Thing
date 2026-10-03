@@ -80,13 +80,16 @@ import com.miaokatze.gtit.crossmod.taum.TaumDistillRules;
  * {@link #crystallizeRedirectOn}，缺省关）时：
  * <ol>
  * <li>本轮蒸馏产出<b>不进源质盘</b>——判盘在 {@link #planDistillBatch(PocketSession, EssenceGate)}
- * 就整体跳过（store 传 {@code null} 走恒放行通道，盘满不再误停蒸馏），候选直接 mint 成结晶进
- * 玩家背包（{@link #settleBatch} → {@code PocketCrystalDriver#deliverAsCrystals}）；</li>
- * <li>背包放不下的点数<b>回退源质盘</b>（逐 tag {@code add}，按实收）；盘也满的差额经
- * 兜底落点 {@code CrystalSink#ofPlayerDropping}（背包或脚下）按堆出晶（spill 支）——两级兜底的
- * 裁决点在本类，交付层只报告实付枚数；</li>
- * <li>源质盘已有存量<b>原地不动</b>：没有独立抽干腿（旧「每秒抽干全盘」的 tick 宿主
- * {@code mage/PocketCrystalDriver} 已随本分叉退役，只留交付算法）。</li>
+ * 就整体跳过（store 传 {@code null} 走免检通道，盘满不再误停蒸馏），候选直接 mint 成晶、
+ * ★R106-① 起<b>主落点 = 口袋中栏</b>（{@code CrystalSink#ofSession}：先中栏跳 ghost 声明格、
+ * 再玩家背包兜底；{@link #settleBatch} → {@code PocketCrystalDriver#deliverAsCrystals}）；</li>
+ * <li>★R106-①（用户裁定）：中栏与背包两级都放不下的差额<b>绝不折回源质盘</b>——整份进 spill 表，
+ * 由 {@code runBatch} 的 spill 支经兜底落点 {@code CrystalSink#ofPlayerDropping}（背包再试一次、
+ * 仍满则掉脚下）按堆二次出晶。落点链 = <b>中栏 → 玩家背包 → 脚下</b>，结晶全程保持晶形态、
+ * 不产生源质；裁决点在本类，交付层只报告实付枚数；</li>
+ * <li>源质盘已有存量<b>原地不动</b>：结晶支对盘<b>零读写</b>（没有 {@code ess.add} 回退环，旧
+ * 「背包放不下回退入盘」的链路已随 R106-① 废除），也没有独立抽干腿（旧「每秒抽干全盘」的
+ * tick 宿主 {@code mage/PocketCrystalDriver} 已随本分叉退役，只留交付算法）。</li>
  * </ol>
  * <p>
  * <b>会话来源</b>（R53c）：12 格内容与源质表都在 {@link PocketSession} 里（面板持有的那一份内存真相）。
@@ -254,19 +257,23 @@ public final class PocketDistillDriver {
             clock.ticksLeft = 0;
             return;
         }
-        // ★结晶分叉：结晶开 ⇒ 产物 mint 成晶进背包、回退入盘（结算在 settleBatch）；
+        // ★结晶分叉（★R106-① 落点改判）：结晶开 ⇒ 产物 mint 成晶、主落点 = 口袋中栏
+        // （CrystalSink.ofSession：先中栏跳 ghost 格、再玩家背包兜底；结算在 settleBatch），
+        // 两级都放不下的差额进 spill ⇒ 本方法尾部经 ofPlayerDropping 二次出晶（背包再试、
+        // 仍满则掉脚下）——落点链「中栏 → 玩家背包 → 脚下」，绝不折回源质盘；
         // 结晶关 ⇒ settleBatch 内部就是原来的 putAll，行为与旧路径一致
         final Map<String, Integer> spill = settleBatch(
             batch.candidates,
             session.essence(),
             crystallizeRedirectOn(session),
             CrystalGate.TAUM,
-            CrystalSink.ofPlayer(player));
+            CrystalSink.ofSession(session));
         if (!spill.isEmpty()) {
+            // ★第三级落点（脚下）：中栏/背包两级都满后的最后出口（★R106-① 兜底链第三级）。
             // 兜底支也走"东西必须在世界里"，且必须复用同一条按堆出晶纪律：桥侧 newCrystalStack
             // 自带 min(points,64) 钳制，对整段 spill 点数单次 mint 会把 64 之外的部分静默吞掉
             // （蒸馏格的件已扣、点数蒸发）；giveOrDrop 的掉地兜底让该落点恒全额实付，
-            // mint 不出的整段（TC 缺席）无载体可落，属既有降级面，不掉第二次
+            // mint 不出的整段（TC 缺席）无载体可落，属既有降级面（★R106-①：也不折回源质盘救回），不掉第二次
             PocketCrystalDriver.deliverAsCrystals(spill, CrystalGate.TAUM, CrystalSink.ofPlayerDropping(player));
         }
         // ★sourceSlots 的长度就是"本轮被收下的格数"（每个被收下的格各扣 1 件，未收下的格一个都不扣）
@@ -300,13 +307,15 @@ public final class PocketDistillDriver {
      * 不经真 EntityPlayer）。
      * <ul>
      * <li>结晶关：整份候选 {@link PocketEssenceStore#putAll} 进源质盘，返回空表（与旧路径同形）；</li>
-     * <li>结晶开：候选先经 {@link PocketCrystalDriver#deliverAsCrystals} mint 成晶进背包，
-     * 回退点数逐 tag {@link PocketEssenceStore#add}（按实收入盘），加不进的差额进返回的
-     * spill 表——由调用方经兜底落点按堆出晶掉脚下。</li>
+     * <li>结晶开（★R106-① 落点改判）：候选整份经 {@link PocketCrystalDriver#deliverAsCrystals}
+     * mint 成晶交 sink（生产入口 runBatch 传 {@code CrystalSink#ofSession}：先口袋中栏、再玩家背包），
+     * <b>未付差额整份进返回的 spill 表</b>——由调用方经兜底落点二次出晶（背包再试、仍满掉脚下）。
+     * <b>结晶全程不碰源质盘</b>：没有 {@code ess.add} 回退环（旧「背包放不下回退入盘」的链路已废），
+     * 结晶支对盘零读写。</li>
      * </ul>
-     * 盘内存量两侧都<b>只增不动</b>：结晶开时入账的是"背包放不下的回退"，不存在抽干腿。
+     * 盘内存量两侧都<b>只增不动</b>：结晶开时产出根本不落盘，不存在抽干腿。
      *
-     * @return spill 表（{@code tag → 点数}）：结晶开且盘也满的差额；结晶关恒空
+     * @return spill 表（{@code tag → 点数}）：结晶开时未交付的差额（中栏与背包两级都放不下的部分）；结晶关恒空
      */
     public static Map<String, Integer> settleBatch(Map<String, Integer> candidates, PocketEssenceStore ess,
         boolean crystalMode, CrystalGate gate, CrystalSink sink) {
@@ -320,21 +329,8 @@ public final class PocketDistillDriver {
             }
             return spill;
         }
-        final Map<String, Integer> refund = PocketCrystalDriver.deliverAsCrystals(candidates, gate, sink);
-        if (ess == null) {
-            spill.putAll(refund);
-            return spill;
-        }
-        for (Map.Entry<String, Integer> entry : refund.entrySet()) {
-            final Integer pts = entry.getValue();
-            if (pts == null || pts.intValue() <= 0) {
-                continue;
-            }
-            final int taken = ess.add(entry.getKey(), pts.intValue());
-            if (pts.intValue() - taken > 0) {
-                spill.put(entry.getKey(), Integer.valueOf(pts.intValue() - taken));
-            }
-        }
+        // ★R106-①：结晶支零源质化——未付差额整份进 spill（绝不折回源质盘），ess 形参只服务上面的关态支
+        spill.putAll(PocketCrystalDriver.deliverAsCrystals(candidates, gate, sink));
         return spill;
     }
 
@@ -393,9 +389,10 @@ public final class PocketDistillDriver {
         return planDistillBatch(
             session == null ? null : slotsOf(session),
             gate,
-            // ★结晶分叉：结晶模式开 ⇒ store 传 null，走数组形态既有的 null 通道
-            // （store != null 才查 cap / store == null || 放行）⇒ 不判盘容量、不产 OVER_CAP 读数，
-            // 盘满不再误停蒸馏；产物的去向分叉在 runBatch 的 settleBatch（直接成晶，不经盘）
+            // ★结晶分叉：结晶模式开 ⇒ store 传 null，走数组形态的 null 免检通道
+            // （store != null 才查 cap / store == null ⇒ 放行；★R104 时代判句误写 null ⇒ 弃格，
+            // 盘满即整轮 stalledFull 假满停摆，R106 D1 修复回「null ⇒ 放行」）⇒ 不判盘容量、不产
+            // OVER_CAP 读数，盘满不再误停蒸馏；产物的去向分叉在 runBatch 的 settleBatch（直接成晶，不经盘）
             session == null ? null : (crystallizeRedirectOn(session) ? null : session.essence()));
     }
 
@@ -450,7 +447,11 @@ public final class PocketDistillDriver {
                     discardedPoints += wantPoints;
                     continue;
                 }
-                if (store == null || !store.canAcceptAll(probe.want, candidates)) {
+                // ★null 语义（R106 D1 修复）= 结晶分叉的<b>免检通道</b>（产物不落盘 ⇒ 盘容量无关），
+                // 不是「无盘可退」的弃格：生产里 null 只来自上面会话重载的结晶支
+                // （session.essence() 两实现恒非空 ⇒ 不存在「真无盘」路径传 null），
+                // 与上一行 overCap 判的 null-免检形态同形（store != null 才问盘）
+                if (store != null && !store.canAcceptAll(probe.want, candidates)) {
                     needsRoom = true;
                     discardedSlots++;
                     discardedPoints += wantPoints;

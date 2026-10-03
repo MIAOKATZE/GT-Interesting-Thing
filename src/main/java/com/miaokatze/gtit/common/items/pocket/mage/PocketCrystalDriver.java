@@ -13,8 +13,9 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
  *
  * <h2>干什么</h2>
  * 魔法使的「结晶模式」开通后，<b>本轮蒸馏的产出不进源质盘</b>：由
- * {@code PocketDistillDriver#settleBatch} 把候选点数交给本类，逐 tag mint 成源质结晶交到玩家背包；
- * 背包放不下的点数由调用侧回退源质盘，盘也满才经蒸馏腿的 spill 支掉脚下兜底。
+ * {@code PocketDistillDriver#settleBatch} 把候选点数交给本类，逐 tag mint 成源质结晶交到
+ * {@code CrystalSink#ofSession}（★R106-① 主落点 = 口袋中栏，再玩家背包兜底）；放不下的点数
+ * 由调用侧整份进 spill 表，经蒸馏腿的 spill 支二次出晶掉脚下兜底（绝不折回源质盘）。
  * <b>源质盘已有存量原地不动</b>——本类不持有、不读、不写 {@code ess}，没有独立节拍，
  * 一切时机由蒸馏轮次决定。★缺省<b>关</b>（用户裁定），与「猫猫币充能」「源质转换」共用主开关
  * {@code PocketUpgradeType.MAGE}，主开关与子模式位的合取点在
@@ -23,10 +24,10 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
  * <h2>★三条口径纪律（沿用旧 tick 宿主定下的判据，只换触发方）</h2>
  * <ol>
  * <li><b>按实付量记账、不掉地</b>：交付走 {@link CrystalSink}（生产实现
- * {@link com.miaokatze.gtit.common.items.pocket.PocketItemExit#giveIntoInventory} = 只进背包、
- * 余量留栈）。mint 出的 {@code stackSize} 是真的成了的枚数，{@code deliver} 返回的是真的进包的
- * 枚数，两者之差折回点数进回退表，由调用方回退源质盘——本层不就地丢弃、不掉地，
- * 掉地兜底的裁决不在交付层；</li>
+ * {@code CrystalSink#ofSession} → {@code PocketSession#depositItem}，★R106-① 起主落点 =
+ * 口袋中栏）。mint 出的 {@code stackSize} 是真的成了的枚数，{@code deliver} 返回的是真的
+ * 落下去的枚数，两者之差折回点数进回退表，由调用方进 spill（背包再试、仍满掉脚下）——
+ * 本层不就地丢弃、不掉地，掉地兜底的裁决不在交付层；</li>
  * <li><b>不就地排空</b>：晶自身的 {@code AspectList} 从头到尾没被改过一次（wiki
  * {@code gtit-taumcraft-essentia-carriers.md} §3 证死：就地排空会让服务端随机重赋型），
  * 产晶一律是"mint 新晶"；</li>
@@ -51,8 +52,8 @@ public final class PocketCrystalDriver {
      * 过滤——有什么就出什么晶（TC 的晶本来就允许非元始 aspect，"6 条白名单"那套判据管的是
      * <b>元素容量表</b>有几行，与本出口无关，别把两条判据混成一条）。
      *
-     * @return 回退表（{@code tag → 未交付点数}）：背包放不下的实付差额 + mint 失败的整段，
-     *         由调用方回退源质盘、盘也满再经 spill 掉脚下
+     * @return 回退表（{@code tag → 未交付点数}）：落点只实付了其中一部分的实付差额 + mint 失败的整段，
+     *         由调用方整份进 spill（★R106-①：绝不折回源质盘）、经蒸馏腿的 spill 支掉脚下兜底
      */
     public static Map<String, Integer> deliverAsCrystals(Map<String, Integer> points, CrystalGate gate,
         CrystalSink sink) {

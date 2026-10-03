@@ -615,6 +615,19 @@ public class NekoPocketModelTest {
         cases.put(
             "mage_crystal_settle_fork_delivers_refunds_and_spills",
             NekoPocketModelTest::mageCrystalSettleForkDeliversRefundsAndSpills);
+        // ---- ★R106 D1（TP-A）假满停摆一条：结晶分叉传 null 的 store 在判句里被当成「无盘可退」
+        // 弃格 ⇒ 结晶开整轮 stalledFull 停摆 + 状态行误报「源质格已满」。本条四段：null 免检正向 /
+        // 满盘正控（判句真在拦）/ 会话级（结晶开免检 ∧ 主开关关照旧判盘）/ 判句静态锚（防回潮）。
+        // ★R106 TP-B 翻新同批：settle fork 段②③（差额整份进 spill、盘零读写）与静态面
+        // （ofSession 主落点 / ess.add 归零 / 落点只经 session API）落在既有两条 crystal 用例里。----
+        cases.put(
+            "mage_crystal_plan_null_store_accepts_all_slots",
+            NekoPocketModelTest::mageCrystalPlanNullStoreAcceptsAllSlots);
+        // ---- ★R106 D2+②（TP-C）模式位真值通道一条：单枚 IntSyncValue（逐字照 SYNC_UPGRADE_ACTIVE
+        // 先例）+ 双源 accessor + 配置面三态「未生效」+ 两份 lang 新键；D3 判据（coin.hint 吃币口径、
+        // 产币字样归零、coin.hint 各恰一行）并入本条 lang 段。★起点 258（TP-B 后实测）⇒ +1 = 259
+        // （分母一律取跑出来的数）。----
+        cases.put("mage_mode_readout_syncs_server_truth", NekoPocketModelTest::mageModeReadoutSyncsServerTruth);
         // ---- ★slotClick 大堆拦截（R104 修订）：纯函数面一条（rejectsOversizedClick 向量；跨包经反射）。
         // 槽级拦截与拒绝后双纠正 = limited：真 EntityPlayer/ModularUI 装配不可注入，由实机验收。----
         cases.put(
@@ -14150,10 +14163,11 @@ public class NekoPocketModelTest {
             }
             assertButtonLineFits(worstSwitch, PocketConfigPanel.SWITCH_WIDTH, "开关钮");
             // 魔法使模式小钮 / 关闭钮（★R101：频率两枚小钮撤，改输入框不占 BUTTON 盒账；
-            // ★R101.3：小钮文案 = 状态两枚 state_on/state_off，取最坏）
+            // ★R101.3：小钮文案 = 状态两枚 state_on/state_off，取最坏；★R106-② 起第三态
+            // mode.inert（「未生效 / Inert」）也是这枚钮的 overlay 串 ⇒ 同入最坏账）
             int worstModeState = 0;
             for (final String stateKey : new String[] { "gtit.pocket.config.switch.state_on",
-                "gtit.pocket.config.switch.state_off" }) {
+                "gtit.pocket.config.switch.state_off", "gtit.pocket.config.mode.inert" }) {
                 worstModeState = Math.max(worstModeState, residentLogicalWidth(formatLang(lang, stateKey)));
             }
             assertButtonLineFits(worstModeState, PocketConfigPanel.MODE_BUTTON_WIDTH, "魔法使模式小钮");
@@ -17495,6 +17509,7 @@ public class NekoPocketModelTest {
 
     /** 结晶模式与四模式那批判据共用的源文件路径（★与 S9a 那两张表同一个命名法）。 */
     private static final String R96_S9B_CRYSTAL_DRIVER = "src/main/java/com/miaokatze/gtit/common/items/pocket/mage/PocketCrystalDriver.java";
+    private static final String R96_S9B_CRYSTAL_SINK = "src/main/java/com/miaokatze/gtit/common/items/pocket/mage/CrystalSink.java";
     private static final String R96_S9B_DISTILL_DRIVER = "src/main/java/com/miaokatze/gtit/common/items/pocket/distill/PocketDistillDriver.java";
     private static final String R96_S9B_ITEM_EXIT = "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketItemExit.java";
     private static final String R96_S9B_MAGE_MODES = "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketMageModes.java";
@@ -17573,11 +17588,73 @@ public class NekoPocketModelTest {
     }
 
     /**
+     * ★R106 TP-A 段③的会话壳：在 {@link MageSessionShell} 之上只补<b>蒸馏计划腿</b>
+     * （{@code PocketDistillDriver#planDistillBatch(PocketSession, EssenceGate)}）会问到的三面
+     * （蒸馏两读 + 源质盘），其余面继承壳的"一被问就抛"——被问到 = 计划腿的边界变了，红给人看。
+     */
+    private static final class CrystalPlanSessionShell extends MageSessionShell {
+
+        private final ItemStack[] traySlots;
+        private final PocketEssenceStore tray;
+
+        CrystalPlanSessionShell(ItemStack carrier, ItemStack[] traySlots, PocketEssenceStore tray) {
+            super(UUID.randomUUID(), carrier);
+            this.traySlots = traySlots;
+            this.tray = tray;
+        }
+
+        @Override
+        public PocketEssenceStore essence() {
+            return tray;
+        }
+
+        @Override
+        public int distillInputSlots() {
+            return traySlots.length;
+        }
+
+        @Override
+        public ItemStack distillInputStack(int index) {
+            return index < 0 || index >= traySlots.length ? null : traySlots[index];
+        }
+    }
+
+    /**
+     * ★R106 TP-B 交付段的会话壳：只实现 {@code depositItem}（记录每次进栈枚数、按序给出实付、
+     * 不改写入参栈——与生产 {@code PocketSession#depositItem}「返回实付件数」的契约同形）；
+     * 其余面继承 {@link MageSessionShell} 的"一被问就抛" = {@code CrystalSink#ofSession} 薄适配
+     * 零越面的活证（适配器摸了任何别的会话面，本套件当场红，不是计数靠人眼）。
+     */
+    private static final class DepositSessionShell extends MageSessionShell {
+
+        final java.util.List<Integer> asked = new java.util.ArrayList<>();
+        private final int[] pays;
+        private int payAt;
+
+        DepositSessionShell(ItemStack carrier, int... pays) {
+            super(UUID.randomUUID(), carrier);
+            this.pays = pays;
+        }
+
+        @Override
+        public int depositItem(ItemStack stack) {
+            asked.add(Integer.valueOf(stack == null ? 0 : stack.stackSize));
+            return payAt < pays.length ? pays[payAt++] : 0;
+        }
+    }
+
+    /**
      * ★① 结晶模式（并入蒸馏腿分叉后的<b>静态面</b>）：缺省关；无独立挂载行、无独立节拍键
      * （旧「每秒抽干全盘」的 tick 宿主已退役，交付算法只剩 {@code deliverAsCrystals}）；
      * 合取点（主开关 ∧ 子模式位）与扣件循环、spill 兜底都单源住在蒸馏腿；出件口与交付漏斗
-     * 两条可达链在场。行为面（整枚出晶 / 按实付记账 / 部分交付回退 / 盘满 spill / 多堆拆分 /
-     * mint-null 防御）由 {@link #mageCrystalSettleForkDeliversRefundsAndSpills} 用桩件端到端钉。
+     * 两条可达链在场。行为面（整枚出晶 / 按实付记账 / ★R106-① 落点链「中栏 → 背包 → 脚下」 /
+     * 未付差额整份进 spill / 盘满不误停 / 多堆拆分 / mint-null 防御）由
+     * {@link #mageCrystalSettleForkDeliversRefundsAndSpills} 与
+     * {@link #mageCrystalPlanNullStoreAcceptsAllSlots} 用桩件端到端钉。
+     * ★R106-① 静态翻新四锚：主落点换轨（{@code ofSession} 在场）/ 结晶支不回盘
+     * （settleBatch 体内 {@code ess.add(} 归零）/ 落点只经 session API（CrystalSink 内
+     * {@code depositItem(} 恰 1、{@code setStorageStackAt(} 归零）/ lang 新文案门（「回退入源质盘」
+     * 双语归零、两份键集一致）。
      */
     private static void mageCrystalModeMintsWholeCrystalsAndNeverEatsEssence() {
         // ---- ① 缺省关（它改变蒸馏产出的去向，用户裁定）；每堆上界常量仍在 ----
@@ -17612,11 +17689,25 @@ public class NekoPocketModelTest {
                 regionContainsCode(distill, runAt, methodEnd(distill, runAt), "settleBatch("),
                 "★入账分叉真在 runBatch 里被问到（去向判据每轮到点现读，不跨轮缓存）");
             SimpleAssert.that(
+                regionContainsCode(distill, runAt, methodEnd(distill, runAt), "CrystalSink.ofSession("),
+                "★R106-① 主落点换轨在场：结晶交付走 ofSession（先口袋中栏、再玩家背包），" + "不是只进背包的 ofPlayer（读到 0 = 换轨没接上，结晶仍绕过中栏）");
+            SimpleAssert.that(
                 regionContainsCode(distill, runAt, methodEnd(distill, runAt), "for (int index : batch.sourceSlots)"),
                 "★扣件循环不在分叉里：settleBatch 之后逐 sourceSlots 无条件扣件（结晶开 ≠ 蒸馏不消耗格内物品）");
             SimpleAssert.that(
                 regionContainsCode(distill, runAt, methodEnd(distill, runAt), "CrystalSink.ofPlayerDropping("),
-                "★spill 兜底支在场（回退入盘后加不进的差额经兜底落点 ofPlayerDropping 掉脚下——" + "两级兜底的裁决点在蒸馏腿；落点内部走 giveOrDrop 恒全额实付）");
+                "★spill 兜底支在场（中栏/背包两级都满后的第三级=脚下：未付差额经 ofPlayerDropping "
+                    + "二次出晶掉脚下——三级落点链的裁决点在蒸馏腿；落点内部走 giveOrDrop 恒全额实付）");
+            // ★R106-①「结晶支不回盘」的源码面锚：settleBatch 体内 ess.add( 归零
+            // （结晶全程不碰源质盘；回写回退环 = 「绝不折回源质盘」的正面违反）
+            final int settleAt = methodStart(
+                distill,
+                "public static Map<String, Integer> settleBatch(Map<String, Integer> candidates");
+            SimpleAssert.that(settleAt >= 0, "定位 settleBatch（入账分叉本体）");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(distill, settleAt, methodEnd(distill, settleAt), "ess.add("),
+                "★R106-①：settleBatch 体内 ess.add( 归零（结晶支零源质化——ess 形参只服务关态 putAll 支）");
         }
         // ---- ⑦ 可达链第四跳 + 出件口位置（★口袋目录不直接产晶：那条既有锚与新功能并存的做法）----
         final java.util.List<String> host = sourceLinesOrNull(R96_MAGE_HOST_FILE);
@@ -17680,15 +17771,76 @@ public class NekoPocketModelTest {
             countPocketSourceCodeLines("addItemStackToInventory"),
             "★口袋与 GUI 两目录内 addItemStackToInventory 仍恰 4（读到 5 = 长出第五条出包腿，NEI 与 byte 截断那两条坑多一处入口）");
         SimpleAssert.eq(2, countPocketSourceCodeLines("entityDropItem"), "★同两目录内 entityDropItem 仍恰 2");
+        // ---- ⑨ ★R106-① 落点单源：CrystalSink 的会话变体是薄适配，不长出第二条落点算法 ----
+        final java.util.List<String> sink = sourceLinesOrNull(R96_S9B_CRYSTAL_SINK);
+        if (sink == null) {
+            System.out.println("[NOTE] 读不到 CrystalSink.java ⇒ 落点单源半边【未验】（★不是通过）");
+        } else {
+            SimpleAssert.eq(
+                1,
+                countCodeLinesIn(sink, "depositItem("),
+                "★落点只经 session API：CrystalSink 内 depositItem( 恰 1（ofSession 的那一处转发；" + "读到 0 = 换轨没接上，≥2 = 第二条落点腿）");
+            SimpleAssert.eq(
+                0,
+                countCodeLinesIn(sink, "setStorageStackAt("),
+                "★绝不直写中栏格（setStorageStackAt 是绕 isItemValid 的指定格写入面，落点场景禁用——"
+                    + "找格/合堆/跳 ghost/背包兜底只在 PocketInventory 一处实现）");
+        }
+        // ---- ⑩ ★R106-① lang 门：新落点文案落地、旧「回退入源质盘」双语归零、两份键集一致 ----
+        final java.util.List<String> langZh106 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
+        final java.util.List<String> langEn106 = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
+        if (langZh106 == null || langEn106 == null) {
+            System.out.println("[NOTE] 读不到 lang ⇒ R106 文案门【未验】（★不是通过）");
+        } else {
+            for (final String key : new String[] { "gtit.pocket.upgrade.mage.line.7",
+                "gtit.pocket.config.mode.crystal.hint" }) {
+                SimpleAssert.eq(1, countCodeLinesIn(langZh106, key + "="), "★" + key + " 在 zh 恰一行（改写不增删键）");
+                SimpleAssert.eq(1, countCodeLinesIn(langEn106, key + "="), "★" + key + " 在 en 恰一行（两份同步）");
+                checkLangValueHasNoBareDigit(langZh106, key);
+                checkLangValueHasNoBareDigit(langEn106, key);
+            }
+            SimpleAssert.eq(0, countRawLinesContaining(langZh106, "回退入源质盘"), "★旧「回退入源质盘」文案在 zh 归零（新语义下结晶绝不折回盘）");
+            SimpleAssert.eq(
+                0,
+                countRawLinesContaining(langEn106, "falls back into the tray"),
+                "★旧「falls back into the tray」文案在 en 归零（同上）");
+            SimpleAssert.eq(langKeysOf(langZh106), langKeysOf(langEn106), "★两份 lang 键集一致（改文案不动键面；任何单边增删键都会在这里红）");
+        }
+    }
+
+    /** lang 文件里包含给定片段的<b>原始行</b>数（含注释行；值域门用，不剥注释）。 */
+    private static int countRawLinesContaining(java.util.List<String> lines, String needle) {
+        int hits = 0;
+        for (final String line : lines) {
+            if (line.contains(needle)) {
+                hits++;
+            }
+        }
+        return hits;
+    }
+
+    /** lang 文件的<b>键集</b>（{@code key=value} 行的 key 面，按出现序去重；注释行不算）。 */
+    private static java.util.Set<String> langKeysOf(java.util.List<String> lines) {
+        final java.util.Set<String> keys = new java.util.LinkedHashSet<>();
+        for (final String line : lines) {
+            final int eq = line.indexOf('=');
+            if (eq <= 0 || line.startsWith("#")) {
+                continue;
+            }
+            keys.add(line.substring(0, eq));
+        }
+        return keys;
     }
 
     /**
      * ★①′ 结晶分叉的<b>行为面</b>：真入口 {@code PocketDistillDriver.settleBatch} /
      * {@code PocketCrystalDriver.deliverAsCrystals}，桩件 gate/sink + 真 {@code PocketEssenceStore}
      * （纯 JVM，不经真 EntityPlayer——runBatch 的扣件与掉脚那两腿要真玩家，其「在场与不分叉」由
-     * {@link #mageCrystalModeMintsWholeCrystalsAndNeverEatsEssence} 的源码面钉）。钉七件事：
-     * 结晶开 ⇒ 候选不进盘、按实付枚数出晶；部分交付差额回退入盘（按实收 add）；盘满差额进 spill；
-     * 无盘不抛；结晶关 ⇒ 旧 {@code putAll} 路径原样；超每堆上界按堆循环 mint；mint-null 整段回退。
+     * {@link #mageCrystalModeMintsWholeCrystalsAndNeverEatsEssence} 的源码面钉）。★R106-① 翻新后
+     * 钉八件事：结晶开 ⇒ 候选不进盘、按实付枚数出晶；<b>未付差额整份进 spill（绝不回退入盘）</b>；
+     * 盘满 ⇒ 结晶支对盘<b>零读写</b>（存量一分不动）；无盘不抛同形；结晶关 ⇒ 旧 {@code putAll}
+     * 路径原样；超每堆上界按堆循环 mint；mint-null 整段回退（★有意降级，见段⑦注释）；
+     * ⑧ {@code CrystalSink.ofSession} 薄适配零越面（只经 {@code depositItem}）。
      */
     private static void mageCrystalSettleForkDeliversRefundsAndSpills() {
         final java.util.Map<String, Integer> twoTags = new java.util.LinkedHashMap<>();
@@ -17708,27 +17860,28 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(4, sink.mints.get(1), "aer 整栈 4 枚进交付口");
         SimpleAssert
             .that(gate.asks.contains("ignis=30") && gate.asks.contains("aer=4"), "问桥的请求量 = 本轮候选原量：" + gate.asks);
-        // ---- ② sink 部分交付：未付差额回退入盘（按实收 add，不是按请求量记整份）----
+        // ---- ② sink 部分交付（★R106-① 翻新）：未付差额整份进 spill，绝不回退入盘 ----
         final PocketEssenceStore partialEss = new PocketEssenceStore();
         final StubCrystalSink tight = new StubCrystalSink();
-        tight.capacity = 12; // 背包只装得下 12 枚
+        tight.capacity = 12; // 中栏+背包两级总共只装得下 12 枚
         final java.util.Map<String, Integer> single = new java.util.LinkedHashMap<>();
         single.put("ignis", Integer.valueOf(30));
         final java.util.Map<String, Integer> partialSpill = PocketDistillDriver
             .settleBatch(single, partialEss, true, new StubCrystalGate(), tight);
-        SimpleAssert.that(partialSpill.isEmpty(), "★盘还装得下回退 ⇒ 无 spill");
-        SimpleAssert.eq(12, tight.paidList.get(0), "背包只实付 12 枚");
-        SimpleAssert.eq(18, partialEss.get("ignis"), "★未付的 18 点回退入盘（按实付记账；按请求量记 = 18 点凭空消失）");
-        // ---- ③ 盘满：回退装不下的差额进 spill 表 ----
+        SimpleAssert.eq(1, partialSpill.size(), "★未付差额整份进 spill 表（不再有「盘还装得下 ⇒ 无 spill」的中间层）");
+        SimpleAssert.eq(18, partialSpill.get("ignis"), "★未付的 18 点整份进 spill（由调用方再 mint、背包再试、仍满掉脚下）");
+        SimpleAssert.eq(0, partialEss.get("ignis"), "★未付差额不再回退入盘（R106-①：结晶全程不碰源质盘，ess 恒 0）");
+        SimpleAssert.eq(12, tight.paidList.get(0), "两级落点总共只实付 12 枚");
+        // ---- ③ 盘满（★R106-① 翻新）：结晶支对盘零读写，存量一分不动 ----
         final PocketEssenceStore fullEss = new PocketEssenceStore();
-        fullEss.add("ignis", 250); // 单 tag 上限 256 ⇒ 只剩 6 点余量
+        fullEss.add("ignis", 250); // 单 tag 上限 256 ⇒ 只剩 6 点余量（旧语义会把 24 点回退补进盘）
         final StubCrystalSink refuse = new StubCrystalSink();
-        refuse.refuse = true; // 背包一枚都塞不下
+        refuse.refuse = true; // 中栏+背包一枚都塞不下
         final java.util.Map<String, Integer> spill = PocketDistillDriver
             .settleBatch(single, fullEss, true, new StubCrystalGate(), refuse);
-        SimpleAssert.eq(1, spill.size(), "spill 表只有装不下的那一条");
-        SimpleAssert.eq(24, spill.get("ignis"), "★回退 30 − 盘余量 6 = 24 点进 spill（由调用方再 mint 掉脚下兜底）");
-        SimpleAssert.eq(256, fullEss.get("ignis"), "盘被回退补到单 tag 上限");
+        SimpleAssert.eq(1, spill.size(), "spill 表只有未付的那一条");
+        SimpleAssert.eq(30, spill.get("ignis"), "★整份 30 点进 spill（旧「30 − 盘余量 6 = 24」的回退算术已废）");
+        SimpleAssert.eq(250, fullEss.get("ignis"), "★盘预填 250 一分不动（旧断言「盘被回退补到 256」作废——结晶支对盘零读写）");
         // ---- ④ 盘缺席（ess == null）：回退全量进 spill，不抛 ----
         final java.util.Map<String, Integer> noTray = PocketDistillDriver
             .settleBatch(single, null, true, new StubCrystalGate(), refuse);
@@ -17761,6 +17914,10 @@ public class NekoPocketModelTest {
         }
         SimpleAssert.eq(0, bulkEss.get("ignis"), "全实付 ⇒ 无回退入盘");
         // ---- ⑦ mint-null 防御分支（TC 缺席 / 桥未装配 / tag 不认识）：整段回退、零凭空记账 ----
+        // ★R106-① 钉死有意行为：mint-null 在交付时刻出现 ⇒ 整段进回退表（生产里即 spill），
+        // 二次 mint 仍 null ⇒ 点数无载体——旧语义会经 ess.add 落盘救回，新语义下结晶绝不折回
+        // 源质盘（账本 ① 优先于该救援；生产不可达性论证见 r106-ret-crystal ②-G9：TC 缺席 ⇒
+        // candidates 根本非空不了）。与既有 spill 支「mint 不出的整段无载体可落」同族降级面。
         final StubCrystalGate nullGate = new StubCrystalGate();
         nullGate.produce = false;
         final java.util.Map<String, Integer> nullRefund = PocketCrystalDriver
@@ -17768,6 +17925,242 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(2, nullRefund.size(), "两条 tag 都整段进回退表");
         SimpleAssert.eq(30, nullRefund.get("ignis"), "ignis 整段 30 点回退（宁可不交付也不凭空记账）");
         SimpleAssert.eq(4, nullRefund.get("aer"), "aer 整段 4 点回退");
+        // ---- ⑧ CrystalSink.ofSession 薄适配：落点只经 session.depositItem，零越面 ----
+        final DepositSessionShell payShell = new DepositSessionShell(stack(1), 10, 12, 0);
+        final java.util.Map<String, Integer> bulkAgain = new java.util.LinkedHashMap<>();
+        bulkAgain.put("ignis", Integer.valueOf(150)); // 150 点 = 三堆（64 + 64 + 22），每堆各问一次 deliver
+        final java.util.Map<String, Integer> sessionRefund = PocketCrystalDriver
+            .deliverAsCrystals(bulkAgain, new StubCrystalGate(), CrystalSink.ofSession(payShell));
+        SimpleAssert.eq(3, payShell.asked.size(), "★deliver 调用次数 = 堆数（每堆一枚栈，不是逐枚）");
+        SimpleAssert.eq(64, payShell.asked.get(0), "第一堆整栈 64 枚进 depositItem");
+        SimpleAssert.eq(64, payShell.asked.get(1), "第二堆整栈 64 枚进 depositItem");
+        SimpleAssert.eq(22, payShell.asked.get(2), "第三堆余量 22 枚进 depositItem");
+        SimpleAssert.eq(
+            150 - 10 - 12 - 0,
+            sessionRefund.get("ignis"),
+            "★refund = 请求 − 各次实付之和（150 − 22 = 128；只认 deliver 返回值，不回读栈）");
+        // ★桩的其它会话面零调用 = 薄适配不摸中栏细节：DepositSessionShell 继承的未实现面一被问就抛，
+        // 本段跑完没抛 = ofSession 只碰了 depositItem 这一面（比计数断言更硬）
+        SimpleAssert.eq(
+            0,
+            CrystalSink.ofSession(null)
+                .deliver(stack(3)),
+            "★null 会话防御：返 0 不抛（薄适配自守）");
+    }
+
+    /**
+     * ★R106 D1（假满停摆）的判据：结晶分叉把 store 传 {@code null} 后，数组形态的判句必须把
+     * {@code null} 读作<b>免检放行</b>（产物不落盘 ⇒ 盘容量无关），而不是「无盘可退」的弃格——
+     * R104 起 {@code store == null} 判句为真 ⇒ 结晶开整轮 stalledFull 假满停摆（状态行误报
+     * 「源质格已满」）。生产里 null 只有结晶支一个来源（{@code session.essence()} 两实现恒非空
+     * ⇒ 无「真无盘」路径），非结晶支行为零变化（store 恒非空）。四段：
+     * ① null 免检正向；② 满盘正控（判句真在拦，不是恒放行）；③ 会话级（结晶开免检 ∧
+     * 主开关关照旧判盘——锁死「修 null ≠ 放弃关态判盘」）；④ 判句静态锚（防回潮）。
+     */
+    private static void mageCrystalPlanNullStoreAcceptsAllSlots() {
+        final StubGate gate = new StubGate();
+        final ItemStack aerItem = stackDistill(2, 0);
+        final ItemStack ignisItem = stackDistill(3, 1);
+        gate.putDistill(aerItem, TaumAspectAmounts.of(new String[] { "aer" }, new int[] { 30 }));
+        gate.putDistill(ignisItem, TaumAspectAmounts.of(new String[] { "ignis" }, new int[] { 40 }));
+        // ---- ① store=null（结晶分叉形态）⇒ 免检放行：全部可蒸格都收下 ----
+        final PocketDistillDriver.Batch free = PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { aerItem, ignisItem, null }, gate, null);
+        SimpleAssert.that(free.accepted, "★store=null ⇒ 免检放行：本轮收下候选（D1 正身：null 不是弃格）");
+        SimpleAssert.eq(2, free.sourceSlots.length, "两格都收（sourceSlots 长度 = 可蒸格数，null 空格不占位）");
+        SimpleAssert.eq(30, free.candidates.get("aer"), "aer 那格的产物进候选");
+        SimpleAssert.eq(40, free.candidates.get("ignis"), "ignis 那格的产物进候选");
+        SimpleAssert.eq(Boolean.FALSE, free.needsRoom, "免检 ⇒ 不判「停在满格」（否则结晶开整轮假满停摆）");
+        SimpleAssert.eq(Boolean.FALSE, free.overCap, "免检 ⇒ 不产 OVER_CAP 读数（判盘腿整体跳过）");
+        // ---- ② 正控（证明判句真在拦，不是被改成恒放行）：同格 + 满盘真 store ----
+        final PocketEssenceStore jammed = new PocketEssenceStore();
+        jammed.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG - 20); // 只剩 20 点空间 < 40（照 jammed 先例按符号造）
+        final PocketDistillDriver.Batch blocked = PocketDistillDriver
+            .planDistillBatch(new ItemStack[] { ignisItem }, gate, jammed);
+        SimpleAssert.eq(Boolean.FALSE, blocked.accepted, "★真盘 + 放不下 ⇒ 照旧一格不收（判句没被改成恒放行）");
+        SimpleAssert.eq(Boolean.TRUE, blocked.needsRoom, "关态/真盘照旧判「需要空间」（null 支修复不动真盘支）");
+        // ---- ③ 会话级（生产入口 planDistillBatch(session, gate) 的结晶支，此前无 JVM 直测）----
+        final NBTTagCompound crystalRoot = mageCarrierRoot();
+        PocketMageModes.write(crystalRoot, PocketConstants.MAGE_MODE_CRYSTAL, true);
+        final ItemStack carrier = stack(1);
+        carrier.setTagCompound(crystalRoot);
+        final PocketEssenceStore fullTray = new PocketEssenceStore();
+        fullTray.add("aer", PocketConstants.ESSENCE_CAP_PER_TAG);
+        fullTray.add("ignis", PocketConstants.ESSENCE_CAP_PER_TAG); // 两条 tag 都顶满：免检不过关就是假满停摆
+        final CrystalPlanSessionShell shell = new CrystalPlanSessionShell(
+            carrier,
+            new ItemStack[] { aerItem, ignisItem },
+            fullTray);
+        final PocketDistillDriver.Batch crystalPlan = PocketDistillDriver.planDistillBatch(shell, gate);
+        SimpleAssert.that(crystalPlan.accepted, "★结晶开（主开关 ∧ 子位）⇒ 会话入口免检：盘满不再误停蒸馏");
+        SimpleAssert.eq(Boolean.FALSE, crystalPlan.needsRoom, "结晶开的 stalledFull 位必须落得下去");
+        SimpleAssert.eq(Boolean.FALSE, crystalPlan.overCap, "结晶开不产 OVER_CAP 读数");
+        SimpleAssert.eq(PocketConstants.ESSENCE_CAP_PER_TAG, fullTray.get("ignis"), "免检 = 判盘腿被跳过，不是盘被动过（存量一分不差）");
+        // 主开关关：同一枚壳 ⇒ 照旧判真盘（修 null ≠ 放弃关态判盘）
+        PocketUpgradeSwitches.setOff(crystalRoot, PocketUpgradeType.MAGE, true);
+        final PocketDistillDriver.Batch offPlan = PocketDistillDriver.planDistillBatch(shell, gate);
+        SimpleAssert.eq(Boolean.FALSE, offPlan.accepted, "★主开关关 ⇒ store 非 null：照旧判真盘");
+        SimpleAssert.eq(Boolean.TRUE, offPlan.needsRoom, "关态 + 盘满 ⇒ 停在满格等玩家腾盘（旧形状原样）");
+        // ---- ④ 静态锚：判句本体形如 store != null && !canAcceptAll（回写 null ⇒ 弃格即 D1 回潮）----
+        final java.util.List<String> distill = sourceLinesOrNull(R96_S9B_DISTILL_DRIVER);
+        if (distill == null) {
+            System.out.println("[NOTE] 读不到 PocketDistillDriver.java ⇒ 判句锚半边【未验】（★不是通过）");
+        } else {
+            final int planAt = methodStart(
+                distill,
+                "public static Batch planDistillBatch(ItemStack[] slots, EssenceGate gate, PocketEssenceStore store) {");
+            SimpleAssert.that(planAt >= 0, "定位数组形态 planDistillBatch（判句所在方法）");
+            SimpleAssert.that(
+                regionContainsCode(
+                    distill,
+                    planAt,
+                    methodEnd(distill, planAt),
+                    "store != null && !store.canAcceptAll("),
+                "★判句 = store != null && !canAcceptAll（null 免检放行；回写成 store == null || 即 D1 回潮）");
+        }
+    }
+
+    /**
+     * ★R106 D2+②（TP-C）：模式位读数/写目标换<b>服务端真值同步通道</b>，配置面长出「未生效」第三态。
+     * <p>
+     * D2 正身：穿戴态（B 键开屏）容器不含饰品格 ⇒ 载体栈的 vanilla 槽同步永远不推那一份 ⇒ 旧读腿
+     * （{@code PocketConfigPanel#modeState} 直读 {@code carrierStackLive()}）在穿戴态读到陈旧镜像——
+     * 每次重开「重置」回旧档、点击还会按陈旧读数把服务端真值<b>写反</b>。修法 = 单枚
+     * {@code IntSyncValue}（逐字照 SYNC_UPGRADE_ACTIVE〔R97 R6〕先例）：服务端 getter 现读活查表载体
+     * （与写点 {@code performUpgradeModeToggle} 同一活查表 ⇒ 写后差分必推新值），客户端 setter 只写
+     * 镜像；写点（动作码 13 服务端链）零改。② 正身：位开 ∧ 主开关关 ⇒ 按钮字/tooltip 明示「未生效」，
+     * 不再读成「已开启」的假读数。D3 判据（coin.hint 吃币口径）并入 ④ lang 段。
+     */
+    private static void mageModeReadoutSyncsServerTruth() {
+        // ---- ① 行为段（纯函数面）：modeMask 的缺省读数——liveMageModeBits 的取数式
+        // （PocketElementStore.attach(root).modeMask()）不可脱离 MUI2 运行时直测 ⇒ 等价口径 =
+        // 直测缺省腿（写位翻转 / 摘键回缺省已由 mage_four_modes… 段②③ 覆盖，不重复抄）----
+        SimpleAssert.eq(
+            PocketConstants.MAGE_MODES_DEFAULT,
+            PocketElementStore.attach(new NBTTagCompound())
+                .modeMask(),
+            "★缺键 ⇒ 缺省位图（与旧读腿「缺键默认读数」同值 ⇒ 开屏播种首帧不闪变；取数式抄错缺省 = D2 修完首帧闪变）");
+        // ---- ② 静态段（NekoPocketPanel）：通道四件套（常量 / 注册 / 播种 / 双源 accessor）----
+        final java.util.List<String> panel = sourceLinesOrNull(R96_S9B_PANEL);
+        final java.util.List<String> conf = sourceLinesOrNull(R96_S9B_CONFIG_PANEL);
+        if (panel == null || conf == null) {
+            System.out.println("[NOTE] 读不到 NekoPocketPanel / PocketConfigPanel ⇒ D2 通道半边【未验】（★不是通过）");
+        } else {
+            // 计数 = 恰 2（常量声明 + syncValue 注册；播种行只调 getter 不点名键——照 R97 R6 先例
+            // clientUpgradeActiveBits 的播种同形。计划 §4.4 写的 ≥3 把播种行算进了键名计数，与先例现状不符）
+            SimpleAssert.eq(
+                2,
+                countCodeLinesIn(panel, "SYNC_MAGE_MODES"),
+                "★SYNC_MAGE_MODES 恰两处代码位（常量 + 注册；多一处 = 通道被旁路，少一处 = 没接上）");
+            final int reg = methodStart(panel, "private void registerSyncValues() {");
+            SimpleAssert.that(reg >= 0, "定位 registerSyncValues");
+            final int regEnd = methodEnd(panel, reg);
+            // ★注册行形状用空白无关正则（spotless 折行不致假阴；检法同 codec 用例对 commitMode 那条）
+            SimpleAssert.that(
+                textMatches(
+                    panel.subList(reg, regEnd),
+                    "syncValue\\s*\\(\\s*SYNC_MAGE_MODES\\s*,\\s*new\\s+IntSyncValue\\s*\\(\\s*this\\s*::\\s*liveMageModeBits"),
+                "★注册行在场：new IntSyncValue(this::liveMageModeBits, …)（getter = 服务端真值单源）");
+            final int keyAt = firstCodeLineWith(panel, reg, regEnd, "SYNC_MAGE_MODES");
+            SimpleAssert.that(
+                keyAt >= 0 && regionContainsCode(panel, keyAt, keyAt + 8, "syncManager.isClient()")
+                    && regionContainsCode(panel, keyAt, keyAt + 8, "clientMageModeBits = value;"),
+                "★客户端 setter 带 isClient 守卫且只写镜像（R85 N1 形状：setSource 默认 true ⇒ 双端各被调一次）");
+            final int ctor = methodStart(panel, "private NekoPocketPanel(PlayerInventoryGuiData data");
+            SimpleAssert.that(
+                ctor >= 0 && regionContainsCode(
+                    panel,
+                    ctor,
+                    methodEnd(panel, ctor),
+                    "clientMageModeBits = liveMageModeBits();"),
+                "★开屏播种在场（isClient 块内以 vanilla 镜像播种 ⇒ 首帧不回退，同 R97 R6；B 键/主手两路开屏都经构造器）");
+            SimpleAssert.that(
+                countCodeLinesIn(panel, "clientMageModeBits") >= 3,
+                "★镜像字段 ≥ 3 处代码位（声明/播种/setter/accessor；读到 < 3 = 有一件没接上）");
+            SimpleAssert
+                .that(countCodeLinesIn(panel, "liveMageModeBits") >= 2, "★真值 getter ≥ 2 处代码位（定义 + syncValue 引用 + 播种）");
+            final int acc = methodStart(panel, "boolean mageModeOnNow(int row)");
+            SimpleAssert.that(acc >= 0, "定位双源 accessor mageModeOnNow");
+            SimpleAssert.that(
+                regionContainsCode(panel, acc, methodEnd(panel, acc), "clientMageModeBits : liveMageModeBits()")
+                    && regionContainsCode(panel, acc, methodEnd(panel, acc), "PocketConfigPanel.modeBit(row)"),
+                "★双源 accessor（R86 铁律）：客户端读镜像、服务端读真值，行→位经 modeBit 单源");
+            // 主开关双源 accessor：「未生效」态的判据腿（住在主面板——配置面不点名型常量，门 F 与
+            // 「型 == MAGE」两张既有门不动；服务端支现读活载体真值，不读未播种的镜像字段）
+            final int master = methodStart(panel, "boolean mageMasterActiveNow()");
+            SimpleAssert.that(
+                master >= 0 && regionContainsCode(
+                    panel,
+                    master,
+                    methodEnd(panel, master),
+                    "clientUpgradeActive(PocketUpgradeType.MAGE)"),
+                "★「未生效」判据的主开关腿 = 复用既有 SYNC_UPGRADE_ACTIVE 镜像（不开第二根通道）");
+            // ---- ③ 静态段（PocketConfigPanel）：D2 正身断言（模式行不再读载体镜像）+ 三态在场 ----
+            SimpleAssert.eq(0, countCodeLinesIn(conf, "nextModeOn"), "★旧静态读腿 nextModeOn 退场（全仓唯一消费方已换镜像）");
+            SimpleAssert
+                .eq(2, countCodeLinesIn(conf, "mageModeOnNow("), "★mageModeOnNow 恰 2 处（点击目标 + 三态判据单源；多 = 散写第二份读数）");
+            final int rows = methodStart(
+                conf,
+                "private static void mageModeRows(NekoPocketPanel ui, ModularPanel panel) {");
+            SimpleAssert.that(rows >= 0, "定位 mageModeRows");
+            final int rowsEnd = methodEnd(conf, rows);
+            SimpleAssert.eq(
+                0,
+                countRegionCode(conf, rows, rowsEnd, "carrierStackLive()"),
+                "★D2 正身：模式行控件区零载体镜像直读（穿戴态陈旧读数/写反服务端的来源腿）");
+            SimpleAssert.eq(
+                2,
+                countRegionCode(conf, rows, rowsEnd, "modeReadoutOf(ui, row)"),
+                "★按钮字与 tooltip 追加行都经三态判据单源 modeReadoutOf（恰 2 处）");
+            SimpleAssert.that(
+                regionContainsCode(conf, rows, rowsEnd, "IKey.lang(MODE_INERT_HINT_KEY)"),
+                "★未生效态的 tooltip 追加行真的挂在模式按钮上");
+            final int ro = methodStart(conf, "private static ModeReadout modeReadoutOf(NekoPocketPanel ui, int row) {");
+            SimpleAssert.that(
+                ro >= 0 && regionContainsCode(conf, ro, methodEnd(conf, ro), "ui.mageMasterActiveNow()"),
+                "★第三态判据 = 位开 ∧ 主开关关（主开关态经双源 accessor，不折进子模式位图）");
+            SimpleAssert.that(
+                PocketConfigPanel.langKeys()
+                    .contains("gtit.pocket.config.mode.inert")
+                    && PocketConfigPanel.langKeys()
+                        .contains("gtit.pocket.config.mode.inert.hint"),
+                "★两枚新键进了本件键清单（对账单源）");
+        }
+        // ---- ④ lang 段（TP-C 两新键 + D3 coin.hint 吃币口径），两份同步 ----
+        for (final String face : new String[] { "zh_CN", "en_US" }) {
+            final java.util.List<String> lang = sourceLinesOrNull(
+                "src/main/resources/assets/gtit/lang/" + face + ".lang");
+            if (lang == null) {
+                System.out.println("[NOTE] 读不到 " + face + ".lang ⇒ R106 D2/②/D3 文案门【未验】（★不是通过）");
+                continue;
+            }
+            SimpleAssert.eq(1, countCodeLinesIn(lang, "gtit.pocket.config.mode.inert="), face + " 恰一行 mode.inert");
+            SimpleAssert
+                .eq(1, countCodeLinesIn(lang, "gtit.pocket.config.mode.inert.hint="), face + " 恰一行 mode.inert.hint");
+            checkLangValueHasNoBareDigit(lang, "gtit.pocket.config.mode.inert");
+            checkLangValueHasNoBareDigit(lang, "gtit.pocket.config.mode.inert.hint");
+            // D3：coin.hint 改「吃币充能」口径——产币主张的字样归零（整文件级只钉 coin 那句措辞：
+            // 结晶行的 "no essence is produced"（不产生源质）是另一件事的合法措辞，不在归零之列）
+            SimpleAssert.eq(1, countCodeLinesIn(lang, "gtit.pocket.config.mode.coin.hint="), face + " coin.hint 仍恰一行");
+            String coinHint = null;
+            for (final String line : lang) {
+                if (line.startsWith("gtit.pocket.config.mode.coin.hint=")) {
+                    coinHint = line;
+                }
+            }
+            SimpleAssert.that(
+                coinHint != null && !coinHint.contains("produced") && !coinHint.contains("恰产"),
+                "★coin.hint 行内产币主张字样归零（D3：驱动只吃币不产币，文案不许再许诺产出）");
+            checkLangValueHasNoBareDigit(lang, "gtit.pocket.config.mode.coin.hint");
+        }
+        final java.util.List<String> zhFinal = sourceLinesOrNull("src/main/resources/assets/gtit/lang/zh_CN.lang");
+        final java.util.List<String> enFinal = sourceLinesOrNull("src/main/resources/assets/gtit/lang/en_US.lang");
+        if (zhFinal != null) {
+            SimpleAssert.eq(0, countCodeLinesIn(zhFinal, "恰产"), "★zh 全文件「恰产」归零（产币主张的旧措辞）");
+        }
+        if (enFinal != null) {
+            SimpleAssert.eq(0, countCodeLinesIn(enFinal, "one cat coin is produced"), "★en 全文件「一枚猫猫币被产出」措辞归零");
+        }
     }
 
     // ================================================================== slotClick 大堆拦截（纯函数面）
@@ -18055,7 +18448,8 @@ public class NekoPocketModelTest {
             // ★钉值单源 = verify-pocket.sh 的 $LANG_KEY_PIN，键数一变改那一处即可，两处门不会再分叉）。
             // MOUNT_MAGE 那一段★不是★占位：四模式控件的写入链完整在场（build 的 case MOUNT_MAGE
             // → mountMage(ui, panel, type) → mageModeRows(ui, panel) 装配 → 每行一个 ButtonWidget →
-            // ui.requestUpgradeMode(row, nextModeOn(...)) → sendAction(ACTION_UPGRADE_MODE, arg) →
+            // ui.requestUpgradeMode(row, !ui.mageModeOnNow(row))（★R106 D2 起读同步镜像真值）→
+            // sendAction(ACTION_UPGRADE_MODE, arg) →
             // performUpgradeModeToggle → commitMode → PocketMageModes.write），
             // 且下面两条既有用例逐段问到了它（本方法 ②③ 两段 + ① 段闭环）。
             SimpleAssert.eq(
