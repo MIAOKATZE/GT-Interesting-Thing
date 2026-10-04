@@ -1447,11 +1447,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 获取机器的 GUI 实例
      * <p>
-     * ★R100 片 F（架构解耦）：经同包 {@link VendingGuiBridge} 委托到客户端注册的工厂
-     * （{@code ClientProxy#init} 注册 {@code NekoVMGuiV2::new}），本类不再静态 import
-     * {@code gui.vm} 包；由 GT5U 的 buildUI (final 方法) 调用（仅客户端触达）。
+     * ★R100 片 F（架构解耦）：经同包 {@link VendingGuiBridge} 委托到双端注册的工厂
+     * （{@code CommonProxy#init} 注册 {@code NekoVMGuiV2::new}），本类不再静态 import
+     * {@code gui.vm} 包；由 GT5U 的 buildUI (final 方法) 调用——MUI2 双端构建面板树，
+     * 服务端亦触达（v1.8.56 修正：v1.8.45~55 仅客户端注册致专用服右键不开屏）。
      *
-     * @return NekoVMGuiV2 实例（客户端）
+     * @return NekoVMGuiV2 实例（双端各建一份）
      */
     @Override
     protected gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui<?> getGui() {

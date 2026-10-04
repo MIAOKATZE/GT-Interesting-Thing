@@ -23371,8 +23371,9 @@ public class NekoPocketModelTest {
     /**
      * ★R100 片 F 验收 4 的常驻化：{@code src/main/java/com/miaokatze/gtit/common/} 树内
      * {@code import com.miaokatze.gtit.gui.*} 必须恒 0（注释行不算数），并钉两座桥的注册半边：
-     * 口袋面板桥在双端 {@code CommonProxy#init} 注册（MUI2 双端建树），售货机 GUI 桥只在客户端
-     * {@code ClientProxy#init} 注册（GUI 实例仅客户端创建）。★阳性对照：同一台扫描机对
+     * 两座桥都在双端 {@code CommonProxy#init} 注册（MUI2 双端建树；v1.8.56 起售货机 GUI 桥同侧——
+     * v1.8.45~v1.8.55 只在客户端注册，GT5U buildUI final 链服务端也构建面板树、getGui 双端触达，
+     * 专用服右键即炸）。★阳性对照：同一台扫描机对
      * {@code import com.miaokatze.gtit.common.} 必须读到 &gt;0 ⇒ 归零不是扫描机空转。
      * <p>
      * 行为半边顺带钉工厂委托契约：未注册 ⇒ {@code IllegalStateException}（可读的失败面）；
@@ -23406,16 +23407,25 @@ public class NekoPocketModelTest {
             SimpleAssert.that(
                 countCodeLinesIn(commonProxy, "NekoPocketPanel::build") >= 1,
                 "★注册的委托目标必须还是 NekoPocketPanel::build 本身（换目标 = 行为不再是零变化）");
+            // v1.8.56 注册点迁移：售货机 GUI 桥从 ClientProxy 迁到双端 CommonProxy（GT5U buildUI
+            // final 链在服务端也构建 MUI2 面板树、getGui 双端触达；只注册客户端 ⇒ 物理专用服工厂
+            // 恒 null，右键即抛 IllegalStateException、被 GT5U 右键守卫吞成不开屏，专用服日志实证）
+            SimpleAssert.that(
+                countCodeLinesIn(commonProxy, "VendingGuiBridge.register(") >= 1,
+                "★售货机 GUI 桥必须在双端的 CommonProxy#init 注册（v1.8.56 注册点迁移，对齐口袋面板桥范式）");
+            SimpleAssert.that(
+                countCodeLinesIn(commonProxy, "NekoVMGuiV2::new") >= 1,
+                "★注册的委托目标必须还是 NekoVMGuiV2::new 本身（换目标 = 行为不再是零变化）");
         }
         final java.util.List<String> clientProxy = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/main/ClientProxy.java");
         if (clientProxy == null) {
             System.out.println("[NOTE] 读不到 ClientProxy.java ⇒ 桥注册半边【未验】（★不是通过）");
         } else {
-            SimpleAssert.that(
-                countCodeLinesIn(clientProxy, "VendingGuiBridge.register(") >= 1
-                    && countCodeLinesIn(clientProxy, "NekoVMGuiV2::new") >= 1,
-                "★售货机 GUI 桥必须在客户端 ClientProxy#init 注册（GUI 实例仅客户端创建，专用服保持未注册态）");
+            SimpleAssert.eq(
+                0,
+                countCodeLinesIn(clientProxy, "VendingGuiBridge.register("),
+                "★v1.8.56 注册点迁移后 ClientProxy 不得再注册售货机 GUI 桥（注册收在双端 CommonProxy#init，客户端经 super.init 同享这一次注册，不得留重复注册点）");
         }
         // ---- ③ 工厂委托契约（行为半边）----
         boolean threwUnregistered = false;
