@@ -9,7 +9,7 @@
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg"></a>
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
-  <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta-3&RC-1" src="https://img.shields.io/badge/GTNH-2.9.0%20beta--3%26RC--1-orange.svg"></a>
+  <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta1-3 & RC1-2" src="https://img.shields.io/badge/GTNH-2.9.0%20beta1--3%20%26%20RC1--2-orange.svg"></a>
   <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.39" src="https://img.shields.io/badge/Release-1.8.39-green.svg"></a>
 </p>
 
@@ -25,7 +25,7 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 | GTNH         | GTIT   | Maintenance / 维护 |
 | ------------ | ------ | :--------------: |
-| 2.9.0 beta-1&2&3&RC1 | **1.8.0 +**（当前 / current） |        ✔️        |
+| 2.9.0 beta1-3 & RC1-2 | **1.8.0 +**（当前 / current） |        ✔️        |
 | 2.9.0 beta-1&2 | 1.0.0~1.7.53| ✔️ |
 | 2.8.4        | 0.1.x  |        ❌️        |
 
