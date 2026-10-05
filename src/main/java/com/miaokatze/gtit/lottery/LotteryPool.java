@@ -37,6 +37,9 @@ public class LotteryPool {
     /** 单个卡池最大条目数（轮盘环形边框最多 10 格，超出会越界导致动画失效） */
     public static final int MAX_ENTRIES = 10;
 
+    /** 游戏内卡池标签容量；新建池不得超出可访问的标签数量。 */
+    public static final int MAX_POOLS = 12;
+
     /** 卡池 ID（如 "neko"/"shimmering"） */
     private String id;
     /** 显示名称 */
@@ -90,14 +93,14 @@ public class LotteryPool {
     }
 
     /**
-     * 全部条目的权重总和（软保底加成后的动态权重不在此计算）
+     * 可抽条目的权重总和（兼容 int 返回值，超出时饱和；软保底动态权重不在此计算）
      */
     public int getTotalWeight() {
-        int total = 0;
+        long total = 0;
         for (LotteryEntry entry : entries) {
-            if (entry != null) total += Math.max(0, entry.getWeight());
+            if (entry != null && entry.isDrawable()) total += entry.getWeight();
         }
-        return total;
+        return (int) Math.min(Integer.MAX_VALUE, total);
     }
 
     /**
@@ -112,19 +115,27 @@ public class LotteryPool {
         if (entries.isEmpty()) return null;
         LotteryRarity guaranteed = pityConfig != null ? pityConfig.getGuaranteedRarity() : LotteryRarity.EPIC;
         List<LotteryEntry> candidates = new ArrayList<>();
-        int totalWeight = 0;
+        long totalWeight = 0;
         for (LotteryEntry entry : entries) {
-            if (entry != null && entry.getRarity()
-                .isAtLeast(guaranteed) && entry.getWeight() > 0) {
+            if (entry != null && entry.isDrawable()
+                && entry.getRarity()
+                    .isAtLeast(guaranteed)
+                && entry.getWeight() > 0) {
                 candidates.add(entry);
                 totalWeight += entry.getWeight();
             }
         }
         // 无保底稀有度条目：回退全池（配置容错）
         if (candidates.isEmpty()) {
-            return entries.get(random.nextInt(entries.size()));
+            for (LotteryEntry entry : entries) {
+                if (entry != null && entry.isDrawable()) {
+                    candidates.add(entry);
+                    totalWeight += entry.getWeight();
+                }
+            }
+            if (candidates.isEmpty()) return null;
         }
-        int roll = random.nextInt(totalWeight);
+        double roll = random.nextDouble() * totalWeight;
         for (LotteryEntry entry : candidates) {
             roll -= entry.getWeight();
             if (roll < 0) return entry;

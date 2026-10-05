@@ -24,6 +24,7 @@ import com.miaokatze.gtit.lottery.LotteryEntry;
 import com.miaokatze.gtit.lottery.LotteryManager;
 import com.miaokatze.gtit.lottery.LotteryNetworkManager;
 import com.miaokatze.gtit.lottery.LotteryPool;
+import com.miaokatze.gtit.lottery.LotteryPoolSlots;
 import com.miaokatze.gtit.lottery.LotteryRarity;
 import com.miaokatze.gtit.lottery.PityConfig;
 import com.miaokatze.gtit.util.NbtBase64Util;
@@ -129,7 +130,15 @@ final class LotteryEditActions {
             String currencyId = json.has("nekoCurrencyId") ? json.get("nekoCurrencyId")
                 .getAsString()
                 .trim() : "";
+            int weight = json.has("weight") ? Math.max(
+                0,
+                json.get("weight")
+                    .getAsInt())
+                : targetEntry.getWeight();
             if (!currencyId.isEmpty()) {
+                if (weight > 0 && NekoCurrencyRegistrar.getItemStack(currencyId, 1) == null) {
+                    throw new IllegalArgumentException("无效货币奖品 ID: " + currencyId);
+                }
                 // 货币奖品：清物品字段
                 targetEntry.setNekoCurrencyId(currencyId);
                 targetEntry.setItem(null);
@@ -139,9 +148,15 @@ final class LotteryEditActions {
                 String item = json.has("item") ? json.get("item")
                     .getAsString()
                     .trim() : "";
-                if (item.isEmpty()) {
+                if (item.isEmpty() && weight > 0) {
                     sendError(player, "物品奖品必须提供物品 ID（或在货币 ID 栏填写货币）");
                     return;
+                }
+                if (weight > 0) {
+                    String[] parts = item.split(":", 2);
+                    if (parts.length != 2 || GameRegistry.findItem(parts[0], parts[1]) == null) {
+                        throw new IllegalArgumentException("无效物品奖品 ID: " + item);
+                    }
                 }
                 targetEntry.setNekoCurrencyId(null);
                 targetEntry.setItem(item);
@@ -150,7 +165,7 @@ final class LotteryEditActions {
                         .getAsInt() : 0);
                 String nbt = json.has("nbtBase64") ? json.get("nbtBase64")
                     .getAsString() : null;
-                targetEntry.setNbtBase64(nbt == null || nbt.isEmpty() ? null : nbt);
+                targetEntry.setNbtBase64(item.isEmpty() || nbt == null || nbt.isEmpty() ? null : nbt);
             }
 
             // 数量区间 / 权重 / 稀有度
@@ -178,7 +193,7 @@ final class LotteryEditActions {
 
             sendSuccess(player, "抽奖条目已保存（卡池 " + poolId + "，条目 " + entryId + "）");
             if (!targetPool.validate()) {
-                sendInfo(player, "警告：卡池 " + poolId + " 当前总权重为 0 或无有效条目，已暂时从抽奖中隐藏");
+                sendInfo(player, "警告：卡池 " + poolId + " 当前总权重为 0 或无有效条目，尚未配置有效奖品，可继续编辑，暂不可抽取");
             }
             LOG.info(
                 "[NekoEdit] 玩家 {} 保存抽奖条目: pool={}, entry={}, currency={}, weight={}",
@@ -226,6 +241,17 @@ final class LotteryEditActions {
 
             JsonObject json = new JsonParser().parse(jsonPayload)
                 .getAsJsonObject();
+            if (targetPool.getCostItems()
+                .size() > 4 && json.has("costItems")) {
+                throw new IllegalArgumentException("该池消耗需求超过编辑器 4 槽容量，请通过配置文件编辑，原需求已保留");
+            }
+            LotteryPoolSlots.resize(
+                targetPool,
+                LotteryPoolSlots.requestedCount(
+                    json,
+                    targetPool.getEntries()
+                        .size(),
+                    false));
             applyPoolEditJson(targetPool, json);
 
             LotteryConfig.save(data);
@@ -234,7 +260,7 @@ final class LotteryEditActions {
 
             sendSuccess(player, "抽奖卡池已保存（" + poolId + "）");
             if (!targetPool.validate()) {
-                sendInfo(player, "警告：卡池 " + poolId + " 当前无有效条目，已暂时从抽奖中隐藏");
+                sendInfo(player, "警告：卡池 " + poolId + " 当前无有效条目，尚未配置有效奖品，可继续编辑，暂不可抽取");
             }
             LOG.info("[NekoEdit] 玩家 {} 保存抽奖卡池: pool={}", player.getCommandSenderName(), poolId);
         } catch (Exception e) {
@@ -247,9 +273,7 @@ final class LotteryEditActions {
      * 新建抽奖卡池（服务端）
      * <p>
      * id 规则：非空、仅字母/数字/下划线/连字符、不与现有池重复（id 创建后不可改）。
-     * 新池自动种子一条默认奖品条目（minecraft:apple ×1，权重 100，COMMON）——
-     * 空池 {@link LotteryPool#validate()} 为 false 会被抽奖隐藏，且轮盘无槽位可点击，
-     * 种子条目保证新池立即可经条目编辑器继续配置奖品。
+     * 新池默认 10 槽，允许 4..10 槽。空槽权重为 0，保留为可编辑草稿，配置奖品后才可抽取。
      *
      * @param player      玩家
      * @param jsonPayload JSON 序列化的卡池数据（含新池 id）
@@ -274,28 +298,28 @@ final class LotteryEditActions {
                 sendError(player, "卡池 ID 已存在: " + id);
                 return;
             }
+            if (data.pools.size() >= LotteryPool.MAX_POOLS) {
+                sendError(player, "卡池数量已达上限 " + LotteryPool.MAX_POOLS + "，请先删除不需要的卡池");
+                return;
+            }
 
             LotteryPool pool = new LotteryPool(id, id, "", 0, PityConfig.createDefault());
+            LotteryPoolSlots.resize(pool, LotteryPoolSlots.requestedCount(json, 0, true));
             applyPoolEditJson(pool, json);
 
-            // 种子默认奖品条目（理由见方法注释）
-            LotteryEntry seed = new LotteryEntry();
-            seed.setId("entry_1");
-            seed.setItem("minecraft:apple");
-            seed.setMeta(0);
-            seed.setMinAmount(1);
-            seed.setMaxAmount(1);
-            seed.setWeight(100);
-            seed.setRarity(LotteryRarity.COMMON);
-            pool.getEntries()
-                .add(seed);
             data.pools.add(pool);
 
             LotteryConfig.save(data);
             LotteryManager.INSTANCE.loadConfig();
             LotteryNetworkManager.sendSyncToAll();
 
-            sendSuccess(player, "抽奖卡池已创建（" + id + "），含 1 条种子奖品条目，可点击轮盘槽位继续编辑");
+            sendSuccess(
+                player,
+                "抽奖卡池已创建（" + id
+                    + "），含 "
+                    + pool.getEntries()
+                        .size()
+                    + " 个空奖品槽，可点击轮盘槽位继续编辑");
             LOG.info("[NekoEdit] 玩家 {} 新建抽奖卡池: pool={}", player.getCommandSenderName(), id);
         } catch (Exception e) {
             sendError(player, "新建抽奖卡池失败: " + e.getMessage());
@@ -366,6 +390,7 @@ final class LotteryEditActions {
      * {@code
      * {
      *   "name": "池名",
+     *   "entryCount": 10, // 缺省：新建 10 槽，编辑保留原数量
      *   "icon": { "item": "modid:name", "meta": 0, "nbtBase64": "..." },   // 缺省 = 清空图标
      *   "costItems": [ { "item": "modid:name", "meta": 0, "amount": 5, "nbtBase64": "..." } ],
      *   "pityEnabled": true,

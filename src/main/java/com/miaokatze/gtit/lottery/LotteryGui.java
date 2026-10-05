@@ -397,71 +397,9 @@ public class LotteryGui {
         return Math.min(pool.entries.size(), MAX_SLOTS);
     }
 
-    /**
-     * 动态布局列数（N=条目数 1..10 查表）：
-     * N=1→1；N=2/3/4→2（2x2）；N=5/6→3（3x2）；N=7..10→4（4x2 / 4x3）
-     */
-    private static int layoutCols(int n) {
-        if (n <= 1) return 1;
-        if (n <= 4) return 2;
-        if (n <= 6) return 3;
-        return 4;
-    }
-
-    /** 动态布局行数（与 {@link #layoutCols} 配套的查表）：N=1→1；N=2..8→2；N=9/10→3 */
-    private static int layoutRows(int n) {
-        if (n <= 1) return 1;
-        if (n <= 8) return 2;
-        return 3;
-    }
-
-    /**
-     * 槽位左上角坐标（轮盘区相对像素）：矩形环周长等弧长采样。
-     * <p>
-     * 环宽 w=(cols-1)×28、环高 h=(rows-1)×28，周长 P=2×(w+h)；
-     * 第 index 槽弧长 d=index×P/n，从矩形左上角沿边框顺时针走 d 像素定位
-     * （上边左→右 → 右边上→下 → 下边右→左 → 左边下→上），
-     * 与 {@link LotteryAnimationController} 步进方向一致（索引递增 = 顺时针绕圈）。
-     * 整个环在轮盘区（PAGE_WIDTH × WHEEL_H）水平/垂直居中。
-     * <p>
-     * N=10（4x3 满环）时步长恰为 28px，逐格坐标与原固定 4 列环形布局重合（零回归）。
-     *
-     * @param index 槽位序号 [0, n)
-     * @param n     槽位总数（= 条目数）
-     * @return {x, y} 槽位左上角的轮盘区相对坐标
-     */
+    /** 槽位沿矩形离散环格顺时针采样；10 槽保持原满环坐标。 */
     private static int[] slotTopLeft(int index, int n) {
-        int stride = SLOT_SIZE + SLOT_GAP; // 28
-        int cols = layoutCols(n);
-        int rows = layoutRows(n);
-        int w = (cols - 1) * stride; // 环宽（左右角槽左上角的横向距离）
-        int h = (rows - 1) * stride; // 环高
-        int perimeter = 2 * (w + h); // 环周长
-        // 等弧长采样：第 index 槽的弧长位置（N=1 时周长 0，d=0 落原点即居中格）
-        double d = perimeter == 0 ? 0 : (double) index * perimeter / n;
-        double x;
-        double y;
-        if (d < w) {
-            // 上边：左 → 右
-            x = d;
-            y = 0;
-        } else if (d < w + h) {
-            // 右边：上 → 下
-            x = w;
-            y = d - w;
-        } else if (d < 2 * w + h) {
-            // 下边：右 → 左
-            x = w - (d - w - h);
-            y = h;
-        } else {
-            // 左边：下 → 上
-            x = 0;
-            y = h - (d - 2 * w - h);
-        }
-        // 整环（含槽位自身 24px）在轮盘区居中
-        int offsetX = (PAGE_WIDTH - (w + SLOT_SIZE)) / 2;
-        int offsetY = (WHEEL_H - (h + SLOT_SIZE)) / 2;
-        return new int[] { offsetX + (int) Math.round(x), offsetY + (int) Math.round(y) };
+        return LotteryWheelLayout.slotTopLeft(index, n, PAGE_WIDTH, WHEEL_H);
     }
 
     /**
@@ -558,6 +496,11 @@ public class LotteryGui {
     private static void slotTooltip(com.cleanroommc.modularui.screen.RichTooltip t, int index) {
         LotteryEntry entry = entryAt(index);
         if (entry == null) return;
+        if (entry.isEmptyPlaceholder()) {
+            t.addLine(IKey.str("空奖品槽（" + entry.getId() + "）"));
+            t.addLine(IKey.str("进入编辑模式配置奖品，将权重设为正后启用"));
+            return;
+        }
         ItemStack stack = entry.getDisplayStack();
         String name = stack != null ? stack.getDisplayName() : entry.getId();
         LotteryRarity rarity = entry.getRarity();
@@ -570,9 +513,9 @@ public class LotteryGui {
         }
         LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
         if (pool != null && pool.entries.size() > 0) {
-            int totalWeight = 0;
+            long totalWeight = 0;
             for (LotteryEntry e : pool.entries) {
-                if (e != null) totalWeight += Math.max(0, e.getWeight());
+                if (e != null && e.isDrawable()) totalWeight += e.getWeight();
             }
             if (totalWeight > 0) {
                 String pct = String.format(Locale.ROOT, "%.2f", 100.0 * entry.getWeight() / totalWeight);
@@ -891,6 +834,16 @@ public class LotteryGui {
             }
             int pity = LotteryClientData.getPityCounter(pool.id);
             LotteryRarity guaranteed = LotteryRarity.fromString(pool.guaranteedRarity);
+            boolean hasPityPrize = false;
+            for (LotteryEntry entry : pool.entries) {
+                if (entry != null && entry.isDrawable()
+                    && entry.getRarity()
+                        .isAtLeast(guaranteed)) {
+                    hasPityPrize = true;
+                    break;
+                }
+            }
+            if (!hasPityPrize) return "未配置保底奖品";
             // 主体不带格式码（走 widget color 深灰），仅保底计数内嵌稀有度色，§r 恢复主体色
             return "距保底 " + guaranteed.getColor()
                 + pity
@@ -974,6 +927,10 @@ public class LotteryGui {
                     t.addLine(IKey.str(EnumChatFormatting.RED + "暂无可用卡池"));
                     return;
                 }
+                if (!hasDrawablePrize(pool)) {
+                    t.addLine(IKey.str(EnumChatFormatting.RED + "奖池尚未配置有效奖品，请进入编辑模式配置"));
+                    return;
+                }
                 // v1.7.6 costItems 口径：逐条列出消耗（货币条目带团队余额）
                 t.addLine(IKey.str(EnumChatFormatting.YELLOW + label + " 消耗："));
                 boolean anyCost = false;
@@ -1021,6 +978,7 @@ public class LotteryGui {
                 }
                 LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
                 if (pool == null) return false;
+                if (!hasDrawablePrize(pool)) return true;
                 // 动画旋转期间禁止连发（服务端也有幂等兜底）
                 if (LotteryAnimationController.getInstance()
                     .isSpinning()) {
@@ -1051,9 +1009,17 @@ public class LotteryGui {
      * 仍按 {@link #DRAW_BTN_TEXT_BUDGET} 显示列预算截断兜底（超长加「…」），
      * 根除价格文本溢出与相邻按钮重叠的问题。
      */
+    private static boolean hasDrawablePrize(LotteryClientData.PoolSummary pool) {
+        for (LotteryEntry entry : pool.entries) {
+            if (entry != null && entry.isDrawable()) return true;
+        }
+        return false;
+    }
+
     private static String drawButtonText(String label, int count) {
         LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
         if (pool == null) return EnumChatFormatting.DARK_GRAY + label;
+        if (!hasDrawablePrize(pool)) return EnumChatFormatting.DARK_GRAY + "未配置奖品";
         EnumChatFormatting color = currencyAffordable(pool, count) ? EnumChatFormatting.WHITE : EnumChatFormatting.RED;
         return color + truncateToWidth(label + " " + costSummary(pool, count), DRAW_BTN_TEXT_BUDGET);
     }

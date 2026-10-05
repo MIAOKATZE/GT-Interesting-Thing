@@ -140,9 +140,19 @@ public class LotteryEntry {
         return minAmount + new java.util.Random().nextInt(maxAmount - minAmount + 1);
     }
 
-    /**
-     * 是否为货币奖品
-     */
+    /** 仅无奖品、无 NBT 且权重为 0 的槽可缩掉。 */
+    public boolean isEmptyPlaceholder() {
+        return weight == 0 && (item == null || item.isEmpty())
+            && !isNekoPrize()
+            && (nbtBase64 == null || nbtBase64.isEmpty());
+    }
+
+    /** 正权重且指定奖品；注册表有效性在编辑保存时验证。 */
+    public boolean isDrawable() {
+        return weight > 0 && (isNekoPrize() || (item != null && !item.isEmpty()));
+    }
+
+    /** 是否为货币奖品。 */
     public boolean isNekoPrize() {
         return nekoCurrencyId != null && !nekoCurrencyId.isEmpty();
     }

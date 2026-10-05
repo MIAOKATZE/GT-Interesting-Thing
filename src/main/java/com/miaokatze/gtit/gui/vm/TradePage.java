@@ -132,7 +132,7 @@ public final class TradePage {
     /** v1.7.6 G1 邮件 sub-page 分页控制器 */
     private PagedWidget.Controller mailPageController;
     /** 池标签列预分配按钮上限（池数量超出后不渲染；显隐由 setEnabledIf + collapseDisabledChild 每帧驱动） */
-    private static final int MAX_POOL_TABS = 12;
+    private static final int MAX_POOL_TABS = com.miaokatze.gtit.lottery.LotteryPool.MAX_POOLS;
 
     // ==================== v1.7.33 T2/T3（QoL 块左移 + 标签翻页） ====================
 
@@ -691,7 +691,7 @@ public final class TradePage {
             newPoolButton.onSelected(gui.lotteryPoolEditor::beginNew);
             newPoolButton.tooltipBuilder(t -> {
                 t.addLine(IKey.str("新建卡池"));
-                t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白卡池（含 1 条种子奖品）"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "默认 10 个空奖品槽，可选 4～10 槽"));
             });
             newPoolButton.setEnabledIf(w -> gui.isEditModeActive());
             subTabColumn.child(newPoolButton);

@@ -21,6 +21,8 @@ import com.miaokatze.gtit.client.gui.NekoDraggableEditPanel;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.gui.vm.edit.EditOverlayController.EditOverlayType;
 import com.miaokatze.gtit.lottery.LotteryClientData;
+import com.miaokatze.gtit.lottery.LotteryPool;
+import com.miaokatze.gtit.lottery.LotteryPoolSlots;
 import com.miaokatze.gtit.lottery.LotteryRarity;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 
@@ -76,6 +78,8 @@ public final class LotteryPoolEditor {
     private boolean editPoolIsNew = false;
     /** 池编辑：显示名称 */
     private String editPoolName = "";
+    private int editPoolEntryCount = LotteryPoolSlots.DEFAULT_COUNT;
+    private int editPoolMinEntryCount = LotteryPoolSlots.MIN_NEW_COUNT;
     /** 池编辑：保底是否启用 */
     private boolean editPoolPityEnabled = true;
     /** 池编辑：软保底阈值 */
@@ -88,6 +92,8 @@ public final class LotteryPoolEditor {
     public void beginEdit(LotteryClientData.PoolSummary pool) {
         if (pool == null || pool.id == null || pool.id.isEmpty()) return;
         editPoolIsNew = false;
+        editPoolEntryCount = pool.entries.size();
+        editPoolMinEntryCount = Math.min(LotteryPoolSlots.MIN_NEW_COUNT, Math.max(1, editPoolEntryCount));
         // 卡池 ID 仅定位用，编辑面板禁止修改（防保底记录/中奖历史悬空，见计划风险点）
         editPoolId = pool.id;
         editPoolName = pool.name != null ? pool.name : "";
@@ -106,6 +112,8 @@ public final class LotteryPoolEditor {
 
     public void beginNew() {
         editPoolIsNew = true;
+        editPoolEntryCount = LotteryPoolSlots.DEFAULT_COUNT;
+        editPoolMinEntryCount = LotteryPoolSlots.MIN_NEW_COUNT;
         editPoolId = "";
         editPoolName = "";
         editPoolPityEnabled = true;
@@ -152,7 +160,7 @@ public final class LotteryPoolEditor {
 
     public NekoDraggableEditPanel buildEditPanel() {
         NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
-        editPanel.size(210, 205);
+        editPanel.size(210, 222);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
         editPanel.leftRel(0.5f)
@@ -213,6 +221,28 @@ public final class LotteryPoolEditor {
         nameField.tooltipBuilder(t -> t.addLine(IKey.str("卡池显示名称（留空则保持原名）")));
         nameField.tooltipAutoUpdate(true);
         // v1.7.19：TextFieldWidget 延迟到 PhantomItemSlot 之后添加（z-index 置顶）
+
+        fieldY += 17;
+        editPanel.child(
+            new TextWidget<>(IKey.str("奖池槽数:")).left(8)
+                .top(fieldY + 2));
+        TextFieldWidget entryCountField = new TextFieldWidget()
+            .value(new StringValue.Dynamic(() -> String.valueOf(editPoolEntryCount), val -> {
+                try {
+                    editPoolEntryCount = Math
+                        .max(editPoolMinEntryCount, Math.min(LotteryPool.MAX_ENTRIES, Integer.parseInt(val)));
+                } catch (NumberFormatException ignored) {}
+            }))
+            .setNumbers(1, LotteryPool.MAX_ENTRIES);
+        entryCountField.left(labelWidth)
+            .top(fieldY)
+            .size(fieldWidth, fieldHeight);
+        entryCountField.tooltipBuilder(t -> {
+            t.addLine(IKey.dynamic(() -> "槽数范围 " + editPoolMinEntryCount + ".." + LotteryPool.MAX_ENTRIES));
+            t.addLine(IKey.str("缩减前须清空尾部奖品并将权重设为 0"));
+        });
+        entryCountField.tooltipAutoUpdate(true);
+        editPanel.child(entryCountField);
 
         // ---- page 图标（PhantomItemSlot 拖入配置，支持 NBT；空槽 = 回退货币图标）----
         fieldY += 17;
@@ -397,6 +427,8 @@ public final class LotteryPoolEditor {
             } else if (editPoolId.isEmpty()) {
                 return;
             }
+            if (editPoolEntryCount < editPoolMinEntryCount || editPoolEntryCount > LotteryPool.MAX_ENTRIES) return;
+            json.addProperty("entryCount", editPoolEntryCount);
             json.addProperty("name", editPoolName);
             // page 图标（slot 0；空槽不发 icon 键 = 服务端清空图标，GUI 回退货币图标）
             ItemStack iconStack = editPoolItemHandler.getStackInSlot(0);

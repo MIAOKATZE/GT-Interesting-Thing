@@ -91,7 +91,7 @@ public class LotteryAnimationController {
         this.animatingPoolId = poolId == null ? "" : poolId;
         this.slotCount = slotCount;
         // 起步格承接上次停格（首次从 0 起）
-        this.startSlot = this.targetSlot >= 0 ? this.targetSlot : 0;
+        this.startSlot = this.targetSlot >= 0 ? this.targetSlot % slotCount : 0;
         // 目标格取模容错（保底替换可能出现 -1）
         int target = targetSlot < 0 ? 0 : targetSlot % slotCount;
         this.targetSlot = target;

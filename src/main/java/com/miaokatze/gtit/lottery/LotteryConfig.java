@@ -248,9 +248,9 @@ public class LotteryConfig {
     }
 
     /**
-     * 校验全部卡池：移除条目为空/总权重为 0 的卡池，并输出警告日志
+     * 校验全部卡池：移除缺少 ID/槽位的池，保留总权重为 0 的可编辑草稿
      *
-     * @return true 表示全部卡池合法
+     * @return true 表示全部卡池结构合法（不代表每个池都可抽取）
      */
     public static boolean validateAll(LotteryConfigData data) {
         if (data == null || data.pools == null) return false;
@@ -261,11 +261,15 @@ public class LotteryConfig {
                 allValid = false;
                 continue;
             }
-            if (!pool.validate()) {
-                LOG.warn("抽奖卡池 {} 校验失败（条目为空或总权重为 0），已跳过", pool.getId());
+            if (pool.getId() == null || pool.getId()
+                .isEmpty()
+                || pool.getEntries()
+                    .isEmpty()) {
+                LOG.warn("抽奖卡池 {} 缺少 ID 或槽位，已跳过", pool.getId());
                 allValid = false;
                 continue;
             }
+            if (!pool.validate()) LOG.warn("抽奖卡池 {} 尚未配置有效奖品，保留为可编辑草稿", pool.getId());
             valid.add(pool);
         }
         data.pools = valid;

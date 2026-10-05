@@ -68,3 +68,17 @@ tasks.register<JavaExec>("runPocketTest") {
     mainClass = "com.miaokatze.gtit.common.items.pocket.NekoPocketModelTest"
     classpath = storeTestRuntimeClasspath
 }
+
+// 抽奖槽数、草稿和轮盘布局纯 JVM 回归。
+tasks.register<JavaExec>("runLotterySlotsTest") {
+    group = "verification"
+    description = "Runs lottery slot editing, draft and wheel layout regressions."
+    mainClass = "com.miaokatze.gtit.lottery.LotterySlotsTest"
+    classpath = storeTestRuntimeClasspath
+    val scratchDir = layout.buildDirectory.dir("lottery-slots-test")
+    workingDir(scratchDir)
+    systemProperty("gtit.lottery.testScratch", "true")
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runLotterySlotsTest") }

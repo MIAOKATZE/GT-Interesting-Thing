@@ -94,7 +94,11 @@ public class LotteryManager {
         pools.clear();
         if (data != null && data.pools != null) {
             for (LotteryPool pool : data.pools) {
-                if (pool != null && pool.getId() != null && pool.validate()) {
+                if (pool != null && pool.getId() != null
+                    && !pool.getId()
+                        .isEmpty()
+                    && !pool.getEntries()
+                        .isEmpty()) {
                     pools.put(pool.getId(), pool);
                 }
             }
@@ -189,11 +193,11 @@ public class LotteryManager {
         List<NekoBigItemStack> itemNeeds) {
         for (NekoBigItemStack cost : pool.getCostItems()) {
             if (cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0) continue;
-            int total = cost.getStackSize() * Math.max(1, count);
+            int total = Math.multiplyExact(cost.getStackSize(), Math.max(1, count));
             String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
             if (cid != null) {
                 // 猫猫币条目：按币种聚合（同币种多条目合并扣款）
-                currencyNeeds.merge(cid, total, Integer::sum);
+                currencyNeeds.merge(cid, total, Math::addExact);
             } else {
                 // 普通物品条目：从机器输入槽扣除
                 itemNeeds.add(
@@ -222,7 +226,12 @@ public class LotteryManager {
         if (playerId == null || pool == null || count <= 0) return false;
         Map<String, Integer> currencyNeeds = new java.util.LinkedHashMap<>();
         List<NekoBigItemStack> itemNeeds = new ArrayList<>();
-        collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
+        try {
+            collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
+        } catch (ArithmeticException e) {
+            LOG.warn("抽奖消耗数量溢出，拒绝扣费: {}", pool.getId());
+            return false;
+        }
 
         // 货币余额校验
         if (!currencyNeeds.isEmpty()) {
@@ -262,7 +271,12 @@ public class LotteryManager {
     private boolean deductCostItems(UUID playerId, LotteryPool pool, int count, MTENekoVendingMachineV2 machine) {
         Map<String, Integer> currencyNeeds = new java.util.LinkedHashMap<>();
         List<NekoBigItemStack> itemNeeds = new ArrayList<>();
-        collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
+        try {
+            collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
+        } catch (ArithmeticException e) {
+            LOG.warn("抽奖消耗数量溢出，拒绝扣费: {}", pool.getId());
+            return false;
+        }
         // 免费池（无需求条目）：直接放行
         if (currencyNeeds.isEmpty() && itemNeeds.isEmpty()) return true;
 
@@ -331,7 +345,8 @@ public class LotteryManager {
         if (pity.isHardPityTriggered(currentCount)) {
             // 硬保底：强制取「保底稀有度及以上」条目
             selected = pool.getPityPrizeEntry();
-            isPity = true;
+            isPity = selected != null && selected.getRarity()
+                .isAtLeast(pity.getGuaranteedRarity());
         } else {
             // 常规权重随机（软保底对 ≥RARE 条目加权）
             double bonus = pity.getSoftPityBonus(currentCount);
@@ -364,21 +379,21 @@ public class LotteryManager {
         if (entries == null || entries.isEmpty()) return null;
         double totalWeight = 0;
         for (LotteryEntry entry : entries) {
-            if (entry == null || entry.getWeight() <= 0) continue;
+            if (entry == null || !entry.isDrawable()) continue;
             totalWeight += effectiveWeight(entry, pityBonus);
         }
         if (totalWeight <= 0) return null;
 
         double roll = random.nextDouble() * totalWeight;
         for (LotteryEntry entry : entries) {
-            if (entry == null || entry.getWeight() <= 0) continue;
+            if (entry == null || !entry.isDrawable()) continue;
             roll -= effectiveWeight(entry, pityBonus);
             if (roll < 0) return entry;
         }
         // 浮点误差兜底：返回最后一个有效条目
         for (int i = entries.size() - 1; i >= 0; i--) {
             LotteryEntry entry = entries.get(i);
-            if (entry != null && entry.getWeight() > 0) return entry;
+            if (entry != null && entry.isDrawable()) return entry;
         }
         return null;
     }
