@@ -37,6 +37,26 @@ import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
  */
 public class NekoTradeItemDisplay {
 
+    /** Describe complete choices instead of presenting the primary icon as a fixed item. */
+    public static void describeChoice(com.cleanroommc.modularui.screen.RichTooltip tooltip, NekoBigItemStack entry,
+        boolean output, String color) {
+        if (entry == null) return;
+        boolean multi = !entry.getAlternatives()
+            .isEmpty();
+        if (multi) tooltip.addLine(color + (output ? "随机产出一项：" : "完整满足以下一项："));
+        describeOption(tooltip, entry, output, color);
+        for (NekoBigItemStack option : entry.getAlternatives()) describeOption(tooltip, option, output, color);
+    }
+
+    private static void describeOption(com.cleanroommc.modularui.screen.RichTooltip tooltip, NekoBigItemStack option,
+        boolean output, String color) {
+        String name = option.hasOreDict() ? "矿词 [" + option.getOreDict() + "]"
+            : option.getBaseStack()
+                .getDisplayName();
+        tooltip.addLine(
+            color + "  " + option.getStackSize() + " × " + name + (output && option.hasOreDict() ? "（随机物品）" : ""));
+    }
+
     // ==================== 字段 ====================
 
     /** 交易在交易组内的索引（0-based） */
@@ -213,6 +233,9 @@ public class NekoTradeItemDisplay {
             return true;
         }
 
+        for (NekoBigItemStack slot : outputs) if (choiceMatchesSearch(slot, searchText)) return true;
+        for (NekoBigItemStack slot : inputs) if (choiceMatchesSearch(slot, searchText)) return true;
+
         // 检查显示物品名
         if (displayItem != null && displayItem.getBaseStack() != null) {
             String name = displayItem.getBaseStack()
@@ -247,6 +270,20 @@ public class NekoTradeItemDisplay {
             }
         }
 
+        return false;
+    }
+
+    private static boolean choiceMatchesSearch(NekoBigItemStack slot, String searchText) {
+        if (slot == null) return false;
+        for (NekoBigItemStack option : slot.getOptions()) {
+            if (option.getOreDict()
+                .toLowerCase(java.util.Locale.ROOT)
+                .contains(searchText)) return true;
+            if (option.getBaseStack()
+                .getDisplayName()
+                .toLowerCase(java.util.Locale.ROOT)
+                .contains(searchText)) return true;
+        }
         return false;
     }
 

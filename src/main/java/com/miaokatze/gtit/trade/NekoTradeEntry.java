@@ -200,6 +200,8 @@ public class NekoTradeEntry {
         private String item; // modid:name 格式
         private int meta;
         private int amount;
+        private String oreDict = "";
+        private List<ItemEntry> alternatives = new ArrayList<>();
         private String nbtBase64; // JSON 存储：Base64 编码的 NBT 二进制数据
         private transient NBTTagCompound nbt; // 运行时：NBT 数据
 
@@ -291,6 +293,23 @@ public class NekoTradeEntry {
         }
 
         // --- Getters & Setters ---
+
+        public String getOreDict() {
+            return oreDict == null ? "" : oreDict;
+        }
+
+        public void setOreDict(String oreDict) {
+            this.oreDict = oreDict == null ? "" : oreDict.trim();
+        }
+
+        public List<ItemEntry> getAlternatives() {
+            if (alternatives == null) alternatives = new ArrayList<>();
+            return alternatives;
+        }
+
+        public void setAlternatives(List<ItemEntry> alternatives) {
+            this.alternatives = alternatives == null ? new ArrayList<>() : alternatives;
+        }
 
         public String getItem() {
             return item;

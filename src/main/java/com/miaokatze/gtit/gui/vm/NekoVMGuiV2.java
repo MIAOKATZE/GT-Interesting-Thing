@@ -359,6 +359,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             deleteTradeConfirmDialog = new NekoConfirmationDialog("nekoV2:delete_trade_confirm");
             deleteTradeConfirmPanel = IPanelHandler.simple(panel, (parent, player) -> deleteTradeConfirmDialog, true);
             tradeEditor.setDeleteConfirm(deleteTradeConfirmDialog, deleteTradeConfirmPanel);
+            tradeEditor.initOreDialog(panel);
             // v1.8.17：默认贸易条目保存警告弹框（编辑默认条目点保存时先警告再确认保存）
             defaultTradeSaveConfirmDialog = new NekoConfirmationDialog("nekoV2:default_trade_save_confirm");
             defaultTradeSaveConfirmPanel = IPanelHandler

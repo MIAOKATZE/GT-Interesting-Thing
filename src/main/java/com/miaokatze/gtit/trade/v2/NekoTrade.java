@@ -99,7 +99,10 @@ public class NekoTrade {
     public List<NekoBigItemStack> getCurrencyEntries() {
         List<NekoBigItemStack> list = new ArrayList<>();
         for (NekoBigItemStack item : fromItems) {
-            if (item != null && NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) != null) {
+            if (item != null && !item.hasOreDict()
+                && item.getAlternatives()
+                    .isEmpty()
+                && NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) != null) {
                 list.add(item);
             }
         }
@@ -116,7 +119,8 @@ public class NekoTrade {
     public List<NekoBigItemStack> getNonCurrencyFromItems() {
         List<NekoBigItemStack> list = new ArrayList<>();
         for (NekoBigItemStack item : fromItems) {
-            if (item != null && NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) == null) {
+            if (item != null && (item.hasOreDict() || !item.getAlternatives()
+                .isEmpty() || NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) == null)) {
                 list.add(item);
             }
         }
@@ -131,7 +135,10 @@ public class NekoTrade {
     public List<NekoBigItemStack> getCurrencyToItems() {
         List<NekoBigItemStack> list = new ArrayList<>();
         for (NekoBigItemStack item : toItems) {
-            if (item != null && NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) != null) {
+            if (item != null && !item.hasOreDict()
+                && item.getAlternatives()
+                    .isEmpty()
+                && NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) != null) {
                 list.add(item);
             }
         }
@@ -146,7 +153,8 @@ public class NekoTrade {
     public List<NekoBigItemStack> getNonCurrencyToItems() {
         List<NekoBigItemStack> list = new ArrayList<>();
         for (NekoBigItemStack item : toItems) {
-            if (item != null && NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) == null) {
+            if (item != null && (item.hasOreDict() || !item.getAlternatives()
+                .isEmpty() || NekoCurrencyRegistrar.getNekoCurrencyId(item.getBaseStack()) == null)) {
                 list.add(item);
             }
         }
@@ -338,6 +346,14 @@ public class NekoTrade {
      */
     public boolean isRecordNBT() {
         return recordNBT;
+    }
+
+    String getLegacyCurrencyId() {
+        return currencyId;
+    }
+
+    int getLegacyCurrencyCost() {
+        return currencyCost;
     }
 
     // --- Setters ---

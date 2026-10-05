@@ -6,7 +6,10 @@ import java.util.List;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.oredict.OreDictionary;
+
+import com.miaokatze.gtit.trade.NekoTradeEntry.ItemEntry;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -21,6 +24,7 @@ public class NekoBigItemStack {
     private int stackSize;
     private String oreDict;
     private ItemStack baseStack;
+    private List<NekoBigItemStack> alternatives = new ArrayList<>();
 
     /**
      * 从 ItemStack 构造，stackSize 取自原物品栈数量
@@ -108,6 +112,11 @@ public class NekoBigItemStack {
         if (baseStack.stackTagCompound != null) {
             nbt.setTag("tag", baseStack.stackTagCompound);
         }
+        if (!alternatives.isEmpty()) {
+            NBTTagList list = new NBTTagList();
+            for (NekoBigItemStack option : alternatives) list.appendTag(option.writeToNBT());
+            nbt.setTag("Alternatives", list);
+        }
         return nbt;
     }
 
@@ -141,7 +150,18 @@ public class NekoBigItemStack {
             stack.stackTagCompound = nbt.getCompoundTag("tag");
         }
 
-        return new NekoBigItemStack(stackSize, oreDict, stack);
+        NekoBigItemStack result = new NekoBigItemStack(stackSize, oreDict, stack);
+        NBTTagList list = nbt.getTagList("Alternatives", 10);
+        if (list.tagCount() > 15) return null;
+        for (int i = 0; i < list.tagCount(); i++) {
+            NBTTagCompound child = list.getCompoundTagAt(i);
+            if (child.getTagList("Alternatives", 10)
+                .tagCount() > 0) return null;
+            NekoBigItemStack option = loadFromNBT(child);
+            if (option == null) return null;
+            result.alternatives.add(option);
+        }
+        return result;
     }
 
     /**
@@ -169,7 +189,9 @@ public class NekoBigItemStack {
      * @return 副本
      */
     public NekoBigItemStack copy() {
-        return new NekoBigItemStack(stackSize, oreDict, baseStack.copy());
+        NekoBigItemStack result = new NekoBigItemStack(stackSize, oreDict, baseStack.copy());
+        for (NekoBigItemStack option : alternatives) result.alternatives.add(option.copy());
+        return result;
     }
 
     /**
@@ -198,6 +220,62 @@ public class NekoBigItemStack {
 
     public String getOreDict() {
         return oreDict;
+    }
+
+    public void setOreDict(String oreDict) {
+        this.oreDict = oreDict == null ? "" : oreDict.trim();
+    }
+
+    public List<NekoBigItemStack> getAlternatives() {
+        return alternatives;
+    }
+
+    public void setAlternatives(List<NekoBigItemStack> options) {
+        alternatives = options == null ? new ArrayList<>() : options;
+    }
+
+    public List<NekoBigItemStack> getOptions() {
+        List<NekoBigItemStack> options = new ArrayList<>();
+        options.add(this);
+        options.addAll(alternatives);
+        return options;
+    }
+
+    public static NekoBigItemStack fromItemEntry(ItemEntry entry) {
+        if (entry == null) return null;
+        if (entry.getAmount() <= 0 || entry.getAlternatives()
+            .size() > 15) return null;
+        ItemStack icon = entry.toItemStack();
+        if (icon == null && !entry.getOreDict()
+            .isEmpty()) {
+            for (ItemStack candidate : OreDictionary.getOres(entry.getOreDict())) {
+                if (candidate != null && candidate.getItem() != null) {
+                    icon = candidate.copy();
+                    break;
+                }
+            }
+            if (icon == null) icon = new ItemStack(net.minecraft.init.Items.paper);
+            if (icon.getItemDamage() == OreDictionary.WILDCARD_VALUE) icon.setItemDamage(0);
+        }
+        if (icon == null) return null;
+        NekoBigItemStack result = new NekoBigItemStack(entry.getAmount(), entry.getOreDict(), icon);
+        for (ItemEntry option : entry.getAlternatives()) {
+            if (option == null || !option.getAlternatives()
+                .isEmpty()) return null;
+            NekoBigItemStack converted = fromItemEntry(option);
+            if (converted == null) return null;
+            result.alternatives.add(converted);
+        }
+        return result;
+    }
+
+    public ItemEntry toItemEntry(boolean recordNBT) {
+        ItemEntry result = ItemEntry.fromItemStack(baseStack, recordNBT);
+        result.setAmount(stackSize);
+        result.setOreDict(oreDict);
+        for (NekoBigItemStack option : alternatives) result.getAlternatives()
+            .add(option.toItemEntry(recordNBT));
+        return result;
     }
 
     public ItemStack getBaseStack() {

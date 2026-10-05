@@ -150,7 +150,8 @@ public class NekoTradeDisplayWidgetV2 extends ItemDisplayWidget implements Inter
             int amount = toItem.getStackSize();
             String name = toItem.getBaseStack()
                 .getDisplayName();
-            builder.addLine(EnumChatFormatting.AQUA + (amount > 1 ? amount + "x " : "") + name);
+            com.miaokatze.gtit.client.gui.NekoTradeItemDisplay
+                .describeChoice(builder, toItem, true, EnumChatFormatting.AQUA.toString());
         }
 
         // --- 需求列表（绿色）---
@@ -182,7 +183,8 @@ public class NekoTradeDisplayWidgetV2 extends ItemDisplayWidget implements Inter
                 String name = fromItem.getBaseStack()
                     .getDisplayName();
                 String oreDict = fromItem.hasOreDict() ? " (" + fromItem.getOreDict() + ")" : "";
-                builder.addLine(EnumChatFormatting.DARK_GREEN + "  " + amount + "x " + name + oreDict);
+                com.miaokatze.gtit.client.gui.NekoTradeItemDisplay
+                    .describeChoice(builder, fromItem, false, EnumChatFormatting.DARK_GREEN.toString());
             }
         }
 

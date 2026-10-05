@@ -1,6 +1,6 @@
 package com.miaokatze.gtit.trade.v2;
 
-import static com.miaokatze.gtit.trade.v2.EditActionsCommon.parseItemEntries;
+import static com.miaokatze.gtit.trade.v2.EditActionsCommon.parseTradeItemEntries;
 import static com.miaokatze.gtit.trade.v2.EditActionsCommon.sendError;
 import static com.miaokatze.gtit.trade.v2.EditActionsCommon.sendSuccess;
 
@@ -135,10 +135,10 @@ final class TradeEditActions {
             List<NekoTradeEntry.ItemEntry> fromItems = new ArrayList<>();
             List<NekoTradeEntry.ItemEntry> toItems = new ArrayList<>();
             if (json.has("fromItems")) {
-                fromItems = parseItemEntries(json.getAsJsonArray("fromItems"));
+                fromItems = parseTradeItemEntries(json.getAsJsonArray("fromItems"));
             }
             if (json.has("toItems")) {
-                toItems = parseItemEntries(json.getAsJsonArray("toItems"));
+                toItems = parseTradeItemEntries(json.getAsJsonArray("toItems"));
             }
 
             LOG.info(
@@ -304,12 +304,14 @@ final class TradeEditActions {
 
             // v1.7.6 G3② 货币解绑：新条目不写旧 currency 字段（构造器默认 null）
             if (json.has("fromItems")) {
-                entry.setFromItems(parseItemEntries(json.getAsJsonArray("fromItems")));
+                entry.setFromItems(parseTradeItemEntries(json.getAsJsonArray("fromItems")));
             }
             if (json.has("toItems")) {
-                entry.setToItems(parseItemEntries(json.getAsJsonArray("toItems")));
+                entry.setToItems(parseTradeItemEntries(json.getAsJsonArray("toItems")));
             }
 
+            if (entry.getToItems() == null || entry.getToItems()
+                .isEmpty()) throw new IllegalArgumentException("交易必须有产出");
             data.getTrades()
                 .add(entry);
 

@@ -169,6 +169,7 @@ public class NekoTradeConfig {
                 for (Path file : stream) {
                     try {
                         String json = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+                        NekoTradeJson.validateDepth(json);
                         TabFileData tab = GSON.fromJson(json, TabFileData.class);
                         if (tab == null || tab.getTrades() == null) continue;
                         // 文件名是权威 tabId（防止文件内容与文件名不一致）
@@ -361,6 +362,7 @@ public class NekoTradeConfig {
     public static synchronized NekoTradeData fromJson(String json) {
         if (json != null && !json.isEmpty()) {
             try {
+                NekoTradeJson.validateDepth(json);
                 NekoTradeData data = GSON.fromJson(json, NekoTradeData.class);
                 if (data != null && data.getTrades() != null) {
                     return data;
@@ -1132,6 +1134,7 @@ public class NekoTradeConfig {
     private static void migrateFromLegacy(Path legacyPath) {
         try {
             String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
+            NekoTradeJson.validateDepth(json);
             NekoTradeData data = GSON.fromJson(json, NekoTradeData.class);
             if (data == null || data.getTrades() == null) {
                 // 内置组抑制开启时不再落盘旧 42 条默认，避免极端场景（损坏 legacy 文件）

@@ -210,11 +210,10 @@ public class NekoTradeRegistryV2 {
             // 遍历 fromItems（普通物品，不含猫猫币）
             if (entry.getFromItems() != null) {
                 for (NekoTradeEntry.ItemEntry itemEntry : entry.getFromItems()) {
-                    ItemStack stack = itemEntry.toItemStack();
-                    if (stack != null) {
-                        trade.getFromItems()
-                            .add(new NekoBigItemStack(stack));
-                    }
+                    NekoBigItemStack converted = NekoBigItemStack.fromItemEntry(itemEntry);
+                    if (converted == null) return false;
+                    trade.getFromItems()
+                        .add(converted);
                 }
             }
 
@@ -227,18 +226,18 @@ public class NekoTradeRegistryV2 {
                     trade.getFromItems()
                         .add(new NekoBigItemStack(currencyStack));
                 } else {
-                    LOG.warn("交易 {} 的货币类型 {} 无法合成物品条目，已跳过", entry.getId(), currencyId);
+                    LOG.warn("交易 {} 的货币类型 {} 无法合成物品条目，拒绝注册", entry.getId(), currencyId);
+                    return false;
                 }
             }
 
             // 遍历 toItems
             if (entry.getToItems() != null) {
                 for (NekoTradeEntry.ItemEntry itemEntry : entry.getToItems()) {
-                    ItemStack stack = itemEntry.toItemStack();
-                    if (stack != null) {
-                        trade.getToItems()
-                            .add(new NekoBigItemStack(stack));
-                    }
+                    NekoBigItemStack converted = NekoBigItemStack.fromItemEntry(itemEntry);
+                    if (converted == null) return false;
+                    trade.getToItems()
+                        .add(converted);
                 }
             }
 

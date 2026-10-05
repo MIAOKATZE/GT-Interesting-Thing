@@ -1526,6 +1526,82 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         }
 
         @Override
+        public java.util.List<ItemStack> getMEItems(
+            java.util.List<com.miaokatze.gtit.trade.v2.NekoBigItemStack> required, boolean strict) {
+            java.util.List<ItemStack> result = new java.util.ArrayList<>();
+            if (uplinkHatch == null || !uplinkHatch.isActive()) return result;
+            try {
+                appeng.api.storage.IMEMonitor<appeng.api.storage.data.IAEItemStack> inventory = uplinkHatch.getProxy()
+                    .getStorage()
+                    .getItemInventory();
+                for (appeng.api.storage.data.IAEItemStack entry : inventory.getStorageList()) {
+                    boolean relevant = false;
+                    ItemStack actual = entry.getItemStack();
+                    for (com.miaokatze.gtit.trade.v2.NekoBigItemStack slot : required) {
+                        for (com.miaokatze.gtit.trade.v2.NekoBigItemStack option : slot.getOptions()) {
+                            if (option.matches(actual, strict)) {
+                                relevant = true;
+                                break;
+                            }
+                        }
+                        if (relevant) break;
+                    }
+                    if (!relevant) continue;
+                    appeng.api.storage.data.IAEItemStack request = entry.copy();
+                    request.setStackSize(Math.min(Integer.MAX_VALUE, entry.getStackSize()));
+                    appeng.api.storage.data.IAEItemStack available = inventory.extractItems(
+                        request,
+                        appeng.api.config.Actionable.SIMULATE,
+                        new appeng.api.networking.security.MachineSource(uplinkHatch));
+                    if (available == null || available.getStackSize() <= 0) continue;
+                    ItemStack stack = available.getItemStack();
+                    stack.stackSize = (int) Math.min(Integer.MAX_VALUE, available.getStackSize());
+                    result.add(stack);
+                }
+            } catch (Throwable t) {
+                LOG.error("[NekoVMV2] Unable to read exact ME inventory", t);
+                result.clear();
+            }
+            return result;
+        }
+
+        @Override
+        public ItemStack extractExactFromME(ItemStack stack) {
+            if (uplinkHatch == null || !uplinkHatch.isActive()) return null;
+            try {
+                appeng.api.storage.data.IAEItemStack extracted = uplinkHatch.getProxy()
+                    .getStorage()
+                    .getItemInventory()
+                    .extractItems(
+                        appeng.util.item.AEItemStack.create(stack),
+                        appeng.api.config.Actionable.MODULATE,
+                        new appeng.api.networking.security.MachineSource(uplinkHatch));
+                if (extracted == null) return null;
+                ItemStack result = extracted.getItemStack();
+                result.stackSize = (int) extracted.getStackSize();
+                return result;
+            } catch (Throwable t) {
+                LOG.error("[NekoVMV2] Exact ME extraction failed", t);
+                return null;
+            }
+        }
+
+        @Override
+        public void refundME(ItemStack stack) {
+            appeng.api.storage.data.IAEItemStack remainder = uplinkHatch == null
+                ? appeng.util.item.AEItemStack.create(stack)
+                : injectItemToUplink(stack);
+            if (remainder != null && remainder.getStackSize() > 0) {
+                ItemStack pending = remainder.getItemStack();
+                pending.stackSize = (int) remainder.getStackSize();
+                for (ItemStack part : new com.miaokatze.gtit.trade.v2.NekoBigItemStack(pending).getCombinedStacks())
+                    outputBuffer.add(part);
+                newBufferedOutputs = true;
+                if (getBaseMetaTileEntity() != null) getBaseMetaTileEntity().markDirty();
+            }
+        }
+
+        @Override
         public boolean canExtractFromME(ItemStack stack) {
             if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return false;
             // simulate=true 模拟提取，返回未满足的剩余数量；0 表示全部满足

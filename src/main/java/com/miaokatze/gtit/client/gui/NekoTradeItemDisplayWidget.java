@@ -526,7 +526,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
             int amount = output.getStackSize();
             String name = output.getBaseStack()
                 .getDisplayName();
-            builder.addLine(EnumChatFormatting.AQUA + (amount > 1 ? amount + "x " : "") + name);
+            NekoTradeItemDisplay.describeChoice(builder, output, true, EnumChatFormatting.AQUA.toString());
         }
 
         // --- 需求列表（绿色）---
@@ -548,7 +548,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
                 String name = input.getBaseStack()
                     .getDisplayName();
                 String oreDict = input.hasOreDict() ? " (" + input.getOreDict() + ")" : "";
-                builder.addLine(EnumChatFormatting.DARK_GREEN + "  " + amount + "x " + name + oreDict);
+                NekoTradeItemDisplay.describeChoice(builder, input, false, EnumChatFormatting.DARK_GREEN.toString());
             }
         }
 

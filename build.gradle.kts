@@ -82,3 +82,16 @@ tasks.register<JavaExec>("runLotterySlotsTest") {
 }
 
 tasks.named("check") { dependsOn("runLotterySlotsTest") }
+
+// 交易槽 OR、矿词、共享库存分配和随机产出的真实物品回归。
+tasks.register<JavaExec>("runTradeMatchingTest") {
+    group = "verification"
+    description = "Runs multi-option and ore-dictionary trade matching regressions."
+    mainClass = "com.miaokatze.gtit.trade.v2.NekoTradeMatchingTest"
+    classpath = storeTestRuntimeClasspath
+    val scratchDir = layout.buildDirectory.dir("trade-matching-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runTradeMatchingTest") }

@@ -1,5 +1,5 @@
 {
-  "version": 7,
+  "version": 8,
   "trades": [
     {
       "id": "MIAO1",
@@ -1224,8 +1224,8 @@
       "currency": null,
       "fromItems": [
         {
-          "item": "gregtech:gt.metaitem.01",
-          "meta": 11032,
+          "item": "minecraft:iron_ingot",
+          "meta": 0,
           "amount": 1,
           "nbtBase64": null
         }
