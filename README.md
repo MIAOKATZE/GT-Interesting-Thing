@@ -10,7 +10,7 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta1-3 & RC1-2" src="https://img.shields.io/badge/GTNH-2.9.0%20beta1--3%20%26%20RC1--2-orange.svg"></a>
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.39" src="https://img.shields.io/badge/Release-1.8.39-green.svg"></a>
+  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.60" src="https://img.shields.io/badge/Release-1.8.60-green.svg"></a>
 </p>
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
@@ -29,9 +29,9 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 | 2.9.0 beta-1&2 | 1.0.0~1.7.53| ✔️ |
 | 2.8.4        | 0.1.x  |        ❌️        |
 
-The current version comes from `gradle.properties` (`RELEASE_VERSION`); development history is recorded under `plan/workflow/`. No external release status is claimed here.
+Download the packaged mod from [GitHub Releases](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases). The current version comes from `gradle.properties` (`RELEASE_VERSION`); development history is recorded under `plan/workflow/`.
 
-当前版本取自 `gradle.properties` 的 `RELEASE_VERSION`；开发历史见 `plan/workflow/`。此处不声明对外发布状态。
+从 [GitHub Releases](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases) 下载成品模组。当前版本取自 `gradle.properties` 的 `RELEASE_VERSION`；开发历史见 `plan/workflow/`。
 
 ***
 
@@ -80,23 +80,35 @@ Three trade types supported:
 
 - `tabId`: Which tab the trade appears in
 - `orderId`: Sort order within the tab
-- `currency`: Neko Coin cost (optional, auto-detected from inventory)
-- `fromItems`: Required items (optional for pure coin trades)
+- `currency`: Legacy Neko Coin cost field; current V2 trades store coin requirements in `fromItems`
+- `fromItems`: Required items, including Neko Coins and alternative or ore-dictionary choices
 - `toItems`: Reward items
 - `cooldown`: Cooldown in seconds (0 = no cooldown)
 - `bqQuestId`: BQ quest requirement (empty = no requirement)
+
+### Alternative & Ore Dictionary Matching / 多重匹配与矿词匹配
+
+<p align="center"><img src="README/neko-trade-matching.png" width="580" alt="多重需求与随机产出：圆石或石头换取灰化土、泥土或草方块"><br><em>满足一种需求，每笔随机产出一项 / Fulfill one choice and receive one random reward</em></p>
+
+In edit mode, **Alt + left-click** enables adding alternatives to either a requirement or a reward slot. Each choice keeps its own amount: a requirement can be “8 iron ingots or 4 copper ingots,” and each transaction must fully satisfy one choice. **Middle-click** opens the ore dictionary dialog; enter a custom ore name and a fixed amount. Items sharing that ore name can jointly satisfy the requirement, while the slot item serves as its icon and initial ore suggestion.
+
+编辑模式下，**Alt + 左键**开启格子的多重叠加，再放入物品即可追加选项；需求格与产出格均可使用。每个选项保留自己的数量，例如“铁锭 ×8 或铜锭 ×4”，每笔交易完整满足其中一项。**中键**打开矿词弹框，可输入自定义矿词和固定数量；同矿词的不同物品可以凑足需求，格内物品仅作为图标和初始矿词提示。空白格悬停也会显示操作说明。
+
+Each reward slot independently chooses one alternative per transaction. An ore dictionary reward then randomly selects one registered item for that ore name. For example, the screenshot trades 64 cobblestone **or** 64 stone for 64 podzol, dirt **or** grass blocks. Default trades retain exact item matching.
+
+每笔交易中，每个产出格随机选择一个选项；矿词产出再随机选择该矿词注册的一种物品。图中示例为“圆石 ×64 或石头 ×64”换取“灰化土 ×64、泥土 ×64 或草方块 ×64”中的随机一项。默认交易仍采用精确物品匹配。
 
 ### GUI & Tabs / 界面与标签页
 
 <p align="center"><img src="README/trade.png" width="300" alt="交易界面 / Trade GUI"><br><em>交易界面 / Trade GUI</em></p>
 
-- **Dynamic tabs / 动态标签页**: 3 default tabs + unlimited custom tabs (add via command with held item as icon)
+- **Dynamic tabs / 动态标签页**: 3 protected default tabs + custom tabs; adding, deleting or editing a tab updates the open GUI without reopening it
 - **Neko Coin display / 猫猫币显示**: Real-time balance display with expandable details
 - **Coin intercept slot / 猫猫币拦截槽**: Automatically routes Neko Coins from inventory to wallet
 - **Sort & Search / 排序与搜索**: Sort by order ID or name, with text search filtering
 - **BGM / 背景音乐**: 3 random BGM variants with 2-second fade in/out, max 50% volume
 - **BQ lock display / BQ 锁定显示**: Locked trades show golden "LOCKED" text with cooldown overlay; cooling-down trades show cyan cooldown text
-- **动态标签页**：3 个默认标签页 + 无限自定义标签页（通过指令添加，手持物品作图标）
+- **动态标签页**：3 个受保护默认标签页 + 自定义标签页；新增、删除或编辑后同步更新打开中的 GUI，无需关闭重开
 - **猫猫币显示**：实时余额显示，可展开详情
 - **猫猫币拦截槽**：自动将背包中的猫猫币导入钱包
 - **排序与搜索**：按顺序 ID 或名称排序，支持文字搜索过滤

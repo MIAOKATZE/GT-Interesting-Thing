@@ -960,6 +960,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      */
     @Override
     public void onMainPanelUpdate() {
+        if (tradePage.refreshPagesIfChanged()) {
+            mainPanel.setForceRefresh();
+        }
         if (defaultTradeSyncDialogShown || defaultTradeSyncPromptSync == null || defaultTradeSyncPanel == null) {
             return;
         }
@@ -1478,6 +1481,14 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 lotteryEntryEditor.beginEntry(pool, entry, slotIndex);
             }
         };
+    }
+
+    void rebuildPreAllocatedWidgets() {
+        displayedTradesTiles.clear();
+        displayedTradesList.clear();
+        initPreAllocatedWidgets();
+        // 新内容池必须全量填充，避免 Shift/Ctrl 保序增量更新一直读到空池。
+        onTradeDisplayUpdated(mainPanel.formatTrades());
     }
 
     private void initPreAllocatedWidgets() {

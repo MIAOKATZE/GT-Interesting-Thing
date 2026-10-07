@@ -30,6 +30,13 @@ public class NekoPageRegistry {
     /** 标签页ID → 标签页条目，保持插入顺序 */
     private static final Map<Integer, NekoPageEntry> PAGES = new LinkedHashMap<>();
 
+    /** 注册表快照版本，包含空页增删和名称、图标更新。 */
+    private static long version;
+
+    public static synchronized long getVersion() {
+        return version;
+    }
+
     /** TradeCategory 枚举池，用于 GUI 标签页映射 */
     private static final TradeCategory[] CATEGORY_POOL = { TradeCategory.MISC, TradeCategory.MAGIC,
         TradeCategory.COMPONENTS, TradeCategory.RAW, TradeCategory.FARMING, TradeCategory.CHEMISTRY, TradeCategory.BEES,
@@ -49,18 +56,19 @@ public class NekoPageRegistry {
     /**
      * 从配置加载标签页
      */
-    public static void loadPages() {
+    public static synchronized void loadPages() {
         PAGES.clear();
         NekoPageConfig.NekoPageData data = NekoPageConfig.load();
         for (NekoPageEntry entry : data.getPages()) {
             PAGES.put(entry.getId(), entry);
         }
+        version++;
     }
 
     /**
      * 保存当前标签页到配置
      */
-    public static void savePages() {
+    public static synchronized void savePages() {
         NekoPageConfig.NekoPageData data = new NekoPageConfig.NekoPageData();
         data.setPages(new ArrayList<>(PAGES.values()));
         NekoPageConfig.save(data);
@@ -74,7 +82,7 @@ public class NekoPageRegistry {
      * @param iconStack 图标ItemStack
      * @return 操作结果消息
      */
-    public static String addPage(int id, String name, ItemStack iconStack) {
+    public static synchronized String addPage(int id, String name, ItemStack iconStack) {
         if (id < 1) {
             return "标签页ID必须为正整数";
         }
@@ -87,6 +95,7 @@ public class NekoPageRegistry {
         entry.setIconFromItemStack(iconStack);
 
         PAGES.put(id, entry);
+        version++;
         savePages();
 
         if (isOverwrite) {
@@ -102,7 +111,7 @@ public class NekoPageRegistry {
      * @param id 标签页ID
      * @return 操作结果消息
      */
-    public static String deletePage(int id) {
+    public static synchronized String deletePage(int id) {
         if (id < 1) {
             return "标签页ID必须为正整数";
         }
@@ -117,6 +126,7 @@ public class NekoPageRegistry {
         }
 
         PAGES.remove(id);
+        version++;
         savePages();
 
         // 将该标签页的交易移动到标签页3（其他）
@@ -137,7 +147,7 @@ public class NekoPageRegistry {
     /**
      * 获取标签页名称
      */
-    public static String getPageName(int id) {
+    public static synchronized String getPageName(int id) {
         NekoPageEntry entry = PAGES.get(id);
         return entry != null ? entry.getName() : "未知";
     }
@@ -145,7 +155,7 @@ public class NekoPageRegistry {
     /**
      * 获取标签页图标ItemStack
      */
-    public static ItemStack getPageIcon(int id) {
+    public static synchronized ItemStack getPageIcon(int id) {
         NekoPageEntry entry = PAGES.get(id);
         if (entry == null) return null;
 
@@ -178,35 +188,35 @@ public class NekoPageRegistry {
     /**
      * 获取所有标签页条目（按ID排序）
      */
-    public static List<NekoPageEntry> getAllPages() {
+    public static synchronized List<NekoPageEntry> getAllPages() {
         return new ArrayList<>(PAGES.values());
     }
 
     /**
      * 获取标签页数量
      */
-    public static int getPageCount() {
+    public static synchronized int getPageCount() {
         return PAGES.size();
     }
 
     /**
      * 判断标签页是否存在
      */
-    public static boolean hasPage(int id) {
+    public static synchronized boolean hasPage(int id) {
         return PAGES.containsKey(id);
     }
 
     /**
      * 获取所有标签页ID
      */
-    public static List<Integer> getPageIds() {
+    public static synchronized List<Integer> getPageIds() {
         return new ArrayList<>(PAGES.keySet());
     }
 
     /**
      * 获取标签页条目
      */
-    public static NekoPageEntry getPage(int id) {
+    public static synchronized NekoPageEntry getPage(int id) {
         return PAGES.get(id);
     }
 
@@ -220,7 +230,7 @@ public class NekoPageRegistry {
      *
      * @param data 服务端同步的标签页配置（{@link NekoPageConfig#fromJson} 产物）
      */
-    public static void applySyncedPages(NekoPageConfig.NekoPageData data) {
+    public static synchronized void applySyncedPages(NekoPageConfig.NekoPageData data) {
         if (data == null || data.getPages() == null) return;
         PAGES.clear();
         for (NekoPageEntry entry : data.getPages()) {
@@ -228,6 +238,7 @@ public class NekoPageRegistry {
                 PAGES.put(entry.getId(), entry);
             }
         }
+        version++;
         LOG.info("[NekoSync] 客户端已应用同步标签页配置，共 {} 个标签页", PAGES.size());
     }
 

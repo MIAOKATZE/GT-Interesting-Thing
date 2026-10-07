@@ -89,7 +89,7 @@ public final class TradePage {
 
     // ==================== 同步值字段（页面状态，G6 分域下沉） ====================
 
-    /** 当前标签页索引（C2S：客户端切换标签时发送到服务端） */
+    /** 当前标签页 ID（C2S：客户端切换标签时发送到服务端） */
     private IntSyncValue currentTabSync;
     /** v1.7.0 主标签索引（C2S：客户端切换主标签时发送到服务端） */
     private IntSyncValue mainTabSync;
@@ -104,6 +104,10 @@ public final class TradePage {
 
     /** 当前标签页索引（默认 0=FAVOURITES 分类） */
     private int currentTabId = 0;
+    /** 同步使用稳定的标签 ID，避免删除前页后索引指向其他分类。 */
+    private int selectedTabId = -1;
+    private long lastPageRegistryVersion;
+    private Flow tradeContent;
     /** 搜索文本 */
     private String searchText = "";
     /** 排序模式：0=SMART, 1=ALPHABET */
@@ -186,6 +190,12 @@ public final class TradePage {
 
     public TradePage(NekoVMGuiV2 gui) {
         this.gui = gui;
+        loadTradeCategories();
+    }
+
+    private void loadTradeCategories() {
+        lastPageRegistryVersion = NekoPageRegistry.getVersion();
+        tradeCategories.clear();
         // 初始化交易分类列表：FAVOURITES 始终第一位，其余按 NekoPageRegistry 动态生成
         tradeCategories.add(NekoTradeCategory.FAVOURITES);
 
@@ -222,8 +232,8 @@ public final class TradePage {
      * @param playerId    玩家 UUID（与宿主同源）
      */
     public void registerSyncValues(PanelSyncManager syncManager, UUID playerId) {
-        // --- 当前标签页索引（C2S）---
-        currentTabSync = new IntSyncValue(() -> currentTabId, val -> { currentTabId = val; });
+        // --- 当前标签页 ID（C2S）---
+        currentTabSync = new IntSyncValue(() -> selectedTabId, val -> { selectedTabId = val; });
         currentTabSync.allowC2S();
         syncManager.syncValue("nekoV2CurrentTab", currentTabSync);
 
@@ -310,10 +320,7 @@ public final class TradePage {
 
     /** 当前激活分类（宿主 PanelCallback 委托，方法体逐字搬移） */
     public NekoTradeCategory getActiveCategory() {
-        if (currentTabId >= 0 && currentTabId < tradeCategories.size()) {
-            return tradeCategories.get(currentTabId);
-        }
-        return NekoTradeCategory.UNKNOWN;
+        return NekoTradeCategory.ofTabId(selectedTabId);
     }
 
     /** 恢复上次会话的标签位置与搜索文本（原宿主 onRestoreSettings 方法体逐字搬移） */
@@ -346,6 +353,39 @@ public final class TradePage {
             searchBar.setText(searchText);
         }
 
+    }
+
+    /** 客户端 tick 检测注册表变化，保留稳定 tabId 并原位更新非同步子树。 */
+    public boolean refreshPagesIfChanged() {
+        if (tradeContent == null || lastPageRegistryVersion == NekoPageRegistry.getVersion()) return false;
+        NekoTradeCategory selected = getActiveCategory();
+        boolean selectedWasVisible = tabPage == currentTabId / PAGE_SIZE;
+        List<NekoTradeCategory> previous = new ArrayList<>(tradeCategories);
+        loadTradeCategories();
+        currentTabId = resolveSelectedIndex(tradeCategories, selected, currentTabId);
+        selectedTabId = tradeCategories.get(currentTabId)
+            .getTabId();
+        NekoPageButtonV2.lastPage = currentTabId;
+        if (!previous.equals(tradeCategories)) {
+            // removeAll 会 dispose 整棵旧树，已销毁的内容 Widget 不可重复挂载。
+            tradeContent.removeAll();
+            gui.rebuildPreAllocatedWidgets();
+            tradeContent.child(createTradePagedWidget());
+            tradeContent.scheduleResize();
+        }
+        if (currentTabSync != null) currentTabSync.setValue(selectedTabId);
+        tabPage = resolveTabPage(tabPage, currentTabId, tradeCategories.size(), selectedWasVisible);
+        rebuildTabColumnChildren();
+        return true;
+    }
+
+    static int resolveSelectedIndex(List<NekoTradeCategory> categories, NekoTradeCategory selected, int oldIndex) {
+        int selectedIndex = categories.indexOf(selected);
+        return selectedIndex >= 0 ? selectedIndex : Math.max(0, Math.min(oldIndex, categories.size() - 1));
+    }
+
+    static int resolveTabPage(int oldPage, int selectedIndex, int count, boolean selectedWasVisible) {
+        return selectedWasVisible ? selectedIndex / PAGE_SIZE : Math.max(0, Math.min(oldPage, (count - 1) / PAGE_SIZE));
     }
 
     // ==================== UI 组件创建 ====================
@@ -404,7 +444,7 @@ public final class TradePage {
      * <p>
      * v1.7.33 T3 标签翻页：本列每次只为本页标签 [tabPage*{@link #PAGE_SIZE},
      * min(tabPage*PAGE_SIZE+PAGE_SIZE, size)) 创建按钮（全局索引传 {@link NekoPageButtonV2}，
-     * tabController/lastPage/currentTabSync 语义不变）；tradeCategories.size() ≥ {@link #PAGE_SIZE}
+     * tabController/lastPage 仍使用索引，currentTabSync 使用稳定 tabId）；tradeCategories.size() ≥ {@link #PAGE_SIZE}
      * 时在第 11 槽正下方固定一行 ◀/▶ 翻页行（短页以透明占位保持行位固定）。
      * build 与翻页共用 {@link #rebuildTabColumnChildren()} 同一条子树填充路径
      * （翻页重建走 MUI2 ParentWidget 公有 removeAll/child + late initialise 官方路径；
@@ -981,7 +1021,11 @@ public final class TradePage {
             mainColumn.child(searchBar);
 
             // --- 交易列表（PagedWidget + 预分配 Widget）---
-            mainColumn.child(createTradePagedWidget());
+            tradeContent = Flow.column()
+                .width(PANEL_WIDTH - 12)
+                .height(146);
+            tradeContent.child(createTradePagedWidget());
+            mainColumn.child(tradeContent);
 
             // 注：gui.volumePanel 已在 build() 的 client 块外部创建（v1.6.24 修复，与 VM 原版一致）
         }
@@ -1020,6 +1064,13 @@ public final class TradePage {
             .background(NekoGuiTextures.TRADE_BACKGROUND);
         // 交易列表高度与 V1 保持一致
         paged.height(146);
+        paged.initialPage(currentTabId);
+        paged.onPageChange(page -> {
+            currentTabId = page;
+            selectedTabId = tradeCategories.get(page)
+                .getTabId();
+            if (currentTabSync != null) currentTabSync.setValue(selectedTabId);
+        });
 
         // 为每个分类创建一个页面
         for (NekoTradeCategory category : tradeCategories) {

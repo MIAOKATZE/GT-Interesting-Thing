@@ -95,3 +95,13 @@ tasks.register<JavaExec>("runTradeMatchingTest") {
 }
 
 tasks.named("check") { dependsOn("runTradeMatchingTest") }
+
+tasks.register<JavaExec>("runTradePageRefreshTest") {
+    group = "verification"
+    description = "Runs trade tab selection, pagination and registry revision regression checks."
+    mainClass = "com.miaokatze.gtit.gui.vm.TradePageRefreshTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+}
+
+tasks.named("check") { dependsOn("runTradePageRefreshTest") }
