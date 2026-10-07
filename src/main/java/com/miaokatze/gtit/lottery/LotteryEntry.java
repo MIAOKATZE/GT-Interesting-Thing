@@ -127,7 +127,7 @@ public class LotteryEntry {
         ItemStack stack = new ItemStack(itemObj, Math.max(1, amount), meta);
         NBTTagCompound tag = getNbt();
         if (tag != null) {
-            stack.setTagCompound(tag);
+            stack.setTagCompound((NBTTagCompound) tag.copy());
         }
         return stack;
     }

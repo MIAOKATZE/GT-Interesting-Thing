@@ -286,7 +286,7 @@ public class NekoTradeEntry {
             }
 
             if (tagToApply != null) {
-                stack.setTagCompound(tagToApply);
+                stack.setTagCompound((NBTTagCompound) tagToApply.copy());
             }
 
             return stack;

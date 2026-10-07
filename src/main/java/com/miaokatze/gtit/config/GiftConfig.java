@@ -216,7 +216,6 @@ public class GiftConfig {
             this.itemId = itemId;
             this.amount = amount;
             this.meta = meta;
-            this.nbt = nbt;
             this.nbtBase64 = NbtBase64Util.nbtToBase64(nbt);
         }
 
@@ -239,7 +238,7 @@ public class GiftConfig {
                 nbt = tagToApply;
             }
             if (tagToApply != null) {
-                stack.setTagCompound(tagToApply);
+                stack.setTagCompound((NBTTagCompound) tagToApply.copy());
             }
             return stack;
         }
