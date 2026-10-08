@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Fill in your birthday (§1MM-dd§r format) and custom anniversaries on the memorial page of the sign-in tab; festivals are configured server-wide by the admin.\n\nWhen the day arrives, a blessing mail lands automatically — §2the birthday template even carries a cake§r.\n\nTick this box — the cat has confirmed its blessings meet production standards.",
+      "desc:8": "§3§lBirthdays and anniversaries§r\nSet your birthday in the sign-in tab using MM-dd, and add up to §15§r custom anniversaries. Administrators maintain festival and blessing templates. The default birthday mail includes a §2cake§r.\n\n§3§lLunar festivals and solar terms§r\nLunar festivals are converted automatically to that year's dates; §clunar leap months do not trigger them§r. The system also sends mail for §111§r key solar terms, with seasonal crop attachments. Servers can configure the contents.\n\n§3§lCompletion§r\nRead the blessing-mail and date-setting instructions, then tick the checkbox. Setting a birthday or receiving mail is not required.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

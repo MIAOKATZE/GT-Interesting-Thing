@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Gluttony feeds you nonstop: §1+1§r hunger per second; once the bar is full it switches to topping up §1saturation§r — sprinting and fighting barely make a dent.\n\nThe real ace is the emergency fill: the moment hunger drops below §15§r, hunger and saturation refill in one gulp, ready every §160 seconds§r — not even a lava plunge can starve you.\n\nPresent one Gluttony — §2checked, not taken§r. §8§oIts dictionary holds no hunger, only second helpings.§r",
+      "desc:8": "§3§lRegular and emergency feeding§r\nGluttony restores §11§r food point per second, switching to saturation when food is full. If food level is below §15§r and at least §160 seconds§r have passed since the last emergency refill, both food and saturation are filled to §120§r.\n\n§3§lCompletion§r\nHold §11§r Gluttony for retrieval; it is §2not consumed§r. Both feeding effects require the ring to be equipped.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

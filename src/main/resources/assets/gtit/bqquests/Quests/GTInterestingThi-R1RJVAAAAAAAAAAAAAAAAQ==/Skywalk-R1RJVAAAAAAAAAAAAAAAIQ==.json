@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Skywalk raises your step height to §11.1 blocks§r: a full block becomes as climbable as a slab — §2no jumping required§r; stairs, walls and wrinkled terrain all read as flat ground.\n\nNo more bumpy commutes, and scaffold-climbing during builds turns oddly gentle.\n\nPresent one Skywalk — §2checked, not taken§r. §8§oStairs are now purely decorative.§r",
+      "desc:8": "§3§lStep height§r\nEquipping Skywalk raises step height to §11.1§r blocks, allowing you to §2step onto a one-block rise without jumping§r. It increases step height and does not provide wall climbing.\n\n§3§lCompletion§r\nHold §11§r Skywalk for retrieval. It is §2not consumed§r.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

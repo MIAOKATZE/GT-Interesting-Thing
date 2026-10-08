@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The gift's guaranteed list: §116 bread§r, §164 torches§r, a bed, §18 chests§r and §1one coin§r; beyond that, two rings are drawn at random — Skywalk, Ironheart, Dragon's Breath, Mountainbreaker or Tempest.\n\nMechanics first: the gift is granted §2automatically on first login§r, and a persisted flag keeps it strictly one-time. Customizing is one command away — §3/gtit gift certain§r seals your current inventory as the guaranteed items, §3/gtit gift random <count>§r as the random pool, and §3/gtit gift reset§r returns everything to defaults.\n\nWant a re-issue? §3/gtit gift claimreset <all|player>§r wipes the claim record (§3/gtit gift claimlist§r lists who has claimed) — the box re-arrives on that player's next login.\n\nSubmit a bed and a stack of torches as your receipt; §2everything stays yours§r. §8§oA second free lunch, hand-delivered by the cat.§r",
+      "desc:8": "§3§lDefault gift§r\nThe default guaranteed contents are bread ×§116§r, torches ×§164§r, a bed ×§11§r, chests ×§18§r and a Neko Coin ×§11§r, plus §12§r random rings from Skywalk, Ironheart, Dragon's Breath, Mountainbreaker and Tempest. Servers can change these contents.\n\n§3§lAdministrator configuration§r\n/gtit gift certain sets the current inventory as the guaranteed list; /gtit gift random <count> sets the random pool; /gtit gift reset restores defaults. /gtit gift claimlist lists claim records, and /gtit gift claimreset <all|player> resets records so the affected players receive another gift on their next login.\n\n§3§lCompletion§r\nHold a bed ×§11§r and torches ×§164§r for retrieval. §2Neither is consumed.§r",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

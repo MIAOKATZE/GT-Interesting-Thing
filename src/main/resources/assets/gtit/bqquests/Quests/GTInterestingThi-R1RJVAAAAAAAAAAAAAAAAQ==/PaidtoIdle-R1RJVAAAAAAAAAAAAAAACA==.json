@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Online-time rewards run three tiers, each claimable once per day: §130 minutes§r pays §15§r, §12 hours§r pays §120§r, §15 hours§r pays §150§r.\n\nTiers reset daily, and time only counts while you are actually on the server — §2idle long enough and it compounds§r.\n\n§8§oSponsored anonymously by the Cat Guild. All interpretive rights belong to the cat.§r",
+      "desc:8": "§3§lOnline-time rewards§r\nDefault daily tiers award §15§r coins after §130 minutes§r online, §120§r after §12 hours§r and §150§r after §15 hours§r. Servers can adjust the tiers and rewards.\n\nTime accrues only while the player is online. Tiers reset daily, and each tier can be claimed once per day.\n\n§3§lCompletion§r\nRead the timing and claiming rules, then tick the checkbox. This quest does not require proof of online time.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

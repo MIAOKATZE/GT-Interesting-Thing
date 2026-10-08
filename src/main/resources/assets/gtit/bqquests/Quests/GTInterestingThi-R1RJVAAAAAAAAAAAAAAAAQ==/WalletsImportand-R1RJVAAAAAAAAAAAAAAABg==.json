@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Coins do not live in your inventory: drop them into an input slot, press import, and they become a §2virtual balance§r keyed to your §3UUID§r — or to your team's shared wallet.\n\nImports can pull straight from the §dAE network§r; ejection reverses the trick. Balances are atomic against double-spending and flushed every §15 minutes§r.\n\nOpen your wallet, count your blessings and tick this box — the cat only wants proof you have met real money.",
+      "desc:8": "§3§lWallet and physical coins§r\nPlace coins in an input slot and use import to turn them into wallet balance. Export converts balance back into physical coins. With a valid ME connection, coins can also be imported from or exported to the network.\n\n§3§lPersonal and team wallets§r\nPlayers without a team use their personal wallet. Joining a team automatically switches access to its shared wallet. Personal balances remain separate and become accessible again after leaving; joining does not transfer them into the team wallet.\n\n§3§lCompletion§r\nView the wallet interface and understand import, export and sharing, then tick the checkbox.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

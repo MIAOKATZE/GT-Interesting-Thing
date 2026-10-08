@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Wear the Dragon's Breath and four auras turn §2permanently on§r: §1Fire Resistance§r, §1Night Vision§r, §1Regeneration I§r and §1Resistance I§r — a §130-second§r batch auto-renewed every §15 seconds§r; the brewing stand can finally retire.\n\nSwim lava, dive into deepslate, face a raid head-on — all in perfect composure.\n\nPresent one Dragon's Breath — §2checked, not taken§r. §8§oA dragon's breath, a mortal's amulet.§r",
+      "desc:8": "§3§lMaintained potion effects§r\nWhile equipped, Dragon's Breath maintains §2Fire Resistance, Night Vision, Regeneration I and Resistance I§r. Effects refresh every §15 seconds§r and last §130 seconds§r per refresh, so they remain active while the ring stays equipped and refreshes normally.\n\n§3§lCompletion§r\nHold §11§r Dragon's Breath for retrieval; it is §2not consumed§r. These potion effects do not provide immunity to all damage.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

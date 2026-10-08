@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Retrieve a Neko Dimension Pocket. It will not be consumed.\n\nA portable cat warehouse: 135 storage slots, fluid and essentia management, ME channel transfer — wearable, keeps working even with the GUI closed, and accepts five upgrade modules.\n\nReward: choose one of the five upgrade modules.",
+      "desc:8": "§3§lPortable storage and channels§r\nThe Neko Dimension Pocket provides §1135§r base storage slots, fluid and essentia management, and ME channel transfers. It can be worn. Enabled channels can keep working while carried with the GUI closed; configure and enable the relevant channels first.\n\n§3§lCrafting and upgrades§r\nThe base recipe uses a Neko Infinity Storage Unit ×§11§r, ender pearls ×§12§r, an eye of ender ×§11§r and leather ×§15§r. It accepts §15§r upgrade types: capacity, stacking, magnet, channel persistence and mage. Each upgrade costs §164§r Shimmering Coins in the bundled trades.\n\n§3§lCompletion and reward§r\nHold §11§r Neko Dimension Pocket for retrieval; it is §2not consumed§r. Choose §11§r of the §15§r upgrade types as the quest reward; all five are not granted together.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

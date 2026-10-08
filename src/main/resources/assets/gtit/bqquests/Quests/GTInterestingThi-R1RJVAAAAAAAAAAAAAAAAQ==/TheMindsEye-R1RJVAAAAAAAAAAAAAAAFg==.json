@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The Telekinesis Scanner Core sweeps §119x19 chunks§r (radius §19 chunks§r, §1144 blocks§r): ore and underground-fluid dual modes, toggled with §3Shift+right-click§r.\n\nEach scan demands hunger §1at 6 or above§r plus a one-time §124-point§r exhaustion hit; results push straight through §3§nVisualProspecting into JourneyMap§r as markers.\n\nMake one, and fit an entire geological survey team into a chest.",
+      "desc:8": "§3§lScan range and modes§r\nThe Telekinesis Scanner Core scans §119×19§r chunks around the player, with a radius of §19§r chunks or §1144§r blocks. Shift+right-click switches between ore-vein and underground-fluid modes.\n\n§3§lDependency and cost§r\n§cVisualProspecting is required; scanning is unavailable without it.§r Each scan requires a food level of at least §16§r and adds §124§r exhaustion. Results appear through VisualProspecting's client map integration.\n\n§3§lCompletion§r\nCraft §11§r Telekinesis Scanner Core to complete this quest.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The Neko Vending Machine is the heart of the ops layer: trade, sign-in, lottery and mail all run from this one machine.\n\nAssemble it into shape and the input side simply takes your materials, while prizes stack into a §2virtual chute with no visible bottom§r — the hundred-slot output column is virtual, and no windfall will ever overflow it.\n\n§c§lNote:§r as a GregTech machine block it is verified by retrieval — get one into your hands first, then claim.",
+      "desc:8": "§3§lVending-machine functions§r\nThe Neko Vending Machine provides trade, sign-in, lottery and mail interfaces. It has §18§r input inventory slots and §1100§r output inventory slots. Trades check available output space.\n\n§3§lCompletion§r\nObtain §11§r vending-machine controller and hold it in your inventory for retrieval; it is §2not consumed§r. Placing the machine in the world does not replace this inventory check.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

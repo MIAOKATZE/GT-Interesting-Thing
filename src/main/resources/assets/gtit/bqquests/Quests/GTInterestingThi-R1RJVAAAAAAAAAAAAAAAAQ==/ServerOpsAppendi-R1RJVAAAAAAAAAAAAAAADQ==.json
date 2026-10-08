@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "§c§lOps appendix — nothing here touches player progression.§r This volume is all about the cat's own things: the machine's trade entries, sign-in rewards and lottery pools, every one of them admin-customizable.\n\nThe cat recommends the §3visual edit mode§r: flip §3/gtit nekovm edit on§r and edit trade-group entries right inside the vending machine GUI — what you see is what you get, and §2/gtit nekovm reload§r makes it live in a second.\n\nTraditional command folks are not stopped either: the /gtit command family and the configs under §3§nconfig/gtit§r are all there; hand-writing JSON is your freedom. Quest gating accepts §3§nhigh:low§r, UUID or Base64. This line is an optional detour — skipping it costs nothing. §8§oThe cat does not care about your means, only that the shelves look good.§r",
+      "desc:8": "§3§lOptional administration notes§r\nThis quest is for server administrators and is not a prerequisite for other quests. Gifts, trades, sign-in and lottery each have configuration files under config/gtit.\n\n§3§lTrade editing and reload§r\nUse /gtit nekovm edit on|off to switch trade editing mode and modify entries in the vending-machine GUI. After saving the configuration, use /gtit nekovm reload to reload it.\n\n§3§lQuest gating and completion§r\nGate IDs accept high:low, UUID, standard Base64 and URL-safe Base64; padding is optional for the last form. §cGates allow access if BetterQuesting is absent or its query fails.§r Administrators should verify the configuration and dependencies. Read these notes, then tick the checkbox.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

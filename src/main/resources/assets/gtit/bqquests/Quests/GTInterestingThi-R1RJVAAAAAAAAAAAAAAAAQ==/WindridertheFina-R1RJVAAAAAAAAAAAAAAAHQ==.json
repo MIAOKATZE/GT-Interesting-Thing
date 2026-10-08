@@ -33,7 +33,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Seven rings converge into one, and the Windrider takes the stage: this final ring owes nothing to luck — §2gather the other seven rings§r and complete a grand convergence upon the crafting table.\n\nWhat emerges is §2creative flight at zero cost§r — the tale of eight rings sealed into a single promise: the sky is your default terrain from now on.\n\nForge it with your own hands, then go anywhere. §8§oPast the finish line is where the real map begins.§r",
+      "desc:8": "§3§lRecipe and effect§r\nCraft Windrider using §11§r each of Distant Grasp, Ironheart, Dragon's Breath, Gluttony, Tempest, Mountainbreaker and Skywalk, plus Neko Coins ×§12§r. It is not one of the seven functional rings dropped in structure chests.\n\nEquipping Windrider grants §2creative flight without exhaustion cost§r.\n\n§3§lCompletion§r\nCraft §11§r Windrider yourself. Holding a ready-made ring does not replace the crafting check.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

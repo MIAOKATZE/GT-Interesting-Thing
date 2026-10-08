@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Slot the Float Core into §3any accessory slot§r (Baubles universal) and §2creative flight§r is yours, at a cost of §10.02§r hunger per tick.\n\nDip below §16§r hunger and flight cuts out, dropping you back to earth. §c§lPilot's discipline:§r eat first, fly second.\n\nMake your first one by hand, then claim — §8§owings are earned one meal at a time.§r",
+      "desc:8": "§3§lFood-powered flight§r\nEquip a Float Core in a universal Baubles accessory slot. With a food level of at least §16§r, it grants §2creative flight§r. Flying adds §10.02§r exhaustion per tick, affecting saturation before food level; it does not directly subtract that many hunger points.\n\n§3§lFlight limit and completion§r\n§cFlight is disabled below food level §16§r§c. Bring food and watch for a safe landing.§r Craft §11§r Float Core to complete this quest. Holding an existing core does not replace the crafting check.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

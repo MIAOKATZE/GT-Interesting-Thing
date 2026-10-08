@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Each Distant Grasp adds §1+2§r to your §1interaction and attack reach§r, stacking linearly — open chests from two blocks out, strike over fences; your arms just got longer.\n\nThe extension works silently at the engine level: no toggle, no keybind — equip to reach far, unequip and mortal range returns.\n\nPresent one Distant Grasp — §2checked, not taken§r. §8§oYou only learn the joy of long arms once something is finally within reach.§r",
+      "desc:8": "§3§lReach bonus§r\nEach Distant Grasp adds §12§r blocks of interaction reach and §12§r blocks of attack reach. Multiple rings stack linearly. Equipping applies the bonus and removing the ring removes it; no extra toggle is needed.\n\n§3§lCompletion§r\nHold §11§r Distant Grasp for retrieval; it is §2not consumed§r. Equip the ring to use its effect.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

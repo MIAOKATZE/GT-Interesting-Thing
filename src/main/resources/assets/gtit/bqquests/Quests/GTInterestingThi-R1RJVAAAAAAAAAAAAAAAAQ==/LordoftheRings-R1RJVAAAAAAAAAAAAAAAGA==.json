@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "From now on, you have ten fingers! Your ring slots have grown to §110§r!\n\nRings are GTIT's fashion slots: with §3Baubles-Expanded§r loaded the ring row grows to §110 slots§r; without the library it quietly falls back to §12§r.\n\nSeven functional rings scatter across §1seven kinds§r of structure chests, at most §1one§r per chest. Too slow? The built-in counter sells them for §16-8 shimmering§r each — §2identical effect, zero chest luck required§r.\n\nEvery ring in this branch has its own page below — one finger at a time, go collect the set. §8§oTen fingers, ten slots; that is no coincidence.§r",
+      "desc:8": "§3§lRings and slots§r\nWith Baubles-Expanded installed, the ring row expands to §110§r slots; without it, §12§r slots are used. Seven functional rings are rare drops from §17§r kinds of structure chest. Windrider is obtained by crafting.\n\n§3§lBundled trade sources§r\nDefault prices are §18§r Shimmering Coins each for Distant Grasp, Skywalk and Ironheart; §112§r each for Dragon's Breath, Mountainbreaker and Tempest; and §112§r Shimmering Coins plus Delighted Meals ×§116§r for Gluttony. Servers can change these trades.\n\n§3§lCompletion§r\nRead the slot and ring-source information, then tick the checkbox. Later quests explain each ring's effects and retrieval requirements.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

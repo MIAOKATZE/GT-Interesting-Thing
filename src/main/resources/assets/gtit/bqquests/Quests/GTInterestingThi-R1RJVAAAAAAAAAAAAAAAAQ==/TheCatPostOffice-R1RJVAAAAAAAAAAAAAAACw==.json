@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The Mail tab is a real mailbox: §150 mails§r per player, up to §15 attachment stacks§r each, delivered even while the recipient is offline.\n\n§c§lIron rule:§r a mail with unclaimed attachments cannot be deleted — no misclick risk, no lost loot, hoard letters without fear.\n\nTick this box and wave at the post cat on your way out.",
+      "desc:8": "§3§lMailbox and attachments§r\nUse the Mail tab to view your mailbox. Each player can store up to §150§r mails, with up to §15§r item stacks attached to each. Mail for an offline recipient remains in their mailbox to view and claim after logging in.\n\n§3§lDeletion and completion§r\n§cMail with unclaimed attachments cannot be deleted.§r Claim its attachments first. Read the mailbox instructions, then tick the checkbox.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

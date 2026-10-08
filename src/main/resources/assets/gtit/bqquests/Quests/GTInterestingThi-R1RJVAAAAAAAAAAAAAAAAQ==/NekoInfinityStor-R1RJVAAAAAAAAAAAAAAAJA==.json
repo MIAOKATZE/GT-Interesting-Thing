@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "GTIT's own answer to unlimited ME storage: §1one cell, every registered channel§r — items, fluids and, when the pack ships an essentia channel, essentia too, each kept in its own bucket while sharing a single drive slot.\n\n§cthe counter is the only source§r — the built-in group sells it at §1512 shimmering§r plus §14× 16384k item cells§r and §14× 16384k fluid cells§r.\n\nAlready holding a pair of §9[OLD]§r legacy cells? Empty them through an §bME-IO Port§r (cell → network), then throw one of each into a crafting grid: §2the new unit walks out§r — but empty them first: whatever is still inside burns with the shell.",
+      "desc:8": "§3§lInfinite storage across channels§r\nThe Neko Infinity Storage Unit supports items, fluids and registered third-party storage channels available at runtime. Supported types are stored separately while sharing §11§r ME drive slot.\n\n§3§lObtaining and migrating cells§r\nThe bundled trade costs §1512§r Shimmering Coins, §14§r §116,384k§r item cells and §14§r §116,384k§r fluid cells. Alternatively, shapelessly craft §11§r old infinite item cell with §11§r old infinite fluid cell into the new unit.\n\n§cEmpty the old cells through an ME-IO Port before migration. The recipe converts the cells without transferring their stored contents. Once the old cells are consumed, any contents left inside lose their access point.§r\n\n§3§lCompletion§r\nHold §11§r Neko Infinity Storage Unit for retrieval. It is §2not consumed§r.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

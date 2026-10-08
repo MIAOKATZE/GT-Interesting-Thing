@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Flight burns hunger, not fuel: steak is your §6aviation gasoline§r — a few bites and the range meter climbs back.\n\nKeep cooked beef on you at all times; the moment your hunger bottoms out always arrives one step earlier than planned — gravity never takes a day off.\n\nThese sixteen steaks will be §cactually collected§r: rest assured, they go to the cat's storeroom, not its stomach.",
+      "desc:8": "§3§lFlight supplies§r\nThe basic Float Core uses food reserves through exhaustion. Cooked beef restores food level and is also one of its crafting ingredients. Bring food before flying and replenish it as you approach the flight cutoff.\n\n§3§lSubmission and reward§r\nSubmit cooked beef ×§116§r to complete the quest; §cthe beef is consumed§r. The quest separately awards Delighted Meals ×§18§r as additional supplies, rather than returning the beef.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

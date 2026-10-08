@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Every §15 seconds§r, Tempest renews a §130-second§r dose for your legs: §1Speed II§r and §1Jump Boost II§r permanently online — no potions, no inventory space wasted.\n\nCommutes shrink, kiting gets mean, and one leap lands you on the roofline — your footsteps now carry wind.\n\nPresent one Tempest — §2checked, not taken§r. §8§oThe cat can no longer catch you; that is by design.§r",
+      "desc:8": "§3§lMovement effects§r\nWhile equipped, Tempest maintains §2Speed II and Jump Boost II§r, refreshing §130-second§r effects every §15 seconds§r. The bonuses remain active while the ring stays equipped and refreshes normally.\n\n§3§lCompletion§r\nHold §11§r Tempest for retrieval. It is §2not consumed§r.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

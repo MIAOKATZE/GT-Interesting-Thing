@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Coins are everywhere: §1seven kinds§r of structure chests hold §12-8 each§r, and every successful catch carries a bonus coin about §110%§r of the time — a stack holds §164§r.\n\nThe Shimmering Coin is far more aloof: only a §12%§r bonus on the rod, with chest generosity and quest-hall rewards covering the rest.\n\nShow eight coins — §2checked, not taken§r — and push open the tool layer to the west. §8§oThe angler never blanks — in theory.§r",
+      "desc:8": "§3§lCoin sources§r\nOrdinary Neko Coins are included in §17§r structure-chest loot tables, with §12–8§r coins per loot entry and a stack limit of §164§r. Shimmering Coins are not registered in those chest tables; sources include fishing, exchange trades and quest rewards.\n\n§3§lFishing chances§r\nEach successful catch first rolls the default §12%§r chance for a Shimmering Coin. If that misses, it rolls the default §110%§r chance for an ordinary coin. The resulting default ordinary-coin chance is §19.8%§r. Servers can adjust both chances.\n\n§3§lCompletion§r\nHold §18§r ordinary Neko Coins for retrieval. They are §2not consumed§r.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

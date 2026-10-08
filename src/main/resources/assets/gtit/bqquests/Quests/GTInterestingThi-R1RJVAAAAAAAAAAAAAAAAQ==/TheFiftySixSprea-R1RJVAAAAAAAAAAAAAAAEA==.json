@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The reverse counter sits in the same §3built-in trade group§r: §11 shimmering§r buys back §156 coins§r; 64 in, 56 out, and §18 coins§r quietly evaporate per round trip.\n\nThat eight-coin spread is §cseigniorage§r — the cat charges no fee, but the spread keeps both markets honest.\n\nTick the box and salute the arithmetic.",
+      "desc:8": "§3§lReverse exchange and spread§r\nAnother bundled entry exchanges §11§r Shimmering Coin for §156§r Neko Coins, with a default per-player cooldown of §122 hours§r. Its cooldown is separate from the forward exchange.\n\nAt the default prices, exchanging §164§r Neko Coins forward and then back returns §156§r coins, a difference of §18§r. This is the spread between two entries; §ca round trip reduces your coin holdings§r.\n\n§3§lCompletion§r\nRead the spread and independent-cooldown rules, then tick the checkbox. No exchange is required.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

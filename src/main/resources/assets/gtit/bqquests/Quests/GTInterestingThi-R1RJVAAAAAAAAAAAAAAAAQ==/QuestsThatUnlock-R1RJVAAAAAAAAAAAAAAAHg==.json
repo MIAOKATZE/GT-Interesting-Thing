@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Three lines converge on the finale: shop entries can be quest-gated — §3§nhigh:low§r, UUID or Base64; unmet conditions keep the entry locked, while a missing BetterQuesting lets it pass safely.\n\nThe endgame pages rotate on §16h / 22h / 88h§r cooldowns, periodic trades read §1-1§r as unlimited\n\nTick this box, then go see what the cat stocked for you. §8§oThe cat never runs a loss-making deal — except this once.§r",
+      "desc:8": "§3§lQuest gates§r\nVending-machine entries can require completion of a specified BetterQuesting quest. Unmet conditions keep an entry locked; §cthe gate allows access if BetterQuesting is absent or the query fails§r.\n\n§3§lEntry cooldowns and limits§r\nCooldowns use each player's history for each trade entry. Some bundled entries use §16 / 22 / 88 hours§r; this does not rotate a whole page's stock. Entries with unlimited uses may still have cooldowns. Check the entry display and server settings for the actual limits.\n\n§3§lCompletion§r\nRead the unlocking and cooldown rules, then tick the checkbox and view the unlocked entries.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

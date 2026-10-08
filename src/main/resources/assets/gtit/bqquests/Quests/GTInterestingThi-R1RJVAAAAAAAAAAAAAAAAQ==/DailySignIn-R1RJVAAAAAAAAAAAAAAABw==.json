@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Open the calendar in the sign-in tab and click once a day: §110§r coins on weekdays, §120§r on weekends, with the streak coefficient locked at §11.0§r.\n\nStreak tiers pay once per tier each month; cumulative tiers stay §2valid forever§r — the longer your sign-in history, the deeper the wallet.\n\nCollect today's sign-in wages, then tick this box — §2a ceremonial audit, capital untouched§r.",
+      "desc:8": "§3§lDaily and milestone rewards§r\nClaim daily rewards from the calendar in the sign-in tab. Defaults are §110§r Neko Coins on weekdays, §120§r on weekends and a streak coefficient of §11.0§r; servers can adjust these values.\n\nEach streak milestone can be claimed once per month. Cumulative milestones are one-time account rewards: the default §130 / 100 / 365§r days award §1100 / 300 / 1000§r coins respectively.\n\n§3§lCompletion§r\nRead the sign-in and milestone rules, then tick the checkbox. This quest does not check an actual sign-in record.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

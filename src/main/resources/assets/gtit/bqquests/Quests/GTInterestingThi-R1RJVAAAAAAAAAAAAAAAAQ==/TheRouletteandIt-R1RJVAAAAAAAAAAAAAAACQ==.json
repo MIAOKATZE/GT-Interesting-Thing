@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The lottery runs two pools side by side: the Neko pool at §15 coins§r a draw, the Shimmering pool at §11 shimmering§r.\n\n§2The pity is real§r: from the §130th§r miss onward, every extra draw adds §15%§r weight to high-rarity entries; hard pity forces EPIC or better at §150§r draws on the Neko pool, §130§r on the Shimmering pool.\n\nNo entrance fee this time — tick the box and go spin your first draw; the wheel has been waiting.",
+      "desc:8": "§3§lDraw costs§r\nBy default, each Neko-pool draw costs §15§r Neko Coins, and each Shimmering-pool draw costs §11§r Shimmering Neko Coin. Servers can adjust pool costs and pity settings.\n\n§3§lPity rules§r\nDefault soft pity begins after §130§r consecutive misses of high-rarity rewards. Each additional miss increases the high-rarity entry weight multiplier by §15%§r; §cthis is not a percentage-point increase in drop chance§r. Default hard pity guarantees EPIC or better at §150§r draws in the Neko pool and §130§r in the Shimmering pool. Counters are shared within each team, separately for each pool.\n\n§3§lCompletion§r\nRead the cost and pity rules, then tick the checkbox. This quest charges no draw fee and does not require a draw.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

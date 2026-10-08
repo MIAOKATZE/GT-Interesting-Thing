@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The §dME Uplink Hatch§r replaces any casing block on the vending machine, and the whole machine takes §1at most one§r.\n\nOnce linked, produce and consume connect straight to your §dAE network§r: rewards flow into ME, materials are pulled from ME, and physical hauling becomes history.\n\nPresent the hatch for inspection — §2checked, not consumed§r — then slot it back in and keep working.",
+      "desc:8": "§3§lConnecting to ME§r\nAn ME Uplink Hatch can replace any casing block on the vending machine. Each machine accepts at most §11§r hatch.\n\nWith a valid, active AE network connection, the machine can extract materials from ME. To send output into ME, also enable ME output mode in the machine GUI.\n\n§3§lCompletion§r\nHold §11§r ME Uplink Hatch for retrieval. It is §2not consumed§r and can be installed afterward.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

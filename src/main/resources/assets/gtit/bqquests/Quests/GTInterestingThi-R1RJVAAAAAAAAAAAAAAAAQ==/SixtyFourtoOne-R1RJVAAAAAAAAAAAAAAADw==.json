@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "This counter belongs to the §3built-in trade group§r: exchange §164 coins§r for §11 shimmering§r and walk your savings straight into the hard-currency club.\n\nCareful: the bare mod ships §cno exchange at all§r — the counter exists only through the built-in trade group, so do not go digging through the vanilla trade pages.\n\nPresent one shimmering coin for the check — §2display-verified, returned to the owner§r.",
+      "desc:8": "§3§lForward exchange§r\nThe bundled vending-machine trades include an exchange of §164§r Neko Coins for §11§r Shimmering Coin. By default, each player must wait §122 hours§r after using this entry before using it again. Server settings determine the actual price and cooldown.\n\n§3§lCompletion§r\nHold §11§r Shimmering Coin for retrieval; it is §2not consumed§r. The coin does not have to come from this particular exchange.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

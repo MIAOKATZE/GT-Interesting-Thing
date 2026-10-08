@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Mountainbreaker keeps two blessings of war permanently on: §1Strength II§r and §1Haste II§r, likewise renewed every §15 seconds§r for a §130-second§r cycle.\n\nOne ring, both answers: swing a pick and the ore vein blooms; swing a blade and the battlefield opens.\n\nPresent one Mountainbreaker — §2checked, not taken§r. §8§oA mountain is merely a mountain you have not broken yet.§r",
+      "desc:8": "§3§lCombat and mining effects§r\nWhile equipped, Mountainbreaker maintains §2Strength II and Haste II§r, refreshing §130-second§r effects every §15 seconds§r. These improve attack strength and mining speed respectively.\n\n§3§lCompletion§r\nHold §11§r Mountainbreaker for retrieval; it is §2not consumed§r. Maintaining the bonuses requires the ring to stay equipped and refresh normally.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

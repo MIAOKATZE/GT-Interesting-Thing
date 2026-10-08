@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "The moment you first enter the world, the cat stuffs a §2starter gift§r into your hands — a persisted flag guarantees it happens exactly once.\n\nBetter yet, this layer is §2customizable everywhere§r: what goes inside the gift, what the shelves sell, what sign-in and the lottery pay — all customizable through their own configs, and an admin can flip on a §3visual edit mode§r to reshape shop entries right inside the GUI, no code required.\n\nVeterans who no longer hold a starter gift: just tick the §2checkbox§r below — the inspection or the tick, either one completes this quest.\n\nHand the whole gift over for inspection; §2checked, not taken§r. §8§oThe urge to open it first is your own problem.§r",
+      "desc:8": "§3§lStarter gift and configuration§r\nEach player automatically receives a §2Starter Gift§r on their first login. A claim record prevents duplicate grants. An administrator can reset that record to issue another gift on the player's next login.\n\nGift contents, trade entries, sign-in rewards and lottery pools each have their own configuration. Administrators can also edit vending-machine trade entries in its GUI.\n\n§3§lCompletion§r\nHold §11§r Starter Gift for retrieval; it is §2not consumed§r. Alternatively, tick the checkbox. Either task completes this quest, so players who have already opened or no longer have their gift can use the checkbox.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,

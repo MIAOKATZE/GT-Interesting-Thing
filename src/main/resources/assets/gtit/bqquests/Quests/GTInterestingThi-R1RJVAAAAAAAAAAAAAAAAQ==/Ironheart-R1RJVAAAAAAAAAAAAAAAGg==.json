@@ -9,7 +9,7 @@
     "betterquesting:10": {
       "autoClaim:1": 0,
       "countAsQuest:1": 1,
-      "desc:8": "Each Ironheart grants §1+20§r max health — a full §1ten hearts§r — stacking linearly: ×2 makes §1+40§r, and stacked high enough your health bar nearly leaves the screen.\n\nThe bonus settles in real time through §3attribute modifiers§r: equip to gain, unequip to lose, no ghost health bars left behind.\n\nPresent one Ironheart — §2checked, not taken§r. §8§oBeing a tank is its own kind of beef.§r",
+      "desc:8": "§3§lMaximum health§r\nEach Ironheart adds §120§r maximum health, equal to §110§r hearts. Multiple rings stack linearly. Equipping and removing rings updates the health limit; it does not permanently increase base health.\n\n§3§lCompletion§r\nHold §11§r Ironheart for retrieval. It is §2not consumed§r.",
       "globalShare:1": 0,
       "icon:10": {
         "Count:3": 1,
