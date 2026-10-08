@@ -27,11 +27,9 @@ import com.cleanroommc.modularui.drawable.UITexture;
  * {@code gui_manifest.SHEETS} 也是它自己那张表，加不进第 13 行（动它=动跨片材质单源）。
  * 脚本仍回 HTML 契约现读颜色与尺寸，不另立色值；把它折回 {@code pocket_gui/} 属批 D 的收尾项。
  * <p>
- * ★<b>{@link #SCROLLBAR} 目前只注册、无绘制点</b>：R74② 删掉的第四列是唯一的
- * {@code ScrollWidget} 使用者，R75 又裁定绑定列表改由 tooltip 承载（超出部分显式截断）。
- * 保留在这一张表里是因为它属于贴图片的交付面（图集必须齐），且日后真要用可滚列表时
- * 不得再"现编一个名字"。<b>若真引入 {@code ScrollWidget}，必须连主题的独立 scrollbar 子项
- * 一起覆写</b>——本仓踩过：只覆写 panel/textField 会让条不可见，表现为"没有滚动条"的假 bug。
+ * {@link #SCROLLBAR} 由三个存储区的 {@link PocketScrollWidget} 绘制。
+ * 纹理直接设置在原生 VerticalScrollData 上，优先于主题的独立 scrollbar 子项；
+ * 保留主题颜色与原生裁切、滚轮和拖拽行为。
  * <p>
  * 纯 common 件：只建 {@link UITexture}（MUI2 的 drawable 值对象，双端都可构造，
  * 真正的 GL 绑定发生在客户端绘制时），不含任何 {@code @SideOnly} 类型。
@@ -78,7 +76,7 @@ public final class PocketGuiTextures {
      * 不要拿去当普通背景 1:1 贴 —— 那样会把两根条一起画出来。
      */
     public static final UITexture PROGRESS = TEXTURES.get("POCKET_C2_progress");
-    /** ScrollWidget 的独立 scrollbar 子项（12×12，N=3）；★当前只注册未绘制，见类 javadoc。 */
+    /** 三个存储区的原生滚动条纹理（12×12，N=3）。 */
     public static final UITexture SCROLLBAR = TEXTURES.get("POCKET_C2_scrollbar");
 
     // ---- S1 升级格灰化占位（契约表第 14-18 行，★补全行，生成器 gen_pocket_gui_upgrades.py） ----

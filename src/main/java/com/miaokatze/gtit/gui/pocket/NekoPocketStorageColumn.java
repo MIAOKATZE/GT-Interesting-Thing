@@ -6,6 +6,9 @@ import com.miaokatze.gtit.common.items.pocket.PocketConstants;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 /**
+ * 当前中栏为 23×9 = 207 格，内容高 414px，视口高 198px（11 行），列宽含滚动条为 168px。
+ * 以下 R75–R80 的尺寸描述为历史背景；新增槽位追加在旧 135 格之后。
+ * <p>
  * 中栏 = <b>135 格</b>存储（需求 2「一共16行*8列物品栏」经 R74②/R75 选项 A 定为 15 行 × 10 列，
  * R80 的用户定稿把列数收到 <b>9</b> ⇒ 现为 <b>15 行 × 9 列</b>）。
  * <p>
@@ -38,9 +41,12 @@ public final class NekoPocketStorageColumn {
     /** 15 行 ⇒ y 起点只能是 6。 */
     public static final int Y = NekoPocketPanel.MARGIN;
     /** R80：中栏宽（9 列 × 18 = 162）。 */
-    public static final int WIDTH = PocketSlots.STORAGE_COLUMNS * NekoPocketPanel.GRID;
+    public static final int GRID_WIDTH = PocketSlots.STORAGE_COLUMNS * NekoPocketPanel.GRID;
+    public static final int WIDTH = GRID_WIDTH + PocketScrollWidget.SCROLLBAR_WIDTH;
     /** R75：15 行 × 18。 */
-    public static final int HEIGHT = PocketSlots.STORAGE_ROWS * NekoPocketPanel.GRID;
+    public static final int VISIBLE_ROWS = 11;
+    public static final int HEIGHT = VISIBLE_ROWS * NekoPocketPanel.GRID;
+    public static final int CONTENT_HEIGHT = PocketSlots.STORAGE_ROWS * NekoPocketPanel.GRID;
     /** 列数（与 {@code SlotGroup} 的 rowSize 同源，排序与 shift 落点都按它算）。 */
     public static final int COLUMNS = PocketSlots.STORAGE_COLUMNS;
     /** 行数（格数 / 列数，★两个方向都派生，不写第二个字面量）。 */
@@ -58,6 +64,7 @@ public final class NekoPocketStorageColumn {
      * 劈成两条重叠的 0…n（R77 实测炸过一次，见 {@link #layoutSlotCount()}）⇒ 要留空只用空格。
      */
     private static final String[] STORAGE_MATRIX = { "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS",
+        "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS",
         "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS", "SSSSSSSSS",
         "SSSSSSSSS", "SSSSSSSSS" };
 
@@ -155,7 +162,9 @@ public final class NekoPocketStorageColumn {
         final ParentWidget<?> root = new ParentWidget<>().pos(X, Y)
             .size(WIDTH, HEIGHT)
             .name("pocket_storage_column")
-            .child(grid);
+            .child(
+                new PocketScrollWidget(CONTENT_HEIGHT).size(WIDTH, HEIGHT)
+                    .child(grid));
         // ★★<b>R93-①（C 项）：这里原有的"覆盖整块中栏的隐形满覆盖件"已整体删除</b>（语义②「口袋 → 玩家背包」）。
         // 它的判据是 {@code button == 0 && hasShiftDown()} ⇒ 在点击到达 135 格<b>之前</b>就把 Shift+左键
         // 截走，然后服务端 {@code performTakeOut} 用 {@code for (index = 0; index < getSlots(); index++)}

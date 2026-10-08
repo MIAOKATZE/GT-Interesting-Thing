@@ -552,7 +552,7 @@ gtit.pocket.note.title=How this panel works
 #   is driven by onWornTick through the same body). gtit.pocket.held.note carries the boundary detail
 #   (bauble slots keep working, chests and armor slots stop) — both lines say "anywhere in your
 #   inventory" but at different granularity, no verbatim duplicate (notesText concatenates both).
-gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket keeps working anywhere in your inventory
+gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; scroll each column independently with the wheel or drag its right scrollbar; the pocket keeps working anywhere in your inventory
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
 gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it); uploads rotate between channels each second, and a channel with nothing to upload never spends the pair quota
 # ★R88 self-invented policy C1 + C2, the "in-game copy" face (project discipline: both copy and README);
@@ -585,4 +585,3 @@ gtit.pocket.world.draw.pocket_full=The pocket cannot take this fluid: its tanks 
 #      options/keybindings so it is rebindable; no config file of our own, no second source of truth.
 key.gtit.pocket.baubles=Open the worn dimensional pocket
 key.categories.gtit=GT Interesting Thing
-

@@ -12,6 +12,9 @@ import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
 import com.miaokatze.gtit.common.items.pocket.PocketInventory;
 
 /**
+ * 当前左栏为 5 组×6列 = 30 个流体槽，内容高 432px，视口高 180px，列宽含滚动条为 114px。
+ * 以下 R78–R94 的尺寸描述为历史背景；原三组的交互槽与流体槽索引保持不变。
+ * <p>
  * 左列 = <b>3 组 × 6 列</b>流体块（R78②；每组纵向 = 输入行 / <b>拉长的流体槽</b> / 输出行）。
  * ★★<b>R94-①：本列到此结束——原先挂在下面的"末行（一行状态回显）"已收回给底部带左段</b>
  * （用户："按钮移到最下，然后上面都放说明文字，这样文字就可以放大了"）⇒ 本列不再拥有任何文字行，
@@ -107,7 +110,8 @@ public final class NekoPocketLeftColumn {
     /** R75/R78：与中栏同一 y 起点。 */
     public static final int Y = NekoPocketPanel.MARGIN;
     /** 左列总宽（<b>每组</b> 6 列 × 18；★组是纵向排的，不改宽度）。 */
-    public static final int WIDTH = PocketConstants.FLUID_COLUMN_COUNT * NekoPocketPanel.GRID;
+    public static final int GRID_WIDTH = PocketConstants.FLUID_COLUMN_COUNT * NekoPocketPanel.GRID;
+    public static final int WIDTH = GRID_WIDTH + PocketScrollWidget.SCROLLBAR_WIDTH;
 
     /** 单个交互格（输入行 / 输出行）的边长。 */
     public static final int CELL = NekoPocketPanel.GRID;
@@ -134,7 +138,7 @@ public final class NekoPocketLeftColumn {
      * 是无关的错）。★中栏仍是 270（15 行一行不删）⇒ 左列与中栏<b>不再等高</b>，这是本轮的裁定，
      * 不是失配；两者的下沿由底部带左段接平（{@code 258 + 96 = 354 = 360 − 6}）。
      */
-    public static final int HEIGHT = FLUID_AREA_HEIGHT;
+    public static final int HEIGHT = NekoPocketStorageColumn.HEIGHT - NekoPocketPanel.GRID;
 
     /**
      * 36 个交互格的<b>布局字面量</b>（与中栏同一机制，R41a）：14 行 × 6 列，
@@ -147,7 +151,8 @@ public final class NekoPocketLeftColumn {
      * "组号 × 列数 + 组内列号"映射成立，不需要任何手工偏移或第二条常量。
      */
     private static final String[] INTERACTION_MATRIX = { "LLLLLL", "      ", "      ", "LLLLLL", "      ", "LLLLLL",
-        "      ", "      ", "LLLLLL", "      ", "LLLLLL", "      ", "      ", "LLLLLL" };
+        "      ", "      ", "LLLLLL", "      ", "LLLLLL", "      ", "      ", "LLLLLL", "      ", "LLLLLL", "      ",
+        "      ", "LLLLLL", "      ", "LLLLLL", "      ", "      ", "LLLLLL" };
 
     /**
      * 流体交互格的布局字符（★<b>只允许一个</b>，见 {@link #layoutSlotCount()}）。
@@ -206,9 +211,8 @@ public final class NekoPocketLeftColumn {
         // ★R94-①：旧那两条（"252 + 18 = 270"与"末行起点 = 流体块底部"）随末行一起作废。
         // 现在本列只有一件事要钉：<b>列高就是流体块高</b> ⇒ 列里不许再长出第二个高度权威
         // （那 18px 已经归底部带左段，留在这里就是"一块谁也不认领的空白"）。
-        if (FLUID_AREA_HEIGHT != HEIGHT) {
-            throw new IllegalStateException(
-                "[pocket] 左列高 " + HEIGHT + " 不等于流体块高 " + FLUID_AREA_HEIGHT + "（★R94-① 之后本列没有末行；多出来的那一截就是没人认领的空白）");
+        if (FLUID_AREA_HEIGHT <= HEIGHT) {
+            throw new IllegalStateException("[pocket] 流体视窗高 " + HEIGHT + " 必须小于内容高 " + FLUID_AREA_HEIGHT);
         }
         // ★中栏高度一个字没动（15 行一行不删是硬裁定）⇒ 本列比中栏矮 18，那 18 归底部带左段。
         // 这条差值必须<b>恰好</b>是一行格高：多一分则左段接不上下沿，少一分则中栏被拖矮。
@@ -247,8 +251,10 @@ public final class NekoPocketLeftColumn {
         final ParentWidget<?> root = new ParentWidget<>().pos(X, Y)
             .size(WIDTH, HEIGHT)
             .name("pocket_fluid_column")
-            .child(interaction)
-            .child(fluidSlots(ui));
+            .child(
+                new PocketScrollWidget(FLUID_AREA_HEIGHT).size(WIDTH, HEIGHT)
+                    .child(interaction)
+                    .child(fluidSlots(ui)));
         // ★★R94-①：这里不再有第三件。旧形状是 .child(statusLine(ui))（末行 108×18 的一行状态回显），
         // 那一行连同它的三条 tooltip 整体搬进底部带左段那块 112×60 的说明文字
         // （{@link NekoPocketBottomBand} 的 statusBlock）⇒ 本列只剩"流体块"一件事。

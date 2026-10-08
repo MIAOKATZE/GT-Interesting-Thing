@@ -530,7 +530,7 @@ gtit.pocket.note.title=本面板的用法摘要
 #   主背包 36 格里<b>任意</b>一格都推进；穿戴态另由 onWornTick 驱动同一段）。本句是权威口径，
 #   边界细节（饰品栏也续作 / 箱子与盔甲位停）由 gtit.pocket.held.note 那条承担 ⇒ 两句都念到
 #   "背包任意格"，但详略不同、不逐字重复（本键与 held.note 会被 notesText 拼进同一段说明块）。
-gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋放进背包任意格都会继续运作
+gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；三栏可独立滚轮滚动或拖动右侧滚动条；口袋放进背包任意格都会继续运作
 gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d 闪烁猫猫币、持续 %d 秒
 gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）；上传每秒在通道间轮转，没有东西可上传的通道不占对数
 # ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）；
@@ -561,4 +561,3 @@ gtit.pocket.world.draw.pocket_full=口袋装不下这种流体：流体槽都满
 #      控制设置里换绑，★本仓不自写配置、不设第二处按键真相；默认键见 PocketBaubleKeybind 常量）----
 key.gtit.pocket.baubles=打开穿戴中的猫猫次元口袋
 key.categories.gtit=GT Interesting Thing
-

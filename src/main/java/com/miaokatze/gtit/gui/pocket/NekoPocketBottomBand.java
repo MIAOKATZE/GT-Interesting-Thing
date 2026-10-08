@@ -370,7 +370,7 @@ public final class NekoPocketBottomBand {
      * {@code SlotGroup("player_inventory")} 的 rowSize 固定是 9，中栏列数再变也不该改背包宽。
      * 与 {@link NekoPocketStorageColumn#WIDTH} 的相等关系是<b>判据</b>而非定义，见 {@code static} 块）。
      */
-    public static final int BACKPACK_WIDTH = BACKPACK_COLUMNS * NekoPocketPanel.GRID;
+    public static final int BACKPACK_WIDTH = NekoPocketStorageColumn.WIDTH;
     /** 背包高（4 行 × 18 = 72 = 带高，R78① 的"正好等于"；R80 未动）。 */
     public static final int BACKPACK_HEIGHT = BACKPACK_ROWS * NekoPocketPanel.GRID;
     /**
@@ -383,7 +383,7 @@ public final class NekoPocketBottomBand {
      * 旧注释里"写定稿字面量才留得住判据力"的顾虑由 {@link #BIND_CONTENT_WIDTH} 那条
      * "与源质列同 x 同宽"的断言接管：★不再靠一个字面量看账。
      */
-    public static final int BIND_WIDTH = 6 * NekoPocketPanel.GRID + NekoPocketPanel.COLUMN_GAP;
+    public static final int BIND_WIDTH = NekoPocketEssenceColumn.WIDTH + NekoPocketPanel.COLUMN_GAP;
     /**
      * R78 时代"三段之间各留 4px 列间距 ⇒ 余 14px 塞在背包与右段之间"的余量（R80① 后必须为 0）。
      * <p>
@@ -457,7 +457,8 @@ public final class NekoPocketBottomBand {
      * {@code BIND_X + 22 = 302}）。行内 5 格 × 18 = 90 恰满内容区右沿（22 + 90 = 112 = 段宽，
      * 装配期断言）。
      */
-    public static final int UPGRADE_ROW_X = BIND_CONTENT_X + NekoPocketPanel.GRID;
+    public static final int UPGRADE_ROW_GAP = PocketScrollWidget.SCROLLBAR_WIDTH;
+    public static final int UPGRADE_ROW_X = BIND_CONTENT_X + NekoPocketPanel.GRID + UPGRADE_ROW_GAP;
     /**
      * 升级插件格的布局字面量（★R95：一行 5 格，单一布局字符 {@code 'U'}，仿蒸馏盘 {@code "DDDDDD"}
      * 的矩阵风格；槽号 = 布局序 = {@code PocketUpgradeType#ordinal()}，三空间同下标）。
@@ -590,7 +591,7 @@ public final class NekoPocketBottomBand {
         }
         // ★R81④ 新增的两条硬判据：面板宽 = 主区实占 ⇒ 三段加总必须跟着变 112|162|112。
         // 右段宽写成加算式（6×18+4），这里把它与"面板宽 − 前两段"对账 ⇒ 两条式子给出不同的数就红。
-        if (BIND_WIDTH != 6 * NekoPocketPanel.GRID + NekoPocketPanel.COLUMN_GAP) {
+        if (BIND_WIDTH != NekoPocketEssenceColumn.WIDTH + NekoPocketPanel.COLUMN_GAP) {
             throw new IllegalStateException("[pocket] 右段宽不是 6×18+4=112（★一格绳缝 + 六格栅格）: " + BIND_WIDTH);
         }
         if (COIN_WIDTH + BACKPACK_WIDTH + BIND_WIDTH + 2 * NekoPocketPanel.MARGIN != NekoPocketPanel.WIDTH) {
@@ -706,7 +707,8 @@ public final class NekoPocketBottomBand {
         // （R36 不删信息，只换面；PERSISTENT_ROWS ≥ 1 由上面那条断言钉）。新对账 = 行 3 恰满幅：
         // 帮助 18 + 5×18 = 108 恰等于内容区宽，且升级格右沿铺到内容区右沿（与行 0 按钮居中、行 2 整幅
         // 同一条「零无主空白」纪律）。
-        if (NekoPocketPanel.GRID + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID != BIND_CONTENT_WIDTH
+        if (NekoPocketPanel.GRID + UPGRADE_ROW_GAP + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID
+            != BIND_CONTENT_WIDTH
             || UPGRADE_ROW_X + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID
                 != BIND_CONTENT_X + BIND_CONTENT_WIDTH) {
             throw new IllegalStateException(
@@ -723,7 +725,7 @@ public final class NekoPocketBottomBand {
         if (COIN_BAR_X != 0 || COIN_BAR_WIDTH != 49
             || CHANNEL_BUTTON_GAP != 2
             || CHANNEL_BUTTON_X != 51
-            || CHANNEL_BUTTON_WIDTH != 61) {
+            || CHANNEL_BUTTON_WIDTH != 67) {
             throw new IllegalStateException(
                 "[pocket] 左段一行的横向账不再是「0 + 49(条) + 2(缝) + 61(钮)」: 条 " + COIN_BAR_WIDTH
                     + " 缝 "

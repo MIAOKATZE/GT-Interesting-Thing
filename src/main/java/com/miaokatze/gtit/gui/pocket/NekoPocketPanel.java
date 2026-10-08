@@ -53,6 +53,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 /**
+ * 当前面板为 416×288：三栏分别预留 6px 滚动条，物品 207 格、流体 30 槽、源质 120 格。
+ * 下述 R75–R81 尺寸描述为历史背景；当前几何以本类及三栏常量为准。
+ * <p>
  * 猫猫次元口袋主面板（<b>398×360</b>，★R81④ 由 416 收到与主区实占同宽；<b>★R78① 起带玩家背包</b> =
  * 底部带中间段 9×4）。
  * <p>
@@ -157,7 +160,7 @@ public final class NekoPocketPanel implements PocketSession {
         // ★R81④ 判据：面板宽必须<b>逐字等于</b>"外边距 + 三列 + 两个列间距 + 外边距"这条加算式。
         // 写成字面量而不是只看派生式，是因为派生式在"某一列又改了宽"时会跟着漂而永不红；
         // 这里的字面量一红，就是在要求改动方回来看 R80/R81 那两张加总表（不留无主空白的同一纪律）。
-        final int sum = 6 + 108 + 4 + 162 + 4 + 108 + 6;
+        final int sum = 6 + 114 + 4 + 168 + 4 + 114 + 6;
         if (WIDTH != MAIN_OCCUPIED_WIDTH || WIDTH != sum) {
             throw new IllegalStateException(
                 "[pocket] 面板宽与主区实占分叉: WIDTH=" + WIDTH
@@ -165,10 +168,10 @@ public final class NekoPocketPanel implements PocketSession {
                     + MAIN_OCCUPIED_WIDTH
                     + " 加算式="
                     + sum
-                    + "（★R81④ 定稿 398 = 6+108+4+162+4+108+6，面板不留无主空白）");
+                    + "（滚动布局 416 = 6+114+4+168+4+114+6）");
         }
-        if (HEIGHT != 360) {
-            throw new IllegalStateException("[pocket] 面板高不等于 360（GUI Scale 3 逻辑高度上限）: " + HEIGHT);
+        if (HEIGHT != 288) {
+            throw new IllegalStateException("[pocket] 面板高不等于 288（缩短四行后的高度）: " + HEIGHT);
         }
     }
 
@@ -183,6 +186,14 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_STATE_LINE = "pocket.distill.state";
     /** S2C：ghost 声明视图（{@code kind:slotIndex:载荷键}，';' 分隔）⇒ 客户端据此<b>原位</b>虚化格子。 */
     private static final String SYNC_GHOST = "pocket.ghost.slots";
+    /** 固定索引分片；修改或删除声明不会改变其余条目的同步分片。 */
+    public static final int GHOST_SLOTS_PER_PART = 16;
+    public static final int GHOST_PART_COUNT = (PocketConstants.GHOST_ITEM_SLOT_LIMIT
+        + PocketConstants.GHOST_FLUID_SLOT_LIMIT
+        + PocketConstants.GHOST_ESSENCE_SLOT_LIMIT
+        + GHOST_SLOTS_PER_PART
+        - 1) / GHOST_SLOTS_PER_PART;
+    private final String[] clientGhostParts = new String[GHOST_PART_COUNT];
     /**
      * ★★<b>R91-a 裁定 (b)</b>：S2C 的<b>属性层</b>（每格的 {@code attr ∈ {NONE,BIND,MEMORY}} 与正交位
      * {@code P}）= <b>另一枚</b> {@link StringSyncValue}，与 {@link #SYNC_GHOST} 各写各的半。
@@ -658,7 +669,7 @@ public final class NekoPocketPanel implements PocketSession {
         // 4b) ghost 虚化：客户端先按自己从 NBT 读到的那份声明表原位刷一遍（服务端那份是权威，
         // 之后每次变更都由 SYNC_GHOST 覆盖）。放在装配末尾 ⇒ 此时 itemSlots 已全部登记。
         if (syncManager.isClient()) {
-            applyGhostView(ghostBlobOf(inventory.filters()));
+            applyGhostView(composeGhostBlob());
         }
 
         // 5) 关屏写状态的宿主 + 承载格自动关（R35 防御②③）
@@ -700,7 +711,14 @@ public final class NekoPocketPanel implements PocketSession {
         syncManager.syncValue(SYNC_BIND_ROWS, new StringSyncValue(this::composeBindRows, this::applyBindRows));
         syncManager.syncValue(SYNC_MODE, new StringSyncValue(this::composeModeState, this::applyModeState));
         syncManager.syncValue(SYNC_REMAIN, new StringSyncValue(this::composeRemain, this::applyRemainState));
-        syncManager.syncValue(SYNC_GHOST, new StringSyncValue(this::composeGhostBlob, this::applyGhostBlob));
+        for (int part = 0; part < GHOST_PART_COUNT; part++) {
+            final int partIndex = part;
+            syncManager.syncValue(
+                SYNC_GHOST + "." + partIndex,
+                new StringSyncValue(
+                    () -> ghostBlobPartOf(inventory.filters(), partIndex),
+                    blob -> applyGhostPart(partIndex, blob)));
+        }
         // ★R91-a：属性层单独一枚（<b>不</b>扩 SYNC_GHOST 的段数、<b>不</b>动它的编解码）。
         // ★键数仍恒定：这一枚不随格数 / 属性数增加而增加（服务端一次整串下发，与 ghost blob 同口径）。
         syncManager
@@ -2499,7 +2517,52 @@ public final class NekoPocketPanel implements PocketSession {
     // ------------------------------------------------------------------ ghost 视图同步（S2C）
 
     private String composeGhostBlob() {
-        return ghostBlobOf(inventory.filters());
+        final String[] parts = new String[GHOST_PART_COUNT];
+        for (int part = 0; part < parts.length; part++) {
+            parts[part] = ghostBlobPartOf(inventory.filters(), part);
+        }
+        return joinGhostParts(parts);
+    }
+
+    /** 每个索引范围独立限长；仍复用既有记录文法与单条超限提示。 */
+    public static String ghostBlobPartOf(PocketFilterConfig filters, int part) {
+        if (filters == null || part < 0 || part >= GHOST_PART_COUNT) {
+            return "";
+        }
+        final PocketFilterConfig selected = new PocketFilterConfig();
+        for (PocketFilterConfig.Filter filter : filters.filters()) {
+            int globalIndex = filter.slotIndex();
+            if (filter.kind() == PocketFilterConfig.Kind.FLUID) {
+                globalIndex += PocketConstants.GHOST_ITEM_SLOT_LIMIT;
+            } else if (filter.kind() == PocketFilterConfig.Kind.ESSENCE) {
+                globalIndex += PocketConstants.GHOST_ITEM_SLOT_LIMIT + PocketConstants.GHOST_FLUID_SLOT_LIMIT;
+            }
+            if (globalIndex / GHOST_SLOTS_PER_PART == part) {
+                selected.add(filter.slotIndex(), filter);
+            }
+        }
+        return ghostBlobOf(selected);
+    }
+
+    /** 空片也参与覆盖，保证删除最后一条声明后客户端不会残留旧内容。 */
+    public static String joinGhostParts(String[] parts) {
+        final StringBuilder joined = new StringBuilder();
+        for (String part : parts) {
+            if (part != null && !part.isEmpty()) {
+                if (joined.length() > 0) {
+                    joined.append(';');
+                }
+                joined.append(part);
+            }
+        }
+        return joined.toString();
+    }
+
+    private void applyGhostPart(int part, String blob) {
+        if (syncManager.isClient()) {
+            clientGhostParts[part] = blob == null ? "" : blob;
+            applyGhostBlob(joinGhostParts(clientGhostParts));
+        }
     }
 
     /**

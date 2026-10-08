@@ -216,14 +216,14 @@ public final class PocketConstants {
 
     // ---------------------------------------------------------- R75/R78 钉死的列数（几何与索引空间同源）
     /**
-     * 流体<b>组数</b>（R78②：由 1 组增至 <b>3 组</b>，每组 = 输入行 18 + 流体槽 36 + 输出行 18 = 72 高，
-     * 组间距 18 ⇒ 左栏 {@code 3×72 + 2×18 = 252 ≤ 270}，余 18 给状态行）。
+     * 流体<b>组数</b>为5；每组输入行18 + 流体槽36 + 输出行18 = 72高，
+     * 组间距18，内容高432，以180高的独立滚动视窗展示。
      * <p>
      * 与 {@link #FLUID_COLUMN_COUNT} 一样是"格数 / tank 数 / ghost 索引空间"三者的唯一来源：
      * {@link #FLUID_TANK_TOTAL}、{@link #FLUID_INTERACTION_TOTAL}、
      * {@link #GHOST_FLUID_SLOT_LIMIT} 全部从它派生，不留字面量。
      */
-    public static final int FLUID_GROUP_COUNT = 3;
+    public static final int FLUID_GROUP_COUNT = 5;
     /**
      * 每组流体的<b>列数</b> = 每组一个流体槽一列 = 每组 {@code 6} 个独立 tank
      * （R75① 定为 6 列，R78 只加组数、<b>没有</b>改列数 ⇒ 与源质盘同为 6 列，"规整"由列数对齐达成）。
@@ -236,22 +236,22 @@ public final class PocketConstants {
     /** 每个流体列携带的交互格数（1 输入 + 1 输出；两格都仍是 {@code R39a} 的双用格）。 */
     public static final int FLUID_INTERACTION_PER_COLUMN = 2;
     /**
-     * 独立流体 tank <b>总数</b> = {@link #FLUID_GROUP_COUNT} × {@link #FLUID_COLUMN_COUNT} = <b>18</b>
+     * 独立流体 tank <b>总数</b> = {@link #FLUID_GROUP_COUNT} × {@link #FLUID_COLUMN_COUNT} = <b>30</b>
      * （R78②）。也是 {@code Kind.FLUID} 的 ghost 索引空间与总容量口径的基数
      * （总容量 = {@link #FLUID_TANK_TOTAL} × {@link #FLUID_BAR_CAPACITY_ML}）。
      */
     public static final int FLUID_TANK_TOTAL = FLUID_GROUP_COUNT * FLUID_COLUMN_COUNT;
-    /** 流体侧交互格<b>总数</b> = {@link #FLUID_TANK_TOTAL} tank × {@link #FLUID_INTERACTION_PER_COLUMN} 格 = <b>36</b>。 */
+    /** 流体側交互格总数 = 30 tank × 2 格 = 60。 */
     public static final int FLUID_INTERACTION_TOTAL = FLUID_TANK_TOTAL * FLUID_INTERACTION_PER_COLUMN;
     /**
      * 源质盘列数（R78：与流体块<b>同为 6 列</b>，规整由列数对齐达成；派生自
      * {@link #FLUID_COLUMN_COUNT} ⇒ 改流体列数会连带改这里，不会出现两处真相）。
      */
     public static final int ESSENCE_GRID_COLUMNS = FLUID_COLUMN_COUNT;
-    /** 源质盘行数（R78②：8 → <b>12</b> 行；12 行 + 空 1 行 + 蒸馏 2 行 = 15 行 = 与中栏同高）。 */
-    public static final int ESSENCE_GRID_ROWS = 12;
+    /** 源质盘20行；仅盘面滚动，进度条与蒸馏输入固定在列底部。 */
+    public static final int ESSENCE_GRID_ROWS = 20;
     /**
-     * 显示格数 = <b>{@link #ESSENCE_GRID_COLUMNS} 列 × {@link #ESSENCE_GRID_ROWS} 行 = 72</b>
+     * 显示格数 = <b>{@link #ESSENCE_GRID_COLUMNS} 列 × {@link #ESSENCE_GRID_ROWS} 行 = 120</b>
      * （R78② 由 48 增至 72；<b>只用于 GUI 行序与格位空间</b>，存储与显示解耦：多于 72 的 tag
      * 仍照常入账，只是不显示，见 {@code gtit.pocket.aspect.overflow_note} 那条兜底文案）。
      * <p>
@@ -292,7 +292,7 @@ public final class PocketConstants {
      */
     public static final int STORAGE_COLUMNS = 9;
     /** 中栏<b>行数</b>（R75 的"选项 A"：16 → 15，本轮 R80 <b>未动</b>；★纵向 360 是硬天花板）。 */
-    public static final int STORAGE_ROWS = 15;
+    public static final int STORAGE_ROWS = 23;
 
     /**
      * ★★<b>R92-⑤（D5）：格身份的三个读数单源</b> —— 空格子 tooltip 要说"这一格是什么"，
