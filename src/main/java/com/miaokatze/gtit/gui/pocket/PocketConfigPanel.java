@@ -1507,15 +1507,26 @@ public final class PocketConfigPanel {
             final TextWidget<?> line = new TextWidget<>(IKey.dynamic(() -> {
                 final Object[] args = selected == 0
                     ? new Object[] { ui.installedCapacityUpgradeCount(), PocketConstants.CAPACITY_UPGRADE_MAX_COUNT }
-                    : new Object[] { selected == 1 ? ui.fluidTankCapacityNow()
-                        : PocketConstants.fluidTotalCapacityMl(ui.capacityUpgradeCountNow()) };
+                    : selected == 1 ? new Object[] { PocketCapacityText.format(ui.fluidTankCapacityNow()) }
+                        : new Object[] {
+                            PocketCapacityText
+                                .format(PocketConstants.fluidTotalCapacityMl(ui.capacityUpgradeCountNow())),
+                            PocketConstants.FLUID_TANK_TOTAL };
                 return String.format(StatCollector.translateToLocal(keys[selected]), args);
             }));
             line.textAlign(Alignment.CenterLeft)
                 .scale(BODY_TEXT_SCALE)
                 .color(PocketGhostRequest.readoutTextColor())
                 .shadow(Boolean.TRUE);
-            line.tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang(READOUT_CAPACITY_KEY)));
+            line.tooltipDynamic(tooltip -> {
+                if (selected != 0) tooltip.addLine(
+                    IKey.dynamic(
+                        () -> String.format(
+                            StatCollector.translateToLocal("gtit.pocket.config.capacity.exact"),
+                            selected == 1 ? ui.fluidTankCapacityNow()
+                                : PocketConstants.fluidTotalCapacityMl(ui.capacityUpgradeCountNow()))));
+                tooltip.addLine(IKey.lang(READOUT_CAPACITY_KEY));
+            });
             line.pos(0, row * READOUT_HEIGHT)
                 .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
             block.child(line);

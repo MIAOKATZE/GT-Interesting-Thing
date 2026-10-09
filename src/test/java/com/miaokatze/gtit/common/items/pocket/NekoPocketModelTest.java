@@ -770,6 +770,9 @@ public class NekoPocketModelTest {
         cases.put(
             "capacity_modules_64_growth_legacy_and_default_persist_off",
             NekoPocketModelTest::capacityModulesGrowthAndLegacy);
+        cases.put(
+            "upgrade_native_click_append_and_capacity_text",
+            NekoPocketModelTest::upgradeNativeClickAppendAndCapacityText);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -5119,6 +5122,142 @@ public class NekoPocketModelTest {
     }
 
     /** 本 JVM 能否让 ItemStack 走一次 NBT 往返（只探一次；探不通就说明物品未注册）。 */
+    private static void upgradeNativeClickAppendAndCapacityText() {
+        final List<String> source = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketContainer.java");
+        SimpleAssert.that(source != null, "container source required for native delegation contract");
+        final String containerSource = String.join("\n", source);
+        final int clickStart = containerSource.indexOf("public ItemStack slotClick(");
+        final int clickEnd = containerSource.indexOf("protected void syncUpgradePlacement", clickStart);
+        final String clickBody = containerSource.substring(clickStart, clickEnd)
+            .replaceAll("\\s+", " ");
+        SimpleAssert
+            .that(clickBody.contains("if (mode == 0 && slotId >= 0"), "dedicated placement only handles PICKUP");
+        SimpleAssert.that(
+            clickBody.contains("return super.slotClick(slotId, mouseButton, mode, player);"),
+            "other modes preserve native drag lifecycle and extraction gates");
+        final int[] counts = { 0, 1, 63, 64 };
+        final String[] per = { "20M", "50M", "1.91G", "2G" };
+        final String[] total = { "600M", "1.5G", "57.3G", "60G" };
+        for (int i = 0; i < counts.length; i++) {
+            SimpleAssert.eq(
+                per[i],
+                com.miaokatze.gtit.gui.pocket.PocketCapacityText.format(PocketConstants.fluidTankCapacityMl(counts[i])),
+                "exact per tank compact");
+            SimpleAssert.eq(
+                total[i],
+                com.miaokatze.gtit.gui.pocket.PocketCapacityText
+                    .format(PocketConstants.fluidTotalCapacityMl(counts[i])),
+                "exact total compact");
+        }
+        SimpleAssert.eq(
+            "1.500000001G",
+            com.miaokatze.gtit.gui.pocket.PocketCapacityText.format(1500000001L),
+            "compact does not round away precision");
+        for (PocketUpgradeType type : new PocketUpgradeType[] { PocketUpgradeType.STACK, PocketUpgradeType.CAPACITY }) {
+            final PocketInventory inventory = PocketInventory.readFrom(new NBTTagCompound());
+            final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE);
+            final Item item = new ItemPocketUpgrade(type);
+            final ModularSlot slot = new PocketSlots().upgradeCell(inventory, type.ordinal());
+            final int[] callbacks = { 0 };
+            slot.changeListener((stack, amount, client, init) -> {
+                callbacks[0]++;
+                if (type == PocketUpgradeType.STACK) PocketUpgrades.installStackCount(carrier, stack.stackSize);
+                else PocketUpgrades.installCapacityCount(carrier, stack.stackSize);
+            });
+            final ModularContainer notificationContainer = new ModularContainer() {
+
+                @Override
+                public void onSlotChanged(ModularSlot changed, ItemStack stack, boolean amount) {}
+            };
+            final com.cleanroommc.modularui.value.sync.PanelSyncManager manager = new com.cleanroommc.modularui.value.sync.PanelSyncManager(
+                new com.cleanroommc.modularui.value.sync.ModularSyncManager(false),
+                false) {
+
+                @Override
+                public ModularContainer getContainer() {
+                    return notificationContainer;
+                }
+            };
+            // Only the packet transport is replaced; actual ItemSlotSH.onSlotUpdate invokes native slot callbacks.
+            final com.cleanroommc.modularui.value.sync.ItemSlotSH handler = new com.cleanroommc.modularui.value.sync.ItemSlotSH(
+                slot) {
+
+                @Override
+                public void checkUpdate() {
+                    onSlotUpdate(getSlot().getStack(), true, false, false);
+                }
+
+                @Override
+                public com.cleanroommc.modularui.value.sync.PanelSyncManager getSyncManager() {
+                    return manager;
+                }
+            };
+            slot.initialize(handler, false);
+            final int[] notifications = { 0 };
+            final NekoPocketContainer container = new NekoPocketContainer(null) {
+
+                @Override
+                protected void syncUpgradePlacement(ModularSlot changed, EntityPlayer player) {
+                    notifications[0]++;
+                }
+            };
+            container.inventorySlots.add(slot);
+            final EntityPlayer player = magePlayerShell(UUID.randomUUID(), mageServerWorldShell());
+            player.inventory.setItemStack(new ItemStack(item, 1));
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(1, slot.getStack().stackSize, "first native click installs one");
+            player.inventory.setItemStack(new ItemStack(item, 1));
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(2, slot.getStack().stackSize, "occupied native left click appends one");
+            SimpleAssert.that(player.inventory.getItemStack() == null, "exactly one cursor consumed");
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(2, slot.getStack().stackSize, "repeat with empty cursor cannot duplicate");
+            player.inventory.setItemStack(new ItemStack(item, 62));
+            container.slotClick(0, 1, 0, player);
+            SimpleAssert.eq(3, slot.getStack().stackSize, "right click adds one only");
+            SimpleAssert.eq(61, player.inventory.getItemStack().stackSize, "right click cursor remainder");
+            player.inventory.setItemStack(new ItemStack(item, 60));
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(63, slot.getStack().stackSize, "left click appends batch");
+            player.inventory.setItemStack(new ItemStack(item, 2));
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(64, slot.getStack().stackSize, "63 to64 respects limit");
+            SimpleAssert.eq(1, player.inventory.getItemStack().stackSize, "overflow retained on cursor");
+            final int before = callbacks[0];
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(before, callbacks[0], "full slot does not emit mutation callback");
+            SimpleAssert.eq(1, player.inventory.getItemStack().stackSize, "full slot does not consume");
+            final int installed = type == PocketUpgradeType.STACK ? PocketUpgrades.stackUpgradeCount(carrier)
+                : PocketUpgrades.capacityUpgradeCount(carrier);
+            SimpleAssert.eq(64, installed, "native SH callback commits count64");
+            inventory.upgradeGroup()
+                .setStackInSlot(type.ordinal(), new ItemStack(item, 2));
+            for (ItemStack invalid : new ItemStack[] { new ItemStack(new ItemPocketUpgrade(PocketUpgradeType.MAGE), 1),
+                new ItemStack(item, 1, 1), new ItemStack(item, 1) }) {
+                if (invalid.getItem() == item && invalid.getItemDamage() == 0) {
+                    invalid.setTagCompound(new NBTTagCompound());
+                    invalid.getTagCompound()
+                        .setInteger("different", 1);
+                }
+                player.inventory.setItemStack(invalid);
+                container.slotClick(0, 0, 0, player);
+                SimpleAssert.eq(2, slot.getStack().stackSize, "wrong type/meta/NBT does not merge or swap");
+                SimpleAssert.eq(1, player.inventory.getItemStack().stackSize, "invalid cursor unconsumed");
+            }
+            player.inventory.setItemStack(null);
+            for (int mode : new int[] { 0 }) {
+                container.slotClick(0, 0, mode, player);
+                SimpleAssert.eq(2, slot.getStack().stackSize, "installed modules cannot leave slot");
+                SimpleAssert.that(player.inventory.getItemStack() == null, "no extraction to cursor");
+            }
+            SimpleAssert.that(
+                !slot.canTakeStack(player) && !slot.canDragIntoSlot(),
+                "native take and drag gates remain closed");
+            SimpleAssert.that(notifications[0] > 0, "dedicated branch schedules slot and cursor sync");
+        }
+    }
+
     private static void capacityModulesGrowthAndLegacy() {
         final long[] expected = { 20000000L, 50000000L, 1910000000L, 2000000000L };
         final int[] counts = { 0, 1, 63, 64 };
@@ -21989,8 +22128,12 @@ public class NekoPocketModelTest {
             // 容量面：规则句（本型独有键，R101.4 en 已缩到 1.0 档一行宽）。
             for (String line : new String[] {
                 formatLang(lang, "gtit.pocket.config.capacity.count", Integer.valueOf(64), Integer.valueOf(64)),
-                formatLang(lang, "gtit.pocket.config.capacity.amount", Long.valueOf(2000000000L)),
-                formatLang(lang, "gtit.pocket.config.capacity.total", Long.valueOf(60000000000L)) }) {
+                formatLang(lang, "gtit.pocket.config.capacity.amount", "2G"),
+                formatLang(
+                    lang,
+                    "gtit.pocket.config.capacity.total",
+                    "60G",
+                    Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL)) }) {
                 SimpleAssert.that(
                     residentLogicalWidth(line) * PocketConfigPanel.BODY_TEXT_SCALE
                         <= contentBoxOf(PocketUpgradeType.CAPACITY),

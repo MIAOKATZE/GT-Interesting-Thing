@@ -97,6 +97,14 @@ public class NekoPocketContainer extends ModularContainer {
      */
     @Override
     public ItemStack slotClick(int slotId, int mouseButton, int mode, EntityPlayer player) {
+        if (mode == 0 && slotId >= 0
+            && slotId < inventorySlots.size()
+            && inventorySlots.get(slotId) instanceof ModularSlot upgrade
+            && PocketSlots.GROUP_UPGRADE.equals(upgrade.getSlotGroupName())) {
+            PocketUpgradePlacement.place(upgrade, player == null ? null : player.inventory, mouseButton);
+            syncUpgradePlacement(upgrade, player);
+            return null;
+        }
         if (mode != 1 && !panel.syncManager()
             .isClient()) {
             final ModularSlot modular = storageSlotAt(slotId);
@@ -109,6 +117,15 @@ public class NekoPocketContainer extends ModularContainer {
             }
         }
         return super.slotClick(slotId, mouseButton, mode, player);
+    }
+
+    /** 插件不可拆；专用放入分支仍走原生 putStack 回调，并及时纠正槽与游标。 */
+    protected void syncUpgradePlacement(ModularSlot slot, EntityPlayer player) {
+        if (panel.syncManager()
+            .isClient()) return;
+        PocketSlots.forceSyncSlot(slot);
+        panel.syncManager()
+            .setCursorItem(player == null ? null : player.inventory.getItemStack());
     }
 
     /** 被点格若是中栏存储格则返回该 {@code ModularSlot}（服务端真值面），否则 null。 */
