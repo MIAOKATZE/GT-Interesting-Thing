@@ -14765,8 +14765,7 @@ public class NekoPocketModelTest {
             "★魔法使内容段可用宽 = 行带宽（去框后三列横排吃满 232，框右零空白那条旧账的正身）");
         // ---- ⑥ 五型新尺寸逐字钉值（★改排版必须同批翻这五行，先例 = R98/R99/R100 尺寸链就地翻新）----
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CAPACITY), "★容量面宽 266");
-        SimpleAssert
-            .eq(117, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY), "CAPACITY three-row height117");
+        SimpleAssert.eq(99, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY), "CAPACITY two-row height99");
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.STACK), "★堆叠面宽 266");
         SimpleAssert
             .eq(117, PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK), "STACK three-row readout height117");
@@ -22050,16 +22049,15 @@ public class NekoPocketModelTest {
                 simpleReadoutKeys.add(readoutKey);
             }
         }
-        SimpleAssert
-            .eq(4, footprints.size(), "Two cumulative upgrades share266x117; other feature panels remain distinct");
+        SimpleAssert.eq(5, footprints.size(), "Capacity two-row panel has its own compact footprint");
         SimpleAssert.eq(
             PocketConfigPanel.panelWidthOf(PocketUpgradeType.STACK),
             PocketConfigPanel.panelWidthOf(PocketUpgradeType.CAPACITY),
             "cumulative module panels share row width");
         SimpleAssert.eq(
-            PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK),
+            PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK) - PocketConfigPanel.READOUT_HEIGHT,
             PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY),
-            "both cumulative panels show three readable rows");
+            "capacity removes the total row and closes its space");
         SimpleAssert.eq(
             PocketUpgradeType.values().length,
             seconds.size(),
@@ -22128,12 +22126,7 @@ public class NekoPocketModelTest {
             // 容量面：规则句（本型独有键，R101.4 en 已缩到 1.0 档一行宽）。
             for (String line : new String[] {
                 formatLang(lang, "gtit.pocket.config.capacity.count", Integer.valueOf(64), Integer.valueOf(64)),
-                formatLang(lang, "gtit.pocket.config.capacity.amount", "2G"),
-                formatLang(
-                    lang,
-                    "gtit.pocket.config.capacity.total",
-                    "60G",
-                    Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL)) }) {
+                formatLang(lang, "gtit.pocket.config.capacity.amount", "2G") }) {
                 SimpleAssert.that(
                     residentLogicalWidth(line) * PocketConfigPanel.BODY_TEXT_SCALE
                         <= contentBoxOf(PocketUpgradeType.CAPACITY),

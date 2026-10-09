@@ -338,7 +338,7 @@ public final class PocketConfigPanel {
      * 量到两行就必须留两行的高（★R98 逐型几何目标给的 94 是「一行装得下」那一支，实测吃不下 ⇒
      * 一直留在两行盒，不削盒）。
      */
-    public static final int CAPACITY_READOUT_HEIGHT = 3 * READOUT_HEIGHT;
+    public static final int CAPACITY_READOUT_HEIGHT = 2 * READOUT_HEIGHT;
 
     // ==== ★R100：通道持续化面的频率段几何（该面第二行专属内容，只此一型画） ====
 
@@ -1500,18 +1500,13 @@ public final class PocketConfigPanel {
         final ParentWidget<?> block = new ParentWidget<>().pos(MARGIN, CONTENT_TOP)
             .size(panelWidthOf(type) - 2 * MARGIN, CAPACITY_READOUT_HEIGHT)
             .name("pocket_config_capacity_limit");
-        final String[] keys = { "gtit.pocket.config.capacity.count", "gtit.pocket.config.capacity.amount",
-            "gtit.pocket.config.capacity.total" };
+        final String[] keys = { "gtit.pocket.config.capacity.count", "gtit.pocket.config.capacity.amount" };
         for (int row = 0; row < keys.length; row++) {
             final int selected = row;
             final TextWidget<?> line = new TextWidget<>(IKey.dynamic(() -> {
                 final Object[] args = selected == 0
                     ? new Object[] { ui.installedCapacityUpgradeCount(), PocketConstants.CAPACITY_UPGRADE_MAX_COUNT }
-                    : selected == 1 ? new Object[] { PocketCapacityText.format(ui.fluidTankCapacityNow()) }
-                        : new Object[] {
-                            PocketCapacityText
-                                .format(PocketConstants.fluidTotalCapacityMl(ui.capacityUpgradeCountNow())),
-                            PocketConstants.FLUID_TANK_TOTAL };
+                    : new Object[] { PocketCapacityText.format(ui.fluidTankCapacityNow()) };
                 return String.format(StatCollector.translateToLocal(keys[selected]), args);
             }));
             line.textAlign(Alignment.CenterLeft)
@@ -1523,8 +1518,7 @@ public final class PocketConfigPanel {
                     IKey.dynamic(
                         () -> String.format(
                             StatCollector.translateToLocal("gtit.pocket.config.capacity.exact"),
-                            selected == 1 ? ui.fluidTankCapacityNow()
-                                : PocketConstants.fluidTotalCapacityMl(ui.capacityUpgradeCountNow()))));
+                            ui.fluidTankCapacityNow())));
                 tooltip.addLine(IKey.lang(READOUT_CAPACITY_KEY));
             });
             line.pos(0, row * READOUT_HEIGHT)
