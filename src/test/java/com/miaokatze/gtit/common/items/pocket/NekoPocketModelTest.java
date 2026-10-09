@@ -773,6 +773,9 @@ public class NekoPocketModelTest {
         cases.put(
             "upgrade_native_click_append_and_capacity_text",
             NekoPocketModelTest::upgradeNativeClickAppendAndCapacityText);
+        cases.put(
+            "oversized_storage_native_click_safe_append",
+            NekoPocketModelTest::oversizedStorageNativeClickSafeAppend);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -5121,7 +5124,123 @@ public class NekoPocketModelTest {
         SimpleAssert.that(bindings.hasRoom(), "清空后仍可绑定（上限只约束条目数）");
     }
 
-    /** 本 JVM 能否让 ItemStack 走一次 NBT 往返（只探一次；探不通就说明物品未注册）。 */
+    /** 实际 Container 点击、工厂存储槽与原生同步回调链的超大堆补入回归。 */
+    private static void oversizedStorageNativeClickSafeAppend() {
+        final PocketInventory inventory = PocketInventory.readFrom(new NBTTagCompound());
+        final int[] count = { 64 };
+        inventory.setUpgradeProbes(() -> false, () -> count[0] > 0);
+        inventory.setStackCountProbe(() -> count[0]);
+        final ModularSlot slot = new PocketSlots().storage(inventory, 0);
+        final int[] callbacks = { 0 };
+        slot.changeListener((stack, amount, client, init) -> callbacks[0]++);
+        final ModularContainer notificationContainer = new ModularContainer() {
+
+            @Override
+            public void onSlotChanged(ModularSlot changed, ItemStack stack, boolean amount) {}
+        };
+        final com.cleanroommc.modularui.value.sync.PanelSyncManager manager = new com.cleanroommc.modularui.value.sync.PanelSyncManager(
+            new com.cleanroommc.modularui.value.sync.ModularSyncManager(false),
+            false) {
+
+            @Override
+            public ModularContainer getContainer() {
+                return notificationContainer;
+            }
+        };
+        // Transport/polling is replaced; native ItemSlotSH.onSlotUpdate and ModularSlot callbacks still run.
+        final com.cleanroommc.modularui.value.sync.ItemSlotSH handler = new com.cleanroommc.modularui.value.sync.ItemSlotSH(
+            slot) {
+
+            @Override
+            public void checkUpdate() {
+                onSlotUpdate(getSlot().getStack(), true, false, false);
+            }
+
+            @Override
+            public com.cleanroommc.modularui.value.sync.PanelSyncManager getSyncManager() {
+                return manager;
+            }
+        };
+        slot.initialize(handler, false);
+        final int[] notifications = { 0 };
+        final NekoPocketContainer container = new NekoPocketContainer(null) {
+
+            @Override
+            protected void syncOversizedStoragePlacement(ModularSlot changed, EntityPlayer player) {
+                notifications[0]++;
+            }
+        };
+        container.inventorySlots.add(slot);
+        final EntityPlayer player = magePlayerShell(UUID.randomUUID(), mageServerWorldShell());
+        for (int initial : new int[] { 65, 128, 1024 }) {
+            inventory.storage()
+                .setStackInSlot(0, new ItemStack(FakePlainItem.INSTANCE, initial));
+            final ItemStack before = slot.getStack();
+            final int callbackBefore = callbacks[0];
+            player.inventory.setItemStack(new ItemStack(FakePlainItem.INSTANCE, 64));
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(initial + 64, slot.getStack().stackSize, "native left append exceeds natural64");
+            SimpleAssert.eq(initial, before.stackSize, "old stack object was not mutated in place");
+            SimpleAssert.that(player.inventory.getItemStack() == null, "cursor consumed exactly64");
+            SimpleAssert.eq(callbackBefore + 1, callbacks[0], "native putStack emits one changed callback");
+            player.inventory.setItemStack(new ItemStack(FakePlainItem.INSTANCE, 5));
+            container.slotClick(0, 1, 0, player);
+            SimpleAssert.eq(initial + 65, slot.getStack().stackSize, "native right appends one");
+            SimpleAssert.eq(4, player.inventory.getItemStack().stackSize, "right remainder retained");
+        }
+        inventory.storage()
+            .setStackInSlot(0, new ItemStack(FakePlainItem.INSTANCE, 65530));
+        player.inventory.setItemStack(new ItemStack(FakePlainItem.INSTANCE, 64));
+        container.slotClick(0, 0, 0, player);
+        SimpleAssert.eq(65536, slot.getStack().stackSize, "full64 modules endpoint");
+        SimpleAssert.eq(58, player.inventory.getItemStack().stackSize, "partial room consumes only6");
+        final int callbackAtFull = callbacks[0];
+        container.slotClick(0, 0, 0, player);
+        SimpleAssert.eq(65536, slot.getStack().stackSize, "full does not change storage");
+        SimpleAssert.eq(58, player.inventory.getItemStack().stackSize, "full does not consume cursor");
+        SimpleAssert.eq(callbackAtFull, callbacks[0], "no mutation callback at full");
+        count[0] = 1;
+        inventory.storage()
+            .setStackInSlot(0, new ItemStack(FakePlainItem.INSTANCE, 1020));
+        player.inventory.setItemStack(new ItemStack(FakePlainItem.INSTANCE, 9));
+        container.slotClick(0, 0, 0, player);
+        SimpleAssert.eq(1024, slot.getStack().stackSize, "one module endpoint");
+        SimpleAssert.eq(5, player.inventory.getItemStack().stackSize, "one module partial remainder");
+        count[0] = 0;
+        container.slotClick(0, 0, 0, player);
+        SimpleAssert.eq(1024, slot.getStack().stackSize, "disabled STACK preserves existing oversized stack");
+        SimpleAssert
+            .eq(5, player.inventory.getItemStack().stackSize, "negative room never subtracts or enlarges cursor");
+        SimpleAssert.that(inventory.storageStack(1) == null, "disabled no scatter to neighbouring cell");
+        count[0] = 64;
+        inventory.storage()
+            .setStackInSlot(0, new ItemStack(FakePlainItem.INSTANCE, 128));
+        final ItemStack tagged = new ItemStack(FakePlainItem.INSTANCE, 3);
+        tagged.setTagCompound(new NBTTagCompound());
+        tagged.getTagCompound()
+            .setInteger("different", 1);
+        for (ItemStack invalid : new ItemStack[] { new ItemStack(FakeStack16Item.INSTANCE, 3),
+            new ItemStack(FakePlainItem.INSTANCE, 3, 1), tagged }) {
+            player.inventory.setItemStack(invalid);
+            container.slotClick(0, 0, 0, player);
+            SimpleAssert.eq(128, slot.getStack().stackSize, "wrong item/meta/NBT does not swap stored pile");
+            SimpleAssert.that(
+                player.inventory.getItemStack() == invalid && invalid.stackSize == 3,
+                "invalid cursor identity and count unchanged");
+        }
+        slot.filter(stack -> false);
+        player.inventory.setItemStack(new ItemStack(FakePlainItem.INSTANCE, 4));
+        container.slotClick(0, 0, 0, player);
+        SimpleAssert.eq(128, slot.getStack().stackSize, "isItemValid false blocks append");
+        SimpleAssert.eq(4, player.inventory.getItemStack().stackSize, "rejected placement preserves cursor");
+        slot.filter(stack -> true);
+        player.inventory.setItemStack(new ItemStack(FakePlainItem.INSTANCE, 0));
+        container.slotClick(0, 0, 0, player);
+        SimpleAssert.eq(128, slot.getStack().stackSize, "zero cursor cannot modify storage");
+        SimpleAssert.that(notifications[0] > 0, "append and rejection both schedule precise slot/cursor correction");
+        SimpleAssert.that(!slot.canDragIntoSlot(), "native drag ban preserved");
+    }
+
     private static void upgradeNativeClickAppendAndCapacityText() {
         final List<String> source = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketContainer.java");
@@ -18853,7 +18972,7 @@ public class NekoPocketModelTest {
         }
     }
 
-    /** 逐向量钉「超过 64 只放行空手取件」：未超全放行；超 64 后空手 mode 0 放行、其余全拒。 */
+    /** 兜底拒绝函数逐向量回归；生产中的合法同物补入已由前置分支处理。 */
     private static void slotClickOversizedRejectPureFunction() {
         // 未超 64：一切照旧（普通堆的替换/合并是 vanilla 正常语义，不受本规则管）
         SimpleAssert.that(!rejectsOversizedClickReflect(null, 0, null), "null 槽 → 放行（越界/非中栏直通）");

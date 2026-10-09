@@ -320,13 +320,17 @@ An AE2 storage cell of GTIT's own design: **one cell serves every registered cha
 
 ### Neko Dimensional Pocket / 猫猫次元口袋
 
-<p align="center"><img src="README/Neko%20Dimensional%20Pocket%20UI.png" width="560" alt="猫猫次元口袋面板 / Neko Dimensional Pocket GUI"><br><em>猫猫次元口袋面板 / the three-column panel</em></p>
+<p align="center"><img src="README/Neko%20Dimensional%20Pocket%20UI.png" width="560" alt="猫猫次元口袋面板 / Neko Dimensional Pocket GUI"><br><em>猫猫次元口袋：三栏独立滚动 / three independently scrollable storage columns</em></p>
 
 一枚缝着猫脸的束口袋。猫猫们从不解释针脚里藏着什么——只知道你右键时它会打个大大的哈欠，把库存、液体与源质都吞进梦境般柔软的某处；它似乎永远装不满，也从不肯把吃进去的东西弄丢。
 
 A drawstring pouch with a cat face sewn on. The cats never explain what's stitched inside — only that it yawns wide when you right-click, swallowing your inventory, fluids and essentia into somewhere soft as a dream. It never seems to fill up, and it never loses what it has swallowed.
 
-- **Upgrade modules / 升级插件**: 通过插件可以实现容量扩容、堆叠翻倍、磁力拾取、通道常开、蒸馏加速等功能（放入即固化、不可取出）。
+- **Storage / 存储**: 更紧凑的面板，三个存储区域可独立滚动、拖动滚动条；30 个流体槽、207 个物品槽、120 个源质格。/ A compact panel with three independent, draggable scrollbars: 30 fluid slots, 207 item slots and 120 essentia slots.
+- **STACK / 堆叠插件**: 最多安装 64 枚，第一枚将可堆叠物品的单格上限提升到 1,024，之后每枚再增加 1,024，最高 65,536；数量达到 1,000 时以一位小数的 k 显示。超过 64 后仍可手持同类物品左键补入、右键补入一件。/ Up to 64 modules provide 1,024 items per module, reaching 65,536 per eligible slot. Counts of 1,000 or more use one decimal place with `k`; matching carried items can still be added to stacks above 64.
+- **CAPACITY / 容量插件**: 最多安装 64 枚，流体槽基础容量 20M mB，前 63 枚各增加 30M，第 64 枚增加 90M，最终每槽 2G mB；旧容量插件保留原有 2G。/ Up to 64 modules raise each fluid slot from 20M mB to 2G mB; modules 1–63 add 30M each and the final module adds 90M. Existing capacity upgrades retain their 2G capacity.
+- **Channel toggle / 通道开关**: 通道插件新装默认关闭，可在猫猫币栏旁便携开关次元通道。/ Newly installed channel modules start disabled; toggle the persistent dimension channel beside the Neko Coin area.
+- **Upgrade modules / 升级插件**: 插件放入即固化、不可取出；除堆叠和容量插件可累计外，其余各安装一枚。五种插件拥有动态物品图标，并支持磁力拾取、蒸馏加速等功能。/ Modules are permanent once installed. STACK and CAPACITY modules accumulate; the other modules are limited to one each. All five have animated item icons, with functions including magnetic pickup and faster distillation.
 - **Recipe / 配方**: `PEP / LCL / LLL`（末影珍珠 + 末影之眼 + 皮革 + 猫猫无限存储单元，不比较元件 NBT）；前置 ModularUI2、AE2、GT5U，Thaumcraft 4 可选。
 
 ***

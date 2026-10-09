@@ -19,7 +19,7 @@ import com.miaokatze.gtit.main.GTInterestingThing;
  * <p>
  * 本类由 {@link NekoPocketPanel} 经 {@code UISettings#customContainer} 提供
  * （{@code GuiManager.java:81/112/143} 双端都读该 supplier ⇒ 双端同一个类，不破坏 R32）。
- * {@code slotClick} 已覆写（仅服务端拦截：中栏超过 64 的存储堆只放行空手取件，其余手势拒绝
+ * {@code slotClick} 已覆写（中栏超过 64 的存储堆允许同物安全补入与空手有限取件，其余危险手势服务端拒绝
  * ——R104 用户裁定「超过 64 不允许被替换」，旧「前置拆分顶背包」方案在背包已有同物时行为
  * 怪异被否；其余路径原样交 MUI2）；{@code transferStackInSlot} 仍不覆写，也<b>不手工加槽</b>：
  * 槽位注册与其余点击处理全交 MUI2（slice-s4-brief §5 判据里"口袋不手工加槽"是硬口径）。
@@ -92,7 +92,7 @@ public class NekoPocketContainer extends ModularContainer {
     /**
      * ★大堆拦截（R104 修订：由「前置拆分顶背包」改为「超过 64 不允许被替换」——用户实测拆分支
      * 在背包已有同物时几乎不加量、其余掉脚下，裁定干脆禁止）。只拦<b>服务端</b>：客户端那份
-     * 槽栈对 &gt;127 的堆本就是 byte 回绕后的坏数据，拦不住也不该拦（预测瞬态由拒绝后的双纠正拉回）。
+     * 超大堆的手持补入先在双端走安全分支；其余拒绝仍仅在服务端判定，拒绝后的双纠正拉回客户端预测。
      * QUICK_MOVE（mode 1）早退放行——MUI2 自带按天然满量拆块且失败留格，天然安全。
      */
     @Override
@@ -103,6 +103,17 @@ public class NekoPocketContainer extends ModularContainer {
             && PocketSlots.GROUP_UPGRADE.equals(upgrade.getSlotGroupName())) {
             PocketUpgradePlacement.place(upgrade, player == null ? null : player.inventory, mouseButton);
             syncUpgradePlacement(upgrade, player);
+            return null;
+        }
+        final ModularSlot storage = storageSlotAt(slotId);
+        final ItemStack held = player == null ? null : player.inventory.getItemStack();
+        if (mode == 0 && (mouseButton == 0 || mouseButton == 1)
+            && storage != null
+            && storage.getStack() != null
+            && storage.getStack().stackSize > OVERSIZED_STACK_LINE
+            && held != null) {
+            PocketStoragePlacement.place(storage, player.inventory, mouseButton);
+            syncOversizedStoragePlacement(storage, player);
             return null;
         }
         if (mode != 1 && !panel.syncManager()
@@ -117,6 +128,13 @@ public class NekoPocketContainer extends ModularContainer {
             }
         }
         return super.slotClick(slotId, mouseButton, mode, player);
+    }
+
+    /** 服务器同步精确存储数与游标；客户端已使用同一补入算法预测。 */
+    protected void syncOversizedStoragePlacement(ModularSlot slot, EntityPlayer player) {
+        if (panel.syncManager()
+            .isClient()) return;
+        rejectOversizedClick(slot, player);
     }
 
     /** 插件不可拆；专用放入分支仍走原生 putStack 回调，并及时纠正槽与游标。 */
@@ -141,12 +159,12 @@ public class NekoPocketContainer extends ModularContainer {
     }
 
     /**
-     * 大堆拦截判据（★纯函数，JVM 直测）：超过 {@link #OVERSIZED_STACK_LINE} 的存储堆，只放行
+     * 大堆兜底拦截判据（★纯函数，JVM 直测）：安全手持补入已由前置分支处理；本判据只放行
      * <b>空手取件</b>（mode 0 且光标为空——MUI2 的 PICKUP 按天然上限截取，左键 ≤64 / 右键 ≤32
      * 上游标，1.7.10 的 byte 数量序列化天然安全）；其余手势一律拒绝，各自对应的蒸发面：
      * <ul>
      * <li>手持物品点击（替换 swap / 同物合并）——swap 分支把整堆推上游标，&gt;127 出网络回绕成 0
-     * （物品蒸发，正是用户报的"大堆被替换就消失"；合并也一并拒：手上有东西就不许碰大堆，规则只有一条）；</li>
+     * （物品蒸发，正是用户报的"大堆被替换就消失"；合法同物补入不会进入此兜底分支）；</li>
      * <li>热键换位（mode 2）——vanilla 把整堆塞进玩家背包栏，落 NBT 时同一条 byte 纪律蒸发；</li>
      * <li>creative 克隆（mode 3）——光标拿到整堆副本，同 swap；</li>
      * <li>丢掷（mode 4，Q / Ctrl+Q）——Ctrl+Q 整堆丢出，EntityItem.Count 是 byte，1024 回绕。</li>
@@ -163,8 +181,8 @@ public class NekoPocketContainer extends ModularContainer {
     /**
      * 拒绝后的双纠正：客户端会先本地预测一遍 MUI2 的手势（槽被换成手上的 A、游标拿到大堆副本），
      * 服务端拒绝后若不拉回，两端分叉无包可纠（MUI2 对 PICKUP 恒返 null ⇒ vanilla mismatch 救援
-     * 永不触发，R97 R2 取证的同族幽灵）——① {@code forceSyncSlot} 把槽真值（byte 口径，与拒绝前
-     * 一致）强推回去覆盖预测；② {@code setCursorItem} 把游标真值强推回去。返回值与 MUI2 的
+     * 永不触发，R97 R2 取证的同族幽灵）——① {@code forceSyncSlot} 经存储槽的精确 int 同步处理器
+     * 强推真值覆盖预测；② {@code setCursorItem} 把游标真值强推回去。安全补入也复用这条同步路径。返回值与 MUI2 的
      * PICKUP 口径一致取 null：mismatch 救援包推的是服务端返回值本身，&gt;127 同样回绕，救不了。
      */
     private void rejectOversizedClick(ModularSlot modular, EntityPlayer player) {
