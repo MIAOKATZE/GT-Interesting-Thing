@@ -978,8 +978,19 @@ public final class PocketConstants {
      * 一律经它取值，不得各自再写一遍三元。
      */
     public static long fluidTankCapacityMl(boolean capacityUpgraded) {
-        return capacityUpgraded ? FLUID_BAR_CAPACITY_UPGRADED_ML : FLUID_BAR_CAPACITY_ML;
+        return fluidTankCapacityMl(capacityUpgraded ? CAPACITY_UPGRADE_MAX_COUNT : 0);
     }
+
+    public static long fluidTankCapacityMl(int count) {
+        final int n = Math.max(0, Math.min(CAPACITY_UPGRADE_MAX_COUNT, count));
+        return FLUID_BAR_CAPACITY_ML + Math.min(n, 63) * CAPACITY_UPGRADE_STEP_ML
+            + (n == CAPACITY_UPGRADE_MAX_COUNT ? CAPACITY_UPGRADE_LAST_STEP_ML : 0);
+    }
+
+    public static final int CAPACITY_UPGRADE_MAX_COUNT = 64;
+    public static final long CAPACITY_UPGRADE_STEP_ML = 30_000_000L;
+    public static final long CAPACITY_UPGRADE_LAST_STEP_ML = 90_000_000L;
+    public static final String CAPACITY_UPGRADE_COUNT_KEY = "capacityUpgradeCount";
 
     /**
      * 流体侧<b>总</b>容量（mB）= {@link #FLUID_TANK_TOTAL} × {@link #FLUID_BAR_CAPACITY_ML}
@@ -994,7 +1005,11 @@ public final class PocketConstants {
 
     /** ★R95 S5：升级后的流体总容量（long，★R96 S3 = 18 × 2G = 36G）——选择点语义同 {@link #fluidTankCapacityMl(boolean)}。 */
     public static long fluidTotalCapacityMl(boolean capacityUpgraded) {
-        return FLUID_TANK_TOTAL * fluidTankCapacityMl(capacityUpgraded);
+        return fluidTotalCapacityMl(capacityUpgraded ? CAPACITY_UPGRADE_MAX_COUNT : 0);
+    }
+
+    public static long fluidTotalCapacityMl(int count) {
+        return FLUID_TANK_TOTAL * fluidTankCapacityMl(count);
     }
 
     // ------------------------------------------------------ R83 C2（缺陷 6）：每条声明的组上限口径

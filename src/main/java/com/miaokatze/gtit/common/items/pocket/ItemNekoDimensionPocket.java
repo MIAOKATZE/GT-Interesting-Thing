@@ -827,7 +827,9 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
         // Long/Integer 同形，lang 键与 %5$d/%9$d 槽位零改动）；未升级喂 Integer（渲染与旧字面同源）。
         // ★R96 S1：读点换组合谓词 isActive ⇒ 关掉容量开关后 tooltip 的读数跟着回落到未升级那一档
         // （"关了开关读数还写 16G"是最容易被玩家当成"开关没生效"的一处，所以它必须在同一批里换）。
-        final boolean capacityUpgraded = PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CAPACITY);
+        final int capacityCount = PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.CAPACITY)
+            ? PocketUpgrades.capacityUpgradeCount(carrier)
+            : 0;
         return new Object[] {
             // %1$d 中栏格数
             Integer.valueOf(PocketConstants.GHOST_ITEM_SLOT_LIMIT),
@@ -837,8 +839,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             // %4$d 每组流体列数（R75①；★R78② 的组数与 tank 总数在下面两项）
             Integer.valueOf(PocketConstants.FLUID_COLUMN_COUNT),
             // %5$d 单槽容量 mB（★规格外自立项；★R95 S5 起按 CAPACITY 位 16M/16G 动态喂）
-            capacityUpgraded ? Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML)
-                : Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
+            Long.valueOf(PocketConstants.fluidTankCapacityMl(capacityCount)),
             // %6$d 蒸馏一轮秒数·基档（★tick→秒的换算走 PocketConstants 单源，不再内联 20）
             Integer.valueOf(PocketConstants.ticksToSecondsCeil(TaumDistillRules.DISTILL_INTERVAL_TICKS)),
             // %7$d 流体组数（R78②）
@@ -846,8 +847,7 @@ public class ItemNekoDimensionPocket extends Item implements IGuiHolder<PlayerIn
             // %8$d 独立流体 tank 总数（= 组数 × 每组列数 = 18）
             Integer.valueOf(PocketConstants.FLUID_TANK_TOTAL),
             // %9$d 流体总容量 mB（= tank 总数 × 单槽容量，★派生不是手抄；★R95 S5 起升级侧 18 × 16G = 288G）
-            capacityUpgraded ? Long.valueOf(PocketConstants.fluidTotalCapacityMl(true))
-                : Integer.valueOf(PocketConstants.FLUID_TOTAL_CAPACITY_ML),
+            Long.valueOf(PocketConstants.fluidTotalCapacityMl(capacityCount)),
             // %10$d 源质盘格数（R78②③：6×12 = 72，且 ≥ 实测 aspect 注册数）
             Integer.valueOf(PocketConstants.ESSENCE_DISPLAY_GRID),
             // %11$d 面板内玩家背包格数（R78①；★代价 = E4 包放大，见 gui 侧 PocketSlots 类注释）

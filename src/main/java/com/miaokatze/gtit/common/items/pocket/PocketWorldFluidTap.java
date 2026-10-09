@@ -100,8 +100,11 @@ public final class PocketWorldFluidTap {
         // {@link PocketConstants#fluidTankCapacityMl(boolean)} 那唯一的容量选择点 ⇒ 装了 CAPACITY 的口袋
         // 在世界侧抽液永远只按未升级档夹取（升级档对本路径不可见）。现走 {@link #tankCapacityFor}。
         final boolean capacityUpgraded = PocketUpgradeSwitches.isActive(stack, PocketUpgradeType.CAPACITY);
-        final PocketFluidExtraction.Plan plan = PocketFluidExtraction
-            .plan(gateSim, amounts, compatible, tankCapacityFor(capacityUpgraded));
+        final PocketFluidExtraction.Plan plan = PocketFluidExtraction.plan(
+            gateSim,
+            amounts,
+            compatible,
+            tankCapacityFor(capacityUpgraded ? PocketUpgrades.capacityUpgradeCount(stack) : 0));
         if (plan.reason != PocketFluidExtraction.Reason.GATE_OPEN) {
             logL10("判因=" + plan.reason, timer, gateSim, ungated, 0, 0, 0, 0, viaSession, -1, tile);
             chat(player, "gtit.pocket.world.draw.pocket_full");
@@ -177,6 +180,10 @@ public final class PocketWorldFluidTap {
      * {@code min(Integer.MAX_VALUE, …)} 在 2G 下退化为恒等仍<b>保留</b>——{@link PocketFluidExtraction#plan}
      * 的容量形参是 int，这道钳是「升级档一旦抬回 int 顶之上就不会截断成负数」的唯一防线。
      */
+    static int tankCapacityFor(int count) {
+        return (int) Math.min(Integer.MAX_VALUE, PocketConstants.fluidTankCapacityMl(count));
+    }
+
     static int tankCapacityFor(boolean capacityUpgraded) {
         return (int) Math.min(Integer.MAX_VALUE, PocketConstants.fluidTankCapacityMl(capacityUpgraded));
     }

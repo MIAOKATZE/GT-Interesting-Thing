@@ -767,6 +767,9 @@ public class NekoPocketModelTest {
         cases.put(
             "precise_slot_resync_pending_state_and_schedule",
             NekoPocketModelTest::preciseSlotResyncPendingStateAndSchedule);
+        cases.put(
+            "capacity_modules_64_growth_legacy_and_default_persist_off",
+            NekoPocketModelTest::capacityModulesGrowthAndLegacy);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -4251,7 +4254,11 @@ public class NekoPocketModelTest {
         SimpleAssert.that(tapStart >= 0, "★必须按签名定位 tap（改名/挪签名即红，不接受全文件 grep）");
         final int tapEnd = methodEnd(tap, tapStart);
         SimpleAssert.that(
-            regionContainsCode(tap, tapStart, tapEnd, "tankCapacityFor(capacityUpgraded)"),
+            regionContainsCode(
+                tap,
+                tapStart,
+                tapEnd,
+                "tankCapacityFor(capacityUpgraded ? PocketUpgrades.capacityUpgradeCount(stack) : 0)"),
             "★tap 方法体内必须真的经 tankCapacityFor 取容量（只在别处定义而不调用 = 漏点照旧）");
         SimpleAssert.that(
             regionContainsCode(
@@ -4265,12 +4272,25 @@ public class NekoPocketModelTest {
             countRegionCode(tap, tapStart, tapEnd, "FLUID_BAR_CAPACITY_ML"),
             "★★阳性对照：tap 方法体内 FLUID_BAR_CAPACITY_ML 命中必须恰 0（改回直传静态常量 ⇒ 本行立刻红）");
         SimpleAssert.eq(
-            1,
+            2,
             countCodeLinesIn(tap, "PocketConstants.fluidTankCapacityMl("),
-            "全文件容量选择点只有一处消费（住在 tankCapacityFor 里；多一处 = 第二处取值口）");
+            "count production and bool compatibility helpers each delegate choice point");
+        final int countHelper = methodStart(tap, "static int tankCapacityFor(int count) {");
+        final int legacyHelper = methodStart(tap, "static int tankCapacityFor(boolean capacityUpgraded) {");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(tap, countHelper, methodEnd(tap, countHelper), "fluidTankCapacityMl(count)"),
+            "production helper count delegates formula");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(tap, legacyHelper, methodEnd(tap, legacyHelper), "fluidTankCapacityMl(capacityUpgraded)"),
+            "boolean compatibility helper remains");
+        SimpleAssert.eq(
+            0,
+            countRegionCode(tap, tapStart, tapEnd, "tankCapacityFor(capacityUpgraded)"),
+            "production does not call legacy boolean helper");
     }
 
-    /** 探针：只有"是哪一种流体"参与余量判定（量取 1，与生产 extractFluid 的探针同形）。 */
     private static FluidStack waterProbe() {
         if (!fluidsUsable()) {
             return null;
@@ -5099,6 +5119,114 @@ public class NekoPocketModelTest {
     }
 
     /** 本 JVM 能否让 ItemStack 走一次 NBT 往返（只探一次；探不通就说明物品未注册）。 */
+    private static void capacityModulesGrowthAndLegacy() {
+        final long[] expected = { 20000000L, 50000000L, 1910000000L, 2000000000L };
+        final int[] counts = { 0, 1, 63, 64 };
+        for (int index = 0; index < counts.length; index++) {
+            SimpleAssert
+                .eq(expected[index], PocketConstants.fluidTankCapacityMl(counts[index]), "capacity curve endpoint");
+            SimpleAssert.eq(
+                expected[index] * PocketConstants.FLUID_TANK_TOTAL,
+                PocketConstants.fluidTotalCapacityMl(counts[index]),
+                "total long capacity");
+            SimpleAssert
+                .eq((int) expected[index], PocketWorldFluidTap.tankCapacityFor(counts[index]), "world tap same cap");
+        }
+        final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE);
+        PocketUpgrades.installCapacityCount(carrier, 1);
+        SimpleAssert.eq(1, PocketUpgrades.capacityUpgradeCount(carrier), "new first install avoids legacy fallback64");
+        final PocketInventory inventory = PocketInventory.readFrom(carrier.getTagCompound());
+        SimpleAssert.eq(50000000L, inventory.fluidTankCapacity(), "one module supplier cap");
+        PocketUpgrades.installCapacityCount(carrier, 63);
+        SimpleAssert.eq(1910000000L, inventory.fluidTankCapacity(), "live same-root count63 raises supplier");
+        PocketUpgrades.installCapacityCount(carrier, 64);
+        PocketUpgrades.installCapacityCount(carrier, 1);
+        SimpleAssert.eq(64, PocketUpgrades.capacityUpgradeCount(carrier), "installed count cannot decrease");
+        SimpleAssert.eq(
+            64,
+            inventory.upgradeGroup()
+                .getSlotLimit(PocketUpgradeType.CAPACITY.ordinal()),
+            "CAPACITY cell64");
+        final NBTTagCompound legacy = new NBTTagCompound();
+        PocketUpgrades.install(legacy, PocketUpgradeType.CAPACITY);
+        SimpleAssert.eq(64, PocketUpgrades.capacityUpgradeCount(legacy), "old boolean2G migrates64");
+        SimpleAssert.that(!legacy.hasKey(PocketConstants.CAPACITY_UPGRADE_COUNT_KEY), "legacy read has no mutation");
+        SimpleAssert.eq(
+            2000000000L,
+            PocketInventory.readFrom(legacy)
+                .fluidTankCapacity(),
+            "legacy2G remains");
+        final int step = PocketGhostRequest
+            .nextCapEffective(Kind.FLUID, PocketConstants.FILTER_CAP_UNSET, 50000000, 1, UpOrDown.DOWN, false);
+        SimpleAssert.eq(49500000, step, "one module ghost step tracks500000 rather than20M");
+        final NBTTagCompound channel = new NBTTagCompound();
+        PocketUpgrades.install(channel, PocketUpgradeType.CHANNEL_PERSIST);
+        SimpleAssert.that(
+            !PocketUpgradeSwitches.isActive(channel, PocketUpgradeType.CHANNEL_PERSIST),
+            "new persist defaults off");
+        PocketUpgradeSwitches.setOff(channel, PocketUpgradeType.CHANNEL_PERSIST, false);
+        PocketUpgrades.install(channel, PocketUpgradeType.CHANNEL_PERSIST);
+        SimpleAssert.that(
+            PocketUpgradeSwitches.isActive(channel, PocketUpgradeType.CHANNEL_PERSIST),
+            "reinstallation preserves on choice");
+        final NBTTagCompound oldChannel = new NBTTagCompound();
+        oldChannel.setByte(PocketConstants.UPGRADES_KEY, (byte) (1 << PocketUpgradeType.CHANNEL_PERSIST.ordinal()));
+        PocketUpgrades.install(oldChannel, PocketUpgradeType.CHANNEL_PERSIST);
+        SimpleAssert.that(
+            PocketUpgradeSwitches.isActive(oldChannel, PocketUpgradeType.CHANNEL_PERSIST),
+            "legacy configured-on channel preserved");
+        capacityLegacyCellRoundTripAndFullReject();
+    }
+
+    private static void capacityLegacyCellRoundTripAndFullReject() {
+        final Item fixture = new ItemPocketUpgrade(PocketUpgradeType.CAPACITY);
+        try {
+            final java.lang.reflect.Field integerMap = net.minecraft.util.RegistryNamespaced.class
+                .getDeclaredField("underlyingIntegerMap");
+            integerMap.setAccessible(true);
+            ((net.minecraft.util.ObjectIntIdentityMap) integerMap.get(Item.itemRegistry)).func_148746_a(fixture, 32001);
+            final java.lang.reflect.Field objects = net.minecraft.util.RegistrySimple.class
+                .getDeclaredField("registryObjects");
+            objects.setAccessible(true);
+            ((java.util.Map) objects.get(Item.itemRegistry)).put("gtit:test_capacity_legacy", fixture);
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError("native capacity fixture registry", error);
+        }
+        final NBTTagCompound root = new NBTTagCompound();
+        PocketUpgrades.install(root, PocketUpgradeType.CAPACITY);
+        final PocketInventory oldInventory = PocketInventory.readFrom(root);
+        final int cell = PocketUpgradeType.CAPACITY.ordinal();
+        oldInventory.upgradeGroup()
+            .setStackInSlot(cell, new ItemStack(fixture, 1));
+        oldInventory.writeTo(root);
+        final String beforeRead = root.toString();
+        final PocketInventory migrated = PocketInventory.readFrom(root);
+        SimpleAssert.eq(beforeRead, root.toString(), "legacy migration read does not mutate source NBT");
+        SimpleAssert.eq(
+            64,
+            migrated.upgradeGroup()
+                .getStackInSlot(cell).stackSize,
+            "old physical1 presents installed64");
+        SimpleAssert.eq(2000000000L, migrated.fluidTankCapacity(), "legacy full capacity preserved");
+        final ItemStack extra = new ItemStack(fixture, 1);
+        final ItemStack remainder = migrated.upgradeGroup()
+            .insertItem(cell, extra, false);
+        SimpleAssert.that(
+            remainder != null && remainder.stackSize == 1,
+            "full legacy slot refuses rather than consumes extra module");
+        SimpleAssert.eq(1, extra.stackSize, "incoming extra module remains whole");
+        final NBTTagCompound saved = new NBTTagCompound();
+        PocketUpgrades.install(saved, PocketUpgradeType.CAPACITY);
+        migrated.writeTo(saved);
+        final PocketInventory reopened = PocketInventory.readFrom(saved);
+        SimpleAssert.eq(
+            64,
+            reopened.upgradeGroup()
+                .getStackInSlot(cell).stackSize,
+            "normalized display survives handler NBT roundtrip");
+        SimpleAssert.eq(64, PocketUpgrades.capacityUpgradeCount(saved), "legacy effect stays full on reopen");
+    }
+
     private static void stackModulesDynamicLimits() {
         final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
         PocketUpgrades.install(carrier, PocketUpgradeType.STACK);
@@ -5130,10 +5258,10 @@ public class NekoPocketModelTest {
                 .getSlotLimit(PocketUpgradeType.STACK.ordinal()),
             "STACK install cell holds64");
         SimpleAssert.eq(
-            1,
+            64,
             inventory.upgradeGroup()
                 .getSlotLimit(PocketUpgradeType.CAPACITY.ordinal()),
-            "other install cell holds1");
+            "CAPACITY install cell holds64");
         SimpleAssert.eq(4096, PocketConstants.essenceCapPerTag(true), "essentia retains existing upgraded cap");
     }
 
@@ -11860,7 +11988,15 @@ public class NekoPocketModelTest {
             SimpleAssert.that(
                 !PocketInventory.acceptsUpgradeCell(PocketConstants.UPGRADE_SLOTS, new ItemStack(cells[0], 1, 0)),
                 "上界越界拒（格号空间 0…4）");
-            SimpleAssert.eq(1, new ItemStack(cells[0], 64, 0).getMaxStackSize(), "★插件本身不可叠 ⇒ 一次一型一件，无「半叠固化」形态");
+            SimpleAssert.eq(64, new ItemStack(cells[0], 64, 0).getMaxStackSize(), "CAPACITY natural max64");
+            SimpleAssert.eq(
+                64,
+                new ItemStack(cells[PocketUpgradeType.STACK.ordinal()]).getMaxStackSize(),
+                "STACK natural max64");
+            SimpleAssert.eq(
+                1,
+                new ItemStack(cells[PocketUpgradeType.MAGE.ordinal()]).getMaxStackSize(),
+                "other modules remain natural max1");
         }
         // ---- 源码半边①：GUI 侧只经单源判据，且形状是"可放不可取 + 不可拖入"----
         final java.util.List<String> slots = sourceLinesOrNull(
@@ -12053,6 +12189,7 @@ public class NekoPocketModelTest {
         // ★配套的第二问（有活通道在场）由 s5 那组用例钉，本处仍只管 S1 那一刀的开关翻转。
         final ItemStack pocket = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
         PocketUpgrades.install(pocket, PocketUpgradeType.CHANNEL_PERSIST);
+        PocketUpgradeSwitches.setOff(pocket.getTagCompound(), PocketUpgradeType.CHANNEL_PERSIST, false);
         ItemNekoDimensionPocket.startWorkTicks(pocket, PocketConstants.CHANNEL_TICK_PERIOD);
         SimpleAssert.that(ItemNekoDimensionPocket.isChannelWorkLive(pocket), "读点①有位且开着（且有活通道在场）⇒ 常亮");
         SimpleAssert.that(ItemNekoDimensionPocket.isWorkActive(pocket), "读点①同一态下帧带也亮（两个消费面同源）");
@@ -12139,6 +12276,7 @@ public class NekoPocketModelTest {
         // 谓词侧的行为腿（World/EntityPlayer 本 JVM 不可构造 ⇒ 驱动到"回满条件"的那半个布尔上）
         final NBTTagCompound persistRoot = new NBTTagCompound();
         PocketUpgrades.install(persistRoot, PocketUpgradeType.CHANNEL_PERSIST);
+        PocketUpgradeSwitches.setOff(persistRoot, PocketUpgradeType.CHANNEL_PERSIST, false);
         SimpleAssert
             .that(PocketUpgradeSwitches.isActive(persistRoot, PocketUpgradeType.CHANNEL_PERSIST), "读点③驱动腿：开着 ⇒ 回满条件成立");
         PocketUpgradeSwitches.setOff(persistRoot, PocketUpgradeType.CHANNEL_PERSIST, true);
@@ -12226,9 +12364,9 @@ public class NekoPocketModelTest {
             System.out.println("[NOTE] 读不到 NekoPocketPanel / NekoPocketBottomBand ⇒ GUI 侧两个读点组【未验】");
         } else {
             SimpleAssert.eq(
-                2,
+                1,
                 countCodeLinesIn(band, "ui.channelPersistActive()"),
-                "★读点⑦的两个面（「通道常开」注记 + 点击早退吞击）都只经面板的单源 accessor");
+                "live state is a tooltip note, not a click blocker");
             SimpleAssert.eq(
                 0,
                 countCodeLinesIn(band, "PocketUpgrades.hasUpgrade("),
@@ -12267,7 +12405,18 @@ public class NekoPocketModelTest {
         }
         SimpleAssert.that(exempt >= 1, "SELFTEST-HIT 豁免检法认得 P-4 那条直读腿的形状 ⇒ 下面的 1 不是空转");
         SimpleAssert.eq(1, exempt, "★off-mask 门禁的豁免恰 1 处（P-4：源质读档钳制只吃 installed，走 isActive 反而是错的）");
-        SimpleAssert.eq(1, reads, "★八个效果读点所在的五个主源文件里只剩这 1 处直读位图 = 那条豁免；任何读点被改回 hasUpgrade ⇒ 本行变 2 ⇒ 红");
+        SimpleAssert.eq(2, reads, "Installed-only reads are essence load and legacy capacity display migration");
+        final List<String> inventorySource = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketInventory.java");
+        final int load = methodStart(inventorySource, "public static PocketInventory readFrom(NBTTagCompound root) {");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(
+                inventorySource,
+                load,
+                methodEnd(inventorySource, load),
+                "PocketUpgrades.hasUpgrade(root, PocketUpgradeType.CAPACITY)"),
+            "capacity installed-only read belongs to legacy display normalization");
     }
 
     /**
@@ -14477,7 +14626,8 @@ public class NekoPocketModelTest {
             "★魔法使内容段可用宽 = 行带宽（去框后三列横排吃满 232，框右零空白那条旧账的正身）");
         // ---- ⑥ 五型新尺寸逐字钉值（★改排版必须同批翻这五行，先例 = R98/R99/R100 尺寸链就地翻新）----
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CAPACITY), "★容量面宽 266");
-        SimpleAssert.eq(85, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY), "★容量面高 85");
+        SimpleAssert
+            .eq(117, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY), "CAPACITY three-row height117");
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.STACK), "★堆叠面宽 266");
         SimpleAssert
             .eq(117, PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK), "STACK three-row readout height117");
@@ -19094,6 +19244,7 @@ public class NekoPocketModelTest {
     private static ItemStack s5PersistCarrier() {
         final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
         PocketUpgrades.install(carrier, PocketUpgradeType.CHANNEL_PERSIST);
+        PocketUpgradeSwitches.setOff(carrier.getTagCompound(), PocketUpgradeType.CHANNEL_PERSIST, false);
         return carrier;
     }
 
@@ -19309,14 +19460,33 @@ public class NekoPocketModelTest {
             SimpleAssert.that(deduct > persistIf, "★瞬时那一支仍然落在扣费点之后 ⇒ 恢复可用 ≠ 白送（成本 33 的「一次性付过激活费」语义照旧）");
             SimpleAssert.eq(1, countRegionCode(handler, req, reqEnd, "always_on"), "常开回执键仍恰 1 处（单源）");
             // ---- 半边③（源码）：客户端吞击那一腿也要分按钮 ----
-            final int press = firstCodeLineWith(band, 0, band.size(), ".onMousePressed(button -> {");
-            SimpleAssert.that(press >= 0, "定位通道按钮的客户端吞击腿");
+            final int manual = methodStart(
+                band,
+                "private static IWidget channelButton(NekoPocketPanel ui, int currency, int row) {");
+            final int merged = methodStart(band, "private static IWidget persistChannelButton(NekoPocketPanel ui) {");
             SimpleAssert.that(
-                regionContainsCode(band, press, press + 12, "instant"),
-                "★★B3 客户端半边：吞击腿也要分按钮（R95 同一判据把两枚按钮一起吃掉，瞬时那枚因此在客户端就死了）");
+                regionContainsCode(
+                    band,
+                    manual,
+                    methodEnd(band, manual),
+                    "!ui.upgradeInstalledNow(PocketUpgradeType.CHANNEL_PERSIST)"),
+                "manual paid controls only without persistence module");
             SimpleAssert.that(
-                regionContainsCode(band, press, press + 12, "ui.channelPersistActive()"),
-                "★吞击腿仍读面板那条单源判据（★不在 Band 里抄第二份位图读法）");
+                regionContainsCode(
+                    band,
+                    merged,
+                    methodEnd(band, merged),
+                    ".setEnabledIf(widget -> ui.upgradeInstalledNow(PocketUpgradeType.CHANNEL_PERSIST))"),
+                "installed persistence enables the merged control");
+            SimpleAssert.that(
+                textMatches(
+                    band.subList(merged, methodEnd(band, merged)),
+                    "requestUpgradeSwitch\\s*\\(\\s*PocketUpgradeType\\s*\\.\\s*CHANNEL_PERSIST"),
+                "merged control sends guarded switch action");
+            SimpleAssert.eq(
+                0,
+                countRegionCode(band, merged, methodEnd(band, merged), "requestChannel("),
+                "merged toggle does not request paid mode");
         } finally {
             PocketChannelManager.INSTANCE.reset();
         }
@@ -21164,7 +21334,7 @@ public class NekoPocketModelTest {
                 conf,
                 swBtn,
                 swBtnEnd,
-                "ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type))"),
+                "ui.requestUpgradeSwitch(type, ui.upgradeSwitchStateNow(type) == SwitchState.ON)"),
             "★跳③：左键的唯一出口是发码（目标值现读载体，不在装配期冻住）");
         SimpleAssert
             .eq(0, countRegionCode(conf, swBtn, swBtnEnd, "setOff("), "★★阳性对照就位：这里若长出本地写档（客户端私写 off-mask）⇒ 本行立刻红");
@@ -21285,13 +21455,36 @@ public class NekoPocketModelTest {
             countRegionCode(panel, ctor, ctorEnd, "setUpgradeProbes("),
             "注入点恰 1 处（拆成两次注入 = 两条读口各说一遍，门 F 就是为这个洞立的）");
         SimpleAssert.eq(
-            2,
+            1,
             countRegionCode(
                 panel,
                 ctor,
                 ctorEnd,
                 "() -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType."),
-            "★CAPACITY / STACK 两条注入 lambda 都走组合谓词（留一条 hasUpgrade = 整场会话的开关被旁路）");
+            "STACK injects active server predicate");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(panel, ctor, ctorEnd, "this::capacityUpgradeActiveNow"),
+            "CAPACITY injection shares dual-side active mirror getter");
+        final int capacityRead = methodStart(panel, "boolean capacityUpgradeActiveNow() {");
+        SimpleAssert.that(
+            regionContainsCode(
+                panel,
+                capacityRead,
+                methodEnd(panel, capacityRead),
+                "clientUpgradeActive(PocketUpgradeType.CAPACITY)"),
+            "client capacity uses synced active bits");
+        final int switchRead = methodStart(
+            panel,
+            "public PocketConfigPanel.SwitchState upgradeSwitchStateNow(PocketUpgradeType type) {");
+        SimpleAssert.that(
+            regionContainsCode(panel, switchRead, methodEnd(panel, switchRead), "clientUpgradeActive(type)")
+                && regionContainsCode(
+                    panel,
+                    switchRead,
+                    methodEnd(panel, switchRead),
+                    "PocketUpgradeSwitches.isActive(carrierStackLive(), type)"),
+            "switch read has client mirror and authoritative server predicate");
         SimpleAssert
             .eq(0, countRegionCode(panel, ctor, ctorEnd, "PocketUpgrades.hasUpgrade("), "★阳性对照就位：任一条注入改回位图直读 ⇒ 本行红");
         // ---- 源码腿：服务端通道按钮的扣费前早退（第 6 处）----
@@ -21310,16 +21503,32 @@ public class NekoPocketModelTest {
             countRegionCode(sheet, channel, channelEnd, "PocketUpgrades.hasUpgrade("),
             "★阳性对照就位：这一处改回位图 ⇒ 本行红（后果是「既不续批也按不动按钮」，两头都不通）");
         // ---- 全仓读数：GUI 两个文件直调归零 + 全域总点归零到 2 ----
-        SimpleAssert.eq(0, countCodeLinesIn(panel, "PocketUpgrades.hasUpgrade("), "★面板文件直读位图 = 0（S1 留下的 5 ⇒ 0）");
-        SimpleAssert.eq(0, countCodeLinesIn(sheet, "PocketUpgrades.hasUpgrade("), "★handler 文件直读位图 = 0（S1 留下的 1 ⇒ 0）");
+        SimpleAssert.eq(
+            2,
+            countCodeLinesIn(panel, "PocketUpgrades.hasUpgrade("),
+            "only installed mirror seed and installed accessor read raw bit");
+        final int installedGetter = methodStart(panel, "private int liveUpgradeInstalledBits() {");
+        final int installedRead = methodStart(panel, "public boolean upgradeInstalledNow(PocketUpgradeType type) {");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(panel, installedGetter, methodEnd(panel, installedGetter), "PocketUpgrades.hasUpgrade("),
+            "installed mirror authoritative seed");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(panel, installedRead, methodEnd(panel, installedRead), "PocketUpgrades.hasUpgrade("),
+            "installed accessor server read");
+        SimpleAssert.eq(
+            0,
+            countCodeLinesIn(sheet, "PocketUpgrades.hasUpgrade("),
+            "server effect handler does not bypass active predicate");
         final int total = countMainJavaCodeLinesMatching("PocketUpgrades\\.hasUpgrade\\(");
         if (total < 0) {
             System.out.println("[NOTE] 读不到 src/main/java ⇒ 全仓总点闸【未验】");
         } else {
             SimpleAssert.eq(
-                2,
+                5,
                 total,
-                "★★门禁 E 翻面后的同一个读数：全仓 hasUpgrade 直调只剩永久两条腿（P-4 源质钳制 + 组合谓词类内）" + "⇒ 任何一处读口退回直读 ⇒ 本行变 3 立刻红");
+                "raw installed reads: predicate, essence load, capacity migration and two installed mirror reads");
         }
         SimpleAssert.eq(
             1,
@@ -21544,7 +21753,7 @@ public class NekoPocketModelTest {
             System.out.println("[NOTE] 读不到 src/main/java ⇒ 写点计数【未验】");
             return;
         }
-        SimpleAssert.eq(1, writeSites, "★★全主源 setOff 调用点恰 1（在 PocketConfigPanel#commitSwitch）⇒ 长出第二处写者即红");
+        SimpleAssert.eq(2, writeSites, "Two controlled writes: new-install default and server user commit");
         SimpleAssert
             .eq(1, countMainJavaCodeLinesMatching("public static boolean setOff\\("), "setOff 的定义也恰 1（置位与清位共用同一条写腿）");
         SimpleAssert.eq(
@@ -21564,6 +21773,22 @@ public class NekoPocketModelTest {
             return;
         }
         // ① 写点在 commitSwitch 内
+        final List<String> upgrades = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketUpgrades.java");
+        final int install = methodStart(
+            upgrades,
+            "public static void install(NBTTagCompound root, PocketUpgradeType type) {");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(upgrades, install, methodEnd(upgrades, install), "PocketUpgradeSwitches.setOff("),
+            "one installation default writer");
+        SimpleAssert.that(
+            regionContainsCode(
+                upgrades,
+                install,
+                methodEnd(upgrades, install),
+                "newlyInstalled && type == PocketUpgradeType.CHANNEL_PERSIST"),
+            "default-off only for newly installed persistence");
         final int commit = methodStart(
             conf,
             "public static Outcome commitSwitch(ItemStack carrier, PocketUpgradeType type, boolean wantOff,");
@@ -21686,13 +21911,16 @@ public class NekoPocketModelTest {
                 simpleReadoutKeys.add(readoutKey);
             }
         }
+        SimpleAssert
+            .eq(4, footprints.size(), "Two cumulative upgrades share266x117; other feature panels remain distinct");
         SimpleAssert.eq(
-            PocketUpgradeType.values().length,
-            footprints.size(),
-            "★★R98 判据①（顶掉旧「五本高账互不相同」的第一条）：五面的 (宽,高) <b>元组</b>互不相同（读到 " + footprints.size()
-                + " 种 "
-                + footprints
-                + " —— 两面同宽同高就是「同一张脸换标题」的几何正身，旧口径只看高会放过它）");
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.STACK),
+            PocketConfigPanel.panelWidthOf(PocketUpgradeType.CAPACITY),
+            "cumulative module panels share row width");
+        SimpleAssert.eq(
+            PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK),
+            PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY),
+            "both cumulative panels show three readable rows");
         SimpleAssert.eq(
             PocketUpgradeType.values().length,
             seconds.size(),
@@ -21759,6 +21987,15 @@ public class NekoPocketModelTest {
             // （READOUT_CAPACITY_KEY；旧账量的 gtit.pocket.fluid.capacity 是 R101 改读规则句之前的旧键，
             // 面上已不渲染它，账随消费件同批翻新），其余读数行/模式名/频率标签照旧式换档重算 ----
             // 容量面：规则句（本型独有键，R101.4 en 已缩到 1.0 档一行宽）。
+            for (String line : new String[] {
+                formatLang(lang, "gtit.pocket.config.capacity.count", Integer.valueOf(64), Integer.valueOf(64)),
+                formatLang(lang, "gtit.pocket.config.capacity.amount", Long.valueOf(2000000000L)),
+                formatLang(lang, "gtit.pocket.config.capacity.total", Long.valueOf(60000000000L)) }) {
+                SimpleAssert.that(
+                    residentLogicalWidth(line) * PocketConfigPanel.BODY_TEXT_SCALE
+                        <= contentBoxOf(PocketUpgradeType.CAPACITY),
+                    "capacity exact readout fits one row: " + line);
+            }
             final int capW = residentLogicalWidth(formatLang(lang, PocketConfigPanel.READOUT_CAPACITY_KEY));
             final int capBox = contentBoxOf(PocketUpgradeType.CAPACITY);
             final int capLines = (int) Math.ceil(capW * PocketConfigPanel.BODY_TEXT_SCALE / capBox);
@@ -23297,9 +23534,13 @@ public class NekoPocketModelTest {
                     5)),
             "★正控：三项式数组喂进去必须读 2（读到 3 = 内层逗号被当成槽；读到别的 = 注释行没剥掉）");
         SimpleAssert.eq(
-            2,
-            countRegionCode(item, tip, methodEnd(item, tip), "capacityUpgraded ?"),
-            "★%5$d 与 %9$d 两项仍由 CAPACITY 位动态喂（读到 0/1 = 有人因为「lang 不再引用」就把数组项删了 ⇒ 读点那条用例也会连坐）");
+            1,
+            countRegionCode(item, tip, methodEnd(item, tip), "fluidTankCapacityMl(capacityCount)"),
+            "item tooltip per-tank follows active count");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(item, tip, methodEnd(item, tip), "fluidTotalCapacityMl(capacityCount)"),
+            "item tooltip total follows active count");
         // ================= ⑨ 追加顺序：蒸馏行在前、储量行在最底部 =================
         final int ai = methodStart(
             item,

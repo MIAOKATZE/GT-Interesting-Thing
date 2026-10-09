@@ -136,6 +136,7 @@ public final class PocketChannelSessions {
                 () -> PocketUpgradeSwitches.isActive(this.carrier, PocketUpgradeType.CAPACITY),
                 () -> PocketUpgradeSwitches.isActive(this.carrier, PocketUpgradeType.STACK));
             this.inventory.setStackCountProbe(this::storageStackUpgradeCount);
+            this.inventory.setCapacityCountProbe(() -> PocketUpgrades.capacityUpgradeCount(carrierStack()));
         }
 
         /** driver 在 tick 到场时回填"此刻真被 tick 的那一枚"（关屏重定位/堆叠移动后引用不陈旧）。 */

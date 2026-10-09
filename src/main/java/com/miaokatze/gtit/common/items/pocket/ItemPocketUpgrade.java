@@ -116,7 +116,10 @@ public class ItemPocketUpgrade extends Item {
         this.type = type;
         setUnlocalizedName(unlocalizedNameOf(type));
         setTextureName(GTInterestingThing.MODID + ":" + unlocalizedNameOf(type));
-        setMaxStackSize(type == PocketUpgradeType.STACK ? PocketConstants.STACK_UPGRADE_MAX_COUNT : 1);
+        setMaxStackSize(
+            (type == PocketUpgradeType.STACK || type == PocketUpgradeType.CAPACITY)
+                ? PocketConstants.STACK_UPGRADE_MAX_COUNT
+                : 1);
         setCreativeTab(CreativeTabManager.CREATIVE_TAB);
     }
 

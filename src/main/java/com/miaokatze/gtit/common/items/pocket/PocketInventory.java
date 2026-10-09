@@ -200,6 +200,7 @@ public final class PocketInventory {
     /** ★R95 S5：STACK 升级位的查询式探针（管存储格堆叠与源质每格上限两处，同一位）。 */
     private java.util.function.BooleanSupplier stackProbe = () -> false;
     private java.util.function.IntSupplier stackCountProbe = () -> 1;
+    private java.util.function.IntSupplier capacityCountProbe = () -> PocketConstants.CAPACITY_UPGRADE_MAX_COUNT;
 
     private PocketEssenceStore essence;
     /**
@@ -354,6 +355,7 @@ public final class PocketInventory {
         inventory.capacityProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.CAPACITY);
         inventory.stackProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.STACK);
         inventory.stackCountProbe = () -> PocketUpgrades.stackUpgradeCount(root);
+        inventory.capacityCountProbe = () -> PocketUpgrades.capacityUpgradeCount(root);
         inventory.syncEssenceCapProbe();
         // ★R92-④：读档不再需要专门的闭闸——"放置即配置"的准入信号是 isItemValid 登记的<b>意图</b>，
         // 而 loadGroup 走 setStackInSlot、★不经过 isItemValid ⇒ 新建的 inventory 意图恒空，读档必然不定档
@@ -371,6 +373,11 @@ public final class PocketInventory {
         loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput, "蒸馏输入");
         loadGroup(root, PocketConstants.BIND_SLOT, inventory.bindSlot, "绑定格");
         loadGroup(root, PocketConstants.UPGRADE_SLOT_GROUP, inventory.upgradeCells, "升级插件格");
+        final int capacityCell = PocketUpgradeType.CAPACITY.ordinal();
+        final ItemStack capacityDisplay = inventory.upgradeCells.getStackInSlot(capacityCell);
+        if (capacityDisplay != null && PocketUpgrades.hasUpgrade(root, PocketUpgradeType.CAPACITY)) {
+            capacityDisplay.stackSize = PocketUpgrades.capacityUpgradeCount(root);
+        }
         inventory.loadTanks(root);
         // ★R87-f：声明表必须先于源质表读出——保格谓词以它为输入，「有格位无库存」的空洞折叠只对无声明者生效
         inventory.filters = PocketFilterConfig.readFrom(root);
@@ -850,8 +857,18 @@ public final class PocketInventory {
      * ★R95 S5：单 tank 容量（mB，long）——{@link PocketConstants#fluidTankCapacityMl(boolean)} 的
      * 本实例读法（探针默认 false ⇒ 未升级口径）。
      */
+    public int capacityUpgradeCount() {
+        return capacityUpgradeActive()
+            ? Math.max(1, Math.min(PocketConstants.CAPACITY_UPGRADE_MAX_COUNT, capacityCountProbe.getAsInt()))
+            : 0;
+    }
+
+    public void setCapacityCountProbe(java.util.function.IntSupplier probe) {
+        capacityCountProbe = probe == null ? () -> PocketConstants.CAPACITY_UPGRADE_MAX_COUNT : probe;
+    }
+
     long fluidTankCapacity() {
-        return PocketConstants.fluidTankCapacityMl(capacityUpgradeActive());
+        return PocketConstants.fluidTankCapacityMl(capacityUpgradeCount());
     }
 
     /** ★R95 S5：源质每格上限的本实例读法（STACK 位在 ⇒ 4096；喂给 {@link PocketEssenceStore} 的动态上限）。 */
@@ -945,7 +962,9 @@ public final class PocketInventory {
 
             @Override
             public int getSlotLimit(int slot) {
-                return slot == PocketUpgradeType.STACK.ordinal() ? PocketConstants.STACK_UPGRADE_MAX_COUNT : 1;
+                return (slot == PocketUpgradeType.STACK.ordinal() || slot == PocketUpgradeType.CAPACITY.ordinal())
+                    ? PocketConstants.STACK_UPGRADE_MAX_COUNT
+                    : 1;
             }
 
             @Override

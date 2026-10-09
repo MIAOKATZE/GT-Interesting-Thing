@@ -62,6 +62,38 @@ public final class PocketUpgrades {
             : 1;
     }
 
+    public static int capacityUpgradeCount(NBTTagCompound root) {
+        if (!hasUpgrade(root, PocketUpgradeType.CAPACITY)) {
+            return 0;
+        }
+        return root.hasKey(PocketConstants.CAPACITY_UPGRADE_COUNT_KEY)
+            ? Math.max(
+                1,
+                Math.min(
+                    PocketConstants.CAPACITY_UPGRADE_MAX_COUNT,
+                    root.getInteger(PocketConstants.CAPACITY_UPGRADE_COUNT_KEY)))
+            : PocketConstants.CAPACITY_UPGRADE_MAX_COUNT;
+    }
+
+    public static int capacityUpgradeCount(ItemStack carrier) {
+        return capacityUpgradeCount(carrier == null ? null : carrier.getTagCompound());
+    }
+
+    public static void installCapacityCount(ItemStack carrier, int count) {
+        if (carrier == null || count <= 0) {
+            return;
+        }
+        if (carrier.getTagCompound() == null) {
+            carrier.setTagCompound(new NBTTagCompound());
+        }
+        final NBTTagCompound root = carrier.getTagCompound();
+        final int prior = capacityUpgradeCount(root);
+        root.setInteger(
+            PocketConstants.CAPACITY_UPGRADE_COUNT_KEY,
+            Math.max(prior, Math.min(PocketConstants.CAPACITY_UPGRADE_MAX_COUNT, count)));
+        install(root, PocketUpgradeType.CAPACITY);
+    }
+
     public static int stackUpgradeCount(ItemStack carrier) {
         return stackUpgradeCount(carrier == null ? null : carrier.getTagCompound());
     }
@@ -103,11 +135,15 @@ public final class PocketUpgrades {
      * 给"手里只有化合物"的装配与用例面用（读侧的对应重载见 {@link #hasUpgrade(NBTTagCompound, PocketUpgradeType)}）。
      */
     public static void install(NBTTagCompound root, PocketUpgradeType type) {
+        final boolean newlyInstalled = !hasUpgrade(root, type);
         if (root == null) {
             return;
         }
         root.setByte(
             PocketConstants.UPGRADES_KEY,
             (byte) (root.getByte(PocketConstants.UPGRADES_KEY) | (1 << type.ordinal())));
+        if (newlyInstalled && type == PocketUpgradeType.CHANNEL_PERSIST) {
+            PocketUpgradeSwitches.setOff(root, type, true);
+        }
     }
 }
