@@ -143,7 +143,7 @@ final class NekoPocketServerHandler {
             // 现在与 handler、通道消费侧、ghost 读数侧共读同一条单源算式
             // （{@link PocketInventory#effectiveStorageLimit(boolean, ItemStack)}），★不在本文件抄第二份三元。
             // 未升级档该算式给 64 ⇒ 现状逐字不变（反「修过头」的判据，见用例 A2）。
-            final int free = PocketInventory.effectiveStorageLimit(storageStackUpgraded(), existing)
+            final int free = PocketInventory.effectiveStorageLimit(panel.storageStackUpgradeCount(), existing)
                 - existing.stackSize;
             final int take = Math.min(free, stack.stackSize);
             if (take > 0) {

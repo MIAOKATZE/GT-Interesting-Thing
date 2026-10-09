@@ -60,13 +60,15 @@ tasks.register<JavaExec>("runStorageTypeKeyTest") {
 }
 
 // 猫猫次元口袋数据模型与通道状态机零依赖测试套件：同 runStoreTest 模式（用例注册在
-// NekoPocketModelTest.main，任一失败以非零退出码结束）。纯 JVM 件，不触达 AE2 实现类。
+// NekoPocketModelTest.main，任一失败以非零退出码结束）。模型与原生滚动回归，附加fastutil测试依赖。
 // 运行：gradlew runPocketTest
 tasks.register<JavaExec>("runPocketTest") {
     group = "verification"
-    description = "Runs the zero-dependency dimensional pocket model test suite (NekoPocketModelTest.main)."
+    description = "Runs dimensional pocket model and native scrollbar regressions (NekoPocketModelTest.main)."
     mainClass = "com.miaokatze.gtit.common.items.pocket.NekoPocketModelTest"
     classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    classpath += configurations.detachedConfiguration(dependencies.create("org.joml:joml:1.10.8"))
 }
 
 // 抽奖槽数、草稿和轮盘布局纯 JVM 回归。

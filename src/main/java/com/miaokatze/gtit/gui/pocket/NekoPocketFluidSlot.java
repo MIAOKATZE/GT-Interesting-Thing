@@ -346,7 +346,7 @@ public class NekoPocketFluidSlot extends FluidSlot {
             PocketFilterConfig.Kind.FLUID,
             declaredCap,
             effectiveScrollCeiling(),
-            owner != null && owner.capacityUpgradeActiveNow(),
+            owner == null ? 0 : owner.capacityUpgradeCountNow(),
             scrollDirection,
             Interactable.hasControlDown());
         if (!owner.requestGhost(slotIndex, PocketGhostRequest.capDirective(PocketFilterConfig.Kind.FLUID, next))) {

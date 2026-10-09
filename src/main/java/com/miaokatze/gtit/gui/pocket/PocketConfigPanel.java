@@ -338,7 +338,7 @@ public final class PocketConfigPanel {
      * 量到两行就必须留两行的高（★R98 逐型几何目标给的 94 是「一行装得下」那一支，实测吃不下 ⇒
      * 一直留在两行盒，不削盒）。
      */
-    public static final int CAPACITY_READOUT_HEIGHT = RECEIPT_HEIGHT;
+    public static final int CAPACITY_READOUT_HEIGHT = 2 * READOUT_HEIGHT;
 
     // ==== ★R100：通道持续化面的频率段几何（该面第二行专属内容，只此一型画） ====
 
@@ -419,7 +419,7 @@ public final class PocketConfigPanel {
             @Override
             public int contentHeight() {
                 // ★R98 S4 DP-7：42（两行 + 缝）→ 18（只剩单格上限那一行）。
-                return READOUT_HEIGHT;
+                return 3 * READOUT_HEIGHT;
             }
         },
         /** 通道持续化面的读数段：常开现状一行。★R98 S4 DP-7 撤掉按钮禁用与帧带常亮两条说明。 */
@@ -1418,17 +1418,22 @@ public final class PocketConfigPanel {
      * 标题单独走强调色（阴影保持）。字号仍 {@link #TEXT_SCALE}=0.8 不动（1.0 档 en 最坏串必折行）。
      */
     private static IWidget typeLabel(NekoPocketPanel ui, PocketUpgradeType type) {
-        final String nameKey = UPGRADE_NAME_KEYS[type.ordinal()];
-        return (IWidget) new TextWidget(IKey.dynamic(() -> {
-            final SwitchState state = switchState(ui.carrierStackLive(), type);
-            return StatCollector.translateToLocal(nameKey) + "：" + StatCollector.translateToLocal(stateKey(state));
-        })).textAlign(Alignment.CenterLeft)
-            .scale(TEXT_SCALE)
-            .color(PocketGhostRequest.titleTextColor())
-            .shadow(Boolean.TRUE)
-            .name("pocket_config_label_" + type.ordinal())
+        final com.cleanroommc.modularui.drawable.UITexture[] icons = { PocketGuiTextures.UPGRADE_CAPACITY,
+            PocketGuiTextures.UPGRADE_STACK, PocketGuiTextures.UPGRADE_MAGNET, PocketGuiTextures.UPGRADE_CHANNEL,
+            PocketGuiTextures.UPGRADE_DISTILL };
+        return new ParentWidget<>().name("pocket_config_label_" + type.ordinal())
             .pos(MARGIN, MARGIN)
-            .size(labelWidthOf(type), ROW_HEIGHT);
+            .size(labelWidthOf(type), ROW_HEIGHT)
+            .child(
+                icons[type.ordinal()].asWidget()
+                    .size(ROW_HEIGHT, ROW_HEIGHT))
+            .child(
+                (IWidget) new TextWidget(IKey.lang(UPGRADE_NAME_KEYS[type.ordinal()])).textAlign(Alignment.CenterLeft)
+                    .scale(TEXT_SCALE)
+                    .color(PocketGhostRequest.titleTextColor())
+                    .shadow(Boolean.TRUE)
+                    .pos(ROW_HEIGHT + MARGIN, 0)
+                    .size(labelWidthOf(type) - ROW_HEIGHT - MARGIN, ROW_HEIGHT));
     }
 
     /**
@@ -1446,10 +1451,11 @@ public final class PocketConfigPanel {
             .playClickSound(true)
             // ★只有左键生效（同 R83 B2(5) 的口径：丢掉 button 形参 = 右键也切一次）；
             // ★★这里一个字节都不写档 —— 客户端私写 off-mask 是门禁 G12 / 门 D 钉死的 FAIL 形状。
-            .onMousePressed(press -> press == 0 && ui.requestUpgradeSwitch(type, nextOff(ui.carrierStackLive(), type)));
+            .onMousePressed(
+                press -> press == 0 && ui.requestUpgradeSwitch(type, ui.upgradeSwitchStateNow(type) == SwitchState.ON));
         applyConfigButtonStyle(
             button,
-            IKey.dynamic(() -> StatCollector.translateToLocal(switchLabelKey(switchState(ui.carrierStackLive(), type))))
+            IKey.dynamic(() -> StatCollector.translateToLocal(switchLabelKey(ui.upgradeSwitchStateNow(type))))
                 .scale(BODY_TEXT_SCALE));
         return button;
     }
@@ -1491,13 +1497,35 @@ public final class PocketConfigPanel {
      * ② y 从 {@link #CONTENT_TOP} 改 {@link #ruleLineYOf} 派生式——两行内容纵向匀称，底带留白不再成片。
      */
     private static IWidget capacityReadoutBlock(NekoPocketPanel ui, PocketUpgradeType type) {
-        return (IWidget) new TextWidget(IKey.lang(READOUT_CAPACITY_KEY)).textAlign(Alignment.CenterLeft)
-            .scale(BODY_TEXT_SCALE)
-            .color(PocketGhostRequest.readoutTextColor())
-            .shadow(Boolean.TRUE)
-            .name("pocket_config_capacity_readout")
-            .pos(MARGIN, ruleLineYOf(type))
-            .size(panelWidthOf(type) - 2 * MARGIN, CAPACITY_READOUT_HEIGHT);
+        final ParentWidget<?> block = new ParentWidget<>().pos(MARGIN, CONTENT_TOP)
+            .size(panelWidthOf(type) - 2 * MARGIN, CAPACITY_READOUT_HEIGHT)
+            .name("pocket_config_capacity_limit");
+        final String[] keys = { "gtit.pocket.config.capacity.count", "gtit.pocket.config.capacity.amount" };
+        for (int row = 0; row < keys.length; row++) {
+            final int selected = row;
+            final TextWidget<?> line = new TextWidget<>(IKey.dynamic(() -> {
+                final Object[] args = selected == 0
+                    ? new Object[] { ui.installedCapacityUpgradeCount(), PocketConstants.CAPACITY_UPGRADE_MAX_COUNT }
+                    : new Object[] { PocketCapacityText.format(ui.fluidTankCapacityNow()) };
+                return String.format(StatCollector.translateToLocal(keys[selected]), args);
+            }));
+            line.textAlign(Alignment.CenterLeft)
+                .scale(BODY_TEXT_SCALE)
+                .color(PocketGhostRequest.readoutTextColor())
+                .shadow(Boolean.TRUE);
+            line.tooltipDynamic(tooltip -> {
+                if (selected != 0) tooltip.addLine(
+                    IKey.dynamic(
+                        () -> String.format(
+                            StatCollector.translateToLocal("gtit.pocket.config.capacity.exact"),
+                            ui.fluidTankCapacityNow())));
+                tooltip.addLine(IKey.lang(READOUT_CAPACITY_KEY));
+            });
+            line.pos(0, row * READOUT_HEIGHT)
+                .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+            block.child(line);
+        }
+        return block;
     }
 
     /**
@@ -1509,13 +1537,34 @@ public final class PocketConfigPanel {
      * {@link #ruleLineYOf} 派生式（与容量面同一条式子——两行内容纵向匀称，底带留白不再成片）。
      */
     private static IWidget stackLimitLine(NekoPocketPanel ui, PocketUpgradeType type) {
-        return (IWidget) new TextWidget(IKey.lang(READOUT_STACK_KEY)).textAlign(Alignment.CenterLeft)
-            .scale(BODY_TEXT_SCALE)
-            .color(PocketGhostRequest.readoutTextColor())
-            .shadow(Boolean.TRUE)
-            .name("pocket_config_stack_limit")
-            .pos(MARGIN, ruleLineYOf(type))
-            .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+        final ParentWidget<?> readout = new ParentWidget<>().name("pocket_config_stack_limit")
+            .pos(MARGIN, CONTENT_TOP)
+            .size(panelWidthOf(type) - 2 * MARGIN, 3 * READOUT_HEIGHT);
+        for (int row = 0; row < 3; row++) {
+            final int lineIndex = row;
+            final TextWidget<?> line = new TextWidget<>(IKey.dynamic(() -> {
+                final String[] lines = String
+                    .format(
+                        StatCollector.translateToLocal(READOUT_STACK_KEY),
+                        ui.installedStackUpgradeCount(),
+                        ui.storageStackUpgradeCount() == 0 ? PocketConstants.STORAGE_SLOT_LIMIT_BASE
+                            : ui.storageStackUpgradeCount() * PocketConstants.STORAGE_LIMIT_PER_STACK_UPGRADE,
+                        PocketConstants.essenceCapPerTag(ui.storageStackUpgraded()),
+                        PocketConstants.STACK_UPGRADE_MAX_COUNT)
+                    .replace("\\n", "\n")
+                    .split("\n");
+                return lineIndex < lines.length ? lines[lineIndex] : "";
+            }));
+            line.textAlign(Alignment.CenterLeft)
+                .scale(BODY_TEXT_SCALE)
+                .color(PocketGhostRequest.readoutTextColor())
+                .shadow(Boolean.TRUE)
+                .pos(0, row * READOUT_HEIGHT)
+                .size(panelWidthOf(type) - 2 * MARGIN, READOUT_HEIGHT);
+            line.tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang("gtit.pocket.config.stack.off_rule")));
+            readout.child(line);
+        }
+        return readout;
     }
 
     /**

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.StatCollector;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
@@ -370,7 +371,7 @@ public final class NekoPocketBottomBand {
      * {@code SlotGroup("player_inventory")} 的 rowSize 固定是 9，中栏列数再变也不该改背包宽。
      * 与 {@link NekoPocketStorageColumn#WIDTH} 的相等关系是<b>判据</b>而非定义，见 {@code static} 块）。
      */
-    public static final int BACKPACK_WIDTH = BACKPACK_COLUMNS * NekoPocketPanel.GRID;
+    public static final int BACKPACK_WIDTH = NekoPocketStorageColumn.WIDTH;
     /** 背包高（4 行 × 18 = 72 = 带高，R78① 的"正好等于"；R80 未动）。 */
     public static final int BACKPACK_HEIGHT = BACKPACK_ROWS * NekoPocketPanel.GRID;
     /**
@@ -383,7 +384,7 @@ public final class NekoPocketBottomBand {
      * 旧注释里"写定稿字面量才留得住判据力"的顾虑由 {@link #BIND_CONTENT_WIDTH} 那条
      * "与源质列同 x 同宽"的断言接管：★不再靠一个字面量看账。
      */
-    public static final int BIND_WIDTH = 6 * NekoPocketPanel.GRID + NekoPocketPanel.COLUMN_GAP;
+    public static final int BIND_WIDTH = NekoPocketEssenceColumn.WIDTH + NekoPocketPanel.COLUMN_GAP;
     /**
      * R78 时代"三段之间各留 4px 列间距 ⇒ 余 14px 塞在背包与右段之间"的余量（R80① 后必须为 0）。
      * <p>
@@ -457,7 +458,8 @@ public final class NekoPocketBottomBand {
      * {@code BIND_X + 22 = 302}）。行内 5 格 × 18 = 90 恰满内容区右沿（22 + 90 = 112 = 段宽，
      * 装配期断言）。
      */
-    public static final int UPGRADE_ROW_X = BIND_CONTENT_X + NekoPocketPanel.GRID;
+    public static final int UPGRADE_ROW_GAP = PocketScrollWidget.SCROLLBAR_WIDTH;
+    public static final int UPGRADE_ROW_X = BIND_CONTENT_X + NekoPocketPanel.GRID + UPGRADE_ROW_GAP;
     /**
      * 升级插件格的布局字面量（★R95：一行 5 格，单一布局字符 {@code 'U'}，仿蒸馏盘 {@code "DDDDDD"}
      * 的矩阵风格；槽号 = 布局序 = {@code PocketUpgradeType#ordinal()}，三空间同下标）。
@@ -590,7 +592,7 @@ public final class NekoPocketBottomBand {
         }
         // ★R81④ 新增的两条硬判据：面板宽 = 主区实占 ⇒ 三段加总必须跟着变 112|162|112。
         // 右段宽写成加算式（6×18+4），这里把它与"面板宽 − 前两段"对账 ⇒ 两条式子给出不同的数就红。
-        if (BIND_WIDTH != 6 * NekoPocketPanel.GRID + NekoPocketPanel.COLUMN_GAP) {
+        if (BIND_WIDTH != NekoPocketEssenceColumn.WIDTH + NekoPocketPanel.COLUMN_GAP) {
             throw new IllegalStateException("[pocket] 右段宽不是 6×18+4=112（★一格绳缝 + 六格栅格）: " + BIND_WIDTH);
         }
         if (COIN_WIDTH + BACKPACK_WIDTH + BIND_WIDTH + 2 * NekoPocketPanel.MARGIN != NekoPocketPanel.WIDTH) {
@@ -706,7 +708,8 @@ public final class NekoPocketBottomBand {
         // （R36 不删信息，只换面；PERSISTENT_ROWS ≥ 1 由上面那条断言钉）。新对账 = 行 3 恰满幅：
         // 帮助 18 + 5×18 = 108 恰等于内容区宽，且升级格右沿铺到内容区右沿（与行 0 按钮居中、行 2 整幅
         // 同一条「零无主空白」纪律）。
-        if (NekoPocketPanel.GRID + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID != BIND_CONTENT_WIDTH
+        if (NekoPocketPanel.GRID + UPGRADE_ROW_GAP + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID
+            != BIND_CONTENT_WIDTH
             || UPGRADE_ROW_X + PocketInventory.UPGRADE_SLOTS * NekoPocketPanel.GRID
                 != BIND_CONTENT_X + BIND_CONTENT_WIDTH) {
             throw new IllegalStateException(
@@ -723,7 +726,7 @@ public final class NekoPocketBottomBand {
         if (COIN_BAR_X != 0 || COIN_BAR_WIDTH != 49
             || CHANNEL_BUTTON_GAP != 2
             || CHANNEL_BUTTON_X != 51
-            || CHANNEL_BUTTON_WIDTH != 61) {
+            || CHANNEL_BUTTON_WIDTH != 67) {
             throw new IllegalStateException(
                 "[pocket] 左段一行的横向账不再是「0 + 49(条) + 2(缝) + 61(钮)」: 条 " + COIN_BAR_WIDTH
                     + " 缝 "
@@ -938,6 +941,7 @@ public final class NekoPocketBottomBand {
             block.child(channelButton(ui, currency, row));
             row++;
         }
+        block.child(persistChannelButton(ui));
         if (row != COIN_ROWS) {
             throw new IllegalStateException("[pocket] 左段币栏发出 " + row + " 行，与行位数 " + COIN_ROWS + " 不符（★币种数或每币种行数被改）");
         }
@@ -949,7 +953,7 @@ public final class NekoPocketBottomBand {
         // resident_text_pixel_budget）在第一个件里折四行 = 26px > 18 顶穿、第二个件空着。★纵向闭合现在由 static 块那三条高度对账守
         // （说明块 + 币栏 = 段高 / 币栏起点 = 说明块下沿 / 段底与带底对齐），"漏画一行"的旧对账换成"漏画这一块"。
         if (block.getChildren()
-            .size() != COIN_ROWS * WIDGETS_PER_COIN_ROW + STATUS_BLOCK_WIDGETS) {
+            .size() != COIN_ROWS * WIDGETS_PER_COIN_ROW + STATUS_BLOCK_WIDGETS + 1) {
             throw new IllegalStateException(
                 "[pocket] 左段画出 " + block.getChildren()
                     .size()
@@ -1025,6 +1029,27 @@ public final class NekoPocketBottomBand {
      * @param currency 币种序号（与同一行的币值条同序号 ⇒ "这枚币花在哪个通道"读得出来）
      * @param row      左段行位（★y 与那一行的币值条同源，两件永远并排不叠）
      */
+    private static IWidget persistChannelButton(NekoPocketPanel ui) {
+        return new ButtonWidget<>().pos(CHANNEL_BUTTON_X, coinRowY(0))
+            .size(CHANNEL_BUTTON_WIDTH, COIN_ROWS * COIN_BAR_HEIGHT)
+            .name("pocket_button_persist_toggle")
+            .background(PocketGuiTextures.BUTTON)
+            .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
+            .overlay(
+                IKey.dynamic(
+                    () -> StatCollector.translateToLocal("gtit.pocket.channel.persist.toggle")
+                        .replace("\\n", "\n") + "\n"
+                        + StatCollector.translateToLocal(
+                            PocketConfigPanel
+                                .switchLabelKey(ui.upgradeSwitchStateNow(PocketUpgradeType.CHANNEL_PERSIST)))))
+            .tooltipDynamic(tooltip -> tooltip.addLine(IKey.lang("gtit.pocket.channel.persist.toggle.hint")))
+            .setEnabledIf(widget -> ui.upgradeInstalledNow(PocketUpgradeType.CHANNEL_PERSIST))
+            .onMousePressed(
+                button -> button == 0 && ui.requestUpgradeSwitch(
+                    PocketUpgradeType.CHANNEL_PERSIST,
+                    ui.upgradeSwitchStateNow(PocketUpgradeType.CHANNEL_PERSIST) == PocketConfigPanel.SwitchState.ON));
+    }
+
     private static IWidget channelButton(NekoPocketPanel ui, int currency, int row) {
         final boolean instant = currency == 0;
         final IKey fullLabel;
@@ -1044,6 +1069,7 @@ public final class NekoPocketBottomBand {
         return new ButtonWidget<>().pos(CHANNEL_BUTTON_X, coinRowY(row))
             .size(CHANNEL_BUTTON_WIDTH, COIN_BAR_HEIGHT)
             .name(instant ? "pocket_button_instant" : "pocket_button_timed")
+            .setEnabledIf(widget -> !ui.upgradeInstalledNow(PocketUpgradeType.CHANNEL_PERSIST))
             .background(PocketGuiTextures.BUTTON)
             .hoverBackground(PocketGuiTextures.BUTTON_PRESSED)
             .child(
@@ -1081,12 +1107,7 @@ public final class NekoPocketBottomBand {
             // ★短效那一腿读的是面板那条<b>已经补了"在场"第二问</b>的单源判据（B4 同一次改口）：
             // 位在场而道没起来（从没开过界面 / 一枚元件都没绑）时放这一按过去，服务端那个幂等激活口
             // 会把道起起来 —— 仍不扣费、仍不进冷却。
-            .onMousePressed(button -> {
-                if (!instant && ui.channelPersistActive()) {
-                    return true;
-                }
-                return button == 0 && ui.requestChannel(request);
-            });
+            .onMousePressed(button -> { return button == 0 && ui.requestChannel(request); });
     }
 
     /**
@@ -1363,7 +1384,13 @@ public final class NekoPocketBottomBand {
             if (carrier == null || carrier != ui.carrierStack()) {
                 return;
             }
-            PocketUpgrades.install(carrier, PocketUpgradeType.values()[index]);
+            if (PocketUpgradeType.values()[index] == PocketUpgradeType.STACK) {
+                PocketUpgrades.installStackCount(carrier, newItem.stackSize);
+            } else if (PocketUpgradeType.values()[index] == PocketUpgradeType.CAPACITY) {
+                PocketUpgrades.installCapacityCount(carrier, newItem.stackSize);
+            } else {
+                PocketUpgrades.install(carrier, PocketUpgradeType.values()[index]);
+            }
         });
         final ItemSlot slot = new UpgradeCellSlot(ui, index);
         slot.slot(modular);

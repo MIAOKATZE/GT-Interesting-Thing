@@ -410,10 +410,12 @@ item.neko_pocket_upgrade_stack.name=Stacking Upgrade Module
 item.neko_pocket_upgrade_magnet.name=Magnet Upgrade Module
 item.neko_pocket_upgrade_channel_persist.name=Channel Persistence Upgrade Module
 item.neko_pocket_upgrade_mage.name=Mage Upgrade Module
-gtit.pocket.upgrade.capacity.tooltip=Fluid bar capacity raised to two G
-gtit.pocket.upgrade.stack.tooltip=Per-slot stack limit times sixteen
+gtit.pocket.upgrade.capacity.tooltip=Up to64 capacity modules: first63 add30M mB each; last adds90M; maximum2G
+gtit.pocket.upgrade.stack.tooltip=Item limit per slot: installed modules x %1$d
+gtit.pocket.upgrade.stack.rule=Up to %1$d modules; unstackable items stay at 1
+gtit.pocket.upgrade.stack.essence=Essentia keeps its existing upgrade effect
 gtit.pocket.upgrade.magnet.tooltip=Automatically picks up items within eight blocks
-gtit.pocket.upgrade.channel_persist.tooltip=Channels always on: the channel button is disabled and the pocket always shows as working
+gtit.pocket.upgrade.channel_persist.tooltip=Off after installation; toggle persistence on main panel without coins
 gtit.pocket.upgrade.mage.tooltip=Distillation interval cut from five seconds to one second
 # ---- R100 slice B new keys (10): mage module numbered detail lines line.0..line.9 (the one-line effect stays first) ----
 # Order: permanent install -> four modes -> distillation notes -> three passives (wand / coin / transmute)
@@ -422,12 +424,12 @@ gtit.pocket.upgrade.mage.line.0=Permanent once inserted into slot %1$d; the mast
 gtit.pocket.upgrade.mage.line.1=Four modes: the master switch plus %1$d sub-modes (crystal / coin / transmute); coin and transmute on by default, crystal off
 gtit.pocket.upgrade.mage.line.2=Distillation speeds up from the next batch when inserted mid-run; yield follows each item's own aspects
 gtit.pocket.upgrade.mage.line.3=Passive wand charging: one batch every %1$d ticks, at most %2$d points per wand; only the first wand that can take points is fed
-gtit.pocket.upgrade.mage.line.4=Wand scan: main hand first, then the %1$d backpack slots; without Thaumcraft not a single point is taken
+gtit.pocket.upgrade.mage.line.4=Wand scan: main hand first, then the %1$d backpack slots
 gtit.pocket.upgrade.mage.line.5=Passive coin charging: exactly one coin every %1$d second, the pocket's %2$d slots before the backpack's %3$d; all-or-nothing precheck, normal coins +%4$d and shimmering +%5$d to each primal
 gtit.pocket.upgrade.mage.line.6=Passive transmute: every %1$d second each primal folds %2$d point into element capacity, all %3$d in parallel; non-primals are never touched
 gtit.pocket.upgrade.mage.line.7=Crystal mode: while on, distillation yield lands in the pocket's middle bar first as crystals, then the backpack if it will not fit (%1$d point each); the essence tray is never touched and no essence is produced, and whatever fits nowhere drops at your feet; the tray's existing stock is unaffected
 gtit.pocket.upgrade.mage.line.8=Element capacity: %1$d primals with %2$d each, %3$d in total; see the pocket's own tooltip for the six reserve lines
-gtit.pocket.upgrade.mage.line.9=Costs: transmute is the only drain on the essence tray; the passives degrade without Thaumcraft
+gtit.pocket.upgrade.mage.line.9=Costs: transmute is the only drain on the essence tray
 gtit.pocket.upgrade.slot.tooltip=Each slot accepts only its matching module; inserting is permanent and it cannot be taken back out
 # ---- ★R96 S2 new keys (19): the upgrade config band (secondary panel) title / three-state readouts /
 # mount frames + the closed-state cell readout + seven sticky receipts.
@@ -458,7 +460,9 @@ gtit.pocket.config.switch.hint=Left-click to switch this module on or off; turni
 # line at that scale (zh values stay as they are); persist.idle was shortened for the same reason
 # (its 1.0-scale worst string overflowed the persist row)
 gtit.pocket.config.capacity.rule=Only turn off while within capacity
-gtit.pocket.config.stack.limit=Only turn off while within stack limits
+gtit.pocket.config.stack.limit=Installed %1$d/%4$d\nItem limit %2$d\nEssentia limit %3$d
+gtit.pocket.config.stack.off_rule=Cannot turn off above base limits; installed modules cannot be removed
+gtit.pocket.storage.exact_count=Exact count: %d
 gtit.pocket.config.persist.idle=Not always-on (switch off or no live channel yet)
 # ---- R100: frequency tier row, four keys (consumed only by the channel-persistence config face;
 # the tier table has its single source in PocketConstants - lang never lists the seconds)
@@ -552,7 +556,7 @@ gtit.pocket.note.title=How this panel works
 #   is driven by onWornTick through the same body). gtit.pocket.held.note carries the boundary detail
 #   (bauble slots keep working, chests and armor slots stop) — both lines say "anywhere in your
 #   inventory" but at different granularity, no verbatim duplicate (notesText concatenates both).
-gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; the pocket keeps working anywhere in your inventory
+gtit.pocket.note.summary=Bind cells, drag NEI entries onto slots to declare filters, then open a channel; scroll each column independently with the wheel or drag its right scrollbar; the pocket keeps working anywhere in your inventory
 gtit.pocket.note.cost=Instant channel costs %d coin; timed channel costs %d shimmering coin for %d seconds
 gtit.pocket.note.channel=While a channel runs, every declared filter is topped up each second to its own cap (Alt+wheel on a declared slot adjusts it); uploads rotate between channels each second, and a channel with nothing to upload never spends the pair quota
 # ★R88 self-invented policy C1 + C2, the "in-game copy" face (project discipline: both copy and README);
@@ -585,4 +589,8 @@ gtit.pocket.world.draw.pocket_full=The pocket cannot take this fluid: its tanks 
 #      options/keybindings so it is rebindable; no config file of our own, no second source of truth.
 key.gtit.pocket.baubles=Open the worn dimensional pocket
 key.categories.gtit=GT Interesting Thing
-
+gtit.pocket.channel.persist.toggle=Channel\nPersistence
+gtit.pocket.channel.persist.toggle.hint=Toggle persistent dimension channel; no coin cost
+gtit.pocket.config.capacity.count=Installed %1$d/%2$d
+gtit.pocket.config.capacity.amount=Fluid slot capacity: %s mB
+gtit.pocket.config.capacity.exact=Exact capacity: %d mB

@@ -969,8 +969,20 @@ public final class PocketGhostRequest {
      */
     public static int nextCapEffective(PocketFilterConfig.Kind kind, int currentRawCap, int effectiveCeiling,
         boolean capacityUpgraded, UpOrDown scrollDirection, boolean fast) {
+        return nextCapEffective(
+            kind,
+            currentRawCap,
+            effectiveCeiling,
+            capacityUpgraded ? PocketConstants.CAPACITY_UPGRADE_MAX_COUNT : 0,
+            scrollDirection,
+            fast);
+    }
+
+    public static int nextCapEffective(PocketFilterConfig.Kind kind, int currentRawCap, int effectiveCeiling,
+        int capacityCount, UpOrDown scrollDirection, boolean fast) {
         final int from = currentRawCap == PocketConstants.FILTER_CAP_UNSET ? effectiveCeiling : currentRawCap;
-        final int step = kind == PocketFilterConfig.Kind.FLUID ? PocketConstants.filterCapStepFluid(capacityUpgraded)
+        final int step = kind == PocketFilterConfig.Kind.FLUID
+            ? (int) (PocketConstants.fluidTankCapacityMl(capacityCount) / PocketConstants.FILTER_CAP_PERCENT_STEPS)
             : stepOf(kind);
         // ★R95 S5：long 域加法再收口（int 顶 + 步进的溢出形状与 nudgedCap 同一条）
         return clampCapLong((long) from + (long) capSteps(scrollDirection, fast) * step, effectiveCeiling);

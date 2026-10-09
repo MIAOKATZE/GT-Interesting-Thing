@@ -116,7 +116,10 @@ public class ItemPocketUpgrade extends Item {
         this.type = type;
         setUnlocalizedName(unlocalizedNameOf(type));
         setTextureName(GTInterestingThing.MODID + ":" + unlocalizedNameOf(type));
-        setMaxStackSize(1);
+        setMaxStackSize(
+            (type == PocketUpgradeType.STACK || type == PocketUpgradeType.CAPACITY)
+                ? PocketConstants.STACK_UPGRADE_MAX_COUNT
+                : 1);
         setCreativeTab(CreativeTabManager.CREATIVE_TAB);
     }
 
@@ -163,7 +166,18 @@ public class ItemPocketUpgrade extends Item {
      */
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List tooltip, boolean showAdvanced) {
-        tooltip.add(EnumChatFormatting.GRAY + StatCollector.translateToLocal(TOOLTIP_KEYS[type.ordinal()]));
+        final String effect = StatCollector.translateToLocal(TOOLTIP_KEYS[type.ordinal()]);
+        tooltip.add(
+            EnumChatFormatting.GRAY + (type == PocketUpgradeType.STACK && effect.contains("%")
+                ? String.format(effect, PocketConstants.STORAGE_LIMIT_PER_STACK_UPGRADE)
+                : effect));
+        if (type == PocketUpgradeType.STACK) {
+            tooltip.add(
+                EnumChatFormatting.GRAY + String.format(
+                    StatCollector.translateToLocal("gtit.pocket.upgrade.stack.rule"),
+                    PocketConstants.STACK_UPGRADE_MAX_COUNT));
+            tooltip.add(EnumChatFormatting.GRAY + StatCollector.translateToLocal("gtit.pocket.upgrade.stack.essence"));
+        }
         if (type == PocketUpgradeType.MAGE) {
             appendMageLines(tooltip);
         }

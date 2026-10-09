@@ -596,8 +596,9 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         // 现在与 handler、整理腿、ghost 读数共读同一条单源算式（不在本文件抄第二份三元）。
         // ★未升级档该算式给 min(64, maxStackSize)：对 maxStackSize==64 的普通物品与旧写法<b>逐字等值</b>
         // （反"修过头"）；不可叠物品（max==1）两档都给 1 ⇒ 本条改动不会把一件工具推成"超一叠"。
-        final int requested = Math
-            .min(slotStack.stackSize, PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), slotStack));
+        final int requested = Math.min(
+            slotStack.stackSize,
+            PocketInventory.effectiveStorageLimit(session.storageStackUpgradeCount(), slotStack));
         final IAEStackType<?> type = InfinityStackTypes.byId(typeId);
         final Found found = foundOfCached(diskuuid);
         final IMEInventoryHandler handler = found == null || type == null ? null
@@ -714,7 +715,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         // ★R85 P1 + ★R95 S5（STACK 位）：这一格的可叠上限按"该物品的天然堆叠 × 升级档"取——
         // 未升级 = min(64, max)（= 上游 handler 的既有行为，逐字不变）；STACK 位固化 = min(1024, max×16)。
         // 算式单源在 PocketInventory#effectiveStorageLimit（handler 的 getStackLimit 覆写与显示侧共读它）。
-        final int max = PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), wanted);
+        final int max = PocketInventory.effectiveStorageLimit(session.storageStackUpgradeCount(), wanted);
         // ★R85 P1：批级缓存版（同批同格重复读不再重算 base64；内容被换掉 ⇒ 对象引用变了 ⇒ 必然重算）
         final int stored = held != null && batchContentKey(held).equals(filter.key()) ? held.stackSize : 0;
         final int room = max - stored;
@@ -741,7 +742,7 @@ public final class PocketAeChannelOps implements PocketChannelOps {
         if (out == null || out.stackSize <= 0) {
             return new Outcome(PocketReceipt.OK, 0);
         }
-        final ItemStack merged = held == null ? out : mergeInto(held, out, session.storageStackUpgraded());
+        final ItemStack merged = held == null ? out : mergeInto(held, out, session.storageStackUpgradeCount());
         session.setStorageStackAt(target, merged);
         return new Outcome(PocketReceipt.OK, out.stackSize);
     }
@@ -751,10 +752,10 @@ public final class PocketAeChannelOps implements PocketChannelOps {
      * ★R95 S5：合并上限按 STACK 升级档取（未升级 = maxStackSize 的既有钳；升级 = 单源
      * {@link PocketInventory#effectiveStorageLimit}），与 {@code getStackLimit} 同一把尺。
      */
-    private static ItemStack mergeInto(ItemStack held, ItemStack added, boolean stackUpgraded) {
+    private static ItemStack mergeInto(ItemStack held, ItemStack added, int upgradeCount) {
         final ItemStack merged = held.copy();
         merged.stackSize = Math
-            .min(PocketInventory.effectiveStorageLimit(stackUpgraded, merged), merged.stackSize + added.stackSize);
+            .min(PocketInventory.effectiveStorageLimit(upgradeCount, merged), merged.stackSize + added.stackSize);
         return merged;
     }
 

@@ -163,6 +163,10 @@ public interface PocketSession {
      */
     boolean storageStackUpgraded();
 
+    default int storageStackUpgradeCount() {
+        return storageStackUpgraded() ? 1 : 0;
+    }
+
     // ------------------------------------------------------ ★R86 缺陷 3：口袋 → 元件的推送向来源面
 
     /**

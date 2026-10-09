@@ -19,6 +19,10 @@ import com.miaokatze.gtit.common.items.pocket.distill.PocketDistillDriver;
 import com.miaokatze.gtit.crossmod.taum.TaumCompat;
 
 /**
+ * 当前源质盘为 20×6 = 120 格，内容高 360px，独立滚动视口高 144px（8 行）。
+ * 进度条与两行蒸馏输入固定在视口下方；右列总高 198px、宽含滚动条为 114px。
+ * 下述旧轮尺寸描述为历史背景，当前几何以本类常量为准。
+ * <p>
  * 右列 = <b>72 格源质显示盘（6 列 × 12 行）</b> + <b>一行"无槽行"</b>（唯一的一根进度条住在这里）
  * + 12 格「蒸馏 / 注入」双用输入区（<b>6 列 × 2 行</b>）（需求 2 右半）。
  * <p>
@@ -86,12 +90,14 @@ public final class NekoPocketEssenceColumn {
     /** R75/R78：蒸馏输入 2 行 × 6 列 = 36。 */
     public static final int DISTILL_HEIGHT = DISTILL_ROWS * NekoPocketPanel.GRID;
     /** R75/R78：右列总宽（6 列 × 18）。 */
-    public static final int WIDTH = ESSENCE_COLUMNS * NekoPocketPanel.GRID;
+    public static final int GRID_WIDTH = ESSENCE_COLUMNS * NekoPocketPanel.GRID;
+    public static final int WIDTH = GRID_WIDTH + PocketScrollWidget.SCROLLBAR_WIDTH;
     /** R75/R78：270（与中栏等高）。 */
     public static final int HEIGHT = NekoPocketStorageColumn.HEIGHT;
 
     /** 源质盘高度（R78：12 × 18 = 216）。 */
-    public static final int ESSENCE_HEIGHT = ESSENCE_ROWS * NekoPocketPanel.GRID;
+    public static final int ESSENCE_HEIGHT = HEIGHT - DISTILL_HEIGHT - NekoPocketPanel.GRID;
+    public static final int ESSENCE_CONTENT_HEIGHT = ESSENCE_ROWS * NekoPocketPanel.GRID;
     /**
      * ★R78 的"空 1 行"高度（一个格高、<b>零槽</b>）：它把 72 格盘与蒸馏盘隔开，
      * 并且是唯一进度条的落点（读法与理由见类 javadoc 的那一段★）。
@@ -161,7 +167,7 @@ public final class NekoPocketEssenceColumn {
         // 而不是留一根画不出东西的进度条。图宽 == 列宽 == 条长 ⇒ 满条支 1:1，不横向拉伸。
         // ★这里只准碰契约表（纯字符串/整数）：`PocketGuiTextures` 的类初始化会建 `UITexture`，
         // 零依赖回归套件的 JVM 里拿不到 fastutil ⇒ 静态块一旦引用它，整套用例直接炸。
-        if (PocketGuiTextureContract.widthOf(PROGRESS_TOKEN) != WIDTH) {
+        if (PocketGuiTextureContract.widthOf(PROGRESS_TOKEN) != GRID_WIDTH) {
             throw new IllegalStateException(
                 "[pocket] 进度条材质 " + PROGRESS_TOKEN
                     + " 的契约宽与右列宽不符: "
@@ -206,7 +212,9 @@ public final class NekoPocketEssenceColumn {
         final ParentWidget<?> root = new ParentWidget<>().pos(X, Y)
             .size(WIDTH, HEIGHT)
             .name("pocket_essence_column")
-            .child(essenceGrid(ui))
+            .child(
+                new PocketScrollWidget(ESSENCE_CONTENT_HEIGHT).size(WIDTH, ESSENCE_HEIGHT)
+                    .child(essenceGrid(ui)))
             .child(progressBar(ui))
             .child(distill);
         // R31：TC 缺席整栏灰显（不隐藏 ⇒ 面板宽度与 NEI 避让不出现双分支）
@@ -241,7 +249,7 @@ public final class NekoPocketEssenceColumn {
      */
     private static IWidget essenceGrid(NekoPocketPanel ui) {
         final ParentWidget<?> grid = new ParentWidget<>().pos(0, 0)
-            .size(WIDTH, ESSENCE_HEIGHT)
+            .size(GRID_WIDTH, ESSENCE_CONTENT_HEIGHT)
             .name("pocket_essence_grid");
         for (int cell = 0; cell < ESSENCE_COLUMNS * ESSENCE_ROWS; cell++) {
             grid.child(essenceCell(ui, cell));
@@ -389,7 +397,7 @@ public final class NekoPocketEssenceColumn {
      */
     private static IWidget progressBar(NekoPocketPanel ui) {
         return new ProgressWidget().pos(0, ESSENCE_HEIGHT)
-            .size(WIDTH, SEPARATOR_HEIGHT)
+            .size(GRID_WIDTH, SEPARATOR_HEIGHT)
             .name("pocket_distill_progress")
             .texture(PocketGuiTextures.PROGRESS, PocketGuiTextureContract.widthOf(PROGRESS_TOKEN))
             .direction(ProgressWidget.Direction.RIGHT)

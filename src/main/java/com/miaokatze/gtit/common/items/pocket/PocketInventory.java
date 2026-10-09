@@ -199,6 +199,8 @@ public final class PocketInventory {
     private java.util.function.BooleanSupplier capacityProbe = () -> false;
     /** ★R95 S5：STACK 升级位的查询式探针（管存储格堆叠与源质每格上限两处，同一位）。 */
     private java.util.function.BooleanSupplier stackProbe = () -> false;
+    private java.util.function.IntSupplier stackCountProbe = () -> 1;
+    private java.util.function.IntSupplier capacityCountProbe = () -> PocketConstants.CAPACITY_UPGRADE_MAX_COUNT;
 
     private PocketEssenceStore essence;
     /**
@@ -352,6 +354,8 @@ public final class PocketInventory {
         // 见下面 essence 读档钳制那一行的 P-4 说明。
         inventory.capacityProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.CAPACITY);
         inventory.stackProbe = () -> PocketUpgradeSwitches.isActive(root, PocketUpgradeType.STACK);
+        inventory.stackCountProbe = () -> PocketUpgrades.stackUpgradeCount(root);
+        inventory.capacityCountProbe = () -> PocketUpgrades.capacityUpgradeCount(root);
         inventory.syncEssenceCapProbe();
         // ★R92-④：读档不再需要专门的闭闸——"放置即配置"的准入信号是 isItemValid 登记的<b>意图</b>，
         // 而 loadGroup 走 setStackInSlot、★不经过 isItemValid ⇒ 新建的 inventory 意图恒空，读档必然不定档
@@ -369,6 +373,11 @@ public final class PocketInventory {
         loadGroup(root, PocketConstants.DISTILL_INPUT_SLOTS, inventory.distillInput, "蒸馏输入");
         loadGroup(root, PocketConstants.BIND_SLOT, inventory.bindSlot, "绑定格");
         loadGroup(root, PocketConstants.UPGRADE_SLOT_GROUP, inventory.upgradeCells, "升级插件格");
+        final int capacityCell = PocketUpgradeType.CAPACITY.ordinal();
+        final ItemStack capacityDisplay = inventory.upgradeCells.getStackInSlot(capacityCell);
+        if (capacityDisplay != null && PocketUpgrades.hasUpgrade(root, PocketUpgradeType.CAPACITY)) {
+            capacityDisplay.stackSize = PocketUpgrades.capacityUpgradeCount(root);
+        }
         inventory.loadTanks(root);
         // ★R87-f：声明表必须先于源质表读出——保格谓词以它为输入，「有格位无库存」的空洞折叠只对无声明者生效
         inventory.filters = PocketFilterConfig.readFrom(root);
@@ -718,7 +727,7 @@ public final class PocketInventory {
                     super.setStackInSlot(slot, stack);
                     return;
                 }
-                final int cap = PocketInventory.effectiveStorageLimit(storageStackUpgraded(), stack);
+                final int cap = PocketInventory.effectiveStorageLimit(storageStackUpgradeCount(), stack);
                 if (cap <= 0 || stack.stackSize <= cap) {
                     super.setStackInSlot(slot, stack);
                     return;
@@ -758,7 +767,8 @@ public final class PocketInventory {
              */
             @Override
             public int getSlotLimit(int slot) {
-                return storageStackUpgraded() ? PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED
+                return storageStackUpgraded()
+                    ? PocketConstants.STORAGE_LIMIT_PER_STACK_UPGRADE * storageStackUpgradeCount()
                     : PocketConstants.STORAGE_SLOT_LIMIT_BASE;
             }
 
@@ -769,7 +779,7 @@ public final class PocketInventory {
              */
             @Override
             protected int getStackLimit(int slot, ItemStack stack) {
-                return PocketInventory.effectiveStorageLimit(storageStackUpgraded(), stack);
+                return PocketInventory.effectiveStorageLimit(storageStackUpgradeCount(), stack);
             }
         };
     }
@@ -807,19 +817,32 @@ public final class PocketInventory {
      * @param stack 待判栈；{@code null} ⇒ 0（与上游 {@code getStackLimit} 同一返回口径）
      */
     public static int effectiveStorageLimit(boolean stackUpgraded, ItemStack stack) {
+        return effectiveStorageLimit(stackUpgraded ? 1 : 0, stack);
+    }
+
+    public static int effectiveStorageLimit(int upgradeCount, ItemStack stack) {
         if (stack == null) {
             return 0;
         }
         final int max = stack.getMaxStackSize();
-        if (!stackUpgraded) {
+        if (upgradeCount <= 0) {
             return Math.min(PocketConstants.STORAGE_SLOT_LIMIT_BASE, max);
         }
         if (max == 1) {
             return 1;
         }
-        return (int) Math.min(
-            (long) PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED,
-            (long) max * PocketConstants.UPGRADE_STACK_MULTIPLIER);
+        return PocketConstants.STORAGE_LIMIT_PER_STACK_UPGRADE
+            * Math.min(upgradeCount, PocketConstants.STACK_UPGRADE_MAX_COUNT);
+    }
+
+    public int storageStackUpgradeCount() {
+        return storageStackUpgraded()
+            ? Math.max(1, Math.min(PocketConstants.STACK_UPGRADE_MAX_COUNT, stackCountProbe.getAsInt()))
+            : 0;
+    }
+
+    public void setStackCountProbe(java.util.function.IntSupplier probe) {
+        stackCountProbe = probe == null ? () -> 1 : probe;
     }
 
     /**
@@ -834,8 +857,18 @@ public final class PocketInventory {
      * ★R95 S5：单 tank 容量（mB，long）——{@link PocketConstants#fluidTankCapacityMl(boolean)} 的
      * 本实例读法（探针默认 false ⇒ 未升级口径）。
      */
+    public int capacityUpgradeCount() {
+        return capacityUpgradeActive()
+            ? Math.max(1, Math.min(PocketConstants.CAPACITY_UPGRADE_MAX_COUNT, capacityCountProbe.getAsInt()))
+            : 0;
+    }
+
+    public void setCapacityCountProbe(java.util.function.IntSupplier probe) {
+        capacityCountProbe = probe == null ? () -> PocketConstants.CAPACITY_UPGRADE_MAX_COUNT : probe;
+    }
+
     long fluidTankCapacity() {
-        return PocketConstants.fluidTankCapacityMl(capacityUpgradeActive());
+        return PocketConstants.fluidTankCapacityMl(capacityUpgradeCount());
     }
 
     /** ★R95 S5：源质每格上限的本实例读法（STACK 位在 ⇒ 4096；喂给 {@link PocketEssenceStore} 的动态上限）。 */
@@ -926,6 +959,13 @@ public final class PocketInventory {
      */
     private ItemStackHandler newUpgradeGroup(final int size) {
         return new ItemStackHandler(size) {
+
+            @Override
+            public int getSlotLimit(int slot) {
+                return (slot == PocketUpgradeType.STACK.ordinal() || slot == PocketUpgradeType.CAPACITY.ordinal())
+                    ? PocketConstants.STACK_UPGRADE_MAX_COUNT
+                    : 1;
+            }
 
             @Override
             protected void onContentsChanged(int slot) {
@@ -1055,9 +1095,10 @@ public final class PocketInventory {
      * ★★<b>R96 S4b：内部整体搬运的成对挂起口</b> —— 与 {@link #endStorageRawRewrite()} <b>成对</b>使用，
      * 且调用方必须用 {@code try/finally} 括起来（挂起漏还 = 中栏按件收口静默失效，比不修更坏）。
      * <p>
-     * 唯一的两个合法调用方：{@link #readFrom} 的中栏 {@code loadGroup}（读档逐字还原）与
-     * {@code NekoPocketServerHandler#performSort} 的回写循环（整理不增不减）。理由见
-     * {@link #rawStorageRewrite} 的 javadoc —— 这两处都是「先清空、再按递增槽号原样回写」的形态，
+     * 合法调用方是读档、整理和客户端精确 S2C 同步。前两者分别为 {@link #readFrom} 的中栏
+     * {@code loadGroup} 与 {@code NekoPocketServerHandler#performSort} 的回写循环；客户端同步
+     * 逐字应用服务器真值，避免陈旧升级镜像收口。理由见 {@link #rawStorageRewrite} 的 javadoc；
+     * 读档和整理都是「先清空、再按递增槽号原样回写」的形态，
      * 收口在那里插手会把差额摊到<b>后面那几次回写的落点</b>上 ⇒ 覆盖 = 吃件。
      * <p>
      * ★<b>不是</b>给玩家手势或程序化写入留的后门：{@code depositIntoStorage} / 通道回写 / 磁力

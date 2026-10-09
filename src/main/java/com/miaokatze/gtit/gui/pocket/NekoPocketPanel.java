@@ -43,6 +43,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelSessions;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
@@ -53,6 +54,9 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 /**
+ * 当前面板为 416×288：三栏分别预留 6px 滚动条，物品 207 格、流体 30 槽、源质 120 格。
+ * 下述 R75–R81 尺寸描述为历史背景；当前几何以本类及三栏常量为准。
+ * <p>
  * 猫猫次元口袋主面板（<b>398×360</b>，★R81④ 由 416 收到与主区实占同宽；<b>★R78① 起带玩家背包</b> =
  * 底部带中间段 9×4）。
  * <p>
@@ -157,7 +161,7 @@ public final class NekoPocketPanel implements PocketSession {
         // ★R81④ 判据：面板宽必须<b>逐字等于</b>"外边距 + 三列 + 两个列间距 + 外边距"这条加算式。
         // 写成字面量而不是只看派生式，是因为派生式在"某一列又改了宽"时会跟着漂而永不红；
         // 这里的字面量一红，就是在要求改动方回来看 R80/R81 那两张加总表（不留无主空白的同一纪律）。
-        final int sum = 6 + 108 + 4 + 162 + 4 + 108 + 6;
+        final int sum = 6 + 114 + 4 + 168 + 4 + 114 + 6;
         if (WIDTH != MAIN_OCCUPIED_WIDTH || WIDTH != sum) {
             throw new IllegalStateException(
                 "[pocket] 面板宽与主区实占分叉: WIDTH=" + WIDTH
@@ -165,10 +169,10 @@ public final class NekoPocketPanel implements PocketSession {
                     + MAIN_OCCUPIED_WIDTH
                     + " 加算式="
                     + sum
-                    + "（★R81④ 定稿 398 = 6+108+4+162+4+108+6，面板不留无主空白）");
+                    + "（滚动布局 416 = 6+114+4+168+4+114+6）");
         }
-        if (HEIGHT != 360) {
-            throw new IllegalStateException("[pocket] 面板高不等于 360（GUI Scale 3 逻辑高度上限）: " + HEIGHT);
+        if (HEIGHT != 288) {
+            throw new IllegalStateException("[pocket] 面板高不等于 288（缩短四行后的高度）: " + HEIGHT);
         }
     }
 
@@ -183,6 +187,14 @@ public final class NekoPocketPanel implements PocketSession {
     private static final String SYNC_STATE_LINE = "pocket.distill.state";
     /** S2C：ghost 声明视图（{@code kind:slotIndex:载荷键}，';' 分隔）⇒ 客户端据此<b>原位</b>虚化格子。 */
     private static final String SYNC_GHOST = "pocket.ghost.slots";
+    /** 固定索引分片；修改或删除声明不会改变其余条目的同步分片。 */
+    public static final int GHOST_SLOTS_PER_PART = 16;
+    public static final int GHOST_PART_COUNT = (PocketConstants.GHOST_ITEM_SLOT_LIMIT
+        + PocketConstants.GHOST_FLUID_SLOT_LIMIT
+        + PocketConstants.GHOST_ESSENCE_SLOT_LIMIT
+        + GHOST_SLOTS_PER_PART
+        - 1) / GHOST_SLOTS_PER_PART;
+    private final String[] clientGhostParts = new String[GHOST_PART_COUNT];
     /**
      * ★★<b>R91-a 裁定 (b)</b>：S2C 的<b>属性层</b>（每格的 {@code attr ∈ {NONE,BIND,MEMORY}} 与正交位
      * {@code P}）= <b>另一枚</b> {@link StringSyncValue}，与 {@link #SYNC_GHOST} 各写各的半。
@@ -466,6 +478,9 @@ public final class NekoPocketPanel implements PocketSession {
      * 读侧只经 {@link #clientUpgradeActive(PocketUpgradeType)} 这一条小 accessor，不散写位运算。
      */
     private int clientUpgradeActiveBits;
+    private int clientUpgradeInstalledBits;
+    private int clientCapacityUpgradeCount;
+    private int clientStackUpgradeCount;
     /**
      * ★★<b>R106 D2</b>：魔法使三条子模式位图的客户端镜像（值 = 服务端 {@link #liveMageModeBits()}；
      * 写者只有 {@link #SYNC_MAGE_MODES} 的客户端 setter，开屏以 vanilla 已同步的载体档播种——与
@@ -561,14 +576,19 @@ public final class NekoPocketPanel implements PocketSession {
         // 玩家在配置面板上关掉容量/堆叠，tank 天花板与单格上限照旧走升级档（"切了开关但行为不变"，
         // 本轮 C3 的同型事故）。读法与 PocketInventory#readFrom 那两条逐字同形。
         this.inventory.setUpgradeProbes(
-            () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY),
+            this::capacityUpgradeActiveNow,
             () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK));
+        this.inventory.setStackCountProbe(this::storageStackUpgradeCount);
+        this.inventory.setCapacityCountProbe(this::capacityUpgradeCountNow);
         // ★★<b>R97 R6：客户端 STACK 读侧换同步镜像</b>（服务端保持上面那条活查载体探针 = 执法链零改）。
         // 播种值与旧读法的开屏值<b>同源</b>（vanilla 已同步到客户端的载体档）⇒ 开屏首帧到
         // SYNC_UPGRADE_ACTIVE 首包之间读数不回退；之后每次升级位/开关位变化由服务端真值 ≤1 tick 推平。
         // ★刻意走 setClientStackMirror 而不是二次 setUpgradeProbes（探针注入点是"恰 1 处"的单点口径）。
         if (syncManager.isClient()) {
             clientUpgradeActiveBits = liveUpgradeActiveBits();
+            clientUpgradeInstalledBits = liveUpgradeInstalledBits();
+            clientCapacityUpgradeCount = PocketUpgrades.capacityUpgradeCount(carrierStackLive());
+            clientStackUpgradeCount = PocketUpgrades.stackUpgradeCount(carrierStackLive());
             // ★R106 D2：模式位镜像同款播种（vanilla 已同步的载体档）⇒ 首帧不闪变；穿戴态的
             // 「陈旧窗口」从『永远』缩到 SYNC_MAGE_MODES 首包 ≤1 tick（B 键/主手两路开屏都经这里）。
             clientMageModeBits = liveMageModeBits();
@@ -658,7 +678,7 @@ public final class NekoPocketPanel implements PocketSession {
         // 4b) ghost 虚化：客户端先按自己从 NBT 读到的那份声明表原位刷一遍（服务端那份是权威，
         // 之后每次变更都由 SYNC_GHOST 覆盖）。放在装配末尾 ⇒ 此时 itemSlots 已全部登记。
         if (syncManager.isClient()) {
-            applyGhostView(ghostBlobOf(inventory.filters()));
+            applyGhostView(composeGhostBlob());
         }
 
         // 5) 关屏写状态的宿主 + 承载格自动关（R35 防御②③）
@@ -693,6 +713,13 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     private void registerSyncValues() {
+        syncManager.syncValue(
+            "pocket.upgrade.stack.count",
+            new IntSyncValue(() -> PocketUpgrades.stackUpgradeCount(carrierStackLive()), value -> {
+                if (syncManager.isClient()) {
+                    clientStackUpgradeCount = Math.max(0, Math.min(PocketConstants.STACK_UPGRADE_MAX_COUNT, value));
+                }
+            }));
         if (!syncManager.isClient()) {
             RECEIPT_HOSTS.put(syncManager, this);
         }
@@ -700,7 +727,14 @@ public final class NekoPocketPanel implements PocketSession {
         syncManager.syncValue(SYNC_BIND_ROWS, new StringSyncValue(this::composeBindRows, this::applyBindRows));
         syncManager.syncValue(SYNC_MODE, new StringSyncValue(this::composeModeState, this::applyModeState));
         syncManager.syncValue(SYNC_REMAIN, new StringSyncValue(this::composeRemain, this::applyRemainState));
-        syncManager.syncValue(SYNC_GHOST, new StringSyncValue(this::composeGhostBlob, this::applyGhostBlob));
+        for (int part = 0; part < GHOST_PART_COUNT; part++) {
+            final int partIndex = part;
+            syncManager.syncValue(
+                SYNC_GHOST + "." + partIndex,
+                new StringSyncValue(
+                    () -> ghostBlobPartOf(inventory.filters(), partIndex),
+                    blob -> applyGhostPart(partIndex, blob)));
+        }
         // ★R91-a：属性层单独一枚（<b>不</b>扩 SYNC_GHOST 的段数、<b>不</b>动它的编解码）。
         // ★键数仍恒定：这一枚不随格数 / 属性数增加而增加（服务端一次整串下发，与 ghost blob 同口径）。
         syncManager
@@ -745,6 +779,18 @@ public final class NekoPocketPanel implements PocketSession {
         // ★R97 R6：五型「当前生效」位图（installed ∧ ¬off）单枚 S2C——服务端 getter 现读活载体
         // （真值单源 PocketUpgradeSwitches），客户端 setter 只写镜像。与 SYNC_PROGRESS 同形：
         // setter 带 isClient 守卫（上游 setValue 的 setSource 默认 true，双端都可能被调一次）。
+        syncManager.syncValue("pocket.upgrade.installed", new IntSyncValue(this::liveUpgradeInstalledBits, value -> {
+            if (syncManager.isClient()) {
+                clientUpgradeInstalledBits = value;
+            }
+        }));
+        syncManager.syncValue(
+            "pocket.upgrade.capacity.count",
+            new IntSyncValue(() -> PocketUpgrades.capacityUpgradeCount(carrierStackLive()), value -> {
+                if (syncManager.isClient()) {
+                    clientCapacityUpgradeCount = value;
+                }
+            }));
         syncManager.syncValue(SYNC_UPGRADE_ACTIVE, new IntSyncValue(this::liveUpgradeActiveBits, value -> {
             if (syncManager.isClient()) {
                 clientUpgradeActiveBits = value;
@@ -1299,8 +1345,42 @@ public final class NekoPocketPanel implements PocketSession {
     // ★R96 S2 起三个读口统一走 PocketUpgradeSwitches.isActive，位图直读在 GUI 侧归零）
 
     /** CAPACITY 位是否<b>生效</b>（流体条 20M/2G；流体格件的步进/天花板读它）。 */
+    private int liveUpgradeInstalledBits() {
+        int bits = 0;
+        for (PocketUpgradeType type : PocketUpgradeType.values()) {
+            if (PocketUpgrades.hasUpgrade(carrierStackLive(), type)) {
+                bits |= 1 << type.ordinal();
+            }
+        }
+        return bits;
+    }
+
+    public boolean upgradeInstalledNow(PocketUpgradeType type) {
+        return syncManager.isClient() ? (clientUpgradeInstalledBits & (1 << type.ordinal())) != 0
+            : PocketUpgrades.hasUpgrade(carrierStackLive(), type);
+    }
+
+    public PocketConfigPanel.SwitchState upgradeSwitchStateNow(PocketUpgradeType type) {
+        if (!upgradeInstalledNow(type)) {
+            return PocketConfigPanel.SwitchState.ABSENT;
+        }
+        final boolean active = syncManager.isClient() ? clientUpgradeActive(type)
+            : PocketUpgradeSwitches.isActive(carrierStackLive(), type);
+        return active ? PocketConfigPanel.SwitchState.ON : PocketConfigPanel.SwitchState.OFF;
+    }
+
+    public int installedCapacityUpgradeCount() {
+        return syncManager.isClient() ? clientCapacityUpgradeCount
+            : PocketUpgrades.capacityUpgradeCount(carrierStackLive());
+    }
+
+    public int capacityUpgradeCountNow() {
+        return capacityUpgradeActiveNow() ? installedCapacityUpgradeCount() : 0;
+    }
+
     boolean capacityUpgradeActiveNow() {
-        return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY);
+        return syncManager.isClient() ? clientUpgradeActive(PocketUpgradeType.CAPACITY)
+            : PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY);
     }
 
     /**
@@ -1377,18 +1457,17 @@ public final class NekoPocketPanel implements PocketSession {
 
     /** 单 tank 当前容量（mB，long；CAPACITY 位现读 ⇒ 会话期内固化即换档）。 */
     long fluidTankCapacityNow() {
-        return PocketConstants.fluidTankCapacityMl(capacityUpgradeActiveNow());
+        return PocketConstants.fluidTankCapacityMl(capacityUpgradeCountNow());
     }
 
     /**
      * ★R96 S2：某一型当前的开关三态（配置面板与升级格 tooltip 的<b>共用读数口</b>）。
      * <p>
-     * 判据单源在 {@code PocketUpgradeSwitches}（组合谓词 + off-mask），本方法只负责"读哪一份载体"——
-     * 活查表那枚（服务端权威栈 / 客户端 vanilla 镜像），★不在客户端写、也不建第二份缓存。
+     * 服务端读取权威载体；客户端读取已安装/生效同步镜像，穿戴态开屏也能及时更新。
      * 三态而不是两态：没装的型不许显示成"已关闭"（那是"还能开回来"的错误暗示）。
      */
     PocketConfigPanel.SwitchState upgradeSwitchState(PocketUpgradeType type) {
-        return PocketConfigPanel.switchState(carrierStackLive(), type);
+        return upgradeSwitchStateNow(type);
     }
 
     /**
@@ -2499,7 +2578,52 @@ public final class NekoPocketPanel implements PocketSession {
     // ------------------------------------------------------------------ ghost 视图同步（S2C）
 
     private String composeGhostBlob() {
-        return ghostBlobOf(inventory.filters());
+        final String[] parts = new String[GHOST_PART_COUNT];
+        for (int part = 0; part < parts.length; part++) {
+            parts[part] = ghostBlobPartOf(inventory.filters(), part);
+        }
+        return joinGhostParts(parts);
+    }
+
+    /** 每个索引范围独立限长；仍复用既有记录文法与单条超限提示。 */
+    public static String ghostBlobPartOf(PocketFilterConfig filters, int part) {
+        if (filters == null || part < 0 || part >= GHOST_PART_COUNT) {
+            return "";
+        }
+        final PocketFilterConfig selected = new PocketFilterConfig();
+        for (PocketFilterConfig.Filter filter : filters.filters()) {
+            int globalIndex = filter.slotIndex();
+            if (filter.kind() == PocketFilterConfig.Kind.FLUID) {
+                globalIndex += PocketConstants.GHOST_ITEM_SLOT_LIMIT;
+            } else if (filter.kind() == PocketFilterConfig.Kind.ESSENCE) {
+                globalIndex += PocketConstants.GHOST_ITEM_SLOT_LIMIT + PocketConstants.GHOST_FLUID_SLOT_LIMIT;
+            }
+            if (globalIndex / GHOST_SLOTS_PER_PART == part) {
+                selected.add(filter.slotIndex(), filter);
+            }
+        }
+        return ghostBlobOf(selected);
+    }
+
+    /** 空片也参与覆盖，保证删除最后一条声明后客户端不会残留旧内容。 */
+    public static String joinGhostParts(String[] parts) {
+        final StringBuilder joined = new StringBuilder();
+        for (String part : parts) {
+            if (part != null && !part.isEmpty()) {
+                if (joined.length() > 0) {
+                    joined.append(';');
+                }
+                joined.append(part);
+            }
+        }
+        return joined.toString();
+    }
+
+    private void applyGhostPart(int part, String blob) {
+        if (syncManager.isClient()) {
+            clientGhostParts[part] = blob == null ? "" : blob;
+            applyGhostBlob(joinGhostParts(clientGhostParts));
+        }
     }
 
     /**
@@ -3327,6 +3451,15 @@ public final class NekoPocketPanel implements PocketSession {
         return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK);
     }
 
+    @Override
+    public int storageStackUpgradeCount() {
+        return storageStackUpgraded() ? installedStackUpgradeCount() : 0;
+    }
+
+    public int installedStackUpgradeCount() {
+        return syncManager.isClient() ? clientStackUpgradeCount : PocketUpgrades.stackUpgradeCount(carrierStackLive());
+    }
+
     // ------------------------------------------- ★R86 缺陷 3：口袋 → 元件的推送向来源面（服务端会话实现）
 
     @Override
@@ -3905,14 +4038,11 @@ public final class NekoPocketPanel implements PocketSession {
         // ★R95 S5：容量读数按 CAPACITY 位动态（16M/16G；合计 288M/288G）——Long 喂 %d（lang 不改键、
         // 不写死数字），未升级喂 Integer（渲染与旧值同字面）。升级位双端各读自己那份载体（同本类
         // channelPersistActive 的口径）。
-        final boolean upgraded = capacityUpgradeActiveNow();
         return String.format(
             StatCollector.translateToLocal("gtit.pocket.fluid.capacity"),
-            upgraded ? Long.valueOf(PocketConstants.FLUID_BAR_CAPACITY_UPGRADED_ML)
-                : Integer.valueOf(PocketConstants.FLUID_BAR_CAPACITY_ML),
+            Long.valueOf(fluidTankCapacityNow()),
             PocketConstants.FLUID_TANK_TOTAL,
-            upgraded ? Long.valueOf(PocketConstants.fluidTotalCapacityMl(true))
-                : Integer.valueOf(PocketConstants.FLUID_TOTAL_CAPACITY_ML));
+            Long.valueOf(PocketConstants.fluidTotalCapacityMl(capacityUpgradeCountNow())));
     }
 
     /**

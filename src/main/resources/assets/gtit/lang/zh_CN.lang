@@ -399,10 +399,12 @@ item.neko_pocket_upgrade_stack.name=堆叠升级插件
 item.neko_pocket_upgrade_magnet.name=磁力升级插件
 item.neko_pocket_upgrade_channel_persist.name=通道持续化升级插件
 item.neko_pocket_upgrade_mage.name=魔法使升级插件
-gtit.pocket.upgrade.capacity.tooltip=流体条容量提升至两G
-gtit.pocket.upgrade.stack.tooltip=单格堆叠上限×十六
+gtit.pocket.upgrade.capacity.tooltip=容量插件最多64个：前63个各+30M mB，第64个+90M mB，最高2G
+gtit.pocket.upgrade.stack.tooltip=物品单格上限：已安装数量 × %1$d
+gtit.pocket.upgrade.stack.rule=最多固化 %1$d 个；不可堆叠物品仍为 1
+gtit.pocket.upgrade.stack.essence=源质保留原有升级效果
 gtit.pocket.upgrade.magnet.tooltip=自动拾取周围八格内的物品
-gtit.pocket.upgrade.channel_persist.tooltip=通道常开：禁用通道按钮、口袋始终显示工作中
+gtit.pocket.upgrade.channel_persist.tooltip=安装后默认关闭；主界面可开关持续化通道，不消耗猫猫币
 gtit.pocket.upgrade.mage.tooltip=蒸馏间隔五秒缩至一秒
 # ---- ★R100 片 B 新增 10 键：魔法使插件连号说明族 line.0..line.9（首行效果行不动，族追加其后）----
 # 行序：固化 → 四模式 → 蒸馏补充 → 三被动（法杖/猫猫币/转换）→ 结晶 → 元素容量 → 代价。
@@ -411,12 +413,12 @@ gtit.pocket.upgrade.mage.line.0=放入第 %1$d 格即固化不可逆；主开关
 gtit.pocket.upgrade.mage.line.1=四模式：主开关＋%1$d 个子模式（结晶/猫猫币/源质转换），缺省猫猫币与转换开、结晶关
 gtit.pocket.upgrade.mage.line.2=蒸馏中途装入下一轮生效；产量按物品源质原量入账
 gtit.pocket.upgrade.mage.line.3=被动·充法杖：每 %1$d tick 一批、每杖至多 %2$d 点，只喂吃得下的第一支
-gtit.pocket.upgrade.mage.line.4=法杖主手优先，再扫背包 %1$d 格；无神秘时代时不掏分
+gtit.pocket.upgrade.mage.line.4=法杖主手优先，再扫背包 %1$d 格
 gtit.pocket.upgrade.mage.line.5=被动·猫猫币：每 %1$d 秒恰一枚，先口袋 %2$d 格后背包 %3$d 格；整笔预检，普通币各源 +%4$d、闪烁 +%5$d
 gtit.pocket.upgrade.mage.line.6=被动·源质转换：每 %1$d 秒每元始折 %2$d 点入元素容量，%3$d 种同批并行；非元始不碰
 gtit.pocket.upgrade.mage.line.7=模式·结晶：开着时蒸馏产出以结晶形态先落口袋中栏、放不下进背包（每枚 %1$d 点）；全程不进源质盘、不产生源质，两处都满则掉脚下；盘内存量不受影响
 gtit.pocket.upgrade.mage.line.8=元素容量：%1$d 个元始各 %2$d、合计 %3$d；储量六行见口袋本体悬浮
-gtit.pocket.upgrade.mage.line.9=代价：源质盘只被源质转换消耗；无神秘时代时被动降级
+gtit.pocket.upgrade.mage.line.9=代价：源质盘只被源质转换消耗
 gtit.pocket.upgrade.slot.tooltip=每格只收对应插件；放入即固化，不可取出
 # ---- ★R96 S2 新增 19 键：升级配置面板（次级面板）的标题/三态读数/挂载位 + 关闭态格读数 + 七条粘性回执 ----
 # ★值内不得出现 ASCII 数字（门禁的 lang 数字禁令）⇒ 数字一律中文书写。
@@ -444,7 +446,9 @@ gtit.pocket.config.switch.hint=左键切换这一型的开与关；关掉不会�
 # ---- ★R101：量级读数改关闭规则说明（数字面与执法面在服务端）。容量键为本面独有（主面板
 #   gtit.pocket.fluid.capacity 仍由流体格件/底部带 tooltip 消费，不改义）----
 gtit.pocket.config.capacity.rule=仅在未超出当前容量时，才可以关闭
-gtit.pocket.config.stack.limit=仅在未超出堆叠上限时，才可以关闭
+gtit.pocket.config.stack.limit=已安装 %1$d/%4$d\n物品单格上限 %2$d\n源质单格上限 %3$d
+gtit.pocket.config.stack.off_rule=库存超过基础上限时不能关闭；插件安装后不可拆卸
+gtit.pocket.storage.exact_count=精确数量：%d
 gtit.pocket.config.persist.idle=此刻未常开（开关关着，或通道还没起来）
 # ---- ★R100→R101 频率段两键（更快/更慢两枚按钮连键退场，输入框复用 hint 键；秒值域单源在 PocketConstants）
 gtit.pocket.config.persist.freq=通道频率：%d 秒/批
@@ -530,7 +534,7 @@ gtit.pocket.note.title=本面板的用法摘要
 #   主背包 36 格里<b>任意</b>一格都推进；穿戴态另由 onWornTick 驱动同一段）。本句是权威口径，
 #   边界细节（饰品栏也续作 / 箱子与盔甲位停）由 gtit.pocket.held.note 那条承担 ⇒ 两句都念到
 #   "背包任意格"，但详略不同、不逐字重复（本键与 held.note 会被 notesText 拼进同一段说明块）。
-gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；口袋放进背包任意格都会继续运作
+gtit.pocket.note.summary=先绑定元件，再把 NEI 条目拖到槽位上声明需求，然后开启通道；三栏可独立滚轮滚动或拖动右侧滚动条；口袋放进背包任意格都会继续运作
 gtit.pocket.note.cost=瞬时通道消耗 %d 猫猫币；短效通道消耗 %d 闪烁猫猫币、持续 %d 秒
 gtit.pocket.note.channel=通道运行期间，每条声明每秒被补到它自己设定的组上限（在声明格上按住 alt 滚轮可调）；上传每秒在通道间轮转，没有东西可上传的通道不占对数
 # ★R88 自立口径 C1 + C2 的「游戏内文案」面（项目纪律：自立口径要文案 + 交付说明双处可见）；
@@ -561,4 +565,8 @@ gtit.pocket.world.draw.pocket_full=口袋装不下这种流体：流体槽都满
 #      控制设置里换绑，★本仓不自写配置、不设第二处按键真相；默认键见 PocketBaubleKeybind 常量）----
 key.gtit.pocket.baubles=打开穿戴中的猫猫次元口袋
 key.categories.gtit=GT Interesting Thing
-
+gtit.pocket.channel.persist.toggle=次元通道\n持续化开关
+gtit.pocket.channel.persist.toggle.hint=次元通道持续化开关：开启或关闭持续化通道；不消耗猫猫币
+gtit.pocket.config.capacity.count=已安装 %1$d/%2$d
+gtit.pocket.config.capacity.amount=流体槽容量：%s mB
+gtit.pocket.config.capacity.exact=精确容量：%d mB

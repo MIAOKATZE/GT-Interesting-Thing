@@ -17,6 +17,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
@@ -134,6 +135,8 @@ public final class PocketChannelSessions {
             this.inventory.setUpgradeProbes(
                 () -> PocketUpgradeSwitches.isActive(this.carrier, PocketUpgradeType.CAPACITY),
                 () -> PocketUpgradeSwitches.isActive(this.carrier, PocketUpgradeType.STACK));
+            this.inventory.setStackCountProbe(this::storageStackUpgradeCount);
+            this.inventory.setCapacityCountProbe(() -> PocketUpgrades.capacityUpgradeCount(carrierStack()));
         }
 
         /** driver 在 tick 到场时回填"此刻真被 tick 的那一枚"（关屏重定位/堆叠移动后引用不陈旧）。 */
@@ -360,6 +363,11 @@ public final class PocketChannelSessions {
             // PocketInventory#storageStackUpgraded 是包私有读口，headless 住在 channel 包够不着它，
             // 而探针本身就是这一条谓词 ⇒ 直接问谓词，不构成第二份真相。
             return PocketUpgradeSwitches.isActive(carrier, PocketUpgradeType.STACK);
+        }
+
+        @Override
+        public int storageStackUpgradeCount() {
+            return storageStackUpgraded() ? PocketUpgrades.stackUpgradeCount(carrier) : 0;
         }
 
         @Override
