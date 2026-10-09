@@ -120,7 +120,7 @@ public final class NekoPocketLeftColumn {
     /** 一组的总高（输入行 18 + 拉长流体槽 36 + 输出行 18 = 72）。 */
     public static final int GROUP_HEIGHT = CELL + TANK_HEIGHT + CELL;
     /** 组间距（空一行 = 18；R78 加总表里的那两个 18）。 */
-    public static final int GROUP_GAP = CELL;
+    public static final int GROUP_GAP = NekoPocketPanel.MARGIN;
     /** 流体块总高（R78：{@code 3×72 + 2×18 = 252}；★派生，别处不得写 252）。 */
     public static final int FLUID_AREA_HEIGHT = PocketConstants.FLUID_GROUP_COUNT * GROUP_HEIGHT
         + (PocketConstants.FLUID_GROUP_COUNT - 1) * GROUP_GAP;
@@ -247,6 +247,15 @@ public final class NekoPocketLeftColumn {
             .slotGroup(PocketSlots.GROUP_FLUID)
             .build();
         interaction.pos(0, 0);
+        int interactionIndex = 0;
+        for (IWidget widget : interaction.getChildren()) {
+            final int group = PocketInventory.groupOfInteractionSlot(interactionIndex);
+            final int rowOffset = PocketInventory.isLowerInteractionRow(interactionIndex) ? CELL + TANK_HEIGHT : 0;
+            widget.resizer()
+                .pos(interactionIndex % PocketConstants.FLUID_COLUMN_COUNT * CELL, groupTop(group) + rowOffset);
+            interactionIndex++;
+        }
+        interaction.size(GRID_WIDTH, FLUID_AREA_HEIGHT);
 
         final ParentWidget<?> root = new ParentWidget<>().pos(X, Y)
             .size(WIDTH, HEIGHT)

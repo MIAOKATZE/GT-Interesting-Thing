@@ -152,6 +152,14 @@ public class NekoPocketContainer extends ModularContainer {
      */
     private void rejectOversizedClick(ModularSlot modular, EntityPlayer player) {
         PocketSlots.forceSyncSlot(modular);
+        // A late vanilla S30 covers all slots, so restore every precise storage count next tick.
+        for (Object candidate : this.inventorySlots) {
+            if (candidate instanceof ModularSlot storage && storage.isInitialized()
+                && PocketSlots.GROUP_STORAGE.equals(storage.getSlotGroupName())
+                && storage.getSyncHandler() instanceof PocketItemSlotSyncHandler precise) {
+                precise.requestResync();
+            }
+        }
         panel.syncManager()
             .setCursorItem(player == null ? null : player.inventory.getItemStack());
     }

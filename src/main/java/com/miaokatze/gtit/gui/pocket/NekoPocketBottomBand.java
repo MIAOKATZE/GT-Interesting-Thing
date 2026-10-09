@@ -1365,7 +1365,11 @@ public final class NekoPocketBottomBand {
             if (carrier == null || carrier != ui.carrierStack()) {
                 return;
             }
-            PocketUpgrades.install(carrier, PocketUpgradeType.values()[index]);
+            if (PocketUpgradeType.values()[index] == PocketUpgradeType.STACK) {
+                PocketUpgrades.installStackCount(carrier, newItem.stackSize);
+            } else {
+                PocketUpgrades.install(carrier, PocketUpgradeType.values()[index]);
+            }
         });
         final ItemSlot slot = new UpgradeCellSlot(ui, index);
         slot.slot(modular);

@@ -43,6 +43,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketSession;
 import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
+import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
 import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
 import com.miaokatze.gtit.common.items.pocket.channel.PocketChannelSessions;
 import com.miaokatze.gtit.common.items.pocket.distill.EssenceGate;
@@ -477,6 +478,7 @@ public final class NekoPocketPanel implements PocketSession {
      * 读侧只经 {@link #clientUpgradeActive(PocketUpgradeType)} 这一条小 accessor，不散写位运算。
      */
     private int clientUpgradeActiveBits;
+    private int clientStackUpgradeCount;
     /**
      * ★★<b>R106 D2</b>：魔法使三条子模式位图的客户端镜像（值 = 服务端 {@link #liveMageModeBits()}；
      * 写者只有 {@link #SYNC_MAGE_MODES} 的客户端 setter，开屏以 vanilla 已同步的载体档播种——与
@@ -574,12 +576,14 @@ public final class NekoPocketPanel implements PocketSession {
         this.inventory.setUpgradeProbes(
             () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.CAPACITY),
             () -> PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK));
+        this.inventory.setStackCountProbe(this::storageStackUpgradeCount);
         // ★★<b>R97 R6：客户端 STACK 读侧换同步镜像</b>（服务端保持上面那条活查载体探针 = 执法链零改）。
         // 播种值与旧读法的开屏值<b>同源</b>（vanilla 已同步到客户端的载体档）⇒ 开屏首帧到
         // SYNC_UPGRADE_ACTIVE 首包之间读数不回退；之后每次升级位/开关位变化由服务端真值 ≤1 tick 推平。
         // ★刻意走 setClientStackMirror 而不是二次 setUpgradeProbes（探针注入点是"恰 1 处"的单点口径）。
         if (syncManager.isClient()) {
             clientUpgradeActiveBits = liveUpgradeActiveBits();
+            clientStackUpgradeCount = PocketUpgrades.stackUpgradeCount(carrierStackLive());
             // ★R106 D2：模式位镜像同款播种（vanilla 已同步的载体档）⇒ 首帧不闪变；穿戴态的
             // 「陈旧窗口」从『永远』缩到 SYNC_MAGE_MODES 首包 ≤1 tick（B 键/主手两路开屏都经这里）。
             clientMageModeBits = liveMageModeBits();
@@ -704,6 +708,13 @@ public final class NekoPocketPanel implements PocketSession {
     }
 
     private void registerSyncValues() {
+        syncManager.syncValue(
+            "pocket.upgrade.stack.count",
+            new IntSyncValue(() -> PocketUpgrades.stackUpgradeCount(carrierStackLive()), value -> {
+                if (syncManager.isClient()) {
+                    clientStackUpgradeCount = Math.max(0, Math.min(PocketConstants.STACK_UPGRADE_MAX_COUNT, value));
+                }
+            }));
         if (!syncManager.isClient()) {
             RECEIPT_HOSTS.put(syncManager, this);
         }
@@ -3388,6 +3399,15 @@ public final class NekoPocketPanel implements PocketSession {
             return clientUpgradeActive(PocketUpgradeType.STACK);
         }
         return PocketUpgradeSwitches.isActive(carrierStackLive(), PocketUpgradeType.STACK);
+    }
+
+    @Override
+    public int storageStackUpgradeCount() {
+        return storageStackUpgraded() ? installedStackUpgradeCount() : 0;
+    }
+
+    public int installedStackUpgradeCount() {
+        return syncManager.isClient() ? clientStackUpgradeCount : PocketUpgrades.stackUpgradeCount(carrierStackLive());
     }
 
     // ------------------------------------------- ★R86 缺陷 3：口袋 → 元件的推送向来源面（服务端会话实现）

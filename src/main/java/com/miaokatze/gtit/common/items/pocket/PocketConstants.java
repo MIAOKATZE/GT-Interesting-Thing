@@ -872,6 +872,9 @@ public final class PocketConstants {
      * 与 {@code PocketEssenceStore#capPerTag()}（源质侧单源），别处不得再抄 16。
      */
     public static final int UPGRADE_STACK_MULTIPLIER = 16;
+    public static final int STACK_UPGRADE_MAX_COUNT = 64;
+    public static final int STORAGE_LIMIT_PER_STACK_UPGRADE = 1024;
+    public static final String STACK_UPGRADE_COUNT_KEY = "stackUpgradeCount";
     /**
      * ★R95 S5：中栏存储格的<b>槽位上限</b>两档 —— 未升级 = {@code 64}（= 上游
      * {@code ItemStackHandler#getSlotLimit} 的既有默认，现状逐字不变）；STACK 位固化 = <b>1024</b>

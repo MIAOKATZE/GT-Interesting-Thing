@@ -51,6 +51,33 @@ public final class PocketUpgrades {
         return (root.getByte(PocketConstants.UPGRADES_KEY) & (1 << type.ordinal())) != 0;
     }
 
+    /** 已固化的数量；旧档仅有位图时按一个插件恢复，读取不修改NBT。 */
+    public static int stackUpgradeCount(NBTTagCompound root) {
+        if (!hasUpgrade(root, PocketUpgradeType.STACK)) {
+            return 0;
+        }
+        return root.hasKey(PocketConstants.STACK_UPGRADE_COUNT_KEY) ? Math.max(
+            1,
+            Math.min(PocketConstants.STACK_UPGRADE_MAX_COUNT, root.getInteger(PocketConstants.STACK_UPGRADE_COUNT_KEY)))
+            : 1;
+    }
+
+    public static int stackUpgradeCount(ItemStack carrier) {
+        return stackUpgradeCount(carrier == null ? null : carrier.getTagCompound());
+    }
+
+    /** 从不可拆的插件格固化累计数量；不会降低已安装的效果。 */
+    public static void installStackCount(ItemStack carrier, int count) {
+        if (carrier == null || count <= 0) {
+            return;
+        }
+        install(carrier, PocketUpgradeType.STACK);
+        final NBTTagCompound root = carrier.getTagCompound();
+        root.setInteger(
+            PocketConstants.STACK_UPGRADE_COUNT_KEY,
+            Math.max(stackUpgradeCount(root), Math.min(PocketConstants.STACK_UPGRADE_MAX_COUNT, count)));
+    }
+
     /**
      * 固化一个升级：置位图位并写回 stack NBT（一次手势一次写；插件放入对应格时调用，不可逆）。
      * <p>

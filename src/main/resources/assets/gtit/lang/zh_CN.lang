@@ -400,7 +400,9 @@ item.neko_pocket_upgrade_magnet.name=磁力升级插件
 item.neko_pocket_upgrade_channel_persist.name=通道持续化升级插件
 item.neko_pocket_upgrade_mage.name=魔法使升级插件
 gtit.pocket.upgrade.capacity.tooltip=流体条容量提升至两G
-gtit.pocket.upgrade.stack.tooltip=单格堆叠上限×十六
+gtit.pocket.upgrade.stack.tooltip=物品单格上限：已安装数量 × %1$d
+gtit.pocket.upgrade.stack.rule=最多固化 %1$d 个；不可堆叠物品仍为 1
+gtit.pocket.upgrade.stack.essence=源质保留原有升级效果
 gtit.pocket.upgrade.magnet.tooltip=自动拾取周围八格内的物品
 gtit.pocket.upgrade.channel_persist.tooltip=通道常开：禁用通道按钮、口袋始终显示工作中
 gtit.pocket.upgrade.mage.tooltip=蒸馏间隔五秒缩至一秒
@@ -444,7 +446,9 @@ gtit.pocket.config.switch.hint=左键切换这一型的开与关；关掉不会�
 # ---- ★R101：量级读数改关闭规则说明（数字面与执法面在服务端）。容量键为本面独有（主面板
 #   gtit.pocket.fluid.capacity 仍由流体格件/底部带 tooltip 消费，不改义）----
 gtit.pocket.config.capacity.rule=仅在未超出当前容量时，才可以关闭
-gtit.pocket.config.stack.limit=仅在未超出堆叠上限时，才可以关闭
+gtit.pocket.config.stack.limit=已安装 %1$d/%4$d\n物品单格上限 %2$d\n源质单格上限 %3$d
+gtit.pocket.config.stack.off_rule=库存超过基础上限时不能关闭；插件安装后不可拆卸
+gtit.pocket.storage.exact_count=精确数量：%d
 gtit.pocket.config.persist.idle=此刻未常开（开关关着，或通道还没起来）
 # ---- ★R100→R101 频率段两键（更快/更慢两枚按钮连键退场，输入框复用 hint 键；秒值域单源在 PocketConstants）
 gtit.pocket.config.persist.freq=通道频率：%d 秒/批

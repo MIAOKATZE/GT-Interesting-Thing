@@ -221,6 +221,9 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         // ghost 格的真实槽是空的（R46a：样本栈绝不写进真实槽），所以显示与 tooltip 都用样本
         final ItemStack shown = stack == null && ghost ? sample : stack;
         super.buildTooltip(shown, tooltip);
+        if (!ghost && stack != null && stack.stackSize >= 1000) {
+            tooltip.addLine(IKey.lang("gtit.pocket.storage.exact_count", stack.stackSize));
+        }
         if (ghost) {
             if (shown != null) {
                 tooltip.addLine(IKey.lang("gtit.pocket.ghost.on", shown.getDisplayName()));
@@ -264,6 +267,12 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
         // L = 左上、P = 左下、cap = 右上 ⇒ 同一格同时有 attr 与 P 时也互不覆盖。
         drawCapReadout();
         drawAttrBadout();
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    protected void drawSlotAmountText(int amount, String format) {
+        super.drawSlotAmountText(amount, format == null ? PocketItemCountText.format(amount) : format);
     }
 
     /**
@@ -390,7 +399,7 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
      * {@code owner.storageStackUpgraded()} 现读（未绑定面板 ⇒ 按未升级收口，与纯 JVM 用例同口径））。
      */
     private int naturalMaxStackSize() {
-        return PocketInventory.effectiveStorageLimit(owner != null && owner.storageStackUpgraded(), sample);
+        return PocketInventory.effectiveStorageLimit(owner == null ? 0 : owner.storageStackUpgradeCount(), sample);
     }
 
     /**

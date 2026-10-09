@@ -145,9 +145,11 @@ public final class NekoPocketStorageColumn {
                 // statement lambda（不是链式返回）：`.slot()`/`.name()` 的静态返回类型是 ItemSlot，
                 // 拿不到 NekoFilterSlot ⇒ 分三步并把 (面板, 槽号) 绑给格子自身（ghost 复合键需要槽号）
                 final NekoFilterSlot widget = new NekoFilterSlot();
-                widget.slot(
-                    ui.slots()
-                        .storage(ui.inventory(), index));
+                widget.syncHandler(
+                    new PocketItemSlotSyncHandler(
+                        ui.slots()
+                            .storage(ui.inventory(), index),
+                        ui.inventory()));
                 widget.name("storage_" + index);
                 widget.background(PocketGuiTextures.SLOT);
                 widget.bindGhost(ui, index);

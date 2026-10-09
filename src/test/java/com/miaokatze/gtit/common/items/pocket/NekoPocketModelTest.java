@@ -761,6 +761,12 @@ public class NekoPocketModelTest {
         cases.put(
             "r100_vending_queue_and_music_flag_live_in_common",
             NekoPocketModelTest::r100VendingQueueAndMusicFlagLiveInCommon);
+        cases.put("stack_modules_64_dynamic_limits_and_legacy", NekoPocketModelTest::stackModulesDynamicLimits);
+        cases.put("oversized_slot_packet_int_roundtrip", NekoPocketModelTest::oversizedSlotPacketRoundTrip);
+        cases.put("compact_fluid_groups_and_k_display", NekoPocketModelTest::compactFluidGroupsAndKDisplay);
+        cases.put(
+            "precise_slot_resync_pending_state_and_schedule",
+            NekoPocketModelTest::preciseSlotResyncPendingStateAndSchedule);
         TestRunner.run(NekoPocketModelTest.class, cases);
     }
 
@@ -1318,9 +1324,9 @@ public class NekoPocketModelTest {
             NekoPocketLeftColumn.GROUP_HEIGHT,
             "★一组只有三段：进 18 + 槽 36 + 出 18 = 72（撤边条后不得出现第四段，也不得变成 72+9）");
         SimpleAssert.eq(72, NekoPocketLeftColumn.GROUP_HEIGHT, "Expanded pocket layout  72");
-        SimpleAssert.eq(18, NekoPocketLeftColumn.GROUP_GAP, "Expanded pocket layout  18");
-        SimpleAssert.eq(5 * 72 + 4 * 18, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块 = 3×72 + 2×18 = 252");
-        SimpleAssert.eq(432, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "Expanded pocket layout  432");
+        SimpleAssert.eq(6, NekoPocketLeftColumn.GROUP_GAP, "Compact fluid gap6");
+        SimpleAssert.eq(5 * 72 + 4 * 6, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块 = 3×72 + 2×18 = 252");
+        SimpleAssert.eq(384, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "Compact fluid content384");
         // ★★R94-① 改写本组三条（旧三条钉的是"252 + 末行 18 = 270 = 与中栏等高"）：末行已收回给
         // 底部带左段 ⇒ 本列的纵向契约换成"列高就是流体块高"+"比中栏恰好矮一格"两条。
         // ★为什么还要钉"矮一格"而不是只钉"等于 252"：那一格必须<b>有去处</b>（去底部带左段），
@@ -1332,8 +1338,8 @@ public class NekoPocketModelTest {
             "★左列比中栏矮<b>恰好一格</b>（18）：那一格归底部带左段（见本用例第 4 组断言）");
         SimpleAssert.eq(180, NekoPocketLeftColumn.HEIGHT, "Expanded pocket layout  180");
         SimpleAssert.eq(0, NekoPocketLeftColumn.groupTop(0), "第 1 组从列顶开始");
-        SimpleAssert.eq(90, NekoPocketLeftColumn.groupTop(1), "第 2 组 y = 72 + 18");
-        SimpleAssert.eq(180, NekoPocketLeftColumn.groupTop(2), "第 3 组 y = 2×90");
+        SimpleAssert.eq(78, NekoPocketLeftColumn.groupTop(1), "Second group y78");
+        SimpleAssert.eq(156, NekoPocketLeftColumn.groupTop(2), "Third group y156");
         SimpleAssert.eq(
             NekoPocketLeftColumn.FLUID_AREA_HEIGHT - NekoPocketLeftColumn.GROUP_HEIGHT,
             NekoPocketLeftColumn.groupTop(4),
@@ -4042,7 +4048,8 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(16, PocketInventory.effectiveStorageLimit(false, stack16), "未升级 16 叠 ⇒ 16（现状：不硬抬到 64）");
         SimpleAssert
             .eq(1024, PocketInventory.effectiveStorageLimit(true, stack64), "升级 64 叠 ⇒ min(1024, 64×16) = 1024");
-        SimpleAssert.eq(256, PocketInventory.effectiveStorageLimit(true, stack16), "升级 16 叠 ⇒ 16×16 = 256");
+        SimpleAssert
+            .eq(1024, PocketInventory.effectiveStorageLimit(true, stack16), "One STACK gives stackable items1024");
         SimpleAssert.eq(1, PocketInventory.effectiveStorageLimit(true, stack1), "★不可叠（max=1）升级后仍 1（工具不参与 ×16）");
         SimpleAssert.eq(0, PocketInventory.effectiveStorageLimit(true, null), "null 栈 ⇒ 0（与上游 getStackLimit 同口径）");
         // 源质尺走探针：STACK 位 ⇒ store 上限 4096（单源注入）
@@ -5092,6 +5099,188 @@ public class NekoPocketModelTest {
     }
 
     /** 本 JVM 能否让 ItemStack 走一次 NBT 往返（只探一次；探不通就说明物品未注册）。 */
+    private static void stackModulesDynamicLimits() {
+        final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE, 1, 0);
+        PocketUpgrades.install(carrier, PocketUpgradeType.STACK);
+        SimpleAssert.eq(1, PocketUpgrades.stackUpgradeCount(carrier), "legacy bitmap reads as one module");
+        PocketUpgrades.installStackCount(carrier, 64);
+        PocketUpgrades.installStackCount(carrier, 2);
+        SimpleAssert.eq(64, PocketUpgrades.stackUpgradeCount(carrier), "installed modules cannot decrease");
+        SimpleAssert.eq(
+            65536,
+            PocketInventory.effectiveStorageLimit(64, new ItemStack(FakePlainItem.INSTANCE)),
+            "64 modules item cap");
+        SimpleAssert.eq(
+            1024,
+            PocketInventory.effectiveStorageLimit(1, new ItemStack(FakeStack16Item.INSTANCE)),
+            "stackable16 gets absolute 1024 cap");
+        SimpleAssert.eq(
+            1,
+            PocketInventory.effectiveStorageLimit(64, new ItemStack(FakeUnstackableItem.INSTANCE)),
+            "unstackable remains one");
+        final PocketInventory inventory = PocketInventory.readFrom(new NBTTagCompound());
+        inventory.setUpgradeProbes(() -> false, () -> true);
+        inventory.setStackCountProbe(() -> 64);
+        inventory.storage()
+            .setStackInSlot(206, new ItemStack(FakePlainItem.INSTANCE, 65536));
+        SimpleAssert.eq(65536, inventory.storageStack(206).stackSize, "handler does not clamp int endpoint");
+        SimpleAssert.eq(
+            64,
+            inventory.upgradeGroup()
+                .getSlotLimit(PocketUpgradeType.STACK.ordinal()),
+            "STACK install cell holds64");
+        SimpleAssert.eq(
+            1,
+            inventory.upgradeGroup()
+                .getSlotLimit(PocketUpgradeType.CAPACITY.ordinal()),
+            "other install cell holds1");
+        SimpleAssert.eq(4096, PocketConstants.essenceCapPerTag(true), "essentia retains existing upgraded cap");
+    }
+
+    private static void oversizedSlotPacketRoundTrip() {
+        // A private registered fixture exercises actual PacketBuffer identity/NBT, without bootstrapping vanilla Items.
+        final Item fixture = new Item();
+        try {
+            final java.lang.reflect.Field integerMap = net.minecraft.util.RegistryNamespaced.class
+                .getDeclaredField("underlyingIntegerMap");
+            integerMap.setAccessible(true);
+            ((net.minecraft.util.ObjectIntIdentityMap) integerMap.get(Item.itemRegistry)).func_148746_a(fixture, 32000);
+            final java.lang.reflect.Field objects = net.minecraft.util.RegistrySimple.class
+                .getDeclaredField("registryObjects");
+            objects.setAccessible(true);
+            ((java.util.Map) objects.get(Item.itemRegistry)).put("gtit:test_oversized_packet", fixture);
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError("isolated native registry fixture", error);
+        }
+        for (int count : new int[] { 128, 1024, 65536 }) {
+            final ItemStack source = new ItemStack(fixture, count, 7);
+            source.setTagCompound(new NBTTagCompound());
+            source.getTagCompound()
+                .setString("packet_marker", "exact");
+            final net.minecraft.network.PacketBuffer buffer = new net.minecraft.network.PacketBuffer(
+                io.netty.buffer.Unpooled.buffer());
+            com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler.writeStackUpdate(buffer, source, true, false);
+            SimpleAssert.that(buffer.readBoolean(), "amount-change flag roundtrip");
+            final ItemStack decoded = com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler.readStack(buffer);
+            SimpleAssert.that(decoded != null && decoded.getItem() == fixture, "packet preserves registered identity");
+            SimpleAssert.eq(count, decoded.stackSize, "packet restores full int count");
+            SimpleAssert.eq(7, decoded.getItemDamage(), "packet preserves damage");
+            SimpleAssert.eq(
+                "exact",
+                decoded.getTagCompound()
+                    .getString("packet_marker"),
+                "packet preserves NBT");
+            SimpleAssert.that(!buffer.readBoolean() && buffer.readableBytes() == 0, "init flag and packet framing");
+            final PocketInventory inventory = PocketInventory.readFrom(new NBTTagCompound());
+            inventory.setUpgradeProbes(() -> false, () -> true);
+            inventory.setStackCountProbe(() -> 64);
+            inventory.storage()
+                .setStackInSlot(206, source);
+            final NBTTagCompound root = new NBTTagCompound();
+            inventory.writeTo(root);
+            PocketUpgrades.installStackCount(carrierForRoot(root), 64);
+            final PocketInventory restored = PocketInventory.readFrom(root);
+            SimpleAssert.eq(count, restored.storageStack(206).stackSize, "registered handler NBT int count roundtrip");
+            for (int installed : new int[] { 0, 1 }) {
+                final PocketInventory clientInventory = PocketInventory.readFrom(new NBTTagCompound());
+                clientInventory.setUpgradeProbes(() -> false, () -> installed > 0);
+                clientInventory.setStackCountProbe(() -> installed);
+                final com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler clientHandler = new com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler(
+                    new PocketSlots().storage(clientInventory, 206),
+                    clientInventory);
+                final net.minecraft.network.PacketBuffer update = new net.minecraft.network.PacketBuffer(
+                    io.netty.buffer.Unpooled.buffer());
+                com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler.writeStackUpdate(update, source, false, true);
+                clientHandler.readOnClient(0, update);
+                SimpleAssert
+                    .eq(count, clientInventory.storageStack(206).stackSize, "server truth bypasses stale client cap");
+                SimpleAssert.eq(
+                    count,
+                    countItemInStorage(clientInventory, fixture),
+                    "client receives one exact pile without scattering");
+                SimpleAssert.that(clientInventory.storageStack(0) == null, "no overflow into another client slot");
+                update.release();
+            }
+            buffer.release();
+        }
+        final net.minecraft.network.PacketBuffer empty = new net.minecraft.network.PacketBuffer(
+            io.netty.buffer.Unpooled.buffer());
+        com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler.writeStackUpdate(empty, null, false, true);
+        SimpleAssert.that(!empty.readBoolean(), "empty amount flag");
+        SimpleAssert.that(
+            com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler.readStack(empty) == null,
+            "empty packet clears item");
+        SimpleAssert.that(empty.readBoolean() && empty.readableBytes() == 0, "empty init framing");
+        empty.release();
+    }
+
+    private static ItemStack carrierForRoot(NBTTagCompound root) {
+        final ItemStack carrier = new ItemStack(FakePlainItem.INSTANCE);
+        carrier.setTagCompound(root);
+        return carrier;
+    }
+
+    private static void preciseSlotResyncPendingStateAndSchedule() {
+        final PocketInventory inventory = PocketInventory.readFrom(new NBTTagCompound());
+        final com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler handler = new com.miaokatze.gtit.gui.pocket.PocketItemSlotSyncHandler(
+            new PocketSlots().storage(inventory, 0),
+            inventory);
+        try {
+            final java.lang.reflect.Field pending = handler.getClass()
+                .getDeclaredField("pendingResend");
+            pending.setAccessible(true);
+            SimpleAssert.that(!pending.getBoolean(handler), "resend starts inactive");
+            handler.requestResync();
+            SimpleAssert
+                .that(pending.getBoolean(handler), "request schedules exact snapshot even without inventory changes");
+            handler.detectAndSendChanges(false);
+            SimpleAssert
+                .that(pending.getBoolean(handler), "uninitialized handler retains pending rather than losing resync");
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
+        final List<String> source = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/PocketItemSlotSyncHandler.java");
+        final int force = methodStart(source, "public void forceSyncItem() {");
+        SimpleAssert.that(
+            regionContainsCode(source, force, methodEnd(source, force), "pendingResend = true"),
+            "force also schedules later correction");
+        final int detect = methodStart(source, "public void detectAndSendChanges(boolean init) {");
+        SimpleAssert.that(
+            regionContainsCode(
+                source,
+                detect,
+                methodEnd(source, detect),
+                "init || pendingResend || !same || amountChanged"),
+            "pending bypasses unchanged snapshot suppression");
+        SimpleAssert.that(
+            regionContainsCode(source, detect, methodEnd(source, detect), "pendingResend = false"),
+            "sent correction is one-shot");
+        final List<String> container = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/gui/pocket/NekoPocketContainer.java");
+        final int reject = methodStart(
+            container,
+            "private void rejectOversizedClick(ModularSlot modular, EntityPlayer player) {");
+        SimpleAssert.that(
+            regionContainsCode(container, reject, methodEnd(container, reject), "this.inventorySlots")
+                && regionContainsCode(container, reject, methodEnd(container, reject), "GROUP_STORAGE")
+                && regionContainsCode(container, reject, methodEnd(container, reject), "precise.requestResync()"),
+            "late whole-container S30 schedules all storage slots");
+    }
+
+    private static void compactFluidGroupsAndKDisplay() {
+        SimpleAssert.eq(6, NekoPocketLeftColumn.GROUP_GAP, "compact group gap");
+        SimpleAssert.eq(384, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "five compact groups content height");
+        for (int group = 0; group < 5; group++) {
+            SimpleAssert.eq(group * 78, NekoPocketLeftColumn.groupTop(group), "each group advances78px");
+        }
+        SimpleAssert.eq("999", com.miaokatze.gtit.gui.pocket.PocketItemCountText.format(999), "sub-k count exact");
+        SimpleAssert
+            .eq("1.0k", com.miaokatze.gtit.gui.pocket.PocketItemCountText.format(1000), "one decimal k boundary");
+        SimpleAssert
+            .eq("65.5k", com.miaokatze.gtit.gui.pocket.PocketItemCountText.format(65536), "int endpoint k display");
+    }
+
     private static Boolean itemNbtUsable;
 
     private static boolean itemNbtUsable() {
@@ -5359,9 +5548,9 @@ public class NekoPocketModelTest {
         // ---- 左栏（R78②：3 组 × 72 + 2 个 18 组间距 = 252，余 18 给状态行）----
         SimpleAssert.eq(36, NekoPocketLeftColumn.TANK_HEIGHT, "Expanded pocket layout  36");
         SimpleAssert.eq(72, NekoPocketLeftColumn.GROUP_HEIGHT, "Expanded pocket layout  72");
-        SimpleAssert.eq(18, NekoPocketLeftColumn.GROUP_GAP, "Expanded pocket layout  18");
-        SimpleAssert.eq(5 * 72 + 4 * 18, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块 = 3×72 + 2×18 = 252（R78 加总表原式）");
-        SimpleAssert.eq(432, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "Expanded pocket layout  432");
+        SimpleAssert.eq(6, NekoPocketLeftColumn.GROUP_GAP, "Compact fluid gap6");
+        SimpleAssert.eq(5 * 72 + 4 * 6, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "流体块 = 3×72 + 2×18 = 252（R78 加总表原式）");
+        SimpleAssert.eq(384, NekoPocketLeftColumn.FLUID_AREA_HEIGHT, "Compact fluid content384");
         // ★★R94-①：旧那两条（"余 18 给末行"与"末行高 18 = D-2"）随末行一起改写 ——
         // 那 18px 现在归<b>底部带左段</b>（用户："按钮移到最下，上面都放说明文字"）。
         // ★D-2 的"说明不得常驻"半条本轮由用户改判撤销，撤销记录与落点见台账 R94 节。
@@ -5375,8 +5564,8 @@ public class NekoPocketModelTest {
             "★左段比带高出<b>一格 + 一条外边距</b>（96 = 72 + 18 + 6）：18 是从左列末行收回来的那一格，" + "6 是原先横在左列与带之间的那条外边距——说明块要连续就把这条缝一起吃掉"
                 + "（★背包段与绑定段仍是 282 起、高 72；三者底对齐由上一条断言钉）");
         SimpleAssert.eq(0, NekoPocketLeftColumn.groupTop(0), "第 1 组从列顶开始");
-        SimpleAssert.eq(90, NekoPocketLeftColumn.groupTop(1), "第 2 组 y = 72 + 18 = 90");
-        SimpleAssert.eq(180, NekoPocketLeftColumn.groupTop(2), "第 3 组 y = 2×90 = 180");
+        SimpleAssert.eq(78, NekoPocketLeftColumn.groupTop(1), "Second group y78");
+        SimpleAssert.eq(156, NekoPocketLeftColumn.groupTop(2), "Third group y156");
         SimpleAssert.eq(
             NekoPocketLeftColumn.FLUID_AREA_HEIGHT - NekoPocketLeftColumn.GROUP_HEIGHT,
             NekoPocketLeftColumn.groupTop(4),
@@ -14018,9 +14207,9 @@ public class NekoPocketModelTest {
                             innerW,
                             innerH,
                             PocketConfigPanel.MARGIN,
-                            PocketConfigPanel.ruleLineYOf(type),
+                            PocketConfigPanel.CONTENT_TOP,
                             innerW,
-                            PocketConfigPanel.READOUT_HEIGHT);
+                            3 * PocketConfigPanel.READOUT_HEIGHT);
                         break;
                     case READOUT_PERSIST:
                         cover(
@@ -14290,7 +14479,8 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CAPACITY), "★容量面宽 266");
         SimpleAssert.eq(85, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CAPACITY), "★容量面高 85");
         SimpleAssert.eq(266, PocketConfigPanel.panelWidthOf(PocketUpgradeType.STACK), "★堆叠面宽 266");
-        SimpleAssert.eq(81, PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK), "★堆叠面高 81");
+        SimpleAssert
+            .eq(117, PocketConfigPanel.panelHeightOf(PocketUpgradeType.STACK), "STACK three-row readout height117");
         SimpleAssert.eq(318, PocketConfigPanel.panelWidthOf(PocketUpgradeType.CHANNEL_PERSIST), "★通道持续化面宽 318");
         SimpleAssert.eq(102, PocketConfigPanel.panelHeightOf(PocketUpgradeType.CHANNEL_PERSIST), "★通道持续化面高 102");
         SimpleAssert.eq(
@@ -16446,7 +16636,7 @@ public class NekoPocketModelTest {
                     ops,
                     itemStart,
                     mergeIntoStart,
-                    "PocketInventory.effectiveStorageLimit(session.storageStackUpgraded(), wanted)"),
+                    "PocketInventory.effectiveStorageLimit(session.storageStackUpgradeCount(), wanted)"),
                 "★R95 S5：物品支消费点必须传 effectiveStorageLimit(升级位, wanted)（未设时回落 = 该件自身"
                     + "的升级档堆叠上限；直接喂裸 maxStackSize 会与 handler 的 getStackLimit 分叉）");
             SimpleAssert.eq(
@@ -21543,19 +21733,10 @@ public class NekoPocketModelTest {
             for (final PocketUpgradeType type : PocketUpgradeType.values()) {
                 // 型名行：盒宽逐型读 labelWidthOf（★R97 S5 起短型给短盒；旧写法是"面板宽 − 边距 − 开关"
                 // 的近似式，紧凑面上它会虚高 ⇒ 恒绿的假像素账）。
-                int worstLabel = 0;
-                String worstName = "";
-                final String name = formatLang(lang, CONFIG_NAME_KEYS[type.ordinal()]);
-                for (final String state : new String[] { "gtit.pocket.config.state.on", "gtit.pocket.config.state.off",
-                    "gtit.pocket.config.state.absent" }) {
-                    final int w = residentLogicalWidth(name + "：" + formatLang(lang, state));
-                    if (w > worstLabel) {
-                        worstLabel = w;
-                        worstName = name;
-                    }
-                }
-                final int labelBox = PocketConfigPanel.labelWidthOf(type);
-                // ★R101.4：标题行（型名 + 状态）留在 0.8 档（1.0 档 en 最坏串 280px 必折行）——不换正文档
+                final String worstName = formatLang(lang, CONFIG_NAME_KEYS[type.ordinal()]);
+                final int worstLabel = residentLogicalWidth(worstName);
+                final int labelBox = PocketConfigPanel.labelWidthOf(type) - PocketConfigPanel.ROW_HEIGHT
+                    - PocketConfigPanel.MARGIN;
                 final int labelLines = (int) Math.ceil(worstLabel * PocketConfigPanel.TEXT_SCALE / labelBox);
                 SimpleAssert.that(
                     labelLines <= 1,
@@ -21592,13 +21773,21 @@ public class NekoPocketModelTest {
                     + PocketConfigPanel.CAPACITY_READOUT_HEIGHT
                     + "）");
             // 堆叠面：上限读数（喂最宽数字 1024）。★R98 S4 DP-7：同尺说明那一行连键一起撤 ⇒ 不再量它。
-            assertSingleReadoutLine(
+            final String stackReadout = formatLang(
                 lang,
-                "gtit.pocket.config.stack.limit",
-                Integer.valueOf(PocketConstants.STORAGE_SLOT_LIMIT_UPGRADED),
-                contentBoxOf(PocketUpgradeType.STACK),
-                "堆叠面上限读数");
-            // 通道持续化面：常开状态两支。★R98 S4 DP-7：按钮禁用 / 帧带常亮两条静态说明连键一起撤。
+                PocketConfigPanel.READOUT_STACK_KEY,
+                Integer.valueOf(64),
+                Integer.valueOf(65536),
+                Integer.valueOf(4096),
+                Integer.valueOf(64)).replace("\\n", "\n");
+            final String[] stackLines = stackReadout.split("\n");
+            SimpleAssert.eq(3, stackLines.length, "STACK readout has three explicit rows");
+            for (String row : stackLines) {
+                SimpleAssert.that(
+                    residentLogicalWidth(row) * PocketConfigPanel.BODY_TEXT_SCALE
+                        <= contentBoxOf(PocketUpgradeType.STACK),
+                    "each exact-capacity row fits one line: " + row);
+            }
             assertSingleReadoutLine(
                 lang,
                 "gtit.pocket.channel.always_on",
@@ -22535,18 +22724,17 @@ public class NekoPocketModelTest {
             ModularContainer.stackLimit(new PocketSlots().storage(up, 0), axe),
             "★升级档同一族读 1024 ⇒ 平尺不按物品分档，这一点必须写在文档里而不是留给读者推");
         // ---- ② handler 那一侧的收口<b>没有</b>被动（程序化写入面仍按该件 ×16 / 1 封顶）----
-        SimpleAssert.eq(256, PocketInventory.effectiveStorageLimit(true, herb), "算式：16 叠 ×16 = 256（不是 1024）");
+        SimpleAssert.eq(1024, PocketInventory.effectiveStorageLimit(true, herb), "One STACK gives stackable items1024");
         SimpleAssert.eq(1, PocketInventory.effectiveStorageLimit(true, axe), "算式：不可叠两档都是 1");
         final ItemStack bulk = new ItemStack(FakeStack16Item.INSTANCE, 300, 0);
         final ItemStack rest = up.storage()
             .insertItem(1, bulk, false);
-        SimpleAssert
-            .that(rest != null && rest.stackSize == 44, "★程序化灌 300 件 16 叠物品进升级档空格 ⇒ 只收 256、退 44（handler 那把尺子照旧分物品收口）");
+        SimpleAssert.that(rest == null, "300 stackable items fit upgraded1024 cap");
         SimpleAssert.eq(
-            256,
+            300,
             up.storage()
                 .getStackInSlot(1).stackSize,
-            "落进格内的正是 256（不是平尺的 1024）");
+            "all300 remain in one slot");
         SimpleAssert.eq(
             null,
             up.storage()
@@ -22589,8 +22777,10 @@ public class NekoPocketModelTest {
             1,
             countRegionCode(sheet, sort, sortEnd, "PocketInventory.effectiveStorageLimit("),
             "合并天花板必须恰有一处读那条单源算式（多一处 = 第二份真相）");
-        SimpleAssert
-            .eq(1, countRegionCode(sheet, sort, sortEnd, "storageStackUpgraded()"), "算式的输入档位就在同一行（不吃运行期档位 = 双档收口断在这里）");
+        SimpleAssert.eq(
+            1,
+            countRegionCode(sheet, sort, sortEnd, "storageStackUpgradeCount()"),
+            "算式的输入档位就在同一行（不吃运行期档位 = 双档收口断在这里）");
         // ---- ② ghost 声明格整格不参与（R85 A5 的既有钉，本批只复述不放宽）----
         SimpleAssert.eq(
             1,
@@ -22732,7 +22922,7 @@ public class NekoPocketModelTest {
             "批量上限恰一处读单源算式（抽取腿那两处不在本方法体内，故仍为 1）");
         SimpleAssert.eq(
             1,
-            countRegionCode(ops, inject, injectEnd, "session.storageStackUpgraded()"),
+            countRegionCode(ops, inject, injectEnd, "session.storageStackUpgradeCount()"),
             "算式的档位来自会话谓词（与 handler / 整理腿同一个来源）");
         // ---- ③ 两档真读数：max=64 的物品未升级档与旧写法逐字等值（反「修过头」）----
         final ItemStack sample = new ItemStack(FakePlainItem.INSTANCE, 64, 0);
@@ -22774,7 +22964,7 @@ public class NekoPocketModelTest {
         up.storage()
             .setStackInSlot(0, new ItemStack(FakeStack16Item.INSTANCE, 300, 0));
         SimpleAssert.eq(
-            256,
+            300,
             up.storage()
                 .getStackInSlot(0).stackSize,
             "★★升级档药材落格 = 16 × 16 = 256（★不是平尺的 1024；设计意图 r96-s4 §5 表末列）");

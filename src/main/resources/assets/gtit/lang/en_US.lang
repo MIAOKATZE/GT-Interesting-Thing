@@ -411,7 +411,9 @@ item.neko_pocket_upgrade_magnet.name=Magnet Upgrade Module
 item.neko_pocket_upgrade_channel_persist.name=Channel Persistence Upgrade Module
 item.neko_pocket_upgrade_mage.name=Mage Upgrade Module
 gtit.pocket.upgrade.capacity.tooltip=Fluid bar capacity raised to two G
-gtit.pocket.upgrade.stack.tooltip=Per-slot stack limit times sixteen
+gtit.pocket.upgrade.stack.tooltip=Item limit per slot: installed modules x %1$d
+gtit.pocket.upgrade.stack.rule=Up to %1$d modules; unstackable items stay at 1
+gtit.pocket.upgrade.stack.essence=Essentia keeps its existing upgrade effect
 gtit.pocket.upgrade.magnet.tooltip=Automatically picks up items within eight blocks
 gtit.pocket.upgrade.channel_persist.tooltip=Channels always on: the channel button is disabled and the pocket always shows as working
 gtit.pocket.upgrade.mage.tooltip=Distillation interval cut from five seconds to one second
@@ -458,7 +460,9 @@ gtit.pocket.config.switch.hint=Left-click to switch this module on or off; turni
 # line at that scale (zh values stay as they are); persist.idle was shortened for the same reason
 # (its 1.0-scale worst string overflowed the persist row)
 gtit.pocket.config.capacity.rule=Only turn off while within capacity
-gtit.pocket.config.stack.limit=Only turn off while within stack limits
+gtit.pocket.config.stack.limit=Installed %1$d/%4$d\nItem limit %2$d\nEssentia limit %3$d
+gtit.pocket.config.stack.off_rule=Cannot turn off above base limits; installed modules cannot be removed
+gtit.pocket.storage.exact_count=Exact count: %d
 gtit.pocket.config.persist.idle=Not always-on (switch off or no live channel yet)
 # ---- R100: frequency tier row, four keys (consumed only by the channel-persistence config face;
 # the tier table has its single source in PocketConstants - lang never lists the seconds)
