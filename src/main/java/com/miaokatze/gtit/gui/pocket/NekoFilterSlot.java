@@ -10,6 +10,7 @@ import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.integration.recipeviewer.RecipeViewerGhostIngredientSlot;
 import com.cleanroommc.modularui.screen.RichTooltip;
+import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
@@ -272,7 +273,17 @@ public class NekoFilterSlot extends ItemSlot implements RecipeViewerGhostIngredi
     @Override
     @SideOnly(Side.CLIENT)
     protected void drawSlotAmountText(int amount, String format) {
-        super.drawSlotAmountText(amount, format == null ? PocketItemCountText.format(amount) : format);
+        if (amount < 1000) {
+            super.drawSlotAmountText(amount, format);
+            return;
+        }
+        GuiDraw.drawScaledAlignedTextInBox(
+            (format == null ? "" : format) + PocketItemCountText.format(amount),
+            0,
+            0,
+            getArea().width,
+            getArea().height,
+            Alignment.BottomRight);
     }
 
     /**

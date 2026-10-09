@@ -5541,11 +5541,18 @@ public class NekoPocketModelTest {
         for (int group = 0; group < 5; group++) {
             SimpleAssert.eq(group * 78, NekoPocketLeftColumn.groupTop(group), "each group advances78px");
         }
+        for (int amount : new int[] { 0, 1, 2, 64 }) {
+            SimpleAssert.eq(
+                amount <= 1 ? "" : Integer.toString(amount),
+                com.miaokatze.gtit.gui.pocket.PocketItemCountText.format(amount),
+                "small count formatter remains exact");
+        }
         SimpleAssert.eq("999", com.miaokatze.gtit.gui.pocket.PocketItemCountText.format(999), "sub-k count exact");
         SimpleAssert
             .eq("1.0k", com.miaokatze.gtit.gui.pocket.PocketItemCountText.format(1000), "one decimal k boundary");
         SimpleAssert
             .eq("65.5k", com.miaokatze.gtit.gui.pocket.PocketItemCountText.format(65536), "int endpoint k display");
+
     }
 
     private static Boolean itemNbtUsable;
