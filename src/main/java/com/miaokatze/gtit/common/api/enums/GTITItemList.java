@@ -62,6 +62,9 @@ public enum GTITItemList implements IItemContainer {
     // 猫猫次元口袋（128 格随身容器 + 流体条 + 源质蒸馏 + 次元通道绑定，需求 1–5）
     NekoDimensionPocket,
 
+    // 猫猫全息投影仪（多方块结构预览）
+    NekoHologramProjector,
+
     // 口袋升级插件 ×5（R95 升级插件体系）：一型一件，枚举序 = PocketUpgradeType 的 ordinal
     // = 插件槽号 = 效果位图位；注册名 neko_pocket_upgrade_<token>（禁家族号后缀，R54c）
     NekoPocketUpgradeCapacity,
