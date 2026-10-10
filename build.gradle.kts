@@ -107,3 +107,35 @@ tasks.register<JavaExec>("runTradePageRefreshTest") {
 }
 
 tasks.named("check") { dependsOn("runTradePageRefreshTest") }
+
+tasks.register<JavaExec>("runHologramTest") {
+    group = "verification"
+    description = "Runs hologram channel, packet and inactive capture regressions."
+    mainClass = "com.miaokatze.gtit.hologram.HologramRegressionTest"
+    classpath = storeTestRuntimeClasspath
+    val scratchDir = layout.buildDirectory.dir("hologram-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runHologramTest") }
+
+if (providers.gradleProperty("hologramSmoke").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.smoketest=true")
+    }
+    tasks.named<JavaExec>("runServer") {
+        workingDir(layout.buildDirectory.dir("hologram-smoke/server"))
+    }
+}
+
+if (providers.gradleProperty("hologramClientSmoke").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.clientSmoke=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.clientState=" + layout.buildDirectory.file("hologram-smoke/server/hologram-client-state.nbt").get().asFile.absolutePath)
+    }
+    tasks.named<JavaExec>("runClient") {
+        workingDir(layout.buildDirectory.dir("hologram-smoke/client"))
+        args("--width", "1100", "--height", "800")
+    }
+}

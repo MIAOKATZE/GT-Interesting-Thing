@@ -1,0 +1,131 @@
+package com.miaokatze.gtit.client.hologram;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.StatCollector;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.common.util.ForgeDirection;
+
+import com.gtnewhorizon.structurelib.StructureLibAPI;
+import com.gtnewhorizon.structurelib.alignment.IAlignment;
+import com.gtnewhorizon.structurelib.alignment.constructable.ChannelDataAccessor;
+import com.gtnewhorizon.structurelib.alignment.constructable.IConstructable;
+import com.gtnewhorizon.structurelib.alignment.constructable.IConstructableProvider;
+import com.gtnewhorizon.structurelib.alignment.constructable.IMultiblockInfoContainer;
+import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
+import com.miaokatze.gtit.hologram.HologramNetwork;
+
+import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+
+/** Registered only by ClientProxy; the common network receiver never links client classes. */
+public final class HologramClient {
+
+    private static boolean installed;
+    static HologramState state;
+    private static net.minecraft.world.World snapshotWorld;
+    static boolean worldPreview = true;
+    static final Map<Integer, Long> arrivals = new HashMap<>();
+
+    private HologramClient() {}
+
+    public static void install() {
+        if (installed) return;
+        installed = true;
+        HologramNetwork.setClientReceiver(
+            nbt -> Minecraft.getMinecraft()
+                .func_152344_a(() -> receive(nbt)));
+        MinecraftForge.EVENT_BUS.register(new HologramClient());
+        HologramClientSmoke.install();
+    }
+
+    private static void receive(NBTTagCompound nbt) {
+        HologramState next = new HologramState(nbt);
+        boolean same = state != null && state.session.equals(next.session);
+        if (!same) arrivals.clear();
+        if (same) {
+            long now = System.nanoTime();
+            for (HologramState.Cell c : next.cells) {
+                if (c.completed() && c.index < state.cells.size()
+                    && !state.cells.get(c.index)
+                        .completed()) {
+                    arrivals.put(c.index, now);
+                }
+            }
+        }
+        state = next;
+        Minecraft mc = Minecraft.getMinecraft();
+        snapshotWorld = mc.theWorld;
+        if (nbt.getBoolean("hints")) hints(next);
+        if (mc.currentScreen instanceof HologramScreen && same) {
+            ((HologramScreen) mc.currentScreen).updateState(next);
+        } else if (!same || nbt.getBoolean("open")) {
+            mc.displayGuiScreen(new HologramScreen(next));
+        }
+    }
+
+    private static void hints(HologramState snapshot) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.theWorld == null || mc.thePlayer == null
+            || mc.thePlayer.dimension != snapshot.data.getInteger("dimension")) return;
+        TileEntity tile = mc.theWorld
+            .getTileEntity(snapshot.data.getInteger("x"), snapshot.data.getInteger("y"), snapshot.data.getInteger("z"));
+        IConstructable target = null;
+        if (tile instanceof IConstructableProvider) target = ((IConstructableProvider) tile).getConstructable();
+        else if (tile instanceof IConstructable) target = (IConstructable) tile;
+        else if (tile != null && IMultiblockInfoContainer.contains(tile.getClass())) {
+            ExtendedFacing facing = tile instanceof IAlignment ? ((IAlignment) tile).getExtendedFacing()
+                : ExtendedFacing.of(ForgeDirection.getOrientation(snapshot.data.getInteger("side")));
+            target = IMultiblockInfoContainer.<TileEntity>get(tile.getClass())
+                .toConstructable(tile, facing);
+        }
+        ItemStack held = mc.thePlayer.getHeldItem();
+        if (target == null || held == null) return;
+        ItemStack trigger = held.copy();
+        trigger.stackSize = snapshot.data.getInteger("main");
+        NBTTagCompound channels = snapshot.data.getCompoundTag("channels");
+        for (Object key : channels.func_150296_c())
+            ChannelDataAccessor.setChannelData(trigger, key.toString(), channels.getInteger(key.toString()));
+        // hintsOnly=true is the native client hint path; this never requests a construction operation.
+        StructureLibAPI.startHinting(mc.theWorld);
+        try {
+            target.construct(trigger, true);
+        } catch (RuntimeException e) {
+            com.miaokatze.gtit.main.GTInterestingThing.LOG.warn("Hologram native hints failed", e);
+        } finally {
+            StructureLibAPI.endHinting(mc.theWorld);
+        }
+    }
+
+    static double fall(HologramState.Cell cell) {
+        Long start = arrivals.get(cell.index);
+        if (start == null || cell.status.equals("removed")) return 0;
+        double p = Math.min(1, (System.nanoTime() - start) / 650000000.0);
+        return 3 * (1 - Math.sin(p * Math.PI / 2));
+    }
+
+    static String text(String key, String fallback) {
+        String full = "gtit.hologram." + key;
+        return StatCollector.canTranslate(full) ? StatCollector.translateToLocal(full) : fallback;
+    }
+
+    @SubscribeEvent
+    public void renderWorld(RenderWorldLastEvent event) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (!worldPreview || state == null
+            || mc.theWorld == null
+            || mc.theWorld != snapshotWorld
+            || mc.thePlayer == null
+            || mc.thePlayer.dimension != state.data.getInteger("dimension")) return;
+        // Avoid stale projection after disconnect/reconnect or travelling away from the target.
+        if (mc.thePlayer
+            .getDistanceSq(state.data.getInteger("x"), state.data.getInteger("y"), state.data.getInteger("z")) > 4096)
+            return;
+        HologramRenderer.world(state, event.partialTicks);
+    }
+}

@@ -14,6 +14,7 @@ import com.miaokatze.gtit.common.items.ReincarnationCrystal;
 import com.miaokatze.gtit.common.items.ShimmeringNekoCoin;
 import com.miaokatze.gtit.common.items.StarterGift;
 import com.miaokatze.gtit.common.items.TelekinesisOreScannerCore;
+import com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector;
 import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageCell;
 import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageFluidCell;
 import com.miaokatze.gtit.common.items.infinitycell.ItemNekoInfinityStorageUnit;
@@ -83,6 +84,7 @@ public class ItemRegistrar {
 
         // 猫猫次元口袋
         registerNekoDimensionPocket();
+        NekoHologramProjector.setAndRegister(ItemNekoHologramProjector::new);
 
         // 口袋升级插件（R95）
         registerNekoPocketUpgrades();
