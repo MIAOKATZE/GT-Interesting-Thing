@@ -26,7 +26,83 @@ public final class HologramRegressionTest {
         cases.put("hostile_packet_lengths_are_rejected", HologramRegressionTest::badLengths);
         cases.put("capture_hooks_are_inert_outside_collection", HologramRegressionTest::inertCapture);
         cases.put("server_plan_prepare_ack_roundtrip", HologramRegressionTest::planProtocol);
+        cases.put("frame_factory_material_and_te_boundary", HologramRegressionTest::frames);
+        cases.put("world_height_layers_and_tick_quotas", HologramRegressionTest::layerSchedule);
         TestRunner.run(HologramRegressionTest.class, cases);
+    }
+
+    private static void frames() {
+        try {
+            java.lang.reflect.Field unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            unsafeField.setAccessible(true);
+            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+            // Avoid a global GameRegistry mutation: these tested methods use no instance fields.
+            gregtech.common.blocks.BlockFrameBox frame = (gregtech.common.blocks.BlockFrameBox) unsafe
+                .allocateInstance(gregtech.common.blocks.BlockFrameBox.class);
+            com.gtnewhorizon.structurelib.structure.IStructureElement<Object> tiered = com.gtnewhorizon.structurelib.structure.StructureUtility
+                .<Object, Integer>ofBlocksTiered(
+                    (block, meta) -> meta,
+                    java.util.Arrays.asList(
+                        org.apache.commons.lang3.tuple.Pair.of(frame, 17),
+                        org.apache.commons.lang3.tuple.Pair.of(frame, 18)),
+                    -1,
+                    (context, tier) -> {},
+                    context -> -1);
+            HologramReplacementFamily.Family family = HologramReplacementFamily.resolve(tiered, frame, 17);
+            SimpleAssert.that(
+                family != null && family.id.startsWith("frame:"),
+                "real steam-style tiered factory resolves frame family above metadata fifteen");
+            SimpleAssert.that(family.contains(frame, 17), "first declared frame material is accepted");
+            SimpleAssert.that(family.contains(frame, 18), "second declared frame material is accepted");
+            SimpleAssert.that(!family.contains(frame, 19), "unlisted frame material is protected");
+            SimpleAssert.that(!family.contains(frame, 17 | 0x1000), "tiered TE frame is protected");
+            SimpleAssert.that(!frame.hasTileEntity(0xFFF), "ordinary frame maximum metadata has no TE");
+            SimpleAssert.that(frame.hasTileEntity(0x1000), "real GT frame TE boundary uses MTE bit");
+            SimpleAssert
+                .that(!family.contains(net.minecraft.init.Blocks.stone, 17), "another block never joins frame family");
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static void layerSchedule() {
+        java.util.List<Integer> indices = java.util.Arrays.asList(0, 1, 2, 3, 4);
+        int[] heights = { 100, 98, 100, 99, 98 };
+        java.util.List<java.util.List<Integer>> build = HologramLayerSchedule.layers(indices, heights, false);
+        SimpleAssert.eq(3, build.size(), "different world heights never merge");
+        SimpleAssert.eq(
+            1,
+            build.get(0)
+                .get(0)
+                .intValue(),
+            "build starts at lowest world height");
+        SimpleAssert.eq(
+            0,
+            HologramLayerSchedule.layers(indices, heights, true)
+                .get(0)
+                .get(0)
+                .intValue(),
+            "removal starts at highest world height");
+        SimpleAssert.eq(0, HologramLayerSchedule.quota(160, -1), "PREPARE makes no edits");
+        for (int tick = 0; tick < 20; tick++) SimpleAssert
+            .eq((tick + 1) * 8, HologramLayerSchedule.quota(160, tick), "large layer spreads over 20 ticks");
+        SimpleAssert
+            .eq(1, HologramLayerSchedule.quota(1, 0), "small layer may place early but retains its own duration");
+        SimpleAssert.eq(160, HologramLayerSchedule.quota(160, 29), "CPU overrun stays bounded to the same layer");
+        SimpleAssert.eq(20, HologramLayerSchedule.LAYER_TICKS, "layer lasts one second");
+        SimpleAssert.eq(10, HologramLayerSchedule.GAP_TICKS, "gap lasts half a second");
+        SimpleAssert.that(
+            HologramLayerSchedule.nextLayerDue(119) == 130,
+            "twenty active ticks 100..119, ten empty ticks 120..129, next layer starts 130");
+        SimpleAssert.that(
+            HologramLayerSchedule.nextLayerDue(145) == 156,
+            "CPU overrun still preserves the full inter-layer gap");
+        long due = 100, pausedAt = 107, resumedAt = 407;
+        long shiftedDue = HologramLayerSchedule.resumeDue(due, pausedAt, resumedAt);
+        SimpleAssert.eq(
+            HologramLayerSchedule.quota(80, (int) (pausedAt - due)),
+            HologramLayerSchedule.quota(80, (int) (resumedAt - shiftedDue)),
+            "pause preserves layer elapsed ticks");
     }
 
     private static void channels() {
@@ -91,6 +167,10 @@ public final class HologramRegressionTest {
         state.setString("phase", "PREPARE");
         state.setIntArray("pending", new int[] { 35 });
         state.setLong("due", 4294967305L);
+        state.setInteger("layerElapsed", 0);
+        state.setInteger("layerLeadRemaining", 5);
+        state.setIntArray("ackIndices", new int[] { 2, 8, 35 });
+        state.setIntArray("ackSuccesses", new int[] { 1, 0, 1 });
         state.setInteger("job", 5);
         HologramNetwork.State packet = new HologramNetwork.State(state);
         state.setLong("planRevision", 1);
@@ -110,6 +190,9 @@ public final class HologramRegressionTest {
                 "prepare carries final EBF cell index including controller anchor");
             SimpleAssert
                 .that(decoded.tag.getLong("due") == 4294967305L, "prepare due tick retains full long precision");
+            SimpleAssert.eq(5, decoded.tag.getInteger("layerLeadRemaining"), "paused PREPARE retains remaining lead");
+            SimpleAssert.eq(3, decoded.tag.getIntArray("ackIndices").length, "ACK retains all same-tick cells");
+            SimpleAssert.eq(0, decoded.tag.getIntArray("ackSuccesses")[1], "failed cell is not animated as success");
             SimpleAssert.eq(5, decoded.tag.getInteger("job"), "partial completion remains distinct from complete");
         } finally {
             bytes.release();

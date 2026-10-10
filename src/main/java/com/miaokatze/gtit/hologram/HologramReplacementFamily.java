@@ -17,6 +17,7 @@ import com.gtnewhorizon.structurelib.structure.StructureUtility;
 import gregtech.api.interfaces.IHeatingCoil;
 import gregtech.api.util.GTStructureUtility;
 import gregtech.api.util.GlassTier;
+import gregtech.common.blocks.BlockFrameBox;
 
 /** Exact factory provenance plus enumerated old states. A texture or coincident block ID is never a family. */
 final class HologramReplacementFamily {
@@ -54,7 +55,7 @@ final class HologramReplacementFamily {
             List<?> raw = (List<?>) field.get(part);
             if (raw == null || raw.isEmpty() || raw.size() > 256) return null;
             List<Pair<Block, Integer>> states = new ArrayList<>();
-            boolean casings = true, glasses = true;
+            boolean casings = true, glasses = true, frames = true;
             StringBuilder identity = new StringBuilder();
             for (Object value : raw) {
                 if (!(value instanceof Pair)) return null;
@@ -62,19 +63,24 @@ final class HologramReplacementFamily {
                 if (!(pair.getLeft() instanceof Block) || !(pair.getRight() instanceof Integer)) return null;
                 Block block = (Block) pair.getLeft();
                 int meta = (Integer) pair.getRight();
-                if (meta < 0 || meta > 15 || block.hasTileEntity(meta)) return null;
+                if (meta < 0 || block.hasTileEntity(meta)) return null;
+                if (block instanceof BlockFrameBox) {
+                    if (meta > 0xFFF) return null;
+                } else if (meta > 15) return null;
+                frames &= block instanceof BlockFrameBox;
                 casings &= block.getClass()
                     .getName()
                     .startsWith("gregtech.common.blocks.BlockCasings");
-                glasses &= GlassTier.getGlassBlockTier(block, meta) != null;
+                if (block instanceof BlockFrameBox) glasses = false;
+                else glasses &= GlassTier.getGlassBlockTier(block, meta) != null;
                 states.add(Pair.of(block, meta));
                 identity.append(Block.blockRegistry.getNameForObject(block))
                     .append('@')
                     .append(meta)
                     .append(';');
             }
-            if (!casings && !glasses) return null;
-            return new Family((glasses ? "glass:" : "tiered:") + identity, states, false);
+            if (!casings && !glasses && !frames) return null;
+            return new Family((frames ? "frame:" : glasses ? "glass:" : "tiered:") + identity, states, false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }

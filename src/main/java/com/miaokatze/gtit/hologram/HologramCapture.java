@@ -155,6 +155,14 @@ public final class HologramCapture {
                                         cell.meta = casing.meta;
                                     }
                                 }
+                                net.minecraft.item.ItemStack frame = HologramFrameSupport.target(element);
+                                if (frame != null) {
+                                    cell.block = Block.getBlockFromItem(frame.getItem());
+                                    cell.meta = frame.getItem()
+                                        .getMetadata(frame.getItemDamage());
+                                    cell.unknown = false;
+                                    cell.iconOnly = false;
+                                }
                                 if (!capture.roleCache.containsKey(element))
                                     capture.roleCache.put(element, HologramElementCatalog.hatchRole(element));
                                 cell.role = capture.roleCache.get(element);

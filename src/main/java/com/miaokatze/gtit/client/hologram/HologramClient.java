@@ -72,8 +72,15 @@ public final class HologramClient {
         long now = System.nanoTime();
         if ("PREPARE".equals(next.data.getString("phase")) && (batch != acceptedBatch || !same)) {
             preparedAt = now;
-            long ticks = Math.max(1, Math.min(8, next.data.getLong("due") - next.data.getLong("serverTick")));
+            long ticks = next.data.hasKey("layerDuration") ? next.data.getInteger("layerDuration")
+                : next.data.getLong("due") - next.data.getLong("serverTick");
+            ticks = Math.max(1, Math.min(40, ticks));
             preparedDuration = ticks * 50000000L;
+        }
+        if (next.data.hasKey("layerDuration")
+            && (next.data.getInteger("job") == 1 || next.data.getInteger("job") == 2)) {
+            preparedAt = now - (next.data.getLong("serverTick") - next.data.getLong("due")) * 50000000L;
+            preparedDuration = Math.max(1, next.data.getInteger("layerDuration")) * 50000000L;
         }
         if ("ACK".equals(next.data.getString("phase")) && next.data.getBoolean("ackSuccess")
             && (!same || batch != acceptedBatch || !"ACK".equals(state.data.getString("phase")))) {
@@ -85,6 +92,18 @@ public final class HologramClient {
             }
         }
         if (next.data.getInteger("job") == 4) arrivals.clear();
+        int[] ackIndices = next.data.getIntArray("ackIndices"), ackSuccesses = next.data.getIntArray("ackSuccesses");
+        if ("ACK".equals(next.data.getString("phase"))
+            && (!same || batch != acceptedBatch || !"ACK".equals(state.data.getString("phase")))) {
+            for (int i = 0; i < ackIndices.length && i < ackSuccesses.length; i++) {
+                int index = ackIndices[i];
+                if (ackSuccesses[i] != 0 && index >= 0
+                    && index < next.cells.size()
+                    && next.cells.get(index)
+                        .completed())
+                    arrivals.put(index, now);
+            }
+        }
         acceptedBatch = batch;
         receivedAt = now;
         arrivals.entrySet()
@@ -134,20 +153,48 @@ public final class HologramClient {
     }
 
     static double fall(HologramState.Cell cell) {
-        if (state == null || !"PREPARE".equals(state.data.getString("phase"))) return 0;
-        boolean pending = false;
-        for (int index : state.data.getIntArray("pending")) if (index == cell.index) pending = true;
-        if (!pending) return 0;
-        long age = System.nanoTime() - preparedAt;
+        if (state == null || !animationPhase()) return 0;
+        int[] pending = state.data.getIntArray("pending");
+        int offset = -1;
+        for (int i = 0; i < pending.length; i++) if (pending[i] == cell.index) {
+            offset = i;
+            break;
+        }
+        if (offset < 0) return 0;
+        long age = state.data.getInteger("job") == 2
+            ? ((long) state.data.getInteger("layerElapsed") - state.data.getInteger("layerLeadRemaining")) * 50000000L
+            : System.nanoTime() - preparedAt;
         if (age > preparedDuration + 1500000000L) return 0;
-        double p = Math.max(0, Math.min(1, age / (double) Math.max(1, preparedDuration)));
-        // Scan and assemble above the actual destination before the server's scheduled commit.
+        double p;
+        if (state.data.hasKey("layerDuration")) {
+            int total = Math.max(pending.length, state.data.getInteger("layerTotal"));
+            int order = Math.max(0, total - pending.length + offset);
+            int duration = Math.max(1, state.data.getInteger("layerDuration"));
+            int commitElapsed = order * duration / Math.max(1, total);
+            // Mirror the server's ceil quota ordering. Each block descends in the eight ticks
+            // before its estimated commit; only a successful ACK marks it as completed.
+            p = (age / 50000000.0 - (commitElapsed - 8)) / 8;
+        } else p = age / (double) Math.max(1, preparedDuration);
+        p = Math.max(0, Math.min(1, p));
         return 3 * (1 - Math.sin(p * Math.PI / 2));
     }
 
+    static boolean assembling(HologramState.Cell cell) {
+        if (state == null || !animationPhase() || prepareExpired() || cell.completed()) return false;
+        for (int index : state.data.getIntArray("pending")) if (index == cell.index) return true;
+        return false;
+    }
+
     static boolean prepareExpired() {
-        return state != null && "PREPARE".equals(state.data.getString("phase"))
+        return state != null && state.data.getInteger("job") != 2
+            && animationPhase()
             && System.nanoTime() - preparedAt > preparedDuration + 1500000000L;
+    }
+
+    private static boolean animationPhase() {
+        return "PREPARE".equals(state.data.getString("phase"))
+            || state.data.hasKey("layerDuration") && "ACK".equals(state.data.getString("phase"))
+                && (state.data.getInteger("job") == 1 || state.data.getInteger("job") == 2);
     }
 
     private static void retire(String session) {

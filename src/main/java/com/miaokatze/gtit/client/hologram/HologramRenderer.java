@@ -346,6 +346,8 @@ final class HologramRenderer {
                     && !c.completed()
                     && !HologramClient.prepareExpired();
                 double drop = ghost ? HologramClient.fall(c) : 0;
+                boolean assembling = HologramClient.assembling(c);
+                boolean construction = state.data.getInteger("job") == 1 || state.data.getInteger("job") == 2;
                 int color = c.color();
                 if (state.data.getInteger("mode") == 2 && c.status.equals("pending")) color = 0xf08b83;
                 if (ghost) {
@@ -363,7 +365,7 @@ final class HologramRenderer {
                             ((textureColor >> 16) & 255) / 255f,
                             ((textureColor >> 8) & 255) / 255f,
                             (textureColor & 255) / 255f,
-                            .42f);
+                            assembling ? .82f : construction ? .08f : .42f);
                         t.startDrawingQuads();
                         t.disableColor(); // RenderBlocks opaque color calls must not overwrite ghost alpha.
                         t.setBrightness(0xf000f0);
@@ -392,14 +394,14 @@ final class HologramRenderer {
                 }
                 // Existing controller and hatch models remain in the real world; these role markers stay visible.
                 GL11.glDisable(GL11.GL_TEXTURE_2D);
-                GL11.glLineWidth(c.anchor ? 2f : 1.25f);
+                GL11.glLineWidth(assembling ? 2.5f : c.anchor ? 2f : 1.25f);
                 GL11.glColor4f(1, 1, 1, 1);
                 t.startDrawing(GL11.GL_LINES);
                 t.setColorRGBA_F(
                     ((color >> 16) & 255) / 255f,
                     ((color >> 8) & 255) / 255f,
                     (color & 255) / 255f,
-                    c.anchor ? .85f : .48f);
+                    assembling ? .95f : c.anchor ? .85f : construction ? .10f : .48f);
                 for (int[] edge : EDGES) for (int v : edge) t.addVertex(
                     c.x + .5 + VERTICES[v][0] * 1.006,
                     c.y + .5 + VERTICES[v][1] * 1.006 + drop,

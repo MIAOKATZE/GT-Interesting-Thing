@@ -25,7 +25,7 @@ public final class HologramInteractionClientSmoke {
 
     private final long installed = System.nanoTime();
     private int stage, waitTicks, pausedCompleted;
-    private boolean done;
+    private boolean done, reopenRequested;
     private File receipts;
     private HologramScreen realScreen;
     private long lastClickedRender = -1;
@@ -95,12 +95,23 @@ public final class HologramInteractionClientSmoke {
                 if (stage == 31)
                     require(HologramRenderer.lastWorldMatched > 0, "actual_placed_cells_match_client_world");
                 screenshot(mc, stage == 30 ? "world-ghost" : "world-construction");
-                realScreen.updateState(HologramClient.state);
-                mc.displayGuiScreen(realScreen);
+                reopenWithRightClick(mc);
                 stage = stage == 30 ? 3 : 13;
                 return;
             }
+            if (mc.currentScreen == null && (stage == 11 || stage == 17 || stage == 21 || stage == 24)) {
+                if (HologramClient.state == null || HologramClient.state.data.getInteger("job") == 0) return;
+                if (!reopenRequested) {
+                    require(
+                        HologramClient.state.data.getInteger("job") != 0,
+                        "accepted_start_closes_GUI_for_world_animation_" + stage);
+                    reopenWithRightClick(mc);
+                    reopenRequested = true;
+                }
+                return;
+            }
             if (!(mc.currentScreen instanceof HologramScreen)) return;
+            reopenRequested = false;
             HologramScreen screen = (HologramScreen) mc.currentScreen;
             if (screen.smokeRenderGeneration() <= lastClickedRender) return;
             NBTTagCompound state = screen.smokeSnapshot();
@@ -270,6 +281,20 @@ public final class HologramInteractionClientSmoke {
         screen.smokeClickControl(id);
         lastClickedRender = screen.smokeRenderGeneration();
         System.out.println("[GTIT-HOLOGRAM-INTERACTION-CLIENT] mouse control=" + id + " stage=" + stage);
+    }
+
+    private void reopenWithRightClick(Minecraft mc) {
+        mc.playerController.onPlayerRightClick(
+            mc.thePlayer,
+            mc.theWorld,
+            mc.thePlayer.getHeldItem(),
+            48,
+            80,
+            48,
+            2,
+            Vec3.createVectorHelper(48.5, 80.5, 48));
+        lastClickedRender = -1;
+        waitTicks = 0;
     }
 
     private void awaitControl(HologramScreen screen, int id) {
