@@ -29,6 +29,28 @@ public abstract class MixinHologramHints {
         cancellable = true,
         remap = false)
     private static void gtit$icons(World w, int x, int y, int z, IIcon[] icons, CallbackInfo ci) {
-        if (HologramCapture.iconHint()) ci.cancel();
+        if (HologramCapture.iconHint(w, x, y, z, icons, null)) ci.cancel();
+    }
+
+    @Inject(
+        method = "hintParticleTinted(Lnet/minecraft/world/World;III[Lnet/minecraft/util/IIcon;[S)V",
+        at = @At("HEAD"),
+        cancellable = true,
+        remap = false)
+    private static void gtit$tintedIcons(World w, int x, int y, int z, IIcon[] icons, short[] tint, CallbackInfo ci) {
+        if (HologramCapture.iconHint(w, x, y, z, icons, tint)) ci.cancel();
+    }
+
+    @Inject(
+        method = "hintParticleTinted(Lnet/minecraft/world/World;IIILnet/minecraft/block/Block;I[S)V",
+        at = @At("HEAD"),
+        cancellable = true,
+        remap = false)
+    private static void gtit$tintedBlock(World w, int x, int y, int z, Block block, int meta, short[] tint,
+        CallbackInfo ci) {
+        if (HologramCapture.hint(w, x, y, z, block, meta)) {
+            HologramCapture.hintTint(x, y, z, tint);
+            ci.cancel();
+        }
     }
 }

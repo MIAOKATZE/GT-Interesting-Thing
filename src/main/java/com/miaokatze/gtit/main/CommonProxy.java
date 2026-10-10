@@ -372,6 +372,7 @@ public class CommonProxy {
             .bus()
             .register(new com.miaokatze.gtit.hologram.HologramLifecycle());
         com.miaokatze.gtit.hologram.HologramSmokeTest.registerIfEnabled();
+        com.miaokatze.gtit.hologram.HologramInteractionSmoke.registerIfEnabled();
         // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
         ensureBaublesRingSlots();
 

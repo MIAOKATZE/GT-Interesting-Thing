@@ -1,60 +1,41 @@
 package com.miaokatze.gtit.hologram;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Map;
 import java.util.UUID;
 
-import net.minecraft.init.Blocks;
-import net.minecraft.init.Items;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.nbt.NBTTagList;
 import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraft.network.NetworkManager;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.common.util.FakePlayerFactory;
-import net.minecraftforge.common.util.ForgeDirection;
-import net.minecraftforge.event.world.BlockEvent;
 
-import com.gtnewhorizon.structurelib.structure.AutoPlaceEnvironment;
-import com.gtnewhorizon.structurelib.structure.IStructureElement;
-import com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector;
-import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.mojang.authlib.GameProfile;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
-import gregtech.api.GregTechAPI;
+import cpw.mods.fml.common.network.simpleimpl.IMessage;
+import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
-import gregtech.common.tileentities.machines.multi.MTEElectricBlastFurnace;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
 
-/** 显式属性门控的真专用服回归；仅在 hologram-smoke 命名的新世界工作，完成后自停。 */
+/** Opt-in C08 entry regression. No Session construction or reflection is used. */
 public final class HologramSmokeTest {
 
-    private static final String PREFIX = "[GTIT-HOLOGRAM-SMOKE] ";
-    private int ticks;
     private boolean finished;
-    private int assertions;
+    private int ticks, assertions;
 
     public static void registerIfEnabled() {
-        if (Boolean.getBoolean("gtit.hologram.smoketest")) {
-            FMLCommonHandler.instance()
-                .bus()
-                .register(new HologramSmokeTest());
-        }
+        if (Boolean.getBoolean("gtit.hologram.smoketest")) FMLCommonHandler.instance()
+            .bus()
+            .register(new HologramSmokeTest());
     }
 
     @SubscribeEvent
@@ -64,9 +45,9 @@ public final class HologramSmokeTest {
         MinecraftServer server = MinecraftServer.getServer();
         try {
             run(server.worldServerForDimension(0));
-            System.out.println(PREFIX + "FINAL PASS assertions=" + assertions);
+            System.out.println("[GTIT-HOLOGRAM-SMOKE] FINAL PASS assertions=" + assertions);
         } catch (Throwable failure) {
-            System.err.println(PREFIX + "FINAL FAIL assertions=" + assertions + " reason=" + failure);
+            System.err.println("[GTIT-HOLOGRAM-SMOKE] FINAL FAIL " + failure);
             failure.printStackTrace();
         } finally {
             HologramService.clear();
@@ -74,927 +55,400 @@ public final class HologramSmokeTest {
         }
     }
 
-    @SuppressWarnings({ "rawtypes", "unchecked" })
     private void run(WorldServer world) throws Exception {
         require(
             world.getWorldInfo()
                 .getWorldName()
                 .contains("hologram-smoke"),
             "isolated_world_guard");
-        Item item = (Item) Item.itemRegistry.getObject("gtit:neko_hologram_projector");
-        require(item instanceof ItemNekoHologramProjector, "registered_projector_real_registry");
-        require(item.getItemStackLimit() == 1, "projector_physical_stack_limit");
+        FakePlayer player = FakePlayerFactory
+            .get(world, new GameProfile(UUID.fromString("53ef3b84-b25b-4b81-a89f-88c27596992f"), "GTITHoloSmoke"));
+        BaseMetaTileEntity base = HologramInteractionSmoke.createFixture(world, player, 48, 80, 48);
+        Item projector = (Item) Item.itemRegistry.getObject("gtit:neko_hologram_projector");
+        var tradeGroup = com.miaokatze.gtit.trade.v2.NekoTradeDatabase.INSTANCE
+            .getTradeGroup(UUID.fromString("d7f5e8f2-247c-49af-b19b-d2f726ce34d0"));
         require(
-            item instanceof com.gtnewhorizon.structurelib.item.ItemConstructableTrigger,
-            "projector_preserves_native_middle_pick_trigger_type");
-        var group = NekoTradeDatabase.INSTANCE.getTradeGroup(UUID.fromString("d7f5e8f2-247c-49af-b19b-d2f726ce34d0"));
-        require(
-            group != null && group.getTrades()
+            tradeGroup != null && tradeGroup.getTrades()
                 .stream()
                 .anyMatch(
-                    t -> t.getToItems()
+                    trade -> trade.getToItems()
                         .stream()
                         .anyMatch(
                             output -> output.getBaseStack()
-                                .getItem() == item)),
-            "registered_trade_resolves_projector");
-
-        int id = -1;
-        for (int i = 0; i < GregTechAPI.METATILEENTITIES.length; i++) {
-            if (GregTechAPI.METATILEENTITIES[i] instanceof MTEElectricBlastFurnace) {
-                id = i;
-                break;
-            }
-        }
-        require(id > 0, "real_ebf_registered");
-        int x = world.getSpawnPoint().posX + 48, y = 80, z = world.getSpawnPoint().posZ + 48;
-        // 轮次必须换新世界；先只读整片预检，禁止清理旧轮控制器触发 GT onRemoval 副作用。
-        boolean freshSite = true;
-        for (int xx = x - 8; xx <= x + 8; xx++) for (int zz = z - 8; zz <= z + 8; zz++) {
-            world.getChunkFromBlockCoords(xx, zz);
-            for (int yy = y - 8; yy <= y + 8; yy++) if (world.getTileEntity(xx, yy, zz) != null) freshSite = false;
-        }
-        require(freshSite, "fresh_world_site_has_no_prior_tile_entities");
-        for (int xx = x - 8; xx <= x + 8; xx++) for (int zz = z - 8; zz <= z + 8; zz++) {
-            for (int yy = y - 8; yy <= y + 8; yy++) world.setBlockToAir(xx, yy, zz);
-        }
-        require(world.setBlock(x, y, z, GregTechAPI.sBlockMachines, 0, 3), "place_real_gt_base");
-        BaseMetaTileEntity base = (BaseMetaTileEntity) world.getTileEntity(x, y, z);
-        base.setInitialValuesAsNBT(null, (short) id);
-        base.setFrontFacing(ForgeDirection.NORTH);
-        MTEElectricBlastFurnace ebf = (MTEElectricBlastFurnace) base.getMetaTileEntity();
-        FakePlayer player = FakePlayerFactory
-            .get(world, new GameProfile(UUID.fromString("53ef3b84-b25b-4b81-a89f-88c27596992f"), "GTITHoloSmoke"));
-        base.setOwnerName(player.getCommandSenderName());
-        base.setOwnerUuid(player.getUniqueID());
-        require(
-            player.getUniqueID()
-                .equals(base.getOwnerUuid()),
-            "real_gt_controller_has_nonnull_owner_uuid");
-        player.setPosition(x + 3, y, z + 3);
+                                .getItem() == projector)),
+            "dedicated_server_trade_group_contains_registered_projector_exchange");
+        capabilityProfiles(base.getMetaTileEntity(), projector);
+        player.inventory.mainInventory[0] = new ItemStack(projector);
         player.inventory.currentItem = 0;
-        player.inventory.mainInventory[0] = new ItemStack(item);
-
-        long initialCaptureStarted = System.nanoTime();
-        HologramCapture capture = HologramCapture.collect(ebf, new ItemStack(item), ebf.getExtendedFacing());
-        System.out.println(
-            PREFIX + "INITIAL_CAPTURE pieces="
-                + capture.pieces.size()
-                + " cells="
-                + capture.cells.size()
-                + " incomplete="
-                + capture.incomplete
-                + " failure="
-                + capture.failure
-                + " elapsedMs="
-                + ((System.nanoTime() - initialCaptureStarted) / 1000000.0)
-                + " actualFacing="
-                + ebf.getExtendedFacing()
-                + " baseFacing="
-                + base.getFrontFacing());
-        require(
-            !capture.incomplete && !capture.pieces.isEmpty() && capture.cells.size() >= 30,
-            "actual_buildpiece_mixin_and_structurelib_walker");
-        HologramCapture.Cell coil = capture.cells.stream()
-            .filter(c -> c.block == GregTechAPI.sBlockCasings5)
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("no real coil hints: hint mixin did not intercept"));
-        require(
-            capture.cells.stream()
-                .filter(c -> c.block == GregTechAPI.sBlockCasings5)
-                .count() == 16,
-            "actual_hint_mixin_captures_sixteen_ebf_coils");
-        require(!HologramCapture.iconHint(), "capture_threadlocal_cleared");
-        require(world.isAirBlock(coil.x, coil.y, coil.z), "preview_does_not_build_world");
-        int originalX = base.xCoord;
-        try {
-            base.xCoord = x + 50000;
-            HologramCapture unloaded = HologramCapture.collect(ebf, new ItemStack(item), ebf.getExtendedFacing());
-            require(unloaded.incomplete, "unloaded_structure_does_not_claim_full_support");
-        } finally {
-            base.xCoord = originalX;
-        }
-
-        Class<?> sessionClass = Class.forName(HologramService.class.getName() + "$Session");
-        Constructor<?> constructor = sessionClass
-            .getDeclaredConstructor(net.minecraft.entity.player.EntityPlayerMP.class, int.class, int.class, int.class);
-        constructor.setAccessible(true);
-        Object session = constructor.newInstance(player, x, y, z);
-        put(session, "capture", capture);
-        directionCases(player, session, base, ebf, capture, item);
-        noHatchShellCases(player, session, ebf, capture, item);
-        noHatchJobCases(player, session, ebf, item);
-        put(session, "main", 123);
-        NBTTagCompound channels = new NBTTagCompound();
-        channels.setInteger("custom.future_mod", 2048);
-        put(session, "channels", channels);
-        ItemStack trigger = (ItemStack) call("trigger", session);
-        require(
-            trigger.stackSize == 123 && com.gtnewhorizon.structurelib.alignment.constructable.ChannelDataAccessor
-                .getChannelData(trigger, "custom.future_mod") == 2048,
-            "local_trigger_main_and_unknown_channel");
-        require(
-            player.getHeldItem().stackSize == 1 && !player.getHeldItem()
-                .hasTagCompound(),
-            "local_trigger_does_not_pollute_physical_stack");
-        put(session, "main", 1);
-        put(session, "channels", new NBTTagCompound());
-        require((Boolean) call("valid", session), "session_valid_control");
-        int dimension = player.dimension;
-        player.dimension = dimension + 1;
-        require(!(Boolean) call("valid", session), "session_rejects_dimension_change");
-        player.dimension = dimension;
-        player.setPosition(x + 100, y, z);
-        require(!(Boolean) call("valid", session), "session_rejects_distance_change");
-        player.setPosition(x + 3, y, z + 3);
-        player.inventory.currentItem = 1;
-        require(!(Boolean) call("valid", session), "session_rejects_tool_slot_change");
-        player.inventory.currentItem = 0;
-        ItemStack heldIdentity = player.inventory.mainInventory[0];
-        player.inventory.mainInventory[0] = heldIdentity.copy();
-        require(!(Boolean) call("valid", session), "session_rejects_same_item_different_stack_identity");
-        player.inventory.mainInventory[0] = heldIdentity;
-
-        inventoryBudget(player);
-        player.inventory.mainInventory[1] = new ItemStack(GregTechAPI.sBlockCasings5, 2, coil.meta);
-        int index = capture.cells.indexOf(coil);
-        require((Boolean) call("operate", session, coil, index), "survival_build_real_structure_element");
-        require(
-            world.getBlock(coil.x, coil.y, coil.z) == coil.block
-                && world.getBlockMetadata(coil.x, coil.y, coil.z) == coil.meta
-                && player.inventory.mainInventory[1].stackSize == 1,
-            "survival_build_consumes_exactly_one");
-        require(
-            (Boolean) call("operate", session, coil, index) && player.inventory.mainInventory[1].stackSize == 1,
-            "already_legal_coil_is_kept_without_consumption");
-        HologramCapture.Cell retained = capture.cells.stream()
-            .filter(c -> c != coil && c.block == coil.block)
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("second coil missing"));
-        require(
-            (Boolean) call("operate", session, retained, capture.cells.indexOf(retained)),
-            "second_completed_cell_control");
-
-        int low = coil.meta;
-        HologramCapture upgrade = HologramCapture.collect(ebf, new ItemStack(item, 2), ebf.getExtendedFacing());
-        HologramCapture.Cell high = upgrade.cells.stream()
-            .filter(c -> c.x == coil.x && c.y == coil.y && c.z == coil.z)
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("upgrade coordinate missing"));
-        require(high.block == coil.block && high.meta != low, "ebf_native_main_channel_changes_coil_tier");
-        put(session, "capture", upgrade);
-        put(session, "main", 2);
-        put(session, "mode", 1);
-        player.inventory.mainInventory[1] = null;
-        require(
-            !(Boolean) call("operate", session, high, upgrade.cells.indexOf(high))
-                && world.getBlockMetadata(high.x, high.y, high.z) == low,
-            "missing_upgrade_material_keeps_old_coil");
-        player.inventory.mainInventory[1] = new ItemStack(high.block, 1, high.meta);
-        PlaceVeto veto = new PlaceVeto(high.x, high.y, high.z);
-        MinecraftForge.EVENT_BUS.register(veto);
-        try {
-            Object result = call("operate", session, high, upgrade.cells.indexOf(high));
-            System.out.println(
-                PREFIX + "EVENT_VETO result="
-                    + result
-                    + " cell="
-                    + high.status
-                    + " hits="
-                    + veto.hits
-                    + " status="
-                    + get(session, "status"));
-            require(
-                veto.hits > 0 && !"placed".equals(high.status) && !"replaced".equals(high.status),
-                "event_veto_is_observed_and_never_claims_placement");
-            require(
-                world.getBlockMetadata(high.x, high.y, high.z) == low && count(player, high.block, high.meta) == 1
-                    && count(player, high.block, low) == 0,
-                "event_veto_restores_world_and_inventory_exactly");
-            require((Boolean) call("valid", session), "event_veto_preserves_session_tool_identity_for_resume");
-        } finally {
-            MinecraftForge.EVENT_BUS.unregister(veto);
-        }
-        require((Boolean) call("operate", session, high, upgrade.cells.indexOf(high)), "explicit_real_coil_upgrade");
-        require(world.getBlockMetadata(high.x, high.y, high.z) == high.meta, "upgrade_installs_requested_coil");
-        require(count(player, high.block, low) == 1, "upgrade_returns_old_coil_exactly_once");
-
-        put(session, "mode", 2);
-        require(
-            (Boolean) call("operate", session, high, upgrade.cells.indexOf(high))
-                && world.isAirBlock(high.x, high.y, high.z),
-            "explicit_real_coil_dismantle");
-        require(count(player, high.block, high.meta) == 1, "dismantle_returns_new_coil_exactly_once");
-        creativeStalePinCase(player, session, high, upgrade.cells.indexOf(high), low);
-        world.setBlock(high.x, high.y, high.z, Blocks.stone);
-        require(
-            (Boolean) call("operate", session, high, upgrade.cells.indexOf(high))
-                && world.getBlock(high.x, high.y, high.z) == Blocks.stone,
-            "foreign_obstacle_is_protected");
-        HologramCapture.Cell controller = new HologramCapture.Cell(high.element, x, y, z);
-        controller.block = high.block;
-        controller.meta = high.meta;
-        require(
-            (Boolean) call("operate", session, controller, 0) && world.getTileEntity(x, y, z) == base,
-            "controller_tile_is_protected");
-
-        // 相同元素位置设置未知，不能因提示列表/现有材料推定可施工。
-        world.setBlockToAir(high.x, high.y, high.z);
-        put(session, "mode", 0);
-        player.capabilities.isCreativeMode = true;
-        int materialBeforeCreative = count(player, high.block, high.meta);
-        require(
-            (Boolean) call("operate", session, high, upgrade.cells.indexOf(high))
-                && world.getBlock(high.x, high.y, high.z) == high.block,
-            "creative_build_without_material_source");
-        require(count(player, high.block, high.meta) == materialBeforeCreative, "creative_build_preserves_inventory");
-        world.setBlockToAir(high.x, high.y, high.z);
-        player.capabilities.isCreativeMode = false;
-        noHatchAndPinCases(player, session, high, upgrade.cells.indexOf(high));
-        player.inventory.mainInventory[2] = new ItemStack(Items.iron_ingot, 3);
-        HologramCapture.Cell rejected = new HologramCapture.Cell(new FailingElement(), high.x, high.y, high.z);
-        rejected.block = Blocks.stone;
-        require(!(Boolean) call("operate", session, rejected, 0), "failed_native_element_pauses_operation");
-        require(
-            world.isAirBlock(high.x, high.y, high.z) && player.inventory.mainInventory[2].stackSize == 3,
-            "failed_native_element_restores_consumed_inventory_and_world");
-        high.unknown = true;
-        require(
-            (Boolean) call("operate", session, high, upgrade.cells.indexOf(high))
-                && world.isAirBlock(high.x, high.y, high.z)
-                && "unsupported".equals(high.status),
-            "unknown_element_stays_unsupported");
-        upgrade.cells.clear();
-        upgrade.cells.add(high);
-        securityActions(player, session, retained);
-        exportClientFixture(player, session, ebf, item);
-    }
-
-    @SuppressWarnings("unchecked")
-    private void noHatchJobCases(FakePlayer player, Object session, MTEElectricBlastFurnace ebf, Item item)
-        throws Exception {
-        HologramCapture actual = HologramCapture.collect(ebf, new ItemStack(item), ebf.getExtendedFacing());
-        HologramCapture.Cell coil = actual.cells.stream()
-            .filter(c -> c.block == GregTechAPI.sBlockCasings5)
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("real job coil missing"));
-        int top = actual.cells.stream()
-            .mapToInt(c -> c.y)
-            .max()
-            .orElseThrow(() -> new AssertionError("empty capture"));
-        HologramCapture.Cell muffler = actual.cells.stream()
-            .filter(c -> c.y == top && c.block != GregTechAPI.sBlockCasings1)
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("real job fixed muffler missing"));
-        ItemStack[] inventory = player.inventory.mainInventory.clone();
-        Object previousCapture = get(session, "capture");
-        NetHandlerPlayServer previousHandler = player.playerNetServerHandler;
-        Field network = HologramNetwork.class.getDeclaredField("channel");
-        network.setAccessible(true);
-        Object previousNetwork = network.get(null);
-        Field registry = HologramService.class.getDeclaredField("SESSIONS");
-        registry.setAccessible(true);
-        Map<UUID, Object> sessions = (Map<UUID, Object>) registry.get(null);
+        player.setPosition(48.5, 80, 46.5);
+        player.theItemInWorldManager.setGameType(net.minecraft.world.WorldSettings.GameType.SURVIVAL);
         EmbeddedChannel embedded = new EmbeddedChannel(new io.netty.channel.ChannelInboundHandlerAdapter());
+        NetworkManager manager = new NetworkManager(false);
+        // NetworkManager exposes no setter; only the transport is wired reflectively.
+        for (Field field : NetworkManager.class.getDeclaredFields()) if (field.getType() == Channel.class) {
+            field.setAccessible(true);
+            field.set(manager, embedded);
+        }
+        player.playerNetServerHandler = new NetHandlerPlayServer(MinecraftServer.getServer(), manager, player);
+        Field channel = HologramNetwork.class.getDeclaredField("channel");
+        channel.setAccessible(true);
+        Object oldChannel = channel.get(null);
+        CaptureNetwork capture = new CaptureNetwork();
+        channel.set(null, capture);
         try {
-            NetworkManager manager = new NetworkManager(false);
-            for (Field field : NetworkManager.class.getDeclaredFields()) if (field.getType() == Channel.class) {
-                field.setAccessible(true);
-                field.set(manager, embedded);
+            player.playerNetServerHandler
+                .processPlayerBlockPlacement(decodePlacement(-1, -1, -1, 255, player.getHeldItem(), 0, 0, 0));
+            require(capture.state != null && !capture.state.getBoolean("target"), "first_air_C08_opens_empty_target");
+            HologramService.clear();
+            world.getWorldInfo()
+                .incrementTotalWorldTime(world.getTotalWorldTime() + 3);
+            ItemStack before = player.getHeldItem();
+            player.playerNetServerHandler
+                .processPlayerBlockPlacement(decodePlacement(48, 80, 48, 2, before, .5F, .5F, .5F));
+            require(
+                capture.state.getBoolean("target") && capture.state.getBoolean("supported"),
+                "first_block_C08_opens_real_EBF");
+            net.minecraft.nbt.NBTTagList capabilityRows = capture.state.getTagList("capabilities", 10);
+            boolean coilObserved = false, hatchPresence = false;
+            for (int i = 0; i < capabilityRows.tagCount(); i++) {
+                NBTTagCompound row = capabilityRows.getCompoundTagAt(i);
+                if ("coil".equals(row.getString("id"))) coilObserved = row.getInteger("operations") > 0;
+                if ("gt_hatch".equals(row.getString("id")))
+                    hatchPresence = "presence".equals(row.getString("kind")) && row.getTagList("options", 10)
+                        .tagCount() == 2;
             }
-            player.playerNetServerHandler = new NetHandlerPlayServer(MinecraftServer.getServer(), manager, player);
-            network.set(null, null);
-            sessions.put(player.getUniqueID(), session);
-            player.inventory.mainInventory[4] = new ItemStack(GregTechAPI.sBlockCasings1, 16, 11);
-            player.inventory.mainInventory[5] = new ItemStack(coil.block, 16, coil.meta);
-            put(session, "capture", actual);
-            put(session, "main", 1);
-            put(session, "noHatches", true);
-            put(session, "mode", 0);
-            put(session, "scope", 0);
-            put(
-                session,
-                "facing",
-                ebf.getExtendedFacing()
-                    .ordinal());
-            put(session, "cursor", 0);
-            put(session, "completed", 0);
-            put(session, "job", 1);
-            for (int tick = 0; tick < 100 && (Integer) get(session, "job") == 1; tick++) HologramService.tick();
-            long shells = actual.cells.stream()
-                .filter(
-                    c -> player.worldObj.getBlock(c.x, c.y, c.z) == GregTechAPI.sBlockCasings1
-                        && player.worldObj.getBlockMetadata(c.x, c.y, c.z) == 11)
-                .count();
-            long coils = actual.cells.stream()
-                .filter(
-                    c -> player.worldObj.getBlock(c.x, c.y, c.z) == coil.block
-                        && player.worldObj.getBlockMetadata(c.x, c.y, c.z) == coil.meta)
-                .count();
+            require(coilObserved, "real_C08_capture_observes_named_coil_channel_mixin_calls");
+            require(hatchPresence, "gt_hatch_is_presence_option_without_fabricated_tier_range");
+            Field traceActive = HologramChannelTrace.class.getDeclaredField("ACTIVE");
+            traceActive.setAccessible(true);
             require(
-                !actual.incomplete && !actual.pieces.isEmpty()
-                    && shells == 16
-                    && coils == 16
-                    && actual.cells.stream()
-                        .filter(c -> c.block == GregTechAPI.sBlockCasings1 || c.block == coil.block)
-                        .allMatch(c -> player.worldObj.getTileEntity(c.x, c.y, c.z) == null),
-                "bounded_no_hatch_job_builds_all_sixteen_shells_and_coils_without_tiles");
+                ((ThreadLocal<?>) traceActive.get(null)).get() == null,
+                "capture_finally_clears_named_channel_trace_threadlocal");
             require(
-                (Integer) get(session, "job") == 2 && (Integer) get(session, "cursor") == actual.cells.size()
-                    && player.worldObj.isAirBlock(muffler.x, muffler.y, muffler.z)
-                    && count(player, GregTechAPI.sBlockCasings1, 11) == 0
-                    && count(player, coil.block, coil.meta) == 0,
-                "no_hatch_job_visits_entire_structure_keeps_fixed_gap_and_conserves_material_without_fake_completion");
+                capture.state.getTagList("cells", 10)
+                    .tagCount() == 36,
+                "controller_anchor_plus_35_structure_cells");
+            int anchors = 0;
+            net.minecraft.nbt.NBTTagList rows = capture.state.getTagList("cells", 10);
+            for (int i = 0; i < rows.tagCount(); i++) if (rows.getCompoundTagAt(i)
+                .getBoolean("anchor")) anchors++;
+            require(
+                anchors == 1 && world.getTileEntity(48, 80, 48) == base,
+                "controller_anchor_is_explicit_and_preserved");
+            require(player.getHeldItem() != before, "vanilla_C08_replaces_held_stack_with_copy");
+            NBTTagCompound configure = action(capture.state, "configure");
+            configure.setBoolean("noHatches", true);
+            configure.setLong("uiSequence", 71);
+            HologramService.handle(player, configure);
+            require(
+                capture.state.getLong("uiSequence") == 71 && capture.state.getBoolean("noHatches"),
+                "C08_copy_keeps_session_valid_for_first_action");
+            require(
+                player.getHeldItem()
+                    .getTagCompound()
+                    .getInteger("gtitHologramMain") == capture.state.getInteger("main"),
+                "persist_updates_current_held_NBT");
+            NBTTagCompound forgedConfiguration = action(capture.state, "configure");
+            NBTTagCompound forgedChannels = (NBTTagCompound) capture.state.getCompoundTag("channels")
+                .copy();
+            forgedChannels.setInteger("unregistered.attack.channel", 1);
+            forgedConfiguration.setTag("channels", forgedChannels);
+            forgedConfiguration.setInteger("main", 2);
+            HologramService.handle(player, forgedConfiguration);
+            require(
+                capture.state.getInteger("main") == 1 && !capture.state.getCompoundTag("channels")
+                    .hasKey("unregistered.attack.channel"),
+                "real_service_forged_channel_rejects_configuration_atomically");
+            require(
+                player.getHeldItem()
+                    .getTagCompound()
+                    .getInteger("gtitHologramMain") == 1,
+                "rejected_configuration_does_not_mutate_current_tool_NBT");
+            require(
+                base.getFrontFacing() == net.minecraftforge.common.util.ForgeDirection.NORTH,
+                "configure_preserves_actual_controller_facing");
+            try (java.io.FileOutputStream output = new java.io.FileOutputStream("hologram-client-state.nbt")) {
+                net.minecraft.nbt.CompressedStreamTools.writeCompressed(capture.state, output);
+            }
+            HologramService.handle(player, action(capture.state, "start"));
+            require(capture.state.getInteger("job") != 1, "whole_plan_missing_materials_preflight_blocks_start");
+            // Supply the server-declared plan, then exercise veto rollback through the actual job scheduler.
+            net.minecraft.nbt.NBTTagList materials = capture.state.getTagList("materials", 10);
+            int slot = 2;
+            for (int i = 0; i < materials.tagCount(); i++) {
+                NBTTagCompound row = materials.getCompoundTagAt(i);
+                ItemStack material = ItemStack.loadItemStackFromNBT(row);
+                if (material == null || row.getInteger("required") <= 0) continue;
+                material.stackSize = row.getInteger("required");
+                player.inventory.mainInventory[slot++] = material;
+            }
+            world.getWorldInfo()
+                .incrementTotalWorldTime(world.getTotalWorldTime() + 1);
+            HologramService.handle(player, action(capture.state, "scan"));
+            require(capture.state.getInteger("missing") == 0, "full_plan_materials_satisfy_preflight");
+            player.getHeldItem()
+                .getTagCompound()
+                .setString("gtitSmokeSentinel", "preserve-unrelated-current-tool-NBT");
+            HologramService.handle(player, action(capture.state, "configure"));
+            require(
+                "preserve-unrelated-current-tool-NBT".equals(
+                    player.getHeldItem()
+                        .getTagCompound()
+                        .getString("gtitSmokeSentinel")),
+                "persist_preserves_unrelated_NBT_on_current_held_stack");
+            NBTTagCompound staleStart = action(capture.state, "start");
+            staleStart.setLong("planRevision", capture.state.getLong("planRevision") - 1);
+            HologramService.handle(player, staleStart);
+            require(capture.state.getInteger("job") != 1, "stale_plan_revision_cannot_start_job");
+            net.minecraft.nbt.NBTTagList plannedRows = capture.state.getTagList("cells", 10);
+            NBTTagCompound changedCell = null;
+            for (int i = 0; i < plannedRows.tagCount(); i++) {
+                NBTTagCompound row = plannedRows.getCompoundTagAt(i);
+                if (!row.getBoolean("anchor") && "PLACE".equals(row.getString("operation"))
+                    && world.isAirBlock(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"))) {
+                    changedCell = row;
+                    break;
+                }
+            }
+            require(changedCell != null, "safe_non_controller_plan_target_available_for_world_change_probe");
+            int changedX = changedCell.getInteger("x"), changedY = changedCell.getInteger("y"),
+                changedZ = changedCell.getInteger("z");
+            long previousRevision = capture.state.getLong("planRevision");
+            NBTTagCompound previouslyConfirmedStart = action(capture.state, "start");
+            try {
+                require(
+                    world.setBlock(changedX, changedY, changedZ, net.minecraft.init.Blocks.stone, 0, 3),
+                    "world_change_probe_places_safe_stone");
+                HologramService.handle(player, previouslyConfirmedStart);
+                require(
+                    capture.state.getInteger("job") != 1 && capture.state.getLong("planRevision") > previousRevision,
+                    "changed_world_rejects_confirmed_plan_and_refreshes_revision");
+                require(
+                    world.getBlock(changedX, changedY, changedZ) == net.minecraft.init.Blocks.stone,
+                    "rejected_start_does_not_change_probe_world_block");
+            } finally {
+                world.setBlockToAir(changedX, changedY, changedZ);
+            }
+            HologramService.handle(player, action(capture.state, "scan"));
+            require(
+                capture.state.getInteger("missing") == 0 && world.isAirBlock(changedX, changedY, changedZ),
+                "world_change_probe_restored_and_plan_rescanned");
+            PlaceVeto veto = new PlaceVeto();
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(veto);
+            try {
+                HologramService.handle(player, action(capture.state, "start"));
+                require(capture.state.getInteger("job") == 1, "real_C08_session_starts_bounded_job");
+                HologramService.tick();
+                require(
+                    "PREPARE".equals(capture.state.getString("phase"))
+                        && capture.state.getIntArray("pending").length == 1,
+                    "first_job_tick_sends_real_PREPARE_target");
+                require(
+                    capture.state.getLong("due") - capture.state.getLong("serverTick") == 8,
+                    "PREPARE_reserves_exactly_eight_server_ticks");
+                ItemStack[] preparedInventory = new ItemStack[player.inventory.mainInventory.length];
+                for (int i = 0; i < preparedInventory.length; i++)
+                    preparedInventory[i] = player.inventory.mainInventory[i] == null ? null
+                        : player.inventory.mainInventory[i].copy();
+                net.minecraft.nbt.NBTTagList preparedCells = capture.state.getTagList("cells", 10);
+                net.minecraft.block.Block[] preparedBlocks = new net.minecraft.block.Block[preparedCells.tagCount()];
+                int[] preparedMetas = new int[preparedCells.tagCount()];
+                for (int i = 0; i < preparedCells.tagCount(); i++) {
+                    NBTTagCompound row = preparedCells.getCompoundTagAt(i);
+                    preparedBlocks[i] = world.getBlock(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"));
+                    preparedMetas[i] = world
+                        .getBlockMetadata(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"));
+                }
+                for (int tick = 0; tick < 7; tick++) {
+                    world.getWorldInfo()
+                        .incrementTotalWorldTime(world.getTotalWorldTime() + 1);
+                    HologramService.tick();
+                }
+                for (int i = 0; i < preparedInventory.length; i++) require(
+                    ItemStack.areItemStacksEqual(preparedInventory[i], player.inventory.mainInventory[i]),
+                    "before_PREPARE_due_inventory_slot_unchanged_" + i);
+                for (int i = 0; i < preparedCells.tagCount(); i++) {
+                    NBTTagCompound row = preparedCells.getCompoundTagAt(i);
+                    require(
+                        world.getBlock(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"))
+                            == preparedBlocks[i]
+                            && world.getBlockMetadata(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"))
+                                == preparedMetas[i],
+                        "before_PREPARE_due_world_cell_unchanged_" + i);
+                }
+                int initialCoils = countCoils(player);
+                for (int i = 0; i < 500 && capture.state.getInteger("job") == 1; i++) {
+                    world.getWorldInfo()
+                        .incrementTotalWorldTime(world.getTotalWorldTime() + 1);
+                    HologramService.tick();
+                }
+                require(veto.hits > 0 && capture.state.getInteger("job") == 2, "place_event_veto_pauses_real_job");
+                require(countCoils(player) == initialCoils, "veto_restores_consumed_coil_material");
+                require(world.isAirBlock(veto.x, veto.y, veto.z), "veto_restores_original_world_cell");
+            } finally {
+                net.minecraftforge.common.MinecraftForge.EVENT_BUS.unregister(veto);
+            }
+            HologramService.handle(player, action(capture.state, "resume"));
+            require(capture.state.getInteger("job") == 1, "event_veto_preserves_current_tool_identity_for_resume");
+            HologramService.handle(player, action(capture.state, "pause"));
+            int completed = capture.state.getInteger("completed");
+            world.getWorldInfo()
+                .incrementTotalWorldTime(world.getTotalWorldTime() + 20);
+            HologramService.tick();
+            require(
+                capture.state.getInteger("job") == 2 && capture.state.getInteger("completed") == completed,
+                "paused_job_does_not_advance");
+            NBTTagCompound cancel = action(capture.state, "cancel");
+            cancel.setString("session", "forged");
+            int job = capture.state.getInteger("job");
+            HologramService.handle(player, cancel);
+            require(capture.state.getInteger("job") == job, "forged_session_is_rejected");
+            FakePlayer stranger = FakePlayerFactory
+                .get(world, new GameProfile(UUID.fromString("7d36e922-3b19-4f92-a5e8-bd5c71614202"), "GTITHoloOther"));
+            HologramService.handle(stranger, action(capture.state, "cancel"));
+            require(capture.state.getInteger("job") == job, "other_player_cannot_act_on_known_session_id");
+            player.inventory.mainInventory[1] = player.getHeldItem()
+                .copy();
+            player.inventory.currentItem = 1;
+            HologramService.handle(player, action(capture.state, "configure"));
+            require(capture.state.getInteger("job") == 4, "switching_to_copy_in_another_slot_invalidates_session");
         } finally {
-            for (HologramCapture.Cell cell : actual.cells) if (cell.x != ebf.getBaseMetaTileEntity()
-                .getXCoord() || cell.y
-                    != ebf.getBaseMetaTileEntity()
-                        .getYCoord()
-                || cell.z != ebf.getBaseMetaTileEntity()
-                    .getZCoord())
-                player.worldObj.setBlockToAir(cell.x, cell.y, cell.z);
-            System.arraycopy(inventory, 0, player.inventory.mainInventory, 0, inventory.length);
-            put(session, "capture", previousCapture);
-            put(session, "noHatches", false);
-            put(session, "job", 0);
-            put(session, "cursor", 0);
-            put(session, "completed", 0);
-            sessions.clear();
-            network.set(null, previousNetwork);
-            player.playerNetServerHandler = previousHandler;
+            channel.set(null, oldChannel);
             embedded.finish();
             Object pending;
-            while ((pending = embedded.readInbound()) != null) io.netty.util.ReferenceCountUtil.release(pending);
             while ((pending = embedded.readOutbound()) != null) io.netty.util.ReferenceCountUtil.release(pending);
+            HologramService.clear();
         }
     }
 
-    private void noHatchShellCases(FakePlayer player, Object session, MTEElectricBlastFurnace ebf,
-        HologramCapture capture, Item item) throws Exception {
-        java.util.List<HologramCapture.Cell> shells = capture.cells.stream()
-            .filter(c -> c.block == GregTechAPI.sBlockCasings1 && c.meta == 11)
-            .collect(java.util.stream.Collectors.toList());
-        require(shells.size() == 16, "real_ebf_fixed_factory_fallback_resolves_all_sixteen_shell_cells");
-        int topY = capture.cells.stream()
-            .mapToInt(c -> c.y)
-            .max()
-            .orElseThrow(() -> new AssertionError("empty EBF"));
-        HologramCapture.Cell muffler = capture.cells.stream()
-            .filter(c -> c.y == topY && !(c.block == GregTechAPI.sBlockCasings1 && c.meta == 11))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("real EBF muffler cell missing"));
-        ItemStack[] before = player.inventory.mainInventory.clone();
-        int previousMode = (Integer) get(session, "mode");
-        boolean previousNoHatches = (Boolean) get(session, "noHatches");
+    static NBTTagCompound action(NBTTagCompound state, String op) {
+        NBTTagCompound action = (NBTTagCompound) state.copy();
+        action.setString("op", op);
+        return action;
+    }
+
+    /** C08 wire decoding works on a dedicated server where its coordinate constructor is stripped. */
+    private static C08PacketPlayerBlockPlacement decodePlacement(int x, int y, int z, int side, ItemStack item,
+        float hitX, float hitY, float hitZ) throws java.io.IOException {
+        io.netty.buffer.ByteBuf bytes = io.netty.buffer.Unpooled.buffer();
         try {
-            put(session, "mode", 0);
-            put(session, "noHatches", true);
-            player.inventory.mainInventory[4] = new ItemStack(GregTechAPI.sBlockCasings1, shells.size(), 11);
-            int placed = 0;
-            for (HologramCapture.Cell shell : shells) {
-                require(
-                    player.worldObj.isAirBlock(shell.x, shell.y, shell.z),
-                    "shell_initial_position_empty_" + placed);
-                require(
-                    (Boolean) call("operate", session, shell, capture.cells.indexOf(shell))
-                        && player.worldObj.getBlock(shell.x, shell.y, shell.z) == GregTechAPI.sBlockCasings1
-                        && player.worldObj.getBlockMetadata(shell.x, shell.y, shell.z) == 11
-                        && player.worldObj.getTileEntity(shell.x, shell.y, shell.z) == null,
-                    "native_no_hatch_shell_places_exact_block_without_tile_" + placed);
-                placed++;
-                require(
-                    count(player, GregTechAPI.sBlockCasings1, 11) == shells.size() - placed,
-                    "native_shell_consumes_exactly_one_" + placed);
-            }
-            require(
-                (Boolean) call("operate", session, muffler, capture.cells.indexOf(muffler))
-                    && player.worldObj.isAirBlock(muffler.x, muffler.y, muffler.z)
-                    && player.worldObj.getTileEntity(muffler.x, muffler.y, muffler.z) == null
-                    && (muffler.status.equals("unsupported") || muffler.status.equals("protected")),
-                "fixed_muffler_without_shell_factory_stays_empty_and_unsupported");
-            HologramCapture rescanned = HologramCapture.collect(ebf, new ItemStack(item), ebf.getExtendedFacing());
-            require(!rescanned.incomplete, "constructed_shells_rescan_real_walker_complete");
-            java.util.List<HologramCapture.Cell> rescannedShells = rescanned.cells.stream()
-                .filter(c -> c.block == GregTechAPI.sBlockCasings1 && c.meta == 11)
-                .collect(java.util.stream.Collectors.toList());
-            require(
-                rescannedShells.size() == shells.size(),
-                "rescan_keeps_all_fixed_shell_targets_instead_of_numeric_hints");
-            put(session, "capture", rescanned);
-            for (HologramCapture.Cell shell : rescannedShells) {
-                require(
-                    (Boolean) call("operate", session, shell, rescanned.cells.indexOf(shell))
-                        && shell.status.equals("satisfied")
-                        && player.worldObj.getBlock(shell.x, shell.y, shell.z) == shell.block,
-                    "rescanned_legal_shell_kept_" + rescanned.cells.indexOf(shell));
-            }
-            require(
-                count(player, GregTechAPI.sBlockCasings1, 11) == 0,
-                "rescan_and_keep_do_not_consume_extra_shell_material");
-            put(session, "mode", 2);
-            int removed = 0;
-            for (HologramCapture.Cell shell : rescannedShells) {
-                require(
-                    (Boolean) call("operate", session, shell, rescanned.cells.indexOf(shell))
-                        && player.worldObj.isAirBlock(shell.x, shell.y, shell.z),
-                    "explicit_factory_shell_dismantle_" + removed);
-                removed++;
-                require(
-                    count(player, GregTechAPI.sBlockCasings1, 11) == removed,
-                    "shell_dismantle_refunds_exactly_one_" + removed);
-            }
+            net.minecraft.network.PacketBuffer wire = new net.minecraft.network.PacketBuffer(bytes);
+            wire.writeInt(x);
+            wire.writeByte(y);
+            wire.writeInt(z);
+            wire.writeByte(side);
+            wire.writeItemStackToBuffer(item);
+            wire.writeByte((int) (hitX * 16));
+            wire.writeByte((int) (hitY * 16));
+            wire.writeByte((int) (hitZ * 16));
+            C08PacketPlayerBlockPlacement packet = new C08PacketPlayerBlockPlacement();
+            packet.readPacketData(wire);
+            if (wire.readableBytes() != 0) throw new java.io.IOException("C08 decoder left unread payload");
+            return packet;
         } finally {
-            for (HologramCapture.Cell shell : shells) player.worldObj.setBlockToAir(shell.x, shell.y, shell.z);
-            System.arraycopy(before, 0, player.inventory.mainInventory, 0, before.length);
-            put(session, "capture", capture);
-            put(session, "mode", previousMode);
-            put(session, "noHatches", previousNoHatches);
+            bytes.release();
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void creativeStalePinCase(FakePlayer player, Object session, HologramCapture.Cell high, int index, int low)
-        throws Exception {
-        Map<Integer, ItemStack> pins = (Map<Integer, ItemStack>) get(session, "pins");
-        int previousMode = (Integer) get(session, "mode");
-        boolean previousCreative = player.capabilities.isCreativeMode;
-        ItemStack previousPin = pins.get(index);
-        int lowBefore = count(player, high.block, low), highBefore = count(player, high.block, high.meta);
-        try {
-            player.worldObj.setBlock(high.x, high.y, high.z, high.block, low, 3);
-            pins.put(index, new ItemStack(Items.diamond));
-            put(session, "mode", 1);
-            player.capabilities.isCreativeMode = true;
-            require(
-                (Boolean) call("operate", session, high, index)
-                    && player.worldObj.getBlock(high.x, high.y, high.z) == high.block
-                    && player.worldObj.getBlockMetadata(high.x, high.y, high.z) == high.meta,
-                "creative_nonempty_coil_upgrade_ignores_stale_diamond_pin");
-            require(
-                count(player, high.block, low) == lowBefore && count(player, high.block, high.meta) == highBefore,
-                "creative_upgrade_returns_no_old_drop_and_preserves_material_inventory");
-            put(session, "mode", 0);
-            require(
-                (Boolean) call("operate", session, high, index)
-                    && player.worldObj.getBlockMetadata(high.x, high.y, high.z) == high.meta,
-                "stale_pin_cannot_change_already_legal_nonempty_coil");
-        } finally {
-            if (previousPin == null) pins.remove(index);
-            else pins.put(index, previousPin);
-            player.capabilities.isCreativeMode = previousCreative;
-            put(session, "mode", previousMode);
-            player.worldObj.setBlockToAir(high.x, high.y, high.z);
-        }
-    }
+    private static final class CaptureNetwork extends SimpleNetworkWrapper {
 
-    @SuppressWarnings("unchecked")
-    private void directionCases(FakePlayer player, Object session, BaseMetaTileEntity base, MTEElectricBlastFurnace ebf,
-        HologramCapture originalCapture, Item item) throws Exception {
-        var originalFacing = ebf.getExtendedFacing();
-        var desiredFacing = com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing.of(
-            originalFacing.getDirection()
-                .getOpposite());
-        require(
-            ebf.getAlignmentLimits()
-                .isNewExtendedFacingValid(desiredFacing),
-            "rotation_requested_facing_is_real_ebf_legal");
-        HologramCapture rotated = HologramCapture.collect(ebf, new ItemStack(item), desiredFacing);
-        require(!rotated.incomplete, "rotation_new_footprint_real_walker_complete");
-        HologramCapture.Cell oldOnly = originalCapture.cells.stream()
-            .filter(
-                old -> old.block == GregTechAPI.sBlockCasings5 && rotated.cells.stream()
-                    .noneMatch(next -> old.x == next.x && old.y == next.y && old.z == next.z))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("opposite EBF has no exclusive old coil position"));
-        Field network = HologramNetwork.class.getDeclaredField("channel");
-        network.setAccessible(true);
-        Object previousNetwork = network.get(null);
-        network.set(null, null);
-        Field registry = HologramService.class.getDeclaredField("SESSIONS");
-        registry.setAccessible(true);
-        Map<UUID, Object> sessions = (Map<UUID, Object>) registry.get(null);
-        sessions.put(player.getUniqueID(), session);
-        try {
-            player.worldObj.setBlock(oldOnly.x, oldOnly.y, oldOnly.z, oldOnly.block, oldOnly.meta, 3);
-            require(
-                rotated.cells.stream()
-                    .allMatch(
-                        c -> (c.x == base.xCoord && c.y == base.yCoord && c.z == base.zCoord)
-                            || player.worldObj.isAirBlock(c.x, c.y, c.z)),
-                "rotation_new_footprint_empty_old_footprint_occupied_control");
-            put(session, "capture", rotated);
-            put(session, "facing", desiredFacing.ordinal());
-            put(session, "job", 0);
-            require(!(Boolean) call("emptyStructure", session), "rotation_guard_checks_occupied_old_footprint");
-            NBTTagCompound start = new NBTTagCompound();
-            start.setString("session", (String) get(session, "id"));
-            start.setString("op", "start");
-            HologramService.handle(player, start);
-            require(
-                (Integer) get(session, "job") != 1 && ebf.getExtendedFacing() == originalFacing
-                    && player.worldObj.getBlock(oldOnly.x, oldOnly.y, oldOnly.z) == oldOnly.block,
-                "rotation_start_rejects_old_structure_without_mutating_it");
-            player.worldObj.setBlockToAir(oldOnly.x, oldOnly.y, oldOnly.z);
-            require((Boolean) call("emptyStructure", session), "rotation_guard_accepts_both_empty_footprints");
-            HologramService.handle(player, start);
-            require(
-                (Integer) get(session, "job") == 1 && base.getFrontFacing() == desiredFacing.getDirection()
-                    && ebf.getExtendedFacing() == desiredFacing,
-                "empty_ground_start_synchronizes_base_and_extended_facing");
-            NBTTagCompound persisted = new NBTTagCompound();
-            base.writeToNBT(persisted);
-            BaseMetaTileEntity reloaded = new BaseMetaTileEntity();
-            reloaded.setWorldObj(player.worldObj);
-            reloaded.readFromNBT(persisted);
-            require(
-                reloaded.getMetaTileEntity() instanceof MTEElectricBlastFurnace
-                    && reloaded.getFrontFacing() == desiredFacing.getDirection()
-                    && ((MTEElectricBlastFurnace) reloaded.getMetaTileEntity()).getExtendedFacing() == desiredFacing,
-                "rotated_gt_controller_real_nbt_reload_preserves_orientation");
-        } finally {
-            player.worldObj.setBlockToAir(oldOnly.x, oldOnly.y, oldOnly.z);
-            base.setFrontFacing(originalFacing.getDirection());
-            ebf.setExtendedFacing(originalFacing);
-            put(session, "capture", originalCapture);
-            put(session, "facing", originalFacing.ordinal());
-            put(session, "job", 0);
-            sessions.clear();
-            network.set(null, previousNetwork);
-        }
-    }
+        NBTTagCompound state;
 
-    /** 独立测试工件，坐标、registry名称、候选和材料库存均取当前真 EBF/世界，不注入演示格。 */
-    @SuppressWarnings("unchecked")
-    private void exportClientFixture(FakePlayer player, Object session, MTEElectricBlastFurnace ebf, Item item)
-        throws Exception {
-        HologramCapture actual = HologramCapture.collect(ebf, new ItemStack(item), ebf.getExtendedFacing());
-        require(!actual.incomplete, "client_fixture_uses_complete_real_ebf_capture");
-        put(session, "capture", actual);
-        put(session, "main", 1);
-        put(session, "mode", 0);
-        put(session, "job", 0);
-        NBTTagCompound state = new NBTTagCompound();
-        int x = (Integer) get(session, "x"), y = (Integer) get(session, "y"), z = (Integer) get(session, "z");
-        state.setString("session", (String) get(session, "id"));
-        state.setBoolean("target", true);
-        state.setInteger("x", x);
-        state.setInteger("y", y);
-        state.setInteger("z", z);
-        state.setInteger("dimension", player.dimension);
-        state.setString("title", ebf.getLocalName());
-        state.setInteger("main", 1);
-        state.setTag("channels", ((NBTTagCompound) get(session, "channels")).copy());
-        state.setInteger(
-            "facing",
-            ebf.getExtendedFacing()
-                .ordinal());
-        state.setInteger("selected", -1);
-        state.setInteger("job", 0);
-        state.setBoolean("supported", true);
-        state.setString("status", "真实专用服电力高炉采集；客户端只读验证");
-        state.setString("description", "候选、方块与材料库存均来自真实 EBF StructureLib 采集及服务器世界。");
-        state.setIntArray(
-            "facings",
-            Arrays.stream(com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing.values())
-                .filter(
-                    f -> ebf.getAlignmentLimits()
-                        .isNewExtendedFacingValid(f))
-                .mapToInt(Enum::ordinal)
-                .toArray());
-        NBTTagList rows = new NBTTagList(), materials = new NBTTagList();
-        Map<String, NBTTagCompound> budget = new java.util.LinkedHashMap<>();
-        int protectedCount = 0, missing = 0;
-        for (HologramCapture.Cell cell : actual.cells) {
-            NBTTagCompound row = new NBTTagCompound();
-            row.setInteger("x", cell.x);
-            row.setInteger("y", cell.y);
-            row.setInteger("z", cell.z);
-            row.setInteger("dx", cell.x - x);
-            row.setInteger("dy", cell.y - y);
-            row.setInteger("dz", cell.z - z);
-            net.minecraft.block.Block present = player.worldObj.getBlock(cell.x, cell.y, cell.z);
-            int meta = player.worldObj.getBlockMetadata(cell.x, cell.y, cell.z);
-            row.setString("id", String.valueOf(net.minecraft.block.Block.blockRegistry.getNameForObject(present)));
-            row.setInteger("meta", meta);
-            row.setString(
-                "wantId",
-                cell.block == null ? ""
-                    : String.valueOf(net.minecraft.block.Block.blockRegistry.getNameForObject(cell.block)));
-            row.setInteger("wantMeta", cell.meta);
-            String status = cell.unknown || cell.block == null ? "unsupported"
-                : player.worldObj.getTileEntity(cell.x, cell.y, cell.z) != null ? "protected"
-                    : present == cell.block && meta == cell.meta ? "satisfied"
-                        : player.worldObj.isAirBlock(cell.x, cell.y, cell.z) ? "pending" : "protected";
-            row.setString("status", status);
-            row.setInteger("chosenChoice", -1);
-            row.setString("pinScope", "newbuild");
-            if (status.equals("protected") || status.equals("unsupported")) protectedCount++;
-            NBTTagList choices = new NBTTagList();
-            java.util.List<ItemStack> options = (java.util.List<ItemStack>) call("candidates", session, cell);
-            for (ItemStack candidate : options) {
-                NBTTagCompound tag = new NBTTagCompound();
-                candidate.writeToNBT(tag);
-                choices.appendTag(tag);
-            }
-            row.setTag("candidates", choices);
-            rows.appendTag(row);
-            if (status.equals("pending") && !options.isEmpty()) {
-                ItemStack desired = options.get(0)
-                    .copy();
-                desired.stackSize = 1;
-                String key = Item.itemRegistry.getNameForObject(desired.getItem()) + ":"
-                    + desired.getItemDamage()
-                    + ":"
-                    + desired.getTagCompound();
-                NBTTagCompound material = budget.get(key);
-                if (material == null) {
-                    material = new NBTTagCompound();
-                    desired.writeToNBT(material);
-                    int available = 0;
-                    for (int i = 0; i < player.inventory.mainInventory.length; i++) {
-                        ItemStack held = player.inventory.mainInventory[i];
-                        if (i != player.inventory.currentItem && held != null
-                            && held.getItem() == desired.getItem()
-                            && held.getItemDamage() == desired.getItemDamage()
-                            && ItemStack.areItemStackTagsEqual(held, desired)) available += held.stackSize;
-                    }
-                    material.setInteger("available", available);
-                    budget.put(key, material);
-                }
-                material.setInteger("required", material.getInteger("required") + 1);
-            }
+        CaptureNetwork() {
+            super("gtit_smoke_observer");
         }
-        for (NBTTagCompound material : budget.values()) {
-            materials.appendTag(material);
-            missing += Math.max(0, material.getInteger("required") - material.getInteger("available"));
-        }
-        state.setTag("cells", rows);
-        state.setTag("materials", materials);
-        state.setInteger("total", rows.tagCount());
-        state.setInteger("protected", protectedCount);
-        state.setInteger("missing", missing);
-        require(
-            rows.tagCount() == actual.cells.size() && rows.tagCount() >= 30,
-            "client_fixture_cells_equal_actual_capture");
-        java.io.File target = new java.io.File("hologram-client-state.nbt");
-        try (java.io.FileOutputStream stream = new java.io.FileOutputStream(target)) {
-            CompressedStreamTools.writeCompressed(state, stream);
-        }
-        System.out.println(
-            PREFIX + "CLIENT_FIXTURE path="
-                + target.getCanonicalPath()
-                + " cells="
-                + rows.tagCount()
-                + " materials="
-                + materials.tagCount());
-    }
 
-    @SuppressWarnings("unchecked")
-    private void noHatchAndPinCases(FakePlayer player, Object session, HologramCapture.Cell high, int index)
-        throws Exception {
-        Map<Integer, ItemStack> pins = (Map<Integer, ItemStack>) get(session, "pins");
-        pins.put(index, new ItemStack(Items.diamond));
-        int before = count(player, high.block, high.meta);
-        require(
-            !(Boolean) call("operate", session, high, index) && player.worldObj.isAirBlock(high.x, high.y, high.z)
-                && count(player, high.block, high.meta) == before,
-            "pin_material_mismatch_keeps_world_and_inventory");
-        pins.clear();
-        HologramCapture.Cell machineOnly = new HologramCapture.Cell(new MachineOnlyElement(), high.x, high.y, high.z);
-        machineOnly.block = GregTechAPI.sBlockMachines;
-        ItemStack machines = new ItemStack(GregTechAPI.sBlockMachines, 2, 0);
-        player.inventory.mainInventory[3] = machines;
-        put(session, "noHatches", true);
-        try {
-            require(!(Boolean) call("operate", session, machineOnly, index), "no_hatches_refuses_machine_only_source");
-            require(
-                player.worldObj.isAirBlock(high.x, high.y, high.z)
-                    && player.worldObj.getTileEntity(high.x, high.y, high.z) == null
-                    && player.inventory.mainInventory[3].stackSize == 2,
-                "no_hatches_leaves_gap_without_consuming_machine");
-        } finally {
-            put(session, "noHatches", false);
-            player.inventory.mainInventory[3] = null;
-        }
-        require((Boolean) call("valid", session), "failed_pin_and_no_hatch_preserve_resumable_identity");
-    }
-
-    private void inventoryBudget(FakePlayer player) throws Exception {
-        ItemStack[] before = player.inventory.mainInventory.clone();
-        try {
-            for (int i = 1; i < player.inventory.mainInventory.length; i++)
-                player.inventory.mainInventory[i] = new ItemStack(Items.stick, 64);
-            player.inventory.mainInventory[1] = new ItemStack(Items.iron_ingot, 63);
-            require(
-                (Boolean) call("canFit", player, Collections.singletonList(new ItemStack(Items.iron_ingot))),
-                "return_budget_existing_stack_room");
-            require(
-                !(Boolean) call("canFit", player, Collections.singletonList(new ItemStack(Items.iron_ingot, 2))),
-                "return_budget_rejects_overflow");
-            require(player.inventory.mainInventory[1].stackSize == 63, "return_budget_is_read_only");
-        } finally {
-            System.arraycopy(before, 0, player.inventory.mainInventory, 0, before.length);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private void securityActions(FakePlayer player, Object session, HologramCapture.Cell retained) throws Exception {
-        Field network = HologramNetwork.class.getDeclaredField("channel");
-        network.setAccessible(true);
-        Object channel = network.get(null);
-        network.set(null, null);
-        Field sessionsField = HologramService.class.getDeclaredField("SESSIONS");
-        sessionsField.setAccessible(true);
-        Map<UUID, Object> sessions = (Map<UUID, Object>) sessionsField.get(null);
-        sessions.put(player.getUniqueID(), session);
-        try {
-            NBTTagCompound action = new NBTTagCompound();
-            action.setString("op", "cancel");
-            action.setString("session", "forged");
-            put(session, "job", 2);
-            HologramService.handle(player, action);
-            require((Integer) get(session, "job") == 2, "forged_session_cannot_cancel");
-            action.setString("session", (String) get(session, "id"));
-            FakePlayer stranger = FakePlayerFactory.get(
-                (WorldServer) player.worldObj,
-                new GameProfile(UUID.fromString("7d36e922-3b19-4f92-a5e8-bd5c71614202"), "GTITHoloOther"));
-            HologramService.handle(stranger, action);
-            require((Integer) get(session, "job") == 2, "other_owner_cannot_cancel_known_session_id");
-            HologramService.handle(player, action);
-            require((Integer) get(session, "job") == 4, "owner_can_cancel");
-            require((Integer) get(session, "main") == 2, "cancel_keeps_local_configuration");
-            NBTTagCompound invalid = new NBTTagCompound();
-            invalid.setString("session", (String) get(session, "id"));
-            invalid.setString("op", "configure");
-            invalid.setInteger("main", -1);
-            put(session, "job", 0);
-            HologramService.handle(player, invalid);
-            require((Integer) get(session, "main") == 2, "illegal_config_is_rejected_atomically");
-            invalid.setInteger("main", 9);
-            NBTTagCompound badChannels = new NBTTagCompound();
-            badChannels.setInteger("future", 0);
-            invalid.setTag("channels", badChannels);
-            HologramService.handle(player, invalid);
-            require((Integer) get(session, "main") == 2, "illegal_subchannel_cannot_change_main");
-
-            // 真网络管理器配内存channel只用于保持会话在线，让生产tick执行完工判据。
-            NetHandlerPlayServer oldHandler = player.playerNetServerHandler;
-            EmbeddedChannel embedded = new EmbeddedChannel(new io.netty.channel.ChannelInboundHandlerAdapter());
-            try {
-                NetworkManager manager = new NetworkManager(false);
-                for (Field field : NetworkManager.class.getDeclaredFields()) if (field.getType() == Channel.class) {
-                    field.setAccessible(true);
-                    field.set(manager, embedded);
-                }
-                player.playerNetServerHandler = new NetHandlerPlayServer(MinecraftServer.getServer(), manager, player);
-                put(session, "job", 1);
-                put(session, "cursor", 0);
-                put(session, "scope", 0);
-                HologramService.tick();
-                require((Integer) get(session, "job") == 2, "unknown_protected_cell_cannot_fake_completion");
-                put(session, "job", 1);
-                action.setString("op", "pause");
-                HologramService.handle(player, action);
-                int cursor = (Integer) get(session, "cursor");
-                HologramService.tick();
-                require(
-                    (Integer) get(session, "job") == 2 && (Integer) get(session, "cursor") == cursor,
-                    "paused_job_does_not_advance");
-                action.setString("op", "cancel");
-                HologramService.handle(player, action);
-                require(
-                    (Integer) get(session, "job") == 4 && (Integer) get(session, "cursor") == cursor,
-                    "cancel_does_not_rewind_progress");
-                require(
-                    player.worldObj.getBlock(retained.x, retained.y, retained.z) == retained.block
-                        && player.worldObj.getBlockMetadata(retained.x, retained.y, retained.z) == retained.meta,
-                    "pause_and_cancel_never_rollback_completed_world_cells");
-            } finally {
-                player.playerNetServerHandler = oldHandler;
-                embedded.finish();
-                Object pending;
-                while ((pending = embedded.readInbound()) != null) io.netty.util.ReferenceCountUtil.release(pending);
-                while ((pending = embedded.readOutbound()) != null) io.netty.util.ReferenceCountUtil.release(pending);
-            }
-        } finally {
-            sessions.clear();
-            network.set(null, channel);
+        @Override
+        public void sendTo(IMessage message, EntityPlayerMP player) {
+            if (message instanceof HologramNetwork.State)
+                state = (NBTTagCompound) ((HologramNetwork.State) message).tag.copy();
         }
     }
 
     public static final class PlaceVeto {
 
-        private final int x, y, z;
-        private int hits;
-
-        PlaceVeto(int x, int y, int z) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-        }
+        int hits, x, y, z;
 
         @SubscribeEvent
-        public void onPlace(BlockEvent.PlaceEvent event) {
-            if (event.x == x && event.y == y && event.z == z) {
+        public void place(net.minecraftforge.event.world.BlockEvent.PlaceEvent event) {
+            if (event.world.getBlock(event.x, event.y, event.z) == gregtech.api.GregTechAPI.sBlockCasings5) {
                 hits++;
+                x = event.x;
+                y = event.y;
+                z = event.z;
                 event.setCanceled(true);
             }
         }
     }
 
-    private static final class FailingElement implements IStructureElement<Object> {
-
-        public boolean check(Object context, World world, int x, int y, int z) {
-            throw new AssertionError("capture/transaction must never call stateful element.check");
-        }
-
-        public boolean spawnHint(Object context, World world, int x, int y, int z, ItemStack trigger) {
-            return false;
-        }
-
-        public boolean placeBlock(Object context, World world, int x, int y, int z, ItemStack trigger) {
-            return false;
-        }
-
-        public PlaceResult survivalPlaceBlock(Object context, World world, int x, int y, int z, ItemStack trigger,
-            AutoPlaceEnvironment env) {
-            env.getSource()
-                .takeOne(stack -> stack.getItem() == Items.iron_ingot, false);
-            world.setBlock(x, y, z, Blocks.stone);
-            return PlaceResult.REJECT;
-        }
+    private static int countCoils(FakePlayer player) {
+        int count = 0;
+        for (ItemStack stack : player.inventory.mainInventory)
+            if (stack != null && stack.getItem() == Item.getItemFromBlock(gregtech.api.GregTechAPI.sBlockCasings5))
+                count += stack.stackSize;
+        return count;
     }
 
-    private static final class MachineOnlyElement implements IStructureElement<Object> {
-
-        public boolean check(Object context, World world, int x, int y, int z) {
-            throw new AssertionError("stateful check");
-        }
-
-        public boolean spawnHint(Object context, World world, int x, int y, int z, ItemStack trigger) {
-            return false;
-        }
-
-        public boolean placeBlock(Object context, World world, int x, int y, int z, ItemStack trigger) {
-            return false;
-        }
-
-        public PlaceResult survivalPlaceBlock(Object context, World world, int x, int y, int z, ItemStack trigger,
-            AutoPlaceEnvironment env) {
-            ItemStack machine = env.getSource()
-                .takeOne(stack -> stack.getItem() == Item.getItemFromBlock(GregTechAPI.sBlockMachines), false);
-            if (machine == null) return PlaceResult.REJECT;
-            world.setBlock(x, y, z, GregTechAPI.sBlockMachines);
-            return PlaceResult.ACCEPT;
-        }
-    }
-
-    private static int count(FakePlayer player, net.minecraft.block.Block block, int meta) {
-        return Arrays.stream(player.inventory.mainInventory)
-            .filter(s -> s != null && s.getItem() == Item.getItemFromBlock(block) && s.getItemDamage() == meta)
-            .mapToInt(s -> s.stackSize)
-            .sum();
-    }
-
-    private static Object call(String name, Object... args) throws Exception {
-        for (Method method : HologramService.class.getDeclaredMethods()) if (method.getName()
-            .equals(name) && method.getParameterCount() == args.length
-            && accepts(method.getParameterTypes(), args)) {
-                method.setAccessible(true);
-                return method.invoke(null, args);
+    private void capabilityProfiles(Object ebf, Item item) {
+        Object extractor = new gregtech.common.tileentities.machines.multi.MTEIndustrialExtractor(
+            "gtit.smoke.extractor");
+        Object implosion = new gregtech.common.tileentities.machines.multi.MTEElectricImplosionCompressor(
+            "gtit.smoke.implosion");
+        Object tower = new gregtech.common.tileentities.machines.multi.MTEMegaDistillationTower("gtit.smoke.tower");
+        gregtech.common.tileentities.machines.multi.MTEIndustrialCokeOven coke = new gregtech.common.tileentities.machines.multi.MTEIndustrialCokeOven(
+            "gtit.smoke.coke");
+        Object[] contexts = { ebf, extractor, implosion, tower, coke };
+        String[][] ids = { { "coil", "gt_hatch" }, { "item_pipe", "glass" }, { "glass", "piston_block" }, { "height" },
+            { "coil", "coke_oven_casing", "length" } };
+        int[][] maxima = { { 14, 1 }, { 8, 11 },
+            { 11, gregtech.common.tileentities.machines.multi.MTEElectricImplosionCompressor.getTierBlockList()
+                .size() },
+            { 5 }, { 14, 2, 16 } };
+        for (int p = 0; p < contexts.length; p++) {
+            HologramCapabilities.Result profile = HologramCapabilities.describe(contexts[p], new ItemStack(item), null);
+            for (int r = 0; r < ids[p].length; r++) {
+                String id = ids[p][r];
+                int maximum = maxima[p][r];
+                NBTTagCompound legal = new NBTTagCompound();
+                legal.setInteger(id, maximum);
+                require(
+                    maximum > 0 && profile.validConfiguration(1, legal),
+                    "profile_" + p + "_" + id + "_upper_bound_valid");
+                legal.setInteger(id, maximum + 1);
+                require(!profile.validConfiguration(1, legal), "profile_" + p + "_" + id + "_out_of_range_rejected");
+                legal.setInteger(id, 0);
+                require(!profile.validConfiguration(1, legal), "profile_" + p + "_" + id + "_explicit_zero_rejected");
+                require(
+                    profile.encodeOption(legal, id, 0) && !legal.hasKey(id),
+                    "profile_" + p + "_" + id + "_inherit_removes_key");
             }
-        throw new NoSuchMethodException(name);
-    }
-
-    private static boolean accepts(Class<?>[] parameterTypes, Object[] args) {
-        for (int i = 0; i < parameterTypes.length; i++) {
-            Class<?> type = parameterTypes[i];
-            if (type == int.class) type = Integer.class;
-            else if (type == boolean.class) type = Boolean.class;
-            else if (type == long.class) type = Long.class;
-            if (args[i] != null && !type.isInstance(args[i])) return false;
-            if (args[i] == null && parameterTypes[i].isPrimitive()) return false;
+            NBTTagCompound forged = new NBTTagCompound();
+            forged.setInteger("unregistered.attack.channel", 1);
+            require(!profile.validConfiguration(1, forged), "profile_" + p + "_forged_channel_rejected");
+            require(!profile.validConfiguration(65, new NBTTagCompound()), "profile_" + p + "_main_overflow_rejected");
+            HologramCapabilities.Result saved = HologramCapabilities.describe(contexts[p], new ItemStack(item), null)
+                .withSavedChannels(forged);
+            require(saved.validConfiguration(1, forged), "profile_" + p + "_saved_foreign_key_retained");
+            forged.setInteger("unregistered.attack.channel", 2);
+            require(!saved.validConfiguration(1, forged), "profile_" + p + "_saved_foreign_key_edit_rejected");
+            require(
+                !saved.sanitizeChannels(forged)
+                    .hasKey("unregistered.attack.channel"),
+                "profile_" + p + "_foreign_key_not_used_as_current_machine_signal");
         }
-        return true;
+        coke.setCoilLevel(gregtech.api.enums.HeatingCoilLevel.MAX);
+        HologramCapabilities.Result maximumCoil = HologramCapabilities.describe(coke, new ItemStack(item), null);
+        NBTTagCompound length = new NBTTagCompound();
+        length.setInteger("length", 1);
+        require(!maximumCoil.validConfiguration(1, length), "MAX_coke_length_channel_inactive");
+        require(
+            !maximumCoil.validConfiguration(17, new NBTTagCompound()),
+            "MAX_coke_main_slice_count_limited_to_sixteen");
     }
 
-    private static Object get(Object object, String name) throws Exception {
-        Field field = object.getClass()
-            .getDeclaredField(name);
-        field.setAccessible(true);
-        return field.get(object);
-    }
-
-    private static void put(Object object, String name, Object value) throws Exception {
-        Field field = object.getClass()
-            .getDeclaredField(name);
-        field.setAccessible(true);
-        field.set(object, value);
-    }
-
-    private void require(boolean condition, String label) {
-        if (!condition) throw new AssertionError(label);
+    private void require(boolean ok, String label) {
+        if (!ok) throw new AssertionError(label);
         assertions++;
-        System.out.println(PREFIX + "ASSERT PASS " + label);
+        System.out.println("[GTIT-HOLOGRAM-SMOKE] ASSERT PASS " + label);
     }
 }

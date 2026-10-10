@@ -139,3 +139,27 @@ if (providers.gradleProperty("hologramClientSmoke").isPresent) {
         args("--width", "1100", "--height", "800")
     }
 }
+
+// Explicitly enabled, isolated real client/server interaction checks. Ordinary launches do not install a driver.
+if (providers.gradleProperty("hologramInteractionServer").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionServer=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionReceiptDir=" + layout.buildDirectory.dir("hologram-v1.8.71/receipts").get().asFile.absolutePath)
+    }
+    tasks.named<JavaExec>("runServer") {
+        workingDir(layout.buildDirectory.dir("hologram-v1.8.71/server"))
+    }
+}
+
+if (providers.gradleProperty("hologramInteractionClient").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.realInteractionSmoke=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.renderDiagnostics=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionAddress=127.0.0.1:25581")
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionReceiptDir=" + layout.buildDirectory.dir("hologram-v1.8.71/receipts").get().asFile.absolutePath)
+    }
+    tasks.named<JavaExec>("runClient") {
+        workingDir(layout.buildDirectory.dir("hologram-v1.8.71/client"))
+        args("--width", "1100", "--height", "800")
+    }
+}

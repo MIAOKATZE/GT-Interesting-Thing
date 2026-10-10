@@ -25,6 +25,7 @@ public final class HologramRegressionTest {
         cases.put("packet_snapshot_roundtrip_keeps_all_channel_values", HologramRegressionTest::packetRoundTrip);
         cases.put("hostile_packet_lengths_are_rejected", HologramRegressionTest::badLengths);
         cases.put("capture_hooks_are_inert_outside_collection", HologramRegressionTest::inertCapture);
+        cases.put("server_plan_prepare_ack_roundtrip", HologramRegressionTest::planProtocol);
         TestRunner.run(HologramRegressionTest.class, cases);
     }
 
@@ -79,6 +80,39 @@ public final class HologramRegressionTest {
             } finally {
                 bytes.release();
             }
+        }
+    }
+
+    private static void planProtocol() {
+        NBTTagCompound state = new NBTTagCompound();
+        state.setString("generation", "server-generation");
+        state.setLong("planRevision", 9007199254740993L);
+        state.setLong("uiSequence", 4294967297L);
+        state.setString("phase", "PREPARE");
+        state.setIntArray("pending", new int[] { 35 });
+        state.setLong("due", 4294967305L);
+        state.setInteger("job", 5);
+        HologramNetwork.State packet = new HologramNetwork.State(state);
+        state.setLong("planRevision", 1);
+        ByteBuf bytes = Unpooled.buffer();
+        try {
+            packet.toBytes(bytes);
+            HologramNetwork.State decoded = new HologramNetwork.State();
+            decoded.fromBytes(bytes);
+            SimpleAssert.that(
+                decoded.tag.getLong("planRevision") == 9007199254740993L,
+                "plan revision retains full long precision and sender snapshot");
+            SimpleAssert
+                .that(decoded.tag.getLong("uiSequence") == 4294967297L, "configuration receipt retains long sequence");
+            SimpleAssert.eq(
+                35,
+                decoded.tag.getIntArray("pending")[0],
+                "prepare carries final EBF cell index including controller anchor");
+            SimpleAssert
+                .that(decoded.tag.getLong("due") == 4294967305L, "prepare due tick retains full long precision");
+            SimpleAssert.eq(5, decoded.tag.getInteger("job"), "partial completion remains distinct from complete");
+        } finally {
+            bytes.release();
         }
     }
 

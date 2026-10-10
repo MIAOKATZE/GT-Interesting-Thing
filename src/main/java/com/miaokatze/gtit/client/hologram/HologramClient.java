@@ -1,7 +1,9 @@
 package com.miaokatze.gtit.client.hologram;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
@@ -31,6 +33,10 @@ public final class HologramClient {
     private static net.minecraft.world.World snapshotWorld;
     static boolean worldPreview = true;
     static final Map<Integer, Long> arrivals = new HashMap<>();
+    private static long receivedAt, preparedAt, preparedDuration;
+    private static long acceptedBatch = -1;
+    private static final Set<String> retiredSessions = new LinkedHashSet<>();
+    private static final long SNAPSHOT_TTL_NS = 300000000000L;
 
     private HologramClient() {}
 
@@ -46,18 +52,43 @@ public final class HologramClient {
 
     private static void receive(NBTTagCompound nbt) {
         HologramState next = new HologramState(nbt);
+        String generation = next.data.getString("generation");
+        if ((!generation.isEmpty() && !generation.equals(next.session)) || retiredSessions.contains(next.session))
+            return;
         boolean same = state != null && state.session.equals(next.session);
-        if (!same) arrivals.clear();
-        if (same) {
-            long now = System.nanoTime();
-            for (HologramState.Cell c : next.cells) {
-                if (c.completed() && c.index < state.cells.size()
-                    && !state.cells.get(c.index)
-                        .completed()) {
-                    arrivals.put(c.index, now);
-                }
+        if (same && next.data.getLong("planRevision") < state.data.getLong("planRevision")) return;
+        if (same && next.data.getLong("planRevision") != state.data.getLong("planRevision")) {
+            arrivals.clear();
+            preparedAt = preparedDuration = 0;
+        }
+        long batch = next.data.getLong("batchSeq");
+        if (same && (batch < acceptedBatch || (batch == acceptedBatch && "ACK".equals(state.data.getString("phase"))
+            && "PREPARE".equals(next.data.getString("phase"))))) return;
+        if (!same) {
+            if (state != null) retire(state.session);
+            arrivals.clear();
+            acceptedBatch = -1;
+        }
+        long now = System.nanoTime();
+        if ("PREPARE".equals(next.data.getString("phase")) && (batch != acceptedBatch || !same)) {
+            preparedAt = now;
+            long ticks = Math.max(1, Math.min(8, next.data.getLong("due") - next.data.getLong("serverTick")));
+            preparedDuration = ticks * 50000000L;
+        }
+        if ("ACK".equals(next.data.getString("phase")) && next.data.getBoolean("ackSuccess")
+            && (!same || batch != acceptedBatch || !"ACK".equals(state.data.getString("phase")))) {
+            for (int index : next.data.getIntArray("ack")) {
+                if (index >= 0 && index < next.cells.size()
+                    && next.cells.get(index)
+                        .completed())
+                    arrivals.put(index, now);
             }
         }
+        if (next.data.getInteger("job") == 4) arrivals.clear();
+        acceptedBatch = batch;
+        receivedAt = now;
+        arrivals.entrySet()
+            .removeIf(entry -> now - entry.getValue() > 1250000000L);
         state = next;
         Minecraft mc = Minecraft.getMinecraft();
         snapshotWorld = mc.theWorld;
@@ -103,10 +134,36 @@ public final class HologramClient {
     }
 
     static double fall(HologramState.Cell cell) {
-        Long start = arrivals.get(cell.index);
-        if (start == null || cell.status.equals("removed")) return 0;
-        double p = Math.min(1, (System.nanoTime() - start) / 650000000.0);
+        if (state == null || !"PREPARE".equals(state.data.getString("phase"))) return 0;
+        boolean pending = false;
+        for (int index : state.data.getIntArray("pending")) if (index == cell.index) pending = true;
+        if (!pending) return 0;
+        long age = System.nanoTime() - preparedAt;
+        if (age > preparedDuration + 1500000000L) return 0;
+        double p = Math.max(0, Math.min(1, age / (double) Math.max(1, preparedDuration)));
+        // Scan and assemble above the actual destination before the server's scheduled commit.
         return 3 * (1 - Math.sin(p * Math.PI / 2));
+    }
+
+    static boolean prepareExpired() {
+        return state != null && "PREPARE".equals(state.data.getString("phase"))
+            && System.nanoTime() - preparedAt > preparedDuration + 1500000000L;
+    }
+
+    private static void retire(String session) {
+        retiredSessions.add(session);
+        if (retiredSessions.size() > 32) retiredSessions.remove(
+            retiredSessions.iterator()
+                .next());
+    }
+
+    static void clearProjection() {
+        if (state != null) retire(state.session);
+        state = null;
+        snapshotWorld = null;
+        arrivals.clear();
+        acceptedBatch = -1;
+        preparedAt = 0;
     }
 
     static String text(String key, String fallback) {
@@ -117,11 +174,15 @@ public final class HologramClient {
     @SubscribeEvent
     public void renderWorld(RenderWorldLastEvent event) {
         Minecraft mc = Minecraft.getMinecraft();
-        if (!worldPreview || state == null
-            || mc.theWorld == null
-            || mc.theWorld != snapshotWorld
+        if (state == null) return;
+        if (mc.theWorld == null || mc.theWorld != snapshotWorld
             || mc.thePlayer == null
-            || mc.thePlayer.dimension != state.data.getInteger("dimension")) return;
+            || mc.thePlayer.dimension != state.data.getInteger("dimension")
+            || System.nanoTime() - receivedAt > SNAPSHOT_TTL_NS) {
+            clearProjection();
+            return;
+        }
+        if (!worldPreview || state.data.getInteger("job") == 4) return;
         // Avoid stale projection after disconnect/reconnect or travelling away from the target.
         if (mc.thePlayer
             .getDistanceSq(state.data.getInteger("x"), state.data.getInteger("y"), state.data.getInteger("z")) > 4096)

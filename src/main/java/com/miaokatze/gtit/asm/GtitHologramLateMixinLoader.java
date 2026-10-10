@@ -15,6 +15,9 @@ public final class GtitHologramLateMixinLoader implements ILateMixinLoader {
     }
 
     public List<String> getMixins(Set<String> mods) {
-        return Arrays.asList("hologram.MixinHologramBuildPiece", "hologram.MixinHologramHints");
+        return Arrays.asList(
+            "hologram.MixinHologramBuildPiece",
+            "hologram.MixinHologramHints",
+            "hologram.MixinHologramChannels");
     }
 }
