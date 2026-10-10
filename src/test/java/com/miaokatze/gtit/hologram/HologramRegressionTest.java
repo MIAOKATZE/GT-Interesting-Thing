@@ -29,7 +29,256 @@ public final class HologramRegressionTest {
         cases.put("server_batch_receipt_roundtrip", HologramRegressionTest::planProtocol);
         cases.put("frame_factory_material_and_te_boundary", HologramRegressionTest::frames);
         cases.put("sealed_gt_inventory_fluid_and_position_roundtrip", HologramRegressionTest::sealedRecovery);
+        cases.put("material_source_settings_persist_and_default", HologramRegressionTest::materialSettings);
+        cases.put("container_simulation_and_committed_consumption", HologramRegressionTest::materialSimulation);
+        cases
+            .put("container_rollback_returns_once_without_restoring_old_bag", HologramRegressionTest::materialRollback);
+        cases.put(
+            "container_exception_after_report_preserves_actual_material",
+            HologramRegressionTest::materialException);
+        cases.put("refund_overflow_keeps_remainder_and_skips_held_tool", HologramRegressionTest::refundOverflow);
+        cases.put("full_inventory_refund_survives_persisted_player_data", HologramRegressionTest::persistedRefund);
         TestRunner.run(HologramRegressionTest.class, cases);
+    }
+
+    private static void materialSettings() {
+        ItemStack tool = new ItemStack(Items.feather);
+        HologramMaterials.Settings defaults = HologramMaterials.read(tool);
+        SimpleAssert.that(defaults.main && defaults.containers && defaults.me, "all sources default to enabled");
+        defaults.main = false;
+        defaults.containers = true;
+        defaults.me = false;
+        defaults.priority = 2;
+        tool.setTagCompound(new NBTTagCompound());
+        tool.getTagCompound()
+            .setString("existing_tool_data", "preserved");
+        HologramMaterials.write(tool, defaults);
+        ItemStack restored = ItemStack.loadItemStackFromNBT(tool.writeToNBT(new NBTTagCompound()));
+        HologramMaterials.Settings read = HologramMaterials.read(restored);
+        SimpleAssert.that(
+            !read.main && read.containers && !read.me && read.priority == 2,
+            "source settings survive actual item serialization");
+        SimpleAssert.eq(
+            "preserved",
+            restored.getTagCompound()
+                .getString("existing_tool_data"),
+            "source settings preserve other tool NBT");
+    }
+
+    private static void materialSimulation() {
+        net.minecraft.entity.player.EntityPlayerMP player = materialPlayer();
+        HologramMaterials.Context context = materialContext(player);
+        ItemStack stone = new ItemStack(net.minecraft.init.Blocks.stone, 1);
+        SimpleAssert.eq(10, context.count(stone, 4096), "registered container adapter contributes exact availability");
+        SimpleAssert.eq(
+            10,
+            player.inventory.mainInventory[1].getTagCompound()
+                .getInteger("materials"),
+            "even a mutating simulator only receives a bag copy");
+        HologramMaterials.Transaction transaction = context.begin();
+        SimpleAssert.that(transaction.takeOne(stone, false), "real material is taken through adapter");
+        transaction.commit();
+        transaction.rollbackExternal();
+        SimpleAssert.eq(
+            9,
+            player.inventory.mainInventory[1].getTagCompound()
+                .getInteger("materials"),
+            "committed deduction is not refunded");
+        SimpleAssert.eq(0, looseStone(player), "commit never creates an extra loose material");
+        boolean rejected = false;
+        try {
+            context.takeOne(new ItemStack(net.minecraft.init.Blocks.stone, 64), true);
+        } catch (IllegalArgumentException expected) {
+            rejected = true;
+        }
+        SimpleAssert.that(rejected, "native takeOne contract rejects a multi-item request");
+    }
+
+    private static void materialRollback() {
+        net.minecraft.entity.player.EntityPlayerMP player = materialPlayer();
+        HologramMaterials.Context context = materialContext(player);
+        ItemStack[] before = inventoryCopy(player);
+        HologramMaterials.Transaction transaction = context.begin();
+        SimpleAssert.that(
+            transaction.takeOne(new ItemStack(net.minecraft.init.Blocks.stone, 1), false),
+            "external material is deducted");
+        transaction.rollbackExternal();
+        player.inventory.mainInventory = before;
+        context.afterInventoryRestore();
+        SimpleAssert.eq(
+            9,
+            player.inventory.mainInventory[1].getTagCompound()
+                .getInteger("materials"),
+            "rollback preserves real post-extraction bag state");
+        SimpleAssert.eq(1, looseStone(player), "deducted item returns to player exactly once");
+        transaction.rollbackExternal();
+        context.flushRecovery();
+        SimpleAssert.eq(1, looseStone(player), "repeated rollback cannot duplicate its ledger");
+        SimpleAssert.eq(
+            9,
+            context.count(new ItemStack(net.minecraft.init.Blocks.stone, 1), 4096),
+            "source references follow restored inventory objects");
+    }
+
+    private static void materialException() {
+        net.minecraft.entity.player.EntityPlayerMP player = materialPlayer();
+        player.inventory.mainInventory[1].getTagCompound()
+            .setBoolean("throwAfterReport", true);
+        HologramMaterials.Context context = materialContext(player);
+        ItemStack[] before = inventoryCopy(player);
+        HologramMaterials.Transaction transaction = context.begin();
+        boolean failed = false;
+        try {
+            transaction.takeOne(new ItemStack(net.minecraft.init.Blocks.stone, 1), false);
+        } catch (IllegalStateException expected) {
+            failed = true;
+        }
+        SimpleAssert.that(failed, "adapter exception reaches caller for world rollback");
+        transaction.rollbackExternal();
+        player.inventory.mainInventory = before;
+        context.afterInventoryRestore();
+        SimpleAssert.eq(
+            9,
+            player.inventory.mainInventory[1].getTagCompound()
+                .getInteger("materials"),
+            "reported deduction remains removed from bag after exception");
+        SimpleAssert.eq(1, looseStone(player), "reported material survives exceptional extraction");
+    }
+
+    private static void refundOverflow() {
+        ItemStack[] inventory = { new ItemStack(Items.feather, 1), new ItemStack(net.minecraft.init.Blocks.stone, 63),
+            new ItemStack(Items.book, 64) };
+        ItemStack refund = new ItemStack(net.minecraft.init.Blocks.stone, 3);
+        HologramMaterials.insertRecovery(inventory, 0, 64, refund);
+        SimpleAssert.eq(64, inventory[1].stackSize, "refund fills available stack space");
+        SimpleAssert.eq(2, refund.stackSize, "full inventory retains uninserted refund instead of deleting it");
+        SimpleAssert.eq(1, inventory[0].stackSize, "held tool remains untouched");
+        inventory[2] = null;
+        HologramMaterials.insertRecovery(inventory, 0, 64, refund);
+        SimpleAssert.eq(0, refund.stackSize, "remaining refund can be retried after space opens");
+        SimpleAssert.eq(2, inventory[2].stackSize, "retry inserts only the remaining real materials");
+    }
+
+    private static void persistedRefund() {
+        net.minecraft.entity.player.EntityPlayerMP player = materialPlayer();
+        for (int i = 2; i < player.inventory.mainInventory.length; i++)
+            player.inventory.mainInventory[i] = new ItemStack(Items.feather, 64);
+        HologramMaterials.Context context = materialContext(player);
+        ItemStack[] before = inventoryCopy(player);
+        HologramMaterials.Transaction transaction = context.begin();
+        SimpleAssert.that(
+            transaction.takeOne(new ItemStack(net.minecraft.init.Blocks.stone, 1), false),
+            "full main inventory still draws from enabled bag");
+        transaction.rollbackExternal();
+        player.inventory.mainInventory = before;
+        context.afterInventoryRestore();
+        SimpleAssert.eq(
+            9,
+            player.inventory.mainInventory[1].getTagCompound()
+                .getInteger("materials"),
+            "full inventory does not restore deducted bag contents");
+        SimpleAssert.eq(0, looseStone(player), "no space means no invented inventory slot");
+        NBTTagCompound persisted = player.getEntityData()
+            .getCompoundTag(net.minecraft.entity.player.EntityPlayer.PERSISTED_NBT_TAG);
+        SimpleAssert.eq(
+            1,
+            persisted.getTagList("gtitHologramMaterialRecovery", 10)
+                .tagCount(),
+            "real refund is stored in Forge player-persisted NBT");
+        net.minecraft.entity.player.EntityPlayerMP restored = materialPlayer();
+        restored.getEntityData()
+            .setTag(net.minecraft.entity.player.EntityPlayer.PERSISTED_NBT_TAG, persisted.copy());
+        HologramMaterials.Context next = materialContext(restored);
+        next.flushRecovery();
+        next.flushRecovery();
+        SimpleAssert
+            .eq(1, looseStone(restored), "reloaded persistent refund is delivered once when space is available");
+        SimpleAssert.eq(
+            0,
+            restored.getEntityData()
+                .getCompoundTag(net.minecraft.entity.player.EntityPlayer.PERSISTED_NBT_TAG)
+                .getTagList("gtitHologramMaterialRecovery", 10)
+                .tagCount(),
+            "delivered refund is removed from persistent ledger");
+    }
+
+    private static net.minecraft.entity.player.EntityPlayerMP materialPlayer() {
+        try {
+            java.lang.reflect.Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+            net.minecraft.entity.player.EntityPlayerMP player = (net.minecraft.entity.player.EntityPlayerMP) ((sun.misc.Unsafe) field
+                .get(null)).allocateInstance(net.minecraft.entity.player.EntityPlayerMP.class);
+            player.inventory = new net.minecraft.entity.player.InventoryPlayer(player);
+            player.inventoryContainer = new net.minecraft.inventory.Container() {
+
+                @Override
+                public boolean canInteractWith(net.minecraft.entity.player.EntityPlayer ignored) {
+                    return true;
+                }
+            };
+            player.inventory.mainInventory[0] = new ItemStack(Items.feather);
+            ItemStack bag = new ItemStack(Items.writable_book);
+            bag.setTagCompound(new NBTTagCompound());
+            bag.getTagCompound()
+                .setInteger("materials", 10);
+            player.inventory.mainInventory[1] = bag;
+            return player;
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+        }
+    }
+
+    private static HologramMaterials.Context materialContext(net.minecraft.entity.player.EntityPlayerMP player) {
+        HologramMaterials.Settings settings = new HologramMaterials.Settings();
+        settings.main = false;
+        settings.me = false;
+        com.gtnewhorizon.structurelib.util.InventoryUtility.ItemStackExtractor adapter = new com.gtnewhorizon.structurelib.util.InventoryUtility.ItemStackExtractor() {
+
+            @Override
+            public boolean isAPIImplemented(APIType type) {
+                return type == APIType.MAIN || type == APIType.IS_VALID_SOURCE;
+            }
+
+            @Override
+            public boolean isValidSource(ItemStack stack, net.minecraft.entity.player.EntityPlayerMP ignored) {
+                return stack.hasTagCompound() && stack.getTagCompound()
+                    .hasKey("materials");
+            }
+
+            @Override
+            public int takeFromStack(java.util.function.Predicate<ItemStack> predicate, boolean simulate, int count,
+                com.gtnewhorizon.structurelib.util.InventoryUtility.ItemStackCounter counter, ItemStack source,
+                ItemStack exact, net.minecraft.entity.player.EntityPlayerMP ignored) {
+                ItemStack stone = new ItemStack(net.minecraft.init.Blocks.stone, 1);
+                if (!predicate.test(stone)) return 0;
+                int available = source.getTagCompound()
+                    .getInteger("materials");
+                int taken = Math.min(count, available);
+                source.getTagCompound()
+                    .setInteger("materials", available - taken);
+                counter.add(stone, taken);
+                if (!simulate && source.getTagCompound()
+                    .getBoolean("throwAfterReport"))
+                    throw new IllegalStateException("test reported extraction failure");
+                return taken;
+            }
+        };
+        return new HologramMaterials.Context(player, settings, java.util.Collections.singletonList(adapter));
+    }
+
+    private static ItemStack[] inventoryCopy(net.minecraft.entity.player.EntityPlayerMP player) {
+        ItemStack[] copy = new ItemStack[player.inventory.mainInventory.length];
+        for (int i = 0; i < copy.length; i++)
+            if (player.inventory.mainInventory[i] != null) copy[i] = player.inventory.mainInventory[i].copy();
+        return copy;
+    }
+
+    private static int looseStone(net.minecraft.entity.player.EntityPlayerMP player) {
+        int count = 0;
+        for (ItemStack stack : player.inventory.mainInventory) if (stack != null
+            && stack.getItem() == net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.stone))
+            count += stack.stackSize;
+        return count;
     }
 
     private static void frames() {

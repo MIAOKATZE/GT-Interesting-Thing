@@ -29,7 +29,7 @@ public final class HologramClient {
     private static boolean installed;
     static HologramState state;
     private static net.minecraft.world.World snapshotWorld;
-    static boolean worldPreview = false;
+    static boolean worldPreview = true;
     private static long receivedAt;
     private static long acceptedBatch = -1;
     private static final Set<String> retiredSessions = new LinkedHashSet<>();

@@ -25,7 +25,7 @@ import gregtech.api.GregTechAPI;
 import gregtech.api.metatileentity.implementations.MTEHatch;
 import gregtech.common.blocks.ItemMachines;
 
-/** Compact C2 workstation. Configuration previews a server plan; only confirmation starts construction. */
+/** Workstation for choosing targets and executing one immediate server-validated operation. */
 public final class HologramScreen extends GuiScreen {
 
     private static final int DESIGN_W = 416, DESIGN_H = 288;
@@ -33,13 +33,16 @@ public final class HologramScreen extends GuiScreen {
     private final RenderItem itemRenderer = new RenderItem();
     private HologramState state;
     private GuiTextField mainField, channelNameField, channelValueField, optionValueField;
+    private GuiTextField positionXField, positionYField, positionZField;
+    private boolean positionDrawer, sourceDrawer;
     private int selected = -1, layer, view, hovered = -1, drawerOffset, candidateOffset, materialOffset;
     private int viewportX = 12, viewportY = 64, viewportWidth = 142, viewportHeight = 136;
     private int dragX, dragY, originX, originY;
     private double yaw = Math.PI / 4, pitch = Math.PI / 6, zoom = 1;
     private float scale = 1;
     private boolean allLayers = true, dragging, moved, drawer, confirmation, channelDrawer, inventory;
-    private int inventorySlot = -1;
+    private int inventorySlot = -1, sourceChoice = -1, sourceOffset;
+    private boolean sourceTargets;
     private boolean inventoryDragging, awaitingScan;
     private String optionChannel = "", notice = "";
     private long sequence, pendingSequence = -1, confirmedRevision = -1, renderGeneration;
@@ -88,6 +91,16 @@ public final class HologramScreen extends GuiScreen {
         channelValueField.setText("1");
         optionValueField = new GuiTextField(fontRendererObj, 168, 232, 137, 16);
         optionValueField.setMaxStringLength(10);
+        positionXField = positionField(166);
+        positionYField = positionField(246);
+        positionZField = positionField(326);
+    }
+
+    private GuiTextField positionField(int x) {
+        GuiTextField field = new GuiTextField(fontRendererObj, x, 116, 70, 18);
+        field.setMaxStringLength(4);
+        field.setText("0");
+        return field;
     }
 
     @Override
@@ -106,6 +119,11 @@ public final class HologramScreen extends GuiScreen {
         if (channelNameField != null) channelNameField.updateCursorCounter();
         if (channelValueField != null) channelValueField.updateCursorCounter();
         if (optionValueField != null) optionValueField.updateCursorCounter();
+        if (positionXField != null) {
+            positionXField.updateCursorCounter();
+            positionYField.updateCursorCounter();
+            positionZField.updateCursorCounter();
+        }
     }
 
     @Override
@@ -114,6 +132,8 @@ public final class HologramScreen extends GuiScreen {
         int mx = localX(mouseX), my = localY(mouseY);
         controls.clear();
         tooltip = null;
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
         GL11.glPushMatrix();
         GL11.glTranslatef(originX, originY, 0);
         GL11.glScalef(scale, scale, 1);
@@ -123,7 +143,7 @@ public final class HologramScreen extends GuiScreen {
             skin("panel", 6, 6, 404, 22);
             text("猫猫全息投影仪 · " + state.data.getString("title"), 13, 13, 270, 0xf5e4b9);
             button(60, 287, 9, 117, 17, "等级 / 信道设置", true, mx, my);
-            String[] modes = { "建造", "替换", "拆除" };
+            String[] modes = { "补建", "替换", "拆除" };
             for (int i = 0; i < 3; i++) button(
                 70 + i,
                 12 + i * 131,
@@ -134,25 +154,46 @@ public final class HologramScreen extends GuiScreen {
                 editable(),
                 mx,
                 my);
-            drawPreview(mx, my);
+            if (!confirmation) drawPreview(mx, my);
             drawConfig(mx, my);
             drawFooter(mx, my);
+            if (drawer || inventory || positionDrawer || sourceDrawer || !optionChannel.isEmpty()) {
+                controls.removeIf(control -> control.x >= 157);
+                tooltip = null;
+                GL11.glDepthMask(true);
+                GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+                GL11.glDisable(GL11.GL_DEPTH_TEST);
+            }
             if (drawer) {
                 if (channelDrawer) drawChannels(mx, my);
                 else drawDrawer(mx, my);
             }
             if (inventory) drawInventory(mx, my);
-            if (!optionChannel.isEmpty()) drawOptions(mx, my);
-            if (confirmation) drawConfirmation(mx, my);
+            if (positionDrawer) drawPosition(mx, my);
+            if (sourceDrawer) drawSources(mx, my);
+            if (!optionChannel.isEmpty()) {
+                controls.clear();
+                drawOptions(mx, my);
+            }
+            if (confirmation) {
+                controls.clear();
+                tooltip = null;
+                GL11.glDepthMask(true);
+                GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
+                GL11.glDisable(GL11.GL_DEPTH_TEST);
+                drawConfirmation(mx, my);
+            }
             if (!notice.isEmpty() && !confirmation) text(notice, 165, 249, 231, 0xff9292);
             if (tooltip != null) drawHoveringText(tooltip, mx, my, fontRendererObj);
         } finally {
             GL11.glPopMatrix();
+            GL11.glPopAttrib();
         }
         renderGeneration++;
     }
 
     private void drawPreview(int mx, int my) {
+        HologramRenderer.showEmptyCells = inventory || positionDrawer;
         HologramRenderer.projectionLayer = allLayers ? Integer.MAX_VALUE : layer;
         drawRect(viewportX, viewportY, viewportX + viewportWidth, viewportY + viewportHeight, 0xff0c1e28);
         int factor = new net.minecraft.client.gui.ScaledResolution(mc, mc.displayWidth, mc.displayHeight)
@@ -201,32 +242,17 @@ public final class HologramScreen extends GuiScreen {
             button(80, 166, 77, 23, 21, "−", editable() && canStep(primary, -1), mx, my);
             button(81, 192, 77, 180, 21, optionLabel(primary), editable(), mx, my);
             button(82, 375, 77, 25, 21, "+", editable() && canStep(primary, 1), mx, my);
-            if (mx >= 166 && mx < 400 && my >= 77 && my < 98)
-                tooltip = Collections.singletonList(channel + " · " + optionLabel(primary));
+            if (!drawer && !inventory
+                && !positionDrawer
+                && !confirmation
+                && mx >= 166
+                && mx < 400
+                && my >= 77
+                && my < 98) tooltip = Collections.singletonList(channel + " · " + optionLabel(primary));
         } else text("无已验证的等级参数 · 高级查看", 166, 82, 234, 0x94afb4);
-        button(
-            33,
-            166,
-            104,
-            113,
-            18,
-            state.data.getInteger("mode") == 2 ? "拆除包含仓室" : state.data.getBoolean("noHatches") ? "只放外壳" : "允许仓室",
-            editable() && state.data.getInteger("mode") != 2,
-            mx,
-            my);
-        NBTTagCompound hatch = capability("gt_hatch");
-        button(
-            83,
-            282,
-            104,
-            118,
-            18,
-            state.data.getInteger("mode") == 2 ? "保留控制器 " + (state.data.getBoolean("keepController") ? "✓" : "×")
-                : hatch == null ? "自动选材未支持" : hatch.getBoolean("explicit") ? "仓室自动选材" : "仓室手选",
-            editable() && (state.data.getInteger("mode") == 2 || hatch != null && hatch.getBoolean("editable")),
-            mx,
-            my);
-        text("控制器朝向：" + facingName(), 166, 129, 234, 0x94afb4);
+        button(75, 166, 104, 113, 18, "添加位置", editable(), mx, my);
+        button(78, 282, 104, 118, 18, "材料来源", editable(), mx, my);
+        text(state.data.getInteger("mode") == 2 ? "拆除始终保留控制器" : "选择位置与目标方块", 166, 129, 234, 0x94afb4);
         String[] scopes = { "全结构", "当前层", "选中格", "同类部件" };
         for (int i = 0; i < 4; i++) button(
             90 + i,
@@ -240,8 +266,8 @@ public final class HologramScreen extends GuiScreen {
             my);
         HologramState.Cell cell = selectedCell();
         if (cell == null) {
-            text("点击预览选择结构格", 166, 171, 234, 0xb9d5d4);
-            text("目标等级仅改变草案，不自动施工", 166, 185, 234, 0x94afb4);
+            text("点击预览选位，或添加任意坐标", 166, 171, 234, 0xb9d5d4);
+            text("选择目标后点击底部按钮执行", 166, 185, 234, 0x94afb4);
         } else {
             drawItem(displayedStack(cell, true), 166, 166);
             drawItem(displayedStack(cell, false), 186, 166);
@@ -270,8 +296,8 @@ public final class HologramScreen extends GuiScreen {
                     + (reason.isEmpty() ? statusName(cell.status) : reason),
                 230);
         }
-        button(26, 166, 217, 113, 18, "候选 / 材料清单", true, mx, my);
-        button(61, 282, 217, 118, 18, "从背包指定目标", true, mx, my);
+        button(26, 166, 217, 113, 18, "材料与改动", editable() && state.data.getBoolean("supported"), mx, my);
+        button(61, 282, 217, 118, 18, "选择方块 / 仓室", true, mx, my);
         String progress = state.data.getBoolean("targetClosed") ? "拆除结束，重新右键新控制器开启任务" : state.data.getString("status");
         text(pendingSequence >= 0 ? "等待服务端校验…" : progress, 166, 244, 234, 0xffbd91);
         if (mx >= 166 && mx < 400 && my >= 239 && my < 257)
@@ -298,8 +324,9 @@ public final class HologramScreen extends GuiScreen {
             261,
             87,
             19,
-            job == 5 ? "重扫 / 新计划" : "扫描并查看差分",
-            editable() && state.data.getBoolean("target") && state.data.getBoolean("supported"),
+            new String[] { "直接构建", "应用替换", "拆除结构" }[Math.floorMod(state.data.getInteger("mode"), 3)],
+            editable() && state.data.getBoolean("target")
+                && (state.data.getBoolean("supported") || state.data.getInteger("mode") == 0),
             mx,
             my);
         button(51, 338, 261, 30, 19, job == 2 ? "继续" : "暂停", pendingSequence < 0 && (job == 1 || job == 2), mx, my);
@@ -370,10 +397,28 @@ public final class HologramScreen extends GuiScreen {
         mainField.drawTextBox();
         button(30, 330, 213, 66, 16, "应用主值", editable(), mx, my);
         button(23, 165, 213, 98, 16, "重新采集", editable(), mx, my);
-        button(40, 165, 233, 111, 16, "原版提示", editable(), mx, my);
-        button(41, 280, 233, 116, 16, "原版构造回退", editable(), mx, my);
-        if (my >= 233 && mx >= 165 && mx < 396)
-            tooltip = Collections.singletonList("原版提示 / 构造回退不属于高级事务，不提供本工具的逐格保护与回执。自动仓室只选材，数量和机器成型需手动核对。");
+        button(
+            33,
+            165,
+            233,
+            111,
+            16,
+            state.data.getBoolean("noHatches") ? "只放外壳 ✓" : "允许仓室",
+            editable() && state.data.getInteger("mode") != 2,
+            mx,
+            my);
+        NBTTagCompound hatch = capability("gt_hatch");
+        button(
+            83,
+            280,
+            233,
+            116,
+            16,
+            hatch != null && hatch.getBoolean("explicit") ? "仓室自动选材" : "仓室手选",
+            editable() && state.data.getInteger("mode") != 2 && hatch != null && hatch.getBoolean("editable"),
+            mx,
+            my);
+
     }
 
     private void drawOptions(int mx, int my) {
@@ -395,8 +440,8 @@ public final class HologramScreen extends GuiScreen {
             button(4000 + i, 168, y, 228, 17, (chosen ? "✓ " : "") + option.getString("label"), editable(), mx, my);
             if (mx >= 168 && mx < 396 && my >= y && my < y + 17) tooltip = Collections.singletonList(
                 option.getString("label") + " · "
-                    + (option.getBoolean("present") ? "显式目标，原始值 " + option.getInteger("value") : "清除独立指定，恢复主信号或默认规则")
-                    + (editable() ? "；仅更新草案。" : "；" + editingReason()));
+                    + (option.getBoolean("present") ? "显式目标，原始值 " + option.getInteger("value") : "恢复默认值")
+                    + (editable() ? "；仅更新目标。" : "；" + editingReason()));
         }
         if (!"_hatch_candidate".equals(optionChannel)) {
             text("原始正整数（可指定列表之外的值）", 168, 215, 228, 0x94afb4);
@@ -430,7 +475,7 @@ public final class HologramScreen extends GuiScreen {
             if (mx >= 165 && mx < 396 && my >= y && my < y + 20) {
                 tooltip = new ArrayList<>();
                 tooltip.add(cap.getString("label") + " / " + cap.getString("id"));
-                tooltip.add("当前草案：" + optionLabel(cap) + " · 原始值 " + cap.getInteger("current"));
+                tooltip.add("当前目标：" + optionLabel(cap) + " · 原始值 " + cap.getInteger("current"));
                 tooltip.add(
                     cap.getString("id")
                         .equals("main") ? "主原始信号：未独立指定的子信道继承此值。"
@@ -446,41 +491,69 @@ public final class HologramScreen extends GuiScreen {
         mainField.drawTextBox();
         button(30, 330, 213, 66, 16, "应用主值", editable(), mx, my);
         button(23, 165, 234, 74, 16, "重新采集", editable(), mx, my);
-        button(40, 242, 234, 74, 16, "原版提示", editable(), mx, my);
-        button(41, 319, 234, 77, 16, "原版构造", editable(), mx, my);
+        button(
+            33,
+            242,
+            234,
+            74,
+            16,
+            state.data.getBoolean("noHatches") ? "只放外壳 ✓" : "允许仓室",
+            editable() && state.data.getInteger("mode") != 2,
+            mx,
+            my);
+        NBTTagCompound hatch = capability("gt_hatch");
+        button(
+            83,
+            319,
+            234,
+            77,
+            16,
+            hatch != null && hatch.getBoolean("explicit") ? "自动选材" : "仓室手选",
+            editable() && state.data.getInteger("mode") != 2 && hatch != null && hatch.getBoolean("editable"),
+            mx,
+            my);
+
     }
 
     private void drawInventory(int mx, int my) {
         tooltip = null;
         drawRect(157, 59, 405, 257, 0xff172f36);
-        text("玩家背包 · 复制目标，不移动物品", 165, 65, 205, 0xf5e4b9);
+        text("选择方块 / 仓室 · 不消耗物品", 165, 65, 205, 0xf5e4b9);
+        button(16, 165, 82, 113, 18, (sourceTargets ? "" : "› ") + "主背包", true, mx, my);
+        button(17, 282, 82, 114, 18, (sourceTargets ? "› " : "") + "材料来源", true, mx, my);
         button(64, 373, 62, 23, 17, "×", true, mx, my);
         HologramState.Cell cell = selectedCell();
         button(
             65,
             165,
-            87,
+            104,
             231,
-            22,
+            18,
             cell == null ? "先点击左侧预览选择目标格" : "目标格：" + cellName(cell, false),
-            editable() && canInventoryPin() && inventorySlot >= 0,
+            editable() && canInventoryPin() && pickedTarget() != null,
             mx,
             my);
-        text("点击物品再点目标槽，或拖到左侧预览格", 165, 113, 231, 0x94afb4);
+        text("点击物品再点目标槽，或拖到左侧预览格", 165, 126, 231, 0x94afb4);
+        NBTTagList choices = state.data.getTagList("materialChoices", 10);
         for (int row = 0; row < 4; row++) for (int col = 0; col < 9; col++) {
             int slot = row == 3 ? col : 9 + row * 9 + col;
-            int x = 181 + col * 22, y = 128 + row * 22;
-            drawRect(x, y, x + 20, y + 20, inventorySlot == slot ? 0xff5f858a : 0xff0c1e28);
-            ItemStack stack = mc.thePlayer.inventory.mainInventory[slot];
-            drawItem(stack, x + 2, y + 2);
-            if (stack != null)
-                itemRenderer.renderItemOverlayIntoGUI(fontRendererObj, mc.getTextureManager(), stack, x + 2, y + 2);
-            if (mx >= x && mx < x + 20 && my >= y && my < y + 20 && stack != null)
-                tooltip = Collections.singletonList(stack.getDisplayName() + " · 库存 " + stack.stackSize + "（不消耗）");
+            int choice = sourceOffset + row * 9 + col;
+            int x = 181 + col * 22, y = 139 + row * 20;
+            boolean chosen = sourceTargets ? sourceChoice == choice : inventorySlot == slot;
+            drawRect(x, y, x + 20, y + 18, chosen ? 0xff5f858a : 0xff0c1e28);
+            ItemStack stack = sourceTargets ? sourceStack(choice) : mc.thePlayer.inventory.mainInventory[slot];
+            drawItem(stack, x + 2, y + 1);
+            if (mx >= x && mx < x + 20 && my >= y && my < y + 18 && stack != null)
+                tooltip = Collections.singletonList(stack.getDisplayName() + " · 选为目标（不消耗）");
+        }
+        if (sourceTargets && choices.tagCount() == 0) {
+            text("开启来源并准备物品", 183, 160, 194, 0xe4d3a9);
+            text("然后重新扫描或重新打开", 183, 180, 194, 0xe4d3a9);
         }
         button(66, 165, 221, 105, 17, "清除单格指定", editable() && cell != null, mx, my);
-        ItemStack picked = inventorySlot >= 0 ? mc.thePlayer.inventory.mainInventory[inventorySlot] : null;
-        text(picked == null ? "未选物品" : picked.getDisplayName(), 277, 224, 119, 0xe4d3a9);
+        ItemStack picked = pickedTarget();
+        if (sourceTargets) button(18, 277, 221, 119, 17, "刷新来源 · 滚轮翻页", editable(), mx, my);
+        else text(picked == null ? "未选物品" : picked.getDisplayName(), 277, 224, 119, 0xe4d3a9);
         text(pendingSequence >= 0 ? "等待服务端校验目标…" : state.data.getString("status"), 165, 243, 231, 0xffbd91);
         if (mx >= 165 && mx < 396 && my >= 240 && my < 255) {
             tooltip = new ArrayList<>(fontRendererObj.listFormattedStringToWidth(state.data.getString("status"), 230));
@@ -492,35 +565,116 @@ public final class HologramScreen extends GuiScreen {
             }
             if (picked != null) tooltip.addAll(
                 fontRendererObj
-                    .listFormattedStringToWidth("背包选择：" + picked.getDisplayName() + " · 槽位 " + inventorySlot, 230));
+                    .listFormattedStringToWidth((sourceTargets ? "来源选择：" : "背包选择：") + picked.getDisplayName(), 230));
         }
         if (picked != null && inventoryDragging) drawItem(picked, mx - 8, my - 8);
     }
 
+    private boolean sourceEnabled(String key) {
+        return !state.data.hasKey(key) || state.data.getBoolean(key);
+    }
+
+    private void drawSources(int mx, int my) {
+        tooltip = null;
+        drawRect(157, 59, 405, 257, 0xff172f36);
+        text("材料来源", 166, 67, 200, 0xf5e4b9);
+        button(88, 375, 62, 23, 17, "×", true, mx, my);
+        String[] keys = { "materialMain", "materialContainers", "materialMe" };
+        String[] labels = { "主背包", "背包内物品容器", "携带的 ME 无线终端" };
+        for (int i = 0; i < keys.length; i++) button(
+            84 + i,
+            166,
+            94 + i * 25,
+            230,
+            21,
+            labels[i] + (sourceEnabled(keys[i]) ? " ✓" : " ×"),
+            editable(),
+            mx,
+            my);
+        int priority = Math.floorMod(state.data.getInteger("materialPriority"), 3);
+        button(87, 166, 175, 230, 21, "优先：" + new String[] { "主背包", "物品容器", "ME 终端" }[priority], editable(), mx, my);
+        text(new String[] { "主背包 → 容器 → ME", "容器 → 主背包 → ME", "ME → 主背包 → 容器" }[priority], 166, 209, 230, 0xb9d5d4);
+        text("仅使用已开启的来源（包括饰品终端）", 166, 226, 230, 0x94afb4);
+        text("已绑定、有电、在范围内；遵守网络权限", 166, 241, 230, 0x94afb4);
+    }
+
+    private void drawPosition(int mx, int my) {
+        tooltip = null;
+        drawRect(157, 59, 405, 257, 0xff172f36);
+        text("添加位置 · 相对控制器", 166, 67, 228, 0xf5e4b9);
+        button(77, 375, 62, 23, 17, "×", true, mx, my);
+        text("世界轴偏移 X / Y / Z（−64～64）", 166, 91, 230, 0x94afb4);
+        positionXField.drawTextBox();
+        positionYField.drawTextBox();
+        positionZField.drawTextBox();
+        button(76, 166, 146, 230, 20, "添加并选中此位置", editable(), mx, my);
+        text("选中后点击“选择方块 / 仓室”指定目标", 166, 180, 230, 0xb9d5d4);
+        text("控制器本身受保护，最多4096个位置", 166, 199, 230, 0x94afb4);
+    }
+
+    private void addPosition() {
+        if (!editable()) return;
+        try {
+            int dx = Integer.parseInt(
+                positionXField.getText()
+                    .trim());
+            int dy = Integer.parseInt(
+                positionYField.getText()
+                    .trim());
+            int dz = Integer.parseInt(
+                positionZField.getText()
+                    .trim());
+            if (Math.abs((long) dx) > 64 || Math.abs((long) dy) > 64 || Math.abs((long) dz) > 64)
+                throw new NumberFormatException();
+            NBTTagCompound action = new NBTTagCompound();
+            action.setInteger("dx", dx);
+            action.setInteger("dy", dy);
+            action.setInteger("dz", dz);
+            positionDrawer = false;
+            send("addPosition", action, true);
+        } catch (NumberFormatException invalid) {
+            notice = "坐标须为−64～64的整数";
+        }
+    }
+
+    private ItemStack sourceStack(int choice) {
+        NBTTagList choices = state.data.getTagList("materialChoices", 10);
+        return choice >= 0 && choice < choices.tagCount()
+            ? ItemStack.loadItemStackFromNBT(choices.getCompoundTagAt(choice))
+            : null;
+    }
+
+    private ItemStack pickedTarget() {
+        return sourceTargets ? sourceStack(sourceChoice)
+            : inventorySlot >= 0 ? mc.thePlayer.inventory.mainInventory[inventorySlot] : null;
+    }
+
     private int inventorySlotAt(int x, int y) {
-        int col = (x - 181) / 22, row = (y - 128) / 22;
-        if (x < 181 || y < 128 || col >= 9 || row >= 4 || (x - 181) % 22 >= 20 || (y - 128) % 22 >= 20) return -1;
-        return row == 3 ? col : 9 + row * 9 + col;
+        int col = (x - 181) / 22, row = (y - 139) / 20;
+        if (x < 181 || y < 139 || col >= 9 || row >= 4 || (x - 181) % 22 >= 20 || (y - 139) % 20 >= 18) return -1;
+        return sourceTargets ? sourceOffset + row * 9 + col : row == 3 ? col : 9 + row * 9 + col;
     }
 
     private void pinInventory(int target) {
-        if (!editable() || target < 0 || inventorySlot < 0) return;
+        if (!editable() || target < 0 || pickedTarget() == null) return;
         selected = target;
         NBTTagCompound n = new NBTTagCompound();
         n.setInteger("selected", target);
         n.setInteger("index", target);
-        n.setInteger("inventorySlot", inventorySlot);
-        send("customPin", n, true);
+        if (sourceTargets) n.setInteger("choice", sourceChoice);
+        else n.setInteger("inventorySlot", inventorySlot);
+        n.setInteger("scope", 2);
+        send(sourceTargets ? "sourcePin" : "customPin", n, true);
     }
 
     private boolean canInventoryPin() {
         HologramState.Cell cell = selectedCell();
-        return cell != null && !cell.anchor && !cell.family.equals("coil") && state.data.getInteger("mode") != 2;
+        return cell != null && !cell.anchor && state.data.getInteger("mode") != 2;
     }
 
     private void drawConfirmation(int mx, int my) {
         drawRect(40, 58, 376, 254, 0xff172f36);
-        text("确认服务端差分 · 计划 " + confirmedRevision, 50, 68, 315, 0xf5e4b9);
+        text("材料与改动", 50, 68, 315, 0xf5e4b9);
         int operations = 0, recovery = 0;
         NBTTagList rows = state.data.getTagList("cells", 10);
         for (int i = 0; i < rows.tagCount(); i++) {
@@ -561,21 +715,19 @@ public final class HologramScreen extends GuiScreen {
         }
         text("预计回收 " + recovery + " · 不提前抵扣材料", 50, 202, 315, 0x94afb4);
         text(
-            notice.isEmpty() ? (state.data.getInteger("mode") == 2
-                ? (state.data.getBoolean("keepController") ? "保留控制器锚点；拆除所选范围与仓室" : "最后回收控制器；外围未完成则保留")
-                : "直接施工，无动画；仓室数据不迁移") : notice,
+            notice.isEmpty() ? (state.data.getInteger("mode") == 2 ? "始终保留控制器；拆除所选范围与仓室" : "直接施工，无动画；仓室数据不迁移") : notice,
             50,
             215,
             315,
             0xe4b85a);
-        button(54, 50, 232, 146, 17, "返回草案", true, mx, my);
+        button(54, 50, 232, 146, 17, "返回", true, mx, my);
         button(
             55,
             203,
             232,
             162,
             17,
-            "确认并直接施工",
+            "直接执行",
             editable() && operations > 0 && confirmedRevision == revision() && state.data.getInteger("missing") == 0,
             mx,
             my);
@@ -888,13 +1040,12 @@ public final class HologramScreen extends GuiScreen {
     private String disabledReason(int id) {
         if (!editable() && id != 51 && id != 52) return editingReason();
         if (id == 65 && selectedCell() != null) {
-            if (selectedCell().family.equals("coil")) return "线圈使用等级信道统一修改，请打开等级 / 信道设置。";
             if (!canInventoryPin()) return "控制器、已有受保护设备或拆除模式不能指定新目标；仓室数据不迁移，服务端验证替换安全性。";
         }
         if (id == 92 || id == 93 || id == 65 || id == 66)
-            return selectedCell() == null ? "先点击左侧预览选择一个结构格。" : "先从背包选择目标物品。";
+            return selectedCell() == null ? "先点击左侧预览选位，或添加坐标。" : "先从背包选择目标物品。";
         if (id == 83) return "此结构没有已验证的仓室自动选材能力。";
-        if (id == 55) return state.data.getInteger("missing") > 0 ? "材料不足：请补充背包后重新采集。" : "当前范围没有可执行差分，或计划已经更新。";
+        if (id == 55) return state.data.getInteger("missing") > 0 ? "材料不足：请补充背包后重新采集。" : "材料与改动已更新，请重新查看。";
         if (id == 51 || id == 52) return pendingSequence >= 0 ? "等待服务端回执。" : "没有可暂停或取消的施工任务。";
         if (id == 12 || id == 13) return "已到达结构图层边界。";
         if (id == 80 || id == 82) return "已到达当前已验证目标列表边界。";
@@ -911,19 +1062,15 @@ public final class HologramScreen extends GuiScreen {
             case 13:
                 return "查看相邻图层。";
             case 15:
-                return "显示或隐藏世界中的全息预览；不改变施工计划。";
+                return "显示或隐藏世界中的材质预览。";
             case 26:
-                return "查看选中空位候选与材料清单，保护原因在主面板显示。";
+                return "可选：重新核对材料与改动，不执行施工。";
             case 30:
-                return "高级主原始信号；未显式指定的子信道继承它。修改后重新生成草案。";
+                return "高级主原始信号；未显式指定的子信道继承它。修改后更新预览。";
             case 33:
                 return "只放外壳：可回退位置使用外壳，固定接口仍需手动补齐。允许仓室：服务端可验证仓室候选；不保证机器成型。";
-            case 40:
-                return "调用机器原版提示，仅显示结构提示。";
-            case 41:
-                return "调用机器原版构造；不提供高级逐格保护与施工回执。";
             case 50:
-                return "先重新扫描现场并生成差分，再核对材料、回收与范围；第二步确认才直接施工。";
+                return "按当前操作立即执行；服务端先核对现场与材料，无施工动画。";
             case 51:
                 return "暂停或继续当前施工；暂停保留已完成方块。";
             case 52:
@@ -934,16 +1081,19 @@ public final class HologramScreen extends GuiScreen {
                 return "查看具名目标与原始值，可手填任意合法信道；滚轮查看完整列表。";
             case 61:
                 return "打开真实36格背包；点击或拖动复制目标，物品不会被移动或消耗。";
+            case 75:
+                return "按世界轴填写相对控制器的坐标，添加后自动选择单格。";
+            case 78:
+                return "选择从主背包、背包内容器与 ME 终端取材，并设置优先来源。";
             case 65:
-                return "将选中的背包物品指定给当前预览格；服务端重新验证结构候选与替换安全性。";
+                return "将选中的背包物品指定给当前预览格；可指定任意可放置方块或仓室，服务端验证替换安全性。";
             case 66:
                 return "清除当前格的手动目标，恢复信道或结构默认规则。";
             case 80:
             case 81:
             case 82:
-                return "修改当前部件的合法目标等级，仅更新草案。";
+                return "修改当前部件的合法目标等级，仅更新目标。";
             case 83:
-                if (state.data.getInteger("mode") == 2) return "默认关闭：所选外围全部成功拆除后，最后回收控制器；外围失败或未完成时保留。开启后保留控制器锚点。";
                 return "仓室手选：从候选或背包指定目标。自动选材：允许结构自身选择仓室材料，不保证数量与成型配额。";
             case 90:
                 return "施工范围：整个结构中可安全执行的差分格。";
@@ -971,10 +1121,16 @@ public final class HologramScreen extends GuiScreen {
         if (stack == null) return;
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
         GL11.glPushMatrix();
+        float previousZ = itemRenderer.zLevel;
         try {
+            itemRenderer.zLevel = 0;
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glDepthMask(true);
             RenderHelper.enableGUIStandardItemLighting();
             itemRenderer.renderItemAndEffectIntoGUI(fontRendererObj, mc.getTextureManager(), stack, x, y);
+            itemRenderer.renderItemOverlayIntoGUI(fontRendererObj, mc.getTextureManager(), stack, x, y);
         } finally {
+            itemRenderer.zLevel = previousZ;
             GL11.glPopMatrix();
             GL11.glPopAttrib();
         }
@@ -1003,12 +1159,19 @@ public final class HologramScreen extends GuiScreen {
             }
         }
         if (!optionChannel.isEmpty() && !confirmation) optionValueField.mouseClicked(mx, my, button);
+        if (positionDrawer && !confirmation) {
+            positionXField.mouseClicked(mx, my, button);
+            positionYField.mouseClicked(mx, my, button);
+            positionZField.mouseClicked(mx, my, button);
+        }
         if (button == 0) {
             if (inventory && !confirmation && optionChannel.isEmpty()) {
                 int slot = inventorySlotAt(mx, my);
                 if (slot >= 0) {
-                    if (mc.thePlayer.inventory.mainInventory[slot] != null && editable()) {
-                        inventorySlot = slot;
+                    if ((sourceTargets ? sourceStack(slot) : mc.thePlayer.inventory.mainInventory[slot]) != null
+                        && editable()) {
+                        if (sourceTargets) sourceChoice = slot;
+                        else inventorySlot = slot;
                         inventoryDragging = true;
                     }
                     return;
@@ -1017,24 +1180,36 @@ public final class HologramScreen extends GuiScreen {
             for (int i = controls.size() - 1; i >= 0; i--) {
                 Control c = controls.get(i);
                 if (c.contains(mx, my)) {
+                    if (sourceDrawer && (c.id < 84 || c.id > 88)) return;
+                    if (positionDrawer && c.id != 76 && c.id != 77) return;
                     if (confirmation && c.id != 54 && c.id != 55) return;
                     if (!optionChannel.isEmpty() && c.id != 63 && c.id != 68 && c.id < 4000) return;
-                    if (inventory && c.id != 64 && c.id != 65 && c.id != 66 && !inViewport(mx, my)) return;
+                    if (inventory && c.id != 64
+                        && c.id != 65
+                        && c.id != 66
+                        && c.id != 16
+                        && c.id != 17
+                        && c.id != 18
+                        && !inViewport(mx, my)) return;
                     if (drawer && !confirmation
                         && optionChannel.isEmpty()
                         && c.id < 1000
                         && c.id != 62
                         && c.id != 30
                         && c.id != 23
-                        && c.id != 40
-                        && c.id != 41
+                        && c.id != 33
+                        && c.id != 83
                         && c.id != 67
                         && c.id != 68) return;
                     if (c.enabled) activate(c.id);
                     return;
                 }
             }
-            if (!drawer && !confirmation && optionChannel.isEmpty() && inViewport(mx, my)) {
+            if (!drawer && !positionDrawer
+                && !sourceDrawer
+                && !confirmation
+                && optionChannel.isEmpty()
+                && inViewport(mx, my)) {
                 dragging = true;
                 moved = false;
                 dragX = mx;
@@ -1063,7 +1238,7 @@ public final class HologramScreen extends GuiScreen {
             inventoryDragging = false;
             int target = HologramRenderer.pick(mx, my);
             if (inViewport(mx, my) && target >= 0) pinInventory(target);
-            else if (mx >= 165 && mx < 396 && my >= 87 && my < 109) pinInventory(selected);
+            else if (mx >= 165 && mx < 396 && my >= 104 && my < 122) pinInventory(selected);
             return;
         }
         if (button == 0 && dragging) {
@@ -1071,7 +1246,10 @@ public final class HologramScreen extends GuiScreen {
             if (!moved && inViewport(localX(x), localY(y)) && target >= 0 && editable()) {
                 selected = target;
                 candidateOffset = 0;
-                configure("selected", selected);
+                NBTTagCompound selection = configuration();
+                selection.setInteger("selected", selected);
+                if (inventory) selection.setInteger("scope", 2);
+                send("configure", selection, true);
             }
             dragging = false;
         }
@@ -1084,7 +1262,12 @@ public final class HologramScreen extends GuiScreen {
         if (wheel == 0) return;
         int mx = localX(Mouse.getEventX() * width / mc.displayWidth),
             my = localY(height - Mouse.getEventY() * height / mc.displayHeight - 1);
-        if (confirmation) {
+        if (inventory && sourceTargets) {
+            int count = state.data.getTagList("materialChoices", 10)
+                .tagCount();
+            int maxOffset = Math.max(0, (count - 36 + 8) / 9 * 9);
+            sourceOffset = Math.max(0, Math.min(maxOffset, sourceOffset + (wheel > 0 ? -9 : 9)));
+        } else if (confirmation) {
             materialOffset = Math
                 .max(0, Math.min(Math.max(0, state.materials.size() - 5), materialOffset + (wheel > 0 ? -1 : 1)));
         } else if (!optionChannel.isEmpty()) {
@@ -1115,17 +1298,26 @@ public final class HologramScreen extends GuiScreen {
     @Override
     protected void keyTyped(char c, int key) {
         if (key == Keyboard.KEY_ESCAPE) {
-            if (inventoryDragging || inventorySlot >= 0) {
+            if (inventoryDragging || inventorySlot >= 0 || sourceChoice >= 0) {
                 inventoryDragging = false;
-                inventorySlot = -1;
+                inventorySlot = sourceChoice = -1;
             } else if (confirmation) confirmation = false;
+            else if (positionDrawer) positionDrawer = false;
+            else if (sourceDrawer) sourceDrawer = false;
             else if (!optionChannel.isEmpty()) optionChannel = "";
             else if (drawer) drawer = false;
             else if (inventory) inventory = false;
             else mc.displayGuiScreen(null);
             return;
         }
-        if (!optionChannel.isEmpty() && !confirmation) {
+        if (positionDrawer && !confirmation) {
+            if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER) activate(76);
+            else {
+                positionXField.textboxKeyTyped(c, key);
+                positionYField.textboxKeyTyped(c, key);
+                positionZField.textboxKeyTyped(c, key);
+            }
+        } else if (!optionChannel.isEmpty() && !confirmation) {
             if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER) activate(68);
             else optionValueField.textboxKeyTyped(c, key);
         } else if (drawer && !confirmation) {
@@ -1168,7 +1360,7 @@ public final class HologramScreen extends GuiScreen {
             modeConfig.setInteger("mode", id - 70);
             if (id == 72) {
                 modeConfig.setInteger("scope", 0);
-                modeConfig.setBoolean("keepController", false);
+                modeConfig.setBoolean("keepController", true);
             }
             send("configure", modeConfig, true);
             return;
@@ -1198,13 +1390,27 @@ public final class HologramScreen extends GuiScreen {
                 HologramClient.worldPreview = !HologramClient.worldPreview;
                 if (!HologramClient.worldPreview) HologramRenderer.release();
                 break;
+            case 16:
+            case 17:
+                sourceTargets = id == 17;
+                inventorySlot = sourceChoice = -1;
+                inventoryDragging = false;
+                sourceOffset = 0;
+                break;
+            case 18:
+                if (editable()) {
+                    sourceChoice = -1;
+                    send("scan", null, true);
+                }
+                break;
             case 23:
                 if (editable()) send("scan", null, true);
                 break;
             case 26:
-                drawer = true;
-                channelDrawer = false;
-                drawerOffset = 0;
+                if (editable()) {
+                    awaitingScan = true;
+                    send("scan", null, true);
+                }
                 break;
             case 60:
                 drawer = true;
@@ -1215,12 +1421,14 @@ public final class HologramScreen extends GuiScreen {
             case 61:
                 drawer = false;
                 inventory = true;
-                inventorySlot = -1;
+                inventorySlot = sourceChoice = -1;
+                sourceOffset = 0;
+                if (editable()) send("scan", null, true);
                 break;
             case 64:
                 inventory = false;
                 inventoryDragging = false;
-                inventorySlot = -1;
+                inventorySlot = sourceChoice = -1;
                 break;
             case 65:
                 pinInventory(selected);
@@ -1265,17 +1473,9 @@ public final class HologramScreen extends GuiScreen {
                     send("configure", n, true);
                 }
                 break;
-            case 40:
-                if (editable()) send("hints", null, true);
-                break;
-            case 41:
-                if (editable()) send("native", null, true);
-                break;
+
             case 50:
-                if (editable()) {
-                    awaitingScan = true;
-                    send("scan", null, true);
-                }
+                if (editable()) send("build", configuration(), true);
                 break;
             case 51:
                 send(state.data.getInteger("job") == 2 ? "resume" : "pause", null, true);
@@ -1293,7 +1493,7 @@ public final class HologramScreen extends GuiScreen {
                     NBTTagCompound n = new NBTTagCompound();
                     n.setLong("planRevision", confirmedRevision);
                     confirmation = false;
-                    send("start", n, true);
+                    send("build", n, true);
                 }
                 break;
             case 80:
@@ -1309,17 +1509,39 @@ public final class HologramScreen extends GuiScreen {
                     drawerOffset = 0;
                 }
                 break;
-            case 83:
-                if (state.data.getInteger("mode") == 2) {
-                    if (editable()) {
-                        NBTTagCompound config = configuration();
-                        config.setBoolean("keepController", !state.data.getBoolean("keepController"));
-                        send("configure", config, true);
-                    }
-                } else {
-                    NBTTagCompound hatch = capability("gt_hatch");
-                    if (hatch != null) chooseOption(hatch, hatch.getBoolean("explicit") ? 0 : 1);
+            case 75:
+                positionDrawer = true;
+                drawer = inventory = false;
+                break;
+            case 76:
+                addPosition();
+                break;
+            case 77:
+                positionDrawer = false;
+                break;
+            case 78:
+                sourceDrawer = true;
+                drawer = inventory = positionDrawer = false;
+                break;
+            case 84:
+            case 85:
+            case 86:
+                if (editable()) {
+                    String key = new String[] { "materialMain", "materialContainers", "materialMe" }[id - 84];
+                    NBTTagCompound sourceConfig = configuration();
+                    sourceConfig.setBoolean(key, !sourceEnabled(key));
+                    send("configure", sourceConfig, true);
                 }
+                break;
+            case 87:
+                configure("materialPriority", (state.data.getInteger("materialPriority") + 1) % 3);
+                break;
+            case 88:
+                sourceDrawer = false;
+                break;
+            case 83:
+                NBTTagCompound hatch = capability("gt_hatch");
+                if (hatch != null) chooseOption(hatch, hatch.getBoolean("explicit") ? 0 : 1);
                 break;
             default:
                 break;
@@ -1367,7 +1589,10 @@ public final class HologramScreen extends GuiScreen {
         n.setInteger("layer", layer);
         n.setInteger("selected", selected);
         n.setBoolean("noHatches", state.data.getBoolean("noHatches"));
-        n.setBoolean("keepController", state.data.getBoolean("keepController"));
+        n.setBoolean("keepController", true);
+        for (String key : new String[] { "materialMain", "materialContainers", "materialMe" })
+            n.setBoolean(key, sourceEnabled(key));
+        n.setInteger("materialPriority", state.data.getInteger("materialPriority"));
         n.setTag(
             "channels",
             state.data.getCompoundTag("channels")

@@ -9,9 +9,11 @@ import java.util.Set;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.entity.Entity;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.IIcon;
 
 import org.lwjgl.opengl.GL11;
 
@@ -46,11 +48,14 @@ final class HologramRenderer {
     private static double cachedExtent = 1;
     private static int worldList, worldLayer = Integer.MAX_VALUE;
     static int projectionLayer = Integer.MAX_VALUE;
+    static boolean showEmptyCells;
+    private static boolean visibleEmptyCells;
 
     static void release() {
         if (worldList != 0) GL11.glDeleteLists(worldList, 1);
         worldList = 0;
         worldState = previewState = null;
+        HologramTextures.clear();
         cachedFaces.clear();
         cachedMarkers.clear();
         cachedOutlines.clear();
@@ -61,6 +66,7 @@ final class HologramRenderer {
 
     static int preview(HologramState state, int x, int y, int width, int height, double yaw, double pitch, double zoom,
         int layer, int view, int selected, int mouseX, int mouseY, double rehearsal) {
+        HologramTextures.begin(state);
         String key = x + ":"
             + y
             + ":"
@@ -76,7 +82,9 @@ final class HologramRenderer {
             + ":"
             + layer
             + ":"
-            + view;
+            + view
+            + ":"
+            + showEmptyCells;
         if (previewState != state || !key.equals(previewKey)) {
             List<Face> faces = new ArrayList<>();
             List<RoleMarker> markers = new ArrayList<>();
@@ -84,21 +92,26 @@ final class HologramRenderer {
             double sinYaw = Math.sin(yaw), cosYaw = Math.cos(yaw);
             double sinPitch = Math.sin(pitch), cosPitch = Math.cos(pitch);
             int mode = state.data.getInteger("mode");
-            if (visibleState != state || visibleLayer != layer || visibleView != view || visibleMode != mode) {
+            boolean currentView = view == 1 || mode == 2;
+            if (visibleState != state || visibleLayer != layer
+                || visibleView != view
+                || visibleMode != mode
+                || visibleEmptyCells != showEmptyCells) {
                 visibleState = state;
                 visibleLayer = layer;
                 visibleView = view;
                 visibleMode = mode;
+                visibleEmptyCells = showEmptyCells;
                 visibleCells.clear();
                 occupied.clear();
-                boolean currentView = view == 1 || mode == 2;
                 for (HologramState.Cell c : state.cells) {
                     if (c.status.equals("removed") || (view == 2 && (c.completed() || c.status.equals("satisfied"))))
                         continue;
-                    if (!c.anchor && (currentView ? c.id : c.wantId).equals("minecraft:air")) continue;
+                    boolean empty = !c.anchor && !c.iconOnly && (currentView ? c.id : c.wantId).equals("minecraft:air");
+                    if (empty && !showEmptyCells) continue;
                     if (!c.anchor && c.dy != layer && layer != Integer.MAX_VALUE) continue;
                     visibleCells.add(c);
-                    occupied.add(coordinate(c.x, c.y, c.z));
+                    if (!empty) occupied.add(coordinate(c.x, c.y, c.z));
                 }
             }
             boolean[] facing = new boolean[6];
@@ -130,7 +143,11 @@ final class HologramRenderer {
                     if (!occupied.contains(coordinate(c.x + normal[0], c.y + normal[1], c.z + normal[2])))
                         exposed |= 1 << side;
                 }
+                boolean empty = !c.anchor && !c.iconOnly && (currentView ? c.id : c.wantId).equals("minecraft:air");
                 String role = roleLabel(c);
+                if (!empty && role.isEmpty() && HologramTextures.material(c, currentView).fallback)
+                    role = "\u6750\u8d28\u7f3a\u5931";
+                if (!empty && role.isEmpty() && c.iconOnly) role = "\u5360\u4f4d";
                 if (exposed == 0 && role.isEmpty()) continue;
                 double[][] projected = new double[8][];
                 for (int v = 0; v < 8; v++) {
@@ -144,9 +161,9 @@ final class HologramRenderer {
                 }
                 if (!role.isEmpty() && (c.anchor || markers.size() < 64))
                     markers.add(new RoleMarker(c, projected, role));
-                outlines.add(new Face(c, projected, 0));
+                outlines.add(new Face(c, projected, 0, currentView));
                 for (int side = 0; side < 6; side++) {
-                    if ((exposed & (1 << side)) != 0) faces.add(new Face(c, projected, side));
+                    if ((exposed & (1 << side)) != 0) faces.add(new Face(c, projected, side, currentView));
                 }
             }
             faces.sort(Comparator.comparingDouble(f -> f.depth));
@@ -186,7 +203,11 @@ final class HologramRenderer {
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             GL11.glDisable(GL11.GL_CULL_FACE);
-            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            mc.getTextureManager()
+                .bindTexture(TextureMap.locationBlocksTexture);
+            GL11.glEnable(GL11.GL_ALPHA_TEST);
+            GL11.glAlphaFunc(GL11.GL_GREATER, .01f);
             double depthScale = 128 / extent;
             Tessellator t = Tessellator.instance;
             t.startDrawingQuads();
@@ -196,18 +217,22 @@ final class HologramRenderer {
                     && mouseY >= y
                     && mouseY < y + height;
                 if (inside) hovered = face.cell.index;
-                int color = view == 1 ? 0xffffff : face.cell.textureColor();
-                if (view != 1 && state.data.getInteger("mode") == 2 && face.cell.status.equals("pending"))
-                    color = 0xf08b83;
+                if (face.empty) continue;
                 float shade = face.side == 1 ? 1 : face.side < 2 ? .6f : .8f;
-                t.setColorRGBA_F(
-                    ((color >> 16) & 255) / 255f * shade,
-                    ((color >> 8) & 255) / 255f * shade,
-                    (color & 255) / 255f * shade,
-                    .86f);
-                for (int i = 0; i < 4; i++) {
-                    double[] p = face.points[FACES[face.side][i]];
-                    t.addVertex(p[0], p[1], p[2] * depthScale);
+                int sampleIndex = 0;
+                for (HologramTextures.Sample sample : face.material.sides[face.side]) {
+                    setSampleColor(t, sample, shade, .96f);
+                    for (int i = 0; i < 4; i++) {
+                        int vertex = FACES[face.side][i];
+                        double[] point = face.points[vertex];
+                        t.addVertexWithUV(
+                            point[0],
+                            point[1],
+                            point[2] * depthScale + sampleIndex * .015,
+                            textureU(sample.icon, face.side, vertex),
+                            textureV(sample.icon, face.side, vertex));
+                    }
+                    sampleIndex++;
                 }
             }
             t.draw();
@@ -221,7 +246,7 @@ final class HologramRenderer {
                     face.cell.index == selected ? 1 : .2f,
                     face.cell.index == selected ? .92f : .7f,
                     face.cell.index == selected ? .5f : .8f,
-                    face.cell.index == selected ? 1 : .45f);
+                    face.cell.index == selected ? 1 : face.empty ? .18f : .45f);
                 for (int[] edge : EDGES) {
                     double[] a = face.points[edge[0]], b = face.points[edge[1]];
                     t.addVertex(a[0], a[1], a[2] * depthScale + .15);
@@ -264,6 +289,9 @@ final class HologramRenderer {
                 if (marker.cell.anchor) lastPreviewAnchorMarkers++;
             }
         } finally {
+            // Depth is framebuffer data, not an attribute: do not leave schematic depth in later GUI overlays.
+            GL11.glDepthMask(true);
+            GL11.glClear(GL11.GL_DEPTH_BUFFER_BIT);
             GL11.glPopAttrib();
         }
         return hovered;
@@ -353,6 +381,7 @@ final class HologramRenderer {
     }
 
     static void world(HologramState state, float partialTicks) {
+        HologramTextures.begin(state);
         Minecraft mc = Minecraft.getMinecraft();
         Entity camera = mc.renderViewEntity;
         if (camera == null) return;
@@ -366,19 +395,59 @@ final class HologramRenderer {
             worldState = state;
             worldLayer = projectionLayer;
             lastWorldGeometry = lastWorldGTGeometry = lastWorldFallback = lastWorldMatched = lastWorldGhosts = 0;
-            GL11.glNewList(worldList, GL11.GL_COMPILE);
-            Tessellator t = Tessellator.instance;
-            t.startDrawing(GL11.GL_LINES);
+            List<HologramState.Cell> cells = new ArrayList<>();
+            Set<Long> ghosts = new HashSet<>();
+            boolean removal = state.data.getInteger("mode") == 2;
             for (HologramState.Cell c : state.cells) {
                 if (c.status.equals("removed") || c.completed()) continue;
-                if (!c.anchor && (worldLayer != Integer.MAX_VALUE && c.dy != worldLayer)) continue;
+                if (!c.anchor && worldLayer != Integer.MAX_VALUE && c.dy != worldLayer) continue;
                 if (!c.anchor && c.id.equals("minecraft:air")
                     && c.wantId.equals("minecraft:air")
                     && !c.role.contains("interface")) continue;
-                // Hard radius around the controller keeps large sparse snapshots bounded.
                 if (c.dx * (double) c.dx + c.dy * (double) c.dy + c.dz * (double) c.dz > 4096) continue;
+                cells.add(c);
+                if (!c.anchor && !removal
+                    && !c.status.equals("satisfied")
+                    && !worldMatched(c)
+                    && !c.wantId.equals("minecraft:air")) ghosts.add(coordinate(c.x, c.y, c.z));
+                else if (!c.anchor && !removal) lastWorldMatched++;
+            }
+            GL11.glNewList(worldList, GL11.GL_COMPILE);
+            Tessellator t = Tessellator.instance;
+            GL11.glEnable(GL11.GL_TEXTURE_2D);
+            t.startDrawingQuads();
+            for (HologramState.Cell c : cells) {
+                if (!ghosts.contains(coordinate(c.x, c.y, c.z))) continue;
+                HologramTextures.Material material = HologramTextures.material(c, false);
+                lastWorldGhosts++;
+                if (material.gregTech) lastWorldGTGeometry++;
+                if (material.fallback) lastWorldFallback++;
+                for (int side = 0; side < 6; side++) {
+                    int[] normal = NORMALS[side];
+                    if (ghosts.contains(coordinate(c.x + normal[0], c.y + normal[1], c.z + normal[2]))) continue;
+                    int sampleIndex = 0;
+                    for (HologramTextures.Sample sample : material.sides[side]) {
+                        setSampleColor(t, sample, side == 1 ? 1 : side == 0 ? .65f : .85f, .38f);
+                        for (int vertex : FACES[side]) {
+                            double[] point = VERTICES[vertex];
+                            double offset = .002 + sampleIndex * .0005;
+                            t.addVertexWithUV(
+                                c.x + .5 + point[0] + normal[0] * offset,
+                                c.y + .5 + point[1] + normal[1] * offset,
+                                c.z + .5 + point[2] + normal[2] * offset,
+                                textureU(sample.icon, side, vertex),
+                                textureV(sample.icon, side, vertex));
+                        }
+                        sampleIndex++;
+                    }
+                }
+            }
+            t.draw();
+            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            t.startDrawing(GL11.GL_LINES);
+            for (HologramState.Cell c : cells) {
                 int color = c.anchor ? 0xffffbd : c.color();
-                if (state.data.getInteger("mode") == 2 && c.status.equals("pending")) color = 0xf08b83;
+                if (removal && c.status.equals("pending")) color = 0xf08b83;
                 t.setColorRGBA_F(
                     ((color >> 16) & 255) / 255f,
                     ((color >> 8) & 255) / 255f,
@@ -389,8 +458,6 @@ final class HologramRenderer {
                     c.y + .5 + VERTICES[v][1] * 1.006,
                     c.z + .5 + VERTICES[v][2] * 1.006);
                 lastWorldGeometry++;
-                if (c.status.equals("satisfied")) lastWorldMatched++;
-                else if (!c.anchor) lastWorldGhosts++;
             }
             t.draw();
             GL11.glEndList();
@@ -400,7 +467,13 @@ final class HologramRenderer {
         try {
             GL11.glTranslated(-px, -py, -pz);
             GL11.glDisable(GL11.GL_LIGHTING);
-            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            mc.getTextureManager()
+                .bindTexture(TextureMap.locationBlocksTexture);
+            GL11.glEnable(GL11.GL_CULL_FACE);
+            GL11.glCullFace(GL11.GL_BACK);
+            GL11.glFrontFace(GL11.GL_CCW);
+            GL11.glEnable(GL11.GL_ALPHA_TEST);
+            GL11.glAlphaFunc(GL11.GL_GREATER, .01f);
             GL11.glEnable(GL11.GL_DEPTH_TEST);
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
@@ -413,17 +486,43 @@ final class HologramRenderer {
         }
     }
 
+    private static void setSampleColor(Tessellator tessellator, HologramTextures.Sample sample, float shade,
+        float alpha) {
+        int color = sample.color;
+        tessellator.setColorRGBA_F(
+            ((color >> 16) & 255) / 255f * shade,
+            ((color >> 8) & 255) / 255f * shade,
+            (color & 255) / 255f * shade,
+            alpha);
+    }
+
+    private static double textureU(IIcon icon, int side, int vertex) {
+        double[] point = VERTICES[vertex];
+        double u = side == 4 ? point[2] + .5 : side == 5 ? .5 - point[2] : side == 2 ? .5 - point[0] : point[0] + .5;
+        return icon.getMinU() + (icon.getMaxU() - icon.getMinU()) * u;
+    }
+
+    private static double textureV(IIcon icon, int side, int vertex) {
+        double[] point = VERTICES[vertex];
+        double v = side == 0 ? point[2] + .5 : side == 1 ? .5 - point[2] : .5 - point[1];
+        return icon.getMinV() + (icon.getMaxV() - icon.getMinV()) * v;
+    }
+
     private static final class Face {
 
         final HologramState.Cell cell;
         final double[][] points;
         final int side;
         final double depth;
+        final HologramTextures.Material material;
+        final boolean empty;
 
-        Face(HologramState.Cell cell, double[][] points, int side) {
+        Face(HologramState.Cell cell, double[][] points, int side, boolean current) {
             this.cell = cell;
             this.points = points;
             this.side = side;
+            empty = !cell.anchor && !cell.iconOnly && (current ? cell.id : cell.wantId).equals("minecraft:air");
+            material = empty ? null : HologramTextures.material(cell, current);
             double d = 0;
             for (int index : FACES[side]) d += points[index][2];
             depth = d / 4;

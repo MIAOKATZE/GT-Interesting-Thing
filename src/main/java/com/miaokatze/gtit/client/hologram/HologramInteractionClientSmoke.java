@@ -31,7 +31,7 @@ public final class HologramInteractionClientSmoke {
     private long lastClickedRender = -1;
     private long renderedWorldFrames, closedAtWorldFrame;
     private int receiptReadRetries;
-    private final int[] initialClicks = { 71, 72, 70, 82, 80, 33 };
+    private final int[] initialClicks = { 71, 72, 70, 82, 80, 60 };
 
     public static void install() {
         if (Boolean.getBoolean("gtit.hologram.realInteractionSmoke")) {
@@ -89,10 +89,10 @@ public final class HologramInteractionClientSmoke {
             if (stage == 30) {
                 if (renderedWorldFrames <= closedAtWorldFrame) return;
                 waitTicks = 0;
-                require(HologramRenderer.lastWorldGeometry > 0, "cached_world_schematic_geometry_" + stage);
-                require(HologramRenderer.lastWorldGTGeometry == 0, "schematic_does_not_render_GT_models_" + stage);
+                require(HologramRenderer.lastWorldGeometry > 0, "cached_world_material_geometry_" + stage);
+                require(HologramRenderer.lastWorldGTGeometry > 0, "world_renders_GT_material_models_" + stage);
                 require(HologramRenderer.lastWorldGhosts > 0, "real_world_has_ghost_cells_" + stage);
-                screenshot(mc, "world-schematic");
+                screenshot(mc, "world-materials");
                 reopenWithRightClick(mc);
                 stage = 3;
                 return;
@@ -141,15 +141,17 @@ public final class HologramInteractionClientSmoke {
                     stage = 30;
                     break;
                 case 9:
-                    require(
-                        state.getInteger("mode") == 0 && state.getBoolean("noHatches"),
-                        "three_modes_grade_buttons_and_configuration_acknowledged");
-                    click(screen, 50);
-                    stage++;
+                    click(screen, 33);
+                    stage = 32;
                     break;
-                case 10:
-                    click(screen, 55);
-                    stage++;
+                case 32:
+                    click(screen, 62);
+                    stage = 31;
+                    break;
+                case 31:
+                    require(state.getInteger("mode") == 0, "three_modes_grade_buttons_acknowledged");
+                    click(screen, 50);
+                    stage = 11;
                     break;
                 case 11:
                     if (state.getInteger("job") != 3 && state.getInteger("job") != 5) return;
@@ -169,11 +171,7 @@ public final class HologramInteractionClientSmoke {
                     break;
                 case 27:
                     click(screen, 50);
-                    stage = 16;
-                    break;
-                case 16:
-                    click(screen, 55);
-                    stage++;
+                    stage = 17;
                     break;
                 case 17:
                     if (state.getInteger("job") != 3 && state.getInteger("job") != 5) return;
@@ -187,11 +185,7 @@ public final class HologramInteractionClientSmoke {
                     break;
                 case 19:
                     click(screen, 50);
-                    stage++;
-                    break;
-                case 20:
-                    click(screen, 55);
-                    stage++;
+                    stage = 21;
                     break;
                 case 21:
                     if (state.getInteger("job") != 3 && state.getInteger("job") != 5) return;
@@ -203,11 +197,7 @@ public final class HologramInteractionClientSmoke {
                     break;
                 case 22:
                     click(screen, 50);
-                    stage++;
-                    break;
-                case 23:
-                    click(screen, 55);
-                    stage++;
+                    stage = 24;
                     break;
                 case 24:
                     if (state.getInteger("job") != 3 && state.getInteger("job") != 5) return;
@@ -215,7 +205,9 @@ public final class HologramInteractionClientSmoke {
                     require(
                         receipt.getInteger("placed") == 0 && receipt.getInteger("stock") == 192,
                         "dismantle_returns_all_shell_materials_exactly");
-                    require(state.getBoolean("targetClosed"), "full_dismantle_closes_removed_controller_target");
+                    require(
+                        !state.getBoolean("targetClosed") && mc.theWorld.getTileEntity(48, 80, 48) != null,
+                        "dismantle_preserves_controller_target");
                     Files.write(
                         new File(receipts, "client-complete.txt").toPath(),
                         "real socket C08 + GUI mouse + direct-build/upgrade/full-dismantle PASS\n"

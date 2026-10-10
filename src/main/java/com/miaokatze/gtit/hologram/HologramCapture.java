@@ -309,6 +309,7 @@ public final class HologramCapture {
         List<ItemStack> candidates;
         final ItemStack elementTrigger;
         boolean anchor;
+        boolean userPosition;
         boolean iconOnly;
         String role = "block";
         String family = "";
