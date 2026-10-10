@@ -238,58 +238,22 @@ public final class HologramSmokeTest {
             try {
                 HologramService.handle(player, action(capture.state, "start"));
                 require(capture.state.getInteger("job") == 1, "real_C08_session_starts_bounded_job");
+                int initialCoils = countCoils(player);
                 HologramService.tick();
                 require(
-                    "PREPARE".equals(capture.state.getString("phase"))
-                        && capture.state.getIntArray("pending").length == 1,
-                    "first_job_tick_sends_real_PREPARE_target");
+                    "ACK".equals(capture.state.getString("phase")) && capture.state.getIntArray("pending").length == 0,
+                    "first_tick_executes_batch_without_prepare");
                 require(
-                    capture.state.getLong("due") - capture.state.getLong("serverTick") == 8,
-                    "PREPARE_reserves_exactly_eight_server_ticks");
-                ItemStack[] preparedInventory = new ItemStack[player.inventory.mainInventory.length];
-                for (int i = 0; i < preparedInventory.length; i++)
-                    preparedInventory[i] = player.inventory.mainInventory[i] == null ? null
-                        : player.inventory.mainInventory[i].copy();
-                net.minecraft.nbt.NBTTagList preparedCells = capture.state.getTagList("cells", 10);
-                net.minecraft.block.Block[] preparedBlocks = new net.minecraft.block.Block[preparedCells.tagCount()];
-                int[] preparedMetas = new int[preparedCells.tagCount()];
-                for (int i = 0; i < preparedCells.tagCount(); i++) {
-                    NBTTagCompound row = preparedCells.getCompoundTagAt(i);
-                    preparedBlocks[i] = world.getBlock(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"));
-                    preparedMetas[i] = world
-                        .getBlockMetadata(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"));
-                }
-                for (int tick = 0; tick < 7; tick++) {
-                    world.getWorldInfo()
-                        .incrementTotalWorldTime(world.getTotalWorldTime() + 1);
-                    HologramService.tick();
-                }
-                for (int i = 0; i < preparedInventory.length; i++) require(
-                    ItemStack.areItemStacksEqual(preparedInventory[i], player.inventory.mainInventory[i]),
-                    "before_PREPARE_due_inventory_slot_unchanged_" + i);
-                for (int i = 0; i < preparedCells.tagCount(); i++) {
-                    NBTTagCompound row = preparedCells.getCompoundTagAt(i);
-                    require(
-                        world.getBlock(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"))
-                            == preparedBlocks[i]
-                            && world.getBlockMetadata(row.getInteger("x"), row.getInteger("y"), row.getInteger("z"))
-                                == preparedMetas[i],
-                        "before_PREPARE_due_world_cell_unchanged_" + i);
-                }
-                int initialCoils = countCoils(player);
-                for (int i = 0; i < 500 && capture.state.getInteger("job") == 1; i++) {
-                    world.getWorldInfo()
-                        .incrementTotalWorldTime(world.getTotalWorldTime() + 1);
-                    HologramService.tick();
-                }
-                require(veto.hits > 0 && capture.state.getInteger("job") == 2, "place_event_veto_pauses_real_job");
+                    veto.hits > 0 && capture.state.getInteger("job") == 5,
+                    "place_event_veto_returns_partial_batch_result");
                 require(countCoils(player) == initialCoils, "veto_restores_consumed_coil_material");
                 require(world.isAirBlock(veto.x, veto.y, veto.z), "veto_restores_original_world_cell");
             } finally {
                 net.minecraftforge.common.MinecraftForge.EVENT_BUS.unregister(veto);
             }
-            HologramService.handle(player, action(capture.state, "resume"));
-            require(capture.state.getInteger("job") == 1, "event_veto_preserves_current_tool_identity_for_resume");
+            HologramService.handle(player, action(capture.state, "scan"));
+            HologramService.handle(player, action(capture.state, "start"));
+            require(capture.state.getInteger("job") == 1, "event_veto_preserves_tool_identity_for_new_batch");
             HologramService.handle(player, action(capture.state, "pause"));
             int completed = capture.state.getInteger("completed");
             world.getWorldInfo()
@@ -415,7 +379,7 @@ public final class HologramSmokeTest {
                     maximum > 0 && profile.validConfiguration(1, legal),
                     "profile_" + p + "_" + id + "_upper_bound_valid");
                 legal.setInteger(id, maximum + 1);
-                require(!profile.validConfiguration(1, legal), "profile_" + p + "_" + id + "_out_of_range_rejected");
+                require(profile.validConfiguration(1, legal), "profile_" + p + "_" + id + "_raw_signal_accepted");
                 legal.setInteger(id, 0);
                 require(!profile.validConfiguration(1, legal), "profile_" + p + "_" + id + "_explicit_zero_rejected");
                 require(
@@ -424,26 +388,26 @@ public final class HologramSmokeTest {
             }
             NBTTagCompound forged = new NBTTagCompound();
             forged.setInteger("unregistered.attack.channel", 1);
-            require(!profile.validConfiguration(1, forged), "profile_" + p + "_forged_channel_rejected");
-            require(!profile.validConfiguration(65, new NBTTagCompound()), "profile_" + p + "_main_overflow_rejected");
+            require(profile.validConfiguration(1, forged), "profile_" + p + "_custom_channel_accepted");
+            require(
+                profile.validConfiguration(65, new NBTTagCompound()),
+                "profile_" + p + "_main_raw_integer_accepted");
             HologramCapabilities.Result saved = HologramCapabilities.describe(contexts[p], new ItemStack(item), null)
                 .withSavedChannels(forged);
             require(saved.validConfiguration(1, forged), "profile_" + p + "_saved_foreign_key_retained");
             forged.setInteger("unregistered.attack.channel", 2);
-            require(!saved.validConfiguration(1, forged), "profile_" + p + "_saved_foreign_key_edit_rejected");
+            require(saved.validConfiguration(1, forged), "profile_" + p + "_saved_foreign_key_edit_accepted");
             require(
-                !saved.sanitizeChannels(forged)
+                saved.sanitizeChannels(forged)
                     .hasKey("unregistered.attack.channel"),
-                "profile_" + p + "_foreign_key_not_used_as_current_machine_signal");
+                "profile_" + p + "_custom_key_used_as_current_machine_signal");
         }
         coke.setCoilLevel(gregtech.api.enums.HeatingCoilLevel.MAX);
         HologramCapabilities.Result maximumCoil = HologramCapabilities.describe(coke, new ItemStack(item), null);
         NBTTagCompound length = new NBTTagCompound();
         length.setInteger("length", 1);
-        require(!maximumCoil.validConfiguration(1, length), "MAX_coke_length_channel_inactive");
-        require(
-            !maximumCoil.validConfiguration(17, new NBTTagCompound()),
-            "MAX_coke_main_slice_count_limited_to_sixteen");
+        require(maximumCoil.validConfiguration(1, length), "MAX_coke_inactive_channel_remains_editable");
+        require(maximumCoil.validConfiguration(17, new NBTTagCompound()), "MAX_coke_main_accepts_raw_integer");
     }
 
     private void require(boolean ok, String label) {

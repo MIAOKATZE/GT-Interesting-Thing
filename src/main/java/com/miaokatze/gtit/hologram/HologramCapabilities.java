@@ -33,7 +33,7 @@ public final class HologramCapabilities {
         for (int value = 1; value <= 64; value++) main.option(value, Integer.toString(value), null);
         if (report != null && report.context == context) {
             for (HologramChannelTrace.Observation observed : report.observations.values()) {
-                Row row = result.add(observed.id, observed.id + "（值域未适配，只读）", "observed");
+                Row row = result.add(observed.id, observed.id + "（原始整数）", "observed");
                 row.operations = observed.operations;
             }
         }
@@ -80,7 +80,7 @@ public final class HologramCapabilities {
                 range(result, "length", "焦炉构造分段参数", 16, " 段");
             } else {
                 Row length = result.add("length", "长度（控制器实际线圈为 MAX，当前由主信号决定）", "inactive");
-                length.editable = false;
+                length.editable = true;
                 Row slices = result.add("main", "主信号（当前焦炉分段数量）", "master");
                 for (int raw = 1; raw <= 16; raw++) slices.option(raw, raw + " 段", null);
             }
@@ -135,35 +135,23 @@ public final class HologramCapabilities {
             return list;
         }
 
-        /** Saved keys for other machines may be retained or removed, but cannot be introduced or changed. */
+        /** Options are suggestions; StructureLib signals are positive integers. */
         public boolean validConfiguration(int requestedMain, NBTTagCompound channels) {
-            if (!rows.get("main")
-                .has(requestedMain) || channels == null
+            if (requestedMain < 1 || channels == null
                 || channels.func_150296_c()
                     .size() > 64)
                 return false;
             for (Object key : channels.func_150296_c()) {
                 String id = (String) key;
-                Row row = rows.get(id);
-                if ("main".equals(id) || !channels.hasKey(id, 3)) return false;
-                int raw = channels.getInteger(id);
-                if (row != null && row.editable) {
-                    if (!row.has(raw)) return false;
-                } else if (!previous.hasKey(id, 3) || previous.getInteger(id) != raw) return false;
+                if (!id.matches("[a-z0-9_.-]{1,48}") || !channels.hasKey(id, 3) || channels.getInteger(id) < 1)
+                    return false;
             }
             return true;
         }
 
-        /** Filters a temporary construction trigger; callers must retain the complete tool configuration separately. */
+        /** Preserve all named signals so a previously unseen dynamic branch can be captured. */
         public NBTTagCompound sanitizeChannels(NBTTagCompound input) {
-            NBTTagCompound safe = new NBTTagCompound();
-            if (input == null) return safe;
-            for (Row row : rows.values()) {
-                if ("main".equals(row.id) || !input.hasKey(row.id, 3)) continue;
-                int value = input.getInteger(row.id);
-                if (value > 0 && (!row.editable || row.has(value))) safe.setInteger(row.id, value);
-            }
-            return safe;
+            return input == null ? new NBTTagCompound() : (NBTTagCompound) input.copy();
         }
 
         /** Bind the complete saved configuration when capture uses a filtered temporary trigger. */
@@ -173,7 +161,10 @@ public final class HologramCapabilities {
             if (saved != null) {
                 for (Object key : saved.func_150296_c()) {
                     String id = (String) key;
-                    if (saved.hasKey(id, 3)) previous.setInteger(id, saved.getInteger(id));
+                    if (saved.hasKey(id, 3)) {
+                        previous.setInteger(id, saved.getInteger(id));
+                        if (!rows.containsKey(id)) add(id, id + "（原始整数）", "observed");
+                    }
                 }
             }
             return this;
@@ -182,9 +173,10 @@ public final class HologramCapabilities {
         /** Encodes a UI option as its original channel signal; zero means remove the named key. */
         public boolean encodeOption(NBTTagCompound channels, String id, int value) {
             Row row = rows.get(id);
-            if (channels == null || row == null || !row.editable || "main".equals(id)) return false;
+            if (channels == null || id == null || !id.matches("[a-z0-9_.-]{1,48}") || "main".equals(id)) return false;
+            if (row == null) row = add(id, id + "（原始整数）", "observed");
             if (value == 0) channels.removeTag(id);
-            else if (row.has(value)) channels.setInteger(id, value);
+            else if (value > 0) channels.setInteger(id, value);
             else return false;
             return true;
         }
@@ -196,7 +188,7 @@ public final class HologramCapabilities {
         private final int current;
         private final boolean explicit;
         private final List<NBTTagCompound> options = new ArrayList<>();
-        private boolean editable;
+        private boolean editable = true;
         private int operations;
 
         private Row(String id, String label, String kind, int current, boolean explicit) {

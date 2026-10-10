@@ -57,10 +57,8 @@ import gregtech.common.blocks.ItemMachines;
 public final class HologramService {
 
     private static final Map<UUID, Session> SESSIONS = new HashMap<>();
-    private static final int BUDGET = 8;
-    private static final long TIME_BUDGET = 2000000L;
+    private static final int BUDGET = HologramCapture.LIMIT;
     private static final String TOOL_ID = "gtitHologramToolId";
-    private static final int PREPARE_TICKS = 8;
     private static final int CAPTURE_ATTEMPTS = 3;
 
     private HologramService() {}
@@ -121,7 +119,6 @@ public final class HologramService {
         String op = action.getString("op");
         if ("pause".equals(op) && s.job == 1) {
             s.job = 2;
-            s.pausedAt = now;
             s.status = "已暂停";
         } else if ("cancel".equals(op)) {
             s.job = 4;
@@ -130,7 +127,6 @@ public final class HologramService {
             s.status = "已取消";
         } else if ("resume".equals(op) && s.job == 2) {
             s.job = 1;
-            s.due = HologramLayerSchedule.resumeDue(s.due, s.pausedAt, now);
             s.status = "继续施工";
         } else if ("scan".equals(op) && s.job != 1 && s.job != 2) scan(s);
         else if ("configure".equals(op) && s.job != 1 && s.job != 2) {
@@ -160,6 +156,7 @@ public final class HologramService {
             s.main = action.getInteger("main");
             s.channels = boundedChannels(action.getCompoundTag("channels"));
             s.noHatches = action.getBoolean("noHatches");
+            s.keepController = action.getBoolean("keepController");
             s.mode = clamp(action.getInteger("mode"), 0, 2);
             s.scope = clamp(action.getInteger("scope"), 0, 3);
             s.layer = clamp(action.getInteger("layer"), -128, 128);
@@ -197,16 +194,17 @@ public final class HologramService {
                 s.stopTick = false;
                 clearPending(s);
                 s.job = 1;
-                int[] heights = new int[s.capture.cells.size()];
-                List<Integer> indices = new ArrayList<>();
-                for (int i = 0; i < heights.length; i++) {
-                    heights[i] = s.capture.cells.get(i).y;
-                    if (inScope(s, s.capture.cells.get(i), i) && "pending".equals(s.planStatus.get(i))) indices.add(i);
+                s.work.clear();
+                for (int i = 0; i < s.capture.cells.size(); i++) {
+                    if (inScope(s, s.capture.cells.get(i), i) && "pending".equals(s.planStatus.get(i))) s.work.add(i);
                 }
-                s.layers = HologramLayerSchedule.layers(indices, heights, s.mode == 2);
-                s.layerCursor = s.layerDone = 0;
-                prepareLayer(s, now + PREPARE_TICKS);
-                s.status = "正在按世界高度逐层施工";
+                if (s.mode == 2) {
+                    // The controller is the session anchor: destroy it only after every other cell.
+                    s.work
+                        .sort((a, b) -> Boolean.compare(s.capture.cells.get(a).anchor, s.capture.cells.get(b).anchor));
+                }
+                s.phase = "RUNNING";
+                s.status = "正在直接施工";
             }
         } else if ("native".equals(op) && s.job != 1 && s.job != 2) {
             if (player.capabilities.isCreativeMode && s.constructable != null && !s.noHatches) {
@@ -243,13 +241,13 @@ public final class HologramService {
                 if (s.mode == 2) s.status = "拆除模式不接受建造目标，请先切换模式";
                 else if (sample == null || sample.stackSize < 1 || cell.anchor || cell.element == null)
                     s.status = "库存样本或目标格无效";
-                else if (s.noHatches && sample.getItem() instanceof ItemMachines) s.status = "请先关闭无仓室模式，再指定仓室";
                 else if (s.mode == 1 && coil(cell.block, cell.meta)) s.status = "线圈目标由线圈信道统一指定";
                 else if (!acceptableSample(s, cell, sample)) s.status = "该库存物品不符合此格结构候选或安全结构族";
                 else {
                     ItemStack pin = sample.copy();
                     pin.stackSize = 1;
                     s.selected = index;
+                    if (pin.getItem() instanceof ItemMachines) s.noHatches = false;
                     s.pins.put(index, pin);
                     refreshPlan(s);
                     s.status = "库存样本已设为目标；确认后施工才扣材料";
@@ -321,75 +319,51 @@ public final class HologramService {
                 send(s);
                 continue;
             }
-            long now = s.player.worldObj.getTotalWorldTime();
-            if (s.layerCursor < s.layers.size()) {
-                if (s.announceLayer) {
-                    s.ackIndices.clear();
-                    s.ackSuccesses.clear();
-                    s.ackIndex = -1;
-                    s.ackSuccess = false;
-                    s.announceLayer = false;
-                    send(s);
-                    if (now < s.due) continue;
+            s.ackIndices.clear();
+            s.ackSuccesses.clear();
+            while (s.cursor < s.work.size()) {
+                int index = s.work.get(s.cursor);
+                HologramCapture.Cell cell = s.capture.cells.get(index);
+                if (cell.anchor && s.mode == 2 && hasUnresolvedPeripheral(s)) {
+                    cell.status = "protected";
+                    s.cursor++;
+                    continue;
                 }
-                if (now < s.due) continue;
-                List<Integer> layer = s.layers.get(s.layerCursor);
-                int elapsed = (int) Math.max(0, now - s.due);
-                int quota = HologramLayerSchedule.quota(layer.size(), elapsed);
-                long deadline = System.nanoTime() + TIME_BUDGET;
-                s.ackIndices.clear();
-                s.ackSuccesses.clear();
-                while (s.layerDone < quota && System.nanoTime() < deadline) {
-                    int index = layer.get(s.layerDone);
-                    HologramCapture.Cell cell = s.capture.cells.get(index);
-                    boolean unchanged = expectedCurrent(s, index);
-                    boolean success = unchanged && operate(s, cell, index);
-                    if (!unchanged) {
-                        cell.status = "protected";
-                        s.status = "现场变化的格已跳过，请重新扫描";
-                    }
-                    if (s.defer && s.deferredIndex != index) {
-                        s.deferredIndex = index;
-                        s.defer = false;
-                        break;
-                    }
+                boolean unchanged = expectedCurrent(s, index);
+                boolean success = unchanged && operate(s, cell, index);
+                if (!unchanged) {
+                    cell.status = "protected";
+                    s.status = "现场已变化，请重新扫描";
+                }
+                if (s.defer) {
                     s.defer = false;
-                    s.deferredIndex = -1;
-                    s.layerDone++;
-                    boolean changed = success && ("placed".equals(cell.status) || "replaced".equals(cell.status)
-                        || "removed".equals(cell.status));
-                    if (changed) s.completed++;
-                    else if (!success && "pending".equals(cell.status)) cell.status = "unsupported";
-                    s.ackIndices.add(index);
-                    s.ackSuccesses.add(changed ? 1 : 0);
-                    s.ackIndex = index;
-                    s.ackSuccess = changed;
-                    if (s.stopTick) {
-                        s.stopTick = false;
-                        break;
+                    if (s.deferredIndex != index) {
+                        s.deferredIndex = index;
+                        s.deferAttempts = 0;
                     }
+                    if (++s.deferAttempts < 3) break;
+                    cell.status = "unsupported";
+                    s.status = "原版元素持续要求等待，请重新规划或手动施工";
                 }
-                if (s.layerDone < layer.size() || elapsed < HologramLayerSchedule.LAYER_TICKS - 1) {
-                    if (!s.ackIndices.isEmpty()) {
-                        s.phase = "ACK";
-                        s.batchSeq++;
-                        send(s);
-                    }
-                    continue;
+                s.deferredIndex = -1;
+                s.deferAttempts = 0;
+                s.cursor++;
+                boolean changed = success && ("placed".equals(cell.status) || "replaced".equals(cell.status)
+                    || "removed".equals(cell.status));
+                if (changed) s.completed++;
+                else if (!success && "pending".equals(cell.status)) cell.status = "unsupported";
+                s.ackIndices.add(index);
+                s.ackSuccesses.add(changed ? 1 : 0);
+                s.ackIndex = index;
+                s.ackSuccess = changed;
+                if (s.stopTick) {
+                    s.stopTick = false;
+                    break;
                 }
-                if (s.layerCursor + 1 < s.layers.size()) {
-                    s.phase = "ACK";
-                    s.batchSeq++;
-                    send(s);
-                    s.layerCursor++;
-                    s.layerDone = 0;
-                    prepareLayer(s, HologramLayerSchedule.nextLayerDue(now));
-                    s.announceLayer = true;
-                    continue;
-                }
-                s.layerCursor++;
             }
-            if (s.layerCursor >= s.layers.size()) {
+            s.phase = "ACK";
+            s.batchSeq++;
+            if (s.cursor >= s.work.size()) {
                 int unresolved = 0;
                 for (int i = 0; i < s.capture.cells.size(); i++) if (inScope(s, s.capture.cells.get(i), i)) {
                     String status = s.capture.cells.get(i).status;
@@ -397,39 +371,29 @@ public final class HologramService {
                         && !"replaced".equals(status)
                         && !"removed".equals(status)) unresolved++;
                 }
-                s.phase = "ACK";
-                s.batchSeq++;
                 s.job = unresolved == 0 ? 3 : 5;
-                s.status = unresolved == 0 ? "范围内施工完成（未执行机器成型检查）" : "部分完成：受保护或未知接口待手动处理，可调整配置";
-                if (s.noHatches) s.status += "；无仓室模式不保证机器成型";
-                send(s);
+                s.status = unresolved == 0 ? "范围内施工完成（未执行机器成型检查）" : "部分完成：请检查未完成格的原因并重新规划";
             }
+            // One full result per batch, never one packet per block.
+            s.targetClosed = s.mode == 2 && s.player.worldObj.getTileEntity(s.x, s.y, s.z) != s.target;
+            send(s);
+            if (s.targetClosed) sessions.remove();
         }
     }
 
-    private static void prepareLayer(Session s, long due) {
-        s.due = due;
-        s.phase = "PREPARE";
-        s.batchSeq++;
-    }
-
-    private static int[] remainingLayer(Session s) {
-        if (s.layerCursor >= s.layers.size() || (s.job != 1 && s.job != 2)) return new int[0];
-        return s.layers.get(s.layerCursor)
-            .stream()
-            .skip(s.layerDone)
-            .mapToInt(Integer::intValue)
-            .toArray();
+    private static boolean hasUnresolvedPeripheral(Session s) {
+        for (int i = 0; i < s.capture.cells.size(); i++) {
+            HologramCapture.Cell cell = s.capture.cells.get(i);
+            if (cell.anchor || !inScope(s, cell, i)) continue;
+            if (!"satisfied".equals(cell.status) && !"removed".equals(cell.status)) return true;
+        }
+        return false;
     }
 
     private static void clearPending(Session s) {
-        s.pending = -1;
         s.ackIndices.clear();
         s.ackSuccesses.clear();
-        s.layers = Collections.emptyList();
-        s.layerCursor = s.layerDone = 0;
-        s.announceLayer = false;
-        s.due = 0;
+        s.work.clear();
         s.phase = "IDLE";
         s.ackIndex = -1;
         s.ackSuccess = false;
@@ -497,9 +461,7 @@ public final class HologramService {
         if (family != null && family.contains(old, meta)) return true;
         if (coil(c.block, c.meta) && coil(old, meta)) return factory(c.element, "ofCoil", new IdentityHashMap<>(), 0);
         return old == c.block && meta == c.meta
-            && old.getClass()
-                .getName()
-                .startsWith("gregtech.common.blocks.BlockCasings")
+            && !old.hasTileEntity(meta)
             && factory(c.element, "ofBlock", new IdentityHashMap<>(), 0);
     }
 
@@ -552,7 +514,7 @@ public final class HologramService {
             ItemStack first = null, available = null;
             int firstTier = Integer.MAX_VALUE, availableTier = Integer.MAX_VALUE;
             for (ItemStack option : candidates(s, c)) {
-                if (!(option.getItem() instanceof ItemMachines)) continue;
+                if (!(option.getItem() instanceof ItemMachines) || hatchElement(s, c, option, false) == null) continue;
                 int id = option.getItemDamage();
                 if (id < 0 || id >= GregTechAPI.METATILEENTITIES.length
                     || !(GregTechAPI.METATILEENTITIES[id] instanceof MTEHatch)) continue;
@@ -596,6 +558,9 @@ public final class HologramService {
     }
 
     private static boolean targetSatisfied(Session s, HologramCapture.Cell c, int index, Block old, int meta) {
+        ItemStack target = targetFor(s, c, index);
+        if (explicitTarget(s, c, index) && HologramRecovery.hasSeal(target))
+            return HologramRecovery.matchesPlaced(s.player.worldObj, c.x, c.y, c.z, target);
         if (explicitGrade(s, c) || explicitTarget(s, c, index)) return targetMatches(s, c, index, old, meta);
         HologramReplacementFamily.Family family = HologramReplacementFamily.resolve(c.element, c.block, c.meta);
         if (family != null && family.contains(old, meta)) return true;
@@ -642,16 +607,16 @@ public final class HologramService {
     private static String classify(Session s, HologramCapture.Cell c, int index) {
         World w = s.player.worldObj;
         if (!w.blockExists(c.x, c.y, c.z)) return "unsupported";
-        if (c.x == s.x && c.y == s.y && c.z == s.z) return "satisfied";
-        if (w.getTileEntity(c.x, c.y, c.z) != null) return "protected";
+        if (c.anchor && (s.mode != 2 || s.keepController)) return "satisfied";
+        if (w.getTileEntity(c.x, c.y, c.z) != null && !recoverable(s, c)) return "protected";
         if (!w.canMineBlock(s.player, c.x, c.y, c.z) || !s.player.canPlayerEdit(c.x, c.y, c.z, 1, trigger(s)))
             return "protected";
         boolean empty = trivial(w, c.x, c.y, c.z);
-        if (c.element == null || (c.unknown && !(empty && (explicitTarget(s, c, index)
-            || (!s.noHatches && s.channels.hasKey("gt_hatch", 3) && "hatch".equals(c.role)))))) return "unsupported";
+        if (s.mode == 2) return empty ? "satisfied" : removable(s, c) ? "pending" : "protected";
+        if (c.element == null || (c.unknown && !explicitTarget(s, c, index)
+            && !(!s.noHatches && s.channels.hasKey("gt_hatch", 3) && "hatch".equals(c.role)))) return "unsupported";
         Block old = w.getBlock(c.x, c.y, c.z);
         int meta = w.getBlockMetadata(c.x, c.y, c.z);
-        if (s.mode == 2) return empty ? "satisfied" : destructive(c, old, meta) ? "pending" : "protected";
         if (targetSatisfied(s, c, index, old, meta)) return "satisfied";
         ItemStack target = targetFor(s, c, index);
         if (target == null || Block.getBlockFromItem(target.getItem()) == Blocks.air) return "unsupported";
@@ -659,16 +624,16 @@ public final class HologramService {
             if (!acceptableSample(s, c, target)) return "unsupported";
         }
         if (empty) return "pending";
-        if (s.mode == 0 || !destructive(c, old, meta)) return "protected";
-        HologramReplacementFamily.Family family = HologramReplacementFamily.resolve(c.element, c.block, c.meta);
-        return family != null && family.canTarget(target) ? "pending" : "protected";
+        if (s.mode == 0 || !removable(s, c)) return "protected";
+        return acceptableSample(s, c, target) ? "pending" : "protected";
     }
 
     private static String reason(Session s, HologramCapture.Cell c, int index) {
         World w = s.player.worldObj;
         if (!w.blockExists(c.x, c.y, c.z)) return "区块未加载";
-        if (c.x == s.x && c.y == s.y && c.z == s.z) return "控制器保留";
-        if (w.getTileEntity(c.x, c.y, c.z) != null) return "已有设备无安全迁移适配器，保留内容与配置";
+        if (c.anchor) return s.mode == 2 && !s.keepController ? "完整拆除最后回收控制器并结束会话" : "按当前选项保留控制器锚点";
+        if (w.getTileEntity(c.x, c.y, c.z) != null)
+            return recoverable(s, c) ? "完整封存设备状态、库存、流体与覆盖板后回收" : "此设备尚无完整状态回收路径";
         if ("unsupported".equals(c.status) || c.element == null) return "此元素未提供安全施工目标";
         if ("protected".equals(c.status)) return "权限限制或旧块不属于受支持结构族";
         if ("satisfied".equals(c.status)) return "现有方块满足目标，保留";
@@ -679,6 +644,7 @@ public final class HologramService {
         s.job = 0;
         s.cursor = 0;
         s.completed = 0;
+        s.recovered.clear();
         s.defer = false;
         s.stopTick = false;
         clearPending(s);
@@ -699,7 +665,8 @@ public final class HologramService {
             boolean loaded = w.blockExists(c.x, c.y, c.z);
             s.expectedBlocks.add(loaded ? w.getBlock(c.x, c.y, c.z) : Blocks.air);
             s.expectedMeta.add(loaded ? w.getBlockMetadata(c.x, c.y, c.z) : 0);
-            s.expectedTiles.add(loaded ? w.getTileEntity(c.x, c.y, c.z) : null);
+            TileEntity tile = loaded ? w.getTileEntity(c.x, c.y, c.z) : null;
+            s.expectedTiles.add(tile);
             c.status = classify(s, c, i);
             s.planStatus.add(c.status);
         }
@@ -716,18 +683,19 @@ public final class HologramService {
         List<ItemStack> recovery = new ArrayList<>();
         for (int i = 0; i < s.capture.cells.size(); i++) {
             HologramCapture.Cell c = s.capture.cells.get(i);
-            if (!inScope(s, c, i) || !"pending".equals(c.status) || s.player.capabilities.isCreativeMode) continue;
-            if (s.mode != 2) {
-                ItemStack target = targetFor(s, c, i);
+            if (!inScope(s, c, i) || !"pending".equals(c.status)) continue;
+            ItemStack target = targetFor(s, c, i);
+            if (s.mode != 2 && (!s.player.capabilities.isCreativeMode || HologramRecovery.hasSeal(target))) {
                 String key = stackKey(target);
                 stacks.put(key, target);
                 counts.put(key, counts.containsKey(key) ? counts.get(key) + 1 : 1);
             }
-            if (!trivial(w, c.x, c.y, c.z)) try {
-                recovery.addAll(drops(w.getBlock(c.x, c.y, c.z), w, c, w.getBlockMetadata(c.x, c.y, c.z)));
-            } catch (RuntimeException | LinkageError failure) {
-                s.planRecoveryFits = false;
-            }
+            if (!trivial(w, c.x, c.y, c.z)
+                && (!s.player.capabilities.isCreativeMode || w.getTileEntity(c.x, c.y, c.z) != null)) try {
+                    recovery.addAll(drops(w.getBlock(c.x, c.y, c.z), w, c, w.getBlockMetadata(c.x, c.y, c.z)));
+                } catch (RuntimeException | LinkageError failure) {
+                    s.planRecoveryFits = false;
+                }
         }
         for (Map.Entry<String, ItemStack> entry : stacks.entrySet()) {
             ItemStack stack = entry.getValue();
@@ -760,8 +728,18 @@ public final class HologramService {
         return true;
     }
 
-    @SuppressWarnings("unchecked")
     private static boolean operate(Session s, HologramCapture.Cell c, int index) {
+        try {
+            return operateChecked(s, c, index);
+        } catch (RuntimeException | LinkageError failure) {
+            c.status = "unsupported";
+            s.status = "设备状态或回收数据无法读取，该格未施工";
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean operateChecked(Session s, HologramCapture.Cell c, int index) {
         World w = s.player.worldObj;
         if (!w.blockExists(c.x, c.y, c.z)) {
             c.status = "unsupported";
@@ -770,7 +748,8 @@ public final class HologramService {
         }
         Block old = w.getBlock(c.x, c.y, c.z);
         int oldMeta = w.getBlockMetadata(c.x, c.y, c.z);
-        if (w.getTileEntity(c.x, c.y, c.z) != null || (c.x == s.x && c.y == s.y && c.z == s.z)) {
+        if ((c.anchor && (s.mode != 2 || s.keepController))
+            || (w.getTileEntity(c.x, c.y, c.z) != null && !recoverable(s, c))) {
             c.status = "protected";
             return true;
         }
@@ -787,25 +766,36 @@ public final class HologramService {
             c.status = "satisfied";
             return true;
         }
-        if (!empty && (s.mode == 0 || !destructive(c, old, oldMeta))) {
+        if (!empty && (s.mode == 0 || !removable(s, c))) {
             c.status = "protected";
             return true;
         }
-        if ((c.unknown && !(empty && (explicitTarget(s, c, index)
-            || (!s.noHatches && s.channels.hasKey("gt_hatch", 3) && "hatch".equals(c.role))))) || c.element == null
-            || targetFor(s, c, index) == null) {
+        if (s.mode != 2 && ((c.unknown && !explicitTarget(s, c, index)
+            && !(!s.noHatches && s.channels.hasKey("gt_hatch", 3) && "hatch".equals(c.role))) || c.element == null
+            || targetFor(s, c, index) == null)) {
             c.status = "unsupported";
             return true;
         }
-        List<ItemStack> drops = empty || s.player.capabilities.isCreativeMode ? Collections.emptyList()
-            : drops(old, w, c, oldMeta);
+        TileEntity originalTile = w.getTileEntity(c.x, c.y, c.z);
+        List<ItemStack> drops = empty
+            || (s.player.capabilities.isCreativeMode && w.getTileEntity(c.x, c.y, c.z) == null)
+                ? Collections.emptyList()
+                : drops(old, w, c, oldMeta);
         ItemStack[] inventory = copyInventory(s.player);
         if (!canFit(s.player, drops)) {
             s.status = "背包无法安全回收掉落物";
             return false;
         }
+        NBTTagCompound savedTile = w.getTileEntity(c.x, c.y, c.z) == null ? null
+            : (NBTTagCompound) drops.get(0)
+                .getTagCompound()
+                .getCompoundTag(HologramRecovery.TAG)
+                .getCompoundTag("tile")
+                .copy();
+        BlockSnapshot snapshot = BlockSnapshot.getBlockSnapshot(w, c.x, c.y, c.z);
         ItemStack reserved = null;
-        if (s.mode == 1 && !empty && !s.player.capabilities.isCreativeMode) {
+        if (s.mode == 1 && !empty
+            && (!s.player.capabilities.isCreativeMode || HologramRecovery.hasSeal(targetFor(s, c, index)))) {
             ItemStack required = targetFor(s, c, index);
             reserved = inventorySource(s.player).takeOne(stack -> same(stack, required), false);
             if (reserved == null) {
@@ -814,7 +804,7 @@ public final class HologramService {
                 return false;
             }
         }
-        BlockSnapshot snapshot = BlockSnapshot.getBlockSnapshot(w, c.x, c.y, c.z);
+        boolean changedWorld = false;
         try {
             if (!empty) {
                 BlockEvent.BreakEvent event = new BlockEvent.BreakEvent(c.x, c.y, c.z, w, old, oldMeta, s.player);
@@ -823,24 +813,66 @@ public final class HologramService {
                     c.status = "protected";
                     return true;
                 }
-                boolean frame = old instanceof BlockFrameBox;
-                if (!frame) old.onBlockHarvested(w, c.x, c.y, c.z, oldMeta, s.player);
-                if (!(frame ? w.setBlockToAir(c.x, c.y, c.z)
-                    : old.removedByPlayer(w, s.player, c.x, c.y, c.z, false))) {
-                    snapshot.restore(true, false);
+                if (!sameWorldCell(w, c, old, oldMeta, originalTile)) {
+                    restoreInventory(s.player, inventory);
+                    c.status = "protected";
+                    s.status = "拆除事件已改变现场，该格保留，请重新扫描";
+                    return true;
+                }
+                if (originalTile != null) {
+                    // A listener may change a hatch inventory/fluid without changing the block identity.
+                    // Capture its latest state, rather than rolling back or recovering the obsolete preview.
+                    drops = HologramRecovery.drops(w, c.x, c.y, c.z);
+                    savedTile = (NBTTagCompound) drops.get(0)
+                        .getTagCompound()
+                        .getCompoundTag(HologramRecovery.TAG)
+                        .getCompoundTag("tile")
+                        .copy();
+                    snapshot = BlockSnapshot.getBlockSnapshot(w, c.x, c.y, c.z);
+                    if (!canFit(s.player, drops)) {
+                        restoreInventory(s.player, inventory);
+                        c.status = "protected";
+                        s.status = "事件后设备状态已变化，背包无法回收，请重新规划";
+                        return true;
+                    }
+                }
+                boolean tile = originalTile != null;
+                boolean removed;
+                if (tile) {
+                    changedWorld = true;
+                    removed = HologramRecovery.removeWithoutDrops(w, c.x, c.y, c.z);
+                } else {
+                    boolean frame = old instanceof BlockFrameBox;
+                    if (!frame) {
+                        old.onBlockHarvested(w, c.x, c.y, c.z, oldMeta, s.player);
+                        if (!sameWorldCell(w, c, old, oldMeta, originalTile)) {
+                            restoreInventory(s.player, inventory);
+                            c.status = "protected";
+                            s.status = "采收回调已改变现场，该格保留，请重新扫描";
+                            return true;
+                        }
+                    }
+                    changedWorld = true;
+                    removed = frame ? w.setBlockToAir(c.x, c.y, c.z)
+                        : old.removedByPlayer(w, s.player, c.x, c.y, c.z, false);
+                    if (removed) old.onBlockDestroyedByPlayer(w, c.x, c.y, c.z, oldMeta);
+                }
+                if (!removed) {
+                    HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
                     restoreInventory(s.player, inventory);
                     c.status = "protected";
                     return true;
                 }
-                old.onBlockDestroyedByPlayer(w, c.x, c.y, c.z, oldMeta);
             }
             if (s.mode != 2) {
+                changedWorld = true;
                 final ItemStack material = reserved;
                 ReservedSource reservation = material == null ? null : new ReservedSource(material);
                 IItemSource source = reservation == null ? inventorySource(s.player) : reservation;
                 // Lock the pure plan's chosen material. Native auto-selection must not consume a different item.
                 ItemStack pin = targetFor(s, c, index);
-                if (s.player.capabilities.isCreativeMode) source = new CreativeSource(Collections.singletonList(pin));
+                if (s.player.capabilities.isCreativeMode && !HologramRecovery.hasSeal(pin))
+                    source = new CreativeSource(Collections.singletonList(pin));
                 if (pin != null && material == null) source = new FilteredSource(source, pin);
                 if (s.noHatches) source = new ShellSource(source);
                 boolean directCreative = s.player.capabilities.isCreativeMode && !s.noHatches && pin == null;
@@ -864,18 +896,37 @@ public final class HologramService {
                         source,
                         s.player,
                         s.player::addChatMessage);
-                } else {
-                    result = c.element.survivalPlaceBlock(
-                        s.machine,
-                        w,
-                        c.x,
-                        c.y,
-                        c.z,
-                        elementTrigger(s, c),
-                        AutoPlaceEnvironment.fromLegacy(source, s.player, s.player::addChatMessage));
-                }
+                } else if (explicitTarget(s, c, index) && pin.getItem() instanceof ItemMachines
+                    && hatchElement(s, c, pin) != null) {
+                        // Same native ItemMachines placement as GT; declared type/filter is checked above.
+                        // Manual choices do not use the automatic atLeast fill quota.
+                        result = StructureUtility.survivalPlaceBlock(
+                            pin,
+                            ItemStackPredicate.NBTMode.EXACT,
+                            null,
+                            true,
+                            w,
+                            c.x,
+                            c.y,
+                            c.z,
+                            source,
+                            s.player);
+                    } else {
+                        IStructureElement placement = pin.getItem() instanceof ItemMachines
+                            ? hatchElement(s, c, pin, false)
+                            : c.element;
+                        result = placement == null ? PlaceResult.REJECT
+                            : placement.survivalPlaceBlock(
+                                s.machine,
+                                w,
+                                c.x,
+                                c.y,
+                                c.z,
+                                elementTrigger(s, c),
+                                AutoPlaceEnvironment.fromLegacy(source, s.player, s.player::addChatMessage));
+                    }
                 if (result == PlaceResult.STOP) {
-                    snapshot.restore(true, false);
+                    HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
                     restoreInventory(s.player, inventory);
                     s.defer = true;
                     c.status = "pending";
@@ -888,7 +939,7 @@ public final class HologramService {
                     || (reservation != null && !reservation.used)
                     || (pin != null
                         && !targetMatches(s, c, index, w.getBlock(c.x, c.y, c.z), w.getBlockMetadata(c.x, c.y, c.z)))) {
-                    snapshot.restore(true, false);
+                    HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
                     restoreInventory(s.player, inventory);
                     c.status = result == PlaceResult.REJECT_CONTINUE ? "unsupported" : "missing";
                     s.status = "原版元素拒绝施工；材料和旧方块已还原";
@@ -900,8 +951,11 @@ public final class HologramService {
                     placed.onBlockPlacedBy(w, c.x, c.y, c.z, s.player, placedStack);
                     placed.onPostBlockPlaced(w, c.x, c.y, c.z, w.getBlockMetadata(c.x, c.y, c.z));
                 }
+                if (!HologramRecovery.restorePlaced(w, c.x, c.y, c.z, pin)
+                    || (HologramRecovery.hasSeal(pin) && !HologramRecovery.matchesPlaced(w, c.x, c.y, c.z, pin)))
+                    throw new IllegalStateException("stored device restore rejected");
                 if (MinecraftForge.EVENT_BUS.post(new BlockEvent.PlaceEvent(snapshot, old, s.player))) {
-                    snapshot.restore(true, false);
+                    HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
                     restoreInventory(s.player, inventory);
                     c.status = "protected";
                     return true;
@@ -909,18 +963,28 @@ public final class HologramService {
             }
             for (ItemStack drop : drops) if (!s.player.inventory.addItemStackToInventory(drop.copy()))
                 throw new IllegalStateException("drop capacity changed");
+            for (ItemStack drop : drops) s.recovered.add(drop.copy());
             s.player.inventory.markDirty();
             c.status = s.mode == 2 ? "removed" : empty ? "placed" : "replaced";
             return true;
         } catch (RuntimeException | LinkageError e) {
-            snapshot.restore(true, false);
+            if (changedWorld) HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
             restoreInventory(s.player, inventory);
-            s.status = "施工异常，已还原该格并暂停";
+            s.status = "施工异常，已还原该格；请检查部分完成结果";
             return false;
         }
     }
 
+    private static boolean sameWorldCell(World world, HologramCapture.Cell cell, Block block, int meta,
+        TileEntity tile) {
+        return world.blockExists(cell.x, cell.y, cell.z) && world.getBlock(cell.x, cell.y, cell.z) == block
+            && world.getBlockMetadata(cell.x, cell.y, cell.z) == meta
+            && world.getTileEntity(cell.x, cell.y, cell.z) == tile;
+    }
+
     private static List<ItemStack> drops(Block block, World world, HologramCapture.Cell cell, int meta) {
+        if (world.getTileEntity(cell.x, cell.y, cell.z) != null)
+            return HologramRecovery.drops(world, cell.x, cell.y, cell.z);
         if (block instanceof BlockFrameBox && !block.hasTileEntity(meta))
             return Collections.singletonList(((BlockFrameBox) block).getStackForm(1, meta));
         return block.getDrops(world, cell.x, cell.y, cell.z, meta, 0);
@@ -1029,7 +1093,7 @@ public final class HologramService {
         int count = 0;
         for (Object key : input.func_150296_c()) {
             String name = (String) key;
-            if (count++ >= 32) break;
+            if (count++ >= 64) break;
             if (name.matches("[a-z0-9_.-]{1,48}") && input.getInteger(name) > 0)
                 result.setInteger(name, input.getInteger(name));
         }
@@ -1038,7 +1102,7 @@ public final class HologramService {
 
     private static boolean validChannels(NBTTagCompound input) {
         if (input.func_150296_c()
-            .size() > 32) return false;
+            .size() > 64) return false;
         for (Object key : input.func_150296_c()) {
             String name = (String) key;
             if (!name.matches("[a-z0-9_.-]{1,48}") || !input.hasKey(name, 3) || input.getInteger(name) <= 0)
@@ -1100,10 +1164,13 @@ public final class HologramService {
         s.job = 0;
         s.cursor = 0;
         s.completed = 0;
+        s.recovered.clear();
         s.defer = false;
         s.stopTick = false;
         clearPending(s);
         s.pins.clear();
+        s.hatchCandidates.clear();
+        s.hatchParts.clear();
         s.capabilities = HologramCapabilities.describe(s.context, trigger(s), null)
             .withSavedChannels(s.channels);
         if (s.target == null) {
@@ -1164,9 +1231,25 @@ public final class HologramService {
                 if (!s.noHatches || (block != Blocks.air && !block.hasTileEntity(stack.getItemDamage())))
                     result.add(stack.copy());
             }
-            List<ItemStack> hatches = s.noHatches ? Collections.emptyList()
-                : HologramElementCatalog.predicateCandidates(cell.element, blocks);
-            hatches.sort((a, b) -> Integer.compare(hatchTier(a), hatchTier(b)));
+            List<ItemStack> hatches = Collections.emptyList();
+            if (!s.noHatches && "hatch".equals(cell.role)) {
+                ItemStack signal = elementTrigger(s, cell);
+                ChannelDataAccessor.setChannelData(signal, "gt_hatch", 1);
+                String signalKey = signal.stackSize + ":" + signal.getTagCompound();
+                Map<String, List<ItemStack>> signals = s.hatchCandidates
+                    .computeIfAbsent(cell.element, ignored -> new HashMap<>());
+                hatches = signals.get(signalKey);
+                if (hatches == null) {
+                    hatches = new ArrayList<>();
+                    for (gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype : GregTechAPI.METATILEENTITIES) {
+                        if (!(prototype instanceof MTEHatch)) continue;
+                        ItemStack stack = prototype.getStackForm(1);
+                        if (stack != null && hatchElement(s, cell, stack, true, signal) != null) hatches.add(stack);
+                    }
+                    hatches.sort((a, b) -> Integer.compare(hatchTier(a), hatchTier(b)));
+                    signals.put(signalKey, hatches);
+                }
+            }
             for (ItemStack stack : hatches) {
                 if (result.size() >= 128) break;
                 boolean duplicate = false;
@@ -1180,9 +1263,81 @@ public final class HologramService {
         return result;
     }
 
+    @SuppressWarnings("unchecked")
+    private static IStructureElement hatchElement(Session s, HologramCapture.Cell cell, ItemStack sample) {
+        return hatchElement(s, cell, sample, true);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static IStructureElement hatchElement(Session s, HologramCapture.Cell cell, ItemStack sample,
+        boolean manual) {
+        ItemStack signal = elementTrigger(s, cell);
+        ChannelDataAccessor.setChannelData(signal, "gt_hatch", 1);
+        return hatchElement(s, cell, sample, manual, signal);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static IStructureElement hatchElement(Session s, HologramCapture.Cell cell, ItemStack sample,
+        boolean manual, ItemStack signal) {
+        if (hatchTier(sample) == Integer.MAX_VALUE) return null;
+        List<IStructureElement<?>> parts = s.hatchParts.get(cell.element);
+        if (parts == null) {
+            parts = new ArrayList<>();
+            for (IStructureElement<?> part : HologramElementCatalog.parts(cell.element))
+                if ("hatch".equals(HologramElementCatalog.hatchRole(part))) parts.add(part);
+            s.hatchParts.put(cell.element, parts);
+        }
+        for (IStructureElement part : parts) {
+            try {
+                java.util.function.Predicate<ItemStack> declared = manual
+                    ? HologramHatchPolicy.predicate(part, s.machine, signal)
+                    : null;
+                if (declared != null) {
+                    if (declared.test(sample)) return part;
+                    continue;
+                }
+                IStructureElement.BlocksToPlace blocks = part.getBlocksToPlace(
+                    s.machine,
+                    s.player.worldObj,
+                    cell.x,
+                    cell.y,
+                    cell.z,
+                    signal,
+                    AutoPlaceEnvironment.fromLegacy(
+                        (predicate, simulate, count) -> inventorySource(s.player).take(predicate, true, count),
+                        s.player,
+                        message -> {}));
+                if (blocks != null && blocks.getPredicate()
+                    .test(sample)) return part;
+            } catch (RuntimeException | LinkageError ignored) {}
+        }
+        return null;
+    }
+
+    private static boolean recoverable(Session s, HologramCapture.Cell c) {
+        TileEntity tile = s.player.worldObj.getTileEntity(c.x, c.y, c.z);
+        if (!HologramRecovery.supported(tile)) return false;
+        if (c.anchor) return s.mode == 2 && !s.keepController;
+        if (tile instanceof IGregTechTileEntity
+            && ((IGregTechTileEntity) tile).getMetaTileEntity() instanceof MTEHatch) {
+            int id = ((IGregTechTileEntity) tile).getMetaTileID();
+            return hatchElement(s, c, new ItemStack(GregTechAPI.sBlockMachines, 1, id)) != null;
+        }
+        Block block = s.player.worldObj.getBlock(c.x, c.y, c.z);
+        int meta = s.player.worldObj.getBlockMetadata(c.x, c.y, c.z);
+        return block instanceof BlockFrameBox && (HologramFrameSupport.acceptsCovered(c.element, block, meta)
+            || destructive(c, block, meta & ~BlockFrameBox.MTE_BIT));
+    }
+
+    private static boolean removable(Session s, HologramCapture.Cell c) {
+        World world = s.player.worldObj;
+        if (world.getTileEntity(c.x, c.y, c.z) != null) return recoverable(s, c);
+        return !c.anchor && destructive(c, world.getBlock(c.x, c.y, c.z), world.getBlockMetadata(c.x, c.y, c.z));
+    }
+
     private static boolean acceptableSample(Session s, HologramCapture.Cell cell, ItemStack sample) {
+        if (sample.getItem() instanceof ItemMachines) return hatchElement(s, cell, sample) != null;
         try {
-            // Refresh the real predicate: the cached UI list is bounded and may omit valid higher tiers.
             IStructureElement.BlocksToPlace blocks = cell.element.getBlocksToPlace(
                 s.machine,
                 s.player.worldObj,
@@ -1201,8 +1356,6 @@ public final class HologramService {
                     accepted = true;
                     break;
                 }
-            if (sample.getItem() instanceof ItemMachines)
-                return accepted && "hatch".equals(cell.role) && hatchTier(sample) != Integer.MAX_VALUE;
             Block block = Block.getBlockFromItem(sample.getItem());
             int meta = sample.getItem()
                 .getMetadata(sample.getItemDamage());
@@ -1236,7 +1389,7 @@ public final class HologramService {
         state.setLong("planRevision", s.planRevision);
         state.setLong("uiSequence", s.uiSequence);
         state.setString("phase", s.phase);
-        state.setIntArray("pending", remainingLayer(s));
+        state.setIntArray("pending", new int[0]);
         state.setIntArray(
             "ackIndices",
             s.ackIndices.stream()
@@ -1247,29 +1400,16 @@ public final class HologramService {
             s.ackSuccesses.stream()
                 .mapToInt(Integer::intValue)
                 .toArray());
-        state.setInteger("layerOrdinal", Math.min(s.layerCursor + 1, s.layers.size()));
-        state.setInteger("layerCount", s.layers.size());
-        state.setInteger("layerCompleted", s.layerDone);
-        boolean activeLayer = s.layerCursor < s.layers.size();
-        state.setInteger(
-            "layerTotal",
-            activeLayer ? s.layers.get(s.layerCursor)
-                .size() : 0);
-        state.setInteger(
-            "layerY",
-            activeLayer ? s.capture.cells.get(
-                s.layers.get(s.layerCursor)
-                    .get(0)).y
-                : s.y);
-        state.setInteger(
-            "layerElapsed",
-            (int) Math.max(0, (s.job == 2 ? s.pausedAt : s.player.worldObj.getTotalWorldTime()) - s.due));
-        state.setInteger(
-            "layerLeadRemaining",
-            (int) Math.max(0, s.due - (s.job == 2 ? s.pausedAt : s.player.worldObj.getTotalWorldTime())));
-        state.setInteger("layerDuration", HologramLayerSchedule.LAYER_TICKS);
-        state.setInteger("layerGap", HologramLayerSchedule.GAP_TICKS);
-        state.setLong("due", s.due);
+        state.setInteger("layerOrdinal", 0);
+        state.setInteger("layerCount", 0);
+        state.setInteger("layerCompleted", s.completed);
+        state.setInteger("layerTotal", s.work.size());
+        state.setInteger("layerY", s.y);
+        state.setInteger("layerElapsed", 0);
+        state.setInteger("layerLeadRemaining", 0);
+        state.setInteger("layerDuration", 0);
+        state.setInteger("layerGap", 0);
+        state.setLong("due", 0);
         state.setLong("serverTick", s.player.worldObj.getTotalWorldTime());
         state.setLong("batchSeq", s.batchSeq);
         state.setIntArray("ack", s.ackIndex < 0 ? new int[0] : new int[] { s.ackIndex });
@@ -1278,6 +1418,7 @@ public final class HologramService {
         state.setBoolean("formationChecked", false);
         state.setTag("capabilities", s.capabilities == null ? new NBTTagList() : s.capabilities.toNBT());
         state.setBoolean("target", s.target != null);
+        state.setBoolean("targetClosed", s.targetClosed);
         state.setInteger("x", s.x);
         state.setInteger("y", s.y);
         state.setInteger("z", s.z);
@@ -1287,6 +1428,7 @@ public final class HologramService {
         state.setInteger("main", s.main);
         state.setTag("channels", s.channels.copy());
         state.setBoolean("noHatches", s.noHatches);
+        state.setBoolean("keepController", s.keepController);
         state.setInteger("facing", s.facing);
         state.setInteger("mode", s.mode);
         state.setInteger("scope", s.scope);
@@ -1363,7 +1505,7 @@ public final class HologramService {
                             .getMetadata(pinned.getItemDamage()));
                 }
             }
-            if (s.mode == 2 && loaded && destructive(c, current, meta)) {
+            if (s.mode == 2 && loaded && (removable(s, c) || "removed".equals(c.status))) {
                 row.setString("wantId", "minecraft:air");
                 row.setInteger("wantMeta", 0);
             }
@@ -1403,7 +1545,7 @@ public final class HologramService {
                 && pinned != null
                 && inScope(s, c, index)
                 && s.mode != 2
-                && !s.player.capabilities.isCreativeMode) {
+                && (!s.player.capabilities.isCreativeMode || HologramRecovery.hasSeal(pinned))) {
                 ItemStack stack = pinned.copy();
                 stack.stackSize = 1;
                 String key = stackKey(stack);
@@ -1425,8 +1567,7 @@ public final class HologramService {
             if (inScope(s, c, index) && "pending".equals(c.status)
                 && loaded
                 && !trivial(world, c.x, c.y, c.z)
-                && world.getTileEntity(c.x, c.y, c.z) == null
-                && !s.player.capabilities.isCreativeMode) try {
+                && (!s.player.capabilities.isCreativeMode || world.getTileEntity(c.x, c.y, c.z) != null)) try {
                     for (ItemStack drop : drops(current, world, c, meta)) {
                         NBTTagCompound recovered = drop.writeToNBT(new NBTTagCompound());
                         recovered.setInteger("expected", drop.stackSize);
@@ -1443,12 +1584,18 @@ public final class HologramService {
         }
         state.setTag("cells", cells);
         state.setTag("materials", materials);
+        for (ItemStack drop : s.recovered) {
+            NBTTagCompound recovered = drop.writeToNBT(new NBTTagCompound());
+            recovered.setInteger("expected", drop.stackSize);
+            recovered.setBoolean("estimated", false);
+            recovery.appendTag(recovered);
+        }
         state.setTag("recovery", recovery);
         state.setInteger("protected", protectedCount);
         state.setInteger("missing", missing);
         state.setInteger("total", total);
         state.setInteger("workTotal", workTotal);
-        state.setString("description", "按控制器实际朝向采集；具体目标仅支持已适配结构族。控制器及已有设备保留；固定接口待补齐。确认差分后，服务器预发施工再逐格重验；原版事件仅在真实操作时触发。");
+        state.setString("description", "按控制器实际朝向采集；结构内仓室与框架可替换或拆除，完整拆除最后回收控制器。确认差分后，服务器直接批量施工并逐格重验；原版事件仅在真实操作时触发。");
         HologramNetwork.sendState(s.player, state);
     }
 
@@ -1466,19 +1613,21 @@ public final class HologramService {
         IConstructable constructable;
         Object context;
         int main = 1, facing, mode, scope, layer, selected = -1, job, cursor, completed;
-        boolean noHatches, hints, defer, stopTick, mainExplicit;
+        boolean noHatches, hints, defer, stopTick, mainExplicit, targetClosed, keepController;
         String status = "";
         NBTTagCompound channels = new NBTTagCompound();
         HologramCapture capture;
         HologramCapabilities.Result capabilities;
         final Map<Integer, ItemStack> pins = new HashMap<>();
-        List<List<Integer>> layers = Collections.emptyList();
+        final IdentityHashMap<IStructureElement<?>, Map<String, List<ItemStack>>> hatchCandidates = new IdentityHashMap<>();
+        final IdentityHashMap<IStructureElement<?>, List<IStructureElement<?>>> hatchParts = new IdentityHashMap<>();
+        final List<Integer> work = new ArrayList<>();
+        final List<ItemStack> recovered = new ArrayList<>();
         final List<Integer> ackIndices = new ArrayList<>(), ackSuccesses = new ArrayList<>();
-        int layerCursor, layerDone, deferredIndex = -1;
-        boolean announceLayer, open;
-        long pausedAt;
-        long planRevision, uiSequence, batchSeq, due;
-        int pending = -1, ackIndex = -1, planMissing;
+        int deferAttempts, deferredIndex = -1;
+        boolean open;
+        long planRevision, uiSequence, batchSeq;
+        int ackIndex = -1, planMissing;
         String phase = "IDLE";
         boolean planRecoveryFits = true, ackSuccess;
         boolean capturePending, retryNoHatches;

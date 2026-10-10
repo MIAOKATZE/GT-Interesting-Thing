@@ -18,6 +18,9 @@ public final class GtitHologramLateMixinLoader implements ILateMixinLoader {
         return Arrays.asList(
             "hologram.MixinHologramBuildPiece",
             "hologram.MixinHologramHints",
-            "hologram.MixinHologramChannels");
+            "hologram.MixinHologramChannels",
+            "hologram.MixinHologramRecoveryMachines",
+            "hologram.MixinHologramRecoveryFrames",
+            "hologram.MixinHologramHatchPolicy");
     }
 }

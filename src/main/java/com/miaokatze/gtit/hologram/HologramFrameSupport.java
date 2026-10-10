@@ -45,6 +45,10 @@ final class HologramFrameSupport {
                 .hasTileEntity(stack.getItemDamage()) ? stack.copy() : null;
     }
 
+    static boolean acceptsCovered(IStructureElement<?> element, Block block, int meta) {
+        return accepts(element, block, meta & ~BlockFrameBox.MTE_BIT);
+    }
+
     static boolean accepts(IStructureElement<?> element, Block block, int meta) {
         Materials material = material(element);
         return material != null && block instanceof BlockFrameBox

@@ -1,8 +1,10 @@
 package com.miaokatze.gtit.hologram;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 import net.minecraft.block.Block;
 import net.minecraft.init.Blocks;
@@ -37,6 +39,7 @@ public final class HologramCapture {
     final ItemStack trigger;
     final List<Piece> pieces = new ArrayList<>();
     final List<Cell> cells = new ArrayList<>();
+    final Map<String, Cell> positions = new HashMap<>();
     final IdentityHashMap<IStructureElement<?>, HologramCasingFallback.Target> casingCache = new IdentityHashMap<>();
     final IdentityHashMap<IStructureElement<?>, HologramReplacementFamily.Family> familyCache = new IdentityHashMap<>();
     final IdentityHashMap<IStructureElement<?>, String> roleCache = new IdentityHashMap<>();
@@ -135,12 +138,22 @@ public final class HologramCapture {
 
                         public boolean visit(IStructureElement element, World w, int xx, int yy, int zz, int a, int b,
                             int c) {
+                            String position = xx + "," + yy + "," + zz;
+                            Cell existing = capture.positions.get(position);
+                            if (existing != null) {
+                                if (existing.element == element
+                                    && ItemStack.areItemStacksEqual(existing.elementTrigger, piece.trigger))
+                                    return true;
+                                capture.fail("CONFLICTING_CELL " + position);
+                                return false;
+                            }
                             if (capture.cells.size() >= LIMIT || System.nanoTime() > capture.deadline) {
                                 capture.fail(capture.cells.size() >= LIMIT ? "CELL_LIMIT" : "TIME_LIMIT");
                                 return false;
                             }
                             Cell cell = new Cell(element, xx, yy, zz, piece.trigger);
                             capture.cells.add(cell);
+                            capture.positions.put(position, cell);
                             capture.current = cell;
                             try {
                                 if (element == StructureUtility.isAir()) {

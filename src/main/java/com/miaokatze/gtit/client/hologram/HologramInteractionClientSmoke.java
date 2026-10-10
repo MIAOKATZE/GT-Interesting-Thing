@@ -24,8 +24,8 @@ import cpw.mods.fml.common.gameevent.TickEvent;
 public final class HologramInteractionClientSmoke {
 
     private final long installed = System.nanoTime();
-    private int stage, waitTicks, pausedCompleted;
-    private boolean done, reopenRequested;
+    private int stage, waitTicks;
+    private boolean done;
     private File receipts;
     private HologramScreen realScreen;
     private long lastClickedRender = -1;
@@ -86,32 +86,18 @@ public final class HologramInteractionClientSmoke {
                 stage = 2;
                 return;
             }
-            if (stage == 30 || stage == 31) {
+            if (stage == 30) {
                 if (renderedWorldFrames <= closedAtWorldFrame) return;
                 waitTicks = 0;
-                require(HologramRenderer.lastWorldGeometry > 0, "real_world_RenderBlocks_geometry_" + stage);
-                require(HologramRenderer.lastWorldGTGeometry > 0, "real_world_GT_native_geometry_" + stage);
+                require(HologramRenderer.lastWorldGeometry > 0, "cached_world_schematic_geometry_" + stage);
+                require(HologramRenderer.lastWorldGTGeometry == 0, "schematic_does_not_render_GT_models_" + stage);
                 require(HologramRenderer.lastWorldGhosts > 0, "real_world_has_ghost_cells_" + stage);
-                if (stage == 31)
-                    require(HologramRenderer.lastWorldMatched > 0, "actual_placed_cells_match_client_world");
-                screenshot(mc, stage == 30 ? "world-ghost" : "world-construction");
+                screenshot(mc, "world-schematic");
                 reopenWithRightClick(mc);
-                stage = stage == 30 ? 3 : 13;
-                return;
-            }
-            if (mc.currentScreen == null && (stage == 11 || stage == 17 || stage == 21 || stage == 24)) {
-                if (HologramClient.state == null || HologramClient.state.data.getInteger("job") == 0) return;
-                if (!reopenRequested) {
-                    require(
-                        HologramClient.state.data.getInteger("job") != 0,
-                        "accepted_start_closes_GUI_for_world_animation_" + stage);
-                    reopenWithRightClick(mc);
-                    reopenRequested = true;
-                }
+                stage = 3;
                 return;
             }
             if (!(mc.currentScreen instanceof HologramScreen)) return;
-            reopenRequested = false;
             HologramScreen screen = (HologramScreen) mc.currentScreen;
             if (screen.smokeRenderGeneration() <= lastClickedRender) return;
             NBTTagCompound state = screen.smokeSnapshot();
@@ -149,6 +135,7 @@ public final class HologramInteractionClientSmoke {
                     realScreen = screen;
                     mc.thePlayer.rotationYaw = 0;
                     mc.thePlayer.rotationPitch = 20;
+                    HologramClient.worldPreview = true;
                     closedAtWorldFrame = renderedWorldFrames;
                     mc.displayGuiScreen(null);
                     stage = 30;
@@ -165,34 +152,10 @@ public final class HologramInteractionClientSmoke {
                     stage++;
                     break;
                 case 11:
-                    if (state.getInteger("job") != 1 || state.getInteger("completed") < 1) return;
-                    require(receipt().getInteger("placed") > 0, "server_world_and_material_receipt_after_build");
-                    click(screen, 51);
-                    stage = 12;
-                    break;
-                case 12:
-                    if (state.getInteger("job") != 2) return;
-                    pausedCompleted = state.getInteger("completed");
-                    realScreen = screen;
-                    closedAtWorldFrame = renderedWorldFrames;
-                    mc.displayGuiScreen(null);
-                    stage = 31;
-                    break;
-                case 13:
-                    require(
-                        state.getInteger("job") == 2 && state.getInteger("completed") == pausedCompleted,
-                        "pause_keeps_actual_progress");
-                    click(screen, 51);
-                    stage++;
-                    break;
-                case 14:
-                    if (state.getInteger("job") != 1) return;
-                    click(screen, 52);
-                    stage++;
-                    break;
-                case 15:
-                    if (state.getInteger("job") != 4) return;
-                    require(receipt().getInteger("placed") > 0, "cancel_keeps_completed_world_cells");
+                    if (state.getInteger("job") != 3 && state.getInteger("job") != 5) return;
+                    require(receipt().getInteger("placed") > 0, "direct_build_server_world_and_material_receipt");
+                    require(mc.currentScreen == screen, "direct_build_retains_GUI_for_real_progress");
+                    require(!state.hasKey("layerDuration"), "direct_build_has_no_layer_animation_schedule");
                     click(screen, 60);
                     stage = 25;
                     break;
@@ -252,10 +215,10 @@ public final class HologramInteractionClientSmoke {
                     require(
                         receipt.getInteger("placed") == 0 && receipt.getInteger("stock") == 192,
                         "dismantle_returns_all_shell_materials_exactly");
-                    require(receipt.getInteger("facing") == 2, "controller_facing_preserved_through_all_modes");
+                    require(state.getBoolean("targetClosed"), "full_dismantle_closes_removed_controller_target");
                     Files.write(
                         new File(receipts, "client-complete.txt").toPath(),
-                        "real socket C08 + GUI mouse + build/pause/resume/cancel/upgrade/dismantle PASS\n"
+                        "real socket C08 + GUI mouse + direct-build/upgrade/full-dismantle PASS\n"
                             .getBytes(StandardCharsets.UTF_8));
                     done = true;
                     System.out.println("[GTIT-HOLOGRAM-INTERACTION-CLIENT] FINAL PASS stage=" + stage);
