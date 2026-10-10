@@ -367,6 +367,11 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void init(FMLInitializationEvent event) {
+        com.miaokatze.gtit.hologram.HologramNetwork.init();
+        FMLCommonHandler.instance()
+            .bus()
+            .register(new com.miaokatze.gtit.hologram.HologramLifecycle());
+        com.miaokatze.gtit.hologram.HologramSmokeTest.registerIfEnabled();
         // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
         ensureBaublesRingSlots();
 
@@ -511,6 +516,13 @@ public class CommonProxy {
             NekoCurrencyRegistrar.init();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[3/3] 猫猫币注册失败", t);
+        }
+
+        // 独立 jar 贸易资产：货币已初始化，实际应用沿用 serverStarted 的排队管线。
+        try {
+            NekoTradeIntegrationAPI.registerTradeAssetsFromJar("gtit");
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("[3/3] 猫猫全息投影仪贸易资产注册失败", t);
         }
 
         // E4a: 内置基础贸易组预探测——base 资产可用时抑制旧 42 条默认注入。
@@ -748,6 +760,7 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopping(FMLServerStoppingEvent event) {
+        com.miaokatze.gtit.hologram.HologramService.clear();
         try {
             NekoWalletManager.INSTANCE.saveAll();
         } catch (Throwable t) {
