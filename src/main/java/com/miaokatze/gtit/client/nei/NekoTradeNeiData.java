@@ -14,6 +14,8 @@ import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import com.miaokatze.gtit.trade.v2.NekoTradeMatcher;
 
+import codechicken.nei.NEIServerUtils;
+
 /** Reads the synchronized database; never reads local JSON or the VM recipe cache. */
 public final class NekoTradeNeiData {
 
@@ -54,7 +56,7 @@ public final class NekoTradeNeiData {
         if (output) {
             List<NekoBigItemStack> candidates = NekoTradeMatcher.outputCandidates(slot);
             if (candidates != null) for (NekoBigItemStack candidate : candidates) {
-                if (candidate.matches(query, true)) return true;
+                if (NEIServerUtils.areStacksSameTypeCraftingWithNBT(query, candidate.getBaseStack())) return true;
             }
         } else {
             for (NekoBigItemStack option : slot.getOptions()) {

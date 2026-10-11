@@ -39,6 +39,15 @@ public final class NekoTradeBqClient {
         }
     }
 
+    public static boolean canOpen(UUID id) {
+        if (id == null || !Loader.isModLoaded("betterquesting")) return false;
+        try {
+            return Backend.exists(id);
+        } catch (RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
     private static final class Backend {
 
         @Optional.Method(modid = "betterquesting")
@@ -46,6 +55,11 @@ public final class NekoTradeBqClient {
             IQuest quest = QuestDatabase.INSTANCE.get(id);
             return quest == null ? StatCollector.translateToLocal("gtit.nei.trade.quest_missing")
                 : QuestTranslation.translateQuestName(id, quest);
+        }
+
+        @Optional.Method(modid = "betterquesting")
+        static boolean exists(UUID id) {
+            return QuestDatabase.INSTANCE.get(id) != null;
         }
 
         @Optional.Method(modid = "betterquesting")

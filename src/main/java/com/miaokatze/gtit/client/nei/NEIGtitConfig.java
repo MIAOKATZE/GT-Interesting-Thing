@@ -53,7 +53,7 @@ public final class NEIGtitConfig implements IConfigureNEI {
             new HandlerInfo.Builder(NekoTradeRecipeHandler.ID, getName(), "gtit")
                 .setHeight(NekoTradeRecipeHandler.HEIGHT)
                 .setWidth(166)
-                .setMaxRecipesPerPage(1)
+                .setMaxRecipesPerPage(2)
                 .setDisplayStack(machine)
                 .build());
     }

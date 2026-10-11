@@ -10,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 
 import org.lwjgl.input.Mouse;
@@ -24,16 +25,20 @@ import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import codechicken.nei.PositionedStack;
 import codechicken.nei.recipe.GuiRecipe;
 import codechicken.nei.recipe.GuiRecipeCatalyst;
+import codechicken.nei.recipe.IUsageHandler;
+import codechicken.nei.recipe.RecipeCatalysts;
 import codechicken.nei.recipe.TemplateRecipeHandler;
 
 /** One recipe per synchronized trade group, with bounded internal pages for every exchange and slot. */
 public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
 
     public static final String ID = "gtit.neko_trade";
-    public static final int HEIGHT = 150;
-    private static final Rectangle PREVIOUS = new Rectangle(2, 110, 20, 12);
-    private static final Rectangle NEXT = new Rectangle(144, 110, 20, 12);
-    private static final Rectangle QUEST = new Rectangle(2, 134, 162, 12);
+    public static final int HEIGHT = 112;
+    private static final int SLOT_Y = 22;
+    private static final int SLOT_SPACING = 18;
+    private static final Rectangle PREVIOUS = new Rectangle(2, 76, 20, 12);
+    private static final Rectangle NEXT = new Rectangle(144, 76, 20, 12);
+    private static final int QUEST_Y = 100;
     private long databaseVersion = Long.MIN_VALUE;
     private ItemStack query;
     private boolean outputQuery;
@@ -56,7 +61,7 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
 
     @Override
     public void loadCraftingRecipes(String outputId, Object... results) {
-        if (ID.equals(outputId)) load(null, false);
+        if (ID.equals(outputId) || "all".equals(outputId)) load(null, false);
         else super.loadCraftingRecipes(outputId, results);
     }
 
@@ -67,7 +72,19 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
 
     @Override
     public void loadUsageRecipes(ItemStack ingredient) {
-        load(ingredient, false);
+        // Also cover NEI's plain usage route (catalyst style disabled or Ctrl held).
+        load(RecipeCatalysts.containsCatalyst(this, ingredient) ? null : ingredient, false);
+    }
+
+    @Override
+    public IUsageHandler getUsageAndCatalystHandler(String inputId, Object... ingredients) {
+        // This handler has no crafting transfer rectangle; NEI's default catalyst path needs one.
+        if ("item".equals(inputId) && RecipeCatalysts.containsCatalyst(this, (ItemStack) ingredients[0])) {
+            NekoTradeRecipeHandler handler = (NekoTradeRecipeHandler) newInstance();
+            handler.loadCraftingRecipes(ID);
+            return handler;
+        }
+        return super.getUsageAndCatalystHandler(inputId, ingredients);
     }
 
     private void load(ItemStack item, boolean output) {
@@ -112,7 +129,7 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
         Gui.drawRect(0, 0, 166, HEIGHT, 0xFFE4E4E4);
         for (int side = 0; side < 2; side++) for (int slot = 0; slot < 12; slot++) {
             int x = (side == 0 ? 3 : 93) + slot % 4 * 18;
-            int y = 40 + slot / 4 * 22;
+            int y = SLOT_Y + slot / 4 * SLOT_SPACING;
             Gui.drawRect(x - 1, y - 1, x + 17, y + 17, 0xFF888888);
             Gui.drawRect(x, y, x + 16, y + 16, 0xFFBBBBBB);
         }
@@ -123,29 +140,38 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
         if (recipeIndex >= arecipes.size()) return;
         CachedGroup recipe = (CachedGroup) arecipes.get(recipeIndex);
         NekoTradeGroup group = recipe.group;
-        NekoTrade trade = recipe.trade();
         line(text("group", NekoPageRegistry.getPageName(group.getTabId()), group.getOrderId()), 0);
         line(
             text(
                 "interval",
                 group.getCooldown() < 0 ? text("none") : text("time", group.getCooldown() / 20.0, group.getCooldown())),
             10);
-        line(text("limit", group.getMaxTrades() < 0 ? text("unlimited") : group.getMaxTrades()), 20);
-        line(text(trade.isRecordNBT() ? "strict" : "fuzzy"), 30);
         FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-        font.drawString(" > ", 75, 63, 0x444444, false);
-        font.drawString("[<]", 2, 111, 0x2255AA, false);
-        font.drawString("[>]", 144, 111, 0x2255AA, false);
+        font.drawString(" > ", 75, 45, 0x444444, false);
+        font.drawString("[<]", 2, PREVIOUS.y + 1, 0x2255AA, false);
+        font.drawString("[>]", 144, NEXT.y + 1, 0x2255AA, false);
         String pages = text("page", recipe.pageIndex + 1, recipe.pages.size());
-        font.drawString(pages, (166 - font.getStringWidth(pages)) / 2, 111, 0x444444, false);
+        font.drawString(pages, (166 - font.getStringWidth(pages)) / 2, PREVIOUS.y + 1, 0x444444, false);
         line(
             text(
                 "exchange",
                 recipe.page().tradeIndex + 1,
                 group.getTrades()
                     .size()),
-            123);
-        line(text("quest", NekoTradeBqClient.title(recipe.questId)), 135);
+            89);
+        String quest = text("quest", NekoTradeBqClient.title(recipe.questId));
+        if (NekoTradeBqClient.canOpen(recipe.questId) && Minecraft.getMinecraft().currentScreen instanceof GuiRecipe
+            && questBounds(recipe)
+                .contains(mouse((GuiRecipe<?>) Minecraft.getMinecraft().currentScreen, recipeIndex))) {
+            quest = EnumChatFormatting.UNDERLINE + quest;
+        }
+        line(quest, QUEST_Y + 1);
+    }
+
+    private static Rectangle questBounds(CachedGroup recipe) {
+        FontRenderer font = Minecraft.getMinecraft().fontRenderer;
+        String label = font.trimStringToWidth(text("quest", NekoTradeBqClient.title(recipe.questId)), 162);
+        return new Rectangle(2, QUEST_Y, font.getStringWidth(label), 12);
     }
 
     private static void line(String value, int y) {
@@ -183,7 +209,7 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
                 gui.forceRefreshPage();
                 return true;
             }
-            if (QUEST.contains(position)) return NekoTradeBqClient.open(recipe.questId);
+            if (questBounds(recipe).contains(position)) return NekoTradeBqClient.open(recipe.questId);
         }
         return super.mouseClicked(gui, button, recipeIndex);
     }
@@ -193,7 +219,8 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
         if (recipeIndex < arecipes.size()) {
             CachedGroup recipe = (CachedGroup) arecipes.get(recipeIndex);
             Point position = mouse(gui, recipeIndex);
-            if (QUEST.contains(position)) tooltip.add(text("quest", NekoTradeBqClient.title(recipe.questId)));
+            if (questBounds(recipe).contains(position))
+                tooltip.add(text("quest", NekoTradeBqClient.title(recipe.questId)));
             if (PREVIOUS.contains(position) || NEXT.contains(position)) tooltip.add(text("paging_hint"));
             if (new Rectangle(0, 0, 166, 10).contains(position)) {
                 tooltip.add(
@@ -201,6 +228,12 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
                 tooltip.add(
                     recipe.group.getId()
                         .toString());
+                tooltip.add(
+                    text("limit", recipe.group.getMaxTrades() < 0 ? text("unlimited") : recipe.group.getMaxTrades()));
+                tooltip.add(
+                    text(
+                        recipe.trade()
+                            .isRecordNBT() ? "strict" : "fuzzy"));
             }
         }
         return super.handleTooltip(gui, tooltip, recipeIndex);
@@ -234,7 +267,7 @@ public final class NekoTradeRecipeHandler extends TemplateRecipeHandler {
             super(
                 NekoTradeNeiData.displayStacks(source, output),
                 (output ? 93 : 3) + index % 4 * 18,
-                40 + index / 4 * 22);
+                SLOT_Y + index / 4 * SLOT_SPACING);
             this.source = source;
             this.output = output;
         }

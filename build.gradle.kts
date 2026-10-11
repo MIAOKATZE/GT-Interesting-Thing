@@ -98,6 +98,27 @@ tasks.register<JavaExec>("runTradeMatchingTest") {
 
 tasks.named("check") { dependsOn("runTradeMatchingTest") }
 
+// NEI production query entry points need these client classes only in test runtimes.
+val neiTestRuntimeClasspath = configurations.detachedConfiguration(
+    dependencies.create("com.github.GTNewHorizons:NotEnoughItems:2.8.98-GTNH:dev"),
+    dependencies.create("com.github.GTNewHorizons:CodeChickenCore:1.4.21:dev"),
+    dependencies.create("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209"),
+    dependencies.create("org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209")
+).apply { isTransitive = false }
+
+tasks.register<JavaExec>("runNekoTradeNeiTest") {
+    group = "verification"
+    description = "Runs native NEI trade item, all-recipes and catalyst query regressions."
+    mainClass = "com.miaokatze.gtit.client.nei.NekoTradeNeiTestBootstrap"
+    classpath = storeTestRuntimeClasspath
+    classpath += neiTestRuntimeClasspath
+    val scratchDir = layout.buildDirectory.dir("nei-handler-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runNekoTradeNeiTest") }
+
 tasks.register<JavaExec>("runTradePageRefreshTest") {
     group = "verification"
     description = "Runs trade tab selection, pagination and registry revision regression checks."
@@ -113,6 +134,7 @@ tasks.register<JavaExec>("runHologramTest") {
     description = "Runs hologram channel, packet and inactive capture regressions."
     mainClass = "com.miaokatze.gtit.hologram.HologramRegressionTest"
     classpath = storeTestRuntimeClasspath
+    classpath += neiTestRuntimeClasspath
     classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
     val scratchDir = layout.buildDirectory.dir("hologram-test")
     workingDir(scratchDir)

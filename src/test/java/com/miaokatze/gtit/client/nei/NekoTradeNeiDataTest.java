@@ -13,7 +13,7 @@ import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 
-/** Headless model checks: intentionally never references a NEI handler, Minecraft client or LWJGL. */
+/** Headless data checks use NEI's native item matcher without starting a client or rendering a GUI. */
 public final class NekoTradeNeiDataTest {
 
     private static void check(boolean value, String message) {
