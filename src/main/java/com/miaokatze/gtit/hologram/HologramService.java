@@ -185,6 +185,7 @@ public final class HologramService {
                 s.coordinatePins.remove(position(cell));
                 s.manualPositions.remove(position(cell));
                 s.pins.remove(index);
+                if (s.autoTargets.containsKey(index)) s.suppressedAuto.add(position(s.capture.cells.get(index)));
                 scan(s);
                 s.status = "位置覆盖已清除，已恢复结构默认目标";
             }
@@ -236,6 +237,7 @@ public final class HologramService {
                 s.status = "请先选择完整采集中的结构格";
             else if ("clearPin".equals(op)) {
                 s.selected = index;
+                if (s.autoTargets.containsKey(index)) s.suppressedAuto.add(position(s.capture.cells.get(index)));
                 s.pins.remove(index);
                 s.coordinatePins.remove(position(s.capture.cells.get(index)));
                 refreshPlan(s);
@@ -285,6 +287,44 @@ public final class HologramService {
                     s.coordinatePins.put(position(cell), pin.copy());
                     refreshPlan(s);
                     s.status = "来源物品已设为目标；点击施工才扣材料";
+                }
+            }
+        } else if ("hatchPreset".equals(op) && s.job != 1 && s.job != 2) {
+            int tier = action.getInteger("tier");
+            if (tier < 0 || tier >= gregtech.api.enums.GTValues.VN.length || s.capture == null || s.capture.incomplete)
+                s.status = "电压等级或完整结构无效";
+            else {
+                s.hatchTier = tier;
+                s.hatchDowngrade = action.getBoolean("downgrade");
+                s.presetEnabled = true;
+                s.presetPaused = false;
+                s.noHatches = false;
+                s.suppressedAuto.clear();
+                for (HologramCapture.Cell cell : s.capture.cells) cell.candidates = null;
+                refreshPlan(s);
+                s.status = s.presetReason;
+            }
+        } else if ("clearHatchPreset".equals(op) && s.job != 1 && s.job != 2) {
+            s.presetEnabled = false;
+            s.presetPaused = true;
+            s.autoTargets.clear();
+            s.suppressedAuto.clear();
+            refreshPlan(s);
+            s.status = "整机预设已撤销，已有仓室与手选目标保留";
+        } else if ("hatchFacing".equals(op) && s.job != 1 && s.job != 2) {
+            int index = action.getInteger("selected"), direction = action.getInteger("facing");
+            if (s.capture == null || index < 0 || index >= s.capture.cells.size()) s.status = "请先选择仓室格";
+            else {
+                HologramCapture.Cell cell = s.capture.cells.get(index);
+                boolean legal = direction == -1;
+                for (int allowed : legalFacings(s, cell, targetFor(s, cell, index)))
+                    if (allowed == direction) legal = true;
+                if (cell.anchor || !legal) s.status = "控制器受保护，或该仓室不支持所选方向";
+                else {
+                    if (direction == -1) s.facingPins.remove(position(cell));
+                    else s.facingPins.put(position(cell), direction);
+                    refreshPlan(s);
+                    s.status = direction == -1 ? "已恢复自动朝向" : "仓室朝向已指定，施工时生效";
                 }
             }
         } else if ("pin".equals(op) && s.job != 1 && s.job != 2) {
@@ -644,26 +684,15 @@ public final class HologramService {
             && c.family.equals(s.capture.cells.get(s.selected).family)) pin = s.pins.get(s.selected);
         if (pin != null) return pin.copy();
         if (c.userPosition) return null;
-        if (!s.noHatches && s.channels.hasKey("gt_hatch", 3) && "hatch".equals(c.role)) {
-            ItemStack first = null, available = null;
-            int firstTier = Integer.MAX_VALUE, availableTier = Integer.MAX_VALUE;
-            for (ItemStack option : candidates(s, c)) {
-                if (!(option.getItem() instanceof ItemMachines) || hatchElement(s, c, option, false) == null) continue;
-                int id = option.getItemDamage();
-                if (id < 0 || id >= GregTechAPI.METATILEENTITIES.length
-                    || !(GregTechAPI.METATILEENTITIES[id] instanceof MTEHatch)) continue;
-                int tier = ((MTEHatch) GregTechAPI.METATILEENTITIES[id]).mTier;
-                if (tier < firstTier) {
-                    first = option;
-                    firstTier = tier;
-                }
-                if (tier < availableTier
-                    && (s.player.capabilities.isCreativeMode || materialSource(s).count(option, 1) > 0)) {
-                    available = option;
-                    availableTier = tier;
-                }
-            }
-            if (available != null || first != null) return (available == null ? first : available).copy();
+        ItemStack automatic = s.autoTargets.get(index);
+        if (!s.noHatches && automatic != null) return automatic.copy();
+        TileEntity actual = s.player.worldObj.getTileEntity(c.x, c.y, c.z);
+        if (!s.noHatches && actual instanceof IGregTechTileEntity && !c.anchor) {
+            ItemStack existing = new ItemStack(
+                GregTechAPI.sBlockMachines,
+                1,
+                ((IGregTechTileEntity) actual).getMetaTileID());
+            if (hatchElement(s, c, existing, true) != null) return existing;
         }
         if (c.block != null && c.block != Blocks.air) {
             ItemStack block = new ItemStack(c.block, 1, c.meta);
@@ -693,9 +722,16 @@ public final class HologramService {
 
     private static boolean targetSatisfied(Session s, HologramCapture.Cell c, int index, Block old, int meta) {
         ItemStack target = targetFor(s, c, index);
-        if (explicitTarget(s, c, index) && HologramRecovery.hasSeal(target))
-            return HologramRecovery.matchesPlaced(s.player.worldObj, c.x, c.y, c.z, target);
-        if (explicitGrade(s, c) || explicitTarget(s, c, index)) return targetMatches(s, c, index, old, meta);
+        if (s.facingPins.containsKey(position(c))) {
+            TileEntity actual = s.player.worldObj.getTileEntity(c.x, c.y, c.z);
+            if (!(actual instanceof IGregTechTileEntity) || ((IGregTechTileEntity) actual).getFrontFacing()
+                .ordinal() != s.facingPins.get(position(c))) return false;
+        }
+        if (explicitTarget(s, c, index) && HologramRecovery.hasSeal(target)) return HologramRecovery
+            .matchesPlaced(s.player.worldObj, c.x, c.y, c.z, target, s.facingPins.getOrDefault(position(c), -1));
+        if (s.facingPins.containsKey(position(c)) || s.autoTargets.containsKey(index)
+            || explicitGrade(s, c)
+            || explicitTarget(s, c, index)) return targetMatches(s, c, index, old, meta);
         HologramReplacementFamily.Family family = HologramReplacementFamily.resolve(c.element, c.block, c.meta);
         if (family != null && family.contains(old, meta)) return true;
         return knownSatisfied(c, old, meta);
@@ -737,7 +773,7 @@ public final class HologramService {
         // A concrete new hatch pin authorizes that item even when the automatic hatch toggle is off.
         if (!s.noHatches && "hatch".equals(c.role)) {
             int index = s.capture == null ? -1 : s.capture.cells.indexOf(c);
-            if (index >= 0 && explicitTarget(s, c, index)) {
+            if (index >= 0 && (explicitTarget(s, c, index) || s.autoTargets.containsKey(index))) {
                 ItemStack target = targetFor(s, c, index);
                 if (target != null && target.getItem() instanceof ItemMachines)
                     ChannelDataAccessor.setChannelData(result, "gt_hatch", 1);
@@ -759,10 +795,12 @@ public final class HologramService {
         boolean empty = trivial(w, c.x, c.y, c.z);
         if (s.mode == 2) return empty ? "satisfied" : removable(s, c) ? "pending" : "protected";
         if ((c.element == null && !explicitTarget(s, c, index)) || (c.unknown && !explicitTarget(s, c, index)
+            && !s.autoTargets.containsKey(index)
             && !(!s.noHatches && s.channels.hasKey("gt_hatch", 3) && "hatch".equals(c.role)))) return "unsupported";
         Block old = w.getBlock(c.x, c.y, c.z);
         int meta = w.getBlockMetadata(c.x, c.y, c.z);
         if (targetSatisfied(s, c, index, old, meta)) return "satisfied";
+        if (s.facingPins.containsKey(position(c)) && targetMatches(s, c, index, old, meta)) return "pending";
         ItemStack target = targetFor(s, c, index);
         if (target == null || Block.getBlockFromItem(target.getItem()) == Blocks.air) return "unsupported";
         if (explicitTarget(s, c, index)) {
@@ -777,6 +815,7 @@ public final class HologramService {
         World w = s.player.worldObj;
         if (!w.blockExists(c.x, c.y, c.z)) return "区块未加载";
         if (c.anchor) return "始终保留控制器锚点";
+        if (s.mode != 2 && orientationOnly(s, c, index)) return "仅调整现有仓室朝向，不拆除、不扣材料";
         if (c.userPosition && !explicitTarget(s, c, index)) return "新增位置尚未指定目标，保持现场";
         if (s.mode == 2 && c.block == Blocks.air && !explicitTarget(s, c, index)) return "声明空气位置保持现场";
         if (w.getTileEntity(c.x, c.y, c.z) != null)
@@ -801,12 +840,15 @@ public final class HologramService {
         s.expectedBlocks.clear();
         s.expectedMeta.clear();
         s.expectedTiles.clear();
+        s.expectedFacings.clear();
         s.planStatus.clear();
         s.planTargets.clear();
         s.planMissing = 0;
         s.planRecoveryFits = true;
         if (s.capture == null) return;
         World w = s.player.worldObj;
+        buildPreset(s);
+        refreshFacings(s);
         for (int i = 0; i < s.capture.cells.size(); i++) s.planTargets.add(draftTarget(s, s.capture.cells.get(i), i));
         for (int i = 0; i < s.capture.cells.size(); i++) {
             HologramCapture.Cell c = s.capture.cells.get(i);
@@ -815,6 +857,9 @@ public final class HologramService {
             s.expectedMeta.add(loaded ? w.getBlockMetadata(c.x, c.y, c.z) : 0);
             TileEntity tile = loaded ? w.getTileEntity(c.x, c.y, c.z) : null;
             s.expectedTiles.add(tile);
+            s.expectedFacings.add(
+                tile instanceof IGregTechTileEntity ? ((IGregTechTileEntity) tile).getFrontFacing()
+                    .ordinal() : -1);
             c.status = classify(s, c, i);
             s.planStatus.add(c.status);
         }
@@ -833,6 +878,7 @@ public final class HologramService {
             HologramCapture.Cell c = s.capture.cells.get(i);
             if (!inScope(s, c, i) || !"pending".equals(c.status)) continue;
             ItemStack target = targetFor(s, c, i);
+            if (s.mode != 2 && orientationOnly(s, c, i)) continue;
             if (s.mode != 2 && (!s.player.capabilities.isCreativeMode || HologramRecovery.hasSeal(target))) {
                 String key = stackKey(target);
                 stacks.put(key, target);
@@ -862,7 +908,10 @@ public final class HologramService {
         World w = s.player.worldObj;
         return w.blockExists(c.x, c.y, c.z) && w.getBlock(c.x, c.y, c.z) == s.expectedBlocks.get(index)
             && w.getBlockMetadata(c.x, c.y, c.z) == s.expectedMeta.get(index)
-            && w.getTileEntity(c.x, c.y, c.z) == s.expectedTiles.get(index);
+            && w.getTileEntity(c.x, c.y, c.z) == s.expectedTiles.get(index)
+            && (!(s.expectedTiles.get(index) instanceof IGregTechTileEntity)
+                || ((IGregTechTileEntity) s.expectedTiles.get(index)).getFrontFacing()
+                    .ordinal() == s.expectedFacings.get(index));
     }
 
     private static boolean planCurrent(Session s) {
@@ -909,11 +958,32 @@ public final class HologramService {
             c.status = "satisfied";
             return true;
         }
+        if (s.mode != 2 && orientationOnly(s, c, index)) {
+            IGregTechTileEntity actual = (IGregTechTileEntity) w.getTileEntity(c.x, c.y, c.z);
+            ForgeDirection before = actual.getFrontFacing();
+            try {
+                int requested = s.facingPins.get(position(c));
+                boolean legal = false;
+                for (int allowed : legalFacings(s, c, targetFor(s, c, index))) if (allowed == requested) legal = true;
+                if (!legal) throw new IllegalStateException("illegal facing");
+                actual.setFrontFacing(ForgeDirection.getOrientation(requested));
+                if (actual.getFrontFacing()
+                    .ordinal() != requested) throw new IllegalStateException("facing rejected");
+                c.status = "replaced";
+                return true;
+            } catch (RuntimeException | LinkageError failure) {
+                actual.setFrontFacing(before);
+                c.status = "protected";
+                s.status = "朝向修改失败，已恢复原方向";
+                return false;
+            }
+        }
         if (!empty && ((s.mode == 0 && !explicitTarget(s, c, index)) || !removable(s, c))) {
             c.status = "protected";
             return true;
         }
         if (s.mode != 2 && ((c.unknown && !explicitTarget(s, c, index)
+            && !s.autoTargets.containsKey(index)
             && !(!s.noHatches && s.channels.hasKey("gt_hatch", 3) && "hatch".equals(c.role)))
             || (c.element == null && !explicitTarget(s, c, index))
             || targetFor(s, c, index) == null)) {
@@ -1042,7 +1112,8 @@ public final class HologramService {
                         source,
                         s.player,
                         s.player::addChatMessage);
-                } else if (explicitTarget(s, c, index) && pin.getItem() instanceof ItemMachines
+                } else if ((explicitTarget(s, c, index) || s.autoTargets.containsKey(index))
+                    && pin.getItem() instanceof ItemMachines
                     && acceptableSample(s, c, pin)) {
                         // Explicit overrides use the legal GT item directly, without structure candidate filters.
                         // Manual choices do not use the automatic atLeast fill quota.
@@ -1100,6 +1171,19 @@ public final class HologramService {
                 if (!HologramRecovery.restorePlaced(w, c.x, c.y, c.z, pin)
                     || (HologramRecovery.hasSeal(pin) && !HologramRecovery.matchesPlaced(w, c.x, c.y, c.z, pin)))
                     throw new IllegalStateException("stored device restore rejected");
+                Integer direction = s.planFacings.get(index);
+                TileEntity placedTile = w.getTileEntity(c.x, c.y, c.z);
+                if (direction != null && direction >= 0
+                    && placedTile instanceof IGregTechTileEntity
+                    && (!HologramRecovery.hasSeal(pin) || s.facingPins.containsKey(position(c)))) {
+                    IGregTechTileEntity gt = (IGregTechTileEntity) placedTile;
+                    if (c.anchor || !gt.getMetaTileEntity()
+                        .isFacingValid(ForgeDirection.getOrientation(direction)))
+                        throw new IllegalStateException("hatch facing rejected");
+                    gt.setFrontFacing(ForgeDirection.getOrientation(direction));
+                    if (gt.getFrontFacing()
+                        .ordinal() != direction) throw new IllegalStateException("hatch facing failed");
+                }
                 if (MinecraftForge.EVENT_BUS.post(new BlockEvent.PlaceEvent(snapshot, old, s.player))) {
                     HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
                     rollbackMaterials(s, transaction, inventory);
@@ -1443,7 +1527,6 @@ public final class HologramService {
                 }
             }
             for (ItemStack stack : hatches) {
-                if (result.size() >= 128) break;
                 boolean duplicate = false;
                 for (ItemStack existing : result) if (same(existing, stack)) {
                     duplicate = true;
@@ -1553,9 +1636,207 @@ public final class HologramService {
                 : Integer.MAX_VALUE;
     }
 
+    private static Map<gregtech.api.interfaces.IHatchElement<?>, Integer> hatchRequirements(HologramCapture.Cell c) {
+        Map<gregtech.api.interfaces.IHatchElement<?>, Integer> result = new LinkedHashMap<>();
+        for (IStructureElement<?> part : HologramElementCatalog.parts(c.element)) HologramHatchPolicy.requirements(part)
+            .forEach((type, count) -> result.merge(type, count, Math::max));
+        return result;
+    }
+
+    private static String candidateRole(Session s, HologramCapture.Cell c, ItemStack stack) {
+        if (hatchTier(stack) == Integer.MAX_VALUE) return "外壳/方块";
+        gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(stack);
+        for (IStructureElement<?> part : HologramElementCatalog.parts(c.element))
+            for (gregtech.api.interfaces.IHatchElement<?> type : HologramHatchPolicy.declared(part))
+                if (type.matchesHatch(prototype)) return type.getDisplayName();
+        return "仓室";
+    }
+
+    private static int[] legalFacings(Session s, HologramCapture.Cell c, ItemStack target) {
+        if (c.anchor || target == null || hatchTier(target) == Integer.MAX_VALUE) return new int[0];
+        gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(target);
+        IStructureElement<?> part = hatchElement(s, c, target, true);
+        List<Integer> result = new ArrayList<>();
+        for (ForgeDirection direction : ForgeDirection.VALID_DIRECTIONS)
+            if (prototype != null && prototype.isFacingValid(direction)
+                && (part == null || HologramHatchPolicy.allowed(part, s.machine.getExtendedFacing(), direction)))
+                result.add(direction.ordinal());
+        int[] values = new int[result.size()];
+        for (int i = 0; i < values.length; i++) values[i] = result.get(i);
+        return values;
+    }
+
+    private static boolean orientationOnly(Session s, HologramCapture.Cell c, int index) {
+        return !c.anchor && s.facingPins.containsKey(position(c))
+            && s.player.worldObj.getTileEntity(c.x, c.y, c.z) instanceof IGregTechTileEntity
+            && targetMatches(
+                s,
+                c,
+                index,
+                s.player.worldObj.getBlock(c.x, c.y, c.z),
+                s.player.worldObj.getBlockMetadata(c.x, c.y, c.z))
+            && (!HologramRecovery.hasSeal(targetFor(s, c, index)) || HologramRecovery.matchesPlaced(
+                s.player.worldObj,
+                c.x,
+                c.y,
+                c.z,
+                targetFor(s, c, index),
+                ((IGregTechTileEntity) s.player.worldObj.getTileEntity(c.x, c.y, c.z)).getFrontFacing()
+                    .ordinal()));
+    }
+
+    private static void refreshFacings(Session s) {
+        s.planFacings.clear();
+        List<int[]> cells = new ArrayList<>();
+        for (HologramCapture.Cell c : s.capture.cells)
+            cells.add(new int[] { c.x, c.y, c.z, c.block == Blocks.air && !c.anchor ? 0 : 1 });
+        java.util.Set<String> exterior = HologramHatchGeometry.exterior(
+            cells,
+            (x, y, z) -> s.player.worldObj.blockExists(x, y, z) && trivial(s.player.worldObj, x, y, z));
+        for (int i = 0; i < s.capture.cells.size(); i++) {
+            HologramCapture.Cell c = s.capture.cells.get(i);
+            ItemStack target = draftTarget(s, c, i);
+            int[] legal = legalFacings(s, c, target);
+            if (legal.length == 0) continue;
+            Integer pin = s.facingPins.get(position(c));
+            if (pin != null) {
+                for (int side : legal) if (side == pin) s.planFacings.put(i, pin);
+                continue;
+            }
+            TileEntity actual = s.player.worldObj.getTileEntity(c.x, c.y, c.z);
+            if (actual instanceof IGregTechTileEntity && target != null
+                && !HologramRecovery.hasSeal(target)
+                && ((IGregTechTileEntity) actual).getMetaTileID() == target.getItemDamage()) {
+                s.planFacings.put(
+                    i,
+                    ((IGregTechTileEntity) actual).getFrontFacing()
+                        .ordinal());
+                continue;
+            }
+            if (HologramRecovery.hasSeal(target)) continue;
+            int direction = HologramHatchGeometry.choose(c.x, c.y, c.z, legal, exterior);
+            if (direction >= 0) s.planFacings.put(i, direction);
+        }
+    }
+
+    /** Freeze a whole-machine target list; quotas and inventory are shared across every position. */
+    private static void buildPreset(Session s) {
+        s.autoTargets.clear();
+        s.presetSupported = false;
+        s.presetAvailable = false;
+        s.presetReason = "此定义未声明完整仓室配额，不能保证自动成型";
+        Map<String, gregtech.api.interfaces.IHatchElement<?>> types = new LinkedHashMap<>();
+        Map<String, Integer> quotas = new LinkedHashMap<>();
+        Map<String, Integer> reserved = new HashMap<>();
+        for (HologramCapture.Cell c : s.capture.cells) hatchRequirements(c).forEach((type, count) -> {
+            types.putIfAbsent(type.name(), type);
+            quotas.merge(type.name(), count, Math::max);
+        });
+        if (types.isEmpty()) return;
+        s.presetAvailable = true;
+        if (s.presetPaused) {
+            s.presetReason = "预设已撤销；选择电压级后可重新生成";
+            return;
+        }
+        if (s.noHatches || !(s.presetEnabled || s.channels.hasKey("gt_hatch", 3))) {
+            s.presetReason = "选择电压级后生成目标；保留已有仓室与手动指定";
+            return;
+        }
+        // Count legal existing devices and explicit targets without changing either of them.
+        for (int i = 0; i < s.capture.cells.size(); i++) {
+            HologramCapture.Cell c = s.capture.cells.get(i);
+            if (c.anchor) continue;
+            ItemStack stack = s.pins.get(i);
+            TileEntity actual = s.player.worldObj.getTileEntity(c.x, c.y, c.z);
+            if (stack == null && actual instanceof IGregTechTileEntity)
+                stack = new ItemStack(GregTechAPI.sBlockMachines, 1, ((IGregTechTileEntity) actual).getMetaTileID());
+            if (stack == null || hatchElement(s, c, stack, true) == null) continue;
+            if (s.pins.containsKey(i) && !(actual instanceof IGregTechTileEntity))
+                reserved.merge(stackKey(stack), 1, Integer::sum);
+            gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(stack);
+            for (Map.Entry<String, gregtech.api.interfaces.IHatchElement<?>> type : types.entrySet())
+                if (type.getValue()
+                    .matchesHatch(prototype)) quotas.computeIfPresent(type.getKey(), (key, n) -> Math.max(0, n - 1));
+        }
+        List<String> ordered = new ArrayList<>(types.keySet());
+        ordered.sort((a, b) -> Integer.compare(presetPositions(s, types.get(a)), presetPositions(s, types.get(b))));
+        int unfilled = 0;
+        for (String name : ordered) for (int remaining = quotas.get(name); remaining > 0; remaining--) {
+            gregtech.api.interfaces.IHatchElement<?> type = types.get(name);
+            ItemStack chosen = null;
+            int chosenIndex = -1;
+            for (int i = 0; i < s.capture.cells.size(); i++) {
+                HologramCapture.Cell c = s.capture.cells.get(i);
+                if (!presetPosition(s, c, i, type)) continue;
+                List<ItemStack> options = new ArrayList<>();
+                for (ItemStack option : candidates(s, c)) if (hatchTier(option) != Integer.MAX_VALUE
+                    && type.matchesHatch(ItemMachines.getMetaTileEntity(option))) options.add(option);
+                ItemStack pick = presetCandidate(s, options, reserved);
+                if (pick == null) continue;
+                if (chosen == null || hatchTier(pick) > hatchTier(chosen)) {
+                    chosen = pick;
+                    chosenIndex = i;
+                }
+                if (hatchTier(pick) == s.hatchTier) break;
+            }
+            if (chosen == null) {
+                unfilled++;
+                continue;
+            }
+            s.autoTargets.put(chosenIndex, chosen.copy());
+            reserved.merge(stackKey(chosen), 1, Integer::sum);
+        }
+        s.presetSupported = unfilled == 0;
+        s.presetReason = unfilled == 0 ? "已按声明配额生成仓室预设；已有仓室与手选目标保留，额外成型条件仍由原机检查"
+            : "部分声明仓室没有可放置位置或对应等级候选，不能保证自动成型（缺 " + unfilled + " 格）";
+    }
+
+    private static boolean presetPosition(Session s, HologramCapture.Cell c, int i,
+        gregtech.api.interfaces.IHatchElement<?> type) {
+        if (c.anchor || c.userPosition
+            || explicitTarget(s, c, i)
+            || s.autoTargets.containsKey(i)
+            || s.suppressedAuto.contains(position(c))
+            || s.player.worldObj.getTileEntity(c.x, c.y, c.z) != null) return false;
+        boolean declared = false;
+        for (gregtech.api.interfaces.IHatchElement<?> allowed : hatchRequirements(c).keySet()) if (allowed.name()
+            .equals(type.name())) declared = true;
+        return declared && (trivial(s.player.worldObj, c.x, c.y, c.z) || s.mode == 1 && destructive(
+            c,
+            s.player.worldObj.getBlock(c.x, c.y, c.z),
+            s.player.worldObj.getBlockMetadata(c.x, c.y, c.z)));
+    }
+
+    private static int presetPositions(Session s, gregtech.api.interfaces.IHatchElement<?> type) {
+        int count = 0;
+        for (int i = 0; i < s.capture.cells.size(); i++)
+            if (presetPosition(s, s.capture.cells.get(i), i, type)) count++;
+        return count;
+    }
+
+    private static ItemStack presetCandidate(Session s, List<ItemStack> options, Map<String, Integer> reserved) {
+        int[] tiers = new int[options.size()], available = new int[options.size()];
+        for (int i = 0; i < options.size(); i++) {
+            ItemStack option = options.get(i);
+            tiers[i] = hatchTier(option);
+            available[i] = s.player.capabilities.isCreativeMode ? 1
+                : materialSource(s).count(option, 4096) - reserved.getOrDefault(stackKey(option), 0);
+        }
+        int chosen = HologramHatchPreset.choose(tiers, available, s.hatchTier, s.hatchDowngrade);
+        return chosen < 0 ? null : options.get(chosen);
+    }
+
     private static void send(Session s) {
         NBTTagCompound state = new NBTTagCompound();
         state.setBoolean("open", s.open);
+        state.setInteger("hatchTier", s.hatchTier);
+        state.setInteger("hatchTierMax", gregtech.api.enums.GTValues.VN.length - 1);
+        state.setBoolean("hatchDowngrade", s.hatchDowngrade);
+        state.setBoolean("presetSupported", s.presetSupported);
+        state.setBoolean("presetAvailable", s.presetAvailable);
+        state.setBoolean("presetActive", s.presetEnabled || !s.autoTargets.isEmpty());
+        state.setString("presetReason", s.presetReason);
+        state.setBoolean("creativeMaterials", s.player.capabilities.isCreativeMode);
         s.open = false;
         state.setString("session", s.id);
         state.setString("generation", s.id);
@@ -1643,6 +1924,16 @@ public final class HologramService {
             row.setInteger("dy", c.y - s.y);
             row.setInteger("dz", c.z - s.z);
             row.setBoolean("anchor", c.anchor);
+            row.setBoolean("hasPin", s.pins.containsKey(index));
+            row.setBoolean("hasTargetOverride", s.pins.containsKey(index) || s.autoTargets.containsKey(index));
+            row.setBoolean("hasFacingPin", s.facingPins.containsKey(position(c)));
+            row.setInteger("hatchFacing", s.planFacings.getOrDefault(index, -1));
+            TileEntity actualTile = world.getTileEntity(c.x, c.y, c.z);
+            row.setInteger(
+                "actualFacing",
+                actualTile instanceof IGregTechTileEntity ? ((IGregTechTileEntity) actualTile).getFrontFacing()
+                    .ordinal() : -1);
+            row.setIntArray("hatchFacings", legalFacings(s, c, targetFor(s, c, index)));
             row.setBoolean("userPosition", c.userPosition);
             row.setBoolean("iconOnly", c.iconOnly);
             row.setString("role", c.role);
@@ -1665,7 +1956,7 @@ public final class HologramService {
                 "autoTarget",
                 !s.noHatches && s.channels.hasKey("gt_hatch", 3)
                     && "hatch".equals(c.role)
-                    && !explicitTarget(s, c, index));
+                    && !explicitTarget(s, c, index) || s.autoTargets.containsKey(index));
             boolean loaded = world.blockExists(c.x, c.y, c.z);
             Block current = loaded ? world.getBlock(c.x, c.y, c.z) : Blocks.air;
             int meta = loaded ? world.getBlockMetadata(c.x, c.y, c.z) : 0;
@@ -1707,7 +1998,7 @@ public final class HologramService {
             if (inScope(s, c, index) && index < s.planStatus.size() && "pending".equals(s.planStatus.get(index)))
                 workTotal++;
             NBTTagList choices = new NBTTagList();
-            List<ItemStack> options = candidates(s, c);
+            List<ItemStack> options = index == s.selected ? candidates(s, c) : Collections.emptyList();
             int chosenChoice = -1;
             for (int choice = 0; choice < options.size(); choice++) if (same(pinned, options.get(choice))) {
                 chosenChoice = choice;
@@ -1721,12 +2012,24 @@ public final class HologramService {
                 choices.appendTag(tag);
             }
             row.setTag("candidates", choices);
+            NBTTagList candidateRoles = new NBTTagList();
+            int[] candidateTiers = new int[options.size()], candidateAvailable = new int[options.size()];
+            for (int n = 0; n < options.size(); n++) {
+                ItemStack option = options.get(n);
+                candidateRoles.appendTag(new NBTTagString(candidateRole(s, c, option)));
+                candidateTiers[n] = hatchTier(option) == Integer.MAX_VALUE ? -1 : hatchTier(option);
+                candidateAvailable[n] = materialSource(s).count(option, 4096);
+            }
+            row.setTag("candidateRoles", candidateRoles);
+            row.setIntArray("candidateTiers", candidateTiers);
+            row.setIntArray("candidateAvailable", candidateAvailable);
             cells.appendTag(row);
             if (!"satisfied".equals(c.status) && !"protected".equals(c.status)
                 && !"unsupported".equals(c.status)
                 && !"placed".equals(c.status)
                 && !"replaced".equals(c.status)
                 && pinned != null
+                && !orientationOnly(s, c, index)
                 && inScope(s, c, index)
                 && s.mode != 2
                 && (!s.player.capabilities.isCreativeMode || HologramRecovery.hasSeal(pinned))) {
@@ -1738,11 +2041,20 @@ public final class HologramService {
                     req = new NBTTagCompound();
                     stack.writeToNBT(req);
                     req.setInteger("available", materialSource(s).count(stack, 4096));
+                    req.setInteger("mainAvailable", materialSource(s).mainCount(stack, 4096));
+                    req.setInteger(
+                        "controllerAvailable",
+                        s.target instanceof net.minecraft.inventory.IInventory
+                            && ((net.minecraft.inventory.IInventory) s.target).isUseableByPlayer(s.player)
+                                ? HologramMaterials
+                                    .controllerCount((net.minecraft.inventory.IInventory) s.target, stack, 4096)
+                                : -1);
                     requirements.put(key, req);
                 }
                 req.setInteger("required", req.getInteger("required") + 1);
             }
             if (inScope(s, c, index) && "pending".equals(c.status)
+                && !orientationOnly(s, c, index)
                 && loaded
                 && !trivial(world, c.x, c.y, c.z)
                 && (!s.player.capabilities.isCreativeMode || world.getTileEntity(c.x, c.y, c.z) != null)) try {
@@ -1800,6 +2112,13 @@ public final class HologramService {
         HologramMaterials.Context materialContext;
         final List<ItemStack> materialChoices = new ArrayList<>();
         final Map<Integer, ItemStack> pins = new HashMap<>();
+        final Map<Integer, ItemStack> autoTargets = new HashMap<>();
+        final java.util.Set<String> suppressedAuto = new java.util.HashSet<>();
+        final Map<String, Integer> facingPins = new HashMap<>();
+        final Map<Integer, Integer> planFacings = new HashMap<>();
+        int hatchTier = 1;
+        boolean hatchDowngrade, presetEnabled, presetSupported, presetAvailable, presetPaused;
+        String presetReason = "请选择电压级生成整机仓室预设";
         final Map<String, ItemStack> coordinatePins = new HashMap<>();
         final Map<String, HologramCapture.Cell> manualPositions = new LinkedHashMap<>();
         final IdentityHashMap<IStructureElement<?>, Map<String, List<ItemStack>>> hatchCandidates = new IdentityHashMap<>();
@@ -1820,6 +2139,7 @@ public final class HologramService {
         final List<Block> expectedBlocks = new ArrayList<>();
         final List<Integer> expectedMeta = new ArrayList<>();
         final List<TileEntity> expectedTiles = new ArrayList<>();
+        final List<Integer> expectedFacings = new ArrayList<>();
         final List<String> planStatus = new ArrayList<>();
         final List<ItemStack> planTargets = new ArrayList<>();
         long actionTick = -1;

@@ -96,11 +96,17 @@ public final class HologramRecovery {
 
     /** Copy, never rewrite the item: world/cache identities are not serialized; only position is relocated. */
     public static NBTTagCompound relocateNBT(NBTTagCompound seal, int x, int y, int z) {
+        return relocateNBT(seal, x, y, z, -1);
+    }
+
+    /** A requested hatch facing is the sole permitted difference from the sealed payload. */
+    public static NBTTagCompound relocateNBT(NBTTagCompound seal, int x, int y, int z, int facing) {
         NBTTagCompound tile = (NBTTagCompound) seal.getCompoundTag("tile")
             .copy();
         tile.setInteger("x", x);
         tile.setInteger("y", y);
         tile.setInteger("z", z);
+        if (facing >= 0 && facing < 6) tile.setShort("mFacing", (short) facing);
         return tile;
     }
 
@@ -210,6 +216,10 @@ public final class HologramRecovery {
 
     /** Explicit sealed pins include inventory/tanks/settings, not merely the machine's meta ID. */
     public static boolean matchesPlaced(World world, int x, int y, int z, ItemStack stack) {
+        return matchesPlaced(world, x, y, z, stack, -1);
+    }
+
+    public static boolean matchesPlaced(World world, int x, int y, int z, ItemStack stack, int facing) {
         if (!hasSeal(stack) || !validItem(stack, world.getBlock(x, y, z))) return false;
         TileEntity tile = world.getTileEntity(x, y, z);
         if (!supported(tile)) return false;
@@ -220,7 +230,7 @@ public final class HologramRecovery {
         tile.writeToNBT(actual);
         ((IGregTechTileEntity) tile).getMetaTileEntity()
             .saveNBTData(actual);
-        return actual.equals(relocateNBT(seal, x, y, z));
+        return actual.equals(relocateNBT(seal, x, y, z, facing));
     }
 
     /**

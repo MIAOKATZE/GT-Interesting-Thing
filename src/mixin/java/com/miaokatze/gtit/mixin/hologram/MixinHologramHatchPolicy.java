@@ -23,6 +23,7 @@ public abstract class MixinHologramHatchPolicy {
     private void gtit$atLeast(Map<IHatchElement<?>, ? extends Number> elements,
         CallbackInfoReturnable<HatchElementBuilder<?>> callback) {
         HologramHatchPolicy.declare(this, elements.keySet(), true);
+        HologramHatchPolicy.requirements(this, elements);
     }
 
     @Inject(
@@ -58,5 +59,7 @@ public abstract class MixinHologramHatchPolicy {
     @Inject(method = "build()Lcom/gtnewhorizon/structurelib/structure/IStructureElement;", at = @At("RETURN"))
     private void gtit$built(CallbackInfoReturnable<IStructureElement<?>> callback) {
         HologramHatchPolicy.built(this, callback.getReturnValue());
+        HologramHatchPolicy
+            .directions(callback.getReturnValue(), ((HatchElementBuilder<?>) (Object) this).getDisallowedDirection());
     }
 }

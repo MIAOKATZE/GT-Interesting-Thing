@@ -22,6 +22,7 @@ import gregtech.api.interfaces.IBlockWithTextures;
 import gregtech.api.interfaces.IColorModulationContainer;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
+import gregtech.api.metatileentity.implementations.MTEHatch;
 import gregtech.common.blocks.ItemMachines;
 import gregtech.common.render.GTMultiTextureRender;
 import gregtech.common.render.GTRenderedTexture;
@@ -55,6 +56,9 @@ final class HologramTextures {
     }
 
     private static final Map<String, Material> CACHE = new HashMap<>();
+    private static final int[][] NORTH_TO_FRONT = { { 2, 3, 1, 0, 4, 5 }, { 3, 2, 0, 1, 4, 5 }, { 0, 1, 2, 3, 4, 5 },
+        { 0, 1, 3, 2, 5, 4 }, { 0, 1, 5, 4, 2, 3 }, { 0, 1, 4, 5, 3, 2 } };
+    private static final int[] NORTH_TO_WEST = { 0, 1, 4, 5, 3, 2 };
     private static final Map<HologramState.Cell, Material[]> RESOLVED = new IdentityHashMap<>();
     private static HologramState snapshot;
     private static final Field MULTI = texturesField(GTMultiTextureRender.class);
@@ -109,6 +113,7 @@ final class HologramTextures {
             + Arrays.toString(cell.hintIcons)
             + ":"
             + Arrays.toString(cell.hintTint);
+        key += ":" + (current ? cell.actualFacing : cell.hatchFacing);
         Material material = CACHE.get(key);
         if (material == null) {
             material = resolve(cell, current);
@@ -128,6 +133,8 @@ final class HologramTextures {
         ItemStack stack = current || cell.anchor ? cell.actualStack : cell.targetStack;
         boolean gt = stack != null && stack.getItem() instanceof ItemMachines;
         ITexture[][] textures = null;
+        int front = current ? cell.actualFacing : cell.hatchFacing;
+        boolean orientedHatch = false;
         try {
             if (gt) {
                 int id = stack.getItemDamage();
@@ -136,13 +143,16 @@ final class HologramTextures {
                     : null;
                 if (machine != null) {
                     textures = machine.getInventoryTextures();
+                    orientedHatch = textures != null && machine instanceof MTEHatch && front >= 0 && front < 6;
                     if (textures == null) {
                         textures = new ITexture[6][];
                         // Prototype only: no NBT load, facing mutation, or synthetic base tile.
                         for (int side = 0; side < 6; side++) textures[side] = machine.getTexture(
                             null,
                             ForgeDirection.getOrientation(side),
-                            ForgeDirection.NORTH,
+                            machine instanceof MTEHatch && front >= 0 && front < 6
+                                ? ForgeDirection.getOrientation(front)
+                                : ForgeDirection.NORTH,
                             -1,
                             false,
                             false);
@@ -159,8 +169,9 @@ final class HologramTextures {
             .getTextureMapBlocks();
         for (int side = 0; side < 6; side++) {
             try {
-                if (textures != null && side < textures.length && textures[side] != null)
-                    for (ITexture texture : textures[side]) append(sides[side], texture, side, 0);
+                int sourceSide = orientedHatch ? inventorySide(front, side) : side;
+                if (textures != null && sourceSide < textures.length && textures[sourceSide] != null)
+                    for (ITexture texture : textures[sourceSide]) append(sides[side], texture, sourceSide, 0);
                 if (gt && sides[side].isEmpty()) fallback = true;
                 if (sides[side].isEmpty() && cell.iconOnly && !cell.hintIcons[side].isEmpty())
                     sides[side].add(new Sample(atlas.getAtlasSprite(cell.hintIcons[side]), cell.textureColor()));
@@ -177,6 +188,12 @@ final class HologramTextures {
             }
         }
         return new Material(sides, gt, fallback);
+    }
+
+    private static int inventorySide(int front, int side) {
+        // GT CommonMetaTileEntity inventory textures face WEST. Reorder the six immutable
+        // atlas samples to the planned/world facing without mutating the shared prototype.
+        return NORTH_TO_WEST[NORTH_TO_FRONT[front][side]];
     }
 
     private static void append(List<Sample> samples, ITexture texture, int side, int depth) {

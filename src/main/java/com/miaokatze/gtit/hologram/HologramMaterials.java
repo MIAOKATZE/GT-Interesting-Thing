@@ -10,6 +10,7 @@ import java.util.function.Predicate;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -154,6 +155,12 @@ public final class HologramMaterials {
                     true,
                     Math.min(4096, limit),
                     null));
+        }
+
+        /** Actual main inventory stock, even when that material source is disabled. Excludes the held tool slot. */
+        public int mainCount(ItemStack stack, int limit) {
+            return HologramMaterials
+                .mainCount(player.inventory.mainInventory, player.inventory.currentItem, stack, limit);
         }
 
         /** Bounded, read-only UI samples. Optimized-only container APIs cannot enumerate their inventory. */
@@ -521,6 +528,39 @@ public final class HologramMaterials {
 
     private static void add(Map<ItemStack, Integer> result, ItemStack stack, int count) {
         result.put(copy(stack, count), count);
+    }
+
+    /** Display only: a controller's own inventory never becomes a construction material source. */
+    public static int controllerCount(IInventory controller, ItemStack stack, int limit) {
+        if (controller == null || stack == null || stack.getItem() == null || limit <= 0) return 0;
+        int maximum = Math.min(4096, limit);
+        int total = 0;
+        for (int slot = 0; slot < controller.getSizeInventory() && total < maximum; slot++) {
+            if (controller instanceof gregtech.api.interfaces.tileentity.IGregTechTileEntity) {
+                gregtech.api.interfaces.metatileentity.IMetaTileEntity machine = ((gregtech.api.interfaces.tileentity.IGregTechTileEntity) controller)
+                    .getMetaTileEntity();
+                if (machine == null || !machine.isValidSlot(slot)) continue;
+            }
+            total += matchingCount(controller.getStackInSlot(slot), stack, maximum - total);
+        }
+        return total;
+    }
+
+    static int mainCount(ItemStack[] inventory, int heldSlot, ItemStack stack, int limit) {
+        if (inventory == null || stack == null || stack.getItem() == null || limit <= 0) return 0;
+        int maximum = Math.min(4096, limit);
+        int total = 0;
+        for (int slot = 0; slot < inventory.length && total < maximum; slot++) {
+            if (slot == heldSlot) continue;
+            total += matchingCount(inventory[slot], stack, maximum - total);
+        }
+        return total;
+    }
+
+    private static int matchingCount(ItemStack candidate, ItemStack stack, int remaining) {
+        return candidate != null && candidate.stackSize > 0
+            && candidate.isItemEqual(stack)
+            && ItemStack.areItemStackTagsEqual(candidate, stack) ? Math.min(remaining, candidate.stackSize) : 0;
     }
 
     static void insertRecovery(ItemStack[] inventory, int heldSlot, int inventoryLimit, ItemStack stack) {

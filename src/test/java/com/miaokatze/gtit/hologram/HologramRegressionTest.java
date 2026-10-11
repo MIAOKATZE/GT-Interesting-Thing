@@ -38,7 +38,127 @@ public final class HologramRegressionTest {
             HologramRegressionTest::materialException);
         cases.put("refund_overflow_keeps_remainder_and_skips_held_tool", HologramRegressionTest::refundOverflow);
         cases.put("full_inventory_refund_survives_persisted_player_data", HologramRegressionTest::persistedRefund);
+        cases.put("preview_counts_match_nbt_and_never_take_controller_items", HologramRegressionTest::previewCounts);
+        cases
+            .put("hatch_faces_exclude_template_cavity_even_before_construction", HologramRegressionTest::hatchExterior);
+        cases.put("voltage_preset_respects_requested_tier_stock_and_fixed_roles", HologramRegressionTest::hatchPreset);
+        cases.put("sealed_facing_override_keeps_inventory_and_source_payload", HologramRegressionTest::sealedFacing);
         TestRunner.run(HologramRegressionTest.class, cases);
+    }
+
+    private static void previewCounts() {
+        ItemStack target = new ItemStack(net.minecraft.init.Blocks.stone);
+        target.setTagCompound(new NBTTagCompound());
+        target.getTagCompound()
+            .setString("variant", "kept");
+        ItemStack match = target.copy();
+        match.stackSize = 12;
+        ItemStack other = target.copy();
+        other.stackSize = 31;
+        other.getTagCompound()
+            .setString("variant", "other");
+        ItemStack held = target.copy();
+        held.stackSize = 64;
+        ItemStack[] inventory = { held, match, other };
+        SimpleAssert.eq(12, HologramMaterials.mainCount(inventory, 0, target, 4096), "held and other NBT excluded");
+        SimpleAssert.eq(7, HologramMaterials.mainCount(inventory, 0, target, 7), "display count bounded");
+        net.minecraft.inventory.InventoryBasic controller = new net.minecraft.inventory.InventoryBasic(
+            "controller",
+            true,
+            3);
+        controller.setInventorySlotContents(0, match.copy());
+        controller.setInventorySlotContents(1, other.copy());
+        NBTTagCompound before = controller.getStackInSlot(0)
+            .writeToNBT(new NBTTagCompound());
+        SimpleAssert.eq(12, HologramMaterials.controllerCount(controller, target, 4096), "controller exact NBT count");
+        SimpleAssert.eq(4, HologramMaterials.controllerCount(controller, target, 4), "controller display bounded");
+        SimpleAssert.that(
+            before.equals(
+                controller.getStackInSlot(0)
+                    .writeToNBT(new NBTTagCompound())),
+            "preview never consumes controller items");
+        SimpleAssert.eq(12, match.stackSize, "player source unchanged");
+    }
+
+    private static void hatchExterior() {
+        java.util.List<int[]> cells = new java.util.ArrayList<>();
+        for (int x = 0; x < 3; x++) for (int y = 0; y < 3; y++)
+            for (int z = 0; z < 3; z++) cells.add(new int[] { x, y, z, x == 1 && y == 1 && z == 1 ? 0 : 1 });
+        java.util.Set<String> outside = HologramHatchGeometry.exterior(cells, (x, y, z) -> true);
+        SimpleAssert.that(!outside.contains("1,1,1"), "template cavity never exterior even if world is all air");
+        SimpleAssert.eq(
+            4,
+            HologramHatchGeometry.choose(0, 1, 1, new int[] { 5, 4 }, outside),
+            "choose external face instead of cavity");
+        java.util.Set<String> obstructed = HologramHatchGeometry.exterior(cells, (x, y, z) -> x >= 0);
+        SimpleAssert.eq(
+            -1,
+            HologramHatchGeometry.choose(0, 1, 1, new int[] { 5, 4 }, obstructed),
+            "no legal external air does not select internal face");
+        for (int[] cell : cells) if (cell[0] == 0 && cell[1] == 1 && cell[2] == 1) cell[3] = 0;
+        outside = HologramHatchGeometry.exterior(cells, (x, y, z) -> true);
+        SimpleAssert.that(
+            !outside.contains("1,1,1") && !outside.contains("0,1,1"),
+            "open template air also excluded from exterior");
+        cells.add(new int[] { 1000000, 0, 0, 1 });
+        SimpleAssert.that(
+            HologramHatchGeometry.exterior(cells, (x, y, z) -> true)
+                .isEmpty(),
+            "huge sparse definitions remain bounded");
+    }
+
+    private static void hatchPreset() {
+        int[] tiers = { 1, 2, 3, 4 };
+        int[] stock = { 5, 2, 0, 10 };
+        SimpleAssert
+            .eq(2, HologramHatchPreset.choose(tiers, stock, 3, false), "strict tier retains missing requested target");
+        SimpleAssert
+            .eq(1, HologramHatchPreset.choose(tiers, stock, 3, true), "downgrade selects highest stocked lower tier");
+        SimpleAssert
+            .eq(0, HologramHatchPreset.choose(tiers, stock, 1, true), "higher stocked tiers never upgrade request");
+        SimpleAssert.eq(
+            2,
+            HologramHatchPreset.choose(tiers, new int[] { 0, 0, 0, 0 }, 3, true),
+            "depleted reservations stay missing instead of reusing stock");
+        SimpleAssert.eq(
+            1,
+            HologramHatchPreset.choose(new int[] { 2, 2 }, new int[] { 0, 1 }, 2, false),
+            "same-tier variant with stock preferred");
+        SimpleAssert.eq(
+            0,
+            HologramHatchPreset.choose(new int[] { 1 }, new int[] { 1 }, 3, false),
+            "fixed-tier maintenance valid for higher machine tier");
+        SimpleAssert.eq(
+            -1,
+            HologramHatchPreset.choose(new int[] { 1, 3 }, new int[] { 1, 1 }, 2, false),
+            "absent strict voltage tier is not silently substituted");
+    }
+
+    private static void sealedFacing() {
+        NBTTagCompound tile = new NBTTagCompound();
+        tile.setShort("mFacing", (short) 2);
+        tile.setInteger("mID", 123);
+        tile.setString("fluid", "preserved");
+        tile.setTag("Inventory", new net.minecraft.nbt.NBTTagList());
+        NBTTagCompound seal = new NBTTagCompound();
+        seal.setTag("tile", tile.copy());
+        NBTTagCompound expected = HologramRecovery.relocateNBT(seal, 10, 20, 30, 5);
+        SimpleAssert.eq((short) 5, expected.getShort("mFacing"), "only the explicitly requested face changes");
+        SimpleAssert.eq(
+            (short) 2,
+            seal.getCompoundTag("tile")
+                .getShort("mFacing"),
+            "sealed source facing unchanged");
+        SimpleAssert.eq("preserved", expected.getString("fluid"), "facing keeps stored fluid");
+        SimpleAssert.that(
+            expected.getTag("Inventory")
+                .equals(tile.getTag("Inventory")),
+            "facing keeps stored inventory");
+        SimpleAssert.eq(
+            (short) 2,
+            HologramRecovery.relocateNBT(seal, 10, 20, 30, -1)
+                .getShort("mFacing"),
+            "default retains sealed direction");
     }
 
     private static void materialSettings() {

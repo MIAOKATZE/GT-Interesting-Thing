@@ -37,7 +37,7 @@ final class HologramState {
 
     static final class Cell {
 
-        final int index, x, y, z, dx, dy, dz, meta, wantMeta, chosenChoice;
+        final int index, x, y, z, dx, dy, dz, meta, wantMeta, chosenChoice, hatchFacing, actualFacing;
         final String id, wantId, status, pinScope, role, family, renderKind, operation;
         final boolean anchor, iconOnly;
         final ItemStack actualStack, targetStack;
@@ -60,6 +60,8 @@ final class HologramState {
             wantId = n.getString("wantId");
             status = n.getString("status");
             chosenChoice = n.hasKey("chosenChoice") ? n.getInteger("chosenChoice") : -1;
+            hatchFacing = n.hasKey("hatchFacing") ? n.getInteger("hatchFacing") : -1;
+            actualFacing = n.hasKey("actualFacing") ? n.getInteger("actualFacing") : -1;
             pinScope = n.getString("pinScope");
             role = n.getString("role");
             family = n.getString("family");
@@ -106,12 +108,14 @@ final class HologramState {
     static final class Material {
 
         final ItemStack stack;
-        final int required, available;
+        final int required, available, mainAvailable, controllerAvailable;
 
         Material(NBTTagCompound n) {
             stack = ItemStack.loadItemStackFromNBT(n);
             required = n.getInteger("required");
             available = n.getInteger("available");
+            mainAvailable = n.getInteger("mainAvailable");
+            controllerAvailable = n.getInteger("controllerAvailable");
         }
     }
 }
