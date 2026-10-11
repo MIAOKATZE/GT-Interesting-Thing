@@ -143,7 +143,7 @@ public final class HologramService {
             && (presetId == null || presetId.isEmpty())
             && previous.virtualPreset.id.equals(selectedPreset(previous))) {
             if (!beginVirtualPlacement(previous, x, y, z, side)) return;
-            presetGuidance(previous, "当前编辑草稿已启动，投影跟随鼠标：Alt + 右击锁定位置；Shift + 右击打开编辑。");
+            presetGuidance(previous, "当前编辑草稿已启动，投影跟随鼠标：R 水平旋转，Ctrl + R 垂直旋转；Alt + 右击锁定位置；Shift + 右击打开编辑。");
             send(previous);
             return;
         }
@@ -205,61 +205,174 @@ public final class HologramService {
             || player.getDistanceSq(x + .5, y + .5, z + .5) > 4096
             || !player.worldObj.blockExists(x, y, z)) return false;
         if (s.x != x || s.y != y || s.z != z) {
-            int previousX = s.x, previousY = s.y, previousZ = s.z;
-            Map<String, ItemStack> targets = new HashMap<>();
-            Map<String, Integer> facings = new HashMap<>();
-            java.util.Set<String> edited = new java.util.HashSet<>();
-            List<HologramCapture.Cell> cells = new ArrayList<>(s.capture.cells);
-            String selectedRelative = null;
-            for (int i = 0; i < cells.size(); i++) {
-                HologramCapture.Cell cell = cells.get(i);
-                String relative = (cell.x - previousX) + "," + (cell.y - previousY) + "," + (cell.z - previousZ);
-                if (i == s.selected) selectedRelative = relative;
-                if (s.pins.containsKey(i)) targets.put(
-                    relative,
-                    s.pins.get(i)
-                        .copy());
-                if (s.facingPins.containsKey(position(cell))) facings.put(relative, s.facingPins.get(position(cell)));
-                if (s.virtualEdited.contains(position(cell))) edited.add(relative);
-            }
+            if (!transformVirtual(s, x, y, z, false, false)) return false;
             s.x = x;
             s.y = y;
             s.z = z;
-            s.side = side;
-            populateVirtual(s);
-            Map<String, Integer> indices = new HashMap<>();
-            for (int i = 0; i < s.capture.cells.size(); i++) indices.put(position(s.capture.cells.get(i)), i);
-            for (HologramCapture.Cell old : cells) {
-                int dx = old.x - previousX, dy = old.y - previousY, dz = old.z - previousZ;
-                String relative = dx + "," + dy + "," + dz;
-                String key = (x + dx) + "," + (y + dy) + "," + (z + dz);
-                HologramCapture.Cell cell = s.capture.positions.get(key);
-                if (cell == null && s.capture.cells.size() < HologramCapture.LIMIT) {
-                    cell = new HologramCapture.Cell(null, x + dx, y + dy, z + dz);
-                    cell.block = old.block;
-                    cell.meta = old.meta;
-                    cell.userPosition = true;
-                    cell.role = old.role;
-                    s.capture.cells.add(cell);
-                    s.capture.positions.put(key, cell);
-                    indices.put(key, s.capture.cells.size() - 1);
-                }
-                if (cell == null) continue;
-                ItemStack target = targets.get(relative);
-                if (relative.equals(selectedRelative)) s.selected = indices.get(key);
-                if (acceptableSample(s, cell, target)) {
-                    int index = indices.get(key);
-                    s.pins.put(index, target.copy());
-                    s.coordinatePins.put(key, target.copy());
-                }
-                if (edited.contains(relative)) s.virtualEdited.add(key);
-                Integer direction = facings.get(relative);
-                if (direction != null) for (int allowed : legalFacings(s, cell, target))
-                    if (allowed == direction) s.facingPins.put(key, direction);
-            }
         }
+        s.side = side;
         refreshPlan(s);
         return true;
+    }
+
+    /** Only an Alt-authorized, complete, unlocked placement may rotate; never writes world or preset storage. */
+    private static boolean rotateVirtual(Session s, boolean vertical) {
+        if (s.cancelled || !s.virtual
+            || !s.virtualPlacement
+            || s.virtualLocked
+            || s.virtualPreset == null
+            || s.capture == null
+            || s.capture.incomplete
+            || s.capture.pending
+            || s.capturePending
+            || s.job == 1
+            || s.job == 2
+            || s.job == 4
+            || !valid(s)
+            || !com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector.isProjector(s.player.getHeldItem()))
+            return false;
+        if (!transformVirtual(s, s.x, s.y, s.z, true, vertical)) {
+            s.status = "旋转被拒绝：坐标、控制器姿态或仓室方向不合法；原目标保留";
+            return false;
+        }
+        freezeAllocations(s);
+        refreshPlan(s);
+        s.status = vertical ? "虚拟结构已垂直旋转 90°；Alt + 右击锁定" : "虚拟结构已水平旋转 90°；Alt + 右击锁定";
+        return true;
+    }
+
+    private static ExtendedFacing virtualControllerFacing(Session s) {
+        ExtendedFacing facing = HologramVirtualTransform.controller(s.virtualPreset);
+        Integer front = s.facingPins.get(s.x + "," + s.y + "," + s.z);
+        return front == null ? facing : facing.with(ForgeDirection.getOrientation(front));
+    }
+
+    /** Stage every coordinate and front before committing; stable cell order keeps all indexed targets selected. */
+    private static boolean transformVirtual(Session s, int x, int y, int z, boolean rotate, boolean vertical) {
+        HologramPresets.Preset preset = s.virtualPreset;
+        ExtendedFacing controller = null;
+        if (rotate) {
+            preset = HologramPresets.copy(preset);
+            controller = HologramVirtualTransform.alignment(virtualControllerFacing(s), vertical);
+            gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = preset.controllerId < 0
+                || preset.controllerId >= GregTechAPI.METATILEENTITIES.length ? null
+                    : GregTechAPI.METATILEENTITIES[preset.controllerId];
+            if (!(prototype instanceof MTEEnhancedMultiBlockBase)
+                || !((MTEEnhancedMultiBlockBase<?>) prototype).getAlignmentLimits()
+                    .isNewExtendedFacingValid(controller))
+                return false;
+            preset.controllerFacing = controller.ordinal();
+            Map<String, Integer> currentFacings = new HashMap<>();
+            for (int i = 0; i < s.capture.cells.size(); i++) {
+                HologramCapture.Cell cell = s.capture.cells.get(i);
+                String key = position(cell);
+                Integer front = s.facingPins.getOrDefault(key, s.planFacings.get(i));
+                if (front != null && !s.virtualEdited.contains(key)) currentFacings.put(key, front);
+            }
+            for (HologramPresets.Cell saved : preset.cells) {
+                int front = currentFacings
+                    .getOrDefault((s.x + saved.x) + "," + (s.y + saved.y) + "," + (s.z + saved.z), saved.facing);
+                int[] offset = HologramVirtualTransform.turn(saved.x, saved.y, saved.z, vertical);
+                saved.x = offset[0];
+                saved.y = offset[1];
+                saved.z = offset[2];
+                saved.facing = saved.controller ? controller.getDirection()
+                    .ordinal() : HologramVirtualTransform.front(front, vertical);
+                if (!virtualFrontAllowed(saved.stack(), saved.facing)) return false;
+            }
+        }
+        HologramCapture capture = new HologramCapture(s.capture.context, s.capture.trigger);
+        capture.incomplete = s.capture.incomplete;
+        capture.pending = s.capture.pending;
+        capture.failure = s.capture.failure;
+        capture.channelReport = s.capture.channelReport;
+        Map<String, String> keys = new HashMap<>();
+        Map<String, Integer> facings = new HashMap<>();
+        for (int i = 0; i < s.capture.cells.size(); i++) {
+            HologramCapture.Cell old = s.capture.cells.get(i);
+            int[] offset = new int[] { old.x - s.x, old.y - s.y, old.z - s.z };
+            if (rotate) offset = HologramVirtualTransform.turn(offset[0], offset[1], offset[2], vertical);
+            long xx = (long) x + offset[0], yy = (long) y + offset[1], zz = (long) z + offset[2];
+            if (xx < -30000000L || xx >= 30000000L
+                || yy < 0
+                || yy >= s.player.worldObj.getHeight()
+                || zz < -30000000L
+                || zz >= 30000000L) return false;
+            HologramCapture.Cell cell = HologramVirtualTransform.at(old, (int) xx, (int) yy, (int) zz);
+            String key = position(cell);
+            keys.put(position(old), key);
+            capture.cells.add(cell);
+            capture.positions.put(key, cell);
+            Integer front = s.facingPins.get(position(old));
+            if (front == null && rotate) front = s.planFacings.get(i);
+            if (front != null) {
+                if (rotate) front = "templateController".equals(old.role) ? controller.getDirection()
+                    .ordinal() : HologramVirtualTransform.front(front, vertical);
+                if (!virtualFrontAllowed(targetFor(s, old, i), front)) return false;
+                facings.put(key, front);
+            }
+        }
+        // No mutation above this line: a rejected turn leaves cells, pins, template and revision untouched.
+        rekey(s.coordinatePins, keys);
+        rekey(s.frozenAutoTargets, keys);
+        rekey(s.virtualEdited, keys);
+        rekey(s.suppressedAuto, keys);
+        java.util.Set<String> manualKeys = new java.util.HashSet<>(s.manualPositions.keySet());
+        s.manualPositions.clear();
+        for (String old : manualKeys) {
+            HologramCapture.Cell cell = capture.positions.get(keys.get(old));
+            if (cell != null) s.manualPositions.put(position(cell), cell);
+        }
+        s.facingPins.clear();
+        s.facingPins.putAll(facings);
+        s.capture = capture;
+        s.virtualPreset = preset;
+        if (rotate) s.facing = controller.ordinal();
+        s.cellIndices.clear();
+        s.indexedCapture = null;
+        // EditState stores targets, not geometry. Old-coordinate undo must not be applied to a rotated/rebased draft.
+        s.undoEdits.clear();
+        s.redoEdits.clear();
+        return true;
+    }
+
+    private static void applyVirtualControllerAlignment(Session s, TileEntity placed) {
+        if (!(placed instanceof IGregTechTileEntity)
+            || !(((IGregTechTileEntity) placed).getMetaTileEntity() instanceof MTEEnhancedMultiBlockBase))
+            throw new IllegalStateException("virtual controller missing enhanced alignment");
+        IGregTechTileEntity base = (IGregTechTileEntity) placed;
+        MTEEnhancedMultiBlockBase<?> machine = (MTEEnhancedMultiBlockBase<?>) base.getMetaTileEntity();
+        ExtendedFacing facing = virtualControllerFacing(s);
+        if (!machine.getAlignmentLimits()
+            .isNewExtendedFacingValid(facing)) throw new IllegalStateException("virtual controller alignment rejected");
+        base.setFrontFacing(facing.getDirection());
+        machine.setExtendedFacing(facing);
+        if (base.getFrontFacing() != facing.getDirection() || machine.getExtendedFacing() != facing)
+            throw new IllegalStateException("virtual controller alignment failed");
+    }
+
+    private static boolean virtualFrontAllowed(ItemStack target, int front) {
+        if (front < 0) return true;
+        if (target == null || !(target.getItem() instanceof ItemMachines)) return false;
+        gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(target);
+        return front <= 5 && prototype != null && prototype.isFacingValid(ForgeDirection.getOrientation(front));
+    }
+
+    private static <T> void rekey(Map<String, T> values, Map<String, String> keys) {
+        Map<String, T> result = new HashMap<>();
+        for (Map.Entry<String, T> entry : values.entrySet()) {
+            String key = keys.get(entry.getKey());
+            if (key != null) result.put(key, entry.getValue());
+        }
+        values.clear();
+        values.putAll(result);
+    }
+
+    private static void rekey(java.util.Set<String> values, Map<String, String> keys) {
+        java.util.Set<String> result = new java.util.HashSet<>();
+        for (String old : values) if (keys.containsKey(old)) result.add(keys.get(old));
+        values.clear();
+        values.addAll(result);
     }
 
     public static void immediateVirtual(EntityPlayerMP player, int x, int y, int z, int side, String presetId) {
@@ -349,6 +462,8 @@ public final class HologramService {
             resetDraft(s);
         } else if ("calibrateCurrent".equals(op) && s.job != 1 && s.job != 2) {
             calibrateCurrent(s);
+        } else if ("rotateVirtual".equals(op)) {
+            rotateVirtual(s, action.getBoolean("vertical"));
         } else if ("lockVirtual".equals(op)) {
             lockVirtual(player, s.x, s.y, s.z, s.side);
         } else if ("close".equals(op)) {
@@ -1692,6 +1807,7 @@ public final class HologramService {
                     if (gt.getFrontFacing()
                         .ordinal() != direction) throw new IllegalStateException("hatch facing failed");
                 }
+                if (s.virtual && "templateController".equals(c.role)) applyVirtualControllerAlignment(s, placedTile);
                 if (MinecraftForge.EVENT_BUS.post(new BlockEvent.PlaceEvent(snapshot, old, s.player))) {
                     HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
                     rollbackMaterials(s, transaction, inventory);
@@ -2295,6 +2411,8 @@ public final class HologramService {
         preset.name = name == null ? "" : name.trim();
         preset.controllerType = controllerType(s);
         preset.controllerId = ((IGregTechTileEntity) s.target).getMetaTileID();
+        preset.controllerFacing = s.machine.getExtendedFacing()
+            .ordinal();
         java.util.Set<String> palette = new java.util.HashSet<>();
         try {
             for (int i = 0; i < s.capture.cells.size(); i++) {
@@ -2414,7 +2532,8 @@ public final class HologramService {
                 .setString(SELECTED_PRESET, id);
             populateVirtual(s);
             s.status = s.virtualPlacement ? "预设已加载；投影跟随鼠标，锁定位置后施工" : "预设已加载，仅编辑模板";
-            if (s.virtualPlacement) presetGuidance(s, "自定义预设已启动，投影跟随鼠标：Alt + 右击锁定位置；Shift + 右击打开编辑。");
+            if (s.virtualPlacement)
+                presetGuidance(s, "自定义预设已启动，投影跟随鼠标：R 水平旋转，Ctrl + R 垂直旋转；Alt + 右击锁定位置；Shift + 右击打开编辑。");
         } catch (java.io.IOException invalid) {
             s.status = "预设加载失败：" + invalid.getMessage();
         }
@@ -2494,6 +2613,7 @@ public final class HologramService {
         result.name = name == null ? "" : name.trim();
         result.controllerType = original.controllerType;
         result.controllerId = original.controllerId;
+        result.controllerFacing = virtualControllerFacing(s).ordinal();
         // Retain all original editing candidates, including shell fallbacks not currently selected.
         result.palette.addAll(original.palette);
         Map<String, HologramPresets.Cell> defaults = new HashMap<>();
@@ -2519,6 +2639,8 @@ public final class HologramService {
                 throw new java.io.IOException("预设含未支持的方块实体");
             int direction = fallback != null && !s.virtualEdited.contains(position(cell)) ? fallback.facing
                 : s.facingPins.getOrDefault(position(cell), s.planFacings.getOrDefault(i, -1));
+            if (controller) direction = virtualControllerFacing(s).getDirection()
+                .ordinal();
             HologramPresets.Cell saved = HologramPresets
                 .cell(target, cell.x - s.x, cell.y - s.y, cell.z - s.z, direction, controller);
             if (fallback != null) {

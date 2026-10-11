@@ -72,6 +72,9 @@ public final class HologramRegressionTest {
         cases.put("channel_wrapped_declarations_are_expanded", HologramRegressionTest::wrappedDeclarations);
         cases.put("clipboard_edits_preserve_automatic_source_and_other_cells", HologramServiceEditRegression::run);
         cases.put("preset_updates_keep_identity_and_persist_atomically", HologramPresetPersistenceRegression::run);
+        cases.put(
+            "virtual_preset_world_turns_preserve_geometry_edits_and_controller_roll",
+            HologramVirtualRotationRegression::run);
         cases.put("rotation_cycles_all_six_legal_fronts", HologramRegressionTest::faceRotation);
         cases.put("hatch_direction_policy_keeps_built_snapshot", HologramRegressionTest::hatchDirectionSnapshot);
         cases.put("hatch_matching_preserves_override_and_legacy_class_rules", HologramRegressionTest::hatchMatching);

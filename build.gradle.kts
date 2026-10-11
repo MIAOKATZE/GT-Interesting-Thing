@@ -153,6 +153,12 @@ tasks.register<JavaExec>("runHologramTest") {
     classpath += configurations.detachedConfiguration(
         dependencies.create("com.github.GTNewHorizons:waila:1.19.34:dev")
     ).apply { isTransitive = false }
+    // Real enhanced-controller alignment tests initialize GTUtility, which resolves IC2 implementation classes.
+    classpath += configurations.detachedConfiguration(
+        dependencies.create("curse.maven:ic2-242638:2353971"),
+        dependencies.create("org.joml:joml:1.10.8"),
+        dependencies.create("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.5:downgraded-8")
+    ).apply { isTransitive = false }
     // GT's Java 17 interface fixture needs a reader newer than Forge's bundled ASM 5.
     classpath = configurations.detachedConfiguration(dependencies.create("org.ow2.asm:asm:9.8")) + classpath
     val scratchDir = layout.buildDirectory.dir("hologram-test")

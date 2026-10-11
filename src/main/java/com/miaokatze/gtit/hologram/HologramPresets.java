@@ -22,6 +22,9 @@ import net.minecraft.nbt.NBTTagList;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 
 import gregtech.api.GregTechAPI;
 import gregtech.api.metatileentity.implementations.MTEEnhancedMultiBlockBase;
@@ -60,6 +63,8 @@ final class HologramPresets {
 
         String id, name, controllerType;
         int controllerId = -1;
+        // Optional in schema 1: old templates infer NORMAL/NONE from the controller cell's front.
+        Integer controllerFacing;
         List<Cell> cells = new ArrayList<>();
         List<Cell> palette = new ArrayList<>();
 
@@ -96,8 +101,7 @@ final class HologramPresets {
         if (Files.exists(FILE)) {
             if (Files.size(FILE) > 8 * 1024 * 1024) throw new IOException("模板配置超过8MiB上限");
             try {
-                FileData data = GSON
-                    .fromJson(new String(Files.readAllBytes(FILE), StandardCharsets.UTF_8), FileData.class);
+                FileData data = decode(new String(Files.readAllBytes(FILE), StandardCharsets.UTF_8));
                 if (data == null || data.schema != 1 || data.presets == null || data.presets.size() > 32)
                     throw new IOException("模板配置格式或数量无效");
                 Set<String> ids = new HashSet<>();
@@ -155,7 +159,7 @@ final class HologramPresets {
         return -1;
     }
 
-    private static Preset copy(Preset preset) {
+    static Preset copy(Preset preset) {
         return GSON.fromJson(GSON.toJson(preset), Preset.class);
     }
 
@@ -188,6 +192,30 @@ final class HologramPresets {
         return result;
     }
 
+    private static FileData decode(String json) throws IOException {
+        JsonElement root = new JsonParser().parse(json);
+        if (root.isJsonObject() && root.getAsJsonObject()
+            .has("presets")) {
+            JsonElement presets = root.getAsJsonObject()
+                .get("presets");
+            if (presets.isJsonArray()) for (JsonElement entry : presets.getAsJsonArray()) {
+                if (!entry.isJsonObject() || !entry.getAsJsonObject()
+                    .has("controllerFacing")) continue;
+                JsonElement facing = entry.getAsJsonObject()
+                    .get("controllerFacing");
+                if (!facing.isJsonNull() && (!facing.isJsonPrimitive() || !facing.getAsJsonPrimitive()
+                    .isNumber()
+                    || !facing.getAsString()
+                        .matches("[0-9]+")))
+                    throw new IOException("模板控制器姿态必须是合法整数，不接受字符串或小数");
+                if (!facing.isJsonNull() && new java.math.BigInteger(facing.getAsString())
+                    .compareTo(java.math.BigInteger.valueOf(ExtendedFacing.values().length)) >= 0)
+                    throw new IOException("模板控制器姿态超出合法范围");
+            }
+        }
+        return GSON.fromJson(root, FileData.class);
+    }
+
     private static void validate(Preset preset) throws IOException {
         if (preset == null || preset.id == null
             || !preset.id.matches("[a-zA-Z0-9_-]{1,64}")
@@ -203,6 +231,9 @@ final class HologramPresets {
             || preset.palette == null
             || preset.palette.isEmpty()
             || preset.palette.size() > 4096) throw new IOException("模板名称、位置或候选数量无效");
+        if (preset.controllerFacing != null
+            && (preset.controllerFacing < 0 || preset.controllerFacing >= ExtendedFacing.values().length))
+            throw new IOException("模板控制器姿态无效");
         Set<String> positions = new HashSet<>();
         int controllers = 0;
         for (Cell cell : preset.palette) validateCell(cell);
@@ -214,6 +245,17 @@ final class HologramPresets {
                 throw new IOException("模板默认外壳不在候选表中");
             if (cell.controller && (cell.x != 0 || cell.y != 0 || cell.z != 0 || cell.damage != preset.controllerId))
                 throw new IOException("模板控制器锚点无效");
+            if (cell.controller && preset.controllerFacing != null) {
+                ExtendedFacing facing = ExtendedFacing.byIndex(preset.controllerFacing);
+                if (facing.getDirection()
+                    .ordinal() != cell.facing || preset.controllerId < 0
+                    || preset.controllerId >= GregTechAPI.METATILEENTITIES.length
+                    || !(GregTechAPI.METATILEENTITIES[preset.controllerId] instanceof MTEEnhancedMultiBlockBase)
+                    || !((MTEEnhancedMultiBlockBase<?>) GregTechAPI.METATILEENTITIES[preset.controllerId])
+                        .getAlignmentLimits()
+                        .isNewExtendedFacingValid(facing))
+                    throw new IOException("模板控制器姿态与正面不一致或机器不允许");
+            }
             if (cell.controller) controllers++;
             if (cell.controller && (!(cell.stack()
                 .getItem() instanceof ItemMachines) || cell.damage < 0

@@ -1814,7 +1814,7 @@ public final class HologramScreen extends GuiScreen {
         if (!dragging) return;
         int mx = localX(x), my = localY(y), dx = mx - dragX, dy = my - dragY;
         if (Math.abs(dx) + Math.abs(dy) > 1) moved = true;
-        yaw += dx * .012;
+        yaw -= dx * .012;
         pitch = Math.max(-1.35, Math.min(1.35, pitch + dy * .012));
         dragX = mx;
         dragY = my;

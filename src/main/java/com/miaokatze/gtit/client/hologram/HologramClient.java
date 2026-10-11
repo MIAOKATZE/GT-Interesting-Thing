@@ -27,7 +27,9 @@ import com.miaokatze.gtit.hologram.HologramNetwork;
 import com.miaokatze.gtit.hologram.HologramSnapshotAssembly;
 import com.miaokatze.gtit.hologram.HologramSnapshotCodec;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.gameevent.TickEvent;
 
 /** Registered only by ClientProxy; the common network receiver never links client classes. */
 public final class HologramClient {
@@ -52,7 +54,11 @@ public final class HologramClient {
             nbt -> Minecraft.getMinecraft()
                 .func_152344_a(() -> receive(nbt)));
         HologramNetwork.setClientInteractionSender(HologramClient::use);
-        MinecraftForge.EVENT_BUS.register(new HologramClient());
+        HologramClient listener = new HologramClient();
+        MinecraftForge.EVENT_BUS.register(listener);
+        FMLCommonHandler.instance()
+            .bus()
+            .register(listener);
         HologramClientSmoke.install();
     }
 
@@ -102,6 +108,39 @@ public final class HologramClient {
             }
         }
         HologramNetwork.sendAction(input);
+    }
+
+    private boolean rotationDown;
+
+    @SubscribeEvent
+    public void clientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        boolean down = Keyboard.isCreated() && Keyboard.isKeyDown(Keyboard.KEY_R);
+        boolean pressed = down && !rotationDown;
+        rotationDown = down;
+        Minecraft mc = Minecraft.getMinecraft();
+        if (!pressed || mc.currentScreen != null
+            || mc.thePlayer == null
+            || mc.theWorld == null
+            || !com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector
+                .isProjector(mc.thePlayer.getHeldItem())
+            || state == null
+            || mc.theWorld != snapshotWorld
+            || !state.data.getBoolean("virtual")
+            || !state.data.getBoolean("virtualPlacement")
+            || state.data.getBoolean("virtualLocked")
+            || state.data.getBoolean("capturePending")
+            || state.cells.isEmpty()
+            || state.data.getInteger("job") == 1
+            || state.data.getInteger("job") == 2
+            || state.data.getInteger("job") == 4) return;
+        NBTTagCompound request = new NBTTagCompound();
+        request.setString("session", state.session);
+        request.setString("op", "rotateVirtual");
+        request.setBoolean(
+            "vertical",
+            Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL));
+        HologramNetwork.sendAction(request);
     }
 
     public static void openSettings() {
