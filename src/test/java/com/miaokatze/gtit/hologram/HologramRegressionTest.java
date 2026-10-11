@@ -60,6 +60,9 @@ public final class HologramRegressionTest {
             "machine_fronts_follow_world_orientation_on_all_six_faces",
             com.miaokatze.gtit.client.hologram.HologramRenderingRegression::run);
         cases.put(
+            "machine_textures_support_optional_inventory_api_and_legacy_six_face_fallback",
+            com.miaokatze.gtit.client.hologram.HologramTextureCompatibilityRegression::run);
+        cases.put(
             "declared_alternatives_include_all_chain_and_tier_branches",
             HologramRegressionTest::declaredAlternatives);
         cases.put(
