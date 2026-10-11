@@ -298,6 +298,7 @@ public final class HologramService {
                 s.hatchDowngrade = action.getBoolean("downgrade");
                 s.presetEnabled = true;
                 s.presetPaused = false;
+                s.scope = 0;
                 s.noHatches = false;
                 s.suppressedAuto.clear();
                 for (HologramCapture.Cell cell : s.capture.cells) cell.candidates = null;
