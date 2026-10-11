@@ -155,12 +155,7 @@ public final class HologramMaterials {
         public int count(ItemStack stack, int limit) {
             if (stack == null || stack.getItem() == null || limit <= 0) return 0;
             return amount(
-                take(
-                    ItemStackPredicate.from(stack, ItemStackPredicate.NBTMode.EXACT),
-                    stack,
-                    true,
-                    Math.min(4096, limit),
-                    null));
+                take(ItemStackPredicate.from(stack, ItemStackPredicate.NBTMode.EXACT), stack, true, limit, null));
         }
 
         /** Enabled main inventory stock. Disabled sources are not inspected; the held tool slot is excluded. */
@@ -253,7 +248,7 @@ public final class HologramMaterials {
         private Map<ItemStack, Integer> take(Predicate<ItemStack> predicate, ItemStack exact, boolean simulate,
             int count, Transaction transaction) {
             Map<ItemStack, Integer> result = new LinkedHashMap<>();
-            if (predicate == null || count < 1 || count > 4096) return result;
+            if (predicate == null || count < 1 || !simulate && count > 4096) return result;
             int[] order = settings.priority == 1 ? new int[] { 1, 0, 2 }
                 : settings.priority == 2 ? new int[] { 2, 0, 1 } : new int[] { 0, 1, 2 };
             for (int type : order) {
@@ -614,7 +609,7 @@ public final class HologramMaterials {
     /** Display only: a controller's own inventory never becomes a construction material source. */
     public static int controllerCount(IInventory controller, ItemStack stack, int limit) {
         if (controller == null || stack == null || stack.getItem() == null || limit <= 0) return 0;
-        int maximum = Math.min(4096, limit);
+        int maximum = limit;
         int total = 0;
         for (int slot = 0; slot < controller.getSizeInventory() && total < maximum; slot++) {
             if (controller instanceof gregtech.api.interfaces.tileentity.IGregTechTileEntity) {
@@ -629,7 +624,7 @@ public final class HologramMaterials {
 
     static int mainCount(ItemStack[] inventory, int heldSlot, ItemStack stack, int limit) {
         if (inventory == null || stack == null || stack.getItem() == null || limit <= 0) return 0;
-        int maximum = Math.min(4096, limit);
+        int maximum = limit;
         int total = 0;
         for (int slot = 0; slot < inventory.length && total < maximum; slot++) {
             if (slot == heldSlot) continue;

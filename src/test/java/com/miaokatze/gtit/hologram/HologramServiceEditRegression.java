@@ -93,6 +93,8 @@ final class HologramServiceEditRegression {
             ItemStack clipboard = (ItemStack) get(session, "editClipboard");
             SimpleAssert.that(!clipboard.hasTagCompound(), "clipboard only stores clean item identity");
             action(edit, session, "editPaste", 2);
+            SimpleAssert.eq(0, get(session, "mode"), "paste preserves construction mode");
+            SimpleAssert.eq(0, get(session, "scope"), "paste preserves scope");
             assertTarget(session, 0, Blocks.dirt);
             assertTarget(session, 1, Blocks.cobblestone);
             assertTarget(session, 2, Blocks.dirt);

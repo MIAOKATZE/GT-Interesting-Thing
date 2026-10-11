@@ -113,6 +113,7 @@ tasks.register<JavaExec>("runHologramTest") {
     description = "Runs hologram channel, packet and inactive capture regressions."
     mainClass = "com.miaokatze.gtit.hologram.HologramRegressionTest"
     classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
     val scratchDir = layout.buildDirectory.dir("hologram-test")
     workingDir(scratchDir)
     doFirst { scratchDir.get().asFile.mkdirs() }

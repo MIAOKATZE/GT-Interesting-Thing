@@ -26,11 +26,14 @@ import com.gtnewhorizon.structurelib.structure.StructureUtility;
 
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEEnhancedMultiBlockBase;
+import tectech.thing.metaTileEntity.multi.godforge.MTEForgeOfGods;
 
 /** Armed only during a server-thread preview. Hints describe appearance, never permission to write. */
 public final class HologramCapture {
 
-    public static final int LIMIT = 4096;
+    /** Java collection capacity; no structure-size policy limit. */
+    public static final int LIMIT = Integer.MAX_VALUE - 8;
+    private static final int CELLS_PER_BATCH = 4096;
     /** Wall-clock threshold at checkpoints; native machine callbacks cannot be interrupted mid-call. */
     private static final long CAPTURE_TIME_NS = 100000000L;
     private static final Logger LOG = LogManager.getLogger("gtit");
@@ -46,7 +49,9 @@ public final class HologramCapture {
     boolean incomplete;
     String failure = "";
     final long started = System.nanoTime();
-    final long deadline = started + CAPTURE_TIME_NS;
+    long deadline = started + CAPTURE_TIME_NS;
+    boolean pending;
+    int pieceCursor;
     Cell current;
     HologramChannelTrace.Report channelReport;
 
@@ -58,8 +63,8 @@ public final class HologramCapture {
     public static boolean piece(Object controller, String name, ItemStack trigger, boolean hints, int a, int b, int c) {
         HologramCapture capture = ACTIVE.get();
         if (capture == null || capture.context != controller || !hints) return false;
-        if (capture.pieces.size() >= 128 || System.nanoTime() > capture.deadline) {
-            capture.fail(capture.pieces.size() >= 128 ? "PIECE_LIMIT" : "TIME_LIMIT");
+        if (System.nanoTime() > capture.deadline) {
+            capture.fail("TIME_LIMIT");
             throw new CaptureLimitException();
         }
         capture.pieces.add(new Piece(name, a, b, c, trigger == null ? capture.trigger.copy() : trigger.copy()));
@@ -108,12 +113,34 @@ public final class HologramCapture {
 
     @SuppressWarnings({ "rawtypes", "unchecked" })
     static HologramCapture collect(MTEEnhancedMultiBlockBase machine, ItemStack trigger, ExtendedFacing facing) {
-        HologramCapture capture = new HologramCapture(machine, trigger);
+        return collect(machine, trigger, facing, null);
+    }
+
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    static HologramCapture collect(MTEEnhancedMultiBlockBase<?> machine, ItemStack trigger, ExtendedFacing facing,
+        HologramCapture resumed) {
+        HologramCapture capture = resumed == null ? new HologramCapture(machine, trigger) : resumed;
+        capture.deadline = System.nanoTime() + CAPTURE_TIME_NS;
+        capture.pending = false;
         HologramCapture previous = ACTIVE.get();
         HologramChannelTrace.Scope scope = HologramChannelTrace.begin(machine);
         ACTIVE.set(capture);
         try {
-            ((IConstructable) machine).construct(trigger, true);
+            if (resumed == null) {
+                if (machine instanceof MTEForgeOfGods && ((MTEForgeOfGods) machine).getData()
+                    .isRenderActive()) {
+                    // The native hint constructor always shows the dormant main ring. The live machine
+                    // checks shaft + air rings after converting its rings into the star renderer.
+                    int rings = ((MTEForgeOfGods) machine).getData()
+                        .getRingAmount();
+                    capture.pieces.add(new Piece("beam_shaft", 63, 14, 1, trigger.copy()));
+                    capture.pieces.add(new Piece("first_ring_air", 63, 14, -59, trigger.copy()));
+                    if (trigger.stackSize > 1) capture.pieces
+                        .add(new Piece(rings >= 2 ? "second_ring_air" : "second_ring", 55, 11, -67, trigger.copy()));
+                    if (trigger.stackSize > 2) capture.pieces
+                        .add(new Piece(rings >= 3 ? "third_ring_air" : "third_ring", 47, 13, -76, trigger.copy()));
+                } else((IConstructable) machine).construct(trigger, true);
+            }
             IStructureDefinition definition = machine.getStructureDefinition();
             final World world = machine.getBaseMetaTileEntity()
                 .getWorld();
@@ -123,93 +150,9 @@ public final class HologramCapture {
                     .getYCoord(),
                 z = machine.getBaseMetaTileEntity()
                     .getZCoord();
-            for (Piece piece : capture.pieces) {
-                definition.iterate(
-                    piece.name,
-                    world,
-                    machine.getExtendedFacing(),
-                    x,
-                    y,
-                    z,
-                    piece.a,
-                    piece.b,
-                    piece.c,
-                    new IStructureWalker() {
-
-                        public boolean visit(IStructureElement element, World w, int xx, int yy, int zz, int a, int b,
-                            int c) {
-                            String position = xx + "," + yy + "," + zz;
-                            Cell existing = capture.positions.get(position);
-                            if (existing != null) {
-                                if (existing.element == element
-                                    && ItemStack.areItemStacksEqual(existing.elementTrigger, piece.trigger))
-                                    return true;
-                                capture.fail("CONFLICTING_CELL " + position);
-                                return false;
-                            }
-                            if (capture.cells.size() >= LIMIT || System.nanoTime() > capture.deadline) {
-                                capture.fail(capture.cells.size() >= LIMIT ? "CELL_LIMIT" : "TIME_LIMIT");
-                                return false;
-                            }
-                            Cell cell = new Cell(element, xx, yy, zz, piece.trigger);
-                            capture.cells.add(cell);
-                            capture.positions.put(position, cell);
-                            capture.current = cell;
-                            try {
-                                if (element == StructureUtility.isAir()) {
-                                    cell.block = Blocks.air;
-                                    cell.meta = 0;
-                                } else element.spawnHint(machine, w, xx, yy, zz, piece.trigger);
-                                if (cell.block == StructureLibAPI.getBlockHint()) {
-                                    HologramCasingFallback.Target casing = capture.casing(element);
-                                    if (casing == null) cell.unknown = true;
-                                    else {
-                                        cell.block = casing.block;
-                                        cell.meta = casing.meta;
-                                    }
-                                }
-                                net.minecraft.item.ItemStack frame = HologramFrameSupport.target(element);
-                                if (frame != null) {
-                                    cell.block = Block.getBlockFromItem(frame.getItem());
-                                    cell.meta = frame.getItem()
-                                        .getMetadata(frame.getItemDamage());
-                                    cell.unknown = false;
-                                    cell.iconOnly = false;
-                                }
-                                if (!capture.roleCache.containsKey(element))
-                                    capture.roleCache.put(element, HologramElementCatalog.hatchRole(element));
-                                cell.role = capture.roleCache.get(element);
-                                if (!capture.familyCache.containsKey(element)) capture.familyCache
-                                    .put(element, HologramReplacementFamily.resolve(element, cell.block, cell.meta));
-                                HologramReplacementFamily.Family family = capture.familyCache.get(element);
-                                if (family != null) cell.family = family.id;
-                                if (cell.block == null) {
-                                    cell.unknown = true;
-                                    if (cell.iconOnly) cell.role = "interface";
-                                }
-                                if (cell.unknown && "block".equals(cell.role)) cell.role = "interface";
-                            } catch (RuntimeException | LinkageError e) {
-                                cell.unknown = true;
-                                capture.failure = e.getClass()
-                                    .getSimpleName();
-                            } finally {
-                                try {
-                                    capture.describeActual(cell, w);
-                                } catch (RuntimeException | LinkageError e) {
-                                    cell.unknown = true;
-                                }
-                                capture.current = null;
-                            }
-                            return true;
-                        }
-
-                        public boolean blockNotLoaded(IStructureElement e, World w, int xx, int yy, int zz, int a,
-                            int b, int c) {
-                            capture.fail("UNLOADED " + xx + "," + yy + "," + zz);
-                            return false;
-                        }
-                    });
-            }
+            walkPieces(capture, definition, world, machine.getExtendedFacing(), x, y, z);
+        } catch (CaptureYieldException yielded) {
+            // Resume on a later server tick, retaining captured cells and declaration caches.
         } catch (RuntimeException | LinkageError e) {
             capture.incomplete = true;
             if (capture.failure.isEmpty()) capture.failure = e.getClass()
@@ -217,10 +160,11 @@ public final class HologramCapture {
         } finally {
             if (previous == null) ACTIVE.remove();
             else ACTIVE.set(previous);
-            capture.channelReport = HologramChannelTrace.end(scope);
+            HologramChannelTrace.Report report = HologramChannelTrace.end(scope);
+            if (capture.channelReport == null) capture.channelReport = report;
         }
+        if (capture.pending) return capture;
         capture.addAnchor(machine);
-        if (System.nanoTime() > capture.deadline) capture.fail("TIME_LIMIT");
         if (capture.pieces.isEmpty()) capture.fail("NO_BUILD_PIECES");
         if (capture.incomplete) {
             capture.failure += " elapsedMs=" + ((System.nanoTime() - capture.started) / 1000000L)
@@ -239,10 +183,104 @@ public final class HologramCapture {
         return capture;
     }
 
+    /** Resumable traversal of declared pieces; collection scope owns hint interception and completion. */
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    private static void walkPieces(HologramCapture capture, IStructureDefinition definition, World world,
+        ExtendedFacing facing, int x, int y, int z) {
+        final int batchStart = capture.cells.size();
+        for (; capture.pieceCursor < capture.pieces.size(); capture.pieceCursor++) {
+            Piece piece = capture.pieces.get(capture.pieceCursor);
+            definition.iterate(piece.name, world, facing, x, y, z, piece.a, piece.b, piece.c, new IStructureWalker() {
+
+                public boolean visit(IStructureElement element, World w, int xx, int yy, int zz, int a, int b, int c) {
+                    String position = xx + "," + yy + "," + zz;
+                    Cell existing = capture.positions.get(position);
+                    if (existing != null) {
+                        if (existing.element == element
+                            && ItemStack.areItemStacksEqual(existing.elementTrigger, piece.trigger)) return true;
+                        capture.fail("CONFLICTING_CELL " + position);
+                        return false;
+                    }
+                    if (capture.cells.size() - batchStart >= CELLS_PER_BATCH
+                        || (capture.cells.size() > batchStart && System.nanoTime() > capture.deadline)) {
+                        capture.pending = true;
+                        throw new CaptureYieldException();
+                    }
+                    Cell cell = new Cell(element, xx, yy, zz, piece.trigger);
+                    capture.cells.add(cell);
+                    capture.positions.put(position, cell);
+                    capture.current = cell;
+                    try {
+                        if (element == StructureUtility.isAir()) {
+                            cell.block = Blocks.air;
+                            cell.meta = 0;
+                        } else element.spawnHint(capture.context, w, xx, yy, zz, piece.trigger);
+                        if (cell.block == StructureLibAPI.getBlockHint()) {
+                            HologramCasingFallback.Target casing = capture.casing(element);
+                            if (casing == null) cell.unknown = true;
+                            else {
+                                cell.block = casing.block;
+                                cell.meta = casing.meta;
+                            }
+                        }
+                        net.minecraft.item.ItemStack frame = HologramFrameSupport.target(element);
+                        if (frame != null) {
+                            cell.block = Block.getBlockFromItem(frame.getItem());
+                            cell.meta = frame.getItem()
+                                .getMetadata(frame.getItemDamage());
+                            cell.unknown = false;
+                            cell.iconOnly = false;
+                        }
+                        if (!capture.roleCache.containsKey(element))
+                            capture.roleCache.put(element, HologramElementCatalog.hatchRole(element));
+                        cell.role = capture.roleCache.get(element);
+                        if (!capture.familyCache.containsKey(element)) capture.familyCache
+                            .put(element, HologramReplacementFamily.resolve(element, cell.block, cell.meta));
+                        HologramReplacementFamily.Family family = capture.familyCache.get(element);
+                        if (family != null) cell.family = family.id;
+                        if (cell.block == null) {
+                            cell.unknown = true;
+                            if (cell.iconOnly) cell.role = "interface";
+                        }
+                        if (cell.unknown && "block".equals(cell.role)) cell.role = "interface";
+                    } catch (RuntimeException | LinkageError e) {
+                        cell.unknown = true;
+                        capture.failure = e.getClass()
+                            .getSimpleName();
+                    } finally {
+                        try {
+                            capture.describeActual(cell, w);
+                        } catch (RuntimeException | LinkageError e) {
+                            cell.unknown = true;
+                        }
+                        capture.current = null;
+                    }
+                    return true;
+                }
+
+                public boolean blockNotLoaded(IStructureElement e, World w, int xx, int yy, int zz, int a, int b,
+                    int c) {
+                    capture.fail("UNLOADED " + xx + "," + yy + "," + zz);
+                    return false;
+                }
+            });
+        }
+    }
+
     private void fail(String reason) {
         incomplete = true;
         if (failure.isEmpty()) failure = reason;
         else if ("TIME_LIMIT".equals(reason) && !failure.startsWith("TIME_LIMIT")) failure = reason + ": " + failure;
+    }
+
+    private static final class CaptureYieldException extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public synchronized Throwable fillInStackTrace() {
+            return this;
+        }
     }
 
     private void describeActual(Cell cell, World world) {

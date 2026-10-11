@@ -40,6 +40,10 @@ public class ClientProxy extends CommonProxy {
     public void init(FMLInitializationEvent event) {
         // 调用父类的 init 方法，确保通用逻辑正常执行
         super.init(event);
+        // NEI discovers recipe plugins itself; only the earlier HandlerInfo event listener is installed here.
+        if (cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")) {
+            com.miaokatze.gtit.client.nei.NEIGtitConfig.registerHandlerInfoEvents();
+        }
         com.miaokatze.gtit.client.hologram.HologramClient.install();
         com.miaokatze.gtit.client.hologram.HologramInteractionClientSmoke.install();
 

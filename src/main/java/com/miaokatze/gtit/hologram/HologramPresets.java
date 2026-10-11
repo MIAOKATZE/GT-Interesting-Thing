@@ -193,10 +193,9 @@ final class HologramPresets {
         if (cell == null || cell.stack() == null
             || cell.damage < 0
             || cell.count != 1
-            || Math.abs((long) cell.x) > 64
-            || Math.abs((long) cell.y) > 64
-            || Math.abs((long) cell.z) > 64
-            || (long) cell.x * cell.x + (long) cell.y * cell.y + (long) cell.z * cell.z > 4096
+            || Math.abs((long) cell.x) > 60000000L
+            || Math.abs((long) cell.y) > 256L
+            || Math.abs((long) cell.z) > 60000000L
             || cell.facing < -1
             || cell.facing > 5) throw new IOException("模板物品、坐标或朝向无效");
         ItemStack stack = cell.stack();

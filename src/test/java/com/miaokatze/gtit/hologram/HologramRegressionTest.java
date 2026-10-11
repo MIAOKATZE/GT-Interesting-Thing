@@ -67,6 +67,18 @@ public final class HologramRegressionTest {
             HologramRegressionTest::unknownDeclaration);
         cases.put("clipboard_edits_preserve_automatic_source_and_other_cells", HologramServiceEditRegression::run);
         cases.put("rotation_cycles_all_six_legal_fronts", HologramRegressionTest::faceRotation);
+        cases.put("large_snapshots_are_atomic_ordered_and_bounded", HologramSnapshotAssemblyRegression::run);
+        cases.put("incremental_capture_and_large_drafts_keep_editor_state", HologramLargeStructureRegression::run);
+        cases.put("large_snapshot_codec_rejects_hostile_lengths", HologramSnapshotCodecRegression::run);
+        cases.put(
+            "large_client_snapshots_keep_remote_structure_cells",
+            com.miaokatze.gtit.client.hologram.HologramLargeStateRegression::run);
+        cases.put(
+            "nei_trade_matches_and_cycles_real_candidates",
+            com.miaokatze.gtit.client.nei.NekoTradeNeiDataTest::run);
+        cases.put(
+            "nei_trade_pages_preserve_all_exchange_slots",
+            () -> com.miaokatze.gtit.client.nei.NekoTradePagesTest.main(new String[0]));
         TestRunner.run(HologramRegressionTest.class, cases);
     }
 
@@ -327,6 +339,25 @@ public final class HologramRegressionTest {
                     .writeToNBT(new NBTTagCompound())),
             "preview never consumes controller items");
         SimpleAssert.eq(12, match.stackSize, "player source unchanged");
+        ItemStack[] giantStock = new ItemStack[80];
+        net.minecraft.inventory.InventoryBasic giantController = new net.minecraft.inventory.InventoryBasic(
+            "giant",
+            true,
+            80);
+        for (int slot = 0; slot < giantStock.length; slot++) {
+            giantStock[slot] = target.copy();
+            giantStock[slot].stackSize = 64;
+            giantController.setInventorySlotContents(slot, giantStock[slot].copy());
+        }
+        SimpleAssert.eq(
+            5120,
+            HologramMaterials.mainCount(giantStock, -1, target, 6000),
+            "large stock is not truncated at 4096");
+        SimpleAssert.eq(
+            5000,
+            HologramMaterials.controllerCount(giantController, target, 5000),
+            "large read-only inventory respects requested limit");
+        SimpleAssert.eq(64, giantStock[0].stackSize, "large stock count does not consume items");
     }
 
     private static void hatchExterior() {
@@ -461,6 +492,18 @@ public final class HologramRegressionTest {
             rejected = true;
         }
         SimpleAssert.that(rejected, "native takeOne contract rejects a multi-item request");
+        player.inventory.mainInventory[1].getTagCompound()
+            .setInteger("materials", 8192);
+        SimpleAssert.eq(8192, context.count(stone, 10000), "giant structure counts full container stock");
+        SimpleAssert.eq(
+            8192,
+            player.inventory.mainInventory[1].getTagCompound()
+                .getInteger("materials"),
+            "large simulation preserves container");
+        SimpleAssert.that(
+            context.take(stack -> true, false, 5000)
+                .isEmpty(),
+            "large counting does not enlarge committed extraction budget");
     }
 
     private static void materialRollback() {

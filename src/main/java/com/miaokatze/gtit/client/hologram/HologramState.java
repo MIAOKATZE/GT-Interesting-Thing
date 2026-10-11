@@ -16,14 +16,24 @@ final class HologramState {
     final List<Cell> cells = new ArrayList<>();
     final List<Material> materials = new ArrayList<>();
     int minY = 0, maxY = 0;
+    private int minWorldX, maxWorldX, minWorldY, maxWorldY, minWorldZ, maxWorldZ;
 
     HologramState(NBTTagCompound source) {
         data = (NBTTagCompound) source.copy();
         session = data.getString("session");
+        minWorldX = maxWorldX = data.getInteger("x");
+        minWorldY = maxWorldY = data.getInteger("y");
+        minWorldZ = maxWorldZ = data.getInteger("z");
         NBTTagList list = data.getTagList("cells", 10);
-        for (int i = 0; i < Math.min(4096, list.tagCount()); i++) {
+        for (int i = 0; i < list.tagCount(); i++) {
             Cell cell = new Cell(i, list.getCompoundTagAt(i));
             cells.add(cell);
+            minWorldX = Math.min(minWorldX, cell.x);
+            maxWorldX = Math.max(maxWorldX, cell.x);
+            minWorldY = Math.min(minWorldY, cell.y);
+            maxWorldY = Math.max(maxWorldY, cell.y);
+            minWorldZ = Math.min(minWorldZ, cell.z);
+            maxWorldZ = Math.max(maxWorldZ, cell.z);
             if (i == 0) {
                 minY = cell.dy;
                 maxY = cell.dy;
@@ -33,6 +43,14 @@ final class HologramState {
         }
         list = data.getTagList("materials", 10);
         for (int i = 0; i < list.tagCount(); i++) materials.add(new Material(list.getCompoundTagAt(i)));
+    }
+
+    /** Visibility follows the full structure bounds, allowing viewers near remote ends of megastructures. */
+    double distanceSquared(double x, double y, double z) {
+        double dx = Math.max(Math.max(minWorldX - x, x - (maxWorldX + 1.0)), 0);
+        double dy = Math.max(Math.max(minWorldY - y, y - (maxWorldY + 1.0)), 0);
+        double dz = Math.max(Math.max(minWorldZ - z, z - (maxWorldZ + 1.0)), 0);
+        return dx * dx + dy * dy + dz * dz;
     }
 
     static final class Cell {

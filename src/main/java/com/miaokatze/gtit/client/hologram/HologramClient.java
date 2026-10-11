@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.client.hologram;
 
+import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -23,6 +24,8 @@ import com.gtnewhorizon.structurelib.alignment.constructable.IConstructableProvi
 import com.gtnewhorizon.structurelib.alignment.constructable.IMultiblockInfoContainer;
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.miaokatze.gtit.hologram.HologramNetwork;
+import com.miaokatze.gtit.hologram.HologramSnapshotAssembly;
+import com.miaokatze.gtit.hologram.HologramSnapshotCodec;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
@@ -37,6 +40,8 @@ public final class HologramClient {
     private static long acceptedBatch = -1;
     private static final Set<String> retiredSessions = new LinkedHashSet<>();
     private static final long SNAPSHOT_TTL_NS = 300000000000L;
+    private static HologramSnapshotAssembly assembly = new HologramSnapshotAssembly();
+    private static net.minecraft.world.World assemblyWorld;
 
     private HologramClient() {}
 
@@ -117,10 +122,42 @@ public final class HologramClient {
     }
 
     private static void receive(NBTTagCompound nbt) {
+        if (nbt.getBoolean("transportError")) {
+            Minecraft mc = Minecraft.getMinecraft();
+            if (mc.thePlayer != null) mc.thePlayer.addChatMessage(
+                new net.minecraft.util.ChatComponentText(
+                    text(
+                        "transportError",
+                        "Hologram snapshot exceeds the transfer budget; the previous preview was retained.")));
+            return;
+        }
+        if (nbt.getBoolean("transportFragment")) {
+            net.minecraft.world.World world = Minecraft.getMinecraft().theWorld;
+            if (world == null) return;
+            if (world != assemblyWorld) {
+                assembly = new HologramSnapshotAssembly();
+                assemblyWorld = world;
+            }
+            byte[] complete = assembly.accept(
+                nbt.getLong("transportSequence"),
+                nbt.getInteger("transportTotal"),
+                nbt.getInteger("transportIndex"),
+                nbt.getByteArray("transportBytes"),
+                System.nanoTime());
+            if (complete == null) return;
+            try {
+                nbt = HologramSnapshotCodec.decode(complete);
+            } catch (IOException | RuntimeException e) {
+                com.miaokatze.gtit.main.GTInterestingThing.LOG.warn("Hologram snapshot decoding failed", e);
+                return;
+            }
+        }
         if (nbt.getBoolean("cancelled")) {
             if (state != null && state.session.equals(nbt.getString("session"))) clearProjection();
             return;
         }
+        // Collection progress is not a complete editable structure; retain the last complete snapshot.
+        if (nbt.getBoolean("capturePending")) return;
         HologramState next = new HologramState(nbt);
         String generation = next.data.getString("generation");
         if ((!generation.isEmpty() && !generation.equals(next.session)) || retiredSessions.contains(next.session))
@@ -200,6 +237,7 @@ public final class HologramClient {
     }
 
     static void clearProjection() {
+        assembly.clear();
         if (state != null) retire(state.session);
         HologramRenderer.release();
         state = null;
@@ -215,6 +253,11 @@ public final class HologramClient {
     @SubscribeEvent
     public void renderWorld(RenderWorldLastEvent event) {
         Minecraft mc = Minecraft.getMinecraft();
+        assembly.expire(System.nanoTime());
+        if (mc.theWorld != assemblyWorld) {
+            assembly = new HologramSnapshotAssembly();
+            assemblyWorld = mc.theWorld;
+        }
         if (state == null) return;
         if (mc.theWorld == null || mc.theWorld != snapshotWorld
             || mc.thePlayer == null
@@ -225,9 +268,8 @@ public final class HologramClient {
         }
         if (!worldPreview || state.data.getInteger("job") == 4) return;
         // Avoid stale projection after disconnect/reconnect or travelling away from the target.
-        if (mc.thePlayer
-            .getDistanceSq(state.data.getInteger("x"), state.data.getInteger("y"), state.data.getInteger("z")) > 4096)
-            return;
+        if (state.distanceSquared(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ) > 4096
+            && !(state.data.getBoolean("virtual") && state.data.getBoolean("moving"))) return;
         HologramRenderer.world(state, event.partialTicks);
     }
 }

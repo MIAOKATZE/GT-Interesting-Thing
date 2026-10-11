@@ -46,7 +46,7 @@ public final class HologramScreen extends GuiScreen {
     private static final int viewportX = HologramScreenLayout.VIEWPORT_X, viewportY = HologramScreenLayout.VIEWPORT_Y,
         viewportWidth = HologramScreenLayout.VIEWPORT_WIDTH, viewportHeight = HologramScreenLayout.VIEWPORT_HEIGHT;
     private static final int panelX = HologramScreenLayout.PANEL_X, panelY = HologramScreenLayout.PANEL_Y;
-    private boolean shortcutsDrawer, libraryDrawer, resetReview;
+    private boolean shortcutsDrawer, libraryDrawer, resetReview, resetCalibration;
     private int libraryOffset;
     private int captureBinding = -1;
     private final HologramKeyBindings keyBindings = new HologramKeyBindings();
@@ -151,7 +151,7 @@ public final class HologramScreen extends GuiScreen {
 
     private GuiTextField positionField(int x) {
         GuiTextField field = new GuiTextField(fontRendererObj, x, 116, 70, 18);
-        field.setMaxStringLength(4);
+        field.setMaxStringLength(11);
         field.setText("0");
         return field;
     }
@@ -255,6 +255,11 @@ public final class HologramScreen extends GuiScreen {
                 tooltip = null;
                 drawLibrary(mx, my);
             }
+            if (resetReview) {
+                controls.clear();
+                tooltip = null;
+                drawResetReview(mx, my);
+            }
             if (confirmation) {
                 controls.clear();
                 tooltip = null;
@@ -326,6 +331,16 @@ public final class HologramScreen extends GuiScreen {
         button(13, 132, 55, 22, 17, "+", layer < state.maxY, mx, my);
         button(14, 12, 259, 66, 17, "复位视角", true, mx, my);
         button(15, 80, 259, 74, 17, HologramClient.worldPreview ? "世界投影 ✓" : "世界投影 ×", true, mx, my);
+        button(
+            134,
+            156,
+            259,
+            120,
+            17,
+            state.data.getBoolean("structureBuilt") ? "校准为当前" : "重置为默认",
+            editable() && previewInteractive() && state.data.getBoolean("target") && state.data.getBoolean("supported"),
+            mx,
+            my);
     }
 
     private void drawConfig(int mx, int my) {
@@ -453,14 +468,6 @@ public final class HologramScreen extends GuiScreen {
         drawRect(58, 58, 358, 257, 0xff172f36);
         text("草稿 / 自定义预设 · 仅编辑目标", 70, 66, 260, 0xf5e4b9);
         button(131, 331, 62, 19, 17, "×", true, mx, my);
-        if (resetReview) {
-            text("恢复默认结构目标？", 70, 101, 274, 0xe4b85a);
-            text("清除本投影仪的草稿与自定义目标。", 70, 124, 274, 0xb9d5d4);
-            text("不会回滚已施工的世界，也不删除已存预设。", 70, 143, 274, 0xb9d5d4);
-            button(136, 70, 211, 132, 21, "保留当前规划", true, mx, my);
-            button(137, 212, 211, 132, 21, "确认恢复默认目标", editable(), mx, my);
-            return;
-        }
         boolean virtual = state.data.getBoolean("virtual");
         text(
             virtual ? state.data.getBoolean("virtualLocked") ? "虚拟模板已锁定 · 可放置" : "虚拟模板未锁定 · 锁定后才能放置"
@@ -494,7 +501,17 @@ public final class HologramScreen extends GuiScreen {
             virtual && !state.data.getBoolean("virtualLocked") && editable(),
             mx,
             my);
-        button(134, 70, 242, 274, 13, "恢复结构默认目标（不回滚世界）", editable(), mx, my);
+        text("重置 / 校准入口位于世界投影右侧", 70, 245, 274, 0x94afb4);
+    }
+
+    private void drawResetReview(int mx, int my) {
+        drawRect(58, 76, 358, 246, 0xff172f36);
+        text(resetCalibration ? "将规划校准为当前现场？" : "将规划重置为结构默认？", 70, 91, 274, 0xe4b85a);
+        text(resetCalibration ? "按现场合法方块与仓室朝向更新规划。" : "清除自定义目标，恢复结构默认规划。", 70, 118, 274, 0xb9d5d4);
+        text("仅更新规划，不施工，也不删除已存预设。", 70, 141, 274, 0xb9d5d4);
+        text(resetCalibration ? "检测到已构建结构；成型仍由原机判定。" : "操作前请确认当前手改目标是否需要保留。", 70, 162, 274, 0xe4b85a);
+        button(136, 70, 211, 132, 21, "保留当前规划", true, mx, my);
+        button(137, 212, 211, 132, 21, resetCalibration ? "确认校准为当前" : "确认重置为默认", editable(), mx, my);
     }
 
     private void drawFooter(int mx, int my) {
@@ -826,8 +843,7 @@ public final class HologramScreen extends GuiScreen {
             int y = 128 + row * 21;
             drawItem(stack, 165, y);
             String count = state.data.getBoolean("creativeMaterials") ? "无限"
-                : index < available.length ? (available[index] >= 4096 ? "≥4096" : Integer.toString(available[index]))
-                    : "?";
+                : index < available.length ? Integer.toString(available[index]) : "?";
             button(
                 10000 + index,
                 186,
@@ -932,7 +948,7 @@ public final class HologramScreen extends GuiScreen {
         positionZField.drawTextBox();
         button(76, 166, 146, 230, 20, "添加并选中此位置", editable(), mx, my);
         text("选中后点击“选择方块 / 仓室”指定目标", 166, 180, 230, 0xb9d5d4);
-        text("控制器本身受保护，最多4096个位置", 166, 199, 230, 0x94afb4);
+        text("位置须在已加载区块；控制器受保护", 166, 199, 230, 0x94afb4);
     }
 
     private void addPosition() {
@@ -1013,6 +1029,7 @@ public final class HologramScreen extends GuiScreen {
             && !confirmation
             && !shortcutsDrawer
             && !libraryDrawer
+            && !resetReview
             && !roleDropdown
             && optionChannel.isEmpty();
     }
@@ -1376,12 +1393,20 @@ public final class HologramScreen extends GuiScreen {
         Control c = new Control(id, x, y, w, h, enabled);
         controls.add(c);
         skin(enabled && c.contains(mx, my) ? "btn_pressed" : "btn", x, y, w, h);
+        int accent = id == 26 ? 0x68dded : id == 50 ? 0x80efaa : id == 90 ? 0xffd56d : 0;
+        if (enabled && accent != 0) {
+            int border = 0xff000000 | accent;
+            drawRect(x, y, x + w, y + 1, border);
+            drawRect(x, y + h - 1, x + w, y + h, border);
+            drawRect(x, y, x + 1, y + h, border);
+            drawRect(x + w - 1, y, x + w, y + h, border);
+        }
         drawCenteredString(
             fontRendererObj,
             fontRendererObj.trimStringToWidth(label, w - 6),
             x + w / 2,
             y + (h - 8) / 2,
-            enabled ? 0xf0ddb3 : 0x647c7f);
+            enabled ? accent == 0 ? 0xf0ddb3 : accent : 0x647c7f);
         if (c.contains(mx, my)) {
             String help = controlHelp(id);
             if (help != null) {
@@ -1438,12 +1463,16 @@ public final class HologramScreen extends GuiScreen {
     private String controlHelp(int id) {
         switch (id) {
             case 130:
-                return "查看当前投影仪草稿、保存自定义模板、载入服务端配置预设或恢复默认结构目标。每件投影仪只保存当前控制器的一份草稿。";
+                return "查看当前投影仪草稿、保存自定义模板或载入服务端配置预设。每件投影仪只保存当前控制器的一份草稿。";
             case 132:
                 return "按名称保存当前目标规划到服务端配置；不执行施工。";
             case 134:
+                return state.data.getBoolean("structureBuilt")
+                    ? "原机已报告成型或已知结构位置已匹配：可将目标校准为现场合法方块与仓室朝向；不主动检查成型或施工，会覆盖已有自定义目标。"
+                    : "恢复结构默认目标并清除本投影仪草稿。仅改变规划，不回滚世界方块，也不删除已存预设。";
             case 137:
-                return "恢复结构默认目标并清除本投影仪草稿。仅改变规划，不回滚世界方块，也不删除已存预设。";
+                return resetCalibration ? "用当前现场校准规划，覆盖已有自定义目标；服务端重新校验，不执行施工。"
+                    : "恢复结构默认目标并清除本投影仪草稿。仅改变规划，不回滚世界方块，也不删除已存预设。";
             case 135:
                 return "锁定当前虚拟模板后才允许放置；锁定本身不执行施工。";
             case 138:
@@ -1595,7 +1624,7 @@ public final class HologramScreen extends GuiScreen {
             return;
         }
         if (libraryDrawer && !resetReview) presetNameField.mouseClicked(mx, my, button);
-        if (libraryDrawer || shortcutsDrawer || hatchDrawer || presetDrawer) {
+        if (libraryDrawer || resetReview || shortcutsDrawer || hatchDrawer || presetDrawer) {
             if (button == 0) for (int i = controls.size() - 1; i >= 0; i--) {
                 Control control = controls.get(i);
                 if (control.contains(mx, my)) {
@@ -1722,6 +1751,7 @@ public final class HologramScreen extends GuiScreen {
         super.handleMouseInput();
         int wheel = Mouse.getEventDWheel();
         if (wheel == 0) return;
+        if (resetReview) return;
         int mx = localX(Mouse.getEventX() * width / mc.displayWidth),
             my = localY(height - Mouse.getEventY() * height / mc.displayHeight - 1);
         if (roleDropdown) {
@@ -1822,6 +1852,7 @@ public final class HologramScreen extends GuiScreen {
             else mc.displayGuiScreen(null);
             return;
         }
+        if (resetReview) return;
         if (libraryDrawer) {
             if (!resetReview) {
                 if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER) activate(132);
@@ -1931,6 +1962,8 @@ public final class HologramScreen extends GuiScreen {
                 send("savePreset", savePreset, true);
                 break;
             case 134:
+                if (!editable()) break;
+                resetCalibration = state.data.getBoolean("structureBuilt");
                 resetReview = true;
                 presetNameField.setFocused(false);
                 break;
@@ -1944,7 +1977,7 @@ public final class HologramScreen extends GuiScreen {
             case 137:
                 if (editable() && resetReview) {
                     resetReview = false;
-                    send("resetDraft", null, true);
+                    send(resetCalibration ? "calibrateCurrent" : "resetDraft", null, true);
                 }
                 break;
             case 138:
