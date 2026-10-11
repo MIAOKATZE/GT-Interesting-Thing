@@ -10,7 +10,7 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta1-3 & RC1-2" src="https://img.shields.io/badge/GTNH-2.9.0%20beta1--3%20%26%20RC1--2-orange.svg"></a>
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.60" src="https://img.shields.io/badge/Release-1.8.60-green.svg"></a>
+  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.84" src="https://img.shields.io/badge/Release-1.8.84-green.svg"></a>
 </p>
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
@@ -114,6 +114,10 @@ Each reward slot independently chooses one alternative per transaction. An ore d
 - **排序与搜索**：按顺序 ID 或名称排序，支持文字搜索过滤
 - **背景音乐**：3 首随机 BGM，2 秒淡入淡出，最大音量 50%
 - **BQ 锁定显示**：锁定交易显示金色 "LOCKED" 文字 + 冷却遮罩；冷却中交易显示青色冷却时间
+
+猫猫贸易现已接入 NEI：对物品按 R / U 查询产出与用途，对售货机按 U 浏览贸易；配方显示兑换间隔，关联任务可点击打开任务书。
+
+Neko trades are available in NEI: use R / U on items to find outputs and uses, or U on the vending machine to browse trades. Recipes show trade intervals and clickable linked quests.
 
 ### BetterQuesting Integration / BQ 任务集成
 
@@ -332,6 +336,20 @@ A drawstring pouch with a cat face sewn on. The cats never explain what's stitch
 - **Channel toggle / 通道开关**: 通道插件新装默认关闭，可在猫猫币栏旁便携开关次元通道。/ Newly installed channel modules start disabled; toggle the persistent dimension channel beside the Neko Coin area.
 - **Upgrade modules / 升级插件**: 插件放入即固化、不可取出；除堆叠和容量插件可累计外，其余各安装一枚。五种插件拥有动态物品图标，并支持磁力拾取、蒸馏加速等功能。/ Modules are permanent once installed. STACK and CAPACITY modules accumulate; the other modules are limited to one each. All five have animated item icons, with functions including magnetic pickup and faster distillation.
 - **Recipe / 配方**: `PEP / LCL / LLL`（末影珍珠 + 末影之眼 + 皮革 + 猫猫无限存储单元，不比较元件 NBT）；前置 ModularUI2、AE2、GT5U，Thaumcraft 4 可选。
+
+***
+
+## Neko Hologram Projector / 猫猫全息投影仪
+
+<p align="center"><img src="README/neko-hologram-projector.png" width="800" alt="猫猫全息投影仪：工业高炉预览与编辑 / Neko Hologram Projector: Electric Blast Furnace preview and editing"></p>
+
+用可爱的金色猫脸投影，预览、编辑和搭建 GT 多方块结构。支持等级与信道设置、逐格替换仓室、材料检查，以及草稿和自定义预设。可在猫猫售货机中用 1 枚闪烁猫猫币兑换。
+
+A golden cat-face projector for previewing, editing and building GT multiblocks. Set tiers and channels, customize individual hatches, check materials, and save drafts or custom presets. Trade one Shimmering Neko Coin for it at the Neko Vending Machine.
+
+- **编辑 / Edit**：右击控制器打开面板；在预览中点击格子调整方块或仓室，面板内可查看快捷键。/ Right-click a controller, then select cells in the preview. The panel includes a shortcut guide.
+- **施工 / Build**：补建填补空位，替换调整已建结构，拆除保留控制器；材料来源与回收位置可在设置中选择。/ Fill empty cells, replace parts of an existing structure, or dismantle while keeping the controller. Configure material sources and recovery destinations in settings.
+- **预设 / Presets**：Alt + 右击选择并定位预设，再次 Alt + 右击锁定；Alt + Shift + 右击施工。Shift + 右击空气打开设置。/ Alt-right-click to select and position a preset, then Alt-right-click again to lock it. Alt-Shift-right-click builds it; Shift-right-click air opens settings.
 
 ***
 
