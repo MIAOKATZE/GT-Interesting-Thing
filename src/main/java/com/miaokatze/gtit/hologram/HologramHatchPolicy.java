@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.hologram;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -21,6 +23,7 @@ import gregtech.common.blocks.ItemMachines;
 /** Captures declared hatch types at the original API, independently of automatic fill quotas. */
 public final class HologramHatchPolicy {
 
+    private static final Method MATCHES_HATCH = findMatchesHatch();
     private static final Map<Object, BiFunction<Object, ItemStack, Predicate<ItemStack>>> BUILDERS = new WeakHashMap<>();
     private static final Map<IStructureElement<?>, BiFunction<Object, ItemStack, Predicate<ItemStack>>> ELEMENTS = new WeakHashMap<>();
     private static final Map<Object, Map<IHatchElement<?>, Integer>> REQUIREMENTS = new WeakHashMap<>();
@@ -67,6 +70,34 @@ public final class HologramHatchPolicy {
 
     private HologramHatchPolicy() {}
 
+    private static Method findMatchesHatch() {
+        try {
+            return IHatchElement.class.getMethod("matchesHatch", IMetaTileEntity.class);
+        } catch (NoSuchMethodException absentOnBeta1And2) {
+            return null;
+        }
+    }
+
+    public static boolean matchesHatch(IHatchElement<?> element, IMetaTileEntity tile) {
+        if (MATCHES_HATCH == null) return legacyMatchesHatch(element, tile);
+        try {
+            return (boolean) MATCHES_HATCH.invoke(element, tile);
+        } catch (InvocationTargetException failedDelegate) {
+            Throwable cause = failedDelegate.getCause();
+            if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+            if (cause instanceof Error) throw (Error) cause;
+            throw new IllegalStateException("Hatch matcher failed", cause);
+        } catch (IllegalAccessException inaccessibleDelegate) {
+            throw new IllegalStateException("Cannot invoke hatch matcher", inaccessibleDelegate);
+        }
+    }
+
+    static boolean legacyMatchesHatch(IHatchElement<?> element, IMetaTileEntity tile) {
+        return element.mteClasses()
+            .stream()
+            .anyMatch(type -> type.isInstance(tile));
+    }
+
     public static synchronized void declare(Object builder, Collection<? extends IHatchElement<?>> elements,
         boolean sharedBlacklist) {
         List<IHatchElement<?>> declared = new ArrayList<>(elements);
@@ -82,7 +113,7 @@ public final class HologramHatchPolicy {
             for (IHatchElement<?> element : declared) {
                 // The builder blacklist limits automatic placement/preview, not structural acceptance.
                 // Explicit declaration candidates must also include manually installed specialised hatches.
-                if (element.matchesHatch(tile)) return true;
+                if (matchesHatch(element, tile)) return true;
             }
             return false;
         });

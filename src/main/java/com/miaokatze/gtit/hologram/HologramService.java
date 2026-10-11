@@ -3032,7 +3032,7 @@ public final class HologramService {
         gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(stack);
         for (IStructureElement<?> part : HologramElementCatalog.parts(c.element))
             for (gregtech.api.interfaces.IHatchElement<?> type : HologramHatchPolicy.declared(part))
-                if (type.matchesHatch(prototype)) return type.getDisplayName();
+                if (HologramHatchPolicy.matchesHatch(type, prototype)) return type.getDisplayName();
         return "仓室";
     }
 
@@ -3154,8 +3154,8 @@ public final class HologramService {
                 reserved.merge(stackKey(stack), 1, Integer::sum);
             gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(stack);
             for (Map.Entry<String, gregtech.api.interfaces.IHatchElement<?>> type : types.entrySet())
-                if (type.getValue()
-                    .matchesHatch(prototype)) quotas.computeIfPresent(type.getKey(), (key, n) -> Math.max(0, n - 1));
+                if (HologramHatchPolicy.matchesHatch(type.getValue(), prototype))
+                    quotas.computeIfPresent(type.getKey(), (key, n) -> Math.max(0, n - 1));
         }
         List<String> ordered = new ArrayList<>(types.keySet());
         ordered.sort((a, b) -> Integer.compare(presetPositions(s, types.get(a)), presetPositions(s, types.get(b))));
@@ -3169,7 +3169,8 @@ public final class HologramService {
                 if (!presetPosition(s, c, i, type)) continue;
                 List<ItemStack> options = new ArrayList<>();
                 for (ItemStack option : candidates(s, c)) if (hatchTier(option) != Integer.MAX_VALUE
-                    && type.matchesHatch(ItemMachines.getMetaTileEntity(option))) options.add(option);
+                    && HologramHatchPolicy.matchesHatch(type, ItemMachines.getMetaTileEntity(option)))
+                    options.add(option);
                 ItemStack pick = presetCandidate(s, options, reserved);
                 if (pick == null) continue;
                 if (chosen == null || hatchTier(pick) > hatchTier(chosen)) {

@@ -1,11 +1,15 @@
 package com.miaokatze.gtit.mixin.hologram;
 
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import net.minecraftforge.common.util.ForgeDirection;
+
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -18,6 +22,9 @@ import gregtech.api.util.HatchElementBuilder;
 
 @Mixin(value = HatchElementBuilder.class, remap = false)
 public abstract class MixinHologramHatchPolicy {
+
+    @Shadow(remap = false)
+    private EnumSet<ForgeDirection> mDisallowedDirection;
 
     @Inject(method = "atLeast(Ljava/util/Map;)Lgregtech/api/util/HatchElementBuilder;", at = @At("RETURN"))
     private void gtit$atLeast(Map<IHatchElement<?>, ? extends Number> elements,
@@ -59,7 +66,6 @@ public abstract class MixinHologramHatchPolicy {
     @Inject(method = "build()Lcom/gtnewhorizon/structurelib/structure/IStructureElement;", at = @At("RETURN"))
     private void gtit$built(CallbackInfoReturnable<IStructureElement<?>> callback) {
         HologramHatchPolicy.built(this, callback.getReturnValue());
-        HologramHatchPolicy
-            .directions(callback.getReturnValue(), ((HatchElementBuilder<?>) (Object) this).getDisallowedDirection());
+        HologramHatchPolicy.directions(callback.getReturnValue(), mDisallowedDirection);
     }
 }
