@@ -41,7 +41,6 @@ public class ClientProxy extends CommonProxy {
         // 调用父类的 init 方法，确保通用逻辑正常执行
         super.init(event);
         com.miaokatze.gtit.client.hologram.HologramClient.install();
-        com.miaokatze.gtit.client.hologram.NekoHologramItemRenderer.install();
         com.miaokatze.gtit.client.hologram.HologramInteractionClientSmoke.install();
 
         // 注册猫猫售货机 BGM 事件处理器（客户端）

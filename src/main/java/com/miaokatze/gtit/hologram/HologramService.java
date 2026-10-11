@@ -268,8 +268,12 @@ public final class HologramService {
         s.materialContext.flushRecovery();
         String op = action.getString("op");
         EditState beforeEdit = isPlanningEdit(op) && s.job != 1 && s.job != 2 ? new EditState(s) : null;
+        if (s.job != 1 && s.job != 2 && ("hatchPreset".equals(op) || "clearHatchPreset".equals(op))) {
+            s.allocationsFrozen = false;
+            s.frozenAutoTargets.clear();
+        }
         if (s.virtual && beforeEdit != null
-            && !"editCopy".equals(op)
+            && !isCellEdit(op)
             && !"hatchPreset".equals(op)
             && !"clearHatchPreset".equals(op)
             && s.capture != null) {
@@ -305,54 +309,10 @@ public final class HologramService {
             s.status = "继续施工";
         } else if ("scan".equals(op) && s.job != 1 && s.job != 2) scan(s);
         else if ("configure".equals(op) && s.job != 1 && s.job != 2) {
-            if (s.virtual && action.getInteger("mode") == 2) {
-                s.status = "虚拟预设不支持拆除；请先建立实体控制器";
+            if (!configure(s, action)) {
                 send(s);
                 return;
             }
-            int requestedFacing = action.getInteger("facing");
-            if (!action.hasKey("main", 3) || action.getInteger("main") < 1
-                || !validChannels(action.getCompoundTag("channels"))
-                || (s.capabilities != null
-                    && !s.capabilities.validConfiguration(action.getInteger("main"), action.getCompoundTag("channels")))
-                || action.getInteger("mode") < 0
-                || action.getInteger("mode") > 2
-                || action.getInteger("scope") < 0
-                || action.getInteger("scope") > 3
-                || action.getInteger("layer") < -128
-                || action.getInteger("layer") > 128
-                || (s.machine != null && requestedFacing != s.machine.getExtendedFacing()
-                    .ordinal())) {
-                s.status = "参数无效，配置未修改";
-                send(s);
-                return;
-            }
-            boolean geometryChanged = s.main != action.getInteger("main")
-                || !s.channels.equals(action.getCompoundTag("channels"))
-                || s.noHatches != action.getBoolean("noHatches")
-                || (s.machine != null && s.facing != s.machine.getExtendedFacing()
-                    .ordinal());
-            if (s.main != action.getInteger("main")) s.mainExplicit = true;
-            s.main = action.getInteger("main");
-            s.channels = boundedChannels(action.getCompoundTag("channels"));
-            s.noHatches = action.getBoolean("noHatches");
-            if (action.hasKey("materialMain")) s.materialSettings.main = action.getBoolean("materialMain");
-            if (action.hasKey("materialContainers"))
-                s.materialSettings.containers = action.getBoolean("materialContainers");
-            if (action.hasKey("materialMe")) s.materialSettings.me = action.getBoolean("materialMe");
-            if (action.hasKey("materialPriority"))
-                s.materialSettings.priority = clamp(action.getInteger("materialPriority"), 0, 2);
-            s.materialContext = new HologramMaterials.Context(player, s.materialSettings);
-            s.mode = clamp(action.getInteger("mode"), 0, 2);
-            s.scope = clamp(action.getInteger("scope"), 0, 3);
-            s.layer = clamp(action.getInteger("layer"), -128, 128);
-            s.selected = action.getInteger("selected");
-            if (geometryChanged || s.capturePending) scan(s);
-            else {
-                s.job = 0;
-                refreshPlan(s);
-            }
-            persist(s);
         } else if ("build".equals(op) && s.job != 1 && s.job != 2) {
             directBuild(s);
         } else if ("removePosition".equals(op) && s.job != 1 && s.job != 2) {
@@ -495,6 +455,7 @@ public final class HologramService {
                     if (allowed == direction) legal = true;
                 if (cell.anchor || !legal) s.status = "控制器受保护，或该仓室不支持所选方向";
                 else {
+                    freezeAllocations(s);
                     if (direction == -1) s.facingPins.remove(position(cell));
                     else s.facingPins.put(position(cell), direction);
                     refreshPlan(s);
@@ -538,6 +499,61 @@ public final class HologramService {
         }
         persist(s);
         send(s);
+    }
+
+    /** Selection and scope changes refresh the diff without redistributing existing automatic targets. */
+    private static boolean configure(Session s, NBTTagCompound action) {
+        if (s.virtual && action.getInteger("mode") == 2) {
+            s.status = "虚拟预设不支持拆除；请先建立实体控制器";
+            return false;
+        }
+        int requestedFacing = action.getInteger("facing");
+        if (!action.hasKey("main", 3) || action.getInteger("main") < 1
+            || !validChannels(action.getCompoundTag("channels"))
+            || (s.capabilities != null
+                && !s.capabilities.validConfiguration(action.getInteger("main"), action.getCompoundTag("channels")))
+            || action.getInteger("mode") < 0
+            || action.getInteger("mode") > 2
+            || action.getInteger("scope") < 0
+            || action.getInteger("scope") > 3
+            || action.getInteger("layer") < -128
+            || action.getInteger("layer") > 128
+            || (s.machine != null && requestedFacing != s.machine.getExtendedFacing()
+                .ordinal())) {
+            s.status = "参数无效，配置未修改";
+            return false;
+        }
+        boolean geometryChanged = s.main != action.getInteger("main")
+            || !s.channels.equals(action.getCompoundTag("channels"))
+            || s.noHatches != action.getBoolean("noHatches")
+            || (s.machine != null && s.facing != s.machine.getExtendedFacing()
+                .ordinal());
+        if (geometryChanged) {
+            s.allocationsFrozen = false;
+            s.frozenAutoTargets.clear();
+        }
+        if (s.main != action.getInteger("main")) s.mainExplicit = true;
+        s.main = action.getInteger("main");
+        s.channels = boundedChannels(action.getCompoundTag("channels"));
+        s.noHatches = action.getBoolean("noHatches");
+        if (action.hasKey("materialMain")) s.materialSettings.main = action.getBoolean("materialMain");
+        if (action.hasKey("materialContainers"))
+            s.materialSettings.containers = action.getBoolean("materialContainers");
+        if (action.hasKey("materialMe")) s.materialSettings.me = action.getBoolean("materialMe");
+        if (action.hasKey("materialPriority"))
+            s.materialSettings.priority = clamp(action.getInteger("materialPriority"), 0, 2);
+        s.materialContext = new HologramMaterials.Context(s.player, s.materialSettings);
+        s.mode = clamp(action.getInteger("mode"), 0, 2);
+        s.scope = clamp(action.getInteger("scope"), 0, 3);
+        s.layer = clamp(action.getInteger("layer"), -128, 128);
+        s.selected = action.getInteger("selected");
+        if (geometryChanged || s.capturePending) scan(s);
+        else {
+            s.job = 0;
+            refreshPlan(s);
+        }
+        persist(s);
+        return true;
     }
 
     private static boolean isCellEdit(String op) {
@@ -651,12 +667,13 @@ public final class HologramService {
                     return;
                 }
             }
+            freezeAllocations(s);
+            if (s.virtual) s.virtualEdited.add(position(cell));
             s.pins.put(index, sample.copy());
             s.coordinatePins.put(position(cell), sample.copy());
             s.suppressedAuto.add(position(cell));
             s.facingPins.remove(position(cell));
             if (legal.length > 0 && direction >= 0) s.facingPins.put(position(cell), direction);
-            if (sample.getItem() instanceof ItemMachines) s.noHatches = false;
             s.selected = index;
             s.scope = 2;
             s.mode = 1;
@@ -665,17 +682,41 @@ public final class HologramService {
             return;
         }
         int[] legal = legalFacings(s, cell, targetFor(s, cell, index));
-        if (legal.length < 2) {
+        int current = s.facingPins.getOrDefault(position(cell), s.planFacings.getOrDefault(index, -1));
+        int next = HologramCellRotation.nextFacing(current, legal);
+        if (next < 0) {
             s.status = "本格目标没有可轮换的合法朝向";
             return;
         }
-        int current = s.facingPins.getOrDefault(position(cell), s.planFacings.getOrDefault(index, -1));
-        int next = legal[0];
-        for (int i = 0; i < legal.length; i++) if (legal[i] == current) next = legal[(i + 1) % legal.length];
+        freezeAllocations(s);
+        if (s.virtual) s.virtualEdited.add(position(cell));
         s.facingPins.put(position(cell), next);
         s.selected = index;
         refreshPlan(s);
         s.status = "已轮换到下一合法朝向；施工时生效";
+    }
+
+    /** Local edits retain the already chosen whole-machine allocation, including its source cell. */
+    private static void freezeAllocations(Session s) {
+        if (s.allocationsFrozen) return;
+        s.allocationsFrozen = true;
+        s.presetSupported = false;
+        s.presetReason = "已保留逐格编辑前的仓室分配；手动改动后的配额由原机检查，重新生成预设才重新分配";
+        s.frozenAutoTargets.clear();
+        for (Map.Entry<Integer, ItemStack> entry : s.autoTargets.entrySet()) s.frozenAutoTargets.put(
+            position(s.capture.cells.get(entry.getKey())),
+            entry.getValue()
+                .copy());
+        // Resolve a former family-wide pin before switching to a single-cell scope.
+        if (s.scope == 3) for (int i = 0; i < s.capture.cells.size(); i++) {
+            HologramCapture.Cell cell = s.capture.cells.get(i);
+            if (cell.anchor || s.pins.containsKey(i) || !explicitTarget(s, cell, i)) continue;
+            ItemStack target = targetFor(s, cell, i);
+            if (target != null) {
+                s.pins.put(i, target.copy());
+                s.coordinatePins.put(position(cell), target.copy());
+            }
+        }
     }
 
     private static boolean restoreCell(Session s, HologramCapture.Cell cell, int index) {
@@ -700,6 +741,8 @@ public final class HologramService {
             s.status = "本格没有可确认的结构默认外壳，规划未修改";
             return false;
         }
+        freezeAllocations(s);
+        if (s.virtual) s.virtualEdited.add(position(cell));
         s.pins.put(index, target.copy());
         s.coordinatePins.put(position(cell), target.copy());
         s.facingPins.remove(position(cell));
@@ -1206,7 +1249,7 @@ public final class HologramService {
         s.planRecoveryFits = true;
         if (s.capture == null) return;
         World w = s.player.worldObj;
-        if (s.virtual) allocateVirtualTargets(s);
+        if (s.virtual && !s.allocationsFrozen) allocateVirtualTargets(s);
         buildPreset(s);
         if (s.mode == 2) s.planFacings.clear();
         else refreshFacings(s);
@@ -1723,6 +1766,18 @@ public final class HologramService {
         draft.setBoolean("downgrade", s.hatchDowngrade);
         draft.setBoolean("presetEnabled", s.presetEnabled);
         draft.setBoolean("presetPaused", s.presetPaused);
+        draft.setBoolean("allocationsFrozen", s.allocationsFrozen);
+        NBTTagList automatic = new NBTTagList();
+        for (Map.Entry<String, ItemStack> entry : s.frozenAutoTargets.entrySet()) {
+            NBTTagCompound row = new NBTTagCompound();
+            row.setString("position", entry.getKey());
+            row.setTag(
+                "target",
+                entry.getValue()
+                    .writeToNBT(new NBTTagCompound()));
+            automatic.appendTag(row);
+        }
+        draft.setTag("automatic", automatic);
         draft.setInteger("mode", s.mode);
         draft.setInteger("scope", s.scope);
         draft.setBoolean("materialMain", s.materialSettings.main);
@@ -1769,6 +1824,17 @@ public final class HologramService {
         s.hatchDowngrade = draft.getBoolean("downgrade");
         s.presetEnabled = draft.getBoolean("presetEnabled");
         s.presetPaused = draft.getBoolean("presetPaused");
+        s.allocationsFrozen = draft.getBoolean("allocationsFrozen");
+        s.frozenAutoTargets.clear();
+        NBTTagList automatic = draft.getTagList("automatic", 10);
+        for (int i = 0; i < Math.min(automatic.tagCount(), HologramCapture.LIMIT); i++) {
+            NBTTagCompound row = automatic.getCompoundTagAt(i);
+            String key = row.getString("position");
+            if (key.length() > 48) continue;
+            ItemStack sample = ItemStack.loadItemStackFromNBT(row.getCompoundTag("target"));
+            if (sample != null && !HologramRecovery.hasSeal(sample))
+                s.frozenAutoTargets.put(key, new ItemStack(sample.getItem(), 1, sample.getItemDamage()));
+        }
         s.mode = clamp(draft.getInteger("mode"), 0, 2);
         s.scope = 0;
         s.materialSettings.main = draft.getBoolean("materialMain");
@@ -1801,6 +1867,8 @@ public final class HologramService {
         s.facingPins.clear();
         s.suppressedAuto.clear();
         s.autoTargets.clear();
+        s.frozenAutoTargets.clear();
+        s.allocationsFrozen = false;
         s.manualPositions.clear();
         s.undoEdits.clear();
         s.redoEdits.clear();
@@ -2008,6 +2076,8 @@ public final class HologramService {
         s.redoEdits.clear();
         s.virtualEdited.clear();
         s.virtualGroups.clear();
+        s.allocationsFrozen = false;
+        s.frozenAutoTargets.clear();
         s.selected = -1;
         List<HologramPresets.Cell> ordered = new ArrayList<>(s.virtualPreset.cells);
         ordered.sort((a, b) -> Boolean.compare(a.controller, b.controller));
@@ -2533,6 +2603,15 @@ public final class HologramService {
     /** Freeze a whole-machine target list; quotas and inventory are shared across every position. */
     private static void buildPreset(Session s) {
         s.autoTargets.clear();
+        if (s.allocationsFrozen) {
+            for (int i = 0; i < s.capture.cells.size(); i++) {
+                HologramCapture.Cell cell = s.capture.cells.get(i);
+                ItemStack target = s.frozenAutoTargets.get(position(cell));
+                if (!cell.anchor && !s.pins.containsKey(i) && acceptableSample(s, cell, target))
+                    s.autoTargets.put(i, target.copy());
+            }
+            return;
+        }
         s.presetSupported = false;
         s.presetAvailable = false;
         s.presetReason = "此定义未声明完整仓室配额，不能保证自动成型";
@@ -2949,6 +3028,10 @@ public final class HologramService {
     private static final class EditState {
 
         final Map<String, ItemStack> targets = new HashMap<>();
+        final Map<String, ItemStack> automatic = new HashMap<>();
+        final int mode, scope, selected;
+        final boolean presetSupported, presetAvailable;
+        final String presetReason;
         final Map<String, Integer> facings;
         final java.util.Set<String> suppressed;
         final java.util.Set<String> virtualEdited;
@@ -2956,6 +3039,16 @@ public final class HologramService {
         final int hatchTier;
 
         EditState(Session s) {
+            presetSupported = s.presetSupported;
+            presetAvailable = s.presetAvailable;
+            presetReason = s.presetReason;
+            mode = s.mode;
+            scope = s.scope;
+            selected = s.selected;
+            if (s.capture != null) for (Map.Entry<Integer, ItemStack> entry : s.autoTargets.entrySet()) automatic.put(
+                position(s.capture.cells.get(entry.getKey())),
+                entry.getValue()
+                    .copy());
             for (Map.Entry<String, ItemStack> entry : s.coordinatePins.entrySet()) targets.put(
                 entry.getKey(),
                 entry.getValue()
@@ -2984,13 +3077,34 @@ public final class HologramService {
                 || presetPaused != other.presetPaused
                 || hatchDowngrade != other.hatchDowngrade
                 || noHatches != other.noHatches
-                || hatchTier != other.hatchTier) return false;
+                || hatchTier != other.hatchTier
+                || mode != other.mode
+                || scope != other.scope
+                || selected != other.selected
+                || !automatic.keySet()
+                    .equals(other.automatic.keySet()))
+                return false;
+            for (String key : automatic.keySet()) if (!same(automatic.get(key), other.automatic.get(key))) return false;
             for (String key : targets.keySet()) if (!same(targets.get(key), other.targets.get(key))) return false;
             return true;
         }
 
         void apply(Session s) {
+            // History restores exact positions, never reruns quota allocation.
+            s.allocationsFrozen = true;
+            s.frozenAutoTargets.clear();
+            for (Map.Entry<String, ItemStack> entry : automatic.entrySet()) s.frozenAutoTargets.put(
+                entry.getKey(),
+                entry.getValue()
+                    .copy());
+            s.presetSupported = presetSupported;
+            s.presetAvailable = presetAvailable;
+            s.presetReason = presetReason;
+            s.mode = mode;
+            s.scope = scope;
+            s.selected = selected;
             s.pins.clear();
+            s.autoTargets.clear();
             s.coordinatePins.clear();
             s.facingPins.clear();
             s.suppressedAuto.clear();
@@ -3005,6 +3119,8 @@ public final class HologramService {
                 HologramCapture.Cell cell = s.capture.cells.get(i);
                 if (cell.anchor) continue;
                 String key = position(cell);
+                ItemStack automaticTarget = automatic.get(key);
+                if (acceptableSample(s, cell, automaticTarget)) s.autoTargets.put(i, automaticTarget.copy());
                 ItemStack target = targets.get(key);
                 if (acceptableSample(s, cell, target)) {
                     s.pins.put(i, target.copy());
@@ -3059,6 +3175,8 @@ public final class HologramService {
         final List<EditState> undoEdits = new ArrayList<>();
         final List<EditState> redoEdits = new ArrayList<>();
         final Map<Integer, ItemStack> autoTargets = new HashMap<>();
+        final Map<String, ItemStack> frozenAutoTargets = new HashMap<>();
+        boolean allocationsFrozen;
         final java.util.Set<String> suppressedAuto = new java.util.HashSet<>();
         final Map<String, Integer> facingPins = new HashMap<>();
         final Map<Integer, Integer> planFacings = new HashMap<>();

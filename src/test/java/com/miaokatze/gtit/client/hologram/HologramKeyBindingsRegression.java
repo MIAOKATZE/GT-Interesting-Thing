@@ -23,6 +23,8 @@ public final class HologramKeyBindingsRegression {
             SimpleAssert.eq(1, bindings.match(Keyboard.KEY_C, 1), "Ctrl C copies by default");
             SimpleAssert.eq(-1, bindings.match(Keyboard.KEY_C, 0), "plain C cannot copy accidentally");
             SimpleAssert.eq(3, bindings.match(Keyboard.KEY_DELETE, 0), "Delete restores casing");
+            SimpleAssert.eq(4, bindings.match(Keyboard.KEY_R, 0), "R cycles legal block faces");
+            SimpleAssert.eq(-1, bindings.match(Keyboard.KEY_R, 1), "Ctrl R has no default planner action");
             SimpleAssert.that(!bindings.bind(0, Keyboard.KEY_C, 1), "duplicate shortcut rejected");
             SimpleAssert.that(!bindings.bind(0, Keyboard.KEY_ESCAPE, 0), "Esc stays available to close dialogs");
             SimpleAssert.that(!bindings.bind(0, Keyboard.KEY_1, 0), "mode key stays reserved");

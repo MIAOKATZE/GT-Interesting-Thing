@@ -65,7 +65,23 @@ public final class HologramRegressionTest {
         cases.put(
             "unknown_declarations_remain_partial_without_running_machine_callbacks",
             HologramRegressionTest::unknownDeclaration);
+        cases.put("clipboard_edits_preserve_automatic_source_and_other_cells", HologramServiceEditRegression::run);
+        cases.put("rotation_cycles_all_six_legal_fronts", HologramRegressionTest::faceRotation);
         TestRunner.run(HologramRegressionTest.class, cases);
+    }
+
+    private static void faceRotation() {
+        int[] legal = { 0, 1, 2, 3, 4, 5 };
+        SimpleAssert.eq(5, HologramCellRotation.nextFacing(2, legal), "north turns east");
+        SimpleAssert.eq(3, HologramCellRotation.nextFacing(5, legal), "east turns south");
+        SimpleAssert.eq(4, HologramCellRotation.nextFacing(3, legal), "south turns west");
+        SimpleAssert.eq(1, HologramCellRotation.nextFacing(4, legal), "west turns up");
+        SimpleAssert.eq(0, HologramCellRotation.nextFacing(1, legal), "up turns down");
+        SimpleAssert.eq(2, HologramCellRotation.nextFacing(0, legal), "down wraps to north");
+        SimpleAssert.eq(3, HologramCellRotation.nextFacing(2, new int[] { 0, 1, 2, 3 }), "skip invalid east");
+        SimpleAssert.eq(1, HologramCellRotation.nextFacing(2, new int[] { 0, 1, 2 }), "skip invalid horizontal fronts");
+        SimpleAssert.eq(1, HologramCellRotation.nextFacing(0, new int[] { 0, 1 }), "vertical fronts remain legal");
+        SimpleAssert.eq(-1, HologramCellRotation.nextFacing(2, new int[] { 2 }), "single face has no rotation");
     }
 
     private static void declaredAlternatives() {

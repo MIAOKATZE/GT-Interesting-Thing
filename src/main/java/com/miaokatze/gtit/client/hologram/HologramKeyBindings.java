@@ -13,7 +13,7 @@ final class HologramKeyBindings {
 
     static final String[] ACTIONS = { "editCut", "editCopy", "editPaste", "restoreCell", "rotateCell", "editUndo",
         "editRedo" };
-    static final String[] LABELS = { "剪切目标", "复制目标", "粘贴目标", "恢复默认壳", "旋转目标", "撤销规划", "重做规划" };
+    static final String[] LABELS = { "剪切目标", "复制目标", "粘贴目标", "恢复默认壳", "六面转向", "撤销规划", "重做规划" };
     private static final int[] DEFAULT_KEYS = { Keyboard.KEY_X, Keyboard.KEY_C, Keyboard.KEY_V, Keyboard.KEY_DELETE,
         Keyboard.KEY_R, Keyboard.KEY_Z, Keyboard.KEY_Y };
     private static final int[] DEFAULT_MODS = { 1, 1, 1, 0, 0, 1, 1 };
