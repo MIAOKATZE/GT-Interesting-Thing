@@ -117,7 +117,13 @@ final class HologramSettingsScreen extends GuiScreen {
         drawDefaultBackground();
         drawCenteredString(fontRendererObj, "投影仪设置 · 与编辑界面共享", width / 2, height / 2 - 120, 0x9ceaf3);
         drawCenteredString(fontRendererObj, "ME 不可用时回收至主背包；背包满则持久暂存", width / 2, height / 2 + 108, 0xbacbd1);
-        drawCenteredString(fontRendererObj, state.data.getString("status"), width / 2, height / 2 + 121, 0xe5c488);
+        String presetError = state.data.getString("presetConfigError");
+        drawCenteredString(
+            fontRendererObj,
+            presetError.isEmpty() ? state.data.getString("status") : "预设列表读取失败：" + presetError,
+            width / 2,
+            height / 2 + 121,
+            presetError.isEmpty() ? 0xe5c488 : 0xef8585);
         super.drawScreen(mouseX, mouseY, partialTicks);
     }
 

@@ -152,6 +152,87 @@ final class HologramServiceEditRegression {
             action(edit, session, "editCut", 0);
             assertTarget(session, 0, Blocks.dirt);
             SimpleAssert.eq(1, get(session, "job"), "active construction rejects clipboard edits");
+            Method classify = HologramService.class
+                .getDeclaredMethod("classify", sessionType, HologramCapture.Cell.class, int.class);
+            Method operate = HologramService.class
+                .getDeclaredMethod("operateChecked", sessionType, HologramCapture.Cell.class, int.class);
+            Method build = HologramService.class.getDeclaredMethod("directBuild", sessionType, boolean.class);
+            Method nativeBuild = HologramService.class.getDeclaredMethod("nativeBuild", sessionType);
+            Method member = HologramService.class
+                .getDeclaredMethod("originalMember", sessionType, HologramCapture.Cell.class);
+            for (Method method : new Method[] { classify, operate, build, nativeBuild, member })
+                method.setAccessible(true);
+            set(session, "job", 0);
+            set(session, "mode", 0);
+            set(session, "scope", 0);
+            HologramCapture.Cell cell = capture.cells.get(0);
+            world.occupiedX = cell.x;
+            world.occupied = Blocks.stone;
+            map(session, "pins").put(0, new ItemStack(Blocks.dirt));
+            HologramServiceEditRegression.<ItemStack>list(session, "planTargets")
+                .set(0, new ItemStack(Blocks.dirt));
+            player.capabilities.isCreativeMode = false;
+            HologramServiceEditRegression.<ItemStack>list(session, "planTargets")
+                .set(0, new ItemStack(Blocks.stone));
+            map(session, "facingPins").put(cell.x + "," + cell.y + "," + cell.z, 3);
+            SimpleAssert.eq(
+                "satisfied",
+                classify.invoke(null, session, cell, 0),
+                "construction ignores facing-only differences");
+            SimpleAssert
+                .eq(true, operate.invoke(null, session, cell, 0), "matching construction preserves the existing block");
+            map(session, "facingPins").clear();
+            HologramServiceEditRegression.<ItemStack>list(session, "planTargets")
+                .set(0, new ItemStack(Blocks.dirt));
+            SimpleAssert
+                .eq("blocked", classify.invoke(null, session, cell, 0), "survival explicit target stays blocked");
+            SimpleAssert.eq(false, operate.invoke(null, session, cell, 0), "blocked operation cannot write or consume");
+            build.invoke(null, session, false);
+            SimpleAssert.eq(0, get(session, "job"), "obstruction rejects the whole selected range");
+            SimpleAssert.that(((String) get(session, "status")).contains("1 格结构占位被遮挡"), "blocked count is visible");
+            player.capabilities.isCreativeMode = true;
+            SimpleAssert.eq(
+                "pending",
+                classify.invoke(null, session, cell, 0),
+                "creative ordinary obstruction can be overwritten");
+            world.occupant = new TileEntity();
+            SimpleAssert
+                .eq("protected", classify.invoke(null, session, cell, 0), "creative unknown tile stays protected");
+            world.occupant = null;
+            SimpleAssert.eq(true, member.invoke(null, session, cell), "declared existing block is an original member");
+            cell.userPosition = true;
+            SimpleAssert.eq(false, member.invoke(null, session, cell), "manual positions cannot authorize replacement");
+            cell.userPosition = false;
+            cell.block = Blocks.air;
+            SimpleAssert.eq(false, member.invoke(null, session, cell), "declared air cannot authorize replacement");
+            player.capabilities.isCreativeMode = false;
+            HologramServiceEditRegression.<ItemStack>list(session, "planTargets")
+                .set(0, null);
+            SimpleAssert.eq(
+                "blocked",
+                classify.invoke(null, session, cell, 0),
+                "occupied declared air blocks survival construction");
+            HologramServiceEditRegression.<ItemStack>list(session, "planTargets")
+                .set(0, new ItemStack(Blocks.dirt));
+            player.capabilities.isCreativeMode = true;
+            cell.block = Blocks.stone;
+            set(session, "mode", 1);
+            set(session, "replacementReady", true);
+            world.occupied = Blocks.air;
+            SimpleAssert
+                .eq("protected", classify.invoke(null, session, cell, 0), "replacement cannot fill empty space");
+            world.occupied = Blocks.stone;
+            set(session, "replacementAuthorized", false);
+            operate.invoke(null, session, cell, 0);
+            SimpleAssert.eq("protected", cell.status, "replacement needs start authorization");
+            set(session, "mode", 0);
+            capture.incomplete = true;
+            nativeBuild.invoke(null, session);
+            SimpleAssert
+                .that(((String) get(session, "status")).contains("遮挡"), "incomplete native fallback is rejected");
+            capture.incomplete = false;
+            action(edit, session, "restoreCell", 0);
+            SimpleAssert.eq(0, get(session, "mode"), "restoring the planned shell cannot switch construction mode");
         } catch (ReflectiveOperationException failure) {
             throw new AssertionError(failure);
         }
@@ -196,6 +277,10 @@ final class HologramServiceEditRegression {
 
     static final class ReadOnlyWorld extends WorldServer {
 
+        Block occupied;
+        int occupiedX;
+        TileEntity occupant;
+
         private ReadOnlyWorld() {
             super(null, null, "fixture", 0, null, null);
         }
@@ -207,7 +292,7 @@ final class HologramServiceEditRegression {
 
         @Override
         public Block getBlock(int x, int y, int z) {
-            return Blocks.air;
+            return occupied != null && x == occupiedX ? occupied : Blocks.air;
         }
 
         @Override
@@ -217,7 +302,7 @@ final class HologramServiceEditRegression {
 
         @Override
         public TileEntity getTileEntity(int x, int y, int z) {
-            return null;
+            return x == occupiedX ? occupant : null;
         }
 
         @Override

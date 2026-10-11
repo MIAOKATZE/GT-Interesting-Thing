@@ -61,6 +61,7 @@ public final class HologramScreen extends GuiScreen {
     private String optionChannel = "", notice = "";
     private long sequence, pendingSequence = -1, confirmedRevision = -1, renderGeneration;
     private long queuedDispatchSequence = -1;
+    private long presetSaveSequence = -1;
     private List<String> tooltip;
 
     HologramScreen(HologramState state) {
@@ -74,12 +75,22 @@ public final class HologramScreen extends GuiScreen {
 
     void updateState(HologramState next) {
         HologramState.Cell previousTarget = selectedCell();
+        String previousPreset = state.data.getString("selectedPresetId");
+        boolean presetSaveAcknowledged = presetSaveSequence >= 0
+            && next.data.getLong("uiSequence") >= presetSaveSequence;
         if (!state.session.equals(next.session)) {
+            presetSaveSequence = -1;
+            presetSaveAcknowledged = false;
             pendingSequence = -1;
             queuedDispatchSequence = -1;
             cancelQueuedEdits("会话已变化，已取消等待中的编辑");
         }
         state = next;
+        if (presetSaveAcknowledged) {
+            presetSaveSequence = -1;
+            notice = "";
+        }
+        if (!previousPreset.equals(next.data.getString("selectedPresetId"))) revealSelectedPreset();
         if (pendingSequence >= 0 && next.data.getLong("uiSequence") >= pendingSequence) pendingSequence = -1;
         if (queuedDispatchSequence >= 0 && next.data.getLong("uiSequence") >= queuedDispatchSequence) {
             queuedDispatchSequence = -1;
@@ -481,13 +492,33 @@ public final class HologramScreen extends GuiScreen {
         presetNameField.drawTextBox();
         if (presetNameField.getText()
             .isEmpty() && !presetNameField.isFocused()) text("输入自定义预设名称", 74, 115, 162, 0x647c7f);
-        button(132, 248, 111, 96, 16, "保存为自定义预设", editable(), mx, my);
+        button(
+            132,
+            248,
+            111,
+            96,
+            16,
+            "保存为自定义预设",
+            editable() && !virtual && !state.data.getBoolean("settingsOnly"),
+            mx,
+            my);
         NBTTagList presets = state.data.getTagList("presets", 10);
         libraryOffset = Math.max(0, Math.min(libraryOffset, Math.max(0, presets.tagCount() - 4)));
-        text("已保存预设（滚轮浏览，点击载入目标）", 70, 136, 274, 0x94afb4);
+        text("已保存 " + presets.tagCount() + " 个预设（滚轮浏览，点击载入）", 70, 136, 274, 0x94afb4);
         for (int i = libraryOffset; i < presets.tagCount() && i < libraryOffset + 4; i++) {
             NBTTagCompound row = presets.getCompoundTagAt(i);
-            button(14000 + i, 70, 150 + (i - libraryOffset) * 18, 274, 16, row.getString("name"), editable(), mx, my);
+            String selectedMark = row.getString("id")
+                .equals(state.data.getString("selectedPresetId")) ? "✓ " : "";
+            button(
+                14000 + i,
+                70,
+                150 + (i - libraryOffset) * 18,
+                274,
+                16,
+                selectedMark + row.getString("name"),
+                editable(),
+                mx,
+                my);
         }
         if (presets.tagCount() == 0) text("还没有自定义预设，输入名称后保存", 70, 160, 274, 0x94afb4);
         button(138, 70, 223, 132, 17, "投影 / 材料全局设置", true, mx, my);
@@ -501,7 +532,26 @@ public final class HologramScreen extends GuiScreen {
             virtual && !state.data.getBoolean("virtualLocked") && editable(),
             mx,
             my);
-        text("重置 / 校准入口位于世界投影右侧", 70, 245, 274, 0x94afb4);
+        String configError = state.data.getString("presetConfigError");
+        String feedback = !configError.isEmpty() ? "预设列表读取失败：" + configError
+            : !notice.isEmpty() ? notice : state.data.getString("status");
+        text(feedback, 70, 245, 274, configError.isEmpty() ? 0xe4b85a : 0xef8585);
+        if (mx >= 70 && mx < 344 && my >= 241 && my < 256 && !feedback.isEmpty())
+            tooltip = fontRendererObj.listFormattedStringToWidth(feedback, 230);
+    }
+
+    private void revealSelectedPreset() {
+        NBTTagList presets = state.data.getTagList("presets", 10);
+        String selectedId = state.data.getString("selectedPresetId");
+        for (int i = 0; i < presets.tagCount(); i++) {
+            if (!selectedId.equals(
+                presets.getCompoundTagAt(i)
+                    .getString("id")))
+                continue;
+            if (i < libraryOffset || i >= libraryOffset + 4)
+                libraryOffset = Math.max(0, Math.min(i, presets.tagCount() - 4));
+            return;
+        }
     }
 
     private void drawResetReview(int mx, int my) {
@@ -1352,6 +1402,8 @@ public final class HologramScreen extends GuiScreen {
 
     private static String statusName(String status) {
         switch (status) {
+            case "blocked":
+                return "被遮挡：请清空占位后补建";
             case "protected":
                 return "受保护：控制器 / 未适配设备保留";
             case "unsupported":
@@ -1944,6 +1996,7 @@ public final class HologramScreen extends GuiScreen {
                 libraryDrawer = true;
                 resetReview = false;
                 libraryOffset = 0;
+                revealSelectedPreset();
                 break;
             case 131:
                 libraryDrawer = resetReview = false;
@@ -1959,7 +2012,9 @@ public final class HologramScreen extends GuiScreen {
                 }
                 NBTTagCompound savePreset = new NBTTagCompound();
                 savePreset.setString("name", presetName);
+                notice = "正在保存预设，请等待服务器确认";
                 send("savePreset", savePreset, true);
+                presetSaveSequence = sequence;
                 break;
             case 134:
                 if (!editable()) break;
