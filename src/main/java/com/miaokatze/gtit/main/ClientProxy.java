@@ -40,6 +40,12 @@ public class ClientProxy extends CommonProxy {
     public void init(FMLInitializationEvent event) {
         // 调用父类的 init 方法，确保通用逻辑正常执行
         super.init(event);
+        // NEI discovers recipe plugins itself; only the earlier HandlerInfo event listener is installed here.
+        if (cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")) {
+            com.miaokatze.gtit.client.nei.NEIGtitConfig.registerHandlerInfoEvents();
+        }
+        com.miaokatze.gtit.client.hologram.HologramClient.install();
+        com.miaokatze.gtit.client.hologram.HologramInteractionClientSmoke.install();
 
         // 注册猫猫售货机 BGM 事件处理器（客户端）
         // 原因：之前因 getTooltip() NPE 崩溃而临时禁用，现 @SkipGenerateDescription 已修复根因

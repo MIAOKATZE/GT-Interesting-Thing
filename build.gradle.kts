@@ -98,6 +98,27 @@ tasks.register<JavaExec>("runTradeMatchingTest") {
 
 tasks.named("check") { dependsOn("runTradeMatchingTest") }
 
+// NEI production query entry points need these client classes only in test runtimes.
+val neiTestRuntimeClasspath = configurations.detachedConfiguration(
+    dependencies.create("com.github.GTNewHorizons:NotEnoughItems:2.8.98-GTNH:dev"),
+    dependencies.create("com.github.GTNewHorizons:CodeChickenCore:1.4.21:dev"),
+    dependencies.create("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209"),
+    dependencies.create("org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209")
+).apply { isTransitive = false }
+
+tasks.register<JavaExec>("runNekoTradeNeiTest") {
+    group = "verification"
+    description = "Runs native NEI trade item, all-recipes and catalyst query regressions."
+    mainClass = "com.miaokatze.gtit.client.nei.NekoTradeNeiTestBootstrap"
+    classpath = storeTestRuntimeClasspath
+    classpath += neiTestRuntimeClasspath
+    val scratchDir = layout.buildDirectory.dir("nei-handler-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runNekoTradeNeiTest") }
+
 tasks.register<JavaExec>("runTradePageRefreshTest") {
     group = "verification"
     description = "Runs trade tab selection, pagination and registry revision regression checks."
@@ -107,3 +128,61 @@ tasks.register<JavaExec>("runTradePageRefreshTest") {
 }
 
 tasks.named("check") { dependsOn("runTradePageRefreshTest") }
+
+tasks.register<JavaExec>("runHologramTest") {
+    group = "verification"
+    description = "Runs hologram channel, packet and inactive capture regressions."
+    mainClass = "com.miaokatze.gtit.hologram.HologramRegressionTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += neiTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    val scratchDir = layout.buildDirectory.dir("hologram-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runHologramTest") }
+
+if (providers.gradleProperty("hologramSmoke").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.smoketest=true")
+    }
+    tasks.named<JavaExec>("runServer") {
+        workingDir(layout.buildDirectory.dir("hologram-smoke/server"))
+    }
+}
+
+if (providers.gradleProperty("hologramClientSmoke").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.clientSmoke=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.clientState=" + layout.buildDirectory.file("hologram-smoke/server/hologram-client-state.nbt").get().asFile.absolutePath)
+    }
+    tasks.named<JavaExec>("runClient") {
+        workingDir(layout.buildDirectory.dir("hologram-smoke/client"))
+        args("--width", "1100", "--height", "800")
+    }
+}
+
+// Explicitly enabled, isolated real client/server interaction checks. Ordinary launches do not install a driver.
+if (providers.gradleProperty("hologramInteractionServer").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionServer=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionReceiptDir=" + layout.buildDirectory.dir("hologram-v1.8.71/receipts").get().asFile.absolutePath)
+    }
+    tasks.named<JavaExec>("runServer") {
+        workingDir(layout.buildDirectory.dir("hologram-v1.8.71/server"))
+    }
+}
+
+if (providers.gradleProperty("hologramInteractionClient").isPresent) {
+    extensions.configure<com.gtnewhorizons.retrofuturagradle.MinecraftExtension>("minecraft") {
+        extraRunJvmArguments.add("-Dgtit.hologram.realInteractionSmoke=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.renderDiagnostics=true")
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionAddress=127.0.0.1:25581")
+        extraRunJvmArguments.add("-Dgtit.hologram.interactionReceiptDir=" + layout.buildDirectory.dir("hologram-v1.8.71/receipts").get().asFile.absolutePath)
+    }
+    tasks.named<JavaExec>("runClient") {
+        workingDir(layout.buildDirectory.dir("hologram-v1.8.71/client"))
+        args("--width", "1100", "--height", "800")
+    }
+}

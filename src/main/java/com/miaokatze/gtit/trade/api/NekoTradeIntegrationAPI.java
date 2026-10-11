@@ -612,7 +612,9 @@ public final class NekoTradeIntegrationAPI {
     /** 服务器是否已具备应用条件（世界已装载；preInit/IMC 阶段为 false，只入队） */
     private static boolean isServerReady() {
         MinecraftServer server = MinecraftServer.getServer();
-        return server != null && server.getEntityWorld() != null;
+        return server != null && server.worldServers != null
+            && server.worldServers.length > 0
+            && server.worldServers[0] != null;
     }
 
     /** 组定义基础校验（groupId 白名单 + 防路径穿越，规则收敛在 {@link JarAssetManifest}） */
