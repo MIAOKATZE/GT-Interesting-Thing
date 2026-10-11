@@ -2218,6 +2218,7 @@ public final class HologramService {
         }
         s.pins.clear();
         s.hatchCandidates.clear();
+        s.declarationCandidates.clear();
         s.hatchParts.clear();
         s.capabilities = HologramCapabilities.describe(s.context, trigger(s), null)
             .withSavedChannels(s.channels);
@@ -2292,6 +2293,8 @@ public final class HologramService {
     @SuppressWarnings("unchecked")
     private static List<ItemStack> candidates(Session s, HologramCapture.Cell cell) {
         if (s.virtual && s.virtualPreset != null) {
+            cell.candidateComplete = false;
+            cell.candidateBoundary = "预设调色板仅提供编辑样本；原机器结构声明未随预设保存";
             List<ItemStack> result = new ArrayList<>();
             for (HologramPresets.Cell entry : s.virtualPreset.palette) {
                 ItemStack sample = entry.stack();
@@ -2301,53 +2304,37 @@ public final class HologramService {
         }
         if (cell.element == null) return Collections.emptyList();
         if (cell.candidates != null) return cell.candidates;
-        List<ItemStack> result = new ArrayList<>();
-        try {
-            IItemSource previewSource = (predicate, simulate, count) -> materialSource(s).take(predicate, true, count);
-            IStructureElement.BlocksToPlace blocks = cell.element.getBlocksToPlace(
+        ItemStack signal = elementTrigger(s, cell);
+        ChannelDataAccessor.setChannelData(signal, "gt_hatch", 1);
+        String signalKey = signal.stackSize + ":" + signal.getTagCompound();
+        Map<String, HologramDeclarationCandidates> signals = s.declarationCandidates
+            .computeIfAbsent(cell.element, ignored -> new HashMap<>());
+        HologramDeclarationCandidates declaration = signals.get(signalKey);
+        if (declaration == null) {
+            declaration = new HologramDeclarationCandidates();
+            declaration.collect(
+                cell.element,
                 s.machine,
                 s.player.worldObj,
                 cell.x,
                 cell.y,
                 cell.z,
-                elementTrigger(s, cell),
-                AutoPlaceEnvironment.fromLegacy(previewSource, s.player, message -> {}));
-            int examined = 0;
-            if (blocks != null && blocks.getStacks() != null) for (ItemStack stack : blocks.getStacks()) {
-                if (examined++ >= 128 || result.size() >= 128) break;
-                if (stack == null || stack.getItem() == null) continue;
-                Block block = Block.getBlockFromItem(stack.getItem());
-                if (!s.noHatches || (block != Blocks.air && !block.hasTileEntity(stack.getItemDamage())))
-                    result.add(stack.copy());
-            }
-            List<ItemStack> hatches = Collections.emptyList();
-            if (!s.noHatches && "hatch".equals(cell.role)) {
-                ItemStack signal = elementTrigger(s, cell);
-                ChannelDataAccessor.setChannelData(signal, "gt_hatch", 1);
-                String signalKey = signal.stackSize + ":" + signal.getTagCompound();
-                Map<String, List<ItemStack>> signals = s.hatchCandidates
-                    .computeIfAbsent(cell.element, ignored -> new HashMap<>());
-                hatches = signals.get(signalKey);
-                if (hatches == null) {
-                    hatches = new ArrayList<>();
-                    for (gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype : GregTechAPI.METATILEENTITIES) {
-                        if (!(prototype instanceof MTEHatch)) continue;
-                        ItemStack stack = prototype.getStackForm(1);
-                        if (stack != null && hatchElement(s, cell, stack, true, signal) != null) hatches.add(stack);
-                    }
-                    hatches.sort((a, b) -> Integer.compare(hatchTier(a), hatchTier(b)));
-                    signals.put(signalKey, hatches);
-                }
-            }
-            for (ItemStack stack : hatches) {
-                boolean duplicate = false;
-                for (ItemStack existing : result) if (same(existing, stack)) {
-                    duplicate = true;
-                    break;
-                }
-                if (!duplicate) result.add(stack.copy());
-            }
-        } catch (RuntimeException | LinkageError ignored) {}
+                signal,
+                AutoPlaceEnvironment.fromLegacy(
+                    (predicate, simulate, count) -> materialSource(s).take(predicate, true, count),
+                    s.player,
+                    message -> {}),
+                0);
+            signals.put(signalKey, declaration);
+        }
+        List<ItemStack> result = new ArrayList<>();
+        for (ItemStack stack : declaration.stacks) {
+            Block block = Block.getBlockFromItem(stack.getItem());
+            if (!s.noHatches || (block != Blocks.air && !block.hasTileEntity(stack.getItemDamage()))) result.add(stack);
+        }
+        cell.candidateComplete = declaration.complete;
+        cell.candidateBoundary = declaration.complete ? "" : "仅列出已识别的结构声明；自定义校验或动态条件未完整解析";
+        cell.candidates = result;
         return result;
     }
 
@@ -2785,6 +2772,7 @@ public final class HologramService {
             row.setBoolean("hasTargetOverride", s.pins.containsKey(index) || s.autoTargets.containsKey(index));
             row.setBoolean("hasFacingPin", s.facingPins.containsKey(position(c)));
             row.setInteger("hatchFacing", s.planFacings.getOrDefault(index, -1));
+            row.setInteger("targetFacing", c.anchor ? c.actualFacing : s.planFacings.getOrDefault(index, -1));
             TileEntity actualTile = world.getTileEntity(c.x, c.y, c.z);
             row.setInteger(
                 "actualFacing",
@@ -2869,6 +2857,8 @@ public final class HologramService {
                 choices.appendTag(tag);
             }
             row.setTag("candidates", choices);
+            row.setBoolean("candidateComplete", c.candidateComplete);
+            row.setString("candidateBoundary", c.candidateBoundary);
             NBTTagList candidateRoles = new NBTTagList();
             int[] candidateTiers = new int[options.size()], candidateAvailable = new int[options.size()];
             for (int n = 0; n < options.size(); n++) {
@@ -3078,6 +3068,7 @@ public final class HologramService {
         final Map<String, ItemStack> coordinatePins = new HashMap<>();
         final Map<String, HologramCapture.Cell> manualPositions = new LinkedHashMap<>();
         final IdentityHashMap<IStructureElement<?>, Map<String, List<ItemStack>>> hatchCandidates = new IdentityHashMap<>();
+        final IdentityHashMap<IStructureElement<?>, Map<String, HologramDeclarationCandidates>> declarationCandidates = new IdentityHashMap<>();
         final IdentityHashMap<IStructureElement<?>, List<IStructureElement<?>>> hatchParts = new IdentityHashMap<>();
         final List<Integer> work = new ArrayList<>();
         final List<ItemStack> recovered = new ArrayList<>();

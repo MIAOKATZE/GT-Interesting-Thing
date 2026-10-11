@@ -274,6 +274,9 @@ public final class HologramCapture {
         anchor.block = world.getBlock(x, y, z);
         anchor.meta = world.getBlockMetadata(x, y, z);
         anchor.actualStack = machine.getStackForm(1);
+        anchor.actualFacing = machine.getBaseMetaTileEntity()
+            .getFrontFacing()
+            .ordinal();
         cells.removeIf(cell -> cell.x == x && cell.y == y && cell.z == z);
         cells.add(anchor);
     }
@@ -307,6 +310,8 @@ public final class HologramCapture {
         boolean unknown;
         String status = "pending";
         List<ItemStack> candidates;
+        boolean candidateComplete;
+        String candidateBoundary = "尚未解析结构声明";
         final ItemStack elementTrigger;
         boolean anchor;
         boolean userPosition;
@@ -315,6 +320,7 @@ public final class HologramCapture {
         String family = "";
         String renderKind = "block";
         ItemStack actualStack;
+        int actualFacing = -1;
         String[] hintIcons;
         short[] hintTint;
         int hintIndex = -1;

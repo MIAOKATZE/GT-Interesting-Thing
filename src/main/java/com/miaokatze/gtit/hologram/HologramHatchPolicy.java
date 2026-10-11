@@ -79,11 +79,10 @@ public final class HologramHatchPolicy {
         BUILDERS.put(builder, (context, trigger) -> stack -> {
             IMetaTileEntity tile = ItemMachines.getMetaTileEntity(stack);
             if (tile == null) return false;
-            if (sharedBlacklist) for (IHatchElement<?> element : declared) if (element.mteBlacklist()
-                .contains(tile.getClass())) return false;
             for (IHatchElement<?> element : declared) {
-                if (!element.mteBlacklist()
-                    .contains(tile.getClass()) && element.matchesHatch(tile)) return true;
+                // The builder blacklist limits automatic placement/preview, not structural acceptance.
+                // Explicit declaration candidates must also include manually installed specialised hatches.
+                if (element.matchesHatch(tile)) return true;
             }
             return false;
         });

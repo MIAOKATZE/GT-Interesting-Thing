@@ -22,7 +22,6 @@ import gregtech.api.interfaces.IBlockWithTextures;
 import gregtech.api.interfaces.IColorModulationContainer;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
-import gregtech.api.metatileentity.implementations.MTEHatch;
 import gregtech.common.blocks.ItemMachines;
 import gregtech.common.render.GTMultiTextureRender;
 import gregtech.common.render.GTRenderedTexture;
@@ -113,7 +112,7 @@ final class HologramTextures {
             + Arrays.toString(cell.hintIcons)
             + ":"
             + Arrays.toString(cell.hintTint);
-        key += ":" + (current ? cell.actualFacing : cell.hatchFacing);
+        key += ":" + (current ? cell.actualFacing : cell.targetFacing);
         Material material = CACHE.get(key);
         if (material == null) {
             material = resolve(cell, current);
@@ -133,8 +132,8 @@ final class HologramTextures {
         ItemStack stack = current || cell.anchor ? cell.actualStack : cell.targetStack;
         boolean gt = stack != null && stack.getItem() instanceof ItemMachines;
         ITexture[][] textures = null;
-        int front = current ? cell.actualFacing : cell.hatchFacing;
-        boolean orientedHatch = false;
+        int front = current ? cell.actualFacing : cell.targetFacing;
+        int[] textureSides = { 0, 1, 2, 3, 4, 5 };
         try {
             if (gt) {
                 int id = stack.getItemDamage();
@@ -142,20 +141,34 @@ final class HologramTextures {
                     ? GregTechAPI.METATILEENTITIES[id]
                     : null;
                 if (machine != null) {
-                    textures = machine.getInventoryTextures();
-                    orientedHatch = textures != null && machine instanceof MTEHatch && front >= 0 && front < 6;
-                    if (textures == null) {
+                    ITexture[][] inventory = null;
+                    try {
+                        inventory = machine.getInventoryTextures();
+                    } catch (RuntimeException ignored) {}
+                    if (front >= 0 && front < 6) {
                         textures = new ITexture[6][];
-                        // Prototype only: no NBT load, facing mutation, or synthetic base tile.
-                        for (int side = 0; side < 6; side++) textures[side] = machine.getTexture(
-                            null,
-                            ForgeDirection.getOrientation(side),
-                            machine instanceof MTEHatch && front >= 0 && front < 6
-                                ? ForgeDirection.getOrientation(front)
-                                : ForgeDirection.NORTH,
-                            -1,
-                            false,
-                            false);
+                        // Resolve the actual world side/front pair for controllers as well as hatches.
+                        // This reads the prototype only; no synthetic tile or facing mutation.
+                        for (int side = 0; side < 6; side++) {
+                            try {
+                                textures[side] = machine.getTexture(
+                                    null,
+                                    ForgeDirection.getOrientation(side),
+                                    ForgeDirection.getOrientation(front),
+                                    -1,
+                                    false,
+                                    false);
+                            } catch (RuntimeException ignored) {}
+                            if ((textures[side] == null || textures[side].length == 0) && inventory != null) {
+                                int source = inventorySide(front, side);
+                                if (source < inventory.length) {
+                                    textures[side] = inventory[source];
+                                    textureSides[side] = source;
+                                }
+                            }
+                        }
+                    } else {
+                        textures = inventory;
                     }
                 }
             } else if (block instanceof IBlockWithTextures) {
@@ -169,9 +182,9 @@ final class HologramTextures {
             .getTextureMapBlocks();
         for (int side = 0; side < 6; side++) {
             try {
-                int sourceSide = orientedHatch ? inventorySide(front, side) : side;
-                if (textures != null && sourceSide < textures.length && textures[sourceSide] != null)
-                    for (ITexture texture : textures[sourceSide]) append(sides[side], texture, sourceSide, 0);
+                int sourceSide = textureSides[side];
+                if (textures != null && side < textures.length && textures[side] != null)
+                    for (ITexture texture : textures[side]) append(sides[side], texture, sourceSide, 0);
                 if (gt && sides[side].isEmpty()) fallback = true;
                 if (sides[side].isEmpty() && cell.iconOnly && !cell.hintIcons[side].isEmpty())
                     sides[side].add(new Sample(atlas.getAtlasSprite(cell.hintIcons[side]), cell.textureColor()));
@@ -190,10 +203,14 @@ final class HologramTextures {
         return new Material(sides, gt, fallback);
     }
 
-    private static int inventorySide(int front, int side) {
+    static int inventorySide(int front, int side) {
+        return sourceSide(side, front);
+    }
+
+    static int sourceSide(int side, int front) {
         // GT CommonMetaTileEntity inventory textures face WEST. Reorder the six immutable
         // atlas samples to the planned/world facing without mutating the shared prototype.
-        return NORTH_TO_WEST[NORTH_TO_FRONT[front][side]];
+        return front >= 0 && front < 6 && side >= 0 && side < 6 ? NORTH_TO_WEST[NORTH_TO_FRONT[front][side]] : side;
     }
 
     private static void append(List<Sample> samples, ITexture texture, int side, int depth) {

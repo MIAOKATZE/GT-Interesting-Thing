@@ -2,11 +2,11 @@
   "animation": {
     "frametime": 2,
     "frames": [
-      { "index": 0, "time": 40 },
+      { "index": 0, "time": 12 },
       { "index": 1, "time": 2 },
-      { "index": 0, "time": 36 },
+      { "index": 0, "time": 16 },
       { "index": 2, "time": 2 },
-      { "index": 0, "time": 46 },
+      { "index": 0, "time": 14 },
       { "index": 3, "time": 2 }
     ]
   }

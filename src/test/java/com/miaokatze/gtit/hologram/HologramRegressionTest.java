@@ -53,7 +53,94 @@ public final class HologramRegressionTest {
         cases.put(
             "custom_shortcuts_persist_and_reject_conflicts",
             com.miaokatze.gtit.client.hologram.HologramKeyBindingsRegression::run);
+        cases.put(
+            "workstation_fits_display_scales_and_keeps_preview_clear",
+            com.miaokatze.gtit.client.hologram.HologramLayoutRegression::run);
+        cases.put(
+            "machine_fronts_follow_world_orientation_on_all_six_faces",
+            com.miaokatze.gtit.client.hologram.HologramRenderingRegression::run);
+        cases.put(
+            "declared_alternatives_include_all_chain_and_tier_branches",
+            HologramRegressionTest::declaredAlternatives);
+        cases.put(
+            "unknown_declarations_remain_partial_without_running_machine_callbacks",
+            HologramRegressionTest::unknownDeclaration);
         TestRunner.run(HologramRegressionTest.class, cases);
+    }
+
+    private static void declaredAlternatives() {
+        com.gtnewhorizon.structurelib.structure.IStructureElement<Object> stone = com.gtnewhorizon.structurelib.structure.StructureUtility
+            .ofBlock(net.minecraft.init.Blocks.stone, 0);
+        com.gtnewhorizon.structurelib.structure.IStructureElement<Object> dirt = com.gtnewhorizon.structurelib.structure.StructureUtility
+            .onElementPass(
+                value -> { throw new AssertionError("must not mutate controller while listing candidates"); },
+                com.gtnewhorizon.structurelib.structure.StructureUtility.ofBlock(net.minecraft.init.Blocks.dirt, 0));
+        HologramDeclarationCandidates chain = new HologramDeclarationCandidates();
+        chain.collect(
+            com.gtnewhorizon.structurelib.structure.StructureUtility.ofChain(stone, dirt, stone),
+            null,
+            null,
+            0,
+            0,
+            0,
+            new ItemStack(Items.feather),
+            null,
+            0);
+        SimpleAssert.eq(2, chain.stacks.size(), "chain lists every branch once");
+        SimpleAssert.that(chain.complete, "fixed block declaration is complete");
+        com.gtnewhorizon.structurelib.structure.IStructureElement<Object> tiered = com.gtnewhorizon.structurelib.structure.StructureUtility
+            .<Object, Integer>ofBlocksTiered(
+                (block, meta) -> { throw new AssertionError("must not execute arbitrary tier converter"); },
+                java.util.Arrays.asList(
+                    org.apache.commons.lang3.tuple.Pair.of(net.minecraft.init.Blocks.stone, 0),
+                    org.apache.commons.lang3.tuple.Pair.of(net.minecraft.init.Blocks.dirt, 0),
+                    org.apache.commons.lang3.tuple.Pair.of(net.minecraft.init.Blocks.cobblestone, 0)),
+                -1,
+                (value, tier) -> { throw new AssertionError("must not update controller tier"); },
+                value -> { throw new AssertionError("must not read arbitrary controller tier"); });
+        HologramDeclarationCandidates tiers = new HologramDeclarationCandidates();
+        tiers.collect(tiered, null, null, 0, 0, 0, new ItemStack(Items.feather), null, 0);
+        SimpleAssert.eq(3, tiers.stacks.size(), "lists all declared tiers despite one selected signal");
+        SimpleAssert.that(!tiers.complete, "tier hints do not prove arbitrary acceptance is exhaustive");
+    }
+
+    private static void unknownDeclaration() {
+        com.gtnewhorizon.structurelib.structure.IStructureElement<Object> unknown = new com.gtnewhorizon.structurelib.structure.IStructureElement<Object>() {
+
+            @Override
+            public boolean check(Object context, net.minecraft.world.World world, int x, int y, int z) {
+                throw new AssertionError("must not invoke machine check");
+            }
+
+            @Override
+            public boolean spawnHint(Object context, net.minecraft.world.World world, int x, int y, int z,
+                ItemStack trigger) {
+                throw new AssertionError("must not invoke unknown hint callback");
+            }
+
+            @Override
+            public boolean placeBlock(Object context, net.minecraft.world.World world, int x, int y, int z,
+                ItemStack trigger) {
+                throw new AssertionError("must not invoke unknown placement callback");
+            }
+        };
+        HologramDeclarationCandidates result = new HologramDeclarationCandidates();
+        result.collect(unknown, null, null, 0, 0, 0, new ItemStack(Items.feather), null, 0);
+        SimpleAssert.that(
+            !result.complete && result.stacks.isEmpty(),
+            "unknown factory is partial and gives no guessed alternatives");
+        HologramDeclarationCandidates air = new HologramDeclarationCandidates();
+        air.collect(
+            com.gtnewhorizon.structurelib.structure.StructureUtility.isAir(),
+            null,
+            null,
+            0,
+            0,
+            0,
+            new ItemStack(Items.feather),
+            null,
+            0);
+        SimpleAssert.that(air.complete && air.stacks.isEmpty(), "declared air needs no material alternatives");
     }
 
     private static void disabledSources() {

@@ -37,9 +37,11 @@ final class HologramState {
 
     static final class Cell {
 
-        final int index, x, y, z, dx, dy, dz, meta, wantMeta, chosenChoice, hatchFacing, actualFacing;
+        final int index, x, y, z, dx, dy, dz, meta, wantMeta, chosenChoice, hatchFacing, actualFacing, targetFacing;
         final String id, wantId, status, pinScope, role, family, renderKind, operation;
         final boolean anchor, iconOnly;
+        final boolean candidateComplete;
+        final String candidateBoundary;
         final ItemStack actualStack, targetStack;
         final String[] hintIcons = new String[6];
         final int hintIndex;
@@ -62,6 +64,9 @@ final class HologramState {
             chosenChoice = n.hasKey("chosenChoice") ? n.getInteger("chosenChoice") : -1;
             hatchFacing = n.hasKey("hatchFacing") ? n.getInteger("hatchFacing") : -1;
             actualFacing = n.hasKey("actualFacing") ? n.getInteger("actualFacing") : -1;
+            targetFacing = n.hasKey("targetFacing") ? n.getInteger("targetFacing") : hatchFacing;
+            candidateComplete = n.getBoolean("candidateComplete");
+            candidateBoundary = n.getString("candidateBoundary");
             pinScope = n.getString("pinScope");
             role = n.getString("role");
             family = n.getString("family");
