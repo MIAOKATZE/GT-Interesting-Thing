@@ -50,7 +50,7 @@ public final class HologramCapture {
     Cell current;
     HologramChannelTrace.Report channelReport;
 
-    private HologramCapture(Object context, ItemStack trigger) {
+    HologramCapture(Object context, ItemStack trigger) {
         this.context = context;
         this.trigger = trigger;
     }

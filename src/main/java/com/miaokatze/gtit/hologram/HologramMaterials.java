@@ -27,10 +27,12 @@ import com.gtnewhorizon.structurelib.util.ItemStackPredicate;
 
 import appeng.api.AEApi;
 import appeng.api.config.Actionable;
+import appeng.api.config.PowerMultiplier;
 import appeng.api.features.IWirelessTermHandler;
 import appeng.api.networking.security.PlayerSource;
 import appeng.api.storage.IMEMonitor;
 import appeng.api.storage.data.IAEItemStack;
+import appeng.core.stats.Stats;
 import appeng.helpers.WirelessTerminalGuiObject;
 import appeng.util.Platform;
 import appeng.util.PlayerInventoryUtil;
@@ -42,6 +44,7 @@ public final class HologramMaterials {
 
     private static final String SETTINGS = "gtitHologramMaterials";
     private static final String RECOVERY = "gtitHologramMaterialRecovery";
+    private static final String RECOVERY_ME = "gtitRecoveryMeFirst";
     private static final Logger LOG = LogManager.getLogger("gtit");
 
     private HologramMaterials() {}
@@ -50,6 +53,7 @@ public final class HologramMaterials {
 
         public boolean main = true, containers = true, me = true;
         public int priority;
+        public int recoveryDestination;
     }
 
     public static Settings read(ItemStack tool) {
@@ -64,6 +68,7 @@ public final class HologramMaterials {
         result.containers = !tag.hasKey("containers") || tag.getBoolean("containers");
         result.me = !tag.hasKey("me") || tag.getBoolean("me");
         result.priority = Math.max(0, Math.min(2, tag.getInteger("priority")));
+        result.recoveryDestination = Math.max(0, Math.min(1, tag.getInteger("recoveryDestination")));
         return result;
     }
 
@@ -75,6 +80,7 @@ public final class HologramMaterials {
         tag.setBoolean("containers", settings.containers);
         tag.setBoolean("me", settings.me);
         tag.setInteger("priority", Math.max(0, Math.min(2, settings.priority)));
+        tag.setInteger("recoveryDestination", Math.max(0, Math.min(1, settings.recoveryDestination)));
         tool.getTagCompound()
             .setTag(SETTINGS, tag);
     }
@@ -157,8 +163,9 @@ public final class HologramMaterials {
                     null));
         }
 
-        /** Actual main inventory stock, even when that material source is disabled. Excludes the held tool slot. */
+        /** Enabled main inventory stock. Disabled sources are not inspected; the held tool slot is excluded. */
         public int mainCount(ItemStack stack, int limit) {
+            if (!settings.main) return 0;
             return HologramMaterials
                 .mainCount(player.inventory.mainInventory, player.inventory.currentItem, stack, limit);
         }
@@ -344,12 +351,20 @@ public final class HologramMaterials {
                 request.setStackSize(count);
                 IAEItemStack extracted;
                 try {
-                    extracted = Platform.poweredExtraction(
-                        terminal,
-                        monitor,
-                        request,
-                        action,
-                        simulate ? Actionable.SIMULATE : Actionable.MODULATE);
+                    if (simulate)
+                        extracted = Platform.poweredExtraction(terminal, monitor, request, action, Actionable.SIMULATE);
+                    else {
+                        int offered = poweredCount(request);
+                        if (offered <= 0) continue;
+                        request.setStackSize(offered);
+                        extracted = monitor.extractItems(request, Actionable.MODULATE, action);
+                        // Record the actual extraction before energy charging, which may throw in an adapter.
+                        if (extracted != null && extracted.getStackSize() > 0) {
+                            if (transaction != null) transaction.meItems.add(extracted.copy());
+                            charge(extracted.getStackSize(), extracted.getAmountPerUnit());
+                            Stats.ItemsExtracted.addToPlayer(player, (int) extracted.getStackSize());
+                        }
+                    }
                 } finally {
                     if (!simulate && transaction != null && terminalSlot >= 0) {
                         transaction.terminalSlot = terminalSlot;
@@ -360,7 +375,38 @@ public final class HologramMaterials {
                 int taken = (int) extracted.getStackSize();
                 add(result, extracted.getItemStack(), taken);
                 count -= taken;
-                if (!simulate && transaction != null) transaction.meItems.add(extracted.copy());
+            }
+        }
+
+        private int poweredCount(IAEItemStack stack) {
+            double available = terminal.extractAEPower(
+                Platform.ceilDiv(stack.getStackSize(), stack.getAmountPerUnit()),
+                Actionable.SIMULATE,
+                PowerMultiplier.CONFIG);
+            return (int) Math.min(stack.getStackSize(), (long) (available * stack.getAmountPerUnit() + 0.9));
+        }
+
+        private void charge(long items, int amountPerUnit) {
+            terminal
+                .extractAEPower(Platform.ceilDiv(items, amountPerUnit), Actionable.MODULATE, PowerMultiplier.CONFIG);
+        }
+
+        /** Update the known remainder before charging so later failures cannot refund already inserted items. */
+        private void returnToMe(ItemStack stack) {
+            if (!settings.me || !terminalAvailable()) return;
+            IMEMonitor<IAEItemStack> monitor = terminal.getItemInventory();
+            if (monitor == null) return;
+            IAEItemStack offered = AEItemStack.create(stack);
+            int count = poweredCount(offered);
+            if (count <= 0) return;
+            offered.setStackSize(count);
+            IAEItemStack left = monitor.injectItems(offered, Actionable.MODULATE, new PlayerSource(player, terminal));
+            int previous = stack.stackSize;
+            stack.stackSize = recoveryRemainder(previous, count, left == null ? 0 : left.getStackSize());
+            int inserted = previous - stack.stackSize;
+            if (inserted > 0) {
+                charge(inserted, offered.getAmountPerUnit());
+                Stats.ItemsInserted.addToPlayer(player, inserted);
             }
         }
 
@@ -383,20 +429,48 @@ public final class HologramMaterials {
             flushRecovery();
         }
 
-        /** Persisted real items remain here until inventory space is available; no world drops are needed. */
+        /** Enqueue only committed world drops. Delivery must never trigger a world/inventory rollback. */
+        public void recoverWorld(List<ItemStack> stacks) {
+            for (ItemStack stack : stacks) if (stack != null) recover(stack.copy(), settings.recoveryDestination == 1);
+        }
+
+        /** Persisted real items remain here until a configured destination has room; no world drops are needed. */
         public void flushRecovery() {
             NBTTagCompound owner = recoveryOwner();
             NBTTagList stored = owner.getTagList(RECOVERY, 10);
             NBTTagList remaining = new NBTTagList();
+            long deadline = System.nanoTime() + 10_000_000L;
             for (int i = 0; i < stored.tagCount(); i++) {
+                if (i >= 96 || System.nanoTime() > deadline) {
+                    remaining.appendTag(
+                        stored.getCompoundTagAt(i)
+                            .copy());
+                    continue;
+                }
                 ItemStack stack = ItemStack.loadItemStackFromNBT(stored.getCompoundTagAt(i));
                 if (stack == null || stack.stackSize <= 0) continue;
+                boolean meFirst = stored.getCompoundTagAt(i)
+                    .getBoolean(RECOVERY_ME);
+                if (meFirst) {
+                    try {
+                        returnToMe(stack);
+                    } catch (RuntimeException | LinkageError failure) {
+                        LOG.warn("Hologram ME recovery failed; preserving known remainder", failure);
+                    }
+                }
                 HologramMaterials.insertRecovery(
                     player.inventory.mainInventory,
                     player.inventory.currentItem,
                     player.inventory.getInventoryStackLimit(),
                     stack);
-                if (stack.stackSize > 0) remaining.appendTag(stack.writeToNBT(new NBTTagCompound()));
+                // Persist this receipt immediately, before attempting the next queue entry.
+                stored.getCompoundTagAt(i)
+                    .setByte("Count", (byte) stack.stackSize);
+                if (stack.stackSize > 0) {
+                    NBTTagCompound entry = stack.writeToNBT(new NBTTagCompound());
+                    entry.setBoolean(RECOVERY_ME, meFirst);
+                    remaining.appendTag(entry);
+                }
             }
             owner.setTag(RECOVERY, remaining);
             player.inventory.markDirty();
@@ -404,12 +478,18 @@ public final class HologramMaterials {
         }
 
         private void recover(ItemStack stack) {
+            recover(stack, false);
+        }
+
+        private void recover(ItemStack stack, boolean meFirst) {
             if (stack == null || stack.stackSize <= 0) return;
             NBTTagCompound owner = recoveryOwner();
             NBTTagList stored = owner.getTagList(RECOVERY, 10);
             while (stack.stackSize > 0) {
                 int size = Math.min(stack.stackSize, Math.max(1, stack.getMaxStackSize()));
-                stored.appendTag(copy(stack, size).writeToNBT(new NBTTagCompound()));
+                NBTTagCompound entry = copy(stack, size).writeToNBT(new NBTTagCompound());
+                entry.setBoolean(RECOVERY_ME, meFirst);
+                stored.appendTag(entry);
                 stack.stackSize -= size;
             }
             owner.setTag(RECOVERY, stored);
@@ -470,21 +550,16 @@ public final class HologramMaterials {
             // return its actual reported items to the player, rather than guessing its storage NBT.
             for (ItemStack stack : containerItems) context.recover(stack.copy());
             for (IAEItemStack stack : meItems) {
-                IAEItemStack left = stack.copy();
+                ItemStack left = stack.getItemStack();
                 try {
-                    if (context.terminalAvailable() && context.terminal.getItemInventory() != null)
-                        left = Platform.poweredInsert(
-                            context.terminal,
-                            context.terminal.getItemInventory(),
-                            left,
-                            new PlayerSource(context.player, context.terminal));
+                    context.returnToMe(left);
                 } catch (RuntimeException | LinkageError failure) {
                     // A broken third-party insertion must not discard later ledger entries.
                     LOG.warn(
                         "Hologram ME material return failed; preserving remaining ledger in player recovery",
                         failure);
                 } finally {
-                    if (left != null && left.getStackSize() > 0) context.recover(left.getItemStack());
+                    if (left != null && left.stackSize > 0) context.recover(left);
                 }
             }
             if (terminalState != null && terminalSlot >= 0) {
@@ -518,6 +593,12 @@ public final class HologramMaterials {
         int total = 0;
         for (int count : stacks.values()) total += count;
         return total;
+    }
+
+    /** AE returns only the unaccepted portion of the offered amount; unoffered items remain ours. */
+    static int recoveryRemainder(int requested, int offered, long unaccepted) {
+        int bounded = Math.min(Math.max(0, requested), Math.max(0, offered));
+        return Math.max(0, requested) - bounded + (int) Math.min(bounded, Math.max(0, unaccepted));
     }
 
     private static ItemStack copy(ItemStack stack, int count) {

@@ -276,6 +276,9 @@ item.neko_dimension_pocket.name=Neko Dimensional Pocket
 item.neko_hologram_projector.name=Neko Hologram Projector
 item.neko_hologram_projector.tooltip.0=Right-click a multiblock controller to inspect its structure and configure a hologram.
 item.neko_hologram_projector.tooltip.1=Right-click the air to open the projection panel.
+item.neko_hologram_projector.tooltip.2=Alt-right-click: choose preset, lock projection, cancel. Alt+Shift-right-click: build using real materials.
+item.neko_hologram_projector.tooltip.3=Shift-right-click: edit virtual structure. Shift-right-click air: material, downgrade and recovery settings.
+item.neko_hologram_projector.tooltip.4=Delete restores casing; R rotates. Ctrl+X/C/V and Ctrl+Z/Y edit targets. Shortcuts are configurable.
 # ★★R98 S2 (request 1 "drastically simplify the tooltip"): the contiguous family was
 # <b>renumbered as a whole</b> from 0..9 down to 0..3 — NOT "delete a few and keep the rest",
 # because the consumer loop breaks on equals(key) ⇒ a gap silently truncates every later line.

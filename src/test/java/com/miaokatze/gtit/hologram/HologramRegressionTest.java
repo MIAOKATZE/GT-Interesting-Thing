@@ -43,7 +43,153 @@ public final class HologramRegressionTest {
             .put("hatch_faces_exclude_template_cavity_even_before_construction", HologramRegressionTest::hatchExterior);
         cases.put("voltage_preset_respects_requested_tier_stock_and_fixed_roles", HologramRegressionTest::hatchPreset);
         cases.put("sealed_facing_override_keeps_inventory_and_source_payload", HologramRegressionTest::sealedFacing);
+        cases.put("disabled_sources_are_not_inspected_or_used", HologramRegressionTest::disabledSources);
+        cases.put("recovery_accounts_for_partial_ME_acceptance", HologramRegressionTest::recoveryRemainder);
+        cases.put("committed_world_recovery_waits_for_room_and_delivers_once", HologramRegressionTest::worldRecovery);
+        cases.put("prefab_samples_exclude_device_nbt_and_bound_coordinates", HologramRegressionTest::prefabSamples);
+        cases.put(
+            "global_settings_update_detached_controller_draft_without_changing_targets",
+            HologramRegressionTest::draftSettings);
+        cases.put(
+            "custom_shortcuts_persist_and_reject_conflicts",
+            com.miaokatze.gtit.client.hologram.HologramKeyBindingsRegression::run);
         TestRunner.run(HologramRegressionTest.class, cases);
+    }
+
+    private static void disabledSources() {
+        net.minecraft.entity.player.EntityPlayerMP player = materialPlayer();
+        HologramMaterials.Settings settings = new HologramMaterials.Settings();
+        settings.main = false;
+        settings.containers = false;
+        settings.me = false;
+        HologramMaterials.Context context = new HologramMaterials.Context(
+            player,
+            settings,
+            java.util.Collections.emptyList());
+        // Disabled sources must not even dereference the player's inventory when reporting stock.
+        player.inventory = null;
+        SimpleAssert
+            .eq(0, context.mainCount(new ItemStack(Items.feather), 64), "disabled main source is not inspected");
+        SimpleAssert.eq(0, context.count(new ItemStack(Items.feather), 64), "disabled sources cannot supply items");
+        SimpleAssert.eq(
+            0,
+            context.catalog(20)
+                .size(),
+            "disabled sources do not provide catalog samples");
+    }
+
+    private static void recoveryRemainder() {
+        SimpleAssert
+            .eq(0, HologramMaterials.recoveryRemainder(8, 8, 0), "full network acceptance leaves nothing to refund");
+        SimpleAssert.eq(3, HologramMaterials.recoveryRemainder(8, 8, 3), "partial acceptance preserves exact leftover");
+        SimpleAssert.eq(5, HologramMaterials.recoveryRemainder(8, 5, 2), "power limited offer keeps unoffered items");
+        SimpleAssert.eq(8, HologramMaterials.recoveryRemainder(8, 0, 0), "no network offer retains all material");
+        HologramMaterials.Settings settings = new HologramMaterials.Settings();
+        settings.recoveryDestination = 1;
+        ItemStack tool = new ItemStack(Items.feather);
+        HologramMaterials.write(tool, settings);
+        SimpleAssert.eq(1, HologramMaterials.read(tool).recoveryDestination, "recovery target persists on tool");
+    }
+
+    private static void worldRecovery() {
+        net.minecraft.entity.player.EntityPlayerMP player = materialPlayer();
+        for (int i = 1; i < player.inventory.mainInventory.length; i++)
+            player.inventory.mainInventory[i] = new ItemStack(net.minecraft.init.Blocks.cobblestone, 64);
+        HologramMaterials.Settings settings = new HologramMaterials.Settings();
+        settings.me = false;
+        settings.containers = false;
+        settings.recoveryDestination = 1;
+        HologramMaterials.Context context = new HologramMaterials.Context(
+            player,
+            settings,
+            java.util.Collections.emptyList());
+        ItemStack actualDrop = new ItemStack(net.minecraft.init.Blocks.stone, 3);
+        context.recoverWorld(java.util.Collections.singletonList(actualDrop));
+        context.flushRecovery();
+        SimpleAssert.eq(3, actualDrop.stackSize, "committed receipt is copied without changing source drop");
+        SimpleAssert.eq(0, looseStone(player), "full inventory does not receive phantom items");
+        SimpleAssert.eq(
+            1,
+            player.getEntityData()
+                .getCompoundTag(net.minecraft.entity.player.EntityPlayer.PERSISTED_NBT_TAG)
+                .getTagList("gtitHologramMaterialRecovery", 10)
+                .tagCount(),
+            "full backpack persists pending world recovery");
+        player.inventory.mainInventory[1] = null;
+        context.flushRecovery();
+        context.flushRecovery();
+        SimpleAssert.eq(3, looseStone(player), "disabled ME falls back and delivers exactly once when room exists");
+        SimpleAssert.eq(
+            0,
+            player.getEntityData()
+                .getCompoundTag(net.minecraft.entity.player.EntityPlayer.PERSISTED_NBT_TAG)
+                .getTagList("gtitHologramMaterialRecovery", 10)
+                .tagCount(),
+            "completed receipt removed");
+    }
+
+    private static void draftSettings() {
+        NBTTagCompound draft = new NBTTagCompound();
+        draft.setInteger("x", 123);
+        draft.setString("controllerType", "kept-controller");
+        NBTTagCompound target = new NBTTagCompound();
+        target.setString("item", "minecraft:stone");
+        draft.setTag("target", target.copy());
+        HologramMaterials.Settings settings = new HologramMaterials.Settings();
+        settings.main = false;
+        settings.containers = false;
+        settings.me = true;
+        settings.priority = 2;
+        settings.recoveryDestination = 1;
+        HologramService.updateDraftSettings(draft, settings, true);
+        SimpleAssert.that(
+            !draft.getBoolean("materialMain") && !draft.getBoolean("materialContainers"),
+            "disabled sources stay disabled after draft restore");
+        SimpleAssert.that(
+            draft.getBoolean("materialMe") && draft.getBoolean("downgrade"),
+            "enabled settings reach detached draft");
+        SimpleAssert.eq(1, draft.getInteger("recoveryDestination"), "recovery preference also synchronized");
+        SimpleAssert.eq(123, draft.getInteger("x"), "draft controller binding untouched");
+        SimpleAssert.that(target.equals(draft.getCompoundTag("target")), "existing target data unchanged");
+    }
+
+    private static void prefabSamples() {
+        ItemStack source = new ItemStack(net.minecraft.init.Blocks.stone, 64);
+        source.setTagCompound(new NBTTagCompound());
+        source.getTagCompound()
+            .setString("inventory", "never-copy-this-device-state");
+        HologramPresets.Cell cell = HologramPresets.cell(source, 1, 2, 3, 4, false);
+        SimpleAssert.eq(1, cell.stack().stackSize, "template stores one real item per cell");
+        SimpleAssert.that(
+            !cell.stack()
+                .hasTagCompound(),
+            "template never clones source NBT");
+        try {
+            java.lang.reflect.Method validate = HologramPresets.class
+                .getDeclaredMethod("validateCell", HologramPresets.Cell.class);
+            validate.setAccessible(true);
+            validate.invoke(null, cell);
+            cell.x = Integer.MIN_VALUE;
+            try {
+                validate.invoke(null, cell);
+                throw new AssertionError("hostile coordinate should be rejected");
+            } catch (java.lang.reflect.InvocationTargetException rejected) {
+                SimpleAssert.that(
+                    rejected.getCause() instanceof java.io.IOException,
+                    "extreme coordinate rejected without overflow");
+            }
+            cell.x = 1;
+            cell.count = 64;
+            try {
+                validate.invoke(null, cell);
+                throw new AssertionError("bulk item count per coordinate should be rejected");
+            } catch (java.lang.reflect.InvocationTargetException rejected) {
+                SimpleAssert
+                    .that(rejected.getCause() instanceof java.io.IOException, "one real item per coordinate enforced");
+            }
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+        }
     }
 
     private static void previewCounts() {

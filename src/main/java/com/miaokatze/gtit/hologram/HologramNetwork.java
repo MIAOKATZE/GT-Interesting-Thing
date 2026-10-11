@@ -23,6 +23,7 @@ public final class HologramNetwork {
 
     private static SimpleNetworkWrapper channel;
     private static volatile Consumer<NBTTagCompound> receiver;
+    private static volatile Consumer<NBTTagCompound> interactionSender;
     private static final int MAX_BYTES = 1048576;
 
     private HologramNetwork() {}
@@ -36,6 +37,23 @@ public final class HologramNetwork {
 
     public static void setClientReceiver(Consumer<NBTTagCompound> value) {
         receiver = value;
+    }
+
+    public static void setClientInteractionSender(Consumer<NBTTagCompound> value) {
+        interactionSender = value;
+    }
+
+    /** Invoked only on the logical client; common item code never links keyboard/client classes. */
+    public static void clientUse(int x, int y, int z, int side, boolean air) {
+        Consumer<NBTTagCompound> sender = interactionSender;
+        if (sender == null) return;
+        NBTTagCompound input = new NBTTagCompound();
+        input.setInteger("x", x);
+        input.setInteger("y", y);
+        input.setInteger("z", z);
+        input.setInteger("side", side);
+        input.setBoolean("air", air);
+        sender.accept(input);
     }
 
     public static void sendAction(NBTTagCompound tag) {
@@ -104,10 +122,48 @@ public final class HologramNetwork {
         public IMessage onMessage(Action msg, MessageContext ctx) {
             EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (msg.tag.toString()
-                .length() <= 16384)
-                ServerTaskScheduler.scheduleServerTask(() -> HologramService.handle(player, msg.tag));
+                .length() <= 16384) ServerTaskScheduler.scheduleServerTask(() -> dispatch(player, msg.tag));
             return null;
         }
+    }
+
+    private static void dispatch(EntityPlayerMP player, NBTTagCompound tag) {
+        String action = tag.getString("action");
+        if ("useBlock".equals(action) || "useAir".equals(action)) {
+            if (!com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector.isProjector(player.getHeldItem()))
+                return;
+            boolean air = "useAir".equals(action);
+            if (air && !tag.getBoolean("alt")) {
+                if (tag.getBoolean("shift")) HologramService.openSettings(player);
+                else HologramService.openAir(player);
+                return;
+            }
+            int x = tag.getInteger("x"), y = tag.getInteger("y"), z = tag.getInteger("z");
+            int side = tag.getInteger("side");
+            if (side < 0 || side > 5
+                || !player.worldObj.blockExists(x, y, z)
+                || player.getDistanceSq(x + .5, y + .5, z + .5) > 64) return;
+            if (tag.getBoolean("alt")) {
+                net.minecraftforge.common.util.ForgeDirection face = net.minecraftforge.common.util.ForgeDirection
+                    .getOrientation(side);
+                int offsetX = air ? 0 : face.offsetX, offsetY = air ? 0 : face.offsetY,
+                    offsetZ = air ? 0 : face.offsetZ;
+                if (tag.getBoolean("shift"))
+                    HologramService.immediateVirtual(player, x + offsetX, y + offsetY, z + offsetZ, side, "");
+                else if ("lock".equals(tag.getString("virtualIntent")))
+                    HologramService.lockVirtual(player, x, y, z, side);
+                else if ("cancel".equals(tag.getString("virtualIntent"))) HologramService.cancel(player);
+                else HologramService.openVirtual(player, x + offsetX, y + offsetY, z + offsetZ, side, "");
+            } else if (tag.getBoolean("shift") && tag.getBoolean("virtualEdit")) HologramService.openAir(player);
+            else HologramService.open(player, x, y, z, side);
+            return;
+        }
+        if ("openSettings".equals(action)) {
+            if (com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector.isProjector(player.getHeldItem()))
+                HologramService.openSettings(player);
+            return;
+        }
+        HologramService.handle(player, tag);
     }
 
     public static final class ClientHandler implements IMessageHandler<State, IMessage> {

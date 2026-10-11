@@ -3,7 +3,6 @@ package com.miaokatze.gtit.common.items.hologram;
 import java.util.List;
 
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
@@ -12,7 +11,7 @@ import net.minecraft.world.World;
 import com.gtnewhorizon.structurelib.alignment.constructable.ChannelDataAccessor;
 import com.gtnewhorizon.structurelib.item.ItemConstructableTrigger;
 import com.miaokatze.gtit.common.util.GTITUtils;
-import com.miaokatze.gtit.hologram.HologramService;
+import com.miaokatze.gtit.hologram.HologramNetwork;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -35,20 +34,14 @@ public class ItemNekoHologramProjector extends ItemConstructableTrigger {
     @Override
     public boolean onItemUseFirst(ItemStack stack, EntityPlayer player, World world, int x, int y, int z, int side,
         float hitX, float hitY, float hitZ) {
-        // 客户端放行才能发送带坐标的 C08；服务端消费交互，避免打开控制器原 GUI。
-        if (world.isRemote) return false;
-        if (player instanceof EntityPlayerMP serverPlayer) {
-            HologramService.open(serverPlayer, x, y, z, side);
-        }
+        // 使用独立请求携带客户端修饰键，消费原交互，避免控制器 GUI 与空气补发双触发。
+        if (world.isRemote) HologramNetwork.clientUse(x, y, z, side, false);
         return true;
     }
 
     @Override
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
-        if (!world.isRemote && player instanceof EntityPlayerMP serverPlayer) {
-            // 同次方块右击补发的 side=255 由服务端会话入口去重。
-            HologramService.openAir(serverPlayer);
-        }
+        if (world.isRemote) HologramNetwork.clientUse(0, 0, 0, 255, true);
         return stack;
     }
 

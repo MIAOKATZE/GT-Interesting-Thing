@@ -398,6 +398,7 @@ final class HologramRenderer {
             List<HologramState.Cell> cells = new ArrayList<>();
             Set<Long> ghosts = new HashSet<>();
             boolean removal = state.data.getInteger("mode") == 2;
+            boolean virtual = state.data.getBoolean("virtual");
             for (HologramState.Cell c : state.cells) {
                 if (c.status.equals("removed") || c.completed()) continue;
                 if (!c.anchor && worldLayer != Integer.MAX_VALUE && c.dy != worldLayer) continue;
@@ -406,9 +407,8 @@ final class HologramRenderer {
                     && !c.role.contains("interface")) continue;
                 if (c.dx * (double) c.dx + c.dy * (double) c.dy + c.dz * (double) c.dz > 4096) continue;
                 cells.add(c);
-                if (!c.anchor && !removal
-                    && !c.status.equals("satisfied")
-                    && !worldMatched(c)
+                if ((!c.anchor || virtual) && !removal
+                    && (virtual || !c.status.equals("satisfied") && !worldMatched(c))
                     && !c.wantId.equals("minecraft:air")) ghosts.add(coordinate(c.x, c.y, c.z));
                 else if (!c.anchor && !removal) lastWorldMatched++;
             }
@@ -466,6 +466,13 @@ final class HologramRenderer {
         GL11.glPushMatrix();
         try {
             GL11.glTranslated(-px, -py, -pz);
+            if (state.data.getBoolean("virtual") && state.data.getBoolean("moving")) {
+                int[] anchor = HologramClient.movingAnchor(state);
+                GL11.glTranslated(
+                    anchor[0] - state.data.getInteger("x"),
+                    anchor[1] - state.data.getInteger("y"),
+                    anchor[2] - state.data.getInteger("z"));
+            }
             GL11.glDisable(GL11.GL_LIGHTING);
             mc.getTextureManager()
                 .bindTexture(TextureMap.locationBlocksTexture);

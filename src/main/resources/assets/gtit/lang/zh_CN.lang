@@ -276,6 +276,9 @@ item.neko_dimension_pocket.name=猫猫次元口袋
 item.neko_hologram_projector.name=猫猫全息投影仪
 item.neko_hologram_projector.tooltip.0=右键多方块控制器，查看结构并配置全息投影。
 item.neko_hologram_projector.tooltip.1=对空气右键，打开投影面板。
+item.neko_hologram_projector.tooltip.2=Alt右键：选择预设、锁定投影、取消；Alt+Shift右键：按材料需求直接放置。
+item.neko_hologram_projector.tooltip.3=Shift右键：编辑虚拟结构；Shift右键空气：取料、降级与回收设置。
+item.neko_hologram_projector.tooltip.4=Delete恢复默认壳，R旋转；Ctrl+X/C/V与Ctrl+Z/Y编辑目标。快捷键可自定义。
 # ★★R98 S2（需求 1「大幅度简化 Tooltip」）：连号族由 0..9 十行<b>整体重编号</b>成 0..3 四行
 # （★不是"删几条留几条"——消费端是 equals(key) 即 break 的循环，跳号 = 静默截断后面的行）。
 # 撤掉的六行去了哪里（R36「撤形状必须落新家在」的逐条对账）：
