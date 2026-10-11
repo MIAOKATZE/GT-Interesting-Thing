@@ -129,6 +129,19 @@ tasks.register<JavaExec>("runTradePageRefreshTest") {
 
 tasks.named("check") { dependsOn("runTradePageRefreshTest") }
 
+tasks.register<JavaExec>("runNekoMusicConfigTest") {
+    group = "verification"
+    description = "Runs real client music config persistence across separate JVM restarts."
+    mainClass = "com.miaokatze.gtit.config.NekoMusicConfigTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    val scratchDir = layout.buildDirectory.dir("music-config-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runNekoMusicConfigTest") }
+
 tasks.register<JavaExec>("runHologramTest") {
     group = "verification"
     description = "Runs hologram channel, packet and inactive capture regressions."
@@ -136,6 +149,12 @@ tasks.register<JavaExec>("runHologramTest") {
     classpath = storeTestRuntimeClasspath
     classpath += neiTestRuntimeClasspath
     classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    // Reflecting the real GT machine interface resolves its Waila callback signatures.
+    classpath += configurations.detachedConfiguration(
+        dependencies.create("com.github.GTNewHorizons:waila:1.19.34:dev")
+    ).apply { isTransitive = false }
+    // GT's Java 17 interface fixture needs a reader newer than Forge's bundled ASM 5.
+    classpath = configurations.detachedConfiguration(dependencies.create("org.ow2.asm:asm:9.8")) + classpath
     val scratchDir = layout.buildDirectory.dir("hologram-test")
     workingDir(scratchDir)
     doFirst { scratchDir.get().asFile.mkdirs() }

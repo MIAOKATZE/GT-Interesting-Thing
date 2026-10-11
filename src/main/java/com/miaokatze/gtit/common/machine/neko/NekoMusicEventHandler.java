@@ -93,9 +93,6 @@ public class NekoMusicEventHandler {
     // 当前音量（0.0 ~ MAX_VOLUME）
     private float currentVolume = 0.0f;
 
-    // BGM 是否被用户手动关闭（通过切换按钮）
-    private boolean bgmMutedByUser = false;
-
     // 反射缓存
     private static Field sndManagerField;
     private static Field sndSystemField;
@@ -308,7 +305,7 @@ public class NekoMusicEventHandler {
         if (mc.thePlayer == null) return;
 
         // 如果用户手动关闭了 BGM，不自动播放
-        if (this.bgmMutedByUser) {
+        if (isMutedByUser()) {
             LOG.info("[NEKO] handleGuiOpened: BGM 被用户手动关闭，跳过播放");
             return;
         }
@@ -518,7 +515,7 @@ public class NekoMusicEventHandler {
     public void forceStopBGM() {
         this.fadingIn = false;
         this.fadingOut = false;
-        this.bgmMutedByUser = true;
+        NekoMusicConfig.setMusicMuted(true);
         stopSound(Minecraft.getMinecraft());
     }
 
@@ -526,7 +523,7 @@ public class NekoMusicEventHandler {
      * 外部调用：启动 BGM（用于 BGM 切换按钮开启时）
      */
     public void forceStartBGM() {
-        this.bgmMutedByUser = false;
+        NekoMusicConfig.setMusicMuted(false);
         handleGuiOpened();
     }
 
@@ -541,7 +538,7 @@ public class NekoMusicEventHandler {
      * 检查 BGM 是否被用户手动关闭
      */
     public boolean isMutedByUser() {
-        return this.bgmMutedByUser;
+        return NekoMusicConfig.music_muted;
     }
 
     /**

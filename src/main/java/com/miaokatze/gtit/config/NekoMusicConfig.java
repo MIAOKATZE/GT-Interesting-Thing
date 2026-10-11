@@ -12,7 +12,7 @@ import com.gtnewhorizon.gtnhlib.config.ConfigurationManager;
  * 使用 GTNHLib 的 @Config 注解方式管理配置（与 VM mod 的 VMConfig 一致），
  * 配置文件位于 config/gtit_music.cfg，支持运行时实时保存。
  * <p>
- * 当音量滑块被调整时，通过 {@link ConfigurationManager#save} 即时保存到磁盘。
+ * 音量面板关闭时保存音量；BGM 开关切换时即时保存静音偏好到磁盘。
  * NekoMusicEventHandler 在 tick 处理中读取此配置值作为音量倍率。
  * <p>
  * 注意：此配置类替代了原先对 VMConfig.music.music_volume 的依赖，
@@ -40,12 +40,28 @@ public class NekoMusicConfig {
     @Config.Comment("猫猫售货机 BGM 音量倍率 (0.01~1.0)")
     public static float music_volume = 0.3f;
 
+    /** 当前客户端的静音偏好，独立于玩家、机器与存档，不向服务器同步。 */
+    @Config.DefaultBoolean(false)
+    @Config.Sync(false)
+    @Config.Comment("当前客户端是否关闭猫猫售货机 BGM；通过 GUI 开关切换时即时保存")
+    public static boolean music_muted = false;
+
+    /** 更新客户端静音偏好并即时保存，存档退出或游戏重启后继续生效。 */
+    public static void setMusicMuted(boolean muted) {
+        music_muted = muted;
+        try {
+            ConfigurationManager.save(NekoMusicConfig.class);
+        } catch (Exception e) {
+            LOG.error("[NekoMusicConfig] 静音偏好保存失败，本次运行仍使用所选状态", e);
+        }
+    }
+
     /*
      * 静态初始化块：注册配置到 GTNHLib ConfigurationManager
      * <p>
      * ConfigurationManager.registerConfig() 会：
      * 1. 读取 config/gtit_music.cfg 配置文件（不存在则创建）
-     * 2. 将文件中的值加载到 music_volume 字段
+     * 2. 将文件中的值加载到 music_volume 与 music_muted 字段
      * 3. 保存配置文件（写入默认值或更新后的值）
      * <p>
      * ConfigException 是 RuntimeException 的子类，但仍用 try-catch 防止注册失败导致类加载崩溃。

@@ -55,9 +55,6 @@ final class HologramTextures {
     }
 
     private static final Map<String, Material> CACHE = new HashMap<>();
-    private static final int[][] NORTH_TO_FRONT = { { 2, 3, 1, 0, 4, 5 }, { 3, 2, 0, 1, 4, 5 }, { 0, 1, 2, 3, 4, 5 },
-        { 0, 1, 3, 2, 5, 4 }, { 0, 1, 5, 4, 2, 3 }, { 0, 1, 4, 5, 3, 2 } };
-    private static final int[] NORTH_TO_WEST = { 0, 1, 4, 5, 3, 2 };
     private static final Map<HologramState.Cell, Material[]> RESOLVED = new IdentityHashMap<>();
     private static HologramState snapshot;
     private static final Field MULTI = texturesField(GTMultiTextureRender.class);
@@ -141,35 +138,7 @@ final class HologramTextures {
                     ? GregTechAPI.METATILEENTITIES[id]
                     : null;
                 if (machine != null) {
-                    ITexture[][] inventory = null;
-                    try {
-                        inventory = machine.getInventoryTextures();
-                    } catch (RuntimeException ignored) {}
-                    if (front >= 0 && front < 6) {
-                        textures = new ITexture[6][];
-                        // Resolve the actual world side/front pair for controllers as well as hatches.
-                        // This reads the prototype only; no synthetic tile or facing mutation.
-                        for (int side = 0; side < 6; side++) {
-                            try {
-                                textures[side] = machine.getTexture(
-                                    null,
-                                    ForgeDirection.getOrientation(side),
-                                    ForgeDirection.getOrientation(front),
-                                    -1,
-                                    false,
-                                    false);
-                            } catch (RuntimeException ignored) {}
-                            if ((textures[side] == null || textures[side].length == 0) && inventory != null) {
-                                int source = inventorySide(front, side);
-                                if (source < inventory.length) {
-                                    textures[side] = inventory[source];
-                                    textureSides[side] = source;
-                                }
-                            }
-                        }
-                    } else {
-                        textures = inventory;
-                    }
+                    textures = HologramMachineTextures.resolve(machine, front, textureSides);
                 }
             } else if (block instanceof IBlockWithTextures) {
                 textures = ((IBlockWithTextures) block).getInventoryTextures(meta);
@@ -210,7 +179,7 @@ final class HologramTextures {
     static int sourceSide(int side, int front) {
         // GT CommonMetaTileEntity inventory textures face WEST. Reorder the six immutable
         // atlas samples to the planned/world facing without mutating the shared prototype.
-        return front >= 0 && front < 6 && side >= 0 && side < 6 ? NORTH_TO_WEST[NORTH_TO_FRONT[front][side]] : side;
+        return HologramMachineTextures.inventorySide(front, side);
     }
 
     private static void append(List<Sample> samples, ITexture texture, int side, int depth) {

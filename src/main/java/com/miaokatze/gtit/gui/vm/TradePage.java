@@ -825,8 +825,8 @@ public final class TradePage {
         gui.volumeButton = new ButtonWidget<>().size(14, 14)
             .overlay(new DynamicDrawable(() -> {
                 NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                boolean isPlaying = handler != null && handler.isPlaying();
-                return (isPlaying ? NekoMusicTrack.LUNCH_BREAK.getTexture() : NekoMusicTrack.NONE.getTexture())
+                boolean isEnabled = handler != null && !handler.isMutedByUser();
+                return (isEnabled ? NekoMusicTrack.LUNCH_BREAK.getTexture() : NekoMusicTrack.NONE.getTexture())
                     .size(14);
             }))
             .onMousePressed(btn -> {
@@ -839,7 +839,7 @@ public final class TradePage {
                     // 单击：切换 BGM 播放
                     NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
                     if (handler != null) {
-                        if (handler.isPlaying()) {
+                        if (!handler.isMutedByUser()) {
                             handler.forceStopBGM();
                         } else {
                             handler.forceStartBGM();
@@ -850,8 +850,8 @@ public final class TradePage {
             })
             .tooltipBuilder(t -> {
                 NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
-                boolean isPlaying = handler != null && handler.isPlaying();
-                t.addLine(IKey.str(isPlaying ? "BGM: 开启" : "BGM: 关闭"));
+                boolean isEnabled = handler != null && !handler.isMutedByUser();
+                t.addLine(IKey.str(isEnabled ? "BGM: 开启" : "BGM: 关闭"));
                 t.addLine(IKey.str("音量: " + NekoVolumeControlGui.getVolumeAsString() + "%"));
                 t.addLine(IKey.str("Shift+点击 打开音量控制"));
             });
