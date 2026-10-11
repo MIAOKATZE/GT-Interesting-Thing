@@ -239,6 +239,8 @@ final class HologramServiceEditRegression {
             SimpleAssert.eq(0, get(session, "mode"), "restoring the planned shell cannot switch construction mode");
             calibrationRegression(session, capture, refresh);
             virtualPresetEditingRegression(session, capture);
+            virtualPlacementBoundaryRegression(session, capture);
+            realCoilCalibrationRegression(unsafe, session, refresh);
         } catch (ReflectiveOperationException failure) {
             throw new AssertionError(failure);
         }
@@ -314,6 +316,236 @@ final class HologramServiceEditRegression {
 
     private static String calibrationPosition(HologramCapture.Cell cell) {
         return cell.x + "," + cell.y + "," + cell.z;
+    }
+
+    private static void virtualPlacementBoundaryRegression(Object session, HologramCapture capture)
+        throws ReflectiveOperationException {
+        set(session, "virtualPlacement", false);
+        set(session, "open", true);
+        set(session, "mode", 1);
+        Object preset = get(session, "virtualPreset");
+        Map<Integer, ItemStack> before = new HashMap<>(map(session, "pins"));
+        Method select = HologramService.class.getDeclaredMethod("selectPreset", session.getClass(), String.class);
+        select.setAccessible(true);
+        select.invoke(null, session, "another-template");
+        SimpleAssert.that(get(session, "capture") == capture, "selection preserves the live editing capture");
+        SimpleAssert.that(get(session, "virtualPreset") == preset, "selection never replaces an unsaved draft");
+        SimpleAssert.eq(before, map(session, "pins"), "selection preserves all edits and pins");
+        SimpleAssert.eq(1, get(session, "mode"), "selection preserves mode");
+        SimpleAssert.eq(true, get(session, "open"), "selection cannot close the editor");
+        SimpleAssert.eq(false, get(session, "virtualPlacement"), "selection cannot authorize placement");
+        set(session, "virtualLocked", true);
+        Method build = HologramService.class.getDeclaredMethod("directBuild", session.getClass());
+        build.setAccessible(true);
+        build.invoke(null, session);
+        SimpleAssert.that(
+            ((String) get(session, "status")).contains("锁定"),
+            "pure editing refuses direct build even with a stale lock");
+        Method allowed = HologramService.class.getDeclaredMethod("constructionAllowed", session.getClass());
+        allowed.setAccessible(true);
+        SimpleAssert.eq(false, allowed.invoke(null, session), "all construction paths require placement authority");
+        Method moving = HologramService.class.getDeclaredMethod("virtualMoving", session.getClass());
+        moving.setAccessible(true);
+        SimpleAssert.eq(false, moving.invoke(null, session), "pure editing never emits a moving snapshot");
+        Method begin = HologramService.class
+            .getDeclaredMethod("beginVirtualPlacement", session.getClass(), int.class, int.class, int.class, int.class);
+        begin.setAccessible(true);
+        set(session, "mode", 0);
+        set(session, "scope", 0);
+        for (ItemStack pin : HologramServiceEditRegression.<Integer, ItemStack>map(session, "pins")
+            .values()) pin.setTagCompound(null);
+        EntityPlayerMP player = (EntityPlayerMP) get(session, "player");
+        player.posY = 64;
+        SimpleAssert
+            .eq(false, begin.invoke(null, session, 4, 300, 0, 2), "an invalid Alt anchor cannot authorize placement");
+        SimpleAssert.eq(false, get(session, "virtualPlacement"), "failed positioning keeps the editor pure");
+        SimpleAssert
+            .eq(true, begin.invoke(null, session, 4, 68, 0, 2), "explicit Alt can place the current unsaved draft");
+        SimpleAssert.that(get(session, "virtualPreset") == preset, "Alt preserves draft identity");
+        SimpleAssert.eq(false, get(session, "open"), "only Alt transitions from editing to a world preview");
+        SimpleAssert.eq(false, get(session, "virtualLocked"), "Alt starts moving before any lock");
+        SimpleAssert.eq(true, moving.invoke(null, session), "authorized draft emits moving state");
+        SimpleAssert.eq(before.size(), map(session, "pins").size(), "moving the draft retains its material overrides");
+        set(session, "virtualPreset", null);
+        set(session, "presetBrowseForPlacement", true);
+        SimpleAssert.eq(false, moving.invoke(null, session), "Alt browsing without a template has no ghost");
+        select.invoke(null, session, "ordinary-selected");
+        SimpleAssert
+            .eq(false, moving.invoke(null, session), "ordinary selection in a browse session cannot start placement");
+        Method dismiss = HologramService.class.getDeclaredMethod("dismissPresetBrowse", session.getClass());
+        dismiss.setAccessible(true);
+        dismiss.invoke(null, session);
+        SimpleAssert
+            .eq(false, get(session, "virtualPlacement"), "dismissing an empty Alt browser revokes placement authority");
+        select.invoke(null, session, "selected-after-dismiss");
+        SimpleAssert
+            .eq(false, moving.invoke(null, session), "selection after dismissing Alt browse cannot revive placement");
+    }
+
+    private static void realCoilCalibrationRegression(sun.misc.Unsafe unsafe, Object session, Method refresh)
+        throws ReflectiveOperationException {
+        Block previous = gregtech.api.GregTechAPI.sBlockCasings5;
+        gregtech.common.blocks.BlockCasings5 coil = (gregtech.common.blocks.BlockCasings5) unsafe
+            .allocateInstance(gregtech.common.blocks.BlockCasings5.class);
+        Field delegate = Block.class.getDeclaredField("delegate");
+        delegate.setAccessible(true);
+        delegate.set(
+            coil,
+            ((cpw.mods.fml.common.registry.FMLControlledNamespacedRegistry) Block.blockRegistry)
+                .getDelegate(coil, Block.class));
+        Block.blockRegistry.addObject(4094, "gtit:hologram_regression_coil", coil);
+        net.minecraft.item.ItemBlock coilItem = new net.minecraft.item.ItemBlock(coil) {
+
+            @Override
+            public int getMetadata(int damage) {
+                return damage;
+            }
+        };
+        net.minecraft.item.Item.itemRegistry.addObject(4094, "gtit:hologram_regression_coil", coilItem);
+        SimpleAssert
+            .eq(coilItem, net.minecraft.item.Item.getItemFromBlock(coil), "real coil fixture has an item mapping");
+        gregtech.api.GregTechAPI.sBlockCasings5 = coil;
+        try {
+            com.gtnewhorizon.structurelib.structure.IStructureElement<gregtech.api.metatileentity.implementations.MTEMultiBlockBase> element = gregtech.api.util.GTStructureUtility
+                .activeCoils(
+                    gregtech.api.util.GTStructureUtility.ofCoil(
+                        (java.util.function.BiPredicate<gregtech.api.metatileentity.implementations.MTEMultiBlockBase, gregtech.api.enums.HeatingCoilLevel>) (
+                            machine, level) -> {
+                                throw new AssertionError("read-only capture must not call a machine setter");
+                            },
+                        machine -> gregtech.api.enums.HeatingCoilLevel.None));
+            HologramCapture first = captureRealCoil(
+                element,
+                (net.minecraft.world.World) ((EntityPlayerMP) get(session, "player")).worldObj,
+                1);
+            SimpleAssert
+                .eq("coil", first.cells.get(0).family, "real activeCoils wrapper resolves reviewed ofCoil provenance");
+            SimpleAssert.that(
+                first.cells.get(0).candidates.isEmpty(),
+                "production activeCoils candidate path reproduces the missing enumeration");
+            Map<Integer, ItemStack> pins = map(session, "pins");
+            Map<String, ItemStack> actual = map(session, "coordinatePins");
+            pins.clear();
+            actual.clear();
+            int observedSignal = 10; // GT coil meta 9 is LuV, unlike numeric meta ordering.
+            ItemStack observed = new ItemStack(
+                coil,
+                1,
+                gregtech.common.blocks.BlockCasings5
+                    .getMetaFromCoilHeat(gregtech.api.enums.HeatingCoilLevel.getFromTier((byte) (observedSignal - 1))));
+            pins.put(0, observed);
+            actual.put(calibrationPosition(first.cells.get(0)), observed);
+            NBTTagList rows = new NBTTagList();
+            NBTTagCompound row = new NBTTagCompound();
+            row.setString("id", "coil");
+            row.setString("kind", "coil");
+            NBTTagList options = new NBTTagList();
+            for (int signal = 1; signal <= 14; signal++) {
+                NBTTagCompound option = new NBTTagCompound();
+                option.setInteger("value", signal);
+                option.setTag(
+                    "item",
+                    new ItemStack(
+                        coil,
+                        1,
+                        gregtech.common.blocks.BlockCasings5
+                            .getMetaFromCoilHeat(gregtech.api.enums.HeatingCoilLevel.getFromTier((byte) (signal - 1))))
+                                .writeToNBT(new NBTTagCompound()));
+                options.appendTag(option);
+            }
+            row.setTag("options", options);
+            rows.appendTag(row);
+            NBTTagCompound channels = new NBTTagCompound();
+            channels.setInteger("coil", 1);
+            HologramService.calibrateMaterialChannels(first, rows, channels, pins, actual);
+            SimpleAssert.eq(
+                observedSignal,
+                channels.getInteger("coil"),
+                "real coil table infers the installed grade despite empty candidates");
+            SimpleAssert.that(pins.isEmpty() && actual.isEmpty(), "calibrated coils cannot pin the old onsite grade");
+            HologramCapture changed = captureRealCoil(element, ((EntityPlayerMP) get(session, "player")).worldObj, 12);
+            set(session, "capture", changed);
+            set(session, "virtual", false);
+            set(session, "mode", 0);
+            set(session, "scope", 0);
+            set(session, "selected", -1);
+            map(session, "autoTargets").clear();
+            map(session, "frozenAutoTargets").clear();
+            set(session, "allocationsFrozen", false);
+            refresh.invoke(null, session);
+            ItemStack target = HologramServiceEditRegression.<ItemStack>list(session, "planTargets")
+                .get(0);
+            SimpleAssert.eq(
+                gregtech.common.blocks.BlockCasings5
+                    .getMetaFromCoilHeat(gregtech.api.enums.HeatingCoilLevel.getFromTier((byte) 11)),
+                target.getItemDamage(),
+                "new signal reaches native capture and production plan target");
+        } finally {
+            gregtech.api.GregTechAPI.sBlockCasings5 = previous;
+        }
+    }
+
+    private static HologramCapture captureRealCoil(com.gtnewhorizon.structurelib.structure.IStructureElement<?> element,
+        net.minecraft.world.World world, int signal) throws ReflectiveOperationException {
+        ItemStack trigger = new ItemStack(Blocks.stone, signal);
+        HologramCapture capture = new HologramCapture(null, trigger);
+        capture.pieces.add(new HologramCapture.Piece("main", 0, 0, 0, trigger));
+        com.gtnewhorizon.structurelib.structure.IStructureDefinition<Object> definition = com.gtnewhorizon.structurelib.structure.StructureDefinition
+            .<Object>builder()
+            .addShape("main", new String[][] { { "A" } })
+            .addElement('A', (com.gtnewhorizon.structurelib.structure.IStructureElement<Object>) element)
+            .build();
+        Method walk = HologramCapture.class.getDeclaredMethod(
+            "walkPieces",
+            HologramCapture.class,
+            com.gtnewhorizon.structurelib.structure.IStructureDefinition.class,
+            net.minecraft.world.World.class,
+            com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing.class,
+            int.class,
+            int.class,
+            int.class);
+        walk.setAccessible(true);
+        Field activeField = HologramCapture.class.getDeclaredField("ACTIVE");
+        activeField.setAccessible(true);
+        ThreadLocal<HologramCapture> active = (ThreadLocal<HologramCapture>) activeField.get(null);
+        capture.deadline = System.nanoTime() + 100_000_000L;
+        active.set(capture);
+        try {
+            walk.invoke(
+                null,
+                capture,
+                definition,
+                world,
+                com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing.DEFAULT,
+                0,
+                64,
+                0);
+            // This JVM does not install the game's StructureLibAPI hint mixin. Supply that sole
+            // callback with the target returned by the real GT ofCoil implementation.
+            HologramCapture.Cell cell = capture.cells.get(0);
+            ItemStack nativeTarget = element.getBlocksToPlace(null, world, cell.x, cell.y, cell.z, trigger, null)
+                .getStacks()
+                .iterator()
+                .next();
+            capture.current = cell;
+            HologramCapture.hint(
+                world,
+                cell.x,
+                cell.y,
+                cell.z,
+                Block.getBlockFromItem(nativeTarget.getItem()),
+                nativeTarget.getItemDamage());
+            HologramReplacementFamily.Family family = HologramReplacementFamily.resolve(element, cell.block, cell.meta);
+            cell.family = family == null ? "" : family.id;
+            HologramDeclarationCandidates candidates = new HologramDeclarationCandidates();
+            candidates.collect(element, null, world, cell.x, cell.y, cell.z, trigger, null, 0);
+            cell.candidates = candidates.stacks;
+        } finally {
+            active.remove();
+        }
+        SimpleAssert
+            .eq(1, capture.cells.size(), "real native coil element is captured without controller initialization");
+        return capture;
     }
 
     private static void virtualPresetEditingRegression(Object session, HologramCapture capture)

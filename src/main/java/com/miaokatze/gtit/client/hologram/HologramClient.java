@@ -89,6 +89,7 @@ public final class HologramClient {
         if (alt && !shift
             && state != null
             && state.data.getBoolean("virtual")
+            && state.data.getBoolean("virtualPlacement")
             && state.data.getInteger("job") != 4
             && !state.cells.isEmpty()) {
             input.setString("virtualIntent", state.data.getBoolean("virtualLocked") ? "cancel" : "lock");
@@ -267,6 +268,7 @@ public final class HologramClient {
             return;
         }
         if (!worldPreview || state.data.getInteger("job") == 4) return;
+        if (state.data.getBoolean("virtual") && !state.data.getBoolean("virtualPlacement")) return;
         // Avoid stale projection after disconnect/reconnect or travelling away from the target.
         if (state.distanceSquared(mc.thePlayer.posX, mc.thePlayer.posY, mc.thePlayer.posZ) > 4096
             && !(state.data.getBoolean("virtual") && state.data.getBoolean("moving"))) return;

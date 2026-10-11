@@ -76,6 +76,7 @@ public final class HologramService {
             && valid(previous)) {
             previous.open = true;
             previous.settingsOnly = false;
+            dismissPresetBrowse(previous);
             send(previous);
             return;
         }
@@ -100,7 +101,8 @@ public final class HologramService {
             if (player.worldObj.getTotalWorldTime() - previous.openTick <= 2) return;
             previous.open = true;
             previous.settingsOnly = false;
-            if (previous.virtual) presetGuidance(previous, "已打开自定义预设编辑；保存回原预设或另存为后，关闭窗口继续定位与施工。");
+            dismissPresetBrowse(previous);
+            if (previous.virtual) presetGuidance(previous, "已打开自定义预设编辑；纯编辑关闭后需 Alt + 右击启动投影。");
             send(previous);
             return;
         }
@@ -121,6 +123,7 @@ public final class HologramService {
             SESSIONS.put(player.getUniqueID(), s);
         }
         s.settingsOnly = true;
+        dismissPresetBrowse(s);
         s.open = true;
         send(s);
     }
@@ -132,8 +135,21 @@ public final class HologramService {
             send(previous);
             return;
         }
+        if (previous != null && previous.virtual
+            && !previous.virtualPlacement
+            && !previous.cancelled
+            && previous.virtualPreset != null
+            && valid(previous)
+            && (presetId == null || presetId.isEmpty())
+            && previous.virtualPreset.id.equals(selectedPreset(previous))) {
+            if (!beginVirtualPlacement(previous, x, y, z, side)) return;
+            presetGuidance(previous, "当前编辑草稿已启动，投影跟随鼠标：Alt + 右击锁定位置；Shift + 右击打开编辑。");
+            send(previous);
+            return;
+        }
         Session s = new Session(player, x, y, z, false, side);
         s.virtual = true;
+        s.virtualPlacement = true;
         s.open = true;
         SESSIONS.put(player.getUniqueID(), s);
         if (!valid(s) || !player.worldObj.blockExists(x, y, z)) {
@@ -143,21 +159,51 @@ public final class HologramService {
             return;
         }
         if (presetId == null || presetId.isEmpty()) presetId = selectedPreset(s);
-        if (!presetId.isEmpty()) loadPreset(s, presetId);
+        if (!presetId.isEmpty()) loadPreset(s, presetId, false);
         else {
+            s.presetBrowseForPlacement = true;
             s.status = "请先选择服务器保存的自定义预设";
-            presetGuidance(s, "请在设置中选择自定义预设，再 Alt + 右击方块启动投影。");
+            presetGuidance(s, "此次 Alt 已启动预设放置：选择预设后投影跟随鼠标。");
         }
         send(s);
     }
 
     public static void lockVirtual(EntityPlayerMP player, int x, int y, int z, int side) {
         Session s = SESSIONS.get(player.getUniqueID());
-        if (s == null || s.cancelled || !s.virtual || s.virtualPreset == null || !valid(s) || s.job == 1 || s.job == 2)
-            return;
-        if (y < 0 || y >= player.worldObj.getHeight()
+        if (s == null || s.cancelled
+            || !s.virtual
+            || !s.virtualPlacement
+            || s.virtualPreset == null
+            || !valid(s)
+            || s.job == 1
+            || s.job == 2) return;
+        if (!moveVirtual(s, x, y, z, side)) return;
+        s.virtualLocked = true;
+        s.open = false;
+        refreshPlan(s);
+        s.status = "虚拟结构位置已锁定；再次操作后施工";
+        presetGuidance(s, "位置已锁定：Alt + Shift + 右击施工；Shift + 右击编辑；Alt + 右击取消投影。");
+        send(s);
+    }
+
+    /** Rebase the in-memory draft without publishing a temporary lock or discarding edits. */
+    private static boolean beginVirtualPlacement(Session s, int x, int y, int z, int side) {
+        if (!moveVirtual(s, x, y, z, side)) return false;
+        s.virtualPlacement = true;
+        s.virtualLocked = false;
+        s.open = false;
+        s.settingsOnly = false;
+        s.status = "编辑草稿已启动投影；Alt + 右击锁定位置";
+        return true;
+    }
+
+    /** Rebase the in-memory draft without publishing a temporary lock or discarding edits. */
+    private static boolean moveVirtual(Session s, int x, int y, int z, int side) {
+        EntityPlayerMP player = s.player;
+        if (s.capture == null || y < 0
+            || y >= player.worldObj.getHeight()
             || player.getDistanceSq(x + .5, y + .5, z + .5) > 4096
-            || !player.worldObj.blockExists(x, y, z)) return;
+            || !player.worldObj.blockExists(x, y, z)) return false;
         if (s.x != x || s.y != y || s.z != z) {
             int previousX = s.x, previousY = s.y, previousZ = s.z;
             Map<String, ItemStack> targets = new HashMap<>();
@@ -212,12 +258,8 @@ public final class HologramService {
                     if (allowed == direction) s.facingPins.put(key, direction);
             }
         }
-        s.virtualLocked = true;
-        s.open = false;
         refreshPlan(s);
-        s.status = "虚拟结构位置已锁定；再次操作后施工";
-        presetGuidance(s, "位置已锁定：Alt + Shift + 右击施工；Shift + 右击编辑；Alt + 右击取消投影。");
-        send(s);
+        return true;
     }
 
     public static void immediateVirtual(EntityPlayerMP player, int x, int y, int z, int side, String presetId) {
@@ -227,7 +269,7 @@ public final class HologramService {
             send(s);
             return;
         }
-        if (s == null || !s.virtual || s.cancelled || s.virtualPreset == null || !valid(s)) {
+        if (s == null || !s.virtual || !s.virtualPlacement || s.cancelled || s.virtualPreset == null || !valid(s)) {
             openVirtual(player, x, y, z, side, presetId);
             s = SESSIONS.get(player.getUniqueID());
         }
@@ -294,6 +336,11 @@ public final class HologramService {
             savePreset(s, action.getString("name"));
         } else if ("loadPreset".equals(op) && s.job != 1 && s.job != 2) {
             loadPreset(s, action.getString("presetId"));
+        } else if ("choosePlacementPreset".equals(op) && s.job != 1 && s.job != 2 && s.presetBrowseForPlacement) {
+            loadPreset(s, action.getString("presetId"), false);
+        } else if ("dismissPresetBrowse".equals(op)) {
+            dismissPresetBrowse(s);
+            s.open = false;
         } else if ("editPreset".equals(op) && s.job != 1 && s.job != 2) {
             s = editPreset(s, action.getString("presetId"));
         } else if ("updatePreset".equals(op) && s.job != 1 && s.job != 2) {
@@ -305,6 +352,7 @@ public final class HologramService {
         } else if ("lockVirtual".equals(op)) {
             lockVirtual(player, s.x, s.y, s.z, s.side);
         } else if ("close".equals(op)) {
+            dismissPresetBrowse(s);
             s.open = false;
             s.settingsOnly = false;
         } else if (isCellEdit(op) || "editUndo".equals(op) || "editRedo".equals(op)) {
@@ -347,7 +395,8 @@ public final class HologramService {
         } else if ("addPosition".equals(op) && s.job != 1 && s.job != 2) {
             addPosition(s, action);
         } else if ("start".equals(op) && s.job != 1 && s.job != 2) {
-            if (s.virtual && (!s.virtualLocked || s.mode == 2)) s.status = "虚拟预设须锁定位置且不能拆除";
+            if (s.virtual && (!s.virtualPlacement || !s.virtualLocked || s.mode == 2))
+                s.status = "虚拟预设须通过 Alt 启动投影并锁定位置，且不能拆除";
             else if (s.capturePending) s.status = "正在采集完整结构，请等待自动重试回执";
             else if (s.capture == null || s.capture.incomplete) s.status = "该机器无法完整安全采集，请使用原版提示或搭建";
             else if ((s.scope == 2 || s.scope == 3) && (s.selected < 0 || s.selected >= s.capture.cells.size()))
@@ -954,8 +1003,8 @@ public final class HologramService {
     }
 
     private static void directBuild(Session s, boolean rescan) {
-        if (s.virtual && (!s.virtualLocked || s.mode == 2)) {
-            s.status = s.mode == 2 ? "虚拟预设不支持拆除" : "请先锁定虚拟结构位置";
+        if (s.virtual && (!s.virtualPlacement || !s.virtualLocked || s.mode == 2)) {
+            s.status = s.mode == 2 ? "虚拟预设不支持拆除" : !s.virtualPlacement ? "请先关闭编辑，Alt + 右击启动投影并锁定位置" : "请先锁定虚拟结构位置";
             return;
         }
         if (rescan) scan(s);
@@ -2034,6 +2083,10 @@ public final class HologramService {
     }
 
     private static boolean constructionAllowed(Session s) {
+        if (s.virtual && (!s.virtualPlacement || !s.virtualLocked || s.mode == 2)) {
+            s.status = "请通过 Alt 启动投影并锁定位置后施工";
+            return false;
+        }
         if (s.mode == 1 && !replacementStructureBuilt(s)) {
             s.status = "替换需要绑定真实控制器且原结构完整构建，请先补建或重新扫描";
             return false;
@@ -2130,7 +2183,9 @@ public final class HologramService {
             List<Integer> governed = new ArrayList<>();
             for (int i = 0; i < capture.cells.size(); i++) {
                 HologramCapture.Cell cell = capture.cells.get(i);
-                boolean relevant = false;
+                // ofCoil (including activeCoils wrappers) enumerates only the old trigger's tier.
+                // Its source-reviewed replacement family identifies the controlled cells independently.
+                boolean relevant = "coil".equals(kind) && "coil".equals(cell.family);
                 int observed = 0;
                 ItemStack actual = coordinatePins.get(position(cell));
                 for (int o = 0; o < options.tagCount(); o++) {
@@ -2139,7 +2194,7 @@ public final class HologramService {
                     if (sample == null) continue;
                     if (cell.candidates != null)
                         for (ItemStack candidate : cell.candidates) if (same(candidate, sample)) relevant = true;
-                    if (same(actual, sample)) {
+                    if (same(actual, sample) || "coil".equals(kind) && relevant && sameCoilLevel(actual, sample)) {
                         int value = option.getInteger("value");
                         if (observed != 0 && observed != value) invalid = true;
                         observed = value;
@@ -2162,6 +2217,15 @@ public final class HologramService {
                 }
             }
         }
+    }
+
+    private static boolean sameCoilLevel(ItemStack actual, ItemStack sample) {
+        if (actual == null || sample == null) return false;
+        Block installed = Block.getBlockFromItem(actual.getItem());
+        Block option = Block.getBlockFromItem(sample.getItem());
+        if (!(installed instanceof IHeatingCoil) || !(option instanceof IHeatingCoil)) return false;
+        HeatingCoilLevel level = ((IHeatingCoil) installed).getCoilHeat(actual.getItemDamage());
+        return level != HeatingCoilLevel.None && level == ((IHeatingCoil) option).getCoilHeat(sample.getItemDamage());
     }
 
     private static void applySettings(Session s, NBTTagCompound action) {
@@ -2320,7 +2384,7 @@ public final class HologramService {
         loadPreset(s, id, true);
     }
 
-    private static void loadPreset(Session s, String id, boolean guidance) {
+    private static void loadPreset(Session s, String id, boolean selectOnly) {
         try {
             HologramPresets.Preset preset = HologramPresets.get(id);
             if (preset == null) throw new java.io.IOException("预设不存在");
@@ -2330,28 +2394,34 @@ public final class HologramService {
                     GregTechAPI.METATILEENTITIES[preset.controllerId].getClass()
                         .getName() + ":" + preset.controllerId))
                 throw new java.io.IOException("模板控制器身份已失效");
-            if (!s.virtual) {
-                currentTool(s).getTagCompound()
-                    .setString(SELECTED_PRESET, id);
-                s.status = "预设已选定；Alt 点击方块开始虚拟投影";
+            if (selectOnly) {
+                selectPreset(s, id);
                 presetGuidance(s, "自定义预设已选定：Alt + 右击方块启动投影；也可在预设列表中打开编辑。");
                 return;
             }
             s.virtualPreset = preset;
+            s.presetBrowseForPlacement = false;
             s.virtualLocked = false;
             s.cancelled = false;
-            s.open = false;
+            s.open = !s.virtualPlacement;
             s.settingsOnly = false;
             s.mode = 0;
             s.scope = 0;
             currentTool(s).getTagCompound()
                 .setString(SELECTED_PRESET, id);
             populateVirtual(s);
-            s.status = "预设已加载；投影跟随鼠标，锁定位置后施工";
-            if (guidance) presetGuidance(s, "自定义预设已启动，投影跟随鼠标：Alt + 右击锁定位置；Shift + 右击打开编辑。");
+            s.status = s.virtualPlacement ? "预设已加载；投影跟随鼠标，锁定位置后施工" : "预设已加载，仅编辑模板";
+            if (s.virtualPlacement) presetGuidance(s, "自定义预设已启动，投影跟随鼠标：Alt + 右击锁定位置；Shift + 右击打开编辑。");
         } catch (java.io.IOException invalid) {
             s.status = "预设加载失败：" + invalid.getMessage();
         }
+    }
+
+    /** Guidance is emitted only by explicit player actions, never by scan or tick. */
+    private static void selectPreset(Session s, String id) {
+        currentTool(s).getTagCompound()
+            .setString(SELECTED_PRESET, id);
+        s.status = "预设已选定；Alt 点击方块开始虚拟投影";
     }
 
     /** Guidance is emitted only by explicit player actions, never by scan or tick. */
@@ -2385,7 +2455,7 @@ public final class HologramService {
         editing.settingsOnly = false;
         editing.status = "已打开自定义预设编辑；保存回原预设或另存为，仅保存规划，不施工";
         SESSIONS.put(previous.player.getUniqueID(), editing);
-        presetGuidance(editing, "编辑完成后可保存回原预设或另存为；关闭编辑后 Alt + 右击锁定位置，再 Alt + Shift + 右击施工。");
+        presetGuidance(editing, "编辑完成后可保存回原预设或另存为；关闭编辑后 Alt + 右击启动当前草稿投影，再锁定与施工。");
         return editing;
     }
 
@@ -2407,7 +2477,9 @@ public final class HologramService {
             currentTool(s).getTagCompound()
                 .setString(SELECTED_PRESET, preset.id);
             s.status = update ? "自定义预设修改已保存回原预设" : "编辑后的自定义预设已另存为新预设";
-            presetGuidance(s, s.status + "；当前投影仍可继续编辑，施工须先锁定位置。");
+            presetGuidance(
+                s,
+                s.status + (s.virtualPlacement ? "；当前投影仍可继续编辑，施工须先锁定位置。" : "；关闭编辑后 Alt + 右击启动投影，再锁定位置施工。"));
         } catch (java.io.IOException invalid) {
             s.status = "预设保存失败：" + invalid.getMessage();
         }
@@ -3151,6 +3223,15 @@ public final class HologramService {
         return chosen < 0 ? null : options.get(chosen);
     }
 
+    private static boolean virtualMoving(Session s) {
+        return s.virtual && s.virtualPlacement && s.virtualPreset != null && !s.virtualLocked && s.job != 4;
+    }
+
+    private static void dismissPresetBrowse(Session s) {
+        if (s.presetBrowseForPlacement && s.virtualPreset == null) s.virtualPlacement = false;
+        s.presetBrowseForPlacement = false;
+    }
+
     private static void send(Session s) {
         // Partial batches are server-only. Keep the original open intent until a complete snapshot exists.
         if (s.capturePending) return;
@@ -3211,10 +3292,12 @@ public final class HologramService {
         state.setTag("capabilities", s.capabilities == null ? new NBTTagList() : s.capabilities.toNBT());
         state.setBoolean("target", s.target != null || s.virtual && s.capture != null);
         state.setBoolean("virtual", s.virtual);
+        state.setBoolean("virtualPlacement", s.virtualPlacement);
+        state.setBoolean("presetBrowseForPlacement", s.presetBrowseForPlacement);
         state.setBoolean("virtualLocked", s.virtualLocked);
         state.setString("virtualPresetId", s.virtualPreset == null ? "" : s.virtualPreset.id);
         state.setString("virtualPresetName", s.virtualPreset == null ? "" : s.virtualPreset.name);
-        state.setBoolean("moving", s.virtual && !s.virtualLocked && s.job != 4);
+        state.setBoolean("moving", virtualMoving(s));
         state.setBoolean("settingsOnly", s.settingsOnly);
         state.setBoolean("cancelled", s.cancelled);
         state.setString("selectedPresetId", selectedPreset(s));
@@ -3600,7 +3683,8 @@ public final class HologramService {
         Object context;
         int main = 1, facing, mode, scope, layer, selected = -1, job, cursor, completed;
         boolean noHatches, hints, defer, stopTick, mainExplicit;
-        boolean virtual, virtualLocked, settingsOnly, cancelled, calibratePending, buildAfterCapture;
+        boolean virtual, virtualPlacement, presetBrowseForPlacement, virtualLocked, settingsOnly, cancelled,
+            calibratePending, buildAfterCapture;
         HologramPresets.Preset virtualPreset;
         final java.util.Set<String> virtualEdited = new java.util.HashSet<>();
         final Map<String, List<ItemStack>> virtualGroups = new HashMap<>();

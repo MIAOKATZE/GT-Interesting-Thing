@@ -66,6 +66,7 @@ public final class HologramScreen extends GuiScreen {
 
     HologramScreen(HologramState state) {
         this.state = state;
+        libraryDrawer = state.data.getBoolean("presetBrowseForPlacement");
         selected = state.data.hasKey("selected") ? state.data.getInteger("selected") : -1;
         layer = state.maxY;
         sequence = state.data.getLong("uiSequence");
@@ -179,6 +180,7 @@ public final class HologramScreen extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
+        if (state.data.getBoolean("presetBrowseForPlacement")) send("dismissPresetBrowse", null, false);
         editQueue.clear();
         queuedDispatchSequence = -1;
         Keyboard.enableRepeatEvents(false);
@@ -498,7 +500,9 @@ public final class HologramScreen extends GuiScreen {
         button(131, 331, 62, 19, 17, "×", true, mx, my);
         boolean virtual = state.data.getBoolean("virtual");
         text(
-            virtual ? state.data.getBoolean("virtualLocked") ? "虚拟模板已锁定 · 可放置" : "虚拟模板未锁定 · 锁定后才能放置"
+            virtual
+                ? !state.data.getBoolean("virtualPlacement") ? "仅编辑模板 · Alt + 右击启动放置"
+                    : state.data.getBoolean("virtualLocked") ? "虚拟模板已锁定 · 可放置" : "虚拟模板未锁定 · 锁定后才能放置"
                 : state.data.getBoolean("settingsOnly") ? "全局设置 · 当前没有绑定控制器"
                     : state.data.getBoolean("draftRestored") ? "已恢复当前控制器草稿 · 每投影仪保存一份"
                         : state.data.getBoolean("draftAvailable") ? "当前控制器草稿已保存，重新打开可恢复" : "当前控制器规划 · 草稿自动保存到投影仪",
@@ -549,8 +553,11 @@ public final class HologramScreen extends GuiScreen {
             245,
             132,
             17,
-            virtual ? state.data.getBoolean("virtualLocked") ? "虚拟模板已锁定" : "锁定虚拟模板" : "当前控制器草稿",
-            virtual && !state.data.getBoolean("virtualLocked") && editable(),
+            virtual ? !state.data.getBoolean("virtualPlacement") ? "仅编辑模板"
+                : state.data.getBoolean("virtualLocked") ? "虚拟模板已锁定" : "锁定虚拟模板" : "当前控制器草稿",
+            virtual && state.data.getBoolean("virtualPlacement")
+                && !state.data.getBoolean("virtualLocked")
+                && editable(),
             mx,
             my);
         String configError = state.data.getString("presetConfigError");
@@ -615,9 +622,12 @@ public final class HologramScreen extends GuiScreen {
             285,
             87,
             19,
-            state.data.getBoolean("virtual") && !state.data.getBoolean("virtualLocked") ? "先锁定模板"
-                : new String[] { "直接构建", "应用替换", "拆除结构" }[Math.floorMod(state.data.getInteger("mode"), 3)],
-            editable() && (!state.data.getBoolean("virtual") || state.data.getBoolean("virtualLocked"))
+            state.data.getBoolean("virtual") && !state.data.getBoolean("virtualPlacement") ? "Alt 启动放置"
+                : state.data.getBoolean("virtual") && !state.data.getBoolean("virtualLocked") ? "先锁定模板"
+                    : new String[] { "直接构建", "应用替换", "拆除结构" }[Math.floorMod(state.data.getInteger("mode"), 3)],
+            editable()
+                && (!state.data.getBoolean("virtual")
+                    || state.data.getBoolean("virtualPlacement") && state.data.getBoolean("virtualLocked"))
                 && state.data.getBoolean("target")
                 && (state.data.getInteger("scope") < 2 || selectedCell() != null)
                 && (state.data.getInteger("scope") != 3 || selectedCell() != null && !selectedCell().family.isEmpty())
@@ -1196,7 +1206,8 @@ public final class HologramScreen extends GuiScreen {
             editable() && operations > 0
                 && confirmedRevision == revision()
                 && state.data.getInteger("missing") == 0
-                && (!state.data.getBoolean("virtual") || state.data.getBoolean("virtualLocked")),
+                && (!state.data.getBoolean("virtual")
+                    || state.data.getBoolean("virtualPlacement") && state.data.getBoolean("virtualLocked")),
             mx,
             my);
     }
@@ -1523,6 +1534,8 @@ public final class HologramScreen extends GuiScreen {
         if (id == 60 && state.data.getBoolean("virtual")) return "虚拟模板没有控制器原生信道。";
         if (id == 139) return "先在列表中选择要编辑的预设。";
         if (id == 140) return "先载入虚拟预设进行编辑，再更新该原预设。";
+        if ((id == 50 || id == 135) && state.data.getBoolean("virtual") && !state.data.getBoolean("virtualPlacement"))
+            return "仅编辑模板；请关闭编辑后 Alt + 右击启动投影，再锁定位置施工。";
         if (id == 50 && state.data.getBoolean("virtual") && !state.data.getBoolean("virtualLocked"))
             return "请先锁定虚拟模板，再执行放置。";
         if (id == 66) return selectedCell() == null ? "先选择预览格。" : "控制器锚点不能恢复为外壳。";
@@ -1919,6 +1932,7 @@ public final class HologramScreen extends GuiScreen {
             }
             if (libraryDrawer) {
                 libraryDrawer = false;
+                if (state.data.getBoolean("presetBrowseForPlacement")) send("dismissPresetBrowse", null, false);
                 presetNameField.setFocused(false);
                 return;
             }
@@ -1991,8 +2005,11 @@ public final class HologramScreen extends GuiScreen {
                 .getCompoundTagAt(id - 14000);
             NBTTagCompound request = new NBTTagCompound();
             request.setString("presetId", preset.getString("id"));
-            if (state.data.getBoolean("virtual")) libraryDrawer = false;
-            send("loadPreset", request, true);
+            if (state.data.getBoolean("presetBrowseForPlacement")) libraryDrawer = false;
+            send(
+                state.data.getBoolean("presetBrowseForPlacement") ? "choosePlacementPreset" : "loadPreset",
+                request,
+                true);
             return;
         }
         if (id >= 10000) {
@@ -2038,6 +2055,7 @@ public final class HologramScreen extends GuiScreen {
                     .isEmpty()) presetNameField.setText(state.data.getString("virtualPresetName"));
                 break;
             case 131:
+                if (state.data.getBoolean("presetBrowseForPlacement")) send("dismissPresetBrowse", null, false);
                 libraryDrawer = resetReview = false;
                 presetNameField.setFocused(false);
                 break;
@@ -2074,7 +2092,7 @@ public final class HologramScreen extends GuiScreen {
                 presetNameField.setFocused(false);
                 break;
             case 135:
-                if (editable() && state.data.getBoolean("virtual") && !state.data.getBoolean("virtualLocked"))
+                if (editable() && state.data.getBoolean("virtualPlacement") && !state.data.getBoolean("virtualLocked"))
                     send("lockVirtual", null, true);
                 break;
             case 136:
@@ -2301,7 +2319,8 @@ public final class HologramScreen extends GuiScreen {
                 break;
 
             case 50:
-                if (editable() && (!state.data.getBoolean("virtual") || state.data.getBoolean("virtualLocked")))
+                if (editable() && (!state.data.getBoolean("virtual")
+                    || state.data.getBoolean("virtualPlacement") && state.data.getBoolean("virtualLocked")))
                     send("build", configuration(), true);
                 break;
             case 51:
