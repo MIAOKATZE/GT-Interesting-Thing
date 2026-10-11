@@ -794,7 +794,7 @@ public final class HologramService {
             s.status = "模板控制器不能恢复外壳";
             return false;
         }
-        HologramCasingFallback.Target casing = HologramCasingFallback.resolve(cell.element);
+        HologramCasingFallback.Target casing = HologramCasingFallback.resolve(cell.element, elementTrigger(s, cell));
         ItemStack target = casing == null ? null : new ItemStack(casing.block, 1, casing.meta);
         if (s.virtual && s.virtualPreset != null) for (HologramPresets.Cell saved : s.virtualPreset.cells)
             if (saved.x == cell.x - s.x && saved.y == cell.y - s.y && saved.z == cell.z - s.z)
@@ -1202,6 +1202,8 @@ public final class HologramService {
 
     private static boolean explicitGrade(Session s, HologramCapture.Cell c) {
         if (s.mainExplicit) return true;
+        for (String channel : HologramDeclarationWrappers.channels(c.element))
+            if (s.channels.hasKey(channel, 3)) return true;
         if (c.family.equals("coil")) return s.channels.hasKey("coil", 3);
         if (c.family.startsWith("glass:")) return s.channels.hasKey("glass", 3);
         return c.family.startsWith("tiered:")
@@ -2331,7 +2333,8 @@ public final class HologramService {
                 preset.cells.add(saved);
                 addPalette(preset, palette, target);
                 if (!cell.anchor) {
-                    HologramCasingFallback.Target casing = HologramCasingFallback.resolve(cell.element);
+                    HologramCasingFallback.Target casing = HologramCasingFallback
+                        .resolve(cell.element, elementTrigger(s, cell));
                     ItemStack shell = casing == null ? null : new ItemStack(casing.block, 1, casing.meta);
                     if (shell == null && !cell.unknown
                         && !"hatch".equals(cell.role)
@@ -3029,7 +3032,7 @@ public final class HologramService {
         gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(stack);
         for (IStructureElement<?> part : HologramElementCatalog.parts(c.element))
             for (gregtech.api.interfaces.IHatchElement<?> type : HologramHatchPolicy.declared(part))
-                if (type.matchesHatch(prototype)) return type.getDisplayName();
+                if (HologramHatchPolicy.matchesHatch(type, prototype)) return type.getDisplayName();
         return "仓室";
     }
 
@@ -3151,8 +3154,8 @@ public final class HologramService {
                 reserved.merge(stackKey(stack), 1, Integer::sum);
             gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = ItemMachines.getMetaTileEntity(stack);
             for (Map.Entry<String, gregtech.api.interfaces.IHatchElement<?>> type : types.entrySet())
-                if (type.getValue()
-                    .matchesHatch(prototype)) quotas.computeIfPresent(type.getKey(), (key, n) -> Math.max(0, n - 1));
+                if (HologramHatchPolicy.matchesHatch(type.getValue(), prototype))
+                    quotas.computeIfPresent(type.getKey(), (key, n) -> Math.max(0, n - 1));
         }
         List<String> ordered = new ArrayList<>(types.keySet());
         ordered.sort((a, b) -> Integer.compare(presetPositions(s, types.get(a)), presetPositions(s, types.get(b))));
@@ -3166,7 +3169,8 @@ public final class HologramService {
                 if (!presetPosition(s, c, i, type)) continue;
                 List<ItemStack> options = new ArrayList<>();
                 for (ItemStack option : candidates(s, c)) if (hatchTier(option) != Integer.MAX_VALUE
-                    && type.matchesHatch(ItemMachines.getMetaTileEntity(option))) options.add(option);
+                    && HologramHatchPolicy.matchesHatch(type, ItemMachines.getMetaTileEntity(option)))
+                    options.add(option);
                 ItemStack pick = presetCandidate(s, options, reserved);
                 if (pick == null) continue;
                 if (chosen == null || hatchTier(pick) > hatchTier(chosen)) {

@@ -33,6 +33,7 @@ public final class HologramSmokeTest {
     private int ticks, assertions;
 
     public static void registerIfEnabled() {
+        HologramCompatibilitySmoke.registerIfEnabled();
         if (Boolean.getBoolean("gtit.hologram.smoketest")) FMLCommonHandler.instance()
             .bus()
             .register(new HologramSmokeTest());

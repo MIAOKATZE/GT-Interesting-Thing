@@ -65,9 +65,13 @@ public final class HologramRegressionTest {
         cases.put(
             "unknown_declarations_remain_partial_without_running_machine_callbacks",
             HologramRegressionTest::unknownDeclaration);
+        cases.put("native_channel_casing_and_batch_compatibility", HologramCompatibilityRegression::run);
+        cases.put("channel_wrapped_declarations_are_expanded", HologramRegressionTest::wrappedDeclarations);
         cases.put("clipboard_edits_preserve_automatic_source_and_other_cells", HologramServiceEditRegression::run);
         cases.put("preset_updates_keep_identity_and_persist_atomically", HologramPresetPersistenceRegression::run);
         cases.put("rotation_cycles_all_six_legal_fronts", HologramRegressionTest::faceRotation);
+        cases.put("hatch_direction_policy_keeps_built_snapshot", HologramRegressionTest::hatchDirectionSnapshot);
+        cases.put("hatch_matching_preserves_override_and_legacy_class_rules", HologramRegressionTest::hatchMatching);
         cases.put("large_snapshots_are_atomic_ordered_and_bounded", HologramSnapshotAssemblyRegression::run);
         cases.put("incremental_capture_and_large_drafts_keep_editor_state", HologramLargeStructureRegression::run);
         cases.put("large_snapshot_codec_rejects_hostile_lengths", HologramSnapshotCodecRegression::run);
@@ -81,6 +85,79 @@ public final class HologramRegressionTest {
             "nei_trade_pages_preserve_all_exchange_slots",
             () -> com.miaokatze.gtit.client.nei.NekoTradePagesTest.main(new String[0]));
         TestRunner.run(HologramRegressionTest.class, cases);
+    }
+
+    private static void hatchMatching() {
+        gregtech.api.interfaces.metatileentity.IMetaTileEntity tile;
+        try {
+            java.lang.reflect.Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+            tile = (gregtech.api.interfaces.metatileentity.IMetaTileEntity) ((sun.misc.Unsafe) field.get(null))
+                .allocateInstance(gregtech.api.metatileentity.implementations.MTEHatchInput.class);
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("cannot create hatch class fixture", failure);
+        }
+        var rejection = new gregtech.api.interfaces.IHatchElement<Object>() {
+
+            public java.util.List<Class<? extends gregtech.api.interfaces.metatileentity.IMetaTileEntity>> mteClasses() {
+                return java.util.Collections
+                    .singletonList(gregtech.api.interfaces.metatileentity.IMetaTileEntity.class);
+            }
+
+            public gregtech.api.util.IGTHatchAdder<Object> adder() {
+                return null;
+            }
+
+            public String name() {
+                return "test";
+            }
+
+            public long count(Object context) {
+                return 0;
+            }
+
+            public boolean matchesHatch(gregtech.api.interfaces.metatileentity.IMetaTileEntity candidate) {
+                if (candidate == null) throw new IllegalArgumentException("delegate failure");
+                return false;
+            }
+        };
+        SimpleAssert.that(!HologramHatchPolicy.matchesHatch(rejection, tile), "custom rejection overrides class match");
+        SimpleAssert
+            .that(HologramHatchPolicy.legacyMatchesHatch(rejection, tile), "legacy rule accepts declared class");
+        SimpleAssert.that(!HologramHatchPolicy.legacyMatchesHatch(rejection, null), "legacy rule rejects absent tile");
+        SimpleAssert.that(
+            !HologramHatchPolicy.legacyMatchesHatch(
+                rejection.withMteClass(gregtech.api.metatileentity.implementations.MTEHatchOutput.class),
+                tile),
+            "legacy rule rejects undeclared tile class");
+        try {
+            HologramHatchPolicy.matchesHatch(rejection, null);
+            throw new AssertionError("delegate failure must propagate");
+        } catch (IllegalArgumentException expected) {
+            SimpleAssert.eq("delegate failure", expected.getMessage(), "failure cannot fall back to class matching");
+        }
+    }
+
+    private static void hatchDirectionSnapshot() {
+        var element = com.gtnewhorizon.structurelib.structure.StructureUtility
+            .ofBlock(net.minecraft.init.Blocks.stone, 0);
+        var facing = com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing.DEFAULT;
+        var excluded = java.util.EnumSet.of(net.minecraftforge.common.util.ForgeDirection.NORTH);
+        HologramHatchPolicy.directions(element, excluded);
+        excluded.clear();
+        excluded.add(net.minecraftforge.common.util.ForgeDirection.SOUTH);
+        SimpleAssert.that(
+            !HologramHatchPolicy.allowed(
+                element,
+                facing,
+                facing.getWorldDirection(net.minecraftforge.common.util.ForgeDirection.NORTH)),
+            "built hatch retains the original forbidden direction after builder mutation");
+        SimpleAssert.that(
+            HologramHatchPolicy.allowed(
+                element,
+                facing,
+                facing.getWorldDirection(net.minecraftforge.common.util.ForgeDirection.SOUTH)),
+            "later builder exclusions do not alter the built hatch");
     }
 
     private static void faceRotation() {
@@ -131,6 +208,20 @@ public final class HologramRegressionTest {
         tiers.collect(tiered, null, null, 0, 0, 0, new ItemStack(Items.feather), null, 0);
         SimpleAssert.eq(3, tiers.stacks.size(), "lists all declared tiers despite one selected signal");
         SimpleAssert.that(!tiers.complete, "tier hints do not prove arbitrary acceptance is exhaustive");
+    }
+
+    private static void wrappedDeclarations() {
+        com.gtnewhorizon.structurelib.structure.IStructureElement<Object> element = com.gtnewhorizon.structurelib.structure.StructureUtility
+            .withChannel(
+                "unit_casing",
+                com.gtnewhorizon.structurelib.structure.StructureUtility.onElementPass(
+                    value -> { throw new AssertionError("must not update controller"); },
+                    com.gtnewhorizon.structurelib.structure.StructureUtility
+                        .ofBlock(net.minecraft.init.Blocks.stone, 0)));
+        HologramDeclarationCandidates declaration = new HologramDeclarationCandidates();
+        declaration.collect(element, null, null, 0, 0, 0, new ItemStack(Items.feather), null, 0);
+        SimpleAssert.eq(1, declaration.stacks.size(), "native channel wrapper exposes backing declaration");
+        SimpleAssert.that(declaration.complete, "reviewed wrapper preserves completeness");
     }
 
     private static void unknownDeclaration() {
