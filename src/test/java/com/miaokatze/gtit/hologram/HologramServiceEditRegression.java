@@ -421,8 +421,8 @@ final class HologramServiceEditRegression {
             SimpleAssert
                 .eq("coil", first.cells.get(0).family, "real activeCoils wrapper resolves reviewed ofCoil provenance");
             SimpleAssert.that(
-                first.cells.get(0).candidates.isEmpty(),
-                "production activeCoils candidate path reproduces the missing enumeration");
+                !first.cells.get(0).candidates.isEmpty(),
+                "production activeCoils candidate path enumerates the selected coil");
             Map<Integer, ItemStack> pins = map(session, "pins");
             Map<String, ItemStack> actual = map(session, "coordinatePins");
             pins.clear();

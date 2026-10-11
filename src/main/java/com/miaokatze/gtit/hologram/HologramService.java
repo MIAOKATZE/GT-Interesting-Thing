@@ -794,7 +794,7 @@ public final class HologramService {
             s.status = "模板控制器不能恢复外壳";
             return false;
         }
-        HologramCasingFallback.Target casing = HologramCasingFallback.resolve(cell.element);
+        HologramCasingFallback.Target casing = HologramCasingFallback.resolve(cell.element, elementTrigger(s, cell));
         ItemStack target = casing == null ? null : new ItemStack(casing.block, 1, casing.meta);
         if (s.virtual && s.virtualPreset != null) for (HologramPresets.Cell saved : s.virtualPreset.cells)
             if (saved.x == cell.x - s.x && saved.y == cell.y - s.y && saved.z == cell.z - s.z)
@@ -1202,6 +1202,8 @@ public final class HologramService {
 
     private static boolean explicitGrade(Session s, HologramCapture.Cell c) {
         if (s.mainExplicit) return true;
+        for (String channel : HologramDeclarationWrappers.channels(c.element))
+            if (s.channels.hasKey(channel, 3)) return true;
         if (c.family.equals("coil")) return s.channels.hasKey("coil", 3);
         if (c.family.startsWith("glass:")) return s.channels.hasKey("glass", 3);
         return c.family.startsWith("tiered:")
@@ -2331,7 +2333,8 @@ public final class HologramService {
                 preset.cells.add(saved);
                 addPalette(preset, palette, target);
                 if (!cell.anchor) {
-                    HologramCasingFallback.Target casing = HologramCasingFallback.resolve(cell.element);
+                    HologramCasingFallback.Target casing = HologramCasingFallback
+                        .resolve(cell.element, elementTrigger(s, cell));
                     ItemStack shell = casing == null ? null : new ItemStack(casing.block, 1, casing.meta);
                     if (shell == null && !cell.unknown
                         && !"hatch".equals(cell.role)

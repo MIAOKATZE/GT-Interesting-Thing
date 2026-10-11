@@ -4,8 +4,12 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.IdentityHashMap;
+import java.util.List;
 
 import net.minecraft.block.Block;
+import net.minecraft.item.ItemStack;
+
+import org.apache.commons.lang3.tuple.Pair;
 
 import com.gtnewhorizon.structurelib.structure.IStructureElement;
 import com.gtnewhorizon.structurelib.structure.IStructureElementChain;
@@ -17,15 +21,16 @@ final class HologramCasingFallback {
     private HologramCasingFallback() {}
 
     static Target resolve(IStructureElement<?> element) {
+        return resolve(element, null);
+    }
+
+    static Target resolve(IStructureElement<?> element, ItemStack trigger) {
         Search search = new Search();
-        search.visit(element, 0);
+        search.visit(element, trigger, 0);
         Target target = search.target;
         if (search.ambiguous || target == null
             || target.meta < 0
             || target.meta > 15
-            || !target.block.getClass()
-                .getName()
-                .startsWith("gregtech.common.blocks.BlockCasings")
             || target.block.hasTileEntity(target.meta)) return null;
         return target;
     }
@@ -47,7 +52,7 @@ final class HologramCasingFallback {
         Target target;
         boolean ambiguous;
 
-        void visit(IStructureElement<?> element, int depth) {
+        void visit(IStructureElement<?> element, ItemStack trigger, int depth) {
             if (element == null || ambiguous || seen.containsKey(element)) return;
             if (depth > 12 || seen.size() >= 128) {
                 ambiguous = true;
@@ -81,23 +86,45 @@ final class HologramCasingFallback {
                     else if (target.block != accepted || target.meta != acceptedMeta) ambiguous = true;
                     return;
                 }
+                IStructureElement<?> backing = HologramDeclarationWrappers.backing(element);
+                if (backing != null) {
+                    visit(backing, HologramDeclarationWrappers.trigger(element, trigger), depth + 1);
+                    return;
+                }
+                if (enclosing != null && enclosing.getDeclaringClass() == StructureUtility.class
+                    && "ofBlocksTiered".equals(enclosing.getName())) {
+                    Object raw = HologramDeclarationWrappers.captured(element, "val$hints");
+                    if (trigger == null || !(raw instanceof List)
+                        || ((List<?>) raw).isEmpty()
+                        || ((List<?>) raw).size() > 128) {
+                        ambiguous = true;
+                        return;
+                    }
+                    List<?> hints = (List<?>) raw;
+                    Object selected = hints.get(Math.min(Math.max(trigger.stackSize, 1), hints.size()) - 1);
+                    if (!(selected instanceof Pair)) {
+                        ambiguous = true;
+                        return;
+                    }
+                    Pair<?, ?> pair = (Pair<?, ?>) selected;
+                    if (!(pair.getLeft() instanceof Block) || !(pair.getRight() instanceof Integer)) {
+                        ambiguous = true;
+                        return;
+                    }
+                    Target selectedTarget = new Target((Block) pair.getLeft(), (Integer) pair.getRight());
+                    if (target == null) target = selectedTarget;
+                    else if (target.block != selectedTarget.block || target.meta != selectedTarget.meta)
+                        ambiguous = true;
+                    return;
+                }
                 if (element instanceof IStructureElementChain) {
                     IStructureElement<?>[] fallbacks = ((IStructureElementChain<?>) element).fallbacks();
                     if (fallbacks == null || fallbacks.length > 64) {
                         ambiguous = true;
                         return;
                     }
-                    for (IStructureElement<?> fallback : fallbacks) visit(fallback, depth + 1);
+                    for (IStructureElement<?> fallback : fallbacks) visit(fallback, trigger, depth + 1);
                     return;
-                }
-                String name = type.getName();
-                if (!name.startsWith("com.gtnewhorizon.structurelib.structure.")
-                    && !name.startsWith("gregtech.api.util.")) return;
-                for (Field field : type.getDeclaredFields()) {
-                    if (Modifier.isStatic(field.getModifiers())
-                        || !IStructureElement.class.isAssignableFrom(field.getType())) continue;
-                    field.setAccessible(true);
-                    visit((IStructureElement<?>) field.get(element), depth + 1);
                 }
             } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
                 ambiguous = true;

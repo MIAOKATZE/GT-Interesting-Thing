@@ -2,9 +2,11 @@ package com.miaokatze.gtit.hologram;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.minecraft.block.Block;
 import net.minecraft.init.Blocks;
@@ -43,9 +45,10 @@ public final class HologramCapture {
     final List<Piece> pieces = new ArrayList<>();
     final List<Cell> cells = new ArrayList<>();
     final Map<String, Cell> positions = new HashMap<>();
-    final IdentityHashMap<IStructureElement<?>, HologramCasingFallback.Target> casingCache = new IdentityHashMap<>();
+    final IdentityHashMap<IStructureElement<?>, Map<String, HologramCasingFallback.Target>> casingCache = new IdentityHashMap<>();
     final IdentityHashMap<IStructureElement<?>, HologramReplacementFamily.Family> familyCache = new IdentityHashMap<>();
     final IdentityHashMap<IStructureElement<?>, String> roleCache = new IdentityHashMap<>();
+    final IdentityHashMap<IStructureElement<?>, Set<String>> declarationTrace = new IdentityHashMap<>();
     boolean incomplete;
     String failure = "";
     final long started = System.nanoTime();
@@ -161,7 +164,7 @@ public final class HologramCapture {
             if (previous == null) ACTIVE.remove();
             else ACTIVE.set(previous);
             HologramChannelTrace.Report report = HologramChannelTrace.end(scope);
-            if (capture.channelReport == null) capture.channelReport = report;
+            capture.channelReport = HologramChannelTrace.merge(capture.channelReport, report);
         }
         if (capture.pending) return capture;
         capture.addAnchor(machine);
@@ -211,12 +214,18 @@ public final class HologramCapture {
                     capture.positions.put(position, cell);
                     capture.current = cell;
                     try {
+                        String signalKey = piece.trigger.stackSize + ":" + piece.trigger.getTagCompound();
+                        boolean observeDeclaration = capture.declarationTrace
+                            .computeIfAbsent(element, ignored -> new HashSet<>())
+                            .add(signalKey);
+                        if (observeDeclaration) HologramDeclarationWrappers.observeChannels(element, piece.trigger);
                         if (element == StructureUtility.isAir()) {
                             cell.block = Blocks.air;
                             cell.meta = 0;
                         } else element.spawnHint(capture.context, w, xx, yy, zz, piece.trigger);
+                        if (observeDeclaration) HologramDeclarationWrappers.observeMaterials(element);
                         if (cell.block == StructureLibAPI.getBlockHint()) {
-                            HologramCasingFallback.Target casing = capture.casing(element);
+                            HologramCasingFallback.Target casing = capture.casing(element, piece.trigger);
                             if (casing == null) cell.unknown = true;
                             else {
                                 cell.block = casing.block;
@@ -319,9 +328,12 @@ public final class HologramCapture {
         cells.add(anchor);
     }
 
-    private HologramCasingFallback.Target casing(IStructureElement<?> element) {
-        if (!casingCache.containsKey(element)) casingCache.put(element, HologramCasingFallback.resolve(element));
-        return casingCache.get(element);
+    private HologramCasingFallback.Target casing(IStructureElement<?> element, ItemStack trigger) {
+        Map<String, HologramCasingFallback.Target> signals = casingCache
+            .computeIfAbsent(element, ignored -> new HashMap<>());
+        String signal = trigger == null ? "" : trigger.stackSize + ":" + trigger.getTagCompound();
+        if (!signals.containsKey(signal)) signals.put(signal, HologramCasingFallback.resolve(element, trigger));
+        return signals.get(signal);
     }
 
     static final class Piece {

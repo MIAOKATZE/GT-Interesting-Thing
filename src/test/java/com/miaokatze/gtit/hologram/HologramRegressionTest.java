@@ -65,6 +65,8 @@ public final class HologramRegressionTest {
         cases.put(
             "unknown_declarations_remain_partial_without_running_machine_callbacks",
             HologramRegressionTest::unknownDeclaration);
+        cases.put("native_channel_casing_and_batch_compatibility", HologramCompatibilityRegression::run);
+        cases.put("channel_wrapped_declarations_are_expanded", HologramRegressionTest::wrappedDeclarations);
         cases.put("clipboard_edits_preserve_automatic_source_and_other_cells", HologramServiceEditRegression::run);
         cases.put("preset_updates_keep_identity_and_persist_atomically", HologramPresetPersistenceRegression::run);
         cases.put("rotation_cycles_all_six_legal_fronts", HologramRegressionTest::faceRotation);
@@ -131,6 +133,20 @@ public final class HologramRegressionTest {
         tiers.collect(tiered, null, null, 0, 0, 0, new ItemStack(Items.feather), null, 0);
         SimpleAssert.eq(3, tiers.stacks.size(), "lists all declared tiers despite one selected signal");
         SimpleAssert.that(!tiers.complete, "tier hints do not prove arbitrary acceptance is exhaustive");
+    }
+
+    private static void wrappedDeclarations() {
+        com.gtnewhorizon.structurelib.structure.IStructureElement<Object> element = com.gtnewhorizon.structurelib.structure.StructureUtility
+            .withChannel(
+                "unit_casing",
+                com.gtnewhorizon.structurelib.structure.StructureUtility.onElementPass(
+                    value -> { throw new AssertionError("must not update controller"); },
+                    com.gtnewhorizon.structurelib.structure.StructureUtility
+                        .ofBlock(net.minecraft.init.Blocks.stone, 0)));
+        HologramDeclarationCandidates declaration = new HologramDeclarationCandidates();
+        declaration.collect(element, null, null, 0, 0, 0, new ItemStack(Items.feather), null, 0);
+        SimpleAssert.eq(1, declaration.stacks.size(), "native channel wrapper exposes backing declaration");
+        SimpleAssert.that(declaration.complete, "reviewed wrapper preserves completeness");
     }
 
     private static void unknownDeclaration() {

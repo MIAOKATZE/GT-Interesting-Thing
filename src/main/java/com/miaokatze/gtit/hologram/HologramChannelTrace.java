@@ -1,7 +1,9 @@
 package com.miaokatze.gtit.hologram;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -38,6 +40,8 @@ public final class HologramChannelTrace {
         NBTTagCompound channels = stack.hasTagCompound() ? stack.getTagCompound()
             .getCompoundTag("channels") : null;
         boolean explicit = channels != null && channels.hasKey(id, 3);
+        // Presence is an observation of the key, not an integer channel value.
+        if (operation == 4) effective = explicit ? channels.getInteger(id) : stack.stackSize;
         scope.values.put(id, new Observation(id, effective, explicit, (old == null ? 0 : old.operations) | operation));
     }
 
@@ -50,12 +54,41 @@ public final class HologramChannelTrace {
         return true;
     }
 
+    static void declareMaterials(String id, List<ItemStack> stacks) {
+        Scope scope = ACTIVE.get();
+        if (scope == null || !validId(id) || stacks.isEmpty()) return;
+        List<ItemStack> copy = new ArrayList<>();
+        for (ItemStack stack : stacks) copy.add(stack.copy());
+        scope.materials.put(id, Collections.unmodifiableList(copy));
+    }
+
+    static Report merge(Report previous, Report latest) {
+        if (previous == null) return latest;
+        if (latest == null) return previous;
+        if (previous.context != latest.context) throw new IllegalArgumentException("channel report context mismatch");
+        Map<String, Observation> merged = new LinkedHashMap<>(previous.observations);
+        for (Observation observation : latest.observations.values()) {
+            Observation old = merged.get(observation.id);
+            merged.put(
+                observation.id,
+                new Observation(
+                    observation.id,
+                    observation.effective,
+                    observation.explicit,
+                    observation.operations | (old == null ? 0 : old.operations)));
+        }
+        Map<String, List<ItemStack>> materials = new LinkedHashMap<>(previous.materials);
+        materials.putAll(latest.materials);
+        return new Report(latest.context, latest.generation, merged, materials);
+    }
+
     public static final class Scope {
 
         private final Scope previous;
         private final Object context;
         private final long generation = GENERATIONS.incrementAndGet();
         private final Map<String, Observation> values = new LinkedHashMap<>();
+        private final Map<String, List<ItemStack>> materials = new LinkedHashMap<>();
 
         private Scope(Object context, Scope previous) {
             this.context = context;
@@ -68,11 +101,18 @@ public final class HologramChannelTrace {
         public final Object context;
         public final long generation;
         public final Map<String, Observation> observations;
+        final Map<String, List<ItemStack>> materials;
 
         private Report(Scope scope) {
-            context = scope.context;
-            generation = scope.generation;
-            observations = Collections.unmodifiableMap(new LinkedHashMap<>(scope.values));
+            this(scope.context, scope.generation, scope.values, scope.materials);
+        }
+
+        private Report(Object context, long generation, Map<String, Observation> values,
+            Map<String, List<ItemStack>> materials) {
+            this.context = context;
+            this.generation = generation;
+            observations = Collections.unmodifiableMap(new LinkedHashMap<>(values));
+            this.materials = Collections.unmodifiableMap(new LinkedHashMap<>(materials));
         }
     }
 

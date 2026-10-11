@@ -55,7 +55,7 @@ final class HologramReplacementFamily {
             List<?> raw = (List<?>) field.get(part);
             if (raw == null || raw.isEmpty() || raw.size() > 256) return null;
             List<Pair<Block, Integer>> states = new ArrayList<>();
-            boolean casings = true, glasses = true, frames = true;
+            boolean glasses = true, frames = true;
             StringBuilder identity = new StringBuilder();
             for (Object value : raw) {
                 if (!(value instanceof Pair)) return null;
@@ -68,9 +68,6 @@ final class HologramReplacementFamily {
                     if (meta > 0xFFF) return null;
                 } else if (meta > 15) return null;
                 frames &= block instanceof BlockFrameBox;
-                casings &= block.getClass()
-                    .getName()
-                    .startsWith("gregtech.common.blocks.BlockCasings");
                 if (block instanceof BlockFrameBox) glasses = false;
                 else glasses &= GlassTier.getGlassBlockTier(block, meta) != null;
                 states.add(Pair.of(block, meta));
@@ -79,7 +76,6 @@ final class HologramReplacementFamily {
                     .append(meta)
                     .append(';');
             }
-            if (!casings && !glasses && !frames) return null;
             return new Family((frames ? "frame:" : glasses ? "glass:" : "tiered:") + identity, states, false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
