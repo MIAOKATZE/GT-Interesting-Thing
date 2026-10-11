@@ -115,27 +115,65 @@ final class HologramPresets {
     }
 
     static Preset get(String id) throws IOException {
-        for (Preset preset : all()) if (preset.id.equals(id)) return preset;
+        for (Preset preset : all()) if (preset.id.equals(id)) return copy(preset);
         return null;
     }
 
     static synchronized void save(Preset preset) throws IOException {
         List<Preset> list = all();
-        if (list.size() >= 32) throw new IOException("最多保存32个模板");
-        preset.id = UUID.randomUUID()
-            .toString();
-        validate(preset);
-        list.add(preset);
+        Preset saved = put(list, preset, false);
+        validate(saved);
+        write(FILE, list);
+        preset.id = saved.id;
+    }
+
+    static synchronized void update(Preset preset) throws IOException {
+        List<Preset> list = all();
+        Preset updated = put(list, preset, true);
+        validate(updated);
+        write(FILE, list);
+    }
+
+    private static Preset put(List<Preset> list, Preset preset, boolean update) throws IOException {
+        if (preset == null) throw new IOException("模板无效");
+        Preset result = copy(preset);
+        if (update) {
+            int index = indexOf(list, result.id);
+            if (index < 0) throw new IOException("要更新的模板不存在");
+            list.set(index, result);
+        } else {
+            if (list.size() >= 32) throw new IOException("最多保存32个模板");
+            result.id = UUID.randomUUID()
+                .toString();
+            list.add(result);
+        }
+        return result;
+    }
+
+    private static int indexOf(List<Preset> list, String id) {
+        for (int i = 0; i < list.size(); i++) if (list.get(i).id.equals(id)) return i;
+        return -1;
+    }
+
+    private static Preset copy(Preset preset) {
+        return GSON.fromJson(GSON.toJson(preset), Preset.class);
+    }
+
+    private static void write(Path file, List<Preset> list) throws IOException {
         FileData data = new FileData();
         data.presets = list;
         byte[] bytes = GSON.toJson(data)
             .getBytes(StandardCharsets.UTF_8);
         if (bytes.length > 8 * 1024 * 1024) throw new IOException("模板配置超过8MiB上限");
-        Files.createDirectories(FILE.getParent());
-        Path temp = FILE.resolveSibling("hologram-presets.json.tmp");
-        Files.write(temp, bytes);
-        Files.move(temp, FILE, StandardCopyOption.REPLACE_EXISTING);
-        cached = list;
+        Files.createDirectories(file.getParent());
+        Path temp = Files.createTempFile(file.getParent(), "hologram-presets-", ".tmp");
+        try {
+            Files.write(temp, bytes);
+            Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            cached = new ArrayList<>(list);
+        } finally {
+            Files.deleteIfExists(temp);
+        }
     }
 
     static NBTTagList labels() throws IOException {

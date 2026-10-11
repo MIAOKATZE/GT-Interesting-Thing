@@ -21,6 +21,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.ChatComponentText;
 import net.minecraft.world.World;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.BlockSnapshot;
@@ -99,6 +100,7 @@ public final class HologramService {
             if (player.worldObj.getTotalWorldTime() - previous.openTick <= 2) return;
             previous.open = true;
             previous.settingsOnly = false;
+            if (previous.virtual) presetGuidance(previous, "已打开自定义预设编辑；保存回原预设或另存为后，关闭窗口继续定位与施工。");
             send(previous);
             return;
         }
@@ -142,7 +144,10 @@ public final class HologramService {
         }
         if (presetId == null || presetId.isEmpty()) presetId = selectedPreset(s);
         if (!presetId.isEmpty()) loadPreset(s, presetId);
-        else s.status = "请先选择服务器保存的自定义预设";
+        else {
+            s.status = "请先选择服务器保存的自定义预设";
+            presetGuidance(s, "请在设置中选择自定义预设，再 Alt + 右击方块启动投影。");
+        }
         send(s);
     }
 
@@ -211,6 +216,7 @@ public final class HologramService {
         s.open = false;
         refreshPlan(s);
         s.status = "虚拟结构位置已锁定；再次操作后施工";
+        presetGuidance(s, "位置已锁定：Alt + Shift + 右击施工；Shift + 右击编辑；Alt + 右击取消投影。");
         send(s);
     }
 
@@ -229,6 +235,7 @@ public final class HologramService {
         if (!s.virtualLocked) lockVirtual(player, x, y, z, side);
         if (!s.virtualLocked) return;
         directBuild(s);
+        presetGuidance(s, s.status + "；Shift + 右击打开编辑，Alt + 右击取消剩余施工与投影。");
         send(s);
     }
 
@@ -242,6 +249,7 @@ public final class HologramService {
         cancelCaptureRetry(s);
         clearPending(s);
         s.status = "已取消未执行的施工；已施工世界保留";
+        if (s.virtual) presetGuidance(s, "投影已取消，已施工方块保留；Alt + 右击方块重新启动所选自定义预设。");
         send(s);
     }
 
@@ -286,6 +294,10 @@ public final class HologramService {
             savePreset(s, action.getString("name"));
         } else if ("loadPreset".equals(op) && s.job != 1 && s.job != 2) {
             loadPreset(s, action.getString("presetId"));
+        } else if ("editPreset".equals(op) && s.job != 1 && s.job != 2) {
+            s = editPreset(s, action.getString("presetId"));
+        } else if ("updatePreset".equals(op) && s.job != 1 && s.job != 2) {
+            saveVirtualPreset(s, action.getString("name"), true);
         } else if ("resetDraft".equals(op) && s.job != 1 && s.job != 2) {
             resetDraft(s);
         } else if ("calibrateCurrent".equals(op) && s.job != 1 && s.job != 2) {
@@ -2097,17 +2109,17 @@ public final class HologramService {
                     if (legal == facing) s.facingPins.put(position(cell), facing);
             }
         }
-        calibrateMaterialChannels(s);
-        s.capabilities = HologramCapabilities.describe(s.context, trigger(s), s.capture.channelReport)
-            .withSavedChannels(s.channels);
-        refreshPlan(s);
-        s.status = "已校准已装合法目标与朝向；结构尺寸信号保留当前值，现场与库存保持现状";
+        calibrateMaterialChannels(s.capture, s.capabilities.toNBT(), s.channels, s.pins, s.coordinatePins);
+        // Reconstruct with the inferred signals; otherwise the captured default block still reflects the old trigger.
+        scan(s);
+        s.status = s.capturePending ? "现场材质信道已识别，正在重新采集校准后的结构"
+            : s.capture.incomplete ? "现场材质已识别，但重新采集不完整，高级施工已阻止"
+                : "已校准现场材质信道与独立仓室；" + (s.machine instanceof MTEForgeOfGods ? "环数已按原机识别" : "无法可靠反推的主信号、尺寸及原始信道保留当前值");
     }
 
     /** Only uniform, source-reviewed material options can establish a reliable named signal. */
-    private static void calibrateMaterialChannels(Session s) {
-        if (s.capabilities == null) return;
-        NBTTagList rows = s.capabilities.toNBT();
+    static void calibrateMaterialChannels(HologramCapture capture, NBTTagList rows, NBTTagCompound channels,
+        Map<Integer, ItemStack> pins, Map<String, ItemStack> coordinatePins) {
         for (int r = 0; r < rows.tagCount(); r++) {
             NBTTagCompound row = rows.getCompoundTagAt(r);
             String kind = row.getString("kind");
@@ -2115,26 +2127,40 @@ public final class HologramService {
             NBTTagList options = row.getTagList("options", 10);
             int uniform = 0;
             boolean invalid = false;
-            for (HologramCapture.Cell cell : s.capture.cells) {
+            List<Integer> governed = new ArrayList<>();
+            for (int i = 0; i < capture.cells.size(); i++) {
+                HologramCapture.Cell cell = capture.cells.get(i);
                 boolean relevant = false;
                 int observed = 0;
-                ItemStack actual = s.coordinatePins.get(position(cell));
+                ItemStack actual = coordinatePins.get(position(cell));
                 for (int o = 0; o < options.tagCount(); o++) {
                     NBTTagCompound option = options.getCompoundTagAt(o);
                     ItemStack sample = ItemStack.loadItemStackFromNBT(option.getCompoundTag("item"));
                     if (sample == null) continue;
                     if (cell.candidates != null)
                         for (ItemStack candidate : cell.candidates) if (same(candidate, sample)) relevant = true;
-                    if (same(actual, sample)) observed = option.getInteger("value");
+                    if (same(actual, sample)) {
+                        int value = option.getInteger("value");
+                        if (observed != 0 && observed != value) invalid = true;
+                        observed = value;
+                    }
                 }
                 if (!relevant) continue;
+                governed.add(i);
                 if (observed == 0 || (uniform != 0 && uniform != observed)) {
                     invalid = true;
                     break;
                 }
                 uniform = observed;
             }
-            if (!invalid && uniform > 0) s.channels.setInteger(row.getString("id"), uniform);
+            if (!governed.isEmpty()) channels.removeTag(row.getString("id"));
+            if (!invalid && uniform > 0) {
+                channels.setInteger(row.getString("id"), uniform);
+                for (int index : governed) {
+                    pins.remove(index);
+                    coordinatePins.remove(position(capture.cells.get(index)));
+                }
+            }
         }
     }
 
@@ -2151,8 +2177,10 @@ public final class HologramService {
         if (action.hasKey("selectedPresetId")) try {
             String id = action.getString("selectedPresetId");
             if (!id.isEmpty() && HologramPresets.get(id) == null) throw new java.io.IOException("预设不存在");
+            boolean changed = !id.equals(selectedPreset(s));
             currentTool(s).getTagCompound()
                 .setString(SELECTED_PRESET, id);
+            if (changed && !id.isEmpty()) presetGuidance(s, "自定义预设已选定：Alt + 右击方块启动投影；也可在预设列表中打开编辑。");
         } catch (java.io.IOException invalid) {
             s.status = "预设选择未保存：" + invalid.getMessage();
             return;
@@ -2185,6 +2213,10 @@ public final class HologramService {
     }
 
     private static void savePreset(Session s, String name) {
+        if (s.virtual) {
+            saveVirtualPreset(s, name, false);
+            return;
+        }
         if (s.capture == null || s.capture.incomplete
             || s.capturePending
             || s.virtual
@@ -2285,6 +2317,10 @@ public final class HologramService {
     }
 
     private static void loadPreset(Session s, String id) {
+        loadPreset(s, id, true);
+    }
+
+    private static void loadPreset(Session s, String id, boolean guidance) {
         try {
             HologramPresets.Preset preset = HologramPresets.get(id);
             if (preset == null) throw new java.io.IOException("预设不存在");
@@ -2298,6 +2334,7 @@ public final class HologramService {
                 currentTool(s).getTagCompound()
                     .setString(SELECTED_PRESET, id);
                 s.status = "预设已选定；Alt 点击方块开始虚拟投影";
+                presetGuidance(s, "自定义预设已选定：Alt + 右击方块启动投影；也可在预设列表中打开编辑。");
                 return;
             }
             s.virtualPreset = preset;
@@ -2311,9 +2348,111 @@ public final class HologramService {
                 .setString(SELECTED_PRESET, id);
             populateVirtual(s);
             s.status = "预设已加载；投影跟随鼠标，锁定位置后施工";
+            if (guidance) presetGuidance(s, "自定义预设已启动，投影跟随鼠标：Alt + 右击锁定位置；Shift + 右击打开编辑。");
         } catch (java.io.IOException invalid) {
             s.status = "预设加载失败：" + invalid.getMessage();
         }
+    }
+
+    /** Guidance is emitted only by explicit player actions, never by scan or tick. */
+    private static void presetGuidance(Session s, String message) {
+        s.player.addChatMessage(new ChatComponentText("[猫猫全息·自定义预设] " + message));
+    }
+
+    private static Session editPreset(Session previous, String id) {
+        int x = previous.target != null || previous.virtual ? previous.x
+            : net.minecraft.util.MathHelper.floor_double(previous.player.posX);
+        int y = previous.target != null || previous.virtual ? previous.y
+            : clamp(
+                net.minecraft.util.MathHelper.floor_double(previous.player.posY),
+                0,
+                previous.player.worldObj.getHeight() - 1);
+        int z = previous.target != null || previous.virtual ? previous.z
+            : net.minecraft.util.MathHelper.floor_double(previous.player.posZ);
+        if (!previous.player.worldObj.blockExists(x, y, z)
+            || previous.player.getDistanceSq(x + .5, y + .5, z + .5) > 4096) {
+            previous.status = "编辑锚点未加载或超出距离限制";
+            return previous;
+        }
+        Session editing = new Session(previous.player, x, y, z, false, previous.side);
+        editing.virtual = true;
+        loadPreset(editing, id, false);
+        if (editing.virtualPreset == null) {
+            previous.status = editing.status;
+            return previous;
+        }
+        editing.open = true;
+        editing.settingsOnly = false;
+        editing.status = "已打开自定义预设编辑；保存回原预设或另存为，仅保存规划，不施工";
+        SESSIONS.put(previous.player.getUniqueID(), editing);
+        presetGuidance(editing, "编辑完成后可保存回原预设或另存为；关闭编辑后 Alt + 右击锁定位置，再 Alt + Shift + 右击施工。");
+        return editing;
+    }
+
+    private static void saveVirtualPreset(Session s, String name, boolean update) {
+        if (!s.virtual || s.virtualPreset == null || s.capture == null || s.capture.incomplete || s.capturePending) {
+            s.status = "请先完整载入自定义预设进行编辑";
+            return;
+        }
+        try {
+            HologramPresets.Preset preset = editedVirtualPreset(
+                s,
+                update && (name == null || name.trim()
+                    .isEmpty()) ? s.virtualPreset.name : name);
+            if (update) {
+                preset.id = s.virtualPreset.id;
+                HologramPresets.update(preset);
+            } else HologramPresets.save(preset);
+            s.virtualPreset = preset;
+            currentTool(s).getTagCompound()
+                .setString(SELECTED_PRESET, preset.id);
+            s.status = update ? "自定义预设修改已保存回原预设" : "编辑后的自定义预设已另存为新预设";
+            presetGuidance(s, s.status + "；当前投影仍可继续编辑，施工须先锁定位置。");
+        } catch (java.io.IOException invalid) {
+            s.status = "预设保存失败：" + invalid.getMessage();
+        }
+    }
+
+    private static HologramPresets.Preset editedVirtualPreset(Session s, String name) throws java.io.IOException {
+        HologramPresets.Preset original = s.virtualPreset;
+        HologramPresets.Preset result = new HologramPresets.Preset();
+        result.name = name == null ? "" : name.trim();
+        result.controllerType = original.controllerType;
+        result.controllerId = original.controllerId;
+        // Retain all original editing candidates, including shell fallbacks not currently selected.
+        result.palette.addAll(original.palette);
+        Map<String, HologramPresets.Cell> defaults = new HashMap<>();
+        for (HologramPresets.Cell cell : original.cells) defaults.put(cell.x + "," + cell.y + "," + cell.z, cell);
+        for (int i = 0; i < s.capture.cells.size(); i++) {
+            HologramCapture.Cell cell = s.capture.cells.get(i);
+            // The template and explicit edits stay authoritative; inventory-driven hatch downgrades are
+            // construction policy and must not silently rewrite the saved template.
+            ItemStack target = s.pins.get(i);
+            HologramPresets.Cell fallback = defaults.get((cell.x - s.x) + "," + (cell.y - s.y) + "," + (cell.z - s.z));
+            if (fallback != null && !s.virtualEdited.contains(position(cell))) target = fallback.stack();
+            boolean controller = "templateController".equals(cell.role);
+            if (target == null || !acceptableSample(s, cell, target) || target.hasTagCompound())
+                throw new java.io.IOException("存在无效目标或设备数据；仅能保存普通物品身份");
+            if (controller && (cell.x != s.x || cell.y != s.y
+                || cell.z != s.z
+                || !(target.getItem() instanceof ItemMachines)
+                || target.getItemDamage() != original.controllerId)) throw new java.io.IOException("不能改变原预设控制器身份");
+            Block block = Block.getBlockFromItem(target.getItem());
+            if (!(target.getItem() instanceof ItemMachines) && (block == null || block.hasTileEntity(
+                target.getItem()
+                    .getMetadata(target.getItemDamage()))))
+                throw new java.io.IOException("预设含未支持的方块实体");
+            int direction = fallback != null && !s.virtualEdited.contains(position(cell)) ? fallback.facing
+                : s.facingPins.getOrDefault(position(cell), s.planFacings.getOrDefault(i, -1));
+            HologramPresets.Cell saved = HologramPresets
+                .cell(target, cell.x - s.x, cell.y - s.y, cell.z - s.z, direction, controller);
+            if (fallback != null) {
+                saved.defaultItem = fallback.defaultItem;
+                saved.defaultDamage = fallback.defaultDamage;
+            }
+            result.cells.add(saved);
+        }
+        return result;
     }
 
     private static void populateVirtual(Session s) {
@@ -3073,6 +3212,8 @@ public final class HologramService {
         state.setBoolean("target", s.target != null || s.virtual && s.capture != null);
         state.setBoolean("virtual", s.virtual);
         state.setBoolean("virtualLocked", s.virtualLocked);
+        state.setString("virtualPresetId", s.virtualPreset == null ? "" : s.virtualPreset.id);
+        state.setString("virtualPresetName", s.virtualPreset == null ? "" : s.virtualPreset.name);
         state.setBoolean("moving", s.virtual && !s.virtualLocked && s.job != 4);
         state.setBoolean("settingsOnly", s.settingsOnly);
         state.setBoolean("cancelled", s.cancelled);

@@ -66,6 +66,7 @@ public final class HologramRegressionTest {
             "unknown_declarations_remain_partial_without_running_machine_callbacks",
             HologramRegressionTest::unknownDeclaration);
         cases.put("clipboard_edits_preserve_automatic_source_and_other_cells", HologramServiceEditRegression::run);
+        cases.put("preset_updates_keep_identity_and_persist_atomically", HologramPresetPersistenceRegression::run);
         cases.put("rotation_cycles_all_six_legal_fronts", HologramRegressionTest::faceRotation);
         cases.put("large_snapshots_are_atomic_ordered_and_bounded", HologramSnapshotAssemblyRegression::run);
         cases.put("incremental_capture_and_large_drafts_keep_editor_state", HologramLargeStructureRegression::run);

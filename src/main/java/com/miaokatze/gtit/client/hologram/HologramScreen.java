@@ -76,6 +76,7 @@ public final class HologramScreen extends GuiScreen {
     void updateState(HologramState next) {
         HologramState.Cell previousTarget = selectedCell();
         String previousPreset = state.data.getString("selectedPresetId");
+        String previousVirtualPreset = state.data.getString("virtualPresetId");
         boolean presetSaveAcknowledged = presetSaveSequence >= 0
             && next.data.getLong("uiSequence") >= presetSaveSequence;
         if (!state.session.equals(next.session)) {
@@ -90,7 +91,10 @@ public final class HologramScreen extends GuiScreen {
             presetSaveSequence = -1;
             notice = "";
         }
-        if (!previousPreset.equals(next.data.getString("selectedPresetId"))) revealSelectedPreset();
+        if (presetSaveAcknowledged || !previousPreset.equals(next.data.getString("selectedPresetId")))
+            revealSelectedPreset();
+        if (!previousVirtualPreset.equals(next.data.getString("virtualPresetId")) && presetNameField != null)
+            presetNameField.setText(next.data.getString("virtualPresetName"));
         if (pendingSequence >= 0 && next.data.getLong("uiSequence") >= pendingSequence) pendingSequence = -1;
         if (queuedDispatchSequence >= 0 && next.data.getLong("uiSequence") >= queuedDispatchSequence) {
             queuedDispatchSequence = -1;
@@ -158,6 +162,7 @@ public final class HologramScreen extends GuiScreen {
         positionZField = positionField(326);
         presetNameField = new GuiTextField(fontRendererObj, 70, 111, 170, 16);
         presetNameField.setMaxStringLength(48);
+        if (state.data.getBoolean("virtual")) presetNameField.setText(state.data.getString("virtualPresetName"));
     }
 
     private GuiTextField positionField(int x) {
@@ -208,7 +213,13 @@ public final class HologramScreen extends GuiScreen {
             skin("cloth", 0, 0, DESIGN_W, DESIGN_H);
             drawRect(6, 29, DESIGN_W - 6, DESIGN_H - 8, 0xed142a32);
             skin("panel", 6, 6, DESIGN_W - 12, 22);
-            text("猫猫全息投影仪 · " + state.data.getString("title"), 13, 13, 334, 0xf5e4b9);
+            text(
+                "猫猫全息投影仪 · " + (state.data.getBoolean("virtual") ? "编辑预设：" + state.data.getString("virtualPresetName")
+                    : state.data.getString("title")),
+                13,
+                13,
+                334,
+                0xf5e4b9);
             button(
                 60,
                 351,
@@ -476,8 +487,14 @@ public final class HologramScreen extends GuiScreen {
     }
 
     private void drawLibrary(int mx, int my) {
-        drawRect(58, 58, 358, 257, 0xff172f36);
-        text("草稿 / 自定义预设 · 仅编辑目标", 70, 66, 260, 0xf5e4b9);
+        drawRect(58, 58, 358, 279, 0xff172f36);
+        text(
+            state.data.getBoolean("virtual") ? "正在编辑：" + state.data.getString("virtualPresetName")
+                : "草稿 / 自定义预设 · 仅编辑目标",
+            70,
+            66,
+            260,
+            0xf5e4b9);
         button(131, 331, 62, 19, 17, "×", true, mx, my);
         boolean virtual = state.data.getBoolean("virtual");
         text(
@@ -492,19 +509,10 @@ public final class HologramScreen extends GuiScreen {
         presetNameField.drawTextBox();
         if (presetNameField.getText()
             .isEmpty() && !presetNameField.isFocused()) text("输入自定义预设名称", 74, 115, 162, 0x647c7f);
-        button(
-            132,
-            248,
-            111,
-            96,
-            16,
-            "保存为自定义预设",
-            editable() && !virtual && !state.data.getBoolean("settingsOnly"),
-            mx,
-            my);
+        button(132, 248, 111, 96, 16, "另存新预设", editable() && !state.data.getBoolean("settingsOnly"), mx, my);
         NBTTagList presets = state.data.getTagList("presets", 10);
         libraryOffset = Math.max(0, Math.min(libraryOffset, Math.max(0, presets.tagCount() - 4)));
-        text("已保存 " + presets.tagCount() + " 个预设（滚轮浏览，点击载入）", 70, 136, 274, 0x94afb4);
+        text("已保存 " + presets.tagCount() + " 个预设（滚轮浏览，点击选择）", 70, 136, 274, 0x94afb4);
         for (int i = libraryOffset; i < presets.tagCount() && i < libraryOffset + 4; i++) {
             NBTTagCompound row = presets.getCompoundTagAt(i);
             String selectedMark = row.getString("id")
@@ -521,11 +529,24 @@ public final class HologramScreen extends GuiScreen {
                 my);
         }
         if (presets.tagCount() == 0) text("还没有自定义预设，输入名称后保存", 70, 160, 274, 0x94afb4);
-        button(138, 70, 223, 132, 17, "投影 / 材料全局设置", true, mx, my);
+        button(139, 70, 223, 132, 17, "编辑所选预设", editable() && selectedPresetExists(), mx, my);
+        button(
+            140,
+            212,
+            223,
+            132,
+            17,
+            "更新原预设",
+            editable() && virtual
+                && !state.data.getString("virtualPresetId")
+                    .isEmpty(),
+            mx,
+            my);
+        button(138, 70, 245, 132, 17, "投影 / 材料全局设置", true, mx, my);
         button(
             135,
             212,
-            223,
+            245,
             132,
             17,
             virtual ? state.data.getBoolean("virtualLocked") ? "虚拟模板已锁定" : "锁定虚拟模板" : "当前控制器草稿",
@@ -535,9 +556,19 @@ public final class HologramScreen extends GuiScreen {
         String configError = state.data.getString("presetConfigError");
         String feedback = !configError.isEmpty() ? "预设列表读取失败：" + configError
             : !notice.isEmpty() ? notice : state.data.getString("status");
-        text(feedback, 70, 245, 274, configError.isEmpty() ? 0xe4b85a : 0xef8585);
-        if (mx >= 70 && mx < 344 && my >= 241 && my < 256 && !feedback.isEmpty())
+        text(feedback, 70, 267, 274, configError.isEmpty() ? 0xe4b85a : 0xef8585);
+        if (mx >= 70 && mx < 344 && my >= 263 && my < 278 && !feedback.isEmpty())
             tooltip = fontRendererObj.listFormattedStringToWidth(feedback, 230);
+    }
+
+    private boolean selectedPresetExists() {
+        NBTTagList presets = state.data.getTagList("presets", 10);
+        for (int i = 0; i < presets.tagCount(); i++) if (state.data.getString("selectedPresetId")
+            .equals(
+                presets.getCompoundTagAt(i)
+                    .getString("id")))
+            return true;
+        return false;
     }
 
     private void revealSelectedPreset() {
@@ -557,9 +588,9 @@ public final class HologramScreen extends GuiScreen {
     private void drawResetReview(int mx, int my) {
         drawRect(58, 76, 358, 246, 0xff172f36);
         text(resetCalibration ? "将规划校准为当前现场？" : "将规划重置为结构默认？", 70, 91, 274, 0xe4b85a);
-        text(resetCalibration ? "按现场合法方块与仓室朝向更新规划。" : "清除自定义目标，恢复结构默认规划。", 70, 118, 274, 0xb9d5d4);
+        text(resetCalibration ? "识别现场材质信道，保留独立仓室与朝向。" : "清除自定义目标，恢复结构默认规划。", 70, 118, 274, 0xb9d5d4);
         text("仅更新规划，不施工，也不删除已存预设。", 70, 141, 274, 0xb9d5d4);
-        text(resetCalibration ? "检测到已构建结构；成型仍由原机判定。" : "操作前请确认当前手改目标是否需要保留。", 70, 162, 274, 0xe4b85a);
+        text(resetCalibration ? "未识别的尺寸与信道保留，已识别项可继续修改。" : "操作前请确认当前手改目标是否需要保留。", 70, 162, 274, 0xe4b85a);
         button(136, 70, 211, 132, 21, "保留当前规划", true, mx, my);
         button(137, 212, 211, 132, 21, resetCalibration ? "确认校准为当前" : "确认重置为默认", editable(), mx, my);
     }
@@ -1490,6 +1521,8 @@ public final class HologramScreen extends GuiScreen {
             if (!canInventoryPin()) return "控制器、已有受保护设备或拆除模式不能指定新目标；仓室数据不迁移，服务端验证替换安全性。";
         }
         if (id == 60 && state.data.getBoolean("virtual")) return "虚拟模板没有控制器原生信道。";
+        if (id == 139) return "先在列表中选择要编辑的预设。";
+        if (id == 140) return "先载入虚拟预设进行编辑，再更新该原预设。";
         if (id == 50 && state.data.getBoolean("virtual") && !state.data.getBoolean("virtualLocked"))
             return "请先锁定虚拟模板，再执行放置。";
         if (id == 66) return selectedCell() == null ? "先选择预览格。" : "控制器锚点不能恢复为外壳。";
@@ -1517,10 +1550,14 @@ public final class HologramScreen extends GuiScreen {
             case 130:
                 return "查看当前投影仪草稿、保存自定义模板或载入服务端配置预设。每件投影仪只保存当前控制器的一份草稿。";
             case 132:
-                return "按名称保存当前目标规划到服务端配置；不执行施工。";
+                return "按名称将当前完整目标规划另存为新预设；原预设保持不变，不执行施工。";
+            case 139:
+                return "将所选预设载入虚拟编辑预览，可修改仓室、目标和朝向；完成后使用更新原预设保存。";
+            case 140:
+                return "覆盖正在编辑的原预设，保留其身份；名称留空沿用原名，不执行施工。";
             case 134:
                 return state.data.getBoolean("structureBuilt")
-                    ? "原机已报告成型或已知结构位置已匹配：可将目标校准为现场合法方块与仓室朝向；不主动检查成型或施工，会覆盖已有自定义目标。"
+                    ? "识别可确认的现场材质信道和诸神锻炉环数，保留独立仓室及朝向；校准后仍可改线圈等信道。未识别的尺寸和原始信道保留。不施工，会覆盖已有自定义目标。"
                     : "恢复结构默认目标并清除本投影仪草稿。仅改变规划，不回滚世界方块，也不删除已存预设。";
             case 137:
                 return resetCalibration ? "用当前现场校准规划，覆盖已有自定义目标；服务端重新校验，不执行施工。"
@@ -1954,7 +1991,7 @@ public final class HologramScreen extends GuiScreen {
                 .getCompoundTagAt(id - 14000);
             NBTTagCompound request = new NBTTagCompound();
             request.setString("presetId", preset.getString("id"));
-            libraryDrawer = false;
+            if (state.data.getBoolean("virtual")) libraryDrawer = false;
             send("loadPreset", request, true);
             return;
         }
@@ -1997,24 +2034,38 @@ public final class HologramScreen extends GuiScreen {
                 resetReview = false;
                 libraryOffset = 0;
                 revealSelectedPreset();
+                if (state.data.getBoolean("virtual") && presetNameField.getText()
+                    .isEmpty()) presetNameField.setText(state.data.getString("virtualPresetName"));
                 break;
             case 131:
                 libraryDrawer = resetReview = false;
                 presetNameField.setFocused(false);
                 break;
             case 132:
+            case 140:
                 if (!editable()) break;
+                if (id == 140 && (!state.data.getBoolean("virtual") || state.data.getString("virtualPresetId")
+                    .isEmpty())) break;
                 String presetName = presetNameField.getText()
                     .trim();
+                if (id == 140 && presetName.isEmpty()) presetName = state.data.getString("virtualPresetName");
                 if (presetName.isEmpty()) {
                     notice = "请输入预设名称";
                     break;
                 }
                 NBTTagCompound savePreset = new NBTTagCompound();
                 savePreset.setString("name", presetName);
-                notice = "正在保存预设，请等待服务器确认";
-                send("savePreset", savePreset, true);
+                notice = id == 140 ? "正在更新原预设，请等待服务器确认" : "正在保存预设，请等待服务器确认";
+                send(id == 140 ? "updatePreset" : "savePreset", savePreset, true);
                 presetSaveSequence = sequence;
+                break;
+            case 139:
+                if (!editable() || !selectedPresetExists()) break;
+                NBTTagCompound editPreset = new NBTTagCompound();
+                editPreset.setString("presetId", state.data.getString("selectedPresetId"));
+                libraryDrawer = false;
+                presetNameField.setFocused(false);
+                send("editPreset", editPreset, true);
                 break;
             case 134:
                 if (!editable()) break;
