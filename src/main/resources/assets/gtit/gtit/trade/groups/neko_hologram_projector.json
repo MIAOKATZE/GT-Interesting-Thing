@@ -1,0 +1,22 @@
+{
+  "groupId": "gtit-neko-hologram-projector",
+  "version": 1,
+  "defaultGroup": false,
+  "pages": [],
+  "trades": [
+    {
+      "id": "d7f5e8f2-247c-49af-b19b-d2f726ce34d0",
+      "tabId": 3,
+      "orderId": 13,
+      "currency": { "type": "shimmeringNeko", "amount": 1 },
+      "fromItems": [],
+      "toItems": [
+        { "item": "gtit:neko_hologram_projector", "meta": 0, "amount": 1 }
+      ],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": "",
+      "recordNBT": false
+    }
+  ]
+}
