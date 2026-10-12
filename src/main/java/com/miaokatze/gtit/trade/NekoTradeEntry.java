@@ -42,6 +42,9 @@ public class NekoTradeEntry {
     // 复原（重注册）时由 applyGroup 重新打标。旧 JSON 无该字段时 Gson 保留默认 false。
     private boolean defaultEntry = false;
 
+    /** 可选贸易组的前置门禁；磁盘首次装载和客户端同步均须检查。旧条目缺省无门禁。 */
+    private String[] requiresMods;
+
     public NekoTradeEntry() {
         this.id = UUID.randomUUID()
             .toString();
@@ -153,6 +156,14 @@ public class NekoTradeEntry {
 
     public void setDefaultEntry(boolean defaultEntry) {
         this.defaultEntry = defaultEntry;
+    }
+
+    public String[] getRequiresMods() {
+        return requiresMods;
+    }
+
+    public void setRequiresMods(String[] requiresMods) {
+        this.requiresMods = requiresMods;
     }
 
     // --- Inner Classes ---

@@ -31,6 +31,7 @@ import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.event.FMLInterModComms;
+import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
  * 外部贸易组注册 API（E4a）。
@@ -340,14 +341,9 @@ public final class NekoTradeIntegrationAPI {
      */
     static boolean applyGroup(NekoTradeGroupDef def) {
         if (!isValidDef(def)) return false;
-        // 前置 mod 短路：任一缺席整组跳过（不写记账，环境补齐后下次启动自动生效）
-        if (def.getRequiresMods() != null) {
-            for (String modId : def.getRequiresMods()) {
-                if (modId != null && !modId.isEmpty() && !Loader.isModLoaded(modId)) {
-                    LOG.info("[TradeAPI] 贸易组 {} 的前置 mod {} 缺席，跳过注册", def.getGroupId(), modId);
-                    return false;
-                }
-            }
+        if (!dependenciesAvailable(def)) {
+            if (def.isRemoveWhenUnavailable()) removeUnavailableGroup(def);
+            return false;
         }
         synchronized (APPLY_LOCK) {
             GroupRecord record = GroupRecord.load(def.getGroupId());
@@ -374,6 +370,52 @@ public final class NekoTradeIntegrationAPI {
                 newRecord.pageIds.size(),
                 def.getVersion());
             return true;
+        }
+    }
+
+    /** 物品注册已完成后检查前置；postInit 只排队，实际应用仍在 serverStarted。 */
+    private static boolean dependenciesAvailable(NekoTradeGroupDef def) {
+        if (def.getRequiresMods() != null) {
+            for (String modId : def.getRequiresMods()) {
+                if (modId != null && !modId.isEmpty() && !Loader.isModLoaded(modId)) {
+                    LOG.info("[TradeAPI] 贸易组 {} 的前置 mod {} 缺席，跳过注册", def.getGroupId(), modId);
+                    return false;
+                }
+            }
+        }
+        if (def.getRequiresItems() != null) {
+            for (String itemId : def.getRequiresItems()) {
+                String[] parts = itemId == null ? new String[0] : itemId.split(":", 2);
+                if (parts.length != 2 || GameRegistry.findItem(parts[0], parts[1]) == null) {
+                    LOG.info("[TradeAPI] 贸易组 {} 的前置物品 {} 未注册，跳过注册", def.getGroupId(), itemId);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** 仅显式可选组使用；记账丢失时也只移除资产声明的固定 ID，不扫描其它交易。 */
+    private static void removeUnavailableGroup(NekoTradeGroupDef def) {
+        synchronized (APPLY_LOCK) {
+            GroupRecord record = GroupRecord.load(def.getGroupId());
+            if (record != null) {
+                unregisterFromDisk(record);
+                record.delete();
+            }
+            NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
+            boolean removed = false;
+            if (data.getTrades() != null && def.getTrades() != null) {
+                for (NekoTradeEntry entry : def.getTrades()) {
+                    if (entry == null || entry.getId() == null) continue;
+                    removed |= data.getTrades()
+                        .removeIf(
+                            disk -> disk != null && entry.getId()
+                                .equals(disk.getId()));
+                }
+            }
+            if (removed) NekoTradeConfig.save(data);
+            if (record != null || removed) reloadAndSync();
         }
     }
 
@@ -433,6 +475,9 @@ public final class NekoTradeIntegrationAPI {
         for (NekoTradeEntry src : def.getTrades()) {
             if (src == null) continue;
             NekoTradeEntry entry = deepCopy(src, NekoTradeEntry.class);
+            if (def.isRemoveWhenUnavailable()) {
+                entry.setRequiresMods(def.getRequiresMods());
+            }
             if (entry.getId() == null || entry.getId()
                 .isEmpty()) {
                 entry.setId(

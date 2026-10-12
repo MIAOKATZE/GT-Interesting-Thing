@@ -367,12 +367,6 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void init(FMLInitializationEvent event) {
-        com.miaokatze.gtit.hologram.HologramNetwork.init();
-        FMLCommonHandler.instance()
-            .bus()
-            .register(new com.miaokatze.gtit.hologram.HologramLifecycle());
-        com.miaokatze.gtit.hologram.HologramSmokeTest.registerIfEnabled();
-        com.miaokatze.gtit.hologram.HologramInteractionSmoke.registerIfEnabled();
         // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
         ensureBaublesRingSlots();
 
@@ -761,7 +755,6 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopping(FMLServerStoppingEvent event) {
-        com.miaokatze.gtit.hologram.HologramService.clear();
         try {
             NekoWalletManager.INSTANCE.saveAll();
         } catch (Throwable t) {

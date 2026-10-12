@@ -339,17 +339,11 @@ A drawstring pouch with a cat face sewn on. The cats never explain what's stitch
 
 ***
 
-## Neko Hologram Projector / 猫猫全息投影仪
+## GTMB 联动 / GTMB Integration
 
-<p align="center"><img src="README/neko-hologram-projector.png" width="800" alt="猫猫全息投影仪：工业高炉预览与编辑 / Neko Hologram Projector: Electric Blast Furnace preview and editing"></p>
+安装 GTMB 后，可在猫猫售货机中用 1 枚普通猫猫币兑换 GTMB 猫猫投影仪。投影仪由 GTMB 提供。
 
-用可爱的金色猫脸投影，预览、编辑和搭建 GT 多方块结构。支持等级与信道设置、逐格替换仓室、材料检查，以及草稿和自定义预设。可在猫猫售货机中用 1 枚闪烁猫猫币兑换。
-
-A golden cat-face projector for previewing, editing and building GT multiblocks. Set tiers and channels, customize individual hatches, check materials, and save drafts or custom presets. Trade one Shimmering Neko Coin for it at the Neko Vending Machine.
-
-- **编辑 / Edit**：右击控制器打开面板；在预览中点击格子调整方块或仓室，面板内可查看快捷键。/ Right-click a controller, then select cells in the preview. The panel includes a shortcut guide.
-- **施工 / Build**：补建填补空位，替换调整已建结构，拆除保留控制器；材料来源与回收位置可在设置中选择。/ Fill empty cells, replace parts of an existing structure, or dismantle while keeping the controller. Configure material sources and recovery destinations in settings.
-- **预设 / Presets**：Alt + 右击选择并定位预设，再次 Alt + 右击锁定；Alt + Shift + 右击施工。Shift + 右击空气打开设置。/ Alt-right-click to select and position a preset, then Alt-right-click again to lock it. Alt-Shift-right-click builds it; Shift-right-click air opens settings.
+When GTMB is installed, the Neko Vending Machine exchanges one ordinary Neko Coin for one GTMB projector. The projector is provided by GTMB.
 
 ***
 
