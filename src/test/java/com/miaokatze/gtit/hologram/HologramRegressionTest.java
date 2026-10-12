@@ -73,6 +73,14 @@ public final class HologramRegressionTest {
         cases.put("clipboard_edits_preserve_automatic_source_and_other_cells", HologramServiceEditRegression::run);
         cases.put("preset_updates_keep_identity_and_persist_atomically", HologramPresetPersistenceRegression::run);
         cases.put(
+            "blueprint_nbt_sharing_missing_dependencies_and_legacy_storage",
+            HologramBlueprintPersistenceRegression::run);
+        cases.put("blueprint_cover_costs_preserve_data_and_reject_invalid_ids", HologramBlueprintCoverRegression::run);
+        cases.put("blueprint_batch_geometry_and_flags_are_atomic", HologramBlueprintServiceRegression::run);
+        cases.put(
+            "blueprint_inventory_fluid_and_wireless_resource_transactions",
+            HologramBlueprintResourcesRegression::run);
+        cases.put(
             "virtual_preset_world_turns_preserve_geometry_edits_and_controller_roll",
             HologramVirtualRotationRegression::run);
         cases.put("rotation_cycles_all_six_legal_fronts", HologramRegressionTest::faceRotation);

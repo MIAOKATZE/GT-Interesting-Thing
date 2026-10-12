@@ -173,6 +173,8 @@ if (providers.gradleProperty("hologramSmoke").isPresent) {
         extraRunJvmArguments.add("-Dgtit.hologram.smoketest=true")
     }
     tasks.named<JavaExec>("runServer") {
+        dependsOn("compileTestJava")
+        classpath += sourceSets["test"].output
         workingDir(layout.buildDirectory.dir("hologram-smoke/server"))
     }
 }

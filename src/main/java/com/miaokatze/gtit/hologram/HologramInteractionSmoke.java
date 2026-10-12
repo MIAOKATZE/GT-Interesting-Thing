@@ -12,11 +12,15 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.ForgeDirection;
 
+import com.gtnewhorizon.structurelib.structure.IStructureElement;
+
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import gregtech.api.GregTechAPI;
+import gregtech.api.enums.HatchElement;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
+import gregtech.api.metatileentity.implementations.MTEHatchMuffler;
 import gregtech.common.tileentities.machines.multi.MTEElectricBlastFurnace;
 
 /** Dedicated-world fixture and independent material/world receipts for the real network GUI driver. */
@@ -28,6 +32,7 @@ public final class HologramInteractionSmoke {
     private int ticks, lastPlaced = -1, lastStock = -1;
     private boolean sawBuilt, sawUpgraded;
     private int receiptPublishRetries;
+    private int mufflerId = -1, lastMufflerWorld, lastMufflerStock;
 
     public static void registerIfEnabled() {
         if (Boolean.getBoolean("gtit.hologram.interactionServer")) FMLCommonHandler.instance()
@@ -45,12 +50,20 @@ public final class HologramInteractionSmoke {
             if (!world.getWorldInfo()
                 .getWorldName()
                 .startsWith("hologram-interaction-")) throw new IllegalStateException("isolated world guard");
+            if (receipts == null) {
+                receipts = new File(System.getProperty("gtit.hologram.interactionReceiptDir", ""));
+                if (!receipts.isDirectory()) throw new IllegalStateException("prepared receipt directory required");
+            }
+            File clientFailure = new File(receipts, "client-failed.txt");
+            if (clientFailure.isFile()) throw new IllegalStateException(
+                "real interaction client failed: " + new String(
+                    java.nio.file.Files.readAllBytes(clientFailure.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8));
             if (player == null) {
                 if (server.getConfigurationManager().playerEntityList.isEmpty()) return;
                 player = (EntityPlayerMP) server.getConfigurationManager().playerEntityList.get(0);
-                receipts = new File(System.getProperty("gtit.hologram.interactionReceiptDir", ""));
-                if (!receipts.isDirectory()) throw new IllegalStateException("prepared receipt directory required");
-                createFixture(world, player, 48, 80, 48);
+                BaseMetaTileEntity controller = createFixture(world, player, 48, 80, 48);
+                mufflerId = installMuffler(world, player, controller, 48, 80, 48);
                 player.theItemInWorldManager.setGameType(net.minecraft.world.WorldSettings.GameType.SURVIVAL);
                 player.capabilities.allowFlying = true;
                 player.capabilities.isFlying = true;
@@ -71,8 +84,13 @@ public final class HologramInteractionSmoke {
             }
             File complete = new File(receipts, "client-complete.txt");
             if (complete.isFile()) {
-                if (!sawBuilt || !sawUpgraded || lastPlaced != 0 || lastStock != 192) throw new AssertionError(
-                    "client completion requires independent built/upgraded/recovered world observations");
+                if (!sawBuilt || !sawUpgraded
+                    || lastPlaced != 0
+                    || lastStock != 192
+                    || lastMufflerWorld != 0
+                    || lastMufflerStock != 1)
+                    throw new AssertionError(
+                        "client completion requires independent built/upgraded/recovered world observations");
                 if (!receipt(world, "final")) return;
                 System.out.println(
                     "[GTIT-HOLOGRAM-INTERACTION-SERVER] FINAL PASS real-client completion; independent world/material receipts saved");
@@ -90,7 +108,7 @@ public final class HologramInteractionSmoke {
     }
 
     private boolean receipt(WorldServer world, String stage) throws Exception {
-        int placed = 0, coils = 0, casings = 0, stock = 0, highCoils = 0;
+        int placed = 0, coils = 0, casings = 0, stock = 0, highCoils = 0, mufflerWorld = 0, mufflerStock = 0;
         // EBF extends at most three blocks from its controller. This fixed box is independent of capture output.
         for (int x = 45; x <= 51; x++) for (int y = 77; y <= 83; y++) for (int z = 45; z <= 51; z++) {
             if (world.getBlock(x, y, z) == GregTechAPI.sBlockCasings5) {
@@ -102,18 +120,28 @@ public final class HologramInteractionSmoke {
                 casings++;
                 placed++;
             }
+            if (world.getTileEntity(x, y, z) instanceof BaseMetaTileEntity
+                && ((BaseMetaTileEntity) world.getTileEntity(x, y, z)).getMetaTileID() == mufflerId) mufflerWorld++;
         }
-        for (ItemStack stack : player.inventory.mainInventory)
-            if (stack != null && (stack.getItem() == Item.getItemFromBlock(GregTechAPI.sBlockCasings5)
-                || stack.getItem() == Item.getItemFromBlock(GregTechAPI.sBlockCasings1))) stock += stack.stackSize;
+        for (ItemStack stack : player.inventory.mainInventory) {
+            if (stack == null) continue;
+            if (stack.getItem() == Item.getItemFromBlock(GregTechAPI.sBlockCasings5)
+                || stack.getItem() == Item.getItemFromBlock(GregTechAPI.sBlockCasings1)) stock += stack.stackSize;
+            if (stack.getItem() == Item.getItemFromBlock(GregTechAPI.sBlockMachines)
+                && stack.getItemDamage() == mufflerId) mufflerStock += stack.stackSize;
+        }
         // Conservation is checked from actual server world and inventory, independent of GUI state.
         if (stock + placed != 64 + 8 * 16)
             throw new AssertionError("material conservation stock=" + stock + " placed=" + placed);
+        if (mufflerWorld + mufflerStock != 1) throw new AssertionError(
+            "mandatory muffler conservation world=" + mufflerWorld + " inventory=" + mufflerStock);
         if (coils == 16) sawBuilt = true;
         if (highCoils == 16) sawUpgraded = true;
         // Upgrades keep total counts constant; still publish metadata observations every tick.
         lastPlaced = placed;
         lastStock = stock;
+        lastMufflerWorld = mufflerWorld;
+        lastMufflerStock = mufflerStock;
         NBTTagCompound n = new NBTTagCompound();
         n.setString("stage", stage);
         n.setInteger("placed", placed);
@@ -121,6 +149,8 @@ public final class HologramInteractionSmoke {
         n.setInteger("highCoils", highCoils);
         n.setInteger("casings", casings);
         n.setInteger("stock", stock);
+        n.setInteger("mufflerWorld", mufflerWorld);
+        n.setInteger("mufflerStock", mufflerStock);
         n.setLong("tick", world.getTotalWorldTime());
         n.setInteger(
             "facing",
@@ -155,8 +185,62 @@ public final class HologramInteractionSmoke {
                 + " highCoils="
                 + highCoils
                 + " stock="
-                + stock);
+                + stock
+                + " mufflerWorld="
+                + mufflerWorld
+                + " mufflerStock="
+                + mufflerStock);
         return true;
+    }
+
+    private static int installMuffler(WorldServer world, EntityPlayerMP player, BaseMetaTileEntity controller, int x,
+        int y, int z) {
+        int id = -1;
+        for (int i = 1; i < GregTechAPI.METATILEENTITIES.length; i++) {
+            if (GregTechAPI.METATILEENTITIES[i] instanceof MTEHatchMuffler
+                && ((MTEHatchMuffler) GregTechAPI.METATILEENTITIES[i]).mTier == 1) {
+                id = i;
+                break;
+            }
+        }
+        if (id <= 0 || !world.isAirBlock(x, y + 3, z + 1))
+            throw new IllegalStateException("fresh registered LV muffler fixture required");
+        if (!world.setBlock(x, y + 3, z + 1, GregTechAPI.sBlockMachines, 0, 3))
+            throw new IllegalStateException("muffler fixture placement failed");
+        BaseMetaTileEntity base = (BaseMetaTileEntity) world.getTileEntity(x, y + 3, z + 1);
+        base.setInitialValuesAsNBT(null, (short) id);
+        base.setFrontFacing(ForgeDirection.UP);
+        base.setOwnerName(player.getCommandSenderName());
+        base.setOwnerUuid(player.getUniqueID());
+        MTEElectricBlastFurnace machine = (MTEElectricBlastFurnace) controller.getMetaTileEntity();
+        boolean accepted = false;
+        for (IStructureElement<MTEElectricBlastFurnace> element : machine.getStructureDefinition()
+            .getStructureFor("main")) {
+            for (IStructureElement<?> part : HologramElementCatalog.parts(element)) {
+                if (HologramHatchPolicy.declared(part)
+                    .contains(HatchElement.Muffler)) {
+                    accepted = HologramHatchPolicy.allowed(part, machine.getExtendedFacing(), ForgeDirection.UP)
+                        && element.check(machine, world, x, y + 3, z + 1);
+                    break;
+                }
+            }
+            if (accepted) break;
+        }
+        machine.mMufflerHatches.clear();
+        if (!accepted || !(base.getMetaTileEntity() instanceof MTEHatchMuffler) || base.getMetaTileID() != id)
+            throw new AssertionError("installed real LV muffler must satisfy the actual EBF declaration");
+        System.out.println(
+            "[GTIT-HOLOGRAM-INTERACTION-SERVER] FIXTURE real LV muffler id=" + id
+                + " at="
+                + x
+                + ","
+                + (y + 3)
+                + ","
+                + (z + 1)
+                + " facing="
+                + base.getFrontFacing()
+                + " declaredAccepted=true");
+        return id;
     }
 
     static BaseMetaTileEntity createFixture(WorldServer world, EntityPlayerMP player, int x, int y, int z) {

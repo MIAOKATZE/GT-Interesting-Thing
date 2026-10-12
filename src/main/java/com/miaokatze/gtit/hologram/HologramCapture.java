@@ -358,6 +358,17 @@ public final class HologramCapture {
         Block block;
         int meta;
         boolean unknown;
+        String blueprintBlock = "", blueprintItem = "";
+        int blueprintDamage;
+        String sourceClass = "", sourceWarning = "";
+        String resourceFingerprint = "", resourceTile = "", resourceItem = "", resourceError = "";
+        HologramBlueprintResources.Plan resourcePlan;
+        String coverCostsNbt = "";
+        List<ItemStack> coverMaterials = java.util.Collections.emptyList();
+        boolean invalidCoverCosts;
+        boolean excluded;
+        String prompt = "", tileNbt = "", itemNbt = "", structureId = "";
+        List<String> structureIds;
         String status = "pending";
         List<ItemStack> candidates;
         boolean candidateComplete;
@@ -374,6 +385,16 @@ public final class HologramCapture {
         String[] hintIcons;
         short[] hintTint;
         int hintIndex = -1;
+
+        List<String> memberships() {
+            if (structureIds != null && !structureIds.isEmpty()) return structureIds;
+            return structureId.isEmpty() ? java.util.Collections.emptyList()
+                : java.util.Collections.singletonList(structureId);
+        }
+
+        boolean belongsTo(String id) {
+            return id != null && !id.isEmpty() && memberships().contains(id);
+        }
 
         Cell(IStructureElement element, int x, int y, int z) {
             this(element, x, y, z, null);

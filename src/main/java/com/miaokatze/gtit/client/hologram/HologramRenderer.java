@@ -61,6 +61,12 @@ final class HologramRenderer {
     private static double boundsX, boundsY, boundsZ, boundsExtent;
     static int projectionLayer = Integer.MAX_VALUE;
     static boolean showEmptyCells;
+    static HologramSelection selection;
+    private static int projectedX, projectedY, projectedWidth, projectedHeight;
+    private static double projectedYaw, projectedPitch, projectedScale;
+    private static final Map<String, double[][]> structureBoxes = new LinkedHashMap<>();
+    private static final Set<String> missingStructures = new HashSet<>();
+    private static final Map<String, double[][]> hintBoxes = new LinkedHashMap<>();
     private static boolean visibleEmptyCells;
 
     static void release() {
@@ -75,11 +81,19 @@ final class HologramRenderer {
         visibleCells.clear();
         previewCells.clear();
         occupied.clear();
+        structureBoxes.clear();
+        hintBoxes.clear();
     }
 
     static int preview(HologramState state, int x, int y, int width, int height, double yaw, double pitch, double zoom,
         int layer, int view, int selected, int mouseX, int mouseY, double rehearsal) {
         HologramTextures.begin(state);
+        projectedX = x;
+        projectedY = y;
+        projectedWidth = width;
+        projectedHeight = height;
+        projectedYaw = yaw;
+        projectedPitch = pitch;
         String key = x + ":"
             + y
             + ":"
@@ -136,6 +150,8 @@ final class HologramRenderer {
                     }
                     boolean empty = !c.anchor && !c.iconOnly && (currentView ? c.id : c.wantId).equals("minecraft:air");
                     String role = roleLabel(c);
+                    if (c.missingBlock) role = "缺失方块";
+                    else if (c.sourceMissing && c.anchor) role = "来源结构缺失";
                     if (!empty && role.isEmpty() && HologramTextures.material(c, currentView).fallback)
                         role = "\u6750\u8d28\u7f3a\u5931";
                     if (!empty && role.isEmpty() && c.iconOnly) role = "\u5360\u4f4d";
@@ -170,6 +186,8 @@ final class HologramRenderer {
             }
             double cx = boundsX, cy = boundsY, cz = boundsZ, extent = boundsExtent;
             double scale = Math.min(width, height) * .72 / extent * zoom;
+            projectedScale = scale;
+            buildStructureBoxes(state);
             for (PreviewCell previewCell : previewCells) {
                 HologramState.Cell c = previewCell.cell;
                 int exposed = previewCell.exposed & facing;
@@ -248,6 +266,7 @@ final class HologramRenderer {
                 int sampleIndex = 0;
                 for (HologramTextures.Sample sample : face.material.sides[face.side]) {
                     setSampleColor(t, sample, shade, .96f);
+                    if (face.cell.sourceMissing && !face.cell.missingBlock) t.setColorRGBA_F(.55f, .55f, .55f, .78f);
                     for (int i = 0; i < 4; i++) {
                         int vertex = FACES[face.side][i];
                         double[] point = face.points[vertex];
@@ -268,11 +287,13 @@ final class HologramRenderer {
             GL11.glDepthMask(false);
             t.startDrawing(GL11.GL_LINES);
             for (Face face : cachedOutlines) {
+                boolean chosen = face.cell.index == selected
+                    || selection != null && selection.contains(face.cell.index);
                 t.setColorRGBA_F(
-                    face.cell.index == selected ? 1 : .2f,
-                    face.cell.index == selected ? .92f : .7f,
-                    face.cell.index == selected ? .5f : .8f,
-                    face.cell.index == selected ? 1 : face.empty ? .18f : .45f);
+                    chosen ? 1 : .2f,
+                    chosen ? .92f : .7f,
+                    chosen ? .5f : .8f,
+                    chosen ? 1 : face.empty ? .18f : .45f);
                 for (int[] edge : EDGES) {
                     double[] a = face.points[edge[0]], b = face.points[edge[1]];
                     t.addVertex(a[0], a[1], a[2] * depthScale + .15);
@@ -281,12 +302,30 @@ final class HologramRenderer {
             }
             t.draw();
             GL11.glDisable(GL11.GL_DEPTH_TEST);
+            t.startDrawing(GL11.GL_LINES);
+            t.setColorRGBA_F(.65f, .87f, .95f, .32f);
+            for (Map.Entry<String, double[][]> entry : structureBoxes.entrySet()) {
+                if (missingStructures.contains(entry.getKey())) t.setColorRGBA_F(.65f, .65f, .65f, .48f);
+                else t.setColorRGBA_F(.65f, .87f, .95f, .32f);
+                for (int[] edge : EDGES) {
+                    double[] a = entry.getValue()[edge[0]], b = entry.getValue()[edge[1]];
+                    t.addVertex(a[0], a[1], 1);
+                    t.addVertex(b[0], b[1], 1);
+                }
+            }
+            t.setColorRGBA_F(.95f, .77f, .39f, .48f);
+            for (double[][] box : hintBoxes.values()) for (int[] edge : EDGES) {
+                double[] a = box[edge[0]], b = box[edge[1]];
+                t.addVertex(a[0], a[1], 1);
+                t.addVertex(b[0], b[1], 1);
+            }
+            t.draw();
             GL11.glEnable(GL11.GL_TEXTURE_2D);
             GL11.glColor4f(1, 1, 1, 1);
             for (RoleMarker marker : markers) {
                 if (!marker.cell.anchor
                     && (marker.x < x || marker.x >= x + width || marker.y < y || marker.y >= y + height)) continue;
-                float labelScale = marker.cell.anchor ? 1f : .7f;
+                float labelScale = marker.cell.anchor || marker.cell.missingBlock ? 1f : .7f;
                 int labelWidth = Math.round(mc.fontRenderer.getStringWidth(marker.label) * labelScale);
                 int lx = Math.max(x + 2, Math.min(x + width - labelWidth - 4, (int) marker.x - labelWidth / 2));
                 int ly = Math.max(y + 2, Math.min(y + height - 12, (int) marker.y - 4));
@@ -300,7 +339,12 @@ final class HologramRenderer {
                 try {
                     GL11.glTranslatef(lx, ly, 0);
                     GL11.glScalef(labelScale, labelScale, 1);
-                    mc.fontRenderer.drawStringWithShadow(marker.label, 0, 0, marker.cell.anchor ? 0xffffbd : 0x9ceaf3);
+                    mc.fontRenderer.drawStringWithShadow(
+                        marker.label,
+                        0,
+                        0,
+                        marker.cell.sourceMissing ? 0xff7272
+                            : marker.cell.missingBlock ? 0xff6be4 : marker.cell.anchor ? 0xffffbd : 0x9ceaf3);
                 } finally {
                     GL11.glPopMatrix();
                 }
@@ -321,6 +365,85 @@ final class HologramRenderer {
             GL11.glPopAttrib();
         }
         return hovered;
+    }
+
+    static double[] project(double dx, double dy, double dz) {
+        double px = dx - boundsX, py = dy - boundsY, pz = dz - boundsZ;
+        double rx = px * Math.cos(projectedYaw) - pz * Math.sin(projectedYaw);
+        double rz = px * Math.sin(projectedYaw) + pz * Math.cos(projectedYaw);
+        double ry = py * Math.cos(projectedPitch) - rz * Math.sin(projectedPitch);
+        return new double[] { projectedX + projectedWidth / 2.0 + rx * projectedScale,
+            projectedY + projectedHeight / 2.0 - ry * projectedScale };
+    }
+
+    private static void buildStructureBoxes(HologramState state) {
+        structureBoxes.clear();
+        missingStructures.clear();
+        for (HologramState.Cell cell : state.cells) if (cell.sourceMissing) missingStructures.addAll(cell.structureIds);
+        Map<String, int[]> bounds = structureBounds(state);
+        for (Map.Entry<String, int[]> entry : bounds.entrySet()) {
+            int[] b = entry.getValue();
+            double[][] box = new double[8][];
+            for (int i = 0; i < 8; i++) box[i] = project(
+                VERTICES[i][0] < 0 ? b[0] - .55 : b[3] + .55,
+                VERTICES[i][1] < 0 ? b[1] - .55 : b[4] + .55,
+                VERTICES[i][2] < 0 ? b[2] - .55 : b[5] + .55);
+            structureBoxes.put(entry.getKey(), box);
+        }
+        hintBoxes.clear();
+        net.minecraft.nbt.NBTTagList hints = state.data.getTagList("hintAreas", 10);
+        for (int i = 0; i < hints.tagCount(); i++) {
+            net.minecraft.nbt.NBTTagCompound hint = hints.getCompoundTagAt(i);
+            int[] b = hint.getIntArray("bounds");
+            if (b.length != 6) continue;
+            double[][] box = new double[8][];
+            for (int v = 0; v < 8; v++) box[v] = project(
+                VERTICES[v][0] < 0 ? Math.min(b[0], b[3]) - .6 : Math.max(b[0], b[3]) + .6,
+                VERTICES[v][1] < 0 ? Math.min(b[1], b[4]) - .6 : Math.max(b[1], b[4]) + .6,
+                VERTICES[v][2] < 0 ? Math.min(b[2], b[5]) - .6 : Math.max(b[2], b[5]) + .6);
+            hintBoxes.put((i + 1) + " · " + hint.getString("prompt"), box);
+        }
+    }
+
+    /** Pure shared-wall bounds calculation; one cell can extend several structures without duplicate mesh cells. */
+    static Map<String, int[]> structureBounds(HologramState state) {
+        Map<String, int[]> bounds = new LinkedHashMap<>();
+        for (HologramState.Cell cell : state.cells) for (String structureId : cell.structureIds) {
+            int[] b = bounds.get(structureId);
+            if (b == null) {
+                b = new int[] { cell.dx, cell.dy, cell.dz, cell.dx, cell.dy, cell.dz };
+                bounds.put(structureId, b);
+            }
+            b[0] = Math.min(b[0], cell.dx);
+            b[1] = Math.min(b[1], cell.dy);
+            b[2] = Math.min(b[2], cell.dz);
+            b[3] = Math.max(b[3], cell.dx);
+            b[4] = Math.max(b[4], cell.dy);
+            b[5] = Math.max(b[5], cell.dz);
+        }
+        return bounds;
+    }
+
+    static String hintAt(int mx, int my) {
+        for (Map.Entry<String, double[][]> entry : hintBoxes.entrySet()) for (int[] edge : EDGES) {
+            double[] a = entry.getValue()[edge[0]], b = entry.getValue()[edge[1]];
+            if (HologramGizmo.distance(mx, my, a[0], a[1], b[0], b[1]) <= 5) return entry.getKey();
+        }
+        return "";
+    }
+
+    static String pickStructure(int mx, int my) {
+        String result = "";
+        double best = 3.5;
+        for (Map.Entry<String, double[][]> entry : structureBoxes.entrySet()) for (int[] edge : EDGES) {
+            double[] a = entry.getValue()[edge[0]], b = entry.getValue()[edge[1]];
+            double distance = HologramGizmo.distance(mx, my, a[0], a[1], b[0], b[1]);
+            if (distance < best) {
+                result = entry.getKey();
+                best = distance;
+            }
+        }
+        return result;
     }
 
     /** Exact coordinates also preserve virtual previews outside normal world height. */

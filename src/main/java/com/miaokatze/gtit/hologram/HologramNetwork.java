@@ -316,18 +316,54 @@ public final class HologramNetwork {
 
         public IMessage onMessage(Action msg, MessageContext ctx) {
             EntityPlayerMP player = ctx.getServerHandler().playerEntity;
-            if (msg.tag.toString()
-                .length() <= 16384) ServerTaskScheduler.scheduleServerTask(() -> dispatch(player, msg.tag));
+            // Packet decompression is already bounded. Large index selections must not be rejected
+            // because their textual representation exceeds an unrelated string budget.
+            ServerTaskScheduler.scheduleServerTask(() -> dispatch(player, msg.tag));
             return null;
         }
     }
 
     private static void dispatch(EntityPlayerMP player, NBTTagCompound tag) {
         String action = tag.getString("action");
+        if ("areaPoint".equals(action) || "toggleAreaSelection".equals(action)) {
+            if (!com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector.isProjector(player.getHeldItem()))
+                return;
+            if ("toggleAreaSelection".equals(action)) HologramService.toggleAreaSelection(player);
+            else HologramService.areaPoint(
+                player,
+                tag.getInteger("point"),
+                tag.getInteger("x"),
+                tag.getInteger("y"),
+                tag.getInteger("z"),
+                tag.getBoolean("atPlayer"));
+            return;
+        }
         if ("useBlock".equals(action) || "useAir".equals(action)) {
             if (!com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector.isProjector(player.getHeldItem()))
                 return;
             boolean air = "useAir".equals(action);
+            if (tag.getBoolean("shift") && tag.getBoolean("alt")) {
+                HologramService.toggleAreaSelection(player);
+                return;
+            }
+            if (tag.getBoolean("shift")) {
+                HologramService.openAir(player);
+                return;
+            }
+            if (player.getHeldItem()
+                .hasTagCompound()
+                && player.getHeldItem()
+                    .getTagCompound()
+                    .getBoolean("gtitHologramAreaSelecting")) {
+                HologramService.areaPoint(
+                    player,
+                    2,
+                    tag.getInteger("x"),
+                    tag.getInteger("y"),
+                    tag.getInteger("z"),
+                    air || tag.getBoolean("alt"));
+                return;
+            }
             if (air && !tag.getBoolean("alt")) {
                 if (tag.getBoolean("shift")) HologramService.openSettings(player);
                 else HologramService.openAir(player);
@@ -343,10 +379,7 @@ public final class HologramNetwork {
                     .getOrientation(side);
                 int offsetX = air ? 0 : face.offsetX, offsetY = air ? 0 : face.offsetY,
                     offsetZ = air ? 0 : face.offsetZ;
-                if (tag.getBoolean("shift"))
-                    HologramService.immediateVirtual(player, x + offsetX, y + offsetY, z + offsetZ, side, "");
-                else if ("lock".equals(tag.getString("virtualIntent")))
-                    HologramService.lockVirtual(player, x, y, z, side);
+                if ("lock".equals(tag.getString("virtualIntent"))) HologramService.lockVirtual(player, x, y, z, side);
                 else if ("cancel".equals(tag.getString("virtualIntent"))) HologramService.cancel(player);
                 else HologramService.openVirtual(player, x + offsetX, y + offsetY, z + offsetZ, side, "");
             } else if (tag.getBoolean("shift") && tag.getBoolean("virtualEdit")) HologramService.openAir(player);

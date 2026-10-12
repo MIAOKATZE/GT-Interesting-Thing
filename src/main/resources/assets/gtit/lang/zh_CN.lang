@@ -277,10 +277,10 @@ gtit.reincarnation.single_player_only=轮回机制仅单机可用
 item.neko_dimension_pocket.name=猫猫次元口袋
 item.neko_hologram_projector.name=猫猫全息投影仪
 item.neko_hologram_projector.tooltip.0=右键多方块控制器，查看结构并配置全息投影。
-item.neko_hologram_projector.tooltip.1=对空气右键，打开投影面板。
-item.neko_hologram_projector.tooltip.2=Alt右键：选择预设、锁定投影、取消；Alt+Shift右键：按材料需求直接放置。
-item.neko_hologram_projector.tooltip.3=Shift右键：编辑虚拟结构；Shift右键空气：取料、降级与回收设置。
-item.neko_hologram_projector.tooltip.4=Delete恢复默认壳，R旋转；Ctrl+X/C/V与Ctrl+Z/Y编辑目标。快捷键可自定义。
+item.neko_hologram_projector.tooltip.1=Shift右键打开工作台，左侧切换结构与蓝图。
+item.neko_hologram_projector.tooltip.2=Alt右键选择蓝图并确认材料；预览后再Alt右键锁定，打开工作台确认施工。
+item.neko_hologram_projector.tooltip.3=Shift+Alt右键切换区域框选；左/右键设两点，按Alt使用自身坐标。
+item.neko_hologram_projector.tooltip.4=Ctrl点击多选，Shift拖动立体框选；Ctrl+X/C/V编辑，RGB移动轴移动蓝图格。
 # ★★R98 S2（需求 1「大幅度简化 Tooltip」）：连号族由 0..9 十行<b>整体重编号</b>成 0..3 四行
 # （★不是"删几条留几条"——消费端是 equals(key) 即 break 的循环，跳号 = 静默截断后面的行）。
 # 撤掉的六行去了哪里（R36「撤形状必须落新家在」的逐条对账）：
@@ -610,7 +610,7 @@ gtit.hologram.help.2=拖动旋转，滚轮缩放。点击方块查看状态与�
 gtit.hologram.help.3=全息显示目标，现状显示现场，差分突出需要改变的位置。
 gtit.hologram.help.4=绿色：已满足；蓝色：待补；红色：缺料；金色：受保护；紫色：不支持。
 gtit.hologram.help.5=选择位置后，从主背包或材料来源指定方块与仓室；自由放置不代表机器已成型。
-gtit.hologram.help.6=点击直接构建、应用替换或拆除结构立即执行；材料与改动清单可选查看。
+gtit.hologram.help.6=构建、替换或拆除先核对材料与改动，再确认执行；蓝图缺料可再次确认只放已有。
 gtit.hologram.help.7=预览保留真实材质，世界显示静态放置预览；没有逐格施工动画，拆除始终保留控制器。
 gtit.hologram.hints=原版结构提示
 gtit.hologram.layer=层

@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.client.hologram;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import net.minecraft.block.Block;
@@ -57,7 +58,9 @@ final class HologramState {
 
         final int index, x, y, z, dx, dy, dz, meta, wantMeta, chosenChoice, hatchFacing, actualFacing, targetFacing;
         final String id, wantId, status, pinScope, role, family, renderKind, operation;
-        final boolean anchor, iconOnly;
+        final String prompt, structureId, sourceMod, sourceVersion, sourceClass, sourceWarning;
+        final List<String> structureIds;
+        final boolean anchor, iconOnly, excluded, missingBlock, sourceMissing;
         final boolean candidateComplete;
         final String candidateBoundary;
         final ItemStack actualStack, targetStack;
@@ -90,6 +93,24 @@ final class HologramState {
             family = n.getString("family");
             renderKind = n.getString("renderKind");
             operation = n.getString("operation");
+            prompt = n.getString("prompt");
+            structureId = n.getString("structureId");
+            List<String> memberships = new ArrayList<>();
+            NBTTagList membershipTags = n.getTagList("structureIds", 8);
+            for (int i = 0; i < membershipTags.tagCount(); i++) {
+                String member = membershipTags.getStringTagAt(i);
+                if (!member.isEmpty() && !memberships.contains(member)) memberships.add(member);
+            }
+            if (memberships.isEmpty() && !structureId.isEmpty()) memberships.add(structureId);
+            structureIds = Collections.unmodifiableList(memberships);
+            sourceMod = n.getString("sourceMod");
+            sourceVersion = n.getString("sourceVersion");
+            sourceClass = n.getString("sourceClass");
+            sourceWarning = n.getString("sourceWarning");
+            sourceMissing = n.getBoolean("sourceMissing");
+            excluded = n.getBoolean("excluded");
+            missingBlock = n.getBoolean("missingBlock")
+                || !wantId.isEmpty() && !"minecraft:air".equals(wantId) && Block.getBlockFromName(wantId) == null;
             anchor = n.getBoolean("anchor");
             iconOnly = n.getBoolean("iconOnly");
             actualStack = ItemStack.loadItemStackFromNBT(n.getCompoundTag("actualStack"));
@@ -109,6 +130,10 @@ final class HologramState {
             return Block.getBlockFromName(current ? id : wantId);
         }
 
+        boolean belongsToStructure(String id) {
+            return !id.isEmpty() && structureIds.contains(id);
+        }
+
         boolean completed() {
             return status.equals("placed") || status.equals("replaced") || status.equals("removed");
         }
@@ -120,6 +145,9 @@ final class HologramState {
         }
 
         int color() {
+            if (excluded) return 0x71848c;
+            if (missingBlock) return 0xff52cf;
+            if (sourceMissing) return 0x71848c;
             if (status.equals("protected")) return 0xe4b85a;
             if (status.equals("unsupported")) return 0xb68ede;
             if (status.equals("missing")) return 0xe6747a;

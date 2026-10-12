@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockBush;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.Item;
@@ -28,6 +29,7 @@ import net.minecraftforge.common.util.BlockSnapshot;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.event.world.BlockEvent;
 
+import com.gtnewhorizon.structurelib.StructureLibAPI;
 import com.gtnewhorizon.structurelib.alignment.IAlignment;
 import com.gtnewhorizon.structurelib.alignment.constructable.ChannelDataAccessor;
 import com.gtnewhorizon.structurelib.alignment.constructable.IConstructable;
@@ -58,6 +60,8 @@ import tectech.thing.metaTileEntity.multi.godforge.MTEForgeOfGods;
 public final class HologramService {
 
     private static final Map<UUID, Session> SESSIONS = new HashMap<>();
+    private static final Map<UUID, HologramArea> AREAS = new HashMap<>();
+    private static final Map<UUID, Session> AREA_EDITORS = new HashMap<>();
     private static final int BUDGET = 4096;
     private static final String TOOL_ID = "gtitHologramToolId";
     private static final int CAPTURE_ATTEMPTS = 3;
@@ -102,7 +106,7 @@ public final class HologramService {
             previous.open = true;
             previous.settingsOnly = false;
             dismissPresetBrowse(previous);
-            if (previous.virtual) presetGuidance(previous, "已打开自定义预设编辑；纯编辑关闭后需 Alt + 右击启动投影。");
+            if (previous.virtual) presetGuidance(previous, "已打开自定义预设编辑；Alt + 右击重新选择蓝图、核对材料并确认后启动投影。");
             send(previous);
             return;
         }
@@ -112,8 +116,163 @@ public final class HologramService {
         send(session);
     }
 
+    private static Session uiSession(EntityPlayerMP player) {
+        Session s = SESSIONS.get(player.getUniqueID());
+        if (s == null || s.cancelled || !valid(s)) {
+            if (s != null) clearAreaSelection(s);
+            s = new Session(
+                player,
+                net.minecraft.util.MathHelper.floor_double(player.posX),
+                net.minecraft.util.MathHelper.floor_double(player.posY),
+                net.minecraft.util.MathHelper.floor_double(player.posZ),
+                false,
+                1);
+            SESSIONS.put(player.getUniqueID(), s);
+        }
+        return s;
+    }
+
+    /** Persistent tool markers describe only a currently valid, server-owned selection session. */
+    public static boolean isAreaSelecting(EntityPlayer player, ItemStack stack) {
+        Session s = SESSIONS.get(player.getUniqueID());
+        HologramArea area = AREAS.get(player.getUniqueID());
+        return s != null && s.player == player
+            && !s.cancelled
+            && area != null
+            && area.selecting
+            && stack != null
+            && stack.getItem() == s.tool
+            && stack.hasTagCompound()
+            && s.toolId.equals(
+                stack.getTagCompound()
+                    .getString(TOOL_ID))
+            && valid(s);
+    }
+
+    private static boolean clearAreaMarker(Session s, ItemStack stack) {
+        if (stack == null || stack.getItem() != s.tool
+            || !stack.hasTagCompound()
+            || !s.toolId.equals(
+                stack.getTagCompound()
+                    .getString(TOOL_ID))
+            || !stack.getTagCompound()
+                .hasKey("gtitHologramAreaSelecting"))
+            return false;
+        stack.getTagCompound()
+            .removeTag("gtitHologramAreaSelecting");
+        return true;
+    }
+
+    private static void clearAreaSelection(Session s) {
+        AREAS.remove(s.player.getUniqueID());
+        AREA_EDITORS.remove(s.player.getUniqueID());
+        boolean changed = clearAreaMarker(s, s.boundTool);
+        for (ItemStack stack : s.player.inventory.mainInventory) changed |= clearAreaMarker(s, stack);
+        for (ItemStack stack : s.player.inventory.armorInventory) changed |= clearAreaMarker(s, stack);
+        if (changed) s.player.inventory.markDirty();
+    }
+
+    public static void toggleAreaSelection(EntityPlayerMP player) {
+        Session s = uiSession(player);
+        if (s.job == 1 || s.job == 2) {
+            s.status = "请先取消当前施工任务再选择区域";
+            send(s);
+            return;
+        }
+        HologramArea area = AREAS.computeIfAbsent(player.getUniqueID(), ignored -> new HologramArea());
+        if (area.importing) {
+            area.importing = false;
+            s.status = "区域导入已取消，原规划保留";
+        } else {
+            area.selecting = !area.selecting;
+            currentTool(s).getTagCompound()
+                .setBoolean("gtitHologramAreaSelecting", area.selecting);
+            player.inventory.markDirty();
+            s.status = area.selecting ? "区域选择已开启：左键第一点，右键第二点；Alt 使用玩家坐标" : "区域选择已关闭";
+            if (!area.selecting && area.first != null && area.second != null) startAreaImport(s, area);
+        }
+        player.addChatMessage(new ChatComponentText("[猫猫投影仪] " + s.status));
+        send(s);
+    }
+
+    public static void areaPoint(EntityPlayerMP player, int point, int x, int y, int z, boolean atPlayer) {
+        Session s = uiSession(player);
+        HologramArea area = AREAS.get(player.getUniqueID());
+        if (area == null || !area.selecting || point < 1 || point > 2) return;
+        if (atPlayer) {
+            x = net.minecraft.util.MathHelper.floor_double(player.posX);
+            y = net.minecraft.util.MathHelper.floor_double(player.posY);
+            z = net.minecraft.util.MathHelper.floor_double(player.posZ);
+        }
+        if (y < 0 || y >= player.worldObj.getHeight()
+            || !player.worldObj.blockExists(x, y, z)
+            || player.getDistanceSq(x + .5, y + .5, z + .5) > 4096) return;
+        area.point(point, x, y, z);
+        s.status = "区域点 " + point + " = " + x + ", " + y + ", " + z;
+        player.addChatMessage(new ChatComponentText("[猫猫投影仪] " + s.status));
+        send(s);
+    }
+
+    private static void startAreaImport(Session s, HologramArea area) {
+        try {
+            area.begin(s.player.worldObj);
+            s.status = "正在分段导入区域与声明结构，请稍候";
+        } catch (java.io.IOException failure) {
+            s.status = "区域导入失败：" + failure.getMessage();
+        }
+    }
+
+    private static Session selectAreaStructure(Session previous, String id) {
+        if (previous.virtual && previous.virtualPreset != null && !previous.virtualPreset.structures.isEmpty()) {
+            previous.selectedIndices.clear();
+            for (int index = 0; index < previous.capture.cells.size(); index++)
+                if (id.isEmpty() || previous.capture.cells.get(index)
+                    .belongsTo(id)) previous.selectedIndices.add(index);
+            previous.scope = id.isEmpty() ? 0 : 2;
+            previous.selected = previous.selectedIndices.isEmpty() ? -1
+                : previous.selectedIndices.iterator()
+                    .next();
+            previous.blueprintActiveStructure = id;
+            refreshPlan(previous);
+            previous.open = true;
+            return previous;
+        }
+        HologramArea area = AREAS.get(previous.player.getUniqueID());
+        if (area == null || !area.imported) {
+            previous.status = "请先导入施工区域";
+            return previous;
+        }
+        if (id.isEmpty()) {
+            Session editor = AREA_EDITORS.get(previous.player.getUniqueID());
+            if (editor != null && valid(editor)) {
+                area.active = "";
+                editor.open = true;
+                SESSIONS.put(previous.player.getUniqueID(), editor);
+                return editor;
+            }
+            return previous;
+        }
+        HologramArea.Structure structure = area.structures.get(id);
+        if (structure == null) {
+            previous.status = "声明结构已不存在";
+            return previous;
+        }
+        if (area.active.isEmpty()) AREA_EDITORS.put(previous.player.getUniqueID(), previous);
+        Session selected = new Session(previous.player, structure.x, structure.y, structure.z, true, previous.side);
+        scan(selected);
+        if (selected.capture != null) for (HologramCapture.Cell cell : selected.capture.cells)
+            setMemberships(cell, Collections.singletonList(id));
+        area.active = id;
+        selected.open = true;
+        SESSIONS.put(previous.player.getUniqueID(), selected);
+        return selected;
+    }
+
     public static void clear() {
+        for (Session s : SESSIONS.values()) clearAreaSelection(s);
         SESSIONS.clear();
+        AREAS.clear();
+        AREA_EDITORS.clear();
     }
 
     public static void openSettings(EntityPlayerMP player) {
@@ -122,7 +281,7 @@ public final class HologramService {
             s = new Session(player, 0, 0, 0, false, 2);
             SESSIONS.put(player.getUniqueID(), s);
         }
-        s.settingsOnly = true;
+        s.settingsOnly = false;
         dismissPresetBrowse(s);
         s.open = true;
         send(s);
@@ -135,21 +294,10 @@ public final class HologramService {
             send(previous);
             return;
         }
-        if (previous != null && previous.virtual
-            && !previous.virtualPlacement
-            && !previous.cancelled
-            && previous.virtualPreset != null
-            && valid(previous)
-            && (presetId == null || presetId.isEmpty())
-            && previous.virtualPreset.id.equals(selectedPreset(previous))) {
-            if (!beginVirtualPlacement(previous, x, y, z, side)) return;
-            presetGuidance(previous, "当前编辑草稿已启动，投影跟随鼠标：R 水平旋转，Ctrl + R 垂直旋转；Alt + 右击锁定位置；Shift + 右击打开编辑。");
-            send(previous);
-            return;
-        }
         Session s = new Session(player, x, y, z, false, side);
         s.virtual = true;
-        s.virtualPlacement = true;
+        s.virtualPlacement = false;
+        s.blueprintAwaitingConfirmation = true;
         s.open = true;
         SESSIONS.put(player.getUniqueID(), s);
         if (!valid(s) || !player.worldObj.blockExists(x, y, z)) {
@@ -158,13 +306,8 @@ public final class HologramService {
             send(s);
             return;
         }
-        if (presetId == null || presetId.isEmpty()) presetId = selectedPreset(s);
-        if (!presetId.isEmpty()) loadPreset(s, presetId, false);
-        else {
-            s.presetBrowseForPlacement = true;
-            s.status = "请先选择服务器保存的自定义预设";
-            presetGuidance(s, "此次 Alt 已启动预设放置：选择预设后投影跟随鼠标。");
-        }
+        s.presetBrowseForPlacement = true;
+        s.status = "请选择蓝图并核对材料；确认后才启动投影";
         send(s);
     }
 
@@ -182,7 +325,7 @@ public final class HologramService {
         s.open = false;
         refreshPlan(s);
         s.status = "虚拟结构位置已锁定；再次操作后施工";
-        presetGuidance(s, "位置已锁定：Alt + Shift + 右击施工；Shift + 右击编辑；Alt + 右击取消投影。");
+        presetGuidance(s, "位置已锁定：Shift + 右击打开统一界面施工；Alt + 右击取消投影。");
         send(s);
     }
 
@@ -257,9 +400,9 @@ public final class HologramService {
             gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = preset.controllerId < 0
                 || preset.controllerId >= GregTechAPI.METATILEENTITIES.length ? null
                     : GregTechAPI.METATILEENTITIES[preset.controllerId];
-            if (!(prototype instanceof MTEEnhancedMultiBlockBase)
+            if ((preset.schema < 2 || preset.controllerId >= 0) && (!(prototype instanceof MTEEnhancedMultiBlockBase)
                 || !((MTEEnhancedMultiBlockBase<?>) prototype).getAlignmentLimits()
-                    .isNewExtendedFacingValid(controller))
+                    .isNewExtendedFacingValid(controller)))
                 return false;
             preset.controllerFacing = controller.ordinal();
             Map<String, Integer> currentFacings = new HashMap<>();
@@ -276,10 +419,35 @@ public final class HologramService {
                 saved.x = offset[0];
                 saved.y = offset[1];
                 saved.z = offset[2];
-                saved.facing = saved.controller ? controller.getDirection()
+                if (preset.schema >= 2) {
+                    try {
+                        saved.tileNbt = rotateBlueprintNbt(saved.tileNbt, vertical);
+                        saved.itemNbt = rotateBlueprintNbt(saved.itemNbt, vertical);
+                    } catch (java.io.IOException invalid) {
+                        return false;
+                    }
+                }
+                saved.facing = saved.controller && preset.schema < 2 ? controller.getDirection()
                     .ordinal() : HologramVirtualTransform.front(front, vertical);
-                if (!virtualFrontAllowed(saved.stack(), saved.facing)) return false;
+                if (saved.stack() != null && !saved.missing() && !virtualFrontAllowed(saved.stack(), saved.facing))
+                    return false;
             }
+        }
+        if (rotate) for (HologramPresets.Structure saved : preset.structures) {
+            int[] coordinate = HologramVirtualTransform.turn(saved.x, saved.y, saved.z, vertical);
+            saved.x = coordinate[0];
+            saved.y = coordinate[1];
+            saved.z = coordinate[2];
+        }
+        if (rotate) for (HologramPresets.HintArea hint : preset.hintAreas) {
+            int[] a = HologramVirtualTransform.turn(hint.x1, hint.y1, hint.z1, vertical);
+            int[] b = HologramVirtualTransform.turn(hint.x2, hint.y2, hint.z2, vertical);
+            hint.x1 = Math.min(a[0], b[0]);
+            hint.x2 = Math.max(a[0], b[0]);
+            hint.y1 = Math.min(a[1], b[1]);
+            hint.y2 = Math.max(a[1], b[1]);
+            hint.z1 = Math.min(a[2], b[2]);
+            hint.z2 = Math.max(a[2], b[2]);
         }
         HologramCapture capture = new HologramCapture(s.capture.context, s.capture.trigger);
         capture.incomplete = s.capture.incomplete;
@@ -298,7 +466,15 @@ public final class HologramService {
                 || yy >= s.player.worldObj.getHeight()
                 || zz < -30000000L
                 || zz >= 30000000L) return false;
-            HologramCapture.Cell cell = HologramVirtualTransform.at(old, (int) xx, (int) yy, (int) zz);
+            HologramCapture.Cell cell = blueprintCell(old, (int) xx, (int) yy, (int) zz);
+            if (rotate && preset.schema >= 2) {
+                try {
+                    cell.tileNbt = rotateBlueprintNbt(old.tileNbt, vertical);
+                    cell.itemNbt = rotateBlueprintNbt(old.itemNbt, vertical);
+                } catch (java.io.IOException invalid) {
+                    return false;
+                }
+            }
             String key = position(cell);
             keys.put(position(old), key);
             capture.cells.add(cell);
@@ -306,9 +482,10 @@ public final class HologramService {
             Integer front = s.facingPins.get(position(old));
             if (front == null && rotate) front = s.planFacings.get(i);
             if (front != null) {
-                if (rotate) front = "templateController".equals(old.role) ? controller.getDirection()
-                    .ordinal() : HologramVirtualTransform.front(front, vertical);
-                if (!virtualFrontAllowed(targetFor(s, old, i), front)) return false;
+                if (rotate)
+                    front = "templateController".equals(old.role) && preset.schema < 2 ? controller.getDirection()
+                        .ordinal() : HologramVirtualTransform.front(front, vertical);
+                if (targetFor(s, old, i) != null && !virtualFrontAllowed(targetFor(s, old, i), front)) return false;
                 facings.put(key, front);
             }
         }
@@ -397,6 +574,8 @@ public final class HologramService {
     public static void cancel(EntityPlayerMP player) {
         Session s = SESSIONS.get(player.getUniqueID());
         if (s == null || !valid(s)) return;
+        HologramArea area = AREAS.get(player.getUniqueID());
+        if (area != null) area.importing = false;
         s.job = 4;
         s.cancelled = true;
         s.open = false;
@@ -419,6 +598,7 @@ public final class HologramService {
         }
         if (s.actionCount++ >= 8) return;
         if (!valid(s)) {
+            clearAreaSelection(s);
             s.job = 4;
             cancelCaptureRetry(s);
             clearPending(s);
@@ -429,6 +609,7 @@ public final class HologramService {
         s.materialContext = new HologramMaterials.Context(player, s.materialSettings);
         s.materialContext.flushRecovery();
         String op = action.getString("op");
+        if (!"build".equals(op) && !"start".equals(op)) s.forcePlacementReady = false;
         EditState beforeEdit = isPlanningEdit(op) && s.job != 1 && s.job != 2 ? new EditState(s) : null;
         if (s.job != 1 && s.job != 2 && ("hatchPreset".equals(op) || "clearHatchPreset".equals(op))) {
             s.allocationsFrozen = false;
@@ -443,14 +624,38 @@ public final class HologramService {
             if (selected >= 0 && selected < s.capture.cells.size())
                 s.virtualEdited.add(position(s.capture.cells.get(selected)));
         }
+        if (s.job != 1 && s.job != 2 && "selectStructure".equals(op)) {
+            s = selectAreaStructure(s, action.getString("structureId"));
+            send(s);
+            return;
+        }
+        if (s.job != 1 && s.job != 2 && "previewPreset".equals(op)) {
+            s = editPreset(s, action.getString("presetId"));
+            s.blueprintPreview = true;
+            s.open = true;
+            send(s);
+            return;
+        }
+        if (s.job != 1 && s.job != 2 && blueprintAction(s, action, op)) {
+            send(s);
+            return;
+        }
         if ("settings".equals(op) && s.job != 1 && s.job != 2) {
             applySettings(s, action);
         } else if ("savePreset".equals(op) && s.job != 1 && s.job != 2) {
             savePreset(s, action.getString("name"));
         } else if ("loadPreset".equals(op) && s.job != 1 && s.job != 2) {
             loadPreset(s, action.getString("presetId"));
-        } else if ("choosePlacementPreset".equals(op) && s.job != 1 && s.job != 2 && s.presetBrowseForPlacement) {
+        } else if ("choosePlacementPreset".equals(op) && s.job != 1 && s.job != 2) {
+            s.virtual = true;
+            s.virtualPlacement = false;
+            s.target = null;
+            s.machine = null;
+            s.context = null;
             loadPreset(s, action.getString("presetId"), false);
+            s.blueprintAwaitingConfirmation = s.virtualPreset != null;
+            s.open = true;
+            s.status = "请核对材料并确认开始预览；预览不会扣除材料";
         } else if ("dismissPresetBrowse".equals(op)) {
             dismissPresetBrowse(s);
             s.open = false;
@@ -476,6 +681,8 @@ public final class HologramService {
             s.job = 2;
             s.status = "已暂停";
         } else if ("cancel".equals(op)) {
+            HologramArea area = AREAS.get(player.getUniqueID());
+            if (area != null) area.importing = false;
             s.job = 4;
             cancelCaptureRetry(s);
             clearPending(s);
@@ -547,6 +754,7 @@ public final class HologramService {
                 for (int i = 0; i < s.capture.cells.size(); i++) {
                     if (inScope(s, s.capture.cells.get(i), i) && "pending".equals(s.planStatus.get(i))) s.work.add(i);
                 }
+                controllerWorkLast(s);
                 s.phase = "RUNNING";
                 s.status = "正在直接施工";
             }
@@ -576,6 +784,7 @@ public final class HologramService {
                     s.selected = index;
                     s.scope = 2;
                     if (pin.getItem() instanceof ItemMachines) s.noHatches = false;
+                    setBlueprintTarget(s, cell, pin);
                     s.pins.put(index, pin);
                     s.coordinatePins.put(position(cell), pin.copy());
                     refreshPlan(s);
@@ -603,6 +812,7 @@ public final class HologramService {
                     s.selected = index;
                     s.scope = 2;
                     if (pin.getItem() instanceof ItemMachines) s.noHatches = false;
+                    setBlueprintTarget(s, cell, pin);
                     s.pins.put(index, pin);
                     s.coordinatePins.put(position(cell), pin.copy());
                     refreshPlan(s);
@@ -734,6 +944,11 @@ public final class HologramService {
         s.scope = clamp(action.getInteger("scope"), 0, 3);
         s.layer = clamp(action.getInteger("layer"), -128, 128);
         s.selected = action.getInteger("selected");
+        if (action.hasKey("selectedIndices", 11)) {
+            s.selectedIndices.clear();
+            for (int index : action.getIntArray("selectedIndices"))
+                if (s.capture != null && index >= 0 && index < s.capture.cells.size()) s.selectedIndices.add(index);
+        }
         if (geometryChanged || s.capturePending) scan(s);
         else {
             s.job = 0;
@@ -787,6 +1002,27 @@ public final class HologramService {
                 .apply(s);
             refreshPlan(s);
             s.status = undo ? "已撤销规划编辑；已施工的世界保持现状" : "已重做规划编辑；点击施工才改变世界";
+            return;
+        }
+        if (s.virtual && s.virtualPreset != null
+            && s.virtualPreset.schema >= 2
+            && ("editCopy".equals(op) || "editCut".equals(op) || "editPaste".equals(op))) {
+            try {
+                blueprintClipboard(s, action, op);
+            } catch (java.io.IOException failure) {
+                s.status = "批量编辑失败：" + failure.getMessage();
+            }
+            return;
+        }
+        int[] batch = action.getIntArray("indices");
+        if (batch.length > 1) {
+            NBTTagCompound single = (NBTTagCompound) action.copy();
+            single.removeTag("indices");
+            single.removeTag("selectedIndices");
+            for (int selected : batch) {
+                single.setInteger("selected", selected);
+                edit(s, single, op);
+            }
             return;
         }
         int index = action.hasKey("selected", 3) ? action.getInteger("selected") : s.selected;
@@ -947,7 +1183,56 @@ public final class HologramService {
                 || !s.player.playerNetServerHandler.netManager.isChannelOpen()) {
                 clearPending(s);
                 cancelCaptureRetry(s);
+                clearAreaSelection(s);
                 sessions.remove();
+                continue;
+            }
+            if (!valid(s)) clearAreaSelection(s);
+            HologramArea area = AREAS.get(s.player.getUniqueID());
+            if (area != null && area.importing) {
+                try {
+                    if (!valid(s)) throw new java.io.IOException("工具、维度或玩家状态已变化");
+                    if (area.tick(s.player, trigger(s))) {
+                        s.x = area.minX;
+                        s.y = area.minY;
+                        s.z = area.minZ;
+                        s.target = null;
+                        s.machine = null;
+                        s.context = null;
+                        s.virtual = true;
+                        s.virtualPlacement = false;
+                        s.virtualPreset = area.blueprint;
+                        for (HologramArea.Structure structure : area.structures.values()) {
+                            HologramPresets.Structure saved = new HologramPresets.Structure();
+                            saved.id = structure.id;
+                            saved.name = structure.machine.getLocalName();
+                            saved.x = structure.x - s.x;
+                            saved.y = structure.y - s.y;
+                            saved.z = structure.z - s.z;
+                            saved.controllerId = structure.machine.getBaseMetaTileEntity()
+                                .getMetaTileID();
+                            saved.sourceClass = structure.machine.getClass()
+                                .getName();
+                            saved.sourceMod = sourceMod(structure.machine.getClass());
+                            saved.enabled = structure.enabled;
+                            area.blueprint.structures.add(saved);
+                        }
+                        for (HologramPresets.Cell saved : area.blueprint.cells) {
+                            saved.structureIds = area.memberships(s.x + saved.x, s.y + saved.y, s.z + saved.z);
+                            saved.structureId = saved.structureIds.isEmpty() ? null : saved.structureIds.get(0);
+                        }
+                        populateVirtual(s);
+                        refreshPlan(s);
+                        s.status = "区域已导入；识别 " + area.structures.size() + " 个声明控制器，可分别编辑与保存蓝图";
+                        s.open = true;
+                        send(s);
+                    }
+                } catch (java.io.IOException | RuntimeException | LinkageError failure) {
+                    area.importing = false;
+                    s.status = "区域导入失败：" + failure.getMessage();
+                    s.open = true;
+                    send(s);
+                }
                 continue;
             }
             if (s.capturePending) {
@@ -979,7 +1264,10 @@ public final class HologramService {
             s.materialContext.flushRecovery();
             s.ackIndices.clear();
             s.ackSuccesses.clear();
-            while (s.cursor < s.work.size()) {
+            long deadline = System.nanoTime() + 100000000L;
+            int attempted = 0;
+            while (s.cursor < s.work.size() && attempted < BUDGET && (attempted == 0 || System.nanoTime() < deadline)) {
+                attempted++;
                 int index = s.work.get(s.cursor);
                 HologramCapture.Cell cell = s.capture.cells.get(index);
                 boolean unchanged = expectedCurrent(s, index);
@@ -1144,14 +1432,24 @@ public final class HologramService {
         }
         refreshResources(s);
         if (!constructionAllowed(s)) return;
-        if (s.planMissing > 0 || !s.planRecoveryFits) {
-            s.status = s.planMissing > 0 ? "施工材料不足，请补齐后重试" : "背包无法容纳回收，请整理后重试";
+        if (!s.planRecoveryFits) {
+            s.status = "背包无法容纳回收，请整理后重试";
             return;
         }
+        if (s.planMissing > 0 && (!s.virtual || !s.forcePlacementReady)) {
+            s.forcePlacementReady = s.virtual;
+            s.status = s.virtual
+                ? (s.blueprintResourceMissing.isEmpty() ? "蓝图材料不足" : s.blueprintResourceMissing)
+                    + "；再次点击施工将只放置现有材料，权限与占位保护仍有效"
+                : "施工材料不足，请补齐后重试";
+            return;
+        }
+        s.forcePlacementReady = false;
         s.work.clear();
         for (int i = 0; i < s.capture.cells.size(); i++) {
             if (inScope(s, s.capture.cells.get(i), i) && "pending".equals(s.planStatus.get(i))) s.work.add(i);
         }
+        controllerWorkLast(s);
         if (s.work.isEmpty()) {
             s.status = "选定范围没有可安全施工的位置";
             return;
@@ -1162,6 +1460,13 @@ public final class HologramService {
         s.job = 1;
         s.phase = "RUNNING";
         s.status = "正在直接施工";
+    }
+
+    private static void controllerWorkLast(Session s) {
+        if (s.virtual) s.work.sort(
+            (left, right) -> Boolean.compare(
+                "templateController".equals(s.capture.cells.get(left).role),
+                "templateController".equals(s.capture.cells.get(right).role)));
     }
 
     private static void clearPending(Session s) {
@@ -1183,8 +1488,9 @@ public final class HologramService {
                     .getString(TOOL_ID))
             && held.getItem() == s.tool
             && s.player.inventory.currentItem == s.slot
-            && (!s.virtual || (s.y >= 0 && s.y < s.player.worldObj.getHeight()
-                && s.player.getDistanceSq(s.x + .5, s.y + .5, s.z + .5) <= 4096))
+            && (!s.virtual || !s.virtualPlacement
+                || (s.y >= 0 && s.y < s.player.worldObj.getHeight()
+                    && s.player.getDistanceSq(s.x + .5, s.y + .5, s.z + .5) <= 4096))
             && (s.target == null || (s.player.getDistanceSq(s.x + .5, s.y + .5, s.z + .5) <= 4096
                 && s.player.worldObj.blockExists(s.x, s.y, s.z)
                 && s.player.worldObj.getTileEntity(s.x, s.y, s.z) == s.target
@@ -1192,7 +1498,43 @@ public final class HologramService {
                     || ((IGregTechTileEntity) s.target).getMetaTileEntity() == s.context)));
     }
 
+    private static void setMemberships(HologramCapture.Cell cell, List<String> ids) {
+        cell.structureIds = new ArrayList<>(new java.util.LinkedHashSet<>(ids));
+        cell.structureId = cell.structureIds.isEmpty() ? "" : cell.structureIds.get(0);
+    }
+
+    private static boolean membershipEnabled(Session s, HologramCapture.Cell cell) {
+        if (cell.memberships()
+            .isEmpty()) return true;
+        if (s.virtualPreset != null) {
+            String active = s.blueprintActiveStructure;
+            boolean found = false, enabled = false;
+            for (HologramPresets.Structure structure : s.virtualPreset.structures) {
+                if (!cell.belongsTo(structure.id)) continue;
+                if (!active.isEmpty() && !active.equals(structure.id)) continue;
+                found = true;
+                enabled |= structure.enabled;
+            }
+            return active.isEmpty() ? !found || enabled : found && enabled;
+        }
+        HologramArea area = AREAS.get(s.player.getUniqueID());
+        if (!s.virtual && area != null) {
+            boolean found = false, enabled = false;
+            for (String id : cell.memberships()) {
+                HologramArea.Structure structure = area.structures.get(id);
+                if (structure == null || (!area.active.isEmpty() && !area.active.equals(id))) continue;
+                found = true;
+                enabled |= structure.enabled;
+            }
+            return area.active.isEmpty() ? !found || enabled : found && enabled;
+        }
+        return true;
+    }
+
     private static boolean inScope(Session s, HologramCapture.Cell c, int index) {
+        if (c.excluded) return false;
+        if (!membershipEnabled(s, c)) return false;
+        if (s.scope == 2 && !s.selectedIndices.isEmpty()) return s.selectedIndices.contains(index);
         return s.scope == 0 || (s.scope == 1 && c.y - s.y == s.layer)
             || (s.scope == 2 && index == s.selected)
             || (s.scope == 3 && s.selected >= 0
@@ -1290,7 +1632,12 @@ public final class HologramService {
         ItemStack automatic = s.autoTargets.get(index);
         if (!s.noHatches && automatic != null) return automatic.copy();
         TileEntity actual = s.player.worldObj.getTileEntity(c.x, c.y, c.z);
-        if (!s.noHatches && actual instanceof IGregTechTileEntity && !c.anchor) {
+        // Capture replaces hint blocks with any recognized casing fallback. A remaining
+        // hatch hint therefore needs its declared hatch even when automatic filling is off.
+        // Preserve only an installed hatch accepted by that declaration; never synthesize one.
+        if ((!s.noHatches || (c.block == StructureLibAPI.getBlockHint() && "hatch".equals(c.role)))
+            && actual instanceof IGregTechTileEntity
+            && !c.anchor) {
             ItemStack existing = new ItemStack(
                 GregTechAPI.sBlockMachines,
                 1,
@@ -1351,6 +1698,7 @@ public final class HologramService {
                 && ((IGregTechTileEntity) tile).getMetaTileID() == wanted.getItemDamage();
         }
         if (old != Block.getBlockFromItem(wanted.getItem())) return false;
+        if (s.virtual && s.virtualPreset.schema >= 2 && c.block == old) return meta == c.meta;
         if (explicitTarget(s, c, index)) {
             // Direction and half-block placement metadata need not equal the item's damage value.
             try {
@@ -1392,6 +1740,9 @@ public final class HologramService {
         World w = s.player.worldObj;
         if (c.y < 0 || c.y >= w.getHeight() || !w.blockExists(c.x, c.y, c.z)) return "unsupported";
         if (c.anchor) return "protected";
+        if (c.unknown && targetFor(s, c, index) == null) return "unsupported";
+        if (!c.sourceWarning.isEmpty() && "templateController".equals(c.role)) return "unsupported";
+        if (!coverCostsValid(s, c) || !resourcePlanValid(s, c)) return "unsupported";
         if (s.mode == 1 && (!s.replacementReady || !originalMember(s, c))) return "protected";
         if (c.userPosition && !explicitTarget(s, c, index)) return "satisfied";
         if (s.mode == 0 && !s.player.capabilities.isCreativeMode
@@ -1426,6 +1777,8 @@ public final class HologramService {
     }
 
     private static String reason(Session s, HologramCapture.Cell c, int index) {
+        if (!c.sourceWarning.isEmpty() && "templateController".equals(c.role)) return c.sourceWarning;
+        if (!c.resourceError.isEmpty()) return c.resourceError + "；取消对应 NBT 条目后可降级放置";
         World w = s.player.worldObj;
         if (!w.blockExists(c.x, c.y, c.z)) return "区块未加载";
         if (c.anchor) return "始终保留控制器锚点";
@@ -1463,6 +1816,7 @@ public final class HologramService {
         s.planTargets.clear();
         s.planMissing = 0;
         s.planRecoveryFits = true;
+        s.blueprintTotalResources = null;
         if (s.capture == null) return;
         World w = s.player.worldObj;
         if (s.virtual && !s.allocationsFrozen) allocateVirtualTargets(s);
@@ -1486,19 +1840,111 @@ public final class HologramService {
         refreshResources(s);
     }
 
+    private static HologramBlueprintResources.Plan resourcePlan(Session s, HologramCapture.Cell cell)
+        throws java.io.IOException {
+        if (!s.virtual || s.virtualPreset == null || s.virtualPreset.schema < 2)
+            return new HologramBlueprintResources.Plan();
+        String fingerprint = cell.tileNbt + ":"
+            + cell.itemNbt
+            + ":"
+            + s.virtualPreset.retainNbt
+            + ":"
+            + placementRetainCovers(s)
+            + ":"
+            + placementKeys(s);
+        if (!fingerprint.equals(cell.resourceFingerprint)) {
+            cell.resourceFingerprint = fingerprint;
+            cell.resourceError = "";
+            cell.resourcePlan = null;
+            try {
+                NBTTagCompound tile = HologramBlueprintNbt.forPlacement(
+                    cell.tileNbt,
+                    s.player.getUniqueID(),
+                    s.player.getCommandSenderName(),
+                    cell.x,
+                    cell.y,
+                    cell.z,
+                    s.virtualPreset.retainNbt,
+                    placementRetainCovers(s),
+                    placementKeys(s));
+                NBTTagCompound item = HologramBlueprintNbt.itemForPlacement(
+                    cell.itemNbt,
+                    s.player.getUniqueID(),
+                    s.player.getCommandSenderName(),
+                    s.virtualPreset.retainNbt,
+                    placementRetainCovers(s),
+                    placementKeys(s));
+                cell.resourcePlan = HologramBlueprintResources.plan(tile)
+                    .merge(HologramBlueprintResources.plan(item));
+            } catch (java.io.IOException invalid) {
+                cell.resourceError = invalid.getMessage();
+            }
+        }
+        if (!cell.resourceError.isEmpty()) throw new java.io.IOException(cell.resourceError);
+        return cell.resourcePlan == null ? new HologramBlueprintResources.Plan() : cell.resourcePlan;
+    }
+
+    private static boolean resourcePlanValid(Session s, HologramCapture.Cell cell) {
+        try {
+            resourcePlan(s, cell);
+            return true;
+        } catch (java.io.IOException invalid) {
+            return false;
+        }
+    }
+
+    private static List<ItemStack> coverCosts(Session s, HologramCapture.Cell cell) {
+        if (!s.virtual || s.virtualPreset == null
+            || s.virtualPreset.schema < 2
+            || !placementRetainCovers(s)
+            || cell.tileNbt.isEmpty()) return Collections.emptyList();
+        if (!cell.tileNbt.equals(cell.coverCostsNbt)) {
+            cell.coverCostsNbt = cell.tileNbt;
+            cell.invalidCoverCosts = false;
+            try {
+                cell.coverMaterials = HologramBlueprintCovers.materials(cell.tileNbt);
+            } catch (java.io.IOException invalid) {
+                cell.coverMaterials = Collections.emptyList();
+                cell.invalidCoverCosts = true;
+            }
+        }
+        return cell.coverMaterials;
+    }
+
+    private static boolean coverCostsValid(Session s, HologramCapture.Cell cell) {
+        coverCosts(s, cell);
+        return !s.virtual || s.virtualPreset == null || !placementRetainCovers(s) || !cell.invalidCoverCosts;
+    }
+
     private static void refreshResources(Session s) {
         s.planMissing = 0;
         s.planRecoveryFits = true;
+        s.blueprintTotalResources = null;
         if (s.capture == null) return;
         World w = s.player.worldObj;
         Map<String, ItemStack> stacks = new LinkedHashMap<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
+        s.blueprintResources = new HologramBlueprintResources.Plan();
+        s.blueprintResourceMissing = "";
         List<ItemStack> recovery = new ArrayList<>();
         for (int i = 0; i < s.capture.cells.size(); i++) {
             HologramCapture.Cell c = s.capture.cells.get(i);
             if (!inScope(s, c, i) || !"pending".equals(c.status)) continue;
             ItemStack target = targetFor(s, c, i);
+            if (s.mode != 2 && s.virtual && s.virtualPreset.schema >= 2) {
+                try {
+                    s.blueprintResources.merge(resourcePlan(s, c));
+                } catch (java.io.IOException invalid) {
+                    s.planRecoveryFits = false;
+                    s.blueprintResourceMissing = invalid.getMessage();
+                }
+            }
             if (s.mode != 2 && orientationOnly(s, c, i)) continue;
+            if (s.mode != 2 && !s.player.capabilities.isCreativeMode) for (ItemStack cover : coverCosts(s, c)) {
+                String key = stackKey(cover);
+                stacks.put(key, cover);
+                counts.merge(key, 1, Integer::sum);
+            }
             if (s.mode != 2 && (!s.player.capabilities.isCreativeMode || HologramRecovery.hasSeal(target))) {
                 String key = stackKey(target);
                 stacks.put(key, target);
@@ -1515,6 +1961,29 @@ public final class HologramService {
             ItemStack stack = entry.getValue();
             int available = materialSource(s).count(stack, Math.max(4096, s.capture.cells.size()));
             s.planMissing += Math.max(0, counts.get(entry.getKey()) - available);
+        }
+        if (s.virtual && s.virtualPreset != null
+            && s.virtualPreset.schema >= 2
+            && !s.player.capabilities.isCreativeMode) {
+            try {
+                HologramBlueprintResources.Plan total = new HologramBlueprintResources.Plan()
+                    .merge(s.blueprintResources);
+                List<ItemStack> base = new ArrayList<>();
+                for (Map.Entry<String, ItemStack> entry : stacks.entrySet()) {
+                    ItemStack stack = entry.getValue()
+                        .copy();
+                    stack.stackSize = counts.get(entry.getKey());
+                    base.add(stack);
+                }
+                total.addItems(base);
+                s.blueprintTotalResources = total;
+                String missing = total.missing(materialSource(s));
+                s.blueprintResourceMissing = missing == null ? "" : missing;
+                if (missing != null) s.planMissing = Math.max(1, s.planMissing);
+            } catch (java.io.IOException invalid) {
+                s.planRecoveryFits = false;
+                s.blueprintResourceMissing = invalid.getMessage();
+            }
         }
         // Committed drops can remain in the player's persistent recovery queue when destinations are full.
     }
@@ -1640,7 +2109,7 @@ public final class HologramService {
         ItemStack reserved = null;
         boolean changedWorld = false;
         try {
-            if (s.mode != 2 && !empty
+            if (s.mode != 2 && (!empty || (s.virtual && s.virtualPreset.schema >= 2))
                 && (!s.player.capabilities.isCreativeMode || HologramRecovery.hasSeal(targetFor(s, c, index)))) {
                 ItemStack required = targetFor(s, c, index);
                 if (transaction.takeOne(required, false)) reserved = required.copy();
@@ -1651,6 +2120,32 @@ public final class HologramService {
                     return false;
                 }
             }
+            if (s.mode != 2 && !s.player.capabilities.isCreativeMode) for (ItemStack cover : coverCosts(s, c)) {
+                if (!transaction.takeOne(cover, false)) {
+                    rollbackMaterials(s, transaction, inventory);
+                    c.status = "missing";
+                    s.status = "覆盖板材料不足，该格未施工，已归还预留材料";
+                    return false;
+                }
+            }
+            if (!coverCostsValid(s, c)) throw new IllegalStateException("blueprint cover data invalid");
+            if (s.virtual && s.virtualPreset.schema >= 2
+                && !s.player.capabilities.isCreativeMode
+                && !resourcePlan(s, c).reserve(transaction)) {
+                rollbackMaterials(s, transaction, inventory);
+                c.status = "missing";
+                s.status = "蓝图库存、流体或无线电网资源不足；该格未施工，已归还全部预留资源";
+                return false;
+            }
+            if (reserved != null && s.virtual && s.virtualPreset.schema >= 2 && !c.itemNbt.isEmpty())
+                reserved.setTagCompound(
+                    HologramBlueprintNbt.itemForPlacement(
+                        c.itemNbt,
+                        s.player.getUniqueID(),
+                        s.player.getCommandSenderName(),
+                        s.virtualPreset.retainNbt,
+                        placementRetainCovers(s),
+                        placementKeys(s)));
             if (!empty) {
                 BlockEvent.BreakEvent event = new BlockEvent.BreakEvent(c.x, c.y, c.z, w, old, oldMeta, s.player);
                 if (MinecraftForge.EVENT_BUS.post(event)) {
@@ -1710,6 +2205,17 @@ public final class HologramService {
                 IItemSource source = reservation == null ? transaction : reservation;
                 // Lock the pure plan's chosen material. Native auto-selection must not consume a different item.
                 ItemStack pin = targetFor(s, c, index);
+                if (s.virtual && s.virtualPreset.schema >= 2 && !c.itemNbt.isEmpty()) {
+                    pin = pin.copy();
+                    pin.setTagCompound(
+                        HologramBlueprintNbt.itemForPlacement(
+                            c.itemNbt,
+                            s.player.getUniqueID(),
+                            s.player.getCommandSenderName(),
+                            s.virtualPreset.retainNbt,
+                            placementRetainCovers(s),
+                            placementKeys(s)));
+                }
                 if (s.player.capabilities.isCreativeMode && !HologramRecovery.hasSeal(pin))
                     source = new CreativeSource(Collections.singletonList(pin));
                 if (pin != null && material == null) source = new FilteredSource(source, pin);
@@ -1774,6 +2280,12 @@ public final class HologramService {
                     return false;
                 }
                 if (result == PlaceResult.ACCEPT_STOP) s.stopTick = true;
+                if (s.virtual && s.virtualPreset.schema >= 2
+                    && c.block != null
+                    && w.getBlock(c.x, c.y, c.z) == c.block
+                    && (result == PlaceResult.ACCEPT || result == PlaceResult.ACCEPT_STOP
+                        || result == PlaceResult.SKIP))
+                    w.setBlockMetadataWithNotify(c.x, c.y, c.z, c.meta, 2);
                 if ((result != PlaceResult.ACCEPT && result != PlaceResult.ACCEPT_STOP && result != PlaceResult.SKIP)
                     || w.isAirBlock(c.x, c.y, c.z)
                     || (reservation != null && !reservation.used)
@@ -1796,6 +2308,7 @@ public final class HologramService {
                     throw new IllegalStateException("stored device restore rejected");
                 Integer direction = s.planFacings.get(index);
                 TileEntity placedTile = w.getTileEntity(c.x, c.y, c.z);
+                boolean blueprintTileDataApplied = false;
                 if (direction != null && direction >= 0
                     && placedTile instanceof IGregTechTileEntity
                     && (!HologramRecovery.hasSeal(pin) || s.facingPins.containsKey(position(c)))) {
@@ -1807,7 +2320,65 @@ public final class HologramService {
                     if (gt.getFrontFacing()
                         .ordinal() != direction) throw new IllegalStateException("hatch facing failed");
                 }
-                if (s.virtual && "templateController".equals(c.role)) applyVirtualControllerAlignment(s, placedTile);
+                if (s.virtual && s.virtualPreset.schema < 2 && "templateController".equals(c.role))
+                    applyVirtualControllerAlignment(s, placedTile);
+                if (s.virtual && s.virtualPreset.schema >= 2
+                    && !c.tileNbt.isEmpty()
+                    && (s.virtualPreset.retainNbt || placementRetainCovers(s))) {
+                    if (placedTile == null) throw new IllegalStateException("blueprint tile missing");
+                    NBTTagCompound data = HologramBlueprintNbt.forPlacement(
+                        c.tileNbt,
+                        s.player.getUniqueID(),
+                        s.player.getCommandSenderName(),
+                        c.x,
+                        c.y,
+                        c.z,
+                        s.virtualPreset.retainNbt,
+                        placementRetainCovers(s),
+                        placementKeys(s));
+                    if (data != null) {
+                        if (!s.virtualPreset.retainNbt) {
+                            NBTTagCompound defaults = new NBTTagCompound();
+                            placedTile.writeToNBT(defaults);
+                            for (Object key : data.func_150296_c()) defaults.setTag(
+                                (String) key,
+                                data.getTag((String) key)
+                                    .copy());
+                            data = defaults;
+                        }
+                        data = HologramBlueprintOwnership
+                            .prepare(placedTile, HologramBlueprintNbt.nativePayload(data), s.player);
+                        placedTile.readFromNBT(data);
+                        blueprintTileDataApplied = true;
+                        if (direction != null && direction >= 0 && placedTile instanceof IGregTechTileEntity) {
+                            IGregTechTileEntity gt = (IGregTechTileEntity) placedTile;
+                            gt.setFrontFacing(ForgeDirection.getOrientation(direction));
+                            if (gt.getFrontFacing()
+                                .ordinal() != direction) throw new IllegalStateException("blueprint front rejected");
+                        }
+                        placedTile.markDirty();
+                        w.markBlockForUpdate(c.x, c.y, c.z);
+                    }
+                }
+                if (s.virtual && s.virtualPreset.schema >= 2 && placedTile != null && !blueprintTileDataApplied) {
+                    NBTTagCompound owned = HologramBlueprintOwnership.prepare(placedTile, null, s.player);
+                    if (owned != null) {
+                        placedTile.readFromNBT(owned);
+                        placedTile.markDirty();
+                        w.markBlockForUpdate(c.x, c.y, c.z);
+                    }
+                }
+                // Legacy templates upgraded in memory have no device NBT, but their declared
+                // single controller alignment still carries roll and flip and must be restored.
+                if (s.virtual && s.virtualPreset.schema >= 2
+                    && "templateController".equals(c.role)
+                    && c.x == s.x
+                    && c.y == s.y
+                    && c.z == s.z
+                    && s.virtualPreset.controllerId >= 0
+                    && pin.getItem() instanceof ItemMachines
+                    && pin.getItemDamage() == s.virtualPreset.controllerId)
+                    applyVirtualControllerAlignment(s, placedTile);
                 if (MinecraftForge.EVENT_BUS.post(new BlockEvent.PlaceEvent(snapshot, old, s.player))) {
                     HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
                     rollbackMaterials(s, transaction, inventory);
@@ -1818,7 +2389,7 @@ public final class HologramService {
             transaction.commit();
             s.player.inventory.markDirty();
             c.status = s.mode == 2 ? "removed" : empty ? "placed" : "replaced";
-        } catch (RuntimeException | LinkageError e) {
+        } catch (java.io.IOException | RuntimeException | LinkageError e) {
             if (changedWorld) HologramRecovery.restore(w, c.x, c.y, c.z, old, oldMeta, savedTile);
             rollbackMaterials(s, transaction, inventory);
             s.status = "施工异常，已还原该格；请检查部分完成结果";
@@ -2394,6 +2965,732 @@ public final class HologramService {
         draft.setBoolean("downgrade", downgrade);
     }
 
+    private static HologramPresets.Structure copyStructure(HologramPresets.Structure original) {
+        HologramPresets.Structure copy = new HologramPresets.Structure();
+        copy.id = original.id;
+        copy.name = original.name;
+        copy.sourceMod = original.sourceMod;
+        copy.sourceClass = original.sourceClass;
+        copy.controllerId = original.controllerId;
+        copy.x = original.x;
+        copy.y = original.y;
+        copy.z = original.z;
+        copy.enabled = original.enabled;
+        return copy;
+    }
+
+    private static String rotateBlueprintNbt(String value, boolean vertical) throws java.io.IOException {
+        if (value == null || value.isEmpty()) return value;
+        NBTTagCompound data = HologramBlueprintNbt.decode(value);
+        if (data == null) return value;
+        if (data.hasKey("mFacing")) {
+            int front = data.getShort("mFacing");
+            if (data.hasKey("eRotation") || data.hasKey("eFlip")) {
+                ExtendedFacing original = ExtendedFacing.of(
+                    ForgeDirection.getOrientation(front),
+                    com.gtnewhorizon.structurelib.alignment.enumerable.Rotation.byIndex(data.getByte("eRotation")),
+                    com.gtnewhorizon.structurelib.alignment.enumerable.Flip.byIndex(data.getByte("eFlip")));
+                ExtendedFacing rotated = HologramVirtualTransform.alignment(original, vertical);
+                data.setByte(
+                    "eRotation",
+                    (byte) rotated.getRotation()
+                        .getIndex());
+                data.setByte(
+                    "eFlip",
+                    (byte) rotated.getFlip()
+                        .getIndex());
+            }
+            data.setShort("mFacing", (short) HologramVirtualTransform.front(front, vertical));
+        }
+        NBTTagList covers = data.getTagList("gt.covers", 10);
+        for (int index = 0; index < covers.tagCount(); index++) {
+            NBTTagCompound cover = covers.getCompoundTagAt(index);
+            cover.setByte("s", (byte) HologramVirtualTransform.front(cover.getByte("s"), vertical));
+        }
+        return HologramBlueprintNbt.encodeCaptured(data);
+    }
+
+    private static HologramCapture.Cell blueprintCell(HologramCapture.Cell old, int x, int y, int z) {
+        HologramCapture.Cell cell = HologramVirtualTransform.at(old, x, y, z);
+        cell.sourceClass = old.sourceClass;
+        cell.sourceWarning = old.sourceWarning;
+        cell.blueprintBlock = old.blueprintBlock;
+        cell.blueprintItem = old.blueprintItem;
+        cell.blueprintDamage = old.blueprintDamage;
+        cell.excluded = old.excluded;
+        cell.prompt = old.prompt;
+        cell.tileNbt = old.tileNbt;
+        cell.itemNbt = old.itemNbt;
+        setMemberships(cell, old.memberships());
+        cell.resourceFingerprint = old.resourceFingerprint;
+        cell.resourceError = old.resourceError;
+        cell.resourcePlan = old.resourcePlan;
+        cell.coverCostsNbt = old.coverCostsNbt;
+        cell.coverMaterials = old.coverMaterials;
+        cell.invalidCoverCosts = old.invalidCoverCosts;
+        cell.actualFacing = old.actualFacing;
+        cell.actualStack = old.actualStack == null ? null : old.actualStack.copy();
+        return cell;
+    }
+
+    private static int[] editIndices(Session s, NBTTagCompound action) {
+        int[] indices = action.getIntArray("indices");
+        if (indices.length == 0) indices = action.getIntArray("selectedIndices");
+        if (indices.length == 0)
+            indices = new int[] { action.hasKey("selected") ? action.getInteger("selected") : s.selected };
+        return java.util.Arrays.stream(indices)
+            .filter(index -> index >= 0 && s.capture != null && index < s.capture.cells.size())
+            .distinct()
+            .toArray();
+    }
+
+    private static void blueprintClipboard(Session s, NBTTagCompound action, String op) throws java.io.IOException {
+        if ("editCopy".equals(op) || "editCut".equals(op)) {
+            int[] indices = editIndices(s, action);
+            if (indices.length == 0) throw new java.io.IOException("请选择蓝图格");
+            List<HologramCapture.Cell> clipboard = new ArrayList<>();
+            int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+            for (int index : indices) {
+                HologramCapture.Cell source = s.capture.cells.get(index);
+                minX = Math.min(minX, source.x);
+                minY = Math.min(minY, source.y);
+                minZ = Math.min(minZ, source.z);
+            }
+            for (int index : indices) {
+                HologramCapture.Cell source = s.capture.cells.get(index);
+                HologramCapture.Cell copy = blueprintCell(source, source.x - minX, source.y - minY, source.z - minZ);
+                ItemStack target = targetFor(s, source, index);
+                copy.actualStack = target == null ? null : target.copy();
+                copy.actualFacing = s.facingPins.getOrDefault(position(source), s.planFacings.getOrDefault(index, -1));
+                clipboard.add(copy);
+            }
+            s.blueprintClipboard.clear();
+            s.blueprintClipboard.addAll(clipboard);
+            if ("editCut".equals(op)) {
+                EditState before = new EditState(s);
+                for (int index : indices) s.capture.cells.get(index).excluded = true;
+                remember(s.undoEdits, before);
+                s.redoEdits.clear();
+                refreshPlan(s);
+            }
+            s.status = "editCut".equals(op) ? "已剪切蓝图规划，原位置标为排除；世界保持原状" : "已复制选中蓝图格及设备配置";
+        } else {
+            int index = action.hasKey("selected") ? action.getInteger("selected") : s.selected;
+            if (index < 0 || index >= s.capture.cells.size() || s.blueprintClipboard.isEmpty())
+                throw new java.io.IOException("请先复制并选择粘贴锚点");
+            HologramCapture.Cell anchor = s.capture.cells.get(index);
+            List<HologramCapture.Cell> copies = new ArrayList<>();
+            for (HologramCapture.Cell source : s.blueprintClipboard) {
+                HologramCapture.Cell cell = blueprintCell(
+                    source,
+                    anchor.x + source.x,
+                    anchor.y + source.y,
+                    anchor.z + source.z);
+                validateBlueprintCoordinate(s, cell.x, cell.y, cell.z);
+                copies.add(cell);
+            }
+            stageGeometry(s, copies, java.util.Collections.emptySet(), true);
+            s.status = "已粘贴蓝图规划；实际放置才扣除材料";
+        }
+    }
+
+    private static void moveBlueprintCells(Session s, NBTTagCompound action) throws java.io.IOException {
+        if (!s.virtual || s.capture == null || s.virtualPreset == null || s.virtualPreset.schema < 2)
+            throw new java.io.IOException("坐标移动用于区域与蓝图编辑");
+        int[] indices = editIndices(s, action);
+        if (indices.length == 0) throw new java.io.IOException("请先选择蓝图格");
+        java.util.Set<String> remove = new java.util.HashSet<>();
+        List<HologramCapture.Cell> copies = new ArrayList<>();
+        for (int index : indices) {
+            HologramCapture.Cell source = s.capture.cells.get(index);
+            long x = (long) source.x + action.getInteger("dx"), y = (long) source.y + action.getInteger("dy"),
+                z = (long) source.z + action.getInteger("dz");
+            validateBlueprintCoordinate(s, x, y, z);
+            HologramCapture.Cell copy = blueprintCell(source, (int) x, (int) y, (int) z);
+            ItemStack target = targetFor(s, source, index);
+            copy.actualStack = target == null ? null : target.copy();
+            copy.actualFacing = s.facingPins.getOrDefault(position(source), s.planFacings.getOrDefault(index, -1));
+            copies.add(copy);
+            if (!action.getBoolean("copy")) remove.add(position(source));
+        }
+        stageGeometry(s, copies, remove, false);
+        s.status = action.getBoolean("copy") ? "已复制选中蓝图格到新坐标" : "已移动选中蓝图格；世界保持原状";
+    }
+
+    private static void validateBlueprintCoordinate(Session s, long x, long y, long z) throws java.io.IOException {
+        if (x < -30000000L || x >= 30000000L
+            || z < -30000000L
+            || z >= 30000000L
+            || y < 0
+            || y >= s.player.worldObj.getHeight()) throw new java.io.IOException("目标坐标超出世界边界");
+    }
+
+    /** Validate the complete geometry before changing any server-owned coordinate map. */
+    private static void stageGeometry(Session s, List<HologramCapture.Cell> copies, java.util.Set<String> remove,
+        boolean overlay) throws java.io.IOException {
+        Map<String, HologramCapture.Cell> staged = new LinkedHashMap<>();
+        Map<String, ItemStack> targets = new HashMap<>();
+        Map<String, Integer> facings = new HashMap<>(s.facingPins);
+        for (int index = 0; index < s.capture.cells.size(); index++) {
+            HologramCapture.Cell cell = s.capture.cells.get(index);
+            if (remove.contains(position(cell))) continue;
+            staged.put(position(cell), cell);
+            ItemStack target = targetFor(s, cell, index);
+            if (target != null) targets.put(position(cell), target.copy());
+        }
+        List<HologramPresets.Structure> copiedStructures = new ArrayList<>();
+        Map<String, String> groupIds = new HashMap<>();
+        if (remove.isEmpty()) for (HologramCapture.Cell copy : copies) {
+            if (!"templateController".equals(copy.role) || copy.structureId.isEmpty()) continue;
+            for (HologramPresets.Structure original : s.virtualPreset.structures)
+                if (original.id.equals(copy.structureId)) {
+                    HologramPresets.Structure duplicate = copyStructure(original);
+                    duplicate.id = UUID.randomUUID()
+                        .toString();
+                    duplicate.x = copy.x - s.x;
+                    duplicate.y = copy.y - s.y;
+                    duplicate.z = copy.z - s.z;
+                    copiedStructures.add(duplicate);
+                    groupIds.put(original.id, duplicate.id);
+                }
+        }
+        java.util.Set<String> added = new java.util.HashSet<>();
+        for (HologramCapture.Cell copy : copies) {
+            String key = position(copy);
+            if (!added.add(key) || (!overlay && staged.containsKey(key)))
+                throw new java.io.IOException("目标与其他蓝图格重叠，坐标未修改");
+            List<String> rewritten = new ArrayList<>();
+            boolean copyingGroup = copy.memberships()
+                .stream()
+                .anyMatch(groupIds::containsKey);
+            for (String member : copy.memberships()) {
+                if (copyingGroup && !groupIds.containsKey(member)) continue;
+                rewritten.add(groupIds.getOrDefault(member, member));
+            }
+            setMemberships(copy, rewritten);
+            staged.put(key, copy);
+            if (copy.actualStack == null) targets.remove(key);
+            else targets.put(key, copy.actualStack.copy());
+            facings.remove(key);
+            if (copy.actualFacing >= 0) facings.put(key, copy.actualFacing);
+        }
+        remember(s.undoEdits, new EditState(s));
+        s.redoEdits.clear();
+        s.virtualPreset.structures.addAll(copiedStructures);
+        if (!remove.isEmpty()) for (HologramCapture.Cell copy : copies) if ("templateController".equals(copy.role))
+            for (HologramPresets.Structure structure : s.virtualPreset.structures)
+                if (structure.id.equals(copy.structureId)) {
+                    structure.x = copy.x - s.x;
+                    structure.y = copy.y - s.y;
+                    structure.z = copy.z - s.z;
+                }
+        HologramCapture capture = new HologramCapture(null, trigger(s));
+        capture.cells.addAll(staged.values());
+        capture.positions.putAll(staged);
+        s.capture = capture;
+        s.pins.clear();
+        s.coordinatePins.clear();
+        s.autoTargets.clear();
+        s.frozenAutoTargets.clear();
+        s.manualPositions.clear();
+        s.virtualEdited.clear();
+        s.selectedIndices.clear();
+        s.allocationsFrozen = true;
+        s.facingPins.clear();
+        s.facingPins.putAll(facings);
+        for (int index = 0; index < capture.cells.size(); index++) {
+            HologramCapture.Cell cell = capture.cells.get(index);
+            String key = position(cell);
+            ItemStack target = targets.get(key);
+            if (target != null) {
+                s.pins.put(index, target);
+                s.coordinatePins.put(key, target.copy());
+            }
+            s.virtualEdited.add(key);
+            if (added.contains(key)) s.selectedIndices.add(index);
+        }
+        s.selected = s.selectedIndices.isEmpty() ? -1
+            : s.selectedIndices.iterator()
+                .next();
+        refreshPlan(s);
+    }
+
+    private static boolean blueprintAction(Session s, NBTTagCompound action, String op) {
+        try {
+            if ("cancelBlueprintPlacement".equals(op)) {
+                s.blueprintAwaitingConfirmation = false;
+                s.virtualPlacement = false;
+                s.presetBrowseForPlacement = false;
+                s.blueprintPreview = true;
+                s.open = true;
+                s.status = "已取消放置确认，蓝图仍可编辑";
+            } else if ("confirmBlueprintPlacement".equals(op)) {
+                if (!s.virtual || s.virtualPreset == null || !s.blueprintAwaitingConfirmation) {
+                    s.status = "请先选择蓝图并查看材料";
+                } else if (action.getLong("planRevision") != s.planRevision) {
+                    s.status = "材料计划已更新，请重新核对并确认";
+                } else {
+                    refreshResources(s);
+                    s.blueprintAwaitingConfirmation = false;
+                    s.forcePlacementReady = false;
+                    s.virtualPlacement = true;
+                    s.virtualLocked = false;
+                    s.open = false;
+                    s.status = s.planMissing > 0 ? "预览已启动；存在材料或设备资源缺口，施工时将再次确认" : "预览已启动；Alt 右击锁定位置，实际施工时扣料";
+                }
+            } else if ("configureBlueprintNbt".equals(op) || "configurePlacementNbt".equals(op)) {
+                List<String> keys = action.hasKey("all")
+                    ? action.getBoolean("all") ? null : selectedNbtKeys(action.getTagList("keys", 8))
+                    : "configurePlacementNbt".equals(op) ? placementKeys(s) : s.retainedNbtKeys;
+                if ("configurePlacementNbt".equals(op)) {
+                    s.placementNbtCustomized = true;
+                    s.placementNbtKeys = keys;
+                    if (action.hasKey("retainCovers")) s.placementRetainCovers = action.getBoolean("retainCovers");
+                } else {
+                    s.retainedNbtKeys = keys;
+                    if (s.virtualPreset != null) s.virtualPreset.retainedNbtKeys = keys;
+                }
+                refreshPlan(s);
+                s.status = "NBT 条目已更新；取消资源条目会保留其余配置";
+            } else if ("orderMissingMaterials".equals(op)) {
+                if (!s.virtual || s.virtualPreset == null) throw new java.io.IOException("请先选择有效蓝图");
+                if (!HologramMaterialOrdering.available(s.player)) throw new java.io.IOException("AE 缺料下单接口尚未安装实现");
+                refreshPlan(s);
+                NBTTagCompound request = new NBTTagCompound();
+                request.setString("session", s.id);
+                request.setString("presetId", s.virtualPreset.id == null ? "" : s.virtualPreset.id);
+                request.setLong("planRevision", s.planRevision);
+                NBTTagList missingMaterials = new NBTTagList(), missingResources = new NBTTagList();
+                if (s.blueprintTotalResources != null) for (ItemStack item : s.blueprintTotalResources.items) {
+                    int available = materialSource(s).count(item, item.stackSize);
+                    if (available >= item.stackSize) continue;
+                    ItemStack identity = item.copy();
+                    identity.stackSize = 1;
+                    NBTTagCompound row = identity.writeToNBT(new NBTTagCompound());
+                    row.setInteger("required", item.stackSize);
+                    row.setInteger("available", available);
+                    row.setInteger("missing", item.stackSize - available);
+                    missingMaterials.appendTag(row);
+                }
+                NBTTagList resourceRows = s.blueprintResources == null ? new NBTTagList()
+                    : s.blueprintResources.entries(materialSource(s));
+                for (int index = 0; index < resourceRows.tagCount(); index++) {
+                    NBTTagCompound row = resourceRows.getCompoundTagAt(index);
+                    if (new java.math.BigInteger(row.getString("missing")).signum() > 0)
+                        missingResources.appendTag(row.copy());
+                }
+                if (missingMaterials.tagCount() == 0 && missingResources.tagCount() == 0)
+                    throw new java.io.IOException("当前所选范围没有可下单的缺料");
+                request.setTag("materials", missingMaterials);
+                request.setTag("blueprintResources", missingResources);
+                String reply = HologramMaterialOrdering.submit(s.player, request);
+                s.status = reply == null ? "缺料下单已提交给已注册接口" : boundedPrompt(reply);
+            } else if ("saveBlueprint".equals(op)) {
+                HologramPresets.Preset preset = blueprint(s, action.getString("name"));
+                preset.retainNbt = !action.hasKey("retainNbt") || action.getBoolean("retainNbt");
+                preset.retainCovers = !action.hasKey("retainCovers") || action.getBoolean("retainCovers");
+                if (action.hasKey("retainAllNbt")) preset.retainedNbtKeys = action.getBoolean("retainAllNbt") ? null
+                    : selectedNbtKeys(action.getTagList("retainedNbtKeys", 8));
+                if (action.hasKey("prompt")) preset.prompt = action.getString("prompt");
+                HologramBlueprintMetadata.captureVersions(preset);
+                HologramPresets.save(preset);
+                currentTool(s).getTagCompound()
+                    .setString(SELECTED_PRESET, preset.id);
+                if (s.virtual) s.virtualPreset = preset;
+                s.status = "蓝图已保存，包含完整设备 NBT 与覆盖板配置";
+            } else if ("editBlueprintPrompt".equals(op)) {
+                s.blueprintPrompt = boundedPrompt(action.getString("prompt"));
+                if (s.virtualPreset != null) s.virtualPreset.prompt = s.blueprintPrompt;
+                s.status = "蓝图整体提示已更新；请保存修改";
+            } else if ("editCellFlags".equals(op) || "editHintArea".equals(op)) {
+                if (s.capture == null) throw new java.io.IOException("请先载入区域或结构");
+                int[] indices = action.getIntArray("indices");
+                if (indices.length == 0) indices = new int[] { action.getInteger("selected") };
+                for (int index : indices) if (index >= 0 && index < s.capture.cells.size()) {
+                    HologramCapture.Cell cell = s.capture.cells.get(index);
+                    if (action.hasKey("excluded")) cell.excluded = action.getBoolean("excluded");
+                    if (action.hasKey("prompt")) cell.prompt = boundedPrompt(action.getString("prompt"));
+                }
+                if ("editHintArea".equals(op)) {
+                    HologramPresets.HintArea hint = new HologramPresets.HintArea();
+                    hint.prompt = boundedPrompt(action.getString("prompt"));
+                    int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+                    int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+                    for (int index : indices) if (index >= 0 && index < s.capture.cells.size()) {
+                        HologramCapture.Cell cell = s.capture.cells.get(index);
+                        minX = Math.min(minX, cell.x - s.x);
+                        maxX = Math.max(maxX, cell.x - s.x);
+                        minY = Math.min(minY, cell.y - s.y);
+                        maxY = Math.max(maxY, cell.y - s.y);
+                        minZ = Math.min(minZ, cell.z - s.z);
+                        maxZ = Math.max(maxZ, cell.z - s.z);
+                    }
+                    if (minX != Integer.MAX_VALUE) {
+                        hint.x1 = minX;
+                        hint.y1 = minY;
+                        hint.z1 = minZ;
+                        hint.x2 = maxX;
+                        hint.y2 = maxY;
+                        hint.z2 = maxZ;
+                        s.blueprintHintAreas.add(hint);
+                        if (s.virtualPreset != null) s.virtualPreset.hintAreas.add(hint);
+                    }
+                }
+                refreshPlan(s);
+                s.status = "排除与提示已更新；保存蓝图后保留";
+            } else if ("importArea".equals(op)) {
+                HologramArea area = AREAS.get(s.player.getUniqueID());
+                if (area == null) throw new java.io.IOException("请先选择区域");
+                startAreaImport(s, area);
+            } else if ("structureState".equals(op)) {
+                if (s.virtualPreset != null) {
+                    for (HologramPresets.Structure saved : s.virtualPreset.structures)
+                        if (saved.id.equals(action.getString("structureId")))
+                            saved.enabled = action.getBoolean("enabled");
+                }
+                HologramArea area = AREAS.get(s.player.getUniqueID());
+                HologramArea.Structure structure = area == null ? null
+                    : area.structures.get(action.getString("structureId"));
+                if (structure == null && s.virtualPreset == null) throw new java.io.IOException("结构不存在");
+                if (structure != null) structure.enabled = action.getBoolean("enabled");
+                refreshPlan(s);
+                s.status = action.getBoolean("enabled") ? "结构施工已启用" : "结构施工已停用";
+            } else if ("exportBlueprint".equals(op)) {
+                HologramPresets.Preset preset = HologramPresets.get(action.getString("presetId"));
+                if (preset == null) throw new java.io.IOException("请先保存并选择蓝图");
+                HologramPresets.exportBlueprint(action.getString("fileId"), preset);
+                s.status = "蓝图已导出到服务器分享目录";
+            } else if ("importBlueprint".equals(op)) {
+                HologramPresets.Preset preset = HologramPresets.importBlueprint(action.getString("fileId"));
+                HologramPresets.save(preset);
+                s.status = "蓝图已导入，缺失方块保留待补充模组";
+            } else if ("calibrateBlueprintVersions".equals(op)) {
+                if (s.virtualPreset == null) throw new java.io.IOException("请先打开蓝图编辑");
+                HologramBlueprintMetadata.captureVersions(s.virtualPreset);
+                s.status = "蓝图模组版本已校准；请保存修改";
+            } else if ("editMove".equals(op)) {
+                moveBlueprintCells(s, action);
+            } else return false;
+        } catch (java.io.IOException | RuntimeException failure) {
+            s.status = "蓝图操作失败：" + failure.getMessage();
+        }
+        return true;
+    }
+
+    private static List<String> selectedNbtKeys(NBTTagList input) throws java.io.IOException {
+        if (input.tagCount() > 512) throw new java.io.IOException("NBT 条目过多");
+        java.util.Set<String> keys = new java.util.LinkedHashSet<>();
+        for (int index = 0; index < input.tagCount(); index++) {
+            String key = input.getStringTagAt(index);
+            if (key.isEmpty() || key.length() > 128) throw new java.io.IOException("NBT 条目名称无效");
+            keys.add(key);
+        }
+        return new ArrayList<>(keys);
+    }
+
+    private static boolean placementRetainCovers(Session s) {
+        return s.placementRetainCovers != null ? s.placementRetainCovers
+            : s.virtualPreset == null || s.virtualPreset.retainCovers;
+    }
+
+    private static List<String> placementKeys(Session s) {
+        return s.placementNbtCustomized ? s.placementNbtKeys
+            : s.virtualPreset == null ? s.retainedNbtKeys : s.virtualPreset.retainedNbtKeys;
+    }
+
+    private static NBTTagList nbtKeys(List<String> keys) {
+        NBTTagList tag = new NBTTagList();
+        if (keys != null) for (String key : keys) tag.appendTag(new NBTTagString(key));
+        return tag;
+    }
+
+    private static String boundedPrompt(String text) {
+        return text.length() <= 2048 ? text : text.substring(0, 2048);
+    }
+
+    /** Capture current server targets; all inventory and device data come from server-owned state. */
+    private static HologramPresets.Preset blueprint(Session s, String name) throws java.io.IOException {
+        if (s.capture == null || s.capture.incomplete || s.capturePending) throw new java.io.IOException("需要完整结构或区域");
+        HologramPresets.Preset result = s.virtualPreset == null ? new HologramPresets.Preset()
+            : HologramPresets.copy(s.virtualPreset);
+        result.schema = 2;
+        result.name = name == null || name.trim()
+            .isEmpty() ? "未命名蓝图" : name.trim();
+        result.cells.clear();
+        result.palette.clear();
+        if (s.virtualPreset == null) {
+            result.prompt = s.blueprintPrompt;
+            result.hintAreas.addAll(s.blueprintHintAreas);
+            result.retainedNbtKeys = s.retainedNbtKeys;
+        }
+        if (s.machine != null) {
+            result.structures.clear();
+            HologramPresets.Structure declared = new HologramPresets.Structure();
+            declared.id = s.x + "," + s.y + "," + s.z;
+            declared.name = s.machine.getLocalName();
+            declared.x = 0;
+            declared.y = 0;
+            declared.z = 0;
+            declared.controllerId = ((IGregTechTileEntity) s.target).getMetaTileID();
+            declared.sourceClass = s.machine.getClass()
+                .getName();
+            declared.sourceMod = sourceMod(s.machine.getClass());
+            result.structures.add(declared);
+            for (HologramCapture.Cell cell : s.capture.cells)
+                setMemberships(cell, Collections.singletonList(declared.id));
+            result.sourceClass = s.machine.getClass()
+                .getName();
+            result.sourceMod = sourceMod(s.machine.getClass());
+            result.controllerId = ((IGregTechTileEntity) s.target).getMetaTileID();
+            result.controllerType = controllerType(s);
+            result.controllerFacing = s.machine.getExtendedFacing()
+                .ordinal();
+        }
+        java.util.Set<String> palette = new java.util.HashSet<>();
+        for (int i = 0; i < s.capture.cells.size(); i++) {
+            HologramCapture.Cell cell = s.capture.cells.get(i);
+            ItemStack target = cell.anchor && s.target instanceof IGregTechTileEntity
+                ? new ItemStack(GregTechAPI.sBlockMachines, 1, ((IGregTechTileEntity) s.target).getMetaTileID())
+                : targetFor(s, cell, i);
+            if (cell.block == Blocks.air && target == null) continue;
+            HologramPresets.Cell saved;
+            if (target == null) {
+                if (cell.blueprintBlock.isEmpty() && cell.blueprintItem.isEmpty())
+                    throw new java.io.IOException("未知结构格需要明确目标");
+                saved = new HologramPresets.Cell();
+                saved.item = cell.blueprintItem.isEmpty() ? null : cell.blueprintItem;
+                saved.damage = cell.blueprintDamage;
+                saved.block = cell.blueprintBlock.isEmpty() ? null : cell.blueprintBlock;
+                saved.metadata = cell.meta;
+                saved.x = cell.x - s.x;
+                saved.y = cell.y - s.y;
+                saved.z = cell.z - s.z;
+                saved.facing = s.facingPins.getOrDefault(position(cell), s.planFacings.getOrDefault(i, -1));
+                saved.controller = "templateController".equals(cell.role);
+            } else {
+                saved = HologramPresets.cell(
+                    target,
+                    cell.x - s.x,
+                    cell.y - s.y,
+                    cell.z - s.z,
+                    s.facingPins.getOrDefault(position(cell), s.planFacings.getOrDefault(i, cell.actualFacing)),
+                    cell.anchor || "templateController".equals(cell.role));
+                Block block = Block.getBlockFromItem(target.getItem());
+                saved.block = String.valueOf(Block.blockRegistry.getNameForObject(block));
+                saved.metadata = s.virtual && cell.block == block ? cell.meta
+                    : target.getItem()
+                        .getMetadata(target.getItemDamage());
+                if (target.hasTagCompound())
+                    saved.itemNbt = HologramBlueprintNbt.encodeCaptured(target.getTagCompound());
+                addPalette(result, palette, target);
+            }
+            saved.tileNbt = cell.tileNbt;
+            saved.itemNbt = cell.itemNbt.isEmpty() ? saved.itemNbt : cell.itemNbt;
+            if (!s.virtual && s.player.worldObj.blockExists(cell.x, cell.y, cell.z)) {
+                TileEntity actual = s.player.worldObj.getTileEntity(cell.x, cell.y, cell.z);
+                if (actual != null && (cell.anchor || targetMatches(
+                    s,
+                    cell,
+                    i,
+                    s.player.worldObj.getBlock(cell.x, cell.y, cell.z),
+                    s.player.worldObj.getBlockMetadata(cell.x, cell.y, cell.z)))) {
+                    NBTTagCompound data = new NBTTagCompound();
+                    actual.writeToNBT(data);
+                    saved.tileNbt = HologramBlueprintNbt.encodeCaptured(data);
+                }
+            }
+            saved.structureId = cell.structureId.isEmpty() ? null : cell.structureId;
+            saved.structureIds = new ArrayList<>(cell.memberships());
+            saved.excluded = cell.excluded;
+            saved.prompt = cell.prompt;
+            result.cells.add(saved);
+        }
+        HologramArea area = AREAS.get(s.player.getUniqueID());
+        if (area != null) for (HologramArea.Structure structure : area.structures.values()) {
+            String mod = sourceMod(structure.machine.getClass());
+            for (cpw.mods.fml.common.ModContainer installed : cpw.mods.fml.common.Loader.instance()
+                .getModList())
+                if (installed.getModId()
+                    .equals(mod)) result.modVersions.put(mod, installed.getVersion());
+        }
+        return result;
+    }
+
+    private static String sourceMod(Class<?> type) {
+        String className = type.getName();
+        for (cpw.mods.fml.common.ModContainer mod : cpw.mods.fml.common.Loader.instance()
+            .getModList()) {
+            try {
+                java.net.URL location = type.getProtectionDomain()
+                    .getCodeSource()
+                    .getLocation();
+                if (mod.getSource() != null && mod.getSource()
+                    .getCanonicalFile()
+                    .equals(new java.io.File(location.toURI()).getCanonicalFile())) return mod.getModId();
+            } catch (Exception ignored) { /* The package fallback also supports synthetic test classes. */ }
+            Object instance = mod.getMod();
+            if (instance != null) {
+                String modClass = instance.getClass()
+                    .getName();
+                int last = modClass.lastIndexOf('.');
+                if (last > 0 && className.startsWith(modClass.substring(0, last) + ".")) return mod.getModId();
+            }
+        }
+        if (className.startsWith("gregtech.")) return "gregtech";
+        if (className.startsWith("tectech.")) return "tectech";
+        return "";
+    }
+
+    private static void writeBlueprintState(Session s, NBTTagCompound state) {
+        HologramArea area = AREAS.get(s.player.getUniqueID());
+        state.setBoolean("areaSelecting", area != null && area.selecting);
+        state.setBoolean("areaImporting", area != null && area.importing);
+        state.setBoolean("areaImported", area != null && area.imported);
+        state.setIntArray("areaPoints", area == null ? new int[0] : area.points());
+        NBTTagList structureLabels = area == null ? new NBTTagList() : area.labels();
+        if (s.virtualPreset != null && !s.virtualPreset.structures.isEmpty()) {
+            structureLabels = new NBTTagList();
+            for (HologramPresets.Structure saved : s.virtualPreset.structures) {
+                NBTTagCompound row = new NBTTagCompound();
+                row.setString("id", saved.id);
+                row.setString("name", saved.name == null ? "结构" : saved.name);
+                row.setInteger("x", s.x + saved.x);
+                row.setInteger("y", s.y + saved.y);
+                row.setInteger("z", s.z + saved.z);
+                row.setBoolean("enabled", saved.enabled);
+                String warning = blueprintSourceWarning(s.virtualPreset, saved.id);
+                row.setBoolean("sourceMissing", !warning.isEmpty());
+                row.setString("sourceWarning", warning);
+                row.setString("sourceClass", saved.sourceClass == null ? "" : saved.sourceClass);
+                row.setString("sourceMod", saved.sourceMod == null ? "" : saved.sourceMod);
+                row.setBoolean("declared", warning.isEmpty());
+                TileEntity tile = s.player.worldObj.getTileEntity(s.x + saved.x, s.y + saved.y, s.z + saved.z);
+                row.setBoolean(
+                    "formed",
+                    tile instanceof IGregTechTileEntity
+                        && ((IGregTechTileEntity) tile).getMetaTileEntity() instanceof MTEEnhancedMultiBlockBase
+                        && ((MTEEnhancedMultiBlockBase<?>) ((IGregTechTileEntity) tile).getMetaTileEntity()).mMachine);
+                structureLabels.appendTag(row);
+            }
+        }
+        String sourceWarning = s.virtualPreset == null ? "" : blueprintSourceWarning(s.virtualPreset, "");
+        if (s.virtualPreset != null && sourceWarning.isEmpty())
+            for (HologramPresets.Structure source : s.virtualPreset.structures) {
+                sourceWarning = blueprintSourceWarning(s.virtualPreset, source.id);
+                if (!sourceWarning.isEmpty()) break;
+            }
+        state.setBoolean("sourceMissing", !sourceWarning.isEmpty());
+        state.setString("sourceWarning", sourceWarning);
+        state.setTag("structures", structureLabels);
+        state.setString("activeStructure", s.virtual ? s.blueprintActiveStructure : area == null ? "" : area.active);
+        List<String> savedKeys = s.virtualPreset == null ? s.retainedNbtKeys : s.virtualPreset.retainedNbtKeys;
+        state.setBoolean("blueprintNbtAll", savedKeys == null);
+        state.setTag("blueprintNbtKeys", nbtKeys(savedKeys));
+        state.setBoolean("placementNbtCustomized", s.placementNbtCustomized);
+        state.setBoolean("placementRetainCovers", placementRetainCovers(s));
+        state.setBoolean("placementNbtAll", placementKeys(s) == null);
+        state.setTag("placementNbtKeys", nbtKeys(placementKeys(s)));
+        if (s.nbtKeysCapture != s.capture) {
+            s.nbtKeysCapture = s.capture;
+            s.availableNbtKeys.clear();
+            if (s.capture != null) for (HologramCapture.Cell cell : s.capture.cells) {
+                try {
+                    NBTTagCompound data = s.virtual ? HologramBlueprintNbt.decode(cell.tileNbt) : null;
+                    if (!s.virtual) {
+                        TileEntity tile = s.player.worldObj.getTileEntity(cell.x, cell.y, cell.z);
+                        if (tile != null) {
+                            data = new NBTTagCompound();
+                            tile.writeToNBT(data);
+                        }
+                    }
+                    if (data != null) for (Object key : data.func_150296_c()) s.availableNbtKeys.add((String) key);
+                    if (s.virtual) {
+                        NBTTagCompound item = HologramBlueprintNbt.decode(cell.itemNbt);
+                        if (item != null) for (Object key : item.func_150296_c()) s.availableNbtKeys.add((String) key);
+                    }
+                } catch (java.io.IOException | RuntimeException ignored) { /* Invalid payload stays unsupported. */ }
+            }
+        }
+        NBTTagList entries = new NBTTagList();
+        for (String key : s.availableNbtKeys) {
+            NBTTagCompound row = new NBTTagCompound();
+            String lower = key.toLowerCase(java.util.Locale.ROOT);
+            row.setString("key", key);
+            row.setString("label", key);
+            row.setString(
+                "category",
+                lower.contains("fluid") || lower.contains("tank") ? "fluid"
+                    : lower.contains("energy") || lower.equals("meu") ? "energy"
+                        : lower.contains("inventory") || lower.equals("items") ? "items" : "configuration");
+            row.setBoolean("selected", savedKeys == null || savedKeys.contains(key));
+            row.setBoolean("blueprintSelected", savedKeys == null || savedKeys.contains(key));
+            row.setBoolean("placementSelected", placementKeys(s) == null || placementKeys(s).contains(key));
+            entries.appendTag(row);
+        }
+        state.setTag("nbtEntries", entries);
+        state.setBoolean(
+            "materialOrderingAvailable",
+            s.virtual && s.virtualPreset != null && HologramMaterialOrdering.available(s.player));
+        state.setTag(
+            "blueprintResources",
+            s.blueprintResources == null ? new NBTTagList() : s.blueprintResources.entries(materialSource(s)));
+        state.setString("blueprintResourceMissing", s.blueprintResourceMissing);
+        state.setBoolean("blueprintPreview", s.blueprintPreview);
+        state.setBoolean("blueprintAwaitingConfirmation", s.blueprintAwaitingConfirmation);
+        state.setBoolean("forcePlacementReady", s.forcePlacementReady);
+        state.setBoolean("blueprintRetainNbt", s.virtualPreset == null || s.virtualPreset.retainNbt);
+        state.setBoolean("blueprintRetainCovers", s.virtualPreset == null || s.virtualPreset.retainCovers);
+        state.setString(
+            "blueprintPrompt",
+            s.virtualPreset == null ? s.blueprintPrompt : s.virtualPreset.prompt == null ? "" : s.virtualPreset.prompt);
+        NBTTagList versions = new NBTTagList();
+        Map<String, String> dependencies = s.virtualPreset == null ? new LinkedHashMap<>()
+            : s.virtualPreset.modVersions;
+        if (s.machine != null) {
+            String modId = sourceMod(s.machine.getClass());
+            state.setString("sourceMod", modId);
+            state.setString(
+                "sourceClass",
+                s.machine.getClass()
+                    .getName());
+            for (cpw.mods.fml.common.ModContainer installed : cpw.mods.fml.common.Loader.instance()
+                .getModList())
+                if (installed.getModId()
+                    .equals(modId)) dependencies.put(modId, installed.getVersion());
+        }
+        for (Map.Entry<String, String> entry : dependencies.entrySet()) {
+            NBTTagCompound row = new NBTTagCompound();
+            String current = "minecraft".equals(entry.getKey()) ? "1.7.10" : null;
+            for (cpw.mods.fml.common.ModContainer mod : cpw.mods.fml.common.Loader.instance()
+                .getModList())
+                if (entry.getKey()
+                    .equals(mod.getModId())) current = mod.getVersion();
+            int comparison = current == null ? 0 : HologramBlueprintMetadata.compareVersions(current, entry.getValue());
+            row.setString("modId", entry.getKey());
+            row.setString("saved", entry.getValue());
+            row.setString("current", current == null ? "" : current);
+            row.setString(
+                "state",
+                current == null ? "missing" : comparison < 0 ? "outdated" : comparison > 0 ? "ahead" : "current");
+            versions.appendTag(row);
+        }
+        state.setTag("modVersions", versions);
+        NBTTagList hints = new NBTTagList();
+        for (HologramPresets.HintArea hint : s.virtualPreset == null ? s.blueprintHintAreas
+            : s.virtualPreset.hintAreas) {
+            NBTTagCompound row = new NBTTagCompound();
+            row.setIntArray("bounds", new int[] { hint.x1, hint.y1, hint.z1, hint.x2, hint.y2, hint.z2 });
+            row.setString("prompt", hint.prompt == null ? "" : hint.prompt);
+            hints.appendTag(row);
+        }
+        state.setTag("hintAreas", hints);
+        state.setIntArray(
+            "selectedIndices",
+            s.selectedIndices.stream()
+                .mapToInt(Integer::intValue)
+                .toArray());
+    }
+
     private static void savePreset(Session s, String name) {
         if (s.virtual) {
             saveVirtualPreset(s, name, false);
@@ -2509,11 +3806,12 @@ public final class HologramService {
         try {
             HologramPresets.Preset preset = HologramPresets.get(id);
             if (preset == null) throw new java.io.IOException("预设不存在");
-            if (preset.controllerId < 0 || preset.controllerId >= GregTechAPI.METATILEENTITIES.length
-                || !(GregTechAPI.METATILEENTITIES[preset.controllerId] instanceof MTEEnhancedMultiBlockBase)
-                || !preset.controllerType.equals(
-                    GregTechAPI.METATILEENTITIES[preset.controllerId].getClass()
-                        .getName() + ":" + preset.controllerId))
+            if (preset.schema < 2
+                && (preset.controllerId < 0 || preset.controllerId >= GregTechAPI.METATILEENTITIES.length
+                    || !(GregTechAPI.METATILEENTITIES[preset.controllerId] instanceof MTEEnhancedMultiBlockBase)
+                    || !preset.controllerType.equals(
+                        GregTechAPI.METATILEENTITIES[preset.controllerId].getClass()
+                            .getName() + ":" + preset.controllerId)))
                 throw new java.io.IOException("模板控制器身份已失效");
             if (selectOnly) {
                 selectPreset(s, id);
@@ -2521,6 +3819,10 @@ public final class HologramService {
                 return;
             }
             s.virtualPreset = preset;
+            s.retainedNbtKeys = preset.retainedNbtKeys;
+            s.placementNbtCustomized = false;
+            s.placementNbtKeys = null;
+            s.placementRetainCovers = null;
             s.presetBrowseForPlacement = false;
             s.virtualLocked = false;
             s.cancelled = false;
@@ -2577,7 +3879,7 @@ public final class HologramService {
         editing.settingsOnly = false;
         editing.status = "已打开自定义预设编辑；保存回原预设或另存为，仅保存规划，不施工";
         SESSIONS.put(previous.player.getUniqueID(), editing);
-        presetGuidance(editing, "编辑完成后可保存回原预设或另存为；关闭编辑后 Alt + 右击启动当前草稿投影，再锁定与施工。");
+        presetGuidance(editing, "编辑完成后可保存回原预设或另存为；保存后 Alt + 右击重新选择蓝图并确认材料，再锁定并在界面施工。");
         return editing;
     }
 
@@ -2601,13 +3903,14 @@ public final class HologramService {
             s.status = update ? "自定义预设修改已保存回原预设" : "编辑后的自定义预设已另存为新预设";
             presetGuidance(
                 s,
-                s.status + (s.virtualPlacement ? "；当前投影仍可继续编辑，施工须先锁定位置。" : "；关闭编辑后 Alt + 右击启动投影，再锁定位置施工。"));
+                s.status + (s.virtualPlacement ? "；当前投影仍可继续编辑，施工须先锁定位置。" : "；保存后 Alt + 右击选择蓝图并确认材料，再锁定位置施工。"));
         } catch (java.io.IOException invalid) {
             s.status = "预设保存失败：" + invalid.getMessage();
         }
     }
 
     private static HologramPresets.Preset editedVirtualPreset(Session s, String name) throws java.io.IOException {
+        if (s.virtualPreset.schema >= 2) return blueprint(s, name);
         HologramPresets.Preset original = s.virtualPreset;
         HologramPresets.Preset result = new HologramPresets.Preset();
         result.name = name == null ? "" : name.trim();
@@ -2652,6 +3955,55 @@ public final class HologramService {
         return result;
     }
 
+    private static HologramPresets.Structure blueprintSource(HologramPresets.Preset preset, String id) {
+        for (HologramPresets.Structure structure : preset.structures) if (structure.id.equals(id)) return structure;
+        return null;
+    }
+
+    private static String blueprintSourceClass(HologramPresets.Preset preset, String id) {
+        HologramPresets.Structure structure = blueprintSource(preset, id);
+        if (structure != null && structure.sourceClass != null) return structure.sourceClass;
+        if (preset.sourceClass != null && !preset.sourceClass.isEmpty()) return preset.sourceClass;
+        if (preset.controllerId >= 0 && preset.controllerType != null && preset.controllerType.lastIndexOf(':') > 0)
+            return preset.controllerType.substring(0, preset.controllerType.lastIndexOf(':'));
+        return "";
+    }
+
+    private static String blueprintSourceWarning(HologramPresets.Preset preset, String id) {
+        String sourceClass = blueprintSourceClass(preset, id);
+        if (sourceClass.isEmpty()) return "";
+        try {
+            Class.forName(sourceClass, false, HologramService.class.getClassLoader());
+        } catch (ClassNotFoundException | LinkageError missing) {
+            return "来源结构类缺失：" + sourceClass;
+        }
+        HologramPresets.Structure structure = blueprintSource(preset, id);
+        int controllerId = structure == null ? preset.controllerId : structure.controllerId;
+        if (controllerId >= 0) {
+            gregtech.api.interfaces.metatileentity.IMetaTileEntity prototype = controllerId
+                >= GregTechAPI.METATILEENTITIES.length ? null : GregTechAPI.METATILEENTITIES[controllerId];
+            if (prototype == null || !sourceClass.equals(
+                prototype.getClass()
+                    .getName()))
+                return "来源控制器身份缺失或 ID 已被其他机器占用：" + sourceClass + ":" + controllerId;
+        }
+        return "";
+    }
+
+    private static boolean blueprintControllerMatches(HologramPresets.Preset preset, HologramPresets.Cell saved,
+        String warning) {
+        if (!saved.controller) return true;
+        String id = saved.structureId == null ? "" : saved.structureId;
+        if (!warning.isEmpty()) return false;
+        HologramPresets.Structure structure = blueprintSource(preset, id);
+        int controllerId = structure == null ? preset.controllerId : structure.controllerId;
+        ItemStack stack = saved.stack();
+        if (stack != null && stack.getItem() instanceof ItemMachines
+            && controllerId >= 0
+            && stack.getItemDamage() != controllerId) return false;
+        return true;
+    }
+
     private static void populateVirtual(Session s) {
         if (!s.virtual || s.virtualPreset == null) return;
         s.capture = new HologramCapture(null, trigger(s));
@@ -2668,17 +4020,41 @@ public final class HologramService {
         s.allocationsFrozen = false;
         s.frozenAutoTargets.clear();
         s.selected = -1;
+        String fallbackSourceClass = blueprintSourceClass(s.virtualPreset, "");
+        String fallbackSourceWarning = blueprintSourceWarning(s.virtualPreset, "");
+        Map<String, String> sourceClasses = new HashMap<>(), sourceWarnings = new HashMap<>();
+        for (HologramPresets.Structure source : s.virtualPreset.structures) {
+            sourceClasses.put(source.id, blueprintSourceClass(s.virtualPreset, source.id));
+            sourceWarnings.put(source.id, blueprintSourceWarning(s.virtualPreset, source.id));
+        }
         List<HologramPresets.Cell> ordered = new ArrayList<>(s.virtualPreset.cells);
         ordered.sort((a, b) -> Boolean.compare(a.controller, b.controller));
         for (HologramPresets.Cell saved : ordered) {
-            ItemStack target = saved.stack();
+            String sourceId = saved.structureId == null ? "" : saved.structureId;
+            String savedWarning = sourceWarnings.getOrDefault(sourceId, fallbackSourceWarning);
+            boolean controllerMatches = blueprintControllerMatches(s.virtualPreset, saved, savedWarning);
+            ItemStack target = saved.missing() || !controllerMatches ? null : saved.stack();
             HologramCapture.Cell cell = new HologramCapture.Cell(null, s.x + saved.x, s.y + saved.y, s.z + saved.z);
-            cell.block = Block.getBlockFromItem(target.getItem());
-            cell.meta = target.getItem()
-                .getMetadata(target.getItemDamage());
+            cell.block = target == null ? saved.block() : Block.getBlockFromItem(target.getItem());
+            cell.meta = s.virtualPreset.schema >= 2 ? saved.metadata
+                : target == null ? saved.metadata
+                    : target.getItem()
+                        .getMetadata(target.getItemDamage());
+            cell.blueprintBlock = saved.block == null ? "" : saved.block;
+            cell.blueprintItem = saved.item == null ? "" : saved.item;
+            cell.blueprintDamage = saved.damage;
+            setMemberships(cell, saved.memberships());
+            cell.sourceClass = sourceClasses.getOrDefault(cell.structureId, fallbackSourceClass);
+            cell.sourceWarning = savedWarning;
+            if (saved.controller && !controllerMatches && cell.sourceWarning.isEmpty())
+                cell.sourceWarning = "控制器材料 ID 与保存的来源结构身份不同";
+            cell.excluded = saved.excluded;
+            cell.prompt = saved.prompt == null ? "" : saved.prompt;
+            cell.tileNbt = saved.tileNbt == null ? "" : saved.tileNbt;
+            cell.itemNbt = saved.itemNbt == null ? "" : saved.itemNbt;
             cell.userPosition = true;
             cell.role = saved.controller ? "templateController" : "prefab";
-            if (!acceptableSample(s, cell, target)) {
+            if (target != null && !acceptableSample(s, cell, target)) {
                 s.capture.incomplete = true;
                 s.capture.failure = "INVALID_PREFAB_ITEM";
                 break;
@@ -2686,8 +4062,13 @@ public final class HologramService {
             int index = s.capture.cells.size();
             s.capture.cells.add(cell);
             s.capture.positions.put(position(cell), cell);
-            s.pins.put(index, target.copy());
-            s.coordinatePins.put(position(cell), target.copy());
+            if (target != null) {
+                s.pins.put(index, target.copy());
+                s.coordinatePins.put(position(cell), target.copy());
+            } else {
+                cell.unknown = true;
+                cell.status = "unsupported";
+            }
             for (int legal : legalFacings(s, cell, target))
                 if (saved.facing == legal) s.facingPins.put(position(cell), saved.facing);
         }
@@ -2696,7 +4077,7 @@ public final class HologramService {
 
     /** Allocate only untouched template targets, with cached class/tier groups and shared material reservations. */
     private static void allocateVirtualTargets(Session s) {
-        if (s.virtualPreset == null || s.capture.incomplete) return;
+        if (s.virtualPreset == null || s.capture.incomplete || s.virtualPreset.schema >= 2) return;
         if (s.virtualGroups.isEmpty()) {
             for (HologramPresets.Cell entry : s.virtualPreset.palette) {
                 ItemStack sample = entry.stack();
@@ -3111,11 +4492,35 @@ public final class HologramService {
             || destructive(c, world.getBlock(c.x, c.y, c.z), world.getBlockMetadata(c.x, c.y, c.z)));
     }
 
+    private static void setBlueprintTarget(Session s, HologramCapture.Cell cell, ItemStack target) {
+        if (!s.virtual || s.virtualPreset == null || s.virtualPreset.schema < 2 || target == null) return;
+        Block block = Block.getBlockFromItem(target.getItem());
+        String item = String.valueOf(Item.itemRegistry.getNameForObject(target.getItem()));
+        if (cell.block != block || (!cell.blueprintItem.isEmpty()
+            && (!cell.blueprintItem.equals(item) || cell.blueprintDamage != target.getItemDamage()))) {
+            cell.tileNbt = "";
+            cell.itemNbt = "";
+            cell.coverCostsNbt = "";
+            s.nbtKeysCapture = null;
+            cell.coverMaterials = Collections.emptyList();
+            cell.invalidCoverCosts = false;
+            cell.block = block;
+            cell.meta = target.getItem()
+                .getMetadata(target.getItemDamage());
+        }
+        cell.blueprintItem = item;
+        cell.blueprintDamage = target.getItemDamage();
+        cell.blueprintBlock = String.valueOf(Block.blockRegistry.getNameForObject(block));
+        cell.unknown = false;
+    }
+
     private static boolean acceptableSample(Session s, HologramCapture.Cell cell, ItemStack sample) {
         if (cell.anchor || sample == null || sample.getItem() == null || sample.stackSize < 1) return false;
         if (sample.getItemDamage() < 0) return false;
-        if (s.virtual && (s.virtualPreset == null || !s.virtualPreset.allows(sample))) return false;
-        if (s.virtual && "templateController".equals(cell.role)
+        if (s.virtual && (s.virtualPreset == null || (s.virtualPreset.schema < 2 && !s.virtualPreset.allows(sample))))
+            return false;
+        if (s.virtual && s.virtualPreset.schema < 2
+            && "templateController".equals(cell.role)
             && (!(sample.getItem() instanceof ItemMachines) || sample.getItemDamage() != s.virtualPreset.controllerId))
             return false;
         if (sample.getItem() instanceof ItemMachines) {
@@ -3124,12 +4529,14 @@ public final class HologramService {
         }
         Block block = Block.getBlockFromItem(sample.getItem());
         return sample.getItem() instanceof ItemBlock && block != Blocks.air
-            && (!s.virtual || !block.hasTileEntity(
-                sample.getItem()
-                    .getMetadata(sample.getItemDamage())));
+            && (!s.virtual || s.virtualPreset.schema >= 2
+                || !block.hasTileEntity(
+                    sample.getItem()
+                        .getMetadata(sample.getItemDamage())));
     }
 
     private static int hatchTier(ItemStack stack) {
+        if (stack == null) return Integer.MAX_VALUE;
         int id = stack.getItemDamage();
         return stack.getItem() instanceof ItemMachines && id >= 0
             && id < GregTechAPI.METATILEENTITIES.length
@@ -3356,6 +4763,7 @@ public final class HologramService {
     private static void dismissPresetBrowse(Session s) {
         if (s.presetBrowseForPlacement && s.virtualPreset == null) s.virtualPlacement = false;
         s.presetBrowseForPlacement = false;
+        s.blueprintAwaitingConfirmation = false;
     }
 
     private static void send(Session s) {
@@ -3372,7 +4780,7 @@ public final class HologramService {
         boolean editable = s.job != 1 && s.job != 2 && !s.capturePending && s.capture != null && !s.capture.incomplete;
         state.setBoolean("editCanUndo", editable && !s.undoEdits.isEmpty());
         state.setBoolean("editCanRedo", editable && !s.redoEdits.isEmpty());
-        state.setBoolean("editCanPaste", editable && s.editClipboard != null);
+        state.setBoolean("editCanPaste", editable && (s.editClipboard != null || !s.blueprintClipboard.isEmpty()));
         state.setString("presetReason", s.presetReason);
         state.setBoolean("creativeMaterials", s.player.capabilities.isCreativeMode);
         s.open = false;
@@ -3421,7 +4829,9 @@ public final class HologramService {
         state.setBoolean("virtualPlacement", s.virtualPlacement);
         state.setBoolean("presetBrowseForPlacement", s.presetBrowseForPlacement);
         state.setBoolean("virtualLocked", s.virtualLocked);
-        state.setString("virtualPresetId", s.virtualPreset == null ? "" : s.virtualPreset.id);
+        state.setString(
+            "virtualPresetId",
+            s.virtualPreset == null || s.virtualPreset.id == null ? "" : s.virtualPreset.id);
         state.setString("virtualPresetName", s.virtualPreset == null ? "" : s.virtualPreset.name);
         state.setBoolean("moving", virtualMoving(s));
         state.setBoolean("settingsOnly", s.settingsOnly);
@@ -3476,6 +4886,7 @@ public final class HologramService {
             s.capture == null || s.capture.incomplete
                 ? s.status + (s.capture == null || s.capture.failure.isEmpty() ? "" : " (" + s.capture.failure + ")")
                 : "");
+        writeBlueprintState(s, state);
         NBTTagList cells = new NBTTagList(), materials = new NBTTagList(), recovery = new NBTTagList();
         int protectedCount = 0, missing = 0, total = 0, workTotal = 0;
         int recoveryRows = 0, recoveryItems = 0;
@@ -3490,6 +4901,21 @@ public final class HologramService {
             row.setInteger("dx", c.x - s.x);
             row.setInteger("dy", c.y - s.y);
             row.setInteger("dz", c.z - s.z);
+            row.setBoolean("sourceMissing", !c.sourceWarning.isEmpty());
+            row.setString("sourceClass", c.sourceClass);
+            row.setString("sourceWarning", c.sourceWarning);
+            row.setBoolean("missingBlock", c.unknown && targetFor(s, c, index) == null);
+            String sourceRegistry = c.blueprintBlock.isEmpty() ? c.blueprintItem : c.blueprintBlock;
+            String sourceMod = sourceRegistry.contains(":") ? sourceRegistry.substring(0, sourceRegistry.indexOf(':'))
+                : "";
+            row.setString("sourceMod", sourceMod);
+            row.setString(
+                "sourceVersion",
+                s.virtualPreset == null ? "" : s.virtualPreset.modVersions.getOrDefault(sourceMod, ""));
+            row.setBoolean("excluded", c.excluded);
+            row.setString("prompt", c.prompt);
+            row.setString("structureId", c.structureId);
+            row.setTag("structureIds", nbtKeys(c.memberships()));
             row.setBoolean("anchor", c.anchor);
             row.setBoolean("hasPin", s.pins.containsKey(index));
             row.setBoolean("templateController", "templateController".equals(c.role));
@@ -3533,7 +4959,7 @@ public final class HologramService {
             row.setInteger("meta", meta);
             row.setString(
                 "wantId",
-                c.block == null ? "" : String.valueOf(Block.blockRegistry.getNameForObject(c.block)));
+                c.block == null ? c.blueprintBlock : String.valueOf(Block.blockRegistry.getNameForObject(c.block)));
             row.setInteger("wantMeta", c.meta);
             ItemStack pinned = targetFor(s, c, index);
             if (pinned != null) row.setTag("targetStack", pinned.writeToNBT(new NBTTagCompound()));
@@ -3545,8 +4971,9 @@ public final class HologramService {
                     row.setString("wantId", String.valueOf(Block.blockRegistry.getNameForObject(pinnedBlock)));
                     row.setInteger(
                         "wantMeta",
-                        pinned.getItem()
-                            .getMetadata(pinned.getItemDamage()));
+                        s.virtual && s.virtualPreset.schema >= 2 && c.block == pinnedBlock ? c.meta
+                            : pinned.getItem()
+                                .getMetadata(pinned.getItemDamage()));
                 }
             }
             if (s.mode == 2 && loaded && (removable(s, c) || "removed".equals(c.status))) {
@@ -3631,6 +5058,24 @@ public final class HologramService {
                 req.setInteger("required", req.getInteger("required") + 1);
             }
             if (inScope(s, c, index) && "pending".equals(c.status)
+                && s.mode != 2
+                && !s.player.capabilities.isCreativeMode) for (ItemStack cover : coverCosts(s, c)) {
+                    String key = stackKey(cover);
+                    NBTTagCompound requirement = requirements.get(key);
+                    if (requirement == null) {
+                        requirement = cover.writeToNBT(new NBTTagCompound());
+                        requirement.setInteger(
+                            "available",
+                            materialSource(s).count(cover, Math.max(4096, s.capture.cells.size() * 6)));
+                        requirement.setInteger(
+                            "mainAvailable",
+                            materialSource(s).mainCount(cover, Math.max(4096, s.capture.cells.size() * 6)));
+                        requirement.setInteger("controllerAvailable", -1);
+                        requirements.put(key, requirement);
+                    }
+                    requirement.setInteger("required", requirement.getInteger("required") + 1);
+                }
+            if (inScope(s, c, index) && "pending".equals(c.status)
                 && !orientationOnly(s, c, index)
                 && loaded
                 && !trivial(world, c.x, c.y, c.z)
@@ -3644,6 +5089,24 @@ public final class HologramService {
                     row.setString("reason", "预计掉落无法确定，施工将重验并可暂停");
                 }
         }
+        if (s.blueprintResources != null && !s.player.capabilities.isCreativeMode)
+            for (ItemStack content : s.blueprintResources.items) {
+                String key = stackKey(content);
+                NBTTagCompound requirement = requirements.get(key);
+                if (requirement == null) {
+                    ItemStack identity = content.copy();
+                    identity.stackSize = 1;
+                    requirement = identity.writeToNBT(new NBTTagCompound());
+                    requirement
+                        .setInteger("available", materialSource(s).count(identity, Math.max(4096, content.stackSize)));
+                    requirement.setInteger(
+                        "mainAvailable",
+                        materialSource(s).mainCount(identity, Math.max(4096, content.stackSize)));
+                    requirement.setInteger("controllerAvailable", -1);
+                    requirements.put(key, requirement);
+                }
+                requirement.setInteger("required", requirement.getInteger("required") + content.stackSize);
+            }
         for (NBTTagCompound req : requirements.values()) {
             materials.appendTag(req);
             missing += Math.max(0, req.getInteger("required") - req.getInteger("available"));
@@ -3659,7 +5122,7 @@ public final class HologramService {
         state.setInteger("recoveryTotal", recoveryItems);
         state.setTag("recovery", recovery);
         state.setInteger("protected", protectedCount);
-        state.setInteger("missing", missing);
+        state.setInteger("missing", Math.max(missing, s.planMissing));
         state.setInteger("total", total);
         state.setInteger("workTotal", workTotal);
         state.setString("description", "控制器始终保留；直接施工会重新扫描并逐格重验。手选目标覆盖对应位置，不保证结构成型；差分可供查看材料与改动。");
@@ -3678,6 +5141,8 @@ public final class HologramService {
     /** Coordinate based planning snapshots; world, inventories and clipboard are deliberately outside history. */
     private static final class EditState {
 
+        final List<HologramCapture.Cell> geometry = new ArrayList<>();
+        final List<HologramPresets.Structure> structures = new ArrayList<>();
         final Map<String, ItemStack> targets = new HashMap<>();
         final Map<String, ItemStack> automatic = new HashMap<>();
         final int mode, scope, selected;
@@ -3690,6 +5155,11 @@ public final class HologramService {
         final int hatchTier;
 
         EditState(Session s) {
+            if (s.virtualPreset != null) for (HologramPresets.Structure original : s.virtualPreset.structures)
+                structures.add(copyStructure(original));
+            if (s.virtual && s.virtualPreset != null && s.virtualPreset.schema >= 2 && s.capture != null)
+                for (HologramCapture.Cell cell : s.capture.cells)
+                    geometry.add(blueprintCell(cell, cell.x, cell.y, cell.z));
             presetSupported = s.presetSupported;
             presetAvailable = s.presetAvailable;
             presetReason = s.presetReason;
@@ -3720,6 +5190,16 @@ public final class HologramService {
         }
 
         boolean sameAs(EditState other) {
+            if (geometry.size() != other.geometry.size()) return false;
+            for (int i = 0; i < geometry.size(); i++) {
+                HologramCapture.Cell a = geometry.get(i), b = other.geometry.get(i);
+                if (!position(a).equals(position(b)) || !a.memberships()
+                    .equals(b.memberships())
+                    || a.excluded != b.excluded
+                    || !a.prompt.equals(b.prompt)
+                    || !a.tileNbt.equals(b.tileNbt)
+                    || !a.itemNbt.equals(b.itemNbt)) return false;
+            }
             if (!targets.keySet()
                 .equals(other.targets.keySet()) || !facings.equals(other.facings)
                 || !suppressed.equals(other.suppressed)
@@ -3741,6 +5221,21 @@ public final class HologramService {
         }
 
         void apply(Session s) {
+            if (s.virtualPreset != null) {
+                s.virtualPreset.structures.clear();
+                for (HologramPresets.Structure original : structures)
+                    s.virtualPreset.structures.add(copyStructure(original));
+            }
+            if (!geometry.isEmpty()) {
+                HologramCapture capture = new HologramCapture(null, trigger(s));
+                for (HologramCapture.Cell saved : geometry) {
+                    HologramCapture.Cell cell = blueprintCell(saved, saved.x, saved.y, saved.z);
+                    capture.cells.add(cell);
+                    capture.positions.put(position(cell), cell);
+                }
+                s.capture = capture;
+                s.selectedIndices.clear();
+            }
             // History restores exact positions, never reruns quota allocation.
             s.allocationsFrozen = true;
             s.frozenAutoTargets.clear();
@@ -3801,6 +5296,7 @@ public final class HologramService {
         int x, y, z, side;
         final int dimension, slot;
         final Item tool;
+        final ItemStack boundTool;
         final String toolId;
         final long openTick;
         TileEntity target;
@@ -3809,6 +5305,18 @@ public final class HologramService {
         Object context;
         int main = 1, facing, mode, scope, layer, selected = -1, job, cursor, completed;
         boolean noHatches, hints, defer, stopTick, mainExplicit;
+        HologramBlueprintResources.Plan blueprintResources, blueprintTotalResources;
+        String blueprintResourceMissing = "";
+        HologramCapture nbtKeysCapture;
+        final java.util.Set<String> availableNbtKeys = new java.util.TreeSet<>();
+        List<String> retainedNbtKeys, placementNbtKeys;
+        boolean placementNbtCustomized;
+        Boolean placementRetainCovers;
+        String blueprintActiveStructure = "", blueprintPrompt = "";
+        final List<HologramPresets.HintArea> blueprintHintAreas = new ArrayList<>();
+        boolean blueprintPreview, blueprintAwaitingConfirmation, forcePlacementReady;
+        final java.util.Set<Integer> selectedIndices = new java.util.LinkedHashSet<>();
+        final List<HologramCapture.Cell> blueprintClipboard = new ArrayList<>();
         boolean virtual, virtualPlacement, presetBrowseForPlacement, virtualLocked, settingsOnly, cancelled,
             calibratePending, buildAfterCapture;
         HologramPresets.Preset virtualPreset;
@@ -3871,6 +5379,8 @@ public final class HologramService {
         }
 
         Session(EntityPlayerMP p, int x, int y, int z, boolean targetMode, int side) {
+            Session previous = SESSIONS.get(p.getUniqueID());
+            if (previous != null && !valid(previous)) clearAreaSelection(previous);
             this.side = side;
             player = p;
             this.x = x;
@@ -3883,6 +5393,7 @@ public final class HologramService {
                     .getItem();
             target = targetMode ? p.worldObj.getTileEntity(x, y, z) : null;
             ItemStack heldStack = p.getHeldItem();
+            boundTool = heldStack;
             materialSettings = HologramMaterials.read(heldStack);
             hatchDowngrade = heldStack != null && heldStack.hasTagCompound()
                 && heldStack.getTagCompound()

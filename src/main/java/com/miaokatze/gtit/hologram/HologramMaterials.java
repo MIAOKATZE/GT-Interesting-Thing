@@ -1,11 +1,13 @@
 package com.miaokatze.gtit.hologram;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -15,6 +17,7 @@ import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraftforge.fluids.FluidStack;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -31,13 +34,16 @@ import appeng.api.config.PowerMultiplier;
 import appeng.api.features.IWirelessTermHandler;
 import appeng.api.networking.security.PlayerSource;
 import appeng.api.storage.IMEMonitor;
+import appeng.api.storage.data.IAEFluidStack;
 import appeng.api.storage.data.IAEItemStack;
 import appeng.core.stats.Stats;
 import appeng.helpers.WirelessTerminalGuiObject;
 import appeng.util.Platform;
 import appeng.util.PlayerInventoryUtil;
+import appeng.util.item.AEFluidStack;
 import appeng.util.item.AEItemStack;
 import gregtech.common.blocks.ItemMachines;
+import gregtech.common.misc.WirelessNetworkManager;
 
 /** One batch's native container adapters and authenticated wireless terminal material source. */
 public final class HologramMaterials {
@@ -45,6 +51,9 @@ public final class HologramMaterials {
     private static final String SETTINGS = "gtitHologramMaterials";
     private static final String RECOVERY = "gtitHologramMaterialRecovery";
     private static final String RECOVERY_ME = "gtitRecoveryMeFirst";
+    private static final String RECOVERY_COUNT = "gtitRecoveryCount";
+    private static final String RECOVERY_FLUID = "gtitHologramFluidRecovery";
+    private static final String RECOVERY_ENERGY = "gtitHologramEnergyRecovery";
     private static final Logger LOG = LogManager.getLogger("gtit");
 
     private HologramMaterials() {}
@@ -158,6 +167,124 @@ public final class HologramMaterials {
                 take(ItemStackPredicate.from(stack, ItemStackPredicate.NBTMode.EXACT), stack, true, limit, null));
         }
 
+        public BigInteger energyAvailable() {
+            return WirelessNetworkManager.getUserEU(player.getUniqueID());
+        }
+
+        public long fluidCount(FluidStack stack, long limit) {
+            return simulateFluid(fluidAccess(), stack, limit);
+        }
+
+        private FluidAccess fluidAccess() {
+            return new FluidAccess() {
+
+                @Override
+                public boolean available() {
+                    return terminalAvailable() && terminal.getFluidInventory() != null;
+                }
+
+                @Override
+                public long poweredCount(IAEFluidStack stack) {
+                    if (!available()) return 0;
+                    double power = terminal.extractAEPower(
+                        Platform.ceilDiv(stack.getStackSize(), stack.getAmountPerUnit()),
+                        Actionable.SIMULATE,
+                        PowerMultiplier.CONFIG);
+                    return Math.min(stack.getStackSize(), (long) (power * stack.getAmountPerUnit() + 0.9));
+                }
+
+                @Override
+                public IAEFluidStack extract(IAEFluidStack stack, Actionable mode) {
+                    if (!available()) return null;
+                    return terminal.getFluidInventory()
+                        .extractItems(stack, mode, new PlayerSource(player, terminal));
+                }
+
+                @Override
+                public IAEFluidStack inject(IAEFluidStack stack) {
+                    if (!available()) return stack;
+                    return terminal.getFluidInventory()
+                        .injectItems(stack, Actionable.MODULATE, new PlayerSource(player, terminal));
+                }
+
+                @Override
+                public void charge(long amount, int unit) {
+                    Context.this.charge(amount, unit);
+                }
+            };
+        }
+
+        private boolean takeFluid(FluidStack stack, long amount, Transaction transaction) {
+            try {
+                return reserveFluid(fluidAccess(), stack, amount, transaction.meFluids::add);
+            } finally {
+                if (terminalSlot >= 0) {
+                    transaction.terminalSlot = terminalSlot;
+                    transaction.terminalState = terminalStack.copy();
+                }
+            }
+        }
+
+        private void returnFluid(IAEFluidStack stack) {
+            refundFluid(fluidAccess(), stack);
+        }
+
+        private void recoverFluid(IAEFluidStack stack) {
+            if (stack == null || stack.getStackSize() <= 0) return;
+            NBTTagCompound owner = recoveryOwner();
+            NBTTagList stored = owner.getTagList(RECOVERY_FLUID, 10);
+            NBTTagCompound entry = fluidReceipt(stack);
+            stored.appendTag(entry);
+            owner.setTag(RECOVERY_FLUID, stored);
+        }
+
+        private void recoverEnergy(BigInteger amount) {
+            if (amount.signum() <= 0) return;
+            NBTTagCompound owner = recoveryOwner();
+            BigInteger prior = owner.hasKey(RECOVERY_ENERGY, 8) ? new BigInteger(owner.getString(RECOVERY_ENERGY))
+                : BigInteger.ZERO;
+            owner.setString(
+                RECOVERY_ENERGY,
+                prior.add(amount)
+                    .toString());
+        }
+
+        private void flushResourceRecovery() {
+            NBTTagCompound owner = recoveryOwner();
+            if (owner.hasKey(RECOVERY_ENERGY, 8)) {
+                try {
+                    BigInteger amount = new BigInteger(owner.getString(RECOVERY_ENERGY));
+                    if (amount.signum() > 0
+                        && WirelessNetworkManager.addEUToGlobalEnergyMap(player.getUniqueID(), amount))
+                        owner.removeTag(RECOVERY_ENERGY);
+                } catch (RuntimeException | LinkageError failure) {
+                    LOG.warn("Hologram wireless energy refund remains queued", failure);
+                }
+            }
+            NBTTagList stored = owner.getTagList(RECOVERY_FLUID, 10);
+            NBTTagList remaining = new NBTTagList();
+            for (int i = 0; i < stored.tagCount(); i++) {
+                NBTTagCompound receipt = stored.getCompoundTagAt(i);
+                FluidStack fluid = FluidStack.loadFluidStackFromNBT(receipt);
+                long amount = receipt.getLong("gtitRecoveryAmount");
+                if (fluid == null || amount <= 0 || i >= 96 || !supportsFluidNbt(fluid)) {
+                    remaining.appendTag(receipt.copy());
+                    continue;
+                }
+                IAEFluidStack stack = AEFluidStack.create(fluid);
+                stack.setStackSize(amount);
+                try {
+                    returnFluid(stack);
+                } catch (RuntimeException | LinkageError failure) {
+                    LOG.warn("Hologram AE fluid return failed; preserving known remainder", failure);
+                } finally {
+                    receipt.setLong("gtitRecoveryAmount", stack.getStackSize());
+                }
+                if (stack.getStackSize() > 0) remaining.appendTag(receipt.copy());
+            }
+            owner.setTag(RECOVERY_FLUID, remaining);
+        }
+
         /** Enabled main inventory stock. Disabled sources are not inspected; the held tool slot is excluded. */
         public int mainCount(ItemStack stack, int limit) {
             if (!settings.main) return 0;
@@ -248,7 +375,9 @@ public final class HologramMaterials {
         private Map<ItemStack, Integer> take(Predicate<ItemStack> predicate, ItemStack exact, boolean simulate,
             int count, Transaction transaction) {
             Map<ItemStack, Integer> result = new LinkedHashMap<>();
-            if (predicate == null || count < 1 || !simulate && count > 4096) return result;
+            // Anonymous predicates retain the construction batch budget. Explicit exact identities can pay
+            // large GT inventory slots through one bounded adapter call without millions of takeOne calls.
+            if (predicate == null || count < 1 || !simulate && exact == null && count > 4096) return result;
             int[] order = settings.priority == 1 ? new int[] { 1, 0, 2 }
                 : settings.priority == 2 ? new int[] { 2, 0, 1 } : new int[] { 0, 1, 2 };
             for (int type : order) {
@@ -431,6 +560,7 @@ public final class HologramMaterials {
 
         /** Persisted real items remain here until a configured destination has room; no world drops are needed. */
         public void flushRecovery() {
+            flushResourceRecovery();
             NBTTagCompound owner = recoveryOwner();
             NBTTagList stored = owner.getTagList(RECOVERY, 10);
             NBTTagList remaining = new NBTTagList();
@@ -442,7 +572,7 @@ public final class HologramMaterials {
                             .copy());
                     continue;
                 }
-                ItemStack stack = ItemStack.loadItemStackFromNBT(stored.getCompoundTagAt(i));
+                ItemStack stack = recoveryItem(stored.getCompoundTagAt(i));
                 if (stack == null || stack.stackSize <= 0) continue;
                 boolean meFirst = stored.getCompoundTagAt(i)
                     .getBoolean(RECOVERY_ME);
@@ -460,9 +590,9 @@ public final class HologramMaterials {
                     stack);
                 // Persist this receipt immediately, before attempting the next queue entry.
                 stored.getCompoundTagAt(i)
-                    .setByte("Count", (byte) stack.stackSize);
+                    .setInteger(RECOVERY_COUNT, stack.stackSize);
                 if (stack.stackSize > 0) {
-                    NBTTagCompound entry = stack.writeToNBT(new NBTTagCompound());
+                    NBTTagCompound entry = itemReceipt(stack);
                     entry.setBoolean(RECOVERY_ME, meFirst);
                     remaining.appendTag(entry);
                 }
@@ -480,13 +610,10 @@ public final class HologramMaterials {
             if (stack == null || stack.stackSize <= 0) return;
             NBTTagCompound owner = recoveryOwner();
             NBTTagList stored = owner.getTagList(RECOVERY, 10);
-            while (stack.stackSize > 0) {
-                int size = Math.min(stack.stackSize, Math.max(1, stack.getMaxStackSize()));
-                NBTTagCompound entry = copy(stack, size).writeToNBT(new NBTTagCompound());
-                entry.setBoolean(RECOVERY_ME, meFirst);
-                stored.appendTag(entry);
-                stack.stackSize -= size;
-            }
+            NBTTagCompound entry = itemReceipt(stack);
+            entry.setBoolean(RECOVERY_ME, meFirst);
+            stored.appendTag(entry);
+            stack.stackSize = 0;
             owner.setTag(RECOVERY, stored);
         }
 
@@ -503,6 +630,8 @@ public final class HologramMaterials {
         private final Context context;
         private final List<ItemStack> containerItems = new ArrayList<>();
         private final List<IAEItemStack> meItems = new ArrayList<>();
+        private final List<IAEFluidStack> meFluids = new ArrayList<>();
+        private BigInteger energyTaken = BigInteger.ZERO;
         private final Map<Integer, ItemStack> containerStates = new LinkedHashMap<>();
         private int terminalSlot = -1;
         private ItemStack terminalState;
@@ -528,11 +657,29 @@ public final class HologramMaterials {
             return !closed && context.exact(stack, simulate, this);
         }
 
+        public boolean takeFluid(FluidStack stack, long amount, boolean simulate) {
+            return !closed
+                && (simulate ? context.fluidCount(stack, amount) >= amount : context.takeFluid(stack, amount, this));
+        }
+
+        public boolean takeEnergy(BigInteger amount, boolean simulate) {
+            if (closed || amount == null || amount.signum() < 0) return false;
+            if (amount.signum() == 0) return true;
+            if (simulate) return context.energyAvailable()
+                .compareTo(amount) >= 0;
+            if (!WirelessNetworkManager.addEUToGlobalEnergyMap(context.player.getUniqueID(), amount.negate()))
+                return false;
+            energyTaken = energyTaken.add(amount);
+            return true;
+        }
+
         public void commit() {
             closed = true;
             containerItems.clear();
             containerStates.clear();
             meItems.clear();
+            meFluids.clear();
+            energyTaken = BigInteger.ZERO;
             terminalState = null;
         }
 
@@ -541,6 +688,25 @@ public final class HologramMaterials {
             if (closed) return;
             closed = true;
             context.retainedContainers.putAll(containerStates);
+            if (energyTaken.signum() > 0) {
+                try {
+                    if (!WirelessNetworkManager.addEUToGlobalEnergyMap(context.player.getUniqueID(), energyTaken))
+                        context.recoverEnergy(energyTaken);
+                } catch (RuntimeException | LinkageError failure) {
+                    context.recoverEnergy(energyTaken);
+                    LOG.warn("Hologram wireless energy refund queued", failure);
+                }
+            }
+            for (IAEFluidStack stack : meFluids) {
+                IAEFluidStack left = stack.copy();
+                try {
+                    context.returnFluid(left);
+                } catch (RuntimeException | LinkageError failure) {
+                    LOG.warn("Hologram AE fluid refund queued", failure);
+                } finally {
+                    context.recoverFluid(left);
+                }
+            }
             // SL's generic extractor has no insertion API. Keep its actual post-extraction state and
             // return its actual reported items to the player, rather than guessing its storage NBT.
             for (ItemStack stack : containerItems) context.recover(stack.copy());
@@ -567,6 +733,8 @@ public final class HologramMaterials {
             containerItems.clear();
             containerStates.clear();
             meItems.clear();
+            meFluids.clear();
+            energyTaken = BigInteger.ZERO;
             terminalState = null;
         }
     }
@@ -594,6 +762,96 @@ public final class HologramMaterials {
     static int recoveryRemainder(int requested, int offered, long unaccepted) {
         int bounded = Math.min(Math.max(0, requested), Math.max(0, offered));
         return Math.max(0, requested) - bounded + (int) Math.min(bounded, Math.max(0, unaccepted));
+    }
+
+    static long fluidRecoveryRemainder(long requested, long offered, long unaccepted) {
+        long bounded = Math.min(Math.max(0, requested), Math.max(0, offered));
+        return Math.max(0, requested) - bounded + Math.min(bounded, Math.max(0, unaccepted));
+    }
+
+    /** One implementation is used by the authenticated production terminal and bounded regression fixtures. */
+    interface FluidAccess {
+
+        boolean available();
+
+        long poweredCount(IAEFluidStack stack);
+
+        IAEFluidStack extract(IAEFluidStack stack, Actionable mode);
+
+        IAEFluidStack inject(IAEFluidStack stack);
+
+        void charge(long amount, int unit);
+    }
+
+    static long simulateFluid(FluidAccess access, FluidStack stack, long amount) {
+        if (stack == null || stack.getFluid() == null || amount <= 0 || !access.available() || !supportsFluidNbt(stack))
+            return 0;
+        IAEFluidStack request = AEFluidStack.create(stack);
+        request.setStackSize(amount);
+        long powered = Math.max(0, Math.min(amount, access.poweredCount(request)));
+        if (powered == 0) return 0;
+        request.setStackSize(powered);
+        IAEFluidStack result = access.extract(request, Actionable.SIMULATE);
+        return result == null ? 0 : Math.max(0, Math.min(amount, result.getStackSize()));
+    }
+
+    static boolean reserveFluid(FluidAccess access, FluidStack stack, long amount, Consumer<IAEFluidStack> ledger) {
+        if (amount == 0) return true;
+        if (amount < 0 || simulateFluid(access, stack, amount) < amount || !access.available()) return false;
+        IAEFluidStack request = AEFluidStack.create(stack);
+        request.setStackSize(amount);
+        long offered = Math.max(0, Math.min(amount, access.poweredCount(request)));
+        if (offered == 0) return false;
+        request.setStackSize(offered);
+        IAEFluidStack taken = access.extract(request, Actionable.MODULATE);
+        if (taken == null || taken.getStackSize() <= 0) return false;
+        ledger.accept(taken.copy());
+        access.charge(taken.getStackSize(), taken.getAmountPerUnit());
+        return taken.getStackSize() == amount;
+    }
+
+    static void refundFluid(FluidAccess access, IAEFluidStack stack) {
+        if (stack == null || stack.getStackSize() <= 0 || !access.available()) return;
+        long previous = stack.getStackSize();
+        long offered = Math.max(0, Math.min(previous, access.poweredCount(stack)));
+        if (offered == 0) return;
+        IAEFluidStack request = stack.copy();
+        request.setStackSize(offered);
+        IAEFluidStack left = access.inject(request);
+        stack.setStackSize(fluidRecoveryRemainder(previous, offered, left == null ? 0 : left.getStackSize()));
+        if (previous > stack.getStackSize()) access.charge(previous - stack.getStackSize(), stack.getAmountPerUnit());
+    }
+
+    static NBTTagCompound fluidReceipt(IAEFluidStack stack) {
+        NBTTagCompound entry = stack.getFluidStack()
+            .writeToNBT(new NBTTagCompound());
+        entry.setLong("gtitRecoveryAmount", stack.getStackSize());
+        return entry;
+    }
+
+    static boolean supportsFluidNbt(FluidStack stack) {
+        if (stack == null || stack.getFluid() == null) return false;
+        if (stack.tag == null || stack.tag.hasNoTags()) return true;
+        IAEFluidStack converted = AEFluidStack.create(stack);
+        // The bound AE2 version discards fluid tags. Probe the actual adapter so a future implementation
+        // that preserves exact tags can be used, while today's tagged fluid is never replaced by plain fluid.
+        return converted != null && converted.hasTagCompound()
+            && converted.getTagCompound() != null
+            && stack.tag.equals(
+                converted.getTagCompound()
+                    .getNBTTagCompoundCopy());
+    }
+
+    static NBTTagCompound itemReceipt(ItemStack stack) {
+        NBTTagCompound entry = stack.writeToNBT(new NBTTagCompound());
+        entry.setInteger(RECOVERY_COUNT, stack.stackSize);
+        return entry;
+    }
+
+    static ItemStack recoveryItem(NBTTagCompound receipt) {
+        ItemStack stack = ItemStack.loadItemStackFromNBT(receipt);
+        if (stack != null && receipt.hasKey(RECOVERY_COUNT, 3)) stack.stackSize = receipt.getInteger(RECOVERY_COUNT);
+        return stack;
     }
 
     private static ItemStack copy(ItemStack stack, int count) {

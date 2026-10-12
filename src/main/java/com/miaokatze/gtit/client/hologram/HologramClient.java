@@ -10,6 +10,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.StatCollector;
+import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.ForgeDirection;
@@ -77,6 +79,16 @@ public final class HologramClient {
         input.setString("action", air ? "useAir" : "useBlock");
         input.setBoolean("alt", alt);
         input.setBoolean("shift", shift);
+        if (shift && alt) {
+            input.setString("action", "toggleAreaSelection");
+            HologramNetwork.sendAction(input);
+            return;
+        }
+        if (shift) {
+            input.setString("action", "useAir");
+            HologramNetwork.sendAction(input);
+            return;
+        }
         if (air && alt) {
             int[] anchor = state == null ? new int[] {
                 net.minecraft.util.MathHelper.floor_double(mc.thePlayer.posX + mc.thePlayer.getLookVec().xCoord * 3),
@@ -111,6 +123,43 @@ public final class HologramClient {
     }
 
     private boolean rotationDown;
+
+    @SubscribeEvent
+    public void areaMouse(MouseEvent event) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (!event.buttonstate || (event.button != 0 && event.button != 1)
+            || mc.currentScreen != null
+            || state == null
+            || !state.data.getBoolean("areaSelecting")
+            || mc.thePlayer == null
+            || mc.theWorld == null
+            || !com.miaokatze.gtit.common.items.hologram.ItemNekoHologramProjector
+                .isProjector(mc.thePlayer.getHeldItem()))
+            return;
+        boolean alt = Keyboard.isKeyDown(Keyboard.KEY_LMENU) || Keyboard.isKeyDown(Keyboard.KEY_RMENU);
+        boolean shift = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+        if (shift && !alt) return;
+        NBTTagCompound request = new NBTTagCompound();
+        if (event.button == 1 && shift && alt) request.setString("action", "toggleAreaSelection");
+        else {
+            MovingObjectPosition hit = mc.objectMouseOver;
+            if (!alt && (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK)) return;
+            request.setString("action", "areaPoint");
+            request.setInteger("point", event.button == 0 ? 1 : 2);
+            request.setBoolean("atPlayer", alt);
+            request.setInteger("x", alt ? net.minecraft.util.MathHelper.floor_double(mc.thePlayer.posX) : hit.blockX);
+            request.setInteger("y", alt ? net.minecraft.util.MathHelper.floor_double(mc.thePlayer.posY) : hit.blockY);
+            request.setInteger("z", alt ? net.minecraft.util.MathHelper.floor_double(mc.thePlayer.posZ) : hit.blockZ);
+        }
+        event.setCanceled(true);
+        HologramNetwork.sendAction(request);
+    }
+
+    @SubscribeEvent
+    public void areaGuide(RenderGameOverlayEvent.Text event) {
+        if (state != null && state.data.getBoolean("areaSelecting"))
+            event.left.add("猫猫投影仪 · 左键第一点 / 右键第二点 · Alt 玩家坐标 · Shift+Alt+右键完成");
+    }
 
     @SubscribeEvent
     public void clientTick(TickEvent.ClientTickEvent event) {
@@ -222,6 +271,11 @@ public final class HologramClient {
         state = next;
         Minecraft mc = Minecraft.getMinecraft();
         snapshotWorld = mc.theWorld;
+        if (nbt.getBoolean("areaSelecting") && !nbt.getBoolean("open")) {
+            if (mc.currentScreen instanceof HologramScreen || mc.currentScreen instanceof HologramSettingsScreen)
+                mc.displayGuiScreen(null);
+            return;
+        }
         if (nbt.getBoolean("hints")) hints(next);
         if (nbt.getBoolean("settingsOnly")) {
             if (mc.currentScreen instanceof HologramSettingsScreen && same)
@@ -306,6 +360,7 @@ public final class HologramClient {
             clearProjection();
             return;
         }
+        if (state.data.getBoolean("areaSelecting")) HologramAreaOverlay.render(state, event.partialTicks);
         if (!worldPreview || state.data.getInteger("job") == 4) return;
         if (state.data.getBoolean("virtual") && !state.data.getBoolean("virtualPlacement")) return;
         // Avoid stale projection after disconnect/reconnect or travelling away from the target.

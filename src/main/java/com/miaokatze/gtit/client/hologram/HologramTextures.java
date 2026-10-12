@@ -169,7 +169,8 @@ final class HologramTextures {
                 sides[side].add(new Sample(atlas.getAtlasSprite("missingno"), 0xffffff));
             }
         }
-        return new Material(sides, gt, fallback);
+        // GT coil blocks also supply layered GT textures; the diagnostic flag includes them.
+        return new Material(sides, gt || block instanceof IBlockWithTextures, fallback);
     }
 
     static int inventorySide(int front, int side) {

@@ -25,14 +25,20 @@ public final class HologramLayoutRegression {
             }
         }
         SimpleAssert.that(
-            HologramScreenLayout.VIEWPORT_X + HologramScreenLayout.VIEWPORT_WIDTH < HologramScreenLayout.PANEL_X,
+            HologramScreenLayout.VIEWPORT_X + HologramScreenLayout.VIEWPORT_WIDTH
+                < HologramScreenLayout.COMPACT_PANEL_X,
             "fixed properties never overlap the preview or its selectable cells");
         SimpleAssert.that(
-            HologramScreenLayout.PANEL_X + HologramScreenLayout.PANEL_WIDTH <= HologramScreenLayout.WIDTH,
+            HologramScreenLayout.COMPACT_PANEL_X + HologramScreenLayout.COMPACT_PANEL_WIDTH
+                <= HologramScreenLayout.WIDTH,
             "properties remain inside the window");
         SimpleAssert.that(
-            HologramScreenLayout.WIDTH == 520 && HologramScreenLayout.HEIGHT == 312,
-            "expanded workspace reserves separate type and tier rows");
+            HologramScreenLayout.VIEWPORT_WIDTH >= 360 && HologramScreenLayout.VIEWPORT_HEIGHT >= 260,
+            "blueprint workbench preserves a large preview independently of property controls");
+        SimpleAssert.that(HologramScreenLayout.VIEWPORT_X >= 32, "left tabs do not overlay selectable cells");
+        SimpleAssert.that(
+            HologramScreenLayout.CONTROL_WIDTH_SCALE <= .61F,
+            "compact property controls use the requested approximate forty percent reduction");
         SimpleAssert.that(
             HologramScreenLayout.PANEL_Y + HologramScreenLayout.PANEL_HEIGHT < 285,
             "expanded properties end before execution footer");
@@ -48,6 +54,7 @@ public final class HologramLayoutRegression {
             HologramTargetTiers.steppedTier(java.util.Collections.emptyList(), -1, 1),
             "empty role cannot invent a tier");
         queueRegression();
+        HologramSelectionRegression.run();
     }
 
     private static void queueRegression() {
@@ -85,6 +92,15 @@ public final class HologramLayoutRegression {
         queue.offer("editCopy", original.session, original.cells.get(0));
         queue.clear();
         SimpleAssert.that(queue.isEmpty(), "close or capture cancellation clears queued edits");
+        queue.offer("editCopy", original.session, original.cells.get(0), original.cells);
+        HologramEditQueue.Entry batch = queue.removeFirst(reordered);
+        int[] indices = batch.indicesIn(reordered);
+        SimpleAssert.eq(1, indices[0], "queued multi-selection resolves first coordinate after reorder");
+        SimpleAssert.eq(0, indices[1], "queued multi-selection preserves second coordinate after reorder");
+        queue.offer("editPaste", original.session, original.cells.get(0), original.cells);
+        SimpleAssert.that(
+            queue.removeFirst(snapshot("session-a", 10, 30)) == null,
+            "removed secondary member cancels whole batch instead of redirecting edits");
     }
 
     private static HologramState snapshot(String session, int firstX, int secondX) {

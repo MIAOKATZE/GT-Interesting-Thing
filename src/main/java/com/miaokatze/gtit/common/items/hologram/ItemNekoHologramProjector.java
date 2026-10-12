@@ -2,6 +2,7 @@ package com.miaokatze.gtit.common.items.hologram;
 
 import java.util.List;
 
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
@@ -12,6 +13,7 @@ import com.gtnewhorizon.structurelib.alignment.constructable.ChannelDataAccessor
 import com.gtnewhorizon.structurelib.item.ItemConstructableTrigger;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.hologram.HologramNetwork;
+import com.miaokatze.gtit.hologram.HologramService;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
@@ -29,6 +31,32 @@ public class ItemNekoHologramProjector extends ItemConstructableTrigger {
 
     public static boolean isProjector(ItemStack stack) {
         return stack != null && stack.getItem() instanceof ItemNekoHologramProjector;
+    }
+
+    @Override
+    public boolean hasEffect(ItemStack stack, int pass) {
+        return stack.hasTagCompound() && stack.getTagCompound()
+            .getBoolean("gtitHologramAreaSelecting");
+    }
+
+    @Override
+    public boolean onBlockStartBreak(ItemStack stack, int x, int y, int z, EntityPlayer player) {
+        return stack.hasTagCompound() && stack.getTagCompound()
+            .getBoolean("gtitHologramAreaSelecting");
+    }
+
+    @Override
+    public void onUpdate(ItemStack stack, World world, Entity entity, int slot, boolean selected) {
+        super.onUpdate(stack, world, entity, slot, selected);
+        if (!world.isRemote && entity instanceof EntityPlayer
+            && stack.hasTagCompound()
+            && stack.getTagCompound()
+                .getBoolean("gtitHologramAreaSelecting")
+            && !HologramService.isAreaSelecting((EntityPlayer) entity, stack)) {
+            stack.getTagCompound()
+                .removeTag("gtitHologramAreaSelecting");
+            ((EntityPlayer) entity).inventory.markDirty();
+        }
     }
 
     @Override

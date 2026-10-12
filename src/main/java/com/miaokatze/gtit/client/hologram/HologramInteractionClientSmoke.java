@@ -3,6 +3,8 @@ package com.miaokatze.gtit.client.hologram;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiMainMenu;
@@ -31,6 +33,10 @@ public final class HologramInteractionClientSmoke {
     private long lastClickedRender = -1;
     private long renderedWorldFrames, closedAtWorldFrame;
     private int receiptReadRetries;
+    private boolean connectionDiagnosticSaved;
+    private int timedStage = -1;
+    private long stageEnteredAt;
+    private String lastStageSnapshot = "";
     private final int[] initialClicks = { 71, 72, 70, 82, 80, 60 };
 
     public static void install() {
@@ -53,10 +59,34 @@ public final class HologramInteractionClientSmoke {
         if (done || event.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getMinecraft();
         try {
+            if (timedStage != stage) {
+                timedStage = stage;
+                stageEnteredAt = System.nanoTime();
+            }
+            if ((stage == 11 || stage == 17 || stage == 21 || stage == 24)
+                && System.nanoTime() - stageEnteredAt >= 10000000000L) {
+                HologramScreen waitingScreen = mc.currentScreen instanceof HologramScreen
+                    ? (HologramScreen) mc.currentScreen
+                    : null;
+                NBTTagCompound waitingState = waitingScreen == null ? null : waitingScreen.smokeSnapshot();
+                if (waitingState == null
+                    || waitingState.getInteger("job") != 3 && waitingState.getInteger("job") != 5) {
+                    String summary = stageSnapshot(waitingState);
+                    System.err.println("[GTIT-HOLOGRAM-INTERACTION-CLIENT] WAIT TIMEOUT " + summary);
+                    IllegalStateException failure = new IllegalStateException("10 second execution wait " + summary);
+                    try {
+                        screenshot(mc, "stage-" + stage + "-timeout");
+                    } catch (Throwable screenshotFailure) {
+                        failure.addSuppressed(screenshotFailure);
+                    }
+                    throw failure;
+                }
+            }
             if (System.nanoTime() - installed > 600000000000L)
                 throw new IllegalStateException("real interaction timeout stage=" + stage);
             if (stage == 0) {
                 if (!(mc.currentScreen instanceof GuiMainMenu)) return;
+                mc.gameSettings.pauseOnLostFocus = false;
                 receipts = new File(System.getProperty("gtit.hologram.interactionReceiptDir", ""));
                 if (!receipts.isDirectory()) throw new IllegalStateException("prepared receipt directory required");
                 String address = System.getProperty("gtit.hologram.interactionAddress", "127.0.0.1:25581");
@@ -70,6 +100,26 @@ public final class HologramInteractionClientSmoke {
                 return;
             }
             if (stage == 1) {
+                if (++waitTicks % 100 == 0) System.out.println(
+                    "[GTIT-HOLOGRAM-INTERACTION-CLIENT] CONNECT screen="
+                        + (mc.currentScreen == null ? "none"
+                            : mc.currentScreen.getClass()
+                                .getName())
+                        + " player="
+                        + (mc.thePlayer != null)
+                        + " world="
+                        + (mc.theWorld != null)
+                        + " receipt="
+                        + new File(receipts, "world-receipt.nbt").isFile());
+                if (!connectionDiagnosticSaved && waitTicks >= 200) {
+                    connectionDiagnosticSaved = true;
+                    ScreenShotHelper.saveScreenshot(
+                        mc.mcDataDir,
+                        "hologram-network-connect-diagnostic.png",
+                        mc.displayWidth,
+                        mc.displayHeight,
+                        mc.getFramebuffer());
+                }
                 if (mc.thePlayer == null || mc.theWorld == null || !new File(receipts, "world-receipt.nbt").isFile())
                     return;
                 if (mc.thePlayer.getHeldItem() == null || mc.theWorld.getTileEntity(48, 80, 48) == null) return;
@@ -102,6 +152,21 @@ public final class HologramInteractionClientSmoke {
             if (screen.smokeRenderGeneration() <= lastClickedRender) return;
             NBTTagCompound state = screen.smokeSnapshot();
             if (screen.smokePending()) return;
+            if (stage == 11 || stage == 17 || stage == 33 || stage == 18 || stage == 19 || stage == 21 || stage == 24) {
+                String summary = stageSnapshot(state);
+                if (!summary.equals(lastStageSnapshot)) {
+                    lastStageSnapshot = summary;
+                    System.out.println("[GTIT-HOLOGRAM-INTERACTION-CLIENT] SNAPSHOT " + summary);
+                }
+            }
+            if ((stage == 11 || stage == 17 || stage == 21 || stage == 24) && screen.smokeHasControl(55)) {
+                require(state.getInteger("missing") == 0, "real_execution_materials_sufficient_stage_" + stage);
+                // Protected positions can deliberately stay unchanged. Independent receipts below require
+                // the complete shell, all sixteen upgraded coils and exact material conservation.
+                screenshot(mc, "materials-confirm-stage-" + stage);
+                click(screen, 55);
+                return;
+            }
             if (++waitTicks < 4) return;
             waitTicks = 0;
             if (stage == 2) {
@@ -157,7 +222,9 @@ public final class HologramInteractionClientSmoke {
                     if (state.getInteger("job") != 3 && state.getInteger("job") != 5) return;
                     require(receipt().getInteger("placed") > 0, "direct_build_server_world_and_material_receipt");
                     require(mc.currentScreen == screen, "direct_build_retains_GUI_for_real_progress");
-                    require(!state.hasKey("layerDuration"), "direct_build_has_no_layer_animation_schedule");
+                    require(
+                        state.getInteger("layerDuration") == 0 && state.getLong("due") == 0,
+                        "direct_build_has_no_layer_animation_schedule");
                     click(screen, 60);
                     stage = 25;
                     break;
@@ -174,10 +241,36 @@ public final class HologramInteractionClientSmoke {
                     stage = 17;
                     break;
                 case 17:
-                    if (state.getInteger("job") != 3 && state.getInteger("job") != 5) return;
-                    require(receipt().getInteger("coils") == 16, "build_installs_sixteen_real_coils");
+                    boolean scannedNoChanges = state.getInteger("job") == 0 && state.hasKey("workTotal", 3)
+                        && state.getInteger("workTotal") == 0;
+                    if (state.getInteger("job") != 3 && state.getInteger("job") != 5 && !scannedNoChanges) return;
+                    NBTTagCompound builtReceipt = receipt();
+                    require(builtReceipt.getInteger("coils") == 16, "build_installs_sixteen_real_coils");
+                    if (scannedNoChanges) {
+                        require(
+                            !screen.smokeHasControl(55),
+                            "satisfied_rescan_has_zero_operations_and_no_execute_control");
+                        require(
+                            builtReceipt.getInteger("placed") + builtReceipt.getInteger("stock") == 192,
+                            "satisfied_rescan_preserves_real_world_and_inventory_material_conservation");
+                        System.out.println(
+                            "[GTIT-HOLOGRAM-INTERACTION-CLIENT] NOOP receipt workTotal=0 coils="
+                                + builtReceipt.getInteger("coils")
+                                + " placed="
+                                + builtReceipt.getInteger("placed")
+                                + " stock="
+                                + builtReceipt.getInteger("stock")
+                                + "; closing review before real upgrade");
+                        click(screen, 54);
+                        stage = 33;
+                        break;
+                    }
                     click(screen, 71);
-                    stage++;
+                    stage = 18;
+                    break;
+                case 33:
+                    click(screen, 71);
+                    stage = 18;
                     break;
                 case 18:
                     click(screen, 82);
@@ -206,6 +299,9 @@ public final class HologramInteractionClientSmoke {
                         receipt.getInteger("placed") == 0 && receipt.getInteger("stock") == 192,
                         "dismantle_returns_all_shell_materials_exactly");
                     require(
+                        receipt.getInteger("mufflerWorld") == 0 && receipt.getInteger("mufflerStock") == 1,
+                        "dismantle_returns_single_real_mandatory_muffler_without_duplication");
+                    require(
                         !state.getBoolean("targetClosed") && mc.theWorld.getTileEntity(48, 80, 48) != null,
                         "dismantle_preserves_controller_target");
                     Files.write(
@@ -225,6 +321,13 @@ public final class HologramInteractionClientSmoke {
             // A hidden client can tick many times before drawing its next frame.
         } catch (Throwable failure) {
             done = true;
+            if (receipts != null) try {
+                Files.write(
+                    new File(receipts, "client-failed.txt").toPath(),
+                    ("stage=" + stage + " " + failure).getBytes(StandardCharsets.UTF_8));
+            } catch (java.io.IOException receiptFailure) {
+                receiptFailure.printStackTrace();
+            }
             System.err.println("[GTIT-HOLOGRAM-INTERACTION-CLIENT] FINAL FAIL stage=" + stage + " " + failure);
             failure.printStackTrace();
             mc.shutdown();
@@ -238,7 +341,103 @@ public final class HologramInteractionClientSmoke {
         System.out.println("[GTIT-HOLOGRAM-INTERACTION-CLIENT] mouse control=" + id + " stage=" + stage);
     }
 
+    private String stageSnapshot(NBTTagCompound state) {
+        if (state == null) return "stage=" + stage + " no hologram snapshot";
+        NBTTagCompound coil = new NBTTagCompound();
+        net.minecraft.nbt.NBTTagList capabilities = state.getTagList("capabilities", 10);
+        for (int i = 0; i < capabilities.tagCount(); i++) {
+            NBTTagCompound row = capabilities.getCompoundTagAt(i);
+            if ("coil".equals(row.getString("id"))) coil = row;
+        }
+        String coilBlock = String
+            .valueOf(net.minecraft.block.Block.blockRegistry.getNameForObject(gregtech.api.GregTechAPI.sBlockCasings5));
+        Map<String, Integer> coilRows = new LinkedHashMap<>();
+        Map<String, StringBuilder> protectedRows = new LinkedHashMap<>();
+        net.minecraft.nbt.NBTTagList cells = state.getTagList("cells", 10);
+        for (int i = 0; i < cells.tagCount(); i++) {
+            NBTTagCompound row = cells.getCompoundTagAt(i);
+            String reason = row.getString("reason");
+            if (reason.length() > 160) reason = reason.substring(0, 160);
+            if (!row.getBoolean("anchor") && "PROTECT".equals(row.getString("operation"))) {
+                String protectedGroup = "id=" + row.getString("id")
+                    + " meta="
+                    + row.getInteger("meta")
+                    + " wantId="
+                    + row.getString("wantId")
+                    + " wantMeta="
+                    + row.getInteger("wantMeta")
+                    + " role="
+                    + row.getString("role")
+                    + " inScope="
+                    + row.getBoolean("inScope")
+                    + " reason="
+                    + reason;
+                StringBuilder coordinates = protectedRows
+                    .computeIfAbsent(protectedGroup, ignored -> new StringBuilder());
+                if (coordinates.length() > 0) coordinates.append(';');
+                coordinates.append(row.getInteger("x"))
+                    .append(',')
+                    .append(row.getInteger("y"))
+                    .append(',')
+                    .append(row.getInteger("z"));
+            }
+            if (!coilBlock.equals(row.getString("id")) && !coilBlock.equals(row.getString("wantId"))) continue;
+            String cohort = "actual=" + row.getInteger("meta")
+                + " want="
+                + row.getInteger("wantMeta")
+                + " status="
+                + row.getString("status")
+                + " operation="
+                + row.getString("operation")
+                + " reason="
+                + reason;
+            coilRows.merge(cohort, 1, Integer::sum);
+        }
+        return "stage=" + stage
+            + " job="
+            + state.getInteger("job")
+            + " mode="
+            + state.getInteger("mode")
+            + " main="
+            + state.getInteger("main")
+            + " channels.coil="
+            + state.getCompoundTag("channels")
+                .getInteger("coil")
+            + " selected="
+            + state.getInteger("selected")
+            + " coil.current="
+            + coil.getInteger("current")
+            + " coil.explicit="
+            + coil.getBoolean("explicit")
+            + " workTotal="
+            + state.getInteger("workTotal")
+            + " missing="
+            + state.getInteger("missing")
+            + " protected="
+            + state.getInteger("protected")
+            + " protectedWork="
+            + nonControllerProtection(state)
+            + " protectedRows="
+            + protectedRows
+            + " coils="
+            + coilRows
+            + " status="
+            + state.getString("status");
+    }
+
+    private static int nonControllerProtection(NBTTagCompound state) {
+        int count = 0;
+        net.minecraft.nbt.NBTTagList cells = state.getTagList("cells", 10);
+        for (int i = 0; i < cells.tagCount(); i++) {
+            NBTTagCompound row = cells.getCompoundTagAt(i);
+            if (row.getBoolean("inScope") && !row.getBoolean("anchor") && "PROTECT".equals(row.getString("operation")))
+                count++;
+        }
+        return count;
+    }
+
     private void reopenWithRightClick(Minecraft mc) {
+        mc.displayGuiScreen(null);
         mc.playerController.onPlayerRightClick(
             mc.thePlayer,
             mc.theWorld,

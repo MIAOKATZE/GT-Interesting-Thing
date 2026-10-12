@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.hologram;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.UUID;
 
@@ -15,18 +16,21 @@ import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.common.util.FakePlayerFactory;
 
+import com.miaokatze.gtit.util.ServerTaskScheduler;
 import com.mojang.authlib.GameProfile;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
+import cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
+import cpw.mods.fml.relauncher.Side;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
 import io.netty.channel.Channel;
 import io.netty.channel.embedded.EmbeddedChannel;
 
-/** Opt-in C08 entry regression. No Session construction or reflection is used. */
+/** Real vanilla held-stack copying followed by the current custom-packet server entry. No Session is fabricated. */
 public final class HologramSmokeTest {
 
     private boolean finished;
@@ -44,16 +48,51 @@ public final class HologramSmokeTest {
         if (finished || event.phase != TickEvent.Phase.END || ++ticks < 40) return;
         finished = true;
         MinecraftServer server = MinecraftServer.getServer();
+        int failedSuites = 0;
         try {
-            run(server.worldServerForDimension(0));
-            System.out.println("[GTIT-HOLOGRAM-SMOKE] FINAL PASS assertions=" + assertions);
-        } catch (Throwable failure) {
-            System.err.println("[GTIT-HOLOGRAM-SMOKE] FINAL FAIL " + failure);
-            failure.printStackTrace();
+            try {
+                run(server.worldServerForDimension(0));
+                System.out.println("[GTIT-HOLOGRAM-LEGACY-SMOKE] FINAL PASS assertions=" + assertions);
+            } catch (Throwable failure) {
+                failedSuites++;
+                suiteFailure("LEGACY", failure);
+            }
+            try {
+                HologramBlueprintSmoke.run(server.worldServerForDimension(0));
+            } catch (Throwable failure) {
+                failedSuites++;
+                suiteFailure("BLUEPRINT", failure);
+            }
+            try {
+                Class.forName("com.miaokatze.gtit.hologram.HologramBlueprintResourcesRegression")
+                    .getMethod("runWithAe")
+                    .invoke(null);
+                System.out.println(
+                    "[GTIT-HOLOGRAM-AE-FIXTURE-SMOKE] FINAL PASS authenticated fixture; no live AE network claimed");
+            } catch (Throwable failure) {
+                failedSuites++;
+                suiteFailure("AE-FIXTURE", failure);
+            }
+            try {
+                HologramBlueprintOwnershipSmoke.runOwnership(server.worldServerForDimension(0));
+            } catch (Throwable failure) {
+                failedSuites++;
+                suiteFailure("OWNERSHIP", failure);
+            }
+            if (failedSuites == 0)
+                System.out.println("[GTIT-HOLOGRAM-SMOKE] FINAL PASS suites=4 assertions=" + assertions);
+            else System.err.println("[GTIT-HOLOGRAM-SMOKE] FINAL FAIL failedSuites=" + failedSuites + "/4");
         } finally {
             HologramService.clear();
             server.initiateShutdown();
         }
+    }
+
+    private static void suiteFailure(String suite, Throwable failure) {
+        if (failure instanceof java.lang.reflect.InvocationTargetException && failure.getCause() != null)
+            failure = failure.getCause();
+        System.err.println("[GTIT-HOLOGRAM-" + suite + "-SMOKE] FINAL FAIL " + failure);
+        failure.printStackTrace();
     }
 
     private void run(WorldServer world) throws Exception {
@@ -99,16 +138,21 @@ public final class HologramSmokeTest {
         try {
             player.playerNetServerHandler
                 .processPlayerBlockPlacement(decodePlacement(-1, -1, -1, 255, player.getHeldItem(), 0, 0, 0));
-            require(capture.state != null && !capture.state.getBoolean("target"), "first_air_C08_opens_empty_target");
+            require(capture.state == null, "vanilla_air_C08_does_not_fabricate_custom_hologram_request");
+            usePacket(player, capture, true, 0, 0, 0, 255);
+            require(
+                capture.state != null && !capture.state.getBoolean("target"),
+                "first_air_custom_packet_opens_empty_target");
             HologramService.clear();
             world.getWorldInfo()
                 .incrementTotalWorldTime(world.getTotalWorldTime() + 3);
             ItemStack before = player.getHeldItem();
             player.playerNetServerHandler
                 .processPlayerBlockPlacement(decodePlacement(48, 80, 48, 2, before, .5F, .5F, .5F));
+            usePacket(player, capture, false, 48, 80, 48, 2);
             require(
                 capture.state.getBoolean("target") && capture.state.getBoolean("supported"),
-                "first_block_C08_opens_real_EBF");
+                "first_block_custom_packet_opens_real_EBF");
             net.minecraft.nbt.NBTTagList capabilityRows = capture.state.getTagList("capabilities", 10);
             boolean coilObserved = false, hatchPresence = false;
             for (int i = 0; i < capabilityRows.tagCount(); i++) {
@@ -118,7 +162,7 @@ public final class HologramSmokeTest {
                     hatchPresence = "presence".equals(row.getString("kind")) && row.getTagList("options", 10)
                         .tagCount() == 2;
             }
-            require(coilObserved, "real_C08_capture_observes_named_coil_channel_mixin_calls");
+            require(coilObserved, "real_custom_packet_capture_observes_named_coil_channel_mixin_calls");
             require(hatchPresence, "gt_hatch_is_presence_option_without_fabricated_tier_range");
             Field traceActive = HologramChannelTrace.class.getDeclaredField("ACTIVE");
             traceActive.setAccessible(true);
@@ -140,10 +184,10 @@ public final class HologramSmokeTest {
             NBTTagCompound configure = action(capture.state, "configure");
             configure.setBoolean("noHatches", true);
             configure.setLong("uiSequence", 71);
-            HologramService.handle(player, configure);
+            handle(player, configure);
             require(
                 capture.state.getLong("uiSequence") == 71 && capture.state.getBoolean("noHatches"),
-                "C08_copy_keeps_session_valid_for_first_action");
+                "vanilla_C08_copy_keeps_custom_packet_session_valid_for_first_action");
             require(
                 player.getHeldItem()
                     .getTagCompound()
@@ -152,10 +196,11 @@ public final class HologramSmokeTest {
             NBTTagCompound forgedConfiguration = action(capture.state, "configure");
             NBTTagCompound forgedChannels = (NBTTagCompound) capture.state.getCompoundTag("channels")
                 .copy();
-            forgedChannels.setInteger("unregistered.attack.channel", 1);
+            // Arbitrary positive channel signals are now intentional. Zero is invalid even on a custom channel.
+            forgedChannels.setInteger("unregistered.attack.channel", 0);
             forgedConfiguration.setTag("channels", forgedChannels);
             forgedConfiguration.setInteger("main", 2);
-            HologramService.handle(player, forgedConfiguration);
+            handle(player, forgedConfiguration);
             require(
                 capture.state.getInteger("main") == 1 && !capture.state.getCompoundTag("channels")
                     .hasKey("unregistered.attack.channel"),
@@ -171,7 +216,7 @@ public final class HologramSmokeTest {
             try (java.io.FileOutputStream output = new java.io.FileOutputStream("hologram-client-state.nbt")) {
                 net.minecraft.nbt.CompressedStreamTools.writeCompressed(capture.state, output);
             }
-            HologramService.handle(player, action(capture.state, "start"));
+            handle(player, action(capture.state, "start"));
             require(capture.state.getInteger("job") != 1, "whole_plan_missing_materials_preflight_blocks_start");
             // Supply the server-declared plan, then exercise veto rollback through the actual job scheduler.
             net.minecraft.nbt.NBTTagList materials = capture.state.getTagList("materials", 10);
@@ -185,12 +230,12 @@ public final class HologramSmokeTest {
             }
             world.getWorldInfo()
                 .incrementTotalWorldTime(world.getTotalWorldTime() + 1);
-            HologramService.handle(player, action(capture.state, "scan"));
+            handle(player, action(capture.state, "scan"));
             require(capture.state.getInteger("missing") == 0, "full_plan_materials_satisfy_preflight");
             player.getHeldItem()
                 .getTagCompound()
                 .setString("gtitSmokeSentinel", "preserve-unrelated-current-tool-NBT");
-            HologramService.handle(player, action(capture.state, "configure"));
+            handle(player, action(capture.state, "configure"));
             require(
                 "preserve-unrelated-current-tool-NBT".equals(
                     player.getHeldItem()
@@ -199,7 +244,7 @@ public final class HologramSmokeTest {
                 "persist_preserves_unrelated_NBT_on_current_held_stack");
             NBTTagCompound staleStart = action(capture.state, "start");
             staleStart.setLong("planRevision", capture.state.getLong("planRevision") - 1);
-            HologramService.handle(player, staleStart);
+            handle(player, staleStart);
             require(capture.state.getInteger("job") != 1, "stale_plan_revision_cannot_start_job");
             net.minecraft.nbt.NBTTagList plannedRows = capture.state.getTagList("cells", 10);
             NBTTagCompound changedCell = null;
@@ -220,7 +265,7 @@ public final class HologramSmokeTest {
                 require(
                     world.setBlock(changedX, changedY, changedZ, net.minecraft.init.Blocks.stone, 0, 3),
                     "world_change_probe_places_safe_stone");
-                HologramService.handle(player, previouslyConfirmedStart);
+                handle(player, previouslyConfirmedStart);
                 require(
                     capture.state.getInteger("job") != 1 && capture.state.getLong("planRevision") > previousRevision,
                     "changed_world_rejects_confirmed_plan_and_refreshes_revision");
@@ -230,20 +275,33 @@ public final class HologramSmokeTest {
             } finally {
                 world.setBlockToAir(changedX, changedY, changedZ);
             }
-            HologramService.handle(player, action(capture.state, "scan"));
+            handle(player, action(capture.state, "scan"));
             require(
                 capture.state.getInteger("missing") == 0 && world.isAirBlock(changedX, changedY, changedZ),
                 "world_change_probe_restored_and_plan_rescanned");
             PlaceVeto veto = new PlaceVeto();
             net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(veto);
             try {
-                HologramService.handle(player, action(capture.state, "start"));
-                require(capture.state.getInteger("job") == 1, "real_C08_session_starts_bounded_job");
+                handle(player, action(capture.state, "start"));
+                require(capture.state.getInteger("job") == 1, "real_custom_packet_session_starts_bounded_job");
                 int initialCoils = countCoils(player);
-                HologramService.tick();
+                serviceTick();
                 require(
                     "ACK".equals(capture.state.getString("phase")) && capture.state.getIntArray("pending").length == 0,
                     "first_tick_executes_batch_without_prepare");
+                int batchTicks = 1;
+                while (capture.state.getInteger("job") == 1 && batchTicks < 128) {
+                    world.getWorldInfo()
+                        .incrementTotalWorldTime(world.getTotalWorldTime() + 1);
+                    serviceTick();
+                    batchTicks++;
+                }
+                System.out.println(
+                    "[GTIT-HOLOGRAM-SMOKE] RECEIPT vetoBatchTicks=" + batchTicks
+                        + " vetoEvents="
+                        + veto.hits
+                        + " finalJob="
+                        + capture.state.getInteger("job"));
                 require(
                     veto.hits > 0 && capture.state.getInteger("job") == 5,
                     "place_event_veto_returns_partial_batch_result");
@@ -252,30 +310,30 @@ public final class HologramSmokeTest {
             } finally {
                 net.minecraftforge.common.MinecraftForge.EVENT_BUS.unregister(veto);
             }
-            HologramService.handle(player, action(capture.state, "scan"));
-            HologramService.handle(player, action(capture.state, "start"));
+            handle(player, action(capture.state, "scan"));
+            handle(player, action(capture.state, "start"));
             require(capture.state.getInteger("job") == 1, "event_veto_preserves_tool_identity_for_new_batch");
-            HologramService.handle(player, action(capture.state, "pause"));
+            handle(player, action(capture.state, "pause"));
             int completed = capture.state.getInteger("completed");
             world.getWorldInfo()
                 .incrementTotalWorldTime(world.getTotalWorldTime() + 20);
-            HologramService.tick();
+            serviceTick();
             require(
                 capture.state.getInteger("job") == 2 && capture.state.getInteger("completed") == completed,
                 "paused_job_does_not_advance");
             NBTTagCompound cancel = action(capture.state, "cancel");
             cancel.setString("session", "forged");
             int job = capture.state.getInteger("job");
-            HologramService.handle(player, cancel);
+            handle(player, cancel);
             require(capture.state.getInteger("job") == job, "forged_session_is_rejected");
             FakePlayer stranger = FakePlayerFactory
                 .get(world, new GameProfile(UUID.fromString("7d36e922-3b19-4f92-a5e8-bd5c71614202"), "GTITHoloOther"));
-            HologramService.handle(stranger, action(capture.state, "cancel"));
+            handle(stranger, action(capture.state, "cancel"));
             require(capture.state.getInteger("job") == job, "other_player_cannot_act_on_known_session_id");
             player.inventory.mainInventory[1] = player.getHeldItem()
                 .copy();
             player.inventory.currentItem = 1;
-            HologramService.handle(player, action(capture.state, "configure"));
+            handle(player, action(capture.state, "configure"));
             require(capture.state.getInteger("job") == 4, "switching_to_copy_in_another_slot_invalidates_session");
         } finally {
             channel.set(null, oldChannel);
@@ -290,6 +348,75 @@ public final class HologramSmokeTest {
         NBTTagCompound action = (NBTTagCompound) state.copy();
         action.setString("op", op);
         return action;
+    }
+
+    private void usePacket(EntityPlayerMP player, CaptureNetwork capture, boolean air, int x, int y, int z, int side)
+        throws Exception {
+        NBTTagCompound request = new NBTTagCompound();
+        request.setString("action", air ? "useAir" : "useBlock");
+        request.setInteger("x", x);
+        request.setInteger("y", y);
+        request.setInteger("z", z);
+        request.setInteger("side", side);
+        HologramNetwork.Action decoded = new HologramNetwork.Action();
+        io.netty.buffer.ByteBuf wire = io.netty.buffer.Unpooled.buffer();
+        try {
+            new HologramNetwork.Action(request).toBytes(wire);
+            decoded.fromBytes(wire);
+            require(wire.readableBytes() == 0, "custom_use_packet_wire_roundtrip_consumes_payload");
+        } finally {
+            wire.release();
+        }
+        Constructor<MessageContext> constructor = MessageContext.class
+            .getDeclaredConstructor(net.minecraft.network.INetHandler.class, Side.class);
+        constructor.setAccessible(true);
+        MessageContext context = constructor.newInstance(player.playerNetServerHandler, Side.SERVER);
+        NBTTagCompound previous = capture.state;
+        new HologramNetwork.ServerHandler().onMessage(decoded, context);
+        require(capture.state == previous, "custom_use_server_handler_queues_until_actual_server_scheduler_tick");
+        ServerTaskScheduler.INSTANCE.onServerTick(new TickEvent.ServerTickEvent(TickEvent.Phase.END));
+        flushTransport();
+        require(capture.state != previous, "actual_server_scheduler_dispatches_custom_use_and_receives_snapshot");
+    }
+
+    private static void handle(EntityPlayerMP player, NBTTagCompound action) {
+        // These sequential GUI actions wait for a receipt; model distinct client/server ticks, not a packet flood.
+        player.worldObj.getWorldInfo()
+            .incrementTotalWorldTime(player.worldObj.getTotalWorldTime() + 1);
+        HologramService.handle(player, action);
+        flushTransport();
+    }
+
+    private static void serviceTick() {
+        HologramService.tick();
+        flushTransport();
+    }
+
+    /** Drain the small fixture's real FIFO fragments without changing world time or dispatching world operations. */
+    static void flushTransport() {
+        HologramNetwork.TransportTicks transport = new HologramNetwork.TransportTicks();
+        for (int i = 0; i < 16; i++) transport.tick(new TickEvent.ServerTickEvent(TickEvent.Phase.END));
+    }
+
+    static NBTTagCompound decodeState(IMessage message, HologramSnapshotAssembly assembly) {
+        if (message instanceof HologramNetwork.State)
+            return (NBTTagCompound) ((HologramNetwork.State) message).tag.copy();
+        if (!(message instanceof HologramNetwork.Fragment)) return null;
+        io.netty.buffer.ByteBuf wire = io.netty.buffer.Unpooled.buffer();
+        try {
+            message.toBytes(wire);
+            long sequence = wire.readLong();
+            int total = wire.readInt(), index = wire.readInt(), length = wire.readInt();
+            if (length != wire.readableBytes()) throw new AssertionError("fragment wire length mismatch");
+            byte[] bytes = new byte[length];
+            wire.readBytes(bytes);
+            byte[] complete = assembly.accept(sequence, total, index, bytes, System.nanoTime());
+            return complete == null ? null : HologramSnapshotCodec.decode(complete);
+        } catch (java.io.IOException failure) {
+            throw new AssertionError("actual network snapshot cannot be decoded", failure);
+        } finally {
+            wire.release();
+        }
     }
 
     /** C08 wire decoding works on a dedicated server where its coordinate constructor is stripped. */
@@ -318,6 +445,7 @@ public final class HologramSmokeTest {
     private static final class CaptureNetwork extends SimpleNetworkWrapper {
 
         NBTTagCompound state;
+        final HologramSnapshotAssembly assembly = new HologramSnapshotAssembly();
 
         CaptureNetwork() {
             super("gtit_smoke_observer");
@@ -325,8 +453,8 @@ public final class HologramSmokeTest {
 
         @Override
         public void sendTo(IMessage message, EntityPlayerMP player) {
-            if (message instanceof HologramNetwork.State)
-                state = (NBTTagCompound) ((HologramNetwork.State) message).tag.copy();
+            NBTTagCompound decoded = decodeState(message, assembly);
+            if (decoded != null) state = decoded;
         }
     }
 
