@@ -293,7 +293,7 @@ item.neko_dimension_pocket.name=Neko Dimensional Pocket
 # item class javadoc at the original declaration spot, ledger updated by slice G); the remaining
 # rows are renumbered to {0,1,2} and rewritten short and colloquial: .0 how to open /
 # .1 = R53b contents live in the item (old .2) / .2 = crafting cost (old .3).
-item.neko_dimension_pocket.tooltip.0=Right-click or press B to open the panel
+item.neko_dimension_pocket.tooltip.0=Right-click or press B to open the panel; while worn, Alt + empty-hand right click on a GT machine draws fluid
 item.neko_dimension_pocket.tooltip.1=Items and aspects live in this pocket: lose the pocket, lose it all
 item.neko_dimension_pocket.tooltip.2=Crafting eats one Neko Infinity Storage Unit: empty it first
 gtit.pocket.balance.neko=Neko Coin: %d
@@ -403,7 +403,7 @@ gtit.pocket.cap.readout.stored=This filter slot: %1$s filled of %2$s
 # ★★R96 S11 (wearable) revalue again: a bauble slot keeps it running from today on (onWornTick and
 # onUpdate share one runPassives body), so "stops in bauble slots" is now false and had to go.
 # Still stops: chests and armor slots (the armor host onArmorTick is not implemented here).
-gtit.pocket.held.note=Keeps working anywhere in your inventory (channels and distillation included); wearing it in a bauble slot keeps working too (a key opens it, and sneak plus empty-hand right click still draws fluid); stops in chests and armor slots
+gtit.pocket.held.note=Keeps working anywhere in your inventory (channels and distillation included); wearing it in a bauble slot keeps working too (a key opens it; Alt + empty-hand right click on a GT machine draws fluid); stops in chests and armor slots
 # ---- ★R95 S2b new keys (13): five module item names + five effect tooltips + upgrade-slot hint + always-on channel + distill cadence ----
 item.neko_pocket_upgrade_capacity.name=Capacity Upgrade Module
 item.neko_pocket_upgrade_stack.name=Stacking Upgrade Module

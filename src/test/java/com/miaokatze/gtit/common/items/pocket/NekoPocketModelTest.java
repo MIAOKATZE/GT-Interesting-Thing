@@ -20510,7 +20510,11 @@ public class NekoPocketModelTest {
         SimpleAssert.eq(1, countCodeLinesIn(kb, "!openPocketKey.isPressed()"), "★按键读 isPressed（本方法只做事，不拦事件）");
         SimpleAssert.eq(
             0,
-            countCodeLinesIn(kb, "setCanceled"),
+            countRegionCode(
+                kb,
+                methodStart(kb, "public void onKeyInput(InputEvent.KeyInputEvent event) {"),
+                methodEnd(kb, methodStart(kb, "public void onKeyInput(InputEvent.KeyInputEvent event) {")),
+                "setCanceled"),
             "★确认没假装可取消：1.7.10 的 InputEvent.KeyInputEvent 无 @Cancelable（ReincarnationClientFx:77-80 实证）");
         // ---- ③ install 的唯一触发点 = ClientProxy.preInit ----
         final java.util.List<String> proxy = sourceLinesOrNull(R96_S11_CLIENT_PROXY);
@@ -20570,8 +20574,7 @@ public class NekoPocketModelTest {
     /**
      * 验收 ④ + ⑥：★穿戴抽液那条新腿，以及<b>不戴时那条腿逐字未动</b>。
      * 钉三组：① 旧两段的源码文本逐字（潜行闸 + {@code onItemUseFirst} 的三个 return false）；
-     * ② 新腿的守卫顺序（★动作 → 服务端 → 空手 → 潜行 → 穿戴口袋 → GT 机器 → 真搬动了才取消）与
-     * {@code setCanceled} 的位置；③ 面板侧的 bauble 腿与它那道判空守卫（三刀之三的靶）。
+     * ② Alt 鼠标意图的取消与服务端 C2S 现查守卫、距离边界和包往返；③ 面板侧饰品判定与判空守卫。
      */
     private static void wornTapLegGuardsAndOldLegsVerbatim() {
         final java.util.List<String> item = sourceLinesOrNull(R96_S11_ITEM);
@@ -20611,42 +20614,82 @@ public class NekoPocketModelTest {
             1,
             countRegionCode(item, useFirst, useFirstEnd, "return PocketWorldFluidTap.tap(player, stack, tile);"),
             "★手持那条腿的出口仍是 PocketWorldFluidTap.tap(player, stack, tile)（实参逐字）");
-        // ---- ② ★新腿：守卫顺序 + setCanceled 的位置 ----
-        final int leg = methodStart(tap, "public void onPlayerInteract(PlayerInteractEvent event) {");
-        SimpleAssert.that(leg >= 0, "★定位新腿 onPlayerInteract");
+        // ---- ② Alt 请求：公共端安全守卫与客户端抑制 vanilla 的同次交互 ----
+        final int leg = methodStart(tap, "void handleRequest(EntityPlayerMP player, PocketWornTapPacket request) {");
+        SimpleAssert.that(leg >= 0, "服务端 C2S 消费入口可定位");
         final int legEnd = methodEnd(tap, leg);
-        SimpleAssert.eq(
-            1,
-            countRegionCode(tap, leg, legEnd, "event.action != PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK"),
-            "★只看 RIGHT_CLICK_BLOCK（左击/空中/纯使用一律不碰）");
-        SimpleAssert.eq(
-            1,
-            countRegionCode(tap, leg, legEnd, "player.getCurrentEquippedItem() != null"),
-            "★空手硬门在场（手持螺丝刀/扳手 ⇒ 本腿绝不生效；GT 工具白名单 BlockMachines:412-419 那条避让）");
-        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "!player.isSneaking()"), "★潜行门在场");
-        SimpleAssert.eq(1, countRegionCode(tap, leg, legEnd, "findWorn(player)"), "★找的是<b>穿在饰品栏上</b>的那一枚");
-        SimpleAssert.eq(
-            1,
-            countRegionCode(tap, leg, legEnd, "instanceof BaseMetaTileEntity tile"),
-            "★目标仍是 GT 机器（★与手持那条腿同一个'非机器不拦'口径）");
-        SimpleAssert.eq(
-            1,
-            countRegionCode(tap, leg, legEnd, "PocketWorldFluidTap.tap(player, pocket, tile)"),
-            "★走的仍是<b>既有</b>那个适配器（★不抄第二份抽液算式）");
-        final int cancel = firstCodeLineWith(tap, leg, legEnd, "event.setCanceled(true);");
-        final int tapCall = firstCodeLineWith(tap, leg, legEnd, "if (!PocketWorldFluidTap.tap(");
-        SimpleAssert.that(
-            cancel > tapCall,
-            "★setCanceled(true) 排在'真搬动了流体'那一问<b>之后</b> ⇒ 一切'没搬动'的结局都不取消（" + "取消 = 不开机器 GUI，只在成交时才是想要的）");
-        SimpleAssert
-            .eq(1, countRegionCode(tap, leg, legEnd, "event.setCanceled("), "★本腿只有这一个取消点（多处取消 = 会有哪一处守卫没走完就把交互吞了）");
-        // ---- ②′ 纯服务端单腿：★不新建 C2S 包、不引客户端类 ----
-        SimpleAssert.eq(0, countCodeLinesIn(tap, "SimpleNetworkWrapper"), "★不新建 C2S 包（抽液这条腿只有服务端）");
-        SimpleAssert.eq(0, countCodeLinesIn(tap, "SideOnly"), "★新腿不在客户端类型上（住在 common ⇒ 专用服也要能加载它）");
-        SimpleAssert.eq(
-            1,
-            countCodeLinesIn(tap, "PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK"),
-            "★动作枚举只有一处引用点（读的是 event.action，★不是自造客户端包）");
+        final String[] guards = { "player.worldObj.isRemote", "player.isDead",
+            ".func_152612_a(player.getCommandSenderName()) != player",
+            "world.provider.dimensionId != request.dimension", "player.dimension != request.dimension",
+            "player.openContainer != player.inventoryContainer", "player.getCurrentEquippedItem() != null",
+            "findWorn(player)", "request.face < 0", "world.blockExists(", "getBlockReachDistance()", "inReach(",
+            ".rayTraceBlocks(", "hit.blockX != request.x", "hit.sideHit != request.face", "server.isBlockProtected(",
+            "world.canMineBlock(", "player.canPlayerEdit(", "instanceof BaseMetaTileEntity tile",
+            "tile.getWorldObj() != world", "tile.isInvalid()", "ForgeEventFactory.onPlayerInteract(",
+            "interaction.isCanceled()", "interaction.useBlock == Result.DENY", "lastTapTicks.get(player)" };
+        final int transfer = firstCodeLineWith(tap, leg, legEnd, "PocketWorldFluidTap.tap(player, pocket, tile)");
+        SimpleAssert.that(transfer >= 0, "复用既有抽液算式");
+        for (String guard : guards) {
+            final int line = firstCodeLineWith(tap, leg, legEnd, guard);
+            SimpleAssert.that(line >= 0 && line < transfer, "写入前检查：" + guard);
+        }
+        SimpleAssert.eq(0, countRegionCode(tap, leg, legEnd, "isSneaking"), "穿戴抽液不再需要 Shift");
+        SimpleAssert.eq(0, countCodeLinesIn(tap, "@SubscribeEvent"), "不再订阅原版交互，避免双抽液");
+        SimpleAssert.eq(0, countCodeLinesIn(tap, "net.minecraft.client"), "公共服务端不引用客户端类");
+        SimpleAssert.eq(0, countCodeLinesIn(tap, "org.lwjgl"), "公共服务端不读取键盘");
+        final java.util.List<String> client = sourceLinesOrNull(R96_S11_KEYBIND);
+        SimpleAssert.that(client != null, "客户端鼠标手势源码可读");
+        final int mouse = methodStart(client, "public void onMouseInput(MouseEvent event) {");
+        SimpleAssert.that(mouse >= 0, "客户端仅由可取消 MouseEvent 触发");
+        final int mouseEnd = methodEnd(client, mouse);
+        final String[] clientGuards = { "event.button != 1", "!event.buttonstate", "Keyboard.KEY_LMENU",
+            "Keyboard.KEY_RMENU", "minecraft.currentScreen != null", "player.getCurrentEquippedItem() != null",
+            "PocketWornTapHandler.findWorn(player) == null", "MovingObjectPosition.MovingObjectType.BLOCK",
+            "instanceof BaseMetaTileEntity" };
+        final int cancel = firstCodeLineWith(client, mouse, mouseEnd, "event.setCanceled(true)");
+        final int send = firstCodeLineWith(client, mouse, mouseEnd, "PocketWornTapHandler.requestTap(");
+        SimpleAssert.that(cancel >= 0 && send > cancel, "发送意图前取消 vanilla use，避免打开机器 GUI");
+        for (String guard : clientGuards) {
+            final int line = firstCodeLineWith(client, mouse, mouseEnd, guard);
+            SimpleAssert.that(line >= 0 && line < cancel, "取消前检查：" + guard);
+        }
+        final java.util.List<String> packet = sourceLinesOrNull(
+            "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketWornTapPacket.java");
+        SimpleAssert.that(packet != null, "C2S 包源码可读");
+        SimpleAssert.eq(1, countCodeLinesIn(packet, "ServerTaskScheduler.scheduleServerTask("), "网络线程只投递任务");
+        SimpleAssert.eq(0, countCodeLinesIn(packet, "net.minecraft.client"), "C2S 包零客户端类引用");
+        SimpleAssert.eq(1, countCodeLinesIn(packet, "context.side != Side.SERVER"), "请求只在服务端投递");
+        for (String langFile : new String[] { "zh_CN.lang", "en_US.lang" }) {
+            final java.util.List<String> lang = sourceLinesOrNull("src/main/resources/assets/gtit/lang/" + langFile);
+            SimpleAssert.that(lang != null, "双语手势说明可读：" + langFile);
+            for (String key : new String[] { "item.neko_dimension_pocket.tooltip.0=", "gtit.pocket.held.note=" }) {
+                final int row = firstCodeLineWith(lang, 0, lang.size(), key);
+                SimpleAssert.that(
+                    row >= 0 && lang.get(row)
+                        .contains("Alt"),
+                    "基础物品和配置说明都有 Alt：" + key);
+            }
+        }
+        SimpleAssert.that(PocketWornTapHandler.inReach(0, 1.62, 0, 4, 1, 0, 4.5), "正常视线范围可交互");
+        SimpleAssert.that(!PocketWornTapHandler.inReach(0, 1.62, 0, 6, 1, 0, 4.5), "远距离请求拒绝");
+        SimpleAssert.that(!PocketWornTapHandler.inReach(Double.NaN, 0, 0, 0, 0, 0, 4.5), "非有限坐标拒绝");
+        SimpleAssert.that(!PocketWornTapHandler.inReach(0, 0, 0, 0, 0, 0, Double.POSITIVE_INFINITY), "非有限距离拒绝");
+        SimpleAssert.that(!PocketWornTapHandler.inReach(0, 0, 0, 0, 0, 0, 0), "零距离权限拒绝");
+        final PocketWornTapPacket sent = new PocketWornTapPacket(-1, -900, 255, 1024, 5);
+        final io.netty.buffer.ByteBuf bytes = io.netty.buffer.Unpooled.buffer();
+        try {
+            sent.toBytes(bytes);
+            SimpleAssert.eq(20, bytes.readableBytes(), "固定长度意图包，不携带客户端库存或流体");
+            final PocketWornTapPacket received = new PocketWornTapPacket();
+            received.fromBytes(bytes);
+            SimpleAssert.eq(sent.dimension, received.dimension, "维度往返");
+            SimpleAssert.eq(sent.x, received.x, "x 往返");
+            SimpleAssert.eq(sent.y, received.y, "y 往返");
+            SimpleAssert.eq(sent.z, received.z, "z 往返");
+            SimpleAssert.eq(sent.face, received.face, "点击面往返");
+        } finally {
+            bytes.release();
+        }
         // ---- ②″ BaublesApi 的 null 守卫（★三刀之三的靶）----
         SimpleAssert.that(
             countCodeLinesIn(tap, "if (baubles == null) {") >= 1,
@@ -20835,16 +20878,13 @@ public class NekoPocketModelTest {
                 "★★那枚 mixin <b>不在</b> mixins.gtit.json 里：那份配置被 jar manifest 无条件施加 ⇒ "
                     + "写进去等于「TC 缺席时也注入那个接口」= 原缺陷原地复发（成因从 implements 换成注入器）");
         }
-        // ---- ⑥ 服务端那条腿的注册点（挂错总线 = 静默失效，所以也钉这里）----
+        // ---- ⑥ 双端网络注册点；世界鼠标监听仅在客户端安装 ----
         final java.util.List<String> common = sourceLinesOrNull(R96_S11_COMMON_PROXY);
         if (common == null) {
             System.out.println("[NOTE] 读不到 main/CommonProxy.java ⇒ 注册半边【未验】");
         } else {
-            SimpleAssert.eq(
-                1,
-                countCodeLinesIn(common, "net.minecraftforge.common.MinecraftForge.EVENT_BUS"),
-                "★PocketWornTapHandler 挂在 <b>Forge</b> 总线（PlayerInteractEvent 不住 FML 总线 ⇒ 挂错就是静默不响应）");
-            SimpleAssert.eq(1, countCodeLinesIn(common, "PocketWornTapHandler.INSTANCE"), "★注册点恰一处（第二处 = 同一事件跑两遍抽液）");
+            SimpleAssert.eq(1, countCodeLinesIn(common, "PocketWornTapHandler.initNetwork()"), "C2S 网络注册点恰一处");
+            SimpleAssert.eq(0, countCodeLinesIn(common, "PocketWornTapHandler.INSTANCE"), "不再注册旧潜行抽液事件");
         }
     }
 

@@ -71,6 +71,19 @@ tasks.register<JavaExec>("runPocketTest") {
     classpath += configurations.detachedConfiguration(dependencies.create("org.joml:joml:1.10.8"))
 }
 
+tasks.register<JavaExec>("runPocketFluidClickTest") {
+    group = "verification"
+    description = "Runs real MUI fluid click packets through dirty-gated NBT persistence."
+    mainClass = "com.miaokatze.gtit.common.items.pocket.PocketFluidClickTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    val scratchDir = layout.buildDirectory.dir("pocket-fluid-click-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runPocketFluidClickTest") }
+
 // 抽奖槽数、草稿和轮盘布局纯 JVM 回归。
 tasks.register<JavaExec>("runLotterySlotsTest") {
     group = "verification"

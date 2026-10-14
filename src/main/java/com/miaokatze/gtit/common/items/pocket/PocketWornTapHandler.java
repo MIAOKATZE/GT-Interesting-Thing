@@ -1,84 +1,139 @@
 package com.miaokatze.gtit.common.items.pocket;
 
+import java.util.Map;
+import java.util.WeakHashMap;
+
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
+import net.minecraft.world.WorldServer;
+import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import baubles.api.BaublesApi;
-import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.eventhandler.Event.Result;
+import cpw.mods.fml.common.network.NetworkRegistry;
+import cpw.mods.fml.common.network.simpleimpl.SimpleNetworkWrapper;
+import cpw.mods.fml.relauncher.Side;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
 
 /**
- * ★R96 S11（需求 8 第二件）：<b>穿戴后</b>潜行 + 空手右击 GT 机器 ⇒ 抽机器流体进口袋。
+ * 穿戴口袋时 Alt + 空手右击 GT 机器的服务端入口。
  * <p>
- * <b>为什么这是一条纯服务端的腿</b>（裁定口径：AUQ / 计划 P-10，★不用 alt 修饰键）：
- * {@code PlayerInteractEvent} 的 {@code RIGHT_CLICK_BLOCK} 在服务端由
- * {@code ItemInWorldManager.activateBlockOrUseItem}（{@code :386}）发射，自带 x/y/z/face/world
- * 与 {@code getTileEntity} 的一切条件；而 reach 与 {@code isBlockProtected} 在它<b>上游</b>
- * （{@code NetHandlerPlayServer:588-590}）已经查过 ⇒ 走这条腿<b>自动继承</b>这两道防护。
- * ★反过来若做成"客户端轮询 + 自发包"，这两道防护就被旁路，还要多养一条真相 —— 那是本片的禁止项，
- * 仓内也确实<b>没有</b>任何为此新写的 C2S 包（由门禁钉住）。
+ * 客户端在 Forge MouseEvent 中取消原版 use，再发一枚专用 C2S 请求，避免同次点击打开机器 GUI。
+ * 此处不订阅 PlayerInteractEvent：普通右击和 Shift + 空手右击保持机器交互。
  * <p>
- * <b>与既有那条腿的关系（★一条都不改）</b>：不戴口袋时抽液仍走
+ * 手持口袋抽液仍走
  * {@code ItemNekoDimensionPocket#onItemUseFirst}（潜行 + 手持右击），那两段的源码文本
- * （潜行闸与三个 {@code return false}）逐字不变，由 ★R96-S11 门禁钉住。两条腿<b>互斥</b>：
+ * 保持原样。两条腿<b>互斥</b>：
  * 本腿的硬门是 {@code getCurrentEquippedItem() == null}（空手），手持口袋时本腿一个字都不做。
  * <p>
  * <b>空手这道硬门不是保守，是避撞</b>：GT 的机器方块对"手持螺丝刀/扳手一类工具"的右击有自己的
  * 白名单语义（{@code BlockMachines.java:412-419}），潜行 + 手持工具是玩家配置机器的常规手势；
  * 本腿若放过任何手持物，就会把那些手势按下去顺手掏空机器。用例钉这一条。
  * <p>
- * <b>{@code setCanceled(true)} 的位置</b>：只在<b>全部</b>守卫通过<b>且</b> {@link PocketWorldFluidTap#tap}
- * 真搬动了流体（返回 true）之后才取消。取消带来的唯一连带是服务端回一枚 {@code S23PacketBlockChange}
- * （原版 {@code ItemInWorldManager:387-391} 的既定行为，无副作用）；"没搬动"的结局一律不取消，
- * 机器 GUI 与方块交互原样可达。判因回执仍由 {@code PocketWorldFluidTap} 发（{@code gtit.pocket.world.} 键族，
- * ★本文件不发聊天，也不新增聊天键）。
+ * C2S 只表达点击意图。实际装备、世界、目标、距离、视线和方块权限均在服务端主线程重新校验。
+ * 独立请求不继承原版激活包上游检查，必须在此完整执行。公共入口无客户端类引用。
  */
 public final class PocketWornTapHandler {
 
-    /** 单例注册（口径同 {@code PocketLifecycleHandler.INSTANCE}：由 {@code CommonProxy} 显式挂上 Forge 总线）。 */
+    /** 由 CommonProxy 注册网络，客户端经 ClientProxy 的鼠标监听发请求。 */
     public static final PocketWornTapHandler INSTANCE = new PocketWornTapHandler();
+
+    private static SimpleNetworkWrapper channel;
+    private final Map<EntityPlayerMP, Long> lastTapTicks = new WeakHashMap<>();
 
     private PocketWornTapHandler() {}
 
-    /**
-     * 服务端 {@code RIGHT_CLICK_BLOCK} 腿。守卫顺序即判读顺序，★每一道都在<b>任何写入之前</b>：
-     * 动作 → 玩家 → 侧 → 空手 → 潜行 → 穿戴的口袋 → 目标是 GT 机器 → 真搬动了流体。
-     */
-    @SubscribeEvent
-    public void onPlayerInteract(PlayerInteractEvent event) {
-        if (event.action != PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK) {
+    /** 双端注册同一枚 C2S 包；专用服仅加载公共包和服务端 handler。 */
+    public static synchronized void initNetwork() {
+        if (channel != null) return;
+        channel = NetworkRegistry.INSTANCE.newSimpleChannel("gtit_pocket_tap");
+        channel.registerMessage(PocketWornTapPacket.Handler.class, PocketWornTapPacket.class, 0, Side.SERVER);
+    }
+
+    public static void requestTap(int dimension, int x, int y, int z, int face) {
+        if (channel != null) channel.sendToServer(new PocketWornTapPacket(dimension, x, y, z, face));
+    }
+
+    /** 仅由服务器任务队列消费；所有守卫都在任何世界或口袋写入之前。 */
+    void handleRequest(EntityPlayerMP player, PocketWornTapPacket request) {
+        final MinecraftServer server = MinecraftServer.getServer();
+        if (player == null || request == null
+            || server == null
+            || player.isDead
+            || player.worldObj == null
+            || player.worldObj.isRemote
+            || !(player.worldObj instanceof WorldServer world)
+            || server.getConfigurationManager()
+                .func_152612_a(player.getCommandSenderName()) != player)
             return;
-        }
-        final EntityPlayer player = event.entityPlayer;
-        if (player == null || player.worldObj == null || player.worldObj.isRemote) {
-            // ★只跑服务端：客户端那一遍读到的是同步镜像，抽液是服务端权威账
-            return;
-        }
-        if (player.getCurrentEquippedItem() != null) {
-            // ★空手硬门（见类 javadoc：与手持工具的既有语义避撞）
-            return;
-        }
-        if (!player.isSneaking()) {
-            return;
-        }
+        if (world.provider.dimensionId != request.dimension || player.dimension != request.dimension
+            || player.openContainer != player.inventoryContainer
+            || player.getCurrentEquippedItem() != null) return;
         final ItemStack pocket = findWorn(player);
-        if (pocket == null) {
-            return;
-        }
-        final TileEntity at = event.world.getTileEntity(event.x, event.y, event.z);
-        if (!(at instanceof BaseMetaTileEntity tile)) {
-            // 不是 GT 机器 ⇒ 完整放行原方块交互（★与既有那条腿同一个"非机器不拦"的口径）
-            return;
-        }
-        if (!PocketWorldFluidTap.tap(player, pocket, tile)) {
-            return;
-        }
-        event.setCanceled(true);
+        if (pocket == null) return;
+        if (request.face < 0 || request.face > 5
+            || request.y < 0
+            || request.y >= world.getHeight()
+            || !world.blockExists(request.x, request.y, request.z)) return;
+        final double reach = player.theItemInWorldManager.getBlockReachDistance();
+        if (!inReach(
+            player.posX,
+            player.posY + player.getEyeHeight(),
+            player.posZ,
+            request.x,
+            request.y,
+            request.z,
+            reach)) return;
+        final Vec3 eye = Vec3.createVectorHelper(player.posX, player.posY + player.getEyeHeight(), player.posZ);
+        final Vec3 look = player.getLook(1.0F);
+        final MovingObjectPosition hit = world
+            .rayTraceBlocks(eye, eye.addVector(look.xCoord * reach, look.yCoord * reach, look.zCoord * reach));
+        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
+            || hit.blockX != request.x
+            || hit.blockY != request.y
+            || hit.blockZ != request.z
+            || hit.sideHit != request.face) return;
+        if (server.isBlockProtected(world, request.x, request.y, request.z, player)
+            || !world.canMineBlock(player, request.x, request.y, request.z)
+            || !player.canPlayerEdit(request.x, request.y, request.z, request.face, null)) return;
+        final TileEntity at = world.getTileEntity(request.x, request.y, request.z);
+        if (!(at instanceof BaseMetaTileEntity tile) || tile.getWorldObj() != world || tile.isInvalid()) return;
+        // 独立 C2S 也经过 Forge 交互门禁，保留领地保护等模组取消/禁止方块交互的能力。
+        final PlayerInteractEvent interaction = ForgeEventFactory.onPlayerInteract(
+            player,
+            PlayerInteractEvent.Action.RIGHT_CLICK_BLOCK,
+            request.x,
+            request.y,
+            request.z,
+            request.face,
+            world);
+        if (interaction.isCanceled() || interaction.useBlock == Result.DENY) return;
+        final long tick = world.getTotalWorldTime();
+        if (Long.valueOf(tick)
+            .equals(lastTapTicks.get(player))) return;
+        lastTapTicks.put(player, tick);
+        PocketWorldFluidTap.tap(player, pocket, tile);
+    }
+
+    /** 以方块包围盒最近点检查距离；视线与点击面再由服务器 ray trace 确认。 */
+    static boolean inReach(double eyeX, double eyeY, double eyeZ, int x, int y, int z, double reach) {
+        if (!Double.isFinite(reach) || reach <= 0
+            || !Double.isFinite(eyeX)
+            || !Double.isFinite(eyeY)
+            || !Double.isFinite(eyeZ)) return false;
+        final double dx = Math.max(x - eyeX, Math.max(eyeX - ((double) x + 1), 0));
+        final double dy = Math.max(y - eyeY, Math.max(eyeY - ((double) y + 1), 0));
+        final double dz = Math.max(z - eyeZ, Math.max(eyeZ - ((double) z + 1), 0));
+        return dx * dx + dy * dy + dz * dz <= reach * reach;
     }
 
     // ------------------------------------------------------------------ bauble 栏的遍历（★面板与抽液共用这一份）

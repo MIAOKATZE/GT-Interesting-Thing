@@ -1,8 +1,12 @@
 package com.miaokatze.gtit.client;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.common.MinecraftForge;
 
 import org.lwjgl.input.Keyboard;
 
@@ -11,6 +15,7 @@ import com.cleanroommc.modularui.factory.GuiFactories;
 import com.cleanroommc.modularui.factory.inventory.InventoryTypes;
 import com.cleanroommc.modularui.utils.Platform;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
+import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import cpw.mods.fml.client.registry.ClientRegistry;
@@ -19,6 +24,7 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.InputEvent;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
+import gregtech.api.metatileentity.BaseMetaTileEntity;
 
 /**
  * ★R96 S11（需求 8 第一件）：<b>B 键</b>（可换绑）打开<b>穿在饰品栏里</b>的那枚口袋。
@@ -78,6 +84,7 @@ public final class PocketBaubleKeybind {
         FMLCommonHandler.instance()
             .bus()
             .register(handler);
+        MinecraftForge.EVENT_BUS.register(handler);
         installed = true;
         GTInterestingThing.LOG.info("[pocket] 饰品背包按键已注册（默认键 {} = B，可在控制设置里换绑）", KEY_DEFAULT);
     }
@@ -97,8 +104,37 @@ public final class PocketBaubleKeybind {
     }
 
     /**
-     * 按键腿。★只在客户端（{@code KeyInputEvent} 本来就只有客户端发），★不开服务端那条
-     * {@code PlayerInteractEvent} 的腿，也不新建任何 C2S 包：开界面用的是 MUI2 自带的
+     * Alt + 空手右击只对穿戴口袋且指向 GT 机器生效。MouseEvent 在 vanilla 设置 use 键状态之前发射，
+     * 取消后不会再发原版激活包；明确的抽液手势即使机器无液也只得到抽液回执，不打开机器 GUI。
+     * GUI、非 GT 方块、持工具、未穿戴或未按 Alt 均放行。左右 Alt 同等处理。
+     */
+    @SubscribeEvent
+    public void onMouseInput(MouseEvent event) {
+        if (event.button != 1 || !event.buttonstate
+            || !(Keyboard.isKeyDown(Keyboard.KEY_LMENU) || Keyboard.isKeyDown(Keyboard.KEY_RMENU))) return;
+        final Minecraft minecraft = Minecraft.getMinecraft();
+        final EntityPlayer player = minecraft.thePlayer;
+        final MovingObjectPosition hit = minecraft.objectMouseOver;
+        if (minecraft.currentScreen != null || player == null
+            || player.worldObj == null
+            || player.isDead
+            || player.getCurrentEquippedItem() != null
+            || PocketWornTapHandler.findWorn(player) == null
+            || hit == null
+            || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
+            || !(player.worldObj.getTileEntity(hit.blockX, hit.blockY, hit.blockZ) instanceof BaseMetaTileEntity))
+            return;
+        event.setCanceled(true);
+        // 清除可能在此前已按下的 use 状态，避免同帧 vanilla 长按分支再开机器 GUI。
+        KeyBinding.setKeyBindState(minecraft.gameSettings.keyBindUseItem.getKeyCode(), false);
+        while (minecraft.gameSettings.keyBindUseItem.isPressed()) {
+            // 同一帧之前的按下事件可能还留着 pressTime，清掉待消费的 vanilla use。
+        }
+        PocketWornTapHandler.requestTap(player.dimension, hit.blockX, hit.blockY, hit.blockZ, hit.sideHit);
+    }
+
+    /**
+     * B 键开屏只在客户端发起，开界面用的是 MUI2 自带的
      * {@code openFromBaublesClient(index)} —— 它按 MUI2 自己的网络通道把"要开的工厂 + 槽位"
      * 递给服务端（{@code GuiManager#openFromClient} 的注释逐字写着 "notify server to open the gui"），
      * 服务端再建 container 回推 ⇒ 面板拿到的是<b>真会话</b>，不是只有客户端画的一张皮。
