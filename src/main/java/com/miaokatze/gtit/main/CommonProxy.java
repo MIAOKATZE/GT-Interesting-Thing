@@ -232,15 +232,12 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[0/3] 猫猫次元口袋生命周期监听器注册失败（通道状态可能跨存档残留）", t);
         }
 
-        // ★R96 S11（需求 8）：穿戴态的抽液手势腿 —— 挂 **Forge** 总线（PlayerInteractEvent 住在
-        // net.minecraftforge 那一条，不是 FML 总线；挂错总线 = 按键与手势都收不到事件，且不报错）。
-        // 纯服务端腿：判据全通过才 setCanceled，故注册本身不改变任何既有右击结果。
+        // 穿戴口袋 Alt + 空手右击：双端注册 C2S；客户端 MouseEvent 监听只经 ClientProxy 安装。
         try {
-            net.minecraftforge.common.MinecraftForge.EVENT_BUS
-                .register(com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler.INSTANCE);
-            GTInterestingThing.LOG.info("[0/3] 猫猫次元口袋穿戴抽液监听器已注册（Forge 总线 · PlayerInteractEvent）");
+            com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler.initNetwork();
+            GTInterestingThing.LOG.info("[0/3] 猫猫次元口袋穿戴抽液网络已注册（Alt + 空手右击）");
         } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[0/3] 猫猫次元口袋穿戴抽液监听器注册失败（潜行空手右击抽液不会生效）", t);
+            GTInterestingThing.LOG.error("[0/3] 猫猫次元口袋穿戴抽液网络注册失败（Alt + 空手右击抽液不会生效）", t);
         }
 
         // v1.7.0 目标 5: 注册交易配置同步监听器（登录时向客户端推送服务端交易/标签页配置）
@@ -367,12 +364,6 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void init(FMLInitializationEvent event) {
-        com.miaokatze.gtit.hologram.HologramNetwork.init();
-        FMLCommonHandler.instance()
-            .bus()
-            .register(new com.miaokatze.gtit.hologram.HologramLifecycle());
-        com.miaokatze.gtit.hologram.HologramSmokeTest.registerIfEnabled();
-        com.miaokatze.gtit.hologram.HologramInteractionSmoke.registerIfEnabled();
         // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
         ensureBaublesRingSlots();
 
@@ -761,7 +752,6 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopping(FMLServerStoppingEvent event) {
-        com.miaokatze.gtit.hologram.HologramService.clear();
         try {
             NekoWalletManager.INSTANCE.saveAll();
         } catch (Throwable t) {

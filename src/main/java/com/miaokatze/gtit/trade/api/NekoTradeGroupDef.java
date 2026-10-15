@@ -23,7 +23,9 @@ import com.miaokatze.gtit.trade.NekoTradeEntry;
  *   "pages": [ NekoPageEntry ... ], // {id,name,iconItem,iconMeta,iconNbt,isDefault}，按 id upsert
  *   "trades": [ NekoTradeEntry ... ],// 复用交易 JSON 模型（id/tabId/orderId/currency/fromItems/toItems/cooldown/maxTrades/bqQuestId/recordNBT）
  *   "bqQuestId": "",                // 可选：组级 BQ 门控，条目自身无 bqQuestId 时继承
- *   "requiresMods": ["gtsr"]        // 可选：任一 mod 缺席时整组跳过注册
+ *   "requiresMods": ["gtsr"],      // 可选：任一 mod 缺席时整组跳过注册
+ *   "requiresItems": ["gtsr:tool"], // 可选：应用时动态校验物品注册名
+ *   "removeWhenUnavailable": true  // 可选：前置缺失时精准移除本组，并持久化条目 mod 门禁
  * }
  * </pre>
  */
@@ -46,6 +48,12 @@ public class NekoTradeGroupDef {
 
     /** 前置 mod 列表（可选）：任一缺席时整组跳过 */
     private String[] requiresMods;
+
+    /** 必须已注册的物品（modid:name）；在应用时动态查询，不链接前置模组的类。 */
+    private String[] requiresItems;
+
+    /** 显式可选组：前置缺失时精准移除本组，并将 mod 门禁持久化到交易条目。 */
+    private boolean removeWhenUnavailable = false;
 
     /** 默认贸易组标记（v1.8.17）：true=本组为系统默认贸易组（条目打 defaultEntry 标记，参与默认组同步） */
     private boolean defaultGroup = false;
@@ -105,6 +113,22 @@ public class NekoTradeGroupDef {
 
     public void setRequiresMods(String[] requiresMods) {
         this.requiresMods = requiresMods;
+    }
+
+    public String[] getRequiresItems() {
+        return requiresItems;
+    }
+
+    public void setRequiresItems(String[] requiresItems) {
+        this.requiresItems = requiresItems;
+    }
+
+    public boolean isRemoveWhenUnavailable() {
+        return removeWhenUnavailable;
+    }
+
+    public void setRemoveWhenUnavailable(boolean removeWhenUnavailable) {
+        this.removeWhenUnavailable = removeWhenUnavailable;
     }
 
     public boolean isDefaultGroup() {

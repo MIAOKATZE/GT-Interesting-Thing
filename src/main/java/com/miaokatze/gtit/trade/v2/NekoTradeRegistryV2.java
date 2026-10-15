@@ -15,6 +15,8 @@ import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
 
+import cpw.mods.fml.common.Loader;
+
 /**
  * 新版注册表，管理 NekoTradeDatabase（v1.7.7 G4 适配 tab 拆分结构）
  * <p>
@@ -181,6 +183,13 @@ public class NekoTradeRegistryV2 {
      */
     private static boolean registerTradeFromEntry(NekoTradeEntry entry) {
         try {
+            // serverStarted 清理前，postInit 已可能读到上次落盘的可选交易。
+            // 此处先门禁，不能靠空物品或缺失输入的降级来表示不可用交易。
+            if (entry.getRequiresMods() != null) {
+                for (String modId : entry.getRequiresMods()) {
+                    if (modId != null && !modId.isEmpty() && !Loader.isModLoaded(modId)) return false;
+                }
+            }
             // 1. 解析交易组ID（MIAO<n> 语义 ID 确定性派生；其余非法时生成随机 UUID）
             UUID groupId;
             try {
