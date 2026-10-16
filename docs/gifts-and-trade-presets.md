@@ -30,7 +30,9 @@ BQ 任务 ID 使用与猫猫贸易机相同的解析规则。任务不存在、�
 - `gtit-ae-advanced`：AE 强化；与 AE 基础互斥。
 - `gtit-base-decoration`：基地装饰。
 
-这三份内置文件是可编辑流程的空模板。丰富贸易内容的独立审核稿位于 `GT-MIAO-Web-BQ-Trade/workspace/gtit/gtit-trade-presets/`，尚未自动装入玩家配置。审核通过后可将对应 JSON 放入实例的 `MiaoTrade`，在界面中重新读取并选择应用。
+这三份内置文件是可编辑流程的空模板。丰富贸易内容在 `GT-MIAO-Web-BQ-Trade` 的 Web 编辑器内审核：启动程序后，在工作区列表中分别选择 `gtit-ae-basic`（18 条）、`gtit-ae-advanced`（32 条）或 `gtit-base-decoration`（32 条），再进入 GTIT 贸易编辑器。每份工作区位于 `workspace/gtit/<ID>/`，包含程序识别的 `manifest.json`、`pages.json` 和 `tab_<ID>.json`，可直接编辑、保存与导出；这些候选内容尚未自动装入玩家配置。
+
+Web 编辑器导出的是 `config/gtit/trade/**` 配置，可用于检查和部署页面及交易。游戏预设使用的 `MiaoTrade/<ID>.json` 还包含预设 ID、名称、图标和互斥关系，不能将 Web 导出的 ZIP 或 `pages.json` 直接改名作为预设。候选预设原件与研究证据保留在编辑器仓库的 `plan/review/gtit-trade-presets-v1.8.93/`，审核后的内容再按预设格式整理。
 
 可选择多个兼容预设。互斥关系以稳定 ID 声明，任意一方声明即生效。界面可从已有标签页制作新预设，填写 ID、名称、描述、互斥 ID 和幽灵物品图标。编辑、复制未启用的预设时默认保留原内容；明确切换后才从当前标签页替换内容。内置模板请使用新 ID 另存，已有自定义预设的 ID 固定。
 

@@ -5,14 +5,14 @@ All five directories are independent physical extractions, bind only `127.0.0.1`
 | Instance | Directory | Port | Base pack |
 |---|---|---|---|
 | GTIT | `E:\CodeGT\测试实例-GTIT` | 25671 | Official 2.9.0-RC-2, matching GT5U 5.09.54.205 |
-| GTSR | `E:\CodeGT\测试实例-GTSR` | 25672 | User-provided 2.8.0-rc-2 |
-| GTMB | `E:\CodeGT\测试实例-GTMB` | 25673 | User-provided 2.8.0-rc-2 |
-| GTSWN | `E:\CodeGT\测试实例-GTSWN` | 25674 | User-provided 2.8.0-rc-2 |
-| OUTPOST | `E:\CodeGT\测试实例-OUTPOST` | 25675 | User-provided 2.8.0-rc-2 |
+| GTSR | `E:\CodeGT\测试实例-GTSR` | 25672 | Official 2.9.0-RC-2, matching GT5U 5.09.54.205 |
+| GTMB | `E:\CodeGT\测试实例-GTMB` | 25673 | Official 2.9.0-RC-2, matching GT5U 5.09.54.205 |
+| GTSWN | `E:\CodeGT\测试实例-GTSWN` | 25674 | Official 2.9.0-RC-2, matching GT5U 5.09.54.205 |
+| OUTPOST | `E:\CodeGT\测试实例-OUTPOST` | 25675 | Official 2.9.0-RC-2, matching GT5U 5.09.54.205 |
 
-The original archive is `C:\Users\60158\Downloads\GT_New_Horizons_2.8.0-rc-2_Server_Java_17-25.zip`, SHA256 `ee562a219ccd4268de590a169ae0a09c43647d9cfa8f61beaf62faa2f70c7971`. Its GT5U is 5.09.51.464, which cannot validate the GTIT 2.9 RC2 API baseline. Only GTIT received the complete matching [official RC2 server pack](https://downloads.gtnewhorizons.com/ServerPacks/betas/GT_New_Horizons_2.9.0-RC-2_Server_Java_17-26.zip), SHA256 `e005a0d050ec06073b3b0d11b149b5ab9355cacf4b8c4b837c50b8a89946dbf9`. The original GTIT extraction remains under its `.testlab/baseline-2.8.0-rc-2/`; Forge does not load its archived mods. Each instance's `testlab-instance.json` records provenance and archive checksums. Do not upgrade the other four instances without a separate task authorizing it.
+All five instances use `C:\Users\60158\Downloads\GT_New_Horizons_2.9.0-RC-2_Server_Java_17-26.zip`, SHA256 `e005a0d050ec06073b3b0d11b149b5ab9355cacf4b8c4b837c50b8a89946dbf9`, the complete [official RC2 server pack](https://downloads.gtnewhorizons.com/ServerPacks/betas/GT_New_Horizons_2.9.0-RC-2_Server_Java_17-26.zip). The user corrected the original 2.8.0 archive selection on 2026-10-16. Old baselines are retained under each instance's `.testlab/` and are outside Forge's mod search paths. Each instance's `testlab-instance.json` records the current provenance and archive checksum. Preserve each project's installed mods, worlds, test settings, and ownership locks when maintaining its instance.
 
-Use a Java 17–26 executable for GTIT, or Java 17–25 for the four original packs. From the GTIT repository root:
+Use a Java 17–26 executable for all five instances. From the GTIT repository root:
 
 ```powershell
 # Starts a hidden supervisor, waits for Minecraft's Done marker, then returns.
@@ -29,7 +29,7 @@ Use a Java 17–26 executable for GTIT, or Java 17–25 for the four original pa
 
 `python tools/testlab/runner.py run --instance 'E:\CodeGT\测试实例-GTIT' --java '<java.exe>'` runs the supervisor in the current terminal. `start` detaches it without a GUI. Python options `--xms` and `--xmx` default to `1G` and `6G`; `--startup-timeout` defaults to 900 seconds, `--max-runtime` to 3600, and `--stop-timeout` to 120. Do not run five 6-GiB servers simultaneously unless memory permits. The configured maximum runtime ends with normal `stop`; forced termination is limited to the supervisor's own child after checking PID and kernel creation time.
 
-GTIT config is `config/gtit/testlab.cfg`: `enabled=true`, `clientUiEnabled=false`, `dimensionId=1048580`. Install only the built GTIT runtime JAR into this instance's `mods/` before launching. The other four instances currently contain only the original pack, and their mod compatibility with the respective projects must be checked by those tasks.
+GTIT config is `config/gtit/testlab.cfg`: `enabled=true`, `clientUiEnabled=false`, `dimensionId=1048580`. Install only the built GTIT runtime JAR into this instance's `mods/` before launching. The other four instances contain the corrected official pack; installation and compatibility checks for their respective development mods belong to those projects' tasks.
 
 Before any world existed, GTIT alone was set to `level-type=FLAT`, `generate-structures=false`, and `view-distance=3` to reduce initial spawn generation during repeated debugging. Its manifest records this testlab optimization; the four other packs retain their original world settings.
 
