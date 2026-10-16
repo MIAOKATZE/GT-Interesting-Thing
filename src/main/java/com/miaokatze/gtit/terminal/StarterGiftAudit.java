@@ -1,6 +1,12 @@
 package com.miaokatze.gtit.terminal;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -116,7 +122,7 @@ public final class StarterGiftAudit {
             }
             if (isPlayerOnline(fileUuid)) return false;
 
-            NBTTagCompound rootNbt = CompressedStreamTools.read(datFile);
+            NBTTagCompound rootNbt = readPlayerData(datFile);
             if (rootNbt == null) return false;
             if (!rootNbt.hasKey("ForgeData")) return false;
             NBTTagCompound forgeData = rootNbt.getCompoundTag("ForgeData");
@@ -135,6 +141,7 @@ public final class StarterGiftAudit {
      * @return true 如果标记存在且被移除；false 如果标记不存在
      */
     public static boolean resetOnlinePlayerGiftFlag(EntityPlayerMP player) {
+        boolean changed = com.miaokatze.gtit.gift.GiftService.INSTANCE.resetStarter(player.getUniqueID());
         NBTTagCompound playerData = player.getEntityData();
         NBTTagCompound persisted = playerData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
         if (persisted.hasKey(GIFT_CLAIMED_KEY)) {
@@ -142,7 +149,7 @@ public final class StarterGiftAudit {
             playerData.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
             return true;
         }
-        return false;
+        return changed;
     }
 
     /**
@@ -168,8 +175,9 @@ public final class StarterGiftAudit {
                 return false;
             }
 
-            NBTTagCompound rootNbt = CompressedStreamTools.read(datFile);
+            NBTTagCompound rootNbt = readPlayerData(datFile);
             if (rootNbt == null) return false;
+            boolean changed = com.miaokatze.gtit.gift.GiftService.INSTANCE.resetStarter(fileUuid);
 
             // Forge 持久化自定义 entity 数据位于 .dat 根 NBT 的 "ForgeData" 子标签下，
             // 而 EntityPlayer.PERSISTED_NBT_TAG（"PlayerPersisted"）又在 ForgeData 之内：
@@ -185,15 +193,42 @@ public final class StarterGiftAudit {
                         // getCompoundTag 不会自动把修改后的 tag 写回父节点，须逐层 setTag 回写
                         forgeData.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
                         rootNbt.setTag("ForgeData", forgeData);
-                        CompressedStreamTools.safeWrite(rootNbt, datFile);
+                        writePlayerData(rootNbt, datFile, fileUuid);
                         return true;
                     }
                 }
             }
-            return false;
+            return changed;
         } catch (Exception e) {
             LOG.error("重置离线玩家礼包标记失败: " + datFile.getName(), e);
             return false;
+        }
+    }
+
+    /** Vanilla player.dat is gzip NBT. Accept the old audit writer's uncompressed format for recovery. */
+    static NBTTagCompound readPlayerData(File file) throws IOException {
+        try (InputStream input = Files.newInputStream(file.toPath())) {
+            return CompressedStreamTools.readCompressed(input);
+        } catch (java.util.zip.ZipException notCompressed) {
+            return CompressedStreamTools.read(file);
+        }
+    }
+
+    private static void writePlayerData(NBTTagCompound data, File file, UUID owner) throws IOException {
+        Path target = file.toPath();
+        Path temporary = Files.createTempFile(
+            target.toAbsolutePath()
+                .getParent(),
+            "gtit-gift-reset-",
+            ".tmp");
+        try {
+            try (OutputStream output = Files.newOutputStream(temporary)) {
+                CompressedStreamTools.writeCompressed(data, output);
+            }
+            if (isPlayerOnline(owner)) throw new IOException("Player logged in during gift reset");
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 

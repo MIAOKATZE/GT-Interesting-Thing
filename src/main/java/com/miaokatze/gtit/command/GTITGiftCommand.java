@@ -92,6 +92,12 @@ public class GTITGiftCommand extends CommandBase {
 
         switch (args[0]) {
             case "gift" -> handleGift(sender, args);
+            case "presets" -> {
+                if (sender instanceof EntityPlayerMP player
+                    && com.miaokatze.gtit.trade.preset.TradePresetManager.canConfigure(player)) {
+                    com.miaokatze.gtit.trade.preset.ui.TradePresetUI.open(player);
+                } else sender.addChatMessage(new net.minecraft.util.ChatComponentTranslation("gtit.preset.permission"));
+            }
             case "nekovm" -> {
                 // nekovm 子命令需要玩家身份（操作背包）
                 if (!(sender instanceof EntityPlayerMP player)) {
@@ -122,7 +128,14 @@ public class GTITGiftCommand extends CommandBase {
 
         if (args.length == 2) {
             if ("gift".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(args, "certain", "random", "reset", "claimlist", "claimreset");
+                return getListOfStringsMatchingLastWord(
+                    args,
+                    "ui",
+                    "certain",
+                    "random",
+                    "reset",
+                    "claimlist",
+                    "claimreset");
             }
             if ("nekovm".equals(args[0])) {
                 return getListOfStringsMatchingLastWord(args, "edit", "reload", "timereset", "help");
@@ -232,6 +245,9 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         switch (args[1]) {
+            case "ui" -> {
+                if (sender instanceof EntityPlayerMP player) com.miaokatze.gtit.gift.ui.GiftGuiFactory.open(player);
+            }
             case "certain" -> {
                 if (!(sender instanceof EntityPlayerMP player)) {
                     sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行"));

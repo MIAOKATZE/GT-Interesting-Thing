@@ -5,7 +5,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +16,7 @@ import org.apache.logging.log4j.Logger;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 
 /**
  * 猫猫售货机交易配置管理（v1.7.7 G4 存储结构重构）
@@ -49,6 +49,24 @@ public class NekoTradeConfig {
      * 方法本身保留，作为资产缺失/解析失败/配置关闭时的兜底数据源。
      */
     private static volatile boolean defaultTradesSuppressed = false;
+
+    /** Includes the pre-asset fixed UUID defaults, whose old files did not carry defaultEntry. */
+    public static boolean isBuiltInDefaultEntry(NekoTradeEntry entry) {
+        return entry.isDefaultEntry() || entry.isPresetBuiltin()
+            || LegacyDefaultIds.IDS.contains(entry.getId())
+            || (entry.getId() != null && entry.getId()
+                .matches("MIAO\\d+"))
+            || com.miaokatze.gtit.trade.api.NekoTradeIntegrationAPI.isUnmodifiedBundledAssetEntry(entry);
+    }
+
+    private static final class LegacyDefaultIds {
+
+        static final java.util.Set<String> IDS = new java.util.HashSet<>();
+
+        static {
+            for (NekoTradeEntry entry : createLegacyDefaultTrades().getTrades()) IDS.add(entry.getId());
+        }
+    }
 
     // --- 内部数据类 ---
 
@@ -125,10 +143,10 @@ public class NekoTradeConfig {
                 Files.createDirectories(dir);
             }
             if (!hasAnyTabFile()) {
-                Path legacy = Paths.get(LEGACY_TRADES_PATH);
+                Path legacy = TradeConfigPaths.resolve(LEGACY_TRADES_PATH);
                 if (Files.exists(legacy)) {
                     migrateFromLegacy(legacy);
-                } else if (defaultTradesSuppressed) {
+                } else if (defaultTradesSuppressed || !DefaultContentConfig.loadDefaultTradeGroups()) {
                     // E4a: 内置基础贸易组就绪，旧 42 条默认不落盘——
                     // tab 文件由 BundledTradeGroups 在 serverStarted 写入
                     LOG.info("猫猫售货机交易配置：内置基础贸易组抑制旧默认交易生成，目录: {}", dir);
@@ -154,7 +172,7 @@ public class NekoTradeConfig {
                 Files.createDirectories(dir);
             }
             if (!hasAnyTabFile()) {
-                Path legacy = Paths.get(LEGACY_TRADES_PATH);
+                Path legacy = TradeConfigPaths.resolve(LEGACY_TRADES_PATH);
                 if (Files.exists(legacy)) {
                     migrateFromLegacy(legacy);
                     // 迁移完成后重新扫描新目录
@@ -325,7 +343,7 @@ public class NekoTradeConfig {
             if (current != null && current >= orderId) return;
             data.getWatermarks()
                 .put(tabId, orderId);
-            Path path = Paths.get(ORDER_WATERMARK_PATH);
+            Path path = TradeConfigPaths.resolve(ORDER_WATERMARK_PATH);
             Files.createDirectories(path.getParent());
             Files.write(
                 path,
@@ -339,7 +357,7 @@ public class NekoTradeConfig {
     /** 读取 orderId 高水位（文件缺失/损坏时返回空记录） */
     private static OrderWatermarkData loadOrderWatermarks() {
         try {
-            Path path = Paths.get(ORDER_WATERMARK_PATH);
+            Path path = TradeConfigPaths.resolve(ORDER_WATERMARK_PATH);
             if (Files.exists(path)) {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
                 OrderWatermarkData data = GSON.fromJson(json, OrderWatermarkData.class);
@@ -378,6 +396,10 @@ public class NekoTradeConfig {
      * 生成默认交易数据
      */
     public static NekoTradeData getDefaultTrades() {
+        return DefaultContentConfig.loadDefaultTradeGroups() ? createLegacyDefaultTrades() : new NekoTradeData();
+    }
+
+    private static NekoTradeData createLegacyDefaultTrades() {
         NekoTradeData data = new NekoTradeData();
         List<NekoTradeEntry> trades = new ArrayList<>();
 
@@ -1063,7 +1085,8 @@ public class NekoTradeConfig {
      * 不影响 {@link #fromJson} 的客户端同步回退与 legacy 迁移路径。
      */
     private static NekoTradeData suppressedFallback() {
-        return defaultTradesSuppressed ? new NekoTradeData() : getDefaultTrades();
+        return defaultTradesSuppressed || !DefaultContentConfig.loadDefaultTradeGroups() ? new NekoTradeData()
+            : getDefaultTrades();
     }
 
     /**
@@ -1084,7 +1107,7 @@ public class NekoTradeConfig {
      * 获取交易 tab 文件存放目录
      */
     private static Path getTradeDirPath() {
-        return Paths.get(TRADES_DIR);
+        return TradeConfigPaths.resolve(TRADES_DIR);
     }
 
     /**

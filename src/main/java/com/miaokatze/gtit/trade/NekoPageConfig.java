@@ -3,7 +3,6 @@ package com.miaokatze.gtit.trade;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -67,7 +66,7 @@ public class NekoPageConfig {
         try {
             Path path = getConfigPath();
             if (!Files.exists(path)) {
-                Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+                Path legacy = TradeConfigPaths.resolve(LEGACY_CONFIG_PATH);
                 if (Files.exists(legacy)) {
                     load(); // load 内部完成迁移
                 } else {
@@ -87,7 +86,7 @@ public class NekoPageConfig {
     public static synchronized NekoPageData load() {
         Path path = getConfigPath();
         if (!Files.exists(path)) {
-            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+            Path legacy = TradeConfigPaths.resolve(LEGACY_CONFIG_PATH);
             if (Files.exists(legacy)) {
                 try {
                     String json = new String(Files.readAllBytes(legacy), StandardCharsets.UTF_8);
@@ -201,6 +200,6 @@ public class NekoPageConfig {
     }
 
     private static Path getConfigPath() {
-        return Paths.get(CONFIG_PATH);
+        return TradeConfigPaths.resolve(CONFIG_PATH);
     }
 }

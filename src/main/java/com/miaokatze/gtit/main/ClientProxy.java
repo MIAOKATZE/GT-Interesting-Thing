@@ -25,6 +25,7 @@ public class ClientProxy extends CommonProxy {
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        com.miaokatze.gtit.trade.preset.client.TradePresetKeybind.install();
         try {
             com.miaokatze.gtit.client.PocketBaubleKeybind.install();
         } catch (Throwable t) {
@@ -40,6 +41,7 @@ public class ClientProxy extends CommonProxy {
     public void init(FMLInitializationEvent event) {
         // 调用父类的 init 方法，确保通用逻辑正常执行
         super.init(event);
+        com.miaokatze.gtit.testlab.TestLabUiClient.install();
         // NEI discovers recipe plugins itself; only the earlier HandlerInfo event listener is installed here.
         if (cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")) {
             com.miaokatze.gtit.client.nei.NEIGtitConfig.registerHandlerInfoEvents();

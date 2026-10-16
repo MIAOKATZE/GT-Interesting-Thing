@@ -1,33 +1,34 @@
 package com.miaokatze.gtit.common.items;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Random;
+import java.util.Map;
 
-import net.minecraft.entity.item.EntityItem;
+import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IIcon;
 import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
 
 import com.miaokatze.gtit.common.util.GTITUtils;
-import com.miaokatze.gtit.config.GiftConfig;
+import com.miaokatze.gtit.gift.GiftIconCatalog;
+import com.miaokatze.gtit.gift.GiftService;
 import com.miaokatze.gtit.register.CreativeTabManager;
 
-/**
- * 新手宝箱
- * 右击打开获得一系列物品（必中物品+随机物品）
- * 默认携带附魔光效
- */
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
+
+/** Existing registry ID retained for legacy stacks; new packages carry a server-owned grant token. */
 public class StarterGift extends Item {
 
-    private static final Random RANDOM = new Random();
+    @SideOnly(Side.CLIENT)
+    private static Map<String, IIcon> catalogIcons;
 
     public StarterGift() {
-        super();
         setUnlocalizedName("starter_gift");
         setTextureName("gtit:starter_gift");
         setCreativeTab(CreativeTabManager.CREATIVE_TAB);
@@ -37,7 +38,50 @@ public class StarterGift extends Item {
 
     @Override
     public boolean hasEffect(ItemStack stack, int pass) {
-        return true; // 附魔光效
+        return true;
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    public void registerIcons(IIconRegister register) {
+        itemIcon = register.registerIcon("gtit:starter_gift");
+        catalogIcons = new LinkedHashMap<>();
+        for (String key : GiftIconCatalog.keys()) {
+            catalogIcons.put(key, register.registerIcon(GiftIconCatalog.atlasResourcePath(key)));
+        }
+    }
+
+    @SideOnly(Side.CLIENT)
+    public static IIcon catalogIcon(String key) {
+        return catalogIcons == null ? null : catalogIcons.get(GiftIconCatalog.normalize(key));
+    }
+
+    @SideOnly(Side.CLIENT)
+    public IIcon getCatalogIcon(String key) {
+        return catalogIcon(key);
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    public IIcon getIconIndex(ItemStack stack) {
+        return getIcon(stack, 0);
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    public IIcon getIcon(ItemStack stack, int pass) {
+        if (stack.hasTagCompound() && stack.getTagCompound()
+            .hasKey(GiftService.TAG_ITEM_ICON)) {
+            ItemStack custom = ItemStack.loadItemStackFromNBT(
+                stack.getTagCompound()
+                    .getCompoundTag(GiftService.TAG_ITEM_ICON));
+            if (custom != null && custom.getItem() != this) return custom.getItem()
+                .getIcon(custom, pass);
+        }
+        String key = stack.hasTagCompound() ? stack.getTagCompound()
+            .getString(GiftService.TAG_ICON) : "starter";
+        IIcon icon = catalogIcon(key);
+        return icon == null ? itemIcon : icon;
     }
 
     @Override
@@ -53,50 +97,10 @@ public class StarterGift extends Item {
 
     @Override
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
-        if (!world.isRemote) {
-            List<ItemStack> itemsToGive = generateItems();
-            for (ItemStack gift : itemsToGive) {
-                if (!player.inventory.addItemStackToInventory(gift.copy())) {
-                    // 背包满了，丢到地上
-                    world.spawnEntityInWorld(
-                        new EntityItem(world, player.posX, player.posY + 1, player.posZ, gift.copy()));
-                }
-            }
-            stack.stackSize--;
+        if (!world.isRemote && player instanceof EntityPlayerMP serverPlayer) {
+            GiftService.INSTANCE.open(serverPlayer, stack);
+            return serverPlayer.inventory.getCurrentItem();
         }
         return stack;
-    }
-
-    private List<ItemStack> generateItems() {
-        List<ItemStack> items = new ArrayList<>();
-
-        // 必中物品
-        for (GiftConfig.ItemEntry entry : GiftConfig.getGuaranteedItems()) {
-            ItemStack stack = entry.toItemStack();
-            if (stack != null) {
-                items.add(stack);
-            }
-        }
-
-        // 随机物品
-        List<GiftConfig.ItemEntry> randomPool = GiftConfig.getRandomItems();
-        int randomCount = GiftConfig.getRandomCount();
-        if (!randomPool.isEmpty() && randomCount > 0) {
-            List<Integer> indices = new ArrayList<>();
-            for (int i = 0; i < randomPool.size(); i++) {
-                indices.add(i);
-            }
-            Collections.shuffle(indices, RANDOM);
-            int count = Math.min(randomCount, indices.size());
-            for (int i = 0; i < count; i++) {
-                ItemStack stack = randomPool.get(indices.get(i))
-                    .toItemStack();
-                if (stack != null) {
-                    items.add(stack);
-                }
-            }
-        }
-
-        return items;
     }
 }

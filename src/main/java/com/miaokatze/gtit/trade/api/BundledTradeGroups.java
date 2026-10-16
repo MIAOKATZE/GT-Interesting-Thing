@@ -12,6 +12,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.config.Config;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
@@ -91,6 +92,13 @@ public final class BundledTradeGroups {
      * 否则保持 false，旧 42 条默认照常兜底。
      */
     public static void prepareDefaultSuppression() {
+        baseDef = null;
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) {
+            NekoTradeConfig.setDefaultTradesSuppressed(true);
+            cachedPromptState = PROMPT_NONE;
+            return;
+        }
+        NekoTradeConfig.setDefaultTradesSuppressed(false);
         try {
             if (Config.enhancedDefaultTrades) {
                 baseDef = parseBundledGroup(BASE_GROUP_ID, BASE_TRADES_RES, BASE_PAGES_RES);
@@ -129,6 +137,10 @@ public final class BundledTradeGroups {
      * </ul>
      */
     public static void applyBundledGroups() {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) {
+            cachedPromptState = PROMPT_NONE;
+            return;
+        }
         try {
             // 一次性清理凭磁盘记账精准移除已合并交易/页并删记账文件，幂等（无记账时静默 false）；清理先于 base apply。
             NekoTradeIntegrationAPI.unregisterGroup("gtit-miao");
@@ -205,6 +217,7 @@ public final class BundledTradeGroups {
      * </ul>
      */
     public static String getPromptState() {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return PROMPT_NONE;
         return cachedPromptState;
     }
 
@@ -220,6 +233,7 @@ public final class BundledTradeGroups {
 
     /** 计算同步询问状态（{@code refreshPromptStateCache} 专属，含记账读取） */
     private static String computePromptState() {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return PROMPT_NONE;
         if (baseDef == null) return PROMPT_NONE;
         NekoTradeIntegrationAPI.GroupRecord record = NekoTradeIntegrationAPI.GroupRecord.load(BASE_GROUP_ID);
         if (record == null) return PROMPT_NONE;
@@ -244,6 +258,7 @@ public final class BundledTradeGroups {
      * @return true = 重注册完成
      */
     public static boolean restoreDefaultGroup() {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return false;
         if (baseDef == null) return false;
         NekoTradeIntegrationAPI.unregisterGroup(BASE_GROUP_ID);
         NekoTradeIntegrationAPI.removeDefaultEntriesByMiaoPrefix();
