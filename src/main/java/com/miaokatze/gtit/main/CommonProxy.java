@@ -57,6 +57,7 @@ public class CommonProxy {
      */
     public void preInit(FMLPreInitializationEvent event) {
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
+        com.miaokatze.gtit.testlab.TestLabRuntime.initialize(event);
 
         // E4a: BQ 存在性反射探测（BqCompat 无任何 BQ 类型引用，缺席时静默降级）
         BqCompat.detect();
@@ -589,6 +590,7 @@ public class CommonProxy {
     @SuppressWarnings({ "unused" })
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new GTITGiftCommand());
+        com.miaokatze.gtit.testlab.TestLabRuntime.serverStarting(event);
     }
 
     /**
@@ -752,6 +754,7 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopping(FMLServerStoppingEvent event) {
+        com.miaokatze.gtit.testlab.TestLabRuntime.serverStopping();
         try {
             NekoWalletManager.INSTANCE.saveAll();
         } catch (Throwable t) {
