@@ -9,13 +9,13 @@ package com.miaokatze.gtit.trade.api;
  * <p>
  * {@code groupJson} 即 {@link NekoTradeGroupDef} 的 JSON 文本（与 IMC 载荷、内置资产
  * 共用同一模型），注册时解析后走既有 {@link NekoTradeIntegrationAPI#registerTradeGroup}
- * 管线（版本记账/幂等/requiresMods/同步语义全部继承）；{@code ownerModId} 仅用于日志
- * 溯源，不参与记账。清单声明的 groupId/version 与 groupJson 内不一致时以本定义为准
+ * 管线（版本记账/幂等/requiresMods/同步语义全部继承）；{@code ownerModId=gtit} 标识本模组
+ * 默认资产并记账语义快照，其他来源不受 GTIT 默认内容开关限制。清单声明的 groupId/version 与 groupJson 内不一致时以本定义为准
  * （清单是身份权威，内容文件只是载荷）。
  */
 public class TradeIntegrationAssetDef {
 
-    /** 资产归属 mod（仅日志溯源用，可为任意字符串） */
+    /** 资产归属 mod（gtit 为本模组默认内容，其他字符串保持普通集成行为） */
     private String ownerModId;
 
     /** 组 ID（清单身份；null/非法时以 groupJson 内 groupId 为准） */

@@ -12,6 +12,9 @@ public final class NativeProbeScenarios {
         TestLabRuntime.register(new MachineNativeScenario());
         TestLabRuntime.register(new TeamWalletNativeScenario());
         TestLabRuntime.register(new BusinessLifecycleScenario());
+        TestLabRuntime.register(new GiftSystemNativeScenario());
+        TestLabRuntime.register(new TradePresetsNativeScenario());
+        TestLabRuntime.register(new PresetCatalogCheckScenario());
         TestLabRuntime.register(new NativeStressScenario());
         TestLabRuntime.register(new NativePersistenceScenario(true));
         TestLabRuntime.register(new NativePersistenceScenario(false));

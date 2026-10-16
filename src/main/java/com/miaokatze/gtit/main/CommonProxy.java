@@ -57,6 +57,9 @@ public class CommonProxy {
      */
     public void preInit(FMLPreInitializationEvent event) {
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
+        com.miaokatze.gtit.config.DefaultContentConfig.init(event.getModConfigurationDirectory());
+        // Recover a previous preset transaction before any page migration or default-content writes.
+        com.miaokatze.gtit.trade.preset.TradePresetManager.recoverPendingChanges();
         com.miaokatze.gtit.testlab.TestLabRuntime.initialize(event);
 
         // E4a: BQ 存在性反射探测（BqCompat 无任何 BQ 类型引用，缺席时静默降级）
@@ -365,6 +368,12 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void init(FMLInitializationEvent event) {
+        com.miaokatze.gtit.gift.ui.GiftGuiFactory.init();
+        com.miaokatze.gtit.trade.preset.ui.TradePresetUI.init();
+        com.miaokatze.gtit.trade.preset.ui.TradePresetAccessHandler.install();
+        FMLCommonHandler.instance()
+            .bus()
+            .register(com.miaokatze.gtit.gift.GiftService.INSTANCE);
         // 确保 Baubles 戒指栏扩展（防止被 BaublesConfig 覆盖）
         ensureBaublesRingSlots();
 
@@ -559,6 +568,17 @@ public class CommonProxy {
             GTInterestingThing.LOG.error("[3/3] V2 NekoBqBridge 注册失败", t);
         }
 
+        try {
+            com.miaokatze.gtit.gift.GiftRegistry.INSTANCE.init(
+                cpw.mods.fml.common.Loader.instance()
+                    .getConfigDir()
+                    .toPath()
+                    .resolve("gtit/gifts.json"));
+            com.miaokatze.gtit.gift.GiftBqBridge.register();
+        } catch (Exception failure) {
+            GTInterestingThing.LOG.error("礼包定义载入失败，保留文件并暂停礼包发放", failure);
+        }
+
         // 注册 AE2 Infinity Cell Handler
         try {
             AEApi.instance()
@@ -590,6 +610,7 @@ public class CommonProxy {
     @SuppressWarnings({ "unused" })
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new GTITGiftCommand());
+        event.registerServerCommand(new com.miaokatze.gtit.command.GiftLibraryCommand());
         com.miaokatze.gtit.testlab.TestLabRuntime.serverStarting(event);
     }
 
@@ -622,6 +643,11 @@ public class CommonProxy {
             MinecraftServer server = MinecraftServer.getServer();
             if (server != null && server.getEntityWorld() != null) {
                 NekoWalletManager.INSTANCE.init(server.getEntityWorld());
+                try {
+                    com.miaokatze.gtit.gift.GiftService.INSTANCE.init(server.getEntityWorld());
+                } catch (Exception failure) {
+                    GTInterestingThing.LOG.error("礼包账本载入失败，暂停发放", failure);
+                }
 
                 // 初始化 V2 交易注册表（服务端）
                 // V2 交易系统是完全独立的实现，为新版猫猫售货机 V2 提供交易数据
@@ -636,6 +662,7 @@ public class CommonProxy {
                 } catch (Throwable t2) {
                     GTInterestingThing.LOG.error("内置/外部贸易组应用失败（不影响后续模块初始化）", t2);
                 }
+                com.miaokatze.gtit.trade.preset.TradePresetManager.initialize(server);
 
                 // 初始化 V2 交易历史管理器（需要 World 对象）
                 // 负责持久化玩家交易历史到 <world>/gtit_neko_histories/<player_uuid>.dat
@@ -755,6 +782,9 @@ public class CommonProxy {
     @SuppressWarnings({ "unused" })
     public void serverStopping(FMLServerStoppingEvent event) {
         com.miaokatze.gtit.testlab.TestLabRuntime.serverStopping();
+        com.miaokatze.gtit.trade.preset.ui.TradePresetAccessHandler.stop();
+        com.miaokatze.gtit.trade.preset.TradePresetManager.shutdown();
+        com.miaokatze.gtit.gift.GiftService.INSTANCE.unload();
         try {
             NekoWalletManager.INSTANCE.saveAll();
         } catch (Throwable t) {

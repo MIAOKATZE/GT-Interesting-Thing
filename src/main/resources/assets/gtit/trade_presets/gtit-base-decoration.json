@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "gtit-base-decoration",
+  "name": "基地装饰",
+  "description": "空模板：具体贸易内容尚未配置。可与任一 AE 预设组合；管理员可另存新预设并选择已有标签页。",
+  "icon": { "item": "minecraft:stonebrick", "meta": 0, "nbtBase64": "" },
+  "mutuallyExclusiveIds": [],
+  "tabs": []
+}

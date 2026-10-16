@@ -73,8 +73,16 @@ public class NekoTradeNetworkManager {
      * 构建全量同步包（载荷取自服务端磁盘权威配置）
      */
     private static NekoTradeSyncPacket buildSyncPacket() {
-        String tradesJson = NekoTradeConfig.toJson(NekoTradeConfig.load());
-        String pagesJson = NekoPageConfig.toJson(NekoPageConfig.load());
+        NekoTradeConfig.NekoTradeData trades = NekoTradeConfig.load();
+        NekoPageConfig.NekoPageData pages = NekoPageConfig.load();
+        if (!com.miaokatze.gtit.config.DefaultContentConfig.loadDefaultTradeGroups()) {
+            trades.getTrades()
+                .removeIf(NekoTradeConfig::isBuiltInDefaultEntry);
+            pages.getPages()
+                .removeIf(page -> page.isPresetBuiltin());
+        }
+        String tradesJson = NekoTradeConfig.toJson(trades);
+        String pagesJson = NekoPageConfig.toJson(pages);
         return new NekoTradeSyncPacket(tradesJson, pagesJson);
     }
 

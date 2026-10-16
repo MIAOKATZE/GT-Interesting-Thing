@@ -41,6 +41,25 @@ public class NekoTradeEntry {
     // 持久化于 tab 文件并随同步包下发，编辑/保存不丢失；玩家删除后随条目消失，
     // 复原（重注册）时由 applyGroup 重新打标。旧 JSON 无该字段时 Gson 保留默认 false。
     private boolean defaultEntry = false;
+    private boolean presetBuiltin;
+    /** Preset quest bindings fail closed if BQ, the quest, or its status becomes unavailable. */
+    private boolean strictBq;
+
+    public boolean isPresetBuiltin() {
+        return presetBuiltin;
+    }
+
+    public void setPresetBuiltin(boolean value) {
+        presetBuiltin = value;
+    }
+
+    public boolean isStrictBq() {
+        return strictBq;
+    }
+
+    public void setStrictBq(boolean value) {
+        strictBq = value;
+    }
 
     /** 可选贸易组的前置门禁；磁盘首次装载和客户端同步均须检查。旧条目缺省无门禁。 */
     private String[] requiresMods;

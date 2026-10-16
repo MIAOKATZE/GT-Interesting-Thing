@@ -10,6 +10,7 @@ import net.minecraft.item.ItemStack;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
@@ -121,7 +122,7 @@ public class NekoTradeRegistryV2 {
     private static void loadAndRegisterTrades() {
         // 清空数据库，防止 initialize/initializeClient 被多次调用时重复注册交易组
         NekoTradeDatabase.INSTANCE.clear();
-        registerTradesFromData(NekoTradeConfig.load());
+        registerTradesFromData(NekoTradeConfig.load(), true);
     }
 
     /**
@@ -131,13 +132,16 @@ public class NekoTradeRegistryV2 {
      *
      * @param data 交易配置数据（null 或 trades 为 null 时仅告警）
      */
-    private static void registerTradesFromData(NekoTradeConfig.NekoTradeData data) {
+    private static void registerTradesFromData(NekoTradeConfig.NekoTradeData data, boolean defaultsGate) {
         if (data == null || data.getTrades() == null) {
             LOG.warn("V2 交易配置为空");
             return;
         }
         int successCount = 0;
         for (NekoTradeEntry entry : data.getTrades()) {
+            if (entry == null) continue;
+            if (defaultsGate && !DefaultContentConfig.loadDefaultTradeGroups()
+                && NekoTradeConfig.isBuiltInDefaultEntry(entry)) continue;
             if (registerTradeFromEntry(entry)) {
                 successCount++;
             }
@@ -165,7 +169,7 @@ public class NekoTradeRegistryV2 {
         try {
             NekoBqBridge.clearAllTriggers();
             NekoTradeDatabase.INSTANCE.clear();
-            registerTradesFromData(data);
+            registerTradesFromData(data, false);
             LOG.info(
                 "[NekoSync] 客户端已应用同步交易配置，共 {} 个交易组，{} 笔交易",
                 NekoTradeDatabase.INSTANCE.getTradeGroupCount(),
@@ -284,12 +288,13 @@ public class NekoTradeRegistryV2 {
                 UUID questId = NekoBqQuestIdParser.parse(bqQuestId);
                 if (questId != null) {
                     // 创建 BQ 条件并添加到交易组
-                    NekoBqCondition bqCondition = new NekoBqCondition(questId);
+                    NekoBqCondition bqCondition = new NekoBqCondition(questId, entry.isStrictBq());
                     group.addCondition(bqCondition);
                     // 注册任务触发器（任务完成时刷新关联交易组）
                     NekoBqBridge.registerQuestTrigger(questId, groupId);
                 } else {
                     LOG.warn("交易 {} 的 BQ 任务ID格式无效: {}", entry.getId(), bqQuestId);
+                    if (entry.isStrictBq()) return false;
                 }
             }
 
