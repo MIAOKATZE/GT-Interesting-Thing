@@ -25,6 +25,7 @@ public class NekoBqCondition implements NekoTradeCondition {
 
     /** 关联的 BQ 任务 UUID */
     private UUID questId;
+    private boolean strict;
 
     /**
      * 无参构造器，用于 NBT 反序列化
@@ -38,6 +39,11 @@ public class NekoBqCondition implements NekoTradeCondition {
      */
     public NekoBqCondition(UUID questId) {
         this.questId = questId;
+    }
+
+    public NekoBqCondition(UUID questId, boolean strict) {
+        this.questId = questId;
+        this.strict = strict;
     }
 
     @Override
@@ -56,6 +62,7 @@ public class NekoBqCondition implements NekoTradeCondition {
      */
     @Override
     public boolean isSatisfied(UUID playerId) {
+        if (strict) return NekoBqBridge.isQuestCompletedStrict(playerId, questId);
         // questId 或 playerId 为 null 时安全回退
         if (questId == null || playerId == null) {
             return true;
@@ -81,6 +88,7 @@ public class NekoBqCondition implements NekoTradeCondition {
     public NBTTagCompound writeToNBT() {
         NBTTagCompound nbt = new NBTTagCompound();
         nbt.setString("name", CONDITION_NAME);
+        nbt.setBoolean("strict", strict);
         nbt.setLong("questMsb", questId.getMostSignificantBits());
         nbt.setLong("questLsb", questId.getLeastSignificantBits());
         return nbt;
@@ -96,6 +104,7 @@ public class NekoBqCondition implements NekoTradeCondition {
         long msb = nbt.getLong("questMsb");
         long lsb = nbt.getLong("questLsb");
         this.questId = new UUID(msb, lsb);
+        this.strict = nbt.getBoolean("strict");
     }
 
     /**
@@ -112,11 +121,11 @@ public class NekoBqCondition implements NekoTradeCondition {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         NekoBqCondition that = (NekoBqCondition) o;
-        return Objects.equals(questId, that.questId);
+        return strict == that.strict && Objects.equals(questId, that.questId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(questId);
+        return Objects.hash(questId, strict);
     }
 }

@@ -168,3 +168,44 @@ tasks.register<JavaExec>("runNekoMusicConfigTest") {
 }
 
 tasks.named("check") { dependsOn("runNekoMusicConfigTest") }
+
+tasks.register<JavaExec>("runTestLabTest") {
+    group = "verification"
+    description = "Runs automation lab default gates, recovery bounds and report result invariants."
+    mainClass = "com.miaokatze.gtit.testlab.TestLabFrameworkTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+}
+
+tasks.named("check") { dependsOn("runTestLabTest") }
+
+tasks.register<JavaExec>("runDefaultContentPolicyTest") {
+    group = "verification"
+    description = "Checks independent bundled-content gates and preservation of custom/empty lottery files."
+    mainClass = "com.miaokatze.gtit.lottery.DefaultContentPolicyTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += sourceSets.getByName("main").compileClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    val scratchDir = layout.buildDirectory.dir("content-policy-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runDefaultContentPolicyTest") }
+
+val contentTestCompileClasspath = sourceSets.getByName("main").compileClasspath
+mapOf(
+    "runGiftSystemTest" to "com.miaokatze.gtit.gift.GiftSystemTest",
+    "runGiftEditorSessionTest" to "com.miaokatze.gtit.gift.ui.GiftEditorSessionTest",
+    "runTradePresetStoreTest" to "com.miaokatze.gtit.trade.preset.TradePresetStoreTest",
+    "runStarterGiftAuditNbtTest" to "com.miaokatze.gtit.terminal.StarterGiftAuditNbtTest",
+    "runTradePresetAccessTest" to "com.miaokatze.gtit.trade.preset.ui.TradePresetAccessTest"
+).forEach { (taskName, entryPoint) ->
+    tasks.register<JavaExec>(taskName) {
+        group = "verification"
+        mainClass = entryPoint
+        classpath = storeTestRuntimeClasspath + contentTestCompileClasspath
+        classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    }
+    tasks.named("check") { dependsOn(taskName) }
+}

@@ -1,0 +1,494 @@
+[
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 16,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-001"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 36,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-002"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 140,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-003"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 120,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-004"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 56,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-005"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 220,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-008"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 240,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-009"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 260,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-010"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 280,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-011"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 380,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-006"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 360,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-007"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 400,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-012"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 420,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-013"
+  },
+  {
+    "item": "appliedenergistics2:item.ToolNetworkTool",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-014"
+  },
+  {
+    "item": "appliedenergistics2:item.ToolNetworkVisualiser",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-015"
+  },
+  {
+    "item": "appliedenergistics2:item.ToolMemoryCard",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-016"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 52,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-017"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 340,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-basic-018"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 16,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-001"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 36,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-002"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 140,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-003"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 120,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-004"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 56,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-005"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 220,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-008"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 240,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-009"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 260,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-010"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 280,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-011"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 76,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-019"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 536,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-020"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 440,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-021"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 460,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-023"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 80,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-024"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 100,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-025"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 380,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-006"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 360,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-007"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 400,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-012"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 420,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-013"
+  },
+  {
+    "item": "appliedenergistics2:item.ToolNetworkTool",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-014"
+  },
+  {
+    "item": "appliedenergistics2:item.ToolNetworkVisualiser",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-015"
+  },
+  {
+    "item": "appliedenergistics2:item.ToolMemoryCard",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-016"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 52,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-017"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 340,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-018"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 480,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-022"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 26,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-026"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 27,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-027"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 53,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-028"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 30,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-029"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 55,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-030"
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 54,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-031"
+  },
+  {
+    "item": "betterp2p:advanced_memory_card",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000000b0",
+    "tradeId": "gtit-ae-advanced-032"
+  },
+  {
+    "item": "chisel:chisel",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-00000000078f",
+    "tradeId": "gtit-base-decoration-001"
+  },
+  {
+    "item": "CarpentersBlocks:itemCarpentersHammer",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000870",
+    "tradeId": "gtit-base-decoration-002"
+  },
+  {
+    "item": "CarpentersBlocks:itemCarpentersChisel",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000870",
+    "tradeId": "gtit-base-decoration-003"
+  },
+  {
+    "item": "ArchitectureCraft:hammer",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000007c2",
+    "tradeId": "gtit-base-decoration-004"
+  },
+  {
+    "item": "ArchitectureCraft:chisel",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000007c2",
+    "tradeId": "gtit-base-decoration-005"
+  },
+  {
+    "item": "ForgeMicroblock:sawIron",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000007b2",
+    "tradeId": "gtit-base-decoration-006"
+  },
+  {
+    "item": "betterbuilderswands:wandStone",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000799",
+    "tradeId": "gtit-base-decoration-007"
+  },
+  {
+    "item": "betterbuilderswands:wandIron",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-00000000079a",
+    "tradeId": "gtit-base-decoration-008"
+  },
+  {
+    "item": "betterbuilderswands:wandDiamond",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-00000000079b",
+    "tradeId": "gtit-base-decoration-009"
+  },
+  {
+    "item": "Botany:trowelIron",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000007a0",
+    "tradeId": "gtit-base-decoration-010"
+  },
+  {
+    "item": "ExtraTrees:hammer",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000007ae",
+    "tradeId": "gtit-base-decoration-011"
+  },
+  {
+    "item": "catwalks:blowtorch",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000cde",
+    "tradeId": "gtit-base-decoration-012"
+  },
+  {
+    "item": "CarpentersBlocks:blockCarpentersBlock",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000870",
+    "tradeId": "gtit-base-decoration-013"
+  },
+  {
+    "item": "CarpentersBlocks:blockCarpentersGarageDoor",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000870",
+    "tradeId": "gtit-base-decoration-014"
+  },
+  {
+    "item": "chisel:laboratoryblock",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000259",
+    "tradeId": "gtit-base-decoration-015"
+  },
+  {
+    "item": "chisel:factoryblock",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000259",
+    "tradeId": "gtit-base-decoration-016"
+  },
+  {
+    "item": "chisel:technical",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000259",
+    "tradeId": "gtit-base-decoration-017"
+  },
+  {
+    "item": "chisel:warningSign",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000259",
+    "tradeId": "gtit-base-decoration-018"
+  },
+  {
+    "item": "chisel:concrete",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000798",
+    "tradeId": "gtit-base-decoration-019"
+  },
+  {
+    "item": "Ztones:tile.bittBlock",
+    "meta": 0,
+    "questId": "6c838f6a-3595-4db8-86f9-042c1761aa8a",
+    "tradeId": "gtit-base-decoration-020"
+  },
+  {
+    "item": "Ztones:tile.glaxx",
+    "meta": 0,
+    "questId": "6c838f6a-3595-4db8-86f9-042c1761aa8a",
+    "tradeId": "gtit-base-decoration-021"
+  },
+  {
+    "item": "Ztones:tile.azurBlock",
+    "meta": 0,
+    "questId": "6c838f6a-3595-4db8-86f9-042c1761aa8a",
+    "tradeId": "gtit-base-decoration-022"
+  },
+  {
+    "item": "BiblioCraft:BiblioIronLantern",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000007b3",
+    "tradeId": "gtit-base-decoration-023"
+  },
+  {
+    "item": "catwalks:scaffold",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000cde",
+    "tradeId": "gtit-base-decoration-024"
+  },
+  {
+    "item": "catwalks:catwalk_unlit",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000cde",
+    "tradeId": "gtit-base-decoration-025"
+  },
+  {
+    "item": "catwalks:cagedLadder_north_unlit",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-000000000cde",
+    "tradeId": "gtit-base-decoration-026"
+  },
+  {
+    "item": "modernmarkings:tile.wall_marking_exit",
+    "meta": 0,
+    "questId": "9a73532a-fcd5-4133-8d70-a4254a96deaa",
+    "tradeId": "gtit-base-decoration-027"
+  },
+  {
+    "item": "modernmarkings:tile.wall_marking_warning_danger",
+    "meta": 0,
+    "questId": "9a73532a-fcd5-4133-8d70-a4254a96deaa",
+    "tradeId": "gtit-base-decoration-028"
+  },
+  {
+    "item": "ProjRed|Illumination:projectred.illumination.lamp",
+    "meta": 1,
+    "questId": "00000000-0000-0000-0000-0000000007b5",
+    "tradeId": "gtit-base-decoration-029"
+  },
+  {
+    "item": "Railcraft:lantern.stone",
+    "meta": 9,
+    "questId": "00000000-0000-0000-0000-0000000007b1",
+    "tradeId": "gtit-base-decoration-030"
+  },
+  {
+    "item": "Railcraft:lantern.stone",
+    "meta": 8,
+    "questId": "00000000-0000-0000-0000-0000000007b1",
+    "tradeId": "gtit-base-decoration-031"
+  },
+  {
+    "item": "Ztones:lampf",
+    "meta": 0,
+    "questId": "00000000-0000-0000-0000-0000000007b8",
+    "tradeId": "gtit-base-decoration-032"
+  }
+]

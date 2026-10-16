@@ -1,16 +1,15 @@
 package com.miaokatze.gtit.event;
 
-import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.common.items.rings.BaseRing;
+import com.miaokatze.gtit.gift.GiftService;
 
 import baubles.api.BaublesApi;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -29,23 +28,7 @@ public class PlayerLoginHandler {
     @SubscribeEvent
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         EntityPlayer player = event.player;
-        NBTTagCompound playerData = player.getEntityData();
-        NBTTagCompound persisted = playerData.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG);
-
-        if (!persisted.getBoolean("gtit_received_starter_gift")) {
-            persisted.setBoolean("gtit_received_starter_gift", true);
-            // B2-03：getCompoundTag 在 ForgeData 无该子标签时返回未挂接的临时实例，
-            // 必须显式 setTag 回写才能落盘（照 GTITGiftCommand.resetOnlinePlayerGiftFlag 写法）；
-            // 否则标志永不持久化，精简环境每次登录都重发新手礼包
-            playerData.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
-            ItemStack gift = GTITItemList.StarterGift.get(1);
-            if (gift != null) {
-                if (!player.inventory.addItemStackToInventory(gift)) {
-                    player.worldObj.spawnEntityInWorld(
-                        new EntityItem(player.worldObj, player.posX, player.posY + 1, player.posZ, gift));
-                }
-            }
-        }
+        if (player instanceof EntityPlayerMP serverPlayer) GiftService.INSTANCE.onLogin(serverPlayer);
 
         // 刷新已装备指环的效果（防止断线后buff/属性丢失）
         refreshEquippedRings(player);

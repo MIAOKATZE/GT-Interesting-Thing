@@ -11,6 +11,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.cubefury.vendingmachine.trade.TradeCategory;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
@@ -60,6 +61,7 @@ public class NekoPageRegistry {
         PAGES.clear();
         NekoPageConfig.NekoPageData data = NekoPageConfig.load();
         for (NekoPageEntry entry : data.getPages()) {
+            if (entry.isPresetBuiltin() && !DefaultContentConfig.loadDefaultTradeGroups()) continue;
             PAGES.put(entry.getId(), entry);
         }
         version++;
@@ -70,7 +72,15 @@ public class NekoPageRegistry {
      */
     public static synchronized void savePages() {
         NekoPageConfig.NekoPageData data = new NekoPageConfig.NekoPageData();
-        data.setPages(new ArrayList<>(PAGES.values()));
+        Map<Integer, NekoPageEntry> stored = new LinkedHashMap<>();
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) {
+            for (NekoPageEntry page : NekoPageConfig.load()
+                .getPages()) {
+                if (page.isPresetBuiltin()) stored.put(page.getId(), page);
+            }
+        }
+        stored.putAll(PAGES);
+        data.setPages(new ArrayList<>(stored.values()));
         NekoPageConfig.save(data);
     }
 
@@ -85,6 +95,12 @@ public class NekoPageRegistry {
     public static synchronized String addPage(int id, String name, ItemStack iconStack) {
         if (id < 1) {
             return "标签页ID必须为正整数";
+        }
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) {
+            for (NekoPageEntry stored : NekoPageConfig.load()
+                .getPages()) {
+                if (stored.getId() == id && stored.isPresetBuiltin()) return "标签页 ID 被已停用的默认预设占用，请使用其他 ID";
+            }
         }
 
         boolean isOverwrite = PAGES.containsKey(id);
