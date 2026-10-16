@@ -168,3 +168,13 @@ tasks.register<JavaExec>("runNekoMusicConfigTest") {
 }
 
 tasks.named("check") { dependsOn("runNekoMusicConfigTest") }
+
+tasks.register<JavaExec>("runTestLabTest") {
+    group = "verification"
+    description = "Runs automation lab default gates, recovery bounds and report result invariants."
+    mainClass = "com.miaokatze.gtit.testlab.TestLabFrameworkTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+}
+
+tasks.named("check") { dependsOn("runTestLabTest") }
