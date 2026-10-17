@@ -16,6 +16,7 @@ import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
@@ -218,7 +219,7 @@ public final class TerminalGiftPage {
             new TextWidget<>(IKey.str("目标:")).pos(2, FIELD_Y + 3)
                 .size(FIELD_X - 4, 10)
                 .shadow(false));
-        TextFieldWidget nameField = new TextFieldWidget()
+        TextFieldWidget nameField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> manualTargetName, val -> manualTargetName = val))
             .setMaxLength(MAX_NAME_LENGTH);
         nameField.pos(FIELD_X, FIELD_Y)

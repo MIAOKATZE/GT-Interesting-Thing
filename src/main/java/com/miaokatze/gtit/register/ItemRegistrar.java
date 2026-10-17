@@ -12,7 +12,6 @@ import com.miaokatze.gtit.common.items.FloatCore;
 import com.miaokatze.gtit.common.items.NekoCoin;
 import com.miaokatze.gtit.common.items.ReincarnationCrystal;
 import com.miaokatze.gtit.common.items.ShimmeringNekoCoin;
-import com.miaokatze.gtit.common.items.StarterGift;
 import com.miaokatze.gtit.common.items.TelekinesisOreScannerCore;
 import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageCell;
 import com.miaokatze.gtit.common.items.infinitycell.ItemInfinityStorageFluidCell;
@@ -28,6 +27,7 @@ import com.miaokatze.gtit.common.items.rings.RingMountainbreaker;
 import com.miaokatze.gtit.common.items.rings.RingSkywalk;
 import com.miaokatze.gtit.common.items.rings.RingTempest;
 import com.miaokatze.gtit.common.items.rings.RingWindrider;
+import com.miaokatze.gtit.gift.GiftShellCatalog;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 import codechicken.nei.api.API;
@@ -139,7 +139,7 @@ public class ItemRegistrar {
     // ========== 新手宝箱注册 ==========
 
     private static void registerStarterGift() {
-        StarterGift.setAndRegister(StarterGift::new);
+        GiftShellCatalog.register();
     }
 
     // ========== 猫猫币注册 ==========

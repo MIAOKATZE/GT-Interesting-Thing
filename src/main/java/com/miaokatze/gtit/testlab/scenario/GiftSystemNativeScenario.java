@@ -38,8 +38,10 @@ import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.config.GiftConfig;
 import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 import com.miaokatze.gtit.gift.GiftDefinition;
+import com.miaokatze.gtit.gift.GiftIconCatalog;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
+import com.miaokatze.gtit.gift.GiftShellCatalog;
 import com.miaokatze.gtit.gift.GiftWirelessEU;
 import com.miaokatze.gtit.gift.ui.GiftAccessHandler;
 import com.miaokatze.gtit.gift.ui.GiftGuiFactory;
@@ -85,10 +87,23 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         FakePlayer full) throws Exception {
         GiftRegistry registry = GiftRegistry.INSTANCE;
         GiftService service = GiftService.INSTANCE;
+        java.util.Set<net.minecraft.item.Item> shellItems = new java.util.HashSet<>();
+        for (String key : GiftIconCatalog.keys()) {
+            ItemStack shell = GiftShellCatalog.stack(key);
+            context.check(
+                "registered-shell-" + key,
+                shell != null && key.equals(GiftShellCatalog.key(shell))
+                    && GiftShellCatalog.registryName(key)
+                        .equals(net.minecraft.item.Item.itemRegistry.getNameForObject(shell.getItem()))
+                    && shellItems.add(shell.getItem()),
+                "Physical Forge item exists with its own registry identity and fixed shell: "
+                    + GiftShellCatalog.registryName(key));
+        }
         GiftDefinition definition = new GiftDefinition();
         definition.id = "lab-" + context.runId();
         definition.name = "Native gift " + context.runId();
         definition.trigger = GiftDefinition.Trigger.FIRST_LOGIN;
+        definition.shellKey = "lv";
         definition.wirelessEU = "1234567";
         ItemStack reward = NativeFixtures.specialStack(context, 65);
         definition.rewards.add(new ItemEntry("minecraft:paper", 65, 0, reward.getTagCompound()));
@@ -118,7 +133,8 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         ItemStack gift = findPackage(owner, definition.id);
         context.check(
             "first-login-package",
-            gift != null && service.status(owner, definition.id) == GiftService.Status.ISSUED,
+            gift != null && "lv".equals(GiftShellCatalog.key(gift))
+                && service.status(owner, definition.id) == GiftService.Status.ISSUED,
             "Production onLogin API persists an owner-bound package for a disconnected synthetic player");
         if (gift == null) return;
         String token = gift.getTagCompound()
@@ -142,6 +158,37 @@ final class GiftSystemNativeScenario implements ProbeScenario {
                     .toString());
         int slot = slotOf(owner, gift);
         owner.inventory.currentItem = slot;
+        ItemStack wrongShell = GiftShellCatalog.stack("hv");
+        wrongShell.setTagCompound(
+            (NBTTagCompound) gift.getTagCompound()
+                .copy());
+        owner.inventory.setInventorySlotContents(slot, wrongShell);
+        context.check(
+            "valid-token-wrong-physical-shell-refused",
+            !service.open(owner, wrongShell),
+            "An authentic token cannot be transferred from its authorized LV carrier to the HV item");
+        ItemStack wrongStarter = GiftShellCatalog.stack("starter");
+        wrongStarter.setTagCompound(
+            (NBTTagCompound) gift.getTagCompound()
+                .copy());
+        owner.inventory.setInventorySlotContents(slot, wrongStarter);
+        context.check(
+            "new-token-starter-substitution-refused",
+            !service.open(owner, wrongStarter),
+            "New grants cannot use the historical StarterGift compatibility exception");
+        for (String key : GiftIconCatalog.keys()) {
+            if ("starter".equals(key)) continue;
+            ItemStack raw = GiftShellCatalog.stack(key);
+            owner.inventory.setInventorySlotContents(slot, raw);
+            boolean refused = !service.open(owner, raw) && !raw.hasTagCompound();
+            raw.setTagCompound(new NBTTagCompound());
+            refused &= !service.open(owner, raw) && !raw.getTagCompound()
+                .hasKey(GiftService.TAG_TOKEN);
+            context.check(
+                "raw-shell-no-authorization-" + key,
+                refused,
+                "Untagged and empty-NBT creative/NEI shells cannot create grants or rewards");
+        }
         owner.inventory.setInventorySlotContents(slot, tampered);
         context.check(
             "tampered-token-refused",
@@ -208,6 +255,7 @@ final class GiftSystemNativeScenario implements ProbeScenario {
             "65 rewards need two free slots; failed opening retains the package, creates no drop, and credits no EU");
 
         GiftDefinition questGift = saved.copy();
+        questGift.shellKey = "hv";
         questGift.trigger = GiftDefinition.Trigger.BQ_COMPLETE;
         UUID quest = UUID.nameUUIDFromBytes((context.runId() + ":gift-quest").getBytes(StandardCharsets.UTF_8));
         questGift.questId = quest.toString();
@@ -224,7 +272,8 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         context.check(
             "offline-login-api-delivers-once",
             service.status(offline, definition.id) == GiftService.Status.ISSUED
-                && packageCount(offline, definition.id) == 1,
+                && packageCount(offline, definition.id) == 1
+                && "hv".equals(GiftShellCatalog.key(findPackage(offline, definition.id))),
             "Later onLogin API retries deliver the stored snapshot grant once even without live BQ completion state");
         if (Loader.isModLoaded("betterquesting")) {
             MinecraftForge.EVENT_BUS.post(new QuestEvent(QuestEvent.Type.COMPLETED, outsider.getUniqueID(), quest));
@@ -266,7 +315,9 @@ final class GiftSystemNativeScenario implements ProbeScenario {
             service.status(offline, definition.id) == GiftService.Status.DISABLED,
             "Disabling a definition hides an existing authorization without resetting its ledger");
         exerciseFirstLoginAndBatches(context, owner, definition);
+        exerciseHistoricalGrant(context, definition);
         exerciseLegacy(context, definition);
+        exerciseEraShellDelivery(context, definition);
         exerciseServerUiTree(context, owner);
         context.skip(
             "real-bq-party-membership-and-completion",
@@ -517,6 +568,9 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         starter.id = "starter";
         starter.builtIn = true;
         starter.wirelessEU = "0";
+        // This fixture enters through a snapshot rather than save(), so assign the same monotonic
+        // identity as production before subsequent native saves validate the whole registry.
+        starter.revision = ++snapshot.revision;
         snapshot.definitions.add(starter);
         GiftScope.field(GiftRegistry.class, "state")
             .set(GiftRegistry.INSTANCE, snapshot);
@@ -541,6 +595,144 @@ final class GiftSystemNativeScenario implements ProbeScenario {
                 "legacy-migration-replay-refused",
                 !GiftService.INSTANCE.open(legacy, replay),
                 "Migrated legacy package is owner/token bound and its opened receipt blocks replay");
+        }
+        ItemStack replacement = GiftShellCatalog.stack("starter");
+        legacy.inventory.setInventorySlotContents(8, replacement);
+        legacy.inventory.currentItem = 8;
+        context.check(
+            "legacy-untagged-replacement-remains-repeatable",
+            GiftService.INSTANCE.open(legacy, replacement),
+            "A second untagged historical starter remains a supported manual replacement; existing token replay stays blocked");
+        ItemStack partial = GiftShellCatalog.stack("starter");
+        NBTTagCompound forgedLocator = new NBTTagCompound();
+        forgedLocator.setString(GiftService.TAG_ID, "starter");
+        partial.setTagCompound(forgedLocator);
+        legacy.inventory.setInventorySlotContents(8, partial);
+        context.check(
+            "partial-starter-locator-not-legacy",
+            !GiftService.INSTANCE.open(legacy, partial),
+            "A partial grant locator cannot fall back to repeatable untagged starter migration");
+    }
+
+    private static void exerciseHistoricalGrant(ProbeContext context, GiftDefinition source) throws Exception {
+        FakePlayer player = context.player("gift-historical-token");
+        ownPlayerFiles(context, player);
+        GiftDefinition definition = source.copy();
+        definition.id = source.id + "-historical";
+        definition.shellKey = "ev";
+        definition.wirelessEU = "0";
+        definition.rewards.clear();
+        definition.rewards.add(new ItemEntry("minecraft:paper", 1, 0));
+        GiftRegistry.INSTANCE.save(definition, 0);
+        GiftService.INSTANCE.onLogin(player);
+        ItemStack issued = findPackage(player, definition.id);
+        if (issued == null) {
+            context.check(
+                "historical-token-starter-wrapper-compatible",
+                false,
+                "Expected synthetic authorization was not delivered");
+            return;
+        }
+        Path directory = (Path) GiftScope.field(GiftService.class, "directory")
+            .get(GiftService.INSTANCE);
+        Path ledger = directory.resolve(player.getUniqueID() + ".json");
+        Gson gson = new Gson();
+        com.google.gson.JsonObject json = gson
+            .fromJson(new String(Files.readAllBytes(ledger), StandardCharsets.UTF_8), com.google.gson.JsonObject.class);
+        json.getAsJsonObject("grants")
+            .getAsJsonObject(definition.id)
+            .getAsJsonObject("definition")
+            .remove("shellKey");
+        Files.write(
+            ledger,
+            gson.toJson(json)
+                .getBytes(StandardCharsets.UTF_8));
+        ((Map<?, ?>) GiftScope.field(GiftService.class, "ledgers")
+            .get(GiftService.INSTANCE)).remove(player.getUniqueID());
+        ItemStack historical = GiftShellCatalog.stack("starter");
+        historical.setTagCompound(
+            (NBTTagCompound) issued.getTagCompound()
+                .copy());
+        int slot = slotOf(player, issued);
+        player.inventory.setInventorySlotContents(slot, historical);
+        player.inventory.currentItem = slot;
+        context.check(
+            "historical-token-starter-wrapper-compatible",
+            GiftService.INSTANCE.open(player, historical)
+                && GiftService.INSTANCE.status(player, definition.id) == GiftService.Status.OPENED,
+            "An actual reloaded pre-shellKey grant accepts its old StarterGift wrapper and preserves owner/token authority");
+    }
+
+    private static void exerciseEraShellDelivery(ProbeContext context, GiftDefinition source) throws Exception {
+        FakePlayer player = context.player("gift-era-shell-delivery");
+        ownPlayerFiles(context, player);
+        for (String key : GiftIconCatalog.DEFAULT_KEYS) {
+            GiftDefinition definition = source.copy();
+            definition.id = source.id + "-shell-" + key;
+            definition.shellKey = key;
+            definition.name = "Era shell " + key;
+            definition.wirelessEU = "0";
+            definition.rewards.clear();
+            definition.randomRewards.clear();
+            definition.randomCount = 0;
+            GiftRegistry.INSTANCE.save(definition, 0);
+        }
+        GiftService.INSTANCE.onLogin(player);
+        for (String key : GiftIconCatalog.DEFAULT_KEYS) {
+            String id = source.id + "-shell-" + key;
+            ItemStack issued = findPackage(player, id);
+            String actualRegistry = issued == null ? "<missing>"
+                : String.valueOf(net.minecraft.item.Item.itemRegistry.getNameForObject(issued.getItem()));
+            int sourceSlot = issued == null ? -1 : slotOf(player, issued);
+            int handSlot = 0;
+            GiftService.Status before = GiftService.INSTANCE.status(player, id);
+            boolean held = false;
+            boolean returnedMatches = false;
+            boolean correct = issued != null && key.equals(GiftShellCatalog.key(issued))
+                && GiftShellCatalog.registryName(key)
+                    .equals(actualRegistry)
+                && player.getUniqueID()
+                    .toString()
+                    .equals(
+                        issued.getTagCompound()
+                            .getString(GiftService.TAG_OWNER));
+            if (correct) {
+                // A selected item must be in the real hotbar (0..8), not merely somewhere in mainInventory.
+                // Preserve the displaced item, including other packages awaiting their own checks.
+                if (sourceSlot != handSlot) {
+                    ItemStack displaced = player.inventory.getStackInSlot(handSlot);
+                    player.inventory.setInventorySlotContents(handSlot, issued);
+                    player.inventory.setInventorySlotContents(sourceSlot, displaced);
+                }
+                player.inventory.currentItem = handSlot;
+                held = player.inventory.getCurrentItem() == issued;
+                returnedMatches = issued.getItem()
+                    .onItemRightClick(issued, player.worldObj, player) == player.inventory.getCurrentItem();
+            }
+            GiftService.Status after = GiftService.INSTANCE.status(player, id);
+            int remaining = packageCount(player, id);
+            correct &= held && returnedMatches
+                && before == GiftService.Status.ISSUED
+                && after == GiftService.Status.OPENED
+                && remaining == 0;
+            context.check(
+                "era-shell-issued-and-right-click-" + key,
+                correct,
+                "Production delivery and real item right-click: registry=" + actualRegistry
+                    + ", sourceSlot="
+                    + sourceSlot
+                    + ", handSlot="
+                    + handSlot
+                    + ", held="
+                    + held
+                    + ", returnedMatches="
+                    + returnedMatches
+                    + ", before="
+                    + before
+                    + ", after="
+                    + after
+                    + ", remaining="
+                    + remaining);
         }
     }
 

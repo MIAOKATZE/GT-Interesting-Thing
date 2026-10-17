@@ -15,6 +15,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
@@ -283,7 +284,7 @@ public final class TerminalMailPage {
                 .size(LABEL_W - 4, 9)
                 .scale(0.8f)
                 .shadow(false));
-        TextFieldWidget titleField = new TextFieldWidget()
+        TextFieldWidget titleField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> draftTitle, val -> draftTitle = val))
             .setMaxLength(TerminalActionPacket.MAX_TEXT1_LENGTH);
         titleField.pos(FIELD_X, TITLE_Y)
@@ -302,7 +303,7 @@ public final class TerminalMailPage {
                 .size(LABEL_W - 4, 9)
                 .scale(0.8f)
                 .shadow(false));
-        TextFieldWidget bodyField = new TextFieldWidget()
+        TextFieldWidget bodyField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> draftBody, val -> draftBody = val))
             .setMaxLength(TerminalActionPacket.MAX_TEXT2_LENGTH);
         bodyField.pos(FIELD_X, BODY_Y)
@@ -321,7 +322,7 @@ public final class TerminalMailPage {
                 .size(LABEL_W - 4, 9)
                 .scale(0.8f)
                 .shadow(false));
-        TextFieldWidget rewardIdField = new TextFieldWidget()
+        TextFieldWidget rewardIdField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> draftRewardId, val -> draftRewardId = val))
             .setMaxLength(TerminalActionPacket.MAX_TEXT3_LENGTH);
         rewardIdField.pos(FIELD_X, REWARD_ID_Y)

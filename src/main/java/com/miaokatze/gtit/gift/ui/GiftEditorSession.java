@@ -12,8 +12,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 import com.miaokatze.gtit.gift.GiftDefinition;
+import com.miaokatze.gtit.gift.GiftIconCatalog;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
+import com.miaokatze.gtit.gift.GiftShellCatalog;
 
 /** Per-window draft. Nothing here is persisted until the explicit save action. */
 final class GiftEditorSession {
@@ -127,8 +129,24 @@ final class GiftEditorSession {
         definition.id = "";
         definition.name = "";
         definition.enabled = true;
+        definition.shellKey = "starter";
         load(definition);
         selectedId = "";
+    }
+
+    String shellKey() {
+        return GiftShellCatalog.effectiveKey(draft);
+    }
+
+    ItemStack shellStack() {
+        return GiftShellCatalog.stack(shellKey());
+    }
+
+    void bindShell(String key) {
+        requireAdmin();
+        if (!GiftIconCatalog.contains(key)) throw new IllegalArgumentException("Unknown gift shell");
+        draft.shellKey = key;
+        draft.iconKey = key;
     }
 
     private void load(GiftDefinition definition) {

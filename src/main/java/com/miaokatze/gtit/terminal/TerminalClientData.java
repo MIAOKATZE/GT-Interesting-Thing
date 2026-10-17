@@ -143,7 +143,7 @@ public final class TerminalClientData {
      */
     public static String getResultDisplayLine() {
         if (lastResultAt == 0L) {
-            return EnumChatFormatting.YELLOW + "管理终端就绪";
+            return EnumChatFormatting.GOLD + "管理终端就绪";
         }
         return statusColor(lastStatus) + TerminalActionHandler.actionName(lastAction) + ": " + lastResultMessage;
     }
@@ -176,12 +176,12 @@ public final class TerminalClientData {
 
     /** status → 回显颜色（成功绿 / 失败红 / 其他黄） */
     private static EnumChatFormatting statusColor(int status) {
-        if (status == TerminalActionHandler.STATUS_SUCCESS) return EnumChatFormatting.GREEN;
+        if (status == TerminalActionHandler.STATUS_SUCCESS) return EnumChatFormatting.DARK_GREEN;
         if (status == TerminalActionHandler.STATUS_INTERNAL_FAILURE || status == TerminalActionHandler.STATUS_DENIED
             || status == TerminalActionHandler.STATUS_INVALID_REQUEST
             || status == TerminalActionHandler.STATUS_TARGET_NOT_FOUND
-            || status == TerminalActionHandler.STATUS_BUSINESS_FAILURE) return EnumChatFormatting.RED;
-        return EnumChatFormatting.YELLOW;
+            || status == TerminalActionHandler.STATUS_BUSINESS_FAILURE) return EnumChatFormatting.DARK_RED;
+        return EnumChatFormatting.GOLD;
     }
 
     /** null 安全不可变拷贝 */

@@ -17,6 +17,7 @@ import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
@@ -137,7 +138,7 @@ public final class TerminalTradePage {
             new TextWidget<>(IKey.str(LABEL_TARGET)).pos(0, 38)
                 .size(40, 10)
                 .shadow(false));
-        targetNameField = new TextFieldWidget().value(
+        targetNameField = new UtilityControls.Field().value(
             new StringValue.Dynamic(TerminalTradePage::getTargetPlayerName, TerminalTradePage::setTargetPlayerName));
         targetNameField.pos(FIELD_X, FIELD_Y)
             .size(PAGE_WIDTH - FIELD_X, 14)

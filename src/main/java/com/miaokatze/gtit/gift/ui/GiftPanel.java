@@ -20,20 +20,19 @@ import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.PhantomItemSlotSH;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
-import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.Dialog;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
-import com.cleanroommc.modularui.widgets.PageButton;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
-import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftIconCatalog;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
+import com.miaokatze.gtit.gift.GiftShellCatalog;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import io.netty.buffer.Unpooled;
@@ -106,13 +105,11 @@ final class GiftPanel {
                 return gift == null ? "" : gift.name;
             });
             StringSyncValue status = read(sm, "gift_row_status_" + i, () -> session.status(session.row(row)));
-            StringSyncValue icon = read(sm, "gift_row_icon_" + i, () -> {
-                GiftDefinition gift = session.row(row);
-                return gift == null || gift.icon != null ? "" : gift.iconKey;
-            });
             GenericSyncValue<net.minecraft.item.ItemStack, ?> item = GiftItemSync.readOnly(() -> {
                 GiftDefinition gift = session.row(row);
-                return gift == null || gift.icon == null ? null : gift.icon.toItemStack();
+                return gift == null ? null
+                    : gift.icon == null ? GiftShellCatalog.stack(GiftShellCatalog.effectiveKey(gift))
+                        : gift.icon.toItemStack();
             });
             sm.syncValue("gift_row_item_" + i, item);
             int y = 39 + i * 32;
@@ -125,24 +122,21 @@ final class GiftPanel {
                             .isEmpty()));
             panel.child(
                 IKey.dynamic(name::getStringValue)
-                    .color(UtilityUiStyle.TEXT)
+                    .color(UtilityUiStyle.BUTTON_TEXT)
+                    .shadow(true)
                     .asWidget()
                     .pos(42, y + 4)
                     .size(138, 12)
                     .scale(0.8f));
             panel.child(
-                new GiftCatalogDrawable(icon::getStringValue).asWidget()
-                    .pos(17, y + 5)
-                    .size(18)
-                    .setEnabledIf(
-                        w -> !icon.getStringValue()
-                            .isEmpty()));
-            panel.child(
                 new ItemDisplayWidget().item(item)
                     .pos(17, y + 5)
-                    .size(18));
+                    .size(18)
+                    .background(UtilityUiStyle.SLOT));
             panel.child(
                 IKey.dynamic(() -> translatedStatus(status))
+                    .color(UtilityUiStyle.BUTTON_TEXT)
+                    .shadow(true)
                     .asWidget()
                     .pos(42, y + 18)
                     .scale(0.65f)
@@ -224,7 +218,7 @@ final class GiftPanel {
                 .size(190, 20)
                 .scale(0.75f));
         panel.child(
-            new ButtonWidget<>().pos(200, 174)
+            new UtilityControls.ActionButton().pos(200, 174)
                 .size(190, 18)
                 .overlay(IKey.lang("gtit.gift.ui.preview"))
                 .setEnabledIf(
@@ -242,7 +236,7 @@ final class GiftPanel {
             w -> !selection.getStringValue()
                 .isEmpty()));
         panel.child(
-            new PageButton(1, navigation).pos(200, 220)
+            new UtilityControls.Page(1, navigation).pos(200, 220)
                 .size(92, 18)
                 .overlay(IKey.lang("gtit.gift.ui.edit"))
                 .setEnabledIf(
@@ -316,7 +310,7 @@ final class GiftPanel {
         panel.child(UtilityUiStyle.section(8, 50, 390, 190));
         panel.child(UtilityUiStyle.section(8, 320, 390, 32));
         panel.child(
-            new PageButton(0, navigation).pos(288, 8)
+            new UtilityControls.Page(0, navigation).pos(288, 8)
                 .size(82, 18)
                 .overlay(IKey.lang("gtit.gift.ui.back")));
         panel.child(
@@ -330,7 +324,7 @@ final class GiftPanel {
         String[] titles = { "general", "required", "random" };
         for (int i = 0; i < 3; i++) {
             panel.child(
-                new PageButton(i, pages).pos(12 + i * 126, 29)
+                new UtilityControls.Page(i, pages).pos(12 + i * 126, 29)
                     .size(120, 18)
                     .overlay(IKey.lang("gtit.gift.ui." + titles[i])));
         }
@@ -397,7 +391,7 @@ final class GiftPanel {
             handler.closePanel();
         }));
         dialog.child(
-            new ButtonWidget<>().pos(146, 117)
+            new UtilityControls.ActionButton().pos(146, 117)
                 .size(126, 18)
                 .overlay(IKey.lang("gtit.gift.ui.cancel"))
                 .onMousePressed(mouse -> {
@@ -406,9 +400,10 @@ final class GiftPanel {
                     return true;
                 }));
         dialog.child(
-            ButtonWidget.panelCloseButton()
+            UtilityUiStyle.closeButton(dialog)
                 .right(6)
                 .top(6));
+        UtilityUiStyle.styleContent(dialog);
         return dialog;
     }
 
@@ -580,19 +575,37 @@ final class GiftPanel {
                 "",
                 0,
                 140,
-                105,
+                80,
                 true,
                 () -> session.draft.enabled = !session.draft.enabled).overlay(
                     IKey.dynamic(
                         read(sm, "gift_enabled_text", () -> session.draft.enabled ? "ON" : "OFF")::getStringValue)));
-        root.child(ghost(sm, session, 0).pos(113, 140));
+        StringSyncValue boundShell = read(sm, "gift_bound_shell_key", session::shellKey);
+        GenericSyncValue<net.minecraft.item.ItemStack, ?> shellItem = GiftItemSync.readOnly(session::shellStack);
+        sm.syncValue("gift_bound_shell_item", shellItem);
         root.child(
-            IKey.lang("gtit.gift.ui.icon_hint")
+            new ItemDisplayWidget().item(shellItem)
+                .pos(88, 140)
+                .size(18)
+                .background(UtilityUiStyle.SLOT)
+                .addTooltipLine(IKey.lang("gtit.gift.ui.shell_hint")));
+        root.child(
+            IKey.lang(() -> GiftIconCatalog.labelKey(boundShell.getStringValue()))
                 .asWidget()
-                .pos(139, 144)
+                .pos(110, 141)
+                .size(157, 14)
                 .scale(0.7f));
+        root.child(
+            IKey.lang("gtit.gift.ui.list_icon")
+                .asWidget()
+                .pos(274, 144)
+                .size(76, 12)
+                .scale(0.7f));
+        root.child(
+            ghost(sm, session, 0).pos(354, 140)
+                .addTooltipLine(IKey.lang("gtit.gift.ui.icon_hint")));
         String[] icons = GiftIconCatalog.keys();
-        // The catalog has a bounded fixed grid and never registers handlers dynamically.
+        // The fixed grid selects real registered carrier items; the custom list icon is independent.
         for (int i = 0; i < 12; i++) {
             final int index = i;
             StringSyncValue icon = read(sm, "gift_icon_key_" + i, () -> {
@@ -602,15 +615,31 @@ final class GiftPanel {
             root.child(button(sm, session, "gift_icon_" + i, "", 26 + i * 27, 165, 25, true, () -> {
                 int entry = session.iconPage * 12 + index;
                 if (entry >= icons.length) return;
-                session.draft.iconKey = icons[entry];
-                session.items.setStackInSlot(0, null);
-                session.unresolved[0] = null;
+                session.bindShell(icons[entry]);
             }).height(19)
-                .overlay(new GiftCatalogDrawable(icon::getStringValue))
+                .selected(
+                    () -> icon.getStringValue()
+                        .equals(boundShell.getStringValue()))
                 .setEnabledIf(
                     w -> !icon.getStringValue()
                         .isEmpty())
-                .tooltipBuilder(t -> t.addLine(IKey.lang(GiftIconCatalog.labelKey(icon.getStringValue())))));
+                .tooltipBuilder(t -> {
+                    t.addLine(IKey.lang("gtit.gift.ui.shell"));
+                    t.addLine(IKey.lang(GiftIconCatalog.labelKey(icon.getStringValue())));
+                    if (!icon.getStringValue()
+                        .isEmpty()) t.addLine(GiftShellCatalog.registryName(icon.getStringValue()));
+                    t.addLine(IKey.lang("gtit.gift.ui.shell_hint"));
+                }));
+            GenericSyncValue<net.minecraft.item.ItemStack, ?> carrier = GiftItemSync.readOnly(() -> {
+                int entry = session.iconPage * 12 + index;
+                return entry < icons.length ? GiftShellCatalog.stack(icons[entry]) : null;
+            });
+            sm.syncValue("gift_shell_choice_item_" + i, carrier);
+            root.child(
+                new UtilityControls.DecorativeItem().item(carrier)
+                    .pos(29 + i * 27, 165)
+                    .size(18)
+                    .background(com.cleanroommc.modularui.api.drawable.IDrawable.EMPTY));
         }
         root.child(
             button(
@@ -658,7 +687,7 @@ final class GiftPanel {
                 value -> session.amount(slot, value),
                 4);
             root.child(
-                new TextFieldWidget().pos(24, y)
+                new UtilityControls.Field().pos(24, y)
                     .size(49, 18)
                     .value(amount)
                     .setMaxLength(4)
@@ -672,7 +701,7 @@ final class GiftPanel {
                 value -> session.nbt(slot, value),
                 16384);
             root.child(
-                new TextFieldWidget().pos(79, y)
+                new UtilityControls.Field().pos(79, y)
                     .size(278, 18)
                     .value(nbt)
                     .setMaxLength(16384)
@@ -801,15 +830,15 @@ final class GiftPanel {
                 .scale(0.8f)
                 .size(93, 12));
         root.child(
-            new TextFieldWidget().pos(98, y)
+            new UtilityControls.Field().pos(98, y)
                 .size(284, 18)
                 .value(write(sm, session, key, getter, setter, limit))
                 .setMaxLength(limit)
                 .background(UtilityUiStyle.INPUT));
     }
 
-    private static ButtonWidget<?> button(PanelSyncManager sm, GiftEditorSession session, String key, String label,
-        int x, int y, int width, boolean admin, Runnable task) {
+    private static UtilityControls.ActionButton button(PanelSyncManager sm, GiftEditorSession session, String key,
+        String label, int x, int y, int width, boolean admin, Runnable task) {
         InteractionSyncHandler handler = new InteractionSyncHandler().setOnMousePressed(mouse -> {
             if (!sm.isClient() && mouse.mouseButton == 0) {
                 final long generation = session.editGeneration;
@@ -822,7 +851,7 @@ final class GiftPanel {
             }
         });
         sm.syncValue(key, handler);
-        return new ButtonWidget<>().pos(x, y)
+        return new UtilityControls.ActionButton().pos(x, y)
             .size(width, 18)
             .overlay(label.isEmpty() ? IKey.str("") : IKey.lang(label))
             .syncHandler(handler);

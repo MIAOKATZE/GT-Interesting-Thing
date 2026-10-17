@@ -36,6 +36,7 @@ final class GiftDefaults {
             GiftDefinition gift = new GiftDefinition();
             gift.id = IDS[i];
             gift.iconKey = IDS[i];
+            gift.shellKey = IDS[i];
             gift.icon = null;
             gift.name = new String[] { "新手礼包", "蒸汽时代礼包", "LV时代礼包", "MV时代礼包", "HV时代礼包", "EV时代礼包", "IV时代礼包",
                 "LuV时代礼包" }[i];

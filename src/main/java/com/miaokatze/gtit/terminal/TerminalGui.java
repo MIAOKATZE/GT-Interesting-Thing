@@ -12,6 +12,7 @@ import com.cleanroommc.modularui.widgets.PageButton;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
@@ -122,7 +123,7 @@ public class TerminalGui extends CustomModularScreen {
 
         for (int index = 0; index < tabs.length; index++) {
             String name = tabs[index];
-            PageButton tabButton = new PageButton(index, controller).size(30, 24)
+            PageButton tabButton = new UtilityControls.Page(index, controller).size(30, 24)
                 .overlay(IKey.str(name));
             tabButton.tooltipBuilder(t -> t.addLine(IKey.str(name)));
             tabColumn.child(tabButton);

@@ -21,7 +21,6 @@ import net.minecraft.world.World;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -177,11 +176,15 @@ public final class GiftService {
             || stack.stackSize != 1
             || player.worldObj.isRemote
             || player.inventory.getCurrentItem() != stack
-            || !GTITItemList.StarterGift.isStackEqual(stack, true, true)) return false;
+            || GiftShellCatalog.key(stack) == null) return false;
         try {
             NBTTagCompound tag = stack.getTagCompound();
             Grant grant;
             if (tag == null || !tag.hasKey(TAG_TOKEN)) {
+                // Only the historical starter item supports untagged replacement packages.
+                // Partial/forged locator NBT must never be treated as a legacy package.
+                if (!"starter".equals(GiftShellCatalog.key(stack))
+                    || tag != null && (tag.hasKey(TAG_ID) || tag.hasKey(TAG_OWNER))) return false;
                 GiftDefinition starter = GiftRegistry.INSTANCE.get("starter");
                 // Disabling new built-in gifts must not invalidate already-owned legacy packages.
                 if (starter == null) starter = GiftDefaults.createMigratingLegacy()
@@ -202,6 +205,11 @@ public final class GiftService {
                 UUID.fromString(tag.getString(TAG_TOKEN));
                 grant = findToken(ledger(player.getUniqueID()), tag.getString(TAG_TOKEN));
                 if (grant == null || !grant.definition.id.equals(tag.getString(TAG_ID))) return false;
+                String actualShell = GiftShellCatalog.key(stack);
+                boolean historicalStarter = "starter".equals(actualShell)
+                    && (grant.legacy || grant.definition.shellKey == null);
+                if (!historicalStarter && !actualShell.equals(GiftShellCatalog.effectiveKey(grant.definition)))
+                    return false;
             }
             NBTTagCompound receipt = receipts(player);
             if (receipt.getBoolean(grant.token + ":opened")) return false;
@@ -283,7 +291,7 @@ public final class GiftService {
                 continue;
             }
             if (!grant.requested || grant.legacy || receipt.getBoolean(grant.token + ":issued")) continue;
-            ItemStack gift = GTITItemList.StarterGift.get(1);
+            ItemStack gift = GiftShellCatalog.stack(GiftShellCatalog.effectiveKey(grant.definition));
             if (gift == null) throw new IllegalStateException("Gift package item is unavailable");
             NBTTagCompound tag = new NBTTagCompound();
             writePackage(tag, grant);
@@ -389,10 +397,6 @@ public final class GiftService {
         tag.setString(TAG_ID, grant.definition.id);
         tag.setString(TAG_OWNER, grant.owner);
         tag.setString(TAG_ICON, grant.definition.iconKey);
-        if (grant.definition.icon != null) {
-            ItemStack icon = grant.definition.icon.toItemStack();
-            if (icon != null) tag.setTag(TAG_ITEM_ICON, icon.writeToNBT(new NBTTagCompound()));
-        }
         NBTTagCompound display = new NBTTagCompound();
         display.setString("Name", grant.definition.name);
         tag.setTag("display", display);

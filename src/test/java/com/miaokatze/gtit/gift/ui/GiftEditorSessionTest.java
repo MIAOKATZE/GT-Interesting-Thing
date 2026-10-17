@@ -32,10 +32,14 @@ public final class GiftEditorSessionTest {
         definition.id = "editor_test";
         definition.name = "Draft isolation";
         definition.trigger = GiftDefinition.Trigger.FIRST_LOGIN;
+        definition.shellKey = "festival";
         definition.rewards.add(new ItemEntry("minecraft:diamond", 7, 0));
         GiftDefinition saved = registry.save(definition, 0);
         GiftEditorSession draft = new GiftEditorSession(null);
         draft.select(saved);
+        check("festival".equals(draft.shellKey()), "Editor loads the saved physical carrier binding");
+        draft.draft.shellKey = "winter";
+        check("festival".equals(registry.get(saved.id).shellKey), "Carrier edits remain in the draft until save");
         long openedGeneration = draft.editGeneration;
 
         ItemStack cursor = new ItemStack(Items.emerald, 41);
@@ -84,6 +88,7 @@ public final class GiftEditorSessionTest {
             rejected && "Changed in another window".equals(registry.get(saved.id).name),
             "Stale editor save must not overwrite a newer definition");
         draft.create();
+        check("starter".equals(draft.shellKey()), "New definitions start with an explicit physical carrier");
         check(
             draft.editGeneration > openedGeneration && draft.items.getStackInSlot(128) == null
                 && draft.items.getStackInSlot(256) == null,

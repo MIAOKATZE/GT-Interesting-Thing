@@ -75,6 +75,14 @@ public final class GiftRegistry {
                     evaluateDefaultUpgrade(loaded, GiftDefaults.create(), GiftDefaults.VERSION);
                     changed = true;
                 }
+        // Add only the new carrier identity. Rewards, edits, deletions and default-update decisions survive.
+        for (GiftDefinition gift : loaded.definitions) {
+            if (gift.shellKey == null) {
+                gift.shellKey = GiftShellCatalog.effectiveKey(gift);
+                gift.revision = loaded.revision + 1;
+                changed = true;
+            }
+        }
         refreshPrompt(loaded);
         if (changed) {
             loaded.revision++;
@@ -110,6 +118,7 @@ public final class GiftRegistry {
         requireReady();
         if (definition == null) throw new IllegalArgumentException("Missing gift definition");
         GiftDefinition next = definition.copy();
+        if (next.shellKey == null) next.shellKey = GiftShellCatalog.effectiveKey(next);
         next.validate();
         validateResolvedItems(next);
         if (GiftFiles.JSON.toJson(next)
@@ -138,6 +147,18 @@ public final class GiftRegistry {
         Snapshot updated = copy(state);
         updated.definitions.removeIf(g -> g.id.equals(id));
         persist(updated);
+    }
+
+    /** Multiple definitions may share a carrier; token-bearing packages identify their exact snapshot. */
+    public synchronized List<GiftDefinition> boundDefinitions(String shellKey) {
+        requireReady();
+        List<GiftDefinition> result = new ArrayList<>();
+        for (GiftDefinition definition : state.definitions) {
+            if (isEnabled(definition) && shellKey.equals(GiftShellCatalog.effectiveKey(definition))) {
+                result.add(definition.copy());
+            }
+        }
+        return result;
     }
 
     public synchronized void setDefaultsEnabled(boolean enabled, long expectedRevision) {

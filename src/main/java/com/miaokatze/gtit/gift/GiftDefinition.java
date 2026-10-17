@@ -27,6 +27,8 @@ public final class GiftDefinition {
     public String name = "";
     public ItemEntry icon = new ItemEntry("minecraft:chest", 1, 0);
     public String iconKey = "gift";
+    /** Null marks a definition written before physical gift-shell bindings existed. */
+    public String shellKey;
     public Trigger trigger = Trigger.BQ_UNLOCK;
     public String questId = "";
     public List<ItemEntry> rewards = new ArrayList<>();
@@ -58,6 +60,7 @@ public final class GiftDefinition {
         if (wirelessEU == null || !wirelessEU.matches("[0-9]{1,128}")) fail("Invalid wireless EU");
         if (new BigInteger(wirelessEU).signum() < 0) fail("Negative wireless EU");
         if (iconKey == null || iconKey.length() > 64) fail("Invalid gift icon");
+        if (shellKey != null && !GiftIconCatalog.contains(shellKey)) fail("Invalid gift shell");
         if (icon != null) validateItem(icon);
         for (ItemEntry entry : rewards) validateItem(entry);
         for (ItemEntry entry : randomRewards) validateItem(entry);

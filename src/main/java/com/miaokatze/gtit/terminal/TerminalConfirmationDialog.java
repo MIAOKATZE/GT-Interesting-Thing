@@ -2,9 +2,9 @@ package com.miaokatze.gtit.terminal;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.utils.Alignment;
-import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.Dialog;
 import com.cleanroommc.modularui.widgets.TextWidget;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /** Terminal-only confirmation layout with room for the complete administrative warning. */
@@ -25,7 +25,7 @@ final class TerminalConfirmationDialog extends Dialog<Boolean> {
                 .color(UtilityUiStyle.TEXT)
                 .shadow(false));
         child(
-            new ButtonWidget<>().pos(24, 94)
+            new UtilityControls.ActionButton().pos(24, 94)
                 .size(80, 18)
                 .overlay(IKey.dynamic(() -> confirmText))
                 .onMouseTapped(mouse -> {
@@ -34,7 +34,7 @@ final class TerminalConfirmationDialog extends Dialog<Boolean> {
                     return true;
                 }));
         child(
-            new ButtonWidget<>().pos(116, 94)
+            new UtilityControls.ActionButton().pos(116, 94)
                 .size(80, 18)
                 .overlay(IKey.dynamic(() -> cancelText))
                 .onMouseTapped(mouse -> {
@@ -42,6 +42,7 @@ final class TerminalConfirmationDialog extends Dialog<Boolean> {
                     closeWith(false);
                     return true;
                 }));
+        UtilityUiStyle.styleContent(this);
         setDisablePanelsBelow(true).setDraggable(false);
     }
 

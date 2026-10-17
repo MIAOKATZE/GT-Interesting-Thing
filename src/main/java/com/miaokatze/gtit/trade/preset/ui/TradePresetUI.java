@@ -32,14 +32,12 @@ import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.ListWidget;
-import com.cleanroommc.modularui.widgets.PageButton;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
-import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.google.gson.Gson;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 import com.miaokatze.gtit.trade.preset.TradePresetManager;
 import com.miaokatze.gtit.trade.preset.TradePresetManager.Icon;
@@ -144,11 +142,11 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 .pos(12, 10)
                 .size(220, 16));
         panel.child(
-            new PageButton(0, pages).pos(12, 31)
+            new UtilityControls.Page(0, pages).pos(12, 31)
                 .size(112, 18)
                 .overlay(IKey.lang("gtit.preset.choose")));
         panel.child(
-            new PageButton(1, pages).pos(128, 31)
+            new UtilityControls.Page(1, pages).pos(128, 31)
                 .size(112, 18)
                 .overlay(IKey.lang("gtit.preset.create")));
         panel.child(
@@ -250,7 +248,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 dispatch(action);
             });
             sync.syncValue("action_" + key, handler);
-            return new ButtonWidget<>().overlay(
+            return new UtilityControls.ActionButton().overlay(
                 IKey.lang(label)
                     .scale(0.8f))
                 .syncHandler(handler);
@@ -272,7 +270,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 ParentWidget<?> row = new ParentWidget<>().size(386, 58)
                     .marginBottom(4);
                 row.child(
-                    new ToggleButton().value(checked)
+                    new UtilityControls.Toggle().value(checked)
                         .pos(0, 0)
                         .size(330, 58)
                         .tooltipBuilder(t -> {
@@ -373,7 +371,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         .scale(0.7f));
             } else {
                 page.child(
-                    new ToggleButton().value(contentMode)
+                    new UtilityControls.Toggle().value(contentMode)
                         .pos(202, 0)
                         .size(190, 22)
                         .overlay(
@@ -411,7 +409,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 }).allowC2S();
                 sync.syncValue("tab_" + tab.id, value);
                 choices.child(
-                    new ToggleButton().value(value)
+                    new UtilityControls.Toggle().value(value)
                         .size(178, 22)
                         .marginBottom(3)
                         .overlay(
@@ -503,7 +501,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         .size(194, 16));
             } else {
                 page.child(
-                    new TextFieldWidget().value(value)
+                    new UtilityControls.Field().value(value)
                         .setMaxLength(max)
                         .autoUpdateOnChange(true)
                         .background(UtilityUiStyle.INPUT)

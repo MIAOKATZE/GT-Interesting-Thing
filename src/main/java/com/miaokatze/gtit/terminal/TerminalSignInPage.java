@@ -14,6 +14,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
@@ -239,7 +240,7 @@ public final class TerminalSignInPage {
                 .scale(0.8f)
                 .shadow(false));
 
-        TextFieldWidget daysField = new TextFieldWidget()
+        TextFieldWidget daysField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> daysDraft, val -> daysDraft = val))
             .setMaxLength(4);
         daysField.pos(28, 0)

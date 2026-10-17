@@ -28,6 +28,7 @@ public final class GiftSystemTest {
         if (!MinecraftTestBootstrap.enter(GiftSystemTest.class, args)) return;
         Path root = Files.createTempDirectory("gtit-gift-regression-");
         migrationAndUpdates(root);
+        shellBindingMigration(root);
         malformedAndFailedWrites(root);
         itemAndEnergyTransactions();
         mixedDefaultPolicies();
@@ -47,6 +48,9 @@ public final class GiftSystemTest {
         Path file = root.resolve("registry.json");
         registry.init(file);
         check(registry.snapshot().definitions.size() == 8, "Initial registry has eight defaults");
+        for (GiftDefinition definition : registry.snapshot().definitions) {
+            check(definition.id.equals(definition.shellKey), "Each default era binds its matching physical carrier");
+        }
         GiftDefinition starter = registry.get("starter");
         check(starter.rewards.size() == 1 && starter.rewards.get(0).amount == 7, "Legacy content migrates");
         check(
@@ -192,6 +196,59 @@ public final class GiftSystemTest {
             state.definitions.stream()
                 .noneMatch(g -> g.id.equals("lv")) && state.pendingDefaultIds.contains("lv"),
             "Recommended deleted definition remains deleted until acceptance");
+    }
+
+    private static void shellBindingMigration(Path root) throws Exception {
+        GiftRegistry registry = new GiftRegistry();
+        Path file = root.resolve("shell-migration.json");
+        registry.init(file);
+        GiftRegistry.Snapshot old = registry.snapshot();
+        for (GiftDefinition definition : old.definitions) {
+            definition.shellKey = null;
+            definition.name = "User edited " + definition.id;
+            definition.rewards.clear();
+            definition.rewards.add(new GiftConfig.ItemEntry("minecraft:diamond", 37, 0));
+        }
+        old.definitions.removeIf(g -> "steam".equals(g.id));
+        old.defaultsEnabled = false;
+        old.updateNotice = false;
+        GiftFiles.write(file, old);
+        registry.init(file);
+        check(
+            registry.snapshot().definitions.size() == 7 && registry.get("steam") == null,
+            "Binding migration does not restore deleted defaults");
+        check(
+            !registry.snapshot().defaultsEnabled && !registry.snapshot().updateNotice,
+            "Binding migration preserves default switches");
+        for (GiftDefinition definition : registry.snapshot().definitions) {
+            check(definition.id.equals(definition.shellKey), "Every old era binds its physical item");
+            check(
+                definition.name.equals("User edited " + definition.id) && definition.rewards.size() == 1
+                    && definition.rewards.get(0).amount == 37,
+                "Binding-only migration preserves user names and rewards");
+        }
+        long revision = registry.snapshot().revision;
+        registry.init(file);
+        check(registry.snapshot().revision == revision, "Binding migration is persisted exactly once");
+        GiftDefinition first = simple("shared-shell-a");
+        first.shellKey = "festival";
+        GiftDefinition second = simple("shared-shell-b");
+        second.shellKey = "festival";
+        registry.save(first, 0);
+        registry.save(second, 0);
+        registry.init(file);
+        check(
+            registry.boundDefinitions("festival")
+                .size() == 2,
+            "Multiple definitions may persist the same shell without a uniqueness restriction");
+        check(
+            "gtit:starter_gift".equals(GiftShellCatalog.registryName("starter")),
+            "Historical starter registry name is retained");
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (String key : GiftIconCatalog.keys()) names.add(GiftShellCatalog.registryName(key));
+        check(names.size() == 32, "All 32 catalog shells have independent registry identities");
+        first.shellKey = "unknown";
+        expectFailure(first::validate, "Unknown physical shell binding is rejected");
     }
 
     private static void capacityBoundaries(Path root) throws Exception {
