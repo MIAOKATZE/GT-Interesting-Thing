@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "example-stone-decoration",
+  "name": "示例：原版石砖交换",
+  "description": "仅为文件格式示例，不会自动安装或选择。需要时复制到服务器 MiaoTrade 目录后重新读取预设列表。",
+  "icon": { "item": "minecraft:stonebrick", "meta": 0, "nbtBase64": "" },
+  "mutuallyExclusiveIds": [],
+  "tabs": [{
+    "page": { "id": 1, "name": "石砖示例", "iconItem": "minecraft:stonebrick", "iconMeta": 0, "iconNbt": "", "isDefault": false },
+    "trades": [{
+      "id": "stone-to-stonebrick",
+      "tabId": 1,
+      "orderId": 0,
+      "fromItems": [{ "item": "minecraft:stone", "meta": 0, "amount": 4 }],
+      "toItems": [{ "item": "minecraft:stonebrick", "meta": 0, "amount": 4 }],
+      "cooldown": 0,
+      "maxTrades": -1,
+      "bqQuestId": "",
+      "recordNBT": false,
+      "requiresMods": ["minecraft"]
+    }]
+  }]
+}

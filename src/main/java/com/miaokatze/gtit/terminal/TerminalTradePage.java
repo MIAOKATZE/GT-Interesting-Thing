@@ -17,7 +17,7 @@ import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
-import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
+import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
  * 管理终端-交易/冷却运维页（T4 实装，纯客户端 MUI2）
@@ -29,7 +29,7 @@ import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
  * <ol>
  * <li>重载交易注册表（服务端 reload 成功后自动向全服玩家同步）</li>
  * <li>重载抽奖配置（服务端单调用 LotteryManager.loadConfig 重建卡池）</li>
- * <li>重置交易历史与冷却（{@link NekoConfirmationDialog} 二次确认后才发包；
+ * <li>重置交易历史与冷却（{@link TerminalConfirmationDialog} 二次确认后才发包；
  * 影响目标所在整个队伍，不可恢复）</li>
  * </ol>
  * 动作经 {@link TerminalNetworkManager#sendAction} 走 {@link TerminalActionHandler}
@@ -126,7 +126,9 @@ public final class TerminalTradePage {
             new TextWidget<>(IKey.str(TITLE)).pos(0, 0)
                 .width(PAGE_WIDTH)
                 .height(12)
-                .textAlign(Alignment.CENTER));
+                .textAlign(Alignment.CENTER)
+                .color(UtilityUiStyle.TEXT)
+                .shadow(false));
         page.child(smallGrayLine(DESC_1, 13));
         page.child(smallGrayLine(DESC_2, 23));
 
@@ -138,7 +140,8 @@ public final class TerminalTradePage {
         targetNameField = new TextFieldWidget().value(
             new StringValue.Dynamic(TerminalTradePage::getTargetPlayerName, TerminalTradePage::setTargetPlayerName));
         targetNameField.pos(FIELD_X, FIELD_Y)
-            .size(PAGE_WIDTH - FIELD_X, 14);
+            .size(PAGE_WIDTH - FIELD_X, 14)
+            .background(UtilityUiStyle.INPUT);
         targetNameField.setMaxLength(TerminalActionPacket.MAX_TARGET_PLAYER_LENGTH);
         targetNameField.hintText("玩家名");
         targetNameField.tooltipBuilder(t -> {
@@ -164,7 +167,7 @@ public final class TerminalTradePage {
 
     /** 小号灰色说明行 */
     private static TextWidget<?> smallGrayLine(String text, int y) {
-        return new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + text)).pos(0, y)
+        return new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + text)).pos(0, y)
             .width(PAGE_WIDTH)
             .height(9)
             .scale(0.8f)
@@ -196,8 +199,9 @@ public final class TerminalTradePage {
 
     /** 单个在线玩家行按钮（选中态绿色高亮，动态绑定 volatile 选中字段） */
     private static ButtonWidget<?> createPlayerRow(String name) {
-        ButtonWidget<?> row = new ButtonWidget<>().width(PAGE_WIDTH - 8)
-            .height(LIST_ROW_H);
+        ButtonWidget<?> row = new TerminalButton().width(PAGE_WIDTH - 8)
+            .height(LIST_ROW_H - 1)
+            .selected(() -> name.equals(getTargetPlayerName()));
         row.overlay(IKey.dynamic(() -> name.equals(getTargetPlayerName()) ? EnumChatFormatting.GREEN + name : name));
         row.tooltipBuilder(t -> t.addLine(IKey.str("点击选中为目标玩家（重置交易历史动作用）")));
         row.onMouseTapped(mouse -> {
@@ -211,8 +215,9 @@ public final class TerminalTradePage {
 
     /** 重载交易注册表按钮（无目标动作） */
     private static ButtonWidget<?> createTradeReloadButton() {
-        return new ButtonWidget<>().pos(4, BTN1_Y)
+        return new TerminalButton().pos(4, BTN1_Y)
             .size(BTN_W, BTN_H)
+            .available(TerminalTradePage::actionReady)
             .overlay(IKey.str(BTN_TRADE_RELOAD))
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str("重新读取交易配置与标签页并清空 BQ 触发器"));
@@ -227,8 +232,9 @@ public final class TerminalTradePage {
 
     /** 重载抽奖配置按钮（无目标动作） */
     private static ButtonWidget<?> createLotteryReloadButton() {
-        return new ButtonWidget<>().pos(4, BTN2_Y)
+        return new TerminalButton().pos(4, BTN2_Y)
             .size(BTN_W, BTN_H)
+            .available(TerminalTradePage::actionReady)
             .overlay(IKey.str(BTN_LOTTERY_RELOAD))
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str("重新读取抽奖卡池配置并重建内存卡池"));
@@ -244,17 +250,19 @@ public final class TerminalTradePage {
     /**
      * 重置交易历史与冷却按钮（目标动作；不可逆）
      * <p>
-     * 未选/未填目标时禁用；点击先弹 {@link NekoConfirmationDialog} 二次确认，
+     * 未选/未填目标时禁用；点击先弹 {@link TerminalConfirmationDialog} 二次确认，
      * 仅确认后才经 {@link #tryDispatchAction} 发 {@code ACTION_TRADE_TIME_RESET}——
      * 未确认（点取消/关弹框）不发包。
      *
      * @param page 页根 Widget（点击时取宿主面板打开确认弹框）
      */
     private static ButtonWidget<?> createTimeResetButton(ParentWidget<?> page) {
-        return new ButtonWidget<>().pos(4, BTN3_Y)
+        return new TerminalButton().pos(4, BTN3_Y)
             .size(BTN_W, BTN_H)
+            .available(
+                () -> !getTargetPlayerName().trim()
+                    .isEmpty() && actionReady())
             .overlay(IKey.str(BTN_TIME_RESET))
-            .setEnabledIf(w -> !getTargetPlayerName().isEmpty())
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str("清空目标玩家的全部交易历史与冷却记录"));
                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "影响目标所在整个队伍，不可恢复；需二次确认"));
@@ -274,7 +282,7 @@ public final class TerminalTradePage {
      * 点击时按钮已挂树，取宿主主面板打开）
      */
     private static void openTimeResetConfirm(ParentWidget<?> page, String target) {
-        NekoConfirmationDialog dialog = new NekoConfirmationDialog("gtit_terminal:trade_time_reset_confirm");
+        TerminalConfirmationDialog dialog = new TerminalConfirmationDialog("gtit_terminal:trade_time_reset_confirm");
         dialog.setParams(
             CONFIRM_TIME_RESET,
             () -> tryDispatchAction(0, TerminalActionHandler.ACTION_TRADE_TIME_RESET, target));
@@ -283,6 +291,10 @@ public final class TerminalTradePage {
     }
 
     // ==================== 状态与发送 ====================
+
+    private static boolean actionReady() {
+        return System.currentTimeMillis() - lastActionSendMs >= ACTION_COOLDOWN_MS;
+    }
 
     /** 目标玩家名（volatile，列表选中与输入框打字双源回写） */
     private static String getTargetPlayerName() {

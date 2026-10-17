@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -92,15 +93,13 @@ public class GiftConfig {
                     randomItems = data.randomItems != null ? data.randomItems : new ArrayList<>();
                     randomCount = data.randomCount;
                     LOG.info("新手宝箱配置已加载");
-                    // 确保默认值（空列表回退到默认，避免宝箱为空）
-                    if (guaranteedItems.isEmpty()) guaranteedItems = createDefaultGuaranteedItems();
-                    if (randomItems.isEmpty()) randomItems = createDefaultRandomItems();
-                    if (randomCount <= 0) randomCount = 2;
+                    randomCount = Math.min(Math.max(0, randomCount), randomItems.size());
                     return;
                 }
             } catch (Exception e) {
-                LOG.error("加载新手宝箱配置失败，使用默认配置", e);
+                throw new IllegalStateException("Unable to load legacy gift configuration; original file preserved", e);
             }
+            throw new IllegalStateException("Legacy gift configuration is empty; original file preserved");
         }
         // 首次运行或加载失败，使用默认配置并落盘
         guaranteedItems = createDefaultGuaranteedItems();
@@ -110,6 +109,12 @@ public class GiftConfig {
     }
 
     public static void saveConfig() {
+        // Once migrated, the versioned registry is authoritative for both GUI and old commands.
+        if (com.miaokatze.gtit.gift.GiftRegistry.INSTANCE.isReady()) {
+            com.miaokatze.gtit.gift.GiftRegistry.INSTANCE
+                .updateLegacyStarter(guaranteedItems, randomItems, randomCount);
+            return;
+        }
         try {
             Path path = Paths.get(CONFIG_PATH);
             Files.createDirectories(path.getParent());
@@ -118,14 +123,23 @@ public class GiftConfig {
             data.randomItems = randomItems;
             data.randomCount = randomCount;
             String json = GSON.toJson(data);
-            Files.write(path, json.getBytes(StandardCharsets.UTF_8));
+            Path temporary = path.resolveSibling("gift_config.json.tmp");
+            Files.write(temporary, json.getBytes(StandardCharsets.UTF_8));
+            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             LOG.info("新手宝箱配置已保存");
         } catch (Exception e) {
-            LOG.error("保存新手宝箱配置失败", e);
+            throw new IllegalStateException("Unable to save legacy gift configuration", e);
         }
     }
 
-    private static List<ItemEntry> createDefaultGuaranteedItems() {
+    /** Refresh the legacy command facade after a successful versioned registry write. */
+    public static void acceptStarterDefinition(List<ItemEntry> guaranteed, List<ItemEntry> random, int count) {
+        guaranteedItems = new ArrayList<>(guaranteed);
+        randomItems = new ArrayList<>(random);
+        randomCount = count;
+    }
+
+    public static List<ItemEntry> createDefaultGuaranteedItems() {
         List<ItemEntry> items = new ArrayList<>();
         items.add(new ItemEntry("minecraft:bread", 16, 0));
         items.add(new ItemEntry("minecraft:torch", 64, 0));
@@ -136,7 +150,7 @@ public class GiftConfig {
         return items;
     }
 
-    private static List<ItemEntry> createDefaultRandomItems() {
+    public static List<ItemEntry> createDefaultRandomItems() {
         List<ItemEntry> items = new ArrayList<>();
         items.add(new ItemEntry("gtit:ring_skywalk", 1, 0));
         items.add(new ItemEntry("gtit:ring_ironheart", 1, 0));

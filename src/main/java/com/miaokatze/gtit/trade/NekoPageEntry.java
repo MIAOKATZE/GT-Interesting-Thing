@@ -12,6 +12,16 @@ public class NekoPageEntry {
     private int iconMeta; // 图标物品元数据
     private String iconNbt; // 图标物品NBT（Base64编码，可选）
     private boolean isDefault; // 是否为默认标签页（不可删除）
+    /** Built-in preset provenance; disabling default content hides it without deleting the file. */
+    private boolean presetBuiltin;
+
+    public boolean isPresetBuiltin() {
+        return presetBuiltin;
+    }
+
+    public void setPresetBuiltin(boolean value) {
+        presetBuiltin = value;
+    }
 
     public NekoPageEntry() {
         this.name = "";

@@ -1,0 +1,294 @@
+[
+  {
+    "item": "ArchitectureCraft:chisel",
+    "meta": 0
+  },
+  {
+    "item": "ArchitectureCraft:hammer",
+    "meta": 0
+  },
+  {
+    "item": "BiblioCraft:BiblioIronLantern",
+    "meta": 0
+  },
+  {
+    "item": "Botany:trowelIron",
+    "meta": 0
+  },
+  {
+    "item": "CarpentersBlocks:blockCarpentersBlock",
+    "meta": 0
+  },
+  {
+    "item": "CarpentersBlocks:blockCarpentersGarageDoor",
+    "meta": 0
+  },
+  {
+    "item": "CarpentersBlocks:itemCarpentersChisel",
+    "meta": 0
+  },
+  {
+    "item": "CarpentersBlocks:itemCarpentersHammer",
+    "meta": 0
+  },
+  {
+    "item": "ExtraTrees:hammer",
+    "meta": 0
+  },
+  {
+    "item": "ForgeMicroblock:sawIron",
+    "meta": 0
+  },
+  {
+    "item": "ProjRed|Illumination:projectred.illumination.lamp",
+    "meta": 1
+  },
+  {
+    "item": "Railcraft:lantern.stone",
+    "meta": 8
+  },
+  {
+    "item": "Railcraft:lantern.stone",
+    "meta": 9
+  },
+  {
+    "item": "Ztones:lampf",
+    "meta": 0
+  },
+  {
+    "item": "Ztones:tile.azurBlock",
+    "meta": 0
+  },
+  {
+    "item": "Ztones:tile.bittBlock",
+    "meta": 0
+  },
+  {
+    "item": "Ztones:tile.glaxx",
+    "meta": 0
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 26
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 27
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 30
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 52
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 53
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 54
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiMaterial",
+    "meta": 55
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 16
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 36
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 56
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 76
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 80
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 100
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 120
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 140
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 220
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 240
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 260
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 280
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 340
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 360
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 380
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 400
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 420
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 440
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 460
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 480
+  },
+  {
+    "item": "appliedenergistics2:item.ItemMultiPart",
+    "meta": 536
+  },
+  {
+    "item": "appliedenergistics2:item.ToolMemoryCard",
+    "meta": 0
+  },
+  {
+    "item": "appliedenergistics2:item.ToolNetworkTool",
+    "meta": 0
+  },
+  {
+    "item": "appliedenergistics2:item.ToolNetworkVisualiser",
+    "meta": 0
+  },
+  {
+    "item": "betterbuilderswands:wandDiamond",
+    "meta": 0
+  },
+  {
+    "item": "betterbuilderswands:wandIron",
+    "meta": 0
+  },
+  {
+    "item": "betterbuilderswands:wandStone",
+    "meta": 0
+  },
+  {
+    "item": "betterp2p:advanced_memory_card",
+    "meta": 0
+  },
+  {
+    "item": "catwalks:blowtorch",
+    "meta": 0
+  },
+  {
+    "item": "catwalks:cagedLadder_north_unlit",
+    "meta": 0
+  },
+  {
+    "item": "catwalks:catwalk_unlit",
+    "meta": 0
+  },
+  {
+    "item": "catwalks:scaffold",
+    "meta": 0
+  },
+  {
+    "item": "chisel:chisel",
+    "meta": 0
+  },
+  {
+    "item": "chisel:concrete",
+    "meta": 0
+  },
+  {
+    "item": "chisel:factoryblock",
+    "meta": 0
+  },
+  {
+    "item": "chisel:laboratoryblock",
+    "meta": 0
+  },
+  {
+    "item": "chisel:technical",
+    "meta": 0
+  },
+  {
+    "item": "chisel:warningSign",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:cobblestone",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:diamond",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:glass",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:iron_ingot",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:paper",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:planks",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:quartz",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:redstone",
+    "meta": 0
+  },
+  {
+    "item": "minecraft:stone",
+    "meta": 0
+  },
+  {
+    "item": "modernmarkings:tile.wall_marking_exit",
+    "meta": 0
+  },
+  {
+    "item": "modernmarkings:tile.wall_marking_warning_danger",
+    "meta": 0
+  }
+]

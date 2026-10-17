@@ -54,6 +54,8 @@ public class LotteryPool {
     private int iconMeta;
     /** page 图标物品 NBT（Base64 编码，可选） */
     private String iconNbt = "";
+    /** Signature of the shipped definition; changing its contents makes this a custom pool. */
+    String bundledDefaultSignature = "";
     /** 单次抽取消耗的需求物品列表（v1.7.6 新增，货币解绑落点） */
     private List<NekoBigItemStack> costItems;
     /** 奖品条目列表 */
