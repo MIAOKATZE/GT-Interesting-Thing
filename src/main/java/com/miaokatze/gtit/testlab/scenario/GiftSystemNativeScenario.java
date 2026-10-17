@@ -29,6 +29,7 @@ import com.cleanroommc.modularui.screen.ModularContainer;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.ModularSyncManager;
+import com.cleanroommc.modularui.value.sync.PanelSyncHandler;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widget.WidgetTree;
 import com.google.gson.Gson;
@@ -40,6 +41,7 @@ import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
 import com.miaokatze.gtit.gift.GiftWirelessEU;
+import com.miaokatze.gtit.gift.ui.GiftAccessHandler;
 import com.miaokatze.gtit.gift.ui.GiftGuiFactory;
 import com.miaokatze.gtit.testlab.ProbeContext;
 import com.miaokatze.gtit.testlab.ProbeScenario;
@@ -402,7 +404,7 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         fresh.inventory.setInventorySlotContents(0, null);
     }
 
-    private static void exerciseServerUiTree(ProbeContext context, FakePlayer player) {
+    private static void exerciseServerUiTree(ProbeContext context, FakePlayer player) throws Exception {
         try {
             GiftGuiFactory.open(player);
             if (player.openContainer instanceof ModularContainer) {
@@ -418,7 +420,34 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         } finally {
             player.closeScreen();
         }
-        SimpleGuiFactory factory = (SimpleGuiFactory) GuiManager.getFactory("gtit:gift_library");
+        SimpleGuiFactory management = (SimpleGuiFactory) GuiManager.getFactory("gtit:gift_management");
+        net.minecraft.inventory.Container before = player.openContainer;
+        GiftGuiFactory.openManagement(player);
+        context.check(
+            "gift-management-rejects-fake-player",
+            !GiftAccessHandler.authorized(player) && player.openContainer == before
+                && !management.canInteractWith(player, new GuiData(player)),
+            "Production O-key manager entry and live factory permission both reject synthetic players");
+        io.netty.buffer.ByteBuf bytes = io.netty.buffer.Unpooled.buffer();
+        boolean forgedRejected = false;
+        try {
+            management.readGuiData(player, new net.minecraft.network.PacketBuffer(bytes));
+        } catch (IllegalArgumentException expected) {
+            forgedRejected = true;
+        } finally {
+            bytes.release();
+        }
+        context.check(
+            "gift-management-client-factory-request-rejected",
+            forgedRejected,
+            "Server-side factory deserialization cannot bypass the authenticated O-key request");
+        exerciseServerUiTree(context, player, "gtit:gift_library", "gift-real-server-widget-tree");
+        exerciseServerUiTree(context, player, "gtit:gift_management", "gift-management-server-widget-tree");
+    }
+
+    private static void exerciseServerUiTree(ProbeContext context, FakePlayer player, String factoryId, String check)
+        throws Exception {
+        SimpleGuiFactory factory = (SimpleGuiFactory) GuiManager.getFactory(factoryId);
         GuiData data = new GuiData(player);
         UISettings settings = new UISettings(RecipeViewerSettings.DUMMY);
         settings.defaultCanInteractWith(factory, data);
@@ -431,14 +460,42 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         try {
             container.construct(player, sync, settings, panel.getName(), data);
             sync.onOpen();
+            com.cleanroommc.modularui.api.IPanelHandler delete = panelSync
+                .findPanelHandlerNullable("gift_delete_confirmation");
             context.check(
-                "gift-real-server-widget-tree",
+                check,
                 container.isInitialized() && container.inventorySlots.size() >= 36
                     && panelSync.findSyncHandlerNullable("gift_admin", 0) != null
-                    && panelSync.findSyncHandlerNullable("gift_row_status_0", 0) != null,
+                    && panelSync.findSyncHandlerNullable("gift_row_status_0", 0) != null
+                    && delete instanceof PanelSyncHandler
+                    && panelSync.getSyncHandlerFromMapKey("gift_delete_confirmation") == delete,
                 "Registered production factory creates and collects its actual server widget/sync tree; inventory slots="
                     + container.inventorySlots.size()
                     + "; detached server container only");
+            if (delete instanceof PanelSyncHandler deleteSync) {
+                // Exercise the actual registered builder and open lifecycle without fabricating a physical client.
+                deleteSync.openPanel();
+                try {
+                    PanelSyncManager child = (PanelSyncManager) GiftScope.field(PanelSyncHandler.class, "syncManager")
+                        .get(deleteSync);
+                    context.check(
+                        check + "-delete-confirmation-lifecycle",
+                        deleteSync.isValid() && "gift_delete_confirmation".equals(deleteSync.getKey())
+                            && deleteSync.isPanelOpen()
+                            && sync.isOpen("gift_delete_confirmation")
+                            && child != null
+                            && child.isInitialised()
+                            && child.findSyncHandlerNullable("gift_delete", 0) != null
+                            && child.findSyncHandlerNullable("gift_delete_target", 0) != null,
+                        "Real registered PanelSyncHandler opens its synchronized child manager with target and delete handlers; server-only lifecycle, no client rendering claim");
+                } finally {
+                    deleteSync.closePanelInternal();
+                }
+                context.check(
+                    check + "-delete-confirmation-closed",
+                    !deleteSync.isPanelOpen() && !sync.isOpen("gift_delete_confirmation"),
+                    "Native child manager closes and unregisters without leaving a detached panel open");
+            }
         } finally {
             if (sync.isOpen()) sync.onClose();
             if (sync.isClosed()) sync.dispose();

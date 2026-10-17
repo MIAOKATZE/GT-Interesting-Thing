@@ -4,9 +4,9 @@
   "icons": [
     {
       "key": "starter",
-      "label_en": "First Steps",
+      "label_en": "First Steps Gift Box",
       "label_zh": "初见猫猫礼盒",
-      "material": "cloth cat gift",
+      "material": "cloth box with cat seal",
       "motion": "ribbon glint",
       "width": 32,
       "frame_height": 32,
@@ -14,27 +14,27 @@
       "frametime": 6,
       "resource": "gtit:gifts/starter",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/starter.png",
-      "sha256": "10e09cec0a8487c54d6e8c9e7da5d3acc0a26a4c38ec27c1b84746ca015874ad"
+      "sha256": "7207cfd9141c6fa812ee934332155d3efac31e38e68ec0edd46fc10c5be5d108"
     },
     {
       "key": "steam",
-      "label_en": "Steam Age",
+      "label_en": "Steam Gift Box",
       "label_zh": "蒸汽铜炉礼盒",
-      "material": "riveted boiler",
-      "motion": "pressure/steam",
+      "material": "riveted copper box with pressure gauge",
+      "motion": "pressure needle",
       "width": 32,
       "frame_height": 32,
       "frames": 8,
       "frametime": 5,
       "resource": "gtit:gifts/steam",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/steam.png",
-      "sha256": "8d8a376131f8f51b6317cd4f36e0f8cc1fc907954fc7dcbbfb56e4177202e032"
+      "sha256": "ebb525637a1ecdfcb87fc789c2f81ff73ccffeb8c12e6c922eefddb1f30d4f44"
     },
     {
       "key": "lv",
-      "label_en": "Low Voltage",
-      "label_zh": "低压电路工具箱",
-      "material": "green circuit toolbox",
+      "label_en": "Low Voltage Gift Box",
+      "label_zh": "低压电路礼盒",
+      "material": "green circuit box and processor",
       "motion": "circuit scan",
       "width": 32,
       "frame_height": 32,
@@ -42,13 +42,13 @@
       "frametime": 4,
       "resource": "gtit:gifts/lv",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/lv.png",
-      "sha256": "8bc10b255b44970b86873306c44b1229b5384aa6636c26a93cb19c0d08391a86"
+      "sha256": "2a89410941d3c84cfb915915fc40b302bec4ba1d401e273557e43b861774f40e"
     },
     {
       "key": "mv",
-      "label_en": "Medium Voltage",
-      "label_zh": "中压蓝晶礼匣",
-      "material": "blue monitor suitcase",
+      "label_en": "Medium Voltage Gift Box",
+      "label_zh": "中压蓝屏礼盒",
+      "material": "tall blue box with status monitor",
       "motion": "screen scan",
       "width": 32,
       "frame_height": 32,
@@ -56,13 +56,13 @@
       "frametime": 5,
       "resource": "gtit:gifts/mv",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/mv.png",
-      "sha256": "d3261363216681e25745693ee99c4ba26d15d22c0f864241f5f7af553db9e28b"
+      "sha256": "ea252868582da9b75ac1fc8fb63f6fa743f6b6d043d31c17694b2e0168a17a18"
     },
     {
       "key": "hv",
-      "label_en": "High Voltage",
-      "label_zh": "高压电弧装甲箱",
-      "material": "steel hazard crate",
+      "label_en": "High Voltage Gift Box",
+      "label_zh": "高压电弧礼盒",
+      "material": "steel box with yellow hazard emblem",
       "motion": "electric arc",
       "width": 32,
       "frame_height": 32,
@@ -70,27 +70,27 @@
       "frametime": 4,
       "resource": "gtit:gifts/hv",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/hv.png",
-      "sha256": "629d60629e4773f27a24eeb657592fb60a07f2179ef7082f06ca5da8df828a0d"
+      "sha256": "d733615516940143a75bd3f401e408ac03c36ea0cea0fa3564de5e1bd9cbff66"
     },
     {
       "key": "ev",
-      "label_en": "Extreme Voltage",
+      "label_en": "Extreme Voltage Gift Box",
       "label_zh": "超高压紫晶礼盒",
-      "material": "violet core hexagon",
-      "motion": "reactor pulse",
+      "material": "cut-corner violet box with pink crystal",
+      "motion": "crystal pulse",
       "width": 32,
       "frame_height": 32,
       "frames": 8,
       "frametime": 6,
       "resource": "gtit:gifts/ev",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/ev.png",
-      "sha256": "8c7712609de77a7f6d220ac03adbdb4b23776150f2c507cb14b104eff2da9b25"
+      "sha256": "b0854de64a8c95cd3956671acdeffb434a1efd9cb0a4df96612f32c07db99027"
     },
     {
       "key": "iv",
-      "label_en": "Insane Voltage",
-      "label_zh": "极高压钛金礼匣",
-      "material": "titanium crystal chest",
+      "label_en": "Insane Voltage Gift Box",
+      "label_zh": "极高压钛晶礼盒",
+      "material": "tall titanium box with teal crystal",
       "motion": "crystal facets",
       "width": 32,
       "frame_height": 32,
@@ -98,13 +98,13 @@
       "frametime": 6,
       "resource": "gtit:gifts/iv",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/iv.png",
-      "sha256": "1d5b7f98fb218b692c888aed77757d272c862ce519ef626e010bd1c64abe19e7"
+      "sha256": "5933a2910f5327cf9ecf370a3c0fd1ba04464354a499bf9c3534a2361a15212b"
     },
     {
       "key": "luv",
-      "label_en": "Ludicrous Voltage",
-      "label_zh": "LuV 蓝光星匣",
-      "material": "white-blue orbital cube",
+      "label_en": "LuV Orbit Gift Box",
+      "label_zh": "LuV星轨礼盒",
+      "material": "blue box with white orbiting cube",
       "motion": "orbit chase",
       "width": 32,
       "frame_height": 32,
@@ -112,13 +112,13 @@
       "frametime": 4,
       "resource": "gtit:gifts/luv",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/luv.png",
-      "sha256": "779ebaca5ce15905bae1c918abc6f81894e7c168d508b0e06d2a8465cb077ece"
+      "sha256": "d792d086e14886efa8a492db8b3ffaecb7f094a32590a087f879fec91f470f8e"
     },
     {
       "key": "festival",
-      "label_en": "Festival",
-      "label_zh": "节庆猫灯",
-      "material": "red festival lantern",
+      "label_en": "Festival Lantern Gift Box",
+      "label_zh": "节庆灯笼礼盒",
+      "material": "red brocade box with golden lantern",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -126,13 +126,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/festival",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/festival.png",
-      "sha256": "56b73205390c2f178323edfe20e7071b44aa12915d543150192725ef8c61b83f"
+      "sha256": "16b00685c402a05b463863da8d6070f7570818e369286e7bbf02f25f4c7219e2"
     },
     {
       "key": "mail",
-      "label_en": "Special Delivery",
-      "label_zh": "猫爪快递",
-      "material": "sealed mail envelope",
+      "label_en": "Special Delivery Gift Box",
+      "label_zh": "猫爪快递礼盒",
+      "material": "kraft parcel with blue ribbon and envelope",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -140,13 +140,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/mail",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/mail.png",
-      "sha256": "2f96087da798cdf977f5761d0eec2b779e1ac40e727a19170744c3a17f19a951"
+      "sha256": "243273d96218eac00b74b0c567544b1f486464dbe9eae3a6cdd34f8d142dbf18"
     },
     {
       "key": "team",
-      "label_en": "Team Supplies",
-      "label_zh": "小队补给箱",
-      "material": "three-cat field chest",
+      "label_en": "Team Supplies Gift Box",
+      "label_zh": "小队补给礼盒",
+      "material": "green wooden chest with three cat seals",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -154,13 +154,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/team",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/team.png",
-      "sha256": "01ad58a28d7f1570e2a4dd33d60ad30dc32e103691550b71e68752004c59188d"
+      "sha256": "2db218419746546d8c406e4ddff5e8e49e53e0dea67d47adc767d1237af8a375"
     },
     {
       "key": "energy",
-      "label_en": "Energy",
-      "label_zh": "能量蓄电礼筒",
-      "material": "battery carrier",
+      "label_en": "Energy Gift Box",
+      "label_zh": "能量蓄电礼盒",
+      "material": "riveted steel box with lightning battery",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -168,13 +168,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/energy",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/energy.png",
-      "sha256": "4c22c2f740736dd68c2abc320f4cb26d14ba42f1bc12041733c2833b20baad15"
+      "sha256": "48252368c697b1c287e8cfcfef18c8c582b754fd8bd904d149afaa615f7e9804"
     },
     {
       "key": "ae",
-      "label_en": "Applied Energistics",
-      "label_zh": "福鲁伊克斯数据匣",
-      "material": "fluix terminal cube",
+      "label_en": "Fluix Gift Box",
+      "label_zh": "福鲁伊克斯礼盒",
+      "material": "blue circuit box with faceted fluix crystal",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -182,13 +182,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/ae",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/ae.png",
-      "sha256": "789ec123e9a5b8a69dbc8de3aba7330c83b4c8427656c615311bc67f8fcd8eb6"
+      "sha256": "3ef103a9ede27f4b214c9c647b4199fdf04de072a4bc825c03d03b8d5d5b5787"
     },
     {
       "key": "decor",
-      "label_en": "Decoration",
-      "label_zh": "小屋装饰包",
-      "material": "house parcel",
+      "label_en": "Decoration Gift Box",
+      "label_zh": "小屋装饰礼盒",
+      "material": "striped pink box with miniature cottage",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -196,13 +196,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/decor",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/decor.png",
-      "sha256": "6de4d56a6b6f960e560e10952fb7c0a86b476105c29abf14ea98f664f0469957"
+      "sha256": "31550d955220c7641c2284a6ba20f81beeb5b0cc68f1561320f2984885bd0e46"
     },
     {
       "key": "mining",
-      "label_en": "Mining",
-      "label_zh": "矿工宝箱",
-      "material": "ore crate and pick",
+      "label_en": "Mining Gift Box",
+      "label_zh": "矿工宝藏礼盒",
+      "material": "wooden ore box with pickaxe and diamond",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -210,13 +210,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/mining",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/mining.png",
-      "sha256": "e324c271ccad1c05fbfb86564065856b00cf05e60dd6755421d7e625f0e42455"
+      "sha256": "17dadad694e2868fcee02d82796ab48a479ca28eb3553bd27002ef13c1ebf2a3"
     },
     {
       "key": "farming",
-      "label_en": "Farming",
-      "label_zh": "丰收麦篮",
-      "material": "woven wheat hamper",
+      "label_en": "Harvest Gift Box",
+      "label_zh": "丰收麦穗礼盒",
+      "material": "woven hamper box with golden wheat",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -224,13 +224,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/farming",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/farming.png",
-      "sha256": "a5e20b581bcabcba27331573ec2cb77e1dd2ab06d343affe247ef9f3ae120f02"
+      "sha256": "40c7e8807e448123862af387e62846a2f759ba080b1d02c8f3827b1e533129ee"
     },
     {
       "key": "food",
-      "label_en": "Provisions",
-      "label_zh": "猫猫便当",
-      "material": "layered bento",
+      "label_en": "Provisions Gift Box",
+      "label_zh": "美味便当礼盒",
+      "material": "red woven provision box with bread loaf",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -238,13 +238,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/food",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/food.png",
-      "sha256": "da57d47c0908f18e5b54dfe618afcf6314c1e5358a7befa108e103336a3b6cb6"
+      "sha256": "a967f038541ce74d44cc42234cb8c31f3cce38ae8240133a1dd72db3b2b0f888"
     },
     {
       "key": "tools",
-      "label_en": "Workshop",
-      "label_zh": "工匠工具卷",
-      "material": "canvas tool roll",
+      "label_en": "Workshop Gift Box",
+      "label_zh": "工匠工具礼盒",
+      "material": "copper chest with crossed hand tools",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -252,13 +252,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/tools",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/tools.png",
-      "sha256": "c4928e97b899619f17d6aeea913656b9fe52d9ca1964cd827855b8ef7fe590c2"
+      "sha256": "5990a82c2fd36cb8b73a3f3414b25ed55e0f3b70ed8b7df4269b27e97119bc7e"
     },
     {
       "key": "building",
-      "label_en": "Building",
-      "label_zh": "建筑材料托盘",
-      "material": "brick pallet",
+      "label_en": "Building Gift Box",
+      "label_zh": "建筑砖石礼盒",
+      "material": "red construction box with brick emblem",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -266,13 +266,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/building",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/building.png",
-      "sha256": "67539a20b4537c74cad9665856e48c74b008a43f58389e6172c0b9954d714463"
+      "sha256": "ca18ce8ed6497a523273b049014773c2b2ffece7b70eecbe727bf0b2c5608653"
     },
     {
       "key": "magic",
-      "label_en": "Arcane",
-      "label_zh": "星月秘法书",
-      "material": "strapped tome",
+      "label_en": "Arcane Gift Box",
+      "label_zh": "星月秘法礼盒",
+      "material": "violet box with crescent moon and star",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -280,13 +280,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/magic",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/magic.png",
-      "sha256": "e992fd441a03fc9debc50a7ccc5becde9a42fa51d6c56b59628d852271ced164"
+      "sha256": "2e2262e214948b20cff264778af19014594df83ea94aa2fc0c29b93de1a041d7"
     },
     {
       "key": "space",
-      "label_en": "Space",
-      "label_zh": "星际补给舱",
-      "material": "rocket capsule",
+      "label_en": "Space Gift Box",
+      "label_zh": "星际火箭礼盒",
+      "material": "titanium box with rocket and exhaust",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -294,13 +294,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/space",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/space.png",
-      "sha256": "d6dbd5ff2e848b6670c19d5900b508ec7dbf4db64ca5eb14c78163ce0bec3334"
+      "sha256": "354d907b5fa282ef5a011d1b49a3a4e690f8824832bb3d8bc46fae80fb02e350"
     },
     {
       "key": "ocean",
-      "label_en": "Ocean",
-      "label_zh": "漂流海盐瓶",
-      "material": "corked wave bottle",
+      "label_en": "Ocean Gift Box",
+      "label_zh": "海浪贝壳礼盒",
+      "material": "striped teal box with waves and shell",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -308,13 +308,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/ocean",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/ocean.png",
-      "sha256": "a7fc44080c48c8da74c0e4a22b4dddf249daf2ad134a173d38a3ee3689c4bdfc"
+      "sha256": "38cd8bab298ce80d13f83c4a953f0ee67cf303608d01f719f5d656f671bee451"
     },
     {
       "key": "forest",
-      "label_en": "Forest",
-      "label_zh": "林间邮差包",
-      "material": "leaf satchel",
+      "label_en": "Forest Gift Box",
+      "label_zh": "林间绿叶礼盒",
+      "material": "green woodgrain box with leaf and twig",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -322,13 +322,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/forest",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/forest.png",
-      "sha256": "ad694864df5cedd1e67f9ae11f5bd154bdcd911a9f0e9e3cc7ecb8308559a117"
+      "sha256": "02c75eaec5a27799dcd34ef4f2ee36f73837c1279588b9d82cc44681116d1d1b"
     },
     {
       "key": "winter",
-      "label_en": "Winter",
-      "label_zh": "暖冬围巾礼盒",
-      "material": "scarf and snow parcel",
+      "label_en": "Winter Gift Box",
+      "label_zh": "暖冬雪花礼盒",
+      "material": "blue snow-spotted box with snowflake",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -336,13 +336,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/winter",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/winter.png",
-      "sha256": "9c260a7884418e36a4f2755aaf8838b72e56189cedb49bf276460f05f732c530"
+      "sha256": "a75563bc3e97f01e0bd11d1d44d5a2b2fca2fa364f52645e8874b4dfe5a4976b"
     },
     {
       "key": "spring",
-      "label_en": "Spring",
-      "label_zh": "春日花篮",
-      "material": "flower basket",
+      "label_en": "Spring Gift Box",
+      "label_zh": "春日繁花礼盒",
+      "material": "pink woven hamper with two flowers",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -350,13 +350,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/spring",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/spring.png",
-      "sha256": "fc7c487364f8d66647d78fa21331178b2c8b83949c2c580134724289c9b4692d"
+      "sha256": "358d7ee93ffd9c8e5732649a107245d7c5f37c4f59a6a13b4491ddc0812861e1"
     },
     {
       "key": "summer",
-      "label_en": "Summer",
-      "label_zh": "夏日清凉包",
-      "material": "striped cooler",
+      "label_en": "Summer Gift Box",
+      "label_zh": "夏日青柠礼盒",
+      "material": "striped teal box with citrus slice",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -364,13 +364,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/summer",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/summer.png",
-      "sha256": "5ca557b74fd52ccd073f41ea41008f1795e5544a2d663e4a275116c2bf012ff5"
+      "sha256": "c4fc25f906da6bb65df3c3f526083d2d3b666f396f5369cb8125bf31dcce4638"
     },
     {
       "key": "autumn",
-      "label_en": "Autumn",
+      "label_en": "Autumn Gift Box",
       "label_zh": "秋日南瓜礼盒",
-      "material": "pumpkin gift",
+      "material": "orange box with ridged pumpkin",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -378,13 +378,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/autumn",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/autumn.png",
-      "sha256": "e94cf683d95c08d4ec49ae3468faeb112b73ccd51165c4710e9283624d3a8e56"
+      "sha256": "a29acbdebfe5724e33aed16d44247e2859956cbcba20d95c869ce818be204b26"
     },
     {
       "key": "birthday",
-      "label_en": "Birthday",
-      "label_zh": "生日猫猫蛋糕",
-      "material": "candle cake gift",
+      "label_en": "Birthday Gift Box",
+      "label_zh": "生日蛋糕礼盒",
+      "material": "confetti pink box with candle cake",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -392,13 +392,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/birthday",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/birthday.png",
-      "sha256": "27a90fe5fc290b4496c9aa129946168f244cb0ef2e1498215c2750393eda0407"
+      "sha256": "5757c66a291bb204b255d1b1fdede02d9ebe01c9d394e16fbb273d0fa4816bbc"
     },
     {
       "key": "lottery",
-      "label_en": "Lucky Draw",
-      "label_zh": "幸运转盘礼盒",
-      "material": "ticket and lucky wheel",
+      "label_en": "Lucky Draw Gift Box",
+      "label_zh": "幸运抽奖礼盒",
+      "material": "violet box with star ticket",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -406,13 +406,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/lottery",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/lottery.png",
-      "sha256": "171059e224547496d21373b06c40a67e84160817f0455531e30b4604deb59f0a"
+      "sha256": "2fa9b11533705ccd16281f0c1bd1d23770836988a50efbb3763183f8c4979a48"
     },
     {
       "key": "achievement",
-      "label_en": "Achievement",
-      "label_zh": "荣誉猫杯",
-      "material": "cat trophy",
+      "label_en": "Achievement Gift Box",
+      "label_zh": "荣誉勋章礼盒",
+      "material": "golden box with ribbon medal",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -420,13 +420,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/achievement",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/achievement.png",
-      "sha256": "309aa833853447944ea07cdc887bc9337f720dc0e331d3297c54a9be6bef10ba"
+      "sha256": "782df463038456eb43a0b9e8ffd36b26074de9aa12f71eadffca3b745edf90bd"
     },
     {
       "key": "admin",
-      "label_en": "Administrator",
-      "label_zh": "管理密钥匣",
-      "material": "locked strongbox",
+      "label_en": "Administrator Gift Box",
+      "label_zh": "管理密钥礼盒",
+      "material": "riveted steel strongbox with brass padlock",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -434,13 +434,13 @@
       "frametime": 0,
       "resource": "gtit:gifts/admin",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/admin.png",
-      "sha256": "b32587f88080da26d71d01925bc3499a32a646e2d1247b286d6f55f29f5a4e2d"
+      "sha256": "efc5c2cd3d06d6c29036941a64fc97de76b3e851dce33582a821c1286f9a3b61"
     },
     {
       "key": "trade",
-      "label_en": "Trading",
-      "label_zh": "铜币交易袋",
-      "material": "coin pouch",
+      "label_en": "Trading Gift Box",
+      "label_zh": "铜币交易礼盒",
+      "material": "wooden chest with two embossed coins",
       "motion": "static",
       "width": 32,
       "frame_height": 32,
@@ -448,7 +448,7 @@
       "frametime": 0,
       "resource": "gtit:gifts/trade",
       "png": "src/main/resources/assets/gtit/textures/items/gifts/trade.png",
-      "sha256": "fd9651edfe2327489c3b7297935f4117a0584882b83015283f4d83e38210ef50"
+      "sha256": "9b579d90a925aab09a20170982b73fad9b28c700e76ffae9ecc335d066a2531e"
     }
   ]
 }

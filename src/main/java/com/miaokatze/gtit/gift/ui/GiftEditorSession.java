@@ -14,7 +14,6 @@ import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
-import com.miaokatze.gtit.trade.preset.TradePresetManager;
 
 /** Per-window draft. Nothing here is persisted until the explicit save action. */
 final class GiftEditorSession {
@@ -63,6 +62,10 @@ final class GiftEditorSession {
     long expectedRevision;
     volatile long editGeneration;
     boolean creating = true;
+    String deleteTargetId = "";
+    String deleteTargetName = "";
+    long deleteTargetRevision;
+    long deleteTargetGeneration;
 
     GiftEditorSession(EntityPlayer player) {
         this.player = player;
@@ -71,7 +74,7 @@ final class GiftEditorSession {
     }
 
     boolean admin() {
-        return player instanceof EntityPlayerMP && TradePresetManager.canConfigure((EntityPlayerMP) player);
+        return player instanceof EntityPlayerMP && GiftAccessHandler.authorized((EntityPlayerMP) player);
     }
 
     int mapped(int slot) {
@@ -168,6 +171,26 @@ final class GiftEditorSession {
         selectedId = saved.id;
         load(saved);
         invalidate();
+    }
+
+    void prepareDelete() {
+        requireAdmin();
+        if (creating) throw new IllegalStateException("Select a saved gift first");
+        deleteTargetId = draft.id;
+        deleteTargetName = draft.name;
+        deleteTargetRevision = expectedRevision;
+        deleteTargetGeneration = editGeneration;
+    }
+
+    void confirmDelete() {
+        requireAdmin();
+        if (deleteTargetId.isEmpty() || !deleteTargetId.equals(draft.id)
+            || deleteTargetRevision != expectedRevision
+            || deleteTargetGeneration != editGeneration) {
+            throw new IllegalStateException("Gift selection changed; open the confirmation again");
+        }
+        delete();
+        deleteTargetId = "";
     }
 
     void delete() {

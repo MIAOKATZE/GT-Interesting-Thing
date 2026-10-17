@@ -783,6 +783,7 @@ public class CommonProxy {
     public void serverStopping(FMLServerStoppingEvent event) {
         com.miaokatze.gtit.testlab.TestLabRuntime.serverStopping();
         com.miaokatze.gtit.trade.preset.ui.TradePresetAccessHandler.stop();
+        com.miaokatze.gtit.gift.ui.GiftAccessHandler.stop();
         com.miaokatze.gtit.trade.preset.TradePresetManager.shutdown();
         com.miaokatze.gtit.gift.GiftService.INSTANCE.unload();
         try {

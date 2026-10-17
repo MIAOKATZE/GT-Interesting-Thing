@@ -20,6 +20,27 @@ public final class TradePresetStoreTest {
                 System.out.println("PASS " + check.getKey());
             }
             System.out.println("TradePresetStoreTest: " + checks.size() + " checks passed");
+            Path runtime = fixture.resolve("runtime-config-fixture");
+            Files.createDirectories(runtime);
+            Files.write(runtime.resolve("preset-runtime-fixture.marker"), new byte[0]);
+            String classpath = java.util.Arrays.stream(
+                System.getProperty("java.class.path")
+                    .split(java.io.File.pathSeparator))
+                .map(
+                    path -> java.nio.file.Paths.get(path)
+                        .toAbsolutePath()
+                        .toString())
+                .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
+            String javaExecutable = java.nio.file.Paths.get(System.getProperty("java.home"), "bin", "java")
+                .toString();
+            Process process = new ProcessBuilder(
+                javaExecutable,
+                "-cp",
+                classpath,
+                TradePresetRuntimeTest.class.getName()).directory(runtime.toFile())
+                    .inheritIO()
+                    .start();
+            if (process.waitFor() != 0) throw new AssertionError("TradePresetRuntimeTest failed");
         } finally {
             try (java.util.stream.Stream<Path> paths = Files.walk(fixture)) {
                 for (Path path : paths.sorted(Comparator.reverseOrder())

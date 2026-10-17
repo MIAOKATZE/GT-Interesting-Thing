@@ -19,7 +19,7 @@ public final class DefaultContentConfig {
             "loadDefaultTradeGroups",
             "defaults",
             true,
-            "Load bundled trade groups, including the legacy fallback. Custom groups and custom presets remain available.");
+            "Load default trade groups, including all applied MiaoTrade presets and the legacy fallback. User-authored trade tabs remain available.");
         lottery = config.getBoolean(
             "loadDefaultLottery",
             "defaults",

@@ -37,7 +37,9 @@ public final class TradePresetKeybind {
             access -> Minecraft.getMinecraft()
                 .func_152344_a(() -> {
                     allowed = access.allowed;
-                    if (access.remind && allowed && Minecraft.getMinecraft().thePlayer != null)
+                    if (access.remind && allowed
+                        && binding.getKeyCode() != Keyboard.KEY_NONE
+                        && Minecraft.getMinecraft().thePlayer != null)
                         Minecraft.getMinecraft().thePlayer.addChatComponentMessage(
                             new ChatComponentTranslation(
                                 "gtit.preset.login_notice",
@@ -57,7 +59,16 @@ public final class TradePresetKeybind {
 
     @SubscribeEvent
     public void key(InputEvent.KeyInputEvent event) {
-        if (binding == null || !binding.isPressed()) return;
+        openIfPressed();
+    }
+
+    @SubscribeEvent
+    public void mouse(InputEvent.MouseInputEvent event) {
+        openIfPressed();
+    }
+
+    private static void openIfPressed() {
+        if (binding == null || binding.getKeyCode() == Keyboard.KEY_NONE || !binding.isPressed()) return;
         Minecraft mc = Minecraft.getMinecraft();
         if (allowed && mc.thePlayer != null && mc.currentScreen == null) TradePresetAccessHandler.requestOpen();
     }

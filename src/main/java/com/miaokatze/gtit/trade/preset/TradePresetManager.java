@@ -182,8 +182,8 @@ public final class TradePresetManager {
     }
 
     static void validateAvailable(TradePresetDefinition definition) {
-        if (TradePresetStore.BUILTIN_IDS.contains(definition.id) && !DefaultContentConfig.loadDefaultTradeGroups()) {
-            throw new IllegalArgumentException("默认贸易组已被服务器配置关闭；自定义预设仍可选择");
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) {
+            throw new IllegalArgumentException("默认贸易组已被服务器配置关闭，无法应用预设");
         }
         for (TradePresetDefinition.Tab tab : definition.tabs) {
             for (NekoTradeEntry entry : tab.trades) {
@@ -243,7 +243,7 @@ public final class TradePresetManager {
     }
 
     private static void refreshTrades() {
-        NekoTradeRegistryV2.reload();
+        if (!NekoTradeRegistryV2.reload()) throw new IllegalStateException("预设文件已保存，但运行时重载失败，请查看服务器日志");
         NekoTradeNetworkManager.sendSyncToAll();
     }
 

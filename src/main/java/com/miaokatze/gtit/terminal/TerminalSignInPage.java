@@ -5,7 +5,6 @@ import java.util.List;
 import net.minecraft.util.EnumChatFormatting;
 
 import com.cleanroommc.modularui.api.IPanelHandler;
-import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.utils.Alignment;
@@ -15,8 +14,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
-import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
  * 管理终端-签到页（T3 实装，纯客户端 MUI2）
@@ -30,13 +28,13 @@ import com.miaokatze.gtit.client.gui.NekoGuiTextures;
  * DATA_TYPE_SIGNIN_SUMMARY → {@link TerminalClientData#getSignInSummaryLines()}
  * 经 IKey.dynamic 逐行显示</li>
  * <li>设置连续天数：4 位数字输入（页内静态草稿，重建恢复）+ ACTION_SIGNIN_SET_DAYS</li>
- * <li>重置签到数据：{@link NekoConfirmationDialog} 二次确认后才发 ACTION_SIGNIN_RESET
+ * <li>重置签到数据：{@link TerminalConfirmationDialog} 二次确认后才发 ACTION_SIGNIN_RESET
  * （未确认绝不发包）</li>
  * <li>重载配置：ACTION_SIGNIN_RELOAD_CONFIGS</li>
  * </ul>
  * 动作统一走 {@link TerminalNetworkManager#sendAction}，服务端
  * {@link TerminalActionHandler} 五步校验链权威校验；1.5s 冷却 + 未选中目标时
- * 相关按钮禁用（{@code setEnabledIf} 折叠）。
+ * 相关按钮保持可见的禁用态。
  * <p>
  * <b>纯客户端约束</b>：无 MUI2 同步值/槽位（TextFieldWidget 用
  * {@link StringValue.Dynamic} 本地动态草稿，项目先例 MailGui/BlessingEditor 同款），
@@ -77,7 +75,7 @@ public final class TerminalSignInPage {
     /** 摘要行数（与服务端摘要行数一致） */
     private static final int SUMMARY_ROWS = 8;
     /** 摘要行行高 */
-    private static final int SUMMARY_ROW_H = 9;
+    private static final int SUMMARY_ROW_H = 8;
 
     // ==================== 动作与冷却 ====================
 
@@ -113,9 +111,10 @@ public final class TerminalSignInPage {
 
         // 居中页名
         page.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "签到管理")).pos(0, 0)
+            new TextWidget<>(IKey.str("签到管理")).pos(0, 0)
                 .size(PAGE_WIDTH, 12)
                 .textAlign(Alignment.CENTER)
+                .color(UtilityUiStyle.TEXT)
                 .shadow(false));
 
         page.child(createPlayerList()); // 在线玩家列表（逐行热区选中）
@@ -137,7 +136,7 @@ public final class TerminalSignInPage {
         list.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> EnumChatFormatting.GRAY + "在线玩家（点击选中目标，共 "
+                    () -> EnumChatFormatting.DARK_GRAY + "在线玩家（点击选中目标，共 "
                         + TerminalClientData.getOnlinePlayers()
                             .size()
                         + " 人）:")).pos(2, 0)
@@ -149,22 +148,15 @@ public final class TerminalSignInPage {
             final int index = i;
             int y = 10 + index * PLAYER_ROW_H;
 
-            // 玩家名文本（选中绿色带 ▶ 标记，未选中灰色）
-            list.child(new TextWidget<>(IKey.dynamic(() -> {
-                String name = playerAt(index);
-                if (name == null) return "";
-                return name.equals(selectedPlayer) ? EnumChatFormatting.GREEN + "▶ " + name
-                    : EnumChatFormatting.GRAY + name;
-            })).pos(6, y + 2)
-                .size(PAGE_WIDTH - 10, 9)
-                .scale(0.8f)
-                .shadow(false)
-                .setEnabledIf(w -> playerAt(index) != null));
-
-            // 整行点击热区（左键选中目标；越界行折叠防误触）
-            ButtonWidget<?> rowHitbox = new ButtonWidget<>().pos(2, y)
-                .size(PAGE_WIDTH - 4, PLAYER_ROW_H)
-                .background(IDrawable.EMPTY)
+            // 同一行按钮承载文字与选中态，避免装饰文字和点击区域重叠。
+            ButtonWidget<?> rowHitbox = new TerminalButton().pos(2, y)
+                .size(PAGE_WIDTH - 4, PLAYER_ROW_H - 1)
+                .selected(() -> selectedPlayer.equals(playerAt(index)))
+                .overlay(IKey.dynamic(() -> {
+                    String name = playerAt(index);
+                    return name == null ? "" : name;
+                })
+                    .scale(0.8f))
                 .onMouseTapped(mouse -> {
                     String name = playerAt(index);
                     if (mouse == 0 && name != null) {
@@ -181,10 +173,9 @@ public final class TerminalSignInPage {
         int pagerY = 10 + PLAYER_ROWS * PLAYER_ROW_H;
         int pagerX = (PAGE_WIDTH - (PAGER_BTN_W * 2 + 22)) / 2;
         list.child(
-            new ButtonWidget<>().pos(pagerX, pagerY)
+            new TerminalButton().pos(pagerX, pagerY)
                 .size(PAGER_BTN_W, PAGER_BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-                .disableHoverBackground()
+                .available(() -> playerListPage > 0)
                 .overlay(IKey.str("<"))
                 .onMouseTapped(mouse -> {
                     if (mouse == 0 && playerListPage > 0) {
@@ -196,7 +187,7 @@ public final class TerminalSignInPage {
         list.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> EnumChatFormatting.GRAY + String.valueOf(Math.min(playerListPage, maxPlayerPage()) + 1)
+                    () -> EnumChatFormatting.DARK_GRAY + String.valueOf(Math.min(playerListPage, maxPlayerPage()) + 1)
                         + "/"
                         + (maxPlayerPage() + 1))).pos(pagerX + PAGER_BTN_W + 2, pagerY + 2)
                             .size(18, 9)
@@ -204,10 +195,9 @@ public final class TerminalSignInPage {
                             .scale(0.75f)
                             .shadow(false));
         list.child(
-            new ButtonWidget<>().pos(pagerX + PAGER_BTN_W + 22, pagerY)
+            new TerminalButton().pos(pagerX + PAGER_BTN_W + 22, pagerY)
                 .size(PAGER_BTN_W, PAGER_BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-                .disableHoverBackground()
+                .available(() -> playerListPage < maxPlayerPage())
                 .overlay(IKey.str(">"))
                 .onMouseTapped(mouse -> {
                     if (mouse == 0 && playerListPage < maxPlayerPage()) {
@@ -224,10 +214,10 @@ public final class TerminalSignInPage {
     /** 当前目标回显（未选择提示；选中但不在打开快照内附红色警示，服务端仍权威校验在线） */
     private static IWidget createTargetLine() {
         return new TextWidget<>(IKey.dynamic(() -> {
-            if (!hasTarget()) return EnumChatFormatting.GRAY + "当前目标：未选择";
+            if (!hasTarget()) return EnumChatFormatting.DARK_GRAY + "当前目标：未选择";
             boolean inSnapshot = TerminalClientData.getOnlinePlayers()
                 .contains(selectedPlayer);
-            return EnumChatFormatting.YELLOW + "当前目标："
+            return EnumChatFormatting.DARK_GREEN + "当前目标："
                 + selectedPlayer
                 + (inSnapshot ? "" : EnumChatFormatting.RED + "（不在当前在线列表）");
         })).pos(2, TARGET_Y)
@@ -244,7 +234,7 @@ public final class TerminalSignInPage {
             .size(PAGE_WIDTH, FIELD_H);
 
         row.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "天数:")).pos(0, 3)
+            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + "天数:")).pos(0, 3)
                 .size(26, 9)
                 .scale(0.8f)
                 .shadow(false));
@@ -253,7 +243,8 @@ public final class TerminalSignInPage {
             .value(new StringValue.Dynamic(() -> daysDraft, val -> daysDraft = val))
             .setMaxLength(4);
         daysField.pos(28, 0)
-            .size(DAYS_FIELD_W, FIELD_H);
+            .size(DAYS_FIELD_W, FIELD_H)
+            .background(UtilityUiStyle.INPUT);
         daysField.tooltipBuilder(t -> {
             t.addLine(IKey.str("连续签到天数（0-9999 整数）"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "最长 4 位数字"));
@@ -261,17 +252,16 @@ public final class TerminalSignInPage {
         daysField.tooltipAutoUpdate(true);
         row.child(daysField);
 
-        // 设置连续天数（未选目标 / 冷却中折叠；客户端预校验数字格式，服务端权威校验范围）
-        ButtonWidget<?> setDaysButton = new ButtonWidget<>().pos(76, 0)
+        // 设置连续天数（未选目标 / 冷却中禁用；客户端预校验数字格式，服务端权威校验范围）
+        ButtonWidget<?> setDaysButton = new TerminalButton().pos(76, 0)
             .size(64, FIELD_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .available(() -> hasTarget() && !isActionCoolingDown())
             .overlay(IKey.str(EnumChatFormatting.WHITE + "设置连续天数"))
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str(EnumChatFormatting.GREEN + "将选中玩家的连续签到天数设为输入值"));
                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "先在上方列表选中目标玩家"));
             })
-            .tooltipAutoUpdate(true)
-            .setEnabledIf(w -> hasTarget() && !isActionCoolingDown());
+            .tooltipAutoUpdate(true);
         setDaysButton.onMouseTapped(mouse -> {
             if (mouse != 0 || !hasTarget()) return false;
             Integer days = parseDaysDraft();
@@ -291,17 +281,16 @@ public final class TerminalSignInPage {
         ParentWidget<?> row = new ParentWidget<>().pos(0, BTN_ROW_Y)
             .size(PAGE_WIDTH, BTN_H);
 
-        // 查询摘要（未选目标 / 冷却中折叠）
-        ButtonWidget<?> queryButton = new ButtonWidget<>().pos(0, 0)
+        // 查询摘要（未选目标 / 冷却中禁用）
+        ButtonWidget<?> queryButton = new TerminalButton().pos(0, 0)
             .size(48, BTN_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .available(() -> hasTarget() && !isActionCoolingDown())
             .overlay(IKey.str(EnumChatFormatting.WHITE + "查询摘要"))
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str(EnumChatFormatting.GREEN + "查询选中玩家的签到摘要"));
                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "累计/连续/当月/今日在线等"));
             })
-            .tooltipAutoUpdate(true)
-            .setEnabledIf(w -> hasTarget() && !isActionCoolingDown());
+            .tooltipAutoUpdate(true);
         queryButton.onMouseTapped(mouse -> {
             if (mouse != 0 || !hasTarget() || !tryBeginAction()) return true;
             TerminalNetworkManager.sendAction(TerminalActionHandler.ACTION_SIGNIN_QUERY, selectedPlayer, 0, "", "", "");
@@ -310,16 +299,15 @@ public final class TerminalSignInPage {
         row.child(queryButton);
 
         // 重置签到数据（二次确认后才发包；未确认绝不发送）
-        ButtonWidget<?> resetButton = new ButtonWidget<>().pos(52, 0)
+        ButtonWidget<?> resetButton = new TerminalButton().pos(52, 0)
             .size(64, BTN_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .available(() -> hasTarget() && !isActionCoolingDown())
             .overlay(IKey.str(EnumChatFormatting.RED + "重置签到数据"))
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str(EnumChatFormatting.RED + "清空选中玩家的全部签到记录（不可恢复）"));
                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击后需二次确认"));
             })
-            .tooltipAutoUpdate(true)
-            .setEnabledIf(w -> hasTarget() && !isActionCoolingDown());
+            .tooltipAutoUpdate(true);
         resetButton.onMouseTapped(mouse -> {
             if (mouse != 0 || !hasTarget()) return false;
             openResetConfirmDialog(resetButton);
@@ -327,17 +315,16 @@ public final class TerminalSignInPage {
         });
         row.child(resetButton);
 
-        // 重载配置（无目标动作，仅冷却折叠）
-        ButtonWidget<?> reloadButton = new ButtonWidget<>().pos(PAGE_WIDTH - 40, 0)
+        // 重载配置（无目标动作，仅冷却禁用）
+        ButtonWidget<?> reloadButton = new TerminalButton().pos(PAGE_WIDTH - 40, 0)
             .size(40, BTN_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .available(() -> !isActionCoolingDown())
             .overlay(IKey.str(EnumChatFormatting.WHITE + "重载配置"))
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str(EnumChatFormatting.GREEN + "热重载签到与每日在线时长配置"));
                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "已打开的玩家界面需重新打开后生效"));
             })
-            .tooltipAutoUpdate(true)
-            .setEnabledIf(w -> !isActionCoolingDown());
+            .tooltipAutoUpdate(true);
         reloadButton.onMouseTapped(mouse -> {
             if (mouse != 0 || !tryBeginAction()) return true;
             TerminalNetworkManager.sendAction(TerminalActionHandler.ACTION_SIGNIN_RELOAD_CONFIGS, "", 0, "", "", "");
@@ -356,7 +343,7 @@ public final class TerminalSignInPage {
             .size(PAGE_WIDTH, PAGE_HEIGHT - SUMMARY_LABEL_Y);
 
         area.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "签到摘要（点「查询摘要」后显示）:")).pos(2, 0)
+            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + "签到摘要（点「查询摘要」后显示）:")).pos(2, 0)
                 .size(PAGE_WIDTH - 4, 9)
                 .scale(0.75f)
                 .shadow(false));
@@ -367,11 +354,17 @@ public final class TerminalSignInPage {
                 List<String> lines = TerminalClientData.getSignInSummaryLines();
                 if (index >= lines.size()) return "";
                 String text = lines.get(index);
-                // 首行为 "===== 名字 的签到摘要 =====" 标题，黄色高亮
-                return index == 0 ? EnumChatFormatting.YELLOW + text : EnumChatFormatting.GRAY + text;
-            })).pos(4, 7 + index * SUMMARY_ROW_H)
+                String color = index == 0 ? EnumChatFormatting.DARK_AQUA.toString()
+                    : EnumChatFormatting.DARK_GRAY.toString();
+                return color + TerminalGui.fitLine(text, PAGE_WIDTH - 8, 0.75f);
+            })).pos(4, 10 + index * SUMMARY_ROW_H)
                 .size(PAGE_WIDTH - 8, SUMMARY_ROW_H)
-                .scale(0.8f)
+                .scale(0.75f)
+                .tooltipBuilder(t -> {
+                    List<String> lines = TerminalClientData.getSignInSummaryLines();
+                    if (index < lines.size()) t.addLine(IKey.str(lines.get(index)));
+                })
+                .tooltipAutoUpdate(true)
                 .shadow(false));
         }
         return area;
@@ -385,7 +378,7 @@ public final class TerminalSignInPage {
      * @param anchor 触发按钮（用于取宿主面板构建弹框 handler）
      */
     private static void openResetConfirmDialog(ButtonWidget<?> anchor) {
-        NekoConfirmationDialog dialog = new NekoConfirmationDialog("gtit_terminal:signin_reset_confirm");
+        TerminalConfirmationDialog dialog = new TerminalConfirmationDialog("gtit_terminal:signin_reset_confirm");
         dialog.setButtonText("确认重置", "取消");
         dialog.setParams(String.format(CONFIRM_RESET_FORMAT, selectedPlayer), () -> {
             if (!tryBeginAction()) return;

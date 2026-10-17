@@ -40,8 +40,7 @@ import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.google.gson.Gson;
-import com.miaokatze.gtit.gift.ui.GiftGuiFactory;
-import com.miaokatze.gtit.gui.pocket.PocketGuiTextures;
+import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 import com.miaokatze.gtit.trade.preset.TradePresetManager;
 import com.miaokatze.gtit.trade.preset.TradePresetManager.Icon;
 import com.miaokatze.gtit.trade.preset.TradePresetManager.PresetSummary;
@@ -137,31 +136,29 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
         Session session = new Session(data, sync);
         sync.bindPlayerInventory(data.getPlayer());
         PagedWidget.Controller pages = new PagedWidget.Controller();
-        ModularPanel panel = new ModularPanel("gtit.trade.presets").size(420, 330)
-            .background(PocketGuiTextures.CLOTH, PocketGuiTextures.PANEL);
+        ParentWidget<?> panel = new ParentWidget<>().size(420, 330);
         panel.child(
             IKey.lang("gtit.preset.title")
+                .color(UtilityUiStyle.TEXT)
                 .asWidget()
                 .pos(12, 10)
                 .size(220, 16));
         panel.child(
             new PageButton(0, pages).pos(12, 31)
                 .size(112, 18)
-                .background(PocketGuiTextures.BUTTON)
                 .overlay(IKey.lang("gtit.preset.choose")));
         panel.child(
             new PageButton(1, pages).pos(128, 31)
                 .size(112, 18)
-                .background(PocketGuiTextures.BUTTON)
                 .overlay(IKey.lang("gtit.preset.create")));
         panel.child(
-            session.button("gift", "gtit.preset.gifts", () -> GiftGuiFactory.open(session.player()))
-                .pos(278, 10)
-                .size(112, 18));
-        panel.child(
-            ButtonWidget.panelCloseButton()
-                .right(5)
-                .top(5));
+            IKey.lang("gtit.preset.subtitle")
+                .color(UtilityUiStyle.MUTED)
+                .asWidget()
+                .pos(248, 32)
+                .size(160, 13)
+                .scale(0.65f));
+        panel.child(UtilityUiStyle.section(8, 298, 404, 26));
         PagedWidget<?> body = new PagedWidget<>().controller(pages)
             .pos(12, 54)
             .size(396, 244)
@@ -173,11 +170,12 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
         sync.syncValue("result", status);
         panel.child(
             IKey.dynamic(status::getStringValue)
+                .color(UtilityUiStyle.TEXT)
                 .asWidget()
                 .pos(12, 302)
                 .size(396, 18)
                 .scale(0.75f));
-        return panel;
+        return UtilityUiStyle.scrollable("gtit.trade.presets", 420, 330, panel);
     }
 
     private static final class Session {
@@ -252,17 +250,16 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 dispatch(action);
             });
             sync.syncValue("action_" + key, handler);
-            return new ButtonWidget<>().background(PocketGuiTextures.BUTTON)
-                .overlay(
-                    IKey.lang(label)
-                        .scale(0.8f))
+            return new ButtonWidget<>().overlay(
+                IKey.lang(label)
+                    .scale(0.8f))
                 .syncHandler(handler);
         }
 
         IWidget chooser() {
             ParentWidget<?> page = new ParentWidget<>().sizeRel(1f);
             ListWidget<IWidget, ?> list = new ListWidget<>().pos(0, 0)
-                .size(396, 188);
+                .size(396, 184);
             int ordinal = 0;
             for (PresetSummary preset : data.snapshot.presets) {
                 BooleanSyncValue checked = new BooleanSyncValue(() -> selected.contains(preset.id), value -> {
@@ -272,14 +269,12 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     });
                 }).allowC2S();
                 sync.syncValue("preset_" + preset.id, checked);
-                ParentWidget<?> row = new ParentWidget<>().size(390, 58)
+                ParentWidget<?> row = new ParentWidget<>().size(386, 58)
                     .marginBottom(4);
                 row.child(
                     new ToggleButton().value(checked)
                         .pos(0, 0)
                         .size(330, 58)
-                        .background(false, PocketGuiTextures.BUTTON)
-                        .background(true, PocketGuiTextures.BUTTON_PRESSED)
                         .tooltipBuilder(t -> {
                             t.addLine(preset.name);
                             t.addLine(preset.description);
@@ -295,12 +290,16 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         .size(20));
                 row.child(
                     IKey.str(preset.name)
+                        .color(0xFFFFFFFF)
+                        .shadow(true)
                         .asWidget()
                         .pos(34, 5)
                         .size(288, 13)
                         .scale(0.85f));
                 row.child(
                     IKey.str(preset.description)
+                        .color(0xFFDDDDDD)
+                        .shadow(true)
                         .asWidget()
                         .pos(34, 20)
                         .size(288, 16)
@@ -309,6 +308,8 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     IKey.lang(
                         preset.empty ? "gtit.preset.empty" : "gtit.preset.conflicts",
                         String.join(", ", preset.mutuallyExclusiveIds))
+                        .color(0xFFDDDDDD)
+                        .shadow(true)
                         .asWidget()
                         .pos(7, 39)
                         .size(315, 13)
@@ -319,12 +320,13 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         "edit_" + ordinal++,
                         preset.builtin ? "gtit.preset.copy" : "gtit.preset.edit",
                         () -> open(player(), editId)).pos(336, 0)
-                            .size(52, 58));
+                            .size(48, 58));
                 list.child(row);
             }
             page.child(list);
             page.child(
                 IKey.lang("gtit.preset.world_shared")
+                    .color(UtilityUiStyle.MUTED)
                     .asWidget()
                     .pos(0, 191)
                     .size(396, 22)
@@ -343,6 +345,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
 
         IWidget editor() {
             ParentWidget<?> page = new ParentWidget<>().sizeRel(1f);
+            page.child(UtilityUiStyle.section(198, 0, 198, 146));
             field(page, "name", "gtit.preset.name", 0, () -> name, value -> name = value, 128);
             field(page, "id", "gtit.preset.id", 31, () -> id, value -> { if (!replace) id = value; }, 64);
             field(page, "conflicts", "gtit.preset.conflict_ids", 62, () -> conflicts, value -> conflicts = value, 1024);
@@ -362,8 +365,9 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             if (data.editId.isEmpty()) {
                 page.child(
                     IKey.lang("gtit.preset.replace_content")
+                        .color(UtilityUiStyle.TEXT)
                         .asWidget()
-                        .background(PocketGuiTextures.COIN_BAR)
+                        .background(UtilityUiStyle.INSET)
                         .pos(202, 0)
                         .size(190, 22)
                         .scale(0.7f));
@@ -372,8 +376,6 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     new ToggleButton().value(contentMode)
                         .pos(202, 0)
                         .size(190, 22)
-                        .background(false, PocketGuiTextures.BUTTON)
-                        .background(true, PocketGuiTextures.BUTTON_PRESSED)
                         .overlay(
                             false,
                             IKey.lang("gtit.preset.keep_content")
@@ -410,10 +412,8 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 sync.syncValue("tab_" + tab.id, value);
                 choices.child(
                     new ToggleButton().value(value)
-                        .size(184, 22)
+                        .size(178, 22)
                         .marginBottom(3)
-                        .background(false, PocketGuiTextures.BUTTON)
-                        .background(true, PocketGuiTextures.BUTTON_PRESSED)
                         .overlay(
                             IKey.str(tab.name + " [" + tab.id + "]")
                                 .scale(0.75f)));
@@ -447,7 +447,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             sync.syncValue("draft_icon", ghost);
             page.child(
                 new PhantomItemSlot().syncHandler(ghost)
-                    .background(PocketGuiTextures.SLOT)
+                    .background(UtilityUiStyle.SLOT)
                     .pos(174, 126));
             page.child(
                 SlotGroupWidget.playerInventory(false)
@@ -488,6 +488,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             sync.syncValue("draft_" + key, value);
             page.child(
                 IKey.lang(label)
+                    .color(UtilityUiStyle.TEXT)
                     .asWidget()
                     .pos(0, y)
                     .size(194, 11)
@@ -495,8 +496,9 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             if (replace && "id".equals(key)) {
                 page.child(
                     IKey.str(data.editId)
+                        .color(UtilityUiStyle.MUTED)
                         .asWidget()
-                        .background(PocketGuiTextures.COIN_BAR)
+                        .background(UtilityUiStyle.INSET)
                         .pos(0, y + 12)
                         .size(194, 16));
             } else {
@@ -504,7 +506,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     new TextFieldWidget().value(value)
                         .setMaxLength(max)
                         .autoUpdateOnChange(true)
-                        .background(PocketGuiTextures.COIN_BAR)
+                        .background(UtilityUiStyle.INPUT)
                         .pos(0, y + 12)
                         .size(194, 16));
             }

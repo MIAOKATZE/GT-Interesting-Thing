@@ -271,6 +271,8 @@ public class NekoTradeMainPanel extends ModularPanel {
 
     /** 强制刷新标志（下次 onUpdate 时触发 updateGui） */
     private boolean forceRefresh = false;
+    /** A registry replacement must rebuild item data even while Shift/Ctrl holds the normal sort order. */
+    private boolean registryRefresh;
 
     /** 货币更新标志（外部通知有货币变化时设置，触发强制刷新） */
     private boolean hasCurrencyUpdate = false;
@@ -412,7 +414,7 @@ public class NekoTradeMainPanel extends ModularPanel {
      * 按键期间仅更新状态（如可交易→冷却中），按键释放后才全量刷新。
      */
     public void updateGui() {
-        if (shiftHeld || ctrlHeld) {
+        if ((shiftHeld || ctrlHeld) && !registryRefresh) {
             // 增量更新：仅刷新现有显示数据的状态
             updateTradeInformation(getCurrentTradeDisplayData());
         } else {
@@ -420,6 +422,7 @@ public class NekoTradeMainPanel extends ModularPanel {
             Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades = formatTrades();
             callback.onTradeDisplayUpdated(trades);
         }
+        registryRefresh = false;
     }
 
     /**
@@ -786,6 +789,7 @@ public class NekoTradeMainPanel extends ModularPanel {
         // v1.7.32：检测交易数据库是否被外部（服务端热重载/同步包）修改，自动强制刷新
         long currentDbVersion = NekoTradeDatabase.INSTANCE.getVersion();
         if (this.lastDbVersion != currentDbVersion) {
+            registryRefresh = true;
             if (this.lastDbVersion != -1L) {
                 // 首次初始化时不刷新，避免与 onOpen 重复；后续版本变化才刷新
                 setForceRefresh();

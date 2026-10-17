@@ -626,7 +626,9 @@ public final class NekoTradeIntegrationAPI {
         if (data.getTrades() == null) return false;
         boolean removed = data.getTrades()
             .removeIf(
-                entry -> entry != null && entry.getId() != null
+                entry -> entry != null
+                    && !com.miaokatze.gtit.trade.preset.TradePresetLayout.isManagedPage(entry.getTabId())
+                    && entry.getId() != null
                     && entry.getId()
                         .matches(NekoTradeRegistryV2.MIAO_ID_PATTERN));
         if (removed) {

@@ -90,7 +90,7 @@ public final class NekoTradeCategory implements Comparable<NekoTradeCategory> {
      * @return 对应的分类实例
      */
     public static synchronized NekoTradeCategory ofTabId(int tabId) {
-        if (tabId <= 0) {
+        if (tabId <= 0 && !com.miaokatze.gtit.trade.preset.TradePresetLayout.isManagedPage(tabId)) {
             return tabId == -1 ? FAVOURITES : UNKNOWN;
         }
         NekoTradeCategory existing = TAB_ID_MAP.get(tabId);

@@ -36,7 +36,9 @@ final class PresetFileTransaction {
     Path checked(String relative) throws IOException {
         if (!(relative.matches("MiaoTrade/[a-z0-9_-]{1,64}\\.json") || relative.equals("config/gtit/trade/pages.json")
             || relative.equals("config/gtit/trade/preset_state.json")
+            || relative.equals(TradePresetLayout.PAGES_PATH)
             || relative.equals(JOURNAL)
+            || relative.matches("config/gtit/trade/preset_tabs/tab_-[1-9][0-9]{5,9}\\.json")
             || relative.matches("config/gtit/trade/trades/tab_[1-9][0-9]*\\.json"))) {
             throw new IOException("不允许的预设文件路径");
         }

@@ -197,6 +197,7 @@ val contentTestCompileClasspath = sourceSets.getByName("main").compileClasspath
 mapOf(
     "runGiftSystemTest" to "com.miaokatze.gtit.gift.GiftSystemTest",
     "runGiftEditorSessionTest" to "com.miaokatze.gtit.gift.ui.GiftEditorSessionTest",
+    "runGiftAccessTest" to "com.miaokatze.gtit.gift.ui.GiftAccessTest",
     "runTradePresetStoreTest" to "com.miaokatze.gtit.trade.preset.TradePresetStoreTest",
     "runStarterGiftAuditNbtTest" to "com.miaokatze.gtit.terminal.StarterGiftAuditNbtTest",
     "runTradePresetAccessTest" to "com.miaokatze.gtit.trade.preset.ui.TradePresetAccessTest"

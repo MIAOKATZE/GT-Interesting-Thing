@@ -326,7 +326,7 @@ public class NekoTradeRegistryV2 {
      */
     private static NekoTradeCategory determineCategory(NekoTradeEntry entry, String currencyId) {
         int tabId = entry.getTabId();
-        if (tabId > 0) {
+        if (tabId > 0 || com.miaokatze.gtit.trade.preset.TradePresetLayout.isManagedPage(tabId)) {
             return NekoTradeCategory.ofTabId(tabId);
         }
 

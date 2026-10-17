@@ -17,6 +17,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.config.DefaultContentConfig;
+import com.miaokatze.gtit.trade.preset.TradePresetLayout;
 
 /**
  * 猫猫售货机交易配置管理（v1.7.7 G4 存储结构重构）
@@ -151,7 +152,9 @@ public class NekoTradeConfig {
                     // tab 文件由 BundledTradeGroups 在 serverStarted 写入
                     LOG.info("猫猫售货机交易配置：内置基础贸易组抑制旧默认交易生成，目录: {}", dir);
                 } else {
-                    save(getDefaultTrades());
+                    NekoTradeData defaults = getDefaultTrades();
+                    loadPresetTrades(defaults.getTrades());
+                    save(defaults);
                     LOG.info("猫猫售货机交易配置已生成默认文件，目录: {}", dir);
                 }
             }
@@ -178,7 +181,9 @@ public class NekoTradeConfig {
                     // 迁移完成后重新扫描新目录
                 } else {
                     LOG.info("猫猫售货机交易配置不存在，返回{}", defaultTradesSuppressed ? "空数据（旧默认已被内置组抑制）" : "默认数据");
-                    return suppressedFallback();
+                    NekoTradeData fallback = suppressedFallback();
+                    loadPresetTrades(fallback.getTrades());
+                    return fallback;
                 }
             }
 
@@ -210,6 +215,7 @@ public class NekoTradeConfig {
                 }
             }
             NekoTradeData data = new NekoTradeData();
+            loadPresetTrades(allTrades);
             data.setTrades(allTrades);
             LOG.info("猫猫售货机交易配置已加载（{} 条交易）", allTrades.size());
             return data;
@@ -256,14 +262,48 @@ public class NekoTradeConfig {
                 tab.setTabId(group.getKey());
                 tab.setTrades(group.getValue());
                 Path file = getTabFilePath(group.getKey());
+                Files.createDirectories(file.getParent());
                 Files.write(
                     file,
                     GSON.toJson(tab)
                         .getBytes(StandardCharsets.UTF_8));
             }
+            Path presetDirectory = TradeConfigPaths.resolve(TradePresetLayout.TRADES_PATH);
+            if (Files.exists(presetDirectory)) {
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(presetDirectory, "tab_*.json")) {
+                    for (Path file : stream) {
+                        int id = parseTabIdFromFileName(
+                            file.getFileName()
+                                .toString());
+                        if (TradePresetLayout.isManagedPage(id) && !groups.containsKey(id)) Files.delete(file);
+                    }
+                }
+            }
             LOG.info("猫猫售货机交易配置已保存（{} 个 tab 文件）", groups.size());
         } catch (Exception e) {
             LOG.error("猫猫售货机交易配置保存失败", e);
+        }
+    }
+
+    private static void loadPresetTrades(List<NekoTradeEntry> trades) throws IOException {
+        Path directory = TradeConfigPaths.resolve(TradePresetLayout.TRADES_PATH);
+        if (!Files.exists(directory)) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "tab_*.json")) {
+            for (Path path : stream) {
+                int id = parseTabIdFromFileName(
+                    path.getFileName()
+                        .toString());
+                if (!TradePresetLayout.isManagedPage(id)) continue;
+                String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+                NekoTradeJson.validateDepth(json);
+                TabFileData tab = GSON.fromJson(json, TabFileData.class);
+                if (tab == null || tab.getTrades() == null) throw new IOException("默认贸易组交易文件损坏: " + path);
+                for (NekoTradeEntry entry : tab.getTrades()) {
+                    if (entry == null) continue;
+                    entry.setTabId(id);
+                    trades.add(entry);
+                }
+            }
         }
     }
 
@@ -335,7 +375,7 @@ public class NekoTradeConfig {
      * @param orderId 本页条目 orderId（仅当大于现有水位时生效）
      */
     public static synchronized void raiseOrderWatermark(int tabId, int orderId) {
-        if (tabId <= 0 || orderId < 0) return;
+        if ((tabId <= 0 && !TradePresetLayout.isManagedPage(tabId)) || orderId < 0) return;
         try {
             OrderWatermarkData data = loadOrderWatermarks();
             Integer current = data.getWatermarks()
@@ -1114,7 +1154,7 @@ public class NekoTradeConfig {
      * 获取指定 tabId 的交易文件路径
      */
     private static Path getTabFilePath(int tabId) {
-        return getTradeDirPath().resolve("tab_" + tabId + ".json");
+        return TradeConfigPaths.resolve(TradePresetLayout.tabPath(tabId));
     }
 
     /**

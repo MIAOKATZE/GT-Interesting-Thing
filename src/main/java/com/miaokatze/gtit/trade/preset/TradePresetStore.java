@@ -54,11 +54,17 @@ final class TradePresetStore {
         if (state == null || state.selectedIds == null
             || state.ownedTabs == null
             || state.appliedFingerprints == null
+            || state.pageIds == null
             || state.revision < 0) {
             throw new IOException("预设状态文件损坏，已停止写入以保护已有配置");
         }
         bootstrap();
         reload();
+        if (state.layoutVersion < 2) {
+            Set<String> migrate = new HashSet<>(state.selectedIds);
+            migrate.retainAll(presets.keySet());
+            commitSelection(new LinkedHashSet<>(state.selectedIds), migrate, new LinkedHashMap<>());
+        }
     }
 
     void reload() throws IOException {
@@ -223,6 +229,7 @@ final class TradePresetStore {
             }
             TradePresetDefinition.Tab tab = new TradePresetDefinition.Tab();
             tab.page = GSON.fromJson(GSON.toJson(available.get(tabId)), NekoPageEntry.class);
+            tab.page.setId(result.size() + 1);
             tab.page.setDefault(false);
             tab.page.setPresetBuiltin(false);
             Path source = files.checked(tabPath(tabId));
@@ -243,6 +250,7 @@ final class TradePresetStore {
     private void commitSelection(LinkedHashSet<String> selected, Set<String> refresh, Map<String, byte[]> changes)
         throws IOException {
         State next = GSON.fromJson(GSON.toJson(state), State.class);
+        next.layoutVersion = 2;
         JsonObject pages = readPages();
         JsonArray pageList = pages.getAsJsonArray("pages");
         Set<Integer> used = new HashSet<>();
@@ -250,39 +258,7 @@ final class TradePresetStore {
             page.getAsJsonObject()
                 .get("id")
                 .getAsInt());
-        List<OwnedTab> retained = new ArrayList<>();
-        Set<String> installed = new HashSet<>(state.selectedIds);
-        for (OwnedTab owned : state.ownedTabs) {
-            if (selected.contains(owned.presetId) && !refresh.contains(owned.presetId)) {
-                retained.add(owned);
-                continue;
-            }
-            // Only remove a tab when both its page metadata and its complete trade file are unchanged.
-            // An edited tab is detached from ownership and remains a normal user tab forever.
-            JsonElement currentPage = findPage(pageList, owned.tabId);
-            Path tradeFile = files.checked(tabPath(owned.tabId));
-            JsonElement currentTrades = Files.exists(tradeFile) ? new JsonParser().parse(read(tradeFile)) : null;
-            if (owned.page.equals(currentPage) && owned.trades.equals(currentTrades)) {
-                removePage(pageList, owned.tabId);
-                changes.put(tabPath(owned.tabId), null);
-            } else {
-                // Once customized, this is user content, including when default presets are disabled later.
-                if (currentPage != null) currentPage.getAsJsonObject()
-                    .addProperty("presetBuiltin", false);
-                if (currentTrades != null && currentTrades.isJsonObject()
-                    && currentTrades.getAsJsonObject()
-                        .has("trades")) {
-                    for (JsonElement entry : currentTrades.getAsJsonObject()
-                        .getAsJsonArray("trades")) {
-                        entry.getAsJsonObject()
-                            .addProperty("presetBuiltin", false);
-                    }
-                    changes.put(tabPath(owned.tabId), bytes(currentTrades));
-                }
-            }
-        }
-        next.ownedTabs = retained;
-        // Allocate above all on-disk ids, including orphan trade tabs and edited tabs detached above.
+        // Include orphan user files, which must never be overwritten when edited presets detach.
         Path tradesDirectory = files.checked(tabPath(1))
             .getParent();
         if (Files.exists(tradesDirectory)) {
@@ -298,35 +274,107 @@ final class TradePresetStore {
                 }
             }
         }
-        int nextId = 1000;
+        // Hand-written or orphan overlay files have no ownership record; never overwrite them implicitly.
+        Path managedDirectory = files.checked(TradePresetLayout.tabPath(-100001))
+            .getParent();
+        if (Files.exists(managedDirectory)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(managedDirectory, "tab_*.json")) {
+                for (Path path : stream) {
+                    String name = path.getFileName()
+                        .toString();
+                    try {
+                        used.add(Integer.parseInt(name.substring(4, name.length() - 5)));
+                    } catch (NumberFormatException ignored) {
+                        // Malformed unrelated filenames are left alone.
+                    }
+                }
+            }
+        }
+        List<OwnedTab> retained = new ArrayList<>();
+        Set<String> installed = new HashSet<>(state.selectedIds);
+        for (OwnedTab owned : state.ownedTabs) {
+            if (selected.contains(owned.presetId) && !refresh.contains(owned.presetId)) {
+                retained.add(owned);
+                continue;
+            }
+            // Only remove a tab when both its page metadata and its complete trade file are unchanged.
+            // An edited tab is detached from ownership and remains a normal user tab forever.
+            JsonElement currentPage = findPage(pageList, owned.tabId);
+            Path tradeFile = files.checked(tabPath(owned.tabId));
+            JsonElement currentTrades = Files.exists(tradeFile) ? new JsonParser().parse(read(tradeFile)) : null;
+            if (owned.page.equals(currentPage) && owned.trades.equals(currentTrades)) {
+                removePage(pageList, owned.tabId);
+                changes.put(tabPath(owned.tabId), null);
+                if (TradePresetLayout.isManagedPage(owned.tabId)) used.remove(owned.tabId);
+            } else {
+                // Detach customized defaults into the positive user namespace before removing the overlay.
+                int detachedId = owned.tabId;
+                if (TradePresetLayout.isManagedPage(owned.tabId)) {
+                    detachedId = allocateUserId(used);
+                    used.add(detachedId);
+                    removePage(pageList, owned.tabId);
+                    changes.put(tabPath(owned.tabId), null);
+                    used.remove(owned.tabId);
+                    if (currentPage != null) {
+                        currentPage.getAsJsonObject()
+                            .addProperty("id", detachedId);
+                        pageList.add(currentPage);
+                    }
+                }
+                if (currentPage != null) {
+                    currentPage.getAsJsonObject()
+                        .addProperty("presetBuiltin", false);
+                    currentPage.getAsJsonObject()
+                        .addProperty("isDefault", false);
+                }
+                if (currentTrades != null && currentTrades.isJsonObject()
+                    && currentTrades.getAsJsonObject()
+                        .has("trades")) {
+                    currentTrades.getAsJsonObject()
+                        .addProperty("tabId", detachedId);
+                    for (JsonElement entry : currentTrades.getAsJsonObject()
+                        .getAsJsonArray("trades")) {
+                        JsonObject trade = entry.getAsJsonObject();
+                        trade.addProperty("presetBuiltin", false);
+                        trade.addProperty("defaultEntry", false);
+                        trade.addProperty("tabId", detachedId);
+                        if (TradePresetLayout.isManagedPage(owned.tabId)) trade.addProperty(
+                            "id",
+                            UUID.randomUUID()
+                                .toString());
+                    }
+                    changes.put(tabPath(detachedId), bytes(currentTrades));
+                }
+            }
+        }
+        next.ownedTabs = retained;
         for (String id : selected) {
             if (installed.contains(id) && !refresh.contains(id)) continue;
             TradePresetDefinition preset = presets.get(id);
             if (preset == null) throw new IllegalArgumentException("预设不存在: " + id);
             for (TradePresetDefinition.Tab sourceTab : preset.tabs) {
-                while (used.contains(nextId)) {
-                    if (nextId == Integer.MAX_VALUE) throw new IllegalArgumentException("标签页 id 已用尽");
-                    nextId++;
-                }
-                int tabId = nextId;
+                String pageKey = id + ":" + sourceTab.page.getId();
+                Set<Integer> reserved = new HashSet<>(next.pageIds.values());
+                reserved.addAll(used);
+                int tabId = BUILTIN_IDS.contains(id) ? TradePresetLayout.pageId(id, sourceTab.page.getId())
+                    : next.pageIds
+                        .computeIfAbsent(pageKey, ignored -> TradePresetLayout.customPageId(pageKey, reserved));
+                if (used.contains(tabId)) throw new IllegalArgumentException("默认贸易组标签页被非受管内容占用: " + tabId);
                 used.add(tabId);
                 NekoPageEntry page = GSON.fromJson(GSON.toJson(sourceTab.page), NekoPageEntry.class);
                 page.setId(tabId);
                 page.setDefault(false);
-                page.setPresetBuiltin(BUILTIN_IDS.contains(id));
+                page.setPresetBuiltin(true);
                 NekoTradeConfig.TabFileData trades = new NekoTradeConfig.TabFileData();
                 trades.setTabId(tabId);
                 List<NekoTradeEntry> entries = new ArrayList<>();
                 for (int index = 0; index < sourceTab.trades.size(); index++) {
                     NekoTradeEntry entry = GSON
                         .fromJson(GSON.toJson(sourceTab.trades.get(index)), NekoTradeEntry.class);
-                    String key = "gtit:preset:" + id + ":" + tabId + ":" + sourceTab.page.getId() + ":" + entry.getId();
-                    entry.setId(
-                        UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8))
-                            .toString());
+                    entry.setId(TradePresetLayout.tradeId(id, entry.getId()));
                     entry.setTabId(tabId);
-                    entry.setDefaultEntry(false);
-                    entry.setPresetBuiltin(BUILTIN_IDS.contains(id));
+                    entry.setDefaultEntry(true);
+                    entry.setPresetBuiltin(true);
                     entry.setStrictBq(true);
                     entries.add(entry);
                 }
@@ -351,7 +399,22 @@ final class TradePresetStore {
         }
         next.catalogFingerprint = fingerprint();
         next.revision++;
-        changes.put("config/gtit/trade/pages.json", bytes(pages));
+        JsonObject userPages = GSON.fromJson(GSON.toJson(pages), JsonObject.class);
+        JsonObject managedPages = new JsonObject();
+        userPages.addProperty("version", 1);
+        managedPages.addProperty("version", 1);
+        JsonArray userList = new JsonArray();
+        JsonArray managedList = new JsonArray();
+        for (JsonElement page : pageList) {
+            (TradePresetLayout.isManagedPage(
+                page.getAsJsonObject()
+                    .get("id")
+                    .getAsInt()) ? managedList : userList).add(page);
+        }
+        userPages.add("pages", userList);
+        managedPages.add("pages", managedList);
+        changes.put("config/gtit/trade/pages.json", bytes(userPages));
+        changes.put(TradePresetLayout.PAGES_PATH, bytes(managedPages));
         changes.put(STATE_PATH, bytes(next));
         files.commit(changes);
         state = next;
@@ -364,12 +427,28 @@ final class TradePresetStore {
             .getAsJsonObject();
         if (!data.has("pages") || !data.get("pages")
             .isJsonArray()) throw new IOException("标签页配置损坏");
+        Path managedPath = files.checked(TradePresetLayout.PAGES_PATH);
+        if (Files.exists(managedPath)) {
+            JsonObject managed = new JsonParser().parse(read(managedPath))
+                .getAsJsonObject();
+            for (JsonElement page : managed.getAsJsonArray("pages")) {
+                if (!TradePresetLayout.isManagedPage(
+                    page.getAsJsonObject()
+                        .get("id")
+                        .getAsInt())) {
+                    throw new IOException("默认贸易组页签 ID 越界");
+                }
+                data.getAsJsonArray("pages")
+                    .add(page);
+            }
+        }
         Set<Integer> seen = new HashSet<>();
         for (JsonElement page : data.getAsJsonArray("pages")) {
             int id = page.getAsJsonObject()
                 .get("id")
                 .getAsInt();
-            if (id <= 0 || !seen.add(id)) throw new IOException("标签页配置含非法或重复 id");
+            if ((id <= 0 && !TradePresetLayout.isManagedPage(id)) || !seen.add(id))
+                throw new IOException("标签页配置含非法或重复 id");
         }
         return data;
     }
@@ -546,7 +625,16 @@ final class TradePresetStore {
     }
 
     private static String tabPath(int id) {
-        return "config/gtit/trade/trades/tab_" + id + ".json";
+        return TradePresetLayout.tabPath(id);
+    }
+
+    private static int allocateUserId(Set<Integer> used) {
+        int id = 1000;
+        while (used.contains(id)) {
+            if (id == Integer.MAX_VALUE) throw new IllegalArgumentException("标签页 id 已用尽");
+            id++;
+        }
+        return id;
     }
 
     interface DefinitionValidator {
@@ -556,9 +644,11 @@ final class TradePresetStore {
 
     private static final class State {
 
+        int layoutVersion;
         long revision;
         String catalogFingerprint;
         Map<String, String> appliedFingerprints = new LinkedHashMap<>();
+        Map<String, Integer> pageIds = new LinkedHashMap<>();
         List<String> selectedIds = new ArrayList<>();
         List<OwnedTab> ownedTabs = new ArrayList<>();
     }

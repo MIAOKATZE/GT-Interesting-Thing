@@ -26,6 +26,7 @@ public class ClientProxy extends CommonProxy {
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
         com.miaokatze.gtit.trade.preset.client.TradePresetKeybind.install();
+        com.miaokatze.gtit.gift.client.GiftKeybind.install();
         try {
             com.miaokatze.gtit.client.PocketBaubleKeybind.install();
         } catch (Throwable t) {
