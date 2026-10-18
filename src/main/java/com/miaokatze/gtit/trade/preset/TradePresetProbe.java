@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -313,6 +314,11 @@ public final class TradePresetProbe {
                                 .getAmount())
                         .sum() == budgets[index]
                     && containsFields(bundled, TradePresetStore.GSON.toJsonTree(definition)));
+            checks.put(
+                id + "_available_without_quest_unlock",
+                definition.tabs.stream()
+                    .flatMap(tab -> tab.trades.stream())
+                    .allMatch(trade -> "".equals(trade.getBqQuestId())));
             Files.write(root.resolve("MiaoTrade/" + id + ".json"), TradePresetStore.bundledBytes(id, true));
         }
         // A v1 state with an already selected empty builtin must still require an explicit application.
@@ -407,6 +413,117 @@ public final class TradePresetProbe {
                             .mapToInt(tab -> tab.trades.size())
                             .sum())
                     .sum() == 426);
+        checkBuiltinQuestRemoval(root.resolve("quest-removal"), checks);
+    }
+
+    private static void checkBuiltinQuestRemoval(Path root, Map<String, Boolean> checks) throws Exception {
+        Files.createDirectories(root.resolve("config/gtit/trade"));
+        write(root.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
+        TradePresetStore before = new TradePresetStore(root);
+        Map<String, JsonObject> expected = new LinkedHashMap<>();
+        for (String id : TradePresetStore.BUILTIN_IDS) {
+            JsonObject old = new JsonParser()
+                .parse(new String(TradePresetStore.bundledBytes(id, false), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+            old.addProperty("manualNote", "Preserve unknown root fields");
+            JsonObject firstTab = old.getAsJsonArray("tabs")
+                .get(0)
+                .getAsJsonObject();
+            firstTab.addProperty("manualTabNote", "Preserve unknown tab fields");
+            JsonObject first = firstTab.getAsJsonArray("trades")
+                .get(0)
+                .getAsJsonObject();
+            first.addProperty("manualTradeNote", "Preserve unknown trade fields");
+            first.getAsJsonObject("currency")
+                .addProperty("amount", 13);
+            first.getAsJsonArray("toItems")
+                .get(0)
+                .getAsJsonObject()
+                .addProperty("amount", 37);
+            for (JsonElement tab : old.getAsJsonArray("tabs")) for (JsonElement trade : tab.getAsJsonObject()
+                .getAsJsonArray("trades"))
+                trade.getAsJsonObject()
+                    .addProperty("bqQuestId", "00000000-0000-0000-0000-0000000000b0");
+            // Exercise Windows CRLF input rather than comparing exact file bytes to a shipped hash.
+            write(
+                root.resolve("MiaoTrade/" + id + ".json"),
+                TradePresetStore.GSON.toJson(old)
+                    .replace("\n", "\r\n"));
+            expected.put(id, old);
+        }
+        JsonObject custom = new JsonParser().parse(
+            expected.get("gtit-ae-basic")
+                .toString())
+            .getAsJsonObject();
+        custom.addProperty("id", "user-quest-preserved");
+        Path customPath = root.resolve("MiaoTrade/user-quest-preserved.json");
+        write(customPath, custom.toString());
+        byte[] customBefore = Files.readAllBytes(customPath);
+        before.reload();
+        List<String> selected = Arrays.asList("gtit-ae-basic", "gtit-base-decoration");
+        before.select(before.revision(), selected, ignored -> {});
+        Map<Path, byte[]> installedBefore = new LinkedHashMap<>();
+        boolean hadInstalledGates = true;
+        for (String id : selected) for (Integer tab : before.installedTabs(id)) {
+            Path file = root.resolve(TradePresetLayout.tabPath(tab));
+            installedBefore.put(file, Files.readAllBytes(file));
+            NekoTradeConfig.TabFileData installed = TradePresetStore.GSON
+                .fromJson(read(file), NekoTradeConfig.TabFileData.class);
+            hadInstalledGates &= installed.getTrades()
+                .stream()
+                .allMatch(
+                    trade -> !trade.getBqQuestId()
+                        .isEmpty());
+        }
+        for (JsonObject definition : expected.values())
+            for (JsonElement tab : definition.getAsJsonArray("tabs")) for (JsonElement trade : tab.getAsJsonObject()
+                .getAsJsonArray("trades"))
+                trade.getAsJsonObject()
+                    .addProperty("bqQuestId", "");
+
+        TradePresetStore migrated = new TradePresetStore(root);
+        boolean fieldsPreserved = true;
+        Map<Path, byte[]> migratedFiles = new LinkedHashMap<>();
+        for (Map.Entry<String, JsonObject> entry : expected.entrySet()) {
+            Path file = root.resolve("MiaoTrade/" + entry.getKey() + ".json");
+            fieldsPreserved &= entry.getValue()
+                .equals(new JsonParser().parse(read(file)));
+            migratedFiles.put(file, Files.readAllBytes(file));
+        }
+        boolean installedUntouched = true;
+        for (Map.Entry<Path, byte[]> entry : installedBefore.entrySet())
+            installedUntouched &= Arrays.equals(entry.getValue(), Files.readAllBytes(entry.getKey()));
+        checks.put(
+            "builtin_quest_removal_preserves_other_fields_and_installed_pages",
+            fieldsPreserved && hadInstalledGates
+                && installedUntouched
+                && migrated.selectedIds()
+                    .equals(selected)
+                && migrated.installedTradeCount() == 187);
+        checks
+            .put("custom_preset_quest_binding_untouched", Arrays.equals(customBefore, Files.readAllBytes(customPath)));
+
+        long revision = migrated.revision();
+        TradePresetStore restarted = new TradePresetStore(root);
+        boolean unchanged = restarted.revision() == revision;
+        for (Map.Entry<Path, byte[]> entry : migratedFiles.entrySet())
+            unchanged &= Arrays.equals(entry.getValue(), Files.readAllBytes(entry.getKey()));
+        checks.put("builtin_quest_removal_restart_idempotent", unchanged);
+        restarted.select(restarted.revision(), selected, ignored -> {});
+        boolean installedUngated = true;
+        for (Path file : installedBefore.keySet()) {
+            NekoTradeConfig.TabFileData installed = TradePresetStore.GSON
+                .fromJson(read(file), NekoTradeConfig.TabFileData.class);
+            installedUngated &= installed.getTrades()
+                .stream()
+                .allMatch(trade -> "".equals(trade.getBqQuestId()));
+        }
+        checks.put(
+            "builtin_quest_removal_applied_explicitly",
+            installedUngated && restarted.selectedIds()
+                .equals(selected)
+                && restarted.installedTradeCount() == 187
+                && Arrays.equals(customBefore, Files.readAllBytes(customPath)));
     }
 
     /** Every source field must survive the actual DTO round trip; additional default flags are allowed. */

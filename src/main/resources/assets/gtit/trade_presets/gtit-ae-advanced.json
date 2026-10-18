@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "gtit-ae-advanced",
   "name": "AE 强化",
-  "description": "AE 强化网络：239 条贸易、12 个标签页，含基础网络及高阶扩展。与 AE 基础互斥；各条目保留原有解锁条件。",
+  "description": "AE 强化网络：239 条贸易、12 个标签页。无需 BQ 任务，可开局选择；与 AE 基础互斥。",
   "icon": {
     "item": "appliedenergistics2:tile.BlockDrive",
     "meta": 0,
@@ -41,7 +41,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -68,7 +68,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -95,7 +95,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -122,7 +122,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -149,7 +149,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -176,7 +176,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -203,7 +203,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -230,7 +230,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -257,7 +257,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -284,7 +284,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -311,7 +311,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -350,7 +350,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -377,7 +377,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -404,7 +404,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -431,7 +431,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -458,7 +458,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -485,7 +485,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -512,7 +512,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -539,7 +539,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -566,7 +566,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -593,7 +593,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -620,7 +620,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -647,7 +647,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -686,7 +686,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -713,7 +713,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -740,7 +740,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -767,7 +767,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -794,7 +794,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -821,7 +821,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -848,7 +848,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -875,7 +875,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -902,7 +902,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -929,7 +929,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -956,7 +956,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -995,7 +995,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000516",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1023,7 +1023,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000005d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1051,7 +1051,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a35",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1079,7 +1079,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000516",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1107,7 +1107,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a35",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1135,7 +1135,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000516",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1163,7 +1163,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000009bf",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "GoodGenerator",
@@ -1203,7 +1203,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1230,7 +1230,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1257,7 +1257,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "93d3c0dd-bba1-4ef2-b510-9a4f7c0f1902",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1285,7 +1285,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000005d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1313,7 +1313,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "bbed58f9-e43e-4cbc-b0f9-61a2e4412754",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1341,7 +1341,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1369,7 +1369,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000005d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1397,7 +1397,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a32",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1425,7 +1425,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a35",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1453,7 +1453,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a38",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1481,7 +1481,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1509,7 +1509,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1537,7 +1537,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1565,7 +1565,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1592,7 +1592,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a35",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -1632,7 +1632,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000859",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1659,7 +1659,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000859",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1686,7 +1686,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1713,7 +1713,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1740,7 +1740,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1767,7 +1767,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1794,7 +1794,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1821,7 +1821,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000859",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1848,7 +1848,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1875,7 +1875,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1902,7 +1902,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1929,7 +1929,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000859",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1956,7 +1956,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -1983,7 +1983,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2010,7 +2010,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b7",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2049,7 +2049,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000005d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2076,7 +2076,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000005d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2103,7 +2103,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2130,7 +2130,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2157,7 +2157,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2184,7 +2184,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000005d5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -2211,7 +2211,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2239,7 +2239,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2267,7 +2267,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2295,7 +2295,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2323,7 +2323,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2351,7 +2351,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2379,7 +2379,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2407,7 +2407,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2435,7 +2435,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2463,7 +2463,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2491,7 +2491,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2519,7 +2519,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2547,7 +2547,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2575,7 +2575,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000514",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2603,7 +2603,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000514",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2631,7 +2631,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000514",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2659,7 +2659,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000514",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2687,7 +2687,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2715,7 +2715,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2743,7 +2743,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2771,7 +2771,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2799,7 +2799,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2827,7 +2827,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2855,7 +2855,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2883,7 +2883,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2911,7 +2911,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2939,7 +2939,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2967,7 +2967,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -2995,7 +2995,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3023,7 +3023,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3051,7 +3051,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3079,7 +3079,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3107,7 +3107,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3135,7 +3135,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a60",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3163,7 +3163,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a16",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3191,7 +3191,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000cac",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3219,7 +3219,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3247,7 +3247,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3275,7 +3275,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3303,7 +3303,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3331,7 +3331,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3359,7 +3359,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3387,7 +3387,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3415,7 +3415,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3443,7 +3443,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3471,7 +3471,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3499,7 +3499,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3527,7 +3527,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3555,7 +3555,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3583,7 +3583,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ae2fc",
@@ -3623,7 +3623,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3650,7 +3650,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3677,7 +3677,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3704,7 +3704,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3731,7 +3731,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3758,7 +3758,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a60",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3785,7 +3785,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a16",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3812,7 +3812,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000cac",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3839,7 +3839,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3866,7 +3866,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3893,7 +3893,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3920,7 +3920,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3947,7 +3947,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -3974,7 +3974,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4001,7 +4001,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4028,7 +4028,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4055,7 +4055,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000a16",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4082,7 +4082,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4109,7 +4109,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4136,7 +4136,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4163,7 +4163,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000006ba",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4190,7 +4190,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000762",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4229,7 +4229,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4256,7 +4256,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4283,7 +4283,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4310,7 +4310,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4337,7 +4337,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4364,7 +4364,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4391,7 +4391,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4418,7 +4418,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4445,7 +4445,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4472,7 +4472,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4499,7 +4499,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4526,7 +4526,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4553,7 +4553,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4580,7 +4580,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4607,7 +4607,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4646,7 +4646,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4673,7 +4673,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4700,7 +4700,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4727,7 +4727,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4754,7 +4754,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4781,7 +4781,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4808,7 +4808,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4835,7 +4835,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4862,7 +4862,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4889,7 +4889,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4916,7 +4916,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4943,7 +4943,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4970,7 +4970,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -4997,7 +4997,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5024,7 +5024,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5051,7 +5051,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5078,7 +5078,7 @@
           ],
           "cooldown": 900,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5118,7 +5118,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5145,7 +5145,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5172,7 +5172,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5199,7 +5199,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5226,7 +5226,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5253,7 +5253,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5280,7 +5280,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5307,7 +5307,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5334,7 +5334,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5361,7 +5361,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5388,7 +5388,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5415,7 +5415,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5442,7 +5442,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5469,7 +5469,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5496,7 +5496,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5523,7 +5523,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5550,7 +5550,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5577,7 +5577,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5604,7 +5604,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5631,7 +5631,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5670,7 +5670,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5697,7 +5697,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5724,7 +5724,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5751,7 +5751,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5778,7 +5778,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5805,7 +5805,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5832,7 +5832,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5859,7 +5859,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5886,7 +5886,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5913,7 +5913,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5940,7 +5940,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5967,7 +5967,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -5994,7 +5994,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6021,7 +6021,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6048,7 +6048,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6075,7 +6075,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6102,7 +6102,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6129,7 +6129,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6156,7 +6156,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6183,7 +6183,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6210,7 +6210,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6237,7 +6237,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6264,7 +6264,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6291,7 +6291,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6318,7 +6318,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6345,7 +6345,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6372,7 +6372,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6399,7 +6399,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6426,7 +6426,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6453,7 +6453,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6480,7 +6480,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6507,7 +6507,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6534,7 +6534,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6561,7 +6561,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6588,7 +6588,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6615,7 +6615,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6642,7 +6642,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",
@@ -6669,7 +6669,7 @@
           ],
           "cooldown": 300,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000000b0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "appliedenergistics2",

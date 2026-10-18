@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "gtit-base-decoration",
   "name": "基地装饰",
-  "description": "基地装饰：64 条贸易、2 个标签页。可与任一 AE 预设组合；保留建筑工具、方块及 NBT 造型的原有解锁条件。",
+  "description": "基地装饰：64 条贸易、2 个标签页。无需 BQ 任务，可开局选择；可与任一 AE 预设组合。",
   "icon": {
     "item": "minecraft:stonebrick",
     "meta": 0,
@@ -39,7 +39,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-00000000078f",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -66,7 +66,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -93,7 +93,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -120,7 +120,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007c2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ArchitectureCraft",
@@ -147,7 +147,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007c2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ArchitectureCraft",
@@ -174,7 +174,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ForgeMicroblock",
@@ -201,7 +201,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000799",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterbuilderswands",
@@ -228,7 +228,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-00000000079a",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterbuilderswands",
@@ -255,7 +255,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-00000000079b",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterbuilderswands",
@@ -282,7 +282,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007a0",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "Botany",
@@ -309,7 +309,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007ae",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ExtraTrees",
@@ -336,7 +336,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000cde",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -363,7 +363,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007c2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ArchitectureCraft",
@@ -390,7 +390,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007c2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ArchitectureCraft",
@@ -417,7 +417,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007c2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ArchitectureCraft",
@@ -444,7 +444,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ForgeMicroblock",
@@ -472,7 +472,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b2",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ForgeMicroblock",
@@ -500,7 +500,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -527,7 +527,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -554,7 +554,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -581,7 +581,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -608,7 +608,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -635,7 +635,7 @@
           ],
           "cooldown": 3600,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -674,7 +674,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -701,7 +701,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -728,7 +728,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -755,7 +755,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -782,7 +782,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -809,7 +809,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -836,7 +836,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000798",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -863,7 +863,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "6c838f6a-3595-4db8-86f9-042c1761aa8a",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "Ztones",
@@ -890,7 +890,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "6c838f6a-3595-4db8-86f9-042c1761aa8a",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "Ztones",
@@ -917,7 +917,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "6c838f6a-3595-4db8-86f9-042c1761aa8a",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "Ztones",
@@ -944,7 +944,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b3",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "BiblioCraft",
@@ -971,7 +971,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000cde",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -998,7 +998,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000cde",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -1025,7 +1025,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000cde",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -1052,7 +1052,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "9a73532a-fcd5-4133-8d70-a4254a96deaa",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -1079,7 +1079,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "9a73532a-fcd5-4133-8d70-a4254a96deaa",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "betterquesting",
@@ -1106,7 +1106,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b5",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "ProjRed|Illumination",
@@ -1133,7 +1133,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b1",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "Railcraft",
@@ -1160,7 +1160,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b1",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "Railcraft",
@@ -1187,7 +1187,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b8",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "Ztones",
@@ -1214,7 +1214,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1241,7 +1241,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1268,7 +1268,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1295,7 +1295,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1322,7 +1322,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1349,7 +1349,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1376,7 +1376,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1403,7 +1403,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1430,7 +1430,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1457,7 +1457,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1484,7 +1484,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1511,7 +1511,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1538,7 +1538,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000870",
+          "bqQuestId": "",
           "recordNBT": false,
           "requiresMods": [
             "CarpentersBlocks",
@@ -1565,7 +1565,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007c2",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "ArchitectureCraft",
@@ -1592,7 +1592,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007c2",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "ArchitectureCraft",
@@ -1619,7 +1619,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b2",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "ForgeMicroblock",
@@ -1647,7 +1647,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b2",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "ForgeMicroblock",
@@ -1675,7 +1675,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-0000000007b2",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "ForgeMicroblock",
@@ -1703,7 +1703,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "betterquesting",
@@ -1730,7 +1730,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "betterquesting",
@@ -1757,7 +1757,7 @@
           ],
           "cooldown": 60,
           "maxTrades": -1,
-          "bqQuestId": "00000000-0000-0000-0000-000000000259",
+          "bqQuestId": "",
           "recordNBT": true,
           "requiresMods": [
             "betterquesting",

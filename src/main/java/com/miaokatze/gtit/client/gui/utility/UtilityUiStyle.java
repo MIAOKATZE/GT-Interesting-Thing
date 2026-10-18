@@ -52,8 +52,11 @@ public final class UtilityUiStyle {
 
     // Management windows retain their opt-in API and layout while sharing the pocket's C2 materials.
     public static final int MANAGER_TEXT = TEXT;
-    public static final int MANAGER_MUTED = MUTED;
+    public static final int MANAGER_MUTED = 0xFF59422D;
     public static final int MANAGER_ACCENT = ACCENT;
+    public static final int MANAGER_SUCCESS = 0xFF24512A;
+    public static final int MANAGER_WARNING = 0xFF754200;
+    public static final int MANAGER_ERROR = 0xFF85271E;
     public static final int MANAGER_BUTTON_TEXT = BUTTON_TEXT;
     public static final IDrawable MANAGER_PANEL = PANEL;
     public static final IDrawable MANAGER_INSET = INSET;
@@ -66,6 +69,19 @@ public final class UtilityUiStyle {
     public static final IDrawable MANAGER_BUTTON_SELECTED_HOVER = BUTTON_SELECTED_HOVER;
     public static final IDrawable MANAGER_BUTTON_DISABLED = BUTTON_DISABLED;
     public static final IDrawable MANAGER_SCROLLBAR = SCROLLBAR;
+    public static final IDrawable MANAGER_ROW = rowBackground(0x10FFFFFF, 0xFF9A7043);
+    public static final IDrawable MANAGER_ROW_HOVER = rowBackground(0x30FFFFFF, 0xFF79502A);
+    public static final IDrawable MANAGER_ROW_SELECTED = rowBackground(0x60FFDA82, 0xFF744719);
+    public static final IDrawable MANAGER_ROW_SELECTED_HOVER = rowBackground(0x80FFE4A0, 0xFF63390F);
+    public static final IDrawable MANAGER_ROW_DISABLED = rowBackground(0x40B9AD95, 0xFF958066);
+
+    private static IDrawable rowBackground(int glaze, int border) {
+        return IDrawable.of(
+            PocketGuiTextures.CLOTH,
+            new Rectangle().color(glaze),
+            new Rectangle().color(border)
+                .hollow(1));
+    }
 
     public static ParentWidget<?> managerSection(int x, int y, int width, int height) {
         return section(x, y, width, height).background(MANAGER_INSET);

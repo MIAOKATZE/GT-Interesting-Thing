@@ -45,7 +45,7 @@ final class TradePresetStore {
     private final Map<String, TradePresetDefinition> presets = new LinkedHashMap<>();
     private final List<String> errors = new ArrayList<>();
     private final List<String> builtinNotices = new ArrayList<>();
-    private final Set<String> upgradedEmptyIds = new HashSet<>();
+    private final Set<String> deferredApplyIds = new HashSet<>();
     private State state;
 
     TradePresetStore(Path gameRoot) throws IOException {
@@ -65,8 +65,8 @@ final class TradePresetStore {
         if (state.layoutVersion < 2) {
             Set<String> migrate = new HashSet<>(state.selectedIds);
             migrate.retainAll(presets.keySet());
-            // Directory upgrades must not turn a previously empty selected template into installed content.
-            migrate.removeAll(upgradedEmptyIds);
+            // Directory-only builtin updates still await explicit Apply during legacy layout migration.
+            migrate.removeAll(deferredApplyIds);
             commitSelection(new LinkedHashSet<>(state.selectedIds), migrate, new LinkedHashMap<>());
         }
     }
@@ -619,16 +619,60 @@ final class TradePresetStore {
             } catch (IOException | RuntimeException invalid) {
                 // A broken or unfamiliar file is user data too; never replace it by builtin ID alone.
             }
-            if (current.equals(existing)) continue;
+            boolean clearedQuests = false;
+            if (existing != null && existing.isJsonObject()) {
+                JsonObject source = existing.getAsJsonObject();
+                if (source.has("id") && source.get("id")
+                    .isJsonPrimitive()
+                    && id.equals(
+                        source.get("id")
+                            .getAsString())
+                    && source.has("tabs")
+                    && source.get("tabs")
+                        .isJsonArray()) {
+                    for (JsonElement tab : source.getAsJsonArray("tabs")) {
+                        if (!tab.isJsonObject() || !tab.getAsJsonObject()
+                            .has("trades")
+                            || !tab.getAsJsonObject()
+                                .get("trades")
+                                .isJsonArray())
+                            continue;
+                        for (JsonElement value : tab.getAsJsonObject()
+                            .getAsJsonArray("trades")) {
+                            if (!value.isJsonObject()) continue;
+                            JsonObject trade = value.getAsJsonObject();
+                            JsonElement quest = trade.get("bqQuestId");
+                            if (quest != null && quest.isJsonPrimitive()
+                                && quest.getAsJsonPrimitive()
+                                    .isString()
+                                && !quest.getAsString()
+                                    .isEmpty()) {
+                                trade.addProperty("bqQuestId", "");
+                                clearedQuests = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if (clearedQuests) {
+                changes.put(relative, bytes(existing));
+                deferredApplyIds.add(id);
+            }
+            if (current.equals(existing)) {
+                if (clearedQuests) builtinNotices.add("内置预设 " + id + " 任务限制已移除，应用后生效。");
+                continue;
+            }
             if (originalEmpty(id, existing)) {
                 changes.put(relative, bundled);
-                upgradedEmptyIds.add(id);
+                deferredApplyIds.add(id);
                 builtinNotices.add("内置预设 " + id + " 的原始空模板已升级为完整目录。已应用贸易保持不变，请应用选择以安装新内容。");
             } else {
                 String update = "MiaoTrade/builtin_updates/" + UUID.nameUUIDFromBytes(bundled) + "/" + id + ".json";
                 Path candidate = files.checked(update);
                 if (!Files.exists(candidate)) changes.put(update, bundled);
-                builtinNotices.add("内置预设 " + id + " 已由用户修改，保留原文件；新版副本位于 " + update + "，请另存新 ID 或手动合并后应用。");
+                builtinNotices.add(
+                    clearedQuests ? "内置预设 " + id + " 任务限制已移除，应用后生效；其他配置保留。新版副本：" + update
+                        : "内置预设 " + id + " 已由用户修改，保留原文件；新版副本位于 " + update + "，请另存新 ID 或手动合并后应用。");
             }
         }
         if (!changes.isEmpty()) files.commit(changes);

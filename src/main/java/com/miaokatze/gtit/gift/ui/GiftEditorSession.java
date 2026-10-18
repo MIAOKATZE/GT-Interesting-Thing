@@ -60,11 +60,6 @@ final class GiftEditorSession {
     String selectedId = "";
     String message = "";
     String updatePrompt = "";
-    int appliedDefaultVersion;
-    int availableDefaultVersion;
-    String defaultChangesKey = "";
-    String defaultDifferences = "";
-    boolean defaultUpdateAllowed;
     boolean defaultsEnabled;
     long registryRevision;
     long refreshedAt = Long.MIN_VALUE;
@@ -107,8 +102,6 @@ final class GiftEditorSession {
         registryRevision = snapshot.revision;
         defaultsEnabled = snapshot.defaultsEnabled;
         updatePrompt = snapshot.updatePrompt == null ? "" : snapshot.updatePrompt;
-        appliedDefaultVersion = snapshot.defaultVersion;
-        availableDefaultVersion = GiftRegistry.bundledDefaultVersion();
         listPage = Math.max(0, Math.min(listPage, Math.max(0, (definitions.size() - 1) / 6)));
     }
 
@@ -199,21 +192,18 @@ final class GiftEditorSession {
             && ("AVAILABLE".equals(status) || "PENDING".equals(status));
     }
 
-    void prepareDefaultUpdate() {
+    boolean prepareDefaultUpdate() {
         requireAdmin();
         invalidate();
-        List<String> differences = GiftRegistry.INSTANCE.differingDefaultIds();
-        defaultDifferences = String.join(", ", differences);
-        defaultChangesKey = GiftRegistry.bundledDefaultChangesKey();
-        defaultUpdateAllowed = defaultsEnabled && DefaultContentConfig.loadDefaultGifts() && !differences.isEmpty();
+        if (!defaultsEnabled || !DefaultContentConfig.loadDefaultGifts() || !"ASK".equals(updatePrompt)) return false;
         defaultUpdateRevision = registryRevision;
+        return true;
     }
 
-    void confirmDefaultUpdate() {
+    void resolveDefaultUpdate(boolean accept) {
         requireAdmin();
-        if (defaultUpdateRevision < 0 || !defaultUpdateAllowed)
-            throw new IllegalStateException("gtit.gift.ui.update_changed");
-        GiftRegistry.INSTANCE.resolveDefaultUpdate("APPLY", defaultUpdateRevision);
+        if (defaultUpdateRevision < 0) throw new IllegalStateException("gtit.gift.ui.update_changed");
+        GiftRegistry.INSTANCE.resolveDefaultUpdate(accept ? "APPLY" : "SKIP", defaultUpdateRevision);
         defaultUpdateRevision = -1;
         invalidate();
     }

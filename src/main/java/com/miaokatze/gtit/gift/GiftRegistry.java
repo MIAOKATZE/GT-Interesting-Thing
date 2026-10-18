@@ -30,6 +30,7 @@ public final class GiftRegistry {
         public int evaluatedDefaultVersion;
         public int forcedVersion;
         public int skippedVersion;
+        /** Legacy permanent mute; converted to a single-version skip when loading. */
         public boolean updateNotice = true;
         public boolean forcedNotificationPending;
         public List<String> pendingDefaultIds = new ArrayList<>();
@@ -55,6 +56,14 @@ public final class GiftRegistry {
         if (existing && !loaded.defaultsInitialized
             && (!stored.has("defaultsInitialized") || !loaded.definitions.isEmpty())) {
             loaded.defaultsInitialized = true;
+            changed = true;
+        }
+        // The old permanent mute becomes a skip for the content version dismissed at that time.
+        if (!loaded.updateNotice) {
+            int dismissedVersion = loaded.evaluatedDefaultVersion > 0 ? loaded.evaluatedDefaultVersion
+                : GiftDefaults.VERSION;
+            loaded.skippedVersion = Math.max(loaded.skippedVersion, dismissedVersion);
+            loaded.updateNotice = true;
             changed = true;
         }
         if (!existing) {
@@ -114,24 +123,6 @@ public final class GiftRegistry {
     public synchronized Snapshot snapshot() {
         requireReady();
         return copy(state);
-    }
-
-    public static int bundledDefaultVersion() {
-        return GiftDefaults.VERSION;
-    }
-
-    public static String bundledDefaultChangesKey() {
-        return GiftDefaults.CHANGES_KEY;
-    }
-
-    /** A manual review remains available after ignoring this version or disabling automatic notices. */
-    public synchronized List<String> differingDefaultIds() {
-        requireReady();
-        List<String> result = new ArrayList<>();
-        for (GiftDefinition authored : GiftDefaults.create()) {
-            if (!sameContent(find(state, authored.id), authored)) result.add(authored.id);
-        }
-        return result;
     }
 
     public synchronized GiftDefinition get(String id) {
@@ -229,11 +220,10 @@ public final class GiftRegistry {
                 updated.forcedNotificationPending = false;
                 break;
             case "SKIP":
+            case "DISABLE_NOTICE": // Compatibility with the old action: ignore only this content version.
                 updated.skippedVersion = GiftDefaults.VERSION;
                 updated.pendingDefaultIds.clear();
-                break;
-            case "DISABLE_NOTICE":
-                updated.updateNotice = false;
+                updated.updateNotice = true;
                 break;
             case "ACK":
                 updated.forcedNotificationPending = false;

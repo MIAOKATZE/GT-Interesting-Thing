@@ -116,6 +116,17 @@ public final class UtilityControls {
             0xFFFFFFFF,
             0x808C643B,
             UtilityUiStyle.MANAGER_MUTED));
+    private static final WidgetThemeEntry<WidgetTheme> MANAGER_ROW_THEME = new WidgetThemeEntry<>(
+        IThemeApi.BUTTON,
+        new WidgetTheme(18, 18, UtilityUiStyle.MANAGER_ROW, 0xFFFFFFFF, UtilityUiStyle.MANAGER_TEXT, false, 0xFFFFFFFF),
+        new WidgetTheme(
+            18,
+            18,
+            UtilityUiStyle.MANAGER_ROW_HOVER,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_TEXT,
+            false,
+            0xFFFFFFFF));
 
     private UtilityControls() {}
 
@@ -125,9 +136,18 @@ public final class UtilityControls {
         private BooleanSupplier selected = () -> false;
         private boolean pressed;
         private boolean manager;
+        private boolean managerRow;
 
         public W manager() {
             manager = true;
+            managerRow = false;
+            return getThis();
+        }
+
+        /** A light cloth list row with a thin border, rather than a dark action button. */
+        public W managerRow() {
+            manager = true;
+            managerRow = true;
             return getThis();
         }
 
@@ -141,19 +161,30 @@ public final class UtilityControls {
             return getThis();
         }
 
-        /** Every C2 button state has a dark surface, so decorative text always needs the light color. */
+        /** Decorative labels use light gold on action buttons and dark text on cloth rows. */
         public boolean usesPrimaryText() {
-            return manager;
+            return manager && !managerRow;
+        }
+
+        public boolean usesTextShadow() {
+            return !managerRow;
         }
 
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
+            if (managerRow) return MANAGER_ROW_THEME;
             return manager ? (pressed || selected.getAsBoolean() ? MANAGER_PRIMARY_THEME : MANAGER_BUTTON_THEME)
                 : BUTTON_THEME;
         }
 
         @Override
         public IDrawable getThemeBackground(WidgetThemeEntry<?> entry, WidgetTheme theme) {
+            if (managerRow) {
+                if (!available.getAsBoolean()) return UtilityUiStyle.MANAGER_ROW_DISABLED;
+                if (pressed || selected.getAsBoolean()) return isHovering() ? UtilityUiStyle.MANAGER_ROW_SELECTED_HOVER
+                    : UtilityUiStyle.MANAGER_ROW_SELECTED;
+                return isHovering() ? UtilityUiStyle.MANAGER_ROW_HOVER : UtilityUiStyle.MANAGER_ROW;
+            }
             if (manager) {
                 if (!available.getAsBoolean()) return UtilityUiStyle.MANAGER_BUTTON_DISABLED;
                 if (pressed || selected.getAsBoolean())
