@@ -25,7 +25,8 @@ public final class GiftDefinition {
     public String id = "";
     public long revision;
     public String name = "";
-    public ItemEntry icon = new ItemEntry("minecraft:chest", 1, 0);
+    /** Null (including an omitted JSON field) inherits the bound physical gift item's icon. */
+    public ItemEntry icon;
     public String iconKey = "gift";
     /** Null marks a definition written before physical gift-shell bindings existed. */
     public String shellKey;

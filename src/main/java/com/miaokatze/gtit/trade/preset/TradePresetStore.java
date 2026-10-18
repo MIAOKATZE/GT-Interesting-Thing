@@ -142,6 +142,22 @@ final class TradePresetStore {
         return state.selectedIds.contains(id);
     }
 
+    List<String> selectedIds() {
+        return new ArrayList<>(state.selectedIds);
+    }
+
+    int installedTradeCount() throws IOException {
+        int count = 0;
+        for (OwnedTab owned : state.ownedTabs) {
+            Path path = files.checked(tabPath(owned.tabId));
+            if (!Files.exists(path)) continue;
+            NekoTradeConfig.NekoTradeData data = GSON.fromJson(read(path), NekoTradeConfig.NekoTradeData.class);
+            if (data != null && data.getTrades() != null) count += data.getTrades()
+                .size();
+        }
+        return count;
+    }
+
     List<Integer> installedTabs(String id) {
         List<Integer> ids = new ArrayList<>();
         for (OwnedTab owned : state.ownedTabs) if (id.equals(owned.presetId)) ids.add(owned.tabId);

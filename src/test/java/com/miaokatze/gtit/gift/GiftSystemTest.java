@@ -28,6 +28,7 @@ public final class GiftSystemTest {
         if (!MinecraftTestBootstrap.enter(GiftSystemTest.class, args)) return;
         Path root = Files.createTempDirectory("gtit-gift-regression-");
         migrationAndUpdates(root);
+        eraDefaultsAndUpgrade(root);
         shellBindingMigration(root);
         malformedAndFailedWrites(root);
         itemAndEnergyTransactions();
@@ -36,6 +37,95 @@ public final class GiftSystemTest {
         validation();
         System.out.println(
             "GiftSystemTest: migration, empty/custom/default preservation, revisions, update policies, atomic writes, NBT and wireless receipts passed");
+    }
+
+    private static void eraDefaultsAndUpgrade(Path root) throws Exception {
+        java.util.List<GiftDefinition> defaults = GiftDefaults.create();
+        GiftDefinition starter = defaults.get(0);
+        check(
+            GiftFiles.JSON.toJson(starter.rewards)
+                .equals(GiftFiles.JSON.toJson(GiftConfig.createDefaultGuaranteedItems()))
+                && GiftFiles.JSON.toJson(starter.randomRewards)
+                    .equals(GiftFiles.JSON.toJson(GiftConfig.createDefaultRandomItems()))
+                && starter.randomCount == 2
+                && starter.trigger == GiftDefinition.Trigger.FIRST_LOGIN,
+            "Era update leaves authored starter rewards and first-login trigger unchanged");
+        int[] quests = { 44, 88, 1148, 160, 176, 213, 1493 };
+        int[] motors = { 32600, 32601, 32602, 32603, 32604, 32606 };
+        for (int i = 1; i < defaults.size(); i++) {
+            GiftDefinition era = defaults.get(i);
+            check(
+                era.trigger == GiftDefinition.Trigger.BQ_COMPLETE && era.questId.equals("0:" + quests[i - 1])
+                    && era.id.equals(era.shellKey)
+                    && era.updatePolicy == GiftDefinition.UpdatePolicy.RECOMMENDED
+                    && era.rewards.size() == 4
+                    && era.randomRewards.isEmpty()
+                    && era.randomCount == 0,
+                "Era identity, completion quest, carrier and recommended policy are stable: " + era.id);
+            check(
+                era.rewards.stream()
+                    .allMatch(reward -> reward.itemId.startsWith("gregtech:")),
+                "Era materials replace every old food, torch, pearl and coin reward: " + era.id);
+            if (i > 1) {
+                int tier = i - 2;
+                reward(era, 0, "gregtech:gt.blockmachines", 4, 11 + tier);
+                reward(era, 1, "gregtech:gt.metaitem.01", 4, 32610 + tier);
+                reward(era, 2, "gregtech:gt.metaitem.01", 4, 32630 + tier);
+                reward(era, 3, "gregtech:gt.metaitem.01", 8, motors[tier]);
+            }
+        }
+        reward(defaults.get(1), 0, "gregtech:gt.blockcasings", 16, 10);
+        reward(defaults.get(1), 1, "gregtech:gt.blockmachines", 32, 30729);
+        reward(defaults.get(1), 2, "gregtech:gt.blockmachines", 256, 30727);
+        reward(defaults.get(1), 3, "gregtech:gt.blockmachines", 2, 114);
+
+        GiftRegistry registry = new GiftRegistry();
+        Path file = root.resolve("era-v1-upgrade.json");
+        registry.init(file);
+        GiftRegistry.Snapshot previous = registry.snapshot();
+        previous.defaultVersion = 1;
+        previous.evaluatedDefaultVersion = 1;
+        for (GiftDefinition era : previous.definitions) {
+            if ("starter".equals(era.id)) continue;
+            era.rewards.clear();
+            era.rewards.add(new GiftConfig.ItemEntry("minecraft:bread", 16, 0));
+            era.rewards.add(new GiftConfig.ItemEntry("minecraft:torch", 64, 0));
+            era.rewards.add(new GiftConfig.ItemEntry("minecraft:ender_pearl", 2, 0));
+            era.rewards.add(new GiftConfig.ItemEntry("gtit:neko_coin", 1, 0));
+            if ("lv".equals(era.id)) era.name = "User edited LV";
+        }
+        previous.definitions.removeIf(gift -> "mv".equals(gift.id));
+        GiftFiles.write(file, previous);
+        String oldStarter = GiftFiles.JSON.toJson(previous.definitions.get(0));
+        String oldSteam = GiftFiles.JSON.toJson(previous.definitions.get(1));
+        registry.init(file);
+        check(
+            "ASK".equals(registry.snapshot().updatePrompt) && registry.get("mv") == null
+                && "User edited LV".equals(registry.get("lv").name)
+                && oldStarter.equals(GiftFiles.JSON.toJson(registry.get("starter")))
+                && oldSteam.equals(GiftFiles.JSON.toJson(registry.get("steam"))),
+            "Version-one recommended upgrade retains old rewards, user edits and deleted eras before acceptance");
+        registry.resolveDefaultUpdate("SKIP", registry.snapshot().revision);
+        registry.init(file);
+        check(
+            registry.snapshot().updatePrompt.isEmpty() && registry.get("mv") == null
+                && "User edited LV".equals(registry.get("lv").name)
+                && oldStarter.equals(GiftFiles.JSON.toJson(registry.get("starter")))
+                && oldSteam.equals(GiftFiles.JSON.toJson(registry.get("steam"))),
+            "Skipping version-two materials survives restart without mutating old definitions");
+        registry.resolveDefaultUpdate("APPLY", registry.snapshot().revision);
+        check(
+            registry.snapshot().defaultVersion == 2 && registry.get("mv") != null
+                && GiftFiles.JSON.toJson(registry.get("steam").rewards)
+                    .equals(GiftFiles.JSON.toJson(defaults.get(1).rewards)),
+            "Explicit acceptance installs era materials through existing whole-default replacement semantics");
+    }
+
+    private static void reward(GiftDefinition gift, int index, String item, int amount, int meta) {
+        GiftConfig.ItemEntry actual = gift.rewards.get(index);
+        check(
+            item.equals(actual.itemId) && actual.amount == amount && actual.meta == meta,
+            "Exact material descriptor and quantity for " + gift.id + " reward " + index);
     }
 
     private static void migrationAndUpdates(Path root) throws Exception {
@@ -278,7 +368,7 @@ public final class GiftSystemTest {
             forced.builtIn = true;
             forced.updatePolicy = GiftDefinition.UpdatePolicy.FORCED;
             expectFailure(
-                () -> GiftRegistry.evaluateDefaultUpgrade(snapshot, Arrays.asList(forced), 2),
+                () -> GiftRegistry.evaluateDefaultUpgrade(snapshot, Arrays.asList(forced), GiftDefaults.VERSION + 1),
                 "Forced insertion cannot exceed registry bound");
             check(
                 snapshot.definitions.size() == 128 && snapshot.pendingDefaultIds.isEmpty(),

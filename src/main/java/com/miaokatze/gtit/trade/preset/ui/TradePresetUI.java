@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.trade.preset.ui;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -15,9 +14,9 @@ import net.minecraft.util.ChatComponentText;
 import net.minecraft.world.World;
 
 import com.cleanroommc.modularui.api.IGuiHolder;
+import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.factory.AbstractUIFactory;
 import com.cleanroommc.modularui.factory.GuiData;
 import com.cleanroommc.modularui.factory.GuiManager;
@@ -30,13 +29,12 @@ import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.PhantomItemSlotSH;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
-import com.cleanroommc.modularui.widgets.ButtonWidget;
+import com.cleanroommc.modularui.widgets.Dialog;
 import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
-import com.google.gson.Gson;
 import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 import com.miaokatze.gtit.trade.preset.TradePresetManager;
@@ -52,9 +50,7 @@ import io.netty.buffer.Unpooled;
 public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
 
     private static final TradePresetUI FACTORY = new TradePresetUI();
-    private static final Gson JSON = new Gson();
     private static boolean registered;
-    private static final int MAX_SNAPSHOT_BYTES = 1_048_576;
 
     private TradePresetUI() {
         super("gtit:trade_presets");
@@ -73,8 +69,17 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
 
     private static void open(EntityPlayerMP player, String editId) {
         if (!TradePresetAccessHandler.authorized(player)) return;
+        open(player, editId, !editId.isEmpty(), TradePresetManager.snapshot(player), null, "");
+    }
+
+    private static void open(EntityPlayerMP player, String editId, boolean editing, Snapshot snapshot,
+        List<String> pending, String feedback) {
+        if (!TradePresetAccessHandler.authorized(player)) return;
         init();
-        GuiManager.open(FACTORY, new Data(player, TradePresetManager.snapshot(player), editId), player);
+        snapshot.editorOpen = editing;
+        snapshot.pendingSelection = pending;
+        snapshot.feedback = feedback;
+        GuiManager.open(FACTORY, new Data(player, snapshot, editId), player);
     }
 
     @Override
@@ -90,32 +95,15 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
 
     @Override
     public void writeGuiData(Data data, PacketBuffer buffer) {
-        byte[] bytes = JSON.toJson(data.snapshot)
-            .getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > MAX_SNAPSHOT_BYTES) throw new IllegalArgumentException("Preset catalog is too large");
-        buffer.writeInt(bytes.length);
-        buffer.writeBytes(bytes);
-        byte[] edit = data.editId.getBytes(StandardCharsets.UTF_8);
-        buffer.writeByte(edit.length);
-        buffer.writeBytes(edit);
+        TradePresetPayloadCodec.writePayload(data.snapshot, data.editId, buffer);
     }
 
     @Override
     public Data readGuiData(EntityPlayer player, PacketBuffer buffer) {
         // This factory is server-open only. A forged MUI factory request cannot supply its own catalog.
         if (player instanceof EntityPlayerMP) throw new IllegalArgumentException("Use the authorized preset request");
-        int length = buffer.readInt();
-        if (length < 0 || length > MAX_SNAPSHOT_BYTES || length > buffer.readableBytes())
-            throw new IllegalArgumentException("Invalid preset snapshot length");
-        byte[] bytes = new byte[length];
-        buffer.readBytes(bytes);
-        Snapshot snapshot = JSON.fromJson(new String(bytes, StandardCharsets.UTF_8), Snapshot.class);
-        int editLength = buffer.readUnsignedByte();
-        if (editLength > 64 || editLength > buffer.readableBytes())
-            throw new IllegalArgumentException("Invalid preset edit ID");
-        byte[] edit = new byte[editLength];
-        buffer.readBytes(edit);
-        return new Data(player, snapshot, new String(edit, StandardCharsets.UTF_8));
+        TradePresetPayloadCodec.Payload payload = TradePresetPayloadCodec.readPayload(buffer);
+        return new Data(player, payload.snapshot, payload.editId);
     }
 
     public static final class Data extends GuiData {
@@ -133,47 +121,55 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
     private static ModularPanel build(Data data, PanelSyncManager sync, UISettings settings) {
         Session session = new Session(data, sync);
         sync.bindPlayerInventory(data.getPlayer());
-        PagedWidget.Controller pages = new PagedWidget.Controller();
-        ParentWidget<?> panel = new ParentWidget<>().size(420, 330);
-        panel.child(
-            IKey.lang("gtit.preset.title")
-                .color(UtilityUiStyle.TEXT)
-                .asWidget()
-                .pos(12, 10)
-                .size(220, 16));
-        panel.child(
-            new UtilityControls.Page(0, pages).pos(12, 31)
-                .size(112, 18)
-                .overlay(IKey.lang("gtit.preset.choose")));
-        panel.child(
-            new UtilityControls.Page(1, pages).pos(128, 31)
-                .size(112, 18)
-                .overlay(IKey.lang("gtit.preset.create")));
-        panel.child(
-            IKey.lang("gtit.preset.subtitle")
-                .color(UtilityUiStyle.MUTED)
-                .asWidget()
-                .pos(248, 32)
-                .size(160, 13)
-                .scale(0.65f));
-        panel.child(UtilityUiStyle.section(8, 298, 404, 26));
-        PagedWidget<?> body = new PagedWidget<>().controller(pages)
-            .pos(12, 54)
-            .size(396, 244)
-            .addPage(session.chooser())
-            .addPage(session.editor())
-            .initialPage(data.editId.isEmpty() ? 0 : 1);
-        panel.child(body);
+        ParentWidget<?> content = new ParentWidget<>().size(480, 330);
+        session.label(content, IKey.lang("gtit.preset.title"), 12, 8, 252, 15, 1f);
+        session.label(content, IKey.lang("gtit.preset.subtitle"), 12, 25, 444, 11, 0.65f);
+        content.child(
+            session.button("choose", "gtit.preset.choose", () -> session.navigate("", false))
+                .selected(() -> !data.snapshot.editorOpen)
+                .pos(12, 39)
+                .size(108, 19));
+        content.child(
+            session.button("create", "gtit.preset.create", () -> session.navigate("", true))
+                .selected(() -> data.snapshot.editorOpen)
+                .pos(124, 39)
+                .size(108, 19));
+        session.label(
+            content,
+            IKey.dynamic(
+                () -> session.dirty() ? IKey.lang("gtit.preset.unsaved")
+                    .get() : ""),
+            242,
+            42,
+            216,
+            12,
+            0.7f);
+        content.child(
+            new PagedWidget<>().pos(12, 64)
+                .size(456, 228)
+                .addPage(session.chooser())
+                .addPage(session.editor())
+                .initialPage(data.snapshot.editorOpen ? 1 : 0));
+        content.child(UtilityUiStyle.managerSection(8, 298, 464, 26));
         StringSyncValue status = new StringSyncValue(() -> session.status);
         sync.syncValue("result", status);
-        panel.child(
-            IKey.dynamic(status::getStringValue)
-                .color(UtilityUiStyle.TEXT)
-                .asWidget()
-                .pos(12, 302)
-                .size(396, 18)
-                .scale(0.75f));
-        return UtilityUiStyle.scrollable("gtit.trade.presets", 420, 330, panel);
+        session.label(content, IKey.dynamic(status::getStringValue), 13, 301, 454, 20, 0.7f);
+        ModularPanel panel = new ModularPanel("gtit.trade.presets") {
+
+            private boolean approved;
+
+            @Override
+            public void closeIfOpen() {
+                if (!approved && sync.isClient() && session.dirty()) {
+                    session.guard(() -> {
+                        approved = true;
+                        super.closeIfOpen();
+                    });
+                } else super.closeIfOpen();
+            }
+        };
+        session.panel = panel;
+        return UtilityUiStyle.managerScrollable(panel, 480, 330, content);
     }
 
     private static final class Session {
@@ -192,6 +188,11 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
         volatile String status = "";
         volatile boolean replaceTabs;
         boolean replace;
+        ModularPanel panel;
+        String baseline;
+        ItemStack baselineIcon;
+        Runnable pendingLeave;
+        IPanelHandler leaveDialog;
 
         Session(Data data, PanelSyncManager sync) {
             this.data = data;
@@ -210,7 +211,20 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 tabs.addAll(preset.tabIds);
                 icon.setStackInSlot(0, preset.icon == null ? null : preset.icon.toStack());
             }
-            if (!data.snapshot.errors.isEmpty()) status = String.join("; ", data.snapshot.errors);
+            if (data.snapshot.pendingSelection != null) {
+                selected.clear();
+                // A missing or invalid catalog entry can be deselected explicitly; applying validates all selected IDs.
+                selected.addAll(data.snapshot.pendingSelection);
+            } else selected.addAll(data.snapshot.appliedIds);
+            status = data.snapshot.feedback;
+            if (!data.snapshot.errors.isEmpty())
+                status += (status.isEmpty() ? "" : " | ") + String.join("; ", data.snapshot.errors);
+            if (status.isEmpty()) status = IKey.lang("gtit.preset.ready")
+                .get();
+            baseline = draftFingerprint();
+            baselineIcon = icon.getStackInSlot(0) == null ? null
+                : icon.getStackInSlot(0)
+                    .copy();
         }
 
         EntityPlayerMP player() {
@@ -242,108 +256,269 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             });
         }
 
-        ButtonWidget<?> button(String key, String label, Runnable action) {
+        void label(ParentWidget<?> parent, IKey text, int x, int y, int width, int height, float scale) {
+            parent.child(
+                text.color(UtilityUiStyle.MANAGER_TEXT)
+                    .asWidget()
+                    .pos(x, y)
+                    .size(width, height)
+                    .scale(scale));
+        }
+
+        String draftFingerprint() {
+            return name + "\n" + id + "\n" + conflicts + "\n" + description + "\n" + replaceTabs + "\n" + tabs;
+        }
+
+        boolean dirty() {
+            return data.snapshot.editorOpen && baseline != null
+                && (!baseline.equals(draftFingerprint())
+                    || !ItemStack.areItemStacksEqual(baselineIcon, icon.getStackInSlot(0)));
+        }
+
+        void navigate(String editId, boolean editing) {
+            open(player(), editId, editing, TradePresetManager.snapshot(player()), new ArrayList<>(selected), "");
+        }
+
+        void guard(Runnable action) {
+            if (!dirty()) {
+                action.run();
+                return;
+            }
+            pendingLeave = action;
+            if (leaveDialog == null) leaveDialog = IPanelHandler.simple(panel, (parent, player) -> {
+                ModularPanel dialog = new Dialog<>("gtit_preset_unsaved", null).setDisablePanelsBelow(true)
+                    .setCloseOnOutOfBoundsClick(false)
+                    .size(264, 126)
+                    .background(UtilityUiStyle.MANAGER_PANEL);
+                dialog.child(
+                    IKey.lang("gtit.preset.leave_title")
+                        .asWidget()
+                        .pos(12, 12)
+                        .size(240, 16));
+                dialog.child(
+                    IKey.lang("gtit.preset.leave_hint")
+                        .asWidget()
+                        .pos(12, 35)
+                        .size(240, 36)
+                        .scale(0.8f));
+                dialog.child(
+                    new UtilityControls.ActionButton().manager()
+                        .pos(12, 91)
+                        .size(116, 21)
+                        .overlay(IKey.lang("gtit.preset.stay"))
+                        .onMousePressed(mouse -> {
+                            if (mouse != 0) return false;
+                            pendingLeave = null;
+                            dialog.closeIfOpen();
+                            return true;
+                        }));
+                dialog.child(
+                    new UtilityControls.ActionButton().manager()
+                        .pos(136, 91)
+                        .size(116, 21)
+                        .overlay(IKey.lang("gtit.preset.discard"))
+                        .onMousePressed(mouse -> {
+                            if (mouse != 0) return false;
+                            Runnable next = pendingLeave;
+                            pendingLeave = null;
+                            dialog.closeIfOpen();
+                            if (next != null) next.run();
+                            return true;
+                        }));
+                UtilityUiStyle.styleManagerContent(dialog);
+                return dialog;
+            }, true);
+            leaveDialog.openPanel();
+        }
+
+        UtilityControls.ActionButton button(String key, String label, Runnable action) {
             InteractionSyncHandler handler = new InteractionSyncHandler().setOnMousePressed(mouse -> {
                 if (sync.isClient() || mouse.mouseButton != 0) return;
                 dispatch(action);
             });
             sync.syncValue("action_" + key, handler);
-            return new UtilityControls.ActionButton().overlay(
-                IKey.lang(label)
-                    .scale(0.8f))
-                .syncHandler(handler);
+            return new UtilityControls.ActionButton().manager()
+                .overlay(
+                    IKey.lang(label)
+                        .scale(0.75f))
+                .syncHandler(handler)
+                .onMousePressed(mouse -> {
+                    if (mouse != 0) return true;
+                    if (!"save".equals(key) && dirty()) guard(() -> handler.onMousePressed(mouse));
+                    else {
+                        if ("reload".equals(key)) status = IKey.lang("gtit.preset.reloading")
+                            .get();
+                        handler.onMousePressed(mouse);
+                    }
+                    return true;
+                });
         }
 
         IWidget chooser() {
             ParentWidget<?> page = new ParentWidget<>().sizeRel(1f);
-            ListWidget<IWidget, ?> list = new ListWidget<>().pos(0, 0)
-                .size(396, 184);
+            page.child(UtilityUiStyle.managerSection(0, 0, 270, 198));
+            page.child(UtilityUiStyle.managerSection(276, 0, 180, 198));
+            label(
+                page,
+                IKey.lang("gtit.preset.catalog", data.snapshot.presets.size(), data.snapshot.revision),
+                6,
+                5,
+                258,
+                12,
+                0.7f);
+            ListWidget<IWidget, ?> list = new ListWidget<>().pos(5, 21)
+                .size(260, 172);
             int ordinal = 0;
             for (PresetSummary preset : data.snapshot.presets) {
-                BooleanSyncValue checked = new BooleanSyncValue(() -> selected.contains(preset.id), value -> {
-                    dispatch(() -> {
+                BooleanSyncValue checked = new BooleanSyncValue(
+                    () -> selected.contains(preset.id),
+                    value -> dispatch(() -> {
                         if (value) selected.add(preset.id);
                         else selected.remove(preset.id);
-                    });
-                }).allowC2S();
+                    })).allowC2S();
                 sync.syncValue("preset_" + preset.id, checked);
-                ParentWidget<?> row = new ParentWidget<>().size(386, 58)
-                    .marginBottom(4);
+                ParentWidget<?> row = new ParentWidget<>().size(252, 52)
+                    .marginBottom(3)
+                    .background(UtilityUiStyle.MANAGER_PANEL);
                 row.child(
-                    new UtilityControls.Toggle().value(checked)
-                        .pos(0, 0)
-                        .size(330, 58)
-                        .tooltipBuilder(t -> {
-                            t.addLine(preset.name);
-                            t.addLine(preset.description);
-                            t.addLine(IKey.lang("gtit.preset.stable_id", preset.id));
-                            t.addLine(
-                                IKey.lang("gtit.preset.conflicts", String.join(", ", preset.mutuallyExclusiveIds)));
-                            if (preset.empty) t.addLine(IKey.lang("gtit.preset.empty"));
-                        }));
+                    new UtilityControls.Toggle().manager()
+                        .value(checked)
+                        .pos(4, 7)
+                        .size(14)
+                        .overlay(false, IKey.str(""))
+                        .overlay(true, IKey.str("x")));
                 ItemStack stack = preset.icon == null ? null : preset.icon.toStack();
                 if (stack != null) row.child(
-                    new ItemDrawable(stack).asWidget()
-                        .pos(7, 8)
-                        .size(20));
-                row.child(
-                    IKey.str(preset.name)
-                        .color(0xFFFFFFFF)
-                        .shadow(true)
-                        .asWidget()
-                        .pos(34, 5)
-                        .size(288, 13)
-                        .scale(0.85f));
-                row.child(
-                    IKey.str(preset.description)
-                        .color(0xFFDDDDDD)
-                        .shadow(true)
-                        .asWidget()
-                        .pos(34, 20)
-                        .size(288, 16)
-                        .scale(0.7f));
-                row.child(
+                    new UtilityControls.DecorativeItem().item(stack)
+                        .pos(22, 5)
+                        .size(24));
+                label(row, IKey.str(preset.name), 50, 3, 150, 12, 0.8f);
+                label(row, IKey.str(preset.id), 50, 16, 150, 11, 0.6f);
+                label(
+                    row,
                     IKey.lang(
-                        preset.empty ? "gtit.preset.empty" : "gtit.preset.conflicts",
-                        String.join(", ", preset.mutuallyExclusiveIds))
-                        .color(0xFFDDDDDD)
-                        .shadow(true)
-                        .asWidget()
-                        .pos(7, 39)
-                        .size(315, 13)
-                        .scale(0.7f));
-                final String editId = preset.id;
+                        preset.selected ? "gtit.preset.applied"
+                            : preset.builtin ? "gtit.preset.builtin" : "gtit.preset.custom"),
+                    22,
+                    29,
+                    174,
+                    9,
+                    0.65f);
+                label(
+                    row,
+                    preset.empty ? IKey.lang("gtit.preset.empty")
+                        : IKey.lang("gtit.preset.contents", preset.tabCount, preset.tradeCount),
+                    7,
+                    40,
+                    238,
+                    10,
+                    0.65f);
+                row.tooltipBuilder(t -> {
+                    t.addLine(preset.name);
+                    t.addLine(preset.description);
+                    t.addLine(IKey.lang("gtit.preset.stable_id", preset.id));
+                    t.addLine(IKey.lang("gtit.preset.conflicts", String.join(", ", preset.mutuallyExclusiveIds)));
+                    if (preset.empty) t.addLine(IKey.lang("gtit.preset.zero_reason"));
+                });
                 row.child(
                     button(
                         "edit_" + ordinal++,
                         preset.builtin ? "gtit.preset.copy" : "gtit.preset.edit",
-                        () -> open(player(), editId)).pos(336, 0)
-                            .size(48, 58));
+                        () -> navigate(preset.id, true)).pos(203, 5)
+                            .size(44, 22));
                 list.child(row);
             }
             page.child(list);
-            page.child(
-                IKey.lang("gtit.preset.world_shared")
-                    .color(UtilityUiStyle.MUTED)
+            label(
+                page,
+                IKey.lang(
+                    "gtit.preset.applied_title",
+                    data.snapshot.appliedIds.size(),
+                    data.snapshot.appliedTradeCount),
+                282,
+                5,
+                168,
+                14,
+                0.7f);
+            ListWidget<IWidget, ?> applied = new ListWidget<>().pos(282, 23)
+                .size(168, 40);
+            for (String id : data.snapshot.appliedIds) applied.child(
+                IKey.str(presetName(id))
                     .asWidget()
-                    .pos(0, 191)
-                    .size(396, 22)
-                    .scale(0.75f));
-            page.child(button("apply", "gtit.preset.apply", () -> {
-                Result result = TradePresetManager.select(player(), data.snapshot.revision, new ArrayList<>(selected));
-                finish(result, true);
-            }).pos(0, 219)
-                .size(190, 20));
+                    .size(158, 13)
+                    .scale(0.7f));
+            if (data.snapshot.appliedIds.isEmpty()) applied.child(
+                IKey.lang("gtit.preset.none_applied")
+                    .asWidget()
+                    .size(158, 28)
+                    .scale(0.7f));
+            page.child(applied);
+            label(
+                page,
+                IKey.lang(
+                    data.snapshot.appliedTradeCount == 0 ? "gtit.preset.zero_reason" : "gtit.preset.world_shared"),
+                282,
+                67,
+                168,
+                31,
+                0.65f);
+            label(page, IKey.lang("gtit.preset.pending"), 282, 103, 168, 12, 0.75f);
+            ListWidget<IWidget, ?> pending = new ListWidget<>().pos(282, 119)
+                .size(168, 33);
+            // Fixed rows keep both ends' synchronization identities stable while selection changes.
+            for (PresetSummary preset : data.snapshot.presets) {
+                pending.child(IKey.dynamic(() -> {
+                    boolean chosen = selected.contains(preset.id);
+                    if (chosen == preset.selected) return "";
+                    return (chosen ? "+ " : "- ") + preset.name;
+                })
+                    .asWidget()
+                    .size(158, 13)
+                    .scale(0.7f)
+                    .setEnabledIf(w -> selected.contains(preset.id) != preset.selected));
+            }
+            pending.child(
+                IKey.lang("gtit.preset.no_changes")
+                    .asWidget()
+                    .size(158, 14)
+                    .scale(0.65f)
+                    .setEnabledIf(w -> selected.equals(new java.util.HashSet<>(data.snapshot.appliedIds))));
+            page.child(pending);
+            label(page, IKey.lang("gtit.preset.refresh_hint"), 282, 157, 168, 35, 0.65f);
+            label(
+                page,
+                IKey.dynamic(
+                    () -> IKey.lang("gtit.preset.selection_hint", selected.size())
+                        .get()),
+                0,
+                207,
+                238,
+                18,
+                0.65f);
             page.child(
                 button("reload", "gtit.preset.reload", () -> finish(TradePresetManager.reload(player()), true))
-                    .pos(202, 219)
-                    .size(190, 20));
+                    .pos(246, 207)
+                    .size(100, 20));
+            page.child(
+                button(
+                    "apply",
+                    "gtit.preset.apply",
+                    () -> finish(
+                        TradePresetManager.select(player(), data.snapshot.revision, new ArrayList<>(selected)),
+                        false)).selected(() -> true)
+                            .pos(352, 207)
+                            .size(104, 20));
             return page;
+        }
+
+        String presetName(String id) {
+            for (PresetSummary preset : data.snapshot.presets) if (preset.id.equals(id)) return preset.name;
+            return id;
         }
 
         IWidget editor() {
             ParentWidget<?> page = new ParentWidget<>().sizeRel(1f);
-            page.child(UtilityUiStyle.section(198, 0, 198, 146));
+            page.child(UtilityUiStyle.managerSection(228, 0, 228, 146));
             field(page, "name", "gtit.preset.name", 0, () -> name, value -> name = value, 128);
             field(page, "id", "gtit.preset.id", 31, () -> id, value -> { if (!replace) id = value; }, 64);
             field(page, "conflicts", "gtit.preset.conflict_ids", 62, () -> conflicts, value -> conflicts = value, 1024);
@@ -363,17 +538,18 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             if (data.editId.isEmpty()) {
                 page.child(
                     IKey.lang("gtit.preset.replace_content")
-                        .color(UtilityUiStyle.TEXT)
+                        .color(UtilityUiStyle.MANAGER_TEXT)
                         .asWidget()
-                        .background(UtilityUiStyle.INSET)
-                        .pos(202, 0)
-                        .size(190, 22)
+                        .background(UtilityUiStyle.MANAGER_INSET)
+                        .pos(234, 0)
+                        .size(216, 22)
                         .scale(0.7f));
             } else {
                 page.child(
-                    new UtilityControls.Toggle().value(contentMode)
-                        .pos(202, 0)
-                        .size(190, 22)
+                    new UtilityControls.Toggle().manager()
+                        .value(contentMode)
+                        .pos(234, 0)
+                        .size(216, 22)
                         .overlay(
                             false,
                             IKey.lang("gtit.preset.keep_content")
@@ -387,18 +563,18 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             page.child(
                 IKey.lang("gtit.preset.tabs")
                     .asWidget()
-                    .pos(202, 27)
-                    .size(190, 13)
+                    .pos(234, 27)
+                    .size(216, 13)
                     .setEnabledIf(w -> replaceTabs));
             page.child(
                 IKey.lang("gtit.preset.keep_content_hint")
                     .asWidget()
-                    .pos(202, 32)
-                    .size(190, 104)
+                    .pos(234, 32)
+                    .size(216, 104)
                     .scale(0.75f)
                     .setEnabledIf(w -> !replaceTabs));
-            ListWidget<IWidget, ?> choices = new ListWidget<>().pos(202, 42)
-                .size(190, 100)
+            ListWidget<IWidget, ?> choices = new ListWidget<>().pos(234, 42)
+                .size(216, 100)
                 .setEnabledIf(w -> replaceTabs);
             for (TabSummary tab : data.snapshot.tabs) {
                 BooleanSyncValue value = new BooleanSyncValue(() -> tabs.contains(tab.id), enabled -> {
@@ -409,8 +585,9 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 }).allowC2S();
                 sync.syncValue("tab_" + tab.id, value);
                 choices.child(
-                    new UtilityControls.Toggle().value(value)
-                        .size(178, 22)
+                    new UtilityControls.Toggle().manager()
+                        .value(value)
+                        .size(204, 22)
                         .marginBottom(3)
                         .overlay(
                             IKey.str(tab.name + " [" + tab.id + "]")
@@ -445,8 +622,8 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             sync.syncValue("draft_icon", ghost);
             page.child(
                 new PhantomItemSlot().syncHandler(ghost)
-                    .background(UtilityUiStyle.SLOT)
-                    .pos(174, 126));
+                    .background(UtilityUiStyle.MANAGER_SLOT)
+                    .pos(198, 126));
             page.child(
                 SlotGroupWidget.playerInventory(false)
                     .pos(0, 156));
@@ -467,13 +644,13 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     data.editId,
                     replaceTabs);
                 finish(result, true);
-            }).pos(202, 156)
-                .size(190, 24));
+            }).pos(234, 156)
+                .size(216, 24));
             page.child(
                 IKey.lang("gtit.preset.save_hint")
                     .asWidget()
-                    .pos(202, 187)
-                    .size(190, 49)
+                    .pos(234, 187)
+                    .size(216, 49)
                     .scale(0.7f));
             return page;
         }
@@ -486,35 +663,43 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             sync.syncValue("draft_" + key, value);
             page.child(
                 IKey.lang(label)
-                    .color(UtilityUiStyle.TEXT)
+                    .color(UtilityUiStyle.MANAGER_TEXT)
                     .asWidget()
                     .pos(0, y)
-                    .size(194, 11)
+                    .size(218, 11)
                     .scale(0.7f));
             if (replace && "id".equals(key)) {
                 page.child(
                     IKey.str(data.editId)
-                        .color(UtilityUiStyle.MUTED)
+                        .color(UtilityUiStyle.MANAGER_MUTED)
                         .asWidget()
-                        .background(UtilityUiStyle.INSET)
+                        .background(UtilityUiStyle.MANAGER_INSET)
                         .pos(0, y + 12)
-                        .size(194, 16));
+                        .size(218, 16));
             } else {
                 page.child(
-                    new UtilityControls.Field().value(value)
+                    new UtilityControls.Field().manager()
+                        .value(value)
                         .setMaxLength(max)
                         .autoUpdateOnChange(true)
-                        .background(UtilityUiStyle.INPUT)
+                        .background(UtilityUiStyle.MANAGER_INPUT)
                         .pos(0, y + 12)
-                        .size(194, 16));
+                        .size(218, 16));
             }
         }
 
-        void finish(Result result, boolean reopen) {
+        void finish(Result result, boolean preserveSelection) {
             status = result.message;
-            if (result.success && reopen) {
+            if (result.success) {
                 player().addChatComponentMessage(new ChatComponentText(result.message));
-                open(player());
+                // Never reopen with a fresh blank status: transmit the completed result and keep pending checks.
+                open(
+                    player(),
+                    "",
+                    false,
+                    result.snapshot,
+                    preserveSelection ? new ArrayList<>(selected) : null,
+                    result.message);
             }
         }
     }

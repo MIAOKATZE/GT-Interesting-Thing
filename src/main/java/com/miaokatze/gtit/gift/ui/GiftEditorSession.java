@@ -41,6 +41,8 @@ final class GiftEditorSession {
         @Override
         public void setStackInSlot(int slot, ItemStack stack) {
             items.setStackInSlot(mapped(slot), stack == null ? null : stack.copy());
+            unresolved[mapped(slot)] = null;
+            dirty = true;
         }
 
         @Override
@@ -53,7 +55,6 @@ final class GiftEditorSession {
     int listPage;
     int requiredPage;
     int randomPage;
-    int iconPage;
     int previewPage;
     String selectedId = "";
     String message = "";
@@ -64,10 +65,15 @@ final class GiftEditorSession {
     long expectedRevision;
     volatile long editGeneration;
     boolean creating = true;
+    boolean editing;
+    boolean dirty;
+    boolean leavingWindow;
+    boolean closeRequested;
     String deleteTargetId = "";
     String deleteTargetName = "";
     long deleteTargetRevision;
     long deleteTargetGeneration;
+    long defaultUpdateRevision;
 
     GiftEditorSession(EntityPlayer player) {
         this.player = player;
@@ -121,6 +127,7 @@ final class GiftEditorSession {
     void select(GiftDefinition definition) {
         if (definition == null) return;
         selectedId = definition.id;
+        previewPage = 0;
         load(GiftRegistry.INSTANCE.get(definition.id));
     }
 
@@ -130,6 +137,7 @@ final class GiftEditorSession {
         definition.name = "";
         definition.enabled = true;
         definition.shellKey = "starter";
+        definition.icon = null;
         load(definition);
         selectedId = "";
     }
@@ -147,11 +155,12 @@ final class GiftEditorSession {
         if (!GiftIconCatalog.contains(key)) throw new IllegalArgumentException("Unknown gift shell");
         draft.shellKey = key;
         draft.iconKey = key;
+        dirty = true;
     }
 
     private void load(GiftDefinition definition) {
         editGeneration++;
-        draft = definition;
+        draft = definition.copy();
         expectedRevision = definition.revision;
         creating = definition.id == null || definition.id.isEmpty();
         requiredPage = 0;
@@ -167,6 +176,32 @@ final class GiftEditorSession {
         loadEntries(definition.rewards, 1);
         loadEntries(definition.randomRewards, 1 + MAX_ITEMS);
         message = "";
+        dirty = false;
+    }
+
+    void discard() {
+        GiftDefinition saved = selectedId.isEmpty() ? null : GiftRegistry.INSTANCE.get(selectedId);
+        if (saved == null) create();
+        else load(saved);
+        editing = false;
+    }
+
+    static boolean canClaim(GiftDefinition definition, String status) {
+        return definition != null && definition.trigger == GiftDefinition.Trigger.BQ_UNLOCK
+            && ("AVAILABLE".equals(status) || "PENDING".equals(status));
+    }
+
+    void prepareDefaultUpdate() {
+        requireAdmin();
+        invalidate();
+        if (!"ASK".equals(updatePrompt)) throw new IllegalStateException("gtit.gift.ui.update_changed");
+        defaultUpdateRevision = registryRevision;
+    }
+
+    void confirmDefaultUpdate() {
+        requireAdmin();
+        GiftRegistry.INSTANCE.resolveDefaultUpdate("APPLY", defaultUpdateRevision);
+        invalidate();
     }
 
     private void loadEntries(List<ItemEntry> entries, int offset) {
@@ -216,6 +251,7 @@ final class GiftEditorSession {
         if (creating) throw new IllegalStateException("Select a saved gift first");
         GiftRegistry.INSTANCE.delete(draft.id, expectedRevision);
         create();
+        editing = false;
         invalidate();
     }
 
@@ -256,6 +292,7 @@ final class GiftEditorSession {
         int index = mapped(slot);
         items.setStackInSlot(index, null);
         unresolved[index] = null;
+        dirty = true;
     }
 
     String amount(int slot) {

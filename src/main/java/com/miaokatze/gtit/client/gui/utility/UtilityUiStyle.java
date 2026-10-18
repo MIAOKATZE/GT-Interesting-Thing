@@ -50,6 +50,60 @@ public final class UtilityUiStyle {
     public static final int ACCENT = 0xFF684017;
     public static final int BUTTON_TEXT = 0xFFFFE7B9;
 
+    // R4 management palette is opt-in: terminal and pocket users keep the C2 API above.
+    public static final int MANAGER_TEXT = 0xFF423A2E;
+    public static final int MANAGER_MUTED = 0xFF817969;
+    public static final int MANAGER_ACCENT = 0xFF47786A;
+    public static final int MANAGER_BUTTON_TEXT = 0xFFFFF9E9;
+    public static final IDrawable MANAGER_PANEL = framed(0xFFE8E2D4, 0xFF514839);
+    public static final IDrawable MANAGER_INSET = framed(0xFFDFD8C9, 0xFF9E927C);
+    public static final IDrawable MANAGER_INPUT = framed(0xFFF1ECDF, 0xFF9C8D73);
+    public static final IDrawable MANAGER_SLOT = framed(0xFFBEB8A7, 0xFF8B806B);
+    public static final IDrawable MANAGER_BUTTON = framed(0xFFD4CDBD, 0xFF6E6352);
+    public static final IDrawable MANAGER_BUTTON_HOVER = framed(0xFFE3DCCB, 0xFF6E6352);
+    public static final IDrawable MANAGER_BUTTON_PRESSED = framed(0xFF587C6D, 0xFF344C41);
+    public static final IDrawable MANAGER_BUTTON_SELECTED_HOVER = framed(0xFF496C5C, 0xFF344C41);
+    public static final IDrawable MANAGER_BUTTON_DISABLED = framed(0xFFCAC4B7, 0xFFAAA08D);
+    public static final IDrawable MANAGER_SCROLLBAR = framed(0xFF9B9988, 0xFF6A6050);
+
+    private static IDrawable framed(int fill, int border) {
+        return IDrawable.of(
+            new Rectangle().color(fill),
+            new Rectangle().color(border)
+                .hollow(1));
+    }
+
+    public static ParentWidget<?> managerSection(int x, int y, int width, int height) {
+        return section(x, y, width, height).background(MANAGER_INSET);
+    }
+
+    public static ModularPanel managerScrollable(String name, int width, int height, IWidget content) {
+        return managerScrollable(new ModularPanel(name), width, height, content);
+    }
+
+    public static ModularPanel managerScrollable(ModularPanel panel, int width, int height, IWidget content) {
+        return scrollable(panel.background(MANAGER_PANEL), width, height, content, true);
+    }
+
+    public static UtilityControls.ActionButton managerCloseButton(ModularPanel panel) {
+        return closeButton(panel).manager();
+    }
+
+    public static void styleManagerContent(IWidget content) {
+        WidgetTree.foreachChild(content, widget -> {
+            if (widget instanceof TextWidget<?>text && text.getColor() == null) text.color(MANAGER_TEXT)
+                .shadow(false);
+            if (widget instanceof ListWidget<?, ?>list) {
+                VerticalScrollData scroll = new VerticalScrollData(false, 4);
+                scroll.texture(MANAGER_SCROLLBAR);
+                list.getScrollArea()
+                    .setScrollDataY(scroll);
+            }
+            if (widget instanceof com.cleanroommc.modularui.widgets.slot.ItemSlot slot) slot.background(MANAGER_SLOT);
+            return true;
+        }, true);
+    }
+
     private static UITexture texture(String name) {
         return UITexture.builder()
             .location("gtit", "gui/utility/" + name)
@@ -79,7 +133,13 @@ public final class UtilityUiStyle {
 
     /** Keep a stable server/client widget tree while a small GUI viewport scrolls the full form. */
     public static ModularPanel scrollable(ModularPanel panel, int width, int height, IWidget content) {
-        styleContent(content);
+        return scrollable(panel, width, height, content, false);
+    }
+
+    private static ModularPanel scrollable(ModularPanel panel, int width, int height, IWidget content,
+        boolean manager) {
+        if (manager) styleManagerContent(content);
+        else styleContent(content);
         panel.width(
             () -> viewportExtent(
                 width,
@@ -97,10 +157,10 @@ public final class UtilityUiStyle {
             .setScrollDataX(new HorizontalScrollData(false, 4));
         viewport.getScrollArea()
             .getScrollX()
-            .texture(SCROLLBAR);
+            .texture(manager ? MANAGER_SCROLLBAR : SCROLLBAR);
         viewport.getScrollArea()
             .getScrollY()
-            .texture(SCROLLBAR);
+            .texture(manager ? MANAGER_SCROLLBAR : SCROLLBAR);
         viewport.name("utility_viewport")
             .pos(4, 4)
             .widthRelOffset(1f, -8)
@@ -108,7 +168,7 @@ public final class UtilityUiStyle {
             .child(content);
         panel.child(viewport);
         panel.child(
-            closeButton(panel).right(7)
+            (manager ? managerCloseButton(panel) : closeButton(panel)).right(7)
                 .top(7));
         return panel;
     }

@@ -28,7 +28,7 @@ public final class GiftIconCatalog {
         return contains(key) ? key : "starter";
     }
 
-    /** Minecraft item-atlas registration name; the atlas consumes PNG mcmeta animations. */
+    /** Minecraft item-atlas registration name for the approved 24px gift sprite. */
     public static String atlasResourcePath(String key) {
         return "gtit:gifts/" + normalize(key);
     }
@@ -38,10 +38,6 @@ public final class GiftIconCatalog {
     }
 
     public static int frameCount(String key) {
-        String normalized = normalize(key);
-        for (String animated : DEFAULT_KEYS) {
-            if (animated.equals(normalized)) return 8;
-        }
         return 1;
     }
 }

@@ -1,8 +1,8 @@
-"""Deterministic, hand-drawn 32px Minecraft gift icon catalog (Pillow pixel primitives).
+"""Install the user-approved native 24px R4 gift icon catalog.
 
 Run: python -B tools/artgen_catalog/gift_icons/generate.py
-Every asset is drawn at native resolution. Nearest-neighbour scaling is preview only.
-Default era icons have fixed-alpha eight-frame loops; the item atlas owns animation.
+The previous 32px drawing routines remain available for historical reference.
+The default command exports exact pixels from approved_r4.png; it does not redraw.
 """
 from __future__ import annotations
 
@@ -178,7 +178,7 @@ def preview(images, frame=0):
     return sheet
 
 
-def main():
+def legacy_main():
     ASSETS.mkdir(parents=True, exist_ok=True)
     PREVIEWS.mkdir(parents=True, exist_ok=True)
     all_images, manifest = {}, []
@@ -251,6 +251,11 @@ def main():
                "all_first_frames_distinct": True, "mcmeta_valid": True}
     (PREVIEWS / "validation.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary))
+
+
+def main():
+    from approved import install
+    install(CATALOG, ROOT, HERE, ASSETS)
 
 
 if __name__ == "__main__":

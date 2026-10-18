@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.gift.ui;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
@@ -9,6 +10,7 @@ import net.minecraft.network.PacketBuffer;
 
 import com.cleanroommc.modularui.value.sync.GenericSyncValue;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
+import com.google.gson.Gson;
 import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftRegistry;
@@ -24,10 +26,12 @@ public final class GiftEditorSessionTest {
     public static void main(String[] args) throws Exception {
         if (!MinecraftTestBootstrap.enter(GiftEditorSessionTest.class, args)) return;
         nullableItemSync();
+        manualClaimRules();
         GiftRegistry registry = GiftRegistry.INSTANCE;
-        registry.init(
-            Files.createTempDirectory("gtit-gift-editor-")
-                .resolve("gifts.json"));
+        Path registryFile = Files.createTempDirectory("gtit-gift-editor-")
+            .resolve("gifts.json");
+        registry.init(registryFile);
+        iconInheritanceAndPersistence(registry, registryFile);
         GiftDefinition definition = new GiftDefinition();
         definition.id = "editor_test";
         definition.name = "Draft isolation";
@@ -37,6 +41,7 @@ public final class GiftEditorSessionTest {
         GiftDefinition saved = registry.save(definition, 0);
         GiftEditorSession draft = new GiftEditorSession(null);
         draft.select(saved);
+        check(!draft.dirty, "Opening an existing definition must start with a clean draft");
         check("festival".equals(draft.shellKey()), "Editor loads the saved physical carrier binding");
         draft.draft.shellKey = "winter";
         check("festival".equals(registry.get(saved.id).shellKey), "Carrier edits remain in the draft until save");
@@ -47,6 +52,7 @@ public final class GiftEditorSessionTest {
         tag.setString("marker", "cursor");
         cursor.setTagCompound(tag);
         draft.visibleItems.setStackInSlot(1, cursor);
+        check(draft.dirty, "Copying a ghost item marks the draft as unsaved");
         ItemStack ghost = draft.visibleItems.getStackInSlot(1);
         ghost.stackSize = 4096;
         ghost.getTagCompound()
@@ -87,14 +93,93 @@ public final class GiftEditorSessionTest {
         check(
             rejected && "Changed in another window".equals(registry.get(saved.id).name),
             "Stale editor save must not overwrite a newer definition");
+        draft.editing = true;
+        draft.discard();
+        check(
+            !draft.editing && !draft.dirty && "Changed in another window".equals(draft.draft.name),
+            "Discarding leaves the editor and restores the latest saved definition without saving the draft");
         draft.create();
         check("starter".equals(draft.shellKey()), "New definitions start with an explicit physical carrier");
+        check(
+            draft.draft.icon == null && draft.items.getStackInSlot(0) == null,
+            "A new gift inherits its bound gift item's list icon until an independent icon is supplied");
         check(
             draft.editGeneration > openedGeneration && draft.items.getStackInSlot(128) == null
                 && draft.items.getStackInSlot(256) == null,
             "A new draft must invalidate earlier editor packets and clear every reward page");
         System.out.println(
             "GiftEditorSessionTest: initial-null item sync, 1/127/128/4096 counts with NBT, invalid count bounds, cursor/NBT isolation, persistent draft isolation, final reward pages, stale revisions and new-draft reset passed");
+    }
+
+    private static void iconInheritanceAndPersistence(GiftRegistry registry, Path registryFile) throws Exception {
+        Gson gson = new Gson();
+        GiftDefinition inherited = new GiftDefinition();
+        inherited.id = "inherited_icon_test";
+        inherited.name = "Inherited carrier icon";
+        inherited.trigger = GiftDefinition.Trigger.FIRST_LOGIN;
+        inherited.shellKey = "festival";
+        check(
+            inherited.icon == null && inherited.copy().icon == null,
+            "A newly defined gift and its defensive copy inherit their physical carrier icon");
+        check(
+            gson.fromJson(gson.toJson(inherited), GiftDefinition.class).icon == null,
+            "Omitting a null icon during JSON serialization must not recreate an independent chest icon");
+        check(
+            gson.fromJson("{\"icon\":null}", GiftDefinition.class).icon == null,
+            "An explicit JSON null icon also means carrier inheritance");
+        GiftDefinition saved = registry.save(inherited, 0);
+        check(
+            saved.icon == null && registry.get(saved.id).icon == null,
+            "Saving and snapshotting a gift must preserve carrier inheritance");
+        registry.init(registryFile);
+        saved = registry.get(saved.id);
+        check(
+            saved.icon == null && "festival".equals(saved.shellKey),
+            "Reloading persisted definitions preserves the physical carrier and inherited icon");
+
+        NBTTagCompound customTag = new NBTTagCompound();
+        customTag.setString("marker", "custom-list-icon");
+        saved.icon = new ItemEntry("minecraft:emerald", 3, 0, customTag);
+        GiftDefinition copy = saved.copy();
+        check(
+            copy.icon != saved.icon && "minecraft:emerald".equals(copy.icon.itemId) && copy.icon.amount == 3,
+            "An explicitly supplied custom icon is retained as a defensive copy");
+        saved = registry.save(saved, saved.revision);
+        registry.init(registryFile);
+        saved = registry.get(saved.id);
+        GiftEditorSession editor = new GiftEditorSession(null);
+        editor.select(saved);
+        ItemStack customIcon = editor.items.getStackInSlot(0);
+        check(
+            customIcon != null && customIcon.getItem() == Items.emerald
+                && customIcon.stackSize == 3
+                && "custom-list-icon".equals(
+                    customIcon.getTagCompound()
+                        .getString("marker")),
+            "A saved custom icon, its quantity and NBT survive persistence and load into the separate icon slot");
+        saved.icon = null;
+        saved = registry.save(saved, saved.revision);
+        registry.init(registryFile);
+        editor.select(registry.get(saved.id));
+        check(
+            editor.draft.icon == null && editor.items.getStackInSlot(0) == null && "festival".equals(editor.shellKey()),
+            "Resetting a persisted custom icon restores carrier inheritance without changing the physical gift");
+    }
+
+    private static void manualClaimRules() {
+        GiftDefinition definition = new GiftDefinition();
+        for (GiftDefinition.Trigger trigger : GiftDefinition.Trigger.values()) {
+            definition.trigger = trigger;
+            for (String status : new String[] { "LOCKED", "AVAILABLE", "PENDING", "ISSUED", "OPENED", "DISABLED",
+                "" }) {
+                boolean expected = trigger == GiftDefinition.Trigger.BQ_UNLOCK
+                    && ("AVAILABLE".equals(status) || "PENDING".equals(status));
+                check(
+                    GiftEditorSession.canClaim(definition, status) == expected,
+                    "Manual claiming must follow the actual trigger and state: " + trigger + " / " + status);
+            }
+        }
+        check(!GiftEditorSession.canClaim(null, "AVAILABLE"), "An empty selection cannot be claimed");
     }
 
     private static void nullableItemSync() throws Exception {

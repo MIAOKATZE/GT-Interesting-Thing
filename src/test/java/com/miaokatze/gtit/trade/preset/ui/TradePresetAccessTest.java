@@ -6,10 +6,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.network.PacketBuffer;
 
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
+import com.miaokatze.gtit.trade.preset.TradePresetManager;
 
 import io.netty.buffer.Unpooled;
 
@@ -72,6 +74,33 @@ public final class TradePresetAccessTest {
                 throw new AssertionError("Client payload must be rejected");
             } catch (IllegalArgumentException expected) {
                 // Only the identity of the authenticated connection is used by the server.
+            }
+        });
+        cases.put("reopenedCatalogRetainsFeedbackAndPendingSelectionOnWire", () -> {
+            TradePresetManager.Snapshot snapshot = new TradePresetManager.Snapshot();
+            snapshot.revision = 73;
+            snapshot.feedback = "目录已刷新；已应用内容保持不变。";
+            snapshot.appliedIds.add("gtit-ae-basic");
+            snapshot.pendingSelection = java.util.Arrays.asList("gtit-base-decoration");
+            snapshot.appliedTradeCount = 7;
+            snapshot.editorOpen = true;
+            PacketBuffer buffer = new PacketBuffer(Unpooled.buffer());
+            try {
+                TradePresetPayloadCodec.writePayload(snapshot, "my_preset", buffer);
+                TradePresetPayloadCodec.Payload read = TradePresetPayloadCodec.readPayload(buffer);
+                SimpleAssert.that(buffer.readableBytes() == 0, "Factory payload framing must be symmetric");
+                SimpleAssert.that(
+                    read.snapshot.revision == 73 && read.snapshot.editorOpen && "my_preset".equals(read.editId),
+                    "Reopen keeps revision and editor source");
+                SimpleAssert
+                    .that(snapshot.feedback.equals(read.snapshot.feedback), "Completion feedback survives reopen");
+                SimpleAssert.that(
+                    snapshot.pendingSelection.equals(read.snapshot.pendingSelection)
+                        && snapshot.appliedIds.equals(read.snapshot.appliedIds)
+                        && read.snapshot.appliedTradeCount == 7,
+                    "Pending checks remain separate from applied content");
+            } finally {
+                buffer.release();
             }
         });
         TestRunner.run(TradePresetAccessTest.class, cases);

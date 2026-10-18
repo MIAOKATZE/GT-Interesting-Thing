@@ -174,6 +174,12 @@ public final class TradePresetProbe {
                 && Arrays.equals(userBefore, Files.readAllBytes(originalTab)));
 
         Path firstDefinitionPath = root.resolve("MiaoTrade/" + first.id + ".json");
+        store.select(store.revision(), Arrays.asList(first.id), ignored -> {});
+        Path beforeReloadPath = root.resolve(
+            TradePresetLayout.tabPath(
+                store.installedTabs(first.id)
+                    .get(0)));
+        byte[] beforeReloadTrades = Files.readAllBytes(beforeReloadPath);
         JsonObject refreshed = new JsonParser()
             .parse(new String(Files.readAllBytes(firstDefinitionPath), StandardCharsets.UTF_8))
             .getAsJsonObject();
@@ -187,6 +193,11 @@ public final class TradePresetProbe {
         write(firstDefinitionPath, refreshed.toString());
         long oldCatalogRevision = store.revision();
         store.reload();
+        checks.put(
+            "catalog_reload_preserves_applied_files_and_count",
+            store.selectedIds()
+                .equals(Arrays.asList(first.id)) && store.installedTradeCount() == 1
+                && Arrays.equals(beforeReloadTrades, Files.readAllBytes(beforeReloadPath)));
         checks.put(
             "catalog_reload_revision",
             store.revision() > oldCatalogRevision

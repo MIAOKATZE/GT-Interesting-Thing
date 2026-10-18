@@ -51,10 +51,15 @@ import com.miaokatze.gtit.testlab.ProbeTask;
 
 import betterquesting.api.events.QuestEvent;
 import cpw.mods.fml.common.Loader;
+import gregtech.api.enums.ItemList;
+import gregtech.api.enums.OrePrefixes;
+import gregtech.api.util.GTOreDictUnificator;
+import gregtech.api.util.GTUtility;
 import gregtech.common.misc.GlobalEnergyWorldSavedData;
 import gregtech.common.misc.GlobalVariableStorage;
 import gregtech.common.misc.spaceprojects.SpaceProjectManager;
 import gregtech.common.misc.spaceprojects.SpaceProjectWorldSavedData;
+import gtPlusPlus.xmod.gregtech.registration.gregtech.GregtechConduits.PipeStats;
 
 /** Real inventory/player.dat/GT energy operations, confined to synthetic players and an isolated registry. */
 final class GiftSystemNativeScenario implements ProbeScenario {
@@ -633,6 +638,10 @@ final class GiftSystemNativeScenario implements ProbeScenario {
                 "Expected synthetic authorization was not delivered");
             return;
         }
+        GiftDefinition edited = GiftRegistry.INSTANCE.get(definition.id);
+        edited.rewards = authoredDefaults().get(1).rewards;
+        edited.shellKey = "luv";
+        GiftRegistry.INSTANCE.save(edited, edited.revision);
         Path directory = (Path) GiftScope.field(GiftService.class, "directory")
             .get(GiftService.INSTANCE);
         Path ledger = directory.resolve(player.getUniqueID() + ".json");
@@ -656,16 +665,20 @@ final class GiftSystemNativeScenario implements ProbeScenario {
         int slot = slotOf(player, issued);
         player.inventory.setInventorySlotContents(slot, historical);
         player.inventory.currentItem = slot;
+        int paperBefore = countItem(player, new ItemStack(Items.paper));
         context.check(
             "historical-token-starter-wrapper-compatible",
             GiftService.INSTANCE.open(player, historical)
-                && GiftService.INSTANCE.status(player, definition.id) == GiftService.Status.OPENED,
-            "An actual reloaded pre-shellKey grant accepts its old StarterGift wrapper and preserves owner/token authority");
+                && GiftService.INSTANCE.status(player, definition.id) == GiftService.Status.OPENED
+                && countItem(player, new ItemStack(Items.paper)) == paperBefore + 1,
+            "Reloaded pre-shellKey grant retains its paper reward and old carrier after the live definition changes to era materials and LuV shell");
     }
 
     private static void exerciseEraShellDelivery(ProbeContext context, GiftDefinition source) throws Exception {
         FakePlayer player = context.player("gift-era-shell-delivery");
         ownPlayerFiles(context, player);
+        List<GiftDefinition> defaults = authoredDefaults();
+        verifyEraRewardItems(context, defaults);
         for (String key : GiftIconCatalog.DEFAULT_KEYS) {
             GiftDefinition definition = source.copy();
             definition.id = source.id + "-shell-" + key;
@@ -675,6 +688,9 @@ final class GiftSystemNativeScenario implements ProbeScenario {
             definition.rewards.clear();
             definition.randomRewards.clear();
             definition.randomCount = 0;
+            for (GiftDefinition authored : defaults) {
+                if (key.equals(authored.id) && !"starter".equals(key)) definition.rewards = authored.rewards;
+            }
             GiftRegistry.INSTANCE.save(definition, 0);
         }
         GiftService.INSTANCE.onLogin(player);
@@ -688,6 +704,9 @@ final class GiftSystemNativeScenario implements ProbeScenario {
             GiftService.Status before = GiftService.INSTANCE.status(player, id);
             boolean held = false;
             boolean returnedMatches = false;
+            GiftDefinition definition = GiftRegistry.INSTANCE.get(id);
+            List<Integer> beforeCounts = new ArrayList<>();
+            for (ItemEntry entry : definition.rewards) beforeCounts.add(countItem(player, entry.toItemStack()));
             boolean correct = issued != null && key.equals(GiftShellCatalog.key(issued))
                 && GiftShellCatalog.registryName(key)
                     .equals(actualRegistry)
@@ -715,6 +734,13 @@ final class GiftSystemNativeScenario implements ProbeScenario {
                 && before == GiftService.Status.ISSUED
                 && after == GiftService.Status.OPENED
                 && remaining == 0;
+            List<String> rewardCounts = new ArrayList<>();
+            for (int i = 0; i < definition.rewards.size(); i++) {
+                ItemEntry entry = definition.rewards.get(i);
+                int added = countItem(player, entry.toItemStack()) - beforeCounts.get(i);
+                correct &= added == entry.amount;
+                rewardCounts.add(entry.itemId + ":" + entry.meta + "=" + added + "/" + entry.amount);
+            }
             context.check(
                 "era-shell-issued-and-right-click-" + key,
                 correct,
@@ -732,8 +758,78 @@ final class GiftSystemNativeScenario implements ProbeScenario {
                     + ", after="
                     + after
                     + ", remaining="
-                    + remaining);
+                    + remaining
+                    + ", reward counts="
+                    + rewardCounts);
+            // Receive verified era materials before the next package; preserve every pending package.
+            for (int i = 0; i < player.inventory.mainInventory.length; i++) {
+                ItemStack stack = player.inventory.getStackInSlot(i);
+                for (ItemEntry entry : definition.rewards) {
+                    if (stack != null && stack.isItemEqual(entry.toItemStack())) {
+                        player.inventory.setInventorySlotContents(i, null);
+                        break;
+                    }
+                }
+            }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<GiftDefinition> authoredDefaults() throws Exception {
+        java.lang.reflect.Method method = Class.forName("com.miaokatze.gtit.gift.GiftDefaults")
+            .getDeclaredMethod("create");
+        method.setAccessible(true);
+        return (List<GiftDefinition>) method.invoke(null);
+    }
+
+    private static void verifyEraRewardItems(ProbeContext context, List<GiftDefinition> defaults) {
+        ItemStack[][] expected = {
+            { ItemList.Casing_BronzePlatedBricks.get(16L),
+                GTOreDictUnificator.get(OrePrefixes.pipeHuge, PipeStats.Potin, 32L),
+                // OreDict get() uses copyAmount(), which caps one lookup stack at 64; total gift quantity is 256.
+                GTUtility.copyAmountUnsafe(256, GTOreDictUnificator.get(OrePrefixes.pipeMedium, PipeStats.Potin, 1L)),
+                ItemList.Machine_HP_Solar.get(2L) },
+            { ItemList.Hull_LV.get(4L), ItemList.Electric_Pump_LV.get(4L), ItemList.Conveyor_Module_LV.get(4L),
+                ItemList.Electric_Motor_LV.get(8L) },
+            { ItemList.Hull_MV.get(4L), ItemList.Electric_Pump_MV.get(4L), ItemList.Conveyor_Module_MV.get(4L),
+                ItemList.Electric_Motor_MV.get(8L) },
+            { ItemList.Hull_HV.get(4L), ItemList.Electric_Pump_HV.get(4L), ItemList.Conveyor_Module_HV.get(4L),
+                ItemList.Electric_Motor_HV.get(8L) },
+            { ItemList.Hull_EV.get(4L), ItemList.Electric_Pump_EV.get(4L), ItemList.Conveyor_Module_EV.get(4L),
+                ItemList.Electric_Motor_EV.get(8L) },
+            { ItemList.Hull_IV.get(4L), ItemList.Electric_Pump_IV.get(4L), ItemList.Conveyor_Module_IV.get(4L),
+                ItemList.Electric_Motor_IV.get(8L) },
+            { ItemList.Hull_LuV.get(4L), ItemList.Electric_Pump_LuV.get(4L), ItemList.Conveyor_Module_LuV.get(4L),
+                ItemList.Electric_Motor_LuV.get(8L) } };
+        for (int i = 0; i < expected.length; i++) {
+            GiftDefinition definition = defaults.get(i + 1);
+            for (int j = 0; j < expected[i].length; j++) {
+                ItemStack actual = definition.rewards.get(j)
+                    .toItemStack();
+                ItemStack reference = expected[i][j];
+                context.check(
+                    "era-material-registry-" + definition.id + "-" + j,
+                    actual != null && reference != null
+                        && actual.isItemEqual(reference)
+                        && ItemStack.areItemStackTagsEqual(actual, reference)
+                        && actual.stackSize == reference.stackSize,
+                    "Authored descriptor resolves to the registered GT ItemList/OreDict material and exact quantity; actual="
+                        + (actual == null ? "<missing>" : actual.stackSize)
+                        + ", expected="
+                        + (reference == null ? "<missing>" : reference.stackSize));
+            }
+        }
+    }
+
+    private static int countItem(FakePlayer player, ItemStack expected) {
+        int count = 0;
+        if (expected == null) return count;
+        for (ItemStack stack : player.inventory.mainInventory) {
+            if (stack != null && stack.isItemEqual(expected) && ItemStack.areItemStackTagsEqual(stack, expected)) {
+                count += stack.stackSize;
+            }
+        }
+        return count;
     }
 
     private static ItemStack findPackage(FakePlayer player, String id) {

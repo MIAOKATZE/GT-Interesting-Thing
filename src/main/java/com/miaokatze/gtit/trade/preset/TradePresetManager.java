@@ -82,6 +82,8 @@ public final class TradePresetManager {
         try {
             requireServer();
             result.revision = store.revision();
+            result.appliedIds.addAll(store.selectedIds());
+            result.appliedTradeCount = store.installedTradeCount();
             for (TradePresetDefinition definition : store.definitions()) {
                 PresetSummary summary = new PresetSummary();
                 summary.id = definition.id;
@@ -89,6 +91,11 @@ public final class TradePresetManager {
                 summary.description = definition.description;
                 summary.icon = TradePresetStore.GSON
                     .fromJson(TradePresetStore.GSON.toJson(definition.icon), Icon.class);
+                summary.icon = displayIcon(definition, summary.icon);
+                summary.tabCount = definition.tabs.size();
+                summary.tradeCount = definition.tabs.stream()
+                    .mapToInt(tab -> tab.trades.size())
+                    .sum();
                 summary.mutuallyExclusiveIds = new ArrayList<>(definition.mutuallyExclusiveIds);
                 summary.selected = store.selected(definition.id);
                 summary.builtin = TradePresetStore.BUILTIN_IDS.contains(definition.id);
@@ -115,7 +122,13 @@ public final class TradePresetManager {
             requirePermission(player);
             store.select(expectedRevision, ids, TradePresetManager::validateAvailable);
             refreshTrades();
-            return result(player, true, "贸易预设选择已保存");
+            Result result = result(player, true, "贸易预设选择已应用");
+            result.message += "：" + result.snapshot.appliedIds.size()
+                + " 个贸易组，"
+                + result.snapshot.appliedTradeCount
+                + " 条贸易。"
+                + (result.snapshot.appliedTradeCount == 0 ? "当前未应用有内容的贸易组；空模板不会生成贸易。" : "");
+            return result;
         } catch (IOException | RuntimeException failure) {
             return result(player, false, failure.getMessage());
         }
@@ -159,7 +172,10 @@ public final class TradePresetManager {
                 replaceTabs,
                 TradePresetManager::validateAvailable);
             refreshTrades();
-            return result(player, true, "预设已保存至服务器 MiaoTrade/" + id + ".json");
+            return result(
+                player,
+                true,
+                "预设已保存至服务器 MiaoTrade/" + id + ".json。" + (store.selected(id) ? "已更新正在使用的模板。" : "尚未自动启用，请勾选并应用。"));
         } catch (IOException | RuntimeException failure) {
             return result(player, false, failure.getMessage());
         }
@@ -175,10 +191,40 @@ public final class TradePresetManager {
         try {
             requirePermission(player);
             store.reload();
-            return result(player, true, "服务器预设列表已重新读取");
+            Result result = result(player, true, "服务器预设目录已重新读取");
+            result.message += "：" + result.snapshot.presets.size() + " 个贸易组。已应用贸易保持不变；修改的内容需点击应用选择。";
+            if (!result.snapshot.errors.isEmpty())
+                result.message += " 跳过/警告 " + result.snapshot.errors.size() + " 项，请查看提示。";
+            return result;
         } catch (IOException | RuntimeException failure) {
             return result(player, false, failure.getMessage());
         }
+    }
+
+    /** Resolve stock and previous stock icons through the real AE definitions; custom icons remain untouched. */
+    private static Icon displayIcon(TradePresetDefinition definition, Icon icon) {
+        if (icon == null || icon.meta != 0 || !icon.nbtBase64.isEmpty()) return icon;
+        if ("gtit-ae-basic".equals(definition.id) && ("minecraft:redstone".equals(icon.item)
+            || "appliedenergistics2:item.ItemMultiMaterial".equals(icon.item))) {
+            ItemStack stack = appeng.api.AEApi.instance()
+                .definitions()
+                .materials()
+                .certusQuartzCrystal()
+                .maybeStack(1)
+                .orNull();
+            if (stack != null) return Icon.fromStack(stack);
+        }
+        if ("gtit-ae-advanced".equals(definition.id)
+            && ("minecraft:comparator".equals(icon.item) || "appliedenergistics2:tile.BlockDrive".equals(icon.item))) {
+            ItemStack stack = appeng.api.AEApi.instance()
+                .definitions()
+                .blocks()
+                .drive()
+                .maybeStack(1)
+                .orNull();
+            if (stack != null) return Icon.fromStack(stack);
+        }
+        return icon;
     }
 
     static void validateAvailable(TradePresetDefinition definition) {
@@ -285,6 +331,12 @@ public final class TradePresetManager {
     public static final class Snapshot {
 
         public long revision;
+        public List<String> appliedIds = new ArrayList<>();
+        public int appliedTradeCount;
+        // Server-written presentation state survives rebuilding the immutable catalog widget tree.
+        public String feedback = "";
+        public List<String> pendingSelection;
+        public boolean editorOpen;
         public boolean canManage;
         public List<PresetSummary> presets = new ArrayList<>();
         public List<TabSummary> tabs = new ArrayList<>();
@@ -301,6 +353,8 @@ public final class TradePresetManager {
         public boolean selected;
         public boolean builtin;
         public boolean empty;
+        public int tabCount;
+        public int tradeCount;
         public List<Integer> tabIds = new ArrayList<>();
     }
 

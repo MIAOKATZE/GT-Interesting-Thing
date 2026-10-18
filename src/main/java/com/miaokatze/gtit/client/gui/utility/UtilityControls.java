@@ -40,6 +40,83 @@ public final class UtilityControls {
             0x806D8FAD,
             UtilityUiStyle.MUTED));
 
+    private static final WidgetThemeEntry<WidgetTheme> MANAGER_BUTTON_THEME = new WidgetThemeEntry<>(
+        IThemeApi.BUTTON,
+        new WidgetTheme(
+            18,
+            18,
+            UtilityUiStyle.MANAGER_BUTTON,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_TEXT,
+            false,
+            0xFFFFFFFF),
+        new WidgetTheme(
+            18,
+            18,
+            UtilityUiStyle.MANAGER_BUTTON_HOVER,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_TEXT,
+            false,
+            0xFFFFFFFF));
+    private static final WidgetThemeEntry<SelectableTheme> MANAGER_SELECTABLE_THEME = new WidgetThemeEntry<>(
+        IThemeApi.TOGGLE_BUTTON,
+        new SelectableTheme(
+            18,
+            18,
+            UtilityUiStyle.MANAGER_BUTTON,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_TEXT,
+            false,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_BUTTON_PRESSED,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            false,
+            0xFFFFFFFF),
+        new SelectableTheme(
+            18,
+            18,
+            UtilityUiStyle.MANAGER_BUTTON_HOVER,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_TEXT,
+            false,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_BUTTON_SELECTED_HOVER,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            false,
+            0xFFFFFFFF));
+    private static final WidgetThemeEntry<WidgetTheme> MANAGER_PRIMARY_THEME = new WidgetThemeEntry<>(
+        IThemeApi.BUTTON,
+        new WidgetTheme(
+            18,
+            18,
+            UtilityUiStyle.MANAGER_BUTTON_PRESSED,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            false,
+            0xFFFFFFFF),
+        new WidgetTheme(
+            18,
+            18,
+            UtilityUiStyle.MANAGER_BUTTON_SELECTED_HOVER,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            false,
+            0xFFFFFFFF));
+    private static final WidgetThemeEntry<TextFieldTheme> MANAGER_FIELD_THEME = new WidgetThemeEntry<>(
+        IThemeApi.TEXT_FIELD,
+        new TextFieldTheme(
+            56,
+            18,
+            UtilityUiStyle.MANAGER_INPUT,
+            0xFFFFFFFF,
+            UtilityUiStyle.MANAGER_TEXT,
+            false,
+            0xFFFFFFFF,
+            0x8047786A,
+            UtilityUiStyle.MANAGER_MUTED));
+
     private UtilityControls() {}
 
     public static class Button<W extends Button<W>> extends ButtonWidget<W> {
@@ -47,6 +124,12 @@ public final class UtilityControls {
         private BooleanSupplier available = () -> true;
         private BooleanSupplier selected = () -> false;
         private boolean pressed;
+        private boolean manager;
+
+        public W manager() {
+            manager = true;
+            return getThis();
+        }
 
         public W available(BooleanSupplier available) {
             this.available = available;
@@ -58,13 +141,26 @@ public final class UtilityControls {
             return getThis();
         }
 
+        /** Lets decorative text follow the button's current copper-green background. */
+        public boolean usesPrimaryText() {
+            return manager && available.getAsBoolean() && (pressed || selected.getAsBoolean());
+        }
+
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
-            return BUTTON_THEME;
+            return manager ? (pressed || selected.getAsBoolean() ? MANAGER_PRIMARY_THEME : MANAGER_BUTTON_THEME)
+                : BUTTON_THEME;
         }
 
         @Override
         public IDrawable getThemeBackground(WidgetThemeEntry<?> entry, WidgetTheme theme) {
+            if (manager) {
+                if (!available.getAsBoolean()) return UtilityUiStyle.MANAGER_BUTTON_DISABLED;
+                if (pressed || selected.getAsBoolean())
+                    return isHovering() ? UtilityUiStyle.MANAGER_BUTTON_SELECTED_HOVER
+                        : UtilityUiStyle.MANAGER_BUTTON_PRESSED;
+                return isHovering() ? UtilityUiStyle.MANAGER_BUTTON_HOVER : UtilityUiStyle.MANAGER_BUTTON;
+            }
             if (!available.getAsBoolean()) return UtilityUiStyle.BUTTON_DISABLED;
             if (pressed || selected.getAsBoolean())
                 return isHovering() ? UtilityUiStyle.BUTTON_SELECTED_HOVER : UtilityUiStyle.BUTTON_PRESSED;
@@ -95,17 +191,27 @@ public final class UtilityControls {
 
     public static final class Page extends PageButton {
 
+        private boolean manager;
+
+        public Page manager() {
+            manager = true;
+            return this;
+        }
+
         public Page(int index, PagedWidget.Controller controller) {
             super(index, controller);
         }
 
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
-            return SELECTABLE_THEME;
+            return manager ? MANAGER_SELECTABLE_THEME : SELECTABLE_THEME;
         }
 
         @Override
         public IDrawable getThemeBackground(WidgetThemeEntry<?> entry, WidgetTheme theme) {
+            if (manager) return isActive()
+                ? (isHovering() ? UtilityUiStyle.MANAGER_BUTTON_SELECTED_HOVER : UtilityUiStyle.MANAGER_BUTTON_PRESSED)
+                : (isHovering() ? UtilityUiStyle.MANAGER_BUTTON_HOVER : UtilityUiStyle.MANAGER_BUTTON);
             return isActive() ? (isHovering() ? UtilityUiStyle.BUTTON_SELECTED_HOVER : UtilityUiStyle.BUTTON_PRESSED)
                 : (isHovering() ? UtilityUiStyle.BUTTON_HOVER : UtilityUiStyle.BUTTON);
         }
@@ -113,17 +219,31 @@ public final class UtilityControls {
 
     public static final class Toggle extends ToggleButton {
 
+        private boolean manager;
+
+        public Toggle manager() {
+            manager = true;
+            return this;
+        }
+
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
-            return SELECTABLE_THEME;
+            return manager ? MANAGER_SELECTABLE_THEME : SELECTABLE_THEME;
         }
     }
 
     public static final class Field extends TextFieldWidget {
 
+        private boolean manager;
+
+        public Field manager() {
+            manager = true;
+            return this;
+        }
+
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
-            return FIELD_THEME;
+            return manager ? MANAGER_FIELD_THEME : FIELD_THEME;
         }
     }
 
