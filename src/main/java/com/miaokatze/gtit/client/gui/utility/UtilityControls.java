@@ -47,16 +47,16 @@ public final class UtilityControls {
             18,
             UtilityUiStyle.MANAGER_BUTTON,
             0xFFFFFFFF,
-            UtilityUiStyle.MANAGER_TEXT,
-            false,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            true,
             0xFFFFFFFF),
         new WidgetTheme(
             18,
             18,
             UtilityUiStyle.MANAGER_BUTTON_HOVER,
             0xFFFFFFFF,
-            UtilityUiStyle.MANAGER_TEXT,
-            false,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            true,
             0xFFFFFFFF));
     private static final WidgetThemeEntry<SelectableTheme> MANAGER_SELECTABLE_THEME = new WidgetThemeEntry<>(
         IThemeApi.TOGGLE_BUTTON,
@@ -65,26 +65,26 @@ public final class UtilityControls {
             18,
             UtilityUiStyle.MANAGER_BUTTON,
             0xFFFFFFFF,
-            UtilityUiStyle.MANAGER_TEXT,
-            false,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            true,
             0xFFFFFFFF,
             UtilityUiStyle.MANAGER_BUTTON_PRESSED,
             0xFFFFFFFF,
             UtilityUiStyle.MANAGER_BUTTON_TEXT,
-            false,
+            true,
             0xFFFFFFFF),
         new SelectableTheme(
             18,
             18,
             UtilityUiStyle.MANAGER_BUTTON_HOVER,
             0xFFFFFFFF,
-            UtilityUiStyle.MANAGER_TEXT,
-            false,
+            UtilityUiStyle.MANAGER_BUTTON_TEXT,
+            true,
             0xFFFFFFFF,
             UtilityUiStyle.MANAGER_BUTTON_SELECTED_HOVER,
             0xFFFFFFFF,
             UtilityUiStyle.MANAGER_BUTTON_TEXT,
-            false,
+            true,
             0xFFFFFFFF));
     private static final WidgetThemeEntry<WidgetTheme> MANAGER_PRIMARY_THEME = new WidgetThemeEntry<>(
         IThemeApi.BUTTON,
@@ -94,7 +94,7 @@ public final class UtilityControls {
             UtilityUiStyle.MANAGER_BUTTON_PRESSED,
             0xFFFFFFFF,
             UtilityUiStyle.MANAGER_BUTTON_TEXT,
-            false,
+            true,
             0xFFFFFFFF),
         new WidgetTheme(
             18,
@@ -102,7 +102,7 @@ public final class UtilityControls {
             UtilityUiStyle.MANAGER_BUTTON_SELECTED_HOVER,
             0xFFFFFFFF,
             UtilityUiStyle.MANAGER_BUTTON_TEXT,
-            false,
+            true,
             0xFFFFFFFF));
     private static final WidgetThemeEntry<TextFieldTheme> MANAGER_FIELD_THEME = new WidgetThemeEntry<>(
         IThemeApi.TEXT_FIELD,
@@ -114,7 +114,7 @@ public final class UtilityControls {
             UtilityUiStyle.MANAGER_TEXT,
             false,
             0xFFFFFFFF,
-            0x8047786A,
+            0x808C643B,
             UtilityUiStyle.MANAGER_MUTED));
 
     private UtilityControls() {}
@@ -141,9 +141,9 @@ public final class UtilityControls {
             return getThis();
         }
 
-        /** Lets decorative text follow the button's current copper-green background. */
+        /** Every C2 button state has a dark surface, so decorative text always needs the light color. */
         public boolean usesPrimaryText() {
-            return manager && available.getAsBoolean() && (pressed || selected.getAsBoolean());
+            return manager;
         }
 
         @Override

@@ -6,8 +6,10 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.creativetab.CreativeTabs;
@@ -19,6 +21,9 @@ import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.testlab.ProbeContext;
 import com.miaokatze.gtit.testlab.ProbeScenario;
 import com.miaokatze.gtit.testlab.ProbeTask;
+import com.miaokatze.gtit.trade.NekoTradeEntry;
+import com.miaokatze.gtit.trade.preset.TradePresetDefinition;
+import com.miaokatze.gtit.trade.v2.NekoBqQuestIdParser;
 
 import appeng.items.materials.ItemMultiMaterial;
 import appeng.items.materials.MaterialType;
@@ -28,19 +33,12 @@ import betterquesting.questing.QuestDatabase;
 import cpw.mods.fml.common.Loader;
 import gregtech.api.items.MetaGeneratedItem;
 
-/** Read-only validation of the reviewed proposal. This never imports or selects a preset. */
+/** Read-only validation of the shipped preset resources. Never imports or selects a preset. */
 final class PresetCatalogCheckScenario implements ProbeScenario {
 
-    private static final String RESOURCE = "/assets/gtit/testlab/preset-catalog-check.json";
-    private static final String ITEMS_RESOURCE = "/assets/gtit/testlab/preset-catalog-items.json";
-
-    private static final class Entry {
-
-        String item;
-        int meta;
-        String questId;
-        String tradeId;
-    }
+    private static final String[] PRESETS = { "gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration" };
+    private static final int[] TRADE_COUNTS = { 123, 239, 64 };
+    private static final int[] PAGE_COUNTS = { 7, 12, 2 };
 
     @Override
     public String id() {
@@ -55,55 +53,105 @@ final class PresetCatalogCheckScenario implements ProbeScenario {
     @Override
     public ProbeTask start(ProbeContext context) {
         return () -> {
-            Entry[] entries;
-            try (InputStream stream = PresetCatalogCheckScenario.class.getResourceAsStream(RESOURCE)) {
-                if (stream == null) throw new IllegalStateException("Missing reviewed catalog " + RESOURCE);
-                entries = new Gson().fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), Entry[].class);
-            }
-            context.check(
-                "reviewed-catalog-size",
-                entries != null && entries.length == 82,
-                "Expected 82 reviewed proposals; no trade definitions are loaded or applied");
-            if (entries == null) return true;
             Map<Item, List<ItemStack>> subItems = new HashMap<>();
-            for (Entry entry : entries) {
-                Item item = (Item) Item.itemRegistry.getObject(entry.item);
-                String key = entry.tradeId + "-" + entry.item + ":" + entry.meta;
-                context.check(key + "-registry", item != null, "Exact registry ID " + entry.item);
-                if (item != null) validateMeta(context, key, item, entry.meta, subItems);
-                if (Loader.isModLoaded("betterquesting")) {
-                    UUID quest = UUID.fromString(entry.questId);
-                    context.check(
-                        key + "-quest",
-                        QuestDatabase.INSTANCE.get(quest) != null,
-                        "Actual server QuestDatabase contains " + quest);
-                } else context.skip(key + "-quest", "BetterQuesting is absent; cannot validate the reviewed quest ID");
-            }
-            Entry[] materials;
-            try (InputStream stream = PresetCatalogCheckScenario.class.getResourceAsStream(ITEMS_RESOURCE)) {
-                if (stream == null) throw new IllegalStateException("Missing reviewed material catalog");
-                materials = new Gson().fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), Entry[].class);
+            Set<String> checkedVariants = new HashSet<>();
+            Set<String> tradeIds = new HashSet<>();
+            int total = 0;
+            for (int index = 0; index < PRESETS.length; index++) {
+                String id = PRESETS[index];
+                String resource = "/assets/gtit/trade_presets/" + id + ".json";
+                TradePresetDefinition preset;
+                try (InputStream stream = PresetCatalogCheckScenario.class.getResourceAsStream(resource)) {
+                    if (stream == null) throw new IllegalStateException("Missing bundled preset " + resource);
+                    preset = new Gson()
+                        .fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), TradePresetDefinition.class);
+                }
+                int count = preset.tabs.stream()
+                    .mapToInt(tab -> tab.trades.size())
+                    .sum();
+                total += count;
+                context.check(
+                    id + "-bundled-size",
+                    id.equals(preset.id) && count == TRADE_COUNTS[index] && preset.tabs.size() == PAGE_COUNTS[index],
+                    "Actual bundled resource: " + count + " trades / " + preset.tabs.size() + " tabs");
+                validateVariant(context, id + "-icon", preset.icon.item, preset.icon.meta, subItems, checkedVariants);
+                for (TradePresetDefinition.Tab tab : preset.tabs) {
+                    validateVariant(
+                        context,
+                        id + "-page-" + tab.page.getId(),
+                        tab.page.getIconItem(),
+                        tab.page.getIconMeta(),
+                        subItems,
+                        checkedVariants);
+                    for (NekoTradeEntry trade : tab.trades) {
+                        String key = trade.getId();
+                        context.check(
+                            key + "-identity",
+                            tradeIds.add(key) && trade.getTabId() == tab.page.getId(),
+                            "Unique source ID and matching local tab");
+                        List<String> missing = new ArrayList<>();
+                        if (trade.getRequiresMods() != null)
+                            for (String mod : trade.getRequiresMods()) if (!Loader.isModLoaded(mod)) missing.add(mod);
+                        context.check(key + "-mods", missing.isEmpty(), "Missing declared dependencies: " + missing);
+                        String required = trade.getBqQuestId();
+                        if (required != null && !required.isEmpty()) {
+                            UUID quest = NekoBqQuestIdParser.parse(required);
+                            context.check(
+                                key + "-quest",
+                                Loader.isModLoaded("betterquesting") && quest != null
+                                    && QuestDatabase.INSTANCE.get(quest) != null,
+                                "Actual QuestDatabase contains " + required);
+                        }
+                        int itemIndex = 0;
+                        for (NekoTradeEntry.ItemEntry entry : trade.getFromItems())
+                            validateStack(context, key + "-from-" + itemIndex++, entry, subItems, checkedVariants);
+                        itemIndex = 0;
+                        for (NekoTradeEntry.ItemEntry entry : trade.getToItems())
+                            validateStack(context, key + "-to-" + itemIndex++, entry, subItems, checkedVariants);
+                        if (trade.getCurrency() != null && trade.getCurrency()
+                            .getAmount() > 0)
+                            context.check(
+                                key + "-currency",
+                                NekoCurrencyRegistrar.getItemStack(
+                                    trade.getCurrency()
+                                        .getType(),
+                                    1) != null,
+                                "Real currency registrar resolves " + trade.getCurrency()
+                                    .getType());
+                    }
+                }
             }
             context.check(
-                "reviewed-material-catalog-size",
-                materials != null && materials.length == 73,
-                "73 distinct reviewed input/output item+metadata pairs");
-            if (materials != null) for (Entry entry : materials) {
-                Item item = (Item) Item.itemRegistry.getObject(entry.item);
-                String key = "material-" + entry.item + ":" + entry.meta;
-                context.check(key + "-registry", item != null, "Exact reviewed input/output registry ID");
-                if (item != null) validateMeta(context, key, item, entry.meta, subItems);
-            }
-            ItemStack coin = NekoCurrencyRegistrar.getItemStack(NekoCurrencyRegistrar.NEKO_ID, 1);
-            context.check(
-                "neko-currency-registered",
-                coin != null && coin.stackSize == 1,
-                "Real currency registrar resolves the neko currency used by the reviewed trades");
+                "bundled-catalog-total",
+                total == 426,
+                "426 shipped definitions; this scenario never applies them");
             context.skip(
                 "physical-client-catalog-render",
                 "Dedicated server validates data only; icons and physical client UI need a client");
             return true;
         };
+    }
+
+    private static void validateStack(ProbeContext context, String key, NekoTradeEntry.ItemEntry entry,
+        Map<Item, List<ItemStack>> subItems, Set<String> checkedVariants) throws Exception {
+        ItemStack stack = entry.toItemStack();
+        boolean hasNbt = entry.getNbtBase64() != null && !entry.getNbtBase64()
+            .isEmpty();
+        context.check(
+            key + "-stack",
+            stack != null && stack.stackSize == entry.getAmount()
+                && stack.getItemDamage() == entry.getMeta()
+                && (!hasNbt || stack.hasTagCompound()),
+            "Exact registry, quantity, metadata and decoded NBT: " + entry.getItem() + ":" + entry.getMeta());
+        validateVariant(context, key, entry.getItem(), entry.getMeta(), subItems, checkedVariants);
+    }
+
+    private static void validateVariant(ProbeContext context, String key, String registryId, int meta,
+        Map<Item, List<ItemStack>> subItems, Set<String> checkedVariants) throws Exception {
+        Item item = (Item) Item.itemRegistry.getObject(registryId);
+        context.check(key + "-registry", item != null, "Exact registry ID " + registryId);
+        if (item != null && checkedVariants.add(registryId + ":" + meta))
+            validateMeta(context, "variant-" + registryId + ":" + meta, item, meta, subItems);
     }
 
     private static void validateMeta(ProbeContext context, String key, Item item, int meta,

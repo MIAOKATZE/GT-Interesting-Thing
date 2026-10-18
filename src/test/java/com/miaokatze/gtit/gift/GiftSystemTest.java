@@ -29,6 +29,7 @@ public final class GiftSystemTest {
         Path root = Files.createTempDirectory("gtit-gift-regression-");
         migrationAndUpdates(root);
         eraDefaultsAndUpgrade(root);
+        defaultReviewAndEnable(root);
         shellBindingMigration(root);
         malformedAndFailedWrites(root);
         itemAndEnergyTransactions();
@@ -37,6 +38,122 @@ public final class GiftSystemTest {
         validation();
         System.out.println(
             "GiftSystemTest: migration, empty/custom/default preservation, revisions, update policies, atomic writes, NBT and wireless receipts passed");
+    }
+
+    private static void defaultReviewAndEnable(Path root) throws Exception {
+        GiftRegistry registry = new GiftRegistry();
+        Path file = root.resolve("default-review.json");
+        registry.init(file);
+        GiftDefinition custom = registry.save(simple("review-custom"), 0);
+        GiftRegistry.Snapshot older = registry.snapshot();
+        older.defaultVersion = 1;
+        older.evaluatedDefaultVersion = 1;
+        older.definitions.removeIf(gift -> "ev".equals(gift.id));
+        for (GiftDefinition gift : older.definitions) {
+            if (!"steam".equals(gift.id)) continue;
+            gift.rewards.clear();
+            gift.rewards.add(new GiftConfig.ItemEntry("minecraft:bread", 16, 0));
+        }
+        com.google.gson.JsonObject legacy = GiftFiles.JSON.toJsonTree(older)
+            .getAsJsonObject();
+        legacy.remove("defaultsInitialized");
+        GiftFiles.write(file, legacy);
+        registry.init(file);
+        check(
+            registry.snapshot().defaultsInitialized && registry.snapshot().defaultVersion == 1
+                && "minecraft:bread".equals(registry.get("steam").rewards.get(0).itemId)
+                && registry.get("ev") == null
+                && registry.get(custom.id) != null
+                && "ASK".equals(registry.snapshot().updatePrompt),
+            "A missing legacy initialization marker offers a recommended update without resetting stored content");
+        check(
+            GiftRegistry.bundledDefaultVersion() == GiftDefaults.VERSION && GiftRegistry.bundledDefaultChangesKey()
+                .equals(GiftDefaults.CHANGES_KEY)
+                && registry.differingDefaultIds()
+                    .containsAll(Arrays.asList("steam", "ev")),
+            "Manual review exposes the authored version, change summary and changed/deleted default IDs");
+        registry.resolveDefaultUpdate("SKIP", registry.snapshot().revision);
+        registry.init(file);
+        long skippedRevision = registry.snapshot().revision;
+        check(
+            registry.snapshot().updatePrompt.isEmpty() && registry.snapshot().defaultVersion == 1
+                && registry.differingDefaultIds()
+                    .contains("steam"),
+            "Ignored updates remain reviewable while old content and its applied version remain in use");
+        registry.init(file);
+        check(
+            registry.snapshot().revision == skippedRevision,
+            "Unchanged authored content does not repeatedly prompt or rewrite");
+        registry.resolveDefaultUpdate("DISABLE_NOTICE", registry.snapshot().revision);
+        registry.init(file);
+        check(
+            !registry.snapshot().updateNotice && registry.snapshot().updatePrompt.isEmpty()
+                && registry.differingDefaultIds()
+                    .contains("ev"),
+            "Closing automatic notices keeps the explicit review and acceptance path available");
+        registry.resolveDefaultUpdate("APPLY", registry.snapshot().revision);
+        check(
+            registry.snapshot().defaultVersion == GiftDefaults.VERSION && registry.get(custom.id) != null
+                && registry.differingDefaultIds()
+                    .isEmpty(),
+            "Explicit acceptance after ignoring or hiding notices installs defaults and preserves custom gifts");
+
+        older = registry.snapshot();
+        older.defaultsEnabled = false;
+        older.defaultVersion = 1;
+        older.evaluatedDefaultVersion = 1;
+        older.skippedVersion = 0;
+        older.updateNotice = true;
+        older.definitions.removeIf(gift -> "steam".equals(gift.id));
+        GiftFiles.write(file, older);
+        registry.init(file);
+        registry.setDefaultsEnabled(true, registry.snapshot().revision);
+        check(
+            registry.get("steam") == null && registry.snapshot().defaultVersion == 1
+                && "ASK".equals(registry.snapshot().updatePrompt),
+            "Enabling an existing old library evaluates recommendations without accepting them or restoring deletions");
+        registry.setDefaultsEnabled(false, registry.snapshot().revision);
+        long disabledRevision = registry.snapshot().revision;
+        expectFailure(
+            () -> registry.resolveDefaultUpdate("APPLY", disabledRevision),
+            "Accepting content cannot silently turn on a disabled default library");
+        check(
+            !registry.snapshot().defaultsEnabled && registry.get("steam") == null,
+            "Failed acceptance retains the independent disabled switch");
+
+        older = registry.snapshot();
+        older.defaultsEnabled = true;
+        older.defaultVersion = GiftDefaults.VERSION;
+        older.evaluatedDefaultVersion = GiftDefaults.VERSION;
+        older.pendingDefaultIds.clear();
+        GiftFiles.write(file, older);
+        registry.init(file);
+        check(
+            registry.snapshot().updatePrompt.isEmpty() && registry.differingDefaultIds()
+                .contains("steam"),
+            "Same-version edits or stale content are reviewable without fabricating a new authored version");
+        older = registry.snapshot();
+        older.skippedVersion = GiftDefaults.VERSION;
+        GiftRegistry.evaluateDefaultUpgrade(older, GiftDefaults.create(), GiftDefaults.VERSION + 1);
+        check(
+            older.evaluatedDefaultVersion == GiftDefaults.VERSION + 1 && older.pendingDefaultIds.contains("steam")
+                && older.skippedVersion != older.evaluatedDefaultVersion,
+            "A future authored content version receives a fresh recommendation after an earlier version was ignored");
+
+        Path emptyFile = root.resolve("legacy-empty-defaults.json");
+        older.definitions.clear();
+        older.defaultVersion = 1;
+        older.evaluatedDefaultVersion = 1;
+        legacy = GiftFiles.JSON.toJsonTree(older)
+            .getAsJsonObject();
+        legacy.remove("defaultsInitialized");
+        GiftFiles.write(emptyFile, legacy);
+        registry.init(emptyFile);
+        check(
+            registry.snapshot().defaultsInitialized && registry.snapshot().definitions.isEmpty()
+                && registry.differingDefaultIds()
+                    .size() == GiftDefaults.IDS.length,
+            "An empty old library without the initialization marker is preserved and can be reviewed before restoring defaults");
     }
 
     private static void eraDefaultsAndUpgrade(Path root) throws Exception {

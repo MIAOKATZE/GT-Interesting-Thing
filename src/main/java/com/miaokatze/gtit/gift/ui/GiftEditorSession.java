@@ -10,6 +10,7 @@ import net.minecraft.nbt.JsonToNBT;
 import net.minecraft.nbt.NBTTagCompound;
 
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftIconCatalog;
@@ -59,6 +60,11 @@ final class GiftEditorSession {
     String selectedId = "";
     String message = "";
     String updatePrompt = "";
+    int appliedDefaultVersion;
+    int availableDefaultVersion;
+    String defaultChangesKey = "";
+    String defaultDifferences = "";
+    boolean defaultUpdateAllowed;
     boolean defaultsEnabled;
     long registryRevision;
     long refreshedAt = Long.MIN_VALUE;
@@ -73,7 +79,7 @@ final class GiftEditorSession {
     String deleteTargetName = "";
     long deleteTargetRevision;
     long deleteTargetGeneration;
-    long defaultUpdateRevision;
+    long defaultUpdateRevision = -1;
 
     GiftEditorSession(EntityPlayer player) {
         this.player = player;
@@ -101,6 +107,8 @@ final class GiftEditorSession {
         registryRevision = snapshot.revision;
         defaultsEnabled = snapshot.defaultsEnabled;
         updatePrompt = snapshot.updatePrompt == null ? "" : snapshot.updatePrompt;
+        appliedDefaultVersion = snapshot.defaultVersion;
+        availableDefaultVersion = GiftRegistry.bundledDefaultVersion();
         listPage = Math.max(0, Math.min(listPage, Math.max(0, (definitions.size() - 1) / 6)));
     }
 
@@ -194,13 +202,19 @@ final class GiftEditorSession {
     void prepareDefaultUpdate() {
         requireAdmin();
         invalidate();
-        if (!"ASK".equals(updatePrompt)) throw new IllegalStateException("gtit.gift.ui.update_changed");
+        List<String> differences = GiftRegistry.INSTANCE.differingDefaultIds();
+        defaultDifferences = String.join(", ", differences);
+        defaultChangesKey = GiftRegistry.bundledDefaultChangesKey();
+        defaultUpdateAllowed = defaultsEnabled && DefaultContentConfig.loadDefaultGifts() && !differences.isEmpty();
         defaultUpdateRevision = registryRevision;
     }
 
     void confirmDefaultUpdate() {
         requireAdmin();
+        if (defaultUpdateRevision < 0 || !defaultUpdateAllowed)
+            throw new IllegalStateException("gtit.gift.ui.update_changed");
         GiftRegistry.INSTANCE.resolveDefaultUpdate("APPLY", defaultUpdateRevision);
+        defaultUpdateRevision = -1;
         invalidate();
     }
 

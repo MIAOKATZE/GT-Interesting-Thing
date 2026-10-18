@@ -50,28 +50,22 @@ public final class UtilityUiStyle {
     public static final int ACCENT = 0xFF684017;
     public static final int BUTTON_TEXT = 0xFFFFE7B9;
 
-    // R4 management palette is opt-in: terminal and pocket users keep the C2 API above.
-    public static final int MANAGER_TEXT = 0xFF423A2E;
-    public static final int MANAGER_MUTED = 0xFF817969;
-    public static final int MANAGER_ACCENT = 0xFF47786A;
-    public static final int MANAGER_BUTTON_TEXT = 0xFFFFF9E9;
-    public static final IDrawable MANAGER_PANEL = framed(0xFFE8E2D4, 0xFF514839);
-    public static final IDrawable MANAGER_INSET = framed(0xFFDFD8C9, 0xFF9E927C);
-    public static final IDrawable MANAGER_INPUT = framed(0xFFF1ECDF, 0xFF9C8D73);
-    public static final IDrawable MANAGER_SLOT = framed(0xFFBEB8A7, 0xFF8B806B);
-    public static final IDrawable MANAGER_BUTTON = framed(0xFFD4CDBD, 0xFF6E6352);
-    public static final IDrawable MANAGER_BUTTON_HOVER = framed(0xFFE3DCCB, 0xFF6E6352);
-    public static final IDrawable MANAGER_BUTTON_PRESSED = framed(0xFF587C6D, 0xFF344C41);
-    public static final IDrawable MANAGER_BUTTON_SELECTED_HOVER = framed(0xFF496C5C, 0xFF344C41);
-    public static final IDrawable MANAGER_BUTTON_DISABLED = framed(0xFFCAC4B7, 0xFFAAA08D);
-    public static final IDrawable MANAGER_SCROLLBAR = framed(0xFF9B9988, 0xFF6A6050);
-
-    private static IDrawable framed(int fill, int border) {
-        return IDrawable.of(
-            new Rectangle().color(fill),
-            new Rectangle().color(border)
-                .hollow(1));
-    }
+    // Management windows retain their opt-in API and layout while sharing the pocket's C2 materials.
+    public static final int MANAGER_TEXT = TEXT;
+    public static final int MANAGER_MUTED = MUTED;
+    public static final int MANAGER_ACCENT = ACCENT;
+    public static final int MANAGER_BUTTON_TEXT = BUTTON_TEXT;
+    public static final IDrawable MANAGER_PANEL = PANEL;
+    public static final IDrawable MANAGER_INSET = INSET;
+    public static final IDrawable MANAGER_INPUT = INPUT;
+    public static final IDrawable MANAGER_SLOT = SLOT;
+    public static final IDrawable MANAGER_BUTTON = BUTTON;
+    // Keep the C2 hover texture, with enough shade for small light labels over its brighter cloth.
+    public static final IDrawable MANAGER_BUTTON_HOVER = IDrawable.of(BUTTON_HOVER, new Rectangle().color(0x28000000));
+    public static final IDrawable MANAGER_BUTTON_PRESSED = BUTTON_PRESSED;
+    public static final IDrawable MANAGER_BUTTON_SELECTED_HOVER = BUTTON_SELECTED_HOVER;
+    public static final IDrawable MANAGER_BUTTON_DISABLED = BUTTON_DISABLED;
+    public static final IDrawable MANAGER_SCROLLBAR = SCROLLBAR;
 
     public static ParentWidget<?> managerSection(int x, int y, int width, int height) {
         return section(x, y, width, height).background(MANAGER_INSET);

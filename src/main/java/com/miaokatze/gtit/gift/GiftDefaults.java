@@ -10,6 +10,7 @@ import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 final class GiftDefaults {
 
     static final int VERSION = 2;
+    static final String CHANGES_KEY = "gtit.gift.ui.default_changes.2";
     static final int FORCED_VERSION = 0;
     static final String[] IDS = { "starter", "steam", "lv", "mv", "hv", "ev", "iv", "luv" };
     // Verified against the GTNH 2.9.0-RC-2 DefaultQuests tier-entry quests, not legacy numeric guesses.

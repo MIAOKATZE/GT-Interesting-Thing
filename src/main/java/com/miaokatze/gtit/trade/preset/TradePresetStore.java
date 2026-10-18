@@ -44,6 +44,8 @@ final class TradePresetStore {
     private final PresetFileTransaction files;
     private final Map<String, TradePresetDefinition> presets = new LinkedHashMap<>();
     private final List<String> errors = new ArrayList<>();
+    private final List<String> builtinNotices = new ArrayList<>();
+    private final Set<String> upgradedEmptyIds = new HashSet<>();
     private State state;
 
     TradePresetStore(Path gameRoot) throws IOException {
@@ -63,6 +65,8 @@ final class TradePresetStore {
         if (state.layoutVersion < 2) {
             Set<String> migrate = new HashSet<>(state.selectedIds);
             migrate.retainAll(presets.keySet());
+            // Directory upgrades must not turn a previously empty selected template into installed content.
+            migrate.removeAll(upgradedEmptyIds);
             commitSelection(new LinkedHashSet<>(state.selectedIds), migrate, new LinkedHashMap<>());
         }
     }
@@ -135,7 +139,13 @@ final class TradePresetStore {
     }
 
     List<String> errors() {
-        return new ArrayList<>(errors);
+        List<String> result = new ArrayList<>(errors);
+        result.addAll(builtinNotices);
+        return result;
+    }
+
+    List<String> builtinNotices() {
+        return new ArrayList<>(builtinNotices);
     }
 
     boolean selected(String id) {
@@ -592,18 +602,62 @@ final class TradePresetStore {
     }
 
     private void bootstrap() throws IOException {
+        Map<String, byte[]> changes = new LinkedHashMap<>();
         for (String id : BUILTIN_IDS) {
-            Path path = files.checked("MiaoTrade/" + id + ".json");
-            if (Files.exists(path)) continue;
-            try (InputStream stream = TradePresetStore.class.getClassLoader()
-                .getResourceAsStream("assets/gtit/trade_presets/" + id + ".json")) {
-                if (stream == null) throw new IOException("缺失内置预设模板: " + id);
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                byte[] buffer = new byte[4096];
-                int read;
-                while ((read = stream.read(buffer)) != -1) bytes.write(buffer, 0, read);
-                PresetFileTransaction.writeAtomic(path, bytes.toByteArray());
+            String relative = "MiaoTrade/" + id + ".json";
+            Path path = files.checked(relative);
+            byte[] bundled = bundledBytes(id, false);
+            JsonElement current = new JsonParser().parse(new String(bundled, StandardCharsets.UTF_8));
+            validate(GSON.fromJson(current, TradePresetDefinition.class));
+            if (!Files.exists(path)) {
+                changes.put(relative, bundled);
+                continue;
             }
+            JsonElement existing = null;
+            try {
+                existing = new JsonParser().parse(read(path));
+            } catch (IOException | RuntimeException invalid) {
+                // A broken or unfamiliar file is user data too; never replace it by builtin ID alone.
+            }
+            if (current.equals(existing)) continue;
+            if (originalEmpty(id, existing)) {
+                changes.put(relative, bundled);
+                upgradedEmptyIds.add(id);
+                builtinNotices.add("内置预设 " + id + " 的原始空模板已升级为完整目录。已应用贸易保持不变，请应用选择以安装新内容。");
+            } else {
+                String update = "MiaoTrade/builtin_updates/" + UUID.nameUUIDFromBytes(bundled) + "/" + id + ".json";
+                Path candidate = files.checked(update);
+                if (!Files.exists(candidate)) changes.put(update, bundled);
+                builtinNotices.add("内置预设 " + id + " 已由用户修改，保留原文件；新版副本位于 " + update + "，请另存新 ID 或手动合并后应用。");
+            }
+        }
+        if (!changes.isEmpty()) files.commit(changes);
+    }
+
+    private static boolean originalEmpty(String id, JsonElement existing) throws IOException {
+        if (existing == null) return false;
+        JsonObject original = new JsonParser().parse(new String(bundledBytes(id, true), StandardCharsets.UTF_8))
+            .getAsJsonObject();
+        if (original.equals(existing)) return true;
+        // These are the only other shipped originals, before v1.8.97 switched to AE item icons.
+        if ("gtit-ae-basic".equals(id)) original.getAsJsonObject("icon")
+            .addProperty("item", "minecraft:redstone");
+        else if ("gtit-ae-advanced".equals(id)) original.getAsJsonObject("icon")
+            .addProperty("item", "minecraft:comparator");
+        else return false;
+        return original.equals(existing);
+    }
+
+    static byte[] bundledBytes(String id, boolean legacyEmpty) throws IOException {
+        String resource = "assets/gtit/trade_presets/" + (legacyEmpty ? "legacy_empty/" : "") + id + ".json";
+        try (InputStream stream = TradePresetStore.class.getClassLoader()
+            .getResourceAsStream(resource)) {
+            if (stream == null) throw new IOException("缺失内置预设模板: " + resource);
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = stream.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            return bytes.toByteArray();
         }
     }
 

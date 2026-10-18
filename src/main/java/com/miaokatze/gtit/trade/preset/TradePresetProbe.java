@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.trade.NekoPageEntry;
@@ -82,6 +83,22 @@ public final class TradePresetProbe {
                 && beforeConflict == store.revision());
         checks
             .put("path_traversal", rejected(() -> new PresetFileTransaction(root).checked("MiaoTrade/../escape.json")));
+        PresetFileTransaction paths = new PresetFileTransaction(root);
+        String updateDirectory = "MiaoTrade/builtin_updates/" + UUID.nameUUIDFromBytes(
+            contextId.toString()
+                .getBytes(StandardCharsets.UTF_8))
+            + "/";
+        boolean builtinPathsAllowed = true;
+        for (String id : TradePresetStore.BUILTIN_IDS)
+            builtinPathsAllowed &= paths.checked(updateDirectory + id + ".json")
+                .equals(root.resolve(updateDirectory + id + ".json"));
+        checks.put(
+            "builtin_update_paths_scoped",
+            builtinPathsAllowed
+                && rejected(() -> paths.checked("MiaoTrade/builtin_updates/not-a-uuid/gtit-ae-basic.json"))
+                && rejected(() -> paths.checked(updateDirectory + "custom-preset.json"))
+                && rejected(() -> paths.checked(updateDirectory + "nested/gtit-ae-basic.json"))
+                && rejected(() -> paths.checked(updateDirectory + "../gtit-ae-basic.json")));
 
         TradePresetDefinition duplicate = definition(first.id, "Collision");
         checks.put(
@@ -126,9 +143,13 @@ public final class TradePresetProbe {
                 .getItem()
                 .equals("minecraft:stone"));
 
-        TradePresetDefinition emptyCopy = definition("probe-empty-" + contextId, "Copy empty builtin");
+        TradePresetDefinition emptyCopy = definition("probe-builtin-copy-" + contextId, "Copy builtin contents");
         store.save(store.revision(), emptyCopy, new ArrayList<>(), false, "gtit-ae-basic", false, ignored -> {});
-        checks.put("copy_empty_template", emptyCopy.tabs.isEmpty() && !store.selected(emptyCopy.id));
+        checks.put(
+            "copy_bundled_template",
+            emptyCopy.tabs.size() == 7 && emptyCopy.tabs.stream()
+                .mapToInt(tab -> tab.trades.size())
+                .sum() == 123 && !store.selected(emptyCopy.id));
         TradePresetDefinition replacement = definition(emptyCopy.id, "Explicitly replace empty content");
         store.save(store.revision(), replacement, Arrays.asList(7), true, "gtit-ae-basic", true, ignored -> {});
         checks.put(
@@ -265,7 +286,162 @@ public final class TradePresetProbe {
         checkLegacyLayout(root.resolve("legacy-layout-fixture"), checks, entry, false);
         checkLegacyLayout(root.resolve("legacy-edited-fixture"), checks, entry, true);
         checkOrphanFiles(root.resolve("orphan-overlay-fixture"), checks, entry);
+        checkBuiltinUpdates(root.resolve("builtin-update-fixture"), checks);
         return checks;
+    }
+
+    private static void checkBuiltinUpdates(Path root, Map<String, Boolean> checks) throws Exception {
+        Files.createDirectories(root.resolve("MiaoTrade"));
+        int[] counts = { 123, 239, 64 };
+        int[] pageCounts = { 7, 12, 2 };
+        int[] budgets = { 330, 1130, 98 };
+        for (int index = 0; index < TradePresetStore.BUILTIN_IDS.size(); index++) {
+            String id = TradePresetStore.BUILTIN_IDS.get(index);
+            JsonElement bundled = new JsonParser()
+                .parse(new String(TradePresetStore.bundledBytes(id, false), StandardCharsets.UTF_8));
+            TradePresetDefinition definition = TradePresetStore.GSON.fromJson(bundled, TradePresetDefinition.class);
+            TradePresetStore.validate(definition);
+            checks.put(
+                id + "_bundled_content_roundtrip",
+                definition.tabs.size() == pageCounts[index] && definition.tabs.stream()
+                    .mapToInt(tab -> tab.trades.size())
+                    .sum() == counts[index]
+                    && definition.tabs.stream()
+                        .flatMap(tab -> tab.trades.stream())
+                        .mapToInt(
+                            trade -> trade.getCurrency()
+                                .getAmount())
+                        .sum() == budgets[index]
+                    && containsFields(bundled, TradePresetStore.GSON.toJsonTree(definition)));
+            Files.write(root.resolve("MiaoTrade/" + id + ".json"), TradePresetStore.bundledBytes(id, true));
+        }
+        // A v1 state with an already selected empty builtin must still require an explicit application.
+        Files.createDirectories(root.resolve("config/gtit/trade"));
+        write(root.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
+        write(
+            root.resolve("config/gtit/trade/preset_state.json"),
+            "{\"revision\":7,\"selectedIds\":[\"gtit-ae-basic\"]}");
+        TradePresetStore upgraded = new TradePresetStore(root);
+        checks.put(
+            "original_empty_templates_upgraded_without_auto_apply",
+            upgraded.definitions()
+                .stream()
+                .filter(definition -> TradePresetStore.BUILTIN_IDS.contains(definition.id))
+                .mapToInt(
+                    definition -> definition.tabs.stream()
+                        .mapToInt(tab -> tab.trades.size())
+                        .sum())
+                .sum() == 426 && upgraded.selected("gtit-ae-basic")
+                && upgraded.installedTradeCount() == 0
+                && upgraded.builtinNotices()
+                    .size() == 3);
+        byte[] before = Files.readAllBytes(root.resolve("MiaoTrade/gtit-ae-basic.json"));
+        long revision = upgraded.revision();
+        TradePresetStore restarted = new TradePresetStore(root);
+        checks.put(
+            "builtin_upgrade_restart_idempotent",
+            restarted.revision() == revision && restarted.builtinNotices()
+                .isEmpty()
+                && restarted.installedTradeCount() == 0
+                && Arrays.equals(before, Files.readAllBytes(root.resolve("MiaoTrade/gtit-ae-basic.json"))));
+        restarted.select(restarted.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
+        checks.put(
+            "upgraded_selected_template_installs_only_on_apply",
+            restarted.installedTradeCount() == 123 && restarted.installedTabs("gtit-ae-basic")
+                .size() == 7);
+
+        Path customized = root.resolve("customized");
+        Files.createDirectories(customized.resolve("MiaoTrade"));
+        Files.createDirectories(customized.resolve("config/gtit/trade"));
+        write(customized.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
+        JsonObject changed = new JsonParser()
+            .parse(new String(TradePresetStore.bundledBytes("gtit-ae-basic", true), StandardCharsets.UTF_8))
+            .getAsJsonObject();
+        changed.addProperty("name", "User renamed builtin");
+        changed.addProperty("manualNote", "Preserve unknown user fields too");
+        Path customPath = customized.resolve("MiaoTrade/gtit-ae-basic.json");
+        write(customPath, changed.toString());
+        byte[] userBefore = Files.readAllBytes(customPath);
+        TradePresetStore custom = new TradePresetStore(customized);
+        checks.put(
+            "customized_builtin_preserved_and_update_offered",
+            Arrays.equals(userBefore, Files.readAllBytes(customPath)) && custom.definitions()
+                .stream()
+                .anyMatch(definition -> definition.id.equals("gtit-ae-basic") && definition.tabs.isEmpty())
+                && custom.builtinNotices()
+                    .size() == 1
+                && Files.exists(
+                    customized.resolve(
+                        "MiaoTrade/builtin_updates/"
+                            + UUID.nameUUIDFromBytes(TradePresetStore.bundledBytes("gtit-ae-basic", false))
+                            + "/gtit-ae-basic.json")));
+        new TradePresetStore(customized);
+        try (java.util.stream.Stream<Path> candidates = Files.walk(customized.resolve("MiaoTrade/builtin_updates"))) {
+            checks.put(
+                "customized_builtin_restart_preserves_bytes",
+                Arrays.equals(userBefore, Files.readAllBytes(customPath)) && candidates.filter(Files::isRegularFile)
+                    .count() == 1);
+        }
+
+        Path oldIcons = root.resolve("original-old-icons");
+        Files.createDirectories(oldIcons.resolve("MiaoTrade"));
+        Files.createDirectories(oldIcons.resolve("config/gtit/trade"));
+        write(oldIcons.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
+        for (String id : Arrays.asList("gtit-ae-basic", "gtit-ae-advanced")) {
+            JsonObject original = new JsonParser()
+                .parse(new String(TradePresetStore.bundledBytes(id, true), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+            original.getAsJsonObject("icon")
+                .addProperty("item", id.equals("gtit-ae-basic") ? "minecraft:redstone" : "minecraft:comparator");
+            write(oldIcons.resolve("MiaoTrade/" + id + ".json"), original.toString());
+        }
+        TradePresetStore legacy = new TradePresetStore(oldIcons);
+        checks.put(
+            "known_original_icon_versions_upgraded",
+            legacy.builtinNotices()
+                .size() == 2
+                && legacy.definitions()
+                    .stream()
+                    .mapToInt(
+                        definition -> definition.tabs.stream()
+                            .mapToInt(tab -> tab.trades.size())
+                            .sum())
+                    .sum() == 426);
+    }
+
+    /** Every source field must survive the actual DTO round trip; additional default flags are allowed. */
+    private static boolean containsFields(JsonElement source, JsonElement actual) {
+        if (source.isJsonObject()) {
+            if (!actual.isJsonObject()) return false;
+            for (Map.Entry<String, JsonElement> field : source.getAsJsonObject()
+                .entrySet()) {
+                if (!actual.getAsJsonObject()
+                    .has(field.getKey())
+                    || !containsFields(
+                        field.getValue(),
+                        actual.getAsJsonObject()
+                            .get(field.getKey())))
+                    return false;
+            }
+            return true;
+        }
+        if (source.isJsonArray()) {
+            if (!actual.isJsonArray() || source.getAsJsonArray()
+                .size()
+                != actual.getAsJsonArray()
+                    .size())
+                return false;
+            for (int index = 0; index < source.getAsJsonArray()
+                .size(); index++)
+                if (!containsFields(
+                    source.getAsJsonArray()
+                        .get(index),
+                    actual.getAsJsonArray()
+                        .get(index)))
+                    return false;
+            return true;
+        }
+        return source.equals(actual);
     }
 
     private static void checkOrphanFiles(Path root, Map<String, Boolean> checks, NekoTradeEntry source)

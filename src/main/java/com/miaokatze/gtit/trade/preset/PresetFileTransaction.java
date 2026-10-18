@@ -35,6 +35,8 @@ final class PresetFileTransaction {
 
     Path checked(String relative) throws IOException {
         if (!(relative.matches("MiaoTrade/[a-z0-9_-]{1,64}\\.json") || relative.equals("config/gtit/trade/pages.json")
+            || relative.matches(
+                "MiaoTrade/builtin_updates/[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/(gtit-ae-basic|gtit-ae-advanced|gtit-base-decoration)\\.json")
             || relative.equals("config/gtit/trade/preset_state.json")
             || relative.equals(TradePresetLayout.PAGES_PATH)
             || relative.equals(JOURNAL)

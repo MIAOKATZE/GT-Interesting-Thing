@@ -80,6 +80,14 @@ final class GiftPanel {
             session.refresh();
             return session.updatePrompt;
         });
+        StringSyncValue appliedVersion = read(sm, "gift_default_applied_version", () -> {
+            session.refresh();
+            return Integer.toString(session.appliedDefaultVersion);
+        });
+        StringSyncValue availableVersion = read(sm, "gift_default_available_version", () -> {
+            session.refresh();
+            return Integer.toString(session.availableDefaultVersion);
+        });
         PagedWidget.Controller navigation = new PagedWidget.Controller();
         BooleanSyncValue editing = new BooleanSyncValue(() -> session.editing);
         editing.setChangeListener(() -> {
@@ -325,13 +333,16 @@ final class GiftPanel {
         }).overlay(IKey.lang(defaults::getStringValue))
             .available(admin::getBoolValue));
         panel.child(
-            IKey.lang(
-                () -> update.getStringValue()
-                    .isEmpty() ? "" : "gtit.gift.ui.update." + update.getStringValue())
+            IKey.dynamic(
+                () -> defaultVersions(appliedVersion.getStringValue(), availableVersion.getStringValue())
+                    + (update.getStringValue()
+                        .isEmpty() ? ""
+                            : "  " + IKey.lang("gtit.gift.ui.update." + update.getStringValue())
+                                .get()))
                 .asWidget()
                 .pos(12, 260)
                 .size(450, 14)
-                .scale(0.75f)
+                .scale(0.65f)
                 .setEnabledIf(w -> admin.getBoolValue()));
         String[] decisions = { "APPLY", "SKIP", "DISABLE_NOTICE", "ACK" };
         for (int i = 0; i < decisions.length; i++) {
@@ -341,15 +352,17 @@ final class GiftPanel {
                     sm,
                     session,
                     "gift_default_" + decision,
-                    "gtit.gift.ui." + decision.toLowerCase(java.util.Locale.ROOT),
+                    "APPLY".equals(decision) ? "gtit.gift.ui.review_defaults"
+                        : "gtit.gift.ui." + decision.toLowerCase(java.util.Locale.ROOT),
                     12 + i * 114,
                     279,
                     108,
                     true,
                     () -> {
                         session.refresh();
-                        boolean allowed = "ACK".equals(decision) ? "FORCE".equals(session.updatePrompt)
-                            : "ASK".equals(session.updatePrompt);
+                        boolean allowed = "APPLY".equals(decision)
+                            || ("ACK".equals(decision) ? "FORCE".equals(session.updatePrompt)
+                                : "ASK".equals(session.updatePrompt));
                         if (!allowed) throw new IllegalStateException("gtit.gift.ui.update_changed");
                         if ("APPLY".equals(decision)) {
                             session.prepareDefaultUpdate();
@@ -359,8 +372,9 @@ final class GiftPanel {
                         GiftRegistry.INSTANCE.resolveDefaultUpdate(decision, session.registryRevision);
                         session.invalidate();
                     }).setEnabledIf(
-                        w -> admin.getBoolValue() && ("ACK".equals(decision) ? "FORCE".equals(update.getStringValue())
-                            : "ASK".equals(update.getStringValue()))));
+                        w -> admin.getBoolValue() && ("APPLY".equals(decision)
+                            || ("ACK".equals(decision) ? "FORCE".equals(update.getStringValue())
+                                : "ASK".equals(update.getStringValue())))));
         }
         panel.child(
             IKey.dynamic(() -> messageText(message.getStringValue()))
@@ -492,42 +506,89 @@ final class GiftPanel {
         IPanelHandler handler) {
         ModularPanel dialog = new Dialog<>("gift_default_confirmation", null).setDisablePanelsBelow(true)
             .setCloseOnOutOfBoundsClick(false)
-            .size(356, 164)
+            .size(416, 276)
             .background(UtilityUiStyle.MANAGER_PANEL);
-        dialog.child(
+        ParentWidget<?> content = new ParentWidget<>().size(416, 276);
+        StringSyncValue appliedVersion = read(
+            sm,
+            "gift_review_applied_version",
+            () -> Integer.toString(session.appliedDefaultVersion));
+        StringSyncValue availableVersion = read(
+            sm,
+            "gift_review_available_version",
+            () -> Integer.toString(session.availableDefaultVersion));
+        StringSyncValue changes = read(sm, "gift_review_changes", () -> session.defaultChangesKey);
+        StringSyncValue differences = read(sm, "gift_review_differences", () -> session.defaultDifferences);
+        BooleanSyncValue allowed = new BooleanSyncValue(() -> session.defaultUpdateAllowed);
+        sm.syncValue("gift_review_allowed", allowed);
+        content.child(
             IKey.lang("gtit.gift.ui.apply_confirm")
                 .asWidget()
-                .pos(12, 14)
-                .size(330, 14));
-        dialog.child(
+                .pos(12, 12)
+                .size(392, 14));
+        content.child(
+            IKey.dynamic(() -> defaultVersions(appliedVersion.getStringValue(), availableVersion.getStringValue()))
+                .asWidget()
+                .pos(12, 34)
+                .size(392, 12)
+                .scale(0.8f));
+        content.child(
+            IKey.lang(changes::getStringValue)
+                .asWidget()
+                .pos(12, 54)
+                .size(392, 58)
+                .scale(0.8f));
+        content.child(
+            IKey.dynamic(
+                () -> IKey.lang(
+                    "gtit.gift.ui.default_differences",
+                    differences.getStringValue()
+                        .isEmpty()
+                            ? IKey.lang("gtit.gift.ui.default_no_differences")
+                                .get()
+                            : differences.getStringValue())
+                    .get())
+                .asWidget()
+                .pos(12, 118)
+                .size(392, 25)
+                .scale(0.75f));
+        content.child(
             IKey.lang("gtit.gift.ui.apply_hint")
                 .asWidget()
-                .pos(12, 40)
-                .size(330, 66)
-                .scale(0.85f));
+                .pos(12, 148)
+                .size(392, 44)
+                .scale(0.8f));
+        content.child(
+            IKey.lang(
+                () -> allowed.getBoolValue() ? "gtit.gift.ui.default_review_ready"
+                    : differences.getStringValue()
+                        .isEmpty() ? "gtit.gift.ui.default_review_current" : "gtit.gift.ui.default_review_disabled")
+                .asWidget()
+                .pos(12, 194)
+                .size(392, 25)
+                .scale(0.75f));
         StringSyncValue message = read(sm, "gift_apply_result", () -> session.message);
-        dialog.child(
+        content.child(
             IKey.dynamic(() -> messageText(message.getStringValue()))
                 .asWidget()
-                .pos(12, 110)
-                .size(330, 16)
+                .pos(12, 224)
+                .size(392, 13)
                 .scale(0.7f));
-        dialog.child(
+        content.child(
             new UtilityControls.ActionButton().manager()
-                .pos(12, 132)
-                .size(156, 18)
-                .overlay(IKey.lang("gtit.gift.ui.cancel"))
+                .pos(12, 250)
+                .size(186, 18)
+                .overlay(IKey.lang("gtit.gift.ui.keep_defaults"))
                 .onMousePressed(mouse -> {
                     if (mouse != 0) return false;
                     handler.closePanel();
                     return true;
                 }));
-        dialog.child(button(sm, session, "gift_apply_confirmed", "gtit.gift.ui.apply", 180, 132, 162, true, () -> {
+        content.child(button(sm, session, "gift_apply_confirmed", "gtit.gift.ui.apply", 210, 250, 194, true, () -> {
             session.confirmDefaultUpdate();
             handler.closePanel();
-        }));
-        UtilityUiStyle.styleManagerContent(dialog);
-        return dialog;
+        }).available(allowed::getBoolValue));
+        return UtilityUiStyle.managerScrollable(dialog, 416, 276, content);
     }
 
     private static ModularPanel deleteConfirmation(PanelSyncManager sm, GiftEditorSession session,
@@ -947,6 +1008,13 @@ final class GiftPanel {
         return value.isEmpty() ? ""
             : IKey.lang("gtit.gift.status." + value)
                 .get();
+    }
+
+    private static String defaultVersions(String applied, String available) {
+        String recorded = "0".equals(applied) ? IKey.lang("gtit.gift.ui.default_version_unknown")
+            .get() : "V" + applied;
+        return IKey.lang("gtit.gift.ui.default_versions", recorded, "V" + available)
+            .get();
     }
 
     private static String messageText(String message) {

@@ -52,6 +52,7 @@ public final class TradePresetManager {
             if (store != null && activeServer == server) return;
             Path root = TradeConfigPaths.gameRoot();
             store = new TradePresetStore(root);
+            for (String notice : store.builtinNotices()) LOG.info("[TradePreset] {}", notice);
             activeServer = server;
             // Recovery may have rolled files back after the initial server registry load.
             refreshTrades();
@@ -208,8 +209,8 @@ public final class TradePresetManager {
             || "appliedenergistics2:item.ItemMultiMaterial".equals(icon.item))) {
             ItemStack stack = appeng.api.AEApi.instance()
                 .definitions()
-                .materials()
-                .certusQuartzCrystal()
+                .blocks()
+                .controller()
                 .maybeStack(1)
                 .orNull();
             if (stack != null) return Icon.fromStack(stack);

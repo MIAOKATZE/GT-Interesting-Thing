@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.google.gson.JsonObject;
 import com.miaokatze.gtit.config.DefaultContentConfig;
 
 /** Trusted server API. Network callers must enforce operator permission and payload bounds. */
@@ -40,10 +41,23 @@ public final class GiftRegistry {
     public synchronized void init(Path path) throws IOException {
         file = path;
         state = null;
-        Snapshot loaded = Files.exists(path) ? GiftFiles.read(path, Snapshot.class) : new Snapshot();
+        boolean existing = Files.exists(path);
+        JsonObject stored = existing ? GiftFiles.read(path, JsonObject.class) : null;
+        Snapshot loaded;
+        try {
+            loaded = existing ? GiftFiles.JSON.fromJson(stored, Snapshot.class) : new Snapshot();
+        } catch (RuntimeException error) {
+            throw new IOException("Invalid gift registry", error);
+        }
         validate(loaded);
-        boolean changed = !Files.exists(path);
-        if (changed) {
+        boolean changed = !existing;
+        // Older registries may predate the initialization marker. Existing definitions are not consent to reset them.
+        if (existing && !loaded.defaultsInitialized
+            && (!stored.has("defaultsInitialized") || !loaded.definitions.isEmpty())) {
+            loaded.defaultsInitialized = true;
+            changed = true;
+        }
+        if (!existing) {
             if (DefaultContentConfig.loadDefaultGifts()) {
                 for (GiftDefinition gift : GiftDefaults.createMigratingLegacy()) {
                     gift.revision = 1;
@@ -100,6 +114,24 @@ public final class GiftRegistry {
     public synchronized Snapshot snapshot() {
         requireReady();
         return copy(state);
+    }
+
+    public static int bundledDefaultVersion() {
+        return GiftDefaults.VERSION;
+    }
+
+    public static String bundledDefaultChangesKey() {
+        return GiftDefaults.CHANGES_KEY;
+    }
+
+    /** A manual review remains available after ignoring this version or disabling automatic notices. */
+    public synchronized List<String> differingDefaultIds() {
+        requireReady();
+        List<String> result = new ArrayList<>();
+        for (GiftDefinition authored : GiftDefaults.create()) {
+            if (!sameContent(find(state, authored.id), authored)) result.add(authored.id);
+        }
+        return result;
     }
 
     public synchronized GiftDefinition get(String id) {
@@ -172,7 +204,10 @@ public final class GiftRegistry {
             updated.defaultVersion = GiftDefaults.VERSION;
             updated.evaluatedDefaultVersion = GiftDefaults.VERSION;
             updated.forcedVersion = GiftDefaults.FORCED_VERSION;
-        }
+        } else if (enabled && DefaultContentConfig.loadDefaultGifts()
+            && updated.evaluatedDefaultVersion != GiftDefaults.VERSION) {
+                evaluateDefaultUpgrade(updated, GiftDefaults.create(), GiftDefaults.VERSION);
+            }
         refreshPrompt(updated);
         persist(updated);
     }
