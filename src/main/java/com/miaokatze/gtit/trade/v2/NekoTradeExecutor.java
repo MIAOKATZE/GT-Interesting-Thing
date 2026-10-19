@@ -245,6 +245,9 @@ public class NekoTradeExecutor {
         NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, groupId);
         int maxTradesInCooldown = getMaxTradesInCooldown(playerId);
         if (!history.canTrade(group.getCooldown(), maxTradesInCooldown, group.getMaxTrades())) {
+            if (group.getCooldown() == -1 && history.getTradeCount() > 0) {
+                return NekoTradeResult.fail(NekoTradeResult.Status.ONE_TIME_REDEEMED, "已兑换（仅限一次）");
+            }
             // 区分是已达最大次数还是冷却中
             if (group.getMaxTrades() != -1 && history.getTradeCount() >= group.getMaxTrades()) {
                 return NekoTradeResult.fail(NekoTradeResult.Status.MAX_TRADES_REACHED);

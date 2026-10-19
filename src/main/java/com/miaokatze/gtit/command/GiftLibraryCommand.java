@@ -7,6 +7,7 @@ import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.ChatComponentTranslation;
 
+import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
 import com.miaokatze.gtit.gift.ui.GiftGuiFactory;
@@ -26,11 +27,16 @@ public final class GiftLibraryCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gifts [claim <id>]";
+        return "/gifts [ui|claim <id>|help|tutorial]";
     }
 
     @Override
     public void processCommand(ICommandSender sender, String[] args) {
+        if (args.length == 1 && ("help".equals(args[0]) || "tutorial".equals(args[0]))) {
+            sender.addChatMessage(new ChatComponentTranslation("gtit.gift.command.usage"));
+            sender.addChatMessage(new ChatComponentTranslation("gtit.command.tutorial.gift"));
+            return;
+        }
         if (!(sender instanceof EntityPlayerMP player)) {
             sender.addChatMessage(new ChatComponentTranslation("gtit.gift.command.player_only"));
             return;
@@ -42,8 +48,10 @@ public final class GiftLibraryCommand extends CommandBase {
         try {
             if (args.length == 0 || args.length == 1 && "ui".equals(args[0])) GiftGuiFactory.open(player);
             else if (args.length == 2 && "claim".equals(args[0])) {
-                GiftService.INSTANCE.claim(player, args[1]);
-                player.addChatMessage(new ChatComponentTranslation("gtit.gift.command.claimed"));
+                String result = GiftService.INSTANCE.claim(player, args[1]);
+                player.addChatMessage(
+                    new ChatComponentTranslation(
+                        "pending".equals(result) ? "gtit.gift.command.pending" : "gtit.gift.command.claimed"));
             } else player.addChatMessage(new ChatComponentTranslation("gtit.gift.command.usage"));
         } catch (RuntimeException failure) {
             player.addChatMessage(new ChatComponentTranslation("gtit.gift.failed"));
@@ -52,11 +60,14 @@ public final class GiftLibraryCommand extends CommandBase {
 
     @Override
     public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
-        if (args.length == 1) return getListOfStringsMatchingLastWord(args, "ui", "claim");
+        if (args.length == 1) return getListOfStringsMatchingLastWord(args, "ui", "claim", "help", "tutorial");
         if (args.length == 2 && "claim".equals(args[0]) && GiftRegistry.INSTANCE.isReady()) {
             return getListOfStringsMatchingLastWord(
                 args,
                 GiftRegistry.INSTANCE.snapshot().definitions.stream()
+                    .filter(
+                        gift -> gift.trigger == GiftDefinition.Trigger.BQ_UNLOCK
+                            && GiftRegistry.INSTANCE.isEnabled(gift))
                     .map(gift -> gift.id)
                     .toArray(String[]::new));
         }

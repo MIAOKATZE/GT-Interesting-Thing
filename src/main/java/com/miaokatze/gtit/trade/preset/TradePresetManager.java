@@ -40,6 +40,7 @@ public final class TradePresetManager {
     public static synchronized void recoverPendingChanges() {
         try {
             new PresetFileTransaction(TradeConfigPaths.gameRoot()).recover();
+            new TradePresetStore(TradeConfigPaths.gameRoot());
         } catch (IOException | RuntimeException failure) {
             throw new IllegalStateException("贸易预设事务恢复失败；请先保留并检查 preset_transaction.json", failure);
         }
@@ -100,6 +101,9 @@ public final class TradePresetManager {
                 summary.mutuallyExclusiveIds = new ArrayList<>(definition.mutuallyExclusiveIds);
                 summary.selected = store.selected(definition.id);
                 summary.builtin = TradePresetStore.BUILTIN_IDS.contains(definition.id);
+                summary.sourceKind = summary.builtin ? "builtin" : "custom";
+                summary.overridden = store.overridden(definition.id);
+                summary.defaultUpdateAvailable = store.defaultUpdateAvailable(definition.id);
                 summary.empty = definition.tabs.stream()
                     .allMatch(tab -> tab.trades.isEmpty());
                 summary.tabIds = store.installedTabs(definition.id);
@@ -109,6 +113,8 @@ public final class TradePresetManager {
                 TabSummary tab = new TabSummary();
                 tab.id = page.getId();
                 tab.name = page.getName();
+                tab.sourcePresetId = page.getSourcePresetId();
+                tab.sourceKind = page.isPresetBuiltin() ? "builtin" : "custom";
                 result.tabs.add(tab);
             }
             result.errors.addAll(store.errors());
@@ -202,6 +208,17 @@ public final class TradePresetManager {
         }
     }
 
+    public static synchronized Result resetDefaults(EntityPlayerMP player) {
+        try {
+            requirePermission(player);
+            store.resetDefaults();
+            refreshTrades();
+            return result(player, true, "默认贸易已从 jar 恢复，自定义贸易与预设选择已保留");
+        } catch (IOException | RuntimeException failure) {
+            return result(player, false, failure.getMessage());
+        }
+    }
+
     /** Resolve stock and previous stock icons through the real AE definitions; custom icons remain untouched. */
     private static Icon displayIcon(TradePresetDefinition definition, Icon icon) {
         if (icon == null || icon.meta != 0 || !icon.nbtBase64.isEmpty()) return icon;
@@ -229,9 +246,10 @@ public final class TradePresetManager {
     }
 
     static void validateAvailable(TradePresetDefinition definition) {
-        if (!DefaultContentConfig.loadDefaultTradeGroups()) {
-            throw new IllegalArgumentException("默认贸易组已被服务器配置关闭，无法应用预设");
-        }
+        // The base library is always selected; missing optional rows use the registry's normal per-row filtering.
+        if (DefaultTradeSources.BASE_ID.equals(definition.id)) return;
+        if (TradePresetStore.BUILTIN_IDS.contains(definition.id) && !DefaultContentConfig.loadDefaultTradeGroups())
+            return;
         for (TradePresetDefinition.Tab tab : definition.tabs) {
             for (NekoTradeEntry entry : tab.trades) {
                 if (entry.getRequiresMods() != null) {
@@ -353,6 +371,9 @@ public final class TradePresetManager {
         public List<String> mutuallyExclusiveIds = new ArrayList<>();
         public boolean selected;
         public boolean builtin;
+        public String sourceKind;
+        public boolean overridden;
+        public boolean defaultUpdateAvailable;
         public boolean empty;
         public int tabCount;
         public int tradeCount;
@@ -363,6 +384,8 @@ public final class TradePresetManager {
 
         public int id;
         public String name;
+        public String sourcePresetId;
+        public String sourceKind;
     }
 
     public static final class Result {

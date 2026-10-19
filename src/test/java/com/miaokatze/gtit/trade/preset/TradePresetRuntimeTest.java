@@ -16,6 +16,7 @@ import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
+import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 /** Actual file/config/registry pipeline, launched by StoreTest in a separate temporary working directory. */
@@ -28,7 +29,7 @@ public final class TradePresetRuntimeTest {
         }
         flags(true);
         NekoTradeConfig.setDefaultTradesSuppressed(true);
-        int pageId = TradePresetLayout.pageId("gtit-ae-basic", 7);
+        int pageId = TradePresetLayout.pageId("gtit-base", 1);
         NekoPageConfig.NekoPageData pages = new NekoPageConfig.NekoPageData();
         NekoPageEntry userPage = new NekoPageEntry(1000, "user", "minecraft:stone", 0, false);
         NekoPageEntry presetPage = new NekoPageEntry(pageId, "default", "minecraft:stone", 0, false);
@@ -39,7 +40,9 @@ public final class TradePresetRuntimeTest {
         check(
             NekoPageConfig.load()
                 .getPages()
-                .size() == 2,
+                .size()
+                == DefaultTradeSources.pages()
+                    .size() + 1,
             "page merge");
 
         NekoTradeEntry user = entry(
@@ -47,13 +50,14 @@ public final class TradePresetRuntimeTest {
                 .toString(),
             1000,
             false);
-        String id = TradePresetLayout.tradeId("gtit-ae-basic", "source-stable-id");
+        String id = TradePresetLayout.tradeId("gtit-base", "source-stable-id");
         NekoTradeEntry preset = entry(id, pageId, true);
         NekoTradeConfig.NekoTradeData trades = new NekoTradeConfig.NekoTradeData();
         trades.setTrades(Arrays.asList(user, preset));
         NekoTradeConfig.save(trades);
         check(
-            Files.exists(Paths.get(TradePresetLayout.tabPath(pageId)))
+            Files.exists(Paths.get("config/gtit/trade/default_overrides/gtit-base.json"))
+                && !Files.exists(Paths.get(TradePresetLayout.tabPath(pageId)))
                 && !Files.exists(Paths.get("config/gtit/trade/trades/tab_" + pageId + ".json")),
             "trade write isolation");
         check(
@@ -95,7 +99,7 @@ public final class TradePresetRuntimeTest {
                 .anyMatch(value -> id.equals(value.getId())),
             "bundled restore never removes preset namespace");
 
-        byte[] defaultBytes = Files.readAllBytes(Paths.get(TradePresetLayout.tabPath(pageId)));
+        byte[] defaultBytes = Files.readAllBytes(Paths.get("config/gtit/trade/default_overrides/gtit-base.json"));
         flags(false);
         check(
             NekoTradeRegistryV2.reload() && !NekoPageRegistry.hasPage(pageId)
@@ -103,7 +107,9 @@ public final class TradePresetRuntimeTest {
                 && NekoTradeDatabase.INSTANCE.getTradeGroupCount() == 1,
             "default switch hides only default groups");
         check(
-            Arrays.equals(defaultBytes, Files.readAllBytes(Paths.get(TradePresetLayout.tabPath(pageId)))),
+            Arrays.equals(
+                defaultBytes,
+                Files.readAllBytes(Paths.get("config/gtit/trade/default_overrides/gtit-base.json"))),
             "disabled defaults remain on disk");
         flags(true);
         check(
@@ -153,7 +159,59 @@ public final class TradePresetRuntimeTest {
                 .anyMatch(value -> value.getId() == pageId),
             "legacy page migration merges presets");
 
+        NekoPageConfig.NekoPageData customPages = NekoPageConfig.load();
+        NekoPageEntry customPresetPage = new NekoPageEntry(
+            -600001,
+            "custom imported preset",
+            "minecraft:stone",
+            0,
+            false);
+        customPresetPage.setSourcePresetId("fixture-custom-preset");
+        customPages.getPages()
+            .add(customPresetPage);
+        NekoPageConfig.save(customPages);
+        NekoTradeConfig.NekoTradeData withCustom = NekoTradeConfig.load();
+        NekoTradeEntry customPresetTrade = entry("MIAO900123456789", -600001, false);
+        withCustom.getTrades()
+            .add(customPresetTrade);
+        NekoTradeConfig.save(withCustom);
+        flags(false);
+        TradePresetDefinition configurableCustom = new TradePresetDefinition();
+        configurableCustom.id = "fixture-custom-preset";
+        TradePresetManager.validateAvailable(configurableCustom);
+        check(
+            NekoTradeRegistryV2.reload() && NekoPageRegistry.hasPage(-600001)
+                && !NekoPageRegistry.hasPage(pageId)
+                && NekoTradeDatabase.INSTANCE
+                    .getTradeGroup(NekoTradeRegistryV2.parseTradeGroupId(customPresetTrade.getId())) != null
+                && NekoTradeDatabase.INSTANCE.getTradeGroup(runtimeId) == null,
+            "disabled defaults preserve imported custom preset category and trade");
+        flags(true);
+
         StatusCodec codec = new StatusCodec(null, null, () -> {});
+        NekoTradeGroup oneTimeGroup = NekoTradeDatabase.INSTANCE
+            .getTradeGroup(NekoTradeRegistryV2.parseTradeGroupId(customPresetTrade.getId()));
+        oneTimeGroup.setCooldown(-1);
+        UUID statusPlayer = UUID.randomUUID();
+        com.miaokatze.gtit.trade.v2.NekoTradeHistory oneTimeHistory = com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE
+            .getHistory(statusPlayer, oneTimeGroup.getId());
+        java.lang.reflect.Method buildCooldown = StatusCodec.class
+            .getDeclaredMethod("buildCooldownStatusString", UUID.class);
+        java.lang.reflect.Method parseCooldown = StatusCodec.class
+            .getDeclaredMethod("parseCooldownStatus", String.class);
+        buildCooldown.setAccessible(true);
+        parseCooldown.setAccessible(true);
+        String oneTimeKey = oneTimeGroup.getId() + ":0";
+        parseCooldown.invoke(codec, buildCooldown.invoke(codec, statusPlayer));
+        check(!codec.isOneTimeRedeemed(oneTimeKey), "unredeemed one-time status is independent of affordability");
+        oneTimeHistory.recordTrade(-1);
+        parseCooldown.invoke(codec, buildCooldown.invoke(codec, statusPlayer));
+        check(
+            codec.isOneTimeRedeemed(oneTimeKey) && codec.getCooldownRemaining(oneTimeKey) == 0,
+            "redeemed one-time state synchronizes without negative countdown seconds");
+        oneTimeHistory.reset();
+        parseCooldown.invoke(codec, buildCooldown.invoke(codec, statusPlayer));
+        check(!codec.isOneTimeRedeemed(oneTimeKey), "explicit history reset clears synchronized one-time marker");
         set(codec, "cachedTradeableStatusString", "stale removed trade");
         set(codec, "tradeableStatusDirty", false);
         set(codec, "lastTradeRegistryVersion", NekoTradeDatabase.INSTANCE.getVersion());
@@ -163,7 +221,7 @@ public final class TradePresetRuntimeTest {
         check(
             "".equals(status.invoke(codec, UUID.randomUUID())),
             "open container status cache invalidates immediately");
-        System.out.println("TradePresetRuntimeTest: 18 checks passed");
+        System.out.println("TradePresetRuntimeTest: 22 checks passed");
     }
 
     private static NekoTradeEntry entry(String id, int page, boolean defaults) {

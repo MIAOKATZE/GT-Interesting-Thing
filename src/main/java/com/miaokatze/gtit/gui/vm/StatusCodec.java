@@ -47,7 +47,7 @@ public final class StatusCodec {
 
     /** BQ 锁定状态字符串（S2C：服务端构建 "groupId:true/false,..." 发送到客户端） */
     private StringSyncValue bqLockStatusSync;
-    /** 冷却状态字符串（S2C：服务端构建 "groupId:tradeIndex:seconds,..." 发送到客户端） */
+    /** 冷却状态字符串（S2C：seconds>0 为剩余秒；-1 为一次性交易已兑换）。 */
     private StringSyncValue cooldownStatusSync;
     /** 可交易状态字符串（S2C：服务端构建 "groupId:tradeIndex:true/false,..." 发送到客户端） */
     private StringSyncValue tradeableStatusSync;
@@ -63,7 +63,7 @@ public final class StatusCodec {
 
     /** BQ 锁定状态映射：groupId → 是否锁定（true=锁定） */
     private final Map<UUID, Boolean> bqLockStatusMap = new HashMap<>();
-    /** 冷却状态映射："groupId:tradeIndex" → 剩余秒数 */
+    /** 冷却状态映射："groupId:tradeIndex" → 剩余秒数，或 -1 已兑换标记。 */
     private final Map<String, Long> cooldownStatusMap = new HashMap<>();
     /** 可交易状态映射："groupId:tradeIndex" → 是否可交易（true=可交易） */
     private final Map<String, Boolean> tradeableStatusMap = new HashMap<>();
@@ -182,6 +182,12 @@ public final class StatusCodec {
         return remaining != null && remaining > 0L ? remaining : 0L;
     }
 
+    /** Server-synchronized lifetime success marker, separate from generic affordability/quest failures. */
+    public boolean isOneTimeRedeemed(String key) {
+        return Long.valueOf(-1L)
+            .equals(cooldownStatusMap.get(key));
+    }
+
     /** 客户端读：可交易状态（"groupId:tradeIndex" 键，null=未同步） */
     public Boolean getTradeable(String key) {
         return tradeableStatusMap.get(key);
@@ -254,12 +260,13 @@ public final class StatusCodec {
         for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
             .values()) {
             int cooldown = group.getCooldown();
-            if (cooldown <= 0) continue;
+            if (cooldown == 0) continue;
 
             NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, group.getId());
-            long remaining = history.getCooldownRemaining(cooldown);
+            long remaining = cooldown == -1 ? (history.getTradeCount() > 0 ? -1L : 0L)
+                : history.getCooldownRemaining(cooldown);
 
-            if (remaining > 0) {
+            if (remaining != 0) {
                 for (int i = 0; i < group.getTrades()
                     .size(); i++) {
                     if (sb.length() > 0) sb.append(",");

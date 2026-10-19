@@ -21,7 +21,7 @@ import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
  * 运行时管理猫猫售货机的标签页。
  * 标签页数据从 NekoPageConfig 加载，支持动态增删。
  * <p>
- * 默认标签页（ID 1-3）不可删除。
+ * 内置默认页来自 jar 的独立预设命名空间，正 ID 留给自定义页。
  */
 public class NekoPageRegistry {
 
@@ -107,7 +107,7 @@ public class NekoPageRegistry {
         NekoPageEntry entry = new NekoPageEntry();
         entry.setId(id);
         entry.setName(name);
-        entry.setDefault(id <= 3); // ID 1-3 为默认标签页
+        entry.setDefault(false); // 正 ID 均属于自定义页。
         entry.setIconFromItemStack(iconStack);
 
         PAGES.put(id, entry);
@@ -138,20 +138,24 @@ public class NekoPageRegistry {
         }
 
         if (existing.isDefault()) {
-            return "默认标签页（ID 1-3）不可删除";
+            return "此标签页被配置为不可删除";
         }
 
         PAGES.remove(id);
         version++;
-        savePages();
 
         // 将该标签页的交易移动到标签页3（其他）
         NekoTradeConfig.NekoTradeData tradeData = NekoTradeConfig.load();
+        int fallback = id == 3 ? 1000 : 3;
+        while (fallback == id || PAGES.containsKey(fallback) && id == 3) fallback++;
         for (NekoTradeEntry trade : tradeData.getTrades()) {
             if (trade.getTabId() == id) {
-                trade.setTabId(3);
+                if (!PAGES.containsKey(fallback))
+                    PAGES.put(fallback, new NekoPageEntry(fallback, "其他", "minecraft:chest", 0, false));
+                trade.setTabId(fallback);
             }
         }
+        savePages();
         NekoTradeConfig.save(tradeData);
         // V1 的 NekoTradeRegistry.reload() 已移除，改为调用 V2 的 reload
         // V2 从 NekoTradeConfig 加载配置并注册到 NekoTradeDatabase（V2 独立数据库）
@@ -175,12 +179,12 @@ public class NekoPageRegistry {
         NekoPageEntry entry = PAGES.get(id);
         if (entry == null) return null;
 
-        // 默认标签页1和2优先使用猫猫币物品作为图标
-        if (id == 1) {
+        // 基础默认组前两页优先使用已注册的猫猫币物品作为图标。
+        if (id == -400001) {
             ItemStack nekoStack = NekoCurrencyRegistrar.getItemStack("neko", 1);
             if (nekoStack != null) return nekoStack;
         }
-        if (id == 2) {
+        if (id == -400002) {
             ItemStack shimmeringStack = NekoCurrencyRegistrar.getItemStack("shimmeringNeko", 1);
             if (shimmeringStack != null) return shimmeringStack;
         }

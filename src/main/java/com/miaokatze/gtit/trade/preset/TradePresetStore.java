@@ -35,7 +35,8 @@ import com.miaokatze.gtit.trade.NekoTradeJson;
 /** Server-side filesystem model. No player, network or client filesystem access lives here. */
 final class TradePresetStore {
 
-    static final List<String> BUILTIN_IDS = Arrays.asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration");
+    static final List<String> BUILTIN_IDS = Arrays
+        .asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration", "gtit-base");
     static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .serializeNulls()
         .disableHtmlEscaping()
@@ -45,7 +46,6 @@ final class TradePresetStore {
     private final Map<String, TradePresetDefinition> presets = new LinkedHashMap<>();
     private final List<String> errors = new ArrayList<>();
     private final List<String> builtinNotices = new ArrayList<>();
-    private final Set<String> deferredApplyIds = new HashSet<>();
     private State state;
 
     TradePresetStore(Path gameRoot) throws IOException {
@@ -60,15 +60,9 @@ final class TradePresetStore {
             || state.revision < 0) {
             throw new IOException("预设状态文件损坏，已停止写入以保护已有配置");
         }
-        bootstrap();
+        migrateDefaultStorage();
         reload();
-        if (state.layoutVersion < 2) {
-            Set<String> migrate = new HashSet<>(state.selectedIds);
-            migrate.retainAll(presets.keySet());
-            // Directory-only builtin updates still await explicit Apply during legacy layout migration.
-            migrate.removeAll(deferredApplyIds);
-            commitSelection(new LinkedHashSet<>(state.selectedIds), migrate, new LinkedHashMap<>());
-        }
+
     }
 
     void reload() throws IOException {
@@ -80,6 +74,8 @@ final class TradePresetStore {
             errors.clear();
             Path directory = files.checked("MiaoTrade/gtit-ae-basic.json")
                 .getParent();
+            Files.createDirectories(directory);
+            for (String id : BUILTIN_IDS) presets.put(id, DefaultTradeSources.bundled(id));
             List<Path> paths = new ArrayList<>();
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.json")) {
                 for (Path path : stream) paths.add(path);
@@ -101,6 +97,8 @@ final class TradePresetStore {
                         .equals(preset.id + ".json")) {
                         throw new IllegalArgumentException("文件名必须与 id 一致");
                     }
+                    if (BUILTIN_IDS.contains(preset.id))
+                        throw new IllegalArgumentException("此 id 由 jar 默认贸易保留，请另存自定义 id");
                     if (presets.putIfAbsent(preset.id, preset) != null) {
                         throw new IllegalArgumentException("重复预设 id: " + preset.id);
                     }
@@ -152,6 +150,29 @@ final class TradePresetStore {
         return state.selectedIds.contains(id);
     }
 
+    boolean overridden(String id) throws IOException {
+        return BUILTIN_IDS.contains(id)
+            && Files.exists(files.checked("config/gtit/trade/default_overrides/" + id + ".json"));
+    }
+
+    boolean defaultUpdateAvailable(String id) {
+        return BUILTIN_IDS.contains(id) && selected(id)
+            && !definitionFingerprint(presets.get(id)).equals(state.appliedFingerprints.get(id));
+    }
+
+    void resetDefaults() throws IOException {
+        Map<String, byte[]> changes = new LinkedHashMap<>();
+        for (String id : BUILTIN_IDS)
+            if (overridden(id)) changes.put("config/gtit/trade/default_overrides/" + id + ".json", null);
+        State next = GSON.fromJson(GSON.toJson(state), State.class);
+        next.revision++;
+        for (String id : next.selectedIds)
+            if (BUILTIN_IDS.contains(id)) next.appliedFingerprints.put(id, definitionFingerprint(presets.get(id)));
+        changes.put(STATE_PATH, bytes(next));
+        files.commit(changes);
+        state = next;
+    }
+
     List<String> selectedIds() {
         return new ArrayList<>(state.selectedIds);
     }
@@ -165,12 +186,24 @@ final class TradePresetStore {
             if (data != null && data.getTrades() != null) count += data.getTrades()
                 .size();
         }
+        for (String id : state.selectedIds) if (BUILTIN_IDS.contains(id)) {
+            for (TradePresetDefinition.Tab tab : DefaultTradeSources.installed(id, files.root()).tabs)
+                count += tab.trades.size();
+        }
         return count;
     }
 
     List<Integer> installedTabs(String id) {
         List<Integer> ids = new ArrayList<>();
         for (OwnedTab owned : state.ownedTabs) if (id.equals(owned.presetId)) ids.add(owned.tabId);
+        if (BUILTIN_IDS.contains(id) && state.selectedIds.contains(id)) {
+            try {
+                for (TradePresetDefinition.Tab tab : DefaultTradeSources.installed(id, files.root()).tabs)
+                    ids.add(tab.page.getId());
+            } catch (IOException failure) {
+                throw new IllegalStateException(failure);
+            }
+        }
         return ids;
     }
 
@@ -182,7 +215,9 @@ final class TradePresetStore {
     }
 
     void select(long expectedRevision, List<String> ids, DefinitionValidator validator) throws IOException {
-        LinkedHashSet<String> requested = validateSelection(ids, presets, validator);
+        List<String> requestedIds = new ArrayList<>(ids);
+        if (!requestedIds.contains(DefaultTradeSources.BASE_ID)) requestedIds.add(0, DefaultTradeSources.BASE_ID);
+        LinkedHashSet<String> requested = validateSelection(requestedIds, presets, validator);
         Set<String> refresh = new HashSet<>();
         for (String id : requested) {
             if (state.selectedIds.contains(id)
@@ -192,7 +227,10 @@ final class TradePresetStore {
         }
         if (new HashSet<>(state.selectedIds).equals(requested) && refresh.isEmpty()) return;
         checkRevision(expectedRevision);
-        commitSelection(requested, refresh, new LinkedHashMap<>());
+        Map<String, byte[]> changes = new LinkedHashMap<>();
+        for (String id : refresh)
+            if (BUILTIN_IDS.contains(id)) changes.put("config/gtit/trade/default_overrides/" + id + ".json", null);
+        commitSelection(requested, refresh, changes);
     }
 
     void save(long expectedRevision, TradePresetDefinition definition, List<Integer> tabIds, boolean replace,
@@ -259,7 +297,10 @@ final class TradePresetStore {
             tab.page.setDefault(false);
             tab.page.setPresetBuiltin(false);
             Path source = files.checked(tabPath(tabId));
-            if (Files.exists(source)) {
+            if (TradePresetLayout.builtinId(tabId) != null) {
+                for (NekoTradeEntry entry : DefaultTradeSources.trades(files.root()))
+                    if (entry.getTabId() == tabId) tab.trades.add(entry);
+            } else if (Files.exists(source)) {
                 NekoTradeConfig.TabFileData data = GSON.fromJson(read(source), NekoTradeConfig.TabFileData.class);
                 if (data == null || data.getTrades() == null) throw new IOException("待导出标签页交易文件损坏");
                 tab.trades = data.getTrades();
@@ -276,9 +317,10 @@ final class TradePresetStore {
     private void commitSelection(LinkedHashSet<String> selected, Set<String> refresh, Map<String, byte[]> changes)
         throws IOException {
         State next = GSON.fromJson(GSON.toJson(state), State.class);
-        next.layoutVersion = 2;
+        next.layoutVersion = 3;
         JsonObject pages = readPages();
         JsonArray pageList = pages.getAsJsonArray("pages");
+        for (NekoPageEntry page : DefaultTradeSources.pages(files.root())) removePage(pageList, page.getId());
         Set<Integer> used = new HashSet<>();
         for (JsonElement page : pageList) used.add(
             page.getAsJsonObject()
@@ -375,6 +417,7 @@ final class TradePresetStore {
         }
         next.ownedTabs = retained;
         for (String id : selected) {
+            if (BUILTIN_IDS.contains(id)) continue;
             if (installed.contains(id) && !refresh.contains(id)) continue;
             TradePresetDefinition preset = presets.get(id);
             if (preset == null) throw new IllegalArgumentException("预设不存在: " + id);
@@ -390,7 +433,7 @@ final class TradePresetStore {
                 NekoPageEntry page = GSON.fromJson(GSON.toJson(sourceTab.page), NekoPageEntry.class);
                 page.setId(tabId);
                 page.setDefault(false);
-                page.setPresetBuiltin(true);
+                DefaultTradeSources.source(page, preset, false);
                 NekoTradeConfig.TabFileData trades = new NekoTradeConfig.TabFileData();
                 trades.setTabId(tabId);
                 List<NekoTradeEntry> entries = new ArrayList<>();
@@ -399,8 +442,8 @@ final class TradePresetStore {
                         .fromJson(GSON.toJson(sourceTab.trades.get(index)), NekoTradeEntry.class);
                     entry.setId(TradePresetLayout.tradeId(id, entry.getId()));
                     entry.setTabId(tabId);
-                    entry.setDefaultEntry(true);
-                    entry.setPresetBuiltin(true);
+                    entry.setDefaultEntry(false);
+                    entry.setPresetBuiltin(false);
                     entry.setStrictBq(true);
                     entries.add(entry);
                 }
@@ -476,6 +519,8 @@ final class TradePresetStore {
             if ((id <= 0 && !TradePresetLayout.isManagedPage(id)) || !seen.add(id))
                 throw new IOException("标签页配置含非法或重复 id");
         }
+        for (NekoPageEntry page : DefaultTradeSources.pages(files.root())) data.getAsJsonArray("pages")
+            .add(GSON.toJsonTree(page));
         return data;
     }
 
@@ -545,6 +590,7 @@ final class TradePresetStore {
                     .isEmpty()) {
                     throw new IllegalArgumentException("预设交易产出不能为空: " + entry.getId());
                 }
+                NekoTradeEntry.validateCooldown(entry.getCooldown());
                 if (entry.getRequiresMods() != null && entry.getRequiresMods().length > 128) {
                     throw new IllegalArgumentException("预设 Mod 依赖数量过多");
                 }
@@ -601,95 +647,306 @@ final class TradePresetStore {
         if (expected != state.revision) throw new IllegalArgumentException("预设配置已变化，请刷新后重试");
     }
 
-    private void bootstrap() throws IOException {
+    /** One-time, journaled conversion. Every changed legacy file is retained in the backup directory. */
+    private void migrateDefaultStorage() throws IOException {
+        if (Files.exists(files.checked("config/gtit/trade/default_storage_v3.json"))) return;
+        State next = GSON.fromJson(GSON.toJson(state), State.class);
         Map<String, byte[]> changes = new LinkedHashMap<>();
+        JsonObject user = readPageFile("config/gtit/trade/pages.json");
+        if (!Files.exists(files.checked("config/gtit/trade/pages.json"))
+            && Files.exists(files.checked("config/gtit/nekovm_pages.json"))) {
+            user = readPageFile("config/gtit/nekovm_pages.json");
+            changes.put("config/gtit/nekovm_pages.json", null);
+        }
+        JsonObject managed = readPageFile(TradePresetLayout.PAGES_PATH);
+        JsonArray pages = user.getAsJsonArray("pages");
+        for (JsonElement page : managed.getAsJsonArray("pages")) pages.add(page);
+        Set<Integer> occupied = new HashSet<>();
+        for (JsonElement page : pages) occupied.add(
+            page.getAsJsonObject()
+                .get("id")
+                .getAsInt());
+        Set<Integer> customOwned = new HashSet<>();
+        Set<Integer> builtinOwned = new HashSet<>();
+        Set<String> builtinOwnedTradeIds = new HashSet<>();
+        for (OwnedTab owned : state.ownedTabs)
+            (BUILTIN_IDS.contains(owned.presetId) ? builtinOwned : customOwned).add(owned.tabId);
+        for (OwnedTab owned : state.ownedTabs) if (BUILTIN_IDS.contains(owned.presetId) && owned.trades != null) {
+            JsonArray entries = owned.trades.getAsJsonObject()
+                .getAsJsonArray("trades");
+            if (entries != null) for (JsonElement entry : entries) {
+                if (entry.isJsonObject() && entry.getAsJsonObject()
+                    .has("id"))
+                    builtinOwnedTradeIds.add(
+                        entry.getAsJsonObject()
+                            .get("id")
+                            .getAsString());
+            }
+        }
+        Set<Integer> nonemptyUserTabs = new HashSet<>();
+        migrateLegacyTrades(changes, nonemptyUserTabs);
+        for (String directory : Arrays.asList("config/gtit/trade/trades", TradePresetLayout.TRADES_PATH)) {
+            Path folder = files.root()
+                .resolve(directory);
+            if (!Files.exists(folder)) continue;
+            List<Path> paths = new ArrayList<>();
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(folder, "tab_*.json")) {
+                for (Path path : stream) paths.add(path);
+            }
+            for (Path path : paths) {
+                String name = path.getFileName()
+                    .toString();
+                int tabId;
+                try {
+                    tabId = Integer.parseInt(name.substring(4, name.length() - 5));
+                } catch (NumberFormatException invalid) {
+                    continue;
+                }
+                String relative = directory + "/" + name;
+                files.checked(relative);
+                NekoTradeConfig.TabFileData tab = GSON.fromJson(read(path), NekoTradeConfig.TabFileData.class);
+                JsonObject raw = new JsonParser().parse(read(path))
+                    .getAsJsonObject();
+                if (tab == null || tab.getTrades() == null) throw new IOException("迁移停止，原贸易文件损坏: " + relative);
+                if (customOwned.contains(tabId)) continue;
+                List<NekoTradeEntry> keep = new ArrayList<>();
+                JsonArray keepRaw = new JsonArray();
+                for (int index = 0; index < tab.getTrades()
+                    .size(); index++) {
+                    NekoTradeEntry entry = tab.getTrades()
+                        .get(index);
+                    if (entry == null) continue;
+                    String id = entry.getId();
+                    boolean builtin = (entry.isDefaultEntry() || entry.isPresetBuiltin()
+                        || NekoTradeConfig.isHistoricalDefaultId(id)
+                        || builtinOwnedTradeIds.contains(id)) && !(id != null && id.startsWith("MIAO900"));
+                    if (!builtin) {
+                        keep.add(entry);
+                        keepRaw.add(
+                            raw.getAsJsonArray("trades")
+                                .get(index));
+                    }
+                }
+                if (!keep.isEmpty()) nonemptyUserTabs.add(tabId);
+                if (keep.size() == tab.getTrades()
+                    .size() && !builtinOwned.contains(tabId) && TradePresetLayout.builtinId(tabId) == null) continue;
+                if (TradePresetLayout.isManagedPage(tabId)) {
+                    // Player-created trades mixed into an old default tab become an ordinary user page.
+                    if (!keep.isEmpty()) {
+                        int detached = allocateUserId(occupied);
+                        occupied.add(detached);
+                        JsonElement oldPage = findPage(pages, tabId);
+                        JsonObject page = oldPage == null
+                            ? GSON.toJsonTree(new NekoPageEntry(detached, "保留的自定义贸易", "minecraft:chest", 0, false))
+                                .getAsJsonObject()
+                            : new JsonParser().parse(oldPage.toString())
+                                .getAsJsonObject();
+                        page.addProperty("id", detached);
+                        page.addProperty("isDefault", false);
+                        page.addProperty("presetBuiltin", false);
+                        page.addProperty("sourcePresetId", "");
+                        pages.add(page);
+                        raw.addProperty("tabId", detached);
+                        raw.add("trades", keepRaw);
+                        for (JsonElement entry : keepRaw) {
+                            entry.getAsJsonObject()
+                                .addProperty("tabId", detached);
+                            entry.getAsJsonObject()
+                                .addProperty("defaultEntry", false);
+                            entry.getAsJsonObject()
+                                .addProperty("presetBuiltin", false);
+                        }
+                        changes.put(tabPath(detached), bytes(raw));
+                    }
+                    changes.put(relative, null);
+                } else {
+                    raw.add("trades", keepRaw);
+                    changes.put(relative, keep.isEmpty() ? null : bytes(raw));
+                }
+            }
+        }
+        List<OwnedTab> retained = new ArrayList<>();
+        for (OwnedTab owned : next.ownedTabs) {
+            if (BUILTIN_IDS.contains(owned.presetId)) {
+                JsonElement preserved = findPage(pages, owned.tabId);
+                if (owned.tabId > 0 && nonemptyUserTabs.contains(owned.tabId) && preserved != null) {
+                    preserved.getAsJsonObject()
+                        .addProperty("isDefault", false);
+                    preserved.getAsJsonObject()
+                        .addProperty("presetBuiltin", false);
+                    preserved.getAsJsonObject()
+                        .addProperty("sourcePresetId", "");
+                } else removePage(pages, owned.tabId);
+                continue;
+            }
+            // Custom preset provenance was incorrectly called builtin before storage v3.
+            JsonElement page = findPage(pages, owned.tabId);
+            if (page != null) {
+                page.getAsJsonObject()
+                    .addProperty("presetBuiltin", false);
+                page.getAsJsonObject()
+                    .addProperty("sourcePresetId", owned.presetId);
+                Path definitionPath = files.checked("MiaoTrade/" + owned.presetId + ".json");
+                if (Files.exists(definitionPath)) {
+                    TradePresetDefinition definition = GSON.fromJson(read(definitionPath), TradePresetDefinition.class);
+                    NekoPageEntry sourced = GSON.fromJson(page, NekoPageEntry.class);
+                    DefaultTradeSources.source(sourced, definition, false);
+                    JsonElement replacement = GSON.toJsonTree(sourced);
+                    removePage(pages, owned.tabId);
+                    pages.add(replacement);
+                    page = replacement;
+                }
+            }
+            Path path = files.checked(tabPath(owned.tabId));
+            if (Files.exists(path)) {
+                NekoTradeConfig.TabFileData data = GSON.fromJson(read(path), NekoTradeConfig.TabFileData.class);
+                for (NekoTradeEntry trade : data.getTrades()) {
+                    trade.setDefaultEntry(false);
+                    trade.setPresetBuiltin(false);
+                }
+                if (owned.tabId > -500000 && TradePresetLayout.isManagedPage(owned.tabId)) {
+                    int oldId = owned.tabId;
+                    int newId = TradePresetLayout.customPageId(owned.presetId + ":" + oldId, occupied);
+                    occupied.add(newId);
+                    changes.put(tabPath(oldId), null);
+                    owned.tabId = newId;
+                    data.setTabId(newId);
+                    for (NekoTradeEntry trade : data.getTrades()) trade.setTabId(newId);
+                    if (page != null) page.getAsJsonObject()
+                        .addProperty("id", newId);
+                    next.pageIds.replaceAll((key, value) -> value == oldId ? newId : value);
+                }
+                changes.put(tabPath(owned.tabId), bytes(data));
+                owned.trades = GSON.toJsonTree(data);
+            }
+            if (page != null) owned.page = page;
+            retained.add(owned);
+        }
+        // Remove stock old positive default pages only when no custom trade uses their original path.
+        for (NekoPageEntry stock : DefaultTradeSources.bundled(DefaultTradeSources.BASE_ID).tabs.stream()
+            .map(tab -> tab.page)
+            .collect(java.util.stream.Collectors.toList())) {
+            JsonElement old = findPage(pages, stock.getId());
+            if (old == null) continue;
+            NekoPageEntry page = GSON.fromJson(old, NekoPageEntry.class);
+            if (!nonemptyUserTabs.contains(stock.getId()) && stock.getName()
+                .equals(page.getName())
+                && stock.getIconItem()
+                    .equals(page.getIconItem()))
+                removePage(pages, stock.getId());
+            else {
+                old.getAsJsonObject()
+                    .addProperty("isDefault", false);
+                old.getAsJsonObject()
+                    .addProperty("presetBuiltin", false);
+            }
+        }
+        JsonArray users = new JsonArray();
+        JsonArray customs = new JsonArray();
+        for (JsonElement page : pages) {
+            int id = page.getAsJsonObject()
+                .get("id")
+                .getAsInt();
+            if (TradePresetLayout.builtinId(id) != null && !customOwned.contains(id)) continue;
+            (TradePresetLayout.isManagedPage(id) ? customs : users).add(page);
+        }
+        user.add("pages", users);
+        managed.add("pages", customs);
+        changes.put("config/gtit/trade/pages.json", bytes(user));
+        if (Files.exists(files.checked(TradePresetLayout.PAGES_PATH)) || customs.size() > 0)
+            changes.put(TradePresetLayout.PAGES_PATH, bytes(managed));
         for (String id : BUILTIN_IDS) {
             String relative = "MiaoTrade/" + id + ".json";
             Path path = files.checked(relative);
-            byte[] bundled = bundledBytes(id, false);
-            JsonElement current = new JsonParser().parse(new String(bundled, StandardCharsets.UTF_8));
-            validate(GSON.fromJson(current, TradePresetDefinition.class));
-            if (!Files.exists(path)) {
-                changes.put(relative, bundled);
-                continue;
-            }
-            JsonElement existing = null;
+            if (!Files.exists(path)) continue;
             try {
-                existing = new JsonParser().parse(read(path));
+                JsonObject old = new JsonParser().parse(read(path))
+                    .getAsJsonObject();
+                if (old.has("id") && id.equals(
+                    old.get("id")
+                        .getAsString()))
+                    changes.put(relative, null);
             } catch (IOException | RuntimeException invalid) {
-                // A broken or unfamiliar file is user data too; never replace it by builtin ID alone.
-            }
-            boolean clearedQuests = false;
-            if (existing != null && existing.isJsonObject()) {
-                JsonObject source = existing.getAsJsonObject();
-                if (source.has("id") && source.get("id")
-                    .isJsonPrimitive()
-                    && id.equals(
-                        source.get("id")
-                            .getAsString())
-                    && source.has("tabs")
-                    && source.get("tabs")
-                        .isJsonArray()) {
-                    for (JsonElement tab : source.getAsJsonArray("tabs")) {
-                        if (!tab.isJsonObject() || !tab.getAsJsonObject()
-                            .has("trades")
-                            || !tab.getAsJsonObject()
-                                .get("trades")
-                                .isJsonArray())
-                            continue;
-                        for (JsonElement value : tab.getAsJsonObject()
-                            .getAsJsonArray("trades")) {
-                            if (!value.isJsonObject()) continue;
-                            JsonObject trade = value.getAsJsonObject();
-                            JsonElement quest = trade.get("bqQuestId");
-                            if (quest != null && quest.isJsonPrimitive()
-                                && quest.getAsJsonPrimitive()
-                                    .isString()
-                                && !quest.getAsString()
-                                    .isEmpty()) {
-                                trade.addProperty("bqQuestId", "");
-                                clearedQuests = true;
-                            }
-                        }
-                    }
-                }
-            }
-            if (clearedQuests) {
-                changes.put(relative, bytes(existing));
-                deferredApplyIds.add(id);
-            }
-            if (current.equals(existing)) {
-                if (clearedQuests) builtinNotices.add("内置预设 " + id + " 任务限制已移除，应用后生效。");
-                continue;
-            }
-            if (originalEmpty(id, existing)) {
-                changes.put(relative, bundled);
-                deferredApplyIds.add(id);
-                builtinNotices.add("内置预设 " + id + " 的原始空模板已升级为完整目录。已应用贸易保持不变，请应用选择以安装新内容。");
-            } else {
-                String update = "MiaoTrade/builtin_updates/" + UUID.nameUUIDFromBytes(bundled) + "/" + id + ".json";
-                Path candidate = files.checked(update);
-                if (!Files.exists(candidate)) changes.put(update, bundled);
-                builtinNotices.add(
-                    clearedQuests ? "内置预设 " + id + " 任务限制已移除，应用后生效；其他配置保留。新版副本：" + update
-                        : "内置预设 " + id + " 已由用户修改，保留原文件；新版副本位于 " + update + "，请另存新 ID 或手动合并后应用。");
+                builtinNotices.add("保留无法确认来源的旧目录文件: " + relative);
             }
         }
-        if (!changes.isEmpty()) files.commit(changes);
+        next.ownedTabs = retained;
+        next.layoutVersion = 3;
+        if (!next.selectedIds.contains(DefaultTradeSources.BASE_ID))
+            next.selectedIds.add(0, DefaultTradeSources.BASE_ID);
+        for (String id : next.selectedIds) if (BUILTIN_IDS.contains(id))
+            next.appliedFingerprints.put(id, definitionFingerprint(DefaultTradeSources.bundled(id)));
+        next.revision++;
+        changes.put(STATE_PATH, bytes(next));
+        // The stable marker is independent of release versions; later restarts never wipe new edits.
+        changes.put("config/gtit/trade/default_storage_v3.json", "{\"version\":3}".getBytes(StandardCharsets.UTF_8));
+        Map<String, byte[]> backups = new LinkedHashMap<>();
+        for (String relative : changes.keySet()) {
+            Path old = files.checked(relative);
+            if (Files.exists(old)) {
+                String backup = "config/gtit/trade/default_migration_backup/" + relative.replace('/', '_');
+                if (!Files.exists(files.checked(backup))) backups.put(backup, Files.readAllBytes(old));
+            }
+        }
+        changes.putAll(backups);
+        files.commit(changes);
+        state = next;
+        builtinNotices.add("默认贸易已迁移为 jar 资源；旧默认配置已备份，自定义贸易保留。");
     }
 
-    private static boolean originalEmpty(String id, JsonElement existing) throws IOException {
-        if (existing == null) return false;
-        JsonObject original = new JsonParser().parse(new String(bundledBytes(id, true), StandardCharsets.UTF_8))
+    private JsonObject readPageFile(String relative) throws IOException {
+        Path path = files.checked(relative);
+        JsonObject data;
+        if (Files.exists(path)) data = new JsonParser().parse(read(path))
             .getAsJsonObject();
-        if (original.equals(existing)) return true;
-        // These are the only other shipped originals, before v1.8.97 switched to AE item icons.
-        if ("gtit-ae-basic".equals(id)) original.getAsJsonObject("icon")
-            .addProperty("item", "minecraft:redstone");
-        else if ("gtit-ae-advanced".equals(id)) original.getAsJsonObject("icon")
-            .addProperty("item", "minecraft:comparator");
-        else return false;
-        return original.equals(existing);
+        else {
+            data = new JsonObject();
+            data.addProperty("version", 1);
+            data.add("pages", new JsonArray());
+        }
+        if (!data.has("pages") || !data.get("pages")
+            .isJsonArray()) throw new IOException("迁移停止，标签页配置损坏: " + relative);
+        return data;
+    }
+
+    private void migrateLegacyTrades(Map<String, byte[]> changes, Set<Integer> userTabs) throws IOException {
+        Path legacy = files.checked("config/gtit/nekovm_trades.json");
+        if (!Files.exists(legacy)) return;
+        Path directory = files.root()
+            .resolve("config/gtit/trade/trades");
+        if (Files.exists(directory))
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "tab_*.json")) {
+                if (stream.iterator()
+                    .hasNext()) {
+                    // Split files stay authoritative. Retire the inactive legacy entry as an exact backup,
+                    // otherwise clearing pure-default split files would make the old loader re-import it.
+                    changes.put("config/gtit/nekovm_trades.json", null);
+                    return;
+                }
+            }
+        JsonObject old = new JsonParser().parse(read(legacy))
+            .getAsJsonObject();
+        JsonArray entries = old.getAsJsonArray("trades");
+        if (entries == null) throw new IOException("迁移停止，旧版贸易文件损坏");
+        Map<Integer, JsonArray> groups = new LinkedHashMap<>();
+        for (JsonElement raw : entries) {
+            NekoTradeEntry entry = GSON.fromJson(raw, NekoTradeEntry.class);
+            if (entry == null) continue;
+            if (NekoTradeConfig.isHistoricalDefaultId(entry.getId()) || entry.isDefaultEntry()
+                || entry.isPresetBuiltin()) continue;
+            if (entry.getTabId() <= 0) throw new IOException("迁移停止，旧版自定义贸易页签无效");
+            groups.computeIfAbsent(entry.getTabId(), ignored -> new JsonArray())
+                .add(raw);
+        }
+        for (Map.Entry<Integer, JsonArray> group : groups.entrySet()) {
+            JsonObject tab = new JsonObject();
+            tab.addProperty("version", 1);
+            tab.addProperty("tabId", group.getKey());
+            tab.add("trades", group.getValue());
+            changes.put(tabPath(group.getKey()), bytes(tab));
+            userTabs.add(group.getKey());
+        }
+        changes.put("config/gtit/nekovm_trades.json", null);
     }
 
     static byte[] bundledBytes(String id, boolean legacyEmpty) throws IOException {

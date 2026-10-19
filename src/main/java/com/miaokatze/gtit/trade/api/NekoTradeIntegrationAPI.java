@@ -734,6 +734,12 @@ public final class NekoTradeIntegrationAPI {
     /** 组定义基础校验（groupId 白名单 + 防路径穿越，规则收敛在 {@link JarAssetManifest}） */
     private static boolean isValidDef(NekoTradeGroupDef def) {
         if (def == null) return false;
+        if (def.getTrades() != null) for (NekoTradeEntry entry : def.getTrades()) {
+            if (entry != null && entry.getCooldown() < -1) {
+                LOG.warn("[TradeAPI] 贸易组 {} 包含非法冷却值 {}，拒绝注册", def.getGroupId(), entry.getCooldown());
+                return false;
+            }
+        }
         return JarAssetManifest.isValidGroupId(def.getGroupId());
     }
 

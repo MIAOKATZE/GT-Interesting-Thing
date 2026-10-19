@@ -4,10 +4,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
+import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
+import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 
 /** 标签增删后的选择、分页与同步注册表回归，无 Minecraft GUI 实机依赖。 */
 public final class TradePageRefreshTest {
@@ -26,6 +29,7 @@ public final class TradePageRefreshTest {
         NekoPageEntry entry = new NekoPageEntry();
         entry.setId(id);
         entry.setName(name);
+        entry.setPresetBuiltin(true);
         return entry;
     }
 
@@ -70,6 +74,79 @@ public final class TradePageRefreshTest {
         before = NekoPageRegistry.getVersion();
         NekoPageRegistry.applySyncedPages(null);
         check(NekoPageRegistry.getVersion() == before, "无效同步不能产生虚假修订");
-        System.out.println("TradePageRefreshTest: 15 checks passed");
+        NekoPageEntry base = page(-400001, "Foundation");
+        NekoPageEntry author = page(-100003, "AE");
+        NekoPageEntry custom = page(7, "Manual");
+        custom.setPresetBuiltin(false);
+        NekoPageEntry imported = page(-500001, "Imported");
+        imported.setPresetBuiltin(false);
+        imported.setSourcePresetId("player-preset");
+        imported.setSourcePresetName("Player preset");
+        imported.setSourcePresetIconItem("minecraft:stone");
+        data.setPages(Arrays.asList(base, author, custom, imported));
+        NekoPageRegistry.applySyncedPages(data);
+        reload.invoke(tradePage);
+        check(
+            tradePage.getTradeCategories()
+                .equals(categories(-1, -400001, -100003)),
+            "Default navigation contains foundation and author presets only");
+        java.lang.reflect.Field scope = TradePage.class.getDeclaredField("tradeScope");
+        scope.setAccessible(true);
+        scope.setInt(tradePage, TradePage.SCOPE_CUSTOM);
+        reload.invoke(tradePage);
+        check(
+            tradePage.getTradeCategories()
+                .equals(categories(-1, 7, -500001)),
+            "Custom navigation retains positive pages and negative imported preset pages");
+        check(
+            tradePage.isCategoryVisible(NekoTradeCategory.ofTabId(-500001))
+                && !tradePage.isCategoryVisible(NekoTradeCategory.ofTabId(-100003)),
+            "Search and favourites use the same author/custom scope");
+        check(
+            "Player preset".equals(
+                NekoPageRegistry.getPage(-500001)
+                    .getSourcePresetName())
+                && "minecraft:stone".equals(
+                    NekoPageRegistry.getPage(-500001)
+                        .getSourcePresetIconItem()),
+            "Public page snapshot retains actual source name and icon metadata");
+        data.setPages(Arrays.asList(base, author));
+        NekoPageRegistry.applySyncedPages(data);
+        reload.invoke(tradePage);
+        check(
+            tradePage.getTradeCategories()
+                .equals(categories(-1)),
+            "An empty custom section never falls back to author defaults");
+        NekoTradeGroup once = new NekoTradeGroup();
+        once.setCooldown(-1);
+        NekoTradeItemDisplay onceDisplay = NekoTradeItemDisplay.fromNekoTrade(new NekoTrade(), once, 0);
+        onceDisplay.setTradeable(false); // Missing currency/inputs is not proof of a completed purchase.
+        check(
+            onceDisplay.isOneTimeOnly() && !onceDisplay.isOneTimeRedeemed()
+                && "gtit.trade.cooldown.once".equals(onceDisplay.getOneTimeStatusKey()),
+            "Unavailable one-time trades remain labelled one-time until the explicit history flag arrives");
+        onceDisplay.setOneTimeRedeemed(true);
+        onceDisplay.setTradeable(true); // A stale ready flag must not override authoritative redemption.
+        onceDisplay.setCooldownRemaining(-1);
+        check(
+            !onceDisplay.isTradeable() && onceDisplay.getCooldownRemaining() == 0
+                && "gtit.trade.cooldown.redeemed".equals(onceDisplay.getOneTimeStatusKey()),
+            "Redeemed one-time trades never render ready or negative seconds");
+        NekoTradeGroup unrestricted = new NekoTradeGroup();
+        unrestricted.setCooldown(0);
+        NekoTradeItemDisplay ordinary = NekoTradeItemDisplay.fromNekoTrade(new NekoTrade(), unrestricted, 0);
+        ordinary.setOneTimeRedeemed(true);
+        check(
+            !ordinary.isOneTimeRedeemed() && ordinary.getOneTimeStatusKey()
+                .isEmpty(),
+            "No-cooldown trades do not inherit one-time labels");
+        unrestricted.setCooldown(600);
+        NekoTradeItemDisplay timed = NekoTradeItemDisplay.fromNekoTrade(new NekoTrade(), unrestricted, 0);
+        timed.setCooldownRemaining(12);
+        check(
+            timed.getCooldownRemaining() == 12 && timed.getOneTimeStatusKey()
+                .isEmpty(),
+            "Positive cooldown seconds retain the original display path");
+        System.out.println("TradePageRefreshTest: 24 checks passed");
     }
 }

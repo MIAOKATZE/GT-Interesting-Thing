@@ -31,7 +31,9 @@ public class NekoTradeResult {
         /** 输出槽已满 */
         OUTPUT_FULL,
         /** 机器未成型 */
-        NOT_FORMED
+        NOT_FORMED,
+        /** 冷却 -1 的一次性兑换已成功领取 */
+        ONE_TIME_REDEEMED
     }
 
     private final Status status;

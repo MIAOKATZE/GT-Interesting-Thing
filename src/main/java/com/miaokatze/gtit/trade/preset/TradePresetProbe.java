@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.trade.NekoPageEntry;
@@ -90,7 +89,7 @@ public final class TradePresetProbe {
                 .getBytes(StandardCharsets.UTF_8))
             + "/";
         boolean builtinPathsAllowed = true;
-        for (String id : TradePresetStore.BUILTIN_IDS)
+        for (String id : TradePresetStore.BUILTIN_IDS.subList(0, 3))
             builtinPathsAllowed &= paths.checked(updateDirectory + id + ".json")
                 .equals(root.resolve(updateDirectory + id + ".json"));
         checks.put(
@@ -148,9 +147,13 @@ public final class TradePresetProbe {
         store.save(store.revision(), emptyCopy, new ArrayList<>(), false, "gtit-ae-basic", false, ignored -> {});
         checks.put(
             "copy_bundled_template",
-            emptyCopy.tabs.size() == 7 && emptyCopy.tabs.stream()
+            emptyCopy.tabs.size() == DefaultTradeSources.bundled("gtit-ae-basic").tabs.size() && emptyCopy.tabs.stream()
                 .mapToInt(tab -> tab.trades.size())
-                .sum() == 123 && !store.selected(emptyCopy.id));
+                .sum()
+                == DefaultTradeSources.bundled("gtit-ae-basic").tabs.stream()
+                    .mapToInt(tab -> tab.trades.size())
+                    .sum()
+                && !store.selected(emptyCopy.id));
         TradePresetDefinition replacement = definition(emptyCopy.id, "Explicitly replace empty content");
         store.save(store.revision(), replacement, Arrays.asList(7), true, "gtit-ae-basic", true, ignored -> {});
         checks.put(
@@ -218,7 +221,9 @@ public final class TradePresetProbe {
         checks.put(
             "catalog_reload_preserves_applied_files_and_count",
             store.selectedIds()
-                .equals(Arrays.asList(first.id)) && store.installedTradeCount() == 1
+                .equals(Arrays.asList(DefaultTradeSources.BASE_ID, first.id))
+                && store.installedTradeCount() == 1 + DefaultTradeSources.trades(root)
+                    .size()
                 && Arrays.equals(beforeReloadTrades, Files.readAllBytes(beforeReloadPath)));
         checks.put(
             "catalog_reload_revision",
@@ -283,470 +288,434 @@ public final class TradePresetProbe {
             rejected(() -> new PresetFileTransaction(failedRoot).commit(failedChanges))
                 && !Files.exists(failedRoot.resolve("MiaoTrade/probe_rollback.json"))
                 && !Files.exists(failedRoot.resolve("config/gtit/trade/preset_transaction.json")));
-        checkDefaultLayout(root.resolve("default-layout-fixture"), checks, entry);
-        checkLegacyLayout(root.resolve("legacy-layout-fixture"), checks, entry, false);
-        checkLegacyLayout(root.resolve("legacy-edited-fixture"), checks, entry, true);
-        checkOrphanFiles(root.resolve("orphan-overlay-fixture"), checks, entry);
-        checkBuiltinUpdates(root.resolve("builtin-update-fixture"), checks);
+        checkDefaultStorage(root.resolve("jar-default-fixture"), checks, entry);
         return checks;
     }
 
-    private static void checkBuiltinUpdates(Path root, Map<String, Boolean> checks) throws Exception {
-        Files.createDirectories(root.resolve("MiaoTrade"));
-        int[] counts = { 123, 239, 64 };
-        int[] pageCounts = { 7, 12, 2 };
-        int[] budgets = { 330, 1130, 98 };
-        for (int index = 0; index < TradePresetStore.BUILTIN_IDS.size(); index++) {
-            String id = TradePresetStore.BUILTIN_IDS.get(index);
-            JsonElement bundled = new JsonParser()
-                .parse(new String(TradePresetStore.bundledBytes(id, false), StandardCharsets.UTF_8));
-            TradePresetDefinition definition = TradePresetStore.GSON.fromJson(bundled, TradePresetDefinition.class);
-            TradePresetStore.validate(definition);
-            checks.put(
-                id + "_bundled_content_roundtrip",
-                definition.tabs.size() == pageCounts[index] && definition.tabs.stream()
-                    .mapToInt(tab -> tab.trades.size())
-                    .sum() == counts[index]
-                    && definition.tabs.stream()
-                        .flatMap(tab -> tab.trades.stream())
-                        .mapToInt(
-                            trade -> trade.getCurrency()
-                                .getAmount())
-                        .sum() == budgets[index]
-                    && containsFields(bundled, TradePresetStore.GSON.toJsonTree(definition)));
-            checks.put(
-                id + "_available_without_quest_unlock",
-                definition.tabs.stream()
-                    .flatMap(tab -> tab.trades.stream())
-                    .allMatch(trade -> "".equals(trade.getBqQuestId())));
-            Files.write(root.resolve("MiaoTrade/" + id + ".json"), TradePresetStore.bundledBytes(id, true));
-        }
-        // A v1 state with an already selected empty builtin must still require an explicit application.
-        Files.createDirectories(root.resolve("config/gtit/trade"));
-        write(root.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
-        write(
-            root.resolve("config/gtit/trade/preset_state.json"),
-            "{\"revision\":7,\"selectedIds\":[\"gtit-ae-basic\"]}");
-        TradePresetStore upgraded = new TradePresetStore(root);
-        checks.put(
-            "original_empty_templates_upgraded_without_auto_apply",
-            upgraded.definitions()
-                .stream()
-                .filter(definition -> TradePresetStore.BUILTIN_IDS.contains(definition.id))
-                .mapToInt(
-                    definition -> definition.tabs.stream()
-                        .mapToInt(tab -> tab.trades.size())
-                        .sum())
-                .sum() == 426 && upgraded.selected("gtit-ae-basic")
-                && upgraded.installedTradeCount() == 0
-                && upgraded.builtinNotices()
-                    .size() == 3);
-        byte[] before = Files.readAllBytes(root.resolve("MiaoTrade/gtit-ae-basic.json"));
-        long revision = upgraded.revision();
-        TradePresetStore restarted = new TradePresetStore(root);
-        checks.put(
-            "builtin_upgrade_restart_idempotent",
-            restarted.revision() == revision && restarted.builtinNotices()
-                .isEmpty()
-                && restarted.installedTradeCount() == 0
-                && Arrays.equals(before, Files.readAllBytes(root.resolve("MiaoTrade/gtit-ae-basic.json"))));
-        restarted.select(restarted.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
-        checks.put(
-            "upgraded_selected_template_installs_only_on_apply",
-            restarted.installedTradeCount() == 123 && restarted.installedTabs("gtit-ae-basic")
-                .size() == 7);
-
-        Path customized = root.resolve("customized");
-        Files.createDirectories(customized.resolve("MiaoTrade"));
-        Files.createDirectories(customized.resolve("config/gtit/trade"));
-        write(customized.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
-        JsonObject changed = new JsonParser()
-            .parse(new String(TradePresetStore.bundledBytes("gtit-ae-basic", true), StandardCharsets.UTF_8))
-            .getAsJsonObject();
-        changed.addProperty("name", "User renamed builtin");
-        changed.addProperty("manualNote", "Preserve unknown user fields too");
-        Path customPath = customized.resolve("MiaoTrade/gtit-ae-basic.json");
-        write(customPath, changed.toString());
-        byte[] userBefore = Files.readAllBytes(customPath);
-        TradePresetStore custom = new TradePresetStore(customized);
-        checks.put(
-            "customized_builtin_preserved_and_update_offered",
-            Arrays.equals(userBefore, Files.readAllBytes(customPath)) && custom.definitions()
-                .stream()
-                .anyMatch(definition -> definition.id.equals("gtit-ae-basic") && definition.tabs.isEmpty())
-                && custom.builtinNotices()
-                    .size() == 1
-                && Files.exists(
-                    customized.resolve(
-                        "MiaoTrade/builtin_updates/"
-                            + UUID.nameUUIDFromBytes(TradePresetStore.bundledBytes("gtit-ae-basic", false))
-                            + "/gtit-ae-basic.json")));
-        new TradePresetStore(customized);
-        try (java.util.stream.Stream<Path> candidates = Files.walk(customized.resolve("MiaoTrade/builtin_updates"))) {
-            checks.put(
-                "customized_builtin_restart_preserves_bytes",
-                Arrays.equals(userBefore, Files.readAllBytes(customPath)) && candidates.filter(Files::isRegularFile)
-                    .count() == 1);
-        }
-
-        Path oldIcons = root.resolve("original-old-icons");
-        Files.createDirectories(oldIcons.resolve("MiaoTrade"));
-        Files.createDirectories(oldIcons.resolve("config/gtit/trade"));
-        write(oldIcons.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
-        for (String id : Arrays.asList("gtit-ae-basic", "gtit-ae-advanced")) {
-            JsonObject original = new JsonParser()
-                .parse(new String(TradePresetStore.bundledBytes(id, true), StandardCharsets.UTF_8))
-                .getAsJsonObject();
-            original.getAsJsonObject("icon")
-                .addProperty("item", id.equals("gtit-ae-basic") ? "minecraft:redstone" : "minecraft:comparator");
-            write(oldIcons.resolve("MiaoTrade/" + id + ".json"), original.toString());
-        }
-        TradePresetStore legacy = new TradePresetStore(oldIcons);
-        checks.put(
-            "known_original_icon_versions_upgraded",
-            legacy.builtinNotices()
-                .size() == 2
-                && legacy.definitions()
-                    .stream()
-                    .mapToInt(
-                        definition -> definition.tabs.stream()
-                            .mapToInt(tab -> tab.trades.size())
-                            .sum())
-                    .sum() == 426);
-        checkBuiltinQuestRemoval(root.resolve("quest-removal"), checks);
-    }
-
-    private static void checkBuiltinQuestRemoval(Path root, Map<String, Boolean> checks) throws Exception {
-        Files.createDirectories(root.resolve("config/gtit/trade"));
-        write(root.resolve("config/gtit/trade/pages.json"), "{\"version\":1,\"pages\":[]}");
-        TradePresetStore before = new TradePresetStore(root);
-        Map<String, JsonObject> expected = new LinkedHashMap<>();
-        for (String id : TradePresetStore.BUILTIN_IDS) {
-            JsonObject old = new JsonParser()
-                .parse(new String(TradePresetStore.bundledBytes(id, false), StandardCharsets.UTF_8))
-                .getAsJsonObject();
-            old.addProperty("manualNote", "Preserve unknown root fields");
-            JsonObject firstTab = old.getAsJsonArray("tabs")
-                .get(0)
-                .getAsJsonObject();
-            firstTab.addProperty("manualTabNote", "Preserve unknown tab fields");
-            JsonObject first = firstTab.getAsJsonArray("trades")
-                .get(0)
-                .getAsJsonObject();
-            first.addProperty("manualTradeNote", "Preserve unknown trade fields");
-            first.getAsJsonObject("currency")
-                .addProperty("amount", 13);
-            first.getAsJsonArray("toItems")
-                .get(0)
-                .getAsJsonObject()
-                .addProperty("amount", 37);
-            for (JsonElement tab : old.getAsJsonArray("tabs")) for (JsonElement trade : tab.getAsJsonObject()
-                .getAsJsonArray("trades"))
-                trade.getAsJsonObject()
-                    .addProperty("bqQuestId", "00000000-0000-0000-0000-0000000000b0");
-            // Exercise Windows CRLF input rather than comparing exact file bytes to a shipped hash.
-            write(
-                root.resolve("MiaoTrade/" + id + ".json"),
-                TradePresetStore.GSON.toJson(old)
-                    .replace("\n", "\r\n"));
-            expected.put(id, old);
-        }
-        JsonObject custom = new JsonParser().parse(
-            expected.get("gtit-ae-basic")
-                .toString())
-            .getAsJsonObject();
-        custom.addProperty("id", "user-quest-preserved");
-        Path customPath = root.resolve("MiaoTrade/user-quest-preserved.json");
-        write(customPath, custom.toString());
-        byte[] customBefore = Files.readAllBytes(customPath);
-        before.reload();
-        List<String> selected = Arrays.asList("gtit-ae-basic", "gtit-base-decoration");
-        before.select(before.revision(), selected, ignored -> {});
-        Map<Path, byte[]> installedBefore = new LinkedHashMap<>();
-        boolean hadInstalledGates = true;
-        for (String id : selected) for (Integer tab : before.installedTabs(id)) {
-            Path file = root.resolve(TradePresetLayout.tabPath(tab));
-            installedBefore.put(file, Files.readAllBytes(file));
-            NekoTradeConfig.TabFileData installed = TradePresetStore.GSON
-                .fromJson(read(file), NekoTradeConfig.TabFileData.class);
-            hadInstalledGates &= installed.getTrades()
-                .stream()
-                .allMatch(
-                    trade -> !trade.getBqQuestId()
-                        .isEmpty());
-        }
-        for (JsonObject definition : expected.values())
-            for (JsonElement tab : definition.getAsJsonArray("tabs")) for (JsonElement trade : tab.getAsJsonObject()
-                .getAsJsonArray("trades"))
-                trade.getAsJsonObject()
-                    .addProperty("bqQuestId", "");
-
-        TradePresetStore migrated = new TradePresetStore(root);
-        boolean fieldsPreserved = true;
-        Map<Path, byte[]> migratedFiles = new LinkedHashMap<>();
-        for (Map.Entry<String, JsonObject> entry : expected.entrySet()) {
-            Path file = root.resolve("MiaoTrade/" + entry.getKey() + ".json");
-            fieldsPreserved &= entry.getValue()
-                .equals(new JsonParser().parse(read(file)));
-            migratedFiles.put(file, Files.readAllBytes(file));
-        }
-        boolean installedUntouched = true;
-        for (Map.Entry<Path, byte[]> entry : installedBefore.entrySet())
-            installedUntouched &= Arrays.equals(entry.getValue(), Files.readAllBytes(entry.getKey()));
-        checks.put(
-            "builtin_quest_removal_preserves_other_fields_and_installed_pages",
-            fieldsPreserved && hadInstalledGates
-                && installedUntouched
-                && migrated.selectedIds()
-                    .equals(selected)
-                && migrated.installedTradeCount() == 187);
-        checks
-            .put("custom_preset_quest_binding_untouched", Arrays.equals(customBefore, Files.readAllBytes(customPath)));
-
-        long revision = migrated.revision();
-        TradePresetStore restarted = new TradePresetStore(root);
-        boolean unchanged = restarted.revision() == revision;
-        for (Map.Entry<Path, byte[]> entry : migratedFiles.entrySet())
-            unchanged &= Arrays.equals(entry.getValue(), Files.readAllBytes(entry.getKey()));
-        checks.put("builtin_quest_removal_restart_idempotent", unchanged);
-        restarted.select(restarted.revision(), selected, ignored -> {});
-        boolean installedUngated = true;
-        for (Path file : installedBefore.keySet()) {
-            NekoTradeConfig.TabFileData installed = TradePresetStore.GSON
-                .fromJson(read(file), NekoTradeConfig.TabFileData.class);
-            installedUngated &= installed.getTrades()
-                .stream()
-                .allMatch(trade -> "".equals(trade.getBqQuestId()));
-        }
-        checks.put(
-            "builtin_quest_removal_applied_explicitly",
-            installedUngated && restarted.selectedIds()
-                .equals(selected)
-                && restarted.installedTradeCount() == 187
-                && Arrays.equals(customBefore, Files.readAllBytes(customPath)));
-    }
-
-    /** Every source field must survive the actual DTO round trip; additional default flags are allowed. */
-    private static boolean containsFields(JsonElement source, JsonElement actual) {
-        if (source.isJsonObject()) {
-            if (!actual.isJsonObject()) return false;
-            for (Map.Entry<String, JsonElement> field : source.getAsJsonObject()
-                .entrySet()) {
-                if (!actual.getAsJsonObject()
-                    .has(field.getKey())
-                    || !containsFields(
-                        field.getValue(),
-                        actual.getAsJsonObject()
-                            .get(field.getKey())))
-                    return false;
-            }
-            return true;
-        }
-        if (source.isJsonArray()) {
-            if (!actual.isJsonArray() || source.getAsJsonArray()
-                .size()
-                != actual.getAsJsonArray()
-                    .size())
-                return false;
-            for (int index = 0; index < source.getAsJsonArray()
-                .size(); index++)
-                if (!containsFields(
-                    source.getAsJsonArray()
-                        .get(index),
-                    actual.getAsJsonArray()
-                        .get(index)))
-                    return false;
-            return true;
-        }
-        return source.equals(actual);
-    }
-
-    private static void checkOrphanFiles(Path root, Map<String, Boolean> checks, NekoTradeEntry source)
+    private static void checkDefaultStorage(Path root, Map<String, Boolean> checks, NekoTradeEntry source)
         throws Exception {
-        prepareDefaultFixture(root, source);
-        Path builtinOrphan = root.resolve(TradePresetLayout.tabPath(-100007));
-        Files.createDirectories(builtinOrphan.getParent());
-        write(builtinOrphan, "{\"tabId\":-100007,\"trades\":[],\"manualNote\":\"keep\"}");
-        byte[] before = Files.readAllBytes(builtinOrphan);
-        TradePresetStore store = new TradePresetStore(root);
-        checks.put(
-            "orphan_builtin_overlay_not_overwritten",
-            rejected(() -> store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {}))
-                && Arrays.equals(before, Files.readAllBytes(builtinOrphan))
-                && !store.selected("gtit-ae-basic"));
-        TradePresetDefinition custom = definition("orphan-slot-preset", "Custom slot");
-        store.save(store.revision(), custom, Arrays.asList(1000), false, ignored -> {});
-        int candidate = TradePresetLayout.customPageId(custom.id + ":1", new java.util.HashSet<>());
-        Path customOrphan = root.resolve(TradePresetLayout.tabPath(candidate));
-        write(customOrphan, "{\"tabId\":" + candidate + ",\"trades\":[],\"manualNote\":\"custom-keep\"}");
-        before = Files.readAllBytes(customOrphan);
-        store.select(store.revision(), Arrays.asList(custom.id), ignored -> {});
-        checks.put(
-            "orphan_custom_overlay_allocator_skips",
-            store.installedTabs(custom.id)
-                .get(0) != candidate && Arrays.equals(before, Files.readAllBytes(customOrphan)));
-    }
-
-    private static void checkDefaultLayout(Path root, Map<String, Boolean> checks, NekoTradeEntry source)
-        throws Exception {
-        prepareDefaultFixture(root, source);
-        Path user = root.resolve(TradePresetLayout.tabPath(1000));
-        byte[] before = Files.readAllBytes(user);
-        TradePresetStore store = new TradePresetStore(root);
-        store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
-        int page = store.installedTabs("gtit-ae-basic")
-            .get(0);
-        Path file = root.resolve(TradePresetLayout.tabPath(page));
-        NekoTradeConfig.TabFileData basic = TradePresetStore.GSON
-            .fromJson(read(file), NekoTradeConfig.TabFileData.class);
-        String stable = basic.getTrades()
-            .get(0)
-            .getId();
-        checks.put(
-            "default_namespace_no_user_id",
-            page == -100007 && Files.exists(file)
-                && !Files.exists(root.resolve(TradePresetLayout.tabPath(1001)))
-                && Arrays.equals(before, Files.readAllBytes(user))
-                && !read(root.resolve("config/gtit/trade/pages.json")).contains("-100007"));
-        checks.put(
-            "default_series_and_gate",
-            stable.startsWith("MIAO100") && stable.length() <= 128
-                && basic.getTrades()
-                    .get(0)
-                    .isDefaultEntry()
-                && basic.getTrades()
-                    .get(0)
-                    .isPresetBuiltin()
-                && NekoTradeConfig.isBuiltInDefaultEntry(
-                    basic.getTrades()
-                        .get(0)));
-        checks.put(
-            "negative_page_category_visible",
-            com.miaokatze.gtit.trade.v2.NekoTradeCategory.ofTabId(page)
-                .getTabId() == page
-                && !com.miaokatze.gtit.trade.v2.NekoTradeCategory.ofTabId(page)
-                    .isUnknown()
-                && com.miaokatze.gtit.trade.v2.NekoTradeCategory.ofTabId(-1)
-                    .isFavourites());
-        store.select(store.revision(), Arrays.asList("gtit-ae-advanced"), ignored -> {});
-        int advanced = store.installedTabs("gtit-ae-advanced")
-            .get(0);
-        checks.put(
-            "default_switch_replaces_managed_files",
-            advanced == -200007 && !Files.exists(file)
-                && read(root.resolve(TradePresetLayout.tabPath(advanced))).contains("MIAO200")
-                && Arrays.equals(before, Files.readAllBytes(user)));
-        store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
-        NekoTradeConfig.TabFileData again = TradePresetStore.GSON
-            .fromJson(read(file), NekoTradeConfig.TabFileData.class);
-        checks.put(
-            "default_identity_stable_across_switch",
-            stable.equals(
-                again.getTrades()
-                    .get(0)
-                    .getId()));
-
-        // A saved active definition applies on the next selection while keeping its fixed series identity.
-        Path definition = root.resolve("MiaoTrade/gtit-ae-basic.json");
-        TradePresetDefinition changed = TradePresetStore.GSON.fromJson(read(definition), TradePresetDefinition.class);
-        changed.tabs.get(0).trades.get(0)
-            .setCooldown(731);
-        write(definition, TradePresetStore.GSON.toJson(changed));
-        store.reload();
-        store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
-        again = TradePresetStore.GSON.fromJson(read(file), NekoTradeConfig.TabFileData.class);
-        checks.put(
-            "default_source_refresh_stable_id",
-            again.getTrades()
-                .get(0)
-                .getCooldown() == 731 && stable.equals(
-                    again.getTrades()
-                        .get(0)
-                        .getId()));
-
-        again.getTrades()
-            .get(0)
-            .setCooldown(732);
-        write(file, TradePresetStore.GSON.toJson(again));
-        store.select(store.revision(), new ArrayList<>(), ignored -> {});
-        Path detachedFile = root.resolve(TradePresetLayout.tabPath(1001));
-        NekoTradeConfig.TabFileData detached = TradePresetStore.GSON
-            .fromJson(read(detachedFile), NekoTradeConfig.TabFileData.class);
-        NekoTradeEntry retained = detached.getTrades()
-            .get(0);
-        checks.put(
-            "edited_default_detaches_to_user",
-            !Files.exists(file) && retained.getCooldown() == 732
-                && retained.getTabId() == 1001
-                && !retained.isDefaultEntry()
-                && !retained.isPresetBuiltin()
-                && !retained.getId()
-                    .startsWith("MIAO")
-                && !NekoTradeConfig.isBuiltInDefaultEntry(retained)
-                && Arrays.equals(before, Files.readAllBytes(user)));
-    }
-
-    private static void checkLegacyLayout(Path root, Map<String, Boolean> checks, NekoTradeEntry source, boolean edited)
-        throws Exception {
-        prepareDefaultFixture(root, source);
-        NekoPageEntry page = new NekoPageEntry(1001, "Old default", "minecraft:stone", 0, false);
-        page.setPresetBuiltin(true);
-        JsonObject pages = new JsonParser().parse(read(root.resolve("config/gtit/trade/pages.json")))
-            .getAsJsonObject();
-        pages.getAsJsonArray("pages")
-            .add(TradePresetStore.GSON.toJsonTree(page));
-        write(root.resolve("config/gtit/trade/pages.json"), pages.toString());
-        NekoTradeConfig.TabFileData old = new NekoTradeConfig.TabFileData();
-        old.setTabId(1001);
-        NekoTradeEntry entry = TradePresetStore.GSON
-            .fromJson(TradePresetStore.GSON.toJson(source), NekoTradeEntry.class);
-        entry.setTabId(1001);
-        entry.setPresetBuiltin(true);
-        old.getTrades()
-            .add(entry);
-        JsonObject owned = new JsonObject();
-        owned.addProperty("presetId", "gtit-ae-basic");
-        owned.addProperty("tabId", 1001);
-        owned.add("page", TradePresetStore.GSON.toJsonTree(page));
-        owned.add("trades", TradePresetStore.GSON.toJsonTree(old));
-        JsonObject state = new JsonObject();
-        state.addProperty("revision", 17);
-        state.add("selectedIds", TradePresetStore.GSON.toJsonTree(Arrays.asList("gtit-ae-basic")));
-        state.add("ownedTabs", TradePresetStore.GSON.toJsonTree(Arrays.asList(owned)));
-        state.add("appliedFingerprints", new JsonObject());
-        write(root.resolve("config/gtit/trade/preset_state.json"), state.toString());
-        if (edited) entry.setCooldown(941);
-        Path legacy = root.resolve(TradePresetLayout.tabPath(1001));
-        write(legacy, TradePresetStore.GSON.toJson(old));
-        TradePresetStore store = new TradePresetStore(root);
-        checks.put(
-            edited ? "legacy_edited_preserved" : "legacy_unmodified_migrated",
-            store.selected("gtit-ae-basic") && store.installedTabs("gtit-ae-basic")
-                .equals(Arrays.asList(-100007))
-                && Files.exists(root.resolve(TradePresetLayout.tabPath(-100007)))
-                && (edited ? read(legacy).contains("941") && !read(legacy).contains("\"presetBuiltin\": true")
-                    : !Files.exists(legacy)));
-    }
-
-    private static void prepareDefaultFixture(Path root, NekoTradeEntry source) throws Exception {
         Files.createDirectories(root.resolve("config/gtit/trade/trades"));
         Files.createDirectories(root.resolve("MiaoTrade"));
+        Path userPath = root.resolve("config/gtit/trade/trades/tab_1.json");
+        JsonObject mixed = new JsonObject();
+        mixed.addProperty("version", 1);
+        mixed.addProperty("tabId", 1);
+        mixed.addProperty("customTopLevel", "preserve exactly");
+        com.google.gson.JsonArray trades = new com.google.gson.JsonArray();
+        JsonObject custom = TradePresetStore.GSON.toJsonTree(source)
+            .getAsJsonObject();
+        custom.addProperty("tabId", 1);
+        custom.addProperty("customUnknownField", "preserve this too");
+        trades.add(custom);
+        JsonObject unusualCustom = new JsonParser().parse(custom.toString())
+            .getAsJsonObject();
+        unusualCustom.addProperty("id", "MIAO987654321");
+        trades.add(unusualCustom);
+        JsonObject legacyDefault = TradePresetStore.GSON.toJsonTree(source)
+            .getAsJsonObject();
+        legacyDefault.addProperty("id", "MIAO1");
+        legacyDefault.addProperty("tabId", 1);
+        trades.add(legacyDefault);
+        mixed.add("trades", trades);
+        write(userPath, mixed.toString());
+        byte[] old = Files.readAllBytes(userPath);
         write(
             root.resolve("config/gtit/trade/pages.json"),
-            "{\"version\":1,\"pages\":[{\"id\":1000,\"name\":\"Existing user page\"}]}");
-        NekoTradeConfig.TabFileData user = new NekoTradeConfig.TabFileData();
-        user.setTabId(1000);
-        user.getTrades()
-            .add(source);
-        write(root.resolve(TradePresetLayout.tabPath(1000)), TradePresetStore.GSON.toJson(user));
-        for (String id : TradePresetStore.BUILTIN_IDS) {
-            TradePresetDefinition definition = definition(id, id);
-            TradePresetDefinition.Tab tab = new TradePresetDefinition.Tab();
-            tab.page = new NekoPageEntry(7, "Default", "minecraft:stone", 0, false);
-            tab.trades.add(source);
-            definition.tabs.add(tab);
-            write(root.resolve("MiaoTrade/" + id + ".json"), TradePresetStore.GSON.toJson(definition));
+            "{\"pages\":[{\"id\":1,\"name\":\"custom mixed page\",\"isDefault\":true}]}");
+        for (String id : TradePresetStore.BUILTIN_IDS.subList(0, 3)) write(
+            root.resolve("MiaoTrade/" + id + ".json"),
+            new String(TradePresetStore.bundledBytes(id, false), StandardCharsets.UTF_8));
+        Path imported = root.resolve("MiaoTrade/imported-copy.json");
+        TradePresetDefinition definition = DefaultTradeSources.bundled("gtit-ae-basic");
+        definition.id = "imported-copy";
+        write(imported, TradePresetStore.GSON.toJson(definition));
+        byte[] importedBefore = Files.readAllBytes(imported);
+        TradePresetStore store = new TradePresetStore(root);
+        JsonObject migrated = new JsonParser().parse(read(userPath))
+            .getAsJsonObject();
+        checks.put(
+            "migration_mixed_tab_preserves_custom_path_and_unknown_fields",
+            migrated.getAsJsonArray("trades")
+                .size() == 2 && custom.equals(
+                    migrated.getAsJsonArray("trades")
+                        .get(0))
+                && migrated.get("customTopLevel")
+                    .equals(mixed.get("customTopLevel")));
+        checks.put(
+            "migration_does_not_sweep_arbitrary_miao_custom_ids",
+            unusualCustom.equals(
+                migrated.getAsJsonArray("trades")
+                    .get(1)));
+        checks.put(
+            "migration_backup_and_marker",
+            Arrays.equals(
+                old,
+                Files.readAllBytes(
+                    root.resolve("config/gtit/trade/default_migration_backup/config_gtit_trade_trades_tab_1.json")))
+                && Files.exists(root.resolve("config/gtit/trade/default_storage_v3.json")));
+        checks.put(
+            "migration_only_builtin_catalog_removed",
+            !Files.exists(root.resolve("MiaoTrade/gtit-ae-basic.json"))
+                && Arrays.equals(importedBefore, Files.readAllBytes(imported)));
+        checks.put(
+            "base_fixed_special_namespace",
+            store.selected(DefaultTradeSources.BASE_ID) && store.installedTabs(DefaultTradeSources.BASE_ID)
+                .contains(-400001)
+                && DefaultTradeSources.trades(root)
+                    .stream()
+                    .allMatch(
+                        trade -> trade.getId()
+                            .startsWith("MIAO400")));
+        store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
+        List<NekoTradeEntry> defaults = DefaultTradeSources.trades(root);
+        DefaultTradeSources.saveTrades(root, defaults);
+        checks.put(
+            "unchanged_defaults_do_not_materialize",
+            !Files.exists(root.resolve("config/gtit/trade/default_overrides/gtit-base.json"))
+                && !Files.exists(root.resolve("config/gtit/trade/default_overrides/gtit-ae-basic.json"))
+                && !Files.exists(root.resolve(TradePresetLayout.tabPath(-100007))));
+        NekoTradeEntry changed = defaults.stream()
+            .filter(
+                trade -> TradePresetLayout.builtinId(trade.getTabId())
+                    .equals("gtit-ae-basic"))
+            .findFirst()
+            .get();
+        String changedId = changed.getId();
+        changed.setCooldown(823);
+        DefaultTradeSources.saveTrades(root, defaults);
+        Path override = root.resolve("config/gtit/trade/default_overrides/gtit-ae-basic.json");
+        checks.put(
+            "edit_only_target_default_group_written",
+            Files.exists(override)
+                && !Files.exists(root.resolve("config/gtit/trade/default_overrides/gtit-base.json")));
+        defaults = DefaultTradeSources.trades(root);
+        defaults.removeIf(
+            trade -> trade.getId()
+                .equals(changedId));
+        DefaultTradeSources.saveTrades(root, defaults);
+        checks.put(
+            "deleted_default_trade_persists",
+            DefaultTradeSources.trades(root)
+                .stream()
+                .noneMatch(
+                    trade -> trade.getId()
+                        .equals(changedId)));
+        List<NekoPageEntry> pages = DefaultTradeSources.pages(root);
+        pages.stream()
+            .filter(page -> page.getId() == -100007)
+            .findFirst()
+            .get()
+            .setName("Edited default tab");
+        DefaultTradeSources.savePages(root, pages);
+        checks.put(
+            "renamed_default_page_persists_with_source",
+            DefaultTradeSources.pages(root)
+                .stream()
+                .anyMatch(
+                    page -> page.getId() == -100007 && page.getName()
+                        .equals("Edited default tab")
+                        && page.getSourcePresetId()
+                            .equals("gtit-ae-basic")
+                        && !page.getSourcePresetIconItem()
+                            .isEmpty()));
+        byte[] overrideBefore = Files.readAllBytes(override);
+        new TradePresetStore(root);
+        checks.put(
+            "migration_restart_preserves_new_overrides",
+            Arrays.equals(overrideBefore, Files.readAllBytes(override))
+                && Arrays.equals(importedBefore, Files.readAllBytes(imported)));
+        store.select(store.revision(), Arrays.asList("gtit-base-decoration"), ignored -> {});
+        store.select(store.revision(), Arrays.asList("gtit-ae-basic"), ignored -> {});
+        checks.put(
+            "selection_changes_preserve_other_group_edits",
+            Arrays.equals(overrideBefore, Files.readAllBytes(override)));
+        store.select(store.revision(), Arrays.asList("imported-copy", "gtit-ae-basic"), ignored -> {});
+        int customPage = store.installedTabs("imported-copy")
+            .get(0);
+        NekoPageEntry importedPage = store.pages()
+            .stream()
+            .filter(page -> page.getId() == customPage)
+            .findFirst()
+            .get();
+        checks.put(
+            "imported_preset_is_custom_with_synced_source",
+            customPage <= -500000 && !importedPage.isPresetBuiltin()
+                && importedPage.getSourcePresetId()
+                    .equals("imported-copy")
+                && !importedPage.getSourcePresetName()
+                    .isEmpty()
+                && !importedPage.getSourcePresetIconItem()
+                    .isEmpty());
+        byte[] customInstalled = Files.readAllBytes(root.resolve(TradePresetLayout.tabPath(customPage)));
+        store.resetDefaults();
+        checks.put(
+            "reset_defaults_preserves_custom_and_selection",
+            !Files.exists(override)
+                && Arrays
+                    .equals(customInstalled, Files.readAllBytes(root.resolve(TradePresetLayout.tabPath(customPage))))
+                && Arrays.equals(importedBefore, Files.readAllBytes(imported))
+                && store.selected("imported-copy")
+                && store.selected("gtit-ae-basic")
+                && DefaultTradeSources.trades(root)
+                    .stream()
+                    .anyMatch(
+                        trade -> trade.getId()
+                            .equals(changedId)));
+        List<NekoTradeEntry> beforeUpdate = DefaultTradeSources.trades(root);
+        beforeUpdate.stream()
+            .filter(trade -> trade.getTabId() == -400001)
+            .findFirst()
+            .get()
+            .setCooldown(555);
+        beforeUpdate.stream()
+            .filter(trade -> trade.getTabId() == -100007)
+            .findFirst()
+            .get()
+            .setCooldown(556);
+        DefaultTradeSources.saveTrades(root, beforeUpdate);
+        Path baseOverride = root.resolve("config/gtit/trade/default_overrides/gtit-base.json");
+        byte[] baseOverrideBefore = Files.readAllBytes(baseOverride);
+        Path stateFile = root.resolve("config/gtit/trade/preset_state.json");
+        JsonObject staleState = new JsonParser().parse(read(stateFile))
+            .getAsJsonObject();
+        staleState.getAsJsonObject("appliedFingerprints")
+            .addProperty("gtit-ae-basic", "previous jar revision");
+        write(stateFile, staleState.toString());
+        TradePresetStore updated = new TradePresetStore(root);
+        updated.select(updated.revision(), updated.selectedIds(), ignored -> {});
+        checks.put(
+            "apply_jar_update_clears_only_changed_selected_default_group",
+            !Files.exists(override) && Arrays.equals(baseOverrideBefore, Files.readAllBytes(baseOverride))
+                && Arrays
+                    .equals(customInstalled, Files.readAllBytes(root.resolve(TradePresetLayout.tabPath(customPage)))));
+        store = updated;
+        store.resetDefaults();
+        checks.put(
+            "ordinary_custom_trade_byte_content_preserved_after_reset",
+            read(userPath).equals(TradePresetStore.GSON.toJson(migrated)));
+        List<NekoPageEntry> removedPages = DefaultTradeSources.pages(root);
+        removedPages.removeIf(page -> page.getId() == -100007);
+        DefaultTradeSources.savePages(root, removedPages);
+        checks.put(
+            "removed_default_page_and_trades_remain_deleted_until_reset",
+            DefaultTradeSources.pages(root)
+                .stream()
+                .noneMatch(page -> page.getId() == -100007)
+                && DefaultTradeSources.trades(root)
+                    .stream()
+                    .noneMatch(trade -> trade.getTabId() == -100007));
+        store.resetDefaults();
+        List<NekoTradeEntry> movedTrades = DefaultTradeSources.trades(root);
+        NekoTradeEntry moved = movedTrades.stream()
+            .filter(trade -> trade.getTabId() == -400001)
+            .findFirst()
+            .get();
+        String originalMovedId = moved.getId();
+        moved.setTabId(1);
+        DefaultTradeSources.saveTrades(root, movedTrades);
+        checks.put(
+            "moved_default_becomes_independent_custom_identity",
+            !originalMovedId.equals(moved.getId()) && !moved.isDefaultEntry()
+                && !moved.isPresetBuiltin()
+                && DefaultTradeSources.trades(root)
+                    .stream()
+                    .noneMatch(
+                        trade -> trade.getId()
+                            .equals(originalMovedId)));
+        store.resetDefaults();
+        checks.put(
+            "reset_restores_original_without_colliding_with_moved_custom",
+            DefaultTradeSources.trades(root)
+                .stream()
+                .anyMatch(
+                    trade -> trade.getId()
+                        .equals(originalMovedId))
+                && !originalMovedId.equals(moved.getId()));
+        Path legacyRoot = root.resolve("old-single-file-fixture");
+        Files.createDirectories(legacyRoot.resolve("config/gtit"));
+        JsonObject legacyData = new JsonObject();
+        legacyData.add("trades", trades);
+        byte[] legacyBytes = DefaultTradeSources.bytes(legacyData);
+        Files.write(legacyRoot.resolve("config/gtit/nekovm_trades.json"), legacyBytes);
+        write(
+            legacyRoot.resolve("config/gtit/nekovm_pages.json"),
+            "{\"pages\":[{\"id\":1,\"name\":\"legacy custom page\"}]}");
+        new TradePresetStore(legacyRoot);
+        JsonObject split = new JsonParser().parse(read(legacyRoot.resolve("config/gtit/trade/trades/tab_1.json")))
+            .getAsJsonObject();
+        checks.put(
+            "single_file_migration_keeps_custom_and_retires_old_defaults",
+            split.getAsJsonArray("trades")
+                .size() == 2 && custom.equals(
+                    split.getAsJsonArray("trades")
+                        .get(0))
+                && !Files.exists(legacyRoot.resolve("config/gtit/nekovm_trades.json"))
+                && Arrays.equals(
+                    legacyBytes,
+                    Files.readAllBytes(
+                        legacyRoot
+                            .resolve("config/gtit/trade/default_migration_backup/config_gtit_nekovm_trades.json"))));
+        Path mixedRoot = root.resolve("legacy-with-default-split-fixture");
+        Files.createDirectories(mixedRoot.resolve("config/gtit/trade/trades"));
+        Files.write(mixedRoot.resolve("config/gtit/nekovm_trades.json"), legacyBytes);
+        JsonObject pureDefaults = new JsonObject();
+        pureDefaults.addProperty("tabId", 1);
+        pureDefaults.add("trades", TradePresetStore.GSON.toJsonTree(Arrays.asList(legacyDefault)));
+        write(mixedRoot.resolve("config/gtit/trade/trades/tab_1.json"), pureDefaults.toString());
+        new TradePresetStore(mixedRoot);
+        checks.put(
+            "legacy_cannot_reimport_after_pure_default_split_cleanup",
+            !Files.exists(mixedRoot.resolve("config/gtit/nekovm_trades.json"))
+                && !Files.exists(mixedRoot.resolve("config/gtit/trade/trades/tab_1.json"))
+                && Arrays.equals(
+                    legacyBytes,
+                    Files.readAllBytes(
+                        mixedRoot
+                            .resolve("config/gtit/trade/default_migration_backup/config_gtit_nekovm_trades.json"))));
+        Path freshRoot = root.resolve("fresh-empty-custom-fixture");
+        TradePresetStore fresh = new TradePresetStore(freshRoot);
+        checks.put(
+            "fresh_library_does_not_create_custom_fallback_pages",
+            fresh.pages()
+                .stream()
+                .allMatch(NekoPageEntry::isPresetBuiltin)
+                && new JsonParser().parse(read(freshRoot.resolve("config/gtit/trade/pages.json")))
+                    .getAsJsonObject()
+                    .getAsJsonArray("pages")
+                    .size() == 0);
+        checkOldOwnedLayout(root.resolve("old-owned-fixture"), checks, source);
+    }
+
+    private static void checkOldOwnedLayout(Path root, Map<String, Boolean> checks, NekoTradeEntry source)
+        throws Exception {
+        Files.createDirectories(root.resolve("config/gtit/trade/trades"));
+        Files.createDirectories(root.resolve(TradePresetLayout.TRADES_PATH));
+        Files.createDirectories(root.resolve("MiaoTrade"));
+        TradePresetDefinition customDefinition = definition("legacy-custom", "Legacy custom group");
+        TradePresetDefinition.Tab customTab = new TradePresetDefinition.Tab();
+        customTab.page = new NekoPageEntry(1, "Local", "minecraft:stone", 0, false);
+        customTab.trades.add(source);
+        customDefinition.tabs.add(customTab);
+        write(root.resolve("MiaoTrade/legacy-custom.json"), TradePresetStore.GSON.toJson(customDefinition));
+        JsonObject defaultEntry = TradePresetStore.GSON.toJsonTree(source)
+            .getAsJsonObject();
+        defaultEntry.addProperty(
+            "id",
+            UUID.randomUUID()
+                .toString());
+        defaultEntry.addProperty("tabId", 11);
+        JsonObject extra = TradePresetStore.GSON.toJsonTree(source)
+            .getAsJsonObject();
+        extra.addProperty("tabId", 11);
+        extra.addProperty("unknownCustom", "preserved");
+        JsonObject oldDefaultTrades = new JsonObject();
+        oldDefaultTrades.addProperty("tabId", 11);
+        oldDefaultTrades.add("trades", TradePresetStore.GSON.toJsonTree(Arrays.asList(defaultEntry)));
+        JsonObject actualTrades = new JsonParser().parse(oldDefaultTrades.toString())
+            .getAsJsonObject();
+        actualTrades.getAsJsonArray("trades")
+            .add(extra);
+        write(root.resolve(TradePresetLayout.tabPath(11)), actualTrades.toString());
+        JsonObject oldCustomTrade = TradePresetStore.GSON.toJsonTree(source)
+            .getAsJsonObject();
+        oldCustomTrade.addProperty("id", "MIAO900123456789");
+        oldCustomTrade.addProperty("tabId", -400001);
+        oldCustomTrade.addProperty("presetBuiltin", true);
+        oldCustomTrade.addProperty("defaultEntry", true);
+        JsonObject customTrades = new JsonObject();
+        customTrades.addProperty("tabId", -400001);
+        customTrades.add("trades", TradePresetStore.GSON.toJsonTree(Arrays.asList(oldCustomTrade)));
+        write(root.resolve(TradePresetLayout.tabPath(-400001)), customTrades.toString());
+        NekoPageEntry oldDefaultPage = new NekoPageEntry(11, "Old default with custom", "minecraft:stone", 0, false);
+        NekoPageEntry oldCustomPage = new NekoPageEntry(-400001, "Old custom", "minecraft:stone", 0, false);
+        oldCustomPage.setPresetBuiltin(true);
+        JsonObject pages = new JsonObject();
+        pages.add("pages", TradePresetStore.GSON.toJsonTree(Arrays.asList(oldDefaultPage)));
+        write(root.resolve("config/gtit/trade/pages.json"), pages.toString());
+        pages.add("pages", TradePresetStore.GSON.toJsonTree(Arrays.asList(oldCustomPage)));
+        JsonObject orphanPage = TradePresetStore.GSON
+            .toJsonTree(new NekoPageEntry(-200001, "orphan custom in default range", "minecraft:stone", 0, false))
+            .getAsJsonObject();
+        orphanPage.addProperty("unknownPageField", "keep page metadata");
+        pages.getAsJsonArray("pages")
+            .add(orphanPage);
+        write(root.resolve(TradePresetLayout.PAGES_PATH), pages.toString());
+        JsonObject orphanTrades = new JsonObject();
+        orphanTrades.addProperty("tabId", -200001);
+        orphanTrades.addProperty("unknownTop", "keep top metadata");
+        JsonObject orphanEntry = new JsonParser().parse(extra.toString())
+            .getAsJsonObject();
+        orphanEntry.addProperty("tabId", -200001);
+        orphanTrades.add("trades", TradePresetStore.GSON.toJsonTree(Arrays.asList(orphanEntry)));
+        write(root.resolve(TradePresetLayout.tabPath(-200001)), orphanTrades.toString());
+        List<JsonObject> owned = new ArrayList<>();
+        for (int index = 0; index < 2; index++) {
+            JsonObject owner = new JsonObject();
+            owner.addProperty("presetId", index == 0 ? "gtit-ae-basic" : "legacy-custom");
+            owner.addProperty("tabId", index == 0 ? 11 : -400001);
+            owner.add("page", TradePresetStore.GSON.toJsonTree(index == 0 ? oldDefaultPage : oldCustomPage));
+            owner.add("trades", index == 0 ? oldDefaultTrades : customTrades);
+            owned.add(owner);
         }
+        JsonObject state = new JsonObject();
+        state.add("selectedIds", TradePresetStore.GSON.toJsonTree(Arrays.asList("gtit-ae-basic", "legacy-custom")));
+        state.add("ownedTabs", TradePresetStore.GSON.toJsonTree(owned));
+        JsonObject mapping = new JsonObject();
+        mapping.addProperty("legacy-custom:1", -400001);
+        state.add("pageIds", mapping);
+        write(root.resolve("config/gtit/trade/preset_state.json"), state.toString());
+        TradePresetStore migrated = new TradePresetStore(root);
+        JsonObject preserved = new JsonParser().parse(read(root.resolve(TradePresetLayout.tabPath(11))))
+            .getAsJsonObject();
+        checks.put(
+            "legacy_owned_default_keeps_new_custom_trade_and_positive_page",
+            preserved.getAsJsonArray("trades")
+                .size() == 1 && extra.equals(
+                    preserved.getAsJsonArray("trades")
+                        .get(0))
+                && migrated.pages()
+                    .stream()
+                    .anyMatch(page -> page.getId() == 11 && !page.isPresetBuiltin()));
+        int customPage = migrated.installedTabs("legacy-custom")
+            .get(0);
+        NekoTradeConfig.TabFileData installed = TradePresetStore.GSON
+            .fromJson(read(root.resolve(TradePresetLayout.tabPath(customPage))), NekoTradeConfig.TabFileData.class);
+        checks.put(
+            "legacy_custom_namespace_migrates_away_from_base_and_clears_wrong_default_flags",
+            customPage <= -500000 && installed.getTrades()
+                .get(0)
+                .getId()
+                .equals("MIAO900123456789")
+                && !installed.getTrades()
+                    .get(0)
+                    .isDefaultEntry()
+                && !NekoTradeConfig.isBuiltInDefaultEntry(
+                    installed.getTrades()
+                        .get(0))
+                && migrated.pages()
+                    .stream()
+                    .anyMatch(
+                        page -> page.getId() == customPage && !page.isPresetBuiltin()
+                            && page.getSourcePresetId()
+                                .equals("legacy-custom")));
+        JsonObject detached = new JsonParser().parse(read(root.resolve(TradePresetLayout.tabPath(1000))))
+            .getAsJsonObject();
+        checks.put(
+            "legacy_default_range_custom_detach_preserves_unknown_raw_fields",
+            detached.get("unknownTop")
+                .getAsString()
+                .equals("keep top metadata")
+                && detached.getAsJsonArray("trades")
+                    .get(0)
+                    .getAsJsonObject()
+                    .get("unknownCustom")
+                    .getAsString()
+                    .equals("preserved")
+                && new JsonParser().parse(read(root.resolve("config/gtit/trade/pages.json")))
+                    .getAsJsonObject()
+                    .getAsJsonArray("pages")
+                    .toString()
+                    .contains("unknownPageField"));
     }
 
     private static String read(Path path) throws Exception {

@@ -17,12 +17,18 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
 import com.google.gson.Gson;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.testlab.ProbeContext;
 import com.miaokatze.gtit.testlab.ProbeScenario;
 import com.miaokatze.gtit.testlab.ProbeTask;
+import com.miaokatze.gtit.trade.NekoPageEntry;
+import com.miaokatze.gtit.trade.NekoPageRegistry;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
+import com.miaokatze.gtit.trade.preset.DefaultTradeSources;
 import com.miaokatze.gtit.trade.preset.TradePresetDefinition;
+import com.miaokatze.gtit.trade.preset.TradePresetLayout;
+import com.miaokatze.gtit.trade.preset.TradePresetManager;
 import com.miaokatze.gtit.trade.v2.NekoBqQuestIdParser;
 
 import appeng.items.materials.ItemMultiMaterial;
@@ -37,7 +43,7 @@ import gregtech.api.items.MetaGeneratedItem;
 final class PresetCatalogCheckScenario implements ProbeScenario {
 
     private static final String[] PRESETS = { "gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration" };
-    private static final int[] TRADE_COUNTS = { 123, 239, 64 };
+    private static final int[] TRADE_COUNTS = { 118, 239, 64 };
     private static final int[] PAGE_COUNTS = { 7, 12, 2 };
 
     @Override
@@ -123,13 +129,52 @@ final class PresetCatalogCheckScenario implements ProbeScenario {
             }
             context.check(
                 "bundled-catalog-total",
-                total == 426,
-                "426 shipped definitions; this scenario never applies them");
+                total == 421,
+                "421 shipped definitions; this scenario never applies them");
+            validateRuntimeDefaults(context);
             context.skip(
                 "physical-client-catalog-render",
                 "Dedicated server validates data only; icons and physical client UI need a client");
             return true;
         };
+    }
+
+    private static void validateRuntimeDefaults(ProbeContext context) {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) {
+            context.skip("runtime-default-sources", "Default groups are disabled by instance configuration");
+            return;
+        }
+        TradePresetManager.Snapshot snapshot = TradePresetManager.snapshot(null);
+        context.check(
+            "runtime-foundation-selected",
+            snapshot.appliedIds.contains(DefaultTradeSources.BASE_ID),
+            "The production manager always selects the foundation");
+        List<NekoPageEntry> pages = NekoPageRegistry.getAllPages();
+        for (TradePresetManager.PresetSummary preset : snapshot.presets) {
+            if (DefaultTradeSources.BASE_ID.equals(preset.id) && !preset.overridden) {
+                long count = pages.stream()
+                    .filter(page -> DefaultTradeSources.BASE_ID.equals(page.getSourcePresetId()))
+                    .count();
+                context.check(
+                    "runtime-foundation-jar-pages",
+                    count == preset.tabCount && count > 0,
+                    "Live registry contains the unedited jar foundation: " + count + " pages");
+            }
+        }
+        context.check(
+            "runtime-default-page-provenance",
+            pages.stream()
+                .filter(NekoPageEntry::isPresetBuiltin)
+                .allMatch(
+                    page -> java.util.Objects
+                        .equals(page.getSourcePresetId(), TradePresetLayout.builtinId(page.getId()))
+                        && page.getSourcePresetName() != null
+                        && !page.getSourcePresetName()
+                            .isEmpty()
+                        && page.getSourcePresetIconItem() != null
+                        && !page.getSourcePresetIconItem()
+                            .isEmpty()),
+            "Live default pages carry their reserved group, name and source icon");
     }
 
     private static void validateStack(ProbeContext context, String key, NekoTradeEntry.ItemEntry entry,

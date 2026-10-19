@@ -165,8 +165,8 @@ final class PageEditActions {
                 sendError(player, "未找到标签页: " + pageId);
                 return;
             }
-            if (target.isDefault() || pageId <= 3) {
-                sendError(player, "默认标签页（ID 1-3）不可删除");
+            if (target.isDefault() || com.miaokatze.gtit.trade.preset.TradePresetLayout.isManagedPage(pageId)) {
+                sendError(player, "受管预设标签页请在预设管理器中调整");
                 return;
             }
             if (data.getPages()
@@ -180,15 +180,21 @@ final class PageEditActions {
 
             // 该页交易迁往 tabId=3（其他页），与 NekoPageRegistry.deletePage 口径一致
             NekoTradeConfig.NekoTradeData tradeData = NekoTradeConfig.load();
+            int fallback = pageId == 3 ? 1000 : 3;
+            while (pageId == 3 && findPageEntry(data, fallback) != null) fallback++;
             if (tradeData != null && tradeData.getTrades() != null) {
                 boolean moved = false;
                 for (NekoTradeEntry trade : tradeData.getTrades()) {
                     if (trade.getTabId() == pageId) {
-                        trade.setTabId(3);
+                        trade.setTabId(fallback);
                         moved = true;
                     }
                 }
-                if (moved) NekoTradeConfig.save(tradeData);
+                if (moved) {
+                    if (findPageEntry(data, fallback) == null) data.getPages()
+                        .add(new NekoPageEntry(fallback, "其他", "minecraft:chest", 0, false));
+                    NekoTradeConfig.save(tradeData);
+                }
             }
 
             NekoPageConfig.save(data);

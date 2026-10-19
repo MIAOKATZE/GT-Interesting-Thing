@@ -527,14 +527,18 @@ A development-stage test multiblock (HV tier, 3×3×3 hollow TungstenSteel) once
 
 ## Administrator Commands / 管理员命令
 
-All commands under `/gtit`, OP permission level 2. **Tab completion supported** for subcommands, tab IDs, order IDs, and player names. Subcommands that manipulate the executor's own inventory are player-only; the rest also work from the server console.
+Administrative `/gtit` commands require OP permission level 2. Preset management and default trade reset additionally require the single-player owner or dedicated-server OP4. **Tab completion supports** working subcommands, NBT flags, and online player names; there are no `trade tab` / `orderId` command branches. Inventory operations and NekoVM changes are player-only; module help is also available from the console. `/gifts` is a separate player command without an OP requirement.
 
-所有指令通过 `/gtit`，OP 权限等级 2。**支持 Tab 补全**——子命令、标签页 ID、顺序 ID、玩家名均可自动补全。需要操作执行者背包的子命令仅玩家可执行，其余支持服务器控制台。
+管理指令 `/gtit` 保持 OP2 门槛；预设管理与默认贸易重置另外要求单人存档拥有者或专用服务器 OP4。**Tab 补全**涵盖实际子命令、NBT 标记和在线玩家名，没有 `trade tab` 或顺序 ID 命令。背包操作及 NekoVM 修改仅玩家可执行，各模块帮助也支持控制台。普通玩家使用独立的 `/gifts` 查看与领取礼包。
+
+Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance. Modules: `gift`, `nekovm`, `presets`, `signin`, `lottery`, `mail`. / 使用 `/gtit help [模块]` 查看语法，`/gtit tutorial [模块]` 查看步骤；模块包括上述六类。也支持 `/gtit <模块> help|tutorial`。
 
 ### Starter Gift / 新手宝箱
 
 | Command / 指令                                | Description / 说明                                                               |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `/gifts [ui|claim <ID>|help|tutorial]`    | Browse gifts; manual claims apply only to enabled BQ-unlock gifts / 查看礼包；手动领取仅适用于启用的 BQ 解锁型礼包 |
+| `/gtit gift ui`                            | Open the gift library / 打开礼包窗口；编辑权限由服务器另行检查 |
 | `/gtit gift certain [yesNBT\|noNBT]`        | Set guaranteed items from current inventory / 将当前背包物品设为必中物品；默认 `noNBT`       |
 | `/gtit gift random <count> [yesNBT\|noNBT]` | Set random pool from inventory + draw count / 将背包物品设为随机池并设置抽取数；默认 `noNBT`   |
 | `/gtit gift reset`                          | Reset to default config / 恢复默认配置                                                 |
@@ -547,8 +551,12 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
 | --------------------------- | ------------------------------------------------------------------------ |
 | `/gtit nekovm edit on\|off` | Toggle visual config edit mode / 开关可视化配置编辑模式                              |
 | `/gtit nekovm reload`       | Hot-reload trade + tab config / 热重载交易与标签页配置                                |
-| `/gtit nekovm timereset`    | Reset all trade cooldowns of the executor's team / 重置当前玩家（团队）的全部交易冷却 |
+| `/gtit nekovm timereset`    | Reset the current player/team's trade history, counts and cooldowns / 重置当前玩家或团队的贸易历史、次数与冷却 |
+| `/gtit nekovm defultreset`  | Force-restore default trade data; single-player owner / OP4 / 强制恢复默认贸易数据，需单人拥有者或 OP4 |
+| `/gtit presets`             | Open trade preset management; single-player owner / OP4 / 打开贸易预设管理，需单人拥有者或 OP4 |
 | `/gtit nekovm help`         | Full help / 完整帮助                                                              |
+
+`defultreset` is the documented command spelling; `defaultreset` remains an accepted alias. It is separate from `timereset`, which resets player/team history. Custom pages and trades are created in the vending-machine editor after `/gtit nekovm edit on`, rather than through an unimplemented tab-creation command. / 教学使用用户指定拼写 `defultreset`，同时兼容 `defaultreset`；它与重置玩家/团队历史的 `timereset` 不同。自定义标签页和条目应在 `edit on` 后使用售货机内编辑入口创建。
 
 ### Sign-In / 每日签到
 

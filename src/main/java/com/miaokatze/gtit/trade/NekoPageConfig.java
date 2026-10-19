@@ -132,7 +132,9 @@ public class NekoPageConfig {
             Files.createDirectories(path.getParent());
             NekoPageData user = new NekoPageData();
             NekoPageData managed = new NekoPageData();
+            com.miaokatze.gtit.trade.preset.DefaultTradeSources.savePages(data.getPages());
             for (NekoPageEntry page : data.getPages()) {
+                if (TradePresetLayout.builtinId(page.getId()) != null) continue;
                 (TradePresetLayout.isManagedPage(page.getId()) ? managed : user).getPages()
                     .add(page);
             }
@@ -155,7 +157,11 @@ public class NekoPageConfig {
 
     private static NekoPageData withPresetPages(NekoPageData data) throws java.io.IOException {
         Path path = TradeConfigPaths.resolve(TradePresetLayout.PAGES_PATH);
-        if (!Files.exists(path)) return data;
+        if (!Files.exists(path)) {
+            data.getPages()
+                .addAll(com.miaokatze.gtit.trade.preset.DefaultTradeSources.pages());
+            return data;
+        }
         String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
         NekoTradeJson.validateDepth(json);
         NekoPageData managed = GSON.fromJson(json, NekoPageData.class);
@@ -167,6 +173,8 @@ public class NekoPageConfig {
             data.getPages()
                 .add(page);
         }
+        data.getPages()
+            .addAll(com.miaokatze.gtit.trade.preset.DefaultTradeSources.pages());
         return data;
     }
 
@@ -215,31 +223,7 @@ public class NekoPageConfig {
      * 生成默认标签页数据
      */
     public static NekoPageData getDefaultPages() {
-        NekoPageData data = new NekoPageData();
-        List<NekoPageEntry> pages = new ArrayList<>();
-
-        // 标签页1：猫猫币
-        NekoPageEntry page1 = new NekoPageEntry(1, "猫猫币", "gtit:neko_coin", 0, true);
-        pages.add(page1);
-
-        // 标签页2：闪烁猫猫币
-        NekoPageEntry page2 = new NekoPageEntry(2, "闪烁猫猫币", "gtit:shimmering_neko_coin", 0, true);
-        pages.add(page2);
-
-        // 标签页3：GTIT
-        NekoPageEntry page3 = new NekoPageEntry(3, "GTIT", "gtit:ring_distant_grasp", 0, true);
-        pages.add(page3);
-
-        // 标签页4：周期领取
-        NekoPageEntry page4 = new NekoPageEntry(4, "周期领取", "minecraft:clock", 0, false);
-        pages.add(page4);
-
-        // 标签页5：基础
-        NekoPageEntry page5 = new NekoPageEntry(5, "基础", "minecraft:bed", 0, false);
-        pages.add(page5);
-
-        data.setPages(pages);
-        return data;
+        return new NekoPageData();
     }
 
     private static Path getConfigPath() {

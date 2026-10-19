@@ -18,7 +18,7 @@ public final class TestLabCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtitlab status|reset|refresh|run <id>|suite|stress [iterations]|profile [id] [iterations]|ui pocket";
+        return "/gtitlab help|status|reset|refresh|run <id>|suite|stress [iterations]|profile [id] [iterations]|ui pocket";
     }
 
     @Override
@@ -28,6 +28,13 @@ public final class TestLabCommand extends CommandBase {
 
     @Override
     public void processCommand(ICommandSender sender, String[] args) {
+        if (args.length == 1 && ("help".equals(args[0]) || "tutorial".equals(args[0]))) {
+            sender.addChatMessage(new ChatComponentText(getCommandUsage(sender)));
+            sender.addChatMessage(
+                new ChatComponentText(
+                    "Enabled test lab only. reset/refresh affect owned fixtures; ui pocket requires an online OP test player."));
+            return;
+        }
         if (args.length == 0) throw new WrongUsageException(getCommandUsage(sender));
         String requestId = null;
         try {
@@ -98,7 +105,10 @@ public final class TestLabCommand extends CommandBase {
             "suite",
             "stress",
             "profile",
-            "ui");
+            "ui",
+            "help",
+            "tutorial");
+        if (args.length == 2 && "ui".equals(args[0])) return getListOfStringsMatchingLastWord(args, "pocket");
         if (args.length == 2 && ("run".equals(args[0]) || "profile".equals(args[0])))
             return getListOfStringsMatchingLastWord(
                 args,

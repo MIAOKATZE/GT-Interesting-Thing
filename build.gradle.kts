@@ -199,6 +199,7 @@ mapOf(
     "runGiftEditorSessionTest" to "com.miaokatze.gtit.gift.ui.GiftEditorSessionTest",
     "runGiftAccessTest" to "com.miaokatze.gtit.gift.ui.GiftAccessTest",
     "runTradePresetStoreTest" to "com.miaokatze.gtit.trade.preset.TradePresetStoreTest",
+    "runGTITCommandTest" to "com.miaokatze.gtit.command.GTITCommandTest",
     "runStarterGiftAuditNbtTest" to "com.miaokatze.gtit.terminal.StarterGiftAuditNbtTest",
     "runTradePresetAccessTest" to "com.miaokatze.gtit.trade.preset.ui.TradePresetAccessTest"
 ).forEach { (taskName, entryPoint) ->

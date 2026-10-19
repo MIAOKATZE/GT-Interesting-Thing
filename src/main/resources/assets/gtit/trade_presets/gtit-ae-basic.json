@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "gtit-ae-basic",
   "name": "AE 基础",
-  "description": "AE 基础网络：123 条贸易、7 个标签页。无需 BQ 任务，可开局选择；与 AE 强化互斥。",
+  "description": "AE 基础网络：118 条贸易、7 个标签页。无需 BQ 任务；与另一 AE 预设互斥。",
   "icon": {
     "item": "appliedenergistics2:tile.BlockController",
     "meta": 0,
@@ -55,9 +55,22 @@
           "orderId": 1,
           "currency": {
             "type": "neko",
-            "amount": 24
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:tile.BlockController",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:tile.BlockCreativeEnergyCell",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:tile.BlockCreativeEnergyController",
@@ -66,10 +79,10 @@
               "nbtBase64": null
             }
           ],
-          "cooldown": 300,
-          "maxTrades": -1,
+          "cooldown": -1,
+          "maxTrades": 1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -136,7 +149,7 @@
           "orderId": 4,
           "currency": {
             "type": "neko",
-            "amount": 4
+            "amount": 20
           },
           "fromItems": [],
           "toItems": [
@@ -271,7 +284,7 @@
           "orderId": 9,
           "currency": {
             "type": "neko",
-            "amount": 4
+            "amount": 24
           },
           "fromItems": [],
           "toItems": [
@@ -418,7 +431,7 @@
           "orderId": 3,
           "currency": {
             "type": "neko",
-            "amount": 3
+            "amount": 12
           },
           "fromItems": [],
           "toItems": [
@@ -472,9 +485,22 @@
           "orderId": 5,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 35,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 39,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemBasicStorageCell.1k",
@@ -486,7 +512,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -499,9 +525,22 @@
           "orderId": 6,
           "currency": {
             "type": "neko",
-            "amount": 3
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 36,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 39,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemBasicStorageCell.4k",
@@ -513,7 +552,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -526,9 +565,22 @@
           "orderId": 7,
           "currency": {
             "type": "neko",
-            "amount": 4
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 37,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 39,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemBasicStorageCell.16k",
@@ -540,7 +592,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -553,9 +605,22 @@
           "orderId": 8,
           "currency": {
             "type": "neko",
-            "amount": 6
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 38,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 39,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemBasicStorageCell.64k",
@@ -567,7 +632,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -803,68 +868,27 @@
           ]
         },
         {
-          "id": "gtit-ae-basic-full-e8e4652324f6",
-          "tabId": 5,
-          "orderId": 5,
-          "currency": {
-            "type": "neko",
-            "amount": 4
-          },
-          "fromItems": [],
-          "toItems": [
-            {
-              "item": "appliedenergistics2:tile.BlockCraftingUnit",
-              "meta": 2,
-              "amount": 1,
-              "nbtBase64": null
-            }
-          ],
-          "cooldown": 300,
-          "maxTrades": -1,
-          "bqQuestId": "",
-          "recordNBT": false,
-          "requiresMods": [
-            "appliedenergistics2",
-            "betterquesting",
-            "gtit"
-          ]
-        },
-        {
-          "id": "gtit-ae-basic-full-478025c7e577",
-          "tabId": 5,
-          "orderId": 6,
-          "currency": {
-            "type": "neko",
-            "amount": 6
-          },
-          "fromItems": [],
-          "toItems": [
-            {
-              "item": "appliedenergistics2:tile.BlockCraftingUnit",
-              "meta": 3,
-              "amount": 1,
-              "nbtBase64": null
-            }
-          ],
-          "cooldown": 300,
-          "maxTrades": -1,
-          "bqQuestId": "",
-          "recordNBT": false,
-          "requiresMods": [
-            "appliedenergistics2",
-            "betterquesting",
-            "gtit"
-          ]
-        },
-        {
           "id": "gtit-ae-basic-full-62b56d73fd58",
           "tabId": 5,
           "orderId": 7,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:tile.BlockCraftingUnit",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 35,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:tile.BlockCraftingStorage",
@@ -876,7 +900,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -889,9 +913,22 @@
           "orderId": 8,
           "currency": {
             "type": "neko",
-            "amount": 3
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:tile.BlockCraftingUnit",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 36,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:tile.BlockCraftingStorage",
@@ -903,7 +940,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -916,9 +953,22 @@
           "orderId": 9,
           "currency": {
             "type": "neko",
-            "amount": 4
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:tile.BlockCraftingUnit",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 37,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:tile.BlockCraftingStorage",
@@ -930,7 +980,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -943,9 +993,22 @@
           "orderId": 10,
           "currency": {
             "type": "neko",
-            "amount": 6
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:tile.BlockCraftingUnit",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 38,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:tile.BlockCraftingStorage",
@@ -957,7 +1020,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -2476,7 +2539,7 @@
           "orderId": 9,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -2503,7 +2566,7 @@
           "orderId": 10,
           "currency": {
             "type": "neko",
-            "amount": 3
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -2557,7 +2620,7 @@
           "orderId": 12,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -2584,7 +2647,7 @@
           "orderId": 13,
           "currency": {
             "type": "neko",
-            "amount": 3
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -2611,7 +2674,7 @@
           "orderId": 14,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -2638,7 +2701,7 @@
           "orderId": 15,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 1
           },
           "fromItems": [],
           "toItems": [
@@ -2665,9 +2728,16 @@
           "orderId": 16,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 35,
+              "amount": 3,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemMultiMaterial",
@@ -2679,7 +2749,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -2694,7 +2764,14 @@
             "type": "neko",
             "amount": 2
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 36,
+              "amount": 3,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemMultiMaterial",
@@ -2706,7 +2783,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -2719,9 +2796,16 @@
           "orderId": 18,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 37,
+              "amount": 3,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemMultiMaterial",
@@ -2733,7 +2817,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -2903,33 +2987,6 @@
           ]
         },
         {
-          "id": "gtit-ae-basic-full-aa46ba03007a",
-          "tabId": 7,
-          "orderId": 25,
-          "currency": {
-            "type": "neko",
-            "amount": 6
-          },
-          "fromItems": [],
-          "toItems": [
-            {
-              "item": "appliedenergistics2:item.ItemMultiMaterial",
-              "meta": 54,
-              "amount": 2,
-              "nbtBase64": null
-            }
-          ],
-          "cooldown": 300,
-          "maxTrades": -1,
-          "bqQuestId": "",
-          "recordNBT": false,
-          "requiresMods": [
-            "appliedenergistics2",
-            "betterquesting",
-            "gtit"
-          ]
-        },
-        {
           "id": "gtit-ae-basic-full-5eb91a33e709",
           "tabId": 7,
           "orderId": 26,
@@ -2957,41 +3014,33 @@
           ]
         },
         {
-          "id": "gtit-ae-basic-full-d187ee2f7a7e",
-          "tabId": 7,
-          "orderId": 27,
-          "currency": {
-            "type": "neko",
-            "amount": 2
-          },
-          "fromItems": [],
-          "toItems": [
-            {
-              "item": "appliedenergistics2:item.ItemMultiMaterial",
-              "meta": 56,
-              "amount": 4,
-              "nbtBase64": null
-            }
-          ],
-          "cooldown": 300,
-          "maxTrades": -1,
-          "bqQuestId": "",
-          "recordNBT": false,
-          "requiresMods": [
-            "appliedenergistics2",
-            "betterquesting",
-            "gtit"
-          ]
-        },
-        {
           "id": "gtit-ae-basic-full-2b6b671ebd15",
           "tabId": 7,
           "orderId": 28,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 1
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 28,
+              "amount": 4,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiPart",
+              "meta": 220,
+              "amount": 4,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiPart",
+              "meta": 280,
+              "amount": 4,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemMultiMaterial",
@@ -3003,7 +3052,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -3016,7 +3065,7 @@
           "orderId": 29,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -3045,7 +3094,26 @@
             "type": "neko",
             "amount": 2
           },
-          "fromItems": [],
+          "fromItems": [
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 28,
+              "amount": 4,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 52,
+              "amount": 4,
+              "nbtBase64": null
+            },
+            {
+              "item": "appliedenergistics2:item.ItemMultiMaterial",
+              "meta": 24,
+              "amount": 4,
+              "nbtBase64": null
+            }
+          ],
           "toItems": [
             {
               "item": "appliedenergistics2:item.ItemMultiMaterial",
@@ -3057,7 +3125,7 @@
           "cooldown": 300,
           "maxTrades": -1,
           "bqQuestId": "",
-          "recordNBT": false,
+          "recordNBT": true,
           "requiresMods": [
             "appliedenergistics2",
             "betterquesting",
@@ -3070,7 +3138,7 @@
           "orderId": 31,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -3092,39 +3160,12 @@
           ]
         },
         {
-          "id": "gtit-ae-basic-full-e2b993cd3838",
-          "tabId": 7,
-          "orderId": 32,
-          "currency": {
-            "type": "neko",
-            "amount": 2
-          },
-          "fromItems": [],
-          "toItems": [
-            {
-              "item": "appliedenergistics2:item.ItemMultiMaterial",
-              "meta": 67,
-              "amount": 4,
-              "nbtBase64": null
-            }
-          ],
-          "cooldown": 300,
-          "maxTrades": -1,
-          "bqQuestId": "",
-          "recordNBT": false,
-          "requiresMods": [
-            "appliedenergistics2",
-            "betterquesting",
-            "gtit"
-          ]
-        },
-        {
           "id": "gtit-ae-basic-full-83ca9c1b96f4",
           "tabId": 7,
           "orderId": 33,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -3151,7 +3192,7 @@
           "orderId": 34,
           "currency": {
             "type": "neko",
-            "amount": 2
+            "amount": 6
           },
           "fromItems": [],
           "toItems": [
@@ -3259,7 +3300,7 @@
           "orderId": 38,
           "currency": {
             "type": "neko",
-            "amount": 4
+            "amount": 32
           },
           "fromItems": [],
           "toItems": [

@@ -224,6 +224,8 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
         ItemStack baselineIcon;
         Runnable pendingLeave;
         IPanelHandler leaveDialog;
+        IPanelHandler defaultUpdateDialog;
+        Runnable pendingDefaultApply;
 
         Session(Data data, PanelSyncManager sync) {
             this.data = data;
@@ -247,6 +249,8 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 // A missing or invalid catalog entry can be deselected explicitly; applying validates all selected IDs.
                 selected.addAll(data.snapshot.pendingSelection);
             } else selected.addAll(data.snapshot.appliedIds);
+            if (data.snapshot.presets.stream()
+                .anyMatch(preset -> "gtit-base".equals(preset.id))) selected.add("gtit-base");
             status = data.snapshot.feedback;
             statusKind = !data.snapshot.errors.isEmpty() ? "notices" : status.isEmpty() ? "ready" : "updated";
             baseline = draftFingerprint();
@@ -446,8 +450,14 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 .syncHandler(handler)
                 .onMousePressed(mouse -> {
                     if (mouse != 0) return true;
-                    if (!"save".equals(key) && dirty()) guard(() -> handler.onMousePressed(mouse));
-                    else {
+                    Runnable perform = () -> {
+                        if ("apply".equals(key) && data.snapshot.presets.stream()
+                            .anyMatch(
+                                preset -> selected.contains(preset.id) && preset.defaultUpdateAvailable
+                                    && preset.overridden)) {
+                            confirmDefaultUpdate(() -> handler.onMousePressed(mouse));
+                            return;
+                        }
                         if ("reload".equals(key)) {
                             statusKind = "loading";
                             status = IKey.lang("gtit.preset.reloading")
@@ -456,9 +466,67 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                             statusValue.setStringValue(status, false, false);
                         }
                         handler.onMousePressed(mouse);
-                    }
+                    };
+                    if (!"save".equals(key) && dirty()) guard(perform);
+                    else perform.run();
                     return true;
                 });
+        }
+
+        void confirmDefaultUpdate(Runnable apply) {
+            pendingDefaultApply = apply;
+            if (defaultUpdateDialog == null) defaultUpdateDialog = IPanelHandler.simple(panel, (parent, player) -> {
+                ModularPanel dialog = new Dialog<>("gtit_default_trade_update", null).setDisablePanelsBelow(true)
+                    .setCloseOnOutOfBoundsClick(false)
+                    .size(264, 126)
+                    .background(UtilityUiStyle.MANAGER_PANEL);
+                dialog.child(
+                    IKey.lang("gtit.trade.update.title")
+                        .style(EnumChatFormatting.BOLD)
+                        .asWidget()
+                        .alignment(Alignment.CenterLeft)
+                        .pos(12, 12)
+                        .size(240, 16));
+                dialog.child(
+                    IKey.lang("gtit.trade.update.warning")
+                        .asWidget()
+                        .alignment(Alignment.TopLeft)
+                        .pos(12, 39)
+                        .size(240, 30)
+                        .scale(0.9f));
+                dialog.child(
+                    new UtilityControls.ActionButton().manager()
+                        .pos(12, 91)
+                        .size(116, 22)
+                        .overlay(
+                            IKey.lang("gtit.trade.update.later")
+                                .scale(0.9f))
+                        .onMousePressed(mouse -> {
+                            if (mouse != 0) return true;
+                            pendingDefaultApply = null;
+                            dialog.closeIfOpen();
+                            return true;
+                        }));
+                dialog.child(
+                    new UtilityControls.ActionButton().manager()
+                        .selected(() -> true)
+                        .pos(136, 91)
+                        .size(116, 22)
+                        .overlay(
+                            IKey.lang("gtit.trade.update.apply")
+                                .scale(0.9f))
+                        .onMousePressed(mouse -> {
+                            if (mouse != 0) return true;
+                            Runnable confirmed = pendingDefaultApply;
+                            pendingDefaultApply = null;
+                            dialog.closeIfOpen();
+                            if (confirmed != null) confirmed.run();
+                            return true;
+                        }));
+                UtilityUiStyle.styleManagerContent(dialog);
+                return dialog;
+            }, true);
+            defaultUpdateDialog.openPanel();
         }
 
         IWidget chooser() {
@@ -478,10 +546,11 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 .size(278, 168);
             int ordinal = 0;
             for (PresetSummary preset : data.snapshot.presets) {
+                final boolean fixed = "gtit-base".equals(preset.id);
                 BooleanSyncValue checked = new BooleanSyncValue(
                     () -> selected.contains(preset.id),
                     value -> dispatch(() -> {
-                        if (value) selected.add(preset.id);
+                        if (value || fixed) selected.add(preset.id);
                         else selected.remove(preset.id);
                     })).allowC2S();
                 sync.syncValue("preset_" + preset.id, checked);
@@ -491,13 +560,20 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         (context, x, y, width, height,
                             theme) -> (selected.contains(preset.id) ? UtilityUiStyle.MANAGER_ROW_SELECTED
                                 : UtilityUiStyle.MANAGER_ROW).draw(context, x, y, width, height, theme));
-                row.child(
-                    new UtilityControls.Toggle().manager()
-                        .value(checked)
-                        .pos(8, 18)
-                        .size(16)
-                        .overlay(false, IKey.str(""))
-                        .overlay(true, IKey.str("x")));
+                if (fixed) {
+                    label(row, IKey.str("x"), 8, 18, 16, 16, 1f).alignment(Alignment.Center)
+                        .background(UtilityUiStyle.MANAGER_BUTTON_PRESSED)
+                        .color(UtilityUiStyle.MANAGER_BUTTON_TEXT)
+                        .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.trade.foundation")));
+                } else {
+                    row.child(
+                        new UtilityControls.Toggle().manager()
+                            .value(checked)
+                            .pos(8, 18)
+                            .size(16)
+                            .overlay(false, IKey.str(""))
+                            .overlay(true, IKey.str("x")));
+                }
                 ItemStack stack = preset.icon == null ? null : preset.icon.toStack();
                 if (stack != null) row.child(
                     new UtilityControls.DecorativeItem().item(stack)
@@ -524,8 +600,9 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 label(
                     row,
                     IKey.lang(
-                        preset.selected ? "gtit.preset.applied"
-                            : preset.builtin ? "gtit.preset.builtin" : "gtit.preset.custom"),
+                        fixed ? "gtit.trade.foundation"
+                            : preset.selected ? "gtit.preset.applied"
+                                : preset.builtin ? "gtit.preset.builtin" : "gtit.preset.custom"),
                     62,
                     37,
                     146,
@@ -596,17 +673,25 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             ListWidget<IWidget, ?> pending = new ListWidget<>().pos(304, 121)
                 .size(144, 49);
             for (PresetSummary preset : data.snapshot.presets) {
-                pending.child(
-                    new TextWidget<>(
-                        IKey.dynamic(() -> (selected.contains(preset.id) ? "+ " : "- ") + compact(preset.name, 14)))
-                            .alignment(Alignment.CenterLeft)
-                            .color(
-                                () -> selected.contains(preset.id) ? UtilityUiStyle.MANAGER_SUCCESS
-                                    : UtilityUiStyle.MANAGER_WARNING)
-                            .shadow(false)
-                            .size(136, 15)
-                            .scale(0.9f)
-                            .setEnabledIf(w -> selected.contains(preset.id) != preset.selected));
+                pending
+                    .child(
+                        new TextWidget<>(
+                            IKey.dynamic(
+                                () -> selected.contains(preset.id) && preset.defaultUpdateAvailable
+                                    ? IKey.lang("gtit.trade.update.pending", compact(preset.name, 11))
+                                        .get()
+                                    : (selected.contains(preset.id) ? "+ " : "- ") + compact(preset.name, 14)))
+                                        .alignment(Alignment.CenterLeft)
+                                        .color(
+                                            () -> selected.contains(preset.id) && !preset.defaultUpdateAvailable
+                                                ? UtilityUiStyle.MANAGER_SUCCESS
+                                                : UtilityUiStyle.MANAGER_WARNING)
+                                        .shadow(false)
+                                        .size(136, 15)
+                                        .scale(0.9f)
+                                        .setEnabledIf(
+                                            w -> selected.contains(preset.id) != preset.selected
+                                                || selected.contains(preset.id) && preset.defaultUpdateAvailable));
             }
             pending.child(
                 new TextWidget<>(IKey.lang("gtit.preset.ui.no_changes")).alignment(Alignment.CenterLeft)
@@ -614,7 +699,10 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     .shadow(false)
                     .size(136, 15)
                     .scale(0.9f)
-                    .setEnabledIf(w -> selected.equals(new java.util.HashSet<>(data.snapshot.appliedIds))));
+                    .setEnabledIf(
+                        w -> selected.equals(new java.util.HashSet<>(data.snapshot.appliedIds))
+                            && data.snapshot.presets.stream()
+                                .noneMatch(preset -> selected.contains(preset.id) && preset.defaultUpdateAvailable)));
             page.child(pending);
             label(page, IKey.lang("gtit.preset.ui.apply_hint"), 304, 177, 144, 13, 0.85f)
                 .color(UtilityUiStyle.MANAGER_MUTED);

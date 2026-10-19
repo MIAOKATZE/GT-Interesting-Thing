@@ -33,11 +33,21 @@ final class PresetFileTransaction {
             .normalize();
     }
 
+    Path root() {
+        return root;
+    }
+
     Path checked(String relative) throws IOException {
         if (!(relative.matches("MiaoTrade/[a-z0-9_-]{1,64}\\.json") || relative.equals("config/gtit/trade/pages.json")
             || relative.matches(
                 "MiaoTrade/builtin_updates/[0-9a-f]{8}-[0-9a-f]{4}-3[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/(gtit-ae-basic|gtit-ae-advanced|gtit-base-decoration)\\.json")
             || relative.equals("config/gtit/trade/preset_state.json")
+            || relative.equals("config/gtit/trade/default_storage_v3.json")
+            || relative.equals("config/gtit/nekovm_trades.json")
+            || relative.equals("config/gtit/nekovm_pages.json")
+            || relative.matches(
+                "config/gtit/trade/default_overrides/(gtit-ae-basic|gtit-ae-advanced|gtit-base-decoration|gtit-base)\\.json")
+            || relative.matches("config/gtit/trade/default_migration_backup/[a-zA-Z0-9_.-]+\\.json")
             || relative.equals(TradePresetLayout.PAGES_PATH)
             || relative.equals(JOURNAL)
             || relative.matches("config/gtit/trade/preset_tabs/tab_-[1-9][0-9]{5,9}\\.json")

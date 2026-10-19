@@ -13,7 +13,8 @@ public final class TradePresetLayout {
 
     public static final String PAGES_PATH = "config/gtit/trade/preset_pages.json";
     public static final String TRADES_PATH = "config/gtit/trade/preset_tabs";
-    private static final List<String> IDS = Arrays.asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration");
+    private static final List<String> IDS = Arrays
+        .asList("gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration", "gtit-base");
 
     private TradePresetLayout() {}
 
@@ -29,7 +30,7 @@ public final class TradePresetLayout {
         return -(series * 100000 + sourceId);
     }
 
-    /** MIAO100/200/300 built-in and MIAO900 custom-preset series, independent of page/order allocation. */
+    /** MIAO100/200/300/400 built-in and MIAO900 custom-preset series, independent of page/order allocation. */
     static String tradeId(String presetId, String sourceId) {
         int series = IDS.indexOf(presetId) + 1;
         try {
@@ -43,10 +44,16 @@ public final class TradePresetLayout {
     }
 
     static int customPageId(String key, Set<Integer> occupied) {
-        // Built-in ranges end at -399999. Persist the chosen slot so catalog ordering never changes identity.
-        int candidate = -400000 - Math.floorMod(key.hashCode(), Integer.MAX_VALUE - 400000);
-        while (occupied.contains(candidate)) candidate = candidate == Integer.MIN_VALUE ? -400000 : candidate - 1;
+        // Built-in ranges end at -499999. Persist the chosen slot so catalog ordering never changes identity.
+        int candidate = -500000 - Math.floorMod(key.hashCode(), Integer.MAX_VALUE - 500000);
+        while (occupied.contains(candidate)) candidate = candidate == Integer.MIN_VALUE ? -500000 : candidate - 1;
         return candidate;
+    }
+
+    public static String builtinId(int pageId) {
+        if (pageId > -100001 || pageId <= -500000) return null;
+        int series = (-pageId) / 100000;
+        return series >= 1 && series <= IDS.size() && (-pageId) % 100000 != 0 ? IDS.get(series - 1) : null;
     }
 
     public static String tabPath(int id) {

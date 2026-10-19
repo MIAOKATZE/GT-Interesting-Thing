@@ -30,7 +30,7 @@ public class NekoTradeEntry {
     private NekoCurrencyCost currency;
     private List<ItemEntry> fromItems;
     private List<ItemEntry> toItems;
-    private int cooldown;
+    private int cooldown; // 秒；0 无时间限制，-1 仅限一次成功兑换。
     private int maxTrades;
     private String bqQuestId; // BQ任务绑定ID，空字符串=不需要绑定
     // 是否严格匹配 NBT（v1.7.6 G3⑤）：true=需求按物品+NBT 精确匹配；false=仅按物品匹配。
@@ -121,7 +121,13 @@ public class NekoTradeEntry {
     }
 
     public void setCooldown(int cooldown) {
+        validateCooldown(cooldown);
         this.cooldown = cooldown;
+    }
+
+    /** -1 is one successful redemption; 0 is unrestricted by time; positive values are seconds. */
+    public static void validateCooldown(int cooldown) {
+        if (cooldown < -1) throw new IllegalArgumentException("冷却时间须为 -1（仅限一次）、0 或正秒数");
     }
 
     public int getMaxTrades() {
