@@ -43,7 +43,7 @@ import gregtech.api.items.MetaGeneratedItem;
 final class PresetCatalogCheckScenario implements ProbeScenario {
 
     private static final String[] PRESETS = { "gtit-ae-basic", "gtit-ae-advanced", "gtit-base-decoration" };
-    private static final int[] TRADE_COUNTS = { 118, 239, 64 };
+    private static final int[] TRADE_COUNTS = { 98, 194, 64 };
     private static final int[] PAGE_COUNTS = { 7, 12, 2 };
 
     @Override
@@ -129,8 +129,8 @@ final class PresetCatalogCheckScenario implements ProbeScenario {
             }
             context.check(
                 "bundled-catalog-total",
-                total == 421,
-                "421 shipped definitions; this scenario never applies them");
+                total == 356,
+                "356 shipped definitions; this scenario never applies them");
             validateRuntimeDefaults(context);
             context.skip(
                 "physical-client-catalog-render",

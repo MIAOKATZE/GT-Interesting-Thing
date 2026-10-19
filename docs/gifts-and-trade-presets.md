@@ -32,15 +32,15 @@ JAR 直接提供 GTIT 基础组和三套默认预设，不会在启动时将整�
 
 一次性迁移标记为 `config/gtit/trade/default_storage_v3.json`。首次迁移把识别出的旧默认文件先备份到 `config/gtit/trade/default_migration_backup/`，再清理旧默认内容并写入标记，所有步骤通过同一可回滚事务处理；标记独立于 Mod 小版本，重启不会重复清理。旧默认归属按已知旧 UUID、MIAO1–92 交易标识或默认 owner/owned ID 标记识别。旧的非默认正页与自建预设保留，未知字段不丢失；若旧默认负页混有用户内容，会把用户内容迁到正页并保留原始数据；占用基础页范围的旧自定义页 ID 会映射到 `<= -500000`。旧单文件与分页文件并存时优先分页，失效的旧单文件也会备份并退役，以免清理后再次导入旧默认。
 
-三套默认预设均不要求 BQ，AE basic 为 118 笔/7 页签、AE advanced 为 239 笔/12 页签、基地装饰为 64 笔/2 页签，合计 421 笔/21 页签；原 92 条基础贸易与 GTIT 特色 MIAO89 AE 材料交易保留，Web `gtit-base` / `gtit-miao` 不输出 AE 商品。普通 4k/16k 存储单元仍在并重价；基础组移除 4 核/16 核合成处理单元（`BlockCraftingUnit` meta `2/3`），不是普通存储。AE 基础组与高级组都只保留 Creative Energy Controller 单次交易，并恢复原交易稳定 ID；不销售 Creative Energy Cell，它作为兑换材料。两笔均 `maxTrades=1`、`cooldown=-1`；GTNH 原生合成配方不改，ME 2710–2723 已有条目不重复添加。
+三套默认预设均不要求 BQ，AE basic 为 98 笔/7 页签、AE advanced 为 194 笔/12 页签、基地装饰为 64 笔/2 页签，合计 356 笔/21 页签；原 92 条基础贸易与 GTIT 特色 MIAO89 AE 材料交易保留，Web `gtit-base` / `gtit-miao` 不输出 AE 商品。AE 两套保留既有贸易与页签 ID；不再出售处理器、存储/空间组件与外壳、压印器/充能器/晶体催生器等原料生产设备，分子装配与合成 CPU 等功能成品保留。第 7 页改名“卡片和工具”，无线信号增幅器移至安全终端/无线接入点旁，高级内存卡收 1 闪币及普通内存卡。两套 Creative Energy Controller 均为纯 1 普通猫币、无物品输入，保留原稳定 ID、`maxTrades=1`、`cooldown=-1`；不出售或要求 Creative Energy Cell。GTNH 原生合成配方不改。
 
-低阶常用商品保持廉价直购；高阶贸易采用前阶材料加猫币加工费，不使用纯大币堆叠。Creative Energy Controller 仅作交换产出，需空白普通 ME Controller、空白 Creative Energy Cell 与 1 常币加工费；Creative Energy Cell 不单独出售。Quantum 方案为 4×16M 存储单元、4 个量子环、致密能源单元与 24 闪币；2714 使用实际前阶部件及 UEV 存储等材料加 192 闪币，2716 使用实际总成与 UEV sensor 等材料加 256 闪币。单笔最多 7 种输入，即使输入全不可堆叠也不超过 26 格；底料与 Creative Energy Cell 在模型中按非零符号材料计，不把它们换算成伪造的完整币价。
+本轮贸易以提前使用功能成品为目的。首级廉价纯币；升级最多收自身家族前一级成品与少量加工费，不要求实际时代机器、处理器、组件或外壳。物品、流体、多流体的完整存储盘从 1k 的 1 普通猫币起，升级收前一完整盘×3；4k/16k/64k/256k 加 1/2/4/8 普通猫币，1024k/4096k/16384k 加 1/2/4 闪币。空间盘与量子/奇点/寰宇盘也在各自家族内递进，所有升级输入精确匹配无 NBT，避免消耗已有存储内容。ME 存储输入/输出仓室首级 8 普通猫币；样板输入总线（2715）16 普通猫币，升级总成（2714）加 8 普通猫币，再升级镜像（2716）加 2 闪币。加工费只计本次升级，不再叠加已付前级总成本。
 
 `cooldown=-1` 使用按玩家/团队与 `tradeGroupId` 持久化的 `tradeCount`；成功一次后永久拒绝再次交易，团队人数不放大次数，失败、取消或支付失败不消费。管理员可用 `timereset` / `resetHistory` / `resetAllHistory` 清理记录；重载或默认重置不改历史。正 cooldown 以实际秒计，0 不限制时间；默认 `NekoTradeGroup` cooldown 为 0。界面显示“仅限一次/已兑换”而不显示负的剩余秒数。GT-MIAO-Web-BQ-Trade 可加载、编辑、保存和导出 `cooldown=-1`；小于 -1 或非整数会报错，`maxTrades` 规则不变。
 
 `/gtit` 根命令仍要求 OP2，没有扩大权限。`/gtit help`、`/gtit tutorial`、Tab 补全和各子模块文案已补齐 `presets` 入口及正确参数位置；`/gtit presets` 可直接打开预设管理。`/gtit nekovm timereset` 重置当前玩家/团队在所有交易组的历史和冷却。默认恢复命令 `/gtit nekovm defultreset` 额外要求单人拥有者或专用服务器 OP4，并兼容 `defaultreset` 拼写。
 
-Web 编辑器导出的 `config/gtit/trade/**` 用于贸易/页面数据，ZIP 或 `pages.json` 不能改名当作游戏预设；预设文件还需 ID、名称、图标、来源及互斥信息。v1.8.99 的 21-tab Web 工作区及 BQ 清理回执属于上一版本历史，其 426 条快照不代表当前 JAR 中的 419 条预设交易。
+Web 编辑器导出的 `config/gtit/trade/**` 用于贸易/页面数据，ZIP 或 `pages.json` 不能改名当作游戏预设；预设文件还需 ID、名称、图标、来源及互斥信息。旧记录中的 426、419、421 条均为历史快照，不代表 v1.9.2 的 356 条预设交易；以本版随包资源与同字段 Web 导出为准。
 
 ## 关闭内置默认内容
 
