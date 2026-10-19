@@ -15,8 +15,8 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
-import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
+import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
  * 管理终端-邮件运营页（T2 实现，纯客户端 MUI2 页面）
@@ -74,20 +74,20 @@ public final class TerminalMailPage {
     private static final int FIELD_H = 12;
 
     /** 标签行 Y */
-    private static final int TITLE_Y = 67;
+    private static final int TITLE_Y = 81;
     /** 正文行 Y */
-    private static final int BODY_Y = 81;
+    private static final int BODY_Y = 95;
     /** 奖励ID 行 Y */
-    private static final int REWARD_ID_Y = 95;
+    private static final int REWARD_ID_Y = 109;
     /** 附件说明行 Y */
-    private static final int HINT_Y = 110;
+    private static final int HINT_Y = 124;
 
     /** 按钮行 1 Y（发送邮件 / 查询模板） */
-    private static final int BTN_ROW1_Y = 120;
+    private static final int BTN_ROW1_Y = 134;
     /** 按钮行 2 Y（设置首登模板 / 清除首登模板） */
-    private static final int BTN_ROW2_Y = 138;
+    private static final int BTN_ROW2_Y = 152;
     /** 按钮行 3 Y（发布一次性奖励，整行） */
-    private static final int BTN_ROW3_Y = 156;
+    private static final int BTN_ROW3_Y = 170;
     /** 常规按钮宽/高 */
     private static final int BTN_W = (PAGE_WIDTH - 18) / 2;
     private static final int BTN_H = 16;
@@ -95,13 +95,13 @@ public final class TerminalMailPage {
     private static final int BTN_FULL_W = PAGE_WIDTH - 12;
 
     /** 模板信息区标题行 Y */
-    private static final int TEMPLATE_HEADER_Y = 176;
+    private static final int TEMPLATE_HEADER_Y = 188;
     /** 模板信息-标题行 Y */
-    private static final int TEMPLATE_TITLE_Y = 186;
+    private static final int TEMPLATE_TITLE_Y = 198;
     /** 模板信息-正文行 Y */
-    private static final int TEMPLATE_BODY_Y = 195;
+    private static final int TEMPLATE_BODY_Y = 207;
     /** 模板信息-附件行 Y */
-    private static final int TEMPLATE_ATTACH_Y = 204;
+    private static final int TEMPLATE_ATTACH_Y = 216;
 
     /** 动作发送冷却（毫秒，客户端防抖，防连点重复发包；MailGui 同款 1.5s） */
     private static final long ACTION_COOLDOWN_MS = 1500L;
@@ -109,7 +109,7 @@ public final class TerminalMailPage {
     // ==================== 页面文案（页内局部常量，硬编码中文） ====================
 
     private static final String LABEL_TARGET = "目标:";
-    private static final String HINT_NO_SELECTION = "（未选择，点击下方玩家名）";
+    private static final String HINT_NO_SELECTION = "请点选玩家";
     private static final String HINT_NO_PLAYERS = "（无在线玩家快照）";
     private static final String LABEL_TITLE = "标题:";
     private static final String LABEL_BODY = "正文:";
@@ -160,6 +160,12 @@ public final class TerminalMailPage {
      */
     public static IWidget createPage(PagedWidget.Controller controller) {
         ParentWidget<?> page = new ParentWidget<>().size(PAGE_WIDTH, PAGE_HEIGHT);
+        page.child(
+            new TextWidget<>(IKey.str("邮件管理")).pos(0, 0)
+                .size(PAGE_WIDTH, 12)
+                .textAlign(Alignment.Center)
+                .color(UtilityUiStyle.TEXT)
+                .shadow(false));
 
         page.child(createTargetSection()); // 目标玩家选择区
         page.child(createFormSection()); // 标题/正文/奖励ID 输入 + 附件说明
@@ -173,7 +179,7 @@ public final class TerminalMailPage {
 
     /** 目标行 + 在线玩家列表（4 行热区）+ 翻页行 */
     private static IWidget createTargetSection() {
-        ParentWidget<?> section = new ParentWidget<>().pos(0, 0)
+        ParentWidget<?> section = new ParentWidget<>().pos(0, 14)
             .size(PAGE_WIDTH, PLAYER_PAGER_Y + PAGER_BTN_H);
 
         // 目标标签 + 选中玩家显示
@@ -185,15 +191,15 @@ public final class TerminalMailPage {
         section.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> selectedPlayer.isEmpty() ? EnumChatFormatting.GRAY + HINT_NO_SELECTION
-                        : EnumChatFormatting.GREEN + selectedPlayer)).pos(FIELD_X, 1)
+                    () -> selectedPlayer.isEmpty() ? EnumChatFormatting.DARK_GRAY + HINT_NO_SELECTION
+                        : EnumChatFormatting.DARK_GREEN + selectedPlayer)).pos(FIELD_X, 1)
                             .size(FIELD_W, 9)
                             .scale(0.8f)
                             .shadow(false));
 
         // 空列表提示（仅快照为空时显示）
         section.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + HINT_NO_PLAYERS)).pos(0, 26)
+            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + HINT_NO_PLAYERS)).pos(0, 26)
                 .size(PAGE_WIDTH, 9)
                 .textAlign(Alignment.Center)
                 .scale(0.8f)
@@ -205,10 +211,9 @@ public final class TerminalMailPage {
             final int index = i;
             int y = PLAYERS_Y + index * PLAYER_ROW_H;
             section.child(
-                new ButtonWidget<>().pos(0, y)
+                new TerminalButton().pos(0, y)
                     .size(PAGE_WIDTH, PLAYER_ROW_H - 1)
-                    .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
-                    .disableHoverBackground()
+                    .selected(() -> selectedPlayer.equals(playerAt(index)))
                     .overlay(IKey.dynamic(() -> {
                         String name = playerAt(index);
                         if (name == null) return "";
@@ -229,9 +234,9 @@ public final class TerminalMailPage {
         // 翻页行：上一页 / 页码 / 下一页
         int pagerX = (PAGE_WIDTH - (PAGER_BTN_W * 2 + 22)) / 2;
         section.child(
-            new ButtonWidget<>().pos(pagerX, PLAYER_PAGER_Y)
+            new TerminalButton().pos(pagerX, PLAYER_PAGER_Y)
                 .size(PAGER_BTN_W, PAGER_BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(() -> playerListPage > 0)
                 .overlay(IKey.str("<"))
                 .onMouseTapped(mouse -> {
                     if (mouse == 0 && playerListPage > 0) {
@@ -243,7 +248,7 @@ public final class TerminalMailPage {
         section.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> EnumChatFormatting.GRAY + String.valueOf(Math.min(playerListPage, maxPlayerPage()) + 1)
+                    () -> EnumChatFormatting.DARK_GRAY + String.valueOf(Math.min(playerListPage, maxPlayerPage()) + 1)
                         + "/"
                         + (maxPlayerPage() + 1))).pos(pagerX + PAGER_BTN_W + 2, PLAYER_PAGER_Y + 2)
                             .size(18, 9)
@@ -251,9 +256,9 @@ public final class TerminalMailPage {
                             .scale(0.75f)
                             .shadow(false));
         section.child(
-            new ButtonWidget<>().pos(pagerX + PAGER_BTN_W + 22, PLAYER_PAGER_Y)
+            new TerminalButton().pos(pagerX + PAGER_BTN_W + 22, PLAYER_PAGER_Y)
                 .size(PAGER_BTN_W, PAGER_BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(() -> playerListPage < maxPlayerPage())
                 .overlay(IKey.str(">"))
                 .onMouseTapped(mouse -> {
                     if (mouse == 0 && playerListPage < maxPlayerPage()) {
@@ -279,11 +284,12 @@ public final class TerminalMailPage {
                 .size(LABEL_W - 4, 9)
                 .scale(0.8f)
                 .shadow(false));
-        TextFieldWidget titleField = new TextFieldWidget()
+        TextFieldWidget titleField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> draftTitle, val -> draftTitle = val))
             .setMaxLength(TerminalActionPacket.MAX_TEXT1_LENGTH);
         titleField.pos(FIELD_X, TITLE_Y)
-            .size(FIELD_W, FIELD_H);
+            .size(FIELD_W, FIELD_H)
+            .background(UtilityUiStyle.INPUT);
         titleField.tooltipBuilder(t -> {
             t.addLine(IKey.str("邮件标题（必填）"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "最长 " + TerminalActionPacket.MAX_TEXT1_LENGTH + " 字符"));
@@ -297,11 +303,12 @@ public final class TerminalMailPage {
                 .size(LABEL_W - 4, 9)
                 .scale(0.8f)
                 .shadow(false));
-        TextFieldWidget bodyField = new TextFieldWidget()
+        TextFieldWidget bodyField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> draftBody, val -> draftBody = val))
             .setMaxLength(TerminalActionPacket.MAX_TEXT2_LENGTH);
         bodyField.pos(FIELD_X, BODY_Y)
-            .size(FIELD_W, FIELD_H);
+            .size(FIELD_W, FIELD_H)
+            .background(UtilityUiStyle.INPUT);
         bodyField.tooltipBuilder(t -> {
             t.addLine(IKey.str("邮件正文（单行输入，可留空）"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "最长 " + TerminalActionPacket.MAX_TEXT2_LENGTH + " 字符"));
@@ -315,11 +322,12 @@ public final class TerminalMailPage {
                 .size(LABEL_W - 4, 9)
                 .scale(0.8f)
                 .shadow(false));
-        TextFieldWidget rewardIdField = new TextFieldWidget()
+        TextFieldWidget rewardIdField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> draftRewardId, val -> draftRewardId = val))
             .setMaxLength(TerminalActionPacket.MAX_TEXT3_LENGTH);
         rewardIdField.pos(FIELD_X, REWARD_ID_Y)
-            .size(FIELD_W, FIELD_H);
+            .size(FIELD_W, FIELD_H)
+            .background(UtilityUiStyle.INPUT);
         rewardIdField.tooltipBuilder(t -> {
             t.addLine(IKey.str("全服一次性奖励的防重 ID（发布时必填）"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "最长 " + TerminalActionPacket.MAX_TEXT3_LENGTH + " 字符"));
@@ -329,7 +337,7 @@ public final class TerminalMailPage {
 
         // 附件说明（附件在服务端读取管理员手持物品，客户端不传物品数据）
         section.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + HINT_ATTACHMENT)).pos(2, HINT_Y)
+            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + HINT_ATTACHMENT)).pos(2, HINT_Y)
                 .size(PAGE_WIDTH - 4, 8)
                 .scale(0.65f)
                 .shadow(false));
@@ -346,9 +354,11 @@ public final class TerminalMailPage {
 
         // 发送邮件（目标 = 选中玩家；未选中不发包）
         section.child(
-            new ButtonWidget<>().pos(6, BTN_ROW1_Y)
+            new TerminalButton().pos(6, BTN_ROW1_Y)
                 .size(BTN_W, BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(
+                    () -> !selectedPlayer.isEmpty() && !draftTitle.trim()
+                        .isEmpty() && actionReady())
                 .overlay(IKey.str(BTN_SEND))
                 .tooltipBuilder(t -> {
                     t.addLine(IKey.str("向选中玩家发送管理员邮件"));
@@ -366,9 +376,9 @@ public final class TerminalMailPage {
 
         // 查询模板（服务端推送首登模板到信息区）
         section.child(
-            new ButtonWidget<>().pos(PAGE_WIDTH - BTN_W - 6, BTN_ROW1_Y)
+            new TerminalButton().pos(PAGE_WIDTH - BTN_W - 6, BTN_ROW1_Y)
                 .size(BTN_W, BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(TerminalMailPage::actionReady)
                 .overlay(IKey.str(BTN_QUERY))
                 .tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.GRAY + "刷新下方首登模板信息区")))
                 .tooltipAutoUpdate(true)
@@ -377,9 +387,11 @@ public final class TerminalMailPage {
 
         // 设置首登模板（覆盖旧的；标题必填）
         section.child(
-            new ButtonWidget<>().pos(6, BTN_ROW2_Y)
+            new TerminalButton().pos(6, BTN_ROW2_Y)
                 .size(BTN_W, BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(
+                    () -> !draftTitle.trim()
+                        .isEmpty() && actionReady())
                 .overlay(IKey.str(BTN_FIRST_SET))
                 .tooltipBuilder(t -> {
                     t.addLine(IKey.str("用当前标题/正文/附件覆盖首登奖励模板"));
@@ -396,9 +408,9 @@ public final class TerminalMailPage {
                         "")));
 
         // 清除首登模板（二次确认；未确认不发包）
-        ButtonWidget<?> clearBtn = new ButtonWidget<>().pos(PAGE_WIDTH - BTN_W - 6, BTN_ROW2_Y)
+        ButtonWidget<?> clearBtn = new TerminalButton().pos(PAGE_WIDTH - BTN_W - 6, BTN_ROW2_Y)
             .size(BTN_W, BTN_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .available(TerminalMailPage::actionReady)
             .overlay(IKey.str(BTN_FIRST_CLEAR));
         clearBtn.tooltipBuilder(t -> t.addLine(IKey.str(EnumChatFormatting.RED + "清除首登奖励模板（需二次确认）")));
         clearBtn.tooltipAutoUpdate(true);
@@ -413,9 +425,14 @@ public final class TerminalMailPage {
         section.child(clearBtn);
 
         // 发布一次性奖励（二次确认；未确认不发包；奖励ID 必填本地预检）
-        ButtonWidget<?> onceBtn = new ButtonWidget<>().pos(6, BTN_ROW3_Y)
+        ButtonWidget<?> onceBtn = new TerminalButton().pos(6, BTN_ROW3_Y)
             .size(BTN_FULL_W, BTN_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .available(
+                () -> !draftTitle.trim()
+                    .isEmpty()
+                    && !draftRewardId.trim()
+                        .isEmpty()
+                    && actionReady())
             .overlay(IKey.str(BTN_ONCE));
         onceBtn.tooltipBuilder(t -> {
             t.addLine(IKey.str("按奖励ID发布全服一次性奖励邮件"));
@@ -451,7 +468,7 @@ public final class TerminalMailPage {
             .size(PAGE_WIDTH, PAGE_HEIGHT);
 
         section.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + TEMPLATE_HEADER)).pos(0, TEMPLATE_HEADER_Y)
+            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + TEMPLATE_HEADER)).pos(0, TEMPLATE_HEADER_Y)
                 .size(PAGE_WIDTH, 9)
                 .textAlign(Alignment.Center)
                 .scale(0.75f)
@@ -459,28 +476,41 @@ public final class TerminalMailPage {
         section.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> EnumChatFormatting.GRAY + "标题: "
+                    () -> EnumChatFormatting.DARK_GRAY + "标题: "
                         + (TerminalClientData.getMailTemplateTitle()
-                            .isEmpty() ? EnumChatFormatting.DARK_GRAY + TEMPLATE_EMPTY
-                                : TerminalClientData.getMailTemplateTitle()))).pos(4, TEMPLATE_TITLE_Y)
-                                    .size(PAGE_WIDTH - 8, 9)
-                                    .scale(0.8f)
-                                    .shadow(false));
+                            .isEmpty()
+                                ? EnumChatFormatting.DARK_GRAY + TEMPLATE_EMPTY
+                                : TerminalGui
+                                    .fitLine(TerminalClientData.getMailTemplateTitle(), PAGE_WIDTH - 38, 0.8f))))
+                                        .pos(4, TEMPLATE_TITLE_Y)
+                                        .size(PAGE_WIDTH - 8, 9)
+                                        .scale(0.8f)
+                                        .tooltipBuilder(
+                                            t -> t.addLine(IKey.str(TerminalClientData.getMailTemplateTitle())))
+                                        .tooltipAutoUpdate(true)
+                                        .shadow(false));
         section.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> EnumChatFormatting.GRAY + "正文: "
+                    () -> EnumChatFormatting.DARK_GRAY + "正文: "
                         + (TerminalClientData.getMailTemplateBody()
-                            .isEmpty() ? EnumChatFormatting.DARK_GRAY + TEMPLATE_BODY_EMPTY
-                                : firstBodyLine(TerminalClientData.getMailTemplateBody())))).pos(4, TEMPLATE_BODY_Y)
-                                    .size(PAGE_WIDTH - 8, 9)
-                                    .scale(0.8f)
-                                    .shadow(false));
+                            .isEmpty()
+                                ? EnumChatFormatting.DARK_GRAY + TEMPLATE_BODY_EMPTY
+                                : TerminalGui.fitLine(
+                                    firstBodyLine(TerminalClientData.getMailTemplateBody()),
+                                    PAGE_WIDTH - 38,
+                                    0.8f)))).pos(4, TEMPLATE_BODY_Y)
+                                        .size(PAGE_WIDTH - 8, 9)
+                                        .scale(0.8f)
+                                        .tooltipBuilder(
+                                            t -> t.addLine(IKey.str(TerminalClientData.getMailTemplateBody())))
+                                        .tooltipAutoUpdate(true)
+                                        .shadow(false));
         section.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> EnumChatFormatting.GRAY + "附件: "
-                        + (TerminalClientData.isMailTemplateHasAttachment() ? EnumChatFormatting.GREEN + "有"
+                    () -> EnumChatFormatting.DARK_GRAY + "附件: "
+                        + (TerminalClientData.isMailTemplateHasAttachment() ? EnumChatFormatting.DARK_GREEN + "有"
                             : EnumChatFormatting.RED + "无"))).pos(4, TEMPLATE_ATTACH_Y)
                                 .size(PAGE_WIDTH - 8, 9)
                                 .scale(0.8f)
@@ -490,6 +520,10 @@ public final class TerminalMailPage {
     }
 
     // ==================== 动作发送与二次确认 ====================
+
+    private static boolean actionReady() {
+        return System.currentTimeMillis() - lastActionAt >= ACTION_COOLDOWN_MS;
+    }
 
     /**
      * 按钮点击统一入口：本地预检 + 1.5s 冷却 + 发包
@@ -513,13 +547,13 @@ public final class TerminalMailPage {
 
     /**
      * 打开二次确认弹框（纯客户端 Dialog；范式参照 {@code gui/vm/edit/TradeEditor} 的
-     * {@code NekoConfirmationDialog} + {@code IPanelHandler.simple} 用法，
+     * {@code TerminalConfirmationDialog} + {@code IPanelHandler.simple} 用法，
      * 以触发按钮所在屏幕的主面板为宿主）
      */
     private static void openConfirmDialog(ButtonWidget<?> anchor, String message, Runnable onConfirm) {
         ModularScreen screen = anchor.getScreen();
         if (screen == null) return;
-        NekoConfirmationDialog dialog = new NekoConfirmationDialog("gtit_terminal:mail_confirm");
+        TerminalConfirmationDialog dialog = new TerminalConfirmationDialog("gtit_terminal:mail_confirm");
         dialog.setParams(message, onConfirm);
         IPanelHandler.simple(screen.getMainPanel(), (parent, player) -> dialog, true)
             .openPanel();

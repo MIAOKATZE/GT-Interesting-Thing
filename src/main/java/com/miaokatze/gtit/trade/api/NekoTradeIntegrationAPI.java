@@ -3,13 +3,14 @@ package com.miaokatze.gtit.trade.api;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import net.minecraft.nbt.NBTTagCompound;
@@ -22,10 +23,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
+import com.miaokatze.gtit.trade.TradeConfigPaths;
 import com.miaokatze.gtit.trade.v2.NekoTradeNetworkManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
@@ -91,6 +94,9 @@ public final class NekoTradeIntegrationAPI {
 
     /** 应用过程互斥（reload + 磁盘合并的原子性由本锁串行化） */
     private static final Object APPLY_LOCK = new Object();
+    /** Only assets explicitly registered with GTIT as their source participate in this gate. */
+    private static final Set<String> GTIT_ASSET_GROUPS = new HashSet<>();
+    private static final Map<String, List<JsonObject>> GTIT_ASSET_SNAPSHOTS = new HashMap<>();
 
     private NekoTradeIntegrationAPI() {}
 
@@ -133,7 +139,7 @@ public final class NekoTradeIntegrationAPI {
      * <p>
      * 解析 {@code groupJson} 为 {@link NekoTradeGroupDef} 后走既有
      * {@link #registerTradeGroup} 管线（版本记账/幂等/requiresMods/同步语义全部继承）；
-     * {@code ownerModId} 仅用于日志溯源。清单声明的 groupId/version 与 groupJson 内
+     * {@code ownerModId=gtit} 标识本模组默认资产，其余归属维持第三方装载语义。清单声明的 groupId/version 与 groupJson 内
      * 不一致时以资产声明为准（记 warn——清单是身份权威）。
      *
      * @param def 资产定义（null 或 groupJson 非法时告警丢弃）
@@ -174,7 +180,56 @@ public final class NekoTradeIntegrationAPI {
             group.setVersion(def.getVersion());
         }
         LOG.info("[TradeAPI] 收到 jar 贸易资产注册: {}（owner: {}）", group.getGroupId(), def.getOwnerModId());
+        if ("gtit".equals(def.getOwnerModId())) {
+            rememberGtItAsset(group);
+            if (!DefaultContentConfig.loadDefaultTradeGroups()) return;
+        }
         registerTradeGroup(group);
+    }
+
+    private static void rememberGtItAsset(NekoTradeGroupDef group) {
+        synchronized (APPLY_LOCK) {
+            GTIT_ASSET_GROUPS.add(group.getGroupId());
+            GroupRecord prior = GroupRecord.load(group.getGroupId());
+            if (prior != null && prior.tradeSnapshots != null
+                && (prior.sourceOwnerModId == null || "gtit".equals(prior.sourceOwnerModId))) {
+                for (Map.Entry<String, JsonObject> snapshot : prior.tradeSnapshots.entrySet()) {
+                    rememberAssetSnapshot(snapshot.getKey(), snapshot.getValue());
+                }
+            }
+            if (group.getTrades() == null) return;
+            for (NekoTradeEntry source : group.getTrades()) {
+                if (source == null) continue;
+                NekoTradeEntry entry = deepCopy(source, NekoTradeEntry.class);
+                if (group.isRemoveWhenUnavailable()) entry.setRequiresMods(group.getRequiresMods());
+                if ((entry.getBqQuestId() == null || entry.getBqQuestId()
+                    .isEmpty()) && group.getBqQuestId() != null
+                    && !group.getBqQuestId()
+                        .isEmpty()) {
+                    entry.setBqQuestId(group.getBqQuestId());
+                }
+                if (group.isDefaultGroup()) entry.setDefaultEntry(true);
+                rememberAssetSnapshot(
+                    entry.getId(),
+                    GSON.toJsonTree(entry)
+                        .getAsJsonObject());
+            }
+        }
+    }
+
+    private static void rememberAssetSnapshot(String id, JsonObject snapshot) {
+        if (id != null && snapshot != null) GTIT_ASSET_SNAPSHOTS.computeIfAbsent(id, ignored -> new ArrayList<>())
+            .add(snapshot);
+    }
+
+    /** Edited GTIT jar entries remain ordinary administrator content when defaults are disabled. */
+    public static boolean isUnmodifiedBundledAssetEntry(NekoTradeEntry entry) {
+        synchronized (APPLY_LOCK) {
+            List<JsonObject> snapshots = GTIT_ASSET_SNAPSHOTS.get(entry.getId());
+            return snapshots != null && snapshots.contains(
+                GSON.toJsonTree(entry)
+                    .getAsJsonObject());
+        }
     }
 
     /**
@@ -341,6 +396,11 @@ public final class NekoTradeIntegrationAPI {
      */
     static boolean applyGroup(NekoTradeGroupDef def) {
         if (!isValidDef(def)) return false;
+        if (def.isDefaultGroup() && !DefaultContentConfig.loadDefaultTradeGroups()) return false;
+        synchronized (APPLY_LOCK) {
+            if (GTIT_ASSET_GROUPS.contains(def.getGroupId()) && !DefaultContentConfig.loadDefaultTradeGroups())
+                return false;
+        }
         if (!dependenciesAvailable(def)) {
             if (def.isRemoveWhenUnavailable()) removeUnavailableGroup(def);
             return false;
@@ -465,6 +525,7 @@ public final class NekoTradeIntegrationAPI {
             return null;
         }
         GroupRecord record = new GroupRecord(def.getGroupId(), def.getVersion());
+        if (GTIT_ASSET_GROUPS.contains(def.getGroupId())) record.sourceOwnerModId = "gtit";
 
         // 1. 交易合并：读磁盘全量 → 去重覆盖 → 写回
         NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
@@ -499,6 +560,12 @@ public final class NekoTradeIntegrationAPI {
             data.getTrades()
                 .add(entry);
             record.tradeIds.add(entry.getId());
+            if ("gtit".equals(record.sourceOwnerModId)) {
+                record.tradeSnapshots.put(
+                    entry.getId(),
+                    GSON.toJsonTree(entry)
+                        .getAsJsonObject());
+            }
             tabMaxOrder.merge(entry.getTabId(), entry.getOrderId(), Math::max);
         }
         NekoTradeConfig.save(data);
@@ -559,7 +626,9 @@ public final class NekoTradeIntegrationAPI {
         if (data.getTrades() == null) return false;
         boolean removed = data.getTrades()
             .removeIf(
-                entry -> entry != null && entry.getId() != null
+                entry -> entry != null
+                    && !com.miaokatze.gtit.trade.preset.TradePresetLayout.isManagedPage(entry.getTabId())
+                    && entry.getId() != null
                     && entry.getId()
                         .matches(NekoTradeRegistryV2.MIAO_ID_PATTERN));
         if (removed) {
@@ -665,6 +734,12 @@ public final class NekoTradeIntegrationAPI {
     /** 组定义基础校验（groupId 白名单 + 防路径穿越，规则收敛在 {@link JarAssetManifest}） */
     private static boolean isValidDef(NekoTradeGroupDef def) {
         if (def == null) return false;
+        if (def.getTrades() != null) for (NekoTradeEntry entry : def.getTrades()) {
+            if (entry != null && entry.getCooldown() < -1) {
+                LOG.warn("[TradeAPI] 贸易组 {} 包含非法冷却值 {}，拒绝注册", def.getGroupId(), entry.getCooldown());
+                return false;
+            }
+        }
         return JarAssetManifest.isValidGroupId(def.getGroupId());
     }
 
@@ -715,6 +790,8 @@ public final class NekoTradeIntegrationAPI {
         int dismissedVersion;
         /** 已处理的更新标签版本；null=旧记账（升自 1.8.17 之前，视为未处理） */
         String handledUpdateTag;
+        String sourceOwnerModId;
+        Map<String, JsonObject> tradeSnapshots = new HashMap<>();
 
         GroupRecord(String groupId, int version) {
             this.groupId = groupId;
@@ -724,7 +801,7 @@ public final class NekoTradeIntegrationAPI {
         }
 
         Path path() {
-            return Paths.get(INTEGRATED_DIR, groupId + ".json");
+            return TradeConfigPaths.resolve(INTEGRATED_DIR + "/" + groupId + ".json");
         }
 
         void save() {
@@ -750,7 +827,7 @@ public final class NekoTradeIntegrationAPI {
 
         static GroupRecord load(String groupId) {
             try {
-                Path path = Paths.get(INTEGRATED_DIR, groupId + ".json");
+                Path path = TradeConfigPaths.resolve(INTEGRATED_DIR + "/" + groupId + ".json");
                 if (!Files.exists(path)) return null;
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
                 GroupRecord record = GSON.fromJson(json, GroupRecord.class);

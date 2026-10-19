@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "gtit-ae-advanced",
+  "name": "AE 强化",
+  "description": "空模板：具体贸易内容尚未配置。与 AE 基础互斥；管理员可另存新预设并选择已有标签页。",
+  "icon": { "item": "appliedenergistics2:tile.BlockDrive", "meta": 0, "nbtBase64": "" },
+  "mutuallyExclusiveIds": ["gtit-ae-basic"],
+  "tabs": []
+}

@@ -8,6 +8,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
+import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
@@ -370,13 +371,22 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         GuiDraw.drawItem(displayStack, 26, 4, 16, 16, (int) z);
 
         // --- 冷却覆盖层（仅 BQ 锁定或冷却中时绘制；已解锁但不可交易保持亮色，仅缺绿色边框）---
-        boolean showCooldownOverlay = display.isBqLocked() || display.getCooldownRemaining() > 0;
+        boolean showCooldownOverlay = display.isOneTimeRedeemed() || display.isBqLocked()
+            || display.getCooldownRemaining() > 0;
         if (showCooldownOverlay) {
             NekoGuiTextures.OVERLAY_COOLDOWN.draw(0, 0, TILE_ITEM_WIDTH, TILE_ITEM_HEIGHT);
         }
 
         // --- LOCKED 文字（金色，BQ 锁定时）---
-        if (display.isBqLocked()) {
+        if (display.isOneTimeRedeemed()) {
+            drawCenteredText(
+                IKey.lang(display.getOneTimeStatusKey())
+                    .get(),
+                9,
+                0.9f,
+                COLOR_LOCKED,
+                TILE_ITEM_WIDTH);
+        } else if (display.isBqLocked()) {
             drawCenteredText("LOCKED", 9, 1.0f, COLOR_LOCKED, TILE_ITEM_WIDTH);
         }
 
@@ -439,7 +449,8 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         GuiDraw.drawRect(1, 1, 3, LIST_ITEM_HEIGHT - 2, barColor);
 
         // --- 禁用遮罩（仅 BQ 锁定或冷却中时绘制半透明黑色覆盖；已解锁但不可交易保持亮色）---
-        boolean showDisabled = display.isBqLocked() || display.getCooldownRemaining() > 0;
+        boolean showDisabled = display.isOneTimeRedeemed() || display.isBqLocked()
+            || display.getCooldownRemaining() > 0;
         if (showDisabled) {
             GuiDraw.drawRect(1, 1, LIST_ITEM_WIDTH - 2, LIST_ITEM_HEIGHT - 2, COLOR_DISABLED_OVERLAY);
         }
@@ -450,7 +461,15 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         }
 
         // --- LOCKED 文字（金色，BQ 锁定时）---
-        if (display.isBqLocked()) {
+        if (display.isOneTimeRedeemed()) {
+            drawCenteredText(
+                IKey.lang(display.getOneTimeStatusKey())
+                    .get(),
+                4,
+                0.9f,
+                COLOR_LOCKED,
+                LIST_ITEM_WIDTH);
+        } else if (display.isBqLocked()) {
             drawCenteredText("LOCKED", 4, 0.9f, COLOR_LOCKED, LIST_ITEM_WIDTH);
         }
 
@@ -519,6 +538,13 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         }
 
         builder.clearText();
+        if (display.isOneTimeOnly()) {
+            builder.addLine(
+                IKey.lang(
+                    display.isOneTimeRedeemed() ? "gtit.trade.cooldown.redeemed_hint" : display.getOneTimeStatusKey())
+                    .style(display.isOneTimeRedeemed() ? EnumChatFormatting.RED : EnumChatFormatting.GOLD));
+            builder.emptyLine();
+        }
 
         // --- 产物列表（青色）---
         for (NekoBigItemStack output : display.getOutputs()) {
@@ -568,7 +594,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         // 当 maxTradesInCooldown > 1 时，表示玩家在团队中，享受冷却缩放
         // 显示"冷却次数: 已用/上限（团队缩放）"信息，参考 V1 的 teamSize tooltip
         int maxTrades = display.getMaxTradesInCooldown();
-        if (maxTrades > 1) {
+        if (maxTrades > 1 && !display.isOneTimeOnly()) {
             long usedTrades = display.getUsedTradesInCooldown();
             long remaining = Math.max(0, maxTrades - usedTrades);
             builder.addLine(EnumChatFormatting.DARK_AQUA + "冷却次数: " + remaining + "/" + maxTrades + " (团队缩放)");

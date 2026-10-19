@@ -12,13 +12,17 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.config.Config;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoTradeConfig;
 import com.miaokatze.gtit.trade.NekoTradeEntry;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 
 /**
- * 内置贸易组加载器（E4a）。
+ * 旧内置贸易组入口的兼容桥。
+ * <p>
+ * v1.9.1 起由 DefaultTradeSources 直接装配 jar 默认内容，TradePresetStore 管理选择、覆盖与更新。
+ * 本类启动钩子不再把默认内容写入玩家文件；下述 E4a 版本状态仅供旧调用兼容参考。
  * <p>
  * 从 jar 资产 {@code assets/gtit/bqtrades/} 读取内置组（由内容编辑并行维护，
  * 代码侧只消费——资产缺失时静默降级，不报错）：
@@ -83,82 +87,24 @@ public final class BundledTradeGroups {
     private BundledTradeGroups() {}
 
     /**
-     * 默认交易抑制预探测（postInit，NekoPageRegistry/NekoTradeRegistryV2 客户端初始化之前）。
+     * 在客户端注册表初始化之前关闭旧默认数据的落盘兜底。
      * <p>
      * 单人存档下 postInit 的 initializeClient 会先于 serverStarted 触发
      * NekoTradeConfig.init() 的默认文件生成，故抑制标志必须在此前置设置。
-     * base 组资产可用（配置开 + 解析成功）→ 置抑制标志；
-     * 否则保持 false，旧 42 条默认照常兜底。
+     * 当前默认内容统一由 jar 来源加载，开关由 DefaultContentConfig 控制。
      */
     public static void prepareDefaultSuppression() {
-        try {
-            if (Config.enhancedDefaultTrades) {
-                baseDef = parseBundledGroup(BASE_GROUP_ID, BASE_TRADES_RES, BASE_PAGES_RES);
-            } else {
-                LOG.info("[TradeAPI] enhancedDefaultTrades=false，内置基础贸易组停用，沿用旧默认交易");
-            }
-            if (baseDef != null) {
-                NekoTradeConfig.setDefaultTradesSuppressed(true);
-                LOG.info(
-                    "[TradeAPI] 内置基础贸易组就绪（version={}，trades={}，pages={}），旧 42 条默认交易不再注入",
-                    baseDef.getVersion(),
-                    baseDef.getTrades()
-                        .size(),
-                    baseDef.getPages()
-                        .size());
-            } else if (Config.enhancedDefaultTrades) {
-                LOG.info("[TradeAPI] 内置基础贸易组资产缺失或不可用，回落旧默认交易");
-            }
-        } catch (Throwable t) {
-            // 预探测失败按资产缺失处理（抑制不生效，兜底链路完好）
-            baseDef = null;
-            LOG.error("[TradeAPI] 内置基础贸易组预探测失败，回落旧默认交易", t);
-        }
+        baseDef = null;
+        NekoTradeConfig.setDefaultTradesSuppressed(true);
+        cachedPromptState = PROMPT_NONE;
     }
 
     /**
-     * 应用内置组（serverStarted，NekoTradeRegistryV2.initialize 磁盘加载之后）。
-     * <p>
-     * v1.8.21 状态机（弹框两场景，见类 javadoc）：
-     * <ul>
-     * <li>record 缺失（首次注册/记账被删）→ 静默注册当前资产；</li>
-     * <li>升自更新标签之前 → 无条件强制覆盖（一定发生），开贸易机弹覆盖通知；</li>
-     * <li>版本未变 → 完全静默，玩家对默认条目的修改/删除保持权威；</li>
-     * <li>版本变化且内容无变化（空更新）→ 静默收账（记账 version 刷新）；</li>
-     * <li>版本变化且内容有变化 → 保持现状，开贸易机时弹三按钮询问（是/否/否且不再通知）。</li>
-     * </ul>
+     * 兼容旧 serverStarted 钩子；默认内容已由 jar 来源装配，不再执行旧落盘更新流程。
      */
     public static void applyBundledGroups() {
-        try {
-            // 一次性清理凭磁盘记账精准移除已合并交易/页并删记账文件，幂等（无记账时静默 false）；清理先于 base apply。
-            NekoTradeIntegrationAPI.unregisterGroup("gtit-miao");
-            if (baseDef != null) {
-                NekoTradeIntegrationAPI.GroupRecord record = NekoTradeIntegrationAPI.GroupRecord.load(BASE_GROUP_ID);
-                if (record == null) {
-                    applyBase("首次注册默认贸易组");
-                } else if (compareVersions(record.handledUpdateTag, UPDATE_TAG) < 0) {
-                    // 升自更新标签之前：强制覆盖（一定发生），弹框仅为通知
-                    overwriteBase(record);
-                } else if (record.version == baseDef.getVersion()) {
-                    // 版本未变：玩家对 tab 文件的编辑保持权威
-                } else if (!NekoTradeIntegrationAPI.bundledContentDiffers(baseDef.getTrades())) {
-                    // 例行空更新：内容无变化，静默收账避免每次启动重检
-                    LOG.info("[TradeAPI] 默认贸易组版本变化（{} -> {}）但内容无变化，静默收账", record.version, baseDef.getVersion());
-                    record.version = baseDef.getVersion();
-                    record.save();
-                } else {
-                    // 例行更新且内容有变化：保持玩家现状，开贸易机时三按钮询问
-                    LOG.info(
-                        "[TradeAPI] 默认贸易组版本变化（{} -> {}）且内容有变化，保持现状，待玩家在贸易机 GUI 中选择",
-                        record.version,
-                        baseDef.getVersion());
-                }
-            }
-        } catch (Throwable t) {
-            LOG.error("[TradeAPI] 内置贸易组应用失败（不影响磁盘玩家配置）", t);
-        } finally {
-            refreshPromptStateCache();
-        }
+        // Defaults are assembled from jar resources by DefaultTradeSources; never install them to user files.
+        cachedPromptState = PROMPT_NONE;
     }
 
     /** 应用（重注册）默认贸易组并记录日志 */
@@ -205,6 +151,7 @@ public final class BundledTradeGroups {
      * </ul>
      */
     public static String getPromptState() {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return PROMPT_NONE;
         return cachedPromptState;
     }
 
@@ -220,6 +167,7 @@ public final class BundledTradeGroups {
 
     /** 计算同步询问状态（{@code refreshPromptStateCache} 专属，含记账读取） */
     private static String computePromptState() {
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return PROMPT_NONE;
         if (baseDef == null) return PROMPT_NONE;
         NekoTradeIntegrationAPI.GroupRecord record = NekoTradeIntegrationAPI.GroupRecord.load(BASE_GROUP_ID);
         if (record == null) return PROMPT_NONE;
@@ -244,13 +192,16 @@ public final class BundledTradeGroups {
      * @return true = 重注册完成
      */
     public static boolean restoreDefaultGroup() {
-        if (baseDef == null) return false;
-        NekoTradeIntegrationAPI.unregisterGroup(BASE_GROUP_ID);
-        NekoTradeIntegrationAPI.removeDefaultEntriesByMiaoPrefix();
-        boolean applied = NekoTradeIntegrationAPI.applyGroup(baseDef);
-        refreshPromptStateCache();
-        LOG.info("[TradeAPI] 玩家确认覆盖同步默认贸易组：applied={}", applied);
-        return applied;
+        if (!DefaultContentConfig.loadDefaultTradeGroups()) return false;
+        try {
+            com.miaokatze.gtit.trade.preset.DefaultTradeSources.resetGroup(BASE_GROUP_ID);
+            boolean refreshed = NekoTradeRegistryV2.reload();
+            if (refreshed) com.miaokatze.gtit.trade.v2.NekoTradeNetworkManager.sendSyncToAll();
+            return refreshed;
+        } catch (java.io.IOException failure) {
+            LOG.error("恢复默认贸易失败", failure);
+            return false;
+        }
     }
 
     /** 玩家对当前默认组版本选"否"：该版本不再打扰（默认组保持玩家现状） */

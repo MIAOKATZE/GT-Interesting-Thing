@@ -28,12 +28,15 @@ public class NekoTradeHistory {
     /**
      * 检查是否可以进行交易
      *
-     * @param cooldown            冷却时间（秒）
+     * @param cooldown            冷却时间（秒）；-1 表示仅允许一次成功交易
      * @param maxTradesInCooldown 冷却周期内最大交易次数
      * @param maxTrades           总最大交易次数，-1 表示不限
      * @return 可以交易返回 true
      */
     public synchronized boolean canTrade(int cooldown, int maxTradesInCooldown, int maxTrades) {
+        com.miaokatze.gtit.trade.NekoTradeEntry.validateCooldown(cooldown);
+        // Lifetime success count is already shared/persisted by the personal or team history owner.
+        if (cooldown == -1 && tradeCount > 0) return false;
         // 检查总交易次数限制
         if (maxTrades != -1 && tradeCount >= maxTrades) {
             return false;
@@ -55,6 +58,7 @@ public class NekoTradeHistory {
      * @return 剩余冷却时间（秒），已过冷却返回 0
      */
     public synchronized long getCooldownRemaining(int cooldown) {
+        com.miaokatze.gtit.trade.NekoTradeEntry.validateCooldown(cooldown);
         if (cooldown <= 0 || lastTradeTime <= 0) {
             return 0;
         }
@@ -69,6 +73,7 @@ public class NekoTradeHistory {
      * @param cooldown 冷却时间（秒），用于判断是否需要重置冷却计数
      */
     public synchronized void recordTrade(int cooldown) {
+        com.miaokatze.gtit.trade.NekoTradeEntry.validateCooldown(cooldown);
         // 冷却已过，重置冷却期交易计数
         if (cooldown > 0 && lastTradeTime > 0) {
             long elapsed = (System.currentTimeMillis() - lastTradeTime) / 1000;

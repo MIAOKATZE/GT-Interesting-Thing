@@ -60,6 +60,26 @@ public class NekoBqBridge {
         return bqLoaded;
     }
 
+    /** Preset bindings must not inherit the legacy missing-quest fallback or completion cache. */
+    public static boolean questExistsStrict(UUID questId) {
+        if (!bqLoaded || questId == null) return false;
+        try {
+            return betterquesting.questing.QuestDatabase.INSTANCE.get(questId) != null;
+        } catch (LinkageError | RuntimeException unavailable) {
+            return false;
+        }
+    }
+
+    public static boolean isQuestCompletedStrict(UUID playerId, UUID questId) {
+        if (!bqLoaded || playerId == null || questId == null) return false;
+        try {
+            betterquesting.api.questing.IQuest quest = betterquesting.questing.QuestDatabase.INSTANCE.get(questId);
+            return quest != null && quest.isComplete(playerId);
+        } catch (LinkageError | RuntimeException unavailable) {
+            return false;
+        }
+    }
+
     /**
      * 注册事件监听器
      * <p>

@@ -160,6 +160,10 @@ public class NekoTradeMainPanel extends ModularPanel {
          */
         long getSyncedCooldownRemaining(UUID groupId, int tradeIndex);
 
+        default boolean getSyncedOneTimeRedeemed(UUID groupId, int tradeIndex) {
+            return false;
+        }
+
         /**
          * 获取当前激活的交易分类
          * <p>
@@ -169,6 +173,11 @@ public class NekoTradeMainPanel extends ModularPanel {
          * @return 当前激活的交易分类
          */
         NekoTradeCategory getActiveCategory();
+
+        /** Client presentation scope; the server still validates every trade request independently. */
+        default boolean isTradeCategoryVisible(NekoTradeCategory category) {
+            return true;
+        }
 
         /**
          * 获取指定显示模式和分类下的交易显示 Widget 列表
@@ -271,6 +280,8 @@ public class NekoTradeMainPanel extends ModularPanel {
 
     /** 强制刷新标志（下次 onUpdate 时触发 updateGui） */
     private boolean forceRefresh = false;
+    /** A registry replacement must rebuild item data even while Shift/Ctrl holds the normal sort order. */
+    private boolean registryRefresh;
 
     /** 货币更新标志（外部通知有货币变化时设置，触发强制刷新） */
     private boolean hasCurrencyUpdate = false;
@@ -412,7 +423,7 @@ public class NekoTradeMainPanel extends ModularPanel {
      * 按键期间仅更新状态（如可交易→冷却中），按键释放后才全量刷新。
      */
     public void updateGui() {
-        if (shiftHeld || ctrlHeld) {
+        if ((shiftHeld || ctrlHeld) && !registryRefresh) {
             // 增量更新：仅刷新现有显示数据的状态
             updateTradeInformation(getCurrentTradeDisplayData());
         } else {
@@ -420,6 +431,7 @@ public class NekoTradeMainPanel extends ModularPanel {
             Map<NekoTradeCategory, List<NekoTradeItemDisplay>> trades = formatTrades();
             callback.onTradeDisplayUpdated(trades);
         }
+        registryRefresh = false;
     }
 
     /**
@@ -475,6 +487,9 @@ public class NekoTradeMainPanel extends ModularPanel {
                 long cooldownRemaining = callback
                     .getSyncedCooldownRemaining(display.getGroupId(), display.getTradeIndex());
                 display.setCooldownRemaining(cooldownRemaining);
+                display.setOneTimeOnly(group.getCooldown() == -1);
+                display.setOneTimeRedeemed(
+                    callback.getSyncedOneTimeRedeemed(display.getGroupId(), display.getTradeIndex()));
 
                 // 更新可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）
                 Boolean syncedTradeable = callback
@@ -482,7 +497,7 @@ public class NekoTradeMainPanel extends ModularPanel {
                 if (syncedTradeable != null) {
                     display.setTradeable(syncedTradeable);
                 } else {
-                    display.setTradeable(!bqLocked && cooldownRemaining <= 0);
+                    display.setTradeable(!bqLocked && cooldownRemaining <= 0 && !display.isOneTimeRedeemed());
                 }
 
                 // 更新收藏状态
@@ -541,6 +556,7 @@ public class NekoTradeMainPanel extends ModularPanel {
                 if (category == null) {
                     category = NekoTradeCategory.UNKNOWN;
                 }
+                if (!callback.isTradeCategoryVisible(category)) continue;
                 trades.putIfAbsent(category, new ArrayList<>());
 
                 // 遍历组内所有交易
@@ -566,13 +582,14 @@ public class NekoTradeMainPanel extends ModularPanel {
                     // 设置冷却状态（服务端同步值）
                     long cooldownRemaining = callback.getSyncedCooldownRemaining(group.getId(), i);
                     display.setCooldownRemaining(cooldownRemaining);
+                    display.setOneTimeRedeemed(callback.getSyncedOneTimeRedeemed(group.getId(), i));
 
                     // 设置可交易状态（优先使用服务端同步值，未同步则回退 BQ+冷却）
                     Boolean syncedTradeable = callback.getSyncedTradeableStatus(group.getId(), i);
                     if (syncedTradeable != null) {
                         display.setTradeable(syncedTradeable);
                     } else {
-                        display.setTradeable(!bqLocked && cooldownRemaining <= 0);
+                        display.setTradeable(!bqLocked && cooldownRemaining <= 0 && !display.isOneTimeRedeemed());
                     }
 
                     // 添加到对应分类
@@ -786,6 +803,7 @@ public class NekoTradeMainPanel extends ModularPanel {
         // v1.7.32：检测交易数据库是否被外部（服务端热重载/同步包）修改，自动强制刷新
         long currentDbVersion = NekoTradeDatabase.INSTANCE.getVersion();
         if (this.lastDbVersion != currentDbVersion) {
+            registryRefresh = true;
             if (this.lastDbVersion != -1L) {
                 // 首次初始化时不刷新，避免与 onOpen 重复；后续版本变化才刷新
                 setForceRefresh();

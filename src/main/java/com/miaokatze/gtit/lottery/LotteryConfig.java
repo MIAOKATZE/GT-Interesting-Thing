@@ -20,6 +20,7 @@ import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSerializer;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.util.NbtBase64Util;
@@ -141,10 +142,8 @@ public class LotteryConfig {
                     migrateFromLegacy(legacy, path);
                     // 迁移后继续从新路径读取
                 } catch (Exception e) {
-                    LOG.error("抽奖配置从旧路径迁移失败，回退默认配置", e);
-                    LotteryConfigData fallback = getDefaultConfig();
-                    save(fallback);
-                    return fallback;
+                    LOG.error("抽奖配置迁移失败，保留原文件并暂停载入；请修正后 reload", e);
+                    return new LotteryConfigData();
                 }
             }
         }
@@ -153,21 +152,28 @@ public class LotteryConfig {
             try {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
                 LotteryConfigData data = GSON.fromJson(json, LotteryConfigData.class);
-                if (data != null && data.pools != null && !data.pools.isEmpty()) {
+                if (data != null && data.pools != null) {
+                    // An explicitly empty configuration must never regenerate bundled pools.
+                    if (data.pools.isEmpty()) return data;
                     // v1.7.6 迁移：旧池合成 costItems + 补缺省图标 + 清理无效需求条目
                     for (LotteryPool pool : data.pools) {
                         if (pool != null) migratePool(pool);
                     }
                     // 条目校验：过滤非法条目/卡池（记录日志提示配置错误位置）
-                    if (validateAll(data)) {
+                    boolean valid = validateAll(data);
+                    suppressBundledDefaults(data);
+                    if (valid) {
                         LOG.info("抽奖配置已加载（{} 个卡池）", data.pools.size());
                         return data;
                     }
                     LOG.warn("抽奖配置存在非法卡池/条目，已按校验结果过滤后继续加载");
                     return data;
                 }
+                LOG.error("抽奖配置缺少有效 pools 数组，保留文件并暂停载入");
+                return new LotteryConfigData();
             } catch (Exception e) {
-                LOG.error("加载抽奖配置失败，使用默认配置", e);
+                LOG.error("加载抽奖配置失败，保留文件并暂停载入；请修正后 reload", e);
+                return new LotteryConfigData();
             }
         }
         // 首次运行或加载失败：使用默认配置并落盘
@@ -242,9 +248,45 @@ public class LotteryConfig {
      */
     public static LotteryConfigData getDefaultConfig() {
         LotteryConfigData data = new LotteryConfigData();
+        if (!DefaultContentConfig.loadDefaultLottery()) return data;
         data.pools.add(createDefaultNekoPool());
         data.pools.add(createDefaultShimmeringPool());
+        for (LotteryPool pool : data.pools) pool.bundledDefaultSignature = signature(pool);
         return data;
+    }
+
+    /** Hide only unchanged shipped pools. An administrator's edits, even with the same ID, survive. */
+    static void suppressBundledDefaults(LotteryConfigData data) {
+        if (DefaultContentConfig.loadDefaultLottery() || data == null || data.pools == null) return;
+        LotteryPool neko = createDefaultNekoPool();
+        LotteryPool shimmering = createDefaultShimmeringPool();
+        data.pools.removeIf(pool -> {
+            if (pool == null) return false;
+            String actual = signature(pool);
+            if (pool.bundledDefaultSignature != null && !pool.bundledDefaultSignature.isEmpty()) {
+                return actual.equals(pool.bundledDefaultSignature);
+            }
+            // Pre-signature configurations are recognized by their complete semantic definition.
+            return ("neko".equals(pool.getId()) && actual.equals(signature(neko)))
+                || ("shimmering".equals(pool.getId()) && actual.equals(signature(shimmering)));
+        });
+    }
+
+    private static String signature(LotteryPool pool) {
+        JsonObject json = GSON.toJsonTree(pool)
+            .getAsJsonObject();
+        json.remove("bundledDefaultSignature");
+        try {
+            byte[] bytes = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(
+                    json.toString()
+                        .getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(64);
+            for (byte value : bytes) result.append(String.format(java.util.Locale.ROOT, "%02x", value & 255));
+            return result.toString();
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 
     /**

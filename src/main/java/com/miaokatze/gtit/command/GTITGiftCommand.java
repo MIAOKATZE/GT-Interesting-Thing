@@ -13,6 +13,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.ChatComponentTranslation;
 import net.minecraft.util.EnumChatFormatting;
 
 import org.apache.logging.log4j.LogManager;
@@ -31,6 +32,7 @@ import com.miaokatze.gtit.signin.SignInNetworkManager;
 import com.miaokatze.gtit.terminal.StarterGiftAudit;
 import com.miaokatze.gtit.terminal.TerminalNetworkManager;
 import com.miaokatze.gtit.terminal.TerminalText;
+import com.miaokatze.gtit.trade.preset.TradePresetManager;
 import com.miaokatze.gtit.trade.v2.NekoEditModeManager;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
@@ -52,7 +54,8 @@ import cpw.mods.fml.relauncher.Side;
  * - /gtit gift claimreset [all|玩家名]: 重置新手礼包领取状态（支持在线/离线玩家，支持控制台执行）
  * - /gtit nekovm edit on|off: 开关可视化配置编辑模式
  * - /gtit nekovm reload: 热重载猫猫币交易配置
- * - /gtit nekovm timereset: 重置当前所有交易冷却
+ * - /gtit nekovm timereset: 重置当前玩家/团队交易历史与冷却
+ * - /gtit nekovm defultreset: 强制恢复默认贸易（OP4/单人存档拥有者）
  * - /gtit nekovm help: 显示完整帮助
  * <p>
  * 配置类指令默认不记录 NBT；如需记录，请在指令末尾添加 {@code yesNBT}。
@@ -69,7 +72,7 @@ public class GTITGiftCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtit gift certain [yesNBT|noNBT]|random <count> [yesNBT|noNBT]|reset|claimlist|claimreset [all|玩家名] | /gtit nekovm edit on|off|reload|timereset|help | /gtit signin [info|reload|admin|help] | /gtit lottery reload | /gtit mail [send|first|firstclear|once|help] | /gtit terminal";
+        return "/gtit help [gift|nekovm|presets|signin|lottery|mail] | /gtit tutorial [gift|nekovm|presets|signin|lottery|mail]";
     }
 
     @Override
@@ -91,9 +94,30 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         switch (args[0]) {
+            case "help" -> sendTopicHelp(sender, args.length > 1 ? args[1] : "");
+            case "tutorial" -> sendTutorial(sender, args.length > 1 ? args[1] : "");
             case "gift" -> handleGift(sender, args);
+            case "presets" -> {
+                if (args.length > 1) {
+                    if ("tutorial".equals(args[1])) sendTutorial(sender, "presets");
+                    else sendPresetHelp(sender);
+                    return;
+                }
+                if (sender instanceof EntityPlayerMP player
+                    && com.miaokatze.gtit.trade.preset.TradePresetManager.canConfigure(player)) {
+                    com.miaokatze.gtit.trade.preset.ui.TradePresetUI.open(player);
+                } else sender.addChatMessage(new net.minecraft.util.ChatComponentTranslation("gtit.preset.permission"));
+            }
             case "nekovm" -> {
-                // nekovm 子命令需要玩家身份（操作背包）
+                if (args.length < 2 || "help".equals(args[1])) {
+                    handleNekoVMFullHelp(sender);
+                    return;
+                }
+                if ("tutorial".equals(args[1])) {
+                    sendTutorial(sender, "nekovm");
+                    return;
+                }
+                // Mutating legacy NekoVM operations retain their player-only boundary.
                 if (!(sender instanceof EntityPlayerMP player)) {
                     sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "猫猫售货机命令只有玩家可以执行"));
                     return;
@@ -103,8 +127,14 @@ public class GTITGiftCommand extends CommandBase {
             case "signin" -> handleSignIn(sender, args);
             case "lottery" -> handleLottery(sender, args);
             case "mail" -> handleMail(sender, args);
-            case "terminal" -> handleTerminal(sender);
-            default -> sendHelp(sender);
+            case "terminal" -> {
+                if (args.length > 1 && ("help".equals(args[1]) || "tutorial".equals(args[1]))) sendTerminalHelp(sender);
+                else handleTerminal(sender);
+            }
+            default -> {
+                sender.addChatMessage(new ChatComponentTranslation("gtit.command.unknown", args[0]));
+                sendHelp(sender);
+            }
         }
     }
 
@@ -113,85 +143,88 @@ public class GTITGiftCommand extends CommandBase {
     @Override
     public List<String> addTabCompletionOptions(ICommandSender sender, String[] args) {
         if (args.length == 1) {
-            // v1.8.2 专用服静默化：物理专用服务器不提示 terminal 子命令（执行点已拒绝）
-            return FMLCommonHandler.instance()
-                .getSide() == Side.SERVER
-                    ? getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail")
-                    : getListOfStringsMatchingLastWord(args, "gift", "nekovm", "signin", "lottery", "mail", "terminal");
+            List<String> options = new ArrayList<>(
+                java.util.Arrays.asList("help", "tutorial", "gift", "presets", "nekovm", "signin", "lottery", "mail"));
+            if (terminalAvailable()) options.add("terminal");
+            return getListOfStringsMatchingLastWord(args, options.toArray(new String[0]));
         }
-
         if (args.length == 2) {
-            if ("gift".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(args, "certain", "random", "reset", "claimlist", "claimreset");
+            if ("help".equals(args[0]) || "tutorial".equals(args[0])) {
+                List<String> topics = new ArrayList<>(
+                    java.util.Arrays.asList("gift", "presets", "nekovm", "signin", "lottery", "mail"));
+                if (terminalAvailable()) topics.add("terminal");
+                return getListOfStringsMatchingLastWord(args, topics.toArray(new String[0]));
             }
-            if ("nekovm".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(args, "edit", "reload", "timereset", "help");
-            }
-            if ("signin".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(args, "info", "reload", "admin", "help");
-            }
-            if ("lottery".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(args, "reload", "help");
-            }
-            if ("mail".equals(args[0])) {
-                return getListOfStringsMatchingLastWord(args, "send", "first", "firstclear", "once", "help");
-            }
-        }
-
-        if (args.length == 3 && "mail".equals(args[0]) && "send".equals(args[1])) {
-            // /gtit mail send <玩家名>：补全在线玩家名（O2-12：PlayerLookup 统一收集）
-            return getListOfStringsMatchingLastWord(
-                args,
-                PlayerLookup.getOnlineNames()
-                    .toArray(new String[0]));
-        }
-
-        if (args.length == 3 && "signin".equals(args[0])) {
-            if ("admin".equals(args[1])) {
-                return getListOfStringsMatchingLastWord(args, "set", "reset");
-            }
-            if ("info".equals(args[1])) {
-                // 补全在线玩家名（O2-12）
-                return getListOfStringsMatchingLastWord(
+            return switch (args[0]) {
+                case "gift" -> getListOfStringsMatchingLastWord(
                     args,
-                    PlayerLookup.getOnlineNames()
-                        .toArray(new String[0]));
+                    "ui",
+                    "certain",
+                    "random",
+                    "reset",
+                    "claimlist",
+                    "claimreset",
+                    "help",
+                    "tutorial");
+                case "presets", "terminal" -> getListOfStringsMatchingLastWord(args, "help", "tutorial");
+                case "nekovm" -> getListOfStringsMatchingLastWord(
+                    args,
+                    "edit",
+                    "reload",
+                    "timereset",
+                    "defultreset",
+                    "help",
+                    "tutorial");
+                case "signin" -> getListOfStringsMatchingLastWord(args, "info", "reload", "admin", "help", "tutorial");
+                case "lottery" -> getListOfStringsMatchingLastWord(args, "reload", "help", "tutorial");
+                case "mail" -> getListOfStringsMatchingLastWord(
+                    args,
+                    "send",
+                    "first",
+                    "firstclear",
+                    "once",
+                    "help",
+                    "tutorial");
+                default -> null;
+            };
+        }
+        if (args.length == 3) {
+            if ("mail".equals(args[0]) && "send".equals(args[1]) || "signin".equals(args[0]) && "info".equals(args[1]))
+                return onlineNames(args);
+            if ("signin".equals(args[0]) && "admin".equals(args[1]))
+                return getListOfStringsMatchingLastWord(args, "set", "reset");
+            if ("gift".equals(args[0])) {
+                if ("certain".equals(args[1])) return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
+                if ("random".equals(args[1])) return getListOfStringsMatchingLastWord(args, "1", "2", "3");
+                if ("claimreset".equals(args[1])) {
+                    List<String> options = new ArrayList<>();
+                    options.add("all");
+                    options.addAll(PlayerLookup.getOnlineNames());
+                    return getListOfStringsMatchingLastWord(args, options.toArray(new String[0]));
+                }
             }
+            if ("nekovm".equals(args[0]) && "edit".equals(args[1]))
+                return getListOfStringsMatchingLastWord(args, "on", "off");
         }
-
-        if (args.length == 4 && "signin".equals(args[0]) && "admin".equals(args[1])) {
-            // /gtit signin admin set|reset <玩家名>（O2-12）
-            return getListOfStringsMatchingLastWord(
-                args,
-                PlayerLookup.getOnlineNames()
-                    .toArray(new String[0]));
-        }
-
-        if (args.length == 3 && "gift".equals(args[0])) {
-            if ("certain".equals(args[1]) || "random".equals(args[1])) {
-                // 补全 NBT 标记：/gtit gift certain [yesNBT|noNBT] 或 /gtit gift random <count> [yesNBT|noNBT]
+        if (args.length == 4) {
+            if ("signin".equals(args[0]) && "admin".equals(args[1])
+                && ("set".equals(args[2]) || "reset".equals(args[2]))) return onlineNames(args);
+            if ("gift".equals(args[0]) && "random".equals(args[1]) && args[2].matches("[0-9]+"))
                 return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
-            }
-            if ("claimreset".equals(args[1])) {
-                // 补全 "all" + 在线玩家名（O2-12）
-                List<String> options = new ArrayList<>();
-                options.add("all");
-                options.addAll(PlayerLookup.getOnlineNames());
-                return getListOfStringsMatchingLastWord(args, options.toArray(new String[0]));
-            }
         }
-
-        if (args.length == 3 && "nekovm".equals(args[0]) && "edit".equals(args[1])) {
-            // /gtit nekovm edit on|off
-            return getListOfStringsMatchingLastWord(args, "on", "off");
-        }
-
-        if (args.length == 4 && "gift".equals(args[0]) && "random".equals(args[1])) {
-            // /gtit gift random <count> [yesNBT|noNBT]
-            return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
-        }
-
         return null;
+    }
+
+    private List<String> onlineNames(String[] args) {
+        return getListOfStringsMatchingLastWord(
+            args,
+            PlayerLookup.getOnlineNames()
+                .toArray(new String[0]));
+    }
+
+    private static boolean terminalAvailable() {
+        return FMLCommonHandler.instance()
+            .getSide() != Side.SERVER;
     }
 
     // ==================== NBT 标记解析 ====================
@@ -227,11 +260,17 @@ public class GTITGiftCommand extends CommandBase {
 
     private void handleGift(ICommandSender sender, String[] args) {
         if (args.length < 2) {
-            sendHelp(sender);
+            sendGiftHelp(sender);
             return;
         }
 
         switch (args[1]) {
+            case "ui" -> {
+                if (sender instanceof EntityPlayerMP player) com.miaokatze.gtit.gift.ui.GiftGuiFactory.open(player);
+                else sender.addChatMessage(new ChatComponentTranslation("gtit.gift.command.player_only"));
+            }
+            case "help" -> sendGiftHelp(sender);
+            case "tutorial" -> sendTutorial(sender, "gift");
             case "certain" -> {
                 if (!(sender instanceof EntityPlayerMP player)) {
                     sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行"));
@@ -255,7 +294,7 @@ public class GTITGiftCommand extends CommandBase {
             }
             case "claimlist" -> handleClaimList(sender);
             case "claimreset" -> handleClaimReset(sender, args);
-            default -> sendHelp(sender);
+            default -> sendGiftHelp(sender);
         }
     }
 
@@ -575,6 +614,20 @@ public class GTITGiftCommand extends CommandBase {
             }
             case "reload" -> handleNekoVMReload(player);
             case "timereset" -> handleNekoVMTimeReset(player);
+            case "defultreset", "defaultreset" -> {
+                if (args.length != 2) {
+                    sender.addChatMessage(new ChatComponentTranslation("gtit.command.defaultreset.usage"));
+                    return;
+                }
+                if (!TradePresetManager.canConfigure(player)) {
+                    sender.addChatMessage(new ChatComponentTranslation("gtit.preset.permission"));
+                    return;
+                }
+                TradePresetManager.Result result = TradePresetManager.resetDefaults(player);
+                sender.addChatMessage(
+                    new ChatComponentText(
+                        (result.success ? EnumChatFormatting.GREEN : EnumChatFormatting.RED) + result.message));
+            }
             case "help" -> handleNekoVMFullHelp(sender);
             default -> sendNekoVMHelp(sender);
         }
@@ -633,7 +686,7 @@ public class GTITGiftCommand extends CommandBase {
         int resetCount = NekoTradeDatabase.INSTANCE.getAllTradeGroupIds()
             .size();
 
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "已重置 " + resetCount + " 个交易的冷却"));
+        player.addChatMessage(new ChatComponentTranslation("gtit.command.timereset.done", resetCount));
     }
 
     // ==================== 辅助方法 ====================
@@ -651,28 +704,74 @@ public class GTITGiftCommand extends CommandBase {
     // ==================== 帮助信息 ====================
 
     private void sendHelp(ICommandSender sender) {
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "用法:"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift certain [yesNBT|noNBT] - 设置必中物品为当前背包"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift random <count> [yesNBT|noNBT] - 设置随机物品为当前背包"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift reset - 重置为默认配置"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift claimlist - 列出已领取新手礼包的玩家（在线+离线）"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift claimreset [all|玩家名] - 重置新手礼包领取状态（支持离线玩家）"));
+        sender.addChatMessage(new ChatComponentTranslation("gtit.command.help.title"));
+        sender.addChatMessage(new ChatComponentText("/gtit help [模块] | /gtit tutorial [模块]"));
+        sender.addChatMessage(new ChatComponentText("/gifts - 查看礼包；/gtit gift help - 新手礼包兼容配置命令"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift ui - 打开礼包窗口"));
+        sender.addChatMessage(new ChatComponentText("/gtit presets - 打开贸易预设管理（单人拥有者 / OP4）"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 猫猫售货机完整帮助"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm edit on|off - 开关可视化编辑模式"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载猫猫币交易配置"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
-        sender.addChatMessage(new ChatComponentText("/gtit signin - 每日签到"));
         sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
-        sender.addChatMessage(new ChatComponentText("/gtit lottery reload - 热重载抽奖配置"));
-        sender.addChatMessage(new ChatComponentText("/gtit mail help - 邮件命令帮助（发送/首登/一次性奖励）"));
-        sender.addChatMessage(new ChatComponentText("/gtit terminal - 打开服务器管理终端（仅游戏内 OP2 玩家）"));
+        sender.addChatMessage(new ChatComponentText("/gtit lottery help - 抽奖配置命令"));
+        sender.addChatMessage(new ChatComponentText("/gtit mail help - 邮件命令帮助"));
+        if (terminalAvailable()) sendTerminalHelp(sender);
+    }
+
+    private void sendGiftHelp(ICommandSender sender) {
+        sender.addChatMessage(new ChatComponentTranslation("gtit.command.gift.intro"));
+        sender.addChatMessage(new ChatComponentText("/gifts | /gifts claim <ID>"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift ui - 打开礼包窗口"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift certain [yesNBT|noNBT] - 用当前背包设置新手礼包必得物品"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift random <count> [yesNBT|noNBT] - 用当前背包设置随机池"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift reset - 恢复新手礼包奖励配置，不重置领取记录"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift claimlist - 查看新手礼包领取记录（可控制台）"));
+        sender.addChatMessage(new ChatComponentText("/gtit gift claimreset [all|玩家名] - 重置新手礼包领取标记（含离线）"));
+    }
+
+    private void sendPresetHelp(ICommandSender sender) {
+        sender.addChatMessage(new ChatComponentTranslation("gtit.command.presets.help"));
+        sender.addChatMessage(new ChatComponentText("/gtit presets"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm defultreset"));
+    }
+
+    private void sendTerminalHelp(ICommandSender sender) {
+        sender.addChatMessage(
+            new ChatComponentTranslation(
+                terminalAvailable() ? "gtit.command.terminal.help" : "gtit.command.terminal.unavailable"));
+    }
+
+    private void sendTopicHelp(ICommandSender sender, String topic) {
+        switch (topic) {
+            case "gift" -> sendGiftHelp(sender);
+            case "presets" -> sendPresetHelp(sender);
+            case "nekovm" -> handleNekoVMFullHelp(sender);
+            case "signin" -> sendSignInHelp(sender);
+            case "lottery" -> sendLotteryHelp(sender);
+            case "mail" -> sendMailHelp(sender);
+            case "terminal" -> sendTerminalHelp(sender);
+            default -> sendHelp(sender);
+        }
+    }
+
+    private void sendTutorial(ICommandSender sender, String topic) {
+        switch (topic) {
+            case "gift", "presets", "nekovm", "signin", "lottery", "mail" -> {
+                sender.addChatMessage(new ChatComponentTranslation("gtit.command.tutorial." + topic));
+                sendTopicHelp(sender, topic);
+            }
+            case "terminal" -> sendTerminalHelp(sender);
+            default -> {
+                sender.addChatMessage(new ChatComponentTranslation("gtit.command.tutorial.intro"));
+                sendHelp(sender);
+            }
+        }
     }
 
     private void sendNekoVMHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "猫猫售货机命令:"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm edit on|off - 开关可视化编辑模式"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm reload - 热重载配置"));
-        sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置所有交易冷却"));
+        sender.addChatMessage(new ChatComponentText("/gtit nekovm timereset - 重置当前玩家/团队交易历史与冷却"));
+        sender.addChatMessage(new ChatComponentTranslation("gtit.command.defaultreset.help"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 完整帮助"));
     }
 
@@ -711,6 +810,7 @@ public class GTITGiftCommand extends CommandBase {
             }
             case "admin" -> handleSignInAdmin(sender, args);
             case "help" -> sendSignInHelp(sender);
+            case "tutorial" -> sendTutorial(sender, "signin");
             default -> sendSignInHelp(sender);
         }
     }
@@ -895,6 +995,7 @@ public class GTITGiftCommand extends CommandBase {
                 sender.addChatMessage(new ChatComponentText(EnumChatFormatting.GREEN + "抽奖配置已热重载"));
             }
             case "help" -> sendLotteryHelp(sender);
+            case "tutorial" -> sendTutorial(sender, "lottery");
             default -> sendLotteryHelp(sender);
         }
     }
@@ -939,6 +1040,7 @@ public class GTITGiftCommand extends CommandBase {
             }
             case "once" -> handleMailOnce(sender, args);
             case "help" -> sendMailHelp(sender);
+            case "tutorial" -> sendTutorial(sender, "mail");
             default -> sendMailHelp(sender);
         }
     }
@@ -1138,6 +1240,9 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm reload"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  热重载交易和标签页配置"));
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit nekovm timereset"));
-        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  重置当前玩家（团队）的所有交易冷却"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "  重置当前玩家/团队的交易历史、次数与冷却"));
+        sender.addChatMessage(new ChatComponentTranslation("gtit.command.defaultreset.help"));
+        sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "/gtit presets"));
+        sender.addChatMessage(new ChatComponentTranslation("gtit.command.presets.help"));
     }
 }

@@ -97,6 +97,8 @@ public class NekoTradeItemDisplay {
 
     /** 冷却剩余时间（秒），0 表示无冷却 */
     private long cooldownRemaining;
+    private boolean oneTimeOnly;
+    private boolean oneTimeRedeemed;
 
     /** 是否可交易（综合判断：非锁定、非冷却中） */
     private boolean tradeable;
@@ -155,7 +157,7 @@ public class NekoTradeItemDisplay {
         this.currencyId = currencyId;
         this.cost = cost;
         this.bqLocked = bqLocked;
-        this.cooldownRemaining = cooldownRemaining;
+        this.cooldownRemaining = Math.max(0, cooldownRemaining);
         this.tradeable = tradeable;
         this.favourite = favourite;
     }
@@ -202,7 +204,7 @@ public class NekoTradeItemDisplay {
         int orderId = group.getOrderId();
 
         // 初始状态：默认可交易，无锁定，无冷却，未收藏
-        return new NekoTradeItemDisplay(
+        NekoTradeItemDisplay display = new NekoTradeItemDisplay(
             tradeIndex,
             groupId,
             orderId,
@@ -215,6 +217,8 @@ public class NekoTradeItemDisplay {
             0, // cooldownRemaining - 由 GUI 层后续更新
             true, // tradeable - 默认可交易
             false); // favourite - 默认未收藏
+        display.setOneTimeOnly(group.getCooldown() == -1);
+        return display;
     }
 
     // ==================== 搜索方法 ====================
@@ -409,16 +413,39 @@ public class NekoTradeItemDisplay {
         this.bqLocked = bqLocked;
     }
 
+    public boolean isOneTimeOnly() {
+        return oneTimeOnly;
+    }
+
+    public void setOneTimeOnly(boolean value) {
+        oneTimeOnly = value;
+        if (!value) oneTimeRedeemed = false;
+    }
+
+    public boolean isOneTimeRedeemed() {
+        return oneTimeOnly && oneTimeRedeemed;
+    }
+
+    /** Only the explicit server lifetime-history flag can mark a one-time trade as redeemed. */
+    public void setOneTimeRedeemed(boolean value) {
+        oneTimeRedeemed = oneTimeOnly && value;
+    }
+
+    public String getOneTimeStatusKey() {
+        if (!oneTimeOnly) return "";
+        return isOneTimeRedeemed() ? "gtit.trade.cooldown.redeemed" : "gtit.trade.cooldown.once";
+    }
+
     public long getCooldownRemaining() {
-        return cooldownRemaining;
+        return oneTimeOnly ? 0 : cooldownRemaining;
     }
 
     public void setCooldownRemaining(long cooldownRemaining) {
-        this.cooldownRemaining = cooldownRemaining;
+        this.cooldownRemaining = Math.max(0, cooldownRemaining);
     }
 
     public boolean isTradeable() {
-        return tradeable;
+        return tradeable && !isOneTimeRedeemed();
     }
 
     public void setTradeable(boolean tradeable) {

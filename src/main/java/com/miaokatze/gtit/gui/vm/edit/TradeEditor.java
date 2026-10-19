@@ -242,10 +242,12 @@ public final class TradeEditor {
                 .top(fieldY + 2));
         editPanel.child(new TextFieldWidget().value(new StringValue.Dynamic(() -> String.valueOf(editCooldown), val -> {
             try {
-                editCooldown = Integer.parseInt(val);
+                int parsed = Integer.parseInt(val);
+                if (parsed >= -1) editCooldown = parsed;
             } catch (NumberFormatException ignored) {}
         }))
             .setNumbers(-1, Integer.MAX_VALUE)
+            .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.trade.cooldown.input_hint")))
             .left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight));

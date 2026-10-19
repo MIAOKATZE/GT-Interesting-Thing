@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 
+import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 
@@ -24,6 +25,7 @@ import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.drawable.ItemDrawable;
+import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
@@ -90,6 +92,13 @@ public final class TradePage {
     // ==================== 同步值字段（页面状态，G6 分域下沉） ====================
 
     /** 当前标签页 ID（C2S：客户端切换标签时发送到服务端） */
+    public static final int SCOPE_DEFAULT = 0;
+    public static final int SCOPE_CUSTOM = 1;
+    private static int lastTradeScope = SCOPE_DEFAULT;
+    private int tradeScope = lastTradeScope;
+    private IntSyncValue tradeScopeSync;
+    private BooleanSyncValue canManageCustomSync;
+
     private IntSyncValue currentTabSync;
     /** v1.7.0 主标签索引（C2S：客户端切换主标签时发送到服务端） */
     private IntSyncValue mainTabSync;
@@ -196,33 +205,52 @@ public final class TradePage {
     private void loadTradeCategories() {
         lastPageRegistryVersion = NekoPageRegistry.getVersion();
         tradeCategories.clear();
-        // 初始化交易分类列表：FAVOURITES 始终第一位，其余按 NekoPageRegistry 动态生成
         tradeCategories.add(NekoTradeCategory.FAVOURITES);
-
         List<NekoPageEntry> pages = NekoPageRegistry.getAllPages();
         if (pages != null && !pages.isEmpty()) {
-            // 从 NekoPageRegistry 加载标签页配置，与 V1 保持一致的标签页顺序
             for (NekoPageEntry page : pages) {
-                if (page != null) {
-                    tradeCategories.add(NekoTradeCategory.ofTabId(page.getId()));
-                }
+                if (isPageInScope(page, tradeScope)) tradeCategories.add(NekoTradeCategory.ofTabId(page.getId()));
             }
         } else {
-            // 向后兼容：若 NekoPageRegistry 未初始化，则扫描交易数据库使用到的分类
             Set<NekoTradeCategory> usedCategories = new TreeSet<>();
             for (NekoTradeGroup group : NekoTradeDatabase.INSTANCE.getAllTradeGroups()
                 .values()) {
-                NekoTradeCategory cat = group.getCategory();
-                if (cat != null && !cat.isFavourites() && !cat.isUnknown()) {
-                    usedCategories.add(cat);
-                }
+                NekoTradeCategory category = group.getCategory();
+                if (category != null && !category.isFavourites() && isCategoryVisible(category))
+                    usedCategories.add(category);
             }
             tradeCategories.addAll(usedCategories);
-            // 至少保留 UNKNOWN 兜底
-            if (tradeCategories.size() <= 1) {
-                tradeCategories.add(NekoTradeCategory.UNKNOWN);
-            }
         }
+    }
+
+    static boolean isPageInScope(NekoPageEntry page, int scope) {
+        return page != null && page.isPresetBuiltin() == (scope == SCOPE_DEFAULT);
+    }
+
+    public boolean isCategoryVisible(NekoTradeCategory category) {
+        return category != null && (category.isFavourites()
+            || (NekoPageRegistry.getPage(category.getTabId()) == null ? tradeScope == SCOPE_CUSTOM
+                : isPageInScope(NekoPageRegistry.getPage(category.getTabId()), tradeScope)));
+    }
+
+    private boolean isCustomEmpty() {
+        return tradeScope == SCOPE_CUSTOM && tradeCategories.size() == 1;
+    }
+
+    private void selectTradeScope(int scope) {
+        mainTabController.setPage(MAIN_TAB_TRADE);
+        mainTabId = MAIN_TAB_TRADE;
+        NekoMainTabButton.lastMainTab = MAIN_TAB_TRADE;
+        if (mainTabSync != null) mainTabSync.setValue(MAIN_TAB_TRADE);
+        if (tradeScope == scope) return;
+        tradeScope = scope;
+        lastTradeScope = scope;
+        if (tradeScopeSync != null) tradeScopeSync.setValue(scope);
+        lastPageRegistryVersion = -1;
+        currentTabId = 0;
+        selectedTabId = -1;
+        tabPage = 0;
+        refreshPagesIfChanged();
     }
 
     /**
@@ -233,6 +261,13 @@ public final class TradePage {
      */
     public void registerSyncValues(PanelSyncManager syncManager, UUID playerId) {
         // --- 当前标签页 ID（C2S）---
+        tradeScopeSync = new IntSyncValue(
+            () -> tradeScope,
+            value -> tradeScope = value == SCOPE_CUSTOM ? SCOPE_CUSTOM : SCOPE_DEFAULT).allowC2S();
+        syncManager.syncValue("nekoV2TradeScope", tradeScopeSync);
+        canManageCustomSync = new BooleanSyncValue(() -> !syncManager.isClient() && gui.canManageTradeContent());
+        syncManager.syncValue("nekoV2CustomHelp", canManageCustomSync);
+
         currentTabSync = new IntSyncValue(() -> selectedTabId, val -> { selectedTabId = val; });
         currentTabSync.allowC2S();
         syncManager.syncValue("nekoV2CurrentTab", currentTabSync);
@@ -409,10 +444,23 @@ public final class TradePage {
             .childPadding(2);
 
         // 主标签定义：index → (图标, 名称)
-        Object[][] mainTabs = new Object[][] { { MAIN_TAB_TRADE, NekoGuiTextures.MAIN_TAB_TRADE, "贸易" },
-            { MAIN_TAB_SIGNIN, NekoGuiTextures.MAIN_TAB_SIGNIN, "签到" },
-            { MAIN_TAB_LOTTERY, NekoGuiTextures.MAIN_TAB_LOTTERY, "抽奖" },
-            { MAIN_TAB_MAIL, NekoGuiTextures.MAIN_TAB_MAIL, "邮件" }, };
+        for (int scope : new int[] { SCOPE_DEFAULT, SCOPE_CUSTOM }) {
+            NekoSubTabButton button = new NekoSubTabButton(
+                MAIN_TAB_TRADE,
+                mainTabController,
+                scope == SCOPE_DEFAULT ? NekoGuiTextures.MAIN_TAB_TRADE
+                    : new ItemDrawable(new ItemStack(Items.writable_book)));
+            button.tab(NekoGuiTextures.TAB_LEFT, -1);
+            button.externalMode(() -> mainTabController.getActivePageIndex() == MAIN_TAB_TRADE && tradeScope == scope);
+            button.onSelected(() -> selectTradeScope(scope));
+            button.tooltipBuilder(
+                t -> t.addLine(IKey.lang(scope == SCOPE_DEFAULT ? "gtit.trade.default" : "gtit.trade.custom")));
+            mainTabColumn.child(button);
+        }
+        Object[][] mainTabs = new Object[][] {
+            { MAIN_TAB_SIGNIN, NekoGuiTextures.MAIN_TAB_SIGNIN, "gtit.trade.signin" },
+            { MAIN_TAB_LOTTERY, NekoGuiTextures.MAIN_TAB_LOTTERY, "gtit.trade.lottery" },
+            { MAIN_TAB_MAIL, NekoGuiTextures.MAIN_TAB_MAIL, "gtit.trade.mail" }, };
 
         for (Object[] tabDef : mainTabs) {
             final int index = (Integer) tabDef[0];
@@ -421,7 +469,7 @@ public final class TradePage {
 
             NekoMainTabButton tabButton = new NekoMainTabButton(index, mainTabController, icon);
             tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-            tabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
+            tabButton.tooltipBuilder(t -> { t.addLine(IKey.lang(name)); });
             // 点击时同步主标签索引到服务端（使用 onSelected 钩子，避免与 PageButton.onMousePressed 冲突）
             tabButton.onSelected(() -> {
                 if (mainTabSync != null) {
@@ -506,10 +554,12 @@ public final class TradePage {
         int start = tabPage * PAGE_SIZE;
         int end = Math.min(start + PAGE_SIZE, size);
         for (int i = start; i < end; i++) {
+            if (isCustomEmpty()) break;
             final int index = i;
             NekoTradeCategory category = tradeCategories.get(i);
             ItemStack icon = StatusCodec.getCategoryIcon(category);
             String name = StatusCodec.getCategoryName(category);
+            NekoPageEntry page = NekoPageRegistry.getPage(category.getTabId());
 
             // v1.7.6 G3④：匿名子类包一层点击拦截——编辑模式下 Shift+点击 page 标签
             // 打开 page 编辑面板（不切页、不更新 lastPage）；普通点击维持原切页逻辑。
@@ -528,8 +578,27 @@ public final class TradePage {
             tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
             // v1.7.33 T3：TAB_LEFT 原生 32x28，压扁至 32x25 使 11 槽+翻页行落入面板可视高度（计算见类常量注释）
             tabButton.size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
+            if (page != null && page.getSourcePresetId() != null
+                && !page.getSourcePresetId()
+                    .isEmpty()) {
+                NekoPageEntry source = new NekoPageEntry();
+                source.setIconItem(page.getSourcePresetIconItem());
+                source.setIconMeta(page.getSourcePresetIconMeta());
+                source.setIconNbt(page.getSourcePresetIconNbt());
+                tabButton.sourceIcon(source.toIconItemStack());
+            }
             tabButton.tooltipBuilder(t -> {
                 t.addLine(IKey.str(name));
+                if (page != null && page.getSourcePresetId() != null
+                    && !page.getSourcePresetId()
+                        .isEmpty()) {
+                    String sourceName = page.getSourcePresetName();
+                    if (sourceName == null || sourceName.isEmpty()) sourceName = page.getSourcePresetId();
+                    t.addLine(
+                        IKey.lang(
+                            page.isPresetBuiltin() ? "gtit.trade.source.builtin" : "gtit.trade.source.custom",
+                            sourceName));
+                }
                 // 编辑模式下追加操作提示（随编辑模式动态刷新）
                 if (gui.isEditModeActive() && category.getTabId() > 0) {
                     t.addLine(IKey.str(EnumChatFormatting.YELLOW + "Shift+点击 编辑标签页"));
@@ -580,7 +649,7 @@ public final class TradePage {
             t.addLine(IKey.str("新建标签页"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白标签页（保存时自动分配 ID ≥ 4）"));
         });
-        newPageButton.setEnabledIf(w -> gui.isEditModeActive());
+        newPageButton.setEnabledIf(w -> gui.isEditModeActive() && tradeScope == SCOPE_CUSTOM);
         column.child(newPageButton);
 
         // 子树变更后调度重排（MUI2 官方 late-add 路径：child(...) 内部已 late-initialise，
@@ -951,9 +1020,13 @@ public final class TradePage {
         // --- 标题（编辑模式下附加红色「编辑模式」标识，v1.7.0 目标 4 视觉标识）---
         mainColumn.child(
             IKey.dynamic(
-                () -> gui.isEditModeActive()
-                    ? EnumChatFormatting.DARK_GRAY + "猫猫售货机 " + EnumChatFormatting.RED + "[编辑模式]"
-                    : EnumChatFormatting.DARK_GRAY + "猫猫售货机")
+                () -> EnumChatFormatting.DARK_GRAY
+                    + IKey.lang(tradeScope == SCOPE_DEFAULT ? "gtit.trade.default" : "gtit.trade.custom")
+                        .get()
+                    + (gui.isEditModeActive() ? " " + EnumChatFormatting.RED
+                        + IKey.lang("gtit.trade.editing")
+                            .get()
+                        : ""))
                 .asWidget()
                 .height(12)
                 .fullWidth()
@@ -1119,6 +1192,25 @@ public final class TradePage {
                 .height(2));
 
         // 结构不完整提示行
+        tradeList.child(
+            IKey.lang("gtit.trade.custom.empty")
+                .asWidget()
+                .alignment(Alignment.CenterLeft)
+                .width(TRADE_ROW_WIDTH - 8)
+                .height(18)
+                .marginLeft(4)
+                .setEnabledIf(w -> isCustomEmpty()));
+        tradeList.child(
+            IKey.lang("gtit.trade.custom.empty.owner")
+                .asWidget()
+                .alignment(Alignment.TopLeft)
+                .width(TRADE_ROW_WIDTH - 8)
+                .height(98)
+                .marginLeft(4)
+                .scale(0.9f)
+                .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.trade.custom.files")))
+                .setEnabledIf(w -> isCustomEmpty() && canManageCustomSync != null && canManageCustomSync.getValue()));
+
         Flow statusRow = Flow.row()
             .height(10)
             .width(TRADE_ROW_WIDTH)

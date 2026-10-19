@@ -10,7 +10,7 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta1-3 & RC1-2" src="https://img.shields.io/badge/GTNH-2.9.0%20beta1--3%20%26%20RC1--2-orange.svg"></a>
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.84" src="https://img.shields.io/badge/Release-1.8.84-green.svg"></a>
+  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.9.3" src="https://img.shields.io/badge/Release-1.9.3-green.svg"></a>
 </p>
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
@@ -102,13 +102,13 @@ Each reward slot independently chooses one alternative per transaction. An ore d
 
 <p align="center"><img src="README/trade.png" width="300" alt="交易界面 / Trade GUI"><br><em>交易界面 / Trade GUI</em></p>
 
-- **Dynamic tabs / 动态标签页**: 3 protected default tabs + custom tabs; adding, deleting or editing a tab updates the open GUI without reopening it
+- **Dynamic tabs / 动态标签页**: Separate jar-default and custom trade columns; adding, deleting or editing a tab updates the open GUI without reopening it
 - **Neko Coin display / 猫猫币显示**: Real-time balance display with expandable details
 - **Coin intercept slot / 猫猫币拦截槽**: Automatically routes Neko Coins from inventory to wallet
 - **Sort & Search / 排序与搜索**: Sort by order ID or name, with text search filtering
 - **BGM / 背景音乐**: 3 random BGM variants with 2-second fade in/out, max 50% volume
 - **BQ lock display / BQ 锁定显示**: Locked trades show golden "LOCKED" text with cooldown overlay; cooling-down trades show cyan cooldown text
-- **动态标签页**：3 个受保护默认标签页 + 自定义标签页；新增、删除或编辑后同步更新打开中的 GUI，无需关闭重开
+- **动态标签页**：JAR 默认贸易与自定义贸易分为两栏；新增、删除或编辑后同步更新打开中的 GUI，无需关闭重开
 - **猫猫币显示**：实时余额显示，可展开详情
 - **猫猫币拦截槽**：自动将背包中的猫猫币导入钱包
 - **排序与搜索**：按顺序 ID 或名称排序，支持文字搜索过滤
@@ -118,6 +118,20 @@ Each reward slot independently chooses one alternative per transaction. An ore d
 猫猫贸易现已接入 NEI：对物品按 R / U 查询产出与用途，对售货机按 U 浏览贸易；配方显示兑换间隔，关联任务可点击打开任务书。
 
 Neko trades are available in NEI: use R / U on items to find outputs and uses, or U on the vending machine to browse trades. Recipes show trade intervals and clickable linked quests.
+
+### Default Trade Presets / 默认贸易预设
+
+<p align="center"><img src="README/screenshots/default-trade-presets.png" width="740" alt="默认贸易组实际界面 / Default trade preset interface"><br><em>默认贸易组实际界面示意 / Actual default trade preset interface</em></p>
+
+Use `/gtit presets` to browse the jar-provided default groups and apply your selection; management requires the single-player owner or dedicated-server OP4. Default and custom trades have separate columns.
+
+使用 `/gtit presets` 浏览 JAR 内置默认贸易组并应用所选组；管理操作要求单人存档拥有者或专用服务器 OP4。默认贸易与自定义贸易分栏显示。
+
+AE presets use three cooldown tiers: basic 0, advanced 2 hours, and high tier 8 hours; the same product keeps the same tier across presets. Batch requirements and outputs scale together, with larger cable batches; tools and one-time entries retain their per-entry rules. Creative Energy Controllers remain one-time trades.
+
+AE 预设采用基础 0、进阶 2 小时、高阶 8 小时三档冷却；同商品跨预设使用同一档位。批次需求与产出同比放大，线缆采用较大批量；工具及一次性条目保留各自规则。创造能量控制器仍为一次性交易。
+
+截图仅展示实际界面，图内数量和数值不是本轮批量、价格或冷却清单；以当前版本随包数据为准。 / Screenshots illustrate the actual interface; their counts and values are not this release's batch, price or cooldown list. Refer to the bundled data for the current release.
 
 ### BetterQuesting Integration / BQ 任务集成
 
@@ -421,6 +435,16 @@ A gift box automatically granted to players on their **first login** to a world.
 - 通过 `config/gtit/gift_config.json` 完全可配置
 - 默认随机池包含 6 枚戒指（凌步、饕餮、磐躯、龙息、裂山、疾风）
 
+### Gift Center / 礼包中心
+
+<p align="center"><img src="README/screenshots/gift-center.png" width="740" alt="礼包中心实际界面 / Gift Center interface"><br><em>礼包中心实际界面示意 / Actual Gift Center interface</em></p>
+
+Use `/gifts` to view gift rewards, unlock conditions and claim status. The single-player owner or dedicated-server OP4 can create and edit gifts in the management interface.
+
+使用 `/gifts` 查看礼包奖励、解锁条件与领取状态；单人存档拥有者或专用服务器 OP4 可在管理界面新建和编辑礼包。
+
+截图仅作实际界面示意，图内奖励数量和数值不代表当前默认内容清单。 / This screenshot illustrates the actual interface; its reward counts and values are not a list of the current defaults.
+
 ### Gift Config / 宝箱配置
 
 ```json
@@ -527,14 +551,18 @@ A development-stage test multiblock (HV tier, 3×3×3 hollow TungstenSteel) once
 
 ## Administrator Commands / 管理员命令
 
-All commands under `/gtit`, OP permission level 2. **Tab completion supported** for subcommands, tab IDs, order IDs, and player names. Subcommands that manipulate the executor's own inventory are player-only; the rest also work from the server console.
+Administrative `/gtit` commands require OP permission level 2. Preset management and default trade reset additionally require the single-player owner or dedicated-server OP4. **Tab completion supports** working subcommands, NBT flags, and online player names; there are no `trade tab` / `orderId` command branches. Inventory operations and NekoVM changes are player-only; module help is also available from the console. `/gifts` is a separate player command without an OP requirement.
 
-所有指令通过 `/gtit`，OP 权限等级 2。**支持 Tab 补全**——子命令、标签页 ID、顺序 ID、玩家名均可自动补全。需要操作执行者背包的子命令仅玩家可执行，其余支持服务器控制台。
+管理指令 `/gtit` 保持 OP2 门槛；预设管理与默认贸易重置另外要求单人存档拥有者或专用服务器 OP4。**Tab 补全**涵盖实际子命令、NBT 标记和在线玩家名，没有 `trade tab` 或顺序 ID 命令。背包操作及 NekoVM 修改仅玩家可执行，各模块帮助也支持控制台。普通玩家使用独立的 `/gifts` 查看与领取礼包。
+
+Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance. Modules: `gift`, `nekovm`, `presets`, `signin`, `lottery`, `mail`. / 使用 `/gtit help [模块]` 查看语法，`/gtit tutorial [模块]` 查看步骤；模块包括上述六类。也支持 `/gtit <模块> help|tutorial`。
 
 ### Starter Gift / 新手宝箱
 
 | Command / 指令                                | Description / 说明                                                               |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `/gifts [ui|claim <ID>|help|tutorial]`    | Browse gifts; manual claims apply only to enabled BQ-unlock gifts / 查看礼包；手动领取仅适用于启用的 BQ 解锁型礼包 |
+| `/gtit gift ui`                            | Open the gift library / 打开礼包窗口；编辑权限由服务器另行检查 |
 | `/gtit gift certain [yesNBT\|noNBT]`        | Set guaranteed items from current inventory / 将当前背包物品设为必中物品；默认 `noNBT`       |
 | `/gtit gift random <count> [yesNBT\|noNBT]` | Set random pool from inventory + draw count / 将背包物品设为随机池并设置抽取数；默认 `noNBT`   |
 | `/gtit gift reset`                          | Reset to default config / 恢复默认配置                                                 |
@@ -547,8 +575,12 @@ All commands under `/gtit`, OP permission level 2. **Tab completion supported** 
 | --------------------------- | ------------------------------------------------------------------------ |
 | `/gtit nekovm edit on\|off` | Toggle visual config edit mode / 开关可视化配置编辑模式                              |
 | `/gtit nekovm reload`       | Hot-reload trade + tab config / 热重载交易与标签页配置                                |
-| `/gtit nekovm timereset`    | Reset all trade cooldowns of the executor's team / 重置当前玩家（团队）的全部交易冷却 |
+| `/gtit nekovm timereset`    | Reset the current player/team's trade history, counts and cooldowns / 重置当前玩家或团队的贸易历史、次数与冷却 |
+| `/gtit nekovm defultreset`  | Force-restore default trade data; single-player owner / OP4 / 强制恢复默认贸易数据，需单人拥有者或 OP4 |
+| `/gtit presets`             | Open trade preset management; single-player owner / OP4 / 打开贸易预设管理，需单人拥有者或 OP4 |
 | `/gtit nekovm help`         | Full help / 完整帮助                                                              |
+
+`defultreset` is the documented command spelling; `defaultreset` remains an accepted alias. It is separate from `timereset`, which resets player/team history. Custom pages and trades are created in the vending-machine editor after `/gtit nekovm edit on`, rather than through an unimplemented tab-creation command. / 教学使用用户指定拼写 `defultreset`，同时兼容 `defaultreset`；它与重置玩家/团队历史的 `timereset` 不同。自定义标签页和条目应在 `edit on` 后使用售货机内编辑入口创建。
 
 ### Sign-In / 每日签到
 

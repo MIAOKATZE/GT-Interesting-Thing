@@ -6,12 +6,67 @@ package com.miaokatze.gtit.trade;
  */
 public class NekoPageEntry {
 
-    private int id; // 标签页ID：1=猫猫币，2=闪烁猫猫币，3=其他，4+=自定义
+    private int id; // 正 ID 为自定义页；负 ID 由预设命名空间分配。
     private String name; // 标签页显示名称
     private String iconItem; // 图标物品ID（modid:name 格式）
     private int iconMeta; // 图标物品元数据
     private String iconNbt; // 图标物品NBT（Base64编码，可选）
     private boolean isDefault; // 是否为默认标签页（不可删除）
+    /** Built-in preset provenance; disabling default content hides it without deleting the file. */
+    private boolean presetBuiltin;
+    private String sourcePresetId = "";
+    private String sourcePresetName = "";
+    private String sourcePresetIconItem = "";
+    private int sourcePresetIconMeta;
+    private String sourcePresetIconNbt = "";
+
+    public String getSourcePresetName() {
+        return sourcePresetName == null ? "" : sourcePresetName;
+    }
+
+    public void setSourcePresetName(String value) {
+        sourcePresetName = value;
+    }
+
+    public String getSourcePresetIconItem() {
+        return sourcePresetIconItem == null ? "" : sourcePresetIconItem;
+    }
+
+    public void setSourcePresetIconItem(String value) {
+        sourcePresetIconItem = value;
+    }
+
+    public int getSourcePresetIconMeta() {
+        return sourcePresetIconMeta;
+    }
+
+    public void setSourcePresetIconMeta(int value) {
+        sourcePresetIconMeta = value;
+    }
+
+    public String getSourcePresetIconNbt() {
+        return sourcePresetIconNbt == null ? "" : sourcePresetIconNbt;
+    }
+
+    public void setSourcePresetIconNbt(String value) {
+        sourcePresetIconNbt = value;
+    }
+
+    public String getSourcePresetId() {
+        return sourcePresetId == null ? "" : sourcePresetId;
+    }
+
+    public void setSourcePresetId(String value) {
+        sourcePresetId = value == null ? "" : value;
+    }
+
+    public boolean isPresetBuiltin() {
+        return presetBuiltin;
+    }
+
+    public void setPresetBuiltin(boolean value) {
+        presetBuiltin = value;
+    }
 
     public NekoPageEntry() {
         this.name = "";

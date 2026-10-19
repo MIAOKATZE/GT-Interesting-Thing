@@ -851,8 +851,23 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     @Override
+    public boolean getSyncedOneTimeRedeemed(UUID groupId, int tradeIndex) {
+        return groupId != null && tradeIndex >= 0 && statusCodec.isOneTimeRedeemed(groupId + ":" + tradeIndex);
+    }
+
+    @Override
     public NekoTradeCategory getActiveCategory() {
         return tradePage.getActiveCategory();
+    }
+
+    @Override
+    public boolean isTradeCategoryVisible(NekoTradeCategory category) {
+        return tradePage.isCategoryVisible(category);
+    }
+
+    boolean canManageTradeContent() {
+        return guiData != null && guiData.getPlayer() instanceof net.minecraft.entity.player.EntityPlayerMP player
+            && com.miaokatze.gtit.trade.preset.TradePresetManager.canConfigure(player);
     }
 
     @Override
@@ -904,6 +919,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     + display.getTradeIndex();
                 long cooldown = statusCodec.getCooldownRemaining(cdKey);
                 display.setCooldownRemaining(cooldown);
+                display.setOneTimeRedeemed(statusCodec.isOneTimeRedeemed(cdKey));
 
                 // 设置团队缩放信息（来自 teamScaleSync）
                 // 客户端通过同步值获取冷却内最大次数和已用次数，用于 tooltip 展示
@@ -923,7 +939,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 if (syncedTradeable != null) {
                     display.setTradeable(syncedTradeable);
                 } else {
-                    display.setTradeable(!bqLocked && cooldown <= 0);
+                    display.setTradeable(!bqLocked && cooldown <= 0 && !display.isOneTimeRedeemed());
                 }
             }
         }
@@ -1770,6 +1786,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 return "交易索引越界";
             case ON_COOLDOWN:
                 return "冷却中，请稍后再试";
+            case ONE_TIME_REDEEMED:
+                return net.minecraft.util.StatCollector.translateToLocal("gtit.trade.cooldown.redeemed_hint");
             case MAX_TRADES_REACHED:
                 return "已达到最大交易次数";
             case CONDITION_NOT_SATISFIED:

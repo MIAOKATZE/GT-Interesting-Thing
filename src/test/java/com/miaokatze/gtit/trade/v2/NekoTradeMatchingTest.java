@@ -212,6 +212,144 @@ public final class NekoTradeMatchingTest {
             "ore coin requires actual physical candidate");
     }
 
+    private static void oneTimeCooldown() throws Exception {
+        NekoHistoryManager manager = NekoHistoryManager.INSTANCE;
+        java.lang.reflect.Field directory = NekoHistoryManager.class.getDeclaredField("saveDir");
+        directory.setAccessible(true);
+        Object previousDirectory = directory.get(manager);
+        java.lang.reflect.Field teams = com.miaokatze.gtit.trade.TeamDataProvider.class.getDeclaredField("available");
+        teams.setAccessible(true);
+        Object previousTeams = teams.get(null);
+        java.nio.file.Path fixture = java.nio.file.Files.createTempDirectory("gtit-once-history-")
+            .toAbsolutePath()
+            .normalize();
+        java.util.UUID player = java.util.UUID.randomUUID();
+        NekoTradeGroup group = new NekoTradeGroup();
+        group.setCooldown(-1);
+        group.setCategory(NekoTradeCategory.ofTabId(3));
+        group.setMaxTrades(-1); // One-time cooldown must work independently of the optional total cap.
+        NekoTrade trade = new NekoTrade();
+        trade.getFromItems()
+            .add(iron(1));
+        trade.getToItems()
+            .add(new NekoBigItemStack(new ItemStack(Items.diamond)));
+        group.getTrades()
+            .add(trade);
+        try {
+            teams.set(null, Boolean.FALSE);
+            directory.set(manager, fixture.toFile());
+            manager.clearAll();
+            NekoTradeDatabase.INSTANCE.addTradeGroup(group);
+            NekoTradeHistory history = manager.getHistory(player, group.getId());
+            check(history.canTrade(-1, 99, -1), "unredeemed one-time trade permits the first purchase");
+            check(!history.canTrade(-1, 99, 0), "maxTrades remains an independent cap before first purchase");
+            Input input = new Input(new ItemStack(Items.iron_ingot, 2));
+            Output output = new Output();
+            check(
+                NekoTradeExecutor.INSTANCE.checkTrade(player, group.getId(), 0, input, output)
+                    .isSuccess() && history.getTradeCount() == 0,
+                "checking or cancelling a one-time trade never consumes it");
+            check(
+                !NekoTradeExecutor.INSTANCE.executeTrade(player, group.getId(), 0, new Input(), output)
+                    .isSuccess() && history.getTradeCount() == 0,
+                "missing payment does not consume one-time history");
+            Input failedPayment = new Input();
+            failedPayment.me.add(new ItemStack(Items.iron_ingot));
+            check(
+                !NekoTradeExecutor.INSTANCE.executeTrade(player, group.getId(), 0, failedPayment, output)
+                    .isSuccess() && history.getTradeCount() == 0,
+                "payment failure after planning does not consume one-time history");
+            Output full = new Output();
+            full.failAfter = 1;
+            check(
+                !NekoTradeExecutor.INSTANCE.executeTrade(player, group.getId(), 0, input, full)
+                    .isSuccess() && history.getTradeCount() == 0
+                    && input.slots[0].stackSize == 2
+                    && full.items.isEmpty(),
+                "failed delivery rolls back payment and leaves one-time trade available");
+            check(
+                NekoTradeExecutor.INSTANCE.executeTrade(player, group.getId(), 0, input, output)
+                    .isSuccess() && history.getTradeCount() == 1
+                    && output.items.size() == 1
+                    && input.slots[0].stackSize == 1,
+                "first successful one-time purchase delivers and records exactly once");
+            check(
+                !history.isNotificationQueued() && history.getCooldownRemaining(-1) == 0,
+                "one-time redemption has no countdown or cooldown-complete notification");
+            check(
+                NekoTradeExecutor.INSTANCE.executeTrade(player, group.getId(), 0, input, output)
+                    .getStatus() == NekoTradeResult.Status.ONE_TIME_REDEEMED && output.items.size() == 1
+                    && input.slots[0].stackSize == 1,
+                "second one-time purchase is permanently refused before charging");
+            check(!history.canTrade(-1, 99, -1), "team cooldown allowance never multiplies one-time redemption");
+            manager.clearAll();
+            check(
+                manager.getHistory(player, group.getId())
+                    .getTradeCount() == 1
+                    && NekoTradeExecutor.INSTANCE.checkTrade(player, group.getId(), 0, input, output)
+                        .getStatus() == NekoTradeResult.Status.ONE_TIME_REDEEMED,
+                "one-time denial survives actual history file save and reload");
+            NekoTradeGroup restored = new NekoTradeGroup();
+            restored.loadFromNBT(group.writeToNBT());
+            check(restored.getCooldown() == -1, "negative-one policy survives group NBT synchronization");
+            manager.resetAllHistory(player);
+            check(
+                NekoTradeExecutor.INSTANCE.checkTrade(player, group.getId(), 0, input, output)
+                    .isSuccess(),
+                "explicit administrator history reset restores one-time availability");
+            manager.clearAll();
+            check(
+                manager.getHistory(player, group.getId())
+                    .getTradeCount() == 0,
+                "explicit history reset is persisted to disk");
+            check(
+                manager.getHistory(player, java.util.UUID.randomUUID())
+                    .canTrade(-1, 1, -1),
+                "different product identities retain independent one-time histories");
+            NekoTradeHistory zero = new NekoTradeHistory();
+            zero.recordTrade(0);
+            check(zero.canTrade(0, 1, -1), "zero cooldown remains repeatable");
+            NekoTradeHistory timed = new NekoTradeHistory();
+            timed.recordTrade(30);
+            check(
+                !timed.canTrade(30, 1, -1) && timed.getCooldownRemaining(30) > 0,
+                "positive cooldown still uses real elapsed seconds");
+            NBTTagCompound expired = timed.writeToNBT();
+            expired.setLong("lastTradeTime", System.currentTimeMillis() - 31000L);
+            timed.loadFromNBT(expired);
+            check(
+                timed.canTrade(30, 1, -1) && timed.getCooldownRemaining(30) == 0,
+                "positive cooldown still unlocks after its elapsed seconds");
+            try {
+                group.setCooldown(-2);
+                throw new AssertionError("invalid cooldown accepted");
+            } catch (IllegalArgumentException expected) {}
+            com.miaokatze.gtit.trade.NekoTradeConfig.NekoTradeData invalid = new Gson().fromJson(
+                "{\"trades\":[{\"cooldown\":-2}]}",
+                com.miaokatze.gtit.trade.NekoTradeConfig.NekoTradeData.class);
+            try {
+                com.miaokatze.gtit.trade.NekoTradeConfig.save(invalid);
+                throw new AssertionError("invalid JSON cooldown saved");
+            } catch (IllegalArgumentException expected) {}
+            System.out.println(
+                "One-time cooldown: 20 checks passed (execution, failures, persistence, reset, seconds, validation)");
+        } finally {
+            NekoTradeDatabase.INSTANCE.removeTradeGroup(group.getId());
+            manager.clearAll();
+            directory.set(manager, previousDirectory);
+            teams.set(null, previousTeams);
+            try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(fixture)) {
+                for (java.nio.file.Path path : paths.sorted(java.util.Comparator.reverseOrder())
+                    .collect(java.util.stream.Collectors.toList())) {
+                    if (!path.toAbsolutePath()
+                        .normalize()
+                        .startsWith(fixture)) throw new IllegalStateException("history fixture cleanup escaped root");
+                    java.nio.file.Files.deleteIfExists(path);
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         if (!(NekoTradeMatchingTest.class.getClassLoader() instanceof net.minecraft.launchwrapper.LaunchClassLoader)) {
             String[] paths = System.getProperty("java.class.path")
@@ -406,6 +544,7 @@ public final class NekoTradeMatchingTest {
                 .getItemDamage() == 0 && rolled.getStackSize() == 5,
             "wildcard outputs concrete meta zero");
         executeAndCompensate();
+        oneTimeCooldown();
         parserAndWallet();
         com.miaokatze.gtit.trade.NekoTradeJson.validateDepth("{\"trades\":[{\"alternatives\":[{\"amount\":1}]}]}");
         StringBuilder deep = new StringBuilder();

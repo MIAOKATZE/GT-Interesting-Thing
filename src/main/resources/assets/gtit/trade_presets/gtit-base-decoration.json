@@ -1,0 +1,1771 @@
+{
+  "schemaVersion": 1,
+  "id": "gtit-base-decoration",
+  "name": "基地装饰",
+  "description": "基地装饰：64 条贸易、2 个标签页。无需 BQ 任务，可开局选择；可与任一 AE 预设组合。",
+  "icon": {
+    "item": "minecraft:stonebrick",
+    "meta": 0,
+    "nbtBase64": ""
+  },
+  "mutuallyExclusiveIds": [],
+  "tabs": [
+    {
+      "page": {
+        "id": 1,
+        "name": "建造工具",
+        "iconItem": "chisel:chisel",
+        "iconMeta": 0,
+        "iconNbt": null,
+        "isDefault": false
+      },
+      "trades": [
+        {
+          "id": "gtit-base-decoration-001",
+          "tabId": 1,
+          "orderId": 0,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "chisel:chisel",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "chisel",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-002",
+          "tabId": 1,
+          "orderId": 1,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:itemCarpentersHammer",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-003",
+          "tabId": 1,
+          "orderId": 2,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:itemCarpentersChisel",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-004",
+          "tabId": 1,
+          "orderId": 3,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ArchitectureCraft:hammer",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ArchitectureCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-005",
+          "tabId": 1,
+          "orderId": 4,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ArchitectureCraft:chisel",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ArchitectureCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-006",
+          "tabId": 1,
+          "orderId": 5,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ForgeMicroblock:sawIron",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ForgeMicroblock",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-007",
+          "tabId": 1,
+          "orderId": 6,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "betterbuilderswands:wandStone",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterbuilderswands",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-008",
+          "tabId": 1,
+          "orderId": 7,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "betterbuilderswands:wandIron",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterbuilderswands",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-009",
+          "tabId": 1,
+          "orderId": 8,
+          "currency": {
+            "type": "neko",
+            "amount": 4
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "betterbuilderswands:wandDiamond",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterbuilderswands",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-010",
+          "tabId": 1,
+          "orderId": 9,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "Botany:trowelIron",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "Botany",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-011",
+          "tabId": 1,
+          "orderId": 10,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ExtraTrees:hammer",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ExtraTrees",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-012",
+          "tabId": 1,
+          "orderId": 11,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "catwalks:blowtorch",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "catwalks",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-046",
+          "tabId": 1,
+          "orderId": 12,
+          "currency": {
+            "type": "neko",
+            "amount": 4
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ArchitectureCraft:sawbench",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ArchitectureCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-047",
+          "tabId": 1,
+          "orderId": 13,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ArchitectureCraft:sawblade",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ArchitectureCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-048",
+          "tabId": 1,
+          "orderId": 14,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ArchitectureCraft:largePulley",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ArchitectureCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-051",
+          "tabId": 1,
+          "orderId": 15,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ForgeMicroblock:sawStone",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ForgeMicroblock",
+            "ForgeMultipart",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-052",
+          "tabId": 1,
+          "orderId": 16,
+          "currency": {
+            "type": "neko",
+            "amount": 4
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ForgeMicroblock:sawDiamond",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ForgeMicroblock",
+            "ForgeMultipart",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-056",
+          "tabId": 1,
+          "orderId": 17,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:hammer",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-057",
+          "tabId": 1,
+          "orderId": 18,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:saw",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-058",
+          "tabId": 1,
+          "orderId": 19,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:wrench",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-059",
+          "tabId": 1,
+          "orderId": 20,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:colorTube",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-060",
+          "tabId": 1,
+          "orderId": 21,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:rubberMallet",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-061",
+          "tabId": 1,
+          "orderId": 22,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:container",
+              "meta": 0,
+              "amount": 1,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 3600,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        }
+      ]
+    },
+    {
+      "page": {
+        "id": 2,
+        "name": "装饰建材",
+        "iconItem": "CarpentersBlocks:blockCarpentersBlock",
+        "iconMeta": 0,
+        "iconNbt": null,
+        "isDefault": false
+      },
+      "trades": [
+        {
+          "id": "gtit-base-decoration-013",
+          "tabId": 2,
+          "orderId": 0,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersBlock",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-014",
+          "tabId": 2,
+          "orderId": 1,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersGarageDoor",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-015",
+          "tabId": 2,
+          "orderId": 2,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "chisel:laboratoryblock",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "chisel",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-016",
+          "tabId": 2,
+          "orderId": 3,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "chisel:factoryblock",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "chisel",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-017",
+          "tabId": 2,
+          "orderId": 4,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "chisel:technical",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "chisel",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-018",
+          "tabId": 2,
+          "orderId": 5,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "chisel:warningSign",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "chisel",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-019",
+          "tabId": 2,
+          "orderId": 6,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "chisel:concrete",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "chisel",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-020",
+          "tabId": 2,
+          "orderId": 7,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "Ztones:tile.bittBlock",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "Ztones",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-021",
+          "tabId": 2,
+          "orderId": 8,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "Ztones:tile.glaxx",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "Ztones",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-022",
+          "tabId": 2,
+          "orderId": 9,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "Ztones:tile.azurBlock",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "Ztones",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-023",
+          "tabId": 2,
+          "orderId": 10,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "BiblioCraft:BiblioIronLantern",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "BiblioCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-024",
+          "tabId": 2,
+          "orderId": 11,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "catwalks:scaffold",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "catwalks",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-025",
+          "tabId": 2,
+          "orderId": 12,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "catwalks:catwalk_unlit",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "catwalks",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-026",
+          "tabId": 2,
+          "orderId": 13,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "catwalks:cagedLadder_north_unlit",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "catwalks",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-027",
+          "tabId": 2,
+          "orderId": 14,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "modernmarkings:tile.wall_marking_exit",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "modernmarkings"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-028",
+          "tabId": 2,
+          "orderId": 15,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "modernmarkings:tile.wall_marking_warning_danger",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "modernmarkings"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-029",
+          "tabId": 2,
+          "orderId": 16,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ProjRed|Illumination:projectred.illumination.lamp",
+              "meta": 1,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "ProjRed|Illumination",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-030",
+          "tabId": 2,
+          "orderId": 17,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "Railcraft:lantern.stone",
+              "meta": 9,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "Railcraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-031",
+          "tabId": 2,
+          "orderId": 18,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "Railcraft:lantern.stone",
+              "meta": 8,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "Railcraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-032",
+          "tabId": 2,
+          "orderId": 19,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "Ztones:lampf",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "Ztones",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-033",
+          "tabId": 2,
+          "orderId": 20,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersSlope",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-034",
+          "tabId": 2,
+          "orderId": 21,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersStairs",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-035",
+          "tabId": 2,
+          "orderId": 22,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersBarrier",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-036",
+          "tabId": 2,
+          "orderId": 23,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersGate",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-037",
+          "tabId": 2,
+          "orderId": 24,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersDoor",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-038",
+          "tabId": 2,
+          "orderId": 25,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersHatch",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-039",
+          "tabId": 2,
+          "orderId": 26,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersLadder",
+              "meta": 0,
+              "amount": 64,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-040",
+          "tabId": 2,
+          "orderId": 27,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersButton",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-041",
+          "tabId": 2,
+          "orderId": 28,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersLever",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-042",
+          "tabId": 2,
+          "orderId": 29,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersPressurePlate",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-043",
+          "tabId": 2,
+          "orderId": 30,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersFlowerPot",
+              "meta": 0,
+              "amount": 16,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-044",
+          "tabId": 2,
+          "orderId": 31,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersCollapsibleBlock",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-045",
+          "tabId": 2,
+          "orderId": 32,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "CarpentersBlocks:blockCarpentersTorch",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": null
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": false,
+          "requiresMods": [
+            "CarpentersBlocks",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-049",
+          "tabId": 2,
+          "orderId": 33,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ArchitectureCraft:shape",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": "CgAAAwAFU2hhcGUAAAAACAAIQmFzZU5hbWUAEG1pbmVjcmFmdDpwbGFua3MDAAhCYXNlRGF0YQAAAAAA"
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "ArchitectureCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-050",
+          "tabId": 2,
+          "orderId": 34,
+          "currency": {
+            "type": "neko",
+            "amount": 2
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ArchitectureCraft:shape",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": "CgAAAwAFU2hhcGUAAAAPCAAIQmFzZU5hbWUAFG1pbmVjcmFmdDpzdG9uZWJyaWNrAwAIQmFzZURhdGEAAAAAAA=="
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "ArchitectureCraft",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-053",
+          "tabId": 2,
+          "orderId": 35,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ForgeMicroblock:microblock",
+              "meta": 1,
+              "amount": 32,
+              "nbtBase64": "CgAACAADbWF0AA9taW5lY3JhZnQ6c3RvbmUA"
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "ForgeMicroblock",
+            "ForgeMultipart",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-054",
+          "tabId": 2,
+          "orderId": 36,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ForgeMicroblock:microblock",
+              "meta": 1,
+              "amount": 32,
+              "nbtBase64": "CgAACAADbWF0ABBtaW5lY3JhZnQ6cGxhbmtzAA=="
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "ForgeMicroblock",
+            "ForgeMultipart",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-055",
+          "tabId": 2,
+          "orderId": 37,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "ForgeMicroblock:microblock",
+              "meta": 1,
+              "amount": 32,
+              "nbtBase64": "CgAACAADbWF0AA9taW5lY3JhZnQ6Z2xhc3MA"
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "ForgeMicroblock",
+            "ForgeMultipart",
+            "betterquesting",
+            "gtit"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-062",
+          "tabId": 2,
+          "orderId": 38,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:BlockLittleTiles",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": "CgAAAwAFc2l6ZXgAAAAIAwAFc2l6ZXkAAAAIAwAFc2l6ZXoAAAAICAADdElEAA5CbG9ja1RpbGVCbG9jawMABWJTaXplAAAAAAgABWJsb2NrAA9taW5lY3JhZnQ6c3RvbmUDAARtZXRhAAAAAAA="
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-063",
+          "tabId": 2,
+          "orderId": 39,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:BlockLittleTiles",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": "CgAAAwAFc2l6ZXgAAAAIAwAFc2l6ZXkAAAAIAwAFc2l6ZXoAAAAICAADdElEAA5CbG9ja1RpbGVCbG9jawMABWJTaXplAAAAAAgABWJsb2NrABBtaW5lY3JhZnQ6cGxhbmtzAwAEbWV0YQAAAAAA"
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        },
+        {
+          "id": "gtit-base-decoration-064",
+          "tabId": 2,
+          "orderId": 40,
+          "currency": {
+            "type": "neko",
+            "amount": 1
+          },
+          "fromItems": [],
+          "toItems": [
+            {
+              "item": "littletiles:BlockLittleTiles",
+              "meta": 0,
+              "amount": 32,
+              "nbtBase64": "CgAAAwAFc2l6ZXgAAAAIAwAFc2l6ZXkAAAAIAwAFc2l6ZXoAAAAICAADdElEAA5CbG9ja1RpbGVCbG9jawMABWJTaXplAAAAAAgABWJsb2NrAA9taW5lY3JhZnQ6Z2xhc3MDAARtZXRhAAAAAAA="
+            }
+          ],
+          "cooldown": 60,
+          "maxTrades": -1,
+          "bqQuestId": "",
+          "recordNBT": true,
+          "requiresMods": [
+            "betterquesting",
+            "gtit",
+            "littletiles"
+          ]
+        }
+      ]
+    }
+  ]
+}

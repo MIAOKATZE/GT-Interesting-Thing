@@ -24,8 +24,8 @@ public class NekoTradeGroup {
     private UUID id;
     /** 交易列表（线程安全，final 保证引用不变） */
     private final CopyOnWriteArrayList<NekoTrade> trades = new CopyOnWriteArrayList<>();
-    /** 冷却时间（tick），-1 表示无冷却 */
-    private int cooldown = -1;
+    /** 冷却时间（秒）；0 无时间限制，-1 为仅允许一次成功兑换。 */
+    private int cooldown = 0;
     /** 最大交易次数，-1 表示无限制 */
     private int maxTrades = -1;
     /** 交易分类 */
@@ -163,7 +163,7 @@ public class NekoTradeGroup {
         // 读取 UUID
         id = new UUID(nbt.getLong("idMsb"), nbt.getLong("idLsb"));
         // 读取基本字段
-        cooldown = nbt.getInteger("cooldown");
+        setCooldown(nbt.getInteger("cooldown"));
         maxTrades = nbt.getInteger("maxTrades");
         category = NekoTradeCategory.ofString(nbt.getString("category"));
         tabId = nbt.getInteger("tabId");
@@ -264,6 +264,7 @@ public class NekoTradeGroup {
     }
 
     public void setCooldown(int cooldown) {
+        com.miaokatze.gtit.trade.NekoTradeEntry.validateCooldown(cooldown);
         this.cooldown = cooldown;
     }
 

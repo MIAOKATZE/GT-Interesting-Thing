@@ -12,11 +12,12 @@ import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
+import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
-import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.utility.UtilityControls;
+import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 
 /**
  * 管理终端-礼包页（T5 实装，纯客户端 MUI2）
@@ -31,7 +32,7 @@ import com.miaokatze.gtit.client.gui.NekoGuiTextures;
  * {@link TerminalClientData#getGiftListLines()} 指定行，服务端限 ≤100 行）</li>
  * <li>重置区：目标玩家选择（在线列表循环选择器 + {@code TextFieldWidget} 手动输入
  * 离线名 ≤16，手动输入优先）+「重置领取状态」按钮（{@code ACTION_GIFT_CLAIM_RESET}，
- * {@link NekoConfirmationDialog} 二次确认后才发包）</li>
+ * {@link TerminalConfirmationDialog} 二次确认后才发包）</li>
  * </ul>
  * <b>纯客户端约束</b>：无 MUI2 同步值/槽位调用；动态文本一律 {@code IKey.dynamic}
  * 惰性求值；页内状态为静态 {@code volatile} 字段（GUI 重开保留，渲染线程读取安全）；
@@ -49,6 +50,8 @@ public final class TerminalGiftPage {
 
     /** 列表可见行数（含首行汇总行） */
     private static final int LIST_ROWS = 10;
+    /** 服务端最多回传的名单行数；视口保持十行，其余可滚动查看。 */
+    private static final int MAX_LIST_ROWS = 100;
     /** 列表行高 */
     private static final int LIST_ROW_H = 10;
     /** 列表区起始 Y */
@@ -91,7 +94,7 @@ public final class TerminalGiftPage {
     // ==================== 重置二次确认弹框（懒构建；宿主面板重建时换绑） ====================
 
     /** 确认弹框实例（复用同一实例，点击前 setParams 刷新文案） */
-    private static NekoConfirmationDialog resetConfirmDialog;
+    private static TerminalConfirmationDialog resetConfirmDialog;
     /** 弹框打开 handler（纯客户端 simple 面板） */
     private static IPanelHandler resetConfirmPanel;
     /** 弹框绑定的宿主面板（GUI 重开新面板时重建 handler，防跨 screen 打开） */
@@ -112,10 +115,11 @@ public final class TerminalGiftPage {
 
         // 居中页名
         page.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GOLD + "新手礼包管理")).pos(0, 2)
+            new TextWidget<>(IKey.str("新手礼包管理")).pos(0, 2)
                 .width(PAGE_WIDTH)
                 .height(12)
                 .textAlign(Alignment.CENTER)
+                .color(UtilityUiStyle.TEXT)
                 .shadow(false));
 
         page.child(createListSection());
@@ -128,12 +132,13 @@ public final class TerminalGiftPage {
 
     private static IWidget createListSection() {
         ParentWidget<?> section = new ParentWidget<>().size(PAGE_WIDTH, RESET_BTN_Y);
+        section.child(UtilityUiStyle.section(0, LIST_Y, PAGE_WIDTH, LIST_ROWS * LIST_ROW_H));
 
         // 刷新按钮（1.5s 冷却；结果经顶部状态回显区 + 列表数据推送刷新）
         section.child(
-            new ButtonWidget<>().pos(2, 16)
+            new TerminalButton().pos(2, 16)
                 .size(REFRESH_BTN_W, BTN_H)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(() -> System.currentTimeMillis() - lastListSendMs >= SEND_COOLDOWN_MS)
                 .overlay(IKey.str(EnumChatFormatting.WHITE + "刷新领取名单"))
                 .tooltipBuilder(t -> {
                     t.addLine(IKey.str("查询已领取新手礼包的玩家（在线+离线）"));
@@ -152,17 +157,18 @@ public final class TerminalGiftPage {
         // 总数行（IKey.dynamic 绑 getGiftTotalCount，未查询时为 0）
         section.child(
             new TextWidget<>(
-                IKey.dynamic(() -> EnumChatFormatting.YELLOW + "共 " + TerminalClientData.getGiftTotalCount() + " 人已领取"))
-                    .pos(REFRESH_BTN_W + 4, 18)
-                    .width(PAGE_WIDTH - REFRESH_BTN_W - 8)
-                    .height(10)
-                    .textAlign(Alignment.CENTER)
-                    .scale(0.75f)
-                    .shadow(false));
+                IKey.dynamic(
+                    () -> EnumChatFormatting.DARK_AQUA + "共 " + TerminalClientData.getGiftTotalCount() + " 人已领取"))
+                        .pos(REFRESH_BTN_W + 4, 18)
+                        .width(PAGE_WIDTH - REFRESH_BTN_W - 8)
+                        .height(10)
+                        .textAlign(Alignment.CENTER)
+                        .scale(0.75f)
+                        .shadow(false));
 
         // 未查询占位提示（已有数据时隐藏）
         section.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "尚未查询，点击上方按钮刷新名单")).pos(0, LIST_Y + 3 * LIST_ROW_H)
+            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + "尚未查询，点击上方按钮刷新名单")).pos(0, LIST_Y + 3 * LIST_ROW_H)
                 .width(PAGE_WIDTH)
                 .height(10)
                 .textAlign(Alignment.CENTER)
@@ -172,16 +178,23 @@ public final class TerminalGiftPage {
                     w -> TerminalClientData.getGiftListLines()
                         .isEmpty()));
 
-        // 列表行（预建 LIST_ROWS 行，IKey.dynamic 逐行绑 getGiftListLines()，越界行显示空串）
-        for (int i = 0; i < LIST_ROWS; i++) {
+        ListWidget<IWidget, ?> list = new ListWidget<>().pos(0, LIST_Y)
+            .size(PAGE_WIDTH, LIST_ROWS * LIST_ROW_H);
+        // 有界视口保留十行高度，动态启用回传行后可滚动阅读全部快照。
+        for (int i = 0; i < MAX_LIST_ROWS; i++) {
             final int row = i;
-            section.child(
-                new TextWidget<>(IKey.dynamic(() -> giftListLine(row))).pos(4, LIST_Y + i * LIST_ROW_H)
+            list.child(
+                new TextWidget<>(IKey.dynamic(() -> TerminalGui.fitLine(giftListLine(row), PAGE_WIDTH - 12, 0.75f)))
                     .width(PAGE_WIDTH - 8)
                     .height(LIST_ROW_H)
+                    .color(UtilityUiStyle.TEXT)
                     .scale(0.75f)
+                    .tooltipBuilder(t -> t.addLine(IKey.str(giftListLine(row))))
+                    .tooltipAutoUpdate(true)
+                    .setEnabledIf(w -> !giftListLine(row).isEmpty())
                     .shadow(false));
         }
+        section.child(list);
 
         return section;
     }
@@ -193,11 +206,12 @@ public final class TerminalGiftPage {
 
         // 重置区标题
         section.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.AQUA + "—— 重置领取状态 ——")).pos(0, 138)
+            new TextWidget<>(IKey.str("—— 重置领取状态 ——")).pos(0, 138)
                 .width(PAGE_WIDTH)
                 .height(10)
                 .textAlign(Alignment.CENTER)
                 .scale(0.75f)
+                .color(UtilityUiStyle.ACCENT)
                 .shadow(false));
 
         // 手动输入行（离线玩家名；手动输入优先于在线选择）
@@ -205,11 +219,12 @@ public final class TerminalGiftPage {
             new TextWidget<>(IKey.str("目标:")).pos(2, FIELD_Y + 3)
                 .size(FIELD_X - 4, 10)
                 .shadow(false));
-        TextFieldWidget nameField = new TextFieldWidget()
+        TextFieldWidget nameField = new UtilityControls.Field()
             .value(new StringValue.Dynamic(() -> manualTargetName, val -> manualTargetName = val))
             .setMaxLength(MAX_NAME_LENGTH);
         nameField.pos(FIELD_X, FIELD_Y)
-            .size(FIELD_W, BTN_H);
+            .size(FIELD_W, BTN_H)
+            .background(UtilityUiStyle.INPUT);
         nameField.tooltipBuilder(t -> {
             t.addLine(IKey.str("手动输入目标玩家名（可输离线玩家，优先于在线选择）"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "最长 " + MAX_NAME_LENGTH + " 字符"));
@@ -223,28 +238,30 @@ public final class TerminalGiftPage {
                 .size(FIELD_X - 4, 10)
                 .shadow(false));
         section.child(
-            new ButtonWidget<>().pos(FIELD_X, ONLINE_ROW_Y)
+            new TerminalButton().pos(FIELD_X, ONLINE_ROW_Y)
                 .size(ONLINE_BTN_SIZE, ONLINE_BTN_SIZE)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(
+                    () -> TerminalClientData.getOnlinePlayers()
+                        .size() > 1)
                 .overlay(IKey.str("<"))
                 .onMouseTapped(mouse -> {
                     if (mouse == 0) shiftOnlineSelection(-1);
                     return true;
                 }));
         section.child(
-            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.WHITE + selectedOnlineName()))
+            new TextWidget<>(IKey.dynamic(TerminalGiftPage::selectedOnlineName))
                 .pos(FIELD_X + ONLINE_BTN_SIZE + 2, ONLINE_ROW_Y + 1)
                 .size(FIELD_W - ONLINE_BTN_SIZE * 2 - 4, 10)
                 .textAlign(Alignment.CENTER)
+                .color(UtilityUiStyle.TEXT)
                 .scale(0.8f)
-                .shadow(false)
-                .setEnabledIf(
-                    w -> !TerminalClientData.getOnlinePlayers()
-                        .isEmpty()));
+                .shadow(false));
         section.child(
-            new ButtonWidget<>().pos(FIELD_X + FIELD_W - ONLINE_BTN_SIZE, ONLINE_ROW_Y)
+            new TerminalButton().pos(FIELD_X + FIELD_W - ONLINE_BTN_SIZE, ONLINE_ROW_Y)
                 .size(ONLINE_BTN_SIZE, ONLINE_BTN_SIZE)
-                .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+                .available(
+                    () -> TerminalClientData.getOnlinePlayers()
+                        .size() > 1)
                 .overlay(IKey.str(">"))
                 .onMouseTapped(mouse -> {
                     if (mouse == 0) shiftOnlineSelection(1);
@@ -253,7 +270,7 @@ public final class TerminalGiftPage {
 
         // 输入优先级提示行
         section.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.GRAY + "手动输入优先；留空则重置在线选中目标")).pos(0, ONLINE_ROW_Y + 16)
+            new TextWidget<>(IKey.str(EnumChatFormatting.DARK_GRAY + "手动输入优先；留空则重置在线选中目标")).pos(0, ONLINE_ROW_Y + 16)
                 .width(PAGE_WIDTH)
                 .height(8)
                 .textAlign(Alignment.CENTER)
@@ -261,16 +278,17 @@ public final class TerminalGiftPage {
                 .shadow(false));
 
         // 重置按钮：二次确认后才发包（未确认不发包；确认回调内再过冷却闸）
-        ButtonWidget<?> resetBtn = new ButtonWidget<>().pos((PAGE_WIDTH - RESET_BTN_W) / 2, RESET_BTN_Y)
+        ButtonWidget<?> resetBtn = new TerminalButton().pos((PAGE_WIDTH - RESET_BTN_W) / 2, RESET_BTN_Y)
             .size(RESET_BTN_W, RESET_BTN_H)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .available(
+                () -> !resolveTargetName().isEmpty()
+                    && System.currentTimeMillis() - lastResetSendMs >= SEND_COOLDOWN_MS)
             .overlay(IKey.str(EnumChatFormatting.RED + "重置领取状态"))
             .tooltipBuilder(t -> {
                 t.addLine(IKey.str(EnumChatFormatting.RED + "重置目标的领取标记（点击后二次确认）"));
                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "重置后目标可重新领取新手礼包"));
             })
-            .tooltipAutoUpdate(true)
-            .setEnabledIf(w -> !resolveTargetName().isEmpty());
+            .tooltipAutoUpdate(true);
         resetBtn.onMouseTapped(mouse -> {
             if (mouse != 0) return false;
             String target = resolveTargetName();
@@ -299,7 +317,7 @@ public final class TerminalGiftPage {
     private static void openResetConfirm(ButtonWidget<?> anchor, String targetName) {
         ModularPanel hostPanel = anchor.getPanel();
         if (resetConfirmDialog == null || resetConfirmPanel == null || resetConfirmParent != hostPanel) {
-            resetConfirmDialog = new NekoConfirmationDialog("gtit_terminal:gift_reset_confirm");
+            resetConfirmDialog = new TerminalConfirmationDialog("gtit_terminal:gift_reset_confirm");
             resetConfirmPanel = IPanelHandler.simple(hostPanel, (parent, player) -> resetConfirmDialog, true);
             resetConfirmParent = hostPanel;
         }

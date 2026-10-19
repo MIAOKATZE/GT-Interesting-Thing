@@ -3,7 +3,6 @@ package com.miaokatze.gtit.trade;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,6 +12,7 @@ import org.apache.logging.log4j.Logger;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
+import com.miaokatze.gtit.trade.preset.TradePresetLayout;
 
 /**
  * 猫猫售货机标签页配置管理（v1.7.7 G4 存储结构重构）
@@ -67,12 +67,12 @@ public class NekoPageConfig {
         try {
             Path path = getConfigPath();
             if (!Files.exists(path)) {
-                Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+                Path legacy = TradeConfigPaths.resolve(LEGACY_CONFIG_PATH);
                 if (Files.exists(legacy)) {
                     load(); // load 内部完成迁移
                 } else {
                     Files.createDirectories(path.getParent());
-                    save(getDefaultPages());
+                    save(withPresetPages(getDefaultPages()));
                     LOG.info("猫猫售货机标签页配置已生成默认文件: {}", path);
                 }
             }
@@ -87,7 +87,7 @@ public class NekoPageConfig {
     public static synchronized NekoPageData load() {
         Path path = getConfigPath();
         if (!Files.exists(path)) {
-            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+            Path legacy = TradeConfigPaths.resolve(LEGACY_CONFIG_PATH);
             if (Files.exists(legacy)) {
                 try {
                     String json = new String(Files.readAllBytes(legacy), StandardCharsets.UTF_8);
@@ -95,6 +95,7 @@ public class NekoPageConfig {
                     if (data != null && data.getPages() != null
                         && !data.getPages()
                             .isEmpty()) {
+                        data = withPresetPages(data);
                         save(data);
                         ConfigMigrationUtil.retireLegacyAsBak(legacy, path, "猫猫售货机标签页配置", "标签页配置文件");
                         return data;
@@ -104,7 +105,7 @@ public class NekoPageConfig {
                 }
             }
             LOG.info("猫猫售货机标签页配置文件不存在，返回默认数据");
-            return getDefaultPages();
+            return withPresetPagesSafely(getDefaultPages());
         }
         try {
             String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
@@ -113,12 +114,12 @@ public class NekoPageConfig {
                 || data.getPages()
                     .isEmpty()) {
                 LOG.warn("猫猫售货机标签页配置文件为空，返回默认数据");
-                return getDefaultPages();
+                return withPresetPages(getDefaultPages());
             }
-            return data;
+            return withPresetPages(data);
         } catch (Exception e) {
             LOG.error("猫猫售货机标签页配置加载失败，返回默认数据", e);
-            return getDefaultPages();
+            return withPresetPagesSafely(getDefaultPages());
         }
     }
 
@@ -129,11 +130,60 @@ public class NekoPageConfig {
         try {
             Path path = getConfigPath();
             Files.createDirectories(path.getParent());
-            String json = GSON.toJson(data);
+            NekoPageData user = new NekoPageData();
+            NekoPageData managed = new NekoPageData();
+            com.miaokatze.gtit.trade.preset.DefaultTradeSources.savePages(data.getPages());
+            for (NekoPageEntry page : data.getPages()) {
+                if (TradePresetLayout.builtinId(page.getId()) != null) continue;
+                (TradePresetLayout.isManagedPage(page.getId()) ? managed : user).getPages()
+                    .add(page);
+            }
+            String json = GSON.toJson(user);
             Files.write(path, json.getBytes(StandardCharsets.UTF_8));
+            // Only touch the managed file when it exists or contains pages; normal first init remains user-only.
+            Path presetPath = TradeConfigPaths.resolve(TradePresetLayout.PAGES_PATH);
+            if (Files.exists(presetPath) || !managed.getPages()
+                .isEmpty()) {
+                Files.write(
+                    presetPath,
+                    GSON.toJson(managed)
+                        .getBytes(StandardCharsets.UTF_8));
+            }
             LOG.info("猫猫售货机标签页配置已保存");
         } catch (Exception e) {
             LOG.error("猫猫售货机标签页配置保存失败", e);
+        }
+    }
+
+    private static NekoPageData withPresetPages(NekoPageData data) throws java.io.IOException {
+        Path path = TradeConfigPaths.resolve(TradePresetLayout.PAGES_PATH);
+        if (!Files.exists(path)) {
+            data.getPages()
+                .addAll(com.miaokatze.gtit.trade.preset.DefaultTradeSources.pages());
+            return data;
+        }
+        String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+        NekoTradeJson.validateDepth(json);
+        NekoPageData managed = GSON.fromJson(json, NekoPageData.class);
+        if (managed == null || managed.getPages() == null) throw new java.io.IOException("默认贸易组页签文件损坏");
+        for (NekoPageEntry page : managed.getPages()) {
+            if (page == null || !TradePresetLayout.isManagedPage(page.getId())) {
+                throw new java.io.IOException("默认贸易组页签 ID 越界");
+            }
+            data.getPages()
+                .add(page);
+        }
+        data.getPages()
+            .addAll(com.miaokatze.gtit.trade.preset.DefaultTradeSources.pages());
+        return data;
+    }
+
+    private static NekoPageData withPresetPagesSafely(NekoPageData data) {
+        try {
+            return withPresetPages(data);
+        } catch (java.io.IOException | RuntimeException failure) {
+            LOG.error("默认贸易组页签加载失败；保留原文件", failure);
+            return data;
         }
     }
 
@@ -173,34 +223,10 @@ public class NekoPageConfig {
      * 生成默认标签页数据
      */
     public static NekoPageData getDefaultPages() {
-        NekoPageData data = new NekoPageData();
-        List<NekoPageEntry> pages = new ArrayList<>();
-
-        // 标签页1：猫猫币
-        NekoPageEntry page1 = new NekoPageEntry(1, "猫猫币", "gtit:neko_coin", 0, true);
-        pages.add(page1);
-
-        // 标签页2：闪烁猫猫币
-        NekoPageEntry page2 = new NekoPageEntry(2, "闪烁猫猫币", "gtit:shimmering_neko_coin", 0, true);
-        pages.add(page2);
-
-        // 标签页3：GTIT
-        NekoPageEntry page3 = new NekoPageEntry(3, "GTIT", "gtit:ring_distant_grasp", 0, true);
-        pages.add(page3);
-
-        // 标签页4：周期领取
-        NekoPageEntry page4 = new NekoPageEntry(4, "周期领取", "minecraft:clock", 0, false);
-        pages.add(page4);
-
-        // 标签页5：基础
-        NekoPageEntry page5 = new NekoPageEntry(5, "基础", "minecraft:bed", 0, false);
-        pages.add(page5);
-
-        data.setPages(pages);
-        return data;
+        return new NekoPageData();
     }
 
     private static Path getConfigPath() {
-        return Paths.get(CONFIG_PATH);
+        return TradeConfigPaths.resolve(CONFIG_PATH);
     }
 }

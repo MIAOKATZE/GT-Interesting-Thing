@@ -30,7 +30,7 @@ public class NekoTradeEntry {
     private NekoCurrencyCost currency;
     private List<ItemEntry> fromItems;
     private List<ItemEntry> toItems;
-    private int cooldown;
+    private int cooldown; // 秒；0 无时间限制，-1 仅限一次成功兑换。
     private int maxTrades;
     private String bqQuestId; // BQ任务绑定ID，空字符串=不需要绑定
     // 是否严格匹配 NBT（v1.7.6 G3⑤）：true=需求按物品+NBT 精确匹配；false=仅按物品匹配。
@@ -41,6 +41,25 @@ public class NekoTradeEntry {
     // 持久化于 tab 文件并随同步包下发，编辑/保存不丢失；玩家删除后随条目消失，
     // 复原（重注册）时由 applyGroup 重新打标。旧 JSON 无该字段时 Gson 保留默认 false。
     private boolean defaultEntry = false;
+    private boolean presetBuiltin;
+    /** Preset quest bindings fail closed if BQ, the quest, or its status becomes unavailable. */
+    private boolean strictBq;
+
+    public boolean isPresetBuiltin() {
+        return presetBuiltin;
+    }
+
+    public void setPresetBuiltin(boolean value) {
+        presetBuiltin = value;
+    }
+
+    public boolean isStrictBq() {
+        return strictBq;
+    }
+
+    public void setStrictBq(boolean value) {
+        strictBq = value;
+    }
 
     /** 可选贸易组的前置门禁；磁盘首次装载和客户端同步均须检查。旧条目缺省无门禁。 */
     private String[] requiresMods;
@@ -102,7 +121,13 @@ public class NekoTradeEntry {
     }
 
     public void setCooldown(int cooldown) {
+        validateCooldown(cooldown);
         this.cooldown = cooldown;
+    }
+
+    /** -1 is one successful redemption; 0 is unrestricted by time; positive values are seconds. */
+    public static void validateCooldown(int cooldown) {
+        if (cooldown < -1) throw new IllegalArgumentException("冷却时间须为 -1（仅限一次）、0 或正秒数");
     }
 
     public int getMaxTrades() {

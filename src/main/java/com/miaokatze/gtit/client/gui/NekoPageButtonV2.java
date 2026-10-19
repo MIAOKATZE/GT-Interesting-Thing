@@ -2,6 +2,7 @@ package com.miaokatze.gtit.client.gui;
 
 import java.util.Set;
 
+import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.api.drawable.IDrawable;
@@ -11,6 +12,7 @@ import com.cleanroommc.modularui.drawable.Icon;
 import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
+import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.widgets.PageButton;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
@@ -60,6 +62,7 @@ public class NekoPageButtonV2 extends PageButton {
     private final int index;
     /** 标签页图标（margin 会在 draw 中根据悬停状态动态调整） */
     private final Icon tabIcon;
+    private Icon sourceIcon;
 
     /**
      * 构造 V2 标签页按钮
@@ -106,6 +109,18 @@ public class NekoPageButtonV2 extends PageButton {
         this.overlay(overlays);
     }
 
+    /** Reserve the upper-left corner for the imported preset while keeping its page icon separate. */
+    public NekoPageButtonV2 sourceIcon(ItemStack stack) {
+        ItemStack sourceStack = stack == null || stack.getItem() == null ? new ItemStack(Items.book) : stack;
+        this.sourceIcon = new ItemDrawable(sourceStack).asIcon()
+            .size(8)
+            .alignment(Alignment.TopLeft)
+            .margin(2, 0, 1, 0);
+        this.tabIcon.size(14)
+            .margin(12, 3, 8, 2);
+        return this;
+    }
+
     /**
      * 鼠标按下事件：记录最后选中的标签页索引
      * <p>
@@ -135,15 +150,19 @@ public class NekoPageButtonV2 extends PageButton {
      */
     @Override
     public void draw(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
+        int left = sourceIcon == null ? ICON_MARGIN_LEFT : 12;
+        int right = sourceIcon == null ? ICON_MARGIN_RIGHT : 3;
         if (this.isHovering()) {
             // 悬停：左 -1、右 +1，图标轻微右移
-            this.tabIcon.marginLeft(ICON_MARGIN_LEFT - 1)
-                .marginRight(ICON_MARGIN_RIGHT + 1);
+            this.tabIcon.marginLeft(left - 1)
+                .marginRight(right + 1);
         } else {
             // 非悬停：恢复基础 margin
-            this.tabIcon.marginLeft(ICON_MARGIN_LEFT)
-                .marginRight(ICON_MARGIN_RIGHT);
+            this.tabIcon.marginLeft(left)
+                .marginRight(right);
         }
         super.draw(context, widgetTheme);
+        if (sourceIcon != null) sourceIcon
+            .draw(context, 0, 0, getArea().width, getArea().height, getActiveWidgetTheme(widgetTheme, isHovering()));
     }
 }
