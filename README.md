@@ -10,7 +10,7 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta1-3 & RC1-2" src="https://img.shields.io/badge/GTNH-2.9.0%20beta1--3%20%26%20RC1--2-orange.svg"></a>
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.8.84" src="https://img.shields.io/badge/Release-1.8.84-green.svg"></a>
+  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.9.3" src="https://img.shields.io/badge/Release-1.9.3-green.svg"></a>
 </p>
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
@@ -102,13 +102,13 @@ Each reward slot independently chooses one alternative per transaction. An ore d
 
 <p align="center"><img src="README/trade.png" width="300" alt="交易界面 / Trade GUI"><br><em>交易界面 / Trade GUI</em></p>
 
-- **Dynamic tabs / 动态标签页**: 3 protected default tabs + custom tabs; adding, deleting or editing a tab updates the open GUI without reopening it
+- **Dynamic tabs / 动态标签页**: Separate jar-default and custom trade columns; adding, deleting or editing a tab updates the open GUI without reopening it
 - **Neko Coin display / 猫猫币显示**: Real-time balance display with expandable details
 - **Coin intercept slot / 猫猫币拦截槽**: Automatically routes Neko Coins from inventory to wallet
 - **Sort & Search / 排序与搜索**: Sort by order ID or name, with text search filtering
 - **BGM / 背景音乐**: 3 random BGM variants with 2-second fade in/out, max 50% volume
 - **BQ lock display / BQ 锁定显示**: Locked trades show golden "LOCKED" text with cooldown overlay; cooling-down trades show cyan cooldown text
-- **动态标签页**：3 个受保护默认标签页 + 自定义标签页；新增、删除或编辑后同步更新打开中的 GUI，无需关闭重开
+- **动态标签页**：JAR 默认贸易与自定义贸易分为两栏；新增、删除或编辑后同步更新打开中的 GUI，无需关闭重开
 - **猫猫币显示**：实时余额显示，可展开详情
 - **猫猫币拦截槽**：自动将背包中的猫猫币导入钱包
 - **排序与搜索**：按顺序 ID 或名称排序，支持文字搜索过滤
@@ -118,6 +118,20 @@ Each reward slot independently chooses one alternative per transaction. An ore d
 猫猫贸易现已接入 NEI：对物品按 R / U 查询产出与用途，对售货机按 U 浏览贸易；配方显示兑换间隔，关联任务可点击打开任务书。
 
 Neko trades are available in NEI: use R / U on items to find outputs and uses, or U on the vending machine to browse trades. Recipes show trade intervals and clickable linked quests.
+
+### Default Trade Presets / 默认贸易预设
+
+<p align="center"><img src="README/screenshots/default-trade-presets.png" width="740" alt="默认贸易组实际界面 / Default trade preset interface"><br><em>默认贸易组实际界面示意 / Actual default trade preset interface</em></p>
+
+Use `/gtit presets` to browse the jar-provided default groups and apply your selection; management requires the single-player owner or dedicated-server OP4. Default and custom trades have separate columns.
+
+使用 `/gtit presets` 浏览 JAR 内置默认贸易组并应用所选组；管理操作要求单人存档拥有者或专用服务器 OP4。默认贸易与自定义贸易分栏显示。
+
+AE presets use three cooldown tiers: basic 0, advanced 2 hours, and high tier 8 hours; the same product keeps the same tier across presets. Batch requirements and outputs scale together, with larger cable batches; tools and one-time entries retain their per-entry rules. Creative Energy Controllers remain one-time trades.
+
+AE 预设采用基础 0、进阶 2 小时、高阶 8 小时三档冷却；同商品跨预设使用同一档位。批次需求与产出同比放大，线缆采用较大批量；工具及一次性条目保留各自规则。创造能量控制器仍为一次性交易。
+
+截图仅展示实际界面，图内数量和数值不是本轮批量、价格或冷却清单；以当前版本随包数据为准。 / Screenshots illustrate the actual interface; their counts and values are not this release's batch, price or cooldown list. Refer to the bundled data for the current release.
 
 ### BetterQuesting Integration / BQ 任务集成
 
@@ -420,6 +434,16 @@ A gift box automatically granted to players on their **first login** to a world.
 - 背包满了物品丢到地上
 - 通过 `config/gtit/gift_config.json` 完全可配置
 - 默认随机池包含 6 枚戒指（凌步、饕餮、磐躯、龙息、裂山、疾风）
+
+### Gift Center / 礼包中心
+
+<p align="center"><img src="README/screenshots/gift-center.png" width="740" alt="礼包中心实际界面 / Gift Center interface"><br><em>礼包中心实际界面示意 / Actual Gift Center interface</em></p>
+
+Use `/gifts` to view gift rewards, unlock conditions and claim status. The single-player owner or dedicated-server OP4 can create and edit gifts in the management interface.
+
+使用 `/gifts` 查看礼包奖励、解锁条件与领取状态；单人存档拥有者或专用服务器 OP4 可在管理界面新建和编辑礼包。
+
+截图仅作实际界面示意，图内奖励数量和数值不代表当前默认内容清单。 / This screenshot illustrates the actual interface; its reward counts and values are not a list of the current defaults.
 
 ### Gift Config / 宝箱配置
 
