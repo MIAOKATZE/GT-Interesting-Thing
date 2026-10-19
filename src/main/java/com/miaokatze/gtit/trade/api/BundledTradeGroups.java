@@ -21,7 +21,7 @@ import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
 /**
  * 旧内置贸易组入口的兼容桥。
  * <p>
- * v1.8.100 起由 DefaultTradeSources 直接装配 jar 默认内容，TradePresetStore 管理选择、覆盖与更新。
+ * v1.9.1 起由 DefaultTradeSources 直接装配 jar 默认内容，TradePresetStore 管理选择、覆盖与更新。
  * 本类启动钩子不再把默认内容写入玩家文件；下述 E4a 版本状态仅供旧调用兼容参考。
  * <p>
  * 从 jar 资产 {@code assets/gtit/bqtrades/} 读取内置组（由内容编辑并行维护，
