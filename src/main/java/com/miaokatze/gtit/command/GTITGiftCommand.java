@@ -619,8 +619,8 @@ public class GTITGiftCommand extends CommandBase {
                     sender.addChatMessage(new ChatComponentTranslation("gtit.command.defaultreset.usage"));
                     return;
                 }
-                if (!TradePresetManager.canConfigure(player)) {
-                    sender.addChatMessage(new ChatComponentTranslation("gtit.preset.permission"));
+                if (!TradePresetManager.canResetDefaults(player)) {
+                    sender.addChatMessage(new ChatComponentTranslation("gtit.command.defaultreset.permission"));
                     return;
                 }
                 TradePresetManager.Result result = TradePresetManager.resetDefaults(player);
@@ -708,7 +708,7 @@ public class GTITGiftCommand extends CommandBase {
         sender.addChatMessage(new ChatComponentText("/gtit help [模块] | /gtit tutorial [模块]"));
         sender.addChatMessage(new ChatComponentText("/gifts - 查看礼包；/gtit gift help - 新手礼包兼容配置命令"));
         sender.addChatMessage(new ChatComponentText("/gtit gift ui - 打开礼包窗口"));
-        sender.addChatMessage(new ChatComponentText("/gtit presets - 打开贸易预设管理（单人拥有者 / OP4）"));
+        sender.addChatMessage(new ChatComponentText("/gtit presets - 打开贸易预设管理（单人拥有者 / OP2）"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 猫猫售货机完整帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit lottery help - 抽奖配置命令"));

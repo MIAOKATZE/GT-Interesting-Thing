@@ -90,14 +90,14 @@ public final class TaumCompat {
         thaumcraftLoaded = isModLoadedSafely(MODID_THAUMCRAFT);
         thaumicTinkererLoaded = isModLoadedSafely(MODID_THAUMIC_TINKERER);
         if (!thaumcraftLoaded) {
-            GTInterestingThing.LOG.info("[GTIT-Taum] 未检测到 Thaumcraft，源质蒸馏栏整栏降级为不可用");
+            GTInterestingThing.LOG.debug("[GTIT-Taum] 未检测到 Thaumcraft，源质蒸馏栏整栏降级为不可用");
             return;
         }
         try {
             Class.forName(TC_FLAG_CLASS);
         } catch (Throwable t) {
             thaumcraftLoaded = false;
-            GTInterestingThing.LOG.warn("[GTIT-Taum] Loader 报告 Thaumcraft 在场但 {} 不可达，源质栏降级", TC_FLAG_CLASS, t);
+            GTInterestingThing.LOG.debug("[GTIT-Taum] Loader 报告 Thaumcraft 在场但 {} 不可达，源质栏降级", TC_FLAG_CLASS, t);
             return;
         }
         try {
@@ -105,13 +105,13 @@ public final class TaumCompat {
                 .getDeclaredConstructor()
                 .newInstance();
             bridge = (TaumBridgeApi) created;
-            GTInterestingThing.LOG.info(
+            GTInterestingThing.LOG.debug(
                 "[GTIT-Taum] 检测到 Thaumcraft（TT 在场={}），源质桥接层已装配；aspect 注册数 {}",
                 thaumicTinkererLoaded,
                 bridge.aspectOrder().length);
         } catch (Throwable t) {
             bridge = null;
-            GTInterestingThing.LOG.warn("[GTIT-Taum] 源质桥接层装配失败，蒸馏栏降级为不可用", t);
+            GTInterestingThing.LOG.debug("[GTIT-Taum] 源质桥接层装配失败，蒸馏栏降级为不可用", t);
         }
     }
 

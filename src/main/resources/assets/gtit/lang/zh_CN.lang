@@ -699,7 +699,7 @@ gtit.gift.command.player_only=请以玩家身份打开礼包目录。
 gtit.gift.command.claimed=礼包申请已处理。如仍待发放，请腾出背包空间。
 gtit.gift.command.usage=/gifts [ui|claim <ID>|help|tutorial]：查看礼包或领取已解锁的手动礼包。
 gtit.gift.partial=已取出部分奖励，请腾出空间后再次打开礼包。
-gtit.preset.permission=仅单人存档拥有者或服务器 OP4 可管理默认贸易组。
+gtit.preset.permission=仅单人存档拥有者或服务器 OP2 可管理默认贸易组。
 key.gtit.gift_management=礼包管理
 gtit.gift.ui.subtitle=选择礼包查看奖励 · 管理操作仅限存档拥有者 / OP4
 gtit.gift.ui.empty_selection=从左侧选择一个礼包，查看奖励与领取状态。
@@ -707,7 +707,7 @@ gtit.gift.ui.delete_confirm=删除这个礼包？
 gtit.gift.ui.delete_hint=只删除礼包定义；玩家已经领取的奖励不会撤回。此操作无法撤销。
 gtit.gift.ui.cancel=取消
 gtit.gift.login_notice=[GTIT] 按 %s 打开礼包管理。可在控制设置中更改或解除绑定；需要存档拥有者 / OP4 权限。
-gtit.preset.subtitle=存档共享 · 单人拥有者 / 服务器 OP4
+gtit.preset.subtitle=存档共享 · 单人拥有者 / 服务器 OP2
 gtit.gift.ui.shell=礼包物品
 gtit.gift.ui.shell_hint=下方选择实际发放的礼包物品；通常需带有效发放标签，新手礼盒例外。
 gtit.gift.ui.list_icon=列表图标
@@ -848,9 +848,9 @@ gtit.preset.ui.help=刷新目录：重新读取服务器 MiaoTrade 文件，不�
 
 # v1.8.100 trade sources and command guidance
 gtit.command.unknown=未知子命令：%s。使用 /gtit help 查看有效入口。
-gtit.command.help.title=GTIT 命令（/gtit 需要 OP2；预设管理与默认贸易重置需要单人拥有者 / OP4）
+gtit.command.help.title=GTIT 命令（命令与预设管理需要 OP2；默认贸易重置需要单人拥有者 / OP4）
 gtit.command.gift.intro=礼包用 /gifts 查看；以下兼容配置命令仅修改新手礼包。
-gtit.command.presets.help=贸易预设：单人拥有者 / OP4 可选择、编辑和保存；刷新目录只重读，安装需点击应用。
+gtit.command.presets.help=贸易预设：单人拥有者 / OP2 可选择、编辑和保存；刷新目录只重读，安装需点击应用。
 gtit.command.defaultreset.usage=用法：/gtit nekovm defultreset（单人拥有者 / OP4）
 gtit.command.defaultreset.help=/gtit nekovm defultreset - 强制恢复默认贸易，保留自定义内容（单人拥有者 / OP4）
 gtit.command.timereset.done=已重置当前玩家/团队的交易历史、次数和冷却；当前注册 %s 个交易组。
@@ -888,3 +888,5 @@ gtit.trade.cooldown.once=仅限一次
 gtit.trade.cooldown.redeemed=已兑换
 gtit.trade.cooldown.redeemed_hint=已兑换（仅限一次）
 gtit.trade.cooldown.input_hint=-1：仅限一次；0：无冷却；正数：冷却秒数。
+
+gtit.command.defaultreset.permission=仅单人存档拥有者或服务器 OP4 可恢复默认贸易。

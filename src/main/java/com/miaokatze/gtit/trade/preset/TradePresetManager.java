@@ -70,12 +70,21 @@ public final class TradePresetManager {
     }
 
     public static boolean canConfigure(EntityPlayerMP player) {
+        return canManageAtLevel(player, 2);
+    }
+
+    /** Restoring bundled defaults retains its separate destructive-operation permission. */
+    public static boolean canResetDefaults(EntityPlayerMP player) {
+        return canManageAtLevel(player, 4);
+    }
+
+    private static boolean canManageAtLevel(EntityPlayerMP player, int level) {
         if (player == null || player.worldObj == null || player.worldObj.isRemote) return false;
         MinecraftServer server = MinecraftServer.getServer();
         if (server == null) return false;
         if (server.isSinglePlayer()) return player.getCommandSenderName()
             .equals(server.getServerOwner());
-        return player.canCommandSenderUseCommand(4, "gtit");
+        return player.canCommandSenderUseCommand(level, "gtit");
     }
 
     public static synchronized Snapshot snapshot(EntityPlayerMP player) {
@@ -210,7 +219,8 @@ public final class TradePresetManager {
 
     public static synchronized Result resetDefaults(EntityPlayerMP player) {
         try {
-            requirePermission(player);
+            if (!canResetDefaults(player)) throw new IllegalArgumentException("仅单人存档所有者或专用服务器 OP 等级 4 可恢复默认贸易");
+            requireServer();
             store.resetDefaults();
             refreshTrades();
             return result(player, true, "默认贸易已从 jar 恢复，自定义贸易与预设选择已保留");
@@ -303,7 +313,7 @@ public final class TradePresetManager {
     }
 
     private static void requirePermission(EntityPlayerMP player) {
-        if (!canConfigure(player)) throw new IllegalArgumentException("仅单人存档所有者或专用服务器 OP 等级 4 可管理预设");
+        if (!canConfigure(player)) throw new IllegalArgumentException("仅单人存档所有者或专用服务器 OP 等级 2 可管理预设");
         requireServer();
     }
 

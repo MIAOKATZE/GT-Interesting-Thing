@@ -32,7 +32,7 @@ final class TradePresetsNativeScenario implements ProbeScenario {
             context.check(
                 "unprivileged-manager-permission",
                 !TradePresetManager.canConfigure(player),
-                "Real disconnected synthetic player has no OP4 permission or singleplayer owner identity");
+                "Real disconnected synthetic player has no OP2 permission or singleplayer owner identity");
             net.minecraft.inventory.Container beforeUi = player.openContainer;
             try {
                 TradePresetUI.open(player);
