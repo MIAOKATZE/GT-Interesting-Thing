@@ -30,10 +30,10 @@ public class BqAchievementBridge {
             bqLoaded = true;
             BqAchievementBridge bridge = new BqAchievementBridge();
             MinecraftForge.EVENT_BUS.register(bridge);
-            LOG.info("BqAchievementBridge 已注册，监听 BQ 任务事件");
+            LOG.debug("BqAchievementBridge 已注册，监听 BQ 任务事件");
         } catch (ClassNotFoundException e) {
             bqLoaded = false;
-            LOG.info("BetterQuesting 未加载，跳过 BqAchievementBridge 注册");
+            LOG.debug("BetterQuesting 未加载，跳过 BqAchievementBridge 注册");
         }
     }
 

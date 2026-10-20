@@ -30,10 +30,10 @@ public final class BqCompat {
         try {
             Class.forName("betterquesting.api.questing.IQuest");
             bqLoaded = true;
-            GTInterestingThing.LOG.info("[GTIT-BQ] 检测到 BetterQuesting，任务注入集成启用");
+            GTInterestingThing.LOG.debug("[GTIT-BQ] 检测到 BetterQuesting，任务注入集成启用");
         } catch (ClassNotFoundException e) {
             bqLoaded = false;
-            GTInterestingThing.LOG.info("[GTIT-BQ] 未检测到 BetterQuesting，任务注入集成静默停用");
+            GTInterestingThing.LOG.debug("[GTIT-BQ] 未检测到 BetterQuesting，任务注入集成静默停用");
         }
     }
 

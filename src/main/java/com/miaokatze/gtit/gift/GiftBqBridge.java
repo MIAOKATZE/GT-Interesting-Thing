@@ -41,7 +41,7 @@ public final class GiftBqBridge {
             return query(player, parsed);
         } catch (RuntimeException | LinkageError e) {
             LogManager.getLogger("gtit")
-                .warn("Gift BQ completion check failed: {} / {}", player, questId, e);
+                .debug("Gift BQ completion check failed: {} / {}", player, questId, e);
             return false;
         }
     }

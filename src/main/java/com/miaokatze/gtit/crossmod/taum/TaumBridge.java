@@ -637,7 +637,7 @@ public final class TaumBridge implements TaumBridgeApi {
                     Item found = lookupIn(MODID_THAUMIC_TINKERER, candidate);
                     if (found instanceof IEssentiaContainerItem) {
                         vessel = found;
-                        GTInterestingThing.LOG.info(
+                        GTInterestingThing.LOG.debug(
                             "[GTIT-Taum] 检测到第三方源质容器 {}:{}（★R88 起仅作在场读数，" + "出件载体钉为 TC 源质瓶）",
                             MODID_THAUMIC_TINKERER,
                             candidate);
@@ -666,7 +666,7 @@ public final class TaumBridge implements TaumBridgeApi {
         if (!warned) {
             warned = true;
             GTInterestingThing.LOG
-                .warn("[GTIT-Taum] Thaumcraft 桥接调用失败（{}），源质栏降级为不可用；" + "多为 TC 版本与本仓编译期 api 漂移所致", where, t);
+                .debug("[GTIT-Taum] Thaumcraft 桥接调用失败（{}），源质栏降级为不可用；" + "多为 TC 版本与本仓编译期 api 漂移所致", where, t);
         }
     }
 }
