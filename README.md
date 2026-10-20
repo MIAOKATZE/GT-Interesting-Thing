@@ -13,7 +13,7 @@
   <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.9.3" src="https://img.shields.io/badge/Release-1.9.3-green.svg"></a>
 </p>
 
-此版本客户端与服务端均需 [MIAOKATZE Core 0.1.2](https://github.com/MIAOKATZE/MIAOKATZE-Core)（兼容区间：0.1.2 ≤ 版本 < 0.2.0）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
+此版本客户端与服务端均需 [MIAOKATZE Core 0.1.3](https://github.com/MIAOKATZE/MIAOKATZE-Core)（兼容区间：0.1.3 ≤ 版本 < 0.2.0）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
 
