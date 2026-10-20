@@ -9,11 +9,13 @@
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg"></a>
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
-  <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 beta1-3 & RC1-2" src="https://img.shields.io/badge/GTNH-2.9.0%20beta1--3%20%26%20RC1--2-orange.svg"></a>
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 1.9.3" src="https://img.shields.io/badge/Release-1.9.3-green.svg"></a>
+  <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 RC" src="https://img.shields.io/badge/GTNH-2.9.0%20RC-orange.svg"></a>
+  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 2.0.0" src="https://img.shields.io/badge/Release-2.0.0-green.svg"></a>
 </p>
 
-此版本客户端与服务端均需 [MIAOKATZE Core 0.1.4](https://github.com/MIAOKATZE/MIAOKATZE-Core)（兼容区间：0.1.4 ≤ 版本 < 0.2.0）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
+此版本客户端与服务端均必须安装前置库 [MIAOKATZE Core 0.1.5](https://github.com/MIAOKATZE/MIAOKATZE-Core)（兼容区间：0.1.5 ≤ 版本 < 0.2.0）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
+
+仅支持 GTNH 2.9.0 RC 版本。自 v2.0.0 起，建议 GTIT、GTSWN、GTSR 三者一起更新。
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
 
@@ -27,9 +29,7 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 | GTNH         | GTIT   | Maintenance / 维护 |
 | ------------ | ------ | :--------------: |
-| 2.9.0 beta1-3 & RC1-2 | **1.8.0 +**（当前 / current） |        ✔️        |
-| 2.9.0 beta-1&2 | 1.0.0~1.7.53| ✔️ |
-| 2.8.4        | 0.1.x  |        ❌️        |
+| 2.9.0 RC | **2.0.0+**（当前 / current） |        ✔️        |
 
 Download the packaged mod from [GitHub Releases](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases). The current version comes from `gradle.properties` (`RELEASE_VERSION`); development history is recorded under `plan/workflow/`.
 
@@ -646,5 +646,3 @@ Released under the AGPL-3.0 License. See the LICENSE file for details.
   无限存储元件的最初实现移植自 AE2Things 的存储元件代码（GTNH 2.8.4 版本），为 GTNH 2.9.0 AE2 API 重写；v1.8.22 起已被 GTIT 自有的多通道「猫猫无限存储单元」取代，移植版两枚降级为 `[OLD]` 保留。
 - **[VendingMachine](https://github.com/GTNewHorizons/VendingMachine)** — The Neko Vending Machine originated on top of the VendingMachine framework, with custom currency, GUI, and trade logic, before being rebuilt as the independent V2 multiblock on GT5U.
   猫猫售货机最初基于 VendingMachine 框架构建（自定义货币、界面与交易逻辑），后重构为基于 GT5U 的独立 V2 多方块机器。
-
-GTNH 2.9.0 RC2 is the only supported platform baseline. Older beta/RC1 packs are unsupported.
