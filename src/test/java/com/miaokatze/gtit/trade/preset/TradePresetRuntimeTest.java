@@ -221,6 +221,7 @@ public final class TradePresetRuntimeTest {
         check(
             "".equals(status.invoke(codec, UUID.randomUUID())),
             "open container status cache invalidates immediately");
+        com.miaokatze.gtit.gui.vm.TradeWidgetEditModeTest.run();
         System.out.println("TradePresetRuntimeTest: 22 checks passed");
     }
 
