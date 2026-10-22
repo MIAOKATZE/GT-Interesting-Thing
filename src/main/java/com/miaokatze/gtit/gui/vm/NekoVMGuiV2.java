@@ -1514,10 +1514,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             for (int i = 0; i < MAX_TRADES; i++) {
                 NekoTradeItemDisplayWidget tile = new NekoTradeItemDisplayWidget(null, NekoDisplayType.TILE);
                 tile.setCallback(this);
+                tile.setEditMode(isEditModeActive());
                 tiles.add(tile);
 
                 NekoTradeItemDisplayWidget list = new NekoTradeItemDisplayWidget(null, NekoDisplayType.LIST);
                 list.setCallback(this);
+                list.setEditMode(isEditModeActive());
                 lists.add(list);
             }
             displayedTradesTiles.put(category, tiles);
