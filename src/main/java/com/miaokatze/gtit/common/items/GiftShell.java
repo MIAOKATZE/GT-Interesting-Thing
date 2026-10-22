@@ -57,7 +57,10 @@ public class GiftShell extends Item {
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
         if (!world.isRemote && player instanceof EntityPlayerMP serverPlayer) {
             GiftService.INSTANCE.open(serverPlayer, stack);
-            return serverPlayer.inventory.getCurrentItem();
+            // GiftService already commits and synchronizes the complete inventory transaction.
+            // Returning the reward now in the hand lets vanilla's creative-mode useItem path
+            // restore the package's old count (1) onto that reward.
+            return stack;
         }
         return stack;
     }

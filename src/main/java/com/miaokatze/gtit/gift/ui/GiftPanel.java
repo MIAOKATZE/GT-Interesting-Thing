@@ -17,7 +17,6 @@ import com.cleanroommc.modularui.value.sync.GenericSyncValue;
 import com.cleanroommc.modularui.value.sync.InteractionSyncHandler;
 import com.cleanroommc.modularui.value.sync.PanelSyncHandler;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.PhantomItemSlotSH;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.Dialog;
@@ -30,6 +29,7 @@ import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftIconCatalog;
+import com.miaokatze.gtit.gift.GiftNbt;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
 import com.miaokatze.gtit.gift.GiftShellCatalog;
@@ -862,13 +862,25 @@ final class GiftPanel {
     }
 
     private static PhantomItemSlot ghost(PanelSyncManager sm, GiftEditorSession session, int slot) {
-        PhantomItemSlotSH handler = new PhantomItemSlotSH(
-            new ModularSlot(session.visibleItems, slot).ignoreMaxStackSize(true)
-                .filter(stack -> sm.isClient() || session.admin())) {
+        GiftGhostSlotSync handler = new GiftGhostSlotSync(new ModularSlot(session.visibleItems, slot) {
+
+            @Override
+            public boolean isItemValid(net.minecraft.item.ItemStack stack) {
+                // The base probe temporarily clears/restores the slot, which mutates our draft.
+                return stack != null && (sm.isClient() || session.admin());
+            }
+        }.ignoreMaxStackSize(true)) {
 
             @Override
             public void readOnServer(int id, PacketBuffer buffer) throws IOException {
-                if (buffer.readableBytes() > 131072) throw new IOException("Oversized ghost item payload");
+                if (buffer.readableBytes() > GiftNbt.MAX_BYTES + 32) {
+                    action(
+                        sm,
+                        session,
+                        true,
+                        () -> { throw new IllegalArgumentException("Oversized ghost item; original retained"); });
+                    return;
+                }
                 byte[] payload = new byte[buffer.readableBytes()];
                 buffer.readBytes(payload);
                 final long generation = session.editGeneration;
@@ -879,6 +891,8 @@ final class GiftPanel {
                     }
                     PacketBuffer copy = new PacketBuffer(Unpooled.wrappedBuffer(payload));
                     try {
+                        if (id == REJECT_ITEM)
+                            throw new IllegalArgumentException("Invalid or oversized item NBT; original retained");
                         super.readOnServer(id, copy);
                     } catch (IOException e) {
                         throw new IllegalArgumentException("Invalid ghost item payload", e);
@@ -889,7 +903,21 @@ final class GiftPanel {
             }
         };
         sm.syncValue("gift_ghost_" + slot, handler);
-        PhantomItemSlot widget = new PhantomItemSlot().syncHandler(handler);
+        PhantomItemSlot widget = new PhantomItemSlot() {
+
+            @Override
+            public boolean handleDragAndDrop(net.minecraft.item.ItemStack stack, int button) {
+                try {
+                    GiftNbt.encode(stack.getTagCompound());
+                    if (stack.stackSize < 1 || stack.stackSize > 4096)
+                        throw new IllegalArgumentException("Invalid item count");
+                } catch (IllegalArgumentException e) {
+                    handler.syncToServer(GiftGhostSlotSync.REJECT_ITEM);
+                    return false;
+                }
+                return super.handleDragAndDrop(stack, button);
+            }
+        }.syncHandler(handler);
         widget.background(UtilityUiStyle.MANAGER_SLOT);
         return widget;
     }
@@ -924,7 +952,7 @@ final class GiftPanel {
 
     private static StringSyncValue write(PanelSyncManager sm, GiftEditorSession session, String key,
         Supplier<String> getter, Consumer<String> setter, int limit) {
-        StringSyncValue value = new StringSyncValue(() -> {
+        StringSyncValue value = new GiftTextSync(() -> {
             String text = getter.get();
             return text == null ? "" : text;
         }, text -> {
@@ -938,7 +966,21 @@ final class GiftPanel {
                 setter.accept(text);
                 session.dirty = true;
             });
-        }).allowC2S();
+        }, limit) {
+
+            @Override
+            public void readOnServer(int id, PacketBuffer buffer) throws IOException {
+                try {
+                    super.readOnServer(id, buffer);
+                } catch (IOException | RuntimeException e) {
+                    action(
+                        sm,
+                        session,
+                        true,
+                        () -> { throw new IllegalArgumentException("Invalid or oversized input; original retained"); });
+                }
+            }
+        }.allowC2S();
         sm.syncValue(key, value);
         return value;
     }

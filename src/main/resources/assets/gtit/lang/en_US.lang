@@ -723,15 +723,15 @@ gtit.gift.command.player_only=Open this library as a player.
 gtit.gift.command.claimed=Gift request processed. Make room in your inventory if delivery is pending.
 gtit.gift.command.usage=/gifts [ui|claim <ID>|help|tutorial]: browse gifts or claim an unlocked manual gift.
 gtit.gift.partial=Some rewards were collected. Free more inventory space and open this package again.
-gtit.preset.permission=Only the singleplayer save owner or server OP2 can manage default trade groups.
+gtit.preset.permission=Default trade management requires the save owner or an authorized server operator (OP2 by default, configurable from OP2 to OP4).
 key.gtit.gift_management=Gift Management
-gtit.gift.ui.subtitle=Select a gift to inspect rewards - Owner / OP4 administration
+gtit.gift.ui.subtitle=Select a gift to inspect rewards - Owner / administrator (default OP2)
 gtit.gift.ui.empty_selection=Select a gift on the left to view rewards and claim status.
 gtit.gift.ui.delete_confirm=Delete this gift?
 gtit.gift.ui.delete_hint=Deletes the gift definition only. Claimed rewards are not revoked. This cannot be undone.
 gtit.gift.ui.cancel=Cancel
-gtit.gift.login_notice=[GTIT] Press %s for gift management. Rebind or unbind it in Controls; save owner / OP4 permission required.
-gtit.preset.subtitle=Shared world · Owner / server OP2
+gtit.gift.login_notice=[GTIT] Press %s for gift management. Rebind or unbind it in Controls; owner / administrator permission required (default OP2, configurable OP2-4).
+gtit.preset.subtitle=Shared world · Owner / administrator (default OP2)
 gtit.gift.ui.shell=Gift Item
 gtit.gift.ui.shell_hint=Choose the actual item issued below. A valid grant tag is required, except for starter gifts.
 gtit.gift.ui.list_icon=List Icon
@@ -872,9 +872,9 @@ The icon is a ghost slot and consumes no items.
 
 # v1.8.100 trade sources and command guidance
 gtit.command.unknown=Unknown subcommand: %s. Use /gtit help for supported commands.
-gtit.command.help.title=GTIT commands (commands and preset administration require OP2; default trade reset requires the single-player owner / OP4)
+gtit.command.help.title=GTIT commands (commands require OP2; gift and preset management default to OP2, configurable OP2-4; default trade reset requires the owner / OP4)
 gtit.command.gift.intro=Use /gifts to browse gifts. These compatibility configuration commands edit the starter gift only.
-gtit.command.presets.help=Trade presets: the single-player owner / OP2 can select, edit and save. Refresh only rereads the catalog; Apply installs a selection.
+gtit.command.presets.help=Trade presets: the owner / administrator can select, edit and save (default OP2, configurable OP2-4). Refresh rereads the catalog; Apply installs a selection.
 gtit.command.defaultreset.usage=Usage: /gtit nekovm defultreset (single-player owner / OP4)
 gtit.command.defaultreset.help=/gtit nekovm defultreset - Force-restore default trades while preserving custom content (single-player owner / OP4)
 gtit.command.timereset.done=Reset the current player/team's trade history, counts and cooldowns; %s trade groups are currently registered.

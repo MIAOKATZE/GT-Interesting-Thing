@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.gift.ui;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,6 +15,7 @@ import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.config.GiftConfig.ItemEntry;
 import com.miaokatze.gtit.gift.GiftDefinition;
 import com.miaokatze.gtit.gift.GiftIconCatalog;
+import com.miaokatze.gtit.gift.GiftNbt;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
 import com.miaokatze.gtit.gift.GiftShellCatalog;
@@ -23,6 +25,9 @@ final class GiftEditorSession {
 
     static final int PAGE_SIZE = 4;
     static final int MAX_ITEMS = 128;
+    static final int MAX_NBT_TEXT = 16384;
+    static final int MAX_TEXT_BYTES = Short.MAX_VALUE - 74;
+    static final String PRESERVED_NBT = "[NBT cannot be edited as text; original retained. Replace item or clear row.]";
     final EntityPlayer player;
     final ItemEntry[] unresolved = new ItemEntry[1 + MAX_ITEMS * 2];
     final ItemStackHandler items = new ItemStackHandler(1 + MAX_ITEMS * 2) {
@@ -41,6 +46,13 @@ final class GiftEditorSession {
 
         @Override
         public void setStackInSlot(int slot, ItemStack stack) {
+            if (stack != null) {
+                if (stack.stackSize < 1 || stack.stackSize > 4096)
+                    throw new IllegalArgumentException("Amount must be 1..4096");
+                if (stack.getItemDamage() < 0 || stack.getItemDamage() > 32767)
+                    throw new IllegalArgumentException("Invalid gift item metadata");
+                GiftNbt.encode(stack.getTagCompound());
+            }
             items.setStackInSlot(mapped(slot), stack == null ? null : stack.copy());
             unresolved[mapped(slot)] = null;
             dirty = true;
@@ -260,7 +272,8 @@ final class GiftEditorSession {
     }
 
     void requireAdmin() {
-        if (!admin()) throw new IllegalStateException("OP level 4 required");
+        if (!admin())
+            throw new IllegalStateException("OP level " + DefaultContentConfig.managementOpLevel() + " required");
     }
 
     void invalidate() {
@@ -332,24 +345,59 @@ final class GiftEditorSession {
 
     String nbt(int slot) {
         ItemStack stack = visibleItems.getStackInSlot(slot);
-        return stack == null || stack.getTagCompound() == null ? ""
-            : stack.getTagCompound()
-                .toString();
+        if (stack == null || stack.getTagCompound() == null) return "";
+        NBTTagCompound tag = stack.getTagCompound();
+        String text = tag.toString();
+        if (!editableText(text)) return PRESERVED_NBT;
+        try {
+            // Vanilla's toString is lossy for byte arrays and some strings; never offer that as editable NBT.
+            return tag.equals(JsonToNBT.func_150315_a(text)) ? text : PRESERVED_NBT;
+        } catch (Exception e) {
+            return PRESERVED_NBT;
+        }
     }
 
     void nbt(int slot, String text) {
         requireAdmin();
-        if (text.length() > 16384) throw new IllegalArgumentException("NBT is too long");
+        if (!editableText(text))
+            throw new IllegalArgumentException("NBT text exceeds editor limits; original retained");
         ItemStack stack = visibleItems.getStackInSlot(slot);
         if (stack == null) return;
+        String current = nbt(slot);
+        if (current.equals(text)) return;
+        if (PRESERVED_NBT.equals(current)) throw new IllegalArgumentException(PRESERVED_NBT);
         try {
+            checkTextDepth(text);
             NBTTagCompound tag = text.trim()
                 .isEmpty() ? null : (NBTTagCompound) JsonToNBT.func_150315_a(text);
+            GiftNbt.encode(tag);
             stack = stack.copy();
             stack.setTagCompound(tag);
             visibleItems.setStackInSlot(slot, stack);
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid compound NBT");
+            throw new IllegalArgumentException("Invalid or oversized compound NBT; original retained", e);
+        }
+    }
+
+    static boolean editableText(String text) {
+        return text != null && text.length() <= MAX_NBT_TEXT
+            && text.getBytes(StandardCharsets.UTF_8).length <= MAX_TEXT_BYTES;
+    }
+
+    private static void checkTextDepth(String text) {
+        boolean quoted = false;
+        boolean escaped = false;
+        int depth = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (ch == '\\') escaped = true;
+                else if (ch == '"') quoted = false;
+            } else if (ch == '"') quoted = true;
+            else if (ch == '{' || ch == '[') {
+                if (++depth > 32) throw new IllegalArgumentException("NBT nesting limit exceeded");
+            } else if (ch == '}' || ch == ']') depth--;
         }
     }
 }

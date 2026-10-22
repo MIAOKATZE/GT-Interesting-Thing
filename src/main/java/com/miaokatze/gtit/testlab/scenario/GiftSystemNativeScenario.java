@@ -694,7 +694,9 @@ final class GiftSystemNativeScenario implements ProbeScenario {
             GiftRegistry.INSTANCE.save(definition, 0);
         }
         GiftService.INSTANCE.onLogin(player);
+        int shellIndex = 0;
         for (String key : GiftIconCatalog.DEFAULT_KEYS) {
+            final boolean creative = shellIndex++ % 2 == 1;
             String id = source.id + "-shell-" + key;
             ItemStack issued = findPackage(player, id);
             String actualRegistry = issued == null ? "<missing>"
@@ -725,8 +727,18 @@ final class GiftSystemNativeScenario implements ProbeScenario {
                 }
                 player.inventory.currentItem = handSlot;
                 held = player.inventory.getCurrentItem() == issued;
-                returnedMatches = issued.getItem()
-                    .onItemRightClick(issued, player.worldObj, player) == player.inventory.getCurrentItem();
+                net.minecraft.server.management.ItemInWorldManager use = new net.minecraft.server.management.ItemInWorldManager(
+                    player.worldObj) {
+
+                    @Override
+                    public boolean isCreative() {
+                        return creative;
+                    }
+                };
+                use.thisPlayerMP = player;
+                // Invoke vanilla's caller too: creative use restores the old count onto a changed return stack.
+                // GiftService owns the inventory transaction, so the original callback object stays unchanged.
+                returnedMatches = !use.tryUseItem(player, player.worldObj, issued) && issued.stackSize == 1;
             }
             GiftService.Status after = GiftService.INSTANCE.status(player, id);
             int remaining = packageCount(player, id);
@@ -753,6 +765,8 @@ final class GiftSystemNativeScenario implements ProbeScenario {
                     + held
                     + ", returnedMatches="
                     + returnedMatches
+                    + ", creative="
+                    + creative
                     + ", before="
                     + before
                     + ", after="

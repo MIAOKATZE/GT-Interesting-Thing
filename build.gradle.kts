@@ -198,6 +198,7 @@ mapOf(
     "runGiftSystemTest" to "com.miaokatze.gtit.gift.GiftSystemTest",
     "runGiftEditorSessionTest" to "com.miaokatze.gtit.gift.ui.GiftEditorSessionTest",
     "runGiftAccessTest" to "com.miaokatze.gtit.gift.ui.GiftAccessTest",
+    "runLootRegistrarTest" to "com.miaokatze.gtit.common.loot.LootRegistrarTest",
     "runTradePresetStoreTest" to "com.miaokatze.gtit.trade.preset.TradePresetStoreTest",
     "runGTITCommandTest" to "com.miaokatze.gtit.command.GTITCommandTest",
     "runStarterGiftAuditNbtTest" to "com.miaokatze.gtit.terminal.StarterGiftAuditNbtTest",

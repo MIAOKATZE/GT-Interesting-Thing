@@ -18,7 +18,7 @@ import org.apache.logging.log4j.Logger;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
-import com.miaokatze.gtit.util.NbtBase64Util;
+import com.miaokatze.gtit.gift.GiftNbt;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -230,7 +230,7 @@ public class GiftConfig {
             this.itemId = itemId;
             this.amount = amount;
             this.meta = meta;
-            this.nbtBase64 = NbtBase64Util.nbtToBase64(nbt);
+            this.nbtBase64 = GiftNbt.encode(nbt);
         }
 
         /**
@@ -248,7 +248,7 @@ public class GiftConfig {
             // 优先使用运行时缓存的 NBT；否则从 Base64 解析（应对刚反序列化、缓存未填充的情况）
             NBTTagCompound tagToApply = nbt;
             if (tagToApply == null && nbtBase64 != null && !nbtBase64.isEmpty()) {
-                tagToApply = NbtBase64Util.nbtFromBase64(nbtBase64);
+                tagToApply = GiftNbt.decode(nbtBase64);
                 nbt = tagToApply;
             }
             if (tagToApply != null) {

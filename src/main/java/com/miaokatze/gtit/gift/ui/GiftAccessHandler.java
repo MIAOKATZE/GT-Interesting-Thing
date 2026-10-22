@@ -9,6 +9,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.common.util.FakePlayer;
 
+import com.miaokatze.gtit.config.DefaultContentConfig;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -68,7 +69,8 @@ public final class GiftAccessHandler {
             && player.worldObj != null
             && !player.worldObj.isRemote
             && (server.isSinglePlayer() ? player.getCommandSenderName()
-                .equals(server.getServerOwner()) : player.canCommandSenderUseCommand(4, "gtit"));
+                .equals(server.getServerOwner())
+                : player.canCommandSenderUseCommand(DefaultContentConfig.managementOpLevel(), "gtit"));
     }
 
     public static void stop() {

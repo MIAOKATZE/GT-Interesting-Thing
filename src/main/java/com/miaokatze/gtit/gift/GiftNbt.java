@@ -1,7 +1,9 @@
 package com.miaokatze.gtit.gift;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 
@@ -10,15 +12,50 @@ import net.minecraft.nbt.NBTSizeTracker;
 import net.minecraft.nbt.NBTTagCompound;
 
 /** Rejects forged lengths before vanilla 1.7 NBT array allocation, including int-overflow lengths. */
-final class GiftNbt {
+public final class GiftNbt {
+
+    public static final int MAX_BYTES = 24576;
 
     private GiftNbt() {}
 
-    static NBTTagCompound decode(String base64) {
+    /** Gift-only strict codec: a failed serialization must never turn an item into an untagged one. */
+    public static String encode(NBTTagCompound tag) {
+        if (tag == null) return null;
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream() {
+
+                @Override
+                public synchronized void write(int value) {
+                    requireCapacity(1);
+                    super.write(value);
+                }
+
+                @Override
+                public synchronized void write(byte[] value, int offset, int length) {
+                    requireCapacity(length);
+                    super.write(value, offset, length);
+                }
+
+                private void requireCapacity(int length) {
+                    if (length > MAX_BYTES - count) throw new IllegalArgumentException("Item NBT exceeds 24 KiB");
+                }
+            };
+            CompressedStreamTools.write(tag, new DataOutputStream(bytes));
+            String encoded = Base64.getEncoder()
+                .encodeToString(bytes.toByteArray());
+            decode(encoded); // Apply the same depth, node and allocation limits in both directions.
+            return encoded;
+        } catch (IOException | StackOverflowError e) {
+            throw new IllegalArgumentException("Invalid or oversized item NBT", e);
+        }
+    }
+
+    public static NBTTagCompound decode(String base64) {
         try {
             if (base64.length() > 32768) throw new IOException("NBT too large");
             byte[] bytes = Base64.getDecoder()
                 .decode(base64);
+            if (bytes.length > MAX_BYTES) throw new IOException("NBT too large");
             DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes));
             if (input.readUnsignedByte() != 10) throw new IOException("NBT root must be a compound");
             input.readUTF();
