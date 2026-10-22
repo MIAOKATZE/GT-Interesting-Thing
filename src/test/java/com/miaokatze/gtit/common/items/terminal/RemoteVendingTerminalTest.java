@@ -48,6 +48,8 @@ public final class RemoteVendingTerminalTest {
         cases.put("binding_roundtrip_and_rebind_preserve_other_nbt", RemoteVendingTerminalTest::bindingRoundtrip);
         cases.put("missing_or_wrong_types_do_not_bind_to_origin", RemoteVendingTerminalTest::rejectMalformed);
         cases.put("session_binding_slot_and_container_lifecycle", RemoteVendingTerminalTest::sessionLifecycle);
+        cases.put("deferred_open_survives_vanilla_c08_stack_copy", RemoteVendingTerminalTest::deferredOpenStackCopy);
+        cases.put("deferred_open_rechecks_request_context", RemoteVendingTerminalTest::deferredOpenContext);
         cases
             .put("client_model_keeps_real_address_without_world_registration", RemoteVendingTerminalTest::displayModel);
         cases.put("actual_lottery_and_mail_endpoints_bind_remote_session", RemoteVendingTerminalTest::packetEndpoints);
@@ -191,6 +193,75 @@ public final class RemoteVendingTerminalTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
+    }
+
+    private static void deferredOpenStackCopy() {
+        PlayerShell player = playerShell();
+        ItemStack stack = terminal();
+        NekoVendingTarget target = new NekoVendingTarget(-42, 10, 64, 20);
+        target.write(stack);
+        player.inventory.mainInventory[2] = stack;
+        player.inventory.currentItem = 2;
+        PlayerInventoryGuiData immediate = new PlayerInventoryGuiData(player, InventoryTypes.PLAYER, 2);
+        BaseMetaTileEntity tile = (BaseMetaTileEntity) allocate(BaseMetaTileEntity.class);
+        tile.setWorldObj(player.worldObj);
+        RemoteVendingSession premature = new RemoteVendingSession(immediate, target, tile);
+        ItemNekoVendingTerminal.PendingOpen pending = new ItemNekoVendingTerminal.PendingOpen(player, stack);
+
+        // NetHandlerPlayServer.processPlayerBlockPlacement does this AFTER tryUseItem/onItemRightClick.
+        player.inventory.mainInventory[2] = ItemStack.copyItemStack(player.inventory.mainInventory[2]);
+        SimpleAssert.that(!premature.isValid(), "reproduces the original immediate-opening disconnect");
+        PlayerInventoryGuiData deferred = pending.resolve();
+        SimpleAssert.that(deferred != null, "unchanged C08 copy remains an authorized opening request");
+        SimpleAssert.that(deferred.getUsedItemStack() != stack, "factory data sees vanilla's final inventory object");
+        RemoteVendingSession stable = new RemoteVendingSession(deferred, target, tile);
+        SimpleAssert.that(stable.isValid(), "session captured after C08 survives its first interaction check");
+        player.inventory.mainInventory[2] = player.inventory.mainInventory[2].copy();
+        SimpleAssert.that(!stable.isValid(), "a later same-NBT replacement still revokes an open session");
+    }
+
+    private static void deferredOpenContext() {
+        PlayerShell player = playerShell();
+        ItemStack stack = terminal();
+        NekoVendingTarget target = new NekoVendingTarget(-1, 40, 64, -50);
+        target.write(stack);
+        player.inventory.mainInventory[0] = stack;
+        ModularContainer container = (ModularContainer) allocate(ModularContainer.class);
+        container.windowId = 7;
+        player.openContainer = container;
+        ItemNekoVendingTerminal.PendingOpen pending = new ItemNekoVendingTerminal.PendingOpen(player, stack);
+        SimpleAssert.that(pending.resolve() != null, "unchanged request can open");
+        player.inventory.currentItem = 1;
+        SimpleAssert.eq(null, pending.resolve(), "changed held slot cancels pending open");
+        player.inventory.currentItem = 0;
+        player.inventory.mainInventory[0] = null;
+        SimpleAssert.eq(null, pending.resolve(), "removed terminal cancels pending open");
+        player.inventory.mainInventory[0] = stack;
+        new NekoVendingTarget(0, 1, 64, 1).write(stack);
+        SimpleAssert.eq(null, pending.resolve(), "rebind cancels pending open");
+        target.write(stack);
+        stack.getTagCompound()
+            .setString("unrelated-change", "changed");
+        SimpleAssert.eq(null, pending.resolve(), "request snapshot also detects other item mutations");
+        stack.getTagCompound()
+            .removeTag("unrelated-change");
+        player.dimension++;
+        SimpleAssert.eq(null, pending.resolve(), "dimension change cancels pending open");
+        player.dimension--;
+        World original = player.worldObj;
+        player.worldObj = playerShell().worldObj;
+        SimpleAssert.eq(null, pending.resolve(), "world replacement cancels pending open");
+        player.worldObj = original;
+        player.openContainer = null;
+        SimpleAssert.eq(null, pending.resolve(), "opening another container cancels pending open");
+        player.openContainer = container;
+        container.windowId++;
+        SimpleAssert.eq(null, pending.resolve(), "reused container window cancels pending open");
+        container.windowId--;
+        player.isDead = true;
+        SimpleAssert.eq(null, pending.resolve(), "dead player cannot open");
+        player.isDead = false;
+        SimpleAssert.that(pending.resolve() != null, "restored fixture confirms each independent guard");
     }
 
     private static void packetEndpoints() {

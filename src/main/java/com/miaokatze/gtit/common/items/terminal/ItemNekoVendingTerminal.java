@@ -6,6 +6,7 @@ import java.util.WeakHashMap;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.inventory.Container;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.play.server.S2FPacketSetSlot;
@@ -18,6 +19,7 @@ import net.minecraft.world.World;
 import com.cleanroommc.modularui.api.IGuiHolder;
 import com.cleanroommc.modularui.factory.GuiFactories;
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
+import com.cleanroommc.modularui.factory.inventory.InventoryTypes;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.ModularScreen;
 import com.cleanroommc.modularui.screen.UISettings;
@@ -27,6 +29,7 @@ import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.gui.terminal.NekoRemoteVendingGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
+import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -36,6 +39,7 @@ public final class ItemNekoVendingTerminal extends Item implements IGuiHolder<Pl
 
     public static final String ID = "neko_vending_terminal";
     private final Map<EntityPlayer, Long> lastBindingTick = new WeakHashMap<>();
+    private final Map<EntityPlayer, Object> pendingOpens = new WeakHashMap<>();
 
     public ItemNekoVendingTerminal() {
         setUnlocalizedName(ID);
@@ -53,6 +57,7 @@ public final class ItemNekoVendingTerminal extends Item implements IGuiHolder<Pl
         if (!(tile instanceof BaseMetaTileEntity)) return false;
         BaseMetaTileEntity machine = (BaseMetaTileEntity) tile;
         if (!(machine.getMetaTileEntity() instanceof MTENekoVendingMachineV2)) return false;
+        pendingOpens.remove(player);
         lastBindingTick.put(player, world.getTotalWorldTime());
         if (player.getHeldItem() != stack || !machine.isUseableByPlayer(player)) {
             player.addChatMessage(new ChatComponentTranslation("gtit.terminal.access_denied"));
@@ -82,10 +87,58 @@ public final class ItemNekoVendingTerminal extends Item implements IGuiHolder<Pl
             player.addChatMessage(new ChatComponentTranslation(failure));
             return stack;
         }
-        // Existing factory: no custom network factory registration or client-provided target packet.
-        GuiFactories.playerInventory()
-            .openFromMainHand(player);
+        // C08 handling copies the held stack AFTER onItemRightClick returns. Opening here would bind the
+        // session to the discarded object and close it on the first interaction check. Capture the final
+        // inventory object at tick END instead, after vanilla has finished processing the use packet.
+        PendingOpen pending = new PendingOpen(player, stack);
+        Object request = new Object();
+        pendingOpens.put(player, request);
+        ServerTaskScheduler.scheduleServerTask(() -> {
+            if (pendingOpens.get(player) != request) return;
+            pendingOpens.remove(player);
+            PlayerInventoryGuiData data = pending.resolve();
+            if (data == null) return;
+            String deferredFailure = RemoteVendingAccess.failure(target, player);
+            if (deferredFailure != null) {
+                player.addChatMessage(new ChatComponentTranslation(deferredFailure));
+                return;
+            }
+            GuiFactories.playerInventory()
+                .openFromPlayerInventory(player, data.getSlotIndex());
+        });
         return stack;
+    }
+
+    /** Short-lived use request; only this pre-opening step accepts vanilla's identical stack copy. */
+    static final class PendingOpen {
+
+        private final EntityPlayer player;
+        private final World world;
+        private final int dimension;
+        private final int slot;
+        private final ItemStack snapshot;
+        private final Container container;
+        private final int window;
+
+        PendingOpen(EntityPlayer player, ItemStack stack) {
+            this.player = player;
+            world = player.worldObj;
+            dimension = player.dimension;
+            slot = player.inventory.currentItem;
+            snapshot = stack.copy();
+            container = player.openContainer;
+            window = container == null ? -1 : container.windowId;
+        }
+
+        PlayerInventoryGuiData resolve() {
+            if (player.isDead || player.worldObj != world
+                || player.dimension != dimension
+                || player.inventory.currentItem != slot
+                || player.openContainer != container
+                || (container != null && container.windowId != window)
+                || !ItemStack.areItemStacksEqual(snapshot, player.getHeldItem())) return null;
+            return new PlayerInventoryGuiData(player, InventoryTypes.PLAYER, slot);
+        }
     }
 
     @Override
