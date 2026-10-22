@@ -18,7 +18,7 @@
 
 v2.0.6 修复了终端打开后立即提示连接断开的问题。原版空气右击处理会在物品回调结束后复制主手物品；开窗延后到该处理完成后执行，重新核对玩家、槽位、绑定、容器与目标权限，再建立会话。打开后的换手、替换物品和重新绑定仍使旧会话失效。
 
-v2.0.7 的终端物品材质直接手工修改 GTSWN `Device_Info_Terminal.png` 第一帧：保留紧凑方壳、左上短天线、边框明暗和右侧状态条，将外壳逐色替换为淡黄、金色，在原屏幕内手绘猫头。透明轮廓与 GTSWN 原稿完全相同；不使用生成式图像。成品为 `src/main/resources/assets/gtit/textures/items/neko_vending_terminal.png`，64×64 透明 PNG，通过最近邻放大保留像素边缘。这是物品材质资源，不是实机截图。原始壳体像素和可复现的手工编辑步骤保存在 `tools/artgen_catalog/neko_terminal/`。
+v2.0.8 的终端直接复用 GTSWN `Device_Info_Terminal.png` 第一帧方壳，以及 GTMB `neko_hologram_projector.png` 第 0 帧中已经抠好的透明猫头。猫头只做两倍最近邻放大，五官、轮廓和原始配色逐像素保留。外壳采用低饱和奶油白与灰蓝暗部，天线和状态条使用少量柔金色。透明轮廓与 GTSWN 原壳完全相同；不使用生成式图像。成品为 `src/main/resources/assets/gtit/textures/items/neko_vending_terminal.png`，64×64 透明 PNG。这是物品材质资源，不是实机截图。两份现成原图和可复现的手工调色、拼贴步骤保存在 `tools/artgen_catalog/neko_terminal/`。
 
 ## 控件审查边界
 

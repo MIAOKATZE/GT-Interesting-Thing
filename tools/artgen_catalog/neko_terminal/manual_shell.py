@@ -1,7 +1,7 @@
-"""Hand-edited pixels: GTSWN's compact casing, warm gold palette, GTIT cat mark.
+"""Manual palette edit and lossless reuse of existing GTSWN/GTMB pixels.
 
 No image-generation service. The source shell is the first 16x16 frame of
-GTSWN Device_Info_Terminal.png; only its opaque pixels are recolored.
+GTSWN Device_Info_Terminal.png supplies the shell; GTMB supplies the cat cutout.
 """
 from pathlib import Path
 from PIL import Image, ImageDraw
@@ -21,35 +21,31 @@ def make_terminal():
                 continue
             if max(r, g, b) - min(r, g, b) < 16:
                 light = (r + g + b) // 3
-                color = ('#fff0ac' if light >= 185 else '#dcb767' if light >= 145
-                         else '#a48243' if light >= 100 else '#735d36' if light >= 65
-                         else '#3f3526')
+                color = ('#f4ebcf' if light >= 185 else '#c8bfa7' if light >= 145
+                         else '#92958d' if light >= 100 else '#555f65' if light >= 65
+                         else '#303b42')
             else:
-                color = '#f7d064'
+                color = '#d7bd70'
             pixels[x, y] = (*tuple(bytes.fromhex(color[1:])), 255)
 
-    # Original screen and status bar stay in their original locations.
+    shell = shell.resize((64, 64), Image.Resampling.NEAREST)
+    # Ivory casing, cool slate screen/bevel, restrained champagne status light.
     draw = ImageDraw.Draw(shell)
-    draw.rectangle((3, 5, 9, 12), fill='#343326')
-    draw.rectangle((11, 6, 12, 8), fill='#ffe596')
-    draw.rectangle((11, 9, 12, 10), fill='#e8bd55')
-    draw.rectangle((11, 11, 12, 11), fill='#ac8134')
-    shell = shell.resize((32, 32), Image.Resampling.NEAREST)
+    draw.rectangle((12, 20, 43, 51), fill='#26353d')
+    draw.rectangle((44, 24, 51, 31), fill='#eadca8')
+    draw.rectangle((44, 32, 51, 39), fill='#b6a772')
+    draw.rectangle((44, 40, 51, 47), fill='#777f79')
 
-    # Hand-placed 14x14 cat pixels inside the original seven-pixel screen.
-    cat = Image.new('RGBA', (14, 14))
-    face = ImageDraw.Draw(cat)
-    face.polygon([(0, 0), (5, 4), (8, 4), (13, 0), (13, 11),
-                  (11, 13), (2, 13), (0, 11)], fill='#fff1b2')
-    face.polygon([(1, 2), (1, 4), (4, 4)], fill='#dba351')
-    face.polygon([(12, 2), (12, 4), (9, 4)], fill='#dba351')
-    face.rectangle((3, 6, 4, 7), fill='#594224')
-    face.rectangle((9, 6, 10, 7), fill='#594224')
-    face.rectangle((6, 8, 7, 9), fill='#594224')
-    face.line([(3, 10), (4, 11), (5, 11), (6, 10),
-               (7, 10), (8, 11), (9, 11), (10, 10)], fill='#594224')
-    shell.alpha_composite(cat, (6, 11))
-    result = shell.resize((64, 64), Image.Resampling.NEAREST)
+    # Exact existing GTMB frame 0. No redrawn facial features or recoloring.
+    cat = Image.open(HERE / 'gtmb_cat_head_reference.png').convert('RGBA')
+    assert cat.size == (16, 16)
+    scaled_cat = cat.resize((32, 32), Image.Resampling.NEAREST)
+    shell.alpha_composite(scaled_cat, (12, 20))
+    result = shell
+    for y in range(32):
+        for x in range(32):
+            if scaled_cat.getpixel((x, y))[3] == 255:
+                assert result.getpixel((x + 12, y + 20)) == scaled_cat.getpixel((x, y))
     reference = Image.open(HERE / 'gtswn_device_shell_reference.png').convert('RGBA')
     assert result.getchannel('A').tobytes() == reference.resize((64, 64), Image.Resampling.NEAREST).getchannel('A').tobytes()
     return result
