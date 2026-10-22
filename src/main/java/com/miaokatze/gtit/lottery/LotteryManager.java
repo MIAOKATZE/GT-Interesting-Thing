@@ -16,6 +16,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
+import net.minecraftforge.common.DimensionManager;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -576,10 +577,9 @@ public class LotteryManager {
      */
     public static MTENekoVendingMachineV2 findMachine(int dim, int x, int y, int z) {
         try {
-            MinecraftServer server = MinecraftServer.getServer();
-            if (server == null) return null;
-            World world = server.worldServerForDimension(dim);
-            if (world == null) return null;
+            World world = DimensionManager.getWorld(dim);
+            if (world == null || !world.getChunkProvider()
+                .chunkExists(x >> 4, z >> 4)) return null;
             TileEntity te = world.getTileEntity(x, y, z);
             if (te instanceof IGregTechTileEntity) {
                 if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {

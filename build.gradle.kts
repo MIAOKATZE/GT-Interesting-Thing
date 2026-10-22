@@ -198,6 +198,8 @@ mapOf(
     "runGiftSystemTest" to "com.miaokatze.gtit.gift.GiftSystemTest",
     "runGiftEditorSessionTest" to "com.miaokatze.gtit.gift.ui.GiftEditorSessionTest",
     "runGiftAccessTest" to "com.miaokatze.gtit.gift.ui.GiftAccessTest",
+    "runTeamStatusTest" to "com.miaokatze.gtit.gui.vm.NekoTeamStatusSyncTest",
+    "runRemoteVendingTerminalTest" to "com.miaokatze.gtit.common.items.terminal.RemoteVendingTerminalTest",
     "runLootRegistrarTest" to "com.miaokatze.gtit.common.loot.LootRegistrarTest",
     "runTradePresetStoreTest" to "com.miaokatze.gtit.trade.preset.TradePresetStoreTest",
     "runGTITCommandTest" to "com.miaokatze.gtit.command.GTITCommandTest",
@@ -209,6 +211,11 @@ mapOf(
         mainClass = entryPoint
         classpath = storeTestRuntimeClasspath + contentTestCompileClasspath
         classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+        if (taskName == "runRemoteVendingTerminalTest") {
+            classpath += configurations.detachedConfiguration(dependencies.create(
+                "xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.5:downgraded-8@jar"))
+            classpath += configurations.detachedConfiguration(dependencies.create("org.joml:joml:1.10.8"))
+        }
     }
     tasks.named("check") { dependsOn(taskName) }
 }

@@ -40,6 +40,8 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  */
 public final class CoinOpsController {
 
+    private final Consumer<Runnable> serverActionScheduler;
+
     private static final Logger LOG = LogManager.getLogger("gtit");
 
     /** 机器引用（槽位读写/出货/ME uplink） */
@@ -96,7 +98,8 @@ public final class CoinOpsController {
         Supplier<Boolean> isClientCheck, Supplier<UUID> playerIdSupplier, Consumer<String> tradeMessageSetter,
         Consumer<String> tradeResultNotifier, Map<String, IntSyncValue> coinAmountSyncs,
         Map<String, IntSyncValue> meCoinAmountSyncs, Runnable markTradeableStatusDirtyAndNotify,
-        Supplier<EntityPlayer> openerPlayerSupplier) {
+        Supplier<EntityPlayer> openerPlayerSupplier, Consumer<Runnable> serverActionScheduler) {
+        this.serverActionScheduler = serverActionScheduler;
         this.multiblock = multiblock;
         this.baseMetaTileEntity = baseMetaTileEntity;
         this.isClientCheck = isClientCheck;
@@ -139,7 +142,7 @@ public final class CoinOpsController {
             BooleanSyncValue importSync = new BooleanSyncValue(() -> nekoImportMeCoin.getOrDefault(cid, false), val -> {
                 if (syncManager != null && !syncManager.isClient()) {
                     // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
-                    NekoVMGuiV2.scheduleServerAction(() -> {
+                    serverActionScheduler.accept(() -> {
                         if (val) {
                             doNekoImportMeCoin(cid);
                         }
@@ -164,7 +167,7 @@ public final class CoinOpsController {
                 val -> {
                     if (syncManager != null && !syncManager.isClient()) {
                         // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
-                        NekoVMGuiV2.scheduleServerAction(() -> {
+                        serverActionScheduler.accept(() -> {
                             nekoEjectSingleCoin.put(cid, val);
                             if (val) {
                                 doNekoEjectCoin(cid, playerId);
@@ -191,7 +194,7 @@ public final class CoinOpsController {
                 val -> {
                     if (syncManager != null && !syncManager.isClient()) {
                         // B2-02：动作主体（含 HashMap put）整体投递服务器主线程
-                        NekoVMGuiV2.scheduleServerAction(() -> {
+                        serverActionScheduler.accept(() -> {
                             nekoEjectCoinStack.put(cid, val);
                             if (val) {
                                 doNekoEjectCoinStack(cid, playerId);
@@ -213,7 +216,7 @@ public final class CoinOpsController {
         ejectAllCoinsSync = new BooleanSyncValue(() -> nekoEjectAllCoins, val -> {
             if (syncManager != null && !syncManager.isClient()) {
                 // B2-02：动作主体（含标志赋值）整体投递服务器主线程
-                NekoVMGuiV2.scheduleServerAction(() -> {
+                serverActionScheduler.accept(() -> {
                     nekoEjectAllCoins = val;
                     if (val) {
                         doNekoEjectAllCoins(playerId);
@@ -234,7 +237,7 @@ public final class CoinOpsController {
         importCoinsSync = new BooleanSyncValue(() -> nekoImportCoins, val -> {
             if (syncManager != null && !syncManager.isClient()) {
                 // B2-02：动作主体（含标志赋值）整体投递服务器主线程
-                NekoVMGuiV2.scheduleServerAction(() -> {
+                serverActionScheduler.accept(() -> {
                     nekoImportCoins = val;
                     if (val) {
                         doNekoImportCoins(playerId);
@@ -255,7 +258,7 @@ public final class CoinOpsController {
         ejectItemsSync = new BooleanSyncValue(() -> nekoEjectItems, val -> {
             if (syncManager != null && !syncManager.isClient()) {
                 // B2-02：动作主体（含标志赋值）整体投递服务器主线程
-                NekoVMGuiV2.scheduleServerAction(() -> {
+                serverActionScheduler.accept(() -> {
                     nekoEjectItems = val;
                     if (val) {
                         doNekoEjectItems();
@@ -276,7 +279,7 @@ public final class CoinOpsController {
         fillPlayerInventorySync = new BooleanSyncValue(() -> nekoFillPlayerInventory, val -> {
             if (syncManager != null && !syncManager.isClient()) {
                 // B2-02：动作主体（含标志赋值）整体投递服务器主线程
-                NekoVMGuiV2.scheduleServerAction(() -> {
+                serverActionScheduler.accept(() -> {
                     nekoFillPlayerInventory = val;
                     if (val) {
                         doNekoFillPlayerInventory(playerId);

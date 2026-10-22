@@ -708,7 +708,7 @@ public class MailGui {
         }
         lastComposeSendMs = now;
 
-        int dim = machine.getWorld() != null ? machine.getWorld().provider.dimensionId : 0;
+        int dim = requestMachineDimension(machine);
         MailNetworkManager.sendComposeToServer(
             composeRecipient,
             composeTitle,
@@ -718,6 +718,10 @@ public class MailGui {
             machine.getZCoord(),
             dim);
         return true;
+    }
+
+    private static int requestMachineDimension(IGregTechTileEntity machine) {
+        return com.miaokatze.gtit.common.items.terminal.RemoteVendingDisplayTile.dimensionOf(machine);
     }
 
     // ==================== 数据辅助（动态 Supplier 调用） ====================

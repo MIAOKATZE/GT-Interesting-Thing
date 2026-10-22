@@ -4,17 +4,20 @@ import java.util.List;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.MinecraftServer;
+import net.minecraft.inventory.Container;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
+import net.minecraftforge.common.DimensionManager;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
+import com.miaokatze.gtit.common.items.terminal.RemoteVendingContainer;
+import com.miaokatze.gtit.common.items.terminal.RemoteVendingSession;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
@@ -23,6 +26,7 @@ import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
+import gregtech.api.metatileentity.BaseMetaTileEntity;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -110,7 +114,13 @@ public class LotteryRequestPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行抽奖逻辑（涉及钱包扣费、物品出货、NBT 持久化）
-            ServerTaskScheduler.scheduleServerTask(() -> processLottery(player, message));
+            Container source = player.openContainer;
+            int window = source == null ? -1 : source.windowId;
+            ServerTaskScheduler.scheduleServerTask(() -> {
+                if (source instanceof RemoteVendingContainer
+                    && (player.openContainer != source || source.windowId != window)) return;
+                processLottery(player, message);
+            });
             return null;
         }
 
@@ -185,16 +195,26 @@ public class LotteryRequestPacket implements IMessage {
          */
         private MTENekoVendingMachineV2 findMachine(EntityPlayerMP player, LotteryRequestPacket request) {
             try {
-                MinecraftServer server = MinecraftServer.getServer();
-                if (server == null) return null;
-                World world = server.worldServerForDimension(request.machineDim);
+                if (player.openContainer instanceof RemoteVendingContainer) {
+                    return RemoteVendingSession.resolveCurrent(
+                        player,
+                        request.machineDim,
+                        request.machineX,
+                        request.machineY,
+                        request.machineZ);
+                }
+                World world = DimensionManager.getWorld(request.machineDim);
                 if (world == null || world != player.worldObj) return null;
                 // 距离上限（防恶意包隔空指定他人机器扣物/塞奖）
                 if (player.getDistanceSq(request.machineX + 0.5D, request.machineY + 0.5D, request.machineZ + 0.5D)
                     > MAX_MACHINE_DISTANCE_SQ) return null;
                 // GUI 会话绑定（请求者必须正打开这台机器的 GUI，仅持坐标不允许抽奖）
                 if (!isMachineGuiOpen(player, request)) return null;
+                if (!world.getChunkProvider()
+                    .chunkExists(request.machineX >> 4, request.machineZ >> 4)) return null;
                 TileEntity te = world.getTileEntity(request.machineX, request.machineY, request.machineZ);
+                if (!(te instanceof BaseMetaTileEntity) || !((BaseMetaTileEntity) te).isUseableByPlayer(player))
+                    return null;
                 if (te instanceof IGregTechTileEntity) {
                     if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
                         return (MTENekoVendingMachineV2) ((IGregTechTileEntity) te).getMetaTileEntity();

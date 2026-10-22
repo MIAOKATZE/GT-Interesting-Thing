@@ -172,7 +172,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         coinAmountSyncs,
         meCoinAmountSyncs,
         statusCodec::markTradeableStatusDirtyAndNotify,
-        () -> this.guiData != null ? this.guiData.getPlayer() : null);
+        () -> this.guiData != null ? this.guiData.getPlayer() : null,
+        this::scheduleServerAction);
     /** BGM 开关联动（★R100 片 F：标志真相在 NekoMusicEventHandler，本类只持转发壳） */
     private final GuiMusicController musicController = new GuiMusicController();
 
@@ -202,6 +203,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     ButtonWidget<?> volumeButton;
     /** 音量面板处理器（客户端，打开/关闭音量控制面板） */
     IPanelHandler volumePanel;
+    IPanelHandler teamStatusPanel;
+    private BooleanSyncValue machineActiveSync;
     /** 主面板引用（用于回调和方法调用） */
     private NekoTradeMainPanel mainPanel;
     /** ME 输出模式同步值（C2S+S2C：客户端切换发送到服务端，服务端状态同步到客户端） */
@@ -439,6 +442,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 注：syncedPanel 走显式命名注册（PanelSyncHandler），不进主 panel widget 树，与上述 BFS 顺序无关。
         volumePanel = syncManager
             .syncedPanel("nekoV2Volume", true, (sm, sh) -> new NekoVolumeControlGui().createPanel(sm, volumeButton));
+        teamStatusPanel = syncManager.syncedPanel("nekoV2Teams", true, (sm, sh) -> NekoTeamStatusPanel.create(sm));
 
         // v1.7.7 G2① 编辑面板统一改为 NekoTradeMainPanel 内嵌覆盖层，
         // 不再使用独立 syncedPanel 子窗口，避免窗口坐标系错位/被 NEI 或背包行遮挡。
@@ -497,6 +501,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     protected void registerSyncValues(PanelSyncManager syncManager) {
         // 注册 GT5U 标准同步值
         super.registerSyncValues(syncManager);
+        machineActiveSync = new BooleanSyncValue(() -> baseMetaTileEntity != null && baseMetaTileEntity.isActive());
+        syncManager.syncValue("nekoV2MachineActive", machineActiveSync);
 
         // 注册槽位分组，启用 shift 快速转移（与 V1/VM 原版一致）
         // 参数：组名、行长度(2列)、是否允许从玩家背包 shift 转移到此组
@@ -555,7 +561,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 同步值惯用法：客户端缓存由 setter 回写，否则 updateCacheFromSource 每 tick 覆盖推送值）。
         defaultTradeSyncPromptSync = new StringSyncValue(() -> {
             if (syncManager != null && syncManager.isClient()) return defaultTradeSyncPromptCached;
-            return BundledTradeGroups.getPromptState();
+            return canManageTradeContent() ? BundledTradeGroups.getPromptState() : "";
         }, val -> {
             if (syncManager != null && syncManager.isClient()) {
                 defaultTradeSyncPromptCached = val == null ? "" : val;
@@ -827,8 +833,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * ★R100 片 F：队列本体迁往 {@link VendingServerActions}，本方法保留为 gui 侧五个
      * C2S 迁移点的同形转发口（签名与调用形制零变化）。
      */
-    static void scheduleServerAction(Runnable action) {
-        VendingServerActions.scheduleServerAction(action);
+    void scheduleServerAction(Runnable action) {
+        VendingServerActions.scheduleServerAction(
+            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, action));
     }
 
     @Override
@@ -838,7 +845,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
     /** 机器是否处于 active 状态（页族构建访问器，原 createTradeListPage 直引 baseMetaTileEntity） */
     boolean isMachineActive() {
-        return baseMetaTileEntity != null && baseMetaTileEntity.isActive();
+        return machineActiveSync != null ? machineActiveSync.getValue()
+            : baseMetaTileEntity != null && baseMetaTileEntity.isActive();
     }
 
     @Override
@@ -1025,7 +1033,18 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @param action 动作码
      */
-    private static void handleDefaultTradeSyncAction(String action) {
+    private void handleDefaultTradeSyncAction(String action) {
+        if (guiData == null || !(guiData.getPlayer() instanceof net.minecraft.entity.player.EntityPlayerMP player))
+            return;
+        boolean allowed = "RESTORE".equals(action)
+            ? com.miaokatze.gtit.trade.preset.TradePresetManager.canResetDefaults(player)
+            : com.miaokatze.gtit.trade.preset.TradePresetManager.canConfigure(player);
+        if (!allowed) {
+            player.addChatMessage(
+                new net.minecraft.util.ChatComponentTranslation(
+                    "RESTORE".equals(action) ? "gtit.command.defaultreset.permission" : "gtit.preset.permission"));
+            return;
+        }
         switch (action) {
             case "ACK" -> BundledTradeGroups.markUpdateTagHandled();
             case "RESTORE" -> BundledTradeGroups.restoreDefaultGroup();
