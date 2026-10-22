@@ -63,15 +63,24 @@ public class CreativeTabManager {
 
     public static void addItemToTab(ItemStack itemStack) {
         if (itemStack != null) {
-            itemsToAdd.add(itemStack);
+            itemsToAdd.add(itemStack.copy());
+            GTITItemOrderCatalog.invalidate();
         }
     }
 
     public static void initCreativeTab() {
+        GTITItemOrderCatalog.register();
         LOG.info("正在初始化创造模式物品栏，当前包含 " + itemsToAdd.size() + " 个物品");
     }
 
     public static List<ItemStack> getItemsToAdd() {
-        return itemsToAdd;
+        return GTITItemOrderCatalog.orderedItems();
+    }
+
+    /** Unsorted live registration snapshot for the domain catalog and coverage audits. */
+    public static List<ItemStack> getRegisteredItems() {
+        List<ItemStack> result = new ArrayList<>(itemsToAdd.size());
+        for (ItemStack stack : itemsToAdd) result.add(stack.copy());
+        return result;
     }
 }
