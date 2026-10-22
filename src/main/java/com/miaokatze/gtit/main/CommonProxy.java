@@ -393,7 +393,7 @@ public class CommonProxy {
         // O2-04：Teams 探测/注册/降级日志统一走 TeamDataProvider 门面（不可用时统一回退个人模式）
         TeamDataProvider.registerTeamData();
 
-        // 注册战利品（箱子/钓鱼）
+        // 注册箱子战利品；ServerStarted 再补齐被整合包后置覆盖的池。
         LootRegistrar.init();
 
         GTInterestingThing.LOG.info("[2/3] 开始初始化创造模式物品栏...");
@@ -620,6 +620,8 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStarted(FMLServerStartedEvent event) {
+        LootRegistrar.onServerStarted();
+
         // [GT-compat] BQ 任务注入时机兼容层（beta1/beta2/beta3/RC1）：GTNH 正式版发布时按当时事件顺序复核并移除本兼容口径
         // E4a: BQ 任务注入（GTIT 包注入 + MIAO 空包哨兵清理保险）。
         // 2026-09-07 迁移 ServerStarting→ServerStarted：观察发生版本 = GTNH 2.9.0-beta-3 专用服（史实，不删）——

@@ -35,9 +35,10 @@ public final class GiftSystemTest {
         itemAndEnergyTransactions();
         mixedDefaultPolicies();
         capacityBoundaries(root);
+        nbtBoundaries(root);
         validation();
         System.out.println(
-            "GiftSystemTest: migration, empty/custom/default preservation, revisions, update policies, atomic writes, NBT and wireless receipts passed");
+            "GiftSystemTest: migration, default policies, revisions, atomic writes, exact/over-limit/malformed NBT persistence and wireless receipts passed");
     }
 
     private static void defaultUpdateConsent(Path root) throws Exception {
@@ -623,6 +624,64 @@ public final class GiftSystemTest {
         } catch (java.io.IOException e) {
             throw new AssertionError(e);
         }
+    }
+
+    private static void nbtBoundaries(Path root) throws Exception {
+        NBTTagCompound exact = new NBTTagCompound();
+        exact.setByteArray("d", new byte[GiftNbt.MAX_BYTES - 12]);
+        String encoded = GiftNbt.encode(exact);
+        check(
+            java.util.Base64.getDecoder()
+                .decode(encoded).length == GiftNbt.MAX_BYTES && exact.equals(GiftNbt.decode(encoded)),
+            "Exactly 24 KiB of binary NBT round-trips without truncation");
+        GiftConfig.ItemEntry entry = new GiftConfig.ItemEntry("minecraft:chest", 16, 0, exact);
+        check(
+            exact.equals(
+                entry.toItemStack()
+                    .getTagCompound()),
+            "Item materialization uses the same strict NBT codec");
+        entry.toItemStack()
+            .getTagCompound()
+            .setString("changed", "copy");
+        check(
+            exact.equals(
+                entry.toItemStack()
+                    .getTagCompound()),
+            "Materialized tags never alias the entry cache");
+        NBTTagCompound oversized = new NBTTagCompound();
+        oversized.setByteArray("d", new byte[GiftNbt.MAX_BYTES - 11]);
+        expectFailure(
+            () -> new GiftConfig.ItemEntry("minecraft:chest", 1, 0, oversized),
+            "One byte over the NBT limit must reject item construction instead of silently stripping NBT");
+        NBTTagCompound tooLongString = new NBTTagCompound();
+        tooLongString.setString("long", new String(new char[65536]).replace('\0', 'x'));
+        expectFailure(
+            () -> new GiftConfig.ItemEntry("minecraft:chest", 1, 0, tooLongString),
+            "A string rejected by writeUTF must never become an untagged item");
+        GiftConfig.ItemEntry broken = GiftFiles.JSON.fromJson(
+            "{\"item\":\"minecraft:chest\",\"amount\":1,\"meta\":0,\"nbtBase64\":\"broken\"}",
+            GiftConfig.ItemEntry.class);
+        expectFailure(broken::toItemStack, "Malformed legacy NBT fails closed when materialized directly");
+        GiftRegistry registry = new GiftRegistry();
+        Path path = root.resolve("nbt-boundary.json");
+        registry.init(path);
+        GiftDefinition gift = simple("nbt-boundary");
+        gift.rewards.add(entry);
+        GiftDefinition saved = registry.save(gift, 0);
+        byte[] before = Files.readAllBytes(path);
+        GiftDefinition invalid = saved.copy();
+        invalid.rewards.set(0, broken);
+        expectFailure(() -> registry.save(invalid, saved.revision), "Invalid NBT cannot replace a saved reward");
+        check(
+            Arrays.equals(before, Files.readAllBytes(path)) && registry.get(saved.id).revision == saved.revision,
+            "Rejected NBT edits preserve the live revision and original file");
+        registry.init(path);
+        check(
+            exact.equals(
+                registry.get(saved.id).rewards.get(0)
+                    .toItemStack()
+                    .getTagCompound()),
+            "Boundary-size backpack content survives persistence and reload");
     }
 
     private static GiftDefinition simple(String id) {

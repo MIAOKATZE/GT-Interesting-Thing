@@ -1,7 +1,10 @@
 package com.miaokatze.gtit.common.loot;
 
+import java.util.Random;
+
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.WeightedRandomChestContent;
+import net.minecraftforge.common.ChestGenHooks;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,6 +33,16 @@ public class LootRegistrar {
     }
 
     /**
+     * TooMuchLoot 在 ServerStarting 按整合包 XML 替换箱子池，晚于 init/loadComplete。
+     * 整波 ServerStarting 结束后补齐被覆盖的物品；保留 init 注册，供新世界早期生成使用。
+     * 单机切换世界也会调用，因此依据当前池内容去重，不能用进程级已注册标记。
+     */
+    public static void onServerStarted() {
+        registerChestLoot();
+        LOG.info("[GTIT] 服务器箱子战利品补齐完成");
+    }
+
+    /**
      * 注册箱子战利品
      */
     private static void registerChestLoot() {
@@ -41,7 +54,7 @@ public class LootRegistrar {
         }
 
         // === 戒指（稀有战利品，极低权重） ===
-        // weight=1, 每个箱子最多1个
+        // weight=1，每次抽中生成1个（同一箱子的多次抽取仍可能重复命中）
         addRingChestLoot(GTITItemList.RingDistantGrasp);
         addRingChestLoot(GTITItemList.RingSkywalk);
         addRingChestLoot(GTITItemList.RingGluttony);
@@ -55,26 +68,30 @@ public class LootRegistrar {
     /**
      * 将战利品添加到所有主要箱子类型
      */
-    private static void addChestLootToAll(WeightedRandomChestContent loot) {
-        net.minecraftforge.common.ChestGenHooks.getInfo(net.minecraftforge.common.ChestGenHooks.DUNGEON_CHEST)
-            .addItem(loot);
-        net.minecraftforge.common.ChestGenHooks.getInfo(net.minecraftforge.common.ChestGenHooks.VILLAGE_BLACKSMITH)
-            .addItem(loot);
-        net.minecraftforge.common.ChestGenHooks.getInfo(net.minecraftforge.common.ChestGenHooks.MINESHAFT_CORRIDOR)
-            .addItem(loot);
-        net.minecraftforge.common.ChestGenHooks.getInfo(net.minecraftforge.common.ChestGenHooks.PYRAMID_DESERT_CHEST)
-            .addItem(loot);
-        net.minecraftforge.common.ChestGenHooks.getInfo(net.minecraftforge.common.ChestGenHooks.PYRAMID_JUNGLE_CHEST)
-            .addItem(loot);
-        net.minecraftforge.common.ChestGenHooks.getInfo(net.minecraftforge.common.ChestGenHooks.STRONGHOLD_CORRIDOR)
-            .addItem(loot);
-        net.minecraftforge.common.ChestGenHooks.getInfo(net.minecraftforge.common.ChestGenHooks.STRONGHOLD_CROSSING)
-            .addItem(loot);
+    static void addChestLootToAll(WeightedRandomChestContent loot) {
+        addChestLootIfMissing(ChestGenHooks.getInfo(ChestGenHooks.DUNGEON_CHEST), loot);
+        addChestLootIfMissing(ChestGenHooks.getInfo(ChestGenHooks.VILLAGE_BLACKSMITH), loot);
+        addChestLootIfMissing(ChestGenHooks.getInfo(ChestGenHooks.MINESHAFT_CORRIDOR), loot);
+        addChestLootIfMissing(ChestGenHooks.getInfo(ChestGenHooks.PYRAMID_DESERT_CHEST), loot);
+        addChestLootIfMissing(ChestGenHooks.getInfo(ChestGenHooks.PYRAMID_JUNGLE_CHEST), loot);
+        addChestLootIfMissing(ChestGenHooks.getInfo(ChestGenHooks.STRONGHOLD_CORRIDOR), loot);
+        addChestLootIfMissing(ChestGenHooks.getInfo(ChestGenHooks.STRONGHOLD_CROSSING), loot);
+    }
+
+    private static void addChestLootIfMissing(ChestGenHooks pool, WeightedRandomChestContent loot) {
+        // 使用独立随机源查询 Forge 的实际内容，不消耗世界随机序列；已有配置的权重/数量原样保留。
+        for (WeightedRandomChestContent existing : pool.getItems(new Random(0))) {
+            if (existing.theItemId.isItemEqual(loot.theItemId)
+                && ItemStack.areItemStackTagsEqual(existing.theItemId, loot.theItemId)) {
+                return;
+            }
+        }
+        pool.addItem(loot);
     }
 
     /**
      * 将戒指添加为稀有箱子战利品
-     * weight=1（极低），每个箱子最多1个
+     * weight=1（极低），每次抽中生成1个
      */
     private static void addRingChestLoot(GTITItemList ringItem) {
         ItemStack ringStack = ringItem.get(1);

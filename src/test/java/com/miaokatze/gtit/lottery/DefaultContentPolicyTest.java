@@ -18,6 +18,24 @@ public final class DefaultContentPolicyTest {
     public static void main(String[] args) throws Exception {
         if (!com.miaokatze.gtit.testutil.MinecraftTestBootstrap.enter(DefaultContentPolicyTest.class, args)) return;
         Map<String, Runnable> cases = new LinkedHashMap<>();
+        cases.put("managementPermissionDefaultsAndBounds", () -> {
+            Path config = Paths.get("config/gtit/default_content.cfg");
+            write(config, "defaults {\n}\n");
+            DefaultContentConfig.init(
+                Paths.get("config")
+                    .toFile());
+            check(DefaultContentConfig.managementOpLevel() == 2, "existing configs default to OP2");
+            for (int configured : new int[] { 1, 2, 3, 4, 5 }) {
+                write(config, "permissions {\nI:managementOpLevel=" + configured + "\n}\n");
+                DefaultContentConfig.init(
+                    Paths.get("config")
+                        .toFile());
+                check(
+                    DefaultContentConfig.managementOpLevel() == Math.max(2, Math.min(4, configured)),
+                    "management level must stay within OP2-4");
+            }
+            flags(true, true, true);
+        });
         cases.put("threeIndependentSwitches", () -> {
             for (int mask = 0; mask < 8; mask++) {
                 flags((mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0);

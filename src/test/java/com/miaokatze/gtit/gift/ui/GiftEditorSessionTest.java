@@ -26,6 +26,7 @@ public final class GiftEditorSessionTest {
     public static void main(String[] args) throws Exception {
         if (!MinecraftTestBootstrap.enter(GiftEditorSessionTest.class, args)) return;
         nullableItemSync();
+        boundedGhostAndTextSync();
         manualClaimRules();
         GiftRegistry registry = GiftRegistry.INSTANCE;
         Path registryFile = Files.createTempDirectory("gtit-gift-editor-")
@@ -108,7 +109,7 @@ public final class GiftEditorSessionTest {
                 && draft.items.getStackInSlot(256) == null,
             "A new draft must invalidate earlier editor packets and clear every reward page");
         System.out.println(
-            "GiftEditorSessionTest: initial-null item sync, 1/127/128/4096 counts with NBT, invalid count bounds, cursor/NBT isolation, persistent draft isolation, final reward pages, stale revisions and new-draft reset passed");
+            "GiftEditorSessionTest: null/1/16/127/128/4096 counts, bounded ghost/text codecs, binary/long NBT preservation, cursor isolation, final pages and stale revisions passed");
     }
 
     private static void iconInheritanceAndPersistence(GiftRegistry registry, Path registryFile) throws Exception {
@@ -195,7 +196,7 @@ public final class GiftEditorSessionTest {
         check(receiver.getValue() == null, "An initially empty preview must round-trip as null");
         check(!sender.updateCacheFromSource(false), "An unchanged empty row must not request another sync");
 
-        for (int count : new int[] { 1, 127, 128, 4096 }) {
+        for (int count : new int[] { 1, 16, 127, 128, 4096 }) {
             source[0] = new ItemStack(Items.emerald, count);
             NBTTagCompound tag = new NBTTagCompound();
             tag.setString("marker", "nullable-sync-" + count);
@@ -230,10 +231,10 @@ public final class GiftEditorSessionTest {
                 check(rejected, "Writing an out-of-range preview count must be rejected");
                 buffer.clear();
                 buffer.writeBoolean(false);
-                NBTTagCompound item = new NBTTagCompound();
-                new ItemStack(Items.emerald, 1).writeToNBT(item);
-                buffer.writeNBTTagCompoundToBuffer(item);
+                buffer.writeInt(net.minecraft.item.Item.getIdFromItem(Items.emerald));
+                buffer.writeInt(0);
                 buffer.writeInt(count);
+                buffer.writeInt(0);
                 rejected = false;
                 try {
                     receiver.read(buffer);
@@ -244,6 +245,128 @@ public final class GiftEditorSessionTest {
             } finally {
                 buffer.release();
             }
+        }
+    }
+
+    private static void boundedGhostAndTextSync() throws Exception {
+        GiftEditorSession draft = new GiftEditorSession(null);
+        NBTTagCompound binary = new NBTTagCompound();
+        binary.setByteArray("backpack", new byte[20000]);
+        ItemStack backpack = new ItemStack(net.minecraft.init.Blocks.chest, 4096);
+        backpack.setTagCompound(binary);
+        draft.visibleItems.setStackInSlot(1, backpack);
+        check(
+            GiftEditorSession.PRESERVED_NBT.equals(draft.nbt(1)),
+            "Binary NBT must remain intact behind a read-only text marker");
+        PacketBuffer buffer = new PacketBuffer(Unpooled.buffer());
+        try {
+            GiftGhostSlotSync.writeItem(buffer, backpack);
+            ItemStack received = GiftGhostSlotSync.readItem(buffer);
+            check(
+                received.stackSize == 4096 && binary.equals(received.getTagCompound()) && !buffer.isReadable(),
+                "Ghost item codec preserves full counts and backpack NBT in both directions");
+            GiftGhostSlotSync client = new GiftGhostSlotSync(
+                new com.cleanroommc.modularui.widgets.slot.ModularSlot(draft.visibleItems, 1));
+            buffer.clear();
+            ItemStack replacement = new ItemStack(Items.emerald, 128);
+            GiftGhostSlotSync.writeItem(buffer, replacement);
+            buffer.writeBoolean(false);
+            client.readOnClient(GiftGhostSlotSync.SYNC_ITEM, buffer);
+            check(
+                draft.visibleItems.getStackInSlot(1).stackSize == 128,
+                "Actual ghost S2C handler retains counts above signed-byte range");
+            buffer.clear();
+            buffer.writeBoolean(false);
+            buffer.writeInt(net.minecraft.item.Item.getIdFromItem(Items.emerald));
+            buffer.writeInt(0);
+            buffer.writeInt(16);
+            buffer.writeInt(Integer.MAX_VALUE);
+            client.readOnClient(GiftGhostSlotSync.SYNC_ITEM, buffer);
+            check(
+                draft.visibleItems.getStackInSlot(1).stackSize == 128,
+                "Rejected S2C lengths leave the previous ghost unchanged");
+            GiftGhostSlotSync server = new GiftGhostSlotSync(
+                new com.cleanroommc.modularui.widgets.slot.ModularSlot(draft.visibleItems, 1) {
+
+                    @Override
+                    public boolean isItemValid(ItemStack stack) {
+                        return true;
+                    }
+                }.ignoreMaxStackSize(true));
+            buffer.clear();
+            GiftGhostSlotSync.writeItem(buffer, backpack);
+            buffer.writeVarIntToBuffer(0);
+            server.readOnServer(GiftGhostSlotSync.SYNC_ITEM_SIMPLE, buffer);
+            check(
+                draft.visibleItems.getStackInSlot(1).stackSize == 4096 && binary.equals(
+                    draft.visibleItems.getStackInSlot(1)
+                        .getTagCompound()),
+                "Actual ghost C2S handler retains 4096 items and backpack contents");
+            buffer.clear();
+            GiftGhostSlotSync.writeItem(buffer, new ItemStack(Items.emerald, 16));
+            buffer.writeVarIntToBuffer(0);
+            buffer.writeByte(99);
+            try {
+                server.readOnServer(GiftGhostSlotSync.SYNC_ITEM_SIMPLE, buffer);
+                throw new AssertionError("Trailing ghost bytes accepted");
+            } catch (java.io.IOException expected) {
+                check(
+                    binary.equals(
+                        draft.visibleItems.getStackInSlot(1)
+                            .getTagCompound()),
+                    "Malformed C2S payloads are rejected before changing the old ghost");
+            }
+
+            draft.visibleItems.setStackInSlot(1, backpack);
+            draft.dirty = false;
+            NBTTagCompound oversized = new NBTTagCompound();
+            oversized.setByteArray("backpack", new byte[25000]);
+            ItemStack tooLarge = new ItemStack(net.minecraft.init.Blocks.chest);
+            tooLarge.setTagCompound(oversized);
+            try {
+                draft.visibleItems.setStackInSlot(1, tooLarge);
+                throw new AssertionError("Oversized cursor NBT accepted");
+            } catch (IllegalArgumentException expected) {
+                check(
+                    !draft.dirty && binary.equals(
+                        draft.visibleItems.getStackInSlot(1)
+                            .getTagCompound()),
+                    "Oversized cursor input preserves the previous ghost and dirty state");
+            }
+            NBTTagCompound longTag = new NBTTagCompound();
+            longTag.setString("long", new String(new char[17000]).replace('\0', 'x'));
+            backpack.setTagCompound(longTag);
+            draft.visibleItems.setStackInSlot(1, backpack);
+            check(
+                GiftEditorSession.PRESERVED_NBT.equals(draft.nbt(1)) && longTag.equals(
+                    draft.visibleItems.getStackInSlot(1)
+                        .getTagCompound()),
+                "Long valid NBT stays in the draft without serializing truncated text");
+
+            String[] target = { "original" };
+            GiftTextSync receiver = new GiftTextSync(() -> target[0], value -> target[0] = value, 16384);
+            for (String input : new String[] { "Unicode 礼包", new String(new char[12000]).replace('\0', '中'),
+                new String(new char[16385]).replace('\0', 'x') }) {
+                buffer.clear();
+                GiftTextSync sender = new GiftTextSync(() -> input, null, 16384);
+                sender.write(buffer);
+                if ("Unicode 礼包".equals(input)) {
+                    receiver.read(buffer);
+                    check(input.equals(target[0]), "Valid Unicode text round-trips exactly");
+                } else {
+                    String before = target[0];
+                    try {
+                        receiver.read(buffer);
+                        throw new AssertionError("Oversized text accepted");
+                    } catch (java.io.IOException expected) {
+                        check(
+                            before.equals(target[0]),
+                            "Byte/character limits reject the whole edit without changing old text");
+                    }
+                }
+            }
+        } finally {
+            buffer.release();
         }
     }
 

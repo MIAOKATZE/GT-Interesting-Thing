@@ -70,7 +70,7 @@ public final class TradePresetManager {
     }
 
     public static boolean canConfigure(EntityPlayerMP player) {
-        return canManageAtLevel(player, 2);
+        return canManageAtLevel(player, DefaultContentConfig.managementOpLevel());
     }
 
     /** Restoring bundled defaults retains its separate destructive-operation permission. */
@@ -313,7 +313,8 @@ public final class TradePresetManager {
     }
 
     private static void requirePermission(EntityPlayerMP player) {
-        if (!canConfigure(player)) throw new IllegalArgumentException("仅单人存档所有者或专用服务器 OP 等级 2 可管理预设");
+        if (!canConfigure(player)) throw new IllegalArgumentException(
+            "仅单人存档所有者或专用服务器 OP 等级 " + DefaultContentConfig.managementOpLevel() + " 可管理预设");
         requireServer();
     }
 
