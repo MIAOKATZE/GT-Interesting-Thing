@@ -3,17 +3,20 @@ package com.miaokatze.gtit.mail;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.MinecraftServer;
+import net.minecraft.inventory.Container;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.World;
+import net.minecraftforge.common.DimensionManager;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularContainer;
+import com.miaokatze.gtit.common.items.terminal.RemoteVendingContainer;
+import com.miaokatze.gtit.common.items.terminal.RemoteVendingSession;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
@@ -22,6 +25,7 @@ import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
+import gregtech.api.metatileentity.BaseMetaTileEntity;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -157,7 +161,13 @@ public class MailActionPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行（涉及背包写入、NBT 持久化）
-            ServerTaskScheduler.scheduleServerTask(() -> processAction(player, message));
+            Container source = player.openContainer;
+            int window = source == null ? -1 : source.windowId;
+            ServerTaskScheduler.scheduleServerTask(() -> {
+                if (message.action == ACTION_COMPOSE && source instanceof RemoteVendingContainer
+                    && (player.openContainer != source || source.windowId != window)) return;
+                processAction(player, message);
+            });
             return null;
         }
 
@@ -234,6 +244,10 @@ public class MailActionPacket implements IMessage {
             }
 
             MTENekoVendingMachineV2 machine = findMachine(player, message);
+            if (machine == null && player.openContainer instanceof RemoteVendingContainer) {
+                player.addChatMessage(new net.minecraft.util.ChatComponentTranslation("gtit.terminal.access_denied"));
+                return;
+            }
             int result = manager.sendPlayerMail(player, machine, recipient, title, content);
             switch (result) {
                 case MailManager.COMPOSE_SUCCESS -> player
@@ -270,16 +284,26 @@ public class MailActionPacket implements IMessage {
          */
         private MTENekoVendingMachineV2 findMachine(EntityPlayerMP player, MailActionPacket message) {
             try {
-                MinecraftServer server = MinecraftServer.getServer();
-                if (server == null) return null;
-                World world = server.worldServerForDimension(message.machineDim);
+                if (player.openContainer instanceof RemoteVendingContainer) {
+                    return RemoteVendingSession.resolveCurrent(
+                        player,
+                        message.machineDim,
+                        message.machineX,
+                        message.machineY,
+                        message.machineZ);
+                }
+                World world = DimensionManager.getWorld(message.machineDim);
                 if (world == null || world != player.worldObj) return null;
                 // 距离上限（防恶意包隔空/跨维度指定他人机器取物）
                 if (player.getDistanceSq(message.machineX + 0.5D, message.machineY + 0.5D, message.machineZ + 0.5D)
                     > MAX_MACHINE_DISTANCE_SQ) return null;
                 // GUI 会话绑定（发送者必须正打开这台机器的 GUI，仅持坐标不允许取物）
                 if (!isMachineGuiOpen(player, message)) return null;
+                if (!world.getChunkProvider()
+                    .chunkExists(message.machineX >> 4, message.machineZ >> 4)) return null;
                 TileEntity te = world.getTileEntity(message.machineX, message.machineY, message.machineZ);
+                if (!(te instanceof BaseMetaTileEntity) || !((BaseMetaTileEntity) te).isUseableByPlayer(player))
+                    return null;
                 if (te instanceof IGregTechTileEntity) {
                     if (((IGregTechTileEntity) te).getMetaTileEntity() instanceof MTENekoVendingMachineV2) {
                         return (MTENekoVendingMachineV2) ((IGregTechTileEntity) te).getMetaTileEntity();

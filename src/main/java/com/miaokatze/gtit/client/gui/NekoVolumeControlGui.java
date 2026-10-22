@@ -11,7 +11,6 @@ import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.SliderWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
-import com.gtnewhorizon.gtnhlib.config.ConfigurationManager;
 import com.miaokatze.gtit.config.NekoMusicConfig;
 
 /**
@@ -30,7 +29,7 @@ import com.miaokatze.gtit.config.NekoMusicConfig;
  * 与 VM 原版的差异：
  * <ul>
  * <li>使用 {@link NekoMusicConfig#music_volume} 替代 VMConfig.music.music_volume</li>
- * <li>使用 {@link ConfigurationManager#save} 保存 NekoMusicConfig.class 替代 VMConfig.class</li>
+ * <li>使用 {@link NekoMusicConfig#setMusicVolume(float)} 即时保存客户端音量</li>
  * <li>使用固定颜色 {@code 0xFF000000} 替代 ColorUtils.volumeSliderBackground</li>
  * <li>本地化 key 从 vendingmachine.gui.volume.* 迁移到 gtit.gui.volume.*</li>
  * <li>移除了 VMMusicManager.onVolumeChange() 调用 —— NekoMusicEventHandler 在 tick 中读取 music_volume，自动应用新音量</li>
@@ -46,13 +45,10 @@ public class NekoVolumeControlGui {
     /** 滑块背景颜色（纯黑 0xFF000000，与 VM 的 ColorUtils.volumeSliderBackground 一致） */
     private static final int SLIDER_BACKGROUND_COLOR = 0xFF000000;
 
-    /** 音量是否被修改（用于关闭时决定是否保存配置） */
-    private boolean volumeChanged = false;
-
     /**
      * 创建音量控制面板
      * <p>
-     * 面板会定位在父组件下方 5 像素处，关闭时自动保存配置（如果音量被修改过）。
+     * 面板会定位在父组件下方 5 像素处，音量变化时即时保存配置。
      *
      * @param syncManager 面板同步管理器
      * @param parent      父组件（用于相对定位）
@@ -66,12 +62,6 @@ public class NekoVolumeControlGui {
             // 面板定位在父组件正下方
             panel.relative(parent)
                 .topRel(1f, 5, 0);
-            // 面板关闭时，如果音量被修改过，保存配置到磁盘
-            panel.onCloseAction(() -> {
-                if (volumeChanged) {
-                    ConfigurationManager.save(NekoMusicConfig.class);
-                }
-            });
         }
         return panel;
     }
@@ -121,13 +111,8 @@ public class NekoVolumeControlGui {
                                         new Dynamic(
                                             // getter: 读取当前配置值
                                             () -> NekoMusicConfig.music_volume,
-                                            // setter: 写入配置值并标记已修改
-                                            value -> {
-                                                NekoMusicConfig.music_volume = (float) value;
-                                                // NekoMusicEventHandler 在 tick 中读取 music_volume，
-                                                // 自动应用新音量，无需显式调用 onVolumeChange()
-                                                volumeChanged = true;
-                                            })))
+                                            // setter: 更新并即时保存客户端音量
+                                            value -> NekoMusicConfig.setMusicVolume((float) value))))
                             .child(
                                 // 百分比文本（动态更新）
                                 IKey.dynamic(

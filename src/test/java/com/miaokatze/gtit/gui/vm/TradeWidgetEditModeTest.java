@@ -94,10 +94,33 @@ public final class TradeWidgetEditModeTest {
                     check(
                         widget.onMousePressed(0) == Interactable.Result.SUCCESS && gui.edited == display,
                         "existing trade left click routes its original identity to the edit callback");
+                    widget.setSelected(true);
+                    widget.setDisplay(NekoTradeItemDisplay.fromNekoTrade(new NekoTrade(), group, 0));
+                    check(widget.isPressed() && widget.isSelected(), "refresh of the same identity keeps visual state");
+                    NekoTradeItemDisplay otherIndex = NekoTradeItemDisplay.fromNekoTrade(new NekoTrade(), group, 1);
+                    widget.setDisplay(otherIndex);
+                    check(!widget.isPressed() && !widget.isSelected(), "another trade index clears visual state");
+                    check(widget.isEditMode(), "display reuse preserves edit mode");
+                    check(
+                        widget.onMousePressed(0) == Interactable.Result.SUCCESS && gui.edited == otherIndex,
+                        "reused widget routes clicks to its new identity");
+                    widget.setSelected(true);
+                    NekoTradeGroup otherGroup = new NekoTradeGroup();
+                    widget.setDisplay(NekoTradeItemDisplay.fromNekoTrade(new NekoTrade(), otherGroup, 1));
+                    check(!widget.isPressed() && !widget.isSelected(), "another group clears visual state");
+                    widget.onMousePressed(0);
+                    widget.setSelected(true);
+                    widget.setDisplay(null);
+                    check(!widget.isPressed() && !widget.isSelected(), "clearing a pooled widget clears visual state");
+                    gui.edited = null;
+                    check(
+                        widget.onMousePressed(0) == Interactable.Result.IGNORE && gui.edited == null,
+                        "cleared widget ignores clicks");
                 }
             }
         }
-        System.out.println("TradeWidgetEditModeTest: 5 rebuild phases, tile/list state and edit clicks passed");
+        System.out.println(
+            "TradeWidgetEditModeTest: 5 rebuild phases, tile/list state, identity reuse and edit clicks passed");
     }
 
     private static void check(boolean value, String message) {

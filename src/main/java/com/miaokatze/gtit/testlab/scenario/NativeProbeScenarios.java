@@ -10,6 +10,7 @@ public final class NativeProbeScenarios {
     public static void register() {
         TestLabRuntime.register(new PocketNativeScenario());
         TestLabRuntime.register(new MachineNativeScenario());
+        TestLabRuntime.register(new RemoteVendingNativeScenario());
         TestLabRuntime.register(new TeamWalletNativeScenario());
         TestLabRuntime.register(new BusinessLifecycleScenario());
         TestLabRuntime.register(new GiftSystemNativeScenario());

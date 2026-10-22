@@ -27,6 +27,7 @@ import com.miaokatze.gtit.common.items.rings.RingMountainbreaker;
 import com.miaokatze.gtit.common.items.rings.RingSkywalk;
 import com.miaokatze.gtit.common.items.rings.RingTempest;
 import com.miaokatze.gtit.common.items.rings.RingWindrider;
+import com.miaokatze.gtit.common.items.terminal.ItemNekoVendingTerminal;
 import com.miaokatze.gtit.gift.GiftShellCatalog;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
@@ -83,6 +84,7 @@ public class ItemRegistrar {
 
         // 猫猫次元口袋
         registerNekoDimensionPocket();
+        NekoVendingTerminal.setAndRegister(ItemNekoVendingTerminal::new);
 
         // 口袋升级插件（R95）
         registerNekoPocketUpgrades();

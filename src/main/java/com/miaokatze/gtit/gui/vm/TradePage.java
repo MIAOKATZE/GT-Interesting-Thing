@@ -30,6 +30,7 @@ import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
+import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.ListWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
@@ -150,18 +151,17 @@ public final class TradePage {
     // ==================== v1.7.33 T2/T3（QoL 块左移 + 标签翻页） ====================
 
     /**
-     * T2：QoL 2x2 块左锚定值 left(-60)。
+     * QoL 三列两行；新增队伍列在旧四按钮左侧，不移动旧按钮。
      * <p>
      * 几何（各列均为 panel 直接 child，绝对锚点不受 panel.padding(4) 影响，MUI2
      * {@code DimensionSizer.applyMarginAndPaddingToPos} 对 PIXEL 锚点将 padding 归零）：
-     * 块宽 29（14+1+14，minElementMargin 仅作用于元素间），left(-60) → x ∈ [-60, -31)；
+     * 块宽 44（14+1+14+1+14），left(-75) → x ∈ [-75, -31)；
      * 贸易分类/sub-tab 标签列 left(-29)（TAB_LEFT 标签宽 32）→ x ∈ [-29, +3)，
      * 与块右缘间隙 = -29 - (-31) = 2px，水平完全脱开且 ≥2px。
-     * 主标签列 left(-57) → x ∈ [-57, -25)：与块 x 投影虽重叠 26px，但块 y ∈ [1, 30)、
-     * 主列 y ∈ [40, 158)，y 向错开 10px，渲染像素零碰撞；若要求与主列也纯水平脱开
-     * 需 left ≤ -88（= -57 - 2 - 29），超出既定 -54~-60 区间且视觉上脱离 GUI，不取。
+     * 主标签列 left(-57) → x ∈ [-57, -25)：块 y ∈ [1, 30)、
+     * 主列 y ∈ [40, 158)，纵向间隔 10px。
      */
-    private static final int QOL_GRID_LEFT = -60;
+    private static final int QOL_GRID_LEFT = -75;
 
     /** T3：标签列每页最大标签数（size ≥ 此值才创建翻页行；页内为全局索引 [tabPage*PAGE_SIZE, ...)） */
     public static final int PAGE_SIZE = 11;
@@ -868,7 +868,7 @@ public final class TradePage {
     /**
      * 创建 QoL 按钮列（BGM/音量、显示模式、货币显示开关、排序模式）
      * <p>
-     * 位于标签列左侧，使用 2x2 Grid 布局提供快速操作按钮。
+     * 位于标签列左侧，队伍按钮在音量按钮左侧；原四个按钮保留其位置。
      * <p>
      * v1.7.33 T2：左锚 left(-33)→left(-60)（{@link #QOL_GRID_LEFT}）——原 -33 与贸易分类
      * 标签列（left(-29)，x ∈ [-29, +3)）的 x 投影重叠 25px；左移后块 x ∈ [-60, -31)，
@@ -888,6 +888,14 @@ public final class TradePage {
      * @return QoL 按钮列 Widget
      */
     public IWidget createQolButtonColumn() {
+        ButtonWidget<?> teamStatusButton = new ButtonWidget<>().size(14, 14)
+            .overlay(IKey.lang("gtit.gui.teams.short"))
+            .addTooltipLine(IKey.lang("gtit.gui.teams.title"))
+            .onMousePressed(mouse -> {
+                if (mouse != 0) return false;
+                if (gui.teamStatusPanel != null) gui.teamStatusPanel.togglePanel();
+                return true;
+            });
         // --- 音量/BGM 按钮（左上）---
         // 单击切换 BGM 播放/停止；Shift+点击打开音量面板
         // v1.6.24: gui.volumeButton 改为赋值类字段（移除 final 局部变量），以便 build() 在 client 块外部注册 syncedPanel
@@ -899,6 +907,7 @@ public final class TradePage {
                     .size(14);
             }))
             .onMousePressed(btn -> {
+                if (btn != 0) return false;
                 if (Interactable.hasShiftDown()) {
                     // Shift+点击：打开/关闭音量控制面板
                     if (gui.volumePanel != null) {
@@ -934,6 +943,7 @@ public final class TradePage {
                         .getTexture()
                         .size(14)))
             .onMousePressed(btn -> {
+                if (btn != 0) return false;
                 // 切换显示模式：TILE ↔ LIST
                 displayTypeSync.setValue(displayType == 0 ? 1 : 0);
                 return true;
@@ -954,6 +964,7 @@ public final class TradePage {
                     () -> (gui.showCoins ? NekoGuiTextures.SHOW_COINS : NekoGuiTextures.HIDE_COINS).asIcon()
                         .size(14)))
             .onMousePressed(btn -> {
+                if (btn != 0) return false;
                 // 切换货币余额行的显示/隐藏
                 gui.showCoinsSync.setValue(!gui.showCoins);
                 return true;
@@ -969,6 +980,7 @@ public final class TradePage {
                         .getTexture()
                         .size(14)))
             .onMousePressed(btn -> {
+                if (btn != 0) return false;
                 // 切换排序模式：SMART ↔ ALPHABET
                 sortModeSync.setValue(sortMode == 0 ? 1 : 0);
                 return true;
@@ -985,7 +997,7 @@ public final class TradePage {
         // v1.6.24: gui.volumePanel 注册已移至 build() 的 client 块外部（与 VM 原版一致），
         // 确保服务端也注册同步通道，否则客户端 togglePanel() 静默失败
 
-        // 2x2 网格：左上音量、右上显示模式、左下显示硬币、右下排序
+        // 队伍按钮位于新增左列；原音量/显示/余额/排序四按钮坐标不变。
         // v1.7.33 T2：left(-33)→left(-60)，使 QoL 块（宽 29）与标签列 x ∈ [-29, +3) 水平脱开 2px
         // 在 NEI/HEI 中排除 QoL 按钮列区域，避免配方查看器遮挡快捷按钮
         Grid qolGrid = new Grid().left(QOL_GRID_LEFT)
@@ -994,8 +1006,8 @@ public final class TradePage {
             .coverChildren()
             .grid(
                 Arrays.asList(
-                    Arrays.asList(gui.volumeButton, displayModeButton),
-                    Arrays.asList(showCoinsButton, sortModeButton)));
+                    Arrays.asList(teamStatusButton, gui.volumeButton, displayModeButton),
+                    Arrays.asList(new ParentWidget<>().size(14, 14), showCoinsButton, sortModeButton)));
         // v1.7.7 G2③：以 controller 当前页为权威
         qolGrid
             .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);

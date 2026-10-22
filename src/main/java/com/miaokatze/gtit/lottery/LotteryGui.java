@@ -989,7 +989,7 @@ public class LotteryGui {
                     return true;
                 }
                 if (machine != null) {
-                    int dim = machine.getWorld() != null ? machine.getWorld().provider.dimensionId : 0;
+                    int dim = requestMachineDimension(machine);
                     LotteryNetworkManager.sendLotteryRequest(
                         pool.id,
                         count,
@@ -1000,6 +1000,10 @@ public class LotteryGui {
                 }
                 return true;
             });
+    }
+
+    private static int requestMachineDimension(IGregTechTileEntity machine) {
+        return com.miaokatze.gtit.common.items.terminal.RemoteVendingDisplayTile.dimensionOf(machine);
     }
 
     /**

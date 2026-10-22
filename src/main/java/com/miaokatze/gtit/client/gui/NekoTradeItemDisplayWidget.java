@@ -259,6 +259,13 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      * @param display 交易显示数据（可为 null）
      */
     public void setDisplay(NekoTradeItemDisplay display) {
+        if (display == null || this.display == null
+            || !java.util.Objects.equals(this.display.getGroupId(), display.getGroupId())
+            || this.display.getTradeIndex() != display.getTradeIndex()) {
+            // 预分配控件被其它交易复用时，不继承上一条目的交互视觉状态。
+            this.pressed = false;
+            this.selected = false;
+        }
         this.display = display;
 
         if (display == null || display.getDisplayItem() == null) {
