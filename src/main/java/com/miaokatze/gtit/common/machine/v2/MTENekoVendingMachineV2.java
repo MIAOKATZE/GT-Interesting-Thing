@@ -140,13 +140,51 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     public static final int OUTPUT_SLOTS = 100;
 
     /** 内置输入物品槽 */
-    public final ItemStackHandler inputItems = new ItemStackHandler(INPUT_SLOTS);
+    public final ItemStackHandler inputItems = new ItemStackHandler(INPUT_SLOTS) {
+
+        @Override
+        protected void onContentsChanged(int slot) {
+            markTradeStateChanged();
+        }
+    };
 
     /** 内置输出物品槽 */
-    public final ItemStackHandler outputItems = new ItemStackHandler(OUTPUT_SLOTS);
+    public final ItemStackHandler outputItems = new ItemStackHandler(OUTPUT_SLOTS) {
+
+        @Override
+        protected void onContentsChanged(int slot) {
+            markTradeStateChanged();
+        }
+    };
 
     /** 输出缓冲队列，物品先入队再逐 tick 投放到 outputItems，复刻 V1 的串行掉落节奏 */
-    private final Queue<ItemStack> outputBuffer = new ConcurrentLinkedQueue<>();
+    private final Queue<ItemStack> outputBuffer = new ConcurrentLinkedQueue<ItemStack>() {
+
+        @Override
+        public boolean offer(ItemStack stack) {
+            boolean added = super.offer(stack);
+            if (added) markTradeStateChanged();
+            return added;
+        }
+
+        @Override
+        public ItemStack poll() {
+            ItemStack stack = super.poll();
+            if (stack != null) markTradeStateChanged();
+            return stack;
+        }
+    };
+
+    /** Server-owned invalidation shared by every viewer; runtime state only, never saved. */
+    private long tradeStateRevision;
+
+    public long getTradeStateRevision() {
+        return tradeStateRevision;
+    }
+
+    public void markTradeStateChanged() {
+        tradeStateRevision++;
+    }
 
     /** 标记有新缓冲输出待投放，触发立即投放而非等待延迟 */
     private boolean newBufferedOutputs = false;
@@ -207,6 +245,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             outputItems.setStackInSlot(slot, stack);
         }
     }, () -> {
+        markTradeStateChanged();
         if (getBaseMetaTileEntity() != null) {
             getBaseMetaTileEntity().markDirty();
         }
@@ -418,12 +457,14 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (!mMachine) {
             return NekoTradeResult.fail(NekoTradeResult.Status.NOT_FORMED);
         }
-        return NekoTradeExecutor.INSTANCE.executeTrade(
+        NekoTradeResult result = NekoTradeExecutor.INSTANCE.executeTrade(
             playerId,
             groupId,
             tradeIndex,
             new InternalInputSlotAccessor(uplinkHatch),
             new InternalOutputSlotAccessor());
+        if (result.isSuccess()) markTradeStateChanged();
+        return result;
     }
 
     /**
@@ -524,6 +565,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     public void setMeOutputMode(boolean mode) {
         if (this.meOutputMode != mode) {
             this.meOutputMode = mode;
+            markTradeStateChanged();
             if (getBaseMetaTileEntity() != null) {
                 getBaseMetaTileEntity().markDirty();
             }
@@ -1727,6 +1769,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     while (it.hasNext()) {
                         if (it.next() == last) {
                             it.remove();
+                            markTradeStateChanged();
                             break;
                         }
                     }

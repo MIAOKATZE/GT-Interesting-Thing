@@ -85,6 +85,7 @@ public final class StatusCodec {
     /** 上次重建可交易状态字符串时的世界 tick */
     private long lastTradeableStatusRebuildTick = -1;
     private long lastTradeRegistryVersion = -1;
+    private long lastMachineRevision = -1;
     /** 可交易状态缓存有效 tick 数（20 tick = 1 秒） */
     private static final long TRADEABLE_STATUS_CACHE_TICKS = 20;
 
@@ -321,6 +322,11 @@ public final class StatusCodec {
      */
     private String buildTradeableStatusString(UUID playerId) {
         if (playerId == null) return "";
+        long machineRevision = multiblock == null ? -1 : multiblock.getTradeStateRevision();
+        if (lastMachineRevision != machineRevision) {
+            tradeableStatusDirty = true;
+            lastMachineRevision = machineRevision;
+        }
         long registryVersion = NekoTradeDatabase.INSTANCE.getVersion();
         if (lastTradeRegistryVersion != registryVersion) {
             tradeableStatusDirty = true;

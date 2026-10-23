@@ -8,6 +8,7 @@ import net.minecraft.item.ItemStack;
 
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
+import com.miaokatze.gtit.trade.v2.NekoTradeDefinition;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 
 /**
@@ -64,6 +65,13 @@ public class NekoTradeItemDisplay {
 
     /** 交易组 UUID */
     private final UUID groupId;
+
+    /** Captured with this clickable display; never recomputed when its request is sent. */
+    private String definitionFingerprint = "";
+
+    public String getDefinitionFingerprint() {
+        return definitionFingerprint;
+    }
 
     /** 交易组 orderId（用于 SMART 排序，值越小越靠前） */
     private final int orderId;
@@ -217,6 +225,7 @@ public class NekoTradeItemDisplay {
             0, // cooldownRemaining - 由 GUI 层后续更新
             true, // tradeable - 默认可交易
             false); // favourite - 默认未收藏
+        display.definitionFingerprint = NekoTradeDefinition.fingerprint(group, trade);
         display.setOneTimeOnly(group.getCooldown() == -1);
         return display;
     }
