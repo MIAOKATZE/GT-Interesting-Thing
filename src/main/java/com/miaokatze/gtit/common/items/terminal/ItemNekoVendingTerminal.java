@@ -31,11 +31,15 @@ import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
+import appeng.api.features.IWirelessTermHandler;
+import appeng.api.util.IConfigManager;
+import appeng.util.ConfigManager;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
 
-public final class ItemNekoVendingTerminal extends Item implements IGuiHolder<PlayerInventoryGuiData> {
+public final class ItemNekoVendingTerminal extends Item
+    implements IGuiHolder<PlayerInventoryGuiData>, IWirelessTermHandler {
 
     public static final String ID = "neko_vending_terminal";
     private final Map<EntityPlayer, Long> lastBindingTick = new WeakHashMap<>();
@@ -47,6 +51,36 @@ public final class ItemNekoVendingTerminal extends Item implements IGuiHolder<Pl
         setMaxStackSize(1);
         setCreativeTab(CreativeTabManager.CREATIVE_TAB);
     }
+
+    /** Community type identification only; AE wireless inventory access remains unsupported. */
+    @Override
+    public boolean canHandle(ItemStack stack) {
+        return false;
+    }
+
+    @Override
+    public boolean hasPower(EntityPlayer player, double amount, ItemStack stack) {
+        return false;
+    }
+
+    @Override
+    public boolean usePower(EntityPlayer player, double amount, ItemStack stack) {
+        return false;
+    }
+
+    /** Independent empty configuration; AE configuration never writes the machine binding. */
+    @Override
+    public IConfigManager getConfigManager(ItemStack stack) {
+        return new ConfigManager((manager, settingName, newValue) -> {});
+    }
+
+    @Override
+    public String getEncryptionKey(ItemStack stack) {
+        return "";
+    }
+
+    @Override
+    public void setEncryptionKey(ItemStack stack, String key, String name) {}
 
     @Override
     public boolean onItemUseFirst(ItemStack stack, EntityPlayer player, World world, int x, int y, int z, int side,

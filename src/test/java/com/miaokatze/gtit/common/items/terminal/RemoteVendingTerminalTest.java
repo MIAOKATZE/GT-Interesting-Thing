@@ -1,14 +1,23 @@
 package com.miaokatze.gtit.common.items.terminal;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Properties;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.init.Items;
+import net.minecraft.inventory.Container;
+import net.minecraft.inventory.InventoryCrafting;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.crafting.CraftingManager;
+import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.world.World;
@@ -19,17 +28,27 @@ import com.cleanroommc.modularui.factory.inventory.InventoryTypes;
 import com.cleanroommc.modularui.screen.ModularContainer;
 import com.cleanroommc.modularui.value.sync.ModularSyncManager;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.miaokatze.gtit.common.api.enums.GTITItemList;
+import com.miaokatze.gtit.common.items.NekoCoin;
+import com.miaokatze.gtit.common.items.ShimmeringNekoCoin;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.gui.terminal.NekoRemoteVendingGui;
 import com.miaokatze.gtit.lottery.LotteryGui;
 import com.miaokatze.gtit.lottery.LotteryRequestPacket;
 import com.miaokatze.gtit.mail.MailActionPacket;
 import com.miaokatze.gtit.mail.MailGui;
+import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.testutil.SimpleAssert;
 import com.miaokatze.gtit.testutil.TestRunner;
 import com.mojang.authlib.GameProfile;
 
+import appeng.api.config.Settings;
+import appeng.api.config.SortOrder;
+import appeng.api.features.INetworkEncodable;
+import appeng.api.features.IWirelessTermHandler;
+import appeng.api.util.IConfigManager;
+import gregtech.api.enums.ItemList;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
 
@@ -56,6 +75,9 @@ public final class RemoteVendingTerminalTest {
         cases.put(
             "remote_access_keeps_gt_machine_permissions_and_liveness",
             RemoteVendingTerminalTest::machinePermissions);
+        cases.put("ae_identification_does_not_encode_or_mutate_binding", RemoteVendingTerminalTest::aeIdentification);
+        cases.put("screen_and_shimmering_coin_shapeless_recipe", RemoteVendingTerminalTest::terminalRecipe);
+        cases.put("portable_terminal_localization_keeps_existing_item_key", RemoteVendingTerminalTest::terminalName);
         cases.replaceAll((name, action) -> () -> {
             try {
                 action.run();
@@ -368,6 +390,118 @@ public final class RemoteVendingTerminalTest {
         tile.isDead = false;
         tile.setMetaTileEntity(null);
         SimpleAssert.that(!RemoteVendingAccess.canUse(tile, player), "detached MTE remains unusable");
+    }
+
+    private static void aeIdentification() {
+        ItemStack stack = terminal();
+        IWirelessTermHandler handler = (IWirelessTermHandler) stack.getItem();
+        INetworkEncodable encodable = handler;
+        encodable.setEncryptionKey(stack, "ae-network", "Security station");
+        encodable.setEncryptionKey(stack, "", "");
+        SimpleAssert.eq("", encodable.getEncryptionKey(stack), "AE pairing never stores a key");
+        SimpleAssert.that(!stack.hasTagCompound(), "AE pairing and clearing leave an unbound item untouched");
+
+        NekoVendingTarget target = new NekoVendingTarget(-42, 12, 64, -30);
+        target.write(stack);
+        stack.getTagCompound()
+            .setString("other-data", "kept");
+        NBTTagCompound before = (NBTTagCompound) stack.getTagCompound()
+            .copy();
+        encodable.setEncryptionKey(stack, "ae-network", "Security station");
+        encodable.setEncryptionKey(stack, "", "");
+        SimpleAssert.eq("", encodable.getEncryptionKey(stack), "bound terminal still has no AE key");
+        SimpleAssert
+            .that(!handler.canHandle(stack), "item identification does not claim AE wireless inventory support");
+        SimpleAssert.that(!handler.canHandle(new ItemStack(Items.stick)), "handler never claims other items");
+        SimpleAssert.that(!handler.hasPower(playerShell(), 0, stack), "AE power is unsupported");
+        SimpleAssert.that(!handler.usePower(playerShell(), 1, stack), "AE power cannot be consumed");
+        SimpleAssert
+            .that(!handler.hasInfinityPower(stack) && !handler.hasInfinityRange(stack), "no AE infinity capabilities");
+        IConfigManager config = handler.getConfigManager(stack);
+        SimpleAssert.that(
+            config != null && config.getSettings()
+                .isEmpty(),
+            "AE receives an empty config");
+        config.registerSetting(Settings.SORT_BY, SortOrder.NAME);
+        config.putSetting(Settings.SORT_BY, SortOrder.AMOUNT);
+        SimpleAssert.that(
+            handler.getConfigManager(stack)
+                .getSettings()
+                .isEmpty(),
+            "AE config state is never shared");
+        SimpleAssert.eq(before, stack.getTagCompound(), "all AE calls preserve the full bound item NBT");
+        SimpleAssert.eq(target, NekoVendingTarget.read(stack), "real machine binding remains usable");
+    }
+
+    private static void terminalRecipe() {
+        GTITItemList.NekoVendingTerminal.set(new ItemNekoVendingTerminal());
+        GTITItemList.ShimmeringNekoCoin.set(new ShimmeringNekoCoin());
+        GTITItemList.NekoCoin.set(new NekoCoin());
+        // The isolated bootstrap has no GT item loader. Supply its canonical enum with an item/meta fixture.
+        ItemStack screen = new ItemStack(Items.paper, 1, 32740);
+        ItemList.Cover_Screen.set(screen);
+        java.util.List recipes = CraftingManager.getInstance()
+            .getRecipeList();
+        int previousSize = recipes.size();
+        try {
+            Method add = GTITRecipes.class.getDeclaredMethod("addNekoVendingTerminalRecipe");
+            add.setAccessible(true);
+            add.invoke(null);
+            SimpleAssert.eq(previousSize + 1, recipes.size(), "one terminal recipe registered");
+            IRecipe recipe = (IRecipe) recipes.get(previousSize);
+            PlayerShell player = playerShell();
+            InventoryCrafting grid = new InventoryCrafting(new Container() {
+
+                @Override
+                public boolean canInteractWith(EntityPlayer ignored) {
+                    return true;
+                }
+            }, 3, 3);
+            ItemStack coin = GTITItemList.ShimmeringNekoCoin.get(1);
+            grid.setInventorySlotContents(0, screen.copy());
+            grid.setInventorySlotContents(8, coin);
+            SimpleAssert.that(recipe.matches(grid, player.worldObj), "screen plus shimmering coin craft terminal");
+            grid.setInventorySlotContents(0, coin);
+            grid.setInventorySlotContents(8, screen.copy());
+            SimpleAssert.that(recipe.matches(grid, player.worldObj), "ingredient order and separated slots are free");
+            ItemStack result = recipe.getCraftingResult(grid);
+            SimpleAssert.that(
+                result.getItem() == GTITItemList.NekoVendingTerminal.getItem() && result.stackSize == 1,
+                "recipe returns one existing terminal item");
+            SimpleAssert.that(!result.hasTagCompound(), "newly crafted terminal has no machine or AE binding");
+            grid.setInventorySlotContents(0, GTITItemList.NekoCoin.get(1));
+            SimpleAssert
+                .that(!recipe.matches(grid, player.worldObj), "ordinary coin cannot substitute shimmering coin");
+            grid.setInventorySlotContents(0, coin);
+            grid.setInventorySlotContents(8, new ItemStack(Items.paper, 1, 32739));
+            SimpleAssert.that(!recipe.matches(grid, player.worldObj), "screen metadata is exact");
+            grid.setInventorySlotContents(8, screen.copy());
+            grid.setInventorySlotContents(4, new ItemStack(Items.stick));
+            SimpleAssert.that(!recipe.matches(grid, player.worldObj), "extra ingredient rejects the recipe");
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        } finally {
+            recipes.subList(previousSize, recipes.size())
+                .clear();
+        }
+    }
+
+    private static void terminalName() {
+        String key = terminal().getUnlocalizedName() + ".name";
+        SimpleAssert.eq("item.neko_vending_terminal.name", key, "saved item retains its existing localization key");
+        String[][] locales = { { "zh_CN", "猫猫贸易机便携终端" }, { "en_US", "Neko Trading Machine Portable Terminal" } };
+        for (String[] locale : locales) {
+            try (InputStream stream = RemoteVendingTerminalTest.class.getClassLoader()
+                .getResourceAsStream("assets/gtit/lang/" + locale[0] + ".lang")) {
+                SimpleAssert.that(stream != null, "packaged locale exists: " + locale[0]);
+                Properties translations = new Properties();
+                translations.load(new InputStreamReader(stream, StandardCharsets.UTF_8));
+                SimpleAssert
+                    .eq(locale[1], translations.getProperty(key), "portable terminal display name: " + locale[0]);
+            } catch (java.io.IOException e) {
+                throw new AssertionError(e);
+            }
+        }
     }
 
     private static PlayerShell playerShell() {
