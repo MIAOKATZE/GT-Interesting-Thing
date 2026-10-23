@@ -19,6 +19,7 @@
 /.vscode/
 /run/
 /build/
+/build_compile_output.txt
 /eclipse/
 .classpath
 .project
