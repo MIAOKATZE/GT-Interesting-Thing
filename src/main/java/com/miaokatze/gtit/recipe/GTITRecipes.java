@@ -24,6 +24,7 @@ public class GTITRecipes {
         addTelekinesisOreScannerCoreRecipe();
         addRingWindriderRecipe();
         addNekoVendingMachineRecipe();
+        addNekoVendingTerminalRecipe();
         addNekoInfinityStorageUnitRecipe();
         addReincarnationCrystalRecipe();
         addNekoDimensionPocketRecipe();
@@ -186,6 +187,16 @@ public class GTITRecipes {
 
         // 无序合成：1 VM贸易机 + 1 猫猫币
         GameRegistry.addShapelessRecipe(GTITItemList.NekoVendingMachine.get(1), vmStack, GTITItemList.NekoCoin.get(1));
+    }
+
+    /** One GTSWN-compatible computer screen cover and one shimmering Neko coin, in any order. */
+    private static void addNekoVendingTerminalRecipe() {
+        ItemStack terminal = GTITItemList.NekoVendingTerminal.get(1);
+        if (terminal == null) return;
+        ItemStack screen = ItemList.Cover_Screen.get(1);
+        ItemStack coin = GTITItemList.ShimmeringNekoCoin.get(1);
+        if (screen == null || coin == null) return;
+        GameRegistry.addShapelessRecipe(terminal, screen, coin);
     }
 
     /**
