@@ -223,6 +223,7 @@ final class RemoteVendingNativeScenario implements ProbeScenario {
                 "Factory produced the production remote container on the server");
             owner.closeScreen();
         }
+        ConcurrentVendingProbe.run(context, owner, stranger, terminal, expected, base);
         exerciseUi(context, owner, terminal, expected, base);
         for (TeamStatusPage.Source source : TeamStatusPage.Source.values()) {
             TeamStatusPage page = NekoTeamStatusService.query(owner, source, Integer.MAX_VALUE);

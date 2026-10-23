@@ -64,6 +64,7 @@ import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.api.BundledTradeGroups;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
+import com.miaokatze.gtit.trade.v2.NekoTradeDefinition;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
 
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockBaseGui;
@@ -833,9 +834,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * ★R100 片 F：队列本体迁往 {@link VendingServerActions}，本方法保留为 gui 侧五个
      * C2S 迁移点的同形转发口（签名与调用形制零变化）。
      */
+    void markTradeableStatusDirty() {
+        statusCodec.markTradeableStatusDirtyAndNotify();
+    }
+
     void scheduleServerAction(Runnable action) {
         VendingServerActions.scheduleServerAction(
-            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, action));
+            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
+                action.run();
+                multiblock.markTradeStateChanged();
+            }));
     }
 
     @Override
@@ -1068,7 +1076,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         if (display == null) return;
         String request = display.getGroupId()
             .toString() + ":"
-            + display.getTradeIndex();
+            + display.getTradeIndex()
+            + ":"
+            + display.getDefinitionFingerprint();
         tradeRequestSync.setValue(request);
     }
 
@@ -1700,6 +1710,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 客户端调用 S2C 同步值的 notifyUpdate() 会抛 SecurityException，
         // 且 multiblock.processTrade() 是服务端专属操作。
         if (isClient()) return;
+        // UUID + bounded index + fixed SHA-256 token; reject oversized/missing-token requests.
+        if (request == null || request.length() > 112) return;
         try {
             if (playerId == null) {
                 tradeResultMessage = "无法确定玩家身份";
@@ -1707,7 +1719,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
 
             String[] parts = request.split(":");
-            if (parts.length != 2) {
+            if (parts.length != 3) {
                 tradeResultMessage = "交易请求格式错误";
                 return;
             }
@@ -1722,6 +1734,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 return;
             }
 
+            if (!NekoTradeDefinition.matches(groupId, tradeIndex, parts[2])) {
+                tradeResultMessage = EnumChatFormatting.RED + "交易内容已更新，请等待界面刷新后重试";
+                if (tradeResultSync != null) tradeResultSync.notifyUpdate();
+                statusCodec.markTradeableStatusDirtyAndNotify();
+                return;
+            }
             NekoTradeResult result = multiblock.processTrade(playerId, groupId, tradeIndex);
 
             if (result.isSuccess()) {
