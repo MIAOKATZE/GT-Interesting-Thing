@@ -67,6 +67,7 @@ public final class RemoteVendingTerminalTest {
         cases.put("binding_roundtrip_and_rebind_preserve_other_nbt", RemoteVendingTerminalTest::bindingRoundtrip);
         cases.put("missing_or_wrong_types_do_not_bind_to_origin", RemoteVendingTerminalTest::rejectMalformed);
         cases.put("session_binding_slot_and_container_lifecycle", RemoteVendingTerminalTest::sessionLifecycle);
+        cases.put("two_viewers_close_and_rebind_independently", RemoteVendingTerminalTest::independentViewers);
         cases.put("deferred_open_survives_vanilla_c08_stack_copy", RemoteVendingTerminalTest::deferredOpenStackCopy);
         cases.put("deferred_open_rechecks_request_context", RemoteVendingTerminalTest::deferredOpenContext);
         cases
@@ -132,6 +133,34 @@ public final class RemoteVendingTerminalTest {
             null,
             RemoteVendingAccess.findLoaded(new NekoVendingTarget(Integer.MIN_VALUE, 0, 64, 0)),
             "missing dimension does not get initialized");
+    }
+
+    private static void independentViewers() {
+        PlayerShell a = playerShell(), b = playerShell();
+        BaseMetaTileEntity tile = (BaseMetaTileEntity) allocate(BaseMetaTileEntity.class);
+        tile.setWorldObj(a.worldObj);
+        b.worldObj = a.worldObj;
+        NekoVendingTarget target = new NekoVendingTarget(0, 40, 64, -50);
+        ItemStack first = terminal(), second = terminal();
+        target.write(first);
+        target.write(second);
+        a.inventory.mainInventory[0] = first;
+        b.inventory.mainInventory[0] = second;
+        RemoteVendingSession sa = new RemoteVendingSession(
+            new PlayerInventoryGuiData(a, InventoryTypes.PLAYER, 0),
+            target,
+            tile);
+        RemoteVendingSession sb = new RemoteVendingSession(
+            new PlayerInventoryGuiData(b, InventoryTypes.PLAYER, 0),
+            target,
+            tile);
+        SimpleAssert.that(sa.isValid() && sb.isValid(), "same target permits two independent viewers");
+        sa.close();
+        SimpleAssert.that(!sa.isValid() && sb.isValid(), "closing first viewer preserves second authority");
+        new NekoVendingTarget(0, 1, 64, 1).write(first);
+        SimpleAssert.that(sb.isValid(), "rebinding another terminal never invalidates this viewer");
+        b.inventory.currentItem = 1;
+        SimpleAssert.that(!sb.isValid(), "the remaining viewer retains its own held-slot constraint");
     }
 
     private static void sessionLifecycle() {
