@@ -32,6 +32,7 @@ import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.api.BundledTradeGroups;
 import com.miaokatze.gtit.trade.api.NekoTradeIntegrationAPI;
 import com.miaokatze.gtit.trade.v2.NekoTradeRegistryV2;
+import com.miaokatze.miaokatzecore.api.recipe.RecipeRegistration;
 
 import appeng.api.AEApi;
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -504,13 +505,11 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void postInit(FMLPostInitializationEvent event) {
-        GTInterestingThing.LOG.info("[3/3] 开始注册配方...");
-        try {
+        RecipeRegistration.register("gtit", () -> {
+            GTInterestingThing.LOG.info("[3/3] 开始注册配方...");
             GTITRecipes.init();
             GTInterestingThing.LOG.info("[3/3] 配方注册完成。");
-        } catch (Throwable t) {
-            GTInterestingThing.LOG.error("[3/3] 配方注册过程中发生错误", t);
-        }
+        });
 
         // 初始化猫猫币货币注册表（物品在此阶段已全部注册完成）
         // 原因：之前因 getTooltip() NPE 崩溃而临时禁用，现 @SkipGenerateDescription 已修复根因
