@@ -1,11 +1,7 @@
 package com.miaokatze.gtit.gui.vm;
 
-import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.LIST_ITEM_HEIGHT;
 import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.MAX_TRADES;
-import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.PANEL_WIDTH;
 import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.TILE_ITEMS_PER_ROW;
-import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.TILE_ITEM_HEIGHT;
-import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.TRADE_ROW_WIDTH;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,7 +12,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 
-import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 
@@ -24,6 +19,7 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.api.widget.Interactable;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
+import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
@@ -48,6 +44,7 @@ import com.miaokatze.gtit.client.gui.NekoSubTabButton;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
 import com.miaokatze.gtit.client.gui.NekoTradeRow;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.client.gui.NekoVolumeControlGui;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
@@ -56,6 +53,7 @@ import com.miaokatze.gtit.lottery.LotteryClientData;
 import com.miaokatze.gtit.mail.MailClientData;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
+import com.miaokatze.gtit.trade.NekoPageSource;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
@@ -95,6 +93,7 @@ public final class TradePage {
     /** 当前标签页 ID（C2S：客户端切换标签时发送到服务端） */
     public static final int SCOPE_DEFAULT = 0;
     public static final int SCOPE_CUSTOM = 1;
+    public static final int SCOPE_PRESET = 2;
     private static int lastTradeScope = SCOPE_DEFAULT;
     private int tradeScope = lastTradeScope;
     private IntSyncValue tradeScopeSync;
@@ -180,10 +179,10 @@ public final class TradePage {
      * 居中后 y ∈ [4.5, 20.5]，仍在按钮内）。依据：PANEL_HEIGHT=320（NekoVMGuiV2:111）、
      * panel 内缘 316——11 槽 × 28 = 308 仅按钮已超 316，放不下为既定事实，压扁是最小可行调整。
      */
-    private static final int TAB_BUTTON_HEIGHT = 25;
+    private static final int TAB_BUTTON_HEIGHT = 16;
 
     /** T3：标签按钮宽度（TAB_LEFT 原生值，不变） */
-    private static final int TAB_BUTTON_WIDTH = 32;
+    private static final int TAB_BUTTON_WIDTH = 76;
 
     /** T3：翻页按钮边长（与 QoL 14x14 按钮习语一致） */
     private static final int PAGER_BUTTON_SIZE = 14;
@@ -224,7 +223,8 @@ public final class TradePage {
     }
 
     static boolean isPageInScope(NekoPageEntry page, int scope) {
-        return page != null && page.isPresetBuiltin() == (scope == SCOPE_DEFAULT);
+        return page != null && page.getSource() == (scope == SCOPE_PRESET ? NekoPageSource.PRESET
+            : scope == SCOPE_CUSTOM ? NekoPageSource.CUSTOM : NekoPageSource.DEFAULT);
     }
 
     public boolean isCategoryVisible(NekoTradeCategory category) {
@@ -263,7 +263,7 @@ public final class TradePage {
         // --- 当前标签页 ID（C2S）---
         tradeScopeSync = new IntSyncValue(
             () -> tradeScope,
-            value -> tradeScope = value == SCOPE_CUSTOM ? SCOPE_CUSTOM : SCOPE_DEFAULT).allowC2S();
+            value -> tradeScope = value == SCOPE_CUSTOM || value == SCOPE_PRESET ? value : SCOPE_DEFAULT).allowC2S();
         syncManager.syncValue("nekoV2TradeScope", tradeScopeSync);
         canManageCustomSync = new BooleanSyncValue(() -> !syncManager.isClient() && gui.canManageTradeContent());
         syncManager.syncValue("nekoV2CustomHelp", canManageCustomSync);
@@ -437,50 +437,27 @@ public final class TradePage {
      * @return 主标签列 Widget
      */
     public IWidget createMainTabColumn() {
-        Flow mainTabColumn = Flow.column()
-            .coverChildren()
-            .left(-57)
-            .top(40)
-            .childPadding(2);
-
-        // 主标签定义：index → (图标, 名称)
-        for (int scope : new int[] { SCOPE_DEFAULT, SCOPE_CUSTOM }) {
-            NekoSubTabButton button = new NekoSubTabButton(
-                MAIN_TAB_TRADE,
-                mainTabController,
-                scope == SCOPE_DEFAULT ? NekoGuiTextures.MAIN_TAB_TRADE
-                    : new ItemDrawable(new ItemStack(Items.writable_book)));
-            button.tab(NekoGuiTextures.TAB_LEFT, -1);
-            button.externalMode(() -> mainTabController.getActivePageIndex() == MAIN_TAB_TRADE && tradeScope == scope);
-            button.onSelected(() -> selectTradeScope(scope));
-            button.tooltipBuilder(
-                t -> t.addLine(IKey.lang(scope == SCOPE_DEFAULT ? "gtit.trade.default" : "gtit.trade.custom")));
-            mainTabColumn.child(button);
+        Flow rail = Flow.column()
+            .childPadding(6);
+        String[] names = { "贸易", "签到", "抽奖", "邮件" };
+        com.cleanroommc.modularui.drawable.UITexture[] icons = { NekoGuiTextures.MAIN_TAB_TRADE,
+            NekoGuiTextures.MAIN_TAB_SIGNIN, NekoGuiTextures.MAIN_TAB_LOTTERY, NekoGuiTextures.MAIN_TAB_MAIL };
+        for (int i = 0; i < names.length; i++) {
+            final int index = i;
+            rail.child(NekoVendingTheme.button(() -> names[index], () -> {
+                mainTabController.setPage(index);
+                mainTabId = index;
+                NekoMainTabButton.lastMainTab = index;
+                if (mainTabSync != null) mainTabSync.setValue(index);
+            }, () -> mainTabController.getActivePageIndex() == index, () -> true)
+                .size(36, 36)
+                .overlay((context, x, y, width, height, theme) -> {
+                    icons[index].draw(context, x + 10, y + 3, 16, 16, theme);
+                    GuiDraw.drawText(names[index], x + 8, y + 24, .85f, 0xffffe7b9, true);
+                }));
         }
-        Object[][] mainTabs = new Object[][] {
-            { MAIN_TAB_SIGNIN, NekoGuiTextures.MAIN_TAB_SIGNIN, "gtit.trade.signin" },
-            { MAIN_TAB_LOTTERY, NekoGuiTextures.MAIN_TAB_LOTTERY, "gtit.trade.lottery" },
-            { MAIN_TAB_MAIL, NekoGuiTextures.MAIN_TAB_MAIL, "gtit.trade.mail" }, };
-
-        for (Object[] tabDef : mainTabs) {
-            final int index = (Integer) tabDef[0];
-            final com.cleanroommc.modularui.drawable.UITexture icon = (com.cleanroommc.modularui.drawable.UITexture) tabDef[1];
-            final String name = (String) tabDef[2];
-
-            NekoMainTabButton tabButton = new NekoMainTabButton(index, mainTabController, icon);
-            tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-            tabButton.tooltipBuilder(t -> { t.addLine(IKey.lang(name)); });
-            // 点击时同步主标签索引到服务端（使用 onSelected 钩子，避免与 PageButton.onMousePressed 冲突）
-            tabButton.onSelected(() -> {
-                if (mainTabSync != null) {
-                    mainTabSync.setValue(index);
-                }
-            });
-
-            mainTabColumn.child(tabButton);
-        }
-
-        return mainTabColumn.excludeAreaInRecipeViewer();
+        return gui.place(rail, () -> gui.vendingLayout().mainRail)
+            .excludeAreaInRecipeViewer();
     }
 
     /**
@@ -506,25 +483,29 @@ public final class TradePage {
      * @return 标签列 Widget
      */
     public IWidget createTabColumn() {
-        Flow tabColumn = Flow.column()
-            .coverChildren()
-            .left(-29)
-            .top(TAB_COLUMN_TOP)
+        ParentWidget<?> root = new ParentWidget<>().background(NekoVendingTheme.PANEL);
+        int[] scopes = { SCOPE_DEFAULT, SCOPE_PRESET, SCOPE_CUSTOM };
+        String[] names = { "默认", "预设", "自定" };
+        for (int i = 0; i < scopes.length; i++) {
+            final int scope = scopes[i];
+            final String name = names[i];
+            root.child(
+                NekoVendingTheme
+                    .button(() -> name, () -> selectTradeScope(scope), () -> tradeScope == scope, () -> true)
+                    .pos(2 + i * 26, 3)
+                    .size(25, 18));
+        }
+        tabColumn = Flow.column()
+            .pos(3, 25)
+            .width(TAB_BUTTON_WIDTH)
+            .coverChildrenHeight()
             .childPadding(TAB_COLUMN_CHILD_PADDING);
-        this.tabColumn = tabColumn;
-
-        // v1.7.33 T3：build 与翻页共用同一填充路径（含数量变化时的页码收敛）
+        root.child(tabColumn);
         rebuildTabColumnChildren();
-
-        // 非编辑模式时「新建 page」按钮不占位（列自动收紧）——列属性，翻页重建不丢失
         tabColumn.collapseDisabledChild(true);
-
-        // v1.7.7 G2③：读取处以 controller 当前页为准，避免 mainTabId 滞后
-        tabColumn
-            .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
-
-        // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
-        return tabColumn.excludeAreaInRecipeViewer();
+        root.setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
+        return gui.place(root, () -> gui.vendingLayout().categories)
+            .excludeAreaInRecipeViewer();
     }
 
     /**
@@ -564,48 +545,31 @@ public final class TradePage {
             // v1.7.6 G3④：匿名子类包一层点击拦截——编辑模式下 Shift+点击 page 标签
             // 打开 page 编辑面板（不切页、不更新 lastPage）；普通点击维持原切页逻辑。
             // 收藏（tabId=-1）/未知（tabId=0）为虚拟分类，无对应 page 条目，不拦截。
-            NekoPageButtonV2 tabButton = new NekoPageButtonV2(index, tabController, category, highlightedTabs, icon) {
-
-                @Override
-                public Interactable.Result onMousePressed(int mouseButton) {
-                    if (gui.isEditModeActive() && Interactable.hasShiftDown() && category.getTabId() > 0) {
-                        gui.pageEditor.beginEdit(category.getTabId());
-                        return Interactable.Result.SUCCESS;
-                    }
-                    return super.onMousePressed(mouseButton);
+            ButtonWidget<?> tabButton = NekoVendingTheme.button(() -> name, () -> {
+                if (gui.isEditModeActive() && Interactable.hasShiftDown() && page != null && page.canCreateTrade())
+                    gui.pageEditor.beginEdit(category.getTabId());
+                else {
+                    tabController.setPage(index);
+                    NekoPageButtonV2.lastPage = index;
                 }
-            };
-            tabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-            // v1.7.33 T3：TAB_LEFT 原生 32x28，压扁至 32x25 使 11 槽+翻页行落入面板可视高度（计算见类常量注释）
-            tabButton.size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
-            if (page != null && page.getSourcePresetId() != null
-                && !page.getSourcePresetId()
-                    .isEmpty()) {
-                NekoPageEntry source = new NekoPageEntry();
-                source.setIconItem(page.getSourcePresetIconItem());
-                source.setIconMeta(page.getSourcePresetIconMeta());
-                source.setIconNbt(page.getSourcePresetIconNbt());
-                tabButton.sourceIcon(source.toIconItemStack());
-            }
-            tabButton.tooltipBuilder(t -> {
-                t.addLine(IKey.str(name));
-                if (page != null && page.getSourcePresetId() != null
-                    && !page.getSourcePresetId()
-                        .isEmpty()) {
-                    String sourceName = page.getSourcePresetName();
-                    if (sourceName == null || sourceName.isEmpty()) sourceName = page.getSourcePresetId();
-                    t.addLine(
-                        IKey.lang(
-                            page.isPresetBuiltin() ? "gtit.trade.source.builtin" : "gtit.trade.source.custom",
-                            sourceName));
-                }
-                // 编辑模式下追加操作提示（随编辑模式动态刷新）
-                if (gui.isEditModeActive() && category.getTabId() > 0) {
-                    t.addLine(IKey.str(EnumChatFormatting.YELLOW + "Shift+点击 编辑标签页"));
-                }
+            }, () -> tabController.getActivePageIndex() == index, () -> true)
+                .size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
+            tabButton.overlay((context, x, y, width, height, theme) -> {
+                if (icon != null) GuiDraw.drawItem(icon, x + 3, y + 2, 12, 12, (int) context.getCurrentDrawingZ());
+                String label = name.length() > 6 ? name.substring(0, 6) + "…" : name;
+                GuiDraw.drawText(label, x + 18, y + 5, .75f, 0xffffe7b9, true);
+                if (highlightedTabs.contains(category)) GuiDraw.drawRect(x, y, 2, height, 0xffeacc7a);
             });
-            tabButton.tooltipAutoUpdate(true);
-
+            tabButton.tooltipBuilder(t -> {
+                t.addLine(name);
+                if (page != null && !page.getSourcePresetId()
+                    .isEmpty()) {
+                    t.addLine("来源: " + page.getSourcePresetName());
+                    t.addLine("页面: " + page.getSource() + " / " + page.getId());
+                }
+                if (gui.isEditModeActive() && page != null && page.canCreateTrade()) t.addLine("Shift+点击 编辑标签页");
+            })
+                .tooltipAutoUpdate(true);
             column.child(tabButton);
         }
 
@@ -642,7 +606,8 @@ public final class TradePage {
             tabController,
             IKey.str(EnumChatFormatting.GREEN + "+"));
         newPageButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-        newPageButton.size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
+        newPageButton.size(76, 18);
+        styleNativeSubTab(newPageButton, IKey.str("+"), () -> "新建页面");
         newPageButton.externalMode(() -> false);
         newPageButton.onSelected(gui.pageEditor::beginNew);
         newPageButton.tooltipBuilder(t -> {
@@ -672,6 +637,8 @@ public final class TradePage {
      */
     private ButtonWidget<?> createPagerButton(String label, final int step) {
         ButtonWidget<?> button = new ButtonWidget<>().size(PAGER_BUTTON_SIZE, PAGER_BUTTON_SIZE)
+            .background(NekoVendingTheme.BUTTON)
+            .hoverBackground(NekoVendingTheme.HOVER)
             .overlay(IKey.str(EnumChatFormatting.WHITE + label))
             .onMouseTapped(mouse -> {
                 flipTabPage(step);
@@ -727,6 +694,21 @@ public final class TradePage {
      * @param mainTab 主标签索引（{@link #MAIN_TAB_SIGNIN}/{@link #MAIN_TAB_LOTTERY}/{@link #MAIN_TAB_MAIL}）
      * @return sub-page 标签列 Widget
      */
+    private static void styleNativeSubTab(NekoSubTabButton button,
+        com.cleanroommc.modularui.api.drawable.IDrawable icon, java.util.function.Supplier<String> label) {
+        button.background(true, NekoVendingTheme.PRESSED)
+            .background(false, NekoVendingTheme.BUTTON);
+        button.hoverBackground(NekoVendingTheme.face(button::isActive, () -> true, true));
+        button.size(76, 16)
+            .overlay((context, x, y, width, height, theme) -> {
+                icon.draw(context, x + 3, y + 2, 12, 12, theme);
+                String text = label.get();
+                if (text == null) text = "";
+                if (text.length() > 6) text = text.substring(0, 6) + "…";
+                GuiDraw.drawText(text, x + 18, y + 5, .75f, 0xffffe7b9, true);
+            });
+    }
+
     public IWidget createSubTabColumn(final int mainTab) {
         Flow subTabColumn = Flow.column()
             .coverChildren()
@@ -758,7 +740,10 @@ public final class TradePage {
                     return NekoGuiTextures.LOTTERY_COIN_NEKO;
                 });
                 NekoSubTabButton poolButton = new NekoSubTabButton(index, lotteryPageController, icon);
-                poolButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+                styleNativeSubTab(poolButton, icon, () -> {
+                    LotteryClientData.PoolSummary pool = poolAt(index);
+                    return pool == null ? "" : pool.name;
+                });
                 // 外部模式：选中态=当前选中池（LotteryClientData.selectedPoolId），
                 // 点击=切换选中池（抽奖页单页动态读 getSelectedPool，无需每池一页 PagedWidget）；
                 // 编辑模式下 Shift+点击=打开池编辑面板
@@ -794,7 +779,7 @@ public final class TradePage {
                 MAX_POOL_TABS,
                 lotteryPageController,
                 IKey.str(EnumChatFormatting.GREEN + "+"));
-            newPoolButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+            styleNativeSubTab(newPoolButton, IKey.str("+"), () -> "新建卡池");
             // 外部模式：永不选中；点击直接打开新建池编辑面板
             newPoolButton.externalMode(() -> false);
             newPoolButton.onSelected(gui.lotteryPoolEditor::beginNew);
@@ -829,7 +814,7 @@ public final class TradePage {
                 final com.cleanroommc.modularui.drawable.UITexture icon = (com.cleanroommc.modularui.drawable.UITexture) tabDef[1];
                 final String name = (String) tabDef[2];
                 NekoSubTabButton subTabButton = new NekoSubTabButton(index, controller, icon);
-                subTabButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+                styleNativeSubTab(subTabButton, icon, () -> name);
                 subTabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
                 // v1.7.6 G2②：邮件页切换 sub-tab（全部/系统/玩家/管理员）时重置列表页码——
                 // 各类型过滤后总页数不同，不重置则翻页行可能短暂显示「当前页 > 总页数」。
@@ -843,7 +828,7 @@ public final class TradePage {
             // 外部模式：永不选中（入口按钮不切换 sub-page，点击直接弹出祝福预设编辑面板）
             if (mainTab == MAIN_TAB_MAIL) {
                 NekoSubTabButton blessingButton = new NekoSubTabButton(5, controller, NekoGuiTextures.MAIL_PAPER);
-                blessingButton.tab(NekoGuiTextures.TAB_LEFT, -1);
+                styleNativeSubTab(blessingButton, NekoGuiTextures.MAIL_PAPER, () -> "祝福预设");
                 blessingButton.externalMode(() -> false);
                 blessingButton.onSelected(() -> gui.blessingEditor.beginEdit("birthday"));
                 blessingButton.tooltipBuilder(t -> {
@@ -862,7 +847,8 @@ public final class TradePage {
         subTabColumn.setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == mainTab);
 
         // 在 NEI/HEI 中排除标签列区域，避免配方查看器遮挡标签页
-        return subTabColumn.excludeAreaInRecipeViewer();
+        return gui.place(subTabColumn, () -> gui.vendingLayout().categories)
+            .excludeAreaInRecipeViewer();
     }
 
     /**
@@ -1011,7 +997,16 @@ public final class TradePage {
         // v1.7.7 G2③：以 controller 当前页为权威
         qolGrid
             .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
-        return qolGrid.excludeAreaInRecipeViewer();
+        for (ButtonWidget<?> button : new ButtonWidget<?>[] { teamStatusButton, gui.volumeButton, displayModeButton,
+            showCoinsButton, sortModeButton }) {
+            button.background(NekoVendingTheme.BUTTON)
+                .hoverBackground(NekoVendingTheme.HOVER);
+        }
+        return gui
+            .place(
+                qolGrid,
+                () -> new NekoVendingLayout.Rect(gui.vendingLayout().tools.x, gui.vendingLayout().tools.y + 2, 48, 30))
+            .excludeAreaInRecipeViewer();
     }
 
     /**
@@ -1026,32 +1021,55 @@ public final class TradePage {
      * @return 主列 Widget
      */
     public IWidget createTradeMainColumn(PanelSyncManager syncManager) {
-        Flow mainColumn = Flow.column()
-            .width(PANEL_WIDTH - 8);
+        ParentWidget<?> mainColumn = new ParentWidget<>().sizeRel(1f);
+        if (syncManager.isClient()) {
+            searchBar = new NekoSearchBar("搜索物品、名称或交易 ID…");
+            searchBar.pos(0, 0)
+                .widthRel(1f)
+                .height(18)
+                .background(NekoVendingTheme.INPUT);
+            searchBar.setSearchListener(newText -> searchTextSync.setValue(newText));
+            mainColumn.child(searchBar);
+            tradeContent = Flow.column()
+                .pos(0, 24)
+                .widthRel(1f)
+                .heightRelOffset(1f, -24);
+            tradeContent.child(createTradePagedWidget());
+            mainColumn.child(tradeContent);
+        }
+        return mainColumn.excludeAreaInRecipeViewer();
+    }
 
-        // --- 标题（编辑模式下附加红色「编辑模式」标识，v1.7.0 目标 4 视觉标识）---
-        mainColumn.child(
-            IKey.dynamic(
-                () -> EnumChatFormatting.DARK_GRAY
-                    + IKey.lang(tradeScope == SCOPE_DEFAULT ? "gtit.trade.default" : "gtit.trade.custom")
-                        .get()
-                    + (gui.isEditModeActive() ? " " + EnumChatFormatting.RED
-                        + IKey.lang("gtit.trade.editing")
-                            .get()
-                        : ""))
-                .asWidget()
-                .height(12)
-                .fullWidth()
-                .marginBottom(2));
+    private static final class WalletToolbar extends ParentWidget<WalletToolbar> {
 
+        @Override
+        public boolean canHover() {
+            return false;
+        }
+
+        @Override
+        public boolean canHoverThrough() {
+            return true;
+        }
+    }
+
+    /** One common wallet toolbar for every business page; reuses the original sync values and coin actions. */
+    public ParentWidget<?> createWalletToolbar(PanelSyncManager syncManager) {
+        ParentWidget<?> toolbar = new WalletToolbar();
+        IWidget coins = createCoinDisplayRow(syncManager);
+        coins.resizer()
+            .pos(70, 0)
+            .width(232)
+            .height(24);
+        toolbar.child(coins);
         // --- 团队钱包标识 + ME 输出模式切换按钮（同一行平行显示）---
         // [团队钱包]在左侧（仅 TEAM 模式时显示内容），[自动输入ME: 开/关]在右侧（仅 uplink 在线时显示）
         // 两者平行排列在标题下方同一行，互不影响显示
-        mainColumn.child(
+        toolbar.child(
             Flow.row()
+                .pos(65, 24)
                 .height(12)
-                .fullWidth()
-                .marginBottom(2)
+                .widthRelOffset(1f, -70)
                 // [团队钱包]动态文本（仅 TEAM 模式时显示，否则折叠隐藏）
                 .child(IKey.dynamic(() -> {
                     NekoWalletMode mode = gui.getWalletMode();
@@ -1096,39 +1114,7 @@ public final class TradePage {
                         .right(0)
                         .setEnabledIf(w -> gui.hasUplinkSync != null && gui.hasUplinkSync.getValue())));
 
-        if (syncManager.isClient()) {
-            // --- 搜索栏 ---
-            searchBar = new NekoSearchBar("搜索...");
-            searchBar.size(PANEL_WIDTH - 12, 14)
-                .fullWidth()
-                .marginBottom(2);
-            searchBar.setSearchListener(newText -> { searchTextSync.setValue(newText); });
-            mainColumn.child(searchBar);
-
-            // --- 交易列表（PagedWidget + 预分配 Widget）---
-            tradeContent = Flow.column()
-                .width(PANEL_WIDTH - 12)
-                .height(146);
-            tradeContent.child(createTradePagedWidget());
-            mainColumn.child(tradeContent);
-
-            // 注：gui.volumePanel 已在 build() 的 client 块外部创建（v1.6.24 修复，与 VM 原版一致）
-        }
-
-        // --- 猫猫币余额显示行 ---
-        mainColumn.child(createCoinDisplayRow(syncManager));
-
-        // --- 交易结果消息（v1.6.23：背包栏已底部锚定，消息高度不影响布局）---
-        mainColumn.child(
-            IKey.dynamic(
-                () -> gui.tradeResultMessage.isEmpty() ? "" : EnumChatFormatting.YELLOW + gui.tradeResultMessage)
-                .asWidget()
-                .height(12)
-                .fullWidth()
-                .marginBottom(2)
-                .setEnabledIf(w -> !gui.tradeResultMessage.isEmpty()));
-
-        return mainColumn;
+        return toolbar.excludeAreaInRecipeViewer();
     }
 
     /**
@@ -1144,11 +1130,11 @@ public final class TradePage {
      */
     private IWidget createTradePagedWidget() {
         PagedWidget<?> paged = new PagedWidget<>().name("nekoV2Paged")
-            .width(PANEL_WIDTH - 12)
+            .sizeRel(1f)
             .controller(tabController)
-            .background(NekoGuiTextures.TRADE_BACKGROUND);
+            .background(NekoVendingTheme.PANEL);
         // 交易列表高度与 V1 保持一致
-        paged.height(146);
+        paged.heightRel(1f);
         paged.initialPage(currentTabId);
         paged.onPageChange(page -> {
             currentTabId = page;
@@ -1192,11 +1178,11 @@ public final class TradePage {
      */
     private IWidget createTradeListPage(NekoTradeCategory category) {
         ListWidget<IWidget, ?> tradeList = new ListWidget<>().name("items_" + category.getKey())
-            .width(PANEL_WIDTH - 14)
+            .widthRel(1f)
             .top(1)
             .collapseDisabledChild(true);
         // 交易列表页面高度与外层 PagedWidget 保持一致
-        tradeList.height(146);
+        tradeList.heightRelOffset(1f, -1);
 
         // 顶部间距
         tradeList.child(
@@ -1208,7 +1194,7 @@ public final class TradePage {
             IKey.lang("gtit.trade.custom.empty")
                 .asWidget()
                 .alignment(Alignment.CenterLeft)
-                .width(TRADE_ROW_WIDTH - 8)
+                .widthRelOffset(1f, -8)
                 .height(18)
                 .marginLeft(4)
                 .setEnabledIf(w -> isCustomEmpty()));
@@ -1216,7 +1202,7 @@ public final class TradePage {
             IKey.lang("gtit.trade.custom.empty.owner")
                 .asWidget()
                 .alignment(Alignment.TopLeft)
-                .width(TRADE_ROW_WIDTH - 8)
+                .widthRelOffset(1f, -8)
                 .height(98)
                 .marginLeft(4)
                 .scale(0.9f)
@@ -1225,7 +1211,7 @@ public final class TradePage {
 
         Flow statusRow = Flow.row()
             .height(10)
-            .width(TRADE_ROW_WIDTH)
+            .widthRel(1f)
             .marginLeft(2)
             .child(
                 IKey.str(EnumChatFormatting.RED + "结构不完整")
@@ -1237,14 +1223,17 @@ public final class TradePage {
         List<NekoTradeItemDisplayWidget> tileWidgets = gui.displayedTradesTiles.get(category);
         if (tileWidgets != null) {
             NekoTradeRow row = new NekoTradeRow();
-            row.height(TILE_ITEM_HEIGHT + 4);
-            row.width(TRADE_ROW_WIDTH);
+            row.height(62);
+            row.widthRel(1f);
             row.marginLeft(2);
 
             for (int i = 0; i < MAX_TRADES; i++) {
                 final int index = i;
                 NekoTradeItemDisplayWidget widget = tileWidgets.get(i);
                 widget.margin(2);
+                widget.widthRelOffset(.5f, -4)
+                    .height(58);
+                widget.nativePresentation(true);
                 widget.setEnabledIf(w -> {
                     // 编辑模式：绕过结构完整性检查，显示所有有条目的 Widget
                     if (gui.isEditModeActive()) {
@@ -1259,8 +1248,8 @@ public final class TradePage {
                 if (i % TILE_ITEMS_PER_ROW == TILE_ITEMS_PER_ROW - 1) {
                     tradeList.child(row);
                     row = new NekoTradeRow();
-                    row.height(TILE_ITEM_HEIGHT + 4);
-                    row.width(TRADE_ROW_WIDTH);
+                    row.height(62);
+                    row.widthRel(1f);
                     row.marginLeft(2);
                 }
             }
@@ -1286,8 +1275,11 @@ public final class TradePage {
                 });
 
                 NekoTradeRow row = new NekoTradeRow();
-                row.height(LIST_ITEM_HEIGHT);
-                row.width(TRADE_ROW_WIDTH);
+                widget.widthRelOffset(1f, -4)
+                    .height(38);
+                widget.nativePresentation(true);
+                row.height(40);
+                row.widthRel(1f);
                 row.marginLeft(2);
                 row.child(widget);
                 tradeList.child(row);
@@ -1298,11 +1290,12 @@ public final class TradePage {
         // 收藏（tabId=-1）/未知（tabId=0）为虚拟分类，新建条目无处可挂，不显示按钮；
         // 非编辑模式时由 tradeList 的 collapseDisabledChild 压缩占位。
         NekoTradeRow newTradeRow = new NekoTradeRow();
-        newTradeRow.height(LIST_ITEM_HEIGHT);
-        newTradeRow.width(TRADE_ROW_WIDTH);
+        newTradeRow.height(22);
+        newTradeRow.widthRel(1f);
         newTradeRow.marginLeft(2);
-        ButtonWidget<?> newTradeButton = new ButtonWidget<>().size(TRADE_ROW_WIDTH - 4, LIST_ITEM_HEIGHT - 2)
-            .overlay(IKey.str(EnumChatFormatting.GREEN + "+ 新建交易条目"))
+        ButtonWidget<?> newTradeButton = new ButtonWidget<>().size(22, 20)
+            .background(NekoVendingTheme.BUTTON)
+            .overlay(IKey.str("+"))
             .onMouseTapped(mouse -> {
                 gui.tradeEditor.beginNewTrade(category.getTabId());
                 return true;
@@ -1312,7 +1305,10 @@ public final class TradePage {
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "在本标签页尾部追加一条空白交易"));
         });
         newTradeRow.child(newTradeButton);
-        newTradeRow.setEnabledIf(w -> gui.isEditModeActive() && category.getTabId() > 0);
+        newTradeRow.setEnabledIf(
+            w -> gui.isEditModeActive() && NekoPageRegistry.getPage(category.getTabId()) != null
+                && NekoPageRegistry.getPage(category.getTabId())
+                    .canCreateTrade());
         tradeList.child(newTradeRow);
 
         // 底部间距
@@ -1361,9 +1357,11 @@ public final class TradePage {
                         sync.setValue(true);
                     }
                 });
-            coinDisplay.left(offset);
+            coinDisplay.left(offset)
+                .size(108, 22)
+                .background(NekoVendingTheme.PANEL);
             row.child(coinDisplay);
-            offset += 79; // 组件宽度 76 + 间距 3 = 79
+            offset += 114; // native wallet cards keep the original actions and animated balance
         }
 
         // 根据货币显示开关控制余额行的显示/隐藏

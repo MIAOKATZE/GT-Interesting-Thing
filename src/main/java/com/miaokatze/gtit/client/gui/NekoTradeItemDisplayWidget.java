@@ -154,6 +154,8 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
          */
         void onTradeRequested(NekoTradeItemDisplay display);
 
+        default void onTradeSelected(NekoTradeItemDisplay display) {}
+
         /**
          * 收藏切换回调
          * <p>
@@ -202,6 +204,16 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
     /** 是否处于编辑模式（编辑模式下左键点击打开编辑面板，禁止交易/收藏） */
     private boolean editMode = false;
+    private boolean nativePresentation;
+
+    public NekoTradeItemDisplayWidget nativePresentation(boolean value) {
+        nativePresentation = value;
+        if (value) {
+            background(NekoVendingTheme.row(() -> selected));
+            hoverBackground(NekoVendingTheme.row(() -> selected, true));
+        }
+        return this;
+    }
 
     // ==================== 构造器 ====================
 
@@ -327,7 +339,9 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         }
 
         try {
-            if (displayType == NekoDisplayType.TILE) {
+            if (nativePresentation) {
+                drawNativeTrade(context, widgetTheme);
+            } else if (displayType == NekoDisplayType.TILE) {
                 drawTileMode(context, widgetTheme);
             } else {
                 drawListMode(context, widgetTheme);
@@ -357,6 +371,65 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      * @param context     GUI 渲染上下文
      * @param widgetTheme Widget 主题
      */
+    /** A→B native row. ItemStack rendering keeps each real item's meta, NBT and native glint. */
+    private void drawNativeTrade(ModularGuiContext context, WidgetThemeEntry<?> theme) {
+        int width = getArea().width, height = getArea().height;
+        boolean tile = displayType == NekoDisplayType.TILE;
+        int rowY = tile ? 25 : 18;
+        String identity = "#" + display.getOrderId();
+        GuiDraw.drawText(identity, 5, 5, .85f, NekoVendingTheme.INK, false);
+        String status = nativeStatus(display);
+        int statusColor = display.isOneTimeRedeemed() || display.isBqLocked() ? 0xffc39536
+            : display.getCooldownRemaining() > 0 ? NekoVendingTheme.CYAN : NekoVendingTheme.MUTED;
+        int textWidth = Minecraft.getMinecraft().fontRenderer.getStringWidth(status);
+        GuiDraw.drawText(status, Math.max(30, width - textWidth - 5), 5, 1f, statusColor, true);
+        int center = width / 2;
+        GuiDraw.drawText("→", center - 4, rowY + 3, 1f, NekoVendingTheme.GOLD, false);
+        drawChoices(display.getInputs(), 6, rowY, Math.max(20, center - 14), context);
+        drawChoices(display.getOutputs(), center + 10, rowY, Math.max(20, width - center - 18), context);
+        if (display.isFavourite())
+            NekoGuiTextures.FAVOURITE_SPRITE.draw(context, width - 9, height - 9, 7, 7, theme.getTheme());
+        if (display.isTradeable()) GuiDraw.drawRect(0, 2, 2, height - 4, 0xff6f9156);
+        if (display.isBqLocked() || display.isOneTimeRedeemed())
+            GuiDraw.drawRect(2, height - 2, width - 4, 1, 0xffc39536);
+    }
+
+    public static String nativeStatus(NekoTradeItemDisplay display) {
+        if (display == null) return "";
+        return display.isOneTimeRedeemed() ? "已售罄"
+            : display.isBqLocked() ? "LOCKED"
+                : display.getCooldownRemaining() > 0 ? formatCooldown(display.getCooldownRemaining())
+                    : display.isTradeable() ? "可交易" : "条件未满足";
+    }
+
+    /** Display abbreviation only; complete exact integers remain in the real choice tooltip. */
+    public static String compactQuantity(int amount) {
+        if (amount < 1000) return Integer.toString(amount);
+        if (amount < 1000000) return String.format(java.util.Locale.ROOT, "%.1fK", amount / 1000d);
+        if (amount < 1000000000) return String.format(java.util.Locale.ROOT, "%.1fM", amount / 1000000d);
+        return String.format(java.util.Locale.ROOT, "%.1fG", amount / 1000000000d);
+    }
+
+    private void drawChoices(java.util.List<NekoBigItemStack> choices, int x, int y, int available,
+        ModularGuiContext context) {
+        if (choices.isEmpty()) {
+            GuiDraw.drawText("无", x, y + 4, .8f, NekoVendingTheme.MUTED, false);
+            return;
+        }
+        int count = Math.max(1, Math.min(choices.size(), available / 23));
+        for (int i = 0; i < count; i++) {
+            NekoBigItemStack choice = choices.get(i);
+            if (choice == null || choice.getBaseStack() == null) continue;
+            GuiDraw.drawItem(choice.getBaseStack(), x + i * 23, y, 16, 16, (int) context.getCurrentDrawingZ());
+            GuiDraw.drawText(compactQuantity(choice.getStackSize()), x + i * 23 + 1, y + 13, .65f, 0xffffffff, true);
+            if (!choice.getAlternatives()
+                .isEmpty() || choice.hasOreDict())
+                GuiDraw.drawText("+", x + i * 23 + 12, y - 3, .65f, NekoVendingTheme.GOLD, true);
+        }
+        if (choices.size() > count)
+            GuiDraw.drawText("…", x + count * 23 - 4, y + 5, .8f, NekoVendingTheme.MUTED, false);
+    }
+
     private void drawTileMode(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
         float z = context.getCurrentDrawingZ();
 
@@ -639,6 +712,8 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
             return Interactable.Result.IGNORE;
         }
 
+        if (callback != null) callback.onTradeSelected(display);
+
         // 编辑模式：左键点击直接打开编辑面板（无需修饰键）
         if (editMode) {
             pressed = true;
@@ -654,7 +729,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
         // Shift 和 Ctrl 同时按下或同时未按下时忽略
         if (shiftHeld == ctrlHeld) {
-            return Interactable.Result.IGNORE;
+            return nativePresentation && !shiftHeld ? Interactable.Result.SUCCESS : Interactable.Result.IGNORE;
         }
 
         // 设置按下状态（视觉反馈）

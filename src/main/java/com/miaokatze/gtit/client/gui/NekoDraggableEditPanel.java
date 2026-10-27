@@ -38,15 +38,22 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
     private boolean moving = false;
     /** 标记当前是否正在 {@link #drawMovingState} 中绘制移动状态，用于区分原位置与移动位置的绘制 */
     private boolean drawingMovingState = false;
+    private final boolean draggable;
 
     public NekoDraggableEditPanel() {
+        this(true);
+    }
+
+    /** TRADE workspace docks use the same mirrored tree container without a floating drag bar. */
+    public NekoDraggableEditPanel(boolean draggable) {
+        this.draggable = draggable;
         this.movingArea = getArea().createCopy();
         // 内容区容器作为面板背景的点击代理：阻止点击空白处穿透到下层物品栏/按钮。
         // 子控件（slot、textfield、button）在 hover 列表中位于 contentPanel 之前，优先处理事件；
         // 只有点击无子控件的空白处时，事件才会落到 contentPanel 并被阻断。
         this.contentPanel = new NekoEditContentPanel();
         // 内容区位于标题栏下方，四边贴齐以自动填充剩余空间
-        this.contentPanel.top(DRAG_HANDLE_HEIGHT)
+        this.contentPanel.top(draggable ? DRAG_HANDLE_HEIGHT : 0)
             .left(0)
             .right(0)
             .bottom(0);
@@ -57,6 +64,7 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
     @Override
     public void onInit() {
         super.onInit();
+        if (!draggable) return;
         // 创建拖拽柄；DragHandle.onInit 会向上查找到本面板（IDraggable）作为被拖拽对象
         DragHandle dragHandle = new DragHandle();
         dragHandle.top(0)
@@ -153,7 +161,7 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
 
     @Override
     public boolean onDragStart(int mouseButton) {
-        if (mouseButton == 0) {
+        if (draggable && mouseButton == 0) {
             // 计算面板相对于父区域（editOverlayRoot，即屏幕）的当前位置
             this.realX = getContext().transformX(0, 0) - getParentArea().x;
             this.realY = getContext().transformY(0, 0) - getParentArea().y;

@@ -132,6 +132,24 @@ tasks.register<JavaExec>("runNekoTradeNeiTest") {
 
 tasks.named("check") { dependsOn("runNekoTradeNeiTest") }
 
+mapOf(
+    "runNekoEmbeddedNeiProbeTest" to "com.miaokatze.gtit.client.nei.NekoEmbeddedNeiProbeTest",
+    "runTradeEditorDraftContractTest" to "com.miaokatze.gtit.gui.vm.edit.TradeEditorDraftContractTest",
+    "runNekoVendingLayoutTest" to "com.miaokatze.gtit.gui.vm.NekoVendingLayoutTest",
+    "runNekoOutputStateTest" to "com.miaokatze.gtit.common.machine.v2.NekoOutputStateTest",
+    "runVendingSceneContracts" to "com.miaokatze.gtit.gui.vm.scene.VendingSceneContracts",
+    "runVendingActionCompletionTest" to "com.miaokatze.gtit.gui.vm.VendingActionCompletionTest"
+).forEach { (taskName, entryPoint) ->
+    tasks.register<JavaExec>(taskName) {
+        group = "verification"
+        mainClass = entryPoint
+        classpath = storeTestRuntimeClasspath + sourceSets.getByName("main").compileClasspath + neiTestRuntimeClasspath
+        classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+        classpath += configurations.detachedConfiguration(dependencies.create("org.joml:joml:1.10.8"))
+    }
+    tasks.named("check") { dependsOn(taskName) }
+}
+
 tasks.register<JavaExec>("runGtmbProjectorTest") {
     group = "verification"
     description = "Runs optional GTMB projector ownership, trade, quest and native Forge remapping regressions."
@@ -203,6 +221,7 @@ mapOf(
     "runVendingConcurrencyTest" to "com.miaokatze.gtit.gui.vm.VendingConcurrencyTest",
     "runLootRegistrarTest" to "com.miaokatze.gtit.common.loot.LootRegistrarTest",
     "runTradePresetStoreTest" to "com.miaokatze.gtit.trade.preset.TradePresetStoreTest",
+    "runTradePageSourceTest" to "com.miaokatze.gtit.trade.preset.TradePageSourceTest",
     "runGTITCommandTest" to "com.miaokatze.gtit.command.GTITCommandTest",
     "runStarterGiftAuditNbtTest" to "com.miaokatze.gtit.terminal.StarterGiftAuditNbtTest",
     "runTradePresetAccessTest" to "com.miaokatze.gtit.trade.preset.ui.TradePresetAccessTest"

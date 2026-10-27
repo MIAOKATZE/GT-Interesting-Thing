@@ -8,6 +8,7 @@ import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.trade.NekoPageConfig;
 import com.miaokatze.gtit.trade.NekoPageEntry;
 import com.miaokatze.gtit.trade.NekoPageRegistry;
+import com.miaokatze.gtit.trade.NekoPageSource;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
@@ -30,6 +31,7 @@ public final class TradePageRefreshTest {
         entry.setId(id);
         entry.setName(name);
         entry.setPresetBuiltin(true);
+        entry.setSource(NekoPageSource.DEFAULT);
         return entry;
     }
 
@@ -76,10 +78,13 @@ public final class TradePageRefreshTest {
         check(NekoPageRegistry.getVersion() == before, "无效同步不能产生虚假修订");
         NekoPageEntry base = page(-400001, "Foundation");
         NekoPageEntry author = page(-100003, "AE");
+        author.setSource(NekoPageSource.PRESET);
         NekoPageEntry custom = page(7, "Manual");
         custom.setPresetBuiltin(false);
+        custom.setSource(NekoPageSource.CUSTOM);
         NekoPageEntry imported = page(-500001, "Imported");
         imported.setPresetBuiltin(false);
+        imported.setSource(NekoPageSource.PRESET);
         imported.setSourcePresetId("player-preset");
         imported.setSourcePresetName("Player preset");
         imported.setSourcePresetIconItem("minecraft:stone");
@@ -88,20 +93,20 @@ public final class TradePageRefreshTest {
         reload.invoke(tradePage);
         check(
             tradePage.getTradeCategories()
-                .equals(categories(-1, -400001, -100003)),
-            "Default navigation contains foundation and author presets only");
+                .equals(categories(-1, -400001)),
+            "Default navigation contains only the base source, not optional presets");
         java.lang.reflect.Field scope = TradePage.class.getDeclaredField("tradeScope");
         scope.setAccessible(true);
         scope.setInt(tradePage, TradePage.SCOPE_CUSTOM);
         reload.invoke(tradePage);
         check(
             tradePage.getTradeCategories()
-                .equals(categories(-1, 7, -500001)),
-            "Custom navigation retains positive pages and negative imported preset pages");
+                .equals(categories(-1, 7)),
+            "Custom navigation contains manually authored pages, not installed presets");
         check(
-            tradePage.isCategoryVisible(NekoTradeCategory.ofTabId(-500001))
-                && !tradePage.isCategoryVisible(NekoTradeCategory.ofTabId(-100003)),
-            "Search and favourites use the same author/custom scope");
+            tradePage.isCategoryVisible(NekoTradeCategory.ofTabId(7))
+                && !tradePage.isCategoryVisible(NekoTradeCategory.ofTabId(-500001)),
+            "Search and favourites use the same explicit custom scope");
         check(
             "Player preset".equals(
                 NekoPageRegistry.getPage(-500001)
@@ -110,6 +115,16 @@ public final class TradePageRefreshTest {
                     NekoPageRegistry.getPage(-500001)
                         .getSourcePresetIconItem()),
             "Public page snapshot retains actual source name and icon metadata");
+        scope.setInt(tradePage, TradePage.SCOPE_PRESET);
+        reload.invoke(tradePage);
+        check(
+            tradePage.getTradeCategories()
+                .equals(categories(-1, -100003, -500001)),
+            "Builtin optional and installed custom presets share PRESET without losing IDs");
+        check(
+            base.canCreateTrade() && custom.canCreateTrade() && !author.canCreateTrade() && !imported.canCreateTrade(),
+            "Only DEFAULT and CUSTOM expose the current-real-page plus action");
+        scope.setInt(tradePage, TradePage.SCOPE_CUSTOM);
         data.setPages(Arrays.asList(base, author));
         NekoPageRegistry.applySyncedPages(data);
         reload.invoke(tradePage);
@@ -147,6 +162,20 @@ public final class TradePageRefreshTest {
             timed.getCooldownRemaining() == 12 && timed.getOneTimeStatusKey()
                 .isEmpty(),
             "Positive cooldown seconds retain the original display path");
-        System.out.println("TradePageRefreshTest: 24 checks passed");
+        check(
+            "已售罄".equals(com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget.nativeStatus(onceDisplay)),
+            "The approved sold-out label is driven by explicit redemption, not missing currency");
+        timed.setBqLocked(true);
+        check(
+            "LOCKED".equals(com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget.nativeStatus(timed)),
+            "BQ lock takes precedence over a live cooldown");
+        timed.setBqLocked(false);
+        check(
+            "12s".equals(com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget.nativeStatus(timed)),
+            "Native row samples the current cooldown value");
+        check(
+            "2.1G".equals(com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget.compactQuantity(Integer.MAX_VALUE)),
+            "Large display counts stay bounded without changing their real quantity");
+        System.out.println("TradePageRefreshTest: explicit three-source and existing display checks passed");
     }
 }

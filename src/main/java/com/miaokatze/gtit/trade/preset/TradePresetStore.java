@@ -61,6 +61,9 @@ final class TradePresetStore {
             throw new IOException("预设状态文件损坏，已停止写入以保护已有配置");
         }
         migrateDefaultStorage();
+        PageSourceIdentity.migrate(gameRoot);
+        // The additive migration also updates ownership snapshots; use those for safe uninstall equality.
+        if (Files.exists(statePath)) state = GSON.fromJson(read(statePath), State.class);
         reload();
 
     }
@@ -394,6 +397,8 @@ final class TradePresetStore {
                         .addProperty("presetBuiltin", false);
                     currentPage.getAsJsonObject()
                         .addProperty("isDefault", false);
+                    currentPage.getAsJsonObject()
+                        .addProperty("source", "CUSTOM");
                 }
                 if (currentTrades != null && currentTrades.isJsonObject()
                     && currentTrades.getAsJsonObject()
@@ -977,11 +982,35 @@ final class TradePresetStore {
     }
 
     private String fingerprint() {
-        return hash(bytes(new java.util.TreeMap<>(presets)));
+        Map<String, JsonElement> content = new java.util.TreeMap<>();
+        for (Map.Entry<String, TradePresetDefinition> preset : presets.entrySet())
+            content.put(preset.getKey(), fingerprintContent(preset.getValue()));
+        return hash(bytes(content));
     }
 
-    private static String definitionFingerprint(TradePresetDefinition definition) {
-        return hash(bytes(definition));
+    static String definitionFingerprint(TradePresetDefinition definition) {
+        return hash(bytes(fingerprintContent(definition)));
+    }
+
+    private static JsonElement fingerprintContent(TradePresetDefinition definition) {
+        JsonElement content = GSON.toJsonTree(definition);
+        // Navigation identity is not portable preset content. Excluding the additive field also keeps
+        // pre-source fingerprints stable: an upgrade must not appear as a content update and erase overrides.
+        if (content.isJsonObject() && content.getAsJsonObject()
+            .has("tabs")) {
+            for (JsonElement tab : content.getAsJsonObject()
+                .getAsJsonArray("tabs")) {
+                if (tab.isJsonObject() && tab.getAsJsonObject()
+                    .has("page")
+                    && tab.getAsJsonObject()
+                        .get("page")
+                        .isJsonObject())
+                    tab.getAsJsonObject()
+                        .getAsJsonObject("page")
+                        .remove("source");
+            }
+        }
+        return content;
     }
 
     private static String hash(byte[] bytes) {

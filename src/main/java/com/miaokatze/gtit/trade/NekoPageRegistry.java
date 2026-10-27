@@ -104,10 +104,15 @@ public class NekoPageRegistry {
         }
 
         boolean isOverwrite = PAGES.containsKey(id);
-        NekoPageEntry entry = new NekoPageEntry();
-        entry.setId(id);
+        NekoPageEntry entry = PAGES.get(id);
+        if (entry == null) {
+            entry = new NekoPageEntry();
+            entry.setId(id);
+            entry.setDefault(false);
+            entry.setSource(NekoPageSource.CUSTOM);
+        }
+        // Renaming a legacy positive-id installed page must retain its source and preset attribution.
         entry.setName(name);
-        entry.setDefault(false); // 正 ID 均属于自定义页。
         entry.setIconFromItemStack(iconStack);
 
         PAGES.put(id, entry);

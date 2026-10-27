@@ -45,6 +45,18 @@ public final class VendingServerActions {
         }
     }
 
+    /** Completion belongs outside the session guard, so rejected or failed actions release their pending latch. */
+    public static void scheduleServerAction(Runnable guardedAction, Runnable completion) {
+        if (guardedAction == null || completion == null) throw new IllegalArgumentException("action and completion");
+        scheduleServerAction(() -> {
+            try {
+                guardedAction.run();
+            } finally {
+                completion.run();
+            }
+        });
+    }
+
     /**
      * B2-02：服务器主线程逐 tick 消费投递的 C2S 动作。
      * <p>

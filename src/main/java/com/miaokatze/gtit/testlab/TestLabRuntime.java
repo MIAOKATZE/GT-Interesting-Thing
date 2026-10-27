@@ -63,6 +63,7 @@ public final class TestLabRuntime {
             .register(INSTANCE);
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(INSTANCE);
         TestLabUiNetwork.initialize();
+        register(new TestLabVendingFixture());
         net.minecraftforge.common.ForgeChunkManager
             .setForcedChunkLoadingCallback(GTInterestingThing.instance, (tickets, loadedWorld) -> {
                 for (net.minecraftforge.common.ForgeChunkManager.Ticket stale : tickets)
@@ -161,6 +162,7 @@ public final class TestLabRuntime {
     @SubscribeEvent
     public void onEntityJoin(net.minecraftforge.event.entity.EntityJoinWorldEvent event) {
         TestLabUiNetwork.onEntityJoin(event);
+        TestLabVendingFixture.onEntityJoin(event);
         boolean markedDrop = event.entity instanceof net.minecraft.entity.item.EntityItem drop && report != null
             && TestLabUiNetwork.marked(drop.getEntityItem(), report.runId);
         if (context != null && (executing || markedDrop)
@@ -178,6 +180,7 @@ public final class TestLabRuntime {
     @SubscribeEvent
     public void onLogout(cpw.mods.fml.common.gameevent.PlayerEvent.PlayerLoggedOutEvent event) {
         TestLabUiNetwork.onLogout(event.player);
+        TestLabVendingFixture.onLogout(event.player);
     }
 
     @SubscribeEvent

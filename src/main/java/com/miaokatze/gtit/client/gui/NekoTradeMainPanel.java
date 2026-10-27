@@ -14,12 +14,14 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
 
+import com.cleanroommc.modularui.api.layout.IViewportStack;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.ModularScreen;
 import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.gui.vm.NekoVendingLayout;
 import com.miaokatze.gtit.trade.v2.NekoFavouritesTracker;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeCategory;
@@ -82,6 +84,16 @@ public class NekoTradeMainPanel extends ModularPanel {
      * 使用接口而非直接引用 GUI 类，实现面板与 GUI 控制器的解耦。
      */
     public interface PanelCallback {
+
+        default NekoVendingLayout vendingLayout() {
+            return null;
+        }
+
+        default void onNativeLayout() {}
+
+        default void onNativeOpen(ModularScreen screen) {}
+
+        default void onNativeClose() {}
 
         /**
          * 获取当前玩家 UUID
@@ -310,6 +322,37 @@ public class NekoTradeMainPanel extends ModularPanel {
         this.callback = callback;
         this.guiData = guiData;
         this.syncManager = syncManager;
+    }
+
+    @Override
+    public void beforeResize(boolean onOpen) {
+        super.beforeResize(onOpen);
+        NekoVendingLayout layout = callback.vendingLayout();
+        if (layout == null || getScreen() == null) return;
+        boolean changed = layout.resize(getScreen().getScreenArea().width, getScreen().getScreenArea().height);
+        if (changed || onOpen) {
+            pos(0, 0).size(layout.width, layout.height);
+            callback.onNativeLayout();
+        }
+    }
+
+    @Override
+    public void transform(IViewportStack stack) {
+        NekoVendingLayout layout = callback.vendingLayout();
+        if (layout == null) super.transform(stack);
+        else stack.scale(layout.scale, layout.scale);
+    }
+
+    /** The real NEI catalog occupies a hole in the canvas; only individual sections exclude it. */
+    @Override
+    public boolean isExcludeAreaInRecipeViewer() {
+        return false;
+    }
+
+    @Override
+    public void onClose() {
+        callback.onNativeClose();
+        super.onClose();
     }
 
     // ==================== 按键事件处理 ====================
@@ -881,6 +924,7 @@ public class NekoTradeMainPanel extends ModularPanel {
         super.onOpen(screen);
         // 通知 GUI 控制器恢复之前的设置
         callback.onRestoreSettings();
+        callback.onNativeOpen(screen);
     }
 
     // ==================== 公共方法 ====================
