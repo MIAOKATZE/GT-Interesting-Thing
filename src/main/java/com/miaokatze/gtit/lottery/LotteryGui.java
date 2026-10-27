@@ -15,8 +15,8 @@ import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.screen.viewport.GuiContext;
 import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.screen.viewport.TransformationMatrix;
-import com.cleanroommc.modularui.theme.WidgetTheme;
 import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.utils.Platform;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
@@ -38,7 +38,7 @@ import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
  * 推送刷新）——与签到页同属「S→C 全量同步 + 客户端静态缓存 + 动态绑定」范式：
  * <ul>
  * <li>顶部：卡池标题（v1.7.6 起池切换迁移至左侧 sub-page 标签列，页内不再设按钮行）</li>
- * <li>中部：4 列环形边框轮盘（格子绕圈点亮 → cubic ease-out 减速 → 停在结果格，
+ * <li>中部：像素圆盘（奖品按索引沿圆周排列，游标绕圈减速并停在结果格，
  * 由 {@link LotteryAnimationController} 纯客户端时间驱动）</li>
  * <li>底部：抽 1 次 / 抽 10 次按钮（余额不足显示总价+提示）、保底进度</li>
  * </ul>
@@ -83,9 +83,8 @@ public class LotteryGui {
     // Native workspace pixels: no secondary page scale. The parent owns the sole canvas transform.
     private static final int SLOT_SIZE = 24;
     private static final int MAX_SLOTS = LotteryPool.MAX_ENTRIES;
-    private static final int POINTER_DROP_PX = 4;
     private static final long RESULT_DISPLAY_MS = 6000L;
-    private static final int LIST_CELL = 18, LIST_GAP = 2, LIST_H = 38;
+    private static final int LIST_CELL = 18, LIST_GAP = 2, LIST_H = 98;
     private static final int DRAW_BTN_W = 94, DRAW_BTN_H = 22, DRAW_BTN_GAP = 8;
     private static final int DRAW_BTN_TEXT_BUDGET = 18;
     private static final int COLOR_LIT_FRAME = NekoVendingTheme.GOLD;
@@ -271,18 +270,14 @@ public class LotteryGui {
     // ==================== 轮盘区（v1.7.8 动态布局） ====================
 
     /**
-     * 轮盘区：槽位数 = 当前池条目数（1..{@link #MAX_SLOTS}），矩形环周长等弧长采样布局。
-     * <p>
-     * 布局规格（N=条目数 → 列×行）：N=1 单格居中；N=2 2x2 对顶角；N=3/4 2x2；
-     * N=5/6 3x2；N=7/8 4x2；N=9/10 4x3（N=10 满环，与原固定布局逐格重合零回归）。
-     * 整环在轮盘区（native wheel bounds × native wheel bounds）水平/垂直居中。
+     * 轮盘区：槽位数 = 当前池条目数（1..{@link #MAX_SLOTS}），奖品顺时针等角排列。
+     * 像素盘面、游标与原奖品格同一画布绘制；右侧两列保留十连结果。
      * <p>
      * 绘制结构（v1.7.8 起整区自绘，替代原 per-slot widget 循环——槽位数随条目数
      * 动态变化，ModularUI2 运行期改 pos 不可靠）：
      * <ul>
      * <li>整区自绘层：每格「槽底（按稀有度）→ 物品图标 → 稀有度角标」同帧绘制，
-     * 其上叠点亮高亮框（动画 Supplier 求值）与指针（固定朝下倒三角，
-     * 底边贴点亮格上边中点，见 {@link #drawPointer}）</li>
+     * 其上叠点亮高亮框与中心游标，停格后仅轻微变换金色明度</li>
      * <li>整区隐形交互层：一个覆盖全区的 {@link ButtonWidget}，tooltip 与编辑点击
      * 统一经 {@link #hitSlot(IWidget)} 命中测试定位槽位（绝对鼠标坐标 − 区域绝对坐标）</li>
      * </ul>
@@ -294,9 +289,9 @@ public class LotteryGui {
      */
     private static IWidget createWheelArea(LotteryEditCallback editCallback) {
         ParentWidget<?> wheel = new ParentWidget<>().left(8)
-            .right(8)
+            .right(56)
             .top(60)
-            .bottom(88)
+            .bottom(40)
             .background(NekoVendingTheme.INPUT);
 
         // 整区自绘层：槽底 + 物品 + 角标 + 点亮框 + 指针（同帧一次绘完）
@@ -304,6 +299,7 @@ public class LotteryGui {
             tickAnimation();
             int n = wheelSlotCount();
             if (n <= 0) return; // 空池不渲染
+            drawPixelWheel(w, h, n);
             // 1) 逐格：槽位底 → 物品图标 → 稀有度角标
             for (int i = 0; i < n; i++) {
                 int[] tl = LotteryWheelLayout.slotTopLeft(i, n, w, h);
@@ -311,16 +307,24 @@ public class LotteryGui {
                 slotItem(i).draw(context, tl[0] + 4, tl[1] + 4, 16, 16, theme);
                 cornerTexture(i).draw(context, tl[0] + 16, tl[1], 8, 8, theme);
             }
-            // 2) 点亮高亮框（旋转中恒亮；停格后按 500ms 方波闪烁）
+            // 原控制器决定格序与停格；盘面仅将该状态画成圆周游标。
             LotteryAnimationController anim = LotteryAnimationController.getInstance();
             int lit = anim.getCurrentLitSlot();
             if (lit < 0 || lit >= n) return;
-            if (anim.isFinished() && !anim.isFinishBlinkOn()) return;
             int[] litTl = LotteryWheelLayout.slotTopLeft(lit, n, w, h);
             int color = anim.isFinished() ? COLOR_FINISH_FRAME : COLOR_LIT_FRAME;
+            if (anim.isFinished() && !anim.isFinishBlinkOn()) color = 0xffc6aa6b;
             drawFrame(litTl[0] - 1, litTl[1] - 1, SLOT_SIZE + 2, SLOT_SIZE + 2, color);
-            // 3) 指针（固定朝下倒三角，底边贴点亮格上边中点再下移 POINTER_DROP_PX）
-            drawPointer(context, theme, litTl);
+            int needleX = litTl[0] + SLOT_SIZE / 2, needleY = litTl[1] + SLOT_SIZE / 2;
+            if (Math.min(w, h) >= 132) {
+                double angle = anim.getNeedlePosition() * Math.PI * 2 / n - Math.PI / 2;
+                int radius = Math.min(w, h) / 2 - 18;
+                needleX = w / 2 + (int) Math.round(Math.cos(angle) * radius);
+                needleY = h / 2 + (int) Math.round(Math.sin(angle) * radius);
+            }
+            drawPixelLine(w / 2, h / 2, needleX, needleY, color, 15);
+            drawPixelDisc(w / 2, h / 2, 6, NekoVendingTheme.GOLD);
+            drawPixelDisc(w / 2, h / 2, 3, NekoVendingTheme.LIGHT);
         }).sizeRel(1f));
 
         wheel.child(
@@ -388,25 +392,48 @@ public class LotteryGui {
             matrix::transformY);
     }
 
-    /**
-     * 绘制轮盘指针（16x16 固定朝下倒三角纹理，不旋转）。
-     * <p>
-     * 定位（v1.7.9 恢复固定朝向——v1.7.8 的随槽位方向旋转方案观感不佳回退）：
-     * <ul>
-     * <li>pointerX = 槽位中心x − 8（16px 宽纹理相对格心水平居中）</li>
-     * <li>pointerY = 槽位中心y − {@code SLOT_SIZE/2} − 16 + {@link #POINTER_DROP_PX}
-     * （指针底边贴着格子上边，再往下偏移一点点，观感更贴合）</li>
-     * </ul>
-     * 直接按坐标绘制，不动矩阵栈与 blend/texture 状态。
-     *
-     * @param litTl 点亮格左上角坐标（{@link LotteryWheelLayout#slotTopLeft} 结果）
-     */
-    private static void drawPointer(GuiContext context, WidgetTheme theme, int[] litTl) {
-        int slotCx = litTl[0] + SLOT_SIZE / 2;
-        int slotCy = litTl[1] + SLOT_SIZE / 2;
-        int pointerX = slotCx - 8;
-        int pointerY = slotCy - SLOT_SIZE / 2 - 16 + POINTER_DROP_PX;
-        NekoGuiTextures.LOTTERY_POINTER.draw(context, pointerX, pointerY, 16, 16, theme);
+    /** GUI 像素圆盘，不使用模型、GL 旋转或额外画布缩放。 */
+    private static void drawPixelWheel(int width, int height, int count) {
+        int cx = width / 2, cy = height / 2;
+        int radius = Math.min(width, height) / 2 - 2;
+        drawPixelDisc(cx, cy + 2, radius, 0x285a4526);
+        drawPixelDisc(cx, cy, radius, 0xffb29c70);
+        drawPixelDisc(cx, cy, radius - 2, NekoVendingTheme.LIGHT);
+        drawPixelDisc(cx, cy, radius - 5, 0xffe5d4ad);
+        for (int i = 0; i < count; i++) {
+            double angle = (i + .5) * Math.PI * 2 / count - Math.PI / 2;
+            int x = cx + (int) Math.round(Math.cos(angle) * (radius - 6));
+            int y = cy + (int) Math.round(Math.sin(angle) * (radius - 6));
+            drawPixelLine(cx, cy, x, y, 0x609c875f, 0);
+        }
+        drawPixelDisc(cx, cy, 8, 0xffc6b38a);
+        drawPixelDisc(cx, cy, 5, NekoVendingTheme.LIGHT);
+    }
+
+    private static void drawPixelDisc(int cx, int cy, int radius, int color) {
+        Platform.setupDrawColor();
+        Platform.startDrawing(Platform.DrawMode.QUADS, Platform.VertexFormat.POS_COLOR, buffer -> {
+            for (int y = -radius; y <= radius; y++) {
+                int half = (int) Math.sqrt(radius * radius - y * y);
+                GuiDraw.drawRectRaw(buffer, cx - half, cy + y, cx + half + 1, cy + y + 1, color);
+            }
+        });
+        Platform.endDrawColor();
+    }
+
+    /** 只画到奖品前沿，游标不会盖住物品图标。 */
+    private static void drawPixelLine(int x0, int y0, int x1, int y1, int color, int endInset) {
+        int steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        int end = Math.max(0, steps - endInset);
+        Platform.setupDrawColor();
+        Platform.startDrawing(Platform.DrawMode.QUADS, Platform.VertexFormat.POS_COLOR, buffer -> {
+            for (int i = 0; i <= end; i++) {
+                int x = x0 + (int) Math.round((x1 - x0) * i / (double) Math.max(1, steps));
+                int y = y0 + (int) Math.round((y1 - y0) * i / (double) Math.max(1, steps));
+                GuiDraw.drawRectRaw(buffer, x, y, x + 1, y + 1, color);
+            }
+        });
+        Platform.endDrawColor();
     }
 
     /**
@@ -575,7 +602,7 @@ public class LotteryGui {
      * 失败结果码无动画，窗口自结果到达时刻起算。
      */
     private static IWidget createResultMessage() {
-        return new TextWidget<>(IKey.dynamic(() -> {
+        return new NekoSingleLineTextWidget(IKey.dynamic(() -> {
             int code = LotteryClientData.getLastResultCode();
             if (code == LotteryClientData.RESULT_NONE) return "循环减速 · 停格揭晓";
             if (code == LotteryClientData.RESULT_SUCCESS) {
@@ -600,7 +627,7 @@ public class LotteryGui {
             }
         })).left(8)
             .right(8)
-            .bottom(72)
+            .bottom(24)
             .height(12)
             .color(NekoVendingTheme.INK)
             .textAlign(Alignment.Center)
@@ -667,7 +694,7 @@ public class LotteryGui {
     }
 
     /**
-     * 10 连结果格子列表（2 行 × 5 列，每格 18x18：槽位底 + 物品 + 角标）。
+     * 10 连结果格子列表（右侧 5 行 × 2 列，每格 18x18：槽位底 + 物品 + 角标）。
      * <p>
      * 仅当最近结果为 10 连（结果数 > 1）且未超时显示；动画停格后逐格点亮
      * 高稀有度（≥EPIC）结果格，聚焦大奖。
@@ -676,10 +703,10 @@ public class LotteryGui {
      * （动画旋转期间列表整体为空，修 10 连剧透），展示窗口自揭示时刻起算。
      */
     private static IWidget createMultiResultList() {
-        ParentWidget<?> list = new ParentWidget<>().horizontalCenter()
-            .bottom(28)
-            .size(5 * (LIST_CELL + LIST_GAP) - LIST_GAP, LIST_H);
-        int cols = 5;
+        ParentWidget<?> list = new ParentWidget<>().right(8)
+            .bottom(40)
+            .size(2 * (LIST_CELL + LIST_GAP) - LIST_GAP, LIST_H);
+        int cols = 2;
         int startX = 0;
         for (int i = 0; i < 10; i++) {
             final int index = i;

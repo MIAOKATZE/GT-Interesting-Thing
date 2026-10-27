@@ -56,3 +56,13 @@ Enabling ME output also admits eligible existing real output slots, without repl
 Each visible group retains a full **3-second hold plus 2-second fade** before an attempt. A genuinely later visible member cannot inherit an already-aged group timer and skip its hold/fade; the group must restart safely when needed. Immediate-visible and hidden-then-visible late-join regression cases passed. Failed/partial transfer restores the remaining visible stock and restarts its group; only an actual accepted quantity leaves the sole output inventory. Disconnect/disable cancels presentation work without deleting items. Future stagger delays and elapsed time must survive save/load without turning clock rollback into a long frozen queue.
 
 This is bounded per-tick work, not an asynchronous AE worker, TPS benchmark or actual ME-network gameplay acceptance claim.
+
+## 2.0.13 本轮原生打磨状态
+
+**历史范围说明：** 前文各节描述其标题所标明的早期实现与验证边界，包括 2.0.11 候选状态；其中的构建或运行记录只适用于对应版本，不构成本轮 GTIT 2.0.13 的验收结果。
+
+本轮 VendingRoomArt 移除了卷帘后背板和条纹实体，并增加随门打开出现的叠加暖光与渐隐地面光束；这些是原生绘制效果，不创建 box 或拾取代理。NekoOutputScene 改为同一扇门完全打开后放行当轮所有已就绪物品，后方使用 8 列×4 行（32 格）、4 个浅层，间距为 0.82。旧 laneCooldown 字段仍读写。MTENekoVendingMachineV2 每轮处理最多 100 个真实输出槽中的已就绪栈，保留原付费队列 readyAt 与满槽停止行为，同轮只播放一次音效。
+
+抽奖、交易、签到和邮件界面完成本轮原生视觉调整。服务端抽奖结果、原时序、停格索引和奖品品级保持不变。Core、依赖、通信协议、玩法及输出库存所有权未变。
+
+状态回归覆盖同批 17 个物理 drop 的同步出场、相同阶段年龄和中途存读不重播；轮盘几何回归覆盖圆周布局与 6,160 次缩放后命中投影。这些是无头契约，不能替代实际游戏中的画面、GL 或输入验收。电视机外形仅作为独立 HTML 设计概念，原生机器结构仍沿用既有定义。

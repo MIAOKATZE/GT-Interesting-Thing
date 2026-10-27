@@ -377,7 +377,22 @@ public final class NekoOutputStateTest {
         for (int t = 1; t <= 12; t++) rear.scene.tick(t, t * 50);
         int visible = 0;
         for (NekoOutputLedger.Drop d : rear.ledger.drops()) if (rear.scene.isVisible(d.dropId)) visible++;
-        check(visible == 1, "rear burst is bounded feed, not simultaneous pile explosion");
+        check(visible == 17, "all ready rear drops emerge together after the shutter opens");
+        NBTTagList burst = rear.scene.frame(-1)
+            .getTagList("bodies", 10);
+        for (int i = 0; i < burst.tagCount(); i++) {
+            check(
+                burst.getCompoundTagAt(i)
+                    .getInteger("deliveryAgeTicks") == 0,
+                "rear batch shares one emergence tick");
+        }
+        NBTTagCompound burstSave = rear.scene.write();
+        NekoOutputScene burstReload = new NekoOutputScene(rear.ledger, rear::get, rear.queue);
+        burstReload.restore(burstSave);
+        check(
+            burstReload.write()
+                .equals(burstSave),
+            "simultaneous burst restores without replay or lost identities");
         NBTTagCompound rearBody = firstBody(rear.scene);
         check(
             rearBody.getInteger("route") == 2 && rearBody.getDouble("z") == -2.65,

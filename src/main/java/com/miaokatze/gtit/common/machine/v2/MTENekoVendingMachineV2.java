@@ -860,9 +860,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * 复刻 V1 的 dispenseItems：每次调用最多投放一个物品到第一个空槽，
      * 投放节奏由 getDispensingDelay() 控制（队列越长延迟越短）。
      * <p>
-     * v1.6.28: 批次模式下（batchActive=true）使用分档延迟；
-     * 批次≥5时每次下落 1-2 个（50% 概率额外投放一个）；
-     * 所有物品投放完成后自动调用 endBatch 清理批次状态。
+     * 同次就绪的物品一起落入真实输出槽，随后由场景统一开门喷出；
+     * 未就绪的抽奖奖励继续留在已付款队列，不提前发放。
      */
     private void dispenseItems() {
         if (!mMachine || outputBuffer.isEmpty()) return;
@@ -870,13 +869,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         int delay = getDispensingDelay();
         if (this.newBufferedOutputs
             || (!this.outputBuffer.isEmpty() && (delay <= 0 || this.ticksSinceOutput % delay == 0))) {
-            dispenseFirstNonNullItem();
-            // v1.6.28: 批次>=5时每次下落1-2个（50%概率额外投放一个）
-            if (batchActive && currentBatchSize >= 5 && !this.outputBuffer.isEmpty()) {
-                if (batchRandom.nextInt(2) == 0) {
-                    dispenseFirstNonNullItem();
-                }
-            }
+            // Bounded by the sole 100-slot inventory. Stop at delayed paid output or full slots;
+            // neither animation nor a failed insertion may consume the remaining queue.
+            for (int i = 0; i < OUTPUT_SLOTS && getNextDispensable() != null && getFirstEmptyOutputSlot() != -1; i++)
+                dispenseFirstNonNullItem(i == 0);
             this.ticksSinceOutput = 0;
         }
         this.ticksSinceOutput = this.newBufferedOutputs ? 0 : this.ticksSinceOutput + 1;
@@ -918,12 +914,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * v1.6.28: 投放后递增 dispensedInBatch 计数，供 dispenseItems 判断批次是否完成。
      */
-    private void dispenseFirstNonNullItem() {
+    private void dispenseFirstNonNullItem(boolean playSound) {
         ItemStack dispensable = getNextDispensable();
         if (dispensable != null) {
             int targetSlot = getFirstEmptyOutputSlot();
             if (targetSlot != -1) {
-                outputIntoSlot(dispensable, targetSlot);
+                outputIntoSlot(dispensable, targetSlot, playSound);
                 this.outputBuffer.poll();
             } else {
                 // Already-paid output remains reserved and persistent; never silently discard or re-emit.
@@ -1000,7 +996,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * v1.6.28: ME 输出模式下，投放时创建 MeTransferEntry（从 InternalOutputSlotAccessor.insertItem 移至此处），
      * 使 ME 模式也走 outputBuffer 队列分档投放。
      */
-    private void outputIntoSlot(ItemStack stack, int slotIndex) {
+    private void outputIntoSlot(ItemStack stack, int slotIndex, boolean playSound) {
         ItemStack output = stack.copy();
         output.stackSize = stack.stackSize;
         restoringOutput = true;
@@ -1012,7 +1008,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         outputLedger.delivered(stack, slotIndex);
         // v1.7.11：物品落槽时播放 item_drop 音效（复刻 1.6.* VM 原版行为）
         IGregTechTileEntity bMTE = getBaseMetaTileEntity();
-        if (bMTE != null) {
+        if (playSound && bMTE != null) {
             net.minecraft.world.World world = bMTE.getWorld();
             if (world != null && !world.isRemote) {
                 world.playSoundEffect(

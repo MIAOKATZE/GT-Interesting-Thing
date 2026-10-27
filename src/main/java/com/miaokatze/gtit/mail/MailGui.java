@@ -24,6 +24,7 @@ import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoComposeTextEditor;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 
@@ -143,7 +144,7 @@ public class MailGui {
     // ==================== 颜色常量（ARGB） ====================
 
     /** 选中条目高亮框色（半透明金） */
-    private static final int COLOR_SELECTED_FRAME = 0xCCFFC84A;
+    private static final int COLOR_SELECTED_FRAME = 0xff9ba47e;
     /** 详情底纹填充色（米白，替代 v1.7.2 的 paper.png 底图——高度压缩后底图不再适用） */
     private static final int COLOR_PAPER_FILL = 0xFFF5EBD7;
     /** 详情底纹边框色（棕） */
@@ -154,13 +155,13 @@ public class MailGui {
     private static final int COLOR_META = 0xFF777788;
 
     /** 列表标题色：未读（纯白，保持醒目） */
-    private static final int COLOR_ENTRY_TITLE_UNREAD = 0xFFFFFFFF;
+    private static final int COLOR_ENTRY_TITLE_UNREAD = NekoVendingTheme.INK;
     /** 列表标题色：已读（提亮灰——原 GRAY 0xFFAAAAAA 过暗，提亮一档仍与未读 WHITE 可辨） */
-    private static final int COLOR_ENTRY_TITLE_READ = 0xFFC8C8C8;
+    private static final int COLOR_ENTRY_TITLE_READ = NekoVendingTheme.MUTED;
     /** 列表次行色（发件人/日期；原 0xFF666677 过暗，提亮一档保持"暗淡可辨"） */
-    private static final int COLOR_ENTRY_META = 0xFFA0A0B8;
+    private static final int COLOR_ENTRY_META = NekoVendingTheme.MUTED;
     /** 领取按钮亮色描边（1px 外圈，压住金色圆角底图轮廓） */
-    private static final int COLOR_CLAIM_FRAME = 0xFFFFE28A;
+    private static final int COLOR_CLAIM_FRAME = 0xffb8a36f;
 
     /** 列表过滤：全部（不过滤） */
     private static final String FILTER_ALL = null;
@@ -289,8 +290,8 @@ public class MailGui {
             list.child(
                 new ButtonWidget<>().pos(ENTRY_X, y)
                     .size(ENTRY_W, ENTRY_H)
-                    .background(new DynamicDrawable(() -> entryTexture(filterType, index)))
-                    .disableHoverBackground()
+                    .background(NekoVendingTheme.row(() -> entrySelected(filterType, index)))
+                    .hoverBackground(NekoVendingTheme.row(() -> entrySelected(filterType, index), true))
                     .tooltipBuilder(t -> entryTooltip(t, filterType, index))
                     .tooltipAutoUpdate(true)
                     .onMouseTapped(mouse -> {
@@ -332,14 +333,15 @@ public class MailGui {
                     .setEnabledIf(w -> entryMail(filterType, index) != null));
 
             // 未读亮点（右侧，仅未读显示）
-            list.child(
-                NekoGuiTextures.MAIL_DOT.asWidget()
-                    .pos(ENTRY_X + ENTRY_W - 14, y + 9)
-                    .size(8, 8)
-                    .setEnabledIf(w -> {
-                        Mail mail = entryMail(filterType, index);
-                        return mail != null && !mail.isRead();
-                    }));
+            list.child(new IDrawable.DrawableWidget((context, dx, dy, w, h, theme) -> {
+                GuiDraw.drawRect(dx + 2, dy + 1, 4, 6, NekoVendingTheme.GOLD);
+                GuiDraw.drawRect(dx + 1, dy + 2, 6, 4, NekoVendingTheme.GOLD);
+            }).pos(ENTRY_X + ENTRY_W - 14, y + 9)
+                .size(8, 8)
+                .setEnabledIf(w -> {
+                    Mail mail = entryMail(filterType, index);
+                    return mail != null && !mail.isRead();
+                }));
 
             // 选中高亮框（仅选中条目显示）
             list.child(new IDrawable.DrawableWidget((context, dx, dy, w, h, theme) -> {
@@ -508,9 +510,15 @@ public class MailGui {
         detail.child(
             new ButtonWidget<>().pos((DETAIL_W - CLAIM_W) / 2 - 12, BTN_ROW_Y)
                 .size(CLAIM_W, CLAIM_H)
-                .background(NekoGuiTextures.MAIL_BTN_CLAIM)
-                .disableHoverBackground()
-                .overlay(IKey.str(EnumChatFormatting.WHITE + "领取"))
+                .background(NekoVendingTheme.face(() -> false, MailGui::claimAvailable, false))
+                .hoverBackground(NekoVendingTheme.face(() -> false, MailGui::claimAvailable, true))
+                .overlay(IKey.dynamic(() -> {
+                    Mail mail = selectedMail();
+                    return mail == null || mail.getAttachments()
+                        .isEmpty() ? "无附件" : mail.hasUnclaimedAttachments() ? "领取" : "已领取";
+                })
+                    .color(() -> claimAvailable() ? NekoVendingTheme.INK : NekoVendingTheme.MUTED)
+                    .shadow(false))
                 .tooltipBuilder(t -> {
                     Mail mail = selectedMail();
                     if (mail != null && mail.hasUnclaimedAttachments()) {
@@ -526,10 +534,7 @@ public class MailGui {
                     }
                     return false;
                 })
-                .setEnabledIf(w -> {
-                    Mail mail = selectedMail();
-                    return mail != null && mail.hasUnclaimedAttachments();
-                }));
+                .setEnabledIf(w -> selectedMail() != null));
 
         // 领取按钮亮色描边（复用 drawFrame 画 1px 外圈；选中金框同款先例，
         // 与按钮同启停——仅有待领取附件时显示）
@@ -652,15 +657,22 @@ public class MailGui {
         view.child(
             new ButtonWidget<>().pos(33, COMPOSE_BTN_Y)
                 .size(48, 20)
-                .background(NekoGuiTextures.MAIL_BTN_CLAIM)
-                .disableHoverBackground()
-                .overlay(IKey.str(EnumChatFormatting.WHITE + "发送"))
+                .background(NekoVendingTheme.face(() -> false, () -> composeSendAvailable(machine), false))
+                .hoverBackground(NekoVendingTheme.face(() -> false, () -> composeSendAvailable(machine), true))
+                .overlay(
+                    IKey.dynamic(
+                        () -> System.currentTimeMillis() - lastComposeSendMs < COMPOSE_COOLDOWN_MS ? "稍候…" : "发送")
+                        .color(() -> composeSendAvailable(machine) ? NekoVendingTheme.INK : NekoVendingTheme.MUTED)
+                        .shadow(false))
                 .tooltipBuilder(t -> {
                     t.addLine(IKey.str(EnumChatFormatting.GREEN + "寄出邮件"));
                     t.addLine(IKey.str(EnumChatFormatting.GRAY + "输入槽中的物品将作为附件（≤5格）"));
                     if (machine == null) {
                         t.addLine(IKey.str(EnumChatFormatting.RED + "无法定位机器，发送不可用"));
-                    }
+                    } else if (composeRecipient.trim()
+                        .isEmpty()) {
+                            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "请先填写收件玩家名"));
+                        }
                 })
                 .tooltipAutoUpdate(true)
                 .onMouseTapped(mouse -> trySendCompose(machine, mouse))
@@ -767,6 +779,16 @@ public class MailGui {
         return MailClientData.findMail(MailClientData.getSelectedMailId());
     }
 
+    private static boolean claimAvailable() {
+        Mail mail = selectedMail();
+        return mail != null && mail.hasUnclaimedAttachments();
+    }
+
+    private static boolean composeSendAvailable(IGregTechTileEntity machine) {
+        return machine != null && !composeRecipient.trim()
+            .isEmpty() && System.currentTimeMillis() - lastComposeSendMs >= COMPOSE_COOLDOWN_MS;
+    }
+
     /** 类型显示名（详情/悬浮提示用） */
     private static String typeDisplayName(String type) {
         if (Mail.TYPE_PLAYER.equals(type)) return "玩家";
@@ -774,11 +796,10 @@ public class MailGui {
         return "系统";
     }
 
-    /** 条目底纹理：未读/已读 */
-    private static IDrawable entryTexture(String filterType, int index) {
+    private static boolean entrySelected(String filterType, int index) {
         Mail mail = entryMail(filterType, index);
-        if (mail == null) return IDrawable.EMPTY;
-        return mail.isRead() ? NekoGuiTextures.MAIL_ENTRY_READ : NekoGuiTextures.MAIL_ENTRY_UNREAD;
+        return mail != null && mail.getId()
+            .equals(MailClientData.getSelectedMailId());
     }
 
     /** 条目图标：未读=闭合信封，已读=开封信封 */

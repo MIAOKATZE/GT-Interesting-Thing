@@ -43,18 +43,14 @@ final class VendingRoomArt {
             roomBox(x, .04, -3, .2, .16, 6, 0x8c7254, 1);
             roomBox(x - .015, 4.27, -3, .23, .1, 6, 0xffedcf, 1);
         }
-        // A genuinely recessed, warmly lit delivery alcove, not a black rectangle over a solid wall.
+        // Open rear aperture: only the frame is solid; the space behind the shutter is light.
         roomBox(-5, 0, -3.15, 1.35, 4.35, .15, 0xf5e6c9, 1);
         roomBox(3.65, 0, -3.15, 1.35, 4.35, .15, 0xf5e6c9, 1);
         roomBox(-3.65, 3.8, -3.15, 7.3, .55, .15, 0xf5e6c9, 1);
         roomBox(-3.65, -.15, -3.75, 7.3, .15, .9, 0xc9aa7c, 1);
-        roomBox(-3.65, .15, -3.75, 7.3, 3.65, .1, 0xc8ae84, 1);
         roomBox(-3.65, .15, -3.65, .12, 3.65, .8, 0xdfc69c, 1);
         roomBox(3.53, .15, -3.65, .12, 3.65, .8, 0xdfc69c, 1);
         roomBox(-3.65, 3.68, -3.65, 7.3, .12, .8, 0xe9d5ac, 1);
-        for (int i = 0; i < 6; i++) {
-            roomBox(-3.4 + i * 1.14, .2, -3.64, 1.09, 3.42, .025, i % 2 == 0 ? 0xd9bc8e : 0xd2b586, 1);
-        }
         roomBox(-3.4, 3.45, -3.57, 6.8, .09, .06, 0xffe5a7, 1);
         roomBox(-3.46, .18, -3.55, .045, 3.2, .04, 0xffe6af, 1);
         roomBox(3.42, .18, -3.55, .045, 3.2, .04, 0xffe6af, 1);
@@ -85,8 +81,42 @@ final class VendingRoomArt {
         }
         roomBox(-4.6, 4.15, -2.9, 9.2, .055, .12, 0xffedb5, 1);
         roomBox(2.45, 3.86, -2.51, .42, .26, .04, 0x9c28e2, 1);
+        rearLight(rearDoor);
         GL11.glEnable(GL11.GL_TEXTURE_2D);
         GL11.glColor4f(1, 1, 1, 1);
+    }
+
+    private static void rearLight(double openness) {
+        if (openness <= 0) return;
+        GL11.glPushAttrib(
+            GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_CURRENT_BIT);
+        try {
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glDisable(GL11.GL_CULL_FACE);
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+            GL11.glDepthMask(false);
+            Tessellator t = Tessellator.instance;
+            // A luminous opening, with no backing box or picking/collision proxy.
+            t.startDrawingQuads();
+            t.setColorRGBA_F(1, .87f, .59f, (float) (.72 * openness));
+            quad(t, -3.48, .16, -3.7, 3.48, .16, -3.7, 3.48, 3.65, -3.7, -3.48, 3.65, -3.7);
+            t.draw();
+            // Broad soft shafts reach into the room and fade before the open front.
+            for (int i = 0; i < 5; i++) {
+                double x = -3.15 + i * 1.48;
+                t.startDrawingQuads();
+                t.setColorRGBA_F(1, .85f, .52f, (float) (.20 * openness));
+                t.addVertex(x, .008, -2.82);
+                t.addVertex(x + .42, .008, -2.82);
+                t.setColorRGBA_F(1, .9f, .68f, 0);
+                t.addVertex(Math.min(4.7, x + 1.5), .008, 2.5);
+                t.addVertex(Math.max(-4.7, x - .7), .008, 2.5);
+                t.draw();
+            }
+        } finally {
+            GL11.glPopAttrib();
+        }
     }
 
     private static double ease(double value) {

@@ -2,7 +2,7 @@ package com.miaokatze.gtit.lottery;
 
 import java.util.function.IntBinaryOperator;
 
-/** 轮盘沿离散环格顺时针取槽，避免拐角处奖品重叠。 */
+/** 奖品按原索引顺时针排在像素圆盘上；紧凑旧尺寸继续使用不重叠的矩形环。 */
 public final class LotteryWheelLayout {
 
     /** Presentation protocol limit; agrees with LotteryPool.MAX_ENTRIES. */
@@ -14,6 +14,12 @@ public final class LotteryWheelLayout {
     public static int[] slotTopLeft(int index, int count, int width, int height) {
         if (count < 1 || count > MAX_SLOTS || index < 0 || index >= count) {
             throw new IllegalArgumentException("Invalid wheel slot");
+        }
+        if (Math.min(width, height) >= 132) {
+            double angle = index * Math.PI * 2 / count - Math.PI / 2;
+            int radius = Math.min(width, height) / 2 - 18;
+            return new int[] { width / 2 + (int) Math.round(Math.cos(angle) * radius) - SLOT_SIZE / 2,
+                height / 2 + (int) Math.round(Math.sin(angle) * radius) - SLOT_SIZE / 2 };
         }
         int cols = count <= 1 ? 1 : count <= 4 ? 2 : count <= 6 ? 3 : 4;
         int rows = count <= 1 ? 1 : count <= 8 ? 2 : 3;

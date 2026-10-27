@@ -373,6 +373,13 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
     /** Compact A→B card. Wallet requirements are visual tokens, never injected into settlement inputs. */
     private void drawNativeTrade(ModularGuiContext context, WidgetThemeEntry<?> theme) {
         int width = getArea().width, height = getArea().height;
+        // 保留选中底色；按住时只压暗纸面，物品、数量和锁定信息保持清楚。
+        if (pressed) GuiDraw.drawRect(2, 2, width - 4, height - 4, 0x186a5e48);
+        if (isHovering() || pressed) {
+            int edge = pressed ? NekoVendingTheme.GOLD : 0xffb5a27a;
+            GuiDraw.drawRect(2, 1, width - 4, 1, edge);
+            GuiDraw.drawRect(2, height - 2, width - 4, 1, edge);
+        }
         boolean list = displayType == NekoDisplayType.LIST;
         NekoTradeCardLayout geometry = new NekoTradeCardLayout(
             width,
@@ -801,6 +808,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
         // Shift 和 Ctrl 同时按下或同时未按下时忽略
         if (shiftHeld == ctrlHeld) {
+            if (nativePresentation && !shiftHeld) pressed = true;
             return nativePresentation && !shiftHeld ? Interactable.Result.SUCCESS : Interactable.Result.IGNORE;
         }
 

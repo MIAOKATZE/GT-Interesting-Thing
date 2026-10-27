@@ -24,6 +24,7 @@ import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.util.NbtBase64Util;
 
@@ -249,13 +250,18 @@ public class SignInCalendarGui {
     /** 日期数字-未来（浅灰，v1.7.6 G4 自 0xFF9A9A9A 调深；保持 NORMAL<MISSED<FUTURE 层次） */
     private static final int COLOR_DAY_FUTURE = 0xFF707070;
     /** 日期数字-今天（深紫，与今日格高亮边框呼应） */
-    private static final int COLOR_DAY_TODAY = 0xFF7A1FA2;
+    private static final int COLOR_DAY_TODAY = NekoVendingTheme.INK;
     /** 日期数字-已签到（深棕，压在小猫爪印章上仍可读） */
     private static final int COLOR_DAY_SIGNED = 0xFF4A2F0A;
     /** 进度条底色 */
-    private static final int COLOR_PROGRESS_BG = 0xFF1E1E2E;
+    private static final int COLOR_PROGRESS_BG = 0xffc7b995;
     /** 进度条填充（金色） */
-    private static final int COLOR_PROGRESS_FILL = 0xFFFFC84A;
+    private static final int COLOR_PROGRESS_FILL = NekoVendingTheme.GOLD;
+
+    private static final IDrawable CELL_NORMAL = NekoVendingTheme.surface(0xffeee5ce, 0xffc5b694);
+    private static final IDrawable CELL_SIGNED = NekoVendingTheme.surface(0xffe0e2c5, 0xff9ba47e);
+    private static final IDrawable CELL_TODAY = NekoVendingTheme.surface(0xfff4e2b2, 0xffb19151);
+    private static final IDrawable CELL_REWARD = NekoVendingTheme.surface(0xfff8dfaa, NekoVendingTheme.GOLD);
 
     /** 星期表头（周一开头） */
     private static final String[] WEEKDAY_LABELS = { "一", "二", "三", "四", "五", "六", "日" };
@@ -445,6 +451,12 @@ public class SignInCalendarGui {
             ButtonWidget<?> cellHitbox = new ButtonWidget<>().pos(x, y)
                 .size(CELL_SIZE, CELL_SIZE)
                 .background(IDrawable.EMPTY)
+                .hoverBackground((context, dx, dy, w, h, theme) -> {
+                    GuiDraw.drawRect(dx + 1, dy, w - 2, 1, NekoVendingTheme.GOLD);
+                    GuiDraw.drawRect(dx + 1, dy + h - 1, w - 2, 1, NekoVendingTheme.GOLD);
+                    GuiDraw.drawRect(dx, dy + 1, 1, h - 2, NekoVendingTheme.GOLD);
+                    GuiDraw.drawRect(dx + w - 1, dy + 1, 1, h - 2, NekoVendingTheme.GOLD);
+                })
                 .tooltipBuilder(t -> buildDayCellTooltip(t, index, editCallback))
                 .tooltipAutoUpdate(true)
                 .onMouseTapped(mouse -> {
@@ -545,11 +557,12 @@ public class SignInCalendarGui {
     private static IWidget createSignInButton(SignInEditCallback editCallback) {
         return new ButtonWidget<>().pos((PAGE_WIDTH - BTN_W) / 2, BTN_Y)
             .size(BTN_W, BTN_H)
-            .background(NekoGuiTextures.SIGNIN_BTN_CLAIM)
+            .background(NekoVendingTheme.face(() -> false, () -> signInAvailable(editCallback), false))
+            .hoverBackground(NekoVendingTheme.face(() -> false, () -> signInAvailable(editCallback), true))
             .overlay(
-                IKey.dynamic(
-                    () -> SignInClientData.hasSignedToday() ? EnumChatFormatting.GRAY + "已签到"
-                        : EnumChatFormatting.WHITE + "签到"))
+                IKey.dynamic(() -> SignInClientData.hasSignedToday() ? "已签到" : "签到")
+                    .color(() -> signInAvailable(editCallback) ? NekoVendingTheme.INK : NekoVendingTheme.MUTED)
+                    .shadow(false))
             .tooltipBuilder(t -> {
                 // 编辑模式：仅提示，不展示奖励预览
                 if (editCallback != null && editCallback.isEditMode()) {
@@ -600,6 +613,10 @@ public class SignInCalendarGui {
                 }
                 return false;
             });
+    }
+
+    private static boolean signInAvailable(SignInEditCallback editCallback) {
+        return !SignInClientData.hasSignedToday() && (editCallback == null || !editCallback.isEditMode());
     }
 
     /**
@@ -1428,19 +1445,19 @@ public class SignInCalendarGui {
      */
     private static IDrawable cellTexture(int index) {
         String date = cellDate(index);
-        if (date.isEmpty()) return NekoGuiTextures.SIGNIN_CELL_NORMAL;
-        if (SignInClientData.hasSigned(date)) return NekoGuiTextures.SIGNIN_CELL_SIGNED;
+        if (date.isEmpty()) return IDrawable.EMPTY;
+        if (SignInClientData.hasSigned(date)) return CELL_SIGNED;
         String today = SignInClientData.getToday();
         if (date.equals(today)) {
             int nextConsec = SignInClientData.getConsecutiveDays() + 1;
             // 读客户端缓存（服务端同步快照优先）
             SignInRewardTier tier = SignInClientData.getTriggeredTier(nextConsec);
             if (tier != null && !SignInClientData.hasClaimedTier(tier.getRequiredDays())) {
-                return NekoGuiTextures.SIGNIN_CELL_REWARD;
+                return CELL_REWARD;
             }
-            return NekoGuiTextures.SIGNIN_CELL_TODAY;
+            return CELL_TODAY;
         }
-        return NekoGuiTextures.SIGNIN_CELL_NORMAL;
+        return CELL_NORMAL;
     }
 
     /**

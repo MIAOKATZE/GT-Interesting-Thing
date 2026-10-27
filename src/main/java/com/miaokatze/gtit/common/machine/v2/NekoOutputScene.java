@@ -179,11 +179,12 @@ public final class NekoOutputScene {
             changed = true;
             if (d.stage == WAIT_DOOR) {
                 d.age++;
-                if (doorTicks[d.route] < DOOR_TICKS || laneCooldown[d.route] > 0) continue;
+                if (doorTicks[d.route] < DOOR_TICKS) continue;
                 d.stage = FEED;
                 d.age = 0;
-                // Max 5 drops/sec per side, 10/sec rear. No hidden random rain or simultaneous 100-body burst.
-                laneCooldown[d.route] = d.route == 2 ? 2 : 4;
+                // All ready identities emerge together once their door is open. The existing 100-slot
+                // inventory bounds the burst; the legacy cooldown field remains readable in old saves.
+                laneCooldown[d.route] = 0;
                 transfers.visible(entry.getKey(), now);
             } else {
                 d.age++;
@@ -230,9 +231,12 @@ public final class NekoOutputScene {
         double spread = ((id * 37 % 17) - 8) / 8.0;
         // Start fully inside the real shell: the first 200 ms clears the interpolated door before protruding.
         // Per-identity exit directions then spread a pile over the floor.
-        double x = route == 2 ? ((id * 37 % 9) - 4) * .5 : sign * (4.3 - 1.2 * t);
-        double y = route == 2 ? 1.8 : 3.0;
-        double z = route == 2 ? -2.65 + 1.15 * t : .5 + spread * .14 * t;
+        // Fan the simultaneous rear burst across the aperture, with shallow depth layers for the
+        // 100-slot worst case. Full native blocks start apart instead of sharing one launch point.
+        long cell = (id - 1) % 32;
+        double x = route == 2 ? (cell % 8 - 3.5) * .82 : sign * (4.3 - 1.2 * t);
+        double y = route == 2 ? .58 + (cell / 8) * .82 : 3.0;
+        double z = route == 2 ? -2.65 + ((id - 1) / 32 % 4) * .82 + 1.15 * t : .5 + spread * .14 * t;
         double pitch = t * (.35 + (id % 7) * .11), yaw = t * spread * .65, roll = t * sign * .28;
         double cx = Math.cos(pitch / 2), sx = Math.sin(pitch / 2), cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2),
             cz = Math.cos(roll / 2), sz = Math.sin(roll / 2);
