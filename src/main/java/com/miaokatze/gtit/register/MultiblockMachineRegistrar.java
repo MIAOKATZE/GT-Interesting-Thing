@@ -5,6 +5,7 @@ import net.minecraft.util.StatCollector;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.common.api.enums.MetaTileEntityID;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.common.machine.v2.MTENekoVendingUplinkHatch;
 
 /**
  * 多方块机器注册器
@@ -28,5 +29,11 @@ public class MultiblockMachineRegistrar extends MachineRegistrar {
                 "gtit.neko_vending_machine",
                 StatCollector.translateToLocal("gtit.machine.neko_vending_machine")),
             GTITItemList.NekoVendingMachine);
+        registerMachine(
+            () -> new MTENekoVendingUplinkHatch(
+                MetaTileEntityID.NEKO_VENDING_UPLINK_HATCH.ID,
+                "gtit.neko_vending_uplink_hatch",
+                StatCollector.translateToLocal("gtit.machine.neko_vending_uplink_hatch")),
+            GTITItemList.NekoVendingUplinkHatch);
     }
 }

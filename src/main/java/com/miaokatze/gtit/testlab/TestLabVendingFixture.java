@@ -10,12 +10,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 
-import com.cubefury.vendingmachine.blocks.VendingMachineBlocks;
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.common.items.terminal.NekoVendingTarget;
 import com.miaokatze.gtit.common.items.terminal.RemoteVendingContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.register.BlockRegistrar;
 
 import gregtech.api.GregTechAPI;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
@@ -239,7 +239,7 @@ final class TestLabVendingFixture implements ProbeScenario {
                     if (depth == 0 && row == 3 && col == 2) continue;
                     facing.getWorldOffset(new int[] { col - 2, row - 3, depth }, offset);
                     if (!context
-                        .setBlock(12 + offset[0], offset[1], 12 + offset[2], VendingMachineBlocks.casingBlock, 0))
+                        .setBlock(12 + offset[0], offset[1], 12 + offset[2], BlockRegistrar.nekoVendingCasing, 0))
                         throw new IllegalStateException("Owned vending casing placement failed");
                 }
             context

@@ -52,6 +52,8 @@ public enum GTITItemList implements IItemContainer {
     // 猫猫自动售货机机械方块（独立木质外壳）
     NekoVendingCasing,
 
+    NekoVendingUplinkHatch,
+
     // Infinity Cell 系列 (适配自 AE2Things，已被下面的自有单元取代)
     InfinityCell,
     InfinityFluidCell,

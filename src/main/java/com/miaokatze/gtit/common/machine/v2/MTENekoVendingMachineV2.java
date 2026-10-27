@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.common.machine.v2;
 
 import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofBlock;
+import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofChain;
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
 import java.util.ArrayList;
@@ -20,13 +21,13 @@ import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cubefury.vendingmachine.blocks.MTEVendingUplinkHatch;
-import com.cubefury.vendingmachine.blocks.VendingMachineBlocks;
 import com.gtnewhorizon.structurelib.StructureLibAPI;
 import com.gtnewhorizon.structurelib.alignment.IAlignmentProvider;
 import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructable;
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
+import com.miaokatze.gtit.common.api.enums.MetaTileEntityID;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.register.BlockRegistrar;
@@ -70,8 +71,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /** 结构定义的唯一标识符，用于在 StructureLib 中索引特定的结构片段 */
     private static final String STRUCTURE_PIECE_MAIN = "main";
 
-    /** VendingMachine ME Uplink Hatch 的 MTE ID（0.4.87 与 0.4.95 均为 2742） */
-    private static final int VM_ME_UPLINK_MTE_ID = 2742;
+    /** Dedicated Neko ME uplink ID, following the existing configured GTIT offset. */
+    private static final int NEKO_ME_UPLINK_MTE_ID = MetaTileEntityID.NEKO_VENDING_UPLINK_HATCH.ID;
 
     /**
      * 猫猫机 5x4x2 多方块结构定义
@@ -83,16 +84,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * </ul>
      * <p>
      * 使用 {@link gregtech.api.util.HatchElementBuilder#hatchId} 按 MTE ID 检测
-     * VendingMachine ME Uplink Hatch（ID = {@link #VM_ME_UPLINK_MTE_ID}），避免跨版本
-     * /类加载器导致的反射兼容识别失败。新建默认使用猫猫自动售货机机械方块，
-     * 同时接受旧的 {@code VendingMachineBlocks.casingBlock}，保留已有结构。
+     * 专用猫猫 ME 上行链路仓（ID = {@link #NEKO_ME_UPLINK_MTE_ID}）。
+     * 只接受专用机械方块和仓室，默认提示、NEI 预览和自动建造均优先机械方块。
      */
-    // 懒加载结构定义（v1.6.33 方案 D）：
-    // 不能使用 static final 直接初始化，因为 <clinit> 会访问 VendingMachineBlocks.casingBlock（VM mod Init 产物）。
-    // 机器注册在 sAfterGTLoad（gregtech Init 末尾）执行，触发类加载 <clinit>，此时若 <clinit> 访问 casingBlock
-    // 可能因 VM.Init 未派发而 NPE。改为懒加载后，<clinit> 不再访问 casingBlock，
-    // getStructureDefinition() 首次调用时（运行时）casingBlock 必然就绪。
-    // 仿照 GTSR MTEKineticProcessingArray 的懒加载模式（避免 <clinit> 触发跨 mod 产物访问）。
+    // Lazy construction keeps block/item lookup in the normal, fully registered runtime lifecycle.
     private static IStructureDefinition<MTENekoVendingMachineV2> NEKO_STRUCTURE_DEFINITION = null;
 
     // === 材质常量 ===
@@ -394,7 +389,6 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     @Override
     public IStructureDefinition<MTENekoVendingMachineV2> getStructureDefinition() {
-        // 懒加载：首次调用时构建结构定义，此时 VendingMachineBlocks.casingBlock（VM mod Init 产物）必然就绪
         if (NEKO_STRUCTURE_DEFINITION == null) {
             NEKO_STRUCTURE_DEFINITION = IStructureDefinition.<MTENekoVendingMachineV2>builder()
                 .addShape(
@@ -402,13 +396,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     new String[][] { { "ccccc", "ccccc", "ccccc", "cc~cc" }, { "ccccc", "ccccc", "ccccc", "ccccc" } })
                 .addElement(
                     'c',
-                    buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
-                        .hatchId(VM_ME_UPLINK_MTE_ID)
-                        .casingIndex(BlockRegistrar.nekoVendingCasing.getTextureIndex(0))
-                        .hint(1)
-                        .buildAndChain(
-                            ofBlock(BlockRegistrar.nekoVendingCasing, 0),
-                            ofBlock(VendingMachineBlocks.casingBlock, 0)))
+                    ofChain(
+                        ofBlock(BlockRegistrar.nekoVendingCasing, 0),
+                        buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
+                            .hatchId(NEKO_ME_UPLINK_MTE_ID)
+                            .casingIndex(BlockRegistrar.nekoVendingCasing.getTextureIndex(0))
+                            .hint(1)
+                            .build()))
                 .build();
         }
         return NEKO_STRUCTURE_DEFINITION;
@@ -483,20 +477,20 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return false;
         }
         int metaTileId = aBaseMetaTileEntity.getMetaTileID();
-        if (metaTileId != VM_ME_UPLINK_MTE_ID) {
+        if (metaTileId != NEKO_ME_UPLINK_MTE_ID) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug(
                     "[NekoVMV2] addUplinkHatch rejected: metaTileID={} (expected {})",
                     metaTileId,
-                    VM_ME_UPLINK_MTE_ID);
+                    NEKO_ME_UPLINK_MTE_ID);
             }
             return false;
         }
-        if (!(aMetaTileEntity instanceof MTEVendingUplinkHatch)) {
+        if (!(aMetaTileEntity instanceof MTENekoVendingUplinkHatch)) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug(
                     "[NekoVMV2] addUplinkHatch rejected: metaTileID matches {} but class is {} (potential reflection compat issue)",
-                    VM_ME_UPLINK_MTE_ID,
+                    NEKO_ME_UPLINK_MTE_ID,
                     aMetaTileEntity.getClass()
                         .getName());
             }
@@ -1184,7 +1178,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             .beginStructureBlock(5, 4, 2, false)
             .addController("Front Bottom Center")
             .addOtherStructurePart(BlockRegistrar.nekoVendingCasing.getLocalizedName(), "Any casing block")
-            .addOtherStructurePart("ME Vending Uplink Hatch", "Optional, any casing")
+            .addOtherStructurePart(
+                net.minecraft.util.StatCollector.translateToLocal("gtit.machine.neko_vending_uplink_hatch"),
+                "Optional, at most one, any casing")
             .addInfo(GTITUtils.getAddedByLine())
             .toolTipFinisher();
     }
@@ -1285,9 +1281,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             }
             return aActive ? FACING_ACTIVE : FACING_FRONT;
         }
-        if (side == ForgeDirection.DOWN) return FACING_BOTTOM;
-        if (side == ForgeDirection.UP) return FACING_TOP;
-        return FACING_SIDE;
+        return new ITexture[] { gregtech.api.enums.Textures.BlockIcons
+            .getCasingTextureForId(BlockRegistrar.nekoVendingCasing.getTextureIndex(0)) };
     }
 
     // === 覆盖层渲染 ===

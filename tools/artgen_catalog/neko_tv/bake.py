@@ -7,7 +7,9 @@ Runtime PNGs/mcmeta go to resources; source/provenance/visual QA go to build/nek
 """
 import base64
 import hashlib
+import io
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,8 +21,7 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE / 'source'))
 # User-requested standalone renderer, kept outside the mod project.
 sys.path.insert(0, str(ROOT.parent / '贴图复合渲染/src'))
-from cat_scene import MODEL, pose_at, render_frames
-from materials import write_materials
+from cat_scene import MODEL, STORY, render_frames, verify_story
 
 SOURCE = ROOT / 'src/main/resources/assets/gtit/textures/items/miao_coin.png'
 OUTPUT = ROOT / 'src/main/resources/assets/gtit/textures/blocks'
@@ -45,7 +46,9 @@ def data_url(path, mime):
 def main():
     assert digest(SOURCE.read_bytes()) == COIN_SHA256, 'Original coin source changed'
     PREVIEW.mkdir(parents=True, exist_ok=True)
-    write_materials(OUTPUT)
+    story_checks = verify_story()
+    coin_flow_quality = json.loads(subprocess.check_output(
+        [sys.executable,'-B',str(HERE / 'source/coin_flow_quality.py')],text=True,encoding='utf-8'))
     coin = Image.open(SOURCE).convert('RGBA')
     assert coin.size == (32, 128)
     alpha_boxes = [coin.crop((0, n * 32, 32, (n + 1) * 32)).getchannel('A').getbbox()
@@ -66,6 +69,7 @@ def main():
         page.on('pageerror', lambda e: errors.append(str(e)))
         page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
         page.set_content('<!doctype html><meta charset="utf-8"><title>Cat cabinet bake</title>')
+        page.add_script_tag(content=(HERE / 'source/coin_flow.js').read_text(encoding='utf-8'))
         page.add_script_tag(content=(HERE / 'source/render.js').read_text(encoding='utf-8'))
         page.evaluate('sources => loadSources(sources)', {
             'coin': data_url(SOURCE, 'image/png'),
@@ -94,8 +98,10 @@ def main():
         assert len({c['speed'] for c in composition['particles']}) == 8
         assert all(c['cycles'] == int(c['cycles']) and c['speed'] > 0
                    for c in composition['particles'])
-        frames = [Image.frombytes('RGBA', (WIDTH, HEIGHT), bytes(page.evaluate('t => pixelsAt(t)', n/FPS)))
-                  for n in range(FRAMES)]
+        # Lossless PNG avoids serializing 19 million individual channel integers over Playwright.
+        frames = [Image.open(io.BytesIO(base64.b64decode(page.evaluate(
+            't => { pixelsAt(t); return canvas.toDataURL("image/png").split(",")[1]; }',n/FPS)))).convert('RGBA')
+            for n in range(FRAMES)]
         assert bytes(page.evaluate('pixelsAt(24)')) == frames[0].tobytes()
         for n in (1, 37, 79, 119, 140, 239):
             assert bytes(page.evaluate('t => pixelsAt(t)', 24+n/FPS)) == frames[n].tobytes()
@@ -109,11 +115,18 @@ def main():
                     if (full[i] !== noCoins[i]) throw new Error(`Coin leaked into bottom row at ${n}`);
                 }
                 const noCats = pixelsAt(n/10, true, false);
+                // An empty counter is solid warm wood, with no old near-black opening.
+                for (let y = 96; y < 104; y++) for (let x = 2; x < 158; x++) {
+                    if (x >= 64 && x < 96) continue;
+                    const i = (y*160+x)*4;
+                    if (noCats[i] < 100 || noCats[i+1] < 65 || noCats[i+2] < 30)
+                        throw new Error(`Dark opening remains in solid counter at ${n}`);
+                }
                 for (let y = 107; y < 126; y++) for (let x = 2; x < 158; x++) {
                     if (x >= 62 && x < 98) continue;
                     for (let c = 0; c < 4; c++) {
                         const i = (y*160+x)*4+c;
-                        if (full[i] !== noCats[i]) throw new Error(`Cat escaped drawer occlusion at ${n}`);
+                        if (full[i] !== noCats[i]) throw new Error(`Cat escaped solid counter front at ${n}`);
                     }
                 }
                 checked++;
@@ -166,12 +179,14 @@ def main():
     display = []
     for frame in frames:
         image = frame.copy(); image.paste(controller, (64,96)); display.append(image)
-    for n, label in ((0,'hidden'),(40,'peek'),(70,'look'),(140,'paw-touch'),(210,'descend')):
+    for n, label in ((0,'hidden'),(20,'red-peek-back'),(36,'red-jump-up'),(75,'red-reach-coin'),
+                     (121,'black-peek-later'),(117,'red-startled'),(127,'red-jump-back'),
+                     (145,'black-watch-exit'),(175,'black-look-outside'),(205,'black-jump-back')):
         display[n].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / f'key-{label}.png')
-    frames[140].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / 'screen-mask.png')
-    display[140].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / 'screen.png')
+    frames[75].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / 'screen-mask.png')
+    display[75].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / 'screen.png')
     contact = Image.new('RGBA', (WIDTH*4,HEIGHT*3))
-    for i,n in enumerate(range(0,FRAMES,20)):
+    for i,n in enumerate((0,20,36,55,75,100,112,127,145,175,203,230)):
         contact.paste(display[n], (i%4*WIDTH,i//4*HEIGHT))
     contact.resize((1280,768), Image.Resampling.NEAREST).save(PREVIEW / 'contact-sheet.png')
     previews = [frame.resize((480,384), Image.Resampling.NEAREST).convert('RGB') for frame in display]
@@ -180,19 +195,20 @@ def main():
     report = {'composition': 'wood-cabinet-vanilla-model-cats', 'browser': browser_version,
               'scope': 'Offline rendered native resource pixels; not an in-game screenshot or structure test',
               'cat_model': MODEL['provenance'], 'model_parts': 8, 'model_boxes': 11,
-              'cat_stages_seconds': {'peek':[.8,3.55], 'climb':[3.5,6.35], 'look':[6,10.5],
-                                     'approach':[10,12.5], 'paw_touch':[12.7,16.2],
-                                     'return':[16.2,18.7], 'descend':[19.3,22.75]},
+              'cat_stages_seconds': STORY, 'cat_story_checks':story_checks,
               'source_coin_sha256': COIN_SHA256, 'coin_alpha_boxes': alpha_boxes,
               'frames': FRAMES, 'fps': FPS, 'frame_time_ticks': FRAME_TIME, 'period_seconds': PERIOD,
               'canvas': [WIDTH,HEIGHT], 'columns': 5, 'rows': 4,
               'tile_order': 'top to bottom, left to right; omit row3 col2 controller',
               'controller_mask': [64,96,32,32], 'controller_mask_empty_all_frames': True,
               'bottom_row_zero_coin_contribution_frames': bottom_coin_checks,
-              'drawer_front_occludes_cat_bodies_frames': FRAMES,
+              'solid_counter_front_occludes_cat_bodies_frames': FRAMES,
+              'solid_counter_no_dark_opening_frames': FRAMES,
               'rgba': '19 runtime tiles opaque; controller mask transparent',
               'wood_casing_outer_edges_pixel_identical': True,
               'particles': composition['particles'], 'coin_render_size': composition['coinSize'],
+              'coin_flow_quality':coin_flow_quality,
+              'coin_flow_source_sha256':digest((HERE / 'source/coin_flow.js').read_bytes()),
               'coin_alpha_rendered_boxes': rendered_alpha_boxes,
               'coin_alpha_min_diameter_px': min(min(b[2]-b[0],b[3]-b[1]) for b in rendered_alpha_boxes),
               'reassembled_frames_equal_canvas': FRAMES, 'endpoint_24s_equals_0s': True,

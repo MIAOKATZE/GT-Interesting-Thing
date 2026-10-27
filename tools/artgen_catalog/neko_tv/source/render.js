@@ -5,21 +5,9 @@ canvas.width = WIDTH;
 canvas.height = HEIGHT;
 const px = canvas.getContext('2d', {willReadFrequently: true});
 px.imageSmoothingEnabled = false;
-let seed = 0x4e454b4f;
-function random() {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    return seed / 4294967296;
-}
-const particles = [];
-for (let n = 0; n < 8; n++) {
-    const cycles = 2 + n % 3, travel = 156 + n * 4;
-    particles.push({phase: (n / 8 + random() * .025) % 1,
-        drift: random() * Math.PI * 2, turn: Math.floor(random() * 4),
-        laneX: [30, 80, 130][n % 3], cycles, travel,
-        speed: travel * cycles / PERIOD, size: COIN_SIZE});
-}
+const particles = NekoCoinFlow.particles;
 function drawerFront(x) {
-    // The front board occludes bodies inside the cabinet; paws rest on its top edge.
+    // Closed drawer front beneath the solid counter; no cat emerges through a drawer slot.
     px.fillStyle = '#352115'; px.fillRect(x + 2, 105, 60, 21);
     px.fillStyle = '#946032'; px.fillRect(x + 3, 107, 58, 18);
     px.fillStyle = '#be8c49'; px.fillRect(x + 4, 107, 56, 1);
@@ -37,6 +25,15 @@ function drawerFront(x) {
     px.fillStyle = '#a87b3c'; px.fillRect(x + 2, 105, 60, 1);
     px.fillStyle = '#5a3b22'; px.fillRect(x + 2, 106, 60, 1);
 }
+function counterTop() {
+    px.fillStyle = '#ad7b42'; px.fillRect(2,96,156,8);
+    px.fillStyle = '#d0a15a'; px.fillRect(2,96,156,1);
+    px.fillStyle = '#bb8b4d'; px.fillRect(3,97,154,5);
+    px.fillStyle = '#a4733d';
+    for (let x=8; x<153; x+=17) px.fillRect(x,99+x%2,11,1);
+    px.fillStyle = '#c79a54'; px.fillRect(3,102,154,1);
+    px.fillStyle = '#8f602f'; px.fillRect(2,103,156,1);
+}
 window.loadSources = async function(sources) {
     const textures = {};
     await Promise.all(Object.entries(sources).map(([name, src]) => new Promise((resolve, reject) => {
@@ -47,7 +44,8 @@ window.loadSources = async function(sources) {
     })));
     window.nekoTV = {width: WIDTH, height: HEIGHT, period: PERIOD, particles,
         controller: [64, 96, 32, 32], coinSize: COIN_SIZE, coinClip: [8,8,144,88],
-        cabinetOcclusionY: 105, cats: 'offline ModelOcelot / ModelBox UV / vanilla red and black'};
+        cabinetBackOcclusionY: 96, cabinetFrontOcclusionY: 104,
+        cats: 'offline ModelOcelot / asymmetric cabinet-back jump story'};
     window.pixelsAt = function(time, showCoins = true, showCats = true) {
         const t = ((time % PERIOD) + PERIOD) % PERIOD;
         px.clearRect(0, 0, WIDTH, HEIGHT);
@@ -63,14 +61,12 @@ window.loadSources = async function(sources) {
             px.fillStyle = 'rgba(255,211,111,.10)'; px.fillRect(x, Math.round(10 + offset), 1, 10);
         }
         if (showCoins) for (const c of particles) {
-            const phase = (c.phase + t / PERIOD * c.cycles) % 1;
-            const y = -24 + phase * c.travel;
-            const x = c.laneX + Math.sin(phase * Math.PI * 2 + c.drift) * 2;
-            const coinFrame = (Math.floor(t / PERIOD * 48) + c.turn) % 4;
+            const {x,y,coinFrame} = NekoCoinFlow.at(c,t);
             px.drawImage(textures.coin, 0, coinFrame * 32, 32, 32,
                 Math.round(x - COIN_SIZE / 2), Math.round(y - COIN_SIZE / 2), COIN_SIZE, COIN_SIZE);
         }
         px.restore();
+        counterTop();
         if (showCats) {
             const n = Math.floor((t + 1e-7) * FPS) % (PERIOD*FPS);
             px.save(); px.beginPath(); px.rect(2,2,156,103); px.clip();

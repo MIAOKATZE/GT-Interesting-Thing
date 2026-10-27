@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 import net.minecraft.client.Minecraft;
@@ -31,6 +32,7 @@ import com.cleanroommc.modularui.screen.viewport.GuiViewportStack;
 import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.utils.HoveredWidgetList;
 import com.cleanroommc.modularui.utils.ObjectList;
+import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.gui.vm.edit.NekoGhostTarget;
 
 import codechicken.nei.ItemPanel;
@@ -76,10 +78,15 @@ public final class NekoEmbeddedNeiSession {
     private int localPage;
     private int capturedButton = -1;
     private ItemStack ownedGhost;
-    private boolean searchFocused;
+    private TextFieldWidget searchInput;
+    private IntSupplier quantity;
+    private boolean selectionPress;
     private boolean nativeLayoutApplied;
 
-    private NekoEmbeddedNeiSession(ModularScreen screen, Supplier<Rectangle> bounds, BooleanSupplier enabled) {
+    private NekoEmbeddedNeiSession(ModularScreen screen, Supplier<Rectangle> bounds, BooleanSupplier enabled,
+        TextFieldWidget searchInput, IntSupplier quantity) {
+        this.searchInput = searchInput;
+        this.quantity = quantity;
         this.screen = screen;
         this.boundsSupplier = bounds;
         this.enabledSupplier = enabled;
@@ -87,7 +94,7 @@ public final class NekoEmbeddedNeiSession {
 
     /** Idempotent per ModularScreen. The suppliers must not mutate the widget tree. */
     public static NekoEmbeddedNeiSession attach(ModularScreen screen, Supplier<Rectangle> bounds,
-        BooleanSupplier enabled) {
+        BooleanSupplier enabled, TextFieldWidget searchInput, IntSupplier quantity) {
         if (screen == null || bounds == null || enabled == null)
             throw new IllegalArgumentException("NEI host and bounds");
         for (Iterator<WeakReference<NekoEmbeddedNeiSession>> it = SESSIONS.iterator(); it.hasNext();) {
@@ -101,7 +108,7 @@ public final class NekoEmbeddedNeiSession {
             }
         }
         installBridge();
-        NekoEmbeddedNeiSession session = new NekoEmbeddedNeiSession(screen, bounds, enabled);
+        NekoEmbeddedNeiSession session = new NekoEmbeddedNeiSession(screen, bounds, enabled, searchInput, quantity);
         SESSIONS.add(new WeakReference<>(session));
         return session;
     }
@@ -123,6 +130,8 @@ public final class NekoEmbeddedNeiSession {
         boundsSupplier = null;
         enabledSupplier = null;
         geometry = null;
+        searchInput = null;
+        quantity = null;
         localSearch = null;
         SESSIONS.removeIf(ref -> ref.get() == null || ref.get() == this);
     }
@@ -139,7 +148,6 @@ public final class NekoEmbeddedNeiSession {
             || session.host() != gui
             || Minecraft.getMinecraft().currentScreen != gui) return;
         try {
-            session.searchFocused = LayoutManager.searchField.focused();
             session.rememberPage();
         } catch (RuntimeException | LinkageError failure) {
             session.fail(failure);
@@ -229,10 +237,11 @@ public final class NekoEmbeddedNeiSession {
                     owner = session;
                     session.nativeLayoutApplied = false;
                     LayoutManager.searchField.setFocus(false);
-                    session.searchFocused = false;
                     if (session.localSearch != null && !session.localSearch.equals(LayoutManager.searchField.text())) {
                         LayoutManager.searchField.setText(session.localSearch);
                     }
+                    session.localSearch = LayoutManager.searchField.text();
+                    session.searchInput.setText(session.localSearch);
                     ItemPanels.itemPanel.getGrid()
                         .setPage(session.localPage);
                     return;
@@ -250,7 +259,6 @@ public final class NekoEmbeddedNeiSession {
         place(panel.pageNext, geometry.next);
         panel.pageLabel.x = geometry.bounds.x + geometry.bounds.width / 2;
         panel.pageLabel.y = geometry.bounds.y + 5;
-        place(LayoutManager.searchField, geometry.search);
         Rectangle grid = geometry.grid;
         panel.getGrid()
             .setGridSize(grid.x, grid.y, grid.width, grid.height);
@@ -267,14 +275,12 @@ public final class NekoEmbeddedNeiSession {
         VisiblityData hidden = new VisiblityData();
         hidden.showNEI = false;
         LayoutManager.updateWidgetVisiblities(gui, hidden);
-        LayoutManager.searchField.setVisible(true);
-        // Normal NEI layout may hide the search field for a full-width MUI panel before this TAIL hook.
-        LayoutManager.searchField.setFocus(searchFocused);
+        LayoutManager.searchField.setVisible(false);
+        LayoutManager.searchField.setFocus(false);
         LayoutManager.addWidget(panel);
         LayoutManager.addWidget(panel.pagePrev);
         LayoutManager.addWidget(panel.pageNext);
         LayoutManager.addWidget(panel.pageLabel);
-        LayoutManager.addWidget(LayoutManager.searchField);
         nativeLayoutApplied = true;
     }
 
@@ -290,6 +296,14 @@ public final class NekoEmbeddedNeiSession {
         snapshot = null;
         owner = null; // Clear before rebuilding normal layout; never recursively reacquire.
         capturedButton = -1;
+        selectionPress = false;
+        if (searchInput != null && searchInput.isValid()) {
+            IWidget focused = screen.getContext()
+                .getFocusedWidget()
+                .getElement();
+            if (focused != null && focused.getParent() == searchInput.getParent()) screen.getContext()
+                .removeFocus();
+        }
         nativeLayoutApplied = false;
         restoring = true;
         try {
@@ -346,53 +360,61 @@ public final class NekoEmbeddedNeiSession {
         if (owner == this) release();
     }
 
+    /** MUI owns full text/IME input; NEI still supplies the actual search parser and filtered item list. */
+    public void setSearch(String text) {
+        localSearch = text;
+        if (owner != this || LayoutManager.searchField.text()
+            .equals(text)) return;
+        LayoutManager.searchField.setText(text);
+        localPage = 0;
+        ItemPanels.itemPanel.getGrid()
+            .setPage(0);
+    }
+
+    public String getSearch() {
+        return localSearch == null ? "" : localSearch;
+    }
+
     /** Item clicks use ONLY NEI's native stack preparation; never handleClickExt/mouseUp/cheatItem. */
     private boolean mouse(int x, int y, int button, boolean down, int wheel) {
         boolean inside = geometry.bounds.contains(x, y);
+        boolean text = geometry.search.contains(x, y);
         if (wheel != 0) {
-            if (!inside) return false;
-            if (geometry.grid.contains(x, y) || y < geometry.grid.y) {
-                ItemPanels.itemPanel.getGrid()
-                    .shiftPage(wheel > 0 ? -1 : 1);
-                rememberPage();
-            }
+            if (!inside || text) return false;
+            ItemPanels.itemPanel.getGrid()
+                .shiftPage(wheel > 0 ? -1 : 1);
+            rememberPage();
             return true;
         }
-        if (button < 0) return capturedButton >= 0 && inside;
+        // Keep the entire held-button drag on this safe route, including motion outside the catalog.
+        if (button < 0) return capturedButton >= 0;
         if (!down) {
-            // A press that started in MUI must receive its release, even if the cursor crossed our rectangle.
             if (capturedButton != button) return false;
             capturedButton = -1;
             ItemPanels.itemPanel.mouseDownSlot = -1;
-            if (!inside) {
-                dropOnDraftSlot(x, y, button);
-                clearOwnedGhost();
-            }
+            if (selectionPress && !inside) dropOnDraftSlot(x, y, button);
+            selectionPress = false;
             return true;
         }
-        LayoutManager.searchField.onGuiClick(x, y);
-        searchFocused = LayoutManager.searchField.focused();
+        if (text) {
+            clearOwnedGhost();
+            return false; // Native MUI field handles cursor placement, selection, clipboard and modern text events.
+        }
         if (!inside) {
             if (ownedGhost == null || ItemPanels.itemPanel.draggedStack != ownedGhost) return false;
-            // Owned catalog ghosts can reach only the explicitly allow-listed draft slots, never generic NEI drop/cheat
-            // handlers.
-            dropOnDraftSlot(x, y, button);
+            if (dropOnDraftSlot(x, y, button)) {
+                capturedButton = button;
+                selectionPress = false;
+                return true;
+            }
             clearOwnedGhost();
-            return true;
+            return false;
         }
         capturedButton = button;
+        selectionPress = false;
         screen.getContext()
             .removeFocus();
-        if (geometry.search.contains(x, y)) {
-            clearOwnedGhost();
-            LayoutManager.searchField.handleClick(x, y, button);
-            searchFocused = LayoutManager.searchField.focused();
-            if (button == 1) {
-                localPage = 0;
-                ItemPanels.itemPanel.getGrid()
-                    .setPage(0);
-            }
-        } else if (geometry.previous.contains(x, y)) {
+        if (geometry.previous.contains(x, y)) {
             clearOwnedGhost();
             ItemPanels.itemPanel.pagePrev.handleClick(x, y, button);
             rememberPage();
@@ -401,18 +423,16 @@ public final class NekoEmbeddedNeiSession {
             ItemPanels.itemPanel.pageNext.handleClick(x, y, button);
             rememberPage();
         } else if (ItemPanels.itemPanel.getStackMouseOver(x, y) != null) {
-            // A real cursor stack remains owned by vanilla/MUI; do not create a second ambiguous cursor.
             if (Minecraft.getMinecraft().thePlayer != null
                 && Minecraft.getMinecraft().thePlayer.inventory.getItemStack() != null) return true;
-            // A previous selection is replaced only if it is ours; no inventory item is ever touched.
-            if (ItemPanels.itemPanel.draggedStack == ownedGhost) ItemPanels.itemPanel.draggedStack = null;
-            // Calling handleClick(..., 2) is NOT safe: its handleClickExt first invokes arbitrary GUI drop handlers
-            // for the player's real held stack. Borrow only the native stack/quantity preparation, then copy it.
+            clearOwnedGhost();
             ItemStack selected = ItemPanels.itemPanel.getStackMouseOverWithQuantity(x, y);
             ownedGhost = selected == null ? null : selected.copy();
+            if (ownedGhost != null) ownedGhost.stackSize = button == 1 ? 1 : quantity.getAsInt();
             ItemPanels.itemPanel.draggedStack = ownedGhost;
             ItemPanels.itemPanel.mouseDownSlot = -1;
-        }
+            selectionPress = true;
+        } else clearOwnedGhost();
         return true;
     }
 
@@ -420,8 +440,8 @@ public final class NekoEmbeddedNeiSession {
         localPage = Math.max(0, ItemPanels.itemPanel.getPage() - 1);
     }
 
-    private void dropOnDraftSlot(int mouseX, int mouseY, int button) {
-        if (ownedGhost == null || ItemPanels.itemPanel.draggedStack != ownedGhost) return;
+    private boolean dropOnDraftSlot(int mouseX, int mouseY, int button) {
+        if (ownedGhost == null || ItemPanels.itemPanel.draggedStack != ownedGhost) return false;
         // Re-run the exact public MUI hit-test path at this event's native coordinates. This respects
         // viewport clipping, scroll offsets, disabled pages and front-to-back sibling order, without
         // reading the previous frame's hover list (or the broken .92 getAllHovered iterator).
@@ -441,15 +461,15 @@ public final class NekoEmbeddedNeiSession {
                 if (!target.isValid() || !target.areAncestorsEnabled()) continue;
                 if (target instanceof NekoGhostTarget) {
                     ((NekoGhostTarget) target).acceptNeiGhost(ownedGhost.copy(), button);
-                    // Like MUI's own ghost route, rejection consumes this attempt; never try a covered slot.
-                    clearOwnedGhost();
-                    return;
+                    // Keep our copy for repeated placement; the target can consume only its own copy.
+                    return true;
                 }
-                if (target instanceof Interactable || !target.canClickThrough()) return;
+                if (target instanceof Interactable || !target.canClickThrough()) return false;
             }
         } finally {
             stack.reset();
         }
+        return false;
     }
 
     private void clearOwnedGhost() {
@@ -525,34 +545,27 @@ public final class NekoEmbeddedNeiSession {
             NekoEmbeddedNeiSession session = owner;
             if (session == null || !Keyboard.getEventKeyState()) return;
             try {
-                // A native editor field owns its keystrokes even while the mouse rests over the catalog.
-                // Clicking the NEI search explicitly removes MUI focus in mouse(), so its typing still works.
+                // MUI owns editor/search keystrokes even while the pointer rests over the catalog.
+                // Its native field consumes legacy control keys and receives modern TextEvent strings separately.
                 if (session.screen.getContext()
                     .isFocused()) return;
-                String oldSearch = LayoutManager.searchField.text();
-                if (LayoutManager.searchField.focused()
-                    && LayoutManager.searchField.handleKeyPress(Keyboard.getEventKey(), Keyboard.getEventCharacter())) {
-                    session.searchFocused = LayoutManager.searchField.focused();
-                    if (!oldSearch.equals(LayoutManager.searchField.text())) {
-                        session.localPage = 0;
-                        ItemPanels.itemPanel.getGrid()
-                            .setPage(0);
-                    }
+                if (Keyboard.getEventKey() == Keyboard.KEY_ESCAPE && session.ownedGhost != null) {
+                    session.clearOwnedGhost();
                     event.setCanceled(true);
-                } else if (!session.screen.getContext()
-                    .isFocused() && NEIClientConfig.isKeyHashDown("gui.search")) {
-                        LayoutManager.searchField.setFocus(true);
-                        session.searchFocused = true;
+                } else if (NEIClientConfig.isKeyHashDown("gui.search")) {
+                    session.clearOwnedGhost();
+                    session.screen.getContext()
+                        .focus(session.searchInput);
+                    event.setCanceled(true);
+                } else if (session.geometry.bounds.contains(
+                    session.screen.getContext()
+                        .getAbsMouseX(),
+                    session.screen.getContext()
+                        .getAbsMouseY())
+                    && ItemPanels.itemPanel.handleKeyPress(Keyboard.getEventKey(), Keyboard.getEventCharacter())) {
+                        session.rememberPage();
                         event.setCanceled(true);
-                    } else if (session.geometry.bounds.contains(
-                        session.screen.getContext()
-                            .getAbsMouseX(),
-                        session.screen.getContext()
-                            .getAbsMouseY())
-                        && ItemPanels.itemPanel.handleKeyPress(Keyboard.getEventKey(), Keyboard.getEventCharacter())) {
-                            session.rememberPage();
-                            event.setCanceled(true);
-                        }
+                    }
             } catch (RuntimeException | LinkageError failure) {
                 session.fail(failure);
                 event.setCanceled(true);

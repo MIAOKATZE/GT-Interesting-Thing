@@ -2,8 +2,11 @@ package com.miaokatze.gtit.common.machine.v2;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import net.minecraft.block.Block;
@@ -15,6 +18,10 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.CraftingManager;
 import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.item.crafting.ShapelessRecipes;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.IBlockAccess;
 import net.minecraftforge.common.util.ForgeDirection;
 
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
@@ -22,6 +29,7 @@ import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.IStructureElement;
 import com.gtnewhorizon.structurelib.structure.IStructureElementChain;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
+import com.miaokatze.gtit.common.api.enums.MetaTileEntityID;
 import com.miaokatze.gtit.common.blocks.BlockNekoVendingCasing;
 import com.miaokatze.gtit.recipe.GTITRecipes;
 import com.miaokatze.gtit.register.BlockRegistrar;
@@ -32,6 +40,7 @@ import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 public final class NekoTvStructureTest {
 
     private static Block originalCasing;
+    private static net.minecraft.item.Item uplinkItem;
 
     private static void check(boolean ok, String message) {
         if (!ok) throw new AssertionError(message);
@@ -73,6 +82,9 @@ public final class NekoTvStructureTest {
                     .getUnlocalizedName()),
             "casing ItemBlock uses its own localization key");
         casingRecipe();
+        uplinkRecipe();
+        connectedCasing();
+        uplinkClone();
         IStructureDefinition<MTENekoVendingMachineV2> definition = new MTENekoVendingMachineV2("tv_structure_test")
             .getStructureDefinition();
         Set<String> cells = new HashSet<>();
@@ -93,21 +105,29 @@ public final class NekoTvStructureTest {
         check(cells.size() == 39, "exactly 39 replaceable casing cells");
         IStructureElement<MTENekoVendingMachineV2>[] candidates = ((IStructureElementChain<MTENekoVendingMachineV2>) casing)
             .fallbacks();
-        check(candidates.length == 3, "ME hatch plus new and legacy casings are the only candidates");
-        ItemStack preferred = candidates[1].getBlocksToPlace(null, null, 0, 0, 0, null, null)
-            .getStacks()
-            .iterator()
-            .next();
-        ItemStack legacy = candidates[2].getBlocksToPlace(null, null, 0, 0, 0, null, null)
+        check(candidates.length == 2, "dedicated casing plus optional dedicated ME hatch are the only candidates");
+        ItemStack preferred = candidates[0].getBlocksToPlace(null, null, 0, 0, 0, null, null)
             .getStacks()
             .iterator()
             .next();
         check(
             preferred.getItem() == GTITItemList.NekoVendingCasing.getItem() && preferred.getItemDamage() == 0,
-            "new wooden casing is the preferred casing candidate");
+            "wooden casing precedes the hatch for default preview, hint and construction");
         check(
-            legacy.getItem() == net.minecraft.item.Item.getItemFromBlock(originalCasing) && legacy.getItemDamage() == 0,
-            "the original casing remains available for existing worlds");
+            !candidates[0].getBlocksToPlace(null, null, 0, 0, 0, null, null)
+                .getPredicate()
+                .test(new ItemStack(originalCasing, 1, 0)),
+            "the original VM casing is not a construction candidate");
+        check(
+            candidates[1].getBlocksToPlace(null, null, 0, 0, 0, null, null)
+                .getPredicate()
+                .test(GTITItemList.NekoVendingUplinkHatch.get(1)),
+            "only the dedicated ME hatch matches the optional hatch predicate");
+        check(
+            !candidates[1].getBlocksToPlace(null, null, 0, 0, 0, null, null)
+                .getPredicate()
+                .test(new ItemStack(uplinkItem, 1, 2742)),
+            "the original VM hatch cannot substitute for the dedicated hatch");
         for (int depth = 0; depth < 2; depth++) for (int row = 0; row < 4; row++) for (int col = 0; col < 5; col++) {
             check(definition.isContainedInStructure("main", col, row, depth), "solid 5x4x2 footprint");
             boolean controller = col == 2 && row == 3 && depth == 0;
@@ -169,6 +189,208 @@ public final class NekoTvStructureTest {
         unlocalizedName.set(block, name);
         cpw.mods.fml.common.registry.GameRegistry.registerBlock(block, gregtech.common.blocks.ItemCasings.class, name);
         return block;
+    }
+
+    private static Object allocate(Class<?> type) throws Exception {
+        Class<?> unsafe = Class.forName("sun.misc.Unsafe");
+        Field singleton = unsafe.getDeclaredField("theUnsafe");
+        singleton.setAccessible(true);
+        return unsafe.getMethod("allocateInstance", Class.class)
+            .invoke(singleton.get(null), type);
+    }
+
+    private static TileEntity tileFixture(Object machine) throws Exception {
+        Class<?> type = Class.forName("gregtech.api.metatileentity.BaseMetaTileEntity");
+        TileEntity tile = (TileEntity) allocate(type);
+        gregtech.api.interfaces.tileentity.IGregTechTileEntity base = (gregtech.api.interfaces.tileentity.IGregTechTileEntity) tile;
+        ((gregtech.api.interfaces.metatileentity.IMetaTileEntity) machine).setBaseMetaTileEntity(base);
+        check(base.getMetaTileEntity() == machine, "fixture obeys GT's bidirectional MTE ownership and validity");
+        return tile;
+    }
+
+    private static void connectedCasing() throws Exception {
+        Map<String, Block> blocks = new HashMap<>();
+        Map<String, TileEntity> tiles = new HashMap<>();
+        IBlockAccess world = (IBlockAccess) Proxy.newProxyInstance(
+            IBlockAccess.class.getClassLoader(),
+            new Class<?>[] { IBlockAccess.class },
+            (proxy, method, args) -> {
+                String key = args[0] + "," + args[1] + "," + args[2];
+                if (method.getName()
+                    .equals("getBlock")) return blocks.getOrDefault(key, net.minecraft.init.Blocks.air);
+                if (method.getName()
+                    .equals("getTileEntity")) return tiles.get(key);
+                if (method.getName()
+                    .equals("getBlockMetadata")) return 0;
+                throw new AssertionError("unexpected block query " + method.getName());
+            });
+        Method maskMethod = BlockNekoVendingCasing.class
+            .getDeclaredMethod("connectionMask", IBlockAccess.class, int.class, int.class, int.class, int.class);
+        maskMethod.setAccessible(true);
+        ForgeDirection[] right = { ForgeDirection.EAST, ForgeDirection.EAST, ForgeDirection.WEST, ForgeDirection.EAST,
+            ForgeDirection.SOUTH, ForgeDirection.NORTH };
+        for (int face = 0; face < 6; face++) {
+            ForgeDirection up = face < 2 ? ForgeDirection.NORTH : ForgeDirection.UP;
+            ForgeDirection[] edges = { up, right[face], up.getOpposite(), right[face].getOpposite() };
+            for (int expected = 0; expected < 16; expected++) {
+                blocks.clear();
+                for (int edge = 0; edge < 4; edge++) if ((expected & (1 << edge)) != 0) {
+                    ForgeDirection d = edges[edge];
+                    blocks.put(d.offsetX + "," + d.offsetY + "," + d.offsetZ, BlockRegistrar.nekoVendingCasing);
+                }
+                check((int) maskMethod.invoke(null, world, 0, 0, 0, face) == expected, "all six CTM face masks");
+            }
+        }
+        blocks.clear();
+        blocks.put("1,0,0", originalCasing);
+        check((int) maskMethod.invoke(null, world, 0, 0, 0, 3) == 0, "old VM casings do not connect");
+        for (String type : new String[] { MTENekoVendingMachineV2.class.getName(),
+            "com.miaokatze.gtit.common.machine.v2.MTENekoVendingUplinkHatch" }) {
+            tiles.put("1,0,0", tileFixture(allocate(Class.forName(type))));
+            check(
+                (int) maskMethod.invoke(null, world, 0, 0, 0, 3) == 2,
+                "dedicated controller and hatch join the wood");
+        }
+        tiles.put(
+            "1,0,0",
+            tileFixture(allocate(Class.forName("com.cubefury.vendingmachine.blocks.MTEVendingUplinkHatch"))));
+        check(
+            (int) maskMethod.invoke(null, world, 0, 0, 0, 3) == 0,
+            "original and unrelated GT hatches do not connect");
+    }
+
+    private static void uplinkClone() throws Exception {
+        Class<?> type = Class.forName("com.miaokatze.gtit.common.machine.v2.MTENekoVendingUplinkHatch");
+        Object prototype = allocate(type);
+        Field name = gregtech.api.metatileentity.CommonMetaTileEntity.class.getDeclaredField("mName");
+        name.setAccessible(true);
+        name.set(prototype, "neko_uplink_fixture");
+        Method clone = type
+            .getDeclaredMethod("newMetaEntity", gregtech.api.interfaces.tileentity.IGregTechTileEntity.class);
+        gregtech.api.interfaces.metatileentity.IMetaTileEntity first = (gregtech.api.interfaces.metatileentity.IMetaTileEntity) clone
+            .invoke(prototype, new Object[] { null });
+        gregtech.api.interfaces.metatileentity.IMetaTileEntity second = (gregtech.api.interfaces.metatileentity.IMetaTileEntity) clone
+            .invoke(prototype, new Object[] { null });
+        check(first.getClass() == type && second.getClass() == type, "cloning preserves the dedicated MTE type");
+        Class<?> original = type.getSuperclass();
+        for (Method method : type.getDeclaredMethods()) {
+            check(
+                !java.util.Arrays
+                    .asList(
+                        "isActive",
+                        "getProxy",
+                        "getTexturesActive",
+                        "getTexturesInactive",
+                        "saveNBTData",
+                        "loadNBTData")
+                    .contains(method.getName()),
+                "original ME behavior, overlays and NBT remain inherited");
+        }
+        int casingIndex = BlockRegistrar.nekoVendingCasing.getTextureIndex(0);
+        gregtech.api.util.GTUtility.addTexturePage((byte) (casingIndex >> 7));
+        gregtech.api.interfaces.ITexture wood = gregtech.api.render.TextureFactory
+            .of(TextureManager.NEKO_VENDING_CASING_SIDE);
+        gregtech.api.enums.Textures.BlockIcons.setCasingTextureForId(casingIndex, wood);
+        check(
+            type.getDeclaredMethod("getCasingTexture")
+                .invoke(first) == wood,
+            "dedicated uplink uses the wooden casing slot");
+        NBTTagCompound stored = new NBTTagCompound();
+        NBTTagList pending = new NBTTagList();
+        // Non-empty AEItemStack decoding requires the full AE registry lifecycle, outside this isolated suite.
+        stored.setTag("pendingInject", pending);
+        first.loadNBTData(stored);
+        NBTTagCompound saved = new NBTTagCompound();
+        first.saveNBTData(saved);
+        check(
+            saved.getTagList("pendingInject", 10)
+                .tagCount() == 0 && saved.hasKey("pendingInject", 9),
+            "original empty pending injection NBT format is preserved");
+        NBTTagCompound empty = new NBTTagCompound();
+        second.saveNBTData(empty);
+        check(
+            empty.getTagList("pendingInject", 10)
+                .tagCount() == 0,
+            "fresh clones retain an empty pending injection queue");
+        Field queue = original.getDeclaredField("pendingItemInject");
+        queue.setAccessible(true);
+        check(queue.get(first) != queue.get(second), "clones do not share pending item ownership");
+        uplinkPolicy(first, second, allocate(original));
+    }
+
+    private static gregtech.api.interfaces.tileentity.IGregTechTileEntity hatchTile(Object machine, int id)
+        throws Exception {
+        gregtech.api.interfaces.tileentity.IGregTechTileEntity tile = (gregtech.api.interfaces.tileentity.IGregTechTileEntity) tileFixture(
+            machine);
+        tile.setMetaTileID((short) id);
+        return tile;
+    }
+
+    private static void uplinkPolicy(Object first, Object second, Object original) throws Exception {
+        Class<?> tileType = gregtech.api.interfaces.tileentity.IGregTechTileEntity.class;
+        Method add = MTENekoVendingMachineV2.class.getDeclaredMethod("addUplinkHatch", tileType, int.class);
+        add.setAccessible(true);
+        MTENekoVendingMachineV2 controller = new MTENekoVendingMachineV2("uplink_policy_fixture");
+        int id = MetaTileEntityID.NEKO_VENDING_UPLINK_HATCH.ID;
+        int texture = BlockRegistrar.nekoVendingCasing.getTextureIndex(0);
+        check(!(boolean) add.invoke(controller, hatchTile(original, 2742), texture), "old VM hatch ID is rejected");
+        check(
+            !(boolean) add.invoke(controller, hatchTile(allocate(original.getClass()), id), texture),
+            "dedicated ID requires the dedicated class");
+        gregtech.api.interfaces.tileentity.IGregTechTileEntity firstTile = hatchTile(first, id);
+        check((boolean) add.invoke(controller, firstTile, texture), "one dedicated hatch is accepted");
+        check(
+            !(boolean) add.invoke(controller, hatchTile(second, id), texture),
+            "a second dedicated hatch is rejected");
+    }
+
+    private static void uplinkRecipe() throws Exception {
+        int id = MetaTileEntityID.NEKO_VENDING_UPLINK_HATCH.ID;
+        check(id == MetaTileEntityID.NEKO_VENDING_MACHINE_V2.ID + 1, "new hatch uses the next free GTIT ID");
+        uplinkItem = new gregtech.common.blocks.ItemMachines(net.minecraft.init.Blocks.iron_block);
+        GTITItemList.NekoVendingUplinkHatch.set(new ItemStack(uplinkItem, 1, id));
+        gregtech.api.interfaces.metatileentity.IMetaTileEntity previous = gregtech.api.GregTechAPI.METATILEENTITIES[2742];
+        gregtech.api.GregTechAPI.METATILEENTITIES[2742] = new MTENekoVendingMachineV2("original_uplink_fixture") {
+
+            @Override
+            public ItemStack getStackForm(long amount) {
+                return new ItemStack(uplinkItem, (int) amount, 2742);
+            }
+        };
+        List<?> recipes = CraftingManager.getInstance()
+            .getRecipeList();
+        int previousSize = recipes.size();
+        try {
+            Method add = GTITRecipes.class.getDeclaredMethod("addNekoVendingUplinkHatchRecipe");
+            add.setAccessible(true);
+            add.invoke(null);
+            check(recipes.size() == previousSize + 1, "one dedicated uplink conversion is registered");
+            IRecipe recipe = (IRecipe) recipes.get(previousSize);
+            check(recipe instanceof ShapelessRecipes, "uplink conversion is native shapeless");
+            InventoryCrafting grid = new InventoryCrafting(new Container() {
+
+                @Override
+                public boolean canInteractWith(EntityPlayer player) {
+                    return true;
+                }
+            }, 3, 3);
+            for (int slot = 0; slot < 9; slot++) {
+                grid.setInventorySlotContents(slot, new ItemStack(uplinkItem, 1, 2742));
+                check(recipe.matches(grid, null), "one original uplink matches in every slot");
+                ItemStack output = recipe.getCraftingResult(grid);
+                check(output.stackSize == 1 && output.getItemDamage() == id, "one dedicated uplink is returned");
+                grid.setInventorySlotContents(slot, null);
+            }
+            grid.setInventorySlotContents(0, GTITItemList.NekoVendingUplinkHatch.get(1));
+            check(!recipe.matches(grid, null), "no reverse uplink conversion");
+            grid.setInventorySlotContents(0, new ItemStack(uplinkItem, 1, 2742));
+            grid.setInventorySlotContents(1, new ItemStack(Items.stick));
+            check(!recipe.matches(grid, null), "uplink conversion rejects extra materials");
+        } finally {
+            recipes.subList(previousSize, recipes.size())
+                .clear();
+            gregtech.api.GregTechAPI.METATILEENTITIES[2742] = previous;
+        }
     }
 
     private static void casingRecipe() throws Exception {

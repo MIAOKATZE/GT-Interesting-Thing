@@ -26,6 +26,7 @@ public class GTITRecipes {
         addRingWindriderRecipe();
         addNekoVendingMachineRecipe();
         addNekoVendingCasingRecipe();
+        addNekoVendingUplinkHatchRecipe();
         addNekoVendingTerminalRecipe();
         addNekoInfinityStorageUnitRecipe();
         addReincarnationCrystalRecipe();
@@ -196,6 +197,13 @@ public class GTITRecipes {
         GameRegistry.addShapelessRecipe(
             GTITItemList.NekoVendingCasing.get(1),
             new ItemStack(VendingMachineBlocks.casingBlock, 1, 0));
+    }
+
+    /** One original ME Vending Uplink Hatch becomes its dedicated wooden Neko replacement. */
+    private static void addNekoVendingUplinkHatchRecipe() {
+        GameRegistry.addShapelessRecipe(
+            GTITItemList.NekoVendingUplinkHatch.get(1),
+            GregTechAPI.METATILEENTITIES[2742].getStackForm(1L));
     }
 
     /** One GTSWN-compatible computer screen cover and one shimmering Neko coin, in any order. */

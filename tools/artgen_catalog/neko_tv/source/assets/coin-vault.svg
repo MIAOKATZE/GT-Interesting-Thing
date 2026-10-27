@@ -10,10 +10,9 @@
  <path fill="#44331b" d="M11 11h138v47H11z"/>
  <path fill="#4b381d" d="M15 15h130v29H15z"/>
  <path fill="#4e3c20" d="M22 18h116v13H22z"/>
- <!-- Dark drawer openings under the coin display. -->
- <path fill="#2a1c12" d="M2 96h60v9H2zm96 0h60v9H98z"/>
- <path fill="#140f0b" d="M4 98h56v6H4zm96 0h56v6h-56z"/>
- <path fill="#6c4727" d="M3 96h58v1H3zm96 0h58v1H99z"/>
+ <!-- Solid warm wooden counter: cats peek from its back edge, never a dark slot. -->
+ <path fill="#b88749" d="M2 96h156v9H2z"/>
+ <path fill="#d0a15a" d="M2 96h156v1H2z"/>
  <path fill="#a4783c" d="M62 96h2v30h-2zm34 0h2v30h-2z"/>
  <path fill="#e0bb71" d="M62 96h1v30h-1zm35 0h1v30h-1z"/>
 </svg>
