@@ -83,7 +83,7 @@ public class NekoWorkbenchPanel extends ModularPanel {
                     text -> { if (nei != null) nei.setSearch(text); }))
             .autoUpdateOnChange(true)
             .setMaxLength(256)
-            .hintText("搜索物品 / @模组 / $矿词")
+            .hintText("搜索物品 / @模组")
             .setTextColor(NekoVendingTheme.INK)
             .background(NekoVendingTheme.INPUT)
             .left(0)
@@ -94,6 +94,7 @@ public class NekoWorkbenchPanel extends ModularPanel {
             .tooltipBuilder(
                 t -> NekoVendingTheme.tooltip(t)
                     .addLine("NEI 原生搜索；右键清空；支持 Ctrl+A/C/V、中文输入")
+                    .addLine("其他搜索前缀遵循当前 NEI 设置")
                     .addLine("左键选取或按住拖到编辑槽；右键选取 1 个；Esc 取消选取"));
         catalog.child(catalogSearchInput);
         catalog.child(
