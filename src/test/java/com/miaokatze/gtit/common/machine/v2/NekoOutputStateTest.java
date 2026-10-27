@@ -31,10 +31,10 @@ public final class NekoOutputStateTest {
         final ItemStack[] slots = new ItemStack[100];
         final NekoOutputLedger ledger = new NekoOutputLedger();
         final List<ItemStack> pending = new ArrayList<>();
-        final NekoMeTransferQueue queue = new NekoMeTransferQueue(this, this, () -> {}, () -> true);
+        final NekoMeTransferQueue queue = new NekoMeTransferQueue(this, this, () -> {}, () -> this.meMode);
         NekoOutputScene scene;
-        boolean lost, accept = true;
-        int accepted = Integer.MAX_VALUE, injected, resets;
+        boolean lost, accept = true, meMode = true, visible = true;
+        int accepted = Integer.MAX_VALUE, injected, resets, acceptCalls, injectCalls;
 
         public ItemStack get(int slot) {
             return slot >= 0 ? slots[slot] : null;
@@ -56,7 +56,7 @@ public final class NekoOutputStateTest {
         }
 
         public boolean isVisible(int slot) {
-            return scene == null || scene.isVisible(dropId(slot));
+            return visible && (scene == null || scene.isVisible(dropId(slot)));
         }
 
         public boolean preserveLegacy(ItemStack stack) {
@@ -70,6 +70,7 @@ public final class NekoOutputStateTest {
         }
 
         public boolean canAccept(ItemStack stack) {
+            acceptCalls++;
             return accept;
         }
 
@@ -78,6 +79,7 @@ public final class NekoOutputStateTest {
         }
 
         public appeng.api.storage.data.IAEItemStack inject(ItemStack stack) {
+            injectCalls++;
             int take = Math.min(accepted, stack.stackSize);
             injected += take;
             final ItemStack remainder = stack.copy();
@@ -117,23 +119,35 @@ public final class NekoOutputStateTest {
     }
 
     private static void migration() {
-        ItemStackHandler old = new ItemStackHandler(8);
-        old.setStackInSlot(7, iron(9));
-        ItemStackHandler upgraded = new ItemStackHandler(16);
-        upgraded.deserializeNBT(NekoInventoryMigration.expand(old.serializeNBT(), 16));
+        for (int oldSize : new int[] { 8, 16, 32 }) {
+            ItemStackHandler old = new ItemStackHandler(oldSize);
+            ItemStack preserved = iron(9);
+            preserved.setTagCompound(new NBTTagCompound());
+            preserved.getTagCompound()
+                .setString("round2", "preserve-exact-nbt");
+            old.setStackInSlot(oldSize - 1, preserved);
+            NBTTagCompound saved = old.serializeNBT();
+            NBTTagCompound unchanged = (NBTTagCompound) saved.copy();
+            ItemStackHandler upgraded = new ItemStackHandler(32);
+            upgraded.deserializeNBT(NekoInventoryMigration.expand(saved, 32));
+            check(saved.equals(unchanged), "capacity migration never mutates the original save");
+            check(upgraded.getSlots() == 32, "eight/sixteen/thirty-two slots load as thirty-two");
+            check(
+                ItemStack.areItemStacksEqual(upgraded.getStackInSlot(oldSize - 1), preserved),
+                "old indexed stack and complete NBT retained");
+            for (int i = oldSize; i < 32; i++) check(upgraded.getStackInSlot(i) == null, "new inputs start empty");
+            upgraded.setStackInSlot(31, iron(11));
+            ItemStackHandler round = new ItemStackHandler(1);
+            round.deserializeNBT(NekoInventoryMigration.expand(upgraded.serializeNBT(), 32));
+            check(round.getSlots() == 32 && round.getStackInSlot(31).stackSize == 11, "thirty-two roundtrip");
+        }
+        for (int i = 0; i < 100; i++)
+            check(NekoInventoryMigration.outputIndex(i + 8) == i, "legacy output indices unchanged");
+        for (int i = 0; i < 32; i++)
+            check(NekoInventoryMigration.inputIndex(i < 8 ? i : i + 100) == i, "appended input indices");
         check(
-            upgraded.getSlots() == 16 && upgraded.getStackInSlot(7).stackSize == 9,
-            "old eight slots append to sixteen");
-        upgraded.setStackInSlot(15, iron(11));
-        ItemStackHandler round = new ItemStackHandler(1);
-        round.deserializeNBT(NekoInventoryMigration.expand(upgraded.serializeNBT(), 16));
-        check(round.getSlots() == 16 && round.getStackInSlot(15).stackSize == 11, "sixteen roundtrip");
-        check(
-            NekoInventoryMigration.outputIndex(8) == 0 && NekoInventoryMigration.outputIndex(107) == 99,
-            "legacy output indices unchanged");
-        check(
-            NekoInventoryMigration.inputIndex(108) == 8 && NekoInventoryMigration.inputIndex(115) == 15,
-            "appended input indices");
+            NekoInventoryMigration.inputIndex(107) == -1 && NekoInventoryMigration.inputIndex(132) == -1,
+            "input mapping does not alias output or out-of-range slots");
         Host h = new Host();
         h.slots[5] = iron(3);
         h.pending.add(iron(4));
@@ -461,6 +475,237 @@ public final class NekoOutputStateTest {
         check(h.injected == 4, "legacy migration never injects detached copy");
     }
 
+    private static int ownedQuantity(Host host) {
+        int count = host.injected;
+        for (ItemStack item : host.slots) if (item != null) count += item.stackSize;
+        for (ItemStack item : host.pending) count += item.stackSize;
+        return count;
+    }
+
+    private static void meExistingOutputStaggerAndBudget() {
+        Host h = new Host();
+        for (int slot = 0; slot < 100; slot++) h.deliver(h.enqueue(64), slot);
+        long now = 100000;
+        h.meMode = false;
+        h.queue.enqueueExisting(100, now);
+        check(h.queue.isEmpty(), "disabled mode never enrolls existing inventory");
+        h.meMode = true;
+        h.queue.enqueueExisting(100, now);
+        check(h.queue.size() == 100 && ownedQuantity(h) == 6400, "toggle enrolls all existing owned outputs once");
+        NBTTagList jobs = h.queue.writeToNBT(now);
+        h.queue.enqueueExisting(100, now + 50);
+        check(
+            h.queue.size() == 100 && h.queue.writeToNBT(now)
+                .equals(jobs),
+            "repeat admission does not duplicate or reset");
+        for (int slot = 0; slot < 100; slot++) check(
+            jobs.getCompoundTagAt(slot)
+                .getLong("creationTime") == now + slot * NekoMeTransferQueue.ME_STAGGER_MS,
+            "each output receives a distinct staggered start");
+        check(
+            h.queue.phase(0, now) == 1 && h.queue.phase(1, now) == 0,
+            "future jobs stay fully visible while awaiting turn");
+        check(h.queue.phase(0, now + 3000) == 2 && h.queue.phase(1, now + 3000) == 1, "fade starts are staggered");
+        h.queue.tick(now + 4999);
+        check(h.acceptCalls == 0 && h.injected == 0, "each item keeps all three hold and two fade seconds");
+        h.queue.tick(now + 5000);
+        check(
+            h.injectCalls == 1 && h.injected == 64 && h.slots[0] == null,
+            "first turn removes only the accepted first stack");
+        h.queue.tick(now + 5099);
+        check(h.injectCalls == 1, "next stack cannot transfer ahead of its own complete fade");
+        // Simulate a server stall: all remaining entries are overdue, still only one network pair per tick.
+        while (!h.queue.isEmpty()) {
+            int probes = h.acceptCalls, transfers = h.injectCalls;
+            h.queue.tick(now + 100000);
+            check(
+                h.acceptCalls - probes == 1 && h.injectCalls - transfers == 1,
+                "overdue catch-up has a hard per-machine tick budget");
+            check(ownedQuantity(h) == 6400, "every bounded round conserves exact quantity");
+        }
+        check(h.injected == 6400, "all existing output eventually reaches ME without a burst");
+    }
+
+    private static void meStaggerPersistenceAndFailures() {
+        Host h = new Host();
+        for (int slot = 0; slot < 4; slot++) h.deliver(h.enqueue(10), slot);
+        long now = 100000, resumed = 200000;
+        h.queue.enqueueExisting(100, now);
+        h.queue.readFromNBT(h.queue.writeToNBT(now + 50), resumed);
+        check(h.queue.phaseAgeMs(0, resumed) == 50, "reload preserves elapsed hold");
+        check(
+            h.queue.phase(1, resumed + 49) == 0 && h.queue.phase(1, resumed + 50) == 1,
+            "reload preserves pending stagger delay");
+        check(
+            h.queue.phase(2, resumed + 149) == 0 && h.queue.phase(2, resumed + 150) == 1,
+            "reload never collapses distinct starts");
+        h.accept = false;
+        h.queue.tick(resumed + 10000);
+        check(
+            h.acceptCalls == 1 && h.injectCalls == 0 && ownedQuantity(h) == 40,
+            "rejected simulation spends the tick budget and owns no items");
+        h.accept = true;
+        h.accepted = 4;
+        h.queue.tick(resumed + 10050);
+        check(
+            h.injectCalls == 1 && h.injected == 4 && h.slots[1].stackSize == 6,
+            "rejection does not starve another ready slot");
+        check(ownedQuantity(h) == 40 && h.queue.size() == 4, "partial acceptance retains exactly the remainder");
+        h.lost = true;
+        h.queue.tick(resumed + 10100);
+        check(
+            h.queue.isEmpty() && ownedQuantity(h) == 40 && h.injectCalls == 1,
+            "disconnect cancels every job but retains real remainder");
+        h.lost = false;
+        h.queue.enqueueExisting(100, resumed + 11000);
+        h.queue.cancelAll();
+        h.queue.tick(resumed + 99999);
+        check(
+            h.queue.isEmpty() && ownedQuantity(h) == 40 && h.injectCalls == 1,
+            "disable never auto-reenrolls cancelled output");
+    }
+
+    private static void meToggleDuringDelivery() {
+        Host h = new Host();
+        h.scene = new NekoOutputScene(h.ledger, h::get, h.queue);
+        h.scene.setPhysicsAllowed(false);
+        h.deliver(h.enqueue(8), 0);
+        h.scene.frame(-1);
+        h.queue.enqueueExisting(100, 100000);
+        check(
+            h.queue.size() == 1 && h.queue.phase(0, 100000) == 0,
+            "toggle enrolls WAIT_DOOR without starting or dimming it");
+        h.queue.tick(200000);
+        check(
+            h.injected == 0 && h.queue.phase(0, 200000) == 0,
+            "hidden work remains owned and cannot time out into ME");
+        for (int tick = 1; tick <= NekoOutputScene.DOOR_TICKS; tick++) h.scene.tick(tick, 300000 + tick * 50);
+        long visibleAt = 300000 + NekoOutputScene.DOOR_TICKS * 50;
+        check(
+            h.queue.phase(0, visibleAt) == 1 && h.queue.phaseAgeMs(0, visibleAt) == 0,
+            "in-flight toggle eventually starts from actual visibility");
+        h.queue.tick(visibleAt + 4999);
+        check(h.injected == 0, "in-flight enrollment still gives the full hold and fade");
+        h.queue.tick(visibleAt + 5000);
+        check(h.injected == 8 && h.slots[0] == null, "in-flight enrollment is eventually delivered exactly once");
+    }
+
+    private static void meSharedBodyRoundAndRecovery() {
+        Host h = new Host();
+        h.ledger.beginBatch(3);
+        for (int slot = 0; slot < 3; slot++) h.deliver(h.enqueue(10), slot);
+        h.ledger.beginBatch(1);
+        h.deliver(h.enqueue(10), 3);
+        long now = 100000;
+        h.queue.enqueueExisting(100, now);
+        NBTTagList jobs = h.queue.writeToNBT(now);
+        check(
+            h.dropId(0) == h.dropId(2) && h.generation(0) != h.generation(2),
+            "one body retains distinct slot-generation guards");
+        for (int slot = 0; slot < 3; slot++) check(
+            jobs.getCompoundTagAt(slot)
+                .getLong("creationTime") == now,
+            "all stacks of one visual body share the same hold and fade");
+        check(
+            jobs.getCompoundTagAt(3)
+                .getLong("creationTime") == now + 100,
+            "only distinct visual bodies are staggered");
+        for (int slot = 0; slot < 3; slot++)
+            check(h.queue.phase(slot, now + 3000) == 2, "shared body starts its coherent fade");
+        h.accepted = 4;
+        h.queue.tick(now + 5000);
+        check(
+            h.injected == 4 && h.slots[0].stackSize == 6 && ownedQuantity(h) == 40,
+            "one partial network operation conserves shared-body inventory");
+        for (int slot = 0; slot < 3; slot++) check(
+            h.queue.phase(slot, now + 5000) == 1 && h.queue.phaseAgeMs(slot, now + 5000) == 0,
+            "partial acceptance makes every remaining shared member visible together");
+        h.accepted = Integer.MAX_VALUE;
+        h.queue.tick(now + 5100);
+        check(h.slots[3] == null && h.injectCalls == 2, "restarted group does not block another ready body");
+        h.queue.tick(now + 10000);
+        check(
+            h.slots[0] == null && h.slots[1] != null && h.slots[2] != null,
+            "shared body drains only one real slot per tick");
+        h.accept = false;
+        h.queue.tick(now + 10050);
+        check(
+            h.queue.phase(1, now + 10050) == 1 && h.queue.phase(2, now + 10050) == 1,
+            "a failed member restores the entire remaining group visibly");
+        h.accept = true;
+        h.queue.tick(now + 15049);
+        check(h.slots[1] != null && h.slots[2] != null, "group retry receives a complete new hold and fade");
+        h.queue.tick(now + 15050);
+        h.queue.tick(now + 15100);
+        check(
+            h.queue.isEmpty() && h.injected == 40 && ownedQuantity(h) == 40,
+            "group eventually drains exactly once after partial and rejected rounds");
+    }
+
+    private static void meLateSharedBodyMember() {
+        for (boolean hiddenUntilEvent : new boolean[] { false, true }) {
+            Host h = new Host();
+            h.ledger.beginBatch(2);
+            ItemStack first = h.enqueue(10), late = h.enqueue(10);
+            h.deliver(first, 0);
+            long now = 100000;
+            h.queue.enqueueExisting(100, now);
+            h.queue.tick(now + 4999);
+            h.deliver(late, 1);
+            h.visible = !hiddenUntilEvent;
+            h.queue.enqueueIfMeMode(h.slots[1], 1, now + 5000);
+            if (hiddenUntilEvent) {
+                check(h.queue.phase(1, now + 5000) == 0, "late hidden member waits for actual visibility");
+                h.visible = true;
+                h.queue.visible(h.dropId(1), now + 5000);
+            }
+            for (int slot = 0; slot < 2; slot++) check(
+                h.queue.phase(slot, now + 5000) == 1 && h.queue.phaseAgeMs(slot, now + 5000) == 0,
+                "new visible member restarts its surviving shared body coherently");
+            h.queue.enqueueExisting(100, now + 6000);
+            check(h.queue.phaseAgeMs(0, now + 6000) == 1000, "duplicate admission still does not restart the group");
+            h.queue.tick(now + 9999);
+            check(h.injected == 0 && ownedQuantity(h) == 20, "late member cannot inherit an old completed fade");
+            h.queue.tick(now + 10000);
+            check(
+                h.injected == 10 && h.queue.size() == 1,
+                "late group starts bounded draining only after its new full hold and fade");
+            h.queue.tick(now + 10050);
+            check(h.injected == 20 && h.queue.isEmpty(), "late shared member eventually transfers exactly once");
+        }
+    }
+
+    private static void meClockRollbackAndLegacyFuture() {
+        Host h = new Host();
+        for (int slot = 0; slot < 3; slot++) h.deliver(h.enqueue(10), slot);
+        h.queue.enqueueExisting(100, 100000);
+        h.queue.tick(100100);
+        h.queue.tick(90000);
+        NBTTagList jobs = h.queue.writeToNBT(90000);
+        for (int slot = 0; slot < 3; slot++) check(
+            jobs.getCompoundTagAt(slot)
+                .getLong("creationTime") == 90000 + slot * 100,
+            "backwards wall clock restarts bounded staggered rounds rather than stranding jobs");
+        h.queue.tick(95000);
+        check(h.injected == 10 && ownedQuantity(h) == 30, "rollback retains the full hold and fade and real ownership");
+
+        Host legacy = new Host();
+        legacy.deliver(legacy.enqueue(7), 0);
+        NBTTagCompound entry = new NBTTagCompound();
+        legacy.slots[0].writeToNBT(entry);
+        entry.setInteger("slotIndex", 0);
+        entry.setLong("creationTime", Long.MAX_VALUE);
+        NBTTagList old = new NBTTagList();
+        old.appendTag(entry);
+        legacy.queue.readFromNBT(old, 100000);
+        legacy.queue.tick(104999);
+        check(legacy.injected == 0, "legacy future clock is restarted, not instantly transferred");
+        legacy.queue.tick(105000);
+        check(
+            legacy.injected == 7 && legacy.slots[0] == null,
+            "legacy future timestamp cannot strand owned output forever");
+    }
+
     private static void persistentEnqueueIdentity() {
         Host h = new Host();
         h.ledger.beginBatch(2);
@@ -765,6 +1010,101 @@ public final class NekoOutputStateTest {
         check(!settled.ledger.slot(1).rear, "already visible output is never rerouted");
     }
 
+    private static void nativeBlockShapeMigration() {
+        for (net.minecraft.block.Block block : new net.minecraft.block.Block[] { Blocks.stone, Blocks.glass,
+            Blocks.diamond_block, Blocks.fence, Blocks.chest })
+            check(NekoOutputModelShape.nativeBlock(new ItemStack(block)), "real native block remains volumetric");
+        for (net.minecraft.block.Block block : new net.minecraft.block.Block[] { Blocks.torch, Blocks.sapling,
+            Blocks.red_flower, Blocks.yellow_flower })
+            check(!NekoOutputModelShape.volumetric(new ItemStack(block)), "vanilla inventory sprite remains thin");
+        Host host = new Host();
+        for (int i = 0; i < 2; i++) {
+            ItemStack block = new ItemStack(Blocks.diamond_block, 3);
+            host.ledger.enqueue(block, false);
+            host.pending.add(block);
+            host.deliver(block, i);
+        }
+        host.deliver(host.enqueue(2), 2);
+        ItemStack torch = new ItemStack(Blocks.torch, 4);
+        host.ledger.enqueue(torch, false);
+        host.pending.add(torch);
+        host.deliver(torch, 3);
+        NekoOutputScene scene = new NekoOutputScene(host.ledger, host::get, host.queue);
+        NBTTagCompound old = scene.write();
+        NBTTagList list = old.getTagList("bodies", 10);
+        for (int i = 0; i < list.tagCount(); i++) {
+            NBTTagCompound body = list.getCompoundTagAt(i);
+            body.setInteger("modelShapeVersion", 1);
+            body.setInteger("deliveryStage", NekoOutputScene.RELEASED);
+            body.setInteger("deliveryAgeTicks", 0);
+            body.setBoolean("sleeping", true);
+            body.setDouble("x", i == 0 ? 4.78 : i);
+            body.setDouble("y", i == 0 ? .22 : 2);
+            body.setDouble("z", i == 0 ? -2.78 : 0);
+            if (i < 2 || i == 3) {
+                body.setDouble("hx", .22);
+                body.setDouble("hy", .22);
+                body.setDouble("hz", .22);
+            }
+            body.setDouble("qx", 0);
+            body.setDouble("qy", i == 1 ? Math.sin(.3) : 0);
+            body.setDouble("qz", 0);
+            body.setDouble("qw", i == 1 ? Math.cos(.3) : 1);
+        }
+        scene.restore(old);
+        NBTTagCompound resized = scene.write();
+        check(
+            !scene.isPhysicsActive() && resized.getBoolean("migrationSettlePending"),
+            "enlarged native blocks record one owner event but restore remains OFF");
+        NBTTagList actual = resized.getTagList("bodies", 10);
+        for (int i = 0; i < actual.tagCount(); i++) {
+            NBTTagCompound before = list.getCompoundTagAt(i), after = actual.getCompoundTagAt(i);
+            check(
+                after.getDouble("hx") == (i < 2 ? .39 : .27) && after.getDouble("hz") == (i < 2 ? .39 : .027),
+                "only native blocks enlarge");
+            for (String key : new String[] { "id", "route", "deliveryStage", "deliveryAgeTicks", "qx", "qy", "qz", "qw",
+                "vx", "vy", "vz", "wx", "wy", "wz", "sleeping", "quietTicks" })
+                check(
+                    before.getTag(key)
+                        .equals(after.getTag(key)),
+                    "block migration preserves " + key);
+            if (i == 0) check(
+                after.getDouble("x") == 5 - .39 && after.getDouble("y") == .39 && after.getDouble("z") == -3 + .39,
+                "corner block receives minimum room correction");
+            else for (String key : new String[] { "x", "y", "z" })
+                check(before.getDouble(key) == after.getDouble(key), "valid block/sprite pose remains exact");
+        }
+        scene.tick(1);
+        check(
+            !scene.write()
+                .getBoolean("migrationSettlePending"),
+            "allowed owner tick consumes block resize event");
+        for (int t = 2; t < 2400 && scene.isPhysicsActive(); t++) scene.tick(t);
+        check(!scene.isPhysicsActive(), "resized native blocks settle finitely");
+        NekoOutputScene modern = new NekoOutputScene(host.ledger, host::get, host.queue);
+        modern.restore(scene.write());
+        check(
+            !modern.isPhysicsActive() && !modern.write()
+                .getBoolean("migrationSettlePending"),
+            "version-two block shape does not repeat migration");
+        old.setBoolean("physicsAllowed", false);
+        scene.restore(old);
+        long tick = scene.write()
+            .getLong("tick");
+        for (int t = 1; t <= 8; t++) scene.tick(t);
+        check(
+            !scene.isPhysicsActive() && scene.write()
+                .getLong("tick") == tick
+                && scene.write()
+                    .getBoolean("migrationSettlePending"),
+            "disabled physics retains migration without stepping");
+        check(
+            host.slots[0].stackSize == 3 && host.slots[1].stackSize == 3
+                && host.slots[2].stackSize == 2
+                && host.slots[3].stackSize == 4,
+            "shape migration never changes actual output quantity");
+    }
+
     private static void legacyShapeSettlement() {
         check(NekoOutputModelShape.volumetric(new ItemStack(Blocks.glass)), "native glass uses a volume proxy");
         check(!NekoOutputModelShape.volumetric(iron(1)), "ordinary ingot uses a thin proxy");
@@ -947,7 +1287,14 @@ public final class NekoOutputStateTest {
         migration();
         identityAndSnapshots();
         legacyShapeSettlement();
+        nativeBlockShapeMigration();
         meRaces();
+        meExistingOutputStaggerAndBudget();
+        meStaggerPersistenceAndFailures();
+        meToggleDuringDelivery();
+        meSharedBodyRoundAndRecovery();
+        meLateSharedBodyMember();
+        meClockRollbackAndLegacyFuture();
         authoritativeDelivery();
         meVisibleClockPersistence();
         twoPlayersAndReservations();

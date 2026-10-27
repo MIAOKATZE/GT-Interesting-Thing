@@ -525,6 +525,10 @@ public final class NekoEmbeddedNeiSession {
             NekoEmbeddedNeiSession session = owner;
             if (session == null || !Keyboard.getEventKeyState()) return;
             try {
+                // A native editor field owns its keystrokes even while the mouse rests over the catalog.
+                // Clicking the NEI search explicitly removes MUI focus in mouse(), so its typing still works.
+                if (session.screen.getContext()
+                    .isFocused()) return;
                 String oldSearch = LayoutManager.searchField.text();
                 if (LayoutManager.searchField.focused()
                     && LayoutManager.searchField.handleKeyPress(Keyboard.getEventKey(), Keyboard.getEventCharacter())) {

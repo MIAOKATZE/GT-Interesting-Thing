@@ -8,6 +8,11 @@ public final class NekoTradeCardLayout {
     public static final int TOKEN_SIZE = 21, TOKEN_PITCH = 23;
     public static final int OVERFLOW_WIDTH = 14, OVERFLOW_GAP = 2;
 
+    /** Keep every responsive card between ~130 and 195 px instead of stretching two columns forever. */
+    public static int columns(int businessWidth) {
+        return Math.max(2, (businessWidth - 4) / 134);
+    }
+
     /** Reserve overflow before allocating icons; counts include currency and material tokens together. */
     public static final class TokenStrip {
 

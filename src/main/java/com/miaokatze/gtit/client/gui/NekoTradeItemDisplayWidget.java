@@ -389,7 +389,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
             .8f,
             NekoVendingTheme.INK,
             false);
-        if (!list) GuiDraw.drawText(identity, width - 31, 4, .65f, NekoVendingTheme.MUTED, false);
+        if (!list) GuiDraw.drawText(fit(identity, 26, .65f), width - 31, 4, .65f, NekoVendingTheme.MUTED, false);
         int rowY = geometry.rowY;
         GuiDraw.drawText("→", center - 4, rowY + 5, 1f, NekoVendingTheme.GOLD, false);
         drawRequirements(6, rowY, geometry.inputWidth, context);

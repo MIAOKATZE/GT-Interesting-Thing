@@ -41,9 +41,13 @@ public final class TradePageRefreshTest {
         check(TradePage.resolveSelectedIndex(categories(-1, 1, 2, 3, 9, 10), selected, 4) == 4, "追加空页不改变选择");
         check(TradePage.resolveSelectedIndex(categories(-1, 1, 3), selected, 4) == 2, "删除选中末页回退到合法末页");
         check(TradePage.resolveSelectedIndex(categories(-1), selected, 4) == 0, "空注册表仍能回退到收藏");
-        check(TradePage.resolveTabPage(2, 3, 12, false) == 1, "末标签分页删除后钳制到上一页");
-        check(TradePage.resolveTabPage(1, 10, 22, true) == 0, "删除前页跨边界后选中标签仍可见");
-        check(TradePage.resolveTabPage(1, 3, 22, false) == 1, "用户浏览其他标签分页时保留位置");
+        int pageSize = TradePage.PAGE_SIZE;
+        check(TradePage.resolveTabPage(2, 3, pageSize + 1, false) == 1, "末标签分页删除后钳制到上一页");
+        check(TradePage.resolveTabPage(1, pageSize - 1, pageSize * 2, true) == 0, "删除前页跨边界后选中标签仍可见");
+        check(TradePage.resolveTabPage(1, 3, pageSize * 2, false) == 1, "用户浏览其他标签分页时保留位置");
+        for (int index = 0; index < pageSize * 5; index++) {
+            check(TradePage.resolveTabPage(0, index, pageSize * 5, true) == index / pageSize, "所有分页边界都保持选中标签可见");
+        }
 
         NekoPageConfig.NekoPageData data = new NekoPageConfig.NekoPageData();
         data.setPages(Arrays.asList(page(1, "default"), page(9, "empty")));

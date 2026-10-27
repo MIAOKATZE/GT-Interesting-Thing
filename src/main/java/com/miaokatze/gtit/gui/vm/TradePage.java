@@ -1,7 +1,6 @@
 package com.miaokatze.gtit.gui.vm;
 
 import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.MAX_TRADES;
-import static com.miaokatze.gtit.gui.vm.NekoVMGuiV2.TILE_ITEMS_PER_ROW;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -164,7 +163,7 @@ public final class TradePage {
     private static final int QOL_GRID_LEFT = -75;
 
     /** T3：标签列每页最大标签数（size ≥ 此值才创建翻页行；页内为全局索引 [tabPage*PAGE_SIZE, ...)） */
-    public static final int PAGE_SIZE = 11;
+    public static final int PAGE_SIZE = 6;
 
     /** T3：标签列起始 y（原 top(40) 为让位 QoL 块 top(1)+高29+间隙10；T2 左移后该约束解除，上移释放 32px） */
     private static final int TAB_COLUMN_TOP = 8;
@@ -180,10 +179,10 @@ public final class TradePage {
      * 居中后 y ∈ [4.5, 20.5]，仍在按钮内）。依据：PANEL_HEIGHT=320（NekoVMGuiV2:111）、
      * panel 内缘 316——11 槽 × 28 = 308 仅按钮已超 316，放不下为既定事实，压扁是最小可行调整。
      */
-    private static final int TAB_BUTTON_HEIGHT = 16;
+    private static final int TAB_BUTTON_HEIGHT = 24;
 
     /** T3：标签按钮宽度（TAB_LEFT 原生值，不变） */
-    private static final int TAB_BUTTON_WIDTH = 76;
+    private static final int TAB_BUTTON_WIDTH = 88;
 
     /** T3：翻页按钮边长（与 QoL 14x14 按钮习语一致） */
     private static final int PAGER_BUTTON_SIZE = 14;
@@ -438,8 +437,8 @@ public final class TradePage {
      * @return 主标签列 Widget
      */
     public IWidget createMainTabColumn() {
-        Flow rail = Flow.column()
-            .childPadding(6);
+        Flow rail = Flow.row()
+            .childPadding(4);
         String[] names = { "贸易", "签到", "抽奖", "邮件" };
         com.cleanroommc.modularui.drawable.UITexture[] icons = { NekoGuiTextures.MAIN_TAB_TRADE,
             NekoGuiTextures.MAIN_TAB_SIGNIN, NekoGuiTextures.MAIN_TAB_LOTTERY, NekoGuiTextures.MAIN_TAB_MAIL };
@@ -451,13 +450,13 @@ public final class TradePage {
                 NekoMainTabButton.lastMainTab = index;
                 if (mainTabSync != null) mainTabSync.setValue(index);
             }, () -> mainTabController.getActivePageIndex() == index, () -> true)
-                .size(36, 36)
+                .size(54, 24)
                 .overlay((context, x, y, width, height, theme) -> {
-                    icons[index].draw(context, x + 10, y + 3, 16, 16, theme);
+                    icons[index].draw(context, x + 5, y + 4, 16, 16, theme);
                     GuiDraw.drawText(
                         names[index],
-                        x + 8,
-                        y + 24,
+                        x + 25,
+                        y + 8,
                         .85f,
                         mainTabController.getActivePageIndex() == index ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK,
                         false);
@@ -499,8 +498,8 @@ public final class TradePage {
             root.child(
                 NekoVendingTheme
                     .button(() -> name, () -> selectTradeScope(scope), () -> tradeScope == scope, () -> true)
-                    .pos(2 + i * 26, 3)
-                    .size(25, 18));
+                    .pos(3 + i * 30, 3)
+                    .size(28, 18));
         }
         tabColumn = Flow.column()
             .pos(3, 25)
@@ -562,13 +561,13 @@ public final class TradePage {
             }, () -> tabController.getActivePageIndex() == index, () -> true)
                 .size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
             tabButton.overlay((context, x, y, width, height, theme) -> {
-                if (icon != null) GuiDraw.drawItem(icon, x + 3, y + 2, 12, 12, (int) context.getCurrentDrawingZ());
+                if (icon != null) GuiDraw.drawItem(icon, x + 4, y + 4, 16, 16, (int) context.getCurrentDrawingZ());
                 String label = name.length() > 6 ? name.substring(0, 6) + "…" : name;
                 GuiDraw.drawText(
                     label,
-                    x + 18,
-                    y + 5,
-                    .75f,
+                    x + 24,
+                    y + 8,
+                    .8f,
                     tabController.getActivePageIndex() == index ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK,
                     false);
                 if (highlightedTabs.contains(category)) GuiDraw.drawRect(x, y, 2, height, 0xffeacc7a);
@@ -620,7 +619,7 @@ public final class TradePage {
             tabController,
             IKey.str(EnumChatFormatting.GREEN + "+"));
         newPageButton.tab(NekoGuiTextures.TAB_LEFT, -1);
-        newPageButton.size(76, 18);
+        newPageButton.size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT);
         styleNativeSubTab(newPageButton, IKey.str("+"), () -> "新建页面");
         newPageButton.externalMode(() -> false);
         newPageButton.onSelected(gui.pageEditor::beginNew);
@@ -717,28 +716,25 @@ public final class TradePage {
         button.background(true, NekoVendingTheme.PRESSED)
             .background(false, NekoVendingTheme.BUTTON);
         button.hoverBackground(NekoVendingTheme.face(button::isActive, () -> true, true));
-        button.size(76, 16)
+        button.size(TAB_BUTTON_WIDTH, TAB_BUTTON_HEIGHT)
             .overlay((context, x, y, width, height, theme) -> {
-                icon.draw(context, x + 3, y + 2, 12, 12, theme);
+                icon.draw(context, x + 4, y + 4, 16, 16, theme);
                 String text = label.get();
                 if (text == null) text = "";
                 if (text.length() > 6) text = text.substring(0, 6) + "…";
                 GuiDraw.drawText(
                     text,
-                    x + 18,
-                    y + 5,
-                    .75f,
+                    x + 24,
+                    y + 8,
+                    .8f,
                     button.isActive() ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK,
                     false);
             });
     }
 
     public IWidget createSubTabColumn(final int mainTab) {
-        Flow subTabColumn = Flow.column()
-            .coverChildren()
-            .left(-29)
-            .top(40)
-            .childPadding(2);
+        ListWidget<IWidget, ?> subTabColumn = new ListWidget<>().padding(3)
+            .background(NekoVendingTheme.PANEL);
 
         if (mainTab == MAIN_TAB_LOTTERY) {
             // --- 抽奖页：动态池按钮列（v1.7.6 G2①，每池一按钮）---
@@ -1084,6 +1080,14 @@ public final class TradePage {
         return mainColumn.excludeAreaInRecipeViewer();
     }
 
+    /** Only resize existing client presentation widgets; no slot/sync tree rebuild. */
+    public void onNativeLayout() {
+        int columns = NekoTradeCardLayout.columns(gui.vendingLayout().business.width);
+        for (List<NekoTradeItemDisplayWidget> widgets : gui.displayedTradesTiles.values()) {
+            for (NekoTradeItemDisplayWidget widget : widgets) widget.widthRelOffset(1f / columns, -4);
+        }
+    }
+
     private static final class WalletToolbar extends ParentWidget<WalletToolbar> {
 
         @Override
@@ -1278,45 +1282,28 @@ public final class TradePage {
         statusRow.setEnabledIf(w -> !gui.isMachineActive());
         tradeList.child(statusRow);
 
-        // --- TILE 模式行（3个 Widget 一行）---
+        // One wrapping native Flow: compact cards gain columns rather than becoming empty wide banners.
         List<NekoTradeItemDisplayWidget> tileWidgets = gui.displayedTradesTiles.get(category);
         if (tileWidgets != null) {
-            NekoTradeRow row = new NekoTradeRow();
-            row.height(NekoTradeCardLayout.TILE_ROW_HEIGHT);
-            row.widthRelOffset(1f, -4);
-            row.marginLeft(2);
-
-            for (int i = 0; i < MAX_TRADES; i++) {
-                final int index = i;
-                NekoTradeItemDisplayWidget widget = tileWidgets.get(i);
+            Flow grid = Flow.row()
+                .wrap()
+                .coverChildrenHeight()
+                .widthRelOffset(1f, -4)
+                .marginLeft(2)
+                .collapseDisabledChild(true)
+                .crossAxisChildPadding(0);
+            grid.setEnabledIf(w -> gui.getDisplayType() == NekoDisplayType.TILE);
+            for (NekoTradeItemDisplayWidget widget : tileWidgets) {
                 widget.margin(2);
-                widget.widthRelOffset(.5f, -4)
+                widget.widthRelOffset(1f / NekoTradeCardLayout.columns(gui.vendingLayout().business.width), -4)
                     .height(NekoTradeCardLayout.TILE_HEIGHT);
                 widget.nativePresentation(true);
-                widget.setEnabledIf(w -> {
-                    // 编辑模式：绕过结构完整性检查，显示所有有条目的 Widget
-                    if (gui.isEditModeActive()) {
-                        return gui.getDisplayType() == NekoDisplayType.TILE && widget.getDisplay() != null;
-                    }
-                    if (!gui.isMachineActive()) return false;
-                    return gui.getDisplayType() == NekoDisplayType.TILE && widget.getDisplay() != null;
-                });
-                row.child(widget);
-
-                // 每 TILE_ITEMS_PER_ROW 个换行
-                if (i % TILE_ITEMS_PER_ROW == TILE_ITEMS_PER_ROW - 1) {
-                    tradeList.child(row);
-                    row = new NekoTradeRow();
-                    row.height(NekoTradeCardLayout.TILE_ROW_HEIGHT);
-                    row.widthRelOffset(1f, -4);
-                    row.marginLeft(2);
-                }
+                widget.setEnabledIf(
+                    w -> gui.getDisplayType() == NekoDisplayType.TILE && widget.getDisplay() != null
+                        && (gui.isEditModeActive() || gui.isMachineActive()));
+                grid.child(widget);
             }
-            // 添加最后一行（如果有剩余）
-            if (row.getChildren() != null && !row.getChildren()
-                .isEmpty()) {
-                tradeList.child(row);
-            }
+            tradeList.child(grid);
         }
 
         // --- LIST 模式行（1个 Widget 一行）---

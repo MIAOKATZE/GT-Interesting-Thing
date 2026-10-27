@@ -43,6 +43,12 @@ public final class EditOverlayController {
     /** v1.7.7 G2① 编辑覆盖层根节点（各编辑面板的公共父级，双端镜像构建） */
     private final ParentWidget<?> editOverlayRoot;
 
+    private Runnable layoutListener = () -> {};
+
+    public void setLayoutListener(Runnable listener) {
+        this.layoutListener = listener == null ? () -> {} : listener;
+    }
+
     /** 已注册的覆盖层类型（用于重复注册防御） */
     private final java.util.Set<EditOverlayType> registered = new java.util.HashSet<>();
 
@@ -108,6 +114,7 @@ public final class EditOverlayController {
      */
     public void open(EditOverlayType type) {
         this.currentEditOverlay = type;
+        layoutListener.run();
     }
 
     /** 检查当前是否有编辑覆盖层处于打开状态（v1.7.27） */
@@ -133,5 +140,6 @@ public final class EditOverlayController {
      */
     public void close() {
         this.currentEditOverlay = EditOverlayType.NONE;
+        layoutListener.run();
     }
 }

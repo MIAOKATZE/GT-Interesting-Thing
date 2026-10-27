@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -199,18 +200,28 @@ public final class NekoOutputScene {
         return changed;
     }
 
-    private boolean blockShape(long id) {
+    private ItemStack outputStack(long id) {
         for (NekoOutputLedger.Drop d : ledger.drops()) if (d.dropId == id) for (int slot : d.slots) {
             ItemStack stack = inventory.get(slot);
-            if (stack != null) return NekoOutputModelShape.volumetric(stack);
+            if (stack != null) return stack;
         }
-        return false;
+        return null;
+    }
+
+    private boolean blockShape(long id) {
+        return NekoOutputModelShape.volumetric(outputStack(id));
     }
 
     private SceneBody shape(long id, double x, double y, double z) {
         // Full native block geometry versus a genuinely thin native pixel-extruded sprite.
-        boolean block = blockShape(id);
-        return new SceneBody(Long.toString(id), block ? .22 : .27, block ? .22 : .27, block ? .22 : .027, x, y, z);
+        ItemStack stack = outputStack(id);
+        return NekoOutputBodyGeometry.create(
+            Long.toString(id),
+            NekoOutputModelShape.nativeBlock(stack),
+            NekoOutputModelShape.volumetric(stack),
+            x,
+            y,
+            z);
     }
 
     private SceneBody feedPose(long id, int route, int age) {
@@ -225,7 +236,7 @@ public final class NekoOutputScene {
         double pitch = t * (.35 + (id % 7) * .11), yaw = t * spread * .65, roll = t * sign * .28;
         double cx = Math.cos(pitch / 2), sx = Math.sin(pitch / 2), cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2),
             cz = Math.cos(roll / 2), sz = Math.sin(roll / 2);
-        return shape(id, x, y, z)
+        SceneBody pose = shape(id, x, y, z)
             .withRotation(
                 sx * cy * cz + cx * sy * sz,
                 cx * sy * cz - sx * cy * sz,
@@ -238,6 +249,8 @@ public final class NekoOutputScene {
                 1.1 + (id % 3) * .3,
                 spread * 1.2,
                 sign * .8);
+        // Larger native blocks must also start fully within the rear lane's bounded simulation envelope.
+        return NekoOutputBodyGeometry.fitInside(pose, simulation.bounds());
     }
 
     private SceneBody settledPose(long id) {
@@ -269,7 +282,7 @@ public final class NekoOutputScene {
                 if (clear) return template.withPosition(x, y, z)
                     .withSleeping(true);
             }
-        // 672 candidates for at most 99 other bounded .22 proxies; defensive finite presentation fallback.
+        // 672 candidates for at most 99 other bounded proxies; defensive finite presentation fallback.
         return template.withPosition(0, 7.5, 0)
             .withSleeping(true);
     }
@@ -437,7 +450,9 @@ public final class NekoOutputScene {
             for (int i = 0; i < list.tagCount(); i++) {
                 NBTTagCompound tag = list.getCompoundTagAt(i);
                 SceneBody body = readBody(tag);
-                double previousDepth = body.halfZ;
+                simulation.bounds()
+                    .validate(body); // Do not repair an invalid saved pose by clamping it.
+                double previousWidth = body.halfX, previousHeight = body.halfY, previousDepth = body.halfZ;
                 // Old room saves used identical cubes for every item. Shrink only a sprite's depth;
                 // identity, position, orientation, clocks and inventory remain exact, and restore stays OFF.
                 if (!tag.hasKey("modelShapeVersion") && !blockShape(Long.parseLong(body.id))) {
@@ -462,6 +477,11 @@ public final class NekoOutputScene {
                         body.sleeping,
                         body.quietTicks);
                 }
+                ItemStack stack = outputStack(Long.parseLong(body.id));
+                if (tag.getInteger("modelShapeVersion") < 2 && stack != null && stack.getItem() instanceof ItemBlock)
+                    body = NekoOutputModelShape.nativeBlock(stack)
+                        ? NekoOutputBodyGeometry.enlargeBlock(body, simulation.bounds())
+                        : NekoOutputBodyGeometry.flattenInventoryBlock(body, simulation.bounds());
                 if (!expected.remove(body.id)) throw new IllegalArgumentException("identity");
                 simulation.bounds()
                     .validate(body);
@@ -479,7 +499,8 @@ public final class NekoOutputScene {
                 restored.put(Long.parseLong(body.id), d);
                 if (d.stage == RELEASED) {
                     bodies.add(body);
-                    legacyShapeChanged |= body.halfZ != previousDepth;
+                    legacyShapeChanged |= body.halfX != previousWidth || body.halfY != previousHeight
+                        || body.halfZ != previousDepth;
                 }
             }
             simulation.restore(new SceneSnapshot(LAYOUT, n.getLong("revision"), n.getLong("tick"), bodies));
@@ -506,8 +527,9 @@ public final class NekoOutputScene {
             simulation.restore(new SceneSnapshot(LAYOUT, 0, 0, bodies));
         }
         physicsAllowed = !n.hasKey("physicsAllowed") || n.getBoolean("physicsAllowed");
-        // Loading keeps exact poses and remains OFF. The owner processes this finite event on a later tick,
-        // only when allowed; persisting the pending bit also covers save-before-first-tick and disabled physics.
+        // Loading remains OFF. Poses stay exact except minimum boundary corrections for revised ItemBlock shapes.
+        // The owner processes this finite event on a later tick only when allowed; persisting the pending bit
+        // also covers save-before-first-tick and disabled physics.
         migrationSettlePending = valid && !bodies.isEmpty()
             && (legacyShapeChanged || n.getBoolean("migrationSettlePending"));
         simulation.setEnabled(false);
@@ -523,7 +545,7 @@ public final class NekoOutputScene {
     public static NBTTagCompound bodyTag(SceneBody b) {
         NBTTagCompound n = new NBTTagCompound();
         n.setString("id", b.id);
-        n.setInteger("modelShapeVersion", 1);
+        n.setInteger("modelShapeVersion", 2);
         double[] values = { b.halfX, b.halfY, b.halfZ, b.x, b.y, b.z, b.qx, b.qy, b.qz, b.qw, b.vx, b.vy, b.vz, b.wx,
             b.wy, b.wz };
         String[] names = { "hx", "hy", "hz", "x", "y", "z", "qx", "qy", "qz", "qw", "vx", "vy", "vz", "wx", "wy",

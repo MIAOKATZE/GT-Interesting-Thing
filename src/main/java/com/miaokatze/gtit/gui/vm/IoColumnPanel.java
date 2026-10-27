@@ -100,23 +100,28 @@ public final class IoColumnPanel {
         }
         root.child(synchronizedSlots);
 
-        ParentWidget<?> input = new ParentWidget<>().pos(5, 5)
-            .height(58)
-            .widthRelOffset(1f, -10);
+        ParentWidget<?> input = gui.place(new ParentWidget<>(), () -> local(gui.vendingLayout().input));
         input.child(
             IKey.str("IN · 实体输入")
                 .color(NekoVendingTheme.MUTED)
                 .asWidget()
-                .pos(0, 0));
+                .pos(0, 4));
         for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
             ModularSlot slot = new VendingInputSlot(
                 multiblock.inputItems,
                 i,
                 this::depositCoins,
                 multiblock::markTradeStateChanged).slotGroup("inputSlotGroup");
+            final int index = i;
             ItemSlot itemSlot = new ItemSlot().slot(slot)
-                .pos((i % 8) * 19, 14 + (i / 8) * 19)
                 .background(NekoVendingTheme.SLOT);
+            gui.place(
+                itemSlot,
+                () -> new NekoVendingLayout.Rect(
+                    (index % 16) * (gui.vendingLayout().input.width - 18) / 15,
+                    24 + (index / 16) * 19,
+                    18,
+                    18));
             slot.changeListener(
                 (newItem, onlyAmountChanged, client, init) -> {
                     if (!client && !init) gui.markTradeableStatusDirty();
@@ -130,7 +135,8 @@ public final class IoColumnPanel {
                 () -> "弹出输入",
                 () -> gui.coinOps.getEjectItemsSync()
                     .setValue(true))
-                .pos(162, 13)
+                .right(72)
+                .top(0)
                 .size(68, 19)
                 .addTooltipLine("把输入物品送往出货流程；不清空输出库存"));
         input.child(
@@ -138,7 +144,8 @@ public final class IoColumnPanel {
                 () -> "弹出两币",
                 () -> gui.coinOps.getEjectAllCoinsSync()
                     .setValue(true))
-                .pos(162, 35)
+                .right(0)
+                .top(0)
                 .size(68, 19)
                 .addTooltipLine("弹出当前钱包的所有猫猫币"));
         input.setEnabledIf(w -> !gui.isEditModeActive());
@@ -147,7 +154,7 @@ public final class IoColumnPanel {
             IKey.str("MiaoVision · 出货展示")
                 .color(NekoVendingTheme.INK)
                 .asWidget()
-                .pos(8, 68)
+                .pos(8, 73)
                 .setEnabledIf(w -> !gui.isEditModeActive()));
         sceneMount.setEnabledIf(w -> !gui.isEditModeActive());
         outputStatsMount.setEnabledIf(w -> !gui.isEditModeActive());

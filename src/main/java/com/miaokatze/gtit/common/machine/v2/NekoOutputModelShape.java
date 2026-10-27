@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.common.machine.v2;
 
+import net.minecraft.block.Block;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 
@@ -33,7 +34,15 @@ public final class NekoOutputModelShape {
     }
 
     public static boolean volumetric(ItemStack stack) {
-        return stack != null && (stack.getItem() instanceof ItemBlock || tesseract(stack) || rotatingMaterial(stack));
+        return stack != null && (nativeBlock(stack) || tesseract(stack) || rotatingMaterial(stack));
+    }
+
+    public static boolean nativeBlock(ItemStack stack) {
+        if (stack == null || !(stack.getItem() instanceof ItemBlock)) return false;
+        Block block = Block.getBlockFromItem(stack.getItem());
+        String name = Block.blockRegistry.getNameForObject(block);
+        if (name == null || !name.startsWith("minecraft:")) return true;
+        return NekoOutputBodyGeometry.nativeBlock(true, block.getRenderType());
     }
 
     private static boolean matches(ItemList item, ItemStack stack) {

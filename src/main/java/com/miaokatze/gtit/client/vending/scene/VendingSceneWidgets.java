@@ -22,6 +22,7 @@ import com.miaokatze.gtit.gui.vm.scene.VendingSceneBridge;
 import com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames;
 import com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.Entry;
 import com.miaokatze.gtit.gui.vm.scene.VendingScenePicking;
+import com.miaokatze.gtit.gui.vm.scene.VendingSceneViewDefaults;
 import com.miaokatze.miaokatzecore.api.miaovision.SceneBody;
 import com.miaokatze.miaokatzecore.api.miaovision.SceneBounds;
 import com.miaokatze.miaokatzecore.api.miaovision.ScenePresentation;
@@ -121,7 +122,8 @@ public final class VendingSceneWidgets {
         final VendingSceneBridge bridge;
         final MiaoVisionRenderer renderer = new MiaoVisionRenderer();
         final VendingRoomArt art = new VendingRoomArt();
-        double yaw = 0, pitch = 27, zoom = 1.2;
+        double yaw = VendingSceneViewDefaults.YAW, pitch = VendingSceneViewDefaults.PITCH,
+            zoom = VendingSceneViewDefaults.ZOOM;
         int dragX, dragY;
         boolean disposed;
         SceneSnapshot drawn;
@@ -135,9 +137,9 @@ public final class VendingSceneWidgets {
         }
 
         void reset() {
-            yaw = 0;
-            pitch = 27;
-            zoom = 1.2;
+            yaw = VendingSceneViewDefaults.YAW;
+            pitch = VendingSceneViewDefaults.PITCH;
+            zoom = VendingSceneViewDefaults.ZOOM;
         }
 
         @Override
@@ -184,6 +186,11 @@ public final class VendingSceneWidgets {
 
                     @Override
                     public boolean extrudeInventorySprites() {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean dioramaItemLighting() {
                         return true;
                     }
 

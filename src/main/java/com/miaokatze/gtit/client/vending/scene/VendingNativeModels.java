@@ -4,7 +4,6 @@ import java.lang.reflect.Method;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderBlocks;
-import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.entity.RenderItem;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.item.ItemStack;
@@ -49,7 +48,8 @@ final class VendingNativeModels {
             .bindTexture(
                 stack.getItemSpriteNumber() == 0 ? TextureMap.locationBlocksTexture : TextureMap.locationItemsTexture);
         GL11.glEnable(GL11.GL_NORMALIZE);
-        RenderHelper.enableStandardItemLighting();
+        // Core installs the scene's two-sided light rig before body transforms. Do not reset its positions here:
+        // this method runs under a rotating, non-uniform physical proxy (especially the thin native sprites).
         boolean oldFrame = RenderItem.renderInFrame;
         try {
             // Some special GT effects read this static flag; restore it independently of the GL scope.

@@ -178,9 +178,18 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     @Override
     public void onNativeLayout() {
         for (Runnable binding : layoutBindings) binding.run();
-        tradeEditor.setDockBounds(layout.editor.x, layout.editor.y, layout.editor.width, layout.editor.height);
+        tradePage.onNativeLayout();
+        tradeEditor.setDockBounds(
+            layout.tradeEditor.x,
+            layout.tradeEditor.y,
+            layout.tradeEditor.width,
+            layout.tradeEditor.height);
         lotteryEntryEditor.setDockBounds(layout.editor.x, layout.editor.y, layout.editor.width, layout.editor.height);
         lotteryPoolEditor.setDockBounds(layout.editor.x, layout.editor.y, layout.editor.width, layout.editor.height);
+    }
+
+    private NekoVendingLayout.Rect activeCatalog() {
+        return editOverlayController.isCurrent(EditOverlayType.TRADE) ? layout.tradeCatalog : layout.catalog;
     }
 
     private java.awt.Rectangle catalogBounds() {
@@ -501,9 +510,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .pos(5, 3));
         bag.child(
             SlotGroupWidget.playerInventory(false)
-                .pos(4, 14));
+                .pos(6, 14));
         panel.child(place(bag, () -> layout.inventory).excludeAreaInRecipeViewer());
         panel.child(place(createTradeDetail(), () -> layout.detail).excludeAreaInRecipeViewer());
+        panel.child(place(createTradeActions(), () -> layout.detailActions).excludeAreaInRecipeViewer());
         panel.child(place(createHeader(), () -> layout.header).excludeAreaInRecipeViewer());
         panel.child(place(createFooter(), () -> layout.footer).excludeAreaInRecipeViewer());
 
@@ -593,7 +603,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .pos(0, 0);
         panel.child(editOverlayController.getRoot());
         catalogAnchor = new CatalogAnchor().name("nekoNativeNeiCatalog");
-        panel.child(place(catalogAnchor, () -> layout.catalog));
+        panel.child(place(catalogAnchor, this::activeCatalog));
         panel.child(
             place(
                 IKey.str("NEI 未安装\n目录不可用；仍可从背包光标编辑上方物品槽")
@@ -604,8 +614,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                     .setEnabledIf(
                         w -> isEditModeActive() && !cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")
                             && (!editOverlayController.isOpen() || editOverlayController.isDockedWorkspace())),
-                () -> layout.catalog));
+                this::activeCatalog));
         if (syncManager.isClient()) styleVendingTooltips(panel);
+        editOverlayController.setLayoutListener(() -> {
+            onNativeLayout();
+            if (mainPanel != null && mainPanel.isValid()) mainPanel.scheduleResize();
+        });
         onNativeLayout();
         // Named scene sync is registered on both sides after every inventory/editor slot.
         com.miaokatze.gtit.gui.vm.scene.VendingSceneBridge.attach(this, multiblock, syncManager, ioColumnPanel);
@@ -633,7 +647,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 注册槽位分组，启用 shift 快速转移（与 V1/VM 原版一致）
         // 参数：组名、行长度(2列)、是否允许从玩家背包 shift 转移到此组
         // 输入槽：允许 shift 转入；输出槽：禁止 shift 转入（但允许 shift 转出到背包）
-        syncManager.registerSlotGroup("inputSlotGroup", 8, true);
+        syncManager.registerSlotGroup("inputSlotGroup", 16, true);
         syncManager.registerSlotGroup("outputSlotGroup", 2, false);
 
         // 获取玩家 UUID（服务端用于查询钱包余额、BQ 状态等）
@@ -1769,25 +1783,12 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 .pos(10, 7)
                 .height(12));
         header.child(
-            IKey.dynamic(() -> isEditModeActive() ? "原生编辑 · 32 槽草稿" : "交易 / 签到 / 抽奖 / 邮件")
-                .color(NekoVendingTheme.MUTED)
+            IKey.dynamic(() -> isEditModeActive() ? "编辑模式" : "")
+                .color(NekoVendingTheme.GREEN)
                 .asWidget()
-                .pos(180, 10)
+                .right(70)
+                .top(11)
                 .height(10));
-        header.child(
-            NekoVendingTheme
-                .button(
-                    () -> "礼包",
-                    () -> {
-                        if (isClient())
-                            net.minecraft.client.Minecraft.getMinecraft().thePlayer.sendChatMessage("/gifts");
-                    })
-                .right(65)
-                .top(5)
-                .size(44, 20)
-                .tooltipBuilder(
-                    t -> NekoVendingTheme.tooltip(t)
-                        .addLine("独立礼包页面；不属于贸易商品")));
         header.child(
             NekoVendingTheme.button(
                 () -> "预设",
@@ -1821,64 +1822,90 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
                 super.draw(context, theme);
                 int available = getArea().width - 12;
                 detailLine(
-                    selectedTrade == null ? "选择交易查看详情" : selectedTrade.getDisplayItemName(),
+                    selectedTrade == null ? "当前交易" : selectedTrade.getDisplayItemName(),
                     6,
                     available,
                     .9f,
                     NekoVendingTheme.INK);
-                detailLine(
-                    selectedTrade == null ? "点击商品选择 · Shift 点击交易"
-                        : NekoTradeItemDisplayWidget.nativeStatus(selectedTrade),
-                    20,
-                    available,
-                    .8f,
-                    selectedTrade == null ? NekoVendingTheme.MUTED
-                        : selectedTrade.isTradeable() ? NekoVendingTheme.GREEN : NekoVendingTheme.DANGER);
                 if (selectedTrade == null) {
-                    detailLine("需求与产出保留原物品 / NBT / 候选项", 35, available, .75f, NekoVendingTheme.MUTED);
+                    detailLine("—", 24, available, .8f, NekoVendingTheme.MUTED);
                     return;
                 }
-                int y = 33, shown = 0;
+                detailLine(
+                    NekoTradeItemDisplayWidget.nativeStatus(selectedTrade),
+                    21,
+                    available,
+                    .8f,
+                    selectedTrade.isTradeable() ? NekoVendingTheme.GREEN : NekoVendingTheme.DANGER);
+                List<String> needs = new ArrayList<>();
                 for (Map.Entry<String, Long> currency : selectedTrade.getCurrencyCosts()
-                    .entrySet()) {
-                    if (shown++ >= 2) break;
-                    detailLine(
-                        currency.getValue() + " × "
-                            + com.miaokatze.gtit.currency.NekoCurrencyRegistrar.getDisplayName(currency.getKey()),
-                        y,
-                        available,
-                        .75f,
-                        NekoVendingTheme.INK);
-                    y += 10;
-                }
-                String summary = "物品需求 " + selectedTrade.getInputs()
-                    .size()
-                    + " 项 → 产出 "
-                    + selectedTrade.getOutputs()
-                        .size()
-                    + " 项";
-                if (selectedTrade.getCurrencyCosts()
-                    .size() > 2)
-                    summary += " · 另 " + (selectedTrade.getCurrencyCosts()
-                        .size() - 2) + " 种货币（悬停详情）";
-                detailLine(summary, 53, available, .7f, NekoVendingTheme.MUTED);
+                    .entrySet())
+                    needs.add(currency.getValue() + " × " + NekoCurrencyRegistrar.getDisplayName(currency.getKey()));
+                for (com.miaokatze.gtit.trade.v2.NekoBigItemStack item : selectedTrade.getInputs())
+                    needs.add(detailChoice(item));
+                List<String> outputs = new ArrayList<>();
+                for (com.miaokatze.gtit.trade.v2.NekoBigItemStack item : selectedTrade.getOutputs())
+                    outputs.add(detailChoice(item));
+                detailLine(
+                    "需求  " + (needs.isEmpty() ? "无" : String.join(" · ", needs)),
+                    36,
+                    available,
+                    .8f,
+                    NekoVendingTheme.INK);
+                detailLine(
+                    "产出  " + (outputs.isEmpty() ? "无" : String.join(" · ", outputs)),
+                    50,
+                    available,
+                    .8f,
+                    NekoVendingTheme.INK);
+
             }
         }
         ParentWidget<?> detail = new DetailPanel().background(NekoVendingTheme.PANEL);
-        detail.child(NekoVendingTheme.button(() -> isEditModeActive() ? "编辑所选" : "交易一次", () -> {
+        detail
+            .tooltipBuilder(
+                t -> { if (selectedTrade != null) NekoTradeItemDisplayWidget.describeTrade(t, selectedTrade); })
+            .tooltipAutoUpdate(true);
+        return detail;
+    }
+
+    private ParentWidget<?> createTradeActions() {
+        ParentWidget<?> actions = new ParentWidget<>().background(
+            (context, x, y, width, height, theme) -> {
+                if (height > 20) NekoVendingTheme.PANEL.draw(context, x, y, width, height, theme);
+            });
+        actions.child(
+            IKey.dynamic(() -> selectedTrade == null ? "—" : NekoTradeItemDisplayWidget.nativeStatus(selectedTrade))
+                .color(NekoVendingTheme.INK)
+                .asWidget()
+                .left(6)
+                .top(8)
+                .widthRelOffset(1f, -12)
+                .height(12)
+                .scale(.8f)
+                .setEnabledIf(w -> layout.detailActions.height > 20));
+        actions.child(NekoVendingTheme.button(() -> isEditModeActive() ? "编辑所选" : "交易一次", () -> {
             if (selectedTrade == null) return;
             if (isEditModeActive()) onEditRequested(selectedTrade);
             else onTradeRequested(selectedTrade);
         },
             () -> selectedTrade != null && selectedTrade.isTradeable(),
             () -> selectedTrade != null && (isEditModeActive() || selectedTrade.isTradeable()))
-            .pos(6, 64)
-            .size(78, 18));
-        detail
-            .tooltipBuilder(
-                t -> { if (selectedTrade != null) NekoTradeItemDisplayWidget.describeTrade(t, selectedTrade); })
-            .tooltipAutoUpdate(true);
-        return detail;
+            .horizontalCenter()
+            .bottom(0)
+            .size(96, 20));
+        return actions;
+    }
+
+    private static String detailChoice(com.miaokatze.gtit.trade.v2.NekoBigItemStack choice) {
+        if (choice == null) return "—";
+        String name = choice.hasOreDict() ? "[" + choice.getOreDict() + "]"
+            : choice.getBaseStack() == null ? "—"
+                : choice.getBaseStack()
+                    .getDisplayName();
+        int alternatives = choice.getAlternatives()
+            .size();
+        return choice.getStackSize() + " × " + name + (alternatives > 0 ? " (+" + alternatives + ")" : "");
     }
 
     /** Fixed single-line draw: MUI TextWidget wrapping does not clip to a fixed height. */

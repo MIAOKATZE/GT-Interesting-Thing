@@ -133,9 +133,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     // === 内置输入/输出槽 ===
 
-    /** 输入槽数量，与 V1 内置输入槽一致 */
-    public static final int INPUT_SLOTS = 16;
-    /** Preserve automation indices 8..107; new input indices are appended at 108..115. */
+    /** Two rows of sixteen real inputs; earlier indexed input stacks are retained on load. */
+    public static final int INPUT_SLOTS = 32;
+    /** Preserve automation indices 8..107; new input indices are appended at 108..131. */
     public static final int LEGACY_INPUT_SLOTS = 8;
 
     /** 输出槽数量，与 V1 内置输出槽一致 */
@@ -673,6 +673,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (this.meOutputMode != mode) {
             this.meOutputMode = mode;
             if (!mode) meTransferQueue.cancelAll();
+            else meTransferQueue.enqueueExisting(outputItems.getSlots(), System.currentTimeMillis());
             markTradeStateChanged();
             if (getBaseMetaTileEntity() != null) {
                 getBaseMetaTileEntity().markDirty();
@@ -1974,7 +1975,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 获取指定槽位的物品栈
      * <p>
-     * 索引 0~INPUT_SLOTS-1 对应输入槽，INPUT_SLOTS~INPUT_SLOTS+OUTPUT_SLOTS-1 对应输出槽。
+     * 索引 0..7 保留原输入，8..107 保留原输出；扩容输入追加到 108..131。
      * 复刻 V1 MTEVendingMachine.java 的实现。
      */
     @Override

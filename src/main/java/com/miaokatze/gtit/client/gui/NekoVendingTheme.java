@@ -11,7 +11,7 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 /** Final approved soft-kraft palette, shared by the native vending surfaces (no global theme mutation). */
 public final class NekoVendingTheme {
 
-    public static final int INK = 0xff65583f, MUTED = 0xff867659, GOLD = 0xffaa8138, CYAN = 0xff00ffff;
+    public static final int INK = 0xff483f2f, MUTED = 0xff6a5e48, GOLD = 0xffaa8138, CYAN = 0xff00ffff;
     public static final int TOOLTIP_INK = 0xffd1d4b7, TOOLTIP_TITLE = 0xfff1dfb0, TOOLTIP_MUTED = 0xff99ab94;
     public static final int GREEN = 0xff61704d, DANGER = 0xff994f3c, LIGHT = 0xfffff2d3;
     public static final IDrawable PAPER = surface(0xffe7dbc0, 0xffc6b796);

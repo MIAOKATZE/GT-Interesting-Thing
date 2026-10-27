@@ -145,6 +145,7 @@ mapOf(
     "runTradeEditorDraftContractTest" to "com.miaokatze.gtit.gui.vm.edit.TradeEditorDraftContractTest",
     "runNekoVendingLayoutTest" to "com.miaokatze.gtit.gui.vm.NekoVendingLayoutTest",
     "runNekoOutputStateTest" to "com.miaokatze.gtit.common.machine.v2.NekoOutputStateTest",
+    "runNekoOutputBodyGeometryTest" to "com.miaokatze.gtit.common.machine.v2.NekoOutputBodyGeometryTest",
     "runVendingSceneContracts" to "com.miaokatze.gtit.gui.vm.scene.VendingSceneContracts",
     "runVendingActionCompletionTest" to "com.miaokatze.gtit.gui.vm.VendingActionCompletionTest"
 ).forEach { (taskName, entryPoint) ->

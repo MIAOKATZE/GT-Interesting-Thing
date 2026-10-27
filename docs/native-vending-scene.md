@@ -36,3 +36,23 @@ GTIT explicitly selects Core's optional ORIENTED_BOX contact mode. Core's old tw
 Old saved sprite depth changes record a machine-owned `migrationSettlePending` event without enabling physics during restore. The next owner tick consumes it only if physics is allowed, settles finitely, and never changes actual stock; disabled pending events survive saves. Modern settled saves do not auto-activate. See Core `docs/miaovision/item-physics-20261027.md` for the independent solver, read-only ItemPhysic provenance and GPL-3.0 no-copy boundary.
 
 Lottery prizes reserve worst-case capacity before payment and enter the persistent machine queue immediately. Animation delays only slot delivery; no volatile delayed task holds a reward copy, and no automatic backpack/world-drop/wallet overflow is introduced. Rear routing counts actual waiting stacks across batches, not visible settled stock; if a grouped batch is already partially visible, only pending identities split to the rear. The 100 output slots and original queue remain the only item owners.
+
+## Round 2 scene and ME contract (2.0.11 candidate)
+
+This section describes the 2.0.11 / Core 0.1.26 implementation. Compilation and the full headless check passed (72 tasks). Exact-artifact startup is recorded separately in the PR and delivery receipts. Earlier 2.0.10 / 0.1.25 evidence remains historical and is not transferred to these edits. Native runtime scope remains main-menu startup and normal Quit only; world/server/gameplay/GUI/ME interaction tests are outside scope, not pending delivery gates.
+
+### Lighting, geometry and camera
+
+GTIT opts into Core's new `SceneModelResolver.dioramaItemLighting()` capability. Core defaults it to false for existing consumers. The fixed, cached item-light rig is established before body rotations/nonuniform scaling, preserving readable back faces without replacing native sprites/blocks/custom material renderers with fullbright rectangles. Native item/glint/custom fallback and complete GL state restoration remain required.
+
+Native **3D block-mesh** bodies use a **.78 scene-unit edge** (half extent .39) consistently for drawing, collision and picking. Vanilla sprite-only block items such as torches, saplings and flowers remain **.54 × .54 × .054** thin sprites; audited special GT volumetric proxies remain .44. Unknown/modded inventory rendering retains its native fallback rather than being declared a universally known 3D mesh. Enlarging blocks does not turn every custom GT item into a block. Saved-shape migration must preserve owned inventory and remain an explicit GTIT event, never Core restore/render auto-enabling simulation.
+
+Default view and Reset share the **20-degree left** view convention through `VendingSceneViewDefaults`. Full-height walls and the existing cat are retained; camera rotation is display-only and must agree with picking/occlusion.
+
+### Enabling ME over stock already dispensed
+
+Enabling ME output also admits eligible existing real output slots, without replaying delivery or making another item copy authoritative. Admission is idempotent by slot/drop/generation. Countdown groups follow the stable **visual dropId**, with **100 ms between groups**; slots belonging to one visual body share presentation timing. Network work remains on the machine's server thread and is bounded to **one network attempt per machine per tick**, including unsuccessful acceptance probes.
+
+Each visible group retains a full **3-second hold plus 2-second fade** before an attempt. A genuinely later visible member cannot inherit an already-aged group timer and skip its hold/fade; the group must restart safely when needed. Immediate-visible and hidden-then-visible late-join regression cases passed. Failed/partial transfer restores the remaining visible stock and restarts its group; only an actual accepted quantity leaves the sole output inventory. Disconnect/disable cancels presentation work without deleting items. Future stagger delays and elapsed time must survive save/load without turning clock rollback into a long frozen queue.
+
+This is bounded per-tick work, not an asynchronous AE worker, TPS benchmark or actual ME-network gameplay acceptance claim.

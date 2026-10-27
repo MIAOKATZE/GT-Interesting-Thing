@@ -37,6 +37,7 @@ public final class NekoEmbeddedNeiProbeTest {
         nativeWidgetRegistry();
         nativeGrid();
         noSpawnBytecode();
+        focusedEditorOwnsKeys();
         System.out.println(
             "NekoEmbeddedNeiProbeTest: geometry, actual native ABI/grid and no-spawn calls passed; GL/input smoke not exercised");
     }
@@ -187,6 +188,37 @@ public final class NekoEmbeddedNeiProbeTest {
         check(nativeSelection[0], "selection comes from actual NEI panel quantity preparation");
         check(nativeHitTest[0], "drops re-run actual MUI viewport-aware event-time hit testing");
         check(safeTarget[0], "only explicit safe draft targets receive copied catalog items");
+    }
+
+    private static void focusedEditorOwnsKeys() throws Exception {
+        final boolean[] focusedBeforeNativeKey = { false }, sawNativeKey = { false };
+        try (InputStream stream = NekoEmbeddedNeiSession.Bridge.class
+            .getResourceAsStream("NekoEmbeddedNeiSession$Bridge.class")) {
+            check(stream != null, "bridge bytecode available");
+            new ClassReader(stream).accept(new ClassVisitor(Opcodes.ASM5) {
+
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature,
+                    String[] exceptions) {
+                    if (!name.equals("key")) return null;
+                    return new MethodVisitor(Opcodes.ASM5) {
+
+                        @Override
+                        public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
+                            boolean isInterface) {
+                            if (name.equals("isFocused") && !sawNativeKey[0]) focusedBeforeNativeKey[0] = true;
+                            if (owner.startsWith("codechicken/nei/") && name.equals("handleKeyPress")) {
+                                sawNativeKey[0] = true;
+                                check(
+                                    focusedBeforeNativeKey[0],
+                                    "native text field focus precedes every NEI key route");
+                            }
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        }
+        check(sawNativeKey[0], "native NEI keyboard routes remain present");
     }
 
     private static void check(boolean condition, String message) {

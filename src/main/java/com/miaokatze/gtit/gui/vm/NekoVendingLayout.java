@@ -28,7 +28,7 @@ public final class NekoVendingLayout {
     public int width = MIN_WIDTH, height = MIN_HEIGHT;
     public float scale = 1;
     public Rect header, tools, mainRail, categories, business, inventory, detail, input, scene, outputStats, editor,
-        catalog, rightPane, footer;
+        catalog, tradeEditor, tradeCatalog, detailActions, rightPane, footer;
 
     public NekoVendingLayout() {
         resize(MIN_WIDTH, MIN_HEIGHT);
@@ -43,23 +43,32 @@ public final class NekoVendingLayout {
         width = w;
         height = h;
         scale = nextScale;
-        int gap = 6, rail = 36, category = 82;
-        int rightWidth = Math.max(288, Math.min(400, Math.round(w * .39f)));
-        int rightX = w - rightWidth - 8, leftX = 8 + rail + gap;
-        int leftWidth = rightX - gap - leftX, bodyY = 76, bottomY = h - 104;
-        header = new Rect(0, 0, w, 30);
-        tools = new Rect(leftX, 34, leftWidth, 40);
-        mainRail = new Rect(8, bodyY, rail, bottomY - bodyY);
+        int gap = 6, category = 94;
+        int rightWidth = Math.max(320, Math.min(400, Math.round(w * .39f)));
+        int rightX = w - rightWidth - 8, leftX = 8;
+        int leftWidth = rightX - gap - leftX, bodyY = 78;
+        // Four real inventory rows occupy 76 px, plus title/insets. Leave a clear footer gutter.
+        int bottomY = h - 120;
+        header = new Rect(0, 0, w, 32);
+        tools = new Rect(leftX, 36, leftWidth, 40);
+        mainRail = new Rect(182, 4, 228, 24);
         categories = new Rect(leftX, bodyY, category, bottomY - bodyY);
         business = new Rect(leftX + category + gap, bodyY, leftWidth - category - gap, bottomY - bodyY);
-        inventory = new Rect(leftX, bottomY + gap, 170, 86);
-        detail = new Rect(leftX + 176, bottomY + gap, leftWidth - 176, 86);
-        rightPane = new Rect(rightX, 34, rightWidth, h - 54);
-        input = new Rect(rightX + 5, 39, rightWidth - 10, 58);
-        outputStats = new Rect(rightX + rightWidth - 54, 117, 49, h - 174);
-        scene = new Rect(rightX + 5, 117, rightWidth - 64, h - 144);
-        editor = new Rect(rightX + 4, 38, rightWidth - 8, 220);
-        catalog = new Rect(rightX + 5, 264, rightWidth - 10, h - 289);
+        // Put the familiar inventory next to the central divider, not under the far-left navigation.
+        inventory = new Rect(Math.min(rightX - gap - 174, w / 2 - 87), bottomY + gap, 174, 96);
+        detail = new Rect(leftX, bottomY + gap, inventory.x - gap - leftX, 96);
+        int actionSpace = rightX - gap - inventory.right() - gap;
+        detailActions = actionSpace >= 96
+            ? new Rect(inventory.right() + gap, inventory.y, Math.min(120, actionSpace), 96)
+            : new Rect(detail.x + 6, detail.bottom() - 27, 96, 20);
+        rightPane = new Rect(rightX, 36, rightWidth, h - 58);
+        input = new Rect(rightX + 6, 42, rightWidth - 12, 64);
+        outputStats = new Rect(rightX + rightWidth - 54, 122, 48, h - 178);
+        scene = new Rect(rightX + 6, 122, rightWidth - 66, h - 150);
+        editor = new Rect(rightX + 4, 40, rightWidth - 8, 220);
+        tradeEditor = new Rect(rightX + 4, 40, rightWidth - 8, 180);
+        catalog = new Rect(rightX + 6, 266, rightWidth - 12, h - 294);
+        tradeCatalog = new Rect(rightX + 6, 226, rightWidth - 12, h - 254);
         footer = new Rect(0, h - 15, w, 15);
         return changed;
     }

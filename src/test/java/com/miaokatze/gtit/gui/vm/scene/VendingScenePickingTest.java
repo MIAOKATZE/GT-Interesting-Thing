@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 import com.miaokatze.miaokatzecore.api.miaovision.SceneBody;
+import com.miaokatze.miaokatzecore.api.miaovision.SceneBounds;
 
 /** Pure geometry regressions: independent of OpenGL, Minecraft registries and insertion order. */
 public final class VendingScenePickingTest {
@@ -29,6 +30,33 @@ public final class VendingScenePickingTest {
     }
 
     public static void main(String[] args) {
+        check(VendingSceneViewDefaults.YAW == -20, "initial/reset view has the requested twenty-degree left yaw");
+        SceneBounds room = new SceneBounds(-5.25, -.25, -3.85, 5.25, 4.55, 3.2);
+        SceneBody displayBlock = new SceneBody("large-block", .39, .39, .39, 1, 1, 1);
+        double radius = Math.sqrt(10.5 * 10.5 + 4.8 * 4.8 + 7.05 * 7.05) * .55;
+        double halfH = radius / VendingSceneViewDefaults.ZOOM, halfW = halfH * 400 / 300;
+        for (double yawDegrees : new double[] { VendingSceneViewDefaults.YAW, -37, 32 }) {
+            double yaw = Math.toRadians(yawDegrees), pitch = Math.toRadians(VendingSceneViewDefaults.PITCH);
+            // Project a known native block center with Core's Rx * Ry * T camera, then invert with picking.
+            double x = displayBlock.x, y = displayBlock.y - 2.15, z = displayBlock.z + .325;
+            double eyeX = Math.cos(yaw) * x + Math.sin(yaw) * z;
+            double eyeY = Math.cos(pitch) * y - Math.sin(pitch) * (-Math.sin(yaw) * x + Math.cos(yaw) * z);
+            check(
+                "large-block".equals(
+                    VendingScenePicking.pick(
+                        Collections.singletonList(displayBlock),
+                        Collections.emptyList(),
+                        room,
+                        400,
+                        300,
+                        (eyeX / halfW + 1) * 200,
+                        (1 - eyeY / halfH) * 150,
+                        yawDegrees,
+                        VendingSceneViewDefaults.PITCH,
+                        VendingSceneViewDefaults.ZOOM,
+                        id -> true)),
+                "default/reset and user-rotated cameras pick their rendered native block center");
+        }
         SceneBody rear = new SceneBody("rear", .22, .22, .22, 0, 4, 0);
         SceneBody front = new SceneBody(
             "front",

@@ -2,7 +2,7 @@ package com.miaokatze.gtit.common.machine.v2;
 
 import net.minecraft.nbt.NBTTagCompound;
 
-/** Append capacity, never let ItemStackHandler.deserializeNBT resize an old eight-slot save back down. */
+/** Append capacity, never let ItemStackHandler.deserializeNBT resize an old eight/sixteen-slot save back down. */
 public final class NekoInventoryMigration {
 
     private NekoInventoryMigration() {}
@@ -15,7 +15,7 @@ public final class NekoInventoryMigration {
 
     public static int inputIndex(int external) {
         if (external >= 0 && external < 8) return external;
-        if (external >= 108 && external < 116) return external - 100;
+        if (external >= 108 && external < 132) return external - 100;
         return -1;
     }
 
