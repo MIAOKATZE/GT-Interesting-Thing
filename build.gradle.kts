@@ -133,6 +133,14 @@ tasks.register<JavaExec>("runNekoTradeNeiTest") {
 tasks.named("check") { dependsOn("runNekoTradeNeiTest") }
 
 mapOf(
+    "runNekoTextFitTest" to "com.miaokatze.gtit.client.gui.NekoTextFitTest",
+    "runNekoTradePresentationTest" to "com.miaokatze.gtit.client.gui.NekoTradePresentationTest",
+    "runNekoTradeCardLayoutTest" to "com.miaokatze.gtit.client.gui.NekoTradeCardLayoutTest",
+    "runNekoWorkbenchLayoutTest" to "com.miaokatze.gtit.client.gui.NekoWorkbenchLayoutTest",
+    "runNekoGhostSlotTest" to "com.miaokatze.gtit.client.gui.NekoGhostSlotTest",
+    "runNekoEditDragGeometryTest" to "com.miaokatze.gtit.client.gui.NekoEditDragGeometryTest",
+    "runLotteryWheelGeometryTest" to "com.miaokatze.gtit.lottery.LotteryWheelGeometryTest",
+    "runLotteryDeliveryPlanTest" to "com.miaokatze.gtit.lottery.LotteryDeliveryPlanTest",
     "runNekoEmbeddedNeiProbeTest" to "com.miaokatze.gtit.client.nei.NekoEmbeddedNeiProbeTest",
     "runTradeEditorDraftContractTest" to "com.miaokatze.gtit.gui.vm.edit.TradeEditorDraftContractTest",
     "runNekoVendingLayoutTest" to "com.miaokatze.gtit.gui.vm.NekoVendingLayoutTest",

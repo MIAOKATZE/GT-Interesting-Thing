@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompressedStreamTools;
@@ -292,8 +293,8 @@ public final class NekoOutputStateTest {
         NBTTagCompound feed = firstBody(h.scene);
         check(feed.getInteger("deliveryStage") == NekoOutputScene.FEED, "door completion starts visible feed");
         check(
-            Math.abs(feed.getDouble("x")) == 3.9 && feed.getDouble("y") == 3.0,
-            "ordinary delivery emerges at side paw outlet, not random ceiling");
+            Math.abs(feed.getDouble("x")) == 4.3 && feed.getDouble("y") == 3.0,
+            "ordinary delivery starts inside side paw outlet before clearing the interpolated door");
         check(
             h.queue.phase(0, 100600) == 1 && h.queue.phaseAgeMs(0, 100600) == 0,
             "visible entrance starts exact ME hold clock");
@@ -653,10 +654,299 @@ public final class NekoOutputStateTest {
             "closed or replaced session is revalidated and denied");
     }
 
+    private static void paidQueueCapacityAndDelay() {
+        final int[] empty = { 100 }, pending = { 0 };
+        NekoOutputCapacity capacity = new NekoOutputCapacity(() -> empty[0], () -> pending[0]);
+        NekoOutputCapacity.Reservation first = capacity.reserve(60);
+        check(first != null && capacity.available() == 40, "reservation blocks other buyers before payment");
+        check(capacity.reserve(41) == null, "second draw cannot overbook reserved output");
+        first.close();
+        first.close();
+        check(capacity.available() == 100, "failed payment releases capacity exactly once");
+        try (NekoOutputCapacity.Reservation actual = capacity.reserve(30)) {
+            pending[0] += 17;
+            actual.consume(17);
+            check(capacity.available() == 70, "reserved capacity converts into real pending ownership");
+        }
+        check(capacity.available() == 83, "unused worst-case reservation released");
+        empty[0] = 17;
+        check(capacity.available() == 0 && capacity.reserve(1) == null, "full queue refuses before charging");
+        check(capacity.reserve(-1) == null, "negative reservation rejected");
+        NekoOutputCapacity other = new NekoOutputCapacity(() -> 100, () -> 0);
+        check(!other.owns(first), "cross-machine reservation rejected");
+
+        Host host = new Host();
+        ItemStack paid = host.enqueue(7);
+        long now = System.currentTimeMillis();
+        host.ledger.delayPending(paid, now + 4000);
+        check(
+            !host.ledger.isReady(paid, now + 3999) && host.ledger.isReady(paid, now + 4000),
+            "animation delays delivery, never queue ownership");
+        NBTTagCompound token = host.ledger.pendingTag(paid);
+        check(token.getLong("readyRemainingMs") > 0, "pending animation timer is persisted");
+        NekoOutputLedger restored = new NekoOutputLedger();
+        restored.restore(host.ledger.write(), host.slots, host.pending, Arrays.asList(token));
+        check(
+            restored.pending(paid) != null && !restored.isReady(paid, now),
+            "reload keeps paid reward and delivery delay without a volatile reward task");
+        check(
+            host.pending.size() == 1 && host.pending.get(0).stackSize == 7,
+            "delay metadata is not another inventory");
+    }
+
+    private static void continuousPaidQueueBackpressure() {
+        Host host = new Host();
+        NekoOutputCapacity capacity = new NekoOutputCapacity(
+            () -> (int) Arrays.stream(host.slots)
+                .filter(stack -> stack == null)
+                .count(),
+            host.pending::size);
+        int charged = 0;
+        long ready = System.currentTimeMillis() + 1550;
+        for (int draw = 0; draw < 10; draw++) {
+            try (NekoOutputCapacity.Reservation reservation = capacity.reserve(10)) {
+                check(reservation != null, "ten sequential ten-draws fit exactly one hundred slots");
+                charged++;
+                host.ledger.beginBatch(10);
+                for (int prize = 0; prize < 10; prize++) {
+                    ItemStack stack = host.enqueue(1);
+                    host.ledger.delayPending(stack, ready);
+                    reservation.consume(1);
+                }
+            }
+            host.ledger.routeWaitingToRear(id -> true);
+        }
+        check(capacity.reserve(10) == null && charged == 10, "eleventh draw refused before payment");
+        check(
+            host.pending.size() == 100 && host.ledger.drops()
+                .size() == 10,
+            "all paid prizes remain owned by queue, without display copies counting as inventory");
+        List<NBTTagCompound> identities = new ArrayList<>();
+        for (ItemStack stack : host.pending) identities.add(host.ledger.pendingTag(stack));
+        NekoOutputLedger reloaded = new NekoOutputLedger();
+        reloaded.restore(host.ledger.write(), host.slots, host.pending, identities);
+        for (ItemStack stack : host.pending) check(
+            reloaded.pending(stack).rear && stack.stackSize == 1,
+            "reload retains every paid prize and rear routing");
+        for (int i = 0; i < 100; i++) host.deliver(host.pending.get(0), i);
+        int quantity = 0;
+        for (ItemStack stack : host.slots) quantity += stack.stackSize;
+        check(quantity == 100 && host.pending.isEmpty(), "paid queue moves exactly once into real output slots");
+        check(capacity.available() == 0, "delivery does not free capacity until real inventory is removed");
+    }
+
+    private static void continuousWaitingRearRoute() {
+        Host h = new Host();
+        h.ledger.beginBatch(10);
+        for (int i = 0; i < 10; i++) h.enqueue(1);
+        h.ledger.beginBatch(6);
+        for (int i = 0; i < 6; i++) h.enqueue(1);
+        check(!h.ledger.routeWaitingToRear(id -> true), "exactly sixteen waiting stacks stays side delivery");
+        h.ledger.beginBatch(1);
+        h.enqueue(1);
+        check(h.ledger.routeWaitingToRear(id -> true), "separate draws aggregate seventeen waiting stacks");
+        for (ItemStack item : h.pending) check(h.ledger.pending(item).rear, "all queued batches promoted together");
+        check(
+            h.ledger.drops()
+                .size() == 3,
+            "threshold uses seventeen stacks, not three merged visual bodies");
+        check(!h.ledger.routeWaitingToRear(id -> true), "routing is idempotent");
+
+        Host settled = new Host();
+        for (int i = 0; i < 20; i++) settled.deliver(settled.enqueue(1), i);
+        settled.enqueue(64);
+        check(
+            !settled.ledger.routeWaitingToRear(id -> false),
+            "settled outputs and sixty-four item quantity do not count");
+        for (int i = 0; i < 15; i++) settled.enqueue(1);
+        check(
+            settled.ledger.routeWaitingToRear(id -> id == settled.dropId(0)),
+            "slotted WAIT_DOOR stack plus sixteen pending stacks crosses threshold");
+        check(!settled.ledger.slot(1).rear, "already visible output is never rerouted");
+    }
+
+    private static void legacyShapeSettlement() {
+        check(NekoOutputModelShape.volumetric(new ItemStack(Blocks.glass)), "native glass uses a volume proxy");
+        check(!NekoOutputModelShape.volumetric(iron(1)), "ordinary ingot uses a thin proxy");
+        Host host = new Host();
+        for (int i = 0; i < 100; i++) host.deliver(host.enqueue(1), i);
+        NekoOutputScene scene = new NekoOutputScene(host.ledger, host::get, host.queue);
+        NBTTagCompound old = scene.write();
+        old.removeTag("migrationSettlePending");
+        NBTTagList oldBodies = old.getTagList("bodies", 10);
+        for (int i = 0; i < oldBodies.tagCount(); i++) {
+            NBTTagCompound body = oldBodies.getCompoundTagAt(i);
+            body.removeTag("modelShapeVersion");
+            body.setInteger("deliveryStage", NekoOutputScene.RELEASED);
+            body.setInteger("deliveryAgeTicks", 0);
+            body.setDouble("hx", .22);
+            body.setDouble("hy", .22);
+            body.setDouble("hz", .22);
+            body.setDouble("x", (i % 10 - 4.5) * .65);
+            body.setDouble("y", i == 99 ? 6.8 : .22 + (i / 10) * .65);
+            body.setDouble("z", 0);
+            for (String key : new String[] { "qx", "qy", "qz", "vx", "vy", "vz", "wx", "wy", "wz" })
+                body.setDouble(key, 0);
+            body.setDouble("qw", 1);
+            body.setBoolean("sleeping", true);
+            body.setInteger("quietTicks", 20);
+        }
+        scene.restore(old);
+        check(!scene.isPhysicsActive(), "legacy restore itself remains OFF");
+        NBTTagCompound loaded = scene.write();
+        check(loaded.getBoolean("migrationSettlePending"), "legacy shape change records one owner event");
+        NBTTagList loadedBodies = loaded.getTagList("bodies", 10);
+        for (int i = 0; i < 100; i++) {
+            NBTTagCompound a = oldBodies.getCompoundTagAt(i), b = loadedBodies.getCompoundTagAt(i);
+            check(
+                a.getString("id")
+                    .equals(b.getString("id")) && a.getDouble("x") == b.getDouble("x")
+                    && a.getDouble("y") == b.getDouble("y")
+                    && a.getDouble("z") == b.getDouble("z")
+                    && b.getDouble("qw") == 1
+                    && b.getBoolean("sleeping"),
+                "migration initially preserves exact old pose");
+            check(b.getDouble("hz") < b.getDouble("hx") / 5, "legacy ordinary item acquires thin shape");
+        }
+        check(
+            loadedBodies.getCompoundTagAt(99)
+                .getDouble("y") == 6.8,
+            "high legacy pose is not culled or clamped");
+        scene.tick(1, 50);
+        check(
+            scene.isPhysicsActive() && !scene.write()
+                .getBoolean("migrationSettlePending"),
+            "normal owner tick consumes allowed migration event exactly once");
+        for (int t = 2; t < 1000 && scene.isPhysicsActive(); t++) scene.tick(t, t * 50L);
+        check(!scene.isPhysicsActive(), "legacy 100-body migration settles finitely");
+        for (int i = 0; i < 100; i++) check(host.slots[i].stackSize == 1, "migration never changes real inventory");
+        NBTTagCompound settled = scene.write();
+        for (int i = 0; i < 100; i++) {
+            NBTTagCompound b = settled.getTagList("bodies", 10)
+                .getCompoundTagAt(i);
+            check(
+                b.getInteger("deliveryStage") == NekoOutputScene.RELEASED && b.getBoolean("sleeping")
+                    && b.getDouble("y") < 3,
+                "old floating column settles without re-emission");
+        }
+        NekoOutputScene modern = new NekoOutputScene(host.ledger, host::get, host.queue);
+        modern.restore(settled);
+        for (int t = 1000; t < 1020; t++) modern.tick(t, t * 50L);
+        check(
+            !modern.isPhysicsActive() && modern.write()
+                .getLong("tick") == settled.getLong("tick"),
+            "modern settled load never activates or repeats migration");
+
+        old.setBoolean("physicsAllowed", false);
+        scene.restore(old);
+        for (int t = 1; t < 20; t++) scene.tick(t, t * 50L);
+        check(
+            !scene.isPhysicsActive() && scene.write()
+                .getLong("tick") == old.getLong("tick"),
+            "disabled physics never processes migration work");
+        NekoOutputScene disabledReload = new NekoOutputScene(host.ledger, host::get, host.queue);
+        disabledReload.restore(scene.write());
+        check(
+            disabledReload.write()
+                .getBoolean("migrationSettlePending") && !disabledReload.isPhysicsActive(),
+            "pending owner event survives disabled save and load");
+        disabledReload.setPhysicsAllowed(true);
+        check(!disabledReload.isPhysicsActive(), "allowing asleep migration still waits for owner tick");
+        disabledReload.tick(20, 1000);
+        check(
+            disabledReload.isPhysicsActive() && !disabledReload.write()
+                .getBoolean("migrationSettlePending"),
+            "explicitly allowed owner event starts on next tick");
+    }
+
+    private static void partialVisibleBatchRearSplit() throws Exception {
+        for (int visibleStage : new int[] { NekoOutputScene.FEED, NekoOutputScene.RELEASED }) {
+            Host h = new Host();
+            h.ledger.beginBatch(3);
+            ItemStack visible = h.enqueue(64), pendingA = h.enqueue(20), pendingB = h.enqueue(5);
+            long originalDrop = h.ledger.pending(visible).dropId;
+            long pendingGeneration = h.ledger.pending(pendingA).generation;
+            long readyAt = System.currentTimeMillis() + 3000;
+            h.ledger.delayPending(pendingA, readyAt);
+            h.deliver(visible, 0);
+            long originalGeneration = h.generation(0);
+            NekoOutputScene scene = new NekoOutputScene(h.ledger, h::get, h.queue);
+            h.scene = scene;
+            scene.setPhysicsAllowed(false);
+            int ticks = NekoOutputScene.DOOR_TICKS
+                + (visibleStage == NekoOutputScene.RELEASED ? NekoOutputScene.FEED_TICKS : 0);
+            for (int tick = 1; tick <= ticks; tick++) scene.tick(tick, 1000);
+            com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.Entry before = com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames
+                .decode(com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.encode(scene.frame(-1))).entries
+                    .get(Long.toString(originalDrop));
+            check(
+                before.deliveryStage == visibleStage && !before.rear && before.route != 2,
+                "partial batch first stack is already on a visible side route");
+            h.ledger.beginBatch(15);
+            for (int i = 0; i < 15; i++) h.enqueue(1);
+            // Two pending stacks from the visible group + fifteen newer stacks cross the real queue threshold.
+            com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.Frame promoted = com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames
+                .decode(com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.encode(scene.frame(-1)));
+            com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.Entry stillVisible = promoted.entries
+                .get(Long.toString(originalDrop));
+            check(
+                !stillVisible.rear && stillVisible.route == before.route && stillVisible.quantity == 64,
+                "backlog promotion preserves visible side route and only its real quantity");
+            check(
+                stillVisible.pose.x == before.pose.x && stillVisible.pose.y == before.pose.y
+                    && stillVisible.pose.z == before.pose.z
+                    && stillVisible.pose.qw == before.pose.qw,
+                "metadata split never teleports or rotates the existing visible body");
+            check(
+                h.dropId(0) == originalDrop && h.generation(0) == originalGeneration && !h.ledger.slot(0).rear,
+                "existing slot drop and generation are unchanged");
+            NekoOutputLedger.Token moved = h.ledger.pending(pendingA);
+            check(
+                moved.dropId != originalDrop && moved.dropId == h.ledger.pending(pendingB).dropId
+                    && moved.rear
+                    && moved.generation != pendingGeneration
+                    && moved.readyAtMs == readyAt,
+                "only pending portion gets one rear identity with fresh generation and preserved release clock");
+            check(!h.ledger.routeWaitingToRear(scene.waitingDropIds()::contains), "promotion is idempotent");
+            h.deliver(pendingA, 1);
+            h.deliver(pendingB, 2);
+            com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.Frame delivered = com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames
+                .decode(com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.encode(scene.frame(-1)));
+            com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.Entry rear = delivered.entries
+                .get(Long.toString(moved.dropId));
+            check(
+                delivered.entries.size() == 2 && rear.rear && rear.route == 2 && rear.quantity == 25,
+                "new rear portion has exactly its two real slots and the whole wire frame remains valid");
+            int quantity = 0;
+            for (ItemStack stack : h.slots) if (stack != null) quantity += stack.stackSize;
+            for (ItemStack stack : h.pending) quantity += stack.stackSize;
+            check(quantity == 104 && h.pending.size() == 15, "route split neither duplicates nor loses real inventory");
+            List<NBTTagCompound> tokens = new ArrayList<>();
+            for (ItemStack stack : h.pending) tokens.add(h.ledger.pendingTag(stack));
+            NekoOutputLedger reloaded = new NekoOutputLedger();
+            reloaded.restore(h.ledger.write(), h.slots, h.pending, tokens);
+            check(
+                reloaded.slot(0).dropId == originalDrop && reloaded.slot(0).generation == originalGeneration
+                    && !reloaded.slot(0).rear
+                    && reloaded.slot(1).dropId == moved.dropId
+                    && reloaded.slot(1).rear,
+                "split identities and old visible generation persist across reload");
+            NekoOutputScene reopened = new NekoOutputScene(reloaded, h::get, h.queue);
+            reopened.restore(scene.write());
+            check(
+                com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames
+                    .decode(com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.encode(reopened.frame(-1))).entries
+                        .size()
+                    == 2,
+                "reloaded split group still passes the real client frame codec");
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         if (!com.miaokatze.gtit.testutil.MinecraftTestBootstrap.enter(NekoOutputStateTest.class, args)) return;
         migration();
         identityAndSnapshots();
+        legacyShapeSettlement();
         meRaces();
         authoritativeDelivery();
         meVisibleClockPersistence();
@@ -666,6 +956,10 @@ public final class NekoOutputStateTest {
         remoteAuthorization();
         restoredCounterHardening();
         cancelledUnformedFade();
+        paidQueueCapacityAndDelay();
+        continuousWaitingRearRoute();
+        continuousPaidQueueBackpressure();
+        partialVisibleBatchRearSplit();
         System.out.println("NekoOutputStateTest PASS");
     }
 }

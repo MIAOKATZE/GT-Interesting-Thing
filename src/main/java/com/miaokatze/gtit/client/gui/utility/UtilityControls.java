@@ -15,6 +15,7 @@ import com.cleanroommc.modularui.widgets.PageButton;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 
 /** Scoped C2 widget entries: no global theme registration or machine theme changes. */
 public final class UtilityControls {
@@ -128,6 +129,62 @@ public final class UtilityControls {
             false,
             0xFFFFFFFF));
 
+    private static final WidgetThemeEntry<WidgetTheme> KRAFT_BUTTON_THEME = new WidgetThemeEntry<>(
+        IThemeApi.BUTTON,
+        new WidgetTheme(18, 18, NekoVendingTheme.BUTTON, 0xffffffff, NekoVendingTheme.INK, false, 0xffffffff),
+        new WidgetTheme(18, 18, NekoVendingTheme.HOVER, 0xffffffff, NekoVendingTheme.INK, false, 0xffffffff));
+    private static final WidgetThemeEntry<WidgetTheme> KRAFT_PRIMARY_THEME = new WidgetThemeEntry<>(
+        IThemeApi.BUTTON,
+        new WidgetTheme(18, 18, NekoVendingTheme.PRESSED, 0xffffffff, NekoVendingTheme.LIGHT, false, 0xffffffff),
+        new WidgetTheme(
+            18,
+            18,
+            NekoVendingTheme.SELECTED_HOVER,
+            0xffffffff,
+            NekoVendingTheme.LIGHT,
+            false,
+            0xffffffff));
+    private static final WidgetThemeEntry<SelectableTheme> KRAFT_SELECTABLE_THEME = new WidgetThemeEntry<>(
+        IThemeApi.TOGGLE_BUTTON,
+        new SelectableTheme(
+            18,
+            18,
+            NekoVendingTheme.BUTTON,
+            0xffffffff,
+            NekoVendingTheme.INK,
+            false,
+            0xffffffff,
+            NekoVendingTheme.PRESSED,
+            0xffffffff,
+            NekoVendingTheme.LIGHT,
+            false,
+            0xffffffff),
+        new SelectableTheme(
+            18,
+            18,
+            NekoVendingTheme.HOVER,
+            0xffffffff,
+            NekoVendingTheme.INK,
+            false,
+            0xffffffff,
+            NekoVendingTheme.SELECTED_HOVER,
+            0xffffffff,
+            NekoVendingTheme.LIGHT,
+            false,
+            0xffffffff));
+    private static final WidgetThemeEntry<TextFieldTheme> KRAFT_FIELD_THEME = new WidgetThemeEntry<>(
+        IThemeApi.TEXT_FIELD,
+        new TextFieldTheme(
+            56,
+            18,
+            NekoVendingTheme.INPUT,
+            0xffffffff,
+            NekoVendingTheme.INK,
+            false,
+            0xffffffff,
+            0x808d9b6a,
+            NekoVendingTheme.MUTED));
+
     private UtilityControls() {}
 
     public static class Button<W extends Button<W>> extends ButtonWidget<W> {
@@ -136,7 +193,13 @@ public final class UtilityControls {
         private BooleanSupplier selected = () -> false;
         private boolean pressed;
         private boolean manager;
+        private boolean kraft;
         private boolean managerRow;
+
+        public W kraft() {
+            kraft = true;
+            return getThis();
+        }
 
         public W manager() {
             manager = true;
@@ -163,15 +226,16 @@ public final class UtilityControls {
 
         /** Decorative labels use light gold on action buttons and dark text on cloth rows. */
         public boolean usesPrimaryText() {
-            return manager && !managerRow;
+            return !kraft && manager && !managerRow;
         }
 
         public boolean usesTextShadow() {
-            return !managerRow;
+            return !kraft && !managerRow;
         }
 
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
+            if (kraft) return pressed || selected.getAsBoolean() ? KRAFT_PRIMARY_THEME : KRAFT_BUTTON_THEME;
             if (managerRow) return MANAGER_ROW_THEME;
             return manager ? (pressed || selected.getAsBoolean() ? MANAGER_PRIMARY_THEME : MANAGER_BUTTON_THEME)
                 : BUTTON_THEME;
@@ -179,6 +243,10 @@ public final class UtilityControls {
 
         @Override
         public IDrawable getThemeBackground(WidgetThemeEntry<?> entry, WidgetTheme theme) {
+            if (kraft) return !available.getAsBoolean() ? NekoVendingTheme.DISABLED
+                : pressed || selected.getAsBoolean()
+                    ? (isHovering() ? NekoVendingTheme.SELECTED_HOVER : NekoVendingTheme.PRESSED)
+                    : isHovering() ? NekoVendingTheme.HOVER : NekoVendingTheme.BUTTON;
             if (managerRow) {
                 if (!available.getAsBoolean()) return UtilityUiStyle.MANAGER_ROW_DISABLED;
                 if (pressed || selected.getAsBoolean()) return isHovering() ? UtilityUiStyle.MANAGER_ROW_SELECTED_HOVER
@@ -223,6 +291,12 @@ public final class UtilityControls {
     public static final class Page extends PageButton {
 
         private boolean manager;
+        private boolean kraft;
+
+        public Page kraft() {
+            kraft = true;
+            return this;
+        }
 
         public Page manager() {
             manager = true;
@@ -235,11 +309,13 @@ public final class UtilityControls {
 
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
-            return manager ? MANAGER_SELECTABLE_THEME : SELECTABLE_THEME;
+            return kraft ? KRAFT_SELECTABLE_THEME : manager ? MANAGER_SELECTABLE_THEME : SELECTABLE_THEME;
         }
 
         @Override
         public IDrawable getThemeBackground(WidgetThemeEntry<?> entry, WidgetTheme theme) {
+            if (kraft) return isActive() ? (isHovering() ? NekoVendingTheme.SELECTED_HOVER : NekoVendingTheme.PRESSED)
+                : (isHovering() ? NekoVendingTheme.HOVER : NekoVendingTheme.BUTTON);
             if (manager) return isActive()
                 ? (isHovering() ? UtilityUiStyle.MANAGER_BUTTON_SELECTED_HOVER : UtilityUiStyle.MANAGER_BUTTON_PRESSED)
                 : (isHovering() ? UtilityUiStyle.MANAGER_BUTTON_HOVER : UtilityUiStyle.MANAGER_BUTTON);
@@ -251,6 +327,12 @@ public final class UtilityControls {
     public static final class Toggle extends ToggleButton {
 
         private boolean manager;
+        private boolean kraft;
+
+        public Toggle kraft() {
+            kraft = true;
+            return this;
+        }
 
         public Toggle manager() {
             manager = true;
@@ -259,13 +341,19 @@ public final class UtilityControls {
 
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
-            return manager ? MANAGER_SELECTABLE_THEME : SELECTABLE_THEME;
+            return kraft ? KRAFT_SELECTABLE_THEME : manager ? MANAGER_SELECTABLE_THEME : SELECTABLE_THEME;
         }
     }
 
     public static final class Field extends TextFieldWidget {
 
         private boolean manager;
+        private boolean kraft;
+
+        public Field kraft() {
+            kraft = true;
+            return this;
+        }
 
         public Field manager() {
             manager = true;
@@ -274,7 +362,7 @@ public final class UtilityControls {
 
         @Override
         public WidgetThemeEntry<?> getWidgetThemeInternal(ITheme theme) {
-            return manager ? MANAGER_FIELD_THEME : FIELD_THEME;
+            return kraft ? KRAFT_FIELD_THEME : manager ? MANAGER_FIELD_THEME : FIELD_THEME;
         }
     }
 

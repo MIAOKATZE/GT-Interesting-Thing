@@ -20,6 +20,9 @@ public final class NekoVendingLayoutTest {
                 layout.resize(w, h);
                 check(Math.abs(layout.width * layout.scale - w) <= 1, "canvas fills logical width");
                 check(Math.abs(layout.height * layout.scale - h) <= 1, "canvas fills logical height");
+                check(layout.tools.bottom() <= layout.business.y, "toolbar does not cover search/categories");
+                check(layout.tools.width >= 322, "inline QoL and both wallets fit");
+                check((layout.business.width - 8) / 2 - 4 >= 145, "cards keep both coins plus material visible");
                 check(!overlaps(layout.business, layout.categories), "category rail never overlays trade rows");
                 check(!overlaps(layout.business, layout.inventory), "inventory never covers business content");
                 check(!overlaps(layout.detail, layout.inventory), "detail and bag are separate");

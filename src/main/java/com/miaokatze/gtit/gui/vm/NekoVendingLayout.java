@@ -48,7 +48,7 @@ public final class NekoVendingLayout {
         int rightX = w - rightWidth - 8, leftX = 8 + rail + gap;
         int leftWidth = rightX - gap - leftX, bodyY = 76, bottomY = h - 104;
         header = new Rect(0, 0, w, 30);
-        tools = new Rect(leftX, 34, leftWidth, 34);
+        tools = new Rect(leftX, 34, leftWidth, 40);
         mainRail = new Rect(8, bodyY, rail, bottomY - bodyY);
         categories = new Rect(leftX, bodyY, category, bottomY - bodyY);
         business = new Rect(leftX + category + gap, bodyY, leftWidth - category - gap, bottomY - bodyY);

@@ -300,7 +300,7 @@ public final class SignInEditor {
 
         // ==================== 阶梯模式专属：所需天数 ====================
 
-        TextWidget<?> daysLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "所需天数:"));
+        TextWidget<?> daysLabel = new TextWidget<>(IKey.str("所需天数:"));
         daysLabel.left(8)
             .top(26);
         daysLabel.setEnabledIf(w -> !"monthly".equals(editSignInMode));
@@ -322,7 +322,7 @@ public final class SignInEditor {
         // ==================== 每月全局模式专属：递增开关 / 编辑目标 / 递增系数 ====================
 
         // 递增开关（v1.7.8 起默认 false=不递增；递增仅作用工作日/周末默认货币量，逐日覆盖天不递增）
-        TextWidget<?> incToggleLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "递增开关:"));
+        TextWidget<?> incToggleLabel = new TextWidget<>(IKey.str("递增开关:"));
         incToggleLabel.left(8)
             .top(26);
         incToggleLabel.setEnabledIf(w -> "monthly".equals(editSignInMode));
@@ -348,7 +348,7 @@ public final class SignInEditor {
         editPanel.child(incToggle);
 
         // 编辑目标（工作日/周末默认奖励子模式切换；货币字段与 4 物品槽随之整体切换）
-        TextWidget<?> subModeLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "编辑目标:"));
+        TextWidget<?> subModeLabel = new TextWidget<>(IKey.str("编辑目标:"));
         subModeLabel.left(8)
             .top(44);
         subModeLabel.setEnabledIf(w -> "monthly".equals(editSignInMode));
@@ -375,7 +375,7 @@ public final class SignInEditor {
         editPanel.child(subModeToggle);
 
         // 递增系数（字符串暂存，保存时解析，非法回退 0）
-        TextWidget<?> incLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "递增系数:"));
+        TextWidget<?> incLabel = new TextWidget<>(IKey.str("递增系数:"));
         incLabel.left(8)
             .top(62);
         incLabel.setEnabledIf(w -> "monthly".equals(editSignInMode));
@@ -394,7 +394,7 @@ public final class SignInEditor {
 
         // 货币类型
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币类型:")).left(8)
+            new TextWidget<>(IKey.str("货币类型:")).left(8)
                 .top(80));
         TextFieldWidget currencyField = new TextFieldWidget().value(new StringValue.Dynamic(() -> {
             if ("monthly".equals(editSignInMode)) {
@@ -420,7 +420,7 @@ public final class SignInEditor {
 
         // 货币数量
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币数量:")).left(8)
+            new TextWidget<>(IKey.str("货币数量:")).left(8)
                 .top(98));
         TextFieldWidget amountField = new TextFieldWidget().value(new StringValue.Dynamic(() -> {
             if ("monthly".equals(editSignInMode)) {
@@ -449,7 +449,7 @@ public final class SignInEditor {
 
         // 物品奖励（4 槽，PhantomItemSlot 拖入配置；留空 = 无物品奖励）
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品奖励:")).left(8)
+            new TextWidget<>(IKey.str("物品奖励:")).left(8)
                 .top(118));
         for (int i = 0; i < 4; i++) {
             final int slotIndex = i;
@@ -624,7 +624,7 @@ public final class SignInEditor {
 
         // 货币类型
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币类型:")).left(8)
+            new TextWidget<>(IKey.str("货币类型:")).left(8)
                 .top(26));
         TextFieldWidget currencyField = new TextFieldWidget()
             .value(new StringValue.Dynamic(() -> editSignInCurrency, val -> editSignInCurrency = val))
@@ -636,7 +636,7 @@ public final class SignInEditor {
 
         // 货币数量
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币数量:")).left(8)
+            new TextWidget<>(IKey.str("货币数量:")).left(8)
                 .top(44));
         TextFieldWidget amountField = new TextFieldWidget()
             .value(new StringValue.Dynamic(() -> String.valueOf(editSignInAmount), val -> {
@@ -652,7 +652,7 @@ public final class SignInEditor {
 
         // 物品奖励（4 槽，独立缓冲区；留空 = 无物品奖励）
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品奖励:")).left(8)
+            new TextWidget<>(IKey.str("物品奖励:")).left(8)
                 .top(64));
         for (int i = 0; i < 4; i++) {
             final int slotIndex = i;

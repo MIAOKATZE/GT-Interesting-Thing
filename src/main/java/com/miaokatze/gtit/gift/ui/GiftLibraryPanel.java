@@ -1,9 +1,9 @@
 package com.miaokatze.gtit.gift.ui;
 
-import com.cleanroommc.modularui.screen.ModularPanel;
+import com.miaokatze.gtit.client.gui.NekoWorkbenchPanel;
 
 /** All normal close routes, including Escape, pass through the same draft guard. */
-final class GiftLibraryPanel extends ModularPanel {
+final class GiftLibraryPanel extends NekoWorkbenchPanel {
 
     private Runnable requestClose = () -> {};
 

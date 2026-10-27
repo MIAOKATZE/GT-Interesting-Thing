@@ -192,6 +192,45 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         }
     };
 
+    private final NekoOutputCapacity outputCapacity = new NekoOutputCapacity(
+        this::getOutputEmptySlotCount,
+        () -> outputBuffer.size());
+
+    public int getAvailableOutputCapacity() {
+        return outputCapacity.available();
+    }
+
+    public NekoOutputCapacity.Reservation reserveOutputCapacity(int count) {
+        return outputCapacity.reserve(count);
+    }
+
+    /**
+     * Transfer pre-split, exclusively owned reward stacks into the paid queue. The caller prepares/validates
+     * every stack before charging; this method must not re-query mod stack limits or rebuild reward copies.
+     */
+    public void commitLotteryOutputs(NekoOutputCapacity.Reservation reservation, List<ItemStack> prizes,
+        List<Boolean> rearRoutes, long delayMs) {
+        if (prizes.size() != rearRoutes.size()) throw new IllegalArgumentException("prize routes");
+        int count = prizes.size();
+        if (!outputCapacity.owns(reservation) || !reservation.canCommit(count))
+            throw new IllegalStateException("lottery output was not reserved before payment");
+        startBatch(count);
+        long readyAt = System.currentTimeMillis() + Math.max(0, Math.min(60000L, delayMs));
+        for (int i = 0; i < prizes.size(); i++) {
+            ItemStack prize = prizes.get(i);
+            enqueueRear = rearRoutes.get(i);
+            try {
+                outputBuffer.add(prize);
+                outputLedger.delayPending(prize, readyAt);
+                reservation.consume(1);
+            } finally {
+                enqueueRear = false;
+            }
+        }
+        newBufferedOutputs = true;
+        if (getBaseMetaTileEntity() != null) getBaseMetaTileEntity().markDirty();
+    }
+
     /** Server-owned invalidation shared by every viewer; runtime state only, never saved. */
     private long tradeStateRevision;
 
@@ -699,7 +738,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return null;
         }
         int needed = outputStackCount(stack);
-        if (NekoOutputLedger.availableSlots(getOutputEmptySlotCount(), outputBuffer.size()) < needed) {
+        if (getAvailableOutputCapacity() < needed) {
             outputLedger.skipQueuedStacks(needed);
             return stack.copy();
         }
@@ -903,7 +942,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         while (!this.outputBuffer.isEmpty()) {
             ItemStack next = this.outputBuffer.peek();
             if (next != null && next.stackSize > 0) {
-                return next;
+                return outputLedger.isReady(next, System.currentTimeMillis()) ? next : null;
             }
             this.outputBuffer.poll();
         }
@@ -1849,16 +1888,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 // ME 模式额外检查传输队列容量（MeTransferEntry 在投放时创建；M1 起委托 isFull）
                 if (meTransferQueue.isFull()) return false;
             }
-            // 可用空槽 = 当前空槽数 - outputBuffer 队列已占用的虚拟槽位数
-            // 队列堆积时，空槽数会逐步被消耗（onPostTick 逐 tick 投放），
-            // hasSpaceFor 必须预留队列占位，避免超卖
-            int emptySlots = 0;
-            for (int i = 0; i < OUTPUT_SLOTS; i++) {
-                if (outputItems.getStackInSlot(i) == null) {
-                    emptySlots++;
-                }
-            }
-            int available = NekoOutputLedger.availableSlots(emptySlots, outputBuffer.size());
+            int available = getAvailableOutputCapacity();
             return available > 0;
         }
 
@@ -1873,14 +1903,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             if (meOutputMode && meTransferQueue.isFull()) {
                 return 0;
             }
-            int emptySlots = 0;
-            for (int i = 0; i < OUTPUT_SLOTS; i++) {
-                if (outputItems.getStackInSlot(i) == null) {
-                    emptySlots++;
-                }
-            }
-            // 扣除队列已占用的虚拟槽位，防止预检超卖（与 hasSpaceFor 同口径）
-            return NekoOutputLedger.availableSlots(emptySlots, outputBuffer.size());
+            return getAvailableOutputCapacity();
         }
 
         @Override

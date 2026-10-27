@@ -50,20 +50,21 @@ public final class EditOverlayController {
 
         @Override
         public boolean canHover() {
-            return currentEditOverlay != EditOverlayType.TRADE;
+            return !isDockedWorkspace();
         }
 
         @Override
         public boolean canHoverThrough() {
-            return currentEditOverlay == EditOverlayType.TRADE;
+            return isDockedWorkspace();
         }
     }
 
     public EditOverlayController() {
         // TRADE is a docked workspace, not a modal layer over the trade list or player bag.
         editOverlayRoot = new OverlayRoot();
-        editOverlayRoot.relativeToScreen()
-            .full();
+        // The main panel already applies the sole fullscreen canvas transform.
+        // Screen-relative sizing mixed logical pixels with native canvas coordinates.
+        editOverlayRoot.full();
         editOverlayRoot.setEnabledIf(w -> currentEditOverlay != EditOverlayType.NONE);
     }
 
@@ -84,6 +85,12 @@ public final class EditOverlayController {
         }
         editOverlayRoot.child(panelBuilder.get());
         return this;
+    }
+
+    /** Non-modal editors share the right workspace with the native NEI catalog. */
+    public boolean isDockedWorkspace() {
+        return currentEditOverlay == EditOverlayType.TRADE || currentEditOverlay == EditOverlayType.LOTTERY
+            || currentEditOverlay == EditOverlayType.LOTTERY_POOL;
     }
 
     /** 获取覆盖层根节点（由 NekoVMGuiV2.build 在主内容之后挂到主面板） */

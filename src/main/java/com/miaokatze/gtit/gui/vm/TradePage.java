@@ -41,6 +41,7 @@ import com.miaokatze.gtit.client.gui.NekoPageButtonV2;
 import com.miaokatze.gtit.client.gui.NekoSearchBar;
 import com.miaokatze.gtit.client.gui.NekoSortMode;
 import com.miaokatze.gtit.client.gui.NekoSubTabButton;
+import com.miaokatze.gtit.client.gui.NekoTradeCardLayout;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
 import com.miaokatze.gtit.client.gui.NekoTradeRow;
@@ -453,7 +454,13 @@ public final class TradePage {
                 .size(36, 36)
                 .overlay((context, x, y, width, height, theme) -> {
                     icons[index].draw(context, x + 10, y + 3, 16, 16, theme);
-                    GuiDraw.drawText(names[index], x + 8, y + 24, .85f, 0xffffe7b9, true);
+                    GuiDraw.drawText(
+                        names[index],
+                        x + 8,
+                        y + 24,
+                        .85f,
+                        mainTabController.getActivePageIndex() == index ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK,
+                        false);
                 }));
         }
         return gui.place(rail, () -> gui.vendingLayout().mainRail)
@@ -557,10 +564,17 @@ public final class TradePage {
             tabButton.overlay((context, x, y, width, height, theme) -> {
                 if (icon != null) GuiDraw.drawItem(icon, x + 3, y + 2, 12, 12, (int) context.getCurrentDrawingZ());
                 String label = name.length() > 6 ? name.substring(0, 6) + "…" : name;
-                GuiDraw.drawText(label, x + 18, y + 5, .75f, 0xffffe7b9, true);
+                GuiDraw.drawText(
+                    label,
+                    x + 18,
+                    y + 5,
+                    .75f,
+                    tabController.getActivePageIndex() == index ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK,
+                    false);
                 if (highlightedTabs.contains(category)) GuiDraw.drawRect(x, y, 2, height, 0xffeacc7a);
             });
             tabButton.tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
                 t.addLine(name);
                 if (page != null && !page.getSourcePresetId()
                     .isEmpty()) {
@@ -611,6 +625,7 @@ public final class TradePage {
         newPageButton.externalMode(() -> false);
         newPageButton.onSelected(gui.pageEditor::beginNew);
         newPageButton.tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             t.addLine(IKey.str("新建标签页"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "创建空白标签页（保存时自动分配 ID ≥ 4）"));
         });
@@ -639,12 +654,15 @@ public final class TradePage {
         ButtonWidget<?> button = new ButtonWidget<>().size(PAGER_BUTTON_SIZE, PAGER_BUTTON_SIZE)
             .background(NekoVendingTheme.BUTTON)
             .hoverBackground(NekoVendingTheme.HOVER)
-            .overlay(IKey.str(EnumChatFormatting.WHITE + label))
+            .overlay(
+                IKey.str(label)
+                    .color(NekoVendingTheme.INK))
             .onMouseTapped(mouse -> {
                 flipTabPage(step);
                 return true;
             })
             .tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
                 t.addLine(IKey.str(step < 0 ? "上一页" : "下一页"));
                 t.addLine(IKey.dynamic(() -> {
                     if (step < 0 && tabPage <= 0) return EnumChatFormatting.GRAY + "已是第一页";
@@ -705,7 +723,13 @@ public final class TradePage {
                 String text = label.get();
                 if (text == null) text = "";
                 if (text.length() > 6) text = text.substring(0, 6) + "…";
-                GuiDraw.drawText(text, x + 18, y + 5, .75f, 0xffffe7b9, true);
+                GuiDraw.drawText(
+                    text,
+                    x + 18,
+                    y + 5,
+                    .75f,
+                    button.isActive() ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK,
+                    false);
             });
     }
 
@@ -761,6 +785,7 @@ public final class TradePage {
                     }
                 });
                 poolButton.tooltipBuilder(t -> {
+                    NekoVendingTheme.tooltip(t);
                     LotteryClientData.PoolSummary pool = poolAt(index);
                     if (pool != null) {
                         t.addLine(IKey.str(pool.name));
@@ -784,6 +809,7 @@ public final class TradePage {
             newPoolButton.externalMode(() -> false);
             newPoolButton.onSelected(gui.lotteryPoolEditor::beginNew);
             newPoolButton.tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
                 t.addLine(IKey.str("新建卡池"));
                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "默认 10 个空奖品槽，可选 4～10 槽"));
             });
@@ -815,7 +841,10 @@ public final class TradePage {
                 final String name = (String) tabDef[2];
                 NekoSubTabButton subTabButton = new NekoSubTabButton(index, controller, icon);
                 styleNativeSubTab(subTabButton, icon, () -> name);
-                subTabButton.tooltipBuilder(t -> { t.addLine(IKey.str(name)); });
+                subTabButton.tooltipBuilder(t -> {
+                    NekoVendingTheme.tooltip(t);
+                    t.addLine(IKey.str(name));
+                });
                 // v1.7.6 G2②：邮件页切换 sub-tab（全部/系统/玩家/管理员）时重置列表页码——
                 // 各类型过滤后总页数不同，不重置则翻页行可能短暂显示「当前页 > 总页数」。
                 // 写邮件页（index 4）无列表，同回调重置无副作用；签到页（G2③）如需同逻辑自行挂接。
@@ -832,6 +861,7 @@ public final class TradePage {
                 blessingButton.externalMode(() -> false);
                 blessingButton.onSelected(() -> gui.blessingEditor.beginEdit("birthday"));
                 blessingButton.tooltipBuilder(t -> {
+                    NekoVendingTheme.tooltip(t);
                     t.addLine(IKey.str("祝福预设"));
                     t.addLine(IKey.str(EnumChatFormatting.GRAY + "查看/编辑自动祝福邮件模板"));
                 });
@@ -874,8 +904,10 @@ public final class TradePage {
      * @return QoL 按钮列 Widget
      */
     public IWidget createQolButtonColumn() {
-        ButtonWidget<?> teamStatusButton = new ButtonWidget<>().size(14, 14)
-            .overlay(IKey.lang("gtit.gui.teams.short"))
+        ButtonWidget<?> teamStatusButton = new ButtonWidget<>().size(18, 18)
+            .overlay(
+                IKey.lang("gtit.gui.teams.short")
+                    .color(NekoVendingTheme.INK))
             .addTooltipLine(IKey.lang("gtit.gui.teams.title"))
             .onMousePressed(mouse -> {
                 if (mouse != 0) return false;
@@ -885,7 +917,7 @@ public final class TradePage {
         // --- 音量/BGM 按钮（左上）---
         // 单击切换 BGM 播放/停止；Shift+点击打开音量面板
         // v1.6.24: gui.volumeButton 改为赋值类字段（移除 final 局部变量），以便 build() 在 client 块外部注册 syncedPanel
-        gui.volumeButton = new ButtonWidget<>().size(14, 14)
+        gui.volumeButton = new ButtonWidget<>().size(18, 18)
             .overlay(new DynamicDrawable(() -> {
                 NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
                 boolean isEnabled = handler != null && !handler.isMutedByUser();
@@ -913,6 +945,7 @@ public final class TradePage {
                 return true;
             })
             .tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
                 NekoMusicEventHandler handler = NekoMusicEventHandler.getInstance();
                 boolean isEnabled = handler != null && !handler.isMutedByUser();
                 t.addLine(IKey.str(isEnabled ? "BGM: 开启" : "BGM: 关闭"));
@@ -922,7 +955,7 @@ public final class TradePage {
         gui.volumeButton.tooltipAutoUpdate(true);
 
         // --- 显示模式切换按钮（右上）---
-        ButtonWidget<?> displayModeButton = new ButtonWidget<>().size(14, 14)
+        ButtonWidget<?> displayModeButton = new ButtonWidget<>().size(18, 18)
             .overlay(
                 new DynamicDrawable(
                     () -> gui.getDisplayType()
@@ -935,6 +968,7 @@ public final class TradePage {
                 return true;
             })
             .tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
                 t.addLine(
                     IKey.str(
                         "当前: " + gui.getDisplayType()
@@ -944,7 +978,7 @@ public final class TradePage {
         displayModeButton.tooltipAutoUpdate(true);
 
         // --- 货币显示开关按钮（左下）---
-        ButtonWidget<?> showCoinsButton = new ButtonWidget<>().size(14, 14)
+        ButtonWidget<?> showCoinsButton = new ButtonWidget<>().size(18, 18)
             .overlay(
                 new DynamicDrawable(
                     () -> (gui.showCoins ? NekoGuiTextures.SHOW_COINS : NekoGuiTextures.HIDE_COINS).asIcon()
@@ -955,11 +989,14 @@ public final class TradePage {
                 gui.showCoinsSync.setValue(!gui.showCoins);
                 return true;
             })
-            .tooltipBuilder(t -> { t.addLine(IKey.str(gui.showCoins ? "隐藏猫猫币" : "显示猫猫币")); });
+            .tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
+                t.addLine(IKey.str(gui.showCoins ? "隐藏猫猫币" : "显示猫猫币"));
+            });
         showCoinsButton.tooltipAutoUpdate(true);
 
         // --- 排序模式切换按钮（右下）---
-        ButtonWidget<?> sortModeButton = new ButtonWidget<>().size(14, 14)
+        ButtonWidget<?> sortModeButton = new ButtonWidget<>().size(18, 18)
             .overlay(
                 new DynamicDrawable(
                     () -> gui.getSortMode()
@@ -972,6 +1009,7 @@ public final class TradePage {
                 return true;
             })
             .tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
                 t.addLine(
                     IKey.str(
                         "当前: " + gui.getSortMode()
@@ -992,8 +1030,12 @@ public final class TradePage {
             .coverChildren()
             .grid(
                 Arrays.asList(
-                    Arrays.asList(teamStatusButton, gui.volumeButton, displayModeButton),
-                    Arrays.asList(new ParentWidget<>().size(14, 14), showCoinsButton, sortModeButton)));
+                    Arrays.asList(
+                        teamStatusButton,
+                        gui.volumeButton,
+                        displayModeButton,
+                        showCoinsButton,
+                        sortModeButton)));
         // v1.7.7 G2③：以 controller 当前页为权威
         qolGrid
             .setEnabledIf(w -> mainTabController != null && mainTabController.getActivePageIndex() == MAIN_TAB_TRADE);
@@ -1005,7 +1047,7 @@ public final class TradePage {
         return gui
             .place(
                 qolGrid,
-                () -> new NekoVendingLayout.Rect(gui.vendingLayout().tools.x, gui.vendingLayout().tools.y + 2, 48, 30))
+                () -> new NekoVendingLayout.Rect(gui.vendingLayout().tools.x, gui.vendingLayout().tools.y + 3, 96, 20))
             .excludeAreaInRecipeViewer();
     }
 
@@ -1024,7 +1066,9 @@ public final class TradePage {
         ParentWidget<?> mainColumn = new ParentWidget<>().sizeRel(1f);
         if (syncManager.isClient()) {
             searchBar = new NekoSearchBar("搜索物品、名称或交易 ID…");
-            searchBar.pos(0, 0)
+            searchBar.setTextColor(NekoVendingTheme.INK)
+                .hintColor(NekoVendingTheme.MUTED)
+                .pos(0, 0)
                 .widthRel(1f)
                 .height(18)
                 .background(NekoVendingTheme.INPUT);
@@ -1058,39 +1102,54 @@ public final class TradePage {
         ParentWidget<?> toolbar = new WalletToolbar();
         IWidget coins = createCoinDisplayRow(syncManager);
         coins.resizer()
-            .pos(70, 0)
+            .pos(100, 0)
             .width(232)
-            .height(24);
+            .height(26);
         toolbar.child(coins);
         // --- 团队钱包标识 + ME 输出模式切换按钮（同一行平行显示）---
         // [团队钱包]在左侧（仅 TEAM 模式时显示内容），[自动输入ME: 开/关]在右侧（仅 uplink 在线时显示）
         // 两者平行排列在标题下方同一行，互不影响显示
         toolbar.child(
             Flow.row()
-                .pos(65, 24)
+                .pos(100, 26)
                 .height(12)
-                .widthRelOffset(1f, -70)
+                .widthRelOffset(1f, -100)
                 // [团队钱包]动态文本（仅 TEAM 模式时显示，否则折叠隐藏）
                 .child(IKey.dynamic(() -> {
                     NekoWalletMode mode = gui.getWalletMode();
                     if (mode == NekoWalletMode.TEAM) {
-                        return EnumChatFormatting.AQUA + "[团队钱包]";
+                        return "团队钱包";
                     }
                     return "";
                 })
+                    .color(NekoVendingTheme.GREEN)
                     .asWidget()
                     .height(10)
                     .left(0)
                     .setEnabledIf(w -> gui.getWalletMode() == NekoWalletMode.TEAM))
                 // [自动输入ME: 开/关]切换按钮（仅 uplink 在线时显示）
                 .child(
-                    new ButtonWidget<>().size(120, 12)
+                    new ButtonWidget<>().size(102, 14)
+                        .background(
+                            NekoVendingTheme.face(
+                                () -> gui.meOutputModeSync != null && gui.meOutputModeSync.getValue(),
+                                () -> true,
+                                false))
+                        .hoverBackground(
+                            NekoVendingTheme.face(
+                                () -> gui.meOutputModeSync != null && gui.meOutputModeSync.getValue(),
+                                () -> true,
+                                true))
                         .overlay(IKey.dynamic(() -> {
                             boolean mode = gui.meOutputModeSync != null && gui.meOutputModeSync.getValue();
-                            return mode ? EnumChatFormatting.LIGHT_PURPLE + "[自动输入ME: 开]"
-                                : EnumChatFormatting.GRAY + "[自动输入ME: 关]";
-                        }))
+                            return mode ? "自动输入 ME · 开" : "自动输入 ME · 关";
+                        })
+                            .color(
+                                () -> gui.meOutputModeSync != null && gui.meOutputModeSync.getValue()
+                                    ? NekoVendingTheme.LIGHT
+                                    : NekoVendingTheme.INK))
                         .tooltipBuilder(t -> {
+                            NekoVendingTheme.tooltip(t);
                             t.addLine(IKey.str("切换产出路径：本地出货槽 ↔ ME 网络"));
                             if (gui.hasUplinkSync != null && gui.hasUplinkSync.getValue()) {
                                 t.addLine(IKey.str(EnumChatFormatting.GRAY + "点击弹出确认对话框"));
@@ -1223,8 +1282,8 @@ public final class TradePage {
         List<NekoTradeItemDisplayWidget> tileWidgets = gui.displayedTradesTiles.get(category);
         if (tileWidgets != null) {
             NekoTradeRow row = new NekoTradeRow();
-            row.height(62);
-            row.widthRel(1f);
+            row.height(NekoTradeCardLayout.TILE_ROW_HEIGHT);
+            row.widthRelOffset(1f, -4);
             row.marginLeft(2);
 
             for (int i = 0; i < MAX_TRADES; i++) {
@@ -1232,7 +1291,7 @@ public final class TradePage {
                 NekoTradeItemDisplayWidget widget = tileWidgets.get(i);
                 widget.margin(2);
                 widget.widthRelOffset(.5f, -4)
-                    .height(58);
+                    .height(NekoTradeCardLayout.TILE_HEIGHT);
                 widget.nativePresentation(true);
                 widget.setEnabledIf(w -> {
                     // 编辑模式：绕过结构完整性检查，显示所有有条目的 Widget
@@ -1248,8 +1307,8 @@ public final class TradePage {
                 if (i % TILE_ITEMS_PER_ROW == TILE_ITEMS_PER_ROW - 1) {
                     tradeList.child(row);
                     row = new NekoTradeRow();
-                    row.height(62);
-                    row.widthRel(1f);
+                    row.height(NekoTradeCardLayout.TILE_ROW_HEIGHT);
+                    row.widthRelOffset(1f, -4);
                     row.marginLeft(2);
                 }
             }
@@ -1276,10 +1335,10 @@ public final class TradePage {
 
                 NekoTradeRow row = new NekoTradeRow();
                 widget.widthRelOffset(1f, -4)
-                    .height(38);
+                    .height(NekoTradeCardLayout.LIST_HEIGHT);
                 widget.nativePresentation(true);
-                row.height(40);
-                row.widthRel(1f);
+                row.height(NekoTradeCardLayout.LIST_ROW_HEIGHT);
+                row.widthRelOffset(1f, -4);
                 row.marginLeft(2);
                 row.child(widget);
                 tradeList.child(row);
@@ -1291,7 +1350,7 @@ public final class TradePage {
         // 非编辑模式时由 tradeList 的 collapseDisabledChild 压缩占位。
         NekoTradeRow newTradeRow = new NekoTradeRow();
         newTradeRow.height(22);
-        newTradeRow.widthRel(1f);
+        newTradeRow.widthRelOffset(1f, -4);
         newTradeRow.marginLeft(2);
         ButtonWidget<?> newTradeButton = new ButtonWidget<>().size(22, 20)
             .background(NekoVendingTheme.BUTTON)
@@ -1301,6 +1360,7 @@ public final class TradePage {
                 return true;
             });
         newTradeButton.tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             t.addLine(IKey.str("新建交易条目"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "在本标签页尾部追加一条空白交易"));
         });
@@ -1332,13 +1392,12 @@ public final class TradePage {
         // v1.6.22：改造为单行布局，ME 导入按钮移入 NekoCoinDisplayV2 与弹出按钮同行
         Flow column = Flow.column()
             .fullWidth()
-            .marginBottom(2);
+            .height(26);
 
         // === 余额行（含 ME 导入按钮）===
         Flow row = Flow.row()
-            .height(22)
-            .fullWidth()
-            .marginBottom(2);
+            .height(26)
+            .fullWidth();
 
         int offset = 0;
         for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
@@ -1358,8 +1417,10 @@ public final class TradePage {
                     }
                 });
             coinDisplay.left(offset)
-                .size(108, 22)
-                .background(NekoVendingTheme.PANEL);
+                .size(108, 26)
+                .background(
+                    NekoCurrencyRegistrar.SHIMMERING_NEKO_ID.equals(cid) ? NekoVendingTheme.SHIMMER_WALLET
+                        : NekoVendingTheme.WALLET);
             row.child(coinDisplay);
             offset += 114; // native wallet cards keep the original actions and animated balance
         }

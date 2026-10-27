@@ -19,6 +19,7 @@ public final class NekoOutputLedger {
 
         public final long batchId, dropId, generation;
         public boolean rear;
+        public long readyAtMs;
 
         Token(long batch, long drop, long generation, boolean rear) {
             this.batchId = batch;
@@ -33,6 +34,7 @@ public final class NekoOutputLedger {
             n.setLong("dropId", dropId);
             n.setLong("generation", generation);
             n.setBoolean("rear", rear);
+            n.setLong("readyRemainingMs", Math.max(0, readyAtMs - System.currentTimeMillis()));
             return n;
         }
     }
@@ -80,6 +82,56 @@ public final class NekoOutputLedger {
 
     public Token pending(ItemStack stack) {
         return pending.get(stack);
+    }
+
+    /** Count real waiting stack identities across batches, never already-visible/settled inventory. */
+    public boolean routeWaitingToRear(java.util.function.LongPredicate waiting) {
+        int count = pending.size();
+        for (Token token : slots) if (token != null && waiting.test(token.dropId)) count++;
+        if (count <= 16) return false;
+        boolean changed = false;
+        Map<Long, Long> splitDrops = new LinkedHashMap<>();
+        for (Map.Entry<ItemStack, Token> entry : pending.entrySet()) {
+            Token token = entry.getValue();
+            Drop drop = drops.get(token.dropId);
+            if (drop != null && !drop.rear && !drop.slots.isEmpty() && !waiting.test(token.dropId)) {
+                // A merged batch may be partly visible already. Reroute only still-pending identities;
+                // changing the shared Drop.rear would corrupt its live side pose/route in the wire frame.
+                Long splitId = splitDrops.get(token.dropId);
+                if (splitId == null) {
+                    splitId = nextDrop++;
+                    splitDrops.put(token.dropId, splitId);
+                }
+                Token moved = new Token(token.batchId, splitId, nextGeneration++, true);
+                moved.readyAtMs = token.readyAtMs;
+                if (!drops.containsKey(splitId)) drops.put(splitId, new Drop(moved, entry.getKey()));
+                entry.setValue(moved);
+                changed = true;
+            } else changed |= markRear(token);
+        }
+        for (Token token : slots) if (token != null && waiting.test(token.dropId)) changed |= markRear(token);
+        if (changed) revision++;
+        return changed;
+    }
+
+    private boolean markRear(Token token) {
+        boolean changed = !token.rear;
+        token.rear = true;
+        Drop drop = drops.get(token.dropId);
+        if (drop != null) drop.rear = true;
+        return changed;
+    }
+
+    /** Delivery delay belongs to paid queue metadata, never to a volatile task carrying another item copy. */
+    public void delayPending(ItemStack stack, long readyAtMs) {
+        Token token = pending.get(stack);
+        if (token == null) throw new IllegalStateException("missing paid output identity");
+        token.readyAtMs = readyAtMs;
+    }
+
+    public boolean isReady(ItemStack stack, long now) {
+        Token token = pending.get(stack);
+        return token == null || token.readyAtMs <= now;
     }
 
     public void beginBatch(int stackCount) {
@@ -276,7 +328,13 @@ public final class NekoOutputLedger {
     }
 
     private static Token read(NBTTagCompound e) {
-        return new Token(e.getLong("batchId"), e.getLong("dropId"), e.getLong("generation"), e.getBoolean("rear"));
+        Token token = new Token(
+            e.getLong("batchId"),
+            e.getLong("dropId"),
+            e.getLong("generation"),
+            e.getBoolean("rear"));
+        token.readyAtMs = System.currentTimeMillis() + Math.max(0, Math.min(60000L, e.getLong("readyRemainingMs")));
+        return token;
     }
 
     private static boolean validToken(NBTTagCompound e, java.util.Set<Long> generations) {

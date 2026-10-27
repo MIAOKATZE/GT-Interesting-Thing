@@ -6,7 +6,9 @@ import com.cleanroommc.modularui.api.layout.IViewport;
 import com.cleanroommc.modularui.api.layout.IViewportStack;
 import com.cleanroommc.modularui.api.widget.IDraggable;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.screen.viewport.ModularGuiContext;
+import com.cleanroommc.modularui.screen.viewport.TransformationMatrix;
 import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.utils.HoveredWidgetList;
 import com.cleanroommc.modularui.widget.DragHandle;
@@ -33,8 +35,7 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
 
     private final ParentWidget<?> contentPanel;
     private final Area movingArea;
-    private int relativeClickX, relativeClickY;
-    private int realX, realY;
+    private final NekoEditDragGeometry dragPosition = new NekoEditDragGeometry();
     private boolean moving = false;
     /** 标记当前是否正在 {@link #drawMovingState} 中绘制移动状态，用于区分原位置与移动位置的绘制 */
     private boolean drawingMovingState = false;
@@ -71,7 +72,7 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
             .left(0)
             .right(0)
             .height(DRAG_HANDLE_HEIGHT)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND);
+            .background(NekoVendingTheme.BUTTON);
         super.child(0, dragHandle);
     }
 
@@ -118,10 +119,20 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
     public void drawMovingState(ModularGuiContext context, float partialTicks) {
         // 设置标志，让 drawBackground/drawForeground 知道这是移动位置的绘制，允许绘制。
         // 原位置的 drawTree 调用不带此标志，因此仍会被跳过，避免镜像/重影。
+        updateDragPosition(); // Also follows a resize while the mouse remains stationary.
         this.drawingMovingState = true;
+        context.pushMatrix();
         try {
+            // MUI invokes this under the captured DragHandle matrix, already including the old panel
+            // position. Draw the tree under the CURRENT parent instead; otherwise scale/offset apply twice.
+            context.peek()
+                .getMatrix()
+                .set(parentTransform().getMatrix());
+            context.peek()
+                .markDirty();
             WidgetTree.drawTree(this, context, true, true);
         } finally {
+            context.popMatrix();
             this.drawingMovingState = false;
         }
     }
@@ -159,37 +170,52 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
         super.drawForeground(context);
     }
 
+    private TransformationMatrix parentTransform() {
+        return LocatedWidget.of(getParent())
+            .getTransformationMatrix();
+    }
+
     @Override
     public boolean onDragStart(int mouseButton) {
-        if (draggable && mouseButton == 0) {
-            // 计算面板相对于父区域（editOverlayRoot，即屏幕）的当前位置
-            this.realX = getContext().transformX(0, 0) - getParentArea().x;
-            this.realY = getContext().transformY(0, 0) - getParentArea().y;
-            this.movingArea.x = this.realX;
-            this.movingArea.y = this.realY;
-            this.relativeClickX = getContext().getAbsMouseX() - this.realX;
-            this.relativeClickY = getContext().getAbsMouseY() - this.realY;
-            return true;
-        }
-        return false;
+        if (!draggable || mouseButton != 0) return false;
+        TransformationMatrix parent = parentTransform();
+        dragPosition.begin(
+            getArea().rx,
+            getArea().ry,
+            getContext().getAbsMouseX(),
+            getContext().getAbsMouseY(),
+            parent::unTransformX,
+            parent::unTransformY);
+        movingArea.x = dragPosition.x();
+        movingArea.y = dragPosition.y();
+        movingArea.width = getArea().width;
+        movingArea.height = getArea().height;
+        return true;
     }
 
     @Override
     public void onDragEnd(boolean successful) {
         if (successful) {
-            // 将最终位置写入 resizer，使面板固定在新位置
-            resizer().top(getContext().getAbsMouseY() - this.relativeClickY)
-                .left(getContext().getAbsMouseX() - this.relativeClickX);
-            this.movingArea.x = getArea().x;
-            this.movingArea.y = getArea().y;
+            updateDragPosition();
+            // Clear centered/relative anchors before committing the parent-local top-left.
+            resizer().resetPosition();
+            resizer().left(movingArea.x)
+                .top(movingArea.y);
             scheduleResize();
         }
     }
 
+    private void updateDragPosition() {
+        TransformationMatrix parent = parentTransform();
+        dragPosition
+            .move(getContext().getAbsMouseX(), getContext().getAbsMouseY(), parent::unTransformX, parent::unTransformY);
+        movingArea.x = dragPosition.x();
+        movingArea.y = dragPosition.y();
+    }
+
     @Override
     public void onDrag(int mouseButton, long timeSinceLastClick) {
-        this.movingArea.x = getContext().getAbsMouseX() - this.relativeClickX;
-        this.movingArea.y = getContext().getAbsMouseY() - this.relativeClickY;
+        updateDragPosition();
     }
 
     @Override
@@ -227,11 +253,8 @@ public class NekoDraggableEditPanel extends ParentWidget<NekoDraggableEditPanel>
     public void transform(IViewportStack stack) {
         super.transform(stack);
         if (isMoving()) {
-            // 移除默认的相对位置变换
-            stack.translate(-getArea().rx, -getArea().ry);
-            // 从原始位置平移到拖动位置
-            stack.translate(-this.realX, -this.realY);
-            stack.translate(this.movingArea.x, this.movingArea.y);
+            // super applied the original parent-local offset exactly once; replace it with the new one.
+            stack.translate(movingArea.x - getArea().rx, movingArea.y - getArea().ry);
         }
     }
 

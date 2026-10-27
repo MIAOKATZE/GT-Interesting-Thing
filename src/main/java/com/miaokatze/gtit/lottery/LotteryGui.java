@@ -12,14 +12,17 @@ import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.drawable.GuiDraw;
 import com.cleanroommc.modularui.drawable.ItemDrawable;
-import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.screen.viewport.GuiContext;
+import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
+import com.cleanroommc.modularui.screen.viewport.TransformationMatrix;
 import com.cleanroommc.modularui.theme.WidgetTheme;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.NekoSingleLineTextWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoClientBalances;
 
@@ -77,67 +80,18 @@ public class LotteryGui {
         void onEditEntryRequested(LotteryClientData.PoolSummary pool, LotteryEntry entry, int slotIndex);
     }
 
-    // ==================== 布局常量 ====================
-
-    /** 页面宽度（主内容区 = PANEL_WIDTH - 8） */
-    private static final int PAGE_WIDTH = 170;
-    /** 页面高度（主内容区 = PANEL_HEIGHT - 8） */
-    private static final int PAGE_HEIGHT = 312;
-
-    /** 轮盘槽位边长（与 slot_*.png 素材一致） */
+    // Native workspace pixels: no secondary page scale. The parent owns the sole canvas transform.
     private static final int SLOT_SIZE = 24;
-    /** 轮盘槽位间距 */
-    private static final int SLOT_GAP = 4;
-    /** 轮盘最大格数（槽位数 = 条目数，上限与 {@link LotteryPool#MAX_ENTRIES} 保持一致） */
     private static final int MAX_SLOTS = LotteryPool.MAX_ENTRIES;
-    /** 轮盘区左上角 Y（v1.7.7 G3①：40→24，为背包行让出空间） */
-    private static final int WHEEL_Y = 24;
-    /** 轮盘区高度（最大 3 行 × 28 = 84；动态布局在区内水平/垂直居中） */
-    private static final int WHEEL_H = 3 * (SLOT_SIZE + SLOT_GAP) - SLOT_GAP;
-    /**
-     * 指针底边越过点亮格上边后的下移像素（v1.7.9 起固定朝下直绘：
-     * 指针下沿对齐格子上边中点后再往下偏一点点，观感更贴合；可调。
-     * v1.7.10 自 2 加至 4——用户反馈指针贴格上边仍偏高，再下移一点）
-     */
     private static final int POINTER_DROP_PX = 4;
-
-    /** 结果提示条 Y（v1.7.7 G3①：136→114） */
-    private static final int RESULT_Y = 114;
-    /** 结果提示显示时长（毫秒；成功结果自揭示时刻起算，见 {@link #resultRevealedAtMs}） */
     private static final long RESULT_DISPLAY_MS = 6000L;
-
-    /** 10 连结果列表 Y（v1.7.7 G3①：152→128） */
-    private static final int LIST_Y = 128;
-    /** 10 连结果列表单格边长 */
-    private static final int LIST_CELL = 18;
-    /** 10 连结果列表间距 */
-    private static final int LIST_GAP = 2;
-    /** 10 连结果列表高度（两行，每格 18 + 间距 2） */
-    private static final int LIST_H = 2 * LIST_CELL + LIST_GAP;
-
-    /** 保底进度文本 Y（v1.7.7 G3①：200→172） */
-    private static final int PITY_Y = 172;
-    /** 抽奖按钮 Y（v1.7.7 G3①：214→190；按钮底 = 190 + 24 = 214 ≤ 229） */
-    private static final int DRAW_BTN_Y = 190;
-    /** 抽奖按钮宽（v1.7.6 G4 自 64 加宽至 72：容纳「按钮文案+价格」防溢出；素材 fullImage 轻微拉伸） */
-    private static final int DRAW_BTN_W = 72;
-    /** 抽奖按钮高 */
-    private static final int DRAW_BTN_H = 24;
-    /** 抽奖按钮间距（v1.7.6 G4 自 4 加宽至 8：两按钮总宽 152，居中后左钮 X=9，右缘 161） */
-    private static final int DRAW_BTN_GAP = 8;
-    /** 按钮文本显示列预算（全角计 2 列/半角计 1 列，72px 宽扣内边距约 14 列） */
-    private static final int DRAW_BTN_TEXT_BUDGET = 14;
-
-    // ==================== 颜色常量（ARGB） ====================
-
-    /** 点亮格高亮框色（金色，叠加在槽位底上） */
-    private static final int COLOR_LIT_FRAME = 0xCCFFC84A;
-    /** 停格后高亮框色（不透明金，闪烁相位切换） */
-    private static final int COLOR_FINISH_FRAME = 0xFFFFD24A;
-    /** 保底进度条底色（v1.7.6 G4 自 0xFF1E1E2E 加深，与亮紫填充拉开对比度） */
-    private static final int COLOR_PITY_BG = 0xFF101020;
-    /** 保底进度条填充（亮紫，呼应 EPIC 保底稀有度；G4 自 0xFFAA66FF 调亮提升对比度） */
-    private static final int COLOR_PITY_FILL = 0xFFC47FFF;
+    private static final int LIST_CELL = 18, LIST_GAP = 2, LIST_H = 38;
+    private static final int DRAW_BTN_W = 94, DRAW_BTN_H = 22, DRAW_BTN_GAP = 8;
+    private static final int DRAW_BTN_TEXT_BUDGET = 18;
+    private static final int COLOR_LIT_FRAME = NekoVendingTheme.GOLD;
+    private static final int COLOR_FINISH_FRAME = NekoVendingTheme.GOLD;
+    private static final int COLOR_PITY_BG = NekoVendingTheme.MUTED;
+    private static final int COLOR_PITY_FILL = NekoVendingTheme.GOLD;
 
     // ==================== 结果揭示状态（v1.7.8 客户端门控） ====================
 
@@ -200,21 +154,24 @@ public class LotteryGui {
      *
      * @param machine      触发 GUI 的猫猫售货机 V2 机器（出货槽定位，抽奖请求包携带其坐标）
      * @param editCallback 编辑模式回调（v1.7.0 目标 4）；null 表示不支持编辑模式
-     * @return 抽奖页根 Widget（170x312，绝对布局）
+     * @return 原生工作区页面；子区域随主面板改变尺寸，无独立缩放
      */
     public static IWidget createLotteryPage(IGregTechTileEntity machine, LotteryEditCallback editCallback) {
-        ParentWidget<?> page = new ParentWidget<>().size(PAGE_WIDTH, PAGE_HEIGHT);
+        return createLotteryPage(machine, editCallback, 280, 252);
+    }
 
-        page.child(createTitle(editCallback)); // 标题（编辑模式附加标识）
-        // v1.7.6：顶部卡池切换按钮行已移除——池切换由左侧 sub-page 标签列承担
-        // （NekoVMGuiV2.createSubTabColumn(MAIN_TAB_LOTTERY)，数据源 LotteryClientData.getPools()）
-        page.child(createWheelArea(editCallback)); // 轮盘区（环形槽位 + 物品 + 角标 + 点亮框 + 指针；编辑模式可点击）
-        page.child(createResultMessage()); // 单抽结果 / 错误提示（限时）
-        page.child(createMultiResultList()); // 10 连结果格子列表
-        page.child(createPityProgress()); // 保底进度（文本 + 进度条）
-        page.child(createDrawButtons(machine, editCallback)); // 抽 1 次 / 抽 10 次（编辑模式拦截）
-        // v1.7.9：「最近中奖」滚动摘要已随中奖记录功能一并移除
-
+    /** Width/height are initial native workspace bounds; relative children follow every parent resize. */
+    public static IWidget createLotteryPage(IGregTechTileEntity machine, LotteryEditCallback editCallback, int width,
+        int height) {
+        ParentWidget<?> page = new ParentWidget<>().size(width, height)
+            .sizeRel(1f)
+            .background(NekoVendingTheme.PANEL);
+        page.child(createTitle(editCallback));
+        page.child(createDrawButtons(machine, editCallback));
+        page.child(createWheelArea(editCallback));
+        page.child(createResultMessage());
+        page.child(createMultiResultList());
+        page.child(createPityProgress());
         return page;
     }
 
@@ -222,19 +179,22 @@ public class LotteryGui {
 
     /** 标题行：「猫猫扭蛋 - 池名」（金色，居中；编辑模式附加红色标识） */
     private static IWidget createTitle(LotteryEditCallback editCallback) {
-        return new TextWidget<>(IKey.dynamic(() -> {
-            String text = EnumChatFormatting.GOLD + "猫猫扭蛋";
+        return new NekoSingleLineTextWidget(IKey.dynamic(() -> {
+            String text = "猫猫扭蛋";
             // v1.7.6：池切换迁至左侧标签列，标题附加当前选中池名作指示
             LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
             if (pool != null && pool.name != null && !pool.name.isEmpty()) {
-                text += EnumChatFormatting.YELLOW + " - " + pool.name;
+                text += " · " + pool.name;
             }
             if (editCallback != null && editCallback.isEditMode()) {
                 text += EnumChatFormatting.RED + " [编辑]";
             }
             return text;
-        })).pos(0, 2)
-            .size(PAGE_WIDTH, 12)
+        })).left(8)
+            .right(8)
+            .top(8)
+            .height(12)
+            .color(NekoVendingTheme.INK)
             .textAlign(Alignment.Center)
             .shadow(false);
     }
@@ -315,7 +275,7 @@ public class LotteryGui {
      * <p>
      * 布局规格（N=条目数 → 列×行）：N=1 单格居中；N=2 2x2 对顶角；N=3/4 2x2；
      * N=5/6 3x2；N=7/8 4x2；N=9/10 4x3（N=10 满环，与原固定布局逐格重合零回归）。
-     * 整环在轮盘区（{@link #PAGE_WIDTH} × {@link #WHEEL_H}）水平/垂直居中。
+     * 整环在轮盘区（native wheel bounds × native wheel bounds）水平/垂直居中。
      * <p>
      * 绘制结构（v1.7.8 起整区自绘，替代原 per-slot widget 循环——槽位数随条目数
      * 动态变化，ModularUI2 运行期改 pos 不可靠）：
@@ -333,8 +293,11 @@ public class LotteryGui {
      * @param editCallback 编辑模式回调；null 时交互层不提供编辑点击
      */
     private static IWidget createWheelArea(LotteryEditCallback editCallback) {
-        ParentWidget<?> wheel = new ParentWidget<>().pos(0, WHEEL_Y)
-            .size(PAGE_WIDTH, WHEEL_H);
+        ParentWidget<?> wheel = new ParentWidget<>().left(8)
+            .right(8)
+            .top(60)
+            .bottom(88)
+            .background(NekoVendingTheme.INPUT);
 
         // 整区自绘层：槽底 + 物品 + 角标 + 点亮框 + 指针（同帧一次绘完）
         wheel.child(new IDrawable.DrawableWidget((context, dx, dy, w, h, theme) -> {
@@ -343,7 +306,7 @@ public class LotteryGui {
             if (n <= 0) return; // 空池不渲染
             // 1) 逐格：槽位底 → 物品图标 → 稀有度角标
             for (int i = 0; i < n; i++) {
-                int[] tl = slotTopLeft(i, n);
+                int[] tl = LotteryWheelLayout.slotTopLeft(i, n, w, h);
                 slotTexture(i).draw(context, tl[0], tl[1], SLOT_SIZE, SLOT_SIZE, theme);
                 slotItem(i).draw(context, tl[0] + 4, tl[1] + 4, 16, 16, theme);
                 cornerTexture(i).draw(context, tl[0] + 16, tl[1], 8, 8, theme);
@@ -353,25 +316,33 @@ public class LotteryGui {
             int lit = anim.getCurrentLitSlot();
             if (lit < 0 || lit >= n) return;
             if (anim.isFinished() && !anim.isFinishBlinkOn()) return;
-            int[] litTl = slotTopLeft(lit, n);
+            int[] litTl = LotteryWheelLayout.slotTopLeft(lit, n, w, h);
             int color = anim.isFinished() ? COLOR_FINISH_FRAME : COLOR_LIT_FRAME;
             drawFrame(litTl[0] - 1, litTl[1] - 1, SLOT_SIZE + 2, SLOT_SIZE + 2, color);
             // 3) 指针（固定朝下倒三角，底边贴点亮格上边中点再下移 POINTER_DROP_PX）
             drawPointer(context, theme, litTl);
-        }).pos(0, 0)
-            .size(PAGE_WIDTH, WHEEL_H));
+        }).sizeRel(1f));
+
+        wheel.child(
+            new TextWidget<>(IKey.str("暂无卡池 · 请先选择或配置奖池")).sizeRel(1f)
+                .color(NekoVendingTheme.MUTED)
+                .textAlign(Alignment.Center)
+                .shadow(false)
+                .setEnabledIf(w -> wheelSlotCount() == 0));
 
         // 整区隐形交互层：tooltip（悬停槽位）+ 编辑点击（编辑模式命中槽位）
         // 无背景/覆盖物 → 完全透明；空 tooltip 不渲染（RichTooltip.isEmpty 直接跳过）
-        ButtonWidget<?> hitLayer = new ButtonWidget<>().pos(0, 0)
-            .size(PAGE_WIDTH, WHEEL_H);
+        ButtonWidget<?> hitLayer = new ButtonWidget<>().sizeRel(1f)
+            .background(IDrawable.EMPTY)
+            .hoverBackground(IDrawable.EMPTY);
         hitLayer.tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             int index = hitSlot(hitLayer);
             if (index < 0) return; // 未命中任何槽位：空 tooltip 不显示
             slotTooltip(t, index);
             LotteryEntry entry = entryAt(index);
             if (entry != null && editCallback != null && editCallback.isEditMode()) {
-                t.addLine(IKey.str(EnumChatFormatting.YELLOW + "[编辑模式] 点击编辑此条目（" + entry.getId() + "）"));
+                t.addLine(IKey.str(EnumChatFormatting.GOLD + "[编辑模式] 点击编辑此条目（" + entry.getId() + "）"));
             }
         })
             .tooltipAutoUpdate(true);
@@ -397,35 +368,24 @@ public class LotteryGui {
         return Math.min(pool.entries.size(), MAX_SLOTS);
     }
 
-    /** 槽位沿矩形离散环格顺时针采样；10 槽保持原满环坐标。 */
-    private static int[] slotTopLeft(int index, int n) {
-        return LotteryWheelLayout.slotTopLeft(index, n, PAGE_WIDTH, WHEEL_H);
-    }
-
     /**
-     * 槽位命中测试：取当前鼠标所在的槽位序号（未命中/空池返回 -1）。
-     * <p>
-     * 用「绝对鼠标坐标 − 交互层区域绝对坐标」换算到轮盘区相对坐标（
-     * {@link GuiContext#getAbsMouseX()} 与 {@code Area.x/y} 同坐标系，
-     * 与框架自身 hover 判定同口径），再与各槽位矩形逐一比对。
-     *
-     * @param widget 整区交互层 widget（提供区域与上下文）
-     * @return 槽位序号；未命中返回 -1
+     * Both click and tooltip map slot rectangles through the widget's complete MUI transform.
+     * Area.x/y are layout coordinates, NOT screen pixels after the fullscreen canvas is scaled.
+     * LocatedWidget is deliberately evaluated on each event, never cached across resize.
      */
     private static int hitSlot(IWidget widget) {
-        int n = wheelSlotCount();
-        if (n <= 0 || widget == null || widget.getArea() == null) return -1;
+        if (widget == null || !widget.isValid()) return -1;
         GuiContext context = widget.getContext();
-        if (context == null) return -1;
-        int mx = context.getAbsMouseX() - widget.getArea().x;
-        int my = context.getAbsMouseY() - widget.getArea().y;
-        for (int i = 0; i < n; i++) {
-            int[] tl = slotTopLeft(i, n);
-            if (mx >= tl[0] && mx < tl[0] + SLOT_SIZE && my >= tl[1] && my < tl[1] + SLOT_SIZE) {
-                return i;
-            }
-        }
-        return -1;
+        TransformationMatrix matrix = LocatedWidget.of(widget)
+            .getTransformationMatrix();
+        return LotteryWheelLayout.hitSlot(
+            context.getAbsMouseX(),
+            context.getAbsMouseY(),
+            wheelSlotCount(),
+            widget.getArea().width,
+            widget.getArea().height,
+            matrix::transformX,
+            matrix::transformY);
     }
 
     /**
@@ -439,7 +399,7 @@ public class LotteryGui {
      * </ul>
      * 直接按坐标绘制，不动矩阵栈与 blend/texture 状态。
      *
-     * @param litTl 点亮格左上角坐标（{@link #slotTopLeft} 结果）
+     * @param litTl 点亮格左上角坐标（{@link LotteryWheelLayout#slotTopLeft} 结果）
      */
     private static void drawPointer(GuiContext context, WidgetTheme theme, int[] litTl) {
         int slotCx = litTl[0] + SLOT_SIZE / 2;
@@ -494,6 +454,7 @@ public class LotteryGui {
 
     /** 槽位 tooltip：条目物品名 + 稀有度 + 数量区间 + 权重 */
     private static void slotTooltip(com.cleanroommc.modularui.screen.RichTooltip t, int index) {
+        NekoVendingTheme.tooltip(t);
         LotteryEntry entry = entryAt(index);
         if (entry == null) return;
         if (entry.isEmptyPlaceholder()) {
@@ -519,7 +480,7 @@ public class LotteryGui {
             }
             if (totalWeight > 0) {
                 String pct = String.format(Locale.ROOT, "%.2f", 100.0 * entry.getWeight() / totalWeight);
-                t.addLine(IKey.str(EnumChatFormatting.DARK_GRAY + "概率：" + pct + "%"));
+                t.addLine(IKey.str(EnumChatFormatting.GRAY + "概率：" + pct + "%"));
             }
         }
     }
@@ -616,7 +577,7 @@ public class LotteryGui {
     private static IWidget createResultMessage() {
         return new TextWidget<>(IKey.dynamic(() -> {
             int code = LotteryClientData.getLastResultCode();
-            if (code == LotteryClientData.RESULT_NONE) return "";
+            if (code == LotteryClientData.RESULT_NONE) return "循环减速 · 停格揭晓";
             if (code == LotteryClientData.RESULT_SUCCESS) {
                 // 成功：未揭示期间显示「抽取中...」（动画期间不设窗口限制）；
                 // 揭示后窗口自揭示时刻起算
@@ -637,8 +598,11 @@ public class LotteryGui {
                 default:
                     return "";
             }
-        })).pos(0, RESULT_Y)
-            .size(PAGE_WIDTH, 12)
+        })).left(8)
+            .right(8)
+            .bottom(72)
+            .height(12)
+            .color(NekoVendingTheme.INK)
             .textAlign(Alignment.Center)
             .shadow(false);
     }
@@ -651,7 +615,7 @@ public class LotteryGui {
     private static String successSummary() {
         List<LotteryClientData.DrawResult> results = LotteryClientData.getLastResults();
         if (results.isEmpty()) return "";
-        if (!isResultRevealed()) return EnumChatFormatting.YELLOW + "抽取中...";
+        if (!isResultRevealed()) return EnumChatFormatting.GOLD + "抽取中...";
         if (results.size() > 1) {
             // 10 连：揭示后提示最高奖（列表区已展示全部）
             LotteryClientData.DrawResult best = bestResult(results);
@@ -666,7 +630,7 @@ public class LotteryGui {
         if (result == null) return "";
         LotteryRarity rarity = result.rarity();
         String name = resultEntryName(result);
-        String text = prefix + rarity.getColor() + name + EnumChatFormatting.WHITE + " ×" + result.amount;
+        String text = prefix + rarity.getColor() + name + EnumChatFormatting.RESET + " ×" + result.amount;
         if (result.isPity) {
             text += EnumChatFormatting.LIGHT_PURPLE + "（保底）";
         }
@@ -712,11 +676,11 @@ public class LotteryGui {
      * （动画旋转期间列表整体为空，修 10 连剧透），展示窗口自揭示时刻起算。
      */
     private static IWidget createMultiResultList() {
-        ParentWidget<?> list = new ParentWidget<>().pos(0, LIST_Y)
-            .size(PAGE_WIDTH, LIST_H);
+        ParentWidget<?> list = new ParentWidget<>().horizontalCenter()
+            .bottom(28)
+            .size(5 * (LIST_CELL + LIST_GAP) - LIST_GAP, LIST_H);
         int cols = 5;
-        int gridW = cols * (LIST_CELL + LIST_GAP) - LIST_GAP;
-        int startX = (PAGE_WIDTH - gridW) / 2;
+        int startX = 0;
         for (int i = 0; i < 10; i++) {
             final int index = i;
             int col = index % cols;
@@ -788,11 +752,12 @@ public class LotteryGui {
 
     /** 10 连列表 tooltip（物品名 + 稀有度 + 数量 + 保底标注） */
     private static void multiSlotTooltip(com.cleanroommc.modularui.screen.RichTooltip t, int index) {
+        NekoVendingTheme.tooltip(t);
         LotteryClientData.DrawResult result = multiResultAt(index);
         if (result == null) return;
         LotteryRarity rarity = result.rarity();
         t.addLine(
-            IKey.str(rarity.getColor() + resultEntryName(result) + EnumChatFormatting.WHITE + " ×" + result.amount));
+            IKey.str(rarity.getColor() + resultEntryName(result) + EnumChatFormatting.RESET + " ×" + result.amount));
         t.addLine(IKey.str(EnumChatFormatting.GRAY + "稀有度：" + rarity.getColor() + rarity.getDisplayName()));
         if (result.isPity) {
             t.addLine(IKey.str(EnumChatFormatting.LIGHT_PURPLE + "保底出货"));
@@ -822,8 +787,10 @@ public class LotteryGui {
      * 与主体色一致；ModularUI2 富文本管线则回 widget color）。
      */
     private static IWidget createPityProgress() {
-        ParentWidget<?> box = new ParentWidget<>().pos(0, PITY_Y)
-            .size(PAGE_WIDTH, 12);
+        ParentWidget<?> box = new ParentWidget<>().left(8)
+            .right(8)
+            .bottom(8)
+            .height(14);
 
         // 文本行
         box.child(new TextWidget<>(IKey.dynamic(() -> {
@@ -854,10 +821,11 @@ public class LotteryGui {
                 + guaranteed.getDisplayName()
                 + "+）";
         })).pos(0, 0)
-            .size(PAGE_WIDTH, 8)
+            .widthRel(1f)
+            .height(8)
             .textAlign(Alignment.Center)
             .scale(0.75f)
-            .color(0xFF3F3F3F)
+            .color(NekoVendingTheme.INK)
             .shadow(false));
 
         // 进度条（宽 120 居中）
@@ -870,7 +838,8 @@ public class LotteryGui {
             if (fillW > 0) {
                 GuiDraw.drawRect(x + 1, y + 1, fillW, h - 2, COLOR_PITY_FILL);
             }
-        }).pos((PAGE_WIDTH - 120) / 2, 9)
+        }).horizontalCenter()
+            .top(9)
             .size(120, 5));
         return box;
     }
@@ -891,31 +860,29 @@ public class LotteryGui {
      * @param editCallback 编辑模式回调；null 表示不支持编辑模式
      */
     private static IWidget createDrawButtons(IGregTechTileEntity machine, LotteryEditCallback editCallback) {
-        ParentWidget<?> row = new ParentWidget<>().pos(0, DRAW_BTN_Y)
-            .size(PAGE_WIDTH, DRAW_BTN_H);
-        int totalW = 2 * DRAW_BTN_W + DRAW_BTN_GAP;
-        int startX = (PAGE_WIDTH - totalW) / 2;
+        ParentWidget<?> row = new ParentWidget<>().horizontalCenter()
+            .top(28)
+            .size(2 * DRAW_BTN_W + DRAW_BTN_GAP, DRAW_BTN_H);
+        int startX = 0;
 
-        row.child(createDrawButton(machine, startX, 1, NekoGuiTextures.LOTTERY_BTN_DRAW, "抽1次", editCallback));
-        row.child(
-            createDrawButton(
-                machine,
-                startX + DRAW_BTN_W + DRAW_BTN_GAP,
-                10,
-                NekoGuiTextures.LOTTERY_BTN_DRAW10,
-                "抽10次",
-                editCallback));
+        row.child(createDrawButton(machine, startX, 1, "单抽", editCallback));
+        row.child(createDrawButton(machine, startX + DRAW_BTN_W + DRAW_BTN_GAP, 10, "十连", editCallback));
         return row;
     }
 
     /** 单个抽奖按钮（count=1 或 10；编辑模式拦截点击） */
-    private static IWidget createDrawButton(IGregTechTileEntity machine, int x, int count, UITexture texture,
-        String label, LotteryEditCallback editCallback) {
+    private static IWidget createDrawButton(IGregTechTileEntity machine, int x, int count, String label,
+        LotteryEditCallback editCallback) {
         return new ButtonWidget<>().pos(x, 0)
             .size(DRAW_BTN_W, DRAW_BTN_H)
-            .background(texture)
-            .overlay(IKey.dynamic(() -> drawButtonText(label, count)))
+            .background(NekoVendingTheme.face(() -> false, () -> drawEnabled(count, editCallback), false))
+            .hoverBackground(NekoVendingTheme.face(() -> false, () -> drawEnabled(count, editCallback), true))
+            .overlay(
+                IKey.dynamic(() -> drawButtonText(label, count))
+                    .color(NekoVendingTheme.INK)
+                    .shadow(false))
             .tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
                 // 编辑模式：仅提示，不展示价格/余额
                 if (editCallback != null && editCallback.isEditMode()) {
                     t.addLine(IKey.str(EnumChatFormatting.RED + "[编辑模式] 抽奖交互已禁用"));
@@ -932,7 +899,7 @@ public class LotteryGui {
                     return;
                 }
                 // v1.7.6 costItems 口径：逐条列出消耗（货币条目带团队余额）
-                t.addLine(IKey.str(EnumChatFormatting.YELLOW + label + " 消耗："));
+                t.addLine(IKey.str(EnumChatFormatting.GOLD + label + " 消耗："));
                 boolean anyCost = false;
                 for (com.miaokatze.gtit.trade.v2.NekoBigItemStack cost : pool.costItems) {
                     if (cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0) continue;
@@ -951,7 +918,7 @@ public class LotteryGui {
                                     + " "
                                     + cost.getBaseStack()
                                         .getDisplayName()
-                                    + EnumChatFormatting.DARK_GRAY
+                                    + EnumChatFormatting.GRAY
                                     + "（自输入槽）"));
                     }
                 }
@@ -1002,6 +969,15 @@ public class LotteryGui {
             });
     }
 
+    private static boolean drawEnabled(int count, LotteryEditCallback callback) {
+        LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
+        return (callback == null || !callback.isEditMode()) && pool != null
+            && hasDrawablePrize(pool)
+            && currencyAffordable(pool, count)
+            && !LotteryAnimationController.getInstance()
+                .isSpinning();
+    }
+
     private static int requestMachineDimension(IGregTechTileEntity machine) {
         return com.miaokatze.gtit.common.items.terminal.RemoteVendingDisplayTile.dimensionOf(machine);
     }
@@ -1024,7 +1000,7 @@ public class LotteryGui {
         LotteryClientData.PoolSummary pool = LotteryClientData.getSelectedPool();
         if (pool == null) return EnumChatFormatting.DARK_GRAY + label;
         if (!hasDrawablePrize(pool)) return EnumChatFormatting.DARK_GRAY + "未配置奖品";
-        EnumChatFormatting color = currencyAffordable(pool, count) ? EnumChatFormatting.WHITE : EnumChatFormatting.RED;
+        String color = currencyAffordable(pool, count) ? "" : EnumChatFormatting.RED.toString();
         return color + truncateToWidth(label + " " + costSummary(pool, count), DRAW_BTN_TEXT_BUDGET);
     }
 

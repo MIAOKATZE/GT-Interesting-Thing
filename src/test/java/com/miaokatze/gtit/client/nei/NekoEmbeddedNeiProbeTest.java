@@ -150,6 +150,8 @@ public final class NekoEmbeddedNeiProbeTest {
 
     private static void noSpawnBytecode() throws Exception {
         final boolean[] nativeSelection = { false };
+        final boolean[] nativeHitTest = { false };
+        final boolean[] safeTarget = { false };
         try (InputStream input = NekoEmbeddedNeiSession.class.getResourceAsStream("NekoEmbeddedNeiSession.class")) {
             check(input != null, "adapter bytecode present");
             new ClassReader(input).accept(new ClassVisitor(Opcodes.ASM5) {
@@ -165,6 +167,10 @@ public final class NekoEmbeddedNeiProbeTest {
                                 !method.equals("cheatItem") && !method.equals("windowClick")
                                     && !owner.contains("NEIClientPacketHandler"),
                                 "no give/container packet path");
+                            if (owner.equals("com/cleanroommc/modularui/screen/ModularPanel")
+                                && method.equals("getWidgetsAt")) nativeHitTest[0] = true;
+                            if (owner.equals("com/miaokatze/gtit/gui/vm/edit/NekoGhostTarget")
+                                && method.equals("acceptNeiGhost")) safeTarget[0] = true;
                             if (owner.equals("codechicken/nei/ItemPanel")
                                 || owner.equals("codechicken/nei/PanelWidget")) {
                                 check(
@@ -179,6 +185,8 @@ public final class NekoEmbeddedNeiProbeTest {
             }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
         }
         check(nativeSelection[0], "selection comes from actual NEI panel quantity preparation");
+        check(nativeHitTest[0], "drops re-run actual MUI viewport-aware event-time hit testing");
+        check(safeTarget[0], "only explicit safe draft targets receive copied catalog items");
     }
 
     private static void check(boolean condition, String message) {

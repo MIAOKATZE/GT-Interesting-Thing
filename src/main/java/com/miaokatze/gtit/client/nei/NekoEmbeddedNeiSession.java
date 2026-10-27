@@ -24,10 +24,14 @@ import org.lwjgl.input.Mouse;
 import com.cleanroommc.modularui.api.event.KeyboardInputEvent;
 import com.cleanroommc.modularui.api.event.MouseInputEvent;
 import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.api.widget.Interactable;
+import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.ModularScreen;
+import com.cleanroommc.modularui.screen.viewport.GuiViewportStack;
 import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
-import com.cleanroommc.modularui.screen.viewport.TransformationMatrix;
-import com.miaokatze.gtit.gui.vm.edit.TradeChoiceSlot;
+import com.cleanroommc.modularui.utils.HoveredWidgetList;
+import com.cleanroommc.modularui.utils.ObjectList;
+import com.miaokatze.gtit.gui.vm.edit.NekoGhostTarget;
 
 import codechicken.nei.ItemPanel;
 import codechicken.nei.ItemPanels;
@@ -190,7 +194,12 @@ public final class NekoEmbeddedNeiSession {
             .getTopMostPanel() != screen.getMainPanel() || screen.getContext()
                 .hasDraggable())
             return false;
-        geometry = NekoEmbeddedNeiGeometry.fit(boundsSupplier.get(), gui.width, gui.height, ItemsGrid.SLOT_SIZE);
+        NekoEmbeddedNeiGeometry next = NekoEmbeddedNeiGeometry
+            .fit(boundsSupplier.get(), gui.width, gui.height, ItemsGrid.SLOT_SIZE);
+        boolean moved = next != null && (geometry == null || !geometry.bounds.equals(next.bounds));
+        geometry = next;
+        // A resize/input event can precede the next rendered layout. Never query old native cells at new bounds.
+        if (owner == this && nativeLayoutApplied && moved) layout(gui);
         return geometry != null;
     }
 
@@ -355,15 +364,19 @@ public final class NekoEmbeddedNeiSession {
             if (capturedButton != button) return false;
             capturedButton = -1;
             ItemPanels.itemPanel.mouseDownSlot = -1;
-            if (!inside) dropOnTradeSlot(x, y, button);
+            if (!inside) {
+                dropOnDraftSlot(x, y, button);
+                clearOwnedGhost();
+            }
             return true;
         }
         LayoutManager.searchField.onGuiClick(x, y);
         searchFocused = LayoutManager.searchField.focused();
         if (!inside) {
             if (ownedGhost == null || ItemPanels.itemPanel.draggedStack != ownedGhost) return false;
-            // Owned catalog ghosts can reach only the 32 trade draft slots, never generic NEI drop/cheat handlers.
-            dropOnTradeSlot(x, y, button);
+            // Owned catalog ghosts can reach only the explicitly allow-listed draft slots, never generic NEI drop/cheat
+            // handlers.
+            dropOnDraftSlot(x, y, button);
             clearOwnedGhost();
             return true;
         }
@@ -407,28 +420,35 @@ public final class NekoEmbeddedNeiSession {
         localPage = Math.max(0, ItemPanels.itemPanel.getPage() - 1);
     }
 
-    private void dropOnTradeSlot(int mouseX, int mouseY, int button) {
+    private void dropOnDraftSlot(int mouseX, int mouseY, int button) {
         if (ownedGhost == null || ItemPanels.itemPanel.draggedStack != ownedGhost) return;
-        // Do not trust the previous render frame's hover list after a mouse move/resize.
-        List<IWidget> pending = new ArrayList<>();
-        pending.add(screen.getMainPanel());
-        while (!pending.isEmpty()) {
-            IWidget target = pending.remove(pending.size() - 1);
-            if (!target.isValid() || !target.areAncestorsEnabled()) continue;
-            if (target instanceof TradeChoiceSlot) {
-                TransformationMatrix matrix = LocatedWidget.of(target)
-                    .getTransformationMatrix();
-                int x0 = matrix.transformX(0, 0), y0 = matrix.transformY(0, 0);
-                int x1 = matrix.transformX(target.getArea().width, target.getArea().height);
-                int y1 = matrix.transformY(target.getArea().width, target.getArea().height);
-                if (mouseX >= Math.min(x0, x1) && mouseX < Math.max(x0, x1)
-                    && mouseY >= Math.min(y0, y1)
-                    && mouseY < Math.max(y0, y1)
-                    && ((TradeChoiceSlot) target).handleDragAndDrop(ownedGhost, button)) {
+        // Re-run the exact public MUI hit-test path at this event's native coordinates. This respects
+        // viewport clipping, scroll offsets, disabled pages and front-to-back sibling order, without
+        // reading the previous frame's hover list (or the broken .92 getAllHovered iterator).
+        ModularPanel panel = screen.getMainPanel();
+        ObjectList<LocatedWidget> hit = ObjectList.create();
+        HoveredWidgetList widgets = new HoveredWidgetList(hit);
+        GuiViewportStack stack = new GuiViewportStack();
+        try {
+            stack.pushViewport(null, screen.getScreenArea());
+            stack.pushViewport(panel, panel.getArea());
+            panel.transform(stack);
+            panel.getSelfAt(stack, widgets, mouseX, mouseY);
+            panel.transformChildren(stack);
+            panel.getWidgetsAt(stack, widgets, mouseX, mouseY);
+            for (LocatedWidget located : hit) {
+                IWidget target = located.getElement();
+                if (!target.isValid() || !target.areAncestorsEnabled()) continue;
+                if (target instanceof NekoGhostTarget) {
+                    ((NekoGhostTarget) target).acceptNeiGhost(ownedGhost.copy(), button);
+                    // Like MUI's own ghost route, rejection consumes this attempt; never try a covered slot.
                     clearOwnedGhost();
                     return;
                 }
-            } else pending.addAll(target.getChildren());
+                if (target instanceof Interactable || !target.canClickThrough()) return;
+            }
+        } finally {
+            stack.reset();
         }
     }
 
