@@ -36,9 +36,13 @@ import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
-import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
+import com.miaokatze.gtit.client.gui.NekoSingleLineTextWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
+import com.miaokatze.gtit.client.gui.NekoWorkbenchPanel;
+import com.miaokatze.gtit.client.gui.NekoWorkbenchStyle;
 import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
+import com.miaokatze.gtit.gui.vm.edit.NekoGhostSlot;
 import com.miaokatze.gtit.trade.preset.TradePresetManager;
 import com.miaokatze.gtit.trade.preset.TradePresetManager.Icon;
 import com.miaokatze.gtit.trade.preset.TradePresetManager.PresetSummary;
@@ -127,61 +131,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
         session.statusKindValue = new StringSyncValue(() -> session.statusKind);
         sync.syncValue("result", session.statusValue);
         sync.syncValue("result_kind", session.statusKindValue);
-        ParentWidget<?> content = new ParentWidget<>().size(480, 330);
-        session.label(
-            content,
-            IKey.lang("gtit.preset.title")
-                .style(EnumChatFormatting.BOLD),
-            12,
-            9,
-            242,
-            18,
-            1.1f)
-            .color(UtilityUiStyle.MANAGER_ACCENT)
-            .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.preset.subtitle")));
-        content.child(
-            session.button("choose", "gtit.preset.choose", () -> session.navigate("", false))
-                .selected(() -> !data.snapshot.editorOpen)
-                .pos(12, 35)
-                .size(105, 22));
-        content.child(
-            session.button("create", "gtit.preset.create", () -> session.navigate("", true))
-                .selected(() -> data.snapshot.editorOpen)
-                .pos(122, 35)
-                .size(105, 22));
-        session.label(
-            content,
-            IKey.dynamic(
-                () -> session.dirty() ? IKey.lang("gtit.preset.unsaved")
-                    .get() : ""),
-            242,
-            39,
-            214,
-            14,
-            0.9f)
-            .color(UtilityUiStyle.MANAGER_WARNING);
-        content.child(
-            new PagedWidget<>().pos(12, 64)
-                .size(456, 228)
-                .addPage(session.chooser())
-                .addPage(session.editor())
-                .initialPage(data.snapshot.editorOpen ? 1 : 0));
-        content.child(UtilityUiStyle.managerSection(8, 299, 464, 24));
-        session.label(content, IKey.dynamic(session::statusLine), 15, 304, 367, 13, 0.9f)
-            .color(session::statusColor);
-        content.child(
-            new UtilityControls.ActionButton().manager()
-                .pos(394, 301)
-                .size(74, 20)
-                .overlay(
-                    IKey.lang("gtit.preset.ui.details")
-                        .scale(0.9f))
-                .onMousePressed(mouse -> {
-                    if (mouse != 0) return true;
-                    session.showDetails();
-                    return true;
-                }));
-        ModularPanel panel = new ModularPanel("gtit.trade.presets") {
+        NekoWorkbenchPanel panel = new NekoWorkbenchPanel("gtit.trade.presets") {
 
             private boolean approved;
 
@@ -196,7 +146,62 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             }
         };
         session.panel = panel;
-        return UtilityUiStyle.managerScrollable(panel, 480, 330, content);
+        panel.child(panel.place(NekoWorkbenchStyle.section(0, 0, 768, 34), l -> l.rect(0, 0, l.width, 34)));
+        panel.child(
+            IKey.lang("gtit.preset.title")
+                .style(EnumChatFormatting.BOLD)
+                .color(NekoVendingTheme.INK)
+                .asWidget()
+                .pos(16, 10)
+                .size(250, 18));
+        panel.child(
+            panel.place(
+                IKey.str("NEKO / PROFILE WORKBENCH · 独立预设中心")
+                    .color(NekoVendingTheme.MUTED)
+                    .asWidget(),
+                l -> l.rect(l.width - 330, 12, 280, 13)));
+        panel.child(
+            panel.place(NekoVendingTheme.button(() -> "×", panel::closeIfOpen), l -> l.rect(l.width - 38, 7, 24, 22)));
+        panel.child(
+            session.button("choose", "gtit.preset.choose", () -> session.navigate("", false))
+                .selected(() -> !data.snapshot.editorOpen)
+                .pos(12, 46)
+                .size(138, 24));
+        panel.child(
+            session.button("create", "gtit.preset.create", () -> session.navigate("", true))
+                .selected(() -> data.snapshot.editorOpen)
+                .pos(158, 46)
+                .size(138, 24));
+        panel.child(
+            IKey.dynamic(
+                () -> session.dirty() ? IKey.lang("gtit.preset.unsaved")
+                    .get() : "选择仅预览 · 明确应用后生效")
+                .color(NekoVendingTheme.MUTED)
+                .asWidget()
+                .pos(310, 52)
+                .size(320, 14));
+        panel.child(
+            new PagedWidget<>().sizeRel(1f)
+                .addPage(panel.place(session.chooser(), l -> l.rect(12, 80, l.width - 24, l.height - 116)))
+                .addPage(panel.place(session.editor(), l -> l.editor()))
+                .initialPage(data.snapshot.editorOpen ? 1 : 0));
+        panel.child(panel.place(NekoWorkbenchStyle.section(0, 0, 1, 1), l -> l.rect(0, l.height - 28, l.width, 28)));
+        panel.child(
+            panel.place(
+                new NekoSingleLineTextWidget(IKey.dynamic(session::statusLine)).color(session::statusColor),
+                l -> l.rect(14, l.height - 20, l.width - 130, 14)));
+        panel.child(
+            panel.place(
+                new UtilityControls.ActionButton().kraft()
+                    .overlay(IKey.lang("gtit.preset.ui.details"))
+                    .onMousePressed(mouse -> {
+                        if (mouse == 0) session.showDetails();
+                        return true;
+                    }),
+                l -> l.rect(l.width - 104, l.height - 24, 90, 20)));
+        panel.catalog(() -> data.snapshot.editorOpen);
+        NekoWorkbenchStyle.style(panel);
+        return panel;
     }
 
     private static final class Session {
@@ -219,7 +224,8 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
         IPanelHandler detailsDialog;
         volatile boolean replaceTabs;
         boolean replace;
-        ModularPanel panel;
+        NekoWorkbenchPanel panel;
+        String previewId = "";
         String baseline;
         ItemStack baselineIcon;
         Runnable pendingLeave;
@@ -291,8 +297,9 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
 
         TextWidget<?> label(ParentWidget<?> parent, IKey text, int x, int y, int width, int height, float scale) {
             // StyledText defaults to Center; apply alignment on the actual widget explicitly.
-            TextWidget<?> widget = new TextWidget<>(text).alignment(Alignment.CenterLeft)
-                .color(UtilityUiStyle.MANAGER_TEXT)
+            TextWidget<?> widget = height <= 26 ? new NekoSingleLineTextWidget(text) : new TextWidget<>(text);
+            widget.alignment(Alignment.CenterLeft)
+                .color(NekoVendingTheme.INK)
                 .shadow(false)
                 .pos(x, y)
                 .size(width, height)
@@ -312,7 +319,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 case "error" -> UtilityUiStyle.MANAGER_ERROR;
                 case "notices" -> UtilityUiStyle.MANAGER_WARNING;
                 case "updated" -> UtilityUiStyle.MANAGER_SUCCESS;
-                default -> UtilityUiStyle.MANAGER_MUTED;
+                default -> NekoVendingTheme.MUTED;
             };
         }
 
@@ -334,12 +341,12 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 ModularPanel dialog = new Dialog<>("gtit_preset_details", null).setDisablePanelsBelow(true)
                     .setCloseOnOutOfBoundsClick(false)
                     .size(358, 224)
-                    .background(UtilityUiStyle.MANAGER_PANEL);
+                    .background(NekoVendingTheme.PANEL);
                 dialog.child(
                     new TextWidget<>(
                         IKey.lang("gtit.preset.ui.details_title")
                             .style(EnumChatFormatting.BOLD)).alignment(Alignment.CenterLeft)
-                                .color(UtilityUiStyle.MANAGER_ACCENT)
+                                .color(NekoVendingTheme.GOLD)
                                 .shadow(false)
                                 .pos(12, 10)
                                 .size(330, 16));
@@ -348,13 +355,13 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         .size(334, 146)
                         .child(
                             new TextWidget<>(IKey.dynamic(this::detailsText)).alignment(Alignment.TopLeft)
-                                .color(UtilityUiStyle.MANAGER_TEXT)
+                                .color(NekoVendingTheme.INK)
                                 .shadow(false)
                                 .width(322)
                                 .padding(2)
                                 .scale(0.9f)));
                 dialog.child(
-                    new UtilityControls.ActionButton().manager()
+                    new UtilityControls.ActionButton().kraft()
                         .pos(236, 190)
                         .size(110, 22)
                         .overlay(
@@ -365,7 +372,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                             dialog.closeIfOpen();
                             return true;
                         }));
-                UtilityUiStyle.styleManagerContent(dialog);
+                NekoWorkbenchStyle.style(dialog);
                 return dialog;
             }, true);
             detailsDialog.openPanel();
@@ -395,7 +402,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 ModularPanel dialog = new Dialog<>("gtit_preset_unsaved", null).setDisablePanelsBelow(true)
                     .setCloseOnOutOfBoundsClick(false)
                     .size(264, 126)
-                    .background(UtilityUiStyle.MANAGER_PANEL);
+                    .background(NekoVendingTheme.PANEL);
                 dialog.child(
                     IKey.lang("gtit.preset.leave_title")
                         .asWidget()
@@ -408,7 +415,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         .size(240, 36)
                         .scale(0.8f));
                 dialog.child(
-                    new UtilityControls.ActionButton().manager()
+                    new UtilityControls.ActionButton().kraft()
                         .pos(12, 91)
                         .size(116, 21)
                         .overlay(IKey.lang("gtit.preset.stay"))
@@ -419,7 +426,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                             return true;
                         }));
                 dialog.child(
-                    new UtilityControls.ActionButton().manager()
+                    new UtilityControls.ActionButton().kraft()
                         .pos(136, 91)
                         .size(116, 21)
                         .overlay(IKey.lang("gtit.preset.discard"))
@@ -431,7 +438,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                             if (next != null) next.run();
                             return true;
                         }));
-                UtilityUiStyle.styleManagerContent(dialog);
+                NekoWorkbenchStyle.style(dialog);
                 return dialog;
             }, true);
             leaveDialog.openPanel();
@@ -443,7 +450,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 dispatch(action);
             });
             sync.syncValue("action_" + key, handler);
-            return new UtilityControls.ActionButton().manager()
+            return new UtilityControls.ActionButton().kraft()
                 .overlay(
                     IKey.lang(label)
                         .scale(0.9f))
@@ -479,7 +486,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 ModularPanel dialog = new Dialog<>("gtit_default_trade_update", null).setDisablePanelsBelow(true)
                     .setCloseOnOutOfBoundsClick(false)
                     .size(264, 126)
-                    .background(UtilityUiStyle.MANAGER_PANEL);
+                    .background(NekoVendingTheme.PANEL);
                 dialog.child(
                     IKey.lang("gtit.trade.update.title")
                         .style(EnumChatFormatting.BOLD)
@@ -495,7 +502,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         .size(240, 30)
                         .scale(0.9f));
                 dialog.child(
-                    new UtilityControls.ActionButton().manager()
+                    new UtilityControls.ActionButton().kraft()
                         .pos(12, 91)
                         .size(116, 22)
                         .overlay(
@@ -508,7 +515,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                             return true;
                         }));
                 dialog.child(
-                    new UtilityControls.ActionButton().manager()
+                    new UtilityControls.ActionButton().kraft()
                         .selected(() -> true)
                         .pos(136, 91)
                         .size(116, 22)
@@ -523,27 +530,63 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                             if (confirmed != null) confirmed.run();
                             return true;
                         }));
-                UtilityUiStyle.styleManagerContent(dialog);
+                NekoWorkbenchStyle.style(dialog);
                 return dialog;
             }, true);
             defaultUpdateDialog.openPanel();
         }
 
+        PresetSummary preview() {
+            for (PresetSummary preset : data.snapshot.presets) if (preset.id.equals(previewId)) return preset;
+            return data.snapshot.presets.isEmpty() ? null : data.snapshot.presets.get(0);
+        }
+
+        String previewText() {
+            PresetSummary p = preview();
+            if (p == null) return IKey.lang("gtit.preset.ui.none")
+                .get();
+            return p.name + "\n\n"
+                + p.description
+                + "\n\n"
+                + "PRESET / "
+                + p.id
+                + "\n来源: "
+                + p.sourceKind
+                + (p.overridden ? " · 本地覆盖" : "")
+                + "\n\n"
+                + IKey.lang("gtit.preset.contents", p.tabCount, p.tradeCount)
+                    .get()
+                + "\n\n"
+                + IKey.lang("gtit.preset.conflicts", String.join(", ", p.mutuallyExclusiveIds))
+                    .get()
+                + "\n\n独立预设贸易页；不改写默认 / 自定义贸易。\n领取记录、库存和已结算记录保留。";
+        }
+
         IWidget chooser() {
             ParentWidget<?> page = new ParentWidget<>().sizeRel(1f);
-            page.child(UtilityUiStyle.managerSection(0, 0, 290, 198));
-            page.child(UtilityUiStyle.managerSection(296, 0, 160, 198));
+            ParentWidget<?> library = NekoWorkbenchStyle.section(0, 0, 280, 300)
+                .heightRel(1f);
+            ParentWidget<?> detail = NekoWorkbenchStyle.section(288, 0, 250, 300)
+                .widthRelOffset(1f, -484)
+                .heightRel(1f);
+            ParentWidget<?> impact = NekoWorkbenchStyle.section(0, 0, 188, 300)
+                .right(0)
+                .heightRel(1f);
+            page.child(library);
+            page.child(detail);
+            page.child(impact);
             label(
-                page,
+                library,
                 IKey.lang("gtit.preset.ui.catalog", data.snapshot.presets.size())
                     .style(EnumChatFormatting.BOLD),
-                8,
-                5,
-                274,
-                14,
+                10,
+                9,
+                260,
+                16,
                 1f);
-            ListWidget<IWidget, ?> list = new ListWidget<>().pos(6, 24)
-                .size(278, 168);
+            ListWidget<IWidget, ?> list = new ListWidget<>().pos(6, 32)
+                .width(268)
+                .heightRelOffset(1f, -65);
             int ordinal = 0;
             for (PresetSummary preset : data.snapshot.presets) {
                 final boolean fixed = "gtit-base".equals(preset.id);
@@ -554,188 +597,151 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                         else selected.remove(preset.id);
                     })).allowC2S();
                 sync.syncValue("preset_" + preset.id, checked);
-                ParentWidget<?> row = new ParentWidget<>().size(270, 52)
-                    .marginBottom(4)
-                    .background(
-                        (context, x, y, width, height,
-                            theme) -> (selected.contains(preset.id) ? UtilityUiStyle.MANAGER_ROW_SELECTED
-                                : UtilityUiStyle.MANAGER_ROW).draw(context, x, y, width, height, theme));
-                if (fixed) {
-                    label(row, IKey.str("x"), 8, 18, 16, 16, 1f).alignment(Alignment.Center)
-                        .background(UtilityUiStyle.MANAGER_BUTTON_PRESSED)
-                        .color(UtilityUiStyle.MANAGER_BUTTON_TEXT)
-                        .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.trade.foundation")));
-                } else {
-                    row.child(
-                        new UtilityControls.Toggle().manager()
-                            .value(checked)
-                            .pos(8, 18)
-                            .size(16)
-                            .overlay(false, IKey.str(""))
-                            .overlay(true, IKey.str("x")));
-                }
+                ParentWidget<?> row = new ParentWidget<>().size(260, 76)
+                    .marginBottom(5)
+                    .background(NekoVendingTheme.row(() -> preset == preview()));
+                row.child(
+                    new UtilityControls.ActionButton().kraft()
+                        .pos(30, 4)
+                        .size(222, 42)
+                        .background(com.cleanroommc.modularui.api.drawable.IDrawable.EMPTY)
+                        .overlay(IKey.str(""))
+                        .onMousePressed(mouse -> {
+                            if (mouse == 0) previewId = preset.id;
+                            return true;
+                        }));
+                if (fixed) label(row, IKey.str("✓"), 7, 17, 16, 16, 1f)
+                    .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.trade.foundation")));
+                else row.child(
+                    new UtilityControls.Toggle().kraft()
+                        .value(checked)
+                        .pos(7, 17)
+                        .size(16)
+                        .overlay(false, IKey.str(""))
+                        .overlay(true, IKey.str("✓")));
                 ItemStack stack = preset.icon == null ? null : preset.icon.toStack();
                 if (stack != null) row.child(
                     new UtilityControls.DecorativeItem().item(stack)
-                        .pos(30, 14)
-                        .size(24));
+                        .pos(31, 12)
+                        .size(22)
+                        .background(NekoVendingTheme.SLOT));
                 label(
                     row,
-                    IKey.str(compact(preset.name, 15))
+                    IKey.str(preset.name)
                         .style(EnumChatFormatting.BOLD),
-                    62,
-                    5,
-                    146,
-                    14,
+                    59,
+                    9,
+                    188,
+                    15,
                     1f);
                 label(
                     row,
-                    preset.empty ? IKey.lang("gtit.preset.ui.empty")
-                        : IKey.lang("gtit.preset.contents", preset.tabCount, preset.tradeCount),
-                    62,
-                    22,
-                    146,
+                    IKey.lang("gtit.preset.contents", preset.tabCount, preset.tradeCount),
+                    59,
+                    29,
+                    188,
                     12,
-                    0.9f);
-                label(
-                    row,
-                    IKey.lang(
-                        fixed ? "gtit.trade.foundation"
-                            : preset.selected ? "gtit.preset.applied"
-                                : preset.builtin ? "gtit.preset.builtin" : "gtit.preset.custom"),
-                    62,
-                    37,
-                    146,
-                    11,
-                    0.85f).color(preset.selected ? UtilityUiStyle.MANAGER_SUCCESS : UtilityUiStyle.MANAGER_MUTED);
-                row.tooltipBuilder(t -> {
-                    t.addLine(
-                        IKey.str(preset.name)
-                            .style(EnumChatFormatting.BOLD));
-                    t.addLine(preset.description);
-                    t.addLine(IKey.lang("gtit.preset.stable_id", preset.id));
-                    t.addLine(IKey.lang("gtit.preset.conflicts", String.join(", ", preset.mutuallyExclusiveIds)));
-                });
+                    .85f);
+                label(row, IKey.str(preset.id), 8, 56, 173, 12, .75f).color(NekoVendingTheme.MUTED);
                 row.child(
                     button(
                         "edit_" + ordinal++,
                         preset.builtin ? "gtit.preset.copy" : "gtit.preset.edit",
-                        () -> navigate(preset.id, true)).pos(216, 15)
-                            .size(46, 22));
+                        () -> navigate(preset.id, true)).pos(186, 51)
+                            .size(66, 20));
+                row.tooltipBuilder(t -> {
+                    t.addLine(preset.name);
+                    t.addLine(preset.description);
+                    t.addLine("PRESET / " + preset.id);
+                });
                 list.child(row);
             }
-            page.child(list);
+            library.child(list);
             label(
-                page,
-                IKey.lang("gtit.preset.ui.applied")
-                    .style(EnumChatFormatting.BOLD),
-                304,
-                5,
-                144,
-                14,
-                1f);
-            label(
-                page,
-                IKey.lang(
-                    "gtit.preset.ui.applied_count",
-                    data.snapshot.appliedIds.size(),
-                    data.snapshot.appliedTradeCount)
-                    .style(EnumChatFormatting.BOLD),
-                304,
-                24,
-                144,
-                14,
-                0.95f).color(UtilityUiStyle.MANAGER_SUCCESS);
-            ListWidget<IWidget, ?> applied = new ListWidget<>().pos(304, 44)
-                .size(144, 44);
-            for (String id : data.snapshot.appliedIds) applied.child(
-                new TextWidget<>(IKey.str(compact(presetName(id), 15))).alignment(Alignment.CenterLeft)
-                    .color(UtilityUiStyle.MANAGER_TEXT)
-                    .shadow(false)
-                    .size(136, 15)
-                    .scale(0.9f));
-            if (data.snapshot.appliedIds.isEmpty()) applied.child(
-                new TextWidget<>(IKey.lang("gtit.preset.ui.none")).alignment(Alignment.CenterLeft)
-                    .color(UtilityUiStyle.MANAGER_MUTED)
-                    .shadow(false)
-                    .size(136, 15)
-                    .scale(0.9f));
-            page.child(applied);
-            label(
-                page,
-                IKey.lang("gtit.preset.pending")
-                    .style(EnumChatFormatting.BOLD),
-                304,
-                101,
-                144,
-                14,
-                1f);
-            ListWidget<IWidget, ?> pending = new ListWidget<>().pos(304, 121)
-                .size(144, 49);
-            for (PresetSummary preset : data.snapshot.presets) {
-                pending
-                    .child(
-                        new TextWidget<>(
-                            IKey.dynamic(
-                                () -> selected.contains(preset.id) && preset.defaultUpdateAvailable
-                                    ? IKey.lang("gtit.trade.update.pending", compact(preset.name, 11))
-                                        .get()
-                                    : (selected.contains(preset.id) ? "+ " : "- ") + compact(preset.name, 14)))
-                                        .alignment(Alignment.CenterLeft)
-                                        .color(
-                                            () -> selected.contains(preset.id) && !preset.defaultUpdateAvailable
-                                                ? UtilityUiStyle.MANAGER_SUCCESS
-                                                : UtilityUiStyle.MANAGER_WARNING)
-                                        .shadow(false)
-                                        .size(136, 15)
-                                        .scale(0.9f)
-                                        .setEnabledIf(
-                                            w -> selected.contains(preset.id) != preset.selected
-                                                || selected.contains(preset.id) && preset.defaultUpdateAvailable));
-            }
-            pending.child(
-                new TextWidget<>(IKey.lang("gtit.preset.ui.no_changes")).alignment(Alignment.CenterLeft)
-                    .color(UtilityUiStyle.MANAGER_MUTED)
-                    .shadow(false)
-                    .size(136, 15)
-                    .scale(0.9f)
-                    .setEnabledIf(
-                        w -> selected.equals(new java.util.HashSet<>(data.snapshot.appliedIds))
-                            && data.snapshot.presets.stream()
-                                .noneMatch(preset -> selected.contains(preset.id) && preset.defaultUpdateAvailable)));
-            page.child(pending);
-            label(page, IKey.lang("gtit.preset.ui.apply_hint"), 304, 177, 144, 13, 0.85f)
-                .color(UtilityUiStyle.MANAGER_MUTED);
-            label(
-                page,
+                library,
                 IKey.dynamic(
                     () -> IKey.lang("gtit.preset.ui.checked", selected.size())
                         .get()),
-                8,
-                209,
-                280,
-                15,
-                0.9f).color(UtilityUiStyle.MANAGER_MUTED);
-            page.child(
-                button("reload", "gtit.preset.reload", () -> finish(TradePresetManager.reload(player()), true))
-                    .pos(296, 205)
-                    .size(76, 22)
+                10,
+                0,
+                260,
+                16,
+                .85f).bottom(9)
+                    .color(NekoVendingTheme.MUTED);
+            label(
+                detail,
+                IKey.str("定义预览 / SOURCE IDENTITY")
+                    .style(EnumChatFormatting.BOLD),
+                12,
+                9,
+                220,
+                16,
+                .9f).widthRelOffset(1f, -24);
+            detail.child(
+                new ListWidget<>().pos(10, 35)
+                    .widthRelOffset(1f, -20)
+                    .heightRelOffset(1f, -49)
+                    .child(
+                        new TextWidget<>(IKey.dynamic(this::previewText)).alignment(Alignment.TopLeft)
+                            .color(NekoVendingTheme.INK)
+                            .shadow(false)
+                            .widthRelOffset(1f, -8)
+                            .padding(2)
+                            .scale(.95f)));
+            label(
+                impact,
+                IKey.lang("gtit.preset.ui.applied")
+                    .style(EnumChatFormatting.BOLD),
+                10,
+                9,
+                168,
+                16,
+                1f);
+            label(
+                impact,
+                IKey.lang(
+                    "gtit.preset.ui.applied_count",
+                    data.snapshot.appliedIds.size(),
+                    data.snapshot.appliedTradeCount),
+                10,
+                31,
+                168,
+                26,
+                .9f).color(UtilityUiStyle.MANAGER_SUCCESS);
+            ListWidget<IWidget, ?> changes = new ListWidget<>().pos(10, 65)
+                .width(168)
+                .heightRelOffset(1f, -143);
+            for (PresetSummary preset : data.snapshot.presets) changes.child(
+                new NekoSingleLineTextWidget(
+                    IKey.dynamic(
+                        () -> (selected.contains(preset.id) ? "+ " : "− ") + preset.name
+                            + (preset.defaultUpdateAvailable ? " · 更新" : ""))).alignment(Alignment.CenterLeft)
+                                .color(
+                                    () -> selected.contains(preset.id) ? UtilityUiStyle.MANAGER_SUCCESS
+                                        : NekoVendingTheme.MUTED)
+                                .shadow(false)
+                                .size(160, 26)
+                                .scale(.9f)
+                                .setEnabledIf(w -> selected.contains(preset.id) || preset.selected));
+            impact.child(changes);
+            label(impact, IKey.lang("gtit.preset.ui.apply_hint"), 10, 0, 168, 26, .85f).bottom(49)
+                .color(NekoVendingTheme.MUTED);
+            impact.child(
+                button("reload", "gtit.preset.reload", () -> finish(TradePresetManager.reload(player()), true)).left(10)
+                    .bottom(12)
+                    .size(76, 25)
                     .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.preset.refresh_hint"))));
-            page.child(
+            impact.child(
                 button(
                     "apply",
                     "gtit.preset.apply",
                     () -> finish(
                         TradePresetManager.select(player(), data.snapshot.revision, new ArrayList<>(selected)),
                         false)).selected(() -> true)
-                            .pos(378, 205)
-                            .size(78, 22));
+                            .right(10)
+                            .bottom(12)
+                            .size(84, 25));
             return page;
-        }
-
-        private static String compact(String text, int characters) {
-            if (text.codePointCount(0, text.length()) <= characters) return text;
-            return text.substring(0, text.offsetByCodePoints(0, characters - 3)) + "...";
         }
 
         String presetName(String id) {
@@ -745,8 +751,14 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
 
         IWidget editor() {
             ParentWidget<?> page = new ParentWidget<>().sizeRel(1f);
-            page.child(UtilityUiStyle.managerSection(0, 0, 290, 228));
-            page.child(UtilityUiStyle.managerSection(296, 0, 160, 198));
+            page.child(
+                NekoWorkbenchStyle.section(0, 0, 290, 228)
+                    .widthRelOffset(1f, -166)
+                    .heightRel(1f));
+            page.child(
+                NekoWorkbenchStyle.section(0, 0, 160, 198)
+                    .right(0)
+                    .heightRel(1f));
             label(
                 page,
                 IKey.lang("gtit.preset.ui.metadata")
@@ -764,7 +776,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 5,
                 144,
                 14,
-                1f);
+                1f).right(8);
             field(page, "name", "gtit.preset.name", 24, () -> name, value -> name = value, 128);
             field(page, "id", "gtit.preset.ui.id", 48, () -> id, value -> { if (!replace) id = value; }, 64);
             field(page, "conflicts", "gtit.preset.ui.conflicts", 72, () -> conflicts, value -> conflicts = value, 1024);
@@ -781,24 +793,28 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 next -> dispatch(() -> { if (!data.editId.isEmpty()) replaceTabs = next; })).allowC2S();
             sync.syncValue("draft_replace_tabs", contentMode);
             if (data.editId.isEmpty()) {
-                label(page, IKey.lang("gtit.preset.ui.select_tabs"), 304, 27, 144, 14, 0.9f)
-                    .color(UtilityUiStyle.MANAGER_MUTED);
+                label(page, IKey.lang("gtit.preset.ui.select_tabs"), 304, 27, 144, 14, 0.9f).right(8)
+                    .color(NekoVendingTheme.MUTED);
             } else {
                 page.child(
-                    new UtilityControls.Toggle().manager()
+                    new UtilityControls.Toggle().kraft()
                         .value(contentMode)
-                        .pos(304, 26)
+                        .right(136)
+                        .top(26)
                         .size(16)
                         .overlay(false, IKey.str(""))
                         .overlay(true, IKey.str("x"))
                         .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.preset.content_mode_hint"))));
-                label(page, IKey.lang("gtit.preset.ui.replace"), 326, 27, 122, 14, 0.9f);
+                label(page, IKey.lang("gtit.preset.ui.replace"), 326, 27, 122, 14, 0.9f).right(8);
             }
-            label(page, IKey.lang("gtit.preset.ui.keep_content"), 304, 53, 144, 44, 0.9f).alignment(Alignment.TopLeft)
-                .color(UtilityUiStyle.MANAGER_MUTED)
+            label(page, IKey.lang("gtit.preset.ui.keep_content"), 304, 53, 144, 44, 0.9f).right(8)
+                .alignment(Alignment.TopLeft)
+                .color(NekoVendingTheme.MUTED)
                 .setEnabledIf(w -> !replaceTabs);
-            ListWidget<IWidget, ?> choices = new ListWidget<>().pos(304, 50)
-                .size(144, 126)
+            ListWidget<IWidget, ?> choices = new ListWidget<>().right(8)
+                .top(50)
+                .width(144)
+                .heightRelOffset(1f, -123)
                 .setEnabledIf(w -> replaceTabs);
             for (TabSummary tab : data.snapshot.tabs) {
                 BooleanSyncValue value = new BooleanSyncValue(() -> tabs.contains(tab.id), enabled -> dispatch(() -> {
@@ -808,31 +824,28 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 sync.syncValue("tab_" + tab.id, value);
                 ParentWidget<?> row = new ParentWidget<>().size(136, 21)
                     .marginBottom(2)
-                    .background(
-                        (context, x, y, width, height,
-                            theme) -> (tabs.contains(tab.id) ? UtilityUiStyle.MANAGER_ROW_SELECTED
-                                : UtilityUiStyle.MANAGER_ROW).draw(context, x, y, width, height, theme));
+                    .background(NekoVendingTheme.row(() -> tabs.contains(tab.id)));
                 row.child(
-                    new UtilityControls.Toggle().manager()
+                    new UtilityControls.Toggle().kraft()
                         .value(value)
                         .pos(4, 3)
                         .size(14)
                         .overlay(false, IKey.str(""))
                         .overlay(true, IKey.str("x")));
-                label(row, IKey.str(compact(tab.name, 14)), 24, 4, 108, 13, 0.9f)
+                label(row, IKey.str(tab.name), 24, 4, 108, 13, 0.9f)
                     .tooltipBuilder(t -> t.addLine(tab.name + " [" + tab.id + "]"));
                 choices.child(row);
             }
             if (data.snapshot.tabs.isEmpty()) choices.child(
                 new TextWidget<>(IKey.lang("gtit.preset.ui.no_tabs")).alignment(Alignment.TopLeft)
-                    .color(UtilityUiStyle.MANAGER_MUTED)
+                    .color(NekoVendingTheme.MUTED)
                     .shadow(false)
                     .size(136, 36)
                     .scale(0.9f));
             page.child(choices);
             label(page, IKey.lang("gtit.preset.ui.icon"), 8, 126, 54, 14, 0.9f);
-            label(page, IKey.lang("gtit.preset.ui.ghost"), 92, 126, 190, 14, 0.85f).color(UtilityUiStyle.MANAGER_MUTED);
-            label(page, IKey.lang("gtit.preset.ui.inventory"), 8, 151, 54, 14, 0.9f);
+            label(page, IKey.lang("gtit.preset.ui.ghost"), 92, 126, 190, 14, 0.85f).color(NekoVendingTheme.MUTED);
+            label(page, IKey.lang("gtit.preset.ui.inventory"), 8, 151, 54, 14, 0.9f).bottom(71);
             PhantomItemSlotSH ghost = new PhantomItemSlotSH(new ModularSlot(icon, 0)) {
 
                 @Override
@@ -854,12 +867,13 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             };
             sync.syncValue("draft_icon", ghost);
             page.child(
-                new PhantomItemSlot().syncHandler(ghost)
-                    .background(UtilityUiStyle.MANAGER_SLOT)
+                new NekoGhostSlot().syncHandler(ghost)
+                    .background(NekoVendingTheme.SLOT)
                     .pos(66, 123));
             page.child(
                 SlotGroupWidget.playerInventory(false)
-                    .pos(66, 147));
+                    .left(66)
+                    .bottom(16));
             page.child(button("save", "gtit.preset.save", () -> {
                 List<String> exclusions = new ArrayList<>();
                 for (String value : conflicts.split(",")) if (!value.trim()
@@ -878,11 +892,13 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     replaceTabs);
                 finish(result, true);
             }).selected(() -> true)
-                .pos(296, 205)
-                .size(160, 22)
+                .right(8)
+                .bottom(10)
+                .size(144, 25)
                 .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.preset.save_hint"))));
-            label(page, IKey.lang("gtit.preset.ui.save_hint"), 304, 181, 144, 13, 0.85f)
-                .color(UtilityUiStyle.MANAGER_MUTED);
+            label(page, IKey.lang("gtit.preset.ui.save_hint"), 304, 181, 144, 24, 0.85f).right(8)
+                .bottom(42)
+                .color(NekoVendingTheme.MUTED);
             return page;
         }
 
@@ -892,10 +908,9 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                 getter,
                 next -> { if (next != null && next.length() <= max) dispatch(() -> setter.accept(next)); }).allowC2S();
             sync.syncValue("draft_" + key, value);
-            label(page, IKey.lang(label), 8, y + 3, 54, 14, 0.9f).color(UtilityUiStyle.MANAGER_MUTED);
+            label(page, IKey.lang(label), 8, y + 3, 54, 14, 0.9f).color(NekoVendingTheme.MUTED);
             if (replace && "id".equals(key)) {
-                label(page, IKey.str(compact(data.editId, 35)), 66, y, 216, 18, 0.9f)
-                    .background(UtilityUiStyle.MANAGER_INPUT)
+                label(page, IKey.str(data.editId), 66, y, 216, 18, 0.9f).background(NekoVendingTheme.INPUT)
                     .padding(4, 0)
                     .tooltipBuilder(t -> {
                         t.addLine(data.editId);
@@ -903,13 +918,14 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
                     });
             } else {
                 page.child(
-                    new UtilityControls.Field().manager()
+                    new UtilityControls.Field().kraft()
                         .value(value)
                         .setMaxLength(max)
                         .autoUpdateOnChange(true)
-                        .background(UtilityUiStyle.MANAGER_INPUT)
+                        .background(NekoVendingTheme.INPUT)
                         .pos(66, y)
-                        .size(216, 18)
+                        .height(20)
+                        .widthRelOffset(1f, -240)
                         .tooltipBuilder(t -> {
                             t.addLine(IKey.lang(label));
                             if ("id".equals(key)) t.addLine(IKey.lang("gtit.preset.id"));

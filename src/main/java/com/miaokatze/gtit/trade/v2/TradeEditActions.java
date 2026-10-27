@@ -265,6 +265,12 @@ final class TradeEditActions {
                 return;
             }
 
+            if (!NekoPageRegistry.getPage(tabId)
+                .canCreateTrade()) {
+                sendError(player, "此来源不支持直接新增交易，请在预设管理器中调整");
+                return;
+            }
+
             JsonObject json = new JsonParser().parse(jsonPayload)
                 .getAsJsonObject();
 
@@ -277,6 +283,7 @@ final class TradeEditActions {
             // 新建条目（构造器自动分配 UUID），挂到指定标签页
             NekoTradeEntry entry = new NekoTradeEntry();
             entry.setTabId(tabId);
+            entry.setDefaultEntry(false);
             // orderId 高水位分配（v1.8.17）：取「页内现有最大 orderId」与「历史高水位」的
             // 较大者 +1 并回写水位——条目删除后其 ID 位置永不复用，页中保持空位
             int maxOrder = -1;

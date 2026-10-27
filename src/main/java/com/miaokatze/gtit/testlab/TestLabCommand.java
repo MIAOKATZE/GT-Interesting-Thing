@@ -18,7 +18,7 @@ public final class TestLabCommand extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/gtitlab help|status|reset|refresh|run <id>|suite|stress [iterations]|profile [id] [iterations]|ui pocket";
+        return "/gtitlab help|status|reset|refresh|run <id>|suite|stress [iterations]|profile [id] [iterations]|ui pocket|vending|vending-ordinary|vending-batch|vending-legendary|vending-done";
     }
 
     @Override
@@ -78,9 +78,10 @@ public final class TestLabCommand extends CommandBase {
                     result = "run=" + TestLabRuntime.INSTANCE.run("profile", id, count, requestId);
                 }
                 case "ui" -> {
-                    if (!(sender instanceof EntityPlayerMP player) || args.length != 2 || !"pocket".equals(args[1]))
-                        throw new IllegalArgumentException("ui pocket requires an online OP test client");
-                    result = "run=" + TestLabUiNetwork.run(player);
+                    if (!(sender instanceof EntityPlayerMP player) || args.length != 2)
+                        throw new IllegalArgumentException("ui requires an online OP test client");
+                    result = "pocket".equals(args[1]) ? "run=" + TestLabUiNetwork.run(player)
+                        : TestLabVendingFixture.command(player, args[1]);
                 }
                 default -> throw new IllegalArgumentException(getCommandUsage(sender));
             }
@@ -108,7 +109,14 @@ public final class TestLabCommand extends CommandBase {
             "ui",
             "help",
             "tutorial");
-        if (args.length == 2 && "ui".equals(args[0])) return getListOfStringsMatchingLastWord(args, "pocket");
+        if (args.length == 2 && "ui".equals(args[0])) return getListOfStringsMatchingLastWord(
+            args,
+            "pocket",
+            "vending",
+            "vending-ordinary",
+            "vending-batch",
+            "vending-legendary",
+            "vending-done");
         if (args.length == 2 && ("run".equals(args[0]) || "profile".equals(args[0])))
             return getListOfStringsMatchingLastWord(
                 args,

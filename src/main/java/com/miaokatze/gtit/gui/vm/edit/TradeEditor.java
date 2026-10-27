@@ -10,16 +10,16 @@ import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
-import com.cleanroommc.modularui.drawable.GuiTextures;
 import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDraggableEditPanel;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.gui.vm.edit.EditOverlayController.EditOverlayType;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoEditNetworkManager;
@@ -83,6 +83,8 @@ public final class TradeEditor {
     private boolean oversizedChoices;
     private TradeOreDialog oreDialog;
     private IPanelHandler orePanel;
+    private NekoDraggableEditPanel editPanelWidget;
+    private int dockX, dockY, dockWidth = 312, dockHeight = 180;
 
     public TradeEditor(EditOverlayController overlay, Runnable requestClose, Runnable requestMainPanelRefresh) {
         this.overlay = overlay;
@@ -182,108 +184,128 @@ public final class TradeEditor {
      * 双端构建相同的 16 个需求格与 16 个产出格，具体编辑事件仅客户端触达。
      */
     public NekoDraggableEditPanel buildEditPanel() {
-        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
-        editPanel.size(250, 190);
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel(false);
+        editPanelWidget = editPanel;
+        editPanel.size(dockWidth, dockHeight);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
-        editPanel.background(GuiTextures.MC_BACKGROUND);
-        editPanel.leftRel(0.5f)
-            .topRel(0.5f)
-            .anchorLeft(0.5f)
-            .anchorTop(0.5f);
+        editPanel.background(NekoVendingTheme.PANEL);
+        editPanel.left(dockX)
+            .top(dockY);
         editPanel.setEnabledIf(w -> overlay.isCurrent(EditOverlayType.TRADE));
 
         // 标题（新建 / 编辑动态切换，v1.7.6 G3④）
         editPanel.child(
-            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GOLD + (editTradeIsNew ? "新建交易" : "编辑交易"))).top(5)
-                .horizontalCenter());
+            new TextWidget<>(
+                IKey.dynamic(() -> editTradeIsNew ? "新建交易" : "编辑交易")
+                    .color(NekoVendingTheme.INK)).top(5)
+                        .horizontalCenter());
 
-        // --- 需求物品区（slot 0-15，两行×8；v1.7.6 G3①）---
-        // 货币解绑提示：需求格放猫猫币物品 = 货币需求（购买时扣钱包）
-        editPanel.child(
-            IKey.str(EnumChatFormatting.WHITE + "需求:")
+        // Matched side-by-side groups: all 16 requirements and 16 outputs stay editable.
+        // Width follows the dock, while native 18 px choice slots are never stretched.
+        ParentWidget<?> requirements = new ParentWidget<>().left(6)
+            .top(21)
+            .widthRelOffset(.5f, -9)
+            .height(55);
+        ParentWidget<?> outputs = new ParentWidget<>().right(6)
+            .top(21)
+            .widthRelOffset(.5f, -9)
+            .height(55);
+        requirements.child(
+            IKey.str("需求")
+                .color(NekoVendingTheme.INK)
                 .asWidget()
-                .left(8)
-                .top(20));
-        for (int i = 0; i < 16; i++) {
-            com.cleanroommc.modularui.widgets.ItemDisplayWidget slot = new TradeChoiceSlot(this, i)
-                .left(40 + (i % 8) * 20)
-                .top(18 + (i / 8) * 20);
-
-            editPanel.child(slot);
-        }
-
-        // --- 产物物品区（slot 16-31，两行×8；v1.7.6 G3①）---
-        // 货币解绑提示：产物格放猫猫币物品 = 货币产出（购买后入钱包）
-        editPanel.child(
-            IKey.str(EnumChatFormatting.WHITE + "产物:")
+                .pos(0, 0));
+        outputs.child(
+            IKey.str("产出")
+                .color(NekoVendingTheme.INK)
                 .asWidget()
-                .left(8)
-                .top(62));
+                .pos(0, 0));
         for (int i = 0; i < 16; i++) {
-            com.cleanroommc.modularui.widgets.ItemDisplayWidget slot = new TradeChoiceSlot(this, 16 + i)
-                .left(40 + (i % 8) * 20)
-                .top(60 + (i / 8) * 20);
-
-            editPanel.child(slot);
+            requirements.child(
+                new TradeChoiceSlot(this, i).size(18, 18)
+                    .leftRel((i % 8) / 7f, -(i % 8) * 18 / 7, 0f)
+                    .top(14 + (i / 8) * 19));
         }
+        for (int i = 0; i < 16; i++) {
+            outputs.child(
+                new TradeChoiceSlot(this, 16 + i).size(18, 18)
+                    .leftRel((i % 8) / 7f, -(i % 8) * 18 / 7, 0f)
+                    .top(14 + (i / 8) * 19));
+        }
+        editPanel.child(requirements);
+        editPanel.child(outputs);
 
-        // --- 参数编辑区（v1.7.6 G3②：原「猫猫币类型/数量」两行已删除）---
-        int fieldY = 105;
-        int fieldHeight = 14;
-        int labelWidth = 70;
-        int fieldWidth = 160;
-        int spacing = 17;
+        int fieldY = 82;
+        int fieldHeight = 18;
+        int labelWidth = 76;
+        int spacing = 22;
 
         // 冷却时间
         editPanel.child(
-            IKey.str(EnumChatFormatting.WHITE + "冷却(秒):")
+            IKey.str("冷却(秒):")
+                .color(NekoVendingTheme.INK)
                 .asWidget()
                 .left(8)
                 .top(fieldY + 2));
-        editPanel.child(new TextFieldWidget().value(new StringValue.Dynamic(() -> String.valueOf(editCooldown), val -> {
-            try {
-                int parsed = Integer.parseInt(val);
-                if (parsed >= -1) editCooldown = parsed;
-            } catch (NumberFormatException ignored) {}
-        }))
-            .setNumbers(-1, Integer.MAX_VALUE)
-            .tooltipBuilder(t -> t.addLine(IKey.lang("gtit.trade.cooldown.input_hint")))
-            .left(labelWidth)
-            .top(fieldY)
-            .size(fieldWidth, fieldHeight));
+        editPanel.child(
+            new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+                .background(NekoVendingTheme.INPUT)
+                .value(new StringValue.Dynamic(() -> String.valueOf(editCooldown), val -> {
+                    try {
+                        int parsed = Integer.parseInt(val);
+                        if (parsed >= -1) editCooldown = parsed;
+                    } catch (NumberFormatException ignored) {}
+                }))
+                .setNumbers(-1, Integer.MAX_VALUE)
+                .tooltipBuilder(
+                    t -> NekoVendingTheme.tooltip(t)
+                        .addLine(IKey.lang("gtit.trade.cooldown.input_hint")))
+                .left(labelWidth)
+                .top(fieldY)
+                .widthRelOffset(1f, -82)
+                .height(fieldHeight));
 
         // BQ 绑定 ID
         fieldY += spacing;
         editPanel.child(
-            IKey.str(EnumChatFormatting.WHITE + "BQ绑定ID:")
+            IKey.str("BQ绑定ID:")
+                .color(NekoVendingTheme.INK)
                 .asWidget()
                 .left(8)
                 .top(fieldY + 2));
         editPanel.child(
-            new TextFieldWidget().value(new StringValue.Dynamic(() -> editBqQuestId, val -> editBqQuestId = val))
+            new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+                .background(NekoVendingTheme.INPUT)
+                .value(new StringValue.Dynamic(() -> editBqQuestId, val -> editBqQuestId = val))
                 .setMaxLength(60)
                 .left(labelWidth)
                 .top(fieldY)
-                .size(fieldWidth, fieldHeight));
+                .widthRelOffset(1f, -82)
+                .height(fieldHeight));
 
         // 严格匹配 NBT（v1.7.6 G3⑤，点击切换；统一默认不勾=仅按物品匹配）
         fieldY += spacing;
         editPanel.child(
-            IKey.str(EnumChatFormatting.WHITE + "严格匹配NBT:")
+            IKey.str("严格匹配NBT:")
+                .color(NekoVendingTheme.INK)
                 .asWidget()
                 .left(8)
                 .top(fieldY + 2));
         ButtonWidget<?> recordNbtToggle = new ButtonWidget<>().left(labelWidth)
             .top(fieldY)
-            .size(fieldWidth, fieldHeight)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .widthRelOffset(1f, -82)
+            .height(fieldHeight)
+            .background(NekoVendingTheme.face(() -> editRecordNBT, () -> true, false))
+            .hoverBackground(NekoVendingTheme.face(() -> editRecordNBT, () -> true, true))
             .overlay(
-                IKey.dynamic(() -> editRecordNBT ? EnumChatFormatting.GREEN + "启用" : EnumChatFormatting.RED + "停用"))
+                IKey.dynamic(() -> editRecordNBT ? "启用 · 精确匹配 NBT" : "停用 · 忽略 NBT")
+                    .color(() -> editRecordNBT ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK))
             .onMouseTapped(mouse -> {
                 editRecordNBT = !editRecordNBT;
                 return true;
             });
         recordNbtToggle.tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             t.addLine(IKey.str("点击切换需求物品的 NBT 匹配严格度"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "启用：需求物品按物品+NBT 精确匹配"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "停用：仅按物品匹配（忽略 NBT 差异）"));
@@ -294,10 +316,14 @@ public final class TradeEditor {
         // --- 保存 / 删除 / 取消按钮 ---
         // 保存（v1.8.17：默认贸易条目先弹警告弹框，确认"仍要保存"后才真正保存）
         editPanel.child(
-            new ButtonWidget<>().size(50, 16)
-                .left(30)
-                .bottom(8)
-                .overlay(IKey.str("保存"))
+            new ButtonWidget<>().size(50, 20)
+                .background(NekoVendingTheme.PRESSED)
+                .hoverBackground(NekoVendingTheme.SELECTED_HOVER)
+                .left(6)
+                .bottom(6)
+                .overlay(
+                    IKey.str("保存")
+                        .color(NekoVendingTheme.LIGHT))
                 .onMouseTapped(mouse -> {
                     if (isEditingDefaultTrade() && defaultSaveConfirmDialog != null
                         && defaultSaveConfirmPanel != null) {
@@ -317,12 +343,18 @@ public final class TradeEditor {
         // 新建模式禁用（无既有条目可删）；点击弹出宿主二次确认弹框，确认后才发 ACTION_DELETE_TRADE。
         // v1.8.17：默认贸易条目的确认文案切换为默认贸易组删除警告
         editPanel.child(
-            new ButtonWidget<>().size(50, 16)
-                .left(100)
-                .bottom(8)
-                .overlay(IKey.str("删除"))
+            new ButtonWidget<>().size(50, 20)
+                .background(NekoVendingTheme.BUTTON)
+                .hoverBackground(NekoVendingTheme.HOVER)
+                .left(62)
+                .bottom(6)
+                .overlay(
+                    IKey.str("删除")
+                        .color(NekoVendingTheme.DANGER))
                 .setEnabledIf(w -> !editTradeIsNew)
-                .tooltipBuilder(t -> t.addLine(IKey.str("删除该交易条目（不可恢复）")))
+                .tooltipBuilder(
+                    t -> NekoVendingTheme.tooltip(t)
+                        .addLine(IKey.str("删除该交易条目（不可恢复）")))
                 .onMouseTapped(mouse -> {
                     if (deleteConfirmDialog == null || deleteConfirmPanel == null || editingDisplay == null)
                         return true;
@@ -339,16 +371,41 @@ public final class TradeEditor {
                     return true;
                 }));
         editPanel.child(
-            new ButtonWidget<>().size(50, 16)
-                .right(30)
-                .bottom(8)
-                .overlay(IKey.str("取消"))
+            new ButtonWidget<>().size(50, 20)
+                .background(NekoVendingTheme.BUTTON)
+                .hoverBackground(NekoVendingTheme.HOVER)
+                .right(6)
+                .bottom(6)
+                .overlay(
+                    IKey.str("取消")
+                        .color(NekoVendingTheme.INK))
                 .onMouseTapped(mouse -> {
                     requestClose.run();
                     return true;
                 }));
 
         return editPanel;
+    }
+
+    /** Workspace canvas coordinates, not screen coordinates; never rebuilds the mirrored 32-slot tree. */
+    public void setDockBounds(int x, int y, int width, int height) {
+        if (width < 312 || height < 180) throw new IllegalArgumentException("Trade editor dock must fit its 32 slots");
+        if (dockX == x && dockY == y && dockWidth == width && dockHeight == height) return;
+        dockX = x;
+        dockY = y;
+        dockWidth = width;
+        dockHeight = height;
+        if (editPanelWidget != null) {
+            editPanelWidget.left(x)
+                .top(y)
+                .size(width, height);
+            if (editPanelWidget.isValid()) editPanelWidget.scheduleResize();
+        }
+    }
+
+    public boolean isModalActive() {
+        return oreDialog != null && oreDialog.isOpen() || deleteConfirmPanel != null && deleteConfirmPanel.isPanelOpen()
+            || defaultSaveConfirmPanel != null && defaultSaveConfirmPanel.isPanelOpen();
     }
 
     /**

@@ -2,7 +2,6 @@ package com.miaokatze.gtit.client.gui;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.EnumChatFormatting;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -154,6 +153,8 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
          */
         void onTradeRequested(NekoTradeItemDisplay display);
 
+        default void onTradeSelected(NekoTradeItemDisplay display) {}
+
         /**
          * 收藏切换回调
          * <p>
@@ -202,6 +203,16 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
     /** 是否处于编辑模式（编辑模式下左键点击打开编辑面板，禁止交易/收藏） */
     private boolean editMode = false;
+    private boolean nativePresentation;
+
+    public NekoTradeItemDisplayWidget nativePresentation(boolean value) {
+        nativePresentation = value;
+        if (value) {
+            background(NekoVendingTheme.row(() -> selected));
+            hoverBackground(NekoVendingTheme.row(() -> selected, true));
+        }
+        return this;
+    }
 
     // ==================== 构造器 ====================
 
@@ -327,7 +338,9 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
         }
 
         try {
-            if (displayType == NekoDisplayType.TILE) {
+            if (nativePresentation) {
+                drawNativeTrade(context, widgetTheme);
+            } else if (displayType == NekoDisplayType.TILE) {
                 drawTileMode(context, widgetTheme);
             } else {
                 drawListMode(context, widgetTheme);
@@ -357,6 +370,157 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      * @param context     GUI 渲染上下文
      * @param widgetTheme Widget 主题
      */
+    /** Compact A→B card. Wallet requirements are visual tokens, never injected into settlement inputs. */
+    private void drawNativeTrade(ModularGuiContext context, WidgetThemeEntry<?> theme) {
+        int width = getArea().width, height = getArea().height;
+        boolean list = displayType == NekoDisplayType.LIST;
+        NekoTradeCardLayout geometry = new NekoTradeCardLayout(
+            width,
+            height,
+            list,
+            display.getDisplayedRequirementCount());
+        int center = geometry.center;
+        String title = display.getDisplayItemName();
+        String identity = "#" + display.getOrderId();
+        GuiDraw.drawText(
+            fit(list ? identity + " · " + title : title, width - (list ? 118 : 39), .8f),
+            5,
+            4,
+            .8f,
+            NekoVendingTheme.INK,
+            false);
+        if (!list) GuiDraw.drawText(fit(identity, 26, .65f), width - 31, 4, .65f, NekoVendingTheme.MUTED, false);
+        int rowY = geometry.rowY;
+        GuiDraw.drawText("→", center - 4, rowY + 5, 1f, NekoVendingTheme.GOLD, false);
+        drawRequirements(6, rowY, geometry.inputWidth, context);
+        drawChoices(display.getOutputs(), geometry.outputX, rowY, geometry.outputWidth, context);
+
+        // A full-width, high-contrast status strip remains legible without hiding the actual cost.
+        boolean blocked = display.isOneTimeRedeemed() || display.isBqLocked() || display.getCooldownRemaining() > 0;
+        int fill = blocked ? 0xff424b3c : display.isTradeable() ? 0xffdce0bf : 0xffead8bf;
+        int ink = display.isOneTimeRedeemed() || display.isBqLocked() ? 0xffffc25e
+            : display.getCooldownRemaining() > 0 ? NekoVendingTheme.CYAN
+                : display.isTradeable() ? NekoVendingTheme.GREEN : NekoVendingTheme.DANGER;
+        int statusX = geometry.statusX, statusY = geometry.statusY;
+        int statusWidth = geometry.statusWidth;
+        GuiDraw.drawRect(statusX, statusY, statusWidth, 10, fill);
+        String status = nativeStatus(display);
+        GuiDraw.drawText(fit(status, statusWidth - 13, .8f), statusX + 4, statusY + 2, .8f, ink, blocked);
+        if (blocked) {
+            // Approved R5 hierarchy: dim the transfer, then put the state above it, not just in a tiny footer.
+            // Keep wallet payment icons above the veil so neither ordinary nor shiny cost becomes invisible.
+            NekoGuiTextures.OVERLAY_COOLDOWN.draw(context, 2, rowY - 1, width - 4, 23, theme.getTheme());
+            drawRequirements(6, rowY, geometry.inputWidth, context);
+            String headline = display.isOneTimeRedeemed() ? "已售罄"
+                : display.isBqLocked() ? "LOCKED" : formatCooldown(display.getCooldownRemaining());
+            int headlineWidth = Math.max(1, width - geometry.outputX - 4);
+            float headlineScale = Math.min(
+                1.4f,
+                headlineWidth / (float) Math.max(1, Minecraft.getMinecraft().fontRenderer.getStringWidth(headline)));
+            int headlineX = geometry.outputX + (headlineWidth
+                - (int) (Minecraft.getMinecraft().fontRenderer.getStringWidth(headline) * headlineScale)) / 2;
+            GuiDraw.drawRect(geometry.outputX - 1, rowY + 2, headlineWidth + 2, 17, 0xd927382b);
+            GuiDraw.drawText(headline, headlineX, rowY + 5, headlineScale, ink, true);
+        }
+        if (display.isFavourite())
+            NekoGuiTextures.FAVOURITE_SPRITE.draw(context, width - 10, statusY + 1, 7, 7, theme.getTheme());
+        GuiDraw.drawRect(0, 2, 2, height - 4, display.isTradeable() ? 0xff8e9b73 : blocked ? ink : 0xffba9470);
+    }
+
+    public static String fit(String text, int width, float scale) {
+        net.minecraft.client.gui.FontRenderer font = Minecraft.getMinecraft().fontRenderer;
+        if (font.getStringWidth(text) * scale <= width) return text;
+        return font.trimStringToWidth(text, Math.max(0, (int) (width / scale) - font.getStringWidth("…"))) + "…";
+    }
+
+    public static String nativeStatus(NekoTradeItemDisplay display) {
+        if (display == null) return "";
+        return display.isOneTimeRedeemed() ? "已售罄"
+            : display.isBqLocked() ? "LOCKED"
+                : display.getCooldownRemaining() > 0 ? formatCooldown(display.getCooldownRemaining())
+                    : display.isTradeable() ? "可交易" : "条件未满足";
+    }
+
+    /** Display abbreviation only; complete exact long quantities remain in the detail and tooltip. */
+    public static String compactQuantity(long amount) {
+        if (amount < 1000) return Long.toString(amount);
+        String[] units = { "K", "M", "G", "T", "P", "E" };
+        double value = amount;
+        int unit = -1;
+        do {
+            value /= 1000d;
+            unit++;
+        } while (value >= 999.5d && unit < units.length - 1);
+        return String.format(java.util.Locale.ROOT, value >= 100 ? "%.0f%s" : "%.1f%s", value, units[unit]);
+    }
+
+    private void drawRequirements(int x, int y, int available, ModularGuiContext context) {
+        java.util.List<java.util.Map.Entry<String, Long>> currencies = new java.util.ArrayList<>(
+            display.getCurrencyCosts()
+                .entrySet());
+        // Ordinary and shiny wallet payments always take priority over material icons and unknown legacy ids.
+        currencies.sort(
+            java.util.Comparator.comparingInt(
+                entry -> NekoCurrencyRegistrar.NEKO_ID.equals(entry.getKey()) ? 0
+                    : NekoCurrencyRegistrar.SHIMMERING_NEKO_ID.equals(entry.getKey()) ? 1 : 2));
+        int total = currencies.size() + display.getInputs()
+            .size();
+        NekoTradeCardLayout.TokenStrip strip = new NekoTradeCardLayout.TokenStrip(available, total);
+        for (int i = 0; i < strip.visible; i++) {
+            int tokenX = x + i * NekoTradeCardLayout.TOKEN_PITCH;
+            if (i < currencies.size()) {
+                java.util.Map.Entry<String, Long> currency = currencies.get(i);
+                drawToken(
+                    NekoCurrencyRegistrar.getItemStack(currency.getKey(), 1),
+                    currency.getValue(),
+                    tokenX,
+                    y,
+                    context);
+            } else drawChoice(
+                display.getInputs()
+                    .get(i - currencies.size()),
+                tokenX,
+                y,
+                context);
+        }
+        drawOverflow(strip, x, y);
+        if (total == 0) GuiDraw.drawText(fit("无需求", available, .7f), x, y + 5, .7f, NekoVendingTheme.MUTED, false);
+    }
+
+    private void drawToken(ItemStack stack, long amount, int x, int y, ModularGuiContext context) {
+        GuiDraw.drawRect(x, y, 21, 21, 0x30b6a27b);
+        if (stack != null) GuiDraw.drawItem(stack, x + 1, y, 20, 20, (int) context.getCurrentDrawingZ());
+        else GuiDraw.drawText("?", x + 6, y + 3, 1f, NekoVendingTheme.GOLD, false);
+        String label = compactQuantity(amount);
+        float scale = Math.min(.65f, 19f / Math.max(1, Minecraft.getMinecraft().fontRenderer.getStringWidth(label)));
+        GuiDraw.drawText(label, x + 1, y + 14, scale, 0xffffffff, true);
+    }
+
+    private void drawChoice(NekoBigItemStack choice, int x, int y, ModularGuiContext context) {
+        if (choice == null || choice.getBaseStack() == null) return;
+        drawToken(choice.getBaseStack(), choice.getStackSize(), x, y, context);
+        if (!choice.getAlternatives()
+            .isEmpty() || choice.hasOreDict()) GuiDraw.drawText("+", x + 15, y - 2, .7f, NekoVendingTheme.GOLD, true);
+    }
+
+    private void drawOverflow(NekoTradeCardLayout.TokenStrip strip, int x, int y) {
+        if (strip.hidden == 0 || strip.badgeWidth == 0) return;
+        String label = "+" + strip.hidden;
+        float scale = Math.min(
+            .65f,
+            (strip.badgeWidth - 2f) / Math.max(1, Minecraft.getMinecraft().fontRenderer.getStringWidth(label)));
+        GuiDraw.drawRect(x + strip.badgeX, y + 5, strip.badgeWidth, 11, 0xffd9caa8);
+        GuiDraw.drawText(label, x + strip.badgeX + 1, y + 7, Math.max(.1f, scale), NekoVendingTheme.INK, false);
+    }
+
+    private void drawChoices(java.util.List<NekoBigItemStack> choices, int x, int y, int available,
+        ModularGuiContext context) {
+        NekoTradeCardLayout.TokenStrip strip = new NekoTradeCardLayout.TokenStrip(available, choices.size());
+        for (int i = 0; i < strip.visible; i++)
+            drawChoice(choices.get(i), x + i * NekoTradeCardLayout.TOKEN_PITCH, y, context);
+        drawOverflow(strip, x, y);
+    }
+
     private void drawTileMode(ModularGuiContext context, WidgetThemeEntry<?> widgetTheme) {
         float z = context.getCurrentDrawingZ();
 
@@ -540,77 +704,58 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
      * @param builder tooltip 构建器
      */
     private void buildTooltip(RichTooltip builder) {
-        if (display == null) {
-            return;
-        }
+        if (display == null) return;
+        describeTrade(builder, display);
+    }
 
+    /** One complete tooltip for the card and selected-trade detail, including detached wallet costs. */
+    public static void describeTrade(RichTooltip builder, NekoTradeItemDisplay trade) {
         builder.clearText();
-        if (display.isOneTimeOnly()) {
-            builder.addLine(
-                IKey.lang(
-                    display.isOneTimeRedeemed() ? "gtit.trade.cooldown.redeemed_hint" : display.getOneTimeStatusKey())
-                    .style(display.isOneTimeRedeemed() ? EnumChatFormatting.RED : EnumChatFormatting.GOLD));
-            builder.emptyLine();
-        }
-
-        // --- 产物列表（青色）---
-        for (NekoBigItemStack output : display.getOutputs()) {
-            if (output == null || output.getBaseStack() == null) continue;
-            int amount = output.getStackSize();
-            String name = output.getBaseStack()
-                .getDisplayName();
-            NekoTradeItemDisplay.describeChoice(builder, output, true, EnumChatFormatting.AQUA.toString());
-        }
-
-        // --- 需求列表（绿色）---
-        boolean hasRequirements = display.hasInputs() || display.hasCurrencyCost();
-        if (hasRequirements) {
-            builder.emptyLine();
-            builder.addLine(EnumChatFormatting.DARK_GREEN + "" + EnumChatFormatting.ITALIC + "需求:");
-
-            // 猫猫币花费
-            if (display.hasCurrencyCost()) {
-                String currencyName = NekoCurrencyRegistrar.getDisplayName(display.getCurrencyId());
-                builder.addLine(EnumChatFormatting.DARK_GREEN + "  " + display.getCost() + " " + currencyName);
-            }
-
-            // 输入物品需求
-            for (NekoBigItemStack input : display.getInputs()) {
-                if (input == null || input.getBaseStack() == null) continue;
-                int amount = input.getStackSize();
-                String name = input.getBaseStack()
-                    .getDisplayName();
-                String oreDict = input.hasOreDict() ? " (" + input.getOreDict() + ")" : "";
-                NekoTradeItemDisplay.describeChoice(builder, input, false, EnumChatFormatting.DARK_GREEN.toString());
-            }
-        }
-
-        // --- BQ 锁定状态（金色）---
-        if (display.isBqLocked()) {
-            builder.emptyLine();
-            builder.addLine(EnumChatFormatting.GOLD + "[BQ锁定] 前置任务未完成");
-        }
-
-        // --- 冷却时间（青色）---
-        if (display.getCooldownRemaining() > 0) {
-            builder.emptyLine();
-            builder.addLine(EnumChatFormatting.AQUA + "冷却剩余: " + formatCooldown(display.getCooldownRemaining()));
-        }
-
-        // --- 团队缩放信息（深青色）---
-        // 当 maxTradesInCooldown > 1 时，表示玩家在团队中，享受冷却缩放
-        // 显示"冷却次数: 已用/上限（团队缩放）"信息，参考 V1 的 teamSize tooltip
-        int maxTrades = display.getMaxTradesInCooldown();
-        if (maxTrades > 1 && !display.isOneTimeOnly()) {
-            long usedTrades = display.getUsedTradesInCooldown();
-            long remaining = Math.max(0, maxTrades - usedTrades);
-            builder.addLine(EnumChatFormatting.DARK_AQUA + "冷却次数: " + remaining + "/" + maxTrades + " (团队缩放)");
-        }
-
-        // --- 操作提示（灰色）---
+        NekoVendingTheme.tooltip(builder);
+        builder.addLine(
+            IKey.str(trade.getDisplayItemName() + "  #" + trade.getOrderId())
+                .color(NekoVendingTheme.TOOLTIP_INK));
+        builder.addLine(
+            IKey.str(nativeStatus(trade))
+                .color(trade.isTradeable() ? 0xffb7cf9d : 0xfff1a281));
         builder.emptyLine();
-        builder.addLine(EnumChatFormatting.GRAY + "Shift+点击 执行交易");
-        builder.addLine(EnumChatFormatting.GRAY + "Ctrl+点击 收藏/取消收藏");
+        builder.addLine(
+            IKey.str("需求 / 支付")
+                .color(NekoVendingTheme.TOOLTIP_TITLE));
+        for (java.util.Map.Entry<String, Long> currency : trade.getCurrencyCosts()
+            .entrySet()) {
+            builder.addLine(
+                IKey.str(
+                    "  " + currency.getValue()
+                        + " × "
+                        + NekoCurrencyRegistrar.getDisplayName(currency.getKey())
+                        + "（钱包支付）")
+                    .color(NekoVendingTheme.TOOLTIP_INK));
+        }
+        for (NekoBigItemStack input : trade.getInputs()) NekoTradeItemDisplay.describeChoice(builder, input, false, "");
+        if (!trade.hasInputs() && !trade.hasCurrencyCost()) builder.addLine("  无需求");
+        builder.emptyLine();
+        builder.addLine(
+            IKey.str("产出")
+                .color(0xffb7cf9d));
+        for (NekoBigItemStack output : trade.getOutputs())
+            NekoTradeItemDisplay.describeChoice(builder, output, true, "");
+        if (trade.isOneTimeOnly()) {
+            builder.addLine(
+                IKey.lang(trade.isOneTimeRedeemed() ? "gtit.trade.cooldown.redeemed_hint" : trade.getOneTimeStatusKey())
+                    .color(0xfff1a281));
+        }
+        if (trade.getMaxTradesInCooldown() > 1 && !trade.isOneTimeOnly()) {
+            builder.addLine(
+                "本轮剩余次数: " + Math.max(0, trade.getMaxTradesInCooldown() - trade.getUsedTradesInCooldown())
+                    + "/"
+                    + trade.getMaxTradesInCooldown()
+                    + "（团队缩放）");
+        }
+        builder.emptyLine();
+        builder.addLine(
+            IKey.str("点击查看 · Shift+点击交易 · Ctrl+点击收藏")
+                .color(NekoVendingTheme.TOOLTIP_MUTED));
     }
 
     // ==================== 鼠标交互 ====================
@@ -639,6 +784,8 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
             return Interactable.Result.IGNORE;
         }
 
+        if (callback != null) callback.onTradeSelected(display);
+
         // 编辑模式：左键点击直接打开编辑面板（无需修饰键）
         if (editMode) {
             pressed = true;
@@ -654,7 +801,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
         // Shift 和 Ctrl 同时按下或同时未按下时忽略
         if (shiftHeld == ctrlHeld) {
-            return Interactable.Result.IGNORE;
+            return nativePresentation && !shiftHeld ? Interactable.Result.SUCCESS : Interactable.Result.IGNORE;
         }
 
         // 设置按下状态（视觉反馈）

@@ -1,0 +1,55 @@
+{
+  "sourceCommit": "7be4aeee65d8d01128a0a31170f1383a8c4a6699",
+  "assets": [
+    {
+      "file": "button-disabled.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/button-disabled.png",
+      "sha256": "1e7399d413086ba9819eb3c8950294161467046b0b6a63e0c428ee68bf7e54a4"
+    },
+    {
+      "file": "button-hover.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/button-hover.png",
+      "sha256": "60e822e7c331e3086cc78df2855512520b709f0ce65e9eabb150a71aa644a880"
+    },
+    {
+      "file": "button-pressed.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/button-pressed.png",
+      "sha256": "b55b683130b1a3535d6ccf8e74d881dd9d112baab374562de425a4b6ec0d0110"
+    },
+    {
+      "file": "button-selected-hover.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/button-selected-hover.png",
+      "sha256": "e28f380d46fa2b9971db246a5c0601925d32f2993960949ae98023a25ed7839f"
+    },
+    {
+      "file": "button.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/button.png",
+      "sha256": "1338ac1c22f0b54ab85e99c201a520aa6919cd8faf88dfbffc4f9672d32a7dbb"
+    },
+    {
+      "file": "input.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/input.png",
+      "sha256": "0c7035624212e48bdf7a27b9f3bcf5c89558010b5cea86365ad38c5d87003f8e"
+    },
+    {
+      "file": "panel.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/panel.png",
+      "sha256": "dfcbb23a881b7abb2a74ac9111ee76204fa084153b4d5fb0322d722a97dbc413"
+    },
+    {
+      "file": "paper.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/paper.png",
+      "sha256": "80c2b88097c2befb71f1f6a7c90baa61b9f79786f696682ce27bd4a78964c331"
+    },
+    {
+      "file": "scrollbar.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/scrollbar.png",
+      "sha256": "0195da38d9bb8f14d189f08994ec2e2398bbd20196ea6a3cc0bc51994922576c"
+    },
+    {
+      "file": "slot.png",
+      "source": "GTMB/src/main/resources/assets/gtmb/textures/gui/editor/kraft/slot.png",
+      "sha256": "318c401d3bfa24ebac2718778d0706d1a8ca8a90af45c55c931b3c1d9f6204bc"
+    }
+  ]
+}

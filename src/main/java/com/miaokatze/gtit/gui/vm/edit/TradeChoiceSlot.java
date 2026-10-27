@@ -4,15 +4,20 @@ import net.minecraft.item.ItemStack;
 
 import com.cleanroommc.modularui.api.UpOrDown;
 import com.cleanroommc.modularui.api.widget.Interactable;
-import com.cleanroommc.modularui.drawable.GuiTextures;
 import com.cleanroommc.modularui.integration.recipeviewer.RecipeViewerGhostIngredientSlot;
 import com.cleanroommc.modularui.value.ObjectValue;
 import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 
 /** Client-local ghost editor. No phantom synchronization can overwrite the full choice list. */
-final class TradeChoiceSlot extends ItemDisplayWidget
-    implements Interactable, RecipeViewerGhostIngredientSlot<ItemStack> {
+public final class TradeChoiceSlot extends ItemDisplayWidget
+    implements Interactable, RecipeViewerGhostIngredientSlot<ItemStack>, NekoGhostTarget {
+
+    @Override
+    public boolean acceptNeiGhost(ItemStack stack, int button) {
+        return stack != null && handleDragAndDrop(stack.copy(), button);
+    }
 
     private final TradeEditor editor;
     private final int index;
@@ -29,9 +34,10 @@ final class TradeChoiceSlot extends ItemDisplayWidget
             return icon;
         }, value -> {}));
         displayAmount(true);
-        background(GuiTextures.SLOT_ITEM);
+        background(NekoVendingTheme.SLOT);
         tooltipAutoUpdate(true);
         tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             t.addLine("Alt+左键：开启/关闭多重叠加；开启后放入物品追加选项");
             t.addLine("中键：编辑最后选项矿词与数量（空矿词恢复精确物品）");
             t.addLine("右键：移除最后选项；Shift+右键：清空；滚轮：调整最后选项数量");

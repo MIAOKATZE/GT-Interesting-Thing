@@ -11,6 +11,10 @@ import org.apache.logging.log4j.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.trade.preset.TradePresetLayout;
 
@@ -85,6 +89,11 @@ public class NekoPageConfig {
      * 从文件加载标签页数据，文件不存在时尝试迁移旧文件，均失败返回默认数据
      */
     public static synchronized NekoPageData load() {
+        try {
+            com.miaokatze.gtit.trade.preset.PageSourceIdentity.migrate(TradeConfigPaths.gameRoot());
+        } catch (java.io.IOException | RuntimeException failure) {
+            LOG.error("标签页来源迁移失败；保留原文件并使用只读来源推导", failure);
+        }
         Path path = getConfigPath();
         if (!Files.exists(path)) {
             Path legacy = TradeConfigPaths.resolve(LEGACY_CONFIG_PATH);
@@ -130,6 +139,7 @@ public class NekoPageConfig {
         try {
             Path path = getConfigPath();
             Files.createDirectories(path.getParent());
+            for (NekoPageEntry page : data.getPages()) page.ensureSource();
             NekoPageData user = new NekoPageData();
             NekoPageData managed = new NekoPageData();
             com.miaokatze.gtit.trade.preset.DefaultTradeSources.savePages(data.getPages());
@@ -138,21 +148,54 @@ public class NekoPageConfig {
                 (TradePresetLayout.isManagedPage(page.getId()) ? managed : user).getPages()
                     .add(page);
             }
-            String json = GSON.toJson(user);
+            String json = pageFileJson(path, user);
             Files.write(path, json.getBytes(StandardCharsets.UTF_8));
             // Only touch the managed file when it exists or contains pages; normal first init remains user-only.
             Path presetPath = TradeConfigPaths.resolve(TradePresetLayout.PAGES_PATH);
             if (Files.exists(presetPath) || !managed.getPages()
                 .isEmpty()) {
-                Files.write(
-                    presetPath,
-                    GSON.toJson(managed)
-                        .getBytes(StandardCharsets.UTF_8));
+                Files.write(presetPath, pageFileJson(presetPath, managed).getBytes(StandardCharsets.UTF_8));
             }
             LOG.info("猫猫售货机标签页配置已保存");
         } catch (Exception e) {
             LOG.error("猫猫售货机标签页配置保存失败", e);
         }
+    }
+
+    /** Preserve unknown schema fields on both the envelope and retained pages when editing known fields. */
+    private static String pageFileJson(Path path, NekoPageData data) throws java.io.IOException {
+        JsonObject result = Files.exists(path)
+            ? new JsonParser().parse(new String(Files.readAllBytes(path), StandardCharsets.UTF_8))
+                .getAsJsonObject()
+            : new JsonObject();
+        java.util.Map<Integer, JsonObject> previous = new java.util.LinkedHashMap<>();
+        if (result.has("pages") && result.get("pages")
+            .isJsonArray()) {
+            for (JsonElement raw : result.getAsJsonArray("pages")) {
+                if (raw.isJsonObject() && raw.getAsJsonObject()
+                    .has("id")) {
+                    JsonObject page = raw.getAsJsonObject();
+                    previous.put(
+                        page.get("id")
+                            .getAsInt(),
+                        page);
+                }
+            }
+        }
+        JsonArray pages = new JsonArray();
+        for (NekoPageEntry page : data.getPages()) {
+            JsonObject merged = previous.get(page.getId());
+            if (merged == null) merged = new JsonObject();
+            for (java.util.Map.Entry<String, JsonElement> field : GSON.toJsonTree(page)
+                .getAsJsonObject()
+                .entrySet()) merged.add(field.getKey(), field.getValue());
+            pages.add(merged);
+        }
+        result.add("pages", pages);
+        int version = result.has("version") ? result.get("version")
+            .getAsInt() : 1;
+        result.addProperty("version", Math.max(version, data.getVersion()));
+        return GSON.toJson(result);
     }
 
     private static NekoPageData withPresetPages(NekoPageData data) throws java.io.IOException {

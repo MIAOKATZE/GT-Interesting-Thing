@@ -40,6 +40,27 @@ public final class NekoMeTransferQueue {
         ItemStack get(int slot);
 
         void set(int slot, ItemStack stack);
+
+        default long dropId(int slot) {
+            return 0;
+        }
+
+        default long generation(int slot) {
+            return 0;
+        }
+
+        /** Legacy detached queue entries are migrated into the paid persistent buffer. */
+        default boolean preserveLegacy(ItemStack stack) {
+            return false;
+        }
+
+        default void visualReset(int slot) {}
+
+        /** True only after the authoritative delivery enters the room; legacy hosts are already visible. */
+        default boolean isVisible(int slot) {
+            return true;
+        }
+
     }
 
     /** uplink 注入触点 */
@@ -55,12 +76,18 @@ public final class NekoMeTransferQueue {
     private final java.util.List<MeTransferEntry> meTransferQueue = new java.util.ArrayList<>();
 
     /** 队列条目上限（常量随类内聚；超限条目按本地槽保留） */
-    public static final int MAX_ME_QUEUE_SIZE = 18;
+    public static final int MAX_ME_QUEUE_SIZE = 100;
     /** 条目从落槽到注入 ME 的延迟 */
     public static final long ME_TRANSFER_DELAY_MS = 3000L;
+    public static final long ME_FADE_MS = 2000L;
+    /** Spread visual-group countdowns across rounds instead of fading an entire room together. */
+    public static final long ME_STAGGER_MS = 100L;
+    /** Includes rejected simulations: a full network must not cause a 100-entry probe burst. */
+    public static final int MAX_NETWORK_ATTEMPTS_PER_TICK = 1;
 
     /** O2-19 序列化缓存（null=脏，需重建；空队列短路不缓存） */
     private String cachedSerialized = null;
+    private long lastTickTimeMs = -1;
 
     public NekoMeTransferQueue(UplinkOps uplink, OutputSlots out, Runnable markDirty, BooleanSupplier meOutputMode) {
         this.uplink = uplink;
@@ -72,72 +99,162 @@ public final class NekoMeTransferQueue {
     /**
      * 处理 ME 传输队列（原宿主 processMeTransferQueue，方法体逐字搬移）
      * <p>
-     * 遍历队列，将超过 {@link #ME_TRANSFER_DELAY_MS}（3 秒）的条目通过
-     * {@code appeng.util.Platform.poweredInsert} 直接注入 ME 网络。
+     * 每 tick 最多探测/注入一个条目；各条目错开倒计时，并保留完整 3 秒停留 + 2 秒淡出。
      * <p>
      * 若注入未完全成功（返回 remainder），将槽位更新为剩余物品并重置延迟，稍后重试。
      * <p>
-     * 如果 uplink 已断开（isLost），将队列中所有物品回退到 outputBuffer，
-     * 由本地出货槽路径投放，防止物品丢失。
+     * 如果 uplink 已断开（isLost），取消作业，真实物品留在原出货槽，不重播出货。
      * <p>
      * 应在宿主 onPostTick 服务端块内、dispenseItems() 之后调用。
      */
     public void tick() {
+        tick(System.currentTimeMillis());
+    }
+
+    /** Deterministic clock overload for headless regressions; production runs on server main thread. */
+    public void tick(long now) {
         if (meTransferQueue.isEmpty()) return;
-        long now = System.currentTimeMillis();
-
-        // v1.6.23: uplink 丢失时，物品已在出货槽中，仅清空队列（玩家可自行取走）
-        if (uplink.isLost()) {
-            meTransferQueue.clear();
-            cachedSerialized = null;
-            markDirty.run();
-            return;
+        if (lastTickTimeMs >= 0 && now < lastTickTimeMs) {
+            // Wall-clock correction is not a huge scheduled delay: restart the visible groups safely.
+            for (MeTransferEntry entry : meTransferQueue) if (entry.creationTimeMs >= 0) entry.creationTimeMs = -1;
+            changed();
         }
-
-        // 处理已到期的条目（FIFO：队列头部先入队，先到期）
+        lastTickTimeMs = now;
+        int networkAttempts = 0;
         java.util.Iterator<MeTransferEntry> it = meTransferQueue.iterator();
         while (it.hasNext()) {
             MeTransferEntry entry = it.next();
-            if (now - entry.creationTimeMs >= ME_TRANSFER_DELAY_MS) {
-                if (entry.slotIndex >= 0) {
-                    // v1.6.23: 检查槽位中是否还有匹配的物品（玩家可能已取走）
-                    ItemStack slotStack = out.get(entry.slotIndex);
-                    if (slotStack != null && slotStack.isItemEqual(entry.stack)
-                        && ItemStack.areItemStackTagsEqual(slotStack, entry.stack)) {
-                        // 物品仍在槽中，先检查 ME 网络是否能接收
-                        if (uplink.canAccept(slotStack)) {
-                            // v1.7.33: 直接注入槽内实际物品，根据 remainder 决定是否清空或保留剩余
-                            appeng.api.storage.data.IAEItemStack remainder = uplink.inject(slotStack);
-                            if (remainder == null || remainder.getStackSize() <= 0) {
-                                // 全部注入成功，清空对应出货槽
-                                out.set(entry.slotIndex, null);
-                            } else {
-                                // 注入未完全成功，保留剩余并重试
-                                out.set(entry.slotIndex, remainder.getItemStack());
-                                entry.creationTimeMs = now;
-                                cachedSerialized = null;
-                                break;
-                            }
-                        } else {
-                            // ME 网络当前不能接收（无能量/无空间），保留在出货槽并延迟重试
-                            entry.creationTimeMs = now;
-                            cachedSerialized = null;
-                            break;
-                        }
-                    }
-                    // 槽位为空或物品不匹配：玩家已取走，跳过注入
-                } else {
-                    // slotIndex == -1（旧存档兼容或无空槽回退）：直接注入，无法保留剩余
-                    uplink.inject(entry.stack);
+            if (entry.slotIndex < 0) {
+                if (out.preserveLegacy(entry.stack.copy())) {
+                    it.remove();
+                    changed();
                 }
-                it.remove();
-                cachedSerialized = null;
-                markDirty.run();
-            } else {
-                // 队列是 FIFO，遇到未到期的就停止（后续条目入队更晚，必然也未到期）
-                break;
+                continue; // Never inject an unowned legacy copy or discard its remainder.
             }
+            ItemStack actual = out.get(entry.slotIndex);
+            if (actual == null || !NekoOutputLedger.same(actual, entry.stack)
+                || out.dropId(entry.slotIndex) != entry.dropId
+                || out.generation(entry.slotIndex) != entry.generation) {
+                out.visualReset(entry.slotIndex);
+                it.remove();
+                changed();
+                continue;
+            }
+            if (uplink.isLost()) {
+                out.visualReset(entry.slotIndex);
+                it.remove();
+                changed();
+                continue;
+            }
+            if (entry.creationTimeMs < 0) {
+                if (out.isVisible(entry.slotIndex)) {
+                    schedule(entry, now);
+                    changed();
+                }
+                continue;
+            }
+            if (actual.stackSize != entry.stack.stackSize) {
+                entry.stack.stackSize = actual.stackSize;
+                restartGroup(entry, now);
+                out.visualReset(entry.slotIndex);
+                changed();
+                continue;
+            }
+            // Actual delivery precedes this clock. Visible wait 3 seconds, then 2 second fade.
+            if (now < entry.creationTimeMs || now - entry.creationTimeMs < ME_TRANSFER_DELAY_MS + ME_FADE_MS) continue;
+            if (networkAttempts >= MAX_NETWORK_ATTEMPTS_PER_TICK) continue;
+            networkAttempts++;
+            if (!uplink.canAccept(actual.copy())) {
+                restartGroup(entry, now);
+                out.visualReset(entry.slotIndex);
+                changed();
+                continue;
+            }
+            int before = actual.stackSize;
+            appeng.api.storage.data.IAEItemStack remainder = uplink.inject(actual.copy());
+            long remaining = remainder == null ? 0 : remainder.getStackSize();
+            // Only an actual accepted quantity is removed, never a simulation result.
+            int accepted = (int) Math.max(0, Math.min((long) before, (long) before - Math.max(0, remaining)));
+            if (accepted > 0) {
+                ItemStack retained = actual.copy();
+                retained.stackSize = before - accepted;
+                out.set(entry.slotIndex, retained.stackSize == 0 ? null : retained);
+            }
+            if (accepted == before) it.remove();
+            else {
+                entry.stack.stackSize = before - accepted;
+                restartGroup(entry, now);
+                out.visualReset(entry.slotIndex);
+            }
+            changed();
         }
+    }
+
+    /** The ledger gives each visual body one stable dropId; slot generations remain individual guards. */
+    private static boolean sameGroup(MeTransferEntry a, MeTransferEntry b) {
+        return a.dropId > 0 && a.dropId == b.dropId;
+    }
+
+    /** Countdown starts are reserved on the owner thread; no worker ever touches Minecraft or AE. */
+    private void schedule(MeTransferEntry entry, long now) {
+        for (MeTransferEntry other : meTransferQueue)
+            if (other != entry && sameGroup(entry, other) && other.creationTimeMs >= 0) {
+                // A genuinely new visible member needs its full hold and fade, not an older body's age.
+                if (other.creationTimeMs < now) restartGroup(entry, now);
+                else entry.creationTimeMs = other.creationTimeMs;
+                return;
+            }
+        entry.creationTimeMs = nextGroupStart(entry, now);
+    }
+
+    private long nextGroupStart(MeTransferEntry entry, long now) {
+        long start = now;
+        for (MeTransferEntry other : meTransferQueue)
+            if (other != entry && !sameGroup(entry, other) && other.creationTimeMs >= 0) start = Math.max(
+                start,
+                other.creationTimeMs > Long.MAX_VALUE - ME_STAGGER_MS ? Long.MAX_VALUE
+                    : other.creationTimeMs + ME_STAGGER_MS);
+        return start;
+    }
+
+    /** A rejected/partial group returns visibly together, rather than leaving one shared body hidden. */
+    private void restartGroup(MeTransferEntry entry, long now) {
+        long start = nextGroupStart(entry, now);
+        entry.creationTimeMs = start;
+        for (MeTransferEntry other : meTransferQueue)
+            if (other != entry && sameGroup(entry, other) && other.creationTimeMs >= 0) {
+                other.creationTimeMs = start;
+                out.visualReset(other.slotIndex);
+            }
+    }
+
+    private void changed() {
+        cachedSerialized = null;
+        markDirty.run();
+    }
+
+    /** Called at the first server-visible feed pose, not at inventory placement or physics release. */
+    public void visible(long dropId, long now) {
+        for (MeTransferEntry entry : meTransferQueue) if (entry.dropId == dropId && entry.creationTimeMs < 0) {
+            schedule(entry, now);
+            changed();
+        }
+    }
+
+    public long phaseAgeMs(int slot, long now) {
+        for (MeTransferEntry e : meTransferQueue) if (e.slotIndex == slot) {
+            if (e.creationTimeMs < 0) return 0;
+            long elapsed = Math.max(0, now - e.creationTimeMs);
+            return elapsed < ME_TRANSFER_DELAY_MS ? elapsed : Math.min(ME_FADE_MS, elapsed - ME_TRANSFER_DELAY_MS);
+        }
+        return 0;
+    }
+
+    public int phase(int slot, long now) {
+        for (MeTransferEntry e : meTransferQueue)
+            if (e.slotIndex == slot) return e.creationTimeMs < 0 || now < e.creationTimeMs ? 0
+                : now - e.creationTimeMs >= ME_TRANSFER_DELAY_MS ? 2 : 1;
+        return 0;
     }
 
     /**
@@ -154,10 +271,38 @@ public final class NekoMeTransferQueue {
         if (meTransferQueue.isEmpty()) return false;
         // v1.6.23: 物品已在出货槽中，仅从队列移除（阻止 3 秒后注入 ME）
         // 不再重新加入 outputBuffer（避免触发二次掉落动画到其他空槽）
+        MeTransferEntry entry = meTransferQueue.get(0);
+        if (entry.slotIndex < 0 && !out.preserveLegacy(entry.stack.copy())) return false;
         meTransferQueue.remove(0);
+        out.visualReset(entry.slotIndex);
         cachedSerialized = null;
         markDirty.run();
         return true;
+    }
+
+    /** Move old detached inventory into the host's paid buffer before any tick or controller removal. */
+    public void preserveDetached() {
+        java.util.Iterator<MeTransferEntry> iterator = meTransferQueue.iterator();
+        boolean moved = false;
+        while (iterator.hasNext()) {
+            MeTransferEntry entry = iterator.next();
+            if (entry.slotIndex < 0 && out.preserveLegacy(entry.stack.copy())) {
+                iterator.remove();
+                moved = true;
+            }
+        }
+        if (moved) changed();
+    }
+
+    public void cancelAll() {
+        java.util.Iterator<MeTransferEntry> iterator = meTransferQueue.iterator();
+        while (iterator.hasNext()) {
+            MeTransferEntry entry = iterator.next();
+            if (entry.slotIndex < 0 && !out.preserveLegacy(entry.stack.copy())) continue;
+            out.visualReset(entry.slotIndex);
+            iterator.remove();
+        }
+        changed();
     }
 
     /** 队列大小（GUI 心跳同步消费） */
@@ -185,12 +330,30 @@ public final class NekoMeTransferQueue {
      * @param slotIndex 物品所在出货槽索引
      */
     public void enqueueIfMeMode(ItemStack stack, int slotIndex) {
-        // B2-09：入队点统一守门 MAX_ME_QUEUE_SIZE——交易路径由 hasSpaceFor/getAvailableSlotCount
-        // 预检，抽奖出货路径此前无检查（10 连可入队 10+ 条）
-        if (meOutputMode.getAsBoolean() && meTransferQueue.size() < MAX_ME_QUEUE_SIZE) {
-            meTransferQueue.add(new MeTransferEntry(stack.copy(), System.currentTimeMillis(), slotIndex));
-            cachedSerialized = null;
-        }
+        enqueueIfMeMode(stack, slotIndex, System.currentTimeMillis());
+    }
+
+    /** Idempotent admission, shared by new deliveries and explicit activation over existing output. */
+    public void enqueueIfMeMode(ItemStack stack, int slotIndex, long now) {
+        if (!meOutputMode.getAsBoolean() || isFull()
+            || stack == null
+            || stack.stackSize <= 0
+            || slotIndex < 0
+            || slotIndex >= MAX_ME_QUEUE_SIZE) return;
+        long dropId = out.dropId(slotIndex), generation = out.generation(slotIndex);
+        for (MeTransferEntry entry : meTransferQueue)
+            if (entry.slotIndex == slotIndex && entry.dropId == dropId && entry.generation == generation) return;
+        MeTransferEntry entry = new MeTransferEntry(stack, -1, slotIndex, dropId, generation);
+        if (out.isVisible(slotIndex)) schedule(entry, now);
+        meTransferQueue.add(entry);
+        changed();
+    }
+
+    /** Called only on an explicit OFF -> ON transition; cancelled jobs stay cancelled. */
+    public void enqueueExisting(int slotCount, long now) {
+        if (!meOutputMode.getAsBoolean()) return;
+        for (int slot = 0; slot < Math.min(slotCount, MAX_ME_QUEUE_SIZE); slot++)
+            enqueueIfMeMode(out.get(slot), slot, now);
     }
 
     /**
@@ -239,10 +402,21 @@ public final class NekoMeTransferQueue {
      * @return 条目 NBT 列表（creationTime/slotIndex/物品 tag）
      */
     public NBTTagList writeToNBT() {
+        return writeToNBT(System.currentTimeMillis());
+    }
+
+    public NBTTagList writeToNBT(long now) {
         net.minecraft.nbt.NBTTagList meQueueList = new net.minecraft.nbt.NBTTagList();
         for (MeTransferEntry entry : meTransferQueue) {
             net.minecraft.nbt.NBTTagCompound entryTag = new net.minecraft.nbt.NBTTagCompound();
             entryTag.setLong("creationTime", entry.creationTimeMs);
+            entryTag.setLong("scheduledRemainingMs", Math.max(0, entry.creationTimeMs - now));
+            entryTag.setLong(
+                "visibleElapsedMs",
+                entry.creationTimeMs < 0 ? -1
+                    : Math.min(ME_TRANSFER_DELAY_MS + ME_FADE_MS, Math.max(0, now - entry.creationTimeMs)));
+            entryTag.setLong("dropId", entry.dropId);
+            entryTag.setLong("generation", entry.generation);
             entryTag.setInteger("slotIndex", entry.slotIndex); // v1.6.23 新增
             entry.stack.writeToNBT(entryTag);
             meQueueList.appendTag(entryTag);
@@ -256,16 +430,36 @@ public final class NekoMeTransferQueue {
      * @param meQueueList 条目 NBT 列表
      */
     public void readFromNBT(NBTTagList meQueueList) {
+        readFromNBT(meQueueList, System.currentTimeMillis());
+    }
+
+    public void readFromNBT(NBTTagList meQueueList, long now) {
+        meTransferQueue.clear();
+        lastTickTimeMs = now;
         for (int i = 0; i < meQueueList.tagCount(); i++) {
             net.minecraft.nbt.NBTTagCompound entryTag = meQueueList.getCompoundTagAt(i);
             ItemStack stack = ItemStack.loadItemStackFromNBT(entryTag);
             long creationTime = entryTag.getLong("creationTime");
+            if (entryTag.hasKey("visibleElapsedMs")) {
+                long elapsed = entryTag.getLong("visibleElapsedMs");
+                creationTime = elapsed < 0 ? -1 : now - Math.min(ME_TRANSFER_DELAY_MS + ME_FADE_MS, elapsed);
+                if (elapsed >= 0 && entryTag.getLong("scheduledRemainingMs") > 0)
+                    creationTime = now + Math.min(Long.MAX_VALUE - now, entryTag.getLong("scheduledRemainingMs"));
+            } else if (creationTime > now) {
+                // Old timestamps predate scheduled starts; a backwards clock must not strand owned output.
+                creationTime = now;
+            }
             // v1.6.23: 读取 slotIndex，旧存档无此 key 时默认 -1
             int slotIndex = entryTag.hasKey("slotIndex") ? entryTag.getInteger("slotIndex") : -1;
             if (stack != null && stack.stackSize > 0) {
-                meTransferQueue.add(new MeTransferEntry(stack, creationTime, slotIndex));
+                if (slotIndex >= MAX_ME_QUEUE_SIZE) continue;
+                long dropId = entryTag.hasKey("dropId") ? entryTag.getLong("dropId") : out.dropId(slotIndex);
+                long generation = entryTag.hasKey("generation") ? entryTag.getLong("generation")
+                    : out.generation(slotIndex);
+                meTransferQueue.add(new MeTransferEntry(stack, creationTime, slotIndex, dropId, generation));
             }
         }
         cachedSerialized = null;
+        preserveDetached();
     }
 }

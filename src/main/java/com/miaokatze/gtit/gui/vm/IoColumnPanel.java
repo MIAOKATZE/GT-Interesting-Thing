@@ -7,19 +7,11 @@ import net.minecraft.world.World;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
-import com.cleanroommc.modularui.api.widget.Interactable;
-import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
-import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.TextWidget;
-import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
-import com.miaokatze.gtit.client.gui.NekoFallingItemSlotFactory;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
-import com.miaokatze.gtit.client.gui.NekoMeTransferParticleWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.common.machine.v2.MeTransferEntry;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
@@ -29,12 +21,8 @@ import com.miaokatze.gtit.trade.NekoWalletManager;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 
 /**
- * 右侧 IO 列面板（A01 蓝图 G6 抽取自 NekoVMGuiV2，方法体逐字搬移）
- * <p>
- * IO 列装配（输入槽操作者投币 + 弹射按钮行 + 出货槽 100 掉落动画槽 + ME 粒子
- * Widget）。<b>双端构建且必须先于一切仅客户端子树挂载</b>（v1.7.17 双端镜像纪律）：
- * 输入槽/掉落槽为 ISynced 槽位参与 auto_sync ID 分配，宿主 build() 挂载位点与顺序不变。
- * 客户端 ME 队列缓存列表与宿主 parseMeTransferQueue 共享同一实例。
+ * Shared native inputs and the real 100-slot output handler registrations. Visual scene children are
+ * attached separately after every synced widget has been assembled identically on both sides.
  */
 public final class IoColumnPanel {
 
@@ -82,169 +70,114 @@ public final class IoColumnPanel {
         return true;
     }
 
-    /**
-     * 创建右侧 IO 列
-     * <p>
-     * 完全模仿 V1（VM 的 {@code MTEVendingMachineGui.createIOColumn}）的布局：
-     * <ul>
-     * <li>顶部：INPUT_SPRITE 图标 + "IN" 文字</li>
-     * <li>2x4 输入槽（按放币操作者自动导入猫猫币）</li>
-     * <li>物品弹射按钮（EJECT_SLOTS）+ 货币弹射按钮（EJECT_COINS）</li>
-     * <li>底部：出货槽（带 DISPENSER_BACKGROUND/OVERHANG + 100 个掉落动画槽）</li>
-     * </ul>
-     * 不再放置电源开关、结构更新、音量按钮，这些功能分别由 GT5U 标准交互
-     * （扳手右键等）与 QoL 按钮列承担，与 V1 行为一致。
-     *
-     * @return IO 列 Widget
-     */
+    private final ParentWidget<?> sceneMount = new ParentWidget<>();
+    private final ParentWidget<?> outputStatsMount = new ParentWidget<>();
+    private final java.util.List<ItemSlot> outputSlotRefs = new java.util.ArrayList<>();
+
+    public ParentWidget<?> getSceneMount() {
+        return sceneMount;
+    }
+
+    public ParentWidget<?> getOutputStatsMount() {
+        return outputStatsMount;
+    }
+
+    public java.util.List<ItemSlot> getOutputSlotRefs() {
+        return java.util.Collections.unmodifiableList(outputSlotRefs);
+    }
+
     public IWidget createIOColumn() {
-        ParentWidget<?> ioColumn = new ParentWidget<>().size(50, 214)
-            .right(-48)
-            .top(40)
-            .background(NekoGuiTextures.SIDE_PANEL_BACKGROUND);
-
-        // v1.7.6 G1：IO 列四页恒显示（输入槽投币/取物、出货槽在四页均可用）——
-        // 移除原 v1.7.0「仅贸易页」的 setEnabledIf；槽位双端注册本就不受 setEnabledIf 影响，此改动仅扩大可见范围
-
-        // --- 顶部：INPUT_SPRITE 图标 + "IN" 文字 ---
-        ioColumn.child(
-            NekoGuiTextures.INPUT_SPRITE.asWidget()
-                .leftRel(0.5f)
-                .top(8)
-                .width(30)
-                .height(20));
-        ioColumn.child(
-            (IWidget) new TextWidget(IKey.str("IN")).textAlign(Alignment.CENTER)
-                .top(8)
-                .widthRel(1.0f));
-
-        // --- 输入槽（2x4，按放币操作者自动导入猫猫币）---
-        SlotGroupWidget inputSlots = SlotGroupWidget.builder()
-            .matrix("II", "II", "II", "II")
-            .key('I', index -> {
-                ModularSlot slot = new VendingInputSlot(
-                    multiblock.inputItems,
-                    index,
-                    this::depositCoins,
-                    multiblock::markTradeStateChanged).slotGroup("inputSlotGroup");
-                final ItemSlot itemSlot = new ItemSlot().slot(slot);
-                // Observing a shared slot never transfers its contents to the observer's wallet.
-                slot.changeListener(
-                    (newItem, onlyAmountChanged, client, init) -> {
-                        if (!client && !init) gui.markTradeableStatusDirty();
-                    });
-                // 收集输入槽引用，供服务端在弹出物品等操作后强制同步
-                gui.coinOps.getInputSlotRefs()
-                    .add(itemSlot);
-                return itemSlot;
-            })
-            .build();
-        ioColumn.child(
-            Flow.row()
-                .child(inputSlots.center())
-                .top(20)
-                .height(18 * 4));
-
-        // --- 弹射按钮行：物品弹射 + 货币弹射 ---
-        ButtonWidget<?> ejectItemsButton = new ButtonWidget<>().size(16, 16)
-            .overlay(
-                NekoGuiTextures.EJECT_SLOTS.asIcon()
-                    .size(16))
-            .onMousePressed(btn -> {
-                gui.coinOps.getEjectItemsSync()
-                    .setValue(true);
-                return true;
-            })
-            .tooltipBuilder(t -> t.addLine(IKey.str("弹出物品")));
-        ButtonWidget<?> ejectCoinsButton = new ButtonWidget<>().size(16, 16)
-            .overlay(
-                NekoGuiTextures.EJECT_COINS.asIcon()
-                    .size(16))
-            .onMousePressed(btn -> {
-                gui.coinOps.getEjectAllCoinsSync()
-                    .setValue(true);
-                return true;
-            })
-            .tooltipBuilder(t -> t.addLine(IKey.str("弹出所有猫猫币")));
-        ioColumn.child(
-            Flow.row()
-                .child(ejectItemsButton.right(6))
-                .child(ejectCoinsButton.left(6))
-                .top(98)
-                .height(18));
-
-        // --- 底部：出货槽（带 dispenser 背景与悬垂 + 100 个掉落动画槽）---
-        ParentWidget<?> dispenserChute = new ParentWidget<>().fullHeight()
-            .fullWidth()
-            .marginLeft(5)
-            .marginRight(4)
-            .background(NekoGuiTextures.DISPENSER_BACKGROUND)
-            .child(getFillPlayerInventoryButton());
-        // 100 个掉落动画槽（fallDistance=72 与 V1 一致，4 行高度）
-        NekoFallingItemSlotFactory fallingFactory = new NekoFallingItemSlotFactory(
-            multiblock.outputItems,
-            18 * 4,
-            MTENekoVendingMachineV2.OUTPUT_SLOTS);
+        ParentWidget<?> root = new ParentWidget<>().background(NekoVendingTheme.PANEL);
+        // Fixed dual-side registrations are separate from the client scene. There is only one output handler.
+        ParentWidget<?> synchronizedSlots = new ParentWidget<>().pos(-20000, -20000)
+            .size(18, 18);
         for (int i = 0; i < MTENekoVendingMachineV2.OUTPUT_SLOTS; i++) {
-            dispenserChute.child(fallingFactory.getFallingItemSlot(i));
+            ItemSlot slot = new ItemSlot().slot(
+                new ModularSlot(multiblock.outputItems, i).accessibility(false, true)
+                    .slotGroup("outputSlotGroup"));
+            outputSlotRefs.add(slot);
+            synchronizedSlots.child(slot);
         }
-        // v1.6.23: ME 传输粒子动画 Widget（围绕出货槽中的物品渲染粒子）
-        // 传入 fallingFactory 供粒子定位槽位坐标；点击穿透到出货槽（不拦截鼠标）
-        // v1.7.5 修复：仅客户端创建——NekoMeTransferParticleWidget 带 @SideOnly(Side.CLIENT)，
-        // 专用服务器类被剥离，双端执行会 NoClassDefFoundError（createIOColumn 双端调用）。
-        if (gui.isClient()) {
-            NekoMeTransferParticleWidget particleWidget = new NekoMeTransferParticleWidget(
-                clientMeTransferQueue,
-                fallingFactory).onRetrieve(() -> {
-                    if (gui.retrieveMeItemSync != null) {
-                        gui.retrieveMeItemSync.setValue(true);
-                    }
+        root.child(synchronizedSlots);
+
+        ParentWidget<?> input = gui.place(new ParentWidget<>(), () -> local(gui.vendingLayout().input));
+        input.child(
+            IKey.str("IN · 实体输入")
+                .color(NekoVendingTheme.MUTED)
+                .asWidget()
+                .pos(0, 4));
+        for (int i = 0; i < MTENekoVendingMachineV2.INPUT_SLOTS; i++) {
+            ModularSlot slot = new VendingInputSlot(
+                multiblock.inputItems,
+                i,
+                this::depositCoins,
+                multiblock::markTradeStateChanged).slotGroup("inputSlotGroup");
+            final int index = i;
+            ItemSlot itemSlot = new ItemSlot().slot(slot)
+                .background(NekoVendingTheme.SLOT);
+            gui.place(
+                itemSlot,
+                () -> new NekoVendingLayout.Rect(
+                    (index % 16) * (gui.vendingLayout().input.width - 18) / 15,
+                    24 + (index / 16) * 19,
+                    18,
+                    18));
+            slot.changeListener(
+                (newItem, onlyAmountChanged, client, init) -> {
+                    if (!client && !init) gui.markTradeableStatusDirty();
                 });
-            particleWidget.fullWidth()
-                .fullHeight();
-            // v1.6.24: 移除 setEnabledIf（ModularUI2 此版本中 setEnabledIf(false) 会阻止 widget 的 draw() 被调用，
-            // 导致 clientMeTransferQueue 同步到达后粒子仍不渲染）。draw() 方法内已有空队列守卫
-            // (if (queueRef.isEmpty()) return;)，无需额外控制可见性。
-            dispenserChute.child(particleWidget);
+            gui.coinOps.getInputSlotRefs()
+                .add(itemSlot);
+            input.child(itemSlot);
         }
-        // 顶部悬垂装饰：必须最后添加，覆盖掉落槽起始位置（顶部），形成"物品从悬垂后面掉落"的图层效果
-        // 与 VM 原版 MteVendingMachineGui.createDispenserChute 顺序一致（掉落槽 → OVERHANG 最后）
-        dispenserChute.child(
-            NekoGuiTextures.DISPENSER_OVERHANG.asWidget()
+        input.child(
+            NekoVendingTheme.button(
+                () -> "弹出输入",
+                () -> gui.coinOps.getEjectItemsSync()
+                    .setValue(true))
+                .right(72)
                 .top(0)
-                .fullWidth());
-        ioColumn.child(
-            Flow.row()
-                .child(dispenserChute)
-                .bottom(6)
-                .height(18 * 5));
-
-        // 在 NEI/HEI 中排除右侧 IO 列区域，避免配方查看器遮挡输入/输出槽
-        return ioColumn.excludeAreaInRecipeViewer();
+                .size(68, 19)
+                .addTooltipLine("把输入物品送往出货流程；不清空输出库存"));
+        input.child(
+            NekoVendingTheme.button(
+                () -> "弹出两币",
+                () -> gui.coinOps.getEjectAllCoinsSync()
+                    .setValue(true))
+                .right(0)
+                .top(0)
+                .size(68, 19)
+                .addTooltipLine("弹出当前钱包的所有猫猫币"));
+        input.setEnabledIf(w -> !gui.isEditModeActive());
+        root.child(input);
+        root.child(
+            IKey.str("MiaoVision · 出货展示")
+                .color(NekoVendingTheme.INK)
+                .asWidget()
+                .pos(8, 73)
+                .setEnabledIf(w -> !gui.isEditModeActive()));
+        sceneMount.setEnabledIf(w -> !gui.isEditModeActive());
+        outputStatsMount.setEnabledIf(w -> !gui.isEditModeActive());
+        root.child(sceneMount);
+        root.child(outputStatsMount);
+        root.child(
+            IKey.str("选择左侧交易，编辑当前真实页面")
+                .color(NekoVendingTheme.MUTED)
+                .asWidget()
+                .pos(9, 8)
+                .setEnabledIf(w -> gui.isEditModeActive() && !gui.isEditOverlayOpen()));
+        gui.place(sceneMount, () -> local(gui.vendingLayout().scene));
+        gui.place(outputStatsMount, () -> local(gui.vendingLayout().outputStats));
+        // Exclusions are individual non-catalog rectangles, never the enclosing right pane.
+        input.excludeAreaInRecipeViewer();
+        sceneMount.excludeAreaInRecipeViewer();
+        outputStatsMount.excludeAreaInRecipeViewer();
+        return gui.place(root, () -> gui.vendingLayout().rightPane);
     }
 
-    /**
-     * 获取"填充玩家背包"按钮
-     * <p>
-     * 复刻 V1 的 getNekoFillPlayerInventoryButton：
-     * 使用一个铺满出货槽区域的不可见 ButtonWidget，
-     * Shift+左键点击时通过 fillPlayerInventorySync 触发服务端方法，
-     * 将出货槽的物品快速移到玩家背包。
-     *
-     * @return 不可见的满覆盖按钮 Widget
-     */
-    private IWidget getFillPlayerInventoryButton() {
-        return new ButtonWidget<>().fullHeight()
-            .fullWidth()
-            .invisible()
-            .playClickSound(false)
-            .onMousePressed(btn -> {
-                // 复刻 V1：仅 Shift+左键触发
-                if (Interactable.hasShiftDown()) {
-                    gui.coinOps.getFillPlayerInventorySync()
-                        .setValue(true);
-                }
-                return true;
-            });
+    private NekoVendingLayout.Rect local(NekoVendingLayout.Rect rect) {
+        NekoVendingLayout.Rect parent = gui.vendingLayout().rightPane;
+        return new NekoVendingLayout.Rect(rect.x - parent.x, rect.y - parent.y, rect.width, rect.height);
     }
+
 }

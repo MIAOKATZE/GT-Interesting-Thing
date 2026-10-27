@@ -43,13 +43,34 @@ public final class EditOverlayController {
     /** v1.7.7 G2① 编辑覆盖层根节点（各编辑面板的公共父级，双端镜像构建） */
     private final ParentWidget<?> editOverlayRoot;
 
+    private Runnable layoutListener = () -> {};
+
+    public void setLayoutListener(Runnable listener) {
+        this.layoutListener = listener == null ? () -> {} : listener;
+    }
+
     /** 已注册的覆盖层类型（用于重复注册防御） */
     private final java.util.Set<EditOverlayType> registered = new java.util.HashSet<>();
 
+    private final class OverlayRoot extends ParentWidget<OverlayRoot> {
+
+        @Override
+        public boolean canHover() {
+            return !isDockedWorkspace();
+        }
+
+        @Override
+        public boolean canHoverThrough() {
+            return isDockedWorkspace();
+        }
+    }
+
     public EditOverlayController() {
-        editOverlayRoot = new ParentWidget<>();
-        editOverlayRoot.relativeToScreen()
-            .full();
+        // TRADE is a docked workspace, not a modal layer over the trade list or player bag.
+        editOverlayRoot = new OverlayRoot();
+        // The main panel already applies the sole fullscreen canvas transform.
+        // Screen-relative sizing mixed logical pixels with native canvas coordinates.
+        editOverlayRoot.full();
         editOverlayRoot.setEnabledIf(w -> currentEditOverlay != EditOverlayType.NONE);
     }
 
@@ -72,6 +93,12 @@ public final class EditOverlayController {
         return this;
     }
 
+    /** Non-modal editors share the right workspace with the native NEI catalog. */
+    public boolean isDockedWorkspace() {
+        return currentEditOverlay == EditOverlayType.TRADE || currentEditOverlay == EditOverlayType.LOTTERY
+            || currentEditOverlay == EditOverlayType.LOTTERY_POOL;
+    }
+
     /** 获取覆盖层根节点（由 NekoVMGuiV2.build 在主内容之后挂到主面板） */
     public ParentWidget<?> getRoot() {
         return editOverlayRoot;
@@ -87,6 +114,7 @@ public final class EditOverlayController {
      */
     public void open(EditOverlayType type) {
         this.currentEditOverlay = type;
+        layoutListener.run();
     }
 
     /** 检查当前是否有编辑覆盖层处于打开状态（v1.7.27） */
@@ -112,5 +140,6 @@ public final class EditOverlayController {
      */
     public void close() {
         this.currentEditOverlay = EditOverlayType.NONE;
+        layoutListener.run();
     }
 }

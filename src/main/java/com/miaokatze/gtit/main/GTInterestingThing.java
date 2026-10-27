@@ -36,7 +36,7 @@ import cpw.mods.fml.common.event.FMLServerStoppingEvent;
     // E4a: after:betterquesting 为纯排序约束（不要求 BQ 存在）；2026-09-07 起注入已迁移至
     // FMLServerStartedEvent（整波 ServerStarting 含第三方整库重载结束、玩家登录之前），
     // 同波次排序不再承担注入安全性（专用服 dreamcraft 整库重载覆盖案例）
-    dependencies = "required-after:miaokatzecore@[0.1.10,);required-before:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine;after:betterquesting")
+    dependencies = "required-after:miaokatzecore@[0.1.27,);required-before:gregtech;after:NotEnoughItems;after:Baubles;after:VisualProspecting;after:vendingmachine;after:betterquesting")
 public class GTInterestingThing {
 
     // 模组唯一标识符 (Mod ID)

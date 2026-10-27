@@ -1,7 +1,10 @@
 package com.miaokatze.gtit.client.gui;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.item.ItemStack;
@@ -51,6 +54,7 @@ public class NekoTradeItemDisplay {
 
     private static void describeOption(com.cleanroommc.modularui.screen.RichTooltip tooltip, NekoBigItemStack option,
         boolean output, String color) {
+        if (option == null || option.getBaseStack() == null) return;
         String name = option.hasOreDict() ? "矿词 [" + option.getOreDict() + "]"
             : option.getBaseStack()
                 .getDisplayName();
@@ -99,6 +103,9 @@ public class NekoTradeItemDisplay {
      * 使用 long 类型以支持大数值，工厂方法从 {@link NekoTrade#getCurrencyCost()}（int）安全拓宽。
      */
     private long cost;
+
+    /** Full wallet requirement snapshot; legacy single-currency accessors remain compatible. */
+    private Map<String, Long> currencyCosts;
 
     /** BQ 前置任务是否未满足（true=锁定，不可交易） */
     private boolean bqLocked;
@@ -225,6 +232,13 @@ public class NekoTradeItemDisplay {
             0, // cooldownRemaining - 由 GUI 层后续更新
             true, // tradeable - 默认可交易
             false); // favourite - 默认未收藏
+        display.currencyCosts = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> currency : trade.getCurrencyCosts()
+            .entrySet())
+            if (currency.getValue() > 0) display.currencyCosts.put(
+                currency.getKey(),
+                currency.getValue()
+                    .longValue());
         display.definitionFingerprint = NekoTradeDefinition.fingerprint(group, trade);
         display.setOneTimeOnly(group.getCooldown() == -1);
         return display;
@@ -246,6 +260,10 @@ public class NekoTradeItemDisplay {
             return true;
         }
 
+        for (String id : getCurrencyCosts().keySet())
+            if (com.miaokatze.gtit.currency.NekoCurrencyRegistrar.getDisplayName(id)
+                .toLowerCase(java.util.Locale.ROOT)
+                .contains(searchText)) return true;
         for (NekoBigItemStack slot : outputs) if (choiceMatchesSearch(slot, searchText)) return true;
         for (NekoBigItemStack slot : inputs) if (choiceMatchesSearch(slot, searchText)) return true;
 
@@ -308,7 +326,7 @@ public class NekoTradeItemDisplay {
      * @return 有花费返回 true
      */
     public boolean hasCurrencyCost() {
-        return currencyId != null && cost > 0;
+        return !getCurrencyCosts().isEmpty();
     }
 
     /**
@@ -316,6 +334,11 @@ public class NekoTradeItemDisplay {
      *
      * @return 有输入物品返回 true
      */
+    /** Presentation count only; wallet costs remain detached from actual item inputs. */
+    public int getDisplayedRequirementCount() {
+        return inputs.size() + getCurrencyCosts().size();
+    }
+
     public boolean hasInputs() {
         return !inputs.isEmpty();
     }
@@ -398,12 +421,19 @@ public class NekoTradeItemDisplay {
         this.inputs = inputs != null ? inputs : new ArrayList<>();
     }
 
+    /** Visual wallet tokens use the same aggregated multi-currency requirements as settlement. */
+    public Map<String, Long> getCurrencyCosts() {
+        if (currencyCosts != null) return Collections.unmodifiableMap(currencyCosts);
+        return currencyId != null && cost > 0 ? Collections.singletonMap(currencyId, cost) : Collections.emptyMap();
+    }
+
     public String getCurrencyId() {
         return currencyId;
     }
 
     public void setCurrencyId(String currencyId) {
         this.currencyId = currencyId;
+        currencyCosts = null;
     }
 
     public long getCost() {
@@ -412,6 +442,7 @@ public class NekoTradeItemDisplay {
 
     public void setCost(long cost) {
         this.cost = cost;
+        currencyCosts = null;
     }
 
     public boolean isBqLocked() {
