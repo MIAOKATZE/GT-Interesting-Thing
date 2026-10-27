@@ -26,6 +26,7 @@ public final class VendingSceneView implements AutoCloseable {
     private final List<ItemSlot> slots;
     private Map<String, Entry> entries = new LinkedHashMap<>();
     private Map<String, SceneBody> previous = new HashMap<>();
+    private final Map<String, SceneBody> pendingEntrances = new HashMap<>();
     private final Map<String, Long> fadeStart = new HashMap<>();
     private final List<Particle> particles = new ArrayList<>();
     private long revision = -1, tick, received;
@@ -69,12 +70,24 @@ public final class VendingSceneView implements AutoCloseable {
         SceneSnapshot last = snapshot(now);
         Map<String, SceneBody> prior = new HashMap<>();
         for (SceneBody b : last.bodies) prior.put(b.id, b);
-        // A WAIT -> FEED transition starts at its real shell pose, not an instant jump to the next 5 Hz sample.
-        // Doors and travel then share the same bounded interpolation interval; no business clock waits on a client.
+        // FEED age zero repeats the WAIT launch pose. Keep that first sample hidden until there is
+        // an actual travel segment to draw, instead of showing a motionless item for one 5 Hz interval.
         for (Entry e : next.values()) {
             Entry old = entries.get(e.pose.id);
-            if (e.deliveryStage == 1 && old != null && old.deliveryStage == 0) prior.put(e.pose.id, old.pose);
+            if (revision >= 0 && e.deliveryStage == 1
+                && e.deliveryAgeTicks == 0
+                && (old == null || old.deliveryStage == 0 && old.pose.x == e.pose.x
+                    && old.pose.y == e.pose.y
+                    && old.pose.z == e.pose.z))
+                pendingEntrances.put(e.pose.id, e.pose);
+            SceneBody entrance = pendingEntrances.get(e.pose.id);
+            if (entrance != null && (e.deliveryStage == 2 || e.deliveryAgeTicks > 0)) {
+                prior.put(e.pose.id, entrance);
+                pendingEntrances.remove(e.pose.id);
+            } else if (e.deliveryStage == 1 && old != null && old.deliveryStage == 0) prior.put(e.pose.id, old.pose);
         }
+        pendingEntrances.keySet()
+            .retainAll(next.keySet());
         // Removal cause is not transported: never infer ME success from a removed ID.
         for (Entry e : next.values()) if (e.phase == 2) {
             fadeStart.put(e.pose.id, now - Math.min(2000, e.phaseAgeMs) * 1000000L);
@@ -113,10 +126,12 @@ public final class VendingSceneView implements AutoCloseable {
 
     public SceneSnapshot snapshot(long now) {
         if (paused && frozen != null) return frozen;
+        if (reducedMotion) pendingEntrances.clear();
         double t = reducedMotion ? 1 : Math.max(0, Math.min(1, (now - received) / 200000000.0));
         List<SceneBody> bodies = new ArrayList<>();
         for (Entry e : entries.values()) {
             if (e.deliveryStage == 0) continue; // Queued stock still owns its real slots, never a visible proxy.
+            if (pendingEntrances.containsKey(e.pose.id)) continue;
             SceneBody b = e.pose, p = previous.get(b.id);
             if (p != null && t < 1) b = interpolate(p, b, t);
             bodies.add(b);
@@ -280,6 +295,7 @@ public final class VendingSceneView implements AutoCloseable {
         closed = true;
         entries.clear();
         previous.clear();
+        pendingEntrances.clear();
         fadeStart.clear();
         particles.clear();
         selected = hovered = null;

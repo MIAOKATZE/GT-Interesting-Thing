@@ -24,6 +24,19 @@ public class TextureManager {
         .custom("gtit", "nekovm_front_on_glow");
     public static final IIconContainer NEKOVM_CASING = Textures.BlockIcons.custom("gtit", "nekovm_casing");
 
+    public static final IIconContainer NEKO_VENDING_CASING_SIDE = Textures.BlockIcons
+        .custom("gtit", "neko_vending_casing_side");
+    public static final IIconContainer NEKO_VENDING_CASING_TOP = Textures.BlockIcons
+        .custom("gtit", "neko_vending_casing_top");
+    public static final IIconContainer NEKO_VENDING_CASING_BOTTOM = Textures.BlockIcons
+        .custom("gtit", "neko_vending_casing_bottom");
+    public static final IIconContainer NEKO_VENDING_CONTROLLER_OFF = Textures.BlockIcons
+        .custom("gtit", "neko_vending_controller_off");
+    public static final IIconContainer NEKO_VENDING_CONTROLLER_ON = Textures.BlockIcons
+        .custom("gtit", "neko_vending_controller_on");
+    public static final IIconContainer NEKO_VENDING_CONTROLLER_GLOW = Textures.BlockIcons
+        .custom("gtit", "neko_vending_controller_glow");
+
     // 猫猫售货机覆盖材质（非激活状态）
     public static final IIconContainer NEKOVM_OVERLAY_1 = Textures.BlockIcons.custom("gtit", "nekovm_1"); // 右上
     public static final IIconContainer NEKOVM_OVERLAY_2 = Textures.BlockIcons.custom("gtit", "nekovm_2"); // 左上

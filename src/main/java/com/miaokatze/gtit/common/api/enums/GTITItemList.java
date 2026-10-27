@@ -49,6 +49,9 @@ public enum GTITItemList implements IItemContainer {
     // V2 接管 V1 的 ID 14610，统一使用此容器
     NekoVendingMachine,
 
+    // 猫猫自动售货机机械方块（独立木质外壳）
+    NekoVendingCasing,
+
     // Infinity Cell 系列 (适配自 AE2Things，已被下面的自有单元取代)
     InfinityCell,
     InfinityFluidCell,

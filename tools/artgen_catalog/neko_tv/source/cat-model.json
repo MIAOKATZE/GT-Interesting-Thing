@@ -1,0 +1,286 @@
+{
+  "minecraft": "1.7.10",
+  "texture_size": [
+    64,
+    32
+  ],
+  "provenance": {
+    "generated_source_directory": "build/rfg/minecraft-src/java/net/minecraft/client/model",
+    "geometry": "ModelOcelot constructor; uninflated ModelBox geometry",
+    "uv": "ModelBox quadList[0..5], TexturedQuad constructor vertex order",
+    "source_sha256": {
+      "ModelOcelot.java": "f4c6a14e9bf4196f0374cb30a0ce52fd9bd39d379db1df5e79e97fe3ab99d2e3",
+      "ModelBox.java": "8d4f63be596a23eea2896e8f26637f5197ddb5c2e961eba8b2e2075deb65df31",
+      "TexturedQuad.java": "a04c4cbeb3ea8eb6a293f328bb3d2eeb57a301afefa95f996c34e0701fca1a47"
+    },
+    "texture_jar": "build/rfg/mcp_patched_minecraft-sources.jar",
+    "texture_entries": {
+      "red": {
+        "entry": "assets/minecraft/textures/entity/cat/red.png",
+        "sha256": "a6fb1611ceb69a0f978326b76dc40d9e45bb67e0f1ebbdc4b727510d537b8d55"
+      },
+      "black": {
+        "entry": "assets/minecraft/textures/entity/cat/black.png",
+        "sha256": "4cac187aa0cf1bcc3a7a99df10d8c25c2593854d4e591ed8d7cbe6ea4f58b229"
+      }
+    }
+  },
+  "parts": [
+    {
+      "name": "ocelotHead",
+      "pivot": [
+        0.0,
+        15.0,
+        -9.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -2.5,
+            -2.0,
+            -3.0
+          ],
+          "size": [
+            5,
+            4,
+            5
+          ],
+          "uv": [
+            0,
+            0
+          ]
+        },
+        {
+          "origin": [
+            -1.5,
+            0.0,
+            -4.0
+          ],
+          "size": [
+            3,
+            2,
+            2
+          ],
+          "uv": [
+            0,
+            24
+          ]
+        },
+        {
+          "origin": [
+            -2.0,
+            -3.0,
+            0.0
+          ],
+          "size": [
+            1,
+            1,
+            2
+          ],
+          "uv": [
+            0,
+            10
+          ]
+        },
+        {
+          "origin": [
+            1.0,
+            -3.0,
+            0.0
+          ],
+          "size": [
+            1,
+            1,
+            2
+          ],
+          "uv": [
+            6,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ocelotBody",
+      "pivot": [
+        0.0,
+        12.0,
+        -10.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -2.0,
+            3.0,
+            -8.0
+          ],
+          "size": [
+            4,
+            16,
+            6
+          ],
+          "uv": [
+            20,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ocelotTail",
+      "pivot": [
+        0.0,
+        15.0,
+        8.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -0.5,
+            0.0,
+            0.0
+          ],
+          "size": [
+            1,
+            8,
+            1
+          ],
+          "uv": [
+            0,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ocelotTail2",
+      "pivot": [
+        0.0,
+        20.0,
+        14.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -0.5,
+            0.0,
+            0.0
+          ],
+          "size": [
+            1,
+            8,
+            1
+          ],
+          "uv": [
+            4,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ocelotBackLeftLeg",
+      "pivot": [
+        1.1,
+        18.0,
+        5.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -1.0,
+            0.0,
+            1.0
+          ],
+          "size": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            8,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ocelotBackRightLeg",
+      "pivot": [
+        -1.1,
+        18.0,
+        5.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -1.0,
+            0.0,
+            1.0
+          ],
+          "size": [
+            2,
+            6,
+            2
+          ],
+          "uv": [
+            8,
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ocelotFrontLeftLeg",
+      "pivot": [
+        1.2,
+        13.8,
+        -5.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "size": [
+            2,
+            10,
+            2
+          ],
+          "uv": [
+            40,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ocelotFrontRightLeg",
+      "pivot": [
+        -1.2,
+        13.8,
+        -5.0
+      ],
+      "boxes": [
+        {
+          "origin": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "size": [
+            2,
+            10,
+            2
+          ],
+          "uv": [
+            40,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

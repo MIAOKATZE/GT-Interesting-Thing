@@ -4,6 +4,7 @@ import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 
+import com.cubefury.vendingmachine.blocks.VendingMachineBlocks;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
@@ -24,6 +25,7 @@ public class GTITRecipes {
         addTelekinesisOreScannerCoreRecipe();
         addRingWindriderRecipe();
         addNekoVendingMachineRecipe();
+        addNekoVendingCasingRecipe();
         addNekoVendingTerminalRecipe();
         addNekoInfinityStorageUnitRecipe();
         addReincarnationCrystalRecipe();
@@ -187,6 +189,13 @@ public class GTITRecipes {
 
         // 无序合成：1 VM贸易机 + 1 猫猫币
         GameRegistry.addShapelessRecipe(GTITItemList.NekoVendingMachine.get(1), vmStack, GTITItemList.NekoCoin.get(1));
+    }
+
+    /** One original Vending Machine Casing becomes one wooden Neko casing. */
+    private static void addNekoVendingCasingRecipe() {
+        GameRegistry.addShapelessRecipe(
+            GTITItemList.NekoVendingCasing.get(1),
+            new ItemStack(VendingMachineBlocks.casingBlock, 1, 0));
     }
 
     /** One GTSWN-compatible computer screen cover and one shimmering Neko coin, in any order. */

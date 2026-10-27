@@ -1,4 +1,6 @@
 gtit.machine.neko_vending_machine=猫猫售货机
+neko_vending_casing.name=猫猫自动售货机机械方块
+neko_vending_casing.0.name=猫猫自动售货机机械方块
 
 # GregTech style keys used by CommonMetaTileEntity
 

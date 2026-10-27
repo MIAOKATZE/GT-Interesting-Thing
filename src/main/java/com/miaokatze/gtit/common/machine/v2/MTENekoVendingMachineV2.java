@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.common.machine.v2;
 
+import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofBlock;
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.register.BlockRegistrar;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
@@ -82,8 +84,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * 使用 {@link gregtech.api.util.HatchElementBuilder#hatchId} 按 MTE ID 检测
      * VendingMachine ME Uplink Hatch（ID = {@link #VM_ME_UPLINK_MTE_ID}），避免跨版本
-     * /类加载器导致的反射兼容识别失败。普通位置仍可放置任意
-     * {@code VendingMachineBlocks.casingBlock} 作为外壳。
+     * /类加载器导致的反射兼容识别失败。新建默认使用猫猫自动售货机机械方块，
+     * 同时接受旧的 {@code VendingMachineBlocks.casingBlock}，保留已有结构。
      */
     // 懒加载结构定义（v1.6.33 方案 D）：
     // 不能使用 static final 直接初始化，因为 <clinit> 会访问 VendingMachineBlocks.casingBlock（VM mod Init 产物）。
@@ -96,16 +98,23 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     // === 材质常量 ===
 
     /** 侧面材质（非正面朝向的方块面使用） */
-    private static final ITexture[] FACING_SIDE = new ITexture[] { TextureFactory.of(TextureManager.NEKOVM_CASING) };
+    private static final ITexture[] FACING_SIDE = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CASING_SIDE) };
+
+    private static final ITexture[] FACING_TOP = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CASING_TOP) };
+
+    private static final ITexture[] FACING_BOTTOM = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CASING_BOTTOM) };
 
     /** 正面材质（非激活状态） */
     private static final ITexture[] FACING_FRONT = new ITexture[] {
-        TextureFactory.of(TextureManager.NEKOVM_FRONT_OFF) };
+        TextureFactory.of(TextureManager.NEKO_VENDING_CONTROLLER_OFF) };
 
     /** 正面材质（激活状态，含发光层） */
-    private static final ITexture[] FACING_ACTIVE = new ITexture[] { TextureFactory.of(TextureManager.NEKOVM_FRONT_ON),
-        TextureFactory.builder()
-            .addIcon(TextureManager.NEKOVM_FRONT_ON_GLOW)
+    private static final ITexture[] FACING_ACTIVE = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CONTROLLER_ON), TextureFactory.builder()
+            .addIcon(TextureManager.NEKO_VENDING_CONTROLLER_GLOW)
             .glow()
             .build() };
 
@@ -395,9 +404,11 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     'c',
                     buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
                         .hatchId(VM_ME_UPLINK_MTE_ID)
-                        .casingIndex(VendingMachineBlocks.casingBlock.getTextureIndex(0))
+                        .casingIndex(BlockRegistrar.nekoVendingCasing.getTextureIndex(0))
                         .hint(1)
-                        .buildAndChain(VendingMachineBlocks.casingBlock, 0))
+                        .buildAndChain(
+                            ofBlock(BlockRegistrar.nekoVendingCasing, 0),
+                            ofBlock(VendingMachineBlocks.casingBlock, 0)))
                 .build();
         }
         return NEKO_STRUCTURE_DEFINITION;
@@ -1150,8 +1161,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @SideOnly(Side.CLIENT)
     public boolean renderInInventory(ISBRInventoryContext ctx) {
         // 物品栏中正面朝向 WEST（左面），使用非激活正面材质（无发光层）
-        ctx.renderNegativeYFacing(FACING_SIDE); // DOWN
-        ctx.renderPositiveYFacing(FACING_SIDE); // UP
+        ctx.renderNegativeYFacing(FACING_BOTTOM); // DOWN
+        ctx.renderPositiveYFacing(FACING_TOP); // UP
         ctx.renderNegativeZFacing(FACING_SIDE); // NORTH
         ctx.renderPositiveZFacing(FACING_SIDE); // SOUTH
         ctx.renderNegativeXFacing(FACING_FRONT); // WEST（物品栏中的正面）
@@ -1172,7 +1183,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             .addInfo("喵~ 猫猫售货机V2，完全独立版！")
             .beginStructureBlock(5, 4, 2, false)
             .addController("Front Bottom Center")
-            .addOtherStructurePart("Vending Machine Casing", "Any casing block")
+            .addOtherStructurePart(BlockRegistrar.nekoVendingCasing.getLocalizedName(), "Any casing block")
             .addOtherStructurePart("ME Vending Uplink Hatch", "Optional, any casing")
             .addInfo(GTITUtils.getAddedByLine())
             .toolTipFinisher();
@@ -1274,6 +1285,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             }
             return aActive ? FACING_ACTIVE : FACING_FRONT;
         }
+        if (side == ForgeDirection.DOWN) return FACING_BOTTOM;
+        if (side == ForgeDirection.UP) return FACING_TOP;
         return FACING_SIDE;
     }
 

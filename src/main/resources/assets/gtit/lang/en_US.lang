@@ -1,4 +1,6 @@
 gtit.machine.neko_vending_machine=Neko Vending Machine
+neko_vending_casing.name=Neko Vending Machine Casing
+neko_vending_casing.0.name=Neko Vending Machine Casing
 
 # GregTech style keys used by CommonMetaTileEntity
 
