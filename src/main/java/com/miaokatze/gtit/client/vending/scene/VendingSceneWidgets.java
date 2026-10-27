@@ -22,7 +22,9 @@ import com.miaokatze.gtit.gui.vm.scene.VendingSceneBridge;
 import com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames;
 import com.miaokatze.gtit.gui.vm.scene.VendingSceneFrames.Entry;
 import com.miaokatze.gtit.gui.vm.scene.VendingScenePicking;
+import com.miaokatze.gtit.gui.vm.scene.VendingSceneViewDefaults;
 import com.miaokatze.miaokatzecore.api.miaovision.SceneBody;
+import com.miaokatze.miaokatzecore.api.miaovision.SceneBounds;
 import com.miaokatze.miaokatzecore.api.miaovision.ScenePresentation;
 import com.miaokatze.miaokatzecore.api.miaovision.SceneSnapshot;
 import com.miaokatze.miaokatzecore.client.miaovision.MiaoVisionRenderer;
@@ -120,10 +122,12 @@ public final class VendingSceneWidgets {
         final VendingSceneBridge bridge;
         final MiaoVisionRenderer renderer = new MiaoVisionRenderer();
         final VendingRoomArt art = new VendingRoomArt();
-        double yaw = -24, pitch = 18, zoom = 1.2;
+        double yaw = VendingSceneViewDefaults.YAW, pitch = VendingSceneViewDefaults.PITCH,
+            zoom = VendingSceneViewDefaults.ZOOM;
         int dragX, dragY;
         boolean disposed;
         SceneSnapshot drawn;
+        SceneBounds framing = new SceneBounds(-5.25, -.25, -3.85, 5.25, 4.55, 3.2);
 
         NativeScene(VendingSceneView view, VendingSceneBridge bridge) {
             this.view = view;
@@ -133,9 +137,9 @@ public final class VendingSceneWidgets {
         }
 
         void reset() {
-            yaw = -24;
-            pitch = 18;
-            zoom = 1.2;
+            yaw = VendingSceneViewDefaults.YAW;
+            pitch = VendingSceneViewDefaults.PITCH;
+            zoom = VendingSceneViewDefaults.ZOOM;
         }
 
         @Override
@@ -152,6 +156,11 @@ public final class VendingSceneWidgets {
             if (disposed || getArea().width < 2 || getArea().height < 2) return;
             long now = System.nanoTime();
             drawn = view.snapshot(now);
+            // Frame the actual room, not the tall legacy simulation envelope. Include high saved poses too:
+            // this is camera composition, never a crop/filter that hides stock.
+            double topY = 4.55;
+            for (SceneBody body : drawn.bodies) topY = Math.max(topY, body.y + body.extentY() + .2);
+            framing = new SceneBounds(-5.25, -.25, -3.85, 5.25, topY, 3.2);
             view.animate(now, drawn);
             Minecraft mc = Minecraft.getMinecraft();
             double sx = (double) mc.displayWidth / c.getScreenArea().width,
@@ -165,9 +174,25 @@ public final class VendingSceneWidgets {
             renderer.render(
                 drawn,
                 VendingSceneFrames.BOUNDS,
+                framing,
                 new SceneViewport(x, mc.displayHeight - bottom, right - x, bottom - top),
                 new SceneCamera(yaw, pitch, zoom),
                 new SceneModelResolver() {
+
+                    @Override
+                    public boolean render(SceneBody body, ItemStack stack, float opacity) {
+                        return VendingNativeModels.render(stack);
+                    }
+
+                    @Override
+                    public boolean extrudeInventorySprites() {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean dioramaItemLighting() {
+                        return true;
+                    }
 
                     @Override
                     public ItemStack resolve(String id) {
@@ -234,7 +259,7 @@ public final class VendingSceneWidgets {
             return VendingScenePicking.pick(
                 drawn.bodies,
                 art.pickOccluders(),
-                VendingSceneFrames.BOUNDS,
+                framing,
                 getArea().width,
                 getArea().height,
                 mx,

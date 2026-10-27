@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -28,13 +29,17 @@ public final class NekoOutputScene {
     private final NekoOutputLedger ledger;
     private final Inventory inventory;
     private final NekoMeTransferQueue transfers;
-    private final SceneSimulation simulation = new SceneSimulation(LAYOUT, new SceneBounds(-5, 0, -3, 5, 8, 3));
+    private final SceneSimulation simulation = new SceneSimulation(
+        LAYOUT,
+        new SceneBounds(-5, 0, -3, 5, 8, 3),
+        SceneSimulation.ContactModel.ORIENTED_BOX);
     private final Map<Long, NBTTagCompound> published = new LinkedHashMap<>();
     private final Map<Long, Long> changed = new LinkedHashMap<>(), removed = new LinkedHashMap<>();
     private final Map<Long, Integer> removalCauses = new LinkedHashMap<>();
     private long revision, lastLedger = -1, historyFloor, serverTick;
     private boolean physicsAllowed = true, lastPublishedActive, lastPublishedAllowed = true;
     private long publishedTick;
+    private boolean migrationSettlePending;
     public static final int WAIT_DOOR = 0, FEED = 1, RELEASED = 2;
     public static final int DOOR_TICKS = 12, FEED_TICKS = 10;
 
@@ -95,16 +100,37 @@ public final class NekoOutputScene {
     public boolean tick(long tick, long now) {
         serverTick = tick;
         reconcile();
+        // A one-time, machine-owned shape-change event, never activation inside Core/NBT restore.
+        boolean migrated = migrationSettlePending && physicsAllowed;
+        if (migrated) {
+            migrationSettlePending = false;
+            simulation.wake();
+            if (!simulation.isSettled()) simulation.setEnabled(true);
+        }
         boolean animated = advanceDelivery(now);
         boolean moved = simulation.isEnabled() && simulation.step();
         if (simulation.isSettled()) simulation.setEnabled(false);
         if ((animated || moved || !transfers.isEmpty()) && (tick % 4 == 0 || moved && simulation.isSettled()))
             publish();
-        return animated || moved;
+        return animated || moved || migrated;
+    }
+
+    /** Actual queued visual identities; settled or already-feeding drops are never rerouted. */
+    public java.util.Set<Long> waitingDropIds() {
+        java.util.Set<Long> waiting = new java.util.LinkedHashSet<>();
+        for (NekoOutputLedger.Drop drop : ledger.drops()) {
+            Delivery d = deliveries.get(drop.dropId);
+            if (d == null || d.stage == WAIT_DOOR) waiting.add(drop.dropId);
+        }
+        return java.util.Collections.unmodifiableSet(waiting);
     }
 
     private void reconcile() {
         if (lastLedger == ledger.revision()) return;
+        ledger.routeWaitingToRear(id -> {
+            Delivery d = deliveries.get(id);
+            return d == null || d.stage == WAIT_DOOR;
+        });
         lastLedger = ledger.revision();
         java.util.Set<Long> live = new java.util.HashSet<>();
         for (NekoOutputLedger.Drop d : ledger.drops()) if (!d.slots.isEmpty()) live.add(d.dropId);
@@ -118,6 +144,17 @@ public final class NekoOutputScene {
             int route = d.rear ? 2 : (int) (d.dropId & 1);
             Delivery delivery = new Delivery(route, feedPose(d.dropId, route, 0));
             deliveries.put(d.dropId, delivery);
+        }
+        for (NekoOutputLedger.Drop drop : ledger.drops()) {
+            Delivery d = deliveries.get(drop.dropId);
+            if (d != null && d.stage == WAIT_DOOR) {
+                int route = drop.rear ? 2 : (int) (drop.dropId & 1);
+                if (route != d.route) {
+                    d.route = route;
+                    d.age = 0;
+                    d.pose = feedPose(drop.dropId, route, 0);
+                }
+            }
         }
         if (motion && physicsAllowed && !simulation.isSettled()) simulation.setEnabled(true);
         publish();
@@ -163,15 +200,57 @@ public final class NekoOutputScene {
         return changed;
     }
 
-    private static SceneBody feedPose(long id, int route, int age) {
+    private ItemStack outputStack(long id) {
+        for (NekoOutputLedger.Drop d : ledger.drops()) if (d.dropId == id) for (int slot : d.slots) {
+            ItemStack stack = inventory.get(slot);
+            if (stack != null) return stack;
+        }
+        return null;
+    }
+
+    private boolean blockShape(long id) {
+        return NekoOutputModelShape.volumetric(outputStack(id));
+    }
+
+    private SceneBody shape(long id, double x, double y, double z) {
+        // Full native block geometry versus a genuinely thin native pixel-extruded sprite.
+        ItemStack stack = outputStack(id);
+        return NekoOutputBodyGeometry.create(
+            Long.toString(id),
+            NekoOutputModelShape.nativeBlock(stack),
+            NekoOutputModelShape.volumetric(stack),
+            x,
+            y,
+            z);
+    }
+
+    private SceneBody feedPose(long id, int route, int age) {
         double t = Math.min(1, Math.max(0, age / (double) FEED_TICKS));
         double sign = route == 0 ? -1 : 1;
-        // Side proxy first protrudes through the shell mouth at |x|=3.73; FEED is truly visible.
-        double x = route == 2 ? ((id * 37 % 9) - 4) * .5 : sign * (3.9 - .8 * t);
+        double spread = ((id * 37 % 17) - 8) / 8.0;
+        // Start fully inside the real shell: the first 200 ms clears the interpolated door before protruding.
+        // Per-identity exit directions then spread a pile over the floor.
+        double x = route == 2 ? ((id * 37 % 9) - 4) * .5 : sign * (4.3 - 1.2 * t);
         double y = route == 2 ? 1.8 : 3.0;
-        double z = route == 2 ? -2.65 + 1.15 * t : .5;
-        return new SceneBody(Long.toString(id), .22, .22, .22, x, y, z)
-            .withVelocity(route == 2 ? 0 : -sign * 1.6, 0, route == 2 ? 2.3 : 0, 0, .2, 0);
+        double z = route == 2 ? -2.65 + 1.15 * t : .5 + spread * .14 * t;
+        double pitch = t * (.35 + (id % 7) * .11), yaw = t * spread * .65, roll = t * sign * .28;
+        double cx = Math.cos(pitch / 2), sx = Math.sin(pitch / 2), cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2),
+            cz = Math.cos(roll / 2), sz = Math.sin(roll / 2);
+        SceneBody pose = shape(id, x, y, z)
+            .withRotation(
+                sx * cy * cz + cx * sy * sz,
+                cx * sy * cz - sx * cy * sz,
+                cx * cy * sz + sx * sy * cz,
+                cx * cy * cz - sx * sy * sz)
+            .withVelocity(
+                route == 2 ? spread * .7 : -sign * (1.8 + (id % 5) * .18),
+                -.15,
+                route == 2 ? 2.1 : spread * 1.6,
+                1.1 + (id % 3) * .3,
+                spread * 1.2,
+                sign * .8);
+        // Larger native blocks must also start fully within the rear lane's bounded simulation envelope.
+        return NekoOutputBodyGeometry.fitInside(pose, simulation.bounds());
     }
 
     private SceneBody settledPose(long id) {
@@ -180,21 +259,32 @@ public final class NekoOutputScene {
         for (SceneBody body : simulation.snapshot().bodies) occupied.put(body.id, body);
         for (Map.Entry<Long, Delivery> entry : deliveries.entrySet()) if (entry.getValue().stage == RELEASED)
             occupied.putIfAbsent(Long.toString(entry.getKey()), entry.getValue().pose);
+        SceneBody template = shape(id, 0, 1, 0);
+        if (!blockShape(id)) {
+            double yaw = (id % 31) * .2;
+            template = template.withRotation(
+                Math.sqrt(.5) * Math.cos(yaw / 2),
+                Math.sqrt(.5) * Math.sin(yaw / 2),
+                -Math.sqrt(.5) * Math.sin(yaw / 2),
+                Math.sqrt(.5) * Math.cos(yaw / 2));
+        }
         for (int layer = 0; layer < 8; layer++)
             for (int row = 0; row < 7; row++) for (int column = 0; column < 12; column++) {
-                double x = -4.4 + column * .8, y = .22 + layer * .8, z = -2.4 + row * .8;
+                double x = -4.4 + column * .8, y = template.extentY() + layer * .8, z = -2.4 + row * .8;
                 boolean clear = true;
-                for (SceneBody body : occupied.values())
-                    if (!body.id.equals(Long.toString(id)) && Math.abs(x - body.x) < .23 + body.extentX()
-                        && Math.abs(y - body.y) < .23 + body.extentY()
-                        && Math.abs(z - body.z) < .23 + body.extentZ()) {
-                            clear = false;
-                            break;
-                        }
-                if (clear) return new SceneBody(Long.toString(id), .22, .22, .22, x, y, z).withSleeping(true);
+                for (SceneBody body : occupied.values()) if (!body.id.equals(Long.toString(id))
+                    && Math.abs(x - body.x) < template.extentX() + .01 + body.extentX()
+                    && Math.abs(y - body.y) < template.extentY() + .01 + body.extentY()
+                    && Math.abs(z - body.z) < template.extentZ() + .01 + body.extentZ()) {
+                        clear = false;
+                        break;
+                    }
+                if (clear) return template.withPosition(x, y, z)
+                    .withSleeping(true);
             }
-        // 672 candidates for at most 99 other bounded .22 proxies; defensive finite presentation fallback.
-        return new SceneBody(Long.toString(id), .22, .22, .22, 0, 7.5, 0).withSleeping(true);
+        // 672 candidates for at most 99 other bounded proxies; defensive finite presentation fallback.
+        return template.withPosition(0, 7.5, 0)
+            .withSleeping(true);
     }
 
     private void publish() {
@@ -316,6 +406,7 @@ public final class NekoOutputScene {
         n.setLong("revision", snapshot.revision);
         n.setLong("tick", snapshot.tick);
         n.setBoolean("physicsAllowed", physicsAllowed);
+        n.setBoolean("migrationSettlePending", migrationSettlePending);
         n.setIntArray("doors", doorTicks.clone());
         n.setIntArray("laneCooldown", laneCooldown.clone());
         NBTTagList list = new NBTTagList();
@@ -341,7 +432,7 @@ public final class NekoOutputScene {
             expected.add(Long.toString(d.dropId));
             expectedRoutes.put(d.dropId, d.rear ? 2 : (int) (d.dropId & 1));
         }
-        boolean valid = false;
+        boolean valid = false, legacyShapeChanged = false;
         int[] doors = n.getIntArray("doors"), cooldown = n.getIntArray("laneCooldown");
         boolean staged = n.getInteger("deliveryVersion") == 1;
         try {
@@ -359,6 +450,38 @@ public final class NekoOutputScene {
             for (int i = 0; i < list.tagCount(); i++) {
                 NBTTagCompound tag = list.getCompoundTagAt(i);
                 SceneBody body = readBody(tag);
+                simulation.bounds()
+                    .validate(body); // Do not repair an invalid saved pose by clamping it.
+                double previousWidth = body.halfX, previousHeight = body.halfY, previousDepth = body.halfZ;
+                // Old room saves used identical cubes for every item. Shrink only a sprite's depth;
+                // identity, position, orientation, clocks and inventory remain exact, and restore stays OFF.
+                if (!tag.hasKey("modelShapeVersion") && !blockShape(Long.parseLong(body.id))) {
+                    body = new SceneBody(
+                        body.id,
+                        body.halfX,
+                        body.halfY,
+                        Math.min(body.halfZ, Math.min(body.halfX, body.halfY) * .1),
+                        body.x,
+                        body.y,
+                        body.z,
+                        body.qx,
+                        body.qy,
+                        body.qz,
+                        body.qw,
+                        body.vx,
+                        body.vy,
+                        body.vz,
+                        body.wx,
+                        body.wy,
+                        body.wz,
+                        body.sleeping,
+                        body.quietTicks);
+                }
+                ItemStack stack = outputStack(Long.parseLong(body.id));
+                if (tag.getInteger("modelShapeVersion") < 2 && stack != null && stack.getItem() instanceof ItemBlock)
+                    body = NekoOutputModelShape.nativeBlock(stack)
+                        ? NekoOutputBodyGeometry.enlargeBlock(body, simulation.bounds())
+                        : NekoOutputBodyGeometry.flattenInventoryBlock(body, simulation.bounds());
                 if (!expected.remove(body.id)) throw new IllegalArgumentException("identity");
                 simulation.bounds()
                     .validate(body);
@@ -374,7 +497,11 @@ public final class NekoOutputScene {
                     || d.stage == FEED && (d.age >= FEED_TICKS || doors[d.route] != DOOR_TICKS))
                     throw new IllegalArgumentException("delivery clock");
                 restored.put(Long.parseLong(body.id), d);
-                if (d.stage == RELEASED) bodies.add(body);
+                if (d.stage == RELEASED) {
+                    bodies.add(body);
+                    legacyShapeChanged |= body.halfX != previousWidth || body.halfY != previousHeight
+                        || body.halfZ != previousDepth;
+                }
             }
             simulation.restore(new SceneSnapshot(LAYOUT, n.getLong("revision"), n.getLong("tick"), bodies));
             valid = true;
@@ -400,7 +527,12 @@ public final class NekoOutputScene {
             simulation.restore(new SceneSnapshot(LAYOUT, 0, 0, bodies));
         }
         physicsAllowed = !n.hasKey("physicsAllowed") || n.getBoolean("physicsAllowed");
-        if (physicsAllowed && !simulation.isSettled()) simulation.setEnabled(true);
+        // Loading remains OFF. Poses stay exact except minimum boundary corrections for revised ItemBlock shapes.
+        // The owner processes this finite event on a later tick only when allowed; persisting the pending bit
+        // also covers save-before-first-tick and disabled physics.
+        migrationSettlePending = valid && !bodies.isEmpty()
+            && (legacyShapeChanged || n.getBoolean("migrationSettlePending"));
+        simulation.setEnabled(false);
         lastLedger = ledger.revision();
         published.clear();
         changed.clear();
@@ -413,6 +545,7 @@ public final class NekoOutputScene {
     public static NBTTagCompound bodyTag(SceneBody b) {
         NBTTagCompound n = new NBTTagCompound();
         n.setString("id", b.id);
+        n.setInteger("modelShapeVersion", 2);
         double[] values = { b.halfX, b.halfY, b.halfZ, b.x, b.y, b.z, b.qx, b.qy, b.qz, b.qw, b.vx, b.vy, b.vz, b.wx,
             b.wy, b.wz };
         String[] names = { "hx", "hy", "hz", "x", "y", "z", "qx", "qy", "qz", "qw", "vx", "vy", "vz", "wx", "wy",

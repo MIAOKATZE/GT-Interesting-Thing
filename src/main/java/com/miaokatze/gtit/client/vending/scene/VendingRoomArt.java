@@ -24,25 +24,42 @@ final class VendingRoomArt {
     void room(double leftDoor, double rightDoor, double rearDoor) {
         occluders.clear();
         GL11.glDisable(GL11.GL_TEXTURE_2D);
-        roomBox(-5, -.18, -3, 10, .22, 6, 0xb99d77, 1);
+        // Simulation support is exactly y=0. Keep every timber surface at/below it, otherwise thin
+        // resting sprites would be buried by the floor despite having a correct physical pose.
+        roomBox(-5.2, -.235, -3, 10.4, .22, 6, 0xb99d77, 1);
         // Narrow warm timber planks, flush seams and an open front edge.
         for (int row = 0; row < 24; row++) {
-            roomBox(-5, .045, -3 + row * .25, 10, .008, .235, row % 2 == 0 ? 0xe1c499 : 0xd8b582, 1);
+            roomBox(-5, -.013, -3 + row * .25, 10, .008, .235, row % 2 == 0 ? 0xe1c499 : 0xd8b582, 1);
             for (int seam = 0; seam < 3; seam++)
-                roomBox(-4.2 + seam * 3.2 + row % 2 * .6, .054, -3 + row * .25, .015, .008, .235, 0xbda98a, 1);
+                roomBox(-4.2 + seam * 3.2 + row % 2 * .6, -.008, -3 + row * .25, .015, .008, .235, 0xbda98a, 1);
         }
-        roomBox(-5, 0, -3.15, 10, 4.35, .15, 0xf5e6c9, 1);
-        // Voxel cutaway: high at the rear, tapering to a low sill at the open front.
-        // Each visible step is also its exact ray-picking occluder, not a full-height proxy wall.
+        // Full-height walls, including the front ends. The open front is the only viewing opening.
+        // The real solids are also used for picking: never hide a wall or select items through it.
         for (int side : new int[] { -1, 1 }) {
-            for (int i = 0; i < 24; i++) {
-                double z = -3 + i * .25, height = 4.25 - 4.0 * i / 23.0;
-                roomBox(side < 0 ? -5 : 4.8, 0, z, .2, height, .25, 0xf0dfbf, 1);
-            }
-            roomBox(side < 0 ? -5 : 4.8, .04, -3, .2, .16, 6, 0x8c7254, 1);
+            // Put wall thickness outside the immutable ±5 simulation envelope. Legacy poses near
+            // the edge remain in the room, not embedded in an inward-projecting decorative wall.
+            double x = side < 0 ? -5.2 : 5;
+            roomBox(x, 0, -3, .2, 4.35, 6, 0xf0dfbf, 1);
+            roomBox(x, .04, -3, .2, .16, 6, 0x8c7254, 1);
+            roomBox(x - .015, 4.27, -3, .23, .1, 6, 0xffedcf, 1);
         }
-        // Retracting individual shutter slats reveal the dark intake, before delivery proxies emerge.
-        roomBox(-3.65, .15, -2.98, 7.3, 3.65, .055, 0x534b50, 1);
+        // A genuinely recessed, warmly lit delivery alcove, not a black rectangle over a solid wall.
+        roomBox(-5, 0, -3.15, 1.35, 4.35, .15, 0xf5e6c9, 1);
+        roomBox(3.65, 0, -3.15, 1.35, 4.35, .15, 0xf5e6c9, 1);
+        roomBox(-3.65, 3.8, -3.15, 7.3, .55, .15, 0xf5e6c9, 1);
+        roomBox(-3.65, -.15, -3.75, 7.3, .15, .9, 0xc9aa7c, 1);
+        roomBox(-3.65, .15, -3.75, 7.3, 3.65, .1, 0xc8ae84, 1);
+        roomBox(-3.65, .15, -3.65, .12, 3.65, .8, 0xdfc69c, 1);
+        roomBox(3.53, .15, -3.65, .12, 3.65, .8, 0xdfc69c, 1);
+        roomBox(-3.65, 3.68, -3.65, 7.3, .12, .8, 0xe9d5ac, 1);
+        for (int i = 0; i < 6; i++) {
+            roomBox(-3.4 + i * 1.14, .2, -3.64, 1.09, 3.42, .025, i % 2 == 0 ? 0xd9bc8e : 0xd2b586, 1);
+        }
+        roomBox(-3.4, 3.45, -3.57, 6.8, .09, .06, 0xffe5a7, 1);
+        roomBox(-3.46, .18, -3.55, .045, 3.2, .04, 0xffe6af, 1);
+        roomBox(3.42, .18, -3.55, .045, 3.2, .04, 0xffe6af, 1);
+        // Ease the complete mechanical travel, not every individual network sample.
+        rearDoor = ease(rearDoor);
         for (int i = 0; i < 19; i++) {
             double base = .24 + i * .18, y = base + (3.63 - base) * rearDoor;
             roomBox(-3.5, y, -2.86, 7, .168 * (1 - .86 * rearDoor), .045, i % 2 == 0 ? 0xcfc3ac : 0xc1b397, 1);
@@ -53,9 +70,9 @@ final class VendingRoomArt {
         roomBox(-.5, .28 + rearDoor * 3.2, -2.78, 1, .07, .04, 0x675346, 1);
         outlet(-1, leftDoor);
         outlet(1, rightDoor);
-        roomBox(-4.6, .06, 1.0, 2, .012, 1.95, 0x8da69a, 1);
-        roomBox(-4.48, .073, 1.12, 1.76, .009, 1.7, 0xb9c9b3, 1);
-        roomBox(-4.36, .083, 1.24, 1.52, .009, 1.46, 0x8da69a, 1);
+        roomBox(-4.6, 0, 1.0, 2, .002, 1.95, 0x8da69a, 1);
+        roomBox(-4.48, .002, 1.12, 1.76, .0015, 1.7, 0xb9c9b3, 1);
+        roomBox(-4.36, .0035, 1.24, 1.52, .0015, 1.46, 0x8da69a, 1);
         for (int side : new int[] { -1, 1 }) {
             double x = side * 4.25;
             roomBox(x - .32, 1.7, -2.78, .64, .12, .55, 0xd8b582, 1);
@@ -72,6 +89,11 @@ final class VendingRoomArt {
         GL11.glColor4f(1, 1, 1, 1);
     }
 
+    private static double ease(double value) {
+        double t = Math.max(0, Math.min(1, value));
+        return t * t * (3 - 2 * t);
+    }
+
     private void outlet(int side, double openness) {
         double outer = side < 0 ? -5.05 : 3.76;
         // Five solid shell panels; only the inward mouth opens. Feed center: ±4.6, 3.0, .5.
@@ -80,7 +102,7 @@ final class VendingRoomArt {
         roomBox(outer, 2.58, -.22, 1.29, .9, .12, 0xf5e6c9, 1);
         roomBox(outer, 2.58, 1.1, 1.29, .9, .12, 0xf5e6c9, 1);
         roomBox(side < 0 ? -5.05 : 4.93, 2.58, -.22, .12, .9, 1.44, 0xf5e6c9, 1);
-        double hingeX = side * 3.73, hingeZ = 1.09, angle = side * openness * 2.45;
+        double hingeX = side * 3.73, hingeZ = 1.09, angle = side * ease(openness) * 2.45;
         hingedBox(hingeX, 3.03, hingeZ, angle, -.055, -.46, -1.3, .11, .92, 1.3, 0xbda98a);
         hingedBox(hingeX, 3.03, hingeZ, angle, -.065, -.4, -1.23, .13, .8, 1.16, 0xf5e6c9);
         // Paw medallions on both faces, moving with the actual hinged panel.
@@ -133,8 +155,9 @@ final class VendingRoomArt {
     void cat(VendingCatChoreography pose) {
         GL11.glPushMatrix();
         try {
-            // Seated vanilla pivots extend 1.68 pixels below ground; lift the whole model, not its paws.
-            double baseY = 1.59 + pose.sitting * 1.68 / 16;
+            // Ground the vanilla paws on the .005-high mat. Seated pivots extend another 1.68 pixels
+            // below ground; lift the whole model, without altering its choreography or individual paws.
+            double baseY = 1.505 + pose.sitting * 1.68 / 16;
             GL11.glTranslated(pose.x, baseY, pose.z);
             GL11.glRotated(Math.toDegrees(pose.yaw), 0, 1, 0);
             GL11.glScaled(1, -1, -1);

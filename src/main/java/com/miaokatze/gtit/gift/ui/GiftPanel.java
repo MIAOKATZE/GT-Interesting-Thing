@@ -25,6 +25,9 @@ import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
+import com.miaokatze.gtit.client.gui.NekoSingleLineTextWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
+import com.miaokatze.gtit.client.gui.NekoWorkbenchStyle;
 import com.miaokatze.gtit.client.gui.utility.UtilityControls;
 import com.miaokatze.gtit.client.gui.utility.UtilityUiStyle;
 import com.miaokatze.gtit.gift.GiftDefinition;
@@ -33,6 +36,7 @@ import com.miaokatze.gtit.gift.GiftNbt;
 import com.miaokatze.gtit.gift.GiftRegistry;
 import com.miaokatze.gtit.gift.GiftService;
 import com.miaokatze.gtit.gift.GiftShellCatalog;
+import com.miaokatze.gtit.gui.vm.edit.NekoGhostSlot;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import io.netty.buffer.Unpooled;
@@ -117,21 +121,47 @@ final class GiftPanel {
                     action(sm, session, true, () -> { if (session.prepareDefaultUpdate()) open(applyDefaults); });
             }
         });
-        ParentWidget<?> panel = new ParentWidget<>().size(480, 330);
-        panel.child(
+        window.child(window.place(NekoWorkbenchStyle.section(0, 0, 768, 34), l -> l.rect(0, 0, l.width, 34)));
+        window.child(
             IKey.lang("gtit.gift.ui.title")
+                .color(NekoVendingTheme.INK)
                 .asWidget()
-                .pos(12, 10));
-        panel.child(
+                .pos(16, 10)
+                .size(240, 18));
+        window.child(
+            window.place(
+                IKey.str("NEKO / GIFTS · 独立礼包与进度")
+                    .color(NekoVendingTheme.MUTED)
+                    .asWidget(),
+                l -> l.rect(l.width - 320, 12, 270, 13)));
+        window.child(
+            window
+                .place(NekoVendingTheme.button(() -> "×", window::closeIfOpen), l -> l.rect(l.width - 38, 7, 24, 22)));
+        window.child(
             IKey.lang("gtit.gift.ui.subtitle")
-                .color(UtilityUiStyle.MANAGER_MUTED)
+                .color(NekoVendingTheme.MUTED)
                 .asWidget()
-                .pos(12, 25)
-                .size(450, 9)
-                .scale(0.7f));
-        panel.child(UtilityUiStyle.managerSection(8, 38, 204, 216));
-        panel.child(UtilityUiStyle.managerSection(218, 38, 254, 216));
-        panel.child(UtilityUiStyle.managerSection(8, 304, 464, 22));
+                .pos(16, 52)
+                .size(600, 15)
+                .scale(.9f));
+        ParentWidget<?> panel = new ParentWidget<>().sizeRel(1f);
+        ParentWidget<?> library = NekoWorkbenchStyle.section(0, 0, 238, 300)
+            .heightRel(1f);
+        ParentWidget<?> detail = NekoWorkbenchStyle.section(246, 0, 250, 300)
+            .widthRelOffset(1f, -492)
+            .heightRel(1f);
+        ParentWidget<?> rewardPreview = NekoWorkbenchStyle.section(0, 0, 238, 300)
+            .right(0)
+            .heightRel(1f);
+        panel.child(library);
+        panel.child(detail);
+        panel.child(rewardPreview);
+        library.child(
+            IKey.str("礼包目录 / GIFT LIBRARY")
+                .color(NekoVendingTheme.GOLD)
+                .asWidget()
+                .pos(10, 9)
+                .size(218, 15));
         for (int i = 0; i < 6; i++) {
             final int row = i;
             StringSyncValue name = read(sm, "gift_row_name_" + i, () -> {
@@ -146,17 +176,17 @@ final class GiftPanel {
             GenericSyncValue<net.minecraft.item.ItemStack, ?> item = GiftItemSync
                 .readOnly(() -> displayItem(session.row(row)));
             sm.syncValue("gift_row_item_" + i, item);
-            int y = 44 + i * 30;
+            int y = 32 + i * 40;
             UtilityControls.ActionButton selectionButton = button(
                 sm,
                 session,
                 "gift_select_" + i,
                 "",
-                12,
+                7,
                 y,
-                196,
+                224,
                 false,
-                () -> session.select(session.row(row))).height(27)
+                () -> session.select(session.row(row))).height(36)
                     .selected(
                         () -> !id.getStringValue()
                             .isEmpty() && id.getStringValue()
@@ -164,134 +194,196 @@ final class GiftPanel {
                     .available(
                         () -> !name.getStringValue()
                             .isEmpty());
-            panel.child(selectionButton);
-            panel.child(
+            library.child(selectionButton);
+            library.child(
                 new UtilityControls.DecorativeItem().item(item)
-                    .pos(17, y + 4)
-                    .size(18)
-                    .background(UtilityUiStyle.MANAGER_SLOT));
-            panel.child(
-                IKey.dynamic(name::getStringValue)
-                    .color(
-                        () -> selectionButton.usesPrimaryText() ? UtilityUiStyle.MANAGER_BUTTON_TEXT
-                            : UtilityUiStyle.MANAGER_TEXT)
+                    .pos(13, y + 8)
+                    .size(20)
+                    .background(NekoVendingTheme.SLOT));
+            library.child(
+                new NekoSingleLineTextWidget(IKey.dynamic(name::getStringValue)).color(
+                    () -> id.getStringValue()
+                        .equals(selectedId.getStringValue()) ? NekoVendingTheme.LIGHT : NekoVendingTheme.INK)
                     .shadow(false)
-                    .asWidget()
-                    .pos(42, y + 3)
-                    .size(160, 11)
-                    .scale(0.8f));
-            panel.child(
-                IKey.dynamic(() -> translatedStatus(status))
+                    .pos(40, y + 5)
+                    .size(184, 12)
+                    .scale(.9f));
+            library.child(
+                new NekoSingleLineTextWidget(IKey.dynamic(() -> translatedStatus(status)))
                     .color(
-                        () -> selectionButton.usesPrimaryText() ? UtilityUiStyle.MANAGER_BUTTON_TEXT
-                            : UtilityUiStyle.MANAGER_MUTED)
+                        () -> id.getStringValue()
+                            .equals(selectedId.getStringValue()) ? NekoVendingTheme.LIGHT : NekoVendingTheme.MUTED)
                     .shadow(false)
-                    .asWidget()
-                    .pos(42, y + 16)
-                    .size(160, 9)
-                    .scale(0.65f));
+                    .pos(40, y + 21)
+                    .size(184, 10)
+                    .scale(.75f));
         }
-        panel.child(
+        library.child(
             button(
                 sm,
                 session,
                 "gift_list_prev",
                 "gtit.gift.ui.previous",
-                12,
-                230,
-                66,
+                8,
+                0,
+                65,
                 false,
-                () -> session.listPage = Math.max(0, session.listPage - 1)));
-        panel.child(button(sm, session, "gift_list_next", "gtit.gift.ui.next", 142, 230, 66, false, () -> {
+                () -> session.listPage = Math.max(0, session.listPage - 1)).bottom(10)
+                    .height(22));
+        library.child(button(sm, session, "gift_list_next", "gtit.gift.ui.next", 165, 0, 65, false, () -> {
             session.refresh();
             session.listPage = Math.min(Math.max(0, (session.definitions.size() - 1) / 6), session.listPage + 1);
-        }));
+        }).bottom(10)
+            .height(22));
         StringSyncValue listPage = read(sm, "gift_list_page", () -> {
             session.refresh();
             return (session.listPage + 1) + " / " + Math.max(1, (session.definitions.size() + 5) / 6);
         });
-        panel.child(
-            IKey.dynamic(listPage::getStringValue)
-                .asWidget()
-                .pos(86, 235)
-                .size(50, 10)
-                .scale(0.75f));
-        panel.child(
+        library.child(
+            new NekoSingleLineTextWidget(IKey.dynamic(listPage::getStringValue)).left(80)
+                .bottom(15)
+                .size(78, 12)
+                .scale(.85f));
+        detail.child(
             IKey.lang("gtit.gift.ui.empty_selection")
-                .color(UtilityUiStyle.MANAGER_MUTED)
+                .color(NekoVendingTheme.MUTED)
                 .asWidget()
-                .pos(228, 52)
-                .size(234, 36)
-                .scale(0.8f)
+                .pos(12, 46)
+                .widthRelOffset(1f, -24)
+                .height(36)
                 .setEnabledIf(
                     w -> selection.getStringValue()
                         .isEmpty()));
         GenericSyncValue<net.minecraft.item.ItemStack, ?> selectedItem = GiftItemSync
             .readOnly(() -> displayItem(session.selected()));
         sm.syncValue("gift_selected_item", selectedItem);
-        panel.child(
+        detail.child(
             new ItemDisplayWidget().item(selectedItem)
-                .pos(226, 45)
-                .size(20)
-                .background(UtilityUiStyle.MANAGER_SLOT));
-        panel.child(
-            IKey.dynamic(selection::getStringValue)
-                .asWidget()
-                .pos(252, 44)
-                .size(210, 29)
-                .scale(0.85f));
+                .pos(12, 12)
+                .size(26)
+                .background(NekoVendingTheme.SLOT));
+        detail.child(
+            new NekoSingleLineTextWidget(IKey.dynamic(() -> selectionLine(selection.getStringValue(), 0))).pos(46, 10)
+                .widthRelOffset(1f, -58)
+                .height(14)
+                .scale(.9f));
+        detail.child(
+            new NekoSingleLineTextWidget(IKey.dynamic(() -> selectionLine(selection.getStringValue(), 1)))
+                .color(NekoVendingTheme.MUTED)
+                .pos(46, 27)
+                .widthRelOffset(1f, -58)
+                .height(12)
+                .scale(.75f));
         StringSyncValue selectedShell = read(sm, "gift_selected_shell", () -> {
             GiftDefinition gift = session.selected();
             return gift == null ? "" : GiftShellCatalog.registryName(GiftShellCatalog.effectiveKey(gift));
         });
-        panel.child(
-            IKey.dynamic(selectedShell::getStringValue)
-                .color(UtilityUiStyle.MANAGER_MUTED)
-                .asWidget()
-                .pos(226, 69)
-                .size(236, 9)
-                .scale(0.65f));
-        panel.child(
+        detail.child(
+            new NekoSingleLineTextWidget(IKey.dynamic(selectedShell::getStringValue)).color(NekoVendingTheme.MUTED)
+                .pos(12, 52)
+                .widthRelOffset(1f, -24)
+                .height(20)
+                .scale(.75f));
+        detail.child(
             IKey.lang(trigger::getStringValue)
                 .asWidget()
-                .pos(226, 81)
-                .size(236, 12)
-                .scale(0.8f));
-        panel.child(
-            IKey.dynamic(() -> translatedStatus(selectedStatus))
-                .color(UtilityUiStyle.MANAGER_ACCENT)
-                .asWidget()
-                .pos(226, 98)
-                .size(236, 12)
-                .scale(0.8f));
-        panel.child(
+                .pos(12, 79)
+                .widthRelOffset(1f, -24)
+                .height(16)
+                .scale(.9f));
+        detail.child(
+            new NekoSingleLineTextWidget(IKey.dynamic(() -> translatedStatus(selectedStatus)))
+                .color(NekoVendingTheme.GREEN)
+                .pos(12, 102)
+                .widthRelOffset(1f, -24)
+                .height(16)
+                .scale(.9f));
+        detail.child(
             IKey.lang("gtit.gift.ui.quest")
                 .asWidget()
-                .pos(226, 116)
-                .size(72, 12)
-                .scale(0.75f));
-        panel.child(
-            IKey.dynamic(selectedQuest::getStringValue)
-                .asWidget()
-                .pos(300, 116)
-                .size(162, 12)
-                .scale(0.75f));
-        panel.child(
+                .pos(12, 132)
+                .size(80, 12)
+                .scale(.85f));
+        detail.child(
+            new NekoSingleLineTextWidget(IKey.dynamic(selectedQuest::getStringValue)).pos(12, 151)
+                .widthRelOffset(1f, -24)
+                .height(24)
+                .scale(.85f));
+        detail.child(
             IKey.lang("gtit.gift.ui.reward_summary")
                 .asWidget()
-                .pos(226, 134)
-                .size(236, 12)
-                .scale(0.75f));
-        panel.child(
-            IKey.dynamic(rewards::getStringValue)
+                .pos(12, 185)
+                .widthRelOffset(1f, -24)
+                .height(13)
+                .scale(.85f));
+        detail.child(
+            new NekoSingleLineTextWidget(IKey.dynamic(rewards::getStringValue)).pos(12, 205)
+                .widthRelOffset(1f, -24)
+                .height(25)
+                .scale(.85f));
+        detail.child(button(sm, session, "gift_edit", "gtit.gift.ui.edit", 12, 0, 106, true, () -> {
+            if (session.selected() != null) {
+                session.select(session.selected());
+                session.editing = true;
+            }
+        }).bottom(45)
+            .height(23)
+            .available(
+                () -> admin.getBoolValue() && !selection.getStringValue()
+                    .isEmpty()));
+        detail.child(button(sm, session, "gift_new", "gtit.gift.ui.new", 0, 0, 106, true, () -> {
+            session.create();
+            session.editing = true;
+        }).right(12)
+            .bottom(45)
+            .height(23)
+            .available(admin::getBoolValue));
+        StringSyncValue defaults = read(sm, "gift_defaults_state", () -> {
+            session.refresh();
+            return session.defaultsEnabled ? "gtit.gift.ui.defaults_on" : "gtit.gift.ui.defaults_off";
+        });
+        detail.child(button(sm, session, "gift_defaults_toggle", "", 12, 0, 200, true, () -> {
+            GiftRegistry.INSTANCE.setDefaultsEnabled(!session.defaultsEnabled, session.registryRevision);
+            session.invalidate();
+        }).bottom(12)
+            .height(23)
+            .widthRelOffset(1f, -24)
+            .overlay(IKey.lang(defaults::getStringValue))
+            .available(admin::getBoolValue));
+        rewardPreview.child(
+            IKey.str("奖励预览 / REWARDS")
+                .color(NekoVendingTheme.GOLD)
                 .asWidget()
-                .pos(226, 147)
-                .size(236, 12)
-                .scale(0.75f));
-        panel.child(
-            new UtilityControls.ActionButton().manager()
-                .pos(226, 164)
-                .size(236, 18)
+                .pos(10, 10)
+                .size(218, 15));
+        for (int i = 0; i < 6; i++) {
+            final int row = i;
+            GenericSyncValue<net.minecraft.item.ItemStack, ?> item = GiftItemSync.readOnly(() -> {
+                com.miaokatze.gtit.config.GiftConfig.ItemEntry entry = previewEntry(session, row);
+                return entry == null ? null : entry.toItemStack();
+            });
+            sm.syncValue("gift_inline_preview_item_" + i, item);
+            StringSyncValue description = read(sm, "gift_inline_preview_text_" + i, () -> {
+                com.miaokatze.gtit.config.GiftConfig.ItemEntry entry = previewEntry(session, row);
+                if (entry == null) return "";
+                net.minecraft.item.ItemStack stack = entry.toItemStack();
+                return (stack == null ? entry.itemId : stack.getDisplayName()) + " × " + entry.amount;
+            });
+            rewardPreview.child(
+                new ItemDisplayWidget().item(item)
+                    .pos(12, 38 + i * 28)
+                    .size(20)
+                    .background(NekoVendingTheme.SLOT));
+            rewardPreview.child(
+                new NekoSingleLineTextWidget(IKey.dynamic(description::getStringValue)).pos(40, 42 + i * 28)
+                    .size(186, 17)
+                    .scale(.8f));
+        }
+        rewardPreview.child(
+            new UtilityControls.ActionButton().kraft()
+                .left(12)
+                .bottom(77)
+                .size(214, 23)
                 .overlay(IKey.lang("gtit.gift.ui.preview"))
                 .available(
                     () -> !selection.getStringValue()
@@ -301,46 +393,40 @@ final class GiftPanel {
                     preview.openPanel();
                     return true;
                 }));
-        panel.child(button(sm, session, "gift_claim", "gtit.gift.ui.claim", 226, 185, 236, false, () -> {
+        rewardPreview.child(button(sm, session, "gift_claim", "gtit.gift.ui.claim", 12, 0, 214, false, () -> {
             session.message = GiftService.INSTANCE.claim((EntityPlayerMP) session.player, session.selectedId);
             session.invalidate();
-        }).available(claimable::getBoolValue)
+        }).bottom(44)
+            .height(25)
+            .available(claimable::getBoolValue)
             .addTooltipLine(IKey.lang("gtit.gift.ui.claim_hint")));
-        panel.child(button(sm, session, "gift_edit", "gtit.gift.ui.edit", 226, 206, 114, true, () -> {
-            if (session.selected() != null) {
-                session.select(session.selected());
-                session.editing = true;
-            }
-        }).available(
-            () -> admin.getBoolValue() && !selection.getStringValue()
-                .isEmpty()));
-        panel.child(button(sm, session, "gift_new", "gtit.gift.ui.new", 348, 206, 114, true, () -> {
-            session.create();
-            session.editing = true;
-        }).available(admin::getBoolValue));
-        StringSyncValue defaults = read(sm, "gift_defaults_state", () -> {
-            session.refresh();
-            return session.defaultsEnabled ? "gtit.gift.ui.defaults_on" : "gtit.gift.ui.defaults_off";
-        });
-        panel.child(button(sm, session, "gift_defaults_toggle", "", 226, 230, 236, true, () -> {
-            GiftRegistry.INSTANCE.setDefaultsEnabled(!session.defaultsEnabled, session.registryRevision);
-            session.invalidate();
-        }).overlay(IKey.lang(defaults::getStringValue))
-            .available(admin::getBoolValue));
-        panel.child(
-            IKey.dynamic(() -> messageText(message.getStringValue()))
+        rewardPreview.child(
+            IKey.str("领取只发放礼包；不会自动开包")
+                .color(NekoVendingTheme.MUTED)
                 .asWidget()
-                .pos(12, 310)
-                .size(450, 13)
-                .scale(0.75f));
-        return UtilityUiStyle.managerScrollable(
-            window,
-            480,
-            330,
-            new PagedWidget<>().size(480, 330)
+                .left(12)
+                .bottom(12)
+                .size(214, 23)
+                .scale(.8f));
+        window.child(
+            new PagedWidget<>().sizeRel(1f)
                 .controller(navigation)
-                .addPage(panel)
-                .addPage(editor(sm, session, discard, delete)));
+                .addPage(window.place(panel, l -> l.rect(12, 80, l.width - 24, l.height - 116)))
+                .addPage(window.place(editor(sm, session, discard, delete), l -> l.editor())));
+        window.child(window.place(NekoWorkbenchStyle.section(0, 0, 1, 1), l -> l.rect(0, l.height - 28, l.width, 28)));
+        window.child(
+            window.place(
+                new NekoSingleLineTextWidget(IKey.dynamic(() -> messageText(message.getStringValue()))),
+                l -> l.rect(14, l.height - 20, l.width - 28, 14)));
+        window.catalog(() -> editing.getBoolValue() && admin.getBoolValue());
+        NekoWorkbenchStyle.style(window);
+        return window;
+    }
+
+    private static String selectionLine(String text, int line) {
+        int split = text.indexOf('\n');
+        if (split < 0) return line == 0 ? text : "";
+        return line == 0 ? text.substring(0, split) : text.substring(split + 1);
     }
 
     private static net.minecraft.item.ItemStack displayItem(GiftDefinition gift) {
@@ -356,63 +442,65 @@ final class GiftPanel {
 
     private static ParentWidget<?> editor(PanelSyncManager sm, GiftEditorSession session, IPanelHandler discard,
         IPanelHandler delete) {
-        ParentWidget<?> panel = new ParentWidget<>().size(480, 330);
-        panel.child(UtilityUiStyle.managerSection(8, 50, 464, 169));
-        panel.child(UtilityUiStyle.managerSection(8, 306, 464, 20));
-        panel.child(button(sm, session, "gift_back", "gtit.gift.ui.back", 370, 8, 92, true, () -> {
+        ParentWidget<?> panel = new ParentWidget<>().sizeRel(1f)
+            .background(NekoVendingTheme.PANEL)
+            .excludeAreaInRecipeViewer();
+        panel.child(button(sm, session, "gift_back", "gtit.gift.ui.back", 0, 8, 100, true, () -> {
             if (session.dirty) {
                 session.leavingWindow = false;
                 open(discard);
             } else session.editing = false;
-        }));
+        }).right(12)
+            .height(22));
         panel.child(
             IKey.lang("gtit.gift.ui.editor")
                 .asWidget()
-                .pos(12, 10)
-                .size(270, 13)
-                .scale(0.85f));
+                .pos(12, 12)
+                .widthRelOffset(1f, -136)
+                .height(16));
         BooleanSyncValue dirty = new BooleanSyncValue(() -> session.dirty);
         sm.syncValue("gift_draft_dirty", dirty);
         panel.child(
             IKey.lang(() -> dirty.getBoolValue() ? "gtit.gift.ui.unsaved" : "gtit.gift.ui.draft_hint")
-                .color(UtilityUiStyle.MANAGER_MUTED)
+                .color(NekoVendingTheme.MUTED)
                 .asWidget()
-                .pos(12, 224)
-                .size(158, 24)
-                .scale(0.7f));
+                .left(12)
+                .bottom(50)
+                .size(270, 23)
+                .scale(.8f));
         PagedWidget.Controller pages = new PagedWidget.Controller();
         String[] titles = { "general", "required", "random" };
-        for (int i = 0; i < 3; i++) {
-            panel.child(
-                new UtilityControls.Page(i, pages).manager()
-                    .pos(12 + i * 152, 29)
-                    .size(146, 18)
-                    .overlay(IKey.lang("gtit.gift.ui." + titles[i])));
-        }
+        for (int i = 0; i < 3; i++) panel.child(
+            new UtilityControls.Page(i, pages).kraft()
+                .leftRelOffset(i / 3f, 12)
+                .top(34)
+                .widthRelOffset(1f / 3f, -16)
+                .height(24)
+                .overlay(IKey.lang("gtit.gift.ui." + titles[i])));
         panel.child(
-            new PagedWidget<>().pos(12, 53)
-                .size(456, 165)
+            new PagedWidget<>().pos(12, 64)
+                .widthRelOffset(1f, -24)
+                .heightRelOffset(1f, -150)
                 .controller(pages)
                 .addPage(general(sm, session))
                 .addPage(items(sm, session, false))
                 .addPage(items(sm, session, true)));
         panel.child(
             SlotGroupWidget.playerInventory(false)
-                .pos(186, 226));
-        panel.child(button(sm, session, "gift_save", "gtit.gift.ui.save", 12, 254, 158, true, session::save));
+                .right(12)
+                .bottom(12));
+        panel.child(
+            button(sm, session, "gift_save", "gtit.gift.ui.save", 12, 0, 126, true, session::save).bottom(12)
+                .height(25)
+                .selected(() -> true));
         BooleanSyncValue creating = new BooleanSyncValue(() -> session.creating);
         sm.syncValue("gift_draft_creating", creating);
-        panel.child(button(sm, session, "gift_request_delete", "gtit.gift.ui.delete", 12, 279, 158, true, () -> {
+        panel.child(button(sm, session, "gift_request_delete", "gtit.gift.ui.delete", 146, 0, 126, true, () -> {
             session.prepareDelete();
             open(delete);
-        }).available(() -> !creating.getBoolValue()));
-        StringSyncValue message = read(sm, "gift_editor_result", () -> session.message);
-        panel.child(
-            IKey.dynamic(() -> messageText(message.getStringValue()))
-                .asWidget()
-                .pos(12, 310)
-                .size(450, 13)
-                .scale(0.75f));
+        }).bottom(12)
+            .height(25)
+            .available(() -> !creating.getBoolValue()));
         return panel;
     }
 
@@ -421,7 +509,7 @@ final class GiftPanel {
         ModularPanel dialog = new Dialog<>("gift_discard_confirmation", null).setDisablePanelsBelow(true)
             .setCloseOnOutOfBoundsClick(false)
             .size(330, 136)
-            .background(UtilityUiStyle.MANAGER_PANEL);
+            .background(NekoVendingTheme.PANEL);
         dialog.child(
             IKey.lang("gtit.gift.ui.unsaved")
                 .asWidget()
@@ -434,7 +522,7 @@ final class GiftPanel {
                 .size(304, 38)
                 .scale(0.8f));
         dialog.child(
-            new UtilityControls.ActionButton().manager()
+            new UtilityControls.ActionButton().kraft()
                 .pos(12, 102)
                 .size(144, 18)
                 .overlay(IKey.lang("gtit.gift.ui.continue_editing"))
@@ -449,7 +537,7 @@ final class GiftPanel {
             handler.closePanel();
             if (closeWindow) session.closeRequested = true;
         }));
-        UtilityUiStyle.styleManagerContent(dialog);
+        NekoWorkbenchStyle.style(dialog);
         return dialog;
     }
 
@@ -458,7 +546,7 @@ final class GiftPanel {
         ModularPanel dialog = new Dialog<>("gift_default_confirmation", null).setDisablePanelsBelow(true)
             .setCloseOnOutOfBoundsClick(false)
             .size(270, 90)
-            .background(UtilityUiStyle.MANAGER_PANEL);
+            .background(NekoVendingTheme.PANEL);
         dialog.child(
             IKey.lang("gtit.gift.ui.apply_confirm")
                 .asWidget()
@@ -478,7 +566,7 @@ final class GiftPanel {
                 handler.closePanel();
             }
         }));
-        UtilityUiStyle.styleManagerContent(dialog);
+        NekoWorkbenchStyle.style(dialog);
         return dialog;
     }
 
@@ -487,36 +575,32 @@ final class GiftPanel {
         ModularPanel dialog = new Dialog<>("gift_delete_confirmation", null).setDisablePanelsBelow(true)
             .setCloseOnOutOfBoundsClick(false)
             .size(286, 150)
-            .background(UtilityUiStyle.MANAGER_PANEL);
+            .background(NekoVendingTheme.PANEL);
         StringSyncValue target = read(
             sm,
             "gift_delete_target",
             () -> session.deleteTargetName + " [" + session.deleteTargetId + "]");
         dialog.child(
             IKey.lang("gtit.gift.ui.delete_confirm")
-                .color(UtilityUiStyle.MANAGER_TEXT)
+                .color(NekoVendingTheme.INK)
                 .asWidget()
                 .pos(12, 12)
                 .size(252, 14));
         dialog.child(
-            IKey.dynamic(target::getStringValue)
-                .color(UtilityUiStyle.MANAGER_ACCENT)
-                .asWidget()
+            new NekoSingleLineTextWidget(IKey.dynamic(target::getStringValue)).color(NekoVendingTheme.GOLD)
                 .pos(12, 33)
                 .size(262, 24)
                 .scale(0.8f));
         dialog.child(
             IKey.lang("gtit.gift.ui.delete_hint")
-                .color(UtilityUiStyle.MANAGER_MUTED)
+                .color(NekoVendingTheme.MUTED)
                 .asWidget()
                 .pos(12, 62)
                 .size(262, 40)
                 .scale(0.8f));
         StringSyncValue message = read(sm, "gift_delete_result", () -> session.message);
         dialog.child(
-            IKey.dynamic(() -> messageText(message.getStringValue()))
-                .asWidget()
-                .pos(12, 102)
+            new NekoSingleLineTextWidget(IKey.dynamic(() -> messageText(message.getStringValue()))).pos(12, 102)
                 .size(262, 12)
                 .scale(0.65f));
         dialog.child(button(sm, session, "gift_delete", "gtit.gift.ui.delete", 12, 117, 126, true, () -> {
@@ -524,7 +608,7 @@ final class GiftPanel {
             handler.closePanel();
         }));
         dialog.child(
-            new UtilityControls.ActionButton().manager()
+            new UtilityControls.ActionButton().kraft()
                 .pos(146, 117)
                 .size(126, 18)
                 .overlay(IKey.lang("gtit.gift.ui.cancel"))
@@ -537,7 +621,7 @@ final class GiftPanel {
             UtilityUiStyle.managerCloseButton(dialog)
                 .right(6)
                 .top(6));
-        UtilityUiStyle.styleManagerContent(dialog);
+        NekoWorkbenchStyle.style(dialog);
         return dialog;
     }
 
@@ -545,7 +629,7 @@ final class GiftPanel {
         ModularPanel dialog = new Dialog<>("gift_preview", null).setDisablePanelsBelow(true)
             .setCloseOnOutOfBoundsClick(false)
             .size(350, 306)
-            .background(UtilityUiStyle.MANAGER_PANEL);
+            .background(NekoVendingTheme.PANEL);
         ParentWidget<?> panel = new ParentWidget<>().size(350, 306);
         panel.child(
             IKey.lang("gtit.gift.ui.preview")
@@ -574,7 +658,7 @@ final class GiftPanel {
                     .displayAmount(true)
                     .size(22)
                     .pos(12, y)
-                    .background(UtilityUiStyle.MANAGER_SLOT)
+                    .background(NekoVendingTheme.SLOT)
                     .tooltipBuilder(t -> {
                         net.minecraft.item.ItemStack stack = item.getValue();
                         if (stack != null) {
@@ -586,9 +670,7 @@ final class GiftPanel {
                     })
                     .tooltipAutoUpdate(true));
             panel.child(
-                IKey.dynamic(label::getStringValue)
-                    .asWidget()
-                    .pos(42, y)
+                new NekoSingleLineTextWidget(IKey.dynamic(label::getStringValue)).pos(42, y)
                     .size(294, 12)
                     .scale(0.8f));
             panel.child(
@@ -620,9 +702,7 @@ final class GiftPanel {
             return (session.previewPage + 1) + " / " + Math.max(1, (count + 7) / 8);
         });
         panel.child(
-            IKey.dynamic(page::getStringValue)
-                .asWidget()
-                .pos(146, 277)
+            new NekoSingleLineTextWidget(IKey.dynamic(page::getStringValue)).pos(146, 277)
                 .size(64, 10)
                 .scale(0.8f));
         return UtilityUiStyle.managerScrollable(dialog, 350, 306, panel);
@@ -638,7 +718,7 @@ final class GiftPanel {
     }
 
     private static ParentWidget<?> general(PanelSyncManager sm, GiftEditorSession session) {
-        ParentWidget<?> root = new ParentWidget<>().size(456, 165);
+        ParentWidget<?> root = new ParentWidget<>().sizeRel(1f);
         field(
             root,
             sm,
@@ -726,7 +806,8 @@ final class GiftPanel {
         root.child(
             IKey.lang("gtit.gift.ui.shell")
                 .asWidget()
-                .pos(236, 2)
+                .leftRelOffset(.5f, 8)
+                .top(2)
                 .size(148, 12)
                 .scale(0.75f));
         StringSyncValue boundShell = read(sm, "gift_bound_shell_key", session::shellKey);
@@ -734,9 +815,10 @@ final class GiftPanel {
         sm.syncValue("gift_bound_shell_item", shellItem);
         root.child(
             new ItemDisplayWidget().item(shellItem)
-                .pos(432, 0)
+                .right(6)
+                .top(0)
                 .size(18)
-                .background(UtilityUiStyle.MANAGER_SLOT)
+                .background(NekoVendingTheme.SLOT)
                 .addTooltipLine(IKey.lang("gtit.gift.ui.shell_hint")));
         String[] icons = GiftIconCatalog.keys();
         // Stable, fixed identities for every registered carrier, independent of the custom list icon.
@@ -745,7 +827,9 @@ final class GiftPanel {
             int x = 236 + i % 8 * 27;
             int y = 24 + i / 8 * 25;
             root.child(
-                button(sm, session, "gift_icon_" + i, "", x, y, 24, true, () -> session.bindShell(icon)).height(22)
+                button(sm, session, "gift_icon_" + i, "", x, y, 24, true, () -> session.bindShell(icon))
+                    .leftRelOffset(.5f, 8 + i % 8 * 27)
+                    .height(22)
                     .selected(() -> icon.equals(boundShell.getStringValue()))
                     .tooltipBuilder(t -> {
                         t.addLine(IKey.lang(GiftIconCatalog.labelKey(icon)));
@@ -757,18 +841,21 @@ final class GiftPanel {
             sm.syncValue("gift_shell_choice_item_" + i, carrier);
             root.child(
                 new UtilityControls.DecorativeItem().item(carrier)
-                    .pos(x + 3, y + 2)
+                    .leftRelOffset(.5f, 11 + i % 8 * 27)
+                    .top(y + 2)
                     .size(18)
                     .background(com.cleanroommc.modularui.api.drawable.IDrawable.EMPTY));
         }
         root.child(
             IKey.lang("gtit.gift.ui.list_icon")
                 .asWidget()
-                .pos(236, 143)
+                .leftRelOffset(.5f, 8)
+                .top(143)
                 .size(78, 12)
                 .scale(0.75f));
         root.child(
-            ghost(sm, session, 0).pos(318, 139)
+            ghost(sm, session, 0).leftRelOffset(.5f, 90)
+                .top(139)
                 .addTooltipLine(IKey.lang("gtit.gift.ui.icon_hint")));
         root.child(
             button(
@@ -780,13 +867,13 @@ final class GiftPanel {
                 139,
                 107,
                 true,
-                () -> session.clear(0)));
+                () -> session.clear(0)).right(5));
         return root;
     }
 
     private static ParentWidget<?> items(PanelSyncManager sm, GiftEditorSession session, boolean random) {
         String prefix = random ? "gift_random" : "gift_required";
-        ParentWidget<?> root = new ParentWidget<>().size(456, 165);
+        ParentWidget<?> root = new ParentWidget<>().sizeRel(1f);
         root.child(
             IKey.lang("gtit.gift.ui.ghost_hint")
                 .asWidget()
@@ -795,7 +882,9 @@ final class GiftPanel {
         for (int row = 0; row < GiftEditorSession.PAGE_SIZE; row++) {
             final int slot = 1 + row + (random ? GiftEditorSession.PAGE_SIZE : 0);
             int y = 16 + row * 29;
-            root.child(ghost(sm, session, slot).pos(0, y));
+            root.child(
+                ghost(sm, session, slot).left(0)
+                    .topRelOffset(row * .19f, 16));
             StringSyncValue amount = write(
                 sm,
                 session,
@@ -804,12 +893,13 @@ final class GiftPanel {
                 value -> session.amount(slot, value),
                 4);
             root.child(
-                new UtilityControls.Field().manager()
-                    .pos(24, y)
+                new UtilityControls.Field().kraft()
+                    .left(24)
+                    .topRelOffset(row * .19f, 16)
                     .size(49, 18)
                     .value(amount)
                     .setMaxLength(4)
-                    .background(UtilityUiStyle.MANAGER_INPUT)
+                    .background(NekoVendingTheme.INPUT)
                     .addTooltipLine(IKey.lang("gtit.gift.ui.amount")));
             StringSyncValue nbt = write(
                 sm,
@@ -819,45 +909,49 @@ final class GiftPanel {
                 value -> session.nbt(slot, value),
                 16384);
             root.child(
-                new UtilityControls.Field().manager()
-                    .pos(79, y)
-                    .size(352, 18)
+                new UtilityControls.Field().kraft()
+                    .left(79)
+                    .topRelOffset(row * .19f, 16)
+                    .widthRelOffset(1f, -104)
+                    .height(18)
                     .value(nbt)
                     .setMaxLength(16384)
-                    .background(UtilityUiStyle.MANAGER_INPUT)
+                    .background(NekoVendingTheme.INPUT)
                     .addTooltipLine(IKey.lang("gtit.gift.ui.nbt")));
             root.child(
-                button(sm, session, prefix + "_clear_" + row, "", 434, y, 22, true, () -> session.clear(slot))
+                button(sm, session, prefix + "_clear_" + row, "", 434, y, 22, true, () -> session.clear(slot)).right(0)
+                    .topRelOffset(row * .19f, 16)
                     .overlay(IKey.str("×")));
             StringSyncValue description = read(
                 sm,
                 prefix + "_item_description_" + row,
                 () -> session.itemDescription(slot));
             root.child(
-                IKey.dynamic(description::getStringValue)
-                    .asWidget()
-                    .pos(24, y + 19)
-                    .size(432, 9)
+                new NekoSingleLineTextWidget(IKey.dynamic(description::getStringValue)).left(24)
+                    .topRelOffset(row * .19f, 35)
+                    .widthRelOffset(1f, -24)
+                    .height(9)
                     .scale(0.6f));
         }
         root.child(button(sm, session, prefix + "_prev", "gtit.gift.ui.previous", 0, 140, 83, true, () -> {
             session.editGeneration++;
             if (random) session.randomPage = Math.max(0, session.randomPage - 1);
             else session.requiredPage = Math.max(0, session.requiredPage - 1);
-        }));
+        }).bottom(5));
         StringSyncValue page = read(
             sm,
             prefix + "_page",
             () -> Integer.toString(1 + (random ? session.randomPage : session.requiredPage)) + "/32");
         root.child(
-            IKey.dynamic(page::getStringValue)
-                .asWidget()
-                .pos(207, 145));
+            new NekoSingleLineTextWidget(IKey.dynamic(page::getStringValue)).leftRel(.5f)
+                .bottom(10)
+                .size(60, 12));
         root.child(button(sm, session, prefix + "_next", "gtit.gift.ui.next", 373, 140, 83, true, () -> {
             session.editGeneration++;
             if (random) session.randomPage = Math.min(31, session.randomPage + 1);
             else session.requiredPage = Math.min(31, session.requiredPage + 1);
-        }));
+        }).right(0)
+            .bottom(5));
         return root;
     }
 
@@ -903,7 +997,7 @@ final class GiftPanel {
             }
         };
         sm.syncValue("gift_ghost_" + slot, handler);
-        PhantomItemSlot widget = new PhantomItemSlot() {
+        PhantomItemSlot widget = new NekoGhostSlot() {
 
             @Override
             public boolean handleDragAndDrop(net.minecraft.item.ItemStack stack, int button) {
@@ -918,7 +1012,7 @@ final class GiftPanel {
                 return super.handleDragAndDrop(stack, button);
             }
         }.syncHandler(handler);
-        widget.background(UtilityUiStyle.MANAGER_SLOT);
+        widget.background(NekoVendingTheme.SLOT);
         return widget;
     }
 
@@ -993,23 +1087,23 @@ final class GiftPanel {
                 .pos(0, y + 5)
                 .scale(0.8f)
                 .size(64, 12));
-        UtilityControls.Field input = new UtilityControls.Field().manager();
+        UtilityControls.Field input = new UtilityControls.Field().kraft();
         root.child(
             input.pos(68, y)
-                .size(150, 18)
+                .widthRelOffset(.5f, -78)
+                .height(18)
                 .value(write(sm, session, key, getter, setter, limit))
                 .setMaxLength(limit)
-                .background(UtilityUiStyle.MANAGER_INPUT));
+                .background(NekoVendingTheme.INPUT));
         if ("gift_id".equals(key)) {
             BooleanSyncValue editable = new BooleanSyncValue(() -> session.creating);
             sm.syncValue("gift_id_editable", editable);
             input.setEnabledIf(w -> editable.getBoolValue());
             StringSyncValue savedId = read(sm, "gift_id_read_only", () -> session.draft.id);
             root.child(
-                IKey.dynamic(savedId::getStringValue)
-                    .asWidget()
-                    .pos(72, y + 4)
-                    .size(142, 12)
+                new NekoSingleLineTextWidget(IKey.dynamic(savedId::getStringValue)).pos(72, y + 4)
+                    .widthRelOffset(.5f, -86)
+                    .height(12)
                     .scale(0.8f)
                     .setEnabledIf(w -> !editable.getBoolValue()));
         }
@@ -1029,7 +1123,7 @@ final class GiftPanel {
             }
         });
         sm.syncValue(key, handler);
-        return new UtilityControls.ActionButton().manager()
+        return new UtilityControls.ActionButton().kraft()
             .pos(x, y)
             .size(width, 18)
             .overlay(label.isEmpty() ? IKey.str("") : IKey.lang(label))

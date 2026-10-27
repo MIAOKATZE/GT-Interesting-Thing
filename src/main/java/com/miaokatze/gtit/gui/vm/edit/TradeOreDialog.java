@@ -7,6 +7,7 @@ import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.Dialog;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 
 /** Local modal edits the newest option in append mode, otherwise the primary option. */
@@ -18,21 +19,27 @@ final class TradeOreDialog extends Dialog<Boolean> {
     TradeOreDialog(TradeEditor editor) {
         super("nekoV2:trade_ore", result -> {});
         size(260, 125);
+        background(NekoVendingTheme.PANEL);
         setDisablePanelsBelow(true);
         setDraggable(false);
         child(
             IKey.str("矿词匹配 / 当前选项数量")
+                .color(NekoVendingTheme.INK)
                 .asWidget()
                 .left(10)
                 .top(8));
         child(
-            new TextFieldWidget().value(new StringValue.Dynamic(() -> ore, value -> ore = value))
+            new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+                .background(NekoVendingTheme.INPUT)
+                .value(new StringValue.Dynamic(() -> ore, value -> ore = value))
                 .setMaxLength(128)
                 .left(10)
                 .top(28)
                 .size(240, 18));
         child(
-            new TextFieldWidget().value(new StringValue.Dynamic(() -> amount, value -> amount = value))
+            new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+                .background(NekoVendingTheme.INPUT)
+                .value(new StringValue.Dynamic(() -> amount, value -> amount = value))
                 .setNumbers(1, Integer.MAX_VALUE)
                 .left(10)
                 .top(50)
@@ -43,7 +50,11 @@ final class TradeOreDialog extends Dialog<Boolean> {
                 .left(10)
                 .top(72));
         child(
-            new ButtonWidget<>().overlay(IKey.str("确定"))
+            new ButtonWidget<>().background(NekoVendingTheme.PRESSED)
+                .hoverBackground(NekoVendingTheme.SELECTED_HOVER)
+                .overlay(
+                    IKey.str("确定")
+                        .color(NekoVendingTheme.LIGHT))
                 .left(40)
                 .bottom(8)
                 .size(65, 18)
@@ -57,7 +68,11 @@ final class TradeOreDialog extends Dialog<Boolean> {
                     return true;
                 }));
         child(
-            new ButtonWidget<>().overlay(IKey.str("取消"))
+            new ButtonWidget<>().background(NekoVendingTheme.BUTTON)
+                .hoverBackground(NekoVendingTheme.HOVER)
+                .overlay(
+                    IKey.str("取消")
+                        .color(NekoVendingTheme.INK))
                 .right(40)
                 .bottom(8)
                 .size(65, 18)

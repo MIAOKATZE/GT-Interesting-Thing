@@ -80,9 +80,14 @@ public final class NekoMeTransferQueue {
     /** 条目从落槽到注入 ME 的延迟 */
     public static final long ME_TRANSFER_DELAY_MS = 3000L;
     public static final long ME_FADE_MS = 2000L;
+    /** Spread visual-group countdowns across rounds instead of fading an entire room together. */
+    public static final long ME_STAGGER_MS = 100L;
+    /** Includes rejected simulations: a full network must not cause a 100-entry probe burst. */
+    public static final int MAX_NETWORK_ATTEMPTS_PER_TICK = 1;
 
     /** O2-19 序列化缓存（null=脏，需重建；空队列短路不缓存） */
     private String cachedSerialized = null;
+    private long lastTickTimeMs = -1;
 
     public NekoMeTransferQueue(UplinkOps uplink, OutputSlots out, Runnable markDirty, BooleanSupplier meOutputMode) {
         this.uplink = uplink;
@@ -94,13 +99,11 @@ public final class NekoMeTransferQueue {
     /**
      * 处理 ME 传输队列（原宿主 processMeTransferQueue，方法体逐字搬移）
      * <p>
-     * 遍历队列，将超过 {@link #ME_TRANSFER_DELAY_MS}（3 秒）的条目通过
-     * {@code appeng.util.Platform.poweredInsert} 直接注入 ME 网络。
+     * 每 tick 最多探测/注入一个条目；各条目错开倒计时，并保留完整 3 秒停留 + 2 秒淡出。
      * <p>
      * 若注入未完全成功（返回 remainder），将槽位更新为剩余物品并重置延迟，稍后重试。
      * <p>
-     * 如果 uplink 已断开（isLost），将队列中所有物品回退到 outputBuffer，
-     * 由本地出货槽路径投放，防止物品丢失。
+     * 如果 uplink 已断开（isLost），取消作业，真实物品留在原出货槽，不重播出货。
      * <p>
      * 应在宿主 onPostTick 服务端块内、dispenseItems() 之后调用。
      */
@@ -111,6 +114,13 @@ public final class NekoMeTransferQueue {
     /** Deterministic clock overload for headless regressions; production runs on server main thread. */
     public void tick(long now) {
         if (meTransferQueue.isEmpty()) return;
+        if (lastTickTimeMs >= 0 && now < lastTickTimeMs) {
+            // Wall-clock correction is not a huge scheduled delay: restart the visible groups safely.
+            for (MeTransferEntry entry : meTransferQueue) if (entry.creationTimeMs >= 0) entry.creationTimeMs = -1;
+            changed();
+        }
+        lastTickTimeMs = now;
+        int networkAttempts = 0;
         java.util.Iterator<MeTransferEntry> it = meTransferQueue.iterator();
         while (it.hasNext()) {
             MeTransferEntry entry = it.next();
@@ -138,22 +148,24 @@ public final class NekoMeTransferQueue {
             }
             if (entry.creationTimeMs < 0) {
                 if (out.isVisible(entry.slotIndex)) {
-                    entry.creationTimeMs = now;
+                    schedule(entry, now);
                     changed();
                 }
                 continue;
             }
-            if (actual.stackSize != entry.stack.stackSize || now < entry.creationTimeMs) {
+            if (actual.stackSize != entry.stack.stackSize) {
                 entry.stack.stackSize = actual.stackSize;
-                entry.creationTimeMs = now;
+                restartGroup(entry, now);
                 out.visualReset(entry.slotIndex);
                 changed();
                 continue;
             }
             // Actual delivery precedes this clock. Visible wait 3 seconds, then 2 second fade.
-            if (now - entry.creationTimeMs < ME_TRANSFER_DELAY_MS + ME_FADE_MS) continue;
+            if (now < entry.creationTimeMs || now - entry.creationTimeMs < ME_TRANSFER_DELAY_MS + ME_FADE_MS) continue;
+            if (networkAttempts >= MAX_NETWORK_ATTEMPTS_PER_TICK) continue;
+            networkAttempts++;
             if (!uplink.canAccept(actual.copy())) {
-                entry.creationTimeMs = now;
+                restartGroup(entry, now);
                 out.visualReset(entry.slotIndex);
                 changed();
                 continue;
@@ -171,11 +183,49 @@ public final class NekoMeTransferQueue {
             if (accepted == before) it.remove();
             else {
                 entry.stack.stackSize = before - accepted;
-                entry.creationTimeMs = now;
+                restartGroup(entry, now);
                 out.visualReset(entry.slotIndex);
             }
             changed();
         }
+    }
+
+    /** The ledger gives each visual body one stable dropId; slot generations remain individual guards. */
+    private static boolean sameGroup(MeTransferEntry a, MeTransferEntry b) {
+        return a.dropId > 0 && a.dropId == b.dropId;
+    }
+
+    /** Countdown starts are reserved on the owner thread; no worker ever touches Minecraft or AE. */
+    private void schedule(MeTransferEntry entry, long now) {
+        for (MeTransferEntry other : meTransferQueue)
+            if (other != entry && sameGroup(entry, other) && other.creationTimeMs >= 0) {
+                // A genuinely new visible member needs its full hold and fade, not an older body's age.
+                if (other.creationTimeMs < now) restartGroup(entry, now);
+                else entry.creationTimeMs = other.creationTimeMs;
+                return;
+            }
+        entry.creationTimeMs = nextGroupStart(entry, now);
+    }
+
+    private long nextGroupStart(MeTransferEntry entry, long now) {
+        long start = now;
+        for (MeTransferEntry other : meTransferQueue)
+            if (other != entry && !sameGroup(entry, other) && other.creationTimeMs >= 0) start = Math.max(
+                start,
+                other.creationTimeMs > Long.MAX_VALUE - ME_STAGGER_MS ? Long.MAX_VALUE
+                    : other.creationTimeMs + ME_STAGGER_MS);
+        return start;
+    }
+
+    /** A rejected/partial group returns visibly together, rather than leaving one shared body hidden. */
+    private void restartGroup(MeTransferEntry entry, long now) {
+        long start = nextGroupStart(entry, now);
+        entry.creationTimeMs = start;
+        for (MeTransferEntry other : meTransferQueue)
+            if (other != entry && sameGroup(entry, other) && other.creationTimeMs >= 0) {
+                other.creationTimeMs = start;
+                out.visualReset(other.slotIndex);
+            }
     }
 
     private void changed() {
@@ -186,7 +236,7 @@ public final class NekoMeTransferQueue {
     /** Called at the first server-visible feed pose, not at inventory placement or physics release. */
     public void visible(long dropId, long now) {
         for (MeTransferEntry entry : meTransferQueue) if (entry.dropId == dropId && entry.creationTimeMs < 0) {
-            entry.creationTimeMs = now;
+            schedule(entry, now);
             changed();
         }
     }
@@ -201,8 +251,9 @@ public final class NekoMeTransferQueue {
     }
 
     public int phase(int slot, long now) {
-        for (MeTransferEntry e : meTransferQueue) if (e.slotIndex == slot)
-            return e.creationTimeMs < 0 ? 0 : now - e.creationTimeMs >= ME_TRANSFER_DELAY_MS ? 2 : 1;
+        for (MeTransferEntry e : meTransferQueue)
+            if (e.slotIndex == slot) return e.creationTimeMs < 0 || now < e.creationTimeMs ? 0
+                : now - e.creationTimeMs >= ME_TRANSFER_DELAY_MS ? 2 : 1;
         return 0;
     }
 
@@ -279,18 +330,30 @@ public final class NekoMeTransferQueue {
      * @param slotIndex 物品所在出货槽索引
      */
     public void enqueueIfMeMode(ItemStack stack, int slotIndex) {
-        // B2-09：入队点统一守门 MAX_ME_QUEUE_SIZE——交易路径由 hasSpaceFor/getAvailableSlotCount
-        // 预检，抽奖出货路径此前无检查（10 连可入队 10+ 条）
-        if (meOutputMode.getAsBoolean() && meTransferQueue.size() < MAX_ME_QUEUE_SIZE) {
-            meTransferQueue.add(
-                new MeTransferEntry(
-                    stack,
-                    out.isVisible(slotIndex) ? System.currentTimeMillis() : -1,
-                    slotIndex,
-                    out.dropId(slotIndex),
-                    out.generation(slotIndex)));
-            cachedSerialized = null;
-        }
+        enqueueIfMeMode(stack, slotIndex, System.currentTimeMillis());
+    }
+
+    /** Idempotent admission, shared by new deliveries and explicit activation over existing output. */
+    public void enqueueIfMeMode(ItemStack stack, int slotIndex, long now) {
+        if (!meOutputMode.getAsBoolean() || isFull()
+            || stack == null
+            || stack.stackSize <= 0
+            || slotIndex < 0
+            || slotIndex >= MAX_ME_QUEUE_SIZE) return;
+        long dropId = out.dropId(slotIndex), generation = out.generation(slotIndex);
+        for (MeTransferEntry entry : meTransferQueue)
+            if (entry.slotIndex == slotIndex && entry.dropId == dropId && entry.generation == generation) return;
+        MeTransferEntry entry = new MeTransferEntry(stack, -1, slotIndex, dropId, generation);
+        if (out.isVisible(slotIndex)) schedule(entry, now);
+        meTransferQueue.add(entry);
+        changed();
+    }
+
+    /** Called only on an explicit OFF -> ON transition; cancelled jobs stay cancelled. */
+    public void enqueueExisting(int slotCount, long now) {
+        if (!meOutputMode.getAsBoolean()) return;
+        for (int slot = 0; slot < Math.min(slotCount, MAX_ME_QUEUE_SIZE); slot++)
+            enqueueIfMeMode(out.get(slot), slot, now);
     }
 
     /**
@@ -347,6 +410,7 @@ public final class NekoMeTransferQueue {
         for (MeTransferEntry entry : meTransferQueue) {
             net.minecraft.nbt.NBTTagCompound entryTag = new net.minecraft.nbt.NBTTagCompound();
             entryTag.setLong("creationTime", entry.creationTimeMs);
+            entryTag.setLong("scheduledRemainingMs", Math.max(0, entry.creationTimeMs - now));
             entryTag.setLong(
                 "visibleElapsedMs",
                 entry.creationTimeMs < 0 ? -1
@@ -371,6 +435,7 @@ public final class NekoMeTransferQueue {
 
     public void readFromNBT(NBTTagList meQueueList, long now) {
         meTransferQueue.clear();
+        lastTickTimeMs = now;
         for (int i = 0; i < meQueueList.tagCount(); i++) {
             net.minecraft.nbt.NBTTagCompound entryTag = meQueueList.getCompoundTagAt(i);
             ItemStack stack = ItemStack.loadItemStackFromNBT(entryTag);
@@ -378,6 +443,11 @@ public final class NekoMeTransferQueue {
             if (entryTag.hasKey("visibleElapsedMs")) {
                 long elapsed = entryTag.getLong("visibleElapsedMs");
                 creationTime = elapsed < 0 ? -1 : now - Math.min(ME_TRANSFER_DELAY_MS + ME_FADE_MS, elapsed);
+                if (elapsed >= 0 && entryTag.getLong("scheduledRemainingMs") > 0)
+                    creationTime = now + Math.min(Long.MAX_VALUE - now, entryTag.getLong("scheduledRemainingMs"));
+            } else if (creationTime > now) {
+                // Old timestamps predate scheduled starts; a backwards clock must not strand owned output.
+                creationTime = now;
             }
             // v1.6.23: 读取 slotIndex，旧存档无此 key 时默认 -1
             int slotIndex = entryTag.hasKey("slotIndex") ? entryTag.getInteger("slotIndex") : -1;

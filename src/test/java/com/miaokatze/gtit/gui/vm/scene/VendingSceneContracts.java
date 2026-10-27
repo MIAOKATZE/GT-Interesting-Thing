@@ -69,6 +69,7 @@ public final class VendingSceneContracts {
 
     public static void main(String[] args) throws Exception {
         if (!com.miaokatze.gtit.testutil.MinecraftTestBootstrap.enter(VendingSceneContracts.class, args)) return;
+        VendingNativeModelPolicyTest.main(args);
         VendingScenePickingTest.main(args);
         VendingCatChoreographyTest.main(args);
         NBTTagCompound n = frame(1, true, body(1, 0));
@@ -153,6 +154,7 @@ public final class VendingSceneContracts {
         NBTTagCompound waiting = body(1, 0);
         waiting.setInteger("deliveryStage", 0);
         waiting.setInteger("route", 0);
+        waiting.setDouble("x", -4.3);
         NBTTagCompound gates = frame(5, true, waiting);
         gates.setDouble("doorLeft", .5);
         check(view.accept(decode(gates), 2200000000L), "wait-door frame accepted");
@@ -160,13 +162,39 @@ public final class VendingSceneContracts {
             view.snapshot(2200000000L).bodies.isEmpty() && view.entries()
                 .size() == 1,
             "queued item keeps ownership but is not rendered or pickable");
-        check(view.door(0) == .5 && view.door(2) == 0, "authoritative route door openness");
+        check(view.door(0) == 0 && view.door(2) == 0, "door target does not step at packet receipt");
+        check(view.door(0, 2300000000L) == .25, "door interpolates between 5 Hz server frames");
+        check(view.door(0, 2400000000L) == .5, "door converges exactly without extrapolation");
         waiting.setInteger("deliveryStage", 1);
+        waiting.setDouble("x", -3.82);
         gates = frame(6, true, waiting);
         gates.setDouble("doorLeft", 1);
         check(
             view.accept(decode(gates), 2300000000L) && view.snapshot(2300000000L).bodies.size() == 1,
             "feed visible after authoritative door open");
+        check(
+            view.snapshot(2300000000L).bodies.get(0).x == -4.3,
+            "WAIT to FEED begins inside the real shell, not at a jumped pose");
+        check(
+            Math.abs(view.snapshot(2400000000L).bodies.get(0).x + 4.06) < .00001,
+            "door and feed travel share the same interpolation interval");
+        view.snapshot(2300000000L);
+        check(view.door(0) == .25, "new door segment starts at current interpolated pose");
+        check(view.door(0, 2400000000L) == .625, "door stays smooth between updates");
+        view.snapshot(2400000000L);
+        view.paused = true;
+        check(view.door(0, 2900000000L) == .625, "pause freezes door with body snapshot");
+        view.paused = false;
+        check(view.door(0, 2900000000L) == 1, "resume converges to authoritative door state");
+        view.reducedMotion = true;
+        gates = frame(7, true, waiting);
+        gates.setDouble("doorLeft", .5);
+        check(view.accept(decode(gates), 3000000000L), "reduced-motion door frame");
+        check(view.door(0, 3000000000L) == .5, "reduced motion uses current server target");
+        VendingSceneView reopened = new VendingSceneView(slots);
+        check(reopened.accept(decode(gates), 3000000000L), "reopened full frame");
+        check(reopened.door(0, 3000000000L) == .5, "reopen restores door without replaying opening");
+        reopened.close();
         view.close();
         check(
             view.entries()

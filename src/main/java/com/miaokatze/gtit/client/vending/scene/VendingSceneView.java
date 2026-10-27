@@ -35,7 +35,8 @@ public final class VendingSceneView implements AutoCloseable {
     private SceneSnapshot frozen;
     public final VendingCatChoreography cat = new VendingCatChoreography();
     private double doorLeft, doorRight, doorRear, frozenLeft, frozenRight, frozenRear;
-    private long cosmeticTime;
+    private double fromLeft, fromRight, fromRear;
+    private long doorReceived, cosmeticTime;
 
     public static final class Particle {
 
@@ -68,6 +69,12 @@ public final class VendingSceneView implements AutoCloseable {
         SceneSnapshot last = snapshot(now);
         Map<String, SceneBody> prior = new HashMap<>();
         for (SceneBody b : last.bodies) prior.put(b.id, b);
+        // A WAIT -> FEED transition starts at its real shell pose, not an instant jump to the next 5 Hz sample.
+        // Doors and travel then share the same bounded interpolation interval; no business clock waits on a client.
+        for (Entry e : next.values()) {
+            Entry old = entries.get(e.pose.id);
+            if (e.deliveryStage == 1 && old != null && old.deliveryStage == 0) prior.put(e.pose.id, old.pose);
+        }
         // Removal cause is not transported: never infer ME success from a removed ID.
         for (Entry e : next.values()) if (e.phase == 2) {
             fadeStart.put(e.pose.id, now - Math.min(2000, e.phaseAgeMs) * 1000000L);
@@ -80,9 +87,21 @@ public final class VendingSceneView implements AutoCloseable {
             if (e.deliveryStage == 2 && (old == null || old.deliveryStage != 2)) reaction = e.pose.id;
         }
         entries = next;
-        doorLeft = frame.doorLeft;
-        doorRight = frame.doorRight;
-        doorRear = frame.doorRear;
+        if (revision < 0) {
+            // Opening a GUI restores the current mechanism, it must not replay a delivery.
+            fromLeft = doorLeft = frame.doorLeft;
+            fromRight = doorRight = frame.doorRight;
+            fromRear = doorRear = frame.doorRear;
+            doorReceived = now;
+        } else if (doorLeft != frame.doorLeft || doorRight != frame.doorRight || doorRear != frame.doorRear) {
+            fromLeft = sampleDoor(0, now);
+            fromRight = sampleDoor(1, now);
+            fromRear = sampleDoor(2, now);
+            doorLeft = frame.doorLeft;
+            doorRight = frame.doorRight;
+            doorRear = frame.doorRear;
+            doorReceived = now;
+        }
         if (revision >= 0 && !reducedMotion && reaction != null) cat.react(reaction);
         previous = prior;
         revision = frame.revision;
@@ -104,15 +123,28 @@ public final class VendingSceneView implements AutoCloseable {
         }
         SceneSnapshot result = new SceneSnapshot(VendingSceneFrames.LAYOUT, Math.max(0, revision), tick, bodies);
         frozen = result;
-        frozenLeft = doorLeft;
-        frozenRight = doorRight;
-        frozenRear = doorRear;
+        frozenLeft = sampleDoor(0, now);
+        frozenRight = sampleDoor(1, now);
+        frozenRear = sampleDoor(2, now);
         return result;
     }
 
+    /** Door pose belonging to the most recently drawn snapshot; preserves the existing caller API. */
     public double door(int route) {
-        if (paused && frozen != null) return route == 0 ? frozenLeft : route == 1 ? frozenRight : frozenRear;
-        return route == 0 ? doorLeft : route == 1 ? doorRight : doorRear;
+        return route == 0 ? frozenLeft : route == 1 ? frozenRight : frozenRear;
+    }
+
+    /** Bounded 5 Hz interpolation; no extrapolation, physics, or dependency on wall-clock time. */
+    public double door(int route, long now) {
+        if (paused && frozen != null) return door(route);
+        return sampleDoor(route, now);
+    }
+
+    private double sampleDoor(int route, long now) {
+        double target = route == 0 ? doorLeft : route == 1 ? doorRight : doorRear;
+        double from = route == 0 ? fromLeft : route == 1 ? fromRight : fromRear;
+        double t = reducedMotion ? 1 : Math.max(0, Math.min(1, (now - doorReceived) / 200000000.0));
+        return from + (target - from) * t;
     }
 
     public void animate(long now, SceneSnapshot snapshot) {

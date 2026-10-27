@@ -113,24 +113,31 @@ public class NekoCoinDisplayV2 extends Flow {
         }
         ItemDisplayWidget iconWidget = new ItemDisplayWidget().item(coinStack)
             .size(22)
+            .left(2)
+            .top(2)
+            .tooltipBuilder(
+                t -> NekoVendingTheme.tooltip(t)
+                    .addLine(displayName + " · " + coinSyncValue.getValue()))
+            .tooltipAutoUpdate(true)
             .background(new IDrawable[0]); // 无背景（隐藏物品槽默认背景）
 
         // ==================== 余额数字 ====================
         // 动态文本，scale 受 serp 动画控制（draw 方法中更新）
         this.coinAmount = IKey.dynamic(() -> getReadableString(this.coinSyncValue.getValue()))
             .scale(DEFAULT_AMOUNT_SCALE)
+            .color(NekoVendingTheme.INK)
             .asWidget()
-            .top(6)
-            .left(24)
-            .width(24);
+            .top(13)
+            .left(26)
+            .width(44);
 
         // ==================== 弹出按钮 ====================
         // 使用 NekoGuiTextures.EJECT_COINS 作为图标，需 Shift 才能点击（参考 VM CoinButton）
         // 使用普通 ButtonWidget 替代 ToggleButton：仅在按住 Shift 时手动触发 BooleanSyncValue，
         // 未按 Shift 时返回 false（IGNORE），保持防误触行为。
-        this.ejectButton = new ButtonWidget<>().size(12)
-            .disableThemeBackground(true)
-            .disableHoverThemeBackground(true)
+        this.ejectButton = new ButtonWidget<>().size(14)
+            .background(NekoVendingTheme.BUTTON)
+            .hoverBackground(NekoVendingTheme.HOVER)
             .overlay(
                 new IDrawable[] { NekoGuiTextures.EJECT_COINS.asIcon()
                     .size(12) })
@@ -159,6 +166,7 @@ public class NekoCoinDisplayV2 extends Flow {
         // tooltip 动态显示实时余额和货币名称（autoUpdate 保证每帧刷新）
         this.ejectButton.tooltipDynamic(builder -> {
             builder.clearText();
+            NekoVendingTheme.tooltip((com.cleanroommc.modularui.screen.RichTooltip) builder);
             // 第一行：余额 + 货币名称
             builder.addLine(this.coinSyncValue.getValue() + " " + displayName);
             // ME 网络余额行（阶段 6）：仅当 meAmountSupplier 已注入且余额 > 0 时显示
@@ -178,9 +186,9 @@ public class NekoCoinDisplayV2 extends Flow {
 
         // ==================== ME 导入按钮（v1.6.22，与弹出按钮同行）====================
         // 使用 WALLET_PERSONAL 图标（与 EJECT_COINS 风格类似），点击触发 ME 货币导入
-        this.importButton = new ButtonWidget<>().size(12)
-            .disableThemeBackground(true)
-            .disableHoverThemeBackground(true)
+        this.importButton = new ButtonWidget<>().size(14)
+            .background(NekoVendingTheme.BUTTON)
+            .hoverBackground(NekoVendingTheme.HOVER)
             .overlay(
                 new IDrawable[] { NekoGuiTextures.WALLET_PERSONAL.asIcon()
                     .size(12) })
@@ -192,6 +200,7 @@ public class NekoCoinDisplayV2 extends Flow {
             })
             .tooltipDynamic(builder -> {
                 builder.clearText();
+                NekoVendingTheme.tooltip((com.cleanroommc.modularui.screen.RichTooltip) builder);
                 builder.addLine(IKey.str(EnumChatFormatting.LIGHT_PURPLE + "从 ME 网络导入" + displayName));
                 if (meImportAmountSupplier != null) {
                     int meAmt = meImportAmountSupplier.getAsInt();
@@ -204,16 +213,24 @@ public class NekoCoinDisplayV2 extends Flow {
 
         // ==================== 组装 ====================
         // 布局：图标(22px) + 余额数字 + 弹出按钮(12px) + ME导入按钮(12px)
-        this.child(iconWidget)
+        this.child(
+            IKey.str(displayName)
+                .color(NekoVendingTheme.MUTED)
+                .asWidget()
+                .scale(.6f)
+                .left(26)
+                .top(3)
+                .width(48))
+            .child(iconWidget)
             .child(this.coinAmount)
             .child(
-                this.ejectButton.left(48)
-                    .top(5))
+                this.ejectButton.left(91)
+                    .top(8))
             .child(
-                this.importButton.left(62)
-                    .top(5))
-            .height(22)
-            .width(76);
+                this.importButton.left(76)
+                    .top(8))
+            .height(26)
+            .width(108);
     }
 
     /**

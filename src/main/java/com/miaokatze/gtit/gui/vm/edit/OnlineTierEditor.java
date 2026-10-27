@@ -144,7 +144,7 @@ public final class OnlineTierEditor {
         int spacing = 18;
 
         // 所需秒数
-        TextWidget<?> secondsLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "所需秒数:"));
+        TextWidget<?> secondsLabel = new TextWidget<>(IKey.str("所需秒数:"));
         secondsLabel.left(8)
             .top(fieldY + 2);
         editPanel.child(secondsLabel);
@@ -163,7 +163,7 @@ public final class OnlineTierEditor {
 
         // 货币类型
         fieldY += spacing;
-        TextWidget<?> currencyLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币类型:"));
+        TextWidget<?> currencyLabel = new TextWidget<>(IKey.str("货币类型:"));
         currencyLabel.left(8)
             .top(fieldY + 2);
         editPanel.child(currencyLabel);
@@ -178,7 +178,7 @@ public final class OnlineTierEditor {
 
         // 货币数量
         fieldY += spacing;
-        TextWidget<?> amountLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币数量:"));
+        TextWidget<?> amountLabel = new TextWidget<>(IKey.str("货币数量:"));
         amountLabel.left(8)
             .top(fieldY + 2);
         editPanel.child(amountLabel);
@@ -197,7 +197,7 @@ public final class OnlineTierEditor {
 
         // 物品奖励槽（PhantomItemSlot 拖入配置；留空 = 无物品奖励）
         fieldY += spacing;
-        TextWidget<?> itemLabel = new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品奖励:"));
+        TextWidget<?> itemLabel = new TextWidget<>(IKey.str("物品奖励:"));
         itemLabel.left(8)
             .top(fieldY + 2);
         editPanel.child(itemLabel);

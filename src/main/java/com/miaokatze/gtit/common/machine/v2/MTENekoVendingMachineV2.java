@@ -133,9 +133,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     // === 内置输入/输出槽 ===
 
-    /** 输入槽数量，与 V1 内置输入槽一致 */
-    public static final int INPUT_SLOTS = 16;
-    /** Preserve automation indices 8..107; new input indices are appended at 108..115. */
+    /** Two rows of sixteen real inputs; earlier indexed input stacks are retained on load. */
+    public static final int INPUT_SLOTS = 32;
+    /** Preserve automation indices 8..107; new input indices are appended at 108..131. */
     public static final int LEGACY_INPUT_SLOTS = 8;
 
     /** 输出槽数量，与 V1 内置输出槽一致 */
@@ -191,6 +191,45 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return stack;
         }
     };
+
+    private final NekoOutputCapacity outputCapacity = new NekoOutputCapacity(
+        this::getOutputEmptySlotCount,
+        () -> outputBuffer.size());
+
+    public int getAvailableOutputCapacity() {
+        return outputCapacity.available();
+    }
+
+    public NekoOutputCapacity.Reservation reserveOutputCapacity(int count) {
+        return outputCapacity.reserve(count);
+    }
+
+    /**
+     * Transfer pre-split, exclusively owned reward stacks into the paid queue. The caller prepares/validates
+     * every stack before charging; this method must not re-query mod stack limits or rebuild reward copies.
+     */
+    public void commitLotteryOutputs(NekoOutputCapacity.Reservation reservation, List<ItemStack> prizes,
+        List<Boolean> rearRoutes, long delayMs) {
+        if (prizes.size() != rearRoutes.size()) throw new IllegalArgumentException("prize routes");
+        int count = prizes.size();
+        if (!outputCapacity.owns(reservation) || !reservation.canCommit(count))
+            throw new IllegalStateException("lottery output was not reserved before payment");
+        startBatch(count);
+        long readyAt = System.currentTimeMillis() + Math.max(0, Math.min(60000L, delayMs));
+        for (int i = 0; i < prizes.size(); i++) {
+            ItemStack prize = prizes.get(i);
+            enqueueRear = rearRoutes.get(i);
+            try {
+                outputBuffer.add(prize);
+                outputLedger.delayPending(prize, readyAt);
+                reservation.consume(1);
+            } finally {
+                enqueueRear = false;
+            }
+        }
+        newBufferedOutputs = true;
+        if (getBaseMetaTileEntity() != null) getBaseMetaTileEntity().markDirty();
+    }
 
     /** Server-owned invalidation shared by every viewer; runtime state only, never saved. */
     private long tradeStateRevision;
@@ -634,6 +673,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (this.meOutputMode != mode) {
             this.meOutputMode = mode;
             if (!mode) meTransferQueue.cancelAll();
+            else meTransferQueue.enqueueExisting(outputItems.getSlots(), System.currentTimeMillis());
             markTradeStateChanged();
             if (getBaseMetaTileEntity() != null) {
                 getBaseMetaTileEntity().markDirty();
@@ -699,7 +739,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return null;
         }
         int needed = outputStackCount(stack);
-        if (NekoOutputLedger.availableSlots(getOutputEmptySlotCount(), outputBuffer.size()) < needed) {
+        if (getAvailableOutputCapacity() < needed) {
             outputLedger.skipQueuedStacks(needed);
             return stack.copy();
         }
@@ -903,7 +943,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         while (!this.outputBuffer.isEmpty()) {
             ItemStack next = this.outputBuffer.peek();
             if (next != null && next.stackSize > 0) {
-                return next;
+                return outputLedger.isReady(next, System.currentTimeMillis()) ? next : null;
             }
             this.outputBuffer.poll();
         }
@@ -1849,16 +1889,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 // ME 模式额外检查传输队列容量（MeTransferEntry 在投放时创建；M1 起委托 isFull）
                 if (meTransferQueue.isFull()) return false;
             }
-            // 可用空槽 = 当前空槽数 - outputBuffer 队列已占用的虚拟槽位数
-            // 队列堆积时，空槽数会逐步被消耗（onPostTick 逐 tick 投放），
-            // hasSpaceFor 必须预留队列占位，避免超卖
-            int emptySlots = 0;
-            for (int i = 0; i < OUTPUT_SLOTS; i++) {
-                if (outputItems.getStackInSlot(i) == null) {
-                    emptySlots++;
-                }
-            }
-            int available = NekoOutputLedger.availableSlots(emptySlots, outputBuffer.size());
+            int available = getAvailableOutputCapacity();
             return available > 0;
         }
 
@@ -1873,14 +1904,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             if (meOutputMode && meTransferQueue.isFull()) {
                 return 0;
             }
-            int emptySlots = 0;
-            for (int i = 0; i < OUTPUT_SLOTS; i++) {
-                if (outputItems.getStackInSlot(i) == null) {
-                    emptySlots++;
-                }
-            }
-            // 扣除队列已占用的虚拟槽位，防止预检超卖（与 hasSpaceFor 同口径）
-            return NekoOutputLedger.availableSlots(emptySlots, outputBuffer.size());
+            return getAvailableOutputCapacity();
         }
 
         @Override
@@ -1951,7 +1975,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 获取指定槽位的物品栈
      * <p>
-     * 索引 0~INPUT_SLOTS-1 对应输入槽，INPUT_SLOTS~INPUT_SLOTS+OUTPUT_SLOTS-1 对应输出槽。
+     * 索引 0..7 保留原输入，8..107 保留原输出；扩容输入追加到 108..131。
      * 复刻 V1 MTEVendingMachine.java 的实现。
      */
     @Override

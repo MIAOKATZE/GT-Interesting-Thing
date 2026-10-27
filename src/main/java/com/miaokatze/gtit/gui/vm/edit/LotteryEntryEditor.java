@@ -7,7 +7,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
-import com.cleanroommc.modularui.drawable.GuiTextures;
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
@@ -18,7 +17,8 @@ import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoDraggableEditPanel;
-import com.miaokatze.gtit.client.gui.NekoGuiTextures;
+import com.miaokatze.gtit.client.gui.NekoSingleLineTextWidget;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.gui.vm.edit.EditOverlayController.EditOverlayType;
 import com.miaokatze.gtit.lottery.LotteryClientData;
 import com.miaokatze.gtit.lottery.LotteryEntry;
@@ -121,41 +121,66 @@ public final class LotteryEntryEditor {
         }
     }
 
+    private NekoDraggableEditPanel editPanelWidget;
+    private int dockX, dockY, dockWidth = 280, dockHeight = 220;
+
+    /** Canvas-local dock coordinates. The slot tree stays unchanged on both logical sides. */
+    public void setDockBounds(int x, int y, int width, int height) {
+        if (width < 280 || height < 220) throw new IllegalArgumentException("Lottery editor dock is too small");
+        dockX = x;
+        dockY = y;
+        dockWidth = width;
+        dockHeight = height;
+        if (editPanelWidget != null) {
+            editPanelWidget.resizer()
+                .resetPosition();
+            editPanelWidget.pos(x, y)
+                .size(width, height);
+            if (editPanelWidget.isValid()) editPanelWidget.scheduleResize();
+        }
+    }
+
     public NekoDraggableEditPanel buildEditPanel() {
-        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
-        editPanel.size(200, 160);
-        // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
-        editPanel.background(GuiTextures.MC_BACKGROUND);
-        editPanel.leftRel(0.5f)
-            .topRel(0.5f)
-            .anchorLeft(0.5f)
-            .anchorTop(0.5f);
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel(false);
+        editPanelWidget = editPanel;
+        editPanel.pos(dockX, dockY)
+            .size(dockWidth, dockHeight);
+        editPanel.background(NekoVendingTheme.PANEL);
         editPanel.setEnabledIf(w -> overlay.isCurrent(EditOverlayType.LOTTERY));
 
         // 标题（显示条目标识 "<poolId>:<entryId>"）
         editPanel.child(
-            new TextWidget<>(IKey.dynamic(() -> EnumChatFormatting.GOLD + "编辑抽奖条目（" + editLotteryEntryKey + "）")).top(5)
-                .horizontalCenter());
+            new NekoSingleLineTextWidget(IKey.dynamic(() -> "编辑抽奖条目（" + editLotteryEntryKey + "）"))
+                .color(NekoVendingTheme.INK)
+                .shadow(false)
+                .left(8)
+                .right(8)
+                .top(7)
+                .height(12)
+                .textAlign(com.cleanroommc.modularui.utils.Alignment.Center));
 
         int fieldY = 24;
         int fieldHeight = 14;
         int labelWidth = 65;
-        int fieldWidth = 120;
+        int fieldWidth = 200;
 
         // ---- 货币 ID（非空 = 货币奖品，保存时忽略物品槽）----
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "货币ID:")).left(8)
+            new TextWidget<>(IKey.str("货币ID:")).color(NekoVendingTheme.INK)
+                .left(8)
                 .top(fieldY + 2));
 
-        TextFieldWidget currencyField = new TextFieldWidget()
+        TextFieldWidget currencyField = new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+            .background(NekoVendingTheme.INPUT)
             .value(new StringValue.Dynamic(() -> editLotteryCurrency, val -> editLotteryCurrency = val.trim()))
             .setMaxLength(30);
         currencyField.left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
         currencyField.tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             t.addLine(IKey.str("货币 ID（如 neko / shimmeringNeko）"));
-            t.addLine(IKey.str(EnumChatFormatting.YELLOW + "非空 = 货币奖品，保存时忽略下方物品"));
+            t.addLine(IKey.str(EnumChatFormatting.GOLD + "非空 = 货币奖品，保存时忽略下方物品"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "留空 = 物品奖品（需放入物品）"));
         });
         currencyField.tooltipAutoUpdate(true);
@@ -164,13 +189,16 @@ public final class LotteryEntryEditor {
         // ---- 物品奖品（PhantomItemSlot 拖入配置，支持 NBT）----
         fieldY += 17;
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "物品:")).left(8)
+            new TextWidget<>(IKey.str("物品:")).color(NekoVendingTheme.INK)
+                .left(8)
                 .top(fieldY + 2));
 
-        PhantomItemSlot itemSlot = new PhantomItemSlot().slot(new ModularSlot(editLotteryItemHandler, 0));
+        PhantomItemSlot itemSlot = new NekoGhostSlot().slot(new ModularSlot(editLotteryItemHandler, 0));
         itemSlot.left(labelWidth)
-            .top(fieldY - 2);
+            .top(fieldY - 2)
+            .background(NekoVendingTheme.SLOT);
         itemSlot.tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             t.addLine(IKey.str("拖入物品作为奖品（支持 NBT）"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "货币 ID 非空时本项被忽略"));
         });
@@ -184,17 +212,19 @@ public final class LotteryEntryEditor {
         editPanel.child(
             new TextWidget<>(
                 IKey.dynamic(
-                    () -> editLotteryCurrency.isEmpty() ? EnumChatFormatting.GREEN + "物品奖品"
-                        : EnumChatFormatting.YELLOW + "已忽略（货币奖品）")).left(labelWidth + 22)
+                    () -> editLotteryCurrency.isEmpty() ? EnumChatFormatting.DARK_GREEN + "物品奖品"
+                        : EnumChatFormatting.GOLD + "已忽略（货币奖品）")).left(labelWidth + 22)
                             .top(fieldY + 2));
 
         // ---- 最小数量 ----
         fieldY += 21; // 物品槽高 18，多留间距
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "最小数量:")).left(8)
+            new TextWidget<>(IKey.str("最小数量:")).color(NekoVendingTheme.INK)
+                .left(8)
                 .top(fieldY + 2));
 
-        TextFieldWidget minField = new TextFieldWidget()
+        TextFieldWidget minField = new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+            .background(NekoVendingTheme.INPUT)
             .value(new StringValue.Dynamic(() -> String.valueOf(editLotteryMinAmount), val -> {
                 try {
                     editLotteryMinAmount = Integer.parseInt(val);
@@ -209,10 +239,12 @@ public final class LotteryEntryEditor {
         // ---- 最大数量 ----
         fieldY += 17;
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "最大数量:")).left(8)
+            new TextWidget<>(IKey.str("最大数量:")).color(NekoVendingTheme.INK)
+                .left(8)
                 .top(fieldY + 2));
 
-        TextFieldWidget maxField = new TextFieldWidget()
+        TextFieldWidget maxField = new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+            .background(NekoVendingTheme.INPUT)
             .value(new StringValue.Dynamic(() -> String.valueOf(editLotteryMaxAmount), val -> {
                 try {
                     editLotteryMaxAmount = Integer.parseInt(val);
@@ -227,10 +259,12 @@ public final class LotteryEntryEditor {
         // ---- 权重 ----
         fieldY += 17;
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "权重:")).left(8)
+            new TextWidget<>(IKey.str("权重:")).color(NekoVendingTheme.INK)
+                .left(8)
                 .top(fieldY + 2));
 
-        TextFieldWidget weightField = new TextFieldWidget()
+        TextFieldWidget weightField = new TextFieldWidget().setTextColor(NekoVendingTheme.INK)
+            .background(NekoVendingTheme.INPUT)
             .value(new StringValue.Dynamic(() -> String.valueOf(editLotteryWeight), val -> {
                 try {
                     editLotteryWeight = Integer.parseInt(val);
@@ -241,6 +275,7 @@ public final class LotteryEntryEditor {
             .top(fieldY)
             .size(fieldWidth, fieldHeight);
         weightField.tooltipBuilder(t -> {
+            NekoVendingTheme.tooltip(t);
             t.addLine(IKey.str("抽取权重（相对值）"));
             t.addLine(IKey.str(EnumChatFormatting.GRAY + "0 = 永不中出"));
         });
@@ -250,16 +285,22 @@ public final class LotteryEntryEditor {
         // ---- 稀有度（点击循环切换：普通→稀有→史诗→传说）----
         fieldY += 17;
         editPanel.child(
-            new TextWidget<>(IKey.str(EnumChatFormatting.WHITE + "稀有度:")).left(8)
+            new TextWidget<>(IKey.str("稀有度:")).color(NekoVendingTheme.INK)
+                .left(8)
                 .top(fieldY + 2));
 
         ButtonWidget<?> rarityButton = new ButtonWidget<>().left(labelWidth)
             .top(fieldY)
             .size(fieldWidth, fieldHeight)
-            .background(NekoGuiTextures.TEXT_FIELD_BACKGROUND)
+            .background(NekoVendingTheme.BUTTON)
+            .hoverBackground(NekoVendingTheme.HOVER)
             .overlay(IKey.dynamic(this::lotteryRarityDisplay))
-            .tooltipBuilder(t -> t.addLine(IKey.str("点击循环切换稀有度（普通→稀有→史诗→传说）")))
+            .tooltipBuilder(t -> {
+                NekoVendingTheme.tooltip(t);
+                t.addLine(IKey.str("点击循环切换稀有度（普通→稀有→史诗→传说）"));
+            })
             .onMouseTapped(mouse -> {
+                if (mouse != 0) return false;
                 cycleLotteryRarity();
                 return true;
             });
@@ -268,21 +309,33 @@ public final class LotteryEntryEditor {
 
         // ---- 保存 / 取消按钮 ----
         editPanel.child(
-            new ButtonWidget<>().size(50, 16)
+            new ButtonWidget<>().background(NekoVendingTheme.BUTTON)
+                .hoverBackground(NekoVendingTheme.HOVER)
+                .size(64, 20)
                 .left(30)
                 .bottom(8)
-                .overlay(IKey.str("保存"))
+                .overlay(
+                    IKey.str("保存")
+                        .color(NekoVendingTheme.INK)
+                        .shadow(false))
                 .onMouseTapped(mouse -> {
+                    if (mouse != 0) return false;
                     saveLotteryEdit();
                     requestClose.run();
                     return true;
                 }));
         editPanel.child(
-            new ButtonWidget<>().size(50, 16)
+            new ButtonWidget<>().background(NekoVendingTheme.BUTTON)
+                .hoverBackground(NekoVendingTheme.HOVER)
+                .size(64, 20)
                 .right(30)
                 .bottom(8)
-                .overlay(IKey.str("取消"))
+                .overlay(
+                    IKey.str("取消")
+                        .color(NekoVendingTheme.INK)
+                        .shadow(false))
                 .onMouseTapped(mouse -> {
+                    if (mouse != 0) return false;
                     requestClose.run();
                     return true;
                 }));
@@ -298,7 +351,7 @@ public final class LotteryEntryEditor {
 
     private String lotteryRarityDisplay() {
         LotteryRarity rarity = LotteryRarity.fromString(editLotteryRarity);
-        return rarity.getColor() + rarity.getDisplayName() + EnumChatFormatting.GRAY + "（" + rarity.name() + "）";
+        return rarity.getColor() + rarity.getDisplayName() + EnumChatFormatting.DARK_GRAY + "（" + rarity.name() + "）";
     }
 
     private void saveLotteryEdit() {

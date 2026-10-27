@@ -152,6 +152,11 @@ public class LotteryRequestPacket implements IMessage {
                 return;
             }
 
+            if (!LotteryManager.INSTANCE.canQueueRewards(pool, count, machine)) {
+                sendFailure(player, poolId, LotteryClientData.RESULT_ERROR, "出货队列空间不足或奖品配置无效，未扣费；请先领取出货");
+                return;
+            }
+
             // 3. 消耗预校验（v1.7.6 costItems 分流口径：货币条目查团队钱包余额、
             // 物品条目在机器输入槽副本模拟扣除；失败时给出明确错误码）
             if (!LotteryManager.INSTANCE.canAfford(playerId, pool, count, machine)) {
@@ -167,7 +172,7 @@ public class LotteryRequestPacket implements IMessage {
             }
 
             // 5. 回发抽取结果（客户端启动轮盘动画）。
-            // v1.7.8 起不再立即全量同步：保底/历史/余额刷新移入 LotteryManager.dispatchAll
+            // v1.7.8 起不再立即全量同步：保底/历史/余额刷新移入 LotteryManager.scheduleDelayedSync
             // 末尾（延迟出货完成后），避免动画旋转期间同步包提前剧透。
             // v1.7.36：在动画触发后立即发一次全量同步——客户端余额显示走
             // LotteryClientData 静态缓存，须在同步包到达后才刷新；延迟出货期间玩家切看
@@ -188,7 +193,7 @@ public class LotteryRequestPacket implements IMessage {
          * <li>GUI 会话绑定：请求者当前打开的 MUI2 容器必须是这台机器的 GUI
          * （{@link #isMachineGuiOpen}）</li>
          * </ol>
-         * 任一失败返回 null（调用方整包拒绝）。延迟出货路径（{@code LotteryManager.dispatchAll}）
+         * 任一失败返回 null（调用方整包拒绝）。延迟出货路径（{@code LotteryManager.scheduleDelayedSync}）
          * 仍用无校验静态版——出货时玩家可能已关 GUI/离线，此处验证过的坐标快照即可信。
          *
          * @return 机器实例；未找到或校验失败返回 null
