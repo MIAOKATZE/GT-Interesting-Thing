@@ -29,6 +29,8 @@ public class MeTransferEntry {
      * </p>
      */
     public final int slotIndex;
+    /** Stable enqueue identity: a reused slot is never the same ME job. */
+    public final long dropId, generation;
 
     /**
      * 构造 ME 传输队列条目（旧存档兼容，slotIndex 默认 -1）
@@ -48,7 +50,13 @@ public class MeTransferEntry {
      * @param slotIndex      物品所在出货槽索引（-1 表示未占用槽位）
      */
     public MeTransferEntry(ItemStack stack, long creationTimeMs, int slotIndex) {
-        this.stack = stack;
+        this(stack, creationTimeMs, slotIndex, 0, 0);
+    }
+
+    public MeTransferEntry(ItemStack stack, long creationTimeMs, int slotIndex, long dropId, long generation) {
+        this.dropId = dropId;
+        this.generation = generation;
+        this.stack = stack.copy();
         this.creationTimeMs = creationTimeMs;
         this.slotIndex = slotIndex;
     }

@@ -134,10 +134,20 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     // === 内置输入/输出槽 ===
 
     /** 输入槽数量，与 V1 内置输入槽一致 */
-    public static final int INPUT_SLOTS = 8;
+    public static final int INPUT_SLOTS = 16;
+    /** Preserve automation indices 8..107; new input indices are appended at 108..115. */
+    public static final int LEGACY_INPUT_SLOTS = 8;
 
     /** 输出槽数量，与 V1 内置输出槽一致 */
     public static final int OUTPUT_SLOTS = 100;
+
+    private final NekoOutputLedger outputLedger = new NekoOutputLedger();
+    private boolean restoringOutput;
+    private boolean enqueueRear;
+
+    public NekoOutputLedger getOutputLedger() {
+        return outputLedger;
+    }
 
     /** 内置输入物品槽 */
     public final ItemStackHandler inputItems = new ItemStackHandler(INPUT_SLOTS) {
@@ -153,6 +163,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
         @Override
         protected void onContentsChanged(int slot) {
+            if (!restoringOutput) outputLedger.changed(slot, getStackInSlot(slot));
             markTradeStateChanged();
         }
     };
@@ -163,14 +174,20 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         @Override
         public boolean offer(ItemStack stack) {
             boolean added = super.offer(stack);
-            if (added) markTradeStateChanged();
+            if (added) {
+                if (!restoringOutput) outputLedger.enqueue(stack, enqueueRear);
+                markTradeStateChanged();
+            }
             return added;
         }
 
         @Override
         public ItemStack poll() {
             ItemStack stack = super.poll();
-            if (stack != null) markTradeStateChanged();
+            if (stack != null) {
+                outputLedger.cancel(stack);
+                markTradeStateChanged();
+            }
             return stack;
         }
     };
@@ -242,7 +259,39 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
         @Override
         public void set(int slot, net.minecraft.item.ItemStack stack) {
+            NekoOutputLedger.Token token = outputLedger.slot(slot);
+            if (stack == null && token != null && outputScene != null) outputScene.markMeRemoval(token.dropId);
             outputItems.setStackInSlot(slot, stack);
+        }
+
+        @Override
+        public long dropId(int slot) {
+            NekoOutputLedger.Token token = outputLedger.slot(slot);
+            return token == null ? 0 : token.dropId;
+        }
+
+        @Override
+        public long generation(int slot) {
+            NekoOutputLedger.Token token = outputLedger.slot(slot);
+            return token == null ? 0 : token.generation;
+        }
+
+        @Override
+        public boolean preserveLegacy(ItemStack stack) {
+            outputBuffer.add(stack);
+            newBufferedOutputs = true;
+            return true;
+        }
+
+        @Override
+        public void visualReset(int slot) {
+            if (outputScene != null) outputScene.invalidate();
+        }
+
+        @Override
+        public boolean isVisible(int slot) {
+            NekoOutputLedger.Token token = outputLedger.slot(slot);
+            return token != null && outputScene != null && outputScene.isVisible(token.dropId);
         }
     }, () -> {
         markTradeStateChanged();
@@ -250,6 +299,25 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             getBaseMetaTileEntity().markDirty();
         }
     }, () -> meOutputMode);
+
+    private final NekoOutputScene outputScene = new NekoOutputScene(
+        outputLedger,
+        outputItems::getStackInSlot,
+        meTransferQueue);
+
+    /** Server-authoritative full/dirty frame. No ItemStack NBT is duplicated in this transport. */
+    public NBTTagCompound getOutputSceneFrame(long afterRevision) {
+        return outputScene.frame(afterRevision);
+    }
+
+    public void setOutputPhysicsAllowed(boolean allowed) {
+        outputScene.setPhysicsAllowed(allowed);
+        if (getBaseMetaTileEntity() != null) getBaseMetaTileEntity().markDirty();
+    }
+
+    public boolean isOutputPhysicsActive() {
+        return outputScene.isPhysicsActive();
+    }
 
     /** ME 传输队列最大容量（独立限制，防止无限堆积） */
 
@@ -565,6 +633,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     public void setMeOutputMode(boolean mode) {
         if (this.meOutputMode != mode) {
             this.meOutputMode = mode;
+            if (!mode) meTransferQueue.cancelAll();
             markTradeStateChanged();
             if (getBaseMetaTileEntity() != null) {
                 getBaseMetaTileEntity().markDirty();
@@ -629,11 +698,19 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (stack == null || stack.stackSize <= 0) {
             return null;
         }
-        // 检查是否还有空槽，完全满时返回溢出
-        if (getFirstEmptyOutputSlot() == -1) {
+        int needed = outputStackCount(stack);
+        if (NekoOutputLedger.availableSlots(getOutputEmptySlotCount(), outputBuffer.size()) < needed) {
+            outputLedger.skipQueuedStacks(needed);
             return stack.copy();
         }
-        this.outputBuffer.add(stack.copy());
+        if (!outputLedger.hasOpenBatch() && needed > 1) startBatch(needed);
+        int remaining = stack.stackSize;
+        while (remaining > 0) {
+            ItemStack part = stack.copy();
+            part.stackSize = Math.min(remaining, Math.max(1, Math.min(64, stack.getMaxStackSize())));
+            outputBuffer.add(part);
+            remaining -= part.stackSize;
+        }
         this.newBufferedOutputs = true;
         if (getBaseMetaTileEntity() != null) {
             getBaseMetaTileEntity().markDirty();
@@ -664,6 +741,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (batchActive) {
             endBatch();
         }
+        outputLedger.beginBatch(totalCount);
         this.currentBatchSize = totalCount;
         this.dispensedInBatch = 0;
         this.batchActive = true;
@@ -676,6 +754,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * 由 dispenseItems 在所有物品投放完成后调用，或由 executeTrade 回滚路径调用。
      */
     public void endBatch() {
+        outputLedger.endBatch();
         this.batchActive = false;
         this.currentBatchSize = 0;
         this.dispensedInBatch = 0;
@@ -710,27 +789,28 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     public void dispenseItemStacks(java.util.List<ItemStack> itemStacks) {
         if (itemStacks == null || itemStacks.isEmpty()) return;
-        // v1.6.28: GUI 层入口也启动批次模式（仅对实际入队的物品计数）
-        int batchCount = 0;
+        int count = 0;
+        for (ItemStack stack : itemStacks) count += outputStackCount(stack);
+        startBatch(count);
         for (ItemStack stack : itemStacks) {
-            if (stack != null && stack.stackSize > 0) {
-                // 溢出检查：与单个版 dispenseItemStack 一致，完全无空槽时掉落到机器旁
-                if (getFirstEmptyOutputSlot() == -1) {
-                    // 输出槽完全满，剩余物品掉落到机器旁
-                    dropItemsNearMachine(stack);
-                } else {
-                    this.outputBuffer.add(stack.copy());
-                    batchCount++;
-                }
-            }
+            ItemStack overflow = dispenseItemStack(stack);
+            if (overflow != null) dropItemsNearMachine(overflow);
         }
-        // v1.6.28: 启动批次模式控制下落时序（由 dispenseItems 在投放完成后自动结束）
-        if (batchCount > 0) {
-            startBatch(batchCount);
-        }
-        this.newBufferedOutputs = true;
-        if (getBaseMetaTileEntity() != null) {
-            getBaseMetaTileEntity().markDirty();
+    }
+
+    public static int outputStackCount(ItemStack stack) {
+        if (stack == null || stack.stackSize <= 0) return 0;
+        int limit = Math.max(1, Math.min(64, stack.getMaxStackSize()));
+        return (int) (((long) stack.stackSize + limit - 1) / limit);
+    }
+
+    /** Legendary routing is independent of the whole-batch (>16 stacks) rear rule. */
+    public ItemStack dispenseItemStack(ItemStack stack, boolean legendary) {
+        enqueueRear = legendary;
+        try {
+            return dispenseItemStack(stack);
+        } finally {
+            enqueueRear = false;
         }
     }
 
@@ -745,7 +825,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * 所有物品投放完成后自动调用 endBatch 清理批次状态。
      */
     private void dispenseItems() {
-        if (!mMachine) return;
+        if (!mMachine || outputBuffer.isEmpty()) return;
         // v1.6.28: 获取投放延迟（批次模式下为分档延迟，单物品批次返回 0 表示立即投放）
         int delay = getDispensingDelay();
         if (this.newBufferedOutputs
@@ -765,7 +845,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // v1.7.8 A3 加固：追加 outputBuffer.isEmpty() 条件——跨批次叠加或溢出掉落后
         // 计数可能先满而队列仍有物品未投放，须等队列排空才允许结束批次，
         // 防止提前 endBatch 导致后续物品失去分档控制/批次状态错乱
-        if (batchActive && dispensedInBatch >= currentBatchSize && outputBuffer.isEmpty()) {
+        if (batchActive && outputBuffer.isEmpty()) {
             endBatch();
         }
         if (getBaseMetaTileEntity() != null) {
@@ -806,9 +886,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 outputIntoSlot(dispensable, targetSlot);
                 this.outputBuffer.poll();
             } else {
-                // 槽满时掉落到机器旁并 poll 出队列，防止物品永久卡队列
-                dropItemsNearMachine(dispensable);
-                this.outputBuffer.poll();
+                // Already-paid output remains reserved and persistent; never silently discard or re-emit.
+                return;
             }
             // v1.6.28: 递增批次已投放计数（无论成功入槽还是溢出掉落）
             if (batchActive) {
@@ -884,8 +963,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     private void outputIntoSlot(ItemStack stack, int slotIndex) {
         ItemStack output = stack.copy();
         output.stackSize = stack.stackSize;
-        stack.stackSize = 0;
-        outputItems.setStackInSlot(slotIndex, output);
+        restoringOutput = true;
+        try {
+            outputItems.setStackInSlot(slotIndex, output);
+        } finally {
+            restoringOutput = false;
+        }
+        outputLedger.delivered(stack, slotIndex);
         // v1.7.11：物品落槽时播放 item_drop 音效（复刻 1.6.* VM 原版行为）
         IGregTechTileEntity bMTE = getBaseMetaTileEntity();
         if (bMTE != null) {
@@ -907,6 +991,51 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // （上方先落槽），等价"按本地槽保留"，口径与交易路径一致
         // A01 蓝图 M1：交汇点入队委托 NekoMeTransferQueue.enqueueIfMeMode（模式/容量守门与 copy 语义原样）
         meTransferQueue.enqueueIfMeMode(output, slotIndex);
+    }
+
+    /** GUI requests are additionally gated by their existing open-container/session scheduler. */
+    public int takeOutputSceneGroup(EntityPlayer player, long dropId, long generation, int mode, int requested) {
+        IGregTechTileEntity base = getBaseMetaTileEntity();
+        if (player == null || base == null) return 0;
+        boolean serverActivePlayer = !player.isDead && player.worldObj != null
+            && !player.worldObj.isRemote
+            && base.isServerSide()
+            && base.isActive()
+            && base.getWorld() != null;
+        boolean localAccess = serverActivePlayer && player.worldObj == base.getWorld()
+            && player.getDistanceSq(base.getXCoord() + .5, base.getYCoord() + .5, base.getZCoord() + .5) <= 64
+            && base.isUseableByPlayer(player);
+        // The proof is resolved server-side from the exact current remote container and target, never a C2S flag.
+        if (!NekoOutputAccess.permits(
+            this,
+            serverActivePlayer,
+            localAccess,
+            () -> com.miaokatze.gtit.common.items.terminal.RemoteVendingSession.resolveCurrent(
+                player,
+                base.getWorld().provider.dimensionId,
+                base.getXCoord(),
+                base.getYCoord(),
+                base.getZCoord())))
+            return 0;
+        int taken = NekoOutputTake.take(outputLedger, new NekoOutputTake.Slots() {
+
+            public ItemStack get(int slot) {
+                return outputItems.getStackInSlot(slot);
+            }
+
+            public void set(int slot, ItemStack item) {
+                outputItems.setStackInSlot(slot, item);
+            }
+        }, offered -> {
+            int count = offered.stackSize;
+            player.inventory.addItemStackToInventory(offered);
+            return count - offered.stackSize;
+        }, dropId, generation, mode, requested);
+        if (taken > 0) {
+            player.inventory.markDirty();
+            base.markDirty();
+        }
+        return taken;
     }
 
     /**
@@ -1024,6 +1153,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         super.saveNBTData(aNBT);
         aNBT.setTag("inputItems", inputItems.serializeNBT());
         aNBT.setTag("outputItems", outputItems.serializeNBT());
+        aNBT.removeTag("outputBuffer");
+        aNBT.removeTag("meTransferQueue");
         // 保存输出缓冲队列
         if (!outputBuffer.isEmpty()) {
             net.minecraft.nbt.NBTTagList bufferList = new net.minecraft.nbt.NBTTagList();
@@ -1031,11 +1162,14 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 if (stack != null && stack.stackSize > 0) {
                     net.minecraft.nbt.NBTTagCompound tag = new net.minecraft.nbt.NBTTagCompound();
                     stack.writeToNBT(tag);
+                    tag.setTag("outputIdentity", outputLedger.pendingTag(stack));
                     bufferList.appendTag(tag);
                 }
             }
             aNBT.setTag("outputBuffer", bufferList);
         }
+        aNBT.setTag("outputLedger", outputLedger.write());
+        aNBT.setTag("outputScene", outputScene.write());
         // 保存 ME 输出模式状态
         aNBT.setBoolean("meOutputMode", meOutputMode);
         // 保存 ME 传输队列（阶段 4，v1.6.23 增加 slotIndex；A01 蓝图 M1 片段委托，键名冻结）
@@ -1047,33 +1181,35 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @Override
     public void loadNBTData(NBTTagCompound aNBT) {
         super.loadNBTData(aNBT);
-        if (aNBT.hasKey("inputItems")) {
-            inputItems.deserializeNBT(aNBT.getCompoundTag("inputItems"));
-        }
-        if (aNBT.hasKey("outputItems")) {
-            outputItems.deserializeNBT(aNBT.getCompoundTag("outputItems"));
-        }
-        // 加载输出缓冲队列
-        if (aNBT.hasKey("outputBuffer")) {
+        restoringOutput = true;
+        outputBuffer.clear();
+        java.util.List<NBTTagCompound> pendingTokens = new java.util.ArrayList<>();
+        try {
+            inputItems.deserializeNBT(NekoInventoryMigration.expand(aNBT.getCompoundTag("inputItems"), INPUT_SLOTS));
+            outputItems.deserializeNBT(NekoInventoryMigration.expand(aNBT.getCompoundTag("outputItems"), OUTPUT_SLOTS));
             net.minecraft.nbt.NBTTagList bufferList = aNBT.getTagList("outputBuffer", 10);
             for (int i = 0; i < bufferList.tagCount(); i++) {
-                ItemStack stack = ItemStack.loadItemStackFromNBT(bufferList.getCompoundTagAt(i));
+                NBTTagCompound entry = bufferList.getCompoundTagAt(i);
+                ItemStack stack = ItemStack.loadItemStackFromNBT(entry);
                 if (stack != null && stack.stackSize > 0) {
                     outputBuffer.add(stack);
+                    pendingTokens.add(entry.getCompoundTag("outputIdentity"));
                 }
             }
-            if (!outputBuffer.isEmpty()) {
-                newBufferedOutputs = true;
-            }
+        } finally {
+            restoringOutput = false;
         }
+        ItemStack[] actual = new ItemStack[OUTPUT_SLOTS];
+        for (int i = 0; i < actual.length; i++) actual[i] = outputItems.getStackInSlot(i);
+        outputLedger.restore(aNBT.getCompoundTag("outputLedger"), actual, new ArrayList<>(outputBuffer), pendingTokens);
+        newBufferedOutputs = !outputBuffer.isEmpty();
         // 加载 ME 输出模式状态
         if (aNBT.hasKey("meOutputMode")) {
             meOutputMode = aNBT.getBoolean("meOutputMode");
         }
         // 加载 ME 传输队列（阶段 4，v1.6.23 增加 slotIndex 兼容；A01 蓝图 M1 片段委托，旧档默认 -1 保留）
-        if (aNBT.hasKey("meTransferQueue")) {
-            meTransferQueue.readFromNBT(aNBT.getTagList("meTransferQueue", 10));
-        }
+        meTransferQueue.readFromNBT(aNBT.getTagList("meTransferQueue", 10));
+        outputScene.restore(aNBT.getCompoundTag("outputScene"));
     }
 
     // === 材质 ===
@@ -1317,6 +1453,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     safeSetRefreshCache();
                 }
             }
+            // Structure loss cancels presentation/jobs, not owned output. Never inject while unformed.
+            if (!mMachine && !meTransferQueue.isEmpty()) meTransferQueue.cancelAll();
+            if (outputScene.tick(aTick)) aBaseMetaTileEntity.markDirty();
             // [GT-compat] AE 代理就绪兜底（beta1/beta2/beta3/RC1）：VM/AE2 修正 onFirstTick 加载顺序后即删除本兜底分支
             // 目标兼容面 = GT5U 四代（源码不含仅高版本写法）：5.09.52.594 / 5.09.54.20 / 5.09.54.133 / 5.09.54.183（本轮基线 = RC-1）；原文案只标
             // beta-1，现补全。
@@ -1471,6 +1610,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         if (getBaseMetaTileEntity() != null && getBaseMetaTileEntity().isClientSide()) {
             clearOverlay();
         } else if (getBaseMetaTileEntity() != null && !getBaseMetaTileEntity().isClientSide()) {
+            // Also covers old detached ME entries if destruction happens before a formed-machine tick.
+            meTransferQueue.preserveDetached();
             // B2-08：服务端拆机时把仍在掉落动画窗口内（outputBuffer 排队中）的已付款产物
             // 逐件掉落在机器位置，避免随 MTE 消失（NBT 路径不受影响——区块卸载走 saveNBTData）
             ItemStack pending;
@@ -1717,7 +1858,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     emptySlots++;
                 }
             }
-            int available = emptySlots - outputBuffer.size();
+            int available = NekoOutputLedger.availableSlots(emptySlots, outputBuffer.size());
             return available > 0;
         }
 
@@ -1729,7 +1870,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
          */
         @Override
         public int getAvailableSlotCount() {
-            if (meTransferQueue.isFull()) {
+            if (meOutputMode && meTransferQueue.isFull()) {
                 return 0;
             }
             int emptySlots = 0;
@@ -1739,7 +1880,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                 }
             }
             // 扣除队列已占用的虚拟槽位，防止预检超卖（与 hasSpaceFor 同口径）
-            return Math.max(0, emptySlots - outputBuffer.size());
+            return NekoOutputLedger.availableSlots(emptySlots, outputBuffer.size());
         }
 
         @Override
@@ -1769,6 +1910,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
                     while (it.hasNext()) {
                         if (it.next() == last) {
                             it.remove();
+                            outputLedger.cancel(last);
                             markTradeStateChanged();
                             break;
                         }
@@ -1814,13 +1956,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     @Override
     public ItemStack getStackInSlot(int index) {
-        if (index < INPUT_SLOTS) {
-            return inputItems.getStackInSlot(index);
-        }
-        if (index < INPUT_SLOTS + OUTPUT_SLOTS) {
-            return outputItems.getStackInSlot(index - INPUT_SLOTS);
-        }
-        return null;
+        int input = NekoInventoryMigration.inputIndex(index);
+        if (input >= 0) return inputItems.getStackInSlot(input);
+        int output = NekoInventoryMigration.outputIndex(index);
+        return output >= 0 ? outputItems.getStackInSlot(output) : null;
     }
 
     /**
@@ -1830,7 +1969,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     @Override
     public boolean isValidSlot(int aIndex) {
-        return aIndex < INPUT_SLOTS + OUTPUT_SLOTS;
+        return aIndex >= 0 && aIndex < INPUT_SLOTS + OUTPUT_SLOTS;
     }
 
     /**
@@ -1851,11 +1990,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      */
     @Override
     public void setInventorySlotContents(int aIndex, ItemStack aStack) {
-        if (aIndex < INPUT_SLOTS) {
-            inputItems.setStackInSlot(aIndex, aStack);
-        } else if (aIndex < INPUT_SLOTS + OUTPUT_SLOTS) {
-            outputItems.setStackInSlot(aIndex - INPUT_SLOTS, aStack);
-        }
+        int input = NekoInventoryMigration.inputIndex(aIndex);
+        int output = NekoInventoryMigration.outputIndex(aIndex);
+        if (input >= 0) inputItems.setStackInSlot(input, aStack);
+        else if (output >= 0) outputItems.setStackInSlot(output, aStack);
         if (getBaseMetaTileEntity() != null) {
             getBaseMetaTileEntity().markDirty();
         }

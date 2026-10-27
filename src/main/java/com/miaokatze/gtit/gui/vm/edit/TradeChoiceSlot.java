@@ -11,7 +11,7 @@ import com.cleanroommc.modularui.widgets.ItemDisplayWidget;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 
 /** Client-local ghost editor. No phantom synchronization can overwrite the full choice list. */
-final class TradeChoiceSlot extends ItemDisplayWidget
+public final class TradeChoiceSlot extends ItemDisplayWidget
     implements Interactable, RecipeViewerGhostIngredientSlot<ItemStack> {
 
     private final TradeEditor editor;

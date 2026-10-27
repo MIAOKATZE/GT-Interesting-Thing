@@ -492,6 +492,7 @@ public class LotteryManager {
         // 与物品奖品同路径落输出槽；LotteryEntry.toItemStack 对货币奖品内部走
         // NekoCurrencyRegistrar.getItemStack 完成 货币ID→物品 的映射）
         List<ItemStack> itemPrizes = new ArrayList<>();
+        java.util.List<Boolean> rearRoutes = new ArrayList<>();
         for (LotteryDrawResult result : results) {
             if (result == null || result.getEntry() == null) continue;
             LotteryEntry entry = result.getEntry();
@@ -511,14 +512,18 @@ public class LotteryManager {
                 continue;
             }
             itemPrizes.add(stack);
+            rearRoutes.add(entry.getRarity() == LotteryRarity.LEGENDARY);
         }
 
         // 2. 物品奖品落机器出货槽（批次模式：分档延迟逐件下落，触发客户端下落动画）；
         // 机器失效则全部作为溢出退玩家背包
         if (machine != null && !itemPrizes.isEmpty()) {
-            machine.startBatch(itemPrizes.size());
-            for (ItemStack stack : itemPrizes) {
-                ItemStack overflow = machine.dispenseItemStack(stack);
+            int outputStacks = 0;
+            for (ItemStack stack : itemPrizes) outputStacks += MTENekoVendingMachineV2.outputStackCount(stack);
+            machine.startBatch(outputStacks);
+            for (int prize = 0; prize < itemPrizes.size(); prize++) {
+                ItemStack stack = itemPrizes.get(prize);
+                ItemStack overflow = machine.dispenseItemStack(stack, rearRoutes.get(prize));
                 handleOverflow(overflow, player, hasMachine, dim, x, y, z);
             }
         } else {

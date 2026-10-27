@@ -83,6 +83,8 @@ public final class TradeEditor {
     private boolean oversizedChoices;
     private TradeOreDialog oreDialog;
     private IPanelHandler orePanel;
+    private NekoDraggableEditPanel editPanelWidget;
+    private int dockX, dockY, dockWidth = 250, dockHeight = 190;
 
     public TradeEditor(EditOverlayController overlay, Runnable requestClose, Runnable requestMainPanelRefresh) {
         this.overlay = overlay;
@@ -182,14 +184,13 @@ public final class TradeEditor {
      * 双端构建相同的 16 个需求格与 16 个产出格，具体编辑事件仅客户端触达。
      */
     public NekoDraggableEditPanel buildEditPanel() {
-        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel();
-        editPanel.size(250, 190);
+        NekoDraggableEditPanel editPanel = new NekoDraggableEditPanel(false);
+        editPanelWidget = editPanel;
+        editPanel.size(dockWidth, dockHeight);
         // v1.7.7 G2 迁移为主面板内嵌 ParentWidget 覆盖层后无默认背景，需手动补上 MC 风格背景
         editPanel.background(GuiTextures.MC_BACKGROUND);
-        editPanel.leftRel(0.5f)
-            .topRel(0.5f)
-            .anchorLeft(0.5f)
-            .anchorTop(0.5f);
+        editPanel.left(dockX)
+            .top(dockY);
         editPanel.setEnabledIf(w -> overlay.isCurrent(EditOverlayType.TRADE));
 
         // 标题（新建 / 编辑动态切换，v1.7.6 G3④）
@@ -349,6 +350,27 @@ public final class TradeEditor {
                 }));
 
         return editPanel;
+    }
+
+    /** Workspace canvas coordinates, not screen coordinates; never rebuilds the mirrored 32-slot tree. */
+    public void setDockBounds(int x, int y, int width, int height) {
+        if (width < 250 || height < 190) throw new IllegalArgumentException("Trade editor dock must fit its 32 slots");
+        if (dockX == x && dockY == y && dockWidth == width && dockHeight == height) return;
+        dockX = x;
+        dockY = y;
+        dockWidth = width;
+        dockHeight = height;
+        if (editPanelWidget != null) {
+            editPanelWidget.left(x)
+                .top(y)
+                .size(width, height);
+            if (editPanelWidget.isValid()) editPanelWidget.scheduleResize();
+        }
+    }
+
+    public boolean isModalActive() {
+        return oreDialog != null && oreDialog.isOpen() || deleteConfirmPanel != null && deleteConfirmPanel.isPanelOpen()
+            || defaultSaveConfirmPanel != null && defaultSaveConfirmPanel.isPanelOpen();
     }
 
     /**

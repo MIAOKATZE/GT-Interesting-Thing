@@ -67,6 +67,7 @@ final class PageEditActions {
             entry.setId(maxId + 1);
             entry.setName("新标签页");
             entry.setDefault(false);
+            entry.setSource(com.miaokatze.gtit.trade.NekoPageSource.CUSTOM);
             applyPageEditJson(entry, json);
 
             data.getPages()

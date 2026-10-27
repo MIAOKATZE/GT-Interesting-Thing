@@ -46,8 +46,22 @@ public final class EditOverlayController {
     /** 已注册的覆盖层类型（用于重复注册防御） */
     private final java.util.Set<EditOverlayType> registered = new java.util.HashSet<>();
 
+    private final class OverlayRoot extends ParentWidget<OverlayRoot> {
+
+        @Override
+        public boolean canHover() {
+            return currentEditOverlay != EditOverlayType.TRADE;
+        }
+
+        @Override
+        public boolean canHoverThrough() {
+            return currentEditOverlay == EditOverlayType.TRADE;
+        }
+    }
+
     public EditOverlayController() {
-        editOverlayRoot = new ParentWidget<>();
+        // TRADE is a docked workspace, not a modal layer over the trade list or player bag.
+        editOverlayRoot = new OverlayRoot();
         editOverlayRoot.relativeToScreen()
             .full();
         editOverlayRoot.setEnabledIf(w -> currentEditOverlay != EditOverlayType.NONE);

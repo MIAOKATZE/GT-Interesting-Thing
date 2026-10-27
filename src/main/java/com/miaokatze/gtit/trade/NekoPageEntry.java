@@ -6,6 +6,34 @@ package com.miaokatze.gtit.trade;
  */
 public class NekoPageEntry {
 
+    // String storage preserves future source values when an older server round-trips the config.
+    private String source;
+
+    public NekoPageSource getSource() {
+        if (source != null) {
+            try {
+                return NekoPageSource.valueOf(source);
+            } catch (IllegalArgumentException futureSource) {
+                return NekoPageSource.CUSTOM;
+            }
+        }
+        return com.miaokatze.gtit.trade.preset.PageSourceIdentity.legacySource(this);
+    }
+
+    public void setSource(NekoPageSource value) {
+        source = value == null ? null : value.name();
+    }
+
+    /** Materialize legacy derivation for save/sync without replacing an unknown future identity. */
+    public void ensureSource() {
+        if (source == null) setSource(getSource());
+    }
+
+    public boolean canCreateTrade() {
+        // Unknown future identities remain readable, but do not acquire creation permission.
+        return (source == null || source.equals(getSource().name())) && getSource().canCreateTrade();
+    }
+
     private int id; // 正 ID 为自定义页；负 ID 由预设命名空间分配。
     private String name; // 标签页显示名称
     private String iconItem; // 图标物品ID（modid:name 格式）

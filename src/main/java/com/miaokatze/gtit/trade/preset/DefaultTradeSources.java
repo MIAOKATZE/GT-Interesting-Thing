@@ -64,6 +64,11 @@ public final class DefaultTradeSources {
     }
 
     static void source(NekoPageEntry page, TradePresetDefinition definition, boolean builtin) {
+        page.setSource(PageSourceIdentity.presetSource(definition.id));
+        sourceMetadata(page, definition, builtin);
+    }
+
+    private static void sourceMetadata(NekoPageEntry page, TradePresetDefinition definition, boolean builtin) {
         page.setPresetBuiltin(builtin);
         page.setSourcePresetId(definition.id);
         page.setSourcePresetName(definition.name);
@@ -100,11 +105,12 @@ public final class DefaultTradeSources {
                     || tab.trades == null
                     || !id.equals(TradePresetLayout.builtinId(tab.page.getId()))
                     || !seen.add(tab.page.getId())) throw new IOException("默认贸易覆盖页签来源不匹配: " + id);
-                source(tab.page, result, true);
+                sourceMetadata(tab.page, result, true);
+                tab.page.ensureSource();
                 for (NekoTradeEntry entry : tab.trades) {
                     if (entry == null) throw new IOException("默认贸易覆盖含空交易: " + id);
                     entry.setTabId(tab.page.getId());
-                    entry.setDefaultEntry(true);
+                    // Preserve the independent flag: user additions on default pages are not stock trades.
                     entry.setPresetBuiltin(true);
                 }
             }
@@ -171,7 +177,8 @@ public final class DefaultTradeSources {
                 java.util.UUID.randomUUID()
                     .toString());
             if (destination != null || original != null || entry.isDefaultEntry() || entry.isPresetBuiltin()) {
-                entry.setDefaultEntry(destination != null);
+                // Moving out detaches stock content; moving in must never promote a custom entry to stock.
+                if (destination == null) entry.setDefaultEntry(false);
                 entry.setPresetBuiltin(destination != null);
             }
         }

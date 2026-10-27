@@ -34,6 +34,9 @@
  * For more details, see https://docs.gradle.org/8.0.1/userguide/java_library_plugin.html#sec:java_library_configurations_graph
  */
 dependencies {
+    // Native NEI geometry probes compile against Rectangle4i, bundled in CodeChickenCore.
+    // This is test-only; the production pack continues to supply its own compatible CCC version.
+    testCompileOnly("com.github.GTNewHorizons:CodeChickenCore:1.4.21:dev") { transitive = false }
     // Minimal dependency set for current source usage.
     // Sources reference only GregTech API types (gregtech.api.*), so keep GT5-Unofficial.
     // User has an external hard backup of the original file, so this file is intentionally simplified.
@@ -126,6 +129,6 @@ dependencies {
 
 // Shared library API; immutable candidate versions may be supplied for isolated integration builds.
 dependencies {
-    def coreVersion = project.findProperty("miaokatzeCoreVersion") ?: "0.1.10"
+    def coreVersion = project.findProperty("miaokatzeCoreVersion") ?: "0.1.24"
     api("com.miaokatze.miaokatzecore:miaokatzecore:${coreVersion}:dev") { transitive = false }
 }

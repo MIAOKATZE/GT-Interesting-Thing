@@ -14,18 +14,24 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.api.IPanelHandler;
+import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.ModularScreen;
 import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
+import com.cleanroommc.modularui.screen.viewport.TransformationMatrix;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
+import com.cleanroommc.modularui.widget.ParentWidget;
+import com.cleanroommc.modularui.widget.Widget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cleanroommc.modularui.widgets.TransformWidget;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
 import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDefaultTradeSyncDialog;
@@ -37,8 +43,10 @@ import com.miaokatze.gtit.client.gui.NekoSortMode;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplayWidget;
 import com.miaokatze.gtit.client.gui.NekoTradeMainPanel;
+import com.miaokatze.gtit.client.gui.NekoVendingTheme;
 import com.miaokatze.gtit.client.gui.NekoVolumeControlGui;
 import com.miaokatze.gtit.client.gui.NekoWalletMode;
+import com.miaokatze.gtit.client.nei.NekoEmbeddedNeiSession;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.common.machine.v2.MeTransferEntry;
@@ -114,7 +122,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /** 每种显示模式预分配的 Widget 数量（与 VM 的 MAX_TRADES 一致） */
     static final int MAX_TRADES = 300;
     /** TILE 模式每行的 Widget 数量 */
-    static final int TILE_ITEMS_PER_ROW = 3;
+    static final int TILE_ITEMS_PER_ROW = 2;
     /** TILE 模式 Widget 宽度 */
     static final int TILE_ITEM_WIDTH = NekoTradeItemDisplayWidget.TILE_ITEM_WIDTH;
     /** TILE 模式 Widget 高度 */
@@ -127,6 +135,80 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     static final int TRADE_ROW_WIDTH = 154;
     /** 交易列表最小高度 */
     private static final int TRADE_LIST_MIN_HEIGHT = 50;
+
+    private final NekoVendingLayout layout = new NekoVendingLayout();
+    private final List<Runnable> layoutBindings = new ArrayList<>();
+
+    private static final class CatalogAnchor extends Widget<CatalogAnchor> {
+
+        @Override
+        public boolean canHover() {
+            return false;
+        }
+    }
+
+    private IWidget catalogAnchor;
+    private NekoEmbeddedNeiSession embeddedNei;
+    private NekoTradeItemDisplay selectedTrade;
+
+    public IoColumnPanel getIoColumnPanel() {
+        return ioColumnPanel;
+    }
+
+    @Override
+    public NekoVendingLayout vendingLayout() {
+        return layout;
+    }
+
+    <T extends IWidget> T place(T widget, java.util.function.Supplier<NekoVendingLayout.Rect> bounds) {
+        Runnable apply = () -> {
+            NekoVendingLayout.Rect rect = bounds.get();
+            widget.resizer()
+                .resetPosition();
+            widget.resizer()
+                .pos(rect.x, rect.y)
+                .size(rect.width, rect.height);
+        };
+        layoutBindings.add(apply);
+        apply.run();
+        return widget;
+    }
+
+    @Override
+    public void onNativeLayout() {
+        for (Runnable binding : layoutBindings) binding.run();
+        tradeEditor.setDockBounds(layout.editor.x, layout.editor.y, layout.editor.width, layout.editor.height);
+    }
+
+    private java.awt.Rectangle catalogBounds() {
+        if (catalogAnchor == null || !catalogAnchor.isValid()) return new java.awt.Rectangle();
+        TransformationMatrix matrix = LocatedWidget.of(catalogAnchor)
+            .getTransformationMatrix();
+        double x = matrix.transformX(0, 0), y = matrix.transformY(0, 0);
+        return new java.awt.Rectangle(
+            (int) Math.ceil(x),
+            (int) Math.ceil(y),
+            Math.max(0, (int) Math.floor(matrix.transformX(catalogAnchor.getArea().width, 0) - x)),
+            Math.max(0, (int) Math.floor(matrix.transformY(0, catalogAnchor.getArea().height) - y)));
+    }
+
+    @Override
+    public void onNativeOpen(ModularScreen screen) {
+        if (!isClient() || !cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")) return;
+        if (embeddedNei == null) embeddedNei = NekoEmbeddedNeiSession.attach(
+            screen,
+            this::catalogBounds,
+            () -> isEditModeActive() && !tradeEditor.isModalActive()
+                && screen.getPanelManager()
+                    .getTopMostPanel() == mainPanel
+                && (!editOverlayController.isOpen() || editOverlayController.isCurrent(EditOverlayType.TRADE)));
+        embeddedNei.activate();
+    }
+
+    @Override
+    public void onNativeClose() {
+        if (embeddedNei != null) embeddedNei.deactivate();
+    }
 
     // ==================== 同步值字段 ====================
 
@@ -344,8 +426,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
 
         // 创建 NekoTradeMainPanel 作为主面板（实现 PanelCallback 回调）
         NekoTradeMainPanel panel = new NekoTradeMainPanel("MTEMultiBlockBase", this, guiData, syncManager);
-        panel.size(PANEL_WIDTH, PANEL_HEIGHT);
-        panel.padding(4);
+        panel.size(layout.width, layout.height)
+            .pos(0, 0)
+            .background(NekoVendingTheme.PAPER);
+        panel.padding(0);
         this.mainPanel = panel;
 
         // 客户端：启动 BGM、注册关闭回调、设置 GUI 状态
@@ -405,14 +489,19 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 双端创建：服务端必须注册背包槽，否则容器缺槽、shift 转移失效（与 VM 原版 createInventoryRow 一致）。
         // v1.7.6 G1：四页恒显示（三页物品交互需要背包，用户已确认）——移除原「仅贸易页」的 setEnabledIf；
         // 三页底部内容暂时被背包行遮挡属已裁决的过渡态（G2 重写三页布局时根除，不发布中间态）。
-        panel.child(
-            Flow.row()
-                .fullWidth()
-                .height(76)
-                .bottom(5)
-                .child(
-                    SlotGroupWidget.playerInventory(false)
-                        .marginLeft(4)));
+        ParentWidget<?> bag = new ParentWidget<>().background(NekoVendingTheme.PANEL);
+        bag.child(
+            IKey.str("玩家背包")
+                .color(NekoVendingTheme.INK)
+                .asWidget()
+                .pos(5, 3));
+        bag.child(
+            SlotGroupWidget.playerInventory(false)
+                .pos(4, 14));
+        panel.child(place(bag, () -> layout.inventory).excludeAreaInRecipeViewer());
+        panel.child(place(createTradeDetail(), () -> layout.detail).excludeAreaInRecipeViewer());
+        panel.child(place(createHeader(), () -> layout.header).excludeAreaInRecipeViewer());
+        panel.child(place(createFooter(), () -> layout.footer).excludeAreaInRecipeViewer());
 
         // 右侧 IO 列（v1.7.6 G1：四页恒显示）
         // 含全部输入/输出槽（非 phantom，ISynced），双端创建且必须先于下方仅客户端子树添加
@@ -477,13 +566,38 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // createMainContentPagedWidget 改为双端构建。4 个页面（createTradeMainColumn/
         // SignInCalendarGui/LotteryGui/MailGui）均无客户端 API、无 ISynced widget，
         // 类注释明确声明"双端安全"，双端构建无副作用。
-        panel.child(createMainContentPagedWidget(syncManager));
+        panel.child(place(createMainContentPagedWidget(syncManager), () -> layout.business));
+        panel.child(place(tradePage.createWalletToolbar(syncManager), () -> layout.tools));
 
         // v1.7.20 修复：editOverlayRoot 必须在主内容 PagedWidget 之后添加。
         // ModularUI2 渲染顺序由 children 列表决定，后添加的 widget 在上层。
         // 若 editOverlayRoot 在主内容之前添加，编辑面板会被主内容覆盖，
         // 导致配方编辑界面低于各类按钮、抽卡等主内容控件。
+        // The editor shares the canvas coordinate space rather than attaching to screen pixels.
+        editOverlayController.getRoot()
+            .resizer()
+            .relativeToParent();
+        editOverlayController.getRoot()
+            .sizeRel(1f)
+            .pos(0, 0);
         panel.child(editOverlayController.getRoot());
+        catalogAnchor = new CatalogAnchor().name("nekoNativeNeiCatalog");
+        panel.child(place(catalogAnchor, () -> layout.catalog));
+        panel.child(
+            place(
+                IKey.str("NEI 未安装\n目录不可用；仍可从背包光标编辑上方 32 个槽位")
+                    .color(NekoVendingTheme.MUTED)
+                    .asWidget()
+                    .background(NekoVendingTheme.PANEL)
+                    .alignment(com.cleanroommc.modularui.utils.Alignment.Center)
+                    .setEnabledIf(
+                        w -> isEditModeActive() && !cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")
+                            && (!editOverlayController.isOpen()
+                                || editOverlayController.isCurrent(EditOverlayType.TRADE))),
+                () -> layout.catalog));
+        onNativeLayout();
+        // Named scene sync is registered on both sides after every inventory/editor slot.
+        com.miaokatze.gtit.gui.vm.scene.VendingSceneBridge.attach(this, multiblock, syncManager, ioColumnPanel);
 
         return panel;
     }
@@ -508,7 +622,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 注册槽位分组，启用 shift 快速转移（与 V1/VM 原版一致）
         // 参数：组名、行长度(2列)、是否允许从玩家背包 shift 转移到此组
         // 输入槽：允许 shift 转入；输出槽：禁止 shift 转入（但允许 shift 转出到背包）
-        syncManager.registerSlotGroup("inputSlotGroup", 2, true);
+        syncManager.registerSlotGroup("inputSlotGroup", 8, true);
         syncManager.registerSlotGroup("outputSlotGroup", 2, false);
 
         // 获取玩家 UUID（服务端用于查询钱包余额、BQ 状态等）
@@ -838,12 +952,22 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         statusCodec.markTradeableStatusDirtyAndNotify();
     }
 
-    void scheduleServerAction(Runnable action) {
+    public void scheduleServerAction(Runnable action) {
         VendingServerActions.scheduleServerAction(
             VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
                 action.run();
                 multiblock.markTradeStateChanged();
             }));
+    }
+
+    /** Runs completion even when the live session guard rejects the queued action. */
+    public void scheduleServerAction(Runnable action, Runnable completion) {
+        VendingServerActions.scheduleServerAction(
+            VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
+                action.run();
+                multiblock.markTradeStateChanged();
+            }),
+            completion);
     }
 
     @Override
@@ -960,6 +1084,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             }
         }
 
+        if (selectedTrade != null) {
+            NekoTradeItemDisplay previous = selectedTrade;
+            selectedTrade = null;
+            for (List<NekoTradeItemDisplay> entries : trades.values()) for (NekoTradeItemDisplay entry : entries) {
+                if (entry.getGroupId()
+                    .equals(previous.getGroupId()) && entry.getTradeIndex() == previous.getTradeIndex()
+                    && java.util.Objects.equals(entry.getDefinitionFingerprint(), previous.getDefinitionFingerprint()))
+                    selectedTrade = entry;
+            }
+        }
         // 更新预分配 Widget 的显示数据
         updatePreAllocatedWidgets(trades);
 
@@ -979,6 +1113,10 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 作为 panel.onCloseAction 的兜底保险：
         // 当 ModularUI 真正关闭/释放屏幕时，确保 BGM 能正常触发淡出
         musicController.close();
+        if (embeddedNei != null) {
+            embeddedNei.dispose();
+            embeddedNei = null;
+        }
     }
 
     // ==================== 默认贸易组同步（v1.8.17） ====================
@@ -1120,7 +1258,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      *
      * @return true 表示处于编辑模式
      */
-    boolean isEditModeActive() {
+    public boolean isEditModeActive() {
         return editModeSync != null && editModeSync.getValue();
     }
 
@@ -1611,10 +1749,132 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
      * @param syncManager 面板同步管理器
      * @return 主内容区 PagedWidget
      */
+    private ParentWidget<?> createHeader() {
+        ParentWidget<?> header = new ParentWidget<>().background(NekoVendingTheme.PANEL);
+        header.child(
+            IKey.str("多功能猫猫售货机")
+                .color(NekoVendingTheme.INK)
+                .asWidget()
+                .pos(10, 7)
+                .height(12));
+        header.child(
+            IKey.dynamic(() -> isEditModeActive() ? "原生编辑 · 32 槽草稿" : "交易 / 签到 / 抽奖 / 邮件")
+                .color(NekoVendingTheme.MUTED)
+                .asWidget()
+                .pos(180, 10)
+                .height(10));
+        header.child(
+            NekoVendingTheme
+                .button(
+                    () -> "礼包",
+                    () -> {
+                        if (isClient())
+                            net.minecraft.client.Minecraft.getMinecraft().thePlayer.sendChatMessage("/gifts");
+                    })
+                .right(65)
+                .top(5)
+                .size(44, 20)
+                .addTooltipLine("独立礼包页面；不属于贸易商品"));
+        header.child(
+            NekoVendingTheme.button(
+                () -> "预设",
+                () -> { if (isClient()) com.miaokatze.gtit.trade.preset.ui.TradePresetAccessHandler.requestOpen(); })
+                .right(14)
+                .top(5)
+                .size(44, 20)
+                .addTooltipLine("独立预设管理；沿用服务端权限校验"));
+        return header;
+    }
+
+    private ParentWidget<?> createFooter() {
+        return new ParentWidget<>().background(NekoVendingTheme.PANEL)
+            .child(
+                IKey.dynamic(
+                    () -> tradeResultMessage.isEmpty() ? "Shift 点击交易 · Ctrl 收藏 · 真实库存 / 服务端结算" : tradeResultMessage)
+                    .color(NekoVendingTheme.INK)
+                    .asWidget()
+                    .pos(8, 3)
+                    .height(10));
+    }
+
+    private ParentWidget<?> createTradeDetail() {
+        ParentWidget<?> detail = new ParentWidget<>().background(NekoVendingTheme.PANEL);
+        detail.child(
+            IKey.dynamic(() -> selectedTrade == null ? "选择交易查看详情" : selectedTrade.getDisplayItemName())
+                .color(NekoVendingTheme.INK)
+                .asWidget()
+                .pos(6, 6)
+                .height(12)
+                .widthRelOffset(1f, -12));
+        detail.child(
+            IKey.dynamic(
+                () -> selectedTrade == null ? "保留 Meta / NBT 与候选物品 Tooltip"
+                    : "需求 " + selectedTrade.getInputs()
+                        .size()
+                        + " 项 → 产出 "
+                        + selectedTrade.getOutputs()
+                            .size()
+                        + " 项")
+                .color(NekoVendingTheme.MUTED)
+                .asWidget()
+                .pos(6, 23)
+                .height(12)
+                .widthRelOffset(1f, -12));
+        detail.child(NekoVendingTheme.button(() -> isEditModeActive() ? "编辑所选" : "交易一次", () -> {
+            if (selectedTrade == null) return;
+            if (isEditModeActive()) onEditRequested(selectedTrade);
+            else onTradeRequested(selectedTrade);
+        }, () -> false, () -> selectedTrade != null && (isEditModeActive() || selectedTrade.isTradeable()))
+            .pos(6, 47)
+            .size(78, 22));
+        detail.tooltipBuilder(t -> {
+            if (selectedTrade == null) return;
+            for (com.miaokatze.gtit.trade.v2.NekoBigItemStack item : selectedTrade.getInputs())
+                NekoTradeItemDisplay.describeChoice(t, item, false, "§a");
+            for (com.miaokatze.gtit.trade.v2.NekoBigItemStack item : selectedTrade.getOutputs())
+                NekoTradeItemDisplay.describeChoice(t, item, true, "§b");
+        })
+            .tooltipAutoUpdate(true);
+        return detail;
+    }
+
+    @Override
+    public void onTradeSelected(NekoTradeItemDisplay display) {
+        selectedTrade = display;
+        for (List<NekoTradeItemDisplayWidget> widgets : displayedTradesList.values())
+            for (NekoTradeItemDisplayWidget widget : widgets)
+                widget.setSelected(sameTrade(widget.getDisplay(), display));
+        for (List<NekoTradeItemDisplayWidget> widgets : displayedTradesTiles.values())
+            for (NekoTradeItemDisplayWidget widget : widgets)
+                widget.setSelected(sameTrade(widget.getDisplay(), display));
+    }
+
+    private static boolean sameTrade(NekoTradeItemDisplay a, NekoTradeItemDisplay b) {
+        return a != null && b != null
+            && a.getGroupId()
+                .equals(b.getGroupId())
+            && a.getTradeIndex() == b.getTradeIndex();
+    }
+
+    /** Preserve the complete original business widgets; only their presentation is fitted into the workspace. */
+    private IWidget legacyPage(IWidget content) {
+        // Original pages reserve 312px, but their complete interactive content ends at229.
+        // Trim only that empty root hit area so it cannot mask the shared player inventory.
+        content.resizer()
+            .height(232);
+        return new ParentWidget<>().sizeRel(1f)
+            .background(NekoVendingTheme.PANEL)
+            .child(new TransformWidget(content).transform(stack -> {
+                float scale = Math.min(layout.business.width / 174f, layout.business.height / 232f);
+                stack.translate((layout.business.width - 170 * scale) / 2f, 1);
+                stack.scale(scale, scale);
+            }));
+    }
+
     private IWidget createMainContentPagedWidget(PanelSyncManager syncManager) {
         // v1.7.18：使用 NekoPagedWidget 替代 PagedWidget，覆写 canHover()=false 避免拦截背包栏的 hover 检测
         NekoPagedWidget<?> mainPaged = new NekoPagedWidget<>().name("nekoV2MainPaged")
-            .size(PANEL_WIDTH - 8, PANEL_HEIGHT - 8)
+            .size(layout.business.width, layout.business.height)
             .controller(tradePage.getMainTabController());
 
         // 页 0：贸易（现有 createMainColumn 的内容）
@@ -1623,15 +1883,16 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
         // 页 1：签到「活跃」大页（v1.7.6 G2③ 重构：内层 4 sub-page——每月签到/连续签到/每日在线/纪念日；
         // v1.7.0 目标 4 传入编辑模式回调；signInPageController 绑定内层 PagedWidget，左侧 sub-tab 标签列同控制器接管切换）
         mainPaged.addPage(
-            SignInCalendarGui.createSignInPage(createSignInEditCallback(), tradePage.getSignInPageController()));
+            legacyPage(
+                SignInCalendarGui.createSignInPage(createSignInEditCallback(), tradePage.getSignInPageController())));
 
         // 页 2：抽奖（v1.7.1 目标 2 实现，轮盘 GUI；出货槽定位依赖机器坐标；
         // v1.7.0 目标 4 传入编辑模式回调：编辑模式下点击轮盘槽位弹出条目编辑面板）
-        mainPaged.addPage(LotteryGui.createLotteryPage(baseMetaTileEntity, createLotteryEditCallback()));
+        mainPaged.addPage(legacyPage(LotteryGui.createLotteryPage(baseMetaTileEntity, createLotteryEditCallback())));
 
         // 页 3：邮件（v1.7.6 G2② 重构：类型分页 + 写邮件；传入机器定位=写邮件附件输入槽来源，
         // mailPageController 绑定内层 5 sub-page，左侧 sub-tab 标签列同控制器接管切换）
-        mainPaged.addPage(MailGui.createMailPage(baseMetaTileEntity, tradePage.getMailPageController()));
+        mainPaged.addPage(legacyPage(MailGui.createMailPage(baseMetaTileEntity, tradePage.getMailPageController())));
 
         return mainPaged;
     }

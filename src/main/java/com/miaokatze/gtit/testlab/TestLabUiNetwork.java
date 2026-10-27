@@ -134,7 +134,7 @@ public final class TestLabUiNetwork {
         }
     }
 
-    private static void requireEmptyInventory(EntityPlayerMP player) {
+    static void requireEmptyInventory(EntityPlayerMP player) {
         if (player.inventory.getItemStack() != null)
             throw new IllegalStateException("UI probes require an empty cursor");
         if (player.openContainer != player.inventoryContainer || player.isSneaking())
@@ -185,7 +185,7 @@ public final class TestLabUiNetwork {
                     .getString("runId"));
     }
 
-    private static boolean validPlayer(EntityPlayerMP player) {
+    static boolean validPlayer(EntityPlayerMP player) {
         return player != null && !(player instanceof net.minecraftforge.common.util.FakePlayer)
             && !player.isDead
             && player.worldObj != null
