@@ -146,6 +146,7 @@ mapOf(
     "runNekoVendingLayoutTest" to "com.miaokatze.gtit.gui.vm.NekoVendingLayoutTest",
     "runNekoOutputStateTest" to "com.miaokatze.gtit.common.machine.v2.NekoOutputStateTest",
     "runNekoOutputBodyGeometryTest" to "com.miaokatze.gtit.common.machine.v2.NekoOutputBodyGeometryTest",
+    "runNekoTvStructureTest" to "com.miaokatze.gtit.common.machine.v2.NekoTvStructureTest",
     "runVendingSceneContracts" to "com.miaokatze.gtit.gui.vm.scene.VendingSceneContracts",
     "runVendingActionCompletionTest" to "com.miaokatze.gtit.gui.vm.VendingActionCompletionTest"
 ).forEach { (taskName, entryPoint) ->

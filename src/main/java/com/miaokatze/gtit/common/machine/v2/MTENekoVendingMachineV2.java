@@ -51,11 +51,8 @@ import gregtech.api.util.MultiblockTooltipBuilder;
  * 继承 GT5U 的 MTEEnhancedMultiBlockBase，完全脱离 VendingMachine mod。
  * 交易逻辑委托给 {@link NekoTradeExecutor}。
  * <p>
- * 多方块结构：2宽 x 2高 x 1深，控制器在右下角
- * <ul>
- * <li>上层：cc（两个外壳方块）</li>
- * <li>下层：c~（左外壳 + 右控制器）</li>
- * </ul>
+ * 多方块结构：5宽 x 4高 x 2深，控制器在正面底边中央。
+ * 正面中央 3宽 x 2高的六个外壳面共享电视屏幕覆盖层。
  * <p>
  * 本版本复刻 V1 的槽机制：使用内置的 {@link ItemStackHandler} 分别作为输入槽
  * ({@link #inputItems}) 和输出槽 ({@link #outputItems})，并可选连接一个
@@ -75,12 +72,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     private static final int VM_ME_UPLINK_MTE_ID = 2742;
 
     /**
-     * 猫猫机 2x2x1 多方块结构定义
+     * 猫猫机 5x4x2 多方块结构定义
      * <p>
      * StructureLib shape 格式：外层数组=深度(前后), 内层数组=高度(上到下), 字符=宽度(左到右)
      * <ul>
      * <li>{@code c}: 机器外壳或 ME Vending Uplink Hatch 位置</li>
-     * <li>{@code ~}: 控制器位置（位于下层右侧）</li>
+     * <li>{@code ~}: 控制器位置（正面底边中央）</li>
      * </ul>
      * <p>
      * 使用 {@link gregtech.api.util.HatchElementBuilder#hatchId} 按 MTE ID 检测
@@ -115,18 +112,13 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     // === 覆盖层偏移 ===
 
     /**
-     * 猫猫机覆盖层偏移（3个非控制器方块）
+     * 电视屏幕覆盖层偏移，按上排左到右、下排左到右排列。
      * <p>
-     * 控制器在右下角(row=1,col=1)，偏移 = (blockCol - 1, blockRow - 1)
-     * 行从上到下排列，所以上方偏移为负值
-     * <ul>
-     * <li>索引0: 右上 (0, -1)</li>
-     * <li>索引1: 左上 (-1, -1)</li>
-     * <li>索引2: 左下 (-1, 0)</li>
-     * </ul>
+     * StructureLib ABC 的 B 轴从上到下，因此控制器上方两排分别为 -2 和 -1。
+     * 屏幕底下仍是可替换为 ME 仓的普通结构外壳。
      */
-    private static final int[] NEKO_VM_X = new int[] { 0, -1, -1 };
-    private static final int[] NEKO_VM_Y = new int[] { -1, -1, 0 };
+    private static final int[] NEKO_VM_X = new int[] { -1, 0, 1, -1, 0, 1 };
+    private static final int[] NEKO_VM_Y = new int[] { -2, -2, -2, -1, -1, -1 };
 
     /** 覆盖层渲染 ticket 列表，用于管理和清除已注册的覆盖层 */
     protected final List<RenderOverlay.OverlayTicket> overlayTickets = new ArrayList<>();
@@ -394,7 +386,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         // 懒加载：首次调用时构建结构定义，此时 VendingMachineBlocks.casingBlock（VM mod Init 产物）必然就绪
         if (NEKO_STRUCTURE_DEFINITION == null) {
             NEKO_STRUCTURE_DEFINITION = IStructureDefinition.<MTENekoVendingMachineV2>builder()
-                .addShape(STRUCTURE_PIECE_MAIN, new String[][] { { "cc", "c~" } })
+                .addShape(
+                    STRUCTURE_PIECE_MAIN,
+                    new String[][] { { "ccccc", "ccccc", "ccccc", "cc~cc" }, { "ccccc", "ccccc", "ccccc", "ccccc" } })
                 .addElement(
                     'c',
                     buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
@@ -410,22 +404,22 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 创造模式结构构建
      * <p>
-     * 偏移量 (1, 1, 0) 对应结构定义中 ~ 的位置（下层右侧）
+     * 偏移量 (2, 3, 0) 对应结构定义中 ~ 的位置（正面底边中央）
      */
     @Override
     public void construct(ItemStack stackSize, boolean hintsOnly) {
-        buildPiece(STRUCTURE_PIECE_MAIN, stackSize, hintsOnly, 1, 1, 0);
+        buildPiece(STRUCTURE_PIECE_MAIN, stackSize, hintsOnly, 2, 3, 0);
     }
 
     /**
      * 生存模式结构构建
      * <p>
-     * 偏移量 (1, 1, 0) 对应结构定义中 ~ 的位置（下层右侧）
+     * 偏移量 (2, 3, 0) 对应结构定义中 ~ 的位置（正面底边中央）
      */
     @Override
     public int survivalConstruct(ItemStack stackSize, int elementBudget, ISurvivalBuildEnvironment env) {
         if (mMachine) return -1;
-        return survivalBuildPiece(STRUCTURE_PIECE_MAIN, stackSize, 1, 1, 0, elementBudget, env, false, true);
+        return survivalBuildPiece(STRUCTURE_PIECE_MAIN, stackSize, 2, 3, 0, elementBudget, env, false, true);
     }
 
     // === 结构检查（3参数版，含 List<StructureError> errors）===
@@ -451,7 +445,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     public void checkMachine(IGregTechTileEntity aBaseMetaTileEntity, ItemStack aStack, List<StructureError> errors) {
         uplinkHatch = null;
         // 调用带 errors 列表的 5 参数版本，由 StructureChecker 自动写入错误
-        checkPiece(STRUCTURE_PIECE_MAIN, 1, 1, 0, errors);
+        checkPiece(STRUCTURE_PIECE_MAIN, 2, 3, 0, errors);
     }
 
     /**
@@ -1174,8 +1168,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     protected MultiblockTooltipBuilder createTooltip() {
         return new MultiblockTooltipBuilder().addMachineType("Neko Vending Machine V2")
             .addInfo("喵~ 猫猫售货机V2，完全独立版！")
-            .beginStructureBlock(2, 2, 1, false)
-            .addController("Bottom Right")
+            .beginStructureBlock(5, 4, 2, false)
+            .addController("Front Bottom Center")
             .addOtherStructurePart("Vending Machine Casing", "Any casing block")
             .addOtherStructurePart("ME Vending Uplink Hatch", "Optional, any casing")
             .addInfo(GTITUtils.getAddedByLine())
@@ -1286,9 +1280,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 设置猫猫机的覆盖层渲染
      * <p>
-     * 在客户端为 2x2x1 结构的 3 个非控制器方块设置覆盖材质。
-     * 激活时使用 {@link TextureManager#NEKOVM_OVERLAY_ACTIVE}，
-     * 非激活时使用 {@link TextureManager#NEKOVM_OVERLAY}。
+     * 在客户端为正面中央的 3x2 屏幕设置固定金币画面。
+     * 激活时使用 {@link TextureManager#NEKOTV_OVERLAY_ACTIVE}，
+     * 非激活时使用同一画面的静帧 {@link TextureManager#NEKOTV_OVERLAY}。
      * 所有覆盖层均带发光效果。
      * <p>
      * 实现方式参考 GT5U 的 MTELargeTurbineBase 模式：
@@ -1302,7 +1296,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
         // 复刻 V1：尊重用户关闭动画的配置，只有 isActive 且 usingAnimations() 才使用激活态材质
         boolean isActive = tile.isActive() && usingAnimations();
-        IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOVM_OVERLAY_ACTIVE : TextureManager.NEKOVM_OVERLAY;
+        IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOTV_OVERLAY_ACTIVE : TextureManager.NEKOTV_OVERLAY;
 
         // 清除旧的覆盖层 tickets
         clearOverlay();
@@ -1317,7 +1311,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         short y = tile.getYCoord();
         int z = tile.getZCoord();
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < NEKO_VM_X.length; i++) {
             // 将 ABC 坐标（结构相对坐标）转换为世界坐标偏移
             int[] tABCCoord = new int[] { NEKO_VM_X[i], NEKO_VM_Y[i], 0 };
             facing.getWorldOffset(tABCCoord, tXYZOffset);

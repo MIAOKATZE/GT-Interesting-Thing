@@ -47,6 +47,16 @@ public class TextureManager {
         NEKOVM_OVERLAY_ACTIVE_3, // 索引2: 左下 (-1, 0)
     };
 
+    // 猫猫电视机 3×2 屏幕：从上到下，每行从左到右；六片共享固定动画时间轴。
+    public static final IIconContainer[] NEKOTV_OVERLAY = new IIconContainer[] {
+        Textures.BlockIcons.custom("gtit", "nekotv_1"), Textures.BlockIcons.custom("gtit", "nekotv_2"),
+        Textures.BlockIcons.custom("gtit", "nekotv_3"), Textures.BlockIcons.custom("gtit", "nekotv_4"),
+        Textures.BlockIcons.custom("gtit", "nekotv_5"), Textures.BlockIcons.custom("gtit", "nekotv_6"), };
+    public static final IIconContainer[] NEKOTV_OVERLAY_ACTIVE = new IIconContainer[] {
+        Textures.BlockIcons.custom("gtit", "nekotv_active_1"), Textures.BlockIcons.custom("gtit", "nekotv_active_2"),
+        Textures.BlockIcons.custom("gtit", "nekotv_active_3"), Textures.BlockIcons.custom("gtit", "nekotv_active_4"),
+        Textures.BlockIcons.custom("gtit", "nekotv_active_5"), Textures.BlockIcons.custom("gtit", "nekotv_active_6"), };
+
     private static final Map<String, ITexture> textureCache = new HashMap<>();
 
     public static ITexture getOrCreateTexture(String name, IIconContainer icon) {
