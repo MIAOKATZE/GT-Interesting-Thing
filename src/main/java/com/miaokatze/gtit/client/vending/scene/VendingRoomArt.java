@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.client.vending.scene;
 
+import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,7 +11,9 @@ import net.minecraft.client.model.ModelRenderer;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.util.ResourceLocation;
 
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 
 import com.miaokatze.miaokatzecore.api.miaovision.SceneBody;
 
@@ -88,34 +91,80 @@ final class VendingRoomArt {
 
     private static void rearLight(double openness) {
         if (openness <= 0) return;
-        GL11.glPushAttrib(
-            GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT | GL11.GL_CURRENT_BIT);
+        // Core already owns the render target/program and room scope. Restore only the states this
+        // light changes, including separate alpha blend factors; no nested attribute stack or shader reset.
+        boolean lighting = GL11.glIsEnabled(GL11.GL_LIGHTING), cull = GL11.glIsEnabled(GL11.GL_CULL_FACE),
+            blend = GL11.glIsEnabled(GL11.GL_BLEND), alpha = GL11.glIsEnabled(GL11.GL_ALPHA_TEST),
+            depthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        int src = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB), dst = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB),
+            srcAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA),
+            dstAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA), shade = GL11.glGetInteger(GL11.GL_SHADE_MODEL);
+        FloatBuffer color = BufferUtils.createFloatBuffer(16);
+        GL11.glGetFloat(GL11.GL_CURRENT_COLOR, color);
         try {
             GL11.glDisable(GL11.GL_LIGHTING);
             GL11.glDisable(GL11.GL_CULL_FACE);
+            GL11.glDisable(GL11.GL_ALPHA_TEST);
             GL11.glEnable(GL11.GL_BLEND);
-            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+            GL14.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE);
+            GL11.glShadeModel(GL11.GL_SMOOTH);
             GL11.glDepthMask(false);
             Tessellator t = Tessellator.instance;
-            // A luminous opening, with no backing box or picking/collision proxy.
+            double top = .16 + 3.49 * openness, reach = 5.15 * openness;
+            // Warm luminous aperture grows with the lifted shutter, without an opaque backing wall.
             t.startDrawingQuads();
-            t.setColorRGBA_F(1, .87f, .59f, (float) (.72 * openness));
-            quad(t, -3.48, .16, -3.7, 3.48, .16, -3.7, 3.48, 3.65, -3.7, -3.48, 3.65, -3.7);
+            t.setColorRGBA_F(1, .72f, .36f, (float) (.72 * openness));
+            t.addVertex(-3.48, .16, -3.7);
+            t.addVertex(3.48, .16, -3.7);
+            t.setColorRGBA_F(1, .94f, .72f, (float) (.92 * openness));
+            t.addVertex(3.48, top, -3.7);
+            t.addVertex(-3.48, top, -3.7);
             t.draw();
-            // Broad soft shafts reach into the room and fade before the open front.
+            // Sparse sloping light sheets have real height and depth. Their far vertices fade to zero;
+            // additive low opacity and no depth writes keep the cat/items readable through the shafts.
+            for (int i = 0; i < 7; i++) {
+                double x = -3.05 + i * 1.0, endX = x * 1.32, height = .16 + (top - .16) * (.74 + (i % 3) * .1);
+                t.startDrawingQuads();
+                t.setColorRGBA_F(1, .82f, .49f, (float) (.095 * openness));
+                t.addVertex(x, .12, -2.82);
+                t.addVertex(x + .20, height, -2.82);
+                t.setColorRGBA_F(1, .94f, .76f, 0);
+                t.addVertex(endX + .65, .18 + height * .50, -2.82 + reach);
+                t.addVertex(endX - .25, .012, -2.82 + reach);
+                t.draw();
+            }
+            // Thin elevated layers soften the gaps between shafts without forming a solid white slab.
+            for (int i = 0; i < 6; i++) {
+                double y = .2 + (top - .2) * i / 6;
+                t.startDrawingQuads();
+                t.setColorRGBA_F(1, .86f, .57f, (float) (.035 * openness));
+                t.addVertex(-3.4, y, -2.81);
+                t.addVertex(3.4, y, -2.81);
+                t.setColorRGBA_F(1, .95f, .8f, 0);
+                t.addVertex(4.6, Math.max(.012, y * .52), -2.81 + reach);
+                t.addVertex(-4.6, Math.max(.012, y * .52), -2.81 + reach);
+                t.draw();
+            }
             for (int i = 0; i < 5; i++) {
                 double x = -3.15 + i * 1.48;
                 t.startDrawingQuads();
-                t.setColorRGBA_F(1, .85f, .52f, (float) (.20 * openness));
+                t.setColorRGBA_F(1, .85f, .52f, (float) (.28 * openness));
                 t.addVertex(x, .008, -2.82);
                 t.addVertex(x + .42, .008, -2.82);
                 t.setColorRGBA_F(1, .9f, .68f, 0);
-                t.addVertex(Math.min(4.7, x + 1.5), .008, 2.5);
-                t.addVertex(Math.max(-4.7, x - .7), .008, 2.5);
+                t.addVertex(Math.min(4.7, x + 1.5), .008, -2.82 + reach);
+                t.addVertex(Math.max(-4.7, x - .7), .008, -2.82 + reach);
                 t.draw();
             }
         } finally {
-            GL11.glPopAttrib();
+            GL11.glDepthMask(depthMask);
+            GL11.glShadeModel(shade);
+            GL14.glBlendFuncSeparate(src, dst, srcAlpha, dstAlpha);
+            if (!blend) GL11.glDisable(GL11.GL_BLEND);
+            if (alpha) GL11.glEnable(GL11.GL_ALPHA_TEST);
+            if (cull) GL11.glEnable(GL11.GL_CULL_FACE);
+            if (lighting) GL11.glEnable(GL11.GL_LIGHTING);
+            GL11.glColor4f(color.get(0), color.get(1), color.get(2), color.get(3));
         }
     }
 
@@ -126,7 +175,7 @@ final class VendingRoomArt {
 
     private void outlet(int side, double openness) {
         double outer = side < 0 ? -5.05 : 3.76;
-        // Five solid shell panels; only the inward mouth opens. Feed center: ±4.6, 3.0, .5.
+        // Five solid shell panels; only the inward mouth opens. The launch clears its inward lip.
         roomBox(outer, 2.46, -.22, 1.29, .12, 1.44, 0xa48f70, 1);
         roomBox(outer, 3.48, -.22, 1.29, .14, 1.44, 0xf5e6c9, 1);
         roomBox(outer, 2.58, -.22, 1.29, .9, .12, 0xf5e6c9, 1);

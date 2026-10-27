@@ -1,20 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="128" viewBox="0 0 96 64">
- <!-- Landscape source at 96x64, authored for the 3x2-block screen. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="128" viewBox="0 0 160 128">
+ <!-- Transparent 6px rim reveals the original tiled NekoVM casing. -->
  <defs>
   <linearGradient id="wall" x2="0" y2="1"><stop stop-color="#241c16"/><stop offset=".55" stop-color="#49351c"/><stop offset="1" stop-color="#17180f"/></linearGradient>
   <linearGradient id="brass"><stop stop-color="#7e5b28"/><stop offset=".28" stop-color="#c59b51"/><stop offset=".5" stop-color="#efd28c"/><stop offset=".75" stop-color="#a27a36"/><stop offset="1" stop-color="#634723"/></linearGradient>
   <radialGradient id="well"><stop stop-color="#ac7830" stop-opacity=".55"/><stop offset="1" stop-color="#392915" stop-opacity="0"/></radialGradient>
  </defs>
- <path fill="url(#wall)" d="M0 0h96v64H0z"/>
- <ellipse fill="url(#well)" cx="48" cy="34" rx="44" ry="31"/>
- <g fill="none" stroke-linejoin="miter">
-  <path stroke="#130f0b" stroke-width="6" d="M5 60V18L17 6h62l12 12v42"/>
-  <path stroke="url(#brass)" stroke-width="3" d="M5 60V18L17 6h62l12 12v42"/>
-  <path stroke="#f4d995" stroke-opacity=".55" d="M8 59V19L19 10h58l11 9v40"/>
-  <path stroke="#9a7034" stroke-opacity=".5" d="M13 57V24l10-9h50l10 9v33"/>
- </g>
- <path fill="#d6ac5b" d="M19 10h58v2H19z" opacity=".45"/>
- <path fill="#654722" d="m13 55-10 9h90l-10-9z"/>
- <g stroke="#bc8e43" stroke-opacity=".3"><path d="m25 56-4 8m27-8v8m23-8 4 8M8 61h80M12 57h72"/></g>
- <path fill="#d3ac60" d="M4 2h88v1H4zM4 63h88v1H4z" opacity=".4"/>
+ <path fill="url(#wall)" d="M8 8h144v112h-52V92H60v28H8z"/>
+ <ellipse fill="url(#well)" cx="80" cy="58" rx="72" ry="52"/>
+ <path fill="none" stroke="#130f0b" stroke-width="4" d="M8 120V8h144v112h-52V92H60v28z"/>
+ <path fill="none" stroke="url(#brass)" stroke-width="2" d="M8 120V8h144v112h-52V92H60v28z"/>
+ <path fill="none" stroke="#f4d995" stroke-opacity=".35" d="M11 89V11h138v106h-46V89H57v28H11V89"/>
+ <path fill="#654722" d="M12 115h44v4H12zm92 0h44v4h-44z"/>
+ <path stroke="#bc8e43" stroke-opacity=".45" d="M12 115h44m48 0h44M12 14h136"/>
+ <!-- Slot follows the missing controller cell; original metal stays visible around it. -->
+ <path fill="none" stroke="#34333a" stroke-width="2" d="M62 124V94h36v30"/>
+ <path fill="none" stroke="#c1c0c6" stroke-width="1" d="M63 124V95h34v29"/>
 </svg>

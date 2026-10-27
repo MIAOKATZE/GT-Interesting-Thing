@@ -112,13 +112,15 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     // === 覆盖层偏移 ===
 
     /**
-     * 电视屏幕覆盖层偏移，按上排左到右、下排左到右排列。
+     * 电视完整正面覆盖层偏移，按上到下、每排左到右排列，跳过底边中央的控制器。
      * <p>
-     * StructureLib ABC 的 B 轴从上到下，因此控制器上方两排分别为 -2 和 -1。
-     * 屏幕底下仍是可替换为 ME 仓的普通结构外壳。
+     * StructureLib ABC 的 B 轴从上到下，正面相对控制器为 A=-2..2、B=-3..0。
+     * 这 19 格仍是可替换为 ME 仓的普通结构外壳。
      */
-    private static final int[] NEKO_VM_X = new int[] { -1, 0, 1, -1, 0, 1 };
-    private static final int[] NEKO_VM_Y = new int[] { -2, -2, -2, -1, -1, -1 };
+    private static final int[] NEKO_VM_X = new int[] { -2, -1, 0, 1, 2, -2, -1, 0, 1, 2, -2, -1, 0, 1, 2, -2, -1, 1,
+        2 };
+    private static final int[] NEKO_VM_Y = new int[] { -3, -3, -3, -3, -3, -2, -2, -2, -2, -2, -1, -1, -1, -1, -1, 0, 0,
+        0, 0 };
 
     /** 覆盖层渲染 ticket 列表，用于管理和清除已注册的覆盖层 */
     protected final List<RenderOverlay.OverlayTicket> overlayTickets = new ArrayList<>();
@@ -1280,9 +1282,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 设置猫猫机的覆盖层渲染
      * <p>
-     * 在客户端为正面中央的 3x2 屏幕设置固定金币画面。
-     * 激活时使用 {@link TextureManager#NEKOTV_OVERLAY_ACTIVE}，
-     * 非激活时使用同一画面的静帧 {@link TextureManager#NEKOTV_OVERLAY}。
+     * 在客户端为完整 5x4 正面设置电视画面，保留底边中央控制器自身的材质。
+     * 激活时使用 {@link TextureManager#NEKOTV_FULL_OVERLAY_ACTIVE}，
+     * 非激活时使用同一画面的静帧 {@link TextureManager#NEKOTV_FULL_OVERLAY}。
      * 所有覆盖层均带发光效果。
      * <p>
      * 实现方式参考 GT5U 的 MTELargeTurbineBase 模式：
@@ -1296,7 +1298,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
         // 复刻 V1：尊重用户关闭动画的配置，只有 isActive 且 usingAnimations() 才使用激活态材质
         boolean isActive = tile.isActive() && usingAnimations();
-        IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOTV_OVERLAY_ACTIVE : TextureManager.NEKOTV_OVERLAY;
+        IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOTV_FULL_OVERLAY_ACTIVE
+            : TextureManager.NEKOTV_FULL_OVERLAY;
 
         // 清除旧的覆盖层 tickets
         clearOverlay();

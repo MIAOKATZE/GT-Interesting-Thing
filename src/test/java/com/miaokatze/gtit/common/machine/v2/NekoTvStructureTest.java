@@ -65,27 +65,44 @@ public final class NekoTvStructureTest {
             boolean controller = col == 2 && row == 3 && depth == 0;
             check(cells.contains(col + "," + row + "," + depth) != controller, "sole controller exclusion");
         }
-        int[] screenA = coordinates("NEKO_VM_X");
-        int[] screenB = coordinates("NEKO_VM_Y");
-        check(screenA.length == 6 && screenB.length == 6, "six screen faces");
+        int[] overlayA = coordinates("NEKO_VM_X");
+        int[] overlayB = coordinates("NEKO_VM_Y");
+        check(overlayA.length == 19 && overlayB.length == 19, "nineteen front overlay faces");
         check(
             TextureManager.NEKOTV_OVERLAY.length == 6 && TextureManager.NEKOTV_OVERLAY_ACTIVE.length == 6,
-            "static and animated tiles use the same six-cell order");
+            "legacy six-cell texture API is retained");
+        check(
+            TextureManager.NEKOTV_FULL_OVERLAY.length == 19 && TextureManager.NEKOTV_FULL_OVERLAY_ACTIVE.length == 19,
+            "static and animated full-face tiles use the same nineteen-cell order");
+        Set<String> overlayCells = new HashSet<>();
+        int overlayIndex = 0;
+        for (int row = 0; row < 4; row++) for (int col = 0; col < 5; col++) {
+            if (col == 2 && row == 3) continue;
+            check(
+                overlayA[overlayIndex] == col - 2 && overlayB[overlayIndex] == row - 3,
+                "row-major full-face ABC position skips controller");
+            check(cells.contains(col + "," + row + ",0"), "overlay is on replaceable front casing");
+            check(overlayCells.add(col + "," + row + ",0"), "no duplicate overlay coordinate");
+            overlayIndex++;
+        }
+        for (String cell : cells) {
+            check(overlayCells.contains(cell) == cell.endsWith(",0"), "every front casing has exactly one overlay");
+        }
         for (ForgeDirection direction : ForgeDirection.VALID_DIRECTIONS) {
             ExtendedFacing facing = ExtendedFacing.of(direction);
-            Set<String> screenWorld = new HashSet<>();
-            for (int i = 0; i < 6; i++) {
-                int col = i % 3 + 1;
-                int row = i / 3 + 1;
-                check(screenA[i] == col - 2 && screenB[i] == row - 3, "row-major screen ABC position");
-                check(cells.contains(col + "," + row + ",0"), "screen is on replaceable front casing");
+            Set<String> overlayWorld = new HashSet<>();
+            for (int i = 0; i < overlayA.length; i++) {
                 int[] world = new int[3];
-                facing.getWorldOffset(new int[] { screenA[i], screenB[i], 0 }, world);
-                check(screenWorld.add(world[0] + "," + world[1] + "," + world[2]), "six distinct screen faces");
-                if (direction.offsetY == 0) check(world[1] == -screenB[i], "screen sits above controller");
+                facing.getWorldOffset(new int[] { overlayA[i], overlayB[i], 0 }, world);
+                check(overlayWorld.add(world[0] + "," + world[1] + "," + world[2]), "nineteen distinct overlay faces");
+                check(world[0] != 0 || world[1] != 0 || world[2] != 0, "controller has no overlay in any facing");
+                check(
+                    world[0] * direction.offsetX + world[1] * direction.offsetY + world[2] * direction.offsetZ == 0,
+                    "overlay stays on front plane in all six facings");
+                if (direction.offsetY == 0) check(world[1] == -overlayB[i], "overlay sits at or above controller");
             }
         }
-        System.out
-            .println("NekoTvStructureTest PASS: native 39-cell chain, controller, six screen faces and six facings");
+        System.out.println(
+            "NekoTvStructureTest PASS: native 39-cell chain, controller, nineteen front overlays and six facings");
     }
 }

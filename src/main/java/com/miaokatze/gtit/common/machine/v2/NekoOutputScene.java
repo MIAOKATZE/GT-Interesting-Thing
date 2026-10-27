@@ -142,7 +142,7 @@ public final class NekoOutputScene {
         }
         for (NekoOutputLedger.Drop d : ledger.drops()) if (!d.slots.isEmpty() && !deliveries.containsKey(d.dropId)) {
             int route = d.rear ? 2 : (int) (d.dropId & 1);
-            Delivery delivery = new Delivery(route, feedPose(d.dropId, route, 0));
+            Delivery delivery = new Delivery(route, launchPose(d.dropId, route));
             deliveries.put(d.dropId, delivery);
         }
         for (NekoOutputLedger.Drop drop : ledger.drops()) {
@@ -152,7 +152,7 @@ public final class NekoOutputScene {
                 if (route != d.route) {
                     d.route = route;
                     d.age = 0;
-                    d.pose = feedPose(drop.dropId, route, 0);
+                    d.pose = launchPose(drop.dropId, route);
                 }
             }
         }
@@ -182,20 +182,20 @@ public final class NekoOutputScene {
                 if (doorTicks[d.route] < DOOR_TICKS) continue;
                 d.stage = FEED;
                 d.age = 0;
+                d.pose = launchPose(entry.getKey(), d.route);
                 // All ready identities emerge together once their door is open. The existing 100-slot
                 // inventory bounds the burst; the legacy cooldown field remains readable in old saves.
                 laneCooldown[d.route] = 0;
                 transfers.visible(entry.getKey(), now);
             } else {
                 d.age++;
-                d.pose = feedPose(entry.getKey(), d.route, d.age);
                 if (d.age >= FEED_TICKS) {
                     d.stage = RELEASED;
                     d.age = 0;
                     if (!physicsAllowed) d.pose = settledPose(entry.getKey());
                     simulation.put(d.pose);
                     if (physicsAllowed) simulation.setEnabled(true);
-                }
+                } else d.pose = advanceFeed(d.pose);
             }
         }
         return changed;
@@ -225,36 +225,44 @@ public final class NekoOutputScene {
             z);
     }
 
-    private SceneBody feedPose(long id, int route, int age) {
-        double t = Math.min(1, Math.max(0, age / (double) FEED_TICKS));
+    private SceneBody launchPose(long id, int route) {
         double sign = route == 0 ? -1 : 1;
         double spread = ((id * 37 % 17) - 8) / 8.0;
-        // Start fully inside the real shell: the first 200 ms clears the interpolated door before protruding.
-        // Per-identity exit directions then spread a pile over the floor.
-        // Fan the simultaneous rear burst across the aperture, with shallow depth layers for the
-        // 100-slot worst case. Full native blocks start apart instead of sharing one launch point.
+        // Retain the bounded aperture grid and identity spread; the entire ready batch launches together.
         long cell = (id - 1) % 32;
-        double x = route == 2 ? (cell % 8 - 3.5) * .82 : sign * (4.3 - 1.2 * t);
+        // Side blocks start just beyond the inward lip, leaving headroom for a visible upward arc.
+        double x = route == 2 ? (cell % 8 - 3.5) * .82 : sign * 3.25;
         double y = route == 2 ? .58 + (cell / 8) * .82 : 3.0;
-        double z = route == 2 ? -2.65 + ((id - 1) / 32 % 4) * .82 + 1.15 * t : .5 + spread * .14 * t;
-        double pitch = t * (.35 + (id % 7) * .11), yaw = t * spread * .65, roll = t * sign * .28;
-        double cx = Math.cos(pitch / 2), sx = Math.sin(pitch / 2), cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2),
-            cz = Math.cos(roll / 2), sz = Math.sin(roll / 2);
-        SceneBody pose = shape(id, x, y, z)
-            .withRotation(
-                sx * cy * cz + cx * sy * sz,
-                cx * sy * cz - sx * cy * sz,
-                cx * cy * sz + sx * sy * cz,
-                cx * cy * cz - sx * sy * sz)
-            .withVelocity(
-                route == 2 ? spread * .7 : -sign * (1.8 + (id % 5) * .18),
-                -.15,
-                route == 2 ? 2.1 : spread * 1.6,
-                1.1 + (id % 3) * .3,
-                spread * 1.2,
-                sign * .8);
+        double z = route == 2 ? -2.65 + ((id - 1) / 32 % 4) * .82 : .5;
+        SceneBody pose = shape(id, x, y, z).withVelocity(
+            route == 2 ? spread * .7 : -sign * (2.8 + (id % 5) * .18),
+            route == 2 ? 3.0 + (id % 3) * .12 : 2.4 + (id % 3) * .12,
+            route == 2 ? 2.3 + (id % 5) * .12 : spread * .8,
+            1.1 + (id % 3) * .3,
+            spread * 1.2,
+            sign * .8);
         // Larger native blocks must also start fully within the rear lane's bounded simulation envelope.
         return NekoOutputBodyGeometry.fitInside(pose, simulation.bounds());
+    }
+
+    private SceneBody advanceFeed(SceneBody pose) {
+        // Door-mouth choreography only: Core owns all released contacts, damping and settlement.
+        // Core .27 uses blocks/seconds, 20 Hz caller ticks and gravity 9.81. Advance the saved pose,
+        // rather than rebuilding from age, so even an older mid-FEED save continues without a reset.
+        double dt = .05, gravity = 9.81;
+        double speed = Math.sqrt(pose.wx * pose.wx + pose.wy * pose.wy + pose.wz * pose.wz);
+        double scale = speed == 0 ? 0 : Math.sin(speed * dt / 2) / speed;
+        double x = pose.wx * scale, y = pose.wy * scale, z = pose.wz * scale, w = Math.cos(speed * dt / 2);
+        SceneBody next = pose
+            .withPosition(pose.x + pose.vx * dt, pose.y + pose.vy * dt - gravity * dt * dt / 2, pose.z + pose.vz * dt)
+            .withRotation(
+                w * pose.qx + x * pose.qw + y * pose.qz - z * pose.qy,
+                w * pose.qy - x * pose.qz + y * pose.qw + z * pose.qx,
+                w * pose.qz + x * pose.qy - y * pose.qx + z * pose.qw,
+                w * pose.qw - x * pose.qx - y * pose.qy - z * pose.qz)
+            .withVelocity(pose.vx, pose.vy - gravity * dt, pose.vz, pose.wx, pose.wy, pose.wz);
+        // Keep legacy low/edge FEED poses within the existing bounded presentation envelope too.
+        return NekoOutputBodyGeometry.fitInside(next, simulation.bounds());
     }
 
     private SceneBody settledPose(long id) {
