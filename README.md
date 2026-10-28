@@ -17,7 +17,7 @@
 
 Both client and server require [MIAOKATZE Core 0.1.27 or newer](https://github.com/MIAOKATZE/MIAOKATZE-Core).
 
-仅支持 GTNH 2.9.0 RC 版本。自 v2.0.0 起，建议 GTIT、GTSWN、GTSR 三者一起更新。
+当前 2.x 系列仅支持 GTNH 2.9.0 RC-1 / RC-2；beta 和 2.8.4 玩家请按下表选择历史 Release。自 v2.0.0 起，建议 GTIT、GTSWN、GTSR 三者一起更新。
 
 A GregTech New Horizons gadget mod that **provides interesting items enhancing the gameplay experience**, including flight cores, ore scanning tools, functional rings, a starter gift system, a hardcore reincarnation cycle, and a custom trading machine, while balancing usage costs to maintain progression integrity.
 
@@ -29,13 +29,25 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 ## Downloads & Requirements / 下载与版本需求
 
-| GTNH         | GTIT   | Maintenance / 维护 |
-| ------------ | ------ | :--------------: |
-| 2.9.0 RC-2 | **2.0.20**（当前源码 / current source） |        ✔️        |
+下表按已发布 Release 的兼容声明列出各 GTNH 版本可下载的最新版本；历史版本不代表仍在维护。
 
-Download the packaged mod from [GitHub Releases](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases). The current version comes from `gradle.properties` (`RELEASE_VERSION`); development history is recorded under `plan/workflow/`.
+The table lists the latest published release for each GTNH version, according to its release notes. Historical versions are no longer maintained.
 
-从 [GitHub Releases](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases) 下载成品模组。当前版本取自 `gradle.properties` 的 `RELEASE_VERSION`；开发历史见 `plan/workflow/`。
+| GTNH | GTIT Release / 下载 | Maintenance / 维护 |
+| --- | --- | --- |
+| 2.9.0 RC-1 / RC-2 | **[v2.0.8](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v2.0.8)** | 2.x 当前维护 / Active series |
+| 2.9.0 beta-3 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) | 历史版本 / Legacy |
+| 2.9.0 beta-2 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) | 历史版本 / Legacy |
+| 2.9.0 beta-1 | [v1.9.3](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v1.9.3) | 历史版本 / Legacy |
+| 2.8.4 | [v0.1.1](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases/tag/v0.1.1) | 历史版本 / Legacy |
+
+当前源码为 v2.0.20，对应 GTNH 2.9.0 RC-1 / RC-2；该版本目前为待发布草稿。表内下载版本以公开 Release 为准。v1.9.3 的 Release 同时声明支持 RC-1 / RC-2，保留在 1.x 系列的玩家也可使用。
+
+Current source: v2.0.20 for GTNH 2.9.0 RC-1 / RC-2, currently an unpublished draft. The download table uses published releases. The v1.9.3 release also supports RC-1 / RC-2 for players staying on 1.x.
+
+从对应 Release 下载运行包，并按该版本的说明安装前置；历史版本不要套用本文顶部的当前前置要求。2.8.4 的 v0.1.1 Release 中，运行包实际文件名为 `gtit-0.1.0.jar`。
+
+Download the runtime JAR and follow the dependency requirements of the selected release; the current requirements above do not apply to historical versions. The runtime asset in the v0.1.1 release for 2.8.4 is named `gtit-0.1.0.jar`.
 
 ***
 
