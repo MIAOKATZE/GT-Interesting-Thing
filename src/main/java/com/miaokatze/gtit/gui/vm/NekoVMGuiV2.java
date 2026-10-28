@@ -22,16 +22,18 @@ import com.cleanroommc.modularui.screen.ModularScreen;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.screen.viewport.LocatedWidget;
 import com.cleanroommc.modularui.screen.viewport.TransformationMatrix;
+import com.cleanroommc.modularui.value.IntValue;
+import com.cleanroommc.modularui.value.StringValue;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
-import com.cleanroommc.modularui.widget.Widget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.TransformWidget;
+import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import com.miaokatze.gtit.client.gui.NekoCoinDisplayV2;
 import com.miaokatze.gtit.client.gui.NekoConfirmationDialog;
 import com.miaokatze.gtit.client.gui.NekoDefaultTradeSyncDialog;
@@ -140,7 +142,7 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     private final NekoVendingLayout layout = new NekoVendingLayout();
     private final List<Runnable> layoutBindings = new ArrayList<>();
 
-    private static final class CatalogAnchor extends Widget<CatalogAnchor> {
+    private static final class CatalogAnchor extends ParentWidget<CatalogAnchor> {
 
         @Override
         public boolean canHover() {
@@ -149,6 +151,8 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     }
 
     private IWidget catalogAnchor;
+    private TextFieldWidget catalogSearchInput;
+    private final IntValue catalogQuantity = new IntValue(64);
     private NekoEmbeddedNeiSession embeddedNei;
     private NekoTradeItemDisplay selectedTrade;
 
@@ -213,7 +217,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             () -> isEditModeActive() && !tradeEditor.isModalActive()
                 && screen.getPanelManager()
                     .getTopMostPanel() == mainPanel
-                && (!editOverlayController.isOpen() || editOverlayController.isDockedWorkspace()));
+                && (!editOverlayController.isOpen() || editOverlayController.isDockedWorkspace()),
+            catalogSearchInput,
+            catalogQuantity::getIntValue);
         embeddedNei.activate();
     }
 
@@ -602,8 +608,46 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             .sizeRel(1f)
             .pos(0, 0);
         panel.child(editOverlayController.getRoot());
-        catalogAnchor = new CatalogAnchor().name("nekoNativeNeiCatalog");
-        panel.child(place(catalogAnchor, this::activeCatalog));
+        CatalogAnchor catalog = new CatalogAnchor().name("nekoNativeNeiCatalog");
+        catalogAnchor = catalog;
+        catalogSearchInput = new TextFieldWidget().name("nekoCatalogSearch")
+            .value(
+                new StringValue.Dynamic(
+                    () -> embeddedNei == null ? "" : embeddedNei.getSearch(),
+                    text -> { if (embeddedNei != null) embeddedNei.setSearch(text); }))
+            .autoUpdateOnChange(true)
+            .setMaxLength(256)
+            .hintText("搜索物品 / @模组")
+            .setTextColor(NekoVendingTheme.INK)
+            .background(NekoVendingTheme.INPUT)
+            .left(0)
+            .bottom(0)
+            .height(20)
+            .widthRelOffset(1f, -76)
+            .setEnabledIf(w -> embeddedNei != null && embeddedNei.isActive())
+            .tooltipBuilder(
+                t -> NekoVendingTheme.tooltip(t)
+                    .addLine("NEI 原生搜索；右键清空；支持 Ctrl+A/C/V、中文输入")
+                    .addLine("其他搜索前缀遵循当前 NEI 设置")
+                    .addLine("左键选取或按住拖到编辑槽；右键选取 1 个；Esc 取消选取"));
+        catalog.child(catalogSearchInput);
+        catalog.child(
+            new TextFieldWidget().name("nekoCatalogQuantity")
+                .value(catalogQuantity)
+                .setNumbers(1, Integer.MAX_VALUE)
+                .setTextColor(NekoVendingTheme.INK)
+                .background(NekoVendingTheme.INPUT)
+                .right(0)
+                .bottom(0)
+                .height(20)
+                .width(72)
+                .setEnabledIf(w -> embeddedNei != null && embeddedNei.isActive())
+                .tooltipBuilder(
+                    t -> NekoVendingTheme.tooltip(t)
+                        .addLine("选取数量：1～2147483647（离开输入框后生效）")
+                        .addLine("交易槽使用此数量；抽奖幻影槽保留原堆叠上限和同物品增减规则")
+                        .addLine("选取后可连续配置多个槽；点击空白或按 Esc 取消")));
+        panel.child(place(catalog, this::activeCatalog));
         panel.child(
             place(
                 IKey.str("NEI 未安装\n目录不可用；仍可从背包光标编辑上方物品槽")
@@ -1786,19 +1830,9 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
             IKey.dynamic(() -> isEditModeActive() ? "编辑模式" : "")
                 .color(NekoVendingTheme.GREEN)
                 .asWidget()
-                .right(70)
+                .right(14)
                 .top(11)
                 .height(10));
-        header.child(
-            NekoVendingTheme.button(
-                () -> "预设",
-                () -> { if (isClient()) com.miaokatze.gtit.trade.preset.ui.TradePresetAccessHandler.requestOpen(); })
-                .right(14)
-                .top(5)
-                .size(44, 20)
-                .tooltipBuilder(
-                    t -> NekoVendingTheme.tooltip(t)
-                        .addLine("独立预设管理；沿用服务端权限校验")));
         return header;
     }
 

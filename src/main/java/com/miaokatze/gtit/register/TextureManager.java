@@ -24,6 +24,19 @@ public class TextureManager {
         .custom("gtit", "nekovm_front_on_glow");
     public static final IIconContainer NEKOVM_CASING = Textures.BlockIcons.custom("gtit", "nekovm_casing");
 
+    public static final IIconContainer NEKO_VENDING_CASING_SIDE = Textures.BlockIcons
+        .custom("gtit", "neko_vending_casing_side");
+    public static final IIconContainer NEKO_VENDING_CASING_TOP = Textures.BlockIcons
+        .custom("gtit", "neko_vending_casing_top");
+    public static final IIconContainer NEKO_VENDING_CASING_BOTTOM = Textures.BlockIcons
+        .custom("gtit", "neko_vending_casing_bottom");
+    public static final IIconContainer NEKO_VENDING_CONTROLLER_OFF = Textures.BlockIcons
+        .custom("gtit", "neko_vending_controller_off");
+    public static final IIconContainer NEKO_VENDING_CONTROLLER_ON = Textures.BlockIcons
+        .custom("gtit", "neko_vending_controller_on");
+    public static final IIconContainer NEKO_VENDING_CONTROLLER_GLOW = Textures.BlockIcons
+        .custom("gtit", "neko_vending_controller_glow");
+
     // 猫猫售货机覆盖材质（非激活状态）
     public static final IIconContainer NEKOVM_OVERLAY_1 = Textures.BlockIcons.custom("gtit", "nekovm_1"); // 右上
     public static final IIconContainer NEKOVM_OVERLAY_2 = Textures.BlockIcons.custom("gtit", "nekovm_2"); // 左上
@@ -46,6 +59,49 @@ public class TextureManager {
         NEKOVM_OVERLAY_ACTIVE_2, // 索引1: 左上 (-1, +1)
         NEKOVM_OVERLAY_ACTIVE_3, // 索引2: 左下 (-1, 0)
     };
+
+    // 猫猫电视机 3×2 屏幕：从上到下，每行从左到右；六片共享固定动画时间轴。
+    public static final IIconContainer[] NEKOTV_OVERLAY = new IIconContainer[] {
+        Textures.BlockIcons.custom("gtit", "nekotv_1"), Textures.BlockIcons.custom("gtit", "nekotv_2"),
+        Textures.BlockIcons.custom("gtit", "nekotv_3"), Textures.BlockIcons.custom("gtit", "nekotv_4"),
+        Textures.BlockIcons.custom("gtit", "nekotv_5"), Textures.BlockIcons.custom("gtit", "nekotv_6"), };
+    public static final IIconContainer[] NEKOTV_OVERLAY_ACTIVE = new IIconContainer[] {
+        Textures.BlockIcons.custom("gtit", "nekotv_active_1"), Textures.BlockIcons.custom("gtit", "nekotv_active_2"),
+        Textures.BlockIcons.custom("gtit", "nekotv_active_3"), Textures.BlockIcons.custom("gtit", "nekotv_active_4"),
+        Textures.BlockIcons.custom("gtit", "nekotv_active_5"), Textures.BlockIcons.custom("gtit", "nekotv_active_6"), };
+
+    // 5×4 全正面：逐行从左到右，共19片，跳过底行中央控制器。旧六片字段保留兼容。
+    public static final IIconContainer[] NEKOTV_FULL_OVERLAY = new IIconContainer[] {
+        Textures.BlockIcons.custom("gtit", "nekotv_full_1"), Textures.BlockIcons.custom("gtit", "nekotv_full_2"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_3"), Textures.BlockIcons.custom("gtit", "nekotv_full_4"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_5"), Textures.BlockIcons.custom("gtit", "nekotv_full_6"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_7"), Textures.BlockIcons.custom("gtit", "nekotv_full_8"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_9"), Textures.BlockIcons.custom("gtit", "nekotv_full_10"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_11"), Textures.BlockIcons.custom("gtit", "nekotv_full_12"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_13"), Textures.BlockIcons.custom("gtit", "nekotv_full_14"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_15"), Textures.BlockIcons.custom("gtit", "nekotv_full_16"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_17"), Textures.BlockIcons.custom("gtit", "nekotv_full_18"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_19"), };
+    public static final IIconContainer[] NEKOTV_FULL_OVERLAY_ACTIVE = new IIconContainer[] {
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_1"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_2"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_3"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_4"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_5"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_6"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_7"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_8"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_9"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_10"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_11"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_12"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_13"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_14"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_15"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_16"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_17"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_18"),
+        Textures.BlockIcons.custom("gtit", "nekotv_full_active_19"), };
 
     private static final Map<String, ITexture> textureCache = new HashMap<>();
 

@@ -1,4 +1,7 @@
 gtit.machine.neko_vending_machine=Neko Vending Machine
+gtit.machine.neko_vending_uplink_hatch=ME Neko Vending Uplink Hatch
+neko_vending_casing.name=Neko Vending Machine Casing
+neko_vending_casing.0.name=Neko Vending Machine Casing
 
 # GregTech style keys used by CommonMetaTileEntity
 
@@ -125,7 +128,7 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAQ.desc=§3§lPurpose and mechanics§r%
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAg.name=§6§lThe Cat Ops Deck
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAg.desc=§3§lStarter gift and configuration§r%nEach player automatically receives a §2Starter Gift§r on their first login. A claim record prevents duplicate grants. An administrator can reset that record to issue another gift on the player's next login.%n%nGift contents, trade entries, sign-in rewards and lottery pools each have their own configuration. Administrators can also edit vending-machine trade entries in its GUI.%n%n§3§lCompletion§r%nHold §11§r Starter Gift for retrieval; it is §2not consumed§r. Alternatively, tick the checkbox. Either task completes this quest, so players who have already opened or no longer have their gift can use the checkbox.
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.name=§2§lUnboxing the Cat's Welcome Kit
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.desc=§3§lDefault gift§r%nThe default guaranteed contents are bread ×§116§r, torches ×§164§r, a bed ×§11§r, chests ×§18§r and a Neko Coin ×§11§r, plus §12§r random rings from Skywalk, Ironheart, Dragon's Breath, Mountainbreaker and Tempest. Servers can change these contents.%n%n§3§lAdministrator configuration§r%n/gtit gift certain sets the current inventory as the guaranteed list; /gtit gift random <count> sets the random pool; /gtit gift reset restores defaults. /gtit gift claimlist lists claim records, and /gtit gift claimreset <all|player> resets records so the affected players receive another gift on their next login.%n%n§3§lCompletion§r%nHold a bed ×§11§r and torches ×§164§r for retrieval. §2Neither is consumed.§r
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.desc=§3§lDefault gift§r%nThe default guaranteed contents are bread ×§116§r, torches ×§164§r, a bed ×§11§r, chests ×§18§r and a Neko Coin ×§11§r, plus §12§r random rings from Skywalk, Ironheart, Dragon's Breath, Mountainbreaker and Tempest. Servers can change these contents.%n%n§3§lAdministrator configuration§r%nUse the /gifts management interface to edit rewards and NBT; /gtit gift reset restores starter gift rewards. /gtit gift claimlist lists claim records, and /gtit gift claimreset <all|player> resets records so the affected players receive another gift on their next login.%n%n§3§lCompletion§r%nHold a bed ×§11§r and torches ×§164§r for retrieval. §2Neither is consumed.§r
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAABA.name=§6§lBuild the Cat Machine
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAABA.desc=§3§lVending-machine functions§r%nThe Neko Vending Machine provides trade, sign-in, lottery and mail interfaces. It has §18§r input inventory slots and §1100§r output inventory slots. Trades check available output space.%n%n§3§lCompletion§r%nObtain §11§r vending-machine controller and hold it in your inventory for retrieval; it is §2not consumed§r. Placing the machine in the world does not replace this inventory check.
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAABQ.name=§d§lWiring the Cat into ME
@@ -873,7 +876,7 @@ The icon is a ghost slot and consumes no items.
 # v1.8.100 trade sources and command guidance
 gtit.command.unknown=Unknown subcommand: %s. Use /gtit help for supported commands.
 gtit.command.help.title=GTIT commands (commands require OP2; gift and preset management default to OP2, configurable OP2-4; default trade reset requires the owner / OP4)
-gtit.command.gift.intro=Use /gifts to browse gifts. These compatibility configuration commands edit the starter gift only.
+gtit.command.gift.intro=Use /gifts to browse and manage gifts. These commands restore starter gift rewards or manage claim records.
 gtit.command.presets.help=Trade presets: the owner / administrator can select, edit and save (default OP2, configurable OP2-4). Refresh rereads the catalog; Apply installs a selection.
 gtit.command.defaultreset.usage=Usage: /gtit nekovm defultreset (single-player owner / OP4)
 gtit.command.defaultreset.help=/gtit nekovm defultreset - Force-restore default trades while preserving custom content (single-player owner / OP4)
@@ -884,7 +887,7 @@ gtit.command.tutorial.intro=Choose a topic: /gtit tutorial gift|nekovm|presets|s
 gtit.command.tutorial.gift=Start with /gifts. Only BQ unlock gifts are claimed manually; automatic triggers issue gifts automatically. Right-click a delivered gift item to open it.
 gtit.command.tutorial.presets=Select and Apply a new preset after saving it. Saving an already enabled preset updates its installed trades. Refresh only rereads the catalog. Start custom editing with /gtit nekovm edit on in the vending machine.
 gtit.command.tutorial.nekovm=Use edit on for vending-machine editing, then edit off. Use reload after changing files. timereset clears the current player/team's trade history; defultreset force-restores default trades.
-gtit.command.tutorial.signin=OP2 can use /gtit signin, info for online players, admin set/reset for online targets, and reload for sign-in and online rewards. Regular players use the vending machine's sign-in page.
+gtit.command.tutorial.signin=Sign in through the vending machine's sign-in page. OP2 can use info for online players, admin set/reset for online targets, and reload for sign-in and online rewards. /gtit signin without arguments shows help.
 gtit.command.tutorial.lottery=After editing lottery configuration, run /gtit lottery reload. Draws take place in the vending-machine page; this command does not draw for a player.
 gtit.command.tutorial.mail=send delivers mail; first defines new-player login rewards; once publishes a reward claimed once per player. Player commands copy the held item as an attachment; console send has no attachment.
 gtit.gift.command.pending=Your claim is pending. The gift will be delivered automatically when inventory space is available.
@@ -945,3 +948,35 @@ gtit.terminal.chunk_unloaded=The target chunk is not loaded
 gtit.terminal.target_missing=The bound Neko vending machine is missing
 gtit.terminal.access_denied=You cannot use this Neko vending machine
 gtit.terminal.connection_lost=Terminal disconnected; hold the original terminal and reopen
+
+# Trade receipt tooltip
+gtit.trade.tooltip.redeemed=Sold out · one-time trade redeemed
+gtit.trade.tooltip.bq_locked=BQ locked · prerequisite quest incomplete
+gtit.trade.tooltip.cooldown=Cooling down · %s seconds left
+gtit.trade.tooltip.ready=Ready to trade
+gtit.trade.tooltip.unavailable=Requirements not met
+gtit.trade.tooltip.once_used=One-time trade · redeemed; cooldown does not reset it
+gtit.trade.tooltip.once=One-time trade · redeem once only
+gtit.trade.tooltip.remaining=Remaining this cycle: %s / %s trades
+gtit.trade.tooltip.requires=Requirements / payment · %s
+gtit.trade.tooltip.and=ALL slots required
+gtit.trade.tooltip.outputs=Outputs · %s slots
+gtit.trade.tooltip.independent=Each slot independent
+gtit.trade.tooltip.wallet=wallet payment
+gtit.trade.tooltip.nbt_exact=Items match exact NBT; ore entries match their dictionary
+gtit.trade.tooltip.nbt_ignored=Items ignore NBT; ore entries match their dictionary
+gtit.trade.tooltip.free=No payment required
+gtit.trade.tooltip.view=Click View
+gtit.trade.tooltip.trade=Shift+click Trade
+gtit.trade.tooltip.expand=Shift Details (space limited)
+gtit.trade.tooltip.expanded=Shift Details (space limited)
+gtit.trade.tooltip.favourite=Ctrl+click Favourite
+gtit.trade.tooltip.unfavourite=Ctrl+click Unfavourite
+gtit.trade.tooltip.more_outputs=%s more output slots (each produces independently)
+gtit.trade.tooltip.more_inputs=%s more required slots (ALL must also be met)
+gtit.trade.tooltip.random=Slot %s · random ONE of %s candidates
+gtit.trade.tooltip.choice=Slot %s · fully supply ONE of %s candidates
+gtit.trade.tooltip.slot=Slot %s · fixed item
+gtit.trade.tooltip.ore_output=Ore [%s] · random item
+gtit.trade.tooltip.ore_input=Ore [%s]
+gtit.trade.tooltip.more_options=  · %s more candidates (ONE per slot)

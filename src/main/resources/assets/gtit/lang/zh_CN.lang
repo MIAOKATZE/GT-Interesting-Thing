@@ -1,4 +1,7 @@
 gtit.machine.neko_vending_machine=猫猫售货机
+gtit.machine.neko_vending_uplink_hatch=ME猫猫自动售货机上行链路仓
+neko_vending_casing.name=猫猫自动售货机机械方块
+neko_vending_casing.0.name=猫猫自动售货机机械方块
 
 # GregTech style keys used by CommonMetaTileEntity
 
@@ -125,7 +128,7 @@ betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAQ.desc=§3§l用途与机制§r%nGTIT 
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAg.name=§6§l猫猫运营层
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAg.desc=§3§l礼包与运营配置§r%n每名玩家首次登录时会自动收到 §2新手宝箱§r，领取记录用于避免重复发放。管理员重置领取记录后，可在该玩家下次登录时重新发放。%n%n礼包内容、贸易条目、签到奖励与抽奖池均有各自配置。售货机的贸易条目还支持管理员在 GUI 中编辑。%n%n§3§l完成条件§r%n持有 §11§r 只新手宝箱供检索，§2不会消耗§r；也可直接勾选完成。两项满足任意一项即可，已开启或不再持有礼包的玩家可使用勾选项。
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.name=§2§l开箱！猫猫的见面礼
-betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.desc=§3§l默认礼包§r%n默认必得物品为面包 ×§116§r、火把 ×§164§r、床 ×§11§r、箱子 ×§18§r、猫币 ×§11§r，另从凌步、磐躯、龙息、裂山与疾风中随机抽取 §12§r 枚戒指。服务器可调整内容。%n%n§3§l管理员配置§r%n/gtit gift certain 将当前背包设为必得清单；/gtit gift random <数量> 设置随机池；/gtit gift reset 恢复默认。/gtit gift claimlist 查看领取记录，/gtit gift claimreset <all|玩家名> 重置记录，使目标玩家下次登录重新领取。%n%n§3§l完成条件§r%n持有床 ×§11§r 与火把 ×§164§r供检索，两种物品均§2不消耗§r。
+betterquesting.quest.R1RJVAAAAAAAAAAAAAAAAw.desc=§3§l默认礼包§r%n默认必得物品为面包 ×§116§r、火把 ×§164§r、床 ×§11§r、箱子 ×§18§r、猫币 ×§11§r，另从凌步、磐躯、龙息、裂山与疾风中随机抽取 §12§r 枚戒指。服务器可调整内容。%n%n§3§l管理员配置§r%n使用 /gifts 管理界面编辑奖励与 NBT；/gtit gift reset 恢复新手礼包默认奖励。/gtit gift claimlist 查看领取记录，/gtit gift claimreset <all|玩家名> 重置记录，使目标玩家下次登录重新领取。%n%n§3§l完成条件§r%n持有床 ×§11§r 与火把 ×§164§r供检索，两种物品均§2不消耗§r。
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAABA.name=§6§l组装猫猫售货机
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAABA.desc=§3§l售货机功能§r%n猫猫售货机集中提供贸易、签到、抽奖与邮件界面。机器具有 §18§r 格输入库存和 §1100§r 格输出库存；交易会检查可用输出空间。%n%n§3§l完成条件§r%n先取得 §11§r 台售货机控制器并放在背包中供检索，§2不会消耗§r。仅在世界中放置机器不能代替本任务的持有检索。
 betterquesting.quest.R1RJVAAAAAAAAAAAAAAABQ.name=§d§l给售货机接上 ME
@@ -849,7 +852,7 @@ gtit.preset.ui.help=刷新目录：重新读取服务器 MiaoTrade 文件，不�
 # v1.8.100 trade sources and command guidance
 gtit.command.unknown=未知子命令：%s。使用 /gtit help 查看有效入口。
 gtit.command.help.title=GTIT 命令（命令需要 OP2；礼包与预设管理默认 OP2，可配置为 OP2–4；默认贸易重置需要单人拥有者 / OP4）
-gtit.command.gift.intro=礼包用 /gifts 查看；以下兼容配置命令仅修改新手礼包。
+gtit.command.gift.intro=使用 /gifts 查看与管理礼包；以下命令恢复新手礼包奖励或管理领取记录。
 gtit.command.presets.help=贸易预设：单人拥有者 / 管理员可选择、编辑和保存（默认 OP2，可配置为 OP2–4）；刷新目录只重读，安装需点击应用。
 gtit.command.defaultreset.usage=用法：/gtit nekovm defultreset（单人拥有者 / OP4）
 gtit.command.defaultreset.help=/gtit nekovm defultreset - 强制恢复默认贸易，保留自定义内容（单人拥有者 / OP4）
@@ -860,7 +863,7 @@ gtit.command.tutorial.intro=选择模块查看步骤：/gtit tutorial gift|nekov
 gtit.command.tutorial.gift=先用 /gifts 查看礼包。仅 BQ 解锁型礼包可手动领取；自动触发礼包会自动发放，背包中的礼包物品需右键打开。
 gtit.command.tutorial.presets=新预设保存后需勾选并应用；已启用预设保存时会同步更新贸易。刷新目录只重读。创建自定义条目先用 /gtit nekovm edit on 在售货机内编辑。
 gtit.command.tutorial.nekovm=用 edit on 开启售货机内编辑，完成后 edit off。修改磁盘配置后用 reload。timereset 清当前玩家/团队交易历史；defultreset 覆盖恢复默认贸易。
-gtit.command.tutorial.signin=OP2 可用 /gtit signin 签到，用 info 查看在线玩家状态；admin set/reset 修改在线目标的数据，reload 重读签到与在线奖励配置。普通玩家使用售货机签到页面。
+gtit.command.tutorial.signin=签到请使用售货机签到页面。OP2 可用 info 查看在线玩家状态；admin set/reset 修改在线目标的数据，reload 重读签到与在线奖励配置。/gtit signin 无参数时显示帮助。
 gtit.command.tutorial.lottery=编辑抽奖配置后执行 /gtit lottery reload。抽奖在售货机页面进行，此命令不会替玩家抽奖。
 gtit.command.tutorial.mail=send 发送邮件；first 设置新玩家首登模板；once 发布各玩家仅领取一次的奖励。玩家执行时复制手持物品为附件；控制台 send 不带附件。
 gtit.gift.command.pending=领取请求已保留；背包空间足够后会自动投递礼包。
@@ -921,3 +924,35 @@ gtit.terminal.chunk_unloaded=目标区块尚未加载
 gtit.terminal.target_missing=绑定位置已没有猫猫售货机
 gtit.terminal.access_denied=你无权使用这台猫猫售货机
 gtit.terminal.connection_lost=终端连接已断开，请手持原终端重新打开
+
+# Trade receipt tooltip
+gtit.trade.tooltip.redeemed=已售罄 · 一次性交易已领取
+gtit.trade.tooltip.bq_locked=前置任务未完成 · BQ 锁定
+gtit.trade.tooltip.cooldown=冷却中 · 剩余 %s 秒
+gtit.trade.tooltip.ready=可交易
+gtit.trade.tooltip.unavailable=条件未满足
+gtit.trade.tooltip.once_used=一次性交易 · 已领取，冷却不会重置
+gtit.trade.tooltip.once=一次性交易 · 仅可领取一次
+gtit.trade.tooltip.remaining=本轮剩余 %s / %s 次
+gtit.trade.tooltip.requires=需求 / 支付 · %s 项
+gtit.trade.tooltip.and=各槽全部满足
+gtit.trade.tooltip.outputs=产出 · %s 槽
+gtit.trade.tooltip.independent=每槽独立产出
+gtit.trade.tooltip.wallet=钱包支付
+gtit.trade.tooltip.nbt_exact=物品按 NBT 精确匹配；矿词按词典匹配
+gtit.trade.tooltip.nbt_ignored=物品忽略 NBT；矿词按词典匹配
+gtit.trade.tooltip.free=无支付需求
+gtit.trade.tooltip.view=点击 查看
+gtit.trade.tooltip.trade=Shift+点击 交易
+gtit.trade.tooltip.expand=Shift 详细模式（限可用空间）
+gtit.trade.tooltip.expanded=Shift 详细模式（限可用空间）
+gtit.trade.tooltip.favourite=Ctrl+点击 收藏
+gtit.trade.tooltip.unfavourite=Ctrl+点击 取消收藏
+gtit.trade.tooltip.more_outputs=另 %s 个产出槽（各自独立产出）
+gtit.trade.tooltip.more_inputs=另 %s 个需求槽（也必须全部满足）
+gtit.trade.tooltip.random=槽 %s · 随机产出一项 / %s 候选
+gtit.trade.tooltip.choice=槽 %s · 完整满足任一项 / %s 候选
+gtit.trade.tooltip.slot=槽 %s · 固定项目
+gtit.trade.tooltip.ore_output=矿词 [%s] · 随机物品
+gtit.trade.tooltip.ore_input=矿词 [%s]
+gtit.trade.tooltip.more_options=  … 另 %s 个候选（同槽任选一项）

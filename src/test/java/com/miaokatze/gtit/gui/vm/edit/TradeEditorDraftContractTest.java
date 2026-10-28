@@ -2,6 +2,7 @@ package com.miaokatze.gtit.gui.vm.edit;
 
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
@@ -61,6 +62,39 @@ public final class TradeEditorDraftContractTest {
                         .isEmpty(),
                 "replace mode after clear " + index);
         }
+        ItemStack catalog = new ItemStack(Items.diamond, Integer.MAX_VALUE);
+        NBTTagCompound tag = new NBTTagCompound();
+        tag.setString("catalog", "中文目录");
+        catalog.setTagCompound(tag);
+        editor.putChoice(0, catalog);
+        editor.putChoice(31, catalog);
+        check(
+            editor.choice(0)
+                .getStackSize() == Integer.MAX_VALUE
+                && editor.choice(31)
+                    .getStackSize() == Integer.MAX_VALUE,
+            "repeated catalog configuration preserves int quantity");
+        catalog.stackSize = 1;
+        catalog.getTagCompound()
+            .setString("catalog", "changed");
+        check(
+            editor.choice(0)
+                .getStackSize() == Integer.MAX_VALUE
+                && editor.choice(31)
+                    .getStackSize() == Integer.MAX_VALUE,
+            "configured slots do not share source count");
+        check(
+            "中文目录".equals(
+                editor.choice(0)
+                    .getBaseStack()
+                    .getTagCompound()
+                    .getString("catalog"))
+                && "中文目录".equals(
+                    editor.choice(31)
+                        .getBaseStack()
+                        .getTagCompound()
+                        .getString("catalog")),
+            "repeated configuration does not share source NBT");
         editor.putChoice(0, new ItemStack(Items.diamond));
         editor.putChoice(31, new ItemStack(Items.emerald));
         editor.clearTradeEditState();

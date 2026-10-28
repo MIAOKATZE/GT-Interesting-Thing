@@ -27,8 +27,6 @@ import com.miaokatze.gtit.signin.DailySignInConfig;
 import com.miaokatze.gtit.signin.DailySignInData;
 import com.miaokatze.gtit.signin.DailySignInManager;
 import com.miaokatze.gtit.signin.OnlineTimeConfig;
-import com.miaokatze.gtit.signin.SignInClientData;
-import com.miaokatze.gtit.signin.SignInNetworkManager;
 import com.miaokatze.gtit.terminal.StarterGiftAudit;
 import com.miaokatze.gtit.terminal.TerminalNetworkManager;
 import com.miaokatze.gtit.terminal.TerminalText;
@@ -42,13 +40,10 @@ import com.miaokatze.gtit.util.PlayerLookup;
 import com.miaokatze.gtit.util.PlayerResolver;
 
 import cpw.mods.fml.common.FMLCommonHandler;
-import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
 
 /**
  * /gtit 指令
- * - /gtit gift certain [yesNBT|noNBT]: 将当前背包物品设为必中物品
- * - /gtit gift random <count> [yesNBT|noNBT]: 将当前背包物品设为随机物品，设置随机数
  * - /gtit gift reset: 恢复默认配置
  * - /gtit gift claimlist: 列出已领取新手礼包的玩家（在线+离线，支持控制台执行）
  * - /gtit gift claimreset [all|玩家名]: 重置新手礼包领取状态（支持在线/离线玩家，支持控制台执行）
@@ -57,8 +52,6 @@ import cpw.mods.fml.relauncher.Side;
  * - /gtit nekovm timereset: 重置当前玩家/团队交易历史与冷却
  * - /gtit nekovm defultreset: 强制恢复默认贸易（OP4/单人存档拥有者）
  * - /gtit nekovm help: 显示完整帮助
- * <p>
- * 配置类指令默认不记录 NBT；如需记录，请在指令末尾添加 {@code yesNBT}。
  */
 public class GTITGiftCommand extends CommandBase {
 
@@ -158,9 +151,6 @@ public class GTITGiftCommand extends CommandBase {
             return switch (args[0]) {
                 case "gift" -> getListOfStringsMatchingLastWord(
                     args,
-                    "ui",
-                    "certain",
-                    "random",
                     "reset",
                     "claimlist",
                     "claimreset",
@@ -194,8 +184,6 @@ public class GTITGiftCommand extends CommandBase {
             if ("signin".equals(args[0]) && "admin".equals(args[1]))
                 return getListOfStringsMatchingLastWord(args, "set", "reset");
             if ("gift".equals(args[0])) {
-                if ("certain".equals(args[1])) return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
-                if ("random".equals(args[1])) return getListOfStringsMatchingLastWord(args, "1", "2", "3");
                 if ("claimreset".equals(args[1])) {
                     List<String> options = new ArrayList<>();
                     options.add("all");
@@ -209,8 +197,6 @@ public class GTITGiftCommand extends CommandBase {
         if (args.length == 4) {
             if ("signin".equals(args[0]) && "admin".equals(args[1])
                 && ("set".equals(args[2]) || "reset".equals(args[2]))) return onlineNames(args);
-            if ("gift".equals(args[0]) && "random".equals(args[1]) && args[2].matches("[0-9]+"))
-                return getListOfStringsMatchingLastWord(args, "yesNBT", "noNBT");
         }
         return null;
     }
@@ -227,35 +213,6 @@ public class GTITGiftCommand extends CommandBase {
             .getSide() != Side.SERVER;
     }
 
-    // ==================== NBT 标记解析 ====================
-
-    /**
-     * 从指令参数末尾解析 yesNBT/noNBT 标记。
-     * <p>
-     * 若最后一个参数为 {@code yesNBT} 或 {@code noNBT}，则返回对应布尔值；否则默认返回 {@code false}（不记录 NBT），
-     * 并向玩家发送提示与完整指令结构。
-     *
-     * @param args           当前指令参数数组
-     * @param player         执行指令的玩家
-     * @param commandExample 完整指令结构示例，用于提示
-     * @return true 表示记录 NBT，false 表示不记录
-     */
-    private boolean parseNbtFlagAtEnd(String[] args, EntityPlayerMP player, String commandExample) {
-        if (args.length > 0) {
-            String last = args[args.length - 1].toLowerCase();
-            if ("yesnbt".equals(last)) {
-                return true;
-            }
-            if ("nonbt".equals(last)) {
-                return false;
-            }
-        }
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
-        player.addChatMessage(new ChatComponentText(EnumChatFormatting.WHITE + "完整指令结构：" + commandExample));
-        return false;
-    }
-
     // ==================== Gift 子命令 ====================
 
     private void handleGift(ICommandSender sender, String[] args) {
@@ -265,26 +222,8 @@ public class GTITGiftCommand extends CommandBase {
         }
 
         switch (args[1]) {
-            case "ui" -> {
-                if (sender instanceof EntityPlayerMP player) com.miaokatze.gtit.gift.ui.GiftGuiFactory.open(player);
-                else sender.addChatMessage(new ChatComponentTranslation("gtit.gift.command.player_only"));
-            }
             case "help" -> sendGiftHelp(sender);
             case "tutorial" -> sendTutorial(sender, "gift");
-            case "certain" -> {
-                if (!(sender instanceof EntityPlayerMP player)) {
-                    sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行"));
-                    return;
-                }
-                handleCertain(player, args);
-            }
-            case "random" -> {
-                if (!(sender instanceof EntityPlayerMP player)) {
-                    sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行"));
-                    return;
-                }
-                handleRandom(player, args);
-            }
             case "reset" -> {
                 if (!(sender instanceof EntityPlayerMP player)) {
                     sender.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "此命令只有玩家可以执行"));
@@ -296,99 +235,6 @@ public class GTITGiftCommand extends CommandBase {
             case "claimreset" -> handleClaimReset(sender, args);
             default -> sendGiftHelp(sender);
         }
-    }
-
-    private void handleCertain(EntityPlayerMP player, String[] args) {
-        boolean recordNbt = parseNbtFlagAtEnd(args, player, "/gtit gift certain [yesNBT|noNBT]");
-
-        List<com.miaokatze.gtit.config.GiftConfig.ItemEntry> entries = new ArrayList<>();
-        for (int i = 0; i < player.inventory.mainInventory.length; i++) {
-            ItemStack stack = player.inventory.mainInventory[i];
-            if (stack != null) {
-                String itemId = getItemId(stack);
-                if (itemId != null) {
-                    NBTTagCompound nbt = recordNbt ? stack.getTagCompound() : null;
-                    entries.add(
-                        new com.miaokatze.gtit.config.GiftConfig.ItemEntry(
-                            itemId,
-                            stack.stackSize,
-                            stack.getItemDamage(),
-                            nbt));
-                }
-            }
-        }
-        com.miaokatze.gtit.config.GiftConfig.setGuaranteedItems(entries);
-        com.miaokatze.gtit.config.GiftConfig.saveConfig();
-        player.addChatMessage(
-            new ChatComponentText(
-                EnumChatFormatting.GREEN + "必中物品已更新为当前背包内容（"
-                    + entries.size()
-                    + "项，NBT："
-                    + (recordNbt ? "开启" : "关闭")
-                    + "）"));
-    }
-
-    private void handleRandom(EntityPlayerMP player, String[] args) {
-        int count = 2;
-        boolean recordNbt = false;
-
-        if (args.length >= 3) {
-            String arg2Lower = args[2].toLowerCase();
-            if ("yesnbt".equals(arg2Lower) || "nonbt".equals(arg2Lower)) {
-                // 省略了随机数，使用默认值 2，并在末尾解析 NBT 标记
-                recordNbt = "yesnbt".equals(arg2Lower);
-                if (!recordNbt) {
-                    player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
-                    player
-                        .addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
-                    player.addChatMessage(
-                        new ChatComponentText(
-                            EnumChatFormatting.WHITE + "完整指令结构：/gtit gift random <count> [yesNBT|noNBT]"));
-                }
-            } else {
-                try {
-                    count = Integer.parseInt(args[2]);
-                } catch (NumberFormatException e) {
-                    player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "随机数必须是整数"));
-                    return;
-                }
-                recordNbt = parseNbtFlagAtEnd(args, player, "/gtit gift random <count> [yesNBT|noNBT]");
-            }
-        } else {
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "提示：当前默认不记录 NBT。"));
-            player.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "如需记录 NBT，请在指令末尾添加 yesNBT"));
-            player.addChatMessage(
-                new ChatComponentText(EnumChatFormatting.WHITE + "完整指令结构：/gtit gift random <count> [yesNBT|noNBT]"));
-        }
-
-        List<com.miaokatze.gtit.config.GiftConfig.ItemEntry> entries = new ArrayList<>();
-        for (int i = 0; i < player.inventory.mainInventory.length; i++) {
-            ItemStack stack = player.inventory.mainInventory[i];
-            if (stack != null) {
-                String itemId = getItemId(stack);
-                if (itemId != null) {
-                    NBTTagCompound nbt = recordNbt ? stack.getTagCompound() : null;
-                    entries.add(
-                        new com.miaokatze.gtit.config.GiftConfig.ItemEntry(
-                            itemId,
-                            stack.stackSize,
-                            stack.getItemDamage(),
-                            nbt));
-                }
-            }
-        }
-        com.miaokatze.gtit.config.GiftConfig.setRandomItems(entries);
-        com.miaokatze.gtit.config.GiftConfig.setRandomCount(count);
-        com.miaokatze.gtit.config.GiftConfig.saveConfig();
-        player.addChatMessage(
-            new ChatComponentText(
-                EnumChatFormatting.GREEN + "随机物品已更新（"
-                    + entries.size()
-                    + "项，随机数："
-                    + count
-                    + "，NBT："
-                    + (recordNbt ? "开启" : "关闭")
-                    + "）"));
     }
 
     private void handleReset(EntityPlayerMP player) {
@@ -689,25 +535,12 @@ public class GTITGiftCommand extends CommandBase {
         player.addChatMessage(new ChatComponentTranslation("gtit.command.timereset.done", resetCount));
     }
 
-    // ==================== 辅助方法 ====================
-
-    private String getItemId(ItemStack stack) {
-        if (stack == null || stack.getItem() == null) return null;
-        String gameId = GameRegistry.findUniqueIdentifierFor(stack.getItem())
-            .toString();
-        if (gameId.contains("@")) {
-            gameId = gameId.substring(0, gameId.indexOf('@'));
-        }
-        return gameId;
-    }
-
     // ==================== 帮助信息 ====================
 
     private void sendHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentTranslation("gtit.command.help.title"));
         sender.addChatMessage(new ChatComponentText("/gtit help [模块] | /gtit tutorial [模块]"));
-        sender.addChatMessage(new ChatComponentText("/gifts - 查看礼包；/gtit gift help - 新手礼包兼容配置命令"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift ui - 打开礼包窗口"));
+        sender.addChatMessage(new ChatComponentText("/gifts - 查看礼包；/gtit gift help - 新手礼包管理命令"));
         sender.addChatMessage(new ChatComponentText("/gtit presets - 打开贸易预设管理（单人拥有者 / OP2）"));
         sender.addChatMessage(new ChatComponentText("/gtit nekovm help - 猫猫售货机完整帮助"));
         sender.addChatMessage(new ChatComponentText("/gtit signin help - 签到命令帮助"));
@@ -718,10 +551,7 @@ public class GTITGiftCommand extends CommandBase {
 
     private void sendGiftHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentTranslation("gtit.command.gift.intro"));
-        sender.addChatMessage(new ChatComponentText("/gifts | /gifts claim <ID>"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift ui - 打开礼包窗口"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift certain [yesNBT|noNBT] - 用当前背包设置新手礼包必得物品"));
-        sender.addChatMessage(new ChatComponentText("/gtit gift random <count> [yesNBT|noNBT] - 用当前背包设置随机池"));
+        sender.addChatMessage(new ChatComponentText("/gifts [ui|claim <ID>|help|tutorial]"));
         sender.addChatMessage(new ChatComponentText("/gtit gift reset - 恢复新手礼包奖励配置，不重置领取记录"));
         sender.addChatMessage(new ChatComponentText("/gtit gift claimlist - 查看新手礼包领取记录（可控制台）"));
         sender.addChatMessage(new ChatComponentText("/gtit gift claimreset [all|玩家名] - 重置新手礼包领取标记（含离线）"));
@@ -782,7 +612,7 @@ public class GTITGiftCommand extends CommandBase {
      * <p>
      * 子命令：
      * <ul>
-     * <li>/gtit signin —— 玩家自己签到（与 GUI 按钮等效）</li>
+     * <li>/gtit signin —— 显示签到命令帮助</li>
      * <li>/gtit signin info [玩家名] —— 查看签到状态（默认自己）</li>
      * <li>/gtit signin reload —— 热重载签到奖励配置</li>
      * <li>/gtit signin admin set &lt;玩家名&gt; &lt;天数&gt; —— 设置连续签到天数</li>
@@ -790,14 +620,8 @@ public class GTITGiftCommand extends CommandBase {
      * </ul>
      */
     private void handleSignIn(ICommandSender sender, String[] args) {
-        // /gtit signin —— 玩家自己签到
         if (args.length == 1) {
-            if (!(sender instanceof EntityPlayerMP player)) {
-                sender.addChatMessage(
-                    new ChatComponentText(EnumChatFormatting.RED + "控制台请使用 /gtit signin info|admin 子命令"));
-                return;
-            }
-            doSignIn(player);
+            sendSignInHelp(sender);
             return;
         }
 
@@ -813,55 +637,6 @@ public class GTITGiftCommand extends CommandBase {
             case "tutorial" -> sendTutorial(sender, "signin");
             default -> sendSignInHelp(sender);
         }
-    }
-
-    /**
-     * 执行签到并向玩家反馈结果（指令路径，与网络包路径逻辑一致）
-     */
-    private void doSignIn(EntityPlayerMP player) {
-        DailySignInManager manager = DailySignInManager.INSTANCE;
-        DailySignInManager.SignInResult result = manager.signIn(player.getUniqueID());
-
-        int resultCode;
-        switch (result.getStatus()) {
-            case SUCCESS -> {
-                resultCode = SignInClientData.RESULT_SUCCESS;
-                StringBuilder sb = new StringBuilder();
-                sb.append(EnumChatFormatting.GREEN)
-                    .append("签到成功！")
-                    .append(EnumChatFormatting.YELLOW)
-                    .append(" +")
-                    .append(result.getBaseReward())
-                    .append(" 猫猫币")
-                    .append(EnumChatFormatting.GRAY)
-                    .append("（连续 ")
-                    .append(result.getConsecutiveDays())
-                    .append(" 天）");
-                if (result.getTierReward() != null) {
-                    sb.append(EnumChatFormatting.GOLD)
-                        .append(" [达成")
-                        .append(
-                            result.getTierReward()
-                                .getRequiredDays())
-                        .append("天阶梯奖励]");
-                }
-                player.addChatMessage(new ChatComponentText(sb.toString()));
-            }
-            case ALREADY_SIGNED -> {
-                resultCode = SignInClientData.RESULT_ALREADY_SIGNED;
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "今天已经签过到了"));
-            }
-            default -> {
-                resultCode = SignInClientData.RESULT_ERROR;
-                player.addChatMessage(new ChatComponentText(EnumChatFormatting.RED + "签到失败，请稍后再试"));
-            }
-        }
-
-        // 推送最新数据，使该玩家打开的签到日历同步刷新
-        DailySignInData data = manager.getSignInData(player.getUniqueID());
-        int tierDays = result.getTierReward() != null ? result.getTierReward()
-            .getRequiredDays() : 0;
-        SignInNetworkManager.sendSyncToClient(player, data, resultCode, result.getBaseReward(), tierDays);
     }
 
     /**
@@ -964,7 +739,7 @@ public class GTITGiftCommand extends CommandBase {
 
     private void sendSignInHelp(ICommandSender sender) {
         sender.addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "签到命令:"));
-        sender.addChatMessage(new ChatComponentText("/gtit signin - 玩家自己签到"));
+        sender.addChatMessage(new ChatComponentText("签到请使用猫猫售货机的签到页面。"));
         sender.addChatMessage(new ChatComponentText("/gtit signin info [玩家名] - 查看签到状态"));
         sender.addChatMessage(new ChatComponentText("/gtit signin reload - 热重载签到奖励配置（含每日在线奖励）"));
         sender.addChatMessage(new ChatComponentText("/gtit signin admin set <玩家名> <天数> - 设置连续签到天数"));

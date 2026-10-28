@@ -32,7 +32,8 @@ public final class GTITItemOrderCatalog {
         // AE storage cells, legacy cells before the replacement unit.
         { GTITItemList.InfinityCell, GTITItemList.InfinityFluidCell, GTITItemList.NekoInfinityStorageUnit },
         // Machine controllers (the shared GregTech item is identified by exact metadata).
-        { GTITItemList.NekoVendingMachine, GTITItemList.NekoVendingTerminal },
+        { GTITItemList.NekoVendingMachine, GTITItemList.NekoVendingCasing, GTITItemList.NekoVendingUplinkHatch,
+            GTITItemList.NekoVendingTerminal },
         // Currency and progression.
         { GTITItemList.NekoCoin, GTITItemList.ShimmeringNekoCoin, GTITItemList.ReincarnationCrystal } };
 

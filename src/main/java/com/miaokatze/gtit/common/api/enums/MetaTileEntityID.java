@@ -20,6 +20,9 @@ public enum MetaTileEntityID {
      */
     NEKO_VENDING_MACHINE_V2(10),
 
+    /** Dedicated wooden ME uplink, default ID 14611; the existing controller ID is unchanged. */
+    NEKO_VENDING_UPLINK_HATCH(11),
+
     ;
 
     // 最终计算出的全局唯一 ID

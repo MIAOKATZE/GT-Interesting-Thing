@@ -10,10 +10,12 @@
   <img alt="Minecraft 1.7.10" src="https://img.shields.io/badge/Minecraft-1.7.10-blue.svg">
   <img alt="Forge 10.13.4.1614" src="https://img.shields.io/badge/Forge-10.13.4.1614-blue.svg">
   <a href="https://github.com/GTNewHorizons/GT-New-Horizons-Modpack"><img alt="GTNH 2.9.0 RC" src="https://img.shields.io/badge/GTNH-2.9.0%20RC-orange.svg"></a>
-  <a href="https://github.com/MIAOKATZE/GT-Interesting-Thing/releases"><img alt="Release 2.0.1" src="https://img.shields.io/badge/Release-2.0.1-green.svg"></a>
+  <img alt="GTIT 2.0.20" src="https://img.shields.io/badge/GTIT-2.0.20-green.svg">
 </p>
 
-此版本客户端与服务端均必须安装前置库 [MIAOKATZE Core 0.1.8](https://github.com/MIAOKATZE/MIAOKATZE-Core)（最低版本：0.1.8）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
+此版本客户端与服务端均必须安装前置库 [MIAOKATZE Core 0.1.27+](https://github.com/MIAOKATZE/MIAOKATZE-Core)（最低版本：0.1.27）。FalsePatternLib 可在缺失时补下载；已有旧版请手动更新。
+
+Both client and server require [MIAOKATZE Core 0.1.27 or newer](https://github.com/MIAOKATZE/MIAOKATZE-Core).
 
 仅支持 GTNH 2.9.0 RC 版本。自 v2.0.0 起，建议 GTIT、GTSWN、GTSR 三者一起更新。
 
@@ -29,7 +31,7 @@ A GregTech New Horizons gadget mod that **provides interesting items enhancing t
 
 | GTNH         | GTIT   | Maintenance / 维护 |
 | ------------ | ------ | :--------------: |
-| 2.9.0 RC | **2.0.1+**（当前 / current） |        ✔️        |
+| 2.9.0 RC-2 | **2.0.20**（当前源码 / current source） |        ✔️        |
 
 Download the packaged mod from [GitHub Releases](https://github.com/MIAOKATZE/GT-Interesting-Thing/releases). The current version comes from `gradle.properties` (`RELEASE_VERSION`); development history is recorded under `plan/workflow/`.
 
@@ -39,12 +41,29 @@ Download the packaged mod from [GitHub Releases](https://github.com/MIAOKATZE/GT
 
 ## Neko Vending Machine / 猫猫售货机
 
-<p align="center"><img src="README/neko%20vending%20machine.png" width="250" alt="猫猫售货机 / Neko Vending Machine"></p>
-<p align="center"><img src="README/neko%20vending%20machine-1.png" width="250" alt="猫猫售货机界面 / Neko Vending Machine GUI"><img src="README/neko%20vending%20machine-2.png" width="250" alt="猫猫售货机界面 / Neko Vending Machine GUI"><br><em>猫猫售货机界面 / Neko Vending Machine GUI</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/neko-vending-front.png" width="640" alt="木制猫猫售货机正面与猫咪金币动画 / Wooden Neko Vending Machine front"><br><em>用户实拍：猫咪与金币动画 / User screenshot: cats and animated coins</em></p>
+
+以下为用户提供的游戏实拍。图内物品数量、价格、冷却和启用内容以拍摄存档为准。
+
+The images below are user-provided in-game screenshots. Item counts, prices, cooldowns and enabled content reflect the capture save.
 
 A custom trading machine — since V2 an independently implemented multiblock built on GT5U's `MTEEnhancedMultiBlockBase` (the early prototype originated from the VendingMachine mod) — featuring an independent currency system (Neko Coin), dynamic tabbed GUI, BetterQuesting integration, and BGM. Designed as a progression-gated reward shop where players earn Neko Coins through quests and spend them on loot bags and items.
 
 自定义交易机器——V2 起为基于 GT5U `MTEEnhancedMultiBlockBase` 独立实现的多方块机器（开发早期原型源自 VendingMachine 模组），拥有独立的货币系统（猫猫币）、动态标签页 GUI、BetterQuesting 任务集成和背景音乐。设计为进度门控奖励商店——玩家通过任务获取猫猫币，再消费猫猫币购买战利品袋和物品。
+
+### Structure & ME Connection / 结构与 ME 接入
+
+<p align="center"><img src="README/screenshots/v2.0.20/neko-vending-structure.png" width="560" alt="猫猫售货机多方块外观 / Neko Vending Machine multiblock exterior"></p>
+
+The machine is **5 blocks wide × 4 high × 2 deep**, with the controller at the bottom center of the front face and **39 dedicated Neko casings**. Any one casing position may be replaced by a dedicated Neko ME uplink hatch; at most one hatch is allowed. Convert one original Vending Machine Casing or ME Vending Uplink Hatch into its dedicated Neko counterpart with a **one-way, 1:1 shapeless recipe**.
+
+结构为**宽 5 × 高 4 × 深 2**，控制器位于正面底边中央，其余为 **39 个猫猫售货机专用机械方块**。任意机械方块位置可替换为猫猫专用 ME 上行链路仓，整机最多 1 个。原 VendingMachine 机械方块与 ME 上行链路仓分别通过**单向 1:1 无序合成**转换为对应猫猫专用部件。
+
+<p align="center"><img src="README/screenshots/v2.0.20/me-uplink-connection.png" width="560" alt="猫猫专用 ME 上行链路仓接入 AE 网络 / Dedicated Neko ME uplink connected to an AE network"><br><em>ME 网络接入示意 / ME network connection example</em></p>
+
+Connect the dedicated hatch to an available AE network to use ME input and output controls in the machine interface.
+
+将专用仓接入可用的 AE 网络后，可在机器界面使用 ME 输入与输出控制。
 
 ### Currency System / 货币系统
 
@@ -60,11 +79,17 @@ Two types of Neko Coins, stored in an independent wallet system (not in player i
 - **Team wallet / 团队钱包**: Wallets are shared among team members via GTNHLib Teams API. All members of the same team share a single wallet balance. (Since v1.5.1; v1.5.0 used per-player personal wallets stored in `<world>/gtit_neko_wallets/<uuid>.dat`)
 - Neko Coins are automatically detected when placed in the trade edit inventory
 - Coins are deducted natively from the wallet by V2's own trade executor (`NekoWallet.tryDeduct`, atomic), no Mixin involved
-- **Cooldown scaling / 冷却缩放**: Trade cooldown limits scale with the number of online team members
+- **Cooldown scaling / 冷却缩放**: The number of trades allowed within each cooldown scales with team membership (at least one)
 - **团队钱包**：钱包通过 GTNHLib Teams API 在团队成员间共享，同团队的所有成员共享同一个钱包余额。（自 v1.5.1 起；v1.5.0 使用按玩家个人钱包，存储在 `<world>/gtit_neko_wallets/<uuid>.dat`）
 - 在交易编辑界面放入猫猫币时自动识别为货币参数
 - 猫猫币由 V2 自身交易执行器从钱包原生扣减（`NekoWallet.tryDeduct`，原子操作），不经由 Mixin
-- **冷却缩放**：交易冷却上限随在线团队成员数缩放
+- **冷却缩放**：每轮冷却内的交易次数上限按团队成员数计算，至少一次
+
+<p align="center"><img src="README/screenshots/v2.0.20/team-status.png" width="560" alt="BQ 队伍与猫猫机队伍只读状态 / Read-only BQ and Neko team status"></p>
+
+Use the team button to inspect the BQ team and Neko machine team separately. This read-only panel lists server-reported members and their online status; it does not change team membership.
+
+点击队伍按钮可分别查看 BQ 队伍与猫猫机队伍。面板只读显示服务端成员名单及在线状态，不修改队伍归属。
 
 ### Trade System / 交易系统
 
@@ -90,27 +115,27 @@ Three trade types supported:
 
 ### Alternative & Ore Dictionary Matching / 多重匹配与矿词匹配
 
-<p align="center"><img src="README/neko-trade-matching.png" width="580" alt="多重需求与随机产出：圆石或石头换取灰化土、泥土或草方块"><br><em>满足一种需求，每笔随机产出一项 / Fulfill one choice and receive one random reward</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/trade-alternatives.png" width="640" alt="多重需求与随机产出：石头、草方块或泥土换取沙子或红沙 / Alternative requirements and random rewards"><br><em>自定义示例：完整满足一个候选，每个产出槽随机一项 / Custom example: fulfill one alternative, then draw one reward per output slot</em></p>
 
 In edit mode, **Alt + left-click** enables adding alternatives to either a requirement or a reward slot. Each choice keeps its own amount: a requirement can be “8 iron ingots or 4 copper ingots,” and each transaction must fully satisfy one choice. **Middle-click** opens the ore dictionary dialog; enter a custom ore name and a fixed amount. Items sharing that ore name can jointly satisfy the requirement, while the slot item serves as its icon and initial ore suggestion.
 
 编辑模式下，**Alt + 左键**开启格子的多重叠加，再放入物品即可追加选项；需求格与产出格均可使用。每个选项保留自己的数量，例如“铁锭 ×8 或铜锭 ×4”，每笔交易完整满足其中一项。**中键**打开矿词弹框，可输入自定义矿词和固定数量；同矿词的不同物品可以凑足需求，格内物品仅作为图标和初始矿词提示。空白格悬停也会显示操作说明。
 
-Each reward slot independently chooses one alternative per transaction. An ore dictionary reward then randomly selects one registered item for that ore name. For example, the screenshot trades 64 cobblestone **or** 64 stone for 64 podzol, dirt **or** grass blocks. Default trades retain exact item matching.
+Each reward slot independently chooses one alternative per transaction. An ore dictionary reward then randomly selects one registered item for that ore name. The screenshot is a custom example: **1 stone, grass block or dirt** yields **1 sand or red sand** at random. It is not a bundled recipe. Default trades retain exact item matching.
 
-每笔交易中，每个产出格随机选择一个选项；矿词产出再随机选择该矿词注册的一种物品。图中示例为“圆石 ×64 或石头 ×64”换取“灰化土 ×64、泥土 ×64 或草方块 ×64”中的随机一项。默认交易仍采用精确物品匹配。
+每笔交易中，每个产出格随机选择一个选项；矿词产出再随机选择该矿词注册的一种物品。图中为自定义示例：“石头、草方块、泥土各 ×1”任选一项，换取“沙子、红沙各 ×1”中的随机一项，并非内置配方。默认交易仍采用精确物品匹配。
 
 ### GUI & Tabs / 界面与标签页
 
-<p align="center"><img src="README/trade.png" width="300" alt="交易界面 / Trade GUI"><br><em>交易界面 / Trade GUI</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/trade.png" width="900" alt="纸面交易界面与 MiaoVision 出货区 / Trade interface and MiaoVision output view"><br><em>交易界面 / Trade GUI</em></p>
 
-- **Dynamic tabs / 动态标签页**: Separate jar-default and custom trade columns; adding, deleting or editing a tab updates the open GUI without reopening it
+- **Dynamic tabs / 动态标签页**: Separate default, preset and custom trade views; adding, deleting or editing a tab updates the open GUI without reopening it
 - **Neko Coin display / 猫猫币显示**: Real-time balance display with expandable details
 - **Coin intercept slot / 猫猫币拦截槽**: Automatically routes Neko Coins from inventory to wallet
 - **Sort & Search / 排序与搜索**: Sort by order ID or name, with text search filtering
 - **BGM / 背景音乐**: 3 random BGM variants with 2-second fade in/out, max 50% volume
 - **BQ lock display / BQ 锁定显示**: Locked trades show golden "LOCKED" text with cooldown overlay; cooling-down trades show cyan cooldown text
-- **动态标签页**：JAR 默认贸易与自定义贸易分为两栏；新增、删除或编辑后同步更新打开中的 GUI，无需关闭重开
+- **动态标签页**：默认、预设与自定义贸易分栏显示；新增、删除或编辑后同步更新打开中的 GUI，无需关闭重开
 - **猫猫币显示**：实时余额显示，可展开详情
 - **猫猫币拦截槽**：自动将背包中的猫猫币导入钱包
 - **排序与搜索**：按顺序 ID 或名称排序，支持文字搜索过滤
@@ -121,19 +146,39 @@ Each reward slot independently chooses one alternative per transaction. An ore d
 
 Neko trades are available in NEI: use R / U on items to find outputs and uses, or U on the vending machine to browse trades. Recipes show trade intervals and clickable linked quests.
 
+### MiaoVision Output / MiaoVision 出货展示
+
+<p align="center"><img src="README/screenshots/v2.0.20/output-free-view.png" width="420" alt="自由视角的 MiaoVision 物理出货展示 / MiaoVision output with a movable camera"><img src="README/screenshots/v2.0.20/output-controls.png" width="460" alt="选取产出与取回操作提示 / Output selection and retrieval controls"></p>
+
+MiaoVision presents delivered items in a small animated room. Left-click an item to select it, Shift + left-click to retrieve all matching items, and right-drag to rotate the view. The side list provides all, half and exact-amount retrieval; the bottom controls reset the view, pause the presentation and adjust its scale.
+
+MiaoVision 将产出展示为带动画的小房间。左键选择物品，Shift + 左键取回同类全部，右键拖动旋转视角；侧栏支持全取、半取与指定数量取回，底部可复位视角、暂停展示及调整缩放。
+
+<p align="center"><img src="README/screenshots/v2.0.20/output-me-transfer.png" width="640" alt="ME 输出传输中的粒子展示 / ME output transfer effects"><br><em>ME 上传效果 / ME transfer effects</em></p>
+
+With a connected ME uplink, enable ME output to send newly produced items to the network. MiaoVision shows the transfer effect while the server handles the actual inventory transfer.
+
+接入 ME 上行链路仓后，开启 ME 输出可将新产出送入网络；MiaoVision 显示上传特效，实际库存转移由服务端处理。
+
 ### Default Trade Presets / 默认贸易预设
 
-<p align="center"><img src="README/screenshots/default-trade-presets.png" width="740" alt="默认贸易组实际界面 / Default trade preset interface"><br><em>默认贸易组实际界面示意 / Actual default trade preset interface</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/preset-library.png" width="900" alt="默认贸易组目录、预览与应用选择 / Default trade group catalog, preview and selection"><br><em>贸易组预设 / Trade presets</em></p>
 
-Use `/gtit presets` to browse the jar-provided default groups and apply your selection; management requires the single-player owner or dedicated-server OP4. Default and custom trades have separate columns.
+Use `/gtit presets` to browse the jar-provided default groups and apply your selection; management requires the single-player owner or a server administrator (default OP2, configurable OP2–4). Default, preset and custom trades have separate columns.
 
-使用 `/gtit presets` 浏览 JAR 内置默认贸易组并应用所选组；管理操作要求单人存档拥有者或专用服务器 OP4。默认贸易与自定义贸易分栏显示。
+使用 `/gtit presets` 浏览 JAR 内置默认贸易组并应用所选组；管理操作要求单人存档拥有者或服务器管理员（默认 OP2，可配置 OP2–4）。默认、预设与自定义贸易分栏显示。
+
+<p align="center"><img src="README/screenshots/v2.0.20/preset-editor.png" width="900" alt="贸易预设编辑器与原生 NEI 物品目录 / Trade preset editor with the native NEI catalog"></p>
+
+The editor saves selected pages as a named preset with a stable ID, icon and optional exclusion ID. Saving a new preset does not enable it automatically: select it in the catalog and apply the selection.
+
+编辑器可将选中页签保存为带名称、稳定 ID、图标及可选互斥 ID 的预设。新预设保存后不会自动启用，需返回目录勾选并应用。
 
 AE presets use three cooldown tiers: basic 0, advanced 2 hours, and high tier 8 hours; the same product keeps the same tier across presets. Batch requirements and outputs scale together, with larger cable batches; tools and one-time entries retain their per-entry rules. Creative Energy Controllers remain one-time trades.
 
 AE 预设采用基础 0、进阶 2 小时、高阶 8 小时三档冷却；同商品跨预设使用同一档位。批次需求与产出同比放大，线缆采用较大批量；工具及一次性条目保留各自规则。创造能量控制器仍为一次性交易。
 
-截图仅展示实际界面，图内数量和数值不是本轮批量、价格或冷却清单；以当前版本随包数据为准。 / Screenshots illustrate the actual interface; their counts and values are not this release's batch, price or cooldown list. Refer to the bundled data for the current release.
+图内所选组和数值来自用户存档；默认批量、价格与冷却以当前版本随包数据为准。 / The selected groups and values shown come from the user's save; consult the current bundled data for default batches, prices and cooldowns.
 
 ### BetterQuesting Integration / BQ 任务集成
 
@@ -158,8 +203,11 @@ Enable with `/gtit nekovm edit on` (see [Administrator Commands](#administrator-
 
 通过 `/gtit nekovm edit on` 开启（见[管理员命令](#administrator-commands--管理员命令)），在售货机 GUI 内点击交易条目即可进行可视化编辑。编辑面现覆盖七个域：交易条目、标签页、抽奖条目、抽奖卡池、签到奖励、在线时长档位与祝福。
 
-<p align="center"><img src="README/edit1.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"><img src="README/edit2.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"></p>
-<p align="center"><img src="README/edit3.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"><img src="README/edit4.png" width="250" alt="可视化编辑界面 / Visual Editor GUI"></p>
+<p align="center"><img src="README/screenshots/v2.0.20/embedded-nei-editor.png" width="900" alt="嵌入原生 NEI 目录的交易可视化编辑页面 / Visual trade editor with an embedded native NEI catalog"></p>
+
+Copy items from your inventory or the embedded NEI catalog into ghost slots to configure requirements and rewards without consuming or spawning items.
+
+从背包或嵌入的原生 NEI 目录复制物品到幽灵槽，即可配置需求与产出；不消耗源物品，也不生成物品。
 
 
 ### Configuration / 配置
@@ -172,7 +220,7 @@ Enable with `/gtit nekovm edit on` (see [Administrator Commands](#administrator-
 | Lottery pools / 抽奖卡池   | `config/gtit/lottery/lottery.json`      | Gacha pool definitions (pools with entries, cost items, pity config)        |
 | Lottery ledger / 抽奖整合记账 | `config/gtit/lottery/integrated/`       | Version ledger for integrated lottery pool groups                           |
 | Wallets / 钱包          | GTNHLib Teams team data                 | Team-shared Neko Coin balances (v1.5.0: per-player `<world>/gtit_neko_wallets/<uuid>.dat`) |
-| Gift / 新手宝箱           | `config/gtit/gift_config.json`          | Starter gift guaranteed + random items (optionally with `nbtBase64`)        |
+| Gifts / 礼包定义           | `config/gtit/gifts.json`                | Gift definitions and rewards; old `gift_config.json` is read only during the first migration / 礼包定义与奖励；旧 `gift_config.json` 仅首次迁移读取 |
 
 If no trade config exists, default trades are generated from built-in defaults on first launch; with `enhancedDefaultTrades` enabled, the bundled base trade group from jar assets takes over instead.
 
@@ -231,7 +279,7 @@ Sound-mute Mixins are listed in the [Machine Sound Mute](#machine-sound-mute--�
 
 ## Daily Sign-In / 每日签到
 
-<p align="center"><img src="README/signin.png" width="384" alt="签到界面 / Sign-In GUI"><br><em>签到界面 / Sign-In GUI</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/signin.png" width="900" alt="签到日历、奖励分类与出货展示 / Sign-in calendar, reward categories and output view"><br><em>签到界面 / Sign-In GUI</em></p>
 
 A daily reward system that grants players cumulative rewards for logging in each day, with optional online-time tier bonuses.
 
@@ -241,17 +289,19 @@ A daily reward system that grants players cumulative rewards for logging in each
 
 ## Lottery / 抽奖
 
-<p align="center"><img src="README/lottery.png" width="384" alt="抽奖界面 / Lottery GUI"><br><em>抽奖界面 / Lottery GUI</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/lottery.png" width="900" alt="抽奖卡池、轮盘与保底显示 / Lottery pools, wheel and pity display"><br><em>抽奖界面 / Lottery GUI</em></p>
 
 A gacha-style reward pool where players spend Neko Coins or items to draw random rewards.
 
 消耗猫猫币或物品进行随机抽奖的奖励池系统。
 
+<p align="center"><img src="README/screenshots/v2.0.20/lottery-delivery.png" width="800" alt="十连抽奖结果与 MiaoVision 出货特效 / Ten-draw results and MiaoVision delivery effects"></p>
+
 ***
 
 ## Mail / 邮件
 
-<p align="center"><img src="README/mail.png" width="384" alt="邮件界面 / Mail GUI"><br><em>邮件界面 / Mail GUI</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/mail.png" width="900" alt="邮件分类、正文与附件领取 / Mail categories, body and attachment claims"><br><em>邮件界面 / Mail GUI</em></p>
 
 An in-game mail system for receiving rewards, announcements, and attachments from server operators or automated events.
 
@@ -429,25 +479,29 @@ A gift box automatically granted to players on their **first login** to a world.
 - Auto-granted on first world login (tracked via persisted NBT)
 - Right-click to open: grants guaranteed items + random items
 - Items drop to the ground if inventory is full
-- Fully configurable via `config/gtit/gift_config.json`
+- Configure current gifts through `/gifts`; definitions are saved to `config/gtit/gifts.json`
 - Default random pool includes 6 rings (Skywalk, Gluttony, Ironheart, Dragon's Breath, Mountainbreaker, Tempest)
 - 首次进入世界自动发放（通过持久化 NBT 追踪）
 - 右击打开：获得必中物品 + 随机物品
 - 背包满了物品丢到地上
-- 通过 `config/gtit/gift_config.json` 完全可配置
+- 使用 `/gifts` 管理当前礼包；定义保存在 `config/gtit/gifts.json`
 - 默认随机池包含 6 枚戒指（凌步、饕餮、磐躯、龙息、裂山、疾风）
 
 ### Gift Center / 礼包中心
 
-<p align="center"><img src="README/screenshots/gift-center.png" width="740" alt="礼包中心实际界面 / Gift Center interface"><br><em>礼包中心实际界面示意 / Actual Gift Center interface</em></p>
+<p align="center"><img src="README/screenshots/v2.0.20/gift-library.png" width="900" alt="礼包目录、解锁状态与奖励预览 / Gift catalog, unlock status and reward preview"><br><em>礼包中心 / Gift Center</em></p>
 
-Use `/gifts` to view gift rewards, unlock conditions and claim status. The single-player owner or dedicated-server OP4 can create and edit gifts in the management interface.
+Use `/gifts` to view gift rewards, unlock conditions and claim status. The single-player owner or a server administrator (default OP2, configurable OP2–4) can create and edit gifts in the management interface.
 
-使用 `/gifts` 查看礼包奖励、解锁条件与领取状态；单人存档拥有者或专用服务器 OP4 可在管理界面新建和编辑礼包。
+使用 `/gifts` 查看礼包奖励、解锁条件与领取状态；单人存档拥有者或服务器管理员（默认 OP2，可配置 OP2–4）可在管理界面新建和编辑礼包。
 
-截图仅作实际界面示意，图内奖励数量和数值不代表当前默认内容清单。 / This screenshot illustrates the actual interface; its reward counts and values are not a list of the current defaults.
+<p align="center"><img src="README/screenshots/v2.0.20/gift-editor.png" width="900" alt="礼包草稿编辑器、礼盒选择与 NEI 目录 / Gift draft editor, gift shells and NEI catalog"></p>
 
-### Gift Config / 宝箱配置
+Edit the basic settings, guaranteed rewards and random pool on separate tabs, then save the draft to apply changes. / 基本设置、必得物品与随机物品池分栏编辑，保存草稿后修改才生效。
+
+### Legacy Gift Config / 旧宝箱配置
+
+`config/gtit/gift_config.json` is read during the first migration. Current definitions use `config/gtit/gifts.json`; edit rewards and item NBT in the `/gifts` management interface. The legacy format below remains supported for migration. / 首次迁移会读取 `config/gtit/gift_config.json`；之后以 `config/gtit/gifts.json` 为准，奖励及物品 NBT 使用 `/gifts` 管理界面编辑。以下旧格式保留迁移兼容。
 
 ```json
 {
@@ -466,7 +520,7 @@ Use `/gifts` to view gift rewards, unlock conditions and claim status. The singl
 - `guaranteed_items`: Items always granted / 必中物品
 - `random_items`: Random item pool / 随机物品池
 - `random_count`: Number of random items drawn / 随机抽取数量
-- `nbtBase64` (optional): Base64-encoded NBT data; written automatically when using `yesNBT` / 可选，Base64 编码的 NBT 数据；使用 `yesNBT` 时自动写入
+- `nbtBase64` (optional): Base64-encoded NBT data in the legacy format / 可选，旧格式中的 Base64 编码 NBT 数据
 
 ***
 
@@ -553,9 +607,9 @@ A development-stage test multiblock (HV tier, 3×3×3 hollow TungstenSteel) once
 
 ## Administrator Commands / 管理员命令
 
-Administrative `/gtit` commands require OP permission level 2. Preset management and default trade reset additionally require the single-player owner or dedicated-server OP4. **Tab completion supports** working subcommands, NBT flags, and online player names; there are no `trade tab` / `orderId` command branches. Inventory operations and NekoVM changes are player-only; module help is also available from the console. `/gifts` is a separate player command without an OP requirement.
+Administrative `/gtit` commands require OP permission level 2. Gift and preset management require the single-player owner or a server administrator (default OP2, configurable OP2–4); default trade reset requires the owner or OP4. **Tab completion supports** working subcommands and online player names; there are no `trade tab` / `orderId` command branches. Inventory operations and NekoVM changes are player-only; module help is also available from the console. `/gifts` is a separate player command without an OP requirement.
 
-管理指令 `/gtit` 保持 OP2 门槛；预设管理与默认贸易重置另外要求单人存档拥有者或专用服务器 OP4。**Tab 补全**涵盖实际子命令、NBT 标记和在线玩家名，没有 `trade tab` 或顺序 ID 命令。背包操作及 NekoVM 修改仅玩家可执行，各模块帮助也支持控制台。普通玩家使用独立的 `/gifts` 查看与领取礼包。
+管理指令 `/gtit` 保持 OP2 门槛；礼包与预设管理要求单人存档拥有者或服务器管理员（默认 OP2，可配置 OP2–4），默认贸易重置要求单人拥有者或 OP4。**Tab 补全**涵盖实际子命令和在线玩家名，没有 `trade tab` 或顺序 ID 命令。背包操作及 NekoVM 修改仅玩家可执行，各模块帮助也支持控制台。普通玩家使用独立的 `/gifts` 查看与领取礼包。
 
 Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance. Modules: `gift`, `nekovm`, `presets`, `signin`, `lottery`, `mail`. / 使用 `/gtit help [模块]` 查看语法，`/gtit tutorial [模块]` 查看步骤；模块包括上述六类。也支持 `/gtit <模块> help|tutorial`。
 
@@ -564,9 +618,6 @@ Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance.
 | Command / 指令                                | Description / 说明                                                               |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
 | `/gifts [ui|claim <ID>|help|tutorial]`    | Browse gifts; manual claims apply only to enabled BQ-unlock gifts / 查看礼包；手动领取仅适用于启用的 BQ 解锁型礼包 |
-| `/gtit gift ui`                            | Open the gift library / 打开礼包窗口；编辑权限由服务器另行检查 |
-| `/gtit gift certain [yesNBT\|noNBT]`        | Set guaranteed items from current inventory / 将当前背包物品设为必中物品；默认 `noNBT`       |
-| `/gtit gift random <count> [yesNBT\|noNBT]` | Set random pool from inventory + draw count / 将背包物品设为随机池并设置抽取数；默认 `noNBT`   |
 | `/gtit gift reset`                          | Reset to default config / 恢复默认配置                                                 |
 | `/gtit gift claimlist`                      | List players who claimed the gift (online + offline) / 列出已领取玩家（在线+离线）          |
 | `/gtit gift claimreset [all\|玩家名]`         | Reset claim status; re-gift on next login / 重置领取状态，玩家下次登录时自动发放（支持离线玩家） |
@@ -579,7 +630,7 @@ Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance.
 | `/gtit nekovm reload`       | Hot-reload trade + tab config / 热重载交易与标签页配置                                |
 | `/gtit nekovm timereset`    | Reset the current player/team's trade history, counts and cooldowns / 重置当前玩家或团队的贸易历史、次数与冷却 |
 | `/gtit nekovm defultreset`  | Force-restore default trade data; single-player owner / OP4 / 强制恢复默认贸易数据，需单人拥有者或 OP4 |
-| `/gtit presets`             | Open trade preset management; single-player owner / OP4 / 打开贸易预设管理，需单人拥有者或 OP4 |
+| `/gtit presets`             | Open trade preset management; owner / administrator (default OP2, configurable OP2–4) / 打开贸易预设管理，需单人拥有者或管理员（默认 OP2，可配 OP2–4） |
 | `/gtit nekovm help`         | Full help / 完整帮助                                                              |
 
 `defultreset` is the documented command spelling; `defaultreset` remains an accepted alias. It is separate from `timereset`, which resets player/team history. Custom pages and trades are created in the vending-machine editor after `/gtit nekovm edit on`, rather than through an unimplemented tab-creation command. / 教学使用用户指定拼写 `defultreset`，同时兼容 `defaultreset`；它与重置玩家/团队历史的 `timereset` 不同。自定义标签页和条目应在 `edit on` 后使用售货机内编辑入口创建。
@@ -588,7 +639,7 @@ Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance.
 
 | Command / 指令                              | Description / 说明                                                        |
 | ----------------------------------------- | ------------------------------------------------------------------------ |
-| `/gtit signin`                            | Player self sign-in, same as the GUI button / 玩家自助签到，与签到 GUI 按钮等效（仅玩家） |
+| `/gtit signin`                            | Show sign-in command help; use the vending machine's sign-in page to sign in / 显示签到命令帮助；签到请使用售货机签到页面 |
 | `/gtit signin info [玩家名]`                | View sign-in status (online players only) / 查看签到状态（目标仅支持在线玩家）        |
 | `/gtit signin reload`                     | Hot-reload sign-in + online-time reward config / 热重载签到与在线时长奖励配置        |
 | `/gtit signin admin set <玩家名> <天数>`     | Set consecutive sign-in days / 设置连续签到天数（在线玩家）                          |
@@ -626,9 +677,9 @@ A literal `\n` in mail bodies is converted to a line break. / 邮件正文中字
 
 - Jabel (modern Java syntax, Java 8 bytecode) / Minecraft 1.7.10 / Forge 10.13.4.1614
 - ModularUI / ModularUI2 / StructureLib
-- Dependencies: GT5-Unofficial (5.09.54.183), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.100 (dev local jar; the V2 multiblock's structure casing and uplink hatch are still provided by VendingMachine at runtime), BetterQuesting 3.8.72 (compileOnly)
+- Dependencies: MIAOKATZE Core 0.1.27+, GT5-Unofficial (5.09.54.205), GTNHLib, VisualProspecting, Baubles-Expanded, IC2; VendingMachine 0.4.100 (dev local jar; original casings and ME uplinks convert to GTIT's dedicated Neko parts), BetterQuesting 3.8.72 (compileOnly)
 - Jabel（现代 Java 语法，编译为 Java 8 字节码）/ Minecraft 1.7.10 / Forge 10.13.4.1614
-- 依赖：GT5-Unofficial（5.09.54.183）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.100（dev 本地 jar；V2 多方块的结构外壳与上行仓仍由 VendingMachine 提供运行时支持）、BetterQuesting 3.8.72（compileOnly）
+- 依赖：MIAOKATZE Core 0.1.27+、GT5-Unofficial（5.09.54.205）、GTNHLib、VisualProspecting、Baubles-Expanded、IC2；VendingMachine 0.4.100（dev 本地 jar；原机械方块与 ME 仓可转换为 GTIT 猫猫专用部件）、BetterQuesting 3.8.72（compileOnly）
 
 ***
 

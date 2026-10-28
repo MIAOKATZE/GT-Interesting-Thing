@@ -73,6 +73,13 @@ public class NekoTradeItemDisplay {
     /** Captured with this clickable display; never recomputed when its request is sent. */
     private String definitionFingerprint = "";
 
+    /** Snapshot of the real matching rule, used only by the receipt. */
+    private boolean recordNBT;
+
+    public boolean isRecordNBT() {
+        return recordNBT;
+    }
+
     public String getDefinitionFingerprint() {
         return definitionFingerprint;
     }
@@ -240,6 +247,7 @@ public class NekoTradeItemDisplay {
                 currency.getValue()
                     .longValue());
         display.definitionFingerprint = NekoTradeDefinition.fingerprint(group, trade);
+        display.recordNBT = trade.isRecordNBT();
         display.setOneTimeOnly(group.getCooldown() == -1);
         return display;
     }

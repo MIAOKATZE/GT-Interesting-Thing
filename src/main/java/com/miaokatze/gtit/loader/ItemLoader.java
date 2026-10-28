@@ -1,5 +1,6 @@
 package com.miaokatze.gtit.loader;
 
+import com.miaokatze.gtit.register.BlockRegistrar;
 import com.miaokatze.gtit.register.ItemRegistrar;
 
 /**
@@ -13,6 +14,7 @@ public class ItemLoader {
      * 建议在 PreInit 阶段调用
      */
     public static void initItems() {
+        BlockRegistrar.init();
         ItemRegistrar.init();
     }
 }

@@ -4,6 +4,8 @@ import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.cleanroommc.modularui.utils.item.ItemStackHandler;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.miaokatze.gtit.gui.vm.edit.NekoGhostSlot;
 import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
 
@@ -31,6 +33,7 @@ public final class NekoGhostSlotTest {
                 return true;
             }
         };
+        slot.slot(new ModularSlot(new ItemStackHandler(1), 0));
         check(slot.acceptNeiGhost(original, 0), "left drop accepted");
         check(delivered[0] != original && delivered[0].stackSize == 41, "native quantity copied intact");
         check(

@@ -149,6 +149,14 @@ public class LotteryAnimationController {
         }
     }
 
+    /** Continuous display position for the pixel needle; uses the same result, easing and duration. */
+    double getNeedlePosition() {
+        if (state == AnimationState.IDLE) return -1;
+        if (state == AnimationState.FINISHED) return targetSlot;
+        double progress = Math.max(0, Math.min(1, (System.currentTimeMillis() - startTimeMs) / (double) durationMs));
+        return (startSlot + totalSteps * (1 - Math.pow(1 - progress, 3))) % slotCount;
+    }
+
     /**
      * 停格后的闪烁相位（FINISHED 状态下目标格高亮闪烁用）
      *

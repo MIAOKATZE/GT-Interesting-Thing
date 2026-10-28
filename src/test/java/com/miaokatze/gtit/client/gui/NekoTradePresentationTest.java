@@ -52,7 +52,9 @@ public final class NekoTradePresentationTest {
                 .add(new NekoBigItemStack(new ItemStack(Items.gold_ingot, 4)));
             trade.getFromItems()
                 .add(iron);
+            trade.setRecordNBT(true);
             NekoTradeItemDisplay mixed = NekoTradeItemDisplay.fromNekoTrade(trade, group, 2);
+            check(mixed.isRecordNBT() && !ordinary.isRecordNBT(), "receipt retains the actual NBT matching snapshot");
             check(
                 mixed.getCurrencyCosts()
                     .size() == 2,
@@ -80,6 +82,8 @@ public final class NekoTradePresentationTest {
                 mixed.getDefinitionFingerprint()
                     .equals(NekoTradeDefinition.fingerprint(group, trade)),
                 "stale request guard retained");
+            trade.setRecordNBT(false);
+            check(mixed.isRecordNBT(), "changing the definition does not mutate an existing receipt");
             try {
                 mixed.getCurrencyCosts()
                     .put("neko", 0L);

@@ -1,5 +1,7 @@
 package com.miaokatze.gtit.common.machine.v2;
 
+import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofBlock;
+import static com.gtnewhorizon.structurelib.structure.StructureUtility.ofChain;
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
 import java.util.ArrayList;
@@ -19,15 +21,16 @@ import org.apache.logging.log4j.Logger;
 
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
 import com.cubefury.vendingmachine.blocks.MTEVendingUplinkHatch;
-import com.cubefury.vendingmachine.blocks.VendingMachineBlocks;
 import com.gtnewhorizon.structurelib.StructureLibAPI;
 import com.gtnewhorizon.structurelib.alignment.IAlignmentProvider;
 import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructable;
 import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
 import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
+import com.miaokatze.gtit.common.api.enums.MetaTileEntityID;
 import com.miaokatze.gtit.common.util.GTITUtils;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.register.BlockRegistrar;
 import com.miaokatze.gtit.register.TextureManager;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
 import com.miaokatze.gtit.trade.v2.NekoTradeResult;
@@ -51,11 +54,8 @@ import gregtech.api.util.MultiblockTooltipBuilder;
  * 继承 GT5U 的 MTEEnhancedMultiBlockBase，完全脱离 VendingMachine mod。
  * 交易逻辑委托给 {@link NekoTradeExecutor}。
  * <p>
- * 多方块结构：2宽 x 2高 x 1深，控制器在右下角
- * <ul>
- * <li>上层：cc（两个外壳方块）</li>
- * <li>下层：c~（左外壳 + 右控制器）</li>
- * </ul>
+ * 多方块结构：5宽 x 4高 x 2深，控制器在正面底边中央。
+ * 正面中央 3宽 x 2高的六个外壳面共享电视屏幕覆盖层。
  * <p>
  * 本版本复刻 V1 的槽机制：使用内置的 {@link ItemStackHandler} 分别作为输入槽
  * ({@link #inputItems}) 和输出槽 ({@link #outputItems})，并可选连接一个
@@ -71,62 +71,60 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /** 结构定义的唯一标识符，用于在 StructureLib 中索引特定的结构片段 */
     private static final String STRUCTURE_PIECE_MAIN = "main";
 
-    /** VendingMachine ME Uplink Hatch 的 MTE ID（0.4.87 与 0.4.95 均为 2742） */
-    private static final int VM_ME_UPLINK_MTE_ID = 2742;
+    /** Dedicated Neko ME uplink ID, following the existing configured GTIT offset. */
+    private static final int NEKO_ME_UPLINK_MTE_ID = MetaTileEntityID.NEKO_VENDING_UPLINK_HATCH.ID;
 
     /**
-     * 猫猫机 2x2x1 多方块结构定义
+     * 猫猫机 5x4x2 多方块结构定义
      * <p>
      * StructureLib shape 格式：外层数组=深度(前后), 内层数组=高度(上到下), 字符=宽度(左到右)
      * <ul>
      * <li>{@code c}: 机器外壳或 ME Vending Uplink Hatch 位置</li>
-     * <li>{@code ~}: 控制器位置（位于下层右侧）</li>
+     * <li>{@code ~}: 控制器位置（正面底边中央）</li>
      * </ul>
      * <p>
      * 使用 {@link gregtech.api.util.HatchElementBuilder#hatchId} 按 MTE ID 检测
-     * VendingMachine ME Uplink Hatch（ID = {@link #VM_ME_UPLINK_MTE_ID}），避免跨版本
-     * /类加载器导致的反射兼容识别失败。普通位置仍可放置任意
-     * {@code VendingMachineBlocks.casingBlock} 作为外壳。
+     * 专用猫猫 ME 上行链路仓（ID = {@link #NEKO_ME_UPLINK_MTE_ID}）。
+     * 只接受专用机械方块和仓室，默认提示、NEI 预览和自动建造均优先机械方块。
      */
-    // 懒加载结构定义（v1.6.33 方案 D）：
-    // 不能使用 static final 直接初始化，因为 <clinit> 会访问 VendingMachineBlocks.casingBlock（VM mod Init 产物）。
-    // 机器注册在 sAfterGTLoad（gregtech Init 末尾）执行，触发类加载 <clinit>，此时若 <clinit> 访问 casingBlock
-    // 可能因 VM.Init 未派发而 NPE。改为懒加载后，<clinit> 不再访问 casingBlock，
-    // getStructureDefinition() 首次调用时（运行时）casingBlock 必然就绪。
-    // 仿照 GTSR MTEKineticProcessingArray 的懒加载模式（避免 <clinit> 触发跨 mod 产物访问）。
+    // Lazy construction keeps block/item lookup in the normal, fully registered runtime lifecycle.
     private static IStructureDefinition<MTENekoVendingMachineV2> NEKO_STRUCTURE_DEFINITION = null;
 
     // === 材质常量 ===
 
     /** 侧面材质（非正面朝向的方块面使用） */
-    private static final ITexture[] FACING_SIDE = new ITexture[] { TextureFactory.of(TextureManager.NEKOVM_CASING) };
+    private static final ITexture[] FACING_SIDE = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CASING_SIDE) };
+
+    private static final ITexture[] FACING_TOP = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CASING_TOP) };
+
+    private static final ITexture[] FACING_BOTTOM = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CASING_BOTTOM) };
 
     /** 正面材质（非激活状态） */
     private static final ITexture[] FACING_FRONT = new ITexture[] {
-        TextureFactory.of(TextureManager.NEKOVM_FRONT_OFF) };
+        TextureFactory.of(TextureManager.NEKO_VENDING_CONTROLLER_OFF) };
 
     /** 正面材质（激活状态，含发光层） */
-    private static final ITexture[] FACING_ACTIVE = new ITexture[] { TextureFactory.of(TextureManager.NEKOVM_FRONT_ON),
-        TextureFactory.builder()
-            .addIcon(TextureManager.NEKOVM_FRONT_ON_GLOW)
+    private static final ITexture[] FACING_ACTIVE = new ITexture[] {
+        TextureFactory.of(TextureManager.NEKO_VENDING_CONTROLLER_ON), TextureFactory.builder()
+            .addIcon(TextureManager.NEKO_VENDING_CONTROLLER_GLOW)
             .glow()
             .build() };
 
     // === 覆盖层偏移 ===
 
     /**
-     * 猫猫机覆盖层偏移（3个非控制器方块）
+     * 电视完整正面覆盖层偏移，按上到下、每排左到右排列，跳过底边中央的控制器。
      * <p>
-     * 控制器在右下角(row=1,col=1)，偏移 = (blockCol - 1, blockRow - 1)
-     * 行从上到下排列，所以上方偏移为负值
-     * <ul>
-     * <li>索引0: 右上 (0, -1)</li>
-     * <li>索引1: 左上 (-1, -1)</li>
-     * <li>索引2: 左下 (-1, 0)</li>
-     * </ul>
+     * StructureLib ABC 的 B 轴从上到下，正面相对控制器为 A=-2..2、B=-3..0。
+     * 这 19 格仍是可替换为 ME 仓的普通结构外壳。
      */
-    private static final int[] NEKO_VM_X = new int[] { 0, -1, -1 };
-    private static final int[] NEKO_VM_Y = new int[] { -1, -1, 0 };
+    private static final int[] NEKO_VM_X = new int[] { -2, -1, 0, 1, 2, -2, -1, 0, 1, 2, -2, -1, 0, 1, 2, -2, -1, 1,
+        2 };
+    private static final int[] NEKO_VM_Y = new int[] { -3, -3, -3, -3, -3, -2, -2, -2, -2, -2, -1, -1, -1, -1, -1, 0, 0,
+        0, 0 };
 
     /** 覆盖层渲染 ticket 列表，用于管理和清除已注册的覆盖层 */
     protected final List<RenderOverlay.OverlayTicket> overlayTickets = new ArrayList<>();
@@ -391,17 +389,20 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
     @Override
     public IStructureDefinition<MTENekoVendingMachineV2> getStructureDefinition() {
-        // 懒加载：首次调用时构建结构定义，此时 VendingMachineBlocks.casingBlock（VM mod Init 产物）必然就绪
         if (NEKO_STRUCTURE_DEFINITION == null) {
             NEKO_STRUCTURE_DEFINITION = IStructureDefinition.<MTENekoVendingMachineV2>builder()
-                .addShape(STRUCTURE_PIECE_MAIN, new String[][] { { "cc", "c~" } })
+                .addShape(
+                    STRUCTURE_PIECE_MAIN,
+                    new String[][] { { "ccccc", "ccccc", "ccccc", "cc~cc" }, { "ccccc", "ccccc", "ccccc", "ccccc" } })
                 .addElement(
                     'c',
-                    buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
-                        .hatchId(VM_ME_UPLINK_MTE_ID)
-                        .casingIndex(VendingMachineBlocks.casingBlock.getTextureIndex(0))
-                        .hint(1)
-                        .buildAndChain(VendingMachineBlocks.casingBlock, 0))
+                    ofChain(
+                        ofBlock(BlockRegistrar.nekoVendingCasing, 0),
+                        buildHatchAdder(MTENekoVendingMachineV2.class).adder(MTENekoVendingMachineV2::addUplinkHatch)
+                            .hatchId(NEKO_ME_UPLINK_MTE_ID)
+                            .casingIndex(BlockRegistrar.nekoVendingCasing.getTextureIndex(0))
+                            .hint(1)
+                            .build()))
                 .build();
         }
         return NEKO_STRUCTURE_DEFINITION;
@@ -410,22 +411,22 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 创造模式结构构建
      * <p>
-     * 偏移量 (1, 1, 0) 对应结构定义中 ~ 的位置（下层右侧）
+     * 偏移量 (2, 3, 0) 对应结构定义中 ~ 的位置（正面底边中央）
      */
     @Override
     public void construct(ItemStack stackSize, boolean hintsOnly) {
-        buildPiece(STRUCTURE_PIECE_MAIN, stackSize, hintsOnly, 1, 1, 0);
+        buildPiece(STRUCTURE_PIECE_MAIN, stackSize, hintsOnly, 2, 3, 0);
     }
 
     /**
      * 生存模式结构构建
      * <p>
-     * 偏移量 (1, 1, 0) 对应结构定义中 ~ 的位置（下层右侧）
+     * 偏移量 (2, 3, 0) 对应结构定义中 ~ 的位置（正面底边中央）
      */
     @Override
     public int survivalConstruct(ItemStack stackSize, int elementBudget, ISurvivalBuildEnvironment env) {
         if (mMachine) return -1;
-        return survivalBuildPiece(STRUCTURE_PIECE_MAIN, stackSize, 1, 1, 0, elementBudget, env, false, true);
+        return survivalBuildPiece(STRUCTURE_PIECE_MAIN, stackSize, 2, 3, 0, elementBudget, env, false, true);
     }
 
     // === 结构检查（3参数版，含 List<StructureError> errors）===
@@ -451,7 +452,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     public void checkMachine(IGregTechTileEntity aBaseMetaTileEntity, ItemStack aStack, List<StructureError> errors) {
         uplinkHatch = null;
         // 调用带 errors 列表的 5 参数版本，由 StructureChecker 自动写入错误
-        checkPiece(STRUCTURE_PIECE_MAIN, 1, 1, 0, errors);
+        checkPiece(STRUCTURE_PIECE_MAIN, 2, 3, 0, errors);
     }
 
     /**
@@ -476,20 +477,20 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             return false;
         }
         int metaTileId = aBaseMetaTileEntity.getMetaTileID();
-        if (metaTileId != VM_ME_UPLINK_MTE_ID) {
+        if (metaTileId != NEKO_ME_UPLINK_MTE_ID) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug(
                     "[NekoVMV2] addUplinkHatch rejected: metaTileID={} (expected {})",
                     metaTileId,
-                    VM_ME_UPLINK_MTE_ID);
+                    NEKO_ME_UPLINK_MTE_ID);
             }
             return false;
         }
-        if (!(aMetaTileEntity instanceof MTEVendingUplinkHatch)) {
+        if (!(aMetaTileEntity instanceof MTENekoVendingUplinkHatch)) {
             if (LOG.isDebugEnabled()) {
                 LOG.debug(
                     "[NekoVMV2] addUplinkHatch rejected: metaTileID matches {} but class is {} (potential reflection compat issue)",
-                    VM_ME_UPLINK_MTE_ID,
+                    NEKO_ME_UPLINK_MTE_ID,
                     aMetaTileEntity.getClass()
                         .getName());
             }
@@ -860,9 +861,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * 复刻 V1 的 dispenseItems：每次调用最多投放一个物品到第一个空槽，
      * 投放节奏由 getDispensingDelay() 控制（队列越长延迟越短）。
      * <p>
-     * v1.6.28: 批次模式下（batchActive=true）使用分档延迟；
-     * 批次≥5时每次下落 1-2 个（50% 概率额外投放一个）；
-     * 所有物品投放完成后自动调用 endBatch 清理批次状态。
+     * 同次就绪的物品一起落入真实输出槽，随后由场景统一开门喷出；
+     * 未就绪的抽奖奖励继续留在已付款队列，不提前发放。
      */
     private void dispenseItems() {
         if (!mMachine || outputBuffer.isEmpty()) return;
@@ -870,13 +870,10 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         int delay = getDispensingDelay();
         if (this.newBufferedOutputs
             || (!this.outputBuffer.isEmpty() && (delay <= 0 || this.ticksSinceOutput % delay == 0))) {
-            dispenseFirstNonNullItem();
-            // v1.6.28: 批次>=5时每次下落1-2个（50%概率额外投放一个）
-            if (batchActive && currentBatchSize >= 5 && !this.outputBuffer.isEmpty()) {
-                if (batchRandom.nextInt(2) == 0) {
-                    dispenseFirstNonNullItem();
-                }
-            }
+            // Bounded by the sole 100-slot inventory. Stop at delayed paid output or full slots;
+            // neither animation nor a failed insertion may consume the remaining queue.
+            for (int i = 0; i < OUTPUT_SLOTS && getNextDispensable() != null && getFirstEmptyOutputSlot() != -1; i++)
+                dispenseFirstNonNullItem(i == 0);
             this.ticksSinceOutput = 0;
         }
         this.ticksSinceOutput = this.newBufferedOutputs ? 0 : this.ticksSinceOutput + 1;
@@ -918,12 +915,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * <p>
      * v1.6.28: 投放后递增 dispensedInBatch 计数，供 dispenseItems 判断批次是否完成。
      */
-    private void dispenseFirstNonNullItem() {
+    private void dispenseFirstNonNullItem(boolean playSound) {
         ItemStack dispensable = getNextDispensable();
         if (dispensable != null) {
             int targetSlot = getFirstEmptyOutputSlot();
             if (targetSlot != -1) {
-                outputIntoSlot(dispensable, targetSlot);
+                outputIntoSlot(dispensable, targetSlot, playSound);
                 this.outputBuffer.poll();
             } else {
                 // Already-paid output remains reserved and persistent; never silently discard or re-emit.
@@ -1000,7 +997,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * v1.6.28: ME 输出模式下，投放时创建 MeTransferEntry（从 InternalOutputSlotAccessor.insertItem 移至此处），
      * 使 ME 模式也走 outputBuffer 队列分档投放。
      */
-    private void outputIntoSlot(ItemStack stack, int slotIndex) {
+    private void outputIntoSlot(ItemStack stack, int slotIndex, boolean playSound) {
         ItemStack output = stack.copy();
         output.stackSize = stack.stackSize;
         restoringOutput = true;
@@ -1012,7 +1009,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         outputLedger.delivered(stack, slotIndex);
         // v1.7.11：物品落槽时播放 item_drop 音效（复刻 1.6.* VM 原版行为）
         IGregTechTileEntity bMTE = getBaseMetaTileEntity();
-        if (bMTE != null) {
+        if (playSound && bMTE != null) {
             net.minecraft.world.World world = bMTE.getWorld();
             if (world != null && !world.isRemote) {
                 world.playSoundEffect(
@@ -1158,8 +1155,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     @SideOnly(Side.CLIENT)
     public boolean renderInInventory(ISBRInventoryContext ctx) {
         // 物品栏中正面朝向 WEST（左面），使用非激活正面材质（无发光层）
-        ctx.renderNegativeYFacing(FACING_SIDE); // DOWN
-        ctx.renderPositiveYFacing(FACING_SIDE); // UP
+        ctx.renderNegativeYFacing(FACING_BOTTOM); // DOWN
+        ctx.renderPositiveYFacing(FACING_TOP); // UP
         ctx.renderNegativeZFacing(FACING_SIDE); // NORTH
         ctx.renderPositiveZFacing(FACING_SIDE); // SOUTH
         ctx.renderNegativeXFacing(FACING_FRONT); // WEST（物品栏中的正面）
@@ -1178,10 +1175,12 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     protected MultiblockTooltipBuilder createTooltip() {
         return new MultiblockTooltipBuilder().addMachineType("Neko Vending Machine V2")
             .addInfo("喵~ 猫猫售货机V2，完全独立版！")
-            .beginStructureBlock(2, 2, 1, false)
-            .addController("Bottom Right")
-            .addOtherStructurePart("Vending Machine Casing", "Any casing block")
-            .addOtherStructurePart("ME Vending Uplink Hatch", "Optional, any casing")
+            .beginStructureBlock(5, 4, 2, false)
+            .addController("Front Bottom Center")
+            .addOtherStructurePart(BlockRegistrar.nekoVendingCasing.getLocalizedName(), "Any casing block")
+            .addOtherStructurePart(
+                net.minecraft.util.StatCollector.translateToLocal("gtit.machine.neko_vending_uplink_hatch"),
+                "Optional, at most one, any casing")
             .addInfo(GTITUtils.getAddedByLine())
             .toolTipFinisher();
     }
@@ -1282,7 +1281,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
             }
             return aActive ? FACING_ACTIVE : FACING_FRONT;
         }
-        return FACING_SIDE;
+        return new ITexture[] { gregtech.api.enums.Textures.BlockIcons
+            .getCasingTextureForId(BlockRegistrar.nekoVendingCasing.getTextureIndex(0)) };
     }
 
     // === 覆盖层渲染 ===
@@ -1290,9 +1290,9 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
     /**
      * 设置猫猫机的覆盖层渲染
      * <p>
-     * 在客户端为 2x2x1 结构的 3 个非控制器方块设置覆盖材质。
-     * 激活时使用 {@link TextureManager#NEKOVM_OVERLAY_ACTIVE}，
-     * 非激活时使用 {@link TextureManager#NEKOVM_OVERLAY}。
+     * 在客户端为完整 5x4 正面设置电视画面，保留底边中央控制器自身的材质。
+     * 激活时使用 {@link TextureManager#NEKOTV_FULL_OVERLAY_ACTIVE}，
+     * 非激活时使用同一画面的静帧 {@link TextureManager#NEKOTV_FULL_OVERLAY}。
      * 所有覆盖层均带发光效果。
      * <p>
      * 实现方式参考 GT5U 的 MTELargeTurbineBase 模式：
@@ -1306,7 +1306,8 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
 
         // 复刻 V1：尊重用户关闭动画的配置，只有 isActive 且 usingAnimations() 才使用激活态材质
         boolean isActive = tile.isActive() && usingAnimations();
-        IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOVM_OVERLAY_ACTIVE : TextureManager.NEKOVM_OVERLAY;
+        IIconContainer[] nekoTextures = isActive ? TextureManager.NEKOTV_FULL_OVERLAY_ACTIVE
+            : TextureManager.NEKOTV_FULL_OVERLAY;
 
         // 清除旧的覆盖层 tickets
         clearOverlay();
@@ -1321,7 +1322,7 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
         short y = tile.getYCoord();
         int z = tile.getZCoord();
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < NEKO_VM_X.length; i++) {
             // 将 ABC 坐标（结构相对坐标）转换为世界坐标偏移
             int[] tABCCoord = new int[] { NEKO_VM_X[i], NEKO_VM_Y[i], 0 };
             facing.getWorldOffset(tABCCoord, tXYZOffset);

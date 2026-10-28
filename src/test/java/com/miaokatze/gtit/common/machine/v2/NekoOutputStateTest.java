@@ -14,6 +14,9 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
 import com.cleanroommc.modularui.utils.item.ItemStackHandler;
+import com.miaokatze.miaokatzecore.api.miaovision.SceneBody;
+import com.miaokatze.miaokatzecore.api.miaovision.SceneBounds;
+import com.miaokatze.miaokatzecore.api.miaovision.SceneSimulation;
 
 /** JavaExec regression; no client, world, texture, machine registration, or AE network needed. */
 public final class NekoOutputStateTest {
@@ -279,6 +282,112 @@ public final class NekoOutputStateTest {
             .getCompoundTagAt(0);
     }
 
+    private static void ballisticDelivery() {
+        Host h = new Host();
+        h.scene = new NekoOutputScene(h.ledger, h::get, h.queue);
+        for (int slot = 0; slot < 2; slot++) h.deliver(h.enqueue(1), slot);
+        for (int tick = 1; tick <= NekoOutputScene.DOOR_TICKS; tick++) h.scene.tick(tick, tick * 50);
+        NBTTagList launch = h.scene.frame(-1)
+            .getTagList("bodies", 10);
+        for (int i = 0; i < launch.tagCount(); i++) {
+            NBTTagCompound body = launch.getCompoundTagAt(i);
+            check(
+                body.getDouble("x") * body.getDouble("vx") < 0 && body.getDouble("vy") > 0,
+                "both side outlets launch inward and upward");
+        }
+        SceneBody start = NekoOutputScene.readBody(launch.getCompoundTagAt(0));
+        h.scene.tick(13, 650);
+        SceneBody next = NekoOutputScene.readBody(firstBody(h.scene));
+        check(
+            Math.abs(next.x - start.x - start.vx * .05) < 1e-10
+                && Math.abs(next.y - start.y - start.vy * .05 + .5 * 9.81 * .05 * .05) < 1e-10
+                && Math.abs(next.vy - start.vy + 9.81 * .05) < 1e-10,
+            "feed follows the launch vector and Core gravity, not a horizontal tween");
+        for (int tick = 14; tick <= 17; tick++) h.scene.tick(tick, tick * 50);
+        NBTTagCompound saved = h.scene.write();
+        NekoOutputScene resumed = new NekoOutputScene(h.ledger, h::get, h.queue);
+        resumed.restore(saved);
+        check(
+            resumed.write()
+                .equals(saved) && !resumed.isPhysicsActive(),
+            "mid-arc save restores exact pose/velocity/age with physics OFF");
+        h.scene.tick(18, 900);
+        resumed.tick(18, 900);
+        check(
+            resumed.write()
+                .equals(h.scene.write()),
+            "next saved FEED step matches uninterrupted trajectory");
+
+        // A prior-version FEED pose has already travelled: continue its actual saved p/v, not a new launch.
+        NBTTagCompound legacyFeed = (NBTTagCompound) saved.copy();
+        NBTTagCompound legacyBody = legacyFeed.getTagList("bodies", 10)
+            .getCompoundTagAt(0);
+        legacyBody.setDouble("x", 2.7);
+        legacyBody.setDouble("y", 3.0);
+        legacyBody.setDouble("vx", -1.8);
+        legacyBody.setDouble("vy", -.15);
+        resumed.restore(legacyFeed);
+        resumed.tick(18, 900);
+        next = NekoOutputScene.readBody(firstBody(resumed));
+        check(
+            Math.abs(next.x - (2.7 - 1.8 * .05)) < 1e-10
+                && Math.abs(next.y - (3 - .15 * .05 - .5 * 9.81 * .05 * .05)) < 1e-10,
+            "older in-flight FEED pose continues without teleporting to a recalculated age path");
+
+        // A single-body continuation isolates the handoff from intentional body/body collisions.
+        Host single = new Host();
+        single.scene = new NekoOutputScene(single.ledger, single::get, single.queue);
+        single.deliver(single.enqueue(1), 0);
+        for (int tick = 1; tick < NekoOutputScene.DOOR_TICKS + NekoOutputScene.FEED_TICKS; tick++)
+            single.scene.tick(tick, tick * 50);
+        SceneBody beforeRelease = NekoOutputScene.readBody(firstBody(single.scene));
+        SceneSimulation core = new SceneSimulation(
+            NekoOutputScene.LAYOUT,
+            new SceneBounds(-5, 0, -3, 5, 8, 3),
+            SceneSimulation.ContactModel.ORIENTED_BOX);
+        core.put(beforeRelease);
+        core.setEnabled(true);
+        core.step();
+        single.scene.tick(22, 1100);
+        check(
+            NekoOutputScene.bodyTag(core.snapshot().bodies.get(0))
+                .equals(NekoOutputScene.bodyTag(NekoOutputScene.readBody(firstBody(single.scene)))),
+            "handoff applies exactly one Core tick to the last feed pose and velocity");
+
+        Host rear = new Host();
+        rear.scene = new NekoOutputScene(rear.ledger, rear::get, rear.queue);
+        rear.scene.setPhysicsAllowed(false);
+        for (int slot = 0; slot < 2; slot++) {
+            ItemStack stack = iron(1);
+            rear.ledger.enqueue(stack, true);
+            rear.pending.add(stack);
+            rear.deliver(stack, slot);
+        }
+        for (int tick = 1; tick <= 12; tick++) rear.scene.tick(tick, tick * 50);
+        NBTTagList rearLaunch = rear.scene.frame(-1)
+            .getTagList("bodies", 10);
+        SceneBody a = NekoOutputScene.readBody(rearLaunch.getCompoundTagAt(0)),
+            b = NekoOutputScene.readBody(rearLaunch.getCompoundTagAt(1));
+        check(
+            a.vz > 0 && b.vz > 0 && a.vy > 0 && b.vy > 0 && a.vx != b.vx,
+            "rear batch launches forward/upward with deterministic per-identity fan vectors");
+        rear.scene.tick(13, 650);
+        next = NekoOutputScene.readBody(firstBody(rear.scene));
+        check(
+            next.y > a.y && next.z > a.z
+                && !rear.scene.isPhysicsActive()
+                && rear.scene.write()
+                    .getLong("tick") == 0,
+            "physics OFF still advances delivery arc without enabling or stepping Core");
+        for (int tick = 14; tick <= 30; tick++) rear.scene.tick(tick, tick * 50);
+        check(
+            !rear.scene.isPhysicsActive() && rear.scene.write()
+                .getLong("tick") == 0 && firstBody(rear.scene).getInteger("deliveryStage") == NekoOutputScene.RELEASED,
+            "physics OFF finishes into the existing settled presentation with zero simulation steps");
+        System.out.println(
+            "Ballistic delivery: launch vectors, gravity, save/resume, legacy pose, Core handoff and physics OFF passed");
+    }
+
     private static void authoritativeDelivery() {
         Host h = new Host();
         h.scene = new NekoOutputScene(h.ledger, h::get, h.queue);
@@ -307,8 +416,8 @@ public final class NekoOutputStateTest {
         NBTTagCompound feed = firstBody(h.scene);
         check(feed.getInteger("deliveryStage") == NekoOutputScene.FEED, "door completion starts visible feed");
         check(
-            Math.abs(feed.getDouble("x")) == 4.3 && feed.getDouble("y") == 3.0,
-            "ordinary delivery starts inside side paw outlet before clearing the interpolated door");
+            Math.abs(feed.getDouble("x")) == 3.25 && feed.getDouble("y") == 3.0,
+            "ordinary launch clears the side outlet lip to leave headroom for its upward arc");
         check(
             h.queue.phase(0, 100600) == 1 && h.queue.phaseAgeMs(0, 100600) == 0,
             "visible entrance starts exact ME hold clock");
@@ -377,7 +486,22 @@ public final class NekoOutputStateTest {
         for (int t = 1; t <= 12; t++) rear.scene.tick(t, t * 50);
         int visible = 0;
         for (NekoOutputLedger.Drop d : rear.ledger.drops()) if (rear.scene.isVisible(d.dropId)) visible++;
-        check(visible == 1, "rear burst is bounded feed, not simultaneous pile explosion");
+        check(visible == 17, "all ready rear drops emerge together after the shutter opens");
+        NBTTagList burst = rear.scene.frame(-1)
+            .getTagList("bodies", 10);
+        for (int i = 0; i < burst.tagCount(); i++) {
+            check(
+                burst.getCompoundTagAt(i)
+                    .getInteger("deliveryAgeTicks") == 0,
+                "rear batch shares one emergence tick");
+        }
+        NBTTagCompound burstSave = rear.scene.write();
+        NekoOutputScene burstReload = new NekoOutputScene(rear.ledger, rear::get, rear.queue);
+        burstReload.restore(burstSave);
+        check(
+            burstReload.write()
+                .equals(burstSave),
+            "simultaneous burst restores without replay or lost identities");
         NBTTagCompound rearBody = firstBody(rear.scene);
         check(
             rearBody.getInteger("route") == 2 && rearBody.getDouble("z") == -2.65,
@@ -1296,6 +1420,7 @@ public final class NekoOutputStateTest {
         meLateSharedBodyMember();
         meClockRollbackAndLegacyFuture();
         authoritativeDelivery();
+        ballisticDelivery();
         meVisibleClockPersistence();
         twoPlayersAndReservations();
         persistentEnqueueIdentity();

@@ -19,9 +19,9 @@ public final class LotteryWheelGeometryTest {
             for (int gui = 1; gui <= 4; gui++) {
                 // Reuse one layout to test changing screen, GUI scale and returning to an old size.
                 layout.resize(display[0] / gui, display[1] / gui);
-                int width = layout.business.width - 16;
-                int height = layout.business.height - 60 - 88;
-                check(width >= 108 && height >= 80, "native wheel fits max ring at every supported scale");
+                int width = layout.business.width - 64;
+                int height = layout.business.height - 60 - 40;
+                check(width >= 132 && height >= 132, "native circular wheel fits every supported scale");
                 final double scale = layout.scale;
                 final int originX = layout.business.x + 8;
                 final int originY = layout.business.y + 60;
@@ -30,6 +30,15 @@ public final class LotteryWheelGeometryTest {
                 for (int count = 1; count <= 10; count++) {
                     for (int slot = 0; slot < count; slot++) {
                         int[] p = LotteryWheelLayout.slotTopLeft(slot, count, width, height);
+                        int radius = Math.min(width, height) / 2 - 18;
+                        double distance = Math.hypot(p[0] + 12 - width / 2, p[1] + 12 - height / 2);
+                        check(Math.abs(distance - radius) < 1, "prizes remain on the circular rim");
+                        for (int other = 0; other < slot; other++) {
+                            int[] q = LotteryWheelLayout.slotTopLeft(other, count, width, height);
+                            check(
+                                Math.abs(p[0] - q[0]) >= 24 || Math.abs(p[1] - q[1]) >= 24,
+                                "circular prizes never overlap");
+                        }
                         int x0 = tx.applyAsInt(p[0], p[1]), y0 = ty.applyAsInt(p[0], p[1]);
                         int x1 = tx.applyAsInt(p[0] + 24, p[1] + 24);
                         int y1 = ty.applyAsInt(p[0] + 24, p[1] + 24);

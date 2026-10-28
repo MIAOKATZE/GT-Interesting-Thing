@@ -67,6 +67,94 @@ public final class VendingSceneContracts {
         } catch (IOException expected) {}
     }
 
+    private static NBTTagCompound doorFrame(long revision, NBTTagCompound body, int route, double door) {
+        NBTTagCompound n = frame(revision, true, body);
+        n.setDouble(route == 0 ? "doorLeft" : route == 1 ? "doorRight" : "doorRear", door);
+        return n;
+    }
+
+    private static void continuousEntrance(List<ItemSlot> slots) throws Exception {
+        for (int route = 0; route < 3; route++) {
+            VendingSceneView view = new VendingSceneView(slots);
+            NBTTagCompound waiting = body(1, 0);
+            waiting.setInteger("route", route);
+            waiting.setBoolean("rear", route == 2);
+            waiting.setInteger("deliveryStage", 0);
+            waiting.setDouble("x", route == 0 ? -3.25 : route == 1 ? 3.25 : 0);
+            waiting.setDouble("y", route == 2 ? .58 : 3);
+            waiting.setDouble("z", route == 2 ? -2.65 : .5);
+            waiting.setDouble("vx", route == 0 ? 3 : route == 1 ? -3 : 0);
+            waiting.setDouble("vy", 2.5);
+            waiting.setDouble("vz", route == 2 ? 2.5 : 0);
+            check(view.accept(decode(doorFrame(1, waiting, route, 2.0 / 3)), 0), "waiting frame");
+            NBTTagCompound launch = (NBTTagCompound) waiting.copy();
+            launch.setInteger("deliveryStage", 1);
+            check(view.accept(decode(doorFrame(2, launch, route, 1)), 200000000L), "launch frame");
+            check(
+                view.entries()
+                    .size() == 1,
+                "hidden launch retains its synchronized slot ownership");
+            for (long now : new long[] { 200000000L, 250000000L, 399000000L })
+                check(view.snapshot(now).bodies.isEmpty(), "launch sample stays hidden instead of hovering for 200ms");
+            check(view.door(route, 400000000L) == 1, "client door finishes opening before first moving segment");
+            SceneBody origin = decode(doorFrame(2, launch, route, 1)).entries.get("1").pose;
+            NBTTagCompound feed = (NBTTagCompound) launch.copy();
+            for (int segment = 1; segment <= 3; segment++) {
+                double age = segment * .2;
+                feed.setInteger("deliveryStage", segment == 3 ? 2 : 1);
+                feed.setInteger("deliveryAgeTicks", segment == 3 ? 0 : segment * 4);
+                feed.setDouble("x", origin.x + origin.vx * age);
+                feed.setDouble("y", origin.y + origin.vy * age - .5 * 9.81 * age * age);
+                feed.setDouble("z", origin.z + origin.vz * age);
+                feed.setDouble("vy", origin.vy - 9.81 * age);
+                long received = (segment + 1) * 200000000L;
+                SceneBody before = segment == 1 ? origin : view.snapshot(received).bodies.get(0);
+                check(view.accept(decode(doorFrame(segment + 2, feed, route, 1)), received), "moving sample");
+                SceneBody first = view.snapshot(received).bodies.get(0);
+                check(
+                    Math.abs(first.x - before.x) < 1e-10 && Math.abs(first.y - before.y) < 1e-10
+                        && Math.abs(first.z - before.z) < 1e-10,
+                    "new segment and FEED/release handoff preserve displayed position");
+                double position = route == 2 ? first.z : first.x;
+                for (int sample = 1; sample <= 4; sample++) {
+                    SceneBody next = view.snapshot(received + sample * 50000000L).bodies.get(0);
+                    double nextPosition = route == 2 ? next.z : next.x;
+                    check(
+                        (nextPosition - position) * (route == 1 ? -1 : 1) > 0,
+                        "every drawn segment continues inward/forward after spawn without a stationary interval");
+                    position = nextPosition;
+                }
+            }
+            SceneBody end = view.snapshot(1000000000L).bodies.get(0);
+            check(
+                view.snapshot(1200000000L).bodies.get(0).x == end.x
+                    && view.snapshot(1200000000L).bodies.get(0).z == end.z,
+                "presentation remains bounded by the last sample with no extrapolation");
+            view.close();
+
+            VendingSceneView reopened = new VendingSceneView(slots);
+            reopened.accept(decode(doorFrame(1, launch, route, 1)), 0);
+            check(reopened.snapshot(0).bodies.size() == 1, "full GUI reopen restores current FEED without replay");
+            reopened.close();
+        }
+        VendingSceneView view = new VendingSceneView(slots);
+        view.accept(decode(frame(1, true)), 0);
+        NBTTagCompound launch = body(1, 0);
+        launch.setInteger("deliveryStage", 1);
+        view.accept(decode(frame(2, false, launch)), 200000000L);
+        check(view.snapshot(250000000L).bodies.isEmpty(), "delta birth without WAIT also defers a stationary launch");
+        view.paused = true;
+        check(view.snapshot(350000000L).bodies.isEmpty(), "pause preserves hidden entrance");
+        view.paused = false;
+        view.reducedMotion = true;
+        check(
+            view.snapshot(350000000L).bodies.size() == 1,
+            "reduced motion keeps immediate authoritative target semantics");
+        view.close();
+        System.out.println(
+            "Continuous entrance: no launch hover, three door directions, segment/handoff continuity, bounded interpolation, reopen, pause and reduced motion passed");
+    }
+
     public static void main(String[] args) throws Exception {
         if (!com.miaokatze.gtit.testutil.MinecraftTestBootstrap.enter(VendingSceneContracts.class, args)) return;
         VendingNativeModelPolicyTest.main(args);
@@ -122,6 +210,7 @@ public final class VendingSceneContracts {
         inventory.setStackInSlot(1, new ItemStack(Items.iron_ingot, 7));
         List<ItemSlot> slots = new ArrayList<>();
         for (int i = 0; i < 100; i++) slots.add(new ItemSlot().slot(inventory, i));
+        continuousEntrance(slots);
         VendingSceneView view = new VendingSceneView(slots);
         check(!view.accept(decode(frame(1, false, body(1, 0))), 0), "must open with full");
         check(view.accept(decode(frame(1, true, body(1, 0), body(2, 1))), 0), "full accepted");

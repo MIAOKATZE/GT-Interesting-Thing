@@ -10,11 +10,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ChatComponentText;
 
-import com.cubefury.vendingmachine.blocks.VendingMachineBlocks;
+import com.gtnewhorizon.structurelib.alignment.enumerable.ExtendedFacing;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
 import com.miaokatze.gtit.common.items.terminal.NekoVendingTarget;
 import com.miaokatze.gtit.common.items.terminal.RemoteVendingContainer;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.register.BlockRegistrar;
 
 import gregtech.api.GregTechAPI;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
@@ -231,14 +232,16 @@ final class TestLabVendingFixture implements ProbeScenario {
             machine = vending;
             base.setOwnerName(player.getCommandSenderName());
             base.setOwnerUuid(player.getUniqueID());
-            // Symmetric, small owned casing fixture works with the native placement-facing choice.
-            for (int[] offset : new int[][] { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }) {
-                if (!context.setBlock(12 + offset[0], 0, 12 + offset[1], VendingMachineBlocks.casingBlock, 0)
-                    || !context.setBlock(12 + offset[0], 1, 12 + offset[1], VendingMachineBlocks.casingBlock, 0))
-                    throw new IllegalStateException("Owned vending casing placement failed");
-            }
-            if (!context.setBlock(12, 1, 12, VendingMachineBlocks.casingBlock, 0))
-                throw new IllegalStateException("Owned vending top casing placement failed");
+            ExtendedFacing facing = machine.getExtendedFacing();
+            int[] offset = new int[3];
+            for (int depth = 0; depth < 2; depth++)
+                for (int row = 0; row < 4; row++) for (int col = 0; col < 5; col++) {
+                    if (depth == 0 && row == 3 && col == 2) continue;
+                    facing.getWorldOffset(new int[] { col - 2, row - 3, depth }, offset);
+                    if (!context
+                        .setBlock(12 + offset[0], offset[1], 12 + offset[2], BlockRegistrar.nekoVendingCasing, 0))
+                        throw new IllegalStateException("Owned vending casing placement failed");
+                }
             context
                 .check("native-controller", true, "Registered ItemMachines placement, owned laboratory dimension only");
         }

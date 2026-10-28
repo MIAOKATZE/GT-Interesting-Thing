@@ -373,6 +373,13 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
     /** Compact A→B card. Wallet requirements are visual tokens, never injected into settlement inputs. */
     private void drawNativeTrade(ModularGuiContext context, WidgetThemeEntry<?> theme) {
         int width = getArea().width, height = getArea().height;
+        // 保留选中底色；按住时只压暗纸面，物品、数量和锁定信息保持清楚。
+        if (pressed) GuiDraw.drawRect(2, 2, width - 4, height - 4, 0x186a5e48);
+        if (isHovering() || pressed) {
+            int edge = pressed ? NekoVendingTheme.GOLD : 0xffb5a27a;
+            GuiDraw.drawRect(2, 1, width - 4, 1, edge);
+            GuiDraw.drawRect(2, height - 2, width - 4, 1, edge);
+        }
         boolean list = displayType == NekoDisplayType.LIST;
         NekoTradeCardLayout geometry = new NekoTradeCardLayout(
             width,
@@ -710,52 +717,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
     /** One complete tooltip for the card and selected-trade detail, including detached wallet costs. */
     public static void describeTrade(RichTooltip builder, NekoTradeItemDisplay trade) {
-        builder.clearText();
-        NekoVendingTheme.tooltip(builder);
-        builder.addLine(
-            IKey.str(trade.getDisplayItemName() + "  #" + trade.getOrderId())
-                .color(NekoVendingTheme.TOOLTIP_INK));
-        builder.addLine(
-            IKey.str(nativeStatus(trade))
-                .color(trade.isTradeable() ? 0xffb7cf9d : 0xfff1a281));
-        builder.emptyLine();
-        builder.addLine(
-            IKey.str("需求 / 支付")
-                .color(NekoVendingTheme.TOOLTIP_TITLE));
-        for (java.util.Map.Entry<String, Long> currency : trade.getCurrencyCosts()
-            .entrySet()) {
-            builder.addLine(
-                IKey.str(
-                    "  " + currency.getValue()
-                        + " × "
-                        + NekoCurrencyRegistrar.getDisplayName(currency.getKey())
-                        + "（钱包支付）")
-                    .color(NekoVendingTheme.TOOLTIP_INK));
-        }
-        for (NekoBigItemStack input : trade.getInputs()) NekoTradeItemDisplay.describeChoice(builder, input, false, "");
-        if (!trade.hasInputs() && !trade.hasCurrencyCost()) builder.addLine("  无需求");
-        builder.emptyLine();
-        builder.addLine(
-            IKey.str("产出")
-                .color(0xffb7cf9d));
-        for (NekoBigItemStack output : trade.getOutputs())
-            NekoTradeItemDisplay.describeChoice(builder, output, true, "");
-        if (trade.isOneTimeOnly()) {
-            builder.addLine(
-                IKey.lang(trade.isOneTimeRedeemed() ? "gtit.trade.cooldown.redeemed_hint" : trade.getOneTimeStatusKey())
-                    .color(0xfff1a281));
-        }
-        if (trade.getMaxTradesInCooldown() > 1 && !trade.isOneTimeOnly()) {
-            builder.addLine(
-                "本轮剩余次数: " + Math.max(0, trade.getMaxTradesInCooldown() - trade.getUsedTradesInCooldown())
-                    + "/"
-                    + trade.getMaxTradesInCooldown()
-                    + "（团队缩放）");
-        }
-        builder.emptyLine();
-        builder.addLine(
-            IKey.str("点击查看 · Shift+点击交易 · Ctrl+点击收藏")
-                .color(NekoVendingTheme.TOOLTIP_MUTED));
+        NekoVendingTooltip.describeTrade(builder, trade);
     }
 
     // ==================== 鼠标交互 ====================
@@ -801,6 +763,7 @@ public class NekoTradeItemDisplayWidget extends ItemDisplayWidget implements Int
 
         // Shift 和 Ctrl 同时按下或同时未按下时忽略
         if (shiftHeld == ctrlHeld) {
+            if (nativePresentation && !shiftHeld) pressed = true;
             return nativePresentation && !shiftHeld ? Interactable.Result.SUCCESS : Interactable.Result.IGNORE;
         }
 

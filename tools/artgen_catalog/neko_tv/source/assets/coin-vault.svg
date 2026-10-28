@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="128" viewBox="0 0 160 128" shape-rendering="crispEdges">
+ <!-- Thin warm wood/brass face; outer 2px match the independent wood casing UV. -->
+ <path fill="#48301c" d="M2 2h156v94H2z"/>
+ <path fill="#b38a46" d="M3 3h154v92H3z"/>
+ <path fill="#e6c57a" d="M4 4h152v1H4z"/>
+ <path fill="#664823" d="M4 5h152v89H4z"/>
+ <path fill="#241d12" d="M6 6h148v88H6z"/>
+ <path fill="#362817" d="M8 8h144v85H8z"/>
+ <path fill="#3e2f19" d="M9 9h142v73H9z"/>
+ <path fill="#44331b" d="M11 11h138v47H11z"/>
+ <path fill="#4b381d" d="M15 15h130v29H15z"/>
+ <path fill="#4e3c20" d="M22 18h116v13H22z"/>
+ <!-- Solid warm wooden counter: cats peek from its back edge, never a dark slot. -->
+ <path fill="#b88749" d="M2 96h156v9H2z"/>
+ <path fill="#d0a15a" d="M2 96h156v1H2z"/>
+ <path fill="#a4783c" d="M62 96h2v30h-2zm34 0h2v30h-2z"/>
+ <path fill="#e0bb71" d="M62 96h1v30h-1zm35 0h1v30h-1z"/>
+</svg>
