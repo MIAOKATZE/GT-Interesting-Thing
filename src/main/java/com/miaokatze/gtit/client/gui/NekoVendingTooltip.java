@@ -233,7 +233,8 @@ public final class NekoVendingTooltip {
 
     private static void row(RichTooltip tooltip, int width, int height, IDrawable content) {
         IDrawable paper = (context, x, y, w, h, theme) -> {
-            GuiDraw.drawRect(x, y, w, h, 0xffeee4ca);
+            // ComposedLine owns one extra interline pixel beneath each of these drawable rows.
+            GuiDraw.drawRect(x, y, w, h + 1, 0xffeee4ca);
             content.draw(context, x, y, w, h, theme);
         };
         tooltip.addLine(
