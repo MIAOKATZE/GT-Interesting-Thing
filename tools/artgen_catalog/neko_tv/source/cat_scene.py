@@ -40,7 +40,7 @@ def pose_at(time, right):
     p = {'time':t, 'x':128 if right else 32, 'world_y':0., 'world_z':0., 'yaw':.55 if right else -.55,
          'body_pitch':0., 'body_roll':0., 'head_yaw':0., 'head_pitch':-.08,
          'sitting':0., 'crouch':0., 'push':0., 'tuck':0., 'reach':0.,
-         'climb':0., 'walk':0., 'walk_phase':0.,
+         'climb':0., 'climb_pull':0., 'walk':0., 'walk_phase':0.,
          'visible':False, 'occlusion_y':96, 'tail_sway':.12*math.sin(t*2.2+right),
          'stage':'hidden', 'airborne':False}
     peek_start, jump_start, jump_end = (10.3,12.2,15.2) if right else (.8,3.2,4.4)
@@ -56,18 +56,22 @@ def pose_at(time, right):
                  head_yaw=(.32 if right else -.22)*math.sin(appear*math.pi/2))
         if right:
             grip = smooth(11.5,12.2,t)
-            p.update(sitting=.95*(1-grip), crouch=0., body_pitch=-.55*grip,
-                     world_z=6-2*grip, climb=grip, head_yaw=.32*(1-grip),
+            support_y,support_z = climb_support(0)
+            p.update(sitting=.95*(1-grip), crouch=0., body_pitch=-.8*grip,
+                     world_y=13*(1-grip)+support_y*grip,
+                     world_z=6*(1-grip)+support_z*grip,
+                     climb=grip, climb_pull=grip, head_yaw=.32*(1-grip),
                      occlusion_y=104 if grip > .1 else 96)
     elif t < jump_end:
         u = (t-jump_start)/(jump_end-jump_start)
         if right:
-            # The forepaws remain on the same rear-ledge points during the pull.
-            # Each hind leg takes a separate step; there is no ballistic flight.
-            lift = smooth(12.2,14.9,t)
+            # Keep the shoulders on the chest. Root position follows the actual
+            # straight forelegs; hand contacts move across the counter naturally.
+            lift = smooth(12.2,15.2,t)
             settle = smooth(14.6,15.2,t)
-            p.update(stage='climb_up', world_y=13*(1-lift), world_z=4*(1-lift),
-                     body_pitch=-.55*(1-lift), climb=1-settle,
+            support_y,support_z = climb_support(lift)
+            p.update(stage='climb_up', world_y=support_y, world_z=support_z,
+                     body_pitch=-.8*(1-lift), climb=1-settle, climb_pull=1-lift,
                      head_pitch=-.16, occlusion_y=104, x=128,
                      tail_sway=.15*math.sin(t*2.2))
         else:
@@ -102,8 +106,9 @@ def pose_at(time, right):
             notice = smooth(11.2,11.6,t)
             turn = smooth(11.8,12.2,t)
             p.update(stage='reach_coin' if reach > 0 else 'notice_black_cat',
-                     reach=reach, body_pitch=-.48*reach+.12*notice,
-                     head_pitch=-.38*reach-.16*notice,
+                     reach=reach, body_pitch=-1.25*reach+.12*notice,
+                     world_y=-7*math.sin(1.25*reach),
+                     head_pitch=-.12*reach-.16*notice,
                      head_yaw=.8*notice*(1-turn),
                      yaw=-.55-1.85*smooth(4.4,5.8,t)-(2*math.pi-4.75)*turn,
                      body_roll=-.08*notice,
@@ -126,7 +131,7 @@ def pose_at(time, right):
 
 
 def root_rotate(point, pose, inverse=False):
-    """Scene-space root rotation; also used to pin paws to cabinet ledge points."""
+    """Scene-space root rotation, in the renderer's Rz @ Ry @ Rx order."""
     x,y,z = point
     pitch,yaw,roll = pose['body_pitch'],pose['yaw'],pose['body_roll']
     if inverse:
@@ -140,34 +145,24 @@ def root_rotate(point, pose, inverse=False):
     return [x,y,z]
 
 
-def ledge_paw(pose, side):
-    # Standing front paw centers on the rear half of the counter. Keep these
-    # world-space contacts fixed while the shoulder and rear half are pulled up.
-    return [side*1.2*math.cos(.55)-4*math.sin(.55), -3.2,
-            -side*1.2*math.sin(.55)-4*math.cos(.55)]
-
-
-def pin_front_leg(p, angle, pose, side):
-    target = ledge_paw(pose, side)
-    target[1] -= pose['world_y']+pose['crouch']*1.4
-    target[2] -= pose['world_z']
-    target = root_rotate(target,pose,inverse=True)
-    target[1] += 24+pose['sitting']*1.68
-    dy,dz = target[1]-p[1],target[2]-p[2]
-    pinned_angle = math.atan2(dz,dy)-math.atan2(1,10)
-    foot_y = 10*math.cos(pinned_angle)-math.sin(pinned_angle)
-    foot_z = 10*math.sin(pinned_angle)+math.cos(pinned_angle)
-    blend = pose['climb']
-    p[:3] = [a*(1-blend)+b*blend for a,b in zip(p[:3],
-              [target[0],target[1]-foot_y,target[2]-foot_z])]
-    return angle*(1-blend)+pinned_angle*blend
+def climb_support(lift):
+    """Place the body from the average paw endpoint, never move a shoulder joint."""
+    pull = 1-lift
+    angle = -.45*pull
+    # Mean of the two symmetrically splayed, original 10px front-leg endpoints.
+    foot_y = -10.2+10*math.cos(angle)-math.sin(angle)
+    foot_z = -5+(10*math.sin(angle)+math.cos(angle))*math.cos(.25*pull)
+    endpoint = root_rotate([0,foot_y,foot_z],
+                           {'body_pitch':-.8*pull,'yaw':.55,'body_roll':0})
+    # Hands travel only across the 8px-deep wooden top as the cat hauls up.
+    return -2.9+2.7*lift-endpoint[1], -4*math.cos(.55)-endpoint[2]
 
 
 def part_pose(pose, right):
     result = {}
     for i, part in enumerate(MODEL['parts']):
         p = [a*(1-pose['sitting'])+b*pose['sitting'] for a,b in zip(STAND[i],SIT[i])]
-        angle, yaw = p[3], 0
+        angle, yaw, roll = p[3], 0, 0
         if i == 0:
             angle, yaw = pose['head_pitch'], pose['head_yaw']
         if i in (2,3):
@@ -182,21 +177,27 @@ def part_pose(pose, right):
                 angle -= 1.15*math.sin(math.pi*step)*pose['climb']
                 p[1] -= 1.8*math.sin(math.pi*step)*pose['climb']
         if i in (6,7):
+            side = 1 if i == 6 else -1
             angle -= .65*pose['crouch']+1.2*pose['tuck']+.35*pose['push']
-            angle -= pose['reach']*((1.65 if i == 6 else 1.5)
-                     +.13*math.sin(pose['time']*5.2+(0 if i == 6 else math.pi)))
-            p[1] -= .8*pose['reach']
-            if right and pose['climb']:
-                angle = pin_front_leg(p,angle,pose,1 if i == 6 else -1)
+            angle -= pose['reach']*((.9 if i == 6 else .8)
+                     +.08*math.sin(pose['time']*5.2+(0 if i == 6 else math.pi)))
+            angle -= .45*pose['climb_pull']
+            # Forward-reaching single-box limbs fan outside the cheeks. A yaw
+            # rotation opens the arm arc without translating its shoulder.
+            yaw = -side*(.8*pose['reach']+.25*pose['climb_pull'])
+            yaw -= side*min(1,max(0,(-angle-.4)/.5))*(1-pose['reach'])*(1-pose['climb'])
         if i in (4,5,6,7):
             # Diagonal pairs alternate in the original four-legged model.
             phase = pose['walk_phase']+(math.pi if i in (5,6) else 0)
-            angle += .6*pose['walk']*math.sin(phase)
-            p[1] -= .75*pose['walk']*max(0,math.sin(phase))
+            angle += (.35 if i in (6,7) else .6)*pose['walk']*math.sin(phase)
+            if i in (6,7):
+                roll = -(1 if i == 6 else -1)*.32*pose['walk']*max(0,math.sin(phase))
+            if i in (4,5):
+                p[1] -= .75*pose['walk']*max(0,math.sin(phase))
         if i == 0:
-            p[1] -= .6*pose['reach']
+            p[1] -= 1.7*pose['reach']
         result[part['name']] = {'translation':[a-b for a,b in zip(p[:3],part['pivot'])],
-                                'rotation':[angle,yaw,0]}
+                                'rotation':[angle,yaw,roll]}
     return result
 
 
@@ -237,7 +238,7 @@ def verify_story():
     for i in (6,7):
         paw,shoulder = [part_point(red,False,i,p) for p in ((0,10,1),(0,0,0))]
         px,sx = project_point(red,paw),project_point(red,shoulder)
-        assert paw[2] > shoulder[2] and px[0] > sx[0]+4 and px[1] < sx[1]-1
+        assert paw[2] > shoulder[2] and px[0] > sx[0]+2 and px[1] < sx[1]-1
         reach.append({'part':MODEL['parts'][i]['name'],'paw_screen':px,'shoulder_screen':sx,
                       'toward_screen_delta_z':paw[2]-shoulder[2]})
     for n in range(65,97):
@@ -245,17 +246,16 @@ def verify_story():
         for i in (6,7):
             paw,shoulder = [part_point(p,False,i,q) for q in ((0,10,1),(0,0,0))]
             a,b = project_point(p,paw),project_point(p,shoulder)
-            assert paw[2] > shoulder[2] and a[0] > b[0]+4 and a[1] < b[1]-1
+            assert paw[2] > shoulder[2] and a[0] > b[0]+2 and a[1] < b[1]-1
     climb = [pose_at(n/10,True) for n in range(122,153)]
     assert all(not p['airborne'] for p in climb)
     assert all(a['world_y'] >= b['world_y'] for a,b in zip(climb,climb[1:]))
     contacts = []
     for i in (6,7):
-        points = [part_point(p,True,i,(0,10,1)) for p in climb if p['time'] <= 14.6]
-        drift = max(math.dist(a,b) for a in points for b in points)
-        assert drift < 1e-8, 'Climbing forepaw slipped off its fixed ledge contact'
-        contacts.append({'part':MODEL['parts'][i]['name'],'max_world_drift':drift,
-                         'screen_contact':project_point(climb[0],points[0])})
+        points = [project_point(p,part_point(p,True,i,(0,10,1))) for p in climb]
+        assert all(95 <= point[1] <= 103 for point in points)
+        contacts.append({'part':MODEL['parts'][i]['name'],
+                         'counter_contact_screen_y_range':[min(q[1] for q in points),max(q[1] for q in points)]})
     hind = [part_pose(pose_at(t,True),True) for t in (13.4,14.1,14.6,15.1)]
     assert hind[1]['ocelotBackLeftLeg']['rotation'][0] < hind[1]['ocelotBackRightLeg']['rotation'][0]-.3
     assert hind[2]['ocelotBackRightLeg']['rotation'][0] < hind[2]['ocelotBackLeftLeg']['rotation'][0]-.3
@@ -291,7 +291,7 @@ def verify_story():
     return {'asymmetric_story_order':True,'look_only_no_cat_contact':True,
             'red_nose_toward_screen_delta_z':nose[2]-head[2],'red_reaching_paws':reach,
             'red_full_reach_direction_frames':32,
-            'black_climb_no_airborne_frames':len(climb),'black_climb_fixed_forepaws':contacts,
+            'black_climb_no_airborne_frames':len(climb),'black_climb_forepaws_on_counter':contacts,
             'black_hind_steps_alternate':True,'black_walk_left_frames':len(walk),
             'black_walk_destination_x':36,'stage_join_continuity':joins,
             'model_space_curved_flights':flights,'closed_loop_hidden_endpoints':True}
