@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from playwright.sync_api import sync_playwright
 
 HERE = Path(__file__).resolve().parent
@@ -93,8 +93,11 @@ def main():
                 return [x0,y0,x1,y1];
             });
         }''', {'src': data_url(SOURCE,'image/png'), 'size': composition['coinSize']})
-        assert min(min(b[2] - b[0], b[3] - b[1]) for b in rendered_alpha_boxes) >= 37.5
+        rendered_coin_sizes = [[b[2]-b[0],b[3]-b[1]] for b in rendered_alpha_boxes]
+        assert min(min(size) for size in rendered_coin_sizes) >= 28
+        assert max(max(size) for size in rendered_coin_sizes) <= 32
         assert len(composition['particles']) == 8
+        assert all(c['size'] == composition['coinSize'] for c in composition['particles'])
         assert len({c['speed'] for c in composition['particles']}) == 8
         assert all(c['cycles'] == int(c['cycles']) and c['speed'] > 0
                    for c in composition['particles'])
@@ -180,15 +183,26 @@ def main():
     for frame in frames:
         image = frame.copy(); image.paste(controller, (64,96)); display.append(image)
     for n, label in ((0,'hidden'),(20,'red-peek-back'),(36,'red-jump-up'),(75,'red-reach-coin'),
-                     (121,'black-peek-later'),(117,'red-startled'),(127,'red-jump-back'),
-                     (145,'black-watch-exit'),(175,'black-look-outside'),(205,'black-jump-back')):
+                     (110,'black-peek-later'),(117,'red-startled'),(127,'red-jump-back'),
+                     (122,'black-grip-ledge'),(135,'black-pull-up'),(141,'black-left-hind-step'),
+                     (147,'black-right-hind-step'),(158,'black-watch-exit'),(169,'black-look-outside'),
+                     (182,'black-walk-left'),(195,'black-cross-center'),(211,'black-at-red-origin'),
+                     (218,'black-jump-down-left')):
         display[n].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / f'key-{label}.png')
     frames[75].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / 'screen-mask.png')
     display[75].resize((800,640), Image.Resampling.NEAREST).save(PREVIEW / 'screen.png')
-    contact = Image.new('RGBA', (WIDTH*4,HEIGHT*3))
-    for i,n in enumerate((0,20,36,55,75,100,112,127,145,175,203,230)):
+    contact = Image.new('RGBA', (WIDTH*4,HEIGHT*4))
+    for i,n in enumerate((20,36,75,110,117,127,122,135,141,147,158,169,182,195,211,218)):
         contact.paste(display[n], (i%4*WIDTH,i//4*HEIGHT))
-    contact.resize((1280,768), Image.Resampling.NEAREST).save(PREVIEW / 'contact-sheet.png')
+    contact.resize((1280,1024), Image.Resampling.NEAREST).save(PREVIEW / 'contact-sheet.png')
+    # A labelled close view keeps the tiny original-model paws inspectable.
+    detail = Image.new('RGB',(160*4,68*3),'#342719')
+    for i,n in enumerate((122,130,135,141,145,147,152,169,182,195,211,218)):
+        tile = Image.new('RGB',(160,68),'#342719')
+        tile.paste(display[n].crop((0,48,160,104)),(0,0))
+        ImageDraw.Draw(tile).text((3,57),f'{n/FPS:.1f}s',fill='white')
+        detail.paste(tile,(i%4*160,i//4*68))
+    detail.resize((1280,408),Image.Resampling.NEAREST).save(PREVIEW / 'motion-detail.png')
     previews = [frame.resize((480,384), Image.Resampling.NEAREST).convert('RGB') for frame in display]
     previews[0].save(PREVIEW / 'screen.gif', save_all=True, append_images=previews[1:],
                      duration=100, loop=0, optimize=False)
@@ -210,7 +224,9 @@ def main():
               'coin_flow_quality':coin_flow_quality,
               'coin_flow_source_sha256':digest((HERE / 'source/coin_flow.js').read_bytes()),
               'coin_alpha_rendered_boxes': rendered_alpha_boxes,
+              'coin_alpha_rendered_sizes': rendered_coin_sizes,
               'coin_alpha_min_diameter_px': min(min(b[2]-b[0],b[3]-b[1]) for b in rendered_alpha_boxes),
+              'coin_alpha_max_diameter_px': max(max(size) for size in rendered_coin_sizes),
               'reassembled_frames_equal_canvas': FRAMES, 'endpoint_24s_equals_0s': True,
               'duplicate_endpoint_omitted': True, 'browser_errors': errors, 'assets': assets}
     (PREVIEW / 'verification.json').write_text(json.dumps(report,indent=2)+'\n', encoding='utf-8')

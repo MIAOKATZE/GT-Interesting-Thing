@@ -1,5 +1,6 @@
 // Offline native front composition. Cats are perspective/UV/depth-rendered ModelOcelot frames.
-const PERIOD = 24, COIN_SIZE = 49, WIDTH = 160, HEIGHT = 128, FPS = 10;
+// Source alpha occupies 25–29px of each 32px frame: a 35px draw gives 28–32px visible coins.
+const PERIOD = 24, COIN_SIZE = 35, WIDTH = 160, HEIGHT = 128, FPS = 10;
 const canvas = document.createElement('canvas');
 canvas.width = WIDTH;
 canvas.height = HEIGHT;
@@ -45,7 +46,7 @@ window.loadSources = async function(sources) {
     window.nekoTV = {width: WIDTH, height: HEIGHT, period: PERIOD, particles,
         controller: [64, 96, 32, 32], coinSize: COIN_SIZE, coinClip: [8,8,144,88],
         cabinetBackOcclusionY: 96, cabinetFrontOcclusionY: 104,
-        cats: 'offline ModelOcelot / asymmetric cabinet-back jump story'};
+        cats: 'offline ModelOcelot / inward reach, ledge climb and opposite-side walk exit'};
     window.pixelsAt = function(time, showCoins = true, showCats = true) {
         const t = ((time % PERIOD) + PERIOD) % PERIOD;
         px.clearRect(0, 0, WIDTH, HEIGHT);

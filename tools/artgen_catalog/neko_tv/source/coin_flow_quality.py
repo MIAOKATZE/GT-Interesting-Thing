@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
 OUT = ROOT / 'build/neko-tv-preview'
-FRAMES, FPS, PERIOD, SIZE = 240, 10, 24, 49
+FRAMES, FPS, PERIOD, SIZE = 240, 10, 24, 35
 PAIRS = np.array(list(itertools.combinations(range(8), 2)))
 TRIPLES = np.array(list(itertools.combinations(range(8), 3)))
 
@@ -81,7 +81,7 @@ for (const c of flow.particles) for (let n=0;n<240;n++) {
     if (a.coinFrame!==b.coinFrame) throw Error('turn loop');
     const next=flow.at(c,n/10+.001);
     if (next.phase>=a.phase && Math.abs(next.y-a.y-c.speed*.001)>1e-9) throw Error('downward speed');
-    if (next.phase<a.phase && (a.y-24.5<96 || next.y+24.5>8)) throw Error('visible wrap');
+    if (next.phase<a.phase && (a.y-c.size/2<96 || next.y+c.size/2>8)) throw Error('visible wrap');
 }
 process.stdout.write(JSON.stringify({particles:flow.particles,frames}));
 """
@@ -99,14 +99,15 @@ process.stdout.write(JSON.stringify({particles:flow.particles,frames}));
                for n in range(4)]
     alpha_boxes = [sprite.getchannel('A').getbbox() for sprite in sprites]
     min_diameter = min(min(box[2] - box[0], box[3] - box[1]) for box in alpha_boxes)
-    assert min_diameter > 32
+    max_diameter = max(max(box[2] - box[0], box[3] - box[1]) for box in alpha_boxes)
+    assert min_diameter >= 28 and max_diameter <= 32
     clipped_widths = []
     for frame in new:
         for pose in frame:
             left = math.floor(pose['x'] - SIZE / 2 + .5)
             box = alpha_boxes[pose['coinFrame']]
             clipped_widths.append(min(152, left + box[2]) - max(8, left + box[0]))
-    assert min(clipped_widths) > 32, 'Do not reduce rows by clipping the coins narrower at the side edges'
+    assert min(clipped_widths) >= 28, 'Do not clip one-block coins narrower at the side edges'
     keyframes = list(dict.fromkeys([int(old_rows.sum(axis=1).argmax()), 60, 120,
                                   int(new_rows.sum(axis=1).argmax())]))
     sheet = Image.new('RGBA', (160 * len(keyframes), 148 * 2), '#21190f')
@@ -128,7 +129,9 @@ process.stdout.write(JSON.stringify({particles:flow.particles,frames}));
     report = dict(scope='240 offline coin-only resource samples; not Minecraft or final cat composition',
                   seed='0x4e454b4f', search='10 restarts x 1400 fixed-seed phase/lane proposals; overlap penalized',
                   period_seconds=PERIOD, fps=FPS, frames=FRAMES, coin_count=8, render_size_px=SIZE,
-                  alpha_min_diameter_px=min_diameter, distinct_positive_downward_speeds=8,
+                  alpha_min_diameter_px=min_diameter, alpha_max_diameter_px=max_diameter,
+                  alpha_frame_sizes_px=[[b[2]-b[0],b[3]-b[1]] for b in alpha_boxes],
+                  distinct_positive_downward_speeds=8,
                   alpha_min_width_after_horizontal_clip_px=min(clipped_widths),
                   definitions=dict(visible='coin center y in [8,96], inside upper three-row clip',
                                    pair='both visible; center height difference <=6px, horizontal gap >=30px',

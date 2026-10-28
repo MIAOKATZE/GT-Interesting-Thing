@@ -11,7 +11,7 @@
         "cycles": 2,
         "travel": 156,
         "speed": 13.0,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     },
     {
@@ -22,7 +22,7 @@
         "cycles": 3,
         "travel": 160,
         "speed": 20.0,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     },
     {
@@ -33,7 +33,7 @@
         "cycles": 4,
         "travel": 164,
         "speed": 27.333333333333332,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     },
     {
@@ -44,7 +44,7 @@
         "cycles": 2,
         "travel": 168,
         "speed": 14.0,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     },
     {
@@ -55,7 +55,7 @@
         "cycles": 3,
         "travel": 172,
         "speed": 21.5,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     },
     {
@@ -66,7 +66,7 @@
         "cycles": 4,
         "travel": 176,
         "speed": 29.333333333333332,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     },
     {
@@ -77,7 +77,7 @@
         "cycles": 2,
         "travel": 180,
         "speed": 15.0,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     },
     {
@@ -88,7 +88,7 @@
         "cycles": 3,
         "travel": 184,
         "speed": 23.0,
-        "size": 49,
+        "size": 35,
         "amplitude": 2.5
     }
 ];
