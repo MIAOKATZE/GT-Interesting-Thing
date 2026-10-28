@@ -429,12 +429,12 @@ A gift box automatically granted to players on their **first login** to a world.
 - Auto-granted on first world login (tracked via persisted NBT)
 - Right-click to open: grants guaranteed items + random items
 - Items drop to the ground if inventory is full
-- Fully configurable via `config/gtit/gift_config.json`
+- Configure current gifts through `/gifts`; definitions are saved to `config/gtit/gifts.json`
 - Default random pool includes 6 rings (Skywalk, Gluttony, Ironheart, Dragon's Breath, Mountainbreaker, Tempest)
 - 首次进入世界自动发放（通过持久化 NBT 追踪）
 - 右击打开：获得必中物品 + 随机物品
 - 背包满了物品丢到地上
-- 通过 `config/gtit/gift_config.json` 完全可配置
+- 使用 `/gifts` 管理当前礼包；定义保存在 `config/gtit/gifts.json`
 - 默认随机池包含 6 枚戒指（凌步、饕餮、磐躯、龙息、裂山、疾风）
 
 ### Gift Center / 礼包中心
@@ -447,7 +447,9 @@ Use `/gifts` to view gift rewards, unlock conditions and claim status. The singl
 
 截图仅作实际界面示意，图内奖励数量和数值不代表当前默认内容清单。 / This screenshot illustrates the actual interface; its reward counts and values are not a list of the current defaults.
 
-### Gift Config / 宝箱配置
+### Legacy Gift Config / 旧宝箱配置
+
+`config/gtit/gift_config.json` is read during the first migration. Current definitions use `config/gtit/gifts.json`; edit rewards and item NBT in the `/gifts` management interface. The legacy format below remains supported for migration. / 首次迁移会读取 `config/gtit/gift_config.json`；之后以 `config/gtit/gifts.json` 为准，奖励及物品 NBT 使用 `/gifts` 管理界面编辑。以下旧格式保留迁移兼容。
 
 ```json
 {
@@ -466,7 +468,7 @@ Use `/gifts` to view gift rewards, unlock conditions and claim status. The singl
 - `guaranteed_items`: Items always granted / 必中物品
 - `random_items`: Random item pool / 随机物品池
 - `random_count`: Number of random items drawn / 随机抽取数量
-- `nbtBase64` (optional): Base64-encoded NBT data; written automatically when using `yesNBT` / 可选，Base64 编码的 NBT 数据；使用 `yesNBT` 时自动写入
+- `nbtBase64` (optional): Base64-encoded NBT data in the legacy format / 可选，旧格式中的 Base64 编码 NBT 数据
 
 ***
 
@@ -553,9 +555,9 @@ A development-stage test multiblock (HV tier, 3×3×3 hollow TungstenSteel) once
 
 ## Administrator Commands / 管理员命令
 
-Administrative `/gtit` commands require OP permission level 2. Preset management and default trade reset additionally require the single-player owner or dedicated-server OP4. **Tab completion supports** working subcommands, NBT flags, and online player names; there are no `trade tab` / `orderId` command branches. Inventory operations and NekoVM changes are player-only; module help is also available from the console. `/gifts` is a separate player command without an OP requirement.
+Administrative `/gtit` commands require OP permission level 2. Preset management and default trade reset additionally require the single-player owner or dedicated-server OP4. **Tab completion supports** working subcommands and online player names; there are no `trade tab` / `orderId` command branches. Inventory operations and NekoVM changes are player-only; module help is also available from the console. `/gifts` is a separate player command without an OP requirement.
 
-管理指令 `/gtit` 保持 OP2 门槛；预设管理与默认贸易重置另外要求单人存档拥有者或专用服务器 OP4。**Tab 补全**涵盖实际子命令、NBT 标记和在线玩家名，没有 `trade tab` 或顺序 ID 命令。背包操作及 NekoVM 修改仅玩家可执行，各模块帮助也支持控制台。普通玩家使用独立的 `/gifts` 查看与领取礼包。
+管理指令 `/gtit` 保持 OP2 门槛；预设管理与默认贸易重置另外要求单人存档拥有者或专用服务器 OP4。**Tab 补全**涵盖实际子命令和在线玩家名，没有 `trade tab` 或顺序 ID 命令。背包操作及 NekoVM 修改仅玩家可执行，各模块帮助也支持控制台。普通玩家使用独立的 `/gifts` 查看与领取礼包。
 
 Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance. Modules: `gift`, `nekovm`, `presets`, `signin`, `lottery`, `mail`. / 使用 `/gtit help [模块]` 查看语法，`/gtit tutorial [模块]` 查看步骤；模块包括上述六类。也支持 `/gtit <模块> help|tutorial`。
 
@@ -564,9 +566,6 @@ Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance.
 | Command / 指令                                | Description / 说明                                                               |
 | ------------------------------------------- | ------------------------------------------------------------------------------ |
 | `/gifts [ui|claim <ID>|help|tutorial]`    | Browse gifts; manual claims apply only to enabled BQ-unlock gifts / 查看礼包；手动领取仅适用于启用的 BQ 解锁型礼包 |
-| `/gtit gift ui`                            | Open the gift library / 打开礼包窗口；编辑权限由服务器另行检查 |
-| `/gtit gift certain [yesNBT\|noNBT]`        | Set guaranteed items from current inventory / 将当前背包物品设为必中物品；默认 `noNBT`       |
-| `/gtit gift random <count> [yesNBT\|noNBT]` | Set random pool from inventory + draw count / 将背包物品设为随机池并设置抽取数；默认 `noNBT`   |
 | `/gtit gift reset`                          | Reset to default config / 恢复默认配置                                                 |
 | `/gtit gift claimlist`                      | List players who claimed the gift (online + offline) / 列出已领取玩家（在线+离线）          |
 | `/gtit gift claimreset [all\|玩家名]`         | Reset claim status; re-gift on next login / 重置领取状态，玩家下次登录时自动发放（支持离线玩家） |
@@ -588,7 +587,7 @@ Use `/gtit help [module]` for syntax and `/gtit tutorial [module]` for guidance.
 
 | Command / 指令                              | Description / 说明                                                        |
 | ----------------------------------------- | ------------------------------------------------------------------------ |
-| `/gtit signin`                            | Player self sign-in, same as the GUI button / 玩家自助签到，与签到 GUI 按钮等效（仅玩家） |
+| `/gtit signin`                            | Show sign-in command help; use the vending machine's sign-in page to sign in / 显示签到命令帮助；签到请使用售货机签到页面 |
 | `/gtit signin info [玩家名]`                | View sign-in status (online players only) / 查看签到状态（目标仅支持在线玩家）        |
 | `/gtit signin reload`                     | Hot-reload sign-in + online-time reward config / 热重载签到与在线时长奖励配置        |
 | `/gtit signin admin set <玩家名> <天数>`     | Set consecutive sign-in days / 设置连续签到天数（在线玩家）                          |

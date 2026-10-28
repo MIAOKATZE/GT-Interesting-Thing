@@ -2,6 +2,7 @@ package com.miaokatze.gtit.command;
 
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import net.minecraft.command.ICommandSender;
@@ -40,17 +41,19 @@ public final class GTITCommandTest {
             command.addTabCompletionOptions(sender, new String[] { "nekovm", "def" })
                 .contains("defultreset"),
             "Completion must retain the exact reset spelling requested by the user");
-        List<String> count = command.addTabCompletionOptions(sender, new String[] { "gift", "random", "" });
+        List<String> giftOptions = command.addTabCompletionOptions(sender, new String[] { "gift", "" });
         check(
-            count.contains("2") && !count.contains("yesNBT"),
-            "Random reward count must be taught in the count position");
-        check(
-            command.addTabCompletionOptions(sender, new String[] { "gift", "random", "2", "" })
-                .contains("yesNBT"),
-            "NBT flags follow an explicit random count");
-        check(
-            command.addTabCompletionOptions(sender, new String[] { "gift", "random", "yesNBT", "" }) == null,
-            "Do not suggest a second flag after the legacy omitted-count form");
+            giftOptions.containsAll(Arrays.asList("reset", "claimlist", "claimreset", "help", "tutorial"))
+                && !giftOptions.contains("certain")
+                && !giftOptions.contains("random")
+                && !giftOptions.contains("ui"),
+            "Gift completion must retain management commands and omit removed execution routes");
+        for (String[] request : new String[][] { { "gift", "certain", "" }, { "gift", "random", "" },
+            { "gift", "random", "2", "" } }) {
+            check(
+                command.addTabCompletionOptions(sender, request) == null,
+                "Removed gift routes must not suggest inventory counts or NBT flags");
+        }
         check(
             command.addTabCompletionOptions(sender, new String[] { "signin", "admin", "unknown", "" }) == null,
             "An invalid sign-in admin verb must not be completed as a valid player argument");
@@ -66,6 +69,22 @@ public final class GTITCommandTest {
             command.processCommand(sender, request);
             check(!sender.messages.isEmpty(), "Read-only help must respond without a player or running world");
         }
+        sender.messages.clear();
+        command.processCommand(sender, new String[] { "gift" });
+        List<String> giftHelp = new ArrayList<>(sender.messages);
+        for (String removed : new String[] { "certain", "random", "ui" }) {
+            sender.messages.clear();
+            command.processCommand(sender, new String[] { "gift", removed });
+            check(
+                sender.messages.equals(giftHelp),
+                "Removed gift routes must fall back to help without entering their former player-only handlers");
+        }
+        sender.messages.clear();
+        command.processCommand(sender, new String[] { "signin", "help" });
+        List<String> signInHelp = new ArrayList<>(sender.messages);
+        sender.messages.clear();
+        command.processCommand(sender, new String[] { "signin" });
+        check(sender.messages.equals(signInHelp), "Bare sign-in must show help without executing a sign-in");
         for (String alias : new String[] { "defultreset", "defaultreset" }) {
             sender.messages.clear();
             command.processCommand(sender, new String[] { "nekovm", alias });
@@ -75,6 +94,10 @@ public final class GTITCommandTest {
                 "Both reset routes must reject non-player senders before touching core state");
         }
         GiftLibraryCommand gifts = new GiftLibraryCommand();
+        check(
+            gifts.addTabCompletionOptions(sender, new String[] { "" })
+                .containsAll(Arrays.asList("ui", "claim", "help", "tutorial")),
+            "The player gift library must retain all of its public routes");
         sender.messages.clear();
         gifts.processCommand(sender, new String[] { "help" });
         check(
@@ -82,7 +105,7 @@ public final class GTITCommandTest {
             "Player gift help must work before the service is ready and without administrator permission");
         checkGiftCompletions(gifts, sender);
         System.out.println(
-            "GTITCommandTest: real completion positions, help/tutorial routes, OP2 boundary, reset aliases and gift claim filtering passed");
+            "GTITCommandTest: removed command fallbacks, retained completions, help/tutorial routes, OP2 boundary, reset aliases and gift claim filtering passed");
     }
 
     private static void checkGiftCompletions(GiftLibraryCommand command, Sender sender) throws Exception {
