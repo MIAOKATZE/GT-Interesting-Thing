@@ -113,7 +113,7 @@ public class SignInRequestPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行（涉及钱包写入、物品发放、NBT 持久化）
-            ServerTaskScheduler.scheduleServerTask(() -> processRequest(player, message));
+            ServerTaskScheduler.trySchedulePlayerRequest(player, () -> processRequest(player, message));
             return null;
         }
 
@@ -121,6 +121,7 @@ public class SignInRequestPacket implements IMessage {
          * 服务器主线程：按动作类型分发处理，统一回发最新数据
          */
         private void processRequest(EntityPlayerMP player, SignInRequestPacket message) {
+            if (!com.miaokatze.gtit.util.PlayerLookup.isCurrentSession(player)) return;
             switch (message.action) {
                 case ACTION_SIGN_IN -> processSignIn(player);
                 case ACTION_CLAIM_ONLINE -> processClaimOnline(player, message.arg);

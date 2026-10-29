@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.mail;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -15,8 +14,10 @@ import org.apache.logging.log4j.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
+import com.miaokatze.gtit.util.RewardConfigFile;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -66,6 +67,13 @@ public class BlessingConfig {
         .disableHtmlEscaping()
         .create();
 
+    // Failed reads/writes disable use and editing until an explicit successful reload.
+    private static boolean unavailable;
+
+    private static void requireAvailable() {
+        if (unavailable) throw new IllegalStateException("Blessing reward configuration is unavailable; repair the file and reload");
+    }
+
     /** 祝福邮件发件人显示名（默认「猫猫售货机」） */
     private static String sender = "猫猫售货机";
     /** 节日祝福表（按配置顺序） */
@@ -113,11 +121,11 @@ public class BlessingConfig {
         public ItemStack toItemStack() {
             if (item == null || item.isEmpty()) return null;
             String[] parts = item.split(":", 2);
-            if (parts.length != 2) return null;
+            if (parts.length != 2 || amount <= 0 || meta < 0 || meta > 32767)
+                throw new IllegalArgumentException("Invalid blessing attachment: " + item);
             Item found = GameRegistry.findItem(parts[0], parts[1]);
             if (found == null) {
-                LOG.warn("祝福附件物品不存在: {}", item);
-                return null;
+                throw new IllegalArgumentException("Blessing attachment item is unavailable: " + item);
             }
             return new ItemStack(found, Math.max(1, amount), Math.max(0, meta));
         }
@@ -187,7 +195,8 @@ public class BlessingConfig {
             // 猫猫币以附件物品形式发放（v1.7.6 用户确认口径：领取后自行投币入钱包）
             if (currencyAmount > 0 && currency != null && !currency.isEmpty()) {
                 ItemStack coin = NekoCurrencyRegistrar.getItemStack(currency, currencyAmount);
-                if (coin != null) attachments.add(coin);
+                if (coin == null) throw new IllegalArgumentException("Blessing currency item is unavailable: " + currency);
+                attachments.add(coin);
             }
             return attachments;
         }
@@ -219,7 +228,8 @@ public class BlessingConfig {
             }
             if (currencyAmount > 0 && currency != null && !currency.isEmpty()) {
                 ItemStack coin = NekoCurrencyRegistrar.getItemStack(currency, currencyAmount);
-                if (coin != null) attachments.add(coin);
+                if (coin == null) throw new IllegalArgumentException("Blessing currency item is unavailable: " + currency);
+                attachments.add(coin);
             }
             return attachments;
         }
@@ -232,46 +242,38 @@ public class BlessingConfig {
     }
 
     /**
-     * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * 加载配置文件；仅文件不存在时生成默认配置，已有文件读取失败则停用并保留原文
      * <p>
      * v1.7.7 G4：优先读取新路径；新路径缺失且旧路径存在时，迁移旧文件到新路径，
      * 旧文件重命名为 {@code .bak} 保留。
      */
     public static void loadConfig() {
         Path path = Paths.get(CONFIG_PATH);
-        if (!Files.exists(path)) {
-            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
-            if (Files.exists(legacy)) {
-                try {
-                    migrateFromLegacy(legacy, path);
-                    // 迁移后继续从新路径读取
-                } catch (Exception e) {
-                    LOG.error("祝福邮件配置从旧路径迁移失败，回退默认配置", e);
-                    applyDefaults();
-                    saveConfig();
-                    return;
-                }
+        try {
+            if (!Files.exists(path)) {
+                Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+                if (Files.exists(legacy)) migrateFromLegacy(legacy, path);
             }
-        }
-
-        if (Files.exists(path)) {
-            try {
-                String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-                ConfigData data = GSON.fromJson(json, ConfigData.class);
-                if (data != null) {
-                    sender = data.sender == null || data.sender.isEmpty() ? "猫猫售货机" : data.sender;
-                    festivals = data.festivals == null ? new ArrayList<>() : data.festivals;
-                    birthday = data.birthday == null ? new BirthdayBlessing() : data.birthday;
-                    LOG.info("祝福邮件配置已加载（{} 个节日 + 生日模板）", festivals.size());
-                    return;
-                }
-            } catch (Exception e) {
-                LOG.error("加载祝福邮件配置失败，使用默认配置", e);
+            if (Files.exists(path)) {
+                JsonObject root = RewardConfigFile.readObject(path);
+                if (root.has("festivals") && !root.get("festivals").isJsonArray())
+                    throw new IllegalArgumentException("Invalid blessing festivals");
+                if (root.has("birthday") && !root.get("birthday").isJsonObject())
+                    throw new IllegalArgumentException("Invalid birthday reward");
+                ConfigData data = GSON.fromJson(root, ConfigData.class);
+                sender = data.sender == null || data.sender.isEmpty() ? "猫猫售货机" : data.sender;
+                festivals = data.festivals;
+                birthday = data.birthday;
+                unavailable = false;
+            } else {
+                applyDefaults();
+                unavailable = false;
+                saveConfig();
             }
+        } catch (Exception failure) {
+            unavailable = true;
+            throw new IllegalStateException("Unable to load blessing reward configuration; existing files are preserved", failure);
         }
-        // 首次运行或加载失败：使用默认配置并落盘
-        applyDefaults();
-        saveConfig();
     }
 
     /**
@@ -282,15 +284,8 @@ public class BlessingConfig {
      */
     private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
         Files.createDirectories(newPath.getParent());
-        String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
-        ConfigData data = GSON.fromJson(json, ConfigData.class);
-        if (data != null) {
-            Files.write(
-                newPath,
-                GSON.toJson(data)
-                    .getBytes(StandardCharsets.UTF_8));
-        }
-        // O2-14: 旧文件退役收尾收编 ConfigMigrationUtil.retireLegacyAsBak（语义与日志格式不变）
+        JsonObject root = RewardConfigFile.readObject(legacyPath);
+        RewardConfigFile.write(newPath, root.toString());
         ConfigMigrationUtil.retireLegacyAsBak(legacyPath, newPath, "祝福邮件配置", "祝福邮件配置文件");
     }
 
@@ -298,6 +293,7 @@ public class BlessingConfig {
      * 将当前内存配置写回 JSON 文件
      */
     public static void saveConfig() {
+        requireAvailable();
         try {
             Path path = Paths.get(CONFIG_PATH);
             Files.createDirectories(path.getParent());
@@ -307,13 +303,11 @@ public class BlessingConfig {
             data.sender = sender;
             data.festivals = festivals;
             data.birthday = birthday;
-            Files.write(
-                path,
-                GSON.toJson(data)
-                    .getBytes(StandardCharsets.UTF_8));
+            RewardConfigFile.write(path, GSON.toJson(data));
             LOG.info("祝福邮件配置已保存");
         } catch (Exception e) {
-            LOG.error("保存祝福邮件配置失败", e);
+            unavailable = true;
+            throw new IllegalStateException("Unable to save blessing reward configuration", e);
         }
     }
 
@@ -328,6 +322,7 @@ public class BlessingConfig {
 
     /** 祝福邮件发件人显示名 */
     public static String getSender() {
+        requireAvailable();
         return sender;
     }
 
@@ -335,16 +330,19 @@ public class BlessingConfig {
      * 设置祝福邮件发件人显示名（编辑保存路径调用，修改后需 {@link #saveConfig()}）
      */
     public static void setSender(String newSender) {
+        requireAvailable();
         sender = newSender == null || newSender.isEmpty() ? "猫猫售货机" : newSender;
     }
 
     /** 节日祝福表（按配置顺序；编辑面板直接持有引用，修改后需 {@link #saveConfig()}） */
     public static List<FestivalBlessing> getFestivals() {
+        requireAvailable();
         return festivals;
     }
 
     /** 生日祝福模板（同上，修改后需 {@link #saveConfig()}） */
     public static BirthdayBlessing getBirthday() {
+        requireAvailable();
         return birthday;
     }
 

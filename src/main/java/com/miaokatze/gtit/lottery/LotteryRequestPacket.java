@@ -116,7 +116,7 @@ public class LotteryRequestPacket implements IMessage {
             // 切到服务器主线程执行抽奖逻辑（涉及钱包扣费、物品出货、NBT 持久化）
             Container source = player.openContainer;
             int window = source == null ? -1 : source.windowId;
-            ServerTaskScheduler.scheduleServerTask(() -> {
+            ServerTaskScheduler.trySchedulePlayerRequest(player, () -> {
                 if (source instanceof RemoteVendingContainer
                     && (player.openContainer != source || source.windowId != window)) return;
                 processLottery(player, message);
@@ -131,6 +131,7 @@ public class LotteryRequestPacket implements IMessage {
          * 客户端据此显示提示文本（不启动轮盘动画）。
          */
         private void processLottery(EntityPlayerMP player, LotteryRequestPacket request) {
+            if (!com.miaokatze.gtit.util.PlayerLookup.isCurrentSession(player)) return;
             UUID playerId = player.getUniqueID();
             String poolId = request.poolId;
             // 连抽数钳制（防恶意包）

@@ -35,6 +35,15 @@ public final class MailClientData {
 
     private MailClientData() {}
 
+    /** Connection boundary only; closing and reopening a screen must preserve its selection. */
+    public static synchronized void resetSession() {
+        mails = Collections.emptyList();
+        unreadCount = 0;
+        selectedMailId = "";
+        listPage = 0;
+        dataVersion++;
+    }
+
     // ==================== 写入（网络包处理器调用） ====================
 
     /**

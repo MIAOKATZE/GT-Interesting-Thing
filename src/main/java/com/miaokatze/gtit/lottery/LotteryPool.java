@@ -87,9 +87,12 @@ public class LotteryPool {
      */
     public void synthesizeCostItemsFromLegacy() {
         if (costItems != null && !costItems.isEmpty()) return;
-        if (nekoCurrencyId == null || nekoCurrencyId.isEmpty() || costPerDraw <= 0) return;
+        if (costPerDraw == 0) return;
+        if (costPerDraw < 0 || nekoCurrencyId == null || nekoCurrencyId.isEmpty())
+            throw new IllegalArgumentException("Invalid legacy lottery payment: " + id);
         ItemStack currencyStack = NekoCurrencyRegistrar.getItemStack(nekoCurrencyId, costPerDraw);
-        if (currencyStack == null) return;
+        if (currencyStack == null || currencyStack.getItem() == null)
+            throw new IllegalArgumentException("Unavailable legacy lottery currency: " + nekoCurrencyId);
         if (costItems == null) costItems = new ArrayList<>();
         costItems.add(new NekoBigItemStack(currencyStack));
     }
@@ -169,7 +172,20 @@ public class LotteryPool {
      */
     public boolean validate() {
         truncateEntriesIfNeeded();
-        return !entries.isEmpty() && getTotalWeight() > 0;
+        return hasValidCosts() && !entries.isEmpty() && getTotalWeight() > 0;
+    }
+
+    /** Empty means intentionally free; a malformed member must not be skipped as if it were absent. */
+    public boolean hasValidCosts() {
+        if (costItems == null) return false;
+        // First-run defaults / programmatic pools may reach validation before migration. An unresolved
+        // positive legacy price must not look like an intentionally free empty cost list.
+        if (costItems.isEmpty() && costPerDraw != 0) return false;
+        for (NekoBigItemStack cost : costItems) {
+            if (cost == null || cost.getBaseStack() == null || cost.getBaseStack().getItem() == null
+                || cost.getStackSize() <= 0) return false;
+        }
+        return true;
     }
 
     public String getId() {

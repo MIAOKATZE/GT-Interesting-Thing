@@ -103,19 +103,15 @@ public class SignInReward {
         if (json == null) return EMPTY;
         String currency = json.has("currency") ? json.get("currency")
             .getAsString() : "";
-        int amount = json.has("amount") ? json.get("amount")
-            .getAsInt() : 0;
+        int amount = RewardItem.exactNonnegativeInt(json, "amount", 0);
         List<RewardItem> items = new ArrayList<>();
-        if (json.has("items") && json.get("items")
-            .isJsonArray()) {
+        if (json.has("items")) {
+            if (!json.get("items").isJsonArray()) throw new IllegalArgumentException("Reward items must be an array");
             JsonArray arr = json.getAsJsonArray("items");
             for (JsonElement e : arr) {
-                if (e != null && e.isJsonObject()) {
-                    RewardItem item = RewardItem.fromJson(e.getAsJsonObject());
-                    if (!item.isEmpty()) {
-                        items.add(item);
-                    }
-                }
+                if (e == null || !e.isJsonObject()) throw new IllegalArgumentException("Invalid reward item entry");
+                RewardItem item = RewardItem.fromJson(e.getAsJsonObject());
+                if (!item.isEmpty()) items.add(item);
             }
         }
         return new SignInReward(currency, amount, items);

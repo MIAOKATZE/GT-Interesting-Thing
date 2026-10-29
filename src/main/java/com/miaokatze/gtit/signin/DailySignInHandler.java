@@ -53,6 +53,7 @@ public class DailySignInHandler {
         if (dirty) {
             manager.saveSignInData(playerId);
         }
+        manager.deliverPendingRewards(playerId);
         // 推送完整数据给客户端，供签到日历 GUI 渲染
         SignInNetworkManager.sendSyncToClient(player, data);
     }

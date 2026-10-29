@@ -74,6 +74,11 @@ public class LotteryHandler {
         DELAYED_TASKS.offer(new DelayedTask(System.currentTimeMillis() + Math.max(0, delayMs), task));
     }
 
+    /** Only reminders/synchronization use this queue; paid prizes belong to persistent machine output. */
+    public static void clearDelayedTasks() {
+        DELAYED_TASKS.clear();
+    }
+
     @SubscribeEvent
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.player instanceof EntityPlayerMP)) return;

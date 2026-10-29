@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.signin;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -19,9 +18,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
+import com.miaokatze.gtit.util.RewardConfigFile;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 
 /**
@@ -64,6 +63,13 @@ public class DailySignInConfig {
         .create();
 
     // ==================== 运行时内存字段 ====================
+
+    // Failed reads/writes disable use and editing until an explicit successful reload.
+    private static boolean unavailable;
+
+    private static void requireAvailable() {
+        if (unavailable) throw new IllegalStateException("Daily sign-in configuration is unavailable; repair the file and reload");
+    }
 
     /** 连续签到阶梯列表（按 requiredDays 升序） */
     private static List<SignInRewardTier> rewardTiers = new ArrayList<>();
@@ -123,57 +129,43 @@ public class DailySignInConfig {
     // ==================== 加载 / 保存 / 迁移 ====================
 
     /**
-     * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * 加载配置文件；仅文件不存在时生成默认配置，已有文件读取失败则停用并保留原文
      * <p>
      * 加载顺序：新路径缺失且旧路径存在 → 先迁移旧文件到新路径（原文复制）；
      * 随后检测结构版本，{@code version} 缺失或 &lt;2 时执行 v1→v2 迁移（备份后写出）。
      */
     public static void loadConfig() {
         Path path = Paths.get(CONFIG_PATH);
-        if (!Files.exists(path)) {
-            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
-            if (Files.exists(legacy)) {
-                try {
-                    migrateFromLegacy(legacy, path);
-                    // 迁移后继续从新路径读取
-                } catch (Exception e) {
-                    LOG.error("签到奖励配置从旧路径迁移失败，回退默认配置", e);
-                    applyDefaults();
-                    saveConfig();
-                    return;
-                }
+        try {
+            if (!Files.exists(path)) {
+                Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+                if (Files.exists(legacy)) migrateFromLegacy(legacy, path);
             }
-        }
-
-        if (Files.exists(path)) {
-            try {
-                String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-                JsonObject root = new JsonParser().parse(json)
-                    .getAsJsonObject();
-                int version = root.has("version") ? root.get("version")
-                    .getAsInt() : 1;
+            if (Files.exists(path)) {
+                JsonObject root = RewardConfigFile.readObject(path);
+                int version = root.has("version") ? root.get("version").getAsInt() : 1;
                 if (version < CONFIG_VERSION) {
-                    // v1→v2 结构迁移（备份 .v1.bak 后写出 v2，并应用到内存）
                     migrateV1ToV2(path, root);
-                    return;
-                }
-                ConfigData data = GSON.fromJson(root, ConfigData.class);
-                if (data != null) {
+                } else {
+                    for (String key : new String[] { "tiers", "cumulative_tiers" }) {
+                        if (root.has(key) && !root.get(key).isJsonArray())
+                            throw new IllegalArgumentException("Invalid reward tiers: " + key);
+                    }
+                    ConfigData data = GSON.fromJson(root, ConfigData.class);
+                    if (!root.has("tiers")) data.tiers = null;
+                    if (!root.has("cumulative_tiers")) data.cumulativeTiers = null;
                     applyFromData(data);
-                    LOG.info(
-                        "签到奖励配置已加载（连续 {} 档 / 累计 {} 档 / 逐日覆盖 {} 项）",
-                        rewardTiers.size(),
-                        cumulativeTiers.size(),
-                        dayOverrides.size());
-                    return;
                 }
-            } catch (Exception e) {
-                LOG.error("加载签到奖励配置失败，使用默认配置", e);
+                unavailable = false;
+            } else {
+                applyDefaults();
+                unavailable = false;
+                saveConfig();
             }
+        } catch (Exception failure) {
+            unavailable = true;
+            throw new IllegalStateException("Unable to load daily sign-in configuration; existing files are preserved", failure);
         }
-        // 首次运行或加载失败：使用默认配置并落盘
-        applyDefaults();
-        saveConfig();
     }
 
     /** 将 v2 ConfigData 应用到内存字段（含空值兜底） */
@@ -190,11 +182,11 @@ public class DailySignInConfig {
         }
         dayOverrides = parseDayOverrides(data.dayOverrides);
         rewardTiers = toTierList(data.tiers);
-        if (rewardTiers.isEmpty()) {
+        if (data.tiers == null) {
             rewardTiers = createDefaultTiers();
         }
         cumulativeTiers = toTierList(data.cumulativeTiers);
-        if (cumulativeTiers.isEmpty()) {
+        if (data.cumulativeTiers == null) {
             cumulativeTiers = createDefaultCumulativeTiers();
         }
     }
@@ -210,7 +202,7 @@ public class DailySignInConfig {
      */
     private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
         Files.createDirectories(newPath.getParent());
-        Files.copy(legacyPath, newPath, StandardCopyOption.REPLACE_EXISTING);
+        RewardConfigFile.write(newPath, RewardConfigFile.readObject(legacyPath).toString());
         ConfigMigrationUtil.retireLegacyAsBak(legacyPath, newPath, "签到奖励配置", "签到奖励配置文件");
     }
 
@@ -298,16 +290,11 @@ public class DailySignInConfig {
 
             // 4. 落盘 v2 并应用到内存
             Files.createDirectories(path.getParent());
-            Files.write(
-                path,
-                GSON.toJson(data)
-                    .getBytes(StandardCharsets.UTF_8));
+            RewardConfigFile.write(path, GSON.toJson(data));
             applyFromData(data);
             LOG.info("签到配置已迁移到 v2（连续 {} 档 / 累计 {} 档）", rewardTiers.size(), cumulativeTiers.size());
         } catch (Exception e) {
-            LOG.error("签到配置 v1→v2 迁移失败，回退默认配置", e);
-            applyDefaults();
-            saveConfig();
+            throw new IllegalStateException("Unable to migrate existing daily sign-in configuration", e);
         }
     }
 
@@ -326,6 +313,7 @@ public class DailySignInConfig {
      * 将当前内存配置写回 JSON 文件（v2 结构）
      */
     public static void saveConfig() {
+        requireAvailable();
         try {
             Path path = Paths.get(CONFIG_PATH);
             Files.createDirectories(path.getParent());
@@ -358,13 +346,11 @@ public class DailySignInConfig {
                     .toJson();
                 data.cumulativeTiers.add(td);
             }
-            Files.write(
-                path,
-                GSON.toJson(data)
-                    .getBytes(StandardCharsets.UTF_8));
+            RewardConfigFile.write(path, GSON.toJson(data));
             LOG.info("签到奖励配置已保存");
         } catch (Exception e) {
-            LOG.error("保存签到奖励配置失败", e);
+            unavailable = true;
+            throw new IllegalStateException("Unable to save daily sign-in configuration", e);
         }
     }
 
@@ -389,6 +375,7 @@ public class DailySignInConfig {
      */
     public static void setMonthlyGlobal(boolean increment, double incFactor, SignInReward weekday,
         SignInReward weekend) {
+        requireAvailable();
         incrementEnabled = increment;
         consecutiveIncrement = Math.max(0, incFactor);
         if (weekday != null) weekdayDefault = weekday;
@@ -407,6 +394,7 @@ public class DailySignInConfig {
      * @return true 表示找到并替换；false 表示无该天数阶梯
      */
     public static boolean updateTier(int originalDays, int newDays, SignInReward reward) {
+        requireAvailable();
         for (int i = 0; i < rewardTiers.size(); i++) {
             if (rewardTiers.get(i)
                 .getRequiredDays() == originalDays) {
@@ -422,6 +410,7 @@ public class DailySignInConfig {
      * 新增连续阶梯奖励（编辑模式，追加后按天数升序）
      */
     public static void addTier(int days, SignInReward reward) {
+        requireAvailable();
         rewardTiers.add(new SignInRewardTier(days, reward));
         rewardTiers.sort((a, b) -> Integer.compare(a.getRequiredDays(), b.getRequiredDays()));
     }
@@ -432,6 +421,7 @@ public class DailySignInConfig {
      * @return true 表示删除成功；false 表示未找到
      */
     public static boolean removeTier(int days) {
+        requireAvailable();
         for (int i = 0; i < rewardTiers.size(); i++) {
             if (rewardTiers.get(i)
                 .getRequiredDays() == days) {
@@ -448,6 +438,7 @@ public class DailySignInConfig {
      * @return true 表示找到并替换；false 表示无该天数阶梯
      */
     public static boolean updateCumulativeTier(int originalDays, int newDays, SignInReward reward) {
+        requireAvailable();
         for (int i = 0; i < cumulativeTiers.size(); i++) {
             if (cumulativeTiers.get(i)
                 .getRequiredDays() == originalDays) {
@@ -463,6 +454,7 @@ public class DailySignInConfig {
      * 新增累计阶梯奖励（编辑模式，追加后按天数升序）
      */
     public static void addCumulativeTier(int days, SignInReward reward) {
+        requireAvailable();
         cumulativeTiers.add(new SignInRewardTier(days, reward));
         cumulativeTiers.sort((a, b) -> Integer.compare(a.getRequiredDays(), b.getRequiredDays()));
     }
@@ -473,6 +465,7 @@ public class DailySignInConfig {
      * @return true 表示删除成功；false 表示未找到
      */
     public static boolean removeCumulativeTier(int days) {
+        requireAvailable();
         for (int i = 0; i < cumulativeTiers.size(); i++) {
             if (cumulativeTiers.get(i)
                 .getRequiredDays() == days) {
@@ -490,6 +483,7 @@ public class DailySignInConfig {
      * @param reward 覆盖奖励内容
      */
     public static void setDayOverride(int day, SignInReward reward) {
+        requireAvailable();
         if (day < 1 || day > 31) return;
         if (reward == null) {
             dayOverrides.remove(day);
@@ -504,6 +498,7 @@ public class DailySignInConfig {
      * @return true 表示存在并已清除；false 表示本无覆盖
      */
     public static boolean removeDayOverride(int day) {
+        requireAvailable();
         return dayOverrides.remove(day) != null;
     }
 
@@ -521,6 +516,7 @@ public class DailySignInConfig {
      * @return 应发放的货币数量
      */
     public static int calculateDayCurrency(String date, int consecutiveDays) {
+        requireAvailable();
         int day = parseDayOfMonth(date);
         if (day > 0) {
             SignInReward override = dayOverrides.get(day);
@@ -545,6 +541,7 @@ public class DailySignInConfig {
      * @return 生效的奖励（不会为 null）
      */
     public static SignInReward getEffectiveDayReward(String date) {
+        requireAvailable();
         int day = parseDayOfMonth(date);
         if (day > 0) {
             SignInReward override = dayOverrides.get(day);
@@ -560,6 +557,7 @@ public class DailySignInConfig {
      * @return true 表示该日号配置了覆盖奖励
      */
     public static boolean hasDayOverride(String date) {
+        requireAvailable();
         int day = parseDayOfMonth(date);
         return day > 0 && dayOverrides.containsKey(day);
     }
@@ -586,31 +584,37 @@ public class DailySignInConfig {
     }
 
     public static List<SignInRewardTier> getRewardTiers() {
+        requireAvailable();
         return rewardTiers;
     }
 
     /** 累计签到阶梯列表（按天数升序） */
     public static List<SignInRewardTier> getCumulativeTiers() {
+        requireAvailable();
         return cumulativeTiers;
     }
 
     /** 逐日覆盖奖励表（键=月内日号；仅供同步包序列化读取，勿修改） */
     public static Map<Integer, SignInReward> getDayOverrides() {
+        requireAvailable();
         return Collections.unmodifiableMap(dayOverrides);
     }
 
     /** 工作日默认奖励 */
     public static SignInReward getWeekdayDefault() {
+        requireAvailable();
         return weekdayDefault;
     }
 
     /** 周末默认奖励 */
     public static SignInReward getWeekendDefault() {
+        requireAvailable();
         return weekendDefault;
     }
 
     /** 每日默认奖励是否随连续天数递增 */
     public static boolean isIncrementEnabled() {
+        requireAvailable();
         return incrementEnabled;
     }
 
@@ -620,6 +624,7 @@ public class DailySignInConfig {
      * 供配置同步包（{@link SignInSyncPacket}）读取服务端权威值。
      */
     public static double getConsecutiveIncrement() {
+        requireAvailable();
         return consecutiveIncrement;
     }
 
@@ -630,6 +635,7 @@ public class DailySignInConfig {
      * @return 恰好要求该天数的阶梯；无则返回 null
      */
     public static SignInRewardTier getTriggeredTier(int consecutiveDays) {
+        requireAvailable();
         for (SignInRewardTier tier : rewardTiers) {
             if (tier.getRequiredDays() == consecutiveDays) {
                 return tier;
@@ -645,6 +651,7 @@ public class DailySignInConfig {
      * @return 所需天数大于当前连续天数的最小阶梯；全部已达返回 null
      */
     public static SignInRewardTier getNextTier(int consecutiveDays) {
+        requireAvailable();
         SignInRewardTier next = null;
         for (SignInRewardTier tier : rewardTiers) {
             if (tier.getRequiredDays() > consecutiveDays) {
@@ -658,6 +665,7 @@ public class DailySignInConfig {
 
     /** 获取最高连续阶梯天数（用于进度条分母） */
     public static int getMaxTierDays() {
+        requireAvailable();
         int max = 0;
         for (SignInRewardTier tier : rewardTiers) {
             if (tier.getRequiredDays() > max) max = tier.getRequiredDays();
@@ -672,6 +680,7 @@ public class DailySignInConfig {
      * @return 恰好要求该累计天数的阶梯；无则返回 null
      */
     public static SignInRewardTier getTriggeredCumulativeTier(int totalDays) {
+        requireAvailable();
         for (SignInRewardTier tier : cumulativeTiers) {
             if (tier.getRequiredDays() == totalDays) {
                 return tier;
@@ -687,6 +696,7 @@ public class DailySignInConfig {
      * @return 所需天数大于当前累计天数的最小阶梯；全部已达返回 null
      */
     public static SignInRewardTier getNextCumulativeTier(int totalDays) {
+        requireAvailable();
         SignInRewardTier next = null;
         for (SignInRewardTier tier : cumulativeTiers) {
             if (tier.getRequiredDays() > totalDays) {

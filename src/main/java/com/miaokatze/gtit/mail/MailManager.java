@@ -22,6 +22,7 @@ import org.apache.logging.log4j.Logger;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.util.PlayerLookup;
 import com.miaokatze.gtit.util.PlayerResolver;
+import com.miaokatze.gtit.util.RewardNbt;
 
 /**
  * 邮件管理器单例
@@ -47,7 +48,7 @@ public class MailManager {
 
     public static final MailManager INSTANCE = new MailManager();
 
-    /** 每玩家邮箱邮件上限（超出后普通投递拒绝，模板投递淘汰最旧） */
+    /** 每玩家邮箱邮件上限（普通投递拒绝，模板投递保留待领资格，不淘汰已有附件） */
     public static final int MAX_MAILS = 50;
     /** 每封邮件附件数量上限（GUI 单行 5 槽） */
     public static final int MAX_ATTACHMENTS = 5;
@@ -73,6 +74,8 @@ public class MailManager {
     private File saveDir;
     /** 全局数据文件（<world>/gtit_mail/global.dat） */
     private File globalFile;
+    private boolean globalDataLoaded = true;
+    private boolean sessionUnavailable = true;
 
     /** 首登奖励模板（null = 未设置） */
     private Mail firstRewardTemplate;
@@ -85,6 +88,10 @@ public class MailManager {
      * 初始化存储目录并加载全局奖励数据（CommonProxy.serverStarted 调用，需要 World 对象）
      */
     public void init(World world) {
+        sessionUnavailable = true;
+        // This singleton survives integrated-server world switches; cached mail belongs to the old world.
+        saveAll();
+        mailDataMap.clear();
         saveDir = new File(
             world.getSaveHandler()
                 .getWorldDirectory(),
@@ -93,7 +100,9 @@ public class MailManager {
             saveDir.mkdirs();
         }
         globalFile = new File(saveDir, "global.dat");
+        globalDataLoaded = false;
         loadGlobalData();
+        sessionUnavailable = false;
         LOG.info(
             "邮件数据存储目录: {}（首登奖励模板{}，一次性奖励 {} 条）",
             saveDir.getAbsolutePath(),
@@ -107,6 +116,7 @@ public class MailManager {
      * 获取玩家邮箱数据（优先内存缓存，未加载则从磁盘读取，均无则新建）
      */
     public MailData getMailData(UUID playerId) {
+        requireSession();
         if (playerId == null) return null;
         MailData data = mailDataMap.get(playerId);
         if (data == null) {
@@ -130,9 +140,9 @@ public class MailManager {
         try {
             NBTTagCompound nbt = new NBTTagCompound();
             nbt.setTag("mail", data.writeToNBT());
-            CompressedStreamTools.safeWrite(nbt, file);
+            com.miaokatze.gtit.util.AtomicNbtFile.write(nbt, file);
         } catch (Exception e) {
-            LOG.error("保存邮件数据失败: " + playerId, e);
+            throw new IllegalStateException("Unable to save mail data: " + playerId, e);
         }
     }
 
@@ -154,6 +164,17 @@ public class MailManager {
         saveGlobalData();
     }
 
+    /** Stop authority before saving. Keep the old world binding and cache if any write fails. */
+    public void unloadAll() {
+        sessionUnavailable = true;
+        saveAll();
+        mailDataMap.clear();
+        firstRewardTemplate = null;
+        onceRewards.clear();
+        saveDir = null;
+        globalFile = null;
+    }
+
     // ==================== 邮件投递 ====================
 
     /**
@@ -173,7 +194,12 @@ public class MailManager {
         if (!data.addMail(mail)) {
             return false;
         }
-        saveMailData(playerId);
+        try {
+            saveMailData(playerId);
+        } catch (RuntimeException failure) {
+            data.removeMail(mail.getId());
+            throw failure;
+        }
         EntityPlayerMP player = getPlayerByUUID(playerId);
         if (player != null) {
             MailNetworkManager.sendSyncToClient(player, data);
@@ -194,23 +220,21 @@ public class MailManager {
      * @return true 表示有新邮件投递（调用方可据此补发聊天提示）
      */
     public boolean deliverPendingRewards(UUID playerId) {
+        if (!globalDataLoaded) throw new IllegalStateException("Global mail rewards are unavailable");
         MailData data = getMailData(playerId);
         if (data == null) return false;
         boolean dirty = false;
 
         // 首登奖励（仅模板已设置且玩家未收过时投递）
-        if (firstRewardTemplate != null && !data.isFirstRewardReceived()) {
-            data.addMailForced(firstRewardTemplate.copyAsDelivered());
+        if (firstRewardTemplate != null && !data.isFirstRewardReceived()
+            && data.addMail(firstRewardTemplate.copyAsDelivered())) {
             data.setFirstRewardReceived(true);
             dirty = true;
         }
 
         // 一次性奖励（逐条检查玩家未收的奖励 ID）
         for (Map.Entry<String, Mail> entry : onceRewards.entrySet()) {
-            if (!data.hasReceivedOnce(entry.getKey())) {
-                data.addMailForced(
-                    entry.getValue()
-                        .copyAsDelivered());
+            if (!data.hasReceivedOnce(entry.getKey()) && data.addMail(entry.getValue().copyAsDelivered())) {
                 data.markReceivedOnce(entry.getKey());
                 dirty = true;
             }
@@ -228,6 +252,7 @@ public class MailManager {
      * 设置/覆盖首登奖励模板（/gtit mail first）
      */
     public void setFirstRewardTemplate(Mail template) {
+        requireSession();
         this.firstRewardTemplate = template;
         saveGlobalData();
     }
@@ -238,6 +263,7 @@ public class MailManager {
      * @return true 表示之前有模板且已清除
      */
     public boolean clearFirstRewardTemplate() {
+        requireSession();
         boolean had = this.firstRewardTemplate != null;
         this.firstRewardTemplate = null;
         if (had) {
@@ -247,6 +273,7 @@ public class MailManager {
     }
 
     public Mail getFirstRewardTemplate() {
+        requireSession();
         return firstRewardTemplate;
     }
 
@@ -263,6 +290,7 @@ public class MailManager {
      * @return true 表示发布成功；false 表示该 ID 已发布过
      */
     public boolean publishOnceReward(String rewardId, Mail template) {
+        requireSession();
         if (rewardId == null || rewardId.isEmpty() || template == null) return false;
         if (onceRewards.containsKey(rewardId)) {
             return false;
@@ -285,6 +313,7 @@ public class MailManager {
      * 已发布的一次性奖励 ID 集合（指令查询/调试展示用）
      */
     public Map<String, Mail> getOnceRewards() {
+        requireSession();
         return onceRewards;
     }
 
@@ -308,7 +337,7 @@ public class MailManager {
     /**
      * 领取邮件附件（物品入玩家背包，背包满则掉落在脚下）
      * <p>
-     * 领取成功后邮件标记为已读+附件已领取并落盘。
+     * Only delivered quantities are consumed. Rejected drops remain claimable, including after reload.
      *
      * @param playerId 玩家 UUID
      * @param mailId   邮件 ID
@@ -317,25 +346,31 @@ public class MailManager {
      */
     public int claimAttachments(UUID playerId, String mailId, EntityPlayerMP player) {
         MailData data = getMailData(playerId);
-        if (data == null || player == null) return -1;
+        if (data == null || player == null || !player.getUniqueID().equals(playerId)) return -1;
         Mail mail = data.findMail(mailId);
         if (mail == null || !mail.hasUnclaimedAttachments()) return -1;
 
-        int granted = 0;
-        for (ItemStack stack : mail.getAttachments()) {
-            if (stack == null || stack.getItem() == null) continue;
-            ItemStack copy = stack.copy();
-            if (!player.inventory.addItemStackToInventory(copy)) {
-                // 背包已满：掉落在玩家位置，避免附件丢失
-                EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, copy);
-                player.worldObj.spawnEntityInWorld(drop);
-            }
-            granted++;
+        final int[] dropBudget = { 64 };
+        try {
+            int granted = mail.deliverAttachments(remainder -> {
+                player.inventory.addItemStackToInventory(remainder);
+                // Spawn may be rejected by the world or a Forge event. Only accepted stacks consume entitlement.
+                while (remainder.stackSize > 0 && dropBudget[0]-- > 0) {
+                    ItemStack dropped = remainder.copy();
+                    dropped.stackSize = Math.min(remainder.stackSize, Math.max(1, Math.min(64, dropped.getMaxStackSize())));
+                    int droppedCount = dropped.stackSize;
+                    EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, dropped);
+                    if (!player.worldObj.spawnEntityInWorld(drop)) break;
+                    remainder.stackSize -= droppedCount;
+                }
+            });
+            return granted == 0 && mail.hasUnclaimedAttachments() ? -2 : granted;
+        } finally {
+            mail.setRead(true);
+            saveMailData(playerId);
+            player.inventory.markDirty();
+            player.inventoryContainer.detectAndSendChanges();
         }
-        mail.setAttachmentClaimed(true);
-        mail.setRead(true);
-        saveMailData(playerId);
-        return granted;
     }
 
     /**
@@ -456,24 +491,32 @@ public class MailManager {
     private void loadGlobalData() {
         firstRewardTemplate = null;
         onceRewards.clear();
-        if (globalFile == null || !globalFile.exists()) return;
+        if (globalFile == null || !globalFile.exists()) {
+            globalDataLoaded = true;
+            return;
+        }
         try {
             NBTTagCompound nbt = CompressedStreamTools.read(globalFile);
-            if (nbt == null) return;
+            if (nbt == null) throw new IllegalStateException("Empty global mail data");
+            RewardNbt.optionalType(nbt, "firstReward", 10);
             if (nbt.hasKey("firstReward")) {
                 firstRewardTemplate = Mail.fromNBT(nbt.getCompoundTag("firstReward"));
             }
-            NBTTagList onceList = nbt.getTagList("onceRewards", 10);
+            NBTTagList onceList = RewardNbt.list(nbt, "onceRewards", 10);
             for (int i = 0; i < onceList.tagCount(); i++) {
                 NBTTagCompound entry = onceList.getCompoundTagAt(i);
+                if (!entry.hasKey("id", 8) || entry.getString("id").isEmpty() || !entry.hasKey("mail", 10))
+                    throw new IllegalArgumentException("Invalid saved once-only mail reward");
                 String rewardId = entry.getString("id");
                 Mail template = Mail.fromNBT(entry.getCompoundTag("mail"));
                 if (rewardId != null && !rewardId.isEmpty() && template != null) {
                     onceRewards.put(rewardId, template);
                 }
             }
+            globalDataLoaded = true;
         } catch (Exception e) {
-            LOG.error("加载邮件全局奖励数据失败", e);
+            globalDataLoaded = false;
+            throw new IllegalStateException("Unable to load existing global mail rewards", e);
         }
     }
 
@@ -481,6 +524,7 @@ public class MailManager {
      * 将首登奖励模板与一次性奖励表写入 global.dat
      */
     private void saveGlobalData() {
+        if (!globalDataLoaded) throw new IllegalStateException("Unreadable global mail rewards cannot be overwritten");
         if (globalFile == null) return;
         try {
             NBTTagCompound nbt = new NBTTagCompound();
@@ -498,9 +542,9 @@ public class MailManager {
                 onceList.appendTag(entryTag);
             }
             nbt.setTag("onceRewards", onceList);
-            CompressedStreamTools.safeWrite(nbt, globalFile);
+            com.miaokatze.gtit.util.AtomicNbtFile.write(nbt, globalFile);
         } catch (Exception e) {
-            LOG.error("保存邮件全局奖励数据失败", e);
+            throw new IllegalStateException("Unable to save global mail rewards", e);
         }
     }
 
@@ -515,15 +559,15 @@ public class MailManager {
         if (!file.exists()) return null;
         try {
             NBTTagCompound nbt = CompressedStreamTools.read(file);
-            if (nbt != null && nbt.hasKey("mail")) {
+            if (nbt != null && nbt.hasKey("mail", 10)) {
                 MailData data = new MailData();
                 data.readFromNBT(nbt.getCompoundTag("mail"));
                 return data;
             }
+            throw new IllegalStateException("Missing mail data: " + playerId);
         } catch (Exception e) {
-            LOG.error("加载邮件数据失败: " + playerId, e);
+            throw new IllegalStateException("Unable to load existing mail data: " + playerId, e);
         }
-        return null;
     }
 
     /**
@@ -532,4 +576,8 @@ public class MailManager {
     public static EntityPlayerMP getPlayerByUUID(UUID playerId) {
         return PlayerLookup.getOnlinePlayerByUuid(playerId);
     }
+    private void requireSession() {
+        if (sessionUnavailable) throw new IllegalStateException("Mail world session is unavailable");
+    }
+
 }

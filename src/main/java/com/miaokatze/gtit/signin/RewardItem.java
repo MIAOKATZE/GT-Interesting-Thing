@@ -90,13 +90,26 @@ public class RewardItem {
         if (json == null) return new RewardItem("", 0, 0, "");
         String item = json.has("item") ? json.get("item")
             .getAsString() : "";
-        int amount = json.has("amount") ? json.get("amount")
-            .getAsInt() : 0;
-        int meta = json.has("meta") ? json.get("meta")
-            .getAsInt() : 0;
+        int amount = exactNonnegativeInt(json, "amount", 0);
+        int meta = exactNonnegativeInt(json, "meta", 0);
+        if (!item.isEmpty() && (amount == 0 || meta > 32767))
+            throw new IllegalArgumentException("Invalid configured reward item quantity or metadata");
         String nbt = json.has("nbt") ? json.get("nbt")
             .getAsString() : "";
         return new RewardItem(item, amount, meta, nbt);
+    }
+
+    /** JSON numbers must not narrow/wrap or silently discard a configured reward. */
+    static int exactNonnegativeInt(JsonObject json, String key, int fallback) {
+        if (!json.has(key)) return fallback;
+        int value;
+        try {
+            value = json.get(key).getAsBigDecimal().intValueExact();
+        } catch (RuntimeException invalid) {
+            throw new IllegalArgumentException("Reward " + key + " must be an exact nonnegative int", invalid);
+        }
+        if (value < 0) throw new IllegalArgumentException("Negative reward " + key);
+        return value;
     }
 
     // ==================== 网络序列化（同步包） ====================

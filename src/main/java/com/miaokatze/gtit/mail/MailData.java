@@ -9,6 +9,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
 
+import com.miaokatze.gtit.util.RewardNbt;
+
 /**
  * 玩家邮箱数据
  * <p>
@@ -95,10 +97,13 @@ public class MailData {
      */
     public void readFromNBT(NBTTagCompound nbt) {
         if (nbt == null) return;
+        RewardNbt.optionalType(nbt, "firstRewardReceived", 1);
+        NBTTagList mailList = RewardNbt.list(nbt, "mails", 10);
+        NBTTagList onceList = RewardNbt.list(nbt, "receivedOnceIds", 8);
+        NBTTagList blessingList = RewardNbt.list(nbt, "claimedBlessings", 8);
         this.firstRewardReceived = nbt.getBoolean("firstRewardReceived");
 
         this.mails.clear();
-        NBTTagList mailList = nbt.getTagList("mails", 10);
         for (int i = 0; i < mailList.tagCount(); i++) {
             Mail mail = Mail.fromNBT(mailList.getCompoundTagAt(i));
             if (mail != null) {
@@ -107,7 +112,6 @@ public class MailData {
         }
 
         this.receivedOnceIds.clear();
-        NBTTagList onceList = nbt.getTagList("receivedOnceIds", 8);
         for (int i = 0; i < onceList.tagCount(); i++) {
             String rewardId = onceList.getStringTagAt(i);
             if (rewardId != null && !rewardId.isEmpty()) {
@@ -117,7 +121,6 @@ public class MailData {
 
         // 已领祝福防重键集合（缺省兼容：旧档无键 = 空集合）
         this.claimedBlessings.clear();
-        NBTTagList blessingList = nbt.getTagList("claimedBlessings", 8);
         for (int i = 0; i < blessingList.tagCount(); i++) {
             String key = blessingList.getStringTagAt(i);
             if (key != null && !key.isEmpty()) {
@@ -144,17 +147,11 @@ public class MailData {
     }
 
     /**
-     * 强制添加邮件（模板投递路径：超出上限时淘汰最旧的一封，保证奖励邮件不丢）
-     *
-     * @param mail 待添加邮件
+     * Legacy entry point: a full mailbox must never evict an older mail or its unclaimed items.
+     * Reward callers must use addMail's result before consuming their delivery receipt.
      */
     public void addMailForced(Mail mail) {
-        if (mail == null) return;
-        while (mails.size() >= MailManager.MAX_MAILS) {
-            // 淘汰列表末尾（最旧）邮件
-            mails.remove(mails.size() - 1);
-        }
-        mails.add(0, mail);
+        addMail(mail);
     }
 
     /**

@@ -54,19 +54,23 @@ public class MailSyncPacket implements IMessage {
             // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
             // 需切回客户端主线程再写缓存（GUI 在主线程读取）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final MailSyncPacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(() -> {
-                    MailData data = new MailData();
-                    data.readFromNBT(message.getDataTag());
-                    MailClientData.update(data);
-                });
+        private void handleClient(final MailSyncPacket message, MessageContext context) {
+            Object connection = context.netHandler;
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.func_152344_a(() -> {
+                if (connection == null || mc.getNetHandler() != connection || mc.theWorld == null
+                    || mc.thePlayer == null) return;
+
+                MailData data = new MailData();
+                data.readFromNBT(message.getDataTag());
+                MailClientData.update(data);
+            });
         }
     }
 }

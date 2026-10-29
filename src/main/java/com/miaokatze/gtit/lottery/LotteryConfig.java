@@ -17,7 +17,10 @@ import org.apache.logging.log4j.Logger;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonSerializer;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.config.DefaultContentConfig;
@@ -87,35 +90,76 @@ public class LotteryConfig {
             }
             return obj;
         })
-        .registerTypeAdapter(NekoBigItemStack.class, (JsonDeserializer<NekoBigItemStack>) (json, typeOfT, context) -> {
-            JsonObject obj = json.getAsJsonObject();
-            String itemId = obj.has("item") ? obj.get("item")
-                .getAsString() : "";
-            int meta = obj.has("meta") ? obj.get("meta")
-                .getAsInt() : 0;
-            int amount = obj.has("amount") ? obj.get("amount")
-                .getAsInt() : 1;
-            String oreDict = obj.has("oreDict") ? obj.get("oreDict")
-                .getAsString() : "";
-            String[] parts = itemId.split(":", 2);
-            Item item = parts.length == 2 ? GameRegistry.findItem(parts[0], parts[1]) : null;
-            if (item == null) return null; // 物品不存在：Gson 列表会保留 null，加载后由迁移步骤清理
-            ItemStack stack = new ItemStack(item, 1, meta);
-            if (obj.has("nbtBase64")) {
-                NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(
-                    obj.get("nbtBase64")
-                        .getAsString());
-                if (nbt != null) stack.setTagCompound(nbt);
-            }
-            return new NekoBigItemStack(Math.max(1, amount), oreDict, stack);
-        })
+        .registerTypeAdapter(NekoBigItemStack.class,
+            (JsonDeserializer<NekoBigItemStack>) (json, typeOfT, context) -> parseCostItem(json))
         .create();
+
+    /** Configuration and editor payments use one strict decoder; a broken requirement is never optional. */
+    public static NekoBigItemStack parseCostItem(JsonElement json) {
+        if (json == null || !json.isJsonObject()) throw new JsonParseException("Invalid lottery cost entry");
+        JsonObject obj = json.getAsJsonObject();
+        String itemId = obj.has("item") ? obj.get("item").getAsString().trim() : "";
+        int meta = exactInt(obj, "meta", 0);
+        int amount = exactInt(obj, "amount", 1);
+        if (meta < 0 || meta > 32767 || amount <= 0)
+            throw new JsonParseException("Invalid lottery cost quantity or metadata: " + itemId);
+        String oreDict = obj.has("oreDict") ? obj.get("oreDict").getAsString() : "";
+        String[] parts = itemId.split(":", 2);
+        Item item = parts.length == 2 ? GameRegistry.findItem(parts[0], parts[1]) : null;
+        if (item == null) throw new JsonParseException("Unavailable lottery cost item: " + itemId);
+        ItemStack stack = new ItemStack(item, 1, meta);
+        if (obj.has("nbtBase64")) {
+            String encoded = obj.get("nbtBase64").getAsString();
+            NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(encoded);
+            if (!encoded.isEmpty() && nbt == null)
+                throw new JsonParseException("Invalid lottery cost NBT: " + itemId);
+            if (nbt != null) stack.setTagCompound(nbt);
+        }
+        return new NekoBigItemStack(amount, oreDict, stack);
+    }
+
+    private static int exactInt(JsonObject obj, String key, int fallback) {
+        if (!obj.has(key)) return fallback;
+        try {
+            return obj.get(key).getAsBigDecimal().intValueExact();
+        } catch (RuntimeException invalid) {
+            throw new JsonParseException("Lottery cost " + key + " must be an exact int", invalid);
+        }
+    }
 
     /** 配置根对象（对应 lottery.json 根） */
     public static class LotteryConfigData {
 
         /** 卡池列表 */
         public List<LotteryPool> pools = new ArrayList<>();
+        private transient boolean loadFailed;
+
+        /** A failed read is not an intentionally empty, editable configuration. */
+        public boolean isLoadFailed() {
+            return loadFailed;
+        }
+    }
+
+    private static LotteryConfigData failedLoad() {
+        LotteryConfigData data = new LotteryConfigData();
+        data.loadFailed = true;
+        return data;
+    }
+
+    private static LotteryConfigData parseConfig(String json) {
+        JsonElement root = new JsonParser().parse(json);
+        if (!root.isJsonObject() || !root.getAsJsonObject().has("pools")
+            || !root.getAsJsonObject().get("pools").isJsonArray())
+            throw new JsonParseException("Lottery configuration requires a pools array");
+        for (JsonElement element : root.getAsJsonObject().getAsJsonArray("pools")) {
+            if (!element.isJsonObject()) continue;
+            JsonObject pool = element.getAsJsonObject();
+            if (exactInt(pool, "costPerDraw", 0) < 0)
+                throw new JsonParseException("Invalid legacy lottery payment amount");
+            if (pool.has("costItems") && !pool.get("costItems").isJsonArray())
+                throw new JsonParseException("Lottery costs must be an array");
+        }
+        return GSON.fromJson(root, LotteryConfigData.class);
     }
 
     /**
@@ -126,12 +170,12 @@ public class LotteryConfig {
     }
 
     /**
-     * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * 加载配置文件；仅首次运行写入默认配置，已有文件解析失败时保留原文件并暂停载入。
      * <p>
      * v1.7.7 G4：优先读取新路径；新路径缺失且旧路径存在时，迁移旧文件到新路径，
      * 旧文件重命名为 {@code .bak} 保留。
      *
-     * @return 配置数据（永不为 null，失败回退默认）
+     * @return 配置数据（永不为 null，失败时返回空池列表）
      */
     public static LotteryConfigData load() {
         Path path = Paths.get(CONFIG_PATH);
@@ -143,7 +187,7 @@ public class LotteryConfig {
                     // 迁移后继续从新路径读取
                 } catch (Exception e) {
                     LOG.error("抽奖配置迁移失败，保留原文件并暂停载入；请修正后 reload", e);
-                    return new LotteryConfigData();
+                    return failedLoad();
                 }
             }
         }
@@ -151,11 +195,11 @@ public class LotteryConfig {
         if (Files.exists(path)) {
             try {
                 String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-                LotteryConfigData data = GSON.fromJson(json, LotteryConfigData.class);
+                LotteryConfigData data = parseConfig(json);
                 if (data != null && data.pools != null) {
                     // An explicitly empty configuration must never regenerate bundled pools.
                     if (data.pools.isEmpty()) return data;
-                    // v1.7.6 迁移：旧池合成 costItems + 补缺省图标 + 清理无效需求条目
+                    // Legacy migration must never remove an invalid payment requirement.
                     for (LotteryPool pool : data.pools) {
                         if (pool != null) migratePool(pool);
                     }
@@ -170,13 +214,13 @@ public class LotteryConfig {
                     return data;
                 }
                 LOG.error("抽奖配置缺少有效 pools 数组，保留文件并暂停载入");
-                return new LotteryConfigData();
+                return failedLoad();
             } catch (Exception e) {
                 LOG.error("加载抽奖配置失败，保留文件并暂停载入；请修正后 reload", e);
-                return new LotteryConfigData();
+                return failedLoad();
             }
         }
-        // 首次运行或加载失败：使用默认配置并落盘
+        // 首次运行：使用默认配置并落盘
         LotteryConfigData data = getDefaultConfig();
         save(data);
         return data;
@@ -191,7 +235,7 @@ public class LotteryConfig {
     private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
         Files.createDirectories(newPath.getParent());
         String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
-        LotteryConfigData data = GSON.fromJson(json, LotteryConfigData.class);
+        LotteryConfigData data = parseConfig(json);
         if (data != null) {
             Files.write(
                 newPath,
@@ -207,6 +251,7 @@ public class LotteryConfig {
      */
     public static void save(LotteryConfigData data) {
         if (data == null) return;
+        if (data.isLoadFailed()) throw new IllegalStateException("Repair the existing lottery configuration before editing");
         try {
             // v1.7.7 G3②：保存前再次截断，防御运行期条目被动态追加到超过上限
             if (data.pools != null) {
@@ -321,18 +366,16 @@ public class LotteryConfig {
     /**
      * 单池迁移（加载后调用）
      * <p>
-     * ① 清理 costItems 中的 null 条目（物品已卸载导致反序列化失败）；
+     * ① 拒绝无效 costItems，不得将有价池降级为免费池；
      * ② 旧字段（nekoCurrencyId × costPerDraw）合成 costItems；
      * ③ 缺省图标回退为对应猫猫币物品；
      * ④ 截断超过 {@link LotteryPool#MAX_ENTRIES} 的条目（v1.7.7 G3②）；
      * ⑤ v1.7.20：旧版默认"闪烁猫猫币池"条目数不足 10 时，智能补齐青金石/钻石块。
      */
     private static void migratePool(LotteryPool pool) {
-        // 清理反序列化失败（物品不存在）的 null 条目
-        List<NekoBigItemStack> costs = pool.getCostItems();
-        costs.removeIf(cost -> cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0);
         // 旧字段合成（costItems 为空时生效）
         pool.synthesizeCostItemsFromLegacy();
+        if (!pool.hasValidCosts()) throw new JsonParseException("Invalid lottery payment: " + pool.getId());
 
         // v1.7.20：对旧版默认闪烁池进行无感升级（仅当条目与旧默认完全一致时才补齐，
         // 避免覆盖玩家自定义的闪烁池内容）。
