@@ -18,9 +18,11 @@ def audit():
     items = source("register/ItemRegistrar.java")
     shells = source("gift/GiftShellCatalog.java")
     machines = source("register/MultiblockMachineRegistrar.java")
+    blocks = source("register/BlockRegistrar.java")
     catalog = source("register/GTITItemOrderCatalog.java")
     registered = re.findall(r"\b(\w+)\.setAndRegister\(", items + shells)
     registered += re.findall(r"GTITItemList\.(\w+)\s*\)", machines)
+    registered += re.findall(r"GTITItemList\.(\w+)\.set\(", blocks)
     enum = source("common/api/enums/GTITItemList.java")
     enum_body = enum.split("implements IItemContainer {", 1)[1].split(";", 1)[0]
     declared = re.findall(r"\b\w+\b", enum_body)

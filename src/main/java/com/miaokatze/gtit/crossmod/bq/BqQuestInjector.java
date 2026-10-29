@@ -8,12 +8,15 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import net.minecraft.nbt.NBTTagCompound;
@@ -21,6 +24,7 @@ import net.minecraftforge.common.util.Constants;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.miaokatze.gtit.Tags;
@@ -89,7 +93,8 @@ public final class BqQuestInjector {
     private static final PackSpec PACK_MIAO = new PackSpec("miao", 5569054221778550784L);
 
     /** 前排有序表（规范.md §6 条款 10，2026-09-07 拍板）：gtsr→gtswn→gtit 依序占据任务书前排槽位 */
-    private static final long[] FRONT_ROW_LINE_HIGH = { 0x47545352L, 0x4754574EL, 0x47544954L };
+    private static final long[] FRONT_ROW_LINE_HIGH = { 0x4754535200000000L, 0x4754574E00000000L,
+        0x4754495400000000L };
 
     /** 世界侧版本戳文件名（位于 BQ_Settings.curWorldDir 下），双键 {"gtit":...,"miao":...} 各包独立对账 */
     private static final String STAMP_FILE_NAME = "gtit-injected.json";
@@ -129,7 +134,13 @@ public final class BqQuestInjector {
                 GTInterestingThing.LOG.info("[GTIT-BQ] 任务清单缺少 questLines 数组，跳过任务注入: {}", indexResource);
                 return;
             }
+            // Missing/corrupt resources are not deletions. Validate the entire pack before replacing
+            // any live definitions, pruning owned quests, or writing a successful version stamp.
             PackSpec pack = resolvePack(assetRoot);
+            Map<String, NBTTagCompound> resources = prepareResources(
+                lines,
+                BqQuestInjector::readNbtResource,
+                pack == null ? null : pack.questIdHigh);
             if (pack == null) {
                 GTInterestingThing.LOG.warn("[GTIT-BQ] 无法识别任务包身份，版本戳/定义刷新/剪枝本次跳过: {}", assetRoot);
             }
@@ -146,7 +157,8 @@ public final class BqQuestInjector {
                         .getAsJsonObject(),
                     refresh,
                     expected,
-                    expectedLines);
+                    expectedLines,
+                    resources);
                 questCount += r[0];
                 refreshedCount += r[1];
                 skippedCount += r[2];
@@ -184,6 +196,92 @@ public final class BqQuestInjector {
         }
     }
 
+    /** Read once before mutation; an explicitly empty manifest remains a valid pack-removal request. */
+    static Map<String, NBTTagCompound> prepareResources(JsonArray lines,
+        Function<String, NBTTagCompound> reader) {
+        return prepareResources(lines, reader, null);
+    }
+
+    static Map<String, NBTTagCompound> prepareResources(JsonArray lines,
+        Function<String, NBTTagCompound> reader, Long ownedHigh) {
+        // Exported assets carry explicit long UUID pairs. Recognized packs own their high bits;
+        // unknown roots retain arbitrary UUIDs, but manifest/line/entry identities must still agree.
+        Map<String, NBTTagCompound> resources = new HashMap<>();
+        Set<UUID> lineIds = new HashSet<>();
+        Map<UUID, String> questFiles = new HashMap<>();
+        for (int i = 0; i < lines.size(); i++) {
+            JsonObject line = lines.get(i)
+                .getAsJsonObject();
+            // Validate every manifest field consumed by loadQuestLine before it can change a database.
+            UUID lineId = new UUID(requireLong(line, "idHigh"), requireLong(line, "idLow"));
+            Math.toIntExact(requireLong(line, "orderIndex"));
+            requireOwned(lineId, ownedHigh);
+            if (!lineIds.add(lineId)) throw new IllegalStateException("Duplicate BQ quest line: " + lineId);
+            NBTTagCompound lineTag = requireResource(resources, reader, line.get("lineFile")
+                .getAsString());
+            if (!lineId.equals(requireId(lineTag, "questLineID"))) {
+                throw new IllegalStateException("BQ quest line identity disagrees with manifest: " + lineId);
+            }
+            Set<UUID> entriesSeen = new HashSet<>();
+            JsonArray entries = line.getAsJsonArray("entries");
+            for (int j = 0; j < entries.size(); j++) {
+                JsonObject entry = entries.get(j)
+                    .getAsJsonObject();
+                String questFile = entry.get("questFile")
+                    .getAsString();
+                NBTTagCompound quest = requireResource(resources, reader, questFile);
+                UUID questId = requireId(quest, "questID");
+                requireOwned(questId, ownedHigh);
+                String priorFile = questFiles.putIfAbsent(questId, questFile);
+                if ((priorFile != null && !priorFile.equals(questFile)) || !entriesSeen.add(questId)) {
+                    throw new IllegalStateException("Conflicting BQ quest definition/entry: " + questId);
+                }
+                NBTTagCompound entryTag = requireResource(resources, reader, entry.get("entryFile")
+                    .getAsString());
+                if (!questId.equals(requireId(entryTag, "questID"))) {
+                    throw new IllegalStateException("BQ quest entry identity disagrees with definition: " + questId);
+                }
+            }
+        }
+        return resources;
+    }
+
+    private static long requireLong(JsonObject object, String key) {
+        JsonElement value = object.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalStateException("Missing/non-numeric BQ manifest field: " + key);
+        }
+        // Gson getAsLong silently truncates fractional and overflowing numbers, changing identity.
+        return new BigDecimal(value.getAsString()).longValueExact();
+    }
+
+    private static UUID requireId(NBTTagCompound tag, String prefix) {
+        // BQ readId/getLong silently substitutes zero for absent or incorrectly typed fields.
+        // Bundled BQ UUID assets use two long tags; do not turn corruption into a different quest.
+        if (!tag.hasKey(prefix + "High", Constants.NBT.TAG_LONG)
+            || !tag.hasKey(prefix + "Low", Constants.NBT.TAG_LONG)) {
+            throw new IllegalStateException("Missing/invalid BQ identity: " + prefix);
+        }
+        return new UUID(tag.getLong(prefix + "High"), tag.getLong(prefix + "Low"));
+    }
+
+    private static void requireOwned(UUID id, Long ownedHigh) {
+        if (ownedHigh != null && id.getMostSignificantBits() != ownedHigh.longValue()) {
+            throw new IllegalStateException("BQ pack references a foreign definition: " + id);
+        }
+    }
+
+    private static NBTTagCompound requireResource(Map<String, NBTTagCompound> resources,
+        Function<String, NBTTagCompound> reader, String path) {
+        NBTTagCompound tag = resources.get(path);
+        if (tag == null) {
+            tag = reader.apply(path);
+            if (tag == null) throw new IllegalStateException("Incomplete BQ quest pack: " + path);
+            resources.put(path, tag);
+        }
+        return tag;
+    }
+
     /**
      * 装载单条任务线及其下所有任务（全幂等 + 版本化定义刷新）。
      * <p>
@@ -202,7 +300,7 @@ public final class BqQuestInjector {
      * @return int[]{本次新建任务数, 本次刷新定义任务数, 已存在且未刷新的跳过任务数}
      */
     private static int[] loadQuestLine(JsonObject lineSpec, boolean refresh, Set<UUID> expected,
-        Set<UUID> expectedLines) {
+        Set<UUID> expectedLines, Map<String, NBTTagCompound> resources) {
         UUID lineId = new UUID(
             lineSpec.get("idHigh")
                 .getAsLong(),
@@ -215,13 +313,9 @@ public final class BqQuestInjector {
         IQuestLine line = QuestLineDatabase.INSTANCE.get(lineId);
         boolean lineCreated = false;
         if (line == null) {
-            NBTTagCompound lineTag = readNbtResource(
+            NBTTagCompound lineTag = resources.get(
                 lineSpec.get("lineFile")
                     .getAsString());
-            if (lineTag == null) {
-                GTInterestingThing.LOG.warn("[GTIT-BQ] 任务线定义文件缺失，跳过该线: {}", lineSpec.get("lineFile"));
-                return new int[] { 0, 0, 0 };
-            }
             line = new QuestLine();
             line.readFromNBT(lineTag);
             QuestLineDatabase.INSTANCE.put(lineId, line);
@@ -237,13 +331,9 @@ public final class BqQuestInjector {
         for (int i = 0; i < entries.size(); i++) {
             JsonObject entry = entries.get(i)
                 .getAsJsonObject();
-            NBTTagCompound questTag = readNbtResource(
+            NBTTagCompound questTag = resources.get(
                 entry.get("questFile")
                     .getAsString());
-            if (questTag == null) {
-                GTInterestingThing.LOG.warn("[GTIT-BQ] 任务定义文件缺失，跳过: {}", entry.get("questFile"));
-                continue;
-            }
             UUID questId = NBTConverter.UuidValueType.QUEST.readId(questTag);
             expected.add(questId);
             IQuest existing = QuestDatabase.INSTANCE.get(questId);
@@ -262,23 +352,15 @@ public final class BqQuestInjector {
             // 任务必须挂线（/bq_admin purge_hidden_quests 会清未挂线任务）：未挂才 put；
             // 已挂线且刷新中则用新条目整体替换（map 语义覆盖），同步编辑器坐标
             if (line.get(questId) == null) {
-                NBTTagCompound entryTag = readNbtResource(
+                NBTTagCompound entryTag = resources.get(
                     entry.get("entryFile")
                         .getAsString());
-                if (entryTag == null) {
-                    GTInterestingThing.LOG.warn("[GTIT-BQ] 线内条目文件缺失，任务暂未挂线: {}", entry.get("entryFile"));
-                    continue;
-                }
                 line.put(questId, new QuestLineEntry(entryTag));
             } else if (refresh) {
-                NBTTagCompound entryTag = readNbtResource(
+                NBTTagCompound entryTag = resources.get(
                     entry.get("entryFile")
                         .getAsString());
-                if (entryTag == null) {
-                    GTInterestingThing.LOG.warn("[GTIT-BQ] 线内条目文件缺失，坐标保持原样: {}", entry.get("entryFile"));
-                } else {
-                    line.put(questId, new QuestLineEntry(entryTag));
-                }
+                line.put(questId, new QuestLineEntry(entryTag));
             }
         }
         if (lineCreated || created > 0 || refreshed > 0) {
@@ -353,7 +435,7 @@ public final class BqQuestInjector {
     }
 
     /**
-     * 前排有序规则（规范.md §6 条款 10）：按 gtsr(0x47545352)→gtswn(0x4754574E)→gtit(0x47544954)
+     * 前排有序规则（规范.md §6 条款 10）：按 gtsr→gtswn→gtit 的完整 UUID high（ASCII 标识左移 32 位）
      * 顺序，对库内存在（UUID high 位命中）的线依序 setOrderIndex(lineId, slot)（slot=存在线相对序位）。
      * setOrderIndex 幂等（remove+clamp 插入），与跨 mod 注入次序无关，最后执行者定最终序；
      * 禁用 setOrderedEntries（其首行整库 clear）。
@@ -508,7 +590,16 @@ public final class BqQuestInjector {
         if (json == null) {
             return null;
         }
+        validateResourceIds(json);
         return NBTConverter.JSONtoNBT_Object(json, new NBTTagCompound(), true);
+    }
+
+    static void validateResourceIds(JsonObject json) {
+        // The native converter uses Number.longValue(), which loses fractions/overflow before
+        // NBT identity validation can see it. Check declared UUID longs while still in JSON form.
+        for (String key : new String[] { "questIDHigh:4", "questIDLow:4", "questLineIDHigh:4", "questLineIDLow:4" }) {
+            if (json.has(key)) requireLong(json, key);
+        }
     }
 
     /**

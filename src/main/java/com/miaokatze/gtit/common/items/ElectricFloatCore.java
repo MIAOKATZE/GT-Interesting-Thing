@@ -52,8 +52,10 @@ public class ElectricFloatCore extends Item implements IBauble, IElectricItem {
         if (player.worldObj.isRemote) return;
 
         if (player instanceof EntityPlayer entityPlayer) {
+            // Creative flight belongs to vanilla, not to this accessory's food/energy budget.
+            if (entityPlayer.capabilities.isCreativeMode) return;
             // 检查是否满足飞行条件：电力足够，或者电力不足但饥饿值>=6
-            boolean hasPower = ElectricItem.manager.canUse(itemstack, COST_PER_TICK);
+            boolean hasPower = hasFlightPower(itemstack);
             boolean hasFood = entityPlayer.getFoodStats()
                 .getFoodLevel() >= 6;
             boolean canFly = hasPower || hasFood;
@@ -79,13 +81,18 @@ public class ElectricFloatCore extends Item implements IBauble, IElectricItem {
             } else {
                 // 条件不满足，禁用飞行
                 // 仅在状态确实变化时发包，避免每 tick 重复发送（与上方启用分支对称）
-                if (entityPlayer.capabilities.allowFlying || entityPlayer.capabilities.isFlying) {
+                if ((entityPlayer.capabilities.allowFlying || entityPlayer.capabilities.isFlying)
+                    && !FlightSourceSupport.hasAvailableFlight(entityPlayer)) {
                     entityPlayer.capabilities.allowFlying = false;
                     entityPlayer.capabilities.isFlying = false;
                     entityPlayer.sendPlayerAbilities();
                 }
             }
         }
+    }
+
+    static boolean hasFlightPower(ItemStack stack) {
+        return ElectricItem.manager.canUse(stack, COST_PER_TICK);
     }
 
     @Override
@@ -105,11 +112,7 @@ public class ElectricFloatCore extends Item implements IBauble, IElectricItem {
         if (player.worldObj.isRemote) return;
 
         if (player instanceof EntityPlayer entityPlayer) {
-            if (!entityPlayer.capabilities.isCreativeMode) {
-                entityPlayer.capabilities.allowFlying = false;
-                entityPlayer.capabilities.isFlying = false;
-            }
-            entityPlayer.sendPlayerAbilities();
+            FlightSourceSupport.onUnequipped(entityPlayer, itemstack);
         }
     }
 
