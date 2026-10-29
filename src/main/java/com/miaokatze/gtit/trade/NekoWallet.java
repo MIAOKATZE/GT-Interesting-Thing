@@ -1,153 +1,239 @@
 package com.miaokatze.gtit.trade;
 
+import java.math.BigInteger;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.nbt.NBTTagCompound;
 
-import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
-
 /**
- * 猫猫币钱包
- * 独立于 VM 的 Wallet 系统，使用 HashMap 存储猫猫币余额
- * 每个 UUID 对应一个 NekoWallet 实例
+ * Exact nonnegative currency ledger. The legacy GUI/network API exposes at most
+ * {@link Integer#MAX_VALUE}; excess remains owned and spendable through repeated int-sized operations.
+ * Physical imports retain their int-sized capacity limit, but committed rewards and refunds never lose value.
  */
 public class NekoWallet {
 
-    // ConcurrentHashMap：多线程（交易主线程、GUI changeListener、团队数据合并）可能并发访问同一钱包
-    private final Map<String, Integer> balances = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final BigInteger INT_MAX = BigInteger.valueOf(Integer.MAX_VALUE);
+    private static final String EXACT_TAG = "__gtit_exact_balances_v1";
+    private static final String VERSION_TAG = "__gtit_wallet_version";
+    /** Only team merges acquire two wallet locks; serialize their directed source-to-survivor ordering. */
+    private static final Object MERGE_LOCK = new Object();
 
-    /** 钱包所属玩家 UUID（仅个人钱包设置；团队钱包不使用本字段——归属由 {@link #teamId} 表达，B2-07 勘误原失实注释） */
-    private UUID playerId = null;
-    /** 钱包所属团队 UUID（团队钱包；个人钱包为 null） */
-    private UUID teamId = null;
+    private final Map<String, BigInteger> balances = new HashMap<>();
+    /** A consumed team's live references must still deliver late refunds to the surviving wallet. */
+    private NekoWallet successor;
+    private UUID playerId;
+    private UUID teamId;
 
-    // ==================== 身份标记（钱包余额变化时推送同步用）====================
-
-    /** 设置钱包所属玩家 UUID（个人钱包） */
-    public void setPlayerId(UUID playerId) {
+    public synchronized void setPlayerId(UUID playerId) {
         this.playerId = playerId;
     }
 
-    /** 设置钱包所属团队 UUID（团队钱包） */
-    public void setTeamId(UUID teamId) {
+    public synchronized void setTeamId(UUID teamId) {
         this.teamId = teamId;
     }
 
-    /** 是否团队钱包（teamId 非 null；余额推送冲刷时区分个人/团队归属口径） */
-    public boolean isTeamWallet() {
-        return this.teamId != null;
+    public synchronized boolean isTeamWallet() {
+        return teamId != null;
     }
 
-    /**
-     * 余额变化后通知钱包管理器登记待推送/待落盘标记
-     * <p>
-     * 个人钱包走 playerId 口径；团队钱包走 teamId（全体队员）口径。
-     * 实际推送由管理器在服务器 tick 上节流冲刷（约 100ms 合帧，只发余额轻量包，
-     * 见 NekoWalletManager.flushBalanceNotifications）。
-     * 此方法由 addCount/tryDeduct/resetCount/resetAll 在余额实际变化后调用。
-     */
     private void notifyChanged() {
-        if (this.playerId != null || this.teamId != null) {
-            NekoWalletManager.INSTANCE.notifyWalletChanged(this.playerId, this.teamId);
+        if (playerId != null || teamId != null) {
+            NekoWalletManager.INSTANCE.notifyWalletChanged(playerId, teamId);
         }
     }
 
-    // ==================== 余额操作 ====================
-
-    /**
-     * 获取指定猫猫币的余额
-     */
+    /** Bounded compatibility view, not the exact ledger total. Never use this to copy/merge a wallet. */
     public synchronized int getCount(String currencyId) {
-        return balances.getOrDefault(currencyId, 0);
+        return getExactCount(currencyId).min(INT_MAX).intValue();
     }
 
-    /**
-     * 增加猫猫币余额（amount 可为负数表示扣除）
-     */
+    public synchronized BigInteger getExactCount(String currencyId) {
+        if (successor != null) return successor.getExactCount(currencyId);
+        return balances.getOrDefault(currencyId, BigInteger.ZERO);
+    }
+
+    /** Exact reward/refund credit; negative legacy adjustments retain their floor-at-zero semantics. */
     public synchronized void addCount(String currencyId, int amount) {
-        int current = getCount(currencyId);
-        int newAmount = current + amount;
-        if (newAmount < 0) newAmount = 0;
-        if (newAmount == current) return; // 余额未变，无需推送
-        balances.put(currencyId, newAmount);
+        if (successor != null) {
+            successor.addCount(currencyId, amount);
+            return;
+        }
+        if (currencyId == null) throw new IllegalArgumentException("currencyId");
+        BigInteger current = getExactCount(currencyId);
+        BigInteger next = current.add(BigInteger.valueOf(amount)).max(BigInteger.ZERO);
+        if (next.equals(current)) return;
+        balances.put(currencyId, next);
         notifyChanged();
     }
 
     /**
-     * 原子地检查余额并扣减
-     * <p>
-     * 解决团队钱包双重消费竞态：两个团队成员近乎同时下单时，
-     * "余额检查 + addCount(-cost)" 两步操作之间可能被对方插入，
-     * 导致两人都通过检查后余额被扣到 0、但两人都拿到产物。
-     * 本方法将检查与扣减合并为单个 synchronized 原子操作。
-     *
-     * @param currencyId 货币ID
-     * @param amount     扣减数量（正数）
-     * @return true=余额足够并已扣减；false=余额不足，未扣减
+     * Advisory physical-import headroom. A consumed alias monitor does not reserve its survivor's room;
+     * callers must use atomic bounded credit, or exact addCount for an already committed extraction.
      */
+    public synchronized int getCreditCapacity(String currencyId) {
+        if (successor != null) return successor.getCreditCapacity(currencyId);
+        return INT_MAX.subtract(getExactCount(currencyId)).max(BigInteger.ZERO).intValue();
+    }
+
+    /** Credit at most available physical-import capacity; the caller retains every unaccepted coin. */
+    public synchronized int creditUpToCapacity(String currencyId, int requested) {
+        if (successor != null) return successor.creditUpToCapacity(currencyId, requested);
+        if (requested <= 0) return 0;
+        int accepted = Math.min(requested, getCreditCapacity(currencyId));
+        if (accepted > 0) addCount(currencyId, accepted);
+        return accepted;
+    }
+
+    /** All-or-nothing physical slot deposit, including when this object is a consumed team alias. */
+    public synchronized boolean tryCreditWithinCapacity(String currencyId, int requested) {
+        if (successor != null) return successor.tryCreditWithinCapacity(currencyId, requested);
+        if (requested <= 0 || requested > getCreditCapacity(currencyId)) return false;
+        addCount(currencyId, requested);
+        return true;
+    }
+
+    /** Atomic sufficient-balance check and exact debit. */
     public synchronized boolean tryDeduct(String currencyId, int amount) {
+        if (successor != null) return successor.tryDeduct(currencyId, amount);
         if (amount <= 0) return true;
-        int current = getCount(currencyId);
-        if (current < amount) return false;
-        balances.put(currencyId, current - amount);
+        BigInteger current = getExactCount(currencyId);
+        BigInteger debit = BigInteger.valueOf(amount);
+        if (current.compareTo(debit) < 0) return false;
+        balances.put(currencyId, current.subtract(debit));
         notifyChanged();
         return true;
     }
 
-    /**
-     * 重置指定猫猫币余额为 0
-     */
     public synchronized void resetCount(String currencyId) {
-        balances.put(currencyId, 0);
-        notifyChanged();
-    }
-
-    /**
-     * 重置所有余额
-     */
-    public synchronized void resetAll() {
-        balances.clear();
-        notifyChanged();
-    }
-
-    /**
-     * 保存到 NBT
-     */
-    public NBTTagCompound writeToNBT() {
-        NBTTagCompound nbt = new NBTTagCompound();
-        for (Map.Entry<String, Integer> entry : balances.entrySet()) {
-            nbt.setInteger(entry.getKey(), entry.getValue());
+        if (successor != null) {
+            successor.resetCount(currencyId);
+            return;
         }
-        return nbt;
+        if (balances.remove(currencyId) != null) notifyChanged();
+    }
+
+    public synchronized void resetAll() {
+        if (successor != null) {
+            successor.resetAll();
+            return;
+        }
+        if (balances.isEmpty()) return;
+        balances.clear();
+        notifyChanged();
     }
 
     /**
-     * 从 NBT 读取
-     * 注意：getNekoCurrencyIds() 只返回字符串常量，不依赖 init() 状态，可安全在团队数据加载时调用
+     * Consume a team's exact ledger once. Call without holding either wallet monitor.
+     * Live references to the consumed wallet forward to the survivor, including late rollback credits.
+     * Its own NBT stays empty, so saving consumed team data cannot duplicate the transferred funds.
      */
-    public void readFromNBT(NBTTagCompound nbt) {
-        balances.clear();
-        for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-            if (nbt.hasKey(currencyId)) {
-                balances.put(currencyId, nbt.getInteger(currencyId));
+    public void transferAllTo(NekoWallet destination) {
+        if (destination == null) throw new IllegalArgumentException("destination");
+        synchronized (MERGE_LOCK) {
+            // A consumed source is never drained again, even if a stale callback names a new destination.
+            synchronized (this) {
+                if (successor != null) return;
+            }
+            NekoWallet source = this;
+            NekoWallet target = destination.root();
+            if (source == target) return;
+            synchronized (source) {
+                synchronized (target) {
+                    for (Map.Entry<String, BigInteger> entry : source.balances.entrySet()) {
+                        target.balances.merge(entry.getKey(), entry.getValue(), BigInteger::add);
+                    }
+                    source.balances.clear();
+                    source.successor = target;
+                    source.notifyChanged();
+                    target.notifyChanged();
+                }
             }
         }
     }
 
-    /**
-     * 获取所有货币 ID
-     */
-    public java.util.Set<String> getCurrencyIds() {
-        return balances.keySet();
+    /** Only called under MERGE_LOCK; successor links are immutable once installed. */
+    private synchronized NekoWallet root() {
+        return successor == null ? this : successor.root();
     }
 
-    /**
-     * 复制钱包
-     */
-    public NekoWallet copy() {
+    /** Ordinary balances retain legacy int NBT; only overflow adds a versioned exact side compound. */
+    public synchronized NBTTagCompound writeToNBT() {
+        NBTTagCompound nbt = new NBTTagCompound();
+        NBTTagCompound exact = new NBTTagCompound();
+        boolean overflow = false;
+        for (Map.Entry<String, BigInteger> entry : balances.entrySet()) {
+            BigInteger value = entry.getValue();
+            boolean reservedKey = EXACT_TAG.equals(entry.getKey()) || VERSION_TAG.equals(entry.getKey());
+            if (!reservedKey) nbt.setInteger(entry.getKey(), value.min(INT_MAX).intValue());
+            if (reservedKey || value.compareTo(INT_MAX) > 0) {
+                exact.setString(entry.getKey(), value.toString());
+                overflow = true;
+            }
+        }
+        if (overflow) {
+            nbt.setInteger(VERSION_TAG, 1);
+            nbt.setTag(EXACT_TAG, exact);
+        }
+        return nbt;
+    }
+
+    /** Load transactionally: malformed exact data must not silently replace owned funds with zero. */
+    public synchronized void readFromNBT(NBTTagCompound nbt) {
+        if (successor != null) throw new IllegalStateException("Cannot reload a consumed team wallet");
+        Map<String, BigInteger> loaded = new HashMap<>();
+        if (nbt != null) {
+            // Legacy wallets used every top-level numeric key as a currency ID, including these
+            // newly reserved names. Only a compound can distinguish exact metadata from old money.
+            boolean exactFormat = nbt.hasKey(EXACT_TAG, 10);
+            if (exactFormat && (!nbt.hasKey(VERSION_TAG, 3) || nbt.getInteger(VERSION_TAG) != 1)) {
+                throw new IllegalArgumentException("Unsupported exact wallet format");
+            }
+            NBTTagCompound exact = exactFormat ? nbt.getCompoundTag(EXACT_TAG) : new NBTTagCompound();
+            // Preserve every actual currency key, not only today's registered denominations.
+            Set<String> currencyIds = new HashSet<>(nbt.func_150296_c());
+            if (exactFormat) {
+                currencyIds.remove(EXACT_TAG);
+                currencyIds.remove(VERSION_TAG);
+            }
+            currencyIds.addAll(exact.func_150296_c());
+            for (String currencyId : currencyIds) {
+                boolean reservedKey = exactFormat && (EXACT_TAG.equals(currencyId) || VERSION_TAG.equals(currencyId));
+                if (!reservedKey && (!nbt.hasKey(currencyId, 1) && !nbt.hasKey(currencyId, 2)
+                    && !nbt.hasKey(currencyId, 3) && !nbt.hasKey(currencyId, 4))) {
+                    throw new IllegalArgumentException("Invalid legacy wallet balance");
+                }
+                long legacy = reservedKey ? 0 : nbt.getLong(currencyId);
+                if (legacy < 0) throw new IllegalArgumentException("Negative wallet balance");
+                BigInteger value = BigInteger.valueOf(legacy);
+                if (exact.hasKey(currencyId)) {
+                    if (!exact.hasKey(currencyId, 8)) throw new IllegalArgumentException("Invalid exact wallet balance");
+                    value = new BigInteger(exact.getString(currencyId));
+                    if (value.signum() < 0 || (!reservedKey
+                        && (value.compareTo(INT_MAX) <= 0 || nbt.getLong(currencyId) != Integer.MAX_VALUE))) {
+                        throw new IllegalArgumentException("Inconsistent exact wallet balance");
+                    }
+                }
+                if (value.signum() > 0) loaded.put(currencyId, value);
+            }
+        }
+        balances.clear();
+        balances.putAll(loaded);
+    }
+
+    /** Detached key snapshot: callers cannot mutate the ledger through its key set. */
+    public synchronized Set<String> getCurrencyIds() {
+        if (successor != null) return successor.getCurrencyIds();
+        return new HashSet<>(balances.keySet());
+    }
+
+    public synchronized NekoWallet copy() {
+        if (successor != null) return successor.copy();
         NekoWallet wallet = new NekoWallet();
-        wallet.balances.putAll(this.balances);
+        wallet.balances.putAll(balances);
         return wallet;
     }
 }

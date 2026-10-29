@@ -50,10 +50,7 @@ public final class IoColumnPanel {
         if (playerId == null || currencyId == null) return false;
         NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
         if (wallet == null) return false;
-        synchronized (wallet) {
-            if ((long) wallet.getCount(currencyId) + stack.stackSize > Integer.MAX_VALUE) return false;
-            wallet.addCount(currencyId, stack.stackSize);
-        }
+        if (!wallet.tryCreditWithinCapacity(currencyId, stack.stackSize)) return false;
         multiblock.markTradeStateChanged();
         IntSyncValue balance = gui.coinAmountSyncs.get(currencyId);
         if (balance != null) balance.setValue(wallet.getCount(currencyId));

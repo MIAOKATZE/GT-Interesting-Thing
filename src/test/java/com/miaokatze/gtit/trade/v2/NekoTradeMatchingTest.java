@@ -15,6 +15,8 @@ import com.miaokatze.gtit.trade.NekoTradeEntry.ItemEntry;
 
 public final class NekoTradeMatchingTest {
 
+    private static final java.util.UUID TEST_PLAYER = java.util.UUID.randomUUID();
+
     private static void check(boolean ok, String message) {
         if (!ok) throw new AssertionError(message);
     }
@@ -104,7 +106,7 @@ public final class NekoTradeMatchingTest {
         partial.me.add(new ItemStack(Items.gold_ingot, 3));
         Output output = new Output();
         check(
-            !NekoTradeExecutor.INSTANCE.executeTrade(null, group.getId(), 0, partial, output)
+            !NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, partial, output)
                 .isSuccess(),
             "partial ME extraction fails transaction");
         check(
@@ -127,14 +129,14 @@ public final class NekoTradeMatchingTest {
         Output failedOutput = new Output();
         failedOutput.failAfter = 1;
         check(
-            !NekoTradeExecutor.INSTANCE.executeTrade(null, group.getId(), 0, full, failedOutput)
+            !NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, full, failedOutput)
                 .isSuccess(),
             "output changes after preflight fail transaction");
         check(extracted[0] == 5 && refunded[0] == 5 && failedOutput.items.isEmpty(), "output failure refunds ME");
         Input success = new Input(new ItemStack(Items.iron_ingot, 2), new ItemStack(Items.gold_ingot, 3));
         Output delivered = new Output();
         check(
-            NekoTradeExecutor.INSTANCE.executeTrade(null, group.getId(), 0, success, delivered)
+            NekoTradeExecutor.INSTANCE.executeTrade(TEST_PLAYER, group.getId(), 0, success, delivered)
                 .isSuccess(),
             "local trade succeeds");
         check(
@@ -217,6 +219,9 @@ public final class NekoTradeMatchingTest {
         java.lang.reflect.Field directory = NekoHistoryManager.class.getDeclaredField("saveDir");
         directory.setAccessible(true);
         Object previousDirectory = directory.get(manager);
+        java.lang.reflect.Field ready = NekoHistoryManager.class.getDeclaredField("acceptingHistories");
+        ready.setAccessible(true);
+        boolean previousReady = ready.getBoolean(manager);
         java.lang.reflect.Field teams = com.miaokatze.gtit.trade.TeamDataProvider.class.getDeclaredField("available");
         teams.setAccessible(true);
         Object previousTeams = teams.get(null);
@@ -238,6 +243,7 @@ public final class NekoTradeMatchingTest {
         try {
             teams.set(null, Boolean.FALSE);
             directory.set(manager, fixture.toFile());
+            ready.setBoolean(manager, true);
             manager.clearAll();
             NekoTradeDatabase.INSTANCE.addTradeGroup(group);
             NekoTradeHistory history = manager.getHistory(player, group.getId());
@@ -337,6 +343,7 @@ public final class NekoTradeMatchingTest {
             NekoTradeDatabase.INSTANCE.removeTradeGroup(group.getId());
             manager.clearAll();
             directory.set(manager, previousDirectory);
+            ready.setBoolean(manager, previousReady);
             teams.set(null, previousTeams);
             try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(fixture)) {
                 for (java.nio.file.Path path : paths.sorted(java.util.Comparator.reverseOrder())
@@ -385,6 +392,19 @@ public final class NekoTradeMatchingTest {
         home.setAccessible(true);
         home.set(null, new java.io.File("."));
         Bootstrap.func_151354_b();
+        java.lang.reflect.Field teamAvailability = com.miaokatze.gtit.trade.TeamDataProvider.class.getDeclaredField("available");
+        teamAvailability.setAccessible(true);
+        Object previousTeamAvailability = teamAvailability.get(null);
+        teamAvailability.set(null, Boolean.FALSE);
+        java.io.File ledgerDirectory = java.nio.file.Files.createTempDirectory("gtit-matching-ledgers-").toFile();
+        java.lang.reflect.Method bindHistory = NekoHistoryManager.class.getDeclaredMethod("bindSaveDirectory", java.io.File.class);
+        bindHistory.setAccessible(true);
+        bindHistory.invoke(NekoHistoryManager.INSTANCE, new java.io.File(ledgerDirectory, "histories"));
+        java.lang.reflect.Method bindWallet = com.miaokatze.gtit.trade.NekoWalletManager.class
+            .getDeclaredMethod("bindSaveDirectory", java.io.File.class);
+        bindWallet.setAccessible(true);
+        bindWallet.invoke(com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE, new java.io.File(ledgerDirectory, "wallets"));
+        try {
         OreDictionary.registerOre("gtitTestMetal", new ItemStack(Items.iron_ingot));
         OreDictionary.registerOre("gtitTestMetal", new ItemStack(Items.gold_ingot));
         NekoTrade trade = new NekoTrade();
@@ -543,6 +563,7 @@ public final class NekoTradeMatchingTest {
             rolled.getBaseStack()
                 .getItemDamage() == 0 && rolled.getStackSize() == 5,
             "wildcard outputs concrete meta zero");
+        NekoTradePhysicalOutputTest.run();
         executeAndCompensate();
         oneTimeCooldown();
         parserAndWallet();
@@ -565,5 +586,14 @@ public final class NekoTradeMatchingTest {
         check(NekoBigItemStack.loadFromNBT(nested) == null, "nested NBT alternatives fail closed before recursion");
         System.out.println(
             "NekoTradeMatchingTest: PASS (overlap, OR quantities, NBT, JSON, ME, random, empty and wildcard ore)");
+        } finally {
+            NekoHistoryManager.INSTANCE.unloadAll();
+            com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE.unloadAll();
+            teamAvailability.set(null, previousTeamAvailability);
+            try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(ledgerDirectory.toPath())) {
+                for (java.nio.file.Path path : paths.sorted(java.util.Comparator.reverseOrder())
+                    .collect(java.util.stream.Collectors.toList())) java.nio.file.Files.delete(path);
+            }
+        }
     }
 }

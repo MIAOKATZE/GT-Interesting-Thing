@@ -1,6 +1,7 @@
 package com.miaokatze.gtit.trade;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.gtnewhorizon.gtnhlib.teams.Team;
+import com.miaokatze.gtit.util.AtomicNbtFile;
 import com.miaokatze.gtit.util.PlayerLookup;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -39,8 +41,10 @@ public class NekoWalletManager {
 
     public static final NekoWalletManager INSTANCE = new NekoWalletManager();
 
-    private final Map<UUID, NekoWallet> personalWallets = new HashMap<>();
+    private final Map<UUID, NekoWallet> personalWallets = new ConcurrentHashMap<>();
+    /** Bound directory remains attached to pending old-world balances after a failed shutdown save. */
     private File saveDir = null;
+    private volatile boolean acceptingWallets;
 
     // ==================== 脏标记（BUG B1 生命周期兜底 + 余额推送节流） ====================
 
@@ -64,14 +68,33 @@ public class NekoWalletManager {
      * 在 CommonProxy.serverStarted 中调用（需要 World 对象）
      */
     public void init(World world) {
-        saveDir = new File(
-            world.getSaveHandler()
-                .getWorldDirectory(),
-            "gtit_neko_wallets");
-        if (!saveDir.exists()) {
-            saveDir.mkdirs();
+        bindSaveDirectory(new File(world.getSaveHandler().getWorldDirectory(), "gtit_neko_wallets"));
+    }
+
+    /** World-session boundary. A failed old-world save must never become a new-world ledger. */
+    private synchronized void bindSaveDirectory(File directory) {
+        acceptingWallets = false;
+        try {
+            File target = directory.getCanonicalFile();
+            boolean saved = true;
+            for (UUID playerId : new ArrayList<>(personalWallets.keySet())) {
+                saved &= savePersonalWallet(playerId); // Always uses the OLD bound directory.
+            }
+            if (!saved || !dirtyPersonalWallets.isEmpty()) {
+                throw new IllegalStateException("Previous world's wallets remain unsaved: " + saveDir);
+            }
+            Files.createDirectories(target.toPath());
+            personalWallets.clear();
+            dirtyPersonalWallets.clear();
+            dirtyBalanceKeys.clear();
+            lastBalanceFlushMs = 0L;
+            saveDir = target;
+            acceptingWallets = true;
+            LOG.info("猫猫币钱包存储目录: {}", saveDir.getAbsolutePath());
+        } catch (Exception failure) {
+            // CommonProxy may continue after init failure. Every lookup must still fail closed.
+            throw new IllegalStateException("Wallet storage is not ready for this world", failure);
         }
-        LOG.info("猫猫币钱包存储目录: {}", saveDir.getAbsolutePath());
     }
 
     /**
@@ -82,74 +105,61 @@ public class NekoWalletManager {
      * 即路由到团队钱包，个人钱包余额在入队时刻冻结（不再读写）；退队后回到冻结前快照。
      * 个人 .dat 文件不做删除，保留作退队恢复点——这是有意行为而非泄漏。
      */
-    public NekoWallet getWallet(UUID playerId) {
+    public synchronized NekoWallet getWallet(UUID playerId) {
+        if (!acceptingWallets) throw new IllegalStateException("Wallet storage is not ready for this world");
         if (playerId == null) return null;
 
-        // 优先尝试团队钱包（O2-04：Teams 探测/降级统一走 TeamDataProvider 门面）
-        NekoWallet teamWallet = getTeamWallet(playerId);
-        if (teamWallet != null) {
-            Team team = TeamDataProvider.getTeam(playerId);
-            if (team != null) {
-                teamWallet.setTeamId(team.getTeamId());
-            }
-            return teamWallet;
+        // Resolve the team once: a concurrent membership change must not relabel another team's wallet.
+        Team team = TeamDataProvider.getTeam(playerId);
+        NekoTeamData teamData = TeamDataProvider.getData(team);
+        if (teamData != null) {
+            NekoWallet wallet = teamData.getWallet();
+            wallet.setTeamId(team.getTeamId());
+            return wallet;
         }
-
-        // 回退到个人钱包
-        NekoWallet wallet = personalWallets.get(playerId);
-        if (wallet == null) {
-            wallet = loadWallet(playerId);
-            if (wallet == null) {
-                wallet = new NekoWallet();
-            }
-            wallet.setPlayerId(playerId);
-            personalWallets.put(playerId, wallet);
-        }
-        return wallet;
-    }
-
-    /**
-     * 获取团队共享钱包（O2-04：Teams 不可用时 getTeam/getData 返回 null，本方法随之返回 null）
-     *
-     * @return 团队钱包，如果团队不可用返回 null
-     */
-    private NekoWallet getTeamWallet(UUID playerId) {
-        NekoTeamData teamData = TeamDataProvider.getData(TeamDataProvider.getTeam(playerId));
-        return teamData != null ? teamData.getWallet() : null;
+        return personalWallets.computeIfAbsent(playerId, id -> {
+            NekoWallet wallet = loadWallet(id);
+            if (wallet == null) wallet = new NekoWallet();
+            wallet.setPlayerId(id);
+            return wallet;
+        });
     }
 
     /**
      * 保存玩家钱包
      * 如果是团队钱包，标记团队数据为脏；如果是个人钱包，保存到磁盘
      * <p>
-     * <b>B2-06 文档化决策</b>：团队分支仅 markDirty + 清个人脏标记后直接返回——
-     * 个人 .dat 不在此路径清理（保留作退队恢复点），余额也不做合并（退队即回冻结快照）。
+     * Team routing does not discard the frozen personal balance: save that cache too when present.
+     * Personal .dat files remain the restore point after leaving the team; balances are not merged.
      */
-    public void saveWallet(UUID playerId) {
+    public synchronized void saveWallet(UUID playerId) {
         if (playerId == null) return;
-
-        // 检查是否使用团队钱包（O2-04：Teams 探测/降级统一走 TeamDataProvider 门面）
-        Team team = TeamDataProvider.getTeam(playerId);
-        if (TeamDataProvider.getData(team) != null) {
-            TeamDataProvider.markTeamDirty(team);
-            // 玩家已转入团队钱包：个人钱包不再使用，同时清掉遗留脏标记
-            dirtyPersonalWallets.remove(playerId);
-            return;
+        if (acceptingWallets) {
+            Team team = TeamDataProvider.getTeam(playerId);
+            if (TeamDataProvider.getData(team) != null) TeamDataProvider.markTeamDirty(team);
         }
+        // A frozen personal wallet still owns money. Joining a team must not discard its pending save.
+        savePersonalWallet(playerId);
+    }
 
-        // 保存个人钱包到磁盘
-        if (saveDir == null) return;
+    private boolean savePersonalWallet(UUID playerId) {
         NekoWallet wallet = personalWallets.get(playerId);
-        if (wallet == null) return;
+        if (wallet == null) return true;
+        if (saveDir == null) return false;
         File file = new File(saveDir, playerId.toString() + ".dat");
-        try {
-            NBTTagCompound nbt = new NBTTagCompound();
-            nbt.setTag("wallet", wallet.writeToNBT());
-            CompressedStreamTools.safeWrite(nbt, file);
-            // 落盘成功后清除脏标记（保留失败时的标记，下个周期重试）
-            dirtyPersonalWallets.remove(playerId);
-        } catch (Exception e) {
-            LOG.error("保存猫猫币钱包失败: " + playerId, e);
+        synchronized (wallet) {
+            try {
+                NBTTagCompound nbt = new NBTTagCompound();
+                nbt.setTag("wallet", wallet.writeToNBT());
+                AtomicNbtFile.write(nbt, file);
+                // The mutation notifier takes the same wallet lock. Never clear a newer dirty mark.
+                dirtyPersonalWallets.remove(playerId);
+                return true;
+            } catch (Exception e) {
+                dirtyPersonalWallets.add(playerId);
+                LOG.error("保存猫猫币钱包失败: " + playerId, e);
+                return false;
+            }
         }
     }
 
@@ -159,18 +169,21 @@ public class NekoWalletManager {
     private NekoWallet loadWallet(UUID playerId) {
         if (saveDir == null) return null;
         File file = new File(saveDir, playerId.toString() + ".dat");
-        if (!file.exists()) return null;
+        // A permissions/I/O failure is not evidence that a wallet does not exist.
+        if (Files.notExists(file.toPath())) return null;
         try {
             NBTTagCompound nbt = CompressedStreamTools.read(file);
-            if (nbt != null && nbt.hasKey("wallet")) {
-                NekoWallet wallet = new NekoWallet();
-                wallet.readFromNBT(nbt.getCompoundTag("wallet"));
-                return wallet;
+            if (nbt == null || !nbt.hasKey("wallet", 10)) {
+                throw new IllegalArgumentException("Missing wallet compound");
             }
+            NekoWallet wallet = new NekoWallet();
+            wallet.readFromNBT(nbt.getCompoundTag("wallet"));
+            return wallet;
         } catch (Exception e) {
-            LOG.error("加载猫猫币钱包失败: " + playerId, e);
+            LOG.error("加载猫猫币钱包失败，保留原存档并拒绝覆盖: " + playerId, e);
+            // Creating a fresh zero wallet here would overwrite the only recoverable copy on logout.
+            throw new IllegalStateException("Cannot load wallet " + playerId, e);
         }
-        return null;
     }
 
     // ==================== 钱包余额变化通知（脏标记 + 节流冲刷） ====================
@@ -211,7 +224,7 @@ public class NekoWalletManager {
      * 缓存，全体团队广播复用，替代逐成员 O(n) 线性扫描（m×n → m+n）。
      */
     public void flushBalanceNotifications() {
-        if (dirtyBalanceKeys.isEmpty()) return;
+        if (!acceptingWallets || dirtyBalanceKeys.isEmpty()) return;
         long now = System.currentTimeMillis();
         if (now - lastBalanceFlushMs < BALANCE_FLUSH_INTERVAL_MS) return;
         lastBalanceFlushMs = now;
@@ -280,8 +293,8 @@ public class NekoWalletManager {
             return;
         }
         NekoWallet wallet = personalWallets.get(playerId);
-        // 已转入团队钱包（teamId 置位）时不再按个人口径推送
-        if (wallet == null || wallet.isTeamWallet()) return;
+        // Frozen personal wallets must not overwrite the active team balance on the client.
+        if (wallet == null || TeamDataProvider.getData(TeamDataProvider.getTeam(playerId)) != null) return;
         EntityPlayerMP player = onlineByUuid.get(playerId);
         if (player == null) return;
         WalletNetworkManager.sendBalanceToClient(player, snapshotBalances(wallet));
@@ -290,14 +303,10 @@ public class NekoWalletManager {
     /** 钱包余额快照（currencyId → 数量；在钱包锁内取一致快照） */
     static Map<String, Integer> snapshotBalances(NekoWallet wallet) {
         Map<String, Integer> balances = new HashMap<>();
-        // NekoWallet 的读写方法均以自身为锁，外层同步保证键集与余额的一致快照
-        // noinspection SynchronizationOnLocalVariableOrMethodParameter
-        synchronized (wallet) {
-            for (String currencyId : wallet.getCurrencyIds()) {
-                if (currencyId != null) {
-                    balances.put(currencyId, wallet.getCount(currencyId));
-                }
-            }
+        // copy() follows aliases while holding the actual survivor's lock for the whole ledger copy.
+        NekoWallet snapshot = wallet.copy();
+        for (String currencyId : snapshot.getCurrencyIds()) {
+            if (currencyId != null) balances.put(currencyId, snapshot.getCount(currencyId));
         }
         return balances;
     }
@@ -316,12 +325,12 @@ public class NekoWalletManager {
     // ==================== 生命周期 ====================
 
     /**
-     * 卸载玩家个人钱包（玩家下线时由 NekoWalletHandler 调用）
-     * 团队钱包由 GTNHLib Teams 管理，无需卸载
+     * Save on logout, retaining the canonical ledger until world stop. Outstanding operations may
+     * still hold this object for refunds; eviction could recreate a second ledger and orphan money.
+     * The cache retains UUIDs and balances only (no player/world references), at one entry per participant.
      */
     public void unloadWallet(UUID playerId) {
         saveWallet(playerId);
-        personalWallets.remove(playerId);
     }
 
     /**
@@ -335,14 +344,13 @@ public class NekoWalletManager {
      *
      * @return 本次落盘的钱包数
      */
-    public int saveDirtyWallets() {
+    public synchronized int saveDirtyWallets() {
         if (dirtyPersonalWallets.isEmpty()) return 0;
         List<UUID> dirty = new ArrayList<>(dirtyPersonalWallets);
         int saved = 0;
         for (UUID playerId : dirty) {
             if (personalWallets.containsKey(playerId)) {
-                saveWallet(playerId);
-                saved++;
+                if (savePersonalWallet(playerId)) saved++;
             } else {
                 // 钱包已卸载（saveWallet 内部已落盘或不存在），清掉孤儿标记
                 dirtyPersonalWallets.remove(playerId);
@@ -358,22 +366,39 @@ public class NekoWalletManager {
      * 保存所有个人钱包（服务器关闭时由生命周期钩子调用）
      * 团队钱包由 GTNHLib Teams 自动管理
      */
-    public void saveAll() {
+    public synchronized void saveAll() {
         for (UUID playerId : new ArrayList<>(personalWallets.keySet())) {
-            saveWallet(playerId);
+            savePersonalWallet(playerId);
+        }
+        // A failed old-world transition may retain only personal ledgers; do not route old team keys
+        // through the new world's provider while storage is unavailable.
+        if (!acceptingWallets) return;
+        // Server stopping may happen inside the notification throttle window.
+        for (String key : new ArrayList<>(dirtyBalanceKeys)) {
+            if (key.startsWith(TEAM_KEY_PREFIX)) {
+                Team team = TeamDataProvider.getTeamById(UUID.fromString(key.substring(TEAM_KEY_PREFIX.length())));
+                TeamDataProvider.markTeamDirty(team);
+            }
         }
     }
 
     /**
      * 服务器停止收尾：全量落盘并清空内存缓存（FMLServerStoppedEvent 调用）。
      * <p>
-     * 清空缓存防止单机连续切换世界时，旧世界的钱包对象驻留内存遮蔽新世界的
-     * .dat 文件（个人钱包仅在不命中缓存时才从磁盘加载）。
+     * Successful saves clear the old session. Failed saves retain their OLD directory binding and
+     * disable lookups; init must save that pending data before binding any subsequent world.
      */
-    public void unloadAll() {
+    public synchronized void unloadAll() {
         saveAll();
+        acceptingWallets = false;
+        if (!dirtyPersonalWallets.isEmpty()) {
+            LOG.error("服务器停止时仍有 {} 个猫猫币钱包未能保存；保留旧世界绑定并禁止新钱包访问", dirtyPersonalWallets.size());
+            return;
+        }
         personalWallets.clear();
         dirtyPersonalWallets.clear();
         dirtyBalanceKeys.clear();
+        saveDir = null;
+        lastBalanceFlushMs = 0L;
     }
 }

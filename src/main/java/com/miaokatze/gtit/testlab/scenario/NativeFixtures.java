@@ -62,7 +62,7 @@ final class NativeFixtures {
         Object[] managers = { NekoWalletManager.INSTANCE, DailySignInManager.INSTANCE, MailManager.INSTANCE,
             LotteryManager.INSTANCE, NekoHistoryManager.INSTANCE };
         String[][] keys = { { "personalWallets", "dirtyPersonalWallets", "dirtyBalanceKeys" }, { "signInDataMap" },
-            { "mailDataMap" }, { "pityCounters" }, { "histories", "legacyHistoryConsumed" } };
+            { "mailDataMap" }, { "pityCounters" }, { "histories", "legacyHistoryConsumed", "migrations", "pendingMigrationMarkers" } };
         for (int i = 0; i < managers.length; i++) {
             Object manager = managers[i];
             File directory = (File) field(manager, "saveDir");
@@ -74,6 +74,28 @@ final class NativeFixtures {
                         || ((Collection<?>) collection).contains("player:" + id)
                         || ((Collection<?>) collection).contains("team:" + id))) {
                     throw new IllegalStateException("Synthetic identity already cached: " + id);
+                }
+                if (manager == NekoHistoryManager.INSTANCE && "migrations".equals(key)) {
+                    java.lang.reflect.Method persist = NekoHistoryManager.class
+                        .getDeclaredMethod("writeMigrations", Map.class);
+                    persist.setAccessible(true);
+                    undo.add(() -> {
+                        synchronized (manager) {
+                            @SuppressWarnings("unchecked")
+                            Map<Object, Object> intents = (Map<Object, Object>) collection;
+                            Object owned = intents.remove(id);
+                            if (owned == null) return;
+                            try {
+                                // Rewrite the current ledger after removing ONLY this verified synthetic UUID.
+                                // Never restore an old whole-file snapshot or delete unrelated real intents.
+                                persist.invoke(manager, intents);
+                            } catch (ReflectiveOperationException failure) {
+                                intents.put(id, owned);
+                                throw new IllegalStateException("Cannot persist synthetic history migration cleanup " + id, failure);
+                            }
+                        }
+                    });
+                    continue;
                 }
                 undo.add(() -> {
                     if (collection instanceof Map) ((Map<?, ?>) collection).remove(id);
