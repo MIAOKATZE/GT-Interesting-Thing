@@ -3,12 +3,15 @@ package com.miaokatze.gtit.reincarnation.storage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
+import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldSavedData;
 
+import com.miaokatze.gtit.reincarnation.core.ReincarnationAtomicFile;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 
 /**
@@ -36,11 +39,12 @@ import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
  * EXECUTED（投胎信箱在全局文件）后清空；</li>
  * <li>{@code Migrated}：boolean——旧全局 v1 格式一次性 consume-once 迁移标记
  * （见 {@link ReincarnationMigration}），置位后不再重复合并；</li>
+ * <li>{@code MigrationId}：持久化 UUID，迁移源预约绑定此存档，重命名目录不改变身份；</li>
  * <li>{@code GrantClaimed}：boolean（v1.8.6 新增）——本存档轮回奖励"已领取"标记，
  * 发放门控（{@code ReincarnationGrantGate}）三信号之一；新增键、旧档读取缺省
  * false、无迁移。</li>
  * <li>{@code GrantStarted}：boolean（门控修订新增）——本存档轮回奖励"发放已启动"
- * 承诺标记：{@code executeGrant} 不变量复核通过后、置 {@code grantInFlight} 前置位并
+ * 承诺标记：登录门控首次通过后、调度 100 tick 演出延迟之前置位并
  * 立即落盘（写点即承诺点），此后同档崩溃/登出重进经发放门控的续跑旁路
  * （{@code grantStartedHere}）放行，不再依赖时变信号；新增键、旧档读取缺省
  * false、无迁移。</li>
@@ -57,6 +61,7 @@ public class ReincarnationWorldData extends WorldSavedData {
     private static final String TAG_UNLOCKED_ROWS = "UnlockedRows";
     private static final String TAG_DEPOSITED_ITEMS = "DepositedItems";
     private static final String TAG_MIGRATED = "Migrated";
+    private static final String TAG_MIGRATION_ID = "MigrationId";
     /** v1.8.6：本存档轮回奖励"已领取"标记（发放门控三信号之一） */
     private static final String TAG_GRANT_CLAIMED = "GrantClaimed";
     /** 门控修订：本存档轮回奖励"发放已启动"承诺标记（登录门控续跑旁路信号） */
@@ -75,6 +80,8 @@ public class ReincarnationWorldData extends WorldSavedData {
     private final List<ReincarnationCycle.ItemRef> depositedItems = new ArrayList<>();
     /** 旧全局 v1 格式 consume-once 迁移标记 */
     private boolean migrated;
+    /** Persisted before reserving a v1 source; independent of the world's directory/name. */
+    private String migrationId = "";
     /** v1.8.6：本存档轮回奖励已领取（completeGrant 清信箱后置位，发放门控拒绝重复发放） */
     private boolean grantClaimed;
     /** 门控修订：本存档发放已启动（executeGrant 复核通过后置位，登录门控续跑旁路） */
@@ -211,7 +218,7 @@ public class ReincarnationWorldData extends WorldSavedData {
         markDirty();
     }
 
-    /** @return 旧全局 v1 一次性迁移是否已完成（置位后 {@link ReincarnationMigration} 不再重试） */
+    /** @return 旧全局 v1 一次性迁移是否已完成（置位后不再重复合并，但仍可重试消费源文件） */
     public boolean isMigrated() {
         return this.migrated;
     }
@@ -219,6 +226,18 @@ public class ReincarnationWorldData extends WorldSavedData {
     public void setMigrated(boolean migrated) {
         this.migrated = migrated;
         markDirty();
+    }
+
+    public String getMigrationId() {
+        return this.migrationId;
+    }
+
+    public String ensureMigrationId() {
+        if (this.migrationId.isEmpty()) {
+            this.migrationId = UUID.randomUUID().toString();
+            markDirty();
+        }
+        return this.migrationId;
     }
 
     /**
@@ -236,30 +255,46 @@ public class ReincarnationWorldData extends WorldSavedData {
     }
 
     /**
-     * @return 本存档轮回奖励是否已启动发放（门控修订续跑旁路：executeGrant 不变量复核
-     *         通过后、置 {@code grantInFlight} 前置位并立即落盘——写点即承诺点，崩溃
+     * @return 本存档轮回奖励是否已获准发放（登录门控通过后、延迟演出之前
+     *         置位并立即落盘——写点即承诺点，崩溃
      *         重进按续跑放行，登录门控不再依赖时变信号）
      */
     public boolean isGrantStarted() {
         return this.grantStarted;
     }
 
-    /** 置/清"发放已启动"标记（executeGrant 复核通过后置位，saveImmediately 落盘） */
+    /** 置/清发放承诺标记（登录门控通过后置位，延迟调度之前 saveImmediately 落盘） */
     public void setGrantStarted(boolean grantStarted) {
         this.grantStarted = grantStarted;
         markDirty();
     }
 
     /**
-     * Flush this data immediately through the overworld MapStorage save cycle.
-     * MapStorage.saveData(WorldSavedData) is private in 1.7.10; saveAllData() is
-     * the public immediate API and writes every dirty entry synchronously.
+     * Checkpoint only this data using the native compressed {@code data} envelope
+     * and SaveHandler filename. Vanilla MapStorage catches I/O failures and clears
+     * dirty anyway, so it cannot acknowledge a migration or grant commitment.
+     * A failed replacement throws and remains dirty; a successful one is readable
+     * by native MapStorage and does not force unrelated dirty data to be saved.
      */
     public void saveImmediately(World overworld) {
         if (overworld == null || overworld.isRemote || overworld.mapStorage == null) {
             throw new IllegalArgumentException("ReincarnationWorldData 需要服务端 overworld MapStorage");
         }
-        overworld.mapStorage.saveAllData();
+        markDirty();
+        try {
+            java.io.File target = overworld.getSaveHandler().getMapFileFromName(this.mapName);
+            if (target == null) {
+                throw new IllegalStateException("WorldData save handler has no persistent map file");
+            }
+            NBTTagCompound data = new NBTTagCompound();
+            writeToNBT(data);
+            NBTTagCompound root = new NBTTagCompound();
+            root.setTag("data", data);
+            ReincarnationAtomicFile.write(target.toPath(), CompressedStreamTools.compress(root));
+            setDirty(false);
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("WorldData checkpoint failed: " + this.mapName, failure);
+        }
     }
 
     // ==================== NBT 持久化 ====================
@@ -295,6 +330,7 @@ public class ReincarnationWorldData extends WorldSavedData {
         }
 
         this.migrated = data.getBoolean(TAG_MIGRATED);
+        this.migrationId = data.getString(TAG_MIGRATION_ID);
         // v1.8.6 新键：旧档/损坏档缺省 false（无迁移语义），历史存档首次过门控按未领取处理
         this.grantClaimed = data.getBoolean(TAG_GRANT_CLAIMED);
         // 门控修订新键：旧档/损坏档缺省 false（无迁移语义），历史存档按"未启动发放"处理
@@ -321,6 +357,7 @@ public class ReincarnationWorldData extends WorldSavedData {
         data.setTag(TAG_DEPOSITED_ITEMS, items);
 
         data.setBoolean(TAG_MIGRATED, this.migrated);
+        data.setString(TAG_MIGRATION_ID, this.migrationId);
         data.setBoolean(TAG_GRANT_CLAIMED, this.grantClaimed);
         data.setBoolean(TAG_GRANT_STARTED, this.grantStarted);
     }
