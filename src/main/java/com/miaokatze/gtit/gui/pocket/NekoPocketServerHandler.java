@@ -8,12 +8,13 @@ import java.util.UUID;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+
+import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
-import com.cleanroommc.modularui.screen.ModularContainer;
 import com.miaokatze.gtit.common.items.pocket.EssenceNativeChannels;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
@@ -1108,45 +1109,37 @@ final class NekoPocketServerHandler {
         if (target == null || pocket == null) {
             return false;
         }
-        if (!(target.openContainer instanceof ModularContainer container)) {
+        if (!(target.openContainer instanceof NekoPocketContainer container) || !container.belongsToPanel(panel)) {
             return false;
         }
-        if (!(container.getGuiData() instanceof PlayerInventoryGuiData guiData)) {
+        if (!(container.getGuiData() instanceof PlayerInventoryGuiData)) {
             return false;
         }
-        // 承载格上的栈必须还是这一枚（身份比较，不是 isItemEqual：换一枚就得重新开界面）
-        final ItemStack atCarrier = guiData.getUsedItemStack();
-        // ★R88（收 D1.3-5 的"比引用"面）：堆叠合并 / 跨维重建 EntityPlayerMP 会让 NBT 往返出<b>另一个
-        // 引用</b>，此时按身份比就把合法持有者判成伪造 ⇒ 该 tick 之后所有取瓶/入槽动作静默拒执行
-        // （观感"点了没反应"）。回落判据不再自造：直接用每 tick 交互闸同源的那条
-        // （{@code carrierStillPresent}——同格、同物品、按 uuid 认玩家，并顺手把 pocket 重新钉过去），
-        // 于是"能不能操作"与"界面还该不该开着"是同一处真相，防伪强度不降。
-        return atCarrier == pocket || panel.carrierStillPresent(target);
+        // Always apply the closed/owner/carrier checks, even if the ItemStack reference is unchanged.
+        return panel.carrierStillPresent(target);
     }
 
     // ------------------------------------------------------------------ PocketSession 实现体（Panel 的 @Override 逐条委托到这）
 
     ItemStack carrierStack() {
-        return panel.pocketStack();
+        // Closed panels still drive channels/distillation. Vanilla inventory placement copies
+        // the carrier, so resolve the session token before a driver compares object identity.
+        return panel.carrierStackLive();
     }
 
     NBTTagCompound carrierTag() {
-        final ItemStack pocket = panel.pocketStack();
+        final ItemStack pocket = carrierStack();
         return pocket == null ? null : pocket.getTagCompound();
     }
 
     boolean isHeldByOwner() {
         final EntityPlayer target = panel.player();
-        final ItemStack pocket = panel.pocketStack();
+        final ItemStack pocket = carrierStack();
         if (target == null || target.inventory == null || pocket == null) {
             return false;
         }
-        for (ItemStack held : target.inventory.mainInventory) {
-            if (held == pocket) {
-                return true;
-            }
-        }
-        return false;
+        return PocketCarrierIdentity.isHeld(pocket, target.inventory.mainInventory,
+            com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler.safeBaubles(target));
     }
 
     void markDirty() {

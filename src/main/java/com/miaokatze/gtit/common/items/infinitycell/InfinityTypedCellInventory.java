@@ -95,50 +95,18 @@ public class InfinityTypedCellInventory<T extends IAEStack<T>> implements IMEInv
 
     @Override
     public T injectItems(T input, Actionable mode, BaseActionSource src) {
-        if (input == null || input.getStackSize() == 0) {
-            return null;
+        if (input == null || input.getStackSize() <= 0) {
+            return input;
         }
-        final T stored = getContents().findPrecise(input);
-        if (stored != null) {
-            if (mode == Actionable.MODULATE) {
-                stored.setStackSize(stored.getStackSize() + input.getStackSize());
-                this.saveChanges();
-            }
-            return null;
-        }
-        if (mode == Actionable.MODULATE) {
-            getContents().add(input.copy());
-            this.saveChanges();
-        }
-        return null;
+        return InfinityCellTransfer.inject(getContents(), input, mode, Long.MAX_VALUE, this::saveChanges);
     }
 
     @Override
     public T extractItems(T request, Actionable mode, BaseActionSource src) {
-        if (request == null) {
+        if (request == null || request.getStackSize() <= 0) {
             return null;
         }
-        final T stored = getContents().findPrecise(request);
-        if (stored == null) {
-            return null;
-        }
-        final long size = request.getStackSize();
-        final T result = stored.copy();
-        if (stored.getStackSize() <= size) {
-            result.setStackSize(stored.getStackSize());
-            if (mode == Actionable.MODULATE) {
-                stored.setStackSize(0);
-                stored.reset();
-                this.saveChanges();
-            }
-        } else {
-            result.setStackSize(size);
-            if (mode == Actionable.MODULATE) {
-                stored.setStackSize(stored.getStackSize() - size);
-                this.saveChanges();
-            }
-        }
-        return result;
+        return InfinityCellTransfer.extract(getContents(), request, mode, this::saveChanges);
     }
 
     @Override

@@ -75,9 +75,11 @@ final class PocketFluidChannelOps {
             return new PocketChannelOps.Outcome(PocketReceipt.NO_CHANNEL, 0);
         }
         final int requested = Math.min(now.amount, source.count);
-        final IAEFluidStack request = AEFluidStack.create(new FluidStack(now.getFluid(), requested));
+        final FluidStack offered = now.copy();
+        offered.amount = requested;
+        final IAEFluidStack request = PocketAeFluidStacks.createExact(offered);
         if (request == null) {
-            return new PocketChannelOps.Outcome(PocketReceipt.LOST, 0);
+            return new PocketChannelOps.Outcome(PocketReceipt.FILTER_REJECTED, 0);
         }
         ops.rememberPrototype(source.contentKey, request);
         final boolean writable = handler.getAccess()
@@ -92,7 +94,8 @@ final class PocketFluidChannelOps {
         final long moved = Math.max(0L, requested - leftoverSize);
         if (moved > 0 && ops.session()
             .drainOwnTankL(source.slot, moved) < moved) {
-            final IAEFluidStack back = AEFluidStack.create(new FluidStack(now.getFluid(), (int) moved));
+            final IAEFluidStack back = request.copy();
+            back.setStackSize(moved);
             if (back != null) {
                 handler.injectItems(back, Actionable.MODULATE, PocketAeChannelOps.actionSource());
             }
