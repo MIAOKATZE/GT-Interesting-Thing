@@ -24,6 +24,16 @@ public final class PlayerLookup {
 
     private PlayerLookup() {}
 
+    /** Admission guard for queued requests, not for already-committed deliveries. */
+    public static boolean isCurrentSession(EntityPlayerMP player) {
+        return player != null && !player.isDead && player.isEntityAlive()
+            && player.playerNetServerHandler != null
+            && player.playerNetServerHandler.playerEntity == player
+            && player.playerNetServerHandler.netManager != null
+            && player.playerNetServerHandler.netManager.isChannelOpen()
+            && getOnlinePlayerByUuid(player.getUniqueID()) == player;
+    }
+
     /**
      * 按 UUID 查找在线玩家
      *
@@ -33,7 +43,7 @@ public final class PlayerLookup {
     public static EntityPlayerMP getOnlinePlayerByUuid(UUID uuid) {
         if (uuid == null) return null;
         MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return null;
+        if (server == null || server.getConfigurationManager() == null) return null;
         for (Object obj : server.getConfigurationManager().playerEntityList) {
             if (obj instanceof EntityPlayerMP) {
                 EntityPlayerMP player = (EntityPlayerMP) obj;
@@ -55,7 +65,7 @@ public final class PlayerLookup {
     public static EntityPlayerMP getOnlinePlayerByName(String name) {
         if (name == null || name.isEmpty()) return null;
         MinecraftServer server = MinecraftServer.getServer();
-        if (server == null) return null;
+        if (server == null || server.getConfigurationManager() == null) return null;
         for (Object obj : server.getConfigurationManager().playerEntityList) {
             if (obj instanceof EntityPlayerMP) {
                 EntityPlayerMP player = (EntityPlayerMP) obj;
