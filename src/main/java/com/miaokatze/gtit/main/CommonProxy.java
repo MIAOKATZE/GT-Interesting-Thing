@@ -608,6 +608,8 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStarting(FMLServerStartingEvent event) {
+        com.miaokatze.gtit.util.ServerTaskScheduler.startRequests();
+        com.miaokatze.gtit.lottery.LotteryHandler.clearDelayedTasks();
         event.registerServerCommand(new GTITGiftCommand());
         event.registerServerCommand(new com.miaokatze.gtit.command.GiftLibraryCommand());
         com.miaokatze.gtit.testlab.TestLabRuntime.serverStarting(event);
@@ -799,12 +801,30 @@ public class CommonProxy {
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("关服保存签到数据失败", t);
         }
+        // Fence world-bound rewards before shutdown callbacks can access stale cached state.
+        com.miaokatze.gtit.lottery.LotteryHandler.clearDelayedTasks();
+        try {
+            com.miaokatze.gtit.mail.MailManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服收尾邮件数据失败", t);
+        }
+        try {
+            com.miaokatze.gtit.lottery.LotteryManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服收尾抽奖数据失败", t);
+        }
         // O2-03：清空主线程任务队列（FMLServerStoppingEvent 不投递给事件总线监听器，
         // 由本生命周期钩子代清——防止单机连续开新世界时残留任务跨世界执行）
         com.miaokatze.gtit.util.ServerTaskScheduler.clear();
+        try {
+            com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服保存交易历史失败", t);
+        }
         // v1.8.5：HardcoreEnforcer 删档倒计时复位止血（事件不走总线，经本钩子转发——
         // 防单机连续开新世界时冻结倒计时跨档误删新存档）
         try {
+            com.miaokatze.gtit.reincarnation.handler.ReincarnationHandler.onServerStopping();
             com.miaokatze.gtit.reincarnation.handler.HardcoreEnforcer.onServerStopping();
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("停服复位时间线执法器失败", t);
@@ -834,6 +854,22 @@ public class CommonProxy {
      */
     @SuppressWarnings({ "unused" })
     public void serverStopped(FMLServerStoppedEvent event) {
+        try {
+            com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("停服保存交易历史失败", t);
+        }
+        // Retry any failed stopping flush while each manager still owns its original directory.
+        try {
+            com.miaokatze.gtit.mail.MailManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("关服重试保存邮件数据失败", t);
+        }
+        try {
+            com.miaokatze.gtit.lottery.LotteryManager.INSTANCE.unloadAll();
+        } catch (Throwable t) {
+            GTInterestingThing.LOG.error("关服重试保存抽奖数据失败", t);
+        }
         try {
             NekoWalletManager.INSTANCE.unloadAll();
         } catch (Throwable t) {

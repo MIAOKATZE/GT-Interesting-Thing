@@ -84,6 +84,27 @@ tasks.register<JavaExec>("runPocketFluidClickTest") {
 
 tasks.named("check") { dependsOn("runPocketFluidClickTest") }
 
+tasks.register<JavaExec>("runInfinityCellTransferTest") {
+    group = "verification"
+    description = "Checks exact long-count conservation across infinite-cell channels."
+    mainClass = "com.miaokatze.gtit.common.items.infinitycell.InfinityCellTransferTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+}
+
+tasks.register<JavaExec>("runPocketTaggedFluidTest") {
+    group = "verification"
+    description = "Checks tagged fluid identity through pocket tanks, containers and persistence."
+    mainClass = "com.miaokatze.gtit.common.items.pocket.PocketTaggedFluidTest"
+    classpath = storeTestRuntimeClasspath
+    classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    val scratchDir = layout.buildDirectory.dir("pocket-tagged-fluid-test")
+    workingDir(scratchDir)
+    doFirst { scratchDir.get().asFile.mkdirs() }
+}
+
+tasks.named("check") { dependsOn("runInfinityCellTransferTest", "runPocketTaggedFluidTest") }
+
 // 抽奖槽数、草稿和轮盘布局纯 JVM 回归。
 tasks.register<JavaExec>("runLotterySlotsTest") {
     group = "verification"
@@ -143,6 +164,9 @@ mapOf(
     "runLotteryDeliveryPlanTest" to "com.miaokatze.gtit.lottery.LotteryDeliveryPlanTest",
     "runNekoEmbeddedNeiProbeTest" to "com.miaokatze.gtit.client.nei.NekoEmbeddedNeiProbeTest",
     "runTradeEditorDraftContractTest" to "com.miaokatze.gtit.gui.vm.edit.TradeEditorDraftContractTest",
+    "runTradeEditPreconditionTest" to "com.miaokatze.gtit.trade.v2.TradeEditPreconditionTest",
+    "runTerminalClientDataTest" to "com.miaokatze.gtit.terminal.TerminalClientDataTest",
+    "runClientConnectionCacheTest" to "com.miaokatze.gtit.terminal.ClientConnectionCacheTest",
     "runNekoVendingLayoutTest" to "com.miaokatze.gtit.gui.vm.NekoVendingLayoutTest",
     "runNekoOutputStateTest" to "com.miaokatze.gtit.common.machine.v2.NekoOutputStateTest",
     "runNekoOutputBodyGeometryTest" to "com.miaokatze.gtit.common.machine.v2.NekoOutputBodyGeometryTest",
@@ -223,6 +247,28 @@ tasks.named("check") { dependsOn("runDefaultContentPolicyTest") }
 
 val contentTestCompileClasspath = sourceSets.getByName("main").compileClasspath
 mapOf(
+    "runReincarnationDurabilityRegressionTest" to "com.miaokatze.gtit.reincarnation.ReincarnationDurabilityRegressionTest",
+    "runReincarnationResumeRegressionTest" to "com.miaokatze.gtit.reincarnation.ReincarnationResumeRegressionTest",
+    "runReincarnationFailureBoundaryRegressionTest" to "com.miaokatze.gtit.reincarnation.ReincarnationFailureBoundaryRegressionTest",
+    "runReincarnationLifecycleRegressionTest" to "com.miaokatze.gtit.reincarnation.ReincarnationLifecycleRegressionTest",
+    "runReincarnationSessionRegressionTest" to "com.miaokatze.gtit.reincarnation.ReincarnationSessionRegressionTest",
+    "runMailConservationTest" to "com.miaokatze.gtit.mail.MailConservationTest",
+    "runSignInRewardConservationTest" to "com.miaokatze.gtit.signin.SignInRewardConservationTest",
+    "runLotteryPersistenceTest" to "com.miaokatze.gtit.lottery.LotteryPersistenceTest",
+    "runBqQuestPackTest" to "com.miaokatze.gtit.crossmod.bq.BqQuestPackTest",
+    "runLotteryCostValidationTest" to "com.miaokatze.gtit.lottery.LotteryCostValidationTest",
+    "runRewardSessionLifecycleTest" to "com.miaokatze.gtit.rewards.RewardSessionLifecycleTest",
+    "runRewardPersistenceBoundaryTest" to "com.miaokatze.gtit.rewards.RewardPersistenceBoundaryTest",
+    "runRewardConfigPersistenceTest" to "com.miaokatze.gtit.rewards.RewardConfigPersistenceTest",
+    "runBoundedRequestQueueTest" to "com.miaokatze.gtit.util.BoundedRequestQueueTest",
+    "runPacketStringsTest" to "com.miaokatze.gtit.util.PacketStringsTest",
+    "runFlightSourceSupportTest" to "com.miaokatze.gtit.common.items.FlightSourceSupportTest",
+    "runPocketFluidNativeBoundaryTest" to "com.miaokatze.gtit.common.items.pocket.PocketFluidNativeBoundaryTest",
+    "runPocketCursorDropTest" to "com.miaokatze.gtit.gui.pocket.PocketCursorDropTest",
+    "runPocketCarrierRelocationTest" to "com.miaokatze.gtit.gui.pocket.PocketCarrierRelocationTest",
+    "runPocketHeadlessCarrierTest" to "com.miaokatze.gtit.common.items.pocket.channel.PocketHeadlessCarrierTest",
+    "runVendingRequestAdmissionTest" to "com.miaokatze.gtit.gui.vm.VendingRequestAdmissionTest",
+    "runHistoryPersistenceTest" to "com.miaokatze.gtit.trade.v2.HistoryPersistenceTest",
     "runGiftSystemTest" to "com.miaokatze.gtit.gift.GiftSystemTest",
     "runGiftEditorSessionTest" to "com.miaokatze.gtit.gift.ui.GiftEditorSessionTest",
     "runGiftAccessTest" to "com.miaokatze.gtit.gift.ui.GiftAccessTest",
@@ -240,6 +286,12 @@ mapOf(
         group = "verification"
         mainClass = entryPoint
         classpath = storeTestRuntimeClasspath + contentTestCompileClasspath
+        if (taskName == "runLotteryPersistenceTest" || taskName == "runLotteryCostValidationTest" || taskName == "runRewardSessionLifecycleTest" || taskName == "runRewardPersistenceBoundaryTest" || taskName == "runRewardConfigPersistenceTest") {
+            systemProperty("gtit.rewards.testScratch", "true")
+            val scratchDir = layout.buildDirectory.dir("review-tests/$taskName")
+            workingDir(scratchDir)
+            doFirst { scratchDir.get().asFile.mkdirs() }
+        }
         classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
         if (taskName == "runRemoteVendingTerminalTest" || taskName == "runVendingConcurrencyTest") {
             classpath += configurations.detachedConfiguration(dependencies.create(
