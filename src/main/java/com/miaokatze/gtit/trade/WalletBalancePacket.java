@@ -83,15 +83,21 @@ public class WalletBalancePacket implements IMessage {
             // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
             // 需切回客户端主线程再写缓存（GUI 在主线程读取）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final WalletBalancePacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(() -> NekoClientBalances.updateBalances(message.parseBalances()));
+        private void handleClient(final WalletBalancePacket message, MessageContext context) {
+            Object connection = context.netHandler;
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.func_152344_a(() -> {
+                // UUIDs survive reconnects; only the exact receiving connection may update this cache.
+                if (connection == null || mc.getNetHandler() != connection || mc.theWorld == null
+                    || mc.thePlayer == null) return;
+                NekoClientBalances.updateBalances(message.parseBalances());
+            });
         }
     }
 }

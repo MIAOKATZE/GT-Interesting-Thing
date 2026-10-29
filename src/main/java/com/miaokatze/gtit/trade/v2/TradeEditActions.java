@@ -91,6 +91,8 @@ final class TradeEditActions {
             JsonObject json = new JsonParser().parse(jsonPayload)
                 .getAsJsonObject();
 
+            if (!validateDraft(player, groupIdStr, tradeIndex, json)) return;
+
             // 加载当前配置
             NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
             if (data == null || data.getTrades() == null) {
@@ -236,6 +238,18 @@ final class TradeEditActions {
         }
     }
 
+    /** Main-thread comparison and the following mutation are one scheduled action; old clients fail closed. */
+    private static boolean validateDraft(EntityPlayerMP player, String groupId, int index, JsonObject json) {
+        String expected = null;
+        if (json.has("expectedEditFingerprint") && json.get("expectedEditFingerprint").isJsonPrimitive()
+            && json.getAsJsonPrimitive("expectedEditFingerprint").isString()) {
+            expected = json.get("expectedEditFingerprint").getAsString();
+        }
+        if (NekoTradeDefinition.matchesEdit(UUID.fromString(groupId), index, expected)) return true;
+        sendError(player, "交易已变更或编辑上下文已失效，请重新打开编辑器后再试");
+        return false;
+    }
+
     /**
      * 新建交易条目（服务端）
      * <p>
@@ -346,8 +360,10 @@ final class TradeEditActions {
      * @param player     玩家
      * @param groupIdStr 待删除交易条目的组 UUID 字符串
      */
-    public static void deleteTrade(EntityPlayerMP player, String groupIdStr) {
+    public static void deleteTrade(EntityPlayerMP player, String groupIdStr, int tradeIndex, String jsonPayload) {
         try {
+            JsonObject json = new JsonParser().parse(jsonPayload).getAsJsonObject();
+            if (!validateDraft(player, groupIdStr, tradeIndex, json)) return;
             NekoTradeConfig.NekoTradeData data = NekoTradeConfig.load();
             if (data == null || data.getTrades() == null) {
                 sendError(player, "交易配置为空，无法删除");

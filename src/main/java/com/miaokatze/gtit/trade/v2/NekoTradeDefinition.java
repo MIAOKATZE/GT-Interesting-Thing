@@ -52,6 +52,29 @@ public final class NekoTradeDefinition {
                         .get(index)));
     }
 
+    /** Editing can replace/delete the whole persisted group, including its page/order metadata. */
+    public static String editFingerprint(NekoTradeGroup group) {
+        if (group == null) return "";
+        NBTTagCompound definition = new NBTTagCompound();
+        definition.setString("id", group.getId().toString());
+        definition.setInteger("tabId", group.getTabId());
+        definition.setInteger("orderId", group.getOrderId());
+        definition.setBoolean("defaultEntry", group.isDefaultEntry());
+        int index = 0;
+        for (NekoTrade trade : group.getTrades()) {
+            definition.setString("trade" + index++, fingerprint(group, trade));
+        }
+        definition.setInteger("tradeCount", index);
+        return digest(definition);
+    }
+
+    public static boolean matchesEdit(UUID groupId, int index, String expected) {
+        if (expected == null || expected.length() != 64) return false;
+        NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
+        return group != null && index >= 0 && index < group.getTrades().size()
+            && expected.equals(editFingerprint(group));
+    }
+
     private static String digest(NBTBase tag) {
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();

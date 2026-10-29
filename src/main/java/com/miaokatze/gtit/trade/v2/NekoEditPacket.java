@@ -4,7 +4,8 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 
-import cpw.mods.fml.common.network.ByteBufUtils;
+import com.miaokatze.gtit.util.PacketStrings;
+
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
 import cpw.mods.fml.common.network.simpleimpl.MessageContext;
@@ -89,17 +90,19 @@ public class NekoEditPacket implements IMessage {
     @Override
     public void fromBytes(ByteBuf buf) {
         this.action = buf.readInt();
-        this.targetId = ByteBufUtils.readUTF8String(buf);
+        this.targetId = PacketStrings.read(buf, NekoEditActionHandler.MAX_TARGET_ID_LENGTH);
         this.targetIndex = buf.readInt();
-        this.jsonPayload = ByteBufUtils.readUTF8String(buf);
+        this.jsonPayload = PacketStrings.read(buf, NekoEditActionHandler.MAX_JSON_PAYLOAD_LENGTH);
+        if (buf.isReadable()) throw new IllegalArgumentException("Unexpected edit request payload");
     }
 
     @Override
     public void toBytes(ByteBuf buf) {
         buf.writeInt(this.action);
-        ByteBufUtils.writeUTF8String(buf, this.targetId == null ? "" : this.targetId);
+        PacketStrings.write(buf, this.targetId == null ? "" : this.targetId, NekoEditActionHandler.MAX_TARGET_ID_LENGTH);
         buf.writeInt(this.targetIndex);
-        ByteBufUtils.writeUTF8String(buf, this.jsonPayload == null ? "" : this.jsonPayload);
+        PacketStrings.write(buf, this.jsonPayload == null ? "" : this.jsonPayload,
+            NekoEditActionHandler.MAX_JSON_PAYLOAD_LENGTH);
     }
 
     // ==================== Getter ====================
@@ -129,7 +132,8 @@ public class NekoEditPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行（涉及配置文件写入）
-            com.miaokatze.gtit.util.ServerTaskScheduler.scheduleServerTask(() -> processAction(player, message));
+            com.miaokatze.gtit.util.ServerTaskScheduler
+                .trySchedulePlayerRequest(player, () -> processAction(player, message));
             return null;
         }
 
@@ -144,6 +148,7 @@ public class NekoEditPacket implements IMessage {
          * {@link EditActionRegistry} 注册表分发，新增 ACTION 不再改本类。
          */
         private void processAction(EntityPlayerMP player, NekoEditPacket message) {
+            if (!com.miaokatze.gtit.util.PlayerLookup.isCurrentSession(player)) return;
             // 统一校验入口（编辑模式 / 实时权限复核 / ACTION 白名单 / payload 限长）
             String error = NekoEditActionHandler.validateEditRequest(player, message);
             if (error != null) {

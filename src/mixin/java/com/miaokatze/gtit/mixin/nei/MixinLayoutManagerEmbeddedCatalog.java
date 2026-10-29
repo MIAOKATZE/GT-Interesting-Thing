@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import com.cleanroommc.modularui.screen.ClientScreenHandler;
 import com.cleanroommc.modularui.screen.ModularScreen;
@@ -16,6 +17,7 @@ import com.miaokatze.gtit.client.nei.NekoEmbeddedNeiSession;
 
 import codechicken.nei.ButtonCycled;
 import codechicken.nei.LayoutManager;
+import codechicken.nei.NEIClientConfig;
 import codechicken.nei.VisiblityData;
 import codechicken.nei.Widget;
 
@@ -51,6 +53,13 @@ public abstract class MixinLayoutManagerEmbeddedCatalog {
         int guiMouseX, int guiMouseY) {
         // Disabled NEI draws these two buttons directly instead of using its widget sets.
         if (!gtit$isTradeScreen(gui)) button.draw(mouseX, mouseY);
+    }
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true, remap = false)
+    private void gtit$skipDisabledTradeOptions(GuiContainer gui, int mouseX, int mouseY, int button,
+        CallbackInfoReturnable<Boolean> cir) {
+        // Disabled NEI handles options directly, bypassing the filtered control-widget set.
+        if (!NEIClientConfig.isEnabled() && gtit$isTradeScreen(gui)) cir.setReturnValue(false);
     }
 
     @Unique

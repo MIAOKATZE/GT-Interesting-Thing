@@ -1135,7 +1135,7 @@ final class GiftPanel {
         EntityPlayerMP player = (EntityPlayerMP) session.player;
         final net.minecraft.inventory.Container container = player.openContainer;
         final int windowId = container.windowId;
-        ServerTaskScheduler.scheduleServerTask(() -> {
+        ServerTaskScheduler.trySchedulePlayerRequest(player, () -> {
             net.minecraft.server.MinecraftServer server = net.minecraft.server.MinecraftServer.getServer();
             if (server == null || server.getConfigurationManager() == null
                 || server.getConfigurationManager()

@@ -36,6 +36,9 @@ public final class TradePresetKeybind {
         TradePresetAccessHandler.setClientReceiver(
             access -> Minecraft.getMinecraft()
                 .func_152344_a(() -> {
+                    Minecraft mc = Minecraft.getMinecraft();
+                    if (access.connection == null || mc.getNetHandler() != access.connection
+                        || mc.theWorld == null || mc.thePlayer == null) return;
                     allowed = access.allowed;
                     if (access.remind && allowed
                         && binding.getKeyCode() != Keyboard.KEY_NONE

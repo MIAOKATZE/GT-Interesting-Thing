@@ -126,8 +126,7 @@ public final class ItemNekoVendingTerminal extends Item
         // inventory object at tick END instead, after vanilla has finished processing the use packet.
         PendingOpen pending = new PendingOpen(player, stack);
         Object request = new Object();
-        pendingOpens.put(player, request);
-        ServerTaskScheduler.scheduleServerTask(() -> {
+        boolean accepted = ServerTaskScheduler.trySchedulePlayerRequest((EntityPlayerMP) player, () -> {
             if (pendingOpens.get(player) != request) return;
             pendingOpens.remove(player);
             PlayerInventoryGuiData data = pending.resolve();
@@ -140,6 +139,7 @@ public final class ItemNekoVendingTerminal extends Item
             GuiFactories.playerInventory()
                 .openFromPlayerInventory(player, data.getSlotIndex());
         });
+        if (accepted) pendingOpens.put(player, request);
         return stack;
     }
 

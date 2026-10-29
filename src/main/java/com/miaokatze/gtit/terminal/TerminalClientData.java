@@ -74,6 +74,21 @@ public final class TerminalClientData {
         // 静态缓存类，禁止实例化
     }
 
+    /** Clear server-derived state when leaving or entering an integrated world. */
+    static void resetSession() {
+        onlinePlayers = Collections.emptyList();
+        lastAction = -1;
+        lastStatus = -1;
+        lastResultMessage = "";
+        lastResultAt = 0L;
+        mailTemplateTitle = "";
+        mailTemplateBody = "";
+        mailTemplateHasAttachment = false;
+        signInSummaryLines = Collections.emptyList();
+        giftListLines = Collections.emptyList();
+        giftTotalCount = 0;
+    }
+
     // ==================== 写入（网络包侧） ====================
 
     /** 打开快照写入（不可变副本；null 视为空） */

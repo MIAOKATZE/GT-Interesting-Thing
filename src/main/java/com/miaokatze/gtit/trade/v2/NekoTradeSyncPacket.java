@@ -97,31 +97,35 @@ public class NekoTradeSyncPacket implements IMessage {
             // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
             // 需切回客户端主线程再刷新注册表（GUI 在主线程读取）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final NekoTradeSyncPacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(() -> {
-                    // 单人存档：集成服务端与客户端共享静态注册表，
-                    // 服务端侧的 initialize/reload 已直接刷新同一份数据，无需重复应用
-                    // （同时避免客户端线程清空数据库与服务端线程交易执行的并发窗口）。
-                    if (Minecraft.getMinecraft()
-                        .isSingleplayer()) {
-                        return;
-                    }
-                    try {
-                        // 先页签后交易：交易分类按 tabId 映射，页签先就绪保证分类一致
-                        NekoPageRegistry.applySyncedPages(NekoPageConfig.fromJson(message.getPagesJson()));
-                        NekoTradeRegistryV2.applySyncedTrades(NekoTradeConfig.fromJson(message.getTradesJson()));
-                        LOG.info("[NekoSync] 已应用服务端交易/标签页配置同步");
-                    } catch (Throwable t) {
-                        LOG.error("[NekoSync] 应用交易配置同步失败", t);
-                    }
-                });
+        private void handleClient(final NekoTradeSyncPacket message, MessageContext context) {
+            Object connection = context.netHandler;
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.func_152344_a(() -> {
+                if (connection == null || mc.getNetHandler() != connection || mc.theWorld == null
+                    || mc.thePlayer == null) return;
+
+                // 单人存档：集成服务端与客户端共享静态注册表，
+                // 服务端侧的 initialize/reload 已直接刷新同一份数据，无需重复应用
+                // （同时避免客户端线程清空数据库与服务端线程交易执行的并发窗口）。
+                if (Minecraft.getMinecraft()
+                    .isSingleplayer()) {
+                    return;
+                }
+                try {
+                    // 先页签后交易：交易分类按 tabId 映射，页签先就绪保证分类一致
+                    NekoPageRegistry.applySyncedPages(NekoPageConfig.fromJson(message.getPagesJson()));
+                    NekoTradeRegistryV2.applySyncedTrades(NekoTradeConfig.fromJson(message.getTradesJson()));
+                    LOG.info("[NekoSync] 已应用服务端交易/标签页配置同步");
+                } catch (Throwable t) {
+                    LOG.error("[NekoSync] 应用交易配置同步失败", t);
+                }
+            });
         }
     }
 }

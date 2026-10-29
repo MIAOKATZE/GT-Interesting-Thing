@@ -3,8 +3,6 @@ package com.miaokatze.gtit.terminal;
 import java.util.ArrayList;
 import java.util.List;
 
-import net.minecraft.client.Minecraft;
-
 import com.cleanroommc.modularui.factory.ClientGUI;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
@@ -71,18 +69,17 @@ public class TerminalOpenPacket implements IMessage {
             // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
             // 需切回客户端主线程再写缓存/开 GUI（GUI 生命周期在主线程）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final TerminalOpenPacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(() -> {
-                    TerminalClientData.setOnlinePlayers(message.getOnlinePlayers());
-                    ClientGUI.open(new TerminalGui());
-                });
+        private void handleClient(final TerminalOpenPacket message, MessageContext context) {
+            TerminalClientSession.enqueue(context, () -> {
+                TerminalClientData.setOnlinePlayers(message.getOnlinePlayers());
+                ClientGUI.open(new TerminalGui());
+            });
         }
     }
 }

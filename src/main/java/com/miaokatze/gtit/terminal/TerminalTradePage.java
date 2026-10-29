@@ -109,6 +109,13 @@ public final class TerminalTradePage {
     /** 上次动作发送时间戳（三按钮共享 1.5s 冷却） */
     private static volatile long lastActionSendMs;
 
+    /** Keep drafts on same-world reopen, never carry targets or widget references into another world. */
+    static void resetSession() {
+        targetPlayerName = "";
+        targetNameField = null;
+        lastActionSendMs = 0L;
+    }
+
     private TerminalTradePage() {
         // 静态工具类，禁止实例化
     }

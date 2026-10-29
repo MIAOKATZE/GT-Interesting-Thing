@@ -148,6 +148,16 @@ public final class TerminalMailPage {
     /** 上次动作发包时间戳（1.5s 冷却防连点） */
     private static long lastActionAt = 0L;
 
+    /** Keep drafts on same-world reopen, never carry targets or widget references into another world. */
+    static void resetSession() {
+        selectedPlayer = "";
+        draftTitle = "";
+        draftBody = "";
+        draftRewardId = "";
+        playerListPage = 0;
+        lastActionAt = 0L;
+    }
+
     private TerminalMailPage() {
         // 静态页面类，禁止实例化
     }
