@@ -13884,7 +13884,7 @@ public class NekoPocketModelTest {
                 panel,
                 recv,
                 recvEnd,
-                "ServerTaskScheduler.scheduleServerTask(() -> server.onServerMagnetRequest(request));"),
+                "ServerTaskScheduler.trySchedulePlayerRequest(sender, () -> server.onServerMagnetRequest(request));"),
             "★跳④：客户端早退排在投递之前（★同 R85 N1 那条 ghost 同形纪律）");
         // ---- 跳⑤：服务端解请求，防伪守卫在写腿之前 ----
         final int req = methodStart(sheet, "void onServerMagnetRequest(String request) {");
@@ -20656,7 +20656,7 @@ public class NekoPocketModelTest {
         final java.util.List<String> packet = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketWornTapPacket.java");
         SimpleAssert.that(packet != null, "C2S 包源码可读");
-        SimpleAssert.eq(1, countCodeLinesIn(packet, "ServerTaskScheduler.scheduleServerTask("), "网络线程只投递任务");
+        SimpleAssert.eq(1, countCodeLinesIn(packet, "ServerTaskScheduler.trySchedulePlayerRequest("), "网络线程只投递有界请求");
         SimpleAssert.eq(0, countCodeLinesIn(packet, "net.minecraft.client"), "C2S 包零客户端类引用");
         SimpleAssert.eq(1, countCodeLinesIn(packet, "context.side != Side.SERVER"), "请求只在服务端投递");
         for (String langFile : new String[] { "zh_CN.lang", "en_US.lang" }) {
@@ -20707,14 +20707,14 @@ public class NekoPocketModelTest {
                 1,
                 countRegionCode(panel, relocate, relocateEnd, "PocketWornTapHandler.safeBaubles(target)"),
                 "★关屏落点多了一级 bauble 判据（★穿戴态关屏时前三级的视野里根本没有那一格）");
-            // ★R96 S11-fix（★只换检法、判据不松）：落盘那一级的判空守卫在生产侧写的是<b>正向形</b>
-            // （if (baubles != null) { … } ⇒ null 时整级跳过），而这条断言原先只认反向形，
-            // 于是守卫在位也读 0（★被 S11 的编译失败遮住，本片把接口搬进 mixin、编译转绿后才现形）。
-            // verify-pocket.sh 的门 G 从一开始就「两种形都认」（baubles [!=]= null），这里改成与门禁
-            // 同一口径 = 两条通道对同一件事共用一条判据；★合计仍要求恰 1 ⇒ 两形都不在时照样红。
-            final int nullGuard = countRegionCode(panel, relocate, relocateEnd, "if (baubles == null) {")
-                + countRegionCode(panel, relocate, relocateEnd, "if (baubles != null) {");
-            SimpleAssert.that(nullGuard == 1, "★那一级自带判空守卫（少它 = 关屏落盘 NPE，R88 B3 那一族：只 warn 不落盘 = 静默丢件）");
+            final java.util.List<String> identity = sourceLinesOrNull(
+                "src/main/java/com/miaokatze/gtit/common/items/pocket/PocketCarrierIdentity.java");
+            SimpleAssert.that(
+                identity != null && countCodeLinesIn(identity, "if (baubles != null) {") == 2,
+                "载体解析和持有判据的饰品扫描都自带 null 守卫；不按同物品/open 位认另一枚口袋");
+            SimpleAssert.that(
+                countRegionCode(panel, relocate, relocateEnd, "carrierIdentity.locate(") == 1,
+                "关屏只能通过同一 token 解析器定位载体");
             final int still = methodStart(panel, "boolean carrierStillPresent(EntityPlayer testPlayer) {");
             SimpleAssert.that(still >= 0, "★定位 carrierStillPresent");
             SimpleAssert.eq(
@@ -24520,8 +24520,8 @@ public class NekoPocketModelTest {
         } else {
             SimpleAssert.eq(0, countCodeLinesIn(gui, "SERVER_ACTIONS"), "★队列本体必须整体离开 gui 类（留壳 = 两处真相）");
             SimpleAssert.that(
-                countCodeLinesIn(gui, "VendingServerActions.scheduleServerAction(") >= 1,
-                "★gui 侧五个 C2S 迁移点经同形转发口投递（调用形制零变化）");
+                countCodeLinesIn(gui, "VendingServerActions.schedulePlayerRequest(") >= 1,
+                "★gui 侧 C2S 请求经 common 侧有界准入投递；旧 FIFO 不接收未执行业务请求");
         }
         final java.util.List<String> musicController = sourceLinesOrNull(
             "src/main/java/com/miaokatze/gtit/gui/vm/GuiMusicController.java");
