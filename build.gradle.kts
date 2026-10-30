@@ -257,6 +257,7 @@ mapOf(
     "runSignInRewardConservationTest" to "com.miaokatze.gtit.signin.SignInRewardConservationTest",
     "runLotteryPersistenceTest" to "com.miaokatze.gtit.lottery.LotteryPersistenceTest",
     "runBqQuestPackTest" to "com.miaokatze.gtit.crossmod.bq.BqQuestPackTest",
+    "runBqStampFileTest" to "com.miaokatze.gtit.crossmod.bq.BqStampFileTest",
     "runLotteryCostValidationTest" to "com.miaokatze.gtit.lottery.LotteryCostValidationTest",
     "runRewardSessionLifecycleTest" to "com.miaokatze.gtit.rewards.RewardSessionLifecycleTest",
     "runRewardPersistenceBoundaryTest" to "com.miaokatze.gtit.rewards.RewardPersistenceBoundaryTest",
