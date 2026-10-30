@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.signin;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -12,9 +11,11 @@ import org.apache.logging.log4j.Logger;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.miaokatze.gtit.config.ConfigMigrationUtil;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
+import com.miaokatze.gtit.util.RewardConfigFile;
 
 /**
  * 每日在线时间奖励配置（v1.7.6 G2③；v1.7.7 G4 存储结构重构）
@@ -45,6 +46,14 @@ public class OnlineTimeConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting()
         .disableHtmlEscaping()
         .create();
+
+    // Failed reads/writes disable use and editing until an explicit successful reload.
+    private static boolean unavailable;
+
+    private static void requireAvailable() {
+        if (unavailable) throw new IllegalStateException(
+            "Online-time reward configuration is unavailable; repair the file and reload");
+    }
 
     /** 在线奖励档位列表（按 requiredSeconds 升序） */
     private static List<OnlineTimeRewardTier> tiers = new ArrayList<>();
@@ -83,47 +92,36 @@ public class OnlineTimeConfig {
     }
 
     /**
-     * 加载配置文件；文件不存在或解析失败时使用默认配置并落盘
+     * 加载配置文件；仅文件不存在时生成默认配置，已有文件读取失败则停用并保留原文
      * <p>
      * v1.7.7 G4：优先读取新路径；新路径缺失且旧路径存在时，迁移旧文件到新路径，
      * 旧文件重命名为 {@code .bak} 保留。
      */
     public static void loadConfig() {
         Path path = Paths.get(CONFIG_PATH);
-        if (!Files.exists(path)) {
-            Path legacy = Paths.get(LEGACY_CONFIG_PATH);
-            if (Files.exists(legacy)) {
-                try {
-                    migrateFromLegacy(legacy, path);
-                    // 迁移后继续从新路径读取
-                } catch (Exception e) {
-                    LOG.error("每日在线奖励配置从旧路径迁移失败，回退默认配置", e);
-                    tiers = createDefaultTiers();
-                    saveConfig();
-                    return;
-                }
+        try {
+            if (!Files.exists(path)) {
+                Path legacy = Paths.get(LEGACY_CONFIG_PATH);
+                if (Files.exists(legacy)) migrateFromLegacy(legacy, path);
             }
-        }
-
-        if (Files.exists(path)) {
-            try {
-                String json = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
-                ConfigData data = GSON.fromJson(json, ConfigData.class);
-                if (data != null) {
-                    tiers = toTierList(data.tiers);
-                    if (tiers.isEmpty()) {
-                        tiers = createDefaultTiers();
-                    }
-                    LOG.info("每日在线奖励配置已加载（{} 个档位）", tiers.size());
-                    return;
-                }
-            } catch (Exception e) {
-                LOG.error("加载每日在线奖励配置失败，使用默认配置", e);
+            if (Files.exists(path)) {
+                JsonObject root = RewardConfigFile.readObject(path);
+                if (root.has("tiers") && !root.get("tiers")
+                    .isJsonArray()) throw new IllegalArgumentException("Invalid online reward tiers");
+                ConfigData data = GSON.fromJson(root, ConfigData.class);
+                tiers = root.has("tiers") ? toTierList(data.tiers) : createDefaultTiers();
+                unavailable = false;
+            } else {
+                tiers = createDefaultTiers();
+                unavailable = false;
+                saveConfig();
             }
+        } catch (Exception failure) {
+            unavailable = true;
+            throw new IllegalStateException(
+                "Unable to load online-time reward configuration; existing files are preserved",
+                failure);
         }
-        // 首次运行或加载失败：使用默认配置并落盘
-        tiers = createDefaultTiers();
-        saveConfig();
     }
 
     /**
@@ -134,14 +132,8 @@ public class OnlineTimeConfig {
      */
     private static void migrateFromLegacy(Path legacyPath, Path newPath) throws Exception {
         Files.createDirectories(newPath.getParent());
-        String json = new String(Files.readAllBytes(legacyPath), StandardCharsets.UTF_8);
-        ConfigData data = GSON.fromJson(json, ConfigData.class);
-        if (data != null) {
-            Files.write(
-                newPath,
-                GSON.toJson(data)
-                    .getBytes(StandardCharsets.UTF_8));
-        }
+        JsonObject root = RewardConfigFile.readObject(legacyPath);
+        RewardConfigFile.write(newPath, root.toString());
         ConfigMigrationUtil.retireLegacyAsBak(legacyPath, newPath, "每日在线奖励配置", "每日在线奖励配置文件");
     }
 
@@ -149,6 +141,7 @@ public class OnlineTimeConfig {
      * 将当前内存配置写回 JSON 文件
      */
     public static void saveConfig() {
+        requireAvailable();
         try {
             Path path = Paths.get(CONFIG_PATH);
             Files.createDirectories(path.getParent());
@@ -164,13 +157,11 @@ public class OnlineTimeConfig {
                 td.itemNbt = tier.getItemNbt() == null ? "" : tier.getItemNbt();
                 data.tiers.add(td);
             }
-            Files.write(
-                path,
-                GSON.toJson(data)
-                    .getBytes(StandardCharsets.UTF_8));
+            RewardConfigFile.write(path, GSON.toJson(data));
             LOG.info("每日在线奖励配置已保存");
         } catch (Exception e) {
-            LOG.error("保存每日在线奖励配置失败", e);
+            unavailable = true;
+            throw new IllegalStateException("Unable to save online-time reward configuration", e);
         }
     }
 
@@ -185,6 +176,7 @@ public class OnlineTimeConfig {
      * 当前生效的在线奖励档位列表（按所需秒数升序）
      */
     public static List<OnlineTimeRewardTier> getTiers() {
+        requireAvailable();
         return tiers;
     }
 
@@ -208,6 +200,7 @@ public class OnlineTimeConfig {
      */
     public static boolean updateTier(int requiredSeconds, int newSeconds, String currencyId, int currencyAmount,
         String itemId, int itemAmount, int itemMeta, String itemNbt) {
+        requireAvailable();
         for (int i = 0; i < tiers.size(); i++) {
             if (tiers.get(i)
                 .getRequiredSeconds() == requiredSeconds) {
@@ -245,6 +238,7 @@ public class OnlineTimeConfig {
      */
     public static void addTier(int seconds, String currencyId, int currencyAmount, String itemId, int itemAmount,
         int itemMeta, String itemNbt) {
+        requireAvailable();
         tiers.add(
             new OnlineTimeRewardTier(
                 Math.max(1, seconds),
@@ -264,6 +258,7 @@ public class OnlineTimeConfig {
      * @return true 表示删除成功；false 表示未找到
      */
     public static boolean removeTier(int requiredSeconds) {
+        requireAvailable();
         for (int i = 0; i < tiers.size(); i++) {
             if (tiers.get(i)
                 .getRequiredSeconds() == requiredSeconds) {
@@ -282,6 +277,7 @@ public class OnlineTimeConfig {
      * @param newTiers 新的档位列表（null 视为空列表）
      */
     public static void setTiers(List<OnlineTimeRewardTier> newTiers) {
+        requireAvailable();
         tiers = new ArrayList<>();
         if (newTiers != null) {
             for (OnlineTimeRewardTier tier : newTiers) {

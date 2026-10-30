@@ -100,6 +100,17 @@ public final class TerminalGiftPage {
     /** 弹框绑定的宿主面板（GUI 重开新面板时重建 handler，防跨 screen 打开） */
     private static ModularPanel resetConfirmParent;
 
+    /** Keep drafts on same-world reopen, never carry targets or widget references into another world. */
+    static void resetSession() {
+        manualTargetName = "";
+        selectedOnlineIndex = 0;
+        lastListSendMs = 0L;
+        lastResetSendMs = 0L;
+        resetConfirmDialog = null;
+        resetConfirmPanel = null;
+        resetConfirmParent = null;
+    }
+
     private TerminalGiftPage() {
         // 静态工具类，禁止实例化
     }

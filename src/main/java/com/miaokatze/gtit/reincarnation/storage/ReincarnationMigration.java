@@ -15,16 +15,15 @@ import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
  * <p>
  * <b>consume-once 语义</b>：
  * <ul>
- * <li>标记在 {@link ReincarnationWorldData}（每存档隔离）：已置位直接返回，不重复合并；</li>
+ * <li>标记在 {@link ReincarnationWorldData}（每存档隔离）：已置位不重复合并，但重试消费源文件；</li>
  * <li>全局文件无 v1 载荷（已是 v2 / 从未存在 / 损坏走最后仁慈 / UUID 不匹配）→
  * 仅置标记，不做任何改写（损坏文件保持不动，与 load 的最后仁慈口径一致）；</li>
  * <li>命中 v1 → 进度字段灌入当档 WorldData（按 UUID 隔离），全局改写 v2
  * （指纹保留；EXECUTED 待领取转入投胎信箱；DEPOSITED 寄存快照转入当档 WorldData）。</li>
  * </ul>
  * <p>
- * <b>触发点</b>：仅服务端 GUI 打开路径（{@code ReincarnationContainer} 服务端构造）——
- * 登录编排只需许可字段（v1 文件的许可字段经 {@code ReincarnationStore.load} 的
- * 只读兼容视图即可读到，不依赖迁移先行完成）。
+ * <b>触发点</b>：服务端 GUI 打开与 Handler 合并加载；登录发放也可能改写全局许可，
+ * 因而必须先保护 v1 中的每存档进度。
  * <p>
  * <b>侧与线程</b>：服务端专用；纯 Java 依赖（store/WorldData/模型），零 client 引用。
  */
@@ -49,35 +48,53 @@ public final class ReincarnationMigration {
     }
 
     /**
-     * Two-phase migration. Phase 1 reads v1 without changing it; phase 2 persists
-     * WorldData (including Migrated) synchronously; only then is v1 destructively
-     * rewritten to v2. A crash before the flush leaves v1 retryable, while a crash
-     * after it leaves Migrated durable and prevents a second merge.
-     * <p>
-     * 有 v1 载荷但 overworld 为 null 时无法确认 WorldData 落盘，直接返回不置标记
-     * 不消费（留待下次调用重试）；无 v1 载荷时仅置标记，null 世界无破坏风险。
+     * Persist world identity -> reserve the complete source -> checkpoint receiver
+     * receipt -> consume source. A receipt alone must never leave v1 importable
+     * by another world; a reservation alone must remain retryable by its owner.
+     * The UUID lives inside WorldData so renaming the world directory is safe.
      */
     public static void migrateOnce(ReincarnationStore store, ReincarnationWorldData data, String uuid,
         net.minecraft.world.World overworld) {
-        if (store == null || data == null || data.isMigrated()) {
+        if (store == null || data == null) {
             return;
         }
         ReincarnationStore.LegacyRecord legacy = store.readLegacyV1(uuid);
-        if (legacy != null && overworld == null) {
+        if (legacy == null) {
+            if (!data.isMigrated()) {
+                data.setMigrated(true);
+                if (overworld != null) {
+                    data.saveImmediately(overworld);
+                }
+            }
             return;
         }
-        if (legacy != null) {
-            data.setHullProgress(legacy.hullProgress);
-            data.setUnlockedColumns(legacy.unlockedColumns);
-            data.setUnlockedRows(legacy.unlockedRows);
-            data.setDepositedItems(legacy.depositedItems);
+        if (overworld == null) {
+            return; // No durable receiver: never reserve or consume the source.
         }
-        data.setMigrated(true);
-        if (overworld != null) {
+        if (data.isMigrated()) {
+            if (data.getMigrationId()
+                .isEmpty()) {
+                // Older builds left no ownership evidence. Do not guess which world's
+                // unrelated Migrated flag authorizes destruction of a still-v1 source.
+                throw new IllegalStateException("Legacy migration receipt lacks a world identity");
+            }
+            // Also retries a failed checkpoint in the same session before consuming.
             data.saveImmediately(overworld);
+            store.consumeLegacyV1(uuid, data.getMigrationId());
+            return;
         }
-        if (legacy != null) {
-            store.consumeLegacyV1(uuid);
+        String worldId = data.ensureMigrationId();
+        data.saveImmediately(overworld); // identity must survive a crash before source reservation
+        legacy = store.reserveLegacyV1(uuid, worldId);
+        if (legacy == null) {
+            return;
         }
+        data.setHullProgress(legacy.hullProgress);
+        data.setUnlockedColumns(legacy.unlockedColumns);
+        data.setUnlockedRows(legacy.unlockedRows);
+        data.setDepositedItems(legacy.depositedItems);
+        data.setMigrated(true);
+        data.saveImmediately(overworld); // throwing checkpoint; source is still intact on failure
+        store.consumeLegacyV1(uuid, worldId);
     }
 }

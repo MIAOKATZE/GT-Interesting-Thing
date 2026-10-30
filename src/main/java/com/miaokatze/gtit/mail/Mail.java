@@ -3,10 +3,13 @@ package com.miaokatze.gtit.mail;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+
+import com.miaokatze.gtit.util.RewardNbt;
 
 /**
  * 邮件数据模型
@@ -64,6 +67,9 @@ public class Mail {
     /** 附件物品列表（最多 {@link MailManager#MAX_ATTACHMENTS} 个，深拷贝存储） */
     private final List<ItemStack> attachments = new ArrayList<>();
 
+    // Original attachments remain available for display; only undelivered quantities can be retried.
+    private final List<Integer> remainingAmounts = new ArrayList<>();
+
     // ==================== 构造 ====================
 
     /** 反序列化用空构造 */
@@ -101,6 +107,8 @@ public class Mail {
         this.read = false;
         this.attachmentClaimed = false;
         if (attachments != null) {
+            if (attachments.size() > MailManager.MAX_ATTACHMENTS)
+                throw new IllegalArgumentException("Too many mail attachments");
             for (ItemStack stack : attachments) {
                 if (stack != null && stack.getItem() != null && this.attachments.size() < MailManager.MAX_ATTACHMENTS) {
                     this.attachments.add(stack.copy());
@@ -133,9 +141,14 @@ public class Mail {
 
         // 附件物品列表（10 = NBTTagCompound）
         NBTTagList attachList = new NBTTagList();
-        for (ItemStack stack : attachments) {
+        for (int i = 0; i < attachments.size(); i++) {
+            ItemStack stack = attachments.get(i);
             if (stack != null && stack.getItem() != null) {
-                attachList.appendTag(stack.writeToNBT(new NBTTagCompound()));
+                NBTTagCompound itemTag = stack.writeToNBT(new NBTTagCompound());
+                // Vanilla Count is a signed byte; configured blessing rewards may exceed 127.
+                itemTag.setInteger("gtitMailCount", stack.stackSize);
+                itemTag.setInteger("gtitMailRemaining", remainingAmount(i));
+                attachList.appendTag(itemTag);
             }
         }
         nbt.setTag("attachments", attachList);
@@ -150,6 +163,11 @@ public class Mail {
      */
     public static Mail fromNBT(NBTTagCompound nbt) {
         if (nbt == null) return null;
+        for (String key : new String[] { "id", "type", "title", "content", "sender" })
+            RewardNbt.optionalType(nbt, key, 8);
+        RewardNbt.optionalType(nbt, "timestamp", 4);
+        RewardNbt.optionalType(nbt, "read", 1);
+        RewardNbt.optionalType(nbt, "claimed", 1);
         Mail mail = new Mail();
         mail.id = nbt.getString("id");
         // 类型兼容：旧存档无 type 键（或值非法）时归系统邮件（v1.7.6 用户确认口径）
@@ -161,11 +179,25 @@ public class Mail {
         mail.read = nbt.getBoolean("read");
         mail.attachmentClaimed = nbt.getBoolean("claimed");
 
-        NBTTagList attachList = nbt.getTagList("attachments", 10);
+        NBTTagList attachList = RewardNbt.list(nbt, "attachments", 10);
+        if (attachList.tagCount() > MailManager.MAX_ATTACHMENTS)
+            throw new IllegalArgumentException("Too many saved mail attachments");
         for (int i = 0; i < attachList.tagCount(); i++) {
-            ItemStack stack = ItemStack.loadItemStackFromNBT(attachList.getCompoundTagAt(i));
+            NBTTagCompound itemTag = attachList.getCompoundTagAt(i);
+            RewardNbt.item(itemTag);
+            RewardNbt.optionalType(itemTag, "gtitMailCount", 3);
+            RewardNbt.optionalType(itemTag, "gtitMailRemaining", 3);
+            ItemStack stack = ItemStack.loadItemStackFromNBT(itemTag);
+            if (stack == null) throw new IllegalArgumentException("Saved mail attachment item is unavailable");
             if (stack != null && mail.attachments.size() < MailManager.MAX_ATTACHMENTS) {
+                if (itemTag.hasKey("gtitMailCount", 3)) stack.stackSize = itemTag.getInteger("gtitMailCount");
+                if (stack.stackSize <= 0) throw new IllegalArgumentException("Invalid saved mail attachment count");
                 mail.attachments.add(stack);
+                int remaining = itemTag.hasKey("gtitMailRemaining", 3) ? itemTag.getInteger("gtitMailRemaining")
+                    : stack.stackSize;
+                if (remaining < 0 || remaining > stack.stackSize)
+                    throw new IllegalArgumentException("Invalid saved mail attachment remainder");
+                mail.remainingAmounts.add(remaining);
             }
         }
         return mail;
@@ -185,6 +217,39 @@ public class Mail {
      */
     public boolean hasUnclaimedAttachments() {
         return hasAttachments() && !attachmentClaimed;
+    }
+
+    private int remainingAmount(int index) {
+        if (attachmentClaimed) return 0;
+        return index < remainingAmounts.size() ? remainingAmounts.get(index)
+            : Math.max(0, attachments.get(index).stackSize);
+    }
+
+    /** Delivery consumes an owned copy by reducing its count; rejected leftovers remain claimable. */
+    int deliverAttachments(Consumer<ItemStack> delivery) {
+        if (!hasUnclaimedAttachments()) return 0;
+        while (remainingAmounts.size() < attachments.size()) {
+            remainingAmounts.add(Math.max(0, attachments.get(remainingAmounts.size()).stackSize));
+        }
+        int granted = 0;
+        for (int i = 0; i < attachments.size(); i++) {
+            int before = remainingAmount(i);
+            if (before <= 0) continue;
+            ItemStack remainder = attachments.get(i)
+                .copy();
+            remainder.stackSize = before;
+            try {
+                delivery.accept(remainder);
+            } finally {
+                if (remainder.stackSize < 0 || remainder.stackSize > before)
+                    throw new IllegalStateException("Invalid mail attachment remainder");
+                remainingAmounts.set(i, remainder.stackSize);
+            }
+            if (remainder.stackSize < before) granted++;
+        }
+        attachmentClaimed = remainingAmounts.stream()
+            .allMatch(amount -> amount == 0);
+        return granted;
     }
 
     /**

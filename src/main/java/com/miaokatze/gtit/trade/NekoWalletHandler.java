@@ -15,8 +15,8 @@ import cpw.mods.fml.common.gameevent.TickEvent;
  * 监听玩家登录/登出与服务器 tick 事件（参照 {@code MailHandler} / {@code LotteryHandler} 模式）：
  * <ul>
  * <li>登录：全量补推钱包余额（O2-B01 通道自立后的首包竞态防护）</li>
- * <li>登出：保存并从内存卸载个人钱包（{@link NekoWalletManager#unloadWallet}，
- * 此前该方法全项目零调用，个人钱包下线后常驻内存）</li>
+ * <li>登出：保存并保留个人钱包引用直到世界停止（{@link NekoWalletManager#unloadWallet}，
+ * 保留 canonical ledger 防止在途退款进入已失联的钱包对象）</li>
  * <li>tick：冲刷余额推送脏标记（约 100ms 合帧，见
  * {@link NekoWalletManager#flushBalanceNotifications}）+ 周期落盘脏钱包
  * （O2-17 口径统一后，脏标记是全部写路径的唯一落盘触发，本钩子即常规落盘通道）</li>
@@ -55,11 +55,16 @@ public class NekoWalletHandler {
     @SubscribeEvent
     public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (!(event.player instanceof EntityPlayerMP)) return;
-        // 登出：保存并卸载个人钱包，避免离线玩家钱包常驻内存
+        // 登出：保存个人钱包；在途退款仍使用同一 ledger，停服时统一释放
         try {
             NekoWalletManager.INSTANCE.unloadWallet(event.player.getUniqueID());
         } catch (Throwable t) {
             LOG.error("登出卸载猫猫币钱包失败: " + event.player.getUniqueID(), t);
+        }
+        try {
+            com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.unloadPlayer(event.player.getUniqueID());
+        } catch (Throwable t) {
+            LOG.error("登出保存交易历史失败: " + event.player.getUniqueID(), t);
         }
     }
 
@@ -81,6 +86,11 @@ public class NekoWalletHandler {
                 NekoWalletManager.INSTANCE.saveDirtyWallets();
             } catch (Throwable t) {
                 LOG.error("猫猫币钱包周期保存失败", t);
+            }
+            try {
+                com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.saveAll();
+            } catch (Throwable t) {
+                LOG.error("交易历史周期保存失败", t);
             }
         }
     }

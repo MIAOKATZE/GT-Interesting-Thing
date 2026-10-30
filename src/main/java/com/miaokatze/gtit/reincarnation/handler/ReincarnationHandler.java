@@ -26,11 +26,14 @@ import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationCycle.CycleState;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationFingerprints;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationGrantGate;
+import com.miaokatze.gtit.reincarnation.core.ReincarnationGrantProgress;
 import com.miaokatze.gtit.reincarnation.core.ReincarnationStore;
 import com.miaokatze.gtit.reincarnation.entity.EntityAscensionCarrier;
 import com.miaokatze.gtit.reincarnation.entity.ReincarnationEntities;
+import com.miaokatze.gtit.reincarnation.gui.ReincarnationContainer;
 import com.miaokatze.gtit.reincarnation.network.GrantEffectPacket;
 import com.miaokatze.gtit.reincarnation.network.ReincarnationNetwork;
+import com.miaokatze.gtit.reincarnation.storage.ReincarnationMigration;
 import com.miaokatze.gtit.reincarnation.storage.ReincarnationWorldData;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -54,14 +57,14 @@ import cpw.mods.fml.relauncher.Side;
  * 未命中且 {@code canClaimGrant()}（EXECUTED 待领取）→ 100 tick 延迟发放奖励；</li>
  * <li><b>奖励发放</b>（D3 时序）：启动（{@code executeGrant}：①确认可领 ①'不变量复核
  * （可领取 + 本档未领取；门控形态判定在登录瞬间一次性完成，复核不重读时变信号）+
- * 承诺点（置每存档 {@code GrantStarted} 并立即落盘，崩溃续跑旁路）②投胎信箱
+ * 承诺点复核（登录已在调度延迟前写入 {@code GrantStarted}，崩溃续跑旁路）②投胎信箱
  * {@code grantInFlight} 幂等标记 ②'逐件发放账本（信箱 {@code delivered} 已交付前缀
  * 计数，续跑从剩余后缀继续，不重复发放）③演出包（只发剩余后缀）④逐件调度发放）→
  * 收束（{@code completeGrant}：⑤再确认在线+未完成 ⑥清扫未发放件
  * {@code addItemStackToInventory}（满则 {@code dropPlayerItemWithRandomChoice}）
  * ⑦成功或落地后才 claimGrant 清信箱+复位标记）；逐件发放按降落节奏错峰：第 i 件在
  * {@code i*5+51} tick（降落末段 15%，接近玩家）入库并单调持久化账本；异常/掉线信箱与
- * 账本保留，登录链路自动续跑（崩溃重进不重复发放）；
+ * 账本保留，登录链路按已落盘前缀续跑；玩家物品与信箱是独立文件，不保证硬崩溃 exactly-once；
  * 客户端只显示，结束以服务端计时为准；</li>
  * <li><b>确认轮回</b>（{@link ReincarnationConfirmHook} 实现，S7 GUI 二次确认后回调）：
  * 校验 {@code state == DEPOSITED && pendingItems 非空 && server 线程} →
@@ -164,11 +167,45 @@ public final class ReincarnationHandler {
     private EntityPlayerMP ascensionPlayer;
     /** 飞升轮询剩余硬上限（tick） */
     private int ascensionPollTicksLeft;
+    /** Safe cancellation is bound to the exact world, never just its dimension id. */
+    private World ascensionOriginWorld;
+    private double ascensionOriginX;
+    private double ascensionOriginY;
+    private double ascensionOriginZ;
 
     private ReincarnationHandler() {}
 
+    /** Server stop is a session boundary even when an abnormal disconnect omitted logout. */
+    public static void onServerStopping() {
+        INSTANCE.scheduledActions.clear();
+        if (!isStrictSinglePlayer()) {
+            INSTANCE.cancelSharedAscension();
+        }
+        MinecraftServer server = MinecraftServer.getServer();
+        if (server != null && server.getConfigurationManager() != null) {
+            for (Object value : server.getConfigurationManager().playerEntityList) {
+                if (!(value instanceof EntityPlayerMP)) continue;
+                EntityPlayerMP player = (EntityPlayerMP) value;
+                if (!(player.openContainer instanceof ReincarnationContainer)) continue;
+                try {
+                    ((ReincarnationContainer) player.openContainer).flushAcceptedInventoryChanges();
+                    ReincarnationWorldData.get(server.getEntityWorld())
+                        .saveImmediately(server.getEntityWorld());
+                } catch (Throwable failure) {
+                    GTInterestingThing.LOG.error("[reincarnation] Shutdown inventory checkpoint failed", failure);
+                }
+            }
+        }
+        INSTANCE.scheduledActions.clear();
+        INSTANCE.rollSessions.clear();
+        INSTANCE.activeCarrier = null;
+        INSTANCE.ascensionPlayer = null;
+        INSTANCE.ascensionPollTicksLeft = 0;
+        INSTANCE.ascensionOriginWorld = null;
+    }
+
     /**
-     * 安装服务端编排器（幂等）：FML 总线（登录/登出事件 + server tick）+
+     * 安装服务端编排器（幂等）：FML 总线（登录/登出/重生事件 + server tick）+
      * 注入确认轮回钩子。自包含——调用方仅需一行接线，无需再注册任何监听。
      * <p>
      * 仅物理客户端门控路径调用（CommonProxy.init 的 reincarnation 门控块内）。
@@ -304,8 +341,10 @@ public final class ReincarnationHandler {
                 long playTicks = readTotalPlayTicks(player);
                 long overworldTotalWorldTime = readOverworldTotalWorldTime();
                 if (ReincarnationGrantGate.shouldGrant(true, grantClaimed, grantStarted, playTicks)) {
-                    // EXECUTED 待领取：延迟 100 tick 发放（等客户端就绪后再结算与演出）
-                    scheduledActions.add(new ScheduledAction(player, GRANT_DELAY_TICKS, () -> executeGrant(player)));
+                    // Admission is the commitment point, not the delayed animation start.
+                    // Otherwise a disconnect/death during these 100 ticks loses the only
+                    // zero-playtime observation and permanently strands this world's grant.
+                    scheduleAdmittedGrant(player, worldData);
                     GTInterestingThing.LOG.info(
                         "[reincarnation] 登录发现待领取轮回奖励：player=" + player.getCommandSenderName()
                             + "，"
@@ -327,6 +366,47 @@ public final class ReincarnationHandler {
             sendSyncSnapshot(player, cycle);
         } catch (Throwable t) {
             GTInterestingThing.LOG.error("[reincarnation] 登录编排失败（不影响登录）", t);
+        }
+    }
+
+    private void scheduleAdmittedGrant(EntityPlayerMP player, ReincarnationWorldData data) {
+        World world = overworld();
+        if (data == null || world == null) {
+            throw new IllegalStateException("Cannot admit reincarnation grant without a durable world");
+        }
+        data.setGrantStarted(true);
+        data.saveImmediately(world);
+        // Replacing an entity/login attempt must not leave an older grant context
+        // scheduled for the same player alongside the resumed context.
+        scheduledActions.removeIf(
+            action -> action.player.getUniqueID()
+                .equals(player.getUniqueID()));
+        scheduledActions.add(new ScheduledAction(player, GRANT_DELAY_TICKS, () -> executeGrant(player)));
+    }
+
+    /** Respawn resumes an existing commitment, but never creates fresh zero-stat eligibility. */
+    @SubscribeEvent
+    public void onPlayerRespawned(PlayerEvent.PlayerRespawnEvent event) {
+        if (!(event.player instanceof EntityPlayerMP) || event.player.worldObj == null
+            || event.player.worldObj.isRemote
+            || !isStrictSinglePlayer()) {
+            return;
+        }
+        EntityPlayerMP player = (EntityPlayerMP) event.player;
+        try {
+            ReincarnationWorldData data = worldData();
+            if (data == null || !data.isGrantStarted() || data.isGrantClaimed()) {
+                return;
+            }
+            ReincarnationCycle cycle = loadMerged(
+                player.getUniqueID()
+                    .toString());
+            if (cycle.canClaimGrant()
+                && !cycle.hasFingerprint(ReincarnationFingerprints.fingerprintOf(player.worldObj.getSeed()))) {
+                scheduleAdmittedGrant(player, data);
+            }
+        } catch (Throwable failure) {
+            GTInterestingThing.LOG.error("[reincarnation] Respawn grant resume failed; mailbox retained", failure);
         }
     }
 
@@ -355,6 +435,9 @@ public final class ReincarnationHandler {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
             return;
+        }
+        if (!isStrictSinglePlayer()) {
+            cancelSharedAscension();
         }
         tickScheduledActions();
         tickAscension();
@@ -705,9 +788,18 @@ public final class ReincarnationHandler {
      * 极限强制 → 载具生成绑定 → 客户端演出信号 → tick 轮询完成 → 击杀（删档归 HardcoreEnforcer）。
      */
     private void beginAscension(EntityPlayerMP player) {
+        if (!isStrictSinglePlayer()) {
+            cancelSharedAscension();
+            return;
+        }
         if (activeCarrier != null) {
             GTInterestingThing.LOG.warn("[reincarnation] 前一飞升尚未收束，覆盖飞升槽位（单机周目语义）");
         }
+        ascensionPlayer = player;
+        ascensionOriginWorld = player.worldObj;
+        ascensionOriginX = player.posX;
+        ascensionOriginY = player.posY;
+        ascensionOriginZ = player.posZ;
         HardcoreEnforcer.beginEnforcement(player);
         EntityAscensionCarrier carrier = ReincarnationEntities.spawnFor(player, ASCENSION_DURATION_TICKS);
         if (carrier == null) {
@@ -737,6 +829,10 @@ public final class ReincarnationHandler {
      * 被免疫/拦截路径吃掉。死亡后删档由 HardcoreEnforcer 自理，本类不感知。
      */
     private void killPlayer(EntityPlayerMP player, String why) {
+        if (!isStrictSinglePlayer()) {
+            cancelSharedAscension();
+            return;
+        }
         if (player.isDead) {
             return;
         }
@@ -748,6 +844,46 @@ public final class ReincarnationHandler {
             GTInterestingThing.LOG
                 .warn("[reincarnation] 升天击杀兜底生效（伤害管线被拦截，setHealth(0)）：player=" + player.getCommandSenderName());
         }
+    }
+
+    /** Cancel already admitted destructive work when an integrated server becomes shared. */
+    private void cancelSharedAscension() {
+        EntityPlayerMP player = ascensionPlayer;
+        EntityAscensionCarrier carrier = activeCarrier;
+        World originWorld = ascensionOriginWorld;
+        activeCarrier = null;
+        ascensionPlayer = null;
+        ascensionOriginWorld = null;
+        ascensionPollTicksLeft = 0;
+        if (player != null) {
+            scheduledActions.removeIf(action -> action.player == player);
+            if (carrier != null && player.ridingEntity == carrier) {
+                player.mountEntity(null);
+            }
+            // Dismounting at ascent height would replace the explicit kill with lethal
+            // fall damage. Never teleport an entity into a different world/session.
+            if (carrier != null && !player.isDead
+                && player.worldObj == originWorld
+                && validAscensionOrigin(originWorld)) {
+                player.setPositionAndUpdate(ascensionOriginX, ascensionOriginY, ascensionOriginZ);
+                player.fallDistance = 0;
+                player.motionY = 0;
+            }
+        }
+        if (carrier != null) {
+            carrier.setDead();
+        }
+        HardcoreEnforcer.cancelForSharedSession();
+    }
+
+    private boolean validAscensionOrigin(World world) {
+        return world != null && Double.isFinite(ascensionOriginX)
+            && Double.isFinite(ascensionOriginY)
+            && Double.isFinite(ascensionOriginZ)
+            && Math.abs(ascensionOriginX) <= 30_000_000
+            && Math.abs(ascensionOriginZ) <= 30_000_000
+            && ascensionOriginY >= 0
+            && ascensionOriginY < world.getHeight();
     }
 
     // ==================== 奖励发放 / 倒计时到点 ====================
@@ -762,7 +898,7 @@ public final class ReincarnationHandler {
      * 此后同档崩溃重进经登录门控 {@code grantStartedHere} 旁路续跑）；</li>
      * <li>② 幂等标记启动未完成（投胎信箱 {@code grantInFlight}，持久化；失败不启动演出）+
      * ②' 逐件发放账本（信箱 {@code delivered} 已交付前缀计数）：读已交付数，
-     * 演出与逐件发放只覆盖剩余后缀——掉线/崩溃重进按账本续发，不重复发放已交付前缀；</li>
+     * 演出与逐件发放只覆盖剩余后缀——重进按已落盘账本续发，不重发账本中的前缀；</li>
      * <li>③ 起演出（客户端只显示，发放以服务端计时为准；演出包只携带剩余后缀）；</li>
      * <li>④ 逐件发放调度：剩余第 j 件在 {@code j * GRANT_STAGGER_TICKS +
      * (int)(GRANT_PER_ITEM_TICKS * (1 - GRANT_PICKUP_LAST_FRACTION))} tick——即该件
@@ -771,7 +907,7 @@ public final class ReincarnationHandler {
      * <li>⑤ 服务端计时 {@link #GRANT_PERFORMANCE_TICKS} 后经 {@link #completeGrant} 收束。</li>
      * </ol>
      * 崩溃/登出重进：信箱与账本仍在 → 本方法重入（标记已置位则不重复置），演出重放剩余
-     * 后缀后逐件续发——信箱只在收束成功后才清空，重进不重复发放已交付前缀。
+     * 后缀后逐件续发。物品交付与账本并非跨文件原子事务；在两者之间硬崩溃仍可能丢失或重发。
      */
     private void executeGrant(EntityPlayerMP player) {
         try {
@@ -799,26 +935,31 @@ public final class ReincarnationHandler {
                         .canClaimGrant() + "，已领取=" + grantClaimed + "，信箱保留）：player=" + player.getCommandSenderName());
                 return;
             }
-            // 承诺点：置每存档"发放已启动"标记并立即落盘（写点即承诺点）——此后同档
+            // 再确认登录承诺已落盘（首次承诺在 +100 tick 调度之前）——此后同档
             // 崩溃重进经登录门控 grantStartedHere 旁路续跑，不再依赖时变信号。
-            // overworld 缺失时跳过标记写入（信箱未清，行为安全：最坏情形是下次登录重走门控）。
+            // Missing/failed world checkpoints must stop delivery, not silently degrade.
             World grantOverworld = overworld();
-            if (worldData != null && grantOverworld != null) {
-                worldData.setGrantStarted(true);
-                worldData.saveImmediately(grantOverworld);
+            if (worldData == null || grantOverworld == null) {
+                throw new IllegalStateException("Cannot start reincarnation grant without a durable world");
             }
+            worldData.setGrantStarted(true);
+            worldData.saveImmediately(grantOverworld);
             // ② 幂等标记（持久化；已在发放中则保持，续跑不重复置位）
             cycleStore.markGrantInFlight(
                 player.getUniqueID()
                     .toString());
             // ②' 逐件发放账本：读已交付前缀计数（掉线/崩溃重进续跑从剩余后缀继续，
-            // 不重复发放已交付前缀——「重复发放不复制」不变量；计数超长按信箱长度收敛）
+            // 不重发已落盘账本中的前缀；玩家物品存档是独立检查点，非跨文件 exactly-once）
             List<ReincarnationCycle.ItemRef> pendingItems = cycle.getPendingItems();
             int deliveredBase = Math.min(
                 cycleStore.readGrantDelivered(
                     player.getUniqueID()
                         .toString()),
                 pendingItems.size());
+            cycleStore.checkpointGrantDelivered(
+                player.getUniqueID()
+                    .toString(),
+                deliveredBase);
             GrantShowContext showContext = new GrantShowContext(deliveredBase);
             // ③ 起演出（演出包只驱动客户端展示；只发剩余后缀——已交付前缀不再演出）
             List<GrantEffectPacket.ItemRef> fxItems = new ArrayList<>();
@@ -864,7 +1005,7 @@ public final class ReincarnationHandler {
     /**
      * 演出中单件发放（逐件拾取）：该件降落末段接近玩家时入库（满包按既有溢出落地），
      * 并单调持久化信箱 {@code delivered} 已交付前缀计数——掉线/崩溃重进按账本续发剩余
-     * 后缀，不重复发放。失效 registry id 条目审计隔离（收集至收束统一 chat 清账），
+     * 后缀；不保证独立玩家存档与账本在硬崩溃时一致。失效 registry id 条目审计隔离（收集至收束统一 chat 清账），
      * 随账本推进视同交付（不阻塞后续件节奏）。
      */
     private void grantShowItem(EntityPlayerMP player, GrantShowContext showContext, int itemIndex,
@@ -872,26 +1013,23 @@ public final class ReincarnationHandler {
         if (player.isDead) {
             return; // 玩家已死亡：调度表已作废，账本保持，重进后登录链路续跑
         }
-        if (itemIndex < showContext.deliveredCount) {
-            return; // 该件本轮已交付（防御重复调度）：不动账本，不重复发放
-        }
-        ItemStack stack = resolveStack(ref);
-        if (stack == null) {
-            String id = ref.getId() + ":" + ref.getMeta();
-            showContext.droppedIds.add(id);
-            GTInterestingThing.LOG.warn(
-                "[reincarnation] 奖励物品无法解析 registry id，审计隔离（收束统一清账）：player=" + player.getCommandSenderName()
-                    + ", item="
-                    + id);
-        } else if (!player.inventory.addItemStackToInventory(stack)) {
-            // 背包满：按既有溢出口径随机落地——发放不丢账，落地即视同交付
-            player.dropPlayerItemWithRandomChoice(stack, false);
-        }
-        showContext.deliveredCount = itemIndex + 1;
-        store().markGrantDelivered(
-            player.getUniqueID()
-                .toString(),
-            showContext.deliveredCount);
+        showContext.progress.deliver(itemIndex, () -> {
+            ItemStack stack = resolveStack(ref);
+            if (stack == null) {
+                String id = ref.getId() + ":" + ref.getMeta();
+                showContext.droppedIds.add(id);
+                GTInterestingThing.LOG.warn(
+                    "[reincarnation] 奖励物品无法解析 registry id，审计隔离（收束统一清账）：player=" + player.getCommandSenderName()
+                        + ", item="
+                        + id);
+            } else if (!player.inventory.addItemStackToInventory(stack)) {
+                player.dropPlayerItemWithRandomChoice(stack, false);
+            }
+        },
+            delivered -> store().checkpointGrantDelivered(
+                player.getUniqueID()
+                    .toString(),
+                delivered));
     }
 
     /**
@@ -916,22 +1054,18 @@ public final class ReincarnationHandler {
             // ⑥ 清扫发放：已交付前缀之外的剩余件一次性入库（背包满则随机掉落——
             // 发放不丢账，落地即视同交付）
             List<ReincarnationCycle.ItemRef> pendingItems = cycle.getPendingItems();
-            for (int i = Math.min(showContext.deliveredCount, pendingItems.size()); i < pendingItems.size(); i++) {
-                ReincarnationCycle.ItemRef ref = pendingItems.get(i);
-                ItemStack stack = resolveStack(ref);
-                if (stack == null) {
-                    String id = ref.getId() + ":" + ref.getMeta();
-                    showContext.droppedIds.add(id);
-                    GTInterestingThing.LOG.warn(
-                        "[reincarnation] 奖励物品无法解析 registry id，隔离并清账：player=" + player.getCommandSenderName()
-                            + ", item="
-                            + id);
-                    continue;
-                }
-                if (!player.inventory.addItemStackToInventory(stack)) {
-                    player.dropPlayerItemWithRandomChoice(stack, false);
+            for (int i = Math.min(showContext.progress.getDelivered(), pendingItems.size()); i
+                < pendingItems.size(); i++) {
+                grantShowItem(player, showContext, i, pendingItems.get(i));
+                if (showContext.progress.getDelivered() != i + 1) {
+                    return; // Do not clear a mailbox whose handoff did not complete.
                 }
             }
+            showContext.progress.checkpoint(
+                delivered -> store().checkpointGrantDelivered(
+                    player.getUniqueID()
+                        .toString(),
+                    delivered));
             if (!showContext.droppedIds.isEmpty()) {
                 String dropped = joinIds(showContext.droppedIds);
                 player.addChatMessage(new ChatComponentTranslation("gtit.reincarnation.grant.dropped", dropped));
@@ -957,7 +1091,7 @@ public final class ReincarnationHandler {
             GTInterestingThing.LOG.info(
                 "[reincarnation] 轮回奖励发放完成：EXECUTED→IDLE，player=" + player.getCommandSenderName()
                     + "，items="
-                    + showContext.deliveredCount
+                    + showContext.progress.getDelivered()
                     + " 项（逐件发放账本收束，投胎信箱已清空，幂等标记复位）");
             sendSyncSnapshot(player, cycle);
         } catch (Throwable t) {
@@ -1104,8 +1238,13 @@ public final class ReincarnationHandler {
      * D1 合并读：全局许可（指纹/投胎信箱）+ 每存档进度（WorldData 缺失时仅许可字段）。
      */
     private ReincarnationCycle loadMerged(String uuid) {
-        ReincarnationCycle cycle = store().load(uuid);
         ReincarnationWorldData data = worldData();
+        if (data != null) {
+            // Login can mark/complete the mailbox before the GUI ever opens.
+            // Preserve legacy per-world fields before any such v2 license write.
+            ReincarnationMigration.migrateOnce(store(), data, uuid, overworld());
+        }
+        ReincarnationCycle cycle = store().load(uuid);
         if (data != null) {
             data.applyTo(cycle);
         }
@@ -1133,11 +1272,11 @@ public final class ReincarnationHandler {
      */
     private static final class GrantShowContext {
 
-        int deliveredCount;
+        final ReincarnationGrantProgress progress;
         final List<String> droppedIds = new ArrayList<>();
 
         GrantShowContext(int deliveredCount) {
-            this.deliveredCount = deliveredCount;
+            this.progress = new ReincarnationGrantProgress(deliveredCount);
         }
     }
 

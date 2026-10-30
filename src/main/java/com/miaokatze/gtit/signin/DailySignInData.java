@@ -3,9 +3,12 @@ package com.miaokatze.gtit.signin;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
+
+import com.miaokatze.gtit.util.RewardNbt;
 
 /**
  * 玩家每日签到数据
@@ -65,6 +68,23 @@ public class DailySignInData {
     /** 自定义纪念日列表（玩家自配增删） */
     private List<AnniversaryEntry> anniversaries = new ArrayList<>();
 
+    /** Undelivered item entitlements; date changes never clear these rewards. */
+    private final List<ItemStack> pendingRewardItems = new ArrayList<>();
+    static final int MAX_PENDING_REWARDS = 4096;
+
+    boolean canQueueRewards(int count) {
+        return count >= 0 && count <= MAX_PENDING_REWARDS - pendingRewardItems.size();
+    }
+
+    void queueRewards(List<ItemStack> rewards) {
+        if (!canQueueRewards(rewards.size())) throw new IllegalStateException("Pending reward queue is full");
+        for (ItemStack stack : rewards) pendingRewardItems.add(stack.copy());
+    }
+
+    List<ItemStack> pendingRewards() {
+        return pendingRewardItems;
+    }
+
     // ==================== NBT 序列化 ====================
 
     /**
@@ -120,6 +140,13 @@ public class DailySignInData {
             }
         }
         nbt.setTag("anniversaries", anniversaryList);
+        NBTTagList pending = new NBTTagList();
+        for (ItemStack stack : pendingRewardItems) {
+            NBTTagCompound item = stack.writeToNBT(new NBTTagCompound());
+            item.setInteger("gtitRewardCount", stack.stackSize);
+            pending.appendTag(item);
+        }
+        nbt.setTag("pendingRewardItems", pending);
 
         return nbt;
     }
@@ -131,27 +158,46 @@ public class DailySignInData {
      */
     public void readFromNBT(NBTTagCompound nbt) {
         if (nbt == null) return;
+        for (String key : new String[] { "totalSignInDays", "consecutiveDays", "onlineSecondsToday" })
+            RewardNbt.optionalType(nbt, key, 3);
+        for (String key : new String[] { "lastSignInDate", "lastOnlineTickDate", "birthday", "firstJoinDate" })
+            RewardNbt.optionalType(nbt, key, 8);
+        NBTTagList pending = RewardNbt.list(nbt, "pendingRewardItems", 10);
+        NBTTagList monthlyList = RewardNbt.list(nbt, "monthlySignInDates", 8);
+        NBTTagList claimedList = RewardNbt.list(nbt, "claimedTierRewards", 8);
+        NBTTagList claimedCumList = RewardNbt.list(nbt, "claimedCumulativeTiers", 8);
+        NBTTagList claimedOnlineList = RewardNbt.list(nbt, "claimedOnlineTiers", 8);
+        NBTTagList anniversaryList = RewardNbt.list(nbt, "anniversaries", 10);
+        pendingRewardItems.clear();
+        if (pending.tagCount() > MAX_PENDING_REWARDS) throw new IllegalArgumentException("Too many pending rewards");
+        for (int i = 0; i < pending.tagCount(); i++) {
+            NBTTagCompound item = pending.getCompoundTagAt(i);
+            RewardNbt.item(item);
+            RewardNbt.optionalType(item, "gtitRewardCount", 3);
+            ItemStack stack = ItemStack.loadItemStackFromNBT(item);
+            int count = item.getInteger("gtitRewardCount");
+            if (stack == null || count <= 0) throw new IllegalArgumentException("Invalid pending reward item");
+            stack.stackSize = count;
+            pendingRewardItems.add(stack);
+        }
         this.totalSignInDays = nbt.getInteger("totalSignInDays");
         this.consecutiveDays = nbt.getInteger("consecutiveDays");
         this.lastSignInDate = nbt.getString("lastSignInDate");
 
         // 读取当月签到日期列表（8 = NBTTagString）
         this.monthlySignInDates.clear();
-        NBTTagList monthlyList = nbt.getTagList("monthlySignInDates", 8);
         for (int i = 0; i < monthlyList.tagCount(); i++) {
             this.monthlySignInDates.add(monthlyList.getStringTagAt(i));
         }
 
         // 读取已领取阶梯奖励记录
         this.claimedTierRewards.clear();
-        NBTTagList claimedList = nbt.getTagList("claimedTierRewards", 8);
         for (int i = 0; i < claimedList.tagCount(); i++) {
             this.claimedTierRewards.add(claimedList.getStringTagAt(i));
         }
 
         // v1.7.8 任务5：读取已领取累计阶梯奖励记录（增量键缺省兼容：旧档无键读出空表）
         this.claimedCumulativeTiers.clear();
-        NBTTagList claimedCumList = nbt.getTagList("claimedCumulativeTiers", 8);
         for (int i = 0; i < claimedCumList.tagCount(); i++) {
             this.claimedCumulativeTiers.add(claimedCumList.getStringTagAt(i));
         }
@@ -164,14 +210,12 @@ public class DailySignInData {
 
         // 读取已领取在线奖励记录（8 = NBTTagString）
         this.claimedOnlineTiers.clear();
-        NBTTagList claimedOnlineList = nbt.getTagList("claimedOnlineTiers", 8);
         for (int i = 0; i < claimedOnlineList.tagCount(); i++) {
             this.claimedOnlineTiers.add(claimedOnlineList.getStringTagAt(i));
         }
 
         // 读取自定义纪念日列表（10 = NBTTagCompound）
         this.anniversaries.clear();
-        NBTTagList anniversaryList = nbt.getTagList("anniversaries", 10);
         for (int i = 0; i < anniversaryList.tagCount(); i++) {
             AnniversaryEntry entry = new AnniversaryEntry();
             entry.readFromNBT(anniversaryList.getCompoundTagAt(i));

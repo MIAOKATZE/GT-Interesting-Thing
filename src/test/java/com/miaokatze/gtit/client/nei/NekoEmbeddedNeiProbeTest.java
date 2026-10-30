@@ -78,6 +78,11 @@ public final class NekoEmbeddedNeiProbeTest {
             "mixin target is the native static layout method");
         LayoutManager.class.getMethod("updateWidgetVisiblities", GuiContainer.class, VisiblityData.class);
         LayoutManager.class.getMethod("addWidget", Widget.class);
+        check(
+            !Modifier.isStatic(
+                LayoutManager.class.getMethod("mouseClicked", GuiContainer.class, int.class, int.class, int.class)
+                    .getModifiers()),
+            "disabled options click injection uses instance ABI");
         PanelWidget.class.getMethod("getStackMouseOverWithQuantity", int.class, int.class);
         ItemsGrid.class.getMethod("setGridSize", int.class, int.class, int.class, int.class);
         ItemsGrid.class.getMethod("refresh", GuiContainer.class);

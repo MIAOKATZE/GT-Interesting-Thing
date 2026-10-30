@@ -1,7 +1,5 @@
 package com.miaokatze.gtit.terminal;
 
-import net.minecraft.client.Minecraft;
-
 import cpw.mods.fml.common.network.ByteBufUtils;
 import cpw.mods.fml.common.network.simpleimpl.IMessage;
 import cpw.mods.fml.common.network.simpleimpl.IMessageHandler;
@@ -79,17 +77,16 @@ public class TerminalActionResultPacket implements IMessage {
         public IMessage onMessage(TerminalActionResultPacket message, MessageContext ctx) {
             // 本包只发往客户端；Netty 线程切回客户端主线程写缓存（GUI 渲染在主线程读取）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final TerminalActionResultPacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(
-                    () -> TerminalClientData
-                        .setLastResult(message.getAction(), message.getStatus(), message.getMessage()));
+        private void handleClient(final TerminalActionResultPacket message, MessageContext context) {
+            TerminalClientSession.enqueue(
+                context,
+                () -> TerminalClientData.setLastResult(message.getAction(), message.getStatus(), message.getMessage()));
         }
     }
 }

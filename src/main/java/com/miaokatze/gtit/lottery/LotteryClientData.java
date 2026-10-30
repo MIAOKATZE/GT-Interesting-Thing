@@ -71,6 +71,18 @@ public final class LotteryClientData {
 
     private LotteryClientData() {}
 
+    /** Connection boundary: old pools, pity and unconsumed animations must not appear on the next server. */
+    public static synchronized void resetSession() {
+        pools = new LinkedHashMap<>();
+        pityCounters = new LinkedHashMap<>();
+        selectedPoolId = "";
+        lastResults = new ArrayList<>();
+        lastResultPoolId = "";
+        lastResultCode = RESULT_NONE;
+        lastResultTimeMs = 0L;
+        consumedResultTimeMs = 0L;
+    }
+
     // ==================== 卡池摘要 ====================
 
     /**

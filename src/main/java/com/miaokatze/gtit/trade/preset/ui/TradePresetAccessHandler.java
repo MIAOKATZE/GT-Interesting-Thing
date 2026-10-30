@@ -59,8 +59,8 @@ public final class TradePresetAccessHandler {
         if (channel != null) channel.sendToServer(new Open());
     }
 
-    public static void enqueue(Runnable action) {
-        ServerTaskScheduler.scheduleServerTask(action);
+    public static boolean enqueue(EntityPlayerMP player, Runnable action) {
+        return ServerTaskScheduler.trySchedulePlayerRequest(player, action);
     }
 
     public static boolean authorized(EntityPlayerMP player) {
@@ -221,7 +221,7 @@ public final class TradePresetAccessHandler {
         @Override
         public IMessage onMessage(Open message, MessageContext context) {
             EntityPlayerMP player = context.getServerHandler().playerEntity;
-            enqueue(() -> {
+            enqueue(player, () -> {
                 Login login = LOGINS.get(player.getUniqueID());
                 if (login == null || !authorized(player) || login.age - login.lastOpen < 10) return;
                 login.lastOpen = login.age;
@@ -232,6 +232,9 @@ public final class TradePresetAccessHandler {
     }
 
     public static final class Access implements IMessage {
+
+        /** Receiving handler identity, local only; never serialized or accepted as server authority. */
+        public transient Object connection;
 
         public boolean allowed;
         public boolean remind;
@@ -260,6 +263,7 @@ public final class TradePresetAccessHandler {
 
         @Override
         public IMessage onMessage(Access message, MessageContext context) {
+            message.connection = context.netHandler;
             Consumer<Access> receiver = clientReceiver;
             if (receiver != null) receiver.accept(message);
             return null;

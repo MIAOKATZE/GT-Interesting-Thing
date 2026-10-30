@@ -26,7 +26,6 @@ import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.common.util.GTITUtils;
-import com.miaokatze.gtit.gui.terminal.NekoRemoteVendingGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
@@ -126,8 +125,7 @@ public final class ItemNekoVendingTerminal extends Item
         // inventory object at tick END instead, after vanilla has finished processing the use packet.
         PendingOpen pending = new PendingOpen(player, stack);
         Object request = new Object();
-        pendingOpens.put(player, request);
-        ServerTaskScheduler.scheduleServerTask(() -> {
+        boolean accepted = ServerTaskScheduler.trySchedulePlayerRequest((EntityPlayerMP) player, () -> {
             if (pendingOpens.get(player) != request) return;
             pendingOpens.remove(player);
             PlayerInventoryGuiData data = pending.resolve();
@@ -140,6 +138,7 @@ public final class ItemNekoVendingTerminal extends Item
             GuiFactories.playerInventory()
                 .openFromPlayerInventory(player, data.getSlotIndex());
         });
+        if (accepted) pendingOpens.put(player, request);
         return stack;
     }
 
@@ -177,13 +176,13 @@ public final class ItemNekoVendingTerminal extends Item
 
     @Override
     public ModularPanel buildUI(PlayerInventoryGuiData data, PanelSyncManager sync, UISettings settings) {
-        return NekoRemoteVendingGui.build(data, sync, settings);
+        return TerminalGuiBridge.build(data, sync, settings);
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     public ModularScreen createScreen(PlayerInventoryGuiData data, ModularPanel panel) {
-        return NekoRemoteVendingGui.createScreen(data, panel);
+        return TerminalGuiBridge.createScreen(data, panel);
     }
 
     @Override

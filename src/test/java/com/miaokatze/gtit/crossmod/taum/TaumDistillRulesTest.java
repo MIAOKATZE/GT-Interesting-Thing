@@ -299,9 +299,18 @@ public class TaumDistillRulesTest {
                 "★TaumCompat 不得再有 DISPLAY_CELLS（格数单源 = PocketConstants.ESSENCE_DISPLAY_GRID，R78②）");
         }
         SimpleAssert.eq(
-            72,
+            120,
             com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_DISPLAY_GRID,
-            "格数权威在 PocketConstants：6 列 × 12 行 = 72（R78②，≥ 实测 aspect 注册数 69）");
+            "Expanded layout authority remains PocketConstants: 6 columns x 20 rows = 120");
+        SimpleAssert
+            .eq(6, com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_GRID_COLUMNS, "Six essence columns");
+        SimpleAssert
+            .eq(20, com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_GRID_ROWS, "Twenty essence rows");
+        SimpleAssert.eq(
+            com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_GRID_COLUMNS
+                * com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_GRID_ROWS,
+            com.miaokatze.gtit.common.items.pocket.PocketConstants.ESSENCE_DISPLAY_GRID,
+            "Display grid is derived from the authoritative dimensions");
         SimpleAssert.eq(-1, TaumCompat.COLOR_UNKNOWN, "颜色未知标记");
         SimpleAssert.eq(-1, TaumDistillRules.CAPACITY_UNKNOWN, "容量未知标记");
         SimpleAssert.eq(0, TaumDistillRules.CAPACITY_NOT_A_CONTAINER, "非容器标记");

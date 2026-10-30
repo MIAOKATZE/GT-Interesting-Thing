@@ -3,10 +3,7 @@ package com.miaokatze.gtit.reincarnation.core;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -52,8 +49,8 @@ import com.google.gson.JsonPrimitive;
  * <p>
  * <b>v1 只读兼容</b>：{@link #load} 对 v1 载荷提取许可字段（UUID/指纹；EXECUTED 态
  * pendingItems 映射为信箱）供登录编排正确工作，进度字段忽略——登录/倒计时/发放
- * 不依赖迁移先行完成。进度字段的一次性搬迁由
- * {@code reincarnation/storage/ReincarnationMigration} 在首次开 GUI 时 consume-once
+ * 读取无需迁移，但任何许可写入前必须先迁移。进度字段的一次性搬迁由
+ * {@code reincarnation/storage/ReincarnationMigration} 在登录合并或首次开 GUI 时 consume-once
  * 完成（经 {@link #consumeLegacyV1}）。
  * <p>
  * 混淆级加密（<b>非安全级</b>）：AES/CBC/PKCS5Padding，密钥与 IV 以常量内置在
@@ -66,7 +63,7 @@ import com.google.gson.JsonPrimitive;
  * 核心包刻意零日志依赖（失败路径语义已定义），保证纯 JVM 无头测试可直跑。
  * <p>
  * 写入原子性：先写同目录临时文件 {@code reincarnation.dat.tmp}，再
- * {@code ATOMIC_MOVE}（不支持时退化为普通 move）替换旧文件，进程崩溃不会留下
+ * {@code ATOMIC_MOVE} 替换旧文件（不支持则拒绝写入），进程崩溃不会留下
  * 半写状态损坏旧档。
  */
 public final class ReincarnationStore {
@@ -83,8 +80,7 @@ public final class ReincarnationStore {
     /** v1 历史格式版本号（{@link #load} 只读兼容 + {@link #consumeLegacyV1} 迁移识别） */
     static final int LEGACY_FORMAT_VERSION = 1;
 
-    /** 临时文件后缀（同目录，保证 rename 原子性） */
-    private static final String TEMP_SUFFIX = ".tmp";
+    private static final String LEGACY_MIGRATION_OWNER = "migrationOwner";
 
     /** 文件魔数（"GTIR"）：快速识别本格式，不符即兜底 */
     private static final byte[] MAGIC = { 0x47, 0x54, 0x49, 0x52 };
@@ -139,17 +135,18 @@ public final class ReincarnationStore {
         final int[] legacyHullProgress;
         final boolean[] legacyUnlockedColumns;
         final int legacyUnlockedRows;
+        final JsonObject legacyPayload;
 
         /** v2 载荷视图（逐件发放账本齐备） */
         RecordView(int formatVersion, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailboxItems,
             boolean grantInFlight, int delivered) {
-            this(formatVersion, fingerprints, mailboxItems, grantInFlight, delivered, null, null, null, null, 1);
+            this(formatVersion, fingerprints, mailboxItems, grantInFlight, delivered, null, null, null, null, 1, null);
         }
 
         RecordView(int formatVersion, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailboxItems,
             boolean grantInFlight, ReincarnationCycle.CycleState legacyState,
             List<ReincarnationCycle.ItemRef> legacyPendingItems, int[] legacyHullProgress,
-            boolean[] legacyUnlockedColumns, int legacyUnlockedRows) {
+            boolean[] legacyUnlockedColumns, int legacyUnlockedRows, JsonObject legacyPayload) {
             this(
                 formatVersion,
                 fingerprints,
@@ -160,13 +157,14 @@ public final class ReincarnationStore {
                 legacyPendingItems,
                 legacyHullProgress,
                 legacyUnlockedColumns,
-                legacyUnlockedRows);
+                legacyUnlockedRows,
+                legacyPayload);
         }
 
         RecordView(int formatVersion, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailboxItems,
             boolean grantInFlight, int delivered, ReincarnationCycle.CycleState legacyState,
             List<ReincarnationCycle.ItemRef> legacyPendingItems, int[] legacyHullProgress,
-            boolean[] legacyUnlockedColumns, int legacyUnlockedRows) {
+            boolean[] legacyUnlockedColumns, int legacyUnlockedRows, JsonObject legacyPayload) {
             this.formatVersion = formatVersion;
             this.fingerprints = fingerprints;
             this.mailboxItems = mailboxItems;
@@ -177,6 +175,7 @@ public final class ReincarnationStore {
             this.legacyHullProgress = legacyHullProgress;
             this.legacyUnlockedColumns = legacyUnlockedColumns;
             this.legacyUnlockedRows = legacyUnlockedRows;
+            this.legacyPayload = legacyPayload;
         }
     }
 
@@ -263,9 +262,27 @@ public final class ReincarnationStore {
      * 无信箱/文件缺失/损坏时不产生任何副作用（失败不写口径）。
      */
     public void markGrantDelivered(String uuid, int delivered) {
+        markGrantDelivered(uuid, delivered, false);
+    }
+
+    /**
+     * Delivery acknowledgment: unlike the compatibility no-op mutation above, a
+     * missing/unreadable mailbox cannot acknowledge an active inventory handoff.
+     */
+    public void checkpointGrantDelivered(String uuid, int delivered) {
+        markGrantDelivered(uuid, delivered, true);
+    }
+
+    private void markGrantDelivered(String uuid, int delivered, boolean requireMailbox) {
         RecordView view = readView(uuid);
         if (view == null || view.mailboxItems.isEmpty()) {
+            if (requireMailbox) {
+                throw new IllegalStateException("Cannot acknowledge delivery without a readable mailbox");
+            }
             return;
+        }
+        if (requireMailbox && (delivered < 0 || delivered > view.mailboxItems.size())) {
+            throw new IllegalStateException("Delivery prefix is outside the active mailbox");
         }
         int clamped = Math.min(Math.max(0, delivered), view.mailboxItems.size());
         if (clamped <= view.delivered) {
@@ -291,14 +308,48 @@ public final class ReincarnationStore {
      * 返回 null 且不改写文件（最后仁慈 + consume-once，见类 javadoc）。
      */
     public LegacyRecord consumeLegacyV1(String uuid) {
+        return consumeLegacyV1(uuid, "");
+    }
+
+    /** Reserve the still-complete v1 payload for one durable world identity before importing it. */
+    public LegacyRecord reserveLegacyV1(String uuid, String worldId) {
+        if (worldId == null || worldId.isEmpty()) {
+            throw new IllegalArgumentException("Migration requires a persisted world identity");
+        }
         RecordView view = readView(uuid);
         if (view == null || view.formatVersion != LEGACY_FORMAT_VERSION) {
             return null;
         }
+        String owner = legacyOwner(view);
+        if (!owner.isEmpty() && !owner.equals(worldId)) {
+            throw new IllegalStateException("Legacy reincarnation data is reserved for another world");
+        }
+        if (owner.isEmpty()) {
+            view.legacyPayload.addProperty(LEGACY_MIGRATION_OWNER, worldId);
+            writeEncrypted(
+                view.legacyPayload.toString()
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        return toLegacyRecord(view);
+    }
+
+    /** Only the receiver holding the source reservation may finalize a completed import. */
+    public LegacyRecord consumeLegacyV1(String uuid, String worldId) {
+        RecordView view = readView(uuid);
+        if (view == null || view.formatVersion != LEGACY_FORMAT_VERSION) {
+            return null;
+        }
+        if (!legacyOwner(view).equals(worldId)) {
+            throw new IllegalStateException("Legacy reincarnation migration owner mismatch");
+        }
         LegacyRecord legacy = toLegacyRecord(view);
-        // 改写为 v2：只留许可字段（信箱转入）；进度字段自此由每存档 WorldData 承载
-        writeLicense(uuid, view.fingerprints, legacy.mailboxItems, false, 0);
+        writeLicense(uuid, view.fingerprints, legacy.mailboxItems, false, 0, true);
         return legacy;
+    }
+
+    private static String legacyOwner(RecordView view) {
+        JsonElement owner = view.legacyPayload.get(LEGACY_MIGRATION_OWNER);
+        return owner == null ? "" : owner.getAsString();
     }
 
     private static LegacyRecord toLegacyRecord(RecordView view) {
@@ -349,6 +400,14 @@ public final class ReincarnationStore {
     /** v2 许可载荷写盘（唯一写入口；原子 + 加密） */
     private void writeLicense(String uuid, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailbox,
         boolean grantInFlight, int delivered) {
+        writeLicense(uuid, fingerprints, mailbox, grantInFlight, delivered, false);
+    }
+
+    private void writeLicense(String uuid, Set<String> fingerprints, List<ReincarnationCycle.ItemRef> mailbox,
+        boolean grantInFlight, int delivered, boolean completingMigration) {
+        if (!completingMigration && readLegacyV1(uuid) != null) {
+            throw new IllegalStateException("Migrate legacy world progress before changing its license");
+        }
         JsonObject root = new JsonObject();
         root.addProperty("formatVersion", FORMAT_VERSION);
         root.addProperty("uuid", uuid);
@@ -453,7 +512,8 @@ public final class ReincarnationStore {
                     readFixedLengthIntArray(root.get("hullProgress")),
                     readFixedLengthBooleanArray(root.get("unlockedColumns")),
                     root.get("unlockedRows")
-                        .getAsInt());
+                        .getAsInt(),
+                    root);
             }
             return null; // 不识别的版本 → 最后仁慈
         } catch (RuntimeException e) {
@@ -593,24 +653,7 @@ public final class ReincarnationStore {
             throw new IllegalStateException("周目记录加密失败", e);
         }
         try {
-            if (target.getParentFile() != null) {
-                Files.createDirectories(
-                    target.getParentFile()
-                        .toPath());
-            }
-            Path tempPath = target.toPath()
-                .resolveSibling(target.getName() + TEMP_SUFFIX);
-            Files.write(tempPath, payload);
-            try {
-                Files.move(
-                    tempPath,
-                    target.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                // 文件系统不支持原子 rename（如某些网络盘）：退化为普通 move，仍先写临时文件
-                Files.move(tempPath, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            }
+            ReincarnationAtomicFile.write(target.toPath(), payload);
         } catch (IOException e) {
             throw new IllegalStateException("周目记录写入失败: " + target, e);
         }

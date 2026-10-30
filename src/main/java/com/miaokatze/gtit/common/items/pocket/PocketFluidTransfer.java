@@ -276,7 +276,7 @@ public final class PocketFluidTransfer {
             return;
         }
         final int count = plan.count;
-        final int accepted = target.fill(new FluidStack(content.getFluid(), perUnit * count), true);
+        final int accepted = target.fill(sizedFluid(content, perUnit * count), true);
         final int done = accepted / perUnit;
         if (done > 0 && canMoveIntoBothCells(cells, sourceIndex, product, done, unit, units)) {
             if (accepted > done * perUnit) {
@@ -332,7 +332,7 @@ public final class PocketFluidTransfer {
             }
             final ItemStack product = unit.copy();
             product.stackSize = 1;
-            if (container.fill(product, new FluidStack(bar.getFluid(), wantPerUnit), true) <= 0) {
+            if (container.fill(product, sizedFluid(bar, wantPerUnit), true) <= 0) {
                 // 灌不进去：接口自己反悔（流体不受 / 该容器不给写；含"零头灌不进半瓶"那一探）
                 cells.abandoned(sourceIndex, KEY_TRANSFER_REFUSED);
                 return;
@@ -370,21 +370,20 @@ public final class PocketFluidTransfer {
             } else {
                 if (movedFluid > 0) {
                     // 实际成交件数比预检时小 ⇒ 余量比预检时大：已灌进件的流体抽回槽，本次一件不搬
-                    source.fill(new FluidStack(bar.getFluid(), movedFluid), true);
+                    source.fill(sizedFluid(bar, movedFluid), true);
                 }
                 cells.abandoned(sourceIndex, done > 0 ? KEY_NO_CELL_SPACE : KEY_TRANSFER_REFUSED);
             }
             return;
         }
-        final int perUnit = FluidContainerRegistry.getContainerCapacity(new FluidStack(bar.getFluid(), 1), unit);
+        final int perUnit = FluidContainerRegistry.getContainerCapacity(sizedFluid(bar, 1), unit);
         if (perUnit <= 0) {
             // 双参都问不出容量 ⇒ 这一格里的东西根本不是你 Swap 得动的注册表型空容器
             cells.abandoned(sourceIndex, KEY_UNSUPPORTED_CONTAINER);
             return;
         }
         // fillFluidContainer 是纯查询（返回注册表里那份满容器的克隆），不消耗入参 ⇒ 可以先拿它探形状
-        final ItemStack product = FluidContainerRegistry
-            .fillFluidContainer(new FluidStack(bar.getFluid(), perUnit), unit);
+        final ItemStack product = FluidContainerRegistry.fillFluidContainer(sizedFluid(bar, perUnit), unit);
         if (product == null) {
             // 注册表里没有"该流体 + 该空容器"这一对 ⇒ 换一种流体或换容器
             cells.abandoned(sourceIndex, KEY_UNSUPPORTED_CONTAINER);
@@ -420,7 +419,7 @@ public final class PocketFluidTransfer {
         // 余量不是"等下一次点击"而是当场被顶掉 —— D-9 的吃件面就在这条覆写上）
         if (done > 0 && canMoveIntoBothCells(cells, sourceIndex, product, done, unit, units)) {
             if (taken.amount > done * perUnit) {
-                source.fill(new FluidStack(taken.getFluid(), taken.amount - done * perUnit), true);
+                source.fill(sizedFluid(taken, taken.amount - done * perUnit), true);
             }
             cells.placeProcessed(sourceIndex, product, done, unit, units - done);
             return;
@@ -428,6 +427,13 @@ public final class PocketFluidTransfer {
         // 凑不成整件、或实际件数撑不下两格 ⇒ 从槽里取出的那一整份原路退回，容器一件没动
         source.fill(taken, true);
         cells.abandoned(sourceIndex, done > 0 ? KEY_NO_CELL_SPACE : KEY_TRANSFER_REFUSED);
+    }
+
+    /** Fluid identity includes its NBT (for example the contents of a tagged fluid container). */
+    private static FluidStack sizedFluid(FluidStack template, int amount) {
+        final FluidStack fluid = template.copy();
+        fluid.amount = amount;
+        return fluid;
     }
 
     /** 某一格还收得下几件"与该产物同形"的栈（被异物占住 ⇒ 0）。 */

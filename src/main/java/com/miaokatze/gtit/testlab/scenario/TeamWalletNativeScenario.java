@@ -66,6 +66,15 @@ final class TeamWalletNativeScenario implements ProbeScenario {
                 "join-freezes-personal",
                 shared.getCount(coin) == 0 && ownerPersonal.getCount(coin) == 41 && memberPersonal.getCount(coin) == 13,
                 "Joining does not merge personal snapshots into team funds");
+            manager.saveWallet(owner);
+            File personalFile = NativeFixtures.dataFile(manager, owner);
+            context.check(
+                "join-preserves-unsaved-personal-file",
+                personalFile != null && personalFile.isFile()
+                    && net.minecraft.nbt.CompressedStreamTools.read(personalFile)
+                        .getCompoundTag("wallet")
+                        .getInteger(coin) == 41,
+                "Saving while team-routed also persists the frozen personal wallet's pending balance");
             shared.addCount(coin, 50);
             boolean first = manager.getWallet(owner)
                 .tryDeduct(coin, 30);

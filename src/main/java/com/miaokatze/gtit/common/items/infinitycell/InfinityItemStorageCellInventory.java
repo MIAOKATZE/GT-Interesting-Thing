@@ -1,6 +1,8 @@
 package com.miaokatze.gtit.common.items.infinitycell;
 
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -27,7 +29,6 @@ import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
 import appeng.api.storage.data.IItemList;
 import appeng.util.Platform;
-import appeng.util.item.AEItemStack;
 
 public class InfinityItemStorageCellInventory implements ITCellInventory {
 
@@ -284,13 +285,31 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         }
     }
 
+    /** A cell handler can expose more channels than IStorageCell.getStackType()'s default. */
+    private static boolean nestedCellHasAnyContent(final ItemStack nested) {
+        final Set<IAEStackType<?>> types = new LinkedHashSet<>();
+        final IAEStackType<?> declared = nestedStackType(nested);
+        if (declared != null) types.add(declared);
+        // Registered channels are the finite set the native AE drive itself queries. Asking only
+        // the default item channel admits a multi-channel cell containing fluid or essentia.
+        try {
+            types.addAll(InfinityStackTypes.allSupportedTypes());
+        } catch (final Throwable err) {
+            LOG.warn("读取嵌套元件已注册通道失败，仍探测其声明通道", err);
+        }
+        for (final IAEStackType<?> type : types) {
+            if (nestedCellHasContent(type, nestedCellLookup(nested))) return true;
+        }
+        return false;
+    }
+
     @Override
     public IAEItemStack injectItems(IAEItemStack input, Actionable mode, BaseActionSource src) {
         if (input == null) {
             return null;
         }
-        if (input.getStackSize() == 0) {
-            return null;
+        if (input.getStackSize() <= 0) {
+            return input;
         }
         if (this.cellType.isBlackListed(this.cellItem, input)) {
             return input;
@@ -299,83 +318,26 @@ public class InfinityItemStorageCellInventory implements ITCellInventory {
         if (isStorageCell(sharedItemStack)) {
             // 固定 ITEM_STACK_TYPE 会绕过 AE2 handler 自己的通道守卫（BasicCellHandler 以
             // cell.getStackType() == type 拒绝错配），通道必须取元件自己的 getStackType()（Issue #16）。
-            if (nestedCellHasContent(nestedStackType(sharedItemStack), nestedCellLookup(sharedItemStack))) {
+            if (nestedCellHasAnyContent(sharedItemStack)) {
                 return input;
             }
         }
-        final IAEItemStack l = this.getCellItems()
+        final IAEItemStack stored = this.getCellItems()
             .findPrecise(input);
-        if (l != null) {
-            final long remainingItemSlots = this.getRemainingItemCount();
-            if (remainingItemSlots < 0) {
-                return input;
-            }
-            if (input.getStackSize() > remainingItemSlots) {
-                final IAEItemStack r = input.copy();
-                r.setStackSize(r.getStackSize() - remainingItemSlots);
-                if (mode == Actionable.MODULATE) {
-                    l.setStackSize(l.getStackSize() + remainingItemSlots);
-                    this.saveChanges();
-                }
-                return r;
-            } else {
-                if (mode == Actionable.MODULATE) {
-                    l.setStackSize(l.getStackSize() + input.getStackSize());
-                    this.saveChanges();
-                }
-                return null;
-            }
+        if (stored == null && !this.canHoldNewItem(this.cellItem)) {
+            return input;
         }
-        if (this.canHoldNewItem(this.cellItem)) {
-            final long remainingItemCount = this.getRemainingItemCount() - this.getBytesPerType() * 8L;
-            if (remainingItemCount > 0) {
-                if (input.getStackSize() > remainingItemCount) {
-                    final IAEItemStack toReturn = AEItemStack.create(sharedItemStack);
-                    toReturn.decStackSize(remainingItemCount);
-                    if (mode == Actionable.MODULATE) {
-                        final IAEItemStack toWrite = AEItemStack.create(sharedItemStack);
-                        toWrite.setStackSize(remainingItemCount);
-                        this.cellItems.add(toWrite);
-                        this.saveChanges();
-                    }
-                    return toReturn;
-                }
-                if (mode == Actionable.MODULATE) {
-                    this.cellItems.add(input);
-                    this.saveChanges();
-                }
-                return null;
-            }
-        }
-        return input;
+        final long capacity = stored == null ? Math.max(0L, this.getRemainingItemCount() - this.getBytesPerType() * 8L)
+            : this.getRemainingItemCount();
+        return InfinityCellTransfer.inject(this.getCellItems(), input, mode, capacity, this::saveChanges);
     }
 
     @Override
     public IAEItemStack extractItems(IAEItemStack request, Actionable mode, BaseActionSource src) {
-        if (request == null) {
+        if (request == null || request.getStackSize() <= 0) {
             return null;
         }
-        final long size = request.getStackSize();
-        IAEItemStack results = null;
-        final IAEItemStack l = this.getCellItems()
-            .findPrecise(request);
-        if (l != null) {
-            results = l.copy();
-            if (l.getStackSize() <= size) {
-                results.setStackSize(l.getStackSize());
-                if (mode == Actionable.MODULATE) {
-                    l.setStackSize(0);
-                    this.saveChanges();
-                }
-            } else {
-                results.setStackSize(size);
-                if (mode == Actionable.MODULATE) {
-                    l.setStackSize(l.getStackSize() - size);
-                    this.saveChanges();
-                }
-            }
-        }
-        return results;
+        return InfinityCellTransfer.extract(getCellItems(), request, mode, this::saveChanges);
     }
 
     private void saveChanges() {

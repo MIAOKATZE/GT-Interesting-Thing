@@ -2,6 +2,7 @@ package com.miaokatze.gtit.terminal;
 
 import net.minecraft.entity.player.EntityPlayerMP;
 
+import com.miaokatze.gtit.util.PacketStrings;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
@@ -17,7 +18,7 @@ import io.netty.buffer.ByteBuf;
  * 安全约定：
  * <ul>
  * <li>包内不传类名/反射/命令字符串，动作只走 {@link TerminalActionHandler} 的 int 常量</li>
- * <li>所有字符串 null 归一为 ""，且 toBytes/fromBytes 双侧按业务硬上限 clamp，
+ * <li>所有字符串 null 归一为 ""，发包按业务硬上限 clamp，收包在解码前限长并拒绝超长字段，
  * 拦截恶意超长载荷（第二道闸；服务端分发前仍有 {@link TerminalActionHandler} 限长复核）</li>
  * <li>Handler 在 Netty 线程只做 playerEntity null 守卫并投递服务器主线程
  * （模板照抄 {@code signin/SignInRequestPacket}），全部校验与业务在主线程执行</li>
@@ -85,11 +86,12 @@ public class TerminalActionPacket implements IMessage {
     @Override
     public void fromBytes(ByteBuf buf) {
         this.action = buf.readInt();
-        this.targetPlayer = normalize(ByteBufUtils.readUTF8String(buf), MAX_TARGET_PLAYER_LENGTH);
+        this.targetPlayer = PacketStrings.read(buf, MAX_TARGET_PLAYER_LENGTH);
         this.argInt = buf.readInt();
-        this.text1 = normalize(ByteBufUtils.readUTF8String(buf), MAX_TEXT1_LENGTH);
-        this.text2 = normalize(ByteBufUtils.readUTF8String(buf), MAX_TEXT2_LENGTH);
-        this.text3 = normalize(ByteBufUtils.readUTF8String(buf), MAX_TEXT3_LENGTH);
+        this.text1 = PacketStrings.read(buf, MAX_TEXT1_LENGTH);
+        this.text2 = PacketStrings.read(buf, MAX_TEXT2_LENGTH);
+        this.text3 = PacketStrings.read(buf, MAX_TEXT3_LENGTH);
+        if (buf.isReadable()) throw new IllegalArgumentException("Unexpected terminal request payload");
     }
 
     public int getAction() {
@@ -124,7 +126,10 @@ public class TerminalActionPacket implements IMessage {
             final EntityPlayerMP player = ctx.getServerHandler().playerEntity;
             if (player == null) return null;
             // 切到服务器主线程执行（涉及 NBT 持久化/配置重载/邮件投递）
-            ServerTaskScheduler.scheduleServerTask(() -> TerminalActionHandler.processAction(player, message));
+            ServerTaskScheduler.trySchedulePlayerRequest(player, () -> {
+                if (!com.miaokatze.gtit.util.PlayerLookup.isCurrentSession(player)) return;
+                TerminalActionHandler.processAction(player, message);
+            });
             return null;
         }
     }

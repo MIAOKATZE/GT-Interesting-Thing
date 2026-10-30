@@ -54,7 +54,8 @@ public final class PocketWornTapPacket implements IMessage {
             if (context.side != Side.SERVER) return null;
             final EntityPlayerMP player = context.getServerHandler().playerEntity;
             // Netty 线程只捕获请求和连接玩家，世界、装备、权限、抽液全部在服务器主线程现查。
-            ServerTaskScheduler.scheduleServerTask(() -> PocketWornTapHandler.INSTANCE.handleRequest(player, message));
+            ServerTaskScheduler
+                .trySchedulePlayerRequest(player, () -> PocketWornTapHandler.INSTANCE.handleRequest(player, message));
             return null;
         }
     }

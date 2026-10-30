@@ -8,9 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,7 +24,6 @@ import com.miaokatze.gtit.lottery.LotteryPool;
 import com.miaokatze.gtit.lottery.LotteryPoolSlots;
 import com.miaokatze.gtit.lottery.LotteryRarity;
 import com.miaokatze.gtit.lottery.PityConfig;
-import com.miaokatze.gtit.util.NbtBase64Util;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -105,7 +101,7 @@ final class LotteryEditActions {
 
             // 加载当前配置并定位条目
             LotteryConfig.LotteryConfigData data = LotteryConfig.load();
-            if (data == null || data.pools == null) {
+            if (data == null || data.isLoadFailed() || data.pools == null) {
                 sendError(player, "抽奖配置为空，无法保存");
                 return;
             }
@@ -229,7 +225,7 @@ final class LotteryEditActions {
                 return;
             }
             LotteryConfig.LotteryConfigData data = LotteryConfig.load();
-            if (data == null || data.pools == null) {
+            if (data == null || data.isLoadFailed() || data.pools == null) {
                 sendError(player, "抽奖配置为空，无法保存");
                 return;
             }
@@ -290,7 +286,7 @@ final class LotteryEditActions {
                 return;
             }
             LotteryConfig.LotteryConfigData data = LotteryConfig.load();
-            if (data == null || data.pools == null) {
+            if (data == null || data.isLoadFailed() || data.pools == null) {
                 sendError(player, "抽奖配置为空，无法新建卡池");
                 return;
             }
@@ -343,7 +339,7 @@ final class LotteryEditActions {
                 return;
             }
             LotteryConfig.LotteryConfigData data = LotteryConfig.load();
-            if (data == null || data.pools == null) {
+            if (data == null || data.isLoadFailed() || data.pools == null) {
                 sendError(player, "抽奖配置为空，无法删除");
                 return;
             }
@@ -432,7 +428,7 @@ final class LotteryEditActions {
             pool.setIconMeta(0);
             pool.setIconNbt("");
         }
-        // 消耗需求物品（costItems 为权威口径；解析失败的条目跳过）
+        // Reject the entire edit when any payment is invalid; never save a cheaper partial requirement.
         if (json.has("costItems")) {
             pool.setCostItems(parsePoolCostItems(json.getAsJsonArray("costItems")));
         }
@@ -458,36 +454,13 @@ final class LotteryEditActions {
      * 解析消耗需求物品列表（item/meta/amount/nbtBase64? 格式，与 LotteryConfig Gson 适配器一致）
      *
      * @param array JSON 数组
-     * @return 需求物品列表（解析失败的条目已跳过）
+     * @return 完整需求物品列表；任一条目无效时拒绝本次编辑
      */
     private static List<NekoBigItemStack> parsePoolCostItems(JsonArray array) {
         List<NekoBigItemStack> costs = new ArrayList<>();
-        if (array == null) return costs;
+        if (array == null) throw new IllegalArgumentException("Lottery costs must be an array");
         for (int i = 0; i < array.size(); i++) {
-            JsonObject itemJson = array.get(i)
-                .getAsJsonObject();
-            String itemId = itemJson.has("item") ? itemJson.get("item")
-                .getAsString()
-                .trim() : "";
-            if (itemId.isEmpty()) continue;
-            String[] parts = itemId.split(":", 2);
-            if (parts.length < 2) continue;
-            Item item = GameRegistry.findItem(parts[0], parts[1]);
-            if (item == null) continue;
-            int meta = itemJson.has("meta") ? itemJson.get("meta")
-                .getAsInt() : 0;
-            int amount = Math.max(
-                1,
-                itemJson.has("amount") ? itemJson.get("amount")
-                    .getAsInt() : 1);
-            ItemStack stack = new ItemStack(item, 1, meta);
-            if (itemJson.has("nbtBase64")) {
-                NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(
-                    itemJson.get("nbtBase64")
-                        .getAsString());
-                if (nbt != null) stack.setTagCompound(nbt);
-            }
-            costs.add(new NekoBigItemStack(amount, "", stack));
+            costs.add(LotteryConfig.parseCostItem(array.get(i)));
         }
         return costs;
     }

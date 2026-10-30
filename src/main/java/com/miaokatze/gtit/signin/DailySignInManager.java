@@ -2,8 +2,10 @@ package com.miaokatze.gtit.signin;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -64,6 +66,7 @@ public class DailySignInManager {
     private final ConcurrentHashMap<UUID, DailySignInData> signInDataMap;
     /** 存档目录（<world>/gtit_signin） */
     private File saveDir;
+    private boolean sessionUnavailable = true;
     /** saveDir 未初始化告警一次性标记（v1.7.48 缺口C：首次触发 WARN 后静默，成功保存一次后重置） */
     private boolean saveDirWarned = false;
     /** tickOnlineMinute 调用计数（每 5 次≈5 分钟触发一次 saveAll 周期落盘，防崩溃/定时重启回档） */
@@ -79,6 +82,9 @@ public class DailySignInManager {
      * 初始化存储目录（CommonProxy.serverStarted 调用，需要 World 对象）
      */
     public void init(World world) {
+        sessionUnavailable = true;
+        saveAll();
+        signInDataMap.clear();
         saveDir = new File(
             world.getSaveHandler()
                 .getWorldDirectory(),
@@ -87,6 +93,7 @@ public class DailySignInManager {
             saveDir.mkdirs();
         }
         lastKnownDate = getToday();
+        sessionUnavailable = false;
         LOG.info("签到数据存储目录: {}", saveDir.getAbsolutePath());
     }
 
@@ -123,41 +130,59 @@ public class DailySignInManager {
         // 签到前兜底修正（防跨天未 tick、跨月未重置的边界情况）
         applyDateCorrections(data);
 
-        // 记录签到并计算新连续天数
         int newConsecutive = calculateNewConsecutive(data.getLastSignInDate(), today, data.getConsecutiveDays());
-        data.recordSignIn(today, getYesterday(), newConsecutive);
-
-        // v1.7.8 任务6：每日奖励 = 生效奖励（覆盖优先，否则工作日/周末默认）
-        // 货币量经 calculateDayCurrency 计算（递增仅作用默认奖励货币量；覆盖天不递增）
         SignInReward dayReward = DailySignInConfig.getEffectiveDayReward(today);
         int baseReward = DailySignInConfig.calculateDayCurrency(today, newConsecutive);
-        if (baseReward > 0 && !dayReward.getCurrencyId()
-            .isEmpty()) {
-            // 货币入钱包（钱包自身处理团队/个人回退）
-            grantCurrency(playerId, dayReward.getCurrencyId(), baseReward);
-        }
-        // 每日物品奖励：入背包（满则脚下掉落；离线跳过，与阶梯物品同口径）
-        grantRewardItems(playerId, dayReward);
-
-        // 连续阶梯奖励：达到配置天数且当月未领取时发放
-        SignInRewardTier grantedTier = null;
         SignInRewardTier tier = DailySignInConfig.getTriggeredTier(newConsecutive);
-        if (tier != null && !data.hasClaimedTier(tier.getRequiredDays(), getYearMonth())) {
-            grantTierReward(playerId, tier);
-            data.claimTierReward(tier.getRequiredDays(), getYearMonth());
-            grantedTier = tier;
+        if (tier != null && data.hasClaimedTier(tier.getRequiredDays(), getYearMonth())) tier = null;
+        SignInRewardTier cumTier = DailySignInConfig.getTriggeredCumulativeTier(data.getTotalSignInDays() + 1);
+        if (cumTier != null && data.hasClaimedCumulativeTier(cumTier.getRequiredDays())) cumTier = null;
+        List<ItemStack> pending = new ArrayList<>();
+        NekoWallet wallet;
+        try {
+            pending.addAll(materializeRewardItems(dayReward));
+            if (tier != null) pending.addAll(materializeRewardItems(tier.getReward()));
+            if (cumTier != null) pending.addAll(materializeRewardItems(cumTier.getReward()));
+            if (!data.canQueueRewards(pending.size())) throw new IllegalStateException("Pending reward queue is full");
+            // Loading/validating the source account may fail; do it before consuming today's claim.
+            wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+            if (wallet == null) throw new IllegalStateException("Reward wallet unavailable");
+            if (baseReward > 0 && !dayReward.getCurrencyId()
+                .isEmpty()) wallet.addCount(dayReward.getCurrencyId(), 0);
+            if (tier != null && tier.getReward()
+                .hasCurrency())
+                wallet.addCount(
+                    tier.getReward()
+                        .getCurrencyId(),
+                    0);
+            if (cumTier != null && cumTier.getReward()
+                .hasCurrency())
+                wallet.addCount(
+                    cumTier.getReward()
+                        .getCurrencyId(),
+                    0);
+        } catch (RuntimeException failure) {
+            LOG.error("签到奖励校验失败，领取状态未消耗: " + playerId, failure);
+            return new SignInResult(SignInResult.Status.ERROR, 0, null, data.getConsecutiveDays());
         }
 
-        // v1.7.8 任务5：累计阶梯奖励——累计天数精确匹配档位且从未领取时发放（永久每档限领一次）
-        SignInRewardTier grantedCumulativeTier = null;
-        SignInRewardTier cumTier = DailySignInConfig.getTriggeredCumulativeTier(data.getTotalSignInDays());
-        if (cumTier != null && !data.hasClaimedCumulativeTier(cumTier.getRequiredDays())) {
-            grantTierReward(playerId, cumTier);
+        data.recordSignIn(today, getYesterday(), newConsecutive);
+        data.queueRewards(pending);
+        if (baseReward > 0 && !dayReward.getCurrencyId()
+            .isEmpty()) wallet.addCount(dayReward.getCurrencyId(), baseReward);
+        SignInRewardTier grantedTier = tier;
+        if (tier != null) {
+            grantTierCurrency(wallet, tier);
+            data.claimTierReward(tier.getRequiredDays(), getYearMonth());
+        }
+        SignInRewardTier grantedCumulativeTier = cumTier;
+        if (cumTier != null) {
+            grantTierCurrency(wallet, cumTier);
             data.claimCumulativeTier(cumTier.getRequiredDays());
-            grantedCumulativeTier = cumTier;
         }
 
         saveSignInData(playerId);
+        deliverPendingRewards(playerId);
         return new SignInResult(
             SignInResult.Status.SUCCESS,
             baseReward,
@@ -186,35 +211,104 @@ public class DailySignInManager {
      * 发放阶梯奖励（货币 + 物品列表，v1.7.8 统一奖励模型）
      * <p>
      * 连续阶梯与累计阶梯共用本方法；物品奖励需要玩家在线才能入背包，
-     * 离线时跳过物品部分（货币仍会入钱包）。
+     * Offline or rejected item delivery is retained in the player's pending reward ledger.
      */
     public void grantTierReward(UUID playerId, SignInRewardTier tier) {
         if (tier == null) return;
-        SignInReward reward = tier.getReward();
-        if (reward.hasCurrency()) {
-            grantCurrency(playerId, reward.getCurrencyId(), reward.getCurrencyAmount());
-        }
-        grantRewardItems(playerId, reward);
+        DailySignInData data = getSignInData(playerId);
+        List<ItemStack> rewards = materializeRewardItems(tier.getReward());
+        if (data == null || !data.canQueueRewards(rewards.size()))
+            throw new IllegalStateException("Reward queue unavailable");
+        NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+        if (wallet == null) throw new IllegalStateException("Reward wallet unavailable");
+        if (tier.getReward()
+            .hasCurrency())
+            wallet.addCount(
+                tier.getReward()
+                    .getCurrencyId(),
+                0);
+        data.queueRewards(rewards);
+        grantTierCurrency(wallet, tier);
+        saveSignInData(playerId);
+        deliverPendingRewards(playerId);
     }
 
-    /**
-     * 发放奖励中的物品列表（v1.7.8 任务6：每日奖励/阶梯奖励共用）
-     * <p>
-     * 逐条调用 {@link #grantItemStack}（入背包，满则脚下掉落；玩家离线跳过）。
-     *
-     * @param playerId 玩家 UUID
-     * @param reward   奖励（空条目已在内部过滤）
-     */
-    private void grantRewardItems(UUID playerId, SignInReward reward) {
-        if (reward == null) return;
+    private static void grantTierCurrency(NekoWallet wallet, SignInRewardTier tier) {
+        SignInReward reward = tier.getReward();
+        if (reward.hasCurrency()) wallet.addCount(reward.getCurrencyId(), reward.getCurrencyAmount());
+    }
+
+    private static List<ItemStack> materializeRewardItems(SignInReward reward) {
+        List<ItemStack> result = new ArrayList<>();
+        if (reward == null) return result;
         for (RewardItem item : reward.getItems()) {
             if (item == null || item.isEmpty()) continue;
-            grantItemStack(
-                playerId,
-                item.getItemId(),
-                item.getAmount(),
-                item.getMeta(),
-                NbtBase64Util.nbtFromBase64(item.getNbtBase64()));
+            result.add(materializeItem(item.getItemId(), item.getAmount(), item.getMeta(), item.getNbtBase64()));
+        }
+        return result;
+    }
+
+    private static ItemStack materializeItem(String itemId, int amount, int meta, String encodedNbt) {
+        String[] parts = itemId.split(":", 2);
+        Item item = parts.length == 2 ? GameRegistry.findItem(parts[0], parts[1]) : null;
+        if (item == null || amount <= 0 || meta < 0 || meta > 32767)
+            throw new IllegalArgumentException("Invalid reward item: " + itemId);
+        NBTTagCompound nbt = NbtBase64Util.nbtFromBase64(encodedNbt);
+        if (encodedNbt != null && !encodedNbt.isEmpty() && nbt == null)
+            throw new IllegalArgumentException("Invalid reward NBT: " + itemId);
+        ItemStack stack = new ItemStack(item, amount, meta);
+        if (nbt != null) stack.setTagCompound((NBTTagCompound) nbt.copy());
+        return stack;
+    }
+
+    /** Retry only undelivered quantities. At most 64 item-stack attempts per login/minute/claim. */
+    public void deliverPendingRewards(UUID playerId) {
+        requireSession();
+        EntityPlayerMP player = getPlayerByUUID(playerId);
+        DailySignInData data = signInDataMap.get(playerId);
+        if (player == null || data == null
+            || data.pendingRewards()
+                .isEmpty())
+            return;
+        boolean changed = false;
+        int budget = 64;
+        try {
+            Iterator<ItemStack> iterator = data.pendingRewards()
+                .iterator();
+            while (iterator.hasNext() && budget > 0) {
+                ItemStack pending = iterator.next();
+                while (pending.stackSize > 0 && budget-- > 0) {
+                    ItemStack part = pending.copy();
+                    part.stackSize = Math.min(pending.stackSize, Math.max(1, Math.min(64, part.getMaxStackSize())));
+                    int attempted = part.stackSize;
+                    try {
+                        player.inventory.addItemStackToInventory(part);
+                        if (part.stackSize > 0) {
+                            EntityItem drop = new EntityItem(
+                                player.worldObj,
+                                player.posX,
+                                player.posY,
+                                player.posZ,
+                                part.copy());
+                            if (player.worldObj.spawnEntityInWorld(drop)) part.stackSize = 0;
+                        }
+                    } finally {
+                        int delivered = attempted - part.stackSize;
+                        pending.stackSize -= delivered;
+                        changed |= delivered > 0;
+                    }
+                    if (part.stackSize > 0) break;
+                }
+                if (pending.stackSize == 0) iterator.remove();
+            }
+        } finally {
+            if (changed) {
+                data.pendingRewards()
+                    .removeIf(stack -> stack.stackSize <= 0);
+                saveSignInData(playerId);
+                player.inventory.markDirty();
+                player.inventoryContainer.detectAndSendChanges();
+            }
         }
     }
 
@@ -250,6 +344,7 @@ public class DailySignInManager {
      * 日期变化时对已加载玩家执行断签/跨月修正，保存并向在线玩家重发同步包。
      */
     public void checkDailyReset() {
+        requireSession();
         String today = getToday();
         if (today.equals(lastKnownDate)) return;
         lastKnownDate = today;
@@ -303,12 +398,14 @@ public class DailySignInManager {
      * 该口径导致服务器重启后在线时长回档到上次登出点，跨零点则整日清零。
      */
     public void tickOnlineMinute() {
+        requireSession();
         String today = getToday();
         for (Map.Entry<UUID, DailySignInData> entry : signInDataMap.entrySet()) {
             // B2-12：admin 指令加载的离线签到数据会驻留本 map（仅登出路径卸载）——
             // 在线时长只对真实在线玩家累计，离线条目既不加分也不推送
             EntityPlayerMP player = getPlayerByUUID(entry.getKey());
             if (player == null) continue;
+            deliverPendingRewards(entry.getKey());
             entry.getValue()
                 .addOnlineSeconds(today, 60);
             // 向在线玩家重发最新状态（GUI 在线时长/领取状态每分钟刷新）
@@ -346,20 +443,28 @@ public class DailySignInManager {
         if (data.getOnlineSecondsToday() < tier.getRequiredSeconds()) return CLAIM_ONLINE_NOT_REACHED;
         if (data.hasClaimedOnlineTier(today, tier.getRequiredSeconds())) return CLAIM_ONLINE_ALREADY_CLAIMED;
 
-        // 发放：货币入钱包（复用签到奖励发放路径）；可选物品入背包（满则脚下掉落）
-        if (tier.getCurrencyAmount() > 0) {
-            grantCurrency(playerId, tier.getCurrencyId(), tier.getCurrencyAmount());
+        List<ItemStack> pending = new ArrayList<>();
+        NekoWallet wallet;
+        try {
+            if (tier.hasItemReward()) pending.add(
+                materializeItem(
+                    tier.getItemRewardId(),
+                    tier.getItemRewardAmount(),
+                    tier.getItemRewardMeta(),
+                    tier.getItemNbt()));
+            if (!data.canQueueRewards(pending.size())) return CLAIM_ONLINE_ERROR;
+            wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+            if (wallet == null) return CLAIM_ONLINE_ERROR;
+            if (tier.getCurrencyAmount() > 0) wallet.addCount(tier.getCurrencyId(), 0);
+        } catch (RuntimeException failure) {
+            LOG.error("在线奖励校验失败，领取状态未消耗: " + playerId, failure);
+            return CLAIM_ONLINE_ERROR;
         }
-        if (tier.hasItemReward()) {
-            grantItemStack(
-                playerId,
-                tier.getItemRewardId(),
-                tier.getItemRewardAmount(),
-                tier.getItemRewardMeta(),
-                NbtBase64Util.nbtFromBase64(tier.getItemNbt()));
-        }
+        data.queueRewards(pending);
+        if (tier.getCurrencyAmount() > 0) wallet.addCount(tier.getCurrencyId(), tier.getCurrencyAmount());
         data.claimOnlineTier(today, tier.getRequiredSeconds());
         saveSignInData(playerId);
+        deliverPendingRewards(playerId);
         return CLAIM_ONLINE_SUCCESS;
     }
 
@@ -462,6 +567,7 @@ public class DailySignInManager {
      * 获取玩家签到数据（优先内存缓存，未加载则从磁盘读取，均无则新建）
      */
     public DailySignInData getSignInData(UUID playerId) {
+        requireSession();
         if (playerId == null) return null;
         DailySignInData data = signInDataMap.get(playerId);
         if (data == null) {
@@ -494,10 +600,10 @@ public class DailySignInManager {
         try {
             NBTTagCompound nbt = new NBTTagCompound();
             nbt.setTag("signin", data.writeToNBT());
-            CompressedStreamTools.safeWrite(nbt, file);
+            com.miaokatze.gtit.util.AtomicNbtFile.write(nbt, file);
             saveDirWarned = false;
         } catch (Exception e) {
-            LOG.error("保存签到数据失败: " + playerId, e);
+            throw new IllegalStateException("Unable to save sign-in data: " + playerId, e);
         }
     }
 
@@ -505,6 +611,7 @@ public class DailySignInManager {
      * 从磁盘加载指定玩家数据到内存（若文件不存在则保持内存现状）
      */
     public void loadSignInData(UUID playerId) {
+        requireSession();
         if (playerId == null) return;
         DailySignInData data = loadFromDisk(playerId);
         if (data != null) {
@@ -539,6 +646,7 @@ public class DailySignInManager {
      * {@link #init} 重新赋值，无需在此复位。
      */
     public void unloadAll() {
+        sessionUnavailable = true;
         saveAll();
         signInDataMap.clear();
     }
@@ -564,6 +672,7 @@ public class DailySignInManager {
      * 管理员重置玩家签到数据（/gtit signin admin reset）
      */
     public void adminResetData(UUID playerId) {
+        requireSession();
         signInDataMap.put(playerId, new DailySignInData());
         saveSignInData(playerId);
         EntityPlayerMP player = getPlayerByUUID(playerId);
@@ -600,70 +709,24 @@ public class DailySignInManager {
         if (!file.exists()) return null;
         try {
             NBTTagCompound nbt = CompressedStreamTools.read(file);
-            if (nbt != null && nbt.hasKey("signin")) {
+            if (nbt != null && nbt.hasKey("signin", 10)) {
                 DailySignInData data = new DailySignInData();
                 data.readFromNBT(nbt.getCompoundTag("signin"));
                 return data;
             }
+            throw new IllegalStateException("Missing sign-in data: " + playerId);
         } catch (Exception e) {
-            LOG.error("加载签到数据失败: " + playerId, e);
-        }
-        return null;
-    }
-
-    /**
-     * 向玩家钱包发放货币
-     * <p>
-     * O2-17：addCount 即登记脏标记，落盘统一由周期（5 分钟）+ 登出 + 停服三重兜底承担，
-     * 不再显式 saveWallet。
-     */
-    private void grantCurrency(UUID playerId, String currencyId, int amount) {
-        NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-        if (wallet == null) return;
-        wallet.addCount(currencyId, amount);
-    }
-
-    /**
-     * 发放物品奖励（v1.7.6 G2③ 抽取的通用路径：签到阶梯/每日在线共用）
-     * <p>
-     * 入玩家背包，背包满则掉落在玩家脚下；玩家离线时跳过物品部分（货币仍会入钱包）。
-     * <p>
-     * <b>v1.7.7 G5①</b>：新增 {@code nbt} 参数，支持还原物品 NBT。
-     *
-     * @param playerId 玩家 UUID
-     * @param itemId   物品 ID（"modid:name"）
-     * @param amount   数量（<1 时按 1 发放）
-     * @param meta     物品 meta
-     * @param nbt      物品 NBT（可为 null）
-     */
-    private void grantItemStack(UUID playerId, String itemId, int amount, int meta, NBTTagCompound nbt) {
-        EntityPlayerMP player = getPlayerByUUID(playerId);
-        if (player == null) {
-            LOG.warn("玩家 {} 不在线，物品奖励 {} 已跳过", playerId, itemId);
-            return;
-        }
-        String[] parts = itemId.split(":");
-        if (parts.length != 2) return;
-        Item item = GameRegistry.findItem(parts[0], parts[1]);
-        if (item == null) {
-            LOG.warn("奖励物品不存在: {}", itemId);
-            return;
-        }
-        ItemStack stack = new ItemStack(item, Math.max(1, amount), meta);
-        if (nbt != null) {
-            // v1.7.7 G5①：copy() 返回 NBTBase，需强转为 NBTTagCompound 再写入物品
-            stack.setTagCompound((NBTTagCompound) nbt.copy());
-        }
-        if (!player.inventory.addItemStackToInventory(stack)) {
-            // 背包已满：掉落在玩家位置，避免奖励丢失
-            EntityItem drop = new EntityItem(player.worldObj, player.posX, player.posY, player.posZ, stack);
-            player.worldObj.spawnEntityInWorld(drop);
+            throw new IllegalStateException("Unable to load existing sign-in data: " + playerId, e);
         }
     }
 
     /** 按 UUID 查找在线玩家（未找到返回 null；O2-12 起委托 PlayerLookup 统一实现） */
     public static EntityPlayerMP getPlayerByUUID(UUID playerId) {
         return PlayerLookup.getOnlinePlayerByUuid(playerId);
+    }
+
+    private void requireSession() {
+        if (sessionUnavailable) throw new IllegalStateException("Sign-in world session is unavailable");
     }
 
     // ==================== 签到结果 ====================

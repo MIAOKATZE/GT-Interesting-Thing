@@ -248,35 +248,40 @@ public class SignInSyncPacket implements IMessage {
             // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
             // 需切回客户端主线程再写缓存（GUI 在主线程读取）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final SignInSyncPacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(() -> {
-                    DailySignInData data = new DailySignInData();
-                    data.readFromNBT(message.getDataTag());
-                    SignInClientData.update(
-                        data,
-                        message.getServerToday(),
-                        message.getResult(),
-                        message.getBaseReward(),
-                        message.getTierDays());
-                    // 刷新客户端配置缓存（v1.7.8 任务5+6：每月块 + 连续/累计阶梯）
-                    SignInClientData.updateConfig(
-                        message.isCfgIncrementEnabled(),
-                        message.getCfgIncrement(),
-                        message.getCfgWeekday(),
-                        message.getCfgWeekend(),
-                        message.getCfgDayOverrides(),
-                        message.getCfgTiers(),
-                        message.getCfgCumulativeTiers());
-                    // 刷新在线时长配置缓存（v1.7.6 G2③）
-                    SignInClientData.updateOnlineConfig(message.getCfgOnlineTiers());
-                });
+        private void handleClient(final SignInSyncPacket message, MessageContext context) {
+            Object connection = context.netHandler;
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.func_152344_a(() -> {
+                if (connection == null || mc.getNetHandler() != connection
+                    || mc.theWorld == null
+                    || mc.thePlayer == null) return;
+
+                DailySignInData data = new DailySignInData();
+                data.readFromNBT(message.getDataTag());
+                SignInClientData.update(
+                    data,
+                    message.getServerToday(),
+                    message.getResult(),
+                    message.getBaseReward(),
+                    message.getTierDays());
+                // 刷新客户端配置缓存（v1.7.8 任务5+6：每月块 + 连续/累计阶梯）
+                SignInClientData.updateConfig(
+                    message.isCfgIncrementEnabled(),
+                    message.getCfgIncrement(),
+                    message.getCfgWeekday(),
+                    message.getCfgWeekend(),
+                    message.getCfgDayOverrides(),
+                    message.getCfgTiers(),
+                    message.getCfgCumulativeTiers());
+                // 刷新在线时长配置缓存（v1.7.6 G2③）
+                SignInClientData.updateOnlineConfig(message.getCfgOnlineTiers());
+            });
         }
     }
 }

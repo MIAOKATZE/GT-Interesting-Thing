@@ -278,7 +278,7 @@ public final class TradePresetUI extends AbstractUIFactory<TradePresetUI.Data> {
             final Container expected = sync.getContainer();
             if (expected == null) return;
             final int windowId = expected.windowId;
-            TradePresetAccessHandler.enqueue(() -> {
+            TradePresetAccessHandler.enqueue(player(), () -> {
                 if (player().openContainer != expected || expected != sync.getContainer()
                     || expected.windowId != windowId
                     || player().worldObj != world

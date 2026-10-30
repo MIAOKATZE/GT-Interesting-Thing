@@ -1,7 +1,9 @@
 package com.miaokatze.gtit.reincarnation.gui;
 
 import java.io.File;
+import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Queue;
 import java.util.Random;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -34,7 +36,7 @@ import com.miaokatze.gtit.util.ServerTaskScheduler;
  * {@link ReincarnationLayout}）。
  * <p>
  * <b>服务端权威会话</b>：GUI 打开（{@code EntityPlayer.openGui} → IGuiHandler）时服务端
- * {@code store.load(uuid)} 建立会话，每次模型变更即 {@code store.save}；客户端镜像同构造
+ * {@code store.load(uuid)} 建立会话；GUI 变更只更新当档进度，全局许可由 Handler 推进；客户端镜像同构造
  * （空记录，展示走进度条同步值与槽位同步），与旧 GUI 双端镜像纪律一致。
  * <p>
  * <b>同步机制</b>：槽位内容由 vanilla {@code detectAndSendChanges} 槽位 diff 同步；
@@ -140,6 +142,10 @@ public class ReincarnationContainer extends Container {
 
     /** 确认按钮武装标记（仅服务端置位，槽位变动/关窗重置） */
     private boolean confirmArmed;
+    /** Closing invalidates queued button actions, even before the server task queue drains. */
+    private boolean closed;
+    /** Accepted vanilla inventory movements are obligations, not cancelable GUI requests. */
+    private Queue<Runnable> acceptedInventoryActions;
     /** 面板消息事件码（服务端；语义见 {@link ReincarnationLayout} 消息事件码区） */
     private int messageEvent = ReincarnationLayout.MSG_NONE;
 
@@ -174,6 +180,11 @@ public class ReincarnationContainer extends Container {
         this.player = player;
         this.server = !player.worldObj.isRemote;
         if (server) {
+            // Forge may construct the replacement before closing the previous container.
+            // Its snapshot must include every movement vanilla has already accepted.
+            if (player.openContainer instanceof ReincarnationContainer) {
+                ((ReincarnationContainer) player.openContainer).flushAcceptedInventoryActions();
+            }
             // 服务端：全局许可仓库 + 每存档进度（D1 拆分）。
             // ① 每存档载体就绪 → ② 旧全局 v1 字段一次性 consume-once 迁移进当档 →
             // ③ 读全局许可（指纹/投胎信箱，最后仁慈兜底空记录）→ ④ 每存档进度合并进模型
@@ -332,7 +343,7 @@ public class ReincarnationContainer extends Container {
                 // （手点无同步）。暂持（null→held→null）经 vanilla diff 下发两次纠正：
                 // 首包与预测同值无观感，次包（consumeHull 清槽）即"放入即消失"。
                 super.putStack(consumed);
-                scheduleServerTask(() -> consumeHull(targetColumn, consumed));
+                scheduleInventoryAction(() -> consumeHull(targetColumn, consumed));
             } else {
                 super.putStack(stack); // 客户端预测；服务端以 held→null 两段 set-slot 纠正（见服务端分支注释）
             }
@@ -381,7 +392,7 @@ public class ReincarnationContainer extends Container {
                 super.putStack(stack); // 槽位缓冲持有展示堆，权威记录由 placeItem 任务落模型
                 final int index = this.localIndex;
                 final ItemStack placed = stack.copy();
-                scheduleServerTask(() -> placeItem(index, placed));
+                scheduleInventoryAction(() -> placeItem(index, placed));
             } else {
                 super.putStack(stack);
             }
@@ -393,7 +404,7 @@ public class ReincarnationContainer extends Container {
             if (server) {
                 disarmConfirm();
                 final int index = this.localIndex;
-                scheduleServerTask(() -> takeItem(index));
+                scheduleInventoryAction(() -> takeItem(index));
             }
         }
     }
@@ -603,6 +614,9 @@ public class ReincarnationContainer extends Container {
      * 确认轮回（旧 :900 doConfirm）：两步确认已过 → 回调 S4 钩子（未注入则提示）
      */
     private void doConfirm() {
+        if (!isActiveServerSession()) {
+            return;
+        }
         if (isReadonly()) {
             chat(KEY_CHAT_READONLY);
             return;
@@ -634,6 +648,9 @@ public class ReincarnationContainer extends Container {
      * 不受该门控影响。经 {@code enchantItem} 的 {@code scheduleServerTask} 到达，恒在服务端线程。
      */
     private void toggleUnlock(boolean shimmer, GTITItemList coinType) {
+        if (!isActiveServerSession()) {
+            return;
+        }
         if (ReincarnationHandler.isRollSessionActive(this.player, shimmer)) {
             ReincarnationHandler.stopRollSession(this.player, shimmer); // 停止条件④：再按同按钮立即停止
             return;
@@ -655,7 +672,7 @@ public class ReincarnationContainer extends Container {
      * 与 GUI 其余路径同源，关窗收束不丢账。
      */
     private boolean rollOnce(boolean shimmer, GTITItemList coinType) {
-        if (!isUnlockAvailable()) {
+        if (!isActiveServerSession() || !isUnlockAvailable()) {
             return false; // 停止条件①：无剩余可解锁目标（isUnlockAvailable 同口径），静默停止
         }
         int coinSlot = indexOfCoin(coinType);
@@ -691,10 +708,12 @@ public class ReincarnationContainer extends Container {
      */
     @Override
     public void onContainerClosed(EntityPlayer who) {
+        this.closed = true;
         super.onContainerClosed(who);
         if (!server) {
             return;
         }
+        flushAcceptedInventoryActions();
         this.confirmArmed = false;
         ReincarnationHandler.stopRollSessions(this.player); // 停止条件③：GUI 关闭静默停止（登出清扫由 Handler 兜底）
         saveQuietly();
@@ -731,7 +750,7 @@ public class ReincarnationContainer extends Container {
      */
     @Override
     public boolean enchantItem(EntityPlayer who, int id) {
-        if (!server || who != this.player) {
+        if (who != this.player || !isActiveServerSession()) {
             return false;
         }
         if (id == ReincarnationLayout.BUTTON_CONFIRM) {
@@ -857,7 +876,11 @@ public class ReincarnationContainer extends Container {
     /** 会话绑定虚拟 GUI：无方块依赖，生命周期由 openGui/closeScreen 托管 */
     @Override
     public boolean canInteractWith(EntityPlayer who) {
-        return true;
+        return who == this.player && !this.closed && !who.isDead;
+    }
+
+    private boolean isActiveServerSession() {
+        return server && !closed && !player.isDead && player.openContainer == this;
     }
 
     // ==================== 只读访问器（client 渲染层消费；sided 分发） ====================
@@ -966,29 +989,19 @@ public class ReincarnationContainer extends Container {
     // ==================== 基础设施（自旧 GUI 移植） ====================
 
     /**
-     * 保存（服务端；D1 拆分写入）：先全局许可（指纹/投胎信箱——失败抛出中断，
-     * 保证「确认推进 EXECUTED 与写信箱」同事务、失败不写半份），再每存档进度
-     * （WorldData，markDirty 由存档保存期落盘）。磁盘异常不阻断 GUI
-     * （记录日志语义由 store 异常消息承载）。
+     * GUI movements change only world-local progress. Confirmation and claim are the
+     * Handler's exclusive global-license writers. An unrelated global-file write
+     * failure must never discard a movement vanilla has already accepted on close.
      */
     private void saveQuietly() {
-        if (this.store == null) return;
-        try {
-            // A4 防御：磁盘许可已推进 EXECUTED 而内存漂移 → 先重载再保存（覆盖
-            // doConfirm 后重载遗漏/权威链路异步推进等残余时序，防信箱/指纹被抹）
-            reloadIfLicenseAdvancedQuietly();
-            this.store.save(this.cycle);
-            if (this.worldData != null) {
-                this.worldData.saveFrom(this.cycle);
-            }
-        } catch (IllegalStateException ignored) {
-            // 写入失败（磁盘等）：保持内存态，下次变更重试；不向玩家刷屏
-        }
+        if (this.worldData == null) return;
+        reloadIfLicenseAdvancedQuietly();
+        this.worldData.saveFrom(this.cycle);
     }
 
     /**
      * 丢更新覆写防御（A4）：保存前从磁盘新读许可，{@link ReincarnationSaveGuard}
-     * 判定"磁盘已 EXECUTED 而内存漂移为非 EXECUTED"时，按 GUI 打开同款路径重载
+     * 判定磁盘已确认或已领取、而内存仍持旧许可时，按 GUI 打开同款路径重载
      * 内存模型（{@code store.load} + {@code worldData.applyTo}，WorldData 为打开时
      * 捕获的同一 overworld MapStorage 单例）后返回 true。
      * <p>
@@ -1061,6 +1074,37 @@ public class ReincarnationContainer extends Container {
         }
     }
 
+    private void scheduleInventoryAction(Runnable task) {
+        if (this.acceptedInventoryActions == null) {
+            this.acceptedInventoryActions = new ArrayDeque<>();
+        }
+        this.acceptedInventoryActions.add(task);
+        scheduleServerTask(() -> {
+            // Close/reopen may already have drained it. Never repeat accepted transfers.
+            if (this.acceptedInventoryActions.remove(task)) {
+                task.run();
+            }
+        });
+    }
+
+    private void flushAcceptedInventoryActions() {
+        if (this.acceptedInventoryActions == null) {
+            return;
+        }
+        Runnable task;
+        while ((task = this.acceptedInventoryActions.poll()) != null) {
+            task.run();
+        }
+    }
+
+    /** Shutdown hook: finish accepted transfers even if the scheduler wrappers were already cleared. */
+    public void flushAcceptedInventoryChanges() {
+        if (server) {
+            flushAcceptedInventoryActions();
+            saveQuietly();
+        }
+    }
+
     // ==================== shift-click 转移（QUICK_MOVE 通道） ====================
 
     /**
@@ -1118,7 +1162,7 @@ public class ReincarnationContainer extends Container {
             if (server) {
                 disarmConfirm();
                 int localIndex = ((CycleItemSlot) source).localIndex;
-                scheduleServerTask(() -> takeItem(localIndex));
+                scheduleInventoryAction(() -> takeItem(localIndex));
             }
             ItemStack moved = source.getStack()
                 .copy();

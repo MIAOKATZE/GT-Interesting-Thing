@@ -21,6 +21,7 @@ import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
+import com.miaokatze.gtit.common.machine.v2.NekoOutputCapacity;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.trade.NekoWallet;
 import com.miaokatze.gtit.trade.NekoWalletManager;
@@ -366,34 +367,8 @@ public final class CoinOpsController {
                 return;
             }
 
-            int count = wallet.getCount(currencyId);
-            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
-            while (count > 0) {
-                int stackSize = Math.min(count, 64);
-                ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, stackSize);
-                if (stack != null) {
-                    toDispense.add(stack);
-                }
-                count -= stackSize;
-            }
-
-            if (!toDispense.isEmpty()) {
-                // 投放前检查：输出槽是否还有空位（考虑 outputBuffer 已堆积的情况）
-                // 可用空位数 = 当前空槽数 - 队列已占用的虚拟槽位数
-                int emptySlots = multiblock.getOutputEmptySlotCount();
-                int queuedItems = multiblock.getOutputBufferSize();
-                if (emptySlots - queuedItems <= 0) {
-                    // 输出槽已满（含队列堆积），不扣钱，提示玩家
-                    LOG.warn("[NekoVMV2] doNekoEjectCoin 输出槽已满，取消弹出货币 {}", currencyId);
-                    tradeResultNotifier.accept("出货槽已满，无法弹出猫猫币");
-                    return;
-                }
-                multiblock.dispenseItemStacks(toDispense);
-                wallet.resetCount(currencyId);
-                playCoinDropSound();
-                // 交易状态可能受影响，标记为脏
-                markTradeableStatusDirtyAndNotify.run();
-            }
+            int withdrawn = withdrawCurrency(wallet, currencyId, Integer.MAX_VALUE);
+            finishWithdrawal(wallet, java.util.Collections.singletonList(currencyId), withdrawn);
         } catch (Throwable t) {
             LOG.error("[NekoVMV2] doNekoEjectCoin 异常!", t);
         } finally {
@@ -427,36 +402,8 @@ public final class CoinOpsController {
                 return;
             }
 
-            // 仅弹出 1 组（64 个，不足则全部）
-            int walletBalance = wallet.getCount(currencyId);
-            int count = Math.min(walletBalance, 64);
-            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
-            ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, count);
-            if (stack != null) {
-                toDispense.add(stack);
-            }
-
-            if (!toDispense.isEmpty()) {
-                // 投放前检查输出槽容量
-                int emptySlots = multiblock.getOutputEmptySlotCount();
-                int queuedItems = multiblock.getOutputBufferSize();
-                if (emptySlots - queuedItems <= 0) {
-                    LOG.warn("[NekoVMV2] doNekoEjectCoinStack 输出槽已满，取消弹出货币 {}", currencyId);
-                    tradeResultNotifier.accept("出货槽已满，无法弹出猫猫币");
-                    return;
-                }
-                multiblock.dispenseItemStacks(toDispense);
-                // 扣减钱包余额（而非 resetCount）
-                wallet.addCount(currencyId, -count);
-                playCoinDropSound();
-                // 通知余额同步值刷新
-                IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
-                if (coinSync != null) {
-                    coinSync.setValue(wallet.getCount(currencyId));
-                }
-                // 交易状态可能受影响，标记为脏
-                markTradeableStatusDirtyAndNotify.run();
-            }
+            int withdrawn = withdrawCurrency(wallet, currencyId, 64);
+            finishWithdrawal(wallet, java.util.Collections.singletonList(currencyId), withdrawn);
         } catch (Throwable t) {
             LOG.error("[NekoVMV2] doNekoEjectCoinStack 异常!", t);
         } finally {
@@ -489,31 +436,65 @@ public final class CoinOpsController {
                 return;
             }
 
-            java.util.List<ItemStack> toDispense = new java.util.ArrayList<>();
-            for (String currencyId : NekoCurrencyRegistrar.getNekoCurrencyIds()) {
-                int count = wallet.getCount(currencyId);
-                while (count > 0) {
-                    int stackSize = Math.min(count, 64);
-                    ItemStack stack = NekoCurrencyRegistrar.getItemStack(currencyId, stackSize);
-                    if (stack != null) {
-                        toDispense.add(stack);
-                    }
-                    count -= stackSize;
-                }
-                wallet.resetCount(currencyId);
+            List<String> currencies = java.util.Arrays.asList(NekoCurrencyRegistrar.getNekoCurrencyIds());
+            int withdrawn = 0;
+            for (String currencyId : currencies) {
+                withdrawn += withdrawCurrency(wallet, currencyId, Integer.MAX_VALUE);
             }
-
-            if (!toDispense.isEmpty()) {
-                multiblock.dispenseItemStacks(toDispense);
-                playCoinDropSound();
-                // 交易状态可能受影响，标记为脏
-                markTradeableStatusDirtyAndNotify.run();
-            }
+            finishWithdrawal(wallet, currencies, withdrawn);
         } catch (Throwable t) {
             LOG.error("[NekoVMV2] doNekoEjectAllCoins 异常!", t);
         } finally {
             nekoEjectAllCoins = false;
         }
+    }
+
+    /** Withdraw only a bounded, reserved batch; excess value remains in the wallet, never world drops. */
+    private int withdrawCurrency(NekoWallet wallet, String currencyId, int requested) {
+        synchronized (wallet) {
+            int available = multiblock.getAvailableOutputCapacity();
+            if (available <= 0 || wallet.getCount(currencyId) <= 0) return 0;
+            ItemStack prototype = NekoCurrencyRegistrar.getItemStack(currencyId, 1);
+            if (prototype == null) return 0;
+            int limit = Math.max(1, Math.min(64, prototype.getMaxStackSize()));
+            int amount = CoinWithdrawalPlan.amount(wallet.getCount(currencyId), requested, available, limit);
+            if (amount <= 0) return 0;
+            int slots = CoinWithdrawalPlan.slots(amount, limit);
+            try (NekoOutputCapacity.Reservation reservation = multiblock.reserveOutputCapacity(slots)) {
+                if (reservation == null) return 0;
+                List<ItemStack> stacks = new ArrayList<>(slots);
+                List<Boolean> routes = new ArrayList<>(slots);
+                int remaining = amount;
+                while (remaining > 0) {
+                    ItemStack stack = prototype.copy();
+                    stack.stackSize = Math.min(remaining, limit);
+                    stacks.add(stack);
+                    routes.add(false);
+                    remaining -= stack.stackSize;
+                }
+                // Physical stack preparation and capacity reservation precede payment; queue/ledger
+                // transfer follows the existing lottery contract. No overflow-dropping dispatch is involved.
+                if (!wallet.tryDeduct(currencyId, amount)) return 0;
+                multiblock.commitLotteryOutputs(reservation, stacks, routes, 0);
+                return amount;
+            }
+        }
+    }
+
+    private void finishWithdrawal(NekoWallet wallet, List<String> currencies, int withdrawn) {
+        if (withdrawn > 0) {
+            playCoinDropSound();
+            markTradeableStatusDirtyAndNotify.run();
+        }
+        boolean hasRemainder = false;
+        for (String currencyId : currencies) {
+            int balance = wallet.getCount(currencyId);
+            hasRemainder |= balance > 0;
+            IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
+            if (coinSync != null) coinSync.setValue(balance);
+        }
+        if (withdrawn == 0) tradeResultNotifier.accept("未弹出猫猫币；请检查出货槽空间，余额已保留");
+        else if (hasRemainder) tradeResultNotifier.accept("已弹出 " + withdrawn + " 个猫猫币，其余余额保留在钱包");
     }
 
     /**
@@ -634,20 +615,15 @@ public final class CoinOpsController {
                         + stack.stackSize
                         + " currencyId="
                         + currencyId);
-                if (currencyId != null) {
-                    wallet.addCount(currencyId, stack.stackSize);
-                    int newCount = wallet.getCount(currencyId);
-                    LOG.debug(
-                        "[NekoImportCoins] addCount 完成: slotIdx=" + i
-                            + " currencyId="
-                            + currencyId
-                            + " added="
-                            + stack.stackSize
-                            + " newCount="
-                            + newCount);
-                    totalImported += stack.stackSize;
-                    multiblock.inputItems.setStackInSlot(i, null);
-                    LOG.debug("[NekoImportCoins] setStackInSlot(null) 完成: slotIdx=" + i);
+                if (currencyId != null && stack.stackSize > 0) {
+                    synchronized (wallet) {
+                        ItemStack remainder = stack.copy();
+                        int accepted = wallet.creditUpToCapacity(currencyId, stack.stackSize);
+                        if (accepted <= 0) continue;
+                        remainder.stackSize -= accepted;
+                        multiblock.inputItems.setStackInSlot(i, remainder.stackSize == 0 ? null : remainder);
+                        totalImported += accepted;
+                    }
                 }
             }
 
@@ -655,7 +631,7 @@ public final class CoinOpsController {
                 tradeMessageSetter.accept("成功导入 " + totalImported + " 个猫猫币");
                 LOG.debug("[NekoImportCoins] 总计导入: totalImported=" + totalImported);
             } else {
-                tradeMessageSetter.accept("输入槽中未找到猫猫币");
+                tradeMessageSetter.accept("未导入猫猫币：输入槽无可用货币或钱包已满；未导入物品已保留");
                 LOG.debug("[NekoImportCoins] 总计导入: totalImported=0（未找到猫猫币）");
             }
         } catch (Throwable t) {
@@ -670,7 +646,7 @@ public final class CoinOpsController {
      * 从 ME 网络导入指定货币到玩家钱包（阶段 6）
      * <p>
      * 由 GUI 导入按钮触发（通过 nekoV2ImportMeCoin_ 同步值 C2S）。
-     * 查询 ME 余额，提取全部，加到玩家钱包，并刷新货币余额同步值。
+     * 查询 ME 余额，只提取钱包容量内的数量，并刷新货币余额同步值。
      *
      * @param currencyId 货币 ID（如 "neko"、"shimmeringNeko"）
      */
@@ -692,34 +668,48 @@ public final class CoinOpsController {
                 tradeResultNotifier.accept("ME 网络中无" + NekoCurrencyRegistrar.getDisplayName(currencyId));
                 return;
             }
-            // 从 ME 提取（extractFromUplink 返回未满足的剩余数量）
-            ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, meAmount);
-            if (coinStack == null) {
-                tradeResultNotifier.accept("货币物品栈创建失败");
+            NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
+            if (wallet == null) {
+                tradeResultNotifier.accept("钱包不可用，未从 ME 提取");
                 return;
             }
-            int remain = multiblock.extractFromUplink(coinStack);
-            int extracted = meAmount - remain;
-            if (extracted > 0) {
-                // 加到玩家钱包（使用 addCount，与 doNekoImportCoins 一致）
-                NekoWallet wallet = NekoWalletManager.INSTANCE.getWallet(playerId);
-                if (wallet != null) {
-                    wallet.addCount(currencyId, extracted);
-                    // 刷新货币余额同步值，使余额显示立即更新
-                    IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
-                    if (coinSync != null) {
-                        coinSync.setValue(wallet.getCount(currencyId));
-                    }
-                    // 刷新 ME 货币余额同步值，使导入按钮显示立即更新
-                    IntSyncValue meSync = meCoinAmountSyncs.get(currencyId);
-                    if (meSync != null) {
-                        meSync.notifyUpdate();
-                    }
-                    // 标记可交易状态为脏（钱包余额变化影响可交易性）
-                    markTradeableStatusDirtyAndNotify.run();
-                    tradeResultNotifier
-                        .accept("从 ME 导入 " + extracted + " 个" + NekoCurrencyRegistrar.getDisplayName(currencyId));
+            int extracted;
+            synchronized (wallet) {
+                // Bound the request using current headroom. This monitor serializes an active wallet,
+                // but a consumed-team alias may forward to a concurrently changing survivor; the
+                // already-extracted receipt below is therefore always credited exactly, never clamped.
+                int requested = Math.min(meAmount, wallet.getCreditCapacity(currencyId));
+                if (requested <= 0) {
+                    tradeResultNotifier.accept("钱包已满，猫猫币保留在 ME 网络");
+                    return;
                 }
+                ItemStack coinStack = NekoCurrencyRegistrar.getItemStack(currencyId, requested);
+                if (coinStack == null) {
+                    tradeResultNotifier.accept("货币物品栈创建失败");
+                    return;
+                }
+                // Exact-item uplink extraction returns the unfulfilled count (0..requested).
+                // A partial extraction is credited exactly; unextracted coins stay in ME.
+                int remain = multiblock.extractFromUplink(coinStack);
+                if (remain < 0 || remain > requested) {
+                    throw new IllegalStateException("Invalid ME extraction remainder: " + remain);
+                }
+                extracted = requested - remain;
+                // Extraction is already committed. Exact credit also preserves value if a stale
+                // consumed-team reference forwarded into a concurrently credited survivor.
+                wallet.addCount(currencyId, extracted);
+            }
+            if (extracted > 0) {
+                IntSyncValue coinSync = coinAmountSyncs.get(currencyId);
+                if (coinSync != null) coinSync.setValue(wallet.getCount(currencyId));
+                IntSyncValue meSync = meCoinAmountSyncs.get(currencyId);
+                if (meSync != null) meSync.notifyUpdate();
+                markTradeableStatusDirtyAndNotify.run();
+                tradeResultNotifier.accept(
+                    "从 ME 导入 " + extracted
+                        + " 个"
+                        + NekoCurrencyRegistrar.getDisplayName(currencyId)
+                        + "，其余货币保留在 ME 网络");
             } else {
                 tradeResultNotifier.accept("ME 提取失败");
             }

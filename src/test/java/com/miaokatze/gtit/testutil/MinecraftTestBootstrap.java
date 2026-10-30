@@ -6,6 +6,11 @@ public final class MinecraftTestBootstrap {
     private MinecraftTestBootstrap() {}
 
     public static boolean enter(Class<?> suite, String[] args) throws Exception {
+        return enter(suite, args, new String[0]);
+    }
+
+    /** Optional native coremod setup; ordinary suites retain the original transformer-free bootstrap. */
+    public static boolean enter(Class<?> suite, String[] args, String... transformers) throws Exception {
         if (!(suite.getClassLoader() instanceof net.minecraft.launchwrapper.LaunchClassLoader)) {
             String[] paths = System.getProperty("java.class.path")
                 .split(java.io.File.pathSeparator);
@@ -28,6 +33,24 @@ public final class MinecraftTestBootstrap {
             loader.loadClass("cpw.mods.fml.common.Loader")
                 .getMethod("injectData", Object[].class)
                 .invoke(null, new Object[] { data });
+            for (String transformer : transformers) {
+                if (loader.getTransformers()
+                    .stream()
+                    .noneMatch(
+                        t -> t.getClass()
+                            .getName()
+                            .equals(transformer))) {
+                    loader.registerTransformer(transformer);
+                }
+                if (loader.getTransformers()
+                    .stream()
+                    .noneMatch(
+                        t -> t.getClass()
+                            .getName()
+                            .equals(transformer))) {
+                    throw new IllegalStateException("Native test transformer did not register: " + transformer);
+                }
+            }
             loader.loadClass(suite.getName())
                 .getMethod("main", String[].class)
                 .invoke(null, new Object[] { args });

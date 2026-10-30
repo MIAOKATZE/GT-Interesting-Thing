@@ -94,7 +94,7 @@ public final class PocketWorldFluidTap {
             final FluidStack own = viaSession ? session.fluidInTank(tank) : oneshot.ownTankFluid(tank);
             final int amount = own == null || own.amount <= 0 ? 0 : own.amount;
             amounts[tank] = amount;
-            compatible[tank] = amount == 0 || own.getFluid() == sim.getFluid();
+            compatible[tank] = amount == 0 || own.isFluidEqual(sim);
         }
         // ★R96 S3 封漏点：这里原先直传静态 {@code FLUID_BAR_CAPACITY_ML}（未升级基值），不经
         // {@link PocketConstants#fluidTankCapacityMl(boolean)} 那唯一的容量选择点 ⇒ 装了 CAPACITY 的口袋

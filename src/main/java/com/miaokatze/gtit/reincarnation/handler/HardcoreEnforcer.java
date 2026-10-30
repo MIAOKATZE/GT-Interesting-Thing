@@ -16,6 +16,7 @@ import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.world.WorldEvent;
 
 import com.miaokatze.gtit.main.GTInterestingThing;
+import com.miaokatze.gtit.reincarnation.core.ReincarnationWorldDeletion;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -31,7 +32,7 @@ import cpw.mods.fml.relauncher.ReflectionHelper;
  * （字段为 private 且无 setter，SRG=field_76111_s / dev=hardcore 双候选）；</li>
  * <li>每 server tick 校验：hardcore 标志被改回 → 重新置位并 log；
  * 游戏模式被切离 SURVIVAL → 强制切回并 log（防止切创造飞行逃逸）；</li>
- * <li>被强制玩家死亡且为单机（integrated server）→ 延时 60 tick（计数器，不在
+ * <li>被强制玩家死亡且仍为未开放 LAN 的单机（integrated server）→ 延时 60 tick（计数器，不在
  * LivingDeathEvent 调用栈内直接删档）后发起<b>时间线终结</b>（A2 时序防御）：踢出
  * 全部在线玩家 → 记录待删世界目录（overworld SaveHandler#getWorldDirectory）→
  * {@code initiateShutdown()} 优雅停服；目录删除只发生在服务器完全停止后
@@ -83,6 +84,11 @@ public final class HardcoreEnforcer {
     private boolean active;
     /** 删档倒计时计数器；-1 = 未在倒计时 */
     private int deleteCountdownTicks = -1;
+    /** Only overrides owned by this active enforcement may be restored on LAN cancellation. */
+    private WorldInfo originalWorldInfo;
+    private boolean originalHardcore;
+    private WorldSettings.GameType originalGameType;
+    private boolean gameModeOverridden;
 
     /**
      * A1/A2：待删世界目录（时间线终结发起时经 overworld SaveHandler 的
@@ -103,6 +109,10 @@ public final class HardcoreEnforcer {
      * @param player 轮回确认后的玩家（须在 server 线程调用）
      */
     public static void beginEnforcement(EntityPlayerMP player) {
+        if (!ReincarnationHandler.isStrictSinglePlayer()) {
+            cancelForSharedSession();
+            return;
+        }
         install();
         if (player == null || player.worldObj == null) {
             GTInterestingThing.LOG.warn("[reincarnation] 极限强制开启失败：玩家或世界为空");
@@ -125,7 +135,11 @@ public final class HardcoreEnforcer {
         WorldInfo info = player.worldObj.getWorldInfo();
         try {
             Field field = resolveHardcoreField();
-            if (!field.getBoolean(info)) {
+            INSTANCE.originalWorldInfo = info;
+            INSTANCE.originalHardcore = field.getBoolean(info);
+            INSTANCE.originalGameType = player.theItemInWorldManager.getGameType();
+            INSTANCE.gameModeOverridden = false;
+            if (!INSTANCE.originalHardcore) {
                 field.setBoolean(info, true);
             }
         } catch (IllegalAccessException | ReflectionHelper.UnableToFindFieldException e) {
@@ -136,6 +150,34 @@ public final class HardcoreEnforcer {
         INSTANCE.active = true;
         GTInterestingThing.LOG
             .info("[reincarnation] 极限强制开启：hardcore=true，游戏模式锁定 SURVIVAL，player=" + player.getCommandSenderName());
+    }
+
+    /** LAN publication revokes destructive enforcement, without changing its escrow/license. */
+    public static void cancelForSharedSession() {
+        if (ReincarnationHandler.isStrictSinglePlayer() || (!INSTANCE.active && INSTANCE.deleteCountdownTicks < 0)) {
+            return;
+        }
+        EntityPlayerMP player = INSTANCE.enforcedPlayer;
+        try {
+            if (INSTANCE.originalWorldInfo != null && !INSTANCE.originalHardcore) {
+                Field field = resolveHardcoreField();
+                if (field.getBoolean(INSTANCE.originalWorldInfo)) {
+                    field.setBoolean(INSTANCE.originalWorldInfo, false);
+                }
+            }
+            if (player != null && player.theItemInWorldManager != null
+                && INSTANCE.gameModeOverridden
+                && INSTANCE.originalGameType != null
+                && player.theItemInWorldManager.getGameType() == WorldSettings.GameType.SURVIVAL) {
+                player.theItemInWorldManager.setGameType(INSTANCE.originalGameType);
+            }
+        } catch (Throwable failure) {
+            GTInterestingThing.LOG.error("[reincarnation] Shared-session override restoration failed", failure);
+        }
+        // This pending target was armed only by this active enforcement. Revoke it
+        // before a later stop/shutdown callback can delete a newly shared world.
+        pendingDeleteDir = null;
+        resetEnforcement("LAN/shared-session cancellation");
     }
 
     /**
@@ -190,6 +232,10 @@ public final class HardcoreEnforcer {
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
+        if ((active || deleteCountdownTicks >= 0) && !ReincarnationHandler.isStrictSinglePlayer()) {
+            cancelForSharedSession();
+            return;
+        }
         if (deleteCountdownTicks >= 0) {
             if (deleteCountdownTicks > 0) {
                 deleteCountdownTicks--;
@@ -223,7 +269,7 @@ public final class HardcoreEnforcer {
             // P2（S11 审查）：伤害管线被第三方 mod 全量取消时 setHealth(0) 兜底不触发
             // LivingDeathEvent，此处 0 血检测直启删档倒计时，防周目删档语义被静默绕过
             MinecraftServer server = MinecraftServer.getServer();
-            if (server != null && server.isSinglePlayer()) {
+            if (server != null && ReincarnationHandler.isStrictSinglePlayer()) {
                 kickImmediately(server);
                 deleteCountdownTicks = DELETE_DELAY_TICKS;
                 GTInterestingThing.LOG.warn(
@@ -248,6 +294,7 @@ public final class HardcoreEnforcer {
         }
         if (player.theItemInWorldManager.getGameType() != WorldSettings.GameType.SURVIVAL) {
             player.theItemInWorldManager.setGameType(WorldSettings.GameType.SURVIVAL);
+            gameModeOverridden = true;
             GTInterestingThing.LOG.warn("[reincarnation] 极限强制：游戏模式被切离 SURVIVAL，已强制切回");
         }
     }
@@ -272,6 +319,9 @@ public final class HardcoreEnforcer {
         if (event.world != server.worldServers[0]) {
             return; // 仅 overworld 卸载视为停转信号
         }
+        if (!ReincarnationHandler.isStrictSinglePlayer()) {
+            cancelForSharedSession();
+        }
         resetEnforcement("overworld 卸载（服务器停转，A1 止血）");
     }
 
@@ -283,6 +333,9 @@ public final class HardcoreEnforcer {
      * NekoWalletManager.saveAll 同款转发形态）。A1 止血：复位倒计时与强制态。
      */
     public static void onServerStopping() {
+        if (!ReincarnationHandler.isStrictSinglePlayer()) {
+            cancelForSharedSession();
+        }
         resetEnforcement("FMLServerStoppingEvent");
     }
 
@@ -306,6 +359,9 @@ public final class HardcoreEnforcer {
         INSTANCE.deleteCountdownTicks = -1;
         INSTANCE.active = false;
         INSTANCE.enforcedPlayer = null;
+        INSTANCE.originalWorldInfo = null;
+        INSTANCE.originalGameType = null;
+        INSTANCE.gameModeOverridden = false;
         if (hadState) {
             GTInterestingThing.LOG.warn("[reincarnation] 极限强制/删档倒计时已复位（A1 止血，trigger=" + trigger + "）");
         }
@@ -321,6 +377,10 @@ public final class HardcoreEnforcer {
      * 冻结到下一个档，实证崩溃）。
      */
     private static void initiateTimelineEnd(MinecraftServer server) {
+        if (!ReincarnationHandler.isStrictSinglePlayer()) {
+            cancelForSharedSession();
+            return;
+        }
         try {
             IChatComponent kickMessage = new ChatComponentTranslation(KEY_TIMELINE_KICK);
             List<EntityPlayerMP> online = new ArrayList<>(server.getConfigurationManager().playerEntityList);
@@ -370,17 +430,15 @@ public final class HardcoreEnforcer {
         }
     }
 
-    /** 递归删除（文件/空目录直接删，目录先递归子项；全部成功返回 true） */
+    /** Delete the save tree without following links into unrelated saves or directories. */
     private static boolean deleteRecursively(File file) {
-        File[] children = file.listFiles();
-        if (children != null) {
-            for (File child : children) {
-                if (!deleteRecursively(child)) {
-                    return false;
-                }
-            }
+        try {
+            ReincarnationWorldDeletion.deleteTree(file.toPath());
+            return true;
+        } catch (java.io.IOException | SecurityException failure) {
+            GTInterestingThing.LOG.error("[reincarnation] 世界目录安全删除失败：" + file, failure);
+            return false;
         }
-        return file.delete();
     }
 
     /**
@@ -393,10 +451,8 @@ public final class HardcoreEnforcer {
             return;
         }
         MinecraftServer server = MinecraftServer.getServer();
-        if (server == null || !server.isSinglePlayer()) {
-            active = false;
-            enforcedPlayer = null;
-            GTInterestingThing.LOG.warn("[reincarnation] 极限强制：非单机环境死亡不触发删档，停用强制");
+        if (server == null || !ReincarnationHandler.isStrictSinglePlayer()) {
+            cancelForSharedSession();
             return;
         }
         kickImmediately(server);
@@ -420,6 +476,10 @@ public final class HardcoreEnforcer {
      * 时的兜底停服路径。
      */
     private static void kickImmediately(MinecraftServer server) {
+        if (!ReincarnationHandler.isStrictSinglePlayer()) {
+            cancelForSharedSession();
+            return;
+        }
         EntityPlayerMP player = INSTANCE.enforcedPlayer;
         if (player == null || player.playerNetServerHandler == null) {
             return;

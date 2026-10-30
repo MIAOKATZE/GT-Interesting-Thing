@@ -153,12 +153,12 @@ final class BusinessLifecycleScenario implements ProbeScenario {
             .bus()
             .post(new PlayerEvent.PlayerLoggedOutEvent(player));
         context.check(
-            "fml-logout-cache-unload",
-            !NativeFixtures.cached(NekoWalletManager.INSTANCE, "personalWallets", id)
+            "fml-logout-cache-lifecycle",
+            NativeFixtures.cached(NekoWalletManager.INSTANCE, "personalWallets", id)
                 && !NativeFixtures.cached(DailySignInManager.INSTANCE, "signInDataMap", id)
                 && !NativeFixtures.cached(mailManager, "mailDataMap", id)
                 && PocketChannelManager.INSTANCE.peek(id) == null,
-            "Real registered FML logout handlers unload wallet/sign-in/mail/channel fixtures");
+            "Real logout handlers retain the canonical wallet for late refunds and unload sign-in/mail/channel fixtures");
         File walletFile = NativeFixtures.dataFile(NekoWalletManager.INSTANCE, id);
         File signInFile = NativeFixtures.dataFile(DailySignInManager.INSTANCE, id);
         File mailFile = NativeFixtures.dataFile(mailManager, id);
@@ -175,11 +175,11 @@ final class BusinessLifecycleScenario implements ProbeScenario {
         MailData reloadedMail = mailManager.getMailData(id);
         context.check(
             "fml-logout-native-reload",
-            reloadedWallet != wallet && reloadedWallet.getCount(coin) == 27
+            reloadedWallet == wallet && reloadedWallet.getCount(coin) == 27
                 && reloadedSignIn != signIn
                 && reloadedSignIn.hasSignedToday(today)
                 && reloadedSignIn.getTotalSignInDays() == days
                 && reloadedMail.findMail(retained.getId()) != null,
-            "Fresh manager objects reload saved wallet/sign-in/mail state after real logout eviction");
+            "Wallet reference survives logout; fresh sign-in/mail objects reload their saved state");
     }
 }

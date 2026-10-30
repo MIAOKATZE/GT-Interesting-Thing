@@ -220,19 +220,24 @@ public class LotterySyncPacket implements IMessage {
             // 本包只发往客户端；1.7.10 的 onMessage 运行在 Netty 线程，
             // 需切回客户端主线程再写缓存（GUI 在主线程读取）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final LotterySyncPacket message) {
+        private void handleClient(final LotterySyncPacket message, MessageContext context) {
             // O2-B01：余额维度写入 trade 域客户端缓存（卡池摘要/保底计数仍写 LotteryClientData）
-            Minecraft.getMinecraft()
-                .func_152344_a(() -> {
-                    LotteryClientData.updatePools(message.parsePools(), message.parsePityCounters());
-                    com.miaokatze.gtit.trade.NekoClientBalances.updateBalances(message.parseBalances());
-                });
+            Object connection = context.netHandler;
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.func_152344_a(() -> {
+                if (connection == null || mc.getNetHandler() != connection
+                    || mc.theWorld == null
+                    || mc.thePlayer == null) return;
+
+                LotteryClientData.updatePools(message.parsePools(), message.parsePityCounters());
+                com.miaokatze.gtit.trade.NekoClientBalances.updateBalances(message.parseBalances());
+            });
         }
     }
 }

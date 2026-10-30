@@ -24,19 +24,25 @@ public final class ReincarnationSaveGuard {
      * 保存前防御判定：磁盘许可已是 EXECUTED 而内存模型漂移为非 EXECUTED
      * → 必须先重载（返回 true），调用方按权威状态重载后再保存。
      * <p>
-     * 反向漂移（内存 EXECUTED、磁盘非 EXECUTED）不触发：EXECUTED 只能由确认
-     * 路径同事务写入磁盘，磁盘回退属异常（如文件被删走最后仁慈），此时以内存
-     * 为准全量写回（保住信箱/指纹）优先于重载——重载反而会抹掉待发放许可。
+     * 反向漂移也可能是正常领取：GUI 打开期间 Handler 已清空信箱。仅当磁盘保留
+     * 内存的全部非空永久指纹时，将其视作已领取并重载，避免关窗复活信箱。
+     * 文件缺失/损坏的最后仁慈视图没有指纹，不据此丢弃内存中仍待领取的信箱。
      * 任一入参为 null 不触发（按正常保存处理，与调用方既有 null 防御口径一致）。
      *
      * @param memoryModel 容器/会话持有的内存模型（可能陈旧）
      * @param diskLicense 保存前从仓库新读的磁盘许可
-     * @return true = 磁盘许可已推进 EXECUTED 且内存漂移，须先重载再保存
+     * @return true = 磁盘许可已确认或已领取且内存漂移，须先重载再保存
      */
     public static boolean needsReloadBeforeSave(ReincarnationCycle memoryModel, ReincarnationCycle diskLicense) {
         if (memoryModel == null || diskLicense == null) {
             return false;
         }
-        return diskLicense.getCycleState() == CycleState.EXECUTED && memoryModel.getCycleState() != CycleState.EXECUTED;
+        if (diskLicense.getCycleState() == CycleState.EXECUTED) {
+            return memoryModel.getCycleState() != CycleState.EXECUTED;
+        }
+        return memoryModel.getCycleState() == CycleState.EXECUTED && !memoryModel.getExecutedFingerprints()
+            .isEmpty()
+            && diskLicense.getExecutedFingerprints()
+                .containsAll(memoryModel.getExecutedFingerprints());
     }
 }

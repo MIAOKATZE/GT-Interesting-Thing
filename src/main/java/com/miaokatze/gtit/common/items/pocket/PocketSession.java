@@ -46,7 +46,7 @@ public interface PocketSession {
     boolean isOpen();
 
     /**
-     * 承载本会话的口袋是否还在玩家主背包 36 格里（{@code Item.onUpdate} 的覆盖范围，R57c⑥）。
+     * 承载本会话的口袋是否还在玩家主背包或饰品栏（{@code onUpdate}/{@code onWornTick} 的覆盖范围）。
      * <p>
      * 口袋被塞进箱子/掉了 ⇒ driver 永远等不到下一拍 ⇒ 空闲回收只能靠离线/停服挂钩兜底扫这一条。
      */

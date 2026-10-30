@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumChatFormatting;
 
@@ -1014,24 +1015,28 @@ public class NekoVMGuiV2 extends MTEMultiBlockBaseGui<MTENekoVendingMachineV2>
     /**
      * B2-02：将 C2S 同步值的服务端动作主体投递到服务器主线程（Netty 线程调用安全）。
      * <p>
-     * ★R100 片 F：队列本体迁往 {@link VendingServerActions}，本方法保留为 gui 侧五个
-     * C2S 迁移点的同形转发口（签名与调用形制零变化）。
+     * All callers defer the entire business operation. Admission may reject without touching items,
+     * wallets or outputs. Tick END runs after machine ticks, including their setActive restoration.
      */
     void markTradeableStatusDirty() {
         statusCodec.markTradeableStatusDirtyAndNotify();
     }
 
     public void scheduleServerAction(Runnable action) {
-        VendingServerActions.scheduleServerAction(
+        VendingServerActions.schedulePlayerRequest(
+            guiData != null && guiData.getPlayer() instanceof EntityPlayerMP ? (EntityPlayerMP) guiData.getPlayer()
+                : null,
             VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
                 action.run();
                 multiblock.markTradeStateChanged();
             }));
     }
 
-    /** Runs completion even when the live session guard rejects the queued action. */
+    /** Completion only releases the volatile scene request latch, including pre-admission rejection. */
     public void scheduleServerAction(Runnable action, Runnable completion) {
-        VendingServerActions.scheduleServerAction(
+        VendingServerActions.schedulePlayerRequest(
+            guiData != null && guiData.getPlayer() instanceof EntityPlayerMP ? (EntityPlayerMP) guiData.getPlayer()
+                : null,
             VendingGuiSession.guard(guiData, syncManagerRef, baseMetaTileEntity, multiblock, () -> {
                 action.run();
                 multiblock.markTradeStateChanged();

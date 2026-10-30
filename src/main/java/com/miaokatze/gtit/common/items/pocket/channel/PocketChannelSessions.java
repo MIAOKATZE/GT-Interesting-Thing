@@ -9,6 +9,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 
+import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketEssenceStore;
 import com.miaokatze.gtit.common.items.pocket.PocketFilterConfig;
@@ -18,6 +19,7 @@ import com.miaokatze.gtit.common.items.pocket.PocketSessions;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeSwitches;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgradeType;
 import com.miaokatze.gtit.common.items.pocket.PocketUpgrades;
+import com.miaokatze.gtit.common.items.pocket.PocketWornTapHandler;
 import com.miaokatze.gtit.main.GTInterestingThing;
 
 /**
@@ -104,31 +106,23 @@ public final class PocketChannelSessions {
     }
 
     /**
-     * headless 会话的<b>驱动侧回填口</b>：driver 每拍到场时把"此刻真被 tick 的那一枚"回填进会话
-     * （面板会话有自己的 relocateCarrier，<b>不</b>实现本口 ⇒ driver 按 instanceof 识别，互不串）。
-     */
-    interface HeadlessCarrier {
-
-        /** 回填承载栈引用（只换引用，不改任何内容判定）。 */
-        void retargetCarrier(ItemStack stack);
-    }
-
-    /**
      * 无 GUI 的活会话：全部读写委托给复原时解析出的那一份 {@link PocketInventory}
      * （与面板会话同一条"内存里只有一份真相"的纪律），落盘写回承载栈 NBT。
      */
-    private static final class HeadlessSession implements PocketSession, HeadlessCarrier {
+    private static final class HeadlessSession implements PocketSession {
 
         private final UUID playerId;
         private final EntityPlayer player;
-        /** 复原时认下的承载栈（对象身份）；由 driver 在每次 tick 到场时按需回填（{@link #retargetCarrier}）。 */
+        /** Last uniquely resolved carrier; the shared per-session token survives native stack copies. */
         private ItemStack carrier;
+        private final PocketCarrierIdentity carrierIdentity;
         private final PocketInventory inventory;
 
         HeadlessSession(UUID playerId, EntityPlayer player, ItemStack carrier, PocketInventory inventory) {
             this.playerId = playerId;
             this.player = player;
             this.carrier = carrier;
+            this.carrierIdentity = PocketCarrierIdentity.capture(carrier, true);
             this.inventory = inventory;
             // 与面板构造器同一式子的本栈版：探针读<b>这一枚栈</b>的活根（位图与 off-mask 现读）。
             // 面板那份活查 lambda 留在面板（门禁钉"注入点恰 1"）；两条式子同形同源，不构成第二份真相。
@@ -137,12 +131,6 @@ public final class PocketChannelSessions {
                 () -> PocketUpgradeSwitches.isActive(this.carrier, PocketUpgradeType.STACK));
             this.inventory.setStackCountProbe(this::storageStackUpgradeCount);
             this.inventory.setCapacityCountProbe(() -> PocketUpgrades.capacityUpgradeCount(carrierStack()));
-        }
-
-        /** driver 在 tick 到场时回填"此刻真被 tick 的那一枚"（关屏重定位/堆叠移动后引用不陈旧）。 */
-        @Override
-        public void retargetCarrier(ItemStack stack) {
-            this.carrier = stack;
         }
 
         @Override
@@ -157,12 +145,24 @@ public final class PocketChannelSessions {
 
         @Override
         public ItemStack carrierStack() {
-            return carrier;
+            final PocketCarrierIdentity.Resolution found = resolveCarrier();
+            if (found.carrier != null) carrier = found.carrier;
+            return found.carrier;
+        }
+
+        private PocketCarrierIdentity.Resolution resolveCarrier() {
+            if (player == null || player.inventory == null) return carrierIdentity.locate(null, null, null, null);
+            return carrierIdentity.locate(
+                null,
+                player.inventory.getItemStack(),
+                player.inventory.mainInventory,
+                PocketWornTapHandler.safeBaubles(player));
         }
 
         @Override
         public NBTTagCompound carrierTag() {
-            return carrier == null ? null : carrier.getTagCompound();
+            final ItemStack current = carrierStack();
+            return current == null ? null : current.getTagCompound();
         }
 
         /** headless 恒 false：无界面可关 ⇒ 与 retireIdleSession 的判据天然一致（防"复原-退役"振荡）。 */
@@ -173,15 +173,9 @@ public final class PocketChannelSessions {
 
         @Override
         public boolean isHeldByOwner() {
-            if (player == null || player.inventory == null || carrier == null) {
-                return false;
-            }
-            for (final ItemStack held : player.inventory.mainInventory) {
-                if (held == carrier) {
-                    return true;
-                }
-            }
-            return false;
+            if (player == null || player.inventory == null) return false;
+            return PocketCarrierIdentity
+                .isHeld(carrierStack(), player.inventory.mainInventory, PocketWornTapHandler.safeBaubles(player));
         }
 
         @Override
@@ -201,14 +195,17 @@ public final class PocketChannelSessions {
         }
 
         private void writeIfDirty() {
-            if (!inventory.isDirty() || carrier == null) {
-                if (inventory.isDirty()) {
-                    // ★与面板 B3 兜底同一条如实口径：承载栈暂时找不到 ⇒ 不写也不清脏，等下一拍重试；
-                    // 面板那条源质增量逆施回滚被离线套件锚定在面板上，此处不复制第二份回滚状态机。
-                    GTInterestingThing.LOG.warn("[pocket] 持续化会话落盘时承载栈缺席（玩家 {}），本次内容暂不落档，脏标记保留", playerId);
-                }
+            if (!inventory.isDirty()) return;
+            final PocketCarrierIdentity.Resolution found = resolveCarrier();
+            // A detached original may already be a dropped EntityItem. Never use that fallback
+            // after a token rotation or while two live stacks claim this session's identity.
+            final ItemStack current = found.carrier != null ? found.carrier
+                : !found.ambiguous && carrierIdentity.matches(carrier) ? carrier : null;
+            if (current == null) {
+                GTInterestingThing.LOG.warn("[pocket] 持续化会话落盘时承载栈缺席或不唯一（玩家 {}），保留脏状态", playerId);
                 return;
             }
+            carrier = current;
             NBTTagCompound root = carrier.getTagCompound();
             if (root == null) {
                 root = new NBTTagCompound();

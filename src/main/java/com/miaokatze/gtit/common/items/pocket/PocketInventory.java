@@ -254,7 +254,7 @@ public final class PocketInventory {
                         return 0;
                     }
                     final FluidStack head = tankFluid[tank];
-                    if (head != null && head.amount > 0 && head.getFluid() != resource.getFluid()) {
+                    if (head != null && head.amount > 0 && !head.isFluidEqual(resource)) {
                         return 0;
                     }
                     if (!doFill) {
@@ -271,16 +271,18 @@ public final class PocketInventory {
                     if (head == null || head.amount <= 0 || maxDrain <= 0) {
                         return null;
                     }
-                    final Fluid fluid = head.getFluid();
+                    final FluidStack drained = head.copy();
                     final long available = Math.min((long) maxDrain, Math.max(0L, tankTruth[tank]));
                     if (available <= 0L) {
                         return null;
                     }
                     if (!doDrain) {
-                        return new FluidStack(fluid, (int) available);
+                        drained.amount = (int) available;
+                        return drained;
                     }
                     final int moved = drainOwnTank(tank, maxDrain);
-                    return moved <= 0 ? null : new FluidStack(fluid, moved);
+                    drained.amount = moved;
+                    return moved <= 0 ? null : drained;
                 }
             };
         }
@@ -1446,7 +1448,7 @@ public final class PocketInventory {
         }
         final FluidStack current = tankFluid[tank];
         final int currentAmount = current == null || current.amount <= 0 ? 0 : current.amount;
-        final boolean compatible = currentAmount == 0 || current.getFluid() == probe.getFluid();
+        final boolean compatible = currentAmount == 0 || current.isFluidEqual(probe);
         return barRoom((int) Math.min(fluidTankCapacity(), Integer.MAX_VALUE), currentAmount, compatible);
     }
 
@@ -1460,7 +1462,7 @@ public final class PocketInventory {
         }
         final FluidStack current = tankFluid[tank];
         final long currentAmount = current == null || current.amount <= 0 ? 0L : tankTruth[tank];
-        final boolean compatible = currentAmount == 0L || current.getFluid() == probe.getFluid();
+        final boolean compatible = currentAmount == 0L || current.isFluidEqual(probe);
         if (!compatible) {
             return 0L;
         }
@@ -1514,7 +1516,7 @@ public final class PocketInventory {
             return 0;
         }
         final FluidStack current = tankFluid[tank];
-        if (current != null && current.amount > 0 && current.getFluid() != fluid.getFluid()) {
+        if (current != null && current.amount > 0 && !current.isFluidEqual(fluid)) {
             return 0;
         }
         // 空头的身份用调用方栈的拷贝（保 tag）；量由 advanceTruthFill 的容量钳 + syncHead 定
@@ -1606,7 +1608,7 @@ public final class PocketInventory {
             return 0L;
         }
         final FluidStack current = tankFluid[tank];
-        if (current != null && current.amount > 0 && current.getFluid() != fluid) {
+        if (current != null && current.amount > 0 && !current.isFluidEqual(new FluidStack(fluid, 1))) {
             return 0L;
         }
         return advanceTruthFill(tank, amount, () -> new FluidStack(fluid, 0));

@@ -7,7 +7,11 @@ import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import net.minecraft.init.Items;
+import net.minecraft.item.Item;
+
 import com.miaokatze.gtit.config.DefaultContentConfig;
+import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.testutil.TestRunner;
 
 /** File-backed regressions run only in Gradle's isolated build/content-policy-test directory. */
@@ -17,6 +21,20 @@ public final class DefaultContentPolicyTest {
 
     public static void main(String[] args) throws Exception {
         if (!com.miaokatze.gtit.testutil.MinecraftTestBootstrap.enter(DefaultContentPolicyTest.class, args)) return;
+        Item previousNeko = NekoCurrencyRegistrar.nekoCoinItem;
+        Item previousShimmering = NekoCurrencyRegistrar.shimmeringNekoCoinItem;
+        try {
+            // Headless bootstrap initializes vanilla registries, not GTIT's postInit coin bindings.
+            NekoCurrencyRegistrar.nekoCoinItem = Items.gold_nugget;
+            NekoCurrencyRegistrar.shimmeringNekoCoinItem = Items.emerald;
+            runCases();
+        } finally {
+            NekoCurrencyRegistrar.nekoCoinItem = previousNeko;
+            NekoCurrencyRegistrar.shimmeringNekoCoinItem = previousShimmering;
+        }
+    }
+
+    private static void runCases() {
         Map<String, Runnable> cases = new LinkedHashMap<>();
         cases.put("managementPermissionDefaultsAndBounds", () -> {
             Path config = Paths.get("config/gtit/default_content.cfg");

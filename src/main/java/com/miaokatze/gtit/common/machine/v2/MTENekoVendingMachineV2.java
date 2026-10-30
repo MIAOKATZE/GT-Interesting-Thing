@@ -1406,12 +1406,15 @@ public class MTENekoVendingMachineV2 extends MTEEnhancedMultiBlockBase<MTENekoVe
      * @return 未注入完的剩余 AEItemStack；null 或 stackSize<=0 表示全部注入成功
      */
     private appeng.api.storage.data.IAEItemStack injectItemToUplink(ItemStack stack) {
-        if (uplinkHatch == null || stack == null || stack.stackSize <= 0) return null;
+        if (stack == null || stack.stackSize <= 0) return null;
         appeng.api.storage.data.IAEItemStack aeStack = appeng.util.item.AEItemStack.create(stack);
         if (aeStack == null) {
             LOG.error("[NekoVMV2] injectItemToUplink 无法将物品转换为 AEItemStack");
             return null;
         }
+        // An input accessor may still hold the hatch that supplied a receipt after this machine
+        // disconnects. No live destination means nothing was inserted, not a null/success receipt.
+        if (uplinkHatch == null) return aeStack;
         try {
             appeng.api.networking.energy.IEnergySource energy = uplinkHatch.getProxy()
                 .getEnergy();

@@ -11,7 +11,40 @@ import com.miaokatze.gtit.testutil.TestRunner;
 /** 真实编辑规则、抽取模型及离散布局的纯 JVM 回归。 */
 public class LotterySlotsTest {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        SimpleAssert
+            .that(Boolean.getBoolean("gtit.lottery.testScratch"), "must run in isolated Gradle working directory");
+        if (!com.miaokatze.gtit.testutil.MinecraftTestBootstrap.enter(LotterySlotsTest.class, args)) return;
+        java.nio.file.Path worldDirectory = java.nio.file.Files.createTempDirectory("gtit-lottery-slots-");
+        try {
+            // Only the save handler is needed: enter the real manager lifecycle without a running server.
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            java.lang.reflect.Field singleton = unsafeClass.getDeclaredField("theUnsafe");
+            singleton.setAccessible(true);
+            net.minecraft.world.World world = (net.minecraft.world.World) unsafeClass
+                .getMethod("allocateInstance", Class.class)
+                .invoke(singleton.get(null), net.minecraft.world.WorldServer.class);
+            Object handler = java.lang.reflect.Proxy.newProxyInstance(
+                LotterySlotsTest.class.getClassLoader(),
+                new Class<?>[] { net.minecraft.world.storage.ISaveHandler.class },
+                (proxy, method, arguments) -> method.getName()
+                    .equals("getWorldDirectory") ? worldDirectory.toFile() : null);
+            java.lang.reflect.Field save = net.minecraft.world.World.class.getDeclaredField("saveHandler");
+            save.setAccessible(true);
+            save.set(world, handler);
+            LotteryConfig.save(new LotteryConfig.LotteryConfigData());
+            LotteryManager.INSTANCE.init(world);
+            runCases(args);
+        } finally {
+            LotteryManager.INSTANCE.unloadAll();
+            try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(worldDirectory)) {
+                for (java.nio.file.Path path : (Iterable<java.nio.file.Path>) paths
+                    .sorted(java.util.Comparator.reverseOrder())::iterator) java.nio.file.Files.delete(path);
+            }
+        }
+    }
+
+    private static void runCases(String[] args) {
         Map<String, Runnable> cases = new LinkedHashMap<>();
         cases.put("countContract", LotterySlotsTest::countContract);
         cases.put("resizePreservesPrizes", LotterySlotsTest::resizePreservesPrizes);

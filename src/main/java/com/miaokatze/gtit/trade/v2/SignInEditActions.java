@@ -247,15 +247,12 @@ final class SignInEditActions {
      *
      * @param json 载荷
      * @param key  奖励对象键名
-     * @return 解析出的奖励；键缺失或非对象时返回 null（调用方按「不修改」或 EMPTY 处理）
+     * @return 解析出的奖励；键缺失时返回 null；已有非对象奖励拒绝，不能默认为空奖励
      */
     private static SignInReward parseReward(JsonObject json, String key) {
-        if (json == null || key == null
-            || !json.has(key)
-            || !json.get(key)
-                .isJsonObject()) {
-            return null;
-        }
+        if (json == null || key == null || !json.has(key)) return null;
+        if (!json.get(key)
+            .isJsonObject()) throw new IllegalArgumentException("Invalid reward object: " + key);
         return SignInReward.fromJson(json.getAsJsonObject(key));
     }
 }

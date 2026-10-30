@@ -3,8 +3,12 @@ package com.miaokatze.gtit.common.machine.v2;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import net.minecraft.entity.player.EntityPlayerMP;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import com.miaokatze.gtit.util.ServerTaskScheduler;
 
 /**
  * ★R100 片 F（架构解耦）：猫猫售货机 C2S 服务端动作队列（原 {@code NekoVMGuiV2} 的
@@ -13,7 +17,8 @@ import org.apache.logging.log4j.Logger;
  * 迁移理由：队列的<b>生产者</b>（GUI C2S 同步值的服务端迁移点）与<b>消费者</b>
  * （{@link MTENekoVendingMachineV2#onPostTick} 服务端分支）都在 common 侧，唯一住在 gui 侧的
  * 只是这段公共设施本身——它搬走后 TE 不再 import gui 包（依赖方向唯一允许 gui→common）。
- * 方法体与队列语义逐字未改：Netty IO 线程可投递、主线程逐 tick 消费、单任务异常仅记日志不中断同批。
+ * C2S GUI 请求现走独立有界准入，在 server tick END 执行；不依赖机器数量或某台机器继续加载。
+ * 旧无界 FIFO API 仅为兼容保留，不再有本模组生产者；不得将已承诺的交付改投到有界请求队列。
  */
 public final class VendingServerActions {
 
@@ -34,11 +39,23 @@ public final class VendingServerActions {
 
     private VendingServerActions() {}
 
+    /** Pre-business GUI admission, after all machine ticks have restored their active state. */
+    public static boolean schedulePlayerRequest(EntityPlayerMP player, Runnable guardedAction) {
+        return ServerTaskScheduler.trySchedulePlayerRequest(player, guardedAction);
+    }
+
+    /** The only current completion is a thread-safe transient scene request latch, not an obligation. */
+    public static boolean schedulePlayerRequest(EntityPlayerMP player, Runnable guardedAction, Runnable completion) {
+        if (guardedAction == null || completion == null) throw new IllegalArgumentException("action and completion");
+        return ServerTaskScheduler.trySchedulePlayerRequest(player, guardedAction, completion);
+    }
+
     /**
-     * B2-02：将 C2S 同步值的服务端动作主体投递到服务器主线程（Netty 线程调用安全）。
+     * Legacy non-dropping FIFO. New uncommitted GUI requests must use {@link #schedulePlayerRequest}.
      * <p>
      * 仅服务端侧调用；客户端侧的 changeListener 保持原语义直跑（无服务端动作）。
      */
+    @Deprecated
     public static void scheduleServerAction(Runnable action) {
         if (action != null) {
             SERVER_ACTIONS.offer(action);
@@ -46,6 +63,7 @@ public final class VendingServerActions {
     }
 
     /** Completion belongs outside the session guard, so rejected or failed actions release their pending latch. */
+    @Deprecated
     public static void scheduleServerAction(Runnable guardedAction, Runnable completion) {
         if (guardedAction == null || completion == null) throw new IllegalArgumentException("action and completion");
         scheduleServerAction(() -> {

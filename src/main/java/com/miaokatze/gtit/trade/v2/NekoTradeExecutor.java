@@ -220,6 +220,11 @@ public class NekoTradeExecutor {
      */
     public NekoTradeResult checkTrade(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots,
         OutputSlotAccessor outputSlots) {
+        return checkTrade(playerId, groupId, tradeIndex, inputSlots, outputSlots, null);
+    }
+
+    private NekoTradeResult checkTrade(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots,
+        OutputSlotAccessor outputSlots, NekoTradeHistory resolvedHistory) {
         // 1. 查找交易组
         NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
         if (group == null) {
@@ -242,7 +247,8 @@ public class NekoTradeExecutor {
         }
 
         // 5. 检查历史/冷却
-        NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, groupId);
+        NekoTradeHistory history = resolvedHistory != null ? resolvedHistory
+            : NekoHistoryManager.INSTANCE.getHistory(playerId, groupId);
         int maxTradesInCooldown = getMaxTradesInCooldown(playerId);
         if (!history.canTrade(group.getCooldown(), maxTradesInCooldown, group.getMaxTrades())) {
             if (group.getCooldown() == -1 && history.getTradeCount() > 0) {
@@ -268,9 +274,12 @@ public class NekoTradeExecutor {
                 return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
             long minimum = Long.MAX_VALUE;
             for (NekoBigItemStack item : candidates) {
-                long count = ((long) item.getStackSize() + item.getBaseStack()
-                    .getMaxStackSize() - 1) / item.getBaseStack()
-                        .getMaxStackSize();
+                int maximum = Math.min(
+                    64,
+                    item.getBaseStack()
+                        .getMaxStackSize());
+                if (maximum <= 0) return NekoTradeResult.fail(NekoTradeResult.Status.INSUFFICIENT_ITEMS);
+                long count = ((long) item.getStackSize() + maximum - 1) / maximum;
                 minimum = Math.min(minimum, count);
             }
             slotsNeeded += minimum;
@@ -295,6 +304,15 @@ public class NekoTradeExecutor {
      */
     public NekoTradeResult executeTrade(UUID playerId, UUID groupId, int tradeIndex, InputSlotAccessor inputSlots,
         OutputSlotAccessor outputSlots) {
+        NekoTradeResult result = executeTradeLocked(playerId, groupId, tradeIndex, inputSlots, outputSlots);
+        // Never acquire the manager while holding a history: save/migration uses manager -> history.
+        // Authoritative GUI callers, lifecycle and membership changes execute on the server thread.
+        if (result.isSuccess()) NekoHistoryManager.INSTANCE.markDirty(playerId);
+        return result;
+    }
+
+    private NekoTradeResult executeTradeLocked(UUID playerId, UUID groupId, int tradeIndex,
+        InputSlotAccessor inputSlots, OutputSlotAccessor outputSlots) {
         NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(groupId);
         if (group == null || tradeIndex < 0
             || tradeIndex >= group.getTrades()
@@ -304,7 +322,7 @@ public class NekoTradeExecutor {
         NekoTradeHistory history = NekoHistoryManager.INSTANCE.getHistory(playerId, groupId);
         synchronized (history) {
             // 1. 预检查（v1.7.8 A2：传入输出槽访问器，扣款前预检输出空间）
-            NekoTradeResult checkResult = checkTrade(playerId, groupId, tradeIndex, inputSlots, outputSlots);
+            NekoTradeResult checkResult = checkTrade(playerId, groupId, tradeIndex, inputSlots, outputSlots, history);
             if (!checkResult.isSuccess()) {
                 return checkResult;
             }
@@ -385,7 +403,6 @@ public class NekoTradeExecutor {
             if (group.getCooldown() > 0) {
                 history.setNotificationQueued(true);
             }
-            NekoHistoryManager.INSTANCE.markDirty(playerId);
 
             // O2-17 钱包落盘口径统一：写路径只管改余额（第 3 步扣款走 tryDeduct/addCount，
             // 余额变化即登记脏标记），落盘一律由周期（5 分钟）+ 登出 + 停服三重兜底承担。
@@ -406,7 +423,7 @@ public class NekoTradeExecutor {
         for (int i = 0; i < plan.supplies.size(); i++) {
             NekoTradeMatcher.Supply supply = plan.supplies.get(i);
             if (supply.currency != null || supply.localIndex >= 0 || plan.consumed[i] <= 0) continue;
-            int maximum = supply.stack.getMaxStackSize();
+            int maximum = Math.min(64, supply.stack.getMaxStackSize());
             if (maximum <= 0) return false;
             count += ((long) plan.consumed[i] + maximum - 1) / maximum;
             if (count > 4096) return false;
@@ -419,8 +436,10 @@ public class NekoTradeExecutor {
         long count = 0;
         long limit = Math.min(4096, availableSlots);
         for (NekoBigItemStack item : rolled) {
-            int maximum = item.getBaseStack()
-                .getMaxStackSize();
+            int maximum = Math.min(
+                64,
+                item.getBaseStack()
+                    .getMaxStackSize());
             if (maximum <= 0 || item.getStackSize() <= 0) return false;
             count += ((long) item.getStackSize() + maximum - 1) / maximum;
             if (count > limit) return false;

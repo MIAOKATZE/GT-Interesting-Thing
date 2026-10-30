@@ -72,10 +72,12 @@ public class MailHandler {
      * 延迟窗口内玩家可能已登出：按 UUID 重取在线实体，不在线静默跳过（不触碰离线数据）。
      */
     private void scheduleUnreadReminder(final UUID playerId) {
+        final EntityPlayerMP actor = PlayerLookup.getOnlinePlayerByUuid(playerId);
+        if (actor == null) return;
         LotteryHandler.scheduleDelayedTask(UNREAD_REMIND_DELAY_MS, () -> {
             try {
                 EntityPlayerMP current = PlayerLookup.getOnlinePlayerByUuid(playerId);
-                if (current == null) return;
+                if (current != actor) return;
                 int unread = MailManager.INSTANCE.getMailData(playerId)
                     .getUnreadCount();
                 if (unread <= 0) return;

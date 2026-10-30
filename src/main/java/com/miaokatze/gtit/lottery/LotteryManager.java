@@ -28,6 +28,7 @@ import com.miaokatze.gtit.trade.NekoWalletManager;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoTradeExecutor;
+import com.miaokatze.gtit.util.RewardNbt;
 
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 
@@ -60,8 +61,10 @@ public class LotteryManager {
     private final ConcurrentHashMap<String, LotteryPool> pools;
     /** 保底计数（teamKey → (poolId → 连续未出高稀有次数)） */
     private final ConcurrentHashMap<UUID, Map<String, Integer>> pityCounters;
+    private final java.util.Set<UUID> unreadableTeams = ConcurrentHashMap.newKeySet();
     /** 存档目录（<world>/gtit_lottery） */
     private File saveDir;
+    private boolean sessionUnavailable = true;
     /** 权重随机数生成器 */
     private final Random random = new Random();
 
@@ -74,6 +77,11 @@ public class LotteryManager {
      * 初始化存储目录并加载卡池配置（CommonProxy.serverStarted 调用）
      */
     public void init(World world) {
+        sessionUnavailable = true;
+        // Team IDs can repeat across integrated-server worlds; never reuse the previous world's pity.
+        saveAll();
+        pityCounters.clear();
+        unreadableTeams.clear();
         saveDir = new File(
             world.getSaveHandler()
                 .getWorldDirectory(),
@@ -82,6 +90,7 @@ public class LotteryManager {
             saveDir.mkdirs();
         }
         loadConfig();
+        sessionUnavailable = false;
         LOG.info("抽奖数据存储目录: {}", saveDir.getAbsolutePath());
     }
 
@@ -219,8 +228,8 @@ public class LotteryManager {
      */
     private static void collectCostNeeds(LotteryPool pool, int count, Map<String, Integer> currencyNeeds,
         List<NekoBigItemStack> itemNeeds) {
+        if (!pool.hasValidCosts()) throw new IllegalArgumentException("Invalid lottery payment: " + pool.getId());
         for (NekoBigItemStack cost : pool.getCostItems()) {
-            if (cost == null || cost.getBaseStack() == null || cost.getStackSize() <= 0) continue;
             int total = Math.multiplyExact(cost.getStackSize(), Math.max(1, count));
             String cid = NekoCurrencyRegistrar.getNekoCurrencyId(cost.getBaseStack());
             if (cid != null) {
@@ -251,13 +260,14 @@ public class LotteryManager {
      * @return true 表示全部需求可满足
      */
     public boolean canAfford(UUID playerId, LotteryPool pool, int count, MTENekoVendingMachineV2 machine) {
+        requireSession();
         if (playerId == null || pool == null || count <= 0) return false;
         Map<String, Integer> currencyNeeds = new java.util.LinkedHashMap<>();
         List<NekoBigItemStack> itemNeeds = new ArrayList<>();
         try {
             collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
-        } catch (ArithmeticException e) {
-            LOG.warn("抽奖消耗数量溢出，拒绝扣费: {}", pool.getId());
+        } catch (ArithmeticException | IllegalArgumentException e) {
+            LOG.warn("抽奖消耗配置无效或数量溢出，拒绝扣费: {}", pool.getId());
             return false;
         }
 
@@ -301,8 +311,8 @@ public class LotteryManager {
         List<NekoBigItemStack> itemNeeds = new ArrayList<>();
         try {
             collectCostNeeds(pool, count, currencyNeeds, itemNeeds);
-        } catch (ArithmeticException e) {
-            LOG.warn("抽奖消耗数量溢出，拒绝扣费: {}", pool.getId());
+        } catch (ArithmeticException | IllegalArgumentException e) {
+            LOG.warn("抽奖消耗配置无效或数量溢出，拒绝扣费: {}", pool.getId());
             return false;
         }
         // 免费池（无需求条目）：直接放行
@@ -391,7 +401,10 @@ public class LotteryManager {
             .isAtLeast(guaranteedRarity);
 
         // 推进保底计数（本抽之后）—— 抽到保底品质及以上则清零，否则 +1
-        setPityCounter(teamKey, pool.getId(), highRarity ? 0 : currentCount + 1);
+        setPityCounter(
+            teamKey,
+            pool.getId(),
+            highRarity ? 0 : (int) Math.min(Integer.MAX_VALUE, (long) currentCount + 1));
 
         return new LotteryDrawResult(selected, isPity, highRarity, slotIndex, amount);
     }
@@ -443,9 +456,11 @@ public class LotteryManager {
 
     /** Only UI refresh is delayed. No paid item, machine lookup, or fallback payout lives in this task. */
     private void scheduleDelayedSync(UUID playerId, long delayMs) {
+        EntityPlayerMP actor = DailySignInManager.getPlayerByUUID(playerId);
+        if (actor == null) return;
         LotteryHandler.scheduleDelayedTask(delayMs, () -> {
             EntityPlayerMP player = DailySignInManager.getPlayerByUUID(playerId);
-            if (player != null) LotteryNetworkManager.sendSyncToClient(player);
+            if (player == actor) LotteryNetworkManager.sendSyncToClient(player);
         });
     }
 
@@ -482,7 +497,10 @@ public class LotteryManager {
      * 查询团队某池的保底计数（连续未出高稀有次数）
      */
     public int getPityCounter(UUID teamKey, String poolId) {
+        requireSession();
         if (teamKey == null || poolId == null) return 0;
+        if (unreadableTeams.contains(teamKey)) throw new IllegalStateException("Lottery team data is unreadable");
+        loadTeamData(teamKey);
         Map<String, Integer> poolCounters = pityCounters.get(teamKey);
         if (poolCounters == null) return 0;
         return poolCounters.getOrDefault(poolId, 0);
@@ -497,8 +515,11 @@ public class LotteryManager {
      * @return 保底计数快照（永不为 null）
      */
     public Map<String, Integer> getPityCounters(UUID teamKey) {
+        requireSession();
         Map<String, Integer> snapshot = new java.util.HashMap<>();
         if (teamKey == null) return snapshot;
+        if (unreadableTeams.contains(teamKey)) throw new IllegalStateException("Lottery team data is unreadable");
+        loadTeamData(teamKey);
         Map<String, Integer> poolCounters = pityCounters.get(teamKey);
         if (poolCounters != null) {
             snapshot.putAll(poolCounters);
@@ -523,6 +544,11 @@ public class LotteryManager {
      */
     public void saveTeamData(UUID teamKey) {
         if (teamKey == null || saveDir == null) return;
+        if (unreadableTeams.contains(teamKey))
+            throw new IllegalStateException("Unreadable lottery data cannot be overwritten");
+        // A logout may resolve a newly joined team that was never used in this session. No cache means
+        // nothing is owned to save; writing an empty record would destroy that team's existing pity.
+        if (!pityCounters.containsKey(teamKey)) return;
         File file = new File(saveDir, teamKey.toString() + ".dat");
         try {
             NBTTagCompound nbt = new NBTTagCompound();
@@ -535,9 +561,9 @@ public class LotteryManager {
                 }
                 nbt.setTag("pity", pityTag);
             }
-            CompressedStreamTools.safeWrite(nbt, file);
+            com.miaokatze.gtit.util.AtomicNbtFile.write(nbt, file);
         } catch (Exception e) {
-            LOG.error("保存抽奖数据失败: " + teamKey, e);
+            throw new IllegalStateException("Unable to save lottery team data: " + teamKey, e);
         }
     }
 
@@ -548,23 +574,32 @@ public class LotteryManager {
      * 该键在下次 {@link #saveTeamData} 覆写时自然清除。
      */
     public void loadTeamData(UUID teamKey) {
+        requireSession();
         if (teamKey == null || saveDir == null) return;
+        // Once loaded, this world-session cache owns the latest state, including a failed-save retry.
+        // Teammate logins must never replay an older file over it.
+        if (pityCounters.containsKey(teamKey)) return;
         File file = new File(saveDir, teamKey.toString() + ".dat");
-        if (!file.exists()) return;
         try {
-            NBTTagCompound nbt = CompressedStreamTools.read(file);
-            if (nbt == null) return;
-            // 保底计数
-            if (nbt.hasKey("pity")) {
+            Map<String, Integer> decoded = new ConcurrentHashMap<>();
+            if (file.exists()) {
+                NBTTagCompound nbt = CompressedStreamTools.read(file);
+                if (nbt == null) throw new IllegalStateException("Empty lottery team data");
+                RewardNbt.optionalType(nbt, "pity", 10);
                 NBTTagCompound pityTag = nbt.getCompoundTag("pity");
-                Map<String, Integer> poolCounters = pityCounters
-                    .computeIfAbsent(teamKey, k -> new ConcurrentHashMap<>());
-                for (String key : pityTag.func_150296_c()) { // getKeySet 的 SRG 名
-                    poolCounters.put(key, pityTag.getInteger(key));
+                for (String key : pityTag.func_150296_c()) {
+                    RewardNbt.optionalType(pityTag, key, 3);
+                    int count = pityTag.getInteger(key);
+                    if (count < 0) throw new IllegalArgumentException("Negative saved lottery pity");
+                    decoded.put(key, count);
                 }
             }
+            // Publish only a fully validated record, including the known-empty first-use case.
+            pityCounters.put(teamKey, decoded);
+            unreadableTeams.remove(teamKey);
         } catch (Exception e) {
-            LOG.error("加载抽奖数据失败: " + teamKey, e);
+            unreadableTeams.add(teamKey);
+            throw new IllegalStateException("Unable to load existing lottery team data: " + teamKey, e);
         }
     }
 
@@ -597,11 +632,25 @@ public class LotteryManager {
         }
     }
 
+    /** Stop authority before saving. A failed flush retains its original world and retryable state. */
+    public void unloadAll() {
+        sessionUnavailable = true;
+        saveAll();
+        pityCounters.clear();
+        unreadableTeams.clear();
+        pools.clear();
+        saveDir = null;
+    }
+
     /**
      * 热重载卡池配置（预留指令入口，目标 4/5）
      */
     public void reload() {
         loadConfig();
+    }
+
+    private void requireSession() {
+        if (sessionUnavailable) throw new IllegalStateException("Lottery world session is unavailable");
     }
 
     // ==================== 查询 ====================
@@ -610,6 +659,7 @@ public class LotteryManager {
      * 获取卡池
      */
     public LotteryPool getPool(String poolId) {
+        requireSession();
         return pools.get(poolId);
     }
 
@@ -617,6 +667,7 @@ public class LotteryManager {
      * 获取全部卡池（顺序按 Map 迭代；GUI 展示用）
      */
     public List<LotteryPool> getAllPools() {
+        requireSession();
         return new ArrayList<>(pools.values());
     }
 

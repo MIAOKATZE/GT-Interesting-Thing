@@ -1,6 +1,5 @@
 package com.miaokatze.gtit.terminal;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.NBTTagCompound;
 
 import cpw.mods.fml.common.network.ByteBufUtils;
@@ -62,15 +61,15 @@ public class TerminalDataPacket implements IMessage {
         public IMessage onMessage(TerminalDataPacket message, MessageContext ctx) {
             // 本包只发往客户端；Netty 线程切回客户端主线程写缓存（GUI 渲染在主线程读取）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final TerminalDataPacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(() -> TerminalClientData.applyData(message.getDataType(), message.getPayload()));
+        private void handleClient(final TerminalDataPacket message, MessageContext context) {
+            TerminalClientSession
+                .enqueue(context, () -> TerminalClientData.applyData(message.getDataType(), message.getPayload()));
         }
     }
 }

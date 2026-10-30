@@ -59,57 +59,25 @@ public class InfinityFluidStorageCellInventory implements ITFluidCellInventory {
         if (input == null) {
             return null;
         }
-        if (input.getStackSize() == 0) {
-            return null;
+        if (input.getStackSize() <= 0) {
+            return input;
         }
         if (this.cellType.isBlackListed(this.cellItem, input)) {
             return input;
         }
-        final IAEFluidStack l = this.getCellFluids()
-            .findPrecise(input);
-        if (l != null) {
-            if (mode == Actionable.MODULATE) {
-                l.setStackSize(l.getStackSize() + input.getStackSize());
-                this.saveChanges();
-            }
-            return null;
+        if (this.getCellFluids()
+            .findPrecise(input) == null && !this.canHoldNewFluid()) {
+            return input;
         }
-        if (this.canHoldNewFluid()) {
-            if (mode == Actionable.MODULATE) {
-                this.cellFluids.add(input);
-                this.saveChanges();
-            }
-            return null;
-        }
-        return input;
+        return InfinityCellTransfer.inject(this.getCellFluids(), input, mode, Long.MAX_VALUE, this::saveChanges);
     }
 
     @Override
     public IAEFluidStack extractItems(IAEFluidStack request, Actionable mode, BaseActionSource src) {
-        if (request == null) {
+        if (request == null || request.getStackSize() <= 0) {
             return null;
         }
-        final long size = request.getStackSize();
-        IAEFluidStack results = null;
-        final IAEFluidStack l = this.getCellFluids()
-            .findPrecise(request);
-        if (l != null) {
-            results = l.copy();
-            if (l.getStackSize() <= size) {
-                results.setStackSize(l.getStackSize());
-                if (mode == Actionable.MODULATE) {
-                    l.setStackSize(0);
-                    this.saveChanges();
-                }
-            } else {
-                results.setStackSize(size);
-                if (mode == Actionable.MODULATE) {
-                    l.setStackSize(l.getStackSize() - size);
-                    this.saveChanges();
-                }
-            }
-        }
-        return results;
+        return InfinityCellTransfer.extract(getCellFluids(), request, mode, this::saveChanges);
     }
 
     private void saveChanges() {

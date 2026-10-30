@@ -135,19 +135,12 @@ public final class PocketChannelDriver {
             PocketChannelManager.INSTANCE.forget(uuid);
             return;
         }
-        // 承载栈以"此刻真的被 tick 到的这一枚"为准：关屏重定位与堆叠移动都不会让它写错对象
-        state.retargetCarrier(stack);
         final PocketSession session = PocketSessions.peek(uuid);
         if (session == null || session.carrierStack() != stack) {
             // ★一个玩家只允许有一个活会话，且会话认的是"开界面的那一枚口袋"（对象身份）。
             // 玩家同时持有两枚口袋时，另一枚的 onUpdate 会走到这里 ⇒ 直接跳过：
             // 否则就是把 A 的绑定表与内容写到 B 的 NBT 上（跨口袋串档）。
             return;
-        }
-        if (session instanceof PocketChannelSessions.HeadlessCarrier) {
-            // ★R100：headless 会话同步回填"此刻被 tick 的这一枚"（与上一行 state.retargetCarrier
-            // 同一理由：堆叠移动/跨维重建后引用不陈旧；面板会话有它自己的 relocateCarrier，不走这里）。
-            ((PocketChannelSessions.HeadlessCarrier) session).retargetCarrier(stack);
         }
         // ★R85 D1 止损（台账挂"另案未决"的那条，机制本轮被证具体）：本玩家只有<b>一份</b>通道状态，
         // 而它的 `sessionBindings()` 是<b>开道那一枚</b>口袋的绑定表实例；玩家随后改开另一枚口袋的面板时，
@@ -164,6 +157,9 @@ public final class PocketChannelDriver {
             retireIdleSession(uuid);
             return;
         }
+        // Resolve session ownership before retargeting state: another carried pocket must not
+        // change this channel's animation/cooldown carrier, even when it happens to tick last.
+        state.retargetCarrier(stack);
         final PocketChannelOps ops = new PocketAeChannelOps(player, stack, PocketCellProbe.INSTANCE, session);
         final boolean ranBatch = PocketChannelManager.INSTANCE
             .tickShortChannel(uuid, bindings, ops, PocketChannelManager.pairsPerBatchFromConfig());

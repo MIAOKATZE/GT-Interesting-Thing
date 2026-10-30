@@ -50,6 +50,8 @@ public class FloatCore extends Item implements IBauble {
         if (player.worldObj.isRemote) return;
 
         if (player instanceof EntityPlayer entityPlayer) {
+            // Creative flight belongs to vanilla, not to this accessory's food/energy budget.
+            if (entityPlayer.capabilities.isCreativeMode) return;
             // 检查饥饿值是否足够
             boolean canFly = entityPlayer.getFoodStats()
                 .getFoodLevel() >= 6;
@@ -69,7 +71,8 @@ public class FloatCore extends Item implements IBauble {
             } else {
                 // 饥饿值不足，禁用飞行
                 // 仅在状态确实变化时发包，避免每 tick 重复发送（与上方启用分支对称）
-                if (entityPlayer.capabilities.allowFlying || entityPlayer.capabilities.isFlying) {
+                if ((entityPlayer.capabilities.allowFlying || entityPlayer.capabilities.isFlying)
+                    && !FlightSourceSupport.hasAvailableFlight(entityPlayer)) {
                     entityPlayer.capabilities.allowFlying = false;
                     entityPlayer.capabilities.isFlying = false;
                     entityPlayer.sendPlayerAbilities();
@@ -95,12 +98,7 @@ public class FloatCore extends Item implements IBauble {
         if (player.worldObj.isRemote) return;
 
         if (player instanceof EntityPlayer entityPlayer) {
-            // 如果玩家不在创造模式，取消飞行能力
-            if (!entityPlayer.capabilities.isCreativeMode) {
-                entityPlayer.capabilities.allowFlying = false;
-                entityPlayer.capabilities.isFlying = false;
-            }
-            entityPlayer.sendPlayerAbilities();
+            FlightSourceSupport.onUnequipped(entityPlayer, itemstack);
         }
     }
 

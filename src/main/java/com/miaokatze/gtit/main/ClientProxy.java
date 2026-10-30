@@ -1,6 +1,8 @@
 package com.miaokatze.gtit.main;
 
+import com.miaokatze.gtit.common.items.terminal.TerminalGuiBridge;
 import com.miaokatze.gtit.common.machine.neko.NekoMusicEventHandler;
+import com.miaokatze.gtit.gui.terminal.NekoRemoteVendingGui;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
@@ -42,7 +44,9 @@ public class ClientProxy extends CommonProxy {
     public void init(FMLInitializationEvent event) {
         // 调用父类的 init 方法，确保通用逻辑正常执行
         super.init(event);
+        TerminalGuiBridge.registerScreen(NekoRemoteVendingGui::createScreen);
         com.miaokatze.gtit.testlab.TestLabUiClient.install();
+        com.miaokatze.gtit.terminal.TerminalClientSession.install();
         // NEI discovers recipe plugins itself; only the earlier HandlerInfo event listener is installed here.
         if (cpw.mods.fml.common.Loader.isModLoaded("NotEnoughItems")) {
             com.miaokatze.gtit.client.nei.NEIGtitConfig.registerHandlerInfoEvents();

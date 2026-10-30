@@ -127,17 +127,21 @@ public class LotteryResultPacket implements IMessage {
         public IMessage onMessage(LotteryResultPacket message, MessageContext ctx) {
             // 本包只发往客户端；切回客户端主线程写缓存（GUI 在主线程读取并启动动画）
             if (ctx.side == Side.CLIENT) {
-                handleClient(message);
+                handleClient(message, ctx);
             }
             return null;
         }
 
         @SideOnly(Side.CLIENT)
-        private void handleClient(final LotteryResultPacket message) {
-            Minecraft.getMinecraft()
-                .func_152344_a(
-                    () -> LotteryClientData
-                        .updateDrawResult(message.getPoolId(), message.getResults(), message.getResultCode()));
+        private void handleClient(final LotteryResultPacket message, MessageContext context) {
+            Object connection = context.netHandler;
+            Minecraft mc = Minecraft.getMinecraft();
+            mc.func_152344_a(() -> {
+                if (connection == null || mc.getNetHandler() != connection
+                    || mc.theWorld == null
+                    || mc.thePlayer == null) return;
+                LotteryClientData.updateDrawResult(message.getPoolId(), message.getResults(), message.getResultCode());
+            });
         }
     }
 }

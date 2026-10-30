@@ -163,7 +163,7 @@ public class MailActionPacket implements IMessage {
             // 切到服务器主线程执行（涉及背包写入、NBT 持久化）
             Container source = player.openContainer;
             int window = source == null ? -1 : source.windowId;
-            ServerTaskScheduler.scheduleServerTask(() -> {
+            ServerTaskScheduler.trySchedulePlayerRequest(player, () -> {
                 if (message.action == ACTION_COMPOSE && source instanceof RemoteVendingContainer
                     && (player.openContainer != source || source.windowId != window)) return;
                 processAction(player, message);
@@ -175,6 +175,7 @@ public class MailActionPacket implements IMessage {
          * 服务器主线程：执行邮件操作、聊天反馈、回发最新数据
          */
         private void processAction(EntityPlayerMP player, MailActionPacket message) {
+            if (!com.miaokatze.gtit.util.PlayerLookup.isCurrentSession(player)) return;
             UUID playerId = player.getUniqueID();
             MailManager manager = MailManager.INSTANCE;
             String mailId = message.getMailId();
@@ -189,10 +190,13 @@ public class MailActionPacket implements IMessage {
                 }
                 case ACTION_CLAIM -> {
                     int granted = manager.claimAttachments(playerId, mailId, player);
-                    changed = granted > 0;
+                    changed = granted > 0 || granted == -2;
                     if (granted > 0) {
                         player.addChatMessage(
                             new ChatComponentText(EnumChatFormatting.GREEN + "已领取 " + granted + " 组邮件附件"));
+                    } else if (granted == -2) {
+                        player
+                            .addChatMessage(new ChatComponentText(EnumChatFormatting.YELLOW + "附件尚未送达，已保留；请腾出背包空间后重试"));
                     } else {
                         player.addChatMessage(new ChatComponentText(EnumChatFormatting.GRAY + "没有可领取的附件"));
                     }

@@ -97,6 +97,14 @@ public final class TerminalSignInPage {
     /** 重置二次确认文案（含不可恢复警示；%s=目标玩家名） */
     private static final String CONFIRM_RESET_FORMAT = "确认重置 %s 的签到数据？将清空目标签到数据，不可恢复。";
 
+    /** Keep drafts on same-world reopen, never carry targets or widget references into another world. */
+    static void resetSession() {
+        selectedPlayer = "";
+        playerListPage = 0;
+        daysDraft = "";
+        lastActionSendMs = 0L;
+    }
+
     private TerminalSignInPage() {
         // 静态工具类，禁止实例化
     }
@@ -381,9 +389,10 @@ public final class TerminalSignInPage {
     private static void openResetConfirmDialog(ButtonWidget<?> anchor) {
         TerminalConfirmationDialog dialog = new TerminalConfirmationDialog("gtit_terminal:signin_reset_confirm");
         dialog.setButtonText("确认重置", "取消");
-        dialog.setParams(String.format(CONFIRM_RESET_FORMAT, selectedPlayer), () -> {
+        String target = selectedPlayer;
+        dialog.setParams(String.format(CONFIRM_RESET_FORMAT, target), () -> {
             if (!tryBeginAction()) return;
-            TerminalNetworkManager.sendAction(TerminalActionHandler.ACTION_SIGNIN_RESET, selectedPlayer, 0, "", "", "");
+            TerminalNetworkManager.sendAction(TerminalActionHandler.ACTION_SIGNIN_RESET, target, 0, "", "", "");
         });
         IPanelHandler.simple(anchor.getPanel(), (parent, player) -> dialog, true)
             .openPanel();

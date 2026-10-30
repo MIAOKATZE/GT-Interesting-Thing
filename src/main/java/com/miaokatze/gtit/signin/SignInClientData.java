@@ -101,6 +101,32 @@ public final class SignInClientData {
 
     private SignInClientData() {}
 
+    /** Drop the previous connection's personal data and server configuration, not local config defaults. */
+    public static synchronized void resetSession() {
+        totalDays = 0;
+        consecutiveDays = 0;
+        lastSignInDate = "";
+        serverToday = "";
+        monthlyDates = new HashSet<>();
+        claimedTierDays = new HashSet<>();
+        claimedCumulativeTierDays = new HashSet<>();
+        clearResult();
+        lastResultTimeMs = 0L;
+        cfgTiers = null;
+        cfgCumulativeTiers = new ArrayList<>();
+        cfgIncrementEnabled = false;
+        cfgIncrement = 0;
+        cfgWeekday = SignInReward.EMPTY;
+        cfgWeekend = SignInReward.EMPTY;
+        cfgDayOverrides = new HashMap<>();
+        onlineSecondsToday = 0;
+        claimedOnlineTiers = new HashSet<>();
+        birthday = "";
+        firstJoinDate = "";
+        anniversaries = new ArrayList<>();
+        cfgOnlineTiers = null;
+    }
+
     // ==================== 写入（网络包处理器调用） ====================
 
     /**

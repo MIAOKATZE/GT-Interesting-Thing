@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -27,6 +28,7 @@ import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.common.items.pocket.ItemNekoDimensionPocket;
 import com.miaokatze.gtit.common.items.pocket.PocketAeChannelOps;
+import com.miaokatze.gtit.common.items.pocket.PocketCarrierIdentity;
 import com.miaokatze.gtit.common.items.pocket.PocketCellBindings;
 import com.miaokatze.gtit.common.items.pocket.PocketCellProbe;
 import com.miaokatze.gtit.common.items.pocket.PocketChannelManager;
@@ -418,6 +420,8 @@ public final class NekoPocketPanel implements PocketSession {
     private final NekoPocketServerHandler server;
     /** 打开瞬间的口袋栈引用（NBT 写回目标；关屏重定位见 {@link #relocateCarrier()}）。 */
     private ItemStack pocket;
+    private final PocketCarrierIdentity carrierIdentity;
+    private boolean carrierLookupAmbiguous;
     private final int carrierSlotIndex;
     /**
      * 中栏 {@code STORAGE_SLOTS} 个槽位 widget 的双端登记表（下标 = 槽号）。
@@ -563,6 +567,12 @@ public final class NekoPocketPanel implements PocketSession {
         this.settings = settings;
         this.slots = new PocketSlots();
         this.pocket = data.getUsedItemStack();
+        if (!syncManager.isClient()) {
+            // Flush the old model before parsing or replacing its token, including headless sessions.
+            final PocketSession previous = PocketSessions.peek(playerId());
+            if (previous != null) previous.persistFinal();
+        }
+        this.carrierIdentity = PocketCarrierIdentity.capture(this.pocket, !syncManager.isClient());
         this.carrierSlotIndex = data.getSlotIndex();
         // ★R100（免开背包）：解析走 PocketChannelSessions 那个<b>单一公共入口</b>（面板装配与
         // driver 的 headless 复原腿共用同一份"取根 + readFrom"式子，禁第二份真相）；
@@ -851,7 +861,9 @@ public final class NekoPocketPanel implements PocketSession {
             // 免得往"只在 ServerTickEvent 消费"的 static 队列里投捕获面板的 lambda（专用服必泄漏）。
             return;
         }
-        ServerTaskScheduler.scheduleServerTask(() -> onServerAction(packed));
+        if (player() instanceof EntityPlayerMP sender) {
+            ServerTaskScheduler.trySchedulePlayerRequest(sender, () -> onServerAction(packed));
+        }
     }
 
     /**
@@ -865,7 +877,9 @@ public final class NekoPocketPanel implements PocketSession {
         if (syncManager.isClient()) {
             return;
         }
-        ServerTaskScheduler.scheduleServerTask(() -> server.onServerGhostRequest(request));
+        if (player() instanceof EntityPlayerMP sender) {
+            ServerTaskScheduler.trySchedulePlayerRequest(sender, () -> server.onServerGhostRequest(request));
+        }
     }
 
     // ======================================================================================
@@ -1237,7 +1251,9 @@ public final class NekoPocketPanel implements PocketSession {
         if (syncManager.isClient()) {
             return;
         }
-        ServerTaskScheduler.scheduleServerTask(() -> server.onServerMagnetRequest(request));
+        if (player() instanceof EntityPlayerMP sender) {
+            ServerTaskScheduler.trySchedulePlayerRequest(sender, () -> server.onServerMagnetRequest(request));
+        }
     }
 
     /** 见 {@link #receiveGhostRequest(String)} 的同一条 R85 N1 客户端守卫：allowC2S 的 setter 双端都被调。 */
@@ -1245,7 +1261,9 @@ public final class NekoPocketPanel implements PocketSession {
         if (syncManager.isClient()) {
             return;
         }
-        ServerTaskScheduler.scheduleServerTask(() -> server.onServerFreqRequest(request));
+        if (player() instanceof EntityPlayerMP sender) {
+            ServerTaskScheduler.trySchedulePlayerRequest(sender, () -> server.onServerFreqRequest(request));
+        }
     }
 
     // ------------------------------------------------------------------ ★R101 频率秒值请求的文法（拼装与解读共用同一条式子）
@@ -1315,7 +1333,11 @@ public final class NekoPocketPanel implements PocketSession {
      * vanilla 槽同步过来的那份镜像（{@code ItemStack} 相等比较含整份 NBT ⇒ 位图变化 ≤1 tick 内到达）。
      */
     ItemStack carrierStackLive() {
-        return data.getUsedItemStack();
+        final ItemStack atCarrier = data.getUsedItemStack();
+        if (syncManager.isClient()) {
+            return atCarrier;
+        }
+        return relocateCarrier();
     }
 
     /**
@@ -3150,6 +3172,21 @@ public final class NekoPocketPanel implements PocketSession {
         writeSessionToCarrier();
     }
 
+    /** Vanilla right-click outside splits the cursor before dropping it; persist before that copy. */
+    boolean persistBeforeCursorDrop(EntityPlayer actor) {
+        if (syncManager.isClient() || closed || actor != player() || actor.inventory == null) {
+            return true;
+        }
+        if (carrierIdentity.matches(actor.inventory.getItemStack())) {
+            if (relocateCarrier() != actor.inventory.getItemStack()) {
+                return false;
+            }
+            writeSessionToCarrier();
+            return !inventory.isDirty();
+        }
+        return true;
+    }
+
     /**
      * 会话内存 → 承载栈 NBT（脏标记才序列化，R53c）。
      * <p>
@@ -3174,8 +3211,8 @@ public final class NekoPocketPanel implements PocketSession {
         if (!inventory.isDirty()) {
             return;
         }
-        ItemStack carrier = closed ? relocateCarrier() : pocket;
-        if (carrier == null) {
+        ItemStack carrier = relocateCarrier();
+        if (carrier == null && !carrierLookupAmbiguous && carrierIdentity.matches(pocket)) {
             // ★R88 B3 兜底一档：重定位三级全落空 ⇒ 退回"本会话认得的那一枚对象"
             carrier = pocket;
             if (carrier != null) {
@@ -3533,7 +3570,7 @@ public final class NekoPocketPanel implements PocketSession {
      * {@code InventoryType#getStackInSlot} 的<b>活查表</b>（每次现读背包），而堆叠合并、
      * 跨维重建 {@code EntityPlayerMP} 都会让"同一枚口袋"变成<b>另一个引用 / 另一个 player 对象</b>
      * ⇒ 用 {@code ==} 比引用或比 player 引用会把合法持有者也判成丢失。
-     * 这里改判"承载格里仍是一枚口袋物品"，并把内容写权重新钉到那一枚上（关屏与 driver 都走
+     * 这里按服务端首次开屏时写入的载体 token 判同一枚；原版副本保留 token，另一枚同物品口袋不匹配（关屏与 driver 都走
      * {@link #relocateCarrier()} 重定位，不会写到别的栈上）。
      * ★R90 T2：包内可见——{@link NekoPocketServerHandler#serverGuardOk} 的回落判据与它同源。
      */
@@ -3541,51 +3578,42 @@ public final class NekoPocketPanel implements PocketSession {
         if (closed || testPlayer == null || pocket == null) {
             return false;
         }
+        // Server owns carrier authority; a newly opened client may not have its token packet yet.
+        if (syncManager.isClient()) return true;
         final EntityPlayer owner = player();
         if (owner != null && (owner.getUniqueID() == null || !owner.getUniqueID()
             .equals(testPlayer.getUniqueID()))) {
             return false;
         }
         final ItemStack atCarrier = data.getUsedItemStack();
-        if (atCarrier == null || atCarrier.getItem() == null
-            || pocket.getItem() == null
-            || atCarrier.getItem() != pocket.getItem()) {
+        if (!carrierIdentity.matches(atCarrier)) {
             // ★R96 S11：读不到承载格 ≠ 口袋不见了。穿戴态开屏时 data 的 InventoryType 是 BAUBLES
             // （本来就读 mainInventory），而会话中途把口袋从手上拖进饰品栏时 data 还钉在 PLAYER 那一格
             // ⇒ 这里补一条 bauble 腿，找到就把写权钉过去；★找不到仍照原样返回 false
             // （失效判定本身一个字没放宽）。
             return repinFromBaubles();
         }
-        if (atCarrier != pocket) {
-            pocket = atCarrier;
-        }
+        final ItemStack unique = relocateCarrier();
+        if (unique == null) return false;
+        pocket = unique;
         return true;
     }
 
     /**
      * ★R96 S11：{@link #carrierStillPresent(EntityPlayer)} 的 bauble 腿（★判据与
-     * {@link #relocateCarrier()} 的第四级同源 —— 同物品身份即认，不另立第二套认人标准）。
+     * {@link #relocateCarrier()} 的第四级同源 —— 同一载体 token 才认，不另立第二套认人标准）。
      * ★两道判空都是必需的：owner/baubles 拿不到 ⇒ 按"没穿戴"处理，绝不让 Baubles 侧的漂移变成崩溃。
      */
     private boolean repinFromBaubles() {
         if (pocket == null || pocket.getItem() == null) {
             return false;
         }
-        final IInventory baubles = PocketWornTapHandler.safeBaubles(player());
-        if (baubles == null) {
+        final ItemStack relocated = relocateCarrier();
+        if (relocated == null) {
             return false;
         }
-        for (int i = 0; i < baubles.getSizeInventory(); i++) {
-            final ItemStack at = baubles.getStackInSlot(i);
-            if (at == null || at.getItem() == null) {
-                continue;
-            }
-            if (at == pocket || at.getItem() == pocket.getItem()) {
-                pocket = at;
-                return true;
-            }
-        }
-        return false;
+        pocket = relocated;
+        return true;
     }
 
     /**
@@ -3619,80 +3647,21 @@ public final class NekoPocketPanel implements PocketSession {
         writeSessionToCarrier();
     }
 
-    /**
-     * 找到承载本会话的那一枚口袋。★R96 S11 起是<b>四级</b>判据，<b>对象身份优先</b>：
-     * <ol>
-     * <li>开界面那一格上的栈还是同一枚对象 ⇒ 用它；</li>
-     * <li>主背包 36 格里扫同一对象（玩家在界面里搬动过口袋）；</li>
-     * <li>主背包里按 {@code open} 标记兜底（口径照 {@code ItemGTToolbox.java:391-425}）；</li>
-     * <li>★<b>bauble 栏</b>：先按对象身份、再按 {@code open} 标记 —— 穿戴态开屏时前三级的视野里
-     * 根本没有那一格（{@code data.getUsedItemStack()} 走的是 MUI2 的 {@code InventoryTypes.BAUBLES}，
-     * 而 {@code target.inventory.mainInventory} 永远不含饰品格），少了这一腿 ⇒ 关屏找不到承载栈 ⇒
-     * 只 WARN 不落盘 = 静默丢件（R88 B3 那一族）。</li>
-     * </ol>
-     * ★为什么不把 {@code open} 位当第一判据（本批修正）：关屏时该位已被清零，而 driver 在关屏之后
-     * 还要继续落盘（上面那条），按标记找就永远找不着 ⇒ 只剩一条 warn、内容留在内存里等丢。
-     * 按对象身份找则不受清零影响；兜底那一档仍然按标记认人，覆盖"重载后对象身份已断"的情形。
-     * <p>
-     * ★<b>R88：为什么不再往"自家存储格"里加第四级</b>（复现手势是"把口袋自己 shift 点进自家非声明格"）：
-     * 那一格里躺着的正是承载本会话的那一枚 ⇒ 把它的 tagCompound 当写出目标就是
-     * {@code root → storage → 该栈 → root} 的自环，序列化当场 StackOverflow。所以这一档由
-     * {@link #isNestedInOwnStorage(ItemStack)} 判出后<b>拒写并保留 dirty</b>（driver 每拍重试，等它被
-     * 移回可寻址的格子），闭合点只能在入口面（不许口袋进自己的存储格），见 {@link #writeSessionToCarrier()}
-     * 的第 2 条兜底与交付报告里的"需 E1/主代理"项。
-     */
+    /** Resolve only this session's token across its original slot, cursor, inventory and Baubles. */
     private ItemStack relocateCarrier() {
-        final ItemStack atCarrier = data.getUsedItemStack();
-        if (atCarrier != null && atCarrier == pocket) {
-            return pocket;
-        }
         final EntityPlayer target = player();
+        carrierLookupAmbiguous = false;
         if (target == null || target.inventory == null) {
             return null;
         }
-        if (pocket != null) {
-            for (ItemStack held : target.inventory.mainInventory) {
-                if (held == pocket) {
-                    return held;
-                }
-            }
-        }
-        for (ItemStack held : target.inventory.mainInventory) {
-            if (held != null && held.getItem() instanceof ItemNekoDimensionPocket
-                && ItemNekoDimensionPocket.isOpenFlag(held)) {
-                pocket = held;
-                return held;
-            }
-        }
-        // ★★R96 S11 第四级 = bauble 栏那一腿（穿戴态开屏时上面三级的视野里根本没有这一格）：
-        // 先按对象身份（开着面板时把口袋从手上拖进饰品栏），再按 open 位兜底（重载后身份已断）。
-        // ★判空守卫是必需的，不是防御性冗余：Baubles 缺席或它内部漂移时 safeBaubles 返回 null，
-        // 少了这道守卫关屏落点就 NPE —— 而关屏落点 NPE 的结局是"内容留在内存里等丢"（R88 B3 同族）。
         final IInventory baubles = PocketWornTapHandler.safeBaubles(target);
-        if (baubles != null) {
-            if (pocket != null) {
-                for (int i = 0; i < baubles.getSizeInventory(); i++) {
-                    final ItemStack at = baubles.getStackInSlot(i);
-                    if (at == null) {
-                        continue;
-                    }
-                    if (at == pocket) {
-                        return at;
-                    }
-                }
-            }
-            for (int i = 0; i < baubles.getSizeInventory(); i++) {
-                final ItemStack at = baubles.getStackInSlot(i);
-                if (at == null) {
-                    continue;
-                }
-                if (at.getItem() instanceof ItemNekoDimensionPocket && ItemNekoDimensionPocket.isOpenFlag(at)) {
-                    pocket = at;
-                    return at;
-                }
-            }
+        final PocketCarrierIdentity.Resolution found = carrierIdentity
+            .locate(data.getUsedItemStack(), target.inventory.getItemStack(), target.inventory.mainInventory, baubles);
+        carrierLookupAmbiguous = found.ambiguous;
+        if (found.carrier != null) {
+            pocket = found.carrier;
         }
-        return null;
+        return found.carrier;
     }
 
     // ------------------------------------------------------------------ 客户端显示出口

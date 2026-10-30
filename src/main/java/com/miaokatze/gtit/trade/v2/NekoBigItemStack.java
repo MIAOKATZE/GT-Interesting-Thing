@@ -165,14 +165,17 @@ public class NekoBigItemStack {
     }
 
     /**
-     * 获取拆分后的 ItemStack 列表（每个不超过 maxStackSize）
+     * 获取拆分后的 ItemStack 列表（每个不超过物品上限及真实输出槽的 64 上限）
      *
      * @return 拆分后的物品栈列表
      */
     public List<ItemStack> getCombinedStacks() {
         List<ItemStack> list = new ArrayList<>();
         int remaining = stackSize;
-        int max = baseStack.getMaxStackSize();
+        // Paid queue entries use vanilla ItemStack NBT (a signed byte Count), not big-stack NBT.
+        // Match the machine's 64-item physical slot bound even when a mod advertises larger stacks.
+        int max = Math.min(64, baseStack.getMaxStackSize());
+        if (remaining > 0 && max <= 0) throw new IllegalArgumentException("invalid physical stack limit");
         while (remaining > 0) {
             int size = Math.min(remaining, max);
             ItemStack copy = baseStack.copy();

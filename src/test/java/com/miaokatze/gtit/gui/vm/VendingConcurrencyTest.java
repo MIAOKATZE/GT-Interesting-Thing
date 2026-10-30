@@ -17,7 +17,7 @@ import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.miaokatze.gtit.client.gui.NekoTradeItemDisplay;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
-import com.miaokatze.gtit.testutil.MinecraftTestBootstrap;
+import com.miaokatze.gtit.testutil.NativeAeTestBootstrap;
 import com.miaokatze.gtit.trade.TeamDataProvider;
 import com.miaokatze.gtit.trade.v2.NekoBigItemStack;
 import com.miaokatze.gtit.trade.v2.NekoHistoryManager;
@@ -36,21 +36,38 @@ public final class VendingConcurrencyTest {
     }
 
     public static void main(String[] args) throws Exception {
-        if (!MinecraftTestBootstrap.enter(VendingConcurrencyTest.class, args)) return;
-        Field named = cpw.mods.fml.common.Loader.class.getDeclaredField("namedMods");
-        named.setAccessible(true);
-        named.set(cpw.mods.fml.common.Loader.instance(), new java.util.HashMap<>());
+        if (!NativeAeTestBootstrap.enter(VendingConcurrencyTest.class, args)) return;
         cpw.mods.fml.server.FMLServerHandler.instance();
+        runCases();
+    }
+
+    private static void runCases() throws Exception {
         Thread.currentThread()
             .setName("Server thread");
         field(TeamDataProvider.class, "available").set(null, Boolean.FALSE);
+        field(com.miaokatze.gtit.trade.NekoWalletManager.class, "acceptingWallets")
+            .setBoolean(com.miaokatze.gtit.trade.NekoWalletManager.INSTANCE, true);
+        java.io.File historyDirectory = java.nio.file.Files.createTempDirectory("gtit-vending-history-")
+            .toFile();
+        Method bindHistory = NekoHistoryManager.class.getDeclaredMethod("bindSaveDirectory", java.io.File.class);
+        bindHistory.setAccessible(true);
+        bindHistory.invoke(NekoHistoryManager.INSTANCE, historyDirectory);
         NekoCurrencyRegistrar.nekoCoinItem = Items.emerald;
         actorDeposits();
         shiftTransfers();
         sharedStateAndCompetition();
+        disconnectedMeRefund();
         oldDisplayOrders();
         canonicalDefinition();
-        System.out.println("VendingConcurrencyTest: 5 cases passed");
+        System.out.println("VendingConcurrencyTest: 6 cases passed");
+        CoinWithdrawalCapacityTest.run();
+        WalletCreditCapacityTest.run();
+        com.miaokatze.gtit.trade.WalletConservationTest.run();
+        com.miaokatze.gtit.trade.WalletManagerPersistenceTest.run();
+        com.miaokatze.gtit.trade.v2.HistoryPersistenceTest.run();
+        NekoHistoryManager.INSTANCE.unloadAll();
+        for (java.io.File saved : historyDirectory.listFiles()) java.nio.file.Files.delete(saved.toPath());
+        java.nio.file.Files.delete(historyDirectory.toPath());
     }
 
     private static void actorDeposits() {
@@ -120,6 +137,36 @@ public final class VendingConcurrencyTest {
         MTENekoVendingMachineV2 machine = new MTENekoVendingMachineV2("concurrency_test");
         field(machine.getClass(), "mMachine").setBoolean(machine, true);
         return machine;
+    }
+
+    private static void disconnectedMeRefund() throws Exception {
+        MTENekoVendingMachineV2 machine = machine();
+        // Only the captured identity matters: no hatch/AE methods may run after disconnection.
+        Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+        Field singleton = unsafeClass.getDeclaredField("theUnsafe");
+        singleton.setAccessible(true);
+        Field liveHatch = field(machine.getClass(), "uplinkHatch");
+        // Resolve the actual production field type without coupling test compilation to a dev-only dependency.
+        Object hatch = unsafeClass.getMethod("allocateInstance", Class.class)
+            .invoke(singleton.get(null), liveHatch.getType());
+        liveHatch.set(machine, hatch);
+        com.miaokatze.gtit.trade.v2.NekoTradeExecutor.InputSlotAccessor input = machine.createInputSlotAccessor();
+        liveHatch.set(machine, null);
+        ItemStack receipt = new ItemStack(Items.iron_ingot, 129);
+        receipt.setTagCompound(new NBTTagCompound());
+        receipt.getTagCompound()
+            .setString("owner", "extracted-before-disconnect");
+        input.refundME(receipt);
+        check(machine.getOutputBufferSize() == 3, "disconnected ME receipt becomes three durable physical stacks");
+        java.util.Queue<?> queue = (java.util.Queue<?>) field(machine.getClass(), "outputBuffer").get(machine);
+        int count = 0;
+        for (Object value : queue) {
+            ItemStack stack = (ItemStack) value;
+            check(stack.stackSize > 0 && stack.stackSize <= 64, "compensation remains vanilla-NBT safe");
+            check(ItemStack.areItemStackTagsEqual(receipt, stack), "compensation keeps exact receipt tags");
+            count += stack.stackSize;
+        }
+        check(count == 129, "a stale captured hatch cannot turn missing live destination into successful insertion");
     }
 
     private static NekoTradeGroup group() {

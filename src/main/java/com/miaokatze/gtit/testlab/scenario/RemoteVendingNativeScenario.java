@@ -67,9 +67,20 @@ final class RemoteVendingNativeScenario implements ProbeScenario {
 
             private BaseMetaTileEntity base;
             private int ticks;
+            private ProbeTask concurrentRequests;
+            private ItemStack terminal;
 
             @Override
             public boolean tick() throws Exception {
+                if (concurrentRequests != null) {
+                    if (!concurrentRequests.tick()) return false;
+                    concurrentRequests.close();
+                    concurrentRequests = null;
+                    NekoVendingTarget target = NekoVendingTarget.read(terminal);
+                    exerciseUi(context, owner, terminal, target, base);
+                    exerciseTeamReads(context, owner);
+                    return true;
+                }
                 if (ticks++ == 0) {
                     ItemStack stack = context.mark(GTITItemList.NekoVendingMachine.get(1));
                     ItemMachines item = (ItemMachines) stack.getItem();
@@ -113,14 +124,21 @@ final class RemoteVendingNativeScenario implements ProbeScenario {
                     "native-controller-ticks",
                     base.getTimer() > 1,
                     "Waited for natural GT tile ticks; timer=" + base.getTimer());
-                exercise(context, owner, stranger, base);
-                return true;
+                terminal = exercise(context, owner, stranger, base);
+                if (terminal == null) return true;
+                concurrentRequests = ConcurrentVendingProbe.tradeRequests(context, owner, stranger, base);
+                return false;
+            }
+
+            @Override
+            public void close() throws Exception {
+                if (concurrentRequests != null) concurrentRequests.close();
             }
         };
     }
 
-    private static void exercise(ProbeContext context, FakePlayer owner, FakePlayer stranger, BaseMetaTileEntity base)
-        throws Exception {
+    private static ItemStack exercise(ProbeContext context, FakePlayer owner, FakePlayer stranger,
+        BaseMetaTileEntity base) throws Exception {
         ItemStack terminal = context.mark(GTITItemList.NekoVendingTerminal.get(1));
         context.check(
             "terminal-registered",
@@ -128,7 +146,7 @@ final class RemoteVendingNativeScenario implements ProbeScenario {
                 && Item.itemRegistry.getNameForObject(terminal.getItem()) != null
                 && terminal.getMaxStackSize() == 1,
             "Real registry item is a single-stack remote terminal");
-        if (!(terminal.getItem() instanceof ItemNekoVendingTerminal)) return;
+        if (!(terminal.getItem() instanceof ItemNekoVendingTerminal)) return null;
         owner.inventory.currentItem = 0;
         owner.inventory.setInventorySlotContents(0, terminal);
         ItemNekoVendingTerminal item = (ItemNekoVendingTerminal) terminal.getItem();
@@ -224,7 +242,10 @@ final class RemoteVendingNativeScenario implements ProbeScenario {
             owner.closeScreen();
         }
         ConcurrentVendingProbe.run(context, owner, stranger, terminal, expected, base);
-        exerciseUi(context, owner, terminal, expected, base);
+        return terminal;
+    }
+
+    private static void exerciseTeamReads(ProbeContext context, FakePlayer owner) {
         for (TeamStatusPage.Source source : TeamStatusPage.Source.values()) {
             TeamStatusPage page = NekoTeamStatusService.query(owner, source, Integer.MAX_VALUE);
             context.check(

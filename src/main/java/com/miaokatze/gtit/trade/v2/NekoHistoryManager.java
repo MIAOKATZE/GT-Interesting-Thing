@@ -1,8 +1,11 @@
 package com.miaokatze.gtit.trade.v2;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -17,249 +20,224 @@ import org.apache.logging.log4j.Logger;
 import com.gtnewhorizon.gtnhlib.teams.Team;
 import com.miaokatze.gtit.trade.NekoTeamData;
 import com.miaokatze.gtit.trade.TeamDataProvider;
+import com.miaokatze.gtit.util.AtomicNbtFile;
 
-/**
- * Server-authoritative trade history manager.
- *
- * <p>
- * Team histories live in GTNHLib team data. The old per-player files are
- * retained only as a one-time migration source and are marked consumed after
- * migration so leaving and rejoining a team cannot duplicate consumption.
- * </p>
- */
+/** Server-authoritative histories; corrupt or unsaved state never becomes a fresh redemption ledger. */
 public class NekoHistoryManager {
 
-    /** 统一 logger（O2-B02 去中心化：与主类同用 "gtit" logger 名，日志过滤口径不变） */
     private static final Logger LOG = LogManager.getLogger("gtit");
-
     public static final NekoHistoryManager INSTANCE = new NekoHistoryManager();
-
     private static final String LEGACY_CONSUMED_KEY = "legacyHistoryConsumed";
+    private static final String FORMAT_KEY = "historyFormatVersion";
+    private static final String JOURNAL_NAME = "legacy-migrations.dat";
 
-    /** Personal fallback histories used when no usable team data exists. */
-    private final ConcurrentHashMap<UUID, ConcurrentHashMap<UUID, NekoTradeHistory>> histories;
-    /** Player files whose legacy records have already been consumed by a team. */
-    private final ConcurrentHashMap<UUID, Boolean> legacyHistoryConsumed;
-
+    private final ConcurrentHashMap<UUID, ConcurrentHashMap<UUID, NekoTradeHistory>> histories = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, Boolean> legacyHistoryConsumed = new ConcurrentHashMap<>();
+    /** Durable, immutable migration intents, retained so a lagging team save can be replayed. */
+    private final Map<UUID, LegacyMigration> migrations = new HashMap<>();
+    private final Set<UUID> pendingMigrationMarkers = new HashSet<>();
     private File saveDir;
+    private boolean acceptingHistories;
 
-    private NekoHistoryManager() {
-        histories = new ConcurrentHashMap<>();
-        legacyHistoryConsumed = new ConcurrentHashMap<>();
+    private static final class LegacyMigration {
+
+        final UUID teamId;
+        final Map<UUID, NekoTradeHistory> records;
+
+        LegacyMigration(UUID teamId, Map<UUID, NekoTradeHistory> records) {
+            this.teamId = teamId;
+            this.records = records;
+        }
     }
 
-    public synchronized void init(World world) {
-        if (world == null) {
-            return;
-        }
-        saveDir = new File(
-            world.getSaveHandler()
-                .getWorldDirectory(),
-            "gtit_neko_histories");
-        if (!saveDir.exists()) {
-            saveDir.mkdirs();
-        }
-        histories.clear();
-        legacyHistoryConsumed.clear();
-        LOG.info("Neko trade history directory: {}", saveDir.getAbsolutePath());
+    private NekoHistoryManager() {}
+
+    public void init(World world) {
+        if (world == null) throw new IllegalArgumentException("world");
+        bindSaveDirectory(
+            new File(
+                world.getSaveHandler()
+                    .getWorldDirectory(),
+                "gtit_neko_histories"));
     }
 
-    /** Returns the shared team record when possible, otherwise the personal record. */
-    public NekoTradeHistory getHistory(UUID playerId, UUID tradeGroupId) {
-        if (playerId == null || tradeGroupId == null) {
-            return new NekoTradeHistory();
+    private synchronized void bindSaveDirectory(File directory) {
+        acceptingHistories = false;
+        try {
+            if (!saveAllInternal())
+                throw new IllegalStateException("Previous world's histories remain unsaved: " + saveDir);
+            File target = directory.getCanonicalFile();
+            Files.createDirectories(target.toPath());
+            Map<UUID, LegacyMigration> loaded = readMigrations(new File(target, JOURNAL_NAME));
+            histories.clear();
+            pendingMigrationMarkers.clear();
+            legacyHistoryConsumed.clear();
+            migrations.clear();
+            migrations.putAll(loaded);
+            saveDir = target;
+            acceptingHistories = true;
+            LOG.info("Neko trade history directory: {}", saveDir.getAbsolutePath());
+        } catch (Exception failure) {
+            throw new IllegalStateException("History storage is not ready for this world", failure);
         }
-
-        Team team = findTeam(playerId);
-        NekoTeamData teamData = getTeamData(team);
-        if (teamData != null) {
-            migrateLegacyHistory(team, teamData);
-            return teamData.getTradeHistory(tradeGroupId);
-        }
-        return getPersonalHistory(playerId, tradeGroupId);
     }
 
-    public void resetHistory(UUID playerId, UUID tradeGroupId) {
-        if (playerId == null || tradeGroupId == null) {
-            return;
+    private void requireReady() {
+        if (!acceptingHistories) throw new IllegalStateException("History storage is not ready for this world");
+    }
+
+    /** Resolve before acquiring a history monitor. Completion saves only after releasing that monitor. */
+    public synchronized NekoTradeHistory getHistory(UUID playerId, UUID tradeGroupId) {
+        requireReady();
+        if (playerId == null || tradeGroupId == null) throw new IllegalArgumentException("history identity");
+        Team team = TeamDataProvider.getTeam(playerId);
+        NekoTeamData data = TeamDataProvider.getData(team);
+        if (data != null) {
+            migrateLegacyHistory(team, data);
+            return data.getTradeHistory(tradeGroupId);
         }
-        NekoTradeHistory history = getHistory(playerId, tradeGroupId);
-        history.reset();
+        return getPersonalHistoryMap(playerId).computeIfAbsent(tradeGroupId, ignored -> new NekoTradeHistory());
+    }
+
+    public synchronized void resetHistory(UUID playerId, UUID tradeGroupId) {
+        getHistory(playerId, tradeGroupId).reset();
         markDirty(playerId);
     }
 
-    /** Resets all materialized shared histories for a team or all personal histories. */
-    public void resetAllHistory(UUID playerId) {
-        if (playerId == null) {
-            return;
-        }
-
-        Team team = findTeam(playerId);
-        NekoTeamData teamData = getTeamData(team);
-        if (teamData != null) {
-            migrateLegacyHistory(team, teamData);
-            teamData.resetAllTradeHistories();
-            markTeamDirty(team);
-            return;
-        }
-
-        ConcurrentHashMap<UUID, NekoTradeHistory> playerHistories = getPersonalHistoryMap(playerId);
-        for (NekoTradeHistory history : playerHistories.values()) {
-            history.reset();
-        }
-        markDirty(playerId);
-    }
-
-    /** Persists team data when shared, or the personal fallback file otherwise. */
-    public void markDirty(UUID playerId) {
-        if (playerId == null) {
-            return;
-        }
-        Team team = findTeam(playerId);
-        if (getTeamData(team) != null) {
-            markTeamDirty(team);
-            return;
-        }
-        saveHistory(playerId);
-    }
-
-    public void unloadPlayer(UUID playerId) {
-        if (playerId == null) {
-            return;
-        }
-
-        Team team = findTeam(playerId);
-        NekoTeamData teamData = getTeamData(team);
-        if (teamData != null) {
-            // Capture a solo history that was loaded before the player joined the team.
-            migrateLegacyHistory(team, teamData);
-            histories.remove(playerId);
-            return;
-        }
-
-        markDirty(playerId);
-        histories.remove(playerId);
-    }
-
-    public void saveAll() {
-        for (UUID playerId : histories.keySet()) {
+    public synchronized void resetAllHistory(UUID playerId) {
+        requireReady();
+        if (playerId == null) return;
+        Team team = TeamDataProvider.getTeam(playerId);
+        NekoTeamData data = TeamDataProvider.getData(team);
+        if (data != null) {
+            migrateLegacyHistory(team, data);
+            data.resetAllTradeHistories(); // Migration receipts deliberately survive an explicit admin reset.
+            TeamDataProvider.markTeamDirty(team);
+        } else {
+            for (NekoTradeHistory history : getPersonalHistoryMap(playerId).values()) history.reset();
             saveHistory(playerId);
         }
     }
 
-    public void clearAll() {
+    public synchronized void markDirty(UUID playerId) {
+        if (playerId == null) return;
+        if (acceptingHistories) {
+            Team team = TeamDataProvider.getTeam(playerId);
+            if (TeamDataProvider.getData(team) != null) TeamDataProvider.markTeamDirty(team);
+        }
+        // Also retain/save frozen personal fallback records after a membership change.
+        saveHistory(playerId);
+    }
+
+    /** Keep canonical references until the world ends, including on a failed logout save. */
+    public synchronized void unloadPlayer(UUID playerId) {
+        markDirty(playerId);
+    }
+
+    public synchronized void saveAll() {
+        saveAllInternal();
+    }
+
+    private boolean saveAllInternal() {
+        boolean success = true;
+        for (UUID playerId : histories.keySet()) success &= saveHistory(playerId);
+        return success;
+    }
+
+    /** Save before eviction; never erase the only copy of an unsuccessful write. */
+    public synchronized void clearAll() {
+        if (!saveAllInternal()) throw new IllegalStateException("Cannot clear unsaved trade histories");
         histories.clear();
+        pendingMigrationMarkers.clear();
         legacyHistoryConsumed.clear();
     }
 
-    private NekoTradeHistory getPersonalHistory(UUID playerId, UUID tradeGroupId) {
-        ConcurrentHashMap<UUID, NekoTradeHistory> playerHistories = getPersonalHistoryMap(playerId);
-        return playerHistories.computeIfAbsent(tradeGroupId, ignored -> new NekoTradeHistory());
+    /** Stops access immediately; pending data remains bound to the old directory until a successful retry. */
+    public synchronized void unloadAll() {
+        acceptingHistories = false;
+        if (!saveAllInternal()) {
+            LOG.error("Trade history save failed; retaining the old world binding and refusing new access");
+            return;
+        }
+        histories.clear();
+        pendingMigrationMarkers.clear();
+        legacyHistoryConsumed.clear();
+        migrations.clear();
+        saveDir = null;
     }
 
     private ConcurrentHashMap<UUID, NekoTradeHistory> getPersonalHistoryMap(UUID playerId) {
-        ConcurrentHashMap<UUID, NekoTradeHistory> playerHistories = histories.get(playerId);
-        if (playerHistories != null) {
-            return playerHistories;
-        }
-
-        playerHistories = loadHistory(playerId);
-        if (playerHistories == null) {
-            playerHistories = new ConcurrentHashMap<>();
-        }
-        ConcurrentHashMap<UUID, NekoTradeHistory> existing = histories.putIfAbsent(playerId, playerHistories);
-        return existing == null ? playerHistories : existing;
+        return histories.computeIfAbsent(playerId, this::loadHistory);
     }
 
-    /** O2-04：Teams 探测/降级统一走 TeamDataProvider 门面（不可用时返回 null → 调用方回退个人持久化） */
-    private Team findTeam(UUID playerId) {
-        if (playerId == null) {
-            return null;
-        }
-        return TeamDataProvider.getTeam(playerId);
+    /**
+     * Read/validate every source first. Persist intent before changing either ledger. Each team stores
+     * a receipt alongside its merged history, so a crash before team-save replays exactly once.
+     * Do not use the old team-wide migrated bit to skip new members or pending intents.
+     */
+    private void migrateLegacyHistory(Team team, NekoTeamData data) {
+        migrateLegacyHistory(
+            team.getTeamId(),
+            new HashSet<>(team.getMembers()),
+            data,
+            () -> TeamDataProvider.markTeamDirty(team));
     }
 
-    /** O2-04：经门面取 GTIT 团队数据（未注册到该团队或不可用时返回 null） */
-    private NekoTeamData getTeamData(Team team) {
-        if (team == null) {
-            return null;
-        }
-        return TeamDataProvider.getData(team);
-    }
-
-    /** Performs the migration while the team data monitor is held. */
-    private void migrateLegacyHistory(Team team, NekoTeamData teamData) {
-        if (team == null || teamData == null) {
-            return;
-        }
-        synchronized (teamData) {
-            if (teamData.isLegacyHistoryMigrated()) {
-                return;
+    /** Package-private transaction seam; the public entry resolves actual GTNHLib membership above. */
+    synchronized void migrateLegacyHistory(UUID teamId, Set<UUID> members, NekoTeamData data, Runnable markDirty) {
+        requireReady();
+        Map<UUID, LegacyMigration> staged = new HashMap<>(migrations);
+        Map<UUID, Map<UUID, NekoTradeHistory>> liveSources = new HashMap<>();
+        for (UUID playerId : members) {
+            if (playerId == null || migrations.containsKey(playerId)) continue;
+            Map<UUID, NekoTradeHistory> source = getPersonalHistoryMap(playerId);
+            if (!legacyHistoryConsumed.containsKey(playerId)) {
+                staged.put(playerId, new LegacyMigration(teamId, copyHistories(source)));
+                liveSources.put(playerId, source);
             }
+        }
+        if (staged.size() != migrations.size()) {
+            try {
+                writeMigrations(staged);
+            } catch (Exception failure) {
+                throw new IllegalStateException("Cannot commit legacy history migration intent", failure);
+            }
+            // The durable journal now owns the legacy records, even if a marker write fails below.
+            migrations.clear();
+            migrations.putAll(staged);
+            for (Map.Entry<UUID, Map<UUID, NekoTradeHistory>> entry : liveSources.entrySet()) {
+                UUID playerId = entry.getKey();
+                // Consume live records rather than merely copying them: late completions through
+                // an already captured reference must follow the same surviving team owner.
+                if (data.consumeLegacyHistory(playerId, entry.getValue())) markDirty.run();
+                histories.put(playerId, new ConcurrentHashMap<>());
+                legacyHistoryConsumed.put(playerId, Boolean.TRUE);
+                pendingMigrationMarkers.add(playerId);
+            }
+        }
 
-            for (UUID memberId : team.getMembers()) {
-                if (memberId == null) {
-                    continue;
+        for (Map.Entry<UUID, LegacyMigration> entry : migrations.entrySet()) {
+            UUID playerId = entry.getKey();
+            LegacyMigration intent = entry.getValue();
+            if (intent.teamId.equals(teamId) || members.contains(playerId)) {
+                if (data.applyLegacyHistory(playerId, intent.records)) markDirty.run();
+                if (members.contains(playerId)) {
+                    // Always retry the marker, including intents recovered before the first new-world lookup.
+                    getPersonalHistoryMap(playerId);
+                    legacyHistoryConsumed.put(playerId, Boolean.TRUE);
+                    if (pendingMigrationMarkers.contains(playerId)) saveHistory(playerId);
                 }
-                Map<UUID, NekoTradeHistory> legacy = loadLegacyHistorySnapshot(memberId);
-                for (Map.Entry<UUID, NekoTradeHistory> entry : legacy.entrySet()) {
-                    teamData.mergeTradeHistory(entry.getKey(), entry.getValue());
-                }
-                markLegacyHistoryConsumed(memberId, legacy);
-            }
-
-            teamData.setLegacyHistoryMigrated(true);
-            markTeamDirty(team);
-        }
-    }
-
-    /** Reads current in-memory data first, then the old personal file. */
-    private Map<UUID, NekoTradeHistory> loadLegacyHistorySnapshot(UUID playerId) {
-        Map<UUID, NekoTradeHistory> snapshot = new HashMap<>();
-        if (legacyHistoryConsumed.containsKey(playerId)) {
-            return snapshot;
-        }
-
-        ConcurrentHashMap<UUID, NekoTradeHistory> current = histories.get(playerId);
-        if (current != null) {
-            for (Map.Entry<UUID, NekoTradeHistory> entry : current.entrySet()) {
-                snapshot.put(
-                    entry.getKey(),
-                    entry.getValue()
-                        .copy());
-            }
-            return snapshot;
-        }
-
-        ConcurrentHashMap<UUID, NekoTradeHistory> loaded = loadHistory(playerId);
-        if (loaded != null) {
-            for (Map.Entry<UUID, NekoTradeHistory> entry : loaded.entrySet()) {
-                snapshot.put(
-                    entry.getKey(),
-                    entry.getValue()
-                        .copy());
             }
         }
-        return snapshot;
-    }
-
-    private void markLegacyHistoryConsumed(UUID playerId, Map<UUID, NekoTradeHistory> snapshot) {
-        legacyHistoryConsumed.put(playerId, Boolean.TRUE);
-        if (saveDir == null) {
-            return;
+        if (!data.isLegacyHistoryMigrated()) {
+            data.setLegacyHistoryMigrated(true);
+            markDirty.run();
         }
-
-        ConcurrentHashMap<UUID, NekoTradeHistory> current = histories.get(playerId);
-        Map<UUID, NekoTradeHistory> source = current == null ? snapshot : copyHistories(current);
-        writeHistoryFile(playerId, source, true);
     }
 
     private Map<UUID, NekoTradeHistory> copyHistories(Map<UUID, NekoTradeHistory> source) {
         Map<UUID, NekoTradeHistory> result = new HashMap<>();
-        if (source == null) {
-            return result;
-        }
-        for (Map.Entry<UUID, NekoTradeHistory> entry : source.entrySet()) {
+        if (source != null) for (Map.Entry<UUID, NekoTradeHistory> entry : source.entrySet()) {
             result.put(
                 entry.getKey(),
                 entry.getValue()
@@ -268,91 +246,132 @@ public class NekoHistoryManager {
         return result;
     }
 
-    private void saveHistory(UUID playerId) {
-        if (playerId == null || saveDir == null) {
-            return;
-        }
-        ConcurrentHashMap<UUID, NekoTradeHistory> playerHistories = histories.get(playerId);
-        boolean consumed = legacyHistoryConsumed.containsKey(playerId);
-        if ((playerHistories == null || playerHistories.isEmpty()) && !consumed) {
-            return;
-        }
-        writeHistoryFile(playerId, copyHistories(playerHistories), consumed);
-    }
-
-    private void writeHistoryFile(UUID playerId, Map<UUID, NekoTradeHistory> source, boolean consumed) {
-        File file = new File(saveDir, playerId.toString() + ".dat");
+    private boolean saveHistory(UUID playerId) {
+        Map<UUID, NekoTradeHistory> current = histories.get(playerId);
+        if (current == null) return true;
+        if (saveDir == null) return false;
         try {
             NBTTagCompound root = new NBTTagCompound();
-            NBTTagList historyList = new NBTTagList();
-            for (Map.Entry<UUID, NekoTradeHistory> entry : source.entrySet()) {
-                NBTTagCompound historyNbt = new NBTTagCompound();
-                historyNbt.setString(
-                    "groupId",
-                    entry.getKey()
-                        .toString());
-                historyNbt.setTag(
-                    "history",
-                    entry.getValue()
-                        .writeToNBT());
-                historyList.appendTag(historyNbt);
-            }
-            root.setTag("histories", historyList);
-            root.setBoolean(LEGACY_CONSUMED_KEY, consumed);
-            CompressedStreamTools.safeWrite(root, file);
-        } catch (Exception e) {
-            LOG.error("Unable to save Neko trade history: " + playerId, e);
+            root.setInteger(FORMAT_KEY, 1);
+            root.setTag("histories", writeHistoryList(copyHistories(current)));
+            root.setBoolean(LEGACY_CONSUMED_KEY, legacyHistoryConsumed.containsKey(playerId));
+            AtomicNbtFile.write(root, new File(saveDir, playerId + ".dat"));
+            pendingMigrationMarkers.remove(playerId);
+            return true;
+        } catch (Exception failure) {
+            LOG.error("Unable to save Neko trade history: " + playerId, failure);
+            return false;
         }
     }
 
     private ConcurrentHashMap<UUID, NekoTradeHistory> loadHistory(UUID playerId) {
-        if (saveDir == null || playerId == null) {
-            return null;
-        }
-        File file = new File(saveDir, playerId.toString() + ".dat");
-        if (!file.exists()) {
-            return null;
+        if (saveDir == null) throw new IllegalStateException("No history directory");
+        File file = new File(saveDir, playerId + ".dat");
+        if (Files.notExists(file.toPath())) {
+            if (migrations.containsKey(playerId)) {
+                legacyHistoryConsumed.put(playerId, Boolean.TRUE);
+                pendingMigrationMarkers.add(playerId);
+            }
+            return new ConcurrentHashMap<>();
         }
         try {
             NBTTagCompound root = CompressedStreamTools.read(file);
-            if (root == null) {
-                return null;
+            if (root == null || !root.hasKey("histories", 9))
+                throw new IllegalArgumentException("Missing histories list");
+            boolean versioned = root.hasKey(FORMAT_KEY);
+            if (versioned && (!root.hasKey(FORMAT_KEY, 3) || root.getInteger(FORMAT_KEY) != 1)) {
+                throw new IllegalArgumentException("Unsupported history format");
             }
-            if (root.getBoolean(LEGACY_CONSUMED_KEY)) {
-                legacyHistoryConsumed.put(playerId, Boolean.TRUE);
-                return new ConcurrentHashMap<>();
+            if (root.hasKey(LEGACY_CONSUMED_KEY) && !root.hasKey(LEGACY_CONSUMED_KEY, 1)) {
+                throw new IllegalArgumentException("Invalid legacy consumed marker");
             }
-            if (!root.hasKey("histories")) {
-                return new ConcurrentHashMap<>();
-            }
-            return readHistoryList(root.getTagList("histories", 10));
-        } catch (Exception e) {
-            LOG.error("Unable to load Neko trade history: " + playerId, e);
-            return null;
+            ConcurrentHashMap<UUID, NekoTradeHistory> loaded = readHistoryList(root, "histories");
+            boolean consumed = root.getBoolean(LEGACY_CONSUMED_KEY);
+            if (consumed || migrations.containsKey(playerId)) legacyHistoryConsumed.put(playerId, Boolean.TRUE);
+            if (migrations.containsKey(playerId) && (!versioned || !consumed)) pendingMigrationMarkers.add(playerId);
+            // Old consumed records are archival input, not fresh fallback activity. A journal also
+            // supersedes an old/unmarked source if the crash occurred before its marker was installed.
+            if ((!versioned && consumed) || (!consumed && migrations.containsKey(playerId))) loaded.clear();
+            return loaded;
+        } catch (Exception failure) {
+            LOG.error("Unable to load Neko history; preserving the original file: " + playerId, failure);
+            throw new IllegalStateException("Cannot load trade history " + playerId, failure);
         }
     }
 
-    private ConcurrentHashMap<UUID, NekoTradeHistory> readHistoryList(NBTTagList historyList) {
+    private static NBTTagList writeHistoryList(Map<UUID, NekoTradeHistory> source) {
+        NBTTagList list = new NBTTagList();
+        for (Map.Entry<UUID, NekoTradeHistory> entry : source.entrySet()) {
+            NBTTagCompound record = new NBTTagCompound();
+            record.setString(
+                "groupId",
+                entry.getKey()
+                    .toString());
+            record.setTag(
+                "history",
+                entry.getValue()
+                    .writeToNBT());
+            list.appendTag(record);
+        }
+        return list;
+    }
+
+    private static ConcurrentHashMap<UUID, NekoTradeHistory> readHistoryList(NBTTagCompound root, String key) {
+        if (!root.hasKey(key, 9)) throw new IllegalArgumentException("Missing history list");
+        // getTagList silently replaces a list with the wrong element type. Inspect the raw list first.
+        NBTTagList raw = (NBTTagList) root.getTag(key);
+        NBTTagList list = root.getTagList(key, 10);
+        if (raw.tagCount() != list.tagCount()) throw new IllegalArgumentException("Invalid history list type");
         ConcurrentHashMap<UUID, NekoTradeHistory> result = new ConcurrentHashMap<>();
-        for (int i = 0; i < historyList.tagCount(); i++) {
-            NBTTagCompound historyNbt = historyList.getCompoundTagAt(i);
-            try {
-                UUID groupId = UUID.fromString(historyNbt.getString("groupId"));
-                NekoTradeHistory history = new NekoTradeHistory();
-                history.loadFromNBT(historyNbt.getCompoundTag("history"));
-                result.put(groupId, history);
-            } catch (IllegalArgumentException e) {
-                LOG.warn("Skipping invalid Neko trade group ID: " + historyNbt.getString("groupId"));
+        for (int i = 0; i < list.tagCount(); i++) {
+            NBTTagCompound record = list.getCompoundTagAt(i);
+            if (!record.hasKey("groupId", 8) || !record.hasKey("history", 10)) {
+                throw new IllegalArgumentException("Invalid history entry");
             }
+            UUID groupId = UUID.fromString(record.getString("groupId"));
+            NekoTradeHistory history = new NekoTradeHistory();
+            history.loadFromNBT(record.getCompoundTag("history"));
+            if (result.put(groupId, history) != null) throw new IllegalArgumentException("Duplicate history group");
         }
         return result;
     }
 
-    /** O2-04：经门面标记团队数据脏（不可用时 no-op，调用方回退个人持久化） */
-    private void markTeamDirty(Team team) {
-        if (team == null) {
-            return;
+    private void writeMigrations(Map<UUID, LegacyMigration> source) throws java.io.IOException {
+        NBTTagCompound root = new NBTTagCompound();
+        root.setInteger("version", 1);
+        NBTTagList list = new NBTTagList();
+        for (Map.Entry<UUID, LegacyMigration> entry : source.entrySet()) {
+            NBTTagCompound record = new NBTTagCompound();
+            record.setString(
+                "playerId",
+                entry.getKey()
+                    .toString());
+            record.setString("teamId", entry.getValue().teamId.toString());
+            record.setTag("histories", writeHistoryList(entry.getValue().records));
+            list.appendTag(record);
         }
-        TeamDataProvider.markTeamDirty(team);
+        root.setTag("migrations", list);
+        AtomicNbtFile.write(root, new File(saveDir, JOURNAL_NAME));
+    }
+
+    private Map<UUID, LegacyMigration> readMigrations(File file) throws java.io.IOException {
+        Map<UUID, LegacyMigration> result = new HashMap<>();
+        if (Files.notExists(file.toPath())) return result;
+        NBTTagCompound root = CompressedStreamTools.read(file);
+        if (root == null || !root.hasKey("version", 3)
+            || root.getInteger("version") != 1
+            || !root.hasKey("migrations", 9)) throw new IllegalArgumentException("Invalid legacy migration journal");
+        NBTTagList raw = (NBTTagList) root.getTag("migrations"), list = root.getTagList("migrations", 10);
+        if (raw.tagCount() != list.tagCount()) throw new IllegalArgumentException("Invalid migration list type");
+        for (int i = 0; i < list.tagCount(); i++) {
+            NBTTagCompound record = list.getCompoundTagAt(i);
+            UUID playerId = UUID.fromString(record.getString("playerId"));
+            LegacyMigration migration = new LegacyMigration(
+                UUID.fromString(record.getString("teamId")),
+                readHistoryList(record, "histories"));
+            if (result.put(playerId, migration) != null)
+                throw new IllegalArgumentException("Duplicate migration identity");
+        }
+        return result;
     }
 }

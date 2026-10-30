@@ -56,7 +56,7 @@ public final class ProbeContext {
         return dz;
     }
 
-    /** Fake players are never connected or added to the server's real player list. */
+    /** Creates disconnected actors; never implicitly adds them to the real player list. */
     public FakePlayer player(String role) {
         return players.computeIfAbsent(role, key -> {
             UUID id = UUID.nameUUIDFromBytes((runId() + ":" + scenario + ":" + key).getBytes(StandardCharsets.UTF_8));

@@ -26,6 +26,7 @@ import com.miaokatze.gtit.trade.v2.NekoEditNetworkManager;
 import com.miaokatze.gtit.trade.v2.NekoEditPacket;
 import com.miaokatze.gtit.trade.v2.NekoTrade;
 import com.miaokatze.gtit.trade.v2.NekoTradeDatabase;
+import com.miaokatze.gtit.trade.v2.NekoTradeDefinition;
 import com.miaokatze.gtit.trade.v2.NekoTradeGroup;
 
 /**
@@ -62,6 +63,7 @@ public final class TradeEditor {
 
     /** 当前正在编辑的交易显示数据（客户端，打开编辑面板时设置） */
     private NekoTradeItemDisplay editingDisplay;
+    private String editingFingerprint = "";
 
     /** 编辑：冷却时间（秒） */
     private int editCooldown = 0;
@@ -101,6 +103,20 @@ public final class TradeEditor {
      * @param display 被点击的交易显示数据（宿主已做空判）
      */
     public void beginEdit(NekoTradeItemDisplay display) {
+        if (display == null) return;
+        NekoTradeGroup source = NekoTradeDatabase.INSTANCE.getTradeGroup(display.getGroupId());
+        if (source == null || display.getTradeIndex() < 0
+            || display.getTradeIndex() >= source.getTrades()
+                .size())
+            return;
+        NekoTrade original = source.getTrades()
+            .get(display.getTradeIndex());
+        // The displayed row can lag a hot reload; never combine its old metadata with the new item choices.
+        if (!display.getDefinitionFingerprint()
+            .equals(NekoTradeDefinition.fingerprint(source, original))) {
+            requestMainPanelRefresh.run();
+            return;
+        }
         this.editingDisplay = display;
         this.editTradeIsNew = false;
         // v1.7.6 G3③ 格子残留修复（重置点①）：客户端立即清空 32 槽+重置全部编辑字段，
@@ -108,16 +124,10 @@ public final class TradeEditor {
         // 从数据库复制独立草稿，避免修改正在展示的交易。
         clearTradeEditState();
         // 填充编辑参数（从显示数据中提取）
-        populateEditFields(display);
-        NekoTradeGroup source = NekoTradeDatabase.INSTANCE.getTradeGroup(display.getGroupId());
-        if (source != null && display.getTradeIndex() >= 0
-            && display.getTradeIndex() < source.getTrades()
-                .size()) {
-            NekoTrade original = source.getTrades()
-                .get(display.getTradeIndex());
-            loadChoices(original.getFromItems(), 0);
-            loadChoices(original.getToItems(), 16);
-        }
+        populateEditFields(source, original);
+        editingFingerprint = NekoTradeDefinition.editFingerprint(source);
+        loadChoices(original.getFromItems(), 0);
+        loadChoices(original.getToItems(), 16);
         overlay.open(EditOverlayType.TRADE);
     }
 
@@ -158,26 +168,17 @@ public final class TradeEditor {
      * v1.7.6 G3② 货币解绑：不再提取货币类型/数量到独立字段（货币由需求格物品条目表达）；
      * v1.7.6 G3⑤：从交易读取 recordNBT 填充「严格匹配NBT」开关。
      *
-     * @param display 交易显示数据
+     * @param group captured group definition
+     * @param trade captured trade definition
      */
-    private void populateEditFields(NekoTradeItemDisplay display) {
-        // 从 NekoTradeDatabase 获取配置信息（冷却、BQ 绑定、NBT 匹配开关等）
-        NekoTradeGroup group = NekoTradeDatabase.INSTANCE.getTradeGroup(display.getGroupId());
-        if (group != null) {
-            editCooldown = group.getCooldown();
-            editMaxTrades = group.getMaxTrades();
-            editBqQuestId = group.getBqQuestId() != null ? group.getBqQuestId() : "";
-            editTabId = group.getTabId();
-            editOrderId = group.getOrderId();
-            // v1.7.6 G3⑤：recordNBT 为交易级字段（非组级），按索引取当前交易
-            int tradeIndex = display.getTradeIndex();
-            if (tradeIndex >= 0 && tradeIndex < group.getTrades()
-                .size()) {
-                editRecordNBT = group.getTrades()
-                    .get(tradeIndex)
-                    .isRecordNBT();
-            }
-        }
+    private void populateEditFields(NekoTradeGroup group, NekoTrade trade) {
+        // Use the same captured group as the copied item draft and its optimistic-edit fingerprint.
+        editCooldown = group.getCooldown();
+        editMaxTrades = group.getMaxTrades();
+        editBqQuestId = group.getBqQuestId() != null ? group.getBqQuestId() : "";
+        editTabId = group.getTabId();
+        editOrderId = group.getOrderId();
+        editRecordNBT = trade.isRecordNBT();
     }
 
     /**
@@ -358,13 +359,15 @@ public final class TradeEditor {
                 .onMouseTapped(mouse -> {
                     if (deleteConfirmDialog == null || deleteConfirmPanel == null || editingDisplay == null)
                         return true;
+                    String target = editingDisplay.getGroupId()
+                        .toString();
+                    int targetIndex = editingDisplay.getTradeIndex();
+                    String expected = editingFingerprint;
                     deleteConfirmDialog.setButtonText("是", "否");
                     // v1.8.20：默认条目删除提示明确"更新时会自动恢复"（启动自动覆盖按 MIAO 语义 ID 重新注入）
                     deleteConfirmDialog
                         .setParams(isEditingDefaultTrade() ? "这是默认任务（系统内置条目）：删除后下次默认贸易组更新时会自动恢复。" : "是否确认删除该条目", () -> {
-                            sendDeleteTrade(
-                                editingDisplay.getGroupId()
-                                    .toString());
+                            sendDeleteTrade(target, targetIndex, expected);
                             requestClose.run();
                         });
                     deleteConfirmPanel.openPanel();
@@ -456,13 +459,15 @@ public final class TradeEditor {
      * <p>
      * 经 {@link NekoEditNetworkManager#sendToServer} 直发
      * {@link NekoEditPacket#ACTION_DELETE_TRADE}（targetId=交易组 UUID 字符串，
-     * 无载荷）；服务端按 groupId 定位并删除条目，走「落盘 → 热重载 → 全服广播」
-     * 同一权威链。编辑模式统一闸（processAction）之外无需额外校验。
+     * JSON 携带编辑时的定义指纹）；服务端先复核指纹，再按 groupId 删除条目，
+     * 走「落盘 → 热重载 → 全服广播」同一权威链。
      *
      * @param groupId 交易组 UUID 字符串
      */
-    private void sendDeleteTrade(String groupId) {
-        NekoEditNetworkManager.sendToServer(NekoEditPacket.ACTION_DELETE_TRADE, groupId, 0, "");
+    private void sendDeleteTrade(String groupId, int index, String expected) {
+        com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+        json.addProperty("expectedEditFingerprint", expected);
+        NekoEditNetworkManager.sendToServer(NekoEditPacket.ACTION_DELETE_TRADE, groupId, index, json.toString());
     }
 
     /**
@@ -476,6 +481,7 @@ public final class TradeEditor {
      * 仅客户端调用：清除本地草稿，不更改服务端交易数据。
      */
     public void clearTradeEditState() {
+        editingFingerprint = "";
         for (int i = 0; i < choices.length; i++) {
             choices[i] = null;
             appendMode[i] = false;
@@ -513,6 +519,8 @@ public final class TradeEditor {
         try {
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
 
+            // Existing drafts are compared on the server immediately before the synchronous config mutation.
+            if (!editTradeIsNew) json.addProperty("expectedEditFingerprint", editingFingerprint);
             // 基础参数
             json.addProperty("tabId", editTabId);
             json.addProperty("orderId", editOrderId);
@@ -563,10 +571,13 @@ public final class TradeEditor {
 
             String payload = json.toString();
             int limit = com.miaokatze.gtit.trade.v2.NekoEditActionHandler.MAX_JSON_PAYLOAD_LENGTH;
-            if (payload.length() > limit) {
+            if (!com.miaokatze.gtit.util.PacketStrings.fits(payload, limit)) {
                 net.minecraft.client.Minecraft.getMinecraft().thePlayer.addChatMessage(
                     new net.minecraft.util.ChatComponentText(
-                        "§c保存失败：交易数据共 " + payload.length() + " 字符，超过 " + limit + " 字符上限；请减少候选或物品 NBT，草稿已保留"));
+                        "§c保存失败：交易数据超过 " + limit
+                            + " 字符或 "
+                            + com.miaokatze.gtit.util.PacketStrings.MAX_UTF8_BYTES
+                            + " UTF-8 字节上限；请减少候选或物品 NBT，草稿已保留"));
                 return false;
             }
 

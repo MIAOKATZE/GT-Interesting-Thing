@@ -192,6 +192,11 @@ public final class TradePresetRuntimeTest {
         NekoTradeGroup oneTimeGroup = NekoTradeDatabase.INSTANCE
             .getTradeGroup(NekoTradeRegistryV2.parseTradeGroupId(customPresetTrade.getId()));
         oneTimeGroup.setCooldown(-1);
+        java.lang.reflect.Method bindHistory = com.miaokatze.gtit.trade.v2.NekoHistoryManager.class
+            .getDeclaredMethod("bindSaveDirectory", java.io.File.class);
+        bindHistory.setAccessible(true);
+        bindHistory
+            .invoke(com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE, new java.io.File("history-fixture"));
         UUID statusPlayer = UUID.randomUUID();
         com.miaokatze.gtit.trade.v2.NekoTradeHistory oneTimeHistory = com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE
             .getHistory(statusPlayer, oneTimeGroup.getId());
@@ -222,6 +227,7 @@ public final class TradePresetRuntimeTest {
             "".equals(status.invoke(codec, UUID.randomUUID())),
             "open container status cache invalidates immediately");
         com.miaokatze.gtit.gui.vm.TradeWidgetEditModeTest.run();
+        com.miaokatze.gtit.trade.v2.NekoHistoryManager.INSTANCE.unloadAll();
         System.out.println("TradePresetRuntimeTest: 22 checks passed");
     }
 

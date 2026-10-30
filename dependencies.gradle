@@ -137,3 +137,22 @@ dependencies {
     def coreVersion = project.findProperty("miaokatzeCoreVersion") ?: "0.1.27"
     api("com.miaokatze.miaokatzecore:miaokatzecore:${coreVersion}:dev") { transitive = false }
 }
+
+// Native headless regressions need real client-facing API classes while inspecting interfaces.
+// These resolvable test-task configurations are never consumed/published and do not alter mod runtime dependencies.
+configurations {
+    nativeLwjglTestRuntime {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+    nativeTerminalScreenTestRuntime {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
+dependencies {
+    nativeLwjglTestRuntime("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209") { transitive = false }
+    nativeLwjglTestRuntime("org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209") { transitive = false }
+    nativeTerminalScreenTestRuntime("com.github.GTNewHorizons:lwjgl3ify:3.0.34:api") { transitive = false }
+    nativeTerminalScreenTestRuntime(rfg.deobf("curse.maven:neverenoughanimation-1062347:7664003")) { transitive = false }
+}

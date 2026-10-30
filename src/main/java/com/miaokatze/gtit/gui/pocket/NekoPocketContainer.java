@@ -44,6 +44,10 @@ public class NekoPocketContainer extends ModularContainer {
         this.panel = panel;
     }
 
+    boolean belongsToPanel(NekoPocketPanel candidate) {
+        return panel == candidate;
+    }
+
     @Override
     public void onModularContainerClosed() {
         super.onModularContainerClosed();
@@ -124,6 +128,13 @@ public class NekoPocketContainer extends ModularContainer {
                 mode,
                 player == null ? null : player.inventory.getItemStack())) {
                 rejectOversizedClick(modular, player);
+                return null;
+            }
+        }
+        if (slotId == -999 && mode == 0 && (mouseButton == 0 || mouseButton == 1)) {
+            if (!panel.persistBeforeCursorDrop(player)) {
+                panel.syncManager()
+                    .setCursorItem(player.inventory.getItemStack());
                 return null;
             }
         }
