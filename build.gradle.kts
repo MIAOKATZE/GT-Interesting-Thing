@@ -90,6 +90,7 @@ tasks.register<JavaExec>("runInfinityCellTransferTest") {
     mainClass = "com.miaokatze.gtit.common.items.infinitycell.InfinityCellTransferTest"
     classpath = storeTestRuntimeClasspath
     classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+    classpath += configurations.getByName("nativeLwjglTestRuntime")
 }
 
 tasks.register<JavaExec>("runPocketTaggedFluidTest") {
@@ -293,6 +294,9 @@ mapOf(
             doFirst { scratchDir.get().asFile.mkdirs() }
         }
         classpath += configurations.detachedConfiguration(dependencies.create("it.unimi.dsi:fastutil:8.5.18"))
+        if (taskName == "runRemoteVendingTerminalTest") {
+            classpath += configurations.getByName("nativeTerminalScreenTestRuntime")
+        }
         if (taskName == "runRemoteVendingTerminalTest" || taskName == "runVendingConcurrencyTest") {
             classpath += configurations.detachedConfiguration(dependencies.create(
                 "xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.5:downgraded-8@jar"))
@@ -300,4 +304,14 @@ mapOf(
         }
     }
     tasks.named("check") { dependsOn(taskName) }
+}
+
+// Explicit target-8 native Forge/AE lane: the original ASM5 transformer requires GT's actual base classes.
+// This does not certify the modern server's Java17+ multi-release variant; server acceptance is a separate gate.
+listOf("runPocketFluidNativeBoundaryTest", "runVendingConcurrencyTest").forEach { taskName ->
+    tasks.named<JavaExec>(taskName) {
+        javaLauncher.set(javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(8))
+        })
+    }
 }

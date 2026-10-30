@@ -26,7 +26,6 @@ import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.machine.v2.MTENekoVendingMachineV2;
 import com.miaokatze.gtit.common.util.GTITUtils;
-import com.miaokatze.gtit.gui.terminal.NekoRemoteVendingGui;
 import com.miaokatze.gtit.main.GTInterestingThing;
 import com.miaokatze.gtit.register.CreativeTabManager;
 import com.miaokatze.gtit.util.ServerTaskScheduler;
@@ -177,13 +176,13 @@ public final class ItemNekoVendingTerminal extends Item
 
     @Override
     public ModularPanel buildUI(PlayerInventoryGuiData data, PanelSyncManager sync, UISettings settings) {
-        return NekoRemoteVendingGui.build(data, sync, settings);
+        return TerminalGuiBridge.build(data, sync, settings);
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     public ModularScreen createScreen(PlayerInventoryGuiData data, ModularPanel panel) {
-        return NekoRemoteVendingGui.createScreen(data, panel);
+        return TerminalGuiBridge.createScreen(data, panel);
     }
 
     @Override

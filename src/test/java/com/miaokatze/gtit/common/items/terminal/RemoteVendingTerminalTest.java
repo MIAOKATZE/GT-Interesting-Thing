@@ -26,6 +26,9 @@ import net.minecraft.world.WorldServer;
 import com.cleanroommc.modularui.factory.PlayerInventoryGuiData;
 import com.cleanroommc.modularui.factory.inventory.InventoryTypes;
 import com.cleanroommc.modularui.screen.ModularContainer;
+import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.ModularScreen;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.ModularSyncManager;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.miaokatze.gtit.common.api.enums.GTITItemList;
@@ -64,6 +67,10 @@ public final class RemoteVendingTerminalTest {
         Thread.currentThread()
             .setName("Server thread");
         Map<String, Runnable> cases = new LinkedHashMap<>();
+        cases.put(
+            "terminal_gui_bridge_preserves_identity_and_requires_registration",
+            RemoteVendingTerminalTest::guiBridgeDelegation);
+        cases.put("terminal_gui_bridge_both_side_and_client_only_wiring", RemoteVendingTerminalTest::guiBridgeWiring);
         cases.put("binding_roundtrip_and_rebind_preserve_other_nbt", RemoteVendingTerminalTest::bindingRoundtrip);
         cases.put("missing_or_wrong_types_do_not_bind_to_origin", RemoteVendingTerminalTest::rejectMalformed);
         cases.put("session_binding_slot_and_container_lifecycle", RemoteVendingTerminalTest::sessionLifecycle);
@@ -88,6 +95,111 @@ public final class RemoteVendingTerminalTest {
             }
         });
         TestRunner.run(RemoteVendingTerminalTest.class, cases);
+    }
+
+    private static void guiBridgeDelegation() {
+        ItemNekoVendingTerminal item = new ItemNekoVendingTerminal();
+        PlayerShell player = playerShell();
+        PlayerInventoryGuiData data = new PlayerInventoryGuiData(player, InventoryTypes.PLAYER, 0);
+        PanelSyncManager sync = (PanelSyncManager) allocate(PanelSyncManager.class);
+        UISettings settings = (UISettings) allocate(UISettings.class);
+        ModularPanel panel = (ModularPanel) allocate(ModularPanel.class);
+        ModularScreen screen = (ModularScreen) allocate(ModularScreen.class);
+        int[] calls = { 0, 0 };
+        try {
+            TerminalGuiBridge.registerPanel(null);
+            TerminalGuiBridge.registerScreen(null);
+            expectUnregistered(() -> item.buildUI(data, sync, settings), "CommonProxy#init");
+            expectUnregistered(() -> item.createScreen(data, panel), "ClientProxy#init");
+            TerminalGuiBridge.registerPanel(
+                (ignoredData, ignoredSync, ignoredSettings) -> {
+                    throw new AssertionError("replaced panel factory must not run");
+                });
+            TerminalGuiBridge.registerScreen(
+                (ignoredData, ignoredPanel) -> { throw new AssertionError("replaced screen factory must not run"); });
+            TerminalGuiBridge.registerPanel((actualData, actualSync, actualSettings) -> {
+                SimpleAssert.that(actualData == data, "panel retains opening GuiData identity");
+                SimpleAssert.that(actualSync == sync, "panel retains sync manager identity");
+                SimpleAssert.that(actualSettings == settings, "panel retains settings identity");
+                calls[0]++;
+                return panel;
+            });
+            TerminalGuiBridge.registerScreen((actualData, actualPanel) -> {
+                SimpleAssert.that(actualData == data, "screen retains same opening GuiData identity");
+                SimpleAssert.that(actualPanel == panel, "screen retains built panel identity");
+                calls[1]++;
+                return screen;
+            });
+            SimpleAssert.that(item.buildUI(data, sync, settings) == panel, "panel result forwarded unchanged");
+            SimpleAssert.that(item.createScreen(data, panel) == screen, "screen result forwarded unchanged");
+            SimpleAssert.eq(1, calls[0], "one panel delegation");
+            SimpleAssert.eq(1, calls[1], "one screen delegation");
+        } finally {
+            TerminalGuiBridge.registerPanel(NekoRemoteVendingGui::build);
+            TerminalGuiBridge.registerScreen(NekoRemoteVendingGui::createScreen);
+        }
+    }
+
+    private static void expectUnregistered(Runnable action, String registrationSite) {
+        try {
+            action.run();
+            throw new AssertionError("missing factory must fail explicitly");
+        } catch (IllegalStateException expected) {
+            SimpleAssert.that(
+                expected.getMessage()
+                    .contains(registrationSite),
+                "failure identifies registration site");
+        }
+    }
+
+    private static void guiBridgeWiring() {
+        String item = productionSource("common/items/terminal/ItemNekoVendingTerminal.java");
+        String bridge = productionSource("common/items/terminal/TerminalGuiBridge.java");
+        String common = productionSource("main/CommonProxy.java");
+        String client = productionSource("main/ClientProxy.java");
+        SimpleAssert.that(!item.contains("com.miaokatze.gtit.gui."), "item has no GUI import or hidden FQN");
+        SimpleAssert.that(!bridge.contains("com.miaokatze.gtit.gui."), "bridge has no GUI import or hidden FQN");
+        SimpleAssert
+            .that(item.contains("return TerminalGuiBridge.build(data, sync, settings);"), "item panel delegates");
+        SimpleAssert
+            .that(item.contains("return TerminalGuiBridge.createScreen(data, panel);"), "item screen delegates");
+        int commonInit = common.indexOf("public void init(");
+        int commonPostInit = common.indexOf("public void postInit(", commonInit);
+        String commonInitBody = common.substring(commonInit, commonPostInit);
+        SimpleAssert.that(
+            commonInitBody.contains("TerminalGuiBridge.registerPanel(NekoRemoteVendingGui::build);"),
+            "both-side init registers original panel implementation");
+        SimpleAssert
+            .that(!common.contains("TerminalGuiBridge.registerScreen("), "common never registers client screen");
+        int clientInit = client.indexOf("public void init(");
+        int superInit = client.indexOf("super.init(event);", clientInit);
+        int screenRegistration = client
+            .indexOf("TerminalGuiBridge.registerScreen(NekoRemoteVendingGui::createScreen);");
+        SimpleAssert.that(
+            clientInit >= 0 && superInit > clientInit && screenRegistration > superInit,
+            "client registers original screen only after common panel registration");
+        SimpleAssert.that(
+            bridge.contains("@SideOnly(Side.CLIENT)\n    @FunctionalInterface\n    public interface ScreenFactory"),
+            "screen factory type is client-only");
+        SimpleAssert.that(
+            bridge.contains("@SideOnly(Side.CLIENT)\n    private static volatile ScreenFactory"),
+            "screen factory field is client-only");
+        SimpleAssert.that(
+            bridge.contains("@SideOnly(Side.CLIENT)\n    public static void registerScreen"),
+            "screen registration is client-only");
+        SimpleAssert.that(
+            bridge.contains("@SideOnly(Side.CLIENT)\n    public static ModularScreen createScreen"),
+            "screen delegation is client-only");
+    }
+
+    private static String productionSource(String path) {
+        try {
+            return new String(
+                java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("src/main/java/com/miaokatze/gtit/" + path)),
+                StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new AssertionError("Required source wiring evidence unavailable: " + path, e);
+        }
     }
 
     private static ItemStack terminal() {

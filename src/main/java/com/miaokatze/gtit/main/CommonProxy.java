@@ -10,6 +10,7 @@ import com.miaokatze.gtit.command.GTITGiftCommand;
 import com.miaokatze.gtit.common.items.infinitycell.InfinityCellHandler;
 import com.miaokatze.gtit.common.items.infinitycell.StorageManager;
 import com.miaokatze.gtit.common.items.pocket.PocketPanelBridge;
+import com.miaokatze.gtit.common.items.terminal.TerminalGuiBridge;
 import com.miaokatze.gtit.common.loot.LootRegistrar;
 import com.miaokatze.gtit.common.machine.v2.VendingGuiBridge;
 import com.miaokatze.gtit.config.Config;
@@ -20,6 +21,7 @@ import com.miaokatze.gtit.crossmod.miaogtnh.MiaoGtnhHost;
 import com.miaokatze.gtit.currency.NekoCurrencyRegistrar;
 import com.miaokatze.gtit.event.PlayerLoginHandler;
 import com.miaokatze.gtit.gui.pocket.NekoPocketPanel;
+import com.miaokatze.gtit.gui.terminal.NekoRemoteVendingGui;
 import com.miaokatze.gtit.gui.vm.NekoVMGuiV2;
 import com.miaokatze.gtit.loader.ItemLoader;
 import com.miaokatze.gtit.loader.MachineLoader;
@@ -383,6 +385,8 @@ public class CommonProxy {
         // IGuiHolder.buildUI 在服务端也要构建面板树（MUI2 双端同步），而本方法在专用服上同样执行
         // （ClientProxy.init 首行 super.init 已带上），两侧同享这一次注册。
         PocketPanelBridge.register(NekoPocketPanel::build);
+        // The item-hosted terminal also builds its MUI sync tree on both physical sides.
+        TerminalGuiBridge.registerPanel(NekoRemoteVendingGui::build);
 
         // v1.8.56 修复专用服打不开猫猫机 GUI：GT5U buildUI final 链双端构建 MUI2 面板树、
         // getGui 服务端亦触达（专用服日志实证），注册必须双端（对齐上方 PocketPanelBridge 范式；
